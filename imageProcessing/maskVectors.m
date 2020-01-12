@@ -1,0 +1,13 @@
+function [insideIdx] = maskVectors(dispMatX,dispMatY,bwstackImg)
+Npoints = length(dispMatX);
+insideIdx = false(Npoints,1);
+
+for ii=1:Npoints
+    if round(dispMatY(ii)) <= size(bwstackImg,1) && ...
+            round(dispMatY(ii)) > 0 && ...
+            round(dispMatX(ii)) <= size(bwstackImg,2) && ...
+            round(dispMatX(ii)) > 0 && ...
+            bwstackImg(round(dispMatY(ii)),round(dispMatX(ii)))
+        insideIdx(ii) = true;
+    end
+end

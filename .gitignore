@@ -1,0 +1,6 @@
+*.mat
+*.m~
+.ipynb_checkpoints
+*.c~
+*.tif
+*.tiff
