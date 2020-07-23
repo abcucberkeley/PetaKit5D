@@ -282,7 +282,7 @@ for i = 1:nd
             
             if ~objectiveScan(i)
                 fprintf('De-skewing ''%s'', channel %d:   0%%', getShortPath(data(i)), c);
-                for f = 1:nf
+                parfor f = 1:nf
                     % load frame
                     frame = double(readtiff(data(i).framePaths{c}{f})); %#ok<PFBNS>
                     % sCMOS camera rotation / flip if necessary
