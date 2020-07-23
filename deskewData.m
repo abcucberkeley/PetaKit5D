@@ -274,6 +274,9 @@ for i = 1:nd
             if nPad > 1
                 flag = 1;
             end
+        else
+            pad_mat = zeros(nCh, 1);
+            nPad = 0;
         end
         
         for c = 1:nCh
