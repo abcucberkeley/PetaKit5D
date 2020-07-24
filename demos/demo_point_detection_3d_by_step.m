@@ -30,8 +30,8 @@ ch2_psf_filename = '/clusterfs/fiona/xruan/Images/test_images_detection_software
 % Because in calibration (of this data), the calibration image is
 % approximately isotropic, which is is not true for the data. We need to
 % divide the sigma in z-axis by the Anisotropic factor in this axis. 
-sigma_mat = [sigmaXY_ch1, sigmaZ_ch1 ./ data.zAniso; 
-             sigmaXY_ch2, sigmaZ_ch2 ./ data.zAniso];
+sigma_mat = [sigmaXY_ch1, sigmaZ_ch1 ./ data(1).zAniso; 
+             sigmaXY_ch2, sigmaZ_ch2 ./ data(1).zAniso];
 
 
 %% Step 3: deskew, and correct XZ offsets between channels
