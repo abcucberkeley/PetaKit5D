@@ -177,7 +177,7 @@ parfor k = 1:data.movieLength % parfor
     frame(frame==0) = NaN; % to avoid border effects
     
     [ny,nx,nz] = size(frame);
-    switch DetectionMethod
+    switch lower(DetectionMethod)
         case 'original'
             [pstruct, mask] = pointSourceDetection3D(frame, sigma(mCh,:), 'Alpha', opts.Alpha,...
                 'Mask', opts.CellMask, 'RemoveRedundant', opts.RemoveRedundant, 'RedundancyRadius', opts.RedundancyRadius, ...
@@ -194,7 +194,7 @@ parfor k = 1:data.movieLength % parfor
                 'Mask', opts.CellMask, 'RemoveRedundant', opts.RemoveRedundant, 'RedundancyRadius', opts.RedundancyRadius, ...
                 'RefineMaskLoG', false, 'WindowSize', opts.WindowSize, 'Mode', opts.Mode,...
                 'FitMixtures', opts.FitMixtures,'MaxMixtures', opts.MaxMixtures);
-        case 'lowSNR'    % rigorous update  
+        case 'lowsnr'    % rigorous update  
             % xruan 11/08/2019
             if FilterByResidualSigma
                 [backgroundInfo] = XR_estimate_overall_background_information(frame, 'randseed', k);
