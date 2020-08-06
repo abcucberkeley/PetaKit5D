@@ -70,15 +70,7 @@ end
 % right-hand side of symmetric kernels
 gx = exp(-(0:ws(1)).^2/(2*sigma(1)^2));
 gz = exp(-(0:ws(2)).^2/(2*sigma(2)^2));
-tic
 fg = conv3fast(vol, gx, gx, gz);
-toc
-tic
-fg_1 = imgaussfilt3(vol, [sigma(1), sigma(1), sigma(2)]);
-toc
-tic
-fg_2 = imgaussfilt3(vol, [sigma(1), sigma(1), sigma(2)], 'FilterDomain', 'spatial');
-toc
 fu =  conv3fast(vol,    ones(1,ws(1)+1), ones(1,ws(1)+1), ones(1,ws(2)+1));
 fu2 = conv3fast(vol.^2, ones(1,ws(1)+1), ones(1,ws(1)+1), ones(1,ws(2)+1));
 
