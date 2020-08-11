@@ -55,7 +55,7 @@ cppDeconPath = '/global/home/groups/software/sl-7.x86_64/modules/RLDecon_CPU/202
 cppDecon = true;
 % if cppDecon and cudaDecon (false by default) are false, it uses matlab decon
 % uncomment the line to use matlab decon. 
-cppDecon = false;
+% cppDecon = false;
 
 % psf full paths in the order of CamB_ch0 and CamA_ch0
 PSFFullpaths = {'/clusterfs/fiona/Data/20200806_p35p4_Hex_Raptv_234-1_DLS/20200806_Calibration/PSF/Hex/TotPSF_488_CamB_3.tif', ...

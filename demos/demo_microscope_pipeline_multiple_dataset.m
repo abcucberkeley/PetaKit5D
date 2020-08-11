@@ -3,6 +3,7 @@
 
 %% Step 1: set parameters for each step. 
 % add the software to the path
+cd(fileparts(which(mfilename)));
 addpath(genpath('../'));
 
 %  rt is the root directory of datasets (if all datasets are within this folder)
@@ -64,6 +65,11 @@ cppDeconPath = '/global/home/groups/software/sl-7.x86_64/modules/RLDecon_CPU/202
 % if the dependency libraries are not loaded, we may also need to load the
 % libraries. 
 % loadModules = '';
+cppDecon = true;
+% if cppDecon and cudaDecon (false by default) are false, it uses matlab decon
+% uncomment the line to use matlab decon. 
+% cppDecon = false;
+
 % psf full paths in the order of CamB_ch0 and CamA_ch0
 PSFFullpaths = {'/clusterfs/fiona/Data/20200806_p35p4_Hex_Raptv_234-1_DLS/20200806_Calibration/PSF/Hex/TotPSF_488_CamB_3.tif', ...
 '/clusterfs/fiona/Data/20200806_p35p4_Hex_Raptv_234-1_DLS/20200806_Calibration/PSF/Hex/TotPSF_560_CamA_5.tif'};
@@ -77,7 +83,8 @@ Background = 100;
 XR_microscopeAutomaticProcessing(dataPath, 'xyPixelSize', xyPixelSize, 'dz', dz,  ...
     'Reverse', Reverse, 'ChannelPatterns', ChannelPatterns, 'Save16bit', Save16bit, ...
     'Overwrite', Overwrite, 'Streaming', Streaming, 'Deskew', Deskew, 'Rotate', Rotate, ...
-    'Stitch', Stitch, 'Decon', Decon, 'cppDeconPath', cppDeconPath, 'RotateAfterDecon', RotateAfterDecon, ...
-    'ImageListFullpaths', ImageListFullpaths, 'axisOrder', axisOrder, ...
-    'PSFFullpaths', PSFFullpaths, 'Background', Background, 'cpusPerTask', cpusPerTask);
+    'Stitch', Stitch, 'Decon', Decon, 'cppDecon', cppDecon, 'cppDeconPath', cppDeconPath, ...
+    'RotateAfterDecon', RotateAfterDecon, 'ImageListFullpaths', ImageListFullpaths, ...
+    'axisOrder', axisOrder, 'PSFFullpaths', PSFFullpaths, 'Background', Background, ...
+    'cpusPerTask', cpusPerTask);
 
