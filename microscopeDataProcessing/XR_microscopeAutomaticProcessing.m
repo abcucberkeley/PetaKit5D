@@ -6,34 +6,62 @@ function [] = XR_microscopeAutomaticProcessing(dataPaths, varargin)
 % 5 minutes for potential new coming files. 
 %
 % Inputs :   
-%            dataPath : directory path for the data
+%            dataPath : directory paths for the data sets. Either a string
+%                       for a single dataset or a cell array of paths for several
+%                       datasets with same experiment settings. 
 %
 %
 % Options (as 'specifier'-value pairs): 
 %
-%         'Overwrite' : true|{false}. Overwrite existing results.
-%         'SkewAngle' : skew angle of the stage. Default: 31.5.
+%         'Overwrite' : true|{false}, or a length 5 bool vector. Overwrite existing results.
+%         'Streaming' : {true}|false. True for real-time processing, and false for existing data
+%   'ChannelPatterns' : An cell array of channel identifies and orders for included channels.
+%                       Supported formats: Cam[A/B]_ch[0-9] or ch[0-9].
+%          'Channels' : Channel wavelength (currently not required).
+%         'SkewAngle' : skew angle of the stage. Default: 32.45.
 %                'dz' : stage scan interval. Default: 0.5.
 %       'xyPixelSize' : pixel size. Default: 0.108.
+%           'Reverse' : true|{false}. Inverse direction of z axis. 
 %     'ObjectiveScan' : true|{false}. Objective scan. Default: 5.
 %   'sCMOSCameraFlip' : true|{false}. sCMOS camera flip. 
-%           'Reverse' : true|{false}. Inverse direction of z axis. 
+%         'Save16bit' : 1 X 4 bool vector. Save 16bit result for deskew/rotate, stitch, decon, and rotate after decon. 
 %            'Deskew' : {true}|false. Deskew the data.
 %            'Rotate' : {true}|false. Rotate deskewed data.
+%            'Stitch' : true|{false}. Stitch deskewed and rotated data.
 %             'Decon' : {true}|false. Deconvolution on data.
+%  'RotateAfterDecon' : true|{false}. Rotate deconvolution results using matlab rotation function.
+%    'LLFFCorrection' : true|{false}. Flat-field correction.
+%        'LowerLimit' : A number between 0 and 1. Lower limit of intensity range for binarization. 
 %         'cudaDecon' : {true}|false. Use cudaDecon for deconvolution. If there is no GPU, false by default. 
+%      'LSImagePaths' : An array of full paths of flag field, with channel orders defined in 'ChannelPatterns'.
+%   'BackgroundPaths' : An array of full paths of camera dark current images, with channel orders defined in 'ChannelPatterns'.
+%   'stitchResultDir' : matlab stitch directory name. 
+%'imageListFullpaths' : A cell array of full paths. Image list csv file for tile coordinates for each dataset. 
+%         'axisOrder' : Axis order for the coordinates. Format: 'xyz', '-x,y,z', 'y,x,z' etc.  
+%       'BlendMethod' : Method to handle overlap regions. Options: 'none' (default), 'mean', 'median' and 'max'. 
+%        'xcorrShift' : {true}|false. Use cross-correlation based registration in stitching
+%         'xcorrMode' : Reference registration mode. 'primary': primary channel; 
+%                       'primaryfirst': first time point in primary channel; 'all': its own xcorr. 
+%      'boundboxCrop' : Bounding box to crop ROI after stitching. Empty or [y_min, x_min, z_min, y_max, x_max, z_max]. 
+%         'cudaDecon' : true|{false}. Use cuda decon method for deconvolution.
+%          'cppDecon' : true|{false}. Use cpp decon method for deconvolution
+%      'cppDeconPath' : Program path for cpp decon package. 
+%       'loadModules' : Cammands to load dependency modules for cpp decon package (only for ABC cluster).
+%     'cudaDeconPath' : Program path for cuda decon package. 
+%        'OTFGENPath' : Program path for otf generation function in cuda decon package. 
 %                'DS' : true|{false}. Use deskewed data for deconvolution.
 %               'DSR' : {true}|false. Use deskewed rotated data for deconvolution. 
 %        'Background' : Background intensity for deconvolution. Default: 99 if not provided.
+%       'EdgeErosion' : Number of voxels from edges (defined in raw data) to 
+%                       exclude in decon in order to remove edge artifacts. Default: 8. 
+%        'ErodeByFTP' : {true}|false. Use the first time point and first
+%                       channel to define an eroded mask to remove edge artifact. 
 %       'deconRotate' : true|{false}. Rotate deconvolution result within deconvolution steps.
-%  'RotateAfterDecon' : true|{false}. Rotate deconvolution results using matlab rotation function.
 %      'psfFullpaths' : Full paths of psf files. A file for a channel. The order is the same as ChannelPatterns.
-%          'Channels' : Channel wavelengths. 
-%   'ChannelPatterns' : String patterns to recognize each channel. Currently, use Cam[A/B]_ch[0-9] as patterns. 
-%         'Save16bit' : true|{false}. Correcting backgrounds across z-slices. 
 %      'parseCluster' : Use slurm-based cluster computing.
 %         'jobLogDir' : Log directory for the slurm jobs.
-%       'cpusPerTask' : Number of cpus for a job. Default: 12
+%       'cpusPerTask' : Number of cpus for a job. Default: 2
+%      'cpuOnlyNodes' : {true}|false. Use CPU-only nodes in ABC cluster. 
 %              'uuid' : unique string for a job for saving files. 
 %       'maxTrialNum' : Max number of times to rerun failure cases. 
 %      'unitWaitTime' : The wait time per file in minutes to check whether the computing is done.
@@ -73,12 +101,14 @@ ip.addRequired('dataPaths'); % data structure from loadConditionData
 ip.addParameter('Overwrite', false,  @(x) (numel(x) == 1 || numel(x) == 5) && islogical(x));
 ip.addParameter('Streaming', true,  @islogical); % if true, check for new files. If false, assume all files transferred completely.
 ip.addParameter('ChannelPatterns', {'CamA_ch0', 'CamA_ch1', 'CamB_ch0'}, @iscell);
+ip.addParameter('Channels', [488, 560, 642], @isnumeric);
 ip.addParameter('SkewAngle', 32.45, @isscalar);
 ip.addParameter('dz', 0.5, @isscalar);
 ip.addParameter('xyPixelSize', 0.108, @isscalar);
 ip.addParameter('Reverse', true, @islogical);
 ip.addParameter('ObjectiveScan', false, @islogical);
 ip.addParameter('sCMOSCameraFlip', false, @islogical);
+ip.addParameter('Save16bit', [false, false, false, false], @(x) (numel(x) == 1 || numel(x) == 4) && islogical(x));
 % pipeline steps
 ip.addParameter('Deskew', true, @islogical);
 ip.addParameter('Rotate', true, @islogical);
@@ -101,6 +131,10 @@ ip.addParameter('boundboxCrop', [], @(x) isnumeric(x) && (isempty(x) || all(size
 % decon parameters
 ip.addParameter('cudaDecon', false, @islogical);
 ip.addParameter('cppDecon', ~false, @islogical);
+ip.addParameter('cppDeconPath', '/global/home/groups/software/sl-7.x86_64/modules/RLDecon_CPU/20200718/build-cluster/cpuDeconv', @ischar);
+ip.addParameter('loadModules', 'module load gcc/4.8.5; module load fftw/3.3.6-gcc; module load boost/1.65.1-gcc; module load libtiff/4.1.0; ', @ischar);
+ip.addParameter('cudaDeconPath', '/global/home/groups/software/sl-7.x86_64/modules/cudaDecon/bin/cudaDeconv' , @ischar);
+ip.addParameter('OTFGENPath', '/global/home/groups/software/sl-7.x86_64/modules/cudaDecon/bin/radialft' , @ischar); % point to radialft file
 ip.addParameter('DS', true, @islogical);
 ip.addParameter('DSR', false, @islogical);
 ip.addParameter('Background', [], @isnumeric);
@@ -108,10 +142,8 @@ ip.addParameter('dzPSF', 0.1, @isnumeric);
 ip.addParameter('EdgeErosion', 8, @isnumeric);
 ip.addParameter('ErodeByFTP', true, @islogical); % Edge erosion by the first time point (ranked the first in the inital file list for each dataset).
 ip.addParameter('deconRotate', false, @islogical);
-% ip.addParameter('PSFPath', '', @isstr);
 ip.addParameter('psfFullpaths', {'','',''}, @iscell);
-ip.addParameter('Channels', [488, 560, 642], @isnumeric);
-ip.addParameter('Save16bit', [false, false, false, false], @(x) (numel(x) == 1 || numel(x) == 4) && islogical(x));
+% job related parameters
 ip.addParameter('largeFile', false, @islogical);
 ip.addParameter('parseCluster', true, @islogical);
 ip.addParameter('jobLogDir', '../job_logs', @isstr);
@@ -127,8 +159,9 @@ ip.addParameter('maxWaitLoopNum', 10, @isnumeric); % the max number of loops the
 ip.parse(dataPaths, varargin{:});
 
 % make sure the function is in the root of XR_Repository. 
-repo_rt = fileparts(which(mfilename));
-cd([repo_rt, '/..']);
+mpath = fileparts(which(mfilename));
+repo_rt = [mpath, '/../'];
+cd(repo_rt);
 
 pr = ip.Results;
 Overwrite = pr.Overwrite;
@@ -138,11 +171,14 @@ SkewAngle = pr.SkewAngle;
 dz = pr.dz;
 xyPixelSize = pr.xyPixelSize;
 ObjectiveScan = pr.ObjectiveScan;
+Reverse = pr.Reverse;
+ChannelPatterns = pr.ChannelPatterns;
+Save16bit = pr.Save16bit;
+%deskew and rotate
 LLFFCorrection = pr.LLFFCorrection;
 LowerLimit = pr.LowerLimit;
 LSImagePaths = pr.LSImagePaths;
 BackgroundPaths = pr.BackgroundPaths;
-Reverse = pr.Reverse;
 Deskew = pr.Deskew;
 Rotate = pr.Rotate;
 % stitch parameters
@@ -158,6 +194,10 @@ boundboxCrop = pr.boundboxCrop;
 Decon = pr.Decon;
 cppDecon = pr.cppDecon;
 cudaDecon = pr.cudaDecon;
+cppDeconPath = pr.cppDeconPath;
+loadModules = pr.loadModules;
+cudaDeconPath = pr.cudaDeconPath;
+OTFGENPath = pr.OTFGENPath;
 EdgeErosion = pr.EdgeErosion;
 ErodeByFTP = pr.ErodeByFTP;
 DS = pr.DS;
@@ -167,13 +207,12 @@ dzPSF = pr.dzPSF;
 psfFullpaths = pr.psfFullpaths;
 deconRotate = pr.deconRotate;
 RotateAfterDecon = pr.RotateAfterDecon;
-ChannelPatterns = pr.ChannelPatterns;
+% job related
 largeFile = pr.largeFile;
 jobLogDir = pr.jobLogDir;
 parseCluster = pr.parseCluster;
 cpusPerTask = pr.cpusPerTask;
 cpuOnlyNodes = pr.cpuOnlyNodes;
-Save16bit = pr.Save16bit;
 uuid = pr.uuid;
 maxTrialNum = pr.maxTrialNum;
 unitWaitTime = pr.unitWaitTime;
@@ -216,8 +255,10 @@ if parseCluster
     if parseCluster && ~exist(jobLogDir, 'dir')
         warning('The job log directory does not exist, use %s/job_logs as job log directory', dataPath)
         jobLogDir = [dataPath, '/tmp'];
-        mkdir(jobLogDir);
-        fileattrib(jobLogDir, '+w', 'g');        
+        if ~exist(jobLogDir, 'dir')
+            mkdir(jobLogDir);
+            fileattrib(jobLogDir, '+w', 'g');
+        end
     end
     job_log_fname = [jobLogDir, '/job_%A_%a.out'];
     job_log_error_fname = [jobLogDir, '/job_%A_%a.err'];
@@ -256,8 +297,10 @@ if Stitch
         if Overwrite(3) && exist(stchPath, 'dir')
             rmdir(stchPath, 's');
         end
-        mkdir(stchPath);
-        fileattrib(stchPath, '+w', 'g');
+        if ~exist(stchPath, 'dir')
+            mkdir(stchPath);
+            fileattrib(stchPath, '+w', 'g');
+        end
         stchPaths{d} = stchPath;
     end
     % DSRDirstr = '/DSR/';
@@ -281,9 +324,11 @@ if Deskew
         dsPath = [dataPath, '/DS/'];
         if Overwrite(1) && exist(dsPath, 'dir')
             rmdir(dsPath, 's');
-        end    
-        mkdir(dsPath);
-        fileattrib(dsPath, '+w', 'g');
+        end
+        if ~exist(dsPath, 'dir')
+            mkdir(dsPath);
+            fileattrib(dsPath, '+w', 'g');
+        end
         dsPaths{d} = dsPath;
     end
     
@@ -314,9 +359,11 @@ if Rotate
         dsrPath = [dataPath, '/DSR/'];
         if Overwrite(2) && exist(dsrPath, 'dir')
             rmdir(dsrPath, 's');
-        end    
-        mkdir(dsrPath);
-        fileattrib(dsrPath, '+w', 'g');        
+        end
+        if ~exist(dsrPath, 'dir')
+            mkdir(dsrPath);
+            fileattrib(dsrPath, '+w', 'g');
+        end
         dsrPaths{d} = dsrPath;
     end
 end
@@ -367,18 +414,22 @@ if Decon
 
         if Overwrite(4) && exist(deconPath, 'dir')
             rmdir(deconPath, 's');
-        end    
-        mkdir(deconPath);
-        fileattrib(deconPath, '+w', 'g');                
+        end
+        if ~exist(deconPath, 'dir')
+            mkdir(deconPath);
+            fileattrib(deconPath, '+w', 'g');
+        end
         deconPaths{d} = deconPath;
         
         if RotateAfterDecon
             rdcPath = [deconPath filesep 'Rotated' filesep];
             if Overwrite(5) && exist(rdcPath, 'dir')
                 rmdir(rdcPath, 's');
-            end        
-            mkdir(rdcPath);
-            fileattrib(rdcPath, '+w', 'g');            
+            end
+            if ~exist(rdcPath, 'dir')
+                mkdir(rdcPath);
+                fileattrib(rdcPath, '+w', 'g');
+            end
             rdcPaths{d} = rdcPath;
 
             if DSR 
@@ -548,7 +599,7 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all') || ...
                             cpusPerTask = min(24, ceil(estRequiredMemory / 20));
                         end
                         
-                        matlab_cmd = sprintf(['addpath(genpath(''../XR_GU_Repository'')),addpath(genpath(pwd));', ...
+                        matlab_cmd = sprintf(['addpath(genpath(pwd));', ...
                             'tic;XR_deskewRotateFrame(''%s'',%.20d,%.20d,''SkewAngle'',%.20d,''ObjectiveScan'',%s,', ...
                             '''Reverse'',%s,''LLFFCorrection'',%s,''LowerLimit'',%.20d,''LSImage'',''%s'',', ...
                             '''BackgroundImage'',''%s'',''Rotate'',%s,''Save16bit'',%s);toc;'], ...
@@ -556,7 +607,7 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all') || ...
                             string(LLFFCorrection), LowerLimit, LSImage, BackgroundImage, string(Rotate), ...
                             string(Save16bit(1)));
                         deskew_cmd = sprintf('module load matlab/r2020a; matlab -nodisplay -nosplash -nodesktop -nojvm -r \\"%s\\"', matlab_cmd);
-                        cmd = sprintf('sbatch --array=%d %s -o %s -e %s -p abc --qos abc_normal -n1 --mem-per-cpu=20G --cpus-per-task=%d --wrap="%s"', ...
+                        cmd = sprintf('sbatch --array=%d %s -o %s -e %s -p abc --qos abc_normal -n1 --mem-per-cpu=21418M --cpus-per-task=%d --wrap="%s"', ...
                             task_id, slurm_constraint_str, job_log_fname, job_log_error_fname, cpusPerTask, deskew_cmd);
                         [status, cmdout] = system(cmd, '-echo');
 
@@ -570,7 +621,7 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all') || ...
                     if (datenum(clock) - [temp_file_info.datenum]) * 24 * 60 < unitWaitTime
                         continue; 
                     else
-                        fclose(fopen(cur_tmp_fname, 'w'));
+                        fclose(fopen(tmpFullpath, 'w'));
                     end
                 end
             else
@@ -640,7 +691,7 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all') || ...
                         cpusPerTask = min(24, ceil(estRequiredMemory / 20));
                     end
 
-                    matlab_cmd = sprintf(['addpath(genpath(''../XR_GU_Repository''));', ...
+                    matlab_cmd = sprintf(['', ...
                         'addpath(genpath(pwd));tic;XR_matlab_stitching_wrapper(''%s'',''%s'',' ...
                         '''ResultDir'',''%s'',''Streaming'',%s,''useExistDSR'',%s,''axisOrder'',''%s'',', ...
                         '''resampleType'',''%s'',''Reverse'',%s,''xcorrShift'',%s,''xcorrMode'',''%s'',', ...
@@ -785,7 +836,7 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all') || ...
                     if job_status == -1
                         % for matlab decon,  decide how many cores. 
                         if ~cudaDecon
-                            [estMem, estGPUMem] = XR_estimateComputingMemory(dsFullpath, {'deconvolution'}, 'cudaDecon', false);
+                            [estMem, estGPUMem] = XR_estimateComputingMemory(dcframeFullpath, {'deconvolution'}, 'cudaDecon', false);
 
                             if cpusPerTask * 20 < estMem
                                 cpusPerTask = min(24, ceil(estMem / 20));
@@ -794,29 +845,31 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all') || ...
 
                         % do not use rotation in decon functions
                         if cudaDecon
-                            matlab_cmd = sprintf(['addpath(genpath(''../XR_GU_Repository'')),addpath(genpath(pwd));tic;', ...
+                            matlab_cmd = sprintf(['addpath(genpath(pwd));tic;', ...
                                 'XR_cudaDeconFrame3D(''%s'',%.10f,%.10f,'''',''PSFfile'',''%s'',', ...
+                                '''cudaDeconPath'',''%s'',''OTFGENPath'',''%s'',', ...
                                 '''dzPSF'',%.10f,''Background'',[%d],''SkewAngle'',%d,', ...
                                 '''Rotate'',%s,''Save16bit'',%s,''largeFile'',%s);toc;'], ...
-                                dcframeFullpath, xyPixelSize, dc_dz, psfFullpath, ...
+                                dcframeFullpath, xyPixelSize, dc_dz, psfFullpath, cudaDeconPath, OTFGENPath, ...
                                 dc_dzPSF, Background, SkewAngle, string(deconRotate), string(Save16bit(4)), string(largeFile));
                             decon_cmd = sprintf('module load matlab/r2020a; matlab -nodisplay -nosplash -nodesktop -nojvm -r \\"%s\\"', matlab_cmd);
                             cmd = sprintf('sbatch --array=%d -o %s -e %s -p abc --gres=gpu:1 --qos abc_normal -n1 --mem-per-cpu=33G --cpus-per-task=%d --wrap="%s"', ...
                                 task_id, job_log_fname, job_log_error_fname, 5, decon_cmd);
                         elseif cppDecon
-                            matlab_cmd = sprintf(['addpath(genpath(''../XR_GU_Repository'')),addpath(genpath(pwd));tic;', ...
+                            matlab_cmd = sprintf(['addpath(genpath(pwd));tic;', ...
                                 'XR_cppDeconFrame3D(''%s'',%.10f,%.10f,'''',''PSFfile'',''%s'',', ...
+                                '''cppDeconPath'',''%s'',''loadModules'',''%s'',', ...
                                 '''dzPSF'',%.10f,''Background'',[%d],''SkewAngle'',%d,', ...
                                 '''EdgeErosion'',%d,''ErodeMaskfile'',''%s'',''SaveMaskfile'',%s,', ...
                                 '''Rotate'',%s,''Save16bit'',%s,''largeFile'',%s);toc;'], ...
-                                dcframeFullpath, xyPixelSize, dc_dz, psfFullpath, ...
+                                dcframeFullpath, xyPixelSize, dc_dz, psfFullpath, cppDeconPath, loadModules, ...
                                 dc_dzPSF, Background, SkewAngle, EdgeErosion, maskFullpath, string(SaveMaskfile), ...
                                 string(deconRotate), string(Save16bit(4)), string(largeFile));
                             decon_cmd = sprintf('module load matlab/r2020a; matlab -nodisplay -nosplash -nodesktop -nojvm -r \\"%s\\"', matlab_cmd);
                             cmd = sprintf('sbatch --array=%d %s -o %s -e %s -p abc --qos abc_normal -n1 --mem-per-cpu=21418M --cpus-per-task=%d --wrap="%s"', ...
                                 task_id, slurm_constraint_str, job_log_fname, job_log_error_fname, cpusPerTask, decon_cmd);                        
                         else
-                            matlab_cmd = sprintf(['addpath(genpath(''../GU_PrivateRepository'')),addpath(genpath(''../XR_GU_Repository'')),addpath(genpath(pwd));tic;', ...
+                            matlab_cmd = sprintf(['addpath(genpath(pwd));tic;', ...
                                 'XR_RLdeconFrame3D(''%s'',%.10f,%.10f,'''',''PSFfile'',''%s'',', ...
                                 '''dzPSF'',%.10f,''Background'',[%d],''SkewAngle'',%d,', ...
                                 '''Rotate'',%s,''Save16bit'',%s);toc;'], ...
@@ -849,13 +902,15 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all') || ...
                 % fileInfo = imfinfo(dsFullpath);
                 if cudaDecon
                     XR_cudaDeconFrame3D(dcframeFullpath, xyPixelSize, dc_dz, '', ...
-                        'PSFfile', psfFullpath, 'dzPSF', dc_dzPSF, 'Background', Background, ...
+                        'PSFfile', psfFullpath, 'cudaDeconPath', cudaDeconPath, ...
+                        'OTFGENPath', OTFGENPath, 'dzPSF', dc_dzPSF, 'Background', Background, ...
                         'SkewAngle', SkewAngle, 'Rotate', deconRotate, 'Save16bit', Save16bit(4));
                 elseif cppDecon
                     XR_cppDeconFrame3D(dcframeFullpath, xyPixelSize, dc_dz, '', ...
-                        'PSFfile', psfFullpath, 'dzPSF', dc_dzPSF, 'Background', Background, ...
-                        'SkewAngle', SkewAngle, 'EdgeErosion', EdgeErosion, 'ErodeMaskfile', maskFullpath, ...
-                        'SaveMaskfile', SaveMaskfile, 'Rotate', deconRotate, 'Save16bit', Save16bit(4));
+                        'PSFfile', psfFullpath, 'cppDeconPath', cppDeconPath, 'loadModules', loadModules, ...
+                        'dzPSF', dc_dzPSF, 'Background', Background, 'SkewAngle', SkewAngle, ...
+                        'EdgeErosion', EdgeErosion, 'ErodeMaskfile', maskFullpath, 'SaveMaskfile', SaveMaskfile, ...
+                        'Rotate', deconRotate, 'Save16bit', Save16bit(4));
                 else
                     XR_RLdeconFrame3D(dcframeFullpath, xyPixelSize, dc_dz, '', ...
                         'PSFfile', psfFullpath, 'dzPSF', dc_dzPSF, 'Background', Background, ...
@@ -913,7 +968,7 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all') || ...
                             cpusPerTask = min(24, ceil(estMem / 20));
                         end
 
-                        matlab_cmd = sprintf('addpath(genpath(''../LLSM3DTools''));addpath(genpath(pwd));tic;XR_RotateFrame3D(''%s'',%.20d,%.20d,''SkewAngle'',%.20d,''ObjectiveScan'',%s,''Reverse'',%s,''Save16bit'',%s);toc;', ...
+                        matlab_cmd = sprintf('addpath(genpath(pwd));tic;XR_RotateFrame3D(''%s'',%.20d,%.20d,''SkewAngle'',%.20d,''ObjectiveScan'',%s,''Reverse'',%s,''Save16bit'',%s);toc;', ...
                             deconFullpath, xyPixelSize, dz, SkewAngle, string(ObjectiveScan), string(Reverse), string(Save16bit(4)));
                         decon_cmd = sprintf('module load matlab/r2020a; matlab -nodisplay -nosplash -nodesktop -nojvm -r \\"%s\\"', matlab_cmd);
                         cmd = sprintf('sbatch --array=%d %s -o %s -e %s -p abc --qos abc_normal -n1 --mem-per-cpu=21418M --cpus-per-task=%d --wrap="%s"', ...

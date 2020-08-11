@@ -21,6 +21,7 @@
 % See also imwarp
 
 % Author: Francois Aguet (09/2013)
+% xruan (08/2020): set crop as false by default, and set linear interporation as default
 
 function volout = deskewFrame3D(vol, angle, dz, xyPixelSize, varargin)
 
@@ -31,8 +32,8 @@ ip.addRequired('angle'); % typical value: 32.8
 ip.addRequired('dz'); % typical value: 0.2-0.5
 ip.addRequired('xyPixelSize'); % typical value: 0.1
 ip.addOptional('reverse', false, @islogical);
-ip.addParamValue('Crop', true, @islogical);
-ip.addParamValue('Interp', 'cubic', @(x) any(strcmpi(x, {'cubic', 'linear'})));
+ip.addParamValue('Crop', false, @islogical);
+ip.addParamValue('Interp', 'linear', @(x) any(strcmpi(x, {'cubic', 'linear'})));
 ip.parse(vol, angle, dz, xyPixelSize, varargin{:});
 
 [ny,nx,nz] = size(vol);
