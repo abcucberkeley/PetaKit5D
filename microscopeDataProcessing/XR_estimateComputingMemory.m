@@ -4,12 +4,14 @@ function [estRequiredMemory, estRequiredGPUMem, rawImageSize, imSize] = XR_estim
 % 
 % Author: Xiongtao Ruan (02/27/2020)
 % xruan (02/27/2020): fix issue for tall image for deskew. 
+% xruan (08/28/2020): add support of input of image size 
 
 
 ip = inputParser;
 ip.CaseSensitive = false;
 ip.addRequired('filePath'); 
 ip.addOptional('steps', {'deskew', 'rotate', 'deconvolution'}); 
+ip.addParameter('imSize', [], @(x) isnumeric(x) && (isempty(x) || numel(x) == 3)); 
 ip.addParameter('memFactors', [5, 5, 10]); 
 ip.addParameter('cudaDecon', ~false, @islogical);
 ip.addParameter('GPUMemFactor', 1.5); 
@@ -20,30 +22,28 @@ ip.parse(filePath, varargin{:});
 warning('off', 'all');
 
 steps = ip.Results.steps;
+imSize = ip.Results.imSize;
 memFactors = ip.Results.memFactors;
 cudaDecon = ip.Results.cudaDecon;
 GPUMemFactor = ip.Results.GPUMemFactor;
 
 if ~exist(filePath, 'file')
-    error('File %s does not exist!', filePath);
+    if isempty(imSize)
+        error('File %s does not exist!', filePath);        
+    end
+else
+    imSize = getImageSize(filePath);    
 end
 
-fileInfo = imfinfo(filePath);
-
-Width = fileInfo(1).Width;
-Height = fileInfo(1).Height;
-Zstack = numel(fileInfo);
-
 % in double size
-rawImageSize = Width * Height * Zstack * 8 / 1024^3;
-imSize = [Height, Width, Zstack];
+rawImageSize = prod(imSize) * 8 / 1024^3;
 
 estRequiredMemory = zeros(numel(steps), 1);
 
 if contains(steps, 'deskew', 'IgnoreCase', true)
     ind = strcmpi(steps, 'deskew');
     % use 300 slices as threshold
-    estRequiredMemory(ind) = rawImageSize * memFactors(1) * max(1, Zstack / 300);
+    estRequiredMemory(ind) = rawImageSize * memFactors(1) * max(1, imSize(3) / 300);
 end
 
 if contains(steps, 'rotate', 'IgnoreCase', true)

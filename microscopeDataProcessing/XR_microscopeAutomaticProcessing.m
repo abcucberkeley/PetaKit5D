@@ -87,12 +87,14 @@ function [] = XR_microscopeAutomaticProcessing(dataPaths, varargin)
 %                     doesn't exist, in which it will stuck. 
 %                     Also check if the image size match the mask size, if
 %                     not use its own mask for edge erosion.
-% xruan (08/03/3030): add axis-order for the stitching
-% xruan (08/07/3030): change file attributes for folders so that group users have write access
-% xruan (08/08/3030): add more memory for per-cpu, fix issue for support of 
+% xruan (08/03/2020): add axis-order for the stitching
+% xruan (08/07/2020): change file attributes for folders so that group users have write access
+% xruan (08/08/2020): add more memory for per-cpu, fix issue for support of 
 %                     multiple datasets in stitching; set xcorrShift as
 %                     false by default
-
+% xruan (08/21/2020): add support for Objective Scan
+% xruan (08/26/2020): add support for user defined output resolution (dsr,
+% stitch, decon) （to be done)
 
 
 ip = inputParser;
@@ -121,7 +123,7 @@ ip.addParameter('LowerLimit', 0.4, @isnumeric); % this value is the lowest
 ip.addParameter('LSImagePaths', {'','',''}, @iscell);
 ip.addParameter('BackgroundPaths', {'','',''}, @iscell);
 % stitch parameters
-ip.addParameter('stitchResultDir', 'matlab_stitch', @islogical);
+ip.addParameter('stitchResultDir', '', @ischar);
 ip.addParameter('imageListFullpaths', '', @(x) ischar(x) || iscell(x));
 ip.addParameter('axisOrder', 'xyz', @(x) ischar(x));
 ip.addParameter('BlendMethod', 'none', @isstr);
@@ -244,6 +246,7 @@ if numel(Overwrite) == 1
 end
 
 % check if a slurm-based computing cluster exists
+clusterAvailable = false;
 if parseCluster 
     [status, ~] = system('sinfo');
     clusterAvailable = true;
@@ -293,7 +296,14 @@ if Stitch
     stchPaths = cell(nd, 1);
     for d = 1 : nd
         dataPath = dataPaths{d};
-        stchPath = [dataPath, '/matlab_stitch/'];
+        if isempty(stitchResultDir)
+            if strcmp(BlendMethod, 'none')
+                stitchResultDir = 'matlab_stitch';
+            else
+                stitchResultDir = sprintf('matlab_stitch_%s', BlendMethod);                
+            end
+        end
+        stchPath = [dataPath, filesep, stitchResultDir, filesep];
         if Overwrite(3) && exist(stchPath, 'dir')
             rmdir(stchPath, 's');
         end
@@ -304,7 +314,7 @@ if Stitch
         stchPaths{d} = stchPath;
     end
     % DSRDirstr = '/DSR/';
-    if Decon && ErodeByFTP
+    if ~strcmp(xcorrMode, 'primaryFirst') && Decon && ErodeByFTP
         ErodeByFTP = false;
     end
     
@@ -453,6 +463,8 @@ if Decon
         [psfPath, fsname] = fileparts(psfFullpaths{f});
         rotPSFFullpaths{f} = [psfPath, '/Rotated/', fsname, '.tif'];
     end
+else
+    RotateAfterDecon = false;
 end
 
 %% check existing files and parse channels
@@ -489,24 +501,28 @@ nF = numel(fnames);
 
 % for ErodeByFTP, set up the frame numbers as first time point for each
 % data
-if Decon && ErodeByFTP
-    FTP_inds = zeros(nd, 1);
+FTP_inds = zeros(nd, 1);
+if Decon
     maskFullpaths = cell(nd, 1);
-    for d = 1 : nd
-        c = 1;
-        FTPfname = '';
-        while isempty(FTPfname)
-            all_inds = contains(fnames_cell{d}, ChannelPatterns{c});
+end
+for d = 1 : nd
+    c = 1;
+    FTPfname = '';
+    while isempty(FTPfname)
+        all_inds = contains(fnames_cell{d}, ChannelPatterns{c});
+        if ~isempty(all_inds) && ~isempty(find(all_inds, 1, 'first'))
             FTPfname = fnames_cell{d}{find(all_inds, 1, 'first')};
-            c = c + 1;
         end
-        if ~isempty(FTPfname)
-            ind_d = find(strcmp(fnames, FTPfname));
-            FTP_inds(d) = ind_d;
+        c = c + 1;
+    end
+    if ~isempty(FTPfname)
+        ind_d = find(strcmp(fnames, FTPfname));
+        FTP_inds(d) = ind_d;
+        if Decon
             maskFullpaths{d} = sprintf('%s/Masks/%s_eroded.tif', deconPaths{d}, FTPfname(1 : end - 4));
         end
-    end    
-end
+    end
+end    
 
 % flags: for thee: deskew w/o rotate, decon w/o rotate, rotate
 is_done_flag = false(nF, 4);
@@ -528,6 +544,7 @@ end
 
 if parseCluster
     job_ids = -ones(nF, 4);
+    imSize_mat = zeros(nF, 3, 2);
 end
 
 % use while loop to perform computing for all images
@@ -551,6 +568,7 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all') || ...
         end
         
         task_id = f;
+        FTP_ind = FTP_inds(fdind);
         
         %% deskew w/o rotate
         if Deskew
@@ -571,7 +589,14 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all') || ...
         else
             is_done_flag(f, 1) = true;
         end
-    
+        
+        % get image size 
+        if parseCluster
+            if imSize_mat(f, 1, 1) == 0 && (~all(is_done_flag(f, 1 : 2)) || f == FTP_ind)
+                imSize_mat(f, :, 1) = getImageSize(frameFullpath);
+            end
+        end
+
         if ~is_done_flag(f, 1)
             if LLFFCorrection
                 LLFFMapping =  ~cellfun(@isempty, regexpi(fname, ChannelPatterns));
@@ -594,7 +619,7 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all') || ...
                     if job_status == -1
                         % first estimate file size and decide whether cpusPerTask
                         % is enough
-                        estRequiredMemory = XR_estimateComputingMemory(frameFullpath, {'deskew'});
+                        estRequiredMemory = XR_estimateComputingMemory('', {'deskew'}, 'imSize', imSize_mat(f, :, 1));
                         if cpusPerTask * 20 < estRequiredMemory
                             cpusPerTask = min(24, ceil(estRequiredMemory / 20));
                         end
@@ -648,7 +673,8 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all') || ...
         %% then stitching
         if Stitch
             stchPath = stchPaths{fdind};
-            dir_info = dir(sprintf('%s/%s*Abs.tif', stchPath, fname(regexp(fname, 'Scan.*') : end - 43)));
+            % dir_info = dir(sprintf('%s/%s*Abs.tif', stchPath, fname(regexp(fname, 'Scan.*') : end - 43)));
+            dir_info = dir(sprintf('%s/%s*Abs.tif', stchPath, fname(1 : end - 43)));            
             if ~isempty(dir_info) 
                 stch_fname = dir_info(1).name;
                 stchFullpath = [stchPath, stch_fname];
@@ -676,7 +702,7 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all') || ...
             resampleType = 'isotropic';
             zNormalize = false;
             onlyFirstTP = false;
-            bbox = [];
+            bbox = boundboxCrop;
             imageListFullpath = imageListFullpaths{fdind};
 
             if parseCluster
@@ -686,7 +712,7 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all') || ...
                 if job_status == -1
                     % first estimate file size and decide whether cpusPerTask
                     % is enough
-                    estRequiredMemory = XR_estimateComputingMemory(frameFullpath, {'deskew'});
+                    estRequiredMemory = XR_estimateComputingMemory('', {'deskew'}, 'imSize', imSize_mat(f, :, 1));
                     if cpusPerTask * 20 < estRequiredMemory
                         cpusPerTask = min(24, ceil(estRequiredMemory / 20));
                     end
@@ -695,10 +721,11 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all') || ...
                         'addpath(genpath(pwd));tic;XR_matlab_stitching_wrapper(''%s'',''%s'',' ...
                         '''ResultDir'',''%s'',''Streaming'',%s,''useExistDSR'',%s,''axisOrder'',''%s'',', ...
                         '''resampleType'',''%s'',''Reverse'',%s,''xcorrShift'',%s,''xcorrMode'',''%s'',', ...
-                        '''BlendMethod'',''%s'',''zNormalize'',%s,''onlyFirstTP'',%s,''boundboxCrop'',[%s]);toc;'], ...
+                        '''BlendMethod'',''%s'',''zNormalize'',%s,''onlyFirstTP'',%s,''boundboxCrop'',[%s],', ...
+                        '''Save16bit'',%s);toc;'], ...
                         dataPath, imageListFullpath, stitchResultDir, string(Streaming), string(useExistDSR), ...
                         axisOrder, resampleType, string(Reverse), string(xcorrShift), xcorrMode, BlendMethod, ...
-                        string(zNormalize), string(onlyFirstTP), strrep(num2str(bbox, '%d,'), ' ', ''));
+                        string(zNormalize), string(onlyFirstTP), strrep(num2str(bbox, '%d,'), ' ', ''), string(Save16bit(2)));
                     stitch_cmd = sprintf('module load matlab/r2020a; matlab -nodisplay -nosplash -nodesktop -r \\"%s\\"', matlab_cmd);
                     cmd = sprintf(['sbatch --array=1 %s -o %s -e %s -p abc', ...
                         ' --qos abc_normal -n1 --mem-per-cpu=21418M --cpus-per-task=%d --wrap="%s"'], ...
@@ -714,7 +741,7 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all') || ...
                     'Streaming', Streaming, 'useExistDSR', useExistDSR, 'axisOrder', axisOrder, ...
                     'resampleType', 'isotropic', 'Reverse', Reverse, 'BlendMethod', BlendMethod, ...
                     'xcorrShift', xcorrShift, 'xcorrMode', xcorrMode, 'zNormalize', zNormalize, ...
-                    'onlyFirstTP', onlyFirstTP, 'boundboxCrop', bbox, 'parseCluster', false);
+                    'onlyFirstTP', onlyFirstTP, 'boundboxCrop', bbox, 'Save16bit', Save16bit(2), 'parseCluster', false);
             end
             
             if exist('stchFullpath', 'var') && exist(stchFullpath, 'file')
@@ -745,7 +772,8 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all') || ...
             dc_psfFullpaths = psfFullpaths;
             if Stitch
                 % in case fname not start with Scan_
-                dir_info = dir(sprintf('%s/%s*Abs.tif', stchPath, fname(regexp(fname, 'Scan.*') : end - 43)));
+                % dir_info = dir(sprintf('%s/%s*Abs.tif', stchPath, fname(regexp(fname, 'Scan.*') : end - 43)));
+                dir_info = dir(sprintf('%s/%s*Abs.tif', stchPath, fname(1 : end - 43)));
                 if isempty(dir_info) 
                     continue;
                 end
@@ -784,15 +812,30 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all') || ...
                 end
             end
             
+            if parseCluster
+                if imSize_mat(f, 1, 2) == 0 && (~all(is_done_flag(f, 3 : 4)) || f == FTP_ind)
+                    if imSize_mat(f, 1, 1) == 0
+                        imSize_mat(f, :, 1) = getImageSize(frameFullpath);
+                    end
+                    if f ~= FTP_ind && all(imSize_mat(f, :, 1) == imSize_mat(FTP_ind, :, 1))
+                        imSize_mat(f, :, 2) = imSize_mat(FTP_ind, :, 2);                        
+                    else
+                        imSize_mat(f, :, 2) = getImageSize(dcframeFullpath);
+                    end
+                end
+            end
+            
             % for ErodeByFTP, check if the mask file exist
             maskFullpath = '';
             SaveMaskfile = false;
             if ErodeByFTP
-                FTP_ind = FTP_inds(fdind);
                 if f == FTP_ind
                     SaveMaskfile = true;
                     % if decon result exist, but mask file not exist, rerun
                     % it to save the mask. 
+                    if Stitch
+                        maskFullpaths{fdind} = sprintf('%s/Masks/%s_eroded.tif', deconPath, stch_fname(1 : end - 4));
+                    end
                     if is_done_flag(f, 3) && ~exist(maskFullpaths{fdind}, 'file')
                         is_done_flag(f, 3) = false;
                         delete(deconFullpath);
@@ -806,7 +849,11 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all') || ...
                         end
 
                         mask_sz = getImageSize(maskFullpath);
-                        img_sz = getImageSize(dcframeFullpath);
+                        if exist('imSize_mat', 'var')
+                            img_sz = imSize_mat(f, :, 2);
+                        else
+                            img_sz = getImageSize(dcframeFullpath);
+                        end
                         if any(mask_sz ~= img_sz)
                             warning(['The image size [%s] does not match the defined ', ... 
                                 'mask size [%s], use its own mask for edge erosion...'], ...
@@ -836,7 +883,8 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all') || ...
                     if job_status == -1
                         % for matlab decon,  decide how many cores. 
                         if ~cudaDecon
-                            [estMem, estGPUMem] = XR_estimateComputingMemory(dcframeFullpath, {'deconvolution'}, 'cudaDecon', false);
+                            [estMem, estGPUMem] = XR_estimateComputingMemory('', {'deconvolution'}, ...
+                                'imSize', imSize_mat(f, :, 2), 'cudaDecon', false);
 
                             if cpusPerTask * 20 < estMem
                                 cpusPerTask = min(24, ceil(estMem / 20));
@@ -851,7 +899,7 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all') || ...
                                 '''dzPSF'',%.10f,''Background'',[%d],''SkewAngle'',%d,', ...
                                 '''Rotate'',%s,''Save16bit'',%s,''largeFile'',%s);toc;'], ...
                                 dcframeFullpath, xyPixelSize, dc_dz, psfFullpath, cudaDeconPath, OTFGENPath, ...
-                                dc_dzPSF, Background, SkewAngle, string(deconRotate), string(Save16bit(4)), string(largeFile));
+                                dc_dzPSF, Background, SkewAngle, string(deconRotate), string(Save16bit(3)), string(largeFile));
                             decon_cmd = sprintf('module load matlab/r2020a; matlab -nodisplay -nosplash -nodesktop -nojvm -r \\"%s\\"', matlab_cmd);
                             cmd = sprintf('sbatch --array=%d -o %s -e %s -p abc --gres=gpu:1 --qos abc_normal -n1 --mem-per-cpu=33G --cpus-per-task=%d --wrap="%s"', ...
                                 task_id, job_log_fname, job_log_error_fname, 5, decon_cmd);
@@ -864,7 +912,7 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all') || ...
                                 '''Rotate'',%s,''Save16bit'',%s,''largeFile'',%s);toc;'], ...
                                 dcframeFullpath, xyPixelSize, dc_dz, psfFullpath, cppDeconPath, loadModules, ...
                                 dc_dzPSF, Background, SkewAngle, EdgeErosion, maskFullpath, string(SaveMaskfile), ...
-                                string(deconRotate), string(Save16bit(4)), string(largeFile));
+                                string(deconRotate), string(Save16bit(3)), string(largeFile));
                             decon_cmd = sprintf('module load matlab/r2020a; matlab -nodisplay -nosplash -nodesktop -nojvm -r \\"%s\\"', matlab_cmd);
                             cmd = sprintf('sbatch --array=%d %s -o %s -e %s -p abc --qos abc_normal -n1 --mem-per-cpu=21418M --cpus-per-task=%d --wrap="%s"', ...
                                 task_id, slurm_constraint_str, job_log_fname, job_log_error_fname, cpusPerTask, decon_cmd);                        
@@ -874,7 +922,7 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all') || ...
                                 '''dzPSF'',%.10f,''Background'',[%d],''SkewAngle'',%d,', ...
                                 '''Rotate'',%s,''Save16bit'',%s);toc;'], ...
                                 dcframeFullpath, xyPixelSize, dc_dz, psfFullpath, ...
-                                dc_dzPSF, Background, SkewAngle, string(deconRotate), string(Save16bit(4)));
+                                dc_dzPSF, Background, SkewAngle, string(deconRotate), string(Save16bit(3)));
                             decon_cmd = sprintf('module load matlab/r2020a; matlab -nodisplay -nosplash -nodesktop -r \\"%s\\"', matlab_cmd);
                             cmd = sprintf('sbatch --array=%d %s -o %s -e %s -p abc --qos abc_normal -n1 --mem-per-cpu=21418M --cpus-per-task=%d --wrap="%s"', ...
                                 task_id, slurm_constraint_str, job_log_fname, job_log_error_fname, cpusPerTask, decon_cmd);
@@ -904,17 +952,17 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all') || ...
                     XR_cudaDeconFrame3D(dcframeFullpath, xyPixelSize, dc_dz, '', ...
                         'PSFfile', psfFullpath, 'cudaDeconPath', cudaDeconPath, ...
                         'OTFGENPath', OTFGENPath, 'dzPSF', dc_dzPSF, 'Background', Background, ...
-                        'SkewAngle', SkewAngle, 'Rotate', deconRotate, 'Save16bit', Save16bit(4));
+                        'SkewAngle', SkewAngle, 'Rotate', deconRotate, 'Save16bit', Save16bit(3));
                 elseif cppDecon
                     XR_cppDeconFrame3D(dcframeFullpath, xyPixelSize, dc_dz, '', ...
                         'PSFfile', psfFullpath, 'cppDeconPath', cppDeconPath, 'loadModules', loadModules, ...
                         'dzPSF', dc_dzPSF, 'Background', Background, 'SkewAngle', SkewAngle, ...
                         'EdgeErosion', EdgeErosion, 'ErodeMaskfile', maskFullpath, 'SaveMaskfile', SaveMaskfile, ...
-                        'Rotate', deconRotate, 'Save16bit', Save16bit(4));
+                        'Rotate', deconRotate, 'Save16bit', Save16bit(3));
                 else
                     XR_RLdeconFrame3D(dcframeFullpath, xyPixelSize, dc_dz, '', ...
                         'PSFfile', psfFullpath, 'dzPSF', dc_dzPSF, 'Background', Background, ...
-                        'SkewAngle', SkewAngle, 'Rotate', deconRotate, 'Save16bit', Save16bit(4));
+                        'SkewAngle', SkewAngle, 'Rotate', deconRotate, 'Save16bit', Save16bit(3));
                 end
                 trial_counter(f, 3) = trial_counter(f, 3) + 1;
             end
@@ -962,7 +1010,8 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all') || ...
                     end
                     
                     if job_status == -1
-                        [estMem, estGPUMem] = XR_estimateComputingMemory(deconFullpath, {'deconvolution'}, 'cudaDecon', false);
+                        [estMem, estGPUMem] = XR_estimateComputingMemory('', {'deconvolution'}, ...
+                            'imSize', imSize_mat(f, :, 2), 'cudaDecon', false);
 
                         if cpusPerTask * 20 < estMem
                             cpusPerTask = min(24, ceil(estMem / 20));
@@ -1095,6 +1144,7 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all') || ...
     
     if parseCluster
         job_ids = [job_ids;  -ones(nFnew, 4)];
+        imSize_mat = cat(1, imSize_mat, zeros(nFnew, 3, 2));
     end
 end
 

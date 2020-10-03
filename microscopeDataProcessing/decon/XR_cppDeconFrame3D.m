@@ -56,7 +56,7 @@ ip.addParameter('ErodeMaskfile', '', @ischar); % erode edges file
 ip.addParameter('SaveMaskfile', false, @islogical); % save mask file for common eroded mask
 % ip.addParameter('DoNotAdjustResForFFT', true , @islogical); % not crop chunks for deconvolution
 ip.addParameter('BlockSize', [750,750,750] , @isvector); % in y, x, z
-ip.addParameter('Overlap', 50, @isnumeric); % block overlap
+ip.addParameter('Overlap', 80, @isnumeric); % block overlap
 ip.addParameter('MaxMem', 500, @isnumeric); % GPU Memory in Gb
 ip.addParameter('largeFile', false, @islogical);
 ip.addParameter('parseCluster', true, @islogical);
@@ -536,7 +536,7 @@ for f = 1 : nF
             end
         end
 
-        % wait 5 seconds if some tasks are still computing
+        % wait 10 seconds if some tasks are still computing
         if ~all(is_done_flag | trial_counter >= maxTrialNum, 'all') 
             pause(10);
         end

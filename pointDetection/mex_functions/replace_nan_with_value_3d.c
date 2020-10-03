@@ -1,5 +1,5 @@
 /*
- * compute_gradient_hessian_mex.c - compute gradient and hessian for gaussian curve fitting
+ * replace_nan_with_value_3d.c - replace nan in 3d matrix
  *
  * Implemented by Xiongtao Ruan.
  * 

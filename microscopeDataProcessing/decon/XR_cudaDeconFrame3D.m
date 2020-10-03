@@ -17,6 +17,7 @@ function [] = XR_cudaDeconFrame3D(frameFullpaths, pixelSize, dz, varargin)
 % combine deconvolved chunks. 
 % xruan (03/19/2020): use softlink for small files. 
 % xruan (03/20/2020): throw error for small file if it fails, rather than go to split-based deconvolution.  
+% xruan (08/21/2020): add psf2otf.m as backup function for otfgen
 
 
 ip = inputParser;
@@ -91,6 +92,12 @@ end
 if p.OverwriteOTFs || ~exist([OTFpathstr filesep OTFFileName], 'file')
     otfCommand = [p.OTFGENPath ' ' PSF ' ' OTFpathstr filesep OTFFileName '  --nocleanup --fixorigin 10'];
     [stat, res] = system(otfCommand,'-echo');
+    
+    if ~exist([OTFpathstr filesep OTFFileName], 'file')
+        psf = readtiff(PSF);
+        otf = psf2otf(psf);
+        writetiff(otf, [OTFpathstr filesep OTFFileName]);
+    end
 end
 
 % parameters

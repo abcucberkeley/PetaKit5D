@@ -31,6 +31,16 @@ function XR_stitching_frame_v1(tileFullpaths, coordinates, varargin)
 % (especially for tall tiles). 
 % xruan (08/03/2020): add support for user-defined axis orders.
 % xruan (08/08/2020): not load all tiles in the begining to save time and space
+% xruan (08/12/2020): add support for tiles with variable size.
+% xruan (08/14/2020): add support for primary channel for noxcorr shifts
+% (keep size across channels the same). Add support for distributed
+% computing for xcorr. Change downsample in xcorr as [2, 2, 2]
+% xruan (08/17/2020): add support for stitching of DSR decon (only for
+% existing DSR decon files).
+% xruan (08/20/2020): add support for objective scan
+% xruan (08/23/2020): add option for overlap type (full)
+% xruan (09/12/2020): add saving of pixel size in the result folder
+% xruan (09/13/2020): cast dsr to specific dtype if not the same as requirement
 
 
 ip = inputParser;
@@ -41,6 +51,7 @@ ip.addParameter('ResultDir', 'matlab_stitch', @ischar);
 ip.addParameter('stitchInfoDir', 'stitchInfo', @ischar);
 ip.addParameter('stitchInfoFullpath', '', @ischar); % filename that contain stitch information for secondrary channels
 ip.addParameter('DSRDirstr', '', @ischar); % path for DSRDirstr, if it is not true
+ip.addParameter('DSRDeconDirstr', '', @ischar); % path for DSRDir decon str, if it is not true
 ip.addParameter('Overwrite', false, @islogical);
 ip.addParameter('px', 0.108, @isscalar);
 ip.addParameter('SkewAngle', 32.45, @isscalar);
@@ -64,17 +75,24 @@ ip.addParameter('deconRotate', false, @islogical);
 ip.addParameter('PSFpath', '', @isstr);
 ip.addParameter('dzPSF', 0.1, @isnumeric);
 ip.addParameter('BlendMethod', 'mean', @isstr);
+ip.addParameter('halfOrder', [1,2,3], @isnumeric);
+ip.addParameter('overlapType', '', @isstr); % '', 'none', 'half', or 'full'
 ip.addParameter('xcorrShift', true, @islogical);
 ip.addParameter('isPrimaryCh', true, @islogical);
 ip.addParameter('stitchPadSize', [4, 4, 2], @(x) isnumeric(x) && numel(x) == 3);
 ip.addParameter('padSize', [], @(x) isnumeric(x) && (isempty(x) || numel(x) == 3));
 ip.addParameter('boundboxCrop', [], @(x) isnumeric(x) && (isempty(x) || all(size(x) == [3, 2]) || numel(x) == 6));
 ip.addParameter('zNormalize', false, @islogical);
-ip.addParameter('xcorrDownsample', [1, 1, 1], @isnumeric);
+ip.addParameter('xcorrDownsample', [2, 2, 2], @isnumeric);
 ip.addParameter('SaveMIP', true , @islogical); % save MIP-z for stitch. 
+ip.addParameter('parseCluster', true, @islogical);
+ip.addParameter('masterCompute', true, @islogical); % master node participate in the task computing. 
+ip.addParameter('jobLogDir', '../job_logs', @isstr);
+ip.addParameter('cpusPerTask', 2, @isnumeric);
+ip.addParameter('cpuOnlyNodes', true, @islogical);
 ip.addParameter('uuid', '', @isstr);
 ip.addParameter('maxTrialNum', 3, @isnumeric);
-ip.addParameter('unitWaitTime', 1, @isnumeric);
+ip.addParameter('unitWaitTime', 30, @isnumeric);
 
 ip.parse(tileFullpaths, coordinates, varargin{:});
 
@@ -100,6 +118,8 @@ DSR = pr.DSR;
 Background = pr.Background;
 PSFpath = pr.PSFpath;
 BlendMethod = pr.BlendMethod;
+halfOrder = pr.halfOrder;
+overlapType = pr.overlapType;
 xcorrShift = pr.xcorrShift;
 isPrimaryCh = pr.isPrimaryCh;
 stitchPadSize = pr.stitchPadSize;
@@ -109,10 +129,44 @@ zNormalize = pr.zNormalize;
 xcorrDownsample = pr.xcorrDownsample;
 % RotateAfterDecon = pr.RotateAfterDecon;
 % ChannelPatterns = pr.ChannelPatterns;
+jobLogDir = pr.jobLogDir;
+parseCluster = pr.parseCluster;
+masterCompute = pr.masterCompute;
+cpusPerTask = pr.cpusPerTask;
+cpuOnlyNodes = pr.cpuOnlyNodes;
+maxTrialNum = pr.maxTrialNum;
+unitWaitTime = pr.unitWaitTime;
 Save16bit = pr.Save16bit;
 EdgeArtifacts = pr.EdgeArtifacts;
 SaveMIP = pr.SaveMIP;
 uuid = pr.uuid;
+
+[dataPath, ~] = fileparts(tileFullpaths{1});
+
+% check if a slurm-based computing cluster exist
+if parseCluster 
+    [status, ~] = system('sinfo');
+    if status ~= 0
+        warning('A slurm-based computing cluster is not exist. Set parseCluster as false.')
+        parseCluster = false;
+    end
+    if parseCluster && ~exist(jobLogDir, 'dir')
+        warning('The job log directory does not exist, use ${stitching_tmp}/job_logs as job log directory')
+        jobLogDir = sprintf('%s/job_logs', dataPath);
+        if ~exist(jobLogDir, 'dir')
+            mkdir(jobLogDir);
+            fileattrib(jobLogDir, '+w', 'g');
+        end
+    end
+    job_log_fname = [jobLogDir, '/job_%A_%a.out'];
+    job_log_error_fname = [jobLogDir, '/job_%A_%a.err'];
+    
+    if cpuOnlyNodes
+        slurm_constraint_str = ' --constraint=c24 ';
+    else
+        slurm_constraint_str = '';
+    end
+end
 
 if isempty(uuid)
     uuid = get_uuid();
@@ -134,15 +188,13 @@ for i = 1 : 3
     [~, order_sign_mat(1, :)] = sort(axisOrder_pure);
     order_sign_mat(2, i) = 1 - 2 * contains(axisOrder, ['-', xyz_str(i)]);
 end
-
-% xyz = coordinates;
 xyz = coordinates(:, order_sign_mat(1, :)) .* order_sign_mat(2, :);
-% dxyz = max(xyz, [], 1) - min(xyz, [], 1);
-% dfx = dxyz(1);
-% dfy = dxyz(2);
-% dfz = dxyz(3);
 
-zAniso = sind(SkewAngle)*dz/px;
+if ObjectiveScan
+    zAniso = dz/px;    
+else
+    zAniso = sind(SkewAngle)*dz/px;
+end
 theta = SkewAngle * pi/180;
 % dx = cos(theta)*dz/xyPixelSize;
 resample_type = pr.resampleType;
@@ -162,12 +214,34 @@ switch resample_type
         xf = 1;
 end
 
-[dataPath, ~] = fileparts(tileFullpaths{1});
+% create a text file to indicate pixel size
+pixelInfoFname = sprintf('px%0.5g_py%0.5g_pz%0.5g', px*xf, px*yf, px*zf);
+pixelInfoFullpath = sprintf('%s/%s/%s', dataPath, ResultDir, pixelInfoFname);
+% check if there is some other pixel size file
+dir_info = dir(sprintf('%s/%s/px*_py*_pz*', dataPath, ResultDir));
+pixelFnames = {dir_info.name}';
+for i = 1 : numel(pixelFnames)
+    if ~strcmp(pixelFnames{i}, pixelInfoFname)
+        delete([dir_info(i).folder, filesep, pixelFnames{i}])
+    end
+end
 
-if isempty(pr.DSRDirstr)
-    dsrpath = [dataPath filesep 'DSR_dx' num2str(px*xf) '_dz' num2str(px*zf)];
-else
+if ~exist(pixelInfoFullpath, 'file')
+    fclose(fopen(pixelInfoFullpath, 'w'));
+end
+
+% create DSR or Rotated folder
+if ~isempty(pr.DSRDirstr)
     dsrpath = [dataPath filesep pr.DSRDirstr];
+elseif ~isempty(pr.DSRDeconDirstr)
+    dsrpath = [dataPath filesep pr.DSRDeconDirstr];
+    Decon = true;
+else
+    if ObjectiveScan
+        dsrpath = [dataPath filesep 'Rotated_dx' num2str(px*xf) '_dz' num2str(px*zf)];        
+    else
+        dsrpath = [dataPath filesep 'DSR_dx' num2str(px*xf) '_dz' num2str(px*zf)];
+    end
 end
 
 % normalize coordinates to zero
@@ -187,18 +261,23 @@ for k = 1:nF
     [dataPath, fsname] = fileparts(tileFullpath);
     
     dsrFullpath = [dsrpath filesep fsname '.tif'];
+    if Decon && ~isempty(pr.DSRDeconDirstr)
+        dsrFullpath = [dsrpath filesep fsname '_decon.tif'];
+    end
     
     if ~exist(dsrFullpath, 'file')
         im = readtiff(tileFullpath);
         
-        fprintf('deskewing Data...')
-        tic
-        im = deskewFrame3D(im, SkewAngle, dz, xyPixelSize, Reverse,...
-            'Crop', Crop);
-        toc
+        if ~ObjectiveScan
+            fprintf('deskewing Data...')
+            tic
+            im = deskewFrame3D(im, SkewAngle, dz, xyPixelSize, Reverse,...
+                'Crop', Crop);
+            toc
+        end
         
         % deconvovle
-        if Decon
+        if Decon && isempty(pr.DSRDeconDirstr)
             deconpath = [rt filesep 'matlab_decon'];
             if ~exist(deconpath, 'dir')
                 mkdir(deconpath);
@@ -236,7 +315,7 @@ for k = 1:nF
         fprintf('Rotating Data...')
         tic
         dsr = rotateFrame3D(im, SkewAngle, zAniso, Reverse,...
-            'Crop', true, 'ObjectiveScan', false);
+            'Crop', true, 'ObjectiveScan', ObjectiveScan);
         toc
         
         fprintf('resampling Rotated Data...')
@@ -282,10 +361,23 @@ if ~exist('dsr', 'var')
     tileFullpath = tileFullpaths{1};
     [dataPath, fsname] = fileparts(tileFullpath);
     dsrFullpath = [dsrpath filesep fsname '.tif'];  
+    if Decon && ~isempty(pr.DSRDeconDirstr)
+        dsrFullpath = [dsrpath filesep fsname '_decon.tif'];
+    end    
     dsr = readtiff(dsrFullpath);
 end
-imSize = size(dsr);
 dtype = class(dsr);
+imSizes = zeros(nF, 3);
+for i = 1 : nF
+    tileFullpath = tileFullpaths{i};
+    [dataPath, fsname] = fileparts(tileFullpath);
+    dsrFullpath = [dsrpath filesep fsname '.tif'];  
+    if Decon && ~isempty(pr.DSRDeconDirstr)
+        dsrFullpath = [dsrpath filesep fsname '_decon.tif'];
+    end    
+    imSizes(i, :) = getImageSize(dsrFullpath);
+end
+
 if Save16bit
     dtype = 'uint16';
 end 
@@ -302,8 +394,8 @@ for i = 1 : nF - 1
     for j = i + 1 : nF
         xyz_i = xyz(i, :);
         xyz_j = xyz(j, :);
-        cuboid_i = [xyz_i; xyz_i + (imSize([2, 1, 3]) - 1) .* [xf, yf, zf] * px]';
-        cuboid_j = [xyz_j; xyz_j + (imSize([2, 1, 3]) - 1) .* [xf, yf, zf] * px]';
+        cuboid_i = [xyz_i; xyz_i + (imSizes(i, [2, 1, 3]) - 1) .* [xf, yf, zf] * px]';
+        cuboid_j = [xyz_j; xyz_j + (imSizes(j, [2, 1, 3]) - 1) .* [xf, yf, zf] * px]';
         [is_overlap, cuboid_overlap] = cuboids_overlaps(cuboid_i, cuboid_j);
         if is_overlap 
             overlap_matrix(i, j) = true;
@@ -318,48 +410,150 @@ end
 relative_shift_mat = zeros(nF * (nF - 1) / 2, 3);
 max_xcorr_mat = zeros(nF * (nF - 1) / 2, 3);
 if xcorrShift && isPrimaryCh
-    for i = 1 : nF - 1
-        tileFullpath_i = tileFullpaths{i};
-        [dataPath, fsname_i] = fileparts(tileFullpath_i);
+    fprintf('Compute cross-correlation based registration between overlap tiles...\n')
+    
+    xcorrDir = [dataPath filesep ResultDir filesep 'xcorr' filesep];
+    if ~exist(xcorrDir, 'dir')
+        mkdir(xcorrDir);
+        fileattrib(xcorrDir, '+w', 'g');
+    end
+    nPair = nF * (nF - 1) / 2;
+    pair_ind_mat = tril(ones(nF), -1);
+    pair_ind_mat(pair_ind_mat == 1) = 1 : nPair;
+    pair_ind_mat = pair_ind_mat';
+    
+    is_done_flag = false(nPair, 1);
+    trial_counter = zeros(nPair, 1);
+    if parseCluster
+        job_ids = -ones(nPair, 1);
+    end
 
-        dsrFullpath_i = [dsrpath filesep fsname_i '.tif'];
+    while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
+        lastP = find(~is_done_flag & trial_counter < maxTrialNum, 1, 'last');
 
-        dsr_i = readtiff(dsrFullpath_i);
-        dsr_i(dsr_i == 0) = nan;
-
-        for j = i + 1 : nF
-            if ~overlap_matrix(i, j)
-                continue;
+        for i = 1 : nF - 1
+            tileFullpath_i = tileFullpaths{i};
+            [dataPath, fsname_i] = fileparts(tileFullpath_i);
+            dsrFullpath_i = [dsrpath filesep fsname_i '.tif'];
+            if Decon && ~isempty(pr.DSRDeconDirstr)
+                dsrFullpath_i = [dsrpath filesep fsname_i '_decon.tif'];
             end
 
-            tileFullpath_j = tileFullpaths{j};
-            [dataPath, fsname_j] = fileparts(tileFullpath_j);
+            for j = i + 1 : nF
+                task_id = pair_ind_mat(i, j);
+                ind = (i - 1) * nF - i * (i + 1) / 2 + j;
 
-            dsrFullpath_j = [dsrpath filesep fsname_j '.tif'];
+                if is_done_flag(task_id) || trial_counter(task_id) >= maxTrialNum 
+                    continue;
+                end
+                
+                if ~overlap_matrix(i, j)
+                    is_done_flag(task_id) = true;
+                    continue;
+                end
+                
+                xcorrFullpath = sprintf('%s/xcorr_tile_%d_tile_%d.mat', xcorrDir, i, j);
+                tmpFullpath = sprintf('%s.tmp', xcorrFullpath(1 : end - 4));                
+                if exist(xcorrFullpath, 'file')
+                    if all(max_xcorr_mat(ind, :) == 0)
+                        a = load(xcorrFullpath);
+                        relative_shift_mat(ind, :) = a.relative_shift;
+                        max_xcorr_mat(ind, :) = [i, j, a.max_xcorr];
+                    end
+                    
+                    is_done_flag(task_id) = true;
+                    if exist(tmpFullpath, 'file')
+                        delete(tmpFullpath);
+                    end
+                    continue;
+                end
+                
+                tileFullpath_j = tileFullpaths{j};
+                [dataPath, fsname_j] = fileparts(tileFullpath_j);
+                dsrFullpath_j = [dsrpath filesep fsname_j '.tif'];
+                if Decon && ~isempty(pr.DSRDeconDirstr)
+                    dsrFullpath_j = [dsrpath filesep fsname_j '_decon.tif'];
+                end
 
-            dsr_j = readtiff(dsrFullpath_j);
-            dsr_j(dsr_j == 0) = nan;
+                xyz_i = xyz(i, :);
+                xyz_j = xyz(j, :);
+                cuboid_i = [xyz_i; xyz_i + (imSizes(i, [2, 1, 3]) - 1) .* [xf, yf, zf] * px]';
+                cuboid_j = [xyz_j; xyz_j + (imSizes(j, [2, 1, 3]) - 1) .* [xf, yf, zf] * px]';
 
-            xyz_i = xyz(i, :);
-            xyz_j = xyz(j, :);
-            cuboid_i = [xyz_i; xyz_i + (imSize([2, 1, 3]) - 1) .* [xf, yf, zf] * px]';
-            cuboid_j = [xyz_j; xyz_j + (imSize([2, 1, 3]) - 1) .* [xf, yf, zf] * px]';
+                % ind = 0.5 * i * (2 * j - i - 1);
+                cuboid_overlap_ij = reshape(overlap_regions(ind, :), 3, 2);
 
-            % ind = 0.5 * i * (2 * j - i - 1);
-            ind = (i - 1) * nF - i * (i + 1) / 2 + j;
-            cuboid_overlap_ij = reshape(overlap_regions(ind, :), 3, 2);
-            
-            % tic
-            [relative_shift, max_xcorr] = cross_correlation_stitching_matching(dsr_i, dsr_j, ...
-                cuboid_i, cuboid_j, cuboid_overlap_ij, px, [xf, yf, zf]', 'downSample', xcorrDownsample);
-            % toc
-%             tic
-%             [relative_shift_1, max_xcorr_1] = cross_correlation_stitching_matching(dsr_i, dsr_j, ...
-%                 cuboid_i, cuboid_j, cuboid_overlap_ij, px, [xf, yf, zf]', 'downSample', [1, 1, 1]);
-%             toc
+                % tic
+                if exist(tmpFullpath, 'file') || parseCluster
+                    if parseCluster
+                        job_status = check_slurm_job_status(job_ids(task_id), rem(task_id, 1000));
 
-            relative_shift_mat(ind, :) = relative_shift;
-            max_xcorr_mat(ind, :) = [i, j, max_xcorr];
+                        % kill the first pending job and use master node do the computing.
+                        if job_status == 0.5 && (masterCompute && task_id == lastP)
+                            system(sprintf('scancel %d_%d', job_ids(task_id), task_id), '-echo');
+                            trial_counter(task_id) = trial_counter(task_id) - 1;
+                        end
+
+                        % if the job is still running, skip it. 
+                        if job_status == 1 
+                            continue;
+                        end
+
+                        % If there is no job, submit a job
+                        if job_status == -1 && ~(masterCompute && task_id == lastP)
+                            [estMem, estGPUMem, rawImageSize] = XR_estimateComputingMemory(dsrFullpath_i, {'deconvolution'}, 'cudaDecon', false);
+                            if cpusPerTask * 20 < rawImageSize * 5
+                                cpusPerTask = min(24, ceil(rawImageSize * 5 / 20));
+                            end
+
+                            matlab_cmd = sprintf(['addpath(genpath(pwd));tic;cross_correlation_stitching_matching(''%s'',''%s'',''%s'',', ...
+                                '[%s],[%s],[%s],%0.20d,[%s],''downSample'',[%s]);toc;'], dsrFullpath_i, dsrFullpath_j, xcorrFullpath, ...
+                                strrep(mat2str(cuboid_i), ' ', ','), strrep(mat2str(cuboid_j), ' ', ','), strrep(mat2str(cuboid_overlap_ij), ' ', ','), ...
+                                px, sprintf('%.20d,%.20d,%.20d', xf, yf, zf), strrep(num2str(xcorrDownsample, '%.20d,'), ' ', ''));
+                            xcorr_cmd = sprintf('module load matlab/r2020a; matlab -nodisplay -nosplash -nodesktop -nojvm -r \\"%s\\"', matlab_cmd);
+                            cmd = sprintf('sbatch --array=%d %s -o %s -e %s -p abc --qos abc_normal -n1 --mem-per-cpu=21418M --cpus-per-task=%d --wrap="%s"', ...
+                                task_id, slurm_constraint_str, job_log_fname, job_log_error_fname, cpusPerTask, xcorr_cmd);
+                            [status, cmdout] = system(cmd, '-echo');
+
+                            job_id = regexp(cmdout, 'Submitted batch job (\d+)\n', 'tokens');
+                            job_id = str2double(job_id{1}{1});
+                            job_ids(task_id) = job_id;
+                            trial_counter(task_id) = trial_counter(task_id) + 1;                                
+                        end
+                    else
+                        temp_file_info = dir(tmpFullpath);
+                        if (datenum(clock) - [temp_file_info.datenum]) * 24 * 60 < unitWaitTime
+                            continue; 
+                        else
+                            fclose(fopen(tmpFullpath, 'w'));
+                        end
+                    end
+                else
+                    fclose(fopen(tmpFullpath, 'w'));
+                end
+
+                if ~parseCluster || (parseCluster && masterCompute && task_id == lastP)
+                    [relative_shift, max_xcorr] = cross_correlation_stitching_matching( ...
+                        dsrFullpath_i, dsrFullpath_j, xcorrFullpath, cuboid_i, cuboid_j, ...
+                        cuboid_overlap_ij, px, [xf, yf, zf]', 'downSample', xcorrDownsample);
+                    trial_counter(task_id) = trial_counter(task_id) + 1;    
+                end
+                % toc
+                if exist(xcorrFullpath, 'file')
+                    if all(max_xcorr_mat(ind, :) == 0)
+                        a = load(xcorrFullpath);
+                        relative_shift_mat(ind, :) = a.relative_shift;
+                        max_xcorr_mat(ind, :) = [i, j, a.max_xcorr];
+                    end
+                    is_done_flag(task_id) = true;
+                    if exist(tmpFullpath, 'file')
+                        delete(tmpFullpath);
+                    end
+                end
+            end
+        end
+        if ~all(is_done_flag | trial_counter >= maxTrialNum, 'all') 
+            pause(30);
         end
     end
     
@@ -371,7 +565,7 @@ if xcorrShift && isPrimaryCh
         aj = full(adjacency(T));
         overlap_matrix = overlap_matrix .* aj;
     end
-elseif xcorrShift && ~isPrimaryCh
+elseif ~isPrimaryCh
     if ~exist(stitchInfoFullpath, 'file')
         error('The stitch information filename %s does not exist!', stitchInfoFullpaths);
     end
@@ -398,13 +592,15 @@ for i = 1 : nF - 1
 end
 
 % use half of overlap region for pairs of tiles with overlap
-if strcmp(BlendMethod, 'none')
-    overlapType = 'none';
-    halfOrder = [1, 2, 3];
-else
-    overlapType = 'half';
-    % halfOrder = [2, 1, 3];    
-    halfOrder = [1, 2, 3];    
+if isempty(overlapType)
+    if strcmp(BlendMethod, 'none')
+        overlapType = 'none';
+        % halfOrder = [1, 2, 3];
+    else
+        overlapType = 'half';
+        % halfOrder = [2, 1, 3];    
+        % halfOrder = [1, 2, 3];    
+    end
 end
 
 half_ol_region_cell = cell(nF);
@@ -417,8 +613,8 @@ for i = 1 : nF - 1
         
         xyz_i = xyz_shift(i, :);
         xyz_j = xyz_shift(j, :);
-        cuboid_i = [xyz_i; xyz_i + (imSize([2, 1, 3]) - 1) .* [xf, yf, zf] * px]';
-        cuboid_j = [xyz_j; xyz_j + (imSize([2, 1, 3]) - 1) .* [xf, yf, zf] * px]';
+        cuboid_i = [xyz_i; xyz_i + (imSizes(i, [2, 1, 3]) - 1) .* [xf, yf, zf] * px]';
+        cuboid_j = [xyz_j; xyz_j + (imSizes(j, [2, 1, 3]) - 1) .* [xf, yf, zf] * px]';
 
         [mregion_1, mregion_2] = compute_half_of_overlap_region(cuboid_i, cuboid_j, ...
             px, [xf, yf, zf]', 'overlapType', overlapType, 'halfOrder', halfOrder);
@@ -445,9 +641,9 @@ dfx = dxyz(1);
 dfy = dxyz(2);
 dfz = dxyz(3);
 
-sx = imSize(2);
-sy = imSize(1);
-sz = imSize(3);
+sx = max(imSizes(:, 2));
+sy = max(imSizes(:, 1));
+sz = max(imSizes(:, 3));
 nxs = round(dfx/(px*xf) + sx + 2);
 nys = round(dfy/(px*yf) + sy + 2);
 nzs = round(dfz/(px*zf) + sz + 2);
@@ -463,8 +659,15 @@ for i = 1 : nF
     tileFullpath = tileFullpaths{i};
     [dataPath, fsname] = fileparts(tileFullpath);
     dsrFullpath = [dsrpath filesep fsname '.tif'];
+    if Decon && ~isempty(pr.DSRDeconDirstr)
+        dsrFullpath = [dsrpath filesep fsname '_decon.tif'];
+    end
+    
     dsr = readtiff(dsrFullpath);
-
+    if ~strcmp(class(dsr), dtype)
+        dsr = cast(dsr, dtype);
+    end
+    
     if zNormalize
         for z = 1 : size(zmed_mat, 1)
             if zmed_mat(z, i) == 0, continue; end
@@ -477,6 +680,9 @@ for i = 1 : nF
     st_idx = round(xyz_shift(i, :) ./ ([xf, yf, zf] * px));
     % if any(st_idx < 1) || any(st_idx > [nxs, nys, nzs])
     % bound idx to the positions of the stitched image
+    sx = imSizes(i, 2);
+    sy = imSizes(i, 1);
+    sz = imSizes(i, 3);
     xridx = max(1, 1 - st_idx(1)) : min(sx, nxs - st_idx(1));
     yridx = max(1, 1 - st_idx(2)) : min(sy, nys - st_idx(2));
     zridx = max(1, 1 - st_idx(3)) : min(sz, nzs - st_idx(3));
@@ -502,10 +708,8 @@ for i = 1 : nF
         end
         if i < j
             mregion = half_ol_region_cell{i, j}{1};
-            % mregion_f = ol_region_cell{i, j}{1};
         else
             mregion = half_ol_region_cell{j, i}{2};
-            % mregion_f = ol_region_cell{i, j}{2};            
         end
         
         midx = mregion;
@@ -527,18 +731,19 @@ for i = 1 : nF
             nv_f_count(yidx, xidx, zidx) = nv_f(yidx, xidx, zidx) + cast(dsr_raw(yridx, xridx, zridx) ~= 0, dtype);
         case 'max'
             nv(yidx, xidx, zidx) = max(nv(yidx, xidx, zidx), dsr(yridx, xridx, zridx));
-            nv_f(yidx, xidx, zidx) = max(nv_f(yidx, xidx, zidx), dsr_raw(yridx, xridx, zridx) .* cast(nv_f(yidx, xidx, zidx) == 0, dtype));
+            nv_f(yidx, xidx, zidx) = max(nv_f(yidx, xidx, zidx), dsr_raw(yridx, xridx, zridx));
         case 'median'
             nv_count(yidx, xidx, zidx) = nv_count(yidx, xidx, zidx) + cast(dsr(yridx, xridx, zridx) ~= 0, dtype);
             nv(yidx, xidx, zidx) = nv(yidx, xidx, zidx) + dsr(yridx, xridx, zridx);
             
             nv_f_count(yidx, xidx, zidx) = nv_f_count(yidx, xidx, zidx) + cast(dsr_raw(yridx, xridx, zridx) ~= 0, dtype);
-            nv_f(yidx, xidx, zidx) = nv_f(yidx, xidx, zidx) + dsr_raw(yridx, xridx, zridx) .* cast(nv_f(yidx, xidx, zidx) == 0, dtype);
+            nv_f(yidx, xidx, zidx) = nv_f(yidx, xidx, zidx) + dsr_raw(yridx, xridx, zridx);
     end
 end
 
 % apply complement nv to nv if any voxel in nv is zero while nv_comp is not
-nv_zero_inds = nv == 0;
+clear dsr mask
+nv_zero_inds = nv == 0 & nv_f ~= 0;
 nv(nv_zero_inds) = nv_f(nv_zero_inds);
 clear nv_f;
 if strcmp(BlendMethod, 'mean') || strcmp(BlendMethod, 'median')
@@ -553,16 +758,21 @@ if strcmp(BlendMethod, 'median')
     if any(nv_count > 2, 'all')
         % nv_count_orig = nv_count;
         
+        % nv_med, (:, :, 1) for half overlap, (:, :, 2) for full overlap
+        % (:, 1, 1): ind, (:, 2, 1): nv_count, (:, 3, :) for current counts.
         inds = find(nv_count(:) > 2);
-        nv_med = zeros(numel(inds), max(nv_count(:)) + 3);
-        nv_med(:, 1) = inds;
-        nv_med(:, 2) = nv_count(inds);
+        nv_med = zeros(numel(inds), max(nv_count(:)) + 3, 2);
+        nv_med(:, 1, 1) = inds;
+        nv_med(:, 2, 1) = nv_count(inds);
         
         % nv_count = zeros(nys, nxs, nzs, 'uint16');
         for i = 1 : nF
             st_idx = round(xyz_shift(i, :) ./ ([xf, yf, zf] * px));
 
             % bound idx to the positions of the stitched image
+            sx = imSizes(i, 2);
+            sy = imSizes(i, 1);
+            sz = imSizes(i, 3);            
             xridx = max(1, 1 - st_idx(1)) : min(sx, nxs - st_idx(1));
             yridx = max(1, 1 - st_idx(2)) : min(sy, nys - st_idx(2));
             zridx = max(1, 1 - st_idx(3)) : min(sz, nzs - st_idx(3));
@@ -571,13 +781,19 @@ if strcmp(BlendMethod, 'median')
             yidx = st_idx(2) + yridx;
             zidx = st_idx(3) + zridx;
                         
-            if any(nv_count_orig(yidx, xidx, zidx) > 2, 'all')
+            if any(nv_count(yidx, xidx, zidx) > 2, 'all')
                 tileFullpath = tileFullpaths{i};
                 [dataPath, fsname] = fileparts(tileFullpath);
 
                 dsrFullpath = [dsrpath filesep fsname '.tif'];
+                if Decon && ~isempty(pr.DSRDeconDirstr)
+                    dsrFullpath = [dsrpath filesep fsname '_decon.tif'];
+                end
                 dsr = readtiff(dsrFullpath);
-                
+                if ~strcmp(class(dsr), dtype)
+                    dsr = cast(dsr, dtype);
+                end
+
                 if zNormalize
                     for z = 1 : size(zmed_mat, 1)
                         if zmed_mat(z, i) == 0, continue; end
@@ -594,7 +810,8 @@ if strcmp(BlendMethod, 'median')
                     mask = imerode(mask, se);
                     dsr(~mask) = 0;
                 end
-
+                dsr_raw = dsr;
+                
                 % remove discard region in half overlap setting
                 for j = 1 : nF
                     if ~overlap_matrix(i, j) && ~overlap_matrix(j, i)
@@ -615,16 +832,36 @@ if strcmp(BlendMethod, 'median')
                 
                 nz_els = nv_tmp(inds);
                 nz_inds = find(nz_els ~= 0);
-                nv_med(nz_inds, 3) = nv_med(nz_inds, 3) + 1;
-                nv_med(nz_inds, 3 + nv_med(nz_inds, 3)) = nz_els(nz_inds);
+                nv_med(nz_inds, 3, 1) = nv_med(nz_inds, 3, 1) + 1;
+                nv_med_inds = sub2ind(size(nv_med), nz_inds, 3 + nv_med(nz_inds, 3, 1), 1 * ones(numel(nz_inds), 1));
+                nv_med(nv_med_inds) = nz_els(nz_inds);
+                
+                % use dsr raw to decide filling elements
+                nv_tmp(yidx, xidx, zidx) = dsr_raw(yridx, xridx, zridx);
+                nz_els = nv_tmp(inds);
+                nz_inds = find(nz_els ~= 0);
+                nv_med(nz_inds, 3, 2) = nv_med(nz_inds, 3, 2) + 1;
+                nv_med_inds = sub2ind(size(nv_med), nz_inds, 3 + nv_med(nz_inds, 3, 2), 2 * ones(numel(nz_inds), 1));
+                nv_med(nv_med_inds) = nz_els(nz_inds);
             end
-            nv = nv ./ nv_count;
-            % median for more than 2 tile overlap regions
-            nv(inds) = arrayfun(@(x) median(nv_med(x, 4 : 3 + nv_med(x, 2))), 1 : size(nv_med, 1));
         end
+        nv = nv ./ nv_count;
+        % median for more than 2 tile overlap regions
+        % med_inds = nv_med(:, 2) > 2;
+        % inds_1 = inds(med_inds);
+        % nv_med = nv_med(med_inds, :);
+        nv_med(nv_med(:, 3, 1) == 0, 3 : end, 1) = nv_med(nv_med(:, 3, 1) == 0, 3 : end, 2);
+        nv_med(:, :, 2) = [];
+        uniq_counts = unique(nv_med(:, 3));
+        nv_med_final = zeros(size(nv_med, 1), 1);
+        for c = 1 : numel(uniq_counts)
+            inds_c = nv_med(:, 3) == uniq_counts(c);
+            nv_med_final(inds_c) = median(nv_med(inds_c, 4 : 3 + uniq_counts(c)), 2);
+        end
+        nv(inds) = nv_med_final;        
     else
         nv = nv ./ nv_count;
-    end 
+    end
 end
 
 switch BlendMethod
@@ -652,7 +889,7 @@ end
 
 % first check the size in secondary channels are the same as primary
 % channel after crop
-if isempty(boundboxCrop) && xcorrShift && ~isPrimaryCh
+if isempty(boundboxCrop) && ~isPrimaryCh
     out_sz = [nys, nxs, nzs];
     % handle size difference:
     % 1. if out_sz smaller than primary sz, pad it.
@@ -664,7 +901,7 @@ if isempty(boundboxCrop) && xcorrShift && ~isPrimaryCh
         nv = padarray(nv, pd_sz, 0, 'post');
     end
     if any(size(nv) > pImSz)
-        disp('The size of stitched data in some axis is smaller than the primary channel, crop it...');        
+        disp('The size of stitched data in some axis is larger than the primary channel, crop it...');        
         nv = nv(1 : pImSz(1), 1 : pImSz(2), 1 : pImSz(3));
     end
 end
@@ -695,6 +932,11 @@ if ~isempty(out)
 end
 
 if isPrimaryCh 
+    stichInfoPath = [dataPath, filesep, ResultDir, filesep, stitchInfoDir];
+    if ~exist(stichInfoPath, 'dir')
+        mkdir(stichInfoPath);
+        fileattrib(stichInfoPath, '+w', 'g');
+    end
     stitch_info_tmp_fullname = sprintf('%s/%s/%s/%s_%s.mat', dataPath, ResultDir, stitchInfoDir, fsname(1:end-21), uuid);
     pImSz = size(nv);
     save('-v7.3', stitch_info_tmp_fullname, 'ip', 'overlap_regions', ...
@@ -707,6 +949,7 @@ if SaveMIP
     stcMIPPath = sprintf('%s/%s/MIPs/', dataPath, ResultDir);
     if ~exist(stcMIPPath, 'dir')
         mkdir(stcMIPPath);
+        fileattrib(stcMIPPath, '+w', 'g');
     end
     stcMIPname = sprintf('%s%s_MIP_z.tif', stcMIPPath, fsname(1:end-21));
     writetiff(uint16(max(nv, [], 3)), stcMIPname);
@@ -714,7 +957,26 @@ end
 
 % save stitched result
 stitch_tmp_fullname = [dataPath filesep ResultDir filesep fsname(1:end-21) '_' uuid '.tif'];
+stitch_fullname = [dataPath filesep ResultDir filesep fsname(1:end-21) '.tif'];
 writetiff(nv, stitch_tmp_fullname);
-movefile(stitch_tmp_fullname, [dataPath filesep ResultDir filesep fsname(1:end-21) '.tif']);
+movefile(stitch_tmp_fullname, stitch_fullname);
+
+if false
+    % write to hdf5 
+    stitch_tmp_hdf5_fullname = [dataPath filesep ResultDir filesep fsname(1:end-21) '_' uuid '.h5'];
+    writehdf5(nv, stitch_tmp_hdf5_fullname)
+    movefile(stitch_tmp_hdf5_fullname, [dataPath filesep ResultDir filesep fsname(1:end-21) '.h5']);
+end
+
+
+if false
+    % write to n5 
+    stitch_tmp_n5_fullname = [dataPath filesep ResultDir filesep fsname(1:end-21) '_' uuid '_n5'];
+    tiff2n5_cmd = 'python /global/home/groups/software/sl-7.x86_64/modules/stitching-spark/startup-scripts/spark-local/convert-tiff-tiles-n5.py';
+    cmd = sprintf('%s -i %s -o %s', tiff2n5_cmd, stitch_fullname, stitch_tmp_n5_fullname);
+    system(cmd);
+    movefile(stitch_tmp_n5_fullname, [dataPath filesep ResultDir filesep fsname(1:end-21) '_n5']);
+end
+
 
 end

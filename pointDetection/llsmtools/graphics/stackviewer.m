@@ -164,6 +164,9 @@ set(ha, 'HitTest', 'off');
 
     function figResize(~,~)
         ipos = get(hf, 'Position');
+        if isempty(ipos)
+            ipos = get(gcf, 'Position');
+        end
         if strcmp(get(hf,'type'),'uipanel') && strcmp(get(hf, 'Units'), 'normalized')
             ipos = ipos.*get(gcf, 'Position');
         end

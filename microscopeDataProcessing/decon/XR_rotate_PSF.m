@@ -7,6 +7,7 @@ function [] = XR_rotate_PSF(PSFfile, varargin)
 ip = inputParser;
 ip.CaseSensitive = false;
 ip.addRequired('PSFfile'); 
+ip.addParameter('Overwrite', false, @islogical);
 ip.addParameter('ObjectiveScan', false, @islogical);
 ip.addParameter('xyPixelSize', 0.108, @isscalar);
 ip.addParameter('dz', 0.1, @isscalar);
@@ -19,6 +20,7 @@ ip.addParameter('uuid', '', @isstr);
 ip.parse(PSFfile, varargin{:});
 
 pr = ip.Results;
+Overwrite = pr.Overwrite;
 xyPixelSize = pr.xyPixelSize;
 dz = pr.dz;
 Reverse = pr.Reverse;
@@ -30,6 +32,16 @@ uuid = ip.Results.uuid;
 % uuid for the job
 if isempty(uuid)
     uuid = get_uuid();
+end
+
+[PSFdir, fsname] = fileparts(PSFfile);
+rotPSFdir = [PSFdir, filesep, 'Rotated/'];
+if ~exist(rotPSFdir, 'dir')
+    mkdir(rotPSFdir);
+end
+rtFullname = sprintf('%s%s.tif', rotPSFdir, fsname);
+if exist(rtFullname, 'file') && ~Overwrite
+    return;
 end
 
 % decide zAniso
@@ -50,14 +62,8 @@ im_rt(im_rt == 0) = med;
 
 % save the rotated PSF files to the subfolder of PSF folder and also save
 % the parameters. 
-[PSFdir, fsname] = fileparts(PSFfile);
-rotPSFdir = [PSFdir, filesep, 'Rotated/'];
-if ~exist(rotPSFdir, 'dir')
-    mkdir(rotPSFdir);
-end
 
 rtTempName = sprintf('%s%s_%s.tif', rotPSFdir, fsname, uuid);
-rtFullname = sprintf('%s%s.tif', rotPSFdir, fsname);
 if Save16bit
     writetiff(uint16(im_rt), rtTempName);
 else
