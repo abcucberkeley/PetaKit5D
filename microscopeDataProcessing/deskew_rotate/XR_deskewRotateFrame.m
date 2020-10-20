@@ -8,6 +8,11 @@ function [] = XR_deskewRotateFrame(framePath, xyPixelSize, dz, varargin)
 % xruan (07/13/2020): set not rescale data to true for rotated data
 % xruan (07/15/2020): add flatfield correction
 % xruan (07/19/2020): add save of MIPs by default
+% xruan (10/05/2020): convert to single rather than double to save space.
+%                     Add image block based processing for tall images
+% xruan (10/06/2020): add support of a list of files and combine them first
+%                     before deskew. The files should be orderred from top to bottom
+% xruan (10/11/2020): add the combined deskew, rotate and resampling function. 
 
 
 ip = inputParser;
@@ -37,11 +42,16 @@ ip.addParameter('RescaleRotate', false , @islogical); % Rescale rotated data to 
 ip.addParameter('SaveMIP', true , @islogical); % save MIP-z for ds and dsr. 
 ip.addParameter('aname', '', @isstr); % XR allow user-defined result path
 ip.addParameter('ZoffsetCorrection', false, @islogical); % xruan: add option for correction of z offset
+ip.addParameter('DSRCombined', true, @islogical); % combined processing 
+ip.addParameter('resample', [], @(x) isempty(x) || isnumeric(x)); % resampling after rotation 
+ip.addParameter('saveZarr', false, @islogical); % save as zarr
+ip.addParameter('blockSize', [500, 500, 500], @isnumeric); % save as zarr
 ip.addParameter('uuid', '', @isstr);
 
 ip.parse(framePath, xyPixelSize, dz, varargin{:});
 
 pr = ip.Results;
+Crop = pr.Crop;
 SkewAngle = pr.SkewAngle;
 Reverse = pr.Reverse;
 ObjectiveScan = pr.ObjectiveScan;
@@ -49,6 +59,10 @@ LLFFCorrection = pr.LLFFCorrection;
 LSImage = pr.LSImage;
 BackgroundImage = pr.BackgroundImage;
 SaveMIP = pr.SaveMIP;
+DSRCombined = pr.DSRCombined;
+resample = pr.resample;
+saveZarr = pr.saveZarr;
+blockSize = pr.blockSize;
 
 uuid = pr.uuid;
 % uuid for the job
@@ -56,9 +70,10 @@ if isempty(uuid)
     uuid = get_uuid();
 end
 
-if Reverse
-    SkewAngle = -abs(SkewAngle);
-end
+% not convert to negative it for the wrapper
+% if Reverse
+%     SkewAngle = -abs(SkewAngle);
+% end
 
 % decide zAniso
 if ObjectiveScan
@@ -69,24 +84,48 @@ else
 end
 
 %% deskew frame
-
-fprintf('Deskew frame %s...\n', framePath);
-
-% first check if the file exists
-if ~exist(framePath, 'file')
-    warning('%s does not exist!', framePath);
-    return;
+% check if needs to combine parts of volume
+if ischar(framePath)
+    framePath = {framePath};
+end
+combinedFrame = false;
+if numel(framePath) > 1
+    % use the first one as the name of the combined file.
+    % assume the combined frame can be fitted to memory. (In future may
+    % implement Image Block method)
+    combinedFrame = true;
 end
 
-% check if the result exists
-[rt, fname] = fileparts(framePath);
-dsPath = sprintf('%s/DS/', rt);
-mkdir(dsPath);
+% first check if the file exists
+for i = 1 : numel(framePath)
+    if ~exist(framePath{i}, 'file')
+        warning('%s does not exist!', framePath{i});
+        return;
+    end
+end
 
-dsFullname = [dsPath, fname, '.tif'];
+% Create DS result dire
+[rt, fsname] = fileparts(framePath{1});
+if ~DSRCombined    
+    dsPath = sprintf('%s/DS/', rt);
+    mkdir(dsPath);
+    fileattrib(dsPath, '+w', 'g');
+    dsFullname = [dsPath, fsname, '.tif'];
+end
 
-if ~exist(dsFullname, 'file') || ip.Results.Overwrite
-    frame = double(readtiff(framePath));
+if (~DSRCombined && (~exist(dsFullname, 'file') || ip.Results.Overwrite)) || DSRCombined
+    % frame = double(readtiff(framePath));
+    if combinedFrame
+        frame_cell = cell(numel(framePath), 1);
+        for i = 1 : numel(framePath)
+            frame_cell{i} = readtiff(framePath{i});
+        end
+        frame = single(cat(3, frame_cell{:}));
+        clear frame_cell;
+    else
+        frame = single(readtiff(framePath{1}));
+    end
+    
     % flat field correction
     if LLFFCorrection
         LSIm = readtiff(LSImage);
@@ -94,46 +133,85 @@ if ~exist(dsFullname, 'file') || ip.Results.Overwrite
         frame = GU_LSFlatFieldCorrection(frame,LSIm,BKIm,'LowerLimit', ip.Results.LowerLimit, ...
             'constOffset', ip.Results.constOffset);
     end
+    
+    if ~DSRCombined
+        fprintf('Deskew frame %s...\n', framePath{1});
+        try 
+            ds = deskewFrame3D(frame, SkewAngle, dz, xyPixelSize, Reverse, 'Crop', Crop); 
+            clear frame;
+        catch ME
+            disp(ME);
+            sz = size(frame);
+            if sz(3) > 1000
+                fprintf('Use image block method for deskew...\n');
+                % only split in y-axis, it is not right when splitting from
+                % other axes. 
+                blockSize = sz;
+                blockSize(1) = min(ceil(blockSize(1) / 8), 150);
+                bim = blockedImage(frame, 'BlockSize', blockSize);
+                OutputLocation = sprintf('%s/%s_%s', dsPath, fsname, uuid);
+                BorderSize = [5, 0, 0];
+                TrimBorder = true;
 
-    ds = deskewFrame3D(frame, ip.Results.SkewAngle, dz, xyPixelSize, ip.Results.Reverse, ...
-        'Crop', ip.Results.Crop); 
-    
-    % save MIP
-    if SaveMIP
-        dsMIPPath = sprintf('%s/MIPs/', dsPath);
-        if ~exist(dsMIPPath, 'dir')
-            mkdir(dsMIPPath);
-            fileattrib(dsMIPPath, '+w', 'g');            
+                bo = apply(bim, @(bs) deskewFrame3D(single(bs.Data), SkewAngle, dz, ...
+                    xyPixelSize, Reverse, 'crop', Crop), 'blockSize', bim.BlockSize, ...
+                    "OutputLocation", OutputLocation, 'BorderSize', BorderSize, 'TrimBorder', TrimBorder);
+                clear frame;
+                ds = gather(bo);
+                rmdir(OutputLocation, 's');
+                clear bim bo;
+            end
         end
-        
-        dsMIPname = sprintf('%s%s_MIP_z.tif', dsMIPPath, fname);
-        writetiff(uint16(max(ds, [], 3)), dsMIPname);
+
+        % save MIP
+        if SaveMIP
+            dsMIPPath = sprintf('%s/MIPs/', dsPath);
+            if ~exist(dsMIPPath, 'dir')
+                mkdir(dsMIPPath);
+                fileattrib(dsMIPPath, '+w', 'g');            
+            end
+
+            dsMIPname = sprintf('%s%s_MIP_z.tif', dsMIPPath, fsname);
+            writetiff(uint16(max(ds, [], 3)), dsMIPname);
+        end
+
+        dsTempname = sprintf('%s%s_%s.tif', dsPath, fsname, uuid);
+        if ip.Results.Save16bit
+            writetiff(uint16(ds), dsTempname);
+        else
+            writetiff(single(ds), dsTempname);
+        end
+        movefile(dsTempname, dsFullname);
     end
-    
-    dsTempname = sprintf('%s%s_%s.tif', dsPath, fname, uuid);
-    if ip.Results.Save16bit
-        writetiff(uint16(ds), dsTempname);
-    else
-        writetiff(single(ds), dsTempname);
-    end
-    movefile(dsTempname, dsFullname);
 end
 
 %% rotate frame
 
-if ip.Results.Rotate 
+if ip.Results.Rotate || DSRCombined
     dsrPath = sprintf('%s/DSR/', rt);
     mkdir(dsrPath);
-
-    dsrFullname = [dsrPath, fname, '.tif'];
     
-    if ~exist(dsrFullname, 'file')
-        fprintf('Rotate frame %s...\n', framePath);
-        if ~exist('ds', 'var')
-            ds = double(readtiff(dsFullname));
+    if saveZarr
+        dsrFullname = [dsrPath, fsname, '.zarr'];        
+    else
+        dsrFullname = [dsrPath, fsname, '.tif'];
+    end
+    
+    if (~saveZarr && ~exist(dsrFullname, 'file')) || (saveZarr && ~exist(dsrFullname, 'dir'))
+        if ~DSRCombined
+            fprintf('Rotate frame %s...\n', framePath{1});
+            if ~exist('ds', 'var')
+                ds = single(readtiff(dsFullname));
+            end
+            dsr = rotateFrame3D(ds, ip.Results.SkewAngle, zAniso, ip.Results.Reverse,...
+                'Crop', true, 'ObjectiveScan', ObjectiveScan);
+            clear ds;
+        else
+            fprintf('Deskew, Rotate and resample for frame %s...\n', framePath{1});            
+            dsr = deskewRotateFrame3D(frame, ip.Results.SkewAngle, dz, xyPixelSize, ...
+                'reverse', ip.Results.Reverse, 'Crop', true, 'ObjectiveScan', ObjectiveScan, ...
+                'resample', resample);
         end
-        dsr = rotateFrame3D(ds, ip.Results.SkewAngle, zAniso, ip.Results.Reverse,...
-            'Crop', true, 'ObjectiveScan', ObjectiveScan);
         
         % save MIP
         if SaveMIP
@@ -143,29 +221,35 @@ if ip.Results.Rotate
                 fileattrib(dsrMIPPath, '+w', 'g');
             end
 
-            dsrMIPname = sprintf('%s%s_MIP_z.tif', dsrMIPPath, fname);
+            dsrMIPname = sprintf('%s%s_MIP_z.tif', dsrMIPPath, fsname);
             writetiff(uint16(max(dsr, [], 3)), dsrMIPname);
         end
-
-        dsrTempName = sprintf('%s%s_%s.tif', dsrPath, fname, uuid);
-%         if ip.Results.Save16bit
-%             if ip.Results.RescaleRotate
-%                 iRange = [min(ds(:)), max(ds(:))];
-%                 writetiff(uint16(scaleContrast(dsr, iRange, [0 65535])), dsrTempName);
-%             else
-%                 writetiff(uint16(dsr), dsrTempName);
-%             end
-%         else
-%             writetiff(single(dsr), dsrTempName);
-%         end
-
-        if ip.Results.RescaleRotate
-            iRange = [min(ds(:)), max(ds(:))];
-            writetiff(uint16(scaleContrast(dsr, iRange, [0 65535])), dsrTempName);
+        
+        if saveZarr
+            dsrTempName = sprintf('%s%s_%s.zarr', dsrPath, fsname, uuid);
         else
-            writetiff(uint16(dsr), dsrTempName);
+            dsrTempName = sprintf('%s%s_%s.tif', dsrPath, fsname, uuid);            
         end
-
+        
+        if ip.Results.RescaleRotate
+            iRange = [min(dsr(:)), max(dsr(:))];
+            dsr = scaleContrast(dsr, iRange, [0 65535]);
+        end
+        
+        if ip.Results.Save16bit
+            dsr = uint16(dsr);
+        else
+            dsr = single(dsr);
+        end
+        
+        if saveZarr
+            bim = blockedImage(dsr);
+            blockSize = min(size(dsr), blockSize);
+            write(bim, dsrTempName, 'Adapter', ZarrAdapter, 'BlockSize', blockSize);
+        else
+            writetiff(dsr, dsrTempName);
+        end
+        
         movefile(dsrTempName, dsrFullname);
     end
 end

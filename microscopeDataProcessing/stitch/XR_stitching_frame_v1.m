@@ -85,6 +85,7 @@ ip.addParameter('boundboxCrop', [], @(x) isnumeric(x) && (isempty(x) || all(size
 ip.addParameter('zNormalize', false, @islogical);
 ip.addParameter('xcorrDownsample', [2, 2, 2], @isnumeric);
 ip.addParameter('SaveMIP', true , @islogical); % save MIP-z for stitch. 
+ip.addParameter('tileNum', [] , @isnumeric); % tile number in each axis (TODO, not now, for consistency with previous analysis).
 ip.addParameter('parseCluster', true, @islogical);
 ip.addParameter('masterCompute', true, @islogical); % master node participate in the task computing. 
 ip.addParameter('jobLogDir', '../job_logs', @isstr);
@@ -512,7 +513,7 @@ if xcorrShift && isPrimaryCh
                                 px, sprintf('%.20d,%.20d,%.20d', xf, yf, zf), strrep(num2str(xcorrDownsample, '%.20d,'), ' ', ''));
                             xcorr_cmd = sprintf('module load matlab/r2020a; matlab -nodisplay -nosplash -nodesktop -nojvm -r \\"%s\\"', matlab_cmd);
                             cmd = sprintf('sbatch --array=%d %s -o %s -e %s -p abc --qos abc_normal -n1 --mem-per-cpu=21418M --cpus-per-task=%d --wrap="%s"', ...
-                                task_id, slurm_constraint_str, job_log_fname, job_log_error_fname, cpusPerTask, xcorr_cmd);
+                                rem(task_id, 5000), slurm_constraint_str, job_log_fname, job_log_error_fname, cpusPerTask, xcorr_cmd);
                             [status, cmdout] = system(cmd, '-echo');
 
                             job_id = regexp(cmdout, 'Submitted batch job (\d+)\n', 'tokens');
@@ -926,10 +927,10 @@ end
 
 % save stitch information for primary channels if there is xcorr shift
 [~, fsname] = fileparts(tileFullpaths{1});
-out = regexp(fsname, '_?(Scan_.*)', 'tokens');
-if ~isempty(out)
-    fsname = out{1}{1};
-end
+% out = regexp(fsname, '_?(Scan_.*)', 'tokens');
+% if ~isempty(out)
+%     fsname = out{1}{1};
+% end
 
 if isPrimaryCh 
     stichInfoPath = [dataPath, filesep, ResultDir, filesep, stitchInfoDir];

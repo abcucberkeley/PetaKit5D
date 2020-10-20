@@ -95,6 +95,12 @@ function [] = XR_microscopeAutomaticProcessing(dataPaths, varargin)
 % xruan (08/21/2020): add support for Objective Scan
 % xruan (08/26/2020): add support for user defined output resolution (dsr,
 % stitch, decon) （to be done)
+% xruan (10/05/2020): add support for zarr-stitching pipeline with option:
+%                     'zarr' ('matlab' for original pipeline)
+% xruan (10/06/2020): add support for input of multiple parts of same volume
+% xruan (10/15/2020): add support for combined process for DS and rotate;
+%                     also add support for only processing first timepoint
+% xruan (10/20/2020): simplify image size check to data size
 
 
 ip = inputParser;
@@ -111,6 +117,7 @@ ip.addParameter('Reverse', true, @islogical);
 ip.addParameter('ObjectiveScan', false, @islogical);
 ip.addParameter('sCMOSCameraFlip', false, @islogical);
 ip.addParameter('Save16bit', [false, false, false, false], @(x) (numel(x) == 1 || numel(x) == 4) && islogical(x));
+ip.addParameter('onlyFirstTP', false, @islogical);
 % pipeline steps
 ip.addParameter('Deskew', true, @islogical);
 ip.addParameter('Rotate', true, @islogical);
@@ -118,11 +125,13 @@ ip.addParameter('Stitch', false, @islogical);
 ip.addParameter('Decon', ~false, @islogical);
 ip.addParameter('RotateAfterDecon', false, @islogical);
 % deskew and rotation options
+ip.addParameter('DSRCombined', true, @islogical); 
 ip.addParameter('LLFFCorrection', false, @islogical);
 ip.addParameter('LowerLimit', 0.4, @isnumeric); % this value is the lowest
 ip.addParameter('LSImagePaths', {'','',''}, @iscell);
 ip.addParameter('BackgroundPaths', {'','',''}, @iscell);
 % stitch parameters
+ip.addParameter('stitchPipeline', 'matlab', @ischar); % matlab or zarr
 ip.addParameter('stitchResultDir', '', @ischar);
 ip.addParameter('imageListFullpaths', '', @(x) ischar(x) || iscell(x));
 ip.addParameter('axisOrder', 'xyz', @(x) ischar(x));
@@ -130,6 +139,7 @@ ip.addParameter('BlendMethod', 'none', @isstr);
 ip.addParameter('xcorrShift', false, @islogical);
 ip.addParameter('xcorrMode', 'primaryFirst', @(x) strcmpi(x, 'primary') || strcmpi(x, 'primaryFirst') || strcmpi(x, 'all')); % 'primary': choose one channel as primary channel, 
 ip.addParameter('boundboxCrop', [], @(x) isnumeric(x) && (isempty(x) || all(size(x) == [3, 2]) || numel(x) == 6));
+ip.addParameter('primaryCh', '', @isstr);
 % decon parameters
 ip.addParameter('cudaDecon', false, @islogical);
 ip.addParameter('cppDecon', ~false, @islogical);
@@ -162,7 +172,7 @@ ip.parse(dataPaths, varargin{:});
 
 % make sure the function is in the root of XR_Repository. 
 mpath = fileparts(which(mfilename));
-repo_rt = [mpath, '/../'];
+repo_rt = [mpath, '/../../'];
 cd(repo_rt);
 
 pr = ip.Results;
@@ -177,6 +187,7 @@ Reverse = pr.Reverse;
 ChannelPatterns = pr.ChannelPatterns;
 Save16bit = pr.Save16bit;
 %deskew and rotate
+DSRCombined = pr.DSRCombined;
 LLFFCorrection = pr.LLFFCorrection;
 LowerLimit = pr.LowerLimit;
 LSImagePaths = pr.LSImagePaths;
@@ -185,6 +196,7 @@ Deskew = pr.Deskew;
 Rotate = pr.Rotate;
 % stitch parameters
 Stitch = pr.Stitch;
+stitchPipeline = pr.stitchPipeline;
 stitchResultDir = pr.stitchResultDir;
 imageListFullpaths = pr.imageListFullpaths;
 axisOrder = pr.axisOrder;
@@ -192,6 +204,8 @@ BlendMethod = pr.BlendMethod;
 xcorrShift = pr.xcorrShift;
 xcorrMode = pr.xcorrMode;
 boundboxCrop = pr.boundboxCrop;
+onlyFirstTP = pr.onlyFirstTP;
+primaryCh = pr.primaryCh;
 % decon parameters
 Decon = pr.Decon;
 cppDecon = pr.cppDecon;
@@ -246,32 +260,8 @@ if numel(Overwrite) == 1
 end
 
 % check if a slurm-based computing cluster exists
-clusterAvailable = false;
-if parseCluster 
-    [status, ~] = system('sinfo');
-    clusterAvailable = true;
-    if status ~= 0
-        warning('A slurm-based computing cluster is not exist. Set parseCluster as false.')
-        parseCluster = false;
-        clusterAvailable = false;
-    end
-    if parseCluster && ~exist(jobLogDir, 'dir')
-        warning('The job log directory does not exist, use %s/job_logs as job log directory', dataPath)
-        jobLogDir = [dataPath, '/tmp'];
-        if ~exist(jobLogDir, 'dir')
-            mkdir(jobLogDir);
-            fileattrib(jobLogDir, '+w', 'g');
-        end
-    end
-    job_log_fname = [jobLogDir, '/job_%A_%a.out'];
-    job_log_error_fname = [jobLogDir, '/job_%A_%a.err'];
-    
-    % For cudaDecon, not applicable.
-    if cpuOnlyNodes
-        slurm_constraint_str = ' --constraint=c24 ';
-    else
-        slurm_constraint_str = '';
-    end
+if parseCluster
+    [parseCluster, job_log_fname, job_log_error_fname, slurm_constraint_str, jobLogDir] = checkSlurmCluster(dataPath, jobLogDir, cpuOnlyNodes);
 end
 
 % for stitching, enable DS and DSR
@@ -327,19 +317,26 @@ if Stitch
 end
 
 % first check if DS and Deconvolution directories exist
+if DSRCombined
+    Deskew = true;
+    Rotate = true;
+end
+
 if Deskew
-    dsPaths = cell(nd, 1);
-    for d = 1 : nd
-        dataPath = dataPaths{d};
-        dsPath = [dataPath, '/DS/'];
-        if Overwrite(1) && exist(dsPath, 'dir')
-            rmdir(dsPath, 's');
+    if ~DSRCombined
+        dsPaths = cell(nd, 1);
+        for d = 1 : nd
+            dataPath = dataPaths{d};
+            dsPath = [dataPath, '/DS/'];
+            if Overwrite(1) && exist(dsPath, 'dir')
+                rmdir(dsPath, 's');
+            end
+            if ~exist(dsPath, 'dir')
+                mkdir(dsPath);
+                fileattrib(dsPath, '+w', 'g');
+            end
+            dsPaths{d} = dsPath;
         end
-        if ~exist(dsPath, 'dir')
-            mkdir(dsPath);
-            fileattrib(dsPath, '+w', 'g');
-        end
-        dsPaths{d} = dsPath;
     end
     
     % check LS and Background images for flat field correction
@@ -386,7 +383,7 @@ if Decon
         cudaDecon = false;
     end
 
-    if cudaDecon && gpuDeviceCount() < 1 && ~clusterAvailable
+    if cudaDecon && gpuDeviceCount() < 1 && ~parseCluster
         warning('There is no GPU in the node, and ther cluster is also not available. Set cudaDecon as false!');
         cudaDecon = false;
     end
@@ -457,11 +454,12 @@ if Decon
         if ~exist(psfFullpaths{f}, 'file')
             error('PSF file %s does not exist!', psfFullpaths{f});
         end
-        if DSR || Stitch
+        [psfPath, fsname] = fileparts(psfFullpaths{f});        
+        rotPSFFullpaths{f} = [psfPath, '/Rotated/', fsname, '.tif'];
+        if (DSR || Stitch) && ~exist(rotPSFFullpaths{f}, 'file')
+            % XR_rotate_PSF(psfFullpaths{f}, 'Reverse', Reverse);
             XR_rotate_PSF(psfFullpaths{f});
         end
-        [psfPath, fsname] = fileparts(psfFullpaths{f});
-        rotPSFFullpaths{f} = [psfPath, '/Rotated/', fsname, '.tif'];
     end
 else
     RotateAfterDecon = false;
@@ -469,25 +467,52 @@ end
 
 %% check existing files and parse channels
 fnames_cell = cell(nd, 1);
+gfnames_cell = cell(nd, 1); % for grouped partial volume files
+partialvol_cell = cell(nd, 1);
 for d = 1 : nd
     dataPath = dataPaths{d};
-    dir_info = dir([dataPath, '*.tif']);
-    fnames_d = {dir_info.name}';
+    % dir_info = dir([dataPath, '*.tif']);
+    % fnames_d = {dir_info.name}';
+    [containPartialVolume, groupedFnames_d, groupedDatenum, groupedDatasize] = groupPartialVolumeFiles(dataPath);
+    if any(containPartialVolume)
+        fnames_d = cellfun(@(x) x{1}, groupedFnames_d, 'unif', 0);
+        datenum_d = cellfun(@(x) max(x), groupedDatenum);
+        datesize_d = cellfun(@(x) max(x), groupedDatasize);
+    else
+        fnames_d = groupedFnames_d;
+        datenum_d = groupedDatenum;
+        datesize_d = groupedDatasize;
+    end
+    
     if Streaming
-        last_modify_time = (datenum(clock) - [dir_info.datenum]) * 24 * 60;
+        last_modify_time = (datenum(clock) - datenum_d) * 24 * 60;
         latest_modify_time = min(last_modify_time);
 
         % not include the lastest file if it is very recent
         if latest_modify_time < minModifyTime
             fnames_d(last_modify_time == latest_modify_time) = [];
+            if any(containPartialVolume)
+                groupedFnames_d(last_modify_time == latest_modify_time) = [];
+            end
         end
     end
     fnames_cell{d} = fnames_d;
+    gfnames_cell{d} = groupedFnames_d;
+    if any(containPartialVolume)
+        partialvol_cell{d} = cellfun(@(x) numel(x) > 1, groupedFnames_d);
+        datesize_cell{d} = cellfun(@(x) sum(x), datesize_d);
+    else
+        partialvol_cell{d} = false(numel(fnames_d), 1);
+        datesize_cell{d} = datesize_d;
+    end
 end
 
 fdinds = arrayfun(@(x) ones(numel(fnames_cell{x}), 1) * x, 1 : nd, 'unif', 0);
 fnames = cat(1, fnames_cell{:});
 fdinds = cat(1, fdinds{:});
+gfnames = cat(1, gfnames_cell{:});
+partialvols = cat(1, partialvol_cell{:});
+dataSizes = cat(1, datesize_cell{:});
 
 % filter filenames by channel patterns
 include_flag = false(numel(fnames), 1);
@@ -496,6 +521,9 @@ for c = 1 : numel(ChannelPatterns)
 end
 fnames = fnames(include_flag);
 fdinds = fdinds(include_flag);
+gfnames = gfnames(include_flag);
+partialvols = partialvols(include_flag);
+dataSizes = dataSizes(include_flag);
 
 nF = numel(fnames);
 
@@ -545,19 +573,25 @@ end
 if parseCluster
     job_ids = -ones(nF, 4);
     imSize_mat = zeros(nF, 3, 2);
+    dataSize_mat = zeros(nF, 2);
+    dataSize_mat(:, 1) = dataSizes;
 end
 
 % use while loop to perform computing for all images
 while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all') || ...
         (Streaming && (nF == 0 || latest_modify_time < maxModifyTime || waitLoopCounter < maxWaitLoopNum))
     for f = 1 : nF
+        tic
         if all(is_done_flag(f, :))
             continue;
         end
         
         % first deskew and rotation
         fname = fnames{f};
+        [~, fsname] = fileparts(fname);
         fdind = fdinds(f);
+        partialvol = partialvols(f);
+        gfname = gfnames{f};
         dataPath = dataPaths{fdind};
         
         frameFullpath = [dataPath, fname];
@@ -572,15 +606,18 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all') || ...
         
         %% deskew w/o rotate
         if Deskew
-            dsPath = dsPaths{fdind};
-            dsFullpath = [dsPath, fname];
+            if ~DSRCombined
+                dsPath = dsPaths{fdind};
+                dsFullpath = [dsPath, fname];
+                tmpFullpath = sprintf('%s.tmp', dsFullpath(1 : end - 4));
+            end
             if Rotate
                 dsrPath = dsrPaths{fdind};
                 dsrFullpath = [dsrPath, fname];
+                tmpFullpath = sprintf('%s.tmp', dsrFullpath(1 : end - 4));                
             end
-            tmpFullpath = sprintf('%s.tmp', dsFullpath(1 : end - 4));
 
-            if exist(dsFullpath, 'file') && (~Rotate || exist(dsrFullpath, 'file'))
+            if (DSRCombined || exist(dsFullpath, 'file')) && (~Rotate || exist(dsrFullpath, 'file'))
                 is_done_flag(f, 1) = true;
                 if exist(tmpFullpath, 'file')
                     delete(tmpFullpath);
@@ -592,12 +629,19 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all') || ...
         
         % get image size 
         if parseCluster
-            if imSize_mat(f, 1, 1) == 0 && (~all(is_done_flag(f, 1 : 2)) || f == FTP_ind)
-                imSize_mat(f, :, 1) = getImageSize(frameFullpath);
+            if dataSize_mat(f, 1) == 0 && (~all(is_done_flag(f, 1 : 2)) || f == FTP_ind)
+                if ~partialvol
+                    imSize_mat(f, :, 1) = getImageSize(frameFullpath);
+                else
+                    for g = 1 : numel(gfname)
+                        gframeFullpath = [dataPath, gfname{g}];
+                        imSize_mat(f, :, 1) = imSize_mat(f, :, 1) + getImageSize(gframeFullpath);
+                    end
+                end
             end
         end
 
-        if ~is_done_flag(f, 1)
+        if ~is_done_flag(f, 1) 
             if LLFFCorrection
                 LLFFMapping =  ~cellfun(@isempty, regexpi(fname, ChannelPatterns));
                 LSImage = LSImagePaths{LLFFMapping};
@@ -608,6 +652,14 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all') || ...
             end
                 
             if exist(tmpFullpath, 'file') || parseCluster
+                % set up input file for either single volume file or a
+                % group of files
+                ds_input_path = {frameFullpath};
+                if partialvol
+                    ds_input_path = cellfun(@(x) [dataPath, x], gfname, 'unif', 0);
+                end
+                ds_input_str = sprintf('{''%s''}', strjoin(ds_input_path, ''','''));
+
                 if parseCluster
                     job_status = check_slurm_job_status(job_ids(f, 1), task_id);
                     
@@ -619,18 +671,24 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all') || ...
                     if job_status == -1
                         % first estimate file size and decide whether cpusPerTask
                         % is enough
-                        estRequiredMemory = XR_estimateComputingMemory('', {'deskew'}, 'imSize', imSize_mat(f, :, 1));
+                        if ~DSRCombined
+                            estRequiredMemory = XR_estimateComputingMemory('', {'deskew'}, 'imSize', imSize_mat(f, :, 1));
+                        else
+                            estRequiredMemory = prod(imSize_mat(f, :, 1)) / 2^30 * 4 * 10;
+                        end
                         if cpusPerTask * 20 < estRequiredMemory
                             cpusPerTask = min(24, ceil(estRequiredMemory / 20));
+                        else
+                            cpusPerTask = min(cpusPerTask, ceil(estRequiredMemory / 20));
                         end
-                        
-                        matlab_cmd = sprintf(['addpath(genpath(pwd));', ...
-                            'tic;XR_deskewRotateFrame(''%s'',%.20d,%.20d,''SkewAngle'',%.20d,''ObjectiveScan'',%s,', ...
+                                                    
+                        matlab_cmd = sprintf(['setup([],true);', ...
+                            'tic;XR_deskewRotateFrame(%s,%.20d,%.20d,''SkewAngle'',%.20d,''ObjectiveScan'',%s,', ...
                             '''Reverse'',%s,''LLFFCorrection'',%s,''LowerLimit'',%.20d,''LSImage'',''%s'',', ...
-                            '''BackgroundImage'',''%s'',''Rotate'',%s,''Save16bit'',%s);toc;'], ...
-                            frameFullpath, xyPixelSize, dz, SkewAngle, string(ObjectiveScan), string(Reverse), ...
+                            '''BackgroundImage'',''%s'',''Rotate'',%s,''DSRCombined'',%s,''Save16bit'',%s);toc;'], ...
+                            ds_input_str, xyPixelSize, dz, SkewAngle, string(ObjectiveScan), string(Reverse), ...
                             string(LLFFCorrection), LowerLimit, LSImage, BackgroundImage, string(Rotate), ...
-                            string(Save16bit(1)));
+                            string(DSRCombined), string(Save16bit(1)));
                         deskew_cmd = sprintf('module load matlab/r2020a; matlab -nodisplay -nosplash -nodesktop -nojvm -r \\"%s\\"', matlab_cmd);
                         cmd = sprintf('sbatch --array=%d %s -o %s -e %s -p abc --qos abc_normal -n1 --mem-per-cpu=21418M --cpus-per-task=%d --wrap="%s"', ...
                             task_id, slurm_constraint_str, job_log_fname, job_log_error_fname, cpusPerTask, deskew_cmd);
@@ -653,15 +711,15 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all') || ...
                 fclose(fopen(tmpFullpath, 'w'));
             end
             if ~parseCluster
-                XR_deskewRotateFrame(frameFullpath, xyPixelSize, dz, 'SkewAngle', SkewAngle, ...
+                XR_deskewRotateFrame(ds_input_path, xyPixelSize, dz, 'SkewAngle', SkewAngle, ...
                     'ObjectiveScan', ObjectiveScan, 'Reverse', Reverse, 'LLFFCorrection', LLFFCorrection, ...
                     'LowerLimit', LowerLimit, 'LSImage', LSImage, 'BackgroundImage', BackgroundImage, ...
-                    'Rotate', Rotate, 'Save16bit', Save16bit(1), 'uuid', uuid);
+                    'Rotate', Rotate, 'DSRCombined', DSRCombined, 'Save16bit', Save16bit(1), 'uuid', uuid);
                 trial_counter(f, 1) = trial_counter(f, 1) + 1;
             end
 
             % check if computing is done
-            if exist(dsFullpath, 'file') && (~Rotate || exist(dsrFullpath, 'file'))
+            if (DSRCombined || exist(dsFullpath, 'file')) && (~Rotate || exist(dsrFullpath, 'file'))
                 is_done_flag(f, 1) = true;
                 if exist(tmpFullpath, 'file')
                     delete(tmpFullpath);
@@ -701,7 +759,7 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all') || ...
             useExistDSR = true;
             resampleType = 'isotropic';
             zNormalize = false;
-            onlyFirstTP = false;
+            % onlyFirstTP = false;
             bbox = boundboxCrop;
             imageListFullpath = imageListFullpaths{fdind};
 
@@ -717,15 +775,15 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all') || ...
                         cpusPerTask = min(24, ceil(estRequiredMemory / 20));
                     end
 
-                    matlab_cmd = sprintf(['', ...
-                        'addpath(genpath(pwd));tic;XR_matlab_stitching_wrapper(''%s'',''%s'',' ...
+                    matlab_cmd = sprintf(['setup([],true);tic;XR_matlab_stitching_wrapper(''%s'',''%s'',' ...
                         '''ResultDir'',''%s'',''Streaming'',%s,''useExistDSR'',%s,''axisOrder'',''%s'',', ...
                         '''resampleType'',''%s'',''Reverse'',%s,''xcorrShift'',%s,''xcorrMode'',''%s'',', ...
                         '''BlendMethod'',''%s'',''zNormalize'',%s,''onlyFirstTP'',%s,''boundboxCrop'',[%s],', ...
-                        '''Save16bit'',%s);toc;'], ...
+                        '''Save16bit'',%s,''primaryCh'',''%s'',''pipeline'',''%s'');toc;'], ...
                         dataPath, imageListFullpath, stitchResultDir, string(Streaming), string(useExistDSR), ...
                         axisOrder, resampleType, string(Reverse), string(xcorrShift), xcorrMode, BlendMethod, ...
-                        string(zNormalize), string(onlyFirstTP), strrep(num2str(bbox, '%d,'), ' ', ''), string(Save16bit(2)));
+                        string(zNormalize), string(onlyFirstTP), strrep(num2str(bbox, '%d,'), ' ', ''), ...
+                        string(Save16bit(2)), primaryCh, stitchPipeline);
                     stitch_cmd = sprintf('module load matlab/r2020a; matlab -nodisplay -nosplash -nodesktop -r \\"%s\\"', matlab_cmd);
                     cmd = sprintf(['sbatch --array=1 %s -o %s -e %s -p abc', ...
                         ' --qos abc_normal -n1 --mem-per-cpu=21418M --cpus-per-task=%d --wrap="%s"'], ...
@@ -741,7 +799,8 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all') || ...
                     'Streaming', Streaming, 'useExistDSR', useExistDSR, 'axisOrder', axisOrder, ...
                     'resampleType', 'isotropic', 'Reverse', Reverse, 'BlendMethod', BlendMethod, ...
                     'xcorrShift', xcorrShift, 'xcorrMode', xcorrMode, 'zNormalize', zNormalize, ...
-                    'onlyFirstTP', onlyFirstTP, 'boundboxCrop', bbox, 'Save16bit', Save16bit(2), 'parseCluster', false);
+                    'onlyFirstTP', onlyFirstTP, 'boundboxCrop', bbox, 'Save16bit', Save16bit(2), ...
+                    'primaryCh', primaryCh, 'pipeline', stitchPipeline, 'parseCluster', false);
             end
             
             if exist('stchFullpath', 'var') && exist(stchFullpath, 'file')
@@ -773,11 +832,16 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all') || ...
             if Stitch
                 % in case fname not start with Scan_
                 % dir_info = dir(sprintf('%s/%s*Abs.tif', stchPath, fname(regexp(fname, 'Scan.*') : end - 43)));
-                dir_info = dir(sprintf('%s/%s*Abs.tif', stchPath, fname(1 : end - 43)));
+                if strcmp(stitchPipeline, 'zarr')
+                    dir_info = dir(sprintf('%s/%s*Abs.zarr', stchPath, fname(1 : end - 43)));
+                else
+                    dir_info = dir(sprintf('%s/%s*Abs.tif', stchPath, fname(1 : end - 43)));
+                end
                 if isempty(dir_info) 
                     continue;
                 end
                 stch_fname = dir_info(1).name;
+                [~, stch_fsname] = fileparts(stch_fname);
                 dcframeFullpath = [stchPath, stch_fname];
                 dc_dz = xyPixelSize;
                 dc_dzPSF = xyPixelSize;
@@ -785,7 +849,7 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all') || ...
                 
                 % if stitch, only do computing when it is for the first
                 % tile, to avoid replicate computing
-                if ~contains(fname, stch_fname(1 : end - 4))
+                if ~contains(fname, stch_fsname)
                     is_done_flag(f, 3) = true;
                     continue;
                 end
@@ -799,9 +863,9 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all') || ...
             end
                             
             deconPath = deconPaths{fdind};
-            deconFullpath = sprintf('%s/%s_decon.tif', deconPath, fname(1 : end - 4));
+            deconFullpath = sprintf('%s/%s_decon.tif', deconPath, fsname);
             if Stitch
-                deconFullpath = sprintf('%s/%s_decon.tif', deconPath, stch_fname(1 : end - 4));
+                deconFullpath = sprintf('%s/%s_decon.tif', deconPath, stch_fsname);
             end
             dctmpFullpath = sprintf('%s.tmp', deconFullpath(1 : end - 4));
 
@@ -834,10 +898,11 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all') || ...
                     % if decon result exist, but mask file not exist, rerun
                     % it to save the mask. 
                     if Stitch
-                        maskFullpaths{fdind} = sprintf('%s/Masks/%s_eroded.tif', deconPath, stch_fname(1 : end - 4));
+                        maskFullpaths{fdind} = sprintf('%s/Masks/%s_eroded.tif', deconPath, stch_fsname);
                     end
                     if is_done_flag(f, 3) && ~exist(maskFullpaths{fdind}, 'file')
                         is_done_flag(f, 3) = false;
+                        fprintf('Mask file %s does not exist, delete the deconvolved result\n', maskFullpaths{fdind});
                         delete(deconFullpath);
                     end
                 else
@@ -893,7 +958,7 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all') || ...
 
                         % do not use rotation in decon functions
                         if cudaDecon
-                            matlab_cmd = sprintf(['addpath(genpath(pwd));tic;', ...
+                            matlab_cmd = sprintf(['setup([],true);tic;', ...
                                 'XR_cudaDeconFrame3D(''%s'',%.10f,%.10f,'''',''PSFfile'',''%s'',', ...
                                 '''cudaDeconPath'',''%s'',''OTFGENPath'',''%s'',', ...
                                 '''dzPSF'',%.10f,''Background'',[%d],''SkewAngle'',%d,', ...
@@ -904,7 +969,7 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all') || ...
                             cmd = sprintf('sbatch --array=%d -o %s -e %s -p abc --gres=gpu:1 --qos abc_normal -n1 --mem-per-cpu=33G --cpus-per-task=%d --wrap="%s"', ...
                                 task_id, job_log_fname, job_log_error_fname, 5, decon_cmd);
                         elseif cppDecon
-                            matlab_cmd = sprintf(['addpath(genpath(pwd));tic;', ...
+                            matlab_cmd = sprintf(['setup([],true);tic;', ...
                                 'XR_cppDeconFrame3D(''%s'',%.10f,%.10f,'''',''PSFfile'',''%s'',', ...
                                 '''cppDeconPath'',''%s'',''loadModules'',''%s'',', ...
                                 '''dzPSF'',%.10f,''Background'',[%d],''SkewAngle'',%d,', ...
@@ -917,7 +982,7 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all') || ...
                             cmd = sprintf('sbatch --array=%d %s -o %s -e %s -p abc --qos abc_normal -n1 --mem-per-cpu=21418M --cpus-per-task=%d --wrap="%s"', ...
                                 task_id, slurm_constraint_str, job_log_fname, job_log_error_fname, cpusPerTask, decon_cmd);                        
                         else
-                            matlab_cmd = sprintf(['addpath(genpath(pwd));tic;', ...
+                            matlab_cmd = sprintf(['setup([],true);tic;', ...
                                 'XR_RLdeconFrame3D(''%s'',%.10f,%.10f,'''',''PSFfile'',''%s'',', ...
                                 '''dzPSF'',%.10f,''Background'',[%d],''SkewAngle'',%d,', ...
                                 '''Rotate'',%s,''Save16bit'',%s);toc;'], ...
@@ -1017,7 +1082,7 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all') || ...
                             cpusPerTask = min(24, ceil(estMem / 20));
                         end
 
-                        matlab_cmd = sprintf('addpath(genpath(pwd));tic;XR_RotateFrame3D(''%s'',%.20d,%.20d,''SkewAngle'',%.20d,''ObjectiveScan'',%s,''Reverse'',%s,''Save16bit'',%s);toc;', ...
+                        matlab_cmd = sprintf('setup([],true);tic;XR_RotateFrame3D(''%s'',%.20d,%.20d,''SkewAngle'',%.20d,''ObjectiveScan'',%s,''Reverse'',%s,''Save16bit'',%s);toc;', ...
                             deconFullpath, xyPixelSize, dz, SkewAngle, string(ObjectiveScan), string(Reverse), string(Save16bit(4)));
                         decon_cmd = sprintf('module load matlab/r2020a; matlab -nodisplay -nosplash -nodesktop -nojvm -r \\"%s\\"', matlab_cmd);
                         cmd = sprintf('sbatch --array=%d %s -o %s -e %s -p abc --qos abc_normal -n1 --mem-per-cpu=21418M --cpus-per-task=%d --wrap="%s"', ...
@@ -1054,6 +1119,7 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all') || ...
                 end
             end
         end
+        toc
     end
     
     %% wait for running jobs finishing and checking for new coming images

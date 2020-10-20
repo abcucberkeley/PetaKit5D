@@ -20,6 +20,7 @@ function [] = XR_cppDeconFrame3D(frameFullpaths, pixelSize, dz, varargin)
 % xruan (07/20/2020): readd Edge Erosion options in Matlab as cpp erosion is very slow. 
 % xruan (07/21/2020): add support for using existing eroded mask for edge erosion.  
 % xruan (07/29/2020): Increase the size limit (from 4GB to 100GB) to use largeFile option, as cppDecon support bigTiff now.  
+% xruan (10/15/2020): Add support for zarr format
 
 
 ip = inputParser;
@@ -63,7 +64,7 @@ ip.addParameter('parseCluster', true, @islogical);
 ip.addParameter('masterCompute', true, @islogical); % master node participate in the task computing. 
 ip.addParameter('masterCPU', false, @islogical); % master node is a cpu node, which is just for large file deconvolution. 
 ip.addParameter('jobLogDir', '../job_logs', @ischar);
-ip.addParameter('cpusPerTask', 8, @isnumeric);
+ip.addParameter('cpusPerTask', 2, @isnumeric);
 ip.addParameter('uuid', '', @ischar);
 ip.addParameter('maxTrialNum', 3, @isnumeric);
 ip.addParameter('unitWaitTime', 2, @isnumeric);
@@ -206,6 +207,12 @@ for f = 1 : nF
     end
     [pathstr, fsname, ext] = fileparts(frameFullpath);
     fname = [fsname ext];
+    if strcmp(ext, '.zarr')
+        zarrFile = true;
+    else
+        zarrFile = false;
+    end
+    
     deconPath = p.deconPath;
     if isempty(deconPath)
         deconPath = [pathstr, filesep, 'CPPdecon'];
@@ -213,6 +220,9 @@ for f = 1 : nF
     
     % first try single GPU deconvolution, if it fails split into multiple chunks
     deconFullPath = [deconPath filesep fsname '_decon.tif'];
+    % if zarrFile
+    %    deconFullPath_zarr = [deconPath filesep fsname '_decon.zarr'];
+    % end
     % deconTempPath = [deconPath filesep fname '_decon.tif'];
     if exist(deconFullPath, 'file') && ~p.Overwrite
         disp('Deconvolution results already exist, skip it!');
@@ -220,13 +230,16 @@ for f = 1 : nF
     end
 
     % check file size
-    [estMem, estGPUMem, rawImageSize, sz] = XR_estimateComputingMemory(frameFullpath, {'deconvolution'}, 'cudaDecon', false);
-    % due to 4Gb size limit in cppDecon program, we need to directly use
-    % large file computing if the final size is greater than 50GB
-    if rawImageSize / 2 > 50
+    if ~zarrFile
+        [estMem, estGPUMem, rawImageSize, sz] = XR_estimateComputingMemory(frameFullpath, {'deconvolution'}, 'cudaDecon', false);
+        % due to 4Gb size limit in cppDecon program, we need to directly use
+        % large file computing if the final size is greater than 50GB
+        if rawImageSize / 2 > 50
+            largeFile = true;
+        end
+    else
         largeFile = true;
     end
-
     if ~largeFile
         if EdgeErosion > 0
             fprintf('Create eroded masks using raw data...\n');
@@ -356,19 +369,15 @@ for f = 1 : nF
 
     tic
     fprintf(['reading ' fname '...\n'])
-    im = readtiff(frameFullpath);
+    if zarrFile
+        bim = blockedImage(frameFullpath, 'Adapter', ZarrAdapter);
+        im = gather(bim);
+    else
+        im = readtiff(frameFullpath);
+    end
     toc
     
     if EdgeErosion > 0
-        im_bw = im > 0;
-        % pad to avoid not erosion if a pixel touching the boundary
-        im_bw_pad = false(size(im) + 2);
-        im_bw_pad(2 : end - 1, 2 : end - 1, 2 : end - 1) = im_bw;
-        im_bw_erode = imerode(im_bw_pad, strel('sphere', EdgeErosion));
-        im_bw_erode = im_bw_erode(2 : end - 1, 2 : end - 1, 2 : end - 1);
-        clear im_bw im_bw_pad
-        
-        % save mask file as common one for other time points/channels
         if SaveMaskfile
             maskPath = [deconPath, filesep, 'Masks'];
             if ~exist(maskPath, 'dir')
@@ -376,6 +385,21 @@ for f = 1 : nF
             end
             maskFullPath = sprintf('%s/%s_eroded.tif', maskPath, fsname);
             maskTmpPath = sprintf('%s/%s_eroded_%s.tif', maskPath, fsname, uuid);
+        end
+        if ~(SaveMaskfile && exist(maskFullPath, 'file'))
+            im_bw = im > 0;
+            % pad to avoid not erosion if a pixel touching the boundary
+            im_bw_pad = false(size(im) + 2);
+            im_bw_pad(2 : end - 1, 2 : end - 1, 2 : end - 1) = im_bw;
+            im_bw_erode = imerode(im_bw_pad, strel('sphere', EdgeErosion));
+            im_bw_erode = im_bw_erode(2 : end - 1, 2 : end - 1, 2 : end - 1);
+            clear im_bw im_bw_pad
+        else
+            im_bw_erode = readtiff(maskFullPath) > 0;
+        end
+        
+        % save mask file as common one for other time points/channels
+        if SaveMaskfile
             writetiff(uint8(im_bw_erode), maskTmpPath);
             movefile(maskTmpPath, maskFullPath);
         end

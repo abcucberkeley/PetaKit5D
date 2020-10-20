@@ -1,5 +1,6 @@
 *.mat
 *.m~
+*.asv
 .ipynb_checkpoints
 *.c~
 *.tif

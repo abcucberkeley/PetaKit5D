@@ -4,8 +4,7 @@ function [uuid] = get_uuid()
 % Author: Xiongtao Ruan (02/22/2020)
 
 try 
-    temp = java.util.UUID.randomUUID;
-    uuid = char(temp.toString);
+    uuid = char(java.util.UUID.randomUUID.toString);
 catch
     [status, cmdout] = system('uuidgen');
     uuid = strip(cmdout);

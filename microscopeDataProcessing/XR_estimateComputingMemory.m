@@ -12,7 +12,7 @@ ip.CaseSensitive = false;
 ip.addRequired('filePath'); 
 ip.addOptional('steps', {'deskew', 'rotate', 'deconvolution'}); 
 ip.addParameter('imSize', [], @(x) isnumeric(x) && (isempty(x) || numel(x) == 3)); 
-ip.addParameter('memFactors', [5, 5, 10]); 
+ip.addParameter('memFactors', [10, 5, 10]); 
 ip.addParameter('cudaDecon', ~false, @islogical);
 ip.addParameter('GPUMemFactor', 1.5); 
 ip.addParameter('GPUMaxMem', 12, @isnumeric);
@@ -43,7 +43,7 @@ estRequiredMemory = zeros(numel(steps), 1);
 if contains(steps, 'deskew', 'IgnoreCase', true)
     ind = strcmpi(steps, 'deskew');
     % use 300 slices as threshold
-    estRequiredMemory(ind) = rawImageSize * memFactors(1) * max(1, imSize(3) / 300);
+    estRequiredMemory(ind) = rawImageSize * memFactors(1) * max(1, (imSize(3) / 300) ^ 2);
 end
 
 if contains(steps, 'rotate', 'IgnoreCase', true)
