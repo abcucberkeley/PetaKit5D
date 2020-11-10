@@ -12,7 +12,8 @@ ip.CaseSensitive = false;
 ip.addRequired('filePath'); 
 ip.addOptional('steps', {'deskew', 'rotate', 'deconvolution'}); 
 ip.addParameter('imSize', [], @(x) isnumeric(x) && (isempty(x) || numel(x) == 3)); 
-ip.addParameter('memFactors', [10, 5, 10]); 
+ip.addParameter('dataSize', [], @(x) isnumeric(x) && (isempty(x) || numel(x) == 1)); 
+ip.addParameter('memFactors', [15, 5, 10]); 
 ip.addParameter('cudaDecon', ~false, @islogical);
 ip.addParameter('GPUMemFactor', 1.5); 
 ip.addParameter('GPUMaxMem', 12, @isnumeric);
@@ -23,21 +24,26 @@ warning('off', 'all');
 
 steps = ip.Results.steps;
 imSize = ip.Results.imSize;
+dataSize = ip.Results.dataSize;
 memFactors = ip.Results.memFactors;
 cudaDecon = ip.Results.cudaDecon;
 GPUMemFactor = ip.Results.GPUMemFactor;
 
-if ~exist(filePath, 'file')
-    if isempty(imSize)
-        error('File %s does not exist!', filePath);        
+if isempty(dataSize) || contains(steps, 'deskew', 'IgnoreCase', true)
+    if ~exist(filePath, 'file')
+        if isempty(imSize)
+            error('File %s does not exist!', filePath);        
+        end
+    else
+        imSize = getImageSize(filePath);    
     end
+
+    % in double size
+    rawImageSize = prod(imSize) * 4 / 1024^3;
 else
-    imSize = getImageSize(filePath);    
+    rawImageSize = dataSize * 2 / 1024^3;
 end
-
-% in double size
-rawImageSize = prod(imSize) * 8 / 1024^3;
-
+    
 estRequiredMemory = zeros(numel(steps), 1);
 
 if contains(steps, 'deskew', 'IgnoreCase', true)

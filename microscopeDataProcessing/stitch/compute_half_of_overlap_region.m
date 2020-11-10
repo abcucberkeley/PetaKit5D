@@ -44,6 +44,8 @@ mregion_1 = [s1, t1];
 mregion_2 = [s2, t2];
 
 switch overlapType
+    case 'zero'
+        fc = 0;
     case 'none'
         fc = 0.5;
     case 'half'

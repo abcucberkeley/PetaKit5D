@@ -33,19 +33,21 @@ function [data] = loadConditionData(varargin)
 % xruan, 09/17/2019, for channel folder, if the string is not a folder
 % name, try to find one that match it. 
 % xruan, 01/02/2020 first make sure condDir is full path
+% xruan (11/09/2020) add option to include experiments without experiment number
 
 ip = inputParser;
 ip.CaseSensitive = false;
 ip.FunctionName = 'loadConditionData';
 ip.addOptional('condDir', [], @(x) isempty(x) || (ischar(x) && ~any(strcmpi(x,...
     {'Parameters', 'MovieSelector', 'IgnoreEmptyFolders', 'FrameRate'}))));
-ip.addOptional('chNames',{} ); %{'ch1','ch2','ch3'}
+ip.addOptional('chNames', {}); %{'ch1','ch2','ch3'}
 ip.addOptional('markers', {}); %{'alexa488','alexa568','alexa647'},
 ip.addParameter('Parameters', [1.4 150 16e-6], @(x) numel(x)==3);
 ip.addParameter('MovieSelector', 'Ex', @ischar);
 ip.addParameter('StrictSelector', false, @islogical);
 ip.addParameter('IgnoreEmptyFolders', true, @islogical);
-ip.addParameter('AllowChannelNameMatching', true, @islogic); % xruan
+ip.addParameter('ChannelMatching', true, @islogical); % xruan
+ip.addParameter('IgnoreExpNumber', false, @islogical); % xruan
 ip.addOptional('maxlevel', 1, @(x) isempty(x) || (isnumeric(x) && abs(round(x))==x));
 ip.addParameter('FrameRate', [], @isscalar);
 ip.parse(varargin{:});
@@ -97,15 +99,18 @@ end
 
 % sort by cell number (for each experiment)
 [ui,~,ai] = unique(cellPar(idx));
-for k = 1:numel(ui)
-    if ~isempty(sortStringsByToken(cellPath(ai==k), ip.Results.MovieSelector, 'post')) %% added by GU
-    cellPath(ai==k) = sortStringsByToken(cellPath(ai==k), ip.Results.MovieSelector, 'post');
-    else  %% GU
-        cellPath(ai==k) = []; %% GU
-        ai(ai==k) = []; %% GU
-    end %% GU
+% xruan
+if ~ip.Results.IgnoreExpNumber
+    for k = 1:numel(ui)
+        if ~isempty(sortStringsByToken(cellPath(ai==k), ip.Results.MovieSelector, 'post')) %% added by GU
+        cellPath(ai==k) = sortStringsByToken(cellPath(ai==k), ip.Results.MovieSelector, 'post');
+        else  %% GU
+            cellPath(ai==k) = []; %% GU
+            ai(ai==k) = []; %% GU
+        end %% GU
+    end
 end
-
+    
 nCells = length(cellPath);
 
 data(1:nCells) = struct('source', [], 'channels', [], 'date', [], 'framerate', [],...
@@ -190,7 +195,7 @@ for k = 1:nCells
         else
             channels{c} = cellPath{k};
         end
-        if ~exist(channels{c}, 'dir') && ip.Results.AllowChannelNameMatching
+        if ~exist(channels{c}, 'dir') && ip.Results.ChannelMatching
             channelPath = recursiveDir(cellPath{k}, 'maxlevel', 1);
             
             nonEmpty_inds = ~cellfun(@isempty, regexp(channelPath, chNames{c}));

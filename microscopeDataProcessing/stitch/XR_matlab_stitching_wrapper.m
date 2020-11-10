@@ -56,6 +56,10 @@ function [] = XR_matlab_stitching_wrapper(dataPath, imageListFileName, varargin)
 %                     tile number in each dimension for pad size computing
 % xruan (10/06/2020): filter out partial file records in image list
 % xruan (10/18/2020): remove incomplete time point for primary or primaryfirst options
+% xruan (10/23/2020): add support for chosen time points and allow empty
+%                     folder for raw data if using DSR or DSR decon
+% xruan (10/24/2020): add support for user-defined processing on tiles
+
 
 ip = inputParser;
 ip.CaseSensitive = false;
@@ -81,12 +85,14 @@ ip.addParameter('padSize', [], @(x) isnumeric(x) && (isempty(x) || numel(x) == 3
 ip.addParameter('boundboxCrop', [], @(x) isnumeric(x) && (isempty(x) || all(size(x) == [3, 2]) || numel(x) == 6));
 ip.addParameter('zNormalize', false, @islogical);
 ip.addParameter('onlyFirstTP', false, @islogical); % only compute first time point (for deciding cropping bouding box)
+ip.addParameter('timepoints', [], @isnumeric); % stitch for given time points
 ip.addParameter('xcorrMode', 'primaryFirst', @(x) strcmpi(x, 'primary') || strcmpi(x, 'primaryFirst') || strcmpi(x, 'all')); % 'primary': choose one channel as primary channel, 
                                                                                           % 'all': xcorr shift for each channel, 
                                                                                           % 'primaryFirst': the primary channel of first time point
 ip.addParameter('primaryCh', '', @(x) isempty(x) || ischar(x)); % format: CamA_ch0. If it is empty, use the first channel as primary channel
 ip.addParameter('Save16bit', false, @islogical);
 ip.addParameter('pipeline', 'matlab', @(x) strcmpi(x, 'matlab') || strcmpi(x, 'zarr'));
+ip.addParameter('processFunPath', '', @(x) isempty(x) || ischar(x)); % path of user-defined process function handle
 ip.addParameter('parseCluster', true, @islogical);
 ip.addParameter('masterCompute', true, @islogical); % master node participate in the task computing. 
 ip.addParameter('jobLogDir', '../job_logs', @isstr);
@@ -95,6 +101,8 @@ ip.addParameter('cpuOnlyNodes', true, @islogical);
 ip.addParameter('uuid', '', @isstr);
 ip.addParameter('maxTrialNum', 3, @isnumeric);
 ip.addParameter('unitWaitTime', 0.1, @isnumeric);
+ip.addParameter('MatlabLaunchStr', 'module load matlab/r2020b; matlab -nodisplay -nosplash -nodesktop -nojvm -r', @ischar);
+ip.addParameter('SlurmParam', '-p abc --qos abc_normal -n1 --mem-per-cpu=21418M', @ischar);
 
 ip.parse(dataPath, imageListFileName, varargin{:});
 
@@ -118,10 +126,13 @@ xcorrShift = pr.xcorrShift;
 padSize = pr.padSize;
 boundboxCrop = pr.boundboxCrop;
 zNormalize = pr.zNormalize;
+onlyFirstTP = pr.onlyFirstTP;
+timepoints = pr.timepoints;
 xcorrMode = pr.xcorrMode;
 primaryCh = pr.primaryCh;
 Save16bit = pr.Save16bit;
 pipeline = pr.pipeline;
+processFunPath = pr.processFunPath;
 jobLogDir = pr.jobLogDir;
 parseCluster = pr.parseCluster;
 masterCompute = pr.masterCompute;
@@ -130,6 +141,8 @@ cpuOnlyNodes = pr.cpuOnlyNodes;
 uuid = pr.uuid;
 maxTrialNum = pr.maxTrialNum;
 unitWaitTime = pr.unitWaitTime;
+SlurmParam = pr.SlurmParam;
+MatlabLaunchStr = pr.MatlabLaunchStr;
 
 switch pipeline
     case 'matlab'
@@ -239,15 +252,27 @@ end
 Iter = unique(t.Iter);
 Ch = unique(t.ch);
 Cam = unique(t.camera);
-% ntiles = numel(unique(t.x)) * numel(unique(t.y)) * numel(unique(t.z));
 stackn = unique(t.stack);
 
 % check whether the image files in the image list file exist 
 dir_info = dir([dataPath, filesep, '*.tif']);
+if isempty(dir_info)
+    if useExistDSR
+        dir_info = dir([dataPath, '/DSR', filesep, '*.tif']);
+    elseif useExistDSRDecon
+        dir_info = dir([dataPath, filesep, DSRDeconDirstr, filesep, '*.tif']);
+    else
+        error('The tiles do not exist!');
+    end
+end
 imageFnames = {dir_info.name}';
-image_file_exist_flag = true(numel(t.Filename), 1);
+if useExistDSRDecon
+    imageFsnames = cellfun(@(x) x(1 : end - 10), imageFnames, 'unif', 0);
+end
+[~, tFsnames] = fileparts(t.Filename);
+image_file_exist_flag = true(numel(tFsnames), 1);
 for f = 1 : numel(t.Filename)
-    if ~contains(imageFnames, t.Filename{f})
+    if ~any(contains(imageFnames, tFsnames{f})) || (useExistDSRDecon && ~any(contains(imageFsnames, tFsnames{f})))
         image_file_exist_flag(f) = false;
     end
 end
@@ -321,8 +346,13 @@ if (strcmpi(xcorrMode, 'primary') || strcmpi(xcorrMode, 'primaryFirst'))
     end
 end
 
-if pr.onlyFirstTP
+if onlyFirstTP
     Iter = Iter(1);
+    timepoints = [];
+end
+
+if ~isempty(timepoints)
+    Iter = Iter(ismember(Iter, timepoints));
 end
 
 %% do stitching computing
@@ -379,7 +409,8 @@ while ~all(is_done_flag | trial_counter >= max_trial_num, 'all')
                         continue;
                     end
                     
-                    task_id = sub2ind([numel(Iter), numel(Cam), numel(stackn), numel(Ch)], n, ncam, s, c);
+                    f = sub2ind([numel(Iter), numel(Cam), numel(stackn), numel(Ch)], n, ncam, s, c);
+                    task_id = f;
                     cur_t = t(t.ch == Ch(c) & t.camera == Cam(ncam) & t.Iter == Iter(n) & t.stack == stackn(s), :);
 
                     % obtain filenames                    
@@ -575,8 +606,15 @@ while ~all(is_done_flag | trial_counter >= max_trial_num, 'all')
                             % If there is no job, submit a job
                             if job_status == -1 && ~(masterCompute && f == lastF)
                                 % check if memory is enough
-                                imSize = getImageSize(tile_fullpaths{1});
-                                totalSize = prod(imSize) * numel(tile_fullpaths);
+                                if useExistDSR
+                                    dir_info = dir(tile_dsr_fullpaths{1});
+                                elseif useExistDSRDecon
+                                    dir_info = dir(tile_dsr_decon_fullpaths{1});                                    
+                                else
+                                    dir_info = dir(tile_fullpaths{1});                                    
+                                end
+                                datasize = dir_info.bytes;
+                                totalSize = datasize * numel(tile_fullpaths);
                                 % assume for double
                                 totalDsize = totalSize * 8 / 1024^3;
                                 if strcmp(BlendMethod, 'mean') || strcmp(BlendMethod, 'median')
@@ -599,13 +637,15 @@ while ~all(is_done_flag | trial_counter >= max_trial_num, 'all')
                                     '''Reverse'',%s,''ObjectiveScan'',%s,''resultDir'',''%s'',''stitchInfoDir'',''%s'',''stitchInfoFullpath'',''%s'',', ...
                                     '''DSRDirstr'',''%s'',''DSRDeconDirstr'',''%s'',''resampleType'',''%s'',''BlendMethod'',''%s'',', ...
                                     '''overlapType'',''%s'',''xcorrShift'',%s,''isPrimaryCh'',%s,''padSize'',[%s],''boundboxCrop'',[%s],''zNormalize'',%s,', ...
-                                    '''Save16bit'',%s,''tileNum'',[%s]);toc;'], stitch_function_str, tile_fullpaths_str, xyz_str, axisOrder, px, dz, ...
-                                    string(Reverse), string(ObjectiveScan), resultDir, stitchInfoDir, stitchInfoFullpath, DSRDirstr, DSRDeconDirstr, ...
-                                    resampleType, BlendMethod, overlapType, string(xcorrShift), string(isPrimaryCh),  num2str(padSize, '%d,'), ...
-                                    strrep(num2str(boundboxCrop, '%d,'), ' ', ''), string(zNormalize), string(Save16bit), strrep(num2str(tileNum, '%d,'), ' ', ''));
-                                stitch_cmd = sprintf('module load matlab/r2020a; matlab -nodisplay -nosplash -nodesktop -r \\"%s\\"', matlab_cmd);
-                                cmd = sprintf('sbatch --array=%d %s -o %s -e %s -p abc --qos abc_normal -n1 --mem-per-cpu=21418M --cpus-per-task=%d --wrap="%s"', ...
-                                    rem(task_id, 1000), slurm_constraint_str, job_log_fname, job_log_error_fname, cpusPerTask, stitch_cmd);
+                                    '''Save16bit'',%s,''tileNum'',[%s],''processFunPath'',''%s'');toc;'], stitch_function_str, tile_fullpaths_str, xyz_str, ...
+                                    axisOrder, px, dz, string(Reverse), string(ObjectiveScan), resultDir, stitchInfoDir, stitchInfoFullpath, DSRDirstr, ...
+                                    DSRDeconDirstr, resampleType, BlendMethod, overlapType, string(xcorrShift), string(isPrimaryCh),  num2str(padSize, '%d,'), ...
+                                    strrep(num2str(boundboxCrop, '%d,'), ' ', ''), string(zNormalize), string(Save16bit), strrep(num2str(tileNum, '%d,'), ' ', ''), ...
+                                    processFunPath);
+                                stitch_cmd = sprintf('%s \\"%s\\"', MatlabLaunchStr, matlab_cmd);
+                                cmd = sprintf('sbatch --array=%d -o %s -e %s --cpus-per-task=%d %s %s --wrap="%s"', ...
+                                    rem(task_id, 5000), job_log_fname, job_log_error_fname, cpusPerTask, SlurmParam, ...
+                                    slurm_constraint_str, stitch_cmd);
                                 [status, cmdout] = system(cmd, '-echo');
 
                                 job_id = regexp(cmdout, 'Submitted batch job (\d+)\n', 'tokens');
@@ -644,7 +684,7 @@ while ~all(is_done_flag | trial_counter >= max_trial_num, 'all')
                                  'resampleType', resampleType, 'BlendMethod', BlendMethod, 'overlapType', overlapType, ...
                                  'xcorrShift', xcorrShift, 'isPrimaryCh', isPrimaryCh, 'padSize', padSize, ...
                                  'boundboxCrop', boundboxCrop, 'zNormalize', zNormalize, 'Save16bit', Save16bit, ...
-                                 'tileNum', tileNum, 'uuid', uuid);
+                                 'tileNum', tileNum, 'processFunPath', processFunPath, 'uuid', uuid);
                         end
                         trial_counter(n, ncam, s, c) = trial_counter(n, ncam, s, c) + 1;    
                     end

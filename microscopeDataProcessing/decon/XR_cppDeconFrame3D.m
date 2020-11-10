@@ -233,8 +233,8 @@ for f = 1 : nF
     if ~zarrFile
         [estMem, estGPUMem, rawImageSize, sz] = XR_estimateComputingMemory(frameFullpath, {'deconvolution'}, 'cudaDecon', false);
         % due to 4Gb size limit in cppDecon program, we need to directly use
-        % large file computing if the final size is greater than 50GB
-        if rawImageSize / 2 > 50
+        % large file computing if the final size is greater than 2GB
+        if rawImageSize / 2 > 2
             largeFile = true;
         end
     else

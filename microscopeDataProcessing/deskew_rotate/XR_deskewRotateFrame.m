@@ -142,7 +142,7 @@ if (~DSRCombined && (~exist(dsFullname, 'file') || ip.Results.Overwrite)) || DSR
         catch ME
             disp(ME);
             sz = size(frame);
-            if sz(3) > 1000
+            if sz(3) > 200
                 fprintf('Use image block method for deskew...\n');
                 % only split in y-axis, it is not right when splitting from
                 % other axes. 
@@ -155,7 +155,8 @@ if (~DSRCombined && (~exist(dsFullname, 'file') || ip.Results.Overwrite)) || DSR
 
                 bo = apply(bim, @(bs) deskewFrame3D(single(bs.Data), SkewAngle, dz, ...
                     xyPixelSize, Reverse, 'crop', Crop), 'blockSize', bim.BlockSize, ...
-                    "OutputLocation", OutputLocation, 'BorderSize', BorderSize, 'TrimBorder', TrimBorder);
+                    'OutputLocation', OutputLocation, 'BorderSize', BorderSize, 'TrimBorder', TrimBorder, ...
+                    'useParallel', false);
                 clear frame;
                 ds = gather(bo);
                 rmdir(OutputLocation, 's');

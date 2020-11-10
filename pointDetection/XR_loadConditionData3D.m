@@ -31,6 +31,7 @@
 % Francois Aguet, 02/20/2014
 % Xiongtao Ruan, 09/16/2019 make it work noninteractively
 % xruan, 07/23/2020 add option for MovieSelector
+% xruan (11/09/2020) add option to include experiments without experiment number
 
 
 function [data] = XR_loadConditionData3D(varargin)
@@ -41,9 +42,10 @@ ip.KeepUnmatched = true;
 ip.FunctionName = 'loadConditionData3D';
 ip.addOptional('condDir', [], @(x) ischar(x) && ~any(strcmpi(x,...
     {'Parameters', 'MovieSelector', 'IgnoreEmptyFolders', 'FrameRate'})));
-ip.addOptional('chNames', []);
-ip.addOptional('markers', []);
+ip.addOptional('chNames', {}); %{'ch1','ch2','ch3'}
+ip.addOptional('markers', {}); %{'alexa488','alexa568','alexa647'},
 ip.addParameter('MovieSelector', 'Ex', @ischar);
+ip.addParameter('IgnoreExpNumber', false, @islogical); % xruan
 ip.addParameter('Angle', 31.5, @isscalar);
 ip.addParameter('PixelSize', 0.104, @isscalar);
 ip.addParameter('ObjectiveScan', false, @isscalar);
@@ -57,15 +59,18 @@ condDir = ip.Results.condDir;
 chNames = ip.Results.chNames;
 markers = ip.Results.markers;
 MovieSelector = ip.Results.MovieSelector;
+IgnoreExpNumber = ip.Results.IgnoreExpNumber;
 FrameRate = ip.Results.FrameRate;
 maxlevel = ip.Results.maxlevel;
 
 if isempty(FrameRate)
     data = XR_loadConditionData(condDir, chNames, markers, ...
-        'MovieSelector', MovieSelector, 'maxlevel', maxlevel);
+        'MovieSelector', MovieSelector, 'IgnoreExpNumber', IgnoreExpNumber, ...
+        'maxlevel', maxlevel);
 else
     data = XR_loadConditionData(condDir, chNames, markers, ...
-        'MovieSelector', MovieSelector, 'FrameRate', FrameRate, 'maxlevel', maxlevel);
+        'MovieSelector', MovieSelector, 'IgnoreExpNumber', IgnoreExpNumber, ...
+        'FrameRate', FrameRate, 'maxlevel', maxlevel);
 end
 
 nd = numel(data);
