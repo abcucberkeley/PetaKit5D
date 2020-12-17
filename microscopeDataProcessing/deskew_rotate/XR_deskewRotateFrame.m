@@ -13,7 +13,9 @@ function [] = XR_deskewRotateFrame(framePath, xyPixelSize, dz, varargin)
 % xruan (10/06/2020): add support of a list of files and combine them first
 %                     before deskew. The files should be orderred from top to bottom
 % xruan (10/11/2020): add the combined deskew, rotate and resampling function. 
-
+% xruan (12/05/2020): add option to remove background 
+%                     add option to flip z stack in raw data (for negative X interval)
+                 
 
 ip = inputParser;
 ip.CaseSensitive = false;
@@ -29,6 +31,7 @@ ip.addParameter('Reverse', false, @islogical);
 ip.addParameter('Rotate', false, @islogical);
 ip.addParameter('CheckFrameMismatch', false, @islogical);
 ip.addParameter('LoadSettings', false, @islogical);
+ip.addParameter('flipZstack', false, @islogical);
 % sCMOS camera flip
 ip.addParameter('sCMOSCameraFlip', false, @islogical);
 % LLSM Flat-FieldCorrection
@@ -37,6 +40,7 @@ ip.addParameter('LowerLimit', 0.4, @isnumeric); % this value is the lowest
 ip.addParameter('LSImage', '' , @isstr);
 ip.addParameter('BackgroundImage', '' , @isstr);
 ip.addParameter('constOffset', [], @(x) isempty(x) || isnumeric(x)); % If it is set, use constant background, instead of background from the camera.
+ip.addParameter('BKRemoval', false, @islogical);
 ip.addParameter('Save16bit', false , @islogical); % saves deskewed data as 16 bit -- not for quantification
 ip.addParameter('RescaleRotate', false , @islogical); % Rescale rotated data to [0 65535]
 ip.addParameter('SaveMIP', true , @islogical); % save MIP-z for ds and dsr. 
@@ -46,6 +50,8 @@ ip.addParameter('DSRCombined', true, @islogical); % combined processing
 ip.addParameter('resample', [], @(x) isempty(x) || isnumeric(x)); % resampling after rotation 
 ip.addParameter('saveZarr', false, @islogical); % save as zarr
 ip.addParameter('blockSize', [500, 500, 500], @isnumeric); % save as zarr
+ip.addParameter('Interp', 'linear', @(x) any(strcmpi(x, {'cubic', 'linear'})));
+ip.addParameter('surffix', '', @isstr); % suffix for the folder
 ip.addParameter('uuid', '', @isstr);
 
 ip.parse(framePath, xyPixelSize, dz, varargin{:});
@@ -55,7 +61,9 @@ Crop = pr.Crop;
 SkewAngle = pr.SkewAngle;
 Reverse = pr.Reverse;
 ObjectiveScan = pr.ObjectiveScan;
+flipZstack = pr.flipZstack;
 LLFFCorrection = pr.LLFFCorrection;
+BKRemoval = pr.BKRemoval;
 LSImage = pr.LSImage;
 BackgroundImage = pr.BackgroundImage;
 SaveMIP = pr.SaveMIP;
@@ -63,6 +71,8 @@ DSRCombined = pr.DSRCombined;
 resample = pr.resample;
 saveZarr = pr.saveZarr;
 blockSize = pr.blockSize;
+Interp = pr.Interp;
+surffix = pr.surffix;
 
 uuid = pr.uuid;
 % uuid for the job
@@ -107,7 +117,7 @@ end
 % Create DS result dire
 [rt, fsname] = fileparts(framePath{1});
 if ~DSRCombined    
-    dsPath = sprintf('%s/DS/', rt);
+    dsPath = sprintf('%s/DS%s/', rt, surffix);
     mkdir(dsPath);
     fileattrib(dsPath, '+w', 'g');
     dsFullname = [dsPath, fsname, '.tif'];
@@ -126,6 +136,10 @@ if (~DSRCombined && (~exist(dsFullname, 'file') || ip.Results.Overwrite)) || DSR
         frame = single(readtiff(framePath{1}));
     end
     
+    if flipZstack
+        frame = flip(frame, 3);
+    end
+        
     % flat field correction
     if LLFFCorrection
         LSIm = readtiff(LSImage);
@@ -133,11 +147,17 @@ if (~DSRCombined && (~exist(dsFullname, 'file') || ip.Results.Overwrite)) || DSR
         frame = GU_LSFlatFieldCorrection(frame,LSIm,BKIm,'LowerLimit', ip.Results.LowerLimit, ...
             'constOffset', ip.Results.constOffset);
     end
-    
+    % remove camera background
+    if BKRemoval
+        BKIm = readtiff(BackgroundImage);
+        frame = XR_CameraBackgroundRemoval(frame, BKIm, 'constOffset', ip.Results.constOffset);
+    end
+
     if ~DSRCombined
         fprintf('Deskew frame %s...\n', framePath{1});
         try 
-            ds = deskewFrame3D(frame, SkewAngle, dz, xyPixelSize, Reverse, 'Crop', Crop); 
+            ds = deskewFrame3D(frame, SkewAngle, dz, xyPixelSize, Reverse, ...
+                'Crop', Crop, 'Interp', Interp); 
             clear frame;
         catch ME
             disp(ME);
@@ -154,7 +174,7 @@ if (~DSRCombined && (~exist(dsFullname, 'file') || ip.Results.Overwrite)) || DSR
                 TrimBorder = true;
 
                 bo = apply(bim, @(bs) deskewFrame3D(single(bs.Data), SkewAngle, dz, ...
-                    xyPixelSize, Reverse, 'crop', Crop), 'blockSize', bim.BlockSize, ...
+                    xyPixelSize, Reverse, 'crop', Crop, 'Interp', Interp), 'blockSize', bim.BlockSize, ...
                     'OutputLocation', OutputLocation, 'BorderSize', BorderSize, 'TrimBorder', TrimBorder, ...
                     'useParallel', false);
                 clear frame;
@@ -189,7 +209,7 @@ end
 %% rotate frame
 
 if ip.Results.Rotate || DSRCombined
-    dsrPath = sprintf('%s/DSR/', rt);
+    dsrPath = sprintf('%s/DSR%s/', rt, surffix);
     mkdir(dsrPath);
     
     if saveZarr
@@ -205,13 +225,13 @@ if ip.Results.Rotate || DSRCombined
                 ds = single(readtiff(dsFullname));
             end
             dsr = rotateFrame3D(ds, ip.Results.SkewAngle, zAniso, ip.Results.Reverse,...
-                'Crop', true, 'ObjectiveScan', ObjectiveScan);
+                'Crop', true, 'ObjectiveScan', ObjectiveScan, 'Interp', Interp);
             clear ds;
         else
             fprintf('Deskew, Rotate and resample for frame %s...\n', framePath{1});            
             dsr = deskewRotateFrame3D(frame, ip.Results.SkewAngle, dz, xyPixelSize, ...
                 'reverse', ip.Results.Reverse, 'Crop', true, 'ObjectiveScan', ObjectiveScan, ...
-                'resample', resample);
+                'resample', resample, 'Interp', Interp);
         end
         
         % save MIP

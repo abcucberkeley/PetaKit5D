@@ -12,7 +12,7 @@ ip.addRequired('cuboid_2', @isnumeric);
 ip.addRequired('px', @isnumeric);
 ip.addRequired('xyz_factors', @isnumeric);
 ip.addParameter('overlapType', 'half', @ischar);
-ip.addParameter('halfOrder', [1, 2, 3], @isnumeric);
+ip.addParameter('halfOrder', [2, 3, 1], @isnumeric);
 
 ip.parse(cuboid_1, cuboid_2, px, xyz_factors, varargin{:});
 
@@ -55,7 +55,7 @@ switch overlapType
 end
 
 rm_len = round(olLen(split_axis)  * fc);
-if t1(split_axis) < t2(split_axis)
+if t1(split_axis) > t2(split_axis)
     mregion_1(split_axis, 1) = mregion_1(split_axis, 1) + rm_len;
     mregion_2(split_axis, 2) = mregion_2(split_axis, 2) - rm_len;
 else

@@ -102,6 +102,8 @@ function [] = XR_microscopeAutomaticProcessing(dataPaths, varargin)
 %                     also add support for only processing first timepoint
 % xruan (10/20/2020): simplify image size check to data size
 % xruan (11/02/2020): add option for rotated PSF
+% xruan (12/05/2020): add option to remove background 
+%                     add option to flip z stack in raw data (for negative X interval)
 
 
 ip = inputParser;
@@ -126,8 +128,11 @@ ip.addParameter('Stitch', false, @islogical);
 ip.addParameter('Decon', ~false, @islogical);
 ip.addParameter('RotateAfterDecon', false, @islogical);
 % deskew and rotation options
+ip.addParameter('parseSettingFile', false, @islogical); % use setting file to decide whether filp Z stack or not.
+ip.addParameter('flipZstack', false, @islogical); % 
 ip.addParameter('DSRCombined', true, @islogical); 
 ip.addParameter('LLFFCorrection', false, @islogical);
+ip.addParameter('BKRemoval', false, @islogical);
 ip.addParameter('LowerLimit', 0.4, @isnumeric); % this value is the lowest
 ip.addParameter('LSImagePaths', {'','',''}, @iscell);
 ip.addParameter('BackgroundPaths', {'','',''}, @iscell);
@@ -190,8 +195,11 @@ Reverse = pr.Reverse;
 ChannelPatterns = pr.ChannelPatterns;
 Save16bit = pr.Save16bit;
 %deskew and rotate
+parseSettingFile = pr.parseSettingFile;
+flipZstack = pr.flipZstack;
 DSRCombined = pr.DSRCombined;
 LLFFCorrection = pr.LLFFCorrection;
+BKRemoval = pr.BKRemoval;
 LowerLimit = pr.LowerLimit;
 LSImagePaths = pr.LSImagePaths;
 BackgroundPaths = pr.BackgroundPaths;
@@ -415,6 +423,9 @@ if Decon
 
         deconPath = [dataPath, deconName, filesep];
         if DS
+            if DSRCombined
+                error('If using DS for deconvolution, "DSRCombined" must be set as false!')
+            end
             dsPath = dsPaths{d};
             deconPath = [dsPath, deconName, filesep];
         end
@@ -546,6 +557,14 @@ dataSizes = dataSizes(include_flag);
 
 nF = numel(fnames);
 
+% parse setting file 
+flipZstack_mat = repmat(flipZstack, nF, 1);
+if parseSettingFile
+    frameFullpaths = arrayfun(@(x) [dataPaths{fdinds(x)}, fnames{x}], 1 : nF, 'unif', 0);
+    settingInfo = XR_parseSettingFiles_wrapper(frameFullpaths);
+    flipZstack_mat = [settingInfo.StageInterval] < 0;
+end
+
 % for ErodeByFTP, set up the frame numbers as first time point for each
 % data
 FTP_inds = zeros(nd, 1);
@@ -621,7 +640,7 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all') || ...
             continue
         end
         
-        task_id = f;
+        task_id = rem(f, 5000);
         FTP_ind = FTP_inds(fdind);
         
         %% deskew w/o rotate
@@ -657,7 +676,9 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all') || ...
                 LSImage = '';
                 BackgroundImage = '';
             end
-
+            
+            flipZstack = flipZstack_mat(f);
+            
             % set up input file for either single volume file or a
             % group of files
             ds_input_path = {frameFullpath};
@@ -693,11 +714,12 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all') || ...
                                                     
                         matlab_cmd = sprintf(['setup([],true);', ...
                             'tic;XR_deskewRotateFrame(%s,%.20d,%.20d,''SkewAngle'',%.20d,''ObjectiveScan'',%s,', ...
-                            '''Reverse'',%s,''LLFFCorrection'',%s,''LowerLimit'',%.20d,''LSImage'',''%s'',', ...
-                            '''BackgroundImage'',''%s'',''Rotate'',%s,''DSRCombined'',%s,''Save16bit'',%s);toc;'], ...
+                            '''Reverse'',%s,''LLFFCorrection'',%s,''BKRemoval'',%s,''LowerLimit'',%.20d,', ...
+                            '''LSImage'',''%s'',''BackgroundImage'',''%s'',''Rotate'',%s,''DSRCombined'',%s,', ...
+                            '''flipZstack'',%s,''Save16bit'',%s);toc;'], ...
                             ds_input_str, xyPixelSize, dz, SkewAngle, string(ObjectiveScan), string(Reverse), ...
-                            string(LLFFCorrection), LowerLimit, LSImage, BackgroundImage, string(Rotate), ...
-                            string(DSRCombined), string(Save16bit(1)));
+                            string(LLFFCorrection), string(BKRemoval), LowerLimit, LSImage, BackgroundImage, ...
+                            string(Rotate), string(DSRCombined), string(flipZstack), string(Save16bit(1)));
                         deskew_cmd = sprintf('module load matlab/r2020b; matlab -nodisplay -nosplash -nodesktop -nojvm -r \\"%s\\"', matlab_cmd);
                         cmd = sprintf('sbatch --array=%d %s -o %s -e %s -p abc --qos abc_normal -n1 --mem-per-cpu=21418M --cpus-per-task=%d --wrap="%s"', ...
                             task_id, slurm_constraint_str, job_log_fname, job_log_error_fname, cpusPerTask_ds, deskew_cmd);
@@ -722,8 +744,9 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all') || ...
             if ~parseCluster
                 XR_deskewRotateFrame(ds_input_path, xyPixelSize, dz, 'SkewAngle', SkewAngle, ...
                     'ObjectiveScan', ObjectiveScan, 'Reverse', Reverse, 'LLFFCorrection', LLFFCorrection, ...
-                    'LowerLimit', LowerLimit, 'LSImage', LSImage, 'BackgroundImage', BackgroundImage, ...
-                    'Rotate', Rotate, 'DSRCombined', DSRCombined, 'Save16bit', Save16bit(1), 'uuid', uuid);
+                    'BKRemoval', BKRemoval, 'LowerLimit', LowerLimit, 'LSImage', LSImage, ...
+                    'BackgroundImage', BackgroundImage, 'Rotate', Rotate, 'DSRCombined', DSRCombined, ...
+                    'flipZstack', flipZstack, 'Save16bit', Save16bit(1), 'uuid', uuid);
                 trial_counter(f, 1) = trial_counter(f, 1) + 1;
             end
 
@@ -741,12 +764,17 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all') || ...
         if Stitch
             stchPath = stchPaths{fdind};
             % dir_info = dir(sprintf('%s/%s*Abs.tif', stchPath, fname(regexp(fname, 'Scan.*') : end - 43)));
-            dir_info = dir(sprintf('%s/%s*Abs.tif', stchPath, fname(1 : end - 43)));            
+            switch stitchPipeline
+                case 'zarr'
+                    dir_info = dir(sprintf('%s/%s*Abs.zarr', stchPath, fname(1 : end - 43)));                                                   
+                case 'tiff'
+                    dir_info = dir(sprintf('%s/%s*Abs.tif', stchPath, fname(1 : end - 43)));                                
+            end
             if ~isempty(dir_info) 
                 stch_fname = dir_info(1).name;
                 stchFullpath = [stchPath, stch_fname];
                 stchTmpFullpath = sprintf('%s.tmp', stchFullpath(1 : end - 4));
-                if exist(stchFullpath, 'file')
+                if exist(stchFullpath, 'file') || (strcmp(stitchPipeline, 'zarr') && exist(stchFullpath, 'dir'))
                     is_done_flag(f, 2) = true;
                     if exist(stchTmpFullpath, 'file')
                         delete(stchTmpFullpath);
@@ -787,12 +815,12 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all') || ...
 
                     matlab_cmd = sprintf(['setup([],true);tic;XR_matlab_stitching_wrapper(''%s'',''%s'',' ...
                         '''ResultDir'',''%s'',''Streaming'',%s,''useExistDSR'',%s,''axisOrder'',''%s'',', ...
-                        '''resampleType'',''%s'',''Reverse'',%s,''xcorrShift'',%s,''xcorrMode'',''%s'',', ...
-                        '''BlendMethod'',''%s'',''zNormalize'',%s,''onlyFirstTP'',%s,''boundboxCrop'',[%s],', ...
-                        '''Save16bit'',%s,''primaryCh'',''%s'',''pipeline'',''%s'');toc;'], ...
+                        '''resampleType'',''%s'',''Reverse'',%s,''parseSettingFile'',%s,''xcorrShift'',%s,', ...
+                        '''xcorrMode'',''%s'',''BlendMethod'',''%s'',''zNormalize'',%s,''onlyFirstTP'',%s,', ...
+                        '''boundboxCrop'',[%s],''Save16bit'',%s,''primaryCh'',''%s'',''pipeline'',''%s'');toc;'], ...
                         dataPath, imageListFullpath, stitchResultDir, string(Streaming), string(useExistDSR), ...
-                        axisOrder, resampleType, string(Reverse), string(xcorrShift), xcorrMode, BlendMethod, ...
-                        string(zNormalize), string(onlyFirstTP), strrep(num2str(bbox, '%d,'), ' ', ''), ...
+                        axisOrder, resampleType, string(Reverse), string(parseSettingFile), string(xcorrShift), ...
+                        xcorrMode, BlendMethod, string(zNormalize), string(onlyFirstTP), strrep(num2str(bbox, '%d,'), ' ', ''), ...
                         string(Save16bit(2)), primaryCh, stitchPipeline);
                     stitch_cmd = sprintf('module load matlab/r2020b; matlab -nodisplay -nosplash -nodesktop -r \\"%s\\"', matlab_cmd);
                     cmd = sprintf(['sbatch --array=1 %s -o %s -e %s -p abc', ...
@@ -807,10 +835,11 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all') || ...
             else
                 XR_matlab_stitching_wrapper(dataPath, imageListFullpath, 'resultDir', stitchResultDir, ...
                     'Streaming', Streaming, 'useExistDSR', useExistDSR, 'axisOrder', axisOrder, ...
-                    'resampleType', 'isotropic', 'Reverse', Reverse, 'BlendMethod', BlendMethod, ...
-                    'xcorrShift', xcorrShift, 'xcorrMode', xcorrMode, 'zNormalize', zNormalize, ...
-                    'onlyFirstTP', onlyFirstTP, 'boundboxCrop', bbox, 'Save16bit', Save16bit(2), ...
-                    'primaryCh', primaryCh, 'pipeline', stitchPipeline, 'parseCluster', false);
+                    'resampleType', 'isotropic', 'Reverse', Reverse, 'parseSettingFile', parseSettingFile, ...
+                    'BlendMethod', BlendMethod, 'xcorrShift', xcorrShift, 'xcorrMode', xcorrMode, ...
+                    'zNormalize', zNormalize, 'onlyFirstTP', onlyFirstTP, 'boundboxCrop', bbox, ...
+                    'Save16bit', Save16bit(2), 'primaryCh', primaryCh, 'pipeline', stitchPipeline, ...
+                    'parseCluster', false);
             end
             
             if exist('stchFullpath', 'var') && exist(stchFullpath, 'file')

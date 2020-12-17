@@ -37,9 +37,14 @@ if isempty(dataSize) || contains(steps, 'deskew', 'IgnoreCase', true)
     else
         imSize = getImageSize(filePath);    
     end
-
-    % in double size
-    rawImageSize = prod(imSize) * 4 / 1024^3;
+    % in some cases it only gets the size of the first slice. 
+    if imSize(3) == 1
+        dir_info = dir(filePath);
+        rawImageSize = dir_info.bytes / 1024^3;
+    else
+        % in double size
+        rawImageSize = prod(imSize) * 4 / 1024^3;
+    end
 else
     rawImageSize = dataSize * 2 / 1024^3;
 end

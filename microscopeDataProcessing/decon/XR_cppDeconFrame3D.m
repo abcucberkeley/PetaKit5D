@@ -56,8 +56,8 @@ ip.addParameter('EdgeErosion', 8 , @isnumeric); % erode edges for certain size.
 ip.addParameter('ErodeMaskfile', '', @ischar); % erode edges file
 ip.addParameter('SaveMaskfile', false, @islogical); % save mask file for common eroded mask
 % ip.addParameter('DoNotAdjustResForFFT', true , @islogical); % not crop chunks for deconvolution
-ip.addParameter('BlockSize', [750,750,750] , @isvector); % in y, x, z
-ip.addParameter('Overlap', 80, @isnumeric); % block overlap
+ip.addParameter('BlockSize', [1000,1000,1000] , @isvector); % in y, x, z
+ip.addParameter('Overlap', 200, @isnumeric); % block overlap
 ip.addParameter('MaxMem', 500, @isnumeric); % GPU Memory in Gb
 ip.addParameter('largeFile', false, @islogical);
 ip.addParameter('parseCluster', true, @islogical);

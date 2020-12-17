@@ -59,6 +59,9 @@ function [] = XR_matlab_stitching_wrapper(dataPath, imageListFileName, varargin)
 % xruan (10/23/2020): add support for chosen time points and allow empty
 %                     folder for raw data if using DSR or DSR decon
 % xruan (10/24/2020): add support for user-defined processing on tiles
+% xruan (12/06/2020): add support for subIter/fullIter for Iter, and
+%                     flipped tiles
+% xruan (12/09/2020): add support for using primary coordinates for secondary channels/tps
 
 
 ip = inputParser;
@@ -68,10 +71,12 @@ ip.addRequired('imageListFileName', @isstr);
 % ip.addParameter('Overwrite', true, @islogical);
 ip.addParameter('Streaming', false, @islogical);
 ip.addParameter('useExistDSR', false, @islogical); % use exist DSR for the processing
+ip.addParameter('DSRDirstr', 'DSR', @ischar); % path for DSRDir str, if it is not true
 ip.addParameter('useExistDSRDecon', false, @islogical); % use exist DSR decon for the processing
 ip.addParameter('DSRDeconDirstr', '', @ischar); % path for DSRDir decon str, if it is not true
 ip.addParameter('stitchInfoFullpath', '', @isstr); % use exist stitch info for stitching
 ip.addParameter('Reverse', false, @islogical);
+ip.addParameter('parseSettingFile', false, @islogical); % use setting file to decide whether filp Z stack or not.
 ip.addParameter('axisOrder', 'x,y,z', @isstr);
 ip.addParameter('ObjectiveScan', false, @islogical);
 ip.addParameter('resampleType', 'xy_isotropic', @isstr); % by default use xy isotropic
@@ -90,6 +95,7 @@ ip.addParameter('xcorrMode', 'primaryFirst', @(x) strcmpi(x, 'primary') || strcm
                                                                                           % 'all': xcorr shift for each channel, 
                                                                                           % 'primaryFirst': the primary channel of first time point
 ip.addParameter('primaryCh', '', @(x) isempty(x) || ischar(x)); % format: CamA_ch0. If it is empty, use the first channel as primary channel
+ip.addParameter('usePrimaryCoords', false, @islogical); 
 ip.addParameter('Save16bit', false, @islogical);
 ip.addParameter('pipeline', 'matlab', @(x) strcmpi(x, 'matlab') || strcmpi(x, 'zarr'));
 ip.addParameter('processFunPath', '', @(x) isempty(x) || ischar(x)); % path of user-defined process function handle
@@ -101,7 +107,7 @@ ip.addParameter('cpuOnlyNodes', true, @islogical);
 ip.addParameter('uuid', '', @isstr);
 ip.addParameter('maxTrialNum', 3, @isnumeric);
 ip.addParameter('unitWaitTime', 0.1, @isnumeric);
-ip.addParameter('MatlabLaunchStr', 'module load matlab/r2020b; matlab -nodisplay -nosplash -nodesktop -nojvm -r', @ischar);
+ip.addParameter('MatlabLaunchStr', 'module load matlab/r2020b; matlab -nodisplay -nosplash -nodesktop -r', @ischar);
 ip.addParameter('SlurmParam', '-p abc --qos abc_normal -n1 --mem-per-cpu=21418M', @ischar);
 
 ip.parse(dataPath, imageListFileName, varargin{:});
@@ -110,10 +116,12 @@ pr = ip.Results;
 % Overwrite = pr.Overwrite;
 Streaming = pr.Streaming;
 useExistDSR = pr.useExistDSR;
+DSRDirstr = pr.DSRDirstr;
 useExistDSRDecon = pr.useExistDSRDecon;
 DSRDeconDirstr = pr.DSRDeconDirstr;
 stitchInfoFullpath = pr.stitchInfoFullpath;
 Reverse = pr.Reverse;
+parseSettingFile = pr.parseSettingFile;
 axisOrder = pr.axisOrder;
 ObjectiveScan = pr.ObjectiveScan;
 resampleType = pr.resampleType;
@@ -130,6 +138,7 @@ onlyFirstTP = pr.onlyFirstTP;
 timepoints = pr.timepoints;
 xcorrMode = pr.xcorrMode;
 primaryCh = pr.primaryCh;
+usePrimaryCoords = pr.usePrimaryCoords;
 Save16bit = pr.Save16bit;
 pipeline = pr.pipeline;
 processFunPath = pr.processFunPath;
@@ -215,9 +224,9 @@ end
 
 specifyCam = true;
 if all(~cellfun(@isempty, regexp(fn, '_Cam\w_ch', 'match')))
-    expression = '(?<prefix>\w*)Scan_Iter_(?<Iter>\d+)_Cam(?<Cam>\w+)_ch(?<ch>\d+)_CAM1_stack(?<stack>\d+)_(?<laser>\d+)nm_(?<abstime>\d+)msec_(?<fpgatime>\d+)msecAbs_(?<x>\d+)x_(?<y>\d+)y_(?<z>\d+)z_(?<t>\d+)t.tif';
+    expression = '(?<prefix>\w*)Scan_Iter_(?<Iter>\d+)(?<subIter>_?\d+?_?\d+?)_Cam(?<Cam>\w+)_ch(?<ch>\d+)_CAM1_stack(?<stack>\d+)_(?<laser>\d+)nm_(?<abstime>\d+)msec_(?<fpgatime>\d+)msecAbs_(?<x>\d+)x_(?<y>\d+)y_(?<z>\d+)z_(?<t>\d+)t.tif';
 elseif all(~cellfun(@isempty, regexp(fn, '_ch[0-9]_', 'match')))
-    expression = '(?<prefix>\w*)Scan_Iter_(?<Iter>\d+)_ch(?<ch>\d+)_CAM1_stack(?<stack>\d+)_(?<laser>\d+)nm_(?<abstime>\d+)msec_(?<fpgatime>\d+)msecAbs_(?<x>\d+)x_(?<y>\d+)y_(?<z>\d+)z_(?<t>\d+)t.tif';
+    expression = '(?<prefix>\w*)Scan_Iter_(?<Iter>\d+)(?<subIter>_?\d+?_?\d+?)_ch(?<ch>\d+)_CAM1_stack(?<stack>\d+)_(?<laser>\d+)nm_(?<abstime>\d+)msec_(?<fpgatime>\d+)msecAbs_(?<x>\d+)x_(?<y>\d+)y_(?<z>\d+)z_(?<t>\d+)t.tif';
     specifyCam = false;
 end
 
@@ -226,6 +235,8 @@ tmp = regexpi(fn, expression, 'names');
 for f = 1:numel(tmp)
     t.prefix{f} = tmp{f}.prefix;
     t.Iter(f) = str2double(tmp{f}.Iter);
+    t.subIter{f} = tmp{f}.subIter;
+    t.fullIter{f} = [tmp{f}.Iter, tmp{f}.subIter];
     if specifyCam
         t.camera(f) = (tmp{f}.Cam);
     else
@@ -249,30 +260,29 @@ if ~isempty(prefix)
 else
     prefix = '';
 end
-Iter = unique(t.Iter);
+fullIter = unique(t.fullIter);
 Ch = unique(t.ch);
 Cam = unique(t.camera);
 stackn = unique(t.stack);
 
 % check whether the image files in the image list file exist 
 dir_info = dir([dataPath, filesep, '*.tif']);
+imageFnames = {dir_info.name}';
 if isempty(dir_info)
     if useExistDSR
-        dir_info = dir([dataPath, '/DSR', filesep, '*.tif']);
+        dir_info = dir([dataPath, DSRDirstr, filesep, '*.tif']);
+        imageFnames = {dir_info.name}';
     elseif useExistDSRDecon
         dir_info = dir([dataPath, filesep, DSRDeconDirstr, filesep, '*.tif']);
+        imageFnames = cellfun(@(x) [x(1 : end - 10), '.tif'], {dir_info.name}', 'unif', 0);
     else
         error('The tiles do not exist!');
     end
 end
-imageFnames = {dir_info.name}';
-if useExistDSRDecon
-    imageFsnames = cellfun(@(x) x(1 : end - 10), imageFnames, 'unif', 0);
-end
 [~, tFsnames] = fileparts(t.Filename);
 image_file_exist_flag = true(numel(tFsnames), 1);
 for f = 1 : numel(t.Filename)
-    if ~any(contains(imageFnames, tFsnames{f})) || (useExistDSRDecon && ~any(contains(imageFsnames, tFsnames{f})))
+    if ~any(contains(imageFnames, tFsnames{f})) % || (useExistDSRDecon && ~any(contains(imageFnames, tFsnames{f})))
         image_file_exist_flag(f) = false;
     end
 end
@@ -282,7 +292,7 @@ if ~all(image_file_exist_flag)
     if ~Streaming
         t(~image_file_exist_flag, :) = [];
         
-        Iter = unique(t.Iter);
+        fullIter = unique(t.fullIter);
         Ch = unique(t.ch);
         Cam = unique(t.camera);
         % ntiles = numel(unique(t.x)) * numel(unique(t.y)) * numel(unique(t.z));
@@ -347,28 +357,42 @@ if (strcmpi(xcorrMode, 'primary') || strcmpi(xcorrMode, 'primaryFirst'))
 end
 
 if onlyFirstTP
-    Iter = Iter(1);
+    fullIter = fullIter(1);
     timepoints = [];
 end
 
 if ~isempty(timepoints)
-    Iter = Iter(ismember(Iter, timepoints));
+    Iter = cellfun(@(x) str2double(x(1 : 4)), fullIter);
+
+    switch size(timepoints, 2)
+        case 1
+            fullIter = fullIter(ismember(Iter, timepoints(:, 1)));
+        case 2
+            subIter = cellfun(@(x) str2double(x(6 : 9)), fullIter);
+            fullIter = fullIter(ismember([Iter, subIter], timepoints(:, 1 : 2), 'rows'));
+        case 3
+            subIter = cellfun(@(x) str2double(x(6 : 9)), fullIter);
+            subSubIter = cellfun(@(x) str2double(x(11 : 14)), fullIter);
+            fullIter = fullIter(ismember([Iter, subIter, subSubIter], timepoints(:, 1 : 3), 'rows'));
+        otherwise
+            
+    end
 end
 
 %% do stitching computing
-row_exist_flag = true(numel(Iter), numel(Cam), numel(stackn), numel(Ch)); % flag for whether the run exists.
-is_done_flag = false(numel(Iter), numel(Cam), numel(stackn), numel(Ch));
-trial_counter = zeros(numel(Iter), numel(Cam), numel(stackn), numel(Ch));
+row_exist_flag = true(numel(fullIter), numel(Cam), numel(stackn), numel(Ch)); % flag for whether the run exists.
+is_done_flag = false(numel(fullIter), numel(Cam), numel(stackn), numel(Ch));
+trial_counter = zeros(numel(fullIter), numel(Cam), numel(stackn), numel(Ch));
 max_trial_num = maxTrialNum;
 
 if parseCluster
-    job_ids = -ones(numel(Iter), numel(Cam), numel(stackn), numel(Ch));
-    job_status_flag = false(numel(Iter), numel(Cam), numel(stackn), numel(Ch));
+    job_ids = -ones(numel(fullIter), numel(Cam), numel(stackn), numel(Ch));
+    job_status_flag = false(numel(fullIter), numel(Cam), numel(stackn), numel(Ch));
 end
 
 % predefine stitchInfo when xcorrMode is 'primaryFirst'
 if strcmp(xcorrMode, 'primaryFirst')
-    primary_t = t(t.ch == Ch(1) & t.camera == Cam(1) & t.Iter == Iter(1) & t.stack == stackn(1), :);
+    primary_t = t(t.ch == Ch(1) & t.camera == Cam(1) & strcmp(t.fullIter, fullIter{1}) & t.stack == stackn(1), :);
     if isempty(primary_t) 
         error('The Image List Info for the primary channel for the first time point does not exist!');
     end
@@ -381,11 +405,11 @@ if strcmp(xcorrMode, 'primaryFirst')
         p_laser = p_laser(1);
     end
     if specifyCam
-        stitchInfoFullpath = sprintf('%s/%sScan_Iter_%04d_Cam%s_ch%d_CAM1_stack%04d_%dnm_%07dmsec_%010dmsecAbs.mat', ...
-            stitch_info_path, prefix, Iter(1), Cam(1), Ch(1), stackn(1), p_laser, p_abstime, p_fpgatime);
+        stitchInfoFullpath = sprintf('%s/%sScan_Iter_%s_Cam%s_ch%d_CAM1_stack%04d_%dnm_%07dmsec_%010dmsecAbs.mat', ...
+            stitch_info_path, prefix, fullIter{1}, Cam(1), Ch(1), stackn(1), p_laser, p_abstime, p_fpgatime);
     else
-        stitchInfoFullpath = sprintf('%s/%sScan_Iter_%04d_ch%d_CAM1_stack%04d_%dnm_%07dmsec_%010dmsecAbs.mat', ...
-            stitch_info_path, prefix, Iter(1), Ch(1), stackn(1), p_laser, p_abstime, p_fpgatime);        
+        stitchInfoFullpath = sprintf('%s/%sScan_Iter_%s_ch%d_CAM1_stack%04d_%dnm_%07dmsec_%010dmsecAbs.mat', ...
+            stitch_info_path, prefix, fullIter{1}, Ch(1), stackn(1), p_laser, p_abstime, p_fpgatime);        
     end
 end
 
@@ -397,7 +421,7 @@ end
 
 while ~all(is_done_flag | trial_counter >= max_trial_num, 'all')
     lastF = find(~is_done_flag & trial_counter < maxTrialNum, 1, 'last');
-    for n = 1:numel(Iter)
+    for n = 1:numel(fullIter)
         for ncam = 1:numel(Cam)
             for s = 1:numel(stackn)
                 for c = 1:numel(Ch)                    
@@ -409,9 +433,9 @@ while ~all(is_done_flag | trial_counter >= max_trial_num, 'all')
                         continue;
                     end
                     
-                    f = sub2ind([numel(Iter), numel(Cam), numel(stackn), numel(Ch)], n, ncam, s, c);
+                    f = sub2ind([numel(fullIter), numel(Cam), numel(stackn), numel(Ch)], n, ncam, s, c);
                     task_id = f;
-                    cur_t = t(t.ch == Ch(c) & t.camera == Cam(ncam) & t.Iter == Iter(n) & t.stack == stackn(s), :);
+                    cur_t = t(t.ch == Ch(c) & t.camera == Cam(ncam) & strcmp(t.fullIter, fullIter{n}) & t.stack == stackn(s), :);
 
                     % obtain filenames                    
                     if isempty(cur_t)
@@ -450,6 +474,13 @@ while ~all(is_done_flag | trial_counter >= max_trial_num, 'all')
                     tile_fnames = cur_t.Filename;
                     tile_fullpaths = cellfun(@(x) [dataPath, filesep, x], tile_fnames, 'unif', 0);
                     
+                    % parse setting file 
+                    flippedTile = [];
+                    if parseSettingFile
+                        settingInfo = XR_parseSettingFiles_wrapper(tile_fullpaths);
+                        flippedTile = [settingInfo.StageInterval] < 0;
+                    end
+                    
                     % check if files exist for streaming option, and also
                     % if useExistDSR is true, check the DSR files exist.
                     if Streaming
@@ -462,7 +493,7 @@ while ~all(is_done_flag | trial_counter >= max_trial_num, 'all')
                         end
                     end
                     if useExistDSR
-                        DSRDirstr = 'DSR';
+                        % DSRDirstr = 'DSR';
                         tile_dsr_fullpaths = cellfun(@(x) [dataPath, filesep, DSRDirstr, filesep, x], tile_fnames, 'unif', 0);
                         is_tile_dsr_exist = cellfun(@(x) exist(x, 'file'), tile_dsr_fullpaths);
                         if Streaming
@@ -515,11 +546,11 @@ while ~all(is_done_flag | trial_counter >= max_trial_num, 'all')
                         isPrimaryCh = false;
                     else
                         if specifyCam
-                            stitchInfoFullpath = sprintf('%s/%sScan_Iter_%04d_Cam%s_ch%d_CAM1_stack%04d_%dnm_%07dmsec_%010dmsecAbs.mat', ...
-                                stitch_info_path, prefix, Iter(n), Cam(ncam), Ch(c), stackn(s), laser, abstime, fpgatime);
+                            stitchInfoFullpath = sprintf('%s/%sScan_Iter_%s_Cam%s_ch%d_CAM1_stack%04d_%dnm_%07dmsec_%010dmsecAbs.mat', ...
+                                stitch_info_path, prefix, fullIter{n}, Cam(ncam), Ch(c), stackn(s), laser, abstime, fpgatime);
                         else
-                            stitchInfoFullpath = sprintf('%s/%sScan_Iter_%04d_ch%d_CAM1_stack%04d_%dnm_%07dmsec_%010dmsecAbs.mat', ...
-                                stitch_info_path, prefix, Iter(n), Ch(c), stackn(s), laser, abstime, fpgatime);                            
+                            stitchInfoFullpath = sprintf('%s/%sScan_Iter_%s_ch%d_CAM1_stack%04d_%dnm_%07dmsec_%010dmsecAbs.mat', ...
+                                stitch_info_path, prefix, fullIter{n}, Ch(c), stackn(s), laser, abstime, fpgatime);                            
                         end
                     end
                     
@@ -538,11 +569,11 @@ while ~all(is_done_flag | trial_counter >= max_trial_num, 'all')
                             end
                             
                             if specifyCam
-                                stitchInfoFullpath = sprintf('%s/%sScan_Iter_%04d_Cam%s_ch%d_CAM1_stack%04d_%dnm_%07dmsec_%010dmsecAbs.mat', ...
-                                    stitch_info_path, prefix, Iter(n), Cam(1), Ch(1), stackn(s), p_laser, p_abstime, p_fpgatime);
+                                stitchInfoFullpath = sprintf('%s/%sScan_Iter_%s_Cam%s_ch%d_CAM1_stack%04d_%dnm_%07dmsec_%010dmsecAbs.mat', ...
+                                    stitch_info_path, prefix, fullIter{n}, Cam(1), Ch(1), stackn(s), p_laser, p_abstime, p_fpgatime);
                             else
-                                stitchInfoFullpath = sprintf('%s/%sScan_Iter_%04d_ch%d_CAM1_stack%04d_%dnm_%07dmsec_%010dmsecAbs.mat', ...
-                                    stitch_info_path, prefix, Iter(n), Ch(1), stackn(1), p_laser, p_abstime, p_fpgatime);        
+                                stitchInfoFullpath = sprintf('%s/%sScan_Iter_%s_ch%d_CAM1_stack%04d_%dnm_%07dmsec_%010dmsecAbs.mat', ...
+                                    stitch_info_path, prefix, fullIter{n}, Ch(1), stackn(1), p_laser, p_abstime, p_fpgatime);        
                             end
                         end
                         
@@ -557,15 +588,15 @@ while ~all(is_done_flag | trial_counter >= max_trial_num, 'all')
                     % also use flag based check of completion, to support
                     % distributed computing with same submission
                     if specifyCam
-                        stitch_save_fsname = sprintf('%s/%sScan_Iter_%04d_Cam%s_ch%d_CAM1_stack%04d_%dnm_%07dmsec_%010dmsecAbs', ...
-                            stitching_rt, prefix, Iter(n), Cam(ncam), Ch(c), stackn(s), laser, abstime, fpgatime);
-                        cur_tmp_fname = sprintf('%s/%sScan_Iter_%04d_Cam%s_ch%d_CAM1_stack%04d_%dnm_%07dmsec_%010dmsecAbs.tmp', ...
-                            stitching_rt, prefix, Iter(n), Cam(ncam), Ch(c), stackn(s), laser, abstime, fpgatime);
+                        stitch_save_fsname = sprintf('%s/%sScan_Iter_%s_Cam%s_ch%d_CAM1_stack%04d_%dnm_%07dmsec_%010dmsecAbs', ...
+                            stitching_rt, prefix, fullIter{n}, Cam(ncam), Ch(c), stackn(s), laser, abstime, fpgatime);
+                        cur_tmp_fname = sprintf('%s/%sScan_Iter_%s_Cam%s_ch%d_CAM1_stack%04d_%dnm_%07dmsec_%010dmsecAbs.tmp', ...
+                            stitching_rt, prefix, fullIter{n}, Cam(ncam), Ch(c), stackn(s), laser, abstime, fpgatime);
                     else
-                        stitch_save_fsname = sprintf('%s/%sScan_Iter_%04d_ch%d_CAM1_stack%04d_%dnm_%07dmsec_%010dmsecAbs', ...
-                            stitching_rt, prefix, Iter(n), Ch(c), stackn(s), laser, abstime, fpgatime);
-                        cur_tmp_fname = sprintf('%s/%sScan_Iter_%04d_ch%d_CAM1_stack%04d_%dnm_%07dmsec_%010dmsecAbs.tmp', ...
-                            stitching_rt, prefix, Iter(n), Ch(c), stackn(s), laser, abstime, fpgatime);
+                        stitch_save_fsname = sprintf('%s/%sScan_Iter_%s_ch%d_CAM1_stack%04d_%dnm_%07dmsec_%010dmsecAbs', ...
+                            stitching_rt, prefix, fullIter{n}, Ch(c), stackn(s), laser, abstime, fpgatime);
+                        cur_tmp_fname = sprintf('%s/%sScan_Iter_%s_ch%d_CAM1_stack%04d_%dnm_%07dmsec_%010dmsecAbs.tmp', ...
+                            stitching_rt, prefix, fullIter{n}, Ch(c), stackn(s), laser, abstime, fpgatime);
                     end
                     
                     switch pipeline
@@ -586,6 +617,18 @@ while ~all(is_done_flag | trial_counter >= max_trial_num, 'all')
                         continue;
                     end
                     
+                    tile_fullpaths_str = sprintf('{''%s''}', strjoin(tile_fullpaths, ''','''));
+                    xyz_str = strrep(mat2str(xyz), ' ', ',');                      
+                    func_str = sprintf(['%s(%s,%s,''axisOrder'',''%s'',''px'',%0.10f,''dz'',%0.10f,', ...
+                        '''Reverse'',%s,''ObjectiveScan'',%s,''resultDir'',''%s'',''stitchInfoDir'',''%s'',''stitchInfoFullpath'',''%s'',', ...
+                        '''DSRDirstr'',''%s'',''DSRDeconDirstr'',''%s'',''resampleType'',''%s'',''BlendMethod'',''%s'',', ...
+                        '''overlapType'',''%s'',''xcorrShift'',%s,''isPrimaryCh'',%s,''usePrimaryCoords'',%s,''padSize'',[%s],''boundboxCrop'',[%s],', ...
+                        '''zNormalize'',%s,''Save16bit'',%s,''tileNum'',[%s],''flippedTile'',[%s],''processFunPath'',''%s'')'], stitch_function_str, ...
+                        tile_fullpaths_str, xyz_str, axisOrder, px, dz, string(Reverse), string(ObjectiveScan), resultDir, stitchInfoDir, ...
+                        stitchInfoFullpath, DSRDirstr, DSRDeconDirstr, resampleType, BlendMethod, overlapType, string(xcorrShift), ...
+                        string(isPrimaryCh), string(usePrimaryCoords), num2str(padSize, '%d,'), strrep(num2str(boundboxCrop, '%d,'), ' ', ''), string(zNormalize), ...
+                        string(Save16bit), strrep(num2str(tileNum, '%d,'), ' ', ''), strrep(num2str(flippedTile, '%d,'), ' ', ''), processFunPath);
+
                     if exist(cur_tmp_fname, 'file') || (parseCluster && ~(masterCompute && strcmpi(xcorrMode, 'primaryFirst') && isPrimaryCh))
                         % for cluster computing with master, check whether
                         % the job still alive. Otherwise, use waiting time
@@ -631,17 +674,8 @@ while ~all(is_done_flag | trial_counter >= max_trial_num, 'all')
                                     cpusPerTask = min(24, ceil(totalDsize * mem_factor / 20))
                                 end
                                 
-                                tile_fullpaths_str = sprintf('{''%s''}', strjoin(tile_fullpaths, ''','''));
-                                xyz_str = strrep(mat2str(xyz), ' ', ',');                      
-                                matlab_cmd = sprintf(['setup([],true);tic;%s(%s,%s,''axisOrder'',''%s'',''px'',%0.10f,''dz'',%0.10f,', ...
-                                    '''Reverse'',%s,''ObjectiveScan'',%s,''resultDir'',''%s'',''stitchInfoDir'',''%s'',''stitchInfoFullpath'',''%s'',', ...
-                                    '''DSRDirstr'',''%s'',''DSRDeconDirstr'',''%s'',''resampleType'',''%s'',''BlendMethod'',''%s'',', ...
-                                    '''overlapType'',''%s'',''xcorrShift'',%s,''isPrimaryCh'',%s,''padSize'',[%s],''boundboxCrop'',[%s],''zNormalize'',%s,', ...
-                                    '''Save16bit'',%s,''tileNum'',[%s],''processFunPath'',''%s'');toc;'], stitch_function_str, tile_fullpaths_str, xyz_str, ...
-                                    axisOrder, px, dz, string(Reverse), string(ObjectiveScan), resultDir, stitchInfoDir, stitchInfoFullpath, DSRDirstr, ...
-                                    DSRDeconDirstr, resampleType, BlendMethod, overlapType, string(xcorrShift), string(isPrimaryCh),  num2str(padSize, '%d,'), ...
-                                    strrep(num2str(boundboxCrop, '%d,'), ' ', ''), string(zNormalize), string(Save16bit), strrep(num2str(tileNum, '%d,'), ' ', ''), ...
-                                    processFunPath);
+                                matlab_setup_str = 'setup([],true)';
+                                matlab_cmd = sprintf('%s;tic;%s;toc', matlab_setup_str, func_str);
                                 stitch_cmd = sprintf('%s \\"%s\\"', MatlabLaunchStr, matlab_cmd);
                                 cmd = sprintf('sbatch --array=%d -o %s -e %s --cpus-per-task=%d %s %s --wrap="%s"', ...
                                     rem(task_id, 5000), job_log_fname, job_log_error_fname, cpusPerTask, SlurmParam, ...
@@ -667,26 +701,10 @@ while ~all(is_done_flag | trial_counter >= max_trial_num, 'all')
                                         
                     if ~parseCluster || (parseCluster && masterCompute && (f == lastF || ...
                             (xcorrShift && strcmpi(xcorrMode, 'primaryFirst') && isPrimaryCh && job_ids(n, ncam, s, c) == -1)))
-                        if strcmp(pipeline, 'matlab')
-                            XR_stitching_frame_v1(tile_fullpaths, xyz, 'resultDir', resultDir, ...
-                                 'stitchInfoDir', stitchInfoDir, 'stitchInfoFullpath', stitchInfoFullpath, ...
-                                 'DSRDirstr', DSRDirstr, 'DSRDeconDirstr', DSRDeconDirstr, 'px', px, 'dz', dz, ...
-                                 'Reverse', Reverse, 'ObjectiveScan', ObjectiveScan, 'axisOrder', axisOrder, ...
-                                 'resampleType', resampleType, 'BlendMethod', BlendMethod, 'overlapType', overlapType, ...
-                                 'xcorrShift', xcorrShift, 'isPrimaryCh', isPrimaryCh, 'padSize', padSize, ...
-                                 'boundboxCrop', boundboxCrop, 'zNormalize', zNormalize, 'Save16bit', Save16bit, ...
-                                 'tileNum', tileNum, 'uuid', uuid);
-                        else
-                            XR_stitching_frame_zarr_dev_v1(tile_fullpaths, xyz, 'resultDir', resultDir, ...
-                                 'stitchInfoDir', stitchInfoDir, 'stitchInfoFullpath', stitchInfoFullpath, ...
-                                 'DSRDirstr', DSRDirstr, 'DSRDeconDirstr', DSRDeconDirstr, 'px', px, 'dz', dz, ...
-                                 'Reverse', Reverse, 'ObjectiveScan', ObjectiveScan, 'axisOrder', axisOrder, ...
-                                 'resampleType', resampleType, 'BlendMethod', BlendMethod, 'overlapType', overlapType, ...
-                                 'xcorrShift', xcorrShift, 'isPrimaryCh', isPrimaryCh, 'padSize', padSize, ...
-                                 'boundboxCrop', boundboxCrop, 'zNormalize', zNormalize, 'Save16bit', Save16bit, ...
-                                 'tileNum', tileNum, 'processFunPath', processFunPath, 'uuid', uuid);
-                        end
-                        trial_counter(n, ncam, s, c) = trial_counter(n, ncam, s, c) + 1;    
+                        trial_counter(n, ncam, s, c) = trial_counter(n, ncam, s, c) + 1;
+                        tic
+                        feval(str2func(['@()', func_str]));
+                        toc
                     end
                     
                     % check if computing is done
