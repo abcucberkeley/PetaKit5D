@@ -7,6 +7,7 @@ function [] = XR_RLdeconFrame3D(frameFullpaths, pixelSize, dz, varargin)
 % based on XR_matlabDeconFrame3D.m and GU_Decon.m 
 % 
 % Author: Xiongtao Ruan (03/15/2020)
+% xruan (01/12/2021): add support for edge erosion and using existing eroded mask for edge erosion.  
 
 
 ip = inputParser;
@@ -30,6 +31,9 @@ ip.addParameter('GenMaxZproj', [0,0,1] , @isnumeric);
 ip.addParameter('ResizeImages', [] , @isnumeric);
 ip.addParameter('dzPSF', 0.1 , @isnumeric); %in um
 ip.addParameter('DeconIter', 15 , @isnumeric); % number of iterations
+ip.addParameter('EdgeErosion', 8 , @isnumeric); % erode edges for certain size.
+ip.addParameter('ErodeMaskfile', '', @ischar); % erode edges file
+ip.addParameter('SaveMaskfile', false, @islogical); % save mask file for common eroded mask
 % ip.addParameter('DoNotAdjustResForFFT', true , @islogical); % not crop chunks for deconvolution
 ip.addParameter('BlockSize', [1024, 1024, 1024] , @isvector); % in y, x, z
 ip.addParameter('Overlap', 50, @isnumeric); % block overlap
@@ -70,6 +74,15 @@ Crop = pr.Crop;
 zFlip = pr.zFlip;
 GenMaxZproj = pr.GenMaxZproj;
 ResizeImages = pr.ResizeImages;
+
+
+EdgeErosion = pr.EdgeErosion;
+
+ErodeMaskfile = pr.ErodeMaskfile;
+if ~isempty(ErodeMaskfile) && exist(ErodeMaskfile, 'file')
+    EdgeErosion = 0; % set EdgeErosion length as 0.
+end
+SaveMaskfile = pr.SaveMaskfile;
 
 % check if background information available, if not, estimate background
 % info. Currently use 99. 
@@ -116,7 +129,7 @@ for f = 1 : nF
         warning('%s does not exist! Skip it!', frameFullpath);
         continue;
     end
-    [pathstr, fname, ext] = fileparts(frameFullpath);
+    [pathstr, fsname, ext] = fileparts(frameFullpath);
     deconPath = pr.deconPath;
     if isempty(deconPath)
         deconPath = [pathstr, filesep, 'matlab_decon'];
@@ -132,18 +145,80 @@ for f = 1 : nF
     end
 
     % first try single GPU deconvolution, if it fails split into multiple chunks
-    deconFullPath = [deconPath filesep fname '_decon.tif'];
+    deconFullPath = [deconPath filesep fsname '_decon.tif'];
     % deconTempPath = [deconPath filesep fname '_decon.tif'];
     if exist(deconFullPath, 'file') && ~pr.Overwrite
         disp('Deconvolution results already exist, skip it!');
         continue;
     end
+    if ~largeFile
+        if EdgeErosion > 0
+            fprintf('Create eroded masks using raw data...\n');
+            im_raw = readtiff(frameFullpath);
+            im_bw = im_raw > 0;
+            % pad to avoid not erosion if a pixel touching the boundary
+            im_bw_pad = false(size(im_raw) + 2);
+            im_bw_pad(2 : end - 1, 2 : end - 1, 2 : end - 1) = im_bw;
+            im_bw_erode = imerode(im_bw_pad, strel('sphere', EdgeErosion));
+            im_bw_erode = im_bw_erode(2 : end - 1, 2 : end - 1, 2 : end - 1);
+            clear im_raw im_bw im_bw_pad
+            
+            % save mask file as common one for other time points/channels
+            if SaveMaskfile
+                maskPath = [deconPath, filesep, 'Masks'];
+                if ~exist(maskPath, 'dir')
+                    mkdir(maskPath);
+                end
+                maskFullPath = sprintf('%s/%s_eroded.tif', maskPath, fsname);
+                maskTmpPath = sprintf('%s/%s_eroded_%s.tif', maskPath, fsname, uuid);
+                writetiff(uint8(im_bw_erode), maskTmpPath);
+                movefile(maskTmpPath, maskFullPath);
+            end
+        end
+    end
 
     if ~largeFile
         tic
-        RLdecon(frameFullpath, PSF, Background, DeconIter, dzPSF, dz, Deskew, [], SkewAngle, ...
+        softlink_cmd = sprintf('ln -s %s %s_%s.tif', frameFullpath, frameFullpath(1:end-4), uuid); 
+        system(softlink_cmd);
+        frameTmpPath = sprintf('%s_%s.tif', frameFullpath(1:end-4), uuid); 
+        deconTmpPath = sprintf('%s_%s_decon.tif', deconFullPath(1:end-10), uuid); 
+        RLdecon(frameTmpPath, PSF, Background, DeconIter, dzPSF, dz, Deskew, [], SkewAngle, ...
             pixelSize, Rotate, Save16bit, Crop, zFlip, GenMaxZproj, ResizeImages, [])
         toc
+        unlink_cmd = sprintf('rm %s_%s.tif', frameFullpath(1:end-4), uuid); 
+        system(unlink_cmd);
+        
+        if exist(deconTmpPath, 'file')
+            im = readtiff(deconTmpPath);
+            if EdgeErosion > 0
+                fprintf('Erode edges of deconvolved data w.r.t. raw data...\n');        
+                im = im .* cast(im_bw_erode, class(im));
+            end
+
+            if ~isempty(ErodeMaskfile) && exist(ErodeMaskfile, 'file')
+                fprintf('Erode edges of deconvolved data using a predefined mask...\n');                
+                im_bw_erode = readtiff(ErodeMaskfile);
+                im = im .* cast(im_bw_erode, class(im));
+            end
+            deconTmpPath_eroded = sprintf('%s_%s_eroded.tif', deconFullPath(1:end-4), uuid);
+            if Save16bit
+                im = uint16(im);
+            else
+                im = single(im);
+            end
+            
+            writetiff(im, deconTmpPath_eroded);
+            movefile(deconTmpPath_eroded, deconFullPath);
+            delete(deconTmpPath);
+            deconTmpMIPPath = sprintf('%s/%s_%s_MIP_z.tif', deconPath, fsname, uuid); 
+            delete(deconTmpMIPPath);
+            
+            deconMIPPath = sprintf('%s/MIPs/', deconPath);
+            deconMIPFullPath = sprintf('%s%s_MIP_z.tif', deconMIPPath, fsname);
+            writetiff(uint16(max(im,[],3)), deconMIPFullPath);
+            toc
+        end
         if exist(deconFullPath, 'file')
             fprintf('Completed RL deconvolution of %s.\n', frameFullpath);
             continue;
@@ -155,17 +230,52 @@ for f = 1 : nF
     % deconvolution fails.
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-    fprintf('Start Large-file RL Decon for %s...\n', fname);
+    fprintf('Start Large-file RL Decon for %s...\n', fsname);
 
     tic
-    fprintf(['reading ' fname '...\n'])
+    fprintf(['reading ' fsname '...\n'])
     im = readtiff(frameFullpath);
     toc
+    
+    if EdgeErosion > 0
+        if SaveMaskfile
+            maskPath = [deconPath, filesep, 'Masks'];
+            if ~exist(maskPath, 'dir')
+                mkdir(maskPath);
+            end
+            maskFullPath = sprintf('%s/%s_eroded.tif', maskPath, fsname);
+            maskTmpPath = sprintf('%s/%s_eroded_%s.tif', maskPath, fsname, uuid);
+        end
+        if ~(SaveMaskfile && exist(maskFullPath, 'file'))
+            im_bw = im > 0;
+            % pad to avoid not erosion if a pixel touching the boundary
+            im_bw_pad = false(size(im) + 2);
+            im_bw_pad(2 : end - 1, 2 : end - 1, 2 : end - 1) = im_bw;
+            im_bw_erode = imerode(im_bw_pad, strel('sphere', EdgeErosion));
+            im_bw_erode = im_bw_erode(2 : end - 1, 2 : end - 1, 2 : end - 1);
+            clear im_bw im_bw_pad
+        else
+            im_bw_erode = readtiff(maskFullPath) > 0;
+        end
+        
+        % save mask file as common one for other time points/channels
+        if SaveMaskfile
+            writetiff(uint8(im_bw_erode), maskTmpPath);
+            movefile(maskTmpPath, maskFullPath);
+        end
+    end
+    
     % calculate number of chunks to break the image file
     % [my, mx, mz] = size(im);
     % [xmin,xmax,ymin,ymax,zmin,zmax,nn] = GU_extract_subVolCoordinates(mx,my,mz,csx,csy,csz,OL);
     imSize = size(im);
-    dtype = class(im);
+    % dtype = class(im);
+    if Save16bit
+        dtype = 'uint16';
+    else
+        dtype = 'single';
+    end
+        
     if pr.debug
         [xmin,xmax,ymin,ymax,zmin,zmax,nn] = XR_subVolumeCoordinatesExtraction_test(imSize, 'BlockSize', BlockSize, 'overlapSize', OL);
     else
@@ -173,7 +283,7 @@ for f = 1 : nF
     end
     
     % create a folder for the file and write out the chunks
-    chunkPath = [deconPath filesep fname];
+    chunkPath = [deconPath filesep fsname];
     chunkDeconPath = [chunkPath filesep 'matlab_decon'];
     chunkDeconMIPPath = [chunkPath filesep 'matlab_decon' filesep 'MIPs'];
     mkdir(chunkPath);
@@ -243,10 +353,10 @@ for f = 1 : nF
             uuid = get_uuid();
             tmpChunkFullname = sprintf('%s_%s.tif', [chunkPath, filesep, chunkFnames{ck}(1:end-4)], uuid);
             softlink_cmd = sprintf('ln -s %s %s', [chunkPath, filesep, chunkFnames{ck}], tmpChunkFullname);
-            matlab_cmd = sprintf(['addpath(genpath(pwd));tic;RLdecon(''%s'',''%s'',%.10f,%.10f,%.10f,%.10f,''%s'',[],', ...
-                '%.10f,%.10f,''%s'',''%s'',''%s'',''%s'',[%s],[%s],[]);toc;'], ...
-                tmpChunkFullname, PSF, Background, DeconIter, dzPSF, dz, string(Deskew), SkewAngle, pixelSize, ...
-                string(Rotate), string(Save16bit), string(Crop), string(zFlip), num2str(GenMaxZproj, '%.10f,'), ...
+            matlab_cmd = sprintf(['addpath(genpath(pwd));tic;RLdecon(''%s'',''%s'',%.10f,%.10f,%.10f,%.10f,%s,[],', ...
+                '%.10f,%.10f,%s,%s,[%s],%s,[%s],[%s],[]);toc;'], tmpChunkFullname, PSF, Background, DeconIter, ...
+                dzPSF, dz, string(Deskew), SkewAngle, pixelSize, string(Rotate), string(Save16bit), ...
+                strrep(num2str(Crop,'%d,'), ' ', ''), string(zFlip), num2str(GenMaxZproj, '%.10f,'), ...
                 num2str(ResizeImages, '%.10f,'));
             DeconCommand = sprintf('module load matlab/r2020a; matlab -nodisplay -nosplash -nodesktop -r \\"%s\\"', matlab_cmd);
             rename_cmd = sprintf('mv %s_%s_decon.tif %s_decon.tif', [chunkDeconPath, filesep, chunkFnames{ck}(1:end-4)], uuid, [chunkDeconPath, filesep, chunkFnames{ck}(1:end-4)]);
@@ -359,7 +469,17 @@ for f = 1 : nF
 
     tic
     fprintf('Saving combined deconvolved file...\n')
-    tmp_xy = max(im,[],3);
+    if EdgeErosion > 0
+        fprintf('Erode edges of deconvolved data w.r.t. raw data...\n');        
+        im = im .* cast(im_bw_erode, class(im));
+    end
+    
+    if ~isempty(ErodeMaskfile) && exist(ErodeMaskfile, 'file')
+        fprintf('Erode edges of deconvolved data using a predefined mask...\n');                
+        im_bw_erode = readtiff(ErodeMaskfile);
+        im = im .* cast(im_bw_erode, class(im));
+    end
+    
 
     if pr.Save16bit
         im = uint16(im);
@@ -371,10 +491,11 @@ for f = 1 : nF
     writetiff(im, deconTmpPath);
     movefile(deconTmpPath, deconFullPath);
     
+    tmp_xy = max(im,[],3);
     deconMIPPath = sprintf('%s/MIPs/', deconPath);
     mkdir(deconMIPPath);
-    deconMIPFullPath = sprintf('%s%s.tif', deconMIPPath, fname);
-    writetiff(uint16(tmp_xy), deconMIPFullPath);
+    deconMIPFullPath = sprintf('%s%s_MIP_z.tif', deconMIPPath, fsname);
+    writetiff(tmp_xy, deconMIPFullPath);
     toc
 
     % delete temporary files generated during the deconvolution

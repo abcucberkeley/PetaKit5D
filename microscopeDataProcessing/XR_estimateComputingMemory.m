@@ -13,7 +13,7 @@ ip.addRequired('filePath');
 ip.addOptional('steps', {'deskew', 'rotate', 'deconvolution'}); 
 ip.addParameter('imSize', [], @(x) isnumeric(x) && (isempty(x) || numel(x) == 3)); 
 ip.addParameter('dataSize', [], @(x) isnumeric(x) && (isempty(x) || numel(x) == 1)); 
-ip.addParameter('memFactors', [15, 5, 10]); 
+ip.addParameter('memFactors', [15, 5, 15]); 
 ip.addParameter('cudaDecon', ~false, @islogical);
 ip.addParameter('GPUMemFactor', 1.5); 
 ip.addParameter('GPUMaxMem', 12, @isnumeric);

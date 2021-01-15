@@ -279,6 +279,11 @@ for f = 1 : nF
     % [my, mx, mz] = size(im);
     % [xmin,xmax,ymin,ymax,zmin,zmax,nn] = GU_extract_subVolCoordinates(mx,my,mz,csx,csy,csz,OL);
     imSize = size(im);
+    if Save16bit
+        dtype = 'uint16';
+    else
+        dtype = 'single';
+    end    
     if p.debug
         [xmin,xmax,ymin,ymax,zmin,zmax,nn] = XR_subVolumeCoordinatesExtraction_test(imSize, 'BlockSize', BlockSize, 'overlapSize', OL);
     else
@@ -425,7 +430,7 @@ for f = 1 : nF
     % combine the deconvovled segments and write file
     tic
     fprintf('Combining deconvovled chunks...\n')
-    im = im*0;
+    im = zeros(imSize, dtype);
     lol = floor(OL / 2);
     rol = ceil(OL / 2); 
     for ck = 1:nn

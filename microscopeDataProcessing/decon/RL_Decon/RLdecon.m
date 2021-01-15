@@ -13,6 +13,9 @@ function RLdecon(input_tiff, psf, background, nIter, dz_psf, dz_data, ...
 %   correspond to coverslip plane
 %   CropFinal: [lower upper] to crop the final result in Z; if
 %   upper==lower then no cropping will be done
+% 
+% xruan (01/10/2021): for conversion to uint16, first rescale intensity if the max intensity is over 2^16 -1. 
+% xruan (01/12/2021): for conversion to uint16, add support for smaller psf
 
 if ischar(dz_psf)
     dz_psf=str2double(dz_psf);
@@ -57,7 +60,13 @@ if ischar(psf)
     if strcmp(suffix, '.mat')
         load(psf, 'psf');
     elseif strcmp(suffix, '.tif')
-        psf=psf_gen(psf, dz_psf, dz_data*dz_data_ratio, 48);
+        % xruan (01/12/2021)
+        try 
+            psf=psf_gen(psf, dz_psf, dz_data*dz_data_ratio, 48);
+        catch ME
+            disp(ME)
+            psf=psf_gen(psf, dz_psf, dz_data*dz_data_ratio, 24);
+        end
     else
         psf = [];  % dummy PSF
     end
@@ -201,6 +210,10 @@ if ischar(bSaveUint16)
 end
 
 if bSaveUint16
+    max_val = max(deconvolved(:));
+    if max_val > 65535
+        deconvolved = deconvolved * (65535 / max_val);
+    end
     deconvolved = uint16(deconvolved);
 end
 

@@ -15,7 +15,8 @@ function [] = XR_deskewRotateFrame(framePath, xyPixelSize, dz, varargin)
 % xruan (10/11/2020): add the combined deskew, rotate and resampling function. 
 % xruan (12/05/2020): add option to remove background 
 %                     add option to flip z stack in raw data (for negative X interval)
-                 
+% xruan (12/18/2020): add support to not save 3D stack
+
 
 ip = inputParser;
 ip.CaseSensitive = false;
@@ -43,6 +44,7 @@ ip.addParameter('constOffset', [], @(x) isempty(x) || isnumeric(x)); % If it is 
 ip.addParameter('BKRemoval', false, @islogical);
 ip.addParameter('Save16bit', false , @islogical); % saves deskewed data as 16 bit -- not for quantification
 ip.addParameter('RescaleRotate', false , @islogical); % Rescale rotated data to [0 65535]
+ip.addParameter('save3DStack', true , @islogical); % option to save 3D stack or not
 ip.addParameter('SaveMIP', true , @islogical); % save MIP-z for ds and dsr. 
 ip.addParameter('aname', '', @isstr); % XR allow user-defined result path
 ip.addParameter('ZoffsetCorrection', false, @islogical); % xruan: add option for correction of z offset
@@ -66,6 +68,7 @@ LLFFCorrection = pr.LLFFCorrection;
 BKRemoval = pr.BKRemoval;
 LSImage = pr.LSImage;
 BackgroundImage = pr.BackgroundImage;
+save3DStack = pr.save3DStack;
 SaveMIP = pr.SaveMIP;
 DSRCombined = pr.DSRCombined;
 resample = pr.resample;
@@ -193,16 +196,22 @@ if (~DSRCombined && (~exist(dsFullname, 'file') || ip.Results.Overwrite)) || DSR
             end
 
             dsMIPname = sprintf('%s%s_MIP_z.tif', dsMIPPath, fsname);
-            writetiff(uint16(max(ds, [], 3)), dsMIPname);
+            if ip.Results.Save16bit
+                writetiff(uint16(max(ds, [], 3)), dsMIPname);
+            else
+                writetiff(single(max(ds, [], 3)), dsMIPname);
+            end            
         end
 
         dsTempname = sprintf('%s%s_%s.tif', dsPath, fsname, uuid);
-        if ip.Results.Save16bit
-            writetiff(uint16(ds), dsTempname);
-        else
-            writetiff(single(ds), dsTempname);
+        if save3DStack
+            if ip.Results.Save16bit
+                writetiff(uint16(ds), dsTempname);
+            else
+                writetiff(single(ds), dsTempname);
+            end
+            movefile(dsTempname, dsFullname);
         end
-        movefile(dsTempname, dsFullname);
     end
 end
 
@@ -243,7 +252,11 @@ if ip.Results.Rotate || DSRCombined
             end
 
             dsrMIPname = sprintf('%s%s_MIP_z.tif', dsrMIPPath, fsname);
-            writetiff(uint16(max(dsr, [], 3)), dsrMIPname);
+            if ip.Results.Save16bit
+                writetiff(uint16(max(dsr, [], 3)), dsrMIPname);
+            else
+                writetiff(single(max(dsr, [], 3)), dsrMIPname);
+            end
         end
         
         if saveZarr
@@ -263,15 +276,16 @@ if ip.Results.Rotate || DSRCombined
             dsr = single(dsr);
         end
         
-        if saveZarr
-            bim = blockedImage(dsr);
-            blockSize = min(size(dsr), blockSize);
-            write(bim, dsrTempName, 'Adapter', ZarrAdapter, 'BlockSize', blockSize);
-        else
-            writetiff(dsr, dsrTempName);
+        if save3DStack
+            if saveZarr
+                bim = blockedImage(dsr);
+                blockSize = min(size(dsr), blockSize);
+                write(bim, dsrTempName, 'Adapter', ZarrAdapter, 'BlockSize', blockSize);
+            else
+                writetiff(dsr, dsrTempName);
+            end
+            movefile(dsrTempName, dsrFullname);
         end
-        
-        movefile(dsrTempName, dsrFullname);
     end
 end
 

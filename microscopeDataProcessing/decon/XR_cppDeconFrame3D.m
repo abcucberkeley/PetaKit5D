@@ -407,7 +407,13 @@ for f = 1 : nF
 
     % calculate number of chunks to break the image file    
     imSize = size(im);
-    dtype = class(im);
+    % dtype = class(im);
+    if Save16bit
+        dtype = 'uint16';
+    else
+        dtype = 'single';
+    end
+    
     if p.debug
         [xmin,xmax,ymin,ymax,zmin,zmax,nn] = XR_subVolumeCoordinatesExtraction_test(imSize, 'BlockSize', BlockSize, 'overlapSize', OL);
     else
