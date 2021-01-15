@@ -274,8 +274,8 @@ end
 nd = numel(dataPaths);
 for d = 1 : nd
     dataPath = dataPaths{d};
-    if ~strcmp(dataPath(end), filesep)
-        dataPaths{d} = [dataPath, filesep];
+    if ~strcmp(dataPath(end), '/')
+        dataPaths{d} = [dataPath, '/'];
     end
 end
 
@@ -317,7 +317,7 @@ if Stitch
                 stitchResultDir = sprintf('matlab_stitch_%s', BlendMethod);                
             end
         end
-        stchPath = [dataPath, filesep, stitchResultDir, filesep];
+        stchPath = [dataPath, '/', stitchResultDir, '/'];
         if Overwrite(3) && exist(stchPath, 'dir')
             rmdir(stchPath, 's');
         end
@@ -435,21 +435,21 @@ if Decon
     for d = 1 : nd
         dataPath = dataPaths{d};
 
-        deconPath = [dataPath, deconName, filesep];
+        deconPath = [dataPath, deconName, '/'];
         if DS
             if DSRCombined
                 error('If using DS for deconvolution, "DSRCombined" must be set as false!')
             end
             dsPath = dsPaths{d};
-            deconPath = [dsPath, deconName, filesep];
+            deconPath = [dsPath, deconName, '/'];
         end
         if DSR
             dsrPath = dsrPaths{d};
-            deconPath = [dsrPath, deconName, filesep];
+            deconPath = [dsrPath, deconName, '/'];
         end
         if Stitch
             stchPath = stchPaths{d};            
-            deconPath = [stchPath, deconName, filesep];
+            deconPath = [stchPath, deconName, '/'];
             RotateAfterDecon = false;
         end
 
@@ -463,7 +463,7 @@ if Decon
         deconPaths{d} = deconPath;
         
         if RotateAfterDecon
-            rdcPath = [deconPath filesep 'Rotated' filesep];
+            rdcPath = [deconPath '/' 'Rotated' '/'];
             if Overwrite(5) && exist(rdcPath, 'dir')
                 rmdir(rdcPath, 's');
             end

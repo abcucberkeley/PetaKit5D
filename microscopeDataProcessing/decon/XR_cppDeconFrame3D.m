@@ -215,15 +215,15 @@ for f = 1 : nF
     
     deconPath = p.deconPath;
     if isempty(deconPath)
-        deconPath = [pathstr, filesep, 'CPPdecon'];
+        deconPath = [pathstr, '/', 'CPPdecon'];
     end 
     
     % first try single GPU deconvolution, if it fails split into multiple chunks
-    deconFullPath = [deconPath filesep fsname '_decon.tif'];
+    deconFullPath = [deconPath '/' fsname '_decon.tif'];
     % if zarrFile
-    %    deconFullPath_zarr = [deconPath filesep fsname '_decon.zarr'];
+    %    deconFullPath_zarr = [deconPath '/' fsname '_decon.zarr'];
     % end
-    % deconTempPath = [deconPath filesep fname '_decon.tif'];
+    % deconTempPath = [deconPath '/' fname '_decon.tif'];
     if exist(deconFullPath, 'file') && ~p.Overwrite
         disp('Deconvolution results already exist, skip it!');
         continue;
@@ -254,7 +254,7 @@ for f = 1 : nF
             
             % save mask file as common one for other time points/channels
             if SaveMaskfile
-                maskPath = [deconPath, filesep, 'Masks'];
+                maskPath = [deconPath, '/', 'Masks'];
                 if ~exist(maskPath, 'dir')
                     mkdir(maskPath);
                 end
@@ -379,7 +379,7 @@ for f = 1 : nF
     
     if EdgeErosion > 0
         if SaveMaskfile
-            maskPath = [deconPath, filesep, 'Masks'];
+            maskPath = [deconPath, '/', 'Masks'];
             if ~exist(maskPath, 'dir')
                 mkdir(maskPath);
             end
@@ -428,9 +428,9 @@ for f = 1 : nF
     end
     
     % create a folder for the file and write out the chunks
-    chunkPath = [deconPath filesep fsname];
-    chunkDeconPath = [chunkPath filesep 'CPPdecon'];
-    chunkDeconMIPPath = [chunkPath filesep 'CPPdecon' filesep 'MIPs'];
+    chunkPath = [deconPath '/' fsname];
+    chunkDeconPath = [chunkPath '/' 'CPPdecon'];
+    chunkDeconMIPPath = [chunkPath '/' 'CPPdecon' '/' 'MIPs'];
     mkdir(deconPath);
     mkdir(chunkPath);
     mkdir(chunkDeconPath);
@@ -457,9 +457,9 @@ for f = 1 : nF
             chunkFnames{ck} = '';
             continue;
         end
-        if ~exist([chunkPath, filesep, chunkFnames{ck}], 'file') || p.Overwrite
-            writetiff(im_chunk, [chunkPath, filesep, chunkFnames{ck}(1 : end - 4), '_', uuid, '.tif']);
-            movefile([chunkPath, filesep, chunkFnames{ck}(1 : end - 4), '_', uuid, '.tif'], [chunkPath, filesep, chunkFnames{ck}]);
+        if ~exist([chunkPath, '/', chunkFnames{ck}], 'file') || p.Overwrite
+            writetiff(im_chunk, [chunkPath, '/', chunkFnames{ck}(1 : end - 4), '_', uuid, '.tif']);
+            movefile([chunkPath, '/', chunkFnames{ck}(1 : end - 4), '_', uuid, '.tif'], [chunkPath, '/', chunkFnames{ck}]);
         end
     end
     
@@ -488,7 +488,7 @@ for f = 1 : nF
             
             task_id = ck;
             
-            chunkDeconFullpath = [chunkDeconPath filesep chunkFnames{ck}(1:end-4) '_decon.tif'];
+            chunkDeconFullpath = [chunkDeconPath '/' chunkFnames{ck}(1:end-4) '_decon.tif'];
             if exist(chunkDeconFullpath, 'file') || isempty(chunkFnames{ck}) % || p.OverwriteDecon
                 is_done_flag(ck) = true;
                 continue;
@@ -498,9 +498,9 @@ for f = 1 : nF
             % after write to disk is done
             uuid = get_uuid();
             
-            softlink_cmd = sprintf('ln -s %s %s_%s.tif', [chunkPath, filesep, chunkFnames{ck}], [chunkPath, filesep, chunkFnames{ck}(1:end-4)], uuid);
-            decon_cmd = [system_lib_str cpuDeconPath params '--input-file ' chunkPath, filesep, chunkFnames{ck}(1:end-4), '_', uuid, '.tif' ' --psf-file ' PSFfile];
-            rename_cmd = sprintf('mv %s_%s_decon.tif %s_decon.tif', [chunkDeconPath, filesep, chunkFnames{ck}(1:end-4)], uuid, [chunkDeconPath, filesep, chunkFnames{ck}(1:end-4)]);
+            softlink_cmd = sprintf('ln -s %s %s_%s.tif', [chunkPath, '/', chunkFnames{ck}], [chunkPath, '/', chunkFnames{ck}(1:end-4)], uuid);
+            decon_cmd = [system_lib_str cpuDeconPath params '--input-file ' chunkPath, '/', chunkFnames{ck}(1:end-4), '_', uuid, '.tif' ' --psf-file ' PSFfile];
+            rename_cmd = sprintf('mv %s_%s_decon.tif %s_decon.tif', [chunkDeconPath, '/', chunkFnames{ck}(1:end-4)], uuid, [chunkDeconPath, '/', chunkFnames{ck}(1:end-4)]);
             chunk_decon_cmd = sprintf('%s; %s; %s', softlink_cmd, decon_cmd, rename_cmd);
             if parseCluster
                 job_status = check_slurm_job_status(job_ids(ck), task_id);
@@ -531,7 +531,7 @@ for f = 1 : nF
 
                 % If there is no job, submit a job
                 if job_status == -1 && ~(masterCompute && ck == lastck)
-                    [estMem, estGPUMem] = XR_estimateComputingMemory([chunkPath, filesep, chunkFnames{ck}], {'deconvolution'}, 'cudaDecon', false);
+                    [estMem, estGPUMem] = XR_estimateComputingMemory([chunkPath, '/', chunkFnames{ck}], {'deconvolution'}, 'cudaDecon', false);
 
                     if cpusPerTask * 20 < estMem
                         cpusPerTask = min(24, ceil(estMem / 20));
@@ -579,7 +579,7 @@ for f = 1 : nF
     lol = floor(OL / 2);
     rol = ceil(OL / 2); 
     for ck = 1:nn
-        chunkDeconFullpath = [chunkDeconPath filesep chunkFnames{ck}(1:end-4) '_decon.tif'];
+        chunkDeconFullpath = [chunkDeconPath '/' chunkFnames{ck}(1:end-4) '_decon.tif'];
         if exist(chunkDeconFullpath, 'file')
             tim = readtiff(chunkDeconFullpath);
             [tsy, tsx, tsz] = size(tim);

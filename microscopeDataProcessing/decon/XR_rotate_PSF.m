@@ -35,7 +35,7 @@ if isempty(uuid)
 end
 
 [PSFdir, fsname] = fileparts(PSFfile);
-rotPSFdir = [PSFdir, filesep, 'Rotated/'];
+rotPSFdir = [PSFdir, '/', 'Rotated/'];
 if ~exist(rotPSFdir, 'dir')
     mkdir(rotPSFdir);
 end

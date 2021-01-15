@@ -63,7 +63,7 @@ for f = 1 : numel(framePaths)
     [rt, fsname] = fileparts(framePath);
     fname = [fsname, '.tif'];
     
-    rtPath = [rt, filesep, 'Rotated/'];
+    rtPath = [rt, '/', 'Rotated/'];
     mkdir(rtPath);
     rtFullname = [rtPath, fname];
 

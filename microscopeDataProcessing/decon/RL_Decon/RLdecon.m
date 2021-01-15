@@ -188,9 +188,9 @@ end
 % construct output file name
 
 decon_filename_tail = '_decon.tif';
-decon_folder = ['matlab_decon' filesep];
-thumnail_folder = ['downsampled_data' filesep];
-MIPs_folder = ['MIPs' filesep];
+decon_folder = ['matlab_decon' '/'];
+thumnail_folder = ['downsampled_data' '/'];
+MIPs_folder = ['MIPs' '/'];
 
 % output_tiff = strrep(input_tiff, '.tif', decon_filename_tail);
 output_tiff = strcat(inputfile, decon_filename_tail);
@@ -200,9 +200,9 @@ if isempty(datafolder)
     output_tiff2 = strcat([decon_folder,thumnail_folder], output_tiff);
     MIPs_tiff = strcat([decon_folder,MIPs_folder], inputfile);
 else
-    output_tiff1 = strcat(datafolder, filesep, decon_folder, output_tiff);
-    output_tiff2 = strcat(datafolder, filesep, [decon_folder, thumnail_folder], output_tiff);
-    MIPs_tiff = strcat(datafolder, filesep, [decon_folder, MIPs_folder], inputfile);
+    output_tiff1 = strcat(datafolder, '/', decon_folder, output_tiff);
+    output_tiff2 = strcat(datafolder, '/', [decon_folder, thumnail_folder], output_tiff);
+    MIPs_tiff = strcat(datafolder, '/', [decon_folder, MIPs_folder], inputfile);
 end
 
 if ischar(bSaveUint16)
@@ -251,7 +251,7 @@ end
 
 if resizeFactor ~= 1
     deconvolved = rescale_resample(deconvolved, resizeFactor, scalingThresh);
-    mkdir([datafolder, filesep ,decon_folder,thumnail_folder]);
+    mkdir([datafolder, '/' ,decon_folder,thumnail_folder]);
     % write3Dtiff(deconvolved, output_tiff2);
     writetiff(deconvolved, output_tiff2);
 end

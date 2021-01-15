@@ -164,7 +164,7 @@ px = Resolution(1);
 dz = Resolution(end);
 
 % make root directory
-stitching_rt = [dataPath, filesep, resultDir];
+stitching_rt = [dataPath, '/', resultDir];
 if ~exist(stitching_rt, 'dir')
     mkdir(stitching_rt);
     fileattrib(stitching_rt, '+w', 'g');            
@@ -183,14 +183,14 @@ end
 
 % % save xcorr info
 stitchInfoDir = 'stitchInfo';
-stitch_info_path = [stitching_rt, filesep, stitchInfoDir];
+stitch_info_path = [stitching_rt, '/', stitchInfoDir];
 if ~exist(stitch_info_path, 'dir')
     mkdir(stitch_info_path);
     fileattrib(stitch_info_path, '+w', 'g');            
 end
 
 % temporary directory for intermediate results
-stitching_tmp = [stitching_rt, filesep, 'tmp'];
+stitching_tmp = [stitching_rt, '/', 'tmp'];
 if ~exist(stitching_tmp, 'dir')
     mkdir(stitching_tmp);
     fileattrib(stitching_tmp, '+w', 'g');            
@@ -266,14 +266,14 @@ Cam = unique(t.camera);
 stackn = unique(t.stack);
 
 % check whether the image files in the image list file exist 
-dir_info = dir([dataPath, filesep, '*.tif']);
+dir_info = dir([dataPath, '/', '*.tif']);
 imageFnames = {dir_info.name}';
 if isempty(dir_info)
     if useExistDSR
-        dir_info = dir([dataPath, DSRDirstr, filesep, '*.tif']);
+        dir_info = dir([dataPath, DSRDirstr, '/', '*.tif']);
         imageFnames = {dir_info.name}';
     elseif useExistDSRDecon
-        dir_info = dir([dataPath, filesep, DSRDeconDirstr, filesep, '*.tif']);
+        dir_info = dir([dataPath, '/', DSRDeconDirstr, '/', '*.tif']);
         imageFnames = cellfun(@(x) [x(1 : end - 10), '.tif'], {dir_info.name}', 'unif', 0);
     else
         error('The tiles do not exist!');
@@ -472,7 +472,7 @@ while ~all(is_done_flag | trial_counter >= max_trial_num, 'all')
                     end
                     
                     tile_fnames = cur_t.Filename;
-                    tile_fullpaths = cellfun(@(x) [dataPath, filesep, x], tile_fnames, 'unif', 0);
+                    tile_fullpaths = cellfun(@(x) [dataPath, '/', x], tile_fnames, 'unif', 0);
                     
                     % parse setting file 
                     flippedTile = [];
@@ -494,7 +494,7 @@ while ~all(is_done_flag | trial_counter >= max_trial_num, 'all')
                     end
                     if useExistDSR
                         % DSRDirstr = 'DSR';
-                        tile_dsr_fullpaths = cellfun(@(x) [dataPath, filesep, DSRDirstr, filesep, x], tile_fnames, 'unif', 0);
+                        tile_dsr_fullpaths = cellfun(@(x) [dataPath, '/', DSRDirstr, '/', x], tile_fnames, 'unif', 0);
                         is_tile_dsr_exist = cellfun(@(x) exist(x, 'file'), tile_dsr_fullpaths);
                         if Streaming
                             if ~all(is_tile_dsr_exist)
@@ -515,7 +515,7 @@ while ~all(is_done_flag | trial_counter >= max_trial_num, 'all')
                     end
                     
                     if useExistDSRDecon
-                        tile_dsr_decon_fullpaths = cellfun(@(x) [dataPath, filesep, DSRDeconDirstr, filesep, x(1 : end - 4), '_decon.tif'], tile_fnames, 'unif', 0);
+                        tile_dsr_decon_fullpaths = cellfun(@(x) [dataPath, '/', DSRDeconDirstr, '/', x(1 : end - 4), '_decon.tif'], tile_fnames, 'unif', 0);
                         is_tile_dsr_decon_exist = cellfun(@(x) exist(x, 'file'), tile_dsr_decon_fullpaths);
                         if Streaming
                             if ~all(is_tile_dsr_decon_exist)

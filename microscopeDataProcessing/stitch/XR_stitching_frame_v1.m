@@ -223,7 +223,7 @@ dir_info = dir(sprintf('%s/%s/px*_py*_pz*', dataPath, ResultDir));
 pixelFnames = {dir_info.name}';
 for i = 1 : numel(pixelFnames)
     if ~strcmp(pixelFnames{i}, pixelInfoFname)
-        delete([dir_info(i).folder, filesep, pixelFnames{i}])
+        delete([dir_info(i).folder, '/', pixelFnames{i}])
     end
 end
 
@@ -233,15 +233,15 @@ end
 
 % create DSR or Rotated folder
 if ~isempty(pr.DSRDirstr)
-    dsrpath = [dataPath filesep pr.DSRDirstr];
+    dsrpath = [dataPath '/' pr.DSRDirstr];
 elseif ~isempty(pr.DSRDeconDirstr)
-    dsrpath = [dataPath filesep pr.DSRDeconDirstr];
+    dsrpath = [dataPath '/' pr.DSRDeconDirstr];
     Decon = true;
 else
     if ObjectiveScan
-        dsrpath = [dataPath filesep 'Rotated_dx' num2str(px*xf) '_dz' num2str(px*zf)];        
+        dsrpath = [dataPath '/' 'Rotated_dx' num2str(px*xf) '_dz' num2str(px*zf)];        
     else
-        dsrpath = [dataPath filesep 'DSR_dx' num2str(px*xf) '_dz' num2str(px*zf)];
+        dsrpath = [dataPath '/' 'DSR_dx' num2str(px*xf) '_dz' num2str(px*zf)];
     end
 end
 
@@ -261,9 +261,9 @@ for k = 1:nF
     tileFullpath = tileFullpaths{k};
     [dataPath, fsname] = fileparts(tileFullpath);
     
-    dsrFullpath = [dsrpath filesep fsname '.tif'];
+    dsrFullpath = [dsrpath '/' fsname '.tif'];
     if Decon && ~isempty(pr.DSRDeconDirstr)
-        dsrFullpath = [dsrpath filesep fsname '_decon.tif'];
+        dsrFullpath = [dsrpath '/' fsname '_decon.tif'];
     end
     
     if ~exist(dsrFullpath, 'file')
@@ -279,12 +279,12 @@ for k = 1:nF
         
         % deconvovle
         if Decon && isempty(pr.DSRDeconDirstr)
-            deconpath = [rt filesep 'matlab_decon'];
+            deconpath = [rt '/' 'matlab_decon'];
             if ~exist(deconpath, 'dir')
                 mkdir(deconpath);
             end
             
-            if ~exist([deconpath filesep fsname '.tif'], 'file')
+            if ~exist([deconpath '/' fsname '.tif'], 'file')
                 fprintf('Deconvolving Data...')
                 tic
                 volpath = [rt fsname];
@@ -306,11 +306,11 @@ for k = 1:nF
                 end
 
                 if Save16bit
-                    writetiff(uint16(im), [deconpath filesep fsname '_' uuid '.tif']);
+                    writetiff(uint16(im), [deconpath '/' fsname '_' uuid '.tif']);
                 else
-                    writetiff(im, [deconpath filesep fsname '_' uuid '.tif']);
+                    writetiff(im, [deconpath '/' fsname '_' uuid '.tif']);
                 end
-                movefile([deconpath filesep fsname '_' uuid '.tif'], [deconpath filesep fsname '.tif']);
+                movefile([deconpath '/' fsname '_' uuid '.tif'], [deconpath '/' fsname '.tif']);
             end
         end
         fprintf('Rotating Data...')
@@ -361,9 +361,9 @@ end
 if ~exist('dsr', 'var')
     tileFullpath = tileFullpaths{1};
     [dataPath, fsname] = fileparts(tileFullpath);
-    dsrFullpath = [dsrpath filesep fsname '.tif'];  
+    dsrFullpath = [dsrpath '/' fsname '.tif'];  
     if Decon && ~isempty(pr.DSRDeconDirstr)
-        dsrFullpath = [dsrpath filesep fsname '_decon.tif'];
+        dsrFullpath = [dsrpath '/' fsname '_decon.tif'];
     end    
     dsr = readtiff(dsrFullpath);
 end
@@ -372,9 +372,9 @@ imSizes = zeros(nF, 3);
 for i = 1 : nF
     tileFullpath = tileFullpaths{i};
     [dataPath, fsname] = fileparts(tileFullpath);
-    dsrFullpath = [dsrpath filesep fsname '.tif'];  
+    dsrFullpath = [dsrpath '/' fsname '.tif'];  
     if Decon && ~isempty(pr.DSRDeconDirstr)
-        dsrFullpath = [dsrpath filesep fsname '_decon.tif'];
+        dsrFullpath = [dsrpath '/' fsname '_decon.tif'];
     end    
     imSizes(i, :) = getImageSize(dsrFullpath);
 end
@@ -413,7 +413,7 @@ max_xcorr_mat = zeros(nF * (nF - 1) / 2, 3);
 if xcorrShift && isPrimaryCh
     fprintf('Compute cross-correlation based registration between overlap tiles...\n')
     
-    xcorrDir = [dataPath filesep ResultDir filesep 'xcorr' filesep];
+    xcorrDir = [dataPath '/' ResultDir '/' 'xcorr' '/'];
     if ~exist(xcorrDir, 'dir')
         mkdir(xcorrDir);
         fileattrib(xcorrDir, '+w', 'g');
@@ -435,9 +435,9 @@ if xcorrShift && isPrimaryCh
         for i = 1 : nF - 1
             tileFullpath_i = tileFullpaths{i};
             [dataPath, fsname_i] = fileparts(tileFullpath_i);
-            dsrFullpath_i = [dsrpath filesep fsname_i '.tif'];
+            dsrFullpath_i = [dsrpath '/' fsname_i '.tif'];
             if Decon && ~isempty(pr.DSRDeconDirstr)
-                dsrFullpath_i = [dsrpath filesep fsname_i '_decon.tif'];
+                dsrFullpath_i = [dsrpath '/' fsname_i '_decon.tif'];
             end
 
             for j = i + 1 : nF
@@ -471,9 +471,9 @@ if xcorrShift && isPrimaryCh
                 
                 tileFullpath_j = tileFullpaths{j};
                 [dataPath, fsname_j] = fileparts(tileFullpath_j);
-                dsrFullpath_j = [dsrpath filesep fsname_j '.tif'];
+                dsrFullpath_j = [dsrpath '/' fsname_j '.tif'];
                 if Decon && ~isempty(pr.DSRDeconDirstr)
-                    dsrFullpath_j = [dsrpath filesep fsname_j '_decon.tif'];
+                    dsrFullpath_j = [dsrpath '/' fsname_j '_decon.tif'];
                 end
 
                 xyz_i = xyz(i, :);
@@ -659,9 +659,9 @@ end
 for i = 1 : nF
     tileFullpath = tileFullpaths{i};
     [dataPath, fsname] = fileparts(tileFullpath);
-    dsrFullpath = [dsrpath filesep fsname '.tif'];
+    dsrFullpath = [dsrpath '/' fsname '.tif'];
     if Decon && ~isempty(pr.DSRDeconDirstr)
-        dsrFullpath = [dsrpath filesep fsname '_decon.tif'];
+        dsrFullpath = [dsrpath '/' fsname '_decon.tif'];
     end
     
     dsr = readtiff(dsrFullpath);
@@ -786,9 +786,9 @@ if strcmp(BlendMethod, 'median')
                 tileFullpath = tileFullpaths{i};
                 [dataPath, fsname] = fileparts(tileFullpath);
 
-                dsrFullpath = [dsrpath filesep fsname '.tif'];
+                dsrFullpath = [dsrpath '/' fsname '.tif'];
                 if Decon && ~isempty(pr.DSRDeconDirstr)
-                    dsrFullpath = [dsrpath filesep fsname '_decon.tif'];
+                    dsrFullpath = [dsrpath '/' fsname '_decon.tif'];
                 end
                 dsr = readtiff(dsrFullpath);
                 if ~strcmp(class(dsr), dtype)
@@ -933,7 +933,7 @@ end
 % end
 
 if isPrimaryCh 
-    stichInfoPath = [dataPath, filesep, ResultDir, filesep, stitchInfoDir];
+    stichInfoPath = [dataPath, '/', ResultDir, '/', stitchInfoDir];
     if ~exist(stichInfoPath, 'dir')
         mkdir(stichInfoPath);
         fileattrib(stichInfoPath, '+w', 'g');
@@ -957,26 +957,26 @@ if SaveMIP
 end
 
 % save stitched result
-stitch_tmp_fullname = [dataPath filesep ResultDir filesep fsname(1:end-21) '_' uuid '.tif'];
-stitch_fullname = [dataPath filesep ResultDir filesep fsname(1:end-21) '.tif'];
+stitch_tmp_fullname = [dataPath '/' ResultDir '/' fsname(1:end-21) '_' uuid '.tif'];
+stitch_fullname = [dataPath '/' ResultDir '/' fsname(1:end-21) '.tif'];
 writetiff(nv, stitch_tmp_fullname);
 movefile(stitch_tmp_fullname, stitch_fullname);
 
 if false
     % write to hdf5 
-    stitch_tmp_hdf5_fullname = [dataPath filesep ResultDir filesep fsname(1:end-21) '_' uuid '.h5'];
+    stitch_tmp_hdf5_fullname = [dataPath '/' ResultDir '/' fsname(1:end-21) '_' uuid '.h5'];
     writehdf5(nv, stitch_tmp_hdf5_fullname)
-    movefile(stitch_tmp_hdf5_fullname, [dataPath filesep ResultDir filesep fsname(1:end-21) '.h5']);
+    movefile(stitch_tmp_hdf5_fullname, [dataPath '/' ResultDir '/' fsname(1:end-21) '.h5']);
 end
 
 
 if false
     % write to n5 
-    stitch_tmp_n5_fullname = [dataPath filesep ResultDir filesep fsname(1:end-21) '_' uuid '_n5'];
+    stitch_tmp_n5_fullname = [dataPath '/' ResultDir '/' fsname(1:end-21) '_' uuid '_n5'];
     tiff2n5_cmd = 'python /global/home/groups/software/sl-7.x86_64/modules/stitching-spark/startup-scripts/spark-local/convert-tiff-tiles-n5.py';
     cmd = sprintf('%s -i %s -o %s', tiff2n5_cmd, stitch_fullname, stitch_tmp_n5_fullname);
     system(cmd);
-    movefile(stitch_tmp_n5_fullname, [dataPath filesep ResultDir filesep fsname(1:end-21) '_n5']);
+    movefile(stitch_tmp_n5_fullname, [dataPath '/' ResultDir '/' fsname(1:end-21) '_n5']);
 end
 
 

@@ -89,14 +89,14 @@ OTFFileName = p.OTFFileName;
 if isempty(OTFFileName)
     OTFFileName = sprintf('OTF_%s.tif', psfFsname);    
 end
-if p.OverwriteOTFs || ~exist([OTFpathstr filesep OTFFileName], 'file')
-    otfCommand = [p.OTFGENPath ' ' PSF ' ' OTFpathstr filesep OTFFileName '  --nocleanup --fixorigin 10'];
+if p.OverwriteOTFs || ~exist([OTFpathstr '/' OTFFileName], 'file')
+    otfCommand = [p.OTFGENPath ' ' PSF ' ' OTFpathstr '/' OTFFileName '  --nocleanup --fixorigin 10'];
     [stat, res] = system(otfCommand,'-echo');
     
-    if ~exist([OTFpathstr filesep OTFFileName], 'file')
+    if ~exist([OTFpathstr '/' OTFFileName], 'file')
         psf = readtiff(PSF);
         otf = psf2otf(psf);
-        writetiff(otf, [OTFpathstr filesep OTFFileName]);
+        writetiff(otf, [OTFpathstr '/' OTFFileName]);
     end
 end
 
@@ -216,7 +216,7 @@ for f = 1 : nF
     fname = [fsname ext];
     deconPath = p.deconPath;
     if isempty(deconPath)
-        deconPath = [pathstr, filesep, 'GPUdecon'];
+        deconPath = [pathstr, '/', 'GPUdecon'];
     end 
 
     % check file size
@@ -228,8 +228,8 @@ for f = 1 : nF
     end
 
     % first try single GPU deconvolution, if it fails split into multiple chunks
-    deconFullPath = [deconPath filesep fsname '_decon.tif'];
-    % deconTempPath = [deconPath filesep fname '_decon.tif'];
+    deconFullPath = [deconPath '/' fsname '_decon.tif'];
+    % deconTempPath = [deconPath '/' fname '_decon.tif'];
     if exist(deconFullPath, 'file') && ~p.Overwrite
         disp('Deconvolution results already exist, skip it!');
         continue;
@@ -237,10 +237,10 @@ for f = 1 : nF
 
     if ~largeFile
         if ispc
-            DeconCommand = [p.cudaDeconPath params '--input-dir ' pathstr filesep  ' --filename-pattern ' fsname ' --otf-file ' OTFpathstr filesep OTFFileName ];
+            DeconCommand = [p.cudaDeconPath params '--input-dir ' pathstr '/'  ' --filename-pattern ' fsname ' --otf-file ' OTFpathstr '/' OTFFileName ];
         else
             softlink_cmd = sprintf('ln -s %s %s_%s.tif', frameFullpath, frameFullpath(1:end-4), uuid);
-            decon_cmd = [p.cudaDeconPath params pathstr filesep ' ' fsname '_' uuid ' ' OTFpathstr filesep OTFFileName ];
+            decon_cmd = [p.cudaDeconPath params pathstr '/' ' ' fsname '_' uuid ' ' OTFpathstr '/' OTFFileName ];
             rename_cmd = sprintf('mv %s/%s_%s_decon.tif %s/%s_decon.tif', deconPath, fsname, uuid, deconPath, fsname);
             rename_mip_cmd = sprintf('mv %s/MIPs/%s_%s_MIP_z.tif %s/MIPs/%s_MIP_z.tif', deconPath, fsname, uuid, deconPath, fsname);
             unlink_cmd = sprintf('rm %s_%s.tif', frameFullpath(1:end-4), uuid);
@@ -291,9 +291,9 @@ for f = 1 : nF
     end
     
     % create a folder for the file and write out the chunks
-    chunkPath = [deconPath filesep fsname];
-    chunkDeconPath = [chunkPath filesep 'GPUdecon'];
-    chunkDeconMIPPath = [chunkPath filesep 'GPUdecon' filesep 'MIPs'];
+    chunkPath = [deconPath '/' fsname];
+    chunkDeconPath = [chunkPath '/' 'GPUdecon'];
+    chunkDeconMIPPath = [chunkPath '/' 'GPUdecon' '/' 'MIPs'];
     mkdir(deconPath);
     mkdir(chunkPath);
     mkdir(chunkDeconPath);
@@ -321,7 +321,7 @@ for f = 1 : nF
             continue;
         end
         if ~exist(chunkFnames{ck}, 'file') || p.Overwrite
-            writetiff(im_chunk, [chunkPath, filesep, chunkFnames{ck}]);
+            writetiff(im_chunk, [chunkPath, '/', chunkFnames{ck}]);
         end
     end
     
@@ -350,7 +350,7 @@ for f = 1 : nF
             
             task_id = ck;
             
-            chunkDeconFullpath = [chunkDeconPath filesep chunkFnames{ck}(1:end-4) '_decon.tif'];
+            chunkDeconFullpath = [chunkDeconPath '/' chunkFnames{ck}(1:end-4) '_decon.tif'];
             if exist(chunkDeconFullpath, 'file') || isempty(chunkFnames{ck}) % || p.OverwriteDecon
                 is_done_flag(ck) = true;
                 continue;
@@ -359,9 +359,9 @@ for f = 1 : nF
             % Create a softlink with uuid of the chunk and rename the file
             % after write to disk is done
             uuid = get_uuid();
-            softlink_cmd = sprintf('ln -s %s %s_%s.tif', [chunkPath, filesep, chunkFnames{ck}], [chunkPath, filesep, chunkFnames{ck}(1:end-4)], uuid);
-            DeconCommand = [p.cudaDeconPath params '--input-dir ' chunkPath ' --filename-pattern ' chunkFnames{ck}(1:end-4) '_' uuid  ' --otf-file ' OTFpathstr filesep OTFFileName];
-            rename_cmd = sprintf('mv %s_%s_decon.tif %s_decon.tif', [chunkDeconPath, filesep, chunkFnames{ck}(1:end-4)], uuid, [chunkDeconPath, filesep, chunkFnames{ck}(1:end-4)]);
+            softlink_cmd = sprintf('ln -s %s %s_%s.tif', [chunkPath, '/', chunkFnames{ck}], [chunkPath, '/', chunkFnames{ck}(1:end-4)], uuid);
+            DeconCommand = [p.cudaDeconPath params '--input-dir ' chunkPath ' --filename-pattern ' chunkFnames{ck}(1:end-4) '_' uuid  ' --otf-file ' OTFpathstr '/' OTFFileName];
+            rename_cmd = sprintf('mv %s_%s_decon.tif %s_decon.tif', [chunkDeconPath, '/', chunkFnames{ck}(1:end-4)], uuid, [chunkDeconPath, '/', chunkFnames{ck}(1:end-4)]);
             chunk_decon_cmd = sprintf('%s; %s; %s', softlink_cmd, DeconCommand, rename_cmd);
             if parseCluster
                 job_status = check_slurm_job_status(job_ids(ck), task_id);
@@ -434,7 +434,7 @@ for f = 1 : nF
     lol = floor(OL / 2);
     rol = ceil(OL / 2); 
     for ck = 1:nn
-        chunkDeconFullpath = [chunkDeconPath filesep chunkFnames{ck}(1:end-4) '_decon.tif'];
+        chunkDeconFullpath = [chunkDeconPath '/' chunkFnames{ck}(1:end-4) '_decon.tif'];
         if exist(chunkDeconFullpath, 'file')
             tim = readtiff(chunkDeconFullpath);
             [tsy, tsx, tsz] = size(tim);

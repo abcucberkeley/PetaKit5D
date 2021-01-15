@@ -132,7 +132,7 @@ for f = 1 : nF
     [pathstr, fsname, ext] = fileparts(frameFullpath);
     deconPath = pr.deconPath;
     if isempty(deconPath)
-        deconPath = [pathstr, filesep, 'matlab_decon'];
+        deconPath = [pathstr, '/', 'matlab_decon'];
         mkdir(deconPath);
     end 
 
@@ -145,8 +145,8 @@ for f = 1 : nF
     end
 
     % first try single GPU deconvolution, if it fails split into multiple chunks
-    deconFullPath = [deconPath filesep fsname '_decon.tif'];
-    % deconTempPath = [deconPath filesep fname '_decon.tif'];
+    deconFullPath = [deconPath '/' fsname '_decon.tif'];
+    % deconTempPath = [deconPath '/' fname '_decon.tif'];
     if exist(deconFullPath, 'file') && ~pr.Overwrite
         disp('Deconvolution results already exist, skip it!');
         continue;
@@ -165,7 +165,7 @@ for f = 1 : nF
             
             % save mask file as common one for other time points/channels
             if SaveMaskfile
-                maskPath = [deconPath, filesep, 'Masks'];
+                maskPath = [deconPath, '/', 'Masks'];
                 if ~exist(maskPath, 'dir')
                     mkdir(maskPath);
                 end
@@ -239,7 +239,7 @@ for f = 1 : nF
     
     if EdgeErosion > 0
         if SaveMaskfile
-            maskPath = [deconPath, filesep, 'Masks'];
+            maskPath = [deconPath, '/', 'Masks'];
             if ~exist(maskPath, 'dir')
                 mkdir(maskPath);
             end
@@ -283,9 +283,9 @@ for f = 1 : nF
     end
     
     % create a folder for the file and write out the chunks
-    chunkPath = [deconPath filesep fsname];
-    chunkDeconPath = [chunkPath filesep 'matlab_decon'];
-    chunkDeconMIPPath = [chunkPath filesep 'matlab_decon' filesep 'MIPs'];
+    chunkPath = [deconPath '/' fsname];
+    chunkDeconPath = [chunkPath '/' 'matlab_decon'];
+    chunkDeconMIPPath = [chunkPath '/' 'matlab_decon' '/' 'MIPs'];
     mkdir(chunkPath);
     mkdir(chunkDeconPath);
     mkdir(chunkDeconMIPPath);
@@ -311,9 +311,9 @@ for f = 1 : nF
             chunkFnames{ck} = '';
             continue;
         end
-        if ~exist([chunkPath, filesep, chunkFnames{ck}], 'file') || pr.Overwrite
-            writetiff(im_chunk, [chunkPath, filesep, chunkFnames{ck}(1 : end - 4), '_', uuid, '.tif']);
-            movefile([chunkPath, filesep, chunkFnames{ck}(1 : end - 4), '_', uuid, '.tif'], [chunkPath, filesep, chunkFnames{ck}]);
+        if ~exist([chunkPath, '/', chunkFnames{ck}], 'file') || pr.Overwrite
+            writetiff(im_chunk, [chunkPath, '/', chunkFnames{ck}(1 : end - 4), '_', uuid, '.tif']);
+            movefile([chunkPath, '/', chunkFnames{ck}(1 : end - 4), '_', uuid, '.tif'], [chunkPath, '/', chunkFnames{ck}]);
         end        
     end
     
@@ -342,7 +342,7 @@ for f = 1 : nF
             
             task_id = ck;
             
-            chunkDeconFullpath = [chunkDeconPath filesep chunkFnames{ck}(1:end-4) '_decon.tif'];
+            chunkDeconFullpath = [chunkDeconPath '/' chunkFnames{ck}(1:end-4) '_decon.tif'];
             if exist(chunkDeconFullpath, 'file') || isempty(chunkFnames{ck}) % || pr.OverwriteDecon
                 is_done_flag(ck) = true;
                 continue;
@@ -351,15 +351,15 @@ for f = 1 : nF
             % Create a softlink with uuid of the chunk and rename the file
             % after write to disk is done
             uuid = get_uuid();
-            tmpChunkFullname = sprintf('%s_%s.tif', [chunkPath, filesep, chunkFnames{ck}(1:end-4)], uuid);
-            softlink_cmd = sprintf('ln -s %s %s', [chunkPath, filesep, chunkFnames{ck}], tmpChunkFullname);
+            tmpChunkFullname = sprintf('%s_%s.tif', [chunkPath, '/', chunkFnames{ck}(1:end-4)], uuid);
+            softlink_cmd = sprintf('ln -s %s %s', [chunkPath, '/', chunkFnames{ck}], tmpChunkFullname);
             matlab_cmd = sprintf(['addpath(genpath(pwd));tic;RLdecon(''%s'',''%s'',%.10f,%.10f,%.10f,%.10f,%s,[],', ...
                 '%.10f,%.10f,%s,%s,[%s],%s,[%s],[%s],[]);toc;'], tmpChunkFullname, PSF, Background, DeconIter, ...
                 dzPSF, dz, string(Deskew), SkewAngle, pixelSize, string(Rotate), string(Save16bit), ...
                 strrep(num2str(Crop,'%d,'), ' ', ''), string(zFlip), num2str(GenMaxZproj, '%.10f,'), ...
                 num2str(ResizeImages, '%.10f,'));
             DeconCommand = sprintf('module load matlab/r2020a; matlab -nodisplay -nosplash -nodesktop -r \\"%s\\"', matlab_cmd);
-            rename_cmd = sprintf('mv %s_%s_decon.tif %s_decon.tif', [chunkDeconPath, filesep, chunkFnames{ck}(1:end-4)], uuid, [chunkDeconPath, filesep, chunkFnames{ck}(1:end-4)]);
+            rename_cmd = sprintf('mv %s_%s_decon.tif %s_decon.tif', [chunkDeconPath, '/', chunkFnames{ck}(1:end-4)], uuid, [chunkDeconPath, '/', chunkFnames{ck}(1:end-4)]);
             chunk_decon_cmd = sprintf('%s; %s; %s', softlink_cmd, DeconCommand, rename_cmd);
             if parseCluster
                 job_status = check_slurm_job_status(job_ids(ck), task_id);
@@ -415,7 +415,7 @@ for f = 1 : nF
                         pixelSize, Rotate, Save16bit, Crop, zFlip, GenMaxZproj, ResizeImages, []);
                     system(rename_cmd);
                 else
-                    RLdecon([chunkPath, filesep, chunkFnames{ck}], PSF, Background, DeconIter, dzPSF, dz, Deskew, [], SkewAngle, ...
+                    RLdecon([chunkPath, '/', chunkFnames{ck}], PSF, Background, DeconIter, dzPSF, dz, Deskew, [], SkewAngle, ...
                         pixelSize, Rotate, Save16bit, Crop, zFlip, GenMaxZproj, ResizeImages, []);
                 end
                 toc
@@ -444,7 +444,7 @@ for f = 1 : nF
     lol = floor(OL / 2);
     rol = ceil(OL / 2); 
     for ck = 1:nn
-        chunkDeconFullpath = [chunkDeconPath filesep chunkFnames{ck}(1:end-4) '_decon.tif'];
+        chunkDeconFullpath = [chunkDeconPath '/' chunkFnames{ck}(1:end-4) '_decon.tif'];
         if exist(chunkDeconFullpath, 'file')
             tim = readtiff(chunkDeconFullpath);
             [tsy, tsx, tsz] = size(tim);
