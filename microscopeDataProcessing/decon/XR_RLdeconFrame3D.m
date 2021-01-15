@@ -180,7 +180,7 @@ for f = 1 : nF
     if ~largeFile
         tic
         if ispc
-            softlink_cmd = sprintf('mklink %s %s_%s.tif', frameFullpath, frameFullpath(1:end-4), uuid); 
+            softlink_cmd = sprintf('mklink %s_%s.tif %s', frameFullpath(1:end-4), uuid, frameFullpath); 
             softlink_cmd = strrep(softlink_cmd, '/', '\');
             unlink_cmd = sprintf('del %s_%s.tif', frameFullpath(1:end-4), uuid); 
             unlink_cmd = strrep(unlink_cmd, '/', '\');            
