@@ -179,16 +179,22 @@ for f = 1 : nF
 
     if ~largeFile
         tic
-        softlink_cmd = sprintf('ln -s %s %s_%s.tif', frameFullpath, frameFullpath(1:end-4), uuid); 
+        if ispc
+            softlink_cmd = sprintf('mklink %s %s_%s.tif', frameFullpath, frameFullpath(1:end-4), uuid); 
+            softlink_cmd = strrep(softlink_cmd, '/', '\');
+            unlink_cmd = sprintf('del %s_%s.tif', frameFullpath(1:end-4), uuid); 
+            unlink_cmd = strrep(unlink_cmd, '/', '\');            
+        else
+            softlink_cmd = sprintf('ln -s %s %s_%s.tif', frameFullpath, frameFullpath(1:end-4), uuid); 
+            unlink_cmd = sprintf('rm %s_%s.tif', frameFullpath(1:end-4), uuid);             
+        end
         system(softlink_cmd);
         frameTmpPath = sprintf('%s_%s.tif', frameFullpath(1:end-4), uuid); 
         deconTmpPath = sprintf('%s_%s_decon.tif', deconFullPath(1:end-10), uuid); 
         RLdecon(frameTmpPath, PSF, Background, DeconIter, dzPSF, dz, Deskew, [], SkewAngle, ...
             pixelSize, Rotate, Save16bit, Crop, zFlip, GenMaxZproj, ResizeImages, [])
         toc
-        unlink_cmd = sprintf('rm %s_%s.tif', frameFullpath(1:end-4), uuid); 
         system(unlink_cmd);
-        
         if exist(deconTmpPath, 'file')
             im = readtiff(deconTmpPath);
             if EdgeErosion > 0

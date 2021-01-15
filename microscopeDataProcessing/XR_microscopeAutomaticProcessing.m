@@ -279,6 +279,13 @@ for d = 1 : nd
     end
 end
 
+% change separator backslash to slash
+if ispc
+    dataPaths = cellfun(@(x) strrep(x, '\', '/'), dataPaths, 'unif', 0);
+    imageListFullpaths = cellfun(@(x) strrep(x, '\', '/'), imageListFullpaths, 'unif', 0);
+    psfFullpaths = cellfun(@(x) strrep(x, '\', '/'), psfFullpaths, 'unif', 0);    
+end
+
 if numel(Overwrite) == 1
     Overwrite = repmat(Overwrite, 1, 5);
 end
