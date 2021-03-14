@@ -32,6 +32,8 @@
 % Xiongtao Ruan, 09/16/2019 make it work noninteractively
 % xruan, 07/23/2020 add option for MovieSelector
 % xruan (11/09/2020) add option to include experiments without experiment number
+% xruan (02/08/2021) add option to use channel patterns to select files for
+% a channel (in case of some other images, i.e., multiple channels in the same folder)
 
 
 function [data] = XR_loadConditionData3D(varargin)
@@ -46,6 +48,7 @@ ip.addOptional('chNames', {}); %{'ch1','ch2','ch3'}
 ip.addOptional('markers', {}); %{'alexa488','alexa568','alexa647'},
 ip.addParameter('MovieSelector', 'Ex', @ischar);
 ip.addParameter('IgnoreExpNumber', false, @islogical); % xruan
+ip.addParameter('ChannelPatterns', {}, @iscell); % xruan
 ip.addParameter('Angle', 31.5, @isscalar);
 ip.addParameter('PixelSize', 0.104, @isscalar);
 ip.addParameter('ObjectiveScan', false, @isscalar);

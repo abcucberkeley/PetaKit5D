@@ -62,6 +62,7 @@ function [] = XR_matlab_stitching_wrapper(dataPath, imageListFileName, varargin)
 % xruan (12/06/2020): add support for subIter/fullIter for Iter, and
 %                     flipped tiles
 % xruan (12/09/2020): add support for using primary coordinates for secondary channels/tps
+% xruan (02/24/2021): add support for user defined xy, z max offsets for xcorr registration
 
 
 ip = inputParser;
@@ -86,11 +87,15 @@ ip.addParameter('resultDir', 'matlab_stitch', @isstr);
 ip.addParameter('BlendMethod', 'none', @isstr);
 ip.addParameter('overlapType', '', @isstr); % '', 'none', 'half', or 'full'
 ip.addParameter('xcorrShift', true, @islogical);
+ip.addParameter('xyMaxOffset', 300, @isnumeric); % max offsets in xy axes
+ip.addParameter('zMaxOffset', 50, @isnumeric); % max offsets in z axis
 ip.addParameter('padSize', [], @(x) isnumeric(x) && (isempty(x) || numel(x) == 3));
 ip.addParameter('boundboxCrop', [], @(x) isnumeric(x) && (isempty(x) || all(size(x) == [3, 2]) || numel(x) == 6));
 ip.addParameter('zNormalize', false, @islogical);
 ip.addParameter('onlyFirstTP', false, @islogical); % only compute first time point (for deciding cropping bouding box)
-ip.addParameter('timepoints', [], @isnumeric); % stitch for given time points
+ip.addParameter('timepoints', [], @isnumeric); % stitch for given time points, nx1 
+ip.addParameter('subtimepoints', [], @isnumeric); % stitch for given sub time points (subtimepoints), nx1
+ip.addParameter('subsubtimepoints', [], @isnumeric); % stitch for given subsub time points (subtimepoints), nx1
 ip.addParameter('xcorrMode', 'primaryFirst', @(x) strcmpi(x, 'primary') || strcmpi(x, 'primaryFirst') || strcmpi(x, 'all')); % 'primary': choose one channel as primary channel, 
                                                                                           % 'all': xcorr shift for each channel, 
                                                                                           % 'primaryFirst': the primary channel of first time point
@@ -131,11 +136,15 @@ resultDir = pr.resultDir;
 BlendMethod = pr.BlendMethod;
 overlapType = pr.overlapType;
 xcorrShift = pr.xcorrShift;
+xyMaxOffset = pr.xyMaxOffset;
+zMaxOffset = pr.zMaxOffset;
 padSize = pr.padSize;
 boundboxCrop = pr.boundboxCrop;
 zNormalize = pr.zNormalize;
 onlyFirstTP = pr.onlyFirstTP;
 timepoints = pr.timepoints;
+subtimepoints = pr.subtimepoints;
+subsubtimepoints = pr.subtimepoints;
 xcorrMode = pr.xcorrMode;
 primaryCh = pr.primaryCh;
 usePrimaryCoords = pr.usePrimaryCoords;
@@ -361,22 +370,35 @@ if onlyFirstTP
     timepoints = [];
 end
 
+% xruan (01/21/2021): modify to separate timepoints, subtimepoints, subsubtimepoints
 if ~isempty(timepoints)
     Iter = cellfun(@(x) str2double(x(1 : 4)), fullIter);
 
-    switch size(timepoints, 2)
-        case 1
-            fullIter = fullIter(ismember(Iter, timepoints(:, 1)));
-        case 2
-            subIter = cellfun(@(x) str2double(x(6 : 9)), fullIter);
-            fullIter = fullIter(ismember([Iter, subIter], timepoints(:, 1 : 2), 'rows'));
-        case 3
-            subIter = cellfun(@(x) str2double(x(6 : 9)), fullIter);
-            subSubIter = cellfun(@(x) str2double(x(11 : 14)), fullIter);
-            fullIter = fullIter(ismember([Iter, subIter, subSubIter], timepoints(:, 1 : 3), 'rows'));
-        otherwise
-            
+    fullIter = fullIter(ismember(Iter, timepoints(:)));
+    if ~isempty(subtimepoints)
+        subIter = cellfun(@(x) str2double(x(6 : 9)), fullIter);
+        fullIter = fullIter(ismember([Iter, subIter], [timepoints(:), subtimepoints(:)], 'rows'));
     end
+    
+    if ~isempty(subsubtimepoints)
+        subIter = cellfun(@(x) str2double(x(6 : 9)), fullIter);
+        subSubIter = cellfun(@(x) str2double(x(11 : 14)), fullIter);
+        fullIter = fullIter(ismember([Iter, subIter, subSubIter], [timepoints(:), subtimepoints(:), subsubtimepoints(:)], 'rows'));
+    end
+    
+%     switch size(timepoints, 2)
+%         case 1
+%             fullIter = fullIter(ismember(Iter, timepoints(:, 1)));
+%         case 2
+%             subIter = cellfun(@(x) str2double(x(6 : 9)), fullIter);
+%             fullIter = fullIter(ismember([Iter, subIter], timepoints(:, 1 : 2), 'rows'));
+%         case 3
+%             subIter = cellfun(@(x) str2double(x(6 : 9)), fullIter);
+%             subSubIter = cellfun(@(x) str2double(x(11 : 14)), fullIter);
+%             fullIter = fullIter(ismember([Iter, subIter, subSubIter], timepoints(:, 1 : 3), 'rows'));
+%         otherwise
+%             
+%     end
 end
 
 %% do stitching computing
@@ -622,12 +644,12 @@ while ~all(is_done_flag | trial_counter >= max_trial_num, 'all')
                     func_str = sprintf(['%s(%s,%s,''axisOrder'',''%s'',''px'',%0.10f,''dz'',%0.10f,', ...
                         '''Reverse'',%s,''ObjectiveScan'',%s,''resultDir'',''%s'',''stitchInfoDir'',''%s'',''stitchInfoFullpath'',''%s'',', ...
                         '''DSRDirstr'',''%s'',''DSRDeconDirstr'',''%s'',''resampleType'',''%s'',''BlendMethod'',''%s'',', ...
-                        '''overlapType'',''%s'',''xcorrShift'',%s,''isPrimaryCh'',%s,''usePrimaryCoords'',%s,''padSize'',[%s],''boundboxCrop'',[%s],', ...
+                        '''overlapType'',''%s'',''xcorrShift'',%s,''xyMaxOffset'',%0.10f,''zMaxOffset'',%0.10f,''isPrimaryCh'',%s,''usePrimaryCoords'',%s,''padSize'',[%s],''boundboxCrop'',[%s],', ...
                         '''zNormalize'',%s,''Save16bit'',%s,''tileNum'',[%s],''flippedTile'',[%s],''processFunPath'',''%s'')'], stitch_function_str, ...
                         tile_fullpaths_str, xyz_str, axisOrder, px, dz, string(Reverse), string(ObjectiveScan), resultDir, stitchInfoDir, ...
                         stitchInfoFullpath, DSRDirstr, DSRDeconDirstr, resampleType, BlendMethod, overlapType, string(xcorrShift), ...
-                        string(isPrimaryCh), string(usePrimaryCoords), num2str(padSize, '%d,'), strrep(num2str(boundboxCrop, '%d,'), ' ', ''), string(zNormalize), ...
-                        string(Save16bit), strrep(num2str(tileNum, '%d,'), ' ', ''), strrep(num2str(flippedTile, '%d,'), ' ', ''), processFunPath);
+                        xyMaxOffset, zMaxOffset, string(isPrimaryCh), string(usePrimaryCoords), num2str(padSize, '%d,'), strrep(num2str(boundboxCrop, '%d,'), ' ', ''), ...
+                        string(zNormalize),  string(Save16bit), strrep(num2str(tileNum, '%d,'), ' ', ''), strrep(num2str(flippedTile, '%d,'), ' ', ''), processFunPath);
 
                     if exist(cur_tmp_fname, 'file') || (parseCluster && ~(masterCompute && strcmpi(xcorrMode, 'primaryFirst') && isPrimaryCh))
                         % for cluster computing with master, check whether

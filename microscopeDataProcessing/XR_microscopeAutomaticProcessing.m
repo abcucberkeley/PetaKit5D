@@ -149,6 +149,7 @@ ip.addParameter('axisOrder', 'xyz', @(x) ischar(x));
 ip.addParameter('BlendMethod', 'none', @isstr);
 ip.addParameter('xcorrShift', false, @islogical);
 ip.addParameter('xcorrMode', 'primaryFirst', @(x) strcmpi(x, 'primary') || strcmpi(x, 'primaryFirst') || strcmpi(x, 'all')); % 'primary': choose one channel as primary channel, 
+ip.addParameter('timepoints', [], @isnumeric); % stitch for given time points
 ip.addParameter('boundboxCrop', [], @(x) isnumeric(x) && (isempty(x) || all(size(x) == [3, 2]) || numel(x) == 6));
 ip.addParameter('primaryCh', '', @isstr);
 % decon parameters
@@ -225,6 +226,7 @@ xcorrShift = pr.xcorrShift;
 xcorrMode = pr.xcorrMode;
 boundboxCrop = pr.boundboxCrop;
 onlyFirstTP = pr.onlyFirstTP;
+timepoints = pr.timepoints;
 primaryCh = pr.primaryCh;
 % decon parameters
 Decon = pr.Decon;
@@ -691,7 +693,9 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all') || ...
         
         if ~is_done_flag(f, 1) 
             if LLFFCorrection
-                LLFFMapping =  ~cellfun(@isempty, regexpi(fname, ChannelPatterns));
+                % LLFFMapping =  ~cellfun(@isempty, regexpi(fname, ChannelPatterns));
+                % change to contains.m to unify the matching
+                LLFFMapping =  cellfun(@(x) contains(fname, x), ChannelPatterns);
                 LSImage = LSImagePaths{LLFFMapping};
                 BackgroundImage = BackgroundPaths{LLFFMapping};
             else
@@ -824,12 +828,12 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all') || ...
             func_str = sprintf(['XR_matlab_stitching_wrapper(''%s'',''%s'',''ResultDir'',''%s'',', ...
                 '''Streaming'',%s,''useExistDSR'',%s,''axisOrder'',''%s'',''resampleType'',''%s'',', ...
                 '''Reverse'',%s,''parseSettingFile'',%s,''xcorrShift'',%s,''xcorrMode'',''%s'',', ...
-                '''BlendMethod'',''%s'',''zNormalize'',%s,''onlyFirstTP'',%s,''boundboxCrop'',[%s],', ...
-                '''Save16bit'',%s,''primaryCh'',''%s'',''pipeline'',''%s'')'], dataPath, imageListFullpath, ...
-                stitchResultDir, string(Streaming), string(useExistDSR), axisOrder, resampleType, ...
-                string(Reverse), string(parseSettingFile), string(xcorrShift), xcorrMode, BlendMethod, ...
-                string(zNormalize), string(onlyFirstTP), strrep(num2str(bbox, '%d,'), ' ', ''), ...
-                string(Save16bit(2)), primaryCh, stitchPipeline);
+                '''BlendMethod'',''%s'',''zNormalize'',%s,''onlyFirstTP'',%s,''timepoints'',[%s],', ...
+                '''boundboxCrop'',[%s],''Save16bit'',%s,''primaryCh'',''%s'',''pipeline'',''%s'')'], ...
+                dataPath, imageListFullpath, stitchResultDir, string(Streaming), string(useExistDSR), ...
+                axisOrder, resampleType, string(Reverse), string(parseSettingFile), string(xcorrShift), ...
+                xcorrMode, BlendMethod, string(zNormalize), string(onlyFirstTP), strrep(num2str(timepoints, '%d,'), ' ', ''), ...
+                strrep(num2str(bbox, '%d,'), ' ', ''), string(Save16bit(2)), primaryCh, stitchPipeline);
 
             if parseCluster
                 dfirst_ind = find(fdinds == fdind, 1, 'first');
@@ -980,7 +984,10 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all') || ...
         end
 
         if ~is_done_flag(f, 3) 
-            psfMapping =  ~cellfun(@isempty, regexpi(fname, ChannelPatterns));
+            % psfMapping =  ~cellfun(@isempty, regexpi(fname, ChannelPatterns));
+            % change to contains.m to unify the matching
+            psfMapping =  cellfun(@(x) contains(fname, x), ChannelPatterns);
+            
             psfFullpath = dc_psfFullpaths{psfMapping};
             
             % do not use rotation in decon functions

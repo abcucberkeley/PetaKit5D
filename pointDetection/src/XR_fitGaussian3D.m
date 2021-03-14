@@ -329,7 +329,11 @@ if strcmp(mode, 'xyzAc')
                                 % CC = bwconncomp(window_seg, 18);
                                 % use builtin function, which is much faster.
                                 % CC.pixelIdxList = [];
-                                PixelIdxList = builtin('_pixelIdxListsn', window_seg, se_18);                                 
+                                if verLessThan('matlab','9.9')
+                                    PixelIdxList = builtin('_pixelIdxListsn', window_seg, se_18); 
+                                else
+                                    PixelIdxList = images.internal.builtins.pixelIdxListsn(window_seg, se_18); 
+                                end
                                 volume_mat = cellfun(@numel, PixelIdxList);
                                 % only keep large region
                                 volume_thrsh = 2;

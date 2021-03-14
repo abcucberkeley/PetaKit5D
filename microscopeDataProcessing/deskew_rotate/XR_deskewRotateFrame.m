@@ -236,6 +236,14 @@ if ip.Results.Rotate || DSRCombined
             dsr = rotateFrame3D(ds, ip.Results.SkewAngle, zAniso, ip.Results.Reverse,...
                 'Crop', true, 'ObjectiveScan', ObjectiveScan, 'Interp', Interp);
             clear ds;
+            
+            if ~isempty(resample)
+                rs = resample(:)';
+                % complete rs to 3d in case it is not
+                rs = [ones(1, 4 - numel(rs)) * rs(1), rs(2:end)];    
+                outSize = round(size(dsr) ./ rs);
+                dsr = imresize3(dsr, outSize, 'Method', Interp);
+            end
         else
             fprintf('Deskew, Rotate and resample for frame %s...\n', framePath{1});            
             dsr = deskewRotateFrame3D(frame, ip.Results.SkewAngle, dz, xyPixelSize, ...

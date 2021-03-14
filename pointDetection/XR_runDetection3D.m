@@ -172,7 +172,7 @@ DetectionMethod = opts.DetectionMethod;
 
 
 % parfor k = 1:data.movieLength % parfor
-parfor k = 1:data.movieLength % parfor
+for k = 1:data.movieLength % parfor
     frame = double(readtiff(data.framePathsDS{mCh}{k})); %#ok<PFBNS>
     frame(frame==0) = NaN; % to avoid border effects
     
