@@ -146,7 +146,7 @@ if nIter>0
     switch RLMethod 
         case 'original'
             deconvolved = deconvlucy(rawdata, psf, nIter) * numel(rawdata);
-        case 'simplied'
+        case 'simplified'
             deconvolved = decon_lucy_function(rawdata, psf, nIter) * numel(rawdata);
         case 'cudagen'
             deconvolved = decon_lucy_cuda_function(rawdata, psf, nIter) * numel(rawdata);            
