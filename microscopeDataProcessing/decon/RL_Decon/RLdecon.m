@@ -1,6 +1,6 @@
 function RLdecon(input_tiff, psf, background, nIter, dz_psf, dz_data, ...
     zalign, zalignParams, rotateByAngle, xypixelsize, bRotFinal, ...
-    bSaveUint16, cropFinal, bFlipZ, axesMaxIntProj, resizeFactor, scalingThresh, varargin)
+    bSaveUint16, cropFinal, bFlipZ, axesMaxIntProj, resizeFactor, scalingThresh, RLMethod, varargin)
 %RLdecon Summary of this function goes here
 %   input_tiff: input TIFF file name
 %   psf: psf array in 'double'
@@ -16,6 +16,7 @@ function RLdecon(input_tiff, psf, background, nIter, dz_psf, dz_data, ...
 % 
 % xruan (01/10/2021): for conversion to uint16, first rescale intensity if the max intensity is over 2^16 -1. 
 % xruan (01/12/2021): for conversion to uint16, add support for smaller psf
+% xruan (03/25/2021): add options for different versions of rl method
 
 if ischar(dz_psf)
     dz_psf=str2double(dz_psf);
@@ -79,6 +80,9 @@ if ischar(nIter)
     nIter=str2num(nIter);
 end
 
+if isempty(RLMethod)
+    RLMethod = 'simplied';
+end
 
 nTapering = 0;
 
@@ -139,7 +143,14 @@ end
 
 % call Richardson-Lucy
 if nIter>0
-    deconvolved = deconvlucy(rawdata, psf, nIter) * numel(rawdata);
+    switch RLMethod 
+        case 'original'
+            deconvolved = deconvlucy(rawdata, psf, nIter) * numel(rawdata);
+        case 'simplied'
+            deconvolved = decon_lucy_function(rawdata, psf, nIter) * numel(rawdata);
+        case 'cudagen'
+            deconvolved = decon_lucy_cuda_function(rawdata, psf, nIter) * numel(rawdata);            
+    end
 else
     deconvolved = rawdata;
 end

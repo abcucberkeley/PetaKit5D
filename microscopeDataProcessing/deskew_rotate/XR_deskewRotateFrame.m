@@ -158,34 +158,47 @@ if (~DSRCombined && (~exist(dsFullname, 'file') || ip.Results.Overwrite)) || DSR
 
     if ~DSRCombined
         fprintf('Deskew frame %s...\n', framePath{1});
-        try 
-            ds = deskewFrame3D(frame, SkewAngle, dz, xyPixelSize, Reverse, ...
-                'Crop', Crop, 'Interp', Interp); 
-            clear frame;
-        catch ME
-            disp(ME);
-            sz = size(frame);
-            if sz(3) > 200
-                fprintf('Use image block method for deskew...\n');
-                % only split in y-axis, it is not right when splitting from
-                % other axes. 
-                blockSize = sz;
-                blockSize(1) = min(ceil(blockSize(1) / 8), 150);
-                bim = blockedImage(frame, 'BlockSize', blockSize);
-                OutputLocation = sprintf('%s/%s_%s', dsPath, fsname, uuid);
-                BorderSize = [5, 0, 0];
-                TrimBorder = true;
-
-                bo = apply(bim, @(bs) deskewFrame3D(single(bs.Data), SkewAngle, dz, ...
-                    xyPixelSize, Reverse, 'crop', Crop, 'Interp', Interp), 'blockSize', bim.BlockSize, ...
-                    'OutputLocation', OutputLocation, 'BorderSize', BorderSize, 'TrimBorder', TrimBorder, ...
-                    'useParallel', false);
+        splitCompute = false;
+        sz = size(frame);
+        % 03/23/2021, for image with more than 1000 slices, directly split to blocks for the processing
+        if sz(3) > 1000
+            splitCompute = true;
+        end
+        
+        if ~splitCompute
+            try 
+                ds = deskewFrame3D(frame, SkewAngle, dz, xyPixelSize, Reverse, ...
+                    'Crop', Crop, 'Interp', Interp); 
                 clear frame;
-                ds = gather(bo);
-                rmdir(OutputLocation, 's');
-                clear bim bo;
+            catch ME
+                disp(ME);
+                sz = size(frame);
+                if sz(3) > 200
+                    splitCompute = true;
+                end
             end
         end
+        
+        if splitCompute
+            fprintf('Use image block method for deskew...\n');
+            % only split in y-axis, it is not right when splitting from
+            % other axes. 
+            blockSize = sz;
+            blockSize(1) = min(ceil(blockSize(1) / 8), 150);
+            bim = blockedImage(frame, 'BlockSize', blockSize);
+            OutputLocation = sprintf('%s/%s_%s', dsPath, fsname, uuid);
+            BorderSize = [5, 0, 0];
+            TrimBorder = true;
+
+            bo = apply(bim, @(bs) deskewFrame3D(single(bs.Data), SkewAngle, dz, ...
+                xyPixelSize, Reverse, 'crop', Crop, 'Interp', Interp), 'blockSize', bim.BlockSize, ...
+                'OutputLocation', OutputLocation, 'BorderSize', BorderSize, 'TrimBorder', TrimBorder, ...
+                'useParallel', false);
+            clear frame;
+            ds = gather(bo);
+            rmdir(OutputLocation, 's');
+            clear bim bo;
+        end            
 
         % save MIP
         if SaveMIP

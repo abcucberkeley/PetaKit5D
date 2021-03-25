@@ -63,6 +63,7 @@ function [] = XR_matlab_stitching_wrapper(dataPath, imageListFileName, varargin)
 %                     flipped tiles
 % xruan (12/09/2020): add support for using primary coordinates for secondary channels/tps
 % xruan (02/24/2021): add support for user defined xy, z max offsets for xcorr registration
+% xruan (03/24/2021): add support for processing of given channels
 
 
 ip = inputParser;
@@ -71,6 +72,7 @@ ip.addRequired('dataPath', @isstr);
 ip.addRequired('imageListFileName', @isstr);
 % ip.addParameter('Overwrite', true, @islogical);
 ip.addParameter('Streaming', false, @islogical);
+ip.addParameter('ChannelPatterns', {'CamA_ch0', 'CamA_ch1', 'CamB_ch0'}, @iscell);
 ip.addParameter('useExistDSR', false, @islogical); % use exist DSR for the processing
 ip.addParameter('DSRDirstr', 'DSR', @ischar); % path for DSRDir str, if it is not true
 ip.addParameter('useExistDSRDecon', false, @islogical); % use exist DSR decon for the processing
@@ -120,6 +122,7 @@ ip.parse(dataPath, imageListFileName, varargin{:});
 pr = ip.Results;
 % Overwrite = pr.Overwrite;
 Streaming = pr.Streaming;
+ChannelPatterns = pr.ChannelPatterns;
 useExistDSR = pr.useExistDSR;
 DSRDirstr = pr.DSRDirstr;
 useExistDSRDecon = pr.useExistDSRDecon;
@@ -288,6 +291,14 @@ if isempty(dir_info)
         error('The tiles do not exist!');
     end
 end
+
+% filter filenames by channel patterns
+include_flag = false(numel(imageFnames), 1);
+for c = 1 : numel(ChannelPatterns)
+    include_flag = include_flag | contains(imageFnames, ChannelPatterns{c});
+end
+imageFnames = imageFnames(include_flag);
+
 [~, tFsnames] = fileparts(t.Filename);
 image_file_exist_flag = true(numel(tFsnames), 1);
 for f = 1 : numel(t.Filename)

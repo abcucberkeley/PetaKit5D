@@ -10,7 +10,7 @@ function volout = deskewRotateFrame3D(vol, angle, dz, xyPixelSize, varargin)
 % xruan (02/10/2021): add option to directly apply combined processing when x step size 
 % is small, and use separate processing when x step size is large (also split to
 % parts in the processing when the image is tall. 
-
+% xruan (03/16/2021): change default xStepThresh to 2.35 (ds=0.3). 
 
 ip = inputParser;
 ip.CaseSensitive = false;
@@ -21,7 +21,7 @@ ip.addRequired('xyPixelSize'); % typical value: 0.1
 ip.addOptional('reverse', false, @islogical);
 ip.addParameter('Crop', true, @islogical);
 ip.addParameter('ObjectiveScan', false, @islogical);
-ip.addParameter('xStepThresh', 3.2, @isnumeric); % 3.125 for ds=0.4
+ip.addParameter('xStepThresh', 2.35, @isnumeric); % 2.344 for ds=0.3
 ip.addParameter('resample', [], @isnumeric); % resample factor in xyz order. 
 ip.addParameter('gpuProcess', false, @islogical); % use gpu for the processing. 
 ip.addParameter('Interp', 'linear', @(x) any(strcmpi(x, {'cubic', 'linear'})));
@@ -134,10 +134,22 @@ end
 if combinedProcess
     [volout] = imwarp(vol, affine3d(ds_S*(T1*S*R*T2)*(RT1*RS*RT2)), ip.Results.Interp, 'FillValues', 0, 'OutputView', RA);
 else
-    try 
-        [vol] = imwarp(vol, affine3d(ds_S), ip.Results.Interp, 'FillValues', 0);
-        [volout] = imwarp(vol, affine3d((T1*S*R*T2)*(RT1*RS*RT2)), ip.Results.Interp, 'FillValues', 0, 'OutputView', RA);
-    catch ME
+    % 03/23/2021, for image with more than 500 slices, directly split to blocks for the processing
+    splitCompute = false; 
+    if nz > 500
+        splitCompute = true;
+    end
+
+    if ~splitCompute
+        try 
+            [vol] = imwarp(vol, affine3d(ds_S), ip.Results.Interp, 'FillValues', 0);
+            [volout] = imwarp(vol, affine3d((T1*S*R*T2)*(RT1*RS*RT2)), ip.Results.Interp, 'FillValues', 0, 'OutputView', RA);
+        catch ME
+            disp(ME);
+            splitCompute = true;
+        end
+    end
+    if splitCompute
         % for very tall images
         % parameters in y axis
         padSize = 5; 

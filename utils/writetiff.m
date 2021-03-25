@@ -4,6 +4,7 @@ function writetiff(img, filepath, varargin)
 % 
 % Author: Xiongtao Ruan (07/30/2020)
 % xruan (08/07/2020): add option for group write
+% xruan (03/24/21): fix issue for compession method not in lower case
 
 ip = inputParser;
 ip.CaseSensitive = false;
@@ -15,7 +16,7 @@ ip.parse(varargin{:});
 pr = ip.Results;
 
 options = struct();
-switch pr.Compression
+switch lower(pr.Compression)
     case 'none'
         options.compress = 'no';
     case 'lzw'
