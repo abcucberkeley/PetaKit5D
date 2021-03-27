@@ -17,6 +17,8 @@ function RLdecon(input_tiff, psf, background, nIter, dz_psf, dz_data, ...
 % xruan (01/10/2021): for conversion to uint16, first rescale intensity if the max intensity is over 2^16 -1. 
 % xruan (01/12/2021): for conversion to uint16, add support for smaller psf
 % xruan (03/25/2021): add options for different versions of rl method
+% xruan (03/26/2021): change loadtiff to readtiff
+
 
 if ischar(dz_psf)
     dz_psf=str2double(dz_psf);
@@ -100,7 +102,8 @@ for k = 1 : length(varargin);
     end
 end
 
-rawdata = loadtiff(input_tiff);
+% rawdata = loadtiff(input_tiff);
+rawdata = readtiff(input_tiff);
 [datafolder, inputfile, sufix] = fileparts(input_tiff);
 
 % rawdata = hpbuster(rawdata, background, 2, 1);
