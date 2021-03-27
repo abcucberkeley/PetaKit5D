@@ -152,7 +152,7 @@ if nIter>0
         case 'simplified'
             deconvolved = decon_lucy_function(rawdata, psf, nIter) * numel(rawdata);
         case 'cudagen'
-            deconvolved = decon_lucy_cuda_function(signle(rawdata), single(psf), nIter) * numel(rawdata);            
+            deconvolved = decon_lucy_cuda_function(single(rawdata), single(psf), nIter) * numel(rawdata);            
     end
 else
     deconvolved = rawdata;
