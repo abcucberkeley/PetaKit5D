@@ -150,6 +150,7 @@ if nIter>0
         case 'original'
             deconvolved = deconvlucy(rawdata, psf, nIter) * numel(rawdata);
         case 'simplified'
+            % psf = psf ./ sqrt(mean(psf .^ 2, 'all'));
             deconvolved = decon_lucy_function(rawdata, psf, nIter) * numel(rawdata);
         case 'cudagen'
             deconvolved = decon_lucy_cuda_function(single(rawdata), single(psf), nIter) * numel(rawdata);            
