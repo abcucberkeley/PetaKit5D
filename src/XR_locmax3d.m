@@ -56,10 +56,10 @@ end
 % img_3 = replace_nan_with_value(img, -1e8);
 
 % 11/13/2019 xruan use builtin function for imdilate
-% B_0 = imdilate(img_1, se);
-minmax = [-inf; inf];
-morphFunc = 'imdilate';
-B = builtin('_morphmex_halide', img_1, minmax, se,  morphFunc);
+B = imdilate(img_1, se);
+% minmax = [-inf; inf];
+% morphFunc = 'imdilate';
+% B = builtin('_morphmex_halide', img_1, minmax, se,  morphFunc);
 % bw = img_1 > B;
 
 % if max. filter response is equal to input, point is a local maximum
