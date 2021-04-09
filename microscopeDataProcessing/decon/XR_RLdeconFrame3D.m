@@ -224,7 +224,7 @@ for f = 1 : nF
             
             deconMIPPath = sprintf('%s/MIPs/', deconPath);
             deconMIPFullPath = sprintf('%s%s_MIP_z.tif', deconMIPPath, fsname);
-            writetiff(uint16(max(im,[],3)), deconMIPFullPath);
+            writetiff(max(im,[],3), deconMIPFullPath);
             toc
         end
         if exist(deconFullPath, 'file')
