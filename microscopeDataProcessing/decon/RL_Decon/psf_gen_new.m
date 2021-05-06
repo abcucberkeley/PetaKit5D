@@ -12,10 +12,12 @@ psf_raw = psf;
 
 % subtract background estimated from the last Z section
 psf_raw_fl = psf_raw(:, :, [1, end]);
-psf_raw = double(psf_raw) - medFactor * median(double(psf_raw_fl(psf_raw_fl > 0)));
-% convert all negative pixels to 0
-psf_raw(psf_raw<0) = 0.0;
-
+% xruan (05/06/2021): check if the first and last slices contain positive values
+if any(psf_raw_fl(:) > 0)
+    psf_raw = double(psf_raw) - medFactor * median(double(psf_raw_fl(psf_raw_fl > 0)));
+    % convert all negative pixels to 0
+    psf_raw(psf_raw<0) = 0.0;
+end
 
 % locate the peak pixel
 [peak, peakInd] = max(psf_raw(:));
@@ -25,7 +27,7 @@ psf_raw(psf_raw<0) = 0.0;
 %     peaky-cropToSize/2:peaky+cropToSize/2, :);
 % do not crop but pad the image so that the peak is in the center
 [peaky,peakx,peakz] = ind2sub(size(psf_raw), peakInd);
-psf_cropped=circshift(psf_raw, round([ny, nx, nz] / 2 - [peaky,peakx,peakz]));
+psf_cropped=circshift(psf_raw, round(([ny, nx, nz] + 1) / 2 - [peaky,peakx,peakz]));
 
 % center the PSF in z; otherwise RL decon results are shifted in z
 % psf_cropped=circshift(psf_cropped, [0, 0, round(nz/2-peakz)]);
