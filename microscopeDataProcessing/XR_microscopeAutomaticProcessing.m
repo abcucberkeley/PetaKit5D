@@ -169,6 +169,7 @@ ip.addParameter('deconRotate', false, @islogical);
 ip.addParameter('psfFullpaths', {'','',''}, @iscell);
 ip.addParameter('DeconIter', 15 , @isnumeric); % number of iterations
 ip.addParameter('rotatedPSF', false , @islogical); % psf is rotated (for dsr)
+ip.addParameter('RLMethod', 'simplified' , @ischar); % rl method {'original', 'simplified', 'cudagen'}
 % job related parameters
 ip.addParameter('largeFile', false, @islogical);
 ip.addParameter('parseCluster', true, @islogical);
@@ -247,6 +248,7 @@ deconRotate = pr.deconRotate;
 RotateAfterDecon = pr.RotateAfterDecon;
 DeconIter = pr.DeconIter;
 rotatedPSF = pr.rotatedPSF;
+RLMethod = pr.RLMethod;
 % job related
 largeFile = pr.largeFile;
 jobLogDir = pr.jobLogDir;
@@ -952,7 +954,7 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all') || ...
             % for ErodeByFTP, check if the mask file exist
             maskFullpath = '';
             SaveMaskfile = false;
-            if ErodeByFTP
+            if ErodeByFTP && ~cudaDecon
                 if f == FTP_ind
                     SaveMaskfile = true;
                     % if decon result exist, but mask file not exist, rerun
@@ -1013,9 +1015,9 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all') || ...
             else
                 func_str = sprintf(['XR_RLdeconFrame3D(''%s'',%.10f,%.10f,'''',''PSFfile'',''%s'',', ...
                     '''dzPSF'',%.10f,''Background'',[%d],''SkewAngle'',%d,''EdgeErosion'',%d,''ErodeMaskfile'',''%s'',', ...
-                    '''SaveMaskfile'',%s,''Rotate'',%s,''DeconIter'',%d,''Save16bit'',%s,''largeFile'',%s)'], ...
+                    '''SaveMaskfile'',%s,''Rotate'',%s,''DeconIter'',%d,''RLMethod'',''%s'',''Save16bit'',%s,''largeFile'',%s)'], ...
                     dcframeFullpath, xyPixelSize, dc_dz, psfFullpath,  dc_dzPSF, Background, SkewAngle, ...
-                    EdgeErosion, maskFullpath, string(SaveMaskfile), string(deconRotate), DeconIter, string(Save16bit(3)), ...
+                    EdgeErosion, maskFullpath, string(SaveMaskfile), string(deconRotate), DeconIter, RLMethod, string(Save16bit(3)), ...
                     string(largeFile));
             end
            

@@ -279,7 +279,7 @@ for f = 1 : nF
     % [my, mx, mz] = size(im);
     % [xmin,xmax,ymin,ymax,zmin,zmax,nn] = GU_extract_subVolCoordinates(mx,my,mz,csx,csy,csz,OL);
     imSize = size(im);
-    if Save16bit
+    if p.Save16bit
         dtype = 'uint16';
     else
         dtype = 'single';

@@ -65,10 +65,14 @@ if ischar(psf)
     elseif strcmp(suffix, '.tif')
         % xruan (01/12/2021)
         try 
-            psf=psf_gen(psf, dz_psf, dz_data*dz_data_ratio, 48);
+            % psf=psf_gen(psf, dz_psf, dz_data*dz_data_ratio, 48);
+            % xruan (05/05/2021) change to psf_gen_new
+            pp = readtiff(psf);
+            medFactor = 1.5;
+            psf = psf_gen_new(pp, dzPSF, dz_data*dz_data_ratio, medFactor);
         catch ME
             disp(ME)
-            psf=psf_gen(psf, dz_psf, dz_data*dz_data_ratio, 24);
+            % psf=psf_gen(psf, dz_psf, dz_data*dz_data_ratio, 24);
         end
     else
         psf = [];  % dummy PSF
