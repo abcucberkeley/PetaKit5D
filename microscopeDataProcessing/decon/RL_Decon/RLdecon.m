@@ -69,7 +69,7 @@ if ischar(psf)
             % xruan (05/05/2021) change to psf_gen_new
             pp = readtiff(psf);
             medFactor = 1.5;
-            psf = psf_gen_new(pp, dzPSF, dz_data*dz_data_ratio, medFactor);
+            psf = psf_gen_new(pp, dz_psf, dz_data*dz_data_ratio, medFactor);
         catch ME
             disp(ME)
             % psf=psf_gen(psf, dz_psf, dz_data*dz_data_ratio, 24);
