@@ -40,7 +40,6 @@ ip.addParameter('SaveMaskfile', false, @islogical); % save mask file for common 
 ip.addParameter('RLMethod', 'simplified' , @ischar); % rl method {'original', 'simplified', 'cudagen'}
 ip.addParameter('fixIter', false, @islogical); % CPU Memory in Gb
 ip.addParameter('errThresh', [], @islogical); % error threshold for simplified code
-ip.addParameter('debug', false, @islogical); % debug mode for simplified code
 ip.addParameter('BlockSize', [2048, 2048, 2048] , @isvector); % in y, x, z
 ip.addParameter('Overlap', 200, @isnumeric); % block overlap
 ip.addParameter('CPUMaxMem', 500, @isnumeric); % CPU Memory in Gb
