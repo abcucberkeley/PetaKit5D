@@ -1,6 +1,7 @@
 function RLdecon(input_tiff, psf, background, nIter, dz_psf, dz_data, ...
     zalign, zalignParams, rotateByAngle, xypixelsize, bRotFinal, ...
-    bSaveUint16, cropFinal, bFlipZ, axesMaxIntProj, resizeFactor, scalingThresh, RLMethod, varargin)
+    bSaveUint16, cropFinal, bFlipZ, axesMaxIntProj, resizeFactor, scalingThresh, ...
+    RLMethod, fixIter, errThresh, debug, varargin)
 %RLdecon Summary of this function goes here
 %   input_tiff: input TIFF file name
 %   psf: psf array in 'double'
@@ -18,6 +19,7 @@ function RLdecon(input_tiff, psf, background, nIter, dz_psf, dz_data, ...
 % xruan (01/12/2021): for conversion to uint16, add support for smaller psf
 % xruan (03/25/2021): add options for different versions of rl method
 % xruan (03/26/2021): change loadtiff to readtiff
+% xruan (06/10/2021): add support for threshold and debug mode in simplified version. 
 
 
 if ischar(dz_psf)
@@ -155,7 +157,7 @@ if nIter>0
             deconvolved = deconvlucy(rawdata, psf, nIter) * numel(rawdata);
         case 'simplified'
             % psf = psf ./ sqrt(mean(psf .^ 2, 'all'));
-            deconvolved = decon_lucy_function(rawdata, psf, nIter) * numel(rawdata);
+            deconvolved = decon_lucy_function(rawdata, psf, nIter, fixIter, errThresh, debug) * numel(rawdata);
         case 'cudagen'
             deconvolved = decon_lucy_cuda_function(single(rawdata), single(psf), nIter) * numel(rawdata);            
     end

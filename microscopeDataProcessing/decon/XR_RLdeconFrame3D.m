@@ -9,6 +9,7 @@ function [] = XR_RLdeconFrame3D(frameFullpaths, pixelSize, dz, varargin)
 % Author: Xiongtao Ruan (03/15/2020)
 % xruan (01/12/2021): add support for edge erosion and using existing eroded mask for edge erosion.  
 % xruan (03/25/2021): add options for different versions of rl method
+% xruan (06/10/2021): add support for threshold and debug mode in simplified version. 
 
 
 ip = inputParser;
@@ -37,9 +38,12 @@ ip.addParameter('ErodeMaskfile', '', @ischar); % erode edges file
 ip.addParameter('SaveMaskfile', false, @islogical); % save mask file for common eroded mask
 % ip.addParameter('DoNotAdjustResForFFT', true , @islogical); % not crop chunks for deconvolution
 ip.addParameter('RLMethod', 'simplified' , @ischar); % rl method {'original', 'simplified', 'cudagen'}
+ip.addParameter('fixIter', false, @islogical); % CPU Memory in Gb
+ip.addParameter('errThresh', [], @islogical); % error threshold for simplified code
+ip.addParameter('debug', false, @islogical); % debug mode for simplified code
 ip.addParameter('BlockSize', [2048, 2048, 2048] , @isvector); % in y, x, z
 ip.addParameter('Overlap', 200, @isnumeric); % block overlap
-ip.addParameter('CPUMaxMem', 500, @isnumeric); % GPU Memory in Gb
+ip.addParameter('CPUMaxMem', 500, @isnumeric); % CPU Memory in Gb
 ip.addParameter('largeFile', false, @islogical);
 ip.addParameter('parseCluster', true, @islogical);
 ip.addParameter('masterCompute', true, @islogical); % master node participate in the task computing. 
@@ -92,6 +96,11 @@ Background = pr.Background;
 if isempty(Background)
     Background = 99;
 end
+
+% simplified version related options
+fixIter = pr.fixIter;
+errThresh = pr.errThresh;
+debug = pr.debug;
 
 tic
 OL = pr.Overlap;
@@ -194,7 +203,8 @@ for f = 1 : nF
         frameTmpPath = sprintf('%s_%s.tif', frameFullpath(1:end-4), uuid); 
         deconTmpPath = sprintf('%s_%s_decon.tif', deconFullPath(1:end-10), uuid); 
         RLdecon(frameTmpPath, PSF, Background, DeconIter, dzPSF, dz, Deskew, [], SkewAngle, ...
-            pixelSize, Rotate, Save16bit, Crop, zFlip, GenMaxZproj, ResizeImages, [], RLMethod);
+            pixelSize, Rotate, Save16bit, Crop, zFlip, GenMaxZproj, ResizeImages, [], RLMethod, ...
+            fixIter, errThresh, debug);
         toc
         system(unlink_cmd);
         if exist(deconTmpPath, 'file')
@@ -362,10 +372,10 @@ for f = 1 : nF
             tmpChunkFullname = sprintf('%s_%s.tif', [chunkPath, '/', chunkFnames{ck}(1:end-4)], uuid);
             softlink_cmd = sprintf('ln -s %s %s', [chunkPath, '/', chunkFnames{ck}], tmpChunkFullname);
             matlab_cmd = sprintf(['addpath(genpath(pwd));tic;RLdecon(''%s'',''%s'',%.10f,%.10f,%.10f,%.10f,%s,[],', ...
-                '%.10f,%.10f,%s,%s,[%s],%s,[%s],[%s],[],''%s'');toc;'], tmpChunkFullname, PSF, Background, DeconIter, ...
+                '%.10f,%.10f,%s,%s,[%s],%s,[%s],[%s],[],''%s'',%s,[%.10f],%s);toc;'], tmpChunkFullname, PSF, Background, DeconIter, ...
                 dzPSF, dz, string(Deskew), SkewAngle, pixelSize, string(Rotate), string(Save16bit), ...
                 strrep(num2str(Crop,'%d,'), ' ', ''), string(zFlip), num2str(GenMaxZproj, '%.10f,'), ...
-                num2str(ResizeImages, '%.10f,'), RLMethod);
+                num2str(ResizeImages, '%.10f,'), RLMethod, string(fixIter), errThresh, string(debug));
             DeconCommand = sprintf('module load matlab/r2020a; matlab -nodisplay -nosplash -nodesktop -r \\"%s\\"', matlab_cmd);
             rename_cmd = sprintf('mv %s_%s_decon.tif %s_decon.tif', [chunkDeconPath, '/', chunkFnames{ck}(1:end-4)], uuid, [chunkDeconPath, '/', chunkFnames{ck}(1:end-4)]);
             chunk_decon_cmd = sprintf('%s; %s; %s', softlink_cmd, DeconCommand, rename_cmd);
@@ -420,11 +430,11 @@ for f = 1 : nF
                 if ~ispc
                     system(softlink_cmd);
                     RLdecon(tmpChunkFullname, PSF, Background, DeconIter, dzPSF, dz, Deskew, [], SkewAngle, ...
-                        pixelSize, Rotate, Save16bit, Crop, zFlip, GenMaxZproj, ResizeImages, []);
+                        pixelSize, Rotate, Save16bit, Crop, zFlip, GenMaxZproj, ResizeImages, [], fixIter, errThresh, debug);
                     system(rename_cmd);
                 else
                     RLdecon([chunkPath, '/', chunkFnames{ck}], PSF, Background, DeconIter, dzPSF, dz, Deskew, [], SkewAngle, ...
-                        pixelSize, Rotate, Save16bit, Crop, zFlip, GenMaxZproj, ResizeImages, []);
+                        pixelSize, Rotate, Save16bit, Crop, zFlip, GenMaxZproj, ResizeImages, [], fixIter, errThresh, debug);
                 end
                 toc
                 
