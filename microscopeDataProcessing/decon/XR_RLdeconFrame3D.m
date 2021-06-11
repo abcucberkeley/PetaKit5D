@@ -82,6 +82,7 @@ zFlip = pr.zFlip;
 GenMaxZproj = pr.GenMaxZproj;
 ResizeImages = pr.ResizeImages;
 RLMethod = pr.RLMethod;
+GPUJob = pr.GPUJob;
 
 EdgeErosion = pr.EdgeErosion;
 
