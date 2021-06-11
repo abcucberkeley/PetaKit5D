@@ -383,7 +383,7 @@ for f = 1 : nF
                 strrep(num2str(Crop,'%d,'), ' ', ''), string(zFlip), num2str(GenMaxZproj, '%.10f,'), ...
                 num2str(ResizeImages, '%.10f,'), RLMethod, string(fixIter), errThresh, string(debug));
             DeconCommand = sprintf('module load matlab/r2020a; matlab -nodisplay -nosplash -nodesktop -r \\"%s\\"', matlab_cmd);
-            rename_cmd = sprintf('mv %s_%s_decon.tif %s_decon.tif', [chunkDeconPath, '/', chunkFnames{ck}(1:end-4)], uuid, [chunkDeconPath, '/', chunkFnames{ck}(1:end-4)]);
+            rename_cmd = sprintf('mv %s_%s.tif %s_decon.tif', [chunkPath, '/', chunkFnames{ck}(1:end-4)], uuid, [chunkDeconPath, '/', chunkFnames{ck}(1:end-4)]);
             chunk_decon_cmd = sprintf('%s; %s; %s', softlink_cmd, DeconCommand, rename_cmd);
             if parseCluster
                 job_status = check_slurm_job_status(job_ids(ck), task_id);
@@ -440,11 +440,11 @@ for f = 1 : nF
                 if ~ispc
                     system(softlink_cmd);
                     RLdecon(tmpChunkFullname, PSF, Background, DeconIter, dzPSF, dz, Deskew, [], SkewAngle, ...
-                        pixelSize, Rotate, Save16bit, Crop, zFlip, GenMaxZproj, ResizeImages, [], fixIter, errThresh, debug);
+                        pixelSize, Rotate, Save16bit, Crop, zFlip, GenMaxZproj, ResizeImages, [], RLMethod ,fixIter, errThresh, debug);
                     system(rename_cmd);
                 else
                     RLdecon([chunkPath, '/', chunkFnames{ck}], PSF, Background, DeconIter, dzPSF, dz, Deskew, [], SkewAngle, ...
-                        pixelSize, Rotate, Save16bit, Crop, zFlip, GenMaxZproj, ResizeImages, [], fixIter, errThresh, debug);
+                        pixelSize, Rotate, Save16bit, Crop, zFlip, GenMaxZproj, ResizeImages, [], RLMethod ,fixIter, errThresh, debug);
                 end
                 toc
                 
