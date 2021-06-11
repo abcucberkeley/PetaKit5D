@@ -10,6 +10,7 @@ function [] = XR_RLdeconFrame3D(frameFullpaths, pixelSize, dz, varargin)
 % xruan (01/12/2021): add support for edge erosion and using existing eroded mask for edge erosion.  
 % xruan (03/25/2021): add options for different versions of rl method
 % xruan (06/10/2021): add support for threshold and debug mode in simplified version. 
+% xruan (06/11/2021): add support for gpu computing for chuck decon in matlab decon wrapper
 
 
 ip = inputParser;
@@ -47,6 +48,7 @@ ip.addParameter('largeFile', false, @islogical);
 ip.addParameter('parseCluster', true, @islogical);
 ip.addParameter('masterCompute', true, @islogical); % master node participate in the task computing. 
 ip.addParameter('masterCPU', false, @islogical); % master node is a cpu node, which is just for large file deconvolution. 
+ip.addParameter('GPUJob', false, @islogical); % use gpu for chuck deconvolution. 
 ip.addParameter('jobLogDir', '../job_logs', @ischar);
 ip.addParameter('cpusPerTask', 5, @isnumeric);
 ip.addParameter('uuid', '', @ischar);
@@ -104,6 +106,10 @@ debug = pr.debug;
 tic
 OL = pr.Overlap;
 BlockSize = pr.BlockSize;
+
+if GPUJob
+    BlockSize = round(pr.BlockSize ./ [2, 2, 4]);
+end    
 
 CPUMaxMem = pr.CPUMaxMem;
 largeFile = pr.largeFile;
@@ -407,9 +413,13 @@ for f = 1 : nF
 
                 % If there is no job, submit a job
                 if job_status == -1 && ~(masterCompute && ck == lastck)
-                    cmd = sprintf('sbatch --array=%d -o %s -e %s -p abc --qos abc_normal -n1 --mem=500G --cpus-per-task=24 --wrap="%s"', ...
-                        task_id, job_log_fname, job_log_error_fname, chunk_decon_cmd);
-
+                    if GPUJob
+                        cmd = sprintf('sbatch --array=%d -o %s -e %s -p abc --qos abc_normal -n1 --mem=160G --cpus-per-task=5 --gres=gpu:titan:1 --wrap="%s"', ...
+                            task_id, job_log_fname, job_log_error_fname, chunk_decon_cmd);                        
+                    else    
+                        cmd = sprintf('sbatch --array=%d -o %s -e %s -p abc --qos abc_normal -n1 --mem=500G --cpus-per-task=24 --wrap="%s"', ...
+                            task_id, job_log_fname, job_log_error_fname, chunk_decon_cmd);
+                    end
                     [status, cmdout] = system(cmd, '-echo');
                     tmpFullnames{ck} =  sprintf('%s/%s_%s_decon.tif', chunkDeconPath, chunkFnames{ck}(1:end-4), uuid);
                     

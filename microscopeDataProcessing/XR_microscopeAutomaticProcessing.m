@@ -107,7 +107,8 @@ function [] = XR_microscopeAutomaticProcessing(dataPaths, varargin)
 % xruan (12/18/2020): simplify code for processing functions; add support
 %                     for not save 3d stack (for quick checking of results)
 % xruan (01/13/2021): add support of resample for DSR and following analysis
-% xruan (06/10/2021): add support for threshold and debug mode in simplified version. 
+% xruan (06/10/2021): add support for threshold and debug mode in matlab decon simplified version. 
+% xruan (06/11/2021): add support for gpu computing for chuck decon in matlab decon wrapper
 
 
 ip = inputParser;
@@ -174,6 +175,7 @@ ip.addParameter('RLMethod', 'simplified' , @ischar); % rl method {'original', 's
 ip.addParameter('fixIter', false, @islogical); % CPU Memory in Gb
 ip.addParameter('errThresh', [], @islogical); % error threshold for simplified code
 ip.addParameter('debug', false, @islogical); % debug mode for simplified code
+ip.addParameter('GPUJob', false, @islogical); % use gpu for chuck deconvolution. 
 % job related parameters
 ip.addParameter('largeFile', false, @islogical);
 ip.addParameter('parseCluster', true, @islogical);
@@ -253,6 +255,7 @@ RotateAfterDecon = pr.RotateAfterDecon;
 DeconIter = pr.DeconIter;
 rotatedPSF = pr.rotatedPSF;
 RLMethod = pr.RLMethod;
+GPUJob = pr.GPUJob;
 % job related
 largeFile = pr.largeFile;
 jobLogDir = pr.jobLogDir;
@@ -1020,10 +1023,10 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all') || ...
                 func_str = sprintf(['XR_RLdeconFrame3D(''%s'',%.10f,%.10f,'''',''PSFfile'',''%s'',', ...
                     '''dzPSF'',%.10f,''Background'',[%d],''SkewAngle'',%d,''EdgeErosion'',%d,''ErodeMaskfile'',''%s'',', ...
                     '''SaveMaskfile'',%s,''Rotate'',%s,''DeconIter'',%d,''RLMethod'',''%s'',''%s'',''fixIter'',%s,', ...
-                    '''errThresh'',[%0.10f],''debug'',%s,''Save16bit'',%s,''largeFile'',%s)'], ...
+                    '''errThresh'',[%0.10f],''debug'',%s,''GPUJob'',%s,''Save16bit'',%s,''largeFile'',%s)'], ...
                     dcframeFullpath, xyPixelSize, dc_dz, psfFullpath,  dc_dzPSF, Background, SkewAngle, ...
-                    EdgeErosion, maskFullpath, string(SaveMaskfile), string(deconRotate), DeconIter, RLMethod,  string(fixIter), ...
-                    errThresh, string(debug), string(Save16bit(3)), string(largeFile));
+                    EdgeErosion, maskFullpath, string(SaveMaskfile), string(deconRotate), DeconIter, RLMethod, ...
+                    string(fixIter), errThresh, string(debug), string(GPUJob), string(Save16bit(3)), string(largeFile));
             end
            
             if exist(dctmpFullpath, 'file') || parseCluster
