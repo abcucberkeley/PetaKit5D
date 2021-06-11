@@ -173,7 +173,7 @@ ip.addParameter('DeconIter', 15 , @isnumeric); % number of iterations
 ip.addParameter('rotatedPSF', false , @islogical); % psf is rotated (for dsr)
 ip.addParameter('RLMethod', 'simplified' , @ischar); % rl method {'original', 'simplified', 'cudagen'}
 ip.addParameter('fixIter', false, @islogical); % CPU Memory in Gb
-ip.addParameter('errThresh', [], @islogical); % error threshold for simplified code
+ip.addParameter('errThresh', [], @isnumeric); % error threshold for simplified code
 ip.addParameter('debug', false, @islogical); % debug mode for simplified code
 ip.addParameter('GPUJob', false, @islogical); % use gpu for chuck deconvolution. 
 % job related parameters
