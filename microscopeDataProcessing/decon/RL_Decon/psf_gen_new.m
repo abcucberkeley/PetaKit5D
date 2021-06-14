@@ -1,4 +1,4 @@
-function [ psf ] = psf_gen_new(psf, dz_psf, dz_data, medFactor)
+function [ psf ] = psf_gen_new(psf, dz_psf, dz_data, medFactor, PSFGenMethod)
 %psf_gen resample and crop raw PSF
 %   
 
@@ -6,17 +6,37 @@ if nargin < 4
     medFactor = 1.5;
 end
 
+if nargin < 5
+    PSFGenMethod = 'median';
+end
+
+
 %load TIFF
-psf_raw = psf;
+psf_raw = double(psf);
 [ny, nx, nz] = size(psf);
 
 % subtract background estimated from the last Z section
-psf_raw_fl = psf_raw(:, :, [1, end]);
+psf_raw_fl = psf_raw(:, :, [1:5, end-5:end]);
 % xruan (05/06/2021): check if the first and last slices contain positive values
 if any(psf_raw_fl(:) > 0)
-    psf_raw = double(psf_raw) - medFactor * median(double(psf_raw_fl(psf_raw_fl > 0)));
-    % convert all negative pixels to 0
-    psf_raw(psf_raw<0) = 0.0;
+    switch PSFGenMethod
+        case 'median'
+            psf_raw = double(psf_raw) - medFactor * median(double(psf_raw_fl(psf_raw_fl > 0)));
+        %     % convert all negative pixels to 0
+            psf_raw(psf_raw<0) = 0.0;
+        case 'masked'
+        %     a = max(sqrt(abs(psf_raw([1:10, end-9:end], :, :) - 100)), [], [1, 3]) * 3  + mean(psf_raw([1:10, end-9:end], :, :), [1, 3]);
+        %     a = smooth(a, 0.1, 'rloess');
+        %     psf_raw = psf_raw - a';
+        %     psf_raw(psf_raw<0) = 0.0;
+    
+            psf_med = medfilt3(double(psf), [3, 3, 3]);
+            a = max(sqrt(abs(psf_med([1:10, end-9:end], :, :) - 100)), [], [1, 3]) * 3  + mean(psf_med([1:10, end-9:end], :, :), [1, 3]);
+            psf_med_1 = psf_med - a;
+            BW = bwareaopen(psf_med_1 > 0, 300, 26);
+            psf_raw = psf_raw .* BW - mean(psf_raw([1:10, end-9:end], :, :), [1, 3]);
+            psf_raw(psf_raw<0) = 0.0;
+    end
 end
 
 % locate the peak pixel
