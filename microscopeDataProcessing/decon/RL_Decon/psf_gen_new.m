@@ -1,6 +1,6 @@
 function [ psf ] = psf_gen_new(psf, dz_psf, dz_data, medFactor, PSFGenMethod)
 %psf_gen resample and crop raw PSF
-%   
+% 
 
 if nargin < 4
     medFactor = 1.5;

@@ -256,6 +256,10 @@ DeconIter = pr.DeconIter;
 rotatedPSF = pr.rotatedPSF;
 RLMethod = pr.RLMethod;
 GPUJob = pr.GPUJob;
+% matlab decon simplified version related options
+fixIter = pr.fixIter;
+errThresh = pr.errThresh;
+debug = pr.debug;
 % job related
 largeFile = pr.largeFile;
 jobLogDir = pr.jobLogDir;
@@ -539,7 +543,8 @@ for d = 1 : nd
     if any(containPartialVolume)
         fnames_d = cellfun(@(x) x{1}, groupedFnames_d, 'unif', 0);
         datenum_d = cellfun(@(x) max(x), groupedDatenum);
-        datesize_d = cellfun(@(x) max(x), groupedDatasize);
+        % datesize_d = cellfun(@(x) max(x), groupedDatasize);
+        datesize_d = groupedDatasize;
     else
         fnames_d = groupedFnames_d;
         datenum_d = groupedDatenum;
@@ -1022,8 +1027,8 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all') || ...
             else
                 func_str = sprintf(['XR_RLdeconFrame3D(''%s'',%.10f,%.10f,'''',''PSFfile'',''%s'',', ...
                     '''dzPSF'',%.10f,''Background'',[%d],''SkewAngle'',%d,''EdgeErosion'',%d,''ErodeMaskfile'',''%s'',', ...
-                    '''SaveMaskfile'',%s,''Rotate'',%s,''DeconIter'',%d,''RLMethod'',''%s'',''%s'',''fixIter'',%s,', ...
-                    '''errThresh'',[%0.10f],''debug'',%s,''GPUJob'',%s,''Save16bit'',%s,''largeFile'',%s)'], ...
+                    '''SaveMaskfile'',%s,''Rotate'',%s,''DeconIter'',%d,''RLMethod'',''%s'',''fixIter'',%s,', ...
+                    '''errThresh'',[%0.20f],''debug'',%s,''GPUJob'',%s,''Save16bit'',%s,''largeFile'',%s)'], ...
                     dcframeFullpath, xyPixelSize, dc_dz, psfFullpath,  dc_dzPSF, Background, SkewAngle, ...
                     EdgeErosion, maskFullpath, string(SaveMaskfile), string(deconRotate), DeconIter, RLMethod, ...
                     string(fixIter), errThresh, string(debug), string(GPUJob), string(Save16bit(3)), string(largeFile));
