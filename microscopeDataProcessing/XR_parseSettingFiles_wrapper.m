@@ -3,7 +3,8 @@ function [settingInfo] = XR_parseSettingFiles_wrapper(imageFilenames, varargin)
 % image processing
 % 
 % Author: Xiongtao Ruan (12/05/2020)
-
+% 
+% xruan (06/16/2021): exclude partial files
 
 if nargin < 1
     imageFilenames = {'/Users/xruan/Images/20201201_p35_p4_LLS_Calibrations/488_totalPSF_Cropping_0p1_env_0_DOscan_z0p1.tif', ...
@@ -16,6 +17,9 @@ ip.CaseSensitive = false;
 ip.addRequired('imageFilenames'); %
 ip.parse(imageFilenames, varargin{:});
 
+% exclude partial files
+imageFilenames = imageFilenames(~cellfun(@isempty, regexp(imageFilenames, '^(?!.*_part[0-9]*.tif).*$')));
+imageFilenames = unique(imageFilenames);
 
 % first find the corresponding setting file for each image
 % [pathstrs, fsnames] = fileparts(imageFilenames);
@@ -48,6 +52,15 @@ for i = 1 : numel(imageFilenames)
         sfn_cell{i} = sfn;
         continue;
     end
+    
+    % add another pattern
+    sfn_2 = sprintf('%s/%sScan_Iter_%s_Settings.txt', pathstr, tmp.prefix, tmp.Iter);
+    if exist(sfn_2, 'file')
+        sfn = sfn_2;
+        sfn_cell{i} = sfn;
+        continue;
+    end
+
 end
 
 % get the unique setting filenames

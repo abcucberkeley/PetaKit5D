@@ -94,8 +94,8 @@ for i = 1 : numel(mstr)
         groupedDatasize{i} = [mds_i; pds(:)];
     else
         groupedFnames{i} = {[mstr_i, ext]};
-        groupedDatenum{i} = {mdn_i};
-        groupedDatasize{i} = {mds_i};
+        groupedDatenum{i} = mdn_i;
+        groupedDatasize{i} = mds_i;
     end
 end
 

@@ -20,6 +20,8 @@ function RLdecon(input_tiff, psf, background, nIter, dz_psf, dz_data, ...
 % xruan (03/25/2021): add options for different versions of rl method
 % xruan (03/26/2021): change loadtiff to readtiff
 % xruan (06/10/2021): add support for threshold and debug mode in simplified version. 
+% xruan (06/16/2021): add support for saving generated psf, and change
+% default psfgen method as masked
 
 
 if ischar(dz_psf)
@@ -71,7 +73,14 @@ if ischar(psf)
             % xruan (05/05/2021) change to psf_gen_new
             pp = readtiff(psf);
             medFactor = 1.5;
-            psf = psf_gen_new(pp, dz_psf, dz_data*dz_data_ratio, medFactor);
+            PSFGenMethod = 'masked';
+            psf = psf_gen_new(pp, dz_psf, dz_data*dz_data_ratio, medFactor, PSFGenMethod);
+            psfgen_folder = sprintf('%s/%s/psfgen/', data_folder, 'matlab_decon');
+            mkdir(psfgen_folder);
+            psfgen_filename = sprintf('%s/%s', psfgen_folder, b);
+            if ~exist(psfgen_filename, 'file')
+                writetiff(psf, psfgen_filename);
+            end
         catch ME
             disp(ME)
             % psf=psf_gen(psf, dz_psf, dz_data*dz_data_ratio, 24);
