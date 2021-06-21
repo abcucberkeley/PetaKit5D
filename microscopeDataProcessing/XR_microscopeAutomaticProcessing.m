@@ -862,7 +862,7 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all') || ...
                 dfirst_ind = find(fdinds == fdind, 1, 'first');
                 job_status = check_slurm_job_status(job_ids(dfirst_ind, 2), 1);
 
-                if job_status == -1 && ~stitch_running(fdind)
+                if job_status == -1 % && ~stitch_running(fdind)
                     % first estimate file size and decide whether cpusPerTask
                     % is enough
                     estRequiredMemory = dataSize_mat(f, 1) / 2^30 * 2 * 20;
@@ -882,7 +882,7 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all') || ...
                     job_id = regexp(cmdout, 'Submitted batch job (\d+)\n', 'tokens');
                     job_id = str2double(job_id{1}{1});
                     job_ids(dfirst_ind, 2) = job_id;
-                    stitch_running(fdind) = true;
+                    % stitch_running(fdind) = true;
                 end
             else
                 tic; feval(str2func(['@()', func_str])); toc;
