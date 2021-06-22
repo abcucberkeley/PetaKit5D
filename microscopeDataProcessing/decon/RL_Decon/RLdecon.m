@@ -20,8 +20,8 @@ function RLdecon(input_tiff, psf, background, nIter, dz_psf, dz_data, ...
 % xruan (03/25/2021): add options for different versions of rl method
 % xruan (03/26/2021): change loadtiff to readtiff
 % xruan (06/10/2021): add support for threshold and debug mode in simplified version. 
-% xruan (06/16/2021): add support for saving generated psf, and change
-% default psfgen method as masked
+% xruan (06/16/2021): add support for saving generated psf, and change default psfgen method as masked
+% xruan (06/22/2021): add support to save err mat for simplified version.
 
 
 if ischar(dz_psf)
@@ -166,7 +166,8 @@ if nIter>0
             deconvolved = deconvlucy(rawdata, psf, nIter) * numel(rawdata);
         case 'simplified'
             % psf = psf ./ sqrt(mean(psf .^ 2, 'all'));
-            deconvolved = decon_lucy_function(rawdata, psf, nIter, fixIter, errThresh, debug) * numel(rawdata);
+            [deconvolved, err_mat] = decon_lucy_function(rawdata, psf, nIter, fixIter, errThresh, debug);
+            deconvolved = deconvolved * numel(rawdata);
         case 'cudagen'
             deconvolved = decon_lucy_cuda_function(single(rawdata), single(psf), nIter) * numel(rawdata);            
     end
@@ -233,6 +234,12 @@ else
     output_tiff1 = strcat(datafolder, '/', decon_folder, output_tiff);
     output_tiff2 = strcat(datafolder, '/', [decon_folder, thumnail_folder], output_tiff);
     MIPs_tiff = strcat(datafolder, '/', [decon_folder, MIPs_folder], inputfile);
+end
+
+% save err mat for simplified method
+if nIter > 0 && strcmp(RLMethod, 'simplified')
+    info_fn = sprintf('%s/%s/%s_info.mat', datafolder, decon_folder, output_tiff(1 : end - 4));
+    save('-v7.3', info_fn, 'err_mat', 'nIter', 'fixIter', 'errThresh', 'debug');
 end
 
 if ischar(bSaveUint16)
