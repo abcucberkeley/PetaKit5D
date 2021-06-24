@@ -62,6 +62,8 @@ else
     dz_data_ratio = 1;
 end
 
+[datafolder, inputfile, sufix] = fileparts(input_tiff);
+
 if ischar(psf)
     [a,b,suffix]=fileparts(psf);
     if strcmp(suffix, '.mat')
@@ -75,9 +77,9 @@ if ischar(psf)
             medFactor = 1.5;
             PSFGenMethod = 'masked';
             psf = psf_gen_new(pp, dz_psf, dz_data*dz_data_ratio, medFactor, PSFGenMethod);
-            psfgen_folder = sprintf('%s/%s/psfgen/', data_folder, 'matlab_decon');
+            psfgen_folder = sprintf('%s/%s/psfgen/', datafolder, 'matlab_decon');
             mkdir(psfgen_folder);
-            psfgen_filename = sprintf('%s/%s', psfgen_folder, b);
+            psfgen_filename = sprintf('%s/%s.tif', psfgen_folder, b);
             if ~exist(psfgen_filename, 'file')
                 writetiff(psf, psfgen_filename);
             end
@@ -119,7 +121,6 @@ end
 
 % rawdata = loadtiff(input_tiff);
 rawdata = readtiff(input_tiff);
-[datafolder, inputfile, sufix] = fileparts(input_tiff);
 
 % rawdata = hpbuster(rawdata, background, 2, 1);
 % tic
