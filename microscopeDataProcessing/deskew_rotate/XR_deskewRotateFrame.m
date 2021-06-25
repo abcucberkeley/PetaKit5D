@@ -1,4 +1,4 @@
-function [] = XR_deskewRotateFrame(framePath, xyPixelSize, dz, varargin)
+function [ds, dsr] = XR_deskewRotateFrame(framePath, xyPixelSize, dz, varargin)
 % Deskew and/or rotate data for a single file
 % 
 %
