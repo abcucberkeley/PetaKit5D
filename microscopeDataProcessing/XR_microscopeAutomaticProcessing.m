@@ -109,6 +109,7 @@ function [] = XR_microscopeAutomaticProcessing(dataPaths, varargin)
 % xruan (01/13/2021): add support of resample for DSR and following analysis
 % xruan (06/10/2021): add support for threshold and debug mode in matlab decon simplified version. 
 % xruan (06/11/2021): add support for gpu computing for chuck decon in matlab decon wrapper
+% xruan (07/05/2021): add support for user defined resample (arbitary factor)
 
 
 ip = inputParser;
@@ -141,8 +142,8 @@ ip.addParameter('BKRemoval', false, @islogical);
 ip.addParameter('LowerLimit', 0.4, @isnumeric); % this value is the lowest
 ip.addParameter('LSImagePaths', {'','',''}, @iscell);
 ip.addParameter('BackgroundPaths', {'','',''}, @iscell);
-ip.addParameter('resampleType', 'isotropic', @ischar); % resample type for DSR
-ip.addParameter('resample', [], @isnumeric); % resample for DSR
+ip.addParameter('resampleType', 'isotropic', @ischar); % resample type: given, isotropic, xy_isotropic
+ip.addParameter('resample', [], @isnumeric); % resample
 % stitch parameters
 ip.addParameter('stitchPipeline', 'matlab', @ischar); % matlab or zarr
 ip.addParameter('stitchResultDir', '', @ischar);
@@ -211,6 +212,8 @@ ObjectiveScan = pr.ObjectiveScan;
 Reverse = pr.Reverse;
 ChannelPatterns = pr.ChannelPatterns;
 Save16bit = pr.Save16bit;
+resampleType = pr.resampleType;
+resample = pr.resample;
 %deskew and rotate
 Deskew = pr.Deskew;
 Rotate = pr.Rotate;
@@ -222,8 +225,6 @@ BKRemoval = pr.BKRemoval;
 LowerLimit = pr.LowerLimit;
 LSImagePaths = pr.LSImagePaths;
 BackgroundPaths = pr.BackgroundPaths;
-resampleType = pr.resampleType;
-resample = pr.resample;
 % stitch parameters
 Stitch = pr.Stitch;
 stitchPipeline = pr.stitchPipeline;
@@ -430,6 +431,9 @@ if Rotate
 end
 
 % define resample based on resample type, resample parameter and the microscope setting
+if ~isempty(resample)
+    resampleType = 'given';
+end
 [resample, zAniso] = XR_checkResampleSetting(resampleType, resample, ObjectiveScan, SkewAngle, xyPixelSize, dz);
 
 % for deconvolution, check whether there is a gpu in the node. if not, for
@@ -535,102 +539,10 @@ else
 end
 
 %% check existing files and parse channels
-fnames_cell = cell(nd, 1);
-gfnames_cell = cell(nd, 1); % for grouped partial volume files
-partialvol_cell = cell(nd, 1);
-datesize_cell = cell(nd, 1);
-for d = 1 : nd
-    dataPath = dataPaths{d};
-    % dir_info = dir([dataPath, '*.tif']);
-    % fnames_d = {dir_info.name}';
-    [containPartialVolume, groupedFnames_d, groupedDatenum, groupedDatasize] = groupPartialVolumeFiles(dataPath);
-    if any(containPartialVolume)
-        fnames_d = cellfun(@(x) x{1}, groupedFnames_d, 'unif', 0);
-        datenum_d = cellfun(@(x) max(x), groupedDatenum);
-        % datesize_d = cellfun(@(x) max(x), groupedDatasize);
-        datesize_d = groupedDatasize;
-    else
-        fnames_d = groupedFnames_d;
-        datenum_d = groupedDatenum;
-        datesize_d = groupedDatasize;
-    end
-    
-    if Streaming
-        last_modify_time = (datenum(clock) - datenum_d) * 24 * 60;
-        latest_modify_time = min(last_modify_time);
-
-        % not include the lastest file if it is very recent
-        if latest_modify_time < minModifyTime
-            fnames_d(last_modify_time == latest_modify_time) = [];
-            if any(containPartialVolume)
-                groupedFnames_d(last_modify_time == latest_modify_time) = [];
-            end
-        end
-    end
-    fnames_cell{d} = fnames_d;
-    gfnames_cell{d} = groupedFnames_d;
-    if any(containPartialVolume)
-        partialvol_cell{d} = cellfun(@(x) numel(x) > 1, groupedFnames_d);
-        datesize_cell{d} = cellfun(@(x) sum(x), datesize_d);
-    else
-        partialvol_cell{d} = false(numel(fnames_d), 1);
-        datesize_cell{d} = datesize_d;
-    end
-end
-
-fdinds = arrayfun(@(x) ones(numel(fnames_cell{x}), 1) * x, 1 : nd, 'unif', 0);
-fnames = cat(1, fnames_cell{:});
-fdinds = cat(1, fdinds{:});
-gfnames = cat(1, gfnames_cell{:});
-partialvols = cat(1, partialvol_cell{:});
-dataSizes = cat(1, datesize_cell{:});
-
-% filter filenames by channel patterns
-include_flag = false(numel(fnames), 1);
-for c = 1 : numel(ChannelPatterns)
-    include_flag = include_flag | contains(fnames, ChannelPatterns{c});
-end
-fnames = fnames(include_flag);
-fdinds = fdinds(include_flag);
-gfnames = gfnames(include_flag);
-partialvols = partialvols(include_flag);
-dataSizes = dataSizes(include_flag);
+[fnames, fdinds, gfnames, partialvols, dataSizes, flipZstack_mat, FTP_inds, maskFullpaths] = ...
+    XR_parseImageFilenames(dataPaths, ChannelPatterns, parseSettingFile, flipZstack, Decon, Streaming);
 
 nF = numel(fnames);
-
-% parse setting file 
-flipZstack_mat = repmat(flipZstack, nF, 1);
-if parseSettingFile
-    frameFullpaths = arrayfun(@(x) [dataPaths{fdinds(x)}, fnames{x}], 1 : nF, 'unif', 0);
-    settingInfo = XR_parseSettingFiles_wrapper(frameFullpaths);
-    flipZstack_mat = [settingInfo.StageInterval] < 0;
-end
-
-% for ErodeByFTP, set up the frame numbers as first time point for each
-% data
-FTP_inds = zeros(nd, 1);
-if Decon
-    maskFullpaths = cell(nd, 1);
-end
-for d = 1 : nd
-    c = 1;
-    FTPfname = '';
-    while isempty(FTPfname)
-        all_inds = contains(fnames_cell{d}, ChannelPatterns{c});
-        if ~isempty(all_inds) && ~isempty(find(all_inds, 1, 'first'))
-            FTPfname = fnames_cell{d}{find(all_inds, 1, 'first')};
-        end
-        c = c + 1;
-    end
-    if ~isempty(FTPfname)
-        ind_d = find(strcmp(fnames, FTPfname));
-        FTP_inds(d) = ind_d;
-        [~, FTPfsname] = fileparts(FTPfname);        
-        if Decon
-            maskFullpaths{d} = sprintf('%s/Masks/%s_eroded.tif', deconPaths{d}, FTPfsname);
-        end
-    end
-end    
 
 % flags: for thee: deskew w/o rotate, decon w/o rotate, rotate
 is_done_flag = false(nF, 4);
@@ -848,19 +760,19 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all') || ...
 
             func_str = sprintf(['XR_matlab_stitching_wrapper(''%s'',''%s'',''ResultDir'',''%s'',', ...
                 '''Streaming'',%s,''ChannelPatterns'',%s,''useExistDSR'',%s,''axisOrder'',''%s'',', ...
-                '''resampleType'',''%s'',''Reverse'',%s,''parseSettingFile'',%s,''xcorrShift'',%s,', ...
-                '''xcorrMode'',''%s'',''xyMaxOffset'',%.10f,''zMaxOffset'',%.10f,''BlendMethod'',''%s'',', ...
-                '''zNormalize'',%s,''onlyFirstTP'',%s,''timepoints'',[%s],''boundboxCrop'',[%s],', ...
-                '''Save16bit'',%s,''primaryCh'',''%s'',''pipeline'',''%s'')'], dataPath, imageListFullpath, ...
-                stitchResultDir, string(Streaming), ChannelPatterns_str, string(useExistDSR), axisOrder, ...
-                resampleType, string(Reverse), string(parseSettingFile), string(xcorrShift), xcorrMode, ...
-                xyMaxOffset, zMaxOffset, BlendMethod, string(zNormalize), string(onlyFirstTP), ...
-                strrep(num2str(timepoints, '%d,'), ' ', ''), strrep(num2str(bbox, '%d,'), ' ', ''), ...
-                string(Save16bit(2)), primaryCh, stitchPipeline);
+                '''resampleType'',''%s'',''resample'',[%s],''Reverse'',%s,''parseSettingFile'',%s,', ...
+                '''xcorrShift'',%s,''xcorrMode'',''%s'',''xyMaxOffset'',%.10f,''zMaxOffset'',%.10f,', ...
+                '''BlendMethod'',''%s'',''zNormalize'',%s,''onlyFirstTP'',%s,''timepoints'',[%s],', ...
+                '''boundboxCrop'',[%s],''Save16bit'',%s,''primaryCh'',''%s'',''pipeline'',''%s'')'], ...
+                dataPath, imageListFullpath, stitchResultDir, string(Streaming), ChannelPatterns_str, ...
+                string(useExistDSR), axisOrder, resampleType, strrep(num2str(resample, '%.10d,'), ' ', ''), ...
+                string(Reverse), string(parseSettingFile), string(xcorrShift), xcorrMode, xyMaxOffset, ...
+                zMaxOffset, BlendMethod, string(zNormalize), string(onlyFirstTP), strrep(num2str(timepoints, '%d,'), ' ', ''), ...
+                strrep(num2str(bbox, '%d,'), ' ', ''), string(Save16bit(2)), primaryCh, stitchPipeline);
 
             if parseCluster
                 dfirst_ind = find(fdinds == fdind, 1, 'first');
-                job_status = check_slurm_job_status(job_ids(dfirst_ind, 2), 1);
+                job_status = check_slurm_job_status(job_ids(dfirst_ind, 2));
 
                 if job_status == -1 % && ~stitch_running(fdind)
                     % first estimate file size and decide whether cpusPerTask
@@ -1275,9 +1187,14 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all') || ...
         end    
     end
 
+    % [fnames, fdinds, gfnames, partialvols, dataSizes, flipZstack_mat, FTP_inds, maskFullpaths] = ...
+    %     XR_parseImageFilenames(dataPaths, ChannelPatterns, flipZstack, Decon, Streaming);
+
     nF = numel(fnames);
     is_done_flag = [is_done_flag; false(nFnew, 4)];
     trial_counter = [trial_counter; zeros(nFnew, 4)];
+    
+
     
     if parseCluster
         job_ids = [job_ids;  -ones(nFnew, 4)];

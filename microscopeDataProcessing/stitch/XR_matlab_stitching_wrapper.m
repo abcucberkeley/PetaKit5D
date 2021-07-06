@@ -64,12 +64,14 @@ function [] = XR_matlab_stitching_wrapper(dataPath, imageListFileName, varargin)
 % xruan (12/09/2020): add support for using primary coordinates for secondary channels/tps
 % xruan (02/24/2021): add support for user defined xy, z max offsets for xcorr registration
 % xruan (03/24/2021): add support for processing of given channels
-
+% xruan (07/04/2021): ignore tif files recorded in Image List files that
+% do not match the file pattern. 
+% xruan (07/05/2021): add support for user defined resample (arbitary factor)
 
 ip = inputParser;
 ip.CaseSensitive = false;
-ip.addRequired('dataPath', @isstr);
-ip.addRequired('imageListFileName', @isstr);
+ip.addRequired('dataPath', @ischar);
+ip.addRequired('imageListFileName', @ischar);
 % ip.addParameter('Overwrite', true, @islogical);
 ip.addParameter('Streaming', false, @islogical);
 ip.addParameter('ChannelPatterns', {'CamA_ch0', 'CamA_ch1', 'CamB_ch0'}, @iscell);
@@ -77,17 +79,18 @@ ip.addParameter('useExistDSR', false, @islogical); % use exist DSR for the proce
 ip.addParameter('DSRDirstr', 'DSR', @ischar); % path for DSRDir str, if it is not true
 ip.addParameter('useExistDSRDecon', false, @islogical); % use exist DSR decon for the processing
 ip.addParameter('DSRDeconDirstr', '', @ischar); % path for DSRDir decon str, if it is not true
-ip.addParameter('stitchInfoFullpath', '', @isstr); % use exist stitch info for stitching
+ip.addParameter('stitchInfoFullpath', '', @ischar); % use exist stitch info for stitching
 ip.addParameter('Reverse', false, @islogical);
 ip.addParameter('parseSettingFile', false, @islogical); % use setting file to decide whether filp Z stack or not.
-ip.addParameter('axisOrder', 'x,y,z', @isstr);
+ip.addParameter('axisOrder', 'x,y,z', @ischar);
 ip.addParameter('ObjectiveScan', false, @islogical);
-ip.addParameter('resampleType', 'xy_isotropic', @isstr); % by default use xy isotropic
+ip.addParameter('resampleType', 'xy_isotropic', @ischar); % by default use xy isotropic
+ip.addParameter('resample', [], @isnumeric); % user-defined resample factor
 ip.addParameter('ffcorrect', false, @islogical);
 ip.addParameter('Resolution', [0.108, 0.5], @isnumeric);
-ip.addParameter('resultDir', 'matlab_stitch', @isstr);
-ip.addParameter('BlendMethod', 'none', @isstr);
-ip.addParameter('overlapType', '', @isstr); % '', 'none', 'half', or 'full'
+ip.addParameter('resultDir', 'matlab_stitch', @ischar);
+ip.addParameter('BlendMethod', 'none', @ischar);
+ip.addParameter('overlapType', '', @ischar); % '', 'none', 'half', or 'full'
 ip.addParameter('xcorrShift', true, @islogical);
 ip.addParameter('xyMaxOffset', 300, @isnumeric); % max offsets in xy axes
 ip.addParameter('zMaxOffset', 50, @isnumeric); % max offsets in z axis
@@ -108,10 +111,10 @@ ip.addParameter('pipeline', 'matlab', @(x) strcmpi(x, 'matlab') || strcmpi(x, 'z
 ip.addParameter('processFunPath', '', @(x) isempty(x) || ischar(x)); % path of user-defined process function handle
 ip.addParameter('parseCluster', true, @islogical);
 ip.addParameter('masterCompute', true, @islogical); % master node participate in the task computing. 
-ip.addParameter('jobLogDir', '../job_logs', @isstr);
+ip.addParameter('jobLogDir', '../job_logs', @ischar);
 ip.addParameter('cpusPerTask', 8, @isnumeric);
 ip.addParameter('cpuOnlyNodes', true, @islogical);
-ip.addParameter('uuid', '', @isstr);
+ip.addParameter('uuid', '', @ischar);
 ip.addParameter('maxTrialNum', 3, @isnumeric);
 ip.addParameter('unitWaitTime', 0.1, @isnumeric);
 ip.addParameter('MatlabLaunchStr', 'module load matlab/r2020b; matlab -nodisplay -nosplash -nodesktop -r', @ischar);
@@ -133,6 +136,7 @@ parseSettingFile = pr.parseSettingFile;
 axisOrder = pr.axisOrder;
 ObjectiveScan = pr.ObjectiveScan;
 resampleType = pr.resampleType;
+resample = pr.resample;
 ffcorrect = pr.ffcorrect;
 Resolution = pr.Resolution;
 resultDir = pr.resultDir;
@@ -244,7 +248,14 @@ end
 
 tmp = regexpi(fn, expression, 'names');
 
+matched_inds = true(numel(tmp), 1);
+
 for f = 1:numel(tmp)
+    if isempty(tmp{f})
+        matched_inds(f) = false;
+        continue;
+    end
+    
     t.prefix{f} = tmp{f}.prefix;
     t.Iter(f) = str2double(tmp{f}.Iter);
     t.subIter{f} = tmp{f}.subIter;
@@ -265,6 +276,8 @@ for f = 1:numel(tmp)
     t.z(f) = str2double(tmp{f}.z);
     t.t(f) = str2double(tmp{f}.t);
 end
+
+t = t(matched_inds, :);
 
 prefix = unique(t.prefix);
 if ~isempty(prefix)
@@ -654,12 +667,12 @@ while ~all(is_done_flag | trial_counter >= max_trial_num, 'all')
                     xyz_str = strrep(mat2str(xyz), ' ', ',');                      
                     func_str = sprintf(['%s(%s,%s,''axisOrder'',''%s'',''px'',%0.10f,''dz'',%0.10f,', ...
                         '''Reverse'',%s,''ObjectiveScan'',%s,''resultDir'',''%s'',''stitchInfoDir'',''%s'',''stitchInfoFullpath'',''%s'',', ...
-                        '''DSRDirstr'',''%s'',''DSRDeconDirstr'',''%s'',''resampleType'',''%s'',''BlendMethod'',''%s'',', ...
-                        '''overlapType'',''%s'',''xcorrShift'',%s,''xyMaxOffset'',%0.10f,''zMaxOffset'',%0.10f,''isPrimaryCh'',%s,''usePrimaryCoords'',%s,''padSize'',[%s],''boundboxCrop'',[%s],', ...
-                        '''zNormalize'',%s,''Save16bit'',%s,''tileNum'',[%s],''flippedTile'',[%s],''processFunPath'',''%s'')'], stitch_function_str, ...
-                        tile_fullpaths_str, xyz_str, axisOrder, px, dz, string(Reverse), string(ObjectiveScan), resultDir, stitchInfoDir, ...
-                        stitchInfoFullpath, DSRDirstr, DSRDeconDirstr, resampleType, BlendMethod, overlapType, string(xcorrShift), ...
-                        xyMaxOffset, zMaxOffset, string(isPrimaryCh), string(usePrimaryCoords), num2str(padSize, '%d,'), strrep(num2str(boundboxCrop, '%d,'), ' ', ''), ...
+                        '''DSRDirstr'',''%s'',''DSRDeconDirstr'',''%s'',''resampleType'',''%s'',''resample'',[%s],''BlendMethod'',''%s'',', ...
+                        '''overlapType'',''%s'',''xcorrShift'',%s,''xyMaxOffset'',%0.10f,''zMaxOffset'',%0.10f,''isPrimaryCh'',%s,''usePrimaryCoords'',%s,', ...
+                        '''padSize'',[%s],''boundboxCrop'',[%s],''zNormalize'',%s,''Save16bit'',%s,''tileNum'',[%s],''flippedTile'',[%s],''processFunPath'',''%s'')'], ...
+                        stitch_function_str, tile_fullpaths_str, xyz_str, axisOrder, px, dz, string(Reverse), string(ObjectiveScan), resultDir, stitchInfoDir, ...
+                        stitchInfoFullpath, DSRDirstr, DSRDeconDirstr, resampleType, strrep(num2str(resample, '%.10d,'), ' ', ''), BlendMethod, overlapType, ...
+                        string(xcorrShift), xyMaxOffset, zMaxOffset, string(isPrimaryCh), string(usePrimaryCoords), num2str(padSize, '%d,'), strrep(num2str(boundboxCrop, '%d,'), ' ', ''), ...
                         string(zNormalize),  string(Save16bit), strrep(num2str(tileNum, '%d,'), ' ', ''), strrep(num2str(flippedTile, '%d,'), ' ', ''), processFunPath);
 
                     if exist(cur_tmp_fname, 'file') || (parseCluster && ~(masterCompute && strcmpi(xcorrMode, 'primaryFirst') && isPrimaryCh))
