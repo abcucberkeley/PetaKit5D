@@ -5,6 +5,9 @@ function [settingInfo] = XR_parseSettingFiles_wrapper(imageFilenames, varargin)
 % Author: Xiongtao Ruan (12/05/2020)
 % 
 % xruan (06/16/2021): exclude partial files
+% xruan (07/13/2021): fix bug for image filenames order not match for input
+% and output
+
 
 if nargin < 1
     imageFilenames = {'/Users/xruan/Images/20201201_p35_p4_LLS_Calibrations/488_totalPSF_Cropping_0p1_env_0_DOscan_z0p1.tif', ...
@@ -19,7 +22,7 @@ ip.parse(imageFilenames, varargin{:});
 
 % exclude partial files
 imageFilenames = imageFilenames(~cellfun(@isempty, regexp(imageFilenames, '^(?!.*_part[0-9]*.tif).*$')));
-imageFilenames = unique(imageFilenames);
+% imageFilenames = unique(imageFilenames);
 
 % first find the corresponding setting file for each image
 % [pathstrs, fsnames] = fileparts(imageFilenames);
@@ -39,9 +42,9 @@ for i = 1 : numel(imageFilenames)
     % mapping with the iter and xyz tile number
     % specifyCam = true;
     if all(~cellfun(@isempty, regexp(fn, '_Cam\w_ch', 'match')))
-        expression = '(?<prefix>\w*)Scan_Iter_(?<Iter>\d+_?\d+?_?\d+?)_Cam(?<Cam>\w+)_ch(?<ch>\d+)_CAM1_stack(?<stack>\d+)_(?<laser>\d+)nm_(?<abstime>\d+)msec_(?<fpgatime>\d+)msecAbs_(?<x>\d+)x_(?<y>\d+)y_(?<z>\d+)z_(?<t>\d+)t.tif';
+        expression = '(?<prefix>\w*)Scan_Iter_(?<Iter>(\d+_)*\d+?)_Cam(?<Cam>\w+)_ch(?<ch>\d+)_CAM1_stack(?<stack>\d+)_(?<laser>\d+)nm_(?<abstime>\d+)msec_(?<fpgatime>\d+)msecAbs_(?<x>\d+)x_(?<y>\d+)y_(?<z>\d+)z_(?<t>\d+)t.tif';
     elseif all(~cellfun(@isempty, regexp(fn, '_ch[0-9]_', 'match')))
-        expression = '(?<prefix>\w*)Scan_Iter_(?<Iter>\d+_?\d+?_?\d+?)_ch(?<ch>\d+)_CAM1_stack(?<stack>\d+)_(?<laser>\d+)nm_(?<abstime>\d+)msec_(?<fpgatime>\d+)msecAbs_(?<x>\d+)x_(?<y>\d+)y_(?<z>\d+)z_(?<t>\d+)t.tif';
+        expression = '(?<prefix>\w*)Scan_Iter_(?<Iter>(\d+_)*\d+?)_ch(?<ch>\d+)_CAM1_stack(?<stack>\d+)_(?<laser>\d+)nm_(?<abstime>\d+)msec_(?<fpgatime>\d+)msecAbs_(?<x>\d+)x_(?<y>\d+)y_(?<z>\d+)z_(?<t>\d+)t.tif';
         % specifyCam = false;
     end
     tmp = regexpi(fn, expression, 'names');

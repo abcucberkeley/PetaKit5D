@@ -1,7 +1,7 @@
-function RLdecon(input_tiff, psf, background, nIter, dz_psf, dz_data, ...
+function RLdecon(input_tiff, output_filename, psf, background, nIter, dz_psf, dz_data, ...
     zalign, zalignParams, rotateByAngle, xypixelsize, bRotFinal, ...
     bSaveUint16, cropFinal, bFlipZ, axesMaxIntProj, resizeFactor, scalingThresh, ...
-    RLMethod, fixIter, errThresh, debug, varargin)
+    RLMethod, fixIter, errThresh, flipZstack, debug, varargin)
 %RLdecon Summary of this function goes here
 %   input_tiff: input TIFF file name
 %   psf: psf array in 'double'
@@ -22,6 +22,10 @@ function RLdecon(input_tiff, psf, background, nIter, dz_psf, dz_data, ...
 % xruan (06/10/2021): add support for threshold and debug mode in simplified version. 
 % xruan (06/16/2021): add support for saving generated psf, and change default psfgen method as masked
 % xruan (06/22/2021): add support to save err mat for simplified version.
+% xruan (07/13/2021): add support for the processing of flipped files;
+% first save to intermediate file and then move the final file; crop psf if
+% it is larger than the data in any dimension.
+% xruan (07/15/2021): add support for zarr input
 
 
 if ischar(dz_psf)
@@ -64,6 +68,10 @@ end
 
 [datafolder, inputfile, sufix] = fileparts(input_tiff);
 
+if exist(output_filename, 'file')
+    return;
+end
+
 if ischar(psf)
     [a,b,suffix]=fileparts(psf);
     if strcmp(suffix, '.mat')
@@ -77,6 +85,15 @@ if ischar(psf)
             medFactor = 1.5;
             PSFGenMethod = 'masked';
             psf = psf_gen_new(pp, dz_psf, dz_data*dz_data_ratio, medFactor, PSFGenMethod);
+            % crop psf if it is larger than data in any dimension
+            imSize = getImageSize(input_tiff);
+            if any(size(psf) > imSize)
+                warning('The psf size %s is larger than the data size %s, crop it!', mat2str(size(psf)), mat2str(imSize));
+                s = max(0, floor((size(psf) - imSize) / 2)) + 1;
+                t = s + min(size(psf), imSize) - 1;
+                psf = psf(s(1) : t(1), s(2) : t(2), s(3) : t(3));
+            end
+            
             psfgen_folder = sprintf('%s/%s/psfgen/', datafolder, 'matlab_decon');
             mkdir(psfgen_folder);
             psfgen_filename = sprintf('%s/%s.tif', psfgen_folder, b);
@@ -105,7 +122,7 @@ end
 
 nTapering = 0;
 
-for k = 1 : length(varargin);
+for k = 1 : length(varargin)
     switch k
         case 1
             % number of pixel for x-y tapering
@@ -120,7 +137,19 @@ for k = 1 : length(varargin);
 end
 
 % rawdata = loadtiff(input_tiff);
-rawdata = readtiff(input_tiff);
+[~, ~, ext] = fileparts(input_tiff);
+switch ext
+    case {'.tif', '.tiff'}
+        rawdata = readtiff(input_tiff);
+    case '.zarr'
+        bim = blockedImage(input_tiff, 'Adapter', ZarrAdapter);
+        rawdata = gather(bim);
+end
+
+% add support for flip z stack
+if flipZstack
+    rawdata = flip(rawdata, 3);
+end
 
 % rawdata = hpbuster(rawdata, background, 2, 1);
 % tic
@@ -167,7 +196,7 @@ if nIter>0
             deconvolved = deconvlucy(rawdata, psf, nIter) * numel(rawdata);
         case 'simplified'
             % psf = psf ./ sqrt(mean(psf .^ 2, 'all'));
-            [deconvolved, err_mat] = decon_lucy_function(rawdata, psf, nIter, fixIter, errThresh, debug);
+            [deconvolved, err_mat, iter_run] = decon_lucy_function(rawdata, psf, nIter, fixIter, errThresh, debug);
             deconvolved = deconvolved * numel(rawdata);
         case 'cudagen'
             deconvolved = decon_lucy_cuda_function(single(rawdata), single(psf), nIter) * numel(rawdata);            
@@ -219,13 +248,14 @@ end
 
 % construct output file name
 
-decon_filename_tail = '_decon.tif';
+% decon_filename_tail = '_decon.tif';
 decon_folder = ['matlab_decon' '/'];
 thumnail_folder = ['downsampled_data' '/'];
 MIPs_folder = ['MIPs' '/'];
+[~, output_tiff] = fileparts(output_filename);
 
 % output_tiff = strrep(input_tiff, '.tif', decon_filename_tail);
-output_tiff = strcat(inputfile, decon_filename_tail);
+output_tiff = [output_tiff, '.tif'];
 
 if isempty(datafolder)
     output_tiff1 = strcat(decon_folder, output_tiff);
@@ -241,6 +271,7 @@ end
 if nIter > 0 && strcmp(RLMethod, 'simplified')
     info_fn = sprintf('%s/%s/%s_info.mat', datafolder, decon_folder, output_tiff(1 : end - 4));
     save('-v7.3', info_fn, 'err_mat', 'nIter', 'fixIter', 'errThresh', 'debug');
+    save(sprintf('%sactual_iterations_%d.txt', info_fn(1 : end - 8), iter_run), 'iter_run', '-ASCII');
 end
 
 if ischar(bSaveUint16)
@@ -256,7 +287,10 @@ if bSaveUint16
 end
 
 % write3Dtiff(deconvolved, output_tiff1);
-writetiff(deconvolved, output_tiff1);
+uuid = get_uuid();
+output_tmp_tiff = [output_tiff1(1 : end - 4), '_', uuid, '.tif'];
+writetiff(deconvolved, output_tmp_tiff);
+movefile(output_tmp_tiff, output_tiff1);
 
 % generate max-intensity projections if requested:
 if ischar(axesMaxIntProj)

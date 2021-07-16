@@ -1,8 +1,10 @@
 function [ psf ] = psf_gen_new(psf, dz_psf, dz_data, medFactor, PSFGenMethod)
 %psf_gen resample and crop raw PSF
 % 
-% xruan (06/167/2021): for masked method, choose the connect component
+% xruan (06/16/2021): for masked method, choose the connect component
 % where the peak is in. 
+% xruan (07/15/2021): for masked method, use 2D average (xz) intensity as
+% background, instead of one (x); also smooth the mask a little bit. 
 
 if nargin < 4
     medFactor = 1.5;
@@ -33,13 +35,15 @@ if any(psf_raw_fl(:) > 0)
         %     psf_raw(psf_raw<0) = 0.0;
     
             psf_med = medfilt3(double(psf), [3, 3, 3]);
-            a = max(sqrt(abs(psf_med([1:10, end-9:end], :, :) - 100)), [], [1, 3]) * 3  + mean(psf_med([1:10, end-9:end], :, :), [1, 3]);
+            % a = max(sqrt(abs(psf_med([1:10, end-9:end], :, :) - 100)), [], [1, 3]) * 3  + mean(psf_med([1:10, end-9:end], :, :), [1, 3]);
+            a = max(sqrt(abs(psf_med([1:10, end-9:end], :, :) - 100)), [], [1]) * 3  + mean(psf_med([1:10, end-9:end], :, :), [1]);
             psf_med_1 = psf_med - a;
             BW = bwareaopen(psf_med_1 > 0, 300, 26);
             % pick the connected component where the peak is in
             L = bwlabeln(BW);
             [~, peakInd] = max(psf_med(:));
             BW = L == L(peakInd);
+            BW = imclose(BW, strel('sphere', 3));
             
             psf_raw = psf_raw .* BW - mean(psf_raw([1:10, end-9:end], :, :), [1, 3]);
             psf_raw(psf_raw<0) = 0.0;

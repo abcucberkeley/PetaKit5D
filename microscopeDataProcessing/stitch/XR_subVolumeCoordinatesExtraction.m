@@ -14,7 +14,7 @@ function [xmin,xmax,ymin,ymax,zmin,zmax,nn] = XR_subVolumeCoordinatesExtraction(
 ip = inputParser;
 ip.CaseSensitive = false;
 ip.addRequired('volSize', @(x) isvector(x) && numel(x) == 3);
-ip.addParameter('BlockSize', [1024,1024,1024], @(x) isvector(x) && numel(x) == 3 && all(x >= 1)); % in y, x, z
+ip.addParameter('ChunkSize', [1024,1024,1024], @(x) isvector(x) && numel(x) == 3 && all(x >= 1)); % in y, x, z
 ip.addParameter('overlapSize', 50, @(x) isnumeric(x) && numel(x) <= 3);
 ip.addParameter('maxSubVolume', 1.2e9, @isnumeric); % about 1GB
 ip.addParameter('sizeRange', [0.75, 1.5], @isnumeric); % [minimum, maximum] size. 
@@ -27,7 +27,7 @@ if any(volSize < 2)
 end
 
 p = ip.Results;
-BlockSize = p.BlockSize;
+ChunkSize = p.ChunkSize;
 overlapSize = p.overlapSize;
 maxSubVolume = p.maxSubVolume;
 sizeRange = p.sizeRange;
@@ -39,7 +39,7 @@ elseif numel(overlapSize) == 2
     overlapSize = [overlapSize(1), overlapSize(1), overlapSize(2)];
 end
 
-volBlockRatio = volSize ./ BlockSize;
+volBlockRatio = volSize ./ ChunkSize;
 minPartitionNum = ceil(volBlockRatio / sizeRange(2));
 maxPartitionNum = ceil(volBlockRatio / sizeRange(1));
 
@@ -49,7 +49,7 @@ partititionNum_cell = cell(3, 1);
 for i = 1 : 3
     partitionNumRange = minPartitionNum(i) : maxPartitionNum(i);
     chunkSize_cell{i} = ceil(volSize(i) ./ partitionNumRange + overlapSize(i));
-    chunkRatio_cell{i} = chunkSize_cell{i} ./ BlockSize(i);
+    chunkRatio_cell{i} = chunkSize_cell{i} ./ ChunkSize(i);
     partititionNum_cell{i} = partitionNumRange;
 end
 

@@ -1,4 +1,4 @@
-function [J_2, err_mat] = decon_lucy_function(I, PSF, NUMIT, fixIter, err_thrsh, debug)
+function [J_2, err_mat, k] = decon_lucy_function(I, PSF, NUMIT, fixIter, err_thrsh, debug)
 % adapted from matlab deconvlucy.m
 % 
 % xruan (05/18/2021): add support for early stop with stop criteria
@@ -6,6 +6,9 @@ function [J_2, err_mat] = decon_lucy_function(I, PSF, NUMIT, fixIter, err_thrsh,
 % xruan (06/02/2021): add support for fix iteration decon
 % xruan (06/03/2021): add support for debug (evaluate error and save
 % intermediate result).
+% xruan (07/09/2021): add output for the number of iterations run; also
+% output err mat for fixed iterations.
+
 
 % switch nargin
 %     case 3 %                 deconvlucy(I,PSF,NUMIT)
@@ -32,7 +35,7 @@ if nargin < 4
 end
 
 if nargin < 5 || isempty(err_thrsh)
-    err_thrsh = 1e-8;
+    err_thrsh = 5e-11;
 end
 
 if nargin < 6
@@ -147,10 +150,10 @@ for k = lambda + 1 : lambda + NUMIT
     J_4 = flip(J_4, 2);
     J_4(:, 1) = J_2(:)-Y(:);
     
-    if ~fixIter && rem(k, estep) == 0
+    if ~debug && rem(k, estep) == 0
         istp = k/estep;
         % err_mat(istp) = sum((J_2 - I) .^ 2, 'all') / numel(J_2);
-        err_mat(istp, 1:2) = [istp, sum((J_2 - I) .^ 2, 'all')];
+        err_mat(istp, 1:2) = [k, sum((J_2 - I) .^ 2, 'all')];
         err_mat(istp, 3) = err_mat(istp, 2) ./ err_mat(1, 2);
         if istp > 2
             err_mat(istp, 4) = min(abs(err_mat(istp, 3) - err_mat(istp-1, 3)) / 10, ...
@@ -159,7 +162,7 @@ for k = lambda + 1 : lambda + NUMIT
             err_mat(istp, 4) = 1;
         end
 
-        if k > estep * 2 && err_mat(istp, 4) < err_thrsh
+        if ~fixIter && k > estep * 2 && err_mat(istp, 4) < err_thrsh
             break;
         end
     end

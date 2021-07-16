@@ -1,12 +1,12 @@
 function [fnames, fdinds, gfnames, partialvols, dataSizes, flipZstack_mat, FTP_inds, maskFullpaths] = ...
-    XR_parseImageFilenames(dataPaths, ChannelPatterns, parseSettingFile, flipZstack, Decon, Streaming)
+    XR_parseImageFilenames(dataPaths, ChannelPatterns, parseSettingFile, flipZstack, Decon, deconPaths, Streaming)
 % move the filename parsing code in microscope pipeline as an independent
 % function to simpolify the microscope pipeline.
 % Support both non-streaming and streaming modes
 %
 %
 % Author: Xiongtao Ruan (07/01/2021)
-
+% also include folder name for channel patterns
 
 nd = numel(dataPaths);
 
@@ -61,10 +61,12 @@ gfnames = cat(1, gfnames_cell{:});
 partialvols = cat(1, partialvol_cell{:});
 dataSizes = cat(1, datesize_cell{:});
 
-% filter filenames by channel patterns
+% filter filenames by channel patterns 
+% 07/13/2021 also include folder names for channel pattern filtering
+fullnames = cellfun(@(x, y) [x, y], dataPaths(fdinds), fnames, 'unif', 0);
 include_flag = false(numel(fnames), 1);
 for c = 1 : numel(ChannelPatterns)
-    include_flag = include_flag | contains(fnames, ChannelPatterns{c});
+    include_flag = include_flag | contains(fullnames, ChannelPatterns{c}) | contains(fullnames, regexpPattern(ChannelPatterns{c}));
 end
 fnames = fnames(include_flag);
 fdinds = fdinds(include_flag);
@@ -82,7 +84,6 @@ if parseSettingFile
     flipZstack_mat = [settingInfo.StageInterval] < 0;
 end
 
-
 % for ErodeByFTP, set up the frame numbers as first time point for each
 % data
 FTP_inds = zeros(nd, 1);
@@ -91,14 +92,18 @@ for d = 1 : nd
     c = 1;
     FTPfname = '';
     while isempty(FTPfname)
-        all_inds = contains(fnames_cell{d}, ChannelPatterns{c});
+        fullnames_d = cellfun(@(x) [dataPaths{d}, x], fnames_cell{d}, 'unif', 0);
+        all_inds = contains(fullnames_d, ChannelPatterns{c}) | contains(fullnames_d, regexpPattern(ChannelPatterns{c}));
         if ~isempty(all_inds) && ~isempty(find(all_inds, 1, 'first'))
             FTPfname = fnames_cell{d}{find(all_inds, 1, 'first')};
         end
         c = c + 1;
+        if c > numel(ChannelPatterns)
+            break;
+        end
     end
     if ~isempty(FTPfname)
-        ind_d = find(strcmp(fnames, FTPfname));
+        ind_d = find(strcmp(fnames, FTPfname) & fdinds == d);
         FTP_inds(d) = ind_d;
         [~, FTPfsname] = fileparts(FTPfname);        
         if Decon

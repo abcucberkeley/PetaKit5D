@@ -438,6 +438,7 @@ end
 
 % for deconvolution, check whether there is a gpu in the node. if not, for
 % cudaDecon, set parseCluster as true. 
+deconPaths = cell(nd, 1);
 if Decon
     % if both cudaDecon and cppDecon are true, use cppDecon
     if cudaDecon && cppDecon
@@ -457,7 +458,6 @@ if Decon
         deconName = 'matlab_decon';
     end
         
-    deconPaths = cell(nd, 1);
     if RotateAfterDecon
         rdcPaths = cell(nd, 1);
     end
@@ -529,8 +529,8 @@ if Decon
             [psfPath, fsname] = fileparts(psfFullpaths{f});        
             rotPSFFullpaths{f} = [psfPath, '/Rotated/', fsname, '.tif'];
             if (DSR || Stitch) && ~exist(rotPSFFullpaths{f}, 'file')
-                % XR_rotate_PSF(psfFullpaths{f}, 'Reverse', Reverse);
-                XR_rotate_PSF(psfFullpaths{f});
+                XR_rotate_PSF(psfFullpaths{f}, 'Reverse', Reverse);
+                % XR_rotate_PSF(psfFullpaths{f});
             end
         end
     end
@@ -540,7 +540,7 @@ end
 
 %% check existing files and parse channels
 [fnames, fdinds, gfnames, partialvols, dataSizes, flipZstack_mat, FTP_inds, maskFullpaths] = ...
-    XR_parseImageFilenames(dataPaths, ChannelPatterns, parseSettingFile, flipZstack, Decon, Streaming);
+    XR_parseImageFilenames(dataPaths, ChannelPatterns, parseSettingFile, flipZstack, Decon, deconPaths, Streaming);
 
 nF = numel(fnames);
 
@@ -816,16 +816,25 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all') || ...
 
             % input chosen order is dsr, ds, raw (in decreased priority order)
             dcframeFullpath = frameFullpath;
+            
             if DS
                 dcframeFullpath = dsFullpath;
+                dc_dz = dz;
+                dc_dzPSF = dzPSF;
+                dc_psfFullpaths = psfFullpaths;
             end
+            
             if DSR
                 dcframeFullpath = dsrFullpath;
+                dc_dz = xyPixelSize;
+                if rotatedPSF
+                    dc_dzPSF = dzPSF;
+                else
+                    dc_dzPSF = xyPixelSize;
+                end
+                dc_psfFullpaths = rotPSFFullpaths;
             end 
 
-            dc_dz = dz;
-            dc_dzPSF = dzPSF;
-            dc_psfFullpaths = psfFullpaths;
             if Stitch
                 % in case fname not start with Scan_
                 % dir_info = dir(sprintf('%s/%s*Abs.tif', stchPath, fname(regexp(fname, 'Scan.*') : end - 43)));
@@ -922,7 +931,7 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all') || ...
         if ~is_done_flag(f, 3) 
             % psfMapping =  ~cellfun(@isempty, regexpi(fname, ChannelPatterns));
             % change to contains.m to unify the matching
-            psfMapping =  cellfun(@(x) contains(fname, x), ChannelPatterns);
+            psfMapping =  ~cellfun(@isempty, regexpi(frameFullpath, ChannelPatterns));
             
             psfFullpath = dc_psfFullpaths{psfMapping};
             

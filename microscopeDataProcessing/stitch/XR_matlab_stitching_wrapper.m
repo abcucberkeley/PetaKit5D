@@ -67,6 +67,7 @@ function [] = XR_matlab_stitching_wrapper(dataPath, imageListFileName, varargin)
 % xruan (07/04/2021): ignore tif files recorded in Image List files that
 % do not match the file pattern. 
 % xruan (07/05/2021): add support for user defined resample (arbitary factor)
+% xruan (07/15/2021): extend subiteration to unlimited number of sets
 
 ip = inputParser;
 ip.CaseSensitive = false;
@@ -240,9 +241,9 @@ end
 
 specifyCam = true;
 if all(~cellfun(@isempty, regexp(fn, '_Cam\w_ch', 'match')))
-    expression = '(?<prefix>\w*)Scan_Iter_(?<Iter>\d+)(?<subIter>_?\d+?_?\d+?)_Cam(?<Cam>\w+)_ch(?<ch>\d+)_CAM1_stack(?<stack>\d+)_(?<laser>\d+)nm_(?<abstime>\d+)msec_(?<fpgatime>\d+)msecAbs_(?<x>\d+)x_(?<y>\d+)y_(?<z>\d+)z_(?<t>\d+)t.tif';
+    expression = '(?<prefix>\w*)Scan_Iter_(?<Iter>\d+)(?<subIter>_?(\d+_)*\d+?)_Cam(?<Cam>\w+)_ch(?<ch>\d+)_CAM1_stack(?<stack>\d+)_(?<laser>\d+)nm_(?<abstime>\d+)msec_(?<fpgatime>\d+)msecAbs_(?<x>\d+)x_(?<y>\d+)y_(?<z>\d+)z_(?<t>\d+)t.tif';
 elseif all(~cellfun(@isempty, regexp(fn, '_ch[0-9]_', 'match')))
-    expression = '(?<prefix>\w*)Scan_Iter_(?<Iter>\d+)(?<subIter>_?\d+?_?\d+?)_ch(?<ch>\d+)_CAM1_stack(?<stack>\d+)_(?<laser>\d+)nm_(?<abstime>\d+)msec_(?<fpgatime>\d+)msecAbs_(?<x>\d+)x_(?<y>\d+)y_(?<z>\d+)z_(?<t>\d+)t.tif';
+    expression = '(?<prefix>\w*)Scan_Iter_(?<Iter>\d+)(?<subIter>_?(\d+_)*\d+?)_ch(?<ch>\d+)_CAM1_stack(?<stack>\d+)_(?<laser>\d+)nm_(?<abstime>\d+)msec_(?<fpgatime>\d+)msecAbs_(?<x>\d+)x_(?<y>\d+)y_(?<z>\d+)z_(?<t>\d+)t.tif';
     specifyCam = false;
 end
 
@@ -307,8 +308,9 @@ end
 
 % filter filenames by channel patterns
 include_flag = false(numel(imageFnames), 1);
+imageFullnames = cellfun(@(x) [dataPath, '/', x], imageFnames, 'unif', 0);
 for c = 1 : numel(ChannelPatterns)
-    include_flag = include_flag | contains(imageFnames, ChannelPatterns{c});
+    include_flag = include_flag | contains(imageFullnames, ChannelPatterns{c}) | contains(imageFullnames, regexpPattern(ChannelPatterns{c}));
 end
 imageFnames = imageFnames(include_flag);
 
@@ -605,7 +607,7 @@ while ~all(is_done_flag | trial_counter >= max_trial_num, 'all')
                         % for 'primary' option
                         if strcmpi(xcorrMode, 'primary') && ~(ncam == 1 && c == 1)
                             isPrimaryCh = false;
-                            primary_t = t(t.ch == Ch(1) & t.camera == Cam(1) & t.Iter == Iter(n) & t.stack == stackn(s), :);
+                            primary_t = t(t.ch == Ch(1) & t.camera == Cam(1) & strcmp(t.fullIter, fullIter{n}) & t.stack == stackn(s), :);
                             p_laser = unique(primary_t.laser);
                             p_abstime = unique(primary_t.abstime);
                             p_fpgatime = primary_t.fpgatime(1);
