@@ -121,8 +121,10 @@ end
 [rt, fsname] = fileparts(framePath{1});
 if ~DSRCombined    
     dsPath = sprintf('%s/DS%s/', rt, surffix);
-    mkdir(dsPath);
-    fileattrib(dsPath, '+w', 'g');
+    if ~exist(dsPath, 'dir')
+        mkdir(dsPath);
+        fileattrib(dsPath, '+w', 'g');
+    end
     dsFullname = [dsPath, fsname, '.tif'];
 end
 

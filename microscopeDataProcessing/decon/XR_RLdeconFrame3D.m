@@ -123,9 +123,11 @@ if isempty(uuid)
     uuid = get_uuid();
 end
 
+maxSubVolume = 1e11;
 if GPUJob
     ChunkSize = round(pr.ChunkSize ./ [6.4, 6.4, 6.4]);
     OL = 200;
+    maxSubVolume = 5e8;
     masterCompute = gpuDeviceCount() > 0 & masterCompute;
 end
 
@@ -330,7 +332,7 @@ for f = 1 : nF
     if pr.debug
         [xmin,xmax,ymin,ymax,zmin,zmax,nn] = XR_subVolumeCoordinatesExtraction_test(imSize, 'ChunkSize', ChunkSize, 'overlapSize', OL);
     else
-        [xmin,xmax,ymin,ymax,zmin,zmax,nn] = XR_subVolumeCoordinatesExtraction(imSize, 'ChunkSize', ChunkSize, 'overlapSize', OL, 'maxSubVolume', 1e11);
+        [xmin,xmax,ymin,ymax,zmin,zmax,nn] = XR_subVolumeCoordinatesExtraction(imSize, 'ChunkSize', ChunkSize, 'overlapSize', OL, 'maxSubVolume', maxSubVolume);
     end
     
     % create a folder for the file and write out the chunks
