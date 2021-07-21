@@ -8,7 +8,10 @@ function [fnames, fdinds, gfnames, partialvols, dataSizes, flipZstack_mat, FTP_i
 % Author: Xiongtao Ruan (07/01/2021)
 % also include folder name for channel patterns
 
+
 nd = numel(dataPaths);
+% cast dataPaths to column cell array (in case of row arrays)
+dataPaths = dataPaths(:);
 
 % check existing files and parse channels
 fnames_cell = cell(nd, 1);
@@ -63,6 +66,14 @@ dataSizes = cat(1, datesize_cell{:});
 
 % filter filenames by channel patterns 
 % 07/13/2021 also include folder names for channel pattern filtering
+if isempty(fnames)
+    warning('There is no image files in the dataPaths, please check if dataPaths are correct!');
+    flipZstack_mat = [];
+    FTP_inds = [];
+    maskFullpaths = {};
+    return;
+end
+
 fullnames = cellfun(@(x, y) [x, y], dataPaths(fdinds), fnames, 'unif', 0);
 include_flag = false(numel(fnames), 1);
 for c = 1 : numel(ChannelPatterns)
