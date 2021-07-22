@@ -9,7 +9,7 @@ ip.addRequired('dataPaths');
 ip.addParameter('xyPixelSize', 0.108, @isnumeric);
 ip.addParameter('dz', 0.1, @isnumeric);
 ip.addParameter('angle', 32.45, @isnumeric);
-ip.addParameter('Deskew', true, @isnumeric);
+ip.addParameter('Deskew', true, @islogical);
 ip.addParameter('ChannelPatterns', {'CamA_ch0', 'CamB_ch0'}, @iscell);
 ip.addParameter('Channels', [488, 560], @isnumeric);
 ip.addParameter('RWFn', {'/clusterfs/fiona/Gokul/RW_PSFs/PSF_RW_515em_128_128_101_100nmSteps.tif', '/clusterfs/fiona/Gokul/RW_PSFs/PSF_RW_605em_128_128_101_100nmSteps.tif'}, @iscell);
