@@ -23,7 +23,7 @@ psf_raw = double(psf);
 psf_raw_fl = psf_raw(:, :, [1:5, end-5:end]);
 % xruan (05/06/2021): check if the first and last slices contain positive values
 if any(psf_raw_fl(:) > 0)
-    switch PSFGenMethod
+    switch lower(PSFGenMethod)
         case 'median'
             psf_raw = double(psf_raw) - medFactor * median(double(psf_raw_fl(psf_raw_fl > 0)));
         %     % convert all negative pixels to 0
