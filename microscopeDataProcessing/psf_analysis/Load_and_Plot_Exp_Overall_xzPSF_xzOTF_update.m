@@ -530,3 +530,14 @@ text(0.6.*A(2), -0.3, 'OTF along kz', 'Color', [1 0 0], 'FontSize', 14);
 text(0.6.*A(2), -0.45, 'Bowtie OTF along kz', 'Color', [0 0.75 0], 'FontSize', 14);
 
 
+% add text for the annotation of the coordinates
+text(-A(1) * 0.25, -3.75, 'Image y = x galvo dither direction & y-stage scan direction', 'fontSize', 14)
+text(-A(1) * 0.25, -4.05, 'In deskewed data image x = LLS(y) propogation direction', 'fontSize', 14);
+
+
+end
+
+
+
+
+
