@@ -121,7 +121,10 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
             
             % kill new pending jobs
             if parseCluster && job_ids(f) > 0
-                system(sprintf('scancel %d_%d', job_ids(f), task_id), '-echo');
+                job_status = check_slurm_job_status(job_ids(f), task_id); 
+                if job_status ~= 1
+                    system(sprintf('scancel %d_%d', job_ids(f), task_id), '-echo');
+                end
             end
 
             continue;
@@ -130,7 +133,7 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
         func_str = funcStrs{f};
         if exist(tmpFullpath, 'file') || parseCluster
             if parseCluster
-                job_status = check_slurm_job_status(job_ids(f), rem(f, 5000));
+                job_status = check_slurm_job_status(job_ids(f), task_id);
                 job_status_mat(f, 2) = job_status_mat(f, 1);
                 job_status_mat(f, 1) = job_status;
 

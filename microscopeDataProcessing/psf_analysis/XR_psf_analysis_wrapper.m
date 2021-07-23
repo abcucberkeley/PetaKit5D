@@ -32,6 +32,10 @@ tic
 if ischar(dataPaths)
     dataPaths = {dataPaths};
 end
+if ispc
+    dataPaths = cellfun(@(x) strrep(x, '\', '/'), dataPaths, 'unif', 0);
+end
+
 dataPath_exps = dataPaths;
 disp(dataPath_exps);
 
@@ -153,7 +157,7 @@ for d = 1 : numel(dataPath_exps)
         set(gca, 'YTickLabel', 10.^[-3:1:0]);
         ylabel(['OTF Strength'], 'FontSize', 14);
         % text(-0.1 .*A(2), 0.15, ['Overall OTF linecuts From ', source_descrip], 'FontSize', 14);
-        text(0.6.*A(2), -0.15, 'OTF along kx', 'Color', [0 0 1], 'FontSize', 14);
+        text(0.6.*A(2), -0.15, 'OTF along ky', 'Color', [0 0 1], 'FontSize', 14);
         text(0.6.*A(2), -0.3, 'OTF along kz', 'Color', [1 0 0], 'FontSize', 14);
         text(0.6.*A(2), -0.45, 'Bowtie OTF along kz', 'Color', [0 0.75 0], 'FontSize', 14);
 
@@ -173,7 +177,7 @@ for d = 1 : numel(dataPath_exps)
         set(gca, 'YTickLabel', 10.^[-3:1:0]);
         ylabel(['OTF Strength'], 'FontSize', 14);
         title( ['Overall OTF linecuts From ', source_descrip], 'FontSize', 14);
-        legend([{'OTF along kz','OTF along kx','Bowtie OTF along kz', 'RW OTF along kz',  'RW OTF along kx', 'RW Bowtie OTF along kz'}]);
+        legend([{'OTF along kz','OTF along ky','Bowtie OTF along kz', 'RW OTF along kz',  'RW OTF along ky', 'RW Bowtie OTF along kz'}]);
 
         f0 = gcf();
         print(f0, '-painters','-dpng', '-loose', [result_dir 'wT_' fn{k}(1:end-4) '.png']);

@@ -28,7 +28,8 @@ function [xz_exp_PSF, xz_exp_OTF, xOTF_linecut, zOTF_linecut, zOTF_bowtie_linecu
 % xruan: unify normalization factor, fix crop issue, add user input psf sub
 % size. 
 % xuran: make the peak to the center (after subtracting background). 
-
+% xruan (07/23/2021): correct xz axis as yz for figures; add actual xz
+% pannels.
 
 %plot parameters from simulation code:
 sim_pixsize = 0.1;   %plot xz pix size in media excitation wavelengths
@@ -187,29 +188,234 @@ B = size(OTF3D);
 %
 %loop through the various y slices of the 3D PSF to find the brightest one
 % that will be deemed the central y slice form which to extract the xz overall PSF:
+% note: xz should be yz actually here
 maxval = zeros(1,11);
 for yoffset = -5:1:5
     yplane = peakypix + yoffset;
     %extract the xz PSF at the current y plane:
-    xz_exp_PSF = squeeze(PSF3D(:,yplane,:))';
-    maxval(yoffset+6) = max(max(xz_exp_PSF));
+    yz_exp_PSF = squeeze(PSF3D(:,yplane,:))';
+    maxval(yoffset+6) = max(max(yz_exp_PSF));
 end
 [totmax,maxplane] = max(maxval);
 maxyplane = peakypix + maxplane - 6;
-xz_exp_PSF = squeeze(PSF3D(:,maxyplane,:))'; 
+yz_exp_PSF = squeeze(PSF3D(:,maxyplane,:))'; 
+hsz = round((size(yz_exp_PSF) + 1) / 2);
+% xruan: narrow down the range to [-50, 50]
+yz_exp_PSF = yz_exp_PSF(hsz(1) - 50 : hsz(1) + 50, hsz(2) - 50 : hsz(2) + 50);
+A = size(yz_exp_PSF);
+%
+
+fig = figure('Renderer', 'painters', 'Position', [10 10 2500 1000]);
+%calc and plot the experimental overall PSF:
+% figure  %create a new figure window for the plots
+% actually yz psf
+subplot(2,5,4)
+% set(gcf, 'Position', [550 100 600 600]);
+% axes_h = axes('Position', [0.13, 0.1, 0.8, 0.8]);
+image(256 .* yz_exp_PSF);
+colormap hot(256);
+axis([1 A(1) 1 A(2)]);
+axis square;
+set(gca, 'XTick', [1:(A(1)-1)./4:A(1)]);
+% set(gca, 'XTickLabel', sim_half_FOV .* [-1:0.5:1]);
+set(gca, 'XTickLabel', (A(1)-1) / 2 * sim_pixsize .* [-1:0.5:1]);
+xlabel(['y / (\lambda_{exc}/n)'], 'FontSize', 14);
+set(gca, 'YTick', [1:(A(1)-1)./4:A(1)]);
+% set(gca, 'YTickLabel', sim_half_FOV .* [-1:0.5:1]);
+set(gca, 'YTickLabel', (A(1)-1) / 2 * sim_pixsize .* [-1:0.5:1]);
+ylabel(['z / (\lambda_{exc}/n)'], 'FontSize', 14);
+text(0.05 .*A(1), -0.03 .* A(2), ['Overall PSF From ', source_descrip], 'FontSize', 12);
+%
+%calc and plot the experimental overall PSF, gamma adjusted:
+% figure  %create a new figure window for the plots
+subplot(2,5,9)
+% actually yz psf
+% set(gcf, 'Position', [550 100 600 600]);
+% axes_h = axes('Position', [0.13, 0.1, 0.8, 0.8]);
+image(256 .* (yz_exp_PSF.^gamma));
+colormap hot(256);
+axis([1 A(1) 1 A(2)]);
+axis square;
+set(gca, 'XTick', [1:(A(1)-1)./4:A(1)]);
+% set(gca, 'XTickLabel', sim_half_FOV .* [-1:0.5:1]);
+set(gca, 'XTickLabel', (A(1)-1) / 2 * sim_pixsize .* [-1:0.5:1]);
+xlabel(['y / (\lambda_{exc}/n)'], 'FontSize', 14);
+set(gca, 'YTick', [1:(A(1)-1)./4:A(1)]);
+% set(gca, 'YTickLabel', sim_half_FOV .* [-1:0.5:1]);
+set(gca, 'YTickLabel', (A(1)-1) / 2 * sim_pixsize .* [-1:0.5:1]);
+ylabel(['z / (\lambda_{exc}/n)'], 'FontSize', 14);
+text(-0.05.*A(1), -0.03.*A(2), ['Overall PSF From ', source_descrip, ', gamma = ', num2str(gamma, '%1.2f')], 'FontSize', 12);
+%
+
+%extract the xz plane at the center of the OTF:
+midpt = (B(2)+1)./2;
+%extract the xz PSF at the current y plane:
+yz_exp_OTF = squeeze(OTF3D(:,midpt,:))';
+A = size(yz_exp_OTF);
+%
+%truncate the OTF data to the phyiscally possible range of kmax = +/-4*pi*n/lambda_exc
+%   given by the maximum spatial freq possible (defined by two counterpropagating 
+%   plane waves):
+minkpix = round((1-1./MaxCalcK).*(A(1)-1)./2 + 1);
+maxkpix = round((1+1./MaxCalcK).*(A(1)-1)./2 + 1);
+plot_yz_exp_OTF = yz_exp_OTF(minkpix:maxkpix, minkpix:maxkpix);
+A = size(plot_yz_exp_OTF);
+%
+%plot the experimental overall xz OTF
+% figure  %create a new figure window for the OTF plot
+% xruan not include this panel
+
+% subplot(3,3,2)
+% % set(gcf, 'Position', [100 100 600 600]);
+% % axes_h = axes('Position', [0.13, 0.12, 0.8, 0.8]);
+% image(256 .* plot_xz_exp_OTF);
+% colormap hot(256);
+% axis([1 A(1) 1 A(2)]);
+% axis square;
+% set(gca, 'XTick', [1:(A(1)-1)./4:A(1)]);
+% set(gca, 'XTickLabel', [-1:0.5:1], 'FontSize', 12);
+% xlabel(['k_{y} / (4\pin/\lambda_{exc})'], 'FontSize', 14);
+% set(gca, 'YTick', [1:(A(2)-1)./4:A(2)]);
+% set(gca, 'YTickLabel', [-1:0.5:1], 'FontSize', 12);
+% ylabel(['k_{z} / (4\pin/\lambda_{exc})'], 'FontSize', 14);
+% text(0.0 .*A(1), -0.03 .* A(2), ['Overall OTF From ', source_descrip], 'FontSize', 12);
+%
+%plot the gamma adjusted overall xz OTF
+% figure  %create a new figure window for the OTF plot
+% actually yz OTF
+subplot(2,5,5)
+% set(gcf, 'Position', [100 100 600 600]);
+% axes_h = axes('Position', [0.13, 0.12, 0.8, 0.8]);
+image(256 .* (plot_yz_exp_OTF.^gamma));
+colormap hot(256);
+axis([1 A(1) 1 A(2)]);
+axis square;
+midpt = (A(1)+1)./2;
+line([1 A(2)], [midpt midpt], 'LineWidth', 1, 'Color', [0 0 1]);
+line([midpt midpt], [1 A(1)], 'LineWidth', 1, 'Color', [1 0 0]);
+FattestColumn = round(midpt + A(1).*NAdet./1.33./4);
+line([FattestColumn FattestColumn], [1 A(1)], 'LineWidth', 1, 'Color', [0 1 0]);
+set(gca, 'XTick', [1:(A(1)-1)./4:A(1)]);
+set(gca, 'XTickLabel', [-1:0.5:1], 'FontSize', 12);
+xlabel(['k_{y} / (4\pin/\lambda_{exc})'], 'FontSize', 14);
+set(gca, 'YTick', [1:(A(2)-1)./4:A(2)]);
+set(gca, 'YTickLabel', [-1:0.5:1], 'FontSize', 12);
+ylabel(['k_{z} / (4\pin/\lambda_{exc})'], 'FontSize', 14);
+text(-0.05 .*A(1), -0.03 .* A(2), ['Overall OTF From ', source_descrip, ', gamma = ', num2str(gamma, '%1.2f')], 'FontSize', 12);
+%
+%plot orthogonal linecuts through the lattice overall OTF, as well as  
+%    an axial linecut at the fattest part of the xz OTF:
+LateralOTFCrossSection = squeeze(plot_yz_exp_OTF(midpt,:));
+max_LateralOTFCrossSection = max(LateralOTFCrossSection);
+LateralOTFCrossSection = LateralOTFCrossSection ./ max(LateralOTFCrossSection);
+xOTF_linecut = LateralOTFCrossSection;
+
+midpt = (A(1)+1)./2;
+AxialOTFCrossSection = squeeze(plot_yz_exp_OTF(:,midpt)');
+AxialOTFCrossSection = AxialOTFCrossSection ./ max_LateralOTFCrossSection;
+zOTF_linecut = AxialOTFCrossSection;
+OffsetAxialLinecut = squeeze(plot_yz_exp_OTF(:,FattestColumn)');
+OffsetAxialLinecut = OffsetAxialLinecut./max_LateralOTFCrossSection;
+zOTF_bowtie_linecut = OffsetAxialLinecut;
+
+
+% figure  %create a new figure window for the plots
+subplot(2,5,10)
+% set(gcf, 'Position', [950 100 600 600]);
+% axes_h = axes('Position', [0.13, 0.1, 0.8, 0.77]);
+D = size(AxialOTFCrossSection);
+plot(log10(AxialOTFCrossSection), 'r', 'LineWidth', 2);
+hold on
+plot(log10(LateralOTFCrossSection), 'b', 'LineWidth', 2);
+plot(log10(OffsetAxialLinecut), 'g', 'LineWidth', 2);
+axis([1 D(2) -3 0]);
+axis square;
+grid on;
+set(gca, 'XTick', [1:(D(2)-1)./10:D(2)]);
+set(gca, 'XTickLabel', [-1:0.2:1]);
+xlabel(['k / (4\pi/\lambda)'], 'FontSize', 14);
+set(gca, 'YTick', [-3:1:0]);
+set(gca, 'YTickLabel', 10.^[-3:1:0]);
+ylabel(['OTF Strength'], 'FontSize', 14);
+text(-0.1 .*A(2), 0.15, ['Overall OTF linecuts From ', source_descrip], 'FontSize', 12);
+text(0.6.*A(2), -0.15, 'OTF along ky', 'Color', [0 0 1], 'FontSize', 14);
+text(0.6.*A(2), -0.3, 'OTF along kz', 'Color', [1 0 0], 'FontSize', 14);
+text(0.6.*A(2), -0.45, 'Bowtie OTF along kz', 'Color', [0 0.75 0], 'FontSize', 14);
+%
+%extract the xy plane at the center of the OTF:
+midpt = (B(2)+1)./2;
+%extract the xz PSF at the current y plane:
+xy_exp_OTF = squeeze(OTF3D(:,:,midpt));
+A = size(xy_exp_OTF);
+%
+%truncate the OTF data to the phyiscally possible range of kmax = +/-4*pi*n/lambda_exc
+%   given by the maximum spatial freq possible (defined by two counterpropagating 
+%   plane waves):
+minkpix = (1-1./MaxCalcK).*(A(1)-1)./2 + 1;
+maxkpix = (1+1./MaxCalcK).*(A(1)-1)./2 + 1;
+plot_xy_exp_OTF = xy_exp_OTF(minkpix:maxkpix, minkpix:maxkpix);
+A = size(plot_xy_exp_OTF);
+%
+%plot the gamma adjusted overall xy OTF
+% figure  %create a new figure window for the OTF plot
+subplot(2,5,6)
+% set(gcf, 'Position', [100 100 600 600]);
+% axes_h = axes('Position', [0.13, 0.12, 0.8, 0.8]);
+image(256 .* (plot_xy_exp_OTF.^gamma));
+colormap hot(256);
+axis([1 A(1) 1 A(2)]);
+axis square;
+midpt = (A(1)+1)./2;
+%line([1 A(2)], [midpt midpt], 'LineWidth', 1, 'Color', [0 0 1]);
+set(gca, 'XTick', [1:(A(1)-1)./4:A(1)]);
+set(gca, 'XTickLabel', [-1:0.5:1], 'FontSize', 12);
+xlabel(['k_{x} / (4\pin/\lambda_{exc})'], 'FontSize', 14);
+set(gca, 'YTick', [1:(A(2)-1)./4:A(2)]);
+set(gca, 'YTickLabel', [-1:0.5:1], 'FontSize', 12);
+ylabel(['k_{y} / (4\pin/\lambda_{exc})'], 'FontSize', 14);
+text(-0.05 .*A(1), -0.03 .* A(2), ['Overall OTF From ', source_descrip, ', gamma = ', num2str(gamma, '%1.2f')], 'FontSize', 12);
+
+
+% xruan: add new pannels
+% plot xy PSF max plane slice with gamma
+% find the brightest one slice
+[~, peakInd] = max(PSF3D(:));
+[maxyplane, maxxplane, maxzplane] = ind2sub(size(PSF3D), peakInd);
+maxzplane = peakypix + maxplane - 6;
+xy_exp_PSF = squeeze(PSF3D(:,:,maxzplane)); 
+hsz = round((size(xy_exp_PSF) + 1) / 2);
+% xruan: narrow down the range to [-50, 50]
+xy_exp_PSF = xy_exp_PSF(hsz(1) - 50 : hsz(1) + 50, hsz(2) - 50 : hsz(2) + 50);
+A = size(xy_exp_PSF);
+
+subplot(2, 5, 1)
+% set(gcf, 'Position', [550 100 600 600]);
+% axes_h = axes('Position', [0.13, 0.1, 0.8, 0.8]);
+image(256 .* (xy_exp_PSF));
+colormap hot(256);
+axis([1 A(1) 1 A(2)]);
+axis square;
+set(gca, 'XTick', [1:(A(1)-1)./4:A(1)]);
+% set(gca, 'XTickLabel', sim_half_FOV .* [-1:0.5:1]);
+set(gca, 'XTickLabel', (A(1)-1) / 2 * sim_pixsize .* [-1:0.5:1]);
+xlabel(['x / (\lambda_{exc}/n)'], 'FontSize', 14);
+set(gca, 'YTick', [1:(A(1)-1)./4:A(1)]);
+% set(gca, 'YTickLabel', sim_half_FOV .* [-1:0.5:1]);
+set(gca, 'YTickLabel', (A(1)-1) / 2 * sim_pixsize .* [-1:0.5:1]);
+ylabel(['y / (\lambda_{exc}/n)'], 'FontSize', 14);
+text(-0.05.*A(1), -0.03.*A(2), ['Overall PSF From ', source_descrip], 'FontSize', 12);
+
+
+% plot xz PSF max plane slice withpout gamma
+xz_exp_PSF = squeeze(PSF3D(maxyplane,:,:))'; 
 hsz = round((size(xz_exp_PSF) + 1) / 2);
 % xruan: narrow down the range to [-50, 50]
 xz_exp_PSF = xz_exp_PSF(hsz(1) - 50 : hsz(1) + 50, hsz(2) - 50 : hsz(2) + 50);
 A = size(xz_exp_PSF);
-%
-
-fig = figure('Renderer', 'painters', 'Position', [10 10 1600 1000]);
-%calc and plot the experimental overall PSF:
-% figure  %create a new figure window for the plots
-subplot(2,3,1)
+subplot(2, 5, 2)
 % set(gcf, 'Position', [550 100 600 600]);
 % axes_h = axes('Position', [0.13, 0.1, 0.8, 0.8]);
-image(256 .* xz_exp_PSF);
+image(256 .* (xz_exp_PSF));
 colormap hot(256);
 axis([1 A(1) 1 A(2)]);
 axis square;
@@ -221,14 +427,16 @@ set(gca, 'YTick', [1:(A(1)-1)./4:A(1)]);
 % set(gca, 'YTickLabel', sim_half_FOV .* [-1:0.5:1]);
 set(gca, 'YTickLabel', (A(1)-1) / 2 * sim_pixsize .* [-1:0.5:1]);
 ylabel(['z / (\lambda_{exc}/n)'], 'FontSize', 14);
-text(0.05 .*A(1), -0.03 .* A(2), ['Overall PSF From ', source_descrip], 'FontSize', 12);
-%
-%calc and plot the experimental overall PSF, gamma adjusted:
-% figure  %create a new figure window for the plots
-subplot(2,3,2)
+text(-0.05.*A(1), -0.03.*A(2), ['Overall PSF From ', source_descrip,], 'FontSize', 12);
+
+
+%plot the gamma adjusted overall xz PSF
+% figure  %create a new figure window for the PSF plot
+subplot(2,5,7)
+% actually yz psf
 % set(gcf, 'Position', [550 100 600 600]);
 % axes_h = axes('Position', [0.13, 0.1, 0.8, 0.8]);
-image(256 .* (xz_exp_PSF.^gamma));
+image(256 .* (xz_exp_PSF .^ gamma));
 colormap hot(256);
 axis([1 A(1) 1 A(2)]);
 axis square;
@@ -241,11 +449,13 @@ set(gca, 'YTick', [1:(A(1)-1)./4:A(1)]);
 set(gca, 'YTickLabel', (A(1)-1) / 2 * sim_pixsize .* [-1:0.5:1]);
 ylabel(['z / (\lambda_{exc}/n)'], 'FontSize', 14);
 text(-0.05.*A(1), -0.03.*A(2), ['Overall PSF From ', source_descrip, ', gamma = ', num2str(gamma, '%1.2f')], 'FontSize', 12);
-%
+
+
+% plot xz OTF max plane slice with gamma
 %extract the xz plane at the center of the OTF:
-midpt = (B(2)+1)./2;
+midpt = (B(1)+1)./2;
 %extract the xz PSF at the current y plane:
-xz_exp_OTF = squeeze(OTF3D(:,midpt,:))';
+xz_exp_OTF = squeeze(OTF3D(midpt,:,:))';
 A = size(xz_exp_OTF);
 %
 %truncate the OTF data to the phyiscally possible range of kmax = +/-4*pi*n/lambda_exc
@@ -255,27 +465,12 @@ minkpix = round((1-1./MaxCalcK).*(A(1)-1)./2 + 1);
 maxkpix = round((1+1./MaxCalcK).*(A(1)-1)./2 + 1);
 plot_xz_exp_OTF = xz_exp_OTF(minkpix:maxkpix, minkpix:maxkpix);
 A = size(plot_xz_exp_OTF);
-%
-%plot the experimental overall xz OTF
-% figure  %create a new figure window for the OTF plot
-subplot(2,3,3)
-% set(gcf, 'Position', [100 100 600 600]);
-% axes_h = axes('Position', [0.13, 0.12, 0.8, 0.8]);
-image(256 .* plot_xz_exp_OTF);
-colormap hot(256);
-axis([1 A(1) 1 A(2)]);
-axis square;
-set(gca, 'XTick', [1:(A(1)-1)./4:A(1)]);
-set(gca, 'XTickLabel', [-1:0.5:1], 'FontSize', 12);
-xlabel(['k_{x} / (4\pin/\lambda_{exc})'], 'FontSize', 14);
-set(gca, 'YTick', [1:(A(2)-1)./4:A(2)]);
-set(gca, 'YTickLabel', [-1:0.5:1], 'FontSize', 12);
-ylabel(['k_{z} / (4\pin/\lambda_{exc})'], 'FontSize', 14);
-text(0.0 .*A(1), -0.03 .* A(2), ['Overall OTF From ', source_descrip], 'FontSize', 12);
-%
+
+
 %plot the gamma adjusted overall xz OTF
 % figure  %create a new figure window for the OTF plot
-subplot(2,3,6)
+% actually yz OTF
+subplot(2,5,3)
 % set(gcf, 'Position', [100 100 600 600]);
 % axes_h = axes('Position', [0.13, 0.12, 0.8, 0.8]);
 image(256 .* (plot_xz_exp_OTF.^gamma));
@@ -312,7 +507,7 @@ zOTF_bowtie_linecut = OffsetAxialLinecut;
 
 
 % figure  %create a new figure window for the plots
-subplot(2,3,5)
+subplot(2,5,8)
 % set(gcf, 'Position', [950 100 600 600]);
 % axes_h = axes('Position', [0.13, 0.1, 0.8, 0.77]);
 D = size(AxialOTFCrossSection);
@@ -329,40 +524,9 @@ xlabel(['k / (4\pi/\lambda)'], 'FontSize', 14);
 set(gca, 'YTick', [-3:1:0]);
 set(gca, 'YTickLabel', 10.^[-3:1:0]);
 ylabel(['OTF Strength'], 'FontSize', 14);
-text(-0.1 .*A(2), 0.15, ['Overall OTF linecuts From ', source_descrip], 'FontSize', 14);
+text(-0.1 .*A(2), 0.15, ['Overall OTF linecuts From ', source_descrip], 'FontSize', 12);
 text(0.6.*A(2), -0.15, 'OTF along kx', 'Color', [0 0 1], 'FontSize', 14);
 text(0.6.*A(2), -0.3, 'OTF along kz', 'Color', [1 0 0], 'FontSize', 14);
 text(0.6.*A(2), -0.45, 'Bowtie OTF along kz', 'Color', [0 0.75 0], 'FontSize', 14);
-%
-%extract the xy plane at the center of the OTF:
-midpt = (B(2)+1)./2;
-%extract the xz PSF at the current y plane:
-xy_exp_OTF = squeeze(OTF3D(:,:,midpt))';
-A = size(xy_exp_OTF);
-%
-%truncate the OTF data to the phyiscally possible range of kmax = +/-4*pi*n/lambda_exc
-%   given by the maximum spatial freq possible (defined by two counterpropagating 
-%   plane waves):
-minkpix = (1-1./MaxCalcK).*(A(1)-1)./2 + 1;
-maxkpix = (1+1./MaxCalcK).*(A(1)-1)./2 + 1;
-plot_xy_exp_OTF = xy_exp_OTF(minkpix:maxkpix, minkpix:maxkpix);
-A = size(plot_xy_exp_OTF);
-%
-%plot the gamma adjusted overall xy OTF
-% figure  %create a new figure window for the OTF plot
-subplot(2,3,4)
-% set(gcf, 'Position', [100 100 600 600]);
-% axes_h = axes('Position', [0.13, 0.12, 0.8, 0.8]);
-image(256 .* (plot_xy_exp_OTF.^gamma));
-colormap hot(256);
-axis([1 A(1) 1 A(2)]);
-axis square;
-midpt = (A(1)+1)./2;
-%line([1 A(2)], [midpt midpt], 'LineWidth', 1, 'Color', [0 0 1]);
-set(gca, 'XTick', [1:(A(1)-1)./4:A(1)]);
-set(gca, 'XTickLabel', [-1:0.5:1], 'FontSize', 12);
-xlabel(['k_{x} / (4\pin/\lambda_{exc})'], 'FontSize', 14);
-set(gca, 'YTick', [1:(A(2)-1)./4:A(2)]);
-set(gca, 'YTickLabel', [-1:0.5:1], 'FontSize', 12);
-ylabel(['k_{y} / (4\pin/\lambda_{exc})'], 'FontSize', 14);
-text(-0.05 .*A(1), -0.03 .* A(2), ['Overall OTF From ', source_descrip, ', gamma = ', num2str(gamma, '%1.2f')], 'FontSize', 12);
+
+
