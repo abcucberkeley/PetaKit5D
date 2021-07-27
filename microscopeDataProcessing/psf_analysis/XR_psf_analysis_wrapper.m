@@ -10,6 +10,7 @@ ip.addParameter('xyPixelSize', 0.108, @isnumeric);
 ip.addParameter('dz', 0.1, @isnumeric);
 ip.addParameter('angle', 32.45, @isnumeric);
 ip.addParameter('Deskew', true, @islogical);
+ip.addParameter('ObjectiveScan', false, @islogical);
 ip.addParameter('ChannelPatterns', {'CamA_ch0', 'CamB_ch0'}, @iscell);
 ip.addParameter('Channels', [488, 560], @isnumeric);
 ip.addParameter('RWFn', {'/clusterfs/fiona/Gokul/RW_PSFs/PSF_RW_515em_128_128_101_100nmSteps.tif', '/clusterfs/fiona/Gokul/RW_PSFs/PSF_RW_605em_128_128_101_100nmSteps.tif'}, @iscell);
@@ -22,6 +23,7 @@ dz = pr.dz;
 xyPixelSize = pr.xyPixelSize;
 angle = pr.angle;
 Deskew = pr.Deskew;
+ObjectiveScan = pr.ObjectiveScan;
 ChannelPatterns = pr.ChannelPatterns;
 Channels = pr.Channels;
 RWFn = pr.RWFn;
@@ -102,8 +104,13 @@ for d = 1 : numel(dataPath_exps)
     % rt_RW = '/clusterfs/fiona/Gokul/RW_PSFs/PSF_RW_515em_128_128_101_100nmSteps.tif';
     % rt_RW = '/Users/xruan/Images/RW_PSFs/PSF_RW_515em_128_128_101_100nmSteps.tif';
     xypixsize= xyPixelSize * 1000;
-    zpixsize = dz * sind(angle) * 1000;   
-    PSFsubpix = [128, 128, round((501 - 1) * 0.04 / dz) + 1];
+    if ObjectiveScan
+        zpixsize = dz * 1000;    
+        PSFsubpix = [128, 128, round((501 - 1) * 0.04 / dz * sind(angle)) + 1];        
+    else
+        zpixsize = dz * sind(angle) * 1000;
+        PSFsubpix = [128, 128, round((501 - 1) * 0.04 / dz) + 1];        
+    end
 
     NAdet = 1.0;
     index = 1.33;

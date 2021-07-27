@@ -91,8 +91,12 @@ for i = 1 : numel(prefixes)
         '''angle'',%.20f,''cropSize'',[%s],''distThresh'',[%s],''prefix'',''%s'')'], fns_i_str, ...
         result_dir, xyPixelSize, dz, angle, strrep(num2str(cropSize, '%.10f,'), ' ', ''), ...
         strrep(num2str(distThresh, '%.10f,'), ' ', ''), prefix);
-   
 end
+
+empty_inds = cellfun(@isempty, frameFullpaths);
+frameFullpaths(empty_inds) = [];
+outFullpaths(empty_inds) = [];
+func_strs(empty_inds) = [];
 
 % use cluster computing for the psf detection and cropping
 cpusPerTask = 24;
@@ -173,6 +177,9 @@ for d = 1 : numel(dataPath_exps)
 
     for k = 1:numel(fn)
         ch_ind = cellfun(@(x) contains(fn{k}, x), ChannelPatterns);
+        if ~any(ch_ind)
+            continue;
+        end        
         Channel_k = Channels(ch_ind);
         RWFn_k = RWFn{ch_ind};
         switch Channel_k

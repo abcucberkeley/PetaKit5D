@@ -84,6 +84,14 @@ if A(1) > A(2)
 else
     psize_1 = [psz(1), 0, 0];
     psize_2 = [psz(2), 0, 0];
+end  
+
+% pad z if the number of slices is fewer than the requirement
+if A(3) < PSFsubpix(3)
+    hsz = ceil((PSFsubpix(3) - A(3) -1) / 2);
+    psz = [hsz, abs(PSFsubpix(3) - A(3)) - hsz];
+    psize_1(3) = psz(1);
+    psize_2(3) = psz(2);
 end    
     
 PSF3Dexp = padarray(PSF3Dexp, psize_1, 0, 'pre');
@@ -94,6 +102,30 @@ A = size(PSF3Dexp);
 [peak, peakInd] = max(PSF3Dexp(:));
 [peaky,peakx,peakz] = ind2sub(A, peakInd);
 PSF3Dexp=circshift(PSF3Dexp, round((A + 1) / 2 - [peaky,peakx,peakz]));
+
+% xruan: fine adjust the center by the centroid
+BW = PSF3Dexp > prctile(PSF3Dexp(:), 99.9);
+BW = imclose(BW, strel('sphere', 1));
+L = bwlabeln(BW);
+py = (A(1) + 1) / 2;
+px = (A(2) + 1) / 2;
+pz = (A(3) + 1) / 2;
+BW = L == L(round(py), round(px), round(pz));
+% calculate centroid
+[y, x, z] = ind2sub(A, find(BW));
+f = PSF3Dexp(BW);
+cy = y' * f / sum(f);
+cx = x' * f / sum(f);
+cz = z' * f / sum(f);
+% make centroid within [-0.5, 0.5] to the center
+if abs(py - cy) > 0.5 || abs(px - cx) > 0.5 || abs(pz - cz) > 0.5
+    peaky = cy; 
+    peakx = cx; 
+    peakz = cz;
+    PSF3Dexp=circshift(PSF3Dexp, round((A + 1) / 2 - [peaky,peakx,peakz]));
+    [peak, peakInd] = max(PSF3Dexp(:));
+    [peaky,peakx,peakz] = ind2sub(A, peakInd);
+end
 
 %
 %resize to the pixel sizes used in the PSF/OTF simulations:
@@ -205,7 +237,7 @@ yz_exp_PSF = yz_exp_PSF(hsz(1) - 50 : hsz(1) + 50, hsz(2) - 50 : hsz(2) + 50);
 A = size(yz_exp_PSF);
 %
 
-fig = figure('Renderer', 'painters', 'Position', [10 10 2500 1000]);
+fig = figure('Renderer', 'painters', 'Position', [10 10 2500 1100]);
 %calc and plot the experimental overall PSF:
 % figure  %create a new figure window for the plots
 % actually yz psf
@@ -533,6 +565,7 @@ text(0.6.*A(2), -0.45, 'Bowtie OTF along kz', 'Color', [0 0.75 0], 'FontSize', 1
 % add text for the annotation of the coordinates
 text(-A(1) * 0.25, -3.75, 'Image y = x galvo dither direction & y-stage scan direction', 'fontSize', 14)
 text(-A(1) * 0.25, -4.05, 'In deskewed data image x = LLS(y) propogation direction', 'fontSize', 14);
+text(-A(1) * 0.1, -4.3, sprintf('Peak coordinate (xyz): (%d, %d, %d)', peakx, peaky, peakz), 'fontSize', 14)
 
 
 end

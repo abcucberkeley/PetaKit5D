@@ -33,7 +33,9 @@ ip.addParameter('language', 'matlab', @ischar); % support matlab, bash
 
 ip.parse(inputFullpaths, outputFullpaths, funcStrs, varargin{:});
 
-cd(fileparts(which('slurm_cluster_generic_computing_wrapper')));
+% move to the root path
+paths = split(which('slurm_cluster_generic_computing_wrapper'), 'LLSM3DTools');
+cd(paths{1});
 
 pr = ip.Results;
  % Resolution = pr.Resolution;
