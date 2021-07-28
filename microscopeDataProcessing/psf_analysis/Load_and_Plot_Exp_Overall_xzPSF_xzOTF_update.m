@@ -79,7 +79,7 @@ PSF3Dexp = max(PSF3Dexp-backgnd,0);
 % they are too small
 size_xy = max([PSFsubpix(1), PSFsubpix(2), A(1), A(2)]);
 hsz = [ceil((size_xy - A(1) - 1) / 2), ceil((size_xy - A(2) - 1) / 2)];
-psize_1 = [hsz(1), hsz(1), 0];
+psize_1 = [hsz(1), hsz(2), 0];
 psize_2 = [size_xy - A(1) - hsz(1), size_xy - A(2) - hsz(2), 0];
 
 % pad z if the number of slices is fewer than the requirement
