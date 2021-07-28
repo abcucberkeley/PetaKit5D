@@ -1,6 +1,7 @@
 function [] = XR_psf_analysis_wrapper(dataPaths, varargin)
 % psf analysis wrapper
 %
+% xruan (07/27/2021): add support for z-stage scan
 
 
 ip = inputParser;
@@ -11,6 +12,7 @@ ip.addParameter('dz', 0.1, @isnumeric);
 ip.addParameter('angle', 32.45, @isnumeric);
 ip.addParameter('Deskew', true, @islogical);
 ip.addParameter('ObjectiveScan', false, @islogical);
+ip.addParameter('ZstageScan', false, @islogical);
 ip.addParameter('ChannelPatterns', {'CamA_ch0', 'CamB_ch0'}, @iscell);
 ip.addParameter('Channels', [488, 560], @isnumeric);
 ip.addParameter('RWFn', {'/clusterfs/fiona/Gokul/RW_PSFs/PSF_RW_515em_128_128_101_100nmSteps.tif', '/clusterfs/fiona/Gokul/RW_PSFs/PSF_RW_605em_128_128_101_100nmSteps.tif'}, @iscell);
@@ -24,6 +26,7 @@ xyPixelSize = pr.xyPixelSize;
 angle = pr.angle;
 Deskew = pr.Deskew;
 ObjectiveScan = pr.ObjectiveScan;
+ZstageScan = pr.ZstageScan;
 ChannelPatterns = pr.ChannelPatterns;
 Channels = pr.Channels;
 RWFn = pr.RWFn;
@@ -54,6 +57,7 @@ if Deskew
     general_options = {'xyPixelSize', xyPixelSize, ...
                        'dz' dz, ...
                        'Reverse', Reverse, ...
+                       'ZstageScan', ZstageScan, ...                       
                        'ChannelPatterns', ChannelPatterns, ...
                        'Save16bit', Save16bit...
                        'Overwrite', false, ...
@@ -106,7 +110,10 @@ for d = 1 : numel(dataPath_exps)
     xypixsize= xyPixelSize * 1000;
     if ObjectiveScan
         zpixsize = dz * 1000;    
-        PSFsubpix = [128, 128, round((501 - 1) * 0.04 / dz * sind(angle)) + 1];        
+        PSFsubpix = [128, 128, round((501 - 1) * 0.04 / dz * sind(angle)) + 1];   
+    elseif ZstageScan
+        zpixsize = dz * cosd(angle) * 1000;
+        PSFsubpix = [128, 128, round((501 - 1) * 0.04 / dz) + 1];                
     else
         zpixsize = dz * sind(angle) * 1000;
         PSFsubpix = [128, 128, round((501 - 1) * 0.04 / dz) + 1];        

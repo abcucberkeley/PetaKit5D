@@ -16,6 +16,7 @@ function [ds, dsr] = XR_deskewRotateFrame(framePath, xyPixelSize, dz, varargin)
 % xruan (12/05/2020): add option to remove background 
 %                     add option to flip z stack in raw data (for negative X interval)
 % xruan (12/18/2020): add support to not save 3D stack
+% xruan (07/27/2021): add support for z-stage scan
 
 
 ip = inputParser;
@@ -24,6 +25,7 @@ ip.addRequired('framePath');
 ip.addRequired('xyPixelSize'); 
 ip.addRequired('dz'); 
 ip.addParameter('ObjectiveScan', false, @islogical);
+ip.addParameter('ZstageScan', false, @islogical);
 ip.addParameter('Overwrite', false, @islogical);
 ip.addParameter('MovieSelector', 'cell', @ischar);
 ip.addParameter('Crop', false, @islogical);
@@ -63,6 +65,7 @@ Crop = pr.Crop;
 SkewAngle = pr.SkewAngle;
 Reverse = pr.Reverse;
 ObjectiveScan = pr.ObjectiveScan;
+ZstageScan = pr.ZstageScan;
 flipZstack = pr.flipZstack;
 LLFFCorrection = pr.LLFFCorrection;
 BKRemoval = pr.BKRemoval;
@@ -91,9 +94,19 @@ end
 % decide zAniso
 if ObjectiveScan
     zAniso = dz / xyPixelSize;
+elseif ZstageScan
+    theta = SkewAngle * pi / 180;
+    zAniso = cos(abs(theta)) * dz / xyPixelSize;    
 else
     theta = SkewAngle * pi / 180;
     zAniso = sin(abs(theta)) * dz / xyPixelSize;
+end
+
+if ZstageScan
+    SkewAngle_1 = 90 - SkewAngle;
+    Reverse =  ~Reverse;
+else
+    SkewAngle_1 = SkewAngle;
 end
 
 %% deskew frame
@@ -165,11 +178,11 @@ if (~DSRCombined && (~exist(dsFullname, 'file') || ip.Results.Overwrite)) || DSR
         % 03/23/2021, for image with more than 1000 slices, directly split to blocks for the processing
         if sz(3) > 1000
             splitCompute = true;
-        end
+        end            
         
         if ~splitCompute
             try 
-                ds = deskewFrame3D(frame, SkewAngle, dz, xyPixelSize, Reverse, ...
+                ds = deskewFrame3D(frame, SkewAngle_1, dz, xyPixelSize, Reverse, ...
                     'Crop', Crop, 'Interp', Interp); 
                 clear frame;
             catch ME
@@ -192,7 +205,7 @@ if (~DSRCombined && (~exist(dsFullname, 'file') || ip.Results.Overwrite)) || DSR
             BorderSize = [5, 0, 0];
             TrimBorder = true;
 
-            bo = apply(bim, @(bs) deskewFrame3D(single(bs.Data), SkewAngle, dz, ...
+            bo = apply(bim, @(bs) deskewFrame3D(single(bs.Data), SkewAngle_1, dz, ...
                 xyPixelSize, Reverse, 'crop', Crop, 'Interp', Interp), 'blockSize', bim.BlockSize, ...
                 'OutputLocation', OutputLocation, 'BorderSize', BorderSize, 'TrimBorder', TrimBorder, ...
                 'useParallel', false);
@@ -248,7 +261,7 @@ if ip.Results.Rotate || DSRCombined
             if ~exist('ds', 'var')
                 ds = single(readtiff(dsFullname));
             end
-            dsr = rotateFrame3D(ds, ip.Results.SkewAngle, zAniso, ip.Results.Reverse,...
+            dsr = rotateFrame3D(ds, SkewAngle_1, zAniso, Reverse,...
                 'Crop', true, 'ObjectiveScan', ObjectiveScan, 'Interp', Interp);
             clear ds;
             
@@ -261,8 +274,8 @@ if ip.Results.Rotate || DSRCombined
             end
         else
             fprintf('Deskew, Rotate and resample for frame %s...\n', framePath{1});            
-            dsr = deskewRotateFrame3D(frame, ip.Results.SkewAngle, dz, xyPixelSize, ...
-                'reverse', ip.Results.Reverse, 'Crop', true, 'ObjectiveScan', ObjectiveScan, ...
+            dsr = deskewRotateFrame3D(frame, SkewAngle_1, dz, xyPixelSize, ...
+                'reverse', Reverse, 'Crop', true, 'ObjectiveScan', ObjectiveScan, ...
                 'resample', resample, 'Interp', Interp);
         end
         
