@@ -75,16 +75,12 @@ A = size(PSF3Dexp);
 backgnd = 1.5*median(PSF3Dexp(PSF3Dexp > 0));
 PSF3Dexp = max(PSF3Dexp-backgnd,0);
 
-% xruan: pad the xy to make them same size
-hsz = ceil((abs(A(1) - A(2)) -1) / 2);
-psz = [hsz, abs(A(1) - A(2)) - hsz];
-if A(1) > A(2)
-    psize_1 = [0, psz(1), 0];
-    psize_2 = [0, psz(2), 0];
-else
-    psize_1 = [psz(1), 0, 0];
-    psize_2 = [psz(2), 0, 0];
-end  
+% xruan: pad the xy to make them same size, and also to PSFsubpix size if
+% they are too small
+size_xy = max([PSFsubpix(1), PSFsubpix(2), A(1), A(2)]);
+hsz = [ceil((size_xy - A(1) - 1) / 2), ceil((size_xy - A(2) - 1) / 2)];
+psize_1 = [hsz(1), hsz(1), 0];
+psize_2 = [size_xy - A(1) - hsz(1), size_xy - A(2) - hsz(2), 0];
 
 % pad z if the number of slices is fewer than the requirement
 if A(3) < PSFsubpix(3)
