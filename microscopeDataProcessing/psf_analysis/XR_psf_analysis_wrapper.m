@@ -122,6 +122,9 @@ for d = 1 : numel(dataPath_exps)
 
     for k = 1:numel(fn)
         ch_ind = cellfun(@(x) contains(fn{k}, x), ChannelPatterns);
+        if ~any(ch_ind)
+            continue;
+        end                
         Channel_k = Channels(ch_ind);
         RWFn_k = RWFn{ch_ind};
         switch Channel_k

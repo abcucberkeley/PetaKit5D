@@ -106,6 +106,9 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
             continue;
         end
         outputFullpath = outputFullpaths{f};
+        if strcmp(outputFullpath(end), filesep)
+            outputFullpath = outputFullpath(1 : end - 1);
+        end
         [outputDir, fsname, ext] = fileparts(outputFullpath);
         if isempty(fsname) && ~isempty(ext)
             fsname = ext;
