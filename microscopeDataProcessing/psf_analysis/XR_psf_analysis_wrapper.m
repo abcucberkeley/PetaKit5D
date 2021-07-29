@@ -2,6 +2,8 @@ function [] = XR_psf_analysis_wrapper(dataPaths, varargin)
 % psf analysis wrapper
 %
 % xruan (07/27/2021): add support for z-stage scan
+% xruan (07/28/2021): save RW line cut info to avoid the computing in each iteration, 
+% and add parallel computing for plotting
 
 
 ip = inputParser;
@@ -97,43 +99,95 @@ end
     
 disp(dataPath_exps);
 
-for d = 1 : numel(dataPath_exps)
-    rtd = dataPath_exps{d};
-    fn = dir([rtd '*.tif']);
-    fn = {fn.name}';
-    
-    result_dir = [rtd, 'PSFAnalysis/'];
-    mkdir(result_dir);
-    
-    % rt_RW = '/clusterfs/fiona/Gokul/RW_PSFs/PSF_RW_515em_128_128_101_100nmSteps.tif';
-    % rt_RW = '/Users/xruan/Images/RW_PSFs/PSF_RW_515em_128_128_101_100nmSteps.tif';
-    xypixsize= xyPixelSize * 1000;
-    if ObjectiveScan
-        zpixsize = dz * 1000;    
-        PSFsubpix = [128, 128, round((501 - 1) * 0.04 / dz * sind(angle)) + 1];   
-    elseif ZstageScan
-        zpixsize = dz * cosd(angle) * 1000;
-        PSFsubpix = [128, 128, round((501 - 1) * 0.04 / dz) + 1];                
-    else
-        zpixsize = dz * sind(angle) * 1000;
-        PSFsubpix = [128, 128, round((501 - 1) * 0.04 / dz) + 1];        
+NAdet = 1.0;
+index = 1.33;
+gamma = 0.5;
+source_descrip = sourceStr;
+
+xypixsize= xyPixelSize * 1000;
+if ObjectiveScan
+    zpixsize = dz * 1000;    
+    PSFsubpix = [128, 128, round((501 - 1) * 0.04 / dz * sind(angle)) + 1];   
+elseif ZstageScan
+    zpixsize = dz * cosd(angle) * 1000;
+    PSFsubpix = [128, 128, round((501 - 1) * 0.04 / dz) + 1];                
+else
+    zpixsize = dz * sind(angle) * 1000;
+    PSFsubpix = [128, 128, round((501 - 1) * 0.04 / dz) + 1];        
+end
+
+zpixsize_RW = 0.1 * 1000;
+PSFsubpix_RW = [128, 128, 101];
+
+RW_info = cell(numel(ChannelPatterns), 1);
+
+% run psf analysis for RW images
+for c = 1 : numel(ChannelPatterns)
+    Channel_k = Channels(c);
+    RWFn_k = RWFn{c};
+    switch Channel_k
+        case 488
+            exc_lambda = 488;
+            det_lambda = 515;
+        case 560
+            exc_lambda = 560;
+            det_lambda = 605;
+        case 642
+            exc_lambda = 642;
+            det_lambda = 680;                
     end
 
-    NAdet = 1.0;
-    index = 1.33;
-    gamma = 0.5;
-    source_descrip = sourceStr;
+    [xz_exp_PSF_RW, xz_exp_OTF_RW, xOTF_linecut_RW, zOTF_linecut_RW, zOTF_bowtie_linecut_RW] = Load_and_Plot_Exp_Overall_xzPSF_xzOTF_update(RWFn_k, source_descrip, xypixsize, zpixsize_RW, NAdet, index, exc_lambda, det_lambda, PSFsubpix_RW, gamma);
     
-    zpixsize_RW = 0.1 * 1000;
-    PSFsubpix_RW = [128, 128, 101];
+    RW_info{c} = {xz_exp_PSF_RW, xz_exp_OTF_RW, xOTF_linecut_RW, zOTF_linecut_RW, zOTF_bowtie_linecut_RW};  
+end
 
-    for k = 1:numel(fn)
-        ch_ind = cellfun(@(x) contains(fn{k}, x), ChannelPatterns);
+close all;
+
+nd = numel(dataPath_exps);
+
+% save RW info to each psf analysis folder
+RW_info_fullnames = cell(nd, 1);
+for d = 1 : nd
+    rtd = dataPath_exps{d};    
+    result_dir = [rtd, 'PSFAnalysis', filesep];
+    if ~exist(result_dir, 'dir')
+        mkdir(result_dir);
+    end
+    
+    RW_info_fullnames{d} = sprintf('%s/RW_info.mat', result_dir);
+    save('-v7.3', RW_info_fullnames{d}, 'RW_info');
+end
+
+frameFullpaths = cell(nd, 1);
+figureFullpaths = cell(nd, 1);
+func_strs = cell(nd, 1);
+
+for d = 1 : numel(dataPath_exps)
+    rtd = dataPath_exps{d};
+    result_dir = [rtd, 'PSFAnalysis', filesep];
+    
+    dir_info = dir([rtd '*.tif']);
+    fsn = {dir_info.name}';
+    fn = cellfun(@(x) [rtd, x], fsn, 'unif', 0);
+    
+    include_flag = false(numel(fn), 1);
+    for c = 1 : numel(ChannelPatterns)
+        include_flag = include_flag | contains(fn, ChannelPatterns{c}) | contains(fn, regexpPattern(ChannelPatterns{c}));
+    end
+    fn = fn(include_flag);
+    
+    frameFullpaths{d} = fn;
+    figureFullpaths{d} = cellfun(@(x) [result_dir, 'wT_', x(1 : end - 4), '.png'], fsn, 'unif', 0);
+    
+    func_strs{d} = cell(numel(fn), 1);
+    for f = 1 : numel(fn)
+        ch_ind = cellfun(@(x) contains(fn{f}, x), ChannelPatterns);
         if ~any(ch_ind)
             continue;
-        end                
+        end
+        
         Channel_k = Channels(ch_ind);
-        RWFn_k = RWFn{ch_ind};
         switch Channel_k
             case 488
                 exc_lambda = 488;
@@ -146,60 +200,26 @@ for d = 1 : numel(dataPath_exps)
                 det_lambda = 680;                
         end
         
-        if exist([result_dir 'wT_' fn{k}(1:end-4) '.png'], 'file')
-            continue;
-        end
-        
-        [xz_exp_PSF_RW, xz_exp_OTF_RW, xOTF_linecut_RW, zOTF_linecut_RW, zOTF_bowtie_linecut_RW] = Load_and_Plot_Exp_Overall_xzPSF_xzOTF_update(RWFn_k, source_descrip, xypixsize, zpixsize_RW, NAdet, index, exc_lambda, det_lambda, PSFsubpix_RW, gamma);
-
-        [xz_exp_PSF, xz_exp_OTF, xOTF_linecut, zOTF_linecut, zOTF_bowtie_linecut] = Load_and_Plot_Exp_Overall_xzPSF_xzOTF_update([rtd fn{k}], source_descrip, xypixsize, zpixsize, NAdet, index, exc_lambda, det_lambda, PSFsubpix, gamma);
-        f0 = gcf();
-        print(f0, '-painters','-dpng', '-loose',[result_dir 'comp_' fn{k}(1:end-4) '.png']);
-        close all
-
-        figure('Renderer', 'painters', 'Position', [10 10 600 600]);
-        % figure;
-        A = size(xz_exp_OTF);
-        D = size(zOTF_linecut);
-        plot(log10(zOTF_linecut), 'r', 'LineWidth', 2);hold on
-        plot(log10(xOTF_linecut), 'b', 'LineWidth', 2);
-        plot(log10(zOTF_bowtie_linecut), 'g', 'LineWidth', 2);
-        axis([1 D(2) -3 0]);
-        axis square;
-        grid on;
-        set(gca, 'XTick', [1:(D(2)-1)./10:D(2)]);
-        set(gca, 'XTickLabel', [-1:0.2:1]);
-        xlabel(['k / (4\pi/\lambda)'], 'FontSize', 14);
-        set(gca, 'YTick', [-3:1:0]);
-        set(gca, 'YTickLabel', 10.^[-3:1:0]);
-        ylabel(['OTF Strength'], 'FontSize', 14);
-        % text(-0.1 .*A(2), 0.15, ['Overall OTF linecuts From ', source_descrip], 'FontSize', 14);
-        text(0.6.*A(2), -0.15, 'OTF along ky', 'Color', [0 0 1], 'FontSize', 14);
-        text(0.6.*A(2), -0.3, 'OTF along kz', 'Color', [1 0 0], 'FontSize', 14);
-        text(0.6.*A(2), -0.45, 'Bowtie OTF along kz', 'Color', [0 0.75 0], 'FontSize', 14);
-
-        hold on
-
-        D = size(zOTF_linecut_RW);
-        plot(log10(zOTF_linecut_RW), '--r', 'LineWidth', 2);hold on
-        plot(log10(xOTF_linecut_RW), '--b', 'LineWidth', 2);
-        plot(log10(zOTF_bowtie_linecut_RW), '--g', 'LineWidth', 2);
-        axis([1 D(2) -3 0]);
-        axis square;
-        grid on;
-        set(gca, 'XTick', [1:(D(2)-1)./10:D(2)]);
-        set(gca, 'XTickLabel', [-1:0.2:1]);
-        xlabel(['k / (4\pi/\lambda)'], 'FontSize', 14);
-        set(gca, 'YTick', [-3:1:0]);
-        set(gca, 'YTickLabel', 10.^[-3:1:0]);
-        ylabel(['OTF Strength'], 'FontSize', 14);
-        title( ['Overall OTF linecuts From ', source_descrip], 'FontSize', 14);
-        legend([{'OTF along kz','OTF along ky','Bowtie OTF along kz', 'RW OTF along kz',  'RW OTF along ky', 'RW Bowtie OTF along kz'}]);
-
-        f0 = gcf();
-        print(f0, '-painters','-dpng', '-loose', [result_dir 'wT_' fn{k}(1:end-4) '.png']);
-
+        func_strs{d}{f} = sprintf(['XR_psf_analysis_plot(''%s'',''%s'',''%s'',', ...
+            '%d,''%s'',%.20f,%.20f,%.20f,%.20f,%.20f,%.20f,%s,%.20f)'], fn{f}, ...
+            figureFullpaths{d}{f}, RW_info_fullnames{d}, ch_ind, source_descrip, xypixsize, ...
+            zpixsize, NAdet, index, exc_lambda, det_lambda, strrep(mat2str(PSFsubpix), ' ', ','), ...
+            gamma);
     end
+end
+
+frameFullpaths = cat(1, frameFullpaths{:});
+figureFullpaths = cat(1, figureFullpaths{:});
+func_strs = cat(1, func_strs{:});
+
+% use cluster computing for the psf analysis
+cpusPerTask = 2;
+MatlabLaunchStr = 'module load matlab/r2021a; matlab -nodisplay -nosplash -nodesktop -r'; 
+is_done_flag = slurm_cluster_generic_computing_wrapper(frameFullpaths, figureFullpaths, ...
+    func_strs, 'MatlabLaunchStr', MatlabLaunchStr, 'masterCompute', ~true, 'cpusPerTask', cpusPerTask);
+if ~all(is_done_flag)
+    slurm_cluster_generic_computing_wrapper(frameFullpaths, figureFullpaths, ...
+        func_strs, 'MatlabLaunchStr', MatlabLaunchStr, 'masterCompute', ~true, 'cpusPerTask', cpusPerTask);
 end
 
 
