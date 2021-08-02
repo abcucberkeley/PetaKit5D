@@ -219,8 +219,13 @@ is_done_flag = slurm_cluster_generic_computing_wrapper(frameFullpaths, figureFul
     func_strs, 'MatlabLaunchStr', MatlabLaunchStr, 'masterCompute', ~true, 'cpusPerTask', cpusPerTask);
 if ~all(is_done_flag)
     slurm_cluster_generic_computing_wrapper(frameFullpaths, figureFullpaths, ...
-        func_strs, 'MatlabLaunchStr', MatlabLaunchStr, 'masterCompute', ~true, 'cpusPerTask', cpusPerTask);
+        func_strs, 'MatlabLaunchStr', MatlabLaunchStr, 'masterCompute', ~true, 'cpusPerTask', cpusPerTask * 2);
 end
+if ~all(is_done_flag)
+    slurm_cluster_generic_computing_wrapper(frameFullpaths, figureFullpaths, ...
+        func_strs, 'MatlabLaunchStr', MatlabLaunchStr, 'masterCompute', ~true, 'cpusPerTask', cpusPerTask * 4);
+end
+
 
 
 end

@@ -99,30 +99,6 @@ A = size(PSF3Dexp);
 [peaky,peakx,peakz] = ind2sub(A, peakInd);
 PSF3Dexp=circshift(PSF3Dexp, round((A + 1) / 2 - [peaky,peakx,peakz]));
 
-% xruan: fine adjust the center by the centroid
-BW = PSF3Dexp > prctile(PSF3Dexp(:), 99.9);
-BW = imclose(BW, strel('sphere', 1));
-L = bwlabeln(BW);
-py = (A(1) + 1) / 2;
-px = (A(2) + 1) / 2;
-pz = (A(3) + 1) / 2;
-BW = L == L(round(py), round(px), round(pz));
-% calculate centroid
-[y, x, z] = ind2sub(A, find(BW));
-f = PSF3Dexp(BW);
-cy = y' * f / sum(f);
-cx = x' * f / sum(f);
-cz = z' * f / sum(f);
-% make centroid within [-0.5, 0.5] to the center
-if abs(py - cy) > 0.5 || abs(px - cx) > 0.5 || abs(pz - cz) > 0.5
-    peaky = cy; 
-    peakx = cx; 
-    peakz = cz;
-    PSF3Dexp=circshift(PSF3Dexp, round((A + 1) / 2 - [peaky,peakx,peakz]));
-    [peak, peakInd] = max(PSF3Dexp(:));
-    [peaky,peakx,peakz] = ind2sub(A, peakInd);
-end
-
 %
 %resize to the pixel sizes used in the PSF/OTF simulations:
 %find the measured x and z pixel sizes in media excitation wavelengths:
@@ -156,7 +132,49 @@ rhsz = min(B, array_size) - lhsz - 1;
 PSF_array(xyi:xyf,xyi:xyf,zi:zf) = PSF3D(Bc(1) - lhsz(1) : Bc(1) + rhsz(1), Bc(2) - lhsz(2) : Bc(2) + rhsz(2), Bc(3) - lhsz(3) : Bc(3) + rhsz(3));
 % PSF_array(xyi:xyf,xyi:xyf,zi:zf) = PSF3D;
 PSF3D = PSF_array;
+
 A = size(PSF3D);
+
+% xruan: fine adjust the center by the centroid
+% BW = PSF3D > prctile(PSF3D(:), 99.99);
+BW = PSF3D > multithresh(PSF3D(PSF3D > 0), 1);
+% BW = imclose(BW, strel('sphere', 1));
+% L = bwlabeln(BW);
+py = (A(1) + 1) / 2;
+px = (A(2) + 1) / 2;
+pz = (A(3) + 1) / 2;
+% BW = L == L(round(py), round(px), round(pz));
+% % calculate centroid
+% [y, x, z] = ind2sub(A, find(BW));
+% f = PSF3D(BW);
+% cy = y' * f / sum(f);
+% cx = x' * f / sum(f);
+% cz = z' * f / sum(f);
+% sigma = [1.3 * magxy, 3 * magz];
+% 
+% [pstruct, mask] = XR_pointSourceDetection3D(PSF3D, sigma, 'Mode', 'xyzAc', 'Alpha', .05,...
+%     'Mask', BW, 'RemoveRedundant', true, 'RefineMaskLoG', false, ...
+%     'FitGaussianMethod', 'original', 'BackgroundCorrection', false);
+% idx = find(pstruct.A==max([pstruct.A]));
+% % sigmaXY = pstruct.s(1,idx);
+% % sigmaZ = pstruct.s(2,idx);
+% cx = pstruct.x(idx);
+% cy = pstruct.y(idx);
+% cz = pstruct.z(idx);
+% change to use peak
+PSF3D_1 = imgaussfilt3(PSF3D, 2);
+[peak, peakInd] = max(PSF3D_1(:));
+[interp_peaky,interp_peakx,interp_peakz] = ind2sub(A, peakInd);
+cx = interp_peakx;
+cy = interp_peaky;
+cz = interp_peakz;
+% make centroid within [-0.5, 0.5] to the center
+if abs(py - cy) > 0.5 || abs(px - cx) > 0.5 || abs(pz - cz) > 0.5
+    PSF3D=circshift(PSF3D, round((A + 1) / 2 - [cy,cx,cz]));
+    [peak, peakInd] = max(PSF3D(:));
+    [interp_peaky,interp_peakx,interp_peakz] = ind2sub(A, peakInd);
+end
+
 %
 %find the location of the maximum of the PSF:
 %assume the maximum occurs at the center z plane:
@@ -253,6 +271,13 @@ set(gca, 'YTick', [1:(A(1)-1)./4:A(1)]);
 set(gca, 'YTickLabel', (A(1)-1) / 2 * sim_pixsize .* [-1:0.5:1]);
 ylabel(['z / (\lambda_{exc}/n)'], 'FontSize', 14);
 text(0.05 .*A(1), -0.03 .* A(2), ['Overall PSF From ', source_descrip], 'FontSize', 12);
+if ~false
+    hold on
+    plot((A(2) + 1) / 2, (A(1) + 1) / 2, 'o')
+    hold on
+    plot(interp_peaky - (hsz - 50) + 1, interp_peakz - (hsz - 50) + 1, '*')
+end
+
 %
 %calc and plot the experimental overall PSF, gamma adjusted:
 % figure  %create a new figure window for the plots
@@ -409,7 +434,7 @@ text(-0.05 .*A(1), -0.03 .* A(2), ['Overall OTF From ', source_descrip, ', gamma
 % find the brightest one slice
 [~, peakInd] = max(PSF3D(:));
 [maxyplane, maxxplane, maxzplane] = ind2sub(size(PSF3D), peakInd);
-maxzplane = peakypix + maxplane - 6;
+% maxzplane = peakypix + maxplane - 6;
 xy_exp_PSF = squeeze(PSF3D(:,:,maxzplane)); 
 hsz = round((size(xy_exp_PSF) + 1) / 2);
 % xruan: narrow down the range to [-50, 50]
@@ -432,6 +457,12 @@ set(gca, 'YTick', [1:(A(1)-1)./4:A(1)]);
 set(gca, 'YTickLabel', (A(1)-1) / 2 * sim_pixsize .* [-1:0.5:1]);
 ylabel(['y / (\lambda_{exc}/n)'], 'FontSize', 14);
 text(-0.05.*A(1), -0.03.*A(2), ['Overall PSF From ', source_descrip], 'FontSize', 12);
+if ~false
+    hold on
+    plot((A(2) + 1) / 2, (A(1) + 1) / 2, 'o')
+    hold on
+    plot(interp_peakx - (hsz - 50) + 1, interp_peaky - (hsz - 50) + 1, '*')
+end
 
 
 % plot xz PSF max plane slice withpout gamma
@@ -456,6 +487,12 @@ set(gca, 'YTick', [1:(A(1)-1)./4:A(1)]);
 set(gca, 'YTickLabel', (A(1)-1) / 2 * sim_pixsize .* [-1:0.5:1]);
 ylabel(['z / (\lambda_{exc}/n)'], 'FontSize', 14);
 text(-0.05.*A(1), -0.03.*A(2), ['Overall PSF From ', source_descrip,], 'FontSize', 12);
+if ~false
+    hold on
+    plot((A(2) + 1) / 2, (A(1) + 1) / 2, 'o')
+    hold on
+    plot(interp_peakx - (hsz - 50) + 1, interp_peakx - (hsz - 50) + 1, '*')
+end
 
 
 %plot the gamma adjusted overall xz PSF
