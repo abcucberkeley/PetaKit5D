@@ -17,6 +17,7 @@ ip.addParameter('ObjectiveScan', false, @islogical);
 ip.addParameter('ZstageScan', false, @islogical);
 ip.addParameter('ChannelPatterns', {'CamA_ch0', 'CamB_ch0'}, @iscell);
 ip.addParameter('Channels', [488, 560], @isnumeric);
+ip.addParameter('Save16bit', true, @islogical);
 ip.addParameter('RWFn', {'/clusterfs/fiona/Gokul/RW_PSFs/PSF_RW_515em_128_128_101_100nmSteps.tif', '/clusterfs/fiona/Gokul/RW_PSFs/PSF_RW_605em_128_128_101_100nmSteps.tif'}, @iscell);
 ip.addParameter('sourceStr', 'test', @ischar);
 % ip.addParameter('prefix', 'test_', @ischar);
@@ -31,6 +32,7 @@ ObjectiveScan = pr.ObjectiveScan;
 ZstageScan = pr.ZstageScan;
 ChannelPatterns = pr.ChannelPatterns;
 Channels = pr.Channels;
+Save16bit = pr.Save16bit;
 RWFn = pr.RWFn;
 sourceStr = pr.sourceStr;
 
@@ -53,7 +55,7 @@ if Deskew
     dataPath_exps = cellfun(@(x) [x, '/'], dataPaths, 'unif', 0);
     disp(dataPath_exps);
 
-    Save16bit = true;
+    % Save16bit = true;
     Reverse = true;
 
     general_options = {'xyPixelSize', xyPixelSize, ...

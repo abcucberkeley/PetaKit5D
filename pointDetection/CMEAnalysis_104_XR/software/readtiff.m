@@ -49,6 +49,9 @@ ip.addParamValue('ShowWaitbar', false, @islogical);
 ip.parse(filepath, varargin{:});
 info = ip.Results.info;
 range = ip.Results.range;
+
+w = warning('off', 'all'); % ignore unknown TIFF tags
+
 if isempty(info)
     info = imfinfo(filepath);
 end
@@ -58,8 +61,6 @@ if isempty(range)
 else
     N = numel(range);
 end
-
-w = warning('off', 'all'); % ignore unknown TIFF tags
 
 nx = info(1).Width;
 ny = info(1).Height;
