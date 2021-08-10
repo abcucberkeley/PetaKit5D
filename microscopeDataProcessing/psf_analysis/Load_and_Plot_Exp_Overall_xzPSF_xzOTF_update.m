@@ -164,6 +164,7 @@ pz = (A(3) + 1) / 2;
 % change to use peak
 PSF3D_1 = imgaussfilt3(PSF3D, 2);
 [peak, peakInd] = max(PSF3D_1(:));
+clear PSF3D_1;
 [interp_peaky,interp_peakx,interp_peakz] = ind2sub(A, peakInd);
 cx = interp_peakx;
 cy = interp_peaky;

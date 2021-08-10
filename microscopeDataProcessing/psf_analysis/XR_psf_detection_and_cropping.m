@@ -50,7 +50,7 @@ end
 im = cat(3, ims{:});
 clear ims
 sz = size(im);
-
+im(isnan(im)) = 0;
 
 %% radon transform for the given angle
 
