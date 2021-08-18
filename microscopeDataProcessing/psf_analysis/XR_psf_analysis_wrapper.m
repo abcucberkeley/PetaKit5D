@@ -4,6 +4,7 @@ function [] = XR_psf_analysis_wrapper(dataPaths, varargin)
 % xruan (07/27/2021): add support for z-stage scan
 % xruan (07/28/2021): save RW line cut info to avoid the computing in each iteration, 
 % and add parallel computing for plotting
+% xruan (08/16/2021): add support for flipped psfs
 
 
 ip = inputParser;
@@ -13,6 +14,7 @@ ip.addParameter('xyPixelSize', 0.108, @isnumeric);
 ip.addParameter('dz', 0.1, @isnumeric);
 ip.addParameter('angle', 32.45, @isnumeric);
 ip.addParameter('Deskew', true, @islogical);
+ip.addParameter('flipZstack', false, @islogical);
 ip.addParameter('ObjectiveScan', false, @islogical);
 ip.addParameter('ZstageScan', false, @islogical);
 ip.addParameter('ChannelPatterns', {'CamA_ch0', 'CamB_ch0'}, @iscell);
@@ -28,6 +30,7 @@ dz = pr.dz;
 xyPixelSize = pr.xyPixelSize;
 angle = pr.angle;
 Deskew = pr.Deskew;
+flipZstack = pr.flipZstack;
 ObjectiveScan = pr.ObjectiveScan;
 ZstageScan = pr.ZstageScan;
 ChannelPatterns = pr.ChannelPatterns;
@@ -77,7 +80,7 @@ if Deskew
                    'Rotate', ~true, ...
                    'DSRCombined', false, ...
                    'parseSettingFile', ~true, ...  
-                   'flipZstack', ~true, ...
+                   'flipZstack', flipZstack, ...
                    'LLFFCorrection', ~true,...
                   };
 

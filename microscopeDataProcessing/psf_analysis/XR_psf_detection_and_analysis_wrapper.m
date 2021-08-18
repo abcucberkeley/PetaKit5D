@@ -16,6 +16,7 @@ ip.addParameter('xyPixelSize', 0.108, @isnumeric);
 ip.addParameter('dz', 0.1, @isnumeric);
 ip.addParameter('angle', 32.45, @isnumeric);
 ip.addParameter('cropSize', [256, 128, 201], @isnumeric);
+ip.addParameter('flipZstack', false, @islogical);
 ip.addParameter('distThresh', [256, 128, 201], @isnumeric);
 ip.addParameter('ChannelPatterns', {'CamA_ch0', 'CamB_ch0'}, @iscell);
 ip.addParameter('Channels', [488, 560], @isnumeric);
@@ -126,8 +127,9 @@ ObjectiveScan = false;
 dataPath_exps = cellfun(@(x) [x, '/Cropped/'], dataPaths, 'unif', 0);
 disp(dataPath_exps);
 
-XR_psf_analysis_wrapper(dataPath_exps, 'dz', dz, 'angle', angle, 'ChannelPatterns', ChannelPatterns, 'Channels', Channels, ...
-    'Deskew', Deskew, 'ObjectiveScan', ObjectiveScan, 'ZstageScan', ZstageScan, 'sourceStr', sourceStr, 'RWFn', RWFn);
+XR_psf_analysis_wrapper(dataPath_exps, 'dz', dz, 'angle', angle, 'ChannelPatterns', ChannelPatterns, ...
+    'Channels', Channels, 'Deskew', Deskew, 'flipZstack', flipZstack, 'ObjectiveScan', ObjectiveScan, ...
+    'ZstageScan', ZstageScan, 'sourceStr', sourceStr, 'RWFn', RWFn);
 
 
 end
