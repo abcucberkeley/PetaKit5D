@@ -17,6 +17,7 @@ function [ds, dsr] = XR_deskewRotateFrame(framePath, xyPixelSize, dz, varargin)
 %                     add option to flip z stack in raw data (for negative X interval)
 % xruan (12/18/2020): add support to not save 3D stack
 % xruan (07/27/2021): add support for z-stage scan
+% xruan (08/17/2021): add support to not load the full image of DS to the memory if it is too large. 
 
 
 ip = inputParser;
@@ -40,23 +41,23 @@ ip.addParameter('sCMOSCameraFlip', false, @islogical);
 % LLSM Flat-FieldCorrection
 ip.addParameter('LLFFCorrection', false, @islogical);
 ip.addParameter('LowerLimit', 0.4, @isnumeric); % this value is the lowest
-ip.addParameter('LSImage', '' , @isstr);
-ip.addParameter('BackgroundImage', '' , @isstr);
+ip.addParameter('LSImage', '' , @ischar);
+ip.addParameter('BackgroundImage', '' , @ischar);
 ip.addParameter('constOffset', [], @(x) isempty(x) || isnumeric(x)); % If it is set, use constant background, instead of background from the camera.
 ip.addParameter('BKRemoval', false, @islogical);
 ip.addParameter('Save16bit', false , @islogical); % saves deskewed data as 16 bit -- not for quantification
 ip.addParameter('RescaleRotate', false , @islogical); % Rescale rotated data to [0 65535]
 ip.addParameter('save3DStack', true , @islogical); % option to save 3D stack or not
 ip.addParameter('SaveMIP', true , @islogical); % save MIP-z for ds and dsr. 
-ip.addParameter('aname', '', @isstr); % XR allow user-defined result path
+ip.addParameter('aname', '', @ischar); % XR allow user-defined result path
 ip.addParameter('ZoffsetCorrection', false, @islogical); % xruan: add option for correction of z offset
 ip.addParameter('DSRCombined', true, @islogical); % combined processing 
 ip.addParameter('resample', [], @(x) isempty(x) || isnumeric(x)); % resampling after rotation 
 ip.addParameter('saveZarr', false, @islogical); % save as zarr
 ip.addParameter('blockSize', [500, 500, 500], @isnumeric); % save as zarr
 ip.addParameter('Interp', 'linear', @(x) any(strcmpi(x, {'cubic', 'linear'})));
-ip.addParameter('surffix', '', @isstr); % suffix for the folder
-ip.addParameter('uuid', '', @isstr);
+ip.addParameter('surffix', '', @ischar); % suffix for the folder
+ip.addParameter('uuid', '', @ischar);
 
 ip.parse(framePath, xyPixelSize, dz, varargin{:});
 
@@ -71,6 +72,7 @@ LLFFCorrection = pr.LLFFCorrection;
 BKRemoval = pr.BKRemoval;
 LSImage = pr.LSImage;
 BackgroundImage = pr.BackgroundImage;
+Save16bit = pr.Save16bit;
 save3DStack = pr.save3DStack;
 SaveMIP = pr.SaveMIP;
 DSRCombined = pr.DSRCombined;
@@ -204,15 +206,21 @@ if (~DSRCombined && (~exist(dsFullname, 'file') || ip.Results.Overwrite)) || DSR
             OutputLocation = sprintf('%s/%s_%s', dsPath, fsname, uuid);
             BorderSize = [5, 0, 0];
             TrimBorder = true;
-
-            bo = apply(bim, @(bs) deskewFrame3D(single(bs.Data), SkewAngle_1, dz, ...
-                xyPixelSize, Reverse, 'crop', Crop, 'Interp', Interp), 'blockSize', bim.BlockSize, ...
-                'OutputLocation', OutputLocation, 'BorderSize', BorderSize, 'TrimBorder', TrimBorder, ...
-                'useParallel', false);
+            if Save16bit 
+                bo = apply(bim, @(bs) uint16(deskewFrame3D(single(bs.Data), SkewAngle_1, dz, ...
+                    xyPixelSize, Reverse, 'crop', Crop, 'Interp', Interp)), 'blockSize', bim.BlockSize, ...
+                    'OutputLocation', OutputLocation, 'BorderSize', BorderSize, 'TrimBorder', TrimBorder, ...
+                    'useParallel', false);
+            else
+                bo = apply(bim, @(bs) deskewFrame3D(single(bs.Data), SkewAngle_1, dz, ...
+                    xyPixelSize, Reverse, 'crop', Crop, 'Interp', Interp), 'blockSize', bim.BlockSize, ...
+                    'OutputLocation', OutputLocation, 'BorderSize', BorderSize, 'TrimBorder', TrimBorder, ...
+                    'useParallel', false);
+            end
             clear frame;
-            ds = gather(bo);
-            rmdir(OutputLocation, 's');
-            clear bim bo;
+            % ds = gather(bo);
+            % rmdir(OutputLocation, 's');
+            clear bim;
         end            
 
         % save MIP
@@ -224,19 +232,31 @@ if (~DSRCombined && (~exist(dsFullname, 'file') || ip.Results.Overwrite)) || DSR
             end
 
             dsMIPname = sprintf('%s%s_MIP_z.tif', dsMIPPath, fsname);
-            if ip.Results.Save16bit
-                writetiff(uint16(max(ds, [], 3)), dsMIPname);
+            if splitCompute
+                bmip = apply(bo, @(bs) max(bs.Data, [], 3), 'blockSize', [bo.BlockSize(1:2), bo.Size(3)], 'useParallel', false);
+                mip = gather(bmip);
             else
-                writetiff(single(max(ds, [], 3)), dsMIPname);
-            end            
+                mip = max(ds, [], 3);
+            end
+            if Save16bit 
+                writetiff(uint16(mip), dsMIPname);
+            else
+                writetiff(single(mip), dsMIPname);
+            end
         end
 
         dsTempname = sprintf('%s%s_%s.tif', dsPath, fsname, uuid);
         if save3DStack
-            if ip.Results.Save16bit
-                writetiff(uint16(ds), dsTempname);
+            if splitCompute
+                write(bo, dsTempname, 'BlockSize', [bo.Size(1), bo.Size(2), min(bo.Size(3), 100)], 'Adapter', MPageTiffAdapter);
+                rmdir(OutputLocation, 's');
+                clear bo
             else
-                writetiff(single(ds), dsTempname);
+                if Save16bit
+                    writetiff(uint16(ds), dsTempname);
+                else
+                    writetiff(single(ds), dsTempname);
+                end
             end
             movefile(dsTempname, dsFullname);
         end
