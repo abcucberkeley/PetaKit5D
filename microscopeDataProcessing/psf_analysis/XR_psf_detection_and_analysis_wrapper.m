@@ -30,6 +30,7 @@ dz = pr.dz;
 xyPixelSize = pr.xyPixelSize;
 angle = pr.angle;
 cropSize = pr.cropSize;
+flipZstack = pr.flipZstack;
 distThresh = pr.distThresh;
 ChannelPatterns = pr.ChannelPatterns;
 Channels = pr.Channels;
