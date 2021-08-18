@@ -22,6 +22,7 @@ ip.addParameter('Channels', [488, 560], @isnumeric);
 ip.addParameter('Save16bit', true, @islogical);
 ip.addParameter('RWFn', {'/clusterfs/fiona/Gokul/RW_PSFs/PSF_RW_515em_128_128_101_100nmSteps.tif', '/clusterfs/fiona/Gokul/RW_PSFs/PSF_RW_605em_128_128_101_100nmSteps.tif'}, @iscell);
 ip.addParameter('sourceStr', 'test', @ischar);
+ip.addParameter('masterCompute', false, @islogical);
 % ip.addParameter('prefix', 'test_', @ischar);
 ip.parse(dataPaths, varargin{:});
 
@@ -38,6 +39,7 @@ Channels = pr.Channels;
 Save16bit = pr.Save16bit;
 RWFn = pr.RWFn;
 sourceStr = pr.sourceStr;
+masterCompute = pr.masterCompute;
 
 tic
 % rt = '/Users/xruan/Images/20210607_PSFs_L15_37C/';
@@ -221,14 +223,14 @@ func_strs = cat(1, func_strs{:});
 cpusPerTask = 2;
 MatlabLaunchStr = 'module load matlab/r2021a; matlab -nodisplay -nosplash -nodesktop -r'; 
 is_done_flag = slurm_cluster_generic_computing_wrapper(frameFullpaths, figureFullpaths, ...
-    func_strs, 'MatlabLaunchStr', MatlabLaunchStr, 'masterCompute', ~true, 'cpusPerTask', cpusPerTask);
+    func_strs, 'MatlabLaunchStr', MatlabLaunchStr, 'masterCompute', masterCompute, 'cpusPerTask', cpusPerTask);
 if ~all(is_done_flag)
     slurm_cluster_generic_computing_wrapper(frameFullpaths, figureFullpaths, ...
-        func_strs, 'MatlabLaunchStr', MatlabLaunchStr, 'masterCompute', ~true, 'cpusPerTask', cpusPerTask * 2);
+        func_strs, 'MatlabLaunchStr', MatlabLaunchStr, 'masterCompute', masterCompute, 'cpusPerTask', cpusPerTask * 2);
 end
 if ~all(is_done_flag)
     slurm_cluster_generic_computing_wrapper(frameFullpaths, figureFullpaths, ...
-        func_strs, 'MatlabLaunchStr', MatlabLaunchStr, 'masterCompute', ~true, 'cpusPerTask', cpusPerTask * 4);
+        func_strs, 'MatlabLaunchStr', MatlabLaunchStr, 'masterCompute', masterCompute, 'cpusPerTask', cpusPerTask * 4);
 end
 
 
