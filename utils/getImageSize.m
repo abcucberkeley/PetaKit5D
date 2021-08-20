@@ -59,6 +59,7 @@ if strcmp(filePath(end - 2 : end), 'tif') || strcmp(filePath(end - 3 : end), 'ti
         Height = reader.getSizeY;
         Width = reader.getSizeX;
         Zstack = reader.getSizeT;
+        reader.close()
     end
 %     close(tobj);
     imSize = [Height, Width, Zstack];

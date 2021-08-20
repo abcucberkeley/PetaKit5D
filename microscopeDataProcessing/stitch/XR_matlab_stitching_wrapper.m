@@ -730,9 +730,9 @@ while ~all(is_done_flag | trial_counter >= max_trial_num, 'all')
                                 matlab_setup_str = 'setup([],true)';
                                 matlab_cmd = sprintf('%s;tic;%s;toc', matlab_setup_str, func_str);
                                 stitch_cmd = sprintf('%s \\"%s\\"', MatlabLaunchStr, matlab_cmd);
-                                cmd = sprintf('sbatch --array=%d -o %s -e %s --cpus-per-task=%d %s %s --wrap="%s"', ...
+                                cmd = sprintf('sbatch --array=%d -o %s -e %s --cpus-per-task=%d %s %s --wrap="echo Matlab command:  \\\"%s\\\"; %s"', ...
                                     rem(task_id, 5000), job_log_fname, job_log_error_fname, cpusPerTask, SlurmParam, ...
-                                    slurm_constraint_str, stitch_cmd);
+                                    slurm_constraint_str, matlab_cmd, stitch_cmd);
                                 [status, cmdout] = system(cmd, '-echo');
 
                                 job_id = regexp(cmdout, 'Submitted batch job (\d+)\n', 'tokens');

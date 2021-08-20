@@ -74,7 +74,7 @@ ip.parse(dataPaths, varargin{:});
 
 % make sure the function is in the root of XR_Repository. 
 mpath = fileparts(which(mfilename));
-repo_rt = [mpath, '/../../'];
+repo_rt = [mpath, '/../../../'];
 cd(repo_rt);
 
 pr = ip.Results;
