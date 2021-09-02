@@ -1,4 +1,3 @@
-
 tStart = tic;
 
 data = loadtiff('/clusterfs/fiona/matthewmueller/20210830SimRecon3D/2020_11_12(Code_for_Kitware)/2020_11_12(Code_for_Kitware)/data/Cell_5phase_small.tif');

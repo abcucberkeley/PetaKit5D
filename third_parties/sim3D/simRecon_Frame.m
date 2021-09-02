@@ -173,7 +173,8 @@ disp("correct shift vector and starting lateral phase for each and scale shifted
 tic
 
 for jj=1:norientations
-    ai=[]; bi=[];
+    ai=[]; 
+    bi=[];
     for kk=1:floor(norders/2) %Only consider negative orders - positive orders a just the complex conjugate and opposite direction
         transform_tot=[0,0,0];
         order=(kk-ceil(norders/2)); %m'th order information component
@@ -197,7 +198,6 @@ for jj=1:norientations
         
         %Overlap mask with the zero-information component
         overlap_mask= cylmask(:,:,:,3)&cylmask_shift;
-        overlap_mask = gather(overlap_mask);
         
 
 % Next, scale the shifted copies by either the shifted or non-shifted OTF as 
@@ -205,17 +205,17 @@ for jj=1:norientations
 
         DmO0=shift_Dk_sep.*O_scaled(:,:,:,ceil(norders/2),jj); %D˜m(k+mp)O_0(k) - eqn (9*)
         D0Om=Dk_sep(:,:,:,ceil(norders/2),jj).*shift_Om; %D˜0(k)O_m(k+mp) - eqn (9**)
-        D0Om = gather(D0Om);
-        DmO0 = gather(DmO0);
+        
         %Right now, we only do 1 round of shift vector refinement. In
         %practice, we could iterate.
         if qq==1
-                [transform,maxC,C,numberOfOverlapMaskedPixels] = MaskedTranslationRegistration2D_fit(abs(sum(D0Om,3)),abs(sum(DmO0,3)),max(overlap_mask,[],3),max(overlap_mask,[],3),.5);
+                %[transform,maxC,C,numberOfOverlapMaskedPixels] = MaskedTranslationRegistration2D_fit(abs(sum(D0Om,3)),abs(sum(DmO0,3)),max(overlap_mask,[],3),max(overlap_mask,[],3),.5);
+                [transform,~,~,~] = MaskedTranslationRegistration2D_fit(abs(sum(D0Om,3)),abs(sum(DmO0,3)),max(overlap_mask,[],3),max(overlap_mask,[],3),.5);
                 transform=[transform(2),transform(1),0];
                 p_vec_guess(kk,:,jj)=p_vec_guess(kk,:,jj)-transform;
                 transform_tot=transform_tot+transform;
                 norm(transform);
-                maxC;
+                %maxC;
         end
         end
         

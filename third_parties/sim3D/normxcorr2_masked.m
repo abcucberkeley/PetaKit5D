@@ -59,6 +59,11 @@ combinedSize = fixedImageSize + movingImageSize - 1;
 optimalSize(1) = FindClosestValidDimension(combinedSize(1));
 optimalSize(2) = FindClosestValidDimension(combinedSize(2));
 
+%fixedImageSize = gpuArray(fixedImageSize);
+%movingImageSize = gpuArray(movingImageSize);
+combinedSize = gpuArray(combinedSize);
+optimalSize = gpuArray(optimalSize);
+
 % Only 6 FFTs are needed.
 fixedFFT = fft2(fixedImage,optimalSize(1),optimalSize(2));
 rotatedMovingFFT = fft2(rotatedMovingImage,optimalSize(1),optimalSize(2));
@@ -98,6 +103,7 @@ clear fixedDenom movingDenom;
 % Since the correlation value must be between -1 and 1, we therefore
 % saturate at these values.
 C = zeros(size(numerator));
+C = gpuArray(C);
 tol = 1000*eps( max(abs(denom(:))) );
 i_nonzero = find(denom > tol);
 C(i_nonzero) = numerator(i_nonzero) ./ denom(i_nonzero);
@@ -111,23 +117,29 @@ numberOfOverlapMaskedPixels = numberOfOverlapMaskedPixels(1:combinedSize(1),1:co
 %-----------------------------------------------------------------------------
 function [fixedImage, movingImage, fixedMask, movingMask] = ParseInputs(varargin)
 
-iptchecknargin(4,4,nargin,mfilename)
+%iptchecknargin(4,4,nargin,mfilename)
 
 fixedImage = varargin{1};
 movingImage = varargin{2};
 fixedMask = varargin{3};
 movingMask = varargin{4};
 
-iptcheckinput(fixedImage,{'logical','numeric'},{'real','nonsparse','2d','finite'},mfilename,'fixedImage',1)
-iptcheckinput(movingImage,{'logical','numeric'},{'real','nonsparse','2d','finite'},mfilename,'movingImage',2)
-iptcheckinput(fixedMask,{'logical','numeric'},{'real','nonsparse','2d','finite'},mfilename,'fixedMask',3)
-iptcheckinput(movingMask,{'logical','numeric'},{'real','nonsparse','2d','finite'},mfilename,'movingMask',4)
+%iptcheckinput(fixedImage,{'logical','numeric'},{'real','nonsparse','2d','finite'},mfilename,'fixedImage',1)
+%iptcheckinput(movingImage,{'logical','numeric'},{'real','nonsparse','2d','finite'},mfilename,'movingImage',2)
+%iptcheckinput(fixedMask,{'logical','numeric'},{'real','nonsparse','2d','finite'},mfilename,'fixedMask',3)
+%iptcheckinput(movingMask,{'logical','numeric'},{'real','nonsparse','2d','finite'},mfilename,'movingMask',4)
 
 % If either fixedImage or movingImage has a minimum value which is negative, we
 % need to shift the array so all values are positive to ensure numerically
 % robust results for the normalized cross-correlation.
 fixedImage = shiftData(fixedImage);
 movingImage = shiftData(movingImage);
+
+fixedImage = gpuArray(fixedImage);
+movingImage = gpuArray(movingImage);
+fixedMask = gpuArray(fixedMask);
+movingMask = gpuArray(movingMask);
+
 
 %-----------------------------------------------------------------------------
 function B = shiftData(A)
