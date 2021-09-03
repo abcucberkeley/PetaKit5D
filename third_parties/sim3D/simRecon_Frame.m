@@ -47,39 +47,9 @@ pxl_dim_data = pr.pxl_dim_data;
 pxl_dim_PSF = pr.pxl_dim_PSF;
 background = pr.background;
 
-
-
-%Setup initial parameters:
-%islattice=1; %Flag to indicate if this is light sheet data
-%NA_det=1.0;
-%NA_ext=0.55;
-%nimm=1.33;
-%wvl_em=.605;
-%wvl_ext=.560;
-%w = 5e-3; %Wiener coefficient for regularization
-%apodize=1; %Flag to indicate whether or not to apodize the final data
 %kvec_search_range=.5; %The +- range of k-space to search for information overlap (represented at microns in real space around estimated pattern period)
 
-%{
-nphases = 5;
-norders = 5;
-norientations = 1;
-lattice_period = 1.2021; %Lattice period in microns - this is the coarsest period
-lattice_angle = [pi/2]; %Angle parellel to pattern modulation (assuming horizontal is zero)
-phase_step = .232; %Phase step in microns
-pxl_dim_data = [0.11,0.11,0.3*sind(32.4)]; %Voxel dimensions of the image in microns - note, stored as [dy,dx,dz]
-pxl_dim_PSF = [0.11,0.11,0.2*sind(32.4)];  %Voxel dimensions of the PSF in microns - note, stored as [dy,dx,dz]
-background=105; %Background to subtract from the images - necessary to remove DC from fourier space
-%}
-
-%Folders and paths to the data and OTF
-%data_folder = ['/clusterfs/fiona/matthewmueller/20210830SimRecon3D/2020_11_12(Code_for_Kitware)/2020_11_12(Code_for_Kitware)/data/'];
-%data_file = ['Cell_5phase_small.tif'];
-%OTF_folder = ['/clusterfs/fiona/matthewmueller/20210830SimRecon3D/2020_11_12(Code_for_Kitware)/2020_11_12(Code_for_Kitware)/data/'];
-%OTF_file = ['PSF_5phas_OTF_normalized.mat'];
-
 %Load the OTF
-%disp("SIM_processdata_withShiftRefinement_5_phase_lattice_small.mlx")
 disp("Load OTF")
 tic
 %O=load([OTF_folder,'/',OTF_file]);
@@ -111,9 +81,7 @@ toc
 
 %Normalize resampled OTF's so that 0th order of each orientation has unit energy
 disp("Normalize OTF")
-%dk_PSF = gpuArray(dk_PSF);
 tic
-%O_scaled = gather(O_scaled);
 for jj=1:norientations
     OTF0=O_scaled(:,:,:,ceil(norders/2),jj);
     energy=sum(OTF0(:).*conj(OTF0(:))*prod(dk_PSF));
@@ -154,9 +122,9 @@ for jj=1:norientations
     
     %Make the inverse separation matrix
     inv_sep_matrix=pinv(sep_matrix);
+    inv_sep_matrix = gpuArray(inv_sep_matrix);
     
     for ii=1:nphases
-        %ii
         for kk=1:nphases
             Dk_sep(:,:,:,ii,jj)=Dk_sep(:,:,:,ii,jj)+inv_sep_matrix(ii,kk)*Dk(:,:,:,kk);
         end
@@ -173,8 +141,6 @@ disp("correct shift vector and starting lateral phase for each and scale shifted
 tic
 
 for jj=1:norientations
-    ai=[]; 
-    bi=[];
     for kk=1:floor(norders/2) %Only consider negative orders - positive orders a just the complex conjugate and opposite direction
         transform_tot=[0,0,0];
         order=(kk-ceil(norders/2)); %m'th order information component
@@ -192,7 +158,6 @@ for jj=1:norientations
         
         %Shift mask - we use imtranslate here because for small images,
         %fourier shifting can wrap around the image
-        %p_vec_guess = gather(p_vec_guess);
         cylmask_shift=imtranslate_function(double(cylmask(:,:,:,kk)),[p_vec_guess(kk,2,jj),p_vec_guess(kk,1,jj),p_vec_guess(kk,3,jj)],'FillValues',0);
         cylmask_shift=abs(cylmask_shift)>.5; %Get rid of non-logical values due to interpolation
         
@@ -209,7 +174,6 @@ for jj=1:norientations
         %Right now, we only do 1 round of shift vector refinement. In
         %practice, we could iterate.
         if qq==1
-                %[transform,maxC,C,numberOfOverlapMaskedPixels] = MaskedTranslationRegistration2D_fit(abs(sum(D0Om,3)),abs(sum(DmO0,3)),max(overlap_mask,[],3),max(overlap_mask,[],3),.5);
                 [transform,~,~,~] = MaskedTranslationRegistration2D_fit(abs(sum(D0Om,3)),abs(sum(DmO0,3)),max(overlap_mask,[],3),max(overlap_mask,[],3),.5);
                 transform=[transform(2),transform(1),0];
                 p_vec_guess(kk,:,jj)=p_vec_guess(kk,:,jj)-transform;
@@ -247,7 +211,11 @@ clear shift_Om
 clear shift_Dk_sep
 clear D0Om
 clear DmO0
+clear cylmask
 clear cylmask_shift
+clear overlap_mask
+clear ai
+clear bi
 toc
 
 
@@ -264,11 +232,8 @@ Dk_sep_scaled=gpuArray(padarray(zeros(ny_data,nx_data,nz_data),padrange,'both'))
 %normalize each of the separated information components prior to shifting
 %to their true locations in k-space
 
-%denom=padarray(zeros(ny_data,nx_data,nz_data),padrange,'both');
 denom = gpuArray(padarray(zeros(ny_data,nx_data,nz_data),padrange,'both'));
-%p_vec_guess = gpuArray(p_vec_guess);
 
-ii=ceil(norders/2);
 for qq=1:norientations
     for kk=1:norders
         big_Ospace=padarray(O_scaled(:,:,:,kk,qq).*B_PLS(kk,qq),padrange,'both');
@@ -282,19 +247,12 @@ clear big_Ospace
 clear shift_O
 toc
 
-%TESTING
-%disp("Filtering information components")
-%tic
-%Dk_sep_scaled = filterInformationComponents(ny_data,nx_data,nz_data,norientations,norders,denom,p_vec_guess,Dk_sep,O_scaled,B_PLS,padrange,w);
-%toc
-
 %'filtering information components'
 disp("Filtering information components")
 tic
 for jj=1:norientations
     for ii=1:norders
         shift_denom=imtranslate_function(denom,-[p_vec_guess(ii,2,jj),p_vec_guess(ii,1,jj),p_vec_guess(ii,3,jj)]);
-        shift_denom = gpuArray(shift_denom);
         numerator=padarray((Dk_sep(:,:,:,ii,jj).*conj(O_scaled(:,:,:,ii,jj).*B_PLS(ii,jj))),padrange,'both');
         Dk_sep_scaled(:,:,:,ii,jj)=numerator./(shift_denom+w^2);
     end
@@ -336,8 +294,9 @@ toc
 disp("apodizeEllipse")
 tic
 if apodize
-[Data_k_space_apodized,apo_ellipse] = apodizeEllipse(Data_k_space,dk_data,p_vec_guess,lattice_angle,NA_det,nimm,NA_ext,wvl_em,wvl_ext,islattice);
+[Data_k_space_apodized,~] = apodizeEllipse(Data_k_space,dk_data,p_vec_guess,lattice_angle,NA_det,nimm,NA_ext,wvl_em,wvl_ext,islattice);
 end
+clear Data_k_space
 toc
 
 %Transform final dataset back into real space
@@ -350,7 +309,7 @@ toc
 tic
 Data_r_space = gather(Data_r_space);
 %Write the data to disk
-write3Dtiff(single(abs(Data_r_space)),['/clusterfs/fiona/matthewmueller/20210830SimRecon3D/2020_11_12(Code_for_Kitware)/2020_11_12(Code_for_Kitware)/data/siRecon_5phase_small.tif'])
+%write3Dtiff(single(abs(Data_r_space)),['/clusterfs/fiona/matthewmueller/20210830SimRecon3D/2020_11_12(Code_for_Kitware)/2020_11_12(Code_for_Kitware)/data/siRecon_5phase_small.tif'])
 toc
 
 end

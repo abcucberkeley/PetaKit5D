@@ -1,4 +1,4 @@
-function [B,RB] = imtranslate(varargin)
+function [B,RB] = imtranslate_function(varargin)
 %IMTRANSLATE Translate image.
 %   B = IMTRANSLATE(A,TRANSLATION) translates image A by a translation
 %   vector TRANSLATION. TRANSLATION is of the form [TX TY] for 2-D inputs,
@@ -134,8 +134,6 @@ function [B,RB] = imtranslate(varargin)
 %   See also IMRESIZE, IMROTATE, IMWARP.
 
 %   Copyright 2013-2019 The MathWorks, Inc.
-
-narginchk(2,inf);
 
 [R_A, varargin] = preparseSpatialReferencingObjects(varargin{:});
 
@@ -436,17 +434,17 @@ isInputCategorical = false;
 varargin = matlab.images.internal.stringToChar(varargin);
 
 p = inputParser();
-p.addRequired('A',@validateInputImage);
-p.addRequired('TRANSLATION',@validateTranslation);
-p.addParameter('OutputView', 'same', @validateOutputView)
+p.addRequired('A');
+p.addRequired('TRANSLATION');
+p.addParameter('OutputView', 'same')
 
 if iscategorical(varargin{1})
     catConverter = images.internal.utils.CategoricalConverter(categories(varargin{1}));
-    p.addParameter('FillValues', missing, @(fillVal)validateCategoricalFillValues(fillVal,catConverter.Categories))
-    p.addOptional('METHOD', 'nearest', @validateInterp);
+    p.addParameter('FillValues', missing)
+    p.addOptional('METHOD', 'nearest');
 else
-    p.addParameter('FillValues', 0, @validateFillValues)
-    p.addOptional('METHOD', 'linear', @validateInterp);
+    p.addParameter('FillValues', 0)
+    p.addOptional('METHOD', 'linear');
 end
 
 p.parse(varargin{:});
@@ -467,109 +465,12 @@ if iscategorical(A)
     % 2.  Default Fill values will be set to missing, which corresponds to
     % '<undefined>' label in the output categorical result. Any other
     % FillValue results in an error.
-    
-    if ~(isequal(method,'nearest'))
-       error(message('MATLAB:images:validate:badMethodForCategorical'));
-    end
    
     % Get corresponding numeric value for the classname
     fillValues = catConverter.getNumericValue(fillValues);
     
     A = catConverter.categorical2Numeric(A);
     isInputCategorical = true;
-end
-
-postValidateTranslation(A,translation);
-checkFillValues(fillValues,A,translation);
-
-end
-
-
-%----------------------------------
-function TF = validateInputImage(A)
-
-    supportedClasses = {'uint8','uint16','uint32','int8','int16',...
-        'int32','single','double','logical','categorical'};
-    supportedImageAttributes = {'nonsparse','finite','nonempty'};
-    if iscategorical(A)
-        supportedImageAttributes = {'nonsparse','nonempty'};
-    end
-    
-    validateattributes(A,supportedClasses,supportedImageAttributes,mfilename,'A');
-
-    TF = true;
-
-end
-
-%-----------------------------------------
-function TF = validateInterp(interpMethod)
-
-    validatestring(interpMethod,{'nearest','linear','cubic','bilinear','bicubic'},...
-        mfilename,'METHOD');
-
-    TF = true;
-
-end
-
-%---------------------------------------------
-function TF = validateOutputView(boundingBox)
-
-    validatestring(boundingBox,{'same','full'},...
-        mfilename,'OutputView');
-
-    TF = true;
-
-end
-
-
-function TF = validateFillValues(fillVal)
-
-validateattributes(fillVal,{'numeric'},...
-    {'nonempty','nonsparse'},'imtranslate','FillValues');
-
-TF = true;
-
-end
-
-function TF = validateCategoricalFillValues(fillVal,cats)
-
-% FillVal for categorical input can be of the valid category in form of
-% char vector, or missing
-
-if ischar(fillVal) && any(strcmp(fillVal,cats))
-    TF = true;
-elseif ~ischar(fillVal) && ~isnumeric(fillVal) && isscalar(fillVal) && ismissing(fillVal)
-    TF = true;
-else
-    error(message('MATLAB:images:validate:badFillValueForCategorical'));
-end
-
-end
-
-%---------------------------------------------
-function TF = validateTranslation(translation)
-
-supportedNumericClasses = {'uint8','uint16','uint32','int8','int16',...
-    'int32','single','double'};
-
-validateattributes(translation,supportedNumericClasses,{'nonempty','vector','real','nonsparse','finite'},...
-    mfilename,'TRANSLATION');
-
-if ~any(numel(translation) == [2 3])
-    error(message('images:imtranslate:invalidTranslationLength','TRANSLATION'));
-end
-
-TF = true;
-
-end
-
-%----------------------------------------------
-function postValidateTranslation(A,translation)
-
-if numel(translation) == 3
-    if ndims(A) ~= 3
-        error(message('images:imtranslate:threeDimensionalTranslationImageMismatch','A','TRANSLATION'));
-    end
 end
 
 end
@@ -588,48 +489,12 @@ else
     % assign the identity spatial referencing object after input
     % parsing/validation has finished.
     translation = varargin{2};
-    validateTranslation(translation);
-    postValidateTranslation(varargin{1},translation);
     if (numel(translation) == 2)
         R_A = imref2d.empty();
     else
         R_A = imref3d.empty();
     end
     
-end
-
-end
-
-function checkSpatialRefAgreementWithInputImage(A,RA)
-% This should be abstracted into a package
-
-if ~sizesMatch(RA,A)
-    error(message('images:imwarp:spatialRefDimsDisagreeWithInputImage','ImageSize','RA','A'));
-end
-
-end
-
-function checkFillValues(fillValues,inputImage,translation)
-
-planeAtATimeProblem = numel(translation)==2  && ~ismatrix(inputImage);
-
-scalarFillValuesRequired = ~planeAtATimeProblem;
-if scalarFillValuesRequired && ~isscalar(fillValues)
-    error(message('images:imtranslate:scalarFillValueRequired','''FillValues'''));
-end
-
-if planeAtATimeProblem && ~isscalar(fillValues)
-    sizeImage = size(inputImage);
-    
-    % MxNxP input image is treated as a special case. We allow [1xP] or
-    % [Px1] fillValues vector in this case.
-    validFillValues = isequal(sizeImage(3:end),size(fillValues)) ||...
-        (isequal(ndims(inputImage),3) && isvector(fillValues)...
-        && isequal(length(fillValues),sizeImage(3)));
-    
-    if ~validFillValues
-        error(message('images:imwarp:fillValueDimMismatch','''FillValues''','''FillValues''','A'));
-    end
 end
 
 end

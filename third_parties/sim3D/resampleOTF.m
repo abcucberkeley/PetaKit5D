@@ -24,9 +24,8 @@ map_zz = gpuArray(map_zz);
 
 [OTF_xx_arr,OTF_yy_arr,OTF_zz_arr]=meshgrid(OTF_xx,OTF_yy,OTF_zz);
 [map_xx_arr,map_yy_arr,map_zz_arr]=meshgrid(map_xx,map_yy,map_zz);
-OTF_scaled=zeros(size(map_xx_arr));
+OTF_scaled=gpuArray(zeros(size(map_xx_arr)));
 inputOTF = gpuArray(inputOTF);
-OTF_scaled = gpuArray(OTF_scaled);
 for jj=1:norientations
     for ii=1:norders
         OTF_scaled(:,:,:,ii,jj) = interp3(OTF_xx_arr,OTF_yy_arr,OTF_zz_arr,inputOTF(:,:,:,ii,jj),map_xx_arr,map_yy_arr,map_zz_arr,'linear',0+0i);

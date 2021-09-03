@@ -24,6 +24,5 @@ inputImage = gpuArray(inputImage);
 Fimage=fftshift(fftn((inputImage)));
 Fimage_shift=Fimage.*exp(-1i*2*pi*(kyy_arr.*shifts(1)+kxx_arr.*shifts(2)+kzz_arr.*shifts(3)));
 shiftedImage=ifftn(ifftshift(Fimage_shift));
-%shiftedImage = gather(shiftedImage);
 
 end
