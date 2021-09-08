@@ -1,4 +1,4 @@
-function [transform,maxC,C,numberOfOverlapMaskedPixels] = MaskedTranslationRegistration2D_fit(fixedImage,movingImage,fixedMask,movingMask,overlapRatio)
+function [transform,maxC,C,numberOfOverlapMaskedPixels] = MaskedTranslationRegistration2D_fit(fixedImage,movingImage,fixedMask,movingMask,overlapRatio,useGPU)
 
 % [transform,maxC,C,numberOfOverlapMaskedPixels] =
 % MaskedTranslationRegistration(fixedImage,movingImage,fixedMask,movingMask,overlapRatio) 
@@ -31,7 +31,7 @@ if( nargin < 5 )
     overlapRatio = 3/10;
 end
 
-[C,numberOfOverlapMaskedPixels] = normxcorr2_masked(fixedImage,movingImage,fixedMask,movingMask);
+[C,numberOfOverlapMaskedPixels] = normxcorr2_masked(fixedImage,movingImage,fixedMask,movingMask,useGPU);
 
 imageSize = size(movingImage);
 

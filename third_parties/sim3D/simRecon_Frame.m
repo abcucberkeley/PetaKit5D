@@ -25,6 +25,8 @@ ip.addParameter('pxl_dim_data', [0.11,0.11,0.3*sind(32.4)], @isnumeric); %Voxel 
 ip.addParameter('pxl_dim_PSF', [0.11,0.11,0.2*sind(32.4)], @isnumeric); %Voxel dimensions of the PSF in microns - note, stored as [dy,dx,dz]
 ip.addParameter('background', 105, @isnumeric); 
 
+ip.addParameter('useGPU', true, @islogical);
+
 ip.parse(data, otf, varargin{:});
 
 pr = ip.Results;
@@ -46,6 +48,10 @@ phase_step = pr.phase_step;
 pxl_dim_data = pr.pxl_dim_data;
 pxl_dim_PSF = pr.pxl_dim_PSF;
 background = pr.background;
+useGPU = pr.useGPU;
+
+useGPU = useGPU & gpuDeviceCount > 0;
+    
 
 %kvec_search_range=.5; %The +- range of k-space to search for information overlap (represented at microns in real space around estimated pattern period)
 
@@ -56,7 +62,13 @@ tic
 fns = fieldnames(otf);
 otf=otf.(fns{1});
 [ny_PSF,nx_PSF,nz_PSF,~,~] = size(otf);
-dk_PSF=gpuArray(1./([ny_PSF,nx_PSF,nz_PSF].*pxl_dim_PSF));
+
+if(useGPU)
+    dk_PSF=gpuArray(1./([ny_PSF,nx_PSF,nz_PSF].*pxl_dim_PSF));
+else
+    dk_PSF=1./([ny_PSF,nx_PSF,nz_PSF].*pxl_dim_PSF);
+end
+
 toc
 
 %Load the data
@@ -68,7 +80,12 @@ data(data<0)=0;
 
 [ny_data,nx_data,nimgs_data] = size(data);
 nz_data=nimgs_data/(nphases*norientations);
-dk_data=gpuArray(1./([ny_data,nx_data,nz_data].*pxl_dim_data));
+
+if(useGPU)
+    dk_data=gpuArray(1./([ny_data,nx_data,nz_data].*pxl_dim_data));
+else 
+    dk_data=1./([ny_data,nx_data,nz_data].*pxl_dim_data);
+end
 toc
 
 %Rescale OTF to be the same size as the image data - this is done by
@@ -76,7 +93,7 @@ toc
 %k-space representation of the data
 disp("Rescale OTF")
 tic
-[O_scaled]=resampleOTF(otf,pxl_dim_PSF,data,pxl_dim_data,nphases,norders,norientations);
+[O_scaled]=resampleOTF(otf,pxl_dim_PSF,data,pxl_dim_data,nphases,norders,norientations,useGPU);
 toc
 
 %Normalize resampled OTF's so that 0th order of each orientation has unit energy
@@ -94,7 +111,7 @@ toc
 %Make a cylindrical mask based on the theoretical lateral and axial OTF extent
 disp("cylMask")
 tic
-cylmask=cylMask(NA_det,wvl_em,NA_ext,wvl_ext,nimm,norders,ny_data,nx_data,nz_data,dk_data,islattice);
+cylmask=cylMask(NA_det,wvl_em,NA_ext,wvl_ext,nimm,norders,ny_data,nx_data,nz_data,dk_data,islattice,useGPU);
 toc
 
 % Notes: right now, this masking is just used when determining the starting 
@@ -104,12 +121,21 @@ toc
 %Separate data information orders by solving the linear system of equations for each pixel
 disp("Separate data information orders by solving the linear system of equations for each pixel (perdecomp_3D/make_forward_seperation_matrix)")
 tic
-Dk_sep=gpuArray(zeros(ny_data,nx_data,nz_data,norders,norientations));
+if(useGPU)
+    Dk_sep=gpuArray(zeros(ny_data,nx_data,nz_data,norders,norientations));
+else
+    Dk_sep=zeros(ny_data,nx_data,nz_data,norders,norientations);
+end
 for jj=1:norientations
     
     %Separate the images for each phase and generate the separated Dk orders
-    Dr = gpuArray(zeros(ny_data,nx_data,nz_data,nphases));
-    Dk = gpuArray(zeros(ny_data,nx_data,nz_data,nphases));
+    if(useGPU)
+        Dr = gpuArray(zeros(ny_data,nx_data,nz_data,nphases));
+        Dk = gpuArray(zeros(ny_data,nx_data,nz_data,nphases));
+    else
+        Dr = zeros(ny_data,nx_data,nz_data,nphases);
+        Dk = zeros(ny_data,nx_data,nz_data,nphases);
+    end
     
     for ii=1:nphases
         Dr(:,:,:,ii)=double(data(:,:,ii+(jj-1)*nphases:nphases*norientations:end));
@@ -122,7 +148,9 @@ for jj=1:norientations
     
     %Make the inverse separation matrix
     inv_sep_matrix=pinv(sep_matrix);
-    inv_sep_matrix = gpuArray(inv_sep_matrix);
+    if(useGPU)
+        inv_sep_matrix = gpuArray(inv_sep_matrix);
+    end
     
     for ii=1:nphases
         for kk=1:nphases
@@ -151,15 +179,24 @@ for jj=1:norientations
         
         for qq=1:2
         %Shift image frequency information - D˜m(k+mp)
-        shift_Dk_sep=fourierShift3D(Dk_sep(:,:,:,kk,jj),p_vec_guess(kk,:,jj));
+        shift_Dk_sep=fourierShift3D(Dk_sep(:,:,:,kk,jj),p_vec_guess(kk,:,jj),useGPU);
         
         %Shift transfer function - O_m(k+mp)
-        shift_Om=fourierShift3D(O_scaled(:,:,:,kk,jj),p_vec_guess(kk,:,jj));
+        shift_Om=fourierShift3D(O_scaled(:,:,:,kk,jj),p_vec_guess(kk,:,jj),useGPU);
         
         %Shift mask - we use imtranslate here because for small images,
         %fourier shifting can wrap around the image
-        cylmask_shift=imtranslate_function(double(cylmask(:,:,:,kk)),[p_vec_guess(kk,2,jj),p_vec_guess(kk,1,jj),p_vec_guess(kk,3,jj)],'FillValues',0);
-        cylmask_shift=abs(cylmask_shift)>.5; %Get rid of non-logical values due to interpolation
+        % cylmask_shift=imtranslate_function(double(cylmask(:,:,:,kk)),[p_vec_guess(kk,2,jj),p_vec_guess(kk,1,jj),p_vec_guess(kk,3,jj)],'FillValues',0);
+        % cylmask_shift_0=abs(cylmask_shift)>.5; %Get rid of non-logical values due to interpolation
+        
+        sz = size(cylmask, [1, 2, 3]);
+        cylmask_shift = false(sz);
+        shift = round([p_vec_guess(kk,1,jj),p_vec_guess(kk,2,jj),p_vec_guess(kk,3,jj)]);
+        so = max(1, 1 - shift);
+        to = min(sz, sz - shift);
+        sn = max(1, shift + 1);
+        tn = min(sz, sz + shift);
+        cylmask_shift(sn(1) : tn(1), sn(2) : tn(2), sn(3) : tn(3)) = cylmask(so(1) : to(1), so(2) : to(2), so(3) : to(3), kk);
         
         %Overlap mask with the zero-information component
         overlap_mask= cylmask(:,:,:,3)&cylmask_shift;
@@ -174,7 +211,7 @@ for jj=1:norientations
         %Right now, we only do 1 round of shift vector refinement. In
         %practice, we could iterate.
         if qq==1
-                [transform,~,~,~] = MaskedTranslationRegistration2D_fit(abs(sum(D0Om,3)),abs(sum(DmO0,3)),max(overlap_mask,[],3),max(overlap_mask,[],3),.5);
+                [transform,~,~,~] = MaskedTranslationRegistration2D_fit(abs(sum(D0Om,3)),abs(sum(DmO0,3)),max(overlap_mask,[],3),max(overlap_mask,[],3),.5,useGPU);
                 transform=[transform(2),transform(1),0];
                 p_vec_guess(kk,:,jj)=p_vec_guess(kk,:,jj)-transform;
                 transform_tot=transform_tot+transform;
@@ -192,7 +229,7 @@ for jj=1:norientations
         ai=D0Om(overlap_mask(:));
         bi=DmO0(overlap_mask(:));
         
-        B_TLS(kk,jj) = tls(ai,bi); %Total least squares regression on two complex vectors
+        B_TLS(kk,jj) = tls(ai,bi,useGPU); %Total least squares regression on two complex vectors
         B_PLS(kk,jj) = sum(conj(ai).*bi)/sum(abs(ai).^2); %Partial least squares regression on the two complex vectors
     end
     
@@ -225,20 +262,24 @@ tic
 supersample=[2,2,1];
 padrange=floor((supersample.*[ny_data,nx_data,nz_data]-[ny_data,nx_data,nz_data])/2);
 
-B_PLS = gpuArray(B_PLS);
-Dk_sep_scaled=gpuArray(padarray(zeros(ny_data,nx_data,nz_data),padrange,'both'));
+if(useGPU)
+    B_PLS = gpuArray(B_PLS);
+    Dk_sep_scaled=gpuArray(padarray(zeros(ny_data,nx_data,nz_data),padrange,'both'));
+    denom = gpuArray(padarray(zeros(ny_data,nx_data,nz_data),padrange,'both'));
+else 
+    Dk_sep_scaled = padarray(zeros(ny_data,nx_data,nz_data),padrange,'both');
+    denom = padarray(zeros(ny_data,nx_data,nz_data),padrange,'both');
+end
 
 %Assemble denominator of Weiner filter - this will then be shifted opposite to the p-vector direction to
 %normalize each of the separated information components prior to shifting
 %to their true locations in k-space
 
-denom = gpuArray(padarray(zeros(ny_data,nx_data,nz_data),padrange,'both'));
-
 for qq=1:norientations
     for kk=1:norders
         big_Ospace=padarray(O_scaled(:,:,:,kk,qq).*B_PLS(kk,qq),padrange,'both');
         p_vec_shift=p_vec_guess(kk,:,qq);
-        shift_O=fourierShift3D(big_Ospace,p_vec_shift);
+        shift_O=fourierShift3D(big_Ospace,p_vec_shift,useGPU);
         denom=denom+abs(shift_O).^2;
     end
 end
@@ -275,13 +316,18 @@ toc
 %'assembling final dataset'
 disp("assembling final dataset")
 tic
-Data_k_space = gpuArray(padarray(zeros(ny_data,nx_data,nz_data),padrange,'both'));
-p_vec_guess = gpuArray(p_vec_guess);
+
+if(useGPU)
+    Data_k_space = gpuArray(padarray(zeros(ny_data,nx_data,nz_data),padrange,'both'));
+    p_vec_guess = gpuArray(p_vec_guess);
+else
+    Data_k_space = padarray(zeros(ny_data,nx_data,nz_data),padrange,'both');
+end
 %Shift information components and assemble final image
 for jj=1:norientations
 %Assemble final dataset
 for ii=1:norders
-    big_kspace_shifted=fourierShift3D(Dk_sep_scaled(:,:,:,ii,jj),p_vec_guess(ii,:,jj));
+    big_kspace_shifted=fourierShift3D(Dk_sep_scaled(:,:,:,ii,jj),p_vec_guess(ii,:,jj),useGPU);
     Data_k_space=Data_k_space+big_kspace_shifted;
     clear big_kspace_shifted
 end
@@ -294,7 +340,7 @@ toc
 disp("apodizeEllipse")
 tic
 if apodize
-[Data_k_space_apodized,~] = apodizeEllipse(Data_k_space,dk_data,p_vec_guess,lattice_angle,NA_det,nimm,NA_ext,wvl_em,wvl_ext,islattice);
+[Data_k_space_apodized,~] = apodizeEllipse(Data_k_space,dk_data,p_vec_guess,lattice_angle,NA_det,nimm,NA_ext,wvl_em,wvl_ext,islattice,useGPU);
 end
 clear Data_k_space
 toc
@@ -307,9 +353,11 @@ toc
 
 %disp("write to disk (write3Dtiff)")
 tic
-Data_r_space = gather(Data_r_space);
+if(useGPU)
+    Data_r_space = gather(Data_r_space);
+end
 %Write the data to disk
-%write3Dtiff(single(abs(Data_r_space)),['/clusterfs/fiona/matthewmueller/20210830SimRecon3D/2020_11_12(Code_for_Kitware)/2020_11_12(Code_for_Kitware)/data/siRecon_5phase_small.tif'])
+%write3Dtiff(single(abs(Data_r_space)),['/clusterfs/fiona/matthewmueller/20210830SimRecon3D/2020_11_12(Code_for_Kitware)/2020_11_12(Code_for_Kitware)/data/siRecon_5phase_small_CPUOPTIMIZED.tif'])
 toc
 
 end

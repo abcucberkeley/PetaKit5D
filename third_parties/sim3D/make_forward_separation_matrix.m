@@ -8,7 +8,6 @@ function [sep_matrix]=make_forward_separation_matrix(nphases,norders,lattice_per
     delta_phi=phase_step/lattice_period*2*pi; %Convert phase step in nm to phase step as a fraction of 2pi
     
     sep_matrix=zeros(nphases,norders);
-    %sep_matrix = gpuArray(sep_matrix);
     
     for ii=1:nphases
             counter=0;

@@ -241,7 +241,7 @@ if locationsInSourceMapToDestination
     % At this point we know the locations in source that map into valid
     % locations in the destination image. We want to forward map these into
     % corresponding subscripts in our output image.
-    NonFillOutputLocX = UWorldClippedToBounds + translation(1);
+    NonFillOutputLocX = UWorldClippedToBounds + translation(1);computeOutputSpatialRef
     NonFillOutputLocY = VWorldClippedToBounds + translation(2);
     [outputR,outputC] = Rout.worldToSubscript(NonFillOutputLocX,NonFillOutputLocY);
     

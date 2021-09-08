@@ -1,4 +1,4 @@
-function [Data_k_space_apodized,apo_ellipse] = apodizeEllipse(Data_k_space,dk_data,p_vec_guess,angle,NA_det,nimm,NA_ext_max,wvl_em,wvl_ext,islattice)
+function [Data_k_space_apodized,apo_ellipse] = apodizeEllipse(Data_k_space,dk_data,p_vec_guess,angle,NA_det,nimm,NA_ext_max,wvl_em,wvl_ext,islattice,useGPU)
 
 alpha_det=asin(NA_det/nimm); %Half angle for detection NA
 alpha_ext=asin(NA_ext_max/nimm); %Half angle for excitation NA
@@ -11,9 +11,11 @@ kyy_ss=[-ceil((ny_datass-1)/2):floor((ny_datass-1)/2)]*dk_data(1);
 kxx_ss=[-ceil((nx_datass-1)/2):floor((nx_datass-1)/2)]*dk_data(2);
 kzz_ss=[-ceil((nz_datass-1)/2):floor((nz_datass-1)/2)]*dk_data(3);
 
-kyy_ss = gpuArray(kyy_ss);
-kxx_ss = gpuArray(kxx_ss);
-kzz_ss = gpuArray(kzz_ss);
+if(useGPU)
+    kyy_ss = gpuArray(kyy_ss);
+    kxx_ss = gpuArray(kxx_ss);
+    kzz_ss = gpuArray(kzz_ss);
+end
 
 [kxx_ss_arr,kyy_ss_arr,kzz_ss_arr]=meshgrid(kxx_ss,kyy_ss,kzz_ss);
     

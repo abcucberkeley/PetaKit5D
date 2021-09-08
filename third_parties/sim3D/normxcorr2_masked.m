@@ -14,7 +14,7 @@ function [C,numberOfOverlapMaskedPixels] = normxcorr2_masked(varargin)
 %   fixedImage and movingImage need not be the same size, but fixedMask
 %   must be the same size as fixedImage, and movingMask must be the same
 %   size as movingImage.
-%   The resulting matrix C contains correlation coefficients and its values
+%   The resulting matrix C contains cogrrelation coefficients and its values
 %   range from -1.0 to 1.0. 
 %
 %   References: 
@@ -26,7 +26,7 @@ function [C,numberOfOverlapMaskedPixels] = normxcorr2_masked(varargin)
 %   Author: Dirk Padfield, GE Global Research, padfield@research.ge.com
 %
 
-[fixedImage, movingImage, fixedMask, movingMask] = ParseInputs(varargin{:});
+[fixedImage, movingImage, fixedMask, movingMask,useGPU] = ParseInputs(varargin{:});
 clear varargin;
 
 fixedMask = double(fixedMask);
@@ -59,10 +59,10 @@ combinedSize = fixedImageSize + movingImageSize - 1;
 optimalSize(1) = FindClosestValidDimension(combinedSize(1));
 optimalSize(2) = FindClosestValidDimension(combinedSize(2));
 
-%fixedImageSize = gpuArray(fixedImageSize);
-%movingImageSize = gpuArray(movingImageSize);
-combinedSize = gpuArray(combinedSize);
-optimalSize = gpuArray(optimalSize);
+if(useGPU)
+    combinedSize = gpuArray(combinedSize);
+    optimalSize = gpuArray(optimalSize);
+end
 
 % Only 6 FFTs are needed.
 fixedFFT = fft2(fixedImage,optimalSize(1),optimalSize(2));
@@ -103,7 +103,9 @@ clear fixedDenom movingDenom;
 % Since the correlation value must be between -1 and 1, we therefore
 % saturate at these values.
 C = zeros(size(numerator));
-C = gpuArray(C);
+if(useGPU)
+    C = gpuArray(C);
+end
 tol = 1000*eps( max(abs(denom(:))) );
 i_nonzero = find(denom > tol);
 C(i_nonzero) = numerator(i_nonzero) ./ denom(i_nonzero);
@@ -115,7 +117,7 @@ C = C(1:combinedSize(1),1:combinedSize(2));
 numberOfOverlapMaskedPixels = numberOfOverlapMaskedPixels(1:combinedSize(1),1:combinedSize(2));
 
 %-----------------------------------------------------------------------------
-function [fixedImage, movingImage, fixedMask, movingMask] = ParseInputs(varargin)
+function [fixedImage, movingImage, fixedMask, movingMask, useGPU] = ParseInputs(varargin)
 
 %iptchecknargin(4,4,nargin,mfilename)
 
@@ -123,6 +125,7 @@ fixedImage = varargin{1};
 movingImage = varargin{2};
 fixedMask = varargin{3};
 movingMask = varargin{4};
+useGPU = varargin{5};
 
 %iptcheckinput(fixedImage,{'logical','numeric'},{'real','nonsparse','2d','finite'},mfilename,'fixedImage',1)
 %iptcheckinput(movingImage,{'logical','numeric'},{'real','nonsparse','2d','finite'},mfilename,'movingImage',2)
@@ -135,10 +138,13 @@ movingMask = varargin{4};
 fixedImage = shiftData(fixedImage);
 movingImage = shiftData(movingImage);
 
-fixedImage = gpuArray(fixedImage);
-movingImage = gpuArray(movingImage);
-fixedMask = gpuArray(fixedMask);
-movingMask = gpuArray(movingMask);
+if(useGPU)
+    fixedImage = gpuArray(fixedImage);
+    movingImage = gpuArray(movingImage);
+    fixedMask = gpuArray(fixedMask);
+    movingMask = gpuArray(movingMask);
+end
+
 
 
 %-----------------------------------------------------------------------------

@@ -1,4 +1,4 @@
-function [shiftedImage]=fourierShift3D(inputImage,shifts)
+function [shiftedImage]=fourierShift3D(inputImage,shifts,useGPU)
 %Performs sub-pixel real-space shifts of a 3D image by applying a phase
 %ramp in Fourier space
 
@@ -12,15 +12,17 @@ kxx=[-ceil((nx-1)/2):floor((nx-1)/2)];
 kyy=[-ceil((ny-1)/2):floor((ny-1)/2)];
 kzz=[-ceil((nz-1)/2):floor((nz-1)/2)];
 
-kxx = gpuArray(kxx);
-kyy = gpuArray(kyy);
-kzz = gpuArray(kzz);
+if(useGPU)
+    kxx = gpuArray(kxx);
+    kyy = gpuArray(kyy);
+    kzz = gpuArray(kzz);
+    inputImage = gpuArray(inputImage);
+end
 
 %Set up arrays for frequency space pixels
 [kxx_arr,kyy_arr,kzz_arr]=meshgrid(kxx/nx,kyy/ny,kzz/nz);
 
 %FFT image, apply phase ramp, and inverse transform
-inputImage = gpuArray(inputImage);
 Fimage=fftshift(fftn((inputImage)));
 Fimage_shift=Fimage.*exp(-1i*2*pi*(kyy_arr.*shifts(1)+kxx_arr.*shifts(2)+kzz_arr.*shifts(3)));
 shiftedImage=ifftn(ifftshift(Fimage_shift));
