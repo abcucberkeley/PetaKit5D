@@ -68,6 +68,8 @@ function [] = XR_matlab_stitching_wrapper(dataPath, imageListFileName, varargin)
 % do not match the file pattern. 
 % xruan (07/05/2021): add support for user defined resample (arbitary factor)
 % xruan (07/15/2021): extend subiteration to unlimited number of sets
+% xruan (08/25/2021): add support for channel-specific user functions
+
 
 ip = inputParser;
 ip.CaseSensitive = false;
@@ -111,7 +113,7 @@ ip.addParameter('primaryCh', '', @(x) isempty(x) || ischar(x)); % format: CamA_c
 ip.addParameter('usePrimaryCoords', false, @islogical); 
 ip.addParameter('Save16bit', false, @islogical);
 ip.addParameter('pipeline', 'matlab', @(x) strcmpi(x, 'matlab') || strcmpi(x, 'zarr'));
-ip.addParameter('processFunPath', '', @(x) isempty(x) || ischar(x)); % path of user-defined process function handle
+ip.addParameter('processFunPath', '', @(x) isempty(x) || ischar(x) || iscell(x)); % path of user-defined process function handle
 ip.addParameter('parseCluster', true, @islogical);
 ip.addParameter('masterCompute', true, @islogical); % master node participate in the task computing. 
 ip.addParameter('jobLogDir', '../job_logs', @ischar);
@@ -415,21 +417,12 @@ if ~isempty(timepoints)
         subSubIter = cellfun(@(x) str2double(x(11 : 14)), fullIter);
         fullIter = fullIter(ismember([Iter, subIter, subSubIter], [timepoints(:), subtimepoints(:), subsubtimepoints(:)], 'rows'));
     end
-    
-%     switch size(timepoints, 2)
-%         case 1
-%             fullIter = fullIter(ismember(Iter, timepoints(:, 1)));
-%         case 2
-%             subIter = cellfun(@(x) str2double(x(6 : 9)), fullIter);
-%             fullIter = fullIter(ismember([Iter, subIter], timepoints(:, 1 : 2), 'rows'));
-%         case 3
-%             subIter = cellfun(@(x) str2double(x(6 : 9)), fullIter);
-%             subSubIter = cellfun(@(x) str2double(x(11 : 14)), fullIter);
-%             fullIter = fullIter(ismember([Iter, subIter, subSubIter], timepoints(:, 1 : 3), 'rows'));
-%         otherwise
-%             
-%     end
 end
+
+if ischar(processFunPath)
+    processFunPath = repmat({processFunPath}, numel(ChannelPatterns));
+end
+
 
 %% do stitching computing
 row_exist_flag = true(numel(fullIter), numel(Cam), numel(stackn), numel(Ch)); % flag for whether the run exists.
@@ -670,7 +663,8 @@ while ~all(is_done_flag | trial_counter >= max_trial_num, 'all')
                     end
                     
                     tile_fullpaths_str = sprintf('{''%s''}', strjoin(tile_fullpaths, ''','''));
-                    xyz_str = strrep(mat2str(xyz), ' ', ',');                      
+                    xyz_str = strrep(mat2str(xyz), ' ', ',');  
+                    cind = cellfun(@(x) contains(tile_fullpaths{1}, x), ChannelPatterns);
                     func_str = sprintf(['%s(%s,%s,''axisOrder'',''%s'',''px'',%0.10f,''dz'',%0.10f,', ...
                         '''Reverse'',%s,''ObjectiveScan'',%s,''resultDir'',''%s'',''stitchInfoDir'',''%s'',''stitchInfoFullpath'',''%s'',', ...
                         '''DSRDirstr'',''%s'',''DSRDeconDirstr'',''%s'',''DS'',%s,''DSR'',%s,''resampleType'',''%s'',''resample'',[%s],''BlendMethod'',''%s'',', ...
@@ -680,7 +674,7 @@ while ~all(is_done_flag | trial_counter >= max_trial_num, 'all')
                         stitchInfoFullpath, DSRDirstr, DSRDeconDirstr, string(DS), string(DSR), resampleType, strrep(num2str(resample, '%.10d,'), ' ', ''), ...
                         BlendMethod, overlapType, string(xcorrShift), xyMaxOffset, zMaxOffset, string(isPrimaryCh), string(usePrimaryCoords), num2str(padSize, '%d,'), ...
                         strrep(num2str(boundboxCrop, '%d,'), ' ', ''), string(zNormalize),  string(Save16bit), strrep(num2str(tileNum, '%d,'), ' ', ''), ...
-                        strrep(num2str(flippedTile, '%d,'), ' ', ''), processFunPath);
+                        strrep(num2str(flippedTile, '%d,'), ' ', ''), processFunPath{cind});
 
                     if exist(cur_tmp_fname, 'file') || (parseCluster && ~(masterCompute && strcmpi(xcorrMode, 'primaryFirst') && isPrimaryCh))
                         % for cluster computing with master, check whether

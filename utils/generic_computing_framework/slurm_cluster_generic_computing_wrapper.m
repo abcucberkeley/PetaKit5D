@@ -11,7 +11,8 @@ function [is_done_flag] = slurm_cluster_generic_computing_wrapper(inputFullpaths
 % the disk and load it in matlab when func str in wrap fails.
 % xruan (07/15/2021): improving the transition of a job finished while the
 % result is not yet visible to the master job.
-
+% xruan(08/26/2021): add support for limiting active jobs (pending/running). 
+%   also add support for batch tasks running, i.e., run several tasks within one job
 
 ip = inputParser;
 ip.CaseSensitive = false;
@@ -20,13 +21,15 @@ ip.addRequired('outputFullpaths', @(x) iscell(x) || ischar(x));
 ip.addRequired('functionStrs', @(x) iscell(x) || ischar(x));
 ip.addParameter('parseCluster', true, @islogical);
 ip.addParameter('masterCompute', true, @islogical); % master node participate in the task computing. 
-ip.addParameter('jobLogDir', '../job_logs', @isstr);
-ip.addParameter('tmpDir', '', @isstr);
+ip.addParameter('jobLogDir', '../job_logs', @ischar);
+ip.addParameter('tmpDir', '', @ischar);
 ip.addParameter('cpusPerTask', 1, @isnumeric);
 ip.addParameter('cpuOnlyNodes', true, @islogical);
-ip.addParameter('uuid', '', @isstr);
+ip.addParameter('uuid', '', @ischar);
 ip.addParameter('maxTrialNum', 3, @isnumeric);
 ip.addParameter('unitWaitTime', 30, @isnumeric);
+ip.addParameter('maxJobNum', inf, @isnumeric); % submit limited number of jobs (pending/running)
+ip.addParameter('taskBatchNum', 1, @isnumeric); % aggragate several tasks together
 ip.addParameter('MatlabLaunchStr', 'module load matlab/r2021a; matlab -nodisplay -nosplash -nodesktop -nojvm -r', @ischar);
 ip.addParameter('SlurmParam', '-p abc --qos abc_normal -n1 --mem-per-cpu=21418M', @ischar);
 ip.addParameter('language', 'matlab', @ischar); % support matlab, bash
@@ -47,6 +50,8 @@ cpusPerTask = pr.cpusPerTask;
 cpuOnlyNodes = pr.cpuOnlyNodes;
 maxTrialNum = pr.maxTrialNum;
 unitWaitTime = pr.unitWaitTime;
+maxJobNum = pr.maxJobNum;
+taskBatchNum = pr.taskBatchNum;
 uuid = pr.uuid;
 SlurmParam = pr.SlurmParam;
 MatlabLaunchStr = pr.MatlabLaunchStr;
@@ -75,77 +80,92 @@ loop_counter = 0;
 while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
     if parseCluster
         lastP = find(~is_done_flag & trial_counter < maxTrialNum, 1, 'last');
+        nB = ceil(nF / taskBatchNum);
     else
         % For no cluster computing, choose the first unfinished one, to avoid 
         % waiting time in each iteration. 
         lastP = find(~is_done_flag & trial_counter < maxTrialNum, 1, 'first');
+        nB = nF;
     end
-    
-    for f = 1 : nF
-        inputFullpath_i = inputFullpaths{f};
-        task_id = rem(f, 5000);
         
-        if iscell(inputFullpath_i)
-            for fi = 1 : numel(inputFullpath_i)
-                inputFullpath = inputFullpath_i{fi};
+    fsnames = cell(1, nF);
+    for b = 1 : nB
+        fs = (b - 1) * taskBatchNum + 1 : min(b * taskBatchNum, nF);
+        task_id = rem(b, 5000);
+        
+        for f = fs
+            inputFullpath_i = inputFullpaths{f};
+
+            if iscell(inputFullpath_i)
+                for fi = 1 : numel(inputFullpath_i)
+                    inputFullpath = inputFullpath_i{fi};
+                    if ~(exist(inputFullpath, 'file') || exist(inputFullpath, 'dir'))
+                        sprintf('%s does not exist, skip it!', inputFullpath);
+                        is_done_flag(f) = true;
+                        % continue;
+                    end
+                end
+            else
+                inputFullpath = inputFullpath_i;
                 if ~(exist(inputFullpath, 'file') || exist(inputFullpath, 'dir'))
                     sprintf('%s does not exist, skip it!', inputFullpath);
                     is_done_flag(f) = true;
-                    continue;
+                    % continue;
                 end
-            end
-        else
-            inputFullpath = inputFullpath_i;
-            if ~(exist(inputFullpath, 'file') || exist(inputFullpath, 'dir'))
-                sprintf('%s does not exist, skip it!', inputFullpath);
-                is_done_flag(f) = true;
-                continue;
-            end
-        end
-        if is_done_flag(f) || trial_counter(f) >= maxTrialNum 
-            continue;
-        end
-        outputFullpath = outputFullpaths{f};
-        if strcmp(outputFullpath(end), filesep)
-            outputFullpath = outputFullpath(1 : end - 1);
-        end
-        [outputDir, fsname, ext] = fileparts(outputFullpath);
-        if isempty(fsname) && ~isempty(ext)
-            fsname = ext;
-        end
-        if isempty(tmpDir)
-            tmpFullpath = sprintf('%s/%s.tmp', outputDir, fsname);
-        else
-            tmpFullpath = sprintf('%s/%s.tmp', tmpDir, fsname);            
-        end
-        if exist(outputFullpath, 'file') || exist(outputFullpath, 'dir')
-            is_done_flag(f) = true;
-            if exist(tmpFullpath, 'file')
-                delete(tmpFullpath);
             end
             
-            % kill new pending jobs
-            if parseCluster && job_ids(f) > 0
-                job_status = check_slurm_job_status(job_ids(f), task_id); 
-                if job_status ~= 1
-                    system(sprintf('scancel %d_%d', job_ids(f), task_id), '-echo');
+            outputFullpath = outputFullpaths{f};
+            if strcmp(outputFullpath(end), filesep)
+                outputFullpath = outputFullpath(1 : end - 1);
+            end
+            [outputDir, fsname, ext] = fileparts(outputFullpath);
+            if isempty(fsname) && ~isempty(ext)
+                fsname = ext;
+            end
+            fsnames{f} = fsname;
+            if isempty(tmpDir)
+                tmpFullpath = sprintf('%s/%s.tmp', outputDir, fsname);
+            else
+                tmpFullpath = sprintf('%s/%s.tmp', tmpDir, fsname);            
+            end
+            if exist(outputFullpath, 'file') || exist(outputFullpath, 'dir')
+                is_done_flag(f) = true;
+                if exist(tmpFullpath, 'file')
+                    delete(tmpFullpath);
+                end
+
+                % kill new pending jobs
+                if parseCluster && job_ids(f) > 0
+                    job_status = check_slurm_job_status(job_ids(f), task_id); 
+                    if job_status ~= 1
+                        system(sprintf('scancel %d_%d', job_ids(f), task_id), '-echo');
+                    end
                 end
             end
+        end
+    
+        if all(is_done_flag(fs) | trial_counter(fs) >= maxTrialNum)
+            continue;
+        end
 
+        if parseCluster && sum(job_status_mat(~is_done_flag(1 : taskBatchNum : nF), 1) >= 0) >= maxJobNum
             continue;
         end
         
-        func_str = funcStrs{f};
+        func_str = strjoin(funcStrs(fs), ';');
+        f = fs(end);
         if exist(tmpFullpath, 'file') || parseCluster
             if parseCluster
                 job_status = check_slurm_job_status(job_ids(f), task_id);
-                job_status_mat(f, 2) = job_status_mat(f, 1);
-                job_status_mat(f, 1) = job_status;
+                job_status_mat(fs, 2) = job_status_mat(fs, 1);
+                job_status_mat(fs, 1) = job_status;
 
                 % kill the first pending job and use master node do the computing.
-                if job_status == 0.5 && (masterCompute && f == lastP)
+                if job_status == 0 && (masterCompute && b == lastP)
                     system(sprintf('scancel %d_%d', job_ids(f), task_id), '-echo');
-                    trial_counter(f) = trial_counter(f) - 1;
+                    trial_counter(fs) = trial_counter(fs) - 1;
+                    job_status_mat(fs, 1) = -1;
+                    job_status_mat(fs, 2) = -1;
                 end
 
                 % if the job is still running, skip it. 
@@ -160,15 +180,15 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
 
                 % If there is no job, submit a job
                 if job_status == -1 && job_status_mat(f, 2) == -1 && ~(masterCompute && f == lastP)
-                    if rem(f, 50) == 0 || f == 1
-                        fprintf('Task % 4d:    Process %s with function %s... \n', f, fsname, func_str); 
+                    if rem(b, 50) == 0 || b == 1
+                        fprintf('Task % 4d:    Process %s with function %s... \n', b, strjoin(fsnames(fs), ', '), func_str); 
                     else
-                        fprintf('Task % 4d:    Process %s ... \n', f, fsname);    
+                        fprintf('Task % 4d:    Process %s ... \n', b, strjoin(fsnames(fs), ', '));    
                     end
                     if strcmpi(language, 'matlab')
                         matlab_setup_str = 'setup([],true)';
 
-                        matlab_cmd = sprintf('%s;tic;%s;toc', matlab_setup_str, func_str);
+                        matlab_cmd = sprintf('%s;t0_=tic;%s;toc(t0_)', matlab_setup_str, func_str);
                         process_cmd = sprintf('%s \\"%s\\"', MatlabLaunchStr, matlab_cmd);
                         cmd = sprintf(['sbatch --array=%d -o %s -e %s --cpus-per-task=%d %s %s ', ...
                             '--wrap="echo Matlab command:  \\\"%s\\\"; %s"'], ...
@@ -189,10 +209,11 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
                         if ~exist(func_str_dir, 'dir')
                             mkdir(func_str_dir);
                         end
-                        func_str_fn = sprintf('%s/func_str_f%04d_%s_%s.mat', func_str_dir, f, fsname, uuid);
+                        func_str_fn = sprintf('%s/func_str_f%04d_%s_%s.mat', func_str_dir, f, fsnames{f}, uuid);
                         save('-v7.3', func_str_fn, 'func_str');
                         
-                        matlab_cmd = sprintf('%s;tic;load(''%s'',''func_str'');func_str,feval(str2func([''@()'',func_str]));toc', matlab_setup_str, func_str_fn);
+                        matlab_cmd = sprintf('%s;t0_=tic;load(''%s'',''func_str'');func_str,feval(str2func([''@()'',func_str]));toc(t0_)', ...
+                            matlab_setup_str, func_str_fn);
                         process_cmd = sprintf('%s \\"%s\\"', MatlabLaunchStr, matlab_cmd);
                         cmd = sprintf(['sbatch --array=%d -o %s -e %s --cpus-per-task=%d %s %s ', ...
                             '--wrap="echo Matlab command:  \\\"%s\\\"; %s"'], ...
@@ -203,8 +224,8 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
                     
                     job_id = regexp(cmdout, 'Submitted batch job (\d+)\n', 'tokens');
                     job_id = str2double(job_id{1}{1});
-                    job_ids(f) = job_id;
-                    trial_counter(f) = trial_counter(f) + 1;                                
+                    job_ids(fs) = job_id;
+                    trial_counter(fs) = trial_counter(f) + 1;                                
                 end
             else
                 temp_file_info = dir(tmpFullpath);
@@ -219,28 +240,31 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
         end
 
         if ~parseCluster || (parseCluster && masterCompute && f == lastP)
-            fprintf('Process %s with function %s... \n', fsname, func_str); 
-            if loop_counter > 0
+            fprintf('Process %s with function %s... \n', strjoin(fsnames(fs), ', '), func_str); 
+            if parseCluster && loop_counter > 0 && job_status_mat(f, 1) ~= job_status_mat(f, 2)
                 pause(5);
             end
             if strcmpi(language, 'matlab')
                 % tic; feval(str2func(['@()', func_str])); toc;
                 try 
-                    tic; feval(str2func(['@()', func_str])); toc;
+                    t0=tic; feval(str2func(['@()', func_str])); toc(t0);
                 catch ME
                     disp(ME)
-                    tic; eval(func_str); toc;
+                    t0=tic; eval(func_str); toc(t0);
                 end
             elseif strcmpi(language, 'bash')
-                tic; [status, cmdout] = system(func_str, '-echo'); toc
+                t0=tic; [status, cmdout] = system(func_str, '-echo'); toc(t0)
             end
             fprintf('Done!\n');
         end
         % toc
-        if exist(outputFullpath, 'file') || exist(outputFullpath, 'dir')
-            is_done_flag(f) = true;
-            if exist(tmpFullpath, 'file')
-                delete(tmpFullpath);
+        for f = fs
+            outputFullpath = outputFullpaths{f};            
+            if exist(outputFullpath, 'file') || exist(outputFullpath, 'dir')
+                is_done_flag(f) = true;
+                if exist(tmpFullpath, 'file')
+                    delete(tmpFullpath);
+                end
             end
         end
     end

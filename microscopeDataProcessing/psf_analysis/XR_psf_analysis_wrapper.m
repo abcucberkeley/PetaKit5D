@@ -50,14 +50,14 @@ if ispc
     dataPaths = cellfun(@(x) strrep(x, '\', '/'), dataPaths, 'unif', 0);
 end
 
-dataPath_exps = dataPaths;
+dataPath_exps = cellfun(@(x) [x, '/'], dataPaths, 'unif', 0);
 disp(dataPath_exps);
 
 
 %% deskew psfs
 
 if Deskew
-    dataPath_exps = cellfun(@(x) [x, '/'], dataPaths, 'unif', 0);
+    % dataPath_exps = cellfun(@(x) [x, '/'], dataPaths, 'unif', 0);
     disp(dataPath_exps);
 
     % Save16bit = true;
@@ -209,7 +209,7 @@ for d = 1 : numel(dataPath_exps)
         
         func_strs{d}{f} = sprintf(['XR_psf_analysis_plot(''%s'',''%s'',''%s'',', ...
             '%d,''%s'',%.20f,%.20f,%.20f,%.20f,%.20f,%.20f,%s,%.20f)'], fn{f}, ...
-            figureFullpaths{d}{f}, RW_info_fullnames{d}, ch_ind, source_descrip, xypixsize, ...
+            figureFullpaths{d}{f}, RW_info_fullnames{d}, find(ch_ind), source_descrip, xypixsize, ...
             zpixsize, NAdet, index, exc_lambda, det_lambda, strrep(mat2str(PSFsubpix), ' ', ','), ...
             gamma);
     end

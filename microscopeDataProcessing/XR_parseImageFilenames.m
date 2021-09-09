@@ -1,5 +1,5 @@
 function [fnames, fdinds, gfnames, partialvols, dataSizes, flipZstack_mat, FTP_inds, maskFullpaths] = ...
-    XR_parseImageFilenames(dataPaths, ChannelPatterns, parseSettingFile, flipZstack, Decon, deconPaths, Streaming)
+    XR_parseImageFilenames(dataPaths, ChannelPatterns, parseSettingFile, flipZstack, Decon, deconPaths, Streaming, zarrFile)
 % move the filename parsing code in microscope pipeline as an independent
 % function to simpolify the microscope pipeline.
 % Support both non-streaming and streaming modes
@@ -7,7 +7,16 @@ function [fnames, fdinds, gfnames, partialvols, dataSizes, flipZstack_mat, FTP_i
 %
 % Author: Xiongtao Ruan (07/01/2021)
 % also include folder name for channel patterns
+% xruan (08/25/2021): add support for zarr file
 
+if nargin < 8
+    zarrFile = false;
+end
+if zarrFile
+    ext = '.zarr';
+else
+    ext = '.tif';
+end
 
 nd = numel(dataPaths);
 % cast dataPaths to column cell array (in case of row arrays)
@@ -22,7 +31,7 @@ for d = 1 : nd
     dataPath = dataPaths{d};
     % dir_info = dir([dataPath, '*.tif']);
     % fnames_d = {dir_info.name}';
-    [containPartialVolume, groupedFnames_d, groupedDatenum, groupedDatasize] = groupPartialVolumeFiles(dataPath);
+    [containPartialVolume, groupedFnames_d, groupedDatenum, groupedDatasize] = groupPartialVolumeFiles(dataPath, 'ext', ext);
     if any(containPartialVolume)
         fnames_d = cellfun(@(x) x{1}, groupedFnames_d, 'unif', 0);
         datenum_d = cellfun(@(x) max(x), groupedDatenum);

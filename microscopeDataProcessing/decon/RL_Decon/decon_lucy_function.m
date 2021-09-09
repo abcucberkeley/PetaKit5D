@@ -51,7 +51,7 @@ end
 useGPU = true;
 useGPU = useGPU & gpuDeviceCount > 0;
 
-
+I = double(I);
 classI = class(I);
 sizeI = size(I);
 sizePSF = size(PSF);
@@ -90,6 +90,7 @@ end
 sizeOTF = sizeI;
 sizeOTF(numNSdim) = SUBSMPL*sizeI(numNSdim);
 H = decon_psf2otf(PSF,double(sizeOTF));
+clear PSF
 
 % 2. Prepare parameters for iterations
 %
@@ -107,7 +108,7 @@ idx_z = reshape(repmat(1:sizeI(3),[SUBSMPL 1]),[SUBSMPL*sizeI(3) 1]);
 wI = max(WEIGHT.*(READOUT + J_1),0);% at this point  - positivity constraint
 J_2 = J_2(idx_y, idx_x, idx_z);
 scale = real(ifftn(conj(H).*fftn(WEIGHT(idx_y, idx_x, idx_z)))) + sqrt(eps);
-% clear WEIGHT;
+clear J_1 WEIGHT;
 DAMPAR22 = (DAMPAR.^2)/2;
 
 if SUBSMPL~=1 % prepare vector of dimensions to facilitate the reshaping
@@ -168,7 +169,7 @@ for k = lambda + 1 : lambda + NUMIT
     end
     
     if debug
-        err_mat(k, 1:2) = [k, sum((J_2 - I) .^ 2, 'all')];
+        err_mat(k, 1:2) = [k, mean((double(J_2) - double(I)) .^ 2, 'all')];
         err_mat(k, 3) = err_mat(k, 2) ./ err_mat(1, 2); 
         if rem(k, estep) == 0 && k > estep * 2
             istp = k/estep;
@@ -181,10 +182,10 @@ for k = lambda + 1 : lambda + NUMIT
             end
         end
         
-        if k == 5
+        if k == 1
             mkdir('./debug');
         end
-        if rem(k, 5) == 0
+        if rem(k, 1) == 0
             if useGPU 
                 writetiff(single(gather(J_2)), sprintf('./debug/Iter_%04d.tif', k));
             else

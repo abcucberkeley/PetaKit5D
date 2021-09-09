@@ -128,7 +128,7 @@ if GPUJob
     ChunkSize = round(pr.ChunkSize ./ [6.4, 6.4, 6.4]);
     OL = 200;
     maxSubVolume = 5e8;
-    masterCompute = gpuDeviceCount() > 0 & masterCompute;
+    % masterCompute = gpuDeviceCount() > 0 & masterCompute;
 end
 
 % if master node is cpu node, msterCompute must be false, it is only for
@@ -393,24 +393,28 @@ for f = 1 : nF
     end
     
     if GPUJob
+        maxJobNum = inf;
         cpusPerTask = 5;
         cpuOnlyNodes = false;
+        taskBatchNum = 3;
         SlurmParam = '-p abc --qos abc_normal -n1 --mem=167G --gres=gpu:1';
     else
+        maxJobNum = inf;
         cpusPerTask = 24;
         cpuOnlyNodes = true;
+        taskBatchNum = 1;
         SlurmParam = '-p abc --qos abc_normal -n1 --mem-per-cpu=21418M';
     end
         
     % submit jobs
     is_done_flag= slurm_cluster_generic_computing_wrapper(inputFullpaths, outputFullpaths, ...
         funcStrs, 'cpusPerTask', cpusPerTask, 'cpuOnlyNodes', cpuOnlyNodes, 'SlurmParam', SlurmParam, ...
-        'masterCompute', masterCompute, 'parseCluster', parseCluster);
+        'maxJobNum', maxJobNum, 'taskBatchNum', taskBatchNum, 'masterCompute', masterCompute, 'parseCluster', parseCluster);
 
     if ~all(is_done_flag)
         slurm_cluster_generic_computing_wrapper(inputFullpaths, outputFullpaths, ...
             funcStrs, 'cpusPerTask', cpusPerTask, 'cpuOnlyNodes', cpuOnlyNodes, 'SlurmParam', SlurmParam, ...
-            'masterCompute', masterCompute, 'parseCluster', parseCluster);
+            'maxJobNum', maxJobNum, 'taskBatchNum', taskBatchNum, 'masterCompute', masterCompute, 'parseCluster', parseCluster);
     end
 
     % combine the deconvovled segments and write file
