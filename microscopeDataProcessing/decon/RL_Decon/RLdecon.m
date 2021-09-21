@@ -196,7 +196,16 @@ if nIter>0
             deconvolved = deconvlucy(rawdata, psf, nIter) * numel(rawdata);
         case 'simplified'
             % psf = psf ./ sqrt(mean(psf .^ 2, 'all'));
-            [deconvolved, err_mat, iter_run] = decon_lucy_function(rawdata, psf, nIter, fixIter, errThresh, debug);
+            if debug
+                decon_folder = [datafolder, '/matlab_decon' '/'];
+                [~, fsn] = fileparts(input_tiff);
+                debug_folder = sprintf('%s/%s_debug/', decon_folder, fsn);
+                mkdir(debug_folder)
+            else
+                debug_folder = '/tmp/'; 
+            end                
+                
+            [deconvolved, err_mat, iter_run] = decon_lucy_function(rawdata, psf, nIter, fixIter, errThresh, debug, debug_folder);
             deconvolved = deconvolved * numel(rawdata);
         case 'cudagen'
             deconvolved = decon_lucy_cuda_function(single(rawdata), single(psf), nIter) * numel(rawdata);            

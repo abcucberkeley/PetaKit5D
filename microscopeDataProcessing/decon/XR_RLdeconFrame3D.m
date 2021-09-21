@@ -45,7 +45,7 @@ ip.addParameter('SaveMaskfile', false, @islogical); % save mask file for common 
 ip.addParameter('RLMethod', 'simplified' , @ischar); % rl method {'original', 'simplified', 'cudagen'}
 ip.addParameter('fixIter', false, @islogical); % CPU Memory in Gb
 ip.addParameter('errThresh', [], @isnumeric); % error threshold for simplified code
-ip.addParameter('ChunkSize', [2048, 2048, 2048] , @isvector); % in y, x, z
+ip.addParameter('ChunkSize', [1600, 1600, 1600] , @isvector); % in y, x, z
 ip.addParameter('Overlap', 200, @isnumeric); % block overlap
 ip.addParameter('CPUMaxMem', 500, @isnumeric); % CPU Memory in Gb
 ip.addParameter('largeFile', false, @islogical);
@@ -356,12 +356,14 @@ for f = 1 : nF
     tic
     fprintf('Writing image chunks...\n')
     chunkFnames = cell(nn, 1);
+    skip_flags = false(nn, 1);
     for ck = 1:nn
         chunkFnames{ck} = sprintf('chunk_%d_%d_%d_%d_%d_%d.tif', xmin(ck), ymin(ck), zmin(ck), xmax(ck), ymax(ck), zmax(ck));
         im_chunk = im(ymin(ck):ymax(ck), xmin(ck):xmax(ck), zmin(ck):zmax(ck));
         % for blank region, just skip it
         if all(im_chunk == 0, 'all')
             chunkFnames{ck} = '';
+            skip_flags(ck) = true;
             continue;
         end
         if ~exist([chunkPath, '/', chunkFnames{ck}], 'file') || pr.Overwrite
@@ -379,6 +381,9 @@ for f = 1 : nF
     inputFullpaths = cell(nn, 1);
     outputFullpaths = cell(nn, 1);
     for ck = 1 : nn
+        if skip_flags(ck)
+            continue;
+        end
         chunkFullpath = [chunkPath '/' chunkFnames{ck}];
         chunkDeconFullpath = [chunkDeconPath '/' chunkFnames{ck}(1:end-4) '_decon.tif'];
         inputFullpaths{ck} = chunkFullpath;
@@ -391,12 +396,15 @@ for f = 1 : nF
                 string(Save16bit),  strrep(num2str(Crop,'%d,'), ' ', ''), string(zFlip), num2str(GenMaxZproj, '%.10f,'), ...
                 num2str(ResizeImages, '%.10f,'), RLMethod, string(fixIter), errThresh, string(false), string(debug));
     end
+    inputFullpaths(skip_flags) = [];
+    outputFullpaths(skip_flags) = [];
+    funcStrs(skip_flags) = [];
     
     if GPUJob
         maxJobNum = inf;
         cpusPerTask = 5;
         cpuOnlyNodes = false;
-        taskBatchNum = 3;
+        taskBatchNum = 5;
         SlurmParam = '-p abc --qos abc_normal -n1 --mem=167G --gres=gpu:1';
     else
         maxJobNum = inf;

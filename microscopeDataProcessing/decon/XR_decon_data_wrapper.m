@@ -396,6 +396,14 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
                         % do not use rotation in decon functions
                         matlab_cmd = sprintf('%s;tic;%s;toc', matlab_setup_str, func_str);
                         process_cmd = sprintf('%s \\"%s\\"', MatlabLaunchStr, matlab_cmd);
+                        
+                        if GPUJob && ~largeFile
+                            cpusPerTask_dc = 5;
+                            SlurmParam = '-p abc --qos abc_normal -n1 --mem-per-cpu=33500M --gres=gpu:1';
+                            slurm_constraint_str = '';
+                        else
+                            % SlurmParam = '-p abc --qos abc_normal -n1 --mem-per-cpu=21418M';
+                        end
 
                         if cudaDecon
                             cmd = sprintf(['sbatch --array=%d -o %s -e %s -p abc --gres=gpu:1 --qos ', ...

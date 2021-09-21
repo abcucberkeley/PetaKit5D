@@ -1,4 +1,4 @@
-function [J_2, err_mat, k] = decon_lucy_function(I, PSF, NUMIT, fixIter, err_thrsh, debug)
+function [J_2, err_mat, k] = decon_lucy_function(I, PSF, NUMIT, fixIter, err_thrsh, debug, debug_folder)
 % adapted from matlab deconvlucy.m
 % 
 % xruan (05/18/2021): add support for early stop with stop criteria
@@ -44,6 +44,10 @@ end
 
 if debug
     fixIter = true;
+end
+
+if nargin < 7
+    debug_folder = './debug/';
 end
 
 
@@ -183,13 +187,13 @@ for k = lambda + 1 : lambda + NUMIT
         end
         
         if k == 1
-            mkdir('./debug');
+            mkdir(debug_folder);
         end
         if rem(k, 1) == 0
             if useGPU 
-                writetiff(single(gather(J_2)), sprintf('./debug/Iter_%04d.tif', k));
+                writetiff(single(gather(J_2)), sprintf('%s/Iter_%04d.tif', debug_folder, k));
             else
-                writetiff(single(J_2), sprintf('./debug/Iter_%04d.tif', k));
+                writetiff(single(J_2), sprintf('%s/Iter_%04d.tif', debug_folder, k));
             end
         end
     end

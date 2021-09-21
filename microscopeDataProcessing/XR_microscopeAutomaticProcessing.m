@@ -111,6 +111,7 @@ function [] = XR_microscopeAutomaticProcessing(dataPaths, varargin)
 % xruan (06/11/2021): add support for gpu computing for chuck decon in matlab decon wrapper
 % xruan (07/05/2021): add support for user defined resample (arbitary factor)
 % xruan (07/27/2021): add support for z-stage scan for Deskew
+% xruan (09/13/2021): add support for calcualating actual dz from encoder positions
 
 
 ip = inputParser;
@@ -129,6 +130,7 @@ ip.addParameter('ZstageScan', false, @islogical);
 ip.addParameter('sCMOSCameraFlip', false, @islogical);
 ip.addParameter('Save16bit', [false, false, false, false], @(x) (numel(x) == 1 || numel(x) == 4) && islogical(x));
 ip.addParameter('onlyFirstTP', false, @islogical);
+ip.addParameter('dzFromEncoder', false, @islogical);
 % pipeline steps
 ip.addParameter('Deskew', true, @islogical);
 ip.addParameter('Rotate', true, @islogical);
@@ -217,6 +219,7 @@ ChannelPatterns = pr.ChannelPatterns;
 Save16bit = pr.Save16bit;
 resampleType = pr.resampleType;
 resample = pr.resample;
+dzFromEncoder = pr.dzFromEncoder;
 %deskew and rotate
 Deskew = pr.Deskew;
 Rotate = pr.Rotate;
@@ -439,6 +442,20 @@ if ~isempty(resample)
 end
 [resample, zAniso] = XR_checkResampleSetting(resampleType, resample, ObjectiveScan, SkewAngle, xyPixelSize, dz);
 
+
+% get actual dz from encoder positions
+if dzFromEncoder && ~Streaming
+    dz_all = zeros(nd, 1);
+    for d = 1 : nd
+        dataPath = dataPaths{d};        
+        dz_actual = XR_estimate_actual_step_size_from_encoder(dataPath, 'dz', dz);
+        dz_all(d) = dz_actual;
+    end   
+else
+    dz_all = repmat(dz, nd, 1);
+end
+
+
 % for deconvolution, check whether there is a gpu in the node. if not, for
 % cudaDecon, set parseCluster as true. 
 deconPaths = cell(nd, 1);
@@ -592,6 +609,7 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all') || ...
         partialvol = partialvols(f);
         gfname = gfnames{f};
         dataPath = dataPaths{fdind};
+        dz_f = dz_all(fdind);
         
         frameFullpath = [dataPath, fname];
         % check wheter the file is deleted during the computing.
@@ -652,7 +670,7 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all') || ...
                 '''ObjectiveScan'',%s,''ZstageScan'',%s,''Reverse'',%s,''LLFFCorrection'',%s,', ...
                 '''BKRemoval'',%s,''LowerLimit'',%.20d,''LSImage'',''%s'',''BackgroundImage'',''%s'',', ...
                 '''Rotate'',%s,''resample'',[%s],''DSRCombined'',%s,''flipZstack'',%s,''Save16bit'',%s)'], ...
-                ds_input_str, xyPixelSize, dz, SkewAngle, string(ObjectiveScan), string(ZstageScan), ...
+                ds_input_str, xyPixelSize, dz_f, SkewAngle, string(ObjectiveScan), string(ZstageScan), ...
                 string(Reverse), string(LLFFCorrection), string(BKRemoval), LowerLimit, LSImage, ...
                 BackgroundImage, string(Rotate), strrep(num2str(resample, '%d,'), ' ', ''), string(DSRCombined), ...
                 string(flipZstack), string(Save16bit(1)));
@@ -672,7 +690,7 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all') || ...
                         if ~DSRCombined
                             estRequiredMemory = XR_estimateComputingMemory(frameFullpath, 'steps', {'deskew'});
                         else
-                            estRequiredMemory = dataSize_mat(f, 1) / 2^30 * 2 * 10;
+                            estRequiredMemory = dataSize_mat(f, 1) / 2^30 * 2 * (6 + 4 / prod(resample));
                         end
                         cpusPerTask_ds = cpusPerTask;
                         if cpusPerTask_ds * 20 < estRequiredMemory
@@ -825,7 +843,7 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all') || ...
             
             if DS
                 dcframeFullpath = dsFullpath;
-                dc_dz = dz;
+                dc_dz = dz_f;
                 dc_dzPSF = dzPSF;
                 dc_psfFullpaths = psfFullpaths;
             end
@@ -1060,7 +1078,7 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all') || ...
         if ~is_done_flag(f, 4)
             func_str = sprintf(['XR_RotateFrame3D(''%s'',%.20d,%.20d,''SkewAngle'',%.20d,', ...
                 '''ObjectiveScan'',%s,''Reverse'',%s,''Save16bit'',%s)'], deconFullpath, ...
-                xyPixelSize, dz, SkewAngle, string(ObjectiveScan), string(Reverse), string(Save16bit(4)));
+                xyPixelSize, dz_f, SkewAngle, string(ObjectiveScan), string(Reverse), string(Save16bit(4)));
 
             if exist(rdctmpFullpath, 'file') || parseCluster
                 if parseCluster
@@ -1210,7 +1228,6 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all') || ...
     trial_counter = [trial_counter; zeros(nFnew, 4)];
     
 
-    
     if parseCluster
         job_ids = [job_ids;  -ones(nFnew, 4)];
         imSize_mat = cat(1, imSize_mat, zeros(nFnew, 3, 2));
