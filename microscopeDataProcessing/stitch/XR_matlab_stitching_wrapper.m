@@ -354,9 +354,9 @@ if (strcmpi(xcorrMode, 'primary') || strcmpi(xcorrMode, 'primaryFirst'))
     % first check whether the format is right
     if ~isempty(primaryCh)
         fprintf('The primary channel is %s.', primaryCh);
-        if specifyCam && ~regexpi(primaryCh, 'Cam[a-z]_ch[0-9]')
+        if specifyCam && isempty(regexpi(primaryCh, 'Cam[a-z]_ch[0-9]', 'once'))
             error("primaryCh must be empty or with format 'Cam[a-z]_ch[0-9]'");
-        elseif ~specifyCam && ~regexpi(primaryCh, 'ch[0-9]')
+        elseif ~specifyCam && isempty(regexpi(primaryCh, 'ch[0-9]', 'once'))
             error("primaryCh must be empty or with format 'ch[0-9]'");            
         end
         pCam = primaryCh(4);
