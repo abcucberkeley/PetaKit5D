@@ -690,7 +690,7 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all') || ...
                         if ~DSRCombined
                             estRequiredMemory = XR_estimateComputingMemory(frameFullpath, 'steps', {'deskew'});
                         else
-                            estRequiredMemory = dataSize_mat(f, 1) / 2^30 * 2 * (6 + 4 / prod(resample));
+                            estRequiredMemory = dataSize_mat(f, 1) / 2^30 * 2 * (6 + 4 / prod(resample) + trial_counter(f, 1) * 2);
                         end
                         cpusPerTask_ds = cpusPerTask;
                         if cpusPerTask_ds * 20 < estRequiredMemory
