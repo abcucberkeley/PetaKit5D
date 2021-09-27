@@ -1,10 +1,9 @@
 function [] = combinePhases(dataFile, varargin)
+% Combine phases into one tiff file
 
-%fn = '/clusterfs/fiona/Data/20210923_latticeSIM/phasePSF/isolated/DS/RAW_488_slow_CamA_ch0_CAM1_stack0000_488nm_0000000msec_0013199486msecAbs_000x_000y_000z_0000t.tif';
-%fn = '/clusterfs/fiona/Data/20210923_latticeSIM/data06_100perc/DS/RAW_exp08_CamA_ch0_CAM1_stack0000_488nm_0000000msec_0006674367msecAbs_000x_000y_000z_0000t.tif';
 ip = inputParser;
 ip.CaseSensitive = false;
-ip.addRequired('dataFile');
+ip.addRequired('dataFile'); % full path to combined phases without phase end tag. Ex. /folder/data.tif combines files like /folder/data_phase1.tif
 ip.addParameter('nphases', 5, @isnumeric);
 
 ip.parse(dataFile, varargin{:});
@@ -24,6 +23,6 @@ for p=1:nphases
     out(:,:,p:nphases:end) = cPhase;
 end
 
-writetiff(single(out),dataFile);
+writetiff(single(out),[dataFile(1:end-4) '_combined.tif']);
 
 end
