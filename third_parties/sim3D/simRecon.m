@@ -1,4 +1,4 @@
-function [Data_r_space] = simRecon_Frame(data, otf, varargin)
+function [Data_r_space] = simRecon(data, otf, varargin)
 % This code will generate a assemble a super-resolved SIM image from a deskewed 
 % dataset and OTF acquired with 5-phase lattice SIM data.
 
@@ -15,6 +15,11 @@ ip.addParameter('wvl_ext', .560, @isnumeric);
 ip.addParameter('w', 5e-3, @isnumeric); %Wiener coefficient for regularization
 ip.addParameter('apodize', true, @islogical); %Flag to indicate whether or not to apodize the final data
 
+ip.addParameter('normalize_orientations', false, @islogical); %Flag to indicate whether or not to normalize total intensity for each orientation
+ip.addParameter('perdecomp', true, @islogical); %Flag to indicate whether or not to use periodic/smooth decomposition to reduce edge effects
+ip.addParameter('edgeTaper', true, @islogical); %Flag to indicate whether or not to window the data to reduce edge effects
+ip.addParameter('edgeTaperVal', 0.1, @isnumeric); %Roll-off parameter for Tukey windowing
+
 ip.addParameter('nphases', 5, @isnumeric);
 ip.addParameter('norders', 5, @isnumeric);
 ip.addParameter('norientations', 1, @isnumeric);
@@ -23,7 +28,7 @@ ip.addParameter('lattice_angle', [pi/2], @isnumeric); %Angle parellel to pattern
 ip.addParameter('phase_step', .232, @isnumeric); %Phase step in microns
 ip.addParameter('pxl_dim_data', [0.11,0.11,0.3*sind(32.4)], @isnumeric); %Voxel dimensions of the image in microns - note, stored as [dy,dx,dz]
 ip.addParameter('pxl_dim_PSF', [0.11,0.11,0.2*sind(32.4)], @isnumeric); %Voxel dimensions of the PSF in microns - note, stored as [dy,dx,dz]
-ip.addParameter('background', 105, @isnumeric); 
+ip.addParameter('Background', 105, @isnumeric); 
 
 ip.addParameter('useGPU', true, @islogical);
 
@@ -39,6 +44,11 @@ wvl_ext = pr.wvl_ext;
 w = pr.w;
 apodize = pr.apodize;
 
+normalize_orientations = pr.normalize_orientations;
+perdecomp = pr.perdecomp;
+edgeTaper = pr.edgeTaper;
+edgeTaperVal = pr.edgeTaperVal;
+
 nphases = pr.nphases;
 norders = pr.norders;
 norientations = pr.norientations;
@@ -47,20 +57,16 @@ lattice_angle = pr.lattice_angle;
 phase_step = pr.phase_step;
 pxl_dim_data = pr.pxl_dim_data;
 pxl_dim_PSF = pr.pxl_dim_PSF;
-background = pr.background;
-useGPU = pr.useGPU;
+Background = pr.Background;
 
+useGPU = pr.useGPU;
 useGPU = useGPU & gpuDeviceCount > 0;
-    
 
 %kvec_search_range=.5; %The +- range of k-space to search for information overlap (represented at microns in real space around estimated pattern period)
 
 %Load the OTF
 disp("Load OTF")
 tic
-%O=load([OTF_folder,'/',OTF_file]);
-fns = fieldnames(otf);
-otf=otf.(fns{1});
 [ny_PSF,nx_PSF,nz_PSF,~,~] = size(otf);
 
 if(useGPU)
@@ -74,8 +80,7 @@ toc
 %Load the data
 disp("Load data")
 tic
-%data=loadtiff([data_folder,data_file]);
-data=data-background;
+data=data-Background;
 data(data<0)=0;
 
 [ny_data,nx_data,nimgs_data] = size(data);
@@ -85,6 +90,21 @@ if(useGPU)
     dk_data=gpuArray(1./([ny_data,nx_data,nz_data].*pxl_dim_data));
 else 
     dk_data=1./([ny_data,nx_data,nz_data].*pxl_dim_data);
+end
+
+if normalize_orientations
+    index=zeros(nz_data*nphases,norientations);
+    for jj=1:norientations
+        tt=1;
+        for kk=1:nz_data
+            index(tt:tt+nphases-1,jj)=(((jj-1)*nphases)+(kk-1)*nphases*norientations)+1:((jj-1)*nphases)+((kk-1)*nphases*norientations)+nphases;
+            tt=tt+nphases;
+        end
+        wf_orientation_intensity(jj)=sum(data(:,:,index(:,jj)),"all");
+    end
+    for jj=1:norientations
+        data(:,:,index(:,jj))=data(:,:,index(:,jj))./(wf_orientation_intensity(jj)/max(wf_orientation_intensity));
+    end
 end
 toc
 
@@ -137,8 +157,18 @@ for jj=1:norientations
         Dk = zeros(ny_data,nx_data,nz_data,nphases);
     end
     
+    if edgeTaper
+        [window] = tukwin(Dr(:,:,:,1),edgeTaperVal,useGPU);
+    end
+    
     for ii=1:nphases
         Dr(:,:,:,ii)=double(data(:,:,ii+(jj-1)*nphases:nphases*norientations:end));
+        if edgeTaper
+            Dr(:,:,:,ii) = Dr(:,:,:,ii).*window;
+        end
+        if perdecomp
+            Dr(:,:,:,ii) = perdecomp_3D(Dr(:,:,:,ii),useGPU);
+        end
         Dk(:,:,:,ii)=double(fftshift(ifftn(ifftshift(Dr(:,:,:,ii))))*1/prod(dk_data));
     end
     
@@ -264,11 +294,11 @@ padrange=floor((supersample.*[ny_data,nx_data,nz_data]-[ny_data,nx_data,nz_data]
 
 if(useGPU)
     B_PLS = gpuArray(B_PLS);
-    Dk_sep_scaled=gpuArray(padarray(zeros(ny_data,nx_data,nz_data),padrange,'both'));
-    denom = gpuArray(padarray(zeros(ny_data,nx_data,nz_data),padrange,'both'));
+    Dk_sep_scaled = gpuArray(zeros(ny_data + padrange(1) * 2, nx_data + padrange(2) * 2,nz_data + padrange(3) * 2));
+    denom = gpuArray(zeros(ny_data + padrange(1) * 2, nx_data + padrange(2) * 2,nz_data + padrange(3) * 2));
 else 
-    Dk_sep_scaled = padarray(zeros(ny_data,nx_data,nz_data),padrange,'both');
-    denom = padarray(zeros(ny_data,nx_data,nz_data),padrange,'both');
+    Dk_sep_scaled = zeros(ny_data + padrange(1) * 2, nx_data + padrange(2) * 2,nz_data + padrange(3) * 2);
+    denom = zeros(ny_data + padrange(1) * 2, nx_data + padrange(2) * 2,nz_data + padrange(3) * 2);
 end
 
 %Assemble denominator of Weiner filter - this will then be shifted opposite to the p-vector direction to
@@ -318,10 +348,12 @@ disp("assembling final dataset")
 tic
 
 if(useGPU)
-    Data_k_space = gpuArray(padarray(zeros(ny_data,nx_data,nz_data),padrange,'both'));
+    % Data_k_space = gpuArray(padarray(zeros(ny_data,nx_data,nz_data),padrange,'both'));
+    Data_k_space = gpuArray(zeros(ny_data + padrange(1) * 2, nx_data + padrange(2) * 2,nz_data + padrange(3) * 2));
     p_vec_guess = gpuArray(p_vec_guess);
 else
-    Data_k_space = padarray(zeros(ny_data,nx_data,nz_data),padrange,'both');
+    % Data_k_space = padarray(zeros(ny_data,nx_data,nz_data),padrange,'both');
+    Data_k_space = zeros(ny_data + padrange(1) * 2, nx_data + padrange(2) * 2,nz_data + padrange(3) * 2);    
 end
 %Shift information components and assemble final image
 for jj=1:norientations
@@ -352,12 +384,14 @@ Data_r_space=real(fftshift(fftn(ifftshift(Data_k_space_apodized))))*prod(dk_data
 toc
 
 %disp("write to disk (write3Dtiff)")
-tic
-if(useGPU)
-    Data_r_space = gather(Data_r_space);
-end
+%tic
+%TESTING
+%if(useGPU)
+%    Data_r_space = gather(Data_r_space);
+%end
+
 %Write the data to disk
 %write3Dtiff(single(abs(Data_r_space)),['/clusterfs/fiona/matthewmueller/20210830SimRecon3D/2020_11_12(Code_for_Kitware)/2020_11_12(Code_for_Kitware)/data/siRecon_5phase_small_CPUOPTIMIZED.tif'])
-toc
+%toc
 
 end

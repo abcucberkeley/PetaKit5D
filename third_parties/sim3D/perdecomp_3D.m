@@ -52,20 +52,32 @@
 % v1.0 (01/2014): initial Matlab version from perdecomp.sci v1.2
 
 
-function [p,s] = perdecomp_3D(u)
+function [p,s] = perdecomp_3D(u,useGPU)
 
 
 [ny,nx,nz] = size(u); 
 
 u = double(u);
 
-X = 1:nx; Y = 1:ny; Z = 1:nz;
-
-v1 = zeros(ny,nx,nz);
-
-v2 = zeros(ny,nx,nz);
-
-v3 = zeros(ny,nx,nz);
+if useGPU
+    u = gpuArray(u);
+    
+    X = gpuArray(1:nx); 
+    Y = gpuArray(1:ny); 
+    Z = gpuArray(1:nz);
+    
+    v1 = gpuArray(zeros(ny,nx,nz));
+    v2 = gpuArray(zeros(ny,nx,nz));
+    v3 = gpuArray(zeros(ny,nx,nz));
+else
+    X = 1:nx; 
+    Y = 1:ny; 
+    Z = 1:nz;
+    
+    v1 = zeros(ny,nx,nz);
+    v2 = zeros(ny,nx,nz);
+    v3 = zeros(ny,nx,nz);
+end
 
 v1(1,:,:) = u(1,:,:) - u(ny,:,:);
 
@@ -90,9 +102,7 @@ v = v1+v2+v3;
 % v(Y,nx) = v(Y,nx)-u(Y,1)+u(Y,nx);
 
 fxx = cos(2.*pi*(X -1)/nx);
-
 fyy = cos(2.*pi*(Y-1)/ny);
-
 fzz = cos(2.*pi*(Z-1)/nz);
 
 [fx,fy,fz] = meshgrid(fxx,fyy,fzz);
