@@ -1,10 +1,11 @@
 function [] = separatePhases(dataFile, varargin)
-% Separate phases of a tiff file into seperate tiff files
+% Separate phases of a tiff file into seperate tiffs
 
 ip = inputParser;
 ip.CaseSensitive = false;
 ip.addRequired('dataFile'); % full path to tif file. Ex. /folder/data.tif
 ip.addParameter('nphases', 5, @isnumeric);
+ip.addParameter('writeToDisk', false, @islogical);
 
 ip.parse(dataFile, varargin{:});
 

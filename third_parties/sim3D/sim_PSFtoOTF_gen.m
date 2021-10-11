@@ -37,6 +37,10 @@ useGPU = useGPU & gpuDeviceCount > 0;
 
 %Load the PSF data
 
+if(ischar(PSF))
+    PSF = readtiff(PSF);
+end
+
 if useGPU
     PSF = gpuArray(PSF);
 end

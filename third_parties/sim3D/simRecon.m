@@ -65,8 +65,8 @@ useGPU = useGPU & gpuDeviceCount > 0;
 %kvec_search_range=.5; %The +- range of k-space to search for information overlap (represented at microns in real space around estimated pattern period)
 
 %Load the OTF
-disp("Load OTF")
-tic
+%disp("Load OTF")
+%tic
 [ny_PSF,nx_PSF,nz_PSF,~,~] = size(otf);
 
 if(useGPU)
@@ -75,11 +75,11 @@ else
     dk_PSF=1./([ny_PSF,nx_PSF,nz_PSF].*pxl_dim_PSF);
 end
 
-toc
+%toc
 
 %Load the data
-disp("Load data")
-tic
+%disp("Load data")
+%tic
 data=data-Background;
 data(data<0)=0;
 
@@ -106,19 +106,19 @@ if normalize_orientations
         data(:,:,index(:,jj))=data(:,:,index(:,jj))./(wf_orientation_intensity(jj)/max(wf_orientation_intensity));
     end
 end
-toc
+%toc
 
 %Rescale OTF to be the same size as the image data - this is done by
 %interpolating the complex OTF onto a grid that's the same size as the
 %k-space representation of the data
-disp("Rescale OTF")
-tic
+%disp("Rescale OTF")
+%tic
 [O_scaled]=resampleOTF(otf,pxl_dim_PSF,data,pxl_dim_data,nphases,norders,norientations,useGPU);
-toc
+%toc
 
 %Normalize resampled OTF's so that 0th order of each orientation has unit energy
-disp("Normalize OTF")
-tic
+%disp("Normalize OTF")
+%tic
 for jj=1:norientations
     OTF0=O_scaled(:,:,:,ceil(norders/2),jj);
     energy=sum(OTF0(:).*conj(OTF0(:))*prod(dk_PSF));
@@ -126,21 +126,21 @@ for jj=1:norientations
 end
 clear OTF0
 clear O
-toc
+%toc
 
 %Make a cylindrical mask based on the theoretical lateral and axial OTF extent
-disp("cylMask")
-tic
+%disp("cylMask")
+%tic
 cylmask=cylMask(NA_det,wvl_em,NA_ext,wvl_ext,nimm,norders,ny_data,nx_data,nz_data,dk_data,islattice,useGPU);
-toc
+%toc
 
 % Notes: right now, this masking is just used when determining the starting 
 % phase and modulation depth. There are likely other ways to mask the OTFs (e.g. 
 % via SNR).
 
 %Separate data information orders by solving the linear system of equations for each pixel
-disp("Separate data information orders by solving the linear system of equations for each pixel (perdecomp_3D/make_forward_seperation_matrix)")
-tic
+%disp("Separate data information orders by solving the linear system of equations for each pixel (perdecomp_3D/make_forward_seperation_matrix)")
+%tic
 if(useGPU)
     Dk_sep=gpuArray(zeros(ny_data,nx_data,nz_data,norders,norientations));
 else
@@ -191,12 +191,12 @@ end
 clear Dk
 clear Dr
 clear data
-toc
+%toc
 
 %Now we need to correct shift vector and starting lateral phase for each
 %information component Dk_sep
-disp("correct shift vector and starting lateral phase for each and scale shifted copies (fourierShift3D/cylmask/MaskedTranslationRegistration2D_fit)")
-tic
+%disp("correct shift vector and starting lateral phase for each and scale shifted copies (fourierShift3D/cylmask/MaskedTranslationRegistration2D_fit)")
+%tic
 
 for jj=1:norientations
     for kk=1:floor(norders/2) %Only consider negative orders - positive orders a just the complex conjugate and opposite direction
@@ -283,11 +283,11 @@ clear cylmask_shift
 clear overlap_mask
 clear ai
 clear bi
-toc
+%toc
 
 
-disp("Generate Weiner Filter (fourierShift3D)")
-tic
+%disp("Generate Weiner Filter (fourierShift3D)")
+%tic
 %'Generating Weiner Filter'
 supersample=[2,2,1];
 padrange=floor((supersample.*[ny_data,nx_data,nz_data]-[ny_data,nx_data,nz_data])/2);
@@ -316,11 +316,11 @@ end
 
 clear big_Ospace
 clear shift_O
-toc
+%toc
 
 %'filtering information components'
-disp("Filtering information components")
-tic
+%disp("Filtering information components")
+%tic
 for jj=1:norientations
     for ii=1:norders
         shift_denom=imtranslate_function(denom,-[p_vec_guess(ii,2,jj),p_vec_guess(ii,1,jj),p_vec_guess(ii,3,jj)]);
@@ -333,7 +333,7 @@ clear Dk_sep
 clear numerator
 clear denom
 clear shift_denom
-toc
+%toc
 
 
 % The next step is to shift these scaled information components back into their 
@@ -344,8 +344,8 @@ toc
 % original image. For now, we'll use a super-sampling factor of 2.
 
 %'assembling final dataset'
-disp("assembling final dataset")
-tic
+%disp("assembling final dataset")
+%tic
 
 if(useGPU)
     % Data_k_space = gpuArray(padarray(zeros(ny_data,nx_data,nz_data),padrange,'both'));
@@ -366,22 +366,22 @@ end
 end
 
 clear Dk_sep_scaled
-toc
+%toc
 
 %Apodize final frequency space data using a triangular apodization function
-disp("apodizeEllipse")
-tic
+%disp("apodizeEllipse")
+%tic
 if apodize
 [Data_k_space_apodized,~] = apodizeEllipse(Data_k_space,dk_data,p_vec_guess,lattice_angle,NA_det,nimm,NA_ext,wvl_em,wvl_ext,islattice,useGPU);
 end
 clear Data_k_space
-toc
+%toc
 
 %Transform final dataset back into real space
-disp("transform data back to real space")
-tic
+%disp("transform data back to real space")
+%tic
 Data_r_space=real(fftshift(fftn(ifftshift(Data_k_space_apodized))))*prod(dk_data);
-toc
+%toc
 
 %disp("write to disk (write3Dtiff)")
 %tic

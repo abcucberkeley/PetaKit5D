@@ -10,10 +10,10 @@ otf=otf.(fns{1});
 
 %dataSR = readtiff(data);
 %dataSRL = readtiff(dataL);
-otfSR = load(otf);
-fns = fieldnames(otfSR);
-otfSR=otfSR.(fns{1});
-simReconFrame(dataL,otf,'useGPU',true, 'perdecomp', false, 'edgeTaper', false);
+%otfSR = load(otf);
+%fns = fieldnames(otfSR);
+%otfSR=otfSR.(fns{1});
+simReconFrame(dataL,otf,'useGPU',true, 'perdecomp', true, 'edgeTaper', true, 'DS', true);
 %simRecon(dataSRL,otfSR,'useGPU',false);
 toc(tStart)
 

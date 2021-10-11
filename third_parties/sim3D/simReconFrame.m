@@ -1,20 +1,4 @@
 function [im] = simReconFrame(frameFullpaths, otf, varargin)
-% cuda Deconvolution for a single frame. It support both small file that
-% can be fitted to a single GPU and also large files. For large files, it
-% split files into chunks for deconvolution and the combine them together. It
-% supports cluster computing for file chunks.
-%
-% based on XR_matlabDeconFrame3D.m and GU_Decon.m
-%
-% Author: Xiongtao Ruan (03/15/2020)
-% xruan (01/12/2021): add support for edge erosion and using existing eroded mask for edge erosion.
-% xruan (03/25/2021): add options for different versions of rl method
-% xruan (06/10/2021): add support for threshold and debug mode in simplified version.
-% xruan (06/11/2021): add support for gpu computing for chuck decon in matlab decon wrapper
-% xruan (07/13/2021): add support for the processing of flipped files
-% (currently only add support for matlab decon)
-% xruan (07/15/2021): add support for zarr input
-
 
 ip = inputParser;
 ip.CaseSensitive = false;
@@ -76,6 +60,8 @@ ip.addParameter('cpusPerTask', 5, @isnumeric);
 ip.addParameter('uuid', '', @ischar);
 ip.addParameter('maxTrialNum', 3, @isnumeric);
 ip.addParameter('unitWaitTime', 2, @isnumeric);
+ip.addParameter('intThresh', 1, @isnumeric);
+ip.addParameter('occThres', 0.8, @isnumeric);
 
 ip.parse(frameFullpaths, otf, varargin{:});
 
@@ -109,6 +95,8 @@ normalize_orientations = pr.normalize_orientations;
 perdecomp = pr.perdecomp;
 edgeTaper = pr.edgeTaper;
 edgeTaperVal = pr.edgeTaperVal;
+intThresh = pr.intThresh;
+occThres = pr.occThres;
 
 useGPU = pr.useGPU;
 
@@ -116,9 +104,14 @@ useGPU = useGPU & gpuDeviceCount > 0;
 
 
 
-%if isempty(PSF)
-%    error('You should provide a PSF file for the frame...\n');
-%end
+if isempty(otf)
+    error('You should provide an otf file for the frame...\n');
+end
+
+if ischar(otf)
+   otf = sim_PSFtoOTF_gen(otf,'nphases',nphases,'norders',norders,'norientations',norientations, 'lattice_period',lattice_period, ...
+       'phase_step',phase_step,'pxl_dim_PSF',pxl_dim_PSF,'Background',Background, 'useGPU', useGPU);
+end
 
 % parameters
 
@@ -189,8 +182,8 @@ for f = 1 : nF
     
     
     % first try single GPU deconvolution, if it fails split into multiple chunks
-    deconFullPath = [reconPath '/' fsname '_recon.tif'];
-    if exist(deconFullPath, 'file') && ~pr.Overwrite
+    reconFullPath = [reconPath '/' fsname '_recon.tif'];
+    if exist(reconFullPath, 'file') && ~pr.Overwrite
         disp('Reconstruction results already exist, skip it!');
         continue;
     end
@@ -231,7 +224,7 @@ for f = 1 : nF
     end
     
     
-    deconTmpPath = sprintf('%s_%s_decon.tif', deconFullPath(1:end-10), uuid);
+    reconTmpPath = sprintf('%s_%s_recon.tif', reconFullPath(1:end-10), uuid);
     imSize = size(im_raw);
     if Save16bit
         dtype = 'uint16';
@@ -247,7 +240,20 @@ for f = 1 : nF
         
     [xmin,xmax,ymin,ymax,zmin,zmax,nn] = XR_subVolumeCoordinatesExtraction(imSize ./ [1, 1, nphases*norientations], 'ChunkSize', ChunkSize, 'overlapSize', OL, 'maxSubVolume', maxSubVolume);
     
+    % make sure the chunk size in x and y are even numbers, if not pad one
+    % pixel in the left side (or right side if left side is the border)
+    if any(rem(xmax - xmin + 1, 2) == 1)
+        xmin = xmin - 1;
+        xmax = xmax + (xmin == 0);
+        xmin = xmin + (xmin == 0);
+    end
     
+    if any(rem(ymax - ymin + 1, 2) == 1)
+        ymin = ymin - 1;
+        ymax = ymax + (ymin == 0);
+        ymin = ymin + (ymin == 0);
+    end
+
     % create a folder for the file and write out the chunks
     fprintf('Processing image chunks...\n')
     im = double(zeros([imSize(1)*2,imSize(2)*2,imSize(3)/(nphases*norientations)], dtype));
@@ -265,46 +271,43 @@ for f = 1 : nF
         end
         
         % for blank region, just skip it
-        if all(im_chunk == 0, 'all')
-            continue;
+        if sum(im_chunk(:)) > intThresh && nnz(im_chunk(:))/ prod(size(im_chunk))>= occThres
+           fprintf('processing chunk:%d of %d \n',ck, nn)
+            try
+            im_chunk = simRecon(im_chunk, otf, 'islattice', islattice, 'NA_det', NA_det, 'NA_ext', NA_ext, 'nimm', nimm, ...
+                'wvl_em', wvl_em, 'wvl_ext', wvl_ext, 'w', w, 'apodize', apodize, 'nphases', nphases, 'norders', norders, ...
+                'norientations', norientations, 'lattice_period', lattice_period, 'lattice_angle', lattice_angle, 'phase_step', phase_step, ...
+                'pxl_dim_data', pxl_dim_data, 'pxl_dim_PSF', pxl_dim_PSF, 'Background', Background, 'useGPU', useGPU, ...
+                'normalize_orientations', normalize_orientations, 'perdecomp', perdecomp, 'edgeTaper', edgeTaper, 'edgeTaperVal', edgeTaperVal);
+
+
+            tim = im_chunk;
+
+            [tsy, tsx, tsz] = size(tim);
+
+
+            ymin_ck = ymin(ck) * 2 - 1;
+            xmin_ck = xmin(ck) * 2 - 1;
+
+
+            yrange = ymin_ck + (ymin_ck ~= 1) * lol * 2 : ymax(ck) * 2 - (ymax(ck) * 2 ~= imSize(1)) * rol * 2;
+            xrange = xmin_ck + (xmin_ck ~= 1) * lol * 2 : xmax(ck) * 2 - (xmax(ck) * 2 ~= imSize(2)) * rol * 2;
+            zrange = zmin(ck) + (zmin(ck) ~= 1) * lol : zmax(ck) - (zmax(ck) ~= imSize(3)) * rol;
+            yrange = yrange(yrange - ymin_ck + 1 <= tsy);
+            xrange = xrange(xrange - xmin_ck + 1 <= tsx);
+            zrange = zrange(zrange - zmin(ck) + 1 <= tsz);
+            tyrange = yrange - ymin_ck + 1;
+            txrange = xrange - xmin_ck + 1;
+            tzrange = zrange - zmin(ck) + 1;
+            im(yrange, xrange, zrange) = tim(tyrange, txrange, tzrange);
+            clear tim;
+            catch
+                fprintf('failed!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!') 
+            end
         end
-        
-        im_chunk = simRecon(im_chunk, otf, 'islattice', islattice, 'NA_det', NA_det, 'NA_ext', NA_ext, 'nimm', nimm, ...
-            'wvl_em', wvl_em, 'wvl_ext', wvl_ext, 'w', w, 'apodize', apodize, 'nphases', nphases, 'norders', norders, ...
-            'norientations', norientations, 'lattice_period', lattice_period, 'lattice_angle', lattice_angle, 'phase_step', phase_step, ...
-            'pxl_dim_data', pxl_dim_data, 'pxl_dim_PSF', pxl_dim_PSF, 'Background', Background, 'useGPU', useGPU, ...
-            'normalize_orientations', normalize_orientations, 'perdecomp', perdecomp, 'edgeTaper', edgeTaper, 'edgeTaperVal', edgeTaperVal);
-        
-        
-        tim = im_chunk;
-        
-        [tsy, tsx, tsz] = size(tim);
-        
-        
-        ymin_ck = ymin(ck) * 2 - 1;
-        xmin_ck = xmin(ck) * 2 - 1;
-        
-        
-        yrange = ymin_ck + (ymin_ck ~= 1) * lol * 2 : ymax(ck) * 2 - (ymax(ck) ~= imSize(1)) * rol * 2;
-        xrange = xmin_ck + (xmin_ck ~= 1) * lol * 2 : xmax(ck) * 2 - (xmax(ck) ~= imSize(2)) * rol * 2;
-        zrange = zmin(ck) + (zmin(ck) ~= 1) * lol : zmax(ck) - (zmax(ck) ~= imSize(3)) * rol;
-        yrange = yrange(yrange - ymin_ck + 1 <= tsy);
-        xrange = xrange(xrange - xmin_ck + 1 <= tsx);
-        zrange = zrange(zrange - zmin(ck) + 1 <= tsz);
-        tyrange = yrange - ymin_ck + 1;
-        txrange = xrange - xmin_ck + 1;
-        tzrange = zrange - zmin(ck) + 1;
-        im(yrange, xrange, zrange) = tim(tyrange, txrange, tzrange);
-        clear tim;
         
     end
     
-    %writetiff(single(abs(im)), ['/clusterfs/fiona/matthewmueller/20210914/LARGE_GPUCHUNK.tif']);
-    continue;
-    
-    % system(unlink_cmd);
-    %if exist(deconTmpPath, 'file')
-    %im = tmpRecon;
     if EdgeErosion > 0
         fprintf('Erode edges of deconvolved data w.r.t. raw data...\n');
         im = im .* cast(im_bw_erode, class(im));
@@ -315,7 +318,7 @@ for f = 1 : nF
         im_bw_erode = readtiff(ErodeMaskfile);
         im = im .* cast(im_bw_erode, class(im));
     end
-    deconTmpPath_eroded = sprintf('%s_%s_eroded.tif', deconFullPath(1:end-4), uuid);
+    reconTmpPath_eroded = sprintf('%s_%s_eroded.tif', reconFullPath(1:end-4), uuid);
     
     if Save16bit
         im = uint16(im);
@@ -323,17 +326,17 @@ for f = 1 : nF
         im = single(im);
     end
     
-    writetiff(im, deconTmpPath_eroded);
-    movefile(deconTmpPath_eroded, deconFullPath);
-    delete(deconTmpPath);
-    deconTmpMIPPath = sprintf('%s/%s_%s_MIP_z.tif', reconPath, fsname, uuid);
-    delete(deconTmpMIPPath);
+    writetiff(single(im.*(im>=0)), reconTmpPath_eroded);
+    movefile(reconTmpPath_eroded, reconFullPath);
+    delete(reconTmpPath);
+    reconTmpMIPPath = sprintf('%s/%s_%s_MIP_z.tif', reconPath, fsname, uuid);
+    delete(reconTmpMIPPath);
     
-    deconMIPPath = sprintf('%s/MIPs/', reconPath);
-    deconMIPFullPath = sprintf('%s%s_MIP_z.tif', deconMIPPath, fsname);
-    writetiff(max(im,[],3), deconMIPFullPath);
-    %end
-    if exist(deconFullPath, 'file')
+    reconMIPPath = sprintf('%s/MIPs/', reconPath);
+    reconMIPFullPath = sprintf('%s%s_MIP_z.tif', reconMIPPath, fsname);
+    writetiff(max(im,[],3), reconMIPFullPath);
+    
+    if exist(reconFullPath, 'file')
         fprintf('Completed sim reconstruction of %s.\n', frameFullpath);
         continue;
     end

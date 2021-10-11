@@ -29,7 +29,7 @@ writetiff(single(output.*(output>=0)),'/clusterfs/fiona/Data/20210918_latticeSIM
 output = simRecon(dataFull, O, 'lattice_period', 1.4, 'phase_step', .4667, 'norders', 3, 'nphases', 3, 'edgeTaper', false, 'perdecomp', false, 'useGPU', false);
 writetiff(single(output.*(output>=0)),'/clusterfs/fiona/Data/20210918_latticeSIM/exp01_3phase/sim_recon/RAW_exp01_CamA_ch0_CAM1_stack0000_488nm_0000000msec_0013904967msecAbs_000x_000y_000z_0000t_CPU_Nochunk_noedge.tif');
 %%
-PSF=double(loadtiff('/clusterfs/fiona/Data/20210923_latticeSIM/phasePSF/isolated/DS/cropped/RAW_488_slow_CamA_ch0_CAM1_stack0000_488nm_0000000msec_0013199486msecAbs_000x_000y_000z_0000t.tif'));
+PSF=double(loadtiff('/clusterfs/fiona/Data/20210923_Aang_latticeSIM/phasePSF/isolated/DS/cropped/RAW_488_slow_CamA_ch0_CAM1_stack0000_488nm_0000000msec_0013199486msecAbs_000x_000y_000z_0000t.tif'));
 
 O = sim_PSFtoOTF_gen(PSF,'lattice_period', 1.4256, 'phase_step', .2851, 'norders', 5, 'nphases', 5, 'useGPU', true);
 
@@ -39,3 +39,15 @@ output = simReconFrame(data, O, 'lattice_period', 1.4256, 'phase_step', .2851, '
 %output = simRecon(dataFull, O, 'lattice_period', 1.4, 'phase_step', .4667, 'norders', 3, 'nphases', 3, 'edgeTaper', true, 'perdecomp', true, 'useGPU', false);
 
 writetiff(single(output.*(output>=0)),'/clusterfs/fiona/Data/20210923_latticeSIM/data06_100perc/DS/sim_recon/RAW_exp08_CamA_ch0_CAM1_stack0000_488nm_0000000msec_0006674367msecAbs_000x_000y_000z_0000t_cropped.tif');
+
+%%
+PSF=double(loadtiff('/clusterfs/fiona/Data/20211005_latticeSIM/PSFs/488_NA0p4_sig0p1_highSN/DS/RAW_exp01_CamA_ch0_CAM1_stack0000_488nm_0000000msec_0000558259msecAbs_000x_000y_000z_0000t.tif'));
+
+O = sim_PSFtoOTF_gen(PSF,'lattice_period', 1.4, 'phase_step', 1.4./5, 'norders', 5, 'nphases', 5, 'useGPU', true);
+
+data = '/clusterfs/fiona/Data/20211005_latticeSIM/wait4ms_2p6msInt_10perc/DS/RAW_exp01_CamA_ch0_CAM1_stack0000_488nm_0000000msec_0005858093msecAbs_000x_000y_000z_0000t.tif';
+output = simReconFrame(data, O, 'lattice_period', 1.4, 'phase_step', 1.4./5, 'norders', 5, 'nphases', 5, 'Overlap', 32, 'ChunkSize', [32,32,32], 'edgeTaper', true, 'perdecomp', true, 'DS', true);
+%dataFull = loadtiff(data);
+%output = simRecon(dataFull, O, 'lattice_period', 1.4, 'phase_step', .4667, 'norders', 3, 'nphases', 3, 'edgeTaper', true, 'perdecomp', true, 'useGPU', false);
+
+%writetiff(single(output.*(output>=0)),'/clusterfs/fiona/Data/20210923_latticeSIM/data06_100perc/DS/sim_recon/RAW_exp08_CamA_ch0_CAM1_stack0000_488nm_0000000msec_0006674367msecAbs_000x_000y_000z_0000t_cropped.tif');
