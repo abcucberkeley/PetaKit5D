@@ -1,5 +1,4 @@
-function [] = deskewPhases_data_wrapper(dataPaths, xyPixelSize, dz, varargin)
-
+function [] = Rotate3D_data_wrapper(dataPaths, xyPixelSize, dz, varargin)
 
 ip = inputParser;
 ip.CaseSensitive = false;
@@ -9,24 +8,18 @@ ip.addRequired('xyPixelSize'); % typical value: 0.1
 ip.addRequired('dz'); % typical value: 0.2-0.5
 ip.addOptional('SkewAngle', 32.45, @isscalar);
 ip.addOptional('Reverse', true, @islogical);
-ip.addParameter('nphases', 5, @isnumeric);
 
 ip.addParameter('ChannelPatterns',{'CamA','CamB'},@iscell);
 
+ip.addParameter('ObjectiveScan', false, @islogical);
+ip.addParameter('sCMOSCameraFlip', false, @islogical);
+ip.addParameter('Save16bit', false , @islogical); % saves deskewed data as 16 bit -- not for quantification
+
 ip.addParameter('Overwrite', false , @islogical);
-ip.addParameter('Save16bit', false , @islogical);
 ip.addParameter('flipZstack', false, @islogical);
 ip.addParameter('EdgeSoften', 5, @isnumeric); % # of xy px to soften
 ip.addParameter('zEdgeSoften', 2, @isnumeric); % # of xy px to soften
 ip.addParameter('Crop', [], @isnumeric); % requires lower and higher values for cropping
-ip.addParameter('zFlip', false, @islogical);
-ip.addParameter('GenMaxZproj', [0,0,1] , @isnumeric);
-ip.addParameter('ResizeImages', [] , @isnumeric);
-ip.addParameter('EdgeErosion', 0 , @isnumeric); % erode edges for certain size.
-ip.addParameter('ErodeMaskfile', '', @ischar); % erode edges file
-ip.addParameter('SaveMaskfile', false, @islogical); % save mask file for common eroded mask
-ip.addParameter('ChunkSize', [250, 250, 250] , @isvector); % in y, x, z
-ip.addParameter('Overlap', 10, @isnumeric); % block overlap
 ip.addParameter('maxSubVolume', 3e8, @isnumeric);
 ip.addParameter('CPUMaxMem', 500, @isnumeric); % CPU Memory in Gb
 ip.addParameter('largeFile', false, @islogical);
@@ -49,14 +42,14 @@ pr = ip.Results;
 
 SkewAngle = pr.SkewAngle;
 Reverse = pr.Reverse;
-nphases = pr.nphases;
 
 ChannelPatterns = pr.ChannelPatterns;
 
 
-flipZstack = pr.flipZstack;
+
 Save16bit = pr.Save16bit;
 
+ObjectiveScan = pr.ObjectiveScan;
 
 largeFile = pr.largeFile;
 parseCluster = pr.parseCluster;
@@ -67,7 +60,6 @@ uuid = pr.uuid;
 if isempty(uuid)
     uuid = get_uuid();
 end
-
 
 
 for i = 1:numel(dataPaths)
@@ -90,12 +82,12 @@ for i = 1:numel(dataPaths)
         for j = 1: numel(fnames)
             [pathstr, fsname, ext] = fileparts(fnames{j});
             dataFullpath = [dataPaths{i} filesep fnames{j}];
-            dataDSFullpath = [dataPaths{i} filesep 'DS' filesep fsname ext];
+            dataDSFullpath = [dataPaths{i} filesep 'Rotated' filesep fsname ext];
             inputFullpaths{j} = dataFullpath;
             outputFullpaths{j} = dataDSFullpath;
             
-            funcStrs{j} =  sprintf(['deskewPhasesFrame(''%s'',%.10f,%.10f,''SkewAngle'',%.10f,''Reverse'',%s,''nphases''', ...
-                ',%.10f)'], dataFullpath, xyPixelSize, dz, SkewAngle, string(Reverse), nphases);
+            funcStrs{j} =  sprintf(['XR_RotateFrame3D(''%s'', %.10f, %.10f,''SkewAngle'',%.10f,''Reverse'',%s,''ObjectiveScan''', ...
+                ',%s,''Save16bit'',%s)'], dataFullpath, xyPixelSize, dz, SkewAngle, string(Reverse), string(ObjectiveScan),string(Save16bit));
         end
         
         %if useGPU
@@ -127,3 +119,4 @@ for i = 1:numel(dataPaths)
 end
 
 end
+
