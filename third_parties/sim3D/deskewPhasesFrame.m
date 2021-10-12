@@ -5,6 +5,9 @@ ip.CaseSensitive = false;
 ip.addRequired('dataFile');
 ip.addRequired('xyPixelSize'); % typical value: 0.1
 ip.addRequired('dz'); % typical value: 0.2-0.5
+
+ip.addParameter('Rotate',false,@islogical); % Rotate after deskew
+
 ip.addOptional('SkewAngle', 32.45, @isscalar);
 ip.addOptional('Reverse', true, @islogical);
 ip.addParameter('nphases', 5, @isnumeric);
@@ -12,6 +15,9 @@ ip.addParameter('nphases', 5, @isnumeric);
 ip.parse(dataFile, xyPixelSize, dz, varargin{:});
 
 pr = ip.Results;
+
+Rotate = pr.Rotate;
+
 SkewAngle = pr.SkewAngle;
 Reverse = pr.Reverse;
 nphases = pr.nphases;
@@ -22,9 +28,17 @@ end
 
 [filepath,name,ext] = fileparts(dataFile);
 fol = [filepath filesep];
-if ~exist([fol 'DS'],'dir')
-    mkdir([fol 'DS']);
-    fileattrib([fol 'DS'], '+w', 'g');
+
+if(Rotate)
+    if ~exist([fol 'DSR'],'dir')
+        mkdir([fol 'DSR']);
+        fileattrib([fol 'DSR'], '+w', 'g');
+    end
+else
+    if ~exist([fol 'DS'],'dir')
+        mkdir([fol 'DS']);
+        fileattrib([fol 'DS'], '+w', 'g');
+    end
 end
 
 tic

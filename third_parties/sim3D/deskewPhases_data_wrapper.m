@@ -13,6 +13,8 @@ ip.addParameter('nphases', 5, @isnumeric);
 
 ip.addParameter('ChannelPatterns',{'CamA','CamB'},@iscell);
 
+ip.addParameter('Rotate',false,@islogical); % Rotate after deskew
+
 ip.addParameter('Overwrite', false , @islogical);
 ip.addParameter('Save16bit', false , @islogical);
 ip.addParameter('flipZstack', false, @islogical);
@@ -53,6 +55,7 @@ nphases = pr.nphases;
 
 ChannelPatterns = pr.ChannelPatterns;
 
+Rotate = pr.Rotate;
 
 flipZstack = pr.flipZstack;
 Save16bit = pr.Save16bit;
@@ -90,12 +93,16 @@ for i = 1:numel(dataPaths)
         for j = 1: numel(fnames)
             [pathstr, fsname, ext] = fileparts(fnames{j});
             dataFullpath = [dataPaths{i} filesep fnames{j}];
-            dataDSFullpath = [dataPaths{i} filesep 'DS' filesep fsname ext];
+            if Rotate
+                dataDSFullpath = [dataPaths{i} filesep 'DSR' filesep fsname ext];
+            else
+                dataDSFullpath = [dataPaths{i} filesep 'DS' filesep fsname ext];
+            end
             inputFullpaths{j} = dataFullpath;
             outputFullpaths{j} = dataDSFullpath;
             
             funcStrs{j} =  sprintf(['deskewPhasesFrame(''%s'',%.10f,%.10f,''SkewAngle'',%.10f,''Reverse'',%s,''nphases''', ...
-                ',%.10f)'], dataFullpath, xyPixelSize, dz, SkewAngle, string(Reverse), nphases);
+                ',%.10f,''Rotate'',%s)'], dataFullpath, xyPixelSize, dz, SkewAngle, string(Reverse), nphases, string(Rotate));
         end
         
         %if useGPU
