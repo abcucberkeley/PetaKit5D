@@ -30,16 +30,16 @@ end
 fol = [filepath filesep];
 
 if(Rotate)
-    if ~exist([fol 'DSR'],'dir')
-        mkdir([fol 'DSR']);
-        fileattrib([fol 'DSR'], '+w', 'g');
-    end
+    folStr = 'DSR';
 else
-    if ~exist([fol 'DS'],'dir')
-        mkdir([fol 'DS']);
-        fileattrib([fol 'DS'], '+w', 'g');
-    end
+    folStr = 'DS';
 end
+
+if ~exist([fol folStr],'dir')
+    mkdir([fol folStr]);
+    fileattrib([fol folStr], '+w', 'g');
+end
+
 
 tic
 im = readtiff(dataFile);
@@ -53,7 +53,16 @@ for p = 1:nphases
     end
     dsim(:,:,p:nphases:end) = volout;
 end
-writetiff(dsim, [fol 'DS' filesep name ext])
+
+if(Rotate)
+    theta = SkewAngle * pi / 180;
+    dz0 = sin(theta) * dz; % ~0.25 for dz0 = 0.45
+    zAniso = dz0 / xyPixelSize;
+    dsim = rotateFrame3D(dsim, SkewAngle, zAniso, Reverse, 'Crop', true, 'ObjectiveScan', true);
+end
+
+writetiff(dsim, [fol folStr filesep name ext]);
+
 toc
 
 

@@ -71,7 +71,11 @@ if isempty(uuid)
     uuid = get_uuid();
 end
 
-
+if(Rotate)
+    folStr = 'DSR';
+else
+    folStr = 'DS';
+end
 
 for i = 1:numel(dataPaths)
     for cPatt = 1:numel(ChannelPatterns)
@@ -93,11 +97,8 @@ for i = 1:numel(dataPaths)
         for j = 1: numel(fnames)
             [pathstr, fsname, ext] = fileparts(fnames{j});
             dataFullpath = [dataPaths{i} filesep fnames{j}];
-            if Rotate
-                dataDSFullpath = [dataPaths{i} filesep 'DSR' filesep fsname ext];
-            else
-                dataDSFullpath = [dataPaths{i} filesep 'DS' filesep fsname ext];
-            end
+            dataDSFullpath = [dataPaths{i} filesep folStr filesep fsname ext];
+            
             inputFullpaths{j} = dataFullpath;
             outputFullpaths{j} = dataDSFullpath;
             
