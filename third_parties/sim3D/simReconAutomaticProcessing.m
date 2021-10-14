@@ -12,6 +12,8 @@ ip.addParameter('Deskew',true,@islogical);
 ip.addParameter('Recon',true,@islogical);
 ip.addParameter('Streaming',false,@islogical);
 
+ip.addParameter('reconBatchNum', 5, @isnumeric);
+
 ip.addParameter('xyPixelSize',.108,@isnumeric); % typical value: 0.1
 ip.addParameter('dz',.5,@isnumeric); % typical value: 0.2-0.5
 ip.addOptional('SkewAngle', 32.45, @isscalar);
@@ -96,6 +98,8 @@ Deskew = pr.Deskew;
 Recon = pr.Recon;
 Streaming = pr.Streaming;
 
+reconBatchNum = pr.reconBatchNum;
+
 xyPixelSize = pr.xyPixelSize;
 dz = pr.dz;
 SkewAngle = pr.SkewAngle;
@@ -167,120 +171,273 @@ else
     folStr = 'DS';
 end
 
+if Deskew && Recon
+    dataPathsDS = strcat(dataPaths,folStr);
+else
+    dataPathsDS = dataPaths;
+end
+
+% Estimate an optimal batch num
+%{
+for i = 1:numel(dataPaths)
+    for cPatt = 1:numel(ChannelPatterns)
+        
+    end 
+end
+%}
+
 firstTime = true;
 latest_modify_time = 0;
 allFullPaths = {''};
 
 % Guess number of workers
 %workers = cell(1,length(ChannelPatterns)*length(dataPaths));
+% Create a parpool if one does not already exist
+if isempty(gcp('nocreate'))
+    parpool(24);
+end
 workers = {};
 cWorker = 1;
 cStates = 'finished';
 
 while(firstTime || (~isempty(workers) && ~all(strcmp(cStates,'finished'))) || (Streaming && (latest_modify_time < maxModifyTime)))
-    if(firstTime) 
+    if(firstTime)
         firstTime = false;
     else
         % Sleep main thread before checking again
-        pause(10);
+        pause(20);
     end
-for i = 1:numel(dataPaths)
-    for cPatt = 1:numel(ChannelPatterns)
-        fnames = dir([dataPaths{i} filesep '*' ChannelPatterns{cPatt} '*.tif']);
-        
-        if(isempty(fnames))
-            fprintf('No Files found for channel pattern: ''%s''. Skipping to next pattern.\n',ChannelPatterns{cPatt});
-        end
-        
-        if(Streaming)
-            allTimes = [fnames.datenum];
-            allTimes = (datenum(clock)-allTimes)*24*60;
-            if(min(allTimes) < unitWaitTime)
-                newestIndex = allTimes == min(allTimes);
-                fnames(newestIndex) = [];
-            end
-            % If there are no more files. Continue to next pattern 
-            if(isempty(fnames))
-                continue;
-            end
-        end
-        
-        % Check that jobs have not yet been submitted for these files
-        match = ismember(strcat([fnames(1).folder filesep],{fnames.name}),allFullPaths);
-        fnames(match) = [];
-        
-        % If there are no more files. Continue to next pattern 
-        if(isempty(fnames))
-            continue;
-        end
-        
-        % Add files to list
-        allFullPaths = horzcat(allFullPaths,strcat([fnames(1).folder filesep],{fnames.name}));
-        
-        fnames = {fnames.name};
-        inputFullpaths = cell(numel(fnames), 1);
-        outputFullpaths = cell(numel(fnames), 1);
-        funcStrs = cell(numel(fnames), 1);
-        
-        if parseCluster
-            if  ~exist(jobLogDir, 'dir')
-                warning('The job log directory does not exist, use %s/job_logs as job log directory.', dataPaths{i})
-                jobLogDir = sprintf('%s/job_logs', dataPaths{i});
-                mkdir(jobLogDir);
-            end
-            job_log_fname = [jobLogDir, '/job_%A_%a.out'];
-            job_log_error_fname = [jobLogDir, '/job_%A_%a.err'];
-        end
-        
-        alreadyFinished = true;
-        for j = 1: numel(fnames)
-            [pathstr, fsname, ext] = fileparts(fnames{j});
-            dataFullpath = [dataPaths{i} filesep fnames{j}];
-            dataDSFullpath = [dataPaths{i} filesep folStr filesep fsname ext];
-            
-            if alreadyFinished
-                if ~exist(dataDSFullpath,'file')
-                    alreadyFinished = false;
+    
+    % Deskew
+    if(Deskew)
+        for i = 1:numel(dataPaths)
+            for cPatt = 1:numel(ChannelPatterns)
+                fnames = dir([dataPaths{i} filesep '*' ChannelPatterns{cPatt} '*.tif']);
+                
+                if(isempty(fnames))
+                    fprintf('No Files found for channel pattern: ''%s''. Skipping to next pattern.\n',ChannelPatterns{cPatt});
+                    continue;
+                end
+                
+                if(Streaming)
+                    allTimes = [fnames.datenum];
+                    allTimes = (datenum(clock)-allTimes)*24*60;
+                    if(min(allTimes) < unitWaitTime)
+                        % For deskew, if we are streaming we want to cull
+                        % the newest file that is less than unitWaitTime
+                        % minutes old since only one file is written at a
+                        % time
+                        newestIndex = allTimes == min(allTimes);
+                        fnames(newestIndex) = [];
+                    end
+                    % If there are no more files. Continue to next pattern
+                    if(isempty(fnames))
+                        continue;
+                    end
+                end
+                
+                % Check that jobs have not yet been submitted for these files
+                match = ismember(strcat([fnames(1).folder filesep],{fnames.name}),allFullPaths);
+                fnames(match) = [];
+                
+                % If there are no more files. Continue to next pattern
+                if(isempty(fnames))
+                    continue;
+                end
+                
+                % Add files to list
+                allFullPaths = horzcat(allFullPaths,strcat([fnames(1).folder filesep],{fnames.name}));
+                
+                fnames = {fnames.name};
+                inputFullpaths = cell(numel(fnames), 1);
+                outputFullpaths = cell(numel(fnames), 1);
+                funcStrs = cell(numel(fnames), 1);
+                
+                if parseCluster
+                    if  ~exist(jobLogDir, 'dir')
+                        warning('The job log directory does not exist, use %s/job_logs as job log directory.', dataPaths{i})
+                        jobLogDir = sprintf('%s/job_logs', dataPaths{i});
+                        mkdir(jobLogDir);
+                    end
+                    job_log_fname = [jobLogDir, '/job_%A_%a.out'];
+                    job_log_error_fname = [jobLogDir, '/job_%A_%a.err'];
+                end
+                
+                alreadyFinished = true;
+                for j = 1: numel(fnames)
+                    [pathstr, fsname, ext] = fileparts(fnames{j});
+                    dataFullpath = [dataPaths{i} filesep fnames{j}];
+                    dataDSFullpath = [dataPaths{i} filesep folStr filesep fsname ext];
+                    
+                    if alreadyFinished
+                        if ~exist(dataDSFullpath,'file')
+                            alreadyFinished = false;
+                        end
+                    end
+                    
+                    inputFullpaths{j} = dataFullpath;
+                    outputFullpaths{j} = dataDSFullpath;
+                    
+                    
+                    funcStrs{j} =  sprintf(['deskewPhasesFrame(''%s'',%.10f,%.10f,''SkewAngle'',%.10f,''Reverse'',%s,''nphases''', ...
+                        ',%.10f,''Rotate'',%s)'], dataFullpath, xyPixelSize, dz, SkewAngle, string(Reverse), nphases, string(Rotate));
+                end
+                
+                if alreadyFinished
+                    fprintf('Skipping Deskew for pattern ''%s'' in folder ''%s'' because it already exists.\n',ChannelPatterns{cPatt},dataPaths{i});
+                    continue;
+                end
+                
+                %if useGPU
+                %   maxJobNum = inf;
+                %  cpusPerTask = 5;
+                % cpuOnlyNodes = false;
+                %taskBatchNum = 5;
+                %SlurmParam = '-p abc --qos abc_normal -n1 --mem=167G --gres=gpu:1';
+                %else
+                maxJobNum = inf;
+                cpusPerTask = 24;
+                cpuOnlyNodes = true;
+                taskBatchNum = 1;
+                SlurmParam = '-p abc --qos abc_normal -n1 --mem-per-cpu=21418M';
+                %end
+                
+                
+                
+                if(~isempty(inputFullpaths))
+                    fprintf('Attempting Deskew on %d file(s) for pattern ''%s'' in folder ''%s''\n',length(inputFullpaths),ChannelPatterns{cPatt},dataPaths{i})
+                    [workers{1,cWorker}] = parfeval(@slurm_cluster_generic_computing_wrapper,1,inputFullpaths, outputFullpaths, ...
+                        funcStrs, 'cpusPerTask', cpusPerTask, 'cpuOnlyNodes', cpuOnlyNodes, 'SlurmParam', SlurmParam, ...
+                        'maxJobNum', maxJobNum, 'taskBatchNum', taskBatchNum, 'masterCompute', masterCompute, 'parseCluster', parseCluster);
+                    workers{2,cWorker} = sprintf('Finished Deskew on %d file(s) for pattern ''%s'' in folder ''%s''\n',length(inputFullpaths),ChannelPatterns{cPatt},dataPaths{i});
+                    cWorker = cWorker+1;
+                    %{
+                is_done_flag= slurm_cluster_generic_computing_wrapper(inputFullpaths, outputFullpaths, ...
+                    funcStrs, 'cpusPerTask', cpusPerTask, 'cpuOnlyNodes', cpuOnlyNodes, 'SlurmParam', SlurmParam, ...
+                    'maxJobNum', maxJobNum, 'taskBatchNum', taskBatchNum, 'masterCompute', masterCompute, 'parseCluster', parseCluster);
+
+                if ~all(is_done_flag)
+                    slurm_cluster_generic_computing_wrapper(inputFullpaths, outputFullpaths, ...
+                        funcStrs, 'cpusPerTask', cpusPerTask, 'cpuOnlyNodes', cpuOnlyNodes, 'SlurmParam', SlurmParam, ...
+                        'maxJobNum', maxJobNum, 'taskBatchNum', taskBatchNum, 'masterCompute', masterCompute, 'parseCluster', parseCluster);
+                end
+                    %}
                 end
             end
             
-            inputFullpaths{j} = dataFullpath;
-            outputFullpaths{j} = dataDSFullpath;
             
-            
-            funcStrs{j} =  sprintf(['deskewPhasesFrame(''%s'',%.10f,%.10f,''SkewAngle'',%.10f,''Reverse'',%s,''nphases''', ...
-                ',%.10f,''Rotate'',%s)'], dataFullpath, xyPixelSize, dz, SkewAngle, string(Reverse), nphases, string(Rotate));
         end
-        
-        if alreadyFinished
-            fprintf('Skipping Deskew for pattern ''%s'' in folder ''%s'' because it already exists.\n',ChannelPatterns{cPatt},dataPaths{i});
-            continue;
-        end
-        
-        %if useGPU
-        %   maxJobNum = inf;
-        %  cpusPerTask = 5;
-        % cpuOnlyNodes = false;
-        %taskBatchNum = 5;
-        %SlurmParam = '-p abc --qos abc_normal -n1 --mem=167G --gres=gpu:1';
-        %else
-        maxJobNum = inf;
-        cpusPerTask = 24;
-        cpuOnlyNodes = true;
-        taskBatchNum = 1;
-        SlurmParam = '-p abc --qos abc_normal -n1 --mem-per-cpu=21418M';
-        %end
-        
-        
-        
-        if(~isempty(inputFullpaths))
-            fprintf('Attempting Deskew on %d files for pattern ''%s'' in folder ''%s''\n',length(inputFullpaths),ChannelPatterns{cPatt},dataPaths{i})
-            [workers{1,cWorker}] = parfeval(@slurm_cluster_generic_computing_wrapper,1,inputFullpaths, outputFullpaths, ...
-                funcStrs, 'cpusPerTask', cpusPerTask, 'cpuOnlyNodes', cpuOnlyNodes, 'SlurmParam', SlurmParam, ...
-                'maxJobNum', maxJobNum, 'taskBatchNum', taskBatchNum, 'masterCompute', masterCompute, 'parseCluster', parseCluster);
-            workers{2,cWorker} = sprintf('Finished Deskew on %d files for pattern ''%s'' in folder ''%s''\n',length(inputFullpaths),ChannelPatterns{cPatt},dataPaths{i});
-            cWorker = cWorker+1;
-            %{
+    end
+    
+    % Recon
+    if Recon
+        for i = 1:numel(dataPathsDS)
+            for cPatt = 1:numel(ChannelPatterns)
+                fnames = dir([dataPathsDS{i} filesep '*' ChannelPatterns{cPatt} '*.tif']);
+                
+                if(isempty(fnames))
+                    if(~Streaming)
+                        fprintf('No Files found for channel pattern: ''%s''. Skipping to next pattern.\n',ChannelPatterns{cPatt});
+                    end
+                    continue;
+                end
+                
+                if(Streaming)
+                    allTimes = [fnames.datenum];
+                    allTimes = (datenum(clock)-allTimes)*24*60;
+                    if(min(allTimes) < unitWaitTime)
+                        % For Recon, if we are streaming we want to cull
+                        % all files that are less than unitWaitTime minutes
+                        % old since multiple files can be written at once
+                        newestIndex = allTimes < unitWaitTime;
+                        fnames(newestIndex) = [];
+                    end
+                    % If there are no more files. Continue to next pattern
+                    if(isempty(fnames))
+                        continue;
+                    end
+                end
+                
+                % Check that jobs have not yet been submitted for these files
+                match = ismember(strcat([fnames(1).folder filesep],{fnames.name}),allFullPaths);
+                fnames(match) = [];
+                
+                % If there are no more files. Continue to next pattern
+                if(isempty(fnames))
+                    continue;
+                end
+                
+                % Add files to list
+                allFullPaths = horzcat(allFullPaths,strcat([fnames(1).folder filesep],{fnames.name}));
+                
+                fnames = {fnames.name};
+                inputFullpaths = cell(numel(fnames), 1);
+                outputFullpaths = cell(numel(fnames), 1);
+                funcStrs = cell(numel(fnames), 1);
+                
+                if parseCluster
+                    if  ~exist(jobLogDir, 'dir')
+                        warning('The job log directory does not exist, use %s/job_logs as job log directory.', dataPathsDS{i})
+                        jobLogDir = sprintf('%s/job_logs', dataPathsDS{i});
+                        mkdir(jobLogDir);
+                    end
+                    job_log_fname = [jobLogDir, '/job_%A_%a.out'];
+                    job_log_error_fname = [jobLogDir, '/job_%A_%a.err'];
+                end
+                
+                alreadyFinished = true;
+                for j = 1: numel(fnames)
+                    [pathstr, fsname, ext] = fileparts(fnames{j});
+                    dataFullpath = [dataPathsDS{i} filesep fnames{j}];
+                    dataDSFullpath = [dataPathsDS{i} filesep 'sim_recon' filesep fsname '_recon' ext];
+                    
+                    if alreadyFinished
+                        if ~exist(dataDSFullpath,'file')
+                            alreadyFinished = false;
+                        end
+                    end
+                    
+                    inputFullpaths{j} = dataFullpath;
+                    outputFullpaths{j} = dataDSFullpath;
+                    
+                    
+                    
+                    funcStrs{j} =  sprintf(['simReconFrame(''%s'',''%s'',''lattice_period'',%.10f,''phase_step'',%.10f,''norders''', ...
+                        ',%.10f,''nphases'',%.10f,''Overlap'',%.10f,''ChunkSize'',[%.10f,%.10f,%.10f],''edgeTaper'',%s,''edgeTaperVal'',%.10f,',...
+                        '''perdecomp'',%s,''useGPU'',%s,''DS'',%s,''Background'',%.10f)'], dataFullpath, PSFs{cPatt}, ...
+                        lattice_period, phase_step, norders, nphases, OL, ChunkSize, string(edgeTaper), edgeTaperVal, string(perdecomp), ...
+                        string(useGPU),  string(DS), Background);
+                end
+                
+                if alreadyFinished
+                    fprintf('Skipping Recon for pattern ''%s'' in folder ''%s'' because it already exists.\n',ChannelPatterns{cPatt},dataPathsDS{i});
+                    continue;
+                end
+                
+                if useGPU
+                    maxJobNum = inf;
+                    cpusPerTask = 5;
+                    cpuOnlyNodes = false;
+                    taskBatchNum = reconBatchNum;
+                    SlurmParam = '-p abc --qos abc_normal -n1 --mem=167G --gres=gpu:1';
+                else
+                    maxJobNum = inf;
+                    cpusPerTask = 24;
+                    cpuOnlyNodes = true;
+                    taskBatchNum = 1;
+                    SlurmParam = '-p abc --qos abc_normal -n1 --mem-per-cpu=21418M';
+                end
+                
+                
+                
+                if(~isempty(inputFullpaths))
+                    fprintf('Attempting Recon on %d file(s) for pattern ''%s'' in folder ''%s''\n',length(inputFullpaths),ChannelPatterns{cPatt},dataPathsDS{i})
+                    [workers{1,cWorker}] = parfeval(@slurm_cluster_generic_computing_wrapper,1,inputFullpaths, outputFullpaths, ...
+                        funcStrs, 'cpusPerTask', cpusPerTask, 'cpuOnlyNodes', cpuOnlyNodes, 'SlurmParam', SlurmParam, ...
+                        'maxJobNum', maxJobNum, 'taskBatchNum', taskBatchNum, 'masterCompute', masterCompute, 'parseCluster', parseCluster);
+                    workers{2,cWorker} = sprintf('Finished Recon on %d file(s) for pattern ''%s'' in folder ''%s''\n',length(inputFullpaths),ChannelPatterns{cPatt},dataPathsDS{i});
+                    cWorker = cWorker+1;
+                    %{
             is_done_flag= slurm_cluster_generic_computing_wrapper(inputFullpaths, outputFullpaths, ...
                 funcStrs, 'cpusPerTask', cpusPerTask, 'cpuOnlyNodes', cpuOnlyNodes, 'SlurmParam', SlurmParam, ...
                 'maxJobNum', maxJobNum, 'taskBatchNum', taskBatchNum, 'masterCompute', masterCompute, 'parseCluster', parseCluster);
@@ -290,53 +447,71 @@ for i = 1:numel(dataPaths)
                     funcStrs, 'cpusPerTask', cpusPerTask, 'cpuOnlyNodes', cpuOnlyNodes, 'SlurmParam', SlurmParam, ...
                     'maxJobNum', maxJobNum, 'taskBatchNum', taskBatchNum, 'masterCompute', masterCompute, 'parseCluster', parseCluster);
             end
-            %}
+                    %}
+                end
+            end
+            
+            
         end
     end
     
-    
-end
-
-% Find the time of the most recently modified file
-if Streaming
-    latest_modify_time = inf;
-    for i = 1:numel(dataPaths)
-        for cPatt = 1:numel(ChannelPatterns)
-            dir_info = dir([dataPaths{i} filesep '*' ChannelPatterns{cPatt} '*.tif']);
-
-            last_modify_time = (datenum(clock) - [dir_info.datenum]) * 24 * 60;
-            lowestTimeI = min(last_modify_time);
-            latest_modify_time = min(latest_modify_time,lowestTimeI);
+    % Find the time of the most recently modified file
+    if Streaming
+        latest_modify_time = inf;
+        for i = 1:numel(dataPaths)
+            if exist([dataPaths{i} filesep],'dir')
+                for cPatt = 1:numel(ChannelPatterns)
+                    dir_info = dir([dataPaths{i} filesep '*' ChannelPatterns{cPatt} '*.tif']);
+                    if ~isempty(dir_info)
+                        last_modify_time = (datenum(clock) - [dir_info.datenum]) * 24 * 60;
+                        lowestTimeI = min(last_modify_time);
+                        latest_modify_time = min(latest_modify_time,lowestTimeI);
+                    end
+                end
+            end
+        end
+        if Deskew && Recon
+            for i = 1:numel(dataPathsDS)
+                if exist([dataPathsDS{i} filesep],'dir')
+                    for cPatt = 1:numel(ChannelPatterns)
+                        dir_info = dir([dataPathsDS{i} filesep '*' ChannelPatterns{cPatt} '*.tif']);
+                        if ~isempty(dir_info)
+                            last_modify_time = (datenum(clock) - [dir_info.datenum]) * 24 * 60;
+                            lowestTimeI = min(last_modify_time);
+                            latest_modify_time = min(latest_modify_time,lowestTimeI);
+                        end
+                    end
+                end
+            end
         end
     end
-end
-
-indices = {};
-for i = 1:cWorker-1
-    if strcmp(workers{1,i}.State,'finished')
-       fprintf(workers{2,i});
-       indices{end+1} = i;
-       %workers(:,i) = [];
-       %cWorker = cWorker-1;
-       %i = i-1;
+    
+    indices = {};
+    for i = 1:cWorker-1
+        if strcmp(workers{1,i}.State,'finished')
+            fprintf(workers{2,i});
+            indices{end+1} = i;
+            %workers(:,i) = [];
+            %cWorker = cWorker-1;
+            %i = i-1;
+        end
     end
-end
-
-workers(:,[indices{:}]) = [];
-cWorker = cWorker-length(indices);
-
-
-if(cWorker > 1)
-   cStates = [workers{1,:}];
-   cStates = {cStates.State};
-end
-
+    
+    workers(:,[indices{:}]) = [];
+    cWorker = cWorker-length(indices);
+    
+    
+    if(cWorker > 1)
+        cStates = [workers{1,:}];
+        cStates = {cStates.State};
+    end
+    
 end
 
 % One last check for job output
 for i = 1:cWorker-1
     if strcmp(workers{1,i}.State,'finished')
-       fprintf(workers{2,i});
+        fprintf(workers{2,i});
     end
 end
 
