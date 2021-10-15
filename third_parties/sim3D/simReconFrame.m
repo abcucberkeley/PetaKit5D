@@ -61,7 +61,7 @@ ip.addParameter('uuid', '', @ischar);
 ip.addParameter('maxTrialNum', 3, @isnumeric);
 ip.addParameter('unitWaitTime', 2, @isnumeric);
 ip.addParameter('intThresh', 1, @isnumeric);
-ip.addParameter('occThres', 0.8, @isnumeric);
+ip.addParameter('occThresh', 0.8, @isnumeric);
 
 ip.parse(frameFullpaths, otf, varargin{:});
 
@@ -96,7 +96,7 @@ perdecomp = pr.perdecomp;
 edgeTaper = pr.edgeTaper;
 edgeTaperVal = pr.edgeTaperVal;
 intThresh = pr.intThresh;
-occThres = pr.occThres;
+occThresh = pr.occThresh;
 
 useGPU = pr.useGPU;
 
@@ -271,7 +271,7 @@ for f = 1 : nF
         end
         
         % for blank region, just skip it
-        if sum(im_chunk(:)) > intThresh && nnz(im_chunk(:))/ prod(size(im_chunk))>= occThres
+        if sum(im_chunk(:)) > intThresh && nnz(im_chunk(:))/ prod(size(im_chunk))>= occThresh
            fprintf('processing chunk:%d of %d \n',ck, nn)
             try
             im_chunk = simRecon(im_chunk, otf, 'islattice', islattice, 'NA_det', NA_det, 'NA_ext', NA_ext, 'nimm', nimm, ...
