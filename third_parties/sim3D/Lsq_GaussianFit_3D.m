@@ -23,7 +23,7 @@ params_guess(7) = 1.5; %sigz(guess) = z sigma value
 options = optimset('Display', 'off', 'MaxIter', 10000, 'MaxFunEvals', 10000, 'TolX', 1e-6, 'TolFun', 1e-6);
 [fitParams, resnorm] = fminsearch(@(params) objFun_GaussianFit_3D(params,PeakData), params_guess,options);
 
-%% display results----------------------------------------------------------------
+% display results----------------------------------------------------------------
 if displayFit
     F=plot3DGaussian(fitParams,PeakData,[ny,nx,nz]);
     figure
@@ -46,7 +46,7 @@ if displayFit
 end
 end
 
-%% --------------------------------------------------------------------------------------------
+% --------------------------------------------------------------------------------------------
 %Helper functions below
 %Calculate the objective function for the least-square fit
 function F = objFun_GaussianFit_3D(params,PeakData)
