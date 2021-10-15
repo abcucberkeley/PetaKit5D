@@ -189,7 +189,7 @@ for k = lambda + 1 : lambda + NUMIT
         if k == 1
             mkdir(debug_folder);
         end
-        if rem(k, 1) == 0
+        if rem(k, 5) == 0
             if useGPU 
                 writetiff(single(gather(J_2)), sprintf('%s/Iter_%04d.tif', debug_folder, k));
             else

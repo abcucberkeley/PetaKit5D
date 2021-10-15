@@ -220,17 +220,20 @@ figureFullpaths = cat(1, figureFullpaths{:});
 func_strs = cat(1, func_strs{:});
 
 % use cluster computing for the psf analysis
-cpusPerTask = 2;
+cpusPerTask = 4;
+maxTrialNum = 2;
 MatlabLaunchStr = 'module load matlab/r2021a; matlab -nodisplay -nosplash -nodesktop -r'; 
 is_done_flag = slurm_cluster_generic_computing_wrapper(frameFullpaths, figureFullpaths, ...
-    func_strs, 'MatlabLaunchStr', MatlabLaunchStr, 'masterCompute', masterCompute, 'cpusPerTask', cpusPerTask);
+    func_strs, 'MatlabLaunchStr', MatlabLaunchStr, 'maxTrialNum', maxTrialNum, ...
+    'masterCompute', masterCompute, 'cpusPerTask', cpusPerTask);
 if ~all(is_done_flag)
     slurm_cluster_generic_computing_wrapper(frameFullpaths, figureFullpaths, ...
-        func_strs, 'MatlabLaunchStr', MatlabLaunchStr, 'masterCompute', masterCompute, 'cpusPerTask', cpusPerTask * 2);
+        func_strs, 'MatlabLaunchStr', MatlabLaunchStr, 'maxTrialNum', maxTrialNum, ...
+        'masterCompute', masterCompute, 'cpusPerTask', cpusPerTask * 2);
 end
 if ~all(is_done_flag)
     slurm_cluster_generic_computing_wrapper(frameFullpaths, figureFullpaths, ...
-        func_strs, 'MatlabLaunchStr', MatlabLaunchStr, 'masterCompute', masterCompute, 'cpusPerTask', cpusPerTask * 4);
+        func_strs, 'MatlabLaunchStr', MatlabLaunchStr, 'masterCompute', masterCompute, 'cpusPerTask', cpusPerTask * 6);
 end
 
 

@@ -14,6 +14,7 @@ function [] = XR_RLdeconFrame3D(frameFullpaths, pixelSize, dz, varargin)
 % xruan (07/13/2021): add support for the processing of flipped files
 % (currently only add support for matlab decon)
 % xruan (07/15/2021): add support for zarr input
+% xruan (10/12/2021): setting overlap region based on the size of psf (and crop psf after psfgen)
 
 
 ip = inputParser;
@@ -125,11 +126,13 @@ end
 
 maxSubVolume = 1e11;
 if GPUJob
-    ChunkSize = round(pr.ChunkSize ./ [6.4, 6.4, 6.4]);
+    ChunkSize = round(pr.ChunkSize ./ [8, 8, 8]);
     OL = 200;
     maxSubVolume = 5e8;
     % masterCompute = gpuDeviceCount() > 0 & masterCompute;
 end
+
+OL_orig = OL;
 
 % if master node is cpu node, msterCompute must be false, it is only for
 % large file cluster computing
@@ -228,13 +231,13 @@ for f = 1 : nF
 %         system(softlink_cmd);
         % frameTmpPath = sprintf('%s_%s.tif', frameFullpath(1:end-4), uuid); 
         deconTmpPath = sprintf('%s_%s_decon.tif', deconFullPath(1:end-10), uuid); 
-        RLdecon(frameFullpath, deconTmpPath, PSF, Background, DeconIter, dzPSF, dz, Deskew, [], SkewAngle, ...
+        im = RLdecon(frameFullpath, deconTmpPath, PSF, Background, DeconIter, dzPSF, dz, Deskew, [], SkewAngle, ...
             pixelSize, Rotate, Save16bit, Crop, zFlip, GenMaxZproj, ResizeImages, [], RLMethod, ...
             fixIter, errThresh, flipZstack, debug);
         toc
         % system(unlink_cmd);
         if exist(deconTmpPath, 'file')
-            im = readtiff(deconTmpPath);
+            % im = readtiff(deconTmpPath);
             if EdgeErosion > 0
                 fprintf('Erode edges of deconvolved data w.r.t. raw data...\n');        
                 im = im .* cast(im_bw_erode, class(im));
@@ -275,7 +278,36 @@ for f = 1 : nF
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
     fprintf('Start Large-file RL Decon for %s...\n', fsname);
-
+    
+    % generate psf and use the cropped psf to decide the overlap region
+    pp = readtiff(PSF);
+    medFactor = 1.5;
+    PSFGenMethod = 'masked';
+    if Deskew
+        dz_data_ratio = sind(SkewAngle);
+    else
+        dz_data_ratio = 1;
+    end
+    psf = psf_gen_new(pp, dzPSF, dz*dz_data_ratio, medFactor, PSFGenMethod);
+    py = find(squeeze(sum(psf, [2, 3])));
+    px = find(squeeze(sum(psf, [1, 3])));
+    pz = find(squeeze(sum(psf, [1, 2])));
+    cropSz = [min(py(1) - 1, size(psf, 1) - py(end)), min(px(1) - 1, size(psf, 2) - px(end)), min(pz(1) - 1, size(psf, 3) - pz(end))] - 1;
+    cropSz = max(0, cropSz);
+    bbox = [cropSz + 1, size(psf) - cropSz];
+    
+    % write generated psf to disk in case it will be deleted in the c
+    psfgen_folder = sprintf('%s/psfgen/', deconPath);
+    mkdir(psfgen_folder);
+    [~, psf_fsn] = fileparts(PSF);
+    psfgen_filename = sprintf('%s/%s.tif', psfgen_folder, psf_fsn);
+    if ~exist(psfgen_filename, 'file')
+        writetiff(psf, psfgen_filename);
+    end
+    
+    % OL = min(OL, ceil((bbox(4 : 6) - bbox(1 : 3) + 1) / 2) * 3);
+    OL = min(OL_orig, ceil((bbox(4 : 6) - bbox(1 : 3) + 1) / 2) * 2 + 10);
+    
     tic
     fprintf(['reading ' fsname '...\n'])
     switch ext
@@ -349,8 +381,6 @@ for f = 1 : nF
             jobLogDir = sprintf('%s/job_logs', chunkPath);
             mkdir(jobLogDir);
         end
-        job_log_fname = [jobLogDir, '/job_%A_%a.out'];
-        job_log_error_fname = [jobLogDir, '/job_%A_%a.err'];
     end
     
     tic
