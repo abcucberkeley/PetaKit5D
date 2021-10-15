@@ -69,6 +69,8 @@ function [] = XR_matlab_stitching_wrapper(dataPath, imageListFileName, varargin)
 % xruan (07/05/2021): add support for user defined resample (arbitary factor)
 % xruan (07/15/2021): extend subiteration to unlimited number of sets
 % xruan (08/25/2021): add support for channel-specific user functions
+% xruan (10/13/2021): add support for cropping tiles; add support for
+%   skewed space stitching with reference (for decon data)
 
 
 ip = inputParser;
@@ -80,8 +82,8 @@ ip.addParameter('Streaming', false, @islogical);
 ip.addParameter('ChannelPatterns', {'CamA_ch0', 'CamA_ch1', 'CamB_ch0'}, @iscell);
 ip.addParameter('useExistDSR', false, @islogical); % use exist DSR for the processing
 ip.addParameter('DSRDirstr', 'DSR', @ischar); % path for DSRDir str, if it is not true
-ip.addParameter('useExistDSRDecon', false, @islogical); % use exist DSR decon for the processing
-ip.addParameter('DSRDeconDirstr', '', @ischar); % path for DSRDir decon str, if it is not true
+ip.addParameter('useExistDecon', false, @islogical); % use exist decon for the processing (change to more generic decon, for not only DSR decon)
+ip.addParameter('DeconDirstr', '', @ischar); % path for decon str, if it is not true
 ip.addParameter('stitchInfoFullpath', '', @ischar); % use exist stitch info for stitching
 ip.addParameter('DS', false, @islogical);
 ip.addParameter('DSR', false, @islogical);
@@ -91,6 +93,8 @@ ip.addParameter('axisOrder', 'x,y,z', @ischar);
 ip.addParameter('ObjectiveScan', false, @islogical);
 ip.addParameter('resampleType', 'xy_isotropic', @ischar); % by default use xy isotropic
 ip.addParameter('resample', [], @isnumeric); % user-defined resample factor
+ip.addParameter('CropToSize', [], @isnumeric); % size cropped to 
+ip.addParameter('TileOffset', 0, @isnumeric); % offset added to tile
 ip.addParameter('ffcorrect', false, @islogical);
 ip.addParameter('Resolution', [0.108, 0.5], @isnumeric);
 ip.addParameter('resultDir', 'matlab_stitch', @ischar);
@@ -133,8 +137,8 @@ Streaming = pr.Streaming;
 ChannelPatterns = pr.ChannelPatterns;
 useExistDSR = pr.useExistDSR;
 DSRDirstr = pr.DSRDirstr;
-useExistDSRDecon = pr.useExistDSRDecon;
-DSRDeconDirstr = pr.DSRDeconDirstr;
+useExistDecon = pr.useExistDecon;
+DeconDirstr = pr.DeconDirstr;
 stitchInfoFullpath = pr.stitchInfoFullpath;
 DS = pr.DS;
 DSR = pr.DSR;
@@ -144,6 +148,8 @@ axisOrder = pr.axisOrder;
 ObjectiveScan = pr.ObjectiveScan;
 resampleType = pr.resampleType;
 resample = pr.resample;
+CropToSize = pr.CropToSize;
+TileOffset = pr.TileOffset;
 ffcorrect = pr.ffcorrect;
 Resolution = pr.Resolution;
 resultDir = pr.resultDir;
@@ -219,7 +225,7 @@ if ~exist(stitching_tmp, 'dir')
     fileattrib(stitching_tmp, '+w', 'g');            
 end
 
-if useExistDSRDecon
+if useExistDecon
     useExistDSR = false;
 end
 
@@ -304,8 +310,8 @@ if isempty(dir_info)
     if useExistDSR
         dir_info = dir([dataPath, DSRDirstr, '/', '*.tif']);
         imageFnames = {dir_info.name}';
-    elseif useExistDSRDecon
-        dir_info = dir([dataPath, '/', DSRDeconDirstr, '/', '*.tif']);
+    elseif useExistDecon
+        dir_info = dir([dataPath, '/', DeconDirstr, '/', '*.tif']);
         imageFnames = cellfun(@(x) [x(1 : end - 10), '.tif'], {dir_info.name}', 'unif', 0);
     else
         error('The tiles do not exist!');
@@ -323,7 +329,7 @@ imageFnames = imageFnames(include_flag);
 [~, tFsnames] = fileparts(t.Filename);
 image_file_exist_flag = true(numel(tFsnames), 1);
 for f = 1 : numel(t.Filename)
-    if ~any(contains(imageFnames, tFsnames{f})) % || (useExistDSRDecon && ~any(contains(imageFnames, tFsnames{f})))
+    if ~any(contains(imageFnames, tFsnames{f})) % || (useExistDecon && ~any(contains(imageFnames, tFsnames{f})))
         image_file_exist_flag(f) = false;
     end
 end
@@ -559,24 +565,24 @@ while ~all(is_done_flag | trial_counter >= max_trial_num, 'all')
                         DSRDirstr = '';
                     end
                     
-                    if useExistDSRDecon
-                        tile_dsr_decon_fullpaths = cellfun(@(x) [dataPath, '/', DSRDeconDirstr, '/', x(1 : end - 4), '_decon.tif'], tile_fnames, 'unif', 0);
-                        is_tile_dsr_decon_exist = cellfun(@(x) exist(x, 'file'), tile_dsr_decon_fullpaths);
+                    if useExistDecon
+                        tile_decon_fullpaths = cellfun(@(x) [dataPath, '/', DeconDirstr, '/', x(1 : end - 4), '_decon.tif'], tile_fnames, 'unif', 0);
+                        is_tile_decon_exist = cellfun(@(x) exist(x, 'file'), tile_decon_fullpaths);
                         if Streaming
-                            if ~all(is_tile_dsr_decon_exist)
+                            if ~all(is_tile_decon_exist)
                                 stream_counter = stream_counter + 1;
                                 continue;
                             else
                                 stream_counter = 0;
                             end
                         else
-                            if ~all(is_tile_dsr_decon_exist) 
+                            if ~all(is_tile_decon_exist) 
                                 is_done_flag(n, ncam, s, c) = true;
                                 continue; 
                             end
                         end
                     else
-                        DSRDeconDirstr = '';
+                        DeconDirstr = '';
                     end
 
                     % for secondary channels, first check whether the
@@ -667,14 +673,15 @@ while ~all(is_done_flag | trial_counter >= max_trial_num, 'all')
                     cind = cellfun(@(x) contains(tile_fullpaths{1}, x), ChannelPatterns);
                     func_str = sprintf(['%s(%s,%s,''axisOrder'',''%s'',''px'',%0.10f,''dz'',%0.10f,', ...
                         '''Reverse'',%s,''ObjectiveScan'',%s,''resultDir'',''%s'',''stitchInfoDir'',''%s'',''stitchInfoFullpath'',''%s'',', ...
-                        '''DSRDirstr'',''%s'',''DSRDeconDirstr'',''%s'',''DS'',%s,''DSR'',%s,''resampleType'',''%s'',''resample'',[%s],''BlendMethod'',''%s'',', ...
-                        '''overlapType'',''%s'',''xcorrShift'',%s,''xyMaxOffset'',%0.10f,''zMaxOffset'',%0.10f,''isPrimaryCh'',%s,''usePrimaryCoords'',%s,', ...
-                        '''padSize'',[%s],''boundboxCrop'',[%s],''zNormalize'',%s,''Save16bit'',%s,''tileNum'',[%s],''flippedTile'',[%s],''processFunPath'',''%s'')'], ...
+                        '''DSRDirstr'',''%s'',''DeconDirstr'',''%s'',''DS'',%s,''DSR'',%s,''resampleType'',''%s'',''resample'',[%s],', ...
+                        '''CropToSize'',%s,''TileOffset'',%d,''BlendMethod'',''%s'',''overlapType'',''%s'',''xcorrShift'',%s,''xyMaxOffset'',%0.10f,', ...
+                        '''zMaxOffset'',%0.10f,''isPrimaryCh'',%s,''usePrimaryCoords'',%s,''padSize'',[%s],''boundboxCrop'',[%s],', ...
+                        '''zNormalize'',%s,''Save16bit'',%s,''tileNum'',[%s],''flippedTile'',[%s],''processFunPath'',''%s'')'], ...
                         stitch_function_str, tile_fullpaths_str, xyz_str, axisOrder, px, dz, string(Reverse), string(ObjectiveScan), resultDir, stitchInfoDir, ...
-                        stitchInfoFullpath, DSRDirstr, DSRDeconDirstr, string(DS), string(DSR), resampleType, strrep(num2str(resample, '%.10d,'), ' ', ''), ...
-                        BlendMethod, overlapType, string(xcorrShift), xyMaxOffset, zMaxOffset, string(isPrimaryCh), string(usePrimaryCoords), num2str(padSize, '%d,'), ...
-                        strrep(num2str(boundboxCrop, '%d,'), ' ', ''), string(zNormalize),  string(Save16bit), strrep(num2str(tileNum, '%d,'), ' ', ''), ...
-                        strrep(num2str(flippedTile, '%d,'), ' ', ''), processFunPath{cind});
+                        stitchInfoFullpath, DSRDirstr, DeconDirstr, string(DS), string(DSR), resampleType, strrep(num2str(resample, '%.10d,'), ' ', ''), ...
+                        strrep(mat2str(CropToSize), ' ', ','), TileOffset, BlendMethod, overlapType, string(xcorrShift), xyMaxOffset, zMaxOffset, string(isPrimaryCh), ...
+                        string(usePrimaryCoords), num2str(padSize, '%d,'),  strrep(num2str(boundboxCrop, '%d,'), ' ', ''), string(zNormalize),  string(Save16bit), ...
+                        strrep(num2str(tileNum, '%d,'), ' ', ''), strrep(num2str(flippedTile, '%d,'), ' ', ''), processFunPath{cind});
 
                     if exist(cur_tmp_fname, 'file') || (parseCluster && ~(masterCompute && strcmpi(xcorrMode, 'primaryFirst') && isPrimaryCh))
                         % for cluster computing with master, check whether
@@ -698,8 +705,8 @@ while ~all(is_done_flag | trial_counter >= max_trial_num, 'all')
                                 % check if memory is enough
                                 if useExistDSR
                                     dir_info = dir(tile_dsr_fullpaths{1});
-                                elseif useExistDSRDecon
-                                    dir_info = dir(tile_dsr_decon_fullpaths{1});                                    
+                                elseif useExistDecon
+                                    dir_info = dir(tile_decon_fullpaths{1});                                    
                                 else
                                     dir_info = dir(tile_fullpaths{1});                                    
                                 end

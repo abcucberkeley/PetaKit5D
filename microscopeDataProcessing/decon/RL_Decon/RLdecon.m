@@ -1,4 +1,4 @@
-function RLdecon(input_tiff, output_filename, psf, background, nIter, dz_psf, dz_data, ...
+function [deconvolved] = RLdecon(input_tiff, output_filename, psf, background, nIter, dz_psf, dz_data, ...
     zalign, zalignParams, rotateByAngle, xypixelsize, bRotFinal, ...
     bSaveUint16, cropFinal, bFlipZ, axesMaxIntProj, resizeFactor, scalingThresh, ...
     RLMethod, fixIter, errThresh, flipZstack, debug, varargin)
@@ -85,6 +85,17 @@ if ischar(psf)
             medFactor = 1.5;
             PSFGenMethod = 'masked';
             psf = psf_gen_new(pp, dz_psf, dz_data*dz_data_ratio, medFactor, PSFGenMethod);
+            
+            % crop psf to the bounding box (-/+ 1 pixel) and make sure the
+            % center doesn't shift
+            py = find(squeeze(sum(psf, [2, 3])));
+            px = find(squeeze(sum(psf, [1, 3])));
+            pz = find(squeeze(sum(psf, [1, 2])));
+            cropSz = [min(py(1) - 1, size(psf, 1) - py(end)), min(px(1) - 1, size(psf, 2) - px(end)), min(pz(1) - 1, size(psf, 3) - pz(end))] - 1;
+            cropSz = max(0, cropSz);
+            bbox = [cropSz + 1, size(psf) - cropSz];
+            psf = psf(bbox(1) : bbox(4), bbox(2) : bbox(5), bbox(3) : bbox(6));
+            
             % crop psf if it is larger than data in any dimension
             imSize = getImageSize(input_tiff);
             if any(size(psf) > imSize)
