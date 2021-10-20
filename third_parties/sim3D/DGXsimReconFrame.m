@@ -1,4 +1,4 @@
-function [im] = simReconFrame(frameFullpaths, otf, varargin)
+function [im] = DGXsimReconFrame(frameFullpaths, otf, varargin)
 
 ip = inputParser;
 ip.CaseSensitive = false;
@@ -205,37 +205,27 @@ for f = 1 : nF
     end
     
     if EdgeErosion > 0
-        if ~isempty(ErodeMaskfile) && exist(ErodeMaskfile, 'file')
-            fprintf('Eroding edges for data...\n');
-            im_bw_erode = readtiff(ErodeMaskfile);
-            im_raw = im_raw .* cast(im_bw_erode, class(im_raw));
-        else                
-            fprintf('Create eroded masks using raw data...\n');
-            im_bw = im_raw > 0;
-            % pad to avoid not erosion if a pixel touching the boundary
-            im_bw_pad = false(size(im_bw) + 2);
-            im_bw_pad(2 : end - 1, 2 : end - 1, 2 : end - 1) = im_bw;
-            im_bw_erode = imerode(im_bw_pad, strel('disk', EdgeErosion));
-            im_bw_erode = im_bw_erode(2 : end - 1, 2 : end - 1, 2 : end - 1);
-            
-            fprintf('Eroding edges for data...\n');
-            im_raw = im_raw .* cast(im_bw_erode, class(im_raw));
-            
-            clear im_bw im_bw_pad
-            
-            % save mask file as common one for other time points/channels
-            if SaveMaskfile
-                maskPath = [reconPath, '/', 'Masks'];
-                if ~exist(maskPath, 'dir')
-                    mkdir(maskPath);
-                end
-                maskFullPath = sprintf('%s/%s_eroded.tif', maskPath, fsname);
-                maskTmpPath = sprintf('%s/%s_eroded_%s.tif', maskPath, fsname, uuid);
-                writetiff(uint8(im_bw_erode), maskTmpPath);
-                movefile(maskTmpPath, maskFullPath);
+        fprintf('Create eroded masks using raw data...\n');
+        
+        im_bw = im_raw > 0;
+        % pad to avoid not erosion if a pixel touching the boundary
+        im_bw_pad = false(size(im_bw) + 2);
+        im_bw_pad(2 : end - 1, 2 : end - 1, 2 : end - 1) = im_bw;
+        im_bw_erode = imerode(im_bw_pad, strel('sphere', EdgeErosion));
+        im_bw_erode = im_bw_erode(2 : end - 1, 2 : end - 1, 2 : end - 1);
+        clear im_bw im_bw_pad
+        
+        % save mask file as common one for other time points/channels
+        if SaveMaskfile
+            maskPath = [reconPath, '/', 'Masks'];
+            if ~exist(maskPath, 'dir')
+                mkdir(maskPath);
             end
+            maskFullPath = sprintf('%s/%s_eroded.tif', maskPath, fsname);
+            maskTmpPath = sprintf('%s/%s_eroded_%s.tif', maskPath, fsname, uuid);
+            writetiff(uint8(im_bw_erode), maskTmpPath);
+            movefile(maskTmpPath, maskFullPath);
         end
-        clear im_bw_erode;
     end
     
     
@@ -276,9 +266,25 @@ for f = 1 : nF
     imSize = size(im);
     lol = floor(OL / 2);
     rol = ceil(OL / 2);
+    
+    gdc = gpuDeviceCount;
+    if gdc>1
+        ppp = gcp('nocreate'); % If no pool, do not create new one.
+        if isempty(ppp)
+            parpool('local',gdc);
+        end
+    end
+    futureR(nn) = parallel.FevalFuture;
+    gd = 1;
     for ck = 1:nn
         zmin_ck = (zmin(ck) - 1)* nphases*norientations + 1;
         zmax_ck = zmax(ck) * nphases*norientations;
+        
+        %gpuDevice(gd);
+        %gd = gd + 1;
+        %if gd > gdc
+        %    gd = 1;
+        %end
         if(useGPU)
             im_chunk = gpuArray(im_raw(ymin(ck):ymax(ck), xmin(ck):xmax(ck),  zmin_ck : zmax_ck));
         else
@@ -288,23 +294,92 @@ for f = 1 : nF
         % for blank region, just skip it
         if sum(im_chunk(:)) > intThresh && nnz(im_chunk(:))/ prod(size(im_chunk))>= occThresh
             fprintf('processing chunk:%d of %d \n',ck, nn)
+            %parfor gd = 1:gdc
             try
-                im_chunk = simRecon(im_chunk, otf, 'islattice', islattice, 'NA_det', NA_det, 'NA_ext', NA_ext, 'nimm', nimm, ...
+                futureR(ck) = parfeval(@simRecon,1,im_chunk, otf, 'islattice', islattice, 'NA_det', NA_det, 'NA_ext', NA_ext, 'nimm', nimm, ...
                     'wvl_em', wvl_em, 'wvl_ext', wvl_ext, 'w', w, 'apodize', apodize, 'nphases', nphases, 'norders', norders, ...
                     'norientations', norientations, 'lattice_period', lattice_period, 'lattice_angle', lattice_angle, 'phase_step', phase_step, ...
                     'pxl_dim_data', pxl_dim_data, 'pxl_dim_PSF', pxl_dim_PSF, 'Background', Background, 'useGPU', useGPU, ...
                     'normalize_orientations', normalize_orientations, 'perdecomp', perdecomp, 'edgeTaper', edgeTaper, 'edgeTaperVal', edgeTaperVal);
                 
+                %{
+            tim = im_chunk;
+
+            [tsy, tsx, tsz] = size(tim);
+
+
+            ymin_ck = ymin(ck) * 2 - 1;
+            xmin_ck = xmin(ck) * 2 - 1;
+
+
+            yrange = ymin_ck + (ymin_ck ~= 1) * lol * 2 : ymax(ck) * 2 - (ymax(ck) * 2 ~= imSize(1)) * rol * 2;
+            xrange = xmin_ck + (xmin_ck ~= 1) * lol * 2 : xmax(ck) * 2 - (xmax(ck) * 2 ~= imSize(2)) * rol * 2;
+            zrange = zmin(ck) + (zmin(ck) ~= 1) * lol : zmax(ck) - (zmax(ck) ~= imSize(3)) * rol;
+            yrange = yrange(yrange - ymin_ck + 1 <= tsy);
+            xrange = xrange(xrange - xmin_ck + 1 <= tsx);
+            zrange = zrange(zrange - zmin(ck) + 1 <= tsz);
+            tyrange = yrange - ymin_ck + 1;
+            txrange = xrange - xmin_ck + 1;
+            tzrange = zrange - zmin(ck) + 1;
+            im(yrange, xrange, zrange) = tim(tyrange, txrange, tzrange);
+            clear tim;
+                    %}
+            catch
+                fprintf('failed!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!')
+            end
+            if gd == gdc
+                for ind = 1:nn
+                    if futureR(ind).ID ~= -1 && isempty(futureR(ind).Error) && strcmp(futureR(ind).State,'finished')
+                        tim = cell2mat(futureR(ind).OutputArguments);
+                        futureR(ind) = parallel.FevalFuture;
+                        [tsy, tsx, tsz] = size(tim);
+                        
+                        
+                        ymin_ck = ymin(ind) * 2 - 1;
+                        xmin_ck = xmin(ind) * 2 - 1;
+                        
+                        
+                        yrange = ymin_ck + (ymin_ck ~= 1) * lol * 2 : ymax(ind) * 2 - (ymax(ind) * 2 ~= imSize(1)) * rol * 2;
+                        xrange = xmin_ck + (xmin_ck ~= 1) * lol * 2 : xmax(ind) * 2 - (xmax(ind) * 2 ~= imSize(2)) * rol * 2;
+                        zrange = zmin(ind) + (zmin(ind) ~= 1) * lol : zmax(ind) - (zmax(ind) ~= imSize(3)) * rol;
+                        yrange = yrange(yrange - ymin_ck + 1 <= tsy);
+                        xrange = xrange(xrange - xmin_ck + 1 <= tsx);
+                        zrange = zrange(zrange - zmin(ind) + 1 <= tsz);
+                        tyrange = yrange - ymin_ck + 1;
+                        txrange = xrange - xmin_ck + 1;
+                        tzrange = zrange - zmin(ind) + 1;
+                        im(yrange, xrange, zrange) = tim(tyrange, txrange, tzrange);
+                        clear tim;
+                        
+                        if all([futureR.ID] == -1)
+                            break;
+                        end
+                    elseif futureR(ck).ID ~= -1 && ~isempty(futureR(ck).Error)
+                        disp(futureR(ck).Error);
+                        futureR(ck) = parallel.FevalFuture;        
+                    end
+                end
+                gd = 0;
                 
-                tim = im_chunk;
-                
+            end
+            gd = gd +1;
+            %end
+        end
+    end
+    
+    %wait(futureR);
+    while ~all([futureR.ID] == -1)
+        for ck = 1:nn
+            if futureR(ck).ID ~= -1 && isempty(futureR(ck).Error) && strcmp(futureR(ck).State,'finished')
+                tim = cell2mat(futureR(ck).OutputArguments);
+                futureR(ck) = parallel.FevalFuture;
                 [tsy, tsx, tsz] = size(tim);
-                
-                
+
+
                 ymin_ck = ymin(ck) * 2 - 1;
                 xmin_ck = xmin(ck) * 2 - 1;
-                
-                
+
+
                 yrange = ymin_ck + (ymin_ck ~= 1) * lol * 2 : ymax(ck) * 2 - (ymax(ck) * 2 ~= imSize(1)) * rol * 2;
                 xrange = xmin_ck + (xmin_ck ~= 1) * lol * 2 : xmax(ck) * 2 - (xmax(ck) * 2 ~= imSize(2)) * rol * 2;
                 zrange = zmin(ck) + (zmin(ck) ~= 1) * lol : zmax(ck) - (zmax(ck) ~= imSize(3)) * rol;
@@ -316,13 +391,14 @@ for f = 1 : nF
                 tzrange = zrange - zmin(ck) + 1;
                 im(yrange, xrange, zrange) = tim(tyrange, txrange, tzrange);
                 clear tim;
-            catch
-                fprintf('failed!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!')
+            elseif futureR(ck).ID ~= -1 && ~isempty(futureR(ck).Error)
+                disp(futureR(ck).Error);
+                futureR(ck) = parallel.FevalFuture;
             end
         end
-        
     end
-    %{
+    
+    
     if EdgeErosion > 0
         fprintf('Erode edges of deconvolved data w.r.t. raw data...\n');
         im = im .* cast(im_bw_erode, class(im));
@@ -333,9 +409,6 @@ for f = 1 : nF
         im_bw_erode = readtiff(ErodeMaskfile);
         im = im .* cast(im_bw_erode, class(im));
     end
-    
-    %}
-    
     reconTmpPath_eroded = sprintf('%s_%s_eroded.tif', reconFullPath(1:end-4), uuid);
     
     if Save16bit

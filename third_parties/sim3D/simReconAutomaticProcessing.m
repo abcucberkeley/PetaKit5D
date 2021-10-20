@@ -11,8 +11,10 @@ ip.addParameter('PSFs',{''},@(x) ischar(x) || iscell(x));
 ip.addParameter('Deskew',true,@islogical);
 ip.addParameter('Recon',true,@islogical);
 ip.addParameter('Streaming',false,@islogical);
+ip.addParameter('resultsDirName', 'sim_recon', @ischar);
 
 ip.addParameter('reconBatchNum', 5, @isnumeric);
+ip.addParameter('parPoolSize', 24, @isnumeric);
 
 ip.addParameter('xyPixelSize',.108,@isnumeric); % typical value: 0.1
 ip.addParameter('dz',.5,@isnumeric); % typical value: 0.2-0.5
@@ -99,8 +101,10 @@ end
 Deskew = pr.Deskew;
 Recon = pr.Recon;
 Streaming = pr.Streaming;
+resultsDirName = pr.resultsDirName;
 
 reconBatchNum = pr.reconBatchNum;
+parPoolSize = pr.parPoolSize;
 
 xyPixelSize = pr.xyPixelSize;
 dz = pr.dz;
@@ -181,7 +185,7 @@ else
     dataPathsDS = dataPaths;
 end
 
-% Estimate an optimal batch num
+% TODO: Estimate an optimal batch num
 %{
 for i = 1:numel(dataPaths)
     for cPatt = 1:numel(ChannelPatterns)
@@ -190,15 +194,27 @@ for i = 1:numel(dataPaths)
 end
 %}
 
+% TODO: match values with correct channel
+%{
+if isnumeric(wvl_em)
+   wvl_em = {wvl_em};
+   if length(wvl_em) < length(ChannelPatterns)
+       wvl_em{1,length(ChannelPatterns)} = wvl_em{1};
+   end
+end
+%}
+
+
 firstTime = true;
 latest_modify_time = 0;
 allFullPaths = {''};
 
-% Guess number of workers
-%workers = cell(1,length(ChannelPatterns)*length(dataPaths));
+% TODO: Guess number of workers
+% workers = cell(1,length(ChannelPatterns)*length(dataPaths));
+
 % Create a parpool if one does not already exist
 if isempty(gcp('nocreate'))
-    parpool(24);
+    parpool(parPoolSize);
 end
 workers = {};
 cWorker = 1;
@@ -393,7 +409,7 @@ while(firstTime || (~isempty(workers) && ~all(strcmp(cStates,'finished'))) || (S
                 for j = 1: numel(fnames)
                     [pathstr, fsname, ext] = fileparts(fnames{j});
                     dataFullpath = [dataPathsDS{i} filesep fnames{j}];
-                    dataDSFullpath = [dataPathsDS{i} filesep 'sim_recon' filesep fsname '_recon' ext];
+                    dataDSFullpath = [dataPathsDS{i} filesep resultsDirName filesep fsname '_recon' ext];
                     
                     if alreadyFinished
                         if ~exist(dataDSFullpath,'file')
@@ -411,10 +427,11 @@ while(firstTime || (~isempty(workers) && ~all(strcmp(cStates,'finished'))) || (S
                         'pxl_dim_data'',[%.10f,%.10f,%.10f],''pxl_dim_PSF'',[%.10f,%.10f,%.10f],''normalize_orientations'',%s,''norders''', ...
                         ',%.10f,''nphases'',%.10f,''Overlap'',%.10f,''ChunkSize'',[%.10f,%.10f,%.10f],''maxTrialNum'',%.10f,''unitWaitTime'',%.10f,''intThresh'',%.10f,''occThresh'',%.10f,''',...
                         'edgeTaper'',%s,''edgeTaperVal'',%.10f,',...
-                        '''perdecomp'',%s,''useGPU'',%s,''DS'',%s,''Background'',%.10f)'], dataFullpath, PSFs{cPatt}, string(islattice), NA_det, NA_ext, nimm, wvl_em, wvl_ext,...
+                        '''perdecomp'',%s,''useGPU'',%s,''DS'',%s,''Background'',%.10f,''EdgeErosion'',%.10f,''ErodeMaskfile'',''%s'',''SaveMaskfile'',%s,''resultsDirName'',''%s'')'], ...
+                        dataFullpath, PSFs{cPatt}, string(islattice), NA_det, NA_ext, nimm, wvl_em, wvl_ext,...
                         w, string(apodize), norientations, lattice_period, lattice_angle, phase_step, pxl_dim_data, pxl_dim_PSF, string(normalize_orientations), ... 
                         norders, nphases, OL, ChunkSize, maxTrialNum, unitWaitTime, intThresh, occThresh, string(edgeTaper), edgeTaperVal, string(perdecomp), ...
-                        string(useGPU),  string(DS), Background);
+                        string(useGPU),  string(DS), Background, EdgeErosion, ErodeMaskfile, string(SaveMaskfile), resultsDirName);
                 end
                 
                 if alreadyFinished
@@ -445,17 +462,6 @@ while(firstTime || (~isempty(workers) && ~all(strcmp(cStates,'finished'))) || (S
                         'maxJobNum', maxJobNum, 'taskBatchNum', taskBatchNum, 'masterCompute', masterCompute, 'parseCluster', parseCluster);
                     workers{2,cWorker} = sprintf('Finished Recon on %d file(s) for pattern ''%s'' in folder ''%s''\n',length(inputFullpaths),ChannelPatterns{cPatt},dataPathsDS{i});
                     cWorker = cWorker+1;
-                    %{
-            is_done_flag= slurm_cluster_generic_computing_wrapper(inputFullpaths, outputFullpaths, ...
-                funcStrs, 'cpusPerTask', cpusPerTask, 'cpuOnlyNodes', cpuOnlyNodes, 'SlurmParam', SlurmParam, ...
-                'maxJobNum', maxJobNum, 'taskBatchNum', taskBatchNum, 'masterCompute', masterCompute, 'parseCluster', parseCluster);
-
-            if ~all(is_done_flag)
-                slurm_cluster_generic_computing_wrapper(inputFullpaths, outputFullpaths, ...
-                    funcStrs, 'cpusPerTask', cpusPerTask, 'cpuOnlyNodes', cpuOnlyNodes, 'SlurmParam', SlurmParam, ...
-                    'maxJobNum', maxJobNum, 'taskBatchNum', taskBatchNum, 'masterCompute', masterCompute, 'parseCluster', parseCluster);
-            end
-                    %}
                 end
             end
             
@@ -499,9 +505,6 @@ while(firstTime || (~isempty(workers) && ~all(strcmp(cStates,'finished'))) || (S
         if strcmp(workers{1,i}.State,'finished')
             fprintf(workers{2,i});
             indices{end+1} = i;
-            %workers(:,i) = [];
-            %cWorker = cWorker-1;
-            %i = i-1;
         end
     end
     

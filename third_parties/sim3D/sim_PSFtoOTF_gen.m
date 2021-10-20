@@ -19,6 +19,9 @@ ip.addParameter('displayFit', false, @islogical);
 
 ip.addParameter('useGPU', true, @islogical);
 
+ip.addParameter('saveOTF', false, @islogical);
+ip.addParameter('Overwrite', false, @islogical);
+
 ip.parse(PSF, varargin{:});
 
 pr = ip.Results;
@@ -34,6 +37,9 @@ displayFit = pr.displayFit;
 
 useGPU = pr.useGPU;
 useGPU = useGPU & gpuDeviceCount > 0;
+
+saveOTF = pr.saveOTF;
+Overwrite = pr.Overwrite;
 
 %Load the PSF data
 
@@ -131,6 +137,13 @@ if useGPU
     O = gather(O);
 end
 
+if saveOTF
+    [path, fn, ext] = fileparts(PSF);
+    if ~exist([path filesep 'otf' filesep fn '.mat'],'file')
+        mkdir([path filesep 'otf' filesep]);
+        save([path filesep 'otf' filesep fn '.mat'],'O');
+    end
+end
 %save([PSF_folder,PSF_file(1:end-5),'_OTF_normalized.mat'],'O')
 toc(tStart)
 end
