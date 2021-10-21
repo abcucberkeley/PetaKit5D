@@ -277,8 +277,10 @@ while(firstTime || (~isempty(workers) && ~all(strcmp(cStates,'finished'))) || (S
                     if  ~exist(jobLogDir, 'dir')
                         warning('The job log directory does not exist, use %s/job_logs as job log directory.', dataPaths{i})
                         jobLogDir = sprintf('%s/job_logs', dataPaths{i});
-                        mkdir(jobLogDir);
-                        fileattrib(jobLogDir, '+w', 'g');
+                        if ~exist(jobLogDir, 'dir')
+                            mkdir(jobLogDir);
+                            fileattrib(jobLogDir, '+w', 'g');
+                        end
                     end
                     job_log_fname = [jobLogDir, '/job_%A_%a.out'];
                     job_log_error_fname = [jobLogDir, '/job_%A_%a.err'];
@@ -400,8 +402,10 @@ while(firstTime || (~isempty(workers) && ~all(strcmp(cStates,'finished'))) || (S
                     if  ~exist(jobLogDir, 'dir')
                         warning('The job log directory does not exist, use %s/job_logs as job log directory.', dataPathsDS{i})
                         jobLogDir = sprintf('%s/job_logs', dataPathsDS{i});
-                        mkdir(jobLogDir);
-                        fileattrib(jobLogDir, '+w', 'g');
+                        if ~exist(jobLogDir, 'dir')
+                            mkdir(jobLogDir);
+                            fileattrib(jobLogDir, '+w', 'g');
+                        end
                     end
                     job_log_fname = [jobLogDir, '/job_%A_%a.out'];
                     job_log_error_fname = [jobLogDir, '/job_%A_%a.err'];
