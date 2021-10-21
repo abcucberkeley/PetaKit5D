@@ -173,6 +173,7 @@ for f = 1 : nF
     if isempty(reconPath)
         reconPath = [pathstr filesep resultsDirName filesep];
         mkdir(reconPath);
+        fileattrib(reconPath, '+w', 'g');
     end
     
     
