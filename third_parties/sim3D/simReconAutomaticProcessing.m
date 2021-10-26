@@ -54,6 +54,8 @@ ip.addParameter('useGPU', true, @islogical);
 
 ip.addParameter('Overwrite', false , @islogical);
 ip.addParameter('Save16bit', false , @islogical);
+ip.addParameter('gpuPrecision', 'single', @ischar);
+
 ip.addParameter('flipZstack', false, @islogical);
 ip.addParameter('EdgeSoften', 5, @isnumeric); % # ofxy px to soften
 ip.addParameter('zEdgeSoften', 2, @isnumeric); % # ofxy px to soften
@@ -62,6 +64,8 @@ ip.addParameter('zFlip', false, @islogical);
 ip.addParameter('GenMaxZproj', [0,0,1] , @isnumeric);
 ip.addParameter('ResizeImages', [] , @isnumeric);
 ip.addParameter('EdgeErosion', 0 , @isnumeric); % erode edges for certain size.
+ip.addParameter('ErodeBefore', false, @islogical);
+ip.addParameter('ErodeAfter', true,@islogical);
 ip.addParameter('ErodeMaskfile', '', @ischar); % erode edges file
 ip.addParameter('SaveMaskfile', false, @islogical); % save mask file for common eroded mask
 ip.addParameter('ChunkSize', [250, 250, 250] , @isvector); % in y, x, z
@@ -144,11 +148,13 @@ occThresh = pr.occThresh;
 
 useGPU = pr.useGPU;
 
-flipZstack = pr.flipZstack;
+%flipZstack = pr.flipZstack;
 Save16bit = pr.Save16bit;
+gpuPrecision = pr.gpuPrecision;
 
 EdgeErosion = pr.EdgeErosion;
-
+ErodeBefore = pr.ErodeBefore;
+ErodeAfter = pr.ErodeAfter;
 ErodeMaskfile = pr.ErodeMaskfile;
 if ~isempty(ErodeMaskfile) && exist(ErodeMaskfile, 'file')
     EdgeErosion = 0; % set EdgeErosion length as 0.
@@ -161,7 +167,7 @@ maxSubVolume = pr.maxSubVolume;
 
 splitJobsByChannelPattern = pr.splitJobsByChannelPattern;
 
-largeFile = pr.largeFile;
+%largeFile = pr.largeFile;
 parseCluster = pr.parseCluster;
 jobLogDir = pr.jobLogDir;
 masterCompute = pr.masterCompute;
@@ -272,7 +278,7 @@ while(firstTime || (~isempty(workers) && ~all(strcmp(cStates,'finished'))) || (S
                 inputFullpaths = cell(numel(fnames), 1);
                 outputFullpaths = cell(numel(fnames), 1);
                 funcStrs = cell(numel(fnames), 1);
-                
+                u
                 if parseCluster
                     if  ~exist(jobLogDir, 'dir')
                         warning('The job log directory does not exist, use %s/job_logs as job log directory.', dataPaths{i})
@@ -334,17 +340,6 @@ while(firstTime || (~isempty(workers) && ~all(strcmp(cStates,'finished'))) || (S
                         'maxJobNum', maxJobNum, 'taskBatchNum', taskBatchNum, 'masterCompute', masterCompute, 'parseCluster', parseCluster);
                     workers{2,cWorker} = sprintf('Finished Deskew on %d file(s) for pattern ''%s'' in folder ''%s''\n',length(inputFullpaths),ChannelPatterns{cPatt},dataPaths{i});
                     cWorker = cWorker+1;
-                    %{
-                is_done_flag= slurm_cluster_generic_computing_wrapper(inputFullpaths, outputFullpaths, ...
-                    funcStrs, 'cpusPerTask', cpusPerTask, 'cpuOnlyNodes', cpuOnlyNodes, 'SlurmParam', SlurmParam, ...
-                    'maxJobNum', maxJobNum, 'taskBatchNum', taskBatchNum, 'masterCompute', masterCompute, 'parseCluster', parseCluster);
-
-                if ~all(is_done_flag)
-                    slurm_cluster_generic_computing_wrapper(inputFullpaths, outputFullpaths, ...
-                        funcStrs, 'cpusPerTask', cpusPerTask, 'cpuOnlyNodes', cpuOnlyNodes, 'SlurmParam', SlurmParam, ...
-                        'maxJobNum', maxJobNum, 'taskBatchNum', taskBatchNum, 'masterCompute', masterCompute, 'parseCluster', parseCluster);
-                end
-                    %}
                 end
             end
             
@@ -433,11 +428,11 @@ while(firstTime || (~isempty(workers) && ~all(strcmp(cStates,'finished'))) || (S
                         'pxl_dim_data'',[%.10f,%.10f,%.10f],''pxl_dim_PSF'',[%.10f,%.10f,%.10f],''normalize_orientations'',%s,''norders''', ...
                         ',%.10f,''nphases'',%.10f,''Overlap'',%.10f,''ChunkSize'',[%.10f,%.10f,%.10f],''maxTrialNum'',%.10f,''unitWaitTime'',%.10f,''intThresh'',%.10f,''occThresh'',%.10f,''',...
                         'edgeTaper'',%s,''edgeTaperVal'',%.10f,',...
-                        '''perdecomp'',%s,''useGPU'',%s,''DS'',%s,''Background'',%.10f,''EdgeErosion'',%.10f,''ErodeMaskfile'',''%s'',''SaveMaskfile'',%s,''resultsDirName'',''%s'')'], ...
+                        '''perdecomp'',%s,''useGPU'',%s,''Save16bit'',%s,''gpuPrecision'',''%s'',''DS'',%s,''Background'',%.10f,''EdgeErosion'',%.10f,''ErodeBefore'',%s,''ErodeAfter'',%s,''ErodeMaskfile'',''%s'',''SaveMaskfile'',%s,''resultsDirName'',''%s'')'], ...
                         dataFullpath, PSFs{cPatt}, string(islattice), NA_det, NA_ext, nimm, wvl_em, wvl_ext,...
                         w, string(apodize), norientations, lattice_period, lattice_angle, phase_step, pxl_dim_data, pxl_dim_PSF, string(normalize_orientations), ... 
                         norders, nphases, OL, ChunkSize, maxTrialNum, unitWaitTime, intThresh, occThresh, string(edgeTaper), edgeTaperVal, string(perdecomp), ...
-                        string(useGPU),  string(DS), Background, EdgeErosion, ErodeMaskfile, string(SaveMaskfile), resultsDirName);
+                        string(useGPU), string(Save16bit), gpuPrecision,  string(DS), Background, EdgeErosion, string(ErodeBefore), string(ErodeAfter), ErodeMaskfile, string(SaveMaskfile), resultsDirName);
                 end
                 
                 if alreadyFinished

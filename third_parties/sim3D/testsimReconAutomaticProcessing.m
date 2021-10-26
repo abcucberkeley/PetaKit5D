@@ -8,15 +8,11 @@ dataF = {'/clusterfs/fiona/matthewmueller/Data_GUItesting/20211008_reconjobsub/w
 
 dataF = {'/clusterfs/fiona/Data/20211015_Aang_latticeSIM_denoising_03/1percent_5ms_500stacks_320x320x201_FOV03/DS/dn_results_all/'};
 dataF = {'/clusterfs/fiona/Data/20211015_Aang_latticeSIM_denoising_03/1percent_5ms_500stacks_320x320x201_FOV03/DS/'};
+dataFull = {'/clusterfs/fiona/Data/20211015_Aang_latticeSIM_denoising_03/1percent_5ms_500stacks_320x320x201_FOV03/DS/RAW_exp01_CamA_ch0_CAM1_stack0000_488nm_0000000msec_0177123978msecAbs_000x_001y_000z_0000t.tif'};
 rt_psf = '/clusterfs/fiona/Data/20211011_Aang_latticeSIM_2msVS5ms/PSFs/';
 fn = '488_NA0p4_sig0p1_highSN/DS/RAW_exp01_CamA_ch0_CAM1_stack0000_488nm_0000000msec_0000558259msecAbs_000x_000y_000z_0000t.tif';
 fn2 = '560_NA0p46_sig0p1_highSN/DS/RAW_exp01_CamB_ch0_CAM1_stack0000_488nm_0000000msec_0000751255msecAbs_000x_000y_000z_0000t.tif';
 
-
-
-%deskewPhases_data_wrapper(dataF,.108,.26);
-
-%dataF = strcat(dataF,'DS/');
 
 lattice_period = 1.4;
 norders = 5;
@@ -25,15 +21,25 @@ phase_step = lattice_period./nphases; % in um
 useGPU = true;
 
 ChunkSize = [32, 32, 32];
-Overlap = 128;
+Overlap = 96;
 edgeTaperVal = 0.1;
 ds = true;
 Background488 = 18;
 Background560 = 105;
+dz = .26;
+pxlDims = [.11,.11,dz*sind(32.5)];
 
-simReconAutomaticProcessing(dataF,'dz',.26,'PSFs',{[rt_psf fn]},'lattice_period', lattice_period,...
+simReconAutomaticProcessing(dataF,'dz',dz,'PSFs',{[rt_psf fn]},'lattice_period', lattice_period,...
                         'phase_step', phase_step, 'norders', norders, 'nphases', nphases,...
                         'Overlap', Overlap, 'ChunkSize', ChunkSize, 'edgeTaper', false, 'edgeTaperVal', edgeTaperVal,...
                         'perdecomp', true, 'useGPU', useGPU, 'DS', ds,'Background', Background488,'ChannelPatterns',{'RAW_exp01_CamA_ch0_CAM1_stack0000_488nm_0000000msec_0177123978msecAbs_000x_001y_000z_0000t'},'Streaming',false, ...
-                        'Deskew', false, 'parPoolSize', 16, 'EdgeErosion', 14, 'SaveMaskfile', false, 'resultsDirName', 'sim_recon_bk18_cs32_ol128_taperFalse_occThreshp3_w25e-3_apodizeFalse', ...
-                        'w', 25e-3, 'apodize', false, 'occThresh', .3);
+                        'Deskew', false, 'parPoolSize', 16, 'EdgeErosion', 28, 'ErodeAfter', true, 'SaveMaskfile', false, 'resultsDirName', 'sim_recon_bk18_cs32_ol96_erode28After_occThreshp05_w50e-3_apodizeFalse_corrPxlSize', ...
+                        'w', 50e-3, 'apodize', false, 'occThresh', .05, 'pxl_dim_data', pxlDims, 'pxl_dim_PSF', pxlDims);
+%tic;                  
+simReconFrame(dataFull,[rt_psf fn],'lattice_period', lattice_period,...
+    'phase_step', phase_step, 'norders', norders, 'nphases', nphases,...
+    'Overlap', Overlap, 'ChunkSize', ChunkSize, 'edgeTaper', false, 'edgeTaperVal', edgeTaperVal,...
+    'perdecomp', true, 'useGPU', useGPU, 'DS', ds,'Background', Background488, ...
+    'EdgeErosion', 14, 'ErodeAfter', true, 'SaveMaskfile', false, 'resultsDirName', 'sim_recon_bk18_cs32_ol96_erode14after_occThreshp05_w25e-3_apodizeFalse_corrPxlSize_single', ...
+    'w', 50e-3, 'apodize', false, 'occThresh', .05, 'pxl_dim_data', pxlDims, 'pxl_dim_PSF', pxlDims, 'gpuPrecision', 'single');
+%toc

@@ -26,11 +26,13 @@ function [C,numberOfOverlapMaskedPixels] = normxcorr2_masked(varargin)
 %   Author: Dirk Padfield, GE Global Research, padfield@research.ge.com
 %
 
-[fixedImage, movingImage, fixedMask, movingMask,useGPU] = ParseInputs(varargin{:});
+[fixedImage, movingImage, fixedMask, movingMask,useGPU,gpuPrecision] = ParseInputs(varargin{:});
 clear varargin;
 
-fixedMask = double(fixedMask);
-movingMask = double(movingMask);
+%fixedMask = double(fixedMask);
+%movingMask = double(movingMask);
+fixedMask = fixedMask;
+movingMask = movingMask;
 
 % Ensure that the masks consist of only 0s and 1s.  Anything less than or
 % equal to 0 gets set to 0, and everything else gets set to 1.
@@ -60,14 +62,14 @@ optimalSize(1) = FindClosestValidDimension(combinedSize(1));
 optimalSize(2) = FindClosestValidDimension(combinedSize(2));
 
 if(useGPU)
-    combinedSize = gpuArray(combinedSize);
-    optimalSize = gpuArray(optimalSize);
+    combinedSize = cast(gpuArray(combinedSize),gpuPrecision);
+    optimalSize = cast(gpuArray(optimalSize),gpuPrecision);
 end
 
 % Only 6 FFTs are needed.
 fixedFFT = fft2(fixedImage,optimalSize(1),optimalSize(2));
 rotatedMovingFFT = fft2(rotatedMovingImage,optimalSize(1),optimalSize(2));
-fixedMaskFFT = fft2(fixedMask,optimalSize(1),optimalSize(2));
+fixedMaskFFT = cast(fft2(fixedMask,optimalSize(1),optimalSize(2)),gpuPrecision);
 rotatedMovingMaskFFT = fft2(rotatedMovingMask,optimalSize(1),optimalSize(2));
 
 % Only 6 IFFTs are needed.
@@ -102,7 +104,7 @@ clear fixedDenom movingDenom;
 % by the denominator is when dividing by zero.  
 % Since the correlation value must be between -1 and 1, we therefore
 % saturate at these values.
-C = zeros(size(numerator));
+C = zeros(size(numerator),gpuPrecision);
 if(useGPU)
     C = gpuArray(C);
 end
@@ -117,7 +119,7 @@ C = C(1:combinedSize(1),1:combinedSize(2));
 numberOfOverlapMaskedPixels = numberOfOverlapMaskedPixels(1:combinedSize(1),1:combinedSize(2));
 
 %-----------------------------------------------------------------------------
-function [fixedImage, movingImage, fixedMask, movingMask, useGPU] = ParseInputs(varargin)
+function [fixedImage, movingImage, fixedMask, movingMask, useGPU, gpuPrecision] = ParseInputs(varargin)
 
 %iptchecknargin(4,4,nargin,mfilename)
 
@@ -126,6 +128,7 @@ movingImage = varargin{2};
 fixedMask = varargin{3};
 movingMask = varargin{4};
 useGPU = varargin{5};
+gpuPrecision = varargin{6};
 
 %iptcheckinput(fixedImage,{'logical','numeric'},{'real','nonsparse','2d','finite'},mfilename,'fixedImage',1)
 %iptcheckinput(movingImage,{'logical','numeric'},{'real','nonsparse','2d','finite'},mfilename,'movingImage',2)
@@ -150,7 +153,8 @@ end
 %-----------------------------------------------------------------------------
 function B = shiftData(A)
 
-B = double(A);
+%B = double(A);
+B = A;
 
 is_unsigned = isa(A,'uint8') || isa(A,'uint16') || isa(A,'uint32');
 if ~is_unsigned

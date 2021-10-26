@@ -40,6 +40,8 @@ ip.addParameter('useGPU', true, @islogical);
 
 ip.addParameter('Overwrite', false , @islogical);
 ip.addParameter('Save16bit', false , @islogical);
+ip.addParameter('gpuPrecision', 'single', @ischar);
+
 ip.addParameter('flipZstack', false, @islogical);
 ip.addParameter('EdgeSoften', 5, @isnumeric); % # ofxy px to soften
 ip.addParameter('zEdgeSoften', 2, @isnumeric); % # ofxy px to soften
@@ -48,6 +50,8 @@ ip.addParameter('zFlip', false, @islogical);
 ip.addParameter('GenMaxZproj', [0,0,1] , @isnumeric);
 ip.addParameter('ResizeImages', [] , @isnumeric);
 ip.addParameter('EdgeErosion', 0 , @isnumeric); % erode edges for certain size.
+ip.addParameter('ErodeBefore', false, @islogical);
+ip.addParameter('ErodeAfter', true,@islogical);
 ip.addParameter('ErodeMaskfile', '', @ischar); % erode edges file
 ip.addParameter('SaveMaskfile', false, @islogical); % save mask file for common eroded mask
 ip.addParameter('ChunkSize', [250, 250, 250] , @isvector); % in y, x, z
@@ -103,6 +107,9 @@ edgeTaperVal = pr.edgeTaperVal;
 intThresh = pr.intThresh;
 occThresh = pr.occThresh;
 
+Save16bit = pr.Save16bit;
+gpuPrecision = pr.gpuPrecision;
+
 useGPU = pr.useGPU;
 
 useGPU = useGPU & gpuDeviceCount > 0;
@@ -115,16 +122,16 @@ end
 
 if ischar(otf)
     otf = sim_PSFtoOTF_gen(otf,'nphases',nphases,'norders',norders,'norientations',norientations, 'lattice_period',lattice_period, ...
-        'phase_step',phase_step,'pxl_dim_PSF',pxl_dim_PSF,'Background',Background, 'useGPU', useGPU);
+        'phase_step',phase_step,'pxl_dim_PSF',pxl_dim_PSF,'Background',Background, 'useGPU', useGPU, 'Save16bit', Save16bit, 'gpuPrecision', gpuPrecision);
 end
 
 % parameters
 
 flipZstack = pr.flipZstack;
-Save16bit = pr.Save16bit;
 
 EdgeErosion = pr.EdgeErosion;
-
+ErodeBefore = pr.ErodeBefore;
+ErodeAfter = pr.ErodeAfter;
 ErodeMaskfile = pr.ErodeMaskfile;
 if ~isempty(ErodeMaskfile) && exist(ErodeMaskfile, 'file')
     EdgeErosion = 0; % set EdgeErosion length as 0.
@@ -220,7 +227,9 @@ for f = 1 : nF
             im_bw_erode = im_bw_erode(2 : end - 1, 2 : end - 1, 2 : end - 1);
             
             fprintf('Eroding edges for data...\n');
-            im_raw = im_raw .* cast(im_bw_erode, class(im_raw));
+            if ErodeBefore
+                im_raw = im_raw .* cast(im_bw_erode, class(im_raw));
+            end
             
             clear im_bw im_bw_pad
             
@@ -235,8 +244,12 @@ for f = 1 : nF
                 writetiff(uint8(im_bw_erode), maskTmpPath);
                 movefile(maskTmpPath, maskFullPath);
             end
+            
+            if ErodeAfter
+               im_bw_erode =  imresize3(im_bw_erode,size(im_bw_erode)./[.5,.5,nphases*norientations],'nearest'); 
+            end
         end
-        clear im_bw_erode;
+        %clear im_bw_erode;
     end
     
     
@@ -272,7 +285,7 @@ for f = 1 : nF
     
     % create a folder for the file and write out the chunks
     fprintf('Processing image chunks...\n')
-    im = double(zeros([imSize(1)*2,imSize(2)*2,imSize(3)/(nphases*norientations)], dtype));
+    im = zeros([imSize(1)*2,imSize(2)*2,imSize(3)/(nphases*norientations)], dtype);
     
     imSize = size(im);
     lol = floor(OL / 2);
@@ -287,14 +300,14 @@ for f = 1 : nF
         end
         
         % for blank region, just skip it
-        if sum(im_chunk(:)) > intThresh && nnz(im_chunk(:))/ prod(size(im_chunk))>= occThresh
+        if sum(im_chunk(:)) > intThresh && nnz(im_chunk(:))/ numel(im_chunk)>= occThresh
             fprintf('processing chunk:%d of %d \n',ck, nn)
             try
                 im_chunk = simRecon(im_chunk, otf, 'islattice', islattice, 'NA_det', NA_det, 'NA_ext', NA_ext, 'nimm', nimm, ...
                     'wvl_em', wvl_em, 'wvl_ext', wvl_ext, 'w', w, 'apodize', apodize, 'nphases', nphases, 'norders', norders, ...
                     'norientations', norientations, 'lattice_period', lattice_period, 'lattice_angle', lattice_angle, 'phase_step', phase_step, ...
                     'pxl_dim_data', pxl_dim_data, 'pxl_dim_PSF', pxl_dim_PSF, 'Background', Background, 'useGPU', useGPU, ...
-                    'normalize_orientations', normalize_orientations, 'perdecomp', perdecomp, 'edgeTaper', edgeTaper, 'edgeTaperVal', edgeTaperVal);
+                    'normalize_orientations', normalize_orientations, 'perdecomp', perdecomp, 'edgeTaper', edgeTaper, 'edgeTaperVal', edgeTaperVal,'Save16bit',Save16bit,'gpuPrecision',gpuPrecision);
                 
                 
                 tim = im_chunk;
@@ -318,7 +331,7 @@ for f = 1 : nF
                 im(yrange, xrange, zrange) = tim(tyrange, txrange, tzrange);
                 clear tim;
             catch
-                fprintf('failed!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!')
+                fprintf('chunk %d failed!!!!!!!!!!!!\n',ck)
             end
         end
         
@@ -336,6 +349,9 @@ for f = 1 : nF
     end
     
     %}
+    if EdgeErosion > 0 && ErodeAfter
+       im = im .* cast(im_bw_erode, class(im));
+    end
     
     reconTmpPath_eroded = sprintf('%s_%s_eroded.tif', reconFullPath(1:end-4), uuid);
     

@@ -30,6 +30,9 @@ ip.addParameter('pxl_dim_data', [0.11,0.11,0.3*sind(32.4)], @isnumeric); %Voxel 
 ip.addParameter('pxl_dim_PSF', [0.11,0.11,0.2*sind(32.4)], @isnumeric); %Voxel dimensions of the PSF in microns - note, stored as [dy,dx,dz]
 ip.addParameter('Background', 105, @isnumeric);
 
+ip.addParameter('Save16bit', false , @islogical);
+ip.addParameter('gpuPrecision', 'single', @ischar);
+
 ip.addParameter('useGPU', true, @islogical);
 
 ip.parse(data, otf, varargin{:});
@@ -59,6 +62,9 @@ pxl_dim_data = pr.pxl_dim_data;
 pxl_dim_PSF = pr.pxl_dim_PSF;
 Background = pr.Background;
 
+Save16bit = pr.Save16bit;
+gpuPrecision = pr.gpuPrecision;
+
 useGPU = pr.useGPU;
 useGPU = useGPU & gpuDeviceCount > 0;
 
@@ -70,7 +76,7 @@ useGPU = useGPU & gpuDeviceCount > 0;
 [ny_PSF,nx_PSF,nz_PSF,~,~] = size(otf);
 
 if(useGPU)
-    dk_PSF=gpuArray(1./([ny_PSF,nx_PSF,nz_PSF].*pxl_dim_PSF));
+    dk_PSF=cast(gpuArray(1./([ny_PSF,nx_PSF,nz_PSF].*pxl_dim_PSF)),gpuPrecision);   
 else
     dk_PSF=1./([ny_PSF,nx_PSF,nz_PSF].*pxl_dim_PSF);
 end
@@ -87,7 +93,7 @@ data(data<0)=0;
 nz_data=nimgs_data/(nphases*norientations);
 
 if(useGPU)
-    dk_data=gpuArray(1./([ny_data,nx_data,nz_data].*pxl_dim_data));
+    dk_data=cast(gpuArray(1./([ny_data,nx_data,nz_data].*pxl_dim_data)),gpuPrecision);
 else
     dk_data=1./([ny_data,nx_data,nz_data].*pxl_dim_data);
 end
@@ -113,7 +119,7 @@ end
 %k-space representation of the data
 %disp("Rescale OTF")
 %tic
-[O_scaled]=resampleOTF(otf,pxl_dim_PSF,data,pxl_dim_data,nphases,norders,norientations,useGPU);
+[O_scaled]=resampleOTF(otf,pxl_dim_PSF,data,pxl_dim_data,nphases,norders,norientations,useGPU,gpuPrecision);
 %toc
 
 %Normalize resampled OTF's so that 0th order of each orientation has unit energy
@@ -142,7 +148,7 @@ cylmask=cylMask(NA_det,wvl_em,NA_ext,wvl_ext,nimm,norders,ny_data,nx_data,nz_dat
 %disp("Separate data information orders by solving the linear system of equations for each pixel (perdecomp_3D/make_forward_seperation_matrix)")
 %tic
 if(useGPU)
-    Dk_sep=gpuArray(zeros(ny_data,nx_data,nz_data,norders,norientations));
+    Dk_sep=gpuArray(zeros(ny_data,nx_data,nz_data,norders,norientations,gpuPrecision));
 else
     Dk_sep=zeros(ny_data,nx_data,nz_data,norders,norientations);
 end
@@ -150,8 +156,8 @@ for jj=1:norientations
     
     %Separate the images for each phase and generate the separated Dk orders
     if(useGPU)
-        Dr = gpuArray(zeros(ny_data,nx_data,nz_data,nphases));
-        Dk = gpuArray(zeros(ny_data,nx_data,nz_data,nphases));
+        Dr = gpuArray(zeros(ny_data,nx_data,nz_data,nphases,gpuPrecision));
+        Dk = gpuArray(zeros(ny_data,nx_data,nz_data,nphases,gpuPrecision));
     else
         Dr = zeros(ny_data,nx_data,nz_data,nphases);
         Dk = zeros(ny_data,nx_data,nz_data,nphases);
@@ -162,14 +168,16 @@ for jj=1:norientations
     end
     
     for ii=1:nphases
-        Dr(:,:,:,ii)=double(data(:,:,ii+(jj-1)*nphases:nphases*norientations:end));
+        %Dr(:,:,:,ii)=double(data(:,:,ii+(jj-1)*nphases:nphases*norientations:end));
+        Dr(:,:,:,ii)=data(:,:,ii+(jj-1)*nphases:nphases*norientations:end);
         if edgeTaper
             Dr(:,:,:,ii) = Dr(:,:,:,ii).*window;
         end
         if perdecomp
-            Dr(:,:,:,ii) = perdecomp_3D(Dr(:,:,:,ii),useGPU);
+            Dr(:,:,:,ii) = perdecomp_3D(Dr(:,:,:,ii),useGPU,gpuPrecision);
         end
-        Dk(:,:,:,ii)=double(fftshift(ifftn(ifftshift(Dr(:,:,:,ii))))*1/prod(dk_data));
+        %Dk(:,:,:,ii)=double(fftshift(ifftn(ifftshift(Dr(:,:,:,ii))))*1/prod(dk_data));
+        Dk(:,:,:,ii)=fftshift(ifftn(ifftshift(Dr(:,:,:,ii))))*1/prod(dk_data);
     end
     
     %['Separating information components']
@@ -177,7 +185,7 @@ for jj=1:norientations
     [sep_matrix]=make_forward_separation_matrix(nphases,norders,lattice_period,phase_step);
     
     %Make the inverse separation matrix
-    inv_sep_matrix=pinv(sep_matrix);
+    inv_sep_matrix=cast(pinv(sep_matrix),gpuPrecision);
     if(useGPU)
         inv_sep_matrix = gpuArray(inv_sep_matrix);
     end
@@ -241,7 +249,7 @@ for jj=1:norientations
             %Right now, we only do 1 round of shift vector refinement. In
             %practice, we could iterate.
             if qq==1
-                [transform,~,~,~] = MaskedTranslationRegistration2D_fit(abs(sum(D0Om,3)),abs(sum(DmO0,3)),max(overlap_mask,[],3),max(overlap_mask,[],3),.5,useGPU);
+                [transform,~,~,~] = MaskedTranslationRegistration2D_fit(abs(sum(D0Om,3)),abs(sum(DmO0,3)),max(overlap_mask,[],3),max(overlap_mask,[],3),.5,useGPU,gpuPrecision);
                 transform=[transform(2),transform(1),0];
                 p_vec_guess(kk,:,jj)=p_vec_guess(kk,:,jj)-transform;
                 transform_tot=transform_tot+transform;
@@ -294,8 +302,8 @@ padrange=floor((supersample.*[ny_data,nx_data,nz_data]-[ny_data,nx_data,nz_data]
 
 if(useGPU)
     B_PLS = gpuArray(B_PLS);
-    Dk_sep_scaled = gpuArray(zeros(ny_data + padrange(1) * 2, nx_data + padrange(2) * 2,nz_data + padrange(3) * 2));
-    denom = gpuArray(zeros(ny_data + padrange(1) * 2, nx_data + padrange(2) * 2,nz_data + padrange(3) * 2));
+    Dk_sep_scaled = gpuArray(zeros(ny_data + padrange(1) * 2, nx_data + padrange(2) * 2,nz_data + padrange(3) * 2,gpuPrecision));
+    denom = gpuArray(zeros(ny_data + padrange(1) * 2, nx_data + padrange(2) * 2,nz_data + padrange(3) * 2,gpuPrecision));
 else
     Dk_sep_scaled = zeros(ny_data + padrange(1) * 2, nx_data + padrange(2) * 2,nz_data + padrange(3) * 2);
     denom = zeros(ny_data + padrange(1) * 2, nx_data + padrange(2) * 2,nz_data + padrange(3) * 2);
@@ -349,7 +357,7 @@ clear shift_denom
 
 if(useGPU)
     % Data_k_space = gpuArray(padarray(zeros(ny_data,nx_data,nz_data),padrange,'both'));
-    Data_k_space = gpuArray(zeros(ny_data + padrange(1) * 2, nx_data + padrange(2) * 2,nz_data + padrange(3) * 2));
+    Data_k_space = gpuArray(zeros(ny_data + padrange(1) * 2, nx_data + padrange(2) * 2,nz_data + padrange(3) * 2,gpuPrecision));
     p_vec_guess = gpuArray(p_vec_guess);
 else
     % Data_k_space = padarray(zeros(ny_data,nx_data,nz_data),padrange,'both');
@@ -373,7 +381,7 @@ clear Dk_sep_scaled
 %tic
 if apodize
     [Data_k_space_apodized,~] = apodizeEllipse(Data_k_space,dk_data,p_vec_guess,lattice_angle,NA_det,nimm,NA_ext,wvl_em,wvl_ext,islattice,useGPU);
-    clear Data_k_space
+    %clear Data_k_space
     %Transform final dataset back into real space
     Data_r_space=real(fftshift(fftn(ifftshift(Data_k_space_apodized))))*prod(dk_data);
 else

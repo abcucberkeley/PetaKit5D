@@ -1,4 +1,4 @@
-function [transform,maxC,C,numberOfOverlapMaskedPixels] = MaskedTranslationRegistration2D_fit(fixedImage,movingImage,fixedMask,movingMask,overlapRatio,useGPU)
+function [transform,maxC,C,numberOfOverlapMaskedPixels] = MaskedTranslationRegistration2D_fit(fixedImage,movingImage,fixedMask,movingMask,overlapRatio,useGPU,gpuPrecision)
 
 % [transform,maxC,C,numberOfOverlapMaskedPixels] =
 % MaskedTranslationRegistration(fixedImage,movingImage,fixedMask,movingMask,overlapRatio) 
@@ -31,7 +31,7 @@ if( nargin < 5 )
     overlapRatio = 3/10;
 end
 
-[C,numberOfOverlapMaskedPixels] = normxcorr2_masked(fixedImage,movingImage,fixedMask,movingMask,useGPU);
+[C,numberOfOverlapMaskedPixels] = normxcorr2_masked(fixedImage,movingImage,fixedMask,movingMask,useGPU,gpuPrecision);
 
 imageSize = size(movingImage);
 
@@ -50,4 +50,4 @@ FitData = props.WeightedCentroid-ceil(size(C_subregion)/2);
 transform = [(xpeak-imageSize(2)+FitData(1)) (ypeak-imageSize(1)+FitData(2))];
 
 % Take the negative of the transform so that it has the correct sign.
-transform = -transform;
+transform = cast(-transform,gpuPrecision);

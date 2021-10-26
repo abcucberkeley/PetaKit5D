@@ -17,6 +17,9 @@ ip.addParameter('Background', 105, @isnumeric);
 
 ip.addParameter('displayFit', false, @islogical);
 
+ip.addParameter('Save16bit', false , @islogical);
+ip.addParameter('gpuPrecision', 'double', @ischar);
+
 ip.addParameter('useGPU', true, @islogical);
 
 ip.addParameter('saveOTF', false, @islogical);
@@ -34,6 +37,9 @@ pxl_dim_PSF = pr.pxl_dim_PSF;
 Background = pr.Background;
 
 displayFit = pr.displayFit;
+
+Save16bit = pr.Save16bit;
+gpuPrecision = pr.gpuPrecision;
 
 useGPU = pr.useGPU;
 useGPU = useGPU & gpuDeviceCount > 0;
@@ -57,8 +63,8 @@ PSF(PSF<0)=0;
 nz_PSF=nimgs_PSF/(nphases*norientations);
 
 if useGPU
-    dk_PSF=gpuArray(1./([ny_PSF,nx_PSF,nz_PSF].*pxl_dim_PSF));
-    wfPSF=gpuArray(zeros(ny_PSF,nx_PSF,nz_PSF));
+    dk_PSF=cast(gpuArray(1./([ny_PSF,nx_PSF,nz_PSF].*pxl_dim_PSF)),gpuPrecision);
+    wfPSF=gpuArray(zeros(ny_PSF,nx_PSF,nz_PSF,gpuPrecision));
 else
     dk_PSF=1./([ny_PSF,nx_PSF,nz_PSF].*pxl_dim_PSF);
     wfPSF=zeros(ny_PSF,nx_PSF,nz_PSF);
@@ -76,12 +82,12 @@ end
 if useGPU
     wfPSF = gather(wfPSF);
 end
-fitParams=Lsq_GaussianFit_3D(wfPSF,displayFit);
+fitParams=Lsq_GaussianFit_3D(double(wfPSF),displayFit);
 
 %Separate the images for each phase and generate the OTFs
 
 if useGPU
-    O=gpuArray(zeros(ny_PSF,nx_PSF,nz_PSF,norders,norientations));
+    O=gpuArray(zeros(ny_PSF,nx_PSF,nz_PSF,norders,norientations,gpuPrecision));
 else
     O=zeros(ny_PSF,nx_PSF,nz_PSF,norders,norientations);
 end
@@ -89,9 +95,9 @@ end
 for jj=1:norientations
     
     if useGPU
-        Dr=gpuArray(zeros(ny_PSF,nx_PSF,nz_PSF,nphases));
-        Dr_shift=gpuArray(zeros(ny_PSF,nx_PSF,nz_PSF,nphases));
-        Dk=gpuArray(zeros(ny_PSF,nx_PSF,nz_PSF,nphases));
+        Dr=gpuArray(zeros(ny_PSF,nx_PSF,nz_PSF,nphases,gpuPrecision));
+        Dr_shift=gpuArray(zeros(ny_PSF,nx_PSF,nz_PSF,nphases,gpuPrecision));
+        Dk=gpuArray(zeros(ny_PSF,nx_PSF,nz_PSF,nphases,gpuPrecision));
     else
         Dr=zeros(ny_PSF,nx_PSF,nz_PSF,nphases);
         Dr_shift=zeros(ny_PSF,nx_PSF,nz_PSF,nphases);
@@ -112,7 +118,7 @@ for jj=1:norientations
     [sep_matrix]=make_forward_separation_matrix(nphases,norders,lattice_period,phase_step);
     
     %Make the inverse separation matrix
-    inv_sep_matrix=pinv(sep_matrix);
+    inv_sep_matrix=cast(pinv(sep_matrix),gpuPrecision);
     
     if useGPU
         inv_sep_matrix = gpuArray(inv_sep_matrix);
