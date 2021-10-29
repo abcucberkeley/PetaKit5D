@@ -168,7 +168,6 @@ for jj=1:norientations
     end
     
     for ii=1:nphases
-        %Dr(:,:,:,ii)=double(data(:,:,ii+(jj-1)*nphases:nphases*norientations:end));
         Dr(:,:,:,ii)=data(:,:,ii+(jj-1)*nphases:nphases*norientations:end);
         if edgeTaper
             Dr(:,:,:,ii) = Dr(:,:,:,ii).*window;
@@ -176,7 +175,6 @@ for jj=1:norientations
         if perdecomp
             Dr(:,:,:,ii) = perdecomp_3D(Dr(:,:,:,ii),useGPU,gpuPrecision);
         end
-        %Dk(:,:,:,ii)=double(fftshift(ifftn(ifftshift(Dr(:,:,:,ii))))*1/prod(dk_data));
         Dk(:,:,:,ii)=fftshift(ifftn(ifftshift(Dr(:,:,:,ii))))*1/prod(dk_data);
     end
     
@@ -217,10 +215,10 @@ for jj=1:norientations
         
         for qq=1:2
             %Shift image frequency information - D˜m(k+mp)
-            shift_Dk_sep=fourierShift3D(Dk_sep(:,:,:,kk,jj),p_vec_guess(kk,:,jj),useGPU);
+            shift_Dk_sep=fourierShift3D(Dk_sep(:,:,:,kk,jj),p_vec_guess(kk,:,jj),useGPU,gpuPrecision);
             
             %Shift transfer function - O_m(k+mp)
-            shift_Om=fourierShift3D(O_scaled(:,:,:,kk,jj),p_vec_guess(kk,:,jj),useGPU);
+            shift_Om=fourierShift3D(O_scaled(:,:,:,kk,jj),p_vec_guess(kk,:,jj),useGPU,gpuPrecision);
             
             %Shift mask - we use imtranslate here because for small images,
             %fourier shifting can wrap around the image
@@ -317,7 +315,7 @@ for qq=1:norientations
     for kk=1:norders
         big_Ospace=padarray(O_scaled(:,:,:,kk,qq).*B_PLS(kk,qq),padrange,'both');
         p_vec_shift=p_vec_guess(kk,:,qq);
-        shift_O=fourierShift3D(big_Ospace,p_vec_shift,useGPU);
+        shift_O=fourierShift3D(big_Ospace,p_vec_shift,useGPU,gpuPrecision);
         denom=denom+abs(shift_O).^2;
     end
 end
@@ -367,7 +365,7 @@ end
 for jj=1:norientations
     %Assemble final dataset
     for ii=1:norders
-        big_kspace_shifted=fourierShift3D(Dk_sep_scaled(:,:,:,ii,jj),p_vec_guess(ii,:,jj),useGPU);
+        big_kspace_shifted=fourierShift3D(Dk_sep_scaled(:,:,:,ii,jj),p_vec_guess(ii,:,jj),useGPU,gpuPrecision);
         Data_k_space=Data_k_space+big_kspace_shifted;
         clear big_kspace_shifted
     end

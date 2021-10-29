@@ -216,7 +216,9 @@ for f = 1 : nF
         if ~isempty(ErodeMaskfile) && exist(ErodeMaskfile, 'file')
             fprintf('Eroding edges for data...\n');
             im_bw_erode = readtiff(ErodeMaskfile);
-            im_raw = im_raw .* cast(im_bw_erode, class(im_raw));
+            if ErodeBefore
+                im_raw = im_raw .* cast(im_bw_erode, class(im_raw));
+            end
         else                
             fprintf('Create eroded masks using raw data...\n');
             im_bw = im_raw > 0;
@@ -244,10 +246,9 @@ for f = 1 : nF
                 writetiff(uint8(im_bw_erode), maskTmpPath);
                 movefile(maskTmpPath, maskFullPath);
             end
-            
-            if ErodeAfter
-               im_bw_erode =  imresize3(im_bw_erode,size(im_bw_erode)./[.5,.5,nphases*norientations],'nearest'); 
-            end
+        end                  
+        if ErodeAfter
+           im_bw_erode =  imresize3(im_bw_erode,size(im_bw_erode)./[.5,.5,nphases*norientations],'nearest'); 
         end
         %clear im_bw_erode;
     end
@@ -290,6 +291,7 @@ for f = 1 : nF
     imSize = size(im);
     lol = floor(OL / 2);
     rol = ceil(OL / 2);
+    chunkTimer = tic;
     for ck = 1:nn
         zmin_ck = (zmin(ck) - 1)* nphases*norientations + 1;
         zmax_ck = zmax(ck) * nphases*norientations;
@@ -336,6 +338,7 @@ for f = 1 : nF
         end
         
     end
+    toc(chunkTimer);
     %{
     if EdgeErosion > 0
         fprintf('Erode edges of deconvolved data w.r.t. raw data...\n');

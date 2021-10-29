@@ -109,7 +109,7 @@ for jj=1:norientations
         %Note - the ceil((nx+1)/2) is there to account for how fftshift and
         %ifftshift deal with even vs. odd sized datasets. Centering the bead at
         %ceil((nx+1)/2)... gives zero phase ramp in the OTF.
-        Dr_shift(:,:,:,ii)=fourierShift3D(Dr(:,:,:,ii),[ceil((ny_PSF+1)/2)-fitParams(2),ceil((nx_PSF+1)/2)-fitParams(3),ceil((nz_PSF+1)/2)-fitParams(4)],useGPU);
+        Dr_shift(:,:,:,ii)=fourierShift3D(Dr(:,:,:,ii),[ceil((ny_PSF+1)/2)-fitParams(2),ceil((nx_PSF+1)/2)-fitParams(3),ceil((nz_PSF+1)/2)-fitParams(4)],useGPU,gpuPrecision);
         Dk(:,:,:,ii)=fftshift(ifftn(ifftshift(Dr_shift(:,:,:,ii)))).*1/prod(dk_PSF);
     end
     

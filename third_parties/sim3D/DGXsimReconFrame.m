@@ -261,7 +261,7 @@ for f = 1 : nF
     
     % create a folder for the file and write out the chunks
     fprintf('Processing image chunks...\n')
-    im = double(zeros([imSize(1)*2,imSize(2)*2,imSize(3)/(nphases*norientations)], dtype));
+    im = zeros([imSize(1)*2,imSize(2)*2,imSize(3)/(nphases*norientations)], dtype);
     
     imSize = size(im);
     lol = floor(OL / 2);
@@ -292,7 +292,7 @@ for f = 1 : nF
         end
         
         % for blank region, just skip it
-        if sum(im_chunk(:)) > intThresh && nnz(im_chunk(:))/ prod(size(im_chunk))>= occThresh
+        if sum(im_chunk(:)) > intThresh && nnz(im_chunk(:))/ numel(im_chunk)>= occThresh
             fprintf('processing chunk:%d of %d \n',ck, nn)
             %parfor gd = 1:gdc
             try
