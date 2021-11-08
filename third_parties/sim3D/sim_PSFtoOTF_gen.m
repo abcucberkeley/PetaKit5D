@@ -17,7 +17,13 @@ ip.addParameter('Background', 105, @isnumeric);
 
 ip.addParameter('displayFit', false, @islogical);
 
+ip.addParameter('Save16bit', false , @islogical);
+ip.addParameter('gpuPrecision', 'double', @ischar);
+
 ip.addParameter('useGPU', true, @islogical);
+
+ip.addParameter('saveOTF', false, @islogical);
+ip.addParameter('Overwrite', false, @islogical);
 
 ip.parse(PSF, varargin{:});
 
@@ -32,8 +38,14 @@ Background = pr.Background;
 
 displayFit = pr.displayFit;
 
+Save16bit = pr.Save16bit;
+gpuPrecision = pr.gpuPrecision;
+
 useGPU = pr.useGPU;
 useGPU = useGPU & gpuDeviceCount > 0;
+
+saveOTF = pr.saveOTF;
+Overwrite = pr.Overwrite;
 
 %Load the PSF data
 
@@ -51,8 +63,8 @@ PSF(PSF<0)=0;
 nz_PSF=nimgs_PSF/(nphases*norientations);
 
 if useGPU
-    dk_PSF=gpuArray(1./([ny_PSF,nx_PSF,nz_PSF].*pxl_dim_PSF));
-    wfPSF=gpuArray(zeros(ny_PSF,nx_PSF,nz_PSF));
+    dk_PSF=cast(gpuArray(1./([ny_PSF,nx_PSF,nz_PSF].*pxl_dim_PSF)),gpuPrecision);
+    wfPSF=gpuArray(zeros(ny_PSF,nx_PSF,nz_PSF,gpuPrecision));
 else
     dk_PSF=1./([ny_PSF,nx_PSF,nz_PSF].*pxl_dim_PSF);
     wfPSF=zeros(ny_PSF,nx_PSF,nz_PSF);
@@ -70,12 +82,12 @@ end
 if useGPU
     wfPSF = gather(wfPSF);
 end
-fitParams=Lsq_GaussianFit_3D(wfPSF,displayFit);
+fitParams=Lsq_GaussianFit_3D(double(wfPSF),displayFit);
 
 %Separate the images for each phase and generate the OTFs
 
 if useGPU
-    O=gpuArray(zeros(ny_PSF,nx_PSF,nz_PSF,norders,norientations));
+    O=gpuArray(zeros(ny_PSF,nx_PSF,nz_PSF,norders,norientations,gpuPrecision));
 else
     O=zeros(ny_PSF,nx_PSF,nz_PSF,norders,norientations);
 end
@@ -83,9 +95,9 @@ end
 for jj=1:norientations
     
     if useGPU
-        Dr=gpuArray(zeros(ny_PSF,nx_PSF,nz_PSF,nphases));
-        Dr_shift=gpuArray(zeros(ny_PSF,nx_PSF,nz_PSF,nphases));
-        Dk=gpuArray(zeros(ny_PSF,nx_PSF,nz_PSF,nphases));
+        Dr=gpuArray(zeros(ny_PSF,nx_PSF,nz_PSF,nphases,gpuPrecision));
+        Dr_shift=gpuArray(zeros(ny_PSF,nx_PSF,nz_PSF,nphases,gpuPrecision));
+        Dk=gpuArray(zeros(ny_PSF,nx_PSF,nz_PSF,nphases,gpuPrecision));
     else
         Dr=zeros(ny_PSF,nx_PSF,nz_PSF,nphases);
         Dr_shift=zeros(ny_PSF,nx_PSF,nz_PSF,nphases);
@@ -97,7 +109,7 @@ for jj=1:norientations
         %Note - the ceil((nx+1)/2) is there to account for how fftshift and
         %ifftshift deal with even vs. odd sized datasets. Centering the bead at
         %ceil((nx+1)/2)... gives zero phase ramp in the OTF.
-        Dr_shift(:,:,:,ii)=fourierShift3D(Dr(:,:,:,ii),[ceil((ny_PSF+1)/2)-fitParams(2),ceil((nx_PSF+1)/2)-fitParams(3),ceil((nz_PSF+1)/2)-fitParams(4)],useGPU);
+        Dr_shift(:,:,:,ii)=fourierShift3D(Dr(:,:,:,ii),[ceil((ny_PSF+1)/2)-fitParams(2),ceil((nx_PSF+1)/2)-fitParams(3),ceil((nz_PSF+1)/2)-fitParams(4)],useGPU,gpuPrecision);
         Dk(:,:,:,ii)=fftshift(ifftn(ifftshift(Dr_shift(:,:,:,ii)))).*1/prod(dk_PSF);
     end
     
@@ -106,7 +118,7 @@ for jj=1:norientations
     [sep_matrix]=make_forward_separation_matrix(nphases,norders,lattice_period,phase_step);
     
     %Make the inverse separation matrix
-    inv_sep_matrix=pinv(sep_matrix);
+    inv_sep_matrix=cast(pinv(sep_matrix),gpuPrecision);
     
     if useGPU
         inv_sep_matrix = gpuArray(inv_sep_matrix);
@@ -131,6 +143,13 @@ if useGPU
     O = gather(O);
 end
 
+if saveOTF
+    [path, fn, ext] = fileparts(PSF);
+    if ~exist([path filesep 'otf' filesep fn '.mat'],'file')
+        mkdir([path filesep 'otf' filesep]);
+        save([path filesep 'otf' filesep fn '.mat'],'O');
+    end
+end
 %save([PSF_folder,PSF_file(1:end-5),'_OTF_normalized.mat'],'O')
 toc(tStart)
 end

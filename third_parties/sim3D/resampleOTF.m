@@ -1,4 +1,4 @@
-function [OTF_scaled]=resampleOTF(inputOTF,pxl_dim_PSF,inputData,pxl_dim_data,nphases,norders,norientations,useGPU)
+function [OTF_scaled]=resampleOTF(inputOTF,pxl_dim_PSF,inputData,pxl_dim_data,nphases,norders,norientations,useGPU,gpuPrecision)
 [ny_PSF,nx_PSF,nz_PSF,~,~] = size(inputOTF);
 dk_PSF=1./([ny_PSF,nx_PSF,nz_PSF].*pxl_dim_PSF);
 
@@ -28,7 +28,7 @@ end
 [map_xx_arr,map_yy_arr,map_zz_arr]=meshgrid(map_xx,map_yy,map_zz);
 
 if(useGPU)
-    OTF_scaled=gpuArray(zeros(size(map_xx_arr)));
+    OTF_scaled=gpuArray(zeros(size(map_xx_arr),gpuPrecision));
     inputOTF = gpuArray(inputOTF);
 else
     OTF_scaled=zeros(size(map_xx_arr));

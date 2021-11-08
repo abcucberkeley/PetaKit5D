@@ -1,4 +1,4 @@
-function [shiftedImage]=fourierShift3D(inputImage,shifts,useGPU)
+function [shiftedImage]=fourierShift3D(inputImage,shifts,useGPU,gpuPrecision)
 %Performs sub-pixel real-space shifts of a 3D image by applying a phase
 %ramp in Fourier space
 
@@ -8,9 +8,9 @@ function [shiftedImage]=fourierShift3D(inputImage,shifts,useGPU)
 
 %Set up vectors based on image size
 [ny,nx,nz]=size(inputImage);
-kxx=[-ceil((nx-1)/2):floor((nx-1)/2)];
-kyy=[-ceil((ny-1)/2):floor((ny-1)/2)];
-kzz=[-ceil((nz-1)/2):floor((nz-1)/2)];
+kxx=cast([-ceil((nx-1)/2):floor((nx-1)/2)],gpuPrecision);
+kyy=cast([-ceil((ny-1)/2):floor((ny-1)/2)],gpuPrecision);
+kzz=cast([-ceil((nz-1)/2):floor((nz-1)/2)],gpuPrecision);
 
 if(useGPU)
     kxx = gpuArray(kxx);

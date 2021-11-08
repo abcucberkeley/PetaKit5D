@@ -11,8 +11,10 @@ ip.addParameter('PSFs',{''},@(x) ischar(x) || iscell(x));
 ip.addParameter('Deskew',true,@islogical);
 ip.addParameter('Recon',true,@islogical);
 ip.addParameter('Streaming',false,@islogical);
+ip.addParameter('resultsDirName', 'sim_recon', @ischar);
 
 ip.addParameter('reconBatchNum', 5, @isnumeric);
+ip.addParameter('parPoolSize', 24, @isnumeric);
 
 ip.addParameter('xyPixelSize',.108,@isnumeric); % typical value: 0.1
 ip.addParameter('dz',.5,@isnumeric); % typical value: 0.2-0.5
@@ -52,6 +54,8 @@ ip.addParameter('useGPU', true, @islogical);
 
 ip.addParameter('Overwrite', false , @islogical);
 ip.addParameter('Save16bit', false , @islogical);
+ip.addParameter('gpuPrecision', 'single', @ischar);
+
 ip.addParameter('flipZstack', false, @islogical);
 ip.addParameter('EdgeSoften', 5, @isnumeric); % # ofxy px to soften
 ip.addParameter('zEdgeSoften', 2, @isnumeric); % # ofxy px to soften
@@ -60,6 +64,8 @@ ip.addParameter('zFlip', false, @islogical);
 ip.addParameter('GenMaxZproj', [0,0,1] , @isnumeric);
 ip.addParameter('ResizeImages', [] , @isnumeric);
 ip.addParameter('EdgeErosion', 0 , @isnumeric); % erode edges for certain size.
+ip.addParameter('ErodeBefore', false, @islogical);
+ip.addParameter('ErodeAfter', true,@islogical);
 ip.addParameter('ErodeMaskfile', '', @ischar); % erode edges file
 ip.addParameter('SaveMaskfile', false, @islogical); % save mask file for common eroded mask
 ip.addParameter('ChunkSize', [250, 250, 250] , @isvector); % in y, x, z
@@ -79,6 +85,8 @@ ip.addParameter('uuid', '', @ischar);
 ip.addParameter('maxModifyTime', 10, @isnumeric); % the maximum during of last modify time of a file, in minute.
 ip.addParameter('maxTrialNum', 3, @isnumeric);
 ip.addParameter('unitWaitTime', 2, @isnumeric);
+ip.addParameter('intThresh', 1, @isnumeric);
+ip.addParameter('occThresh', 0.8, @isnumeric);
 
 ip.parse(dataPaths, varargin{:});
 
@@ -97,8 +105,10 @@ end
 Deskew = pr.Deskew;
 Recon = pr.Recon;
 Streaming = pr.Streaming;
+resultsDirName = pr.resultsDirName;
 
 reconBatchNum = pr.reconBatchNum;
+parPoolSize = pr.parPoolSize;
 
 xyPixelSize = pr.xyPixelSize;
 dz = pr.dz;
@@ -133,14 +143,18 @@ normalize_orientations = pr.normalize_orientations;
 perdecomp = pr.perdecomp;
 edgeTaper = pr.edgeTaper;
 edgeTaperVal = pr.edgeTaperVal;
+intThresh = pr.intThresh;
+occThresh = pr.occThresh;
 
 useGPU = pr.useGPU;
 
-flipZstack = pr.flipZstack;
+%flipZstack = pr.flipZstack;
 Save16bit = pr.Save16bit;
+gpuPrecision = pr.gpuPrecision;
 
 EdgeErosion = pr.EdgeErosion;
-
+ErodeBefore = pr.ErodeBefore;
+ErodeAfter = pr.ErodeAfter;
 ErodeMaskfile = pr.ErodeMaskfile;
 if ~isempty(ErodeMaskfile) && exist(ErodeMaskfile, 'file')
     EdgeErosion = 0; % set EdgeErosion length as 0.
@@ -153,7 +167,7 @@ maxSubVolume = pr.maxSubVolume;
 
 splitJobsByChannelPattern = pr.splitJobsByChannelPattern;
 
-largeFile = pr.largeFile;
+%largeFile = pr.largeFile;
 parseCluster = pr.parseCluster;
 jobLogDir = pr.jobLogDir;
 masterCompute = pr.masterCompute;
@@ -177,7 +191,7 @@ else
     dataPathsDS = dataPaths;
 end
 
-% Estimate an optimal batch num
+% TODO: Estimate an optimal batch num
 %{
 for i = 1:numel(dataPaths)
     for cPatt = 1:numel(ChannelPatterns)
@@ -186,15 +200,27 @@ for i = 1:numel(dataPaths)
 end
 %}
 
+% TODO: match values with correct channel
+%{
+if isnumeric(wvl_em)
+   wvl_em = {wvl_em};
+   if length(wvl_em) < length(ChannelPatterns)
+       wvl_em{1,length(ChannelPatterns)} = wvl_em{1};
+   end
+end
+%}
+
+
 firstTime = true;
 latest_modify_time = 0;
 allFullPaths = {''};
 
-% Guess number of workers
-%workers = cell(1,length(ChannelPatterns)*length(dataPaths));
+% TODO: Guess number of workers
+% workers = cell(1,length(ChannelPatterns)*length(dataPaths));
+
 % Create a parpool if one does not already exist
 if isempty(gcp('nocreate'))
-    parpool(24);
+    parpool(parPoolSize);
 end
 workers = {};
 cWorker = 1;
@@ -252,12 +278,14 @@ while(firstTime || (~isempty(workers) && ~all(strcmp(cStates,'finished'))) || (S
                 inputFullpaths = cell(numel(fnames), 1);
                 outputFullpaths = cell(numel(fnames), 1);
                 funcStrs = cell(numel(fnames), 1);
-                
                 if parseCluster
                     if  ~exist(jobLogDir, 'dir')
                         warning('The job log directory does not exist, use %s/job_logs as job log directory.', dataPaths{i})
                         jobLogDir = sprintf('%s/job_logs', dataPaths{i});
-                        mkdir(jobLogDir);
+                        if ~exist(jobLogDir, 'dir')
+                            mkdir(jobLogDir);
+                            fileattrib(jobLogDir, '+w', 'g');
+                        end
                     end
                     job_log_fname = [jobLogDir, '/job_%A_%a.out'];
                     job_log_error_fname = [jobLogDir, '/job_%A_%a.err'];
@@ -311,17 +339,6 @@ while(firstTime || (~isempty(workers) && ~all(strcmp(cStates,'finished'))) || (S
                         'maxJobNum', maxJobNum, 'taskBatchNum', taskBatchNum, 'masterCompute', masterCompute, 'parseCluster', parseCluster);
                     workers{2,cWorker} = sprintf('Finished Deskew on %d file(s) for pattern ''%s'' in folder ''%s''\n',length(inputFullpaths),ChannelPatterns{cPatt},dataPaths{i});
                     cWorker = cWorker+1;
-                    %{
-                is_done_flag= slurm_cluster_generic_computing_wrapper(inputFullpaths, outputFullpaths, ...
-                    funcStrs, 'cpusPerTask', cpusPerTask, 'cpuOnlyNodes', cpuOnlyNodes, 'SlurmParam', SlurmParam, ...
-                    'maxJobNum', maxJobNum, 'taskBatchNum', taskBatchNum, 'masterCompute', masterCompute, 'parseCluster', parseCluster);
-
-                if ~all(is_done_flag)
-                    slurm_cluster_generic_computing_wrapper(inputFullpaths, outputFullpaths, ...
-                        funcStrs, 'cpusPerTask', cpusPerTask, 'cpuOnlyNodes', cpuOnlyNodes, 'SlurmParam', SlurmParam, ...
-                        'maxJobNum', maxJobNum, 'taskBatchNum', taskBatchNum, 'masterCompute', masterCompute, 'parseCluster', parseCluster);
-                end
-                    %}
                 end
             end
             
@@ -379,7 +396,10 @@ while(firstTime || (~isempty(workers) && ~all(strcmp(cStates,'finished'))) || (S
                     if  ~exist(jobLogDir, 'dir')
                         warning('The job log directory does not exist, use %s/job_logs as job log directory.', dataPathsDS{i})
                         jobLogDir = sprintf('%s/job_logs', dataPathsDS{i});
-                        mkdir(jobLogDir);
+                        if ~exist(jobLogDir, 'dir')
+                            mkdir(jobLogDir);
+                            fileattrib(jobLogDir, '+w', 'g');
+                        end
                     end
                     job_log_fname = [jobLogDir, '/job_%A_%a.out'];
                     job_log_error_fname = [jobLogDir, '/job_%A_%a.err'];
@@ -389,7 +409,7 @@ while(firstTime || (~isempty(workers) && ~all(strcmp(cStates,'finished'))) || (S
                 for j = 1: numel(fnames)
                     [pathstr, fsname, ext] = fileparts(fnames{j});
                     dataFullpath = [dataPathsDS{i} filesep fnames{j}];
-                    dataDSFullpath = [dataPathsDS{i} filesep 'sim_recon' filesep fsname '_recon' ext];
+                    dataDSFullpath = [dataPathsDS{i} filesep resultsDirName filesep fsname '_recon' ext];
                     
                     if alreadyFinished
                         if ~exist(dataDSFullpath,'file')
@@ -402,11 +422,16 @@ while(firstTime || (~isempty(workers) && ~all(strcmp(cStates,'finished'))) || (S
                     
                     
                     
-                    funcStrs{j} =  sprintf(['simReconFrame(''%s'',''%s'',''lattice_period'',%.10f,''phase_step'',%.10f,''norders''', ...
-                        ',%.10f,''nphases'',%.10f,''Overlap'',%.10f,''ChunkSize'',[%.10f,%.10f,%.10f],''edgeTaper'',%s,''edgeTaperVal'',%.10f,',...
-                        '''perdecomp'',%s,''useGPU'',%s,''DS'',%s,''Background'',%.10f)'], dataFullpath, PSFs{cPatt}, ...
-                        lattice_period, phase_step, norders, nphases, OL, ChunkSize, string(edgeTaper), edgeTaperVal, string(perdecomp), ...
-                        string(useGPU),  string(DS), Background);
+                    funcStrs{j} =  sprintf(['simReconFrame(''%s'',''%s'',''islattice'',%s,''NA_det'',%.10f,''NA_ext'',%.10f,''nimm'',%.10f,''wvl_em'',%.10f,''', ...
+                        'wvl_ext'',%.10f,''w'',%.10f,''apodize'',%s,''norientations'',%.10f,''lattice_period'',%.10f,''lattice_angle'',%.10f,''phase_step'',%.10f,''', ...
+                        'pxl_dim_data'',[%.10f,%.10f,%.10f],''pxl_dim_PSF'',[%.10f,%.10f,%.10f],''normalize_orientations'',%s,''norders''', ...
+                        ',%.10f,''nphases'',%.10f,''Overlap'',%.10f,''ChunkSize'',[%.10f,%.10f,%.10f],''maxTrialNum'',%.10f,''unitWaitTime'',%.10f,''intThresh'',%.10f,''occThresh'',%.10f,''',...
+                        'edgeTaper'',%s,''edgeTaperVal'',%.10f,',...
+                        '''perdecomp'',%s,''useGPU'',%s,''Save16bit'',%s,''gpuPrecision'',''%s'',''DS'',%s,''Background'',%.10f,''EdgeErosion'',%.10f,''ErodeBefore'',%s,''ErodeAfter'',%s,''ErodeMaskfile'',''%s'',''SaveMaskfile'',%s,''resultsDirName'',''%s'')'], ...
+                        dataFullpath, PSFs{cPatt}, string(islattice), NA_det, NA_ext, nimm, wvl_em, wvl_ext,...
+                        w, string(apodize), norientations, lattice_period, lattice_angle, phase_step, pxl_dim_data, pxl_dim_PSF, string(normalize_orientations), ... 
+                        norders, nphases, OL, ChunkSize, maxTrialNum, unitWaitTime, intThresh, occThresh, string(edgeTaper), edgeTaperVal, string(perdecomp), ...
+                        string(useGPU), string(Save16bit), gpuPrecision,  string(DS), Background, EdgeErosion, string(ErodeBefore), string(ErodeAfter), ErodeMaskfile, string(SaveMaskfile), resultsDirName);
                 end
                 
                 if alreadyFinished
@@ -437,17 +462,6 @@ while(firstTime || (~isempty(workers) && ~all(strcmp(cStates,'finished'))) || (S
                         'maxJobNum', maxJobNum, 'taskBatchNum', taskBatchNum, 'masterCompute', masterCompute, 'parseCluster', parseCluster);
                     workers{2,cWorker} = sprintf('Finished Recon on %d file(s) for pattern ''%s'' in folder ''%s''\n',length(inputFullpaths),ChannelPatterns{cPatt},dataPathsDS{i});
                     cWorker = cWorker+1;
-                    %{
-            is_done_flag= slurm_cluster_generic_computing_wrapper(inputFullpaths, outputFullpaths, ...
-                funcStrs, 'cpusPerTask', cpusPerTask, 'cpuOnlyNodes', cpuOnlyNodes, 'SlurmParam', SlurmParam, ...
-                'maxJobNum', maxJobNum, 'taskBatchNum', taskBatchNum, 'masterCompute', masterCompute, 'parseCluster', parseCluster);
-
-            if ~all(is_done_flag)
-                slurm_cluster_generic_computing_wrapper(inputFullpaths, outputFullpaths, ...
-                    funcStrs, 'cpusPerTask', cpusPerTask, 'cpuOnlyNodes', cpuOnlyNodes, 'SlurmParam', SlurmParam, ...
-                    'maxJobNum', maxJobNum, 'taskBatchNum', taskBatchNum, 'masterCompute', masterCompute, 'parseCluster', parseCluster);
-            end
-                    %}
                 end
             end
             
@@ -491,9 +505,6 @@ while(firstTime || (~isempty(workers) && ~all(strcmp(cStates,'finished'))) || (S
         if strcmp(workers{1,i}.State,'finished')
             fprintf(workers{2,i});
             indices{end+1} = i;
-            %workers(:,i) = [];
-            %cWorker = cWorker-1;
-            %i = i-1;
         end
     end
     
