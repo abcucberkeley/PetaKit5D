@@ -278,7 +278,6 @@ while(firstTime || (~isempty(workers) && ~all(strcmp(cStates,'finished'))) || (S
                 inputFullpaths = cell(numel(fnames), 1);
                 outputFullpaths = cell(numel(fnames), 1);
                 funcStrs = cell(numel(fnames), 1);
-                u
                 if parseCluster
                     if  ~exist(jobLogDir, 'dir')
                         warning('The job log directory does not exist, use %s/job_logs as job log directory.', dataPaths{i})
