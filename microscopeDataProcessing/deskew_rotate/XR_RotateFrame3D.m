@@ -13,7 +13,7 @@ ip.addRequired('xyPixelSize');
 ip.addRequired('dz'); 
 ip.addParameter('ObjectiveScan', false, @islogical);
 ip.addParameter('Overwrite', false, @islogical);
-ip.addParameter('Crop', false, @islogical);
+ip.addParameter('Crop', true, @islogical);
 ip.addParameter('SkewAngle', 31.5, @isscalar);
 ip.addParameter('Reverse', false, @islogical);
 ip.addParameter('sCMOSCameraFlip', false, @islogical);
@@ -30,6 +30,7 @@ end
 
 pr = ip.Results;
 Overwrite = pr.Overwrite;
+Crop = pr.Crop;
 Reverse = pr.Reverse;
 SkewAngle = pr.SkewAngle;
 ObjectiveScan = pr.ObjectiveScan;
@@ -72,7 +73,7 @@ for f = 1 : numel(framePaths)
         if ~exist('ds', 'var')
             im = double(readtiff(framePath));
         end
-        im_rt = rotateFrame3D(im, SkewAngle, zAniso, Reverse, 'Crop', true, 'ObjectiveScan', ObjectiveScan);
+        im_rt = rotateFrame3D(im, SkewAngle, zAniso, Reverse, 'Crop', Crop, 'ObjectiveScan', ObjectiveScan);
 
         rtTempName = sprintf('%s%s_%s.tif', rtPath, fsname, uuid);
         if Save16bit

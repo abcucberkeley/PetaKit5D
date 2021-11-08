@@ -71,6 +71,7 @@ function [] = XR_matlab_stitching_wrapper(dataPath, imageListFileName, varargin)
 % xruan (08/25/2021): add support for channel-specific user functions
 % xruan (10/13/2021): add support for cropping tiles; add support for
 %   skewed space stitching with reference (for decon data)
+% xruan (10/28/2021): add support for IO scan
 
 
 ip = inputParser;
@@ -91,6 +92,8 @@ ip.addParameter('Reverse', false, @islogical);
 ip.addParameter('parseSettingFile', false, @islogical); % use setting file to decide whether filp Z stack or not.
 ip.addParameter('axisOrder', 'x,y,z', @ischar);
 ip.addParameter('ObjectiveScan', false, @islogical);
+ip.addParameter('IOScan', false, @islogical);
+ip.addParameter('blockSize', [500, 500, 500], @isnumeric); 
 ip.addParameter('resampleType', 'xy_isotropic', @ischar); % by default use xy isotropic
 ip.addParameter('resample', [], @isnumeric); % user-defined resample factor
 ip.addParameter('CropToSize', [], @isnumeric); % size cropped to 
@@ -103,6 +106,7 @@ ip.addParameter('overlapType', '', @ischar); % '', 'none', 'half', or 'full'
 ip.addParameter('xcorrShift', true, @islogical);
 ip.addParameter('xyMaxOffset', 300, @isnumeric); % max offsets in xy axes
 ip.addParameter('zMaxOffset', 50, @isnumeric); % max offsets in z axis
+ip.addParameter('xcorrDownsample', [2, 2, 1], @isnumeric); % max offsets in z axis
 ip.addParameter('padSize', [], @(x) isnumeric(x) && (isempty(x) || numel(x) == 3));
 ip.addParameter('boundboxCrop', [], @(x) isnumeric(x) && (isempty(x) || all(size(x) == [3, 2]) || numel(x) == 6));
 ip.addParameter('zNormalize', false, @islogical);
@@ -146,6 +150,8 @@ Reverse = pr.Reverse;
 parseSettingFile = pr.parseSettingFile;
 axisOrder = pr.axisOrder;
 ObjectiveScan = pr.ObjectiveScan;
+IOScan =  pr.IOScan;
+blockSize = pr.blockSize;
 resampleType = pr.resampleType;
 resample = pr.resample;
 CropToSize = pr.CropToSize;
@@ -158,6 +164,7 @@ overlapType = pr.overlapType;
 xcorrShift = pr.xcorrShift;
 xyMaxOffset = pr.xyMaxOffset;
 zMaxOffset = pr.zMaxOffset;
+xcorrDownsample = pr.xcorrDownsample;
 padSize = pr.padSize;
 boundboxCrop = pr.boundboxCrop;
 zNormalize = pr.zNormalize;
@@ -516,7 +523,7 @@ while ~all(is_done_flag | trial_counter >= max_trial_num, 'all')
                     % reltime = unique(cur_t.t);
                     fpgatime = cur_t.fpgatime(1);
                     xyz = [cur_t.StageX_um_, cur_t.StageY_um_, cur_t.StageZ_um_];
-                    tileNum = [numel(unique(cur_t.x)), numel(unique(cur_t.y)), numel(unique(cur_t.z))];
+                    tileIdx = [cur_t.x, cur_t.y, cur_t.z];
                     
                     if numel(laser) > 1
                         laser = laser(1);
@@ -672,16 +679,17 @@ while ~all(is_done_flag | trial_counter >= max_trial_num, 'all')
                     xyz_str = strrep(mat2str(xyz), ' ', ',');  
                     cind = cellfun(@(x) contains(tile_fullpaths{1}, x), ChannelPatterns);
                     func_str = sprintf(['%s(%s,%s,''axisOrder'',''%s'',''px'',%0.10f,''dz'',%0.10f,', ...
-                        '''Reverse'',%s,''ObjectiveScan'',%s,''resultDir'',''%s'',''stitchInfoDir'',''%s'',''stitchInfoFullpath'',''%s'',', ...
-                        '''DSRDirstr'',''%s'',''DeconDirstr'',''%s'',''DS'',%s,''DSR'',%s,''resampleType'',''%s'',''resample'',[%s],', ...
+                        '''Reverse'',%s,''ObjectiveScan'',%s,''IOScan'',%s,''resultDir'',''%s'',''stitchInfoDir'',''%s'',''stitchInfoFullpath'',''%s'',', ...
+                        '''DSRDirstr'',''%s'',''DeconDirstr'',''%s'',''DS'',%s,''DSR'',%s,''blockSize'',%s,''resampleType'',''%s'',''resample'',[%s],', ...
                         '''CropToSize'',%s,''TileOffset'',%d,''BlendMethod'',''%s'',''overlapType'',''%s'',''xcorrShift'',%s,''xyMaxOffset'',%0.10f,', ...
-                        '''zMaxOffset'',%0.10f,''isPrimaryCh'',%s,''usePrimaryCoords'',%s,''padSize'',[%s],''boundboxCrop'',[%s],', ...
-                        '''zNormalize'',%s,''Save16bit'',%s,''tileNum'',[%s],''flippedTile'',[%s],''processFunPath'',''%s'')'], ...
-                        stitch_function_str, tile_fullpaths_str, xyz_str, axisOrder, px, dz, string(Reverse), string(ObjectiveScan), resultDir, stitchInfoDir, ...
-                        stitchInfoFullpath, DSRDirstr, DeconDirstr, string(DS), string(DSR), resampleType, strrep(num2str(resample, '%.10d,'), ' ', ''), ...
-                        strrep(mat2str(CropToSize), ' ', ','), TileOffset, BlendMethod, overlapType, string(xcorrShift), xyMaxOffset, zMaxOffset, string(isPrimaryCh), ...
-                        string(usePrimaryCoords), num2str(padSize, '%d,'),  strrep(num2str(boundboxCrop, '%d,'), ' ', ''), string(zNormalize),  string(Save16bit), ...
-                        strrep(num2str(tileNum, '%d,'), ' ', ''), strrep(num2str(flippedTile, '%d,'), ' ', ''), processFunPath{cind});
+                        '''zMaxOffset'',%0.10f,''xcorrDownsample'',%s,''isPrimaryCh'',%s,''usePrimaryCoords'',%s,''padSize'',[%s],''boundboxCrop'',[%s],', ...
+                        '''zNormalize'',%s,''Save16bit'',%s,''tileIdx'',%s,''flippedTile'',[%s],''processFunPath'',''%s'')'], ...
+                        stitch_function_str, tile_fullpaths_str, xyz_str, axisOrder, px, dz, string(Reverse), string(ObjectiveScan), string(IOScan), ...
+                        resultDir, stitchInfoDir, stitchInfoFullpath, DSRDirstr, DeconDirstr, string(DS), string(DSR), strrep(mat2str(blockSize), ' ', ','), ...
+                        resampleType, strrep(num2str(resample, '%.10d,'), ' ', ''), strrep(mat2str(CropToSize), ' ', ','), TileOffset, BlendMethod, ...
+                        overlapType, string(xcorrShift), xyMaxOffset, zMaxOffset, strrep(mat2str(xcorrDownsample), ' ', ','), string(isPrimaryCh), ...
+                        string(usePrimaryCoords), num2str(padSize, '%d,'),  strrep(num2str(boundboxCrop, '%d,'), ' ', ''), string(zNormalize), ...
+                        string(Save16bit), strrep(mat2str(tileIdx), ' ', ','), strrep(num2str(flippedTile, '%d,'), ' ', ''), processFunPath{cind});
 
                     if exist(cur_tmp_fname, 'file') || (parseCluster && ~(masterCompute && strcmpi(xcorrMode, 'primaryFirst') && isPrimaryCh))
                         % for cluster computing with master, check whether

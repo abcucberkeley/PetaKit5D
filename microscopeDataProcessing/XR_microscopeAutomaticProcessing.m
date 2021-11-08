@@ -112,6 +112,8 @@ function [] = XR_microscopeAutomaticProcessing(dataPaths, varargin)
 % xruan (07/05/2021): add support for user defined resample (arbitary factor)
 % xruan (07/27/2021): add support for z-stage scan for Deskew
 % xruan (09/13/2021): add support for calcualating actual dz from encoder positions
+% xruan (10/21/2021): add support for zarr file as input
+
 
 
 ip = inputParser;
@@ -131,6 +133,7 @@ ip.addParameter('sCMOSCameraFlip', false, @islogical);
 ip.addParameter('Save16bit', [false, false, false, false], @(x) (numel(x) == 1 || numel(x) == 4) && islogical(x));
 ip.addParameter('onlyFirstTP', false, @islogical);
 ip.addParameter('dzFromEncoder', false, @islogical);
+ip.addParameter('zarrFile', false, @islogical); % use zarr file as input
 % pipeline steps
 ip.addParameter('Deskew', true, @islogical);
 ip.addParameter('Rotate', true, @islogical);
@@ -221,6 +224,7 @@ Save16bit = pr.Save16bit;
 resampleType = pr.resampleType;
 resample = pr.resample;
 dzFromEncoder = pr.dzFromEncoder;
+zarrFile = pr.zarrFile;
 %deskew and rotate
 Deskew = pr.Deskew;
 Rotate = pr.Rotate;
@@ -562,7 +566,7 @@ end
 
 %% check existing files and parse channels
 [fnames, fdinds, gfnames, partialvols, dataSizes, flipZstack_mat, FTP_inds, maskFullpaths] = ...
-    XR_parseImageFilenames(dataPaths, ChannelPatterns, parseSettingFile, flipZstack, Decon, deconPaths, Streaming);
+    XR_parseImageFilenames(dataPaths, ChannelPatterns, parseSettingFile, flipZstack, Decon, deconPaths, Streaming, zarrFile);
 
 nF = numel(fnames);
 
@@ -627,12 +631,12 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all') || ...
         if Deskew
             if ~DSRCombined
                 dsPath = dsPaths{fdind};
-                dsFullpath = [dsPath, fname];
+                dsFullpath = [dsPath, fsname, '.tif'];
                 tmpFullpath = sprintf('%s.tmp', dsFullpath(1 : end - 4));
             end
             if Rotate
                 dsrPath = dsrPaths{fdind};
-                dsrFullpath = [dsrPath, fname];
+                dsrFullpath = [dsrPath, fsname, '.tif'];
                 tmpFullpath = sprintf('%s.tmp', dsrFullpath(1 : end - 4));                
             end
 
@@ -650,7 +654,7 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all') || ...
             if LLFFCorrection
                 % LLFFMapping =  ~cellfun(@isempty, regexpi(fname, ChannelPatterns));
                 % change to contains.m to unify the matching
-                LLFFMapping =  cellfun(@(x) contains(fname, x), ChannelPatterns);
+                LLFFMapping =  cellfun(@(x) contains(frameFullpath, x), ChannelPatterns);
                 LSImage = LSImagePaths{LLFFMapping};
                 BackgroundImage = BackgroundPaths{LLFFMapping};
             else
@@ -1066,7 +1070,7 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all') || ...
             end
 
             rdcPath = rdcPaths{fdind};
-            rdcFullpath = sprintf('%s/%s_decon.tif', rdcPath, fname(1 : end - 4));
+            rdcFullpath = sprintf('%s/%s_decon.tif', rdcPath, fsname);
             rdctmpFullpath = sprintf('%s.tmp', rdcFullpath(1 : end - 4));
             if exist(rdcFullpath, 'file')
                 is_done_flag(f, 4) = true;

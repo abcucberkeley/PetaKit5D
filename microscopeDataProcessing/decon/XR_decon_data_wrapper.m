@@ -14,6 +14,8 @@ function [] = XR_decon_data_wrapper(dataPaths, varargin)
 % xruan (06/11/2021): add support for gpu computing for chuck decon in matlab decon wrapper
 % xruan (07/13/2021): add support for the processing of flipped files
 % (currently only add support for matlab decon)
+% xruan (10/19/2021): add support for dataset specific iteration
+
 
 
 ip = inputParser;
@@ -141,6 +143,14 @@ for d = 1 : nd
     end
 end
 
+% check if decon iter is dataset specific
+DeconIter_mat = zeros(nd, 1);
+if numel(DeconIter) == nd
+    DeconIter_mat = DeconIter;
+else
+    DeconIter_mat = DeconIter * ones(size(DeconIter_mat));
+end
+
 if numel(Overwrite) == 1
     Overwrite = repmat(Overwrite, 1, 2);
 end
@@ -263,7 +273,7 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
         [~, fsname] = fileparts(fname);
         fdind = fdinds(f);
         dataPath = dataPaths{fdind};
-        
+                
         frameFullpath = [dataPath, fname];
         % check wheter the file is deleted during the computing.
         if ~exist(frameFullpath, 'file')
@@ -344,6 +354,8 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
             psfMapping =  ~cellfun(@isempty, regexpi(frameFullpath, ChannelPatterns));
             psfFullpath = dc_psfFullpaths{psfMapping};
             
+            DeconIter_f = DeconIter_mat(fdind);
+
             flipZstack = flipZstack_mat(f);
             
             % do not use rotation in decon functions
@@ -352,7 +364,7 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
                     '''cudaDeconPath'',''%s'',''OTFGENPath'',''%s'',''dzPSF'',%.10f,''Background'',[%d],', ...
                     '''SkewAngle'',%d,''Rotate'',%s,''DeconIter'',%d,''Save16bit'',%s,''largeFile'',%s)'], ...
                     dcframeFullpath, xyPixelSize, dc_dz, psfFullpath, cudaDeconPath, OTFGENPath, dc_dzPSF, ...
-                    Background, SkewAngle, string(deconRotate), DeconIter, string(Save16bit), string(largeFile));
+                    Background, SkewAngle, string(deconRotate), DeconIter_f, string(Save16bit), string(largeFile));
             elseif cppDecon
                 func_str = sprintf(['XR_cppDeconFrame3D(''%s'',%.10f,%.10f,'''',''PSFfile'',''%s'',', ...
                     '''cppDeconPath'',''%s'',''loadModules'',''%s'',''dzPSF'',%.10f,''Background'',[%d],', ...
@@ -360,7 +372,7 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
                     '''Rotate'',%s,''DeconIter'',%d,''Save16bit'',%s,''largeFile'',%s)'], dcframeFullpath, ...
                     xyPixelSize, dc_dz, psfFullpath, cppDeconPath, loadModules, dc_dzPSF, Background, ...
                     SkewAngle, EdgeErosion, maskFullpath, string(SaveMaskfile), string(deconRotate), ...
-                    DeconIter, string(Save16bit), string(largeFile));
+                    DeconIter_f, string(Save16bit), string(largeFile));
             else
                 func_str = sprintf(['XR_RLdeconFrame3D(''%s'',%.10f,%.10f,'''',''PSFfile'',''%s'',', ...
                     '''dzPSF'',%.10f,''Background'',[%d],''SkewAngle'',%d,''flipZstack'',%s,''EdgeErosion'',%d,', ...
@@ -368,7 +380,7 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
                     '''RLMethod'',''%s'',''fixIter'',%s,''errThresh'',[%0.20f],''debug'',%s,''GPUJob'',%s,', ...
                     '''Save16bit'',%s,''largeFile'',%s)'], dcframeFullpath, xyPixelSize, dc_dz, psfFullpath, ...
                     dc_dzPSF, Background, SkewAngle, string(flipZstack), EdgeErosion, maskFullpath, string(SaveMaskfile), ...
-                    string(deconRotate), DeconIter, RLMethod, string(fixIter), errThresh, string(debug), ...
+                    string(deconRotate), DeconIter_f, RLMethod, string(fixIter), errThresh, string(debug), ...
                     string(GPUJob), string(Save16bit), string(largeFile));
             end
             

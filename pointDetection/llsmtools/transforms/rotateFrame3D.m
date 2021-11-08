@@ -20,6 +20,8 @@
 % See also imwarp, deskewFrame3D
 
 % Author: Francois Aguet
+% xruan (11/03/2021): decide crop size by the distance of two boundary
+% lines for rotation
 
 function [volout] = rotateFrame3D(vol, angle, zxRatio, varargin)
 
@@ -48,18 +50,36 @@ if ~ip.Results.ObjectiveScan
     proj = squeeze(max(vol,[],1))'~=0;
     proj = diff(proj,1,2);
     
-    startIndex = ones(nz,1);
-    endIndex = nx*ones(nz,1);
-    [srow,scol] = find(proj==1);
-    [erow,ecol] = find(proj==-1);
-    startIndex(srow) = scol;
-    endIndex(erow) = ecol;
+    % startIndex = ones(nz,1);
+    % endIndex = nx*ones(nz,1);
+    % [srow,scol] = find(proj==1);
+    % [erow,ecol] = find(proj==-1);
+    % startIndex(srow) = scol;
+    % endIndex(erow) = ecol;
     
-    doCrop = any(startIndex>1 & endIndex<nx);
+    % doCrop = any(startIndex>1 & endIndex<nx);
     
     % calculate height; first & last 2 frames have interpolation artifacts
-    w = median(diff([startIndex endIndex],[],2));
-    h = round(abs(w*tan(theta)*cos(theta)))-4;
+    % w = median(diff([startIndex endIndex],[],2));
+    % h = round(abs(w*tan(theta)*cos(theta)))-4;
+    
+    % xruan: use distance between boundary lines before rotation to decide
+    % the height after rotation 
+    
+    % boarder point coordinates
+    [z, x] = find(proj ~= 0);
+    % crop size in z
+    a = sin(-theta);
+    b = cos(-theta);
+    c = a * x + b * z * zxRatio; 
+    h = round(max(c) - min(c)) - 4;
+    
+    % use the bounding box to decide whether to crop or not
+    doCrop = h < max(abs(a * (nx - 1) + b * (nz - 1) * zxRatio), abs(a * (nx - 1) + b * (1 - nz) * zxRatio));
+        
+    % crop size in x
+    c_x = b * x + (-a) * z * zxRatio;
+    w = round(max(c_x) - min(c_x)) - 4;
 end
 
 center = ([ny nx nz]+1)/2;
@@ -81,10 +101,11 @@ R = [cos(theta) 0 -sin(theta) 0; % order for imwarp is x,y,z
 
 if ip.Results.Crop && doCrop
     %outSize = round([ny nx/cos(theta) nz*ip.Results.zxRatio]);
-    outSize = round([ny nx/cos(theta) h]);
+    % outSize = round([ny nx/cos(theta) h]);
+    outSize = round([ny w h]);
 else
     % exact proportions of rotated box
-    outSize = round([ny nx*cos(theta)+nz*ip.Results.zxRatio*sin(abs(theta)) nz*ip.Results.zxRatio*cos(theta)+nx*sin(abs(theta))]);
+    outSize = round([ny nx*cos(theta)+nz*ip.Results.zxRatio/sin(abs(theta)) nz*ip.Results.zxRatio*cos(theta)+nx*sin(abs(theta))]);
 end
 
 T2 = [1 0 0 0

@@ -18,6 +18,7 @@ function [ds, dsr] = XR_deskewRotateFrame(framePath, xyPixelSize, dz, varargin)
 % xruan (12/18/2020): add support to not save 3D stack
 % xruan (07/27/2021): add support for z-stage scan
 % xruan (08/17/2021): add support to not load the full image of DS to the memory if it is too large. 
+% xruan (10/21/2021): add support for zarr file as input
 
 
 ip = inputParser;
@@ -153,7 +154,14 @@ if (~DSRCombined && (~exist(dsFullname, 'file') || ip.Results.Overwrite)) || DSR
         frame = single(cat(3, frame_cell{:}));
         clear frame_cell;
     else
-        frame = single(readtiff(framePath{1}));
+        [~, ~, ext] = fileparts(framePath{1});
+        switch ext
+            case {'.tif', '.tiff'}
+                frame = single(readtiff(framePath{1}));
+            case {'.zarr'}
+                bim = blockedImage(framePath{1}, 'Adapter', ZarrAdapter);
+                frame = gather(bim);
+        end                
     end
     
     if flipZstack

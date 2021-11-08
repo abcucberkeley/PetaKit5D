@@ -48,6 +48,21 @@ else
     fnames = {dir_info.name}';
     datenum = [dir_info.datenum];
     datasize = [dir_info.bytes]';
+    if strcmp(ext, '.zarr')
+        for f = 1 : numel(fnames)
+            bim = blockedImage([dataPath, filesep, fnames{f}], 'Adapter', ZarrAdapter);
+            switch bim.ClassUnderlying
+                case 'uint8'
+                    datasize(f) = prod(bim.Size) * 1;
+                case 'uint16'
+                    datasize(f) = prod(bim.Size) * 2;
+                case 'single'
+                    datasize(f) = prod(bim.Size) * 4;
+                otherwise
+                    datasize(f) = prod(bim.Size) * 8;
+            end                    
+        end
+    end
     fileFullpathList = cellfun(@(x) [dataPath, filesep, x], fnames, 'unif', 0);
     nF = numel(fileFullpathList);
 end
