@@ -231,7 +231,7 @@ while(firstTime || (~isempty(workers) && ~all(strcmp(cStates,'finished'))) || (S
         firstTime = false;
     else
         % Sleep main thread before checking again
-        pause(20);
+        pause(5);
     end
     
     % Deskew
