@@ -186,7 +186,8 @@ else
 end
 
 if Deskew && Recon
-    dataPathsDS = strcat(dataPaths,folStr);
+    separator = {filesep};
+    dataPathsDS = strcat(dataPaths,separator,folStr);
 else
     dataPathsDS = dataPaths;
 end
