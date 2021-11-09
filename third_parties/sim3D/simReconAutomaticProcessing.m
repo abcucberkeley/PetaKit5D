@@ -336,7 +336,7 @@ while(firstTime || (~isempty(workers) && ~all(strcmp(cStates,'finished'))) || (S
                     fprintf('Attempting Deskew on %d file(s) for pattern ''%s'' in folder ''%s''\n',length(inputFullpaths),ChannelPatterns{cPatt},dataPaths{i})
                     [workers{1,cWorker}] = parfeval(@slurm_cluster_generic_computing_wrapper,1,inputFullpaths, outputFullpaths, ...
                         funcStrs, 'cpusPerTask', cpusPerTask, 'cpuOnlyNodes', cpuOnlyNodes, 'SlurmParam', SlurmParam, ...
-                        'maxJobNum', maxJobNum, 'taskBatchNum', taskBatchNum, 'masterCompute', masterCompute, 'parseCluster', parseCluster);
+                        'maxJobNum', maxJobNum, 'taskBatchNum', taskBatchNum, 'masterCompute', masterCompute, 'parseCluster', parseCluster, 'jobLogDir', jobLogDir);
                     workers{2,cWorker} = sprintf('Finished Deskew on %d file(s) for pattern ''%s'' in folder ''%s''\n',length(inputFullpaths),ChannelPatterns{cPatt},dataPaths{i});
                     cWorker = cWorker+1;
                 end
@@ -459,7 +459,7 @@ while(firstTime || (~isempty(workers) && ~all(strcmp(cStates,'finished'))) || (S
                     fprintf('Attempting Recon on %d file(s) for pattern ''%s'' in folder ''%s''\n',length(inputFullpaths),ChannelPatterns{cPatt},dataPathsDS{i})
                     [workers{1,cWorker}] = parfeval(@slurm_cluster_generic_computing_wrapper,1,inputFullpaths, outputFullpaths, ...
                         funcStrs, 'cpusPerTask', cpusPerTask, 'cpuOnlyNodes', cpuOnlyNodes, 'SlurmParam', SlurmParam, ...
-                        'maxJobNum', maxJobNum, 'taskBatchNum', taskBatchNum, 'masterCompute', masterCompute, 'parseCluster', parseCluster);
+                        'maxJobNum', maxJobNum, 'taskBatchNum', taskBatchNum, 'masterCompute', masterCompute, 'parseCluster', parseCluster, 'jobLogDir', jobLogDir);
                     workers{2,cWorker} = sprintf('Finished Recon on %d file(s) for pattern ''%s'' in folder ''%s''\n',length(inputFullpaths),ChannelPatterns{cPatt},dataPathsDS{i});
                     cWorker = cWorker+1;
                 end
