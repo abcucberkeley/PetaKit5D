@@ -221,7 +221,12 @@ allFullPaths = {''};
 
 % Create a parpool if one does not already exist
 if isempty(gcp('nocreate'))
-    parpool(parPoolSize);
+    if parPoolSize <= maxNumCompThreads
+        parpool(parPoolSize);
+    else
+        fprintf('Could not allocate %s workers. Allocating %s workers instead (max allowed by current system).\n',parPoolSize,maxNumCompThreads)
+        parpool(maxNumCompThreads);
+    end
 end
 workers = {};
 cWorker = 1;
