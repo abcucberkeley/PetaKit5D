@@ -22,6 +22,7 @@ Rotate = pr.Rotate;
 SkewAngle = pr.SkewAngle;
 Reverse = pr.Reverse;
 nphases = pr.nphases;
+Save16bit = pr.Save16bit;
 
 if iscell(dataFile)
     dataFile = char(dataFile);
