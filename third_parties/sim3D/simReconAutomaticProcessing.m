@@ -224,7 +224,7 @@ if isempty(gcp('nocreate'))
     if parPoolSize <= maxNumCompThreads
         parpool(parPoolSize);
     else
-        fprintf('Could not allocate %s workers. Allocating %s workers instead (max allowed by current system).\n',parPoolSize,maxNumCompThreads)
+        fprintf('Could not allocate %d workers. Allocating %d workers instead (max allowed by current system).\n',parPoolSize,maxNumCompThreads)
         parpool(maxNumCompThreads);
     end
 end
