@@ -11,6 +11,7 @@ ip.addParameter('Rotate',false,@islogical); % Rotate after deskew
 ip.addOptional('SkewAngle', 32.45, @isscalar);
 ip.addOptional('Reverse', true, @islogical);
 ip.addParameter('nphases', 5, @isnumeric);
+ip.addParameter('Save16bit', false, @islogical);
 
 ip.parse(dataFile, xyPixelSize, dz, varargin{:});
 
@@ -59,6 +60,12 @@ if(Rotate)
     dz0 = sin(theta) * dz; % ~0.25 for dz0 = 0.45
     zAniso = dz0 / xyPixelSize;
     dsim = rotateFrame3D(dsim, SkewAngle, zAniso, Reverse, 'Crop', true, 'ObjectiveScan', true);
+end
+
+if Save16bit
+    dsim = uint16(dsim);
+else
+    dsim = single(dsim);
 end
 
 writetiff(dsim, [fol folStr filesep name ext]);
