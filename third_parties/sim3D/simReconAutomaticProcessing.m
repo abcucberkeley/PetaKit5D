@@ -170,6 +170,7 @@ splitJobsByChannelPattern = pr.splitJobsByChannelPattern;
 %largeFile = pr.largeFile;
 parseCluster = pr.parseCluster;
 jobLogDir = pr.jobLogDir;
+cpusPerTask = pr.cpusPerTask;
 masterCompute = pr.masterCompute;
 maxModifyTime = pr.maxModifyTime;
 maxTrialNum = pr.maxTrialNum;
@@ -330,7 +331,7 @@ while(firstTime || (~isempty(workers) && ~all(strcmp(cStates,'finished'))) || (S
                 %SlurmParam = '-p abc --qos abc_normal -n1 --mem=167G --gres=gpu:1';
                 %else
                 maxJobNum = inf;
-                cpusPerTask = 24;
+                %cpusPerTask = 24;
                 cpuOnlyNodes = true;
                 taskBatchNum = 1;
                 SlurmParam = '-p abc --qos abc_normal -n1 --mem-per-cpu=21418M';
