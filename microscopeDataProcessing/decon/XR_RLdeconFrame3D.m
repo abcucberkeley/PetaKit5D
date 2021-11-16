@@ -15,6 +15,7 @@ function [] = XR_RLdeconFrame3D(frameFullpaths, pixelSize, dz, varargin)
 % (currently only add support for matlab decon)
 % xruan (07/15/2021): add support for zarr input
 % xruan (10/12/2021): setting overlap region based on the size of psf (and crop psf after psfgen)
+% xruan (11/10/2021): add support for big zarr (may be tiff later) file chunk based decon
 
 
 ip = inputParser;
@@ -49,13 +50,18 @@ ip.addParameter('errThresh', [], @isnumeric); % error threshold for simplified c
 ip.addParameter('ChunkSize', [1600, 1600, 1600] , @isvector); % in y, x, z
 ip.addParameter('Overlap', 200, @isnumeric); % block overlap
 ip.addParameter('CPUMaxMem', 500, @isnumeric); % CPU Memory in Gb
+ip.addParameter('BatchSize', [1024, 1024, 1024] , @isvector); % in y, x, z
+ip.addParameter('BlockSize', [256, 256, 256], @isnumeric); % block overlap
 ip.addParameter('largeFile', false, @islogical);
+ip.addParameter('largeMethod', 'MemoryJobs', @ischar); % memory jobs, memory single, inplace. 
 ip.addParameter('parseCluster', true, @islogical);
+ip.addParameter('parseParfor', false, @islogical);
 ip.addParameter('masterCompute', true, @islogical); % master node participate in the task computing. 
 ip.addParameter('masterCPU', false, @islogical); % master node is a cpu node, which is just for large file deconvolution. 
 ip.addParameter('GPUJob', false, @islogical); % use gpu for chuck deconvolution. 
 ip.addParameter('jobLogDir', '../job_logs', @ischar);
 ip.addParameter('cpusPerTask', 5, @isnumeric);
+ip.addParameter('cpuOnlyNodes', false, @islogical); % use gpu for chuck deconvolution. 
 ip.addParameter('uuid', '', @ischar);
 ip.addParameter('maxTrialNum', 3, @isnumeric);
 ip.addParameter('unitWaitTime', 2, @isnumeric);
@@ -114,9 +120,14 @@ tic
 OL = pr.Overlap;
 ChunkSize = pr.ChunkSize;
 CPUMaxMem = pr.CPUMaxMem;
+BatchSize = pr.BatchSize;
+BlockSize = pr.BlockSize;
 largeFile = pr.largeFile;
+largeMethod = pr.largeMethod;
 parseCluster = pr.parseCluster;
+parseParfor = pr.parseParfor;
 jobLogDir = pr.jobLogDir;
+cpuOnlyNodes = pr.cpuOnlyNodes;
 masterCompute = pr.masterCompute;
 maxTrialNum = pr.maxTrialNum;
 uuid = pr.uuid;
@@ -276,7 +287,21 @@ for f = 1 : nF
     % Large-file deconvolution if the file is too large or single file
     % deconvolution fails.
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
+    if strcmpi(largeMethod, 'inplace')
+        RLdecon_large_in_place(frameFullpath, pixelSize, dz, deconPath, PSF, ...
+            'Save16bit', Save16bit, 'Deskew', Deskew, 'SkewAngle', SkewAngle, ...
+            'flipZstack', flipZstack, 'Background', Background, 'dzPSF', dzPSF, ...
+            'DeconIter', DeconIter, 'fixIter', fixIter, 'BatchSize', BatchSize, ...
+            'BlockSize', BlockSize, 'parseCluster', parseCluster, 'parseParfor', ...
+            parseParfor, 'masterCompute', masterCompute, 'jobLogDir', jobLogDir, ...
+            'cpuOnlyNodes', cpuOnlyNodes, 'GPUJob', GPUJob, 'uuid', uuid, 'debug', debug ...
+            );
+        return;
+    end
+    
+    % to do: put the code below to a function as in memory computing
+    
+    
     fprintf('Start Large-file RL Decon for %s...\n', fsname);
     
     % generate psf and use the cropped psf to decide the overlap region

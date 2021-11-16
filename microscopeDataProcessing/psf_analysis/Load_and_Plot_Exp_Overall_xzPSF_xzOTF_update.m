@@ -1,4 +1,4 @@
-function [xz_exp_PSF, xz_exp_OTF, xOTF_linecut, zOTF_linecut, zOTF_bowtie_linecut] = Load_and_Plot_Exp_Overall_xzPSF_xzOTF_update(filenm, source_descrip, xypixsize, zpixsize, NAdet, index, exc_lambda, det_lambda, PSFsubpix, gamma)
+function [xz_exp_PSF, xz_exp_OTF, xOTF_linecut, yOTF_linecut, zOTF_linecut, zOTF_bowtie_linecut] = Load_and_Plot_Exp_Overall_xzPSF_xzOTF_update(filenm, source_descrip, xypixsize, zpixsize, NAdet, index, exc_lambda, det_lambda, PSFsubpix, gamma)
 %
 %LOAD_AND_PLOT_EXP_OVERALL_xzPSF_xzOTF  Loads a 3D TIFF stack of an experimentally
 %measured overall PSF, and plots it along with the OTF determined by its
@@ -109,10 +109,12 @@ magz = zpixsize./sim_xzpixsize;
 B(1) = round(magxy.*A(1));
 B(2) = round(magxy.*A(2));
 B(3) = round(magz.*A(3));
-[x,y,z] = ndgrid(1:A(1),1:A(2),1:A(3));
-[xq,yq,zq] = ndgrid(1:(A(1)./B(1)):A(1),1:(A(2)./B(2)):A(2),1:(A(3)./B(3)):A(3));
-PSF3D = interpn(x,y,z, PSF3Dexp, xq,yq,zq);
-PSF3D = PSF3D./max(max(max(PSF3D)));
+% [x,y,z] = ndgrid(1:A(1),1:A(2),1:A(3));
+% [xq,yq,zq] = ndgrid(1:(A(1)./B(1)):A(1),1:(A(2)./B(2)):A(2),1:(A(3)./B(3)):A(3));
+% PSF3D = interpn(x,y,z, PSF3Dexp, xq,yq,zq);
+% PSF3D = PSF3D./max(max(max(PSF3D)));
+PSF3D = imresize3(PSF3Dexp, B, 'linear');
+PSF3D = PSF3D./max(PSF3D(:));
 B = size(PSF3D);
 %
 %put this data into an array of size equal to that used for the simulations,
@@ -362,7 +364,7 @@ text(-0.05 .*A(1), -0.03 .* A(2), ['Overall OTF From ', source_descrip, ', gamma
 LateralOTFCrossSection = squeeze(plot_yz_exp_OTF(midpt,:));
 max_LateralOTFCrossSection = max(LateralOTFCrossSection);
 LateralOTFCrossSection = LateralOTFCrossSection ./ max(LateralOTFCrossSection);
-xOTF_linecut = LateralOTFCrossSection;
+yOTF_linecut = LateralOTFCrossSection;
 
 midpt = (A(1)+1)./2;
 AxialOTFCrossSection = squeeze(plot_yz_exp_OTF(:,midpt)');

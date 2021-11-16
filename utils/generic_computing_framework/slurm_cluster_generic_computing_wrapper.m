@@ -123,14 +123,17 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
                 fsname = ext;
             end
             fsnames{f} = fsname;
-            if isempty(tmpDir)
-                tmpFullpath = sprintf('%s/%s.tmp', outputDir, fsname);
-            else
-                tmpFullpath = sprintf('%s/%s.tmp', tmpDir, fsname);            
+            if ~parseCluster
+                if isempty(tmpDir)
+                    tmpFullpath = sprintf('%s/%s.tmp', outputDir, fsname);
+                else
+                    tmpFullpath = sprintf('%s/%s.tmp', tmpDir, fsname);            
+                end
             end
+            
             if exist(outputFullpath, 'file') || exist(outputFullpath, 'dir')
                 is_done_flag(f) = true;
-                if exist(tmpFullpath, 'file')
+                if ~parseCluster && exist(tmpFullpath, 'file')
                     delete(tmpFullpath);
                 end
 
@@ -154,7 +157,7 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
         
         func_str = strjoin(funcStrs(fs), ';');
         f = fs(end);
-        if exist(tmpFullpath, 'file') || parseCluster
+        if parseCluster || exist(tmpFullpath, 'file')
             if parseCluster
                 job_status = check_slurm_job_status(job_ids(f), task_id);
                 job_status_mat(fs, 2) = job_status_mat(fs, 1);
@@ -262,7 +265,7 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
             outputFullpath = outputFullpaths{f};            
             if exist(outputFullpath, 'file') || exist(outputFullpath, 'dir')
                 is_done_flag(f) = true;
-                if exist(tmpFullpath, 'file')
+                if ~parseCluster && exist(tmpFullpath, 'file')
                     delete(tmpFullpath);
                 end
             end

@@ -59,13 +59,17 @@ ip.addParameter('errThresh', [], @isnumeric); % error threshold for simplified c
 ip.addParameter('debug', false, @islogical); % debug mode for simplified code
 ip.addParameter('GPUJob', false, @islogical); % use gpu for chuck deconvolution. 
 % job related parameters
+ip.addParameter('BatchSize', [1024, 1024, 1024] , @isvector); % in y, x, z
+ip.addParameter('BlockSize', [256, 256, 256], @isnumeric); % block overlap
 ip.addParameter('largeFile', false, @islogical);
+ip.addParameter('largeMethod', 'MemoryJobs', @ischar); % memory jobs, memory single, inplace. 
 ip.addParameter('zarrFile', false, @islogical); % use zarr file as input
 ip.addParameter('parseCluster', true, @islogical);
-ip.addParameter('jobLogDir', '../job_logs', @isstr);
+ip.addParameter('parseParfor', false, @islogical);
+ip.addParameter('jobLogDir', '../job_logs', @ischar);
 ip.addParameter('cpusPerTask', 2, @isnumeric);
 ip.addParameter('cpuOnlyNodes', true, @islogical);
-ip.addParameter('uuid', '', @isstr);
+ip.addParameter('uuid', '', @ischar);
 ip.addParameter('maxTrialNum', 3, @isnumeric);
 ip.addParameter('unitWaitTime', 1, @isnumeric);
 ip.addParameter('maxWaitLoopNum', 10, @isnumeric); % the max number of loops the loop waits with all existing files processed. 
@@ -116,10 +120,14 @@ fixIter = pr.fixIter;
 errThresh = pr.errThresh;
 debug = pr.debug;
 % job related
+BatchSize = pr.BatchSize;
+BlockSize = pr.BlockSize;
 largeFile = pr.largeFile;
+largeMethod = pr.largeMethod;
 zarrFile = pr.zarrFile;
 jobLogDir = pr.jobLogDir;
 parseCluster = pr.parseCluster;
+parseParfor = pr.parseParfor;
 cpusPerTask = pr.cpusPerTask;
 cpuOnlyNodes = pr.cpuOnlyNodes;
 uuid = pr.uuid;
@@ -377,11 +385,14 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
                 func_str = sprintf(['XR_RLdeconFrame3D(''%s'',%.10f,%.10f,'''',''PSFfile'',''%s'',', ...
                     '''dzPSF'',%.10f,''Background'',[%d],''SkewAngle'',%d,''flipZstack'',%s,''EdgeErosion'',%d,', ...
                     '''ErodeMaskfile'',''%s'',''SaveMaskfile'',%s,''Rotate'',%s,''DeconIter'',%d,', ...
-                    '''RLMethod'',''%s'',''fixIter'',%s,''errThresh'',[%0.20f],''debug'',%s,''GPUJob'',%s,', ...
-                    '''Save16bit'',%s,''largeFile'',%s)'], dcframeFullpath, xyPixelSize, dc_dz, psfFullpath, ...
-                    dc_dzPSF, Background, SkewAngle, string(flipZstack), EdgeErosion, maskFullpath, string(SaveMaskfile), ...
-                    string(deconRotate), DeconIter_f, RLMethod, string(fixIter), errThresh, string(debug), ...
-                    string(GPUJob), string(Save16bit), string(largeFile));
+                    '''RLMethod'',''%s'',''fixIter'',%s,''errThresh'',[%0.20f],''debug'',%s,''parseCluster'',%s,', ...
+                    '''parseParfor'',%s,''GPUJob'',%s,''Save16bit'',%s,''largeFile'',%s,''largeMethod'',''%s'',', ...
+                    '''BatchSize'',%s,''BlockSize'',%s,''uuid'',''%s'')'], ...
+                    dcframeFullpath, xyPixelSize, dc_dz, psfFullpath, dc_dzPSF, Background, SkewAngle, string(flipZstack), ...
+                    EdgeErosion, maskFullpath, string(SaveMaskfile), string(deconRotate), DeconIter_f, RLMethod, ...
+                    string(fixIter), errThresh, string(debug), string(parseCluster), string(parseParfor), string(GPUJob), ...
+                    string(Save16bit), string(largeFile), largeMethod, strrep(mat2str(BatchSize), ' ', ','), ...
+                    strrep(mat2str(BlockSize), ' ', ','), uuid);
             end
             
             if exist(dctmpFullpath, 'file') || parseCluster

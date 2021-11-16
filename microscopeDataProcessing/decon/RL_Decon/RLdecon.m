@@ -26,7 +26,47 @@ function [deconvolved] = RLdecon(input_tiff, output_filename, psf, background, n
 % first save to intermediate file and then move the final file; crop psf if
 % it is larger than the data in any dimension.
 % xruan (07/15/2021): add support for zarr input
+% xruan (11/11/2021): add support for using the data as input instead of
+% filename and also user defined normalization factor for the result
 
+
+ip = inputParser;
+ip.CaseSensitive = false;
+ip.addRequired('input_tiff');
+ip.addRequired('output_filename');
+ip.addRequired('psf');
+ip.addRequired('background');
+ip.addRequired('nIter');
+ip.addRequired('dz_psf');
+ip.addRequired('dz_data');
+ip.addRequired('zalign');
+ip.addRequired('zalignParams');
+ip.addRequired('rotateByAngle');
+ip.addRequired('xypixelsize');
+ip.addRequired('bRotFinal');
+ip.addRequired('bSaveUint16');
+ip.addRequired('cropFinal');
+ip.addRequired('bFlipZ');
+ip.addRequired('axesMaxIntProj');
+ip.addRequired('resizeFactor');
+ip.addRequired('scalingThresh');
+ip.addRequired('RLMethod');
+ip.addRequired('fixIter');
+ip.addRequired('errThresh');
+ip.addRequired('flipZstack');
+ip.addRequired('debug');
+ip.addParameter('nTapering', [], @isnumeric); 
+ip.addParameter('rawdata', [], @isnumeric); 
+ip.addParameter('scaleFactor', [], @isnumeric); % scale factor for result
+ip.addParameter('useGPU', true, @islogical); % use GPU processing
+
+
+ip.parse(input_tiff, output_filename, psf, background, nIter, dz_psf, dz_data, ...
+    zalign, zalignParams, rotateByAngle, xypixelsize, bRotFinal, ...
+    bSaveUint16, cropFinal, bFlipZ, axesMaxIntProj, resizeFactor, scalingThresh, ...
+    RLMethod, fixIter, errThresh, flipZstack, debug, varargin{:});
+
+pr = ip.Results;
 
 if ischar(dz_psf)
     dz_psf=str2double(dz_psf);
@@ -66,9 +106,11 @@ else
     dz_data_ratio = 1;
 end
 
-[datafolder, inputfile, sufix] = fileparts(input_tiff);
+if ~isempty(input_tiff)
+    [datafolder, inputfile, suffix] = fileparts(input_tiff);
+end
 
-if exist(output_filename, 'file')
+if ~isempty(output_filename) && exist(output_filename, 'file')
     return;
 end
 
@@ -97,7 +139,11 @@ if ischar(psf)
             psf = psf(bbox(1) : bbox(4), bbox(2) : bbox(5), bbox(3) : bbox(6));
             
             % crop psf if it is larger than data in any dimension
-            imSize = getImageSize(input_tiff);
+            if ~isempty(input_tiff)
+                imSize = getImageSize(input_tiff);
+            else
+                imSize = size(pr.rawdata);
+            end
             if any(size(psf) > imSize)
                 warning('The psf size %s is larger than the data size %s, crop it!', mat2str(size(psf)), mat2str(imSize));
                 s = max(0, floor((size(psf) - imSize) / 2)) + 1;
@@ -105,11 +151,13 @@ if ischar(psf)
                 psf = psf(s(1) : t(1), s(2) : t(2), s(3) : t(3));
             end
             
-            psfgen_folder = sprintf('%s/%s/psfgen/', datafolder, 'matlab_decon');
-            mkdir(psfgen_folder);
-            psfgen_filename = sprintf('%s/%s.tif', psfgen_folder, b);
-            if ~exist(psfgen_filename, 'file')
-                writetiff(psf, psfgen_filename);
+            if ~isempty(input_tiff)
+                psfgen_folder = sprintf('%s/%s/psfgen/', datafolder, 'matlab_decon');
+                mkdir(psfgen_folder);
+                psfgen_filename = sprintf('%s/%s.tif', psfgen_folder, b);
+                if ~exist(psfgen_filename, 'file')
+                    writetiff(psf, psfgen_filename);
+                end
             end
         catch ME
             disp(ME)
@@ -124,38 +172,46 @@ if ischar(background)
     background=str2double(background);
 end
 if ischar(nIter)
-    nIter=str2num(nIter);
+    nIter=str2double(nIter);
 end
 
 if isempty(RLMethod)
     RLMethod = 'simplied';
 end
 
-nTapering = 0;
+nTapering = pr.nTapering;
+% nTapering = 0;
+% for k = 1 : length(varargin)
+%     switch k
+%         case 1
+%             % number of pixel for x-y tapering
+%             if ischar(varargin{k})
+%                 nTapering = str2num(varargin{k});
+%             else
+%                 nTapering = varargin{k};
+%             end
+%         otherwise
+%             disp('Unknown varargin index')
+%     end
+% end
 
-for k = 1 : length(varargin)
-    switch k
-        case 1
-            % number of pixel for x-y tapering
-            if ischar(varargin{k})
-                nTapering = str2num(varargin{k});
-            else
-                nTapering = varargin{k};
-            end
-        otherwise
-            disp('Unknown varargin index')
+% rawdata = loadtiff(input_tiff);
+rawdata = pr.rawdata;
+pr.rawdata = [];
+if isempty(rawdata)
+    [~, ~, ext] = fileparts(input_tiff);
+    switch ext
+        case {'.tif', '.tiff'}
+            rawdata = readtiff(input_tiff);
+        case '.zarr'
+            bim = blockedImage(input_tiff, 'Adapter', ZarrAdapter);
+            rawdata = gather(bim);
     end
 end
 
-% rawdata = loadtiff(input_tiff);
-[~, ~, ext] = fileparts(input_tiff);
-switch ext
-    case {'.tif', '.tiff'}
-        rawdata = readtiff(input_tiff);
-    case '.zarr'
-        bim = blockedImage(input_tiff, 'Adapter', ZarrAdapter);
-        rawdata = gather(bim);
-end
+scaleFactor = pr.scaleFactor;
+useGPU = pr.useGPU;
+
 
 % add support for flip z stack
 if flipZstack
@@ -202,9 +258,12 @@ end
 
 % call Richardson-Lucy
 if nIter>0
+    if isempty(scaleFactor)
+        scaleFactor = numel(rawdata);
+    end
     switch RLMethod 
         case 'original'
-            deconvolved = deconvlucy(rawdata, psf, nIter) * numel(rawdata);
+            deconvolved = deconvlucy(rawdata, psf, nIter) * scaleFactor;
         case 'simplified'
             % psf = psf ./ sqrt(mean(psf .^ 2, 'all'));
             if debug
@@ -216,10 +275,10 @@ if nIter>0
                 debug_folder = '/tmp/'; 
             end                
                 
-            [deconvolved, err_mat, iter_run] = decon_lucy_function(rawdata, psf, nIter, fixIter, errThresh, debug, debug_folder);
-            deconvolved = deconvolved * numel(rawdata);
+            [deconvolved, err_mat, iter_run] = decon_lucy_function(rawdata, psf, nIter, fixIter, errThresh, debug, debug_folder, useGPU);
+            deconvolved = deconvolved * scaleFactor;
         case 'cudagen'
-            deconvolved = decon_lucy_cuda_function(single(rawdata), single(psf), nIter) * numel(rawdata);            
+            deconvolved = decon_lucy_cuda_function(single(rawdata), single(psf), nIter) * scaleFactor;            
     end
 else
     deconvolved = rawdata;
@@ -265,6 +324,11 @@ if ~isempty(cropFinal)
     end
 end
 %toc
+
+% if the output file is empty, directly return the deconvolved results. 
+if isempty(output_filename)
+    return;
+end
 
 % construct output file name
 

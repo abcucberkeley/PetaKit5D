@@ -1,4 +1,4 @@
-function [J_2, err_mat, k] = decon_lucy_function(I, PSF, NUMIT, fixIter, err_thrsh, debug, debug_folder)
+function [J_2, err_mat, k] = decon_lucy_function(I, PSF, NUMIT, fixIter, err_thrsh, debug, debug_folder, useGPU)
 % adapted from matlab deconvlucy.m
 % 
 % xruan (05/18/2021): add support for early stop with stop criteria
@@ -8,7 +8,10 @@ function [J_2, err_mat, k] = decon_lucy_function(I, PSF, NUMIT, fixIter, err_thr
 % intermediate result).
 % xruan (07/09/2021): add output for the number of iterations run; also
 % output err mat for fixed iterations.
-
+% xruan (11/11/2021): when using GPU, use single precision unless the data
+% is in double
+% xruan (11/12/2021): refactor code to save memory (J_4), and disable
+% weighting or subsampling
 
 % switch nargin
 %     case 3 %                 deconvlucy(I,PSF,NUMIT)
@@ -50,12 +53,17 @@ if nargin < 7
     debug_folder = './debug/';
 end
 
-
 % option to use gpu
-useGPU = true;
+if nargin < 8
+    useGPU = true;
+end
 useGPU = useGPU & gpuDeviceCount > 0;
 
-I = double(I);
+if useGPU && ~isa(I, 'double')
+    I = single(I);
+else
+    I = double(I);
+end
 classI = class(I);
 sizeI = size(I);
 sizePSF = size(PSF);
@@ -67,7 +75,8 @@ J_3 = zeros(sizeI, classI);
 
 NUMIT = cast(NUMIT, classI);
 DAMPAR = 0;
-WEIGHT = ones(sizeI);
+% WEIGHT = ones(sizeI);
+WEIGHT = 1;
 READOUT = 0;
 SUBSMPL = 1;
 % [sizeI, sizePSF] = padlength(size(I), size(PSF));
@@ -78,7 +87,7 @@ numNSdim = 3;
 % end;
 
 % J_4 = J_1;
-J_4 = zeros(prod(sizeI)*SUBSMPL^length(numNSdim),2);
+J_4 = zeros(prod(sizeI)*SUBSMPL^length(numNSdim),1,classI);
 
 if useGPU
     PSF = gpuArray(PSF);
@@ -91,9 +100,10 @@ end
 % 1. Prepare PSF. If PSF is known at a higher sampling rate, it has to be
 % padded with zeros up to sizeI(numNSdim)*SUBSMPL in all non-singleton
 % dimensions. Or its OTF could take care of it:
-sizeOTF = sizeI;
-sizeOTF(numNSdim) = SUBSMPL*sizeI(numNSdim);
-H = decon_psf2otf(PSF,double(sizeOTF));
+% sizeOTF = sizeI;
+% sizeOTF(numNSdim) = SUBSMPL*sizeI(numNSdim);
+H = decon_psf2otf(PSF,double(sizeI));
+scale = sum(PSF(:));
 clear PSF
 
 % 2. Prepare parameters for iterations
@@ -104,16 +114,18 @@ clear PSF
 % for k = numNSdim % index replicates for non-singleton PSF sizes only
 %     idx{k} = reshape(repmat(1:sizeI(k),[SUBSMPL 1]),[SUBSMPL*sizeI(k) 1]);
 % end
-idx_y = reshape(repmat(1:sizeI(1),[SUBSMPL 1]),[SUBSMPL*sizeI(1) 1]);
-idx_x = reshape(repmat(1:sizeI(2),[SUBSMPL 1]),[SUBSMPL*sizeI(2) 1]);
-idx_z = reshape(repmat(1:sizeI(3),[SUBSMPL 1]),[SUBSMPL*sizeI(3) 1]);
+% idx_y = reshape(repmat(1:sizeI(1),[SUBSMPL 1]),[SUBSMPL*sizeI(1) 1]);
+% idx_x = reshape(repmat(1:sizeI(2),[SUBSMPL 1]),[SUBSMPL*sizeI(2) 1]);
+% idx_z = reshape(repmat(1:sizeI(3),[SUBSMPL 1]),[SUBSMPL*sizeI(3) 1]);
 
 
 wI = max(WEIGHT.*(READOUT + J_1),0);% at this point  - positivity constraint
-J_2 = J_2(idx_y, idx_x, idx_z);
-scale = real(ifftn(conj(H).*fftn(WEIGHT(idx_y, idx_x, idx_z)))) + sqrt(eps);
+% J_1 = J_1 .* (J_1 > 0);
+% J_2 = J_2(idx_y, idx_x, idx_z);
+% scale = real(ifftn(conj(H).*fftn(WEIGHT(idx_y, idx_x, idx_z)))) + sqrt(eps);
 clear J_1 WEIGHT;
-DAMPAR22 = (DAMPAR.^2)/2;
+
+% DAMPAR22 = (DAMPAR.^2)/2;
 
 if SUBSMPL~=1 % prepare vector of dimensions to facilitate the reshaping
     % when the matrix is binned within the iterations.
@@ -138,37 +150,50 @@ for k = lambda + 1 : lambda + NUMIT
     
     % 3.a Make an image predictions for the next iteration
     if k > 2
-        lambda = (J_4(:,1).'*J_4(:,2))/(J_4(:,2).'*J_4(:,2) +eps);
+        % lambda = (J_4(:,1).'*J_4(:,2))/(J_4(:,2).'*J_4(:,2) +eps);        
+        lambda = ((J_2(:) - Y(:)).'*J_4)/(J_4.'*J_4 +eps);
         lambda = max(min(lambda,1),0);% stability enforcement
+        J_4 = J_2(:) - Y(:);
+    elseif k == 2
+        J_4 = J_2(:) - Y(:);
     end
     Y = max(J_2 + lambda*(J_2 - J_3),0);% plus positivity constraint
-    
+        
     % 3.b  Make core for the LR estimation
-    CC = corelucy(Y,H,DAMPAR22,wI,READOUT,SUBSMPL,idx_y, idx_x, idx_z,vec,num);
+    % CC = corelucy(Y,H,DAMPAR22,wI,READOUT,SUBSMPL,vec,num);
+    % directly compute CC within the same function to reduce overhead 
+    ReBlurred = real(ifftn(H.*fftn(Y)));
+    % ReBlurred = ReBlurred + READOUT;
+    % ReBlurred(ReBlurred == 0) = eps;
+    ReBlurred = ReBlurred + (ReBlurred == 0) * eps;
+    ReBlurred = wI./ReBlurred + eps;
     
     % 3.c Determine next iteration image & apply positivity constraint
     J_3 = J_2;
-    J_2 = max(Y.*real(ifftn(conj(H).*CC))./scale,0);
+    J_2 = max(Y.*real(ifftn(conj(H).*fftn(ReBlurred)))./scale,0);
+    
     % clear CC;
     % CC = 0;
     % J_4 = [J_2(:)-Y(:) J_4(:,1)];
-    J_4 = flip(J_4, 2);
-    J_4(:, 1) = J_2(:)-Y(:);
+    % J_4 = flip(J_4, 2);
+    % J_4(:, 1) = J_2(:)-Y(:);
     
     if ~debug && rem(k, estep) == 0
         istp = k/estep;
-        % err_mat(istp) = sum((J_2 - I) .^ 2, 'all') / numel(J_2);
-        err_mat(istp, 1:2) = [k, sum((J_2 - I) .^ 2, 'all')];
-        err_mat(istp, 3) = err_mat(istp, 2) ./ err_mat(1, 2);
-        if istp > 2
-            err_mat(istp, 4) = min(abs(err_mat(istp, 3) - err_mat(istp-1, 3)) / 10, ...
-                abs(err_mat(istp, 3) + err_mat(istp-2, 3) - 2 * err_mat(istp-1, 3)) / 2);
-        else
-            err_mat(istp, 4) = 1;
-        end
+        if ~useGPU
+            % err_mat(istp) = sum((J_2 - I) .^ 2, 'all') / numel(J_2);
+            err_mat(istp, 1:2) = [k, sum((J_2 - I) .^ 2, 'all')];
+            err_mat(istp, 3) = err_mat(istp, 2) ./ err_mat(1, 2);
+            if istp > 2
+                err_mat(istp, 4) = min(abs(err_mat(istp, 3) - err_mat(istp-1, 3)) / 10, ...
+                    abs(err_mat(istp, 3) + err_mat(istp-2, 3) - 2 * err_mat(istp-1, 3)) / 2);
+            else
+                err_mat(istp, 4) = 1;
+            end
 
-        if ~fixIter && k > estep * 2 && err_mat(istp, 4) < err_thrsh
-            break;
+            if ~fixIter && k > estep * 2 && err_mat(istp, 4) < err_thrsh
+                break;
+            end
         end
     end
     
@@ -222,7 +247,7 @@ end
 end
 
 
-function f = corelucy(Y,H,DAMPAR22,wI,READOUT,SUBSMPL,idx_y, idx_x, idx_z,vec,num)
+function f = corelucy(Y,H,DAMPAR22,wI,READOUT,SUBSMPL,vec,num)
 %CORELUCY Accelerated Damped Lucy-Richarson Operator.
 %  Calculates function that when used with the scaled projected array 
 %  produces the next iteration array that maximizes the likelihood that 
@@ -260,21 +285,24 @@ end
 
 % 2. An Estimate for the next step
 ReBlurred = ReBlurred + READOUT;
-ReBlurred(ReBlurred == 0) = eps;
-AnEstim = wI./ReBlurred + eps;
+% ReBlurred(ReBlurred == 0) = eps;
+ReBlurred = ReBlurred + (ReBlurred == 0) * eps;
+ReBlurred = wI./ReBlurred + eps;
 
 % 3. Damping if needed
 if DAMPAR22 == 0 % No Damping
-  ImRatio = AnEstim(idx_y, idx_x, idx_z);
+  % ImRatio = AnEstim(idx_y, idx_x, idx_z);
+  % ImRatio = AnEstim;
 else % Damping of the image relative to DAMPAR22 = (N*sigma)^2
-  gm = 10;
-  g = (wI.*log(AnEstim)+ ReBlurred - wI)./DAMPAR22;
-  g = min(g,1);
-  G = (g.^(gm-1)).*(gm-(gm-1)*g);
-  ImRatio = 1 + G(idx_y, idx_x, idx_z).*(AnEstim(idx_y, idx_x, idx_z) - 1);
+%   gm = 10;
+%   g = (wI.*log(AnEstim)+ ReBlurred - wI)./DAMPAR22;
+%   g = min(g,1);
+%   G = (g.^(gm-1)).*(gm-(gm-1)*g);
+%   % ImRatio = 1 + G(idx_y, idx_x, idx_z).*(AnEstim(idx_y, idx_x, idx_z) - 1);
+%   ImRatio = 1 + G.*(AnEstim - 1);
 end
 
-f = fftn(ImRatio);
+f = fftn(ReBlurred);
 
 end
 
