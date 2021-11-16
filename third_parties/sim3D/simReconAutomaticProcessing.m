@@ -170,6 +170,7 @@ splitJobsByChannelPattern = pr.splitJobsByChannelPattern;
 %largeFile = pr.largeFile;
 parseCluster = pr.parseCluster;
 jobLogDir = pr.jobLogDir;
+cpusPerTask = pr.cpusPerTask;
 masterCompute = pr.masterCompute;
 maxModifyTime = pr.maxModifyTime;
 maxTrialNum = pr.maxTrialNum;
@@ -186,7 +187,8 @@ else
 end
 
 if Deskew && Recon
-    dataPathsDS = strcat(dataPaths,folStr);
+    separator = {filesep};
+    dataPathsDS = strcat(dataPaths,separator,folStr);
 else
     dataPathsDS = dataPaths;
 end
@@ -220,7 +222,12 @@ allFullPaths = {''};
 
 % Create a parpool if one does not already exist
 if isempty(gcp('nocreate'))
-    parpool(parPoolSize);
+    if parPoolSize <= maxNumCompThreads
+        parpool(parPoolSize);
+    else
+        fprintf('Could not allocate %d workers. Allocating %d workers instead (max allowed by current system).\n',parPoolSize,maxNumCompThreads)
+        parpool(maxNumCompThreads);
+    end
 end
 workers = {};
 cWorker = 1;
@@ -231,7 +238,7 @@ while(firstTime || (~isempty(workers) && ~all(strcmp(cStates,'finished'))) || (S
         firstTime = false;
     else
         % Sleep main thread before checking again
-        pause(20);
+        pause(5);
     end
     
     % Deskew
@@ -308,7 +315,7 @@ while(firstTime || (~isempty(workers) && ~all(strcmp(cStates,'finished'))) || (S
                     
                     
                     funcStrs{j} =  sprintf(['deskewPhasesFrame(''%s'',%.10f,%.10f,''SkewAngle'',%.10f,''Reverse'',%s,''nphases''', ...
-                        ',%.10f,''Rotate'',%s)'], dataFullpath, xyPixelSize, dz, SkewAngle, string(Reverse), nphases, string(Rotate));
+                        ',%.10f,''Rotate'',%s,''Save16bit'',%s)'], dataFullpath, xyPixelSize, dz, SkewAngle, string(Reverse), nphases, string(Rotate), string(Save16bit));
                 end
                 
                 if alreadyFinished
@@ -324,7 +331,7 @@ while(firstTime || (~isempty(workers) && ~all(strcmp(cStates,'finished'))) || (S
                 %SlurmParam = '-p abc --qos abc_normal -n1 --mem=167G --gres=gpu:1';
                 %else
                 maxJobNum = inf;
-                cpusPerTask = 24;
+                %cpusPerTask = 24;
                 cpuOnlyNodes = true;
                 taskBatchNum = 1;
                 SlurmParam = '-p abc --qos abc_normal -n1 --mem-per-cpu=21418M';
@@ -336,7 +343,7 @@ while(firstTime || (~isempty(workers) && ~all(strcmp(cStates,'finished'))) || (S
                     fprintf('Attempting Deskew on %d file(s) for pattern ''%s'' in folder ''%s''\n',length(inputFullpaths),ChannelPatterns{cPatt},dataPaths{i})
                     [workers{1,cWorker}] = parfeval(@slurm_cluster_generic_computing_wrapper,1,inputFullpaths, outputFullpaths, ...
                         funcStrs, 'cpusPerTask', cpusPerTask, 'cpuOnlyNodes', cpuOnlyNodes, 'SlurmParam', SlurmParam, ...
-                        'maxJobNum', maxJobNum, 'taskBatchNum', taskBatchNum, 'masterCompute', masterCompute, 'parseCluster', parseCluster);
+                        'maxJobNum', maxJobNum, 'taskBatchNum', taskBatchNum, 'masterCompute', masterCompute, 'parseCluster', parseCluster, 'jobLogDir', jobLogDir);
                     workers{2,cWorker} = sprintf('Finished Deskew on %d file(s) for pattern ''%s'' in folder ''%s''\n',length(inputFullpaths),ChannelPatterns{cPatt},dataPaths{i});
                     cWorker = cWorker+1;
                 end
@@ -459,7 +466,7 @@ while(firstTime || (~isempty(workers) && ~all(strcmp(cStates,'finished'))) || (S
                     fprintf('Attempting Recon on %d file(s) for pattern ''%s'' in folder ''%s''\n',length(inputFullpaths),ChannelPatterns{cPatt},dataPathsDS{i})
                     [workers{1,cWorker}] = parfeval(@slurm_cluster_generic_computing_wrapper,1,inputFullpaths, outputFullpaths, ...
                         funcStrs, 'cpusPerTask', cpusPerTask, 'cpuOnlyNodes', cpuOnlyNodes, 'SlurmParam', SlurmParam, ...
-                        'maxJobNum', maxJobNum, 'taskBatchNum', taskBatchNum, 'masterCompute', masterCompute, 'parseCluster', parseCluster);
+                        'maxJobNum', maxJobNum, 'taskBatchNum', taskBatchNum, 'masterCompute', masterCompute, 'parseCluster', parseCluster, 'jobLogDir', jobLogDir);
                     workers{2,cWorker} = sprintf('Finished Recon on %d file(s) for pattern ''%s'' in folder ''%s''\n',length(inputFullpaths),ChannelPatterns{cPatt},dataPathsDS{i});
                     cWorker = cWorker+1;
                 end
