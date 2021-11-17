@@ -371,6 +371,10 @@ for f = 1 : nF
     delete(reconTmpMIPPath);
     
     reconMIPPath = sprintf('%s/MIPs/', reconPath);
+    if ~exist(reconMIPPath, 'dir')
+        mkdir(reconMIPPath);
+        fileattrib(reconMIPPath, '+w', 'g');
+    end
     reconMIPFullPath = sprintf('%s%s_MIP_z.tif', reconMIPPath, fsname);
     writetiff(max(im,[],3), reconMIPFullPath);
     
