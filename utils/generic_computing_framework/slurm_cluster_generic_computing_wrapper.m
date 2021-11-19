@@ -150,19 +150,24 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
         if all(is_done_flag(fs) | trial_counter(fs) >= maxTrialNum)
             continue;
         end
-
+        
+        f = fs(end);
+        if parseCluster
+            job_status = check_slurm_job_status(job_ids(f), task_id);
+            job_status_mat(fs, 2) = job_status_mat(fs, 1);
+            job_status_mat(fs, 1) = job_status;
+        end
+        
+        % set parameter to skip job submission step in case of reaching max job
+        % number and masterCompute is true
+        skip_job_submission = false;
         if parseCluster && sum(job_status_mat(~is_done_flag(1 : taskBatchNum : nF), 1) >= 0) >= maxJobNum
-            continue;
+            skip_job_submission = true;
         end
         
         func_str = strjoin(funcStrs(fs), ';');
-        f = fs(end);
-        if parseCluster || exist(tmpFullpath, 'file')
+        if ~skip_job_submission && (parseCluster || exist(tmpFullpath, 'file'))
             if parseCluster
-                job_status = check_slurm_job_status(job_ids(f), task_id);
-                job_status_mat(fs, 2) = job_status_mat(fs, 1);
-                job_status_mat(fs, 1) = job_status;
-
                 % kill the first pending job and use master node do the computing.
                 if job_status == 0 && (masterCompute && b == lastP)
                     system(sprintf('scancel %d_%d', job_ids(f), task_id), '-echo');
@@ -228,6 +233,7 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
                     job_id = regexp(cmdout, 'Submitted batch job (\d+)\n', 'tokens');
                     job_id = str2double(job_id{1}{1});
                     job_ids(fs) = job_id;
+                    job_status_mat(fs, 1) = 0;
                     trial_counter(fs) = trial_counter(f) + 1;                                
                 end
             else
@@ -239,7 +245,9 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
                 end
             end
         else
-            fclose(fopen(tmpFullpath, 'w'));
+            if ~parseCluster
+                fclose(fopen(tmpFullpath, 'w'));
+            end
         end
 
         if ~parseCluster || (parseCluster && masterCompute && f == lastP)
