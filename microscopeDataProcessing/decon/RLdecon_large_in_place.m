@@ -153,7 +153,8 @@ SameBatchSize = true;
 BorderSize = round((size(psf) + 10) / 2);
 [batchBBoxes, regionBBoxes] = XR_zarrChunkCoordinatesExtraction(imSize, 'BatchSize', BatchSize, ...
     'BlockSize', BlockSize, 'SameBatchSize', SameBatchSize, 'BorderSize', BorderSize);
-scaleFactor = prod(min(imSize, BatchSize));
+% scaleFactor = prod(min(imSize, BatchSize));
+scaleFactor = 1.0;
 
 % initialize zarr file
 init_val = zeros(1, dtype);

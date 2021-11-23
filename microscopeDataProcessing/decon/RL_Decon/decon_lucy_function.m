@@ -102,6 +102,8 @@ end
 % dimensions. Or its OTF could take care of it:
 % sizeOTF = sizeI;
 % sizeOTF(numNSdim) = SUBSMPL*sizeI(numNSdim);
+% test normalization of PSF first
+PSF = PSF ./ sum(PSF(:));
 H = decon_psf2otf(PSF,double(sizeI));
 scale = sum(PSF(:));
 clear PSF

@@ -260,9 +260,9 @@ end
 
 specifyCam = true;
 if all(~cellfun(@isempty, regexp(fn, '_Cam\w_ch', 'match')))
-    expression = '(?<prefix>\w*)Scan_Iter_(?<Iter>\d+)(?<subIter>_?(\d+_)*\d+?)_Cam(?<Cam>\w+)_ch(?<ch>\d+)_CAM1_stack(?<stack>\d+)_(?<laser>\d+)nm_(?<abstime>\d+)msec_(?<fpgatime>\d+)msecAbs_(?<x>\d+)x_(?<y>\d+)y_(?<z>\d+)z_(?<t>\d+)t.tif';
+    expression = '(?<prefix>\w*)Scan_Iter_(?<Iter>\d+)(?<subIter>_?(\d+_)*\d+?)_Cam(?<Cam>\w+)_ch(?<ch>\d+)_CAM1_stack(?<stack>\d+)_(?<laser>\d+)nm_(?<abstime>\d+)msec_(?<fpgatime>\d+)msecAbs_(?<x>\d+)x_(?<y>\d+)y_(?<z>\d+)z_(?<t>\d+)t(?<suffix>_?\w*).tif';
 elseif all(~cellfun(@isempty, regexp(fn, '_ch[0-9]_', 'match')))
-    expression = '(?<prefix>\w*)Scan_Iter_(?<Iter>\d+)(?<subIter>_?(\d+_)*\d+?)_ch(?<ch>\d+)_CAM1_stack(?<stack>\d+)_(?<laser>\d+)nm_(?<abstime>\d+)msec_(?<fpgatime>\d+)msecAbs_(?<x>\d+)x_(?<y>\d+)y_(?<z>\d+)z_(?<t>\d+)t.tif';
+    expression = '(?<prefix>\w*)Scan_Iter_(?<Iter>\d+)(?<subIter>_?(\d+_)*\d+?)_ch(?<ch>\d+)_CAM1_stack(?<stack>\d+)_(?<laser>\d+)nm_(?<abstime>\d+)msec_(?<fpgatime>\d+)msecAbs_(?<x>\d+)x_(?<y>\d+)y_(?<z>\d+)z_(?<t>\d+)t(?<suffix>_?\w*).tif';
     specifyCam = false;
 end
 

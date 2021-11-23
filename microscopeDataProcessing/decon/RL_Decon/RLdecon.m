@@ -28,6 +28,8 @@ function [deconvolved] = RLdecon(input_tiff, output_filename, psf, background, n
 % xruan (07/15/2021): add support for zarr input
 % xruan (11/11/2021): add support for using the data as input instead of
 % filename and also user defined normalization factor for the result
+% xruan (11/23/2021): normalize psf by the sum so the decon scale remain
+% the normal range. 
 
 
 ip = inputParser;
@@ -259,8 +261,10 @@ end
 % call Richardson-Lucy
 if nIter>0
     if isempty(scaleFactor)
-        scaleFactor = numel(rawdata);
+        % scaleFactor = numel(rawdata);
+        scaleFactor = 1;
     end
+    psf = psf ./ sum(psf(:));
     switch RLMethod 
         case 'original'
             deconvolved = deconvlucy(rawdata, psf, nIter) * scaleFactor;
