@@ -5,6 +5,7 @@ function [] = XR_RotateFrame3D(framePaths, xyPixelSize, dz, varargin)
 %
 % Author: Xiongtao Ruan (03/18/2020)
 % 
+% xruan (11/30/2021): add support for bounding box crop and resample
 
 ip = inputParser;
 ip.CaseSensitive = false;
@@ -14,11 +15,13 @@ ip.addRequired('dz');
 ip.addParameter('ObjectiveScan', false, @islogical);
 ip.addParameter('Overwrite', false, @islogical);
 ip.addParameter('Crop', true, @islogical);
+ip.addParameter('bboxCrop', [], @(x) isempty(x) || isnumeric(x));
+ip.addParameter('resample', [], @(x) isempty(x) || isnumeric(x)); % resampling after rotation 
 ip.addParameter('SkewAngle', 31.5, @isscalar);
 ip.addParameter('Reverse', false, @islogical);
 ip.addParameter('sCMOSCameraFlip', false, @islogical);
 ip.addParameter('Save16bit', false , @islogical); % saves deskewed data as 16 bit -- not for quantification
-ip.addParameter('uuid', '', @isstr);
+ip.addParameter('uuid', '', @ischar);
 
 ip.parse(framePaths, xyPixelSize, dz, varargin{:});
 
@@ -31,6 +34,8 @@ end
 pr = ip.Results;
 Overwrite = pr.Overwrite;
 Crop = pr.Crop;
+bboxCrop = pr.bboxCrop;
+resample = pr.resample;
 Reverse = pr.Reverse;
 SkewAngle = pr.SkewAngle;
 ObjectiveScan = pr.ObjectiveScan;
@@ -73,8 +78,13 @@ for f = 1 : numel(framePaths)
         if ~exist('ds', 'var')
             im = double(readtiff(framePath));
         end
-        im_rt = rotateFrame3D(im, SkewAngle, zAniso, Reverse, 'Crop', Crop, 'ObjectiveScan', ObjectiveScan);
-
+        im_rt = rotateFrame3D(im, SkewAngle, zAniso, Reverse, 'Crop', Crop, ...
+            'resample', resample, 'ObjectiveScan', ObjectiveScan);
+        
+        if ~isempty(bboxCrop)
+            im_rt = im_rt(bboxCrop(1) : bboxCrop(4), bboxCrop(2) : bboxCrop(5), bboxCrop(3) : bboxCrop(6));            
+        end
+        
         rtTempName = sprintf('%s%s_%s.tif', rtPath, fsname, uuid);
         if Save16bit
             writetiff(uint16(im_rt), rtTempName);

@@ -140,6 +140,11 @@ if ischar(psf)
             bbox = [cropSz + 1, size(psf) - cropSz];
             psf = psf(bbox(1) : bbox(4), bbox(2) : bbox(5), bbox(3) : bbox(6));
             
+            % test decon without psf gen
+            if false
+                psf = double(pp);
+            end
+            
             % crop psf if it is larger than data in any dimension
             if ~isempty(input_tiff)
                 imSize = getImageSize(input_tiff);
@@ -280,6 +285,8 @@ if nIter>0
             end                
                 
             [deconvolved, err_mat, iter_run] = decon_lucy_function(rawdata, psf, nIter, fixIter, errThresh, debug, debug_folder, useGPU);
+            % [deconvolved, err_mat, iter_run] = decon_lucy_function_test(rawdata, psf, nIter, fixIter, errThresh, debug, debug_folder, useGPU);
+            % [deconvolved, err_mat, iter_run] = decon_lucy_function_test_1(rawdata, psf, nIter, fixIter, errThresh, debug, debug_folder, useGPU);
             deconvolved = deconvolved * scaleFactor;
         case 'cudagen'
             deconvolved = decon_lucy_cuda_function(single(rawdata), single(psf), nIter) * scaleFactor;            

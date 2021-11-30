@@ -22,6 +22,7 @@
 % Author: Francois Aguet
 % xruan (11/03/2021): decide crop size by the distance of two boundary
 % lines for rotation
+% xruan (11/30/2021): add support for resampling
 
 function [volout] = rotateFrame3D(vol, angle, zxRatio, varargin)
 
@@ -31,9 +32,10 @@ ip.addRequired('vol');
 ip.addRequired('angle'); % typical value: 32.8
 ip.addRequired('zxRatio'); % typical value: ~ 2 (sample scan) - 4 (obj. scan)
 ip.addOptional('reverse', false, @islogical);
-ip.addParamValue('Crop', true, @islogical);
-ip.addParamValue('ObjectiveScan', false, @islogical);
-ip.addParamValue('Interp', 'linear', @(x) any(strcmpi(x, {'cubic', 'linear'})));
+ip.addParameter('Crop', true, @islogical);
+ip.addParameter('resample', [], @isnumeric); % resample factor in xyz order. 
+ip.addParameter('ObjectiveScan', false, @islogical);
+ip.addParameter('Interp', 'linear', @(x) any(strcmpi(x, {'cubic', 'linear'})));
 ip.parse(vol, angle, zxRatio, varargin{:});
 
 [ny,nx,nz] = size(vol);
@@ -112,6 +114,31 @@ T2 = [1 0 0 0
       0 1 0 0
       0 0 1 0
       (outSize([2 1 3])+1)/2 1];
+  
+% resampling after deskew and rotate
+rs = ip.Results.resample;
+if ~isempty(rs)
+    RT1 = [1 0 0 0
+           0 1 0 0
+           0 0 1 0
+           -(outSize([2,1,3])+1)/2 1];
+    RS =[1/rs(1) 0 0 0
+         0 1/rs(2) 0 0
+         0 0 1/rs(3) 0
+         0 0 0 1];
+    outSize = round(outSize ./ rs([2,1,3]));
+    RT2 = [1 0 0 0
+           0 1 0 0
+           0 0 1 0
+           (outSize([2,1,3])+1)/2 1];     
+else
+    RT1 = eye(4);
+    RS = eye(4);
+    RT2 = eye(4);
+end
 
 RA = imref3d(outSize, 1, 1, 1);
-[volout] = imwarp(vol, affine3d(T1*S*R*T2), ip.Results.Interp, 'FillValues', 0, 'OutputView', RA);
+[volout] = imwarp(vol, affine3d((T1*S*R*T2)*(RT1*RS*RT2)), ip.Results.Interp, 'FillValues', 0, 'OutputView', RA);
+
+end
+

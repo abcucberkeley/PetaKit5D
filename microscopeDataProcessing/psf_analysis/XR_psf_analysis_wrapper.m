@@ -184,6 +184,7 @@ for d = 1 : numel(dataPath_exps)
         include_flag = include_flag | contains(fn, ChannelPatterns{c}) | contains(fn, regexpPattern(ChannelPatterns{c}));
     end
     fn = fn(include_flag);
+    fsn = fsn(include_flag);
     
     frameFullpaths{d} = fn;
     figureFullpaths{d} = cellfun(@(x) [result_dir, 'wT_', x(1 : end - 4), '.png'], fsn, 'unif', 0);
