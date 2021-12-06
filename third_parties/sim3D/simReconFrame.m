@@ -178,7 +178,7 @@ for f = 1 : nF
     [pathstr, fsname, ext] = fileparts(frameFullpath);
     reconPath = '';
     if isempty(reconPath)
-        reconPath = [pathstr filesep resultsDirName filesep];
+        reconPath = [pathstr '/' resultsDirName '/'];
         mkdir(reconPath);
         fileattrib(reconPath, '+w', 'g');
     end

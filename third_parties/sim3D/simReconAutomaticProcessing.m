@@ -180,6 +180,11 @@ if isempty(uuid)
     uuid = get_uuid();
 end
 
+% For Windows, replace all forwardslashes with backslashes. Matlab can
+% parse the rest
+dataPaths = replace(dataPaths,'\','/');
+PSFs = replace(PSFs,'\','/');
+
 if(Rotate)
     folStr = 'DSR';
 else
@@ -187,7 +192,7 @@ else
 end
 
 if Deskew && Recon
-    separator = {filesep};
+    separator = {'/'};
     dataPathsDS = strcat(dataPaths,separator,folStr);
 else
     dataPathsDS = dataPaths;
@@ -245,7 +250,7 @@ while(firstTime || (~isempty(workers) && ~all(strcmp(cStates,'finished'))) || (S
     if(Deskew)
         for i = 1:numel(dataPaths)
             for cPatt = 1:numel(ChannelPatterns)
-                fnames = dir([dataPaths{i} filesep '*' ChannelPatterns{cPatt} '*.tif']);
+                fnames = dir([dataPaths{i} '/' '*' ChannelPatterns{cPatt} '*.tif']);
                 
                 if(isempty(fnames))
                     fprintf('No Files found for channel pattern: ''%s''. Skipping to next pattern.\n',ChannelPatterns{cPatt});
@@ -270,7 +275,7 @@ while(firstTime || (~isempty(workers) && ~all(strcmp(cStates,'finished'))) || (S
                 end
                 
                 % Check that jobs have not yet been submitted for these files
-                match = ismember(strcat([fnames(1).folder filesep],{fnames.name}),allFullPaths);
+                match = ismember(strcat([fnames(1).folder '/'],{fnames.name}),allFullPaths);
                 fnames(match) = [];
                 
                 % If there are no more files. Continue to next pattern
@@ -279,7 +284,7 @@ while(firstTime || (~isempty(workers) && ~all(strcmp(cStates,'finished'))) || (S
                 end
                 
                 % Add files to list
-                allFullPaths = horzcat(allFullPaths,strcat([fnames(1).folder filesep],{fnames.name}));
+                allFullPaths = horzcat(allFullPaths,strcat([fnames(1).folder '/'],{fnames.name}));
                 
                 fnames = {fnames.name};
                 inputFullpaths = cell(numel(fnames), 1);
@@ -300,9 +305,15 @@ while(firstTime || (~isempty(workers) && ~all(strcmp(cStates,'finished'))) || (S
                 
                 alreadyFinished = true;
                 for j = 1: numel(fnames)
+                    if ~exist([dataPaths{i} '/' folStr], 'dir')
+                        mkdir([dataPaths{i} '/' folStr]);
+                        fileattrib([dataPaths{i} '/' folStr], '+w', 'g');
+                    end
+                    
+
                     [pathstr, fsname, ext] = fileparts(fnames{j});
-                    dataFullpath = [dataPaths{i} filesep fnames{j}];
-                    dataDSFullpath = [dataPaths{i} filesep folStr filesep fsname ext];
+                    dataFullpath = [dataPaths{i} '/' fnames{j}];
+                    dataDSFullpath = [dataPaths{i} '/' folStr '/' fsname ext];
                     
                     if alreadyFinished
                         if ~exist(dataDSFullpath,'file')
@@ -357,7 +368,7 @@ while(firstTime || (~isempty(workers) && ~all(strcmp(cStates,'finished'))) || (S
     if Recon
         for i = 1:numel(dataPathsDS)
             for cPatt = 1:numel(ChannelPatterns)
-                fnames = dir([dataPathsDS{i} filesep '*' ChannelPatterns{cPatt} '*.tif']);
+                fnames = dir([dataPathsDS{i} '/' '*' ChannelPatterns{cPatt} '*.tif']);
                 
                 if(isempty(fnames))
                     if(~Streaming)
@@ -383,7 +394,7 @@ while(firstTime || (~isempty(workers) && ~all(strcmp(cStates,'finished'))) || (S
                 end
                 
                 % Check that jobs have not yet been submitted for these files
-                match = ismember(strcat([fnames(1).folder filesep],{fnames.name}),allFullPaths);
+                match = ismember(strcat([fnames(1).folder '/'],{fnames.name}),allFullPaths);
                 fnames(match) = [];
                 
                 % If there are no more files. Continue to next pattern
@@ -392,7 +403,7 @@ while(firstTime || (~isempty(workers) && ~all(strcmp(cStates,'finished'))) || (S
                 end
                 
                 % Add files to list
-                allFullPaths = horzcat(allFullPaths,strcat([fnames(1).folder filesep],{fnames.name}));
+                allFullPaths = horzcat(allFullPaths,strcat([fnames(1).folder '/'],{fnames.name}));
                 
                 fnames = {fnames.name};
                 inputFullpaths = cell(numel(fnames), 1);
@@ -415,8 +426,13 @@ while(firstTime || (~isempty(workers) && ~all(strcmp(cStates,'finished'))) || (S
                 alreadyFinished = true;
                 for j = 1: numel(fnames)
                     [pathstr, fsname, ext] = fileparts(fnames{j});
-                    dataFullpath = [dataPathsDS{i} filesep fnames{j}];
-                    dataDSFullpath = [dataPathsDS{i} filesep resultsDirName filesep fsname '_recon' ext];
+                    dataFullpath = [dataPathsDS{i} '/' fnames{j}];
+                    dataDSFullpath = [dataPathsDS{i} '/' resultsDirName '/' fsname '_recon' ext];
+
+                    if ~exist([dataPathsDS{i} '/' resultsDirName], 'dir')
+                        mkdir([dataPathsDS{i} '/' resultsDirName]);
+                        fileattrib([dataPathsDS{i} '/' resultsDirName], '+w', 'g');
+                    end
                     
                     if alreadyFinished
                         if ~exist(dataDSFullpath,'file')
@@ -480,9 +496,9 @@ while(firstTime || (~isempty(workers) && ~all(strcmp(cStates,'finished'))) || (S
     if Streaming
         latest_modify_time = inf;
         for i = 1:numel(dataPaths)
-            if exist([dataPaths{i} filesep],'dir')
+            if exist([dataPaths{i} '/'],'dir')
                 for cPatt = 1:numel(ChannelPatterns)
-                    dir_info = dir([dataPaths{i} filesep '*' ChannelPatterns{cPatt} '*.tif']);
+                    dir_info = dir([dataPaths{i} '/' '*' ChannelPatterns{cPatt} '*.tif']);
                     if ~isempty(dir_info)
                         last_modify_time = (datenum(clock) - [dir_info.datenum]) * 24 * 60;
                         lowestTimeI = min(last_modify_time);
@@ -493,9 +509,9 @@ while(firstTime || (~isempty(workers) && ~all(strcmp(cStates,'finished'))) || (S
         end
         if Deskew && Recon
             for i = 1:numel(dataPathsDS)
-                if exist([dataPathsDS{i} filesep],'dir')
+                if exist([dataPathsDS{i} '/'],'dir')
                     for cPatt = 1:numel(ChannelPatterns)
-                        dir_info = dir([dataPathsDS{i} filesep '*' ChannelPatterns{cPatt} '*.tif']);
+                        dir_info = dir([dataPathsDS{i} '/' '*' ChannelPatterns{cPatt} '*.tif']);
                         if ~isempty(dir_info)
                             last_modify_time = (datenum(clock) - [dir_info.datenum]) * 24 * 60;
                             lowestTimeI = min(last_modify_time);
