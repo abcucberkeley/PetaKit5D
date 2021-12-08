@@ -85,6 +85,8 @@ ip.addParameter('uuid', '', @ischar);
 ip.addParameter('maxModifyTime', 10, @isnumeric); % the maximum during of last modify time of a file, in minute.
 ip.addParameter('maxTrialNum', 3, @isnumeric);
 ip.addParameter('unitWaitTime', 2, @isnumeric);
+ip.addParameter('MatlabLaunchStr', 'module load matlab/r2021a; matlab -nodisplay -nosplash -nodesktop -nojvm -r', @ischar);
+ip.addParameter('SlurmParam', '-p abc --qos abc_normal -n1 --mem-per-cpu=21418M', @ischar);
 ip.addParameter('intThresh', 1, @isnumeric);
 ip.addParameter('occThresh', 0.8, @isnumeric);
 
@@ -175,6 +177,8 @@ masterCompute = pr.masterCompute;
 maxModifyTime = pr.maxModifyTime;
 maxTrialNum = pr.maxTrialNum;
 unitWaitTime = pr.unitWaitTime;
+MatlabLaunchStr = pr.MatlabLaunchStr;
+SlurmParam = pr.SlurmParam;
 uuid = pr.uuid;
 if isempty(uuid)
     uuid = get_uuid();
@@ -353,7 +357,7 @@ while(firstTime || (~isempty(workers) && ~all(strcmp(cStates,'finished'))) || (S
                 if(~isempty(inputFullpaths))
                     fprintf('Attempting Deskew on %d file(s) for pattern ''%s'' in folder ''%s''\n',length(inputFullpaths),ChannelPatterns{cPatt},dataPaths{i})
                     [workers{1,cWorker}] = parfeval(@slurm_cluster_generic_computing_wrapper,1,inputFullpaths, outputFullpaths, ...
-                        funcStrs, 'cpusPerTask', cpusPerTask, 'cpuOnlyNodes', cpuOnlyNodes, 'SlurmParam', SlurmParam, ...
+                        funcStrs, 'cpusPerTask', cpusPerTask, 'cpuOnlyNodes', cpuOnlyNodes, 'MatlabLaunchStr', MatlabLaunchStr, 'SlurmParam', SlurmParam, ...
                         'maxJobNum', maxJobNum, 'taskBatchNum', taskBatchNum, 'masterCompute', masterCompute, 'parseCluster', parseCluster, 'jobLogDir', jobLogDir);
                     workers{2,cWorker} = sprintf('Finished Deskew on %d file(s) for pattern ''%s'' in folder ''%s''\n',length(inputFullpaths),ChannelPatterns{cPatt},dataPaths{i});
                     cWorker = cWorker+1;
@@ -481,7 +485,7 @@ while(firstTime || (~isempty(workers) && ~all(strcmp(cStates,'finished'))) || (S
                 if(~isempty(inputFullpaths))
                     fprintf('Attempting Recon on %d file(s) for pattern ''%s'' in folder ''%s''\n',length(inputFullpaths),ChannelPatterns{cPatt},dataPathsDS{i})
                     [workers{1,cWorker}] = parfeval(@slurm_cluster_generic_computing_wrapper,1,inputFullpaths, outputFullpaths, ...
-                        funcStrs, 'cpusPerTask', cpusPerTask, 'cpuOnlyNodes', cpuOnlyNodes, 'SlurmParam', SlurmParam, ...
+                        funcStrs, 'cpusPerTask', cpusPerTask, 'cpuOnlyNodes', cpuOnlyNodes, 'MatlabLaunchStr', MatlabLaunchStr, 'SlurmParam', SlurmParam, ...
                         'maxJobNum', maxJobNum, 'taskBatchNum', taskBatchNum, 'masterCompute', masterCompute, 'parseCluster', parseCluster, 'jobLogDir', jobLogDir);
                     workers{2,cWorker} = sprintf('Finished Recon on %d file(s) for pattern ''%s'' in folder ''%s''\n',length(inputFullpaths),ChannelPatterns{cPatt},dataPathsDS{i});
                     cWorker = cWorker+1;
