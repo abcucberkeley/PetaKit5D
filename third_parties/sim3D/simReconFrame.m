@@ -178,7 +178,7 @@ for f = 1 : nF
     [pathstr, fsname, ext] = fileparts(frameFullpath);
     reconPath = '';
     if isempty(reconPath)
-        reconPath = [pathstr filesep resultsDirName filesep];
+        reconPath = [pathstr '/' resultsDirName '/'];
         mkdir(reconPath);
         fileattrib(reconPath, '+w', 'g');
     end
@@ -360,11 +360,12 @@ for f = 1 : nF
     
     if Save16bit
         im = uint16(im);
+        writetiff(im.*uint16((im>=0)), reconTmpPath_eroded);
     else
         im = single(im);
+        writetiff(im.*(im>=0), reconTmpPath_eroded);
     end
     
-    writetiff(single(im.*(im>=0)), reconTmpPath_eroded);
     movefile(reconTmpPath_eroded, reconFullPath);
     delete(reconTmpPath);
     reconTmpMIPPath = sprintf('%s/%s_%s_MIP_z.tif', reconPath, fsname, uuid);

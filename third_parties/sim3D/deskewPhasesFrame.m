@@ -29,7 +29,7 @@ if iscell(dataFile)
 end
 
 [filepath,name,ext] = fileparts(dataFile);
-fol = [filepath filesep];
+fol = [filepath '/'];
 
 if(Rotate)
     folStr = 'DSR';
@@ -69,7 +69,7 @@ else
     dsim = single(dsim);
 end
 
-writetiff(dsim, [fol folStr filesep name ext]);
+writetiff(dsim, [fol folStr '/' name ext]);
 
 toc
 

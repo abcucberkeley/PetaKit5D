@@ -145,9 +145,9 @@ end
 
 if saveOTF
     [path, fn, ext] = fileparts(PSF);
-    if ~exist([path filesep 'otf' filesep fn '.mat'],'file')
-        mkdir([path filesep 'otf' filesep]);
-        save([path filesep 'otf' filesep fn '.mat'],'O');
+    if ~exist([path '/' 'otf' '/' fn '.mat'],'file')
+        mkdir([path '/' 'otf' '/']);
+        save([path '/' 'otf' '/' fn '.mat'],'O');
     end
 end
 %save([PSF_folder,PSF_file(1:end-5),'_OTF_normalized.mat'],'O')
