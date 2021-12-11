@@ -46,12 +46,12 @@ elseif numel(Resolution) == 3
 end
 
 % add the parent folder to path.
-fpath = fileparts(which(mfilename));
-cd(fpath);
-addpath(genpath([fpath, filesep, '..']));
+% fpath = fileparts(which(mfilename));
+% cd(fpath);
+% addpath(genpath([fpath, filesep, '..']));
 
 %% stitching
-stitch_cmd_prefix = 'bash java_stitching_frame_commands.sh';
+stitch_cmd_prefix = 'bash ./XiongtaoScripts/stitch/java_stitching_frame_commands.sh';
 if ffcorrect
     stitch_cmd_prefix = [stitching_cmd_prefix, ' -f'];
 end

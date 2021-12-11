@@ -15,7 +15,7 @@ ip.addRequired('dz');
 ip.addParameter('ObjectiveScan', false, @islogical);
 ip.addParameter('Overwrite', false, @islogical);
 ip.addParameter('Crop', true, @islogical);
-ip.addParameter('bboxCrop', [], @(x) isempty(x) || isnumeric(x));
+ip.addParameter('bbox', [], @(x) isempty(x) || isnumeric(x));
 ip.addParameter('resample', [], @(x) isempty(x) || isnumeric(x)); % resampling after rotation 
 ip.addParameter('SkewAngle', 31.5, @isscalar);
 ip.addParameter('Reverse', false, @islogical);
@@ -34,7 +34,7 @@ end
 pr = ip.Results;
 Overwrite = pr.Overwrite;
 Crop = pr.Crop;
-bboxCrop = pr.bboxCrop;
+bbox = pr.bbox;
 resample = pr.resample;
 Reverse = pr.Reverse;
 SkewAngle = pr.SkewAngle;
@@ -81,8 +81,8 @@ for f = 1 : numel(framePaths)
         im_rt = rotateFrame3D(im, SkewAngle, zAniso, Reverse, 'Crop', Crop, ...
             'resample', resample, 'ObjectiveScan', ObjectiveScan);
         
-        if ~isempty(bboxCrop)
-            im_rt = im_rt(bboxCrop(1) : bboxCrop(4), bboxCrop(2) : bboxCrop(5), bboxCrop(3) : bboxCrop(6));            
+        if ~isempty(bbox)
+            im_rt = im_rt(bbox(1) : bbox(4), bbox(2) : bbox(5), bbox(3) : bbox(6));            
         end
         
         rtTempName = sprintf('%s%s_%s.tif', rtPath, fsname, uuid);

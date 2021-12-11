@@ -58,6 +58,20 @@ end
 %     peaky-cropToSize/2:peaky+cropToSize/2, :);
 % do not crop but pad the image so that the peak is in the center
 [peaky,peakx,peakz] = ind2sub(size(psf_raw), peakInd);
+% pad slices if some slice with intensity too close to the edge
+zst = find(sum(psf_raw, [1, 2]));
+zs = zst(1);
+zt = zst(end);
+if peakz - zs > nz / 2
+    psf_raw = padarray(psf_raw, [0, 0, peakz - zs - round((nz - 1) / 2) + 3], 0, 'post');
+    nz = size(psf_raw, 3);
+end
+if zt - peakz > nz / 2
+    psf_raw = padarray(psf_raw, [0, 0, zt - peakz - round((nz - 1) / 2) + 3], 0, 'pre');
+    peakz = peakz + zt - peakz - round((nz - 1) / 2) + 3;    
+    nz = size(psf_raw, 3);  
+end
+
 psf_cropped=circshift(psf_raw, round(([ny, nx, nz] + 1) / 2 - [peaky,peakx,peakz]));
 
 % center the PSF in z; otherwise RL decon results are shifted in z

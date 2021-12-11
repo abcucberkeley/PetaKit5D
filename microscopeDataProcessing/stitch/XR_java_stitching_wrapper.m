@@ -99,12 +99,35 @@ end
 t = readtable(imageListFileName, 'Delimiter','comma');
 t_column_name = t.Properties.VariableNames;
 fn = t.Filename;
-expression = 'Scan_Iter_(?<Iter>\d+)_Cam(?<Cam>\w+)_ch(?<ch>\d+)_CAM1_stack(?<stack>\d+)_(?<laser>\d+)nm_(?<abstime>\d+)msec_(?<fpgatime>\d+)msecAbs_(?<x>\d+)x_(?<y>\d+)y_(?<z>\d+)z_(?<t>\d+)t.tif';
+
+specifyCam = true;
+if all(~cellfun(@isempty, regexp(fn, '_Cam\w_ch', 'match')))
+    expression = '(?<prefix>\w*)Scan_Iter_(?<Iter>\d+)(?<subIter>_?(\d+_)*\d+?)_Cam(?<Cam>\w+)_ch(?<ch>\d+)_CAM1_stack(?<stack>\d+)_(?<laser>\d+)nm_(?<abstime>\d+)msec_(?<fpgatime>\d+)msecAbs_(?<x>\d+)x_(?<y>\d+)y_(?<z>\d+)z_(?<t>\d+)t(?<suffix>_?\w*).tif';
+elseif all(~cellfun(@isempty, regexp(fn, '_ch[0-9]_', 'match')))
+    expression = '(?<prefix>\w*)Scan_Iter_(?<Iter>\d+)(?<subIter>_?(\d+_)*\d+?)_ch(?<ch>\d+)_CAM1_stack(?<stack>\d+)_(?<laser>\d+)nm_(?<abstime>\d+)msec_(?<fpgatime>\d+)msecAbs_(?<x>\d+)x_(?<y>\d+)y_(?<z>\d+)z_(?<t>\d+)t(?<suffix>_?\w*).tif';
+    specifyCam = false;
+end
+
 tmp = regexpi(fn, expression, 'names');
 
+matched_inds = true(numel(tmp), 1);
+
 for f = 1:numel(tmp)
+    if isempty(tmp{f})
+        matched_inds(f) = false;
+        continue;
+    end
+    
+    t.prefix{f} = tmp{f}.prefix;
     t.Iter(f) = str2double(tmp{f}.Iter);
-    t.camera(f) = (tmp{f}.Cam);
+    t.subIter{f} = tmp{f}.subIter;
+    t.fullIter{f} = [tmp{f}.Iter, tmp{f}.subIter];
+    if specifyCam
+        t.camera(f) = (tmp{f}.Cam);
+    else
+        % use N to represent cam if it is not contained in the filename
+        t.camera(f) = 'N';
+    end
     t.ch(f) = str2double(tmp{f}.ch);
     t.stack(f) = str2double(tmp{f}.stack);
     t.laser(f) = str2double(tmp{f}.laser);
@@ -116,10 +139,17 @@ for f = 1:numel(tmp)
     t.t(f) = str2double(tmp{f}.t);
 end
 
-Iter = unique(t.Iter);
+t = t(matched_inds, :);
+
+prefix = unique(t.prefix);
+if ~isempty(prefix)
+    prefix = prefix{1};
+else
+    prefix = '';
+end
+fullIter = unique(t.fullIter);
 Ch = unique(t.ch);
 Cam = unique(t.camera);
-% ntiles = numel(unique(t.x)) * numel(unique(t.y)) * numel(unique(t.z));
 stackn = unique(t.stack);
 
 % check whether the image files in the image list file exist 
@@ -139,19 +169,19 @@ end
 
 
 %% do stitching computing
-row_exist_flag = true(numel(Iter), numel(Cam), numel(Ch), numel(stackn)); % flag for whether the run exists.
-is_done_flag = false(numel(Iter), numel(Cam), numel(Ch), numel(stackn));
-trial_counter = zeros(numel(Iter), numel(Cam), numel(Ch), numel(stackn));
+row_exist_flag = true(numel(fullIter), numel(Cam), numel(Ch), numel(stackn)); % flag for whether the run exists.
+is_done_flag = false(numel(fullIter), numel(Cam), numel(Ch), numel(stackn));
+trial_counter = zeros(numel(fullIter), numel(Cam), numel(Ch), numel(stackn));
 max_trial_num = maxTrialNum;
 
 if parseCluster
-    job_ids = -ones(numel(Iter), numel(Cam), numel(Ch), numel(stackn));
-    job_status_flag = false(numel(Iter), numel(Cam), numel(Ch), numel(stackn));
+    job_ids = -ones(numel(fullIter), numel(Cam), numel(Ch), numel(stackn));
+    job_status_flag = false(numel(fullIter), numel(Cam), numel(Ch), numel(stackn));
 end
 
 while ~all(is_done_flag | trial_counter >= max_trial_num, 'all') ...
         || (parseCluster && any(job_status_flag & ~is_done_flag, 'all'))
-    for n = 1:numel(Iter)
+    for n = 1:numel(fullIter)
         for ncam = 1:numel(Cam)
             for c = 1:numel(Ch)
                 for s = 1:numel(stackn)
@@ -162,9 +192,9 @@ while ~all(is_done_flag | trial_counter >= max_trial_num, 'all') ...
                         is_done_flag(n, ncam, c, s) = true;
                         continue;
                     end
-                    task_id = sub2ind([numel(Iter), numel(Cam), numel(Ch), numel(stackn)], n, ncam, c, s);
+                    task_id = sub2ind([numel(fullIter), numel(Cam), numel(Ch), numel(stackn)], n, ncam, c, s);
 
-                    cur_t = t(t.ch == Ch(c) & t.camera == Cam(ncam) & t.Iter == Iter(n) & t.stack == stackn(s), :);
+                    cur_t = t(t.ch == Ch(c) & t.camera == Cam(ncam) & strcmp(t.fullIter, fullIter{n}) & t.stack == stackn(s), :);
 
                     % obtain filenames                    
                     if isempty(cur_t)
@@ -177,19 +207,19 @@ while ~all(is_done_flag | trial_counter >= max_trial_num, 'all') ...
                     reltime = unique(cur_t.t);
 
                     % generate csv file for current run run
-                    cur_ImageListDir = sprintf('%s/Iter_%d/Cam%s/ch%d/stack%04d', stitching_tmp, Iter(n), Cam(ncam), Ch(c), stackn(s));
+                    cur_ImageListDir = sprintf('%s/Iter_%s/Cam%s/ch%d/stack%04d', stitching_tmp, fullIter{n}, Cam(ncam), Ch(c), stackn(s));
                     mkdir_recursive(cur_ImageListDir);
-                    cur_csv_fname = sprintf('%s/ImageList_Iter_%d_Cam%s_ch%d_stack%04d.csv', cur_ImageListDir, Iter(n), Cam(ncam), Ch(c), stackn(s));
+                    cur_csv_fname = sprintf('%s/ImageList_Iter_%s_Cam%s_ch%d_stack%04d.csv', cur_ImageListDir, fullIter{n}, Cam(ncam), Ch(c), stackn(s));
                     writetable(cur_t(:, t_column_name), cur_csv_fname);
 
                     % also use flag based check of completion, to support
                     % distributed computing with same submission
                     stitch_save_dir = sprintf('%s/Cam%s/ch%d/', stitching_rt, Cam(ncam), Ch(c));
                     mkdir_recursive(stitch_save_dir);
-                    stitch_save_fname = sprintf('%s/Scan_Iter_%04d_Cam%s_ch%d_CAM1_stack%04d_%dnm_%06dmsec_%04dt.tif', ...
-                        stitch_save_dir, Iter(n), Cam(ncam), Ch(c), stackn(s), laser, abstime, reltime);
-                    cur_tmp_fname = sprintf('%s/Scan_Iter_%04d_Cam%s_ch%d_CAM1_stack%04d_%dnm_%06dmsec_%04dt.tmp', ...
-                        stitch_save_dir, Iter(n), Cam(ncam), Ch(c), stackn(s), laser, abstime, reltime);
+                    stitch_save_fname = sprintf('%s/Scan_Iter_%s_Cam%s_ch%d_CAM1_stack%04d_%dnm_%06dmsec_%04dt.tif', ...
+                        stitch_save_dir, fullIter{n}, Cam(ncam), Ch(c), stackn(s), laser, abstime, reltime);
+                    cur_tmp_fname = sprintf('%s/Scan_Iter_%s_Cam%s_ch%d_CAM1_stack%04d_%dnm_%06dmsec_%04dt.tmp', ...
+                        stitch_save_dir, fullIter{n}, Cam(ncam), Ch(c), stackn(s), laser, abstime, reltime);
                     
                     % first check if the computing is done
                     if exist(stitch_save_fname, 'file')
@@ -233,9 +263,9 @@ while ~all(is_done_flag | trial_counter >= max_trial_num, 'all') ...
                         job_log_fname = [jobLogDir, '/job_%A_%a.out'];
                         job_log_error_fname = [jobLogDir, '/job_%A_%a.err'];
                                                 
-                        matlab_cmd = sprintf('addpath(genpath(pwd));tic;java_stitching_frame_wrapper(''%s'',''%s'',''axisOrder'',''%s'',''ffcorrect'',%s,''Resolution'',[%s],''wavelength'',%d,''stitchResultFname'',''%s'',''Save16bit'',%s);toc;', ...
+                        matlab_cmd = sprintf('setup([],true);java_stitching_frame_wrapper(''%s'',''%s'',''axisOrder'',''%s'',''ffcorrect'',%s,''Resolution'',[%s],''wavelength'',%d,''stitchResultFname'',''%s'',''Save16bit'',%s);toc;', ...
                             imageDirName, cur_csv_fname, axisOrder, ffcorrect_str, res_str, laser, stitch_save_fname, Save16bit_str);
-                        stitch_cmd = sprintf('module load matlab/r2019b; matlab -nodisplay -nosplash -nodesktop -r \\"%s\\"', matlab_cmd);
+                        stitch_cmd = sprintf('module load matlab/r2021a; matlab -nodisplay -nosplash -nodesktop -r \\"%s\\"', matlab_cmd);
                         cmd = sprintf('sbatch --array=%d -o %s -e %s -p abc --qos abc_normal -n1 --mem-per-cpu=20G --cpus-per-task=%d --wrap="%s"', ...
                             task_id, job_log_fname, job_log_error_fname, cpusPerTask, stitch_cmd);
                         [status, cmdout] = system(cmd, '-echo');
