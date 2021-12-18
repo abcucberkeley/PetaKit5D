@@ -1,5 +1,5 @@
-function [fnames, fdinds, gfnames, partialvols, dataSizes, flipZstack_mat, FTP_inds, maskFullpaths] = ...
-    XR_parseImageFilenames(dataPaths, ChannelPatterns, parseSettingFile, flipZstack, Decon, deconPaths, Streaming, zarrFile)
+function [fnames, fdinds, gfnames, partialvols, dataSizes, flipZstack_mat, latest_modify_times, FTP_inds, maskFullpaths] = ...
+    XR_parseImageFilenames(dataPaths, ChannelPatterns, parseSettingFile, flipZstack, Decon, deconPaths, Streaming, minModifyTime, zarrFile)
 % move the filename parsing code in microscope pipeline as an independent
 % function to simpolify the microscope pipeline.
 % Support both non-streaming and streaming modes
@@ -27,6 +27,7 @@ fnames_cell = cell(nd, 1);
 gfnames_cell = cell(nd, 1); % for grouped partial volume files
 partialvol_cell = cell(nd, 1);
 datesize_cell = cell(nd, 1);
+latest_modify_times = zeros(nd, 1);
 for d = 1 : nd
     dataPath = dataPaths{d};
     % dir_info = dir([dataPath, '*.tif']);
@@ -46,7 +47,8 @@ for d = 1 : nd
     if Streaming
         last_modify_time = (datenum(clock) - datenum_d) * 24 * 60;
         latest_modify_time = min(last_modify_time);
-
+        latest_modify_times(d) = latest_modify_time;
+        
         % not include the lastest file if it is very recent
         if latest_modify_time < minModifyTime
             fnames_d(last_modify_time == latest_modify_time) = [];

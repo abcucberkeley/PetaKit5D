@@ -267,6 +267,9 @@ if (~DSRCombined && (~exist(dsFullname, 'file') || ip.Results.Overwrite)) || DSR
                 end
             end
             movefile(dsTempname, dsFullname);
+        else
+            fclose(fopen(dsTempname, 'w'));
+            movefile(dsTempname, dsFullname);            
         end
     end
 end
@@ -349,9 +352,12 @@ if ip.Results.Rotate || DSRCombined
                 writetiff(dsr, dsrTempName);
             end
             movefile(dsrTempName, dsrFullname);
+        else
+            fclose(fopen(dsrTempName, 'w'));
+            movefile(dsrTempName, dsrFullname);            
         end
     end
 end
 
-
 end
+

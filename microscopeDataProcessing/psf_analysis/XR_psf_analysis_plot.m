@@ -13,8 +13,9 @@ RW_info = a.RW_info;
 xz_exp_PSF_RW = RW_info{ch_ind}{1};
 xz_exp_OTF_RW = RW_info{ch_ind}{2};
 xOTF_linecut_RW = RW_info{ch_ind}{3};
-zOTF_linecut_RW = RW_info{ch_ind}{4};
-zOTF_bowtie_linecut_RW = RW_info{ch_ind}{5};
+yOTF_linecut_RW = RW_info{ch_ind}{4};
+zOTF_linecut_RW = RW_info{ch_ind}{5};
+zOTF_bowtie_linecut_RW = RW_info{ch_ind}{6};
 
 % psf analysis for data
 [xz_exp_PSF, xz_exp_OTF, xOTF_linecut, yOTF_linecut, zOTF_linecut, zOTF_bowtie_linecut] = ...

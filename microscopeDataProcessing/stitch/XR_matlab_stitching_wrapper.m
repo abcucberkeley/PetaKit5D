@@ -72,6 +72,7 @@ function [] = XR_matlab_stitching_wrapper(dataPath, imageListFileName, varargin)
 % xruan (10/13/2021): add support for cropping tiles; add support for
 %   skewed space stitching with reference (for decon data)
 % xruan (10/28/2021): add support for IO scan
+% xruan (12/17/2021): add support for 2d stitching (e.g., MIPs), only with dsr for now
 
 
 ip = inputParser;
@@ -120,6 +121,7 @@ ip.addParameter('xcorrMode', 'primaryFirst', @(x) strcmpi(x, 'primary') || strcm
 ip.addParameter('primaryCh', '', @(x) isempty(x) || ischar(x)); % format: CamA_ch0. If it is empty, use the first channel as primary channel
 ip.addParameter('usePrimaryCoords', false, @islogical); 
 ip.addParameter('Save16bit', false, @islogical);
+ip.addParameter('stitch2D', [], @islogical); % 1x3 vector or vector, byt default, stitch MIP-z
 ip.addParameter('pipeline', 'matlab', @(x) strcmpi(x, 'matlab') || strcmpi(x, 'zarr'));
 ip.addParameter('processFunPath', '', @(x) isempty(x) || ischar(x) || iscell(x)); % path of user-defined process function handle
 ip.addParameter('parseCluster', true, @islogical);
@@ -176,6 +178,7 @@ xcorrMode = pr.xcorrMode;
 primaryCh = pr.primaryCh;
 usePrimaryCoords = pr.usePrimaryCoords;
 Save16bit = pr.Save16bit;
+stitch2D = pr.stitch2D;
 pipeline = pr.pipeline;
 processFunPath = pr.processFunPath;
 jobLogDir = pr.jobLogDir;

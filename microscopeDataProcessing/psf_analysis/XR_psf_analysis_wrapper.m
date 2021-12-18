@@ -145,9 +145,10 @@ for c = 1 : numel(ChannelPatterns)
             det_lambda = 680;                
     end
 
-    [xz_exp_PSF_RW, xz_exp_OTF_RW, xOTF_linecut_RW, zOTF_linecut_RW, zOTF_bowtie_linecut_RW] = Load_and_Plot_Exp_Overall_xzPSF_xzOTF_update(RWFn_k, source_descrip, xypixsize, zpixsize_RW, NAdet, index, exc_lambda, det_lambda, PSFsubpix_RW, gamma);
+    [xz_exp_PSF_RW, xz_exp_OTF_RW, xOTF_linecut_RW, yOTF_linecut_RW, zOTF_linecut_RW, zOTF_bowtie_linecut_RW] = ...
+        Load_and_Plot_Exp_Overall_xzPSF_xzOTF_update(RWFn_k, source_descrip, xypixsize, zpixsize_RW, NAdet, index, exc_lambda, det_lambda, PSFsubpix_RW, gamma);
     
-    RW_info{c} = {xz_exp_PSF_RW, xz_exp_OTF_RW, xOTF_linecut_RW, zOTF_linecut_RW, zOTF_bowtie_linecut_RW};  
+    RW_info{c} = {xz_exp_PSF_RW, xz_exp_OTF_RW, xOTF_linecut_RW, yOTF_linecut_RW, zOTF_linecut_RW, zOTF_bowtie_linecut_RW};  
 end
 
 close all;

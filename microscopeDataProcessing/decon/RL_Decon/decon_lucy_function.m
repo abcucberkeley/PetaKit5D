@@ -218,9 +218,9 @@ for k = lambda + 1 : lambda + NUMIT
         end
         if rem(k, 5) == 0
             if useGPU 
-                writetiff(single(gather(J_2)), sprintf('%s/Iter_%04d.tif', debug_folder, k));
+                writetiff(uint16(gather(J_2)), sprintf('%s/Iter_%04d.tif', debug_folder, k));
             else
-                writetiff(single(J_2), sprintf('%s/Iter_%04d.tif', debug_folder, k));
+                writetiff(uint16(J_2), sprintf('%s/Iter_%04d.tif', debug_folder, k));
             end
         end
     end
