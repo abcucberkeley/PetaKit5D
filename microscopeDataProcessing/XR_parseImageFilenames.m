@@ -44,6 +44,10 @@ for d = 1 : nd
         datesize_d = groupedDatasize;
     end
     
+    if isempty(fnames_d)
+        continue;
+    end    
+    
     if Streaming
         last_modify_time = (datenum(clock) - datenum_d) * 24 * 60;
         latest_modify_time = min(last_modify_time);
@@ -79,6 +83,7 @@ dataSizes = cat(1, datesize_cell{:});
 % 07/13/2021 also include folder names for channel pattern filtering
 if isempty(fnames)
     warning('There is no image files in the dataPaths, please check if dataPaths are correct!');
+    fnames = {};
     flipZstack_mat = [];
     FTP_inds = [];
     maskFullpaths = {};
@@ -113,6 +118,9 @@ maskFullpaths = cell(nd, 1);
 for d = 1 : nd
     c = 1;
     FTPfname = '';
+    if isempty(fnames_cell{d})
+        continue;
+    end
     while isempty(FTPfname)
         fullnames_d = cellfun(@(x) [dataPaths{d}, x], fnames_cell{d}, 'unif', 0);
         all_inds = contains(fullnames_d, ChannelPatterns{c}) | contains(fullnames_d, regexpPattern(ChannelPatterns{c}));

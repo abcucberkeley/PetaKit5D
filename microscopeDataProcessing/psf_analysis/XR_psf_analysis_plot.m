@@ -1,4 +1,5 @@
-function [] = XR_psf_analysis_plot(frameFullname, figureFullname, RW_info_Fullname, ch_ind, source_descrip, xypixsize, zpixsize, NAdet, index, exc_lambda, det_lambda, PSFsubpix, gamma)
+function [] = XR_psf_analysis_plot(frameFullname, figureFullname, RW_info_Fullname, ...
+    ch_ind, source_descrip, xypixsize, zpixsize, NAdet, index, exc_lambda, det_lambda, PSFsubpix, gamma, bgFactor)
 % perform psf analysis and plot the figures
 % 
 % Author: Xiongtao Ruan (07/28/2021)
@@ -20,7 +21,7 @@ zOTF_bowtie_linecut_RW = RW_info{ch_ind}{6};
 % psf analysis for data
 [xz_exp_PSF, xz_exp_OTF, xOTF_linecut, yOTF_linecut, zOTF_linecut, zOTF_bowtie_linecut] = ...
     Load_and_Plot_Exp_Overall_xzPSF_xzOTF_update(frameFullname, source_descrip, ...
-    xypixsize, zpixsize, NAdet, index, exc_lambda, det_lambda, PSFsubpix, gamma);
+    xypixsize, zpixsize, NAdet, index, exc_lambda, det_lambda, PSFsubpix, gamma, bgFactor);
 
 % plot line cut with RW line cuts as reference
 f0 = gcf();
@@ -46,7 +47,7 @@ set(gca, 'YTick', [-3:1:0]);
 set(gca, 'YTickLabel', 10.^[-3:1:0]);
 ylabel(['OTF Strength'], 'FontSize', 14);
 % text(-0.1 .*A(2), 0.15, ['Overall OTF linecuts From ', source_descrip], 'FontSize', 14);
-text(0.6.*A(2), -0.15, 'OTF along ky', 'Color', [0 0 1], 'FontSize', 14);
+text(0.6.*A(2), -0.15, 'OTF along kx', 'Color', [0 0 1], 'FontSize', 14);
 text(0.6.*A(2), -0.3, 'OTF along kz', 'Color', [1 0 0], 'FontSize', 14);
 text(0.6.*A(2), -0.45, 'Bowtie OTF along kz', 'Color', [0 0.75 0], 'FontSize', 14);
 
@@ -66,7 +67,7 @@ set(gca, 'YTick', [-3:1:0]);
 set(gca, 'YTickLabel', 10.^[-3:1:0]);
 ylabel(['OTF Strength'], 'FontSize', 14);
 title( ['Overall OTF linecuts From ', source_descrip], 'FontSize', 14);
-legend([{'OTF along kz','OTF along ky','Bowtie OTF along kz', 'RW OTF along kz',  'RW OTF along ky', 'RW Bowtie OTF along kz'}]);
+legend([{'OTF along kz','OTF along kx','Bowtie OTF along kx', 'RW OTF along kz',  'RW OTF along kx', 'RW Bowtie OTF along kz'}]);
 
 f0 = gcf();
 print(f0, '-painters','-dpng', '-loose', figureFullname);

@@ -222,7 +222,9 @@ end
 if exist(deconFullpath, 'dir')
     rmdir(deconFullpath, 's');
 end
-movefile(deconTmppath, deconFullpath);
+if exist(deconTmppath, 'dir')
+    movefile(deconTmppath, deconFullpath);
+end
 
 % generate MIP z file
 deconMIPPath = sprintf('%s/MIPs/', deconPath);
@@ -231,7 +233,7 @@ if ~exist(deconMIPPath, 'dir')
     fileattrib(deconMIPPath, '+w', 'g');
 end
 deconMIPname = sprintf('%s%s_MIP_z.tif', deconMIPPath, fsname);
-saveMIP_zarr(deconFullpath, deconMIPname);
+% saveMIP_zarr(deconFullpath, deconMIPname);
 toc
 
 end

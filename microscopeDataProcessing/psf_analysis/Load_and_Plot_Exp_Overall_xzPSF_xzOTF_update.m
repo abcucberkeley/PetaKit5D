@@ -1,4 +1,4 @@
-function [xz_exp_PSF, xz_exp_OTF, xOTF_linecut, yOTF_linecut, zOTF_linecut, zOTF_bowtie_linecut] = Load_and_Plot_Exp_Overall_xzPSF_xzOTF_update(filenm, source_descrip, xypixsize, zpixsize, NAdet, index, exc_lambda, det_lambda, PSFsubpix, gamma)
+function [xz_exp_PSF, xz_exp_OTF, xOTF_linecut, yOTF_linecut, zOTF_linecut, zOTF_bowtie_linecut] = Load_and_Plot_Exp_Overall_xzPSF_xzOTF_update(filenm, source_descrip, xypixsize, zpixsize, NAdet, index, exc_lambda, det_lambda, PSFsubpix, gamma, bgFactor)
 %
 %LOAD_AND_PLOT_EXP_OVERALL_xzPSF_xzOTF  Loads a 3D TIFF stack of an experimentally
 %measured overall PSF, and plots it along with the OTF determined by its
@@ -46,6 +46,10 @@ end
 if nargin < 10
     gamma = 0.5;
 end
+if nargin < 11
+    % bgFactor = 1.15;
+    bgFactor = 1.5;
+end
 %
 %hardwire the filename location for now:
 %filenm = 'C:\Users\betzige\Dropbox (HHMI)\HexLLS_CF0p02_FF1_complete_benchmark\complete_benchmark\Hex\totalPSF\560nm_Hex_CFp02_FF1_p55p40_c-7p5um_PSF.tif';
@@ -72,7 +76,7 @@ A = size(PSF3Dexp);
 %use the first 10 x/y rows/columns to estimate and subtract the dark background;
 % backgnd = sum(sum(sum(PSF3Dexp(1:10,1:10,:))))./(100.*A(3));
 % backgnd = 1.5*mode(PSF3Dexp(:));
-backgnd = 1.5*median(PSF3Dexp(PSF3Dexp > 0));
+backgnd = bgFactor * median(PSF3Dexp(PSF3Dexp > 0));
 PSF3Dexp = max(PSF3Dexp-backgnd,0);
 
 % xruan: pad the xy to make them same size, and also to PSFsubpix size if

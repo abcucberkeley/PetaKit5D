@@ -5,6 +5,7 @@ function [] = XR_psf_analysis_wrapper(dataPaths, varargin)
 % xruan (07/28/2021): save RW line cut info to avoid the computing in each iteration, 
 % and add parallel computing for plotting
 % xruan (08/16/2021): add support for flipped psfs
+% xruan (12/21/2021): add support for background subtraction factor
 
 
 ip = inputParser;
@@ -20,6 +21,7 @@ ip.addParameter('ZstageScan', false, @islogical);
 ip.addParameter('ChannelPatterns', {'CamA_ch0', 'CamB_ch0'}, @iscell);
 ip.addParameter('Channels', [488, 560], @isnumeric);
 ip.addParameter('Save16bit', true, @islogical);
+ip.addParameter('bgFactor', 1.5, @isnumeric);
 ip.addParameter('RWFn', {'/clusterfs/fiona/Gokul/RW_PSFs/PSF_RW_515em_128_128_101_100nmSteps.tif', '/clusterfs/fiona/Gokul/RW_PSFs/PSF_RW_605em_128_128_101_100nmSteps.tif'}, @iscell);
 ip.addParameter('sourceStr', 'test', @ischar);
 ip.addParameter('masterCompute', false, @islogical);
@@ -37,6 +39,7 @@ ZstageScan = pr.ZstageScan;
 ChannelPatterns = pr.ChannelPatterns;
 Channels = pr.Channels;
 Save16bit = pr.Save16bit;
+bgFactor = pr.bgFactor;
 RWFn = pr.RWFn;
 sourceStr = pr.sourceStr;
 masterCompute = pr.masterCompute;
@@ -126,6 +129,7 @@ end
 
 zpixsize_RW = 0.1 * 1000;
 PSFsubpix_RW = [128, 128, 101];
+bgFactor_RW = 0;
 
 RW_info = cell(numel(ChannelPatterns), 1);
 
@@ -146,7 +150,7 @@ for c = 1 : numel(ChannelPatterns)
     end
 
     [xz_exp_PSF_RW, xz_exp_OTF_RW, xOTF_linecut_RW, yOTF_linecut_RW, zOTF_linecut_RW, zOTF_bowtie_linecut_RW] = ...
-        Load_and_Plot_Exp_Overall_xzPSF_xzOTF_update(RWFn_k, source_descrip, xypixsize, zpixsize_RW, NAdet, index, exc_lambda, det_lambda, PSFsubpix_RW, gamma);
+        Load_and_Plot_Exp_Overall_xzPSF_xzOTF_update(RWFn_k, source_descrip, xypixsize, zpixsize_RW, NAdet, index, exc_lambda, det_lambda, PSFsubpix_RW, gamma, bgFactor_RW);
     
     RW_info{c} = {xz_exp_PSF_RW, xz_exp_OTF_RW, xOTF_linecut_RW, yOTF_linecut_RW, zOTF_linecut_RW, zOTF_bowtie_linecut_RW};  
 end
@@ -211,10 +215,10 @@ for d = 1 : numel(dataPath_exps)
         end
         
         func_strs{d}{f} = sprintf(['XR_psf_analysis_plot(''%s'',''%s'',''%s'',', ...
-            '%d,''%s'',%.20f,%.20f,%.20f,%.20f,%.20f,%.20f,%s,%.20f)'], fn{f}, ...
+            '%d,''%s'',%.20f,%.20f,%.20f,%.20f,%.20f,%.20f,%s,%.20f,%.20f)'], fn{f}, ...
             figureFullpaths{d}{f}, RW_info_fullnames{d}, find(ch_ind), source_descrip, xypixsize, ...
             zpixsize, NAdet, index, exc_lambda, det_lambda, strrep(mat2str(PSFsubpix), ' ', ','), ...
-            gamma);
+            gamma, bgFactor);
     end
 end
 

@@ -11,7 +11,7 @@ if nargin < 4
 end
 
 if nargin < 5
-    PSFGenMethod = 'median';
+    PSFGenMethod = 'masked';
 end
 
 
@@ -28,6 +28,14 @@ if any(psf_raw_fl(:) > 0)
             psf_raw = double(psf_raw) - medFactor * median(double(psf_raw_fl(psf_raw_fl > 0)));
         %     % convert all negative pixels to 0
             psf_raw(psf_raw<0) = 0.0;
+            %  remove isolated points
+            psf_med = medfilt3(double(psf_raw), [3, 3, 3]);
+            BW = bwareaopen(psf_med > 0, 300, 26);
+            L = bwlabeln(BW);
+            [~, peakInd] = max(psf_med(:));
+            BW = L == L(peakInd);
+            BW = imclose(BW, strel('sphere', 3));
+            psf_raw = psf_raw .* BW;
         case 'masked'
         %     a = max(sqrt(abs(psf_raw([1:10, end-9:end], :, :) - 100)), [], [1, 3]) * 3  + mean(psf_raw([1:10, end-9:end], :, :), [1, 3]);
         %     a = smooth(a, 0.1, 'rloess');

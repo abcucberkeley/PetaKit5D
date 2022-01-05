@@ -71,7 +71,7 @@ ip.addParameter('cpusPerTask', 2, @isnumeric);
 ip.addParameter('cpuOnlyNodes', true, @islogical);
 ip.addParameter('uuid', '', @ischar);
 ip.addParameter('maxTrialNum', 3, @isnumeric);
-ip.addParameter('unitWaitTime', 1, @isnumeric);
+ip.addParameter('unitWaitTime', 10, @isnumeric);
 ip.addParameter('maxWaitLoopNum', 10, @isnumeric); % the max number of loops the loop waits with all existing files processed. 
 ip.addParameter('MatlabLaunchStr', 'module load matlab/r2020b; matlab -nodisplay -nosplash -nodesktop -nojvm -r', @ischar);
 ip.addParameter('SlurmParam', '-p abc --qos abc_normal -n1 --mem-per-cpu=21418M', @ischar);
@@ -310,10 +310,14 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
             end
                             
             deconPath = deconPaths{fdind};
-            deconFullpath = sprintf('%s/%s_decon.tif', deconPath, fsname);
+            if largeFile && strcmp(largeMethod, 'inplace')
+                deconFullpath = sprintf('%s/%s.zarr', deconPath, fsname);                
+            else
+                deconFullpath = sprintf('%s/%s_decon.tif', deconPath, fsname);
+            end
             dctmpFullpath = sprintf('%s.tmp', deconFullpath(1 : end - 4));
 
-            if exist(deconFullpath, 'file')
+            if exist(deconFullpath, 'file') || (largeFile && strcmp(largeMethod, 'inplace') && exist(deconFullpath, 'dir'))
                 is_done_flag(f, 1) = true;
                 if exist(dctmpFullpath, 'file')
                     delete(dctmpFullpath);
@@ -464,7 +468,7 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
             end
             
             % check if computing is done
-            if exist(deconFullpath, 'file')
+            if exist(deconFullpath, 'file') || (largeFile && strcmp(largeMethod, 'inplace') && exist(deconFullpath, 'dir'))
                 is_done_flag(f, 1) = true;
                 if exist(dctmpFullpath, 'file')
                     delete(dctmpFullpath);
@@ -531,6 +535,7 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
                 else
                     temp_file_info = dir(rdctmpFullpath);
                     if (datenum(clock) - [temp_file_info.datenum]) * 24 * 60 < unitWaitTime
+                        continue;
                     else
                         fclose(fopen(rdctmpFullpath, 'w'));
                     end

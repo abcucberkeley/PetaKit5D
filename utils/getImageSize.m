@@ -59,6 +59,15 @@ if strcmp(filePath(end - 2 : end), 'tif') || strcmp(filePath(end - 3 : end), 'ti
         Height = reader.getSizeY;
         Width = reader.getSizeX;
         Zstack = reader.getSizeT;
+        if Zstack == 1
+            tobj = Tiff(filePath, 'r');
+            Zstack = 1;
+            while ~tobj.lastDirectory()
+                tobj.nextDirectory() ;
+                Zstack = Zstack + 1;
+            end
+        end
+            
         reader.close()
     end
 %     close(tobj);
