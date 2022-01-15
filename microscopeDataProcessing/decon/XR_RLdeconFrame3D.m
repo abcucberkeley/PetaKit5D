@@ -195,7 +195,11 @@ for f = 1 : nF
             fprintf('Create eroded masks using raw data...\n');
             switch ext
                 case {'.tif', '.tiff'}
-                    im_raw = readtiff(frameFullpath);
+                    try
+                        im_raw = parallelReadTiff(frameFullpath);
+                    catch
+                        im_raw = readtiff(frameFullpath);
+                    end
                 case '.zarr'
                     bim = blockedImage(frameFullpath, 'Adapter', ZarrAdapter);
                     im_raw = gather(bim);
@@ -255,8 +259,12 @@ for f = 1 : nF
             end
 
             if ~isempty(ErodeMaskfile) && exist(ErodeMaskfile, 'file')
-                fprintf('Erode edges of deconvolved data using a predefined mask...\n');                
-                im_bw_erode = readtiff(ErodeMaskfile);
+                fprintf('Erode edges of deconvolved data using a predefined mask...\n');    
+                try 
+                    im_bw_erode = parallelReadTiff(ErodeMaskfile);                    
+                catch
+                    im_bw_erode = readtiff(ErodeMaskfile);
+                end
                 im = im .* cast(im_bw_erode, class(im));
             end
             deconTmpPath_eroded = sprintf('%s_%s_eroded.tif', deconFullPath(1:end-4), uuid);
@@ -305,7 +313,11 @@ for f = 1 : nF
     fprintf('Start Large-file RL Decon for %s...\n', fsname);
     
     % generate psf and use the cropped psf to decide the overlap region
-    pp = readtiff(PSF);
+    try
+        pp = parallelReadTiff(PSF);
+    catch
+        pp = readtiff(PSF);
+    end
     medFactor = 1.5;
     PSFGenMethod = 'masked';
     if Deskew
@@ -337,7 +349,11 @@ for f = 1 : nF
     fprintf(['reading ' fsname '...\n'])
     switch ext
         case {'.tif', '.tiff'}
-            im = readtiff(frameFullpath);
+            try
+                im = parallelReadTiff(frameFullpath);
+            catch
+                im = readtiff(frameFullpath);
+            end
         case '.zarr'
             bim = blockedImage(frameFullpath, 'Adapter', ZarrAdapter);
             im = gather(bim);
@@ -365,7 +381,11 @@ for f = 1 : nF
             im_bw_erode = im_bw_erode(2 : end - 1, 2 : end - 1, 2 : end - 1);
             clear im_bw im_bw_pad
         else
-            im_bw_erode = readtiff(maskFullPath) > 0;
+            try
+                im_bw_erode = parallelReadTiff(maskFullPath) > 0;
+            catch
+                im_bw_erode = readtiff(maskFullPath) > 0;                
+            end
         end
         
         % save mask file as common one for other time points/channels
@@ -489,7 +509,11 @@ for f = 1 : nF
     for ck = 1:nn
         chunkDeconFullpath = [chunkDeconPath '/' chunkFnames{ck}(1:end-4) '_decon.tif'];
         if exist(chunkDeconFullpath, 'file')
-            tim = readtiff(chunkDeconFullpath);
+            try
+                tim = parallelReadTiff(chunkDeconFullpath);
+            catch
+                tim = readtiff(chunkDeconFullpath);
+            end
             [tsy, tsx, tsz] = size(tim);
 
             yrange = ymin(ck) + (ymin(ck) ~= 1) * lol : ymax(ck) - (ymax(ck) ~= imSize(1)) * rol;
@@ -518,8 +542,12 @@ for f = 1 : nF
     end
     
     if ~isempty(ErodeMaskfile) && exist(ErodeMaskfile, 'file')
-        fprintf('Erode edges of deconvolved data using a predefined mask...\n');                
-        im_bw_erode = readtiff(ErodeMaskfile);
+        fprintf('Erode edges of deconvolved data using a predefined mask...\n');    
+        try
+            im_bw_erode = parallelReadTiff(ErodeMaskfile);
+        catch
+            im_bw_erode = readtiff(ErodeMaskfile);
+        end
         im = im .* cast(im_bw_erode, class(im));
     end
     

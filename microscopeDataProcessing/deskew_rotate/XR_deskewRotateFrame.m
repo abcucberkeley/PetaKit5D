@@ -149,7 +149,11 @@ if (~DSRCombined && (~exist(dsFullname, 'file') || ip.Results.Overwrite)) || DSR
     if combinedFrame
         frame_cell = cell(numel(framePath), 1);
         for i = 1 : numel(framePath)
-            frame_cell{i} = readtiff(framePath{i});
+            try
+                frame_cell{i} = parallelReadTiff(framePath{i});
+            catch 
+                frame_cell{i} = readtiff(framePath{i});
+            end
         end
         frame = single(cat(3, frame_cell{:}));
         clear frame_cell;
@@ -157,7 +161,11 @@ if (~DSRCombined && (~exist(dsFullname, 'file') || ip.Results.Overwrite)) || DSR
         [~, ~, ext] = fileparts(framePath{1});
         switch ext
             case {'.tif', '.tiff'}
-                frame = single(readtiff(framePath{1}));
+                try
+                    frame = single(parallelReadTiff(framePath{1}));
+                catch 
+                    frame = single(readtiff(framePath{1}));
+                end
             case {'.zarr'}
                 bim = blockedImage(framePath{1}, 'Adapter', ZarrAdapter);
                 frame = gather(bim);
@@ -170,14 +178,23 @@ if (~DSRCombined && (~exist(dsFullname, 'file') || ip.Results.Overwrite)) || DSR
         
     % flat field correction
     if LLFFCorrection
-        LSIm = readtiff(LSImage);
-        BKIm = readtiff(BackgroundImage);
+        try 
+            LSIm = parallelReadTiff(LSImage);
+            BKIm = parallelReadTiff(BackgroundImage);
+        catch 
+            LSIm = readtiff(LSImage);
+            BKIm = readtiff(BackgroundImage);            
+        end
         frame = GU_LSFlatFieldCorrection(frame,LSIm,BKIm,'LowerLimit', ip.Results.LowerLimit, ...
             'constOffset', ip.Results.constOffset);
     end
     % remove camera background
     if BKRemoval
-        BKIm = readtiff(BackgroundImage);
+        try 
+            parallelReadTiff(BackgroundImage);
+        catch
+            BKIm = readtiff(BackgroundImage);
+        end
         frame = XR_CameraBackgroundRemoval(frame, BKIm, 'constOffset', ip.Results.constOffset);
     end
 
@@ -290,7 +307,11 @@ if ip.Results.Rotate || DSRCombined
         if ~DSRCombined
             fprintf('Rotate frame %s...\n', framePath{1});
             if ~exist('ds', 'var')
-                ds = single(readtiff(dsFullname));
+                try 
+                    ds = single(parallelReadTiff(dsFullname));
+                catch
+                    ds = single(readtiff(dsFullname));
+                end
             end
             dsr = rotateFrame3D(ds, SkewAngle_1, zAniso, Reverse,...
                 'Crop', true, 'ObjectiveScan', ObjectiveScan, 'Interp', Interp);
