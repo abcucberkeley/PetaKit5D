@@ -255,6 +255,10 @@ if isempty(uuid)
     uuid = get_uuid();
 end
 
+if any(stitch2D)
+    cpusPerTask = 1;
+end
+
 %% parse image list information
 % read image list csv file
 t = readtable(imageListFileName, 'Delimiter','comma');
@@ -503,7 +507,11 @@ end
 % set wait counter for streaming option
 if Streaming
     stream_counter = 0;
-    stream_max_counter = 100 * size(t, 1);
+    if onlineStitch
+        stream_max_counter = 10;
+    else
+        stream_max_counter = 100 * size(t, 1);
+    end
 end
 
 if onlineStitch
@@ -622,7 +630,7 @@ while ~all(is_done_flag | trial_counter >= max_trial_num, 'all')
                                 end
                             else
                                 if ~all(is_tile_decon_exist) 
-                                    is_done_flag(n, ncam, s, c) = true;
+                                    is_done_flag(n, ncam, s, c, z) = true;
                                     continue; 
                                 end
                             end
@@ -634,7 +642,10 @@ while ~all(is_done_flag | trial_counter >= max_trial_num, 'all')
                             z_str = sprintf('_%03dz', nz(z));
                         else
                             z_str = '';
-                        end                        
+                        end
+                        if onlineStitch
+                             z_str = sprintf('%s_%03dntile', z_str, size(cur_t, 1));
+                        end
 
                         % for secondary channels, first check whether the
                         % stitching info file exist
@@ -644,7 +655,7 @@ while ~all(is_done_flag | trial_counter >= max_trial_num, 'all')
                             if ~(n == 1 && ncam == 1 && s == 1 && c == 1 && z == 1)
                                 isPrimaryCh = false;
                             end                        
-                        elseif strcmpi(xcorrMode, 'stitchInfo')
+                        elseif strcmpi(xcorrMode, 'primary')
                             isPrimaryCh = false;
                         else
                             if specifyCam
@@ -715,11 +726,37 @@ while ~all(is_done_flag | trial_counter >= max_trial_num, 'all')
                                 stitch_save_fname = [stitch_save_fsname, '.zarr'];
                                 ftype = 'dir';
                         end
+                        
+                        % for online stitch check if old results with fewer
+                        % tiles exist, if so, delete them. 
                         if onlineStitch
-                            if tileNums(f) ~= size(cur_t, 1) && exist(stitch_save_fname, ftype)
-                                delete(stitch_save_fname);                                
-                                is_done_flag(n, ncam, s, c, z) = false;
-                                tileNums(f) = size(cur_t, 1);
+                            switch pipeline
+                                case 'matlab'
+                                    dir_info = dir([stitch_save_fsname(1:end-8), '*ntile.tif']);
+                                    stitch_save_files = {dir_info.name}';
+
+                                case 'zarr'
+                                    dir_info = dir([stitch_save_fsname(1:end-8), '*ntile.zarr']);
+                                    stitch_save_files = {dir_info.name}';                                    
+                            end
+                            stitch_tile_nums = regexp(stitch_save_files, '_(\d+)ntile', 'tokens');
+                            stitch_tile_nums = cellfun(@(x) str2double(x{1}{1}), stitch_tile_nums);
+                            
+                            for st = 1 : numel(stitch_tile_nums)
+                                cur_stitch_save_fname = [stitching_rt, filesep, stitch_save_files{st}];
+                                [~, cur_stitch_save_fsname] = fileparts(cur_stitch_save_fname);
+                                cur_stitch_save_mip_fname = sprintf('%s/MIPs/%s_MIP_z.tif', stitching_rt, cur_stitch_save_fsname);
+                                if stitch_tile_nums(st) < size(cur_t, 1) && exist(cur_stitch_save_fname, ftype)
+                                    switch ftype
+                                        case 'file'
+                                            delete(cur_stitch_save_fname); 
+                                        case 'dir'
+                                            rmdir(cur_stitch_save_fname, 's');
+                                    end
+                                    delete(cur_stitch_save_mip_fname);
+                                    is_done_flag(n, ncam, s, c, z) = false;
+                                    tileNums(f) = size(cur_t, 1);
+                                end
                             end
                         end
                             
@@ -759,11 +796,11 @@ while ~all(is_done_flag | trial_counter >= max_trial_num, 'all')
                             % the job still alive. Otherwise, use waiting time
                             % for the check
                             if parseCluster
-                                job_status = check_slurm_job_status(job_ids(n, ncam, s, c), rem(task_id, 1000));
+                                job_status = check_slurm_job_status(job_ids(n, ncam, s, c, z), rem(task_id, 1000));
 
                                 % kill the last pending job and use master node do the computing.
                                 if job_status == 0.5 && (masterCompute && f == lastF)
-                                    system(sprintf('scancel %d_%d', job_ids(n, ncam, s, c), rem(task_id, 1000)), '-echo');
+                                    system(sprintf('scancel %d_%d', job_ids(n, ncam, s, c, z), rem(task_id, 1000)), '-echo');
                                 end
 
                                 % if the job is still running, skip it. 
@@ -809,7 +846,7 @@ while ~all(is_done_flag | trial_counter >= max_trial_num, 'all')
 
                                     job_id = regexp(cmdout, 'Submitted batch job (\d+)\n', 'tokens');
                                     job_id = str2double(job_id{1}{1});
-                                    job_ids(n, ncam, s, c) = job_id;
+                                    job_ids(n, ncam, s, c, z) = job_id;
                                 end
                             else
                                 per_file_wait_time = unitWaitTime; % minite

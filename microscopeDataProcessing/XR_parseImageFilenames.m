@@ -84,7 +84,8 @@ dataSizes = cat(1, datesize_cell{:});
 if isempty(fnames)
     warning('There is no image files in the dataPaths, please check if dataPaths are correct!');
     fnames = {};
-    flipZstack_mat = [];
+    gfnames = {};
+    flipZstack_mat = logical([]);
     FTP_inds = [];
     maskFullpaths = {};
     return;
