@@ -125,7 +125,11 @@ if ischar(psf)
         try 
             % psf=psf_gen(psf, dz_psf, dz_data*dz_data_ratio, 48);
             % xruan (05/05/2021) change to psf_gen_new
-            pp = readtiff(psf);
+            try
+                pp = parallelReadTiff(psf);
+            catch
+                pp = readtiff(psf);
+            end
             medFactor = 1.5;
             PSFGenMethod = 'masked';
             psf = psf_gen_new(pp, dz_psf, dz_data*dz_data_ratio, medFactor, PSFGenMethod);
@@ -209,7 +213,11 @@ if isempty(rawdata)
     [~, ~, ext] = fileparts(input_tiff);
     switch ext
         case {'.tif', '.tiff'}
-            rawdata = readtiff(input_tiff);
+            try
+                rawdata = parallelReadTiff(input_tiff);
+            catch
+                rawdata = readtiff(input_tiff);
+            end
         case '.zarr'
             bim = blockedImage(input_tiff, 'Adapter', ZarrAdapter);
             rawdata = gather(bim);
