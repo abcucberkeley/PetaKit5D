@@ -56,7 +56,7 @@ ip.addParameter('EdgeErosion', 8 , @isnumeric); % erode edges for certain size.
 ip.addParameter('ErodeMaskfile', '', @ischar); % erode edges file
 ip.addParameter('SaveMaskfile', false, @islogical); % save mask file for common eroded mask
 % ip.addParameter('DoNotAdjustResForFFT', true , @islogical); % not crop chunks for deconvolution
-ip.addParameter('BlockSize', [1000,1000,1000] , @isvector); % in y, x, z
+ip.addParameter('ChunkSize', [1000,1000,1000] , @isvector); % in y, x, z
 ip.addParameter('Overlap', 200, @isnumeric); % block overlap
 ip.addParameter('MaxMem', 500, @isnumeric); % GPU Memory in Gb
 ip.addParameter('largeFile', false, @islogical);
@@ -177,7 +177,7 @@ params = sprintf(' --drdata %.10f --drpsf %.10f -Z %.10f -z %.10f -b %.10f -i %d
 
 
 OL = p.Overlap;
-BlockSize = p.BlockSize;
+ChunkSize = p.ChunkSize;
 
 largeFile = p.largeFile;
 parseCluster = p.parseCluster;
@@ -415,7 +415,7 @@ for f = 1 : nF
     end
     
     if p.debug
-        [xmin,xmax,ymin,ymax,zmin,zmax,nn] = XR_subVolumeCoordinatesExtraction_test(imSize, 'BlockSize', BlockSize, 'overlapSize', OL);
+        [xmin,xmax,ymin,ymax,zmin,zmax,nn] = XR_subVolumeCoordinatesExtraction_test(imSize, 'ChunkSize', ChunkSize, 'overlapSize', OL);
     else
         % maxSubVolume ~20G
         if p.Save16bit
@@ -424,7 +424,7 @@ for f = 1 : nF
             maxSubVolume = 1e10;
         end
             
-        [xmin,xmax,ymin,ymax,zmin,zmax,nn] = XR_subVolumeCoordinatesExtraction(imSize, 'BlockSize', BlockSize, 'overlapSize', OL, 'maxSubVolume', maxSubVolume);
+        [xmin,xmax,ymin,ymax,zmin,zmax,nn] = XR_subVolumeCoordinatesExtraction(imSize, 'ChunkSize', ChunkSize, 'overlapSize', OL, 'maxSubVolume', maxSubVolume);        
     end
     
     % create a folder for the file and write out the chunks

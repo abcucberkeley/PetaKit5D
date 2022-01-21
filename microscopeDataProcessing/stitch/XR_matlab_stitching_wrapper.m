@@ -651,20 +651,21 @@ while ~all(is_done_flag | trial_counter >= max_trial_num, 'all')
                         % stitching info file exist
                         isPrimaryCh = true;
                         % the stitch Info full path for options except 'primaryFirst'
-                        if strcmpi(xcorrMode, 'primaryFirst')
-                            if ~(n == 1 && ncam == 1 && s == 1 && c == 1 && z == 1)
+                        switch xcorrMode
+                            case 'primaryFirst'
+                                if ~(n == 1 && ncam == 1 && s == 1 && c == 1 && z == 1)
+                                    isPrimaryCh = false;
+                                end 
+                            case {'stitchInfo'}
                                 isPrimaryCh = false;
-                            end                        
-                        elseif strcmpi(xcorrMode, 'primary')
-                            isPrimaryCh = false;
-                        else
-                            if specifyCam
-                                stitchInfoFullpath = sprintf('%s/%sScan_Iter_%s_Cam%s_ch%d_CAM1_stack%04d_%dnm_%07dmsec_%010dmsecAbs%s.mat', ...
-                                    stitch_info_path, prefix, fullIter{n}, Cam(ncam), Ch(c), stackn(s), laser, abstime, fpgatime, z_str);
-                            else
-                                stitchInfoFullpath = sprintf('%s/%sScan_Iter_%s_ch%d_CAM1_stack%04d_%dnm_%07dmsec_%010dmsecAbs%s.mat', ...
-                                    stitch_info_path, prefix, fullIter{n}, Ch(c), stackn(s), laser, abstime, fpgatime, z_str);                            
-                            end
+                            case {'primary', 'all'}
+                                if specifyCam
+                                    stitchInfoFullpath = sprintf('%s/%sScan_Iter_%s_Cam%s_ch%d_CAM1_stack%04d_%dnm_%07dmsec_%010dmsecAbs%s.mat', ...
+                                        stitch_info_path, prefix, fullIter{n}, Cam(ncam), Ch(c), stackn(s), laser, abstime, fpgatime, z_str);
+                                else
+                                    stitchInfoFullpath = sprintf('%s/%sScan_Iter_%s_ch%d_CAM1_stack%04d_%dnm_%07dmsec_%010dmsecAbs%s.mat', ...
+                                        stitch_info_path, prefix, fullIter{n}, Ch(c), stackn(s), laser, abstime, fpgatime, z_str);                            
+                                end
                         end
 
                         if true || xcorrShift 
@@ -828,7 +829,7 @@ while ~all(is_done_flag | trial_counter >= max_trial_num, 'all')
                                         mem_factor = 8;
                                     end
                                     if strcmp(pipeline, 'zarr')
-                                        mem_factor = 1;
+                                        mem_factor = 0.5;
                                     end
 
                                     % allocate 5 time of the size

@@ -183,7 +183,7 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
                 
                 % wait some time for the status change
                 if loop_counter > 0 && job_status_mat(f, 1) < job_status_mat(f, 2)
-                    pause(5);
+                    pause(1);
                 end
 
                 % If there is no job, submit a job
@@ -253,7 +253,7 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
         if ~parseCluster || (parseCluster && masterCompute && f == lastP)
             fprintf('Process %s with function %s... \n', strjoin(fsnames(fs), ', '), func_str); 
             if parseCluster && loop_counter > 0 && job_status_mat(f, 1) ~= job_status_mat(f, 2)
-                pause(5);
+                pause(1);
             end
             if strcmpi(language, 'matlab')
                 % tic; feval(str2func(['@()', func_str])); toc;
@@ -281,7 +281,7 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
     end
     
     if ~all(is_done_flag | trial_counter >= maxTrialNum, 'all') 
-        pause(5);
+        pause(1);
     end
     loop_counter = loop_counter + 1;
 end

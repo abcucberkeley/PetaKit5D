@@ -18,8 +18,9 @@ void mexFunction(int nlhs, mxArray *plhs[],
     
     TIFFSetWarningHandler(DummyHandler);
     TIFF* tif = TIFFOpen(fileName, "r");
-    uint64_t x = 1,y = 1,z = 1;
+    if(!tif) mexErrMsgIdAndTxt("tiff:inputError","File \"%s\" cannot be opened",fileName);
     
+    uint64_t x = 1,y = 1,z = 1;    
     if(nrhs == 1){
         TIFFGetField(tif, TIFFTAG_IMAGEWIDTH, &x);
         TIFFGetField(tif, TIFFTAG_IMAGELENGTH, &y);

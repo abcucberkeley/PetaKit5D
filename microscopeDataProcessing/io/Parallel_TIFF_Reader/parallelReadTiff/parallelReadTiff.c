@@ -1,10 +1,12 @@
 //#include "tiffio.h"
 #include <stdio.h>
 #include <stdint.h>
-#include "C:\Program Files (x86)\tiff\include\tiffio.h"
+#include "/global/home/groups/software/sl-7.x86_64/modules/libtiff/4.1.0/libtiff/tiffio.h"
 #include "omp.h"
 #include "mex.h"
 //mex -v COPTIMFLAGS="-O3 -fwrapv -DNDEBUG" CFLAGS='$CFLAGS -O3 -fopenmp' LDFLAGS='$LDFLAGS -O3 -fopenmp' '-I/global/home/groups/software/sl-7.x86_64/modules/libtiff/4.1.0/libtiff/' '-L/global/home/groups/software/sl-7.x86_64/modules/libtiff/4.1.0/libtiff/' -ltiff /clusterfs/fiona/matthewmueller/parallelTiffTesting/main.c
+//mex COMPFLAGS='$COMPFLAGS /openmp' '-IC:\Program Files (x86)\tiff\include\' '-LC:\Program Files (x86)\tiff\lib\' -ltiffd.lib C:\Users\Matt\Documents\parallelTiff\main.cpp
+
 
 void DummyHandler(const char* module, const char* fmt, va_list ap)
 {
@@ -35,12 +37,18 @@ void readTiffParallel(uint64_t x, uint64_t y, uint64_t z, char* fileName, void* 
     #pragma omp parallel for
     for(w = 0; w < numWorkers; w++){
         
-        TIFF* tif = TIFFOpen(fileName, "r");     
+        TIFF* tif = TIFFOpen(fileName, "r");
+        if(!tif) mexErrMsgIdAndTxt("tiff:threadError","Thread %d: File \"%s\" cannot be opened\n",w,fileName);
+        
         void* buffer = mallocDynamic(x, bits);
         for(int64_t dir = startSlice+(w*batchSize); dir < startSlice+((w+1)*batchSize); dir++){
             if(dir>=z+startSlice) break;
             
-            TIFFSetDirectory(tif, (uint64_t)dir);
+            int counter = 0; 
+            while(!TIFFSetDirectory(tif, (uint64_t)dir) && counter<3){
+                printf("Thread %d: File \"%s\" Directory \"%d\" failed to open. Try %d\n",w,fileName,dir,counter+1);
+                counter++;
+            }
 
             for (int64_t i = 0; i < y; i++) 
             {
@@ -89,6 +97,8 @@ void mexFunction(int nlhs, mxArray *plhs[],
     
     TIFFSetWarningHandler(DummyHandler);
     TIFF* tif = TIFFOpen(fileName, "r");
+    if(!tif) mexErrMsgIdAndTxt("tiff:inputError","File \"%s\" cannot be opened",fileName);
+    
     uint64_t x = 1,y = 1,z = 1,bits = 1, startSlice = 0;
     TIFFGetField(tif, TIFFTAG_IMAGEWIDTH, &x);
     TIFFGetField(tif, TIFFTAG_IMAGELENGTH, &y);

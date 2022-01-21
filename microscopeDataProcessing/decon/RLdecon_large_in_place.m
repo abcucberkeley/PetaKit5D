@@ -163,7 +163,7 @@ if ~exist(deconTmppath, 'dir')
     decon_bim.Adapter.close();
 end
 
-taskSize = 5; % the number of batches a job should process
+taskSize = 1; % the number of batches a job should process
 numBatch = size(batchBBoxes, 1);
 numTasks = ceil(numBatch / taskSize);
 

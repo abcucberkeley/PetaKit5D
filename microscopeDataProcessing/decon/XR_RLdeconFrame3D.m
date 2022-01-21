@@ -351,6 +351,7 @@ for f = 1 : nF
         case {'.tif', '.tiff'}
             try
                 im = parallelReadTiff(frameFullpath);
+                % im = readtiff(frameFullpath);                
             catch
                 im = readtiff(frameFullpath);
             end

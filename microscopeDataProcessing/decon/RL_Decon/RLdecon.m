@@ -127,6 +127,7 @@ if ischar(psf)
             % xruan (05/05/2021) change to psf_gen_new
             try
                 pp = parallelReadTiff(psf);
+                % pp = readtiff(psf);                
             catch
                 pp = readtiff(psf);
             end
@@ -215,6 +216,7 @@ if isempty(rawdata)
         case {'.tif', '.tiff'}
             try
                 rawdata = parallelReadTiff(input_tiff);
+                % rawdata = readtiff(input_tiff);                
             catch
                 rawdata = readtiff(input_tiff);
             end
@@ -384,7 +386,8 @@ end
 if bSaveUint16
     max_val = max(deconvolved(:));
     if max_val > 65535
-        deconvolved = deconvolved * (65535 / max_val);
+        % deconvolved = deconvolved * (65535 / max_val);
+        warning('%0.2d% voxels are saturated!', mean(deconvolved(:) > 65535));
     end
     deconvolved = uint16(deconvolved);
 end
