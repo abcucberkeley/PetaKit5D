@@ -169,7 +169,7 @@ if (~DSRCombined && (~exist(dsFullname, 'file') || ip.Results.Overwrite)) || DSR
             case {'.zarr'}
                 bim = blockedImage(framePath{1}, 'Adapter', ZarrAdapter);
                 % frame = gather(bim);
-                frame = bim.Adapter.getIORegion([1, 1, 1], bim.Size]);
+                frame = bim.Adapter.getIORegion([1, 1, 1], bim.Size);
         end                
     end
     
