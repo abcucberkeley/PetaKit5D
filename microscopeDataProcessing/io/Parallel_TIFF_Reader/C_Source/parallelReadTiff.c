@@ -90,10 +90,15 @@ void* readTiffParallelWrapper(char* fileName)
     TIFFGetField(tif, TIFFTAG_IMAGEWIDTH, &x);
     TIFFGetField(tif, TIFFTAG_IMAGELENGTH, &y);
 
-    uint64_t s = 0, m = 0, t = 1;
+    uint16_t s = 0, m = 0, t = 1;
     while(TIFFSetDirectory(tif,t)){
         s = t;
-        t *= 16;
+        t *= 8;
+        if(s > t){ 
+            t = 65535;
+            printf("Number of slices > 32768");
+            break;
+        }
     }
     while(s != t){
         m = (s+t+1)/2;

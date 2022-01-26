@@ -54,6 +54,8 @@ ip.addParameter('BatchSize', [1024, 1024, 1024] , @isvector); % in y, x, z
 ip.addParameter('BlockSize', [256, 256, 256], @isnumeric); % block overlap
 ip.addParameter('largeFile', false, @islogical);
 ip.addParameter('largeMethod', 'MemoryJobs', @ischar); % memory jobs, memory single, inplace. 
+ip.addParameter('zarrFile', false, @islogical); % use zarr file as input
+ip.addParameter('saveZarr', false, @islogical); % save as zarr
 ip.addParameter('parseCluster', true, @islogical);
 ip.addParameter('parseParfor', false, @islogical);
 ip.addParameter('masterCompute', true, @islogical); % master node participate in the task computing. 
@@ -124,6 +126,8 @@ BatchSize = pr.BatchSize;
 BlockSize = pr.BlockSize;
 largeFile = pr.largeFile;
 largeMethod = pr.largeMethod;
+zarrFile = pr.zarrFile;
+saveZarr = pr.saveZarr;
 parseCluster = pr.parseCluster;
 parseParfor = pr.parseParfor;
 jobLogDir = pr.jobLogDir;
@@ -184,9 +188,13 @@ for f = 1 : nF
     end
 
     % first try single GPU deconvolution, if it fails split into multiple chunks
-    deconFullPath = [deconPath '/' fsname '_decon.tif'];
+    if saveZarr
+        deconFullPath = [deconPath '/' fsname '_decon.zarr'];
+    else
+        deconFullPath = [deconPath '/' fsname '_decon.tif'];
+    end
     % deconTempPath = [deconPath '/' fname '_decon.tif'];
-    if exist(deconFullPath, 'file') && ~pr.Overwrite
+    if (exist(deconFullPath, 'file') || exist(saveZarr && deconFullPath, 'dir')) && ~pr.Overwrite
         disp('Deconvolution results already exist, skip it!');
         continue;
     end
@@ -201,8 +209,7 @@ for f = 1 : nF
                         im_raw = readtiff(frameFullpath);
                     end
                 case '.zarr'
-                    bim = blockedImage(frameFullpath, 'Adapter', ZarrAdapter);
-                    im_raw = gather(bim);
+                    im_raw = readzarr(frameFullpath);
             end
                     
             if flipZstack
@@ -246,45 +253,48 @@ for f = 1 : nF
 %         system(softlink_cmd);
         % frameTmpPath = sprintf('%s_%s.tif', frameFullpath(1:end-4), uuid); 
         deconTmpPath = sprintf('%s_%s_decon.tif', deconFullPath(1:end-10), uuid); 
+        save3Dstack = false;
         im = RLdecon(frameFullpath, deconTmpPath, PSF, Background, DeconIter, dzPSF, dz, Deskew, [], SkewAngle, ...
             pixelSize, Rotate, Save16bit, Crop, zFlip, GenMaxZproj, ResizeImages, [], RLMethod, ...
-            fixIter, errThresh, flipZstack, debug);
+            fixIter, errThresh, flipZstack, debug, save3Dstack);
         toc
         % system(unlink_cmd);
-        if exist(deconTmpPath, 'file')
             % im = readtiff(deconTmpPath);
-            if EdgeErosion > 0
-                fprintf('Erode edges of deconvolved data w.r.t. raw data...\n');        
-                im = im .* cast(im_bw_erode, class(im));
-            end
-
-            if ~isempty(ErodeMaskfile) && exist(ErodeMaskfile, 'file')
-                fprintf('Erode edges of deconvolved data using a predefined mask...\n');    
-                try 
-                    im_bw_erode = parallelReadTiff(ErodeMaskfile);                    
-                catch
-                    im_bw_erode = readtiff(ErodeMaskfile);
-                end
-                im = im .* cast(im_bw_erode, class(im));
-            end
-            deconTmpPath_eroded = sprintf('%s_%s_eroded.tif', deconFullPath(1:end-4), uuid);
-            if Save16bit
-                im = uint16(im);
-            else
-                im = single(im);
-            end
-            
-            writetiff(im, deconTmpPath_eroded);
-            movefile(deconTmpPath_eroded, deconFullPath);
-            delete(deconTmpPath);
-            deconTmpMIPPath = sprintf('%s/%s_%s_MIP_z.tif', deconPath, fsname, uuid); 
-            delete(deconTmpMIPPath);
-            
-            deconMIPPath = sprintf('%s/MIPs/', deconPath);
-            deconMIPFullPath = sprintf('%s%s_MIP_z.tif', deconMIPPath, fsname);
-            writetiff(max(im,[],3), deconMIPFullPath);
-            toc
+        if EdgeErosion > 0
+            fprintf('Erode edges of deconvolved data w.r.t. raw data...\n');        
+            im = im .* cast(im_bw_erode, class(im));
         end
+
+        if ~isempty(ErodeMaskfile) && exist(ErodeMaskfile, 'file')
+            fprintf('Erode edges of deconvolved data using a predefined mask...\n');    
+            try 
+                im_bw_erode = parallelReadTiff(ErodeMaskfile);                    
+            catch
+                im_bw_erode = readtiff(ErodeMaskfile);
+            end
+            im = im .* cast(im_bw_erode, class(im));
+        end
+        deconTmpPath_eroded = sprintf('%s_%s_eroded.tif', deconFullPath(1:end-4), uuid);
+        if Save16bit
+            im = uint16(im);
+        else
+            im = single(im);
+        end
+        
+        if saveZarr
+            writezarr(im, deconTmpPath_eroded, 'blockSize', BlockSize);
+        else
+            writetiff(im, deconTmpPath_eroded);
+        end
+        movefile(deconTmpPath_eroded, deconFullPath);
+        delete(deconTmpPath);
+        deconTmpMIPPath = sprintf('%s/%s_%s_MIP_z.tif', deconPath, fsname, uuid); 
+        delete(deconTmpMIPPath);
+
+        deconMIPPath = sprintf('%s/MIPs/', deconPath);
+        deconMIPFullPath = sprintf('%s%s_MIP_z.tif', deconMIPPath, fsname);
+        writetiff(max(im,[],3), deconMIPFullPath);
+        toc
         if exist(deconFullPath, 'file')
             fprintf('Completed RL deconvolution of %s.\n', frameFullpath);
             continue;
@@ -559,8 +569,13 @@ for f = 1 : nF
         im = single(im);
     end
 
-    deconTmpPath = sprintf('%s_%s.tif', deconFullPath(1 : end - 4), uuid);
-    writetiff(im, deconTmpPath);
+    if savezarr 
+        deconTmpPath = sprintf('%s_%s.zarr', deconFullPath(1 : end - 4), uuid);                
+        writezarr(im, deconTmpPath, 'blockSize', BlockSize);
+    else
+        deconTmpPath = sprintf('%s_%s.tif', deconFullPath(1 : end - 4), uuid);        
+        writetiff(im, deconTmpPath);
+    end
     movefile(deconTmpPath, deconFullPath);
     
     tmp_xy = max(im,[],3);

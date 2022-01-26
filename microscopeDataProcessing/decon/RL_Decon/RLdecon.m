@@ -61,6 +61,7 @@ ip.addParameter('nTapering', [], @isnumeric);
 ip.addParameter('rawdata', [], @isnumeric); 
 ip.addParameter('scaleFactor', [], @isnumeric); % scale factor for result
 ip.addParameter('useGPU', true, @islogical); % use GPU processing
+ip.addParameter('save3Dstack', true, @islogical); % use GPU processing
 
 
 ip.parse(input_tiff, output_filename, psf, background, nIter, dz_psf, dz_data, ...
@@ -221,14 +222,13 @@ if isempty(rawdata)
                 rawdata = readtiff(input_tiff);
             end
         case '.zarr'
-            bim = blockedImage(input_tiff, 'Adapter', ZarrAdapter);
-            rawdata = gather(bim);
+            rawdata = readzarr(input_tiff);
     end
 end
 
 scaleFactor = pr.scaleFactor;
 useGPU = pr.useGPU;
-
+save3Dstack = pr.save3Dstack;
 
 % add support for flip z stack
 if flipZstack
@@ -374,9 +374,18 @@ end
 
 % save err mat for simplified method
 if nIter > 0 && strcmp(RLMethod, 'simplified')
-    info_fn = sprintf('%s/%s/%s_info.mat', datafolder, decon_folder, output_tiff(1 : end - 4));
+    info_folder = sprintf('%s/%s/decon_info/', datafolder, decon_folder);
+    if ~exist(info_folder, 'dir')
+        mkdir(info_folder);
+    end
+    info_fn = sprintf('%s/%s_info.mat', info_folder, output_tiff(1 : end - 4));
     save('-v7.3', info_fn, 'err_mat', 'nIter', 'fixIter', 'errThresh', 'debug');
     save(sprintf('%sactual_iterations_%d.txt', info_fn(1 : end - 8), iter_run), 'iter_run', '-ASCII');
+end
+
+% not save 3D stack
+if ~save3Dstack
+    return;
 end
 
 if ischar(bSaveUint16)

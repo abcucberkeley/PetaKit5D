@@ -50,12 +50,12 @@ ip.addParameter('Save16bit', false , @islogical); % saves deskewed data as 16 bi
 ip.addParameter('RescaleRotate', false , @islogical); % Rescale rotated data to [0 65535]
 ip.addParameter('save3DStack', true , @islogical); % option to save 3D stack or not
 ip.addParameter('SaveMIP', true , @islogical); % save MIP-z for ds and dsr. 
+ip.addParameter('saveZarr', false , @islogical); % save as zarr
+ip.addParameter('blockSize', [500, 500, 500] , @isnumeric); % save as zarr
 ip.addParameter('aname', '', @ischar); % XR allow user-defined result path
 ip.addParameter('ZoffsetCorrection', false, @islogical); % xruan: add option for correction of z offset
 ip.addParameter('DSRCombined', true, @islogical); % combined processing 
 ip.addParameter('resample', [], @(x) isempty(x) || isnumeric(x)); % resampling after rotation 
-ip.addParameter('saveZarr', false, @islogical); % save as zarr
-ip.addParameter('blockSize', [500, 500, 500], @isnumeric); % save as zarr
 ip.addParameter('Interp', 'linear', @(x) any(strcmpi(x, {'cubic', 'linear'})));
 ip.addParameter('surffix', '', @ischar); % suffix for the folder
 ip.addParameter('uuid', '', @ischar);
@@ -150,7 +150,7 @@ if (~DSRCombined && (~exist(dsFullname, 'file') || ip.Results.Overwrite)) || DSR
         frame_cell = cell(numel(framePath), 1);
         for i = 1 : numel(framePath)
             try
-                frame_cell{i} = parallelReadTiff(framePath{i});
+                frame_cell{i} = readtiff(framePath{i});
             catch 
                 frame_cell{i} = readtiff(framePath{i});
             end
@@ -162,7 +162,7 @@ if (~DSRCombined && (~exist(dsFullname, 'file') || ip.Results.Overwrite)) || DSR
         switch ext
             case {'.tif', '.tiff'}
                 try
-                    frame = single(parallelReadTiff(framePath{1}));
+                    frame = single(readtiff(framePath{1}));
                 catch 
                     frame = single(readtiff(framePath{1}));
                 end
@@ -192,7 +192,7 @@ if (~DSRCombined && (~exist(dsFullname, 'file') || ip.Results.Overwrite)) || DSR
     % remove camera background
     if BKRemoval
         try 
-            parallelReadTiff(BackgroundImage);
+            BKIm = parallelReadTiff(BackgroundImage);
         catch
             BKIm = readtiff(BackgroundImage);
         end
@@ -274,14 +274,26 @@ if (~DSRCombined && (~exist(dsFullname, 'file') || ip.Results.Overwrite)) || DSR
         dsTempname = sprintf('%s%s_%s.tif', dsPath, fsname, uuid);
         if save3DStack
             if splitCompute
-                write(bo, dsTempname, 'BlockSize', [bo.Size(1), bo.Size(2), min(bo.Size(3), 100)], 'Adapter', MPageTiffAdapter);
+                if saveZarr
+                    write(bo, dsTempname, 'BlockSize', min(bo.Size, blockSize), 'Adapter', ZarrAdapter);
+                else
+                    write(bo, dsTempname, 'BlockSize', [bo.Size(1), bo.Size(2), min(bo.Size(3), 100)], 'Adapter', MPageTiffAdapter);
+                end
                 rmdir(OutputLocation, 's');
                 clear bo
-            else
+            else                
                 if Save16bit
-                    writetiff(uint16(ds), dsTempname);
+                    if saveZarr
+                        writezarr(uint16(ds), dsTempname, 'blockSize', blockSize);
+                    else
+                        writetiff(uint16(ds), dsTempname);
+                    end
                 else
-                    writetiff(single(ds), dsTempname);
+                    if saveZarr
+                        writezarr(single(ds), dsTempname, 'blockSize', blockSize);
+                    else
+                        writetiff(single(ds), dsTempname);
+                    end
                 end
             end
             movefile(dsTempname, dsFullname);
@@ -367,9 +379,7 @@ if ip.Results.Rotate || DSRCombined
         
         if save3DStack
             if saveZarr
-                bim = blockedImage(dsr);
-                blockSize = min(size(dsr), blockSize);
-                write(bim, dsrTempName, 'Adapter', ZarrAdapter, 'BlockSize', blockSize);
+                writezarr(dsr, dsrTempName, 'BlockSize', blockSize);
             else
                 writetiff(dsr, dsrTempName);
             end

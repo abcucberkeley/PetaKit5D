@@ -64,6 +64,7 @@ ip.addParameter('BlockSize', [256, 256, 256], @isnumeric); % block overlap
 ip.addParameter('largeFile', false, @islogical);
 ip.addParameter('largeMethod', 'MemoryJobs', @ischar); % memory jobs, memory single, inplace. 
 ip.addParameter('zarrFile', false, @islogical); % use zarr file as input
+ip.addParameter('saveZarr', false, @islogical); % save as zarr
 ip.addParameter('parseCluster', true, @islogical);
 ip.addParameter('parseParfor', false, @islogical);
 ip.addParameter('jobLogDir', '../job_logs', @ischar);
@@ -125,6 +126,7 @@ BlockSize = pr.BlockSize;
 largeFile = pr.largeFile;
 largeMethod = pr.largeMethod;
 zarrFile = pr.zarrFile;
+saveZarr = pr.saveZarr;
 jobLogDir = pr.jobLogDir;
 parseCluster = pr.parseCluster;
 parseParfor = pr.parseParfor;
@@ -243,6 +245,10 @@ if Decon
     end
 end
 
+if strcmp(largeMethod, 'inplace')
+    saveZarr = true;
+end
+
 %% check existing files and parse channels
 Streaming = false;
 minModifyTime = 1;
@@ -284,7 +290,7 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
                 
         frameFullpath = [dataPath, fname];
         % check wheter the file is deleted during the computing.
-        if ~exist(frameFullpath, 'file')
+        if ~exist(frameFullpath, 'file') || (zarrFile && ~exist(frameFullpath, 'dir'))
             is_done_flag(f, :) = true;
             continue
         end
@@ -310,14 +316,14 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
             end
                             
             deconPath = deconPaths{fdind};
-            if largeFile && strcmp(largeMethod, 'inplace')
-                deconFullpath = sprintf('%s/%s.zarr', deconPath, fsname);                
+            if saveZarr
+                deconFullpath = sprintf('%s/%s_decon.zarr', deconPath, fsname);                
             else
                 deconFullpath = sprintf('%s/%s_decon.tif', deconPath, fsname);
             end
             dctmpFullpath = sprintf('%s.tmp', deconFullpath(1 : end - 4));
 
-            if exist(deconFullpath, 'file') || (largeFile && strcmp(largeMethod, 'inplace') && exist(deconFullpath, 'dir'))
+            if exist(deconFullpath, 'file') || (saveZarr && exist(deconFullpath, 'dir'))
                 is_done_flag(f, 1) = true;
                 if exist(dctmpFullpath, 'file')
                     delete(dctmpFullpath);
@@ -389,13 +395,13 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
                 func_str = sprintf(['XR_RLdeconFrame3D(''%s'',%.10f,%.10f,'''',''PSFfile'',''%s'',', ...
                     '''dzPSF'',%.10f,''Background'',[%d],''SkewAngle'',%d,''flipZstack'',%s,''EdgeErosion'',%d,', ...
                     '''ErodeMaskfile'',''%s'',''SaveMaskfile'',%s,''Rotate'',%s,''DeconIter'',%d,', ...
-                    '''RLMethod'',''%s'',''fixIter'',%s,''errThresh'',[%0.20f],''debug'',%s,''parseCluster'',%s,', ...
-                    '''parseParfor'',%s,''GPUJob'',%s,''Save16bit'',%s,''largeFile'',%s,''largeMethod'',''%s'',', ...
-                    '''BatchSize'',%s,''BlockSize'',%s,''uuid'',''%s'')'], ...
+                    '''RLMethod'',''%s'',''fixIter'',%s,''errThresh'',[%0.20f],''debug'',%s,''saveZarr'',%s,', ...
+                    '''parseCluster'',%s,''parseParfor'',%s,''GPUJob'',%s,''Save16bit'',%s,''largeFile'',%s,', ...
+                    '''largeMethod'',''%s'',''BatchSize'',%s,''BlockSize'',%s,''uuid'',''%s'')'], ...
                     dcframeFullpath, xyPixelSize, dc_dz, psfFullpath, dc_dzPSF, Background, SkewAngle, string(flipZstack), ...
                     EdgeErosion, maskFullpath, string(SaveMaskfile), string(deconRotate), DeconIter_f, RLMethod, ...
-                    string(fixIter), errThresh, string(debug), string(parseCluster), string(parseParfor), string(GPUJob), ...
-                    string(Save16bit), string(largeFile), largeMethod, strrep(mat2str(BatchSize), ' ', ','), ...
+                    string(fixIter), errThresh, string(debug), string(saveZarr), string(parseCluster), string(parseParfor), ...
+                    string(GPUJob), string(Save16bit), string(largeFile), largeMethod, strrep(mat2str(BatchSize), ' ', ','), ...
                     strrep(mat2str(BlockSize), ' ', ','), uuid);
             end
             
@@ -468,7 +474,7 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
             end
             
             % check if computing is done
-            if exist(deconFullpath, 'file') || (largeFile && strcmp(largeMethod, 'inplace') && exist(deconFullpath, 'dir'))
+            if exist(deconFullpath, 'file') || (saveZarr && exist(deconFullpath, 'dir'))
                 is_done_flag(f, 1) = true;
                 if exist(dctmpFullpath, 'file')
                     delete(dctmpFullpath);

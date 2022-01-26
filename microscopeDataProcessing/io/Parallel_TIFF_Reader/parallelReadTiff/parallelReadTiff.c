@@ -1,7 +1,7 @@
 //#include "tiffio.h"
 #include <stdio.h>
 #include <stdint.h>
-#include "/global/home/groups/software/sl-7.x86_64/modules/libtiff/4.1.0/libtiff/tiffio.h"
+#include "tiffio.h"
 #include "omp.h"
 #include "mex.h"
 //mex -v COPTIMFLAGS="-O3 -fwrapv -DNDEBUG" CFLAGS='$CFLAGS -O3 -fopenmp' LDFLAGS='$LDFLAGS -O3 -fopenmp' '-I/global/home/groups/software/sl-7.x86_64/modules/libtiff/4.1.0/libtiff/' '-L/global/home/groups/software/sl-7.x86_64/modules/libtiff/4.1.0/libtiff/' -ltiff /clusterfs/fiona/matthewmueller/parallelTiffTesting/main.c
@@ -104,10 +104,15 @@ void mexFunction(int nlhs, mxArray *plhs[],
     TIFFGetField(tif, TIFFTAG_IMAGELENGTH, &y);
     
     if(nrhs == 1){
-        uint64_t s = 0, m = 0, t = 1;   
+        uint16_t s = 0, m = 0, t = 1;
         while(TIFFSetDirectory(tif,t)){
             s = t;
-            t *= 16;
+            t *= 8;
+            if(s > t){ 
+                t = 65535;
+                printf("Number of slices > 32768");
+                break;
+            }
         }
         while(s != t){
             m = (s+t+1)/2;
