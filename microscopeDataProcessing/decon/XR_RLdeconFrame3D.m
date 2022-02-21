@@ -194,7 +194,7 @@ for f = 1 : nF
         deconFullPath = [deconPath '/' fsname '_decon.tif'];
     end
     % deconTempPath = [deconPath '/' fname '_decon.tif'];
-    if (exist(deconFullPath, 'file') || exist(saveZarr && deconFullPath, 'dir')) && ~pr.Overwrite
+    if (exist(deconFullPath, 'file') || (saveZarr && exist(deconFullPath, 'dir'))) && ~pr.Overwrite
         disp('Deconvolution results already exist, skip it!');
         continue;
     end
@@ -256,7 +256,7 @@ for f = 1 : nF
         save3Dstack = false;
         im = RLdecon(frameFullpath, deconTmpPath, PSF, Background, DeconIter, dzPSF, dz, Deskew, [], SkewAngle, ...
             pixelSize, Rotate, Save16bit, Crop, zFlip, GenMaxZproj, ResizeImages, [], RLMethod, ...
-            fixIter, errThresh, flipZstack, debug, save3Dstack);
+            fixIter, errThresh, flipZstack, debug, 'save3Dstack', save3Dstack);
         toc
         % system(unlink_cmd);
             % im = readtiff(deconTmpPath);

@@ -274,7 +274,7 @@ if bZAlign
 end
 
 % call Richardson-Lucy
-if nIter>0
+if nIter>0 && sum(rawdata(:)) > 0
     if isempty(scaleFactor)
         % scaleFactor = numel(rawdata);
         scaleFactor = 1;

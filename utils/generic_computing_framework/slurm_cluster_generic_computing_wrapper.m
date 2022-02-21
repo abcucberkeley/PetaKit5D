@@ -13,6 +13,9 @@ function [is_done_flag] = slurm_cluster_generic_computing_wrapper(inputFullpaths
 % result is not yet visible to the master job.
 % xruan(08/26/2021): add support for limiting active jobs (pending/running). 
 %   also add support for batch tasks running, i.e., run several tasks within one job
+% xruan(02/06/2021): change to first check all results at once instead of once
+%   per file to reduce the IO requirement. 
+
 
 ip = inputParser;
 ip.CaseSensitive = false;
@@ -70,6 +73,14 @@ end
 
 nF = numel(inputFullpaths);
 is_done_flag = false(nF, 1);
+input_exist_mat = batch_file_exist(inputFullpaths);
+outputFullpaths = strip(outputFullpaths, 'right', filesep);
+output_exist_mat = batch_file_exist(outputFullpaths);
+if all(output_exist_mat)
+    is_done_flag = ~is_done_flag;
+    return;
+end
+
 trial_counter = zeros(nF, 1);
 if parseCluster
     job_ids = -ones(nF, 1);
@@ -87,11 +98,28 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
         lastP = find(~is_done_flag & trial_counter < maxTrialNum, 1, 'first');
         nB = nF;
     end
+    output_exist_mat(~is_done_flag) = batch_file_exist(outputFullpaths(~is_done_flag));
+    
+    if parseCluster
+        task_ids = rem(1 : nB, 5000);
+        job_status_mat(~is_done_flag, 2) = job_status_mat(~is_done_flag, 1);
+        job_status_mat(~is_done_flag, 1) = check_batch_slurm_jobs_status(job_ids(~is_done_flag), task_ids(~is_done_flag));
+    end
         
     fsnames = cell(1, nF);
     for b = 1 : nB
         fs = (b - 1) * taskBatchNum + 1 : min(b * taskBatchNum, nF);
         task_id = rem(b, 5000);
+        
+        % check output exist and job status every 1000 batches
+        if loop_counter > 0 && rem(b, 1000) == 0
+            output_exist_mat(~is_done_flag) = batch_file_exist(outputFullpaths(~is_done_flag));
+
+            if parseCluster
+                job_status_mat(~is_done_flag, 2) = job_status_mat(~is_done_flag, 1);
+                job_status_mat(~is_done_flag, 1) = check_batch_slurm_jobs_status(job_ids(~is_done_flag), task_ids(~is_done_flag));
+            end
+        end
         
         for f = fs
             inputFullpath_i = inputFullpaths{f};
@@ -106,18 +134,15 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
                     end
                 end
             else
-                inputFullpath = inputFullpath_i;
-                if ~(exist(inputFullpath, 'file') || exist(inputFullpath, 'dir'))
+                if ~input_exist_mat(f)
+                    inputFullpath = inputFullpath_i;                    
                     sprintf('%s does not exist, skip it!', inputFullpath);
                     is_done_flag(f) = true;
                     % continue;
                 end
             end
             
-            outputFullpath = outputFullpaths{f};
-            if strcmp(outputFullpath(end), filesep)
-                outputFullpath = outputFullpath(1 : end - 1);
-            end
+            outputFullpath = outputFullpaths{f};            
             [outputDir, fsname, ext] = fileparts(outputFullpath);
             if isempty(fsname) && ~isempty(ext)
                 fsname = ext;
@@ -131,18 +156,17 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
                 end
             end
             
-            if exist(outputFullpath, 'file') || exist(outputFullpath, 'dir')
+            % if exist(outputFullpath, 'file') || exist(outputFullpath, 'dir')
+            if output_exist_mat(f)
                 is_done_flag(f) = true;
                 if ~parseCluster && exist(tmpFullpath, 'file')
                     delete(tmpFullpath);
                 end
-
+                
                 % kill new pending jobs
-                if parseCluster && job_ids(f) > 0
-                    job_status = check_slurm_job_status(job_ids(f), task_id); 
-                    if job_status ~= 1
-                        system(sprintf('scancel %d_%d', job_ids(f), task_id), '-echo');
-                    end
+                if  parseCluster && job_ids(f) > 0 && job_status_mat(f, 1) == 0
+                    % job_status = check_slurm_job_status(job_ids(f), task_id); 
+                    system(sprintf('scancel %d_%d', job_ids(f), task_id), '-echo');
                 end
             end
         end
@@ -152,12 +176,18 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
         end
         
         f = fs(end);
-        if parseCluster
-            job_status = check_slurm_job_status(job_ids(f), task_id);
-            job_status_mat(fs, 2) = job_status_mat(fs, 1);
-            job_status_mat(fs, 1) = job_status;
-        end
-        
+        % if parseCluster
+            % job_status = check_slurm_job_status(job_ids(f), task_id);
+            % job_status_mat(fs, 2) = job_status_mat(fs, 1);
+            % job_status_mat(fs, 1) = job_status;
+            
+            % use master job to run the first pending job to avoid loop
+            % through all jobs.
+            % if job_status_mat(fs, 1) == 0
+                % lastP = b;
+            % end            
+        % end
+                
         % set parameter to skip job submission step in case of reaching max job
         % number and masterCompute is true
         skip_job_submission = false;
@@ -169,7 +199,7 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
         if ~skip_job_submission && (parseCluster || exist(tmpFullpath, 'file'))
             if parseCluster
                 % kill the first pending job and use master node do the computing.
-                if job_status == 0 && (masterCompute && b == lastP)
+                if job_status_mat(fs, 1) == 0 && (masterCompute && b == lastP)
                     system(sprintf('scancel %d_%d', job_ids(f), task_id), '-echo');
                     trial_counter(fs) = trial_counter(fs) - 1;
                     job_status_mat(fs, 1) = -1;
@@ -177,17 +207,17 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
                 end
 
                 % if the job is still running, skip it. 
-                if job_status == 1 
+                if job_status_mat(fs, 1) == 1 
                     continue;
                 end
                 
                 % wait some time for the status change
                 if loop_counter > 0 && job_status_mat(f, 1) < job_status_mat(f, 2)
-                    pause(1);
+                    pause(0.2);
                 end
 
                 % If there is no job, submit a job
-                if job_status == -1 && job_status_mat(f, 2) == -1 && ~(masterCompute && f == lastP)
+                if job_status_mat(fs, 1) == -1 && job_status_mat(f, 2) == -1 && ~(masterCompute && f == lastP)
                     if rem(b, 50) == 0 || b == 1
                         fprintf('Task % 4d:    Process %s with function %s... \n', b, strjoin(fsnames(fs), ', '), func_str); 
                     else
@@ -269,15 +299,15 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
             fprintf('Done!\n');
         end
         % toc
-        for f = fs
-            outputFullpath = outputFullpaths{f};            
-            if exist(outputFullpath, 'file') || exist(outputFullpath, 'dir')
-                is_done_flag(f) = true;
-                if ~parseCluster && exist(tmpFullpath, 'file')
-                    delete(tmpFullpath);
-                end
-            end
-        end
+        % for f = fs
+        %     outputFullpath = outputFullpaths{f};            
+        %     if exist(outputFullpath, 'file') || exist(outputFullpath, 'dir')
+        %         is_done_flag(f) = true;
+        %         if ~parseCluster && exist(tmpFullpath, 'file')
+        %             delete(tmpFullpath);
+        %         end
+        %     end
+        % end
     end
     
     if ~all(is_done_flag | trial_counter >= maxTrialNum, 'all') 
@@ -286,5 +316,6 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
     loop_counter = loop_counter + 1;
 end
 
-
 end
+
+

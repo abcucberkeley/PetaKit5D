@@ -64,6 +64,7 @@ parseCluster = pr.parseCluster;
 parseParfor = pr.parseParfor;
 jobLogDir = pr.jobLogDir;
 masterCompute = pr.masterCompute;
+cpuOnlyNodes =  pr.cpuOnlyNodes;
 uuid = pr.uuid;
 if isempty(uuid)
     uuid = get_uuid();
@@ -132,11 +133,7 @@ else
 end
 
 if parseCluster
-    if  ~exist(jobLogDir, 'dir')
-        warning('The job log directory does not exist, use %s/job_logs as job log directory.', deconPath)
-        jobLogDir = sprintf('%s/job_logs', deconPath);
-        mkdir(jobLogDir);
-    end
+    [parseCluster, job_log_fname, job_log_error_fname, slurm_constraint_str] = checkSlurmCluster(dataPath, jobLogDir, cpuOnlyNodes);
 end
 
 tic
@@ -216,23 +213,23 @@ if parseCluster
     end
 elseif parseParfor
     is_done_flag= matlab_parfor_generic_computing_wrapper(inputFullpaths, outputFullpaths, ...
-        funcStrs, 'maxJobNum', maxJobNum, 'taskBatchNum', taskBatchNum, 'GPUJob', GPUJob);
+        funcStrs, 'maxJobNum', maxJobNum, 'taskBatchNum', taskBatchNum, 'GPUJob', GPUJob, 'uuid', uuid);
 end
 
-if exist(deconFullpath, 'dir')
-    rmdir(deconFullpath, 's');
-end
-if exist(deconTmppath, 'dir')
-    movefile(deconTmppath, deconFullpath);
-end
-
-% generate MIP z file
-deconMIPPath = sprintf('%s/MIPs/', deconPath);
-if ~exist(deconMIPPath, 'dir')
-    mkdir(deconMIPPath);
-    fileattrib(deconMIPPath, '+w', 'g');
-end
-deconMIPname = sprintf('%s%s_MIP_z.tif', deconMIPPath, fsname);
+% if exist(deconFullpath, 'dir') && exist(deconTmppath, 'dir')
+%     rmdir(deconFullpath, 's');
+% end
+% if exist(deconTmppath, 'dir')
+%     movefile(deconTmppath, deconFullpath);
+% end
+% 
+% % generate MIP z file
+% deconMIPPath = sprintf('%s/MIPs/', deconPath);
+% if ~exist(deconMIPPath, 'dir')
+%     mkdir(deconMIPPath);
+%     fileattrib(deconMIPPath, '+w', 'g');
+% end
+% deconMIPname = sprintf('%s%s_MIP_z.tif', deconMIPPath, fsname);
 % saveMIP_zarr(deconFullpath, deconMIPname);
 toc
 

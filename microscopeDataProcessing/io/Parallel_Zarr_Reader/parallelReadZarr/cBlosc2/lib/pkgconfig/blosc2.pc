@@ -1,0 +1,14 @@
+prefix=/home/xruan/Projects/XR_Repository/LLSM3DTools/microscopeDataProcessing/io/Parallel_Zarr_Reader/parallelReadZarr/cBlosc2
+exec_prefix=${prefix}
+libdir=${exec_prefix}/lib
+sharedlibdir=${libdir}
+includedir=${prefix}/include
+
+Name: blosc2
+Description: A blocking, shuffling and lossless compression library
+URL: https://blosc.org/
+Version: 2.0.4
+
+Requires:
+Libs: -L${libdir} -L${sharedlibdir} -lblosc2
+Cflags: -I${includedir}

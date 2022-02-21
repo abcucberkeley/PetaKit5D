@@ -8,10 +8,10 @@ function [] = RLdecon_for_zarr_block(batchInds, zarrFullpath, psfFullpath, decon
 
 ip = inputParser;
 ip.CaseSensitive = false;
-ip.addRequired('blockInds', @isnumeric);
+ip.addRequired('batchInds', @isnumeric);
 ip.addRequired('zarrFullpath', @(x) ischar(x));
 ip.addRequired('psfFullpath', @(x) ischar(x));
-ip.addRequired('dsFullpath', @(x) ischar(x));
+ip.addRequired('deconFullpath', @(x) ischar(x));
 ip.addRequired('flagFullname', @(x) ischar(x));
 % ip.addParameter('ResultDir', 'matlab_stitch', @ischar);
 ip.addRequired('BatchBBoxes', @isnumeric);
@@ -73,10 +73,10 @@ if ~exist(deconFullpath, 'dir')
 end
 nv_bim = blockedImage(deconFullpath, 'Adapter', ZarrAdapter);
 
-oBlockSize =   nv_bim.BlockSize;
-Mode = nv_bim.Mode;
-dtype = nv_bim.ClassUnderlying;
-level = 1;
+% oBlockSize =   nv_bim.BlockSize;
+% Mode = nv_bim.Mode;
+% dtype = nv_bim.ClassUnderlying;
+% level = 1;
 
 done_flag = false(numel(batchInds), 1);
 for i = 1 : numel(batchInds)

@@ -75,6 +75,8 @@ function [] = XR_matlab_stitching_wrapper(dataPath, imageListFileName, varargin)
 % xruan (12/17/2021): add support for 2d stitching (e.g., MIPs), only with dsr for now
 % xruan (01/03/2022): add support for online stitch (partial stitch) for
 % each layer
+% xruan (01/25/2022): add support for loading tileFullpaths and coordinates from file.
+% xruan (01/31/2022): add support for negative tile numbers in xyz. 
 
 
 ip = inputParser;
@@ -88,6 +90,7 @@ ip.addParameter('useExistDSR', false, @islogical); % use exist DSR for the proce
 ip.addParameter('DSRDirstr', 'DSR', @ischar); % path for DSRDir str, if it is not true
 ip.addParameter('useExistDecon', false, @islogical); % use exist decon for the processing (change to more generic decon, for not only DSR decon)
 ip.addParameter('DeconDirstr', '', @ischar); % path for decon str, if it is not true
+ip.addParameter('tileInfoFullpath', '', @ischar); % use tile info and coordinates from file
 ip.addParameter('stitchInfoFullpath', '', @ischar); % use exist stitch info for stitching
 ip.addParameter('DS', false, @islogical);
 ip.addParameter('DSR', false, @islogical);
@@ -99,6 +102,7 @@ ip.addParameter('IOScan', false, @islogical);
 ip.addParameter('blockSize', [500, 500, 500], @isnumeric); 
 ip.addParameter('resampleType', 'xy_isotropic', @ischar); % by default use xy isotropic
 ip.addParameter('resample', [], @isnumeric); % user-defined resample factor
+ip.addParameter('InputBbox', [], @isnumeric); % crop input tile before processing
 ip.addParameter('CropToSize', [], @isnumeric); % size cropped to 
 ip.addParameter('TileOffset', 0, @isnumeric); % offset added to tile
 ip.addParameter('ffcorrect', false, @islogical);
@@ -120,6 +124,7 @@ ip.addParameter('subsubtimepoints', [], @isnumeric); % stitch for given subsub t
 ip.addParameter('xcorrMode', 'primaryFirst', @(x) strcmpi(x, 'primary') ...
     || strcmpi(x, 'primaryFirst') || strcmpi(x, 'all')); % 'primary': choose one channel as primary channel, 
         % 'all': xcorr shift for each channel;  % 'primaryFirst': the primary channel of first time point
+ip.addParameter('shiftMethod', 'grid', @ischar); % {'local', 'global', 'grid', 'test'}
 ip.addParameter('primaryCh', '', @(x) isempty(x) || ischar(x)); % format: CamA_ch0. If it is empty, use the first channel as primary channel
 ip.addParameter('usePrimaryCoords', false, @islogical); 
 ip.addParameter('Save16bit', false, @islogical);
@@ -149,6 +154,7 @@ useExistDSR = pr.useExistDSR;
 DSRDirstr = pr.DSRDirstr;
 useExistDecon = pr.useExistDecon;
 DeconDirstr = pr.DeconDirstr;
+tileInfoFullpath = pr.tileInfoFullpath;
 stitchInfoFullpath = pr.stitchInfoFullpath;
 DS = pr.DS;
 DSR = pr.DSR;
@@ -160,6 +166,7 @@ IOScan =  pr.IOScan;
 blockSize = pr.blockSize;
 resampleType = pr.resampleType;
 resample = pr.resample;
+InputBbox = pr.InputBbox;
 CropToSize = pr.CropToSize;
 TileOffset = pr.TileOffset;
 ffcorrect = pr.ffcorrect;
@@ -179,6 +186,7 @@ timepoints = pr.timepoints;
 subtimepoints = pr.subtimepoints;
 subsubtimepoints = pr.subtimepoints;
 xcorrMode = pr.xcorrMode;
+shiftMethod = pr.shiftMethod;
 primaryCh = pr.primaryCh;
 usePrimaryCoords = pr.usePrimaryCoords;
 Save16bit = pr.Save16bit;
@@ -273,9 +281,9 @@ end
 
 specifyCam = true;
 if all(~cellfun(@isempty, regexp(fn, '_Cam\w_ch', 'match')))
-    expression = '(?<prefix>\w*)Scan_Iter_(?<Iter>\d+)(?<subIter>_?(\d+_)*\d+?)_Cam(?<Cam>\w+)_ch(?<ch>\d+)_CAM1_stack(?<stack>\d+)_(?<laser>\d+)nm_(?<abstime>\d+)msec_(?<fpgatime>\d+)msecAbs_(?<x>\d+)x_(?<y>\d+)y_(?<z>\d+)z_(?<t>\d+)t(?<suffix>_?\w*).tif';
+    expression = '(?<prefix>\w*)Scan_Iter_(?<Iter>\d+)(?<subIter>_?(\d+_)*\d+?)_Cam(?<Cam>\w+)_ch(?<ch>\d+)_CAM1_stack(?<stack>\d+)_(?<laser>\d+)nm_(?<abstime>\d+)msec_(?<fpgatime>\d+)msecAbs_(?<x>-?\d+)x_(?<y>-?\d+)y_(?<z>-?\d+)z_(?<t>\d+)t(?<suffix>_?\w*).tif';
 elseif all(~cellfun(@isempty, regexp(fn, '_ch[0-9]_', 'match')))
-    expression = '(?<prefix>\w*)Scan_Iter_(?<Iter>\d+)(?<subIter>_?(\d+_)*\d+?)_ch(?<ch>\d+)_CAM1_stack(?<stack>\d+)_(?<laser>\d+)nm_(?<abstime>\d+)msec_(?<fpgatime>\d+)msecAbs_(?<x>\d+)x_(?<y>\d+)y_(?<z>\d+)z_(?<t>\d+)t(?<suffix>_?\w*).tif';
+    expression = '(?<prefix>\w*)Scan_Iter_(?<Iter>\d+)(?<subIter>_?(\d+_)*\d+?)_ch(?<ch>\d+)_CAM1_stack(?<stack>\d+)_(?<laser>\d+)nm_(?<abstime>\d+)msec_(?<fpgatime>\d+)msecAbs_(?<x>-?\d+)x_(?<y>-?\d+)y_(?<z>-?\d+)z_(?<t>\d+)t(?<suffix>_?\w*).tif';
     specifyCam = false;
 end
 
@@ -772,24 +780,43 @@ while ~all(is_done_flag | trial_counter >= max_trial_num, 'all')
 
                         tile_fullpaths_str = sprintf('{''%s''}', strjoin(tile_fullpaths, ''','''));
                         xyz_str = strrep(mat2str(xyz), ' ', ',');  
+                        tileIdx_str = strrep(mat2str(tileIdx), ' ', ',');
+                        tileInfoFullpath = '';
+
+                        % for tile number greater than 100, save the info
+                        % to the disk and load it for the function
+                        if numel(tile_fullpaths) > 100
+                            fprintf('Save tile paths and coordinates to disk...\n');
+                            [~, fsname] = fileparts(stitch_save_fname);
+                            tileInfoFullpath = sprintf('%s/stitchInfo/%s_tile_info.mat', stitching_rt, fsname);
+                            tileInfoTmppath = sprintf('%s/stitchInfo/%s_tile_info_%s.mat', stitching_rt, fsname, uuid);
+                            save('-v7.3', tileInfoTmppath, 'tile_fullpaths', 'xyz', 'tileIdx');
+                            movefile(tileInfoTmppath, tileInfoFullpath);
+                            
+                            tile_fullpaths_str = '{}';
+                            xyz_str = '[]';
+                            tileIdx_str = '[]';
+                        end
+                        
                         cind = cellfun(@(x) contains(tile_fullpaths{1}, x), ChannelPatterns);
                         func_str = sprintf(['%s(%s,%s,''axisOrder'',''%s'',''px'',%0.10f,''dz'',%0.10f,', ...
                             '''Reverse'',%s,''ObjectiveScan'',%s,''IOScan'',%s,''resultPath'',''%s'',', ...
-                            '''stitchInfoDir'',''%s'',''stitchInfoFullpath'',''%s'',''DSRDirstr'',''%s'',', ...
-                            '''DeconDirstr'',''%s'',''DS'',%s,''DSR'',%s,''blockSize'',%s,''resampleType'',''%s'',', ...
-                            '''resample'',[%s],''CropToSize'',%s,''TileOffset'',%d,''BlendMethod'',''%s'',', ...
-                            '''overlapType'',''%s'',''xcorrShift'',%s,''xyMaxOffset'',%0.10f,''zMaxOffset'',%0.10f,', ...
-                            '''xcorrDownsample'',%s,''isPrimaryCh'',%s,''usePrimaryCoords'',%s,''padSize'',[%s],', ...
-                            '''boundboxCrop'',[%s],''zNormalize'',%s,''Save16bit'',%s,''tileIdx'',%s,''flippedTile'',[%s],', ...
-                            '''processFunPath'',''%s'',''stitch2D'',%s,''EdgeArtifacts'',%0.10f)'], ...
+                            '''tileInfoFullpath'',''%s'',''stitchInfoDir'',''%s'',''stitchInfoFullpath'',''%s'',', ...
+                            '''DSRDirstr'',''%s'',''DeconDirstr'',''%s'',''DS'',%s,''DSR'',%s,''blockSize'',%s,', ...
+                            '''resampleType'',''%s'',''resample'',[%s],''InputBbox'',%s,''CropToSize'',%s,', ...
+                            '''TileOffset'',%d,''BlendMethod'',''%s'',''overlapType'',''%s'',''xcorrShift'',%s,', ...
+                            '''xyMaxOffset'',%0.10f,''zMaxOffset'',%0.10f,''xcorrDownsample'',%s,''shiftMethod'',''%s'',', ...
+                            '''isPrimaryCh'',%s,''usePrimaryCoords'',%s,''padSize'',[%s],''boundboxCrop'',[%s],', ...
+                            '''zNormalize'',%s,''Save16bit'',%s,''tileIdx'',%s,''flippedTile'',[%s],''processFunPath'',''%s'',', ...
+                            '''stitch2D'',%s,''EdgeArtifacts'',%0.10f)'], ...
                             stitch_function_str, tile_fullpaths_str, xyz_str, axisOrder, px, dz, string(Reverse), ...
-                            string(ObjectiveScan), string(IOScan), stitch_save_fname, stitchInfoDir, stitchInfoFullpath, ...
-                            DSRDirstr, DeconDirstr, string(DS), string(DSR), strrep(mat2str(blockSize), ' ', ','), ...
-                            resampleType, strrep(num2str(resample, '%.10d,'), ' ', ''), strrep(mat2str(CropToSize), ' ', ','), ...
-                            TileOffset, BlendMethod,  overlapType, string(xcorrShift), xyMaxOffset, zMaxOffset, ...
-                            strrep(mat2str(xcorrDownsample), ' ', ','), string(isPrimaryCh), string(usePrimaryCoords), ...
-                            num2str(padSize, '%d,'), strrep(num2str(boundboxCrop, '%d,'), ' ', ''), string(zNormalize), ...
-                            string(Save16bit), strrep(mat2str(tileIdx), ' ', ','), strrep(num2str(flippedTile, '%d,'), ' ', ''), ...
+                            string(ObjectiveScan), string(IOScan), stitch_save_fname, tileInfoFullpath, stitchInfoDir, ...
+                            stitchInfoFullpath, DSRDirstr, DeconDirstr, string(DS), string(DSR), strrep(mat2str(blockSize), ' ', ','), ...
+                            resampleType, strrep(num2str(resample, '%.10d,'), ' ', ''), strrep(mat2str(InputBbox), ' ', ','), ...
+                            strrep(mat2str(CropToSize), ' ', ','), TileOffset, BlendMethod,  overlapType, string(xcorrShift), ...
+                            xyMaxOffset, zMaxOffset, strrep(mat2str(xcorrDownsample), ' ', ','), shiftMethod, string(isPrimaryCh), ...
+                            string(usePrimaryCoords),num2str(padSize, '%d,'), strrep(num2str(boundboxCrop, '%d,'), ' ', ''), ...
+                            string(zNormalize),  string(Save16bit), tileIdx_str, strrep(num2str(flippedTile, '%d,'), ' ', ''), ...
                             processFunPath{cind}, strrep(mat2str(stitch2D), ' ', ','), EdgeArtifacts);
 
                         if exist(cur_tmp_fname, 'file') || (parseCluster && ~(masterCompute && xcorrShift && strcmpi(xcorrMode, 'primaryFirst') && isPrimaryCh))

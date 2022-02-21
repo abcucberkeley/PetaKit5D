@@ -32,7 +32,8 @@ for d = 1 : nd
     dataPath = dataPaths{d};
     % dir_info = dir([dataPath, '*.tif']);
     % fnames_d = {dir_info.name}';
-    [containPartialVolume, groupedFnames_d, groupedDatenum, groupedDatasize] = groupPartialVolumeFiles(dataPath, 'ext', ext);
+    [containPartialVolume, groupedFnames_d, groupedDatenum, groupedDatasize] = groupPartialVolumeFiles(dataPath, ...
+        'ext', ext, 'ChannelPatterns', ChannelPatterns);
     if any(containPartialVolume)
         fnames_d = cellfun(@(x) x{1}, groupedFnames_d, 'unif', 0);
         datenum_d = cellfun(@(x) max(x), groupedDatenum);

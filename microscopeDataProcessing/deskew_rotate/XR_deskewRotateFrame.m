@@ -19,6 +19,7 @@ function [ds, dsr] = XR_deskewRotateFrame(framePath, xyPixelSize, dz, varargin)
 % xruan (07/27/2021): add support for z-stage scan
 % xruan (08/17/2021): add support to not load the full image of DS to the memory if it is too large. 
 % xruan (10/21/2021): add support for zarr file as input
+% xruan (01/25/2022): add support for bbox crop before processing
 
 
 ip = inputParser;
@@ -36,6 +37,7 @@ ip.addParameter('Reverse', false, @islogical);
 ip.addParameter('Rotate', false, @islogical);
 ip.addParameter('CheckFrameMismatch', false, @islogical);
 ip.addParameter('LoadSettings', false, @islogical);
+ip.addParameter('InputBbox', [], @isnumeric); % bounding box apply to input
 ip.addParameter('flipZstack', false, @islogical);
 % sCMOS camera flip
 ip.addParameter('sCMOSCameraFlip', false, @islogical);
@@ -68,6 +70,7 @@ SkewAngle = pr.SkewAngle;
 Reverse = pr.Reverse;
 ObjectiveScan = pr.ObjectiveScan;
 ZstageScan = pr.ZstageScan;
+InputBbox = pr.InputBbox;
 flipZstack = pr.flipZstack;
 LLFFCorrection = pr.LLFFCorrection;
 BKRemoval = pr.BKRemoval;
@@ -150,7 +153,7 @@ if (~DSRCombined && (~exist(dsFullname, 'file') || ip.Results.Overwrite)) || DSR
         frame_cell = cell(numel(framePath), 1);
         for i = 1 : numel(framePath)
             try
-                frame_cell{i} = readtiff(framePath{i});
+                frame_cell{i} = parallelReadTiff(framePath{i});
             catch 
                 frame_cell{i} = readtiff(framePath{i});
             end
@@ -162,7 +165,7 @@ if (~DSRCombined && (~exist(dsFullname, 'file') || ip.Results.Overwrite)) || DSR
         switch ext
             case {'.tif', '.tiff'}
                 try
-                    frame = single(readtiff(framePath{1}));
+                    frame = single(parallelReadTiff(framePath{1}));
                 catch 
                     frame = single(readtiff(framePath{1}));
                 end
@@ -171,6 +174,9 @@ if (~DSRCombined && (~exist(dsFullname, 'file') || ip.Results.Overwrite)) || DSR
                 % frame = gather(bim);
                 frame = bim.Adapter.getIORegion([1, 1, 1], bim.Size);
         end                
+    end
+    if ~isempty(InputBbox)
+        frame = frame(InputBbox(1) : InputBbox(4), InputBbox(2) : InputBbox(5), InputBbox(3) : InputBbox(6));
     end
     
     if flipZstack

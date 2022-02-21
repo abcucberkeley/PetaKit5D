@@ -6,6 +6,7 @@ function [containPartVolume, groupedFnames, groupedDatenum, groupedDatasize] = g
 % 
 % Author: Xiongtao Ruan (10/06/2020)
 % xruan (10/15/2020): also add support for only processing first timepoint
+% xruan (02/12/2022): add channel patterns to exclude unnecessary files.
 
 
 ip = inputParser;
@@ -14,12 +15,14 @@ ip.addRequired('dataPath', @(x) isempty(x) || ischar(x));
 ip.addOptional('fileFullpathList', {}, @(x) isempty(x) || iscell(x));
 ip.addParameter('ext', '.tif', @(x) ischar(x));
 ip.addParameter('onlyFirstTP', false, @(x) ischar(x));
+ip.addParameter('ChannelPatterns', {}, @(x) iscell(x));
 
 ip.parse(dataPath, varargin{:});
 
 fileFullpathList = ip.Results.fileFullpathList;
 ext = ip.Results.ext;
 onlyFirstTP = ip.Results.onlyFirstTP;
+ChannelPatterns = ip.Results.ChannelPatterns;
 
 fprintf('Check partial volume files... ');
 
@@ -48,6 +51,18 @@ else
     fnames = {dir_info.name}';
     datenum = [dir_info.datenum];
     datasize = [dir_info.bytes]';
+    
+    if ~isempty(ChannelPatterns)
+        include_flag = false(numel(fnames), 1);
+        fns = cellfun(@(x) [dataPath, filesep, x], fnames, 'unif', 0);
+        for c = 1 : numel(ChannelPatterns)
+            include_flag = include_flag | contains(fns, ChannelPatterns{c}) | contains(fns, regexpPattern(ChannelPatterns{c}));
+        end
+        fnames = fnames(include_flag);
+        datenum = datenum(include_flag);
+        datasize = datasize(include_flag);
+    end
+    
     if strcmp(ext, '.zarr')
         for f = 1 : numel(fnames)
             bim = blockedImage([dataPath, filesep, fnames{f}], 'Adapter', ZarrAdapter);
