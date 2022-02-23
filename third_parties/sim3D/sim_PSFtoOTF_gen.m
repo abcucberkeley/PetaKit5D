@@ -125,11 +125,13 @@ for jj=1:norientations
     end
     
     %Separate OTF orders by solving the linear system of equations for each pixel
-    for ii=1:nphases
-        for kk=1:nphases
-            O(:,:,:,ii,jj)=O(:,:,:,ii,jj)+inv_sep_matrix(ii,kk)*Dk(:,:,:,kk);
-        end
-    end
+    % for ii=1:nphases
+    %    for kk=1:nphases
+    %         O(:,:,:,ii,jj)=O(:,:,:,ii,jj)+inv_sep_matrix(ii,kk)*Dk(:,:,:,kk);
+    %     end
+    % end
+    O(:, :, :, :, jj) = reshape(reshape(Dk, [], nphases) * inv_sep_matrix.', size(O, 1 : 4));
+
 end
 
 %Normalize OTF's so that 0th order of each orientation has unit energy
