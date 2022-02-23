@@ -92,6 +92,17 @@ else
     O=zeros(ny_PSF,nx_PSF,nz_PSF,norders,norientations);
 end
 
+%['Separating information components']
+%Make the forward separation matrix
+[sep_matrix]=make_forward_separation_matrix(nphases,norders,lattice_period,phase_step);
+
+%Make the inverse separation matrix
+inv_sep_matrix=cast(pinv(sep_matrix),gpuPrecision);
+    
+if useGPU
+    inv_sep_matrix = gpuArray(inv_sep_matrix);
+end
+
 for jj=1:norientations
     
     if useGPU
@@ -111,17 +122,6 @@ for jj=1:norientations
         %ceil((nx+1)/2)... gives zero phase ramp in the OTF.
         Dr_shift(:,:,:,ii)=fourierShift3D(Dr(:,:,:,ii),[ceil((ny_PSF+1)/2)-fitParams(2),ceil((nx_PSF+1)/2)-fitParams(3),ceil((nz_PSF+1)/2)-fitParams(4)],useGPU,gpuPrecision);
         Dk(:,:,:,ii)=fftshift(ifftn(ifftshift(Dr_shift(:,:,:,ii)))).*1/prod(dk_PSF);
-    end
-    
-    %['Separating information components']
-    %Make the forward separation matrix
-    [sep_matrix]=make_forward_separation_matrix(nphases,norders,lattice_period,phase_step);
-    
-    %Make the inverse separation matrix
-    inv_sep_matrix=cast(pinv(sep_matrix),gpuPrecision);
-    
-    if useGPU
-        inv_sep_matrix = gpuArray(inv_sep_matrix);
     end
     
     %Separate OTF orders by solving the linear system of equations for each pixel
