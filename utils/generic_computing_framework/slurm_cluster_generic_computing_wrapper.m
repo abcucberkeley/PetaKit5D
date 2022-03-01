@@ -88,6 +88,8 @@ if parseCluster
 end
 
 loop_counter = 0;
+nF_done = 0;
+ts = tic;
 while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
     if parseCluster
         lastP = find(~is_done_flag & trial_counter < maxTrialNum, 1, 'last');
@@ -298,20 +300,14 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
             end
             fprintf('Done!\n');
         end
-        % toc
-        % for f = fs
-        %     outputFullpath = outputFullpaths{f};            
-        %     if exist(outputFullpath, 'file') || exist(outputFullpath, 'dir')
-        %         is_done_flag(f) = true;
-        %         if ~parseCluster && exist(tmpFullpath, 'file')
-        %             delete(tmpFullpath);
-        %         end
-        %     end
-        % end
     end
     
     if ~all(is_done_flag | trial_counter >= maxTrialNum, 'all') 
         pause(1);
+    end
+    if nF_done < sum(is_done_flag)
+        nF_done = sum(is_done_flag);
+        sprintf('Time %d s: %d / %d (%0.3f) are finished!\n', toc(ts), nF_done, nF, nF_done / nF);
     end
     loop_counter = loop_counter + 1;
 end
