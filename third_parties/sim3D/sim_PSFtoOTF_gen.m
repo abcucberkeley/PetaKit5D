@@ -92,6 +92,17 @@ else
     O=zeros(ny_PSF,nx_PSF,nz_PSF,norders,norientations);
 end
 
+%['Separating information components']
+%Make the forward separation matrix
+[sep_matrix]=make_forward_separation_matrix(nphases,norders,lattice_period,phase_step);
+
+%Make the inverse separation matrix
+inv_sep_matrix=cast(pinv(sep_matrix),gpuPrecision);
+    
+if useGPU
+    inv_sep_matrix = gpuArray(inv_sep_matrix);
+end
+
 for jj=1:norientations
     
     if useGPU
@@ -113,23 +124,14 @@ for jj=1:norientations
         Dk(:,:,:,ii)=fftshift(ifftn(ifftshift(Dr_shift(:,:,:,ii)))).*1/prod(dk_PSF);
     end
     
-    %['Separating information components']
-    %Make the forward separation matrix
-    [sep_matrix]=make_forward_separation_matrix(nphases,norders,lattice_period,phase_step);
-    
-    %Make the inverse separation matrix
-    inv_sep_matrix=cast(pinv(sep_matrix),gpuPrecision);
-    
-    if useGPU
-        inv_sep_matrix = gpuArray(inv_sep_matrix);
-    end
-    
     %Separate OTF orders by solving the linear system of equations for each pixel
-    for ii=1:nphases
-        for kk=1:nphases
-            O(:,:,:,ii,jj)=O(:,:,:,ii,jj)+inv_sep_matrix(ii,kk)*Dk(:,:,:,kk);
-        end
-    end
+    % for ii=1:nphases
+    %    for kk=1:nphases
+    %         O(:,:,:,ii,jj)=O(:,:,:,ii,jj)+inv_sep_matrix(ii,kk)*Dk(:,:,:,kk);
+    %     end
+    % end
+    O(:, :, :, :, jj) = reshape(reshape(Dk, [], nphases) * inv_sep_matrix.', size(O, 1 : 4));
+
 end
 
 %Normalize OTF's so that 0th order of each orientation has unit energy
