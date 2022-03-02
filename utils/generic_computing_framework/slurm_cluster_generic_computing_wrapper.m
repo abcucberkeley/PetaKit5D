@@ -42,6 +42,10 @@ ip.parse(inputFullpaths, outputFullpaths, funcStrs, varargin{:});
 % move to the root path
 paths = split(which('slurm_cluster_generic_computing_wrapper'), 'LLSM3DTools');
 cd(paths{1});
+% use the setup within LLSM3DTools
+if ~exist('setup.m', 'file')
+    cd('LLSM3DTools');
+end
 
 pr = ip.Results;
  % Resolution = pr.Resolution;
