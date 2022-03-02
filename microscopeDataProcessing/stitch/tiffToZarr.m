@@ -26,7 +26,7 @@ ip.addParameter('flipZstack', false, @islogical);
 ip.addParameter('resample', [], @(x) isempty(x) || isnumeric(x));
 ip.addParameter('InputBbox', [], @(x) isnumeric(x));
 ip.addParameter('CropToSize', [], @(x) isempty(x) || isnumeric(x));
-ip.addParameter('readWholeTiff', false, @islogical);
+ip.addParameter('readWholeTiff', true, @islogical);
 ip.addParameter('usrFcn', '', @(x) isempty(x) || isa(x,'function_handle') || ischar(x));
 ip.addParameter('uuid', '', @ischar);
 
