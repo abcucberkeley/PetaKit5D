@@ -1,4 +1,4 @@
-function llsm_setup(codeRt, addPython, pythonPath, addPrivate)
+function setup(codeRt, addPython, pythonPath, addPrivate)
 % automatically load all code repositories to path
 % 
 % Author: Xiongtao Ruan
@@ -41,7 +41,6 @@ if addPython
                 && ~strcmp(fileparts(pe.Executable), dir_info.folder)
             pyenv('Version', pythonPath);
         end
-        % addpath(genpath('../third_parties/blockedDemo'));
 
         % add some components from matlab R2020b for older versions.
         if verLessThan('matlab', '9.9') 
@@ -54,13 +53,6 @@ if addPython
         insert(py.sys.path, int64(0), pymod_path);
         py.importlib.import_module('zarrAPI');
         py.importlib.import_module('daskAPI');
-        % py.importlib.import_module('setZarrData');
-
-        % insert dask functions
-        % pymod_path = [codeRt, '/XiongtaoScripts/stitch/'];
-        % insert(py.sys.path, int64(0), pymod_path);
-        % py.importlib.import_module('daskZarrMaxProjection');
-        % py.importlib.import_module('daskZarrPadArray');
     catch ME
         disp(ME);
     end
