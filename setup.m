@@ -22,7 +22,9 @@ if nargin < 4
     addPrivate = false;
 end
 
-if ~ispc
+if ispc
+    [~, output] = system('hostname');
+else
     [~, output] = system('echo $HOSTNAME');
 end
 fprintf('Hostname: %s \n', strip(output))
