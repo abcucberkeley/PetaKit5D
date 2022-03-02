@@ -22,6 +22,12 @@ SkewAngle = 32.45;
 % scan direction. 
 Reverse = true;
 
+% resolution [xyPixelsize, dz]
+Resolution = [0.108, 0.30];
+
+% check the setting files to see if a tile is flipped (bidirectional scan)
+parseSettingFile = false;
+
 % axis order
 axisOrder = '-x,y,z';
 
@@ -50,9 +56,16 @@ ChannelPatterns = {'CamA_ch0', 'CamB_ch0'};
 % if true, save result as 16bit, if false, save as single
 Save16bit = true;
 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% parameters below are used in special cases or for advanced fine tuning
+
 % resample data, if empty, stitch in original resolution. If a 1X3 array,
 % resample data and then stitch, mostly used for initial inspection
 resample = [];
+
+% resample type: isotropic, xy_isotropic; effective when 'resample' is
+% not set. Keep it as 'isotropic'. 
+resampleType = 'isotropic';
 
 % max allowed shift (in pixel) in xy axes between neighboring tiles in xcorr registration. 
 xyMaxOffset = 150;
@@ -74,14 +87,12 @@ CropToSize = [];
 % chunk size in zarr
 blockSize = [256, 256, 256];
 
-% resolution [xyPixelsize, dz]
-Resolution = [0.108, 0.30];
-
-% check the setting files to see if a tile is flipped (bidirectional scan)
-parseSettingFile = false;
-
 % user defined processing function in tiff to zarr conversion, i.e., flat field correction
 processFunPath = '';
+
+% tile offset: counts add to the image, used when the image background is
+% 0, to differentiate between image background and empty space. 
+TileOffset = 0;
 
 
 %% Step 2: run the stitching with given parameters. 
@@ -93,7 +104,7 @@ tic
 XR_matlab_stitching_wrapper(dataPath, ImageListFullpath, 'useExistDecon', ~true, ...
     'DS', DS, 'DSR', DSR, 'SkewAngle', SkewAngle, 'Reverse', Reverse, 'axisOrder', axisOrder, ...
     'xcorrShift', xcorrShift, 'ChannelPatterns', ChannelPatterns, 'PrimaryCh', PrimaryCh, ...
-    'blockSize', blockSize, 'TileOffset', TileOffset, 'resampleType', 'isotropic', ...
+    'blockSize', blockSize, 'TileOffset', TileOffset, 'resampleType', resampleType, ...
     'resample', resample, 'Resolution', Resolution,'BlendMethod', BlendMethod, ...
     'resultDir', stitchResultDir, 'onlyFirstTP', onlyFirstTP, 'xyMaxOffset', xyMaxOffset, ...
     'zMaxOffset', zMaxOffset, 'xcorrDownsample', xcorrDownsample,  'InputBbox', InputBbox, ...
