@@ -79,6 +79,7 @@ nF = numel(inputFullpaths);
 is_done_flag = false(nF, 1);
 input_exist_mat = batch_file_exist(inputFullpaths);
 outputFullpaths = strip(outputFullpaths, 'right', filesep);
+outputFullpaths = strip(outputFullpaths, 'right', '/');
 output_exist_mat = batch_file_exist(outputFullpaths);
 if all(output_exist_mat)
     is_done_flag = ~is_done_flag;
