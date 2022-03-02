@@ -40,7 +40,7 @@ NOTE: When compiling the mex file yourself. You will need to have libtiff compil
 
 # Windows (Tested using MinGW64 Compiler (C))
 
-mex -v COPTIMFLAGS="-O3 -fwrapv -DNDEBUG" CFLAGS='$CFLAGS -O3 -fopenmp' LDFLAGS='$LDFLAGS -O3 -fopenmp' '-IC:\path\to\libtiff\include' '-LC:\path\to\libtiff\lib\' -ltiffd.lib parallelReadTiff.c
+mex -v COPTIMFLAGS="-O3 -fwrapv -DNDEBUG" CFLAGS='$CFLAGS -O3 -fopenmp' LDFLAGS='$LDFLAGS -O3 -fopenmp' '-IC:\path\to\libtiff\include' '-LC:\path\to\libtiff\lib\' -ltiff.lib parallelReadTiff.c
 
 # Linux (Tested using GCC 8.3.0)
 
