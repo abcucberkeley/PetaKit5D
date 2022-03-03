@@ -25,7 +25,12 @@ if exist(filepath, 'dir')
     rmdir(filepath, 's');
 end
 bim = blockedImage(filepath, sz, blockSize, init_val, "Adapter", ZarrAdapter, 'Mode', 'w');
-bim.Adapter.setData(data);
+% for data greater than 2GB, use multiprocessing
+if ~ispc && prod(sz) * 2 / 1024^3 > 2
+    bim.Adapter.setData(data);
+else
+    bim.Adapter.setRegion([1, 1, 1], bim.Size, data)
+end
 bim.Adapter.close();
 
 if groupWrite

@@ -188,7 +188,7 @@ end
 
 nv_bim = blockedImage(tmpFilename, 'Adapter', ZarrAdapter);
 % for data greater than 2GB, use multiprocessing
-if prod(sz) * 2 / 1024^3 > 2
+if ~ispc && prod(sz) * 2 / 1024^3 > 2
     nv_bim.Adapter.setData(gather(bim));
 else
     nv_bim.Adapter.setRegion([1, 1, 1], bim.Size, gather(bim))
