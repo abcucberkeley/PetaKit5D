@@ -31,6 +31,7 @@ function XR_stitching_frame_zarr_dev_v1(tileFullpaths, coordinates, varargin)
 % xruan (01/25/2022): add support for loading tileFullpaths and coordinates from file.
 % xruan (01/27/2022): change block size to be equal to the median of tile sizes if it
 % is larger, to reduce the workload for each stitching block. 
+% xruan (03/03/2022): fix bug for skewed space stitch coordinate conversion for z coordinate 
 
 
 ip = inputParser;
@@ -419,7 +420,7 @@ end
 
 if ~IOScan && ~DS && ~DSR
     % convert coordinates in DSR space to skewned space
-   xyz = [xyz(:, 3) / sind(SkewAngle), xyz(:, 2), xyz(:, 1) * sind(SkewAngle) + xyz(:, 3) * cosd(SkewAngle)];
+   xyz = [xyz(:, 3) / sin(theta), xyz(:, 2), -xyz(:, 1) * sin(theta) + xyz(:, 3) * cos(theta)];
 end
 
 % identify pairs between pairs
