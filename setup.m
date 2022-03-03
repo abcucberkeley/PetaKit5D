@@ -14,20 +14,26 @@ if nargin < 2
     addPython = false;
 end
 
+if ispc
+    [~, output] = system('hostname');
+else
+    [~, output] = system('echo $HOSTNAME');
+end
+hostname = strip(output);
+
 if nargin < 3 || isempty(pythonPath)
-    pythonPath = '~/anaconda3/bin/python';
+    if ispc
+        pythonPath = sprintf('C:\Users\%s\Anaconda3\python.EXE', hostname);
+    else
+        pythonPath = '~/anaconda3/bin/python';
+    end
 end
 
 if nargin < 4
     addPrivate = false;
 end
 
-if ispc
-    [~, output] = system('hostname');
-else
-    [~, output] = system('echo $HOSTNAME');
-end
-fprintf('Hostname: %s \n', strip(output))
+fprintf('Hostname: %s \n', hostname)
 fprintf('Add matlab libraries to path...\n')
 addpath(genpath([codeRt]));
 
@@ -37,7 +43,8 @@ if addPython
     try
         dir_info = dir(pythonPath);
         pe = pyenv;
-        if ~contains(pe.Executable, 'miniconda3') && ~contains(pe.Executable, 'anaconda3') ...
+        if ~contains(pe.Executable, 'miniconda3', 'IgnoreCase', true) && ...
+                ~contains(pe.Executable, 'anaconda3', 'IgnoreCase', true) ...
                 && ~strcmp(fileparts(pe.Executable), dir_info.folder)
             pyenv('Version', pythonPath);
         end
@@ -46,7 +53,12 @@ if addPython
         if verLessThan('matlab', '9.9') 
             addpath(genpath([codeRt, '/../third_parties/matlab_R2020b']));
         end
-
+        
+        % resolve license issue when using multiprocessing on Windows
+        if ispc
+            py.multiprocessing.spawn.set_executable(pe.Executable)
+        end
+            
         pymod_rel_path = [codeRt, '/microscopeDataProcessing/python/'];
         dir_info = dir(pymod_rel_path);
         pymod_path = dir_info.folder;
