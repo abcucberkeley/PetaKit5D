@@ -691,7 +691,12 @@ block_info_tmp_fullname = sprintf('%s/%s/%s/%s_block_info_%s.mat', dataPath, Res
 block_info_fullname = sprintf('%s/%s/%s/%s_block_info.mat', dataPath, ResultDir, stitchInfoDir, nv_fsname);
 
 % initial stitched block image and save header in the disk
-nv_tmp_fullname = sprintf('%s/%s/%s_nv_%s', dataPath, ResultDir, nv_fsname, uuid);
+if ~ispc
+    nv_tmp_fullname = sprintf('%s/%s/%s_nv_%s', dataPath, ResultDir, nv_fsname, uuid);
+else
+    % for PC, the path length limit is 260, so make it shorter in case of beyond the limit
+    nv_tmp_fullname = sprintf('%s/%s/%s_nv_%s', dataPath, ResultDir, nv_fsname, uuid(1:5));    
+end
 if saveMultires
     mkdir(nv_tmp_fullname);
     py.zarr.open_group(nv_tmp_fullname, pyargs('mode', 'w'));
