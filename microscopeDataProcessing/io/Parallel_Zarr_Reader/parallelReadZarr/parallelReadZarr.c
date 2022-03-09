@@ -63,7 +63,7 @@ struct chunkInfo getChunkInfo(char* folderName, uint64_t startX, uint64_t startY
     cI.numChunks = 0;
     cI.chunkNames = NULL;
 
-    dirp = opendir(folderName); /* There should be error handling after this */
+    dirp = opendir(folderName);
     if(!dirp){
         printf("Failed to open dir\n");
         return cI;
@@ -170,25 +170,22 @@ void parallelReadZarrMex(void* zarr, char* folderName,uint64_t startX, uint64_t 
     fileSepS[1] = '\0';
 
     /* Initialize the Blosc compressor */
-
-    
     int32_t numWorkers = omp_get_max_threads();
     blosc_init();
     blosc_set_nthreads(numWorkers);
-
+    
     struct chunkInfo cI = getChunkInfo(folderName, startX, startY, startZ, endX, endY, endZ,chunkXSize,chunkYSize,chunkZSize);
-    //printf("Num chunks to process: %d\n",cI.numChunks);
-    //mexErrMsgIdAndTxt("zarr:inputError","Testing");
     if(!cI.chunkNames) mexErrMsgIdAndTxt("zarr:inputError","File \"%s\" cannot be opened",folderName);
+    //printf("nWorkers: %d\n",omp_get_max_threads());
+    //mexErrMsgIdAndTxt("zarr:inputError","File \"%s\" cannot be opened",folderName);
+    //printf("numChunks: %d, ChunkSizeX: %d ChunkSizeY: %d ChunkSizeZ: %d \n",cI.numChunks,chunkXSize,chunkYSize,chunkZSize);
+    //mexErrMsgIdAndTxt("zarr:inputError","TESTING");
+    
     int32_t batchSize = (cI.numChunks-1)/numWorkers+1;
     uint64_t s = chunkXSize*chunkYSize*chunkZSize;
     int32_t w;
     int err = 0;
     char errString[10000];
-    /*
-    struct timespec start,end;
-    clock_gettime(CLOCK_REALTIME, &start);
-    */
     #pragma omp parallel for
     for(w = 0; w < numWorkers; w++){
         void* bufferDest = mallocDynamic(s,bits);
@@ -196,19 +193,7 @@ void parallelReadZarrMex(void* zarr, char* folderName,uint64_t startX, uint64_t 
         char *buffer = NULL;
         for(int64_t f = w*batchSize; f < (w+1)*batchSize; f++){
             if(f>=cI.numChunks || err) break;
-            
             struct chunkAxisVals cAV = getChunkAxisVals(cI.chunkNames[f]);
-            /*
-            if((cAV.x+1)*chunkXSize < startX || cAV.x*chunkXSize > endX){
-                continue;
-            }
-            else if((cAV.y+1)*chunkYSize < startY || cAV.y*chunkYSize > endY){
-                continue;
-            }
-            else if((cAV.z+1)*chunkZSize < startZ || cAV.z*chunkZSize > endZ){
-                continue;
-            }
-            */
 
             //malloc +2 for null term and filesep
             char *fileName = malloc(strlen(folderName)+strlen(cI.chunkNames[f])+2);
@@ -218,12 +203,11 @@ void parallelReadZarrMex(void* zarr, char* folderName,uint64_t startX, uint64_t 
             strcat(fileName,cI.chunkNames[f]);
 
             FILE *fileptr = fopen(fileName, "rb");
-            //if(!fileptr) mexErrMsgIdAndTxt("zarr:openError","Could not open file: %d\n",fileName);
             if(!fileptr){
                 #pragma omp critical
                 {
                     err = 1;
-                    sprintf(errString,"Could not open file: %d\n",fileName);
+                    sprintf(errString,"Could not open file: %s\n",fileName);
                 }
                 break;
             }
@@ -258,8 +242,6 @@ void parallelReadZarrMex(void* zarr, char* folderName,uint64_t startX, uint64_t 
                     break;
             }
             
-            //free(buffer);
-            //if (dsize < 0) mexErrMsgIdAndTxt("blosc2:decompressionError","Decompression error. Error code: %d\n",dsize);
             if(dsize < 0){
                 #pragma omp critical
                 {
@@ -268,7 +250,8 @@ void parallelReadZarrMex(void* zarr, char* folderName,uint64_t startX, uint64_t 
                 }
                 break;
             }
-
+            
+            //printf("ChunkName: %s\n",cI.chunkNames[f]);
             //printf("w: %d b: %d\n",w,f);
             for(int64_t x = cAV.x*chunkXSize; x < (cAV.x+1)*chunkXSize; x++){
                 if(x>=endX) break;
@@ -281,16 +264,16 @@ void parallelReadZarrMex(void* zarr, char* folderName,uint64_t startX, uint64_t 
                         else if(z<startZ) continue;
                         switch(bits){
                             case 8:
-                                ((uint8_t*)zarr)[x+(y*shapeX)+(z*shapeX*shapeY)] = ((uint8_t*)bufferDest)[(z%chunkZSize)+((y%chunkYSize)*chunkZSize)+((x%chunkXSize)*chunkZSize*chunkYSize)];
+                                ((uint8_t*)zarr)[(x-startX)+((y-startY)*shapeX)+((z-startZ)*shapeX*shapeY)] = ((uint8_t*)bufferDest)[(z%chunkZSize)+((y%chunkYSize)*chunkZSize)+((x%chunkXSize)*chunkZSize*chunkYSize)];
                                 break;
                             case 16:
-                                ((uint16_t*)zarr)[x+(y*shapeX)+(z*shapeX*shapeY)] = ((uint16_t*)bufferDest)[(z%chunkZSize)+((y%chunkYSize)*chunkZSize)+((x%chunkXSize)*chunkZSize*chunkYSize)];
+                                ((uint16_t*)zarr)[(x-startX)+((y-startY)*shapeX)+((z-startZ)*shapeX*shapeY)] = ((uint16_t*)bufferDest)[(z%chunkZSize)+((y%chunkYSize)*chunkZSize)+((x%chunkXSize)*chunkZSize*chunkYSize)];
                                 break;
                             case 32:
-                                ((float*)zarr)[x+(y*shapeX)+(z*shapeX*shapeY)] = ((float*)bufferDest)[(z%chunkZSize)+((y%chunkYSize)*chunkZSize)+((x%chunkXSize)*chunkZSize*chunkYSize)];
+                                ((float*)zarr)[(x-startX)+((y-startY)*shapeX)+((z-startZ)*shapeX*shapeY)] = ((float*)bufferDest)[(z%chunkZSize)+((y%chunkYSize)*chunkZSize)+((x%chunkXSize)*chunkZSize*chunkYSize)];
                                 break;
                             case 64:
-                                ((double*)zarr)[x+(y*shapeX)+(z*shapeX*shapeY)] = ((double*)bufferDest)[(z%chunkZSize)+((y%chunkYSize)*chunkZSize)+((x%chunkXSize)*chunkZSize*chunkYSize)];
+                                ((double*)zarr)[(x-startX)+((y-startY)*shapeX)+((z-startZ)*shapeX*shapeY)] = ((double*)bufferDest)[(z%chunkZSize)+((y%chunkYSize)*chunkZSize)+((x%chunkXSize)*chunkZSize*chunkYSize)];
                                 break;
                         }
                     }
@@ -300,11 +283,6 @@ void parallelReadZarrMex(void* zarr, char* folderName,uint64_t startX, uint64_t 
         free(bufferDest);
         free(buffer);
     }
-    /*
-    clock_gettime(CLOCK_REALTIME, &end);
-    double f = ((double)end.tv_sec*1e9 + end.tv_nsec) - ((double)start.tv_sec*1e9 + start.tv_nsec);
-    printf("time %f ms\n",f/1000000);
-    */
     #pragma omp parallel for
     for(int i = 0; i < cI.numChunks; i++){
         free(cI.chunkNames[i]);
@@ -363,7 +341,7 @@ void mexFunction(int nlhs, mxArray *plhs[],
     dim[0] = shapeX;
     dim[1] = shapeY;
     dim[2] = shapeZ;
-
+    
     if(dtype[1] == 'u' && dtype[2] == '1'){
         uint64_t bits = 8;
         plhs[0] = mxCreateNumericArray(3,dim,mxUINT8_CLASS, mxREAL);

@@ -216,21 +216,25 @@ elseif parseParfor
         funcStrs, 'maxJobNum', maxJobNum, 'taskBatchNum', taskBatchNum, 'GPUJob', GPUJob, 'uuid', uuid);
 end
 
-% if exist(deconFullpath, 'dir') && exist(deconTmppath, 'dir')
-%     rmdir(deconFullpath, 's');
-% end
-% if exist(deconTmppath, 'dir')
-%     movefile(deconTmppath, deconFullpath);
-% end
-% 
-% % generate MIP z file
-% deconMIPPath = sprintf('%s/MIPs/', deconPath);
-% if ~exist(deconMIPPath, 'dir')
-%     mkdir(deconMIPPath);
-%     fileattrib(deconMIPPath, '+w', 'g');
-% end
-% deconMIPname = sprintf('%s%s_MIP_z.tif', deconMIPPath, fsname);
-% saveMIP_zarr(deconFullpath, deconMIPname);
+if ~all(is_done_flag, 'all')
+    error('The decon of some chunks are missing!');
+end
+
+if exist(deconFullpath, 'dir') && exist(deconTmppath, 'dir')
+    rmdir(deconFullpath, 's');
+end
+if exist(deconTmppath, 'dir')
+    movefile(deconTmppath, deconFullpath);
+end
+
+% generate MIP z file
+deconMIPPath = sprintf('%s/MIPs/', deconPath);
+if ~exist(deconMIPPath, 'dir')
+    mkdir(deconMIPPath);
+    fileattrib(deconMIPPath, '+w', 'g');
+end
+deconMIPname = sprintf('%s%s_MIP_z.tif', deconMIPPath, fsname);
+saveMIP_zarr(deconFullpath, deconMIPname);
 toc
 
 end

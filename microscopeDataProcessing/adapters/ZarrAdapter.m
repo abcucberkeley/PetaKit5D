@@ -83,6 +83,11 @@ classdef ZarrAdapter < images.blocked.Adapter
                 info.IOBlockSize = [info.IOBlockSize, 1];
             end
             
+            if ispc && size(loc) > 200
+                [pth, loc] = fileparts(loc);
+                cd(pth);                    
+            end
+            
             obj.ZarrObj = py.zarr.open(loc,...
                 pyargs('mode', 'w',...
                 'shape', uint32(info.Size),...
