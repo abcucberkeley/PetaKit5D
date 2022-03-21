@@ -70,7 +70,6 @@ end
 Mode = nv_bim.Mode;
 baSubSz = ceil(iSz ./ round((BatchSize .* dsFactor)));
 dtype = nv_bim.ClassUnderlying;
-level = 1;
 
 done_flag = false(numel(batchInds), 1);
 for i = 1 : numel(batchInds)
@@ -93,37 +92,43 @@ for i = 1 : numel(batchInds)
     % load the region in input 
     in_batch = bim.Adapter.getIORegion(ibStart, ibEnd);
     
-    % resize batch
-    out_batch_padded = imresize3(in_batch, round(size(in_batch) ./ dsFactor), Interp);
-    
     % find the coresponding coordinates in the output
-    obStart = ceil((ibStart_orig - 1) ./ dsFactor) + 1;
-    obEnd = ceil(ibEnd_orig ./ dsFactor);
+    obStart = round((ibStart_orig - 1) ./ dsFactor) + 1;
+    obEnd = round(ibEnd_orig ./ dsFactor);
     oBatchSize = obEnd - obStart + 1;
     
     % find the start in out batch
-    baStart = ceil((ibStart_orig - ibStart + 1) ./ dsFactor);
+    baStart = round((ibStart_orig - ibStart) ./ dsFactor) + 1;
     baEnd = baStart + oBatchSize - 1;
+    
+    % handle edge blocks
+    outSize = max(round(size(in_batch) ./ dsFactor), baEnd);
+
+    % resize batch
+    out_batch_padded = imresize3(in_batch, outSize, Interp);
+
     out_batch = out_batch_padded(baStart(1) : baEnd(1), baStart(2) : baEnd(2), baStart(3) : baEnd(3));
     
     % write out_batch (in the future, directly write the whole region)
     % find the block inds in the output file and write each block
-    bSub_s = ceil(obStart ./ oBlockSize);
-    bSub_t = ceil(obEnd ./ oBlockSize);
-    
-    [Y, X, Z] = ndgrid(bSub_s(1) : bSub_t(1), bSub_s(2) : bSub_t(2), bSub_s(3) : bSub_t(3));
-    bSubs = [Y(:), X(:), Z(:)];
-    
-    for j = 1 : size(bSubs)
-        bSub_j = bSubs(j, :);
-        regionStart = (bSub_j-1) .* oBlockSize + 1;
-        blStart = regionStart - obStart + 1;
-        blEnd = min(blStart + oBlockSize - 1, size(out_batch, [1, 2, 3]));
-        out_block = out_batch(blStart(1) : blEnd(1), blStart(2) : blEnd(2), blStart(3) : blEnd(3));
-        out_block = cast(out_block, dtype);
-        writeZarrBlock(nv_bim, bSub_j, out_block, level, Mode)
-    end
-    
+%     bSub_s = ceil(obStart ./ oBlockSize);
+%     bSub_t = ceil(obEnd ./ oBlockSize);
+%     
+%     [Y, X, Z] = ndgrid(bSub_s(1) : bSub_t(1), bSub_s(2) : bSub_t(2), bSub_s(3) : bSub_t(3));
+%     bSubs = [Y(:), X(:), Z(:)];
+%     
+%     for j = 1 : size(bSubs)
+%         bSub_j = bSubs(j, :);
+%         regionStart = (bSub_j-1) .* oBlockSize + 1;
+%         blStart = regionStart - obStart + 1;
+%         blEnd = min(blStart + oBlockSize - 1, size(out_batch, [1, 2, 3]));
+%         out_block = out_batch(blStart(1) : blEnd(1), blStart(2) : blEnd(2), blStart(3) : blEnd(3));
+%         out_block = cast(out_block, dtype);
+%         writeZarrBlock(nv_bim, bSub_j, out_block, level, Mode)
+%     end
+
+    nv_bim.Adapter.setRegion(obStart, obEnd, out_batch);
+
     done_flag(i) = true;
 
     toc;

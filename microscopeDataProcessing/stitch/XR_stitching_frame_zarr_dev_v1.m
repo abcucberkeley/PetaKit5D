@@ -897,7 +897,22 @@ if SaveMIP
         fileattrib(stcMIPPath, '+w', 'g');
     end
     stcMIPname = sprintf('%s%s_MIP_z.tif', stcMIPPath, nv_fsname);
-    saveMIP_zarr(nv_fullname, stcMIPname);
+    % for data greater than 500 GB, use the cluster based MIP. 
+    switch dtype
+        case 'uint8'
+            byte_num = 1;
+        case 'uint16'
+            byte_num = 2;
+        case 'single'
+            byte_num = 4;
+        case 'double'
+            byte_num = 8;
+    end
+    if prod([nys, nxs, nzs]) * byte_num / 2^30 < 500
+        saveMIP_zarr(nv_fullname, stcMIPname);
+    else
+        XR_MIP_zarr(nv_fullname);
+    end
 end
 
 if exist(nv_tmp_fullname, 'dir')  

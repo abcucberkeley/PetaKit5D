@@ -4,7 +4,8 @@ function [job_status] = check_batch_slurm_jobs_status(job_ids, array_ids)
 % 
 %
 % Author: Xiongtao Ruan (02/07/2022)
-
+% 
+% xruan (03/16/2022): if the number of jobs is too large, query in batchs
 
 if nargin < 2
     array_ids = [];
@@ -24,24 +25,37 @@ end
 job_ids = job_ids(valid_inds);
 array_ids = array_ids(valid_inds);
 
-if isempty(array_ids)
-    job_ids_s = arrayfun(@num2str, job_ids(:)', 'unif', 0);
-else
-    job_ids_s = arrayfun(@(x) sprintf('%d_%d', job_ids(x), array_ids(x)), 1 : numel(job_ids), 'unif', 0);
+% use batch query with batch size 5000
+nj = numel(job_ids);
+batchSize = 5000;
+numBatch = ceil(nj / batchSize);
+
+job_ids_s = cell(nj, 1);
+cmdout_cell = cell(numBatch, 1);
+for b = 1 : numBatch 
+    bj = (b - 1) * batchSize + 1: min(b * batchSize, nj);
+
+    if isempty(array_ids(bj))
+        job_ids_sb = arrayfun(@num2str, job_ids(bj)', 'unif', 0);
+    else
+        job_ids_sb = arrayfun(@(x) sprintf('%d_%d', job_ids(x), array_ids(x)), bj, 'unif', 0);
+    end
+    job_ids_s(bj) = job_ids_sb;
+    job_ids_str = strjoin(job_ids_sb, ',');
+    
+    cmd = sprintf('squeue -j %s', job_ids_str);
+
+    [~, cmdout] = system(cmd);
+
+    if contains(cmdout, 'Invalid job id')
+        continue;
+    end
+    cmdout_b = strsplit(strip(cmdout), '\n');
+    cmdout_b(1) = [];
+    cmdout_cell{b} = cmdout_b;
 end
 
-job_ids_str = strjoin(job_ids_s, ',');
-
-cmd = sprintf('squeue -j %s', job_ids_str);
-
-[~, cmdout] = system(cmd);
-
-if contains(cmdout, 'Invalid job id')
-    return;
-end
-
-cmdout_cell = strsplit(strip(cmdout), '\n');
-cmdout_cell(1) = [];
+cmdout_cell = cat(2, cmdout_cell{:});
 tmp = regexp(cmdout_cell, '^[ ]+(\d+_?\d+)[ ]+.* (R|PD|CG|CD|F|PR|S|ST) ', 'tokens');
 
 cnum = cellfun(@(x) numel(x), tmp);

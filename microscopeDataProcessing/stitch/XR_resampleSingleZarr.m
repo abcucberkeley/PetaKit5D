@@ -20,6 +20,7 @@ ip.addParameter('batchSize', [512, 512, 512], @isnumeric); % size to process in 
 ip.addParameter('BorderSize', [5, 5, 5], @isnumeric); % padded boarder for each batch
 ip.addParameter('Interp', 'linear', @(x) any(strcmpi(x, {'cubic', 'linear', 'nearest'})));
 ip.addParameter('parseCluster', true, @islogical);
+ip.addParameter('cpuOnlyNodes', true, @islogical);
 ip.addParameter('uuid', '', @ischar);
 
 ip.parse(zarrFullpath, dsFullpath, dsFactor, varargin{:});
@@ -30,6 +31,7 @@ batchSize = pr.batchSize;
 BorderSize = pr.BorderSize;
 Interp = pr.Interp;
 parseCluster = pr.parseCluster;
+cpuOnlyNodes = pr.cpuOnlyNodes;
 uuid = pr.uuid;
 
 if isempty(uuid)
@@ -61,7 +63,7 @@ dtype = bim.ClassUnderlying;
 sz = bim.Size;
 init_val = zeros(1, dtype);
 
-ds_size = ceil(sz ./ [dsFactor(1), dsFactor(2), dsFactor(3)]);
+ds_size = round(sz ./ [dsFactor(1), dsFactor(2), dsFactor(3)]);
 ds_bim = blockedImage(dsTmppath, ds_size, blockSize, init_val, "Adapter", ZarrAdapter, 'Mode', 'w');
 ds_bim.Adapter.close();
 
@@ -75,12 +77,12 @@ numBatch = prod(bSubSz);
 % process for each block based on all BlockInfo use distributed computing
 fprintf('Process blocks for downsampled data...\n')
 
-zarrFlagPath = sprintf('%s/zarr_flag/%s/', dsPath, dsfsname);
+zarrFlagPath = sprintf('%s/zarr_flag/%s_%s/', dsPath, dsfsname, uuid);
 if ~exist(zarrFlagPath, 'dir')
     mkdir_recursive(zarrFlagPath);
 end
 
-taskSize = 10; % the number of batches a job should process
+taskSize = 5; % the number of batches a job should process
 numTasks = ceil(numBatch / taskSize);
 if parseCluster
     cpusPerTask = 1;
@@ -105,17 +107,19 @@ end
 inputFullpaths = repmat({zarrFullpath}, numTasks, 1);
 
 is_done_flag= slurm_cluster_generic_computing_wrapper(inputFullpaths, outputFullpaths, ...
-    funcStrs, 'cpusPerTask', cpusPerTask, 'parseCluster', parseCluster);
+    funcStrs, 'cpusPerTask', cpusPerTask, 'parseCluster', parseCluster, 'cpuOnlyNodes', cpuOnlyNodes);
 
 if ~all(is_done_flag)
     slurm_cluster_generic_computing_wrapper(inputFullpaths, outputFullpaths, ...
-        funcStrs, 'cpusPerTask', cpusPerTask, 'parseCluster', parseCluster);
+        funcStrs, 'cpusPerTask', cpusPerTask, 'parseCluster', parseCluster, ...
+        'cpuOnlyNodes', cpuOnlyNodes);
 end    
 
 if exist(dsFullpath, 'dir')
     rmdir(dsFullpath, 's');
 end
 movefile(dsTmppath, dsFullpath);
+rmdir(zarrFlagPath, 's');
 
 
 end

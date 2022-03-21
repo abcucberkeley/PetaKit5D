@@ -69,6 +69,7 @@ if isempty(uuid)
 end
 
 [dataPath, ~] = fileparts(inputFullpaths{1});
+[outPath, ~] = fileparts(outputFullpaths{1});
 
 % check if a slurm-based computing cluster exist
 if parseCluster 
@@ -105,7 +106,9 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
         lastP = find(~is_done_flag & trial_counter < maxTrialNum, 1, 'first');
         nB = nF;
     end
-    output_exist_mat(~is_done_flag) = batch_file_exist(outputFullpaths(~is_done_flag));
+    if loop_counter > 0
+        output_exist_mat(~is_done_flag) = batch_file_exist(outputFullpaths(~is_done_flag));
+    end
     
     if parseCluster
         task_ids = rem(1 : nB, 5000);
@@ -118,10 +121,11 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
         fs = (b - 1) * taskBatchNum + 1 : min(b * taskBatchNum, nF);
         task_id = rem(b, 5000);
         
-        % check output exist and job status every 1000 batches
-        if loop_counter > 0 && rem(b, 1000) == 0
+        % check output exist and job status every 10000 batches
+        if loop_counter > 0 && rem(b, 10000) == 0
             output_exist_mat(~is_done_flag) = batch_file_exist(outputFullpaths(~is_done_flag));
-
+            is_done_flag(~is_done_flag) = output_exist_mat(~is_done_flag);
+            
             if parseCluster
                 job_status_mat(~is_done_flag, 2) = job_status_mat(~is_done_flag, 1);
                 job_status_mat(~is_done_flag, 1) = check_batch_slurm_jobs_status(job_ids(~is_done_flag), task_ids(~is_done_flag));
@@ -206,8 +210,10 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
         if ~skip_job_submission && (parseCluster || exist(tmpFullpath, 'file'))
             if parseCluster
                 % kill the first pending job and use master node do the computing.
+                pending_flag = false;
                 if job_status_mat(fs, 1) == 0 && (masterCompute && b == lastP)
                     system(sprintf('scancel %d_%d', job_ids(f), task_id), '-echo');
+                    pending_flag = true;
                     trial_counter(fs) = trial_counter(fs) - 1;
                     job_status_mat(fs, 1) = -1;
                     job_status_mat(fs, 2) = -1;
@@ -247,23 +253,37 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
                             slurm_constraint_str, func_str, func_str);
                     end
                     [status, cmdout] = system(cmd, '-echo');
-                    if (isempty(cmdout) || isempty(regexp(cmdout, 'Submitted batch job (\d+)\n', 'match'))) ...
-                            && strcmpi(language, 'matlab')
-                        fprintf('Unable to run matlab code, save the func str to disk and load it to run\n');
-                        func_str_dir = sprintf('%s/func_strs/', outputDir);
+                    if isempty(cmdout) || isempty(regexp(cmdout, 'Submitted batch job (\d+)\n', 'match'))
+                        fprintf('Unable to run the code, save the func str to disk and load it to run\n');
+                        func_str_dir = sprintf('%s/func_strs/', tmpDir);
                         if ~exist(func_str_dir, 'dir')
                             mkdir(func_str_dir);
                         end
-                        func_str_fn = sprintf('%s/func_str_f%04d_%s_%s.mat', func_str_dir, f, fsnames{f}, uuid);
-                        save('-v7.3', func_str_fn, 'func_str');
                         
-                        matlab_cmd = sprintf('%s;t0_=tic;load(''%s'',''func_str'');func_str,feval(str2func([''@()'',func_str]));toc(t0_)', ...
-                            matlab_setup_str, func_str_fn);
-                        process_cmd = sprintf('%s \\"%s\\"', MatlabLaunchStr, matlab_cmd);
-                        cmd = sprintf(['sbatch --array=%d -o %s -e %s --cpus-per-task=%d %s %s ', ...
-                            '--wrap="echo Matlab command:  \\\"%s\\\"; %s"'], ...
-                            task_id, job_log_fname, job_log_error_fname, cpusPerTask, SlurmParam, ...
-                            slurm_constraint_str, matlab_cmd, process_cmd);
+                        if strcmpi(language, 'matlab')
+                            func_str_fn = sprintf('%s/func_str_f%04d_%s_%s.mat', func_str_dir, f, fsnames{f}, uuid);                            
+                            save('-v7.3', func_str_fn, 'func_str');
+                            
+                            matlab_cmd = sprintf('%s;t0_=tic;load(''%s'',''func_str'');func_str,feval(str2func([''@()'',func_str]));toc(t0_)', ...
+                                matlab_setup_str, func_str_fn);
+                            process_cmd = sprintf('%s \\"%s\\"', MatlabLaunchStr, matlab_cmd);
+                            cmd = sprintf(['sbatch --array=%d -o %s -e %s --cpus-per-task=%d %s %s ', ...
+                                '--wrap="echo Matlab command:  \\\"%s\\\"; %s"'], ...
+                                task_id, job_log_fname, job_log_error_fname, cpusPerTask, SlurmParam, ...
+                                slurm_constraint_str, matlab_cmd, process_cmd);                            
+                        elseif strcmpi(language, 'bash')
+                            func_str_fn = sprintf('%s/func_str_f%04d_%s_%s.sh', func_str_dir, f, fsnames{f}, uuid);     
+                            fid = fopen(func_str_fn, 'w');
+                            % escape '\ ' for writing to the disk
+                            func_str = strrep(func_str, '\ ', '\\ ');
+                            fprintf(fid, func_str);
+                            fclose(fid);
+                            
+                            cmd = sprintf(['sbatch --array=%d -o %s -e %s --cpus-per-task=%d %s %s ', ...
+                                '--wrap="echo $PWD; echo bash command:  \\\"%s\\\"; bash %s"'], ...
+                                task_id, job_log_fname, job_log_error_fname, cpusPerTask, SlurmParam, ...
+                                slurm_constraint_str, func_str_fn, func_str_fn);
+                        end
                         [status, cmdout] = system(cmd, '-echo');
                     end
                     
@@ -271,7 +291,7 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
                     job_id = str2double(job_id{1}{1});
                     job_ids(fs) = job_id;
                     job_status_mat(fs, 1) = 0;
-                    trial_counter(fs) = trial_counter(f) + 1;                                
+                    trial_counter(fs) = trial_counter(fs) + 1;                                
                 end
             else
                 temp_file_info = dir(tmpFullpath);
@@ -290,7 +310,10 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
         if ~parseCluster || (parseCluster && masterCompute && f == lastP)
             fprintf('Process %s with function %s... \n', strjoin(fsnames(fs), ', '), func_str); 
             if parseCluster && loop_counter > 0 && job_status_mat(f, 1) ~= job_status_mat(f, 2)
-                pause(1);
+                % for nonpending killed jobs, wait a bit longer in case of just finished job.
+                if ~pending_flag
+                    pause(3);
+                end
             end
             if strcmpi(language, 'matlab')
                 % tic; feval(str2func(['@()', func_str])); toc;
@@ -303,6 +326,7 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
             elseif strcmpi(language, 'bash')
                 t0=tic; [status, cmdout] = system(func_str, '-echo'); toc(t0)
             end
+            trial_counter(fs) = trial_counter(fs) + 1;
             fprintf('Done!\n');
         end
     end

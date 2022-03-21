@@ -8,6 +8,7 @@ classdef ZarrAdapter < images.blocked.Adapter
     % xruan (11/14/2021): add methods to directly read/write regions for
     % given start and end coordinates, which is much faster than reading
     % block by block
+    % xruan (03/11/2022): change to F order for zarr file
     
     properties (SetAccess = protected, GetAccess = public)
         ZarrObj
@@ -92,6 +93,7 @@ classdef ZarrAdapter < images.blocked.Adapter
                 pyargs('mode', 'w',...
                 'shape', uint32(info.Size),...
                 'chunks', uint32(info.IOBlockSize),...
+                'order', 'F',...
                 'dtype', dtype)); % uint16 hardcoded
             obj.ZarrInfo =  info;
         end

@@ -116,7 +116,7 @@ switch assign_method
         neq = size(max_xcorr_mat, 1);
         max_shift_l = -ones(neq, 1) .* MaxOffset;
         max_shift_u = (cuboid_overlap_ij_mat(:, 4 : 6) - cuboid_overlap_ij_mat(:, 1 : 3)) ./ (px .* [xf, yf, zf]);
-        max_shift_u = min(max_shift_u, MaxOffset);
+        max_shift_u = min(max_shift_u - 1, MaxOffset);
         
         max_allow_shift = [max_shift_l, max_shift_u];
         
@@ -125,7 +125,7 @@ switch assign_method
         neq = size(max_xcorr_mat, 1);
         max_shift_l = -ones(neq, 1) .* MaxOffset;
         max_shift_u = (cuboid_overlap_ij_mat(:, 4 : 6) - cuboid_overlap_ij_mat(:, 1 : 3)) ./ (px .* [xf, yf, zf]);
-        max_shift_u = min(max_shift_u, MaxOffset);
+        max_shift_u = min(max_shift_u - 1, MaxOffset);
         
         max_allow_shift = [max_shift_l, max_shift_u];
         
@@ -134,7 +134,7 @@ switch assign_method
         neq = size(max_xcorr_mat, 1);
         max_shift_l = -ones(neq, 1) .* MaxOffset;
         max_shift_u = (cuboid_overlap_ij_mat(:, 4 : 6) - cuboid_overlap_ij_mat(:, 1 : 3)) ./ (px .* [xf, yf, zf]);
-        max_shift_u = min(max_shift_u, MaxOffset);
+        max_shift_u = min(max_shift_u - 1, MaxOffset);
         
         max_allow_shift = [max_shift_l, max_shift_u];
         
