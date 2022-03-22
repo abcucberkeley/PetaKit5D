@@ -13,6 +13,7 @@ ip.addParameter('nimm', 1.33, @isnumeric);
 ip.addParameter('wvl_em', .605, @isnumeric);
 ip.addParameter('wvl_ext', .560, @isnumeric);
 ip.addParameter('w', 5e-3, @isnumeric); %Wiener coefficient for regularization
+ip.addParameter('wVer', 1, @isnumeric); %Wiener coefficient version
 ip.addParameter('apodize', true, @islogical); %Flag to indicate whether or not to apodize the final data
 
 ip.addParameter('normalize_orientations', false, @islogical); %Flag to indicate whether or not to normalize total intensity for each orientation
@@ -25,6 +26,7 @@ ip.addParameter('norders', 5, @isnumeric);
 ip.addParameter('norientations', 1, @isnumeric);
 ip.addParameter('lattice_period', 1.2021, @isnumeric); %Lattice period in microns - this is the coarsest period
 ip.addParameter('lattice_angle', [pi/2], @isnumeric); %Angle parellel to pattern modulation (assuming horizontal is zero)
+%ip.addParameter('starting_angle', 35, @isnumeric);
 ip.addParameter('phase_step', .232, @isnumeric); %Phase step in microns
 ip.addParameter('pxl_dim_data', [0.11,0.11,0.3*sind(32.4)], @isnumeric); %Voxel dimensions of the image in microns - note, stored as [dy,dx,dz]
 ip.addParameter('pxl_dim_PSF', [0.11,0.11,0.2*sind(32.4)], @isnumeric); %Voxel dimensions of the PSF in microns - note, stored as [dy,dx,dz]
@@ -45,6 +47,7 @@ nimm = pr.nimm;
 wvl_em = pr.wvl_em;
 wvl_ext = pr.wvl_ext;
 w = pr.w;
+wVer = pr.wVer;
 apodize = pr.apodize;
 
 normalize_orientations = pr.normalize_orientations;
@@ -57,6 +60,8 @@ norders = pr.norders;
 norientations = pr.norientations;
 lattice_period = pr.lattice_period;
 lattice_angle = pr.lattice_angle;
+%starting_angle = pr.starting_angle;
+
 phase_step = pr.phase_step;
 pxl_dim_data = pr.pxl_dim_data;
 pxl_dim_PSF = pr.pxl_dim_PSF;
@@ -76,7 +81,7 @@ useGPU = useGPU & gpuDeviceCount > 0;
 [ny_PSF,nx_PSF,nz_PSF,~,~] = size(otf);
 
 if(useGPU)
-    dk_PSF=cast(gpuArray(1./([ny_PSF,nx_PSF,nz_PSF].*pxl_dim_PSF)),gpuPrecision);   
+    dk_PSF=cast(gpuArray(1./([ny_PSF,nx_PSF,nz_PSF].*pxl_dim_PSF)),gpuPrecision);
 else
     dk_PSF=1./([ny_PSF,nx_PSF,nz_PSF].*pxl_dim_PSF);
 end
@@ -139,6 +144,9 @@ clear O
 %tic
 cylmask=cylMask(NA_det,wvl_em,NA_ext,wvl_ext,nimm,norders,ny_data,nx_data,nz_data,dk_data,islattice,useGPU);
 %toc
+sz = size(cylmask);
+sz = sz(1:3);
+
 
 % Notes: right now, this masking is just used when determining the starting
 % phase and modulation depth. There are likely other ways to mask the OTFs (e.g.
@@ -152,8 +160,19 @@ if(useGPU)
 else
     Dk_sep=zeros(ny_data,nx_data,nz_data,norders,norientations);
 end
+
+%['Separating information components']
+%Make the forward separation matrix
+[sep_matrix]=make_forward_separation_matrix(nphases,norders,lattice_period,phase_step);
+
+%Make the inverse separation matrix
+inv_sep_matrix=cast(pinv(sep_matrix),gpuPrecision);
+if(useGPU)
+    inv_sep_matrix = gpuArray(inv_sep_matrix);
+end
+
 for jj=1:norientations
-    
+
     %Separate the images for each phase and generate the separated Dk orders
     if(useGPU)
         Dr = gpuArray(zeros(ny_data,nx_data,nz_data,nphases,gpuPrecision));
@@ -162,11 +181,11 @@ for jj=1:norientations
         Dr = zeros(ny_data,nx_data,nz_data,nphases);
         Dk = zeros(ny_data,nx_data,nz_data,nphases);
     end
-    
+
     if edgeTaper
         [window] = tukwin(Dr(:,:,:,1),edgeTaperVal,useGPU);
     end
-    
+
     for ii=1:nphases
         Dr(:,:,:,ii)=data(:,:,ii+(jj-1)*nphases:nphases*norientations:end);
         if edgeTaper
@@ -177,22 +196,13 @@ for jj=1:norientations
         end
         Dk(:,:,:,ii)=fftshift(ifftn(ifftshift(Dr(:,:,:,ii))))*1/prod(dk_data);
     end
-    
-    %['Separating information components']
-    %Make the forward separation matrix
-    [sep_matrix]=make_forward_separation_matrix(nphases,norders,lattice_period,phase_step);
-    
-    %Make the inverse separation matrix
-    inv_sep_matrix=cast(pinv(sep_matrix),gpuPrecision);
-    if(useGPU)
-        inv_sep_matrix = gpuArray(inv_sep_matrix);
-    end
-    
-    for ii=1:nphases
-        for kk=1:nphases
-            Dk_sep(:,:,:,ii,jj)=Dk_sep(:,:,:,ii,jj)+inv_sep_matrix(ii,kk)*Dk(:,:,:,kk);
-        end
-    end
+
+   % for ii=1:nphases
+    %    for kk=1:norders
+     %       Dk_sep(:,:,:,kk,jj)=Dk_sep(:,:,:,kk,jj)+inv_sep_matrix(kk,ii)*Dk(:,:,:,ii);
+      %  end
+    %end
+    Dk_sep(:, :, :, :, jj) = reshape(reshape(Dk, [], nphases) * inv_sep_matrix.', size(Dk_sep, 1 : 4));
 end
 clear Dk
 clear Dr
@@ -204,28 +214,37 @@ clear data
 %disp("correct shift vector and starting lateral phase for each and scale shifted copies (fourierShift3D/cylmask/MaskedTranslationRegistration2D_fit)")
 %tic
 
+%starting_angle=35;
+p_vec_guess = zeros(floor(norders/2), 3, norientations);
+B_TLS = zeros(floor(norders/2), norientations);
+B_PLS = zeros(floor(norders/2), norientations);
+
 for jj=1:norientations
+    %lattice_angle = [-pi/2+(starting_angle+(jj-1)*180/norientations)*pi/180];
     for kk=1:floor(norders/2) %Only consider negative orders - positive orders a just the complex conjugate and opposite direction
         transform_tot=[0,0,0];
         order=(kk-ceil(norders/2)); %m'th order information component
         k_shift_scaling = 1/lattice_period./dk_data; %Convert pattern frequency into k-space pixel units
-        
+
         %Estimated shift vector
+        % REPLACE WITH
+        % p_vec_guess(kk,:,jj)=order*k_shift_scaling.*[sin(lattice_angle),cos(lattice_angle),0];
+        % when adding starting angle
         p_vec_guess(kk,:,jj)=order*k_shift_scaling.*[sin(lattice_angle(jj)),cos(lattice_angle(jj)),0];
-        
+
         for qq=1:2
             %Shift image frequency information - D˜m(k+mp)
             shift_Dk_sep=fourierShift3D(Dk_sep(:,:,:,kk,jj),p_vec_guess(kk,:,jj),useGPU,gpuPrecision);
-            
+
             %Shift transfer function - O_m(k+mp)
             shift_Om=fourierShift3D(O_scaled(:,:,:,kk,jj),p_vec_guess(kk,:,jj),useGPU,gpuPrecision);
-            
+
             %Shift mask - we use imtranslate here because for small images,
             %fourier shifting can wrap around the image
             % cylmask_shift=imtranslate_function(double(cylmask(:,:,:,kk)),[p_vec_guess(kk,2,jj),p_vec_guess(kk,1,jj),p_vec_guess(kk,3,jj)],'FillValues',0);
             % cylmask_shift_0=abs(cylmask_shift)>.5; %Get rid of non-logical values due to interpolation
-            
-            sz = size(cylmask, [1, 2, 3]);
+
+            %sz = size(cylmask, [1, 2, 3]);
             cylmask_shift = false(sz);
             shift = round([p_vec_guess(kk,1,jj),p_vec_guess(kk,2,jj),p_vec_guess(kk,3,jj)]);
             so = max(1, 1 - shift);
@@ -233,17 +252,17 @@ for jj=1:norientations
             sn = max(1, shift + 1);
             tn = min(sz, sz + shift);
             cylmask_shift(sn(1) : tn(1), sn(2) : tn(2), sn(3) : tn(3)) = cylmask(so(1) : to(1), so(2) : to(2), so(3) : to(3), kk);
-            
+
             %Overlap mask with the zero-information component
             overlap_mask= cylmask(:,:,:,3)&cylmask_shift;
-            
-            
+
+
             % Next, scale the shifted copies by either the shifted or non-shifted OTF as
             % per equations 9* and 9**.
-            
+
             DmO0=shift_Dk_sep.*O_scaled(:,:,:,ceil(norders/2),jj); %D˜m(k+mp)O_0(k) - eqn (9*)
             D0Om=Dk_sep(:,:,:,ceil(norders/2),jj).*shift_Om; %D˜0(k)O_m(k+mp) - eqn (9**)
-            
+
             %Right now, we only do 1 round of shift vector refinement. In
             %practice, we could iterate.
             if qq==1
@@ -255,26 +274,26 @@ for jj=1:norientations
                 %maxC;
             end
         end
-        
+
         %['lattice period estimate from order ', num2str(order), ' = ', num2str(abs(order)/norm(p_vec_guess(kk,:).*dk_data)), ' microns'];
         %['lattice angle estimate from order ', num2str(order), ' = ', num2str(acosd(p_vec_guess(kk,2)/p_vec_guess(kk,1))),' degrees'];
-        
+
         %B is a complex scale factor that incorporates both the difference in
         %modulation depth and starting phase from when the OTF and data are
         %acquired.
         ai=D0Om(overlap_mask(:));
         bi=DmO0(overlap_mask(:));
-        
+
         B_TLS(kk,jj) = tls(ai,bi,useGPU); %Total least squares regression on two complex vectors
         B_PLS(kk,jj) = sum(conj(ai).*bi)/sum(abs(ai).^2); %Partial least squares regression on the two complex vectors
     end
-    
+
     %Positive order shifts are just the opposite of negative order shifts and
     %zero order is 0
     p_vec_guess(ceil(norders/2),:,jj)=0;
     B_TLS(ceil(norders/2),jj)=1+1i*0;
     B_PLS(ceil(norders/2),jj)=1+1i*0;
-    
+
     p_vec_guess(ceil(norders/2)+1:norders,:,jj)=-p_vec_guess(floor(norders/2):-1:1,:,jj);
     B_TLS(ceil(norders/2)+1:norders,jj)=conj(B_TLS(floor(norders/2):-1:1,jj));
     B_PLS(ceil(norders/2)+1:norders,jj)=conj(B_PLS(floor(norders/2):-1:1,jj));
@@ -310,13 +329,14 @@ end
 %Assemble denominator of Weiner filter - this will then be shifted opposite to the p-vector direction to
 %normalize each of the separated information components prior to shifting
 %to their true locations in k-space
-
-for qq=1:norientations
-    for kk=1:norders
-        big_Ospace=padarray(O_scaled(:,:,:,kk,qq).*B_PLS(kk,qq),padrange,'both');
-        p_vec_shift=p_vec_guess(kk,:,qq);
-        shift_O=fourierShift3D(big_Ospace,p_vec_shift,useGPU,gpuPrecision);
-        denom=denom+abs(shift_O).^2;
+if wVer == 0 || wVer == 2
+    for qq=1:norientations
+        for kk=1:norders
+            big_Ospace=padarray(O_scaled(:,:,:,kk,qq).*B_PLS(kk,qq),padrange,'both');
+            p_vec_shift=p_vec_guess(kk,:,qq);
+            shift_O=fourierShift3D(big_Ospace,p_vec_shift,useGPU,gpuPrecision);
+            denom=denom+abs(shift_O).^2;
+        end
     end
 end
 
@@ -329,9 +349,16 @@ clear shift_O
 %tic
 for jj=1:norientations
     for ii=1:norders
-        shift_denom=imtranslate_function(denom,-[p_vec_guess(ii,2,jj),p_vec_guess(ii,1,jj),p_vec_guess(ii,3,jj)]);
         numerator=padarray((Dk_sep(:,:,:,ii,jj).*conj(O_scaled(:,:,:,ii,jj).*B_PLS(ii,jj))),padrange,'both');
-        Dk_sep_scaled(:,:,:,ii,jj)=numerator./(shift_denom+w^2);
+        if wVer == 0
+            shift_denom=imtranslate_function(denom,-[p_vec_guess(ii,2,jj),p_vec_guess(ii,1,jj),p_vec_guess(ii,3,jj)]);
+            Dk_sep_scaled(:,:,:,ii,jj)=numerator./(shift_denom+w^2);
+        elseif wVer == 1
+             Dk_sep_scaled(:,:,:,ii,jj)=numerator./(abs(padarray(O_scaled(:,:,:,ii,jj).*B_PLS(ii,jj),padrange,'both')).^2+w^2);
+        elseif wVer == 2
+            Dk_sep_scaled(:,:,:,ii,jj)=numerator;
+        end
+        
     end
 end
 clear O_scaled
@@ -365,10 +392,15 @@ end
 for jj=1:norientations
     %Assemble final dataset
     for ii=1:norders
-        big_kspace_shifted=fourierShift3D(Dk_sep_scaled(:,:,:,ii,jj),p_vec_guess(ii,:,jj),useGPU,gpuPrecision);
-        Data_k_space=Data_k_space+big_kspace_shifted;
-        clear big_kspace_shifted
+        Data_k_space=Data_k_space + fourierShift3D(Dk_sep_scaled(:,:,:,ii,jj),p_vec_guess(ii,:,jj),useGPU,gpuPrecision);
+        %big_kspace_shifted=fourierShift3D(Dk_sep_scaled(:,:,:,ii,jj),p_vec_guess(ii,:,jj),useGPU,gpuPrecision);
+        %Data_k_space=Data_k_space+big_kspace_shifted;
+        %clear big_kspace_shifted
     end
+end
+
+if wVer == 2
+    Data_k_space = Data_k_space./(denom+w^2);
 end
 
 clear Dk_sep_scaled
