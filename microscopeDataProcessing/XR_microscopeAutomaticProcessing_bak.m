@@ -113,7 +113,6 @@ function [] = XR_microscopeAutomaticProcessing(dataPaths, varargin)
 % xruan (07/27/2021): add support for z-stage scan for Deskew
 % xruan (09/13/2021): add support for calcualating actual dz from encoder positions
 % xruan (10/21/2021): add support for zarr file as input
-% xruan (01/25/2022): add support for bbox crop before processing
 
 
 
@@ -135,8 +134,6 @@ ip.addParameter('Save16bit', [false, false, false, false], @(x) (numel(x) == 1 |
 ip.addParameter('onlyFirstTP', false, @islogical);
 ip.addParameter('dzFromEncoder', false, @islogical);
 ip.addParameter('zarrFile', false, @islogical); % use zarr file as input
-ip.addParameter('saveZarr', false, @islogical); % use zarr file as output
-ip.addParameter('save3DStack', true , @islogical); % option to save 3D stack or not
 % pipeline steps
 ip.addParameter('Deskew', true, @islogical);
 ip.addParameter('Rotate', true, @islogical);
@@ -155,23 +152,19 @@ ip.addParameter('LSImagePaths', {'','',''}, @iscell);
 ip.addParameter('BackgroundPaths', {'','',''}, @iscell);
 ip.addParameter('resampleType', 'isotropic', @ischar); % resample type: given, isotropic, xy_isotropic
 ip.addParameter('resample', [], @isnumeric); % resample
-ip.addParameter('InputBbox', [], @isnumeric); % bbox for input in deskew and rotate
 % stitch parameters
 ip.addParameter('stitchPipeline', 'matlab', @ischar); % matlab or zarr
 ip.addParameter('stitchResultDir', '', @ischar);
 ip.addParameter('imageListFullpaths', '', @(x) ischar(x) || iscell(x));
 ip.addParameter('axisOrder', 'xyz', @(x) ischar(x));
-ip.addParameter('BlendMethod', 'none', @ischar);
+ip.addParameter('BlendMethod', 'none', @isstr);
 ip.addParameter('xcorrShift', false, @islogical);
 ip.addParameter('xcorrMode', 'primaryFirst', @(x) strcmpi(x, 'primary') || strcmpi(x, 'primaryFirst') || strcmpi(x, 'all')); % 'primary': choose one channel as primary channel, 
 ip.addParameter('xyMaxOffset', 300, @isnumeric); % max offsets in xy axes
 ip.addParameter('zMaxOffset', 50, @isnumeric); % max offsets in z axis
 ip.addParameter('timepoints', [], @isnumeric); % stitch for given time points
 ip.addParameter('boundboxCrop', [], @(x) isnumeric(x) && (isempty(x) || all(size(x) == [3, 2]) || numel(x) == 6));
-ip.addParameter('primaryCh', '', @ischar);
-ip.addParameter('stitch2D', [], @(x) islogical(x) && (numel(x) == 1 || numel(x) == 3)); % 1x3 vector or vector, byt default, stitch MIP-z
-ip.addParameter('onlineStitch', false, @(x) islogical(x)); % support for online stitch (with partial number of tiles). 
-ip.addParameter('generateImageList', '', @(x) ischar(x)); % for real time processing, {'', 'from_encoder', 'from_sqlite'}
+ip.addParameter('primaryCh', '', @isstr);
 % decon parameters
 ip.addParameter('cudaDecon', false, @islogical);
 ip.addParameter('cppDecon', ~false, @islogical);
@@ -197,23 +190,23 @@ ip.addParameter('GPUJob', false, @islogical); % use gpu for chuck deconvolution.
 % job related parameters
 ip.addParameter('largeFile', false, @islogical);
 ip.addParameter('parseCluster', true, @islogical);
-ip.addParameter('jobLogDir', '../job_logs', @ischar);
+ip.addParameter('jobLogDir', '../job_logs', @isstr);
 ip.addParameter('cpusPerTask', 2, @isnumeric);
 ip.addParameter('cpuOnlyNodes', true, @islogical);
-ip.addParameter('uuid', '', @ischar);
+ip.addParameter('uuid', '', @isstr);
 ip.addParameter('maxTrialNum', 3, @isnumeric);
 ip.addParameter('unitWaitTime', 1, @isnumeric);
 ip.addParameter('minModifyTime', 1, @isnumeric); % the minimum during of last modify time of a file, in minute.
 ip.addParameter('maxModifyTime', 10, @isnumeric); % the maximum during of last modify time of a file, in minute.
 ip.addParameter('maxWaitLoopNum', 10, @isnumeric); % the max number of loops the loop waits with all existing files processed. 
-ip.addParameter('MatlabLaunchStr', 'module load matlab/r2021a; matlab -nodisplay -nosplash -nodesktop -nojvm -r', @ischar);
+ip.addParameter('MatlabLaunchStr', 'module load matlab/r2020b; matlab -nodisplay -nosplash -nodesktop -nojvm -r', @ischar);
 ip.addParameter('SlurmParam', '-p abc --qos abc_normal -n1 --mem-per-cpu=21418M', @ischar);
 
 ip.parse(dataPaths, varargin{:});
 
 % make sure the function is in the root of XR_Repository. 
 mpath = fileparts(which(mfilename));
-repo_rt = [mpath, '/../'];
+repo_rt = [mpath, '/../../'];
 cd(repo_rt);
 
 pr = ip.Results;
@@ -232,7 +225,6 @@ resampleType = pr.resampleType;
 resample = pr.resample;
 dzFromEncoder = pr.dzFromEncoder;
 zarrFile = pr.zarrFile;
-save3DStack = pr.save3DStack; % only for DS and DSR for now
 %deskew and rotate
 Deskew = pr.Deskew;
 Rotate = pr.Rotate;
@@ -245,7 +237,6 @@ LowerLimit = pr.LowerLimit;
 constOffset = pr.constOffset;
 LSImagePaths = pr.LSImagePaths;
 BackgroundPaths = pr.BackgroundPaths;
-InputBbox = pr.InputBbox;
 % stitch parameters
 Stitch = pr.Stitch;
 stitchPipeline = pr.stitchPipeline;
@@ -261,9 +252,6 @@ boundboxCrop = pr.boundboxCrop;
 onlyFirstTP = pr.onlyFirstTP;
 timepoints = pr.timepoints;
 primaryCh = pr.primaryCh;
-stitch2D = pr.stitch2D;
-onlineStitch = pr.onlineStitch;
-generateImageList = pr.generateImageList;
 % decon parameters
 Decon = pr.Decon;
 cppDecon = pr.cppDecon;
@@ -322,16 +310,6 @@ for d = 1 : nd
         dataPaths{d} = [dataPath, '/'];
     end
 end
-% add support for predefined folders for real time processing
-if Streaming
-    for d = 1 : nd
-        dataPath = dataPaths{d};
-        if ~exist(dataPath, 'dir')
-            mkdir(dataPath);
-            fileattrib(dataPath, '+w', 'g');
-        end
-    end
-end
 
 % change separator backslash to slash
 if ispc
@@ -353,17 +331,15 @@ end
 % For multiple datasets, if the image list is not provide for any dataset,
 % set Stitch as false. 
 if Stitch
-    if ~Streaming
-        if numel(imageListFullpaths) ~= nd
-            warning("The number of image list files does not match that of the data paths, please make sure image list files are provided for each dataset!")
-            Stitch = false;
-        else
-            for d = 1 : nd
-                if ~exist(imageListFullpaths{d}, 'file')
-                    warning('Image list filename %s does not exist, set Stitch option as False', imageListFullpaths{d});
-                    Stitch = false;
-                    break;
-                end
+    if numel(imageListFullpaths) ~= nd
+        warning("The number of image list files does not match that of the data paths, please make sure image list files are provided for each dataset!")
+        Stitch = false;
+    else
+        for d = 1 : nd
+            if ~exist(imageListFullpaths{d}, 'file')
+                warning('Image list filename %s does not exist, set Stitch option as False', imageListFullpaths{d});
+                Stitch = false;
+                break;
             end
         end
     end
@@ -625,7 +601,7 @@ matlab_setup_str = 'setup([],true)';
 
 % use while loop to perform computing for all images
 while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all') || ...
-        (Streaming && (nF == 0 || any(latest_modify_times < maxModifyTime) || waitLoopCounter < maxWaitLoopNum))
+        (Streaming && (nF == 0 || latest_modify_time < maxModifyTime || waitLoopCounter < maxWaitLoopNum))
     for f = 1 : nF
         tic
         if all(is_done_flag(f, :))
@@ -700,12 +676,11 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all') || ...
                 '''ObjectiveScan'',%s,''ZstageScan'',%s,''Reverse'',%s,''LLFFCorrection'',%s,', ...
                 '''BKRemoval'',%s,''LowerLimit'',%.20d,''constOffset'',[%s],''LSImage'',''%s'',', ...
                 '''BackgroundImage'',''%s'',''Rotate'',%s,''resample'',[%s],''DSRCombined'',%s,', ...
-                '''InputBbox'',%s,''flipZstack'',%s,''Save16bit'',%s,''save3DStack'',%s)'], ...
-                ds_input_str, xyPixelSize, dz_f, SkewAngle, string(ObjectiveScan), string(ZstageScan), ...
-                string(Reverse),  string(LLFFCorrection), string(BKRemoval), LowerLimit, ...
-                num2str(constOffset, '%0.10f'),  LSImage, BackgroundImage, string(Rotate), ...
-                strrep(num2str(resample, '%d,'), ' ', ''),  string(DSRCombined), strrep(mat2str(InputBbox), ' ', ','), ...
-                string(flipZstack), string(Save16bit(1)), string(save3DStack));
+                '''flipZstack'',%s,''Save16bit'',%s)'], ds_input_str, xyPixelSize, dz_f, SkewAngle, ...
+                string(ObjectiveScan), string(ZstageScan),  string(Reverse), string(LLFFCorrection), ...
+                string(BKRemoval), LowerLimit, num2str(constOffset, '%0.10f'), LSImage, BackgroundImage, ...
+                string(Rotate), strrep(num2str(resample, '%d,'), ' ', ''), string(DSRCombined), ...
+                string(flipZstack), string(Save16bit(1)));
             
             if exist(tmpFullpath, 'file') || parseCluster
                 if parseCluster
@@ -772,36 +747,22 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all') || ...
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
         %% then stitching
         if Stitch
-            if is_done_flag(f, 2)
-                continue;
-            end
             stchPath = stchPaths{fdind};
             % dir_info = dir(sprintf('%s/%s*Abs.tif', stchPath, fname(regexp(fname, 'Scan.*') : end - 43)));
             switch stitchPipeline
                 case 'zarr'
-                    stch_dir_info = dir(sprintf('%s/%s*Abs.zarr', stchPath, fname(1 : end - 43)));                                                   
+                    dir_info = dir(sprintf('%s/%s*Abs.zarr', stchPath, fname(1 : end - 43)));                                                   
                 case 'tiff'
-                    stch_dir_info = dir(sprintf('%s/%s*Abs.tif', stchPath, fname(1 : end - 43)));                                
+                    dir_info = dir(sprintf('%s/%s*Abs.tif', stchPath, fname(1 : end - 43)));                                
             end
-            if ~isempty(stch_dir_info) 
-                stch_fname = stch_dir_info(1).name;
+            if ~isempty(dir_info) 
+                stch_fname = dir_info(1).name;
                 stchFullpath = [stchPath, stch_fname];
                 stchTmpFullpath = sprintf('%s.tmp', stchFullpath(1 : end - 4));
                 if exist(stchFullpath, 'file') || (strcmp(stitchPipeline, 'zarr') && exist(stchFullpath, 'dir'))
                     is_done_flag(f, 2) = true;
                     if exist(stchTmpFullpath, 'file')
                         delete(stchTmpFullpath);
-                    end
-                end
-            end
-            if Streaming && ~isempty(generateImageList) 
-                stitch_flags_d = is_done_flag(:, 2) == 0 & fdinds == fdind;
-                if any(stitch_flags_d) && (f == find(stitch_flags_d, 1, 'first'))
-                    switch generateImageList
-                        case 'from_encoder'
-                            imageListFullpaths{fdind} = stitch_generate_imagelist_from_encoder(dataPath, dz_f);
-                        case 'from_sqlite'
-                            imageListFullpaths{fdind} = stitch_generate_imagelist_from_sqlite(dataPath);                        
                     end
                 end
             end
@@ -833,13 +794,12 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all') || ...
                 '''parseSettingFile'',%s,''xcorrShift'',%s,''xcorrMode'',''%s'',''xyMaxOffset'',%.10f,', ...
                 '''zMaxOffset'',%.10f,''BlendMethod'',''%s'',''zNormalize'',%s,''onlyFirstTP'',%s,', ...
                 '''timepoints'',[%s],''boundboxCrop'',[%s],''Save16bit'',%s,''primaryCh'',''%s'',', ...
-                '''stitch2D'',%s,''onlineStitch'',%s,''pipeline'',''%s'')'], dataPath, imageListFullpath, ...
-                stitchResultDir, string(Streaming), string(stitch_DS), string(stitch_DSR), ChannelPatterns_str, ...
-                string(useExistDSR), axisOrder, resampleType, strrep(num2str(resample, '%.10d,'), ' ', ''), ...
-                string(Reverse), string(parseSettingFile), string(xcorrShift), xcorrMode, xyMaxOffset, ...
-                zMaxOffset, BlendMethod, string(zNormalize), string(onlyFirstTP), strrep(num2str(timepoints, '%d,'), ' ', ''), ...
-                strrep(num2str(bbox, '%d,'), ' ', ''), string(Save16bit(2)), primaryCh, ...
-                strrep(mat2str(stitch2D), ' ', ','), string(onlineStitch), stitchPipeline);
+                '''pipeline'',''%s'')'], dataPath, imageListFullpath, stitchResultDir, string(Streaming), ...
+                string(stitch_DS), string(stitch_DSR), ChannelPatterns_str, string(useExistDSR), axisOrder, ...
+                resampleType, strrep(num2str(resample, '%.10d,'), ' ', ''), string(Reverse), ...
+                string(parseSettingFile), string(xcorrShift), xcorrMode, xyMaxOffset, zMaxOffset, BlendMethod, ...
+                string(zNormalize), string(onlyFirstTP), strrep(num2str(timepoints, '%d,'), ' ', ''), ...
+                strrep(num2str(bbox, '%d,'), ' ', ''), string(Save16bit(2)), primaryCh, stitchPipeline);
 
             if parseCluster
                 dfirst_ind = find(fdinds == fdind, 1, 'first');
@@ -871,7 +831,7 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all') || ...
                 tic; feval(str2func(['@()', func_str])); toc;
             end
             
-            if ~isempty(stch_dir_info) && exist(stchFullpath, 'file')
+            if exist('stchFullpath', 'var') && exist(stchFullpath, 'file')
                 is_done_flag(f, 2) = true;
                 if exist(stchTmpFullpath, 'file')
                     delete(stchTmpFullpath);
@@ -1206,43 +1166,78 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all') || ...
     end
         
     % check whether there are new coming images (only for streaming option)
-    [fnames_new, fdinds_new, gfnames_new, partialvols_new, dataSizes_new, flipZstack_mat_new, latest_modify_times_new, FTP_inds_new, maskFullpaths_new] = ...
-    XR_parseImageFilenames(dataPaths, ChannelPatterns, parseSettingFile, flipZstack, Decon, deconPaths, Streaming, minModifyTime, zarrFile);
-    if isempty(fnames_new)
+    cur_fnames_cell = cell(nd, 1);
+    for d = 1 : nd
+        dataPath = dataPaths{d};
+        dir_info = dir([dataPath, '*.tif']);
+        fnames_d = {dir_info.name}';
+        
+        last_modify_time = (datenum(clock) - [dir_info.datenum]) * 24 * 60;
+        latest_modify_time = min(last_modify_time);
+
+        % only check the modify time of the latest file
+        inds = cellfun(@(x) ~any(contains(fnames_d, x)), fnames(fdinds == d));
+        if latest_modify_time < minModifyTime
+            inds = inds & (last_modify_time' ~= latest_modify_time);
+        end
+        cur_fnames_cell{d} = fnames_d(inds);
+    end
+
+    cur_fdinds = arrayfun(@(x) ones(numel(cur_fnames_cell{x}), 1) * x, 1 : nd, 'unif', 0);    
+    cur_fnames = cat(1, cur_fnames_cell{:});
+    cur_fdinds = cat(1, cur_fdinds{:});
+    if isempty(cur_fnames)
         continue;
     end
-    
-    new_inds = cellfun(@(x) ~any(contains(fnames, x)), fnames_new);
-    if ~any(new_inds)
-        continue;
+
+    % filter filenames by channel patterns
+    include_flag = false(numel(cur_fnames), 1);
+    for c = 1 : numel(ChannelPatterns)
+        include_flag = include_flag | contains(cur_fnames, ChannelPatterns{c});
     end
-    
-    % add new files and their computing flags
-    cur_fnames = fnames_new(new_inds);
-    cur_fdinds = fdinds_new(new_inds);
-    cur_gfnames = gfnames_new(new_inds);
-    cur_partialvols = partialvols_new(new_inds);
-    cur_dataSizes = dataSizes_new(new_inds);
-    cur_flipZstack_mat = flipZstack_mat_new(new_inds);
+    cur_fnames = cur_fnames(include_flag);
+    cur_fdinds = cur_fdinds(include_flag);
        
+    % add new files and their computing flags
     nFnew = numel(cur_fnames);
-    fnames(end + 1 : end + nFnew) = cur_fnames;
-    fdinds = cat(1, fdinds, cur_fdinds);
-    partialvols = cat(1, partialvols, cur_partialvols);
-    gfnames(end + 1 : end + nFnew) = cur_gfnames;
-    flipZstack_mat = cat(1, flipZstack_mat(:), cur_flipZstack_mat(:));
-    FTP_inds = FTP_inds_new;
-    maskFullpaths = maskFullpaths_new;
+    newfnames = cur_fnames;
+    fnames(end + 1 : end + nFnew) = newfnames;
+    fdinds = [fdinds; cur_fdinds];
     
-    latest_modify_times = max(latest_modify_times, latest_modify_times_new);
-    
+    % For ErodeByFTP, if the folder is empty before, reassign first time
+    % point if there are new coming files.
+    if Decon && ErodeByFTP
+        for d = 1 : nd
+            if ~isempty(maskFullpaths{d})
+                continue;
+            end
+            c = 1;
+            FTPfname = '';
+            while isempty(FTPfname) && numel(cur_fnames_cell{d}) > 0
+                all_inds = contains(cur_fnames_cell{d}, ChannelPatterns{c});
+                FTPfname = cur_fnames_cell{d}{find(all_inds, 1, 'first')};
+
+                c = c + 1;
+            end
+            if ~isempty(FTPfname)
+                ind_d = find(strcmp(fnames, FTPfname));
+                FTP_inds(d) = ind_d;
+                maskFullpaths{d} = sprintf('%s/Masks/%s_eroded.tif', deconPaths{d}, FTPfname(1 : end - 4));
+            end
+        end    
+    end
+
+    % [fnames, fdinds, gfnames, partialvols, dataSizes, flipZstack_mat, FTP_inds, maskFullpaths] = ...
+    %     XR_parseImageFilenames(dataPaths, ChannelPatterns, flipZstack, Decon, Streaming);
+
     nF = numel(fnames);
-    is_done_flag = cat(1, is_done_flag, false(nFnew, 4));
-    trial_counter = cat(1, trial_counter, zeros(nFnew, 4));
+    is_done_flag = [is_done_flag; false(nFnew, 4)];
+    trial_counter = [trial_counter; zeros(nFnew, 4)];
     
+
     if parseCluster
-        job_ids = cat(1, job_ids, -ones(nFnew, 4));
-        dataSize_mat = cat(1, dataSize_mat, [cur_dataSizes, zeros(nFnew, 1)]);
+        job_ids = [job_ids;  -ones(nFnew, 4)];
+        imSize_mat = cat(1, imSize_mat, zeros(nFnew, 3, 2));
     end
 end
 

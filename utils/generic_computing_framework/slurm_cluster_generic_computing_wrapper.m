@@ -71,6 +71,7 @@ end
 [dataPath, ~] = fileparts(inputFullpaths{1});
 [outPath, ~] = fileparts(outputFullpaths{1});
 
+
 % check if a slurm-based computing cluster exist
 if parseCluster 
     [parseCluster, job_log_fname, job_log_error_fname, slurm_constraint_str] = checkSlurmCluster(dataPath, jobLogDir, cpuOnlyNodes);
@@ -98,7 +99,7 @@ nF_done = 0;
 ts = tic;
 while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
     if parseCluster
-        lastP = find(~is_done_flag & trial_counter < maxTrialNum, 1, 'last');
+        lastP = find(~is_done_flag & trial_counter < maxTrialNum & job_status_mat(:, 1) < 1, 1, 'last');
         nB = ceil(nF / taskBatchNum);
     else
         % For no cluster computing, choose the first unfinished one, to avoid 
@@ -256,6 +257,9 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
                     if isempty(cmdout) || isempty(regexp(cmdout, 'Submitted batch job (\d+)\n', 'match'))
                         fprintf('Unable to run the code, save the func str to disk and load it to run\n');
                         func_str_dir = sprintf('%s/func_strs/', tmpDir);
+                        if isempty(tmpDir)
+                            func_str_dir = sprintf('%s/func_strs/', outPath);
+                        end
                         if ~exist(func_str_dir, 'dir')
                             mkdir(func_str_dir);
                         end
@@ -312,7 +316,7 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
             if parseCluster && loop_counter > 0 && job_status_mat(f, 1) ~= job_status_mat(f, 2)
                 % for nonpending killed jobs, wait a bit longer in case of just finished job.
                 if ~pending_flag
-                    pause(3);
+                    pause(5);
                 end
             end
             if strcmpi(language, 'matlab')

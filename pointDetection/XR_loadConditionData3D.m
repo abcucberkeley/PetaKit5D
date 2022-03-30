@@ -34,6 +34,7 @@
 % xruan (11/09/2020) add option to include experiments without experiment number
 % xruan (02/08/2021) add option to use channel patterns to select files for
 % a channel (in case of some other images, i.e., multiple channels in the same folder)
+% xruan (03/29/2022) add support for user defined dz
 
 
 function [data] = XR_loadConditionData3D(varargin)
@@ -51,6 +52,7 @@ ip.addParameter('IgnoreExpNumber', false, @islogical); % xruan
 ip.addParameter('ChannelPatterns', {}, @iscell); % xruan
 ip.addParameter('Angle', 31.5, @isscalar);
 ip.addParameter('PixelSize', 0.104, @isscalar);
+ip.addParameter('dz', [], @isnumeric);
 ip.addParameter('ObjectiveScan', false, @isscalar);
 ip.addParameter('Reversed', false, @isscalar);
 ip.addParameter('FrameRate', [], @isscalar);
@@ -65,6 +67,7 @@ MovieSelector = ip.Results.MovieSelector;
 IgnoreExpNumber = ip.Results.IgnoreExpNumber;
 FrameRate = ip.Results.FrameRate;
 maxlevel = ip.Results.maxlevel;
+dz = ip.Results.dz;
 
 if isempty(FrameRate)
     data = XR_loadConditionData(condDir, chNames, markers, ...
@@ -134,18 +137,28 @@ end
 data = rmfield(data, {'M', 'NA'}); % not relevant for light sheet microscope
 
 %parse z-step
-dz = NaN(1,nd);
-for i = 1:nd
-    % z-step is identified by prefix '_zp' or '_z0p' or 'zint_0p'
-    dzSelect = '(?<=_zp)\d+|(?<=_z0p)\d+|(?<=zint_0p)\d+';
-    idx = regexpi([getDirFromPath(data(i).source) data(i).framePaths{1}{1}], dzSelect, 'match', 'once');
-    if ~isempty(idx)
-        dz(i) = str2double(['0.' idx]);
-    elseif i>1 % if not found, use previous value
-        dz(i) = dz(i-1);
+if isempty(dz)
+    dz = NaN(1,nd);
+    for i = 1:nd
+        % z-step is identified by prefix '_zp' or '_z0p' or 'zint_0p'
+        dzSelect = '(?<=_zp)\d+|(?<=_z0p)\d+|(?<=zint_0p)\d+';
+        idx = regexpi([getDirFromPath(data(i).source) data(i).framePaths{1}{1}], dzSelect, 'match', 'once');
+        if ~isempty(idx)
+            dz(i) = str2double(['0.' idx]);
+        elseif i>1 % if not found, use previous value
+            dz(i) = dz(i-1);
+        end
+        data(i).dz = dz(i);
     end
-    data(i).dz = dz(i);
+else
+    if numel(dz) == 1
+        dz = ones(nd, 1) * dz;
+    end
+    for i = 1:nd
+        data(i).dz = dz(i);
+    end
 end
+
 
 if ip.Results.ObjectiveScan
     f = dz./ip.Results.PixelSize;

@@ -30,6 +30,8 @@ function [level, varargout] = thresholdOtsu(imageIn,varargin)
 % Revamped from OtsuSeg
 %
 % Sebastien Besson, 5/2011
+% xruan (03/2022): accelerate the function with nonzero image (assume image
+% is always nonnegative)
 
 ip=inputParser;
 ip.addRequired('imageIn',@isnumeric);
@@ -41,15 +43,17 @@ showPlots=ip.Results.showPlots;
 imageIn = double(imageIn);
 
 %find nonzero values (due to masking)
-nzInd = find(imageIn);
+% nzInd = find(imageIn);
+nzImage = imageIn > 0;
 
 %get minumum and maximum pixel values in image
-minSignal = min(imageIn(nzInd));
-maxSignal = max(imageIn(nzInd));
+maxSignal = max(imageIn(:));
+minSignal = min(imageIn(:) + maxSignal * (~nzImage(:)));
 
 %normalize nonzero value between 0 and 1
-imageInNorm = zeros(size(imageIn));
-imageInNorm(nzInd) = (imageIn(nzInd)- minSignal) / (maxSignal - minSignal);
+% imageInNorm = zeros(size(imageIn));
+% imageInNorm(imageIn > 0) = (nzImage - minSignal) / (maxSignal - minSignal);
+imageInNorm = (imageIn - minSignal) / (maxSignal - minSignal) .* nzImage;
 
 level = graythresh(imageInNorm);
 
