@@ -34,6 +34,7 @@ ip.addParameter('unitWaitTime', 30, @isnumeric);
 ip.addParameter('maxJobNum', inf, @isnumeric); % submit limited number of jobs (pending/running)
 ip.addParameter('taskBatchNum', 1, @isnumeric); % aggragate several tasks together
 ip.addParameter('MatlabLaunchStr', 'module load matlab/r2021a; matlab -nodisplay -nosplash -nodesktop -nojvm -r', @ischar);
+ip.addParameter('BashLaunchStr', '', @ischar);
 ip.addParameter('SlurmParam', '-p abc --qos abc_normal -n1 --mem-per-cpu=21418M', @ischar);
 ip.addParameter('language', 'matlab', @ischar); % support matlab, bash
 
@@ -62,10 +63,14 @@ taskBatchNum = pr.taskBatchNum;
 uuid = pr.uuid;
 SlurmParam = pr.SlurmParam;
 MatlabLaunchStr = pr.MatlabLaunchStr;
+BashLaunchStr = pr.BashLaunchStr;
 language = pr.language;
 
 if isempty(uuid)
     uuid = get_uuid();
+end
+if isempty(BashLaunchStr)
+    BashLaunchStr = 'echo ';
 end
 
 [dataPath, ~] = fileparts(inputFullpaths{1});
@@ -100,6 +105,9 @@ ts = tic;
 while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
     if parseCluster
         lastP = find(~is_done_flag & trial_counter < maxTrialNum & job_status_mat(:, 1) < 1, 1, 'last');
+        if isempty(lastP)
+            lastP = -1;
+        end
         nB = ceil(nF / taskBatchNum);
     else
         % For no cluster computing, choose the first unfinished one, to avoid 
@@ -188,17 +196,6 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
         end
         
         f = fs(end);
-        % if parseCluster
-            % job_status = check_slurm_job_status(job_ids(f), task_id);
-            % job_status_mat(fs, 2) = job_status_mat(fs, 1);
-            % job_status_mat(fs, 1) = job_status;
-            
-            % use master job to run the first pending job to avoid loop
-            % through all jobs.
-            % if job_status_mat(fs, 1) == 0
-                % lastP = b;
-            % end            
-        % end
                 
         % set parameter to skip job submission step in case of reaching max job
         % number and masterCompute is true
@@ -249,9 +246,9 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
                     elseif strcmpi(language, 'bash')
                         % process_cmd = func_str;
                         cmd = sprintf(['sbatch --array=%d -o %s -e %s --cpus-per-task=%d %s %s ', ...
-                            '--wrap="echo $PWD; echo bash command:  \\\"%s\\\"; %s"'], ...
+                            '--wrap="echo $PWD; echo bash command:  \\\"%s\\\";  %s; %s"'], ...
                             task_id, job_log_fname, job_log_error_fname, cpusPerTask, SlurmParam, ...
-                            slurm_constraint_str, func_str, func_str);
+                            slurm_constraint_str, func_str, BashLaunchStr, func_str);
                     end
                     [status, cmdout] = system(cmd, '-echo');
                     if isempty(cmdout) || isempty(regexp(cmdout, 'Submitted batch job (\d+)\n', 'match'))
@@ -284,9 +281,9 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
                             fclose(fid);
                             
                             cmd = sprintf(['sbatch --array=%d -o %s -e %s --cpus-per-task=%d %s %s ', ...
-                                '--wrap="echo $PWD; echo bash command:  \\\"%s\\\"; bash %s"'], ...
+                                '--wrap="echo $PWD; echo bash command:  \\\"%s\\\"; %s; bash %s"'], ...
                                 task_id, job_log_fname, job_log_error_fname, cpusPerTask, SlurmParam, ...
-                                slurm_constraint_str, func_str_fn, func_str_fn);
+                                slurm_constraint_str, func_str_fn, BashLaunchStr, func_str_fn);
                         end
                         [status, cmdout] = system(cmd, '-echo');
                     end

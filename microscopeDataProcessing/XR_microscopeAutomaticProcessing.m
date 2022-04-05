@@ -624,6 +624,7 @@ end
 matlab_setup_str = 'setup([],true)';
 
 % use while loop to perform computing for all images
+ts = tic;
 while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all') || ...
         (Streaming && (nF == 0 || any(latest_modify_times < maxModifyTime) || waitLoopCounter < maxWaitLoopNum))
     for f = 1 : nF
@@ -1186,6 +1187,9 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all') || ...
     end
     
     %% wait for running jobs finishing and checking for new coming images
+    nF_done = sum(all(is_done_flag, 2));
+    sprintf('Time %d s: %d / %d (%0.3f) are finished!\n', toc(ts), nF_done, nF, nF_done / nF);
+    
     if ~all(is_done_flag | trial_counter >= maxTrialNum, 'all') 
         waitLoopCounter = 0;
         pause(30);
@@ -1204,7 +1208,7 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all') || ...
             break;
         end
     end
-        
+            
     % check whether there are new coming images (only for streaming option)
     [fnames_new, fdinds_new, gfnames_new, partialvols_new, dataSizes_new, flipZstack_mat_new, latest_modify_times_new, FTP_inds_new, maskFullpaths_new] = ...
     XR_parseImageFilenames(dataPaths, ChannelPatterns, parseSettingFile, flipZstack, Decon, deconPaths, Streaming, minModifyTime, zarrFile);

@@ -358,12 +358,14 @@ if ip.Results.Rotate || DSRCombined
                 fileattrib(dsrMIPPath, '+w', 'g');
             end
 
+            dsrMIPTmpname = sprintf('%s%s_MIP_z.tif_%s', dsrMIPPath, fsname, uuid);
             dsrMIPname = sprintf('%s%s_MIP_z.tif', dsrMIPPath, fsname);
             if ip.Results.Save16bit
-                writetiff(uint16(max(dsr, [], 3)), dsrMIPname);
+                writetiff(uint16(max(dsr, [], 3)), dsrMIPTmpname);
             else
-                writetiff(single(max(dsr, [], 3)), dsrMIPname);
+                writetiff(single(max(dsr, [], 3)), dsrMIPTmpname);
             end
+            movefile(dsrMIPTmpname, dsrMIPname);
         end
         
         if saveZarr

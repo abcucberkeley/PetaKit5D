@@ -23,7 +23,7 @@ if parseCluster && ~exist(jobLogDir, 'dir')
     jobLogDir = sprintf('%s/job_logs', dataPath);
     if ~exist(jobLogDir, 'dir')
         mkdir(jobLogDir);
-        fileattrib(jobLogDir, '+w', 'g');
+        fileattrib(jobLogDir, '+w', 'a');
     end
 end
 dir_info = dir(jobLogDir);
@@ -36,9 +36,6 @@ if cpuOnlyNodes
 else
     slurm_constraint_str = '';
 end
-
-
-
 
 
 end
