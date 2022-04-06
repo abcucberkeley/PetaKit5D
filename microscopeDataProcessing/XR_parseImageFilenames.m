@@ -8,7 +8,7 @@ function [fnames, fdinds, gfnames, partialvols, dataSizes, flipZstack_mat, lates
 % Author: Xiongtao Ruan (07/01/2021)
 % also include folder name for channel patterns
 % xruan (08/25/2021): add support for zarr file
-% xruan (04/05/2022): change to not include last two time points instead of last one
+% xruan (04/05/2022): change to not include last number of channel patterns instead of last one
 
 if nargin < 8
     zarrFile = false;
@@ -53,7 +53,7 @@ for d = 1 : nd
     if Streaming
         last_modify_time = (datenum(clock) - datenum_d) * 24 * 60;
         % exclude last two frames
-        latest_modify_time = max(mink(last_modify_time, 2));
+        latest_modify_time = max(mink(last_modify_time, numel(ChannelPatterns)));
         latest_modify_times(d) = latest_modify_time;
         
         % not include the lastest file if it is very recent
