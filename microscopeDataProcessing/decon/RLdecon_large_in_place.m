@@ -31,6 +31,7 @@ ip.addParameter('cpuOnlyNodes', true, @islogical);
 ip.addParameter('GPUJob', false, @islogical); % use gpu for chuck deconvolution. 
 ip.addParameter('uuid', '', @ischar);
 ip.addParameter('debug', false, @islogical);
+ip.addParameter('psfGen', true, @islogical); % psf generation
 
 ip.parse(frameFullpath, xyPixelSize, dz, deconPath, PSF, varargin{:});
 
@@ -45,6 +46,7 @@ flipZstack = pr.flipZstack;
 Save16bit = pr.Save16bit;
 GPUJob = pr.GPUJob;
 useGPU = true;
+psfGen = pr.psfGen;
 
 % check if background information available, if not, estimate background
 % info. Currently use 99. 
@@ -192,11 +194,12 @@ for i = 1 : numTasks
     
     funcStrs{i} = sprintf(['RLdecon_for_zarr_block([%s],''%s'',''%s'',''%s'',''%s'',%s,%s,', ...
         '%0.20d,%0.20d,''Overwrite'',%s,''SkewAngle'',%0.20d,''flipZstack'',%s,''Background'',%0.20d,', ...
-        '''dzPSF'',%0.20d,''DeconIter'',%d,''fixIter'',%s,''scaleFactor'',%d,''useGPU'',%s,''uuid'',''%s'',''debug'',%s)'], ...
+        '''dzPSF'',%0.20d,''DeconIter'',%d,''fixIter'',%s,''scaleFactor'',%d,''useGPU'',%s,', ...
+        '''uuid'',''%s'',''debug'',%s,''psfGen'',%s)'], ...
         strrep(num2str(batchInds, '%d,'), ' ', ''), frameFullpath, PSF, deconTmppath, zarrFlagFullpath, ...
         strrep(mat2str(batchBBoxes_i), ' ', ','), strrep(mat2str(regionBBoxes_i), ' ', ','), xyPixelSize, ...
         dz, string(Overwrite), SkewAngle, string(flipZstack), Background, dzPSF, DeconIter, string(fixIter), ...
-        scaleFactor, string(useGPU), uuid, string(debug));
+        scaleFactor, string(useGPU), uuid, string(debug), string(psfGen));
 end
 
 inputFullpaths = repmat({frameFullpath}, numTasks, 1);

@@ -22,6 +22,7 @@ ip = inputParser;
 ip.CaseSensitive = false;
 ip.KeepUnmatched = true;
 ip.addRequired('dataPaths'); % data structure from loadConditionData
+ip.addParameter('deconPathstr', '',  @(x) ischar(x));
 ip.addParameter('Overwrite', false,  @(x) (numel(x) == 1 || numel(x) == 2) && islogical(x));
 ip.addParameter('ChannelPatterns', {'CamA_ch0', 'CamA_ch1', 'CamB_ch0'}, @iscell);
 ip.addParameter('Channels', [488, 560, 642], @isnumeric);
@@ -57,6 +58,7 @@ ip.addParameter('RLMethod', 'simplified' , @ischar); % rl method {'original', 's
 ip.addParameter('fixIter', false, @islogical); 
 ip.addParameter('errThresh', [], @isnumeric); % error threshold for simplified code
 ip.addParameter('debug', false, @islogical); % debug mode for simplified code
+ip.addParameter('psfGen', true, @islogical); % psf generation
 ip.addParameter('GPUJob', false, @islogical); % use gpu for chuck deconvolution. 
 % job related parameters
 ip.addParameter('BatchSize', [1024, 1024, 1024] , @isvector); % in y, x, z
@@ -86,6 +88,7 @@ cd(repo_rt);
 
 pr = ip.Results;
 Overwrite = pr.Overwrite;
+deconPathstr = pr.deconPathstr;
 % Resolution = pr.Resolution;
 SkewAngle = pr.SkewAngle;
 dz = pr.dz;
@@ -120,6 +123,8 @@ GPUJob = pr.GPUJob;
 fixIter = pr.fixIter;
 errThresh = pr.errThresh;
 debug = pr.debug;
+psfGen = pr.psfGen;
+
 % job related
 BatchSize = pr.BatchSize;
 BlockSize = pr.BlockSize;
@@ -189,6 +194,10 @@ if Decon
         deconName = 'CPPdecon';
     else
         deconName = 'matlab_decon';
+    end
+
+    if ~isempty(deconPathstr)
+        deconName = deconPathstr;
     end
         
     deconPaths = cell(nd, 1);
@@ -392,17 +401,17 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
                     SkewAngle, EdgeErosion, maskFullpath, string(SaveMaskfile), string(deconRotate), ...
                     DeconIter_f, string(Save16bit), string(largeFile));
             else
-                func_str = sprintf(['XR_RLdeconFrame3D(''%s'',%.10f,%.10f,'''',''PSFfile'',''%s'',', ...
+                func_str = sprintf(['XR_RLdeconFrame3D(''%s'',%.10f,%.10f,''%s'',''PSFfile'',''%s'',', ...
                     '''dzPSF'',%.10f,''Background'',[%d],''SkewAngle'',%d,''flipZstack'',%s,''EdgeErosion'',%d,', ...
                     '''ErodeMaskfile'',''%s'',''SaveMaskfile'',%s,''Rotate'',%s,''DeconIter'',%d,', ...
-                    '''RLMethod'',''%s'',''fixIter'',%s,''errThresh'',[%0.20f],''debug'',%s,''saveZarr'',%s,', ...
-                    '''parseCluster'',%s,''parseParfor'',%s,''GPUJob'',%s,''Save16bit'',%s,''largeFile'',%s,', ...
-                    '''largeMethod'',''%s'',''BatchSize'',%s,''BlockSize'',%s,''uuid'',''%s'')'], ...
-                    dcframeFullpath, xyPixelSize, dc_dz, psfFullpath, dc_dzPSF, Background, SkewAngle, string(flipZstack), ...
-                    EdgeErosion, maskFullpath, string(SaveMaskfile), string(deconRotate), DeconIter_f, RLMethod, ...
-                    string(fixIter), errThresh, string(debug), string(saveZarr), string(parseCluster), string(parseParfor), ...
-                    string(GPUJob), string(Save16bit), string(largeFile), largeMethod, strrep(mat2str(BatchSize), ' ', ','), ...
-                    strrep(mat2str(BlockSize), ' ', ','), uuid);
+                    '''RLMethod'',''%s'',''fixIter'',%s,''errThresh'',[%0.20f],''debug'',%s,''psfGen'',%s,', ...
+                    '''saveZarr'',%s,''parseCluster'',%s,''parseParfor'',%s,''GPUJob'',%s,''Save16bit'',%s,', ...
+                    '''largeFile'',%s,''largeMethod'',''%s'',''BatchSize'',%s,''BlockSize'',%s,''uuid'',''%s'')'], ...
+                    dcframeFullpath, xyPixelSize, dc_dz, deconPath, psfFullpath, dc_dzPSF, Background, SkewAngle, ...
+                    string(flipZstack), EdgeErosion, maskFullpath, string(SaveMaskfile), string(deconRotate), ...
+                    DeconIter_f, RLMethod, string(fixIter), errThresh, string(debug), string(psfGen), ...
+                    string(saveZarr), string(parseCluster),string(parseParfor), string(GPUJob), string(Save16bit), ...
+                    string(largeFile), largeMethod, strrep(mat2str(BatchSize), ' ', ','), strrep(mat2str(BlockSize), ' ', ','), uuid);
             end
             
             if exist(dctmpFullpath, 'file') || parseCluster

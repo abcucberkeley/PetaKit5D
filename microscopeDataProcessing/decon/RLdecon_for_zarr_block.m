@@ -31,6 +31,7 @@ ip.addParameter('fixIter', false, @islogical); % CPU Memory in Gb
 ip.addParameter('useGPU', false, @islogical); % use gpu for chuck deconvolution. 
 ip.addParameter('uuid', '', @ischar);
 ip.addParameter('debug', false, @islogical);
+ip.addParameter('psfGen', true, @islogical); % psf generation
 
 ip.parse(batchInds, zarrFullpath, psfFullpath, deconFullpath, flagFullname, ...
     BatchBBoxes, RegionBBoxes, pixelSize, dz, varargin{:});
@@ -45,6 +46,7 @@ DeconIter = pr.DeconIter;
 scaleFactor = pr.scaleFactor;
 useGPU = pr.useGPU;
 uuid = pr.uuid;
+psfGen = pr.psfGen;
 
 % we assume the path exists, otherwise return error (in case of completion 
 % of processing for all blocks).
@@ -109,7 +111,7 @@ for i = 1 : numel(batchInds)
     out_batch = RLdecon(frameFullpath, deconTmpPath, psfFullpath, Background, DeconIter, ...
         dzPSF, dz, Deskew, [], SkewAngle, pixelSize, Rotate, Save16bit, Crop, zFlip, ...
         GenMaxZproj, ResizeImages, [], RLMethod, fixIter, errThresh, flipZstack, debug, ...
-        'rawdata', in_batch, 'scaleFactor', scaleFactor, 'useGPU', useGPU);
+        'rawdata', in_batch, 'scaleFactor', scaleFactor, 'useGPU', useGPU, 'psfGen', psfGen);
     
     obStart = RegionBBoxes(i, 1 : 3);
     obEnd = RegionBBoxes(i, 4 : 6);

@@ -62,7 +62,7 @@ if(~exist(fileparts(filename)))
     mkdir(fileparts(filename)); 
 end;
 
-for fIdx=1:data.movieLength
+parfor fIdx=1:data.movieLength
     %% Indx of tracks on the current frame
     tracksOn=([tracks.end]>=fIdx)&(fIdx>[tracks.start]);
     nbTracsOn=sum(tracksOn);

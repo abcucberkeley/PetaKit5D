@@ -30,6 +30,7 @@ function [deconvolved] = RLdecon(input_tiff, output_filename, psf, background, n
 % filename and also user defined normalization factor for the result
 % xruan (11/23/2021): normalize psf by the sum so the decon scale remain
 % the normal range. 
+% xruan (04/06/2022): add option for psfgen
 
 
 ip = inputParser;
@@ -62,6 +63,7 @@ ip.addParameter('rawdata', [], @isnumeric);
 ip.addParameter('scaleFactor', [], @isnumeric); % scale factor for result
 ip.addParameter('useGPU', true, @islogical); % use GPU processing
 ip.addParameter('save3Dstack', true, @islogical); % use GPU processing
+ip.addParameter('psfGen', true, @islogical); % psf generation
 
 
 ip.parse(input_tiff, output_filename, psf, background, nIter, dz_psf, dz_data, ...
@@ -109,12 +111,19 @@ else
     dz_data_ratio = 1;
 end
 
+psfGen = pr.psfGen;
+
 if ~isempty(input_tiff)
     [datafolder, inputfile, suffix] = fileparts(input_tiff);
 end
 
-if ~isempty(output_filename) && exist(output_filename, 'file')
-    return;
+if ~isempty(output_filename)
+    if exist(output_filename, 'file')
+        return;
+    end
+    [decon_path, output_tiff] = fileparts(output_filename);    
+else
+    decon_path = [datafolder, '/matlab_decon' '/'];    
 end
 
 if ischar(psf)
@@ -132,23 +141,22 @@ if ischar(psf)
             catch
                 pp = readtiff(psf);
             end
-            medFactor = 1.5;
-            PSFGenMethod = 'masked';
-            psf = psf_gen_new(pp, dz_psf, dz_data*dz_data_ratio, medFactor, PSFGenMethod);
             
-            % crop psf to the bounding box (-/+ 1 pixel) and make sure the
-            % center doesn't shift
-            py = find(squeeze(sum(psf, [2, 3])));
-            px = find(squeeze(sum(psf, [1, 3])));
-            pz = find(squeeze(sum(psf, [1, 2])));
-            cropSz = [min(py(1) - 1, size(psf, 1) - py(end)), min(px(1) - 1, size(psf, 2) - px(end)), min(pz(1) - 1, size(psf, 3) - pz(end))] - 1;
-            cropSz = max(0, cropSz);
-            bbox = [cropSz + 1, size(psf) - cropSz];
-            psf = psf(bbox(1) : bbox(4), bbox(2) : bbox(5), bbox(3) : bbox(6));
-            
-            % test decon without psf gen
-            if false
-                psf = double(pp);
+            psf = double(pp);
+            if psfGen
+                medFactor = 1.5;
+                PSFGenMethod = 'masked';
+                psf = psf_gen_new(pp, dz_psf, dz_data*dz_data_ratio, medFactor, PSFGenMethod);
+                
+                % crop psf to the bounding box (-/+ 1 pixel) and make sure the
+                % center doesn't shift
+                py = find(squeeze(sum(psf, [2, 3])));
+                px = find(squeeze(sum(psf, [1, 3])));
+                pz = find(squeeze(sum(psf, [1, 2])));
+                cropSz = [min(py(1) - 1, size(psf, 1) - py(end)), min(px(1) - 1, size(psf, 2) - px(end)), min(pz(1) - 1, size(psf, 3) - pz(end))] - 1;
+                cropSz = max(0, cropSz);
+                bbox = [cropSz + 1, size(psf) - cropSz];
+                psf = psf(bbox(1) : bbox(4), bbox(2) : bbox(5), bbox(3) : bbox(6));
             end
             
             % crop psf if it is larger than data in any dimension
@@ -165,7 +173,7 @@ if ischar(psf)
             end
             
             if ~isempty(input_tiff)
-                psfgen_folder = sprintf('%s/%s/psfgen/', datafolder, 'matlab_decon');
+                psfgen_folder = sprintf('%s/psfgen/', decon_path);
                 mkdir(psfgen_folder);
                 psfgen_filename = sprintf('%s/%s.tif', psfgen_folder, b);
                 if ~exist(psfgen_filename, 'file')
@@ -286,9 +294,8 @@ if nIter>0 && sum(rawdata(:)) > 0
         case 'simplified'
             % psf = psf ./ sqrt(mean(psf .^ 2, 'all'));
             if debug
-                decon_folder = [datafolder, '/matlab_decon' '/'];
                 [~, fsn] = fileparts(input_tiff);
-                debug_folder = sprintf('%s/%s_debug/', decon_folder, fsn);
+                debug_folder = sprintf('%s/%s_debug/', decon_path, fsn);
                 mkdir(debug_folder)
             else
                 debug_folder = '/tmp/'; 
@@ -354,10 +361,10 @@ end
 % construct output file name
 
 % decon_filename_tail = '_decon.tif';
-decon_folder = ['matlab_decon' '/'];
+% decon_folder = ['matlab_decon' '/'];
+[~, decon_folder] = fileparts(decon_path);
 thumnail_folder = ['downsampled_data' '/'];
 MIPs_folder = ['MIPs' '/'];
-[~, output_tiff] = fileparts(output_filename);
 
 % output_tiff = strrep(input_tiff, '.tif', decon_filename_tail);
 output_tiff = [output_tiff, '.tif'];

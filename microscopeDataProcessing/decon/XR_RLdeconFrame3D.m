@@ -68,6 +68,7 @@ ip.addParameter('uuid', '', @ischar);
 ip.addParameter('maxTrialNum', 3, @isnumeric);
 ip.addParameter('unitWaitTime', 2, @isnumeric);
 ip.addParameter('debug', false, @islogical);
+ip.addParameter('psfGen', true, @islogical); % psf generation
 
 ip.parse(frameFullpaths, pixelSize, dz, varargin{:});
 
@@ -117,6 +118,7 @@ end
 fixIter = pr.fixIter;
 errThresh = pr.errThresh;
 debug = pr.debug;
+psfGen = pr.psfGen;
 
 tic
 OL = pr.Overlap;
@@ -135,6 +137,7 @@ cpuOnlyNodes = pr.cpuOnlyNodes;
 masterCompute = pr.masterCompute;
 maxTrialNum = pr.maxTrialNum;
 uuid = pr.uuid;
+
 if isempty(uuid)
     uuid = get_uuid();
 end
@@ -256,7 +259,7 @@ for f = 1 : nF
         save3Dstack = false;
         im = RLdecon(frameFullpath, deconTmpPath, PSF, Background, DeconIter, dzPSF, dz, Deskew, [], SkewAngle, ...
             pixelSize, Rotate, Save16bit, Crop, zFlip, GenMaxZproj, ResizeImages, [], RLMethod, ...
-            fixIter, errThresh, flipZstack, debug, 'save3Dstack', save3Dstack);
+            fixIter, errThresh, flipZstack, debug, 'save3Dstack', save3Dstack, 'psfGen', psfGen);
         toc
         % system(unlink_cmd);
             % im = readtiff(deconTmpPath);
@@ -312,8 +315,8 @@ for f = 1 : nF
             'DeconIter', DeconIter, 'fixIter', fixIter, 'BatchSize', BatchSize, ...
             'BlockSize', BlockSize, 'parseCluster', parseCluster, 'parseParfor', ...
             parseParfor, 'masterCompute', masterCompute, 'jobLogDir', jobLogDir, ...
-            'cpuOnlyNodes', cpuOnlyNodes, 'GPUJob', GPUJob, 'uuid', uuid, 'debug', debug ...
-            );
+            'cpuOnlyNodes', cpuOnlyNodes, 'GPUJob', GPUJob, 'uuid', uuid, 'debug', debug, ...
+            'psfGen', psfGen);
         return;
     end
     
@@ -477,10 +480,11 @@ for f = 1 : nF
     
         % no need to flip the chunks because the image is already flipped
         funcStrs{ck} =  sprintf(['RLdecon(''%s'',''%s'',''%s'',%.10f,%.10f,%.10f,%.10f,%s,[],', ...
-                '%.10f,%.10f,%s,%s,[%s],%s,[%s],[%s],[],''%s'',%s,[%.20f],%s,%s)'], chunkFullpath, chunkDeconFullpath, ...
+                '%.10f,%.10f,%s,%s,[%s],%s,[%s],[%s],[],''%s'',%s,[%.20f],%s,%s,''psfGen'',%s)'], chunkFullpath, chunkDeconFullpath, ...
                 PSF, Background, DeconIter, dzPSF, dz, string(Deskew), SkewAngle, pixelSize, string(Rotate), ...
                 string(Save16bit),  strrep(num2str(Crop,'%d,'), ' ', ''), string(zFlip), num2str(GenMaxZproj, '%.10f,'), ...
-                num2str(ResizeImages, '%.10f,'), RLMethod, string(fixIter), errThresh, string(false), string(debug));
+                num2str(ResizeImages, '%.10f,'), RLMethod, string(fixIter), errThresh, string(false), string(debug), ...
+                string(psfGen));
     end
     inputFullpaths(skip_flags) = [];
     outputFullpaths(skip_flags) = [];
