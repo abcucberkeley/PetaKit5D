@@ -6,6 +6,7 @@ function [] = XR_psf_analysis_wrapper(dataPaths, varargin)
 % and add parallel computing for plotting
 % xruan (08/16/2021): add support for flipped psfs
 % xruan (12/21/2021): add support for background subtraction factor
+% xruan (04/12/2022): update z size in PSFsubpix to match it for RW image
 
 
 ip = inputParser;
@@ -118,14 +119,15 @@ source_descrip = sourceStr;
 xypixsize= xyPixelSize * 1000;
 if ObjectiveScan
     zpixsize = dz * 1000;    
-    PSFsubpix = [128, 128, round((501 - 1) * 0.04 / dz * sind(angle)) + 1];   
+    % PSFsubpix = [128, 128, round((501 - 1) * 0.04 / dz * sind(angle)) + 1];   
 elseif ZstageScan
     zpixsize = dz * cosd(angle) * 1000;
-    PSFsubpix = [128, 128, round((501 - 1) * 0.04 / dz) + 1];                
+    % PSFsubpix = [128, 128, round((501 - 1) * 0.04 / dz) + 1];                
 else
     zpixsize = dz * sind(angle) * 1000;
-    PSFsubpix = [128, 128, round((501 - 1) * 0.04 / dz) + 1];        
+    % PSFsubpix = [128, 128, round((501 - 1) * 0.04 / dz) + 1];        
 end
+PSFsubpix = [128, 128, round(100 * 100 / zpixsize) + 1];
 
 zpixsize_RW = 0.1 * 1000;
 PSFsubpix_RW = [128, 128, 101];
@@ -149,8 +151,10 @@ for c = 1 : numel(ChannelPatterns)
             det_lambda = 680;                
     end
 
-    [xz_exp_PSF_RW, xz_exp_OTF_RW, xOTF_linecut_RW, yOTF_linecut_RW, zOTF_linecut_RW, zOTF_bowtie_linecut_RW] = ...
-        Load_and_Plot_Exp_Overall_xzPSF_xzOTF_update(RWFn_k, source_descrip, xypixsize, zpixsize_RW, NAdet, index, exc_lambda, det_lambda, PSFsubpix_RW, gamma, bgFactor_RW);
+    [xy_exp_PSF_RW, xz_exp_PSF_RW, yz_exp_PSF_RW, xy_exp_OTF_RW, xz_exp_OTF_RW, ...
+        yz_exp_OTF_RW, xOTF_linecut_RW, yOTF_linecut_RW, zOTF_linecut_RW, zOTF_bowtie_linecut_RW, ...
+        zOTF_bowtie_linecut_yz] = Load_and_Plot_Exp_Overall_xzPSF_xzOTF_update(RWFn_k, source_descrip, ...
+        xypixsize, zpixsize_RW, NAdet, index, exc_lambda, det_lambda, PSFsubpix_RW, gamma, bgFactor_RW);
     
     RW_info{c} = {xz_exp_PSF_RW, xz_exp_OTF_RW, xOTF_linecut_RW, yOTF_linecut_RW, zOTF_linecut_RW, zOTF_bowtie_linecut_RW};  
 end

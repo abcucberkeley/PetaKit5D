@@ -19,14 +19,25 @@ zOTF_linecut_RW = RW_info{ch_ind}{5};
 zOTF_bowtie_linecut_RW = RW_info{ch_ind}{6};
 
 % psf analysis for data
-[xz_exp_PSF, xz_exp_OTF, xOTF_linecut, yOTF_linecut, zOTF_linecut, zOTF_bowtie_linecut] = ...
+[xy_exp_PSF, xz_exp_PSF, yz_exp_PSF, xy_exp_OTF, xz_exp_OTF, yz_exp_OTF, xOTF_linecut, ...
+    yOTF_linecut, zOTF_linecut, zOTF_bowtie_linecut, zOTF_bowtie_linecut_yz] = ...
     Load_and_Plot_Exp_Overall_xzPSF_xzOTF_update(frameFullname, source_descrip, ...
     xypixsize, zpixsize, NAdet, index, exc_lambda, det_lambda, PSFsubpix, gamma, bgFactor);
 
-% plot line cut with RW line cuts as reference
-f0 = gcf();
+% save the information in mat file
 [~, fsname] = fileparts(frameFullname);
 result_dir = fileparts(figureFullname);
+
+uuid = get_uuid();
+tmpFnout = sprintf('%s/%s_info_%s.mat', result_dir, fsname, uuid);
+fnout = sprintf('%s/%s_infos.mat', result_dir, fsname);
+save('-v7.3', tmpFnout, 'xy_exp_PSF', 'xz_exp_PSF', 'yz_exp_PSF', 'xy_exp_OTF', ...
+    'xz_exp_OTF', 'yz_exp_OTF', 'xOTF_linecut', 'yOTF_linecut', 'zOTF_linecut', ...
+    'zOTF_bowtie_linecut', 'zOTF_bowtie_linecut_yz');
+movefile(tmpFnout, fnout);
+
+% plot line cut with RW line cuts as reference
+f0 = gcf();
 print(f0, '-painters','-dpng', '-loose',[result_dir filesep 'comp_' fsname '.png']);
 close all
 

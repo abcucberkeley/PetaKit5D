@@ -1,4 +1,5 @@
-function [xz_exp_PSF, xz_exp_OTF, xOTF_linecut, yOTF_linecut, zOTF_linecut, zOTF_bowtie_linecut] = Load_and_Plot_Exp_Overall_xzPSF_xzOTF_update(filenm, source_descrip, xypixsize, zpixsize, NAdet, index, exc_lambda, det_lambda, PSFsubpix, gamma, bgFactor)
+function [xy_exp_PSF, xz_exp_PSF, yz_exp_PSF, xy_exp_OTF, xz_exp_OTF, yz_exp_OTF, xOTF_linecut, yOTF_linecut, zOTF_linecut, zOTF_bowtie_linecut, zOTF_bowtie_linecut_yz] = ...
+    Load_and_Plot_Exp_Overall_xzPSF_xzOTF_update(filenm, source_descrip, xypixsize, zpixsize, NAdet, index, exc_lambda, det_lambda, PSFsubpix, gamma, bgFactor)
 %
 %LOAD_AND_PLOT_EXP_OVERALL_xzPSF_xzOTF  Loads a 3D TIFF stack of an experimentally
 %measured overall PSF, and plots it along with the OTF determined by its
@@ -30,6 +31,7 @@ function [xz_exp_PSF, xz_exp_OTF, xOTF_linecut, yOTF_linecut, zOTF_linecut, zOTF
 % xuran: make the peak to the center (after subtracting background). 
 % xruan (07/23/2021): correct xz axis as yz for figures; add actual xz
 % pannels.
+% xruan (04/09/2022): output all central PSFs/OTFs and linecuts
 
 %plot parameters from simulation code:
 sim_pixsize = 0.1;   %plot xz pix size in media excitation wavelengths
@@ -376,7 +378,7 @@ AxialOTFCrossSection = AxialOTFCrossSection ./ max_LateralOTFCrossSection;
 zOTF_linecut = AxialOTFCrossSection;
 OffsetAxialLinecut = squeeze(plot_yz_exp_OTF(:,FattestColumn)');
 OffsetAxialLinecut = OffsetAxialLinecut./max_LateralOTFCrossSection;
-zOTF_bowtie_linecut = OffsetAxialLinecut;
+zOTF_bowtie_linecut_yz = OffsetAxialLinecut;
 
 
 % figure  %create a new figure window for the plots

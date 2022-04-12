@@ -441,7 +441,7 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
                         
                         if GPUJob && ~largeFile
                             cpusPerTask_dc = 5;
-                            SlurmParam = '-p abc --qos abc_normal -n1 --mem-per-cpu=33500M --gres=gpu:1';
+                            SlurmParam = '-p abc --qos abc_normal -n1 --mem-per-cpu=25700M --gres=gpu:1';
                             slurm_constraint_str = '';
                         else
                             % SlurmParam = '-p abc --qos abc_normal -n1 --mem-per-cpu=21418M';
