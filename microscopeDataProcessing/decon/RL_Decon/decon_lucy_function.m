@@ -216,7 +216,7 @@ for k = lambda + 1 : lambda + NUMIT
         if k == 1
             mkdir(debug_folder);
         end
-        if rem(k, 5) == 0
+        if rem(k, estep) == 0
             if useGPU 
                 writetiff(uint16(gather(J_2)), sprintf('%s/Iter_%04d.tif', debug_folder, k));
             else
@@ -248,65 +248,6 @@ end
 
 end
 
-
-function f = corelucy(Y,H,DAMPAR22,wI,READOUT,SUBSMPL,vec,num)
-%CORELUCY Accelerated Damped Lucy-Richarson Operator.
-%  Calculates function that when used with the scaled projected array 
-%  produces the next iteration array that maximizes the likelihood that 
-%  the entire suite satisfies the Poisson statistics. 
-%
-% See also DECONVLUCY and DECONVBLIND.
-
-%  Copyright 1993-2003 The MathWorks, Inc.  
-
-%   References
-%   ----------
-%   "Acceleration of iterative image restoration algorithms, by D.S.C. Biggs 
-%   and M. Andrews, Applied Optics, Vol. 36, No. 8, 1997.
-%   "Deconvolutions of Hubble Space Telescope Images and Spectra",
-%   R.J. Hanisch, R.L. White, and R.L. Gilliland. in "Deconvolution of Images 
-%   and Spectra", Ed. P.A. Jansson, 2nd ed., Academic Press, CA, 1997.
-
-ReBlurred = real(ifftn(H.*fftn(Y)));
-
-% 1. Resampling if needed
-if SUBSMPL ~= 1 % Bin ReBlurred back to the sizeI for non-singleton dims
-  
-  %1.Reshape so that the-to-binned dimension separates into two
-  %dimensions, with one of them consisting of elements of a single bin.
-  ReBlurred = reshape(ReBlurred,vec);
-
-  %2. Bin (==calculate mean) along the first of the-to-binned dimension,
-  %that dimension consists of the bin elements. Reshape to get rid off
-  for k = num % new appeared singleton.
-    vec(k) = [];
-    ReBlurred = reshape(mean(ReBlurred,k),vec);
-  end
-  
-end
-
-% 2. An Estimate for the next step
-ReBlurred = ReBlurred + READOUT;
-% ReBlurred(ReBlurred == 0) = eps;
-ReBlurred = ReBlurred + (ReBlurred == 0) * eps;
-ReBlurred = wI./ReBlurred + eps;
-
-% 3. Damping if needed
-if DAMPAR22 == 0 % No Damping
-  % ImRatio = AnEstim(idx_y, idx_x, idx_z);
-  % ImRatio = AnEstim;
-else % Damping of the image relative to DAMPAR22 = (N*sigma)^2
-%   gm = 10;
-%   g = (wI.*log(AnEstim)+ ReBlurred - wI)./DAMPAR22;
-%   g = min(g,1);
-%   G = (g.^(gm-1)).*(gm-(gm-1)*g);
-%   % ImRatio = 1 + G(idx_y, idx_x, idx_z).*(AnEstim(idx_y, idx_x, idx_z) - 1);
-%   ImRatio = 1 + G.*(AnEstim - 1);
-end
-
-f = fftn(ReBlurred);
-
-end
 
 function otf = decon_psf2otf(psf, outSize)
 

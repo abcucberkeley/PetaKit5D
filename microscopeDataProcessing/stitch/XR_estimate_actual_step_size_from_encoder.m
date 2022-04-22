@@ -66,9 +66,18 @@ for f = 1 : numel(locFsns)
     
     if onlyFirstRow
         fid = fopen(locFn, 'r');
-        fgetl(fid);
-        tline = fgetl(fid);
+        for i = 1 : 3
+            fgetl(fid);
+            tline = fgetl(fid);
+            if ~isempty(tline) && (ischar(tline) || isstring(tline))          
+                break;
+            end
+            pause(5);
+            fid = fopen(locFn, 'r');
+        end
+
         fclose(fid);
+
         tline = strsplit(tline, ',');
         tline(2 : end) = cellfun(@str2double, tline(2 : end), 'unif', 0);
         t = cell2table(tline, 'VariableName', opts.VariableNames);

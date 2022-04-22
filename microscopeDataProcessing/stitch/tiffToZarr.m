@@ -76,6 +76,10 @@ end
 % load tiff file as image block file
 % Direct conversion should be faster. 
 if ~isempty(frame)
+    if ismatrix(frame)
+        blockSize = blockSize(1 : 2);
+    end
+    blockSize = min(blockSize, size(frame));    
     bim = blockedImage(frame, "BlockSize", blockSize);
 else
     if ischar(tifFilename) || numel(tifFilename) == 1
@@ -92,6 +96,10 @@ else
             if ~isempty(InputBbox)
                 I = I(InputBbox(1) : InputBbox(4), InputBbox(2) : InputBbox(5), InputBbox(3) : InputBbox(6));
             end
+            if ismatrix(I)
+                blockSize = blockSize(1 : 2);
+            end
+            blockSize = min(blockSize, size(I));
             bim = blockedImage(I, "BlockSize", blockSize);
             clear I;
         else
@@ -121,6 +129,10 @@ else
         if ~isempty(InputBbox)
             I = I(InputBbox(1) : InputBbox(4), InputBbox(2) : InputBbox(5), InputBbox(3) : InputBbox(6));
         end
+        if ismatrix(I)
+            blockSize = blockSize(1 : 2);
+        end        
+        blockSize = min(blockSize, size(I));        
         bim = blockedImage(I, "BlockSize", blockSize);
         clear I;
     end
@@ -191,7 +203,7 @@ nv_bim = blockedImage(tmpFilename, 'Adapter', ZarrAdapter);
 if ~ispc && prod(sz) * 2 / 1024^3 > 2
     nv_bim.Adapter.setData(gather(bim));
 else
-    nv_bim.Adapter.setRegion([1, 1, 1], bim.Size, gather(bim))
+    nv_bim.Adapter.setRegion([1, 1, 1], [bim.Size, ones(3 - numel(bim.Size), 1)], gather(bim));
 end
 
 % mv tmp result folder to output folder

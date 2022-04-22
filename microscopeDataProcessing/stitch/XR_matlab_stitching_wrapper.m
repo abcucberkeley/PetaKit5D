@@ -518,7 +518,7 @@ end
 if Streaming
     stream_counter = 0;
     if onlineStitch
-        stream_max_counter = 10;
+        stream_max_counter = 5;
     else
         stream_max_counter = 100 * size(t, 1);
     end
@@ -529,6 +529,11 @@ if onlineStitch
 end
     
 while ~all(is_done_flag | trial_counter >= max_trial_num, 'all')
+    % exit the job if no new images are transferred.
+    if Streaming && stream_counter > stream_max_counter
+        break;
+    end
+    
     lastF = find(~is_done_flag & trial_counter < maxTrialNum, 1, 'last');
     for n = 1:numel(fullIter)
         for ncam = 1:numel(Cam)
@@ -912,20 +917,22 @@ while ~all(is_done_flag | trial_counter >= max_trial_num, 'all')
             end
         end
     end
-    
+
+    if Streaming 
+        stream_counter = stream_counter + 1;
+    end
+
     % wait 30 seconds if some tasks are still computing
     if ~all(is_done_flag | trial_counter >= max_trial_num, 'all') || ...
             (parseCluster && any(job_status_flag & ~is_done_flag, 'all'))
         pause(30);
     end
         
-    % exit the job if no new images are transferred.
-    if Streaming && stream_counter > stream_max_counter
-        break;
-    end
 end
 
-rmdir(stitching_tmp, 's');
+if exist(stitching_tmp, 'dir')
+    rmdir(stitching_tmp, 's');
+end
 
 end
 
