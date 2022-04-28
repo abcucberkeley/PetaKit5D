@@ -849,7 +849,11 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all') || ...
                 if job_status == -1 % && ~stitch_running(fdind)
                     % first estimate file size and decide whether cpusPerTask
                     % is enough
-                    estRequiredMemory = dataSize_mat(f, 1) / 2^30 * 2 * 20;
+                    memFactor = 20;
+                    if any(stitch2D)
+                        memFactor = 2;
+                    end
+                    estRequiredMemory = dataSize_mat(f, 1) / 2^30 * 2 * memFactor;
                     cpusPerTask_stch = cpusPerTask;
                     if cpusPerTask_stch * 20 < estRequiredMemory
                         cpusPerTask_stch = min(24, ceil(estRequiredMemory / 20));
