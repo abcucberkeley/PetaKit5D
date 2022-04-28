@@ -93,10 +93,11 @@ if ~any(containPartVolume)
     return;
 end
     
-fsnames = cell(nF, 1);
-for i = 1 : nF
-    [~, fsnames{i}] = fileparts(fileFullpathList{i});
-end
+% fsnames = cell(nF, 1);
+% for i = 1 : nF
+%     [~, fsnames{i}] = fileparts(fileFullpathList{i});
+% end
+[~, fsnames] = fileparts(fileFullpathList);
 
 % find the main file without _part\d+ pattern
 mstr_inds = cellfun(@isempty, regexpi(fsnames, '_part\d+$'));
