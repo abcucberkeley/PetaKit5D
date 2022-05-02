@@ -237,17 +237,15 @@ if (~DSRCombined && (~exist(dsFullname, 'file') || ip.Results.Overwrite)) || DSR
             bim = blockedImage(frame, 'BlockSize', blockSize);
             OutputLocation = sprintf('%s/%s_%s', dsPath, fsname, uuid);
             BorderSize = [5, 0, 0];
-            TrimBorder = true;
+            % TrimBorder = true;
             if Save16bit 
                 bo = apply(bim, @(bs) uint16(deskewFrame3D(single(bs.Data), SkewAngle_1, dz, ...
                     xyPixelSize, Reverse, 'crop', Crop, 'Interp', Interp)), 'blockSize', bim.BlockSize, ...
-                    'OutputLocation', OutputLocation, 'BorderSize', BorderSize, 'TrimBorder', TrimBorder, ...
-                    'useParallel', false);
+                    'OutputLocation', OutputLocation, 'BorderSize', BorderSize, 'useParallel', false);
             else
                 bo = apply(bim, @(bs) deskewFrame3D(single(bs.Data), SkewAngle_1, dz, ...
                     xyPixelSize, Reverse, 'crop', Crop, 'Interp', Interp), 'blockSize', bim.BlockSize, ...
-                    'OutputLocation', OutputLocation, 'BorderSize', BorderSize, 'TrimBorder', TrimBorder, ...
-                    'useParallel', false);
+                    'OutputLocation', OutputLocation, 'BorderSize', BorderSize, 'useParallel', false);
             end
             clear frame;
             % ds = gather(bo);
