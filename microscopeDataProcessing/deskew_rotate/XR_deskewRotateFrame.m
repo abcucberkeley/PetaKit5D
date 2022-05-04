@@ -245,7 +245,7 @@ if (~DSRCombined && (~exist(dsFullname, 'file') || ip.Results.Overwrite)) || DSR
             else
                 bo = apply(bim, @(bs) trimBorder(deskewFrame3D(single(bs.Data), SkewAngle_1, dz, ...
                     xyPixelSize, Reverse, 'crop', Crop, 'Interp', Interp), BorderSize, 'both'), 'blockSize', bim.BlockSize, ...
-                    'OutputLocation', OutputLocation, 'BorderSize', BorderSize, 'useParallel', false, 'TrimBorder', true);
+                    'OutputLocation', OutputLocation, 'BorderSize', BorderSize, 'useParallel', false);
             end
             clear frame;
             % ds = gather(bo);
