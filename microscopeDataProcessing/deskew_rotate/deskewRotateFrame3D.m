@@ -11,7 +11,7 @@ function volout = deskewRotateFrame3D(vol, angle, dz, xyPixelSize, varargin)
 % is small, and use separate processing when x step size is large (also split to
 % parts in the processing when the image is tall. 
 % xruan (03/16/2021): change default xStepThresh to 2.35 (ds=0.3). 
-% xruan (01/27/2021): change default xStepThresh to 2.74 (ds=0.35). 
+% xruan (01/27/2022): change default xStepThresh to 2.74 (ds=0.35). 
 
 ip = inputParser;
 ip.CaseSensitive = false;
