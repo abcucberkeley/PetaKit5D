@@ -91,6 +91,7 @@ end
 
 fd_inds = arrayfun(@(x) ones(numel(fnames{x}), 1) * x, 1 : nd, 'unif', 0);
 fnames = cat(1, fnames{:});
+[~, fsns] = fileparts(fnames);
 fd_inds = cat(1, fd_inds{:});
 nF = numel(fnames);
 
@@ -99,6 +100,12 @@ nF = numel(fnames);
 frameFullpaths = cell(nF, 1);
 MIPFullpaths = cell(nF, 1);
 func_strs = cell(nF, 1);
+
+% use the last select axis as flag if more than one axis for MIP
+axis_strs = {'y', 'x', 'z'};
+fidx = find(axis, 1, 'last');
+axis_str = axis_strs{fidx};
+
 for f = 1 : nF
     fname = fnames{f};
     d = fd_inds(f);
@@ -107,23 +114,26 @@ for f = 1 : nF
     
     frameFullpath = [dataPath, '/', fname];
     frameFullpaths{f} = frameFullpath;
-    MIPFullpath = [resultPath, '/', fname];
+    MIPFullpath = sprintf('%s/%s_MIP_%s.tif', resultPath, fsns{f}, axis_str);
     MIPFullpaths{f} = MIPFullpath;
     
     if zarrFile
-        if largeZarr
+        if largeZarr || any(axis(1 : 2))
             func_strs{f} = sprintf(['XR_MIP_zarr(''%s'',''axis'',%s)'], frameFullpath, ...
-                strrep(mat2str(axis), ' ', ''));       
-            else
+                strrep(mat2str(axis), ' ', ','));       
+        else
             func_strs{f} = sprintf(['saveMIP_zarr(''%s'',''%s'',''%s'')'], frameFullpath, ...
                 MIPFullpath, dtype);
         end
     else
-        func_strs{f} = sprintf(['saveMIP_tiff(''%s'',''%s'',''dtype'',''%s'')'], ...
-            frameFullpath, MIPFullpath, dtype);
+        func_strs{f} = sprintf(['saveMIP_tiff(''%s'',''%s'',''dtype'',''%s'',''axis'',%s)'], ...
+            frameFullpath, MIPFullpath, dtype, strrep(mat2str(axis), ' ', ','));
     end
 end
 
+if parseParfor
+    matlab_parfor_generic_computing_wrapper(frameFullpaths, MIPFullpaths, func_strs, 'GPUJob', false, 'nworker', 12)
+end
 cpusPerTask = max(min(ceil(prod(sz) * 4 / 1024^3 * 8 / 20), 24), cpusPerTask);
 slurm_cluster_generic_computing_wrapper(frameFullpaths, MIPFullpaths, func_strs, ...
     'masterCompute', masterCompute, 'cpusPerTask', cpusPerTask);

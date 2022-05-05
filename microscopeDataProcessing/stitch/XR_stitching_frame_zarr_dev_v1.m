@@ -382,7 +382,7 @@ partialFile = ~DS && ~DSR;
 
 XR_tiffToZarr_wrapper(tiffFullpaths, 'zarrPathstr', zarrPathstr, 'blockSize', blockSize, 'usrFcn', fn, ...
     'flippedTile', zarr_flippedTile, 'resample', stitchResample, 'partialFile', partialFile,  ...
-    'InputBbox', InputBbox, 'CropToSize', CropToSize, 'parseCluster', parseCluster);
+    'InputBbox', InputBbox, 'CropToSize', CropToSize, 'parseCluster', parseCluster, 'cpuOnlyNodes', cpuOnlyNodes);
 
 % load all zarr headers as a cell array and get image size for all tiles
 imSizes = zeros(nF, 3);
