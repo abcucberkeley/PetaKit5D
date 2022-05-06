@@ -16,8 +16,10 @@ function [xyz_shift, d_shift] = stitch_shift_assignment(zarrFullpaths, xcorrDir,
 fprintf('Compute cross-correlation based registration between overlap tiles...\n');
 
 xcorr_thresh = 0.25;
-% test thrshold for global assignment
+% test thrshold for global assignment (in some cases the xcorr between
+% tiles are pretty weak, especially for low snr images)
 xcorr_thresh = 0.10;
+xcorr_thresh = 0.05;
 
 if ~exist(xcorrDir, 'dir')
     mkdir_recursive(xcorrDir, true);

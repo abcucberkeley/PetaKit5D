@@ -94,6 +94,9 @@ fnames = cat(1, fnames{:});
 [~, fsns] = fileparts(fnames);
 fd_inds = cat(1, fd_inds{:});
 nF = numel(fnames);
+if nF == 1
+    fsns = {fsns};
+end
 
 %% use generic framework for the MIP computing
 

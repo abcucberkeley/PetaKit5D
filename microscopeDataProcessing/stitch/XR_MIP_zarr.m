@@ -71,7 +71,7 @@ tic
 zarrFlagPath = sprintf('%s/zarr_flag/%s_%s/', MIPPath, fsname, uuid);
 if ~exist(zarrFlagPath, 'dir')
     mkdir_recursive(zarrFlagPath);
-    endls | 
+end 
 
 bim = blockedImage(zarrFullpath, 'Adapter', ZarrAdapter);
 imSize = bim.Size;
