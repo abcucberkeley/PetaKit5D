@@ -10,6 +10,7 @@ function [fnames, fdinds, gfnames, partialvols, dataSizes, flipZstack_mat, lates
 % xruan (08/25/2021): add support for zarr file
 % xruan (04/05/2022): change to not include last number of channel patterns instead of last one
 % xruan (04/27/2022): in streaming mode, multiply minModifyTime to the number of partial files 
+% xruan (05/06/2022): in streaming mode, wait at lease minModifyTime
 
 if nargin < 8
     zarrFile = false;
@@ -62,6 +63,7 @@ for d = 1 : nd
 
         % not include the lastest file if it is very recent
         if latest_modify_time < minModifyTime * ngf
+            latest_modify_time = max(latest_modify_time, minModifyTime);
             fnames_d(last_modify_time <= latest_modify_time) = [];
             if any(containPartialVolume)
                 groupedFnames_d(last_modify_time <= latest_modify_time) = [];
