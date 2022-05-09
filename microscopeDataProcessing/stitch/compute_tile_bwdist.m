@@ -37,7 +37,9 @@ im_i = gather(bim_i);
 im_i_orig = im_i ~= 0;
 im_i([1, end], :, :) = 0;
 im_i(:, [1, end], :) = 0;
-im_i(:, :, [1, end]) = 0;
+if ndims(im_i) == 3
+    im_i(:, :, [1, end]) = 0;
+end
 im_i = im_i == 0;
 
 counter = 1;
@@ -91,8 +93,12 @@ else
 end
 
 % apply a window in z direction
-win_z = tukeywin(sz(3) * 1.1, 0.5);
-win_z = win_z(round(sz(3) * 0.05) : round(sz(3) * 0.05) + sz(3) - 1);
+if ismatrix(im_i)
+    win_z = 1;
+else
+    win_z = tukeywin(sz(3) * 1.1, 0.5);
+    win_z = win_z(round(sz(3) * 0.05) : round(sz(3) * 0.05) + sz(3) - 1);
+end
 im_dist = im_dist .* permute(win_z, [2, 3, 1]);
 
 im_dist = im_dist .* im_i_orig;

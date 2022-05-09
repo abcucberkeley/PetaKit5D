@@ -196,10 +196,13 @@ end
 
 % (08/20/2021): check if the indices are full range, if so, exclude the
 % first and last several slices/planes
+% (05/09/2022): not cap too much for very thin regions
 
 function [inds] = cap_region_2_inds(inds, sz, max_off, bounds)
     inds = find(inds);
-    inds = inds(inds > max(sz * bounds(1), min(sz * bounds(2), max_off / 2)) & inds < min(sz * (1 - bounds(1)), max(sz * (1 - bounds(2)), sz - max_off / 2)));
+    if numel(inds) > 5
+        inds = inds(inds > max(sz * bounds(1), min(sz * bounds(2), max_off / 2)) & inds < min(sz * (1 - bounds(1)), max(sz * (1 - bounds(2)), sz - max_off / 2)));
+    end
 end
 
 

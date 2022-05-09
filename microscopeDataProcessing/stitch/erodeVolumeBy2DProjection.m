@@ -13,6 +13,12 @@ ip.parse(vol, esize, varargin{:});
 
 sz = size(vol);
 
+if ismatrix(vol)
+    mask = vol ~= 0;
+    volout = vol .* cast(mask, class(vol)); 
+    return;
+end
+
 % caculate xz projection and erode the projection
 MIP = squeeze(max(vol, [], 1) > 0);
 MIP_pad = false(sz([2, 3]) + 2);
@@ -24,6 +30,5 @@ MIP = MIP_pad(2 : end - 1, 2 : end - 1);
 mask = false(sz);
 mask(esize + 1 : end - esize, :, :) = repmat(permute(MIP, [3, 1, 2]), sz(1) - 2 * esize, 1, 1);
 volout = vol .* cast(mask, class(vol)); 
-
 
 end

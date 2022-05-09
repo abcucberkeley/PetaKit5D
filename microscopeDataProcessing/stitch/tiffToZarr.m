@@ -22,6 +22,7 @@ ip.addRequired('zarrFilename', @ischar);
 ip.addOptional('frame', [], @isnumeric);
 ip.addParameter('Overwrite', false, @islogical);
 ip.addParameter('blockSize', [500, 500, 250], @isnumeric);
+ip.addParameter('expand2dDim', true, @islogical); % expand the z dimension for 2d data
 ip.addParameter('flipZstack', false, @islogical);
 ip.addParameter('resample', [], @(x) isempty(x) || isnumeric(x));
 ip.addParameter('InputBbox', [], @(x) isnumeric(x));
@@ -35,6 +36,7 @@ ip.parse(tifFilename, zarrFilename, frame, varargin{:});
 pr = ip.Results;
 Overwrite = pr.Overwrite;
 blockSize = pr.blockSize;
+expand2dDim = pr.expand2dDim;
 flipZstack = pr.flipZstack;
 resample = pr.resample;
 InputBbox = pr.InputBbox;
@@ -96,11 +98,17 @@ else
             if ~isempty(InputBbox)
                 I = I(InputBbox(1) : InputBbox(4), InputBbox(2) : InputBbox(5), InputBbox(3) : InputBbox(6));
             end
+            sz = size(I);
             if ismatrix(I)
-                blockSize = blockSize(1 : 2);
+                if expand2dDim
+                    blockSize(3) = 1;
+                    sz(3) = 1;
+                else
+                    blockSize =  blockSize(1 : 2);                    
+                end
             end
-            blockSize = min(blockSize, size(I));
-            bim = blockedImage(I, "BlockSize", blockSize);
+            blockSize = min(blockSize, sz);
+            bim = blockedImage(I, "BlockSize", blockSize(1 : ndims(I)));
             clear I;
         else
             try
@@ -181,11 +189,16 @@ if ~isempty(usrFcn)
     bim = apply(bim, @(bs) usrFcn(bs.Data), 'BlockSize', sz);
 end
 if numel(sz) == 2
-    if sz(1) <= sz(2)
-        blockSize = min(sz, [sz(1), round(prod(blockSize) / sz(1))]);
+    if expand2dDim 
+        sz(3) = 1;
+        blockSize(3) = 1;
     else
-        blockSize = min(sz, [round(prod(blockSize) / sz(2)), sz(2)]);
-    end  
+        if sz(1) <= sz(2)
+            blockSize = min(sz, [sz(1), round(prod(blockSize) / sz(1))]);
+        else
+            blockSize = min(sz, [round(prod(blockSize) / sz(2)), sz(2)]);
+        end  
+    end
 else
     blockSize = min(sz, blockSize);
 end

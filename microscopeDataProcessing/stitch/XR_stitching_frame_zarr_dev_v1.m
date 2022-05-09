@@ -544,7 +544,7 @@ if isPrimaryCh
     nxs = round(dxyz(1)/(px*xf) + sx + 2);
     nys = round(dxyz(2)/(px*yf) + sy + 2);
     nzs = round(dxyz(3)/(px*zf) + sz + 2);
-    if any(stitchMIP)
+    if any(stitchMIP) || max(sz == 1)
         nzs = 1;       
     end
 else    

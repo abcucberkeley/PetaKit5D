@@ -80,8 +80,8 @@ classdef ZarrAdapter < images.blocked.Adapter
                     dtype = 'u2';
             end
             if numel(info.Size) == 2
-                info.Size = [info.Size, 1];
-                info.IOBlockSize = [info.IOBlockSize, 1];
+                % info.Size = [info.Size, 1];
+                % info.IOBlockSize = [info.IOBlockSize, 1];
             end
             
             if ispc && size(loc) > 200
