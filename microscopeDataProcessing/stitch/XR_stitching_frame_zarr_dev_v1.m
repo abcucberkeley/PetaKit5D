@@ -95,7 +95,7 @@ ip.addParameter('BlurSigma', 10, @isnumeric);
 ip.addParameter('SaveMIP', true , @islogical); % save MIP-z for stitch. 
 ip.addParameter('tileIdx', [] , @isnumeric); % tile indices 
 ip.addParameter('processFunPath', '', @(x) isempty(x) || ischar(x)); % path of user-defined process function handle
-ip.addParameter('stitch2D', [], @(x) isempty(x)  || (islogical(x) && (numel(x) == 1 || numel(x) == 3))); % 1x3 vector or vector, byt default, stitch MIP-z
+ip.addParameter('stitchMIP', [], @(x) isempty(x)  || (islogical(x) && (numel(x) == 1 || numel(x) == 3))); % 1x3 vector or vector, byt default, stitch MIP-z
 ip.addParameter('parseCluster', true, @islogical);
 ip.addParameter('masterCompute', true, @islogical); % master node participate in the task computing. 
 ip.addParameter('jobLogDir', '../job_logs', @ischar);
@@ -171,7 +171,7 @@ BlurSigma = pr.BlurSigma;
 SaveMIP = pr.SaveMIP;
 tileIdx = pr.tileIdx;
 processFunPath = pr.processFunPath;
-stitch2D = pr.stitch2D;
+stitchMIP = pr.stitchMIP;
 uuid = pr.uuid;
 debug = pr.debug;
 
@@ -191,7 +191,7 @@ end
 
 % for 2d stitch, use the same worker to do all computing, to reduce the
 % overhead of lauching other workers. 
-if any(stitch2D)
+if any(stitchMIP)
     if numel(tileFullpaths) < 10
         parseCluster = false;
     end
@@ -223,15 +223,15 @@ if IOScan
     DSR = false;
 end
 
-% expand stitch2D to 3d array, if more than 1 axis true, use the first one.
-if any(stitch2D)
-    if numel(stitch2D) == 1
-        stitch2D = [false, false, stitch2D];
+% expand stitchMIP to 3d array, if more than 1 axis true, use the first one.
+if any(stitchMIP)
+    if numel(stitchMIP) == 1
+        stitchMIP = [false, false, stitchMIP];
     end
-    if sum(stitch2D) > 1
-        aind = find(stitch2D, 1, 'first');
-        stitch2D = false(1, 3);
-        stitch2D(aind) = true;        
+    if sum(stitchMIP) > 1
+        aind = find(stitchMIP, 1, 'first');
+        stitchMIP = false(1, 3);
+        stitchMIP(aind) = true;        
     end
 end
 
@@ -335,10 +335,10 @@ end
 
 % process tile filenames based on different processing for tiles
 [tiffFullpaths, zarrFullpaths, fsnames, zarrPathstr, overall_z_median] = stitch_process_filenames( ...
-    tileFullpaths, DS, DSR, Decon, DSRDirstr, DeconDirstr, stitch2D, ObjectiveScan, zNormalize, px, xf, zf, resample);
+    tileFullpaths, DS, DSR, Decon, DSRDirstr, DeconDirstr, stitchMIP, ObjectiveScan, zNormalize, px, xf, zf, resample);
 
 % use single distance map for 
-if ~DS && ~DSR && ~any(stitch2D)
+if ~DS && ~DSR && ~any(stitchMIP)
     singleDistMap = true;
 end
 
@@ -351,7 +351,7 @@ else
     fn = '';
     if EdgeArtifacts > 0
         if DSR 
-            if ~any(stitch2D)
+            if ~any(stitchMIP)
                 fn = sprintf('@(x)erodeVolumeBy2DProjection(x,%d)', EdgeArtifacts);
             end
         else
@@ -392,7 +392,7 @@ for i = 1 : nF
     bim = blockedImage(zarrFullpath, "Adapter", ZarrAdapter);
     zarrHeaders{i} = bim; 
     
-    if any(stitch2D) && numel(bim.Size) == 2
+    if any(stitchMIP) && numel(bim.Size) == 2
         imSizes(i, :) = [bim.Size, 1];        
     else
         imSizes(i, :) = bim.Size;
@@ -544,7 +544,7 @@ if isPrimaryCh
     nxs = round(dxyz(1)/(px*xf) + sx + 2);
     nys = round(dxyz(2)/(px*yf) + sy + 2);
     nzs = round(dxyz(3)/(px*zf) + sz + 2);
-    if any(stitch2D)
+    if any(stitchMIP)
         nzs = 1;       
     end
 else    
@@ -881,7 +881,7 @@ end
 if ~exist(nv_fullname, 'dir')
     movefile(nv_tmp_fullname, nv_fullname);
 else
-    if any(stitch2D)
+    if any(stitchMIP)
         rmdir(nv_fullname, 's');
         movefile(nv_tmp_fullname, nv_fullname);        
     else

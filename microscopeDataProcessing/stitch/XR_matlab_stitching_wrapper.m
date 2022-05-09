@@ -130,7 +130,7 @@ ip.addParameter('primaryCh', '', @(x) isempty(x) || ischar(x)); % format: CamA_c
 ip.addParameter('usePrimaryCoords', false, @islogical); 
 ip.addParameter('Save16bit', false, @islogical);
 ip.addParameter('EdgeArtifacts', 2, @isnumeric);
-ip.addParameter('stitch2D', [], @(x) islogical(x) && (numel(x) == 1 || numel(x) == 3)); % 1x3 vector or vector, by default, stitch MIP-z
+ip.addParameter('stitchMIP', [], @(x) islogical(x) && (numel(x) == 1 || numel(x) == 3)); % 1x3 vector or vector, by default, stitch MIP-z
 ip.addParameter('onlineStitch', false, @(x) islogical(x)); % support for online stitch (with partial number of tiles). 
 ip.addParameter('pipeline', 'zarr', @(x) strcmpi(x, 'matlab') || strcmpi(x, 'zarr'));
 ip.addParameter('processFunPath', '', @(x) isempty(x) || ischar(x) || iscell(x)); % path of user-defined process function handle
@@ -193,7 +193,7 @@ primaryCh = pr.primaryCh;
 usePrimaryCoords = pr.usePrimaryCoords;
 Save16bit = pr.Save16bit;
 EdgeArtifacts = pr.EdgeArtifacts;
-stitch2D = pr.stitch2D;
+stitchMIP = pr.stitchMIP;
 onlineStitch = pr.onlineStitch;
 pipeline = pr.pipeline;
 processFunPath = pr.processFunPath;
@@ -265,7 +265,7 @@ if isempty(uuid)
     uuid = get_uuid();
 end
 
-if any(stitch2D)
+if any(stitchMIP)
     cpusPerTask = 1;
 end
 
@@ -815,7 +815,7 @@ while ~all(is_done_flag | trial_counter >= max_trial_num, 'all')
                             '''xyMaxOffset'',%0.10f,''zMaxOffset'',%0.10f,''xcorrDownsample'',%s,''shiftMethod'',''%s'',', ...
                             '''isPrimaryCh'',%s,''usePrimaryCoords'',%s,''padSize'',[%s],''boundboxCrop'',[%s],', ...
                             '''zNormalize'',%s,''Save16bit'',%s,''tileIdx'',%s,''flippedTile'',[%s],''processFunPath'',''%s'',', ...
-                            '''stitch2D'',%s,''EdgeArtifacts'',%0.10f,''cpuOnlyNodes'',%s)'], ...
+                            '''stitchMIP'',%s,''EdgeArtifacts'',%0.10f,''cpuOnlyNodes'',%s)'], ...
                             stitch_function_str, tile_fullpaths_str, xyz_str, axisOrder, px, dz, SkewAngle, string(Reverse), ...
                             string(ObjectiveScan), string(IOScan), stitch_save_fname, tileInfoFullpath, stitchInfoDir, ...
                             stitchInfoFullpath, DSRDirstr, DeconDirstr, string(DS), string(DSR), strrep(mat2str(blockSize), ' ', ','), ...
@@ -824,7 +824,7 @@ while ~all(is_done_flag | trial_counter >= max_trial_num, 'all')
                             xyMaxOffset, zMaxOffset, strrep(mat2str(xcorrDownsample), ' ', ','), shiftMethod, string(isPrimaryCh), ...
                             string(usePrimaryCoords),num2str(padSize, '%d,'), strrep(num2str(boundboxCrop, '%d,'), ' ', ''), ...
                             string(zNormalize),  string(Save16bit), tileIdx_str, strrep(num2str(flippedTile, '%d,'), ' ', ''), ...
-                            processFunPath{cind}, strrep(mat2str(stitch2D), ' ', ','), EdgeArtifacts, string(cpuOnlyNodes));
+                            processFunPath{cind}, strrep(mat2str(stitchMIP), ' ', ','), EdgeArtifacts, string(cpuOnlyNodes));
 
                         if exist(cur_tmp_fname, 'file') || (parseCluster && ~(masterCompute && xcorrShift && strcmpi(xcorrMode, 'primaryFirst') && isPrimaryCh))
                             % for cluster computing with master, check whether

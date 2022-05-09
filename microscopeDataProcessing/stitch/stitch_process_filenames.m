@@ -1,4 +1,4 @@
-function [tiffFullpaths, zarrFullpaths, fsnames, zarrPathstr, overall_z_median] = stitch_process_filenames(tileFullpaths, DS, DSR, Decon, DSRDirstr, DeconDirstr, stitch2D, ObjectiveScan, zNormalize, px, xf, zf, resample)
+function [tiffFullpaths, zarrFullpaths, fsnames, zarrPathstr, overall_z_median] = stitch_process_filenames(tileFullpaths, DS, DSR, Decon, DSRDirstr, DeconDirstr, stitchMIP, ObjectiveScan, zNormalize, px, xf, zf, resample)
 % return tile paths and other info based on the processing required for the
 % data (i.e., dsr, dsr/decon, decon, raw etc)
 % 
@@ -29,13 +29,13 @@ if DSR
             dsrpath = [dataPath filesep 'DSR_dx' num2str(px*xf) '_dz' num2str(px*zf)];
         end
     end
-    if any(stitch2D)
+    if any(stitchMIP)
         dsrpath = [dsrpath, filesep, 'MIPs', filesep];
         suffix_strs = {'x', 'y', 'z'};
-        if numel(stitch2D) == 1
+        if numel(stitchMIP) == 1
             suffix_str = 'z';
         else
-            suffix_str = suffix_strs{stitch2D};
+            suffix_str = suffix_strs{stitchMIP};
         end
     end
     tilePath = dsrpath;
@@ -64,7 +64,7 @@ if DSR
         if Decon && ~isempty(DeconDirstr)
             dsrFullpath = [dsrpath filesep fsname '_decon.tif'];
         end
-        if any(stitch2D)
+        if any(stitchMIP)
             dsrFullpath = sprintf('%s/%s_MIP_%s.tif', dsrpath, fsname, suffix_str);         
         end
         
@@ -181,7 +181,7 @@ for i = 1 : nF
     if Decon && ~isempty(DeconDirstr)
         tiffFullpaths{i} = sprintf('%s/%s_decon.tif', tilePath, fsname);
         zarrFullpaths{i} = sprintf('%s/%s/%s_decon.zarr', tilePath, zarrPathstr, fsname);        
-    elseif any(stitch2D)
+    elseif any(stitchMIP)
         tiffFullpaths{i} = sprintf('%s/%s_MIP_%s.tif', tilePath, fsname, suffix_str);
         zarrFullpaths{i} = sprintf('%s/%s/%s_MIP_%s.zarr', tilePath, zarrPathstr, fsname, suffix_str);                
     else

@@ -19,6 +19,10 @@ if ~isempty(outFullpath) && exist(outFullpath, 'file')
     return;
 end
 
+if iscell(fileFullpaths) && iscell(fileFullpaths{1})
+    fileFullpaths = cellfun(@(x) x{1}, fileFullpaths, 'unif', 0);
+end
+
 [pstrs, fsns, exts] = fileparts(fileFullpaths);
 
 uniq_pstrs = unique(pstrs);

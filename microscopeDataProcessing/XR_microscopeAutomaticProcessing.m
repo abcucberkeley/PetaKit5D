@@ -169,7 +169,7 @@ ip.addParameter('zMaxOffset', 50, @isnumeric); % max offsets in z axis
 ip.addParameter('timepoints', [], @isnumeric); % stitch for given time points
 ip.addParameter('boundboxCrop', [], @(x) isnumeric(x) && (isempty(x) || all(size(x) == [3, 2]) || numel(x) == 6));
 ip.addParameter('primaryCh', '', @ischar);
-ip.addParameter('stitch2D', [], @(x) islogical(x) && (numel(x) == 1 || numel(x) == 3)); % 1x3 vector or vector, byt default, stitch MIP-z
+ip.addParameter('stitchMIP', [], @(x) islogical(x) && (numel(x) == 1 || numel(x) == 3)); % 1x3 vector or vector, byt default, stitch MIP-z
 ip.addParameter('onlineStitch', false, @(x) islogical(x)); % support for online stitch (with partial number of tiles). 
 ip.addParameter('generateImageList', '', @(x) ischar(x)); % for real time processing, {'', 'from_encoder', 'from_sqlite'}
 % decon parameters
@@ -261,7 +261,7 @@ boundboxCrop = pr.boundboxCrop;
 onlyFirstTP = pr.onlyFirstTP;
 timepoints = pr.timepoints;
 primaryCh = pr.primaryCh;
-stitch2D = pr.stitch2D;
+stitchMIP = pr.stitchMIP;
 onlineStitch = pr.onlineStitch;
 generateImageList = pr.generateImageList;
 % decon parameters
@@ -834,13 +834,13 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all') || ...
                 '''parseSettingFile'',%s,''xcorrShift'',%s,''xcorrMode'',''%s'',''xyMaxOffset'',%.10f,', ...
                 '''zMaxOffset'',%.10f,''BlendMethod'',''%s'',''zNormalize'',%s,''onlyFirstTP'',%s,', ...
                 '''timepoints'',[%s],''boundboxCrop'',[%s],''Save16bit'',%s,''primaryCh'',''%s'',', ...
-                '''stitch2D'',%s,''onlineStitch'',%s,''pipeline'',''%s'')'], dataPath, imageListFullpath, ...
+                '''stitchMIP'',%s,''onlineStitch'',%s,''pipeline'',''%s'')'], dataPath, imageListFullpath, ...
                 stitchResultDir, string(Streaming), string(stitch_DS), string(stitch_DSR), ChannelPatterns_str, ...
                 string(useExistDSR), axisOrder, resampleType, strrep(num2str(resample, '%.10d,'), ' ', ''), ...
                 string(Reverse), string(parseSettingFile), string(xcorrShift), xcorrMode, xyMaxOffset, ...
                 zMaxOffset, BlendMethod, string(zNormalize), string(onlyFirstTP), strrep(num2str(timepoints, '%d,'), ' ', ''), ...
                 strrep(num2str(bbox, '%d,'), ' ', ''), string(Save16bit(2)), primaryCh, ...
-                strrep(mat2str(stitch2D), ' ', ','), string(onlineStitch), stitchPipeline);
+                strrep(mat2str(stitchMIP), ' ', ','), string(onlineStitch), stitchPipeline);
 
             if parseCluster
                 dfirst_ind = find(fdinds == fdind, 1, 'first');
@@ -850,7 +850,7 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all') || ...
                     % first estimate file size and decide whether cpusPerTask
                     % is enough
                     memFactor = 20;
-                    if any(stitch2D)
+                    if any(stitchMIP)
                         memFactor = 2;
                     end
                     estRequiredMemory = dataSize_mat(f, 1) / 2^30 * 2 * memFactor;
