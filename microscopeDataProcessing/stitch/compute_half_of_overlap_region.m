@@ -13,13 +13,15 @@ ip.addRequired('px', @isnumeric);
 ip.addRequired('xyz_factors', @isnumeric);
 ip.addParameter('overlapType', 'half', @ischar);
 ip.addParameter('halfOrder', [2, 3, 1], @isnumeric);
+ip.addParameter('stitch2D', false, @islogical);
 
 ip.parse(cuboid_1, cuboid_2, px, xyz_factors, varargin{:});
 
 overlapType = ip.Results.overlapType;
 halfOrder = ip.Results.halfOrder;
+stitch2D = ip.Results.stitch2D;
 
-[is_overlap, cubiod_overlap] = cuboids_overlaps(cuboid_1, cuboid_2);
+[is_overlap, cubiod_overlap] = cuboids_overlaps(cuboid_1, cuboid_2, stitch2D);
 
 s1 = round((cubiod_overlap(:, 1) - cuboid_1(:, 1)) ./ (px * xyz_factors)) + 1;
 s2 = round((cubiod_overlap(:, 1) - cuboid_2(:, 1)) ./ (px * xyz_factors)) + 1;

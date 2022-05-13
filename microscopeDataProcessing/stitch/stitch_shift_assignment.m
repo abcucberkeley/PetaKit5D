@@ -1,5 +1,5 @@
 function [xyz_shift, d_shift] = stitch_shift_assignment(zarrFullpaths, xcorrDir, imSizes, xyz, ...
-    px, xyz_factors, overlap_matrix, overlap_regions, MaxOffset, xcorrDownsample, tileIdx, assign_method, parseCluster)
+    px, xyz_factors, overlap_matrix, overlap_regions, MaxOffset, xcorrDownsample, tileIdx, assign_method, stitch2D, parseCluster)
 % main function for stitch shift assignment 
 % The main code is taken from XR_stitching_frame_zarr_dev_v1.m (to simplify
 % the function).
@@ -11,7 +11,7 @@ function [xyz_shift, d_shift] = stitch_shift_assignment(zarrFullpaths, xcorrDir,
 % 
 % author: Xiongtao Ruan (11/05/2021)
 % xruan (02/06/2022): for 'test' assignment method, not compute xcorr for tiles overlap from corners.
-
+% xruan (05/09/2022): add support for 2d stitch
 
 fprintf('Compute cross-correlation based registration between overlap tiles...\n');
 
@@ -62,15 +62,24 @@ cuboid_overlap_ij_mat = overlap_regions(pinds, :);
 %                             px, sprintf('%.20d;%.20d;%.20d', xf, yf, zf), strrep(num2str(xcorrDownsample, '%.20d,'), ' ', ''), ...
 %                             xyMaxOffset, zMaxOffset), 1 : numel(ti), 'unif', 0);
 
-funcStrs = arrayfun(@(x) sprintf(['multires_cross_correlation_registration_imblock_test(''%s'',''%s'',''%s'',', ...
-                            '[%s],[%s],[%s],%0.20d,[%s],''downSample'',[%s],''MaxOffset'',%s);toc;'], ...
-                            zarrFullpaths{ti(x)}, zarrFullpaths{tj(x)}, outputFullpaths{x}, strrep(mat2str(cuboid_mat(ti(x), :)), ' ', ','), ...
-                            strrep(mat2str(cuboid_mat(tj(x), :)), ' ', ','), strrep(mat2str(cuboid_overlap_ij_mat(x, :)), ' ', ','), ...
-                            px, sprintf('%.20d;%.20d;%.20d', xf, yf, zf), strrep(num2str(xcorrDownsample, '%.20d,'), ' ', ''), ...
-                            strrep(mat2str(MaxOffset), ' ', ',')), 1 : numel(ti), 'unif', 0);
-                        
+if stitch2D
+    funcStrs = arrayfun(@(x) sprintf(['multires_cross_correlation_registration_2d(''%s'',''%s'',''%s'',', ...
+                                '[%s],[%s],[%s],%0.20d,[%s],''downSample'',[%s],''MaxOffset'',%s);toc;'], ...
+                                zarrFullpaths{ti(x)}, zarrFullpaths{tj(x)}, outputFullpaths{x}, strrep(mat2str(cuboid_mat(ti(x), :)), ' ', ','), ...
+                                strrep(mat2str(cuboid_mat(tj(x), :)), ' ', ','), strrep(mat2str(cuboid_overlap_ij_mat(x, :)), ' ', ','), ...
+                                px, sprintf('%.20d;%.20d;%.20d', xf, yf, zf), strrep(num2str(xcorrDownsample, '%.20d,'), ' ', ''), ...
+                                strrep(mat2str(MaxOffset), ' ', ',')), 1 : numel(ti), 'unif', 0);
+else    
+    funcStrs = arrayfun(@(x) sprintf(['multires_cross_correlation_registration_imblock_test(''%s'',''%s'',''%s'',', ...
+                                '[%s],[%s],[%s],%0.20d,[%s],''downSample'',[%s],''MaxOffset'',%s);toc;'], ...
+                                zarrFullpaths{ti(x)}, zarrFullpaths{tj(x)}, outputFullpaths{x}, strrep(mat2str(cuboid_mat(ti(x), :)), ' ', ','), ...
+                                strrep(mat2str(cuboid_mat(tj(x), :)), ' ', ','), strrep(mat2str(cuboid_overlap_ij_mat(x, :)), ' ', ','), ...
+                                px, sprintf('%.20d;%.20d;%.20d', xf, yf, zf), strrep(num2str(xcorrDownsample, '%.20d,'), ' ', ''), ...
+                                strrep(mat2str(MaxOffset), ' ', ',')), 1 : numel(ti), 'unif', 0);
+end
+
 rawImageSizes = prod((cuboid_overlap_ij_mat(:, 4 : 6) - cuboid_overlap_ij_mat(:, 1 : 3))' ./ (px * [xf; yf; zf])) * 8 / 1024^3;
-cpusPerTask_xcorr = prctile(min(24, ceil(rawImageSizes * 15 / 20)), 90);
+cpusPerTask_xcorr = max(1, prctile(min(24, ceil(rawImageSizes * 15 / 20)), 90));
 
 maxTrialNum_xcorr = 2;
 is_done_flag = slurm_cluster_generic_computing_wrapper(inputFullpaths, outputFullpaths, funcStrs, ...
@@ -128,6 +137,10 @@ switch assign_method
         max_shift_l = -ones(neq, 1) .* MaxOffset;
         max_shift_u = (cuboid_overlap_ij_mat(:, 4 : 6) - cuboid_overlap_ij_mat(:, 1 : 3)) ./ (px .* [xf, yf, zf]);
         max_shift_u = min(max_shift_u - 1, MaxOffset);
+
+        if stitch2D
+            max_shift_u(:, 3) = 0;
+        end
         
         max_allow_shift = [max_shift_l, max_shift_u];
         

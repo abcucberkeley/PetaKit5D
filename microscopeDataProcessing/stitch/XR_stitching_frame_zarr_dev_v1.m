@@ -95,7 +95,8 @@ ip.addParameter('BlurSigma', 10, @isnumeric);
 ip.addParameter('SaveMIP', true , @islogical); % save MIP-z for stitch. 
 ip.addParameter('tileIdx', [] , @isnumeric); % tile indices 
 ip.addParameter('processFunPath', '', @(x) isempty(x) || ischar(x)); % path of user-defined process function handle
-ip.addParameter('stitchMIP', [], @(x) isempty(x)  || (islogical(x) && (numel(x) == 1 || numel(x) == 3))); % 1x3 vector or vector, byt default, stitch MIP-z
+ip.addParameter('stitchMIP', [], @(x) isempty(x)  || (islogical(x) && (numel(x) == 1 || numel(x) == 3))); % 1x3 vector or vector, by default, stitch MIP-z
+ip.addParameter('stitch2D', false, @(x)islogical(x));  
 ip.addParameter('parseCluster', true, @islogical);
 ip.addParameter('masterCompute', true, @islogical); % master node participate in the task computing. 
 ip.addParameter('jobLogDir', '../job_logs', @ischar);
@@ -172,6 +173,7 @@ SaveMIP = pr.SaveMIP;
 tileIdx = pr.tileIdx;
 processFunPath = pr.processFunPath;
 stitchMIP = pr.stitchMIP;
+stitch2D = pr.stitch2D;
 uuid = pr.uuid;
 debug = pr.debug;
 
@@ -192,7 +194,7 @@ end
 % for 2d stitch, use the same worker to do all computing, to reduce the
 % overhead of lauching other workers. 
 if any(stitchMIP)
-    if numel(tileFullpaths) < 10
+    if numel(tileFullpaths) < 50
         parseCluster = false;
     end
 end        
@@ -380,6 +382,21 @@ end
 % check if there are partial files when converting tiff to zarr
 partialFile = ~DS && ~DSR;
 
+% first check if it is 2d stitch
+for f = 1 : nF
+    imSize = getImageSize(tiffFullpaths{f});
+    if imSize(3) > 1
+        stitch2D = false;
+        break;
+    end
+    stitch2D = true;
+end
+
+if nF < 50
+    parseCluster = false;
+end
+
+
 XR_tiffToZarr_wrapper(tiffFullpaths, 'zarrPathstr', zarrPathstr, 'blockSize', blockSize, 'usrFcn', fn, ...
     'flippedTile', zarr_flippedTile, 'resample', stitchResample, 'partialFile', partialFile,  ...
     'InputBbox', InputBbox, 'CropToSize', CropToSize, 'parseCluster', parseCluster, 'cpuOnlyNodes', cpuOnlyNodes);
@@ -397,6 +414,11 @@ for i = 1 : nF
     else
         imSizes(i, :) = bim.Size;
     end
+end
+
+% stitch2D = false;
+if all(imSizes(:, 3) == 1)
+    stitch2D = true;
 end
 
 dtype = bim.ClassUnderlying;
@@ -436,7 +458,7 @@ for i = 1 : nF - 1
         xyz_j = xyz(j, :);
         cuboid_i = [xyz_i; xyz_i + (imSizes(i, [2, 1, 3]) - 1) .* [xf, yf, zf] * px]';
         cuboid_j = [xyz_j; xyz_j + (imSizes(j, [2, 1, 3]) - 1) .* [xf, yf, zf] * px]';
-        [is_overlap, cuboid_overlap] = cuboids_overlaps(cuboid_i, cuboid_j);
+        [is_overlap, cuboid_overlap] = cuboids_overlaps(cuboid_i, cuboid_j, stitch2D);
         if is_overlap 
             overlap_matrix(i, j) = true;
             % ind = 0.5 * i * (2 * j - i - 1);
@@ -459,7 +481,7 @@ if xcorrShift && isPrimaryCh
     MaxOffset = [xyMaxOffset, xyMaxOffset, zMaxOffset];
     [xyz_shift, d_shift] = stitch_shift_assignment(zarrFullpaths, xcorrDir, imSizes, xyz, ...
         px, [xf, yf, zf], overlap_matrix, overlap_regions, MaxOffset, xcorrDownsample, ...
-        tileIdx, assign_method, parseCluster);
+        tileIdx, assign_method, stitch2D, parseCluster);
 elseif ~isPrimaryCh
     if ~exist(stitchInfoFullpath, 'file')
         error('The stitch information filename %s does not exist!', stitchInfoFullpaths);
@@ -505,18 +527,18 @@ for i = 1 : nF - 1
         
         % recheck if the overlapped tiles become not overlapped after shift
         % (or with large resample factors)
-        [is_overlap, cuboid_overlap] = cuboids_overlaps(cuboid_i, cuboid_j);
+        [is_overlap, cuboid_overlap] = cuboids_overlaps(cuboid_i, cuboid_j, stitch2D);
         if ~is_overlap 
             overlap_matrix(i, j) = false;
             continue;
         end
         
         [mregion_1, mregion_2] = compute_half_of_overlap_region(cuboid_i, cuboid_j, ...
-            px, [xf, yf, zf]', 'overlapType', overlapType, 'halfOrder', halfOrder);
+            px, [xf, yf, zf]', 'overlapType', overlapType, 'halfOrder', halfOrder, 'stitch2D', stitch2D);
         half_ol_region_cell{i, j} = {mregion_1, mregion_2};
         
         [mregion_11, mregion_21] = compute_half_of_overlap_region(cuboid_i, cuboid_j, ...
-            px, [xf, yf, zf]', 'overlapType', 'zero', 'halfOrder', halfOrder);
+            px, [xf, yf, zf]', 'overlapType', 'zero', 'halfOrder', halfOrder, 'stitch2D', stitch2D);
         ol_region_cell{i, j} = {mregion_11, mregion_21};        
     end
 end
@@ -599,11 +621,14 @@ for i = 1 : nF
     xridx = max(1, 1 - st_idx(1)) : min(sx, nxs - st_idx(1));
     yridx = max(1, 1 - st_idx(2)) : min(sy, nys - st_idx(2));
     zridx = max(1, 1 - st_idx(3)) : min(sz, nzs - st_idx(3));
-        
+
     xidx = st_idx(1) + xridx;
     yidx = st_idx(2) + yridx;
     zidx = st_idx(3) + zridx;
-    
+    if stitch2D
+        zridx = 1;
+        zidx = 1;
+    end    
     if isempty(xidx) || isempty(yidx) || isempty(zidx)
         continue;
     end

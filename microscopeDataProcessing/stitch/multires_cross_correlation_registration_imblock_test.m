@@ -103,7 +103,7 @@ end
 % calculate bbox for overlap regions
 maxoff_x = ceil(maxXOffset ./ downSample(2)) * downSample(2);
 maxoff_y = ceil(maxYOffset ./ downSample(1)) * downSample(1);
-maxoff_z = ceil(maxZOffset ./ downSample(1)) * downSample(3);
+maxoff_z = ceil(maxZOffset ./ downSample(3)) * downSample(3);
 
 boarder = [maxoff_x; maxoff_y; maxoff_z];
 sr1 = max(s1 - boarder, 1);

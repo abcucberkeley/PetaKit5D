@@ -10,6 +10,11 @@ if nargin < 2
     outFullpath = [];
 end
 
+if numel(fileFullpaths) == 0
+    file_exist_mat = [];
+    return;
+end
+    
 if numel(fileFullpaths) == 1
     file_exist_mat = exist(fileFullpaths{1}, 'file') || exist(fileFullpaths{1}, 'dir');
     return;
