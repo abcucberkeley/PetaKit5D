@@ -23,6 +23,7 @@ ip.addParameter('DeconIter', 15 , @isnumeric); % number of iterations
 ip.addParameter('fixIter', false, @islogical); % CPU Memory in Gb
 ip.addParameter('BatchSize', [1024, 1024, 1024] , @isvector); % in y, x, z
 ip.addParameter('BlockSize', [256, 256, 256] , @isvector); % in y, x, z
+ip.addParameter('deconMaskFns', {}, @iscell); % 2d masks to filter regions to decon, in xy, xz, yz orders
 ip.addParameter('parseCluster', true, @islogical);
 ip.addParameter('parseParfor', false, @islogical);
 ip.addParameter('masterCompute', true, @islogical); % master node participate in the task computing. 
@@ -52,7 +53,7 @@ psfGen = pr.psfGen;
 % info. Currently use 99. 
 Background = pr.Background;
 if isempty(Background)
-    Background = 99;
+    Background = 100;
 end
 % simplified version related options
 fixIter = pr.fixIter;
@@ -60,6 +61,7 @@ debug = pr.debug;
 
 BatchSize = pr.BatchSize;
 BlockSize = pr.BlockSize;
+deconMaskFns = pr.deconMaskFns;
 
 tic
 parseCluster = pr.parseCluster;
@@ -164,14 +166,18 @@ end
 
 taskSize = 1; % the number of batches a job should process
 numBatch = size(batchBBoxes, 1);
-numTasks = ceil(numBatch / taskSize);
 
 if GPUJob
+    if parseCluster
+        taskSize = max(1, round(numBatch / 10000));
+    end
+
     maxJobNum = inf;
     cpusPerTask = 5;
     cpuOnlyNodes = false;
-    taskBatchNum = 5;
-    SlurmParam = '-p abc --qos abc_normal -n1 --mem=167G --gres=gpu:1';
+    taskBatchNum = 1;
+    SlurmParam = '-p abc_a100 --qos abc_normal -n1 --mem=167G --gres=gpu:1';
+    masterCompute = false;
 else
     maxJobNum = inf;
     cpusPerTask = 24;
@@ -179,6 +185,8 @@ else
     taskBatchNum = 1;
     SlurmParam = '-p abc --qos abc_normal -n1 --mem-per-cpu=21418M';
 end
+
+numTasks = ceil(numBatch / taskSize);
 
 % get the function string for each batch
 funcStrs = cell(numTasks, 1);
@@ -191,20 +199,21 @@ for i = 1 : numTasks
     zarrFlagFullpath = sprintf('%s/blocks_%d_%d.mat', zarrFlagPath, batchInds(1), batchInds(end));
     outputFullpaths{i} = zarrFlagFullpath;
     Overwrite = false;
-    
-    funcStrs{i} = sprintf(['RLdecon_for_zarr_block([%s],''%s'',''%s'',''%s'',''%s'',%s,%s,', ...
+    deconMaskFns_str = sprintf('{''%s''}', strjoin(deconMaskFns, ''','''));
+
+    funcStrs{i} = sprintf(['RLdecon_for_zarr_block_test([%s],''%s'',''%s'',''%s'',''%s'',%s,%s,', ...
         '%0.20d,%0.20d,''Overwrite'',%s,''SkewAngle'',%0.20d,''flipZstack'',%s,''Background'',%0.20d,', ...
         '''dzPSF'',%0.20d,''DeconIter'',%d,''fixIter'',%s,''scaleFactor'',%d,''useGPU'',%s,', ...
-        '''uuid'',''%s'',''debug'',%s,''psfGen'',%s)'], ...
+        '''deconMaskFns'',%s,''uuid'',''%s'',''debug'',%s,''psfGen'',%s)'], ...
         strrep(num2str(batchInds, '%d,'), ' ', ''), frameFullpath, PSF, deconTmppath, zarrFlagFullpath, ...
         strrep(mat2str(batchBBoxes_i), ' ', ','), strrep(mat2str(regionBBoxes_i), ' ', ','), xyPixelSize, ...
         dz, string(Overwrite), SkewAngle, string(flipZstack), Background, dzPSF, DeconIter, string(fixIter), ...
-        scaleFactor, string(useGPU), uuid, string(debug), string(psfGen));
+        scaleFactor, string(useGPU), deconMaskFns_str, uuid, string(debug), string(psfGen));
 end
 
 inputFullpaths = repmat({frameFullpath}, numTasks, 1);
 % submit jobs
-if parseCluster
+if ~parseParfor
     is_done_flag= slurm_cluster_generic_computing_wrapper(inputFullpaths, outputFullpaths, ...
         funcStrs, 'cpusPerTask', cpusPerTask, 'cpuOnlyNodes', cpuOnlyNodes, 'SlurmParam', SlurmParam, ...
         'maxJobNum', maxJobNum, 'taskBatchNum', taskBatchNum, 'masterCompute', masterCompute, 'parseCluster', parseCluster);
@@ -216,7 +225,7 @@ if parseCluster
     end
 elseif parseParfor
     is_done_flag= matlab_parfor_generic_computing_wrapper(inputFullpaths, outputFullpaths, ...
-        funcStrs, 'maxJobNum', maxJobNum, 'taskBatchNum', taskBatchNum, 'GPUJob', GPUJob, 'uuid', uuid);
+        funcStrs, 'taskBatchNum', taskBatchNum, 'GPUJob', GPUJob, 'uuid', uuid);
 end
 
 if ~all(is_done_flag, 'all')

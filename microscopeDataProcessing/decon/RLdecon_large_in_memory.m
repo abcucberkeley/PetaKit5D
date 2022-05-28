@@ -240,8 +240,8 @@ if GPUJob
     maxJobNum = inf;
     cpusPerTask = 5;
     cpuOnlyNodes = false;
-    taskBatchNum = 5;
-    SlurmParam = '-p abc --qos abc_normal -n1 --mem=167G --gres=gpu:1';
+    taskBatchNum = 10;
+    SlurmParam = '-p abc_a100 --qos abc_normal -n1 --mem=167G --gres=gpu:1';
 else
     maxJobNum = inf;
     cpusPerTask = 24;

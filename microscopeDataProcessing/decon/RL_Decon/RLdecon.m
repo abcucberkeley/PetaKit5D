@@ -112,6 +112,7 @@ else
 end
 
 psfGen = pr.psfGen;
+uuid = get_uuid();
 
 if ~isempty(input_tiff)
     [datafolder, inputfile, suffix] = fileparts(input_tiff);
@@ -123,7 +124,9 @@ if ~isempty(output_filename)
     end
     [decon_path, output_tiff] = fileparts(output_filename);    
 else
-    decon_path = [datafolder, '/matlab_decon' '/'];    
+    if ~isempty(input_tiff)
+        decon_path = [datafolder, '/matlab_decon' '/'];    
+    end
 end
 
 if ischar(psf)
@@ -177,7 +180,9 @@ if ischar(psf)
                 mkdir(psfgen_folder);
                 psfgen_filename = sprintf('%s/%s.tif', psfgen_folder, b);
                 if ~exist(psfgen_filename, 'file')
-                    writetiff(psf, psfgen_filename);
+                    tmp_filename = sprintf('%s/%s_%s.tif', psfgen_folder, b, uuid);                    
+                    writetiff(psf, tmp_filename);
+                    mvoefile(tmp_filename, psfgen_filename);
                 end
             end
         catch ME
@@ -409,7 +414,6 @@ if bSaveUint16
 end
 
 % write3Dtiff(deconvolved, output_tiff1);
-uuid = get_uuid();
 output_tmp_tiff = [output_tiff1(1 : end - 4), '_', uuid, '.tif'];
 writetiff(deconvolved, output_tmp_tiff);
 movefile(output_tmp_tiff, output_tiff1);

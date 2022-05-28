@@ -85,7 +85,8 @@ ip.addParameter('zNormalize', false, @islogical);
 ip.addParameter('xcorrDownsample', [2, 2, 1], @isnumeric); % y,x,z
 ip.addParameter('xyMaxOffset', 300, @isnumeric); % max offsets in xy axes
 ip.addParameter('zMaxOffset', 50, @isnumeric); % max offsets in z axis
-ip.addParameter('shiftMethod', 'grid', @ischar); % {'local', 'global', 'grid', 'test'}
+ip.addParameter('shiftMethod', 'grid', @ischar); % {'local', 'global', 'grid', 'test', 'group'}
+ip.addParameter('groupFile', '', @ischar); % file to define tile groups
 ip.addParameter('singleDistMap', ~false, @islogical); % compute distance map for the first tile and apply to all other tiles
 ip.addParameter('blockSize', [500, 500, 500], @isnumeric); 
 ip.addParameter('saveMultires', false, @islogical); % save as multi resolution dataset
@@ -143,6 +144,7 @@ halfOrder = pr.halfOrder;
 overlapType = pr.overlapType;
 xcorrShift = pr.xcorrShift;
 shiftMethod = pr.shiftMethod;
+groupFile = pr.groupFile;
 isPrimaryCh = pr.isPrimaryCh;
 usePrimaryCoords = pr.usePrimaryCoords;
 stitchPadSize = pr.stitchPadSize;
@@ -481,7 +483,7 @@ if xcorrShift && isPrimaryCh
     MaxOffset = [xyMaxOffset, xyMaxOffset, zMaxOffset];
     [xyz_shift, d_shift] = stitch_shift_assignment(zarrFullpaths, xcorrDir, imSizes, xyz, ...
         px, [xf, yf, zf], overlap_matrix, overlap_regions, MaxOffset, xcorrDownsample, ...
-        tileIdx, assign_method, stitch2D, parseCluster);
+        tileIdx, assign_method, stitch2D, groupFile, parseCluster);
 elseif ~isPrimaryCh
     if ~exist(stitchInfoFullpath, 'file')
         error('The stitch information filename %s does not exist!', stitchInfoFullpaths);

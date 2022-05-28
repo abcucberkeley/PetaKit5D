@@ -68,7 +68,7 @@ if ~exist(zarrFullpath, 'dir')
     error('The input zarr file %s doesnot exist!', zarrFullpath);
 end
 
-bim = blockedImage(zarrFullpath, 'Adapter', ZarrAdapter);
+% bim = blockedImage(zarrFullpath, 'Adapter', ZarrAdapter);
 
 if ~exist(deconFullpath, 'dir')
     error('The output zarr file %s doesnot exist!', deconFullpath);
@@ -91,7 +91,8 @@ for i = 1 : numel(batchInds)
     
     % load the region in input 
     % in_batch = bim.getRegion(ibStart, ibEnd);
-    in_batch = bim.Adapter.getIORegion(ibStart, ibEnd);
+    % in_batch = bim.Adapter.getIORegion(ibStart, ibEnd);
+    in_batch = readzarr(zarrFullpath, 'bbox', [ibStart, ibEnd]);
     
     % deconvolution
     frameFullpath = '';
@@ -138,6 +139,7 @@ for i = 1 : numel(batchInds)
 %         writeZarrBlock(nv_bim, bSub_j, out_block, level, Mode)
 %     end
     nv_bim.Adapter.setRegion(obStart, obEnd, out_batch)
+    % writezarr(out_batch, deconFullpaths, 'bbox', [obStart, obEnd]);
 
     done_flag(i) = true;
 

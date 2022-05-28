@@ -67,6 +67,7 @@ ip.addParameter('largeFile', false, @islogical);
 ip.addParameter('largeMethod', 'MemoryJobs', @ischar); % memory jobs, memory single, inplace. 
 ip.addParameter('zarrFile', false, @islogical); % use zarr file as input
 ip.addParameter('saveZarr', false, @islogical); % save as zarr
+ip.addParameter('deconMaskFns', {}, @iscell); % 2d masks to filter regions to decon, in xy, xz, yz order
 ip.addParameter('parseCluster', true, @islogical);
 ip.addParameter('parseParfor', false, @islogical);
 ip.addParameter('jobLogDir', '../job_logs', @ischar);
@@ -132,6 +133,8 @@ largeFile = pr.largeFile;
 largeMethod = pr.largeMethod;
 zarrFile = pr.zarrFile;
 saveZarr = pr.saveZarr;
+deconMaskFns = pr.deconMaskFns;
+
 jobLogDir = pr.jobLogDir;
 parseCluster = pr.parseCluster;
 parseParfor = pr.parseParfor;
@@ -384,6 +387,8 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
             DeconIter_f = DeconIter_mat(fdind);
 
             flipZstack = flipZstack_mat(f);
+
+            deconMaskFns_str = sprintf('{''%s''}', strjoin(deconMaskFns, ''','''));
             
             % do not use rotation in decon functions
             if cudaDecon
@@ -406,12 +411,13 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
                     '''ErodeMaskfile'',''%s'',''SaveMaskfile'',%s,''Rotate'',%s,''DeconIter'',%d,', ...
                     '''RLMethod'',''%s'',''fixIter'',%s,''errThresh'',[%0.20f],''debug'',%s,''psfGen'',%s,', ...
                     '''saveZarr'',%s,''parseCluster'',%s,''parseParfor'',%s,''GPUJob'',%s,''Save16bit'',%s,', ...
-                    '''largeFile'',%s,''largeMethod'',''%s'',''BatchSize'',%s,''BlockSize'',%s,''uuid'',''%s'')'], ...
+                    '''largeFile'',%s,''largeMethod'',''%s'',''BatchSize'',%s,''BlockSize'',%s,''deconMaskFns'',%s,''uuid'',''%s'')'], ...
                     dcframeFullpath, xyPixelSize, dc_dz, deconPath, psfFullpath, dc_dzPSF, Background, SkewAngle, ...
                     string(flipZstack), EdgeErosion, maskFullpath, string(SaveMaskfile), string(deconRotate), ...
                     DeconIter_f, RLMethod, string(fixIter), errThresh, string(debug), string(psfGen), ...
                     string(saveZarr), string(parseCluster),string(parseParfor), string(GPUJob), string(Save16bit), ...
-                    string(largeFile), largeMethod, strrep(mat2str(BatchSize), ' ', ','), strrep(mat2str(BlockSize), ' ', ','), uuid);
+                    string(largeFile), largeMethod, strrep(mat2str(BatchSize), ' ', ','), strrep(mat2str(BlockSize), ' ', ','), ...
+                    deconMaskFns_str, uuid);
             end
             
             if exist(dctmpFullpath, 'file') || parseCluster

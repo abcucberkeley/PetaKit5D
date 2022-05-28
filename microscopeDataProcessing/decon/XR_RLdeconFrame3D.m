@@ -56,6 +56,7 @@ ip.addParameter('largeFile', false, @islogical);
 ip.addParameter('largeMethod', 'MemoryJobs', @ischar); % memory jobs, memory single, inplace. 
 ip.addParameter('zarrFile', false, @islogical); % use zarr file as input
 ip.addParameter('saveZarr', false, @islogical); % save as zarr
+ip.addParameter('deconMaskFns', {}, @iscell); % 2d masks to filter regions to decon, in xy, xz, yz order
 ip.addParameter('parseCluster', true, @islogical);
 ip.addParameter('parseParfor', false, @islogical);
 ip.addParameter('masterCompute', true, @islogical); % master node participate in the task computing. 
@@ -111,7 +112,7 @@ SaveMaskfile = pr.SaveMaskfile;
 % info. Currently use 99. 
 Background = pr.Background;
 if isempty(Background)
-    Background = 99;
+    Background = 100;
 end
 
 % simplified version related options
@@ -130,6 +131,8 @@ largeFile = pr.largeFile;
 largeMethod = pr.largeMethod;
 zarrFile = pr.zarrFile;
 saveZarr = pr.saveZarr;
+deconMaskFns = pr.deconMaskFns;
+
 parseCluster = pr.parseCluster;
 parseParfor = pr.parseParfor;
 jobLogDir = pr.jobLogDir;
@@ -313,8 +316,8 @@ for f = 1 : nF
             'Save16bit', Save16bit, 'Deskew', Deskew, 'SkewAngle', SkewAngle, ...
             'flipZstack', flipZstack, 'Background', Background, 'dzPSF', dzPSF, ...
             'DeconIter', DeconIter, 'fixIter', fixIter, 'BatchSize', BatchSize, ...
-            'BlockSize', BlockSize, 'parseCluster', parseCluster, 'parseParfor', ...
-            parseParfor, 'masterCompute', masterCompute, 'jobLogDir', jobLogDir, ...
+            'BlockSize', BlockSize, 'deconMaskFns', deconMaskFns, 'parseCluster', parseCluster, ...
+            'parseParfor', parseParfor, 'masterCompute', masterCompute, 'jobLogDir', jobLogDir, ...
             'cpuOnlyNodes', cpuOnlyNodes, 'GPUJob', GPUJob, 'uuid', uuid, 'debug', debug, ...
             'psfGen', psfGen);
         return;

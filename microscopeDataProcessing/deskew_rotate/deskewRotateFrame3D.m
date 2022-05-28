@@ -12,6 +12,7 @@ function volout = deskewRotateFrame3D(vol, angle, dz, xyPixelSize, varargin)
 % parts in the processing when the image is tall. 
 % xruan (03/16/2021): change default xStepThresh to 2.35 (ds=0.3). 
 % xruan (01/27/2022): change default xStepThresh to 2.74 (ds=0.35). 
+% xruan (05/26/2022): change default xStepThresh to 2.42 (ds=0.31). 
 
 ip = inputParser;
 ip.CaseSensitive = false;
@@ -22,7 +23,7 @@ ip.addRequired('xyPixelSize'); % typical value: 0.1
 ip.addOptional('reverse', false, @islogical);
 ip.addParameter('Crop', true, @islogical);
 ip.addParameter('ObjectiveScan', false, @islogical);
-ip.addParameter('xStepThresh', 2.74, @isnumeric); % 2.344 for ds=0.3, 2.735 for ds=0.35
+ip.addParameter('xStepThresh', 2.42, @isnumeric); % 2.344 for ds=0.3, 2.735 for ds=0.35
 ip.addParameter('resample', [], @isnumeric); % resample factor in xyz order. 
 ip.addParameter('gpuProcess', false, @islogical); % use gpu for the processing. 
 ip.addParameter('Interp', 'linear', @(x) any(strcmpi(x, {'cubic', 'linear'})));

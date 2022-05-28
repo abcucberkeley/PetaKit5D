@@ -122,8 +122,9 @@ for f = 1 : nF
     
     if zarrFile
         if largeZarr || any(axis(1 : 2))
-            func_strs{f} = sprintf(['XR_MIP_zarr(''%s'',''axis'',%s)'], frameFullpath, ...
-                strrep(mat2str(axis), ' ', ','));       
+            func_strs{f} = sprintf(['XR_MIP_zarr(''%s'',''axis'',%s,''parseCluster'',%s,', ...
+                '''parseParfor'',%s)'], frameFullpath, strrep(mat2str(axis), ' ', ','), ...
+                string(parseCluster), string(parseParfor));       
         else
             func_strs{f} = sprintf(['saveMIP_zarr(''%s'',''%s'',''%s'')'], frameFullpath, ...
                 MIPFullpath, dtype);
@@ -134,12 +135,14 @@ for f = 1 : nF
     end
 end
 
-if parseParfor
+if parseParfor && ~largeZarr
     matlab_parfor_generic_computing_wrapper(frameFullpaths, MIPFullpaths, func_strs, 'GPUJob', false, 'nworker', 12)
 end
-cpusPerTask = max(min(ceil(prod(sz) * 4 / 1024^3 * 8 / 20), 24), cpusPerTask);
+taskBatchNum = max(1, round(nF /1000));
+cpusPerTask = max(min(ceil(prod(sz) * 4 / 1024^3 * 4 / 20), 24), cpusPerTask);
 slurm_cluster_generic_computing_wrapper(frameFullpaths, MIPFullpaths, func_strs, ...
-    'masterCompute', masterCompute, 'cpusPerTask', cpusPerTask);
+    'parseCluster', parseCluster, 'masterCompute', masterCompute, 'taskBatchNum', taskBatchNum, ...
+    'cpusPerTask', cpusPerTask);
 
 end
 

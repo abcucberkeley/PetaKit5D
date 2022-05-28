@@ -40,7 +40,7 @@ if ~exist(zarrFullpath, 'dir')
     error('The input zarr file %s doesnot exist!', zarrFullpath);
 end
 
-bim = blockedImage(zarrFullpath, 'Adapter', ZarrAdapter);
+% bim = blockedImage(zarrFullpath, 'Adapter', ZarrAdapter);
 
 nv_bim_cell = cell(3, 1);
 for i = 1 : 3
@@ -61,7 +61,8 @@ for i = 1 : numel(batchInds)
     
     % load the region in input 
     % in_batch = bim.getRegion(ibStart, ibEnd);
-    in_batch = bim.Adapter.getIORegion(ibStart, ibEnd);
+    % in_batch = bim.Adapter.getIORegion(ibStart, ibEnd);
+    in_batch = readzarr(zarrFullpath, 'bbox', [ibStart, ibEnd]);
 
     % MIP for each axis
     for j = 1 : 3
@@ -73,6 +74,7 @@ for i = 1 : numel(batchInds)
         obEnd(j) = bSubs(i, j);
         
         nv_bim_cell{j}.Adapter.setRegion(obStart, obEnd, out_batch);
+        % writezarr(out_batch, MIPFullpaths{i}, 'bbox', [obStart, obEnd])
     end
 
     done_flag(i) = true;

@@ -43,7 +43,7 @@ maxZOffset = MaxOffset(3);
 
 if exist(xcorrFullpath, 'file')
     fprintf('The xcorr result %s already exists!\n', xcorrFullpath);
-    % return;
+    return;
 end
 
 fprintf('Compute xcorr shifts for tiles:\n    %s\n    %s\n', imgFullpath_1, imgFullpath_2);

@@ -15,6 +15,7 @@ function [is_done_flag] = slurm_cluster_generic_computing_wrapper(inputFullpaths
 %   also add support for batch tasks running, i.e., run several tasks within one job
 % xruan(02/06/2021): change to first check all results at once instead of once
 %   per file to reduce the IO requirement. 
+% xruan (05/21/2022): check job status based on how many pending jobs, rather than each loop
 
 
 ip = inputParser;
@@ -97,10 +98,18 @@ trial_counter = zeros(nF, 1);
 if parseCluster
     job_ids = -ones(nF, 1);
     job_status_mat = -ones(nF, 2); % current and previous status
+
+    nB = ceil(nF / taskBatchNum);        
+    task_ids = ones(taskBatchNum, 1) * (1 : nB);
+    task_ids = task_ids(:)';
+    task_ids = task_ids(1 : nF);
+    task_ids = rem(task_ids, 5000);
 end
 
 loop_counter = 0;
 nF_done = 0;
+% pending / runnng ratio
+PRRatio = 1;
 ts = tic;
 while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
     if parseCluster
@@ -108,7 +117,6 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
         if isempty(lastP)
             lastP = -1;
         end
-        nB = ceil(nF / taskBatchNum);
     else
         % For no cluster computing, choose the first unfinished one, to avoid 
         % waiting time in each iteration. 
@@ -118,11 +126,16 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
     if loop_counter > 0
         output_exist_mat(~is_done_flag) = batch_file_exist(outputFullpaths(~is_done_flag));
     end
-    
-    if parseCluster
-        task_ids = rem(1 : nB, 5000);
+
+    if parseCluster && (loop_counter == 0 || (loop_counter > 0 && rem(loop_counter, PRRatio) == 0))
         job_status_mat(~is_done_flag, 2) = job_status_mat(~is_done_flag, 1);
         job_status_mat(~is_done_flag, 1) = check_batch_slurm_jobs_status(job_ids(~is_done_flag), task_ids(~is_done_flag));
+        if sum(job_status_mat(~is_done_flag, 1) == 1) == 0
+            PRRatio = max(1, min(5, nB / 100));
+        else
+            PRRatio = max(1, min(5, sum(job_status_mat(~is_done_flag, 1) == 0) / sum(job_status_mat(~is_done_flag, 1) == 1)));
+        end
+        PRRatio = round(PRRatio);
     end
         
     fsnames = cell(1, nF);
@@ -131,11 +144,11 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
         task_id = rem(b, 5000);
         
         % check output exist and job status every 10000 batches
-        if loop_counter > 0 && rem(b, 10000) == 0
+        if loop_counter > 0 && rem(b, 10000) == 0 
             output_exist_mat(~is_done_flag) = batch_file_exist(outputFullpaths(~is_done_flag));
             is_done_flag(~is_done_flag) = output_exist_mat(~is_done_flag);
             
-            if parseCluster
+            if parseCluster && rem(loop_counter, PRRatio) == 0
                 job_status_mat(~is_done_flag, 2) = job_status_mat(~is_done_flag, 1);
                 job_status_mat(~is_done_flag, 1) = check_batch_slurm_jobs_status(job_ids(~is_done_flag), task_ids(~is_done_flag));
             end
@@ -209,7 +222,7 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
             if parseCluster
                 % kill the first pending job and use master node do the computing.
                 pending_flag = false;
-                if job_status_mat(fs, 1) == 0 && (masterCompute && b == lastP)
+                if job_status_mat(f, 1) == 0 && (masterCompute && b == lastP)
                     system(sprintf('scancel %d_%d', job_ids(f), task_id), '-echo');
                     pending_flag = true;
                     trial_counter(fs) = trial_counter(fs) - 1;
@@ -218,7 +231,7 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
                 end
 
                 % if the job is still running, skip it. 
-                if job_status_mat(fs, 1) == 1 
+                if job_status_mat(f, 1) == 1 
                     continue;
                 end
                 
@@ -228,7 +241,7 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
                 end
 
                 % If there is no job, submit a job
-                if job_status_mat(fs, 1) == -1 && job_status_mat(f, 2) == -1 && ~(masterCompute && f == lastP)
+                if job_status_mat(f, 1) == -1 && job_status_mat(f, 2) == -1 && ~(masterCompute && f == lastP)
                     if rem(b, 50) == 0 || b == 1
                         fprintf('Task % 4d:    Process %s with function %s... \n', b, strjoin(fsnames(fs), ', '), func_str); 
                     else
