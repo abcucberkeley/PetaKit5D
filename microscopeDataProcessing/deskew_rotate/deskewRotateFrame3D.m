@@ -13,6 +13,9 @@ function volout = deskewRotateFrame3D(vol, angle, dz, xyPixelSize, varargin)
 % xruan (03/16/2021): change default xStepThresh to 2.35 (ds=0.3). 
 % xruan (01/27/2022): change default xStepThresh to 2.74 (ds=0.35). 
 % xruan (05/26/2022): change default xStepThresh to 2.42 (ds=0.31). 
+% xruan (05/30/2022): add skewed space interpolation based dsr for large step size
+% xruan (06/02/2022): change default xStepThresh to 1.96 (ds=0.25). 
+
 
 ip = inputParser;
 ip.CaseSensitive = false;
@@ -23,15 +26,24 @@ ip.addRequired('xyPixelSize'); % typical value: 0.1
 ip.addOptional('reverse', false, @islogical);
 ip.addParameter('Crop', true, @islogical);
 ip.addParameter('ObjectiveScan', false, @islogical);
-ip.addParameter('xStepThresh', 2.42, @isnumeric); % 2.344 for ds=0.3, 2.735 for ds=0.35
+ip.addParameter('xStepThresh', 1.96, @isnumeric); % 2.344 for ds=0.3, 2.735 for ds=0.35
 ip.addParameter('resample', [], @isnumeric); % resample factor in xyz order. 
 ip.addParameter('gpuProcess', false, @islogical); % use gpu for the processing. 
 ip.addParameter('Interp', 'linear', @(x) any(strcmpi(x, {'cubic', 'linear'})));
 ip.parse(vol, angle, dz, xyPixelSize, varargin{:});
 
+pr = ip.Results;
+Reverse = pr.reverse;
+Crop = pr.Crop;
+ObjectiveScan = pr.ObjectiveScan;
+xStepThresh = pr.xStepThresh;
+resample = pr.resample;
+gpuProcess = pr.gpuProcess;
+Interp = pr.Interp;
+
 [ny,nx,nz] = size(vol);
 
-theta = ip.Results.angle * pi/180;
+theta = angle * pi/180;
 dx = cos(theta)*dz/xyPixelSize; % pixels shifted slice to slice in x
 
 if ip.Results.ObjectiveScan
@@ -41,7 +53,7 @@ else
 end
 
 %% deskew
-if ~ip.Results.reverse
+if ~Reverse
     xshift = -dx;
     xstep = dx;
 else
@@ -51,7 +63,7 @@ end
 nxDs = ceil((nz-1)*dx) + nx; % width of output volume as if there is DS.
 
 % shear transform matrix
-if ip.Results.ObjectiveScan
+if ObjectiveScan
     nxDs = nx;
     ds_S = eye(4);
 else
@@ -63,7 +75,7 @@ end
 
 %% rotate
 % nxDs = nxOut;
-if ip.Results.reverse
+if Reverse
     theta = -theta;
 end
 
@@ -84,7 +96,7 @@ R = [cos(theta) 0 -sin(theta) 0; % order for imwarp is x,y,z
      sin(theta) 0 cos(theta) 0;
      0 0 0 1];
 
-if ~ip.Results.ObjectiveScan
+if ~ObjectiveScan
     % outSize = round([ny nxDs/cos(theta) h]);
     % calculate height; first & last 2 frames have interpolation artifacts
     outSize = round([ny, (nx-1)*cos(theta)+(nz-1)*zAniso/sin(abs(theta)), (nx-1)*sin(abs(theta))-4]);
@@ -99,7 +111,7 @@ T2 = [1 0 0 0
       (outSize([2 1 3])+1)/2 1];
 
 %% resampling after deskew and rotate
-rs = ip.Results.resample;
+rs = resample;
 if ~isempty(rs)
     RT1 = [1 0 0 0
            0 1 0 0
@@ -122,21 +134,40 @@ end
 
 %% summarized transform
 RA = imref3d(outSize, 1, 1, 1);
-if ip.Results.gpuProcess
+if gpuProcess
     vol = gpuArray(vol);
 end
 
 % for sample scan, check x step size to decide use separate or combined
 % processing
 combinedProcess = true;
-if ~ip.Results.ObjectiveScan && abs(dx) > ip.Results.xStepThresh
+if ~ObjectiveScan && abs(dx) > xStepThresh
     combinedProcess = false;
 end
 
 if combinedProcess
-    [volout] = imwarp(vol, affine3d(ds_S*(T1*S*R*T2)*(RT1*RS*RT2)), ip.Results.Interp, 'FillValues', 0, 'OutputView', RA);
+    [volout] = imwarp(vol, affine3d(ds_S*(T1*S*R*T2)*(RT1*RS*RT2)), Interp, 'FillValues', 0, 'OutputView', RA);
+    if gpuProcess
+        volout = gather(volout);
+    end    
 else
+    % skewed space interplation combined dsr
+    fprintf('The step size is greater than the threshold, use skewed space interpolation for combined deskew rotate...\n');
+    nint = ceil(abs(dx) / xStepThresh);
+    % add the mex version skewed space interpolation as default
+    try 
+        vol = skewed_space_interp_mex(vol, abs(dx), nint, Reverse);
+    catch ME
+        disp(ME);
+        vol = skewed_space_interp(vol, abs(dx), nint, 'Reverse', Reverse);
+    end
+
+    [volout] = deskewRotateFrame3D(vol, angle, dz / nint, xyPixelSize, 'Reverse', Reverse, ...
+        'Crop', Crop, 'ObjectiveScan', ObjectiveScan, 'xStepThresh', xStepThresh, ...
+        'resample', resample, 'gpuProcess', gpuProcess, 'Interp', Interp);
+
     % 03/23/2021, for image with more than 500 slices, directly split to blocks for the processing
+    %{
     splitCompute = false; 
     if nz > 500
         splitCompute = true;
@@ -173,6 +204,7 @@ else
             volout(inds_n, :, :) = vol_n(inds_n(1) - s + 1 : inds_n(end) - s + 1, :, :);
         end
     end
+    %}
 end
 
 % test separate affine transform for DS and dSR
@@ -180,9 +212,11 @@ end
 %     [vol] = imwarp(vol, affine3d(ds_S), ip.Results.Interp, 'FillValues', 0);
 %     [volout] = imwarp(vol, affine3d((T1*S*R*T2)*(RT1*RS*RT2)), ip.Results.Interp, 'FillValues', 0, 'OutputView', RA);
 % end
-if ip.Results.gpuProcess
-    volout = gather(volout);
-end
 
 
 end
+
+
+
+
+

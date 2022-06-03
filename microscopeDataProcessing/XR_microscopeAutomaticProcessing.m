@@ -213,8 +213,12 @@ ip.parse(dataPaths, varargin{:});
 
 % make sure the function is in the root of XR_Repository. 
 mpath = fileparts(which(mfilename));
-repo_rt = [mpath, '/../'];
+repo_rt = [mpath, '/../../'];
 cd(repo_rt);
+if ~exist('setup.m', 'file')
+    repo_rt = [mpath, '/../'];
+    cd(repo_rt);
+end
 
 pr = ip.Results;
 Overwrite = pr.Overwrite;
@@ -310,6 +314,7 @@ warning('off', 'MATLAB:MKDIR:DirectoryExists');
 if ischar(dataPaths)
     dataPaths = {dataPaths};
 end
+dataPaths = unique(dataPaths);
 
 if ischar(imageListFullpaths)
     imageListFullpaths = {imageListFullpaths};

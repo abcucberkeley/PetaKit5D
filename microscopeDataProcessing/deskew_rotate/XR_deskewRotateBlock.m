@@ -55,7 +55,7 @@ if ~exist(zarrFullpath, 'dir')
     error('The input zarr file %s doesnot exist!', zarrFullpath);
 end
 
-bim = blockedImage(zarrFullpath, 'Adapter', ZarrAdapter);
+% bim = blockedImage(zarrFullpath, 'Adapter', ZarrAdapter);
 
 if ~exist(dsrFullpath, 'dir')
     error('The output zarr file %s doesnot exist!', dsrFullpath);
@@ -73,7 +73,8 @@ for i = 1 : numel(batchInds)
     
     % load the region in input 
     % in_batch = bim.getRegion(ibStart, ibEnd);
-    in_batch = bim.Adapter.getIORegion(ibStart, ibEnd);
+    % in_batch = bim.Adapter.getIORegion(ibStart, ibEnd);
+    in_batch = readzarr(zarrFullpath, 'bbox', [ibStart, ibEnd]);
     
     % deskew and rotate    
     ObjectiveScan = false;
@@ -82,7 +83,8 @@ for i = 1 : numel(batchInds)
     out_batch = deskewRotateFrame3D(in_batch, SkewAngle, dz, xyPixelSize, ...
                 'reverse', Reverse, 'Crop', true, 'ObjectiveScan', ObjectiveScan, ...
                 'resample', resample, 'Interp', Interp);
-    
+    clear in_batch;
+
     if ~isempty(borderSize)
         out_batch = out_batch(borderSize(1) + 1 : end - borderSize(4), borderSize(2) + 1 : end - borderSize(5), ...
             borderSize(3) + 1 : end - borderSize(6)); 
@@ -95,6 +97,7 @@ for i = 1 : numel(batchInds)
     
     % write out_batch (in the future, directly write the whole region)
     nv_bim.Adapter.setRegion(obStart, obEnd, out_batch)
+    % writezarr(out_batch, dsrFullpath, 'bbox', [obStart, obEnd]);
 
     done_flag(i) = true;
 
