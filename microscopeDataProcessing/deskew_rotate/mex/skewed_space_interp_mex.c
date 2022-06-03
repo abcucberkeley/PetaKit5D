@@ -9,11 +9,11 @@ void mexFunction(int nlhs, mxArray *plhs[],
         int nrhs, const mxArray *prhs[])
 {
     float* im = (float*)mxGetPr(prhs[0]);
-    double xstep = (double)*mxGetPr(prhs[1]);
-    uint64_t nint = (uint64_t)*mxGetPr(prhs[2]);
-    uint8_t Reverse = (uint8_t)mxIsLogicalScalarTrue(prhs[3]);
+    const double xstep = (double)*mxGetPr(prhs[1]);
+    const uint64_t nint = (uint64_t)*mxGetPr(prhs[2]);
+    const uint8_t Reverse = (uint8_t)mxIsLogicalScalarTrue(prhs[3]);
     
-    uint64_t* sz = (uint64_t*)mxGetDimensions(prhs[0]);
+    const uint64_t* sz = (uint64_t*)mxGetDimensions(prhs[0]);
     uint64_t dim[3];
     dim[0] = sz[0];
     dim[1] = sz[1];
@@ -22,7 +22,7 @@ void mexFunction(int nlhs, mxArray *plhs[],
     
     float* im_int = (float*)mxGetPr(plhs[0]);
     
-    uint64_t xa = (uint64_t)ceil(xstep);
+    const uint64_t xa = (uint64_t)ceil(xstep);
     double* s_mat = (double*)malloc((nint-1)*sizeof(double));
     double* t_mat = (double*)malloc((nint-1)*sizeof(double));
     double* sw_mat = (double*)malloc((nint-1)*sizeof(double));
