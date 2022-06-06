@@ -1,4 +1,4 @@
-function [fnout] = stitch_generate_imagelist_from_encoder(dataPath, dz)
+function [fnout] = stitch_generate_imagelist_from_encoder(dataPath, dz, ChannelPatterns)
 % generate image list file from encoder files. 
 % It reads all encoder files in the given dataPath, and generate image
 % list from all the files. It saves as a csv file with name ImageList_from_sqlite.csv 
@@ -6,10 +6,16 @@ function [fnout] = stitch_generate_imagelist_from_encoder(dataPath, dz)
 % 
 %
 % Author: Xiongtao Ruan (11/19/2021)
+% 
+% xruan (06/06/2022): add support for user define channel patterns
 
+if nargin < 3
+    ChannelPatterns = {'CamA_ch0', 'CamB_ch0'};
+end
 
 % generate coordinate info
-dz_actual = XR_estimate_actual_step_size_from_encoder(dataPath, 'dz', dz, 'onlyFirstRow', true, 'skipMissingFile', true);
+dz_actual = XR_estimate_actual_step_size_from_encoder(dataPath, 'dz', dz, ...
+    'ChannelPatterns', ChannelPatterns, 'onlyFirstRow', true, 'skipMissingFile', true);
 encoder_fn = [dataPath, '/encoder_info/coordinates_info.mat'];
 
 % generate image list file from encoder. 

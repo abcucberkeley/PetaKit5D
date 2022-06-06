@@ -11,6 +11,7 @@ function [] = XR_crop_dataset(dataPaths, resultPaths, bbox, varargin)
 % xruan (07/13/2021): add option to pad data if it is outside of the bbox
 % xruan (07/13/2021): add support for multiple datasets
 % xruan (01/25/2022): add support for zarr read and write
+% xruan (06/03/2022): add support for large zarr files
 
 
 ip = inputParser;
@@ -23,8 +24,9 @@ ip.addParameter('pad', false, @islogical); % pad region that is outside the bbox
 ip.addParameter('lastStart', [], @isnumeric); % start coordinate of the last time point
 ip.addParameter('ChannelPatterns', {'CamA_ch0'}, @iscell);
 ip.addParameter('zarrFile', false , @islogical); % read zarr
+ip.addParameter('largeZarr', false, @islogical); % use zarr file as input
 ip.addParameter('saveZarr', false , @islogical); % save as zarr
-ip.addParameter('blockSize', [500, 500, 500] , @isnumeric); % save as zarr
+ip.addParameter('BlockSize', [500, 500, 500] , @isnumeric); % save as zarr
 ip.addParameter('Save16bit', false, @islogical);
 ip.addParameter('parseCluster', true, @islogical);
 ip.addParameter('masterCompute', true, @islogical); % master node participate in the task computing. 
@@ -44,8 +46,9 @@ pad = pr.pad;
 lastStart = pr.lastStart;
 ChannelPatterns = pr.ChannelPatterns;
 zarrFile = pr.zarrFile;
+largeZarr = pr.largeZarr;
 saveZarr = pr.saveZarr;
-blockSize = pr.blockSize;
+BlockSize = pr.BlockSize;
 jobLogDir = pr.jobLogDir;
 parseCluster = pr.parseCluster;
 masterCompute = pr.masterCompute;
@@ -153,9 +156,9 @@ for f = 1 : nF
     end
     
     func_strs{f} = sprintf(['XR_crop_frame(''%s'',''%s'',[%s],''pad'',%s,''zarrFile'',%s,', ...
-        '''saveZarr'',%s,''blockSize'',%s)'], frameFullpath, cropFullpath, ...
+        '''largeZarr'',%s,''saveZarr'',%s,''BlockSize'',%s)'], frameFullpath, cropFullpath, ...
         strrep(num2str(bbox_f, '%.10f,'), ' ', ''), string(pad), string(zarrFile), ...
-        string(saveZarr), strrep(mat2str(blockSize), ' ', ','));
+        string(largeZarr), string(saveZarr), strrep(mat2str(BlockSize), ' ', ','));
 end
 
 cpusPerTask = max(min(ceil(prod(sz) * 4 / 1024^3 * 8 / 20), 24), cpusPerTask);

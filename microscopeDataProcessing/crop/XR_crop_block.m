@@ -1,20 +1,22 @@
-function [done_flag] =  MIP_block(batchInds, zarrFullpath, MIPFullpaths, flagFullname, BatchBBoxes, bSubs, varargin)
-% MIP for all axises for given blocks
+function [done_flag] = XR_crop_block(batchInds, zarrFullpath, cropFullpath, flagFullname, BatchBBoxes, RegionBBoxes, varargin)
+% crop for give zarr blocks
+% 
+% if the bbox is out of bound of the input image, it will automatically pad
 
 
 ip = inputParser;
 ip.CaseSensitive = false;
 ip.addRequired('blockInds', @isnumeric);
 ip.addRequired('zarrFullpath', @(x) ischar(x));
-ip.addRequired('MIPFullpaths', @(x) iscell(x));
+ip.addRequired('cropFullpath', @(x) ischar(x));
 ip.addRequired('flagFullname', @(x) ischar(x));
 ip.addRequired('BatchBBoxes', @isnumeric);
-ip.addRequired('bSubs', @isnumeric);
+ip.addRequired('RegionBBoxes', @isnumeric);
 ip.addParameter('Overwrite', false, @islogical);
 ip.addParameter('uuid', '', @ischar);
 ip.addParameter('debug', false, @islogical);
 
-ip.parse(batchInds, zarrFullpath, MIPFullpaths, flagFullname, BatchBBoxes, bSubs, varargin{:});
+ip.parse(batchInds, zarrFullpath, cropFullpath, flagFullname, BatchBBoxes, RegionBBoxes, varargin{:});
 
 pr = ip.Results;
 Overwrite = pr.Overwrite;
@@ -40,45 +42,40 @@ if ~exist(zarrFullpath, 'dir')
     error('The input zarr file %s doesnot exist!', zarrFullpath);
 end
 
-% bim = blockedImage(zarrFullpath, 'Adapter', ZarrAdapter);
-
-nv_bim_cell = cell(3, 1);
-for i = 1 : 3
-    if ~exist(MIPFullpaths{i}, 'dir')
-        error('The output zarr file %s does not exist!', MIPFullpaths{i});
-    end
-    nv_bim_cell{i} = blockedImage(MIPFullpaths{i}, 'Adapter', ZarrAdapter);
-end
+imSize = getImageSize(zarrFullpath);
+nv_bim = blockedImage(cropFullpath, 'Adapter', ZarrAdapter);
+dtype = nv_bim.ClassUnderlying;
 
 done_flag = false(numel(batchInds), 1);
 for i = 1 : numel(batchInds)
     bi = batchInds(i);
     fprintf('Process Batch %d ... ', bi);
+
     tic;
-    
     ibStart = BatchBBoxes(i, 1 : 3);
     ibEnd = BatchBBoxes(i, 4 : 6);
+
+    obStart = RegionBBoxes(i, 1 : 3);
+    obEnd = RegionBBoxes(i, 4 : 6);
     
     % load the region in input 
     % in_batch = bim.getRegion(ibStart, ibEnd);
     % in_batch = bim.Adapter.getIORegion(ibStart, ibEnd);
-    in_batch = readzarr(zarrFullpath, 'bbox', [ibStart, ibEnd]);
-
-    % MIP for each axis
-    for j = 1 : 3
-        out_batch = max(in_batch, [], j);
-        
-        obStart = BatchBBoxes(i, 1 : 3);
-        obStart(j) = bSubs(i, j);
-        obEnd = BatchBBoxes(i, 4 : 6);
-        obEnd(j) = bSubs(i, j);
-        
-        % nv_bim_cell{j}.Adapter.setRegion(obStart, obEnd, out_batch);
-        writezarr(out_batch, MIPFullpaths{j}, 'bbox', [obStart, obEnd])
+    [is_overlap, cuboid_overlap] = cuboids_overlaps([[1, 1, 1]', imSize'], [ibStart', ibEnd'], false);
+    cuboid_overlap = cuboid_overlap(:)';
+    if ~is_overlap
+        out_batch = zeros(obEnd - obStart, dtype);
+    else
+        out_batch = readzarr(zarrFullpath, 'bbox', [cuboid_overlap(1 : 3), cuboid_overlap(4 : 6)]);
+        if ~all(cuboid_overlap == [ibStart, ibEnd])
+            out_batch = padarray(out_batch, cuboid_overlap(1 : 3) - ibStart, 0, 'pre');
+            out_batch = padarray(out_batch, ibEnd - cuboid_overlap(4 : 6), 0, 'post');
+        end
     end
 
+    writezarr(out_batch, cropFullpath, 'bbox', [obStart, obEnd])
+
     done_flag(i) = true;
-    
     toc;
 end
 
@@ -86,6 +83,4 @@ if all(done_flag)
     fclose(fopen(flagFullname, 'w'));
 end
 
-
 end
-

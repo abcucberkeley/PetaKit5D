@@ -8,6 +8,7 @@ function [] = XR_crop_frame(dataFullpath, saveFullpath, bbox, varargin)
 % xruan (08/22/2020): update function for writing results
 % xruan (07/13/2021): add option to pad data if it is outside of the bbox
 % xruan (01/25/2022): add support for zarr read and write
+% xruan (06/03/2022): add support for large zarr files
 
 
 ip = inputParser;
@@ -18,8 +19,9 @@ ip.addRequired('bbox', @isnumeric);
 ip.addParameter('overwrite', false, @islogical); % start coordinate of the last time point
 ip.addParameter('pad', false, @islogical); % pad region that is outside the bbox
 ip.addParameter('zarrFile', false , @islogical); % read zarr
+ip.addParameter('largeZarr', false, @islogical); % use zarr file as input
 ip.addParameter('saveZarr', false , @islogical); % save as zarr
-ip.addParameter('blockSize', [500, 500, 500] , @isnumeric); % save as zarr
+ip.addParameter('BlockSize', [500, 500, 500] , @isnumeric); % save as zarr
 ip.addParameter('uuid', '', @ischar);
 
 ip.parse(dataFullpath, saveFullpath, bbox, varargin{:});
@@ -28,8 +30,9 @@ pr = ip.Results;
 overwrite = pr.overwrite;
 pad = pr.pad;
 zarrFile = pr.zarrFile;
+largeZarr = pr.largeZarr;
 saveZarr = pr.saveZarr;
-blockSize = pr.blockSize;
+BlockSize = pr.BlockSize;
 
 if ~exist(dataFullpath, 'file')
     warning('The file %s does not exist!', dataFullpath);
@@ -54,6 +57,14 @@ end
 
 % read data
 if zarrFile
+    if largeZarr
+        BatchSize = min([1024, 1024, 1024], BlockSize * 4);
+        parseCluster = true;
+        parseParfor = false;
+        XR_crop_zarr(dataFullpath, saveFullpath, bbox, 'pad', pad, 'BatchSize', BatchSize, ...
+            'BlockSize', BlockSize, 'parseCluster', parseCluster, 'parseParfor', parseParfor);
+        return;
+    end
     im = readzarr(dataFullpath, 'bbox', bbox_1);
 else
     try 
@@ -78,7 +89,7 @@ end
 uuid = get_uuid();
 if saveZarr
     tmpPath = sprintf('%s_%s.zarr', saveFullpath(1 : end - 5), uuid);
-    writezarr(im, tmpPath, 'blockSize', blockSize);    
+    writezarr(im, tmpPath, 'BlockSize', BlockSize);    
 else
     tmpPath = sprintf('%s_%s.tif', saveFullpath(1 : end - 4), uuid);
     writetiff(im, tmpPath);

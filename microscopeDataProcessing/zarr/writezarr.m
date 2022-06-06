@@ -51,12 +51,24 @@ try
     end
 catch ME
     disp(ME);
-    bim = blockedImage(filepath, sz, blockSize, init_val, "Adapter", ZarrAdapter, 'Mode', 'w');
-    % for data greater than 2GB, use multiprocessing
-    if ~ispc && prod(sz) * 2 / 1024^3 > 2 && ~ismatrix(data) 
-        bim.Adapter.setData(data);
+    if ~exist(filepath, 'dir') || (exist(filepath, 'dir') && isempty(bbox))
+        if exist(filepath, 'dir')
+            rmdir(filepath, 's');
+        end
+        bim = blockedImage(filepath, sz, blockSize, init_val, "Adapter", ZarrAdapter, 'Mode', 'w');             
     else
-        bim.Adapter.setRegion(ones(1, numel(bim.Size)), bim.Size, data)
+        bim = blockedImage(filepath, "Adapter", ZarrAdapter);
+    end
+
+    % for data greater than 2GB, use multiprocessing
+    if isempty(bbox)
+        if ~ispc && prod(sz) * 2 / 1024^3 > 2 && ~ismatrix(data) 
+            bim.Adapter.setData(data);
+        else
+            bim.Adapter.setRegion(ones(1, numel(bim.Size)), bim.Size, data)
+        end
+    else
+        bim.Adapter.setRegion(bbox(1 : 3), bbox(4 : 6), data)
     end
     bim.Adapter.close();
 end
