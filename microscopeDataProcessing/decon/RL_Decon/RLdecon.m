@@ -182,7 +182,7 @@ if ischar(psf)
                 if ~exist(psfgen_filename, 'file')
                     tmp_filename = sprintf('%s/%s_%s.tif', psfgen_folder, b, uuid);                    
                     writetiff(psf, tmp_filename);
-                    mvoefile(tmp_filename, psfgen_filename);
+                    movefile(tmp_filename, psfgen_filename);
                 end
             end
         catch ME

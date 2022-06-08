@@ -1,4 +1,4 @@
-% demo to run microscope automatic pipeline for a single dataset without stitch
+% demo to run skewed space stitching
 
 %% Step 1: set parameters 
 % add the software to the path
