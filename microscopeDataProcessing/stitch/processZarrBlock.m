@@ -90,7 +90,8 @@ for i = 1 : numel(batchInds)
     end
     
     % load the region in input 
-    in_batch = bim.Adapter.getIORegion(ibStart, ibEnd);
+    % in_batch = bim.Adapter.getIORegion(ibStart, ibEnd);
+    in_batch = readzarr(zarrFullpath, 'bbox', [ibStart, ibEnd]);
     
     % find the coresponding coordinates in the output
     obStart = round((ibStart_orig - 1) ./ dsFactor) + 1;

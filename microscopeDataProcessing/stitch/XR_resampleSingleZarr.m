@@ -20,7 +20,8 @@ ip.addParameter('batchSize', [512, 512, 512], @isnumeric); % size to process in 
 ip.addParameter('BorderSize', [5, 5, 5], @isnumeric); % padded boarder for each batch
 ip.addParameter('Interp', 'linear', @(x) any(strcmpi(x, {'cubic', 'linear', 'nearest'})));
 ip.addParameter('parseCluster', true, @islogical);
-ip.addParameter('cpuOnlyNodes', true, @islogical);
+ip.addParameter('cpuOnlyNodes', ~true, @islogical);
+ip.addParameter('cpusPerTask', 1, @islogical);
 ip.addParameter('uuid', '', @ischar);
 
 ip.parse(zarrFullpath, dsFullpath, dsFactor, varargin{:});
@@ -32,6 +33,7 @@ BorderSize = pr.BorderSize;
 Interp = pr.Interp;
 parseCluster = pr.parseCluster;
 cpuOnlyNodes = pr.cpuOnlyNodes;
+cpusPerTask = pr.cpusPerTask;
 uuid = pr.uuid;
 
 if isempty(uuid)
@@ -84,9 +86,6 @@ end
 
 taskSize = 5; % the number of batches a job should process
 numTasks = ceil(numBatch / taskSize);
-if parseCluster
-    cpusPerTask = 1;
-end
 
 % get the function string for each batch
 funcStrs = cell(numTasks, 1);
@@ -111,7 +110,7 @@ is_done_flag= slurm_cluster_generic_computing_wrapper(inputFullpaths, outputFull
 
 if ~all(is_done_flag)
     slurm_cluster_generic_computing_wrapper(inputFullpaths, outputFullpaths, ...
-        funcStrs, 'cpusPerTask', cpusPerTask, 'parseCluster', parseCluster, ...
+        funcStrs, 'cpusPerTask', cpusPerTask * 2, 'parseCluster', parseCluster, ...
         'cpuOnlyNodes', cpuOnlyNodes);
 end    
 

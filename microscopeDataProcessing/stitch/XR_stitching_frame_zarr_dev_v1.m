@@ -394,7 +394,7 @@ for f = 1 : nF
     stitch2D = true;
 end
 
-if nF < 50
+if stitch2D && nF < 50
     parseCluster = false;
 end
 
@@ -810,6 +810,10 @@ end
 % process for each block based on all BlockInfo use distributed computing
 % framework (change to use the slurm generic computing framework)
 fprintf('Process blocks for stitched result...\n')
+if numBlocks < 10
+    parseCluster = false;
+end
+
 if parseCluster
     taskSize = 5; % the number of blocks a job should process for [500, 500, 500]
     % keep task size inversely propotional to block size

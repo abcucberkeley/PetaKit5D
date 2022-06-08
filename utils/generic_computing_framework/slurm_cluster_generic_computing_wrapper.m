@@ -28,7 +28,7 @@ ip.addParameter('masterCompute', true, @islogical); % master node participate in
 ip.addParameter('jobLogDir', '../job_logs', @ischar);
 ip.addParameter('tmpDir', '', @ischar);
 ip.addParameter('cpusPerTask', 1, @isnumeric);
-ip.addParameter('cpuOnlyNodes', true, @islogical);
+ip.addParameter('cpuOnlyNodes', ~true, @islogical);
 ip.addParameter('uuid', '', @ischar);
 ip.addParameter('maxTrialNum', 3, @isnumeric);
 ip.addParameter('unitWaitTime', 30, @isnumeric);
