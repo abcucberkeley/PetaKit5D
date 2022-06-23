@@ -62,7 +62,7 @@ ip.addParameter('nTapering', [], @isnumeric);
 ip.addParameter('rawdata', [], @isnumeric); 
 ip.addParameter('scaleFactor', [], @isnumeric); % scale factor for result
 ip.addParameter('useGPU', true, @islogical); % use GPU processing
-ip.addParameter('save3Dstack', true, @islogical); % use GPU processing
+ip.addParameter('save3Dstack', true, @islogical); % save 3d stack to disk
 ip.addParameter('psfGen', true, @islogical); % psf generation
 
 

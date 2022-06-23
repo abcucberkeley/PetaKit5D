@@ -64,7 +64,7 @@ ip.addParameter('GPUJob', false, @islogical); % use gpu for chuck deconvolution.
 ip.addParameter('BatchSize', [1024, 1024, 1024] , @isvector); % in y, x, z
 ip.addParameter('BlockSize', [256, 256, 256], @isnumeric); % block overlap
 ip.addParameter('largeFile', false, @islogical);
-ip.addParameter('largeMethod', 'MemoryJobs', @ischar); % memory jobs, memory single, inplace. 
+ip.addParameter('largeMethod', 'inmemory', @ischar); % inmemory, inplace. 
 ip.addParameter('zarrFile', false, @islogical); % use zarr file as input
 ip.addParameter('saveZarr', false, @islogical); % save as zarr
 ip.addParameter('deconMaskFns', {}, @iscell); % 2d masks to filter regions to decon, in xy, xz, yz order

@@ -92,30 +92,35 @@ end
 
 % generate psf and use the cropped psf to decide the border size
 pp = readtiff(PSF);
-medFactor = 1.5;
-PSFGenMethod = 'masked';
-if Deskew
-    dz_data_ratio = sind(SkewAngle);
+if psfGen
+    medFactor = 1.5;
+    PSFGenMethod = 'masked';
+    if Deskew
+        dz_data_ratio = sind(SkewAngle);
+    else
+        dz_data_ratio = 1;
+    end
+    psf = psf_gen_new(pp, dzPSF, dz*dz_data_ratio, medFactor, PSFGenMethod);
+    py = find(squeeze(sum(psf, [2, 3])));
+    px = find(squeeze(sum(psf, [1, 3])));
+    pz = find(squeeze(sum(psf, [1, 2])));
+    cropSz = [min(py(1) - 1, size(psf, 1) - py(end)), min(px(1) - 1, size(psf, 2) - px(end)), min(pz(1) - 1, size(psf, 3) - pz(end))] - 1;
+    cropSz = max(0, cropSz);
+    bbox = [cropSz + 1, size(psf) - cropSz];
+    psf = psf(bbox(1) : bbox(4), bbox(2) : bbox(5), bbox(3) : bbox(6));
+    
+    % write generated psf to disk in case it will be deleted in the c
+    psfgen_folder = sprintf('%s/psfgen/', deconPath);
+    mkdir(psfgen_folder);
+    [~, psf_fsn] = fileparts(PSF);
+    psfgen_filename = sprintf('%s/%s.tif', psfgen_folder, psf_fsn);
+    if ~exist(psfgen_filename, 'file')
+        writetiff(psf, psfgen_filename);
+    end
 else
-    dz_data_ratio = 1;
+    psf = pp;
 end
-psf = psf_gen_new(pp, dzPSF, dz*dz_data_ratio, medFactor, PSFGenMethod);
-py = find(squeeze(sum(psf, [2, 3])));
-px = find(squeeze(sum(psf, [1, 3])));
-pz = find(squeeze(sum(psf, [1, 2])));
-cropSz = [min(py(1) - 1, size(psf, 1) - py(end)), min(px(1) - 1, size(psf, 2) - px(end)), min(pz(1) - 1, size(psf, 3) - pz(end))] - 1;
-cropSz = max(0, cropSz);
-bbox = [cropSz + 1, size(psf) - cropSz];
-psf = psf(bbox(1) : bbox(4), bbox(2) : bbox(5), bbox(3) : bbox(6));
 
-% write generated psf to disk in case it will be deleted in the c
-psfgen_folder = sprintf('%s/psfgen/', deconPath);
-mkdir(psfgen_folder);
-[~, psf_fsn] = fileparts(PSF);
-psfgen_filename = sprintf('%s/%s.tif', psfgen_folder, psf_fsn);
-if ~exist(psfgen_filename, 'file')
-    writetiff(psf, psfgen_filename);
-end
 
 tic
 fprintf(['reading ' fsname '...\n'])

@@ -32,6 +32,7 @@ function XR_stitching_frame_zarr_dev_v1(tileFullpaths, coordinates, varargin)
 % xruan (01/27/2022): change block size to be equal to the median of tile sizes if it
 % is larger, to reduce the workload for each stitching block. 
 % xruan (03/03/2022): fix bug for skewed space stitch coordinate conversion for z coordinate 
+% xruan (06/20/2022): add input variable axisWeight for user defined weights for optimization
 
 
 ip = inputParser;
@@ -63,15 +64,11 @@ ip.addParameter('df', [], @isnumeric);
 ip.addParameter('Save16bit', false , @islogical); % saves deskewed data as 16 bit -- not for quantification
 ip.addParameter('EdgeArtifacts', 2, @isnumeric);
 ip.addParameter('Decon', false, @islogical);
-ip.addParameter('cudaDecon', ~false, @islogical);
 ip.addParameter('DS', false, @islogical);
 ip.addParameter('DSR', false, @islogical);
 ip.addParameter('resampleType', 'xy_isotropic', @ischar);
 ip.addParameter('resample', [], @isnumeric);
-ip.addParameter('Background', [], @isnumeric);
 ip.addParameter('deconRotate', false, @islogical);
-ip.addParameter('PSFpath', '', @ischar);
-ip.addParameter('dzPSF', 0.1, @isnumeric);
 ip.addParameter('BlendMethod', 'none', @ischar);
 ip.addParameter('halfOrder', [3, 2, 1], @isnumeric);
 ip.addParameter('overlapType', '', @ischar); % '', 'none', 'half', or 'full'
@@ -86,6 +83,7 @@ ip.addParameter('xcorrDownsample', [2, 2, 1], @isnumeric); % y,x,z
 ip.addParameter('xyMaxOffset', 300, @isnumeric); % max offsets in xy axes
 ip.addParameter('zMaxOffset', 50, @isnumeric); % max offsets in z axis
 ip.addParameter('shiftMethod', 'grid', @ischar); % {'local', 'global', 'grid', 'test', 'group'}
+ip.addParameter('axisWeight', [1, 0.1, 10], @isnumeric); % axis weight for optimization, y, x, z
 ip.addParameter('groupFile', '', @ischar); % file to define tile groups
 ip.addParameter('singleDistMap', ~false, @islogical); % compute distance map for the first tile and apply to all other tiles
 ip.addParameter('blockSize', [500, 500, 500], @isnumeric); 
@@ -132,18 +130,16 @@ TileOffset = pr.TileOffset;
 % Deskew = pr.Deskew;
 % Rotate = pr.Rotate;
 Decon = pr.Decon;
-cudaDecon = pr.cudaDecon;
 DSRDirstr = pr.DSRDirstr;
 DeconDirstr = pr.DeconDirstr;
 DS = pr.DS;
 DSR = pr.DSR;
-Background = pr.Background;
-PSFpath = pr.PSFpath;
 BlendMethod = pr.BlendMethod;
 halfOrder = pr.halfOrder;
 overlapType = pr.overlapType;
 xcorrShift = pr.xcorrShift;
 shiftMethod = pr.shiftMethod;
+axisWeight = pr.axisWeight;
 groupFile = pr.groupFile;
 isPrimaryCh = pr.isPrimaryCh;
 usePrimaryCoords = pr.usePrimaryCoords;
@@ -274,7 +270,12 @@ if ~isPrimaryCh
     end
 end
 
-if isempty(tileIdx)
+if ~isempty(tileIdx)
+    % sort tiles based on tileIdx (handle zigzag orders)
+    [tileIdx, sinds] = sortrows(tileIdx, [3, 2, 1]);
+    xyz = xyz(sinds, :);
+    tileFullpaths = tileFullpaths(sinds);
+elseif isempty(tileIdx)
     tileIdx = 1 : 3;
 end
 tileNum = [numel(unique(tileIdx(:,1))), numel(unique(tileIdx(:,2))), numel(unique(tileIdx(:,3)))];
@@ -483,7 +484,7 @@ if xcorrShift && isPrimaryCh
     MaxOffset = [xyMaxOffset, xyMaxOffset, zMaxOffset];
     [xyz_shift, d_shift] = stitch_shift_assignment(zarrFullpaths, xcorrDir, imSizes, xyz, ...
         px, [xf, yf, zf], overlap_matrix, overlap_regions, MaxOffset, xcorrDownsample, ...
-        tileIdx, assign_method, stitch2D, groupFile, parseCluster);
+        tileIdx, assign_method, stitch2D, axisWeight, groupFile, parseCluster);
 elseif ~isPrimaryCh
     if ~exist(stitchInfoFullpath, 'file')
         error('The stitch information filename %s does not exist!', stitchInfoFullpaths);
@@ -810,7 +811,7 @@ end
 % process for each block based on all BlockInfo use distributed computing
 % framework (change to use the slurm generic computing framework)
 fprintf('Process blocks for stitched result...\n')
-if numBlocks < 10
+if numBlocks < 30
     parseCluster = false;
 end
 

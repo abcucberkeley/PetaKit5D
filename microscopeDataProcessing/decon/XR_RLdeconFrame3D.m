@@ -222,14 +222,20 @@ for f = 1 : nF
                 im_raw = flip(im_raw, 3);
             end
                 
-            im_bw = im_raw > 0;
-            clear im_raw
+            % im_bw = im_raw > 0;
+            % clear im_raw
             % pad to avoid not erosion if a pixel touching the boundary
-            im_bw_pad = false(size(im_bw) + 2);
-            im_bw_pad(2 : end - 1, 2 : end - 1, 2 : end - 1) = im_bw;
-            im_bw_erode = imerode(im_bw_pad, strel('sphere', EdgeErosion));
-            im_bw_erode = im_bw_erode(2 : end - 1, 2 : end - 1, 2 : end - 1);
-            clear im_bw im_bw_pad
+            % im_bw_pad = false(size(im_bw) + 2);
+            % im_bw_pad(2 : end - 1, 2 : end - 1, 2 : end - 1) = im_bw;
+            % im_bw_erode = imerode(im_bw_pad, strel('sphere', EdgeErosion));
+            % im_bw_erode = im_bw_erode(2 : end - 1, 2 : end - 1, 2 : end - 1);
+            % clear im_bw im_bw_pad
+            im_bw_erode = im_raw > 0;
+            clear im_raw;
+            im_bw_erode([1, end], :, :) = false;
+            im_bw_erode(:, [1, end], :) = false;
+            im_bw_erode(:, :, [1, end]) = false;
+            im_bw_erode = bwdist(~im_bw_erode) > EdgeErosion - 1;
             
             % save mask file as common one for other time points/channels
             if SaveMaskfile
@@ -324,6 +330,15 @@ for f = 1 : nF
     end
     
     % to do: put the code below to a function as in memory computing
+    if strcmpi(largeMethod, 'inmemory')
+        RLdecon_large_in_memory(frameFullpath, PSF, deconFullPath, pixelSize, dz, ...
+            'Save16bit', Save16bit, 'Deskew', Deskew, 'SkewAngle', SkewAngle, ...
+            'flipZstack', flipZstack, 'Background', Background, 'dzPSF', dzPSF, ...
+            'DeconIter', DeconIter, 'EdgeErosion', EdgeErosion, 'fixIter', fixIter, ...
+            'BatchSize', BatchSize, 'deconMaskFns', deconMaskFns, 'uuid', uuid, ...
+            'debug', debug, 'psfGen', psfGen);
+        return;
+    end
     
     
     fprintf('Start Large-file RL Decon for %s...\n', fsname);

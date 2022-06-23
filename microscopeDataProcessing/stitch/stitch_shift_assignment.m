@@ -1,6 +1,6 @@
 function [xyz_shift, d_shift] = stitch_shift_assignment(zarrFullpaths, xcorrDir, imSizes, xyz, ...
     px, xyz_factors, overlap_matrix, overlap_regions, MaxOffset, xcorrDownsample, tileIdx, assign_method, ...
-    stitch2D, groupFile, parseCluster)
+    stitch2D, axisWeight, groupFile, parseCluster)
 % main function for stitch shift assignment 
 % The main code is taken from XR_stitching_frame_zarr_dev_v1.m (to simplify
 % the function).
@@ -15,8 +15,13 @@ function [xyz_shift, d_shift] = stitch_shift_assignment(zarrFullpaths, xcorrDir,
 % xruan (05/09/2022): add support for 2d stitch
 % xruan (05/15/2022): add support for group-based stitch
 % xruan (05/21/2022): change absolute_shift_mat to finds pari, shifts NX5 
+% xruan (06/20/2022): add input variable axisWeight for user defined weights for optimization
 
 fprintf('Compute cross-correlation based registration between overlap tiles...\n');
+
+if isempty(axisWeight)
+    axisWeight = [1, 0.1, 10]; % order y, x, z
+end
 
 xcorr_thresh = 0.25;
 % test thrshold for global assignment (in some cases the xcorr between
@@ -166,7 +171,8 @@ switch assign_method
         neq = size(max_xcorr_mat, 1);
         max_shift_l = -ones(neq, 1) .* MaxOffset;
         max_shift_u = (cuboid_overlap_ij_mat(:, 4 : 6) - cuboid_overlap_ij_mat(:, 1 : 3)) ./ (px .* [xf, yf, zf]);
-        max_shift_u = min(max_shift_u - 1, MaxOffset);
+        % max_shift_u = min(max_shift_u - 1, MaxOffset);
+        max_shift_u = min(max_shift_u - 3, MaxOffset);
 
         if stitch2D
             max_shift_u(:, 3) = 0;
@@ -174,7 +180,7 @@ switch assign_method
         
         max_allow_shift = [max_shift_l, max_shift_u];
         
-        [d_shift] = stitch_global_grid_assignment(nF, max_xcorr_mat, absolute_shift_mat, overlap_matrix, max_allow_shift, xcorr_thresh, tileIdx);
+        [d_shift] = stitch_global_grid_assignment(nF, max_xcorr_mat, absolute_shift_mat, overlap_matrix, max_allow_shift, xcorr_thresh, tileIdx, axisWeight);
     case 'group'
         neq = size(max_xcorr_mat, 1);
         max_shift_l = -ones(neq, 1) .* MaxOffset;
@@ -191,7 +197,7 @@ switch assign_method
         max_allow_shift(inter_ginds, :) = [-ones(sum(inter_ginds), 1) .* MaxOffset, ones(sum(inter_ginds), 1) .* MaxOffset] * 2; 
         
         [d_shift] = stitch_global_group_assignment(nF, max_xcorr_mat, absolute_shift_mat, ...
-            overlap_matrix, max_allow_shift, xcorr_thresh, tileIdx, grpIdx);        
+            overlap_matrix, max_allow_shift, xcorr_thresh, tileIdx, axisWeight, grpIdx);        
     case 'test'
         neq = size(max_xcorr_mat, 1);
         max_shift_l = -ones(neq, 1) .* MaxOffset;
@@ -357,7 +363,7 @@ d_shift = d_shift - d_shift(1, :);
 end
 
 
-function [d_shift] = stitch_global_grid_assignment(nF, max_xcorr_mat, absolute_shift_mat, overlap_matrix, max_allow_shift, xcorr_thresh, tileIdx)
+function [d_shift] = stitch_global_grid_assignment(nF, max_xcorr_mat, absolute_shift_mat, overlap_matrix, max_allow_shift, xcorr_thresh, tileIdx, axisWeight)
 % solve weighted constrained linear least square problem for the assignment
 % the weight is the function of max shift (currently just y=x). 
 % max allowed shift is based on the maxShift parameter and the number of
@@ -391,11 +397,14 @@ for i = 1 : nP
         aind = find(abs(tileIdx(s, :) - tileIdx(t, :)));
         switch aind
             case 1
-                w(i) = 0.1;
+                % x
+                w(i) = axisWeight(2);
             case 2
-                w(i) = 1;
+                % y
+                w(i) = axisWeight(1);
             case 3
-                w(i) = 10;
+                % z
+                w(i) = axisWeight(3);
         end
     end    
 end
@@ -438,7 +447,7 @@ d_shift = d_shift - d_shift(1, :);
 end
 
 
-function [d_shift] = stitch_global_group_assignment(nF, max_xcorr_mat, absolute_shift_mat, overlap_matrix, max_allow_shift, xcorr_thresh, tileIdx, grpIdx)
+function [d_shift] = stitch_global_group_assignment(nF, max_xcorr_mat, absolute_shift_mat, overlap_matrix, max_allow_shift, xcorr_thresh, tileIdx, axisWeight, grpIdx)
 % Two-step optimization: 
 % step 1: grid method for tiles within each group
 % step 2: weighted constrained linear least square for shifts across groups
@@ -476,7 +485,7 @@ for g = 1 : ng
     tileIdx_g = tileIdx(gind, :);
 
     [d_shift_g] = stitch_global_grid_assignment(nF_g, max_xcorr_mat_g, absolute_shift_mat_g, ...
-        overlap_matrix_g, max_allow_shift_g, xcorr_thresh, tileIdx_g);
+        overlap_matrix_g, max_allow_shift_g, xcorr_thresh, tileIdx_g, axisWeight);
     d_shift_pre(gind, :) = d_shift_g;
 end
 
@@ -506,28 +515,7 @@ filt_inds = max_xcorr_mat_filt(:, 3) < xcorr_thresh;
 max_xcorr_mat_filt(filt_inds, :) = [];
 % w = max_xcorr_mat_filt(:, 3);
 nP = size(max_xcorr_mat_filt, 1);
-w = ones(nP, 1) * 0.00;
-% for i = 1 : nP
-%     s = max_xcorr_mat_filt(i, 1);
-%     t = max_xcorr_mat_filt(i, 2);
-%     
-%     % check if two tiles are neighboring tiles
-%     if grpIdx(s) == grpIdx(t)
-%         if sum(abs(tileIdx(s, :) - tileIdx(t, :))) == 1
-%             aind = find(abs(tileIdx(s, :) - tileIdx(t, :)));
-%             switch aind
-%                 case 1
-%                     w(i) = 0.1;
-%                 case 2
-%                     w(i) = 1;
-%                 case 3
-%                     w(i) = 10;
-%             end
-%         end
-%     else
-%         w(i) = 0.01;
-%     end    
-% end
+% w = ones(nP, 1) * 0.00;
 w = ones(nP, 1) * 0.01;
 
 R_w = zeros(nP, nF);
@@ -576,99 +564,6 @@ d_shift = round(d_shift);
 d_shift = d_shift - d_shift(1, :);
 
 end
-
-
-
-function [d_shift] = stitch_global_group_assignment_bak(nF, max_xcorr_mat, absolute_shift_mat, overlap_matrix, max_allow_shift, xcorr_thresh, tileIdx, grpIdx)
-% solve weighted constrained linear least square problem for the assignment
-% for multiple groups. For tiles within the same group, the weights are
-% same as grid method, for overlapping tiles across groups, the weights are
-% lower than the lowest weights within a group.
-% 
-% the weight is the function of max shift (currently just y=x). 
-% max allowed shift is based on the maxShift parameter and the number of
-% overlap between tiles.
-%
-% This method is not good, as it will affact the shifts between tiles
-% within the same group, which makes overall shifts bad.
-
-neq = sum(overlap_matrix(:));
-
-R = zeros(neq, nF);
-
-[n_i, n_j] = find(overlap_matrix);
-
-inds_i = sub2ind(size(R), 1 : neq, n_i');
-inds_j = sub2ind(size(R), 1 : neq, n_j');
-
-R(inds_i) = -1; 
-R(inds_j) = 1;
-
-max_xcorr_mat_filt = max_xcorr_mat;
-max_xcorr_mat_filt(max_xcorr_mat_filt(:, 3) < xcorr_thresh, :) = [];
-% w = max_xcorr_mat_filt(:, 3);
-nP = size(max_xcorr_mat_filt, 1);
-w = ones(nP, 1) * 0.00;
-for i = 1 : nP
-    s = max_xcorr_mat_filt(i, 1);
-    t = max_xcorr_mat_filt(i, 2);
-    
-    % check if two tiles are neighboring tiles
-    if grpIdx(s) == grpIdx(t)
-        if sum(abs(tileIdx(s, :) - tileIdx(t, :))) == 1
-            aind = find(abs(tileIdx(s, :) - tileIdx(t, :)));
-            switch aind
-                case 1
-                    w(i) = 0.1;
-                case 2
-                    w(i) = 1;
-                case 3
-                    w(i) = 10;
-            end
-        end
-    else
-        w(i) = 0.01;
-
-    end    
-end
-
-R_w = zeros(nP, nF);
-
-np_i = max_xcorr_mat_filt(:, 1);
-np_j = max_xcorr_mat_filt(:, 2);
-inds_i = sub2ind(size(R_w), 1 : nP, np_i');
-inds_j = sub2ind(size(R_w), 1 : nP, np_j');
-R_w(inds_i) = -1; 
-R_w(inds_j) = 1;
-
-W = diag(w);
-R_w = W.^0.5 * R_w;
-% R_w = R;
-
-c_inds = (np_i - 1) * nF - np_i .* (np_i + 1) / 2 + np_j;
-d_w = absolute_shift_mat(c_inds, :);
-d_w = W.^0.5 * d_w;
-
-d_shift = zeros(nF, 3);
-for i = 1 : 3
-    C = R_w;
-    d = d_w(:, i);
-    A = [R; -R];
-
-    l = max_allow_shift(:, i);
-    u = max_allow_shift(:, 3 + i);
-    b = [u; -l];
-
-    [x,resnorm,residual,exitflag,output,lambda] = lsqlin(C,d,A,b);
-    d_shift(:, i) = x;
-end
-
-% round to integers and normalize for the first tile.
-d_shift = round(d_shift);
-d_shift = d_shift - d_shift(1, :);
-
-end
-
 
 
 function [d_shift] = stitch_global_grid_assignment_test(nF, max_xcorr_mat, absolute_shift_mat, overlap_matrix, max_allow_shift, xcorr_thresh, tileIdx)
