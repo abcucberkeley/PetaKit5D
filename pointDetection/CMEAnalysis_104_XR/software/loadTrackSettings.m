@@ -25,10 +25,11 @@ function trackSettings = loadTrackSettings(varargin)
 
 ip = inputParser;
 ip.CaseSensitive = false;
-ip.addParamValue('Radius', []);
-ip.addParamValue('GapRadius', [5 10]);
-ip.addParamValue('LinkRadius', [5 10]);
-ip.addParamValue('MaxGapLength', 2);
+ip.addParameter('Radius', []);
+ip.addParameter('GapRadius', [5 10]);
+ip.addParameter('LinkRadius', [5 10]);
+ip.addParameter('MaxGapLength', 2);
+ip.addParameter('CostType', 'linear'); % linear or rds (random directed switching)
 ip.parse(varargin{:});
 
 gapRadius = ip.Results.GapRadius;
@@ -37,6 +38,7 @@ if ~isempty(ip.Results.Radius)
     gapRadius = ip.Results.Radius;
     linkRadius = ip.Results.Radius;
 end
+CostType = ip.Results.CostType;
 
 gapCloseParam.timeWindow = ip.Results.MaxGapLength+1;  % maximum allowed time gap (in frames) between a track segment end and a track segment start that allows linking them.
 gapCloseParam.mergeSplit = 1;  % 1 if merging and splitting are to be considered, 2 if only merging is to be considered, 3 if only splitting is to be considered, 0 if no merging or splitting are to be considered.
@@ -45,7 +47,12 @@ gapCloseParam.diagnostics = 0; % 1 to plot a histogram of gap lengths in the end
 
 
 % cost matrix for frame-to-frame linking
-costMatrices(1).funcName = func2str(@costMatLinearMotionLink2);
+switch lower(CostType)
+    case 'linear'
+        costMatrices(1).funcName = func2str(@costMatLinearMotionLink2);
+    case 'rds'
+        costMatrices(1).funcName = func2str(@costMatRandomDirectedSwitchingMotionLink);
+end
 costMatrices(1).parameters.linearMotion = 0;     % use linear motion Kalman filter.
 costMatrices(1).parameters.minSearchRadius = linkRadius(1); % minimum allowed search radius. The search radius is calculated on the spot in the code given a feature's motion parameters. If it happens to be smaller than this minimum, it will be increased to the minimum.
 costMatrices(1).parameters.maxSearchRadius = linkRadius(2); % maximum allowed search radius. Again, if a feature's calculated search radius is larger than this maximum, it will be reduced to this maximum.
@@ -58,7 +65,12 @@ costMatrices(1).parameters.diagnostics = [];     % plot the histogram of linking
 
 
 % cost matrix for gap closing
-costMatrices(2).funcName = func2str(@costMatLinearMotionCloseGaps2);
+switch lower(CostType)
+    case 'linear'
+        costMatrices(2).funcName = func2str(@costMatLinearMotionCloseGaps2);
+    case 'rds'
+        costMatrices(2).funcName = func2str(@costMatRandomDirectedSwitchingMotionCloseGaps);
+end
 costMatrices(2).parameters.linearMotion = 0; % 1: linear motion Kalman filter.
 costMatrices(2).parameters.minSearchRadius = gapRadius(1); % minimum allowed search radius.
 costMatrices(2).parameters.maxSearchRadius = gapRadius(2); % maximum allowed search radius.
