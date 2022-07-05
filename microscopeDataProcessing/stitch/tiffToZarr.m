@@ -13,6 +13,7 @@ function [] = tiffToZarr(tifFilename, zarrFilename, frame, varargin)
 % xruan (09/23/2021): add support for including partial files 
 % xruan (10/13/2021): add support for cropping data after processing
 % xruan (02/02/2022): add support for cropping the input data
+% xruan (07/05/2022): change zarr writer to writezarr.m
 
 
 ip = inputParser;
@@ -211,13 +212,8 @@ if ~exist(tmpFilename, 'dir')
     nv_bim.Adapter.close();
 end
 
-nv_bim = blockedImage(tmpFilename, 'Adapter', ZarrAdapter);
-% for data greater than 2GB, use multiprocessing
-if ~ispc && prod(sz) * 2 / 1024^3 > 2
-    nv_bim.Adapter.setData(gather(bim));
-else
-    nv_bim.Adapter.setRegion([1, 1, 1], [bim.Size, ones(3 - numel(bim.Size), 1)], gather(bim));
-end
+% write zarr
+writezarr(gather(bim), tmpFilename);
 
 % mv tmp result folder to output folder
 if exist(zarrFilename, 'dir')

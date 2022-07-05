@@ -10,6 +10,7 @@ function [] = XR_tiffToZarr_wrapper(tiffFullpaths, varargin)
 % xruan (09/23/2021): add support for including partial files 
 % xruan (10/13/2021): add support for cropping data
 % xruan (02/16/2022): accelerate the code by first get filenames for every data folder.
+% xruan (07/05/2022): add support for single tiff file (char) conversion
 
 ip = inputParser;
 ip.CaseSensitive = false;
@@ -57,6 +58,8 @@ if ischar(tiffFullpaths)
         dir_info = dir([tiffFullpaths, filesep, '*.tif']);
         fnames = {dir_info.name}';
         tiffFullpaths = cellfun(@(x) sprintf('%s/%s', tiffFullpaths, x), fnames, 'unif', 0);
+    else
+        tiffFullpaths = {tiffFullpaths};
     end
 end
 
