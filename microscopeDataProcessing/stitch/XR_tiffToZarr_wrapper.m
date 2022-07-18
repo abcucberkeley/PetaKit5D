@@ -134,8 +134,8 @@ for i = 1 : nF
 end
 
 [estMem, estGPUMem, rawImageSize] = XR_estimateComputingMemory(tiffFullpaths{1}, {'deconvolution'}, 'cudaDecon', false);
-if cpusPerTask * 20 < rawImageSize * 4 * numel(tiffFullpath_group_i)
-    cpusPerTask = min(24, ceil(rawImageSize * 4 * numel(tiffFullpath_group_i) / 20));
+if cpusPerTask * 21 < rawImageSize * 2.5 * numel(tiffFullpath_group_i)
+    cpusPerTask = min(24, ceil(rawImageSize * 2.5 * numel(tiffFullpath_group_i) / 21));
 end
 maxTrialNum = 2;
 

@@ -250,8 +250,9 @@ if ~exist(deconMIPPath, 'dir')
     mkdir(deconMIPPath);
     fileattrib(deconMIPPath, '+w', 'g');
 end
-deconMIPname = sprintf('%s%s_MIP_z.tif', deconMIPPath, fsname);
-saveMIP_zarr(deconFullpath, deconMIPname);
+% deconMIPname = sprintf('%s%s_MIP_z.tif', deconMIPPath, fsname);
+% saveMIP_zarr(deconFullpath, deconMIPname);
+XR_MIP_zarr(deconFullpath, 'axis', [1, 1, 1]);
 toc
 
 end

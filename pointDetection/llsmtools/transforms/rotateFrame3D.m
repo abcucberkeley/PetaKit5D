@@ -78,6 +78,9 @@ if ~ip.Results.ObjectiveScan
     
     % use the bounding box to decide whether to crop or not
     doCrop = h < max(abs(a * (nx - 1) + b * (nz - 1) * zxRatio), abs(a * (nx - 1) + b * (1 - nz) * zxRatio));
+    if isempty(doCrop)
+        doCrop = false;
+    end
         
     % crop size in x
     c_x = b * x + (-a) * z * zxRatio;

@@ -12,7 +12,11 @@ def getZarrRegion(zarrObj, regionStart, regionEnd):
         data = zarrObj[regionStart[0]:regionEnd[0], regionStart[1]:regionEnd[1], regionStart[2]:regionEnd[2]]   
     elif len(regionStart) == 2:
         data = zarrObj[regionStart[0]:regionEnd[0], regionStart[1]:regionEnd[1]]   
-       
+    
+    # add support for big-endian byte order
+    if data.dtype.byteorder == '>':
+        # data = data.newbyteorder().byteswap() 
+        data = data.astype(data.dtype.str.replace('>', '<'));
     return data
     
 

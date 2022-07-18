@@ -11,6 +11,7 @@ ip = inputParser;
 ip.CaseSensitive = false;
 ip.addRequired('data', @(x) isnumeric(x));
 ip.addRequired('filepath', @(x) ischar(x));
+ip.addParameter('overwrite', false, @islogical);
 ip.addParameter('blockSize', [500, 500, 500], @isnumeric);
 ip.addParameter('expand2dDim', true, @islogical); % expand the z dimension for 2d data
 ip.addParameter('groupWrite', true, @islogical);
@@ -18,6 +19,7 @@ ip.addParameter('bbox', [], @isnumeric);
 ip.parse(data, filepath, varargin{:});
 
 pr = ip.Results;
+overwrite = pr.overwrite;
 expand2dDim = pr.expand2dDim;
 blockSize = pr.blockSize;
 groupWrite = pr.groupWrite;
@@ -36,8 +38,16 @@ if ismatrix(data)
 end
 blockSize = min(sz, blockSize);
 % overwrite the zarr file
-if exist(filepath, 'dir') && isempty(bbox)
+if overwrite && exist(filepath, 'dir') && isempty(bbox)
     rmdir(filepath, 's');
+end
+
+% if not overwrite data, the file exist and bbox is empty, define bbox as
+% the whole data size. 
+if ~overwrite && exist(filepath, 'dir')
+    if isempty(bbox)
+        bbox = [1, 1, 1, size(data)];
+    end
 end
 
 try 

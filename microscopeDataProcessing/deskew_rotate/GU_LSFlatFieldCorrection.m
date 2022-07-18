@@ -5,6 +5,8 @@ function [Temp] = GU_LSFlatFieldCorrection(Rawdata,LSImage,background, varargin)
 % xruan (09/24/2021): keep LSImage and background as 2d and use
 % broadcasting for the computing to reduce required memory. Also change to
 % use single format to save memory.
+% xruan (07/15/2022): add support to not subtract background from LS Image
+% (because in a lot of situations, the LS Image is estimated with no background).
 
 ip = inputParser;
 ip.CaseSensitive = false;
@@ -13,8 +15,12 @@ ip.addRequired('LSImage'); %
 ip.addRequired('background'); %;
 ip.addParameter('LowerLimit', 0.4, @isnumeric); % this value is the lowest
 ip.addParameter('constOffset', [], @(x) isempty(x) || isnumeric(x)); % If it is set, use constant background, instead of background from the camera.
+ip.addParameter('LSBackground', true, @(x) islogical(x)); % true: subtract background; false: not subtract background
 ip.parse(Rawdata, LSImage,background, varargin{:});
+
+pr = ip.Results;
 LowerLimit = ip.Results.LowerLimit;
+LSBackground = pr.LSBackground;
 
 % average z planes of LS image
 if ndims(LSImage)==3
@@ -34,7 +40,9 @@ D =ceil((MapSize-ImSize)/2);
 background = background(D(1)+1:D(1)+ImSize(1),D(2)+1:D(2)+ImSize(2));
 
 % Prepare LS Flat-field correction mask
-LSImage = double(LSImage) - double(background);
+if LSBackground
+    LSImage = double(LSImage) - double(background);
+end
 LSImage = double(LSImage)/double(max(LSImage(:)));
 % Mask = repmat(LSImage,1,1,size(Rawdata,3));
 Mask = LSImage;

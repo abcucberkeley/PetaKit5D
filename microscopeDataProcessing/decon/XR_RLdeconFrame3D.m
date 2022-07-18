@@ -304,6 +304,9 @@ for f = 1 : nF
         delete(deconTmpMIPPath);
 
         deconMIPPath = sprintf('%s/MIPs/', deconPath);
+        if ~exist(deconMIPPath, 'dir')
+            mkdir(deconMIPPath);
+        end
         deconMIPFullPath = sprintf('%s%s_MIP_z.tif', deconMIPPath, fsname);
         writetiff(max(im,[],3), deconMIPFullPath);
         toc

@@ -20,6 +20,8 @@ function [ds, dsr] = XR_deskewRotateFrame(framePath, xyPixelSize, dz, varargin)
 % xruan (08/17/2021): add support to not load the full image of DS to the memory if it is too large. 
 % xruan (10/21/2021): add support for zarr file as input
 % xruan (01/25/2022): add support for bbox crop before processing
+% xruan (07/07/2022): add support to resample skewed data for combined DSR
+%   for big image (in case of OOM issue).
 
 
 ip = inputParser;
@@ -170,9 +172,7 @@ if (~DSRCombined && (~exist(dsFullname, 'file') || ip.Results.Overwrite)) || DSR
                     frame = single(readtiff(framePath{1}));
                 end
             case {'.zarr'}
-                bim = blockedImage(framePath{1}, 'Adapter', ZarrAdapter);
-                % frame = gather(bim);
-                frame = bim.Adapter.getIORegion([1, 1, 1], bim.Size);
+                frame = readzarr(framePath{1});
         end                
     end
     if ~isempty(InputBbox)
@@ -320,6 +320,12 @@ if ip.Results.Rotate || DSRCombined
         dsrFullname = [dsrPath, fsname, '.tif'];
     end
     
+    if ~isempty(resample)
+        rs = resample(:)';
+        % complete rs to 3d in case it is not
+        rs = [ones(1, 4 - numel(rs)) * rs(1), rs(2:end)];    
+    end
+            
     if (~saveZarr && ~exist(dsrFullname, 'file')) || (saveZarr && ~exist(dsrFullname, 'dir'))
         if ~DSRCombined
             fprintf('Rotate frame %s...\n', framePath{1});
@@ -335,13 +341,27 @@ if ip.Results.Rotate || DSRCombined
             clear ds;
             
             if ~isempty(resample)
-                rs = resample(:)';
-                % complete rs to 3d in case it is not
-                rs = [ones(1, 4 - numel(rs)) * rs(1), rs(2:end)];    
                 outSize = round(size(dsr) ./ rs);
                 dsr = imresize3(dsr, outSize, 'Method', Interp);
             end
         else
+            % add support for resample before dsr for big data
+            if ~isempty(resample) && size(frame, 3) > 1000
+                outPixelSize = rs * xyPixelSize;
+                pre_rs = min(outPixelSize) ./ [xyPixelSize, xyPixelSize, dz .* sind(SkewAngle_1)];
+                pre_rs(3) = round(pre_rs(3));
+                
+                % resample data pre-DSR
+                % binning in z and resize in xy
+                frame = frame(:, :, round(pre_rs(3) / 2) : pre_rs(3) : end);                
+                frame = imresize(frame, round(size(frame, [1, 2]) ./ pre_rs(1 : 2)));
+                
+                % define new xyPixelSize, dz, resample after resample
+                xyPixelSize = xyPixelSize * pre_rs(1);
+                dz = dz * pre_rs(3);
+                resample = outPixelSize ./ min(outPixelSize);
+            end
+
             fprintf('Deskew, Rotate and resample for frame %s...\n', framePath{1});            
             dsr = deskewRotateFrame3D(frame, SkewAngle_1, dz, xyPixelSize, ...
                 'reverse', Reverse, 'Crop', true, 'ObjectiveScan', ObjectiveScan, ...

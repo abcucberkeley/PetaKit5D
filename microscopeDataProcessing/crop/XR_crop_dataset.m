@@ -135,6 +135,9 @@ for f = 1 : nF
     frameFullpath = [dataPath, '/', fname];
     frameFullpaths{f} = frameFullpath;
     cropFullpath = [resultPath, '/', fname];
+    if zarrFile && ~saveZarr
+        cropFullpath = [resultPath, '/', fname(1 : end - 5), '.tif'];
+    end
     cropFullpaths{f} = cropFullpath;
 
     if strcmp(cropType, 'moving')

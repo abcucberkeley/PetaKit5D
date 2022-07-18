@@ -431,11 +431,11 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
 
                     if job_status == -1
                         % for matlab decon,  decide how many cores. 
-                        if ~cudaDecon
+                        cpusPerTask_dc = cpusPerTask;                        
+                        if ~cudaDecon && ~GPUJob
                             [estMem, estGPUMem] = XR_estimateComputingMemory(dcframeFullpath, {'deconvolution'}, ...
                                 'cudaDecon', false);
                             
-                            cpusPerTask_dc = cpusPerTask;
                             if cpusPerTask_dc * 20 < estMem
                                 cpusPerTask_dc = min(24, ceil(estMem / 20));
                             end

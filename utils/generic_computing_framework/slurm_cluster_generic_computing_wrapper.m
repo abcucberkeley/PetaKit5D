@@ -144,7 +144,7 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
         task_id = rem(b, 5000);
         
         % check output exist and job status every 10000 batches
-        if loop_counter > 0 && rem(b, 10000) == 0 
+        if loop_counter > 0 && (rem(b, 10000) == 0 || (b < 10000 && b == nB))
             output_exist_mat(~is_done_flag) = batch_file_exist(outputFullpaths(~is_done_flag));
             is_done_flag(~is_done_flag) = output_exist_mat(~is_done_flag);
             
@@ -326,7 +326,10 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
             if parseCluster && loop_counter > 0 && job_status_mat(f, 1) ~= job_status_mat(f, 2)
                 % for nonpending killed jobs, wait a bit longer in case of just finished job.
                 if ~pending_flag
-                    pause(5);
+                    pause(10);
+                    if exist(outputFullpath, 'file') || exist(outputFullpath, 'dir')
+                        continue;
+                    end
                 end
             end
             if strcmpi(language, 'matlab')

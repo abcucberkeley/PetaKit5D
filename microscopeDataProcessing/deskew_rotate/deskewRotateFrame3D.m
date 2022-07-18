@@ -15,6 +15,7 @@ function volout = deskewRotateFrame3D(vol, angle, dz, xyPixelSize, varargin)
 % xruan (05/26/2022): change default xStepThresh to 2.42 (ds=0.31). 
 % xruan (05/30/2022): add skewed space interpolation based dsr for large step size
 % xruan (06/02/2022): change default xStepThresh to 1.96 (ds=0.25). 
+% xruan (07/17/2022): change default xStepThresh to 2.00 (ds=0.255). 
 
 
 ip = inputParser;
@@ -26,7 +27,7 @@ ip.addRequired('xyPixelSize'); % typical value: 0.1
 ip.addOptional('reverse', false, @islogical);
 ip.addParameter('Crop', true, @islogical);
 ip.addParameter('ObjectiveScan', false, @islogical);
-ip.addParameter('xStepThresh', 1.96, @isnumeric); % 2.344 for ds=0.3, 2.735 for ds=0.35
+ip.addParameter('xStepThresh', 2.0, @isnumeric); % 2.344 for ds=0.3, 2.735 for ds=0.35
 ip.addParameter('resample', [], @isnumeric); % resample factor in xyz order. 
 ip.addParameter('gpuProcess', false, @islogical); % use gpu for the processing. 
 ip.addParameter('Interp', 'linear', @(x) any(strcmpi(x, {'cubic', 'linear'})));

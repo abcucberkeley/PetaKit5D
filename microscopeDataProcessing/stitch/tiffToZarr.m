@@ -213,7 +213,7 @@ if ~exist(tmpFilename, 'dir')
 end
 
 % write zarr
-writezarr(gather(bim), tmpFilename, 'blockSize', blockSize);
+writezarr(cast(gather(bim), dtype), tmpFilename, 'blockSize', blockSize);
 
 % mv tmp result folder to output folder
 if exist(zarrFilename, 'dir')

@@ -13,7 +13,7 @@ ip.addParameter('parseCluster', true, @islogical);
 ip.addParameter('parseParfor', false, @islogical);
 ip.addParameter('masterCompute', true, @islogical); % master node participate in the task computing. 
 ip.addParameter('jobLogDir', '../job_logs', @ischar);
-ip.addParameter('cpuOnlyNodes', true, @islogical);
+ip.addParameter('cpuOnlyNodes', ~true, @islogical);
 ip.addParameter('cpusPerTask', 3, @isnumeric);
 ip.addParameter('uuid', '', @ischar);
 ip.addParameter('debug', false, @islogical);
