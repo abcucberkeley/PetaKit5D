@@ -5,11 +5,13 @@ function writetiff(img, filepath, varargin)
 % Author: Xiongtao Ruan (07/30/2020)
 % xruan (08/07/2020): add option for group write
 % xruan (03/24/21): fix issue for compession method not in lower case
+% xruan (07/21/2022): add parallelWriteTiff as default method
+
 
 ip = inputParser;
 ip.CaseSensitive = false;
 ip.addParameter('Compression', 'lzw', @(x) any(strcmpi(x, {'none', 'lzw'})));
-ip.addParameter('Mode', 'libtiff', @(x) any(strcmpi(x, {'libtiff', 'imwrite'})));
+ip.addParameter('Mode', 'parallel', @(x) any(strcmpi(x, {'parallel', 'libtiff', 'imwrite'})));
 ip.addParameter('groupWrite', true, @islogical);
 ip.parse(varargin{:});
 
@@ -23,9 +25,22 @@ switch lower(pr.Compression)
         options.compress = 'lzw';
 end
 
-options.message = false;
-options.overwrite = true;
-saveastiff(img, filepath, options);
+switch lower(pr.Mode)
+    case 'parallel'
+        try
+            parallelWriteTiff(filepath, img, 'w');
+        catch ME
+            disp(ME)
+            options.message = false;
+            options.overwrite = true;
+            saveastiff(img, filepath, options);            
+        end
+    case 'libtiff'
+        options.message = false;
+        options.overwrite = true;
+        saveastiff(img, filepath, options);
+end
+
 if pr.groupWrite
     try
         fileattrib(filepath, '+w', 'g');

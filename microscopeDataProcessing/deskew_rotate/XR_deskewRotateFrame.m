@@ -346,7 +346,7 @@ if ip.Results.Rotate || DSRCombined
             end
         else
             % add support for resample before dsr for big data
-            if ~isempty(resample) && size(frame, 3) > 1000
+            if ~isempty(resample) && any(resample ~= 1) && size(frame, 3) > 1000
                 outPixelSize = rs * xyPixelSize;
                 pre_rs = min(outPixelSize) ./ [xyPixelSize, xyPixelSize, dz .* sind(SkewAngle_1)];
                 pre_rs(3) = round(pre_rs(3));
