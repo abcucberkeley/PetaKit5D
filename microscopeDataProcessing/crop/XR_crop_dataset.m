@@ -22,7 +22,7 @@ ip.addRequired('bbox', @isnumeric);
 ip.addParameter('cropType', 'fixed', @ischar); % fixed or moving or center
 ip.addParameter('pad', false, @islogical); % pad region that is outside the bbox
 ip.addParameter('lastStart', [], @isnumeric); % start coordinate of the last time point
-ip.addParameter('ChannelPatterns', {'CamA_ch0'}, @iscell);
+ip.addParameter('ChannelPatterns', {'CamA_ch0', 'CamB_ch0'}, @iscell);
 ip.addParameter('zarrFile', false , @islogical); % read zarr
 ip.addParameter('largeZarr', false, @islogical); % use zarr file as input
 ip.addParameter('saveZarr', false , @islogical); % save as zarr

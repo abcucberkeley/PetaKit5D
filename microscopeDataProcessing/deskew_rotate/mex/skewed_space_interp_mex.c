@@ -8,6 +8,10 @@
 void mexFunction(int nlhs, mxArray *plhs[],
         int nrhs, const mxArray *prhs[])
 {
+    mxClassID mDType = mxGetClassID(prhs[0]);
+    if(mDType != mxSINGLE_CLASS){
+        mexErrMsgIdAndTxt("skewed_space_interp:dataTypeError","Only Data of type Single is supported");
+    }
     float* im = (float*)mxGetPr(prhs[0]);
     const double xstep = (double)*mxGetPr(prhs[1]);
     const uint64_t nint = (uint64_t)*mxGetPr(prhs[2]);
