@@ -28,6 +28,10 @@ end
 switch lower(pr.Mode)
     case 'parallel'
         try
+            pstr = fileparts(filepath);
+            if ~exist(pstr, 'dir')
+                mkdir_recursive(pstr);
+            end
             parallelWriteTiff(filepath, img, 'w');
         catch ME
             disp(ME)
