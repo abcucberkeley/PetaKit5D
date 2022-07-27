@@ -1,5 +1,5 @@
 function [imSize] = getImageSize(filePath)
-% Get image size without load the image
+% Get image size without loading the image
 % 
 % use Tiff for faster performance
 % 

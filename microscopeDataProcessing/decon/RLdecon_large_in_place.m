@@ -124,13 +124,6 @@ end
 
 tic
 fprintf(['reading ' fsname '...\n'])
-switch ext
-    case {'.tif', '.tiff'}
-        bim = blockedImage(frameFullpath, 'Adapter', MPageTiffAdapter);
-    case '.zarr'
-        bim = blockedImage(frameFullpath, 'Adapter', ZarrAdapter);
-end
-toc
 
 % not consider edge erosion for now
 
@@ -145,15 +138,15 @@ if parseCluster
     [parseCluster, job_log_fname, job_log_error_fname, slurm_constraint_str] = checkSlurmCluster(dataPath, jobLogDir, cpuOnlyNodes);
 end
 
-tic
-
 zarrFlagPath = sprintf('%s/zarr_flag/%s_%s/', deconPath, fsname, uuid);
 if ~exist(zarrFlagPath, 'dir')
     mkdir_recursive(zarrFlagPath);
 end
 
-imSize = bim.Size;
+imSize = getImageSize(frameFullpath);
+toc
 
+tic
 % BlockSize = nv_bim.BlockSize;
 SameBatchSize = true;
 BorderSize = round((size(psf) + 10) / 2);
@@ -165,7 +158,12 @@ scaleFactor = 1.0;
 % initialize zarr file
 init_val = zeros(1, dtype);
 if ~exist(deconTmppath, 'dir')
-    decon_bim = blockedImage(deconTmppath, imSize, BlockSize, init_val, "Adapter", ZarrAdapter, 'Mode', 'w');
+    try
+        decon_bim = blockedImage(deconTmppath, imSize, BlockSize, init_val, "Adapter", CZarrAdapter, 'Mode', 'w');
+    catch ME
+        disp(ME)
+        decon_bim = blockedImage(deconTmppath, imSize, BlockSize, init_val, "Adapter", ZarrAdapter, 'Mode', 'w');
+    end        
     decon_bim.Adapter.close();
 end
 
@@ -174,14 +172,14 @@ numBatch = size(batchBBoxes, 1);
 
 if GPUJob
     if parseCluster
-        taskSize = max(1, round(numBatch / 10000));
+        taskSize = max(1, round(numBatch / 5000));
     end
 
     maxJobNum = inf;
-    cpusPerTask = 5;
+    cpusPerTask = 4;
     cpuOnlyNodes = false;
     taskBatchNum = 1;
-    SlurmParam = '-p abc_a100 --qos abc_normal -n1 --mem=167G --gres=gpu:1';
+    SlurmParam = '-p abc_a100 --qos abc_normal -n1 --mem=125G --gres=gpu:1';
     masterCompute = false;
 else
     maxJobNum = inf;

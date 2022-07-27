@@ -43,7 +43,12 @@ if ~exist(zarrFullpath, 'dir')
 end
 
 imSize = getImageSize(zarrFullpath);
-nv_bim = blockedImage(cropFullpath, 'Adapter', ZarrAdapter);
+try 
+    nv_bim = blockedImage(cropFullpath, 'Adapter', CZarrAdapter);
+catch ME
+    disp(ME);
+    nv_bim = blockedImage(cropFullpath, 'Adapter', ZarrAdapter);
+end    
 dtype = nv_bim.ClassUnderlying;
 
 done_flag = false(numel(batchInds), 1);

@@ -90,8 +90,8 @@ crop_bim.Adapter.close();
 
 
 % set up parallel computing 
-taskSize = 1; % the number of batches a job should process
 numBatch = size(batchBBoxes, 1);
+taskSize = max(1, round(numBatch / 5000)); % the number of batches a job should process
 numTasks = ceil(numBatch / taskSize);
 
 maxJobNum = inf;
