@@ -84,7 +84,7 @@ classdef ZarrAdapter < images.blocked.Adapter
                 % info.IOBlockSize = [info.IOBlockSize, 1];
             end
             
-            if ispc && size(loc) > 200
+            if ispc && numel(char(loc)) > 200
                 [pth, loc] = fileparts(loc);
                 cd(pth);                    
             end
@@ -150,6 +150,6 @@ classdef ZarrAdapter < images.blocked.Adapter
             %    Python Error: ValueError: parameter 'value': expected array with shape (4,1), got (4,)
             pydata = py.numpy.array(data);
             py.zarrAPI.setZarrData(obj.ZarrObj, pydata);            
-        end        
+        end
     end
 end

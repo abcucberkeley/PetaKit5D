@@ -9,13 +9,16 @@ function [data, bim] = readzarr(filepath, varargin)
 
 ip = inputParser;
 ip.CaseSensitive = false;
-ip.addRequired('filepath', @(x) ischar(x));
+ip.addRequired('filepath', @(x) ischar(x) || isstring(x));
 ip.addParameter('bbox', [], @isnumeric);
 ip.parse(filepath, varargin{:});
 
 pr = ip.Results;
 bbox = pr.bbox;
 
+if isstring(filepath) 
+    filepath = filepath{1};
+end
 try 
     if isempty(bbox)
         data = parallelReadZarr(filepath);

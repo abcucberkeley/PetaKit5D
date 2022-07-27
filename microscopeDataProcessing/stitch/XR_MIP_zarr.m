@@ -73,7 +73,12 @@ if ~exist(zarrFlagPath, 'dir')
     mkdir_recursive(zarrFlagPath);
 end 
 
-bim = blockedImage(zarrFullpath, 'Adapter', ZarrAdapter);
+try
+    bim = blockedImage(zarrFullpath, 'Adapter', CZarrAdapter);
+catch ME
+    disp(ME);
+    bim = blockedImage(zarrFullpath, 'Adapter', ZarrAdapter);    
+end
 imSize = bim.Size;
 dtype = bim.ClassUnderlying;
 
@@ -125,7 +130,12 @@ for i = 1 : 3
     BlockSize = BatchSize;
     BlockSize(axis_flag) = 1;
     
-    mip_bim = blockedImage(MIPZarrTmppaths{i}, outSize, BlockSize, init_val, "Adapter", ZarrAdapter, 'Mode', 'w');
+    try
+        mip_bim = blockedImage(MIPZarrTmppaths{i}, outSize, BlockSize, init_val, "Adapter", CZarrAdapter, 'Mode', 'w');
+    catch ME
+        disp(ME);
+        mip_bim = blockedImage(MIPZarrTmppaths{i}, outSize, BlockSize, init_val, "Adapter", ZarrAdapter, 'Mode', 'w');
+    end
     mip_bim.Adapter.close();
 end
 

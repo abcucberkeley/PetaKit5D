@@ -208,7 +208,12 @@ tmpFilename = [zarrFilename '_' uuid];
 % write(bim, tmpFilename, "BlockSize", blockSize, "Adapter", ZarrAdapter);
 if ~exist(tmpFilename, 'dir')
     init_val = zeros(1, dtype);
-    nv_bim = blockedImage(tmpFilename, sz, blockSize, init_val, "Adapter", ZarrAdapter, 'Mode', 'w');
+    try 
+        nv_bim = blockedImage(tmpFilename, sz, blockSize, init_val, "Adapter", CZarrAdapter, 'Mode', 'w');
+    catch ME
+        disp(ME);
+        nv_bim = blockedImage(tmpFilename, sz, blockSize, init_val, "Adapter", ZarrAdapter, 'Mode', 'w');        
+    end
     nv_bim.Adapter.close();
 end
 

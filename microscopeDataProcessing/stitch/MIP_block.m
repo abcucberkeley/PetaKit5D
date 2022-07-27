@@ -42,13 +42,13 @@ end
 
 % bim = blockedImage(zarrFullpath, 'Adapter', ZarrAdapter);
 
-nv_bim_cell = cell(3, 1);
-for i = 1 : 3
-    if ~exist(MIPFullpaths{i}, 'dir')
-        error('The output zarr file %s does not exist!', MIPFullpaths{i});
-    end
-    nv_bim_cell{i} = blockedImage(MIPFullpaths{i}, 'Adapter', ZarrAdapter);
-end
+% nv_bim_cell = cell(3, 1);
+% for i = 1 : 3
+%     if ~exist(MIPFullpaths{i}, 'dir')
+%         error('The output zarr file %s does not exist!', MIPFullpaths{i});
+%     end
+%     nv_bim_cell{i} = blockedImage(MIPFullpaths{i}, 'Adapter', ZarrAdapter);
+% end
 
 done_flag = false(numel(batchInds), 1);
 for i = 1 : numel(batchInds)

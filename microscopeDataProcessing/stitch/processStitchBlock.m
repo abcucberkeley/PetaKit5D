@@ -73,6 +73,7 @@ if ~isempty(BlockInfoFullname)
 end
 
 Mode = nv_bim.Mode;
+imSize = nv_bim.Size;
 bSubSz = nv_bim.SizeInBlocks;
 blockSize = nv_bim.BlockSize;
 dtype = nv_bim.ClassUnderlying;
@@ -85,13 +86,17 @@ for i = 1 : numel(blockInds)
     tic;
     [suby, subx, subz] = ind2sub(bSubSz, bi);
     blockSub = [suby, subx, subz];
+    obStart = (blockSub - 1) .* blockSize + 1;
+    obEnd = min(obStart + blockSize - 1, imSize);
+
     % stchBlockInfo_i = stitchBlockInfo{bi};
     stchBlockInfo_i = stitchBlockInfo{i};
     numTiles = numel(stchBlockInfo_i);
     
     if numTiles == 0
         nv_block = zeros(blockSize, dtype);
-        writeBlock(nv_bim, blockSub, nv_block, level, Mode);
+        % writeBlock(nv_bim, blockSub, nv_block, level, Mode);
+        nv_bim.Adapter.setRegion(obStart, obEnd, nv_block)
         done_flag(i) = true;
         toc;
         continue;
@@ -137,10 +142,9 @@ for i = 1 : numel(blockInds)
             else
                 imdistFullpath = imdistFullpaths{tileInd};
             end
-            bim_d_j = blockedImage(imdistFullpath, 'Adapter', ZarrAdapter);
-            block_d_j = bim_d_j.Adapter.getIORegion(bboxCoords(1 : 3), bboxCoords(4 : 6));
-
-            tim_d_block(bCoords(1) : bCoords(4), bCoords(2) : bCoords(5), bCoords(3) : bCoords(6), j) = block_d_j;
+            % bim_d_j = blockedImage(imdistFullpath, 'Adapter', ZarrAdapter);
+            % block_d_j = bim_d_j.Adapter.getIORegion(bboxCoords(1 : 3), bboxCoords(4 : 6));
+            tim_d_block(bCoords(1) : bCoords(4), bCoords(2) : bCoords(5), bCoords(3) : bCoords(6), j) = readzarr(imdistFullpath, 'bbox', bboxCoords);
         end
     end
     
@@ -151,7 +155,8 @@ for i = 1 : numel(blockInds)
             nv_block = nv_block(s(1) + 1 : s(1) + blockSize(1), s(2) + 1 : s(2) + blockSize(2), s(3) + 1 : s(3) + blockSize(3));
         end
         nv_block = cast(nv_block, dtype);
-        writeBlock(nv_bim, blockSub, nv_block, level, Mode);
+        % writeBlock(nv_bim, blockSub, nv_block, level, Mode);
+        nv_bim.Adapter.setRegion(obStart, obEnd, nv_block);
         done_flag(i) = true;
         toc;
         continue;        
@@ -253,7 +258,8 @@ for i = 1 : numel(blockInds)
     nv_block = cast(nv_block, dtype);
     
     % write the block to zarr file
-    writeBlock(nv_bim, blockSub, nv_block, level, Mode);
+    % writeBlock(nv_bim, blockSub, nv_block, level, Mode);
+    nv_bim.Adapter.setRegion(obStart, obEnd, nv_block)
     done_flag(i) = true;
 
     toc;
@@ -288,7 +294,6 @@ else
 
     bim.Adapter.setIOBlock(blockSub, level, data);
 end
-
 
 end
 

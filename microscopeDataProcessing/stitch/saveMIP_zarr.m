@@ -62,9 +62,14 @@ for i = 1 : 3
             catch ME
                 disp(ME);
                 % this step is pretty slow in a single node, takes ~15min for 313 GB data
-                nv_bim = blockedImage(zarrFullname, 'Adapter', ZarrAdapter);
+                try
+                    nv_bim = blockedImage(zarrFullname, 'Adapter', CZarrAdapter);
+                catch ME
+                    disp(ME)
+                    nv_bim = blockedImage(zarrFullname, 'Adapter', ZarrAdapter);
+                end
                 
-                blockSize = min(5000, nv_bim.BlockSize * 10);
+                blockSize = min(nv_bim.Size, min(5000, nv_bim.BlockSize * 10));
                 blockSize(axis_i) = nv_bim.Size(axis_i);
                     
                 bmip = apply(nv_bim, @(bs) max(bs.Data, [], axis_i), 'blockSize', blockSize);

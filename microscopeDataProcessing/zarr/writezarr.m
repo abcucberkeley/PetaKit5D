@@ -10,7 +10,7 @@ function writezarr(data, filepath, varargin)
 ip = inputParser;
 ip.CaseSensitive = false;
 ip.addRequired('data', @(x) isnumeric(x));
-ip.addRequired('filepath', @(x) ischar(x));
+ip.addRequired('filepath', @(x) ischar(x) || isstring(x));
 ip.addParameter('overwrite', false, @islogical);
 ip.addParameter('blockSize', [500, 500, 500], @isnumeric);
 ip.addParameter('expand2dDim', true, @islogical); % expand the z dimension for 2d data
@@ -50,6 +50,9 @@ if ~overwrite && exist(filepath, 'dir')
     end
 end
 
+if isstring(filepath)
+    filepath = char(filepath);
+end
 try 
     if ismatrix(data)
         error('No support for 2d data for now!')

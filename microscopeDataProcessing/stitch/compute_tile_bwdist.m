@@ -33,7 +33,8 @@ i = tileInd;
 bim_i = zarrHeaders{i};
 % [~, fsname] = fileparts(bim_i.Source);
 
-im_i = gather(bim_i);
+% im_i = gather(bim_i);
+im_i = bim_i.Adapter.getIORegion([1, 1, 1], bim_i.Size);
 im_i_orig = im_i ~= 0;
 im_i([1, end], :, :) = 0;
 im_i(:, [1, end], :) = 0;

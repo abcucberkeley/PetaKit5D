@@ -409,7 +409,12 @@ imSizes = zeros(nF, 3);
 zarrHeaders = cell(nF, 1);
 for i = 1 : nF
     zarrFullpath = zarrFullpaths{i};
-    bim = blockedImage(zarrFullpath, "Adapter", ZarrAdapter);
+    try 
+        bim = blockedImage(zarrFullpath, "Adapter", CZarrAdapter);
+    catch ME
+        disp(ME);
+        bim = blockedImage(zarrFullpath, "Adapter", ZarrAdapter);
+    end
     zarrHeaders{i} = bim; 
     
     if any(stitchMIP) && numel(bim.Size) == 2
@@ -739,7 +744,12 @@ if exist(nv_tmp_raw_fullname, 'dir')
 end
 
 init_val = zeros(1, dtype);
-nv_bim = blockedImage(nv_tmp_raw_fullname, [nys, nxs, nzs], blockSize, init_val, "Adapter", ZarrAdapter, 'Mode', 'w');
+try
+    nv_bim = blockedImage(nv_tmp_raw_fullname, [nys, nxs, nzs], blockSize, init_val, "Adapter", CZarrAdapter, 'Mode', 'w');
+catch ME
+    disp(ME);
+    nv_bim = blockedImage(nv_tmp_raw_fullname, [nys, nxs, nzs], blockSize, init_val, "Adapter", ZarrAdapter, 'Mode', 'w');
+end
 
 save('-v7.3', block_info_tmp_fullname, 'zarrHeaders', 'overlap_matrix', 'half_ol_region_cell', ...
     'ol_region_cell', 'tileBlockInfo', 'bSubSz', 'nv_bim', 'BorderSize');
@@ -757,12 +767,12 @@ if strcmpi(BlendMethod, 'feather')
     else
         usePrimaryDist = true;
         if singleDistMap
-            bim = blockedImage(imdistFullpaths{1}, 'Adapter', ZarrAdapter);
-            usePrimaryDist = all(bim.Size == imSizes, 'all');
+            imSize_f = getImageSize(imdistFullpaths{1});
+            usePrimaryDist = all(imSize_f == imSizes, 'all');
         else
             for f = 1 : size(imSizes, 1)
-                bim = blockedImage(imdistFullpaths{f}, 'Adapter', ZarrAdapter);
-                if any(bim.Size ~= imSizes(f, :))
+                imSize_f = getImageSize(imdistFullpaths{f});                
+                if any(imSize_f ~= imSizes(f, :))
                     usePrimaryDist = false;
                     break;
                 end            

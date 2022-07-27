@@ -6,6 +6,7 @@ classdef MPageTiffAdapter < images.blocked.Adapter
 % Author: Xiongtao Ruan (10/02/2020)
 % xruan (10/10/2020): add support for writing
 % xruan (12/23/2021): add support for 2d image
+% xruan (07/25/2022): change to use parallelWriteTiff as default write method
 
     properties
         Extension (1,1) string = "tiff"
@@ -97,6 +98,17 @@ classdef MPageTiffAdapter < images.blocked.Adapter
                 data = zeros(obj.Info.IOBlockSize,'uint16');
             end
         end
+
+        function data = getIORegion(obj, regionStart, regionEnd)
+            tiffFileName = obj.FileName;            
+            try 
+                data = parallelReadTiff(char(tiffFileName), [regionStart(3), regionEnd(3)]);
+            catch ME
+                disp(ME);
+                data = readtiff(tiffFileName, 'range', regionStart(3) : regionEnd(3));
+            end             
+            data = data(regionStart(1) : regionEnd(1), regionStart(2) : regionEnd(2), :);
+        end        
     end        
         
     methods
@@ -206,6 +218,15 @@ classdef MPageTiffAdapter < images.blocked.Adapter
                 end
             end
         end
+
+        function setRegion(obj, regionStart, regionEnd, data)
+            disp('Only support the write of whole data for tiff')
+            setData(obj, data);
+        end
+        
+        function setData(obj, data)
+            writetiff(data, obj.FileName);            
+        end        
         
         function close(obj)
             if ~isempty(obj.TIFFObject)
