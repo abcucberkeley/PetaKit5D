@@ -7,9 +7,11 @@
 #include <stdlib.h>
 #include "helperFunctions.h"
 
-//mex -v COPTIMFLAGS="-O3 -fwrapv -DNDEBUG" CFLAGS='$CFLAGS -O3 -fopenmp' LDFLAGS='$LDFLAGS -O3 -fopenmp' '-I/global/home/groups/software/sl-7.x86_64/modules/cBlosc/2.0.4/include/' '-I/global/home/groups/software/sl-7.x86_64/modules/cJSON/1.7.15/include/' '-L/global/home/groups/software/sl-7.x86_64/modules/cBlosc/2.0.4/lib64' -lblosc2 '-L/global/home/groups/software/sl-7.x86_64/modules/cJSON/1.7.15/lib64' -lcjson zarrMex.c
+#include "zlib.h"
 
-void parallelReadZarr(void* zarr, char* folderName,uint64_t startX, uint64_t startY, uint64_t startZ, uint64_t endX, uint64_t endY,uint64_t endZ,uint64_t chunkXSize,uint64_t chunkYSize,uint64_t chunkZSize,uint64_t shapeX,uint64_t shapeY,uint64_t shapeZ, uint64_t bits, char order){
+//mex -v COPTIMFLAGS="-O3 -DNDEBUG" CFLAGS='$CFLAGS -O3 -fopenmp' LDFLAGS='$LDFLAGS -O3 -fopenmp' '-I/global/home/groups/software/sl-7.x86_64/modules/cBlosc/2.0.4/include/' '-I/global/home/groups/software/sl-7.x86_64/modules/cJSON/1.7.15/include/' '-L/global/home/groups/software/sl-7.x86_64/modules/cBlosc/2.0.4/lib64' -lblosc2 '-L/global/home/groups/software/sl-7.x86_64/modules/cJSON/1.7.15/lib64' -lcjson zarrMex.c
+
+void parallelReadZarr(void* zarr, char* folderName,uint64_t startX, uint64_t startY, uint64_t startZ, uint64_t endX, uint64_t endY,uint64_t endZ,uint64_t chunkXSize,uint64_t chunkYSize,uint64_t chunkZSize,uint64_t shapeX,uint64_t shapeY,uint64_t shapeZ, uint64_t bits, char order, char* cname){
     char fileSepS[2];
     const char fileSep =
 #ifdef _WIN32
@@ -75,12 +77,61 @@ void parallelReadZarr(void* zarr, char* folderName,uint64_t startX, uint64_t sta
             
             // Decompress
             int dsize = -1;
-            blosc2_context *dctx;
-            blosc2_dparams dparams = BLOSC2_DPARAMS_DEFAULTS;
-            dctx = blosc2_create_dctx(dparams);
-            
-            dsize = blosc2_decompress_ctx(dctx, buffer, filelen,bufferDest, sB);
-            blosc2_free_ctx(dctx);
+            int uncErr = 0;
+            if(strcmp(cname,"gzip")){
+                //dsize = blosc2_decompress(buffer, filelen, bufferDest, sB);
+                blosc2_context *dctx;
+                blosc2_dparams dparams = BLOSC2_DPARAMS_DEFAULTS;
+                dctx = blosc2_create_dctx(dparams);
+                
+                dsize = blosc2_decompress_ctx(dctx, buffer, filelen,bufferDest, sB);
+                blosc2_free_ctx(dctx);
+            }
+            else{
+                dsize = sB;
+                z_stream stream;
+                stream.zalloc = Z_NULL;
+                stream.zfree = Z_NULL;
+                stream.opaque = Z_NULL;
+                stream.avail_in = (uInt)filelen;
+                stream.avail_out = (uInt)sB;
+                while(stream.avail_in > 0){
+
+                    dsize = sB;
+
+                    stream.next_in = (uint8_t*)buffer+(filelen-stream.avail_in);
+                    stream.next_out = (uint8_t*)bufferDest+(sB-stream.avail_out);
+
+                    uncErr = inflateInit2(&stream, 32);
+                    if(uncErr){
+                    #pragma omp critical
+                    {
+                    err = 1;
+                    sprintf(errString,"Decompression error. Error code: %d ChunkName: %s/%s\n",uncErr,folderName,cI.chunkNames[f]);
+                    }
+                    break;
+                    }
+    
+                    uncErr = inflate(&stream, Z_NO_FLUSH);
+    
+                    if(uncErr != Z_STREAM_END){
+                    #pragma omp critical
+                    {
+                    err = 1;
+                    sprintf(errString,"Decompression error. Error code: %d ChunkName: %s/%s\n",uncErr,folderName,cI.chunkNames[f]);
+                    }
+                    break;
+                    }
+                }
+                if(inflateEnd(&stream)){
+                    #pragma omp critical
+                    {
+                    err = 1;
+                    sprintf(errString,"Decompression error. Error code: %d ChunkName: %s/%s\n",uncErr,folderName,cI.chunkNames[f]);
+                    }
+                    break;
+                }
+            }
             
             
             if(dsize < 0){
@@ -128,7 +179,20 @@ void parallelReadZarr(void* zarr, char* folderName,uint64_t startX, uint64_t sta
                         for(int64_t z = cAV.z*chunkZSize; z < (cAV.z+1)*chunkZSize; z++){
                             if(z>=endZ) break;
                             else if(z<startZ) continue;
-                            ((uint8_t*)zarr)[((x-startX)+((y-startY)*shapeX)+((z-startZ)*shapeX*shapeY))*bytes] = ((uint8_t*)bufferDest)[((z%chunkZSize)+((y%chunkYSize)*chunkZSize)+((x%chunkXSize)*chunkZSize*chunkYSize))*bytes];
+                            switch(bytes){
+                                case 1:
+                                    ((uint8_t*)zarr)[((x-startX)+((y-startY)*shapeX)+((z-startZ)*shapeX*shapeY))] = ((uint8_t*)bufferDest)[((z%chunkZSize)+((y%chunkYSize)*chunkZSize)+((x%chunkXSize)*chunkZSize*chunkYSize))];
+                                    break;
+                                case 2:
+                                    ((uint16_t*)zarr)[((x-startX)+((y-startY)*shapeX)+((z-startZ)*shapeX*shapeY))] = ((uint16_t*)bufferDest)[((z%chunkZSize)+((y%chunkYSize)*chunkZSize)+((x%chunkXSize)*chunkZSize*chunkYSize))];
+                                    break;
+                                case 4:
+                                    ((float*)zarr)[((x-startX)+((y-startY)*shapeX)+((z-startZ)*shapeX*shapeY))] = ((float*)bufferDest)[((z%chunkZSize)+((y%chunkYSize)*chunkZSize)+((x%chunkXSize)*chunkZSize*chunkYSize))];
+                                    break;
+                                case 8:
+                                    ((double*)zarr)[((x-startX)+((y-startY)*shapeX)+((z-startZ)*shapeX*shapeY))] = ((double*)bufferDest)[((z%chunkZSize)+((y%chunkYSize)*chunkZSize)+((x%chunkXSize)*chunkZSize*chunkYSize))];
+                                    break;
+                            }
                         }
                     }
                 }
@@ -179,7 +243,8 @@ void* parallelReadZarrWrapper(char* folderName,uint8_t crop, uint64_t startX, ui
     uint64_t chunkZSize = 0;
     char dtype[4];
     char order;
-    setValuesFromJSON(folderName,&chunkXSize,&chunkYSize,&chunkZSize,dtype,&order,&shapeX,&shapeY,&shapeZ);
+    char* cname = NULL;
+    setValuesFromJSON(folderName,&chunkXSize,&chunkYSize,&chunkZSize,dtype,&order,&shapeX,&shapeY,&shapeZ,&cname);
     
     if(!crop){
         startX = 0;
@@ -210,25 +275,25 @@ void* parallelReadZarrWrapper(char* folderName,uint8_t crop, uint64_t startX, ui
     if(dtype[1] == 'u' && dtype[2] == '1'){
         uint64_t bits = 8;
         uint8_t* zarr = (uint8_t*)malloc(sizeof(uint8_t)*shapeX*shapeY*shapeZ);
-        parallelReadZarr((void*)zarr,folderName,startX,startY,startZ,endX,endY,endZ,chunkXSize,chunkYSize,chunkZSize,shapeX,shapeY,shapeZ,bits,order);
+        parallelReadZarr((void*)zarr,folderName,startX,startY,startZ,endX,endY,endZ,chunkXSize,chunkYSize,chunkZSize,shapeX,shapeY,shapeZ,bits,order,cname);
         return (void*)zarr;
     }
     else if(dtype[1] == 'u' && dtype[2] == '2'){
         uint64_t bits = 16;
         uint16_t* zarr = (uint16_t*)malloc((uint64_t)(sizeof(uint16_t)*shapeX*shapeY*shapeZ));
-        parallelReadZarr((void*)zarr,folderName,startX,startY,startZ,endX,endY,endZ,chunkXSize,chunkYSize,chunkZSize,shapeX,shapeY,shapeZ,bits,order);
+        parallelReadZarr((void*)zarr,folderName,startX,startY,startZ,endX,endY,endZ,chunkXSize,chunkYSize,chunkZSize,shapeX,shapeY,shapeZ,bits,order,cname);
         return (void*)zarr;
     }
     else if(dtype[1] == 'f' && dtype[2] == '4'){
         uint64_t bits = 32;
         float* zarr = (float*)malloc(sizeof(float)*shapeX*shapeY*shapeZ);
-        parallelReadZarr((void*)zarr,folderName,startX,startY,startZ,endX,endY,endZ,chunkXSize,chunkYSize,chunkZSize,shapeX,shapeY,shapeZ,bits,order);
+        parallelReadZarr((void*)zarr,folderName,startX,startY,startZ,endX,endY,endZ,chunkXSize,chunkYSize,chunkZSize,shapeX,shapeY,shapeZ,bits,order,cname);
         return (void*)zarr;
     }
     else if(dtype[1] == 'f' && dtype[2] == '8'){
         uint64_t bits = 64;
         double* zarr = (double*)malloc(sizeof(double)*shapeX*shapeY*shapeZ);
-        parallelReadZarr((void*)zarr,folderName,startX,startY,startZ,endX,endY,endZ,chunkXSize,chunkYSize,chunkZSize,shapeX,shapeY,shapeZ,bits,order);
+        parallelReadZarr((void*)zarr,folderName,startX,startY,startZ,endX,endY,endZ,chunkXSize,chunkYSize,chunkZSize,shapeX,shapeY,shapeZ,bits,order,cname);
         return (void*)zarr;
     }
     else{

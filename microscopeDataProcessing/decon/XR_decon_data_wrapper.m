@@ -257,7 +257,7 @@ if Decon
     end
 end
 
-if strcmp(largeMethod, 'inplace')
+if largeFile && strcmp(largeMethod, 'inplace')
     saveZarr = true;
 end
 
@@ -446,8 +446,8 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
                         process_cmd = sprintf('%s \\"%s\\"', MatlabLaunchStr, matlab_cmd);
                         
                         if GPUJob && ~largeFile
-                            cpusPerTask_dc = 5;
-                            SlurmParam = '-p abc --qos abc_normal -n1 --mem-per-cpu=25700M --gres=gpu:1';
+                            cpusPerTask_dc = 4;
+                            SlurmParam = '-p abc_a100 --qos abc_normal -n1 --mem-per-cpu=32128M --gres=gpu:1';
                             slurm_constraint_str = '';
                         else
                             % SlurmParam = '-p abc --qos abc_normal -n1 --mem-per-cpu=21418M';

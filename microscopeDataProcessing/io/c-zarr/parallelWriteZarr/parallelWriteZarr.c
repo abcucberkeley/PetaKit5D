@@ -9,22 +9,38 @@
 #include <blosc.h>
 #include <cjson/cJSON.h>
 #include <omp.h>
+#ifdef __linux__
 #include <uuid/uuid.h>
+#endif
+#ifdef _WIN32
+#include <sys/time.h>
+#endif
 #include <sys/stat.h>
 #include "mex.h"
 
-//mex -v COPTIMFLAGS="-O3 -fwrapv -DNDEBUG" CFLAGS='$CFLAGS -O3 -fopenmp' LDFLAGS='$LDFLAGS -O3 -fopenmp' '-I/global/home/groups/software/sl-7.x86_64/modules/cBlosc/2.0.4/include/' '-L/global/home/groups/software/sl-7.x86_64/modules/cBlosc/2.0.4/lib64' -lblosc2 zarrMex.c
+#include "zlib.h"
 
-void parallelWriteZarrMex(void* zarr, char* folderName,uint64_t startX, uint64_t startY, uint64_t startZ, uint64_t endX, uint64_t endY,uint64_t endZ,uint64_t chunkXSize,uint64_t chunkYSize,uint64_t chunkZSize,uint64_t shapeX,uint64_t shapeY,uint64_t shapeZ,uint64_t origShapeX,uint64_t origShapeY,uint64_t origShapeZ, uint64_t bits, char order, uint8_t useUuid, uint8_t crop){
+//compile
+//mex -v COPTIMFLAGS="-DNDEBUG -O3" CFLAGS='$CFLAGS -fopenmp -O3' LDFLAGS='$LDFLAGS -fopenmp -O3' '-I/global/home/groups/software/sl-7.x86_64/modules/cBlosc/2.0.4/include/' '-I/global/home/groups/software/sl-7.x86_64/modules/cBlosc/zarr/include/' '-I/global/home/groups/software/sl-7.x86_64/modules/cJSON/1.7.15/include/' '-L/global/home/groups/software/sl-7.x86_64/modules/cBlosc/zarr/lib' -lblosc '-L/global/home/groups/software/sl-7.x86_64/modules/cBlosc/2.0.4/lib64' -lblosc2 '-L/global/home/groups/software/sl-7.x86_64/modules/cJSON/1.7.15/lib64' -lcjson -luuid parallelWriteZarr.c helperFunctions.c parallelReadZarr.c
+
+//With zlib
+//mex -v COPTIMFLAGS="-DNDEBUG -O3" CFLAGS='$CFLAGS -fopenmp -O3' LDFLAGS='$LDFLAGS -fopenmp -O3' '-I/global/home/groups/software/sl-7.x86_64/modules/cBlosc/2.0.4/include/' '-I/global/home/groups/software/sl-7.x86_64/modules/cBlosc/zarr/include/' '-I/global/home/groups/software/sl-7.x86_64/modules/cJSON/1.7.15/include/' '-L/global/home/groups/software/sl-7.x86_64/modules/cBlosc/zarr/lib' -lblosc '-L/global/home/groups/software/sl-7.x86_64/modules/cBlosc/2.0.4/lib64' -lblosc2 '-L/global/home/groups/software/sl-7.x86_64/modules/cJSON/1.7.15/lib64' -lcjson -luuid -lz parallelWriteZarr.c helperFunctions.c parallelReadZarr.c
+
+//mex -v COPTIMFLAGS="-O3 -fwrapv -DNDEBUG" CFLAGS='$CFLAGS -O3 -fopenmp' LDFLAGS='$LDFLAGS -O3 -fopenmp' '-I/global/home/groups/software/sl-7.x86_64/modules/cBlosc/2.0.4/include/' '-L/global/home/groups/software/sl-7.x86_64/modules/cBlosc/2.0.4/lib64' -lblosc2 zarrMex.c
+//
+//Windows
+//mex -v COPTIMFLAGS="-O3 -DNDEBUG" CFLAGS='$CFLAGS -O3 -fopenmp' LDFLAGS='$LDFLAGS -O3 -fopenmp' '-IC:\Program Files (x86)\bloscZarr\include' '-LC:\Program Files (x86)\bloscZarr\lib' -lblosc '-IC:\Program Files (x86)\cJSON\include\' '-LC:\Program Files (x86)\cJSON\lib' -lcjson '-IC:\Program Files (x86)\blosc\include' '-LC:\Program Files (x86)\blosc\lib' -lblosc2 parallelWriteZarr.c parallelReadZarr.c helperFunctions.c
+void parallelWriteZarrMex(void* zarr, char* folderName,uint64_t startX, uint64_t startY, uint64_t startZ, uint64_t endX, uint64_t endY,uint64_t endZ,uint64_t chunkXSize,uint64_t chunkYSize,uint64_t chunkZSize,uint64_t shapeX,uint64_t shapeY,uint64_t shapeZ,uint64_t origShapeX,uint64_t origShapeY,uint64_t origShapeZ, uint64_t bits, char order, uint8_t useUuid, uint8_t crop, char* cname){
     char fileSepS[2];
     const char fileSep =
-#ifdef _WIN32
-            '\\';
-#else
-    '/';
-#endif
+    #ifdef _WIN32
+        '\\';
+    #else
+        '/';
+    #endif
     fileSepS[0] = fileSep;
     fileSepS[1] = '\0';
+    
     //printf("%s startxyz: %d %d %d endxyz: %d %d %d chunkxyz: %d %d %d shapexyz: %d %d %d bits: %d\n",folderName,startX,startY,startZ,endX,endY,endZ,chunkXSize,chunkYSize,chunkZSize,shapeX,shapeY,shapeZ,bits);
     
     
@@ -46,17 +62,39 @@ void parallelWriteZarrMex(void* zarr, char* folderName,uint64_t startX, uint64_t
     uint64_t yRest = 0;
     uint64_t zRest = 0;
     
-    
+    uint64_t uuidLen;
+    #ifdef __linux__
+    uuidLen = 36;
     uuid_t binuuid;
     uuid_generate_random(binuuid);
-    char *uuid = malloc(37);
+    char *uuid = malloc(uuidLen+1);
     uuid_unparse(binuuid, uuid);
+    #endif
+    #ifdef _WIN32
+    uuidLen = 5;
+    char *uuid = malloc(uuidLen+1);
+    char *seedArr = malloc(1000);
+    struct timeval cSeed;
+    gettimeofday(&cSeed,NULL);
+    int nChars = sprintf(seedArr,"%d%d",cSeed.tv_sec,cSeed.tv_usec);
+    //printf("%d\n",nChars);
+    //mexErrMsgIdAndTxt("tiff:dataTypeError","HERE");
+    int aSeed = 0;
+    char* ptr;
+    if(nChars > 9)
+        aSeed = strtol(seedArr+nChars-10, &ptr, 9);
+    else aSeed = strtol(seedArr, &ptr, 9);
+    srand(aSeed);
+    sprintf(uuid,"%.5d",rand() % 99999);
+    #endif
+    int err = 0;
+    char errString[10000];
     #pragma omp parallel for //if(numWorkers<=cI.numChunks)
     for(w = 0; w < numWorkers; w++){
         void* chunkUnC = mallocDynamic(s,bits);
         void* chunkC = malloc(sB+BLOSC_MAX_OVERHEAD);
         for(int64_t f = w*batchSize; f < (w+1)*batchSize; f++){
-            if(f>=cI.numChunks) break;
+            if(f>=cI.numChunks || err) break;
             struct chunkAxisVals cAV = getChunkAxisVals(cI.chunkNames[f]);
             void* cRegion = NULL;
             if(crop && ((((cAV.x)*chunkXSize) < startX || ((cAV.x+1)*chunkXSize > endX && endX < origShapeX))
@@ -174,25 +212,99 @@ void parallelWriteZarrMex(void* zarr, char* folderName,uint64_t startX, uint64_t
                 for(int64_t x = cAV.x*chunkZSize; x < (cAV.x+1)*chunkXSize; x++){
                     for(int64_t y = cAV.y*chunkYSize; y < (cAV.y+1)*chunkYSize; y++){
                         for(int64_t z = cAV.z*chunkZSize; z < (cAV.z+1)*chunkZSize; z++){
-                            if(x>=endX || x<startX || y>= endY || y<startY || z>=endZ || z<startZ){
-                                ((uint8_t*)chunkUnC)[(((z%chunkZSize)+((y%chunkYSize)*chunkZSize)+((x%chunkXSize)*chunkZSize*chunkYSize))*bytes)] = 0;
-                                continue;
+                            switch(bytes){
+                                case 1:
+                                    if(x>=endX || x<startX || y>= endY || y<startY || z>=endZ || z<startZ){
+                                        ((uint8_t*)chunkUnC)[(((z%chunkZSize)+((y%chunkYSize)*chunkZSize)+((x%chunkXSize)*chunkZSize*chunkYSize))*bytes)] = 0;
+                                        continue;
+                                    }
+                                    ((uint8_t*)chunkUnC)[(((z%chunkZSize)+((y%chunkYSize)*chunkZSize)+((x%chunkXSize)*chunkZSize*chunkYSize))*bytes)] = ((uint8_t*)zarr)[((x+(y*shapeX)+(z*shapeX*shapeY))*bytes)];
+                                    break;
+                                case 2:
+                                    if(x>=endX || x<startX || y>= endY || y<startY || z>=endZ || z<startZ){
+                                        ((uint16_t*)chunkUnC)[(((z%chunkZSize)+((y%chunkYSize)*chunkZSize)+((x%chunkXSize)*chunkZSize*chunkYSize))*bytes)] = 0;
+                                        continue;
+                                    }
+                                    ((uint16_t*)chunkUnC)[(((z%chunkZSize)+((y%chunkYSize)*chunkZSize)+((x%chunkXSize)*chunkZSize*chunkYSize))*bytes)] = ((uint16_t*)zarr)[((x+(y*shapeX)+(z*shapeX*shapeY))*bytes)];                                    
+                                    break;
+                                case 4:
+                                    if(x>=endX || x<startX || y>= endY || y<startY || z>=endZ || z<startZ){
+                                        ((float*)chunkUnC)[(((z%chunkZSize)+((y%chunkYSize)*chunkZSize)+((x%chunkXSize)*chunkZSize*chunkYSize))*bytes)] = 0;
+                                        continue;
+                                    }
+                                    ((float*)chunkUnC)[(((z%chunkZSize)+((y%chunkYSize)*chunkZSize)+((x%chunkXSize)*chunkZSize*chunkYSize))*bytes)] = ((float*)zarr)[((x+(y*shapeX)+(z*shapeX*shapeY))*bytes)];                                    
+                                    break;
+                                case 8:
+                                     if(x>=endX || x<startX || y>= endY || y<startY || z>=endZ || z<startZ){
+                                        ((double*)chunkUnC)[(((z%chunkZSize)+((y%chunkYSize)*chunkZSize)+((x%chunkXSize)*chunkZSize*chunkYSize))*bytes)] = 0;
+                                        continue;
+                                    }
+                                    ((double*)chunkUnC)[(((z%chunkZSize)+((y%chunkYSize)*chunkZSize)+((x%chunkXSize)*chunkZSize*chunkYSize))*bytes)] = ((double*)zarr)[((x+(y*shapeX)+(z*shapeX*shapeY))*bytes)];                                   
+                                    break;
                             }
-                            ((uint8_t*)chunkUnC)[(((z%chunkZSize)+((y%chunkYSize)*chunkZSize)+((x%chunkXSize)*chunkZSize*chunkYSize))*bytes)] = ((uint8_t*)zarr)[((x+(y*shapeX)+(z*shapeX*shapeY))*bytes)];
+                            
                         }
                     }
                 }
             }
-            /* Compress with clevel=5 and shuffle active  */
             //char* compressor = blosc_get_compressor();
             //printf("Thread: %d Compressor: %s\n",w,compressor);
             
             // Use the same blosc compress as Zarr
             //int64_t csize = blosc_compress(5, BLOSC_SHUFFLE, bytes, sB, chunkUnC, chunkC, sB+BLOSC_MAX_OVERHEAD);
-            int64_t csize = blosc_compress_ctx(5, BLOSC_SHUFFLE, bytes, sB, chunkUnC, chunkC, sB+BLOSC_MAX_OVERHEAD,"lz4",0,1);
+            int64_t csize = 0;
+            if(strcmp(cname,"gzip")){
+                csize = blosc_compress_ctx(5, BLOSC_SHUFFLE, bytes, sB, chunkUnC, chunkC, sB+BLOSC_MAX_OVERHEAD,cname,0,1);
+            }
+            else{
+                uint64_t sLength = sB;
+                csize = sB+BLOSC_MAX_OVERHEAD;
+                //compress2((Bytef*)chunkC,&csize,(Bytef*)chunkUnC,sB,1);
+                z_stream stream;
+                //memset(&stream, 0, sizeof(stream));
+                stream.zalloc = Z_NULL;
+                stream.zfree = Z_NULL;
+                stream.opaque = Z_NULL;
             
+                char dummy = '\0';  // zlib does not like NULL output buffers (even if the uncompressed data is empty)
+                stream.next_in = (uint8_t*)chunkUnC;
+                stream.next_out = (uint8_t*)chunkC;
+            
+                stream.avail_in = sB;
+                stream.avail_out = csize;
+                int uncErr = deflateInit2(&stream, 1, Z_DEFLATED, MAX_WBITS + 16, MAX_MEM_LEVEL, Z_DEFAULT_STRATEGY);
+                if(uncErr){
+                #pragma omp critical
+                {
+                err = 1;
+                sprintf(errString,"Decompression error. Error code: %d ChunkName: %s/%s\n",uncErr,folderName,cI.chunkNames[f]);
+                }
+                break;
+                }
+
+                uncErr = deflate(&stream, Z_FINISH);
+
+                if(uncErr != Z_STREAM_END){
+                #pragma omp critical
+                {
+                err = 1;
+                sprintf(errString,"Decompression error. Error code: %d ChunkName: %s/%s\n",uncErr,folderName,cI.chunkNames[f]);
+                }
+                break;
+                }
+     
+                if(deflateEnd(&stream)){
+                #pragma omp critical
+                {
+                err = 1;
+                sprintf(errString,"Decompression error. Error code: %d ChunkName: %s/%s\n",uncErr,folderName,cI.chunkNames[f]);
+                }
+                break;
+                }
+                csize = csize - stream.avail_out;
+            }
             //malloc +2 for null term and filesep
-            char *fileName = malloc(strlen(folderName)+1+strlen(cI.chunkNames[f])+36+1);
+            char *fileName = malloc(strlen(folderName)+1+strlen(cI.chunkNames[f])+uuidLen+1);
             fileName[0] = '\0';
             strcat(fileName,folderName);
             strcat(fileName,fileSepS);
@@ -229,6 +341,7 @@ void parallelWriteZarrMex(void* zarr, char* folderName,uint64_t startX, uint64_t
         free(cI.chunkNames[i]);
     }
     free(cI.chunkNames);
+    if(err) mexErrMsgIdAndTxt("zarr:threadError",errString);
     
     /* After using it, destroy the Blosc environment */
     //blosc_destroy();
@@ -246,10 +359,10 @@ void mexFunction(int nlhs, mxArray *plhs[],
     uint64_t endY = 0;
     uint64_t endZ = 0;
     uint8_t crop = 0;
+    char* cname = NULL;
     if(nrhs < 3) mexErrMsgIdAndTxt("zarr:inputError","This functions requires at least 3 arguments");
-    else if(nrhs == 4){
+    else if(nrhs == 4 || nrhs == 5){
         if(mxGetN(prhs[3]) == 6){
-            
             crop = 1;
             startX = (uint64_t)*(mxGetPr(prhs[3]))-1;
             startY = (uint64_t)*((mxGetPr(prhs[3])+1))-1;
@@ -259,10 +372,13 @@ void mexFunction(int nlhs, mxArray *plhs[],
             endZ = (uint64_t)*((mxGetPr(prhs[3])+5));
             
             if(startX+1 < 1 || startY+1 < 1 || startZ+1 < 1) mexErrMsgIdAndTxt("zarr:inputError","Lower bounds must be at least 1");
+            if(nrhs == 5){
+                cname = mxArrayToString(prhs[4]);
+            }
         }
         else if(mxGetN(prhs[3]) != 3) mexErrMsgIdAndTxt("zarr:inputError","Input range is not 6 or 3");
     }
-    else if (nrhs > 4) mexErrMsgIdAndTxt("zarr:inputError","Number of input arguments must be 4 or less");
+    else if (nrhs > 5) mexErrMsgIdAndTxt("zarr:inputError","Number of input arguments must be 4 or less");
     if(!mxIsChar(prhs[0])) mexErrMsgIdAndTxt("zarr:inputError","The first argument must be a string");
     char* folderName = mxArrayToString(prhs[0]);
     uint8_t useUuid = (uint8_t)*(mxGetPr(prhs[2]));
@@ -316,6 +432,8 @@ void mexFunction(int nlhs, mxArray *plhs[],
     strcat(fnFull,fileSepS);
     strcat(fnFull,zArray);
     
+    // lz4 for the compressor if none is specified
+    if(!cname) cname = "lz4";
     if(!crop){
         uint64_t* dims = (uint64_t*)mxGetDimensions(prhs[1]);
         shapeX = dims[0];
@@ -328,13 +446,18 @@ void mexFunction(int nlhs, mxArray *plhs[],
         FILE* f = fopen(fnFull,"r");
         if(f) fclose(f);
         else{
+            #ifdef __linux__
             mkdir(folderName, 0775);
+            #endif
+            #ifdef _WIN32
+            mkdir(folderName);
+            #endif
             chmod(folderName, 0775);
         }
         
         
-        setJSONValues(folderName,&chunkXSize,&chunkYSize,&chunkZSize,dtype,&order,&shapeX,&shapeY, &shapeZ);
-        setValuesFromJSON(folderName,&chunkXSize,&chunkYSize,&chunkZSize,dtype,&order,&shapeX,&shapeY,&shapeZ);
+        setJSONValues(folderName,&chunkXSize,&chunkYSize,&chunkZSize,dtype,&order,&shapeX,&shapeY,&shapeZ,cname);
+        setValuesFromJSON(folderName,&chunkXSize,&chunkYSize,&chunkZSize,dtype,&order,&shapeX,&shapeY,&shapeZ,&cname);
         //}
         
     }
@@ -346,15 +469,20 @@ void mexFunction(int nlhs, mxArray *plhs[],
         FILE* f = fopen(fnFull,"r");
         if(f) fclose(f);
         else {
+            #ifdef __linux__
             mkdir(folderName, 0775);
+            #endif
+            #ifdef _WIN32
+            mkdir(folderName);
+            #endif
             chmod(folderName, 0775);
-            setJSONValues(folderName,&chunkXSize,&chunkYSize,&chunkZSize,dtype,&order,&shapeX,&shapeY, &shapeZ);
+            setJSONValues(folderName,&chunkXSize,&chunkYSize,&chunkZSize,dtype,&order,&shapeX,&shapeY, &shapeZ,cname);
         }
         
         char dtypeT[4];
         for(int i = 0; i < 4; i++) dtypeT[i] = dtype[i];
         
-        setValuesFromJSON(folderName,&chunkXSize,&chunkYSize,&chunkZSize,dtype,&order,&shapeX,&shapeY,&shapeZ);
+        setValuesFromJSON(folderName,&chunkXSize,&chunkYSize,&chunkZSize,dtype,&order,&shapeX,&shapeY,&shapeZ,&cname);
         
         if(dtypeT[2] != dtype[2]){
             uint64_t size = (endX-startX)*(endY-startY)*(endZ-startZ);
@@ -464,13 +592,12 @@ void mexFunction(int nlhs, mxArray *plhs[],
                 }
             }
             else{
-                mexErrMsgIdAndTxt("tiff:dataTypeError","Cannont convert to passed in data type. Data type not suppported");
+                mexErrMsgIdAndTxt("zarr:dataTypeError","Cannont convert to passed in data type. Data type not suppported");
             }
         }
     }
     
     free(fnFull);
-    
     uint64_t origShapeX = shapeX;
     uint64_t origShapeY = shapeY;
     uint64_t origShapeZ = shapeZ;
@@ -496,24 +623,24 @@ void mexFunction(int nlhs, mxArray *plhs[],
         uint8_t* zarr;
         if(zarrC) zarr = (uint8_t*)zarrC;
         else zarr =  (uint8_t*)mxGetPr(prhs[1]);
-        parallelWriteZarrMex((void*)zarr,folderName,startX,startY,startZ,endX,endY,endZ,chunkXSize,chunkYSize,chunkZSize,shapeX,shapeY,shapeZ, origShapeX, origShapeY,origShapeZ, bits,order,useUuid,crop);
+        parallelWriteZarrMex((void*)zarr,folderName,startX,startY,startZ,endX,endY,endZ,chunkXSize,chunkYSize,chunkZSize,shapeX,shapeY,shapeZ, origShapeX, origShapeY,origShapeZ, bits,order,useUuid,crop,cname);
     }
     else if(dtype[1] == 'u' && dtype[2] == '2'){
         uint64_t bits = 16;
         uint16_t* zarr;
         if(zarrC) zarr = (uint16_t*)zarrC;
         else zarr = (uint16_t*)mxGetPr(prhs[1]);
-        parallelWriteZarrMex((void*)zarr,folderName,startX,startY,startZ,endX,endY,endZ,chunkXSize,chunkYSize,chunkZSize,shapeX,shapeY,shapeZ, origShapeX, origShapeY,origShapeZ, bits,order,useUuid,crop);
+        parallelWriteZarrMex((void*)zarr,folderName,startX,startY,startZ,endX,endY,endZ,chunkXSize,chunkYSize,chunkZSize,shapeX,shapeY,shapeZ, origShapeX, origShapeY,origShapeZ, bits,order,useUuid,crop,cname);
     }
     else if(dtype[1] == 'f' && dtype[2] == '4'){
         uint64_t bits = 32;
         float* zarr = (float*)mxGetPr(prhs[1]);
-        parallelWriteZarrMex((void*)zarr,folderName,startX,startY,startZ,endX,endY,endZ,chunkXSize,chunkYSize,chunkZSize,shapeX,shapeY,shapeZ, origShapeX, origShapeY,origShapeZ, bits,order,useUuid,crop);
+        parallelWriteZarrMex((void*)zarr,folderName,startX,startY,startZ,endX,endY,endZ,chunkXSize,chunkYSize,chunkZSize,shapeX,shapeY,shapeZ, origShapeX, origShapeY,origShapeZ, bits,order,useUuid,crop,cname);
     }
     else if(dtype[1] == 'f' && dtype[2] == '8'){
         uint64_t bits = 64;
         double* zarr = (double*)mxGetPr(prhs[1]);
-        parallelWriteZarrMex((void*)zarr,folderName,startX,startY,startZ,endX,endY,endZ,chunkXSize,chunkYSize,chunkZSize,shapeX,shapeY,shapeZ, origShapeX, origShapeY,origShapeZ, bits,order,useUuid,crop);
+        parallelWriteZarrMex((void*)zarr,folderName,startX,startY,startZ,endX,endY,endZ,chunkXSize,chunkYSize,chunkZSize,shapeX,shapeY,shapeZ, origShapeX, origShapeY,origShapeZ, bits,order,useUuid,crop,cname);
     }
     else{
         mexErrMsgIdAndTxt("tiff:dataTypeError","Data type not suppported");

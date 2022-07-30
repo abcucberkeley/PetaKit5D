@@ -3,6 +3,11 @@
 #include <stdint.h>
 #include <cjson/cJSON.h>
 
+#ifdef _WIN32
+char* strndup (const char *s, size_t n);
+
+#endif  
+
 void* mallocDynamic(uint64_t x, uint64_t bits);
 
 struct chunkInfo{
@@ -28,8 +33,8 @@ void setOrderFromJSON(cJSON *json, char* order);
 
 void setShapeFromJSON(cJSON *json, uint64_t *x, uint64_t *y, uint64_t *z);
 
-void setValuesFromJSON(char* fileName,uint64_t *chunkXSize,uint64_t *chunkYSize,uint64_t *chunkZSize,char* dtype,char* order,uint64_t *shapeX,uint64_t *shapeY,uint64_t *shapeZ);
+void setValuesFromJSON(char* fileName,uint64_t *chunkXSize,uint64_t *chunkYSize,uint64_t *chunkZSize,char* dtype,char* order,uint64_t *shapeX,uint64_t *shapeY,uint64_t *shapeZ,char** cname);
 
-void setJSONValues(char* fileName,uint64_t *chunkXSize,uint64_t *chunkYSize,uint64_t *chunkZSize,char* dtype,char* order,uint64_t *shapeX,uint64_t *shapeY,uint64_t *shapeZ);
+void setJSONValues(char* fileName,uint64_t *chunkXSize,uint64_t *chunkYSize,uint64_t *chunkZSize,char* dtype,char* order,uint64_t *shapeX,uint64_t *shapeY,uint64_t *shapeZ, char* cname);
 
 #endif // HELPERFUNCTIONS_H

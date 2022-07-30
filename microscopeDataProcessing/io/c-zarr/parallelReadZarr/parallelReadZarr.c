@@ -1,12 +1,15 @@
 #include <stdio.h>
 #include <stdint.h>
-#include "cBlosc2/include/blosc2.h"
-#include "cJSON/include/cjson/cJSON.h"
+#include <string.h>
+#include "blosc2.h"
+#include "cjson/cJSON.h"
 #include <omp.h>
 #include <stdlib.h>
 #include "mex.h"
 
-//mex -v COPTIMFLAGS="-O3 -fwrapv -DNDEBUG" CFLAGS='$CFLAGS -O3 -fopenmp' LDFLAGS='$LDFLAGS -O3 -fopenmp' '-I/global/home/groups/software/sl-7.x86_64/modules/cBlosc/2.0.4/include/' '-I/global/home/groups/software/sl-7.x86_64/modules/cJSON/1.7.15/include/' '-L/global/home/groups/software/sl-7.x86_64/modules/cBlosc/2.0.4/lib64' -lblosc2 -L'/global/home/groups/software/sl-7.x86_64/modules/cJSON/1.7.15/lib64' -lcjson zarrMex.c
+#include "zlib.h"
+
+//mex -v COPTIMFLAGS="-O3 -DNDEBUG" CFLAGS='$CFLAGS -O3 -fopenmp' LDFLAGS='$LDFLAGS -O3 -fopenmp' '-I/global/home/groups/software/sl-7.x86_64/modules/cBlosc/2.0.4/include/' '-I/global/home/groups/software/sl-7.x86_64/modules/cJSON/1.7.15/include/' '-L/global/home/groups/software/sl-7.x86_64/modules/cBlosc/2.0.4/lib64' -lblosc2 -L'/global/home/groups/software/sl-7.x86_64/modules/cJSON/1.7.15/lib64' -lcjson -lz parallelReadZarr.c
 
 
 const char fileSep =
@@ -15,6 +18,54 @@ const char fileSep =
 #else
     '/';
 #endif
+    
+#ifdef _WIN32
+char* strndup (const char *s, size_t n)
+{
+  size_t len = strnlen (s, n);
+  char *new = (char *) malloc (len + 1);
+  if (new == NULL)
+    return NULL;
+  new[len] = '\0';
+  return (char *) memcpy (new, s, len);
+}
+
+int _vscprintf_so(const char * format, va_list pargs) {
+    int retval;
+    va_list argcopy;
+    va_copy(argcopy, pargs);
+    retval = vsnprintf(NULL, 0, format, argcopy);
+    va_end(argcopy);
+    return retval;
+}
+
+int vasprintf(char **strp, const char *fmt, va_list ap) {
+    int len = _vscprintf_so(fmt, ap);
+    if (len == -1) return -1;
+    char *str = malloc((size_t) len + 1);
+    if (!str) return -1;
+    int r = vsnprintf(str, len + 1, fmt, ap); /* "secure" version of vsprintf */
+    if (r == -1) return free(str), -1;
+    *strp = str;
+    return r;
+}
+
+int asprintf(char *strp[], const char *fmt, ...) {
+    va_list ap;
+    va_start(ap, fmt);
+    int r = vasprintf(strp, fmt, ap);
+    va_end(ap);
+    return r;
+}
+#endif
+/*
+void decompErr(){
+    #pragma omp critical
+    {
+    err = 1;
+    sprintf(errString,"Decompression error. Error code: %d ChunkName: %s/%s\n",uncErr,folderName,cI.chunkNames[f]);
+    }
+}*/
 
 void* mallocDynamic(uint64_t x, uint64_t bits){
     switch(bits){
@@ -120,24 +171,43 @@ void setShapeFromJSON(cJSON *json, uint64_t *x, uint64_t *y, uint64_t *z){
     *y = json->child->next->valueint;
     *z = json->child->next->next->valueint;
 }
-
-void setValuesFromJSON(char* fileName,uint64_t *chunkXSize,uint64_t *chunkYSize,uint64_t *chunkZSize,char* dtype,char* order,uint64_t *shapeX,uint64_t *shapeY,uint64_t *shapeZ){
+void setCnameFromJSON(cJSON *json, char** cname){
+    cJSON *jsonItem = json->child;
     
+
+    while(jsonItem){
+        if(!strcmp(jsonItem->string,"cname")){
+            *cname = strdup(jsonItem->valuestring);
+            return;
+        }
+        // For gzip
+        if(!strcmp(jsonItem->string,"id") && !strcmp(jsonItem->valuestring,"gzip")){     
+            *cname = strdup(jsonItem->valuestring);
+            return;
+        }
+        jsonItem = jsonItem->next;
+    } 
+    mexErrMsgIdAndTxt("zarr:zarrayError","Compressor: \"%s\" is not currently supported\n",*cname);
+    
+}
+
+void setValuesFromJSON(char* fileName,uint64_t *chunkXSize,uint64_t *chunkYSize,uint64_t *chunkZSize,char* dtype,char* order,uint64_t *shapeX,uint64_t *shapeY,uint64_t *shapeZ,char** cname){
+
     char* zArray = ".zarray";
     char* fnFull = (char*)malloc(strlen(fileName)+9);
     fnFull[0] = '\0';
     char fileSepS[2];
     fileSepS[0] = fileSep;
     fileSepS[1] = '\0';
-    
+
     strcat(fnFull,fileName);
     strcat(fnFull,fileSepS);
     strcat(fnFull,zArray);
-    
+
     FILE *fileptr = fopen(fnFull, "rb");
     if(!fileptr) mexErrMsgIdAndTxt("zarr:inputError","Failed to open JSON File: %s\n",fnFull);
     free(fnFull);
-    
+
     fseek(fileptr, 0, SEEK_END);
     long filelen = ftell(fileptr);
     rewind(fileptr);
@@ -146,8 +216,8 @@ void setValuesFromJSON(char* fileName,uint64_t *chunkXSize,uint64_t *chunkYSize,
     fclose(fileptr);
     cJSON *json = cJSON_ParseWithLength(buffer,filelen);
     uint8_t flags[4] = {0,0,0,0};
-    
-    while(!(flags[0] && flags[1] && flags[2] && flags[3])){
+
+    while(!(flags[0] && flags[1] && flags[2] && flags[3] && flags[4])){
         if(!json->string){
             json = json->child;
             continue;
@@ -168,12 +238,16 @@ void setValuesFromJSON(char* fileName,uint64_t *chunkXSize,uint64_t *chunkYSize,
             setShapeFromJSON(json, shapeX,shapeY,shapeZ);
             flags[3] = 1;
         }
+        else if(!strcmp(json->string,"compressor")){
+            setCnameFromJSON(json, cname);
+            flags[4] = 1;
+        }
         json = json->next;
     }
     cJSON_Delete(json);
 }
 
-void parallelReadZarrMex(void* zarr, char* folderName,uint64_t startX, uint64_t startY, uint64_t startZ, uint64_t endX, uint64_t endY,uint64_t endZ,uint64_t chunkXSize,uint64_t chunkYSize,uint64_t chunkZSize,uint64_t shapeX,uint64_t shapeY,uint64_t shapeZ, uint64_t bits, char order){
+void parallelReadZarrMex(void* zarr, char* folderName,uint64_t startX, uint64_t startY, uint64_t startZ, uint64_t endX, uint64_t endY,uint64_t endZ,uint64_t chunkXSize,uint64_t chunkYSize,uint64_t chunkZSize,uint64_t shapeX,uint64_t shapeY,uint64_t shapeZ, uint64_t bits, char order, char* cname){
     uint64_t bytes = (bits/8);
     
     char fileSepS[2];
@@ -196,6 +270,14 @@ void parallelReadZarrMex(void* zarr, char* folderName,uint64_t startX, uint64_t 
     char errString[10000];
     #pragma omp parallel for if(numWorkers<=cI.numChunks)
     for(w = 0; w < numWorkers; w++){
+        /*
+        if(strcmp(cname,"gzip")){
+            bufferDest = mallocDynamic(s,bits);
+        }
+        else{
+            bufferDest = calloc(sB,1);
+        }
+        */
         void* bufferDest = mallocDynamic(s,bits);
         uint64_t lastFileLen = 0;
         char *buffer = NULL;
@@ -231,10 +313,60 @@ void parallelReadZarrMex(void* zarr, char* folderName,uint64_t startX, uint64_t 
             }
             fread(buffer, filelen, 1, fileptr);
             fclose(fileptr);
+
             
             // Decompress
-            int dsize = -1;
-            dsize = blosc2_decompress(buffer, filelen, bufferDest, sB);
+            int64_t dsize = -1;
+            int uncErr = 0;
+            if(strcmp(cname,"gzip")){
+                dsize = blosc2_decompress(buffer, filelen, bufferDest, sB);
+            }
+            else{
+                dsize = sB;
+                z_stream stream;
+                stream.zalloc = Z_NULL;
+                stream.zfree = Z_NULL;
+                stream.opaque = Z_NULL;
+                stream.avail_in = (uInt)filelen;
+                stream.avail_out = (uInt)dsize;
+                while(stream.avail_in > 0){
+
+                    dsize = sB;
+
+                    stream.next_in = (uint8_t*)buffer+(filelen-stream.avail_in);
+                    stream.next_out = (uint8_t*)bufferDest+(sB-stream.avail_out);
+
+                    uncErr = inflateInit2(&stream, 32);
+                    if(uncErr){
+                    #pragma omp critical
+                    {
+                    err = 1;
+                    sprintf(errString,"Decompression error. Error code: %d ChunkName: %s/%s\n",uncErr,folderName,cI.chunkNames[f]);
+                    }
+                    break;
+                    }
+    
+                    uncErr = inflate(&stream, Z_NO_FLUSH);
+    
+                    if(uncErr != Z_STREAM_END){
+                    #pragma omp critical
+                    {
+                    err = 1;
+                    sprintf(errString,"Decompression error. Error code: %d ChunkName: %s/%s\n",uncErr,folderName,cI.chunkNames[f]);
+                    }
+                    break;
+                    }
+                }
+                if(inflateEnd(&stream)){
+                    #pragma omp critical
+                    {
+                    err = 1;
+                    sprintf(errString,"Decompression error. Error code: %d ChunkName: %s/%s\n",uncErr,folderName,cI.chunkNames[f]);
+                    }
+                    break;
+                }
+            }
+            
             
             if(dsize < 0){
                 #pragma omp critical
@@ -282,7 +414,21 @@ void parallelReadZarrMex(void* zarr, char* folderName,uint64_t startX, uint64_t 
                         for(int64_t z = cAV.z*chunkZSize; z < (cAV.z+1)*chunkZSize; z++){
                             if(z>=endZ) break;
                             else if(z<startZ) continue;
-                            ((uint8_t*)zarr)[((x-startX)+((y-startY)*shapeX)+((z-startZ)*shapeX*shapeY))*bytes] = ((uint8_t*)bufferDest)[((z%chunkZSize)+((y%chunkYSize)*chunkZSize)+((x%chunkXSize)*chunkZSize*chunkYSize))*bytes];
+                            switch(bytes){
+                                case 1:
+                                    ((uint8_t*)zarr)[((x-startX)+((y-startY)*shapeX)+((z-startZ)*shapeX*shapeY))] = ((uint8_t*)bufferDest)[((z%chunkZSize)+((y%chunkYSize)*chunkZSize)+((x%chunkXSize)*chunkZSize*chunkYSize))];
+                                    break;
+                                case 2:
+                                    ((uint16_t*)zarr)[((x-startX)+((y-startY)*shapeX)+((z-startZ)*shapeX*shapeY))] = ((uint16_t*)bufferDest)[((z%chunkZSize)+((y%chunkYSize)*chunkZSize)+((x%chunkXSize)*chunkZSize*chunkYSize))];
+                                    break;
+                                case 4:
+                                    ((float*)zarr)[((x-startX)+((y-startY)*shapeX)+((z-startZ)*shapeX*shapeY))] = ((float*)bufferDest)[((z%chunkZSize)+((y%chunkYSize)*chunkZSize)+((x%chunkXSize)*chunkZSize*chunkYSize))];
+                                    break;
+                                case 8:
+                                    ((double*)zarr)[((x-startX)+((y-startY)*shapeX)+((z-startZ)*shapeX*shapeY))] = ((double*)bufferDest)[((z%chunkZSize)+((y%chunkYSize)*chunkZSize)+((x%chunkXSize)*chunkZSize*chunkYSize))];
+                                    break;
+                            }
+                            
                         }
                     }
                 }
@@ -315,6 +461,7 @@ void mexFunction(int nlhs, mxArray *plhs[],
     uint64_t endX = 0;
     uint64_t endY = 0;
     uint64_t endZ = 0;
+    char* cname = NULL;
     if(!nrhs) mexErrMsgIdAndTxt("zarr:inputError","This functions requires at least one argument");
     else if(nrhs == 2){
         if(mxGetN(prhs[1]) != 6) mexErrMsgIdAndTxt("zarr:inputError","Input range is not 6");
@@ -338,7 +485,7 @@ void mexFunction(int nlhs, mxArray *plhs[],
     uint64_t chunkZSize = 0;
     char dtype[4];
     char order;
-    setValuesFromJSON(folderName,&chunkXSize,&chunkYSize,&chunkZSize,dtype,&order,&shapeX,&shapeY,&shapeZ);
+    setValuesFromJSON(folderName,&chunkXSize,&chunkYSize,&chunkZSize,dtype,&order,&shapeX,&shapeY,&shapeZ,&cname);
     if(endX > shapeX || endY > shapeY || endZ > shapeZ) mexErrMsgIdAndTxt("zarr:inputError","Upper bound is invalid");
     if(nrhs == 1){
         endX = shapeX;
@@ -359,25 +506,25 @@ void mexFunction(int nlhs, mxArray *plhs[],
         uint64_t bits = 8;
         plhs[0] = mxCreateNumericArray(3,dim,mxUINT8_CLASS, mxREAL);
         uint8_t* zarr = (uint8_t*)mxGetPr(plhs[0]);
-        parallelReadZarrMex((void*)zarr,folderName,startX,startY,startZ,endX,endY,endZ,chunkXSize,chunkYSize,chunkZSize,shapeX,shapeY,shapeZ,bits,order);
+        parallelReadZarrMex((void*)zarr,folderName,startX,startY,startZ,endX,endY,endZ,chunkXSize,chunkYSize,chunkZSize,shapeX,shapeY,shapeZ,bits,order,cname);
     }
     else if(dtype[1] == 'u' && dtype[2] == '2'){
         uint64_t bits = 16;
         plhs[0] = mxCreateNumericArray(3,dim,mxUINT16_CLASS, mxREAL);
         uint16_t* zarr = (uint16_t*)mxGetPr(plhs[0]);
-        parallelReadZarrMex((void*)zarr,folderName,startX,startY,startZ,endX,endY,endZ,chunkXSize,chunkYSize,chunkZSize,shapeX,shapeY,shapeZ,bits,order);
+        parallelReadZarrMex((void*)zarr,folderName,startX,startY,startZ,endX,endY,endZ,chunkXSize,chunkYSize,chunkZSize,shapeX,shapeY,shapeZ,bits,order,cname);
     }
     else if(dtype[1] == 'f' && dtype[2] == '4'){
         uint64_t bits = 32;
         plhs[0] = mxCreateNumericArray(3,dim,mxSINGLE_CLASS, mxREAL);
         float* zarr = (float*)mxGetPr(plhs[0]);
-        parallelReadZarrMex((void*)zarr,folderName,startX,startY,startZ,endX,endY,endZ,chunkXSize,chunkYSize,chunkZSize,shapeX,shapeY,shapeZ,bits,order);
+        parallelReadZarrMex((void*)zarr,folderName,startX,startY,startZ,endX,endY,endZ,chunkXSize,chunkYSize,chunkZSize,shapeX,shapeY,shapeZ,bits,order,cname);
     }
     else if(dtype[1] == 'f' && dtype[2] == '8'){
         uint64_t bits = 64;
         plhs[0] = mxCreateNumericArray(3,dim,mxDOUBLE_CLASS, mxREAL);
         double* zarr = (double*)mxGetPr(plhs[0]);
-        parallelReadZarrMex((void*)zarr,folderName,startX,startY,startZ,endX,endY,endZ,chunkXSize,chunkYSize,chunkZSize,shapeX,shapeY,shapeZ,bits,order);
+        parallelReadZarrMex((void*)zarr,folderName,startX,startY,startZ,endX,endY,endZ,chunkXSize,chunkYSize,chunkZSize,shapeX,shapeY,shapeZ,bits,order,cname);
     }
     else{
         mexErrMsgIdAndTxt("tiff:dataTypeError","Data type not suppported");
