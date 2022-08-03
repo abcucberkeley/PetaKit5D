@@ -45,7 +45,7 @@ classdef CZarrAdapter < images.blocked.Adapter
             info.IOBlockSize = obj.ZarrObj.chunks;
             % xruan (11/18/2020): add support for multiple data types
             switch string(obj.ZarrObj.dtype)
-                case "float32"
+                case {"float32", "single"}
                     info.Datatype = "single";
                 case "uint16"
                     info.Datatype = "uint16";

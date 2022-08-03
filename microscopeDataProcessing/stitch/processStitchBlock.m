@@ -88,13 +88,14 @@ for i = 1 : numel(blockInds)
     blockSub = [suby, subx, subz];
     obStart = (blockSub - 1) .* blockSize + 1;
     obEnd = min(obStart + blockSize - 1, imSize);
+    nbsz = obEnd - obStart + 1;
 
     % stchBlockInfo_i = stitchBlockInfo{bi};
     stchBlockInfo_i = stitchBlockInfo{i};
     numTiles = numel(stchBlockInfo_i);
     
     if numTiles == 0
-        nv_block = zeros(blockSize, dtype);
+        nv_block = zeros(nbsz, dtype);
         % writeBlock(nv_bim, blockSub, nv_block, level, Mode);
         nv_bim.Adapter.setRegion(obStart, obEnd, nv_block)
         done_flag(i) = true;
@@ -156,10 +157,13 @@ for i = 1 : numel(blockInds)
         end
         nv_block = cast(nv_block, dtype);
         % writeBlock(nv_bim, blockSub, nv_block, level, Mode);
+        if any(nbsz ~= size(nv_block, [1, 2, 3]))
+            nv_block = nv_block(1 : nbsz(1), 1 : nbsz(2), 1 : nbsz(3));
+        end
         nv_bim.Adapter.setRegion(obStart, obEnd, nv_block);
         done_flag(i) = true;
         toc;
-        continue;        
+        continue;
     end
     
     % convert to double for processing
@@ -259,6 +263,9 @@ for i = 1 : numel(blockInds)
     
     % write the block to zarr file
     % writeBlock(nv_bim, blockSub, nv_block, level, Mode);
+    if any(nbsz ~= size(nv_block, [1, 2, 3]))
+        nv_block = nv_block(1 : nbsz(1), 1 : nbsz(2), 1 : nbsz(3));
+    end    
     nv_bim.Adapter.setRegion(obStart, obEnd, nv_block)
     done_flag(i) = true;
 
