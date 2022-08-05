@@ -16,6 +16,7 @@ function [xyz_shift, d_shift] = stitch_shift_assignment(zarrFullpaths, xcorrDir,
 % xruan (05/15/2022): add support for group-based stitch
 % xruan (05/21/2022): change absolute_shift_mat to finds pari, shifts NX5 
 % xruan (06/20/2022): add input variable axisWeight for user defined weights for optimization
+% xruan (08/03/2022): fix bug for max offset bounds based on the coordinate orders
 
 fprintf('Compute cross-correlation based registration between overlap tiles...\n');
 
@@ -142,6 +143,7 @@ if all(is_done_flag)
 
         if exist(xcorrFullpath, 'file')
             order_flag = (0.5 - (xyz(i, :) > xyz(j, :))) * 2;
+            % order_flag = [1, 1, 1];
             a = load(xcorrFullpath);
             absolute_shift_mat(ind, :) = [i, j, a.relative_shift .* order_flag];
             max_xcorr_mat(ind, :) = [i, j, a.max_xcorr];
@@ -164,7 +166,9 @@ switch assign_method
         max_shift_u = (cuboid_overlap_ij_mat(:, 4 : 6) - cuboid_overlap_ij_mat(:, 1 : 3)) ./ (px .* [xf, yf, zf]);
         max_shift_u = min(max_shift_u - 1, MaxOffset);
         
-        max_allow_shift = [max_shift_l, max_shift_u];
+        % max_allow_shift = [max_shift_l, max_shift_u];
+        order_mat = xyz(max_xcorr_mat(:, 2), :) >= xyz(max_xcorr_mat(:, 1), :);
+        max_allow_shift = [max_shift_l .* order_mat + max_shift_u .* (order_mat - 1), max_shift_u .* order_mat + max_shift_l .* (order_mat - 1)];        
         
         [d_shift] = stitch_global_assignment(nF, max_xcorr_mat, absolute_shift_mat, overlap_matrix, max_allow_shift, xcorr_thresh);
     case 'grid'
@@ -178,8 +182,10 @@ switch assign_method
             max_shift_u(:, 3) = 0;
         end
         
-        max_allow_shift = [max_shift_l, max_shift_u];
-        
+        % max_allow_shift = [max_shift_l, max_shift_u];
+        order_mat = xyz(max_xcorr_mat(:, 2), :) >= xyz(max_xcorr_mat(:, 1), :);
+        max_allow_shift = [max_shift_l .* order_mat + max_shift_u .* (order_mat - 1), max_shift_u .* order_mat + max_shift_l .* (order_mat - 1)];
+
         [d_shift] = stitch_global_grid_assignment(nF, max_xcorr_mat, absolute_shift_mat, overlap_matrix, max_allow_shift, xcorr_thresh, tileIdx, axisWeight);
     case 'group'
         neq = size(max_xcorr_mat, 1);
@@ -191,7 +197,9 @@ switch assign_method
             max_shift_u(:, 3) = 0;
         end
         
-        max_allow_shift = [max_shift_l, max_shift_u];
+        % max_allow_shift = [max_shift_l, max_shift_u];
+        order_mat = xyz(max_xcorr_mat(:, 2), :) >= xyz(max_xcorr_mat(:, 1), :);
+        max_allow_shift = [max_shift_l .* order_mat + max_shift_u .* (order_mat - 1), max_shift_u .* order_mat + max_shift_l .* (order_mat - 1)];        
         % increase bound for inter-group tiles
         inter_ginds = grpIdx(max_xcorr_mat(:, 1)) ~= grpIdx(max_xcorr_mat(:, 2));
         max_allow_shift(inter_ginds, :) = [-ones(sum(inter_ginds), 1) .* MaxOffset, ones(sum(inter_ginds), 1) .* MaxOffset] * 2; 
