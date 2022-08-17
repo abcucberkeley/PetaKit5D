@@ -1,4 +1,4 @@
-function [J_2, err_mat, k] = decon_lucy_function(I, PSF, NUMIT, fixIter, err_thrsh, debug, debug_folder, useGPU)
+function [J_2, err_mat, k] = decon_lucy_function(I, PSF, NUMIT, fixIter, err_thrsh, debug, debug_folder, saveStep, useGPU)
 % adapted from matlab deconvlucy.m
 % 
 % xruan (05/18/2021): add support for early stop with stop criteria
@@ -53,8 +53,12 @@ if nargin < 7
     debug_folder = './debug/';
 end
 
-% option to use gpu
 if nargin < 8
+    saveStep = 5;
+end
+
+% option to use gpu
+if nargin < 9
     useGPU = true;
 end
 useGPU = useGPU & gpuDeviceCount > 0;
@@ -144,7 +148,7 @@ end
 
 % 3. L_R Iterations
 %
-estep = 5;
+estep = saveStep;
 err_mat = zeros(NUMIT, 4);
 
 lambda = 2*any(J_4(:)~=0);

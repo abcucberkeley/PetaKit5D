@@ -69,6 +69,7 @@ ip.addParameter('uuid', '', @ischar);
 ip.addParameter('maxTrialNum', 3, @isnumeric);
 ip.addParameter('unitWaitTime', 2, @isnumeric);
 ip.addParameter('debug', false, @islogical);
+ip.addParameter('saveStep', 5, @isnumeric); % save intermediate results every given iterations
 ip.addParameter('psfGen', true, @islogical); % psf generation
 
 ip.parse(frameFullpaths, pixelSize, dz, varargin{:});
@@ -119,6 +120,7 @@ end
 fixIter = pr.fixIter;
 errThresh = pr.errThresh;
 debug = pr.debug;
+saveStep = pr.saveStep;
 psfGen = pr.psfGen;
 
 tic
@@ -266,9 +268,10 @@ for f = 1 : nF
         % frameTmpPath = sprintf('%s_%s.tif', frameFullpath(1:end-4), uuid); 
         deconTmpPath = sprintf('%s_%s_decon.tif', deconFullPath(1:end-10), uuid); 
         save3Dstack = false;
-        im = RLdecon(frameFullpath, deconTmpPath, PSF, Background, DeconIter, dzPSF, dz, Deskew, [], SkewAngle, ...
-            pixelSize, Rotate, Save16bit, Crop, zFlip, GenMaxZproj, ResizeImages, [], RLMethod, ...
-            fixIter, errThresh, flipZstack, debug, 'save3Dstack', save3Dstack, 'psfGen', psfGen);
+        im = RLdecon(frameFullpath, deconTmpPath, PSF, Background, DeconIter, ...
+            dzPSF, dz, Deskew, [], SkewAngle, pixelSize, Rotate, Save16bit, Crop, ...
+            zFlip, GenMaxZproj, ResizeImages, [], RLMethod,  fixIter, errThresh, ...
+            flipZstack, debug, 'saveStep', saveStep, 'save3Dstack', save3Dstack, 'psfGen', psfGen);
         toc
         % system(unlink_cmd);
             % im = readtiff(deconTmpPath);

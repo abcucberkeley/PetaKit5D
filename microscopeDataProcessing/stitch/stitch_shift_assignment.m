@@ -497,6 +497,13 @@ for g = 1 : ng
     d_shift_pre(gind, :) = d_shift_g;
 end
 
+% if there is only one group, reduce to grid method
+if ng == 1
+    d_shift = round(d_shift_pre);
+    d_shift = d_shift - d_shift(1, :);
+    return;
+end
+
 % step 2: shifts across groups: only keep overlaps across groups
 
 gn_i = max_xcorr_mat(all_gp_inds, 1);

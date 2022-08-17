@@ -61,6 +61,7 @@ ip.addRequired('debug');
 ip.addParameter('nTapering', [], @isnumeric); 
 ip.addParameter('rawdata', [], @isnumeric); 
 ip.addParameter('scaleFactor', [], @isnumeric); % scale factor for result
+ip.addParameter('saveStep', 5, @isnumeric); % save intermediate results every given iterations
 ip.addParameter('useGPU', true, @islogical); % use GPU processing
 ip.addParameter('save3Dstack', true, @islogical); % save 3d stack to disk
 ip.addParameter('psfGen', true, @islogical); % psf generation
@@ -240,6 +241,7 @@ if isempty(rawdata)
 end
 
 scaleFactor = pr.scaleFactor;
+saveStep = pr.saveStep;
 useGPU = pr.useGPU;
 save3Dstack = pr.save3Dstack;
 
@@ -306,7 +308,7 @@ if nIter>0 && sum(rawdata(:)) > 0
                 debug_folder = '/tmp/'; 
             end                
                 
-            [deconvolved, err_mat, iter_run] = decon_lucy_function(rawdata, psf, nIter, fixIter, errThresh, debug, debug_folder, useGPU);
+            [deconvolved, err_mat, iter_run] = decon_lucy_function(rawdata, psf, nIter, fixIter, errThresh, debug, debug_folder, saveStep, useGPU);
             % [deconvolved, err_mat, iter_run] = decon_lucy_function_test(rawdata, psf, nIter, fixIter, errThresh, debug, debug_folder, useGPU);
             % [deconvolved, err_mat, iter_run] = decon_lucy_function_test_1(rawdata, psf, nIter, fixIter, errThresh, debug, debug_folder, useGPU);
             deconvolved = deconvolved * scaleFactor;
