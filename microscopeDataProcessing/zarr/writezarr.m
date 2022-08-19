@@ -46,7 +46,10 @@ end
 % the whole data size. 
 if ~overwrite && exist(filepath, 'dir')
     if isempty(bbox)
-        bbox = [1, 1, 1, size(data)];
+        bbox = [1, 1, 1, size(data, 1 : 3)];
+        if ~expand2dDim
+            bbox = [1, 1, size(data, 1 : 2)];
+        end
     end
 end
 
