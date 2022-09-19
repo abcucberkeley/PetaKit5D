@@ -58,7 +58,7 @@ if isstring(filepath)
 end
 try 
     if ismatrix(data)
-        error('No support for 2d data for now!')
+        % error('No support for 2d data for now!')
     end
     if isempty(bbox)
         parallelWriteZarr(filepath, data, 1, blockSize);

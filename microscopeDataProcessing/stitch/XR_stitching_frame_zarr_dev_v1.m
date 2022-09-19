@@ -33,6 +33,7 @@ function XR_stitching_frame_zarr_dev_v1(tileFullpaths, coordinates, varargin)
 % is larger, to reduce the workload for each stitching block. 
 % xruan (03/03/2022): fix bug for skewed space stitch coordinate conversion for z coordinate 
 % xruan (06/20/2022): add input variable axisWeight for user defined weights for optimization
+% xruan (08/25/2022): change CropToSize to tileOutBbox (more generic)
 
 
 ip = inputParser;
@@ -58,7 +59,7 @@ ip.addParameter('sCMOSCameraFlip', false, @islogical);
 ip.addParameter('Reverse', false, @islogical);
 ip.addParameter('Crop', false, @islogical);
 ip.addParameter('InputBbox', [], @isnumeric); % crop input tile before processing
-ip.addParameter('CropToSize', [], @isnumeric); % crop tile after processing
+ip.addParameter('tileOutBbox', [], @isnumeric); % crop tile after processing
 ip.addParameter('TileOffset', 0, @isnumeric); % offset added to the tile
 ip.addParameter('df', [], @isnumeric);
 ip.addParameter('Save16bit', false , @islogical); % saves deskewed data as 16 bit -- not for quantification
@@ -125,7 +126,7 @@ IOScan = pr.IOScan;
 Reverse = pr.Reverse;
 Crop = pr.Crop;
 InputBbox = pr.InputBbox;
-CropToSize = pr.CropToSize;
+tileOutBbox = pr.tileOutBbox;
 TileOffset = pr.TileOffset;
 % Deskew = pr.Deskew;
 % Rotate = pr.Rotate;
@@ -402,7 +403,7 @@ end
 
 XR_tiffToZarr_wrapper(tiffFullpaths, 'zarrPathstr', zarrPathstr, 'blockSize', blockSize, 'usrFcn', fn, ...
     'flippedTile', zarr_flippedTile, 'resample', stitchResample, 'partialFile', partialFile,  ...
-    'InputBbox', InputBbox, 'CropToSize', CropToSize, 'parseCluster', parseCluster, 'cpuOnlyNodes', cpuOnlyNodes);
+    'InputBbox', InputBbox, 'tileOutBbox', tileOutBbox, 'parseCluster', parseCluster, 'cpuOnlyNodes', cpuOnlyNodes);
 
 % load all zarr headers as a cell array and get image size for all tiles
 imSizes = zeros(nF, 3);
@@ -758,6 +759,10 @@ movefile(block_info_tmp_fullname, block_info_fullname);
 % add support for feather blending
 stitchPath = [dataPath, filesep, ResultDir, filesep];
 if strcmpi(BlendMethod, 'feather') 
+    % xruan disable singleDistMap if some tiles have different image sizes
+    if ~all(imSizes == imSizes(1, :), 'all')
+        singleDistMap = false;
+    end
     if isPrimaryCh 
         imdistPath = [dataPath, filesep, ResultDir, '/imdist/'];
         mkdir(imdistPath);
@@ -870,25 +875,26 @@ outputFullpaths = zarrFlagFullpaths;
 % abc cluster
 cpusPerTask = 1;
 maxTrialNum = 2;
+jobTimeLimit = taskSize * (0.5 / 60);
 
 if ~exist(nv_fullname, 'dir')
     is_done_flag = slurm_cluster_generic_computing_wrapper(inputFullpaths, outputFullpaths, funcStrs, ...
-        'cpusPerTask', cpusPerTask, 'maxTrialNum', 2, 'parseCluster', parseCluster);    
+        'cpusPerTask', cpusPerTask, 'jobTimeLimit', jobTimeLimit, 'maxTrialNum', 2, 'parseCluster', parseCluster);    
 end
 
 if ~exist(nv_fullname, 'dir') && ~all(is_done_flag)
     is_done_flag = slurm_cluster_generic_computing_wrapper(inputFullpaths, outputFullpaths, funcStrs, ...
-        'cpusPerTask', cpusPerTask * 2, 'maxTrialNum', maxTrialNum, 'parseCluster', parseCluster);
+        'cpusPerTask', cpusPerTask * 2, 'jobTimeLimit', jobTimeLimit * 2, 'maxTrialNum', maxTrialNum, 'parseCluster', parseCluster);
 end
 
 if ~exist(nv_fullname, 'dir') && ~all(is_done_flag)
     is_done_flag = slurm_cluster_generic_computing_wrapper(inputFullpaths, outputFullpaths, funcStrs, ...
-        'cpusPerTask', cpusPerTask * 4, 'maxTrialNum', maxTrialNum, 'parseCluster', parseCluster);
+        'cpusPerTask', cpusPerTask * 4, 'jobTimeLimit', jobTimeLimit * 4, 'maxTrialNum', maxTrialNum, 'parseCluster', parseCluster);
 end
 
 if ~exist(nv_fullname, 'dir') && ~all(is_done_flag)
     is_done_flag = slurm_cluster_generic_computing_wrapper(inputFullpaths, outputFullpaths, funcStrs, ...
-        'cpusPerTask', cpusPerTask * 8, 'maxTrialNum', maxTrialNum, 'parseCluster', parseCluster);
+        'cpusPerTask', cpusPerTask * 8, 'jobTimeLimit', jobTimeLimit * 8, 'maxTrialNum', maxTrialNum, 'parseCluster', parseCluster);
 end
 
 

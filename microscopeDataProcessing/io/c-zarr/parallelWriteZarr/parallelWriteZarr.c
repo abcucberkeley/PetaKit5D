@@ -89,7 +89,7 @@ void parallelWriteZarrMex(void* zarr, char* folderName,uint64_t startX, uint64_t
     #endif
     int err = 0;
     char errString[10000];
-    #pragma omp parallel for //if(numWorkers<=cI.numChunks)
+    #pragma omp parallel for if(numWorkers<=cI.numChunks)
     for(w = 0; w < numWorkers; w++){
         void* chunkUnC = mallocDynamic(s,bits);
         void* chunkC = malloc(sB+BLOSC_MAX_OVERHEAD);
@@ -254,7 +254,12 @@ void parallelWriteZarrMex(void* zarr, char* folderName,uint64_t startX, uint64_t
             //int64_t csize = blosc_compress(5, BLOSC_SHUFFLE, bytes, sB, chunkUnC, chunkC, sB+BLOSC_MAX_OVERHEAD);
             int64_t csize = 0;
             if(strcmp(cname,"gzip")){
-                csize = blosc_compress_ctx(5, BLOSC_SHUFFLE, bytes, sB, chunkUnC, chunkC, sB+BLOSC_MAX_OVERHEAD,cname,0,1);
+                if(numWorkers<=cI.numChunks){
+                    csize = blosc_compress_ctx(5, BLOSC_SHUFFLE, bytes, sB, chunkUnC, chunkC, sB+BLOSC_MAX_OVERHEAD,cname,0,1);
+                }
+                else{
+                    csize = blosc_compress_ctx(5, BLOSC_SHUFFLE, bytes, sB, chunkUnC, chunkC, sB+BLOSC_MAX_OVERHEAD,cname,0,numWorkers);
+                }
             }
             else{
                 uint64_t sLength = sB;
@@ -435,10 +440,13 @@ void mexFunction(int nlhs, mxArray *plhs[],
     // lz4 for the compressor if none is specified
     if(!cname) cname = "lz4";
     if(!crop){
+        uint8_t nDims = (uint8_t)mxGetNumberOfDimensions(prhs[1]);
+        if(nDims < 2 || nDims > 3) mexErrMsgIdAndTxt("zarr:inputError","Input data must be 2D or 3D");
         uint64_t* dims = (uint64_t*)mxGetDimensions(prhs[1]);
         shapeX = dims[0];
         shapeY = dims[1];
-        shapeZ = dims[2];
+        if(nDims == 3) shapeZ = dims[2];
+        else shapeZ = 1;
         chunkXSize = (uint64_t)*(mxGetPr(prhs[3]));
         chunkYSize = (uint64_t)*((mxGetPr(prhs[3])+1));
         chunkZSize = (uint64_t)*((mxGetPr(prhs[3])+2));
@@ -617,7 +625,7 @@ void mexFunction(int nlhs, mxArray *plhs[],
     dim[0] = shapeX;
     dim[1] = shapeY;
     dim[2] = shapeZ;
-    
+
     if(dtype[1] == 'u' && dtype[2] == '1'){
         uint64_t bits = 8;
         uint8_t* zarr;

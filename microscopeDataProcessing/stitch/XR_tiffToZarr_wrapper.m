@@ -11,6 +11,7 @@ function [] = XR_tiffToZarr_wrapper(tiffFullpaths, varargin)
 % xruan (10/13/2021): add support for cropping data
 % xruan (02/16/2022): accelerate the code by first get filenames for every data folder.
 % xruan (07/05/2022): add support for single tiff file (char) conversion
+% xruan (08/25/2022): change CropToSize to tileOutBbox (more generic)
 
 ip = inputParser;
 ip.CaseSensitive = false;
@@ -22,7 +23,7 @@ ip.addParameter('resample', [], @(x) isempty(x) || isnumeric(x));
 ip.addParameter('partialFile', false, @islogical);
 ip.addParameter('ChannelPatterns', {'tif'}, @iscell);
 ip.addParameter('InputBbox', [], @isnumeric); % crop input tile before processing
-ip.addParameter('CropToSize', [], @isnumeric); % size cropped to 
+ip.addParameter('tileOutBbox', [], @isnumeric); % crop output tile after processing
 ip.addParameter('usrFcn', '', @(x) isempty(x) || isa(x,'function_handle') || ischar(x) || iscell(x));
 ip.addParameter('parseCluster', true, @islogical);
 ip.addParameter('masterCompute', true, @islogical); % master node participate in the task computing. 
@@ -45,10 +46,11 @@ resample = pr.resample;
 partialFile = pr.partialFile;
 ChannelPatterns = pr.ChannelPatterns;
 InputBbox = pr.InputBbox;
-CropToSize = pr.CropToSize;
+tileOutBbox = pr.tileOutBbox;
 usrFcn = pr.usrFcn;
 jobLogDir = pr.jobLogDir;
 parseCluster = pr.parseCluster;
+masterCompute = pr.masterCompute;
 cpusPerTask = pr.cpusPerTask;
 cpuOnlyNodes = pr.cpuOnlyNodes;
 
@@ -127,10 +129,10 @@ for i = 1 : nF
     end
     
     func_strs{i} = sprintf(['tiffToZarr(%s,''%s'',[],''BlockSize'',%s,''flipZstack'',%s,', ...
-        '''resample'',%s,''InputBbox'',%s,''CropToSize'',%s,''usrFcn'',''%s'')'], ...
+        '''resample'',%s,''InputBbox'',%s,''tileOutBbox'',%s,''usrFcn'',''%s'')'], ...
         sprintf('{''%s''}', strjoin(tiffFullpath_group_i, ''',''')), zarrFullpaths{i}, ...
         strrep(mat2str(blockSize), ' ', ','), string(flipZstack), strrep(mat2str(resample), ' ', ','), ...
-        strrep(mat2str(InputBbox), ' ', ','), strrep(mat2str(CropToSize), ' ', ','), usrFcn_strs{cind});
+        strrep(mat2str(InputBbox), ' ', ','), strrep(mat2str(tileOutBbox), ' ', ','), usrFcn_strs{cind});
 end
 
 [estMem, estGPUMem, rawImageSize] = XR_estimateComputingMemory(tiffFullpaths{1}, {'deconvolution'}, 'cudaDecon', false);
@@ -141,11 +143,11 @@ maxTrialNum = 2;
 
 MatlabLaunchStr = 'module load matlab/r2021a; matlab -nodisplay -nosplash -nodesktop -r';
 is_done_flag = slurm_cluster_generic_computing_wrapper(tiffFullpaths, zarrFullpaths, ...
-    func_strs, 'parseCluster', parseCluster, 'masterCompute', true, 'maxTrialNum', maxTrialNum, ...
+    func_strs, 'parseCluster', parseCluster, 'masterCompute', masterCompute, 'maxTrialNum', maxTrialNum, ...
     'MatlabLaunchStr', MatlabLaunchStr, 'cpusPerTask', cpusPerTask, 'cpuOnlyNodes', cpuOnlyNodes);
 if ~all(is_done_flag)
     slurm_cluster_generic_computing_wrapper(tiffFullpaths, zarrFullpaths, ...
-        func_strs, 'parseCluster', parseCluster, 'masterCompute', true, ...
+        func_strs, 'parseCluster', parseCluster, 'masterCompute', masterCompute, ...
         'maxTrialNum', maxTrialNum, 'MatlabLaunchStr', MatlabLaunchStr, ...
         'cpusPerTask', min(24, cpusPerTask * 2), 'cpuOnlyNodes', cpuOnlyNodes);
 end

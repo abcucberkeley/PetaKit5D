@@ -58,11 +58,11 @@ line_cell(counter : end) = [];
 allline = strjoin(line_cell, '\n');
 
 % get the sign of the X Stage interval
-pattern = '\n(XZ? +Stage Offset, Interval \(um\), # of Pixels for Excitation \(0\) :\t\d\t-?0.\d+\t\d+)\n';
+pattern = '\n(XZ? +Stage Offset, Interval \(um\), # of Pixels for Excitation \(0\) :\t\d\t-?\d*?.?\d+\t\d+)\n';
 str = regexpi(allline, pattern, 'tokens');
 str = str{1}{1};
 
-expression = '(?<stageOff>\d+)\t(?<interval>-?0.\d+)\t(?<numExiciation>\d+)';
+expression = '(?<stageOff>\d+)\t(?<interval>-?\d*?.?\d+)\t(?<numExiciation>\d+)';
 
 tmp = regexpi(str, expression, 'names');
 

@@ -1,13 +1,17 @@
-function [file_exist_mat] = batch_file_exist(fileFullpaths, outFullpath)
+function [file_exist_mat] = batch_file_exist(fileFullpaths, outFullpath, useParpool)
 % check a batch of files by dir() for the files in the same directory to
 % reduce the io for the check per file. 
 % 
 % Author: Xiongtao Ruan (02/06/2022)
 % 
 % xruan (03/15/2022): if nd is large, directly check the input files
+% xruan (09/06/2022): add support for thread based parallel computing 
 
 if nargin < 2
     outFullpath = [];
+end
+if nargin < 3
+    useParpool = false;
 end
 
 if numel(fileFullpaths) == 0
@@ -57,13 +61,29 @@ if (nd < 3) && (nF / nd > 100)
 end
 
 % go through each file
-if usejava('jvm')
-    for f = 1 : nF
-        file_exist_mat(f) = java.io.File(fileFullpaths{f}).exists;
+if useParpool && nF > 100
+    if ~isempty(gcp('nocreate'))
+        delete(gcp('nocreate'));
     end
-else
+    p = backgroundPool;
+    nworker = p.NumWorkers;
+
+    fs = parallel.FevalFuture;
     for f = 1 : nF
-        file_exist_mat(f) = exist(fileFullpaths{f}, 'file');
+        fs(f) = parfeval(p, @exist, 1, fileFullpaths{f}, 'file');            
+    end
+    
+    wait(fs, 'finished', nF / nworker * 0.1);
+    file_exist_mat = fetchOutputs(fs) > 0;
+else
+    if usejava('jvm')
+        for f = 1 : nF
+            file_exist_mat(f) = java.io.File(fileFullpaths{f}).exists;
+        end
+    else
+        for f = 1 : nF
+            file_exist_mat(f) = exist(fileFullpaths{f}, 'file');
+        end
     end
 end
 

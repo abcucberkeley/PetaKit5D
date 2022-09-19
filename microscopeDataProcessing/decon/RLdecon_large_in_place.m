@@ -172,7 +172,7 @@ numBatch = size(batchBBoxes, 1);
 
 if GPUJob
     if parseCluster
-        taskSize = max(1, round(numBatch / 5000));
+        taskSize = max(5, round(numBatch / 5000));
     end
 
     maxJobNum = inf;

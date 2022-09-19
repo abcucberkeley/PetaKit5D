@@ -78,6 +78,7 @@ function [] = XR_matlab_stitching_wrapper(dataPath, imageListFileName, varargin)
 % xruan (01/25/2022): add support for loading tileFullpaths and coordinates from file.
 % xruan (01/31/2022): add support for negative tile numbers in xyz. 
 % xruan (06/20/2022): add input variable axisWeight for user defined weights for optimization
+% xruan (08/25/2022): change CropToSize to tileOutBbox (more generic)
 
 
 ip = inputParser;
@@ -105,7 +106,7 @@ ip.addParameter('blockSize', [500, 500, 500], @isnumeric);
 ip.addParameter('resampleType', 'xy_isotropic', @ischar); % by default use xy isotropic
 ip.addParameter('resample', [], @isnumeric); % user-defined resample factor
 ip.addParameter('InputBbox', [], @isnumeric); % crop input tile before processing
-ip.addParameter('CropToSize', [], @isnumeric); % size cropped to 
+ip.addParameter('tileOutBbox', [], @isnumeric); % crop tile after processing 
 ip.addParameter('TileOffset', 0, @isnumeric); % offset added to tile
 ip.addParameter('ffcorrect', false, @islogical);
 ip.addParameter('Resolution', [0.108, 0.5], @isnumeric);
@@ -172,7 +173,7 @@ blockSize = pr.blockSize;
 resampleType = pr.resampleType;
 resample = pr.resample;
 InputBbox = pr.InputBbox;
-CropToSize = pr.CropToSize;
+tileOutBbox = pr.tileOutBbox;
 TileOffset = pr.TileOffset;
 ffcorrect = pr.ffcorrect;
 Resolution = pr.Resolution;
@@ -755,11 +756,14 @@ while ~all(is_done_flag | trial_counter >= max_trial_num, 'all')
                         if onlineStitch
                             switch pipeline
                                 case 'matlab'
-                                    dir_info = dir([stitch_save_fsname(1:end-8), '*ntile.tif']);
+                                    % dir_info = dir([stitch_save_fsname(1:end-8), '*ntile.tif']);
+                                    dir_info = dir([stitch_save_fsname(1 : end - 32), '_*msecAbs_', z_str(2:5), '*ntile.tif']);
                                     stitch_save_files = {dir_info.name}';
 
                                 case 'zarr'
-                                    dir_info = dir([stitch_save_fsname(1:end-8), '*ntile.zarr']);
+                                    % xruan: for bidirectional scan, the fpga time may change
+                                    % dir_info = dir([stitch_save_fsname(1:end-8), '*ntile.zarr']);
+                                    dir_info = dir([stitch_save_fsname(1 : end - 32), '_*msecAbs_', z_str(2:5), '*ntile.zarr']);
                                     stitch_save_files = {dir_info.name}';                                    
                             end
                             stitch_tile_nums = regexp(stitch_save_files, '_(\d+)ntile', 'tokens');
@@ -817,7 +821,7 @@ while ~all(is_done_flag | trial_counter >= max_trial_num, 'all')
                             '''SkewAngle'',%0.10f,''Reverse'',%s,''ObjectiveScan'',%s,''IOScan'',%s,''resultPath'',''%s'',', ...
                             '''tileInfoFullpath'',''%s'',''stitchInfoDir'',''%s'',''stitchInfoFullpath'',''%s'',', ...
                             '''DSRDirstr'',''%s'',''DeconDirstr'',''%s'',''DS'',%s,''DSR'',%s,''blockSize'',%s,', ...
-                            '''resampleType'',''%s'',''resample'',[%s],''InputBbox'',%s,''CropToSize'',%s,', ...
+                            '''resampleType'',''%s'',''resample'',[%s],''InputBbox'',%s,''tileOutBbox'',%s,', ...
                             '''TileOffset'',%d,''BlendMethod'',''%s'',''overlapType'',''%s'',''xcorrShift'',%s,', ...
                             '''xyMaxOffset'',%0.10f,''zMaxOffset'',%0.10f,''xcorrDownsample'',%s,''shiftMethod'',''%s'',', ...
                             '''axisWeight'',[%s],''groupFile'',''%s'',''isPrimaryCh'',%s,''usePrimaryCoords'',%s,''padSize'',[%s],''boundboxCrop'',[%s],', ...
@@ -827,7 +831,7 @@ while ~all(is_done_flag | trial_counter >= max_trial_num, 'all')
                             string(ObjectiveScan), string(IOScan), stitch_save_fname, tileInfoFullpath, stitchInfoDir, ...
                             stitchInfoFullpath, DSRDirstr, DeconDirstr, string(DS), string(DSR), strrep(mat2str(blockSize), ' ', ','), ...
                             resampleType, strrep(num2str(resample, '%.10d,'), ' ', ''), strrep(mat2str(InputBbox), ' ', ','), ...
-                            strrep(mat2str(CropToSize), ' ', ','), TileOffset, BlendMethod,  overlapType, string(xcorrShift), ...
+                            strrep(mat2str(tileOutBbox), ' ', ','), TileOffset, BlendMethod,  overlapType, string(xcorrShift), ...
                             xyMaxOffset, zMaxOffset, strrep(mat2str(xcorrDownsample), ' ', ','), shiftMethod, ...
                             strrep(mat2str(axisWeight), ' ', ','), groupFile,  string(isPrimaryCh), string(usePrimaryCoords), ...
                             num2str(padSize, '%d,'), strrep(num2str(boundboxCrop, '%d,'), ' ', ''),  string(zNormalize), ...

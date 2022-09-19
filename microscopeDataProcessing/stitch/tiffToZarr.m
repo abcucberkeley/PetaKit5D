@@ -14,6 +14,7 @@ function [] = tiffToZarr(tifFilename, zarrFilename, frame, varargin)
 % xruan (10/13/2021): add support for cropping data after processing
 % xruan (02/02/2022): add support for cropping the input data
 % xruan (07/05/2022): change zarr writer to writezarr.m
+% xruan (08/25/2022): change CropToSize to tileOutBbox (more generic)
 
 
 ip = inputParser;
@@ -27,7 +28,7 @@ ip.addParameter('expand2dDim', true, @islogical); % expand the z dimension for 2
 ip.addParameter('flipZstack', false, @islogical);
 ip.addParameter('resample', [], @(x) isempty(x) || isnumeric(x));
 ip.addParameter('InputBbox', [], @(x) isnumeric(x));
-ip.addParameter('CropToSize', [], @(x) isempty(x) || isnumeric(x));
+ip.addParameter('tileOutBbox', [], @(x) isempty(x) || isnumeric(x));
 ip.addParameter('readWholeTiff', true, @islogical);
 ip.addParameter('usrFcn', '', @(x) isempty(x) || isa(x,'function_handle') || ischar(x));
 ip.addParameter('uuid', '', @ischar);
@@ -41,7 +42,7 @@ expand2dDim = pr.expand2dDim;
 flipZstack = pr.flipZstack;
 resample = pr.resample;
 InputBbox = pr.InputBbox;
-CropToSize = pr.CropToSize;
+tileOutBbox = pr.tileOutBbox;
 readWholeTiff = pr.readWholeTiff;
 usrFcn = pr.usrFcn;
 uuid = pr.uuid;
@@ -162,9 +163,10 @@ if flipZstack
 end    
 
 % centerred crop
-if ~isempty(CropToSize)
-    halfCrop = floor((bim.Size - CropToSize) / 2);
-    bbox = [halfCrop + 1, halfCrop +  CropToSize];
+if ~isempty(tileOutBbox)
+    % halfCrop = floor((bim.Size - CropToSize) / 2);
+    % bbox = [halfCrop + 1, halfCrop +  CropToSize];
+    bbox = tileOutBbox;
     if isa(bim.Adapter, 'images.blocked.InMemory')
         bim = gather(bim);
         bim = bim(bbox(1) : bbox(4), bbox(2) : bbox(5), bbox(3) : bbox(6));
