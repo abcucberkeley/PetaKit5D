@@ -1,14 +1,45 @@
 #include "tiffio.h"
 #include <stdio.h>
 #include <stdint.h>
+#include <string.h>
 #include "mex.h"
 //mex -v COPTIMFLAGS="-O3 -fwrapv -DNDEBUG" CFLAGS='$CFLAGS -O3 -fopenmp' LDFLAGS='$LDFLAGS -O3 -fopenmp' '-I/global/home/groups/software/sl-7.x86_64/modules/libtiff/4.1.0/libtiff/' '-L/global/home/groups/software/sl-7.x86_64/modules/libtiff/4.1.0/libtiff/' -ltiff /clusterfs/fiona/matthewmueller/parallelTiffTesting/main.c
 //mex COMPFLAGS='$COMPFLAGS /openmp' '-IC:\Program Files (x86)\tiff\include\' '-LC:\Program Files (x86)\tiff\lib\' -ltiffd.lib C:\Users\Matt\Documents\parallelTiff\main.cpp
 
-
+//libtiff 4.4.0
+//mex -v COPTIMFLAGS="-O3 -DNDEBUG" CFLAGS='$CFLAGS -O3 -fopenmp' LDFLAGS='$LDFLAGS -O3 -fopenmp' '-I/clusterfs/fiona/matthewmueller/software/tiff-4.4.0/include' '-L/clusterfs/fiona/matthewmueller/software/tiff-4.4.0/lib' -ltiff getImageSize_mex.c
 void DummyHandler(const char* module, const char* fmt, va_list ap)
 {
     // ignore errors and warnings
+}
+
+uint8_t isImageJIm(const char* fileName){
+	TIFF* tif = TIFFOpen(fileName, "r");
+	if(!tif) return 0;
+	char* tiffDesc = NULL;
+	if(TIFFGetField(tif, TIFFTAG_IMAGEDESCRIPTION, &tiffDesc)){
+		if(strstr(tiffDesc, "ImageJ")){
+			return 1;
+		}
+	}
+	return 0;
+}
+
+uint64_t imageJImGetZ(const char* fileName){
+	TIFF* tif = TIFFOpen(fileName, "r");
+	if(!tif) return 0;
+	char* tiffDesc = NULL;
+	if(TIFFGetField(tif, TIFFTAG_IMAGEDESCRIPTION, &tiffDesc)){
+		if(strstr(tiffDesc, "ImageJ")){
+			char* nZ = strstr(tiffDesc,"images=");
+			if(nZ){
+				nZ+=7;
+				char* temp;
+				return strtol(nZ,&temp,10);
+			}
+		}
+	}
+	return 0;
 }
 
 void mexFunction(int nlhs, mxArray *plhs[],
@@ -51,6 +82,11 @@ void mexFunction(int nlhs, mxArray *plhs[],
     }
   
     TIFFClose(tif);
+	if(isImageJIm(fileName)){
+		uint64_t tempZ = imageJImGetZ(fileName);
+		if(tempZ) z = tempZ;
+	}
+
     plhs[0] = mxCreateNumericMatrix(1,3,mxDOUBLE_CLASS, mxREAL);
     double* dims = (double*)mxGetPr(plhs[0]);
     dims[0] = y;

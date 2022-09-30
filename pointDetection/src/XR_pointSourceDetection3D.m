@@ -167,15 +167,16 @@ C = inv(J'*J);
 
 f_c = fu2 - 2*c_est.*fu + n*c_est.^2; % f-c
 RSS = A_est.^2*g2sum - 2*A_est.*(fg - c_est*gsum) + f_c;
-% clear fg fu2;
-RSS(RSS<0) = 0; % negative numbers may result from machine epsilon/roundoff precision
+clear fu fu2 fg f_c;
+% RSS(RSS<0) = 0; % negative numbers may result from machine epsilon/roundoff precision
+RSS = RSS .* (RSS > 0);
 sigma_e2 = RSS/(n-3);
 
 sigma_A = sqrt(sigma_e2*C(1,1));
 
 % standard deviation of residuals
 sigma_res = sqrt(RSS/(n-1));
-clear fu;
+% clear RSS sigma_e2;
 
 kLevel = norminv(1-ip.Results.Alpha/2.0, 0, 1);
 
@@ -183,7 +184,7 @@ SE_sigma_c = sigma_res/sqrt(2*(n-1)) * kLevel;
 % df2 = (n-1) * (sigma_A.^2 + SE_sigma_c.^2).^2 ./ (sigma_A.^4 + SE_sigma_c.^4);
 scomb = sqrt((sigma_A.^2 + SE_sigma_c.^2)/n);
 T = (A_est - sigma_res*kLevel) ./ scomb;
-
+clear RSS sigma_e2 sigma_A sigma_res SE_sigma_c scomb;
 % mask of admissible positions for local maxima
 % tic
 % mask = tcdf(-T, df2) < 0.05;
@@ -201,6 +202,7 @@ if isempty(tstat_thresh) || alpha ~= ip.Results.Alpha
     tstat_thresh = tinv(ip.Results.Alpha, df2_nu);
 end
 mask = -T < tstat_thresh;
+clear T;
 % toc
 
 % clear mask borders (change border conditions for conv3fast to 'zero')

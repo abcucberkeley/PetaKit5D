@@ -36,8 +36,10 @@
 % 
 
 % Francois Aguet, 05/21/2013
+%
+% xruan (09/28/2022) rename to readtiff_matlab as part of readtiff wrapper
 
-function s = readtiff(filepath, varargin)
+function s = readtiff_matlab(filepath, varargin)
 
 ip = inputParser;
 ip.CaseSensitive = false;

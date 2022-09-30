@@ -103,6 +103,8 @@ output_exist_mat = batch_file_exist(outputFullpaths, [], true);
 if all(output_exist_mat)
     is_done_flag = ~is_done_flag;
     return;
+else
+    is_done_flag = output_exist_mat;
 end
 
 trial_counter = zeros(nF, 1);
@@ -119,10 +121,21 @@ end
 
 loop_counter = 0;
 nF_done = 0;
+n_status_check = 10000;
 % pending / runnng ratio
 % PRRatio = 1;
 ts = tic;
 while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
+    if parseCluster
+        job_status_mat(~is_done_flag, 2) = job_status_mat(~is_done_flag, 1);
+        job_status_mat(~is_done_flag, 1) = check_batch_slurm_jobs_status(job_ids(~is_done_flag), task_ids(~is_done_flag));
+    end
+        
+    if loop_counter > 0
+        output_exist_mat(~is_done_flag) = batch_file_exist(outputFullpaths(~is_done_flag), [], true);
+        is_done_flag(~is_done_flag) = output_exist_mat(~is_done_flag);        
+    end
+    
     if parseCluster
         lastP = find(~is_done_flag & trial_counter < maxTrialNum & job_status_mat(:, 1) < 1, 1, 'last');
         if isempty(lastP)
@@ -133,38 +146,49 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
         % waiting time in each iteration. 
         lastP = find(~is_done_flag & trial_counter < maxTrialNum, 1, 'first');
         nB = nF;
-    end
-    if loop_counter > 0
-        output_exist_mat(~is_done_flag) = batch_file_exist(outputFullpaths(~is_done_flag), [], true);
-    end
-
-    if parseCluster && (loop_counter == 0 || (loop_counter > 0))
-        job_status_mat(~is_done_flag, 2) = job_status_mat(~is_done_flag, 1);
-        job_status_mat(~is_done_flag, 1) = check_batch_slurm_jobs_status(job_ids(~is_done_flag), task_ids(~is_done_flag));
-    end
-        
+    end    
     fsnames = cell(1, nF);
     for b = 1 : nB
         fs = (b - 1) * taskBatchNum + 1 : min(b * taskBatchNum, nF);
         task_id = rem(b, 5000);
         
-        % check output exist and job status every 10000 batches
-        if loop_counter > 0 && (rem(b, 10000) == 0 || (b < 10000 && b == nB))            
-            if parseCluster %% && rem(loop_counter, PRRatio) == 0
+        % check output exist and job status every 10000 batches (except the
+        % last small bacth (< 0.5 * n_status_check))
+        if rem(b, n_status_check) == 0 && (b + n_status_check * 0.5 < nB)      
+            if loop_counter == 0 && parseCluster
+                numJobs = sum(job_status_mat(~is_done_flag, 1) >= 0);
+            end
+            if parseCluster && (loop_counter > 0 || (loop_counter == 0 && numJobs >= maxJobNum))
                 job_status_mat(:, 2) = job_status_mat(:, 1);
-                job_inds = ~is_done_flag | job_status_mat(:, 1) > -1;
+                job_inds = ~is_done_flag & job_status_mat(:, 1) > -1;
                 
                 % only check the status of running/pending jobs. 
                 output_exist_mat(job_inds) = batch_file_exist(outputFullpaths(job_inds), [], true);
                 is_done_flag(job_inds) = output_exist_mat(job_inds);                
                 
                 job_status_mat(job_inds, 1) = check_batch_slurm_jobs_status(job_ids(job_inds), task_ids(job_inds));
-            else
+                numJobs = sum(job_status_mat(~is_done_flag, 1) >= 0);                
+                if masterCompute
+                    if b + n_status_check * 1.5 > nB
+                        check_inds = b : nB;
+                    else
+                        check_inds = b : min(nB, b + n_status_check - 1);
+                    end
+                    lastPb = find(~is_done_flag(check_inds) & trial_counter(check_inds) < maxTrialNum & job_status_mat(check_inds, 1) < 0, 1, 'last');
+                    if ~isempty(lastPb)
+                        lastP = lastPb + b - 1;
+                    end
+                end                
+            elseif ~parseCluster
                 output_exist_mat(~is_done_flag) = batch_file_exist(outputFullpaths(~is_done_flag), [], true);
                 is_done_flag(~is_done_flag) = output_exist_mat(~is_done_flag);                
             end
         end
-        
+
+        if all(is_done_flag(fs) | trial_counter(fs) >= maxTrialNum)
+            continue;
+        end
+
         for f = fs
             inputFullpath_i = inputFullpaths{f};
 
@@ -364,7 +388,7 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
     end
     if nF_done < sum(is_done_flag)
         nF_done = sum(is_done_flag);
-        sprintf('Time %d s: %d / %d (%0.3f) are finished!\n', toc(ts), nF_done, nF, nF_done / nF);
+        fprintf('Time %0.2f s: %d / %d (%0.2f%%) are finished!\n', toc(ts), nF_done, nF, nF_done / nF * 100);
     end
     loop_counter = loop_counter + 1;
 end

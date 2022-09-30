@@ -63,17 +63,20 @@ tmp(cnum ~= 1) = [];
 job_id_s_m = cellfun(@(x) x{1}{1}, tmp, 'unif', 0);
 status_s_m = cellfun(@(x) x{1}{2}, tmp, 'unif', 0);
 
+valid_job_status = -ones(sum(valid_inds), 1);
 for i = 1 : numel(job_id_s_m)
     ind = strcmp(job_ids_s, job_id_s_m{i});
     if any(ind)
         switch status_s_m{i}
             case 'R'
-                job_status(ind) = 1;
+                valid_job_status(ind) = 1;
             case 'PD'
-                job_status(ind) = 0;
+                valid_job_status(ind) = 0;
         end
     end
 end
+
+job_status(valid_inds) = valid_job_status;
 
 end
 

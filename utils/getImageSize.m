@@ -26,8 +26,12 @@ if strcmp(filePath(end - 2 : end), 'tif') || strcmp(filePath(end - 3 : end), 'ti
 %     end
 %    
     % jvm not enabled
-    try 
-        imSize = getImageSize_mex(filePath);
+    try
+        if verLessThan('matlab', '9.13')
+            imSize = getImageSize_mex(filePath);
+        else
+            imSize = getImageSize_mex_R2022b(filePath);
+        end
     catch 
         if ~usejava('jvm')
             % use binary search 

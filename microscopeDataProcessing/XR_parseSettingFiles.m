@@ -66,12 +66,9 @@ expression = '(?<stageOff>\d+)\t(?<interval>-?\d*?.?\d+)\t(?<numExiciation>\d+)'
 
 tmp = regexpi(str, expression, 'names');
 
-
 sInfo.stageOff = str2double(tmp.stageOff);
 sInfo.StageInterval = str2double(tmp.interval);
 sInfo.numExiciation = str2double(tmp.numExiciation);
-
-
 
 end
 

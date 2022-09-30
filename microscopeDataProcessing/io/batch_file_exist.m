@@ -62,9 +62,9 @@ end
 
 % go through each file
 if useParpool && nF > 100
-    if ~isempty(gcp('nocreate'))
-        delete(gcp('nocreate'));
-    end
+    % if ~isempty(gcp('nocreate'))
+    %     delete(gcp('nocreate'));
+    % end
     p = backgroundPool;
     nworker = p.NumWorkers;
 
