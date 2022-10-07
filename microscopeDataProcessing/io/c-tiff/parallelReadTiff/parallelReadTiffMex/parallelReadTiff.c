@@ -103,6 +103,7 @@ void readTiffParallel(uint64_t x, uint64_t y, uint64_t z, const char* fileName, 
                 err = 1;
                 sprintf(errString,"Thread %d: File \"%s\" cannot be opened\n",w,fileName);
             }
+			continue;
         }
         void* buffer = malloc(x*stripSize*bytes);
         for(int64_t dir = startSlice+(w*batchSize); dir < startSlice+((w+1)*batchSize); dir++){
@@ -110,7 +111,7 @@ void readTiffParallel(uint64_t x, uint64_t y, uint64_t z, const char* fileName, 
 
             uint8_t counter = 0;
             while(!TIFFSetDirectory(tif, (uint64_t)dir) && counter<3){
-                printf("Thread %d: File \"%s\" Directory \"%d\" failed to open. Try %d\n",w,fileName,dir,counter+1);
+                //printf("Thread %d: File \"%s\" Directory \"%d\" failed to open. Try %d\n",w,fileName,dir,counter+1);
                 counter++;
                 if(counter == 3){
 					#pragma omp critical
@@ -275,6 +276,7 @@ void readTiffParallel2D(uint64_t x, uint64_t y, uint64_t z, const char* fileName
                 err = 1;
                 sprintf(errString,"Thread %d: File \"%s\" cannot be opened\n",w,fileName);
             }
+			continue;
         }
 
         void* buffer = malloc(x*stripSize*bytes);
@@ -367,6 +369,7 @@ void readTiffParallelImageJ(uint64_t x, uint64_t y, uint64_t z, const char* file
 	int fd = open(fileName,O_RDONLY | O_BINARY);
 	#endif
 	TIFF* tif = TIFFOpen(fileName, "r");
+	if(!tif) mexErrMsgIdAndTxt("tiff:threadError","File \"%s\" cannot be opened\n",fileName);
 	uint64_t offset = 0;
 	uint64_t* offsets = NULL;
 	TIFFGetField(tif, TIFFTAG_STRIPOFFSETS, &offsets);

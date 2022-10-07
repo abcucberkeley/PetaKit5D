@@ -237,12 +237,16 @@ void writeTiffParallel(uint64_t x, uint64_t y, uint64_t z, const char* fileName,
     //mexErrMsgIdAndTxt("tiff:dataTypeError","Data type not suppported. %d %d %d %d",x,y,z,bits);
     //Close to UINT32_MAX. Want some extra room for incorrect size calculation for now.
     TIFF* tif = NULL;
-    if(!strcmp(mode,"w")) tif = TIFFOpen(fileName, (cSize < 3.8e9) ? "w" : "w8");
+    if(!strcmp(mode,"w")){
+        tif = TIFFOpen(fileName, (cSize < 3.8e9) ? "w" : "w8");
+        if(!tif){
+            mexErrMsgIdAndTxt("tiff:threadError","Error: File \"%s\" cannot be opened",fileName);
+        }
+    }
     else if(!strcmp(mode,"a")){
         tif = TIFFOpen(fileName, "r");
         if(!tif){
-            printf("Error: File \"%s\" cannot be opened",fileName);
-            return;
+            mexErrMsgIdAndTxt("tiff:threadError","Error: File \"%s\" cannot be opened",fileName);
         }
         uint64_t xTemp = 1,yTemp = 1,zTemp = 1;
         TIFFGetField(tif, TIFFTAG_IMAGEWIDTH, &xTemp);
@@ -271,6 +275,9 @@ void writeTiffParallel(uint64_t x, uint64_t y, uint64_t z, const char* fileName,
         cSize += (xTemp*yTemp*zTemp)*(bits/8);
         TIFFClose(tif);
         tif = TIFFOpen(fileName, (cSize < 3.8e9) ? "a" : "a8");
+        if(!tif){
+            mexErrMsgIdAndTxt("tiff:threadError","Error: File \"%s\" cannot be opened",fileName);
+        }
     }
     else{
         printf("Error: mode \"%s\" is not supported. Use w or a for mode type", mode);

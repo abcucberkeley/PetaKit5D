@@ -96,7 +96,6 @@ end
 
 nF = numel(inputFullpaths);
 is_done_flag = false(nF, 1);
-input_exist_mat = batch_file_exist(inputFullpaths, [], true);
 outputFullpaths = strip(outputFullpaths, 'right', filesep);
 outputFullpaths = strip(outputFullpaths, 'right', '/');
 output_exist_mat = batch_file_exist(outputFullpaths, [], true);
@@ -106,6 +105,7 @@ if all(output_exist_mat)
 else
     is_done_flag = output_exist_mat;
 end
+input_exist_mat(~output_exist_mat) = batch_file_exist(inputFullpaths(~output_exist_mat), [], true);
 
 trial_counter = zeros(nF, 1);
 if parseCluster
