@@ -61,7 +61,7 @@ void mexFunction(int nlhs, mxArray *plhs[],
             t *= 8;
             if(s > t){ 
                 t = 65535;
-                printf("Number of slices > 32768");
+                printf("Number of slices > 32768\n");
                 break;
             }
         }
