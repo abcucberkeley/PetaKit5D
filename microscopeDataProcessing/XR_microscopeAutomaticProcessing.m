@@ -215,7 +215,7 @@ ip.parse(dataPaths, varargin{:});
 mpath = fileparts(which(mfilename));
 repo_rt = [mpath, '/../../'];
 cd(repo_rt);
-if ~exist('setup.m', 'file')
+if ~exist([repo_rt, 'setup.m'], 'file')
     repo_rt = [mpath, '/../'];
     cd(repo_rt);
 end

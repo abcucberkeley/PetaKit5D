@@ -25,6 +25,8 @@
 %               l : toggle legend
 
 % Author: Francois Aguet
+%
+% xruan (10/12/2022): fix figure resize issue
 
 function varargout = stackviewer(stack, varargin)
 
@@ -137,10 +139,7 @@ end
 
 hf = ip.Results.Parent;
 if isempty(hf)
-    hf = figure('Position', [fpos(1:2) w h], 'Color', 'w',...
-        'PaperPositionMode', 'auto', 'ResizeFcn', @figResize);
-else
-    set(hf, 'ResizeFcn', @figResize);
+    hf = figure('Position', [fpos(1:2) w h], 'Color', 'w', 'PaperPositionMode', 'auto');
 end
 
 % colormap/contrast settings
@@ -161,6 +160,7 @@ ha(1) = axes('Position', [(nz*f+dx)/w 0 f*nx/w f*ny/h], 'Parent', hf);
 ha(2) = axes('Position', [0 0 f*nz/w f*ny/h], 'Parent', hf);
 ha(3) = axes('Position', [(nz*f+dx)/w (ny*f+dx)/h f*nx/w f*nz/h], 'Parent', hf);
 set(ha, 'HitTest', 'off');
+set(hf, 'ResizeFcn', @figResize);
 
     function figResize(~,~)
         ipos = get(hf, 'Position');

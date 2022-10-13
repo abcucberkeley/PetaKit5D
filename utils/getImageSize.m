@@ -27,12 +27,8 @@ if strcmp(filePath(end - 2 : end), 'tif') || strcmp(filePath(end - 3 : end), 'ti
 %    
     % jvm not enabled
     try
-        if verLessThan('matlab', '9.13')
             imSize = getImageSize_mex(filePath);
-        else
-            imSize = getImageSize_mex_R2022b(filePath);
-        end
-    catch 
+    catch ME
         if ~usejava('jvm')
             % use binary search 
             tobj = Tiff(filePath, 'r');     
