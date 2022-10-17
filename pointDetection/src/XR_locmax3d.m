@@ -1,4 +1,4 @@
-function [lm] = XR_locmax3d(img, wdims, ClearBorder)
+function [img] = XR_locmax3d(img, wdims, ClearBorder)
 % local maximum based on image dilation 
 % The function is copied from Francis Agust locamax3d.m
 % The idea is from https://stackoverflow.com/questions/1856197/how-can-i-find-local-maxima-in-an-image-in-matlab?rq=1
@@ -42,37 +42,37 @@ hwz = (wz - 1) / 2;
 se = true(wx, wy, wz);
 se(hwy + 1, hwx + 1, hwz + 1) = false;
 
-img_1 = img;
-is_nan_mat = isnan(img_1);
+% img_1 = img;
+is_nan_mat = isnan(img);
 % if any(is_nan_mat, 'all')
 %      img_1(is_nan_mat) = -1e8;
 % end
 
 if any(is_nan_mat, 'all')
-     img_1 = replace_nan_with_value_3d(img_1, -1e8);
+     img = replace_nan_with_value(img, -1e8);
      % img_1(is_nan_mat) = -1e8;
 end    
 
 % img_3 = replace_nan_with_value(img, -1e8);
 
 % 11/13/2019 xruan use builtin function for imdilate
-B = imdilate(img_1, se);
+B = imdilate(img, se);
 % minmax = [-inf; inf];
 % morphFunc = 'imdilate';
 % B = builtin('_morphmex_halide', img_1, minmax, se,  morphFunc);
 % bw = img_1 > B;
 
 % if max. filter response is equal to input, point is a local maximum
-lm = img_1 .* (img_1 > B); 
+img = img .* (img > B); 
 
 % set borders to zero
 if ClearBorder
     b = hwx;
-    lm(:,[1:b end-b+1:end],:) = 0;
+    img(:,[1:b, end-b+1:end],:) = 0;
     b = hwy;
-    lm([1:b end-b+1:end],:,:) = 0;
+    img([1:b, end-b+1:end],:,:) = 0;
     b = hwz;
-    lm(:,:,[1:b end-b+1:end]) = 0;
+    img(:,:,[1:b, end-b+1:end]) = 0;
 end
 
 end

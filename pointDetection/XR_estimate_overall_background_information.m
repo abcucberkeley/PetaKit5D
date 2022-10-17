@@ -27,11 +27,14 @@ randseed = ip.Results.randseed;
 rng(randseed);
 
 backgroundInfo_mat = zeros(win_num, 3);
-
+% corp image to the by the bounding box
+frame = replace_nan_with_value(frame, 0);
+frame = crop_image_by_bounding_box(frame);
 sz = size(frame);
 
 bound_ratio = ip.Results.BoundaryDistanceRatio; % only within 30% sz to the boundary
 bound_sz = round(sz * bound_ratio);
+
 lb = min([bound_sz; ws(1), ws(1) ws(2)]);
 ub = max([bound_sz; ws(1), ws(1), ws(2)]);
 

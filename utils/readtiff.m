@@ -17,6 +17,9 @@ pr = ip.Results;
 range = pr.range;
 
 try 
+    if isstring(filepath)
+        filepath = convertStringsToChars(filepath);
+    end
     if isempty(range)
         data = parallelReadTiff(filepath);
     else
