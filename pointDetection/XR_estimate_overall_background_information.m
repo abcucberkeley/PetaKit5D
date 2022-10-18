@@ -28,8 +28,10 @@ rng(randseed);
 
 backgroundInfo_mat = zeros(win_num, 3);
 % corp image to the by the bounding box
+nan_mat = isnan(frame);
 frame = replace_nan_with_value(frame, 0);
-frame = crop_image_by_bounding_box(frame);
+[frame, bbox] = crop_image_by_bounding_box(frame);
+nan_mat = nan_mat(bbox(1) : bbox(4), bbox(2) : bbox(5), bbox(3) : bbox(6));
 sz = size(frame);
 
 bound_ratio = ip.Results.BoundaryDistanceRatio; % only within 30% sz to the boundary
@@ -42,7 +44,7 @@ c_x = 1; c_y = 1; c_z = 1;
 for i = 1 : win_num
     % make sure the centers of window are not nan
     start_flag = true;
-    while start_flag || isnan(frame(c_y, c_x,  c_z))
+    while start_flag || nan_mat(c_y, c_x,  c_z)
         c_x = randi([lb(2), ub(2)]);
         c_y = randi([lb(1), ub(1)]);
         c_z = randi([lb(3), ub(3)]);
@@ -59,17 +61,19 @@ for i = 1 : win_num
     za = max(1, c_z - ws(2)) : min(sz(3), c_z + ws(2));
     
     I_crop = frame(ya, xa, za);
+    nan_mat_crop = nan_mat(ya, xa, za);
     
     if mean(isnan(I_crop), 'all') > 1 - ip.Results.minValidRatio
         backgroundInfo_mat(i, :) = nan;
         continue;
     end
     
-    I_crop = I_crop(~isnan(I_crop));
+    I_crop = I_crop(~nan_mat_crop);
     backgroundInfo_mat(i, :) = [mean(I_crop), median(I_crop), std(I_crop)];
 end
 
-backgroundInfo = nanmedian(backgroundInfo_mat);
+backgroundInfo_mat = backgroundInfo_mat(~any(isnan(backgroundInfo_mat), 2), :);
+backgroundInfo = median(backgroundInfo_mat);
 
 
 end
