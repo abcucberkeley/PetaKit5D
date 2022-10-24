@@ -211,7 +211,7 @@ ip.addParameter('SlurmParam', '-p abc --qos abc_normal -n1 --mem-per-cpu=21418M'
 
 ip.parse(dataPaths, varargin{:});
 
-% make sure the function is in the root of XR_Repository. 
+% make sure the function is in the root of XR_Repository or LLSM3DTools. 
 mpath = fileparts(which(mfilename));
 repo_rt = [mpath, '/../../'];
 cd(repo_rt);

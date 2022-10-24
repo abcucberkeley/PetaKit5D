@@ -154,11 +154,7 @@ if (~DSRCombined && (~exist(dsFullname, 'file') || ip.Results.Overwrite)) || DSR
     if combinedFrame
         frame_cell = cell(numel(framePath), 1);
         for i = 1 : numel(framePath)
-            try
-                frame_cell{i} = parallelReadTiff(framePath{i});
-            catch 
-                frame_cell{i} = readtiff(framePath{i});
-            end
+            frame_cell{i} = readtiff(framePath{i});
         end
         frame = single(cat(3, frame_cell{:}));
         clear frame_cell;
@@ -166,11 +162,7 @@ if (~DSRCombined && (~exist(dsFullname, 'file') || ip.Results.Overwrite)) || DSR
         [~, ~, ext] = fileparts(framePath{1});
         switch ext
             case {'.tif', '.tiff'}
-                try
-                    frame = single(parallelReadTiff(framePath{1}));
-                catch 
-                    frame = single(readtiff(framePath{1}));
-                end
+                frame = single(readtiff(framePath{1}));
             case {'.zarr'}
                 frame = readzarr(framePath{1});
         end                
@@ -185,13 +177,8 @@ if (~DSRCombined && (~exist(dsFullname, 'file') || ip.Results.Overwrite)) || DSR
         
     % flat field correction
     if LLFFCorrection
-        try 
-            LSIm = parallelReadTiff(LSImage);
-            BKIm = parallelReadTiff(BackgroundImage);
-        catch 
-            LSIm = readtiff(LSImage);
-            BKIm = readtiff(BackgroundImage);            
-        end
+        LSIm = readtiff(LSImage);
+        BKIm = readtiff(BackgroundImage);            
         frame = GU_LSFlatFieldCorrection(frame,LSIm,BKIm,'LowerLimit', ip.Results.LowerLimit, ...
             'constOffset', ip.Results.constOffset);
     end
@@ -330,11 +317,7 @@ if ip.Results.Rotate || DSRCombined
         if ~DSRCombined
             fprintf('Rotate frame %s...\n', framePath{1});
             if ~exist('ds', 'var')
-                try 
-                    ds = single(parallelReadTiff(dsFullname));
-                catch
-                    ds = single(readtiff(dsFullname));
-                end
+                ds = single(readtiff(dsFullname));
             end
             dsr = rotateFrame3D(ds, SkewAngle_1, zAniso, Reverse,...
                 'Crop', true, 'ObjectiveScan', ObjectiveScan, 'Interp', Interp);

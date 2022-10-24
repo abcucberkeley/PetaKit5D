@@ -105,6 +105,7 @@ if all(output_exist_mat)
 else
     is_done_flag = output_exist_mat;
 end
+input_exist_mat = output_exist_mat;
 input_exist_mat(~output_exist_mat) = batch_file_exist(inputFullpaths(~output_exist_mat), [], true);
 
 trial_counter = zeros(nF, 1);
@@ -232,7 +233,8 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
                 end
                 
                 % kill new pending jobs
-                if  parseCluster && job_ids(f) > 0 && job_status_mat(f, 1) == 0
+                if  parseCluster && (numel(fs) == 1 || (numel(fs) > 1 && all(output_exist_mat(fs)))) ...
+                        && job_ids(f) > 0 && job_status_mat(f, 1) == 0
                     % job_status = check_slurm_job_status(job_ids(f), task_id); 
                     system(sprintf('scancel %d_%d', job_ids(f), task_id), '-echo');
                 end
@@ -337,6 +339,9 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
                     end
                     
                     job_id = regexp(cmdout, 'Submitted batch job (\d+)\n', 'tokens');
+                    if isempty(job_id)
+                        continue;
+                    end
                     job_id = str2double(job_id{1}{1});
                     job_ids(fs) = job_id;
                     job_status_mat(fs, 1) = 0;
