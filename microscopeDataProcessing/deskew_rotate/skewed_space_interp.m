@@ -30,14 +30,16 @@ s_mat = zeros(nint - 1, 1);
 t_mat = zeros(nint - 1, 1);
 sw_mat = zeros(nint - 1, 1);
 tw_mat = zeros(nint - 1, 1);
+zw_mat = zeros(nint - 1, 1);
 
 for i = 2 : nint
+    zw = (i - 1) / nint;
     if Reverse
-        s = xa - xstep .* (i - 1) / nint + 1;
-        t = xstep .* (nint - i + 1) / nint + 1;
+        s = xa - xstep .* zw + 1;
+        t = xstep .* (1 - zw) + 1;
     else
-        s = xstep .* (nint - i + 1) / nint + 1;
-        t = xa - xstep .* (i - 1) / nint + 1;
+        s = xstep .* (1 - zw) + 1;
+        t = xa - xstep .* zw + 1;
     end
     
     % distance to start
@@ -50,6 +52,7 @@ for i = 2 : nint
     t_mat(i - 1) = t;
     sw_mat(i - 1) = sw;
     tw_mat(i - 1) = tw;
+    zw_mat(i - 1) = zw;
 end
 
 for z = 1 : sz(3)
@@ -84,13 +87,14 @@ for z = 1 : sz(3)
         t = t_mat(i - 1);
         sw = sw_mat(i - 1);
         tw = tw_mat(i - 1);
+        zw = zw_mat(i - 1);
 
         % interpolation
         im_sq = im_s(:, s : s + sz(2) - 1) .* (1 - sw) + im_s(:, s + 1 : s + sz(2)) .* sw;
 
         im_tq = im_t(:, t : t + sz(2) - 1) .* (1 - tw) + im_t(:, t + 1 : t + sz(2)) .* tw;
 
-        im_q = (im_sq + im_tq) / 2;
+        im_q = im_sq * (1 - zw) + im_tq * zw;
                 
         im_int(:, :, zint) = im_q;
     end

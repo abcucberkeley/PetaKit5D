@@ -3,9 +3,10 @@
 #include <stdlib.h>
 #include <math.h>
 #include <omp.h>
+#include <inttypes.h>
 #include "mex.h"
 
-// mex -v COPTIMFLAGS="-O3 -DNDEBUG" CFLAGS='$CFLAGS -O3 -fopenmp' LDFLAGS='$LDFLAGS -O3 -fopenmp' skewed_space_interp_mex.c
+// mex -v COPTIMFLAGS="-O3 -DNDEBUG" CFLAGS='$CFLAGS -O3 -fopenmp' LDFLAGS='$LDFLAGS -O3 -fopenmp' skewed_space_interp_defined_stepsize_mex.c
 
 void mexFunction(int nlhs, mxArray *plhs[],
         int nrhs, const mxArray *prhs[])
@@ -16,31 +17,41 @@ void mexFunction(int nlhs, mxArray *plhs[],
     }
     float* im = (float*)mxGetPr(prhs[0]);
     const double xstep = (double)*mxGetPr(prhs[1]);
-    const uint64_t nint = (uint64_t)*mxGetPr(prhs[2]);
+    const double stepsize = (double)*mxGetPr(prhs[2]);
     const uint8_t Reverse = (uint8_t)mxIsLogicalScalarTrue(prhs[3]);
-    
+
     const uint64_t* sz = (uint64_t*)mxGetDimensions(prhs[0]);
+    uint64_t nint = (uint64_t) (floor((double)(sz[2] - 1) / stepsize) + 1);
     uint64_t dim[3];
     dim[0] = sz[0];
     dim[1] = sz[1];
-    dim[2] = (sz[2] - 1) * nint + 1;
+    dim[2] = nint;
     plhs[0] = mxCreateNumericArray(3,dim,mxSINGLE_CLASS, mxREAL);
-    
+
     float* im_int = (float*)mxGetPr(plhs[0]);
-    
+
     const uint64_t xa = (uint64_t)ceil(xstep);
-    double* s_mat = (double*)malloc((nint-1)*sizeof(double));
-    double* t_mat = (double*)malloc((nint-1)*sizeof(double));
-    double* sw_mat = (double*)malloc((nint-1)*sizeof(double));
-    double* tw_mat = (double*)malloc((nint-1)*sizeof(double));
-    double* zw_mat = (double*)malloc((nint-1)*sizeof(double));
+    double* s_mat = (double*)malloc((nint)*sizeof(double));
+    double* t_mat = (double*)malloc((nint)*sizeof(double));
+    double* sw_mat = (double*)malloc((nint)*sizeof(double));
+    double* tw_mat = (double*)malloc((nint)*sizeof(double));
+    double* zw_mat = (double*)malloc((nint)*sizeof(double));
+    // z start and end
+    uint64_t* zs_ind_mat = (uint64_t*)malloc((sz[2])*sizeof(uint64_t));
+    uint64_t* zt_ind_mat = (uint64_t*)malloc((sz[2])*sizeof(uint64_t));
     
-    
-    for(uint64_t i = 1; i < nint; i++){
+    uint64_t zind = 0;
+    zs_ind_mat[0] = 0;
+    zt_ind_mat[sz[2] - 1] = nint - 1;
+    for(uint64_t i = 0; i < nint; i++){
         double s;
         double t;
-	double zw;
-	zw = (double) i / (double) nint;
+        double zout;
+        double zw;
+        // zout = ((double)(sz[2] - 1)) / ((double)(nint - 1)) * ((double)i);
+        zout = stepsize * (double)i;
+        zw = zout - floor(zout);
+
         if(Reverse){
             s = ceil(xstep) - xstep * zw;
             t = xstep * (1 - zw);
@@ -49,26 +60,40 @@ void mexFunction(int nlhs, mxArray *plhs[],
             s = xstep * (1 - zw);
             t = ceil(xstep) - xstep * zw;
         }
-        
+
         //distance to start
         double sw = s - floor(s);
         s = floor(s);
         double tw = t - floor(t);
         t = floor(t);
+
+        s_mat[i] = s;
+        t_mat[i] = t;
+        sw_mat[i] = sw;
+        tw_mat[i] = tw;
+        zw_mat[i] = zw;
         
-        s_mat[i - 1] = s;
-        t_mat[i - 1] = t;
-        sw_mat[i - 1] = sw;
-        tw_mat[i - 1] = tw;
-    	zw_mat[i - 1] = zw;
+        // get start and end indices mapping
+        if(floor(zout) > zind){
+            zs_ind_mat[zind + 1] = i;
+            zt_ind_mat[zind] = i - 1;
+            zind += 1;
+        }
+        else{
+            zt_ind_mat[zind] = i;
+        }
+        // printf("%llu %f %llu %f %f %f %f %f\n", i, zout, zind, s, t, sw, tw, zw);
     }
-    
-    
+    /*
+    for(uint64_t z = 0; z < sz[2]; z++){
+        printf("%llu %llu %llu\n", z, zs_ind_mat[z], zt_ind_mat[z]);
+    }
+    */
     
     #pragma omp parallel for
     for(uint64_t z = 0; z < sz[2]; z++){
         if(z == sz[2]-1){
-            uint64_t zIndex = z * nint;
+            uint64_t zIndex = nint-1;
             for(uint64_t i = 0; i < sz[1]; i++){
                 for(uint64_t j = 0; j < sz[0]; j++){
                     im_int[j+(i*sz[0])+(zIndex*sz[1]*sz[0])] = im[j+(i*sz[0])+(z*sz[1]*sz[0])];
@@ -76,10 +101,10 @@ void mexFunction(int nlhs, mxArray *plhs[],
             }
             continue;
         }
-        
+
         float* im_s = (float*)malloc(sz[0]*(sz[1]+xa)*sizeof(float));
         float* im_t = (float*)malloc(sz[0]*(sz[1]+xa)*sizeof(float));
-        
+
         if(Reverse){
             for(uint64_t i = 0; i < sz[1]+xa; i++){
                 for(uint64_t j = 0; j < sz[0]; j++){
@@ -104,12 +129,19 @@ void mexFunction(int nlhs, mxArray *plhs[],
                 }
             }
         }
+
         
-        
-        for(uint64_t ind = 0; ind < nint; ind++){
-            uint64_t zint = z * nint + ind;
-            
-            if(!ind){
+        for(uint64_t ind = zs_ind_mat[z]; ind <= zt_ind_mat[z]; ind++){
+            // printf("%llu %llu\n", z, ind);
+            uint64_t zint = ind;
+
+            uint64_t s = (uint64_t)s_mat[zint];
+            uint64_t t = (uint64_t)t_mat[zint];
+            float sw = sw_mat[zint];
+            float tw = tw_mat[zint];
+            float zw = zw_mat[zint];
+
+            if(!sw){
                 for(uint64_t i = 0; i < sz[1]; i++){
                     for(uint64_t j = 0; j < sz[0]; j++){
                         im_int[j+(i*sz[0])+(zint*sz[1]*sz[0])] = im[j+(i*sz[0])+(z*sz[1]*sz[0])];
@@ -117,14 +149,6 @@ void mexFunction(int nlhs, mxArray *plhs[],
                 }
                 continue;
             }
-            
-            
-            uint64_t s = (uint64_t)s_mat[ind - 1];
-            uint64_t t = (uint64_t)t_mat[ind - 1];
-            float sw = sw_mat[ind - 1];
-            float tw = tw_mat[ind - 1];
-            float zw = zw_mat[ind - 1];
-            
             for(uint64_t i = 0; i < sz[1]; i++){
                 for(uint64_t j = 0; j < sz[0]; j++){
                     im_int[j+(i*sz[0])+(zint*sz[1]*sz[0])] =
@@ -133,12 +157,15 @@ void mexFunction(int nlhs, mxArray *plhs[],
                 }
             }
         }
-        
         free(im_s);
         free(im_t);
     }
+
     free(s_mat);
     free(t_mat);
     free(sw_mat);
     free(tw_mat);
+    free(zw_mat);
+    free(zs_ind_mat);
+    free(zt_ind_mat);
 }
