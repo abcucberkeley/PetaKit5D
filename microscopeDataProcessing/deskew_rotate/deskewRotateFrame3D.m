@@ -55,6 +55,16 @@ else
     zAniso = sin(abs(theta)) * dz / xyPixelSize;
 end
 
+% use original dz to decide outSize
+if ~ObjectiveScan
+    % outSize = round([ny nxDs/cos(theta) h]);
+    % calculate height; first & last 2 frames have interpolation artifacts
+    outSize = round([ny, (nx-1)*cos(theta)+(nz-1)*zAniso/sin(abs(theta)), (nx-1)*sin(abs(theta))-4]);
+else
+    % exact proportions of rotated box
+    outSize = round([ny, nx*cos(theta)+nz*zAniso*sin(abs(theta)), nz*zAniso*cos(theta)+nx*sin(abs(theta))]);
+end
+
 %% skew space interpolation
 if ~ObjectiveScan && abs(dx) > xStepThresh
     % skewed space interplation combined dsr
@@ -92,7 +102,6 @@ if ~ObjectiveScan && abs(dx) > xStepThresh
         zAniso = sin(abs(theta)) * dz / xyPixelSize;
     end
 end
-
 
 %% deskew
 if ~Reverse
@@ -137,15 +146,6 @@ R = [cos(theta) 0 -sin(theta) 0; % order for imwarp is x,y,z
      0 1 0 0;
      sin(theta) 0 cos(theta) 0;
      0 0 0 1];
-
-if ~ObjectiveScan
-    % outSize = round([ny nxDs/cos(theta) h]);
-    % calculate height; first & last 2 frames have interpolation artifacts
-    outSize = round([ny, (nx-1)*cos(theta)+(nz-1)*zAniso/sin(abs(theta)), (nx-1)*sin(abs(theta))-4]);
-else
-    % exact proportions of rotated box
-    outSize = round([ny, nx*cos(theta)+nz*zAniso*sin(abs(theta)), nz*zAniso*cos(theta)+nx*sin(abs(theta))]);
-end
 
 T2 = [1 0 0 0
       0 1 0 0

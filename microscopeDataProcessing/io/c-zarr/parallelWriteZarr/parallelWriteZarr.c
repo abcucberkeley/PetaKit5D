@@ -51,7 +51,6 @@ void parallelWriteZarrMex(void* zarr, char* folderName,uint64_t startX, uint64_t
     
     struct chunkInfo cI = getChunkInfo(folderName,startX,startY,startZ,endX,endY,endZ,chunkXSize,chunkYSize,chunkZSize);
     //if(!cI.chunkNames) mexErrMsgIdAndTxt("zarr:inputError","File \"%s\" cannot be opened",folderName);
-    char** chunkNamesUuid = malloc(cI.numChunks*sizeof(char*));
     
     int32_t batchSize = (cI.numChunks-1)/numWorkers+1;
     uint64_t s = chunkXSize*chunkYSize*chunkZSize;
@@ -77,8 +76,6 @@ void parallelWriteZarrMex(void* zarr, char* folderName,uint64_t startX, uint64_t
     struct timeval cSeed;
     gettimeofday(&cSeed,NULL);
     int nChars = sprintf(seedArr,"%d%d",cSeed.tv_sec,cSeed.tv_usec);
-    //printf("%d\n",nChars);
-    //mexErrMsgIdAndTxt("tiff:dataTypeError","HERE");
     int aSeed = 0;
     char* ptr;
     if(nChars > 9)
@@ -86,6 +83,7 @@ void parallelWriteZarrMex(void* zarr, char* folderName,uint64_t startX, uint64_t
     else aSeed = strtol(seedArr, &ptr, 9);
     srand(aSeed);
     sprintf(uuid,"%.5d",rand() % 99999);
+    free(seedArr);
     #endif
     int err = 0;
     char errString[10000];
@@ -365,6 +363,8 @@ void mexFunction(int nlhs, mxArray *plhs[],
     uint64_t endZ = 0;
     uint8_t crop = 0;
     char* cname = NULL;
+    uint64_t* iDims = NULL;
+
     if(nrhs < 3) mexErrMsgIdAndTxt("zarr:inputError","This functions requires at least 3 arguments");
     else if(nrhs == 4 || nrhs == 5){
         if(mxGetN(prhs[3]) == 6){
@@ -375,8 +375,11 @@ void mexFunction(int nlhs, mxArray *plhs[],
             endX = (uint64_t)*((mxGetPr(prhs[3])+3));
             endY = (uint64_t)*((mxGetPr(prhs[3])+4));
             endZ = (uint64_t)*((mxGetPr(prhs[3])+5));
-            
+
+            iDims = (uint64_t*)mxGetDimensions(prhs[1]);
             if(startX+1 < 1 || startY+1 < 1 || startZ+1 < 1) mexErrMsgIdAndTxt("zarr:inputError","Lower bounds must be at least 1");
+            if(endX-startX > iDims[0] || endY-startY > iDims[1] || endZ-startZ > iDims[2]) mexErrMsgIdAndTxt("zarr:inputError","Bounds are invalid for the input data size");
+            
             if(nrhs == 5){
                 cname = mxArrayToString(prhs[4]);
             }
@@ -475,7 +478,11 @@ void mexFunction(int nlhs, mxArray *plhs[],
         shapeZ = endZ;
         
         FILE* f = fopen(fnFull,"r");
-        if(f) fclose(f);
+        if(f){
+            fclose(f);
+            if(!iDims) mexErrMsgIdAndTxt("zarr:inputError","Unable to get input dimensions");
+            if(endX-startX != iDims[0] || endY-startY != iDims[1] || endZ-startZ != iDims[2]) mexErrMsgIdAndTxt("zarr:inputError","Bounding box size does not match the size of the input data");
+        }
         else {
             #ifdef __linux__
             mkdir(folderName, 0775);
@@ -642,18 +649,24 @@ void mexFunction(int nlhs, mxArray *plhs[],
     }
     else if(dtype[1] == 'f' && dtype[2] == '4'){
         uint64_t bits = 32;
-        float* zarr = (float*)mxGetPr(prhs[1]);
+        float* zarr;
+        if(zarrC) zarr = (float*)zarrC;
+        else zarr = (float*)mxGetPr(prhs[1]);
         parallelWriteZarrMex((void*)zarr,folderName,startX,startY,startZ,endX,endY,endZ,chunkXSize,chunkYSize,chunkZSize,shapeX,shapeY,shapeZ, origShapeX, origShapeY,origShapeZ, bits,order,useUuid,crop,cname);
     }
     else if(dtype[1] == 'f' && dtype[2] == '8'){
         uint64_t bits = 64;
-        double* zarr = (double*)mxGetPr(prhs[1]);
+        double* zarr;
+        if(zarrC) zarr = (double*)zarrC;
+        else zarr = (double*)mxGetPr(prhs[1]);
         parallelWriteZarrMex((void*)zarr,folderName,startX,startY,startZ,endX,endY,endZ,chunkXSize,chunkYSize,chunkZSize,shapeX,shapeY,shapeZ, origShapeX, origShapeY,origShapeZ, bits,order,useUuid,crop,cname);
     }
     else{
+        free(zarrC);
         mexErrMsgIdAndTxt("tiff:dataTypeError","Data type not suppported");
     }
     
-    
+    // zarrC is either a copy for data conversion or NULL
+    free(zarrC);
 }
 

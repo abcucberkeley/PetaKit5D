@@ -67,12 +67,13 @@ if zarrFile
     end
     im = readzarr(dataFullpath, 'bbox', bbox_1);
 else
-    try 
-        im = parallelReadTiff(dataFullpath, [bbox_1(3), bbox_1(6)]);
-    catch    
-        im = readtiff(dataFullpath, 'range', bbox_1(3) : bbox_1(6));
+    im = readtiff(dataFullpath, 'range', [bbox_1(3), bbox_1(6)]);
+    try
+        im = crop3d_mex(im, [bbox_1(1 : 2), 1, bbox_1(4 : 5), size(im, 3)]);
+    catch ME
+        disp(ME)
+        im = im(bbox_1(1) : bbox_1(4), bbox_1(2) : bbox_1(5), :);
     end
-    im = im(bbox_1(1) : bbox_1(4), bbox_1(2) : bbox_1(5), :);
 end
 
 % pad cropped data

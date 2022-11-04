@@ -56,6 +56,7 @@ ip.addParameter('save3DStack', true , @islogical); % option to save 3D stack or 
 ip.addParameter('SaveMIP', true , @islogical); % save MIP-z for ds and dsr. 
 ip.addParameter('saveZarr', false , @islogical); % save as zarr
 ip.addParameter('blockSize', [500, 500, 500] , @isnumeric); % save as zarr
+ip.addParameter('xStepThresh', 2.0, @isnumeric); % 2.344 for ds=0.3, 2.735 for ds=0.35
 ip.addParameter('aname', '', @ischar); % XR allow user-defined result path
 ip.addParameter('ZoffsetCorrection', false, @islogical); % xruan: add option for correction of z offset
 ip.addParameter('DSRCombined', true, @islogical); % combined processing 
@@ -85,6 +86,7 @@ DSRCombined = pr.DSRCombined;
 resample = pr.resample;
 saveZarr = pr.saveZarr;
 blockSize = pr.blockSize;
+xStepThresh = pr.xStepThresh;
 Interp = pr.Interp;
 surffix = pr.surffix;
 
@@ -234,10 +236,9 @@ if (~DSRCombined && (~exist(dsFullname, 'file') || ip.Results.Overwrite)) || DSR
                     xyPixelSize, Reverse, 'crop', Crop, 'Interp', Interp), BorderSize, 'both'), 'blockSize', bim.BlockSize, ...
                     'OutputLocation', OutputLocation, 'BorderSize', BorderSize, 'useParallel', false);
             end
-            clear frame;
+            clear frame bim;
             % ds = gather(bo);
             % rmdir(OutputLocation, 's');
-            clear bim;
         end            
 
         % save MIP
@@ -346,9 +347,10 @@ if ip.Results.Rotate || DSRCombined
             end
 
             fprintf('Deskew, Rotate and resample for frame %s...\n', framePath{1});            
-            dsr = deskewRotateFrame3D(single(frame), SkewAngle_1, dz, xyPixelSize, ...
+            dsr = deskewRotateFrame3D(frame, SkewAngle_1, dz, xyPixelSize, ...
                 'reverse', Reverse, 'Crop', true, 'ObjectiveScan', ObjectiveScan, ...
-                'resample', resample, 'Interp', Interp);
+                'resample', resample, 'Interp', Interp, 'xStepThresh', xStepThresh);
+            clear frame;
         end
         
         % save MIP

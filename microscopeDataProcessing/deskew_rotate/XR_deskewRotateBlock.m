@@ -3,6 +3,8 @@ function [done_flag] = XR_deskewRotateBlock(batchInds, zarrFullpath, dsrFullpath
 % Deskew and/or rotate data for given blocks
 
 
+t0 = tic;
+
 ip = inputParser;
 ip.CaseSensitive = false;
 ip.addRequired('blockInds', @isnumeric);
@@ -60,7 +62,7 @@ end
 if ~exist(dsrFullpath, 'dir')
     error('The output zarr file %s doesnot exist!', dsrFullpath);
 end
-nv_bim = blockedImage(dsrFullpath, 'Adapter', ZarrAdapter);
+nv_bim = blockedImage(dsrFullpath, 'Adapter', CZarrAdapter);
 
 done_flag = false(numel(batchInds), 1);
 for i = 1 : numel(batchInds)
@@ -75,19 +77,25 @@ for i = 1 : numel(batchInds)
     % in_batch = bim.getRegion(ibStart, ibEnd);
     % in_batch = bim.Adapter.getIORegion(ibStart, ibEnd);
     in_batch = readzarr(zarrFullpath, 'bbox', [ibStart, ibEnd]);
+    in_batch = single(in_batch);
     
     % deskew and rotate    
     ObjectiveScan = false;
     resample = [];
     
-    out_batch = deskewRotateFrame3D(single(in_batch), SkewAngle, dz, xyPixelSize, ...
+    out_batch = deskewRotateFrame3D(in_batch, SkewAngle, dz, xyPixelSize, ...
                 'reverse', Reverse, 'Crop', true, 'ObjectiveScan', ObjectiveScan, ...
                 'resample', resample, 'Interp', Interp);
     clear in_batch;
 
     if ~isempty(borderSize)
-        out_batch = out_batch(borderSize(1) + 1 : end - borderSize(4), borderSize(2) + 1 : end - borderSize(5), ...
-            borderSize(3) + 1 : end - borderSize(6)); 
+        try 
+            out_batch = crop3d_mex(out_batch, [1 + borderSize(i, 1 : 3), size(out_batch) - borderSize(i, 4 : 6)]);
+        catch ME
+            disp(ME)
+            out_batch = out_batch(borderSize(i, 1) + 1 : end - borderSize(i, 4), borderSize(i, 2) + 1 : end - borderSize(i, 5), ...
+                borderSize(i, 3) + 1 : end - borderSize(i, 6)); 
+        end
     end
             
     obStart = RegionBBoxes(i, 1 : 3);
@@ -96,16 +104,21 @@ for i = 1 : numel(batchInds)
     % out_batch = out_batch(baStart(1) : baEnd(1), baStart(2) : baEnd(2), baStart(3) : baEnd(3));
     
     % write out_batch (in the future, directly write the whole region)
-    nv_bim.Adapter.setRegion(obStart, obEnd, out_batch)
-    % writezarr(out_batch, dsrFullpath, 'bbox', [obStart, obEnd]);
-
+    % nv_bim.Adapter.setRegion(obStart, obEnd, out_batch)
+    % if strcmp(nv_bim.ClassUnderlying, 'uint16')
+        % out_batch = uint16(out_batch);
+    % end
+    writezarr(out_batch, dsrFullpath, 'bbox', [obStart, obEnd]);
+    clear out_batch;
     done_flag(i) = true;
 
     toc;
 end
 
 if all(done_flag)
-    fclose(fopen(flagFullname, 'w'));
+    % fclose(fopen(flagFullname, 'w'));
+    t = toc(t0);
+    save(flagFullname, 't')
 end
 
 

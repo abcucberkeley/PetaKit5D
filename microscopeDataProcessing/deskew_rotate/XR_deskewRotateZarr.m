@@ -23,7 +23,8 @@ ip.addParameter('Save16bit', false , @islogical); % saves deskewed data as 16 bi
 ip.addParameter('SaveMIP', true , @islogical); % save MIP-z for ds and dsr. 
 ip.addParameter('saveZarr', false , @islogical); % save as zarr
 ip.addParameter('BatchSize', [1024, 1024, 1024] , @isvector); % in y, x, z
-ip.addParameter('BlockSize', [128, 256, 256] , @isvector); % in y, x, z
+ip.addParameter('BlockSize', [256, 256, 256], @isvector); % in y, x, z
+ip.addParameter('taskSize', [], @isnumeric);
 ip.addParameter('DSRCombined', true, @islogical); % combined processing 
 ip.addParameter('resample', [], @(x) isempty(x) || isnumeric(x)); % resampling after rotation 
 ip.addParameter('Interp', 'linear', @(x) any(strcmpi(x, {'cubic', 'linear'})));
@@ -32,7 +33,7 @@ ip.addParameter('parseCluster', true, @islogical);
 ip.addParameter('parseParfor', false, @islogical);
 ip.addParameter('masterCompute', true, @islogical); % master node participate in the task computing. 
 ip.addParameter('jobLogDir', '../job_logs', @ischar);
-ip.addParameter('cpuOnlyNodes', true, @islogical);
+ip.addParameter('cpuOnlyNodes', false, @islogical);
 ip.addParameter('cpusPerTask', 8, @isnumeric);
 ip.addParameter('uuid', '', @ischar);
 ip.addParameter('debug', false, @islogical);
@@ -51,6 +52,7 @@ DSRCombined = pr.DSRCombined;
 resample = pr.resample;
 BatchSize = pr.BatchSize;
 BlockSize = pr.BlockSize;
+taskSize = pr.taskSize;
 Interp = pr.Interp;
 surffix = pr.surffix;
 parseCluster = pr.parseCluster;
@@ -136,7 +138,8 @@ else
     % exact proportions of rotated box
     outSize = round([ny, nx*cos(theta)+nz*zAniso*sin(abs(theta)), nz*zAniso*cos(theta)+nx*sin(abs(theta))]);
 end
-BorderSize = [3, 0, 0, 3, 0, 0];
+% change border size to +/-2 in y. 
+BorderSize = [2, 0, 0, 2, 0, 0];
 
 % set batches along y axis
 BatchSize = min(imSize, BatchSize);
@@ -171,13 +174,20 @@ regionBBoxes(:, 4 : 6) = min(regionBBoxes(:, 1 : 3) + [BatchSize(1), outSize(2 :
 % initialize zarr file
 init_val = zeros(1, dtype);
 if ~exist(dsrTmppath, 'dir')
-    dsr_bim = blockedImage(dsrTmppath, outSize, BlockSize, init_val, "Adapter", ZarrAdapter, 'Mode', 'w');
+    try
+        dsr_bim = blockedImage(dsrTmppath, outSize, BlockSize, init_val, "Adapter", CZarrAdapter, 'Mode', 'w');
+    catch ME
+        disp(ME)
+        dsr_bim = blockedImage(dsrTmppath, outSize, BlockSize, init_val, "Adapter", ZarrAdapter, 'Mode', 'w');
+    end
     dsr_bim.Adapter.close();
 end
 
 % set up parallel computing 
-taskSize = 1; % the number of batches a job should process
 numBatch = size(batchBBoxes, 1);
+if isempty(taskSize)
+    taskSize = max(1, min(10, round(numBatch / 5000))); % the number of batches a job should process
+end
 numTasks = ceil(numBatch / taskSize);
 
 maxJobNum = inf;
