@@ -45,7 +45,21 @@ uint64_t imageJImGetZ(const char* fileName){
 void mexFunction(int nlhs, mxArray *plhs[],
         int nrhs, const mxArray *prhs[])
 {
-    char* fileName = mxArrayToString(prhs[0]);
+    // Check if the fileName is a char array or matlab style
+    char* fileName = NULL;
+    if(!mxIsClass(prhs[0], "string")){
+        if(!mxIsChar(prhs[0])) mexErrMsgIdAndTxt("tiff:inputError","The first argument must be a string");
+        fileName = mxArrayToString(prhs[0]);
+    }
+    else{ 
+        mxArray* mString[1];
+        mxArray* mCharA[1];
+
+        // Convert string to char array
+        mString[0] = mxDuplicateArray(prhs[0]);
+        mexCallMATLAB(1, mCharA, 1, mString, "char");
+        fileName = mxArrayToString(mCharA[0]);
+    }
     
     TIFFSetWarningHandler(DummyHandler);
     TIFF* tif = TIFFOpen(fileName, "r");

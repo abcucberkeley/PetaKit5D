@@ -207,7 +207,7 @@ void readTiffParallel(uint64_t x, uint64_t y, uint64_t z, const char* fileName, 
         int fd = open(fileName,O_RDONLY | O_BINARY);
         #endif
         if(fd == -1) mexErrMsgIdAndTxt("disk:threadError","File \"%s\" cannot be opened from Disk\n",fileName);
-        
+
         if(!tif) mexErrMsgIdAndTxt("tiff:threadError","File \"%s\" cannot be opened\n",fileName);
         uint64_t offset = 0;
         uint64_t* offsets = NULL;
@@ -580,8 +580,21 @@ uint64_t imageJImGetZ(const char* fileName){
 void mexFunction(int nlhs, mxArray *plhs[],
                  int nrhs, const mxArray *prhs[])
 {
-    char* fileName = mxArrayToString(prhs[0]);
+    // Check if the fileName is a char array or matlab style
+    char* fileName = NULL;
+    if(!mxIsClass(prhs[0], "string")){
+        if(!mxIsChar(prhs[0])) mexErrMsgIdAndTxt("tiff:inputError","The first argument must be a string");
+        fileName = mxArrayToString(prhs[0]);
+    }
+    else{ 
+        mxArray* mString[1];
+        mxArray* mCharA[1];
 
+        // Convert string to char array
+        mString[0] = mxDuplicateArray(prhs[0]);
+        mexCallMATLAB(1, mCharA, 1, mString, "char");
+        fileName = mxArrayToString(mCharA[0]);
+    }
 
     uint8_t flipXY = 1;
     //uint8_t flipXY = 0;

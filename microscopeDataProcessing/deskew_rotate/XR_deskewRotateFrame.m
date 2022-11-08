@@ -186,11 +186,7 @@ if (~DSRCombined && (~exist(dsFullname, 'file') || ip.Results.Overwrite)) || DSR
     end
     % remove camera background
     if BKRemoval
-        try 
-            BKIm = parallelReadTiff(BackgroundImage);
-        catch
-            BKIm = readtiff(BackgroundImage);
-        end
+        BKIm = readtiff(BackgroundImage);
         frame = XR_CameraBackgroundRemoval(frame, BKIm, 'constOffset', ip.Results.constOffset);
     end
 

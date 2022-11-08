@@ -349,7 +349,7 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
                 end
             else
                 temp_file_info = dir(tmpFullpath);
-                if (datenum(clock) - [temp_file_info.datenum]) * 24 * 60 < unitWaitTime
+                if minutes(datetime('now') -  datetime(temp_file_info.date)) < unitWaitTime
                     continue; 
                 else
                     fclose(fopen(tmpFullpath, 'w'));
@@ -384,6 +384,10 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
                 t0=tic; [status, cmdout] = system(func_str, '-echo'); toc(t0)
             end
             trial_counter(fs) = trial_counter(fs) + 1;
+            if ~parseCluster && exist(outputFullpath, 'file') && exist(tmpFullpath, 'file')
+                delete(tmpFullpath);
+            end
+
             fprintf('Done!\n');
         end
     end

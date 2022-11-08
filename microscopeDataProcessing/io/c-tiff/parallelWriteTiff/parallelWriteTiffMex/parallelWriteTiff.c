@@ -338,7 +338,23 @@ void writeTiffParallel(uint64_t x, uint64_t y, uint64_t z, const char* fileName,
 void mexFunction(int nlhs, mxArray *plhs[],
                  int nrhs, const mxArray *prhs[])
 {
-    const char* fileName = mxArrayToString(prhs[0]);
+    if(nrhs < 2) mexErrMsgIdAndTxt("tiff:inputError","This function requires at least 2 arguments");
+
+    // Check if the fileName is a char array or matlab style
+    char* fileName = NULL;
+    if(!mxIsClass(prhs[0], "string")){
+        if(!mxIsChar(prhs[0])) mexErrMsgIdAndTxt("tiff:inputError","The first argument must be a string");
+        fileName = mxArrayToString(prhs[0]);
+    }
+    else{ 
+        mxArray* mString[1];
+        mxArray* mCharA[1];
+
+        // Convert string to char array
+        mString[0] = mxDuplicateArray(prhs[0]);
+        mexCallMATLAB(1, mCharA, 1, mString, "char");
+        fileName = mxArrayToString(mCharA[0]);
+    }
 
     // Check if folder exists, if not then make it (recursive if needed)
     char* folderName = strdup(fileName);
