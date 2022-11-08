@@ -45,7 +45,7 @@ switch lower(pr.Mode)
         saveastiff(img, filepath, options);
 end
 
-if pr.groupWrite
+if pr.groupWrite && ~ispc
     try
         fileattrib(filepath, '+w', 'g');
     catch

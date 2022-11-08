@@ -146,7 +146,9 @@ if ~DSRCombined
     dsPath = sprintf('%s/DS%s/', rt, surffix);
     if ~exist(dsPath, 'dir')
         mkdir(dsPath);
-        fileattrib(dsPath, '+w', 'g');
+        if ~ispc
+            fileattrib(dsPath, '+w', 'g');
+        end
     end
     dsFullname = [dsPath, fsname, '.tif'];
 end
@@ -242,7 +244,9 @@ if (~DSRCombined && (~exist(dsFullname, 'file') || ip.Results.Overwrite)) || DSR
             dsMIPPath = sprintf('%s/MIPs/', dsPath);
             if ~exist(dsMIPPath, 'dir')
                 mkdir(dsMIPPath);
-                fileattrib(dsMIPPath, '+w', 'g');            
+                if ~ispc                
+                    fileattrib(dsMIPPath, '+w', 'g');
+                end
             end
 
             dsMIPname = sprintf('%s%s_MIP_z.tif', dsMIPPath, fsname);
@@ -297,6 +301,9 @@ end
 if ip.Results.Rotate || DSRCombined
     dsrPath = sprintf('%s/DSR%s/', rt, surffix);
     mkdir(dsrPath);
+    if ~ispc
+        fileattrib(dsrPath, '+w', 'g');
+    end
     
     if saveZarr
         dsrFullname = [dsrPath, fsname, '.zarr'];        
@@ -354,7 +361,9 @@ if ip.Results.Rotate || DSRCombined
             dsrMIPPath = sprintf('%s/MIPs/', dsrPath);
             if ~exist(dsrMIPPath, 'dir')
                 mkdir(dsrMIPPath);
-                fileattrib(dsrMIPPath, '+w', 'g');
+                if ~ispc                
+                    fileattrib(dsrMIPPath, '+w', 'g');
+                end
             end
 
             dsrMIPTmpname = sprintf('%s%s_MIP_z.tif_%s', dsrMIPPath, fsname, uuid);
