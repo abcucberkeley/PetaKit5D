@@ -113,18 +113,6 @@ scale = sum(PSF(:));
 clear PSF
 
 % 2. Prepare parameters for iterations
-%
-% Create indexes for image according to the sampling rate
-% xruan: redefine subsample factors as separate ones
-% idx = repmat({':'},[1 length(sizeI)]);
-% for k = numNSdim % index replicates for non-singleton PSF sizes only
-%     idx{k} = reshape(repmat(1:sizeI(k),[SUBSMPL 1]),[SUBSMPL*sizeI(k) 1]);
-% end
-% idx_y = reshape(repmat(1:sizeI(1),[SUBSMPL 1]),[SUBSMPL*sizeI(1) 1]);
-% idx_x = reshape(repmat(1:sizeI(2),[SUBSMPL 1]),[SUBSMPL*sizeI(2) 1]);
-% idx_z = reshape(repmat(1:sizeI(3),[SUBSMPL 1]),[SUBSMPL*sizeI(3) 1]);
-
-
 wI = max(WEIGHT.*(READOUT + J_1),0);% at this point  - positivity constraint
 % J_1 = J_1 .* (J_1 > 0);
 % J_2 = J_2(idx_y, idx_x, idx_z);
@@ -238,97 +226,6 @@ if useGPU
     J_2 = gather(J_2);
 end
 
-% clear wI H scale Y;
-
-% 4. Convert the right array (for cell it is first array, for notcell it is
-% second array) to the original image class & output whole thing
-% num = 1 + strcmp(classI{1},'notcell');
-% if ~strcmp(classI{2},'double')
-%     J{num} = images.internal.changeClass(classI{2},J{num});
-% end
-
-% J = images.internal.changeClass(classI, J_2);
-
 
 end
 
-
-function otf = decon_psf2otf(psf, outSize)
-
-%PSF2OTF Convert point-spread function to optical transfer function.
-psfSize = size(psf);
-if isempty(outSize)
-  outSize = psfSize;
-elseif ~isempty(psf) % empty arrays are treated similar as in the fftn
-  [psfSize, outSize] = decon_padlength(psfSize, outSize(:).');
-  if any(outSize < psfSize)
-    error('outSizeIsSmallerThanPsfSize')
-  end
-end
-
-
-if ~all(psf(:)==0)
-   
-   % Pad the PSF to outSize
-   padSize = double(outSize - psfSize);
-   psf     = padarray(psf, padSize, 'post');
-
-   % Circularly shift otf so that the "center" of the PSF is at the
-   % (1,1) element of the array.
-   psf    = circshift(psf,-floor(psfSize/2));
-
-   % Compute the OTF
-   otf = fftn(psf);
-
-   % Estimate the rough number of operations involved in the 
-   % computation of the FFT.
-   nElem = prod(psfSize);
-   nOps  = 0;
-   for k=1:ndims(psf)
-      nffts = nElem/psfSize(k);
-      nOps  = nOps + psfSize(k)*log2(psfSize(k))*nffts; 
-   end
-
-   % Discard the imaginary part of the psf if it's within roundoff error.
-   if max(abs(imag(otf(:))))/max(abs(otf(:))) <= nOps*eps
-      otf = real(otf);
-   end
-else
-   otf = zeros(outSize, class(psf));
-end
-
-end
-
-
-function [psz_1, psz_2] = decon_padlength(sz_1, sz_2)
-%PADLENGTH Pad input vectors with ones to give them equal lengths.
-%
-%   Example
-%   -------
-%       [a,b,c] = padlength([1 2],[1 2 3 4],[1 2 3 4 5])
-%       a = 1 2 1 1 1
-%       b = 1 2 3 4 1
-%       c = 1 2 3 4 5
-
-%   Copyright 1993-2003 The MathWorks, Inc.  
-
-% Find longest size vector.  Call its length "numDims".
-% numDims = zeros(nargin, 1);
-% for k = 1:nargin
-%     numDims(k) = length(varargin{k});
-% end
-% numDims = max(numDims);
-numDims = 3;
-
-% Append ones to input vectors so that they all have the same length;
-% assign the results to the output arguments.
-% limit = max(1,nargout);
-% varargout = cell(1,limit);
-% for k = 1 : limit
-%     pSize = [varargin{k} ones(1,numDims-length(varargin{k}))];
-% end
-
-psz_1 = [sz_1 ones(1,numDims-length(sz_1))];
-psz_2 = [sz_2 ones(1,numDims-length(sz_2))];
-
-end

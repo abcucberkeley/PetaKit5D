@@ -56,8 +56,11 @@ for b = 1 : numBatch
 end
 
 cmdout_cell = cat(2, cmdout_cell{:});
-tmp = regexp(cmdout_cell, '^[ ]+(\d+_?\d+)[ ]+.* (R|PD|CG|CD|F|PR|S|ST) ', 'tokens');
-
+if ~isempty(cmdout_cell)
+    tmp = regexp(cmdout_cell, '^[ ]+(\d+_?\d+)[ ]+.* (R|PD|CG|CD|F|PR|S|ST) ', 'tokens');
+else
+    return;    
+end
 cnum = cellfun(@(x) numel(x), tmp);
 tmp(cnum ~= 1) = [];
 job_id_s_m = cellfun(@(x) x{1}{1}, tmp, 'unif', 0);

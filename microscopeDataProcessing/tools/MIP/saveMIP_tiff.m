@@ -22,11 +22,7 @@ end
 dtype = ip.Results.dtype;
 axis = ip.Results.axis;
 
-try
-    im = parallelReadTiff(frameFullname);
-catch ME
-    im = readtiff(frameFullname);
-end
+im = readtiff(frameFullname);
 
 for i = 1 : 3
     if axis(i) == 0

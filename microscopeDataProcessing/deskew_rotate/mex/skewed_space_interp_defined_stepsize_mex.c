@@ -21,7 +21,7 @@ void mexFunction(int nlhs, mxArray *plhs[],
     const uint8_t Reverse = (uint8_t)mxIsLogicalScalarTrue(prhs[3]);
 
     const uint64_t* sz = (uint64_t*)mxGetDimensions(prhs[0]);
-    uint64_t nint = (uint64_t) (floor((double)(sz[2] - 1) / stepsize) + 1);
+    uint64_t nint = (uint64_t) (floor(round((double)(sz[2] - 1) / stepsize * 10000) / 10000) + 1);
     uint64_t dim[3];
     dim[0] = sz[0];
     dim[1] = sz[1];
@@ -42,7 +42,8 @@ void mexFunction(int nlhs, mxArray *plhs[],
     
     uint64_t zind = 0;
     zs_ind_mat[0] = 0;
-    zt_ind_mat[sz[2] - 1] = nint - 1;
+    zs_ind_mat[sz[2] - 1] = nint;
+    zt_ind_mat[sz[2] - 1] = nint;
     for(uint64_t i = 0; i < nint; i++){
         double s;
         double t;
@@ -76,6 +77,7 @@ void mexFunction(int nlhs, mxArray *plhs[],
         // get start and end indices mapping
         if(floor(zout) > zind){
             zs_ind_mat[zind + 1] = i;
+            zt_ind_mat[zind + 1] = i;
             zt_ind_mat[zind] = i - 1;
             zind += 1;
         }
@@ -89,10 +91,12 @@ void mexFunction(int nlhs, mxArray *plhs[],
         printf("%llu %llu %llu\n", z, zs_ind_mat[z], zt_ind_mat[z]);
     }
     */
-    
+
     #pragma omp parallel for
     for(uint64_t z = 0; z < sz[2]; z++){
         if(z == sz[2]-1){
+            if(zs_ind_mat[z] >= nint) 
+                continue;
             uint64_t zIndex = nint-1;
             for(uint64_t i = 0; i < sz[1]; i++){
                 for(uint64_t j = 0; j < sz[0]; j++){
@@ -160,7 +164,6 @@ void mexFunction(int nlhs, mxArray *plhs[],
         free(im_s);
         free(im_t);
     }
-
     free(s_mat);
     free(t_mat);
     free(sw_mat);
