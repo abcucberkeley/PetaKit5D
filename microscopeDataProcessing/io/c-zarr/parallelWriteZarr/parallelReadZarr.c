@@ -244,7 +244,8 @@ void* parallelReadZarrWrapper(char* folderName,uint8_t crop, uint64_t startX, ui
     char dtype[4];
     char order;
     char* cname = NULL;
-    setValuesFromJSON(folderName,&chunkXSize,&chunkYSize,&chunkZSize,dtype,&order,&shapeX,&shapeY,&shapeZ,&cname);
+    uint64_t clevel = 5;
+    setValuesFromJSON(folderName,&chunkXSize,&chunkYSize,&chunkZSize,dtype,&order,&shapeX,&shapeY,&shapeZ,&cname,&clevel);
     
     if(!crop){
         startX = 0;

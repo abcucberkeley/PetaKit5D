@@ -41,12 +41,13 @@ background = background(D(1)+1:D(1)+ImSize(1),D(2)+1:D(2)+ImSize(2));
 
 % Prepare LS Flat-field correction mask
 if LSBackground
-    LSImage = double(LSImage) - double(background);
+    LSImage = single(LSImage) - single(background);
 end
-LSImage = double(LSImage)/double(max(LSImage(:)));
+LSImage = single(LSImage)/single(max(LSImage(:)));
 % Mask = repmat(LSImage,1,1,size(Rawdata,3));
 Mask = LSImage;
-Mask(Mask<LowerLimit) = LowerLimit;
+% Mask(Mask<LowerLimit) = LowerLimit;
+Mask = max(Mask, LowerLimit);
 % background = repmat(background,1,1,size(Rawdata,3));
 
 % Temp = double(Rawdata);
@@ -54,7 +55,8 @@ Temp = single(Rawdata);
 clear Rawdata;
 Temp = Temp-single(background);
 % Temp(Temp<0) = 0;
-Temp = Temp .* single(Temp >= 0);
+% Temp = Temp .* (Temp >= 0);
+Temp = max(Temp, 0);
 
 % correct for odd numbered pixels
 if size(Temp,1)<size(Mask,1)

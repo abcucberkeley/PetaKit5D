@@ -1,10 +1,12 @@
-function [] = RLdecon_for_zarr_block(batchInds, zarrFullpath, psfFullpath, deconFullpath, ...
-    flagFullname, BatchBBoxes, RegionBBoxes, pixelSize, dz, varargin)
+function [] = RLdecon_for_zarr_block_test(batchInds, zarrFullpath, psfFullpath, deconFullpath, ...
+    flagFullname, BatchBBoxes, RegionBBoxes, xyPixelSize, dz, varargin)
 % RL decon for given zarr block/batches and write to the certain output
 % location. 
 % 
-% 
+% xruan (05/24/2022): add support for masked decon, directly skip empty
+% regions if the region is empty in the masks. Masks are 2D projections.
 
+t0 = tic;
 
 ip = inputParser;
 ip.CaseSensitive = false;
@@ -19,6 +21,7 @@ ip.addRequired('RegionBBoxes', @isnumeric);
 ip.addRequired('pixelSize', @isnumeric); %in um
 ip.addRequired('dz', @isnumeric); %in um
 % ip.addParameter('BlockSize', [], @isnumeric);
+ip.addParameter('Save16bit', false , @islogical);
 ip.addParameter('Overwrite', false, @islogical);
 ip.addParameter('SkewAngle', -32.45 , @isnumeric);
 ip.addParameter('flipZstack', false, @islogical); 
@@ -26,7 +29,10 @@ ip.addParameter('Background', [], @isnumeric);
 ip.addParameter('dzPSF', 0.1 , @isnumeric); %in um
 ip.addParameter('DeconIter', 15 , @isnumeric); % number of iterations
 ip.addParameter('scaleFactor', 1e8 , @isnumeric); % scale factor for data
-% ip.addParameter('RLMethod', 'simplified' , @ischar); % rl method {'original', 'simplified', 'cudagen'}
+ip.addParameter('deconMaskFns', {} , @iscell); % Full paths of 2D mask zarr files, in xy, xz, yz order
+ip.addParameter('RLMethod', 'simplified' , @ischar); % rl method {'original', 'simplified', 'cudagen'}
+ip.addParameter('wienerAlpha', 0.005, @isnumeric);
+ip.addParameter('skewed', [], @(x) isempty(x) || islogical(x)); % decon in skewed space
 ip.addParameter('fixIter', false, @islogical); % CPU Memory in Gb
 ip.addParameter('useGPU', false, @islogical); % use gpu for chuck deconvolution. 
 ip.addParameter('uuid', '', @ischar);
@@ -34,9 +40,10 @@ ip.addParameter('debug', false, @islogical);
 ip.addParameter('psfGen', true, @islogical); % psf generation
 
 ip.parse(batchInds, zarrFullpath, psfFullpath, deconFullpath, flagFullname, ...
-    BatchBBoxes, RegionBBoxes, pixelSize, dz, varargin{:});
+    BatchBBoxes, RegionBBoxes, xyPixelSize, dz, varargin{:});
 
 pr = ip.Results;
+Save16bit = pr.Save16bit;
 Overwrite = pr.Overwrite;
 SkewAngle = pr.SkewAngle;
 flipZstack = pr.flipZstack;
@@ -44,6 +51,10 @@ Background = pr.Background;
 dzPSF = pr.dzPSF;
 DeconIter = pr.DeconIter;
 scaleFactor = pr.scaleFactor;
+deconMaskFns = pr.deconMaskFns;
+RLMethod = pr.RLMethod;
+skewed = pr.skewed;
+wienerAlpha = pr.wienerAlpha;
 useGPU = pr.useGPU;
 uuid = pr.uuid;
 psfGen = pr.psfGen;
@@ -73,12 +84,13 @@ end
 if ~exist(deconFullpath, 'dir')
     error('The output zarr file %s doesnot exist!', deconFullpath);
 end
-nv_bim = blockedImage(deconFullpath, 'Adapter', ZarrAdapter);
-
-% oBlockSize =   nv_bim.BlockSize;
-% Mode = nv_bim.Mode;
-% dtype = nv_bim.ClassUnderlying;
-% level = 1;
+try 
+    nv_bim = blockedImage(deconFullpath, 'Adapter', CZarrAdapter);
+catch 
+    nv_bim = blockedImage(deconFullpath, 'Adapter', ZarrAdapter);
+end
+dtype = nv_bim.ClassUnderlying;
+finds = [1, 2; 2, 3; 1, 3];
 
 done_flag = false(numel(batchInds), 1);
 for i = 1 : numel(batchInds)
@@ -88,66 +100,67 @@ for i = 1 : numel(batchInds)
     
     ibStart = BatchBBoxes(i, 1 : 3);
     ibEnd = BatchBBoxes(i, 4 : 6);
-    
-    % load the region in input 
-    % in_batch = bim.getRegion(ibStart, ibEnd);
-    % in_batch = bim.Adapter.getIORegion(ibStart, ibEnd);
-    in_batch = readzarr(zarrFullpath, 'bbox', [ibStart, ibEnd]);
-    
-    % deconvolution
-    frameFullpath = '';
-    deconTmpPath = '';
-    Deskew = false;
-    Rotate = false;
-    Save16bit = ~false;
-    Crop = [];
-    zFlip = false;
-    GenMaxZproj = [0, 0, 0];
-    ResizeImages = false;
-    RLMethod = 'simplified';
-    fixIter = true;
-    errThresh = 1e-12;
-    debug = false;
-    
-    out_batch = RLdecon(frameFullpath, deconTmpPath, psfFullpath, Background, DeconIter, ...
-        dzPSF, dz, Deskew, [], SkewAngle, pixelSize, Rotate, Save16bit, Crop, zFlip, ...
-        GenMaxZproj, ResizeImages, [], RLMethod, fixIter, errThresh, flipZstack, debug, ...
-        'rawdata', in_batch, 'scaleFactor', scaleFactor, 'useGPU', useGPU, 'psfGen', psfGen);
-    
     obStart = RegionBBoxes(i, 1 : 3);
     obEnd = RegionBBoxes(i, 4 : 6);
+
+    % use masks to determine whether to run the decon or directly save an empty region
+    if ~(isempty(deconMaskFns) || isempty(deconMaskFns{1}))
+        skipDecon = false;
+        for f = 1 : 3
+            im_f = readzarr(deconMaskFns{f}, 'bbox', [obStart(finds(f, :)), 1, obEnd(finds(f, :)), 1]);
+            if ~any(im_f(:))
+                skipDecon = true;
+                break;
+            end
+        end
+        
+        if skipDecon
+            % nv_bim.Adapter.setRegion(obStart, obEnd, zeros(obEnd - obStart + 1, dtype));
+            writezarr(zeros(obEnd - obStart + 1, dtype), deconFullpath, 'bbox', [obStart, obEnd]);
+            done_flag(i) = true;
+            toc;
+            continue;
+        end
+    end
+
+    % load the region in input 
+    in_batch = readzarr(zarrFullpath, 'bbox', [ibStart, ibEnd]);
+
+    % deconvolution
+    inputFn = '';
+    outputFn = deconFullpath;
+    Deskew = false;
+    Rotate = false;
+    DSRCombined = true;
+    Reverse = true;
+    fixIter = true;
+    debug = false;
+    save3Dstack = [false, false, false];
+    mipAxis = [0, 0, 0];
+
     baStart = obStart - ibStart + 1;
     baEnd = obEnd - ibStart + 1;
+    deconBbox = [baStart, baEnd];
 
-    out_batch = out_batch(baStart(1) : baEnd(1), baStart(2) : baEnd(2), baStart(3) : baEnd(3));
+    out_batch = RLdecon(inputFn, outputFn, psfFullpath, xyPixelSize, dz, dzPSF, ...
+        'rawdata', in_batch, 'Save16bit', Save16bit, 'SkewAngle', SkewAngle, ...
+        'Deskew', Deskew, 'Rotate', Rotate, 'DSRCombined', DSRCombined, 'Reverse', Reverse, ...
+        'Background', Background, 'DeconIter', DeconIter, 'RLMethod', RLMethod, ...
+        'skewed', skewed, 'wienerAlpha', wienerAlpha, 'fixIter', fixIter, 'scaleFactor', scaleFactor, ...
+        'deconBbox', deconBbox, 'useGPU', useGPU, 'psfGen', psfGen, 'debug', debug, 'save3Dstack', save3Dstack, ...
+        'mipAxis', mipAxis);
     
-    % write out_batch (in the future, directly write the whole region)
-    % find the block inds in the output file and write each block
-%     bSub_s = ceil(obStart ./ oBlockSize);
-%     bSub_t = ceil(obEnd ./ oBlockSize);
-    
-%     [Y, X, Z] = ndgrid(bSub_s(1) : bSub_t(1), bSub_s(2) : bSub_t(2), bSub_s(3) : bSub_t(3));
-%     bSubs = [Y(:), X(:), Z(:)];
-    
-%     for j = 1 : size(bSubs)
-%         bSub_j = bSubs(j, :);
-%         regionStart = (bSub_j-1) .* oBlockSize + 1;
-%         blStart = regionStart - obStart + 1;
-%         blEnd = min(blStart + oBlockSize - 1, size(out_batch, [1, 2, 3]));
-%         out_block = out_batch(blStart(1) : blEnd(1), blStart(2) : blEnd(2), blStart(3) : blEnd(3));
-%         out_block = cast(out_block, dtype);
-%         writeZarrBlock(nv_bim, bSub_j, out_block, level, Mode)
-%     end
-    nv_bim.Adapter.setRegion(obStart, obEnd, out_batch)
-    % writezarr(out_batch, deconFullpaths, 'bbox', [obStart, obEnd]);
+    clear in_batch;
 
+    writezarr(out_batch, deconFullpath, 'bbox', [obStart, obEnd]);
     done_flag(i) = true;
-
     toc;
 end
 
 if all(done_flag)
-    fclose(fopen(flagFullname, 'w'));
+    % fclose(fopen(flagFullname, 'w'));
+    t = toc(t0);
+    save(flagFullname, 't')    
 end
 
 end

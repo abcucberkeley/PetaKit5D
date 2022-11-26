@@ -34,7 +34,11 @@ function XR_stitching_frame_zarr_dev_v1(tileFullpaths, coordinates, varargin)
 % xruan (03/03/2022): fix bug for skewed space stitch coordinate conversion for z coordinate 
 % xruan (06/20/2022): add input variable axisWeight for user defined weights for optimization
 % xruan (08/25/2022): change CropToSize to tileOutBbox (more generic)
-
+% xruan (11/19/2022): compute feather power within the distance map to save
+% time for stitching processing
+% xruan (11/25/2022): use 100 GB as threshold for big/small data. Use zstd
+% and node factor 1 for big data, and use lz4 and node factor 2 for small
+% data. Also use stitch block info from primary channel for secondary channels.
 
 ip = inputParser;
 ip.CaseSensitive = false;
@@ -71,6 +75,7 @@ ip.addParameter('resampleType', 'xy_isotropic', @ischar);
 ip.addParameter('resample', [], @isnumeric);
 ip.addParameter('deconRotate', false, @islogical);
 ip.addParameter('BlendMethod', 'none', @ischar);
+ip.addParameter('blendWeightDegree', 10, @isnumeric);
 ip.addParameter('halfOrder', [3, 2, 1], @isnumeric);
 ip.addParameter('overlapType', '', @ischar); % '', 'none', 'half', or 'full'
 ip.addParameter('xcorrShift', true, @islogical);
@@ -97,6 +102,7 @@ ip.addParameter('tileIdx', [] , @isnumeric); % tile indices
 ip.addParameter('processFunPath', '', @(x) isempty(x) || ischar(x)); % path of user-defined process function handle
 ip.addParameter('stitchMIP', [], @(x) isempty(x)  || (islogical(x) && (numel(x) == 1 || numel(x) == 3))); % 1x3 vector or vector, by default, stitch MIP-z
 ip.addParameter('stitch2D', false, @(x)islogical(x));  
+ip.addParameter('bigStitchData', false, @(x)islogical(x));  
 ip.addParameter('parseCluster', true, @islogical);
 ip.addParameter('masterCompute', true, @islogical); % master node participate in the task computing. 
 ip.addParameter('jobLogDir', '../job_logs', @ischar);
@@ -136,6 +142,7 @@ DeconDirstr = pr.DeconDirstr;
 DS = pr.DS;
 DSR = pr.DSR;
 BlendMethod = pr.BlendMethod;
+blendWeightDegree = pr.blendWeightDegree;
 halfOrder = pr.halfOrder;
 overlapType = pr.overlapType;
 xcorrShift = pr.xcorrShift;
@@ -173,6 +180,7 @@ tileIdx = pr.tileIdx;
 processFunPath = pr.processFunPath;
 stitchMIP = pr.stitchMIP;
 stitch2D = pr.stitch2D;
+bigStitchData = pr.bigStitchData;
 uuid = pr.uuid;
 debug = pr.debug;
 
@@ -371,8 +379,7 @@ else
     end
 end
 
-% change stitch resample to [1, 1, 1] for DSR (because we resample DSR
-% for the future.
+% change stitch resample to [1, 1, 1] for DSR (because we resample DSR for the future).
 if isempty(resample)
     resample = [1, 1, 1];
 end
@@ -400,15 +407,26 @@ if stitch2D && nF < 50
     parseCluster = false;
 end
 
+% check if total input size is greater than 100 GB if bigStitchData is false
+nodeFactor = 2;
+compressor = 'lz4';
+if ~stitch2D && ~bigStitchData && nF > 4 && prod(imSize) * nF * 4 > (100 * 2^30)
+    bigStitchData = true;
+end
+if bigStitchData
+    nodeFactor = 1;
+    compressor = 'zstd';    
+end
 
-XR_tiffToZarr_wrapper(tiffFullpaths, 'zarrPathstr', zarrPathstr, 'blockSize', blockSize, 'usrFcn', fn, ...
-    'flippedTile', zarr_flippedTile, 'resample', stitchResample, 'partialFile', partialFile,  ...
-    'InputBbox', InputBbox, 'tileOutBbox', tileOutBbox, 'parseCluster', parseCluster, 'cpuOnlyNodes', cpuOnlyNodes);
+XR_tiffToZarr_wrapper(tiffFullpaths, 'zarrPathstr', zarrPathstr, 'blockSize', round(blockSize / 2), ...
+    'usrFcn', fn, 'flippedTile', zarr_flippedTile, 'resample', stitchResample, ...
+    'partialFile', partialFile, 'InputBbox', InputBbox, 'tileOutBbox', tileOutBbox, ...
+    'parseCluster', parseCluster, 'bigData', bigStitchData, 'cpuOnlyNodes', cpuOnlyNodes);
 
 % load all zarr headers as a cell array and get image size for all tiles
 imSizes = zeros(nF, 3);
 zarrHeaders = cell(nF, 1);
-for i = 1 : nF
+for i = 1 : nF 
     zarrFullpath = zarrFullpaths{i};
     try 
         bim = blockedImage(zarrFullpath, "Adapter", CZarrAdapter);
@@ -425,7 +443,6 @@ for i = 1 : nF
     end
 end
 
-% stitch2D = false;
 if all(imSizes(:, 3) == 1)
     stitch2D = true;
 end
@@ -482,15 +499,12 @@ xyz_shift = xyz;
 % calculate relative/absolute shifts between tiles
 if xcorrShift && isPrimaryCh
     xcorrDir = sprintf('%s/%s/xcorr/%s/', dataPath, ResultDir, nv_fsname);
-    % shiftMethod = 'local';
-    % shiftMethod = 'grid';
-    % shiftMethod = 'global';
     assign_method = shiftMethod;
     
     MaxOffset = [xyMaxOffset, xyMaxOffset, zMaxOffset];
     [xyz_shift, d_shift] = stitch_shift_assignment(zarrFullpaths, xcorrDir, imSizes, xyz, ...
         px, [xf, yf, zf], overlap_matrix, overlap_regions, MaxOffset, xcorrDownsample, ...
-        tileIdx, assign_method, stitch2D, axisWeight, groupFile, parseCluster);
+        tileIdx, assign_method, stitch2D, axisWeight, groupFile, parseCluster, nodeFactor);
 elseif ~isPrimaryCh
     if ~exist(stitchInfoFullpath, 'file')
         error('The stitch information filename %s does not exist!', stitchInfoFullpaths);
@@ -513,11 +527,8 @@ end
 if isempty(overlapType)
     if strcmp(BlendMethod, 'none')
         overlapType = 'none';
-        % halfOrder = [1, 2, 3];
     else
         overlapType = 'half';
-        % halfOrder = [2, 1, 3];    
-        % halfOrder = [1, 2, 3];    
     end
 end
 
@@ -604,7 +615,6 @@ if ~isempty(boundboxCrop)
     nxs = bbox(5) - bbox(2) + 1;
     nzs = bbox(6) - bbox(3) + 1;
 end
-
 
 % to increase the scalability of the code, we use block-based processing
 % first obtain coordinate data structure for blocks
@@ -744,12 +754,24 @@ if exist(nv_tmp_raw_fullname, 'dir')
     rmdir(nv_tmp_raw_fullname, 's');
 end
 
-init_val = zeros(1, dtype);
 try
-    nv_bim = blockedImage(nv_tmp_raw_fullname, [nys, nxs, nzs], blockSize, init_val, "Adapter", CZarrAdapter, 'Mode', 'w');
+    % nv_bim = blockedImage(nv_tmp_raw_fullname, [nys, nxs, nzs], blockSize, init_val, "Adapter", CZarrAdapter, 'Mode', 'w');
+    switch dtype
+        case 'single'
+            ddtype = 'f4';
+        case 'uint16'
+            ddtype = 'u2';
+        otherwise
+            error('Unsupported data type');
+    end    
+    createZarrFile(nv_tmp_raw_fullname, 'chunks', blockSize, 'dtype', ddtype, 'order', 'F', ...
+        'shape', [nys, nxs, nzs], 'cname', compressor, 'level', 1); 
+    nv_bim = blockedImage(nv_tmp_raw_fullname, 'Adapter', CZarrAdapter);
 catch ME
     disp(ME);
+    init_val = zeros(1, dtype);    
     nv_bim = blockedImage(nv_tmp_raw_fullname, [nys, nxs, nzs], blockSize, init_val, "Adapter", ZarrAdapter, 'Mode', 'w');
+    nv_bim.Adapter.close()
 end
 
 save('-v7.3', block_info_tmp_fullname, 'zarrHeaders', 'overlap_matrix', 'half_ol_region_cell', ...
@@ -767,7 +789,8 @@ if strcmpi(BlendMethod, 'feather')
         imdistPath = [dataPath, filesep, ResultDir, '/imdist/'];
         mkdir(imdistPath);
         [imdistFullpaths] = compute_tile_distance_transform(block_info_fullname, stitchPath, ...
-            zarrFullpaths, 'singleDistMap', singleDistMap, 'parseCluster', parseCluster);
+            zarrFullpaths, 'blendWeightDegree', blendWeightDegree, 'singleDistMap', singleDistMap, ...
+            'blockSize', round(blockSize / 2), 'compressor', compressor, 'parseCluster', parseCluster);
         % imdistFullpaths = cellfun(@(x) [imdistPath, x, '.zarr'], fsnames, 'unif', 0);
     else
         usePrimaryDist = true;
@@ -787,7 +810,8 @@ if strcmpi(BlendMethod, 'feather')
             imdistPath = [dataPath, filesep, ResultDir, '/imdist/'];
             mkdir(imdistPath);
             [imdistFullpaths] = compute_tile_distance_transform(block_info_fullname, stitchPath, ...
-                zarrFullpaths,  'singleDistMap', singleDistMap, 'parseCluster', parseCluster);
+                zarrFullpaths, 'blendWeightDegree', blendWeightDegree, 'singleDistMap', singleDistMap, ...
+                'blockSize', round(blockSize / 2), 'compressor', compressor, 'parseCluster', parseCluster);
         end
     end
     if singleDistMap
@@ -812,7 +836,6 @@ end
 if strcmpi(BlendMethod, 'separate')
     st_indices = round(xyz_shift ./ ([xf, yf, zf] * px));    
     processStitchSeparteTiles(zarrFullpaths, stitchPath, st_indices, imSizes, pImSz);
-    nv_bim.Adapter.close()
     nv_fullname = sprintf('%s/%s/%s.zarr', dataPath, ResultDir, nv_fsname);
     if ~exist(nv_fullname, 'dir')
         movefile(nv_tmp_fullname, nv_fullname);
@@ -821,7 +844,6 @@ if strcmpi(BlendMethod, 'separate')
     end    
     return;
 end
-
 
 % process for each block based on all BlockInfo use distributed computing
 % framework (change to use the slurm generic computing framework)
@@ -834,6 +856,9 @@ if parseCluster
     taskSize = 5; % the number of blocks a job should process for [500, 500, 500]
     % keep task size inversely propotional to block size
     taskSize = max(1, round(prod([500, 500, 500]) / prod(blockSize) * taskSize));
+    if numBlocks > 1e5
+        taskSize = max(taskSize, round(numBlocks / 5000));
+    end
 else
     taskSize = numBlocks;
 end
@@ -849,18 +874,25 @@ mkdir(zarrFlagPath);
 
 zarrFlagFullpaths = cell(numTasks, 1);
 funcStrs = cell(numTasks, 1);
-PerBlockInfoPath = sprintf('%s/%s/%s/%s/', dataPath, ResultDir, stitchInfoDir, nv_fsname);
-mkdir(PerBlockInfoPath);
+if isPrimaryCh 
+    PerBlockInfoPath = sprintf('%s/%s/%s/%s/', dataPath, ResultDir, stitchInfoDir, nv_fsname);
+    mkdir(PerBlockInfoPath);
+else
+    [pstr, fsn] = fileparts(stitchInfoFullpath);
+    PerBlockInfoPath = [pstr, '/', fsn];
+end
 imdistFullpaths_str = sprintf('{''%s''}', strjoin(imdistFullpaths, ''','''));    
 for t = 1 : numTasks
     blockInds = (t - 1) * taskSize + 1 : min(t * taskSize, numBlocks);
 
     % save block info searately for each task for faster access
     PerBlockInfoFullpath = sprintf('%s/stitch_block_info_blocks_%d_%d.mat', PerBlockInfoPath, blockInds(1), blockInds(end));
-    PerBlockInfoTmppath = sprintf('%s/stitch_block_info_blocks_%d_%d_%s.mat', PerBlockInfoPath, blockInds(1), blockInds(end), uuid);
-    stitchBlockInfo_t = stitchBlockInfo(blockInds);
-    save('-v7.3', PerBlockInfoTmppath, 'blockInds', 'stitchBlockInfo_t');
-    movefile(PerBlockInfoTmppath, PerBlockInfoFullpath);
+    if isPrimaryCh
+        PerBlockInfoTmppath = sprintf('%s/stitch_block_info_blocks_%d_%d_%s.mat', PerBlockInfoPath, blockInds(1), blockInds(end), uuid);
+        stitchBlockInfo_t = stitchBlockInfo(blockInds);
+        save('-v7.3', PerBlockInfoTmppath, 'blockInds', 'stitchBlockInfo_t');
+        movefile(PerBlockInfoTmppath, PerBlockInfoFullpath);
+    end
     
     zarrFlagFullpaths{t} = sprintf('%s/blocks_%d_%d.mat', zarrFlagPath, blockInds(1), blockInds(end));
     funcStrs{t} = sprintf(['processStitchBlock([%s],''%s'',''%s'',''%s'',[],[],[],', ...
@@ -873,13 +905,13 @@ inputFullpaths = repmat({block_info_fullname}, numTasks, 1);
 outputFullpaths = zarrFlagFullpaths;
 
 % abc cluster
-cpusPerTask = 1;
+cpusPerTask = 1 * nodeFactor;
 maxTrialNum = 2;
 jobTimeLimit = taskSize * (0.5 / 60);
 
-if ~exist(nv_fullname, 'dir')
+if ~exist(nv_fullname, 'dir') 
     is_done_flag = slurm_cluster_generic_computing_wrapper(inputFullpaths, outputFullpaths, funcStrs, ...
-        'cpusPerTask', cpusPerTask, 'jobTimeLimit', jobTimeLimit, 'maxTrialNum', 2, 'parseCluster', parseCluster);    
+        'cpusPerTask', cpusPerTask, 'jobTimeLimit', jobTimeLimit, 'maxTrialNum', 2, 'parseCluster', parseCluster);
 end
 
 if ~exist(nv_fullname, 'dir') && ~all(is_done_flag)
@@ -915,15 +947,12 @@ if ~debug
     rmdir(zarrFlagPath, 's');
 end
 
-nv_bim.Adapter.close()
-
 % create multiresolution zarr file
 if saveMultires
     zarrFullpath = nv_tmp_raw_fullname;
     outputFullpath = nv_tmp_raw_fullname;
     XR_multiresZarrGeneration(zarrFullpath, outputFullpath, varargin)    
 end
-
 
 % nv_fullname = sprintf('%s/%s/%s.zarr', dataPath, ResultDir, fsname_first(1:end-21));
 if ~exist(nv_fullname, 'dir')

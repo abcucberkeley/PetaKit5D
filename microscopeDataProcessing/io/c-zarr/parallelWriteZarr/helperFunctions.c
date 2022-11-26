@@ -177,7 +177,26 @@ void setCnameFromJSON(cJSON *json, char** cname){
     
 }
 
-void setValuesFromJSON(char* fileName,uint64_t *chunkXSize,uint64_t *chunkYSize,uint64_t *chunkZSize,char* dtype,char* order,uint64_t *shapeX,uint64_t *shapeY,uint64_t *shapeZ,char** cname){
+void setClevelFromJSON(cJSON *json, uint64_t* clevel){
+    cJSON *jsonItem = json->child;
+    
+    while(jsonItem){
+        if(!strcmp(jsonItem->string,"clevel")){
+            *clevel = jsonItem->valueint;
+            return;
+        }
+        // For gzip
+        if(!strcmp(jsonItem->string,"level")){     
+            *clevel = jsonItem->valueint;
+            return;
+        }
+        jsonItem = jsonItem->next;
+    } 
+    mexErrMsgIdAndTxt("zarr:zarrayError","Compression level not found in .zarray file\n");
+    
+}
+
+void setValuesFromJSON(char* fileName,uint64_t *chunkXSize,uint64_t *chunkYSize,uint64_t *chunkZSize,char* dtype,char* order,uint64_t *shapeX,uint64_t *shapeY,uint64_t *shapeZ,char** cname, uint64_t* clevel){
 
     char* zArray = ".zarray";
     char* fnFull = (char*)malloc(strlen(fileName)+9);
@@ -226,6 +245,7 @@ void setValuesFromJSON(char* fileName,uint64_t *chunkXSize,uint64_t *chunkYSize,
         }
         else if(!strcmp(json->string,"compressor")){
             setCnameFromJSON(json, cname);
+            setClevelFromJSON(json, clevel);
             flags[4] = 1;
         }
         json = json->next;
@@ -233,7 +253,7 @@ void setValuesFromJSON(char* fileName,uint64_t *chunkXSize,uint64_t *chunkYSize,
     cJSON_Delete(json);
 }
 
-void setJSONValues(char* fileName,uint64_t *chunkXSize,uint64_t *chunkYSize,uint64_t *chunkZSize,char* dtype,char* order,uint64_t *shapeX,uint64_t *shapeY,uint64_t *shapeZ, char* cname){
+void setJSONValues(char* fileName,uint64_t *chunkXSize,uint64_t *chunkYSize,uint64_t *chunkZSize,char* dtype,char* order,uint64_t *shapeX,uint64_t *shapeY,uint64_t *shapeZ, char* cname, uint64_t* clevel){
     
     // Overflows for ints greater than 32 bit for chunkSizes and shape
     cJSON* zArray = cJSON_CreateObject();
@@ -246,14 +266,14 @@ void setJSONValues(char* fileName,uint64_t *chunkXSize,uint64_t *chunkYSize,uint
     
     if(!strcmp(cname,"lz4") || !strcmp(cname,"blosclz") || !strcmp(cname,"lz4hc") || !strcmp(cname,"zlib") || !strcmp(cname,"zstd")){
         cJSON_AddNumberToObject(compressor, "blocksize", 0);
-        cJSON_AddNumberToObject(compressor, "clevel", 5);
+        cJSON_AddNumberToObject(compressor, "clevel", *clevel);
         cJSON_AddStringToObject(compressor, "cname", cname);
         cJSON_AddStringToObject(compressor, "id", "blosc");
         cJSON_AddNumberToObject(compressor, "shuffle", 1);
     }
     else if(!strcmp(cname,"gzip")){
         cJSON_AddStringToObject(compressor, "id", cname);
-        cJSON_AddNumberToObject(compressor, "level", 1);
+        cJSON_AddNumberToObject(compressor, "level", *clevel);
     }
     else mexErrMsgIdAndTxt("zarr:zarrayError","Compressor: \"%s\" is not currently supported\n",cname);
 

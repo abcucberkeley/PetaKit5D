@@ -23,6 +23,7 @@ try
     if isempty(bbox)
         data = parallelReadZarr(filepath);
     else
+        bbox = bbox(:)';
         data = parallelReadZarr(filepath, bbox);        
     end
 catch ME

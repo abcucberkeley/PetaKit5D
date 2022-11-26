@@ -26,6 +26,7 @@ ip.addParameter('InputBbox', [], @isnumeric); % crop input tile before processin
 ip.addParameter('tileOutBbox', [], @isnumeric); % crop output tile after processing
 ip.addParameter('usrFcn', '', @(x) isempty(x) || isa(x,'function_handle') || ischar(x) || iscell(x));
 ip.addParameter('parseCluster', true, @islogical);
+ip.addParameter('bigData', true, @islogical);
 ip.addParameter('masterCompute', true, @islogical); % master node participate in the task computing. 
 ip.addParameter('jobLogDir', '../job_logs', @ischar);
 ip.addParameter('cpusPerTask', 1, @isnumeric);
@@ -50,6 +51,7 @@ tileOutBbox = pr.tileOutBbox;
 usrFcn = pr.usrFcn;
 jobLogDir = pr.jobLogDir;
 parseCluster = pr.parseCluster;
+bigData = pr.bigData;
 masterCompute = pr.masterCompute;
 cpusPerTask = pr.cpusPerTask;
 cpuOnlyNodes = pr.cpuOnlyNodes;
@@ -99,6 +101,12 @@ if partialFile
     end
 end
 
+if bigData
+    compressor = 'zstd';
+else
+    compressor = 'lz4';
+end
+
 zarrFullpaths = cell(nF, 1);
 func_strs = cell(nF, 1);
 for i = 1 : nF
@@ -129,15 +137,19 @@ for i = 1 : nF
     end
     
     func_strs{i} = sprintf(['tiffToZarr(%s,''%s'',[],''BlockSize'',%s,''flipZstack'',%s,', ...
-        '''resample'',%s,''InputBbox'',%s,''tileOutBbox'',%s,''usrFcn'',''%s'')'], ...
+        '''resample'',%s,''InputBbox'',%s,''tileOutBbox'',%s,''compressor'',''%s'',''usrFcn'',''%s'')'], ...
         sprintf('{''%s''}', strjoin(tiffFullpath_group_i, ''',''')), zarrFullpaths{i}, ...
         strrep(mat2str(blockSize), ' ', ','), string(flipZstack), strrep(mat2str(resample), ' ', ','), ...
-        strrep(mat2str(InputBbox), ' ', ','), strrep(mat2str(tileOutBbox), ' ', ','), usrFcn_strs{cind});
+        strrep(mat2str(InputBbox), ' ', ','), strrep(mat2str(tileOutBbox), ' ', ','), ...
+        compressor, usrFcn_strs{cind});
 end
 
 [estMem, estGPUMem, rawImageSize] = XR_estimateComputingMemory(tiffFullpaths{1}, {'deconvolution'}, 'cudaDecon', false);
 if cpusPerTask * 21 < rawImageSize * 2.5 * numel(tiffFullpath_group_i)
     cpusPerTask = min(24, ceil(rawImageSize * 2.5 * numel(tiffFullpath_group_i) / 21));
+end
+if ~bigData
+    cpusPerTask = cpusPerTask * 2;
 end
 maxTrialNum = 2;
 

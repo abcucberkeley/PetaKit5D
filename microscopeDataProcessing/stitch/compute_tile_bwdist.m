@@ -1,11 +1,13 @@
-function [] = compute_tile_bwdist(blockInfoFullname, tileInd, bwdistFullpath, singleDistMap, Overwrite)
+function [] = compute_tile_bwdist(blockInfoFullname, tileInd, bwdistFullpath, weightDegree, singleDistMap, blockSize, compressor, Overwrite)
 % compute distance transform for a tile after removing overlap regions.
 % 
 % Author: Xiongtao Ruan (10/29/2020)
 % xruan (11/02/2020): only compute distance in overlap regions, and also
 % only consider distance in xy plane.
+% xruan (11/19/2022): compute feather power within the distance map to save
+% time for stitching processing
 
-if nargin < 5
+if nargin < 8
     Overwrite = false;
 end
 
@@ -47,8 +49,15 @@ counter = 1;
 sz = size(im_i);
 im_dist = ones(sz, 'single');
 if singleDistMap
-    for z = 1 : size(im_i, 3)
-        im_dist(:, :, z) = bwdist(im_i(:, :, z)) + 1;
+    im_i_c = im_i(:, :, round((sz(3) + 1) / 2));
+    im_dist_c = ((bwdist(im_i_c) + 1) / 10) .^ weightDegree;
+    for z = 1 : sz(3)
+        im_i_z = im_i(:, :, z);
+        if sum(im_i_z ~= im_i_c, 'all') == 0
+            im_dist(:, :, z) = im_dist_c;
+        else
+            im_dist(:, :, z) = ((bwdist(im_i(:, :, z)) + 1) / 10) .^ weightDegree;
+        end
     end
 else
     for j = 1 : nF
@@ -81,7 +90,8 @@ else
         % distance in xy plane
         im_dist_ij = zeros(size(im_ij), 'single');
         for z = 1 : size(im_ij, 3)
-            im_dist_ij(:, :, z) = bwdist(im_ij(:, :, z)) + 1;
+            % im_dist_ij(:, :, z) = bwdist(im_ij(:, :, z)) + 1;
+            im_dist_ij(:, :, z) = ((bwdist(im_ij(:, :, z)) + 1) / 10) .^ weightDegree;
         end
 
         s = mbbox(1 : 3) - mbbox_pad(1 : 3) + 1;
@@ -100,17 +110,26 @@ else
     win_z = tukeywin(sz(3) * 1.1, 0.5);
     win_z = win_z(round(sz(3) * 0.05) : round(sz(3) * 0.05) + sz(3) - 1);
 end
-im_dist = im_dist .* permute(win_z, [2, 3, 1]);
+im_dist = im_dist .* (permute(win_z, [2, 3, 1]) .^ weightDegree);
 
 im_dist = im_dist .* im_i_orig;
-% im_dist = single(bwdist(im_i));
-% bim_dist = blockedImage(im_dist);
 clear im_i_orig im_i;
 
 % write to zarr
 zarrFilename = bwdistFullpath;
 tmpFilename = [zarrFilename '_' uuid];
 % write(bim_dist, tmpFilename, "BlockSize", bim_i.BlockSize, "Adapter", ZarrAdapter);
+% createZarrFile(tmpFilename, 'chunks', blockSize, 'dtype', 'f4', 'order', 'F', ...
+%     'shape', size(im_dist), 'cname', 'zstd', 'level', 2);
+try
+    createZarrFile(tmpFilename, 'chunks', blockSize, 'dtype', 'f4', 'order', 'F', ...
+        'shape', size(im_dist), 'cname', compressor, 'level', 1);    
+    % bim = blockedImage(tmpFilename, sz, blockSize, zeros(1, 'single'), "Adapter", CZarrAdapter, 'mode', 'w');
+catch ME
+    disp(ME);
+    bim = blockedImage(tmpFilename, sz, blockSize, zeros(1, 'single'), "Adapter", ZarrAdapter, 'mode', 'w');
+    bim.Adapter.close();    
+end    
 writezarr(im_dist, tmpFilename);
 
 % mv tmp result folder to output folder

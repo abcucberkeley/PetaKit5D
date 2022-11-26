@@ -30,6 +30,7 @@ ip.addParameter('resample', [], @(x) isempty(x) || isnumeric(x));
 ip.addParameter('InputBbox', [], @(x) isnumeric(x));
 ip.addParameter('tileOutBbox', [], @(x) isempty(x) || isnumeric(x));
 ip.addParameter('readWholeTiff', true, @islogical);
+ip.addParameter('compressor', 'lz4', @ischar);
 ip.addParameter('usrFcn', '', @(x) isempty(x) || isa(x,'function_handle') || ischar(x));
 ip.addParameter('uuid', '', @ischar);
 
@@ -44,6 +45,7 @@ resample = pr.resample;
 InputBbox = pr.InputBbox;
 tileOutBbox = pr.tileOutBbox;
 readWholeTiff = pr.readWholeTiff;
+compressor = pr.compressor;
 usrFcn = pr.usrFcn;
 uuid = pr.uuid;
 
@@ -91,14 +93,14 @@ else
             tifFilename = tifFilename{1};
         end
         if readWholeTiff
-            % I = readtiff(tifFilename);
-            try 
-                I = parallelReadTiff(tifFilename);
-            catch 
-                I = readtiff_parallel(tifFilename);
-            end
+            I = readtiff(tifFilename);
             if ~isempty(InputBbox)
-                I = I(InputBbox(1) : InputBbox(4), InputBbox(2) : InputBbox(5), InputBbox(3) : InputBbox(6));
+                try
+                    I = crop3d_mex(I, InputBbox);
+                catch ME
+                    disp(ME);
+                    I = I(InputBbox(1) : InputBbox(4), InputBbox(2) : InputBbox(5), InputBbox(3) : InputBbox(6));
+                end
             end
             sz = size(I);
             if ismatrix(I)
@@ -128,16 +130,16 @@ else
         nF = numel(tifFilename);
         I = cell(nF, 1);
         for i = 1 : nF
-            % I{i} = readtiff(tifFilename{i});
-            try 
-                I{i} = parallelReadTiff(tifFilename{i});
-            catch
-                I{i} = readtiff_parallel(tifFilename{i});
-            end
+            I{i} = readtiff(tifFilename{i});
         end
         I = cat(3, I{:});
         if ~isempty(InputBbox)
-            I = I(InputBbox(1) : InputBbox(4), InputBbox(2) : InputBbox(5), InputBbox(3) : InputBbox(6));
+            try
+                I = crop3d_mex(I, InputBbox);
+            catch ME
+                disp(ME);
+                I = I(InputBbox(1) : InputBbox(4), InputBbox(2) : InputBbox(5), InputBbox(3) : InputBbox(6));
+            end
         end
         if ismatrix(I)
             blockSize = blockSize(1 : 2);
@@ -169,7 +171,12 @@ if ~isempty(tileOutBbox)
     bbox = tileOutBbox;
     if isa(bim.Adapter, 'images.blocked.InMemory')
         bim = gather(bim);
-        bim = bim(bbox(1) : bbox(4), bbox(2) : bbox(5), bbox(3) : bbox(6));
+        try
+            bim = crop3d_mex(bim, bbox);
+        catch ME
+            disp(ME);
+            bim = bim(bbox(1) : bbox(4), bbox(2) : bbox(5), bbox(3) : bbox(6));
+        end
         bim = blockedImage(bim, 'BlockSize', blockSize);
     else
         bim = bim.crop(bbox(1 : 3), bbox(4 : 6));
@@ -205,18 +212,26 @@ if numel(sz) == 2
 else
     blockSize = min(sz, blockSize);
 end
-% setBlock(bo, [1, 1, 1], blockData);
 tmpFilename = [zarrFilename '_' uuid];
-% write(bim, tmpFilename, "BlockSize", blockSize, "Adapter", ZarrAdapter);
 if ~exist(tmpFilename, 'dir')
-    init_val = zeros(1, dtype);
     try 
-        nv_bim = blockedImage(tmpFilename, sz, blockSize, init_val, "Adapter", CZarrAdapter, 'Mode', 'w');
+        % nv_bim = blockedImage(tmpFilename, sz, blockSize, init_val, "Adapter", CZarrAdapter, 'Mode', 'w');
+        switch dtype
+            case 'single'
+                ddtype = 'f4';
+            case 'uint16'
+                ddtype = 'u2';
+            otherwise
+                error('Unsupported data type');
+        end
+        createZarrFile(tmpFilename, 'chunks', blockSize, 'dtype', ddtype, 'order', 'F', ...
+            'shape', sz, 'cname', compressor, 'level', 1);        
     catch ME
         disp(ME);
-        nv_bim = blockedImage(tmpFilename, sz, blockSize, init_val, "Adapter", ZarrAdapter, 'Mode', 'w');        
+        init_val = zeros(1, dtype);        
+        nv_bim = blockedImage(tmpFilename, sz, blockSize, init_val, "Adapter", ZarrAdapter, 'Mode', 'w');      
+        nv_bim.Adapter.close();        
     end
-    nv_bim.Adapter.close();
 end
 
 % write zarr
@@ -234,7 +249,6 @@ if exist(zarrFilename, 'dir')
 end
 movefile(tmpFilename, zarrFilename);
 fprintf('Done!\n');
-
 
 end
 

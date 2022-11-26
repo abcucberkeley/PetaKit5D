@@ -133,9 +133,16 @@ for i = 1 : numel(blockInds)
             block_j_mregion(m_bbox(1) : m_bbox(4), m_bbox(2) : m_bbox(5), m_bbox(3) : m_bbox(6)) = 0;
         end
         
-        tim_block(bCoords(1) : bCoords(4), bCoords(2) : bCoords(5), bCoords(3) : bCoords(6), j) = block_j_mregion;
-        tim_f_block(bCoords(1) : bCoords(4), bCoords(2) : bCoords(5), bCoords(3) : bCoords(6), j) = block_j;
-        
+        try
+            indexing4d_mex(tim_block, [bCoords(1 : 3), j, bCoords(4 : 6), j], block_j_mregion);
+            indexing4d_mex(tim_f_block, [bCoords(1 : 3), j, bCoords(4 : 6), j], block_j);
+        catch ME
+            disp(ME);
+            disp(ME.stack);            
+            tim_block(bCoords(1) : bCoords(4), bCoords(2) : bCoords(5), bCoords(3) : bCoords(6), j) = block_j_mregion;
+            tim_f_block(bCoords(1) : bCoords(4), bCoords(2) : bCoords(5), bCoords(3) : bCoords(6), j) = block_j;
+        end
+
         if numTiles > 1 && strcmpi(BlendMethod, 'feather')
             % [~, fsname] = fileparts(bim_j.Source);
             if numel(imdistFullpaths) == 1
@@ -145,7 +152,13 @@ for i = 1 : numel(blockInds)
             end
             % bim_d_j = blockedImage(imdistFullpath, 'Adapter', ZarrAdapter);
             % block_d_j = bim_d_j.Adapter.getIORegion(bboxCoords(1 : 3), bboxCoords(4 : 6));
-            tim_d_block(bCoords(1) : bCoords(4), bCoords(2) : bCoords(5), bCoords(3) : bCoords(6), j) = readzarr(imdistFullpath, 'bbox', bboxCoords);
+            try
+                indexing4d_mex(tim_d_block, [bCoords(1 : 3), j, bCoords(4 : 6), j], readzarr(imdistFullpath, 'bbox', bboxCoords));
+            catch ME
+                disp(ME);
+                disp(ME.stack);
+                tim_d_block(bCoords(1) : bCoords(4), bCoords(2) : bCoords(5), bCoords(3) : bCoords(6), j) = readzarr(imdistFullpath, 'bbox', bboxCoords);
+            end
         end
     end
     
@@ -219,22 +232,30 @@ for i = 1 : numel(blockInds)
                 nv_block = tim_block(:, :, :, 1);
                 nv_f_block = tim_f_block(:, :, :, 1);  
             else
-                tim_d_block = (tim_d_block / 10) .^ wd;
+                % tim_d_block = (tim_d_block / 10) .^ wd;
+                % tim_d_block = tim_d_block .^ wd;
                 % tim_w_block = tim_d_block .* (tim_block ~= 0);
                 % tim_w_block = tim_w_block ./ sum(tim_w_block, 4);
                 % nv_block = sum(tim_block .* tim_w_block, 4);
                 
                 tim_w_block = tim_d_block .* (tim_f_block ~= 0);
-                tim_w_block = tim_w_block ./ sum(tim_w_block, 4);
-                nv_f_block = sum(tim_f_block .* tim_w_block, 4); 
+                % tim_w_block = tim_w_block ./ sum(tim_w_block, 4);
+                % nv_f_block = sum(tim_f_block .* tim_w_block, 4);
+                nv_f_block = sum(tim_f_block .* tim_w_block, 4) ./ sum(tim_w_block, 4); 
                 nv_block = nv_f_block;
             end
     end
     clear tim_block tim_f_block;
     
     if ~strcmp(BlendMethod, 'none') && ~strcmp(BlendMethod, 'blurred')
-        nv_block(isnan(nv_block)) = 0;
-        nv_f_block(isnan(nv_f_block)) = 0;
+        try 
+            nv_block = replace_nan_with_value(nv_block, 0);
+            nv_f_block = replace_nan_with_value(nv_f_block, 0);
+        catch ME
+            disp(ME);
+            nv_block(isnan(nv_block)) = 0;
+            nv_f_block(isnan(nv_f_block)) = 0;
+        end
     end
 
     nv_zero_inds = nv_block == 0 & nv_f_block ~= 0;
@@ -274,32 +295,6 @@ end
 
 if all(done_flag)
     fclose(fopen(flagFullname, 'w'));
-end
-
-end
-
-function [] = writeBlock(bim, blockSub, data, level, Mode) 
-% write block in write or read mode
-
-if strcmp(Mode, 'w')
-    bim.setBlock(blockSub, data);
-else
-    % adapted from blockedImage.setBlock
-    if any(blockSub == bim.SizeInBlocks)
-        % Edge block, check if data needs to be trimmed to fit 
-        totalData = (blockSub-1).*bim.BlockSize + size(data, 1:bim.NumDimensions);
-        trimAmount = max(0, totalData - bim.Size);
-        if any(trimAmount)
-            indStruct.type = '()';
-            indStruct.subs = cell(1,bim.NumDimensions);
-            for dInd = 1:bim.NumDimensions
-                indStruct.subs{dInd} = 1:(size(data,dInd)-trimAmount(dInd));
-            end
-            data = subsref(data, indStruct);
-        end
-    end
-
-    bim.Adapter.setIOBlock(blockSub, level, data);
 end
 
 end

@@ -93,7 +93,7 @@ classdef CZarrAdapter < images.blocked.Adapter
             end
             
             createZarrFile(char(loc), 'chunks', info.IOBlockSize, 'dtype', dtype, ...
-                'order', 'F', 'shape', info.Size);
+                'order', 'F', 'shape', info.Size, 'cname', 'zstd', 'level', 1);
 
             openToRead(obj, loc);
             obj.ZarrInfo =  info;

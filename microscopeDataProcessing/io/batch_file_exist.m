@@ -43,6 +43,7 @@ fns = arrayfun(@(x) [fsns{x}, exts{x}], 1 : nF, 'unif', 0);
 file_exist_mat = false(nF, 1);
 
 % if there are less than 3 folders, and nF / nD > 100
+check_folder = false;
 if (nd < 3) && (nF / nd > 100)
     for d = 1 : nd
         pstr_d = uniq_pstrs{d};
@@ -57,11 +58,11 @@ if (nd < 3) && (nF / nd > 100)
             file_exist_mat(inds_d(f)) = any(strcmp(fns_d, fns{inds_d(f)}));
         end    
     end
-    return;
+    check_folder = true;
 end
 
 % go through each file
-if useParpool && nF > 100
+if useParpool && nF > 100 && ~check_folder
     % if ~isempty(gcp('nocreate'))
     %     delete(gcp('nocreate'));
     % end

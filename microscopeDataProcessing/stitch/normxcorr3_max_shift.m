@@ -13,7 +13,8 @@ if size(maxShifts, 1) == 1
 end
 
 tic
-C = normxcorr3(T, A);
+% C = normxcorr3(T, A);
+C = normxcorr3_test(T, A);
 toc
 
 sz_t = size(T);

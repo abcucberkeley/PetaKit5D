@@ -66,7 +66,12 @@ sz = bim.Size;
 init_val = zeros(1, dtype);
 
 ds_size = round(sz ./ [dsFactor(1), dsFactor(2), dsFactor(3)]);
-ds_bim = blockedImage(dsTmppath, ds_size, blockSize, init_val, "Adapter", ZarrAdapter, 'Mode', 'w');
+try
+    ds_bim = blockedImage(dsTmppath, ds_size, blockSize, init_val, "Adapter", CZarrAdapter, 'Mode', 'w');
+catch ME
+    disp(ME);
+    ds_bim = blockedImage(dsTmppath, ds_size, blockSize, init_val, "Adapter", ZarrAdapter, 'Mode', 'w');
+end
 ds_bim.Adapter.close();
 
 % framework
@@ -84,7 +89,7 @@ if ~exist(zarrFlagPath, 'dir')
     mkdir_recursive(zarrFlagPath);
 end
 
-taskSize = 5; % the number of batches a job should process
+taskSize = max(5, ceil(numBatch / 5000)); % the number of batches a job should process
 numTasks = ceil(numBatch / taskSize);
 
 % get the function string for each batch
@@ -96,7 +101,7 @@ for i = 1 : numTasks
     zarrFlagFullpath = sprintf('%s/blocks_%d_%d.mat', zarrFlagPath, batchInds(1), batchInds(end));
     outputFullpaths{i} = zarrFlagFullpath;
     
-    funcStrs{i} = sprintf(['processZarrBlock([%s],''%s'',''%s'',''%s'',[%s],''Interp'',''%s'',', ...
+    funcStrs{i} = sprintf(['resampleZarrBlock([%s],''%s'',''%s'',''%s'',[%s],''Interp'',''%s'',', ...
         '''BorderSize'',[%s],''batchSize'',[%s],''blockSize'',%s)'], strrep(num2str(batchInds, '%d,'), ' ', ''), ...
         zarrFullpath, dsTmppath, zarrFlagFullpath, strrep(num2str(dsFactor(:)', '%d,'), ' ', ''), Interp, ...
         strrep(num2str(BorderSize(:)', '%d,'), ' ', ''), strrep(num2str(batchSize(:)', '%d,'), ' ', ''), ...
@@ -120,7 +125,5 @@ end
 movefile(dsTmppath, dsFullpath);
 rmdir(zarrFlagPath, 's');
 
-
 end
-
 

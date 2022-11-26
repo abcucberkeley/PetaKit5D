@@ -80,7 +80,6 @@ end
 [dataPath, ~] = fileparts(inputFullpaths{1});
 [outPath, ~] = fileparts(outputFullpaths{1});
 
-
 % check if a slurm-based computing cluster exist
 if parseCluster 
     [parseCluster, job_log_fname, job_log_error_fname, slurm_constraint_str] = checkSlurmCluster(dataPath, jobLogDir, cpuOnlyNodes);
@@ -112,6 +111,7 @@ trial_counter = zeros(nF, 1);
 if parseCluster
     job_ids = -ones(nF, 1);
     job_status_mat = -ones(nF, 2); % current and previous status
+    job_timestamp_mat = zeros(nF, 1);
 
     nB = ceil(nF / taskBatchNum);        
     task_ids = ones(taskBatchNum, 1) * (1 : nB);
@@ -123,13 +123,14 @@ end
 loop_counter = 0;
 nF_done = 0;
 n_status_check = 10000;
-% pending / runnng ratio
-% PRRatio = 1;
+start_time = datetime('now');
 ts = tic;
 while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
     if parseCluster
         job_status_mat(~is_done_flag, 2) = job_status_mat(~is_done_flag, 1);
         job_status_mat(~is_done_flag, 1) = check_batch_slurm_jobs_status(job_ids(~is_done_flag), task_ids(~is_done_flag));
+        timestamp = seconds(datetime('now') - start_time);
+        job_timestamp_mat(job_status_mat(:, 1) >= 0) = timestamp;
     end
         
     if loop_counter > 0
@@ -162,13 +163,15 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
             if parseCluster && (loop_counter > 0 || (loop_counter == 0 && numJobs >= maxJobNum))
                 job_status_mat(:, 2) = job_status_mat(:, 1);
                 job_inds = ~is_done_flag & job_status_mat(:, 1) > -1;
-                
+
                 % only check the status of running/pending jobs. 
                 output_exist_mat(job_inds) = batch_file_exist(outputFullpaths(job_inds), [], true);
                 is_done_flag(job_inds) = output_exist_mat(job_inds);                
                 
                 job_status_mat(job_inds, 1) = check_batch_slurm_jobs_status(job_ids(job_inds), task_ids(job_inds));
-                numJobs = sum(job_status_mat(~is_done_flag, 1) >= 0);                
+                numJobs = sum(job_status_mat(~is_done_flag, 1) >= 0);
+                timestamp = seconds(datetime('now') - start_time);                
+                job_timestamp_mat(job_inds) = timestamp;
                 if masterCompute
                     if b + n_status_check * 1.5 > nB
                         check_inds = b : nB;
@@ -272,9 +275,10 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
                     continue;
                 end
                 
-                % wait some time for the status change
-                if loop_counter > 0 && job_status_mat(f, 1) < job_status_mat(f, 2)
-                    pause(0.2);
+                % check if the job just finished, if masterCompute 30s, if not, 45s
+                if loop_counter > 0 && trial_counter(f) > 0 && job_status_mat(f, 1) == -1 ...
+                        && timestamp - job_timestamp_mat(f) < 45 - masterCompute * 15
+                    continue;
                 end
 
                 % If there is no job, submit a job
@@ -362,27 +366,30 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
         end
 
         if ~parseCluster || (parseCluster && masterCompute && f == lastP)
-            fprintf('Process %s with function %s... \n', strjoin(fsnames(fs), ', '), func_str); 
-            if parseCluster && loop_counter > 0 && job_status_mat(f, 1) ~= job_status_mat(f, 2)
+            if parseCluster && loop_counter > 0
                 % for nonpending killed jobs, wait a bit longer in case of just finished job.
                 if ~pending_flag
-                    pause(10);
+                    pause(1);
+                    if timestamp - job_timestamp_mat(f) < 30
+                        continue;
+                    end
                     if exist(outputFullpath, 'file') || exist(outputFullpath, 'dir')
                         continue;
                     end
                 end
             end
+            fprintf('Process %s with function %s... \n', strjoin(fsnames(fs), ', '), func_str);             
             if strcmpi(language, 'matlab')
-                % tic; feval(str2func(['@()', func_str])); toc;
                 try 
-                    t0=tic; feval(str2func(['@()', func_str])); toc(t0);
+                    t0=tic; feval(str2func(['@()', func_str])); t1=toc(t0);
                 catch ME
                     disp(ME)
-                    t0=tic; eval(func_str); toc(t0);
+                    t0=tic; eval(func_str); t1=toc(t0);
                 end
             elseif strcmpi(language, 'bash')
-                t0=tic; [status, cmdout] = system(func_str, '-echo'); toc(t0)
+                t0=tic; [status, cmdout] = system(func_str, '-echo'); t1=toc(t0);
             end
+            fprintf('Elapsed time is %f seconds.\n', t1);
             trial_counter(fs) = trial_counter(fs) + 1;
             if ~parseCluster && exist(outputFullpath, 'file') && exist(tmpFullpath, 'file')
                 delete(tmpFullpath);
@@ -392,8 +399,12 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
         end
     end
     
-    if ~all(is_done_flag | trial_counter >= maxTrialNum, 'all') 
-        pause(1);
+    if parseCluster && ~all(is_done_flag | trial_counter >= maxTrialNum, 'all') 
+        if masterCompute
+            pause(0.1);
+        else
+            pause(1);
+        end
     end
     if nF_done < sum(is_done_flag)
         nF_done = sum(is_done_flag);

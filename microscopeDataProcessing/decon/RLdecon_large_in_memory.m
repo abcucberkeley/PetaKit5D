@@ -1,4 +1,4 @@
-function [] = RLdecon_large_in_memory(frameFullpath, psfFullpath, deconFullpath, pixelSize, dz, varargin)
+function [] = RLdecon_large_in_memory(frameFullpath, psfFullpath, deconFullpath, xyPixelSize, dz, varargin)
 % RL decon for big data that can be loaded to the memory. 
 
 
@@ -7,7 +7,7 @@ ip.CaseSensitive = false;
 ip.addRequired('frameFullpaths', @(x) ischar(x) || iscell(x));
 ip.addRequired('deconFullpath', @(x) ischar(x));
 ip.addRequired('psfFullpath', @(x) ischar(x));
-ip.addRequired('pixelSize', @isnumeric);
+ip.addRequired('xyPixelSize', @isnumeric);
 ip.addRequired('dz', @isnumeric);
 ip.addParameter('Save16bit', false , @islogical);
 ip.addParameter('Rotate', false , @islogical);
@@ -27,8 +27,11 @@ ip.addParameter('ErodeMaskfile', '', @ischar); % erode edges file
 ip.addParameter('SaveMaskfile', false, @islogical); % save mask file for common eroded mask
 ip.addParameter('scaleFactor', 1e8 , @isnumeric); % scale factor for data
 ip.addParameter('deconMaskFns', {} , @iscell); % Full paths of 2D mask zarr files, in xy, xz, yz order
+ip.addParameter('saveZarr', false, @islogical); % save as zarr
 % ip.addParameter('DoNotAdjustResForFFT', true , @islogical); % not crop chunks for deconvolution
 ip.addParameter('RLMethod', 'simplified' , @ischar); % rl method {'original', 'simplified', 'cudagen'}
+ip.addParameter('wienerAlpha', 0.005, @isnumeric); 
+ip.addParameter('skewed', [], @(x) isempty(x) || islogical(x)); % decon in skewed space
 ip.addParameter('fixIter', true, @islogical); % 
 ip.addParameter('errThresh', [], @isnumeric); % error threshold for simplified code
 ip.addParameter('BatchSize', [1024, 1024, 1024] , @isvector); % in y, x, z
@@ -40,24 +43,26 @@ ip.addParameter('debug', false, @islogical);
 ip.addParameter('psfGen', true, @islogical); % psf generation
 ip.addParameter('useGPU', true, @islogical); % use gpu if it is available
 
-ip.parse(frameFullpath, psfFullpath, deconFullpath, pixelSize, dz, varargin{:});
+ip.parse(frameFullpath, psfFullpath, deconFullpath, xyPixelSize, dz, varargin{:});
 
 pr = ip.Results;
 % Overwrite = pr.Overwrite;
 Save16bit = pr.Save16bit;
-Rotate = pr.Rotate;
 Deskew = pr.Deskew;
+Rotate = pr.Rotate;
 SkewAngle = pr.SkewAngle;
 flipZstack = pr.flipZstack;
 dzPSF = pr.dzPSF;
 DeconIter = pr.DeconIter;
 % scaleFactor = pr.scaleFactor;
 deconMaskFns = pr.deconMaskFns;
+saveZarr = pr.saveZarr;
 RLMethod = pr.RLMethod;
+wienerAlpha = pr.wienerAlpha;
+skewed = pr.skewed;
 fixIter = pr.fixIter;
 errThresh = pr.errThresh;
 BatchSize = pr.BatchSize;
-% useGPU = pr.useGPU;
 psfGen = pr.psfGen;
 useGPU = pr.useGPU;
 EdgeErosion = pr.EdgeErosion;
@@ -116,7 +121,7 @@ tic
 fprintf(['reading ' fsname '...\n'])
 switch ext
     case {'.tif', '.tiff'}
-        im = parallelReadTiff(frameFullpath);
+        im = readtiff(frameFullpath);
     case '.zarr'
         im = readzarr(frameFullpath);
 end
@@ -135,24 +140,13 @@ if EdgeErosion > 0
         maskTmpPath = sprintf('%s/%s_eroded_%s.tif', maskPath, fsname, uuid);
     end
     if ~(SaveMaskfile && exist(maskFullPath, 'file'))
-        % im_bw = im > 0;
-        % pad to avoid not erosion if a pixel touching the boundary
-        % im_bw_pad = false(size(im) + 2);
-        % im_bw_pad(2 : end - 1, 2 : end - 1, 2 : end - 1) = im_bw;
-        % im_bw_erode = imerode(im_bw_pad, strel('sphere', EdgeErosion));
-        % im_bw_erode = im_bw_erode(2 : end - 1, 2 : end - 1, 2 : end - 1);
         im_bw_erode = im > 0;
         im_bw_erode([1, end], :, :) = false;
         im_bw_erode(:, [1, end], :) = false;
         im_bw_erode(:, :, [1, end]) = false;
         im_bw_erode = bwdist(~im_bw_erode) > EdgeErosion - 1;
     else
-        try 
-            im_bw_erode = parallelReadTiff(maskFullPath) > 0;
-        catch ME
-            disp(ME);
-            im_bw_erode = readtiff(maskFullPath) > 0;
-        end
+        im_bw_erode = readtiff(maskFullPath) > 0;
     end
 
     % save mask file as common one for other time points/channels
@@ -163,8 +157,6 @@ if EdgeErosion > 0
 end
 
 % calculate number of chunks to break the image file
-% [my, mx, mz] = size(im);
-% [xmin,xmax,ymin,ymax,zmin,zmax,nn] = GU_extract_subVolCoordinates(mx,my,mz,csx,csy,csz,OL);
 imSize = size(im);
 % dtype = class(im);
 if Save16bit
@@ -172,12 +164,6 @@ if Save16bit
 else
     dtype = 'single';
 end
-
-% if pr.debug
-%     [xmin,xmax,ymin,ymax,zmin,zmax,nn] = XR_subVolumeCoordinatesExtraction_test(imSize, 'ChunkSize', ChunkSize, 'overlapSize', OL);
-% else
-%     [xmin,xmax,ymin,ymax,zmin,zmax,nn] = XR_subVolumeCoordinatesExtraction(imSize, 'ChunkSize', ChunkSize, 'overlapSize', OL, 'maxSubVolume', maxSubVolume);
-% end
 
 SameBatchSize = ~true;
 BorderSize = round((size(psf) + 10) / 2);
@@ -187,12 +173,13 @@ BlockSize = BatchSize;
 % scaleFactor = prod(min(imSize, BatchSize));
 scaleFactor = 1.0;
 
-tic
+t0 = tic;
 fprintf('Deconvolving chunks...\n')
 batchInds = 1 : size(BatchBBoxes, 1);
 finds = [1, 2; 2, 3; 1, 3];
 done_flag = false(numel(batchInds), 1);
-imout = 0 * im;
+% imout = 0 * im;
+imout = zeros(imSize, dtype);
 for i = 1 : numel(batchInds)
     bi = batchInds(i);
     fprintf('Process Batch %d... ', bi);
@@ -224,9 +211,15 @@ for i = 1 : numel(batchInds)
     end
 
     % load the region in input 
-    in_batch = im(ibStart(1) : ibEnd(1), ibStart(2) : ibEnd(2), ibStart(3) : ibEnd(3));
-    
+    try
+        in_batch = crop3d_mex(im, [ibStart, ibEnd]);
+    catch ME
+        disp(ME);
+        in_batch = im(ibStart(1) : ibEnd(1), ibStart(2) : ibEnd(2), ibStart(3) : ibEnd(3));
+    end
+
     % deconvolution
+    %{
     frameFullpath = '';
     deconTmpPath = '';
     Deskew = false;
@@ -245,13 +238,43 @@ for i = 1 : numel(batchInds)
         dzPSF, dz, Deskew, [], SkewAngle, pixelSize, Rotate, Save16bit, Crop, zFlip, ...
         GenMaxZproj, ResizeImages, [], RLMethod, fixIter, errThresh, flipZstack, debug, ...
         'rawdata', in_batch, 'scaleFactor', scaleFactor, 'useGPU', useGPU, 'psfGen', psfGen);
+    %}
+
+    inputFn = '';
+    outputFn = deconFullpath;
+    DSRCombined = true;
+    Reverse = true;
+    debug = false;
+    save3Dstack = [false, false, false];
+    mipAxis = [0, 0, 0];
     
     baStart = obStart - ibStart + 1;
     baEnd = obEnd - ibStart + 1;
+    deconBbox = [baStart, baEnd];
 
-    out_batch = out_batch(baStart(1) : baEnd(1), baStart(2) : baEnd(2), baStart(3) : baEnd(3));
+    out_batch = RLdecon(inputFn, outputFn, psfFullpath, xyPixelSize, dz, dzPSF, ...
+        'rawdata', in_batch, 'Save16bit', Save16bit, 'SkewAngle', SkewAngle, ...
+        'Deskew', Deskew, 'Rotate', Rotate, 'DSRCombined', DSRCombined, 'Reverse', Reverse, ...
+        'Background', Background, 'DeconIter', DeconIter, 'RLMethod', RLMethod, ...
+        'skewed', skewed, 'wienerAlpha', wienerAlpha, 'fixIter', fixIter, 'scaleFactor', scaleFactor, ...
+        'deconBbox', deconBbox, 'useGPU', useGPU, 'psfGen', psfGen, 'debug', debug, ...
+        'save3Dstack', save3Dstack, 'mipAxis', mipAxis);    
+    %{
+    try
+        out_batch = crop3d_mex(out_batch, [baStart, baEnd]);
+    catch ME
+        disp(ME);
+        out_batch = out_batch(baStart(1) : baEnd(1), baStart(2) : baEnd(2), baStart(3) : baEnd(3));
+    end
+    %}
     
-    imout(obStart(1) : obEnd(1), obStart(2) : obEnd(2), obStart(3) : obEnd(3)) = out_batch;
+    try 
+        indexing3d_mex(imout, [obStart, obEnd], out_batch);
+    catch ME
+        disp(ME);
+        imout(obStart(1) : obEnd(1), obStart(2) : obEnd(2), obStart(3) : obEnd(3)) = out_batch;
+    end
+
     done_flag(i) = true;
 
     toc;
@@ -265,7 +288,7 @@ if ~all(done_flag)
 end
 
 tic
-fprintf('Saving combined deconvolved file...\n')
+fprintf('Saving combined deconvolved chunks...\n')
 if EdgeErosion > 0
     fprintf('Erode edges of deconvolved data w.r.t. raw data...\n');        
     im = im .* cast(im_bw_erode, class(im));
@@ -273,12 +296,7 @@ end
 
 if ~isempty(ErodeMaskfile) && exist(ErodeMaskfile, 'file')
     fprintf('Erode edges of deconvolved data using a predefined mask...\n');                
-    try 
-        im_bw_erode = parallelReadTiff(ErodeMaskfile);
-    catch ME
-        disp(ME);
-        im_bw_erode = parallelReadTiff(ErodeMaskfile);
-    end    
+    im_bw_erode = readtiff(ErodeMaskfile);   
     im = im .* cast(im_bw_erode, class(im));
 end
 
@@ -288,8 +306,13 @@ else
     im = single(im);
 end
 
-deconTmpPath = sprintf('%s_%s.tif', deconFullpath(1 : end - 4), uuid);
-writetiff(im, deconTmpPath);
+if saveZarr
+    deconTmpPath = sprintf('%s_%s.zarr', deconFullpath(1 : end - 5), uuid);
+    writezarr(im, deconTmpPath);
+else
+    deconTmpPath = sprintf('%s_%s.tif', deconFullpath(1 : end - 4), uuid);
+    writetiff(im, deconTmpPath);
+end
 movefile(deconTmpPath, deconFullpath);
 
 tmp_xy = max(im,[],3);
@@ -297,8 +320,7 @@ deconMIPPath = sprintf('%s/MIPs/', deconPath);
 mkdir(deconMIPPath);
 deconMIPFullPath = sprintf('%s%s_MIP_z.tif', deconMIPPath, fsname);
 writetiff(tmp_xy, deconMIPFullPath);
-toc
+toc(t0);
 
 end
-
 

@@ -14,16 +14,22 @@ ip.addRequired('blockInfoFullname', @ischar);
 ip.addRequired('stitchPath', @ischar);
 ip.addRequired('tileFullpaths', @iscell);
 ip.addParameter('Overwrite', false, @islogical);
+ip.addParameter('blendWeightDegree', 10, @isnumeric);
 ip.addParameter('singleDistMap', true, @islogical);
 ip.addParameter('zarrHeaders', {}, @iscell);
+ip.addParameter('blockSize', [500, 500, 500], @isnumeric);
+ip.addParameter('compressor', 'lz4', @ischar);
 ip.addParameter('parseCluster', true, @islogical);
 ip.addParameter('uuid', '', @ischar);
 
 ip.parse(blockInfoFullname, stitchPath, tileFullpaths, varargin{:});
 
 pr = ip.Results;
+blendWeightDegree = pr.blendWeightDegree;
 singleDistMap = pr.singleDistMap;
 zarrHeaders = pr.zarrHeaders;
+blockSize = pr.blockSize;
+compressor = pr.compressor;
 parseCluster = pr.parseCluster;
 
 
@@ -62,13 +68,15 @@ end
 inputFullpaths = tileFullpaths;
 [~, fsnames] = fileparts(tileFullpaths);
 if singleDistMap
-    outputFullpaths = {sprintf('%s/%s.zarr', distPath, fsnames)};
-    funcStrs = arrayfun(@(x) sprintf('compute_tile_bwdist(''%s'',%d,''%s'',%s)', ...
-        blockInfoFullname, x, outputFullpaths{x}, string(singleDistMap)), 1 : 1, 'unif', 0);    
+    outputFullpaths = {sprintf('%s/%s_wr_%d.zarr', distPath, fsnames, blendWeightDegree)};
+    funcStrs = arrayfun(@(x) sprintf('compute_tile_bwdist(''%s'',%d,''%s'',%d,%s,%s,''%s'')', ...
+        blockInfoFullname, x, outputFullpaths{x}, blendWeightDegree, string(singleDistMap), ...
+        strrep(mat2str(blockSize), ' ', ','), compressor), 1 : 1, 'unif', 0);    
 else
-    outputFullpaths = cellfun(@(x) sprintf('%s/%s.zarr', distPath, x), fsnames, 'unif', 0);
-    funcStrs = arrayfun(@(x) sprintf('compute_tile_bwdist(''%s'',%d,''%s'',%s)', ...
-        blockInfoFullname, x, outputFullpaths{x}, string(singleDistMap)), 1 : nF, 'unif', 0);
+    outputFullpaths = cellfun(@(x) sprintf('%s/%s_wr_%d.zarr', distPath, x, blendWeightDegree), fsnames, 'unif', 0);
+    funcStrs = arrayfun(@(x) sprintf('compute_tile_bwdist(''%s'',%d,''%s'',%d,%s,%s,''%s'')', ...
+        blockInfoFullname, x, outputFullpaths{x}, blendWeightDegree, string(singleDistMap), ...
+        strrep(mat2str(blockSize), ' ', ','), compressor), 1 : nF, 'unif', 0);
 end
 
 if isempty(zarrHeaders)

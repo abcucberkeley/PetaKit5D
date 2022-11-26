@@ -55,6 +55,8 @@ ip.addParameter('psfFullpaths', {'','',''}, @iscell);
 ip.addParameter('rotatePSF', false, @islogical);
 ip.addParameter('DeconIter', 15 , @isnumeric); % number of iterations
 ip.addParameter('RLMethod', 'simplified' , @ischar); % rl method {'original', 'simplified', 'cudagen'}
+ip.addParameter('wienerAlpha', 0.005, @isnumeric); 
+ip.addParameter('skewed', [], @(x) isempty(x) || islogical(x)); % decon in skewed space
 ip.addParameter('fixIter', false, @islogical); 
 ip.addParameter('errThresh', [], @isnumeric); % error threshold for simplified code
 ip.addParameter('debug', false, @islogical); % debug mode for simplified code
@@ -63,7 +65,7 @@ ip.addParameter('psfGen', true, @islogical); % psf generation
 ip.addParameter('GPUJob', false, @islogical); % use gpu for chuck deconvolution. 
 % job related parameters
 ip.addParameter('BatchSize', [1024, 1024, 1024] , @isvector); % in y, x, z
-ip.addParameter('BlockSize', [256, 256, 256], @isnumeric); % block overlap
+ip.addParameter('BlockSize', [256, 256, 256], @isnumeric); % block size 
 ip.addParameter('largeFile', false, @islogical);
 ip.addParameter('largeMethod', 'inmemory', @ischar); % inmemory, inplace. 
 ip.addParameter('zarrFile', false, @islogical); % use zarr file as input
@@ -78,7 +80,7 @@ ip.addParameter('uuid', '', @ischar);
 ip.addParameter('maxTrialNum', 3, @isnumeric);
 ip.addParameter('unitWaitTime', 10, @isnumeric);
 ip.addParameter('maxWaitLoopNum', 10, @isnumeric); % the max number of loops the loop waits with all existing files processed. 
-ip.addParameter('MatlabLaunchStr', 'module load matlab/r2021a; matlab -nodisplay -nosplash -nodesktop -nojvm -r', @ischar);
+ip.addParameter('MatlabLaunchStr', 'module load matlab/r2022a; matlab -nodisplay -nosplash -nodesktop -nojvm -r', @ischar);
 ip.addParameter('SlurmParam', '-p abc --qos abc_normal -n1 --mem-per-cpu=21418M', @ischar);
 
 ip.parse(dataPaths, varargin{:});
@@ -124,6 +126,8 @@ DeconIter = pr.DeconIter;
 deconRotate = pr.deconRotate;
 RotateAfterDecon = pr.RotateAfterDecon;
 RLMethod = pr.RLMethod;
+wienerAlpha = pr.wienerAlpha;
+skewed = pr.skewed;
 GPUJob = pr.GPUJob;
 % simplified version related options
 fixIter = pr.fixIter;
@@ -177,6 +181,10 @@ end
 
 if numel(Overwrite) == 1
     Overwrite = repmat(Overwrite, 1, 2);
+end
+
+if isempty(uuid)
+    uuid = get_uuid();
 end
 
 % check if a slurm-based computing cluster exists
@@ -252,14 +260,45 @@ if Decon
     end
 
     for f = 1 : numel(psfFullpaths)
+        psfFn = psfFullpaths{f};
         if ~exist(psfFullpaths{f}, 'file')
-            error('PSF file %s does not exist!', psfFullpaths{f});
+            error('PSF file %s does not exist!', psfFn);
         end
+        if psfGen 
+            fprintf('PSF generation for %s ...\n', psfFn);
+            [~, psfFsn] = fileparts(psfFn);
+            
+            medFactor = 1.5;
+            PSFGenMethod = 'masked';
+            psf = double(readtiff(psfFn));
+            psf = psf_gen_new(psf, dzPSF, dz, medFactor, PSFGenMethod);
+            
+            % crop psf to the bounding box (-/+ 1 pixel) and make sure the
+            % center doesn't shift
+            py = find(squeeze(sum(psf, [2, 3])));
+            px = find(squeeze(sum(psf, [1, 3])));
+            pz = find(squeeze(sum(psf, [1, 2])));
+            cropSz = [min(py(1) - 1, size(psf, 1) - py(end)), min(px(1) - 1, size(psf, 2) - px(end)), min(pz(1) - 1, size(psf, 3) - pz(end))] - 1;
+            cropSz = max(0, cropSz);
+            bbox = [cropSz + 1, size(psf) - cropSz];
+            psf = psf(bbox(1) : bbox(4), bbox(2) : bbox(5), bbox(3) : bbox(6));
+            
+            for d = 1 : nd 
+                dataPath = dataPaths{d};
+                psfgen_filename = sprintf('%s/%s/psfgen/%s.tif', dataPath, deconName, psfFsn);
+                tmp_filename = sprintf('%s/%s/psfgen/%s_%s.tif', dataPath, deconName, psfFsn, uuid);
+                writetiff(psf, tmp_filename);
+                movefile(tmp_filename, psfgen_filename)
+            end
+        end
+        
+        %{
         if rotatePSF
             XR_rotate_PSF(psfFullpaths{f}, 'xyPixelSize', xyPixelSize, 'dz', dzPSF);
             [psfPath, fsname] = fileparts(psfFullpaths{f});
             rotPSFFullpaths{f} = [psfPath, '/Rotated/', fsname, '.tif'];
         end
+        %}
     end
 end
 
@@ -335,9 +374,9 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
                             
             deconPath = deconPaths{fdind};
             if saveZarr
-                deconFullpath = sprintf('%s/%s_decon.zarr', deconPath, fsname);                
+                deconFullpath = sprintf('%s/%s.zarr', deconPath, fsname);                
             else
-                deconFullpath = sprintf('%s/%s_decon.tif', deconPath, fsname);
+                deconFullpath = sprintf('%s/%s.tif', deconPath, fsname);
             end
             dctmpFullpath = sprintf('%s.tmp', deconFullpath(1 : end - 4));
 
@@ -413,18 +452,18 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
                     DeconIter_f, string(Save16bit), string(largeFile));
             else
                 func_str = sprintf(['XR_RLdeconFrame3D(''%s'',%.10f,%.10f,''%s'',''PSFfile'',''%s'',', ...
-                    '''dzPSF'',%.10f,''Background'',[%d],''SkewAngle'',%d,''flipZstack'',%s,''EdgeErosion'',%d,', ...
-                    '''ErodeMaskfile'',''%s'',''SaveMaskfile'',%s,''Rotate'',%s,''DeconIter'',%d,', ...
-                    '''RLMethod'',''%s'',''fixIter'',%s,''errThresh'',[%0.20f],''debug'',%s,''saveStep'',%d,', ...
-                    '''psfGen'',%s,''saveZarr'',%s,''parseCluster'',%s,''parseParfor'',%s,''GPUJob'',%s,', ...
-                    '''Save16bit'',%s,''largeFile'',%s,''largeMethod'',''%s'',''BatchSize'',%s,''BlockSize'',%s,', ...
-                    '''deconMaskFns'',%s,''uuid'',''%s'')'], ...
+                    '''dzPSF'',%.10f,''Background'',[%d],''SkewAngle'',%d,''flipZstack'',%s,', ...
+                    '''EdgeErosion'',%d,''ErodeMaskfile'',''%s'',''SaveMaskfile'',%s,''Rotate'',%s,', ...
+                    '''DeconIter'',%d,''RLMethod'',''%s'',''wienerAlpha'',%.20f,''skewed'',[%s],''fixIter'',%s,', ...
+                    '''errThresh'',[%0.20f],''debug'',%s,''saveStep'',%d,''psfGen'',%s,''saveZarr'',%s,', ...
+                    '''parseCluster'',%s,''parseParfor'',%s,''GPUJob'',%s,''Save16bit'',%s,''largeFile'',%s,', ...
+                    '''largeMethod'',''%s'',''BatchSize'',%s,''BlockSize'',%s,''deconMaskFns'',%s,''uuid'',''%s'')'], ...
                     dcframeFullpath, xyPixelSize, dc_dz, deconPath, psfFullpath, dc_dzPSF, Background, SkewAngle, ...
                     string(flipZstack), EdgeErosion, maskFullpath, string(SaveMaskfile), string(deconRotate), ...
-                    DeconIter_f, RLMethod, string(fixIter), errThresh, string(debug), saveStep, string(psfGen), ...
-                    string(saveZarr), string(parseCluster),string(parseParfor), string(GPUJob), string(Save16bit), ...
-                    string(largeFile), largeMethod, strrep(mat2str(BatchSize), ' ', ','), strrep(mat2str(BlockSize), ' ', ','), ...
-                    deconMaskFns_str, uuid);
+                    DeconIter_f, RLMethod, wienerAlpha, string(skewed), string(fixIter), errThresh, string(debug), ...
+                    saveStep, string(psfGen), string(saveZarr), string(parseCluster),string(parseParfor), ...
+                    string(GPUJob), string(Save16bit), string(largeFile), largeMethod, strrep(mat2str(BatchSize), ' ', ','), ...
+                    strrep(mat2str(BlockSize), ' ', ','), deconMaskFns_str, uuid);
             end
             
             if exist(dctmpFullpath, 'file') || parseCluster
@@ -449,10 +488,10 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
                         end
 
                         % do not use rotation in decon functions
-                        matlab_cmd = sprintf('%s;tic;%s;toc', matlab_setup_str, func_str);
+                        matlab_cmd = sprintf('%s;t_=tic;%s;toc(t_)', matlab_setup_str, func_str);
                         process_cmd = sprintf('%s \\"%s\\"', MatlabLaunchStr, matlab_cmd);
                         
-                        if GPUJob && ~largeFile
+                        if GPUJob && ~(largeFile && strcmp(largeMethod, 'inplace'))
                             cpusPerTask_dc = 4;
                             SlurmParam = '-p abc_a100 --qos abc_normal -n1 --mem-per-cpu=32128M --gres=gpu:1';
                             slurm_constraint_str = '';
@@ -479,7 +518,7 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
                     end
                 else
                     temp_file_info = dir(dctmpFullpath);
-                    if (datenum(clock) - [temp_file_info.datenum]) * 24 * 60 < unitWaitTime
+                    if minutes(datetime('now') - [temp_file_info.date]) < unitWaitTime
                         continue; 
                     else
                         fclose(fopen(dctmpFullpath, 'w'));
@@ -513,7 +552,7 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
             end
 
             rdcPath = rdcPaths{fdind};
-            rdcFullpath = sprintf('%s/%s_decon.tif', rdcPath, fsname);
+            rdcFullpath = sprintf('%s/%s.tif', rdcPath, fsname);
             rdctmpFullpath = sprintf('%s.tmp', rdcFullpath(1 : end - 4));
             if exist(rdcFullpath, 'file')
                 is_done_flag(f, 2) = true;
@@ -562,7 +601,7 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
                     end
                 else
                     temp_file_info = dir(rdctmpFullpath);
-                    if (datenum(clock) - [temp_file_info.datenum]) * 24 * 60 < unitWaitTime
+                    if minutes(datetime('now') - [temp_file_info.date]) < unitWaitTime
                         continue;
                     else
                         fclose(fopen(rdctmpFullpath, 'w'));

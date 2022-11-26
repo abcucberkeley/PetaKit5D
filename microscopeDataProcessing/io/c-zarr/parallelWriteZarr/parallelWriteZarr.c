@@ -30,7 +30,7 @@
 //
 //Windows
 //mex -v COPTIMFLAGS="-O3 -DNDEBUG" CFLAGS='$CFLAGS -O3 -fopenmp' LDFLAGS='$LDFLAGS -O3 -fopenmp' '-IC:\Program Files (x86)\bloscZarr\include' '-LC:\Program Files (x86)\bloscZarr\lib' -lblosc '-IC:\Program Files (x86)\cJSON\include\' '-LC:\Program Files (x86)\cJSON\lib' -lcjson '-IC:\Program Files (x86)\blosc\include' '-LC:\Program Files (x86)\blosc\lib' -lblosc2 parallelWriteZarr.c parallelReadZarr.c helperFunctions.c
-void parallelWriteZarrMex(void* zarr, char* folderName,uint64_t startX, uint64_t startY, uint64_t startZ, uint64_t endX, uint64_t endY,uint64_t endZ,uint64_t chunkXSize,uint64_t chunkYSize,uint64_t chunkZSize,uint64_t shapeX,uint64_t shapeY,uint64_t shapeZ,uint64_t origShapeX,uint64_t origShapeY,uint64_t origShapeZ, uint64_t bits, char order, uint8_t useUuid, uint8_t crop, char* cname){
+void parallelWriteZarrMex(void* zarr, char* folderName,uint64_t startX, uint64_t startY, uint64_t startZ, uint64_t endX, uint64_t endY,uint64_t endZ,uint64_t chunkXSize,uint64_t chunkYSize,uint64_t chunkZSize,uint64_t shapeX,uint64_t shapeY,uint64_t shapeZ,uint64_t origShapeX,uint64_t origShapeY,uint64_t origShapeZ, uint64_t bits, char order, uint8_t useUuid, uint8_t crop, char* cname, uint64_t clevel){
     char fileSepS[2];
     const char fileSep =
     #ifdef _WIN32
@@ -253,10 +253,10 @@ void parallelWriteZarrMex(void* zarr, char* folderName,uint64_t startX, uint64_t
             int64_t csize = 0;
             if(strcmp(cname,"gzip")){
                 if(numWorkers<=cI.numChunks){
-                    csize = blosc_compress_ctx(5, BLOSC_SHUFFLE, bytes, sB, chunkUnC, chunkC, sB+BLOSC_MAX_OVERHEAD,cname,0,1);
+                    csize = blosc_compress_ctx(clevel, BLOSC_SHUFFLE, bytes, sB, chunkUnC, chunkC, sB+BLOSC_MAX_OVERHEAD,cname,0,1);
                 }
                 else{
-                    csize = blosc_compress_ctx(5, BLOSC_SHUFFLE, bytes, sB, chunkUnC, chunkC, sB+BLOSC_MAX_OVERHEAD,cname,0,numWorkers);
+                    csize = blosc_compress_ctx(clevel, BLOSC_SHUFFLE, bytes, sB, chunkUnC, chunkC, sB+BLOSC_MAX_OVERHEAD,cname,0,numWorkers);
                 }
             }
             else{
@@ -275,7 +275,7 @@ void parallelWriteZarrMex(void* zarr, char* folderName,uint64_t startX, uint64_t
             
                 stream.avail_in = sB;
                 stream.avail_out = csize;
-                int uncErr = deflateInit2(&stream, 1, Z_DEFLATED, MAX_WBITS + 16, MAX_MEM_LEVEL, Z_DEFAULT_STRATEGY);
+                int uncErr = deflateInit2(&stream, clevel, Z_DEFLATED, MAX_WBITS + 16, MAX_MEM_LEVEL, Z_DEFAULT_STRATEGY);
                 if(uncErr){
                 #pragma omp critical
                 {
@@ -363,7 +363,10 @@ void mexFunction(int nlhs, mxArray *plhs[],
     uint64_t endZ = 0;
     uint8_t crop = 0;
     char* cname = NULL;
-    uint64_t* iDims = NULL;
+    uint64_t clevel = 5;
+
+    // Dims are 1 by default
+    uint64_t iDims[3] = {1,1,1};
 
     if(nrhs < 3) mexErrMsgIdAndTxt("zarr:inputError","This functions requires at least 3 arguments");
     else if(nrhs == 4 || nrhs == 5){
@@ -375,8 +378,12 @@ void mexFunction(int nlhs, mxArray *plhs[],
             endX = (uint64_t)*((mxGetPr(prhs[3])+3));
             endY = (uint64_t)*((mxGetPr(prhs[3])+4));
             endZ = (uint64_t)*((mxGetPr(prhs[3])+5));
+            
+            
+            uint64_t* iDimsT = (uint64_t*)mxGetDimensions(prhs[1]);
+            uint64_t niDims = (uint64_t) mxGetNumberOfDimensions(prhs[1]);
+            for(uint64_t i = 0; i < niDims; i++) iDims[i] = iDimsT[i];
 
-            iDims = (uint64_t*)mxGetDimensions(prhs[1]);
             if(startX+1 < 1 || startY+1 < 1 || startZ+1 < 1) mexErrMsgIdAndTxt("zarr:inputError","Lower bounds must be at least 1");
             if(endX-startX > iDims[0] || endY-startY > iDims[1] || endZ-startZ > iDims[2]) mexErrMsgIdAndTxt("zarr:inputError","Bounds are invalid for the input data size");
             
@@ -467,8 +474,8 @@ void mexFunction(int nlhs, mxArray *plhs[],
         }
         
         
-        setJSONValues(folderName,&chunkXSize,&chunkYSize,&chunkZSize,dtype,&order,&shapeX,&shapeY,&shapeZ,cname);
-        setValuesFromJSON(folderName,&chunkXSize,&chunkYSize,&chunkZSize,dtype,&order,&shapeX,&shapeY,&shapeZ,&cname);
+        setJSONValues(folderName,&chunkXSize,&chunkYSize,&chunkZSize,dtype,&order,&shapeX,&shapeY,&shapeZ,cname,&clevel);
+        setValuesFromJSON(folderName,&chunkXSize,&chunkYSize,&chunkZSize,dtype,&order,&shapeX,&shapeY,&shapeZ,&cname,&clevel);
         //}
         
     }
@@ -491,13 +498,13 @@ void mexFunction(int nlhs, mxArray *plhs[],
             mkdir(folderName);
             #endif
             chmod(folderName, 0775);
-            setJSONValues(folderName,&chunkXSize,&chunkYSize,&chunkZSize,dtype,&order,&shapeX,&shapeY, &shapeZ,cname);
+            setJSONValues(folderName,&chunkXSize,&chunkYSize,&chunkZSize,dtype,&order,&shapeX,&shapeY, &shapeZ,cname,&clevel);
         }
         
         char dtypeT[4];
         for(int i = 0; i < 4; i++) dtypeT[i] = dtype[i];
         
-        setValuesFromJSON(folderName,&chunkXSize,&chunkYSize,&chunkZSize,dtype,&order,&shapeX,&shapeY,&shapeZ,&cname);
+        setValuesFromJSON(folderName,&chunkXSize,&chunkYSize,&chunkZSize,dtype,&order,&shapeX,&shapeY,&shapeZ,&cname,&clevel);
         
         if(dtypeT[2] != dtype[2]){
             uint64_t size = (endX-startX)*(endY-startY)*(endZ-startZ);
@@ -638,28 +645,28 @@ void mexFunction(int nlhs, mxArray *plhs[],
         uint8_t* zarr;
         if(zarrC) zarr = (uint8_t*)zarrC;
         else zarr =  (uint8_t*)mxGetPr(prhs[1]);
-        parallelWriteZarrMex((void*)zarr,folderName,startX,startY,startZ,endX,endY,endZ,chunkXSize,chunkYSize,chunkZSize,shapeX,shapeY,shapeZ, origShapeX, origShapeY,origShapeZ, bits,order,useUuid,crop,cname);
+        parallelWriteZarrMex((void*)zarr,folderName,startX,startY,startZ,endX,endY,endZ,chunkXSize,chunkYSize,chunkZSize,shapeX,shapeY,shapeZ, origShapeX, origShapeY,origShapeZ, bits,order,useUuid,crop,cname,clevel);
     }
     else if(dtype[1] == 'u' && dtype[2] == '2'){
         uint64_t bits = 16;
         uint16_t* zarr;
         if(zarrC) zarr = (uint16_t*)zarrC;
         else zarr = (uint16_t*)mxGetPr(prhs[1]);
-        parallelWriteZarrMex((void*)zarr,folderName,startX,startY,startZ,endX,endY,endZ,chunkXSize,chunkYSize,chunkZSize,shapeX,shapeY,shapeZ, origShapeX, origShapeY,origShapeZ, bits,order,useUuid,crop,cname);
+        parallelWriteZarrMex((void*)zarr,folderName,startX,startY,startZ,endX,endY,endZ,chunkXSize,chunkYSize,chunkZSize,shapeX,shapeY,shapeZ, origShapeX, origShapeY,origShapeZ, bits,order,useUuid,crop,cname,clevel);
     }
     else if(dtype[1] == 'f' && dtype[2] == '4'){
         uint64_t bits = 32;
         float* zarr;
         if(zarrC) zarr = (float*)zarrC;
         else zarr = (float*)mxGetPr(prhs[1]);
-        parallelWriteZarrMex((void*)zarr,folderName,startX,startY,startZ,endX,endY,endZ,chunkXSize,chunkYSize,chunkZSize,shapeX,shapeY,shapeZ, origShapeX, origShapeY,origShapeZ, bits,order,useUuid,crop,cname);
+        parallelWriteZarrMex((void*)zarr,folderName,startX,startY,startZ,endX,endY,endZ,chunkXSize,chunkYSize,chunkZSize,shapeX,shapeY,shapeZ, origShapeX, origShapeY,origShapeZ, bits,order,useUuid,crop,cname,clevel);
     }
     else if(dtype[1] == 'f' && dtype[2] == '8'){
         uint64_t bits = 64;
         double* zarr;
         if(zarrC) zarr = (double*)zarrC;
         else zarr = (double*)mxGetPr(prhs[1]);
-        parallelWriteZarrMex((void*)zarr,folderName,startX,startY,startZ,endX,endY,endZ,chunkXSize,chunkYSize,chunkZSize,shapeX,shapeY,shapeZ, origShapeX, origShapeY,origShapeZ, bits,order,useUuid,crop,cname);
+        parallelWriteZarrMex((void*)zarr,folderName,startX,startY,startZ,endX,endY,endZ,chunkXSize,chunkYSize,chunkZSize,shapeX,shapeY,shapeZ, origShapeX, origShapeY,origShapeZ, bits,order,useUuid,crop,cname,clevel);
     }
     else{
         free(zarrC);

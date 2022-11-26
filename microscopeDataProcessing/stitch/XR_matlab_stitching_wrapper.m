@@ -136,6 +136,7 @@ ip.addParameter('Save16bit', false, @islogical);
 ip.addParameter('EdgeArtifacts', 2, @isnumeric);
 ip.addParameter('stitchMIP', [], @(x) islogical(x) && (numel(x) == 1 || numel(x) == 3)); % 1x3 vector or vector, by default, stitch MIP-z
 ip.addParameter('onlineStitch', false, @(x) islogical(x)); % support for online stitch (with partial number of tiles). 
+ip.addParameter('bigStitchData', false, @(x) islogical(x)); % support for online stitch (with partial number of tiles). 
 ip.addParameter('pipeline', 'zarr', @(x) strcmpi(x, 'matlab') || strcmpi(x, 'zarr'));
 ip.addParameter('processFunPath', '', @(x) isempty(x) || ischar(x) || iscell(x)); % path of user-defined process function handle
 ip.addParameter('parseCluster', true, @islogical);
@@ -201,6 +202,7 @@ Save16bit = pr.Save16bit;
 EdgeArtifacts = pr.EdgeArtifacts;
 stitchMIP = pr.stitchMIP;
 onlineStitch = pr.onlineStitch;
+bigStitchData = pr.bigStitchData;
 pipeline = pr.pipeline;
 processFunPath = pr.processFunPath;
 jobLogDir = pr.jobLogDir;
@@ -536,6 +538,15 @@ if onlineStitch
     tileNums = zeros(numel(fullIter), numel(Cam), numel(stackn), numel(Ch), numel(nz));
 end
     
+if ~bigStitchData && ~onlineStitch && ~any(stitchMIP) && ~Streaming && size(t, 1) > 20
+    tile_fnames = t.Filename;
+    tile_fullpaths = cellfun(@(x) [dataPath, '/', x], tile_fnames, 'unif', 0);    
+    sz = getImageSize(tile_fullpaths{1});
+    if prod(sz) * 4 * numel(tile_fnames) > 100 * 1024^3
+        bigStitchData = true;
+    end
+end
+
 while ~all(is_done_flag | trial_counter >= max_trial_num, 'all')
     % exit the job if no new images are transferred.
     if Streaming && stream_counter > stream_max_counter
@@ -692,8 +703,7 @@ while ~all(is_done_flag | trial_counter >= max_trial_num, 'all')
                         end
 
                         if true || xcorrShift 
-                            % get the primary info path for secondary channels
-                            % for 'primary' option
+                            % get the primary info path for secondary channels for 'primary' option
                             if strcmpi(xcorrMode, 'primary') && ~(ncam == 1 && c == 1)
                                 isPrimaryCh = false;
                                 primary_t = t(t.ch == Ch(1) & t.camera == Cam(1) & strcmp(t.fullIter, fullIter{n}) & t.stack == stackn(s), :);
@@ -720,16 +730,13 @@ while ~all(is_done_flag | trial_counter >= max_trial_num, 'all')
                                 end
                             end
 
-                            % for secondary channels, if the stitchInfo file
-                            % not exist, wait the stitching for the primary
-                            % channel
+                            % for secondary channels, if the stitchInfo file  not exist, wait the stitching for the primary channel
                             if ~isPrimaryCh && ~exist(stitchInfoFullpath, 'file')
                                 continue;
                             end
                         end
 
-                        % also use flag based check of completion, to support
-                        % distributed computing with same submission
+                        % also use flag based check of completion, to support distributed computing with same submission
                         if specifyCam
                             stitch_save_fsname = sprintf('%s/%sScan_Iter_%s_Cam%s_ch%d_CAM1_stack%04d_%dnm_%07dmsec_%010dmsecAbs%s', ...
                                 stitching_rt, prefix, fullIter{n}, Cam(ncam), Ch(c), stackn(s), laser, abstime, fpgatime, z_str);
@@ -751,8 +758,7 @@ while ~all(is_done_flag | trial_counter >= max_trial_num, 'all')
                                 ftype = 'dir';
                         end
                         
-                        % for online stitch check if old results with fewer
-                        % tiles exist, if so, delete them. 
+                        % for online stitch check if old results with fewer tiles exist, if so, delete them. 
                         if onlineStitch
                             switch pipeline
                                 case 'matlab'
@@ -801,8 +807,7 @@ while ~all(is_done_flag | trial_counter >= max_trial_num, 'all')
                         tileIdx_str = strrep(mat2str(tileIdx), ' ', ',');
                         tileInfoFullpath = '';
 
-                        % for tile number greater than 100, save the info
-                        % to the disk and load it for the function
+                        % for tile number greater than 100, save the info to the disk and load it for the function
                         if numel(tile_fullpaths) > 100
                             fprintf('Save tile paths and coordinates to disk...\n');
                             [~, fsname] = fileparts(stitch_save_fname);
@@ -824,19 +829,20 @@ while ~all(is_done_flag | trial_counter >= max_trial_num, 'all')
                             '''resampleType'',''%s'',''resample'',[%s],''InputBbox'',%s,''tileOutBbox'',%s,', ...
                             '''TileOffset'',%d,''BlendMethod'',''%s'',''overlapType'',''%s'',''xcorrShift'',%s,', ...
                             '''xyMaxOffset'',%0.10f,''zMaxOffset'',%0.10f,''xcorrDownsample'',%s,''shiftMethod'',''%s'',', ...
-                            '''axisWeight'',[%s],''groupFile'',''%s'',''isPrimaryCh'',%s,''usePrimaryCoords'',%s,''padSize'',[%s],''boundboxCrop'',[%s],', ...
-                            '''zNormalize'',%s,''Save16bit'',%s,''tileIdx'',%s,''flippedTile'',[%s],''processFunPath'',''%s'',', ...
-                            '''stitchMIP'',%s,''EdgeArtifacts'',%0.10f,''parseCluster'',%s,''cpuOnlyNodes'',%s)'], ...
+                            '''axisWeight'',[%s],''groupFile'',''%s'',''isPrimaryCh'',%s,''usePrimaryCoords'',%s,', ...
+                            '''padSize'',[%s],''boundboxCrop'',[%s],''zNormalize'',%s,''Save16bit'',%s,''tileIdx'',%s,', ...
+                            '''flippedTile'',[%s],''processFunPath'',''%s'',''stitchMIP'',%s,''bigStitchData'',%s,', ...
+                            '''EdgeArtifacts'',%0.10f,''parseCluster'',%s,''cpuOnlyNodes'',%s)'], ...
                             stitch_function_str, tile_fullpaths_str, xyz_str, axisOrder, px, dz, SkewAngle, string(Reverse), ...
                             string(ObjectiveScan), string(IOScan), stitch_save_fname, tileInfoFullpath, stitchInfoDir, ...
                             stitchInfoFullpath, DSRDirstr, DeconDirstr, string(DS), string(DSR), strrep(mat2str(blockSize), ' ', ','), ...
                             resampleType, strrep(num2str(resample, '%.10d,'), ' ', ''), strrep(mat2str(InputBbox), ' ', ','), ...
                             strrep(mat2str(tileOutBbox), ' ', ','), TileOffset, BlendMethod,  overlapType, string(xcorrShift), ...
                             xyMaxOffset, zMaxOffset, strrep(mat2str(xcorrDownsample), ' ', ','), shiftMethod, ...
-                            strrep(mat2str(axisWeight), ' ', ','), groupFile,  string(isPrimaryCh), string(usePrimaryCoords), ...
+                            strrep(mat2str(axisWeight), ' ', ','), groupFile, string(isPrimaryCh), string(usePrimaryCoords), ...
                             num2str(padSize, '%d,'), strrep(num2str(boundboxCrop, '%d,'), ' ', ''),  string(zNormalize), ...
                             string(Save16bit), tileIdx_str, strrep(num2str(flippedTile, '%d,'), ' ', ''), processFunPath{cind}, ...
-                            strrep(mat2str(stitchMIP), ' ', ','), EdgeArtifacts, string(parseCluster), string(cpuOnlyNodes));
+                            strrep(mat2str(stitchMIP), ' ', ','), string(bigStitchData), EdgeArtifacts, string(parseCluster), string(cpuOnlyNodes));
 
                         if exist(cur_tmp_fname, 'file') || (parseCluster && ~(masterCompute && xcorrShift && strcmpi(xcorrMode, 'primaryFirst') && isPrimaryCh))
                             % for cluster computing with master, check whether
