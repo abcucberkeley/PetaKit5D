@@ -14,7 +14,7 @@ end
 
 tic
 % C = normxcorr3(T, A);
-C = normxcorr3_test(T, A);
+C = normxcorr3_updated(T, A);
 toc
 
 sz_t = size(T);
