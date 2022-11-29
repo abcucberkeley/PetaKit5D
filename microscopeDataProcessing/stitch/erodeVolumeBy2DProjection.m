@@ -38,7 +38,7 @@ end
 % mask = false(sz);
 % mask(esize + 1 : end - esize, :, :) = repmat(permute(MIP, [3, 1, 2]), sz(1) - 2 * esize, 1, 1);
 % volout = vol .* cast(mask, class(vol)); 
-vol = vol .* permute(MIP_erode, [3, 1, 2]);
+vol = vol .* cast(permute(MIP_erode, [3, 1, 2]), class(vol));
 try 
     indexing3d_mex(vol, [1, 1, 1, esize, sz(2), sz(3)], zeros(esize, sz(2), sz(3), class(vol)));
     indexing3d_mex(vol, [sz(1) - esize + 1, 1, 1, sz(1), sz(2), sz(3)], zeros(esize, sz(2), sz(3), class(vol)));
