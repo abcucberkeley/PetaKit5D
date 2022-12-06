@@ -22,7 +22,7 @@ function [ds, dsr] = XR_deskewRotateFrame(framePath, xyPixelSize, dz, varargin)
 % xruan (01/25/2022): add support for bbox crop before processing
 % xruan (07/07/2022): add support to resample skewed data for combined DSR
 %   for big image (in case of OOM issue).
-
+% xruan (12/06/2022): add predefined outSize for rotate in separate deskew/rotate
 
 ip = inputParser;
 ip.CaseSensitive = false;
@@ -314,7 +314,7 @@ if ip.Results.Rotate || DSRCombined
     if ~isempty(resample)
         rs = resample(:)';
         % complete rs to 3d in case it is not
-        rs = [ones(1, 4 - numel(rs)) * rs(1), rs(2:end)];    
+        resample = [ones(1, 4 - numel(rs)) * rs(1), rs(2:end)];    
     end
             
     if (~saveZarr && ~exist(dsrFullname, 'file')) || (saveZarr && ~exist(dsrFullname, 'dir'))
@@ -322,19 +322,33 @@ if ip.Results.Rotate || DSRCombined
             fprintf('Rotate frame %s...\n', framePath{1});
             if ~exist('ds', 'var')
                 ds = single(readtiff(dsFullname));
+                sz = getImageSize(framePath{1});
+                for i = 2 : numel(framePath)
+                    sz_i = getImageSize(framePath{i});
+                    sz(3) = sz(3) + sz_i(3);
+                end
             end
-            dsr = rotateFrame3D(ds, SkewAngle_1, zAniso, Reverse,...
-                'Crop', true, 'ObjectiveScan', ObjectiveScan, 'Interp', Interp);
-            clear ds;
+
+            ny = sz(1);
+            nx = sz(2);
+            nz = sz(3);
+            if ~ObjectiveScan
+                % calculate height; first & last 2 frames have interpolation artifacts
+                outSize = round([ny, (nx-1)*cos(theta)+(nz-1)*zAniso/sin(abs(theta)), (nx-1)*sin(abs(theta))-4]);
+            else
+                % exact proportions of rotated box
+                outSize = round([ny, nx*cos(theta)+nz*zAniso*sin(abs(theta)), nz*zAniso*cos(theta)+nx*sin(abs(theta))]);
+            end
             
-            if ~isempty(resample)
-                outSize = round(size(dsr) ./ rs);
-                dsr = imresize3(dsr, outSize, 'Method', Interp);
+            dsr = rotateFrame3D(ds, SkewAngle_1, zAniso, Reverse, 'Crop', true, ...
+                'resample', resample, 'ObjectiveScan', ObjectiveScan, 'outSize', outSize, 'Interp', Interp);
+            if nargout == 0
+                clear ds;
             end
         else
             % add support for resample before dsr for big data
             if ~isempty(resample) && any(resample ~= 1) && size(frame, 3) > 1000
-                outPixelSize = rs * xyPixelSize;
+                outPixelSize = resample * xyPixelSize;
                 pre_rs = min(outPixelSize) ./ [xyPixelSize, xyPixelSize, dz .* sind(SkewAngle_1)];
                 pre_rs(3) = max(1, round(pre_rs(3)));
                 

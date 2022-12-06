@@ -23,6 +23,7 @@
 % xruan (11/03/2021): decide crop size by the distance of two boundary
 % lines for rotation
 % xruan (11/30/2021): add support for resampling
+% xruan (12/06/2022): add support for user input outSize
 
 function [volout] = rotateFrame3D(vol, angle, zxRatio, varargin)
 
@@ -35,6 +36,7 @@ ip.addOptional('reverse', false, @islogical);
 ip.addParameter('Crop', true, @islogical);
 ip.addParameter('resample', [], @isnumeric); % resample factor in xyz order. 
 ip.addParameter('ObjectiveScan', false, @islogical);
+ip.addParameter('outSize', [], @isnumeric);
 ip.addParameter('Interp', 'linear', @(x) any(strcmpi(x, {'cubic', 'linear'})));
 ip.parse(vol, angle, zxRatio, varargin{:});
 
@@ -51,20 +53,7 @@ if ~ip.Results.ObjectiveScan
     % project and find left/right edges of deskewed rhomboid, take median width
     proj = squeeze(max(vol,[],1))'~=0;
     proj = diff(proj,1,2);
-    
-    % startIndex = ones(nz,1);
-    % endIndex = nx*ones(nz,1);
-    % [srow,scol] = find(proj==1);
-    % [erow,ecol] = find(proj==-1);
-    % startIndex(srow) = scol;
-    % endIndex(erow) = ecol;
-    
-    % doCrop = any(startIndex>1 & endIndex<nx);
-    
-    % calculate height; first & last 2 frames have interpolation artifacts
-    % w = median(diff([startIndex endIndex],[],2));
-    % h = round(abs(w*tan(theta)*cos(theta)))-4;
-    
+        
     % xruan: use distance between boundary lines before rotation to decide
     % the height after rotation 
     
@@ -104,13 +93,17 @@ R = [cos(theta) 0 -sin(theta) 0; % order for imwarp is x,y,z
      sin(theta) 0 cos(theta) 0;
      0 0 0 1];
 
-if ip.Results.Crop && doCrop
-    %outSize = round([ny nx/cos(theta) nz*ip.Results.zxRatio]);
-    % outSize = round([ny nx/cos(theta) h]);
-    outSize = round([ny w h]);
+if isempty(ip.Results.outSize)
+    if ip.Results.Crop && doCrop
+        %outSize = round([ny nx/cos(theta) nz*ip.Results.zxRatio]);
+        % outSize = round([ny nx/cos(theta) h]);
+        outSize = round([ny w h]);
+    else
+        % exact proportions of rotated box
+        outSize = round([ny nx*cos(theta)+nz*ip.Results.zxRatio/sin(abs(theta)) nz*ip.Results.zxRatio*cos(theta)+nx*sin(abs(theta))]);
+    end
 else
-    % exact proportions of rotated box
-    outSize = round([ny nx*cos(theta)+nz*ip.Results.zxRatio/sin(abs(theta)) nz*ip.Results.zxRatio*cos(theta)+nx*sin(abs(theta))]);
+    outSize = ip.Results.outSize;
 end
 
 T2 = [1 0 0 0
