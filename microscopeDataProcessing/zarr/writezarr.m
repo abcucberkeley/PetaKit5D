@@ -1,4 +1,4 @@
-function writezarr(data, filepath, varargin)
+function writezarr(data, filepath, options)
 % wrapper for zarr writer 
 % 
 % Author: Xiongtao Ruan (01/25/2022)
@@ -7,23 +7,21 @@ function writezarr(data, filepath, varargin)
 % parallelWriteZarr as default method
 
 
-ip = inputParser;
-ip.CaseSensitive = false;
-ip.addRequired('data', @(x) isnumeric(x));
-ip.addRequired('filepath', @(x) ischar(x) || isstring(x));
-ip.addParameter('overwrite', false, @islogical);
-ip.addParameter('blockSize', [500, 500, 500], @isnumeric);
-ip.addParameter('expand2dDim', true, @islogical); % expand the z dimension for 2d data
-ip.addParameter('groupWrite', true, @islogical);
-ip.addParameter('bbox', [], @isnumeric);
-ip.parse(data, filepath, varargin{:});
+arguments
+    data {mustBeNumeric}
+    filepath char
+    options.overwrite (1, 1) {mustBeNumericOrLogical} = false
+    options.blockSize (1, :) {mustBeNumeric} = [500, 500, 500]
+    options.expand2dDim (1, 1) {mustBeNumericOrLogical} = true  % expand the z dimension for 2d data
+    options.groupWrite (1, 1) {mustBeNumericOrLogical} = true
+    options.bbox (1, :) {mustBeNumeric} = []
+end
 
-pr = ip.Results;
-overwrite = pr.overwrite;
-expand2dDim = pr.expand2dDim;
-blockSize = pr.blockSize;
-groupWrite = pr.groupWrite;
-bbox = pr.bbox;
+overwrite = options.overwrite;
+expand2dDim = options.expand2dDim;
+blockSize = options.blockSize;
+groupWrite = options.groupWrite;
+bbox = options.bbox;
 
 dtype = class(data);
 sz = size(data);
@@ -53,9 +51,6 @@ if ~overwrite && exist(filepath, 'dir')
     end
 end
 
-if isstring(filepath)
-    filepath = char(filepath);
-end
 try 
     if ismatrix(data)
         % error('No support for 2d data for now!')

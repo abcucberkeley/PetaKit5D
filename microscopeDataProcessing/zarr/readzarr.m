@@ -1,4 +1,4 @@
-function [data, bim] = readzarr(filepath, varargin)
+function [data, bim] = readzarr(filepath, options)
 % wrapper for zarr reader
 % bbox provide the region bounding box [ymin, xmin, zmin, ymax, xmax, zmax]
 % 
@@ -7,24 +7,22 @@ function [data, bim] = readzarr(filepath, varargin)
 % xruan (02/01/2022): add support for parallel read zarr
 
 
-ip = inputParser;
-ip.CaseSensitive = false;
-ip.addRequired('filepath', @(x) ischar(x) || isstring(x));
-ip.addParameter('bbox', [], @isnumeric);
-ip.parse(filepath, varargin{:});
-
-pr = ip.Results;
-bbox = pr.bbox;
-
-if isstring(filepath) 
-    filepath = filepath{1};
+arguments
+    filepath char 
+    options.bbox (1, :) {mustBeNumeric} = []
 end
+
+bbox = options.bbox;
+
 try 
     if isempty(bbox)
         data = parallelReadZarr(filepath);
     else
         bbox = bbox(:)';
         data = parallelReadZarr(filepath, bbox);        
+    end
+    if nargout == 2
+        bim = blockedImage(filepath, "Adapter", CZarrAdapter);
     end
 catch ME
     disp(ME);

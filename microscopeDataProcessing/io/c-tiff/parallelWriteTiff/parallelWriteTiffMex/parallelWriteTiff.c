@@ -1,6 +1,4 @@
-#include <stdio.h>
 #include <stdint.h>
-#include <string.h>
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
@@ -19,16 +17,16 @@
 //mex -v CXXOPTIMFLAGS="-O3 -DNDEBUG" CXXFLAGS='$CXXFLAGS -O3 -fopenmp' LDFLAGS='$LDFLAGS -O3 -fopenmp' '-I/global/home/groups/software/sl-7.x86_64/modules/libtiff/4.1.0/libtiff/' '-L/global/home/groups/software/sl-7.x86_64/modules/libtiff/4.1.0/libtiff/' -ltiff parallelWriteTiff.c lzw.c
 
 //libtiff 4.4.0
-//mex -v COPTIMFLAGS="-O3 -DNDEBUG" CFLAGS='$CFLAGS -O3 -fopenmp' LDFLAGS='$LDFLAGS -O3 -fopenmp' '-I/clusterfs/fiona/matthewmueller/software/tiff-4.4.0/include' '-L/clusterfs/fiona/matthewmueller/software/tiff-4.4.0/lib' -ltiff parallelWriteTiff.c lzwEncode.c
+//mex -v COPTIMFLAGS="-O3 -DNDEBUG" LDOPTIMFLAGS="-O3 -DNDEBUG" CFLAGS='$CFLAGS -O3 -fopenmp' LDFLAGS='$LDFLAGS -O3 -fopenmp' '-I/clusterfs/fiona/matthewmueller/software/tiff-4.4.0/include' '-L/clusterfs/fiona/matthewmueller/software/tiff-4.4.0/lib' -ltiff parallelWriteTiff.c lzwEncode.c
+
 static void mkdirRecursive(const char *dir) {
     char tmp[8192];
     char *p = NULL;
     size_t len;
-    #ifdef __linux__
-    char fileSep = '/';
-    #endif
     #ifdef _WIN32
     char fileSep = '\\';
+    #else
+    char fileSep = '/';
     #endif
     int status;
     snprintf(tmp, sizeof(tmp),"%s",dir);
@@ -43,23 +41,20 @@ static void mkdirRecursive(const char *dir) {
         if (*p == fileSep) {
             *p = 0;
 
-            #ifdef __linux__
-            mkdir(tmp, 0775);
-            #endif
-
             #ifdef _WIN32
             mkdir(tmp);
+            #else
+            mkdir(tmp, 0775);
             #endif
 
             chmod(tmp, 0775);
             *p = fileSep;
         }
     }
-    #ifdef __linux__
-    mkdir(tmp, 0775);
-    #endif
     #ifdef _WIN32
     mkdir(tmp);
+    #else
+    mkdir(tmp, 0775);
     #endif
     chmod(tmp, 0775);
 }
@@ -80,7 +75,7 @@ void writeTiffParallel(uint64_t x, uint64_t y, uint64_t z, const char* fileName,
     for(w = 0; w < numWorkers; w++){
 
         uint64_t len = 0;
-        uint8_t* compr = (uint8_t*)calloc((((x*stripSize)*(bits/8))+(extraBytes*(bits/8)))*2+1,1);
+        uint8_t* compr = (uint8_t*)malloc((((x*stripSize)*(bits/8))+(extraBytes*(bits/8)))*2+1);
         for(uint64_t dir = startSlice+(w*batchSize); dir < startSlice+((w+1)*batchSize); dir++){
             if(dir>=z+startSlice || safeMode) break;
 
@@ -94,7 +89,7 @@ void writeTiffParallel(uint64_t x, uint64_t y, uint64_t z, const char* fileName,
                     len = stripSize*x*(bits/8);
                 }
                 if(dir == z+startSlice-1 && len == (y-(stripSize*i))*x*(bits/8)){
-                    uint8_t* cArrL = (uint8_t*)calloc(len+(extraBytes*(bits/8)),1);
+                    uint8_t* cArrL = (uint8_t*)malloc(len+(extraBytes*(bits/8)));
                     memcpy(cArrL,cArr,len);
                     cSizes[i+(dir*stripsPerDir)] = lzwEncode(cArrL,compr,len+(extraBytes*(bits/8)));
                     if(cSizes[i+(dir*stripsPerDir)] > len){
@@ -156,13 +151,12 @@ void writeTiffParallel(uint64_t x, uint64_t y, uint64_t z, const char* fileName,
         #pragma omp parallel for
         for(w = 0; w < numWorkers; w++){
             uint64_t len = 0;
-            uint8_t* compr = (uint8_t*)calloc((((x*stripSize)*(bits/8))+(extraBytes*(bits/8)))*2+1,1);
+            uint8_t* compr = (uint8_t*)malloc((((x*stripSize)*(bits/8))+(extraBytes*(bits/8)))*2+1);
             for(uint64_t dir = startSlice+(w*batchSize); dir < startSlice+((w+1)*batchSize); dir++){
                 if(dir>=z+startSlice) break;
 
                 for (uint64_t i = 0; i*stripSize < y; i++)
                 {
-                    //uint8_t* cArr = (uint8_t*)tiff+((((i*stripSize)*x)+((dir-startSlice)*(x*y)))*(bits/8));
                     uint8_t* cArr = comprA[i+(dir*stripsPerDir)];
                     if (stripSize*(i+1) > y){
                         len = (y-(stripSize*i))*x*(bits/8);
@@ -172,7 +166,7 @@ void writeTiffParallel(uint64_t x, uint64_t y, uint64_t z, const char* fileName,
                     }
 
                     if(dir == z+startSlice-1 && len == (y-(stripSize*i))*x*(bits/8)){
-                        uint8_t* cArrL = (uint8_t*)calloc(len+(extraBytes*(bits/8)),1);
+                        uint8_t* cArrL = (uint8_t*)malloc(len+(extraBytes*(bits/8)));
                         memcpy(cArrL,(uint8_t*)tiff+((((i*stripSize)*x)+((dir-startSlice)*(x*y)))*(bits/8)),len);
                         cSizes[i+(dir*stripsPerDir)] = lzwEncode(cArrL,compr,len+(extraBytes*(bits/8)));
                         memcpy(cArr,compr,cSizes[i+(dir*stripsPerDir)]);
@@ -359,11 +353,10 @@ void mexFunction(int nlhs, mxArray *plhs[],
     // Check if folder exists, if not then make it (recursive if needed)
     char* folderName = strdup(fileName);
     char *lastSlash = NULL;
-    #ifdef __linux__
-    lastSlash = strrchr(folderName, '/');
-    #endif
     #ifdef _WIN32
     lastSlash = strrchr(folderName, '\\');
+    #else
+    lastSlash = strrchr(folderName, '/');
     #endif
     if(lastSlash){
         *lastSlash = '\0';
@@ -430,8 +423,8 @@ void mexFunction(int nlhs, mxArray *plhs[],
 
         #pragma omp parallel for collapse(3)
         for(uint64_t dir = 0; dir < z; dir++){
-            for(uint64_t i = 0; i < x; i++){
-                for(uint64_t j = 0; j < y; j++){
+            for(uint64_t j = 0; j < y; j++){
+                for(uint64_t i = 0; i < x; i++){
                     ((uint8_t*)tiff)[i+(j*x)+((dir-startSlice)*(x*y))] = ((uint8_t*)tiffOld)[j+(i*y)+((dir-startSlice)*(x*y))];
                 }
             }
@@ -446,8 +439,8 @@ void mexFunction(int nlhs, mxArray *plhs[],
 
         #pragma omp parallel for collapse(3)
         for(uint64_t dir = 0; dir < z; dir++){
-            for(uint64_t i = 0; i < x; i++){
-                for(uint64_t j = 0; j < y; j++){
+            for(uint64_t j = 0; j < y; j++){
+                for(uint64_t i = 0; i < x; i++){
                     ((uint16_t*)tiff)[i+(j*x)+((dir-startSlice)*(x*y))] = ((uint16_t*)tiffOld)[j+(i*y)+((dir-startSlice)*(x*y))];
                 }
             }
@@ -461,8 +454,8 @@ void mexFunction(int nlhs, mxArray *plhs[],
 
         #pragma omp parallel for collapse(3)
         for(uint64_t dir = 0; dir < z; dir++){
-            for(uint64_t i = 0; i < x; i++){
-                for(uint64_t j = 0; j < y; j++){
+            for(uint64_t j = 0; j < y; j++){
+                for(uint64_t i = 0; i < x; i++){
                     ((float*)tiff)[i+(j*x)+((dir-startSlice)*(x*y))] = ((float*)tiffOld)[j+(i*y)+((dir-startSlice)*(x*y))];
                 }
             }
@@ -476,8 +469,8 @@ void mexFunction(int nlhs, mxArray *plhs[],
 
         #pragma omp parallel for collapse(3)
         for(uint64_t dir = 0; dir < z; dir++){
-            for(uint64_t i = 0; i < x; i++){
-                for(uint64_t j = 0; j < y; j++){
+            for(uint64_t j = 0; j < y; j++){
+                for(uint64_t i = 0; i < x; i++){
                     ((double*)tiff)[i+(j*x)+((dir-startSlice)*(x*y))] = ((double*)tiffOld)[j+(i*y)+((dir-startSlice)*(x*y))];
                 }
             }
