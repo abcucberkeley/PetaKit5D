@@ -1,4 +1,4 @@
-function [data] = readtiff(filepath, varargin)
+function [data] = readtiff(filepath, options)
 % wrapper for tiff reader with both mex parallel version and matlab version code
 % 
 %
@@ -6,20 +6,14 @@ function [data] = readtiff(filepath, varargin)
 % Author: Xiongtao Ruan (09/28/2022)
 
 
-ip = inputParser;
-ip.CaseSensitive = false;
-ip.KeepUnmatched = true;
-ip.addRequired('filepath');
-ip.addParameter('range', [], @isnumeric); % z range (start and end z)
-ip.parse(filepath, varargin{:});
+arguments
+    filepath char
+    options.range (1, :) {mustBeNumeric} = []
+end
 
-pr = ip.Results;
-range = pr.range;
+range = options.range;
 
 try 
-    if isstring(filepath)
-        filepath = convertStringsToChars(filepath);
-    end
     if isempty(range)
         data = parallelReadTiff(filepath);
     else

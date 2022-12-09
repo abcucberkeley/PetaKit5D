@@ -1,4 +1,4 @@
-function writetiff(img, filepath, varargin)
+function writetiff(img, filepath, options)
 % wrapper for saveastiff.m to support big tiff format, and keep
 % compatibility of previous script for the decrapted writetiff. 
 % 
@@ -8,24 +8,27 @@ function writetiff(img, filepath, varargin)
 % xruan (07/21/2022): add parallelWriteTiff as default method
 
 
-ip = inputParser;
-ip.CaseSensitive = false;
-ip.addParameter('Compression', 'lzw', @(x) any(strcmpi(x, {'none', 'lzw'})));
-ip.addParameter('Mode', 'parallel', @(x) any(strcmpi(x, {'parallel', 'libtiff', 'imwrite'})));
-ip.addParameter('groupWrite', true, @islogical);
-ip.parse(varargin{:});
+arguments
+    img {mustBeNumeric}
+    filepath char
+    options.Compression (1, :) char {mustBeMember(options.Compression, {'none', 'lzw'})} = 'lzw'
+    options.Mode (1, :) char {mustBeMember(options.Mode, {'parallel', 'libtiff', 'imwrite'})} = 'parallel'
+    options.groupWrite (1, 1) logical = true
+end
 
-pr = ip.Results;
+Compression = options.Compression;
+Mode = options.Mode;
+groupWrite = options.groupWrite;
 
 options = struct();
-switch lower(pr.Compression)
+switch lower(Compression)
     case 'none'
         options.compress = 'no';
     case 'lzw'
         options.compress = 'lzw';
 end
 
-switch lower(pr.Mode)
+switch lower(Mode)
     case 'parallel'
         try
             pstr = fileparts(filepath);
@@ -45,7 +48,7 @@ switch lower(pr.Mode)
         saveastiff(img, filepath, options);
 end
 
-if pr.groupWrite && ~ispc
+if groupWrite && ~ispc
     try
         fileattrib(filepath, '+w', 'g');
     catch

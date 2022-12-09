@@ -10,10 +10,10 @@ function writezarr(data, filepath, options)
 arguments
     data {mustBeNumeric}
     filepath char
-    options.overwrite (1, 1) {mustBeNumericOrLogical} = false
+    options.overwrite (1, 1) logical = false
     options.blockSize (1, :) {mustBeNumeric} = [500, 500, 500]
-    options.expand2dDim (1, 1) {mustBeNumericOrLogical} = true  % expand the z dimension for 2d data
-    options.groupWrite (1, 1) {mustBeNumericOrLogical} = true
+    options.expand2dDim (1, 1) logical = true  % expand the z dimension for 2d data
+    options.groupWrite (1, 1) logical = true
     options.bbox (1, :) {mustBeNumeric} = []
 end
 

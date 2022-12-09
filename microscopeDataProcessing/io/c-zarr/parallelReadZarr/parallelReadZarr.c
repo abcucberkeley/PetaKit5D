@@ -9,7 +9,7 @@
 
 #include "zlib.h"
 
-//mex -v COPTIMFLAGS="-O3 -DNDEBUG" CFLAGS='$CFLAGS -O3 -fopenmp' LDFLAGS='$LDFLAGS -O3 -fopenmp' '-I/global/home/groups/software/sl-7.x86_64/modules/cBlosc/2.0.4/include/' '-I/global/home/groups/software/sl-7.x86_64/modules/cJSON/1.7.15/include/' '-L/global/home/groups/software/sl-7.x86_64/modules/cBlosc/2.0.4/lib64' -lblosc2 -L'/global/home/groups/software/sl-7.x86_64/modules/cJSON/1.7.15/lib64' -lcjson -lz parallelReadZarr.c
+//mex -v COPTIMFLAGS="-O3 -DNDEBUG" LDOPTIMFLAGS="-O3 -DNDEBUG" CFLAGS='$CFLAGS -O3 -fopenmp' LDFLAGS='$LDFLAGS -O3 -fopenmp' '-I/global/home/groups/software/sl-7.x86_64/modules/cBlosc/2.0.4/include/' '-I/global/home/groups/software/sl-7.x86_64/modules/cJSON/1.7.15/include/' '-L/global/home/groups/software/sl-7.x86_64/modules/cBlosc/2.0.4/lib64' -lblosc2 -L'/global/home/groups/software/sl-7.x86_64/modules/cJSON/1.7.15/lib64' -lcjson -lz parallelReadZarr.c
 
 
 const char fileSep =
@@ -215,7 +215,7 @@ void setValuesFromJSON(char* fileName,uint64_t *chunkXSize,uint64_t *chunkYSize,
     fread(buffer, filelen, 1, fileptr);
     fclose(fileptr);
     cJSON *json = cJSON_ParseWithLength(buffer,filelen);
-    uint8_t flags[4] = {0,0,0,0};
+    uint8_t flags[5] = {0,0,0,0,0};
 
     while(!(flags[0] && flags[1] && flags[2] && flags[3] && flags[4])){
         if(!json->string){
