@@ -33,6 +33,7 @@ cd(codePath);
 if ~contains(codePath, 'LLSM3DTools')
     cd('LLSM3DTools');
 end
+codePath = pwd;
 
 uuid = get_uuid();
 
@@ -123,8 +124,8 @@ for n = 1 : 5
         inputFullpath_str = sprintf('%s', strjoin(inputFullpaths(s : t), ','));
         outPath_str = sprintf('%s', strjoin(outputPaths(s : t), ','));
 
-        func_strs{i} = sprintf(['bash $PWD/microscopeDataProcessing/io/rsync_wrapper/rsync_batch_files.sh ', ...
-            '''''%s'''' ''''%s'''' '], inputFullpath_str, outPath_str);
+        func_strs{i} = sprintf(['bash %s/microscopeDataProcessing/io/rsync_wrapper/rsync_batch_files.sh ', ...
+            '''''%s'''' ''''%s'''' '], codePath, inputFullpath_str, outPath_str);
     end
 
     inputFlagpaths = inputFullpaths(max(1, batchSize - 1) : batchSize : end);
