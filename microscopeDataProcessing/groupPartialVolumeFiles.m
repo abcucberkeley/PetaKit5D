@@ -7,6 +7,7 @@ function [containPartVolume, groupedFnames, groupedDatenum, groupedDatasize] = g
 % Author: Xiongtao Ruan (10/06/2020)
 % xruan (10/15/2020): also add support for only processing first timepoint
 % xruan (02/12/2022): add channel patterns to exclude unnecessary files.
+% xruan (12/20/2022): use actual data size for tiff files instead of compressed size.
 
 
 ip = inputParser;
@@ -62,22 +63,31 @@ else
         datenum = datenum(include_flag);
         datasize = datasize(include_flag);
     end
-    
-    if strcmp(ext, '.zarr')
-        for f = 1 : numel(fnames)
-            bim = blockedImage([dataPath, filesep, fnames{f}], 'Adapter', ZarrAdapter);
-            switch bim.ClassUnderlying
-                case 'uint8'
-                    datasize(f) = prod(bim.Size) * 1;
-                case 'uint16'
-                    datasize(f) = prod(bim.Size) * 2;
-                case 'single'
-                    datasize(f) = prod(bim.Size) * 4;
-                otherwise
-                    datasize(f) = prod(bim.Size) * 8;
-            end                    
-        end
+
+    switch ext
+        case {'.tif', '.tiff'}
+            bim = blockedImage([dataPath, filesep, fnames{1}], 'Adapter', MPageTiffAdapter);            
+        case '.zarr'
+            bim = blockedImage([dataPath, filesep, fnames{1}], 'Adapter', ZarrAdapter);            
     end
+    
+    dtype = bim.ClassUnderlying;
+    switch dtype
+        case 'uint8'
+            dbytes = 1;
+        case 'uint16'
+            dbytes = 2;
+        case 'single'
+            dbytes = 4;
+        otherwise
+            dbytes = 8;
+    end
+
+    for f = 1 : numel(fnames)
+        fn = [dataPath, filesep, fnames{f}];
+        datasize(f) = prod(getImageSize(fn)) * dbytes;
+    end
+
     fileFullpathList = cellfun(@(x) [dataPath, filesep, x], fnames, 'unif', 0);
     nF = numel(fileFullpathList);
 end

@@ -300,9 +300,11 @@ end
 
 if ip.Results.Rotate || DSRCombined
     dsrPath = sprintf('%s/DSR%s/', rt, surffix);
-    mkdir(dsrPath);
-    if ~ispc
-        fileattrib(dsrPath, '+w', 'g');
+    if ~exist(dsrPath, 'dir')
+        mkdir(dsrPath);
+        if ~ispc
+            fileattrib(dsrPath, '+w', 'g');
+        end
     end
     
     if saveZarr
