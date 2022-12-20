@@ -25,11 +25,10 @@ if strcmp(filePath(end - 2 : end), 'tif') || strcmp(filePath(end - 3 : end), 'ti
 %         Zstack = Zstack + 1;
 %     end
 %    
-    % jvm not enabled
     try
-            imSize = getImageSize_mex(filePath);
+        imSize = getImageSize_mex(filePath);
     catch ME
-        if ~usejava('jvm')
+        if ~usejava('jvm') && ~useParpool
             % use binary search 
             tobj = Tiff(filePath, 'r');     
             Height = getTag(tobj, 'ImageLength');
@@ -64,12 +63,8 @@ if strcmp(filePath(end - 2 : end), 'tif') || strcmp(filePath(end - 3 : end), 'ti
             Width = reader.getSizeX;
             Zstack = reader.getSizeT;
             if Zstack == 1
-                tobj = Tiff(filePath, 'r');
-                Zstack = 1;
-                while ~tobj.lastDirectory()
-                    tobj.nextDirectory() ;
-                    Zstack = Zstack + 1;
-                end
+                obj = matlab.io.internal.BigImageTiffReader(filePath);
+                Zstack = obj.NumImages;
             end
 
             reader.close()
@@ -85,16 +80,7 @@ elseif strcmp(filePath(end - 3 : end), 'zarr')
         bim = blockedImage(filePath, 'Adapter', ZarrAdapter);
     end
     imSize = bim.Size;
-end    
-    
-    
-% toc
-
-% tic
-% t = matlab.io.internal.BigImageTiffReader(filePath);
-% imSize = [t.ImageHeight, t.ImageWidth, t.NumImages];
-% toc
-
+end
 
 
 end

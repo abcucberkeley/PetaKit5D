@@ -70,7 +70,7 @@ else
         case '.zarr'
             bim = blockedImage([dataPath, filesep, fnames{1}], 'Adapter', ZarrAdapter);            
     end
-    
+
     dtype = bim.ClassUnderlying;
     switch dtype
         case 'uint8'
@@ -82,10 +82,20 @@ else
         otherwise
             dbytes = 8;
     end
-
-    for f = 1 : numel(fnames)
-        fn = [dataPath, filesep, fnames{f}];
-        datasize(f) = prod(getImageSize(fn)) * dbytes;
+    
+    % for tiff file, only check the first and last file and use the max one as data size
+    switch ext
+        case {'.tif', '.tiff'}
+            for f = [1, numel(fnames)]
+                fn = [dataPath, filesep, fnames{f}];
+                datasize(f) = prod(getImageSize(fn)) * dbytes;
+            end
+            datasize(:) = max(datasize);
+        case {'.zarr'}
+            for f = 1 : numel(fnames)
+                fn = [dataPath, filesep, fnames{f}];
+                datasize(f) = prod(getImageSize(fn)) * dbytes;
+            end
     end
 
     fileFullpathList = cellfun(@(x) [dataPath, filesep, x], fnames, 'unif', 0);
