@@ -27,7 +27,12 @@ SlurmParam = sprintf('%s --nice=%d', SlurmParam, niceFactor);
 
 tic
 % go to the repo root folder
-cd(fileparts(which('setup.m')));
+setupFn = which('setup.m');
+[codePath, ~, ~] = fileparts(setupFn);
+cd(codePath);
+if ~contains(codePath, 'LLSM3DTools')
+    cd('LLSM3DTools');
+end
 
 uuid = get_uuid();
 
@@ -118,7 +123,7 @@ for n = 1 : 5
         inputFullpath_str = sprintf('%s', strjoin(inputFullpaths(s : t), ','));
         outPath_str = sprintf('%s', strjoin(outputPaths(s : t), ','));
 
-        func_strs{i} = sprintf(['bash $PWD/dataAnalysisScripts/process_functions/rsync_batch_files.sh ', ...
+        func_strs{i} = sprintf(['bash $PWD/microscopeDataProcessing/io/rsync_wrapper/rsync_batch_files.sh ', ...
             '''''%s'''' ''''%s'''' '], inputFullpath_str, outPath_str);
     end
 
