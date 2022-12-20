@@ -30,7 +30,8 @@ ip.addParameter('deconMaskFns', {} , @iscell); % Full paths of 2D mask zarr file
 ip.addParameter('saveZarr', false, @islogical); % save as zarr
 % ip.addParameter('DoNotAdjustResForFFT', true , @islogical); % not crop chunks for deconvolution
 ip.addParameter('RLMethod', 'simplified' , @ischar); % rl method {'original', 'simplified', 'cudagen'}
-ip.addParameter('wienerAlpha', 0.005, @isnumeric); 
+ip.addParameter('wienerAlpha', 0.005, @isnumeric);
+ip.addParameter('OTFCumThresh', 0.9, @isnumeric); % OTF cumutative sum threshold
 ip.addParameter('skewed', [], @(x) isempty(x) || islogical(x)); % decon in skewed space
 ip.addParameter('fixIter', true, @islogical); % 
 ip.addParameter('errThresh', [], @isnumeric); % error threshold for simplified code
@@ -59,6 +60,7 @@ deconMaskFns = pr.deconMaskFns;
 saveZarr = pr.saveZarr;
 RLMethod = pr.RLMethod;
 wienerAlpha = pr.wienerAlpha;
+OTFCumThresh = pr.OTFCumThresh;
 skewed = pr.skewed;
 fixIter = pr.fixIter;
 errThresh = pr.errThresh;

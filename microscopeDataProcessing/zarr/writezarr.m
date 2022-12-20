@@ -42,24 +42,26 @@ end
 
 % if not overwrite data, the file exist and bbox is empty, define bbox as
 % the whole data size. 
-if ~overwrite && exist(filepath, 'dir')
-    if isempty(bbox)
-        bbox = [1, 1, 1, size(data, 1 : 3)];
-        if ~expand2dDim
-            bbox = [1, 1, size(data, 1 : 2)];
-        end
+if isempty(bbox)
+    bbox = [1, 1, 1, size(data, 1 : 3)];
+    if ~expand2dDim
+        bbox = [1, 1, size(data, 1 : 2)];
     end
 end
 
 try 
-    if ismatrix(data)
-        % error('No support for 2d data for now!')
-    end
-    if isempty(bbox)
-        parallelWriteZarr(filepath, data, 1, blockSize);
+    if ~exist(filepath, 'dir') || (exist(filepath, 'dir') && isempty(bbox))
+        if exist(filepath, 'dir')
+            rmdir(filepath, 's');
+        end
+        bim = blockedImage(filepath, sz, blockSize, init_val, "Adapter", CZarrAdapter, 'Mode', 'w');
+        bim.Adapter.close();
     else
-        parallelWriteZarr(filepath, data, 1, bbox);
+        bim = blockedImage(filepath, "Adapter", CZarrAdapter);
+        bim.Adapter.close();
     end
+
+    parallelWriteZarr(filepath, data, 1, bbox);
 catch ME
     disp(ME);
     if ~exist(filepath, 'dir') || (exist(filepath, 'dir') && isempty(bbox))

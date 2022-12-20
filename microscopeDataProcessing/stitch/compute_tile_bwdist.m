@@ -46,7 +46,7 @@ end
 im_i = im_i == 0;
 
 counter = 1;
-sz = size(im_i);
+sz = size(im_i, [1 : 3]);
 im_dist = ones(sz, 'single');
 if singleDistMap
     im_i_c = im_i(:, :, round((sz(3) + 1) / 2));

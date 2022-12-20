@@ -32,6 +32,7 @@ ip.addParameter('scaleFactor', 1e8 , @isnumeric); % scale factor for data
 ip.addParameter('deconMaskFns', {} , @iscell); % Full paths of 2D mask zarr files, in xy, xz, yz order
 ip.addParameter('RLMethod', 'simplified' , @ischar); % rl method {'original', 'simplified', 'cudagen'}
 ip.addParameter('wienerAlpha', 0.005, @isnumeric);
+ip.addParameter('OTFCumThresh', 0.9, @isnumeric); % OTF cumutative sum threshold
 ip.addParameter('skewed', [], @(x) isempty(x) || islogical(x)); % decon in skewed space
 ip.addParameter('fixIter', false, @islogical); % CPU Memory in Gb
 ip.addParameter('useGPU', false, @islogical); % use gpu for chuck deconvolution. 
@@ -55,6 +56,7 @@ deconMaskFns = pr.deconMaskFns;
 RLMethod = pr.RLMethod;
 skewed = pr.skewed;
 wienerAlpha = pr.wienerAlpha;
+OTFCumThresh = pr.OTFCumThresh;
 useGPU = pr.useGPU;
 uuid = pr.uuid;
 psfGen = pr.psfGen;
@@ -146,8 +148,9 @@ for i = 1 : numel(batchInds)
         'rawdata', in_batch, 'Save16bit', Save16bit, 'SkewAngle', SkewAngle, ...
         'Deskew', Deskew, 'Rotate', Rotate, 'DSRCombined', DSRCombined, 'Reverse', Reverse, ...
         'Background', Background, 'DeconIter', DeconIter, 'RLMethod', RLMethod, ...
-        'skewed', skewed, 'wienerAlpha', wienerAlpha, 'fixIter', fixIter, 'scaleFactor', scaleFactor, ...
-        'deconBbox', deconBbox, 'useGPU', useGPU, 'psfGen', psfGen, 'debug', debug, 'save3Dstack', save3Dstack, ...
+        'skewed', skewed, 'wienerAlpha', wienerAlpha, 'OTFCumThresh', OTFCumThresh, ...
+        'fixIter', fixIter, 'scaleFactor', scaleFactor, 'deconBbox', deconBbox, ...
+        'useGPU', useGPU, 'psfGen', psfGen, 'debug', debug, 'save3Dstack', save3Dstack, ...
         'mipAxis', mipAxis);
     
     clear in_batch;

@@ -78,7 +78,7 @@ s2 = round((cuboid_overlap_12(1 : 3) - cuboid_2(1 : 3))' ./ (px * xyz_factors)) 
 t1 = round((cuboid_overlap_12(4 : 6) - cuboid_1(1 : 3))' ./ (px * xyz_factors)) + 1;
 t2 = round((cuboid_overlap_12(4 : 6) - cuboid_2(1 : 3))' ./ (px * xyz_factors)) + 1;
 
-region_2 = bim_2.Adapter.getIORegion(s2([2, 1, 3]), t2([2, 1, 3]));
+region_2 = bim_2.Adapter.getIORegion(s2([2, 1, 3])', t2([2, 1, 3])');
 region_2 = single(region_2);
 
 % crop region 2 if one or more dimension is too large, if so, find a small
@@ -116,7 +116,7 @@ sr1 = max(s1 - boarder, 1);
 tr1 = min(t1 + boarder, sz_1([2, 1, 3])');
 
 % region_1 = bim_1.getRegion(sr1([2, 1, 3]), tr1([2, 1, 3]));
-region_1 = bim_1.Adapter.getIORegion(sr1([2, 1, 3]), tr1([2, 1, 3]));
+region_1 = bim_1.Adapter.getIORegion(sr1([2, 1, 3])', tr1([2, 1, 3])');
 region_1 = single(region_1);
 
 % first resize to downsampled ones

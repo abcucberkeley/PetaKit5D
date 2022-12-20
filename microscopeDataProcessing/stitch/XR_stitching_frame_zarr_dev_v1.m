@@ -39,6 +39,8 @@ function XR_stitching_frame_zarr_dev_v1(tileFullpaths, coordinates, varargin)
 % xruan (11/25/2022): use 100 GB as threshold for big/small data. Use zstd
 % and node factor 1 for big data, and use lz4 and node factor 2 for small
 % data. Also use stitch block info from primary channel for secondary channels.
+% xruan (12/13/2022): change xcorr thresh as user defined parameter with default 0.25
+
 
 ip = inputParser;
 ip.CaseSensitive = false;
@@ -51,7 +53,6 @@ ip.addParameter('stitchInfoFullpath', '', @ischar); % filename that contain stit
 ip.addParameter('DSRDirstr', '', @ischar); % path for DSRDirstr, if it is not true
 ip.addParameter('DeconDirstr', '', @ischar); % path for decon str, if it is not true
 ip.addParameter('Overwrite', false, @islogical);
-ip.addParameter('px', 0.108, @isscalar);
 ip.addParameter('SkewAngle', 32.45, @isscalar);
 ip.addParameter('axisOrder', 'x,y,z', @ischar);
 ip.addParameter('flippedTile', [], @(x) isempty(x) || all(islogical(x) | isnumeric(x)));
@@ -86,6 +87,7 @@ ip.addParameter('padSize', [], @(x) isnumeric(x) && (isempty(x) || numel(x) == 3
 ip.addParameter('boundboxCrop', [], @(x) isnumeric(x) && (isempty(x) || all(size(x) == [3, 2]) || numel(x) == 6));
 ip.addParameter('zNormalize', false, @islogical);
 ip.addParameter('xcorrDownsample', [2, 2, 1], @isnumeric); % y,x,z
+ip.addParameter('xcorrThresh', 0.25, @isnumeric); % threshold of of xcorr, ignore shift if xcorr below this threshold.
 ip.addParameter('xyMaxOffset', 300, @isnumeric); % max offsets in xy axes
 ip.addParameter('zMaxOffset', 50, @isnumeric); % max offsets in z axis
 ip.addParameter('shiftMethod', 'grid', @ischar); % {'local', 'global', 'grid', 'test', 'group'}
@@ -107,7 +109,7 @@ ip.addParameter('parseCluster', true, @islogical);
 ip.addParameter('masterCompute', true, @islogical); % master node participate in the task computing. 
 ip.addParameter('jobLogDir', '../job_logs', @ischar);
 ip.addParameter('cpusPerTask', 2, @isnumeric);
-ip.addParameter('cpuOnlyNodes', true, @islogical);
+ip.addParameter('cpuOnlyNodes', false, @islogical);
 ip.addParameter('uuid', '', @ischar);
 ip.addParameter('maxTrialNum', 3, @isnumeric);
 ip.addParameter('unitWaitTime', 30, @isnumeric);
@@ -121,16 +123,13 @@ ResultPath = pr.ResultPath;
 tileInfoFullpath = pr.tileInfoFullpath;
 stitchInfoDir = pr.stitchInfoDir;
 stitchInfoFullpath = pr.stitchInfoFullpath;
-px = pr.px;
 SkewAngle = pr.SkewAngle;
 flippedTile = pr.flippedTile;
 axisOrder = pr.axisOrder;
 dz = pr.dz;
-xyPixelSize = pr.xyPixelSize;
+px = pr.xyPixelSize;
 ObjectiveScan = pr.ObjectiveScan;
 IOScan = pr.IOScan;
-Reverse = pr.Reverse;
-Crop = pr.Crop;
 InputBbox = pr.InputBbox;
 tileOutBbox = pr.tileOutBbox;
 TileOffset = pr.TileOffset;
@@ -156,6 +155,7 @@ padSize = pr.padSize;
 boundboxCrop = pr.boundboxCrop;
 zNormalize = pr.zNormalize;
 xcorrDownsample = pr.xcorrDownsample;
+xcorrThresh = pr.xcorrThresh;
 xyMaxOffset = pr.xyMaxOffset;
 zMaxOffset = pr.zMaxOffset;
 singleDistMap = pr.singleDistMap;
@@ -504,7 +504,7 @@ if xcorrShift && isPrimaryCh
     MaxOffset = [xyMaxOffset, xyMaxOffset, zMaxOffset];
     [xyz_shift, d_shift] = stitch_shift_assignment(zarrFullpaths, xcorrDir, imSizes, xyz, ...
         px, [xf, yf, zf], overlap_matrix, overlap_regions, MaxOffset, xcorrDownsample, ...
-        tileIdx, assign_method, stitch2D, axisWeight, groupFile, parseCluster, nodeFactor);
+        xcorrThresh, tileIdx, assign_method, stitch2D, axisWeight, groupFile, parseCluster, nodeFactor);
 elseif ~isPrimaryCh
     if ~exist(stitchInfoFullpath, 'file')
         error('The stitch information filename %s does not exist!', stitchInfoFullpaths);

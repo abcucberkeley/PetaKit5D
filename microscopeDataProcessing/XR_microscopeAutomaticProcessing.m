@@ -236,6 +236,7 @@ resampleType = pr.resampleType;
 resample = pr.resample;
 dzFromEncoder = pr.dzFromEncoder;
 zarrFile = pr.zarrFile;
+saveZarr = pr.saveZarr;
 save3DStack = pr.save3DStack; % only for DS and DSR for now
 %deskew and rotate
 Deskew = pr.Deskew;

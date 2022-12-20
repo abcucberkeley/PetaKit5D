@@ -6,6 +6,8 @@ function [is_done_flag] = XR_deskewRotateZarr(frameFullpath, xyPixelSize, dz, va
 % Author: Xiongtao Ruan (02/16/2022)
 %
 % Based on XR_deskewRotateFrame.m
+%
+% xruan (12/14/2022): add support for input bbox, that is, crop the data before dsr
 
 
 ip = inputParser;
@@ -24,6 +26,7 @@ ip.addParameter('SaveMIP', true , @islogical); % save MIP-z for ds and dsr.
 ip.addParameter('saveZarr', false , @islogical); % save as zarr
 ip.addParameter('BatchSize', [1024, 1024, 1024] , @isvector); % in y, x, z
 ip.addParameter('BlockSize', [256, 256, 256], @isvector); % in y, x, z
+ip.addParameter('inputBbox', [], @(x) isempty(x) || isvector(x));
 ip.addParameter('taskSize', [], @isnumeric);
 ip.addParameter('DSRCombined', true, @islogical); % combined processing 
 ip.addParameter('resample', [], @(x) isempty(x) || isnumeric(x)); % resampling after rotation 
@@ -52,6 +55,7 @@ DSRCombined = pr.DSRCombined;
 resample = pr.resample;
 BatchSize = pr.BatchSize;
 BlockSize = pr.BlockSize;
+inputBbox = pr.inputBbox;
 taskSize = pr.taskSize;
 Interp = pr.Interp;
 surffix = pr.surffix;
@@ -75,6 +79,10 @@ if ObjectiveScan
 else
     theta = SkewAngle * pi / 180;
     zAniso = sin(abs(theta)) * dz / xyPixelSize;
+end
+
+if ~exist(frameFullpath, 'dir')
+    error('The input zarr file %s does not exist!', frameFullpath);
 end
 
 [dataPath, fsname, ext] = fileparts(frameFullpath);
@@ -104,7 +112,7 @@ switch ext
     case {'.tif', '.tiff'}
         bim = blockedImage(frameFullpath, 'Adapter', MPageTiffAdapter);
     case '.zarr'
-        bim = blockedImage(frameFullpath, 'Adapter', ZarrAdapter);
+        bim = blockedImage(frameFullpath, 'Adapter', CZarrAdapter);
 end
 toc
 
@@ -125,7 +133,15 @@ if ~exist(zarrFlagPath, 'dir')
 end
 
 % map input and output for xz
-imSize = bim.Size;
+bimSize = bim.Size;
+if ~isempty(inputBbox)
+    wdStart = inputBbox(1 : 3);
+    imSize = inputBbox(4 : 6) - wdStart + 1;
+else
+    wdStart = [1, 1, 1];    
+    imSize = bimSize;
+end
+
 ny = imSize(1);
 nx = imSize(2);
 nz = imSize(3);
@@ -157,11 +173,11 @@ clear Y X Z
 batchBBoxes = zeros(numBatch, 6);
 regionBBoxes = zeros(numBatch, 6);
 
-batchBBoxes(:, 1 : 3) = (bSubs - 1) .* BatchSize + 1; 
-batchBBoxes(:, 4 : 6) = min(batchBBoxes(:, 1 : 3) + BatchSize - 1, imSize);
+batchBBoxes(:, 1 : 3) = (bSubs - 1) .* BatchSize + wdStart; 
+batchBBoxes(:, 4 : 6) = min(batchBBoxes(:, 1 : 3) + BatchSize - 1, imSize + wdStart - 1);
 
 borderSizes(:, 1 : 3) = batchBBoxes(:, 1 : 3) - max(1, batchBBoxes(:, 1 : 3) - BorderSize(1 : 3));
-borderSizes(:, 4 : 6) = min(imSize, batchBBoxes(:, 4 : 6) + BorderSize(4 : 6)) - batchBBoxes(:, 4 : 6);
+borderSizes(:, 4 : 6) = min(bimSize, batchBBoxes(:, 4 : 6) + BorderSize(4 : 6)) - batchBBoxes(:, 4 : 6);
 
 batchBBoxes(:, 1 : 3) = batchBBoxes(:, 1 : 3) - borderSizes(:, 1 : 3);
 batchBBoxes(:, 4 : 6) = batchBBoxes(:, 4 : 6) + borderSizes(:, 4 : 6);
@@ -169,7 +185,6 @@ batchBBoxes(:, 4 : 6) = batchBBoxes(:, 4 : 6) + borderSizes(:, 4 : 6);
 regionBBoxes(:, 1) = (bSubs(:, 1) - 1) .* BatchSize(1) + 1; 
 regionBBoxes(:, 2 : 3) = 1;
 regionBBoxes(:, 4 : 6) = min(regionBBoxes(:, 1 : 3) + [BatchSize(1), outSize(2 : 3)] - 1, outSize);
-
 
 % initialize zarr file
 init_val = zeros(1, dtype);

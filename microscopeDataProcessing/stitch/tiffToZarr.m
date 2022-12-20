@@ -164,7 +164,7 @@ if flipZstack
     bim = apply(bim, @(bs) flip(bs.Data, 3), 'BlockSize', sz);
 end    
 
-% centerred crop
+% bounding box crop for output
 if ~isempty(tileOutBbox)
     % halfCrop = floor((bim.Size - CropToSize) / 2);
     % bbox = [halfCrop + 1, halfCrop +  CropToSize];

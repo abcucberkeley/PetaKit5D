@@ -1,5 +1,5 @@
 function [xyz_shift, d_shift] = stitch_shift_assignment(zarrFullpaths, xcorrDir, imSizes, xyz, ...
-    px, xyz_factors, overlap_matrix, overlap_regions, MaxOffset, xcorrDownsample, tileIdx, assign_method, ...
+    px, xyz_factors, overlap_matrix, overlap_regions, MaxOffset, xcorrDownsample, xcorrThresh, tileIdx, assign_method, ...
     stitch2D, axisWeight, groupFile, parseCluster, nodeFactor)
 % main function for stitch shift assignment 
 % The main code is taken from XR_stitching_frame_zarr_dev_v1.m (to simplify
@@ -17,6 +17,8 @@ function [xyz_shift, d_shift] = stitch_shift_assignment(zarrFullpaths, xcorrDir,
 % xruan (05/21/2022): change absolute_shift_mat to finds pari, shifts NX5 
 % xruan (06/20/2022): add input variable axisWeight for user defined weights for optimization
 % xruan (08/03/2022): fix bug for max offset bounds based on the coordinate orders
+% xruan (12/13/2022): change xcorr thresh as user defined parameter with default 0.25
+
 
 fprintf('Compute cross-correlation based registration between overlap tiles...\n');
 
@@ -24,11 +26,12 @@ if isempty(axisWeight)
     axisWeight = [1, 0.1, 10]; % order y, x, z
 end
 
-xcorr_thresh = 0.25;
+% xcorr_thresh = 0.25;
 % test thrshold for global assignment (in some cases the xcorr between
 % tiles are pretty weak, especially for low snr images)
-xcorr_thresh = 0.10;
-xcorr_thresh = 0.05;
+% xcorr_thresh = 0.10;
+% xcorr_thresh = 0.05;
+xcorr_thresh = xcorrThresh;
 
 if ~exist(xcorrDir, 'dir')
     mkdir_recursive(xcorrDir, true);
@@ -90,6 +93,7 @@ cuboid_mat = [xyz, xyz + (imSizes(:, [2, 1, 3]) - 1) .* [xf, yf, zf] * px];
 pinds = (ti - 1) * nF - ti .* (ti + 1) / 2 + tj;
 cuboid_overlap_ij_mat = overlap_regions(pinds, :);
 
+fprintf('Compute pairwise cross correlation between overlap tiles...\n');
 if stitch2D
     funcStrs = arrayfun(@(x) sprintf(['multires_cross_correlation_registration_2d(''%s'',''%s'',''%s'',', ...
                                 '[%s],[%s],[%s],%0.20d,[%s],''downSample'',[%s],''MaxOffset'',%s);toc;'], ...
@@ -148,6 +152,10 @@ if all(is_done_flag)
 else
     error('Some xcorr files are missing!')
 end
+
+fprintf('Optimize registration for all tiles with %s method ...\n', assign_method);
+fprintf('xcorr threshold: %f , %d / %d pairs are below the threashold.\n', ...
+    xcorr_thresh, sum(max_xcorr_mat(:, 3) < xcorr_thresh), size(max_xcorr_mat, 1));
 
 % perform assignment
 switch assign_method

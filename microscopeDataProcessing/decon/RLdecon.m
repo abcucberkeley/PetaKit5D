@@ -1,4 +1,4 @@
-function [deconvolved, ds, dsr] = RLdecon_omw(inputFn, outputFn, PSFfn, xyPixelSize, dz, dzPSF, varargin)
+function [deconvolved, ds, dsr] = RLdecon(inputFn, outputFn, PSFfn, xyPixelSize, dz, dzPSF, varargin)
 % new RL decon framework for multiple decon methods, and includes deskew/rotate after decon
 % 
 % Author: Xiongtao Ruan (11/12/2022)
@@ -32,6 +32,7 @@ ip.addParameter('Resample', [] , @isnumeric);
 ip.addParameter('DeconIter', 15 , @isnumeric); % number of iterations
 ip.addParameter('RLMethod', 'omw' , @ischar); % rl method {'original', 'simplified', 'omw', 'cudagen'}
 ip.addParameter('wienerAlpha', 0.005, @isnumeric); % alpha for wiener in OMW method
+ip.addParameter('OTFCumThresh', 0.9, @isnumeric); % OTF cumutative sum threshold
 ip.addParameter('skewed', [], @(x) isempty(x) || islogical(x)); % decon in skewed space
 ip.addParameter('fixIter', true, @islogical);
 ip.addParameter('errThresh', [], @isnumeric); % error threshold for simplified code
@@ -72,6 +73,7 @@ Resample = pr.Resample;
 nIter = pr.DeconIter;
 RLMethod = pr.RLMethod;
 wienerAlpha = pr.wienerAlpha;
+OTFCumThresh = pr.OTFCumThresh;
 skewed = pr.skewed;
 fixIter = pr.fixIter;
 errThresh = pr.errThresh;
@@ -272,19 +274,19 @@ end
 % generate or load back projectors
 switch RLMethod
     case 'omw'
-        bpFn = sprintf('%s/%s_back_projector_alpha_%0.6f.tif', psfgenPath, psfFsn, wienerAlpha);
+        bpFn = sprintf('%s/%s_back_projector_alpha_%0.6f_otf_cum_thresh_%0.6f.tif', psfgenPath, psfFsn, wienerAlpha, OTFCumThresh);
         if exist(bpFn, 'file')
             fprintf('Load existing OMW back projector %s for %s ...\n', bpFn, PSFfn);                    
             psf_b = readtiff(bpFn);
         else
             fprintf('OMW back projector generation for %s ...\n', PSFfn);        
             
-            bpTmpFn = sprintf('%s/%s_back_projector_alpha_%0.6f_%s.tif', psfgenPath, psfFsn, wienerAlpha, loc_uuid);
-            [psf_b, OTF_bp_omw, abs_OTF_c, OTF_mask] = omw_backprojector_generation(psf, wienerAlpha, skewed);
+            bpTmpFn = sprintf('%s/%s_back_projector_alpha_%0.6f_otf_cum_thresh_%0.6f_%s.tif', psfgenPath, psfFsn, wienerAlpha, OTFCumThresh, loc_uuid);
+            [psf_b, OTF_bp_omw, abs_OTF_c, OTF_mask] = omw_backprojector_generation(psf, wienerAlpha, skewed, 'OTFCumThresh', OTFCumThresh);
 
             if usejava('jvm')
                 fig = visualize_OTF_and_mask_outline(abs_OTF_c, OTF_mask);
-                figFn = sprintf('%s/%s_back_projector_alpha_%0.6f_figure.png', psfgenPath, psfFsn, wienerAlpha);
+                figFn = sprintf('%s/%s_back_projector_alpha_%0.6f_otf_cum_thresh_%0.6f_figure.png', psfgenPath, psfFsn, wienerAlpha, OTFCumThresh);
                 print(fig, figFn, '-dpng', '-r0');
                 close(fig);
             end
@@ -300,8 +302,8 @@ switch RLMethod
             movefile(bpTmpFn, bpFn);
 
             % write OTF mask 
-            bpFn = sprintf('%s/%s_OTF_mask.tif', psfgenPath, psfFsn);
-            bpTmpFn = sprintf('%s/%s_OTF_mask_%s.tif', psfgenPath, psfFsn, loc_uuid);
+            bpFn = sprintf('%s/%s_OTF_mask_otf_cum_thresh_%0.6f.tif', psfgenPath, psfFsn, OTFCumThresh);
+            bpTmpFn = sprintf('%s/%s_OTF_mask_otf_cum_thresh_%0.6f_%s.tif', psfgenPath, psfFsn, OTFCumThresh, loc_uuid);
             writetiff(uint8(OTF_mask), bpTmpFn);
             movefile(bpTmpFn, bpFn);
         end
@@ -354,6 +356,7 @@ if ~file_exist_mat(1)
         if debug
             debug_folder = sprintf('%s/%s_debug/', deconPath, fsname);
             mkdir(debug_folder)
+            saveStep = min(saveStep, nIter);
         else
             debug_folder = '/tmp/';
         end
