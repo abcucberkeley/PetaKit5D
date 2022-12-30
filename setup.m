@@ -14,12 +14,17 @@ if nargin < 2
     addPython = false;
 end
 
-if ispc
-    [~, output] = system('hostname');
-else
-    [~, output] = system('echo $HOSTNAME');
+try
+    if ispc
+        [~, output] = system('hostname');
+    else
+        [~, output] = system('echo $HOSTNAME');
+    end
+    hostname = strip(output);
+    fprintf('Hostname: %s \n', hostname);
+catch ME
+    disp(ME);
 end
-hostname = strip(output);
 
 if nargin < 3 || isempty(pythonPath)
     if ispc
@@ -33,7 +38,6 @@ if nargin < 4
     addPrivate = false;
 end
 
-fprintf('Hostname: %s \n', hostname)
 fprintf('Add matlab libraries to path...\n')
 addpath(genpath([codeRt]));
 

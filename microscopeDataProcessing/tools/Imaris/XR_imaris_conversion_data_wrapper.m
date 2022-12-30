@@ -121,7 +121,7 @@ end
 % optional flags, also include flag str
 time_str = '';
 if ~isempty(timepoints)
-    time_str = sprintf('-t %s', timepoints);
+    time_str = sprintf('-t %d', timepoints);
 end
 blockSize_str = num2str(blockSize, '%d,'); 
 

@@ -15,7 +15,7 @@ ip.CaseSensitive = false;
 ip.addRequired('volSize', @(x) isvector(x) && numel(x) == 3);
 ip.addParameter('BatchSize', [1024,1024,1024], @(x) isvector(x) && numel(x) == 3 && all(x >= 1)); % in y, x, z
 ip.addParameter('BlockSize', [256, 256, 256], @(x) isnumeric(x) && numel(x) <= 3); 
-ip.addParameter('bbox', [], @(x) isnumeric(x) && numel(x) == 6); % bounding box for which region to process
+ip.addParameter('bbox', [], @(x) isempty(x) || (isnumeric(x) && numel(x) == 6)); % bounding box for which region to process
 ip.addParameter('SameBatchSize', true, @(x) islogical(x)); % same batch size before adding borderSize
 ip.addParameter('BorderSize', 50, @(x) isnumeric(x) && numel(x) <= 3);
 

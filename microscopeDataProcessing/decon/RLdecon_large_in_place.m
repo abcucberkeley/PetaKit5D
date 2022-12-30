@@ -33,7 +33,7 @@ ip.addParameter('parseParfor', false, @islogical);
 ip.addParameter('masterCompute', true, @islogical); % master node participate in the task computing. 
 ip.addParameter('jobLogDir', '../job_logs', @ischar);
 ip.addParameter('cpuOnlyNodes', true, @islogical);
-ip.addParameter('cpusPerTask', 5, @isnumeric);
+ip.addParameter('cpusPerTask', 4, @isnumeric);
 ip.addParameter('GPUJob', false, @islogical); % use gpu for chuck deconvolution. 
 ip.addParameter('uuid', '', @ischar);
 ip.addParameter('debug', false, @islogical);
@@ -55,7 +55,7 @@ SkewAngle = pr.SkewAngle;
 flipZstack = pr.flipZstack;
 Save16bit = pr.Save16bit;
 GPUJob = pr.GPUJob;
-useGPU = true;
+useGPU = GPUJob;
 psfGen = pr.psfGen;
 
 % check if background information available, if not, estimate background

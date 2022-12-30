@@ -60,7 +60,7 @@ ip.addParameter('masterCompute', true, @islogical); % master node participate in
 ip.addParameter('masterCPU', false, @islogical); % master node is a cpu node, which is just for large file deconvolution. 
 ip.addParameter('GPUJob', false, @islogical); % use gpu for chuck deconvolution. 
 ip.addParameter('jobLogDir', '../job_logs', @ischar);
-ip.addParameter('cpusPerTask', 5, @isnumeric);
+ip.addParameter('cpusPerTask', 4, @isnumeric);
 ip.addParameter('cpuOnlyNodes', false, @islogical); % use gpu for chuck deconvolution. 
 ip.addParameter('uuid', '', @ischar);
 ip.addParameter('maxTrialNum', 3, @isnumeric);
