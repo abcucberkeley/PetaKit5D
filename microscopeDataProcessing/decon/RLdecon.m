@@ -211,7 +211,7 @@ if ischar(PSFfn)
             psfgen_filename = sprintf('%s/%s.tif', psfgenPath, psfFsn);
         end
 
-        if exist(psfgen_filename, 'file')
+        if psfGen && exist(psfgen_filename, 'file')
             fprintf('Load existing generated PSF %s for %s ...\n', psfgen_filename, PSFfn);   
             try 
                 psf = double(readtiff(psfgen_filename));
