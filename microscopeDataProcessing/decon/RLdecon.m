@@ -339,9 +339,9 @@ if nTapering > 0
     end
 end
 % rawdata(rawdata<0.0) = 0.0;
-if ~isa(rawdata, 'uint16') && ~strcmp(RLMethod, 'omw')
-    rawdata = single(rawdata) - Background;        
-    rawdata = rawdata .* (rawdata > 0);
+% for omw and simplified RL method, subtrack background within the decon function 
+if ~strcmp(RLMethod, 'omw') && ~strcmp(RLMethod, 'simplified')
+    rawdata = max(single(rawdata) - Background, 0);        
 end
 
 % call Richardson-Lucy
