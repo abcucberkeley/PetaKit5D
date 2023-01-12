@@ -207,9 +207,7 @@ if ischar(PSFfn)
         load(PSFfn, 'psf');
     elseif strcmp(suffix, '.tif')
         % xruan (01/12/2021)
-        if psfGen 
-            psfgen_filename = sprintf('%s/%s.tif', psfgenPath, psfFsn);
-        end
+        psfgen_filename = sprintf('%s/%s.tif', psfgenPath, psfFsn);
 
         if psfGen && exist(psfgen_filename, 'file')
             fprintf('Load existing generated PSF %s for %s ...\n', psfgen_filename, PSFfn);   
