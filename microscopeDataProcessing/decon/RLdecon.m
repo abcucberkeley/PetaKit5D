@@ -194,7 +194,7 @@ else
 end
 
 % prepare for PSF
-if psfGen || strcmp(RLMethod, 'omw')
+if psfGen || ~isempty(inputFn) || strcmp(RLMethod, 'omw')
     psfgenPath = sprintf('%s/psfgen/', deconPath);
     if ~exist(psfgenPath, 'dir')
         mkdir(psfgenPath);
@@ -207,7 +207,9 @@ if ischar(PSFfn)
         load(PSFfn, 'psf');
     elseif strcmp(suffix, '.tif')
         % xruan (01/12/2021)
-        psfgen_filename = sprintf('%s/%s.tif', psfgenPath, psfFsn);
+        if psfGen || ~isempty(inputFn)
+            psfgen_filename = sprintf('%s/%s.tif', psfgenPath, psfFsn);
+        end
 
         if psfGen && exist(psfgen_filename, 'file')
             fprintf('Load existing generated PSF %s for %s ...\n', psfgen_filename, PSFfn);   
