@@ -68,6 +68,8 @@ void mexFunction(int nlhs, mxArray *plhs[],
     if(rdims[0] != dim[0] || rdims[1] != dim[1] || rdims[2] != dim[2]) mexErrMsgIdAndTxt("indexing:inputError","Subregion size does not match the bounding box size");
     
     mxClassID mDType = mxGetClassID(prhs[0]);
+    mxClassID mDType_region = mxGetClassID(prhs[2]);
+    if(mDType != mDType_region) mexErrMsgIdAndTxt("indexing:inputError","The data type of the region does not match that of the data!");    
     if(mDType == mxUINT8_CLASS){
         uint64_t bits = 8;
         uint8_t* orig = (uint8_t*)mxGetPr(prhs[0]);
