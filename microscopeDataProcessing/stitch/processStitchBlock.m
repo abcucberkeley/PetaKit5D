@@ -123,6 +123,9 @@ for i = 1 : numel(blockInds)
         bCoords = stchBlockInfo_i{j}.bCoords; 
         bboxCoords = stchBlockInfo_i{j}.bboxCoords; 
         block_j = bim_j.Adapter.getIORegion(bboxCoords(1 : 3), bboxCoords(4 : 6));
+        if ~isa(block_j, dtype)
+            block_j = cast(block_j, dtype);
+        end
         block_j_mregion = block_j;
         
         % remove overlap regions
@@ -179,7 +182,7 @@ for i = 1 : numel(blockInds)
         continue;
     end
     
-    % convert to double for processing
+    % convert to single for processing
     tim_block = single(tim_block);
     tim_f_block = single(tim_f_block);
     
