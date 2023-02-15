@@ -38,6 +38,7 @@ switch lower(Mode)
             parallelWriteTiff(filepath, img, 'w');
         catch ME
             disp(ME)
+            disp('Use the alternative tiff writer (saveastiff)...');
             options.message = false;
             options.overwrite = true;
             saveastiff(img, filepath, options);            

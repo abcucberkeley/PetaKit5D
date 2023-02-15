@@ -21,6 +21,7 @@ try
     end
 catch ME
     disp(ME);
+    disp('Use the alternative tiff reader (matlab libtiff)...');
     if isempty(range)
         data = readtiff_matlab(filepath);
     else

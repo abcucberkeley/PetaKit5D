@@ -26,6 +26,8 @@ try
     end
 catch ME
     disp(ME);
+    disp('Use the alternative zarr reader (ZarrAdapter)...');   
+    
     bim = blockedImage(filepath, "Adapter", ZarrAdapter);    
     if isempty(bbox)
         data = bim.Adapter.getIORegion([1, 1, 1], bim.Size);    

@@ -64,6 +64,7 @@ try
     parallelWriteZarr(filepath, data, 1, bbox);
 catch ME
     disp(ME);
+    disp('Use the alternative zarr writer (ZarrAdapter)...');    
     if ~exist(filepath, 'dir') || (exist(filepath, 'dir') && isempty(bbox))
         if exist(filepath, 'dir')
             rmdir(filepath, 's');
