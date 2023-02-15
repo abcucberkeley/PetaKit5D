@@ -1,6 +1,6 @@
-LLSM3DTools
+LLSM5DTools
 
-Tools for the analysis of 3D live images from lattice light-sheet microscopy (LLSM), including image deskew, point detection and point tracking.
+Tools for the analysis of 5D live images from lattice light-sheet microscopy (LLSM), including image deskew, point detection and point tracking.
 
 The method is developed based on 
 
@@ -10,6 +10,6 @@ The source code of the original package is at https://github.com/francois-a/llsm
 
 Compared to the original method, we have several improvements, such as computing efficiency, scalability, detection in low SNR conditions, Gaussian mixture fitting, bug fixation and so on. 
 
-Reference: Ruan, X., Upadhyayula, S. (2020) LLSM3DTools: Tools for the analysis of 3D live images from lattice light-sheet microscopy (LLSM). 
+Reference: Ruan, X., Upadhyayula, S. (2020) LLSM5DTools: Tools for the analysis of 5D live images from lattice light-sheet microscopy (LLSM). 
 
 Please refer to the documentation for how to use the software. The software contains three demos for your reference. 
