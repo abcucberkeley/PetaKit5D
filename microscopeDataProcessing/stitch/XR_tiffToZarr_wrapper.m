@@ -94,10 +94,11 @@ nF = numel(tiffFullpaths);
 if partialFile
     dataPaths = fileparts(tiffFullpaths);
     udataPaths = unique(dataPaths);
+    fnames_cell = cell(numel(udataPaths), 1);
     for d = 1 : numel(udataPaths)
         dir_info = dir([udataPaths{d}, '/*tif']);
         fsnames = {dir_info.name}';
-        fnames = cellfun(@(x) [udataPaths{d}, filesep, x], fsnames, 'unif', 0);
+        fnames_cell{d} = cellfun(@(x) [udataPaths{d}, filesep, x], fsnames, 'unif', 0);
     end
 end
 
@@ -114,6 +115,12 @@ for i = 1 : nF
     [dataPath, fsname_i] = fileparts(tiffFullpath_i);
     
     if partialFile
+        if numel(udataPaths) > 1
+            did = ismember(udataPaths, dataPath);
+        else
+            did = 1;
+        end
+        fnames = fnames_cell{did};
         tiffFullpath_group_i = fnames(contains(fnames, dataPath) & contains(fnames, fsname_i));
     else
         tiffFullpath_group_i = {tiffFullpath_i};        
@@ -153,7 +160,7 @@ if ~bigData
 end
 maxTrialNum = 2;
 
-MatlabLaunchStr = 'module load matlab/r2021a; matlab -nodisplay -nosplash -nodesktop -r';
+MatlabLaunchStr = 'module load matlab/r2022b; matlab -nodisplay -nosplash -nodesktop -r';
 is_done_flag = slurm_cluster_generic_computing_wrapper(tiffFullpaths, zarrFullpaths, ...
     func_strs, 'parseCluster', parseCluster, 'masterCompute', masterCompute, 'maxTrialNum', maxTrialNum, ...
     'MatlabLaunchStr', MatlabLaunchStr, 'cpusPerTask', cpusPerTask, 'cpuOnlyNodes', cpuOnlyNodes);

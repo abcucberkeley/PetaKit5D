@@ -42,13 +42,13 @@ unset(_expectedTargets)
 
 
 # The installation prefix configured by this project.
-set(_IMPORT_PREFIX "/home/xruan/Projects/XR_Repository/LLSM3DTools/microscopeDataProcessing/io/c-zarr/cJSON")
+set(_IMPORT_PREFIX "/home/xruan/Projects/XR_Repository/LLSM5DTools/microscopeDataProcessing/io/c-zarr/cJSON")
 
 # Create imported target cjson
 add_library(cjson SHARED IMPORTED)
 
 set_target_properties(cjson PROPERTIES
-  INTERFACE_INCLUDE_DIRECTORIES "/home/xruan/Projects/XR_Repository/LLSM3DTools/microscopeDataProcessing/io/c-zarr/cJSON/include"
+  INTERFACE_INCLUDE_DIRECTORIES "/home/xruan/Projects/XR_Repository/LLSM5DTools/microscopeDataProcessing/io/c-zarr/cJSON/include"
 )
 
 # Load information for each installed configuration.

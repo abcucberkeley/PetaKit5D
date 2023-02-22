@@ -19,6 +19,16 @@
 //libtiff 4.4.0
 //mex -v COPTIMFLAGS="-O3 -DNDEBUG" LDOPTIMFLAGS="-O3 -DNDEBUG" CFLAGS='$CFLAGS -O3 -fopenmp' LDFLAGS='$LDFLAGS -O3 -fopenmp' '-I/clusterfs/fiona/matthewmueller/software/tiff-4.4.0/include' '-L/clusterfs/fiona/matthewmueller/software/tiff-4.4.0/lib' -ltiff parallelWriteTiff.c lzwEncode.c
 
+// Handle the tilde character in filenames on Linux/Mac
+#ifndef _WIN32
+#include <wordexp.h>
+char* expandTilde(char* path) {
+    wordexp_t expPath;
+    wordexp(path, &expPath, 0);
+    return expPath.we_wordv[0];
+}
+#endif
+
 static void mkdirRecursive(const char *dir) {
     char tmp[8192];
     char *p = NULL;
@@ -349,6 +359,11 @@ void mexFunction(int nlhs, mxArray *plhs[],
         mexCallMATLAB(1, mCharA, 1, mString, "char");
         fileName = mxArrayToString(mCharA[0]);
     }
+
+    // Handle the tilde character in filenames on Linux/Mac
+    #ifndef _WIN32
+    if(strchr(fileName,'~')) fileName = expandTilde(fileName);
+    #endif
 
     // Check if folder exists, if not then make it (recursive if needed)
     char* folderName = strdup(fileName);

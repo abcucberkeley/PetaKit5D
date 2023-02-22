@@ -396,6 +396,10 @@ void mexFunction(int nlhs, mxArray *plhs[],
     else if (nrhs > 5) mexErrMsgIdAndTxt("zarr:inputError","Number of input arguments must be 4 or less");
     if(!mxIsChar(prhs[0])) mexErrMsgIdAndTxt("zarr:inputError","The first argument must be a string");
     char* folderName = mxArrayToString(prhs[0]);
+    // Handle the tilde character in filenames on Linux/Mac
+    #ifndef _WIN32
+    if(strchr(folderName,'~')) folderName = expandTilde(folderName);
+    #endif
     uint8_t useUuid = (uint8_t)*(mxGetPr(prhs[2]));
     uint64_t shapeX = 0;
     uint64_t shapeY = 0;

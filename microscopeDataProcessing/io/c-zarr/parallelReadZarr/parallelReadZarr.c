@@ -11,6 +11,15 @@
 
 //mex -v COPTIMFLAGS="-O3 -DNDEBUG" LDOPTIMFLAGS="-O3 -DNDEBUG" CFLAGS='$CFLAGS -O3 -fopenmp' LDFLAGS='$LDFLAGS -O3 -fopenmp' '-I/global/home/groups/software/sl-7.x86_64/modules/cBlosc/2.0.4/include/' '-I/global/home/groups/software/sl-7.x86_64/modules/cJSON/1.7.15/include/' '-L/global/home/groups/software/sl-7.x86_64/modules/cBlosc/2.0.4/lib64' -lblosc2 -L'/global/home/groups/software/sl-7.x86_64/modules/cJSON/1.7.15/lib64' -lcjson -lz parallelReadZarr.c
 
+// Handle the tilde character in filenames on Linux/Mac
+#ifndef _WIN32
+#include <wordexp.h>
+char* expandTilde(char* path) {
+    wordexp_t expPath;
+    wordexp(path, &expPath, 0);
+    return expPath.we_wordv[0];
+}
+#endif
 
 const char fileSep =
 #ifdef _WIN32
@@ -477,6 +486,12 @@ void mexFunction(int nlhs, mxArray *plhs[],
     else if (nrhs > 2) mexErrMsgIdAndTxt("zarr:inputError","Number of input arguments must be 1 or 2");
     if(!mxIsChar(prhs[0])) mexErrMsgIdAndTxt("zarr:inputError","The first argument must be a string");
     char* folderName = mxArrayToString(prhs[0]);
+    
+    // Handle the tilde character in filenames on Linux/Mac
+    #ifndef _WIN32
+    if(strchr(folderName,'~')) folderName = expandTilde(folderName);
+    #endif
+
     uint64_t shapeX = 0;
     uint64_t shapeY = 0;
     uint64_t shapeZ = 0;

@@ -3,6 +3,12 @@
 #include <stdint.h>
 #include <cjson/cJSON.h>
 
+#ifndef _WIN32
+#include <wordexp.h>
+char* expandTilde(char* path);
+
+#endif
+
 #ifdef _WIN32
 char* strndup (const char *s, size_t n);
 

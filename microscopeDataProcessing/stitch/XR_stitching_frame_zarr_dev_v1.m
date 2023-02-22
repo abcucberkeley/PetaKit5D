@@ -1,3 +1,4 @@
+
 function XR_stitching_frame_zarr_dev_v1(tileFullpaths, coordinates, varargin)
 % zarr-based stitching pipeline. 
 % 
@@ -50,8 +51,7 @@ ip.addParameter('ResultPath', '', @ischar);
 ip.addParameter('tileInfoFullpath', '', @ischar); % matfile contains tileFullpaths and coordinates for too many tiles
 ip.addParameter('stitchInfoDir', 'stitchInfo', @ischar);
 ip.addParameter('stitchInfoFullpath', '', @ischar); % filename that contain stitch information for secondrary channels
-ip.addParameter('DSRDirstr', '', @ischar); % path for DSRDirstr, if it is not true
-ip.addParameter('DeconDirstr', '', @ischar); % path for decon str, if it is not true
+ip.addParameter('ProcessedDirstr', '', @ischar); % path str for processed data 
 ip.addParameter('Overwrite', false, @islogical);
 ip.addParameter('SkewAngle', 32.45, @isscalar);
 ip.addParameter('axisOrder', 'x,y,z', @ischar);
@@ -135,9 +135,7 @@ tileOutBbox = pr.tileOutBbox;
 TileOffset = pr.TileOffset;
 % Deskew = pr.Deskew;
 % Rotate = pr.Rotate;
-Decon = pr.Decon;
-DSRDirstr = pr.DSRDirstr;
-DeconDirstr = pr.DeconDirstr;
+ProcessedDirstr = pr.ProcessedDirstr;
 DS = pr.DS;
 DSR = pr.DSR;
 BlendMethod = pr.BlendMethod;
@@ -151,9 +149,7 @@ groupFile = pr.groupFile;
 isPrimaryCh = pr.isPrimaryCh;
 usePrimaryCoords = pr.usePrimaryCoords;
 stitchPadSize = pr.stitchPadSize;
-padSize = pr.padSize;
 boundboxCrop = pr.boundboxCrop;
-zNormalize = pr.zNormalize;
 xcorrDownsample = pr.xcorrDownsample;
 xcorrThresh = pr.xcorrThresh;
 xyMaxOffset = pr.xyMaxOffset;
@@ -281,11 +277,11 @@ end
 
 if ~isempty(tileIdx)
     % sort tiles based on tileIdx (handle zigzag orders)
-    [tileIdx, sinds] = sortrows(tileIdx, [3, 2, 1]);
+    [tileIdx, sinds] = sortrows(tileIdx, [4, 3, 2, 1]);
     xyz = xyz(sinds, :);
     tileFullpaths = tileFullpaths(sinds);
 elseif isempty(tileIdx)
-    tileIdx = 1 : 3;
+    tileIdx = 1 : 4;
 end
 tileNum = [numel(unique(tileIdx(:,1))), numel(unique(tileIdx(:,2))), numel(unique(tileIdx(:,3)))];
 if isempty(tileNum)
@@ -348,8 +344,8 @@ if ~exist(pixelInfoFullpath, 'file')
 end
 
 % process tile filenames based on different processing for tiles
-[tiffFullpaths, zarrFullpaths, fsnames, zarrPathstr, overall_z_median] = stitch_process_filenames( ...
-    tileFullpaths, DS, DSR, Decon, DSRDirstr, DeconDirstr, stitchMIP, ObjectiveScan, zNormalize, px, xf, zf, resample);
+[tiffFullpaths, zarrFullpaths, fsnames, zarrPathstr] = stitch_process_filenames( ...
+    tileFullpaths, ProcessedDirstr, stitchMIP, resample);
 
 % use single distance map for 
 if ~DS && ~DSR && ~any(stitchMIP)

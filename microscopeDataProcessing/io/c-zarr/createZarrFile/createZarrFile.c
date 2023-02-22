@@ -19,6 +19,16 @@
 //compile
 //mex -v COPTIMFLAGS="-O3 -DNDEBUG" LDOPTIMFLAGS="-O3 -DNDEBUG" CFLAGS='$CFLAGS -O3 -fopenmp' LDFLAGS='$LDFLAGS -O3 -fopenmp' '-I/global/home/groups/software/sl-7.x86_64/modules/cJSON/1.7.15/include/' -L'/global/home/groups/software/sl-7.x86_64/modules/cJSON/1.7.15/lib64' -lcjson -luuid createZarrFile.c
 
+// Handle the tilde character in filenames on Linux/Mac
+#ifndef _WIN32
+#include <wordexp.h>
+char* expandTilde(char* path) {
+    wordexp_t expPath;
+    wordexp(path, &expPath, 0);
+    return expPath.we_wordv[0];
+}
+#endif
+
 const char fileSep =
 #ifdef _WIN32
     '\\';
@@ -183,6 +193,11 @@ void mexFunction(int nlhs, mxArray *plhs[],
     if(nrhs == 2) mexErrMsgIdAndTxt("zarr:inputError","This functions does not accept only 2 arguments\n");
     if(!mxIsChar(prhs[0])) mexErrMsgIdAndTxt("zarr:inputError","The first argument must be a string\n");
     char* folderName = mxArrayToString(prhs[0]);
+
+    // Handle the tilde character in filenames on Linux/Mac
+    #ifndef _WIN32
+    if(strchr(folderName,'~')) folderName = expandTilde(folderName);
+    #endif
 
     for(int i = 1; i < nrhs; i+=2){
         if(i+1 == nrhs) mexErrMsgIdAndTxt("zarr:inputError","Mismatched argument pair for input number %d\n");

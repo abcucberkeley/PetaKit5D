@@ -2,8 +2,8 @@
 set(CJSON_UTILS_FOUND OFF)
 
 # The include directories used by cJSON
-set(CJSON_INCLUDE_DIRS "/home/xruan/Projects/XR_Repository/LLSM3DTools/microscopeDataProcessing/io/c-zarr/cJSON/include")
-set(CJSON_INCLUDE_DIR "/home/xruan/Projects/XR_Repository/LLSM3DTools/microscopeDataProcessing/io/c-zarr/cJSON/include")
+set(CJSON_INCLUDE_DIRS "/home/xruan/Projects/XR_Repository/LLSM5DTools/microscopeDataProcessing/io/c-zarr/cJSON/include")
+set(CJSON_INCLUDE_DIR "/home/xruan/Projects/XR_Repository/LLSM5DTools/microscopeDataProcessing/io/c-zarr/cJSON/include")
 
 get_filename_component(_dir "${CMAKE_CURRENT_LIST_FILE}" PATH)
 

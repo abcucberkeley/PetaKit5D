@@ -1,4 +1,4 @@
-prefix=/home/xruan/Projects/XR_Repository/LLSM3DTools/microscopeDataProcessing/io/c-zarr/cBlosc
+prefix=/home/xruan/Projects/XR_Repository/LLSM5DTools/microscopeDataProcessing/io/c-zarr/cBlosc
 exec_prefix=${prefix}
 libdir=${exec_prefix}/lib
 sharedlibdir=${libdir}

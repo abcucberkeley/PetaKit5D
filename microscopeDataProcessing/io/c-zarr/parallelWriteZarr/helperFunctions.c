@@ -15,6 +15,15 @@
 #include "mex.h"
 #include "helperFunctions.h"
 
+#ifndef _WIN32
+#include <wordexp.h>
+char* expandTilde(char* path) {
+    wordexp_t expPath;
+    wordexp(path, &expPath, 0);
+    return expPath.we_wordv[0];
+}
+#endif
+
 const char fileSep =
 #ifdef _WIN32
     '\\';

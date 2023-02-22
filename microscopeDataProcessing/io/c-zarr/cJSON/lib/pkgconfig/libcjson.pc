@@ -1,5 +1,5 @@
-libdir=/home/xruan/Projects/XR_Repository/LLSM3DTools/microscopeDataProcessing/io/c-zarr/cJSON/lib
-includedir=/home/xruan/Projects/XR_Repository/LLSM3DTools/microscopeDataProcessing/io/c-zarr/cJSON/include
+libdir=/home/xruan/Projects/XR_Repository/LLSM5DTools/microscopeDataProcessing/io/c-zarr/cJSON/lib
+includedir=/home/xruan/Projects/XR_Repository/LLSM5DTools/microscopeDataProcessing/io/c-zarr/cJSON/include
 
 Name: libcjson
 Version: 1.7.15

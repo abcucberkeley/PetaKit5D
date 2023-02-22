@@ -26,11 +26,6 @@ if isempty(axisWeight)
     axisWeight = [1, 0.1, 10]; % order y, x, z
 end
 
-% xcorr_thresh = 0.25;
-% test thrshold for global assignment (in some cases the xcorr between
-% tiles are pretty weak, especially for low snr images)
-% xcorr_thresh = 0.10;
-% xcorr_thresh = 0.05;
 xcorr_thresh = xcorrThresh;
 
 if ~exist(xcorrDir, 'dir')
@@ -50,16 +45,35 @@ overlap_matrix_orig = overlap_matrix;
 [ti, tj] = ind2sub(size(overlap_matrix), find(overlap_matrix));
 switch assign_method
     case {'grid', 'test'}
+        if ~all(tileIdx(:, 4) == tileIdx(1, 4))
+            warning('The tiles are not from the same data folder, please make sure they are continuous grids when using grid method.');
+        end
+        
         % grid_overlap_inds = sum(abs(tileIdx(ti, :) - tileIdx(tj, :)), 2) == 1;
-        corner_inds = sum(abs(tileIdx(ti, :) - tileIdx(tj, :)), 2) ~= 1;
+        corner_inds = sum(abs(tileIdx(ti, 1 : 3) - tileIdx(tj, 1 : 3)), 2) ~= 1;
 
         % remove non-grid overlaps (corner overlaps)
         ti_r = ti(corner_inds);
         tj_r = tj(corner_inds);
         overlap_matrix(sub2ind(size(overlap_matrix), ti_r, tj_r)) = 0; 
     case 'group'
-        t = readtable(groupFile);
-        gIdx = [t.x, t.y, t.z];
+        if isempty(groupFile)
+            if all(tileIdx(:, 4) == tileIdx(1, 4))
+                warning('The input group file is not provided, and the tiles are from the same data folder, treat all tiles as one group.');
+            else
+                sprintf('The input group file is not provided, treat tiles in each subfolder as a group.\n');
+            end
+            gIdx = tileIdx;
+            gid = tileIdx(:, 4);
+        else
+            t = readtable(groupFile);
+            if size(t, 2) == 4
+               gIdx = [t.x, t.y, t.z, zeros(size(t, 1), 1)];
+            else
+               gIdx = [t.x, t.y, t.z, t.did];
+            end
+            gid = t.g;
+        end
         
         [kidx, d] = knnsearch(gIdx, tileIdx, 'k', 1);
         
@@ -67,7 +81,7 @@ switch assign_method
             warning('Some tiles are not included in the groups');
         end
 
-        grpIdx = t.g(kidx);
+        grpIdx = gid(kidx);
         uniqGrps = unique(grpIdx);
         
         for g = 1 : numel(uniqGrps)
@@ -402,8 +416,8 @@ for i = 1 : nP
     t = max_xcorr_mat_filt(i, 2);
     
     % check if two tiles are neighboring tiles
-    if sum(abs(tileIdx(s, :) - tileIdx(t, :))) == 1
-        aind = find(abs(tileIdx(s, :) - tileIdx(t, :)));
+    if sum(abs(tileIdx(s, 1 : 3) - tileIdx(t, 1 : 3))) == 1
+        aind = find(abs(tileIdx(s, 1 : 3) - tileIdx(t, 1 : 3)));
         switch aind
             case 1
                 % x

@@ -44,11 +44,11 @@ ip.addParameter('language', 'matlab', @ischar); % support matlab, bash
 ip.parse(inputFullpaths, outputFullpaths, funcStrs, varargin{:});
 
 % move to the root path
-paths = split(which('slurm_cluster_generic_computing_wrapper'), 'LLSM3DTools');
+paths = split(which('slurm_cluster_generic_computing_wrapper'), 'LLSM5DTools');
 cd(paths{1});
-% use the setup within LLSM3DTools
+% use the setup within LLSM5DTools
 if ~exist('setup.m', 'file')
-    cd('LLSM3DTools');
+    cd('LLSM5DTools');
 end
 
 pr = ip.Results;

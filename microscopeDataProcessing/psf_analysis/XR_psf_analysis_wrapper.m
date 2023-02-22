@@ -233,7 +233,7 @@ func_strs = cat(1, func_strs{:});
 % use cluster computing for the psf analysis
 cpusPerTask = 4;
 maxTrialNum = 2;
-MatlabLaunchStr = 'module load matlab/r2021a; matlab -nodisplay -nosplash -nodesktop -r'; 
+MatlabLaunchStr = 'module load matlab/r2022a; matlab -nodisplay -nosplash -nodesktop -r'; 
 is_done_flag = slurm_cluster_generic_computing_wrapper(frameFullpaths, figureFullpaths, ...
     func_strs, 'MatlabLaunchStr', MatlabLaunchStr, 'maxTrialNum', maxTrialNum, ...
     'masterCompute', masterCompute, 'cpusPerTask', cpusPerTask);
