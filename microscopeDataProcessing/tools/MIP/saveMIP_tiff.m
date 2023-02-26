@@ -34,10 +34,10 @@ for i = 1 : 3
             MIPFullname = sprintf('%s_MIP_y.tif', MIPFullname(1 : end - 10));
         case 2
             MIP = project3DImageto2D(im, 'mip_yz');     
-            MIPFullname = sprintf('%s_MIP_x.tif', MIPFullname(1 : end - 10));            
+            MIPFullname = sprintf('%s_MIP_x.tif', MIPFullname(1 : end - 10));
         case 3
             MIP = project3DImageto2D(im, 'mip_xy');     
-            MIPFullname = sprintf('%s_MIP_z.tif', MIPFullname(1 : end - 10));            
+            MIPFullname = sprintf('%s_MIP_z.tif', MIPFullname(1 : end - 10));
     end
     MIP = cast(MIP, dtype);
     writetiff(MIP, MIPFullname);

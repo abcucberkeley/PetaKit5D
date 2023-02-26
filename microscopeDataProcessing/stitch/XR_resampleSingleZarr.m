@@ -60,7 +60,12 @@ else
     dsTmppath = [dsFullpath, '_', uuid];
 end    
 
-bim = blockedImage(zarrFullpath, "Adapter", ZarrAdapter);
+try
+    bim = blockedImage(zarrFullpath, "Adapter", CZarrAdapter);
+catch ME
+    disp(ME);
+    bim = blockedImage(zarrFullpath, "Adapter", ZarrAdapter);
+end    
 dtype = bim.ClassUnderlying;
 sz = bim.Size;
 init_val = zeros(1, dtype);

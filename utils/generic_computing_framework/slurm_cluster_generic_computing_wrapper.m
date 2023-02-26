@@ -142,6 +142,8 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
         lastP = find(~is_done_flag & trial_counter < maxTrialNum & job_status_mat(:, 1) < 1, 1, 'last');
         if isempty(lastP)
             lastP = -1;
+        else
+            lastP = ceil(lastP / taskBatchNum);
         end
     else
         % For no cluster computing, choose the first unfinished one, to avoid 
@@ -365,7 +367,7 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
             end
         end
 
-        if ~parseCluster || (parseCluster && masterCompute && f == lastP)
+        if ~parseCluster || (parseCluster && masterCompute && b == lastP)
             if parseCluster && loop_counter > 0
                 % for nonpending killed jobs, wait a bit longer in case of just finished job.
                 if ~pending_flag

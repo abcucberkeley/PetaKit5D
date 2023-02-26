@@ -85,7 +85,12 @@ batchBBoxes = batchBBoxes + [bbox(1 : 3), bbox(1 : 3)];
 % initialize zarr file
 cropTempPath = sprintf('%s/%s_%s.zarr', cropPath, fsname, uuid);
 init_val = zeros(1, dtype);
-crop_bim = blockedImage(cropTempPath, outSize, BlockSize, init_val, "Adapter", ZarrAdapter, 'Mode', 'w');
+try
+    crop_bim = blockedImage(cropTempPath, outSize, BlockSize, init_val, "Adapter", CZarrAdapter, 'Mode', 'w');
+catch ME
+    disp(ME);
+    crop_bim = blockedImage(cropTempPath, outSize, BlockSize, init_val, "Adapter", ZarrAdapter, 'Mode', 'w');
+end
 crop_bim.Adapter.close();
 
 

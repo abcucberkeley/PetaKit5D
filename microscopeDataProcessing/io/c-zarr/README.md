@@ -4,15 +4,12 @@ An efficient parallel Zarr reader/writer that utilizes c-blosc/c-blosc2 and Open
 ## Quick Start Guide (MATLAB)
 
 ### Prerequisites
-1. (Windows Only) All neccessary libraries are included for the windows version.
-2. (Linux Only) You will need c-blosc, c-blosc2, and cJSON which can all be obtained and built with the included buildc-zarr.sh script.
-
+1. All neccessary libraries are included for the Linux and Windows version.
 
 ### Download and Install
-1. Download the latest release for your OS from here (windows/linux.zip): https://github.com/abcucberkeley/c-zarr/releases
+1. Download the latest release for your OS from here (windows.zip/linux.tar.gz): https://github.com/abcucberkeley/c-zarr/releases
 2. Unzip the folder
-3. (Windows Only) You can now put the folders wherever you'd like and add them to your path if needed. Just keep the mex files with their associated dll files so the function can always run.
-4. (Linux Only) chmod +x buildc-zarr.sh to make it executable. You can now run the buildc-zarr.sh script and follow the instructions. Now when you open matlab, just add the mex files to your path when needed
+3. You can now put the folders wherever you'd like and add them to your path if needed. Just keep the mex files with their associated dll files so the mex function can always run.
 
 ### Usage
 Note: For filepath separators, on Mac/Linux you can use / and on Windows you can use \
