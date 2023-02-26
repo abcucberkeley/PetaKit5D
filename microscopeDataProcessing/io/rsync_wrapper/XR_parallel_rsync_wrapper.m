@@ -30,8 +30,8 @@ tic
 setupFn = which('setup.m');
 [codePath, ~, ~] = fileparts(setupFn);
 cd(codePath);
-if ~contains(codePath, 'LLSM3DTools')
-    cd('LLSM3DTools');
+if ~contains(codePath, 'LLSM5DTools')
+    cd('LLSM5DTools');
 end
 codePath = pwd;
 
