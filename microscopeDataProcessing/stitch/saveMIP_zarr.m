@@ -3,6 +3,8 @@ function saveMIP_zarr(zarrFullname, MIPFullname, dtype, axis)
 
 % Author: Xiongtao Ruan (11/19/2020)
 % xruan (07/11/2022): add support for user defined axis MIPs
+% xruan (03/03/2023): simplify the function and use readzarr as default
+% method other than dask
 
 if nargin < 3
     nv_bim = blockedImage(zarrFullname, 'Adapter', ZarrAdapter);
@@ -12,71 +14,15 @@ if nargin < 4
     axis = [0, 0, 1];
 end
 
-uuid = get_uuid();
+axis_strs = {'y', 'x', 'z'};
 
 for i = 1 : 3
     if axis(i) == 0
         continue;
     end
     axis_i = i;
-    switch i
-        case 1    
-            try
-                % for matlab R2020b, it may fail to write tiff file if this step
-                % runs before using Tiff write, to avoid the issue, we first write
-                % a rand image to tmp folder to initialize Tiff in matlab
-                writetiff(uint8(rand(10) > 0.5), sprintf('/tmp/%s.tif', uuid));
-                MIP = py.daskAPI.daskZarrMaxProjection(zarrFullname, axis_i-1);    
-            catch ME
-                disp(ME);
-                % this step is pretty slow in a single node, takes ~15min for 313 GB data
-                nv_bim = blockedImage(zarrFullname, 'Adapter', CZarrAdapter);
-                
-                blockSize = min(5000, nv_bim.BlockSize * 10);
-                blockSize(axis_i) = nv_bim.Size(axis_i);
-                    
-                bmip = apply(nv_bim, @(bs) max(bs.Data, [], axis_i), 'blockSize', blockSize);
-                MIP = gather(bmip);        
-            end
-            MIPFullname = sprintf('%s_MIP_y.tif', MIPFullname(1 : end - 10));
-        case 2 
-            try
-                writetiff(uint8(rand(10) > 0.5), sprintf('/tmp/%s.tif', uuid));
-                MIP = py.daskAPI.daskZarrMaxProjection(zarrFullname, axis_i-1);    
-            catch ME
-                disp(ME);
-                % this step is pretty slow in a single node, takes ~15min for 313 GB data
-                nv_bim = blockedImage(zarrFullname, 'Adapter', CZarrAdapter);
-                
-                blockSize = min(5000, nv_bim.BlockSize * 10);
-                blockSize(axis_i) = nv_bim.Size(axis_i);
-                    
-                bmip = apply(nv_bim, @(bs) max(bs.Data, [], axis_i), 'blockSize', blockSize);
-                MIP = gather(bmip);        
-            end
-            MIPFullname = sprintf('%s_MIP_x.tif', MIPFullname(1 : end - 10));
-        case 3 
-            try
-                writetiff(uint8(rand(10) > 0.5), sprintf('/tmp/%s.tif', uuid));
-                MIP = py.daskAPI.daskZarrMaxProjection(zarrFullname, axis_i-1);    
-            catch ME
-                disp(ME);
-                % this step is pretty slow in a single node, takes ~15min for 313 GB data
-                try
-                    nv_bim = blockedImage(zarrFullname, 'Adapter', CZarrAdapter);
-                catch ME
-                    disp(ME)
-                    nv_bim = blockedImage(zarrFullname, 'Adapter', ZarrAdapter);
-                end
-                
-                blockSize = min(nv_bim.Size, min(5000, nv_bim.BlockSize * 10));
-                blockSize(axis_i) = nv_bim.Size(axis_i);
-                    
-                bmip = apply(nv_bim, @(bs) max(bs.Data, [], axis_i), 'blockSize', blockSize);
-                MIP = gather(bmip);        
-            end
-            MIPFullname = sprintf('%s_MIP_z.tif', MIPFullname(1 : end - 10));
-    end
+    MIP = saveMIP_zarr_axis(zarrFullname, axis_i);
+    MIPFullname = sprintf('%s_MIP_%s.tif', MIPFullname(1 : end - 10), axis_strs{i});
     
     MIP = cast(MIP, dtype);
     MIP = squeeze(MIP);
@@ -86,5 +32,36 @@ for i = 1 : 3
     end
 end
 
+end
+
+
+function [MIP] = saveMIP_zarr_axis(zarrFullname, axis_ind)
+
+try
+    uuid = get_uuid();    
+    % for matlab R2020b, it may fail to write tiff file if this step
+    % runs before using Tiff write, to avoid the issue, we first write
+    % a rand image to tmp folder to initialize Tiff in matlab
+    writetiff(uint8(rand(10) > 0.5), sprintf('/tmp/%s.tif', uuid));
+    MIP = py.daskAPI.daskZarrMaxProjection(zarrFullname, axis_ind - 1);    
+catch ME
+    disp(ME);
+    try
+        im = readzarr(zarrFullname);
+        MIP = squeeze(max(im, [], axis_ind));
+    catch ME_1
+        disp(ME_1)
+
+        % this step is pretty slow in a single node, takes ~15min for 313 GB data
+        nv_bim = blockedImage(zarrFullname, 'Adapter', CZarrAdapter);
+        
+        blockSize = min(5000, nv_bim.BlockSize * 10);
+        blockSize(axis_ind) = nv_bim.Size(axis_ind);
+            
+        bmip = apply(nv_bim, @(bs) max(bs.Data, [], axis_ind), 'blockSize', blockSize);
+        MIP = gather(bmip);
+    end
+end
 
 end
+
