@@ -284,7 +284,7 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
                 end
 
                 % If there is no job, submit a job
-                if job_status_mat(f, 1) == -1 && job_status_mat(f, 2) == -1 && ~(masterCompute && f == lastP)
+                if job_status_mat(f, 1) == -1 && job_status_mat(f, 2) == -1 && ~(masterCompute && b == lastP)
                     if rem(b, 50) == 0 || b == 1
                         fprintf('Task % 4d:    Process %s with function %s... \n', b, strjoin(fsnames(fs), ', '), func_str); 
                     else

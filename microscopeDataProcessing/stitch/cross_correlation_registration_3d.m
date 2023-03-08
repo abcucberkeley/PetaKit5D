@@ -1,6 +1,6 @@
-function [relative_shift, max_xcorr] = multires_cross_correlation_registration_imblock_test(imgFullpath_1, imgFullpath_2, xcorrFullpath, cuboid_1, cuboid_2, cuboid_overlap_12, px, xyz_factors, varargin)
+function [relative_shift, max_xcorr] = cross_correlation_registration_3d(imgFullpath_1, imgFullpath_2, xcorrFullpath, cuboid_1, cuboid_2, cuboid_overlap_12, px, xyz_factors, varargin)
 % compute shift between a pair of tiles in stitching based on
-% cross-correlation using image block framework in a multi-resolution way.
+% cross-correlation using image block framework.
 % 
 % relative_shift: negative for move toward; postive for move away.
 % 

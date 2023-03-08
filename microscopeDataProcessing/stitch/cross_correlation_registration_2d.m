@@ -1,4 +1,4 @@
-function [relative_shift, max_xcorr] = multires_cross_correlation_registration_2d(imgFullpath_1, imgFullpath_2, xcorrFullpath, cuboid_1, cuboid_2, cuboid_overlap_12, px, xyz_factors, varargin)
+function [relative_shift, max_xcorr] = cross_correlation_registration_2d(imgFullpath_1, imgFullpath_2, xcorrFullpath, cuboid_1, cuboid_2, cuboid_overlap_12, px, xyz_factors, varargin)
 % compute shift between a pair of tiles in stitching based on
 % cross-correlation for 2d images.
 % based on multires_cross_correlation_registration_imblock_test.m
