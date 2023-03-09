@@ -1,4 +1,3 @@
-
 function XR_stitching_frame_zarr_dev_v1(tileFullpaths, coordinates, varargin)
 % zarr-based stitching pipeline. 
 % 
@@ -118,7 +117,6 @@ ip.addParameter('debug', false, @islogical);
 ip.parse(tileFullpaths, coordinates, varargin{:});
 
 pr = ip.Results;
- % Resolution = pr.Resolution;
 ResultPath = pr.ResultPath;
 tileInfoFullpath = pr.tileInfoFullpath;
 stitchInfoDir = pr.stitchInfoDir;
@@ -133,8 +131,6 @@ IOScan = pr.IOScan;
 InputBbox = pr.InputBbox;
 tileOutBbox = pr.tileOutBbox;
 TileOffset = pr.TileOffset;
-% Deskew = pr.Deskew;
-% Rotate = pr.Rotate;
 ProcessedDirstr = pr.ProcessedDirstr;
 DS = pr.DS;
 DSR = pr.DSR;
@@ -157,8 +153,6 @@ zMaxOffset = pr.zMaxOffset;
 singleDistMap = pr.singleDistMap;
 saveMultires = pr.saveMultires;
 resLevel = pr.resLevel;
-% RotateAfterDecon = pr.RotateAfterDecon;
-% ChannelPatterns = pr.ChannelPatterns;
 jobLogDir = pr.jobLogDir;
 parseCluster = pr.parseCluster;
 masterCompute = pr.masterCompute;

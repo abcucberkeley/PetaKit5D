@@ -16,13 +16,10 @@ ip.addRequired('flagFullname', @(x) ischar(x));
 ip.addOptional('stitchBlockInfo', []);
 ip.addOptional('zarrHeaders', []);
 ip.addOptional('nv_bim', []);
-% ip.addParameter('ResultDir', 'matlab_stitch', @ischar);
-% ip.addParameter('stitchInfoDir', 'stitchInfo', @ischar);
 ip.addParameter('Overwrite', false, @islogical);
 ip.addParameter('BlendMethod', 'mean', @ischar);
 ip.addParameter('BorderSize', [], @isnumeric);
 ip.addParameter('BlurSigma', 5, @isnumeric); % blurred sigma for blurred blend
-% ip.addParameter('imdistPath', '', @ischar); % blurred sigma for blurred blend
 ip.addParameter('imdistFullpaths', {}, @iscell); % image distance paths
 ip.addParameter('weightDegree', 10, @isnumeric); % weight degree for image distances
 

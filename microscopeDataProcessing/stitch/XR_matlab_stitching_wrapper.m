@@ -122,8 +122,7 @@ ip.addParameter('zNormalize', false, @islogical);
 ip.addParameter('onlyFirstTP', false, @islogical); % only compute first time point (for deciding cropping bouding box)
 ip.addParameter('timepoints', [], @isnumeric); % stitch for given time points, nx1 
 ip.addParameter('subtimepoints', [], @isnumeric); % stitch for given sub time points (subtimepoints), nx1
-ip.addParameter('xcorrMode', 'primaryFirst', @(x) strcmpi(x, 'primary') ...
-    || strcmpi(x, 'primaryFirst') || strcmpi(x, 'all')); % 'primary': choose one channel as primary channel, 
+ip.addParameter('xcorrMode', 'primaryFirst', @(x) ismember(x, {'primary', 'primaryFirst', 'all'}));  % 'primary': choose one channel as primary channel, 
         % 'all': xcorr shift for each channel;  % 'primaryFirst': the primary channel of first time point
 ip.addParameter('shiftMethod', 'grid', @ischar); % {'local', 'global', 'grid', 'group', 'test'}
 ip.addParameter('axisWeight', [1, 0.1, 10], @isnumeric); % axis weight for optimization, y, x, z

@@ -119,7 +119,6 @@ debug = pr.debug;
 saveStep = pr.saveStep;
 psfGen = pr.psfGen;
 
-tic
 CPUMaxMem = pr.CPUMaxMem;
 BatchSize = pr.BatchSize;
 BlockSize = pr.BlockSize;
@@ -141,6 +140,7 @@ if isempty(uuid)
     uuid = get_uuid();
 end
 
+tic
 if parseCluster 
     [status, ~] = system('sinfo');
     if status ~= 0

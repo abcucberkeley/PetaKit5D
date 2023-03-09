@@ -32,13 +32,11 @@ ip.addRequired('dz');
 ip.addParameter('ObjectiveScan', false, @islogical);
 ip.addParameter('ZstageScan', false, @islogical);
 ip.addParameter('Overwrite', false, @islogical);
-ip.addParameter('MovieSelector', 'cell', @ischar);
 ip.addParameter('Crop', false, @islogical);
 ip.addParameter('SkewAngle', 32.45, @isscalar);
 ip.addParameter('Reverse', false, @islogical);
 ip.addParameter('Rotate', false, @islogical);
 ip.addParameter('CheckFrameMismatch', false, @islogical);
-ip.addParameter('LoadSettings', false, @islogical);
 ip.addParameter('InputBbox', [], @isnumeric); % bounding box apply to input
 ip.addParameter('flipZstack', false, @islogical);
 % sCMOS camera flip
@@ -48,7 +46,7 @@ ip.addParameter('LLFFCorrection', false, @islogical);
 ip.addParameter('LowerLimit', 0.4, @isnumeric); % this value is the lowest
 ip.addParameter('LSImage', '' , @ischar);
 ip.addParameter('BackgroundImage', '' , @ischar);
-ip.addParameter('constOffset', [], @(x) isempty(x) || isnumeric(x)); % If it is set, use constant background, instead of background from the camera.
+ip.addParameter('constOffset', [], @(x) isnumeric(x)); % If it is set, use constant background, instead of background from the camera.
 ip.addParameter('BKRemoval', false, @islogical);
 ip.addParameter('Save16bit', false , @islogical); % saves deskewed data as 16 bit -- not for quantification
 ip.addParameter('RescaleRotate', false , @islogical); % Rescale rotated data to [0 65535]
@@ -60,7 +58,7 @@ ip.addParameter('xStepThresh', 2.0, @isnumeric); % 2.344 for ds=0.3, 2.735 for d
 ip.addParameter('aname', '', @ischar); % XR allow user-defined result path
 ip.addParameter('ZoffsetCorrection', false, @islogical); % xruan: add option for correction of z offset
 ip.addParameter('DSRCombined', true, @islogical); % combined processing 
-ip.addParameter('resample', [], @(x) isempty(x) || isnumeric(x)); % resampling after rotation 
+ip.addParameter('resample', [], @(x) isnumeric(x)); % resampling after rotation 
 ip.addParameter('Interp', 'linear', @(x) any(strcmpi(x, {'cubic', 'linear'})));
 ip.addParameter('surffix', '', @ischar); % suffix for the folder
 ip.addParameter('uuid', '', @ischar);

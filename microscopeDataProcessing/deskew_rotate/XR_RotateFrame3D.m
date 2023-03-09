@@ -15,8 +15,8 @@ ip.addRequired('dz');
 ip.addParameter('ObjectiveScan', false, @islogical);
 ip.addParameter('Overwrite', false, @islogical);
 ip.addParameter('Crop', true, @islogical);
-ip.addParameter('bbox', [], @(x) isempty(x) || isnumeric(x));
-ip.addParameter('resample', [], @(x) isempty(x) || isnumeric(x)); % resampling after rotation 
+ip.addParameter('bbox', [], @(x) isnumeric(x));
+ip.addParameter('resample', [], @(x) isnumeric(x)); % resampling after rotation 
 ip.addParameter('SkewAngle', 31.5, @isscalar);
 ip.addParameter('Reverse', false, @islogical);
 ip.addParameter('sCMOSCameraFlip', false, @islogical);
@@ -41,7 +41,7 @@ SkewAngle = pr.SkewAngle;
 ObjectiveScan = pr.ObjectiveScan;
 Save16bit = pr.Save16bit;
 
-uuid = ip.Results.uuid;
+uuid = pr.uuid;
 % uuid for the job
 if isempty(uuid)
     uuid = get_uuid();
