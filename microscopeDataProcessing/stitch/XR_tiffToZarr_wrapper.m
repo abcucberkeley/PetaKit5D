@@ -24,7 +24,7 @@ ip.addParameter('partialFile', false, @islogical);
 ip.addParameter('ChannelPatterns', {'tif'}, @iscell);
 ip.addParameter('InputBbox', [], @isnumeric); % crop input tile before processing
 ip.addParameter('tileOutBbox', [], @isnumeric); % crop output tile after processing
-ip.addParameter('usrFcn', '', @(x) isempty(x) || isa(x,'function_handle') || ischar(x) || iscell(x));
+ip.addParameter('usrFcn', '', @(x) isempty(x) || isa(x,'function_handle') || ischar(x) || isstring(x) || iscell(x));
 ip.addParameter('parseCluster', true, @islogical);
 ip.addParameter('bigData', true, @islogical);
 ip.addParameter('masterCompute', true, @islogical); % master node participate in the task computing. 
@@ -34,6 +34,8 @@ ip.addParameter('cpuOnlyNodes', false, @islogical);
 ip.addParameter('uuid', '', @ischar);
 ip.addParameter('maxTrialNum', 3, @isnumeric);
 ip.addParameter('unitWaitTime', 30, @isnumeric);
+ip.addParameter('mccMode', false, @islogical);
+ip.addParameter('ConfigFile', '', @ischar);
 
 
 ip.parse(tiffFullpaths, varargin{:});
@@ -55,7 +57,8 @@ bigData = pr.bigData;
 masterCompute = pr.masterCompute;
 cpusPerTask = pr.cpusPerTask;
 cpuOnlyNodes = pr.cpuOnlyNodes;
-
+mccMode = pr.mccMode;
+ConfigFile = pr.ConfigFile;
 
 if ischar(tiffFullpaths)
     if exist(tiffFullpaths, 'dir')
@@ -79,12 +82,12 @@ usrFcn_strs = repmat({''}, nC, 1);
 if ~isempty(usrFcn)
     if isa(usrFcn,'function_handle')
         usrFcn_strs = repmat({func2str(usrFcn)}, nC, 1);
-    elseif ischar(usrFcn)
+    elseif ischar(usrFcn) || isstring(usrFcn)
         usrFcn_strs = repmat({usrFcn}, nC, 1);
     elseif iscell(usrFcn)
         if isa(usrFcn{1},'function_handle')
             usrFcn_strs = cellfun(@(x) func2str(x), usrFcn, 'unif', 0);
-        elseif ischar(usrFcn{1})
+        elseif ischar(usrFcn{1}) || isstring(usrFcn{1})
             usrFcn_strs = usrFcn;
         end
     end
@@ -144,7 +147,7 @@ for i = 1 : nF
     end
     
     func_strs{i} = sprintf(['tiffToZarr(%s,''%s'',[],''BlockSize'',%s,''flipZstack'',%s,', ...
-        '''resample'',%s,''InputBbox'',%s,''tileOutBbox'',%s,''compressor'',''%s'',''usrFcn'',''%s'')'], ...
+        '''resample'',%s,''InputBbox'',%s,''tileOutBbox'',%s,''compressor'',''%s'',''usrFcn'',"%s")'], ...
         sprintf('{''%s''}', strjoin(tiffFullpath_group_i, ''',''')), zarrFullpaths{i}, ...
         strrep(mat2str(blockSize), ' ', ','), string(flipZstack), strrep(mat2str(resample), ' ', ','), ...
         strrep(mat2str(InputBbox), ' ', ','), strrep(mat2str(tileOutBbox), ' ', ','), ...
@@ -152,23 +155,21 @@ for i = 1 : nF
 end
 
 [estMem, estGPUMem, rawImageSize] = XR_estimateComputingMemory(tiffFullpaths{1}, {'deconvolution'}, 'cudaDecon', false);
-if cpusPerTask * 21 < rawImageSize * 2.5 * numel(tiffFullpath_group_i)
-    cpusPerTask = min(24, ceil(rawImageSize * 2.5 * numel(tiffFullpath_group_i) / 21));
-end
+memAllocate = rawImageSize * 2.5 * numel(tiffFullpath_group_i);
 if ~bigData
-    cpusPerTask = cpusPerTask * 2;
+    memAllocate = memAllocate * 2;
 end
 maxTrialNum = 2;
 
-MatlabLaunchStr = 'module load matlab/r2022b; matlab -nodisplay -nosplash -nodesktop -r';
-is_done_flag = slurm_cluster_generic_computing_wrapper(tiffFullpaths, zarrFullpaths, ...
-    func_strs, 'parseCluster', parseCluster, 'masterCompute', masterCompute, 'maxTrialNum', maxTrialNum, ...
-    'MatlabLaunchStr', MatlabLaunchStr, 'cpusPerTask', cpusPerTask, 'cpuOnlyNodes', cpuOnlyNodes);
+is_done_flag = generic_computing_frameworks_wrapper(tiffFullpaths, zarrFullpaths, ...
+    func_strs, 'parseCluster', parseCluster, 'masterCompute', masterCompute, ...
+    'maxTrialNum', maxTrialNum,  'cpusPerTask', cpusPerTask, 'memAllocate', memAllocate, ...
+    'cpuOnlyNodes', cpuOnlyNodes, 'mccMode', mccMode, 'ConfigFile', ConfigFile);
 if ~all(is_done_flag)
-    slurm_cluster_generic_computing_wrapper(tiffFullpaths, zarrFullpaths, ...
+    generic_computing_frameworks_wrapper(tiffFullpaths, zarrFullpaths, ...
         func_strs, 'parseCluster', parseCluster, 'masterCompute', masterCompute, ...
-        'maxTrialNum', maxTrialNum, 'MatlabLaunchStr', MatlabLaunchStr, ...
-        'cpusPerTask', min(24, cpusPerTask * 2), 'cpuOnlyNodes', cpuOnlyNodes);
+        'maxTrialNum', maxTrialNum, 'cpusPerTask', cpusPerTask * 2, 'memAllocate', memAllocate * 2, ...
+        'cpuOnlyNodes', cpuOnlyNodes, 'mccMode', mccMode, 'ConfigFile', ConfigFile);
 end
 
 

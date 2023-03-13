@@ -81,8 +81,8 @@ xcorrDownsample = [2, 2, 2];
 % crop input tile before any processing, empty (no crop) or a 1X6 array [ymin, xmin, zmin, ymax, xmax, zmax]
 InputBbox = [];
 
-% crop input tile after processing, empty (no crop) or a 1X6 array [ysize, xsize, zsize]
-CropToSize = [];
+% crop input tile after processing, empty (no crop) or a 1X6 array [ymin, xmin, zmin, ymax, xmax, zmax]
+tileOutBbox = [];
 
 % chunk size in zarr
 blockSize = [256, 256, 256];
@@ -108,7 +108,7 @@ XR_matlab_stitching_wrapper(dataPath, ImageListFullpath, 'useExistDecon', ~true,
     'resample', resample, 'Resolution', Resolution,'BlendMethod', BlendMethod, ...
     'resultDir', stitchResultDir, 'onlyFirstTP', onlyFirstTP, 'xyMaxOffset', xyMaxOffset, ...
     'zMaxOffset', zMaxOffset, 'xcorrDownsample', xcorrDownsample,  'InputBbox', InputBbox, ...
-    'CropToSize', CropToSize,  'pipeline', stitchPipeline,  'parseSettingFile', parseSettingFile, ...
+    'tileOutBbox', tileOutBbox, 'pipeline', stitchPipeline,  'parseSettingFile', parseSettingFile, ...
     'processFunPath', processFunPath, 'Save16bit', Save16bit, 'parseCluster', false);
 toc
 

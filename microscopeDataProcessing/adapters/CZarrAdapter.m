@@ -74,14 +74,6 @@ classdef CZarrAdapter < images.blocked.Adapter
     methods
         function openToWrite(obj, loc, info, level)
             assert(level==1)
-            % TODO - map info.Datatype to corresponding Zarr type.
-            % xruan (11/18/2020): add support for multiple data types
-            switch info.Datatype
-                case 'single'
-                    dtype = 'f4';
-                case 'uint16'
-                    dtype = 'u2';
-            end
             if numel(info.Size) == 2
                 % info.Size = [info.Size, 1];
                 % info.IOBlockSize = [info.IOBlockSize, 1];
@@ -91,9 +83,9 @@ classdef CZarrAdapter < images.blocked.Adapter
                 [pth, loc] = fileparts(loc);
                 cd(pth);                    
             end
-            
-            createZarrFile(char(loc), 'chunks', info.IOBlockSize, 'dtype', dtype, ...
-                'order', 'F', 'shape', info.Size, 'cname', 'zstd', 'level', 1);
+
+            createzarr(char(loc), dataSize=info.Size, blockSize=info.IOBlockSize, ...
+                dtype=info.Datatype, order='F', compressor='zstd', zarrSubSize=[]);
 
             openToRead(obj, loc);
             obj.ZarrInfo =  info;

@@ -52,7 +52,6 @@ if ~exist('setup.m', 'file')
 end
 
 pr = ip.Results;
- % Resolution = pr.Resolution;
 jobLogDir = pr.jobLogDir;
 tmpDir = pr.tmpDir;
 parseCluster = pr.parseCluster;

@@ -20,17 +20,22 @@ ip.addParameter('zarrHeaders', {}, @iscell);
 ip.addParameter('blockSize', [500, 500, 500], @isnumeric);
 ip.addParameter('compressor', 'lz4', @ischar);
 ip.addParameter('parseCluster', true, @islogical);
+ip.addParameter('mccMode', false, @islogical);
+ip.addParameter('ConfigFile', '', @ischar);
 ip.addParameter('uuid', '', @ischar);
 
 ip.parse(blockInfoFullname, stitchPath, tileFullpaths, varargin{:});
 
 pr = ip.Results;
+Overwrite = pr.Overwrite;
 blendWeightDegree = pr.blendWeightDegree;
 singleDistMap = pr.singleDistMap;
 zarrHeaders = pr.zarrHeaders;
 blockSize = pr.blockSize;
 compressor = pr.compressor;
 parseCluster = pr.parseCluster;
+mccMode = pr.mccMode;
+ConfigFile = pr.ConfigFile;
 
 
 % define input, output and function handle for the cluster computing framework
@@ -69,14 +74,14 @@ inputFullpaths = tileFullpaths;
 [~, fsnames] = fileparts(tileFullpaths);
 if singleDistMap
     outputFullpaths = {sprintf('%s/%s_wr_%d.zarr', distPath, fsnames, blendWeightDegree)};
-    funcStrs = arrayfun(@(x) sprintf('compute_tile_bwdist(''%s'',%d,''%s'',%d,%s,%s,''%s'')', ...
+    funcStrs = arrayfun(@(x) sprintf('compute_tile_bwdist(''%s'',%d,''%s'',%d,%s,%s,''%s'',%s)', ...
         blockInfoFullname, x, outputFullpaths{x}, blendWeightDegree, string(singleDistMap), ...
-        strrep(mat2str(blockSize), ' ', ','), compressor), 1 : 1, 'unif', 0);    
+        strrep(mat2str(blockSize), ' ', ','), compressor, string(Overwrite)), 1 : 1, 'unif', 0);    
 else
     outputFullpaths = cellfun(@(x) sprintf('%s/%s_wr_%d.zarr', distPath, x, blendWeightDegree), fsnames, 'unif', 0);
-    funcStrs = arrayfun(@(x) sprintf('compute_tile_bwdist(''%s'',%d,''%s'',%d,%s,%s,''%s'')', ...
+    funcStrs = arrayfun(@(x) sprintf('compute_tile_bwdist(''%s'',%d,''%s'',%d,%s,%s,''%s'',%s)', ...
         blockInfoFullname, x, outputFullpaths{x}, blendWeightDegree, string(singleDistMap), ...
-        strrep(mat2str(blockSize), ' ', ','), compressor), 1 : nF, 'unif', 0);
+        strrep(mat2str(blockSize), ' ', ','), compressor,string(Overwrite)), 1 : nF, 'unif', 0);
 end
 
 if isempty(zarrHeaders)
@@ -86,11 +91,12 @@ end
 
 imSize = zarrHeaders{1}.Size;
 
-% abc cluster
-cpusPerTask = min(24, ceil(prod(imSize) * 4 / 1024^3 * 10 / 20));
+% memory needed
+memAllocate = prod(imSize) * 4 / 1024^3 * 10;
 
-slurm_cluster_generic_computing_wrapper(inputFullpaths, outputFullpaths, funcStrs, ...
-    'cpusPerTask', cpusPerTask, 'parseCluster', parseCluster);
+generic_computing_frameworks_wrapper(inputFullpaths, outputFullpaths, funcStrs, ...
+    'memAllocate', memAllocate, 'parseCluster', parseCluster, mccMode=mccMode, ...
+    ConfigFile=ConfigFile);
 
 
 end

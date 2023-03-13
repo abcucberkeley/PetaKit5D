@@ -44,7 +44,7 @@ maxZOffset = MaxOffset(3);
 
 if exist(xcorrFullpath, 'file')
     fprintf('The xcorr result %s already exists!\n', xcorrFullpath);
-    % return;
+    return;
 end
 
 fprintf('Compute xcorr shifts for tiles:\n    %s\n    %s\n', imgFullpath_1, imgFullpath_2);
@@ -63,10 +63,9 @@ switch ext
 end
 
 sz_1 = bim_1.Size;
-% sz_2 = bim_2.Size;
 
 % note: cuboid_overlap_12, cuboid_1 and xyz_factors are in xyz order.
-% s1 = round((cuboid_overlap_12(:, 1) - cuboid_1(:, 1)) ./ (px * xyz_factors)) + 1;
+xyz_factors = xyz_factors(:);
 s1 = round((cuboid_overlap_12(1 : 3) - cuboid_1(1 : 3))' ./ (px * xyz_factors)) + 1;
 s2 = round((cuboid_overlap_12(1 : 3) - cuboid_2(1 : 3))' ./ (px * xyz_factors)) + 1;
 

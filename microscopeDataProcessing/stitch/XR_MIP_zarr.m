@@ -19,6 +19,8 @@ ip.addParameter('masterCompute', true, @islogical); % master node participate in
 ip.addParameter('jobLogDir', '../job_logs', @ischar);
 ip.addParameter('cpuOnlyNodes', ~true, @islogical);
 ip.addParameter('cpusPerTask', 3, @isnumeric);
+ip.addParameter('mccMode', false, @islogical);
+ip.addParameter('ConfigFile', '', @ischar);
 ip.addParameter('uuid', '', @ischar);
 ip.addParameter('debug', false, @islogical);
 
@@ -33,6 +35,8 @@ jobLogDir = pr.jobLogDir;
 masterCompute = pr.masterCompute;
 cpuOnlyNodes = pr.cpuOnlyNodes;
 cpusPerTask = pr.cpusPerTask;
+mccMode = pr.mccMode;
+ConfigFile = pr.ConfigFile;
 
 uuid = pr.uuid;
 % uuid for the job
@@ -141,12 +145,11 @@ end
 
 % set up parallel computing 
 numBatch = size(batchBBoxes, 1);
-taskSize = max(2, min(10, round(numBatch / 5000))); % the number of batches a job should process
+taskSize = max(5, min(10, round(numBatch / 5000))); % the number of batches a job should process
 numTasks = ceil(numBatch / taskSize);
 
 maxJobNum = inf;
 taskBatchNum = 1;
-SlurmParam = '-p abc --qos abc_normal -n1 --mem-per-cpu=21418M';
 
 % get the function string for each batch
 funcStrs = cell(numTasks, 1);
@@ -168,15 +171,20 @@ end
 
 % submit jobs 
 inputFullpaths = repmat({zarrFullpath}, numTasks, 1);
-if parseCluster || ~parseParfor 
-    is_done_flag= slurm_cluster_generic_computing_wrapper(inputFullpaths, outputFullpaths, ...
-        funcStrs, 'cpusPerTask', cpusPerTask, 'cpuOnlyNodes', cpuOnlyNodes, 'SlurmParam', SlurmParam, ...
-        'maxJobNum', maxJobNum, 'taskBatchNum', taskBatchNum, 'masterCompute', masterCompute, 'parseCluster', parseCluster);
+if parseCluster || ~parseParfor
+    memAllocate = prod(BatchSize) * 4 / 2^30 * 2.5;
+    is_done_flag= generic_computing_frameworks_wrapper(inputFullpaths, outputFullpaths, ...
+        funcStrs, 'cpusPerTask', cpusPerTask, 'cpuOnlyNodes', cpuOnlyNodes, ...
+        'memAllocate', memAllocate, 'maxJobNum', maxJobNum, 'taskBatchNum', taskBatchNum, ...
+        'masterCompute', masterCompute, 'parseCluster', parseCluster, 'mccMode', mccMode, ...
+        'ConfigFile', ConfigFile);
 
     if ~all(is_done_flag)
-        slurm_cluster_generic_computing_wrapper(inputFullpaths, outputFullpaths, ...
-            funcStrs, 'cpusPerTask', cpusPerTask, 'cpuOnlyNodes', cpuOnlyNodes, 'SlurmParam', SlurmParam, ...
-            'maxJobNum', maxJobNum, 'taskBatchNum', taskBatchNum, 'masterCompute', masterCompute, 'parseCluster', parseCluster);
+        generic_computing_frameworks_wrapper(inputFullpaths, outputFullpaths, ...
+            funcStrs, 'cpusPerTask', cpusPerTask, 'cpuOnlyNodes', cpuOnlyNodes, ...
+            'memAllocate', memAllocate, 'maxJobNum', maxJobNum, 'taskBatchNum', taskBatchNum, ...
+            'masterCompute', masterCompute, 'parseCluster', parseCluster, 'mccMode', mccMode, ...
+            'ConfigFile', ConfigFile);
     end
 elseif parseParfor
     GPUJob = false;

@@ -94,6 +94,7 @@ ip.addParameter('axisWeight', [1, 0.1, 10], @isnumeric); % axis weight for optim
 ip.addParameter('groupFile', '', @ischar); % file to define tile groups
 ip.addParameter('singleDistMap', ~false, @islogical); % compute distance map for the first tile and apply to all other tiles
 ip.addParameter('blockSize', [500, 500, 500], @isnumeric); 
+ip.addParameter('zarrSubSize', [20, 20, 20], @isnumeric); % zarr subfolder size
 ip.addParameter('saveMultires', false, @islogical); % save as multi resolution dataset
 ip.addParameter('resLevel', 4, @isnumeric); % downsample to 2^1-2^resLevel
 ip.addParameter('BorderSize', [0, 0, 0], @isnumeric);
@@ -112,6 +113,8 @@ ip.addParameter('cpuOnlyNodes', false, @islogical);
 ip.addParameter('uuid', '', @ischar);
 ip.addParameter('maxTrialNum', 3, @isnumeric);
 ip.addParameter('unitWaitTime', 30, @isnumeric);
+ip.addParameter('mccMode', false, @islogical);
+ip.addParameter('ConfigFile', '', @ischar);
 ip.addParameter('debug', false, @islogical);
 
 ip.parse(tileFullpaths, coordinates, varargin{:});
@@ -156,13 +159,11 @@ resLevel = pr.resLevel;
 jobLogDir = pr.jobLogDir;
 parseCluster = pr.parseCluster;
 masterCompute = pr.masterCompute;
-cpusPerTask = pr.cpusPerTask;
 cpuOnlyNodes = pr.cpuOnlyNodes;
-maxTrialNum = pr.maxTrialNum;
-unitWaitTime = pr.unitWaitTime;
 Save16bit = pr.Save16bit;
 EdgeArtifacts = pr.EdgeArtifacts;
 blockSize = pr.blockSize;
+zarrSubSize = pr.zarrSubSize;
 BorderSize = pr.BorderSize;
 BlurSigma = pr.BlurSigma;
 SaveMIP = pr.SaveMIP;
@@ -172,6 +173,8 @@ stitchMIP = pr.stitchMIP;
 stitch2D = pr.stitch2D;
 bigStitchData = pr.bigStitchData;
 uuid = pr.uuid;
+mccMode = pr.mccMode;
+ConfigFile = pr.ConfigFile;
 debug = pr.debug;
 
 %  load tile paths and coordinates from file.
@@ -411,7 +414,8 @@ end
 XR_tiffToZarr_wrapper(tiffFullpaths, 'zarrPathstr', zarrPathstr, 'blockSize', round(blockSize / 2), ...
     'usrFcn', fn, 'flippedTile', zarr_flippedTile, 'resample', stitchResample, ...
     'partialFile', partialFile, 'InputBbox', InputBbox, 'tileOutBbox', tileOutBbox, ...
-    'parseCluster', parseCluster, 'bigData', bigStitchData, 'cpuOnlyNodes', cpuOnlyNodes);
+    'parseCluster', parseCluster, 'masterCompute', masterCompute, 'bigData', bigStitchData, ...
+    'cpuOnlyNodes', cpuOnlyNodes, 'mccMode', mccMode, 'ConfigFile', ConfigFile);
 
 % load all zarr headers as a cell array and get image size for all tiles
 imSizes = zeros(nF, 3);
@@ -494,7 +498,8 @@ if xcorrShift && isPrimaryCh
     MaxOffset = [xyMaxOffset, xyMaxOffset, zMaxOffset];
     [xyz_shift, d_shift] = stitch_shift_assignment(zarrFullpaths, xcorrDir, imSizes, xyz, ...
         px, [xf, yf, zf], overlap_matrix, overlap_regions, MaxOffset, xcorrDownsample, ...
-        xcorrThresh, tileIdx, assign_method, stitch2D, axisWeight, groupFile, parseCluster, nodeFactor);
+        xcorrThresh, tileIdx, assign_method, stitch2D, axisWeight, groupFile, parseCluster, ...
+        nodeFactor, mccMode, ConfigFile);
 elseif ~isPrimaryCh
     if ~exist(stitchInfoFullpath, 'file')
         error('The stitch information filename %s does not exist!', stitchInfoFullpaths);
@@ -511,7 +516,6 @@ elseif ~isPrimaryCh
     pImSz = a.pImSz;
     imdistFullpaths = a.imdistFullpaths;
 end
-
 
 % use half of overlap region for pairs of tiles with overlap
 if isempty(overlapType)
@@ -744,24 +748,13 @@ if exist(nv_tmp_raw_fullname, 'dir')
     rmdir(nv_tmp_raw_fullname, 's');
 end
 
+createzarr(nv_tmp_raw_fullname, dataSize=[nys, nxs, nzs], blockSize=blockSize, ...
+    dtype=dtype, compressor=compressor, zarrSubSize=zarrSubSize);
 try
-    % nv_bim = blockedImage(nv_tmp_raw_fullname, [nys, nxs, nzs], blockSize, init_val, "Adapter", CZarrAdapter, 'Mode', 'w');
-    switch dtype
-        case 'single'
-            ddtype = 'f4';
-        case 'uint16'
-            ddtype = 'u2';
-        otherwise
-            error('Unsupported data type');
-    end    
-    createZarrFile(nv_tmp_raw_fullname, 'chunks', blockSize, 'dtype', ddtype, 'order', 'F', ...
-        'shape', [nys, nxs, nzs], 'cname', compressor, 'level', 1); 
     nv_bim = blockedImage(nv_tmp_raw_fullname, 'Adapter', CZarrAdapter);
 catch ME
     disp(ME);
-    init_val = zeros(1, dtype);    
-    nv_bim = blockedImage(nv_tmp_raw_fullname, [nys, nxs, nzs], blockSize, init_val, "Adapter", ZarrAdapter, 'Mode', 'w');
-    nv_bim.Adapter.close()
+    nv_bim = blockedImage(nv_tmp_raw_fullname, 'Adapter', ZarrAdapter);
 end
 
 save('-v7.3', block_info_tmp_fullname, 'zarrHeaders', 'overlap_matrix', 'half_ol_region_cell', ...
@@ -780,7 +773,8 @@ if strcmpi(BlendMethod, 'feather')
         mkdir(imdistPath);
         [imdistFullpaths] = compute_tile_distance_transform(block_info_fullname, stitchPath, ...
             zarrFullpaths, 'blendWeightDegree', blendWeightDegree, 'singleDistMap', singleDistMap, ...
-            'blockSize', round(blockSize / 2), 'compressor', compressor, 'parseCluster', parseCluster);
+            'blockSize', round(blockSize / 2), 'compressor', compressor, 'parseCluster', parseCluster, ...
+            'mccMode', mccMode, 'ConfigFile', ConfigFile);
         % imdistFullpaths = cellfun(@(x) [imdistPath, x, '.zarr'], fsnames, 'unif', 0);
     else
         usePrimaryDist = true;
@@ -801,7 +795,8 @@ if strcmpi(BlendMethod, 'feather')
             mkdir(imdistPath);
             [imdistFullpaths] = compute_tile_distance_transform(block_info_fullname, stitchPath, ...
                 zarrFullpaths, 'blendWeightDegree', blendWeightDegree, 'singleDistMap', singleDistMap, ...
-                'blockSize', round(blockSize / 2), 'compressor', compressor, 'parseCluster', parseCluster);
+                'blockSize', round(blockSize / 2), 'compressor', compressor, 'parseCluster', parseCluster, ...
+                'mccMode', mccMode, 'ConfigFile', ConfigFile);
         end
     end
     if singleDistMap
@@ -843,9 +838,9 @@ if numBlocks < 30
 end
 
 if parseCluster
-    taskSize = 5; % the number of blocks a job should process for [500, 500, 500]
+    taskSize = 10; % the number of blocks a job should process for [500, 500, 500]
     % keep task size inversely propotional to block size
-    taskSize = max(1, round(prod([500, 500, 500]) / prod(blockSize) * taskSize));
+    taskSize = max(1, round(prod([512, 512, 512]) / prod(blockSize) * taskSize));
     if numBlocks > 1e5
         taskSize = max(taskSize, round(numBlocks / 5000));
     end
@@ -894,31 +889,28 @@ end
 inputFullpaths = repmat({block_info_fullname}, numTasks, 1);
 outputFullpaths = zarrFlagFullpaths;
 
-% abc cluster
+% cluster setting
 cpusPerTask = 1 * nodeFactor;
+memAllocate = prod(blockSize) * 4 / 1024^3 * 25;
 maxTrialNum = 2;
 jobTimeLimit = taskSize * (0.5 / 60);
 
 if ~exist(nv_fullname, 'dir') 
-    is_done_flag = slurm_cluster_generic_computing_wrapper(inputFullpaths, outputFullpaths, funcStrs, ...
-        'cpusPerTask', cpusPerTask, 'jobTimeLimit', jobTimeLimit, 'maxTrialNum', 2, 'parseCluster', parseCluster);
+    is_done_flag = generic_computing_frameworks_wrapper(inputFullpaths, outputFullpaths, ...
+        funcStrs, 'cpusPerTask', cpusPerTask, 'memAllocate', memAllocate, 'jobTimeLimit', jobTimeLimit, ...
+        'maxTrialNum', maxTrialNum, 'masterCompute', masterCompute, 'parseCluster', parseCluster, ...
+        'mccMode', mccMode, 'ConfigFile', ConfigFile);
 end
 
-if ~exist(nv_fullname, 'dir') && ~all(is_done_flag)
-    is_done_flag = slurm_cluster_generic_computing_wrapper(inputFullpaths, outputFullpaths, funcStrs, ...
-        'cpusPerTask', cpusPerTask * 2, 'jobTimeLimit', jobTimeLimit * 2, 'maxTrialNum', maxTrialNum, 'parseCluster', parseCluster);
+% retry with more resources and longer time
+for i = 1 : 3
+    if ~exist(nv_fullname, 'dir') && ~all(is_done_flag)
+        is_done_flag = generic_computing_frameworks_wrapper(inputFullpaths, outputFullpaths, ...
+            funcStrs, 'cpusPerTask', cpusPerTask * 2^i, 'jobTimeLimit', jobTimeLimit * 2^i, ...
+            'maxTrialNum', maxTrialNum, 'masterCompute', masterCompute, 'parseCluster', parseCluster, ...
+            'mccMode', mccMode, 'ConfigFile', ConfigFile);
+    end
 end
-
-if ~exist(nv_fullname, 'dir') && ~all(is_done_flag)
-    is_done_flag = slurm_cluster_generic_computing_wrapper(inputFullpaths, outputFullpaths, funcStrs, ...
-        'cpusPerTask', cpusPerTask * 4, 'jobTimeLimit', jobTimeLimit * 4, 'maxTrialNum', maxTrialNum, 'parseCluster', parseCluster);
-end
-
-if ~exist(nv_fullname, 'dir') && ~all(is_done_flag)
-    is_done_flag = slurm_cluster_generic_computing_wrapper(inputFullpaths, outputFullpaths, funcStrs, ...
-        'cpusPerTask', cpusPerTask * 8, 'jobTimeLimit', jobTimeLimit * 8, 'maxTrialNum', maxTrialNum, 'parseCluster', parseCluster);
-end
-
 
 if ~exist(nv_fullname, 'dir') && ~all(is_done_flag)
     if ~debug
@@ -978,7 +970,7 @@ if SaveMIP
     if prod([nys, nxs, nzs]) * byte_num / 2^30 < 500
         saveMIP_zarr(nv_fullname, stcMIPname);
     else
-        XR_MIP_zarr(nv_fullname);
+        XR_MIP_zarr(nv_fullname, mccMode=mccMode, ConfigFile=ConfigFile);
     end
 end
 

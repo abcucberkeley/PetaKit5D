@@ -193,6 +193,7 @@ end
 sz = bim.Size;
 
 if ~isempty(usrFcn)
+    disp(usrFcn)
     if ischar(usrFcn)
         usrFcn = str2func(usrFcn);
     end

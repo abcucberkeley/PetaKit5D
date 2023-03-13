@@ -102,6 +102,7 @@ ip.addParameter('axisOrder', 'x,y,z', @ischar);
 ip.addParameter('ObjectiveScan', false, @islogical);
 ip.addParameter('IOScan', false, @islogical);
 ip.addParameter('blockSize', [500, 500, 500], @isnumeric);
+ip.addParameter('zarrSubSize', [], @isnumeric);
 ip.addParameter('resampleType', 'xy_isotropic', @ischar); % by default use xy isotropic
 ip.addParameter('resample', [], @isnumeric); % user-defined resample factor
 ip.addParameter('InputBbox', [], @isnumeric); % crop input tile before processing
@@ -144,8 +145,8 @@ ip.addParameter('cpuOnlyNodes', false, @islogical);
 ip.addParameter('uuid', '', @ischar);
 ip.addParameter('maxTrialNum', 3, @isnumeric);
 ip.addParameter('unitWaitTime', 0.1, @isnumeric);
-ip.addParameter('MatlabLaunchStr', 'module load matlab/r2022a; matlab -nodisplay -nosplash -nodesktop -r', @ischar);
-ip.addParameter('SlurmParam', '-p abc --qos abc_normal -n1 --mem-per-cpu=21418M', @ischar);
+ip.addParameter('mccMode', false, @islogical);
+ip.addParameter('ConfigFile', '', @ischar);
 
 ip.parse(dataPath, imageListFileName, varargin{:});
 
@@ -165,6 +166,7 @@ axisOrder = pr.axisOrder;
 ObjectiveScan = pr.ObjectiveScan;
 IOScan =  pr.IOScan;
 blockSize = pr.blockSize;
+zarrSubSize = pr.zarrSubSize;
 resampleType = pr.resampleType;
 resample = pr.resample;
 InputBbox = pr.InputBbox;
@@ -201,13 +203,12 @@ processFunPath = pr.processFunPath;
 jobLogDir = pr.jobLogDir;
 parseCluster = pr.parseCluster;
 masterCompute = pr.masterCompute;
-cpusPerTask = pr.cpusPerTask;
 cpuOnlyNodes = pr.cpuOnlyNodes;
 uuid = pr.uuid;
 maxTrialNum = pr.maxTrialNum;
 unitWaitTime = pr.unitWaitTime;
-SlurmParam = pr.SlurmParam;
-MatlabLaunchStr = pr.MatlabLaunchStr;
+mccMode = pr.mccMode;
+ConfigFile = pr.ConfigFile;
 
 switch pipeline
     case 'matlab'
@@ -255,10 +256,6 @@ if ~exist(stitching_tmp, 'dir')
     mkdir(stitching_tmp);
     fileattrib(stitching_tmp, '+w', 'g');            
 end
-
-% if useExistDecon
-%     useExistDSR = false;
-% end
 
 % check if a slurm-based computing cluster exists
 if parseCluster
@@ -592,8 +589,8 @@ while ~all(is_done_flag | trial_counter >= max_trial_num, 'all')
                         tileIdx_str = strrep(mat2str(tileIdx), ' ', ',');
                         tileInfoFullpath = '';
 
-                        % for tile number greater than 100, save the info to the disk and load it for the function
-                        if numel(tile_fullpaths) > 100
+                        % for tile number greater than 10, save the info to the disk and load it for the function
+                        if numel(tile_fullpaths) > 10 && job_ids(n, ncam, s, c, z) == -1
                             fprintf('Save tile paths and coordinates to disk...\n');
                             [~, fsname] = fileparts(stitch_save_fname);
                             tileInfoFullpath = sprintf('%s/stitchInfo/%s_tile_info.mat', stitching_rt, fsname);
@@ -610,44 +607,31 @@ while ~all(is_done_flag | trial_counter >= max_trial_num, 'all')
                         func_str = sprintf(['%s(%s,%s,''axisOrder'',''%s'',''xyPixelSize'',%0.10f,''dz'',%0.10f,', ...
                             '''SkewAngle'',%0.10f,''Reverse'',%s,''ObjectiveScan'',%s,''IOScan'',%s,''resultPath'',''%s'',', ...
                             '''tileInfoFullpath'',''%s'',''stitchInfoDir'',''%s'',''stitchInfoFullpath'',''%s'',', ...
-                            '''ProcessedDirStr'',''%s'',''DS'',%s,''DSR'',%s,''blockSize'',%s,''resampleType'',''%s'',', ...
-                            '''resample'',[%s],''InputBbox'',%s,''tileOutBbox'',%s,''TileOffset'',%d,''BlendMethod'',''%s'',', ...
-                            '''overlapType'',''%s'',''xcorrShift'',%s,''xyMaxOffset'',%0.10f,''zMaxOffset'',%0.10f,', ...
-                            '''xcorrDownsample'',%s,''xcorrThresh'',%0.10f,''shiftMethod'',''%s'',''axisWeight'',[%s],', ...
-                            '''groupFile'',''%s'',''isPrimaryCh'',%s,''usePrimaryCoords'',%s,''padSize'',[%s],', ...
+                            '''ProcessedDirStr'',''%s'',''DS'',%s,''DSR'',%s,''blockSize'',%s,''zarrSubSize'',%s,', ...
+                            '''resampleType'',''%s'',''resample'',[%s],''InputBbox'',%s,''tileOutBbox'',%s,''TileOffset'',%d,', ...
+                            '''BlendMethod'',''%s'',''overlapType'',''%s'',''xcorrShift'',%s,''xyMaxOffset'',%0.10f,', ...
+                            '''zMaxOffset'',%0.10f,''xcorrDownsample'',%s,''xcorrThresh'',%0.10f,''shiftMethod'',''%s'',', ...
+                            '''axisWeight'',[%s],''groupFile'',''%s'',''isPrimaryCh'',%s,''usePrimaryCoords'',%s,''padSize'',[%s],', ...
                             '''boundboxCrop'',[%s],''zNormalize'',%s,''Save16bit'',%s,''tileIdx'',%s,''flippedTile'',[%s],', ...
                             '''processFunPath'',''%s'',''stitchMIP'',%s,''bigStitchData'',%s,''EdgeArtifacts'',%0.10f,', ...
-                            '''parseCluster'',%s,''cpuOnlyNodes'',%s)'], ...
+                            '''parseCluster'',%s,''cpuOnlyNodes'',%s,''mccMode'',%s,''ConfigFile'',''%s'')'], ...
                             stitch_function_str, tile_fullpaths_str, xyz_str, axisOrder, px, dz, SkewAngle, string(Reverse), ...
                             string(ObjectiveScan), string(IOScan), stitch_save_fname, tileInfoFullpath, stitchInfoDir, ...
                             stitchInfoFullpath, ProcessedDirStr, string(DS), string(DSR), strrep(mat2str(blockSize), ' ', ','), ...
-                            resampleType, strrep(num2str(resample, '%.10d,'), ' ', ''), strrep(mat2str(InputBbox), ' ', ','), ...
-                            strrep(mat2str(tileOutBbox), ' ', ','), TileOffset, BlendMethod,  overlapType, string(xcorrShift), ...
-                            xyMaxOffset, zMaxOffset, strrep(mat2str(xcorrDownsample), ' ', ','), xcorrThresh, shiftMethod, ...
-                            strrep(mat2str(axisWeight), ' ', ','), groupFile, string(isPrimaryCh), string(usePrimaryCoords), ...
-                            num2str(padSize, '%d,'), strrep(num2str(boundboxCrop, '%d,'), ' ', ''),  string(zNormalize), ...
-                            string(Save16bit), tileIdx_str, strrep(num2str(flippedTile, '%d,'), ' ', ''), processFunPath{cind}, ...
-                            strrep(mat2str(stitchMIP), ' ', ','), string(bigStitchData), EdgeArtifacts, string(parseCluster), string(cpuOnlyNodes));
+                            strrep(mat2str(zarrSubSize), ' ', ','), resampleType, strrep(num2str(resample, '%.10d,'), ' ', ''), ...
+                            strrep(mat2str(InputBbox), ' ', ','), strrep(mat2str(tileOutBbox), ' ', ','), TileOffset, BlendMethod, ...
+                            overlapType, string(xcorrShift), xyMaxOffset, zMaxOffset, strrep(mat2str(xcorrDownsample), ' ', ','), ...
+                            xcorrThresh, shiftMethod, strrep(mat2str(axisWeight), ' ', ','), groupFile, string(isPrimaryCh), ...
+                            string(usePrimaryCoords), num2str(padSize, '%d,'), strrep(num2str(boundboxCrop, '%d,'), ' ', ''), ...
+                            string(zNormalize), string(Save16bit), tileIdx_str, strrep(num2str(flippedTile, '%d,'), ' ', ''), ...
+                            processFunPath{cind}, strrep(mat2str(stitchMIP), ' ', ','), string(bigStitchData), EdgeArtifacts, ...
+                            string(parseCluster), string(cpuOnlyNodes), string(mccMode), ConfigFile);
 
                         if exist(cur_tmp_fname, 'file') || (parseCluster && ~(masterCompute && xcorrShift && strcmpi(xcorrMode, 'primaryFirst') && isPrimaryCh))
                             % for cluster computing with master, check whether the job still alive. Otherwise, use waiting time
                             % for the check
                             if parseCluster
-                                job_status = check_slurm_job_status(job_ids(n, ncam, s, c, z), rem(task_id, 1000));
-
-                                % kill the last pending job and use master node do the computing.
-                                if job_status == 0.5 && (masterCompute && f == lastF)
-                                    system(sprintf('scancel %d_%d', job_ids(n, ncam, s, c, z), rem(task_id, 1000)), '-echo');
-                                end
-
-                                % if the job is still running, skip it. 
-                                if job_status == 1 
-                                    continue;
-                                end
-
-                                % If there is no job, submit a job
-                                if job_status == -1 && ~(masterCompute && f == lastF)
-                                    % check if memory is enough
+                                if ~(masterCompute && f == lastF)
                                     if useProcessedData
                                         dir_info = dir(tile_processed_fullpaths{1});
                                     else
@@ -665,22 +649,17 @@ while ~all(is_done_flag | trial_counter >= max_trial_num, 'all')
                                     if strcmp(pipeline, 'zarr')
                                         mem_factor = 0.5;
                                     end
-
+    
                                     % allocate 5 time of the size
-                                    if cpusPerTask * 20 < totalDsize * mem_factor
-                                        cpusPerTask = min(24, ceil(totalDsize * mem_factor / 20))
-                                    end
-
-                                    matlab_setup_str = 'setup([],true)';
-                                    matlab_cmd = sprintf('%s;t0_=tic;%s;toc(t0_)', matlab_setup_str, func_str);
-                                    stitch_cmd = sprintf('%s \\"%s\\"', MatlabLaunchStr, matlab_cmd);
-                                    cmd = sprintf('sbatch --array=%d -o %s -e %s --cpus-per-task=%d %s %s --wrap="echo Matlab command:  \\\"%s\\\"; %s"', ...
-                                        rem(task_id, 5000), job_log_fname, job_log_error_fname, cpusPerTask, SlurmParam, ...
-                                        slurm_constraint_str, matlab_cmd, stitch_cmd);
-                                    [status, cmdout] = system(cmd, '-echo');
-
-                                    job_id = regexp(cmdout, 'Submitted batch job (\d+)\n', 'tokens');
-                                    job_id = str2double(job_id{1}{1});
+                                    allocateMem = totalDsize * mem_factor;
+                                    job_id = job_ids(n, ncam, s, c, z);
+                                    task_id = rem(f, 5000);
+    
+                                    [job_id] = generic_single_job_submit_wrapper(func_str, job_id, task_id, ...
+                                        'jobLogFname', job_log_fname, 'jobErrorFname', job_log_error_fname', ...
+                                        'slurmConstraint', slurm_constraint_str, allocateMem=allocateMem, ...
+                                        mccMode=mccMode, ConfigFile=ConfigFile);
+    
                                     job_ids(n, ncam, s, c, z) = job_id;
                                 end
                             else
