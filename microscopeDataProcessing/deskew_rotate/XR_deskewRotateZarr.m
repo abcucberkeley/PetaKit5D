@@ -20,6 +20,7 @@ ip.addParameter('Overwrite', false, @islogical);
 ip.addParameter('Crop', false, @islogical);
 ip.addParameter('SkewAngle', 32.45, @isscalar);
 ip.addParameter('Reverse', false, @islogical);
+ip.addParameter('DSRCombined', true, @(x) islogical(x)); % combined processing 
 ip.addParameter('flipZstack', false, @islogical);
 ip.addParameter('Save16bit', false , @islogical); % saves deskewed data as 16 bit -- not for quantification
 ip.addParameter('SaveMIP', true , @islogical); % save MIP-z for ds and dsr. 
@@ -237,16 +238,20 @@ inputFullpaths = repmat({frameFullpath}, numTasks, 1);
 
 % submit jobs
 if parseCluster || ~parseParfor
+    inSize = batchBBoxes(1, 4 : 6) - batchBBoxes(1, 1 : 3) + 1;
+    outSize = regionBBoxes(1, 4 : 6) - regionBBoxes(1, 1 : 3) + 1;
+    memAllocate = (prod(inSize) * 4 / 1024^3 + prod(outSize) * 4 / 1024^3) * 2;
+    
     is_done_flag = generic_computing_frameworks_wrapper(inputFullpaths, outputFullpaths, ...
         funcStrs, 'cpusPerTask', cpusPerTask, 'maxJobNum', maxJobNum, 'taskBatchNum', taskBatchNum, ...
-        'masterCompute', masterCompute, 'parseCluster', parseCluster, 'mccMode', mccMode, ...
-        'ConfigFile', ConfigFile);
+        'masterCompute', masterCompute, 'parseCluster', parseCluster, 'memAllocate', memAllocate, ...
+        'mccMode', mccMode, 'ConfigFile', ConfigFile);
 
     if ~all(is_done_flag)
         is_done_flag = generic_computing_frameworks_wrapper(inputFullpaths, outputFullpaths, ...
             funcStrs, 'cpusPerTask', cpusPerTask, 'maxJobNum', maxJobNum, 'taskBatchNum', taskBatchNum, ...
-            'masterCompute', masterCompute, 'parseCluster', parseCluster, 'mccMode', mccMode, ...
-            'ConfigFile', ConfigFile);
+            'masterCompute', masterCompute, 'parseCluster', parseCluster, 'memAllocate', memAllocate, ...
+            'mccMode', mccMode, 'ConfigFile', ConfigFile);
     end
 elseif parseParfor
     is_done_flag= generic_computing_frameworks_wrapper(inputFullpaths, outputFullpaths, ...

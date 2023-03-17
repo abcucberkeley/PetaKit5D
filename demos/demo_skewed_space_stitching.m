@@ -9,7 +9,7 @@ dataPath = '/clusterfs/fiona/Data/20220115_Korra_LLCPK_LFOV_0p1PSAmpKan/run1/';
 
 % image list path: csv file
 % if not available, run stitch_generate_imagelist_from_encoder(dataPath, dz)
-ImageListFullpath = '/clusterfs/fiona/Data/20220115_Korra_LLCPK_LFOV_0p1PSAmpKan/run1/ImageList_from_encoder.csv';
+ImageListFullpath = [dataPath, 'ImageList_from_encoder.csv'];
 
 % stitch in DS space
 DS = false;
@@ -101,7 +101,7 @@ TileOffset = 0;
 % or just deskew rotation. 
 
 tic
-XR_matlab_stitching_wrapper(dataPath, ImageListFullpath, 'useExistDecon', ~true, ...
+XR_matlab_stitching_wrapper(dataPath, ImageListFullpath, ...
     'DS', DS, 'DSR', DSR, 'SkewAngle', SkewAngle, 'Reverse', Reverse, 'axisOrder', axisOrder, ...
     'xcorrShift', xcorrShift, 'ChannelPatterns', ChannelPatterns, 'PrimaryCh', PrimaryCh, ...
     'blockSize', blockSize, 'TileOffset', TileOffset, 'resampleType', resampleType, ...
