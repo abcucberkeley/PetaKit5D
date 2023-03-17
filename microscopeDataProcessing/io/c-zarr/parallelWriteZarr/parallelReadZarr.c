@@ -57,14 +57,18 @@ void parallelReadZarr(void* zarr, char* folderName, char* subfolderName,uint64_t
             
             FILE *fileptr = fopen(fileName, "rb");
             if(!fileptr){
-#pragma omp critical
+                #pragma omp critical
                 {
-                err = 1;
-                sprintf(errString,"Could not open file: %s\n",fileName);
+                memset(zarr,0,sB);
+                free(fileName);
+                free(subfolderName);
+                //err = 1;
+                //sprintf(errString,"Could not open file: %s\n",fileName);
                 }
                 break;
             }
             free(fileName);
+            free(subfolderName);
             
             fseek(fileptr, 0, SEEK_END);
             long filelen = ftell(fileptr);

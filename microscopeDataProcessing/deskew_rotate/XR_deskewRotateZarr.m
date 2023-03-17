@@ -205,7 +205,7 @@ end
 % set up parallel computing 
 numBatch = size(batchBBoxes, 1);
 if isempty(taskSize)
-    taskSize = max(1, min(10, round(numBatch / 5000))); % the number of batches a job should process
+    taskSize = max(2, min(10, round(numBatch / 5000))); % the number of batches a job should process
 end
 numTasks = ceil(numBatch / taskSize);
 
@@ -241,7 +241,7 @@ if parseCluster || ~parseParfor
     inSize = batchBBoxes(1, 4 : 6) - batchBBoxes(1, 1 : 3) + 1;
     outSize = regionBBoxes(1, 4 : 6) - regionBBoxes(1, 1 : 3) + 1;
     memAllocate = (prod(inSize) * 4 / 1024^3 + prod(outSize) * 4 / 1024^3) * 2;
-    
+
     is_done_flag = generic_computing_frameworks_wrapper(inputFullpaths, outputFullpaths, ...
         funcStrs, 'cpusPerTask', cpusPerTask, 'maxJobNum', maxJobNum, 'taskBatchNum', taskBatchNum, ...
         'masterCompute', masterCompute, 'parseCluster', parseCluster, 'memAllocate', memAllocate, ...
@@ -268,7 +268,7 @@ end
 
 % generate MIP z file
 if SaveMIP
-    dsrMIPPath = sprintf('%s/MIPs/', dsrPath);r
+    dsrMIPPath = sprintf('%s/MIPs/', dsrPath);
     if ~exist(dsrMIPPath, 'dir')
         mkdir(dsrMIPPath);
         fileattrib(dsrMIPPath, '+w', 'g');

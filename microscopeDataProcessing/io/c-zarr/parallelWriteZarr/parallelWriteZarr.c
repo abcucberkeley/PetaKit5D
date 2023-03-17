@@ -9,11 +9,10 @@
 #include <blosc.h>
 #include <cjson/cJSON.h>
 #include <omp.h>
-#ifdef __linux__
-#include <uuid/uuid.h>
-#endif
 #ifdef _WIN32
 #include <sys/time.h>
+#else
+#include <uuid/uuid.h>
 #endif
 #include <sys/stat.h>
 #include "mex.h"
@@ -326,6 +325,14 @@ void parallelWriteZarrMex(void* zarr, char* folderName,uint64_t startX, uint64_t
                 strcat(fileName,uuid);
                 char* fileNameFinal = strndup(fileName,strlen(folderName)+1+strlen(subfolderName)+1+strlen(cI.chunkNames[f]));
                 FILE *fileptr = fopen(fileName, "w+b");
+                if(!fileptr){
+                #pragma omp critical
+                {
+                err = 1;
+                sprintf(errString,"Check permissions or filepath. Cannot write to path: %s\n",fileName);
+                }
+                break;
+                }
                 fwrite(chunkC,csize,1,fileptr);
                 fclose(fileptr);
                 rename(fileName,fileNameFinal);
@@ -484,11 +491,10 @@ void mexFunction(int nlhs, mxArray *plhs[],
         FILE* f = fopen(fnFull,"r");
         if(f) fclose(f);
         else{
-            #ifdef __linux__
-            mkdir(folderName, 0775);
-            #endif
             #ifdef _WIN32
             mkdir(folderName);
+            #else
+            mkdir(folderName, 0775);
             #endif
             chmod(folderName, 0775);
             createSubfolders(folderName,shapeX,shapeY,shapeZ,chunkXSize,chunkYSize,chunkZSize,subfolderSizeX,subfolderSizeY,subfolderSizeZ);
@@ -504,7 +510,7 @@ void mexFunction(int nlhs, mxArray *plhs[],
         shapeX = endX;
         shapeY = endY;
         shapeZ = endZ;
-        
+
         FILE* f = fopen(fnFull,"r");
         if(f){
             fclose(f);
@@ -512,23 +518,21 @@ void mexFunction(int nlhs, mxArray *plhs[],
             if(endX-startX != iDims[0] || endY-startY != iDims[1] || endZ-startZ != iDims[2]) mexErrMsgIdAndTxt("zarr:inputError","Bounding box size does not match the size of the input data");
         }
         else {
-            
-            #ifdef __linux__
-            mkdir(folderName, 0775);
-            #endif
             #ifdef _WIN32
             mkdir(folderName);
+            #else
+            mkdir(folderName, 0775);
             #endif
             chmod(folderName, 0775);
             createSubfolders(folderName,shapeX,shapeY,shapeZ,chunkXSize,chunkYSize,chunkZSize,subfolderSizeX,subfolderSizeY,subfolderSizeZ);
             setJSONValues(folderName,&chunkXSize,&chunkYSize,&chunkZSize,dtype,&order,&shapeX,&shapeY, &shapeZ,cname,&clevel,&subfolderSizeX,&subfolderSizeY,&subfolderSizeZ);
         }
         
+        
         char dtypeT[4];
         for(int i = 0; i < 4; i++) dtypeT[i] = dtype[i];
         
         setValuesFromJSON(folderName,&chunkXSize,&chunkYSize,&chunkZSize,dtype,&order,&shapeX,&shapeY,&shapeZ,&cname,&clevel,&subfolderSizeX,&subfolderSizeY,&subfolderSizeZ);
-        
         if(dtypeT[2] != dtype[2]){
             uint64_t size = (endX-startX)*(endY-startY)*(endZ-startZ);
             
@@ -646,6 +650,8 @@ void mexFunction(int nlhs, mxArray *plhs[],
     uint64_t origShapeX = shapeX;
     uint64_t origShapeY = shapeY;
     uint64_t origShapeZ = shapeZ;
+
+    fflush(stdout);
     if(endX > shapeX || endY > shapeY || endZ > shapeZ) mexErrMsgIdAndTxt("zarr:inputError","Upper bound is invalid");
     if(!crop){
         endX = shapeX;

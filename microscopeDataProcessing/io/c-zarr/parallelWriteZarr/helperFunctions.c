@@ -261,6 +261,7 @@ void setSubfoldersFromJSON(cJSON *json, uint64_t *subfolderSizeX, uint64_t *subf
     *subfolderSizeX = json->child->valueint;
     *subfolderSizeY = json->child->next->valueint;
     *subfolderSizeZ = json->child->next->next->valueint;
+
 }
 
 void setValuesFromJSON(char* fileName,uint64_t *chunkXSize,uint64_t *chunkYSize,uint64_t *chunkZSize,char* dtype,char* order,uint64_t *shapeX,uint64_t *shapeY,uint64_t *shapeZ,char** cname, uint64_t* clevel, uint64_t *subfolderSizeX, uint64_t *subfolderSizeY, uint64_t *subfolderSizeZ){
@@ -416,9 +417,9 @@ uint64_t fastCeilDiv(uint64_t num, uint64_t denom){
 
 void createSubfolders(char* folderName, uint64_t shapeX, uint64_t shapeY, uint64_t shapeZ, uint64_t chunkXSize, uint64_t chunkYSize, uint64_t chunkZSize, uint64_t subfolderSizeX, uint64_t subfolderSizeY, uint64_t subfolderSizeZ){
     if(subfolderSizeX == 0 && subfolderSizeY == 0 && subfolderSizeZ == 0) return;
-    uint64_t nChunksX = shapeX/chunkXSize;
-    uint64_t nChunksY = shapeY/chunkYSize;
-    uint64_t nChunksZ = shapeZ/chunkZSize;
+    uint64_t nChunksX = fastCeilDiv(shapeX,chunkXSize);
+    uint64_t nChunksY = fastCeilDiv(shapeY,chunkYSize);
+    uint64_t nChunksZ = fastCeilDiv(shapeZ,chunkZSize);
 
     
 

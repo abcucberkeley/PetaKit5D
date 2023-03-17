@@ -330,8 +330,10 @@ void parallelReadZarrMex(void* zarr, char* folderName,uint64_t startX, uint64_t 
             if(!fileptr){
                 #pragma omp critical
                 {
-                err = 1;
-                sprintf(errString,"Could not open file: %s\n",fileName);
+                memset(zarr,0,sB);
+                free(fileName);
+                //err = 1;
+                //sprintf(errString,"Could not open file: %s\n",fileName);
                 }
                 break;
             }
