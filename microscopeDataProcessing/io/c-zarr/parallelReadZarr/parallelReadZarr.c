@@ -8,8 +8,7 @@
 #include "mex.h"
 
 #include "zlib.h"
-
-//mex -v COPTIMFLAGS="-O3 -DNDEBUG" LDOPTIMFLAGS="-O3 -DNDEBUG" CFLAGS='$CFLAGS -O3 -fopenmp' LDFLAGS='$LDFLAGS -O3 -fopenmp' '-I/global/home/groups/software/sl-7.x86_64/modules/cBlosc/2.0.4/include/' '-I/global/home/groups/software/sl-7.x86_64/modules/cJSON/1.7.15/include/' '-L/global/home/groups/software/sl-7.x86_64/modules/cBlosc/2.0.4/lib64' -lblosc2 -L'/global/home/groups/software/sl-7.x86_64/modules/cJSON/1.7.15/lib64' -lcjson -lz parallelReadZarr.c
+// mex -v COPTIMFLAGS="-O3 -DNDEBUG" LDOPTIMFLAGS="-Wl',-rpath='''$ORIGIN'''' -O3 -DNDEBUG" CFLAGS='$CFLAGS -O3 -fopenmp' LDFLAGS='$LDFLAGS -O3 -fopenmp' '-I/global/home/groups/software/sl-7.x86_64/modules/cBlosc/2.0.4/include/' '-I/global/home/groups/software/sl-7.x86_64/modules/cJSON/1.7.15/include/' '-L/global/home/groups/software/sl-7.x86_64/modules/cBlosc/2.0.4/lib64' -lblosc2 -L'/global/home/groups/software/sl-7.x86_64/modules/cJSON/1.7.15/lib64' -lcjson -lz parallelReadZarr.c
 
 // Handle the tilde character in filenames on Linux/Mac
 #ifndef _WIN32
@@ -158,6 +157,22 @@ struct chunkInfo getChunkInfo(char* folderName, uint64_t startX, uint64_t startY
     return cI;
 }
 
+char* getSubfolderString(struct chunkAxisVals *cAV, uint64_t subfolderSizeX, uint64_t subfolderSizeY, uint64_t subfolderSizeZ){
+    if(subfolderSizeX == 0 && subfolderSizeY == 0 && subfolderSizeZ == 0) return NULL;
+    
+    uint64_t currX = 0;
+    uint64_t currY = 0;
+    uint64_t currZ = 0;
+    if(subfolderSizeX > 0) currX = cAV->x/subfolderSizeX;
+    if(subfolderSizeY > 0) currY = cAV->y/subfolderSizeY;
+    if(subfolderSizeZ > 0) currZ = cAV->z/subfolderSizeZ;
+
+    char* currName = NULL;
+    asprintf(&currName,"%llu_%llu_%llu",currX,currY,currZ);
+    return currName;
+
+}
+
 void setChunkShapeFromJSON(cJSON *json, uint64_t *x, uint64_t *y, uint64_t *z){
     *x = json->child->valueint;
     *y = json->child->next->valueint;
@@ -200,7 +215,13 @@ void setCnameFromJSON(cJSON *json, char** cname){
     
 }
 
-void setValuesFromJSON(char* fileName,uint64_t *chunkXSize,uint64_t *chunkYSize,uint64_t *chunkZSize,char* dtype,char* order,uint64_t *shapeX,uint64_t *shapeY,uint64_t *shapeZ,char** cname){
+void setSubfoldersFromJSON(cJSON *json, uint64_t *subfolderSizeX, uint64_t *subfolderSizeY, uint64_t *subfolderSizeZ){
+    *subfolderSizeX = json->child->valueint;
+    *subfolderSizeY = json->child->next->valueint;
+    *subfolderSizeZ = json->child->next->next->valueint;
+}
+
+void setValuesFromJSON(char* fileName,uint64_t *chunkXSize,uint64_t *chunkYSize,uint64_t *chunkZSize,char* dtype,char* order,uint64_t *shapeX,uint64_t *shapeY,uint64_t *shapeZ,char** cname, uint64_t *subfolderSizeX, uint64_t *subfolderSizeY, uint64_t *subfolderSizeZ){
 
     char* zArray = ".zarray";
     char* fnFull = (char*)malloc(strlen(fileName)+9);
@@ -224,41 +245,37 @@ void setValuesFromJSON(char* fileName,uint64_t *chunkXSize,uint64_t *chunkYSize,
     fread(buffer, filelen, 1, fileptr);
     fclose(fileptr);
     cJSON *json = cJSON_ParseWithLength(buffer,filelen);
-    uint8_t flags[5] = {0,0,0,0,0};
 
-    while(!(flags[0] && flags[1] && flags[2] && flags[3] && flags[4])){
+    while(json){
         if(!json->string){
             json = json->child;
             continue;
         }
         else if(!strcmp(json->string,"chunks")){
             setChunkShapeFromJSON(json, chunkXSize,chunkYSize,chunkZSize);
-            flags[0] = 1;
         }
         else if(!strcmp(json->string,"dtype")){
             setDTypeFromJSON(json, dtype);
-            flags[1] = 1;
         }
         else if(!strcmp(json->string,"order")){
             setOrderFromJSON(json, order);
-            flags[2] = 1;
         }
         else if(!strcmp(json->string,"shape")){
             setShapeFromJSON(json, shapeX,shapeY,shapeZ);
-            flags[3] = 1;
         }
         else if(!strcmp(json->string,"compressor")){
             setCnameFromJSON(json, cname);
-            flags[4] = 1;
+        }
+        else if(!strcmp(json->string,"subfolders")){
+            setSubfoldersFromJSON(json, subfolderSizeX, subfolderSizeY, subfolderSizeZ);
         }
         json = json->next;
     }
     cJSON_Delete(json);
 }
 
-void parallelReadZarrMex(void* zarr, char* folderName,uint64_t startX, uint64_t startY, uint64_t startZ, uint64_t endX, uint64_t endY,uint64_t endZ,uint64_t chunkXSize,uint64_t chunkYSize,uint64_t chunkZSize,uint64_t shapeX,uint64_t shapeY,uint64_t shapeZ, uint64_t bits, char order, char* cname){
+void parallelReadZarrMex(void* zarr, char* folderName,uint64_t startX, uint64_t startY, uint64_t startZ, uint64_t endX, uint64_t endY,uint64_t endZ,uint64_t chunkXSize,uint64_t chunkYSize,uint64_t chunkZSize,uint64_t shapeX,uint64_t shapeY,uint64_t shapeZ, uint64_t bits, char order, char* cname, uint64_t subfolderSizeX, uint64_t subfolderSizeY, uint64_t subfolderSizeZ){
     uint64_t bytes = (bits/8);
-    
     char fileSepS[2];
     fileSepS[0] = fileSep;
     fileSepS[1] = '\0';
@@ -277,6 +294,8 @@ void parallelReadZarrMex(void* zarr, char* folderName,uint64_t startX, uint64_t 
     int32_t w;
     int err = 0;
     char errString[10000];
+
+
     #pragma omp parallel for if(numWorkers<=cI.numChunks)
     for(w = 0; w < numWorkers; w++){
         /*
@@ -293,11 +312,17 @@ void parallelReadZarrMex(void* zarr, char* folderName,uint64_t startX, uint64_t 
         for(int64_t f = w*batchSize; f < (w+1)*batchSize; f++){
             if(f>=cI.numChunks || err) break;
             struct chunkAxisVals cAV = getChunkAxisVals(cI.chunkNames[f]);
-            
+            char* subfolderName = getSubfolderString(&cAV,subfolderSizeX,subfolderSizeY,subfolderSizeZ);
+            if(!subfolderName){
+                subfolderName = malloc(1);
+                subfolderName[0] = '\0';
+            }
             //malloc +2 for null term and filesep
-            char *fileName = malloc(strlen(folderName)+strlen(cI.chunkNames[f])+2);
+            char *fileName = malloc(strlen(folderName)+1+strlen(subfolderName)+1+strlen(cI.chunkNames[f])+1);
             fileName[0] = '\0';
             strcat(fileName,folderName);
+            strcat(fileName,fileSepS);
+            strcat(fileName,subfolderName);
             strcat(fileName,fileSepS);
             strcat(fileName,cI.chunkNames[f]);
             
@@ -311,6 +336,7 @@ void parallelReadZarrMex(void* zarr, char* folderName,uint64_t startX, uint64_t 
                 break;
             }
             free(fileName);
+            free(subfolderName);
             
             fseek(fileptr, 0, SEEK_END);
             long filelen = ftell(fileptr);
@@ -471,6 +497,9 @@ void mexFunction(int nlhs, mxArray *plhs[],
     uint64_t endY = 0;
     uint64_t endZ = 0;
     char* cname = NULL;
+    uint64_t subfolderSizeX = 0;
+    uint64_t subfolderSizeY = 0;
+    uint64_t subfolderSizeZ = 0;
     if(!nrhs) mexErrMsgIdAndTxt("zarr:inputError","This functions requires at least one argument");
     else if(nrhs == 2){
         if(mxGetN(prhs[1]) != 6) mexErrMsgIdAndTxt("zarr:inputError","Input range is not 6");
@@ -500,7 +529,8 @@ void mexFunction(int nlhs, mxArray *plhs[],
     uint64_t chunkZSize = 0;
     char dtype[4];
     char order;
-    setValuesFromJSON(folderName,&chunkXSize,&chunkYSize,&chunkZSize,dtype,&order,&shapeX,&shapeY,&shapeZ,&cname);
+
+    setValuesFromJSON(folderName,&chunkXSize,&chunkYSize,&chunkZSize,dtype,&order,&shapeX,&shapeY,&shapeZ,&cname,&subfolderSizeX,&subfolderSizeY,&subfolderSizeZ);
     if(endX > shapeX || endY > shapeY || endZ > shapeZ) mexErrMsgIdAndTxt("zarr:inputError","Upper bound is invalid");
     if(nrhs == 1){
         endX = shapeX;
@@ -521,25 +551,25 @@ void mexFunction(int nlhs, mxArray *plhs[],
         uint64_t bits = 8;
         plhs[0] = mxCreateNumericArray(3,dim,mxUINT8_CLASS, mxREAL);
         uint8_t* zarr = (uint8_t*)mxGetPr(plhs[0]);
-        parallelReadZarrMex((void*)zarr,folderName,startX,startY,startZ,endX,endY,endZ,chunkXSize,chunkYSize,chunkZSize,shapeX,shapeY,shapeZ,bits,order,cname);
+        parallelReadZarrMex((void*)zarr,folderName,startX,startY,startZ,endX,endY,endZ,chunkXSize,chunkYSize,chunkZSize,shapeX,shapeY,shapeZ,bits,order,cname,subfolderSizeX,subfolderSizeY,subfolderSizeZ);
     }
     else if(dtype[1] == 'u' && dtype[2] == '2'){
         uint64_t bits = 16;
         plhs[0] = mxCreateNumericArray(3,dim,mxUINT16_CLASS, mxREAL);
         uint16_t* zarr = (uint16_t*)mxGetPr(plhs[0]);
-        parallelReadZarrMex((void*)zarr,folderName,startX,startY,startZ,endX,endY,endZ,chunkXSize,chunkYSize,chunkZSize,shapeX,shapeY,shapeZ,bits,order,cname);
+        parallelReadZarrMex((void*)zarr,folderName,startX,startY,startZ,endX,endY,endZ,chunkXSize,chunkYSize,chunkZSize,shapeX,shapeY,shapeZ,bits,order,cname,subfolderSizeX,subfolderSizeY,subfolderSizeZ);
     }
     else if(dtype[1] == 'f' && dtype[2] == '4'){
         uint64_t bits = 32;
         plhs[0] = mxCreateNumericArray(3,dim,mxSINGLE_CLASS, mxREAL);
         float* zarr = (float*)mxGetPr(plhs[0]);
-        parallelReadZarrMex((void*)zarr,folderName,startX,startY,startZ,endX,endY,endZ,chunkXSize,chunkYSize,chunkZSize,shapeX,shapeY,shapeZ,bits,order,cname);
+        parallelReadZarrMex((void*)zarr,folderName,startX,startY,startZ,endX,endY,endZ,chunkXSize,chunkYSize,chunkZSize,shapeX,shapeY,shapeZ,bits,order,cname,subfolderSizeX,subfolderSizeY,subfolderSizeZ);
     }
     else if(dtype[1] == 'f' && dtype[2] == '8'){
         uint64_t bits = 64;
         plhs[0] = mxCreateNumericArray(3,dim,mxDOUBLE_CLASS, mxREAL);
         double* zarr = (double*)mxGetPr(plhs[0]);
-        parallelReadZarrMex((void*)zarr,folderName,startX,startY,startZ,endX,endY,endZ,chunkXSize,chunkYSize,chunkZSize,shapeX,shapeY,shapeZ,bits,order,cname);
+        parallelReadZarrMex((void*)zarr,folderName,startX,startY,startZ,endX,endY,endZ,chunkXSize,chunkYSize,chunkZSize,shapeX,shapeY,shapeZ,bits,order,cname,subfolderSizeX,subfolderSizeY,subfolderSizeZ);
     }
     else{
         mexErrMsgIdAndTxt("tiff:dataTypeError","Data type not suppported");

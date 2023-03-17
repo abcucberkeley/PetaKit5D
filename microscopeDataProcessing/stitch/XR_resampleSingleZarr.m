@@ -4,12 +4,6 @@ function [] = XR_resampleSingleZarr(zarrFullpath, dsFullpath, dsFactor, varargin
 % xruan (11/09/2021): enable arbitray blockSize
 
 
-if nargin < 1
-   zarrFullpath = '/Users/xruan/Images/20201204_p465_p5_LLCPK_488nmSec61_560nm_H2B_RG0p2/tilingTest2_z0p4/matlab_stitch_xcorr_feather_zarr/Scan_Iter_0000_0000_CamA_ch0_CAM1_stack0000_488nm_0000000msec_0032542619msecAbs_crop.zarr';
-   dsFullpath = [zarrFullpath(1 : end - 5), '_ds.zarr'];
-   dsFactor = [2, 2, 2];
-end
-
 ip = inputParser;
 ip.CaseSensitive = false;
 ip.addRequired('zarrFullpath'); 
@@ -20,7 +14,6 @@ ip.addParameter('batchSize', [512, 512, 512], @isnumeric); % size to process in 
 ip.addParameter('BorderSize', [5, 5, 5], @isnumeric); % padded boarder for each batch
 ip.addParameter('Interp', 'linear', @(x) any(strcmpi(x, {'cubic', 'linear', 'nearest'})));
 ip.addParameter('parseCluster', true, @islogical);
-ip.addParameter('cpuOnlyNodes', ~true, @islogical);
 ip.addParameter('cpusPerTask', 1, @islogical);
 ip.addParameter('uuid', '', @ischar);
 
@@ -32,7 +25,6 @@ batchSize = pr.batchSize;
 BorderSize = pr.BorderSize;
 Interp = pr.Interp;
 parseCluster = pr.parseCluster;
-cpuOnlyNodes = pr.cpuOnlyNodes;
 cpusPerTask = pr.cpusPerTask;
 uuid = pr.uuid;
 
@@ -116,12 +108,11 @@ end
 inputFullpaths = repmat({zarrFullpath}, numTasks, 1);
 
 is_done_flag= slurm_cluster_generic_computing_wrapper(inputFullpaths, outputFullpaths, ...
-    funcStrs, 'cpusPerTask', cpusPerTask, 'parseCluster', parseCluster, 'cpuOnlyNodes', cpuOnlyNodes);
+    funcStrs, 'cpusPerTask', cpusPerTask, 'parseCluster', parseCluster);
 
 if ~all(is_done_flag)
     slurm_cluster_generic_computing_wrapper(inputFullpaths, outputFullpaths, ...
-        funcStrs, 'cpusPerTask', cpusPerTask * 2, 'parseCluster', parseCluster, ...
-        'cpuOnlyNodes', cpuOnlyNodes);
+        funcStrs, 'cpusPerTask', cpusPerTask * 2, 'parseCluster', parseCluster);
 end    
 
 if exist(dsFullpath, 'dir')

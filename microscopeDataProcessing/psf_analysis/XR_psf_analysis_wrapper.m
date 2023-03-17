@@ -26,7 +26,9 @@ ip.addParameter('bgFactor', 1.5, @isnumeric);
 ip.addParameter('RWFn', {'/clusterfs/fiona/Gokul/RW_PSFs/PSF_RW_515em_128_128_101_100nmSteps.tif', '/clusterfs/fiona/Gokul/RW_PSFs/PSF_RW_605em_128_128_101_100nmSteps.tif'}, @iscell);
 ip.addParameter('sourceStr', 'test', @ischar);
 ip.addParameter('masterCompute', false, @islogical);
-% ip.addParameter('prefix', 'test_', @ischar);
+ip.addParameter('mccMode', false, @islogical);
+ip.addParameter('ConfigFile', '', @ischar);
+
 ip.parse(dataPaths, varargin{:});
 
 pr = ip.Results;
@@ -44,6 +46,8 @@ bgFactor = pr.bgFactor;
 RWFn = pr.RWFn;
 sourceStr = pr.sourceStr;
 masterCompute = pr.masterCompute;
+mccMode = pr.mccMode;
+ConfigFile = pr.ConfigFile;
 
 tic
 % rt = '/Users/xruan/Images/20210607_PSFs_L15_37C/';
@@ -77,7 +81,6 @@ if Deskew
                        'Overwrite', false, ...
                        'Streaming', false, ...
                        'cpusPerTask', 8, ...
-                       'cpuOnlyNodes', false, ...
                        'parseCluster', ~false
                        };
 
@@ -233,18 +236,18 @@ func_strs = cat(1, func_strs{:});
 % use cluster computing for the psf analysis
 cpusPerTask = 4;
 maxTrialNum = 2;
-MatlabLaunchStr = 'module load matlab/r2022a; matlab -nodisplay -nosplash -nodesktop -r'; 
-is_done_flag = slurm_cluster_generic_computing_wrapper(frameFullpaths, figureFullpaths, ...
-    func_strs, 'MatlabLaunchStr', MatlabLaunchStr, 'maxTrialNum', maxTrialNum, ...
-    'masterCompute', masterCompute, 'cpusPerTask', cpusPerTask);
-if ~all(is_done_flag)
-    slurm_cluster_generic_computing_wrapper(frameFullpaths, figureFullpaths, ...
-        func_strs, 'MatlabLaunchStr', MatlabLaunchStr, 'maxTrialNum', maxTrialNum, ...
-        'masterCompute', masterCompute, 'cpusPerTask', cpusPerTask * 2);
-end
-if ~all(is_done_flag)
-    slurm_cluster_generic_computing_wrapper(frameFullpaths, figureFullpaths, ...
-        func_strs, 'MatlabLaunchStr', MatlabLaunchStr, 'masterCompute', masterCompute, 'cpusPerTask', cpusPerTask * 6);
+is_done_flag = false;
+memAllocate = prod(getImageSize(frameFullpaths{1})) * 4 / 1024^3 * 100;
+
+for i = 1 : 3
+    if all(is_done_flag)
+        break;
+    end
+
+    is_done_flag = generic_computing_frameworks_wrapper(frameFullpaths, figureFullpaths, ...
+        func_strs, 'maxTrialNum', maxTrialNum, 'masterCompute', masterCompute, ...
+        'cpusPerTask', cpusPerTask, memAllocate=memAllocate * i, mccMode=mccMode, ...
+        ConfigFile=ConfigFile);
 end
 
 

@@ -12,11 +12,12 @@ ip.addParameter('Save16bit', true, @islogical);
 ip.addParameter('parseCluster', true, @islogical);
 ip.addParameter('parseParfor', false, @islogical);
 ip.addParameter('masterCompute', true, @islogical); % master node participate in the task computing. 
-ip.addParameter('jobLogDir', '../job_logs', @ischar);
-ip.addParameter('cpuOnlyNodes', ~true, @islogical);
 ip.addParameter('cpusPerTask', 3, @isnumeric);
+ip.addParameter('jobLogDir', '../job_logs/', @ischar);
 ip.addParameter('uuid', '', @ischar);
 ip.addParameter('debug', false, @islogical);
+ip.addParameter('mccMode', false, @islogical);
+ip.addParameter('ConfigFile', '', @ischar);
 
 ip.parse(dataPaths, varargin{:});
 
@@ -30,8 +31,9 @@ parseCluster = pr.parseCluster;
 parseParfor = pr.parseParfor;
 jobLogDir = pr.jobLogDir;
 masterCompute = pr.masterCompute;
-cpuOnlyNodes = pr.cpuOnlyNodes;
 cpusPerTask = pr.cpusPerTask;
+mccMode = pr.mccMode;
+ConfigFile = pr.ConfigFile;
 
 uuid = pr.uuid;
 % uuid for the job
@@ -65,7 +67,7 @@ end
 
 % check if a slurm-based computing cluster exists
 if parseCluster
-    [parseCluster, job_log_fname, job_log_error_fname, slurm_constraint_str, jobLogDir] = checkSlurmCluster(dataPaths{1}, jobLogDir, cpuOnlyNodes);
+    [parseCluster, job_log_fname, job_log_error_fname] = checkSlurmCluster(dataPaths{1}, jobLogDir);
 end
 
 fnames = cell(nd, 1);
@@ -123,8 +125,9 @@ for f = 1 : nF
     if zarrFile
         if largeZarr || any(axis(1 : 2))
             func_strs{f} = sprintf(['XR_MIP_zarr(''%s'',''axis'',%s,''parseCluster'',%s,', ...
-                '''parseParfor'',%s)'], frameFullpath, strrep(mat2str(axis), ' ', ','), ...
-                string(parseCluster), string(parseParfor));       
+                '''parseParfor'',%s,''jobLogDir'',''%s'',''mccMode'',%s,''ConfigFile'',''%s'')'], ...
+                frameFullpath, strrep(mat2str(axis), ' ', ','), string(parseCluster), ...
+                string(parseParfor), jobLogDir, string(mccMode), ConfigFile);
         else
             func_strs{f} = sprintf(['saveMIP_zarr(''%s'',''%s'',''%s'')'], frameFullpath, ...
                 MIPFullpath, dtype);
@@ -139,10 +142,11 @@ if parseParfor && ~largeZarr
     matlab_parfor_generic_computing_wrapper(frameFullpaths, MIPFullpaths, func_strs, 'GPUJob', false, 'nworker', 12)
 end
 taskBatchNum = max(1, round(nF /1000));
-cpusPerTask = max(min(ceil(prod(sz) * 4 / 1024^3 * 4 / 20), 24), cpusPerTask);
-slurm_cluster_generic_computing_wrapper(frameFullpaths, MIPFullpaths, func_strs, ...
-    'parseCluster', parseCluster, 'masterCompute', masterCompute, 'taskBatchNum', taskBatchNum, ...
-    'cpusPerTask', cpusPerTask);
+memAllocate = prod(sz) * 4 / 1024^3 * 4;
+generic_computing_frameworks_wrapper(frameFullpaths, MIPFullpaths, func_strs, ...
+    parseCluster=parseCluster, jobLogDir=jobLogDir, masterCompute=masterCompute, ...
+    taskBatchNum=taskBatchNum, cpusPerTask=cpusPerTask, memAllocate=memAllocate, ...
+    mccMode=mccMode, ConfigFile=ConfigFile);
 
 end
 

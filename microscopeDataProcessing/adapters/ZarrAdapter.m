@@ -84,9 +84,16 @@ classdef ZarrAdapter < images.blocked.Adapter
                 % info.IOBlockSize = [info.IOBlockSize, 1];
             end
             
-            if ispc && numel(char(loc)) > 200
-                [pth, loc] = fileparts(loc);
-                cd(pth);                    
+            if ispc 
+                if  numel(char(loc)) > 200
+                    [pth, loc] = fileparts(loc);
+                    cd(pth);
+                end
+            else
+                if strcmp(loc{1}(1), '~')
+                    homedir = getenv('HOME');
+                    loc = sprintf("%s%s", homedir, loc{1}(2 : end));
+                end
             end
             
             obj.ZarrObj = py.zarr.open(loc,...

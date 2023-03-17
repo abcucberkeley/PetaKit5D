@@ -38,7 +38,6 @@ ip.addParameter('parseSettingFile', false, @islogical); % use setting file to de
 ip.addParameter('flipZstack', false, @islogical);
 % pipeline steps
 ip.addParameter('Decon', true, @islogical);
-ip.addParameter('RotateAfterDecon', false, @islogical);
 % decon parameters
 ip.addParameter('cudaDecon', false, @islogical);
 ip.addParameter('cppDecon', ~false, @islogical);
@@ -67,6 +66,7 @@ ip.addParameter('GPUJob', false, @islogical); % use gpu for chuck deconvolution.
 % job related parameters
 ip.addParameter('BatchSize', [1024, 1024, 1024] , @isvector); % in y, x, z
 ip.addParameter('BlockSize', [256, 256, 256], @isnumeric); % block size 
+ip.addParameter('zarrSubSize', [], @isnumeric);
 ip.addParameter('largeFile', false, @islogical);
 ip.addParameter('largeMethod', 'inmemory', @ischar); % inmemory, inplace. 
 ip.addParameter('zarrFile', false, @islogical); % use zarr file as input
@@ -76,13 +76,13 @@ ip.addParameter('parseCluster', true, @islogical);
 ip.addParameter('parseParfor', false, @islogical);
 ip.addParameter('jobLogDir', '../job_logs', @ischar);
 ip.addParameter('cpusPerTask', 2, @isnumeric);
-ip.addParameter('cpuOnlyNodes', true, @islogical);
 ip.addParameter('uuid', '', @ischar);
 ip.addParameter('maxTrialNum', 3, @isnumeric);
 ip.addParameter('unitWaitTime', 10, @isnumeric);
 ip.addParameter('maxWaitLoopNum', 10, @isnumeric); % the max number of loops the loop waits with all existing files processed. 
-ip.addParameter('MatlabLaunchStr', 'module load matlab/r2022a; matlab -nodisplay -nosplash -nodesktop -nojvm -r', @ischar);
-ip.addParameter('SlurmParam', '-p abc --qos abc_normal -n1 --mem-per-cpu=21418M', @ischar);
+ip.addParameter('mccMode', false, @islogical);
+ip.addParameter('ConfigFile', '', @ischar);
+ip.addParameter('GPUConfigFile', '', @ischar);
 
 ip.parse(dataPaths, varargin{:});
 
@@ -125,7 +125,6 @@ psfFullpaths = pr.psfFullpaths;
 rotatePSF = pr.rotatePSF;
 DeconIter = pr.DeconIter;
 deconRotate = pr.deconRotate;
-RotateAfterDecon = pr.RotateAfterDecon;
 RLMethod = pr.RLMethod;
 wienerAlpha = pr.wienerAlpha;
 OTFCumThresh = pr.OTFCumThresh;
@@ -141,6 +140,7 @@ psfGen = pr.psfGen;
 % job related
 BatchSize = pr.BatchSize;
 BlockSize = pr.BlockSize;
+zarrSubSize = pr.zarrSubSize;
 largeFile = pr.largeFile;
 largeMethod = pr.largeMethod;
 zarrFile = pr.zarrFile;
@@ -150,13 +150,12 @@ deconMaskFns = pr.deconMaskFns;
 jobLogDir = pr.jobLogDir;
 parseCluster = pr.parseCluster;
 parseParfor = pr.parseParfor;
-cpusPerTask = pr.cpusPerTask;
-cpuOnlyNodes = pr.cpuOnlyNodes;
 uuid = pr.uuid;
 maxTrialNum = pr.maxTrialNum;
 unitWaitTime = pr.unitWaitTime;
-MatlabLaunchStr = pr.MatlabLaunchStr;
-SlurmParam = pr.SlurmParam;
+mccMode = pr.mccMode;
+ConfigFile = pr.ConfigFile;
+GPUConfigFile = pr.GPUConfigFile;
 
 % suppress directory exists warning
 warning('off', 'MATLAB:MKDIR:DirectoryExists');
@@ -195,7 +194,7 @@ end
 
 % check if a slurm-based computing cluster exists
 if parseCluster
-    [parseCluster, job_log_fname, job_log_error_fname, slurm_constraint_str, jobLogDir] = checkSlurmCluster(dataPath, jobLogDir, cpuOnlyNodes);
+    [parseCluster, job_log_fname, job_log_error_fname] = checkSlurmCluster(dataPath, jobLogDir);
 end
     
 % for deconvolution, check whether there is a gpu in the node. if not, for
@@ -224,10 +223,6 @@ if Decon
     end
         
     deconPaths = cell(nd, 1);
-    if RotateAfterDecon
-        rdcPaths = cell(nd, 1);
-    end
-
     for d = 1 : nd
         dataPath = dataPaths{d};
 
@@ -244,22 +239,6 @@ if Decon
         % save decon parameters
         save('-v7.3', [deconPath, '/parameters.mat'], 'pr');
         writetable(struct2table(pr, 'AsArray', true), [deconPath, '/parameters.txt'])
-        
-        if RotateAfterDecon
-            rdcPath = [deconPath filesep 'Rotated' filesep];
-            if Overwrite(2) && exist(rdcPath, 'dir')
-                rmdir(rdcPath, 's');
-            end
-            if ~exist(rdcPath, 'dir')
-                mkdir(rdcPath);
-                fileattrib(rdcPath, '+w', 'g');
-            end
-            rdcPaths{d} = rdcPath;
-
-            if rotatePSF 
-                warning('The rotation is already performed before deconvolution! Please check the setting to make sure there is no duplicate rotation.');
-            end
-        end
     end
     if rotatePSF
         rotPSFFullpaths = cell(numel(psfFullpaths), 1);
@@ -321,22 +300,16 @@ minModifyTime = 1;
 nF = numel(fnames);
 
 % flags: for thee: deskew w/o rotate, decon w/o rotate, rotate
-is_done_flag = false(nF, 2);
-trial_counter = zeros(nF, 2);
+is_done_flag = false(nF, 1);
+trial_counter = zeros(nF, 1);
 
 % For no-streaming computing, first skip the disabled options. 
 if ~Decon
     is_done_flag(:, 1) = true;
 end
-if ~RotateAfterDecon
-    is_done_flag(:, 2) = true;
-end
-
 if parseCluster
-    job_ids = -ones(nF, 2);
+    job_ids = -ones(nF, 1);
 end
-
-matlab_setup_str = 'setup([],true)';
 
 % use while loop to perform computing for all images
 while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
@@ -434,13 +407,9 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
         if ~is_done_flag(f, 1)     
             psfMapping =  ~cellfun(@isempty, regexpi(frameFullpath, ChannelPatterns));
             psfFullpath = dc_psfFullpaths{psfMapping};
-            
             DeconIter_f = DeconIter_mat(fdind);
-
             OTFCumThresh_f = OTFCumThresh(psfMapping);
-
             flipZstack = flipZstack_mat(f);
-
             deconMaskFns_str = sprintf('{''%s''}', strjoin(deconMaskFns, ''','''));
             
             % do not use rotation in decon functions
@@ -466,65 +435,44 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
                     '''skewed'',[%s],''fixIter'',%s,''errThresh'',[%0.20f],''debug'',%s,''saveStep'',%d,', ...
                     '''psfGen'',%s,''saveZarr'',%s,''parseCluster'',%s,''parseParfor'',%s,''GPUJob'',%s,', ...
                     '''Save16bit'',%s,''largeFile'',%s,''largeMethod'',''%s'',''BatchSize'',%s,''BlockSize'',%s,', ...
-                    '''deconMaskFns'',%s,''uuid'',''%s'')'], dcframeFullpath, xyPixelSize, dc_dz, deconPath, ...
-                    psfFullpath, dc_dzPSF, Background, SkewAngle, string(flipZstack), EdgeErosion, maskFullpath, ...
-                    string(SaveMaskfile), string(deconRotate), DeconIter_f, RLMethod, wienerAlpha, OTFCumThresh_f, ...
-                    string(skewed), string(fixIter), errThresh, string(debug), saveStep, string(psfGen), ...
-                    string(saveZarr), string(parseCluster),string(parseParfor), string(GPUJob), string(Save16bit), ...
-                    string(largeFile), largeMethod, strrep(mat2str(BatchSize), ' ', ','), ...
-                    strrep(mat2str(BlockSize), ' ', ','), deconMaskFns_str, uuid);
+                    '''zarrSubSize'',%s,''deconMaskFns'',%s,''uuid'',''%s'',''mccMode'',%s,''ConfigFile'',''%s'',', ...
+                    '''GPUConfigFile'',''%s'')'], ...
+                    dcframeFullpath, xyPixelSize, dc_dz, deconPath, psfFullpath, dc_dzPSF, Background, SkewAngle, ...
+                    string(flipZstack), EdgeErosion, maskFullpath, string(SaveMaskfile), string(deconRotate), ...
+                    DeconIter_f, RLMethod, wienerAlpha, OTFCumThresh_f, string(skewed), string(fixIter), errThresh, ...
+                    string(debug), saveStep, string(psfGen), string(saveZarr), string(parseCluster),string(parseParfor), ... 
+                    string(GPUJob), string(Save16bit), string(largeFile), largeMethod, strrep(mat2str(BatchSize), ' ', ','), ...
+                    strrep(mat2str(BlockSize), ' ', ','), strrep(mat2str(zarrSubSize), ' ', ','), deconMaskFns_str, ...
+                    uuid, string(mccMode), ConfigFile, GPUConfigFile);
             end
             
             if exist(dctmpFullpath, 'file') || parseCluster
                 if parseCluster
-                    job_status = check_slurm_job_status(job_ids(f, 1), task_id);
-
-                     % if the job is still running, skip it. 
-                    if job_status == 1 
-                        continue;
+                    [estMem, estGPUMem] = XR_estimateComputingMemory(dcframeFullpath, {'deconvolution'}, ...
+                        'cudaDecon', false);                    
+                    if ~cudaDecon && ~GPUJob
+                        allocateMem = estMem * 2;
+                    else
+                        allocateMem = estMem * 4;
+                    end
+                    
+                    cur_ConfigFile = ConfigFile;
+                    if GPUJob && ~(largeFile && strcmp(largeMethod, 'inplace'))
+                        % cpusPerTask_dc = 4;
+                        % SlurmParam = '-p abc_a100 --qos abc_normal -n1 --mem-per-cpu=32128M --gres=gpu:1';
+                        % slurm_constraint_str = '';
+                        cur_ConfigFile = GPUConfigFile;
+                    else
+                        % SlurmParam = '-p abc --qos abc_normal -n1 --mem-per-cpu=21418M';
                     end
 
-                    if job_status == -1
-                        % for matlab decon,  decide how many cores. 
-                        cpusPerTask_dc = cpusPerTask;                        
-                        if ~cudaDecon && ~GPUJob
-                            [estMem, estGPUMem] = XR_estimateComputingMemory(dcframeFullpath, {'deconvolution'}, ...
-                                'cudaDecon', false);
-                            
-                            if cpusPerTask_dc * 20 < estMem
-                                cpusPerTask_dc = min(24, ceil(estMem / 20));
-                            end
-                        end
+                    job_id = job_ids(f, 1);
+                    [job_id, ~, submit_status] = generic_single_job_submit_wrapper(func_str, ...
+                        job_id, task_id, 'jobLogFname', job_log_fname, 'jobErrorFname', job_log_error_fname, ...
+                        lastFile=false, allocateMem=allocateMem, mccMode=mccMode, ConfigFile=cur_ConfigFile);
 
-                        % do not use rotation in decon functions
-                        matlab_cmd = sprintf('%s;t_=tic;%s;toc(t_)', matlab_setup_str, func_str);
-                        process_cmd = sprintf('%s \\"%s\\"', MatlabLaunchStr, matlab_cmd);
-                        
-                        if GPUJob && ~(largeFile && strcmp(largeMethod, 'inplace'))
-                            cpusPerTask_dc = 4;
-                            SlurmParam = '-p abc_a100 --qos abc_normal -n1 --mem-per-cpu=32128M --gres=gpu:1';
-                            slurm_constraint_str = '';
-                        else
-                            % SlurmParam = '-p abc --qos abc_normal -n1 --mem-per-cpu=21418M';
-                        end
-
-                        if cudaDecon
-                            cmd = sprintf(['sbatch --array=%d -o %s -e %s -p abc --gres=gpu:1 --qos ', ...
-                                'abc_normal -n1 --mem-per-cpu=33G --cpus-per-task=%d --wrap="%s"'], ...
-                                task_id, job_log_fname, job_log_error_fname, 5, process_cmd);
-                        else
-                            cmd = sprintf(['sbatch --array=%d -o %s -e %s --cpus-per-task=%d %s %s ', ...
-                                '--wrap="echo Matlab command:  \\\"%s\\\"; %s"'], task_id, job_log_fname, ...
-                                job_log_error_fname, cpusPerTask_dc, SlurmParam, slurm_constraint_str, ...
-                                matlab_cmd, process_cmd);
-                        end
-                        [status, cmdout] = system(cmd, '-echo');
-
-                        job_id = regexp(cmdout, 'Submitted batch job (\d+)\n', 'tokens');
-                        job_id = str2double(job_id{1}{1});
-                        job_ids(f, 1) = job_id;
-                        trial_counter(f, 1) = trial_counter(f, 1) + 1;
-                    end
+                    job_ids(f, 1) = job_id;
+                    trial_counter(f, 1) = trial_counter(f, 1) + submit_status;
                 else
                     temp_file_info = dir(dctmpFullpath);
                     if minutes(datetime('now') - [temp_file_info.date]) < unitWaitTime
@@ -548,88 +496,6 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
                 is_done_flag(f, 1) = true;
                 if exist(dctmpFullpath, 'file')
                     delete(dctmpFullpath);
-                end
-            end
-        end
-        
-        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-        % rotation after decon
-        if RotateAfterDecon
-            % input chosen order is dsr, ds, raw (in decreased priority order)
-            if ~exist(deconFullpath, 'file')
-                continue;
-            end
-
-            rdcPath = rdcPaths{fdind};
-            rdcFullpath = sprintf('%s/%s.tif', rdcPath, fsname);
-            rdctmpFullpath = sprintf('%s.tmp', rdcFullpath(1 : end - 4));
-            if exist(rdcFullpath, 'file')
-                is_done_flag(f, 2) = true;
-                if exist(rdctmpFullpath, 'file')
-                    delete(rdctmpFullpath);
-                end
-            end
-        else
-            is_done_flag(f, 2) = true;    
-        end
-
-        if ~is_done_flag(f, 2)
-            func_str = sprintf(['XR_RotateFrame3D(''%s'',%.20d,%.20d,''SkewAngle'',%.20d,', ...
-                '''ObjectiveScan'',%s,''Reverse'',%s,''Save16bit'',%s)'], deconFullpath, ...
-                xyPixelSize, dz, SkewAngle, string(ObjectiveScan), string(Reverse), string(Save16bit));
-            
-            if exist(rdctmpFullpath, 'file') || parseCluster
-                if parseCluster
-                    job_status = check_slurm_job_status(job_ids(f, 2), task_id);
-                    
-                    % if the job is still running, skip it. 
-                    if job_status == 1 
-                        continue;
-                    end
-                    
-                    if job_status == -1
-                        [estMem, estGPUMem] = XR_estimateComputingMemory(deconFullpath, {'deconvolution'}, 'cudaDecon', false);
-                        cpusPerTask_dcr = cpusPerTask;
-
-                        if cpusPerTask * 20 < estMem
-                            cpusPerTask = min(24, ceil(estMem / 20));
-                        end
-
-                        matlab_cmd = sprintf('%s;tic;%s;toc', matlab_setup_str, func_str);
-                        process_cmd = sprintf('%s \\"%s\\"', MatlabLaunchStr, matlab_cmd);
-                        cmd = sprintf(['sbatch --array=%d -o %s -e %s --cpus-per-task=%d %s %s ', ...
-                            '--wrap="echo Matlab command:  \\\"%s\\\"; %s"'], ...
-                            task_id, job_log_fname, job_log_error_fname, cpusPerTask_dcr, SlurmParam, ...
-                            slurm_constraint_str, matlab_cmd, process_cmd);
-                        [status, cmdout] = system(cmd, '-echo');
-
-                        job_id = regexp(cmdout, 'Submitted batch job (\d+)\n', 'tokens');
-                        job_id = str2double(job_id{1}{1});
-                        job_ids(f, 2) = job_id;
-                        trial_counter(f, 2) = trial_counter(f, 2) + 1;    
-                    end
-                else
-                    temp_file_info = dir(rdctmpFullpath);
-                    if minutes(datetime('now') - [temp_file_info.date]) < unitWaitTime
-                        continue;
-                    else
-                        fclose(fopen(rdctmpFullpath, 'w'));
-                    end
-                end
-            else
-                fclose(fopen(rdctmpFullpath, 'w'));
-            end
-            
-            if ~parseCluster
-                tic; feval(str2func(['@()', func_str])); toc;
-                trial_counter(f, 2) = trial_counter(f, 2) + 1;    
-            end
-            
-            % check if computing is done
-            if exist(rdcFullpath, 'file')
-                is_done_flag(f, 2) = true;
-                if exist(rdctmpFullpath, 'file')
-                    delete(rdctmpFullpath);
                 end
             end
         end

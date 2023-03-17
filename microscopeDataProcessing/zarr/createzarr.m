@@ -10,6 +10,7 @@ arguments
     options.dataSize (1, :) {mustBeNumeric} = [500, 500, 500]
     options.blockSize (1, :) {mustBeNumeric} = [500, 500, 500]
     options.dtype char = 'uint16'
+    options.order char = 'F'
     options.expand2dDim (1, 1) logical = true  % expand the z dimension for 2d data
     options.groupWrite (1, 1) logical = true
     options.compressor char = 'zstd'
@@ -19,6 +20,7 @@ end
 dataSize = options.dataSize;
 blockSize = options.blockSize;
 dtype = options.dtype;
+order = options.order;
 expand2dDim = options.expand2dDim;
 groupWrite = options.groupWrite;
 compressor = options.compressor;
@@ -52,10 +54,10 @@ try
         zarrSubSize = [];
     end
     if isempty(zarrSubSize)
-        createZarrFile(filepath, 'chunks', blockSize, 'dtype', ddtype, 'order', 'F', ...
+        createZarrFile(filepath, 'chunks', blockSize, 'dtype', ddtype, 'order', order, ...
             'shape', dataSize, 'cname', compressor, 'level', 1); 
     else
-        createZarrFile(filepath, 'chunks', blockSize, 'dtype', ddtype, 'order', 'F', ...
+        createZarrFile(filepath, 'chunks', blockSize, 'dtype', ddtype, 'order', order, ...
             'shape', dataSize, 'cname', compressor, 'level', 1, 'subfolders', zarrSubSize); 
     end
 catch ME

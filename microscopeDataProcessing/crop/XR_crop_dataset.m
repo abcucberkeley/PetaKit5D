@@ -32,8 +32,9 @@ ip.addParameter('parseCluster', true, @islogical);
 ip.addParameter('masterCompute', true, @islogical); % master node participate in the task computing. 
 ip.addParameter('jobLogDir', '../job_logs', @ischar);
 ip.addParameter('cpusPerTask', 2, @isnumeric);
-ip.addParameter('cpuOnlyNodes', true, @islogical);
 ip.addParameter('uuid', '', @ischar);
+ip.addParameter('mccMode', false, @islogical);
+ip.addParameter('ConfigFile', '', @ischar);
 
 ip.parse(dataPaths, resultPaths, bbox, varargin{:});
 
@@ -53,7 +54,8 @@ jobLogDir = pr.jobLogDir;
 parseCluster = pr.parseCluster;
 masterCompute = pr.masterCompute;
 cpusPerTask = pr.cpusPerTask;
-cpuOnlyNodes = pr.cpuOnlyNodes;
+mccMode = pr.mccMode;
+ConfigFile = pr.ConfigFile;
 
 % temporary directory for intermediate results
 if ischar(dataPaths)
@@ -71,11 +73,6 @@ for d = 1 : nd
     resultPaths{d} = simplifyPath(resultPath);
     fileattrib(resultPath, '+w', 'g');
     save('-v7.3', [resultPath, '/parameters.mat'], 'pr');
-end
-
-% check if a slurm-based computing cluster exists
-if parseCluster
-    [parseCluster, job_log_fname, job_log_error_fname, slurm_constraint_str, jobLogDir] = checkSlurmCluster(dataPaths{1}, jobLogDir, cpuOnlyNodes);
 end
 
 % processing file paths and bbox for moving option. 
@@ -165,7 +162,8 @@ for f = 1 : nF
 end
 
 cpusPerTask = max(min(ceil(prod(sz) * 4 / 1024^3 * 8 / 20), 24), cpusPerTask);
-slurm_cluster_generic_computing_wrapper(frameFullpaths, cropFullpaths, func_strs, ...
-    'masterCompute', masterCompute, 'cpusPerTask', cpusPerTask);
+generic_computing_frameworks_wrapper(frameFullpaths, cropFullpaths, func_strs, ...
+    'masterCompute', masterCompute, 'cpusPerTask', cpusPerTask, mccMode=mccMode, ...
+    ConfigFile=ConfigFile);
 
 end

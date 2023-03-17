@@ -26,9 +26,9 @@ ip.addParameter('SaveMIP', true , @islogical); % save MIP-z for ds and dsr.
 ip.addParameter('saveZarr', false , @islogical); % save as zarr
 ip.addParameter('BatchSize', [1024, 1024, 1024] , @isvector); % in y, x, z
 ip.addParameter('BlockSize', [256, 256, 256], @isvector); % in y, x, z
+ip.addParameter('zarrSubSize', [20, 20, 20], @isnumeric); % zarr subfolder size
 ip.addParameter('inputBbox', [], @(x) isempty(x) || isvector(x));
 ip.addParameter('taskSize', [], @isnumeric);
-ip.addParameter('DSRCombined', true, @islogical); % combined processing 
 ip.addParameter('resample', [], @(x) isempty(x) || isnumeric(x)); % resampling after rotation 
 ip.addParameter('Interp', 'linear', @(x) any(strcmpi(x, {'cubic', 'linear'})));
 ip.addParameter('surffix', '', @ischar); % suffix for the folder
@@ -36,10 +36,11 @@ ip.addParameter('parseCluster', true, @islogical);
 ip.addParameter('parseParfor', false, @islogical);
 ip.addParameter('masterCompute', true, @islogical); % master node participate in the task computing. 
 ip.addParameter('jobLogDir', '../job_logs', @ischar);
-ip.addParameter('cpuOnlyNodes', false, @islogical);
 ip.addParameter('cpusPerTask', 8, @isnumeric);
 ip.addParameter('uuid', '', @ischar);
 ip.addParameter('debug', false, @islogical);
+ip.addParameter('mccMode', false, @islogical);
+ip.addParameter('ConfigFile', '', @ischar);
 
 ip.parse(frameFullpath, xyPixelSize, dz, varargin{:});
 
@@ -51,10 +52,10 @@ ObjectiveScan = pr.ObjectiveScan;
 flipZstack = pr.flipZstack;
 Save16bit = pr.Save16bit;
 SaveMIP = pr.SaveMIP;
-DSRCombined = pr.DSRCombined;
 resample = pr.resample;
 BatchSize = pr.BatchSize;
 BlockSize = pr.BlockSize;
+zarrSubSize = pr.zarrSubSize;
 inputBbox = pr.inputBbox;
 taskSize = pr.taskSize;
 Interp = pr.Interp;
@@ -63,7 +64,6 @@ parseCluster = pr.parseCluster;
 parseParfor = pr.parseParfor;
 jobLogDir = pr.jobLogDir;
 masterCompute = pr.masterCompute;
-cpuOnlyNodes = pr.cpuOnlyNodes;
 cpusPerTask = pr.cpusPerTask;
 
 uuid = pr.uuid;
@@ -72,6 +72,8 @@ if isempty(uuid)
     uuid = get_uuid();
 end
 debug = pr.debug;
+mccMode = pr.mccMode;
+ConfigFile = pr.ConfigFile;
 
 % decide zAniso
 if ObjectiveScan
@@ -123,7 +125,7 @@ else
 end
 
 if parseCluster
-    [parseCluster, job_log_fname, job_log_error_fname, slurm_constraint_str] = checkSlurmCluster(dataPath, jobLogDir, cpuOnlyNodes);
+    [parseCluster, job_log_fname, job_log_error_fname] = checkSlurmCluster(dataPath, jobLogDir);
 end
 
 tic
@@ -187,15 +189,16 @@ regionBBoxes(:, 2 : 3) = 1;
 regionBBoxes(:, 4 : 6) = min(regionBBoxes(:, 1 : 3) + [BatchSize(1), outSize(2 : 3)] - 1, outSize);
 
 % initialize zarr file
-init_val = zeros(1, dtype);
 if ~exist(dsrTmppath, 'dir')
     try
-        dsr_bim = blockedImage(dsrTmppath, outSize, BlockSize, init_val, "Adapter", CZarrAdapter, 'Mode', 'w');
+        createzarr(dsrTmppath, dataSize=outSize, blockSize=BlockSize, dtype=dtype, zarrSubSize=zarrSubSize);                
     catch ME
         disp(ME)
+        disp("Use alternative method (ZarrAdapter) to initialize the zarr file...");
+        init_val = zeros(1, dtype);        
         dsr_bim = blockedImage(dsrTmppath, outSize, BlockSize, init_val, "Adapter", ZarrAdapter, 'Mode', 'w');
+        dsr_bim.Adapter.close();        
     end
-    dsr_bim.Adapter.close();
 end
 
 % set up parallel computing 
@@ -207,7 +210,6 @@ numTasks = ceil(numBatch / taskSize);
 
 maxJobNum = inf;
 taskBatchNum = 1;
-SlurmParam = '-p abc --qos abc_normal -n1 --mem-per-cpu=21418M';
 
 % get the function string for each batch
 funcStrs = cell(numTasks, 1);
@@ -225,29 +227,31 @@ for i = 1 : numTasks
     funcStrs{i} = sprintf(['XR_deskewRotateBlock([%s],''%s'',''%s'',''%s'',%s,%s,%s,', ...
         '%0.20d,%0.20d,''Overwrite'',%s,''SkewAngle'',%0.20d,''Reverse'',%s,', ...
         '''flipZstack'',%s,''Interp'',''%s'',''uuid'',''%s'',''debug'',%s)'], ...
-        strrep(num2str(batchInds, '%d,'), ' ', ''), frameFullpath, ...
-        dsrTmppath, zarrFlagFullpath, strrep(mat2str(batchBBoxes_i), ' ', ','), ...
-        strrep(mat2str(regionBBoxes_i), ' ', ','), strrep(mat2str(borderSizes_i), ' ', ','), ...
-        xyPixelSize, dz, string(Overwrite), SkewAngle, string(Reverse), string(flipZstack), ...
-        Interp, uuid, string(debug));
+        strrep(num2str(batchInds, '%d,'), ' ', ''), frameFullpath, dsrTmppath, ...
+        zarrFlagFullpath, strrep(mat2str(batchBBoxes_i), ' ', ','), strrep(mat2str(regionBBoxes_i), ' ', ','), ...
+        strrep(mat2str(borderSizes_i), ' ', ','), xyPixelSize, dz, string(Overwrite), ...
+        SkewAngle, string(Reverse), string(flipZstack), Interp, uuid, string(debug));
 end
 
 inputFullpaths = repmat({frameFullpath}, numTasks, 1);
 
 % submit jobs
 if parseCluster || ~parseParfor
-    is_done_flag= slurm_cluster_generic_computing_wrapper(inputFullpaths, outputFullpaths, ...
-        funcStrs, 'cpusPerTask', cpusPerTask, 'cpuOnlyNodes', cpuOnlyNodes, 'SlurmParam', SlurmParam, ...
-        'maxJobNum', maxJobNum, 'taskBatchNum', taskBatchNum, 'masterCompute', masterCompute, 'parseCluster', parseCluster);
+    is_done_flag = generic_computing_frameworks_wrapper(inputFullpaths, outputFullpaths, ...
+        funcStrs, 'cpusPerTask', cpusPerTask, 'maxJobNum', maxJobNum, 'taskBatchNum', taskBatchNum, ...
+        'masterCompute', masterCompute, 'parseCluster', parseCluster, 'mccMode', mccMode, ...
+        'ConfigFile', ConfigFile);
 
     if ~all(is_done_flag)
-        slurm_cluster_generic_computing_wrapper(inputFullpaths, outputFullpaths, ...
-            funcStrs, 'cpusPerTask', cpusPerTask, 'cpuOnlyNodes', cpuOnlyNodes, 'SlurmParam', SlurmParam, ...
-            'maxJobNum', maxJobNum, 'taskBatchNum', taskBatchNum, 'masterCompute', masterCompute, 'parseCluster', parseCluster);
+        is_done_flag = generic_computing_frameworks_wrapper(inputFullpaths, outputFullpaths, ...
+            funcStrs, 'cpusPerTask', cpusPerTask, 'maxJobNum', maxJobNum, 'taskBatchNum', taskBatchNum, ...
+            'masterCompute', masterCompute, 'parseCluster', parseCluster, 'mccMode', mccMode, ...
+            'ConfigFile', ConfigFile);
     end
 elseif parseParfor
-    is_done_flag= matlab_parfor_generic_computing_wrapper(inputFullpaths, outputFullpaths, ...
-        funcStrs, 'maxJobNum', maxJobNum, 'taskBatchNum', taskBatchNum, 'GPUJob', GPUJob, 'uuid', uuid);
+    is_done_flag= generic_computing_frameworks_wrapper(inputFullpaths, outputFullpaths, ...
+        funcStrs, 'clusterType', 'parfor', 'maxJobNum', maxJobNum, 'taskBatchNum', taskBatchNum, ...
+        'GPUJob', GPUJob, 'uuid', uuid);
 end
 
 if exist(dsrFullpath, 'dir') && exist(dsrTmppath, 'dir')
@@ -259,14 +263,12 @@ end
 
 % generate MIP z file
 if SaveMIP
-    dsrMIPPath = sprintf('%s/MIPs/', dsrPath);
+    dsrMIPPath = sprintf('%s/MIPs/', dsrPath);r
     if ~exist(dsrMIPPath, 'dir')
         mkdir(dsrMIPPath);
         fileattrib(dsrMIPPath, '+w', 'g');
     end
-    % dsrMIPname = sprintf('%s%s_MIP_z.tif', dsrMIPPath, fsname);
-    % saveMIP_zarr(dsrFullpath, dsrMIPname);
-    XR_MIP_zarr(dsrFullpath);
+    XR_MIP_zarr(dsrFullpath, mccMode=mccMode, ConfigFile=ConfigFile);
 end
 toc
 

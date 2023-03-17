@@ -11,7 +11,7 @@
 
 //mex -v COPTIMFLAGS="-O3 -DNDEBUG" CFLAGS='$CFLAGS -O3 -fopenmp' LDFLAGS='$LDFLAGS -O3 -fopenmp' '-I/global/home/groups/software/sl-7.x86_64/modules/cBlosc/2.0.4/include/' '-I/global/home/groups/software/sl-7.x86_64/modules/cJSON/1.7.15/include/' '-L/global/home/groups/software/sl-7.x86_64/modules/cBlosc/2.0.4/lib64' -lblosc2 '-L/global/home/groups/software/sl-7.x86_64/modules/cJSON/1.7.15/lib64' -lcjson zarrMex.c
 
-void parallelReadZarr(void* zarr, char* folderName,uint64_t startX, uint64_t startY, uint64_t startZ, uint64_t endX, uint64_t endY,uint64_t endZ,uint64_t chunkXSize,uint64_t chunkYSize,uint64_t chunkZSize,uint64_t shapeX,uint64_t shapeY,uint64_t shapeZ, uint64_t bits, char order, char* cname){
+void parallelReadZarr(void* zarr, char* folderName, char* subfolderName,uint64_t startX, uint64_t startY, uint64_t startZ, uint64_t endX, uint64_t endY,uint64_t endZ,uint64_t chunkXSize,uint64_t chunkYSize,uint64_t chunkZSize,uint64_t shapeX,uint64_t shapeY,uint64_t shapeZ, uint64_t bits, char order, char* cname){
     char fileSepS[2];
     const char fileSep =
 #ifdef _WIN32
@@ -47,9 +47,11 @@ void parallelReadZarr(void* zarr, char* folderName,uint64_t startX, uint64_t sta
             struct chunkAxisVals cAV = getChunkAxisVals(cI.chunkNames[f]);
             
             //malloc +2 for null term and filesep
-            char *fileName = malloc(strlen(folderName)+strlen(cI.chunkNames[f])+2);
+            char *fileName = malloc(strlen(folderName)+1+strlen(subfolderName)+1+strlen(cI.chunkNames[f])+1);
             fileName[0] = '\0';
             strcat(fileName,folderName);
+            strcat(fileName,fileSepS);
+            strcat(fileName,subfolderName);
             strcat(fileName,fileSepS);
             strcat(fileName,cI.chunkNames[f]);
             
@@ -233,7 +235,7 @@ uint64_t dTypeToBits(char* dtype){
     
 }
 
-void* parallelReadZarrWrapper(char* folderName,uint8_t crop, uint64_t startX, uint64_t startY, uint64_t startZ, uint64_t endX, uint64_t endY,uint64_t endZ){
+void* parallelReadZarrWrapper(char* folderName,uint8_t crop, char* subfolderName, uint64_t startX, uint64_t startY, uint64_t startZ, uint64_t endX, uint64_t endY,uint64_t endZ){
     
     uint64_t shapeX = 0;
     uint64_t shapeY = 0;
@@ -245,7 +247,10 @@ void* parallelReadZarrWrapper(char* folderName,uint8_t crop, uint64_t startX, ui
     char order;
     char* cname = NULL;
     uint64_t clevel = 5;
-    setValuesFromJSON(folderName,&chunkXSize,&chunkYSize,&chunkZSize,dtype,&order,&shapeX,&shapeY,&shapeZ,&cname,&clevel);
+    uint64_t subfolderSizeX = 0;
+    uint64_t subfolderSizeY = 0;
+    uint64_t subfolderSizeZ = 0;
+    setValuesFromJSON(folderName,&chunkXSize,&chunkYSize,&chunkZSize,dtype,&order,&shapeX,&shapeY,&shapeZ,&cname,&clevel,&subfolderSizeX,&subfolderSizeY,&subfolderSizeZ);
     
     if(!crop){
         startX = 0;
@@ -276,25 +281,25 @@ void* parallelReadZarrWrapper(char* folderName,uint8_t crop, uint64_t startX, ui
     if(dtype[1] == 'u' && dtype[2] == '1'){
         uint64_t bits = 8;
         uint8_t* zarr = (uint8_t*)malloc(sizeof(uint8_t)*shapeX*shapeY*shapeZ);
-        parallelReadZarr((void*)zarr,folderName,startX,startY,startZ,endX,endY,endZ,chunkXSize,chunkYSize,chunkZSize,shapeX,shapeY,shapeZ,bits,order,cname);
+        parallelReadZarr((void*)zarr,folderName,subfolderName,startX,startY,startZ,endX,endY,endZ,chunkXSize,chunkYSize,chunkZSize,shapeX,shapeY,shapeZ,bits,order,cname);
         return (void*)zarr;
     }
     else if(dtype[1] == 'u' && dtype[2] == '2'){
         uint64_t bits = 16;
         uint16_t* zarr = (uint16_t*)malloc((uint64_t)(sizeof(uint16_t)*shapeX*shapeY*shapeZ));
-        parallelReadZarr((void*)zarr,folderName,startX,startY,startZ,endX,endY,endZ,chunkXSize,chunkYSize,chunkZSize,shapeX,shapeY,shapeZ,bits,order,cname);
+        parallelReadZarr((void*)zarr,folderName,subfolderName,startX,startY,startZ,endX,endY,endZ,chunkXSize,chunkYSize,chunkZSize,shapeX,shapeY,shapeZ,bits,order,cname);
         return (void*)zarr;
     }
     else if(dtype[1] == 'f' && dtype[2] == '4'){
         uint64_t bits = 32;
         float* zarr = (float*)malloc(sizeof(float)*shapeX*shapeY*shapeZ);
-        parallelReadZarr((void*)zarr,folderName,startX,startY,startZ,endX,endY,endZ,chunkXSize,chunkYSize,chunkZSize,shapeX,shapeY,shapeZ,bits,order,cname);
+        parallelReadZarr((void*)zarr,folderName,subfolderName,startX,startY,startZ,endX,endY,endZ,chunkXSize,chunkYSize,chunkZSize,shapeX,shapeY,shapeZ,bits,order,cname);
         return (void*)zarr;
     }
     else if(dtype[1] == 'f' && dtype[2] == '8'){
         uint64_t bits = 64;
         double* zarr = (double*)malloc(sizeof(double)*shapeX*shapeY*shapeZ);
-        parallelReadZarr((void*)zarr,folderName,startX,startY,startZ,endX,endY,endZ,chunkXSize,chunkYSize,chunkZSize,shapeX,shapeY,shapeZ,bits,order,cname);
+        parallelReadZarr((void*)zarr,folderName,subfolderName,startX,startY,startZ,endX,endY,endZ,chunkXSize,chunkYSize,chunkZSize,shapeX,shapeY,shapeZ,bits,order,cname);
         return (void*)zarr;
     }
     else{

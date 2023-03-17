@@ -4,20 +4,19 @@
 #include <dirent.h>
 #include <string.h>
 #include <errno.h>
-//#include <blosc.h>
 #include <cjson/cJSON.h>
 #include <omp.h>
-#ifdef __linux__
-#include <uuid/uuid.h>
-#endif
 #ifdef _WIN32
+#include <stdarg.h> 
 #include <sys/time.h>
+#else
+#include <uuid/uuid.h>
 #endif
 #include <sys/stat.h>
 #include "mex.h"
 
 //compile
-//mex -v COPTIMFLAGS="-O3 -DNDEBUG" LDOPTIMFLAGS="-O3 -DNDEBUG" CFLAGS='$CFLAGS -O3 -fopenmp' LDFLAGS='$LDFLAGS -O3 -fopenmp' '-I/global/home/groups/software/sl-7.x86_64/modules/cJSON/1.7.15/include/' -L'/global/home/groups/software/sl-7.x86_64/modules/cJSON/1.7.15/lib64' -lcjson -luuid createZarrFile.c
+//mex -v COPTIMFLAGS="-O3 -DNDEBUG" LDOPTIMFLAGS="-Wl',-rpath='''$ORIGIN'''' -O3 -DNDEBUG" CFLAGS='$CFLAGS -O3 -fopenmp' LDFLAGS='$LDFLAGS -O3 -fopenmp' '-I/global/home/groups/software/sl-7.x86_64/modules/cJSON/1.7.15/include/' -L'/global/home/groups/software/sl-7.x86_64/modules/cJSON/1.7.15/lib64' -lcjson -luuid createZarrFile.c
 
 // Handle the tilde character in filenames on Linux/Mac
 #ifndef _WIN32
@@ -46,17 +45,43 @@ char* strndup (const char *s, size_t n)
   new[len] = '\0';
   return (char *) memcpy (new, s, len);
 }
+int _vscprintf_so(const char * format, va_list pargs) {
+    int retval;
+    va_list argcopy;
+    va_copy(argcopy, pargs);
+    retval = vsnprintf(NULL, 0, format, argcopy);
+    va_end(argcopy);
+    return retval;
+}
+
+int vasprintf(char **strp, const char *fmt, va_list ap) {
+    int len = _vscprintf_so(fmt, ap);
+    if (len == -1) return -1;
+    char *str = malloc((size_t) len + 1);
+    if (!str) return -1;
+    int r = vsnprintf(str, len + 1, fmt, ap); /* "secure" version of vsprintf */
+    if (r == -1) return free(str), -1;
+    *strp = str;
+    return r;
+}
+
+int asprintf(char *strp[], const char *fmt, ...) {
+    va_list ap;
+    va_start(ap, fmt);
+    int r = vasprintf(strp, fmt, ap);
+    va_end(ap);
+    return r;
+}
 #endif
 
 static void mkdirRecursive(const char *dir) {
     char tmp[8192];
     char *p = NULL;
     size_t len;
-    #ifdef __linux__
-    char fileSep = '/';
-    #endif
     #ifdef _WIN32
     char fileSep = '\\';
+    #else
+    char fileSep = '/';
     #endif
     int status;
     snprintf(tmp, sizeof(tmp),"%s",dir);
@@ -67,28 +92,25 @@ static void mkdirRecursive(const char *dir) {
         if (*p == fileSep) {
             *p = 0;
 
-            #ifdef __linux__
-            mkdir(tmp, 0775);
-            #endif
-
             #ifdef _WIN32
             mkdir(tmp);
+            #else
+            mkdir(tmp, 0775);
             #endif
 
             chmod(tmp, 0775);
             *p = fileSep;
         }
     }
-    #ifdef __linux__
-    mkdir(tmp, 0775);
-    #endif
     #ifdef _WIN32
     mkdir(tmp);
+    #else
+    mkdir(tmp, 0775);
     #endif
     chmod(tmp, 0775);
 }
 
-void setJSONValues(char* fileName,uint64_t *chunkXSize,uint64_t *chunkYSize,uint64_t *chunkZSize,char* dtype,char* order,uint64_t *shapeX,uint64_t *shapeY,uint64_t *shapeZ, char* cname, uint64_t level){
+void setJSONValues(char* fileName,uint64_t *chunkXSize,uint64_t *chunkYSize,uint64_t *chunkZSize,char* dtype,char* order,uint64_t *shapeX,uint64_t *shapeY,uint64_t *shapeZ, char* cname, uint64_t level, uint64_t *subfolderSizeX, uint64_t *subfolderSizeY, uint64_t *subfolderSizeZ){
     
     // Overflows for ints greater than 32 bit for chunkSizes and shape
     cJSON* zArray = cJSON_CreateObject();
@@ -120,15 +142,12 @@ void setJSONValues(char* fileName,uint64_t *chunkXSize,uint64_t *chunkYSize,uint
     cJSON* shape = cJSON_CreateIntArray(shapeSizes, 3);
     cJSON_AddItemToObject(zArray, "shape", shape);
     cJSON_AddNumberToObject(zArray, "zarr_format", 2);
+
+    const int subfolderSizeSizes[3] = {*subfolderSizeX,*subfolderSizeY,*subfolderSizeZ};
+    cJSON* subfolderSize = cJSON_CreateIntArray(subfolderSizeSizes, 3);
+    cJSON_AddItemToObject(zArray, "subfolders", subfolderSize);
     
     uint64_t uuidLen;
-    #ifdef __linux__
-    uuidLen = 36;
-    uuid_t binuuid;
-    uuid_generate_random(binuuid);
-    char *uuid = malloc(uuidLen+1);
-    uuid_unparse(binuuid, uuid);
-    #endif
     #ifdef _WIN32
     uuidLen = 5;
     char *uuid = malloc(uuidLen+1);
@@ -143,6 +162,12 @@ void setJSONValues(char* fileName,uint64_t *chunkXSize,uint64_t *chunkYSize,uint
     else aSeed = strtol(seedArr, &ptr, 9);
     srand(aSeed);
     sprintf(uuid,"%.5d",rand() % 99999);
+    #else
+    uuidLen = 36;
+    uuid_t binuuid;
+    uuid_generate_random(binuuid);
+    char *uuid = malloc(uuidLen+1);
+    uuid_unparse(binuuid, uuid);
     #endif
 
     char* zArrayS = ".zarray";
@@ -175,6 +200,37 @@ void setJSONValues(char* fileName,uint64_t *chunkXSize,uint64_t *chunkYSize,uint
     free(fileNameFinal);
 }
 
+uint64_t fastCeilDiv(uint64_t num, uint64_t denom){
+    return 1 + ((num - 1) / denom);
+}
+
+void createSubfolders(char* folderName, uint64_t shapeX, uint64_t shapeY, uint64_t shapeZ, uint64_t chunkXSize, uint64_t chunkYSize, uint64_t chunkZSize, uint64_t subfolderSizeX, uint64_t subfolderSizeY, uint64_t subfolderSizeZ){
+    if(subfolderSizeX == 0 && subfolderSizeY == 0 && subfolderSizeZ == 0) return;
+    uint64_t nChunksX = shapeX/chunkXSize;
+    uint64_t nChunksY = shapeY/chunkYSize;
+    uint64_t nChunksZ = shapeZ/chunkZSize;
+
+    uint64_t nSubfoldersX = 1;
+    uint64_t nSubfoldersY = 1;
+    uint64_t nSubfoldersZ = 1;
+
+    if(subfolderSizeX > 0) nSubfoldersX = fastCeilDiv(nChunksX,subfolderSizeX);
+    if(subfolderSizeY > 0) nSubfoldersY = fastCeilDiv(nChunksY,subfolderSizeY);
+    if(subfolderSizeZ > 0) nSubfoldersZ = fastCeilDiv(nChunksZ,subfolderSizeZ);
+    
+    #pragma omp parallel for collapse(3)
+    for(uint64_t x = 0; x < nSubfoldersX; x++){
+        for(uint64_t y = 0; y < nSubfoldersY; y++){
+            for(uint64_t z = 0; z < nSubfoldersZ; z++){
+                char* currName = NULL;
+                asprintf(&currName,"%s/%llu_%llu_%llu",folderName,x,y,z);
+                mkdirRecursive(currName);
+                free(currName);
+            }
+        }
+    }
+}
+
 void mexFunction(int nlhs, mxArray *plhs[],
         int nrhs, const mxArray *prhs[])
 {
@@ -189,6 +245,9 @@ void mexFunction(int nlhs, mxArray *plhs[],
     uint64_t shapeY = 0;
     uint64_t shapeZ = 0;
     uint64_t level = 5;
+    uint64_t subfolderSizeX = 0;
+    uint64_t subfolderSizeY = 0;
+    uint64_t subfolderSizeZ = 0;
     if(nrhs < 1) mexErrMsgIdAndTxt("zarr:inputError","This functions requires at least 1 argument\n");
     if(nrhs == 2) mexErrMsgIdAndTxt("zarr:inputError","This functions does not accept only 2 arguments\n");
     if(!mxIsChar(prhs[0])) mexErrMsgIdAndTxt("zarr:inputError","The first argument must be a string\n");
@@ -229,7 +288,7 @@ void mexFunction(int nlhs, mxArray *plhs[],
                 dtype[3] = '\0';
                 free(dtypeCopy);
             }
-            else if(dtypeLen != 3)mexErrMsgIdAndTxt("zarr:inputError","dtype must be of length 2 or 3\n");
+            else if(dtypeLen != 3) mexErrMsgIdAndTxt("zarr:inputError","dtype must be of length 2 or 3\n");
             
             if(dtype[0] != '<' && dtype[0] != '>'){
                 mexErrMsgIdAndTxt("zarr:inputError","The first character of dtype must be \"<\" or \">\"\n");
@@ -269,6 +328,12 @@ void mexFunction(int nlhs, mxArray *plhs[],
             if(!mxIsNumeric(prhs[i+1])) mexErrMsgIdAndTxt("zarr:inputError","level must be a numerical value\n");
             level = (uint64_t)*(mxGetPr(prhs[i+1]));
         }
+        else if(!strcmp(currInput,"subfolders")){
+            if(mxGetN(prhs[i+1]) != 3) mexErrMsgIdAndTxt("zarr:inputError","subfolders must be an array of 3 numbers\n");
+            subfolderSizeX = (uint64_t)*(mxGetPr(prhs[i+1]));
+            subfolderSizeY = (uint64_t)*((mxGetPr(prhs[i+1])+1));
+            subfolderSizeZ = (uint64_t)*((mxGetPr(prhs[i+1])+2));
+        }
         else{
             mexErrMsgIdAndTxt("zarr:inputError","The argument \"%s\" does not match the name of any supported input name.\n \
                               Currently Supported Names: chunks, cname, dtype, order, shape\n",currInput);
@@ -292,16 +357,11 @@ void mexFunction(int nlhs, mxArray *plhs[],
     FILE* f = fopen(fnFull,"r");
     if(f) fclose(f);
     else{
-        #ifdef __linux__
         mkdirRecursive(folderName);
-        #endif
-        #ifdef _WIN32
-        mkdirRecursive(folderName);
-        #endif
         chmod(folderName, 0775);
     }
-
-    setJSONValues(folderName,&chunkXSize,&chunkYSize,&chunkZSize,dtype,order,&shapeX,&shapeY,&shapeZ,cname,level);
+    createSubfolders(folderName,shapeX,shapeY,shapeZ,chunkXSize,chunkYSize,chunkZSize,subfolderSizeX,subfolderSizeY,subfolderSizeZ);
+    setJSONValues(folderName,&chunkXSize,&chunkYSize,&chunkZSize,dtype,order,&shapeX,&shapeY,&shapeZ,cname,level,&subfolderSizeX,&subfolderSizeY,&subfolderSizeZ);
 
 
     /////////

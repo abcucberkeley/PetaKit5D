@@ -19,7 +19,6 @@ ip.addParameter('onlyFirstRow', false, @islogical); % only read the first row (c
 ip.addParameter('parseCluster', true, @islogical);
 ip.addParameter('masterCompute', true, @islogical); % master node participate in the task computing. 
 ip.addParameter('cpusPerTask', 2, @isnumeric);
-ip.addParameter('cpuOnlyNodes', true, @islogical);
 ip.addParameter('uuid', '', @ischar);
 
 ip.parse(dataPath, varargin{:});

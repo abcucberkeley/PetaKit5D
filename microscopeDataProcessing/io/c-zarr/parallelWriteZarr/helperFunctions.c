@@ -5,13 +5,13 @@
 #include <string.h>
 #include <cjson/cJSON.h>
 #include <omp.h>
-#ifdef __linux__
-#include <uuid/uuid.h>
-#endif
 #ifdef _WIN32
 #include <stdarg.h> 
 #include <sys/time.h>
+#else
+#include <uuid/uuid.h>
 #endif
+#include <sys/stat.h>
 #include "mex.h"
 #include "helperFunctions.h"
 
@@ -69,7 +69,43 @@ int asprintf(char *strp[], const char *fmt, ...) {
     va_end(ap);
     return r;
 }
-#endif    
+#endif
+
+static void mkdirRecursive(const char *dir) {
+    char tmp[8192];
+    char *p = NULL;
+    size_t len;
+    #ifdef _WIN32
+    char fileSep = '\\';
+    #else
+    char fileSep = '/';
+    #endif
+    int status;
+    snprintf(tmp, sizeof(tmp),"%s",dir);
+    len = strlen(tmp);
+    if (tmp[len - 1] == fileSep)
+        tmp[len - 1] = 0;
+    for (p = tmp + 1; *p; p++){
+        if (*p == fileSep) {
+            *p = 0;
+
+            #ifdef _WIN32
+            mkdir(tmp);
+            #else
+            mkdir(tmp, 0775);
+            #endif
+
+            chmod(tmp, 0775);
+            *p = fileSep;
+        }
+    }
+    #ifdef _WIN32
+    mkdir(tmp);
+    #else
+    mkdir(tmp, 0775);
+    #endif
+    chmod(tmp, 0775);
+}
 
 void* mallocDynamic(uint64_t x, uint64_t bits){
     switch(bits){
@@ -142,6 +178,22 @@ struct chunkInfo getChunkInfo(char* folderName, uint64_t startX, uint64_t startY
     return cI;
 }
 
+char* getSubfolderString(struct chunkAxisVals *cAV, uint64_t subfolderSizeX, uint64_t subfolderSizeY, uint64_t subfolderSizeZ){
+    if(subfolderSizeX == 0 && subfolderSizeY == 0 && subfolderSizeZ == 0) return NULL;
+    
+    uint64_t currX = 0;
+    uint64_t currY = 0;
+    uint64_t currZ = 0;
+    if(subfolderSizeX > 0) currX = cAV->x/subfolderSizeX;
+    if(subfolderSizeY > 0) currY = cAV->y/subfolderSizeY;
+    if(subfolderSizeZ > 0) currZ = cAV->z/subfolderSizeZ;
+
+    char* currName = NULL;
+    asprintf(&currName,"%llu_%llu_%llu",currX,currY,currZ);
+    return currName;
+
+}
+
 void setChunkShapeFromJSON(cJSON *json, uint64_t *x, uint64_t *y, uint64_t *z){
     *x = json->child->valueint;
     *y = json->child->next->valueint;
@@ -205,7 +257,13 @@ void setClevelFromJSON(cJSON *json, uint64_t* clevel){
     
 }
 
-void setValuesFromJSON(char* fileName,uint64_t *chunkXSize,uint64_t *chunkYSize,uint64_t *chunkZSize,char* dtype,char* order,uint64_t *shapeX,uint64_t *shapeY,uint64_t *shapeZ,char** cname, uint64_t* clevel){
+void setSubfoldersFromJSON(cJSON *json, uint64_t *subfolderSizeX, uint64_t *subfolderSizeY, uint64_t *subfolderSizeZ){
+    *subfolderSizeX = json->child->valueint;
+    *subfolderSizeY = json->child->next->valueint;
+    *subfolderSizeZ = json->child->next->next->valueint;
+}
+
+void setValuesFromJSON(char* fileName,uint64_t *chunkXSize,uint64_t *chunkYSize,uint64_t *chunkZSize,char* dtype,char* order,uint64_t *shapeX,uint64_t *shapeY,uint64_t *shapeZ,char** cname, uint64_t* clevel, uint64_t *subfolderSizeX, uint64_t *subfolderSizeY, uint64_t *subfolderSizeZ){
 
     char* zArray = ".zarray";
     char* fnFull = (char*)malloc(strlen(fileName)+9);
@@ -229,40 +287,37 @@ void setValuesFromJSON(char* fileName,uint64_t *chunkXSize,uint64_t *chunkYSize,
     fread(buffer, filelen, 1, fileptr);
     fclose(fileptr);
     cJSON *json = cJSON_ParseWithLength(buffer,filelen);
-    uint8_t flags[5] = {0,0,0,0,0};
 
-    while(!(flags[0] && flags[1] && flags[2] && flags[3] && flags[4])){
+    while(json){
         if(!json->string){
             json = json->child;
             continue;
         }
         else if(!strcmp(json->string,"chunks")){
             setChunkShapeFromJSON(json, chunkXSize,chunkYSize,chunkZSize);
-            flags[0] = 1;
         }
         else if(!strcmp(json->string,"dtype")){
             setDTypeFromJSON(json, dtype);
-            flags[1] = 1;
         }
         else if(!strcmp(json->string,"order")){
             setOrderFromJSON(json, order);
-            flags[2] = 1;
         }
         else if(!strcmp(json->string,"shape")){
             setShapeFromJSON(json, shapeX,shapeY,shapeZ);
-            flags[3] = 1;
         }
         else if(!strcmp(json->string,"compressor")){
             setCnameFromJSON(json, cname);
             setClevelFromJSON(json, clevel);
-            flags[4] = 1;
+        }
+        else if(!strcmp(json->string,"subfolders")){
+            setSubfoldersFromJSON(json, subfolderSizeX, subfolderSizeY, subfolderSizeZ);
         }
         json = json->next;
     }
     cJSON_Delete(json);
 }
 
-void setJSONValues(char* fileName,uint64_t *chunkXSize,uint64_t *chunkYSize,uint64_t *chunkZSize,char* dtype,char* order,uint64_t *shapeX,uint64_t *shapeY,uint64_t *shapeZ, char* cname, uint64_t* clevel){
+void setJSONValues(char* fileName,uint64_t *chunkXSize,uint64_t *chunkYSize,uint64_t *chunkZSize,char* dtype,char* order,uint64_t *shapeX,uint64_t *shapeY,uint64_t *shapeZ, char* cname, uint64_t* clevel, uint64_t *subfolderSizeX, uint64_t *subfolderSizeY, uint64_t *subfolderSizeZ){
     
     // Overflows for ints greater than 32 bit for chunkSizes and shape
     cJSON* zArray = cJSON_CreateObject();
@@ -295,15 +350,12 @@ void setJSONValues(char* fileName,uint64_t *chunkXSize,uint64_t *chunkYSize,uint
     cJSON* shape = cJSON_CreateIntArray(shapeSizes, 3);
     cJSON_AddItemToObject(zArray, "shape", shape);
     cJSON_AddNumberToObject(zArray, "zarr_format", 2);
+
+    const int subfolderSizeSizes[3] = {*subfolderSizeX,*subfolderSizeY,*subfolderSizeZ};
+    cJSON* subfolderSize = cJSON_CreateIntArray(subfolderSizeSizes, 3);
+    cJSON_AddItemToObject(zArray, "subfolders", subfolderSize);
     
     uint64_t uuidLen;
-    #ifdef __linux__
-    uuidLen = 36;
-    uuid_t binuuid;
-    uuid_generate_random(binuuid);
-    char *uuid = malloc(uuidLen+1);
-    uuid_unparse(binuuid, uuid);
-    #endif
     #ifdef _WIN32
     uuidLen = 5;
     char *uuid = malloc(uuidLen+1);
@@ -319,6 +371,12 @@ void setJSONValues(char* fileName,uint64_t *chunkXSize,uint64_t *chunkYSize,uint
     srand(aSeed);
     sprintf(uuid,"%.5d",rand() % 99999);
     free(seedArr);
+    #else
+    uuidLen = 36;
+    uuid_t binuuid;
+    uuid_generate_random(binuuid);
+    char *uuid = malloc(uuidLen+1);
+    uuid_unparse(binuuid, uuid);
     #endif
 
     char* zArrayS = ".zarray";
@@ -350,4 +408,42 @@ void setJSONValues(char* fileName,uint64_t *chunkXSize,uint64_t *chunkYSize,uint
     free(fnFull);
     free(uuid);
     free(fileNameFinal);
+}
+
+uint64_t fastCeilDiv(uint64_t num, uint64_t denom){
+    return 1 + ((num - 1) / denom);
+}
+
+void createSubfolders(char* folderName, uint64_t shapeX, uint64_t shapeY, uint64_t shapeZ, uint64_t chunkXSize, uint64_t chunkYSize, uint64_t chunkZSize, uint64_t subfolderSizeX, uint64_t subfolderSizeY, uint64_t subfolderSizeZ){
+    if(subfolderSizeX == 0 && subfolderSizeY == 0 && subfolderSizeZ == 0) return;
+    uint64_t nChunksX = shapeX/chunkXSize;
+    uint64_t nChunksY = shapeY/chunkYSize;
+    uint64_t nChunksZ = shapeZ/chunkZSize;
+
+    
+
+    
+    uint64_t nSubfoldersX = 1;
+    uint64_t nSubfoldersY = 1;
+    uint64_t nSubfoldersZ = 1;
+
+    if(subfolderSizeX > 0) nSubfoldersX = fastCeilDiv(nChunksX,subfolderSizeX);
+    if(subfolderSizeY > 0) nSubfoldersY = fastCeilDiv(nChunksY,subfolderSizeY);
+    if(subfolderSizeZ > 0) nSubfoldersZ = fastCeilDiv(nChunksZ,subfolderSizeZ);
+
+    //printf("%d,%d,%d\n",nSubfoldersX,nSubfoldersY,nSubfoldersZ);
+    //printf("%d,%d,%d\n",nChunksX,nChunksY,nChunksZ);
+    //printf("%d,%d,%d\n",subfolderSizeX,subfolderSizeY,subfolderSizeZ);
+    //mexErrMsgIdAndTxt("zarr:zarrayError","bork");
+    #pragma omp parallel for collapse(3)
+    for(uint64_t x = 0; x < nSubfoldersX; x++){
+        for(uint64_t y = 0; y < nSubfoldersY; y++){
+            for(uint64_t z = 0; z < nSubfoldersZ; z++){
+                char* currName = NULL;
+                asprintf(&currName,"%s/%llu_%llu_%llu",folderName,x,y,z);
+                mkdirRecursive(currName);
+                free(currName);
+            }
+        }
+    }
 }

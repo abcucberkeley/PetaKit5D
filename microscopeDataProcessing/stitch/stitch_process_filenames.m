@@ -19,6 +19,7 @@ nF = numel(tileFullpaths);
 tiffFullpaths = cell(nF, 1);
 zarrFullpaths = cell(nF, 1);
 fsnames = cell(nF, 1);
+suffix_str = 'z';
 for i = 1 : nF
     tileFullpath = tileFullpaths{i};
     [dataPath, fsname] = fileparts(tileFullpath);
@@ -39,8 +40,8 @@ for i = 1 : nF
         zarrPathstr = 'zarr';
     end
     if any(stitchMIP)
-        tiffFullpaths{i} = sprintf('%s/%s_MIP_%s.tif', tilePath, fsname, suffix_str);
-        zarrFullpaths{i} = sprintf('%s/%s/%s_MIP_%s.zarr', tilePath, zarrPathstr, fsname, suffix_str);                
+        tiffFullpaths{i} = sprintf('%s/MIPs/%s_MIP_%s.tif', tilePath, fsname, suffix_str);
+        zarrFullpaths{i} = sprintf('%s/MIPs/%s/%s_MIP_%s.zarr', tilePath, zarrPathstr, fsname, suffix_str);                
     else
         tiffFullpaths{i} = sprintf('%s/%s.tif', tilePath, fsname);
         zarrFullpaths{i} = sprintf('%s/%s/%s.zarr', tilePath, zarrPathstr, fsname);

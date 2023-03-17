@@ -35,7 +35,7 @@ ip.addParameter('OTFCumThresh', 0.9, @isnumeric); % OTF cumutative sum threshold
 ip.addParameter('skewed', [], @(x) isempty(x) || islogical(x)); % decon in skewed space
 ip.addParameter('fixIter', true, @islogical); % 
 ip.addParameter('errThresh', [], @isnumeric); % error threshold for simplified code
-ip.addParameter('BatchSize', [1024, 1024, 1024] , @isvector); % in y, x, z
+ip.addParameter('BatchSize', [1024, 1024, 1024] , @isnumeric); % in y, x, z
 ip.addParameter('Overlap', 200, @isnumeric); % block overlap
 ip.addParameter('CPUMaxMem', 500, @isnumeric); % CPU Memory in Gb
 ip.addParameter('parseCluster', true, @islogical);
@@ -220,28 +220,6 @@ for i = 1 : numel(batchInds)
         in_batch = im(ibStart(1) : ibEnd(1), ibStart(2) : ibEnd(2), ibStart(3) : ibEnd(3));
     end
 
-    % deconvolution
-    %{
-    frameFullpath = '';
-    deconTmpPath = '';
-    Deskew = false;
-    Rotate = false;
-    Save16bit = ~false;
-    Crop = [];
-    zFlip = false;
-    GenMaxZproj = [0, 0, 0];
-    ResizeImages = false;
-    RLMethod = 'simplified';
-    fixIter = true;
-    errThresh = 1e-12;
-    debug = false;
-    
-    out_batch = RLdecon(frameFullpath, deconTmpPath, psfFullpath, Background, DeconIter, ...
-        dzPSF, dz, Deskew, [], SkewAngle, pixelSize, Rotate, Save16bit, Crop, zFlip, ...
-        GenMaxZproj, ResizeImages, [], RLMethod, fixIter, errThresh, flipZstack, debug, ...
-        'rawdata', in_batch, 'scaleFactor', scaleFactor, 'useGPU', useGPU, 'psfGen', psfGen);
-    %}
-
     inputFn = '';
     outputFn = deconFullpath;
     DSRCombined = true;
@@ -260,15 +238,7 @@ for i = 1 : numel(batchInds)
         'Background', Background, 'DeconIter', DeconIter, 'RLMethod', RLMethod, ...
         'skewed', skewed, 'wienerAlpha', wienerAlpha, 'fixIter', fixIter, 'scaleFactor', scaleFactor, ...
         'deconBbox', deconBbox, 'useGPU', useGPU, 'psfGen', psfGen, 'debug', debug, ...
-        'save3Dstack', save3Dstack, 'mipAxis', mipAxis);    
-    %{
-    try
-        out_batch = crop3d_mex(out_batch, [baStart, baEnd]);
-    catch ME
-        disp(ME);
-        out_batch = out_batch(baStart(1) : baEnd(1), baStart(2) : baEnd(2), baStart(3) : baEnd(3));
-    end
-    %}
+        'save3Dstack', save3Dstack, 'mipAxis', mipAxis);
     
     try 
         indexing3d_mex(imout, [obStart, obEnd], out_batch);

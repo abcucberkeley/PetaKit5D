@@ -1,4 +1,4 @@
-function [parseCluster, job_log_fname, job_log_error_fname, slurm_constraint_str, jobLogDir] = checkSlurmCluster(dataPath, jobLogDir, cpuOnlyNodes)
+function [parseCluster, job_log_fname, job_log_error_fname, slurm_constraint_str, jobLogDir] = checkSlurmCluster(dataPath, jobLogDir)
 % check if a slurm computing cluster exist, if so, setup properties, if not
 % set parseCluster as false
 % 
@@ -30,12 +30,5 @@ dir_info = dir(jobLogDir);
 jobLogDir = dir_info.folder;
 job_log_fname = [jobLogDir, '/job_%A_%a.out'];
 job_log_error_fname = [jobLogDir, '/job_%A_%a.err'];
-
-if cpuOnlyNodes
-    slurm_constraint_str = ' --constraint=c24 ';
-else
-    slurm_constraint_str = '';
-end
-
 
 end

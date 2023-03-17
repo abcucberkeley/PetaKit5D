@@ -25,19 +25,22 @@ ip.addParameter('wienerAlpha', 0.005, @isnumeric);
 ip.addParameter('OTFCumThresh', 0.9, @isnumeric); % OTF cumutative sum threshold
 ip.addParameter('skewed', [], @(x) isempty(x) || islogical(x)); % decon in skewed space
 ip.addParameter('fixIter', false, @islogical); % CPU Memory in Gb
-ip.addParameter('BatchSize', [1024, 1024, 1024] , @isvector); % in y, x, z
-ip.addParameter('BlockSize', [256, 256, 256] , @isvector); % in y, x, z
+ip.addParameter('BatchSize', [1024, 1024, 1024] , @isnumeric); % in y, x, z
+ip.addParameter('BlockSize', [256, 256, 256] , @isnumeric); % in y, x, z
+ip.addParameter('zarrSubSize', [20, 20, 20], @isnumeric); % zarr subfolder size
 ip.addParameter('deconMaskFns', {}, @iscell); % 2d masks to filter regions to decon, in xy, xz, yz orders
 ip.addParameter('parseCluster', true, @islogical);
 ip.addParameter('parseParfor', false, @islogical);
 ip.addParameter('masterCompute', true, @islogical); % master node participate in the task computing. 
 ip.addParameter('jobLogDir', '../job_logs', @ischar);
-ip.addParameter('cpuOnlyNodes', true, @islogical);
 ip.addParameter('cpusPerTask', 4, @isnumeric);
 ip.addParameter('GPUJob', false, @islogical); % use gpu for chuck deconvolution. 
 ip.addParameter('uuid', '', @ischar);
 ip.addParameter('debug', false, @islogical);
 ip.addParameter('psfGen', true, @islogical); % psf generation
+ip.addParameter('mccMode', false, @islogical);
+ip.addParameter('ConfigFile', '', @ischar);
+ip.addParameter('GPUConfigFile', '', @ischar);
 
 ip.parse(frameFullpath, xyPixelSize, dz, deconPath, PSF, varargin{:});
 
@@ -70,6 +73,7 @@ debug = pr.debug;
 
 BatchSize = pr.BatchSize;
 BlockSize = pr.BlockSize;
+zarrSubSize = pr.zarrSubSize;
 deconMaskFns = pr.deconMaskFns;
 
 tic
@@ -78,11 +82,13 @@ parseParfor = pr.parseParfor;
 jobLogDir = pr.jobLogDir;
 masterCompute = pr.masterCompute;
 cpusPerTask = pr.cpusPerTask;
-cpuOnlyNodes =  pr.cpuOnlyNodes;
 uuid = pr.uuid;
 if isempty(uuid)
     uuid = get_uuid();
 end
+mccMode = pr.mccMode;
+ConfigFile = pr.ConfigFile;
+GPUConfigFile = pr.GPUConfigFile;
 
 [dataPath, fsname, ext] = fileparts(frameFullpath);
 deconFullpath = sprintf('%s/%s.zarr', deconPath, fsname);
@@ -137,7 +143,6 @@ fprintf(['reading ' fsname '...\n'])
 
 % not consider edge erosion for now
 
-% dtype = class(im);
 if Save16bit
     dtype = 'uint16';
 else
@@ -145,7 +150,7 @@ else
 end
 
 if parseCluster
-    [parseCluster, job_log_fname, job_log_error_fname, slurm_constraint_str] = checkSlurmCluster(dataPath, jobLogDir, cpuOnlyNodes);
+    [parseCluster, job_log_fname, job_log_error_fname] = checkSlurmCluster(dataPath, jobLogDir);
 end
 
 zarrFlagPath = sprintf('%s/zarr_flag/%s_%s/', deconPath, fsname, uuid);
@@ -165,15 +170,16 @@ BorderSize = round((size(psf) + 10) / 2);
 scaleFactor = 1.0;
 
 % initialize zarr file
-init_val = zeros(1, dtype);
 if ~exist(deconTmppath, 'dir')
     try
-        decon_bim = blockedImage(deconTmppath, imSize, BlockSize, init_val, "Adapter", CZarrAdapter, 'Mode', 'w');
+        createzarr(deconTmppath, dataSize=imSize, blockSize=BlockSize, dtype=dtype, zarrSubSize=zarrSubSize);        
     catch ME
         disp(ME)
+        disp("Use alternative method (ZarrAdapter) to initialize the zarr file...");
+        init_val = zeros(1, dtype);
         decon_bim = blockedImage(deconTmppath, imSize, BlockSize, init_val, "Adapter", ZarrAdapter, 'Mode', 'w');
+        decon_bim.Adapter.close();
     end        
-    decon_bim.Adapter.close();
 end
 
 taskSize = 20; % the number of batches a job should process
@@ -186,16 +192,12 @@ if GPUJob
 
     maxJobNum = inf;
     cpusPerTask = 4;
-    cpuOnlyNodes = false;
     taskBatchNum = 1;
-    SlurmParam = '-p abc_a100 --qos abc_normal -n1 --mem=125G --gres=gpu:1';
     masterCompute = false;
 else
     maxJobNum = inf;
     % cpusPerTask = 24;
-    cpuOnlyNodes = false;
     taskBatchNum = 1;
-    SlurmParam = '-p abc --qos abc_normal -n1 --mem-per-cpu=21418M';
 end
 
 numTasks = ceil(numBatch / taskSize);
@@ -213,12 +215,12 @@ for i = 1 : numTasks
     Overwrite = false;
     deconMaskFns_str = sprintf('{''%s''}', strjoin(deconMaskFns, ''','''));
 
-    funcStrs{i} = sprintf(['RLdecon_for_zarr_block([%s],''%s'',''%s'',''%s'',''%s'',%s,%s,', ...
-        '%0.20d,%0.20d,''Save16bit'',%s,''Overwrite'',%s,''SkewAngle'',%0.20d,''flipZstack'',%s,', ...
-        '''Background'',%0.20d,''dzPSF'',%0.20d,''DeconIter'',%d,''RLMethod'',''%s'',', ...
-        '''wienerAlpha'',%0.20f,''OTFCumThresh'',%0.20f,''skewed'',[%s],''fixIter'',%s,', ...
-        '''scaleFactor'',%d,''useGPU'',%s,''deconMaskFns'',%s,''uuid'',''%s'',', ...
-        '''debug'',%s,''psfGen'',%s)'], ...
+    funcStrs{i} = sprintf(['RLdecon_for_zarr_block([%s],''%s'',''%s'',''%s'',', ...
+        '''%s'',%s,%s,%0.20d,%0.20d,''Save16bit'',%s,''Overwrite'',%s,''SkewAngle'',%0.20d,', ...
+        '''flipZstack'',%s,''Background'',%0.20d,''dzPSF'',%0.20d,''DeconIter'',%d,', ...
+        '''RLMethod'',''%s'',''wienerAlpha'',%0.20f,''OTFCumThresh'',%0.20f,', ...
+        '''skewed'',[%s],''fixIter'',%s,''scaleFactor'',%d,''useGPU'',%s,''deconMaskFns'',%s,', ...
+        '''uuid'',''%s'',''debug'',%s,''psfGen'',%s)'], ...
         strrep(num2str(batchInds, '%d,'), ' ', ''), frameFullpath, PSF, deconTmppath, zarrFlagFullpath, ...
         strrep(mat2str(batchBBoxes_i), ' ', ','), strrep(mat2str(regionBBoxes_i), ' ', ','), xyPixelSize, ...
         dz, string(Save16bit), string(Overwrite), SkewAngle, string(flipZstack), Background, dzPSF, ...
@@ -229,14 +231,21 @@ end
 inputFullpaths = repmat({frameFullpath}, numTasks, 1);
 % submit jobs
 if ~parseParfor
-    is_done_flag= slurm_cluster_generic_computing_wrapper(inputFullpaths, outputFullpaths, ...
-        funcStrs, 'cpusPerTask', cpusPerTask, 'cpuOnlyNodes', cpuOnlyNodes, 'SlurmParam', SlurmParam, ...
-        'maxJobNum', maxJobNum, 'taskBatchNum', taskBatchNum, 'masterCompute', masterCompute, 'parseCluster', parseCluster);
+    if GPUJob
+        cur_ConfigFile = GPUConfigFile;
+    else
+        cur_ConfigFile = ConfigFile;
+    end
+    is_done_flag= generic_computing_frameworks_wrapper(inputFullpaths, outputFullpaths, ...
+        funcStrs, 'cpusPerTask', cpusPerTask, 'maxJobNum', maxJobNum, 'taskBatchNum', taskBatchNum, ...
+        'masterCompute', masterCompute, 'parseCluster', parseCluster, 'mccMode', mccMode, ...
+        'ConfigFile', cur_ConfigFile);
 
     if ~all(is_done_flag)
-        slurm_cluster_generic_computing_wrapper(inputFullpaths, outputFullpaths, ...
-            funcStrs, 'cpusPerTask', cpusPerTask, 'cpuOnlyNodes', cpuOnlyNodes, 'SlurmParam', SlurmParam, ...
-            'maxJobNum', maxJobNum, 'taskBatchNum', taskBatchNum, 'masterCompute', masterCompute, 'parseCluster', parseCluster);
+        is_done_flag = generic_computing_frameworks_wrapper(inputFullpaths, outputFullpaths, ...
+            funcStrs, 'cpusPerTask', cpusPerTask, 'maxJobNum', maxJobNum, 'taskBatchNum', taskBatchNum, ...
+            'masterCompute', masterCompute, 'parseCluster', parseCluster, 'mccMode', mccMode, ...
+            'ConfigFile', cur_ConfigFile);
     end
 elseif parseParfor
     is_done_flag= matlab_parfor_generic_computing_wrapper(inputFullpaths, outputFullpaths, ...
@@ -260,7 +269,7 @@ if ~exist(deconMIPPath, 'dir')
     mkdir(deconMIPPath);
     fileattrib(deconMIPPath, '+w', 'g');
 end
-XR_MIP_zarr(deconFullpath, 'axis', [1, 1, 1]);
+XR_MIP_zarr(deconFullpath, axis=[1, 1, 1], mccMode=mccMode, ConfigFile=ConfigFile);
 toc
 
 end

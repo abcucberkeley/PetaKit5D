@@ -16,10 +16,11 @@ ip.addParameter('parseCluster', true, @islogical);
 ip.addParameter('parseParfor', false, @islogical);
 ip.addParameter('masterCompute', true, @islogical); % master node participate in the task computing. 
 ip.addParameter('jobLogDir', '../job_logs', @ischar);
-ip.addParameter('cpuOnlyNodes', true, @islogical);
 ip.addParameter('cpusPerTask', 1, @isnumeric);
 ip.addParameter('uuid', '', @ischar);
 ip.addParameter('debug', false, @islogical);
+ip.addParameter('mccMode', false, @islogical);
+ip.addParameter('ConfigFile', '', @ischar);
 
 ip.parse(zarrFullpath, cropFullpath, bbox, varargin{:});
 
@@ -31,8 +32,9 @@ parseCluster = pr.parseCluster;
 parseParfor = pr.parseParfor;
 jobLogDir = pr.jobLogDir;
 masterCompute = pr.masterCompute;
-cpuOnlyNodes = pr.cpuOnlyNodes;
 cpusPerTask = pr.cpusPerTask;
+mccMode = pr.mccMode;
+ConfigFile = pr.ConfigFile;
 
 uuid = pr.uuid;
 % uuid for the job
@@ -52,7 +54,7 @@ end
 fprintf('Start Large-file Cropping for %s...\n', fsname);
 
 if parseCluster
-    [parseCluster, job_log_fname, job_log_error_fname, slurm_constraint_str] = checkSlurmCluster(cropPath, jobLogDir, cpuOnlyNodes);
+    [parseCluster, job_log_fname, job_log_error_fname] = checkSlurmCluster(cropPath, jobLogDir);
 end
 
 tic
@@ -101,7 +103,6 @@ numTasks = ceil(numBatch / taskSize);
 
 maxJobNum = inf;
 taskBatchNum = 1;
-SlurmParam = '-p abc --qos abc_normal -n1 --mem-per-cpu=21418M';
 
 % get the function string for each batch
 funcStrs = cell(numTasks, 1);
@@ -122,17 +123,18 @@ end
 
 % submit jobs 
 inputFullpaths = repmat({zarrFullpath}, numTasks, 1);
-if parseCluster || ~parseParfor 
+if parseCluster || ~parseParfor
+    memAllocate = prod(batchBBoxes) * 4 * 2 / 1024^3;
     is_done_flag= slurm_cluster_generic_computing_wrapper(inputFullpaths, ...
-        outputFullpaths, funcStrs, 'cpusPerTask', cpusPerTask, 'cpuOnlyNodes', cpuOnlyNodes, ...
-        'SlurmParam', SlurmParam,  'maxJobNum', maxJobNum, 'taskBatchNum', taskBatchNum, ...
-        'masterCompute', masterCompute, 'parseCluster', parseCluster);
+        outputFullpaths, funcStrs, 'cpusPerTask', cpusPerTask, 'maxJobNum', maxJobNum, ...
+        'memAllocate', memAllocate, 'taskBatchNum', taskBatchNum, 'masterCompute', masterCompute, ...
+        'parseCluster', parseCluster, mccMode=mccMode, ConfigFile=ConfigFile);
 
     if ~all(is_done_flag)
-        is_done_flag = slurm_cluster_generic_computing_wrapper(inputFullpaths, ...
-            outputFullpaths,  funcStrs, 'cpusPerTask', cpusPerTask, 'cpuOnlyNodes', cpuOnlyNodes, ...
-            'SlurmParam', SlurmParam, 'maxJobNum', maxJobNum, 'taskBatchNum', taskBatchNum, ...
-            'masterCompute', masterCompute, 'parseCluster', parseCluster);
+        is_done_flag= slurm_cluster_generic_computing_wrapper(inputFullpaths, ...
+            outputFullpaths, funcStrs, 'cpusPerTask', cpusPerTask, 'maxJobNum', maxJobNum, ...
+            'memAllocate', memAllocate * 2, 'taskBatchNum', taskBatchNum, 'masterCompute', masterCompute, ...
+            'parseCluster', parseCluster, mccMode=mccMode, ConfigFile=ConfigFile);
     end
 elseif parseParfor
     GPUJob = false;

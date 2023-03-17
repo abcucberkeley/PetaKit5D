@@ -36,7 +36,6 @@ ip.addParameter('Crop', false, @islogical);
 ip.addParameter('SkewAngle', 32.45, @isscalar);
 ip.addParameter('Reverse', false, @islogical);
 ip.addParameter('Rotate', false, @islogical);
-ip.addParameter('CheckFrameMismatch', false, @islogical);
 ip.addParameter('InputBbox', [], @isnumeric); % bounding box apply to input
 ip.addParameter('flipZstack', false, @islogical);
 % sCMOS camera flip
@@ -170,7 +169,12 @@ if (~DSRCombined && (~exist(dsFullname, 'file') || ip.Results.Overwrite)) || DSR
         end                
     end
     if ~isempty(InputBbox)
-        frame = frame(InputBbox(1) : InputBbox(4), InputBbox(2) : InputBbox(5), InputBbox(3) : InputBbox(6));
+        try 
+            frame = crop3d_mex(frame, InputBbox);
+        catch ME
+            disp(ME);
+            frame = frame(InputBbox(1) : InputBbox(4), InputBbox(2) : InputBbox(5), InputBbox(3) : InputBbox(6));
+        end
     end
     
     if flipZstack

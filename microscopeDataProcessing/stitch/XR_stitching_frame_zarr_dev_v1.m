@@ -109,7 +109,6 @@ ip.addParameter('parseCluster', true, @islogical);
 ip.addParameter('masterCompute', true, @islogical); % master node participate in the task computing. 
 ip.addParameter('jobLogDir', '../job_logs', @ischar);
 ip.addParameter('cpusPerTask', 2, @isnumeric);
-ip.addParameter('cpuOnlyNodes', false, @islogical);
 ip.addParameter('uuid', '', @ischar);
 ip.addParameter('maxTrialNum', 3, @isnumeric);
 ip.addParameter('unitWaitTime', 30, @isnumeric);
@@ -159,7 +158,6 @@ resLevel = pr.resLevel;
 jobLogDir = pr.jobLogDir;
 parseCluster = pr.parseCluster;
 masterCompute = pr.masterCompute;
-cpuOnlyNodes = pr.cpuOnlyNodes;
 Save16bit = pr.Save16bit;
 EdgeArtifacts = pr.EdgeArtifacts;
 blockSize = pr.blockSize;
@@ -201,7 +199,7 @@ end
 
 % check if a slurm-based computing cluster exist
 if parseCluster 
-    [parseCluster, job_log_fname, job_log_error_fname, slurm_constraint_str, jobLogDir] = checkSlurmCluster(dataPath, jobLogDir, cpuOnlyNodes);
+    [parseCluster, job_log_fname, job_log_error_fname] = checkSlurmCluster(dataPath, jobLogDir);
 end
 
 if isempty(uuid)
@@ -415,7 +413,7 @@ XR_tiffToZarr_wrapper(tiffFullpaths, 'zarrPathstr', zarrPathstr, 'blockSize', ro
     'usrFcn', fn, 'flippedTile', zarr_flippedTile, 'resample', stitchResample, ...
     'partialFile', partialFile, 'InputBbox', InputBbox, 'tileOutBbox', tileOutBbox, ...
     'parseCluster', parseCluster, 'masterCompute', masterCompute, 'bigData', bigStitchData, ...
-    'cpuOnlyNodes', cpuOnlyNodes, 'mccMode', mccMode, 'ConfigFile', ConfigFile);
+    'mccMode', mccMode, 'ConfigFile', ConfigFile);
 
 % load all zarr headers as a cell array and get image size for all tiles
 imSizes = zeros(nF, 3);
@@ -748,7 +746,7 @@ if exist(nv_tmp_raw_fullname, 'dir')
     rmdir(nv_tmp_raw_fullname, 's');
 end
 
-createzarr(nv_tmp_raw_fullname, dataSize=[nys, nxs, nzs], blockSize=blockSize, ...
+createzarr(nv_tmp_raw_fullname, dataSize=[nys, nxs, nzs], BlockSize=blockSize, ...
     dtype=dtype, compressor=compressor, zarrSubSize=zarrSubSize);
 try
     nv_bim = blockedImage(nv_tmp_raw_fullname, 'Adapter', CZarrAdapter);
@@ -866,7 +864,7 @@ else
     [pstr, fsn] = fileparts(stitchInfoFullpath);
     PerBlockInfoPath = [pstr, '/', fsn];
 end
-imdistFullpaths_str = sprintf('{''%s''}', strjoin(imdistFullpaths, ''','''));    
+imdistFullpaths_str = sprintf("{'%s'}", strjoin(imdistFullpaths, ''','''));    
 for t = 1 : numTasks
     blockInds = (t - 1) * taskSize + 1 : min(t * taskSize, numBlocks);
 

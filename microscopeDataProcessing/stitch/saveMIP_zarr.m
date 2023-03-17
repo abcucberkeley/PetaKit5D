@@ -7,7 +7,7 @@ function saveMIP_zarr(zarrFullname, MIPFullname, dtype, axis)
 % method other than dask
 
 if nargin < 3
-    nv_bim = blockedImage(zarrFullname, 'Adapter', ZarrAdapter);
+    nv_bim = blockedImage(zarrFullname, 'Adapter', CZarrAdapter);
     dtype = nv_bim.ClassUnderlying;
 end
 if nargin < 4
@@ -46,6 +46,7 @@ try
     MIP = py.daskAPI.daskZarrMaxProjection(zarrFullname, axis_ind - 1);    
 catch ME
     disp(ME);
+    disp('Use matlab image block method for MIP computing...');
     try
         im = readzarr(zarrFullname);
         MIP = squeeze(max(im, [], axis_ind));
@@ -61,6 +62,7 @@ catch ME
         bmip = apply(nv_bim, @(bs) max(bs.Data, [], axis_ind), 'blockSize', blockSize);
         MIP = gather(bmip);
     end
+    disp('Done!');    
 end
 
 end

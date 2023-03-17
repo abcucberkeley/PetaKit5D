@@ -31,7 +31,7 @@ ip.addParameter('InputBbox', [], @(x) isnumeric(x));
 ip.addParameter('tileOutBbox', [], @(x) isempty(x) || isnumeric(x));
 ip.addParameter('readWholeTiff', true, @islogical);
 ip.addParameter('compressor', 'lz4', @ischar);
-ip.addParameter('usrFcn', '', @(x) isempty(x) || isa(x,'function_handle') || ischar(x));
+ip.addParameter('usrFcn', '', @(x) isempty(x) || isa(x,'function_handle') || ischar(x) || isstring(x));
 ip.addParameter('uuid', '', @ischar);
 
 ip.parse(tifFilename, zarrFilename, frame, varargin{:});
@@ -48,6 +48,8 @@ readWholeTiff = pr.readWholeTiff;
 compressor = pr.compressor;
 usrFcn = pr.usrFcn;
 uuid = pr.uuid;
+
+t0 = tic;
 
 % remove the last slash
 zarrFilename = strip(zarrFilename, 'right', '/');
@@ -192,9 +194,9 @@ if ~isempty(resample) && ~all(resample == 1)
 end
 sz = bim.Size;
 
-if ~isempty(usrFcn)
+if ~(isstring(usrFcn) || isempty(usrFcn)) || (isstring(usrFcn) && ~isempty(usrFcn{1}))
     disp(usrFcn)
-    if ischar(usrFcn)
+    if ischar(usrFcn) || isstring(usrFcn)
         usrFcn = str2func(usrFcn);
     end
     bim = apply(bim, @(bs) usrFcn(bs.Data), 'BlockSize', sz);
@@ -249,6 +251,7 @@ if exist(zarrFilename, 'dir')
     end
 end
 movefile(tmpFilename, zarrFilename);
+toc(t0);
 fprintf('Done!\n');
 
 end

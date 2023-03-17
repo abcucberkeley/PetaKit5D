@@ -48,8 +48,9 @@ ip.addParameter('skewed', [], @(x) isempty(x) || islogical(x)); % decon in skewe
 ip.addParameter('fixIter', false, @islogical); % CPU Memory in Gb
 ip.addParameter('errThresh', [], @isnumeric); % error threshold for simplified code
 ip.addParameter('CPUMaxMem', 500, @isnumeric); % CPU Memory in Gb
-ip.addParameter('BatchSize', [1024, 1024, 1024] , @isvector); % in y, x, z
+ip.addParameter('BatchSize', [1024, 1024, 1024] , @isnumeric); % in y, x, z
 ip.addParameter('BlockSize', [256, 256, 256], @isnumeric); % block overlap
+ip.addParameter('zarrSubSize', [], @isnumeric);
 ip.addParameter('largeFile', false, @islogical);
 ip.addParameter('largeMethod', 'MemoryJobs', @ischar); % memory jobs, memory single, inplace. 
 ip.addParameter('saveZarr', false, @islogical); % save as zarr
@@ -61,13 +62,15 @@ ip.addParameter('masterCPU', false, @islogical); % master node is a cpu node, wh
 ip.addParameter('GPUJob', false, @islogical); % use gpu for chuck deconvolution. 
 ip.addParameter('jobLogDir', '../job_logs', @ischar);
 ip.addParameter('cpusPerTask', 4, @isnumeric);
-ip.addParameter('cpuOnlyNodes', false, @islogical); % use gpu for chuck deconvolution. 
 ip.addParameter('uuid', '', @ischar);
 ip.addParameter('maxTrialNum', 3, @isnumeric);
 ip.addParameter('unitWaitTime', 2, @isnumeric);
 ip.addParameter('debug', false, @islogical);
 ip.addParameter('saveStep', 5, @isnumeric); % save intermediate results every given iterations
 ip.addParameter('psfGen', true, @islogical); % psf generation
+ip.addParameter('mccMode', false, @islogical);
+ip.addParameter('ConfigFile', '', @ischar);
+ip.addParameter('GPUConfigFile', '', @ischar);
 
 ip.parse(frameFullpaths, xyPixelSize, dz, varargin{:});
 
@@ -122,6 +125,7 @@ psfGen = pr.psfGen;
 CPUMaxMem = pr.CPUMaxMem;
 BatchSize = pr.BatchSize;
 BlockSize = pr.BlockSize;
+zarrSubSize = pr.zarrSubSize;
 largeFile = pr.largeFile;
 largeMethod = pr.largeMethod;
 saveZarr = pr.saveZarr;
@@ -131,10 +135,12 @@ parseCluster = pr.parseCluster;
 parseParfor = pr.parseParfor;
 jobLogDir = pr.jobLogDir;
 cpusPerTask = pr.cpusPerTask;
-cpuOnlyNodes = pr.cpuOnlyNodes;
 masterCompute = pr.masterCompute;
 maxTrialNum = pr.maxTrialNum;
 uuid = pr.uuid;
+mccMode = pr.mccMode;
+ConfigFile = pr.ConfigFile;
+GPUConfigFile = pr.GPUConfigFile;
 
 if isempty(uuid)
     uuid = get_uuid();
@@ -286,10 +292,11 @@ for f = 1 : nF
             'flipZstack', flipZstack, 'Background', Background, 'dzPSF', dzPSF, ...
             'DeconIter', DeconIter, 'RLMethod', RLMethod, 'skewed', skewed, ...
             'wienerAlpha', wienerAlpha, 'OTFCumThresh', OTFCumThresh, 'fixIter', fixIter, ...
-            'BatchSize', BatchSize, 'BlockSize', BlockSize, 'deconMaskFns', deconMaskFns, ...
-            'parseCluster', parseCluster, 'parseParfor', parseParfor, 'masterCompute', masterCompute, ...
-            'jobLogDir', jobLogDir,  'cpuOnlyNodes', cpuOnlyNodes, 'cpusPerTask', cpusPerTask, ...
-            'GPUJob', GPUJob, 'uuid', uuid, 'debug', debug, 'psfGen', psfGen);
+            'BatchSize', BatchSize, 'BlockSize', BlockSize, 'zarrSubSize', zarrSubSize, ...
+            'deconMaskFns', deconMaskFns, 'parseCluster', parseCluster, 'parseParfor', parseParfor, ...
+            'masterCompute', masterCompute, 'jobLogDir', jobLogDir, 'cpusPerTask', cpusPerTask, ...
+            'GPUJob', GPUJob, 'uuid', uuid, 'debug', debug, 'psfGen', psfGen, ...
+            'mccMode', mccMode, 'ConfigFile', ConfigFile, 'GPUConfigFile', GPUConfigFile);
         return;
     end
     
@@ -301,8 +308,8 @@ for f = 1 : nF
             'DeconIter', DeconIter, 'RLMethod', RLMethod, 'skewed', skewed, ...
             'wienerAlpha', wienerAlpha, 'OTFCumThresh', OTFCumThresh, 'EdgeErosion', EdgeErosion, ...
             'fixIter', fixIter,'BatchSize', BatchSize, 'saveZarr', saveZarr, ...
-            'deconMaskFns', deconMaskFns, 'cpuOnlyNodes', cpuOnlyNodes, 'cpusPerTask', cpusPerTask, ...
-            'useGPU', GPUJob, 'uuid', uuid, 'debug', debug, 'psfGen', psfGen);
+            'deconMaskFns', deconMaskFns, 'cpusPerTask', cpusPerTask, 'useGPU', GPUJob, ...
+            'uuid', uuid, 'debug', debug, 'psfGen', psfGen);
         return;
     end
 end

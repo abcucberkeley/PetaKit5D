@@ -23,7 +23,8 @@ ip.addParameter('parseCluster', true, @islogical);
 ip.addParameter('jobLogDir', '../job_logs', @ischar);
 ip.addParameter('cpusPerTask', 24, @isnumeric);
 ip.addParameter('uuid', '', @ischar);
-ip.addParameter('SlurmParam', '-p abc --qos abc_normal -n1 --mem-per-cpu=21418M', @ischar);
+ip.addParameter('mccMode', false, @islogical);
+ip.addParameter('ConfigFile', '', @ischar);
 
 ip.parse(dataPaths, varargin{:});
 
@@ -41,7 +42,8 @@ parseCluster = pr.parseCluster;
 jobLogDir = pr.jobLogDir;
 cpusPerTask = pr.cpusPerTask;
 uuid = pr.uuid;
-SlurmParam = pr.SlurmParam;
+mccMode = pr.mccMode;
+ConfigFile = pr.ConfigFile;
 
 % suppress directory exists warning
 warning('off', 'MATLAB:MKDIR:DirectoryExists');
@@ -64,8 +66,7 @@ end
 
 % check if a slurm-based computing cluster exists
 if parseCluster
-    cpuOnlyNodes = false;
-    [parseCluster, job_log_fname, job_log_error_fname, slurm_constraint_str, jobLogDir] = checkSlurmCluster(dataPath, jobLogDir, cpuOnlyNodes);
+    [parseCluster, job_log_fname, job_log_error_fname, slurm_constraint_str] = checkSlurmCluster(dataPath, jobLogDir);
 end
 
 % handle output directories.
@@ -138,9 +139,9 @@ for d = 1 : nd
 end
 
 % use slurm job wrapper for computing
-slurm_cluster_generic_computing_wrapper(inputFullpaths, outputFullpaths, func_strs, ...
-    'cpusPerTask', cpusPerTask, 'cpuOnlyNodes', false, 'parseCluster', parseCluster, ...
-    'SlurmParam', SlurmParam, 'language', 'bash');
+generic_computing_frameworks_wrapper(inputFullpaths, outputFullpaths, func_strs, ...
+    'cpusPerTask', cpusPerTask, 'parseCluster', parseCluster, 'language', 'bash', ...
+    mccMode=mccMode, ConfigFile=ConfigFile);
 
 end
 

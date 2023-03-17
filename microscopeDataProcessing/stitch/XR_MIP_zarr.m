@@ -9,16 +9,14 @@ function XR_MIP_zarr(zarrFullpath, varargin)
 
 ip = inputParser;
 ip.CaseSensitive = false;
-ip.addRequired('zarrFullpath', @(x) ischar(x) || iscell(x));
+ip.addRequired('zarrFullpath', @(x) ischar(x));
 ip.addParameter('axis', [0, 0, 1], @isnumeric); % y, x, z
 ip.addParameter('BatchSize', [2048, 2048, 2048] , @isvector); % in y, x, z
 ip.addParameter('BlockSize', [2048, 2048, 2048] , @isvector); % in y, x, z
 ip.addParameter('parseCluster', true, @islogical);
 ip.addParameter('parseParfor', false, @islogical);
+ip.addParameter('jobLogDir', '../job_logs/', @ischar);
 ip.addParameter('masterCompute', true, @islogical); % master node participate in the task computing. 
-ip.addParameter('jobLogDir', '../job_logs', @ischar);
-ip.addParameter('cpuOnlyNodes', ~true, @islogical);
-ip.addParameter('cpusPerTask', 3, @isnumeric);
 ip.addParameter('mccMode', false, @islogical);
 ip.addParameter('ConfigFile', '', @ischar);
 ip.addParameter('uuid', '', @ischar);
@@ -33,8 +31,6 @@ parseCluster = pr.parseCluster;
 parseParfor = pr.parseParfor;
 jobLogDir = pr.jobLogDir;
 masterCompute = pr.masterCompute;
-cpuOnlyNodes = pr.cpuOnlyNodes;
-cpusPerTask = pr.cpusPerTask;
 mccMode = pr.mccMode;
 ConfigFile = pr.ConfigFile;
 
@@ -66,10 +62,6 @@ if all(done_flag)
 end
 
 fprintf('Start Large-file MIP for %s...\n', fsname);
-
-if parseCluster
-    [parseCluster, job_log_fname, job_log_error_fname, slurm_constraint_str] = checkSlurmCluster(dataPath, jobLogDir, cpuOnlyNodes);
-end
 
 tic
 zarrFlagPath = sprintf('%s/zarr_flag/%s_%s/', MIPPath, fsname, uuid);
@@ -172,19 +164,16 @@ end
 % submit jobs 
 inputFullpaths = repmat({zarrFullpath}, numTasks, 1);
 if parseCluster || ~parseParfor
-    memAllocate = prod(BatchSize) * 4 / 2^30 * 2.5;
-    is_done_flag= generic_computing_frameworks_wrapper(inputFullpaths, outputFullpaths, ...
-        funcStrs, 'cpusPerTask', cpusPerTask, 'cpuOnlyNodes', cpuOnlyNodes, ...
-        'memAllocate', memAllocate, 'maxJobNum', maxJobNum, 'taskBatchNum', taskBatchNum, ...
-        'masterCompute', masterCompute, 'parseCluster', parseCluster, 'mccMode', mccMode, ...
-        'ConfigFile', ConfigFile);
-
-    if ~all(is_done_flag)
-        generic_computing_frameworks_wrapper(inputFullpaths, outputFullpaths, ...
-            funcStrs, 'cpusPerTask', cpusPerTask, 'cpuOnlyNodes', cpuOnlyNodes, ...
-            'memAllocate', memAllocate, 'maxJobNum', maxJobNum, 'taskBatchNum', taskBatchNum, ...
-            'masterCompute', masterCompute, 'parseCluster', parseCluster, 'mccMode', mccMode, ...
-            'ConfigFile', ConfigFile);
+    memAllocate = prod(BatchSize) * 4 / 2^30 * 1.5;
+    is_done_flag = false;    
+    for i = 1 : 3
+        if all(is_done_flag)
+            break;
+        end
+        is_done_flag = generic_computing_frameworks_wrapper(inputFullpaths, outputFullpaths, ...
+            funcStrs, 'memAllocate', memAllocate * 2 * i, 'maxJobNum', maxJobNum, ...
+            'taskBatchNum', taskBatchNum, 'masterCompute', masterCompute, 'parseCluster', parseCluster, ...
+            'jobLogDir', jobLogDir, 'mccMode', mccMode, 'ConfigFile', ConfigFile);
     end
 elseif parseParfor
     GPUJob = false;

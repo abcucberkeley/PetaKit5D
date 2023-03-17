@@ -141,7 +141,6 @@ ip.addParameter('parseCluster', true, @islogical);
 ip.addParameter('masterCompute', true, @islogical); % master node participate in the task computing. 
 ip.addParameter('jobLogDir', '../job_logs', @ischar);
 ip.addParameter('cpusPerTask', 8, @isnumeric);
-ip.addParameter('cpuOnlyNodes', false, @islogical);
 ip.addParameter('uuid', '', @ischar);
 ip.addParameter('maxTrialNum', 3, @isnumeric);
 ip.addParameter('unitWaitTime', 0.1, @isnumeric);
@@ -203,7 +202,6 @@ processFunPath = pr.processFunPath;
 jobLogDir = pr.jobLogDir;
 parseCluster = pr.parseCluster;
 masterCompute = pr.masterCompute;
-cpuOnlyNodes = pr.cpuOnlyNodes;
 uuid = pr.uuid;
 maxTrialNum = pr.maxTrialNum;
 unitWaitTime = pr.unitWaitTime;
@@ -259,7 +257,7 @@ end
 
 % check if a slurm-based computing cluster exists
 if parseCluster
-    [parseCluster, job_log_fname, job_log_error_fname, slurm_constraint_str, jobLogDir] = checkSlurmCluster(dataPath, jobLogDir, cpuOnlyNodes);
+    [parseCluster, job_log_fname, job_log_error_fname] = checkSlurmCluster(dataPath, jobLogDir);
 end
 
 % uuid for the job
@@ -614,7 +612,7 @@ while ~all(is_done_flag | trial_counter >= max_trial_num, 'all')
                             '''axisWeight'',[%s],''groupFile'',''%s'',''isPrimaryCh'',%s,''usePrimaryCoords'',%s,''padSize'',[%s],', ...
                             '''boundboxCrop'',[%s],''zNormalize'',%s,''Save16bit'',%s,''tileIdx'',%s,''flippedTile'',[%s],', ...
                             '''processFunPath'',''%s'',''stitchMIP'',%s,''bigStitchData'',%s,''EdgeArtifacts'',%0.10f,', ...
-                            '''parseCluster'',%s,''cpuOnlyNodes'',%s,''mccMode'',%s,''ConfigFile'',''%s'')'], ...
+                            '''parseCluster'',%s,''mccMode'',%s,''ConfigFile'',''%s'')'], ...
                             stitch_function_str, tile_fullpaths_str, xyz_str, axisOrder, px, dz, SkewAngle, string(Reverse), ...
                             string(ObjectiveScan), string(IOScan), stitch_save_fname, tileInfoFullpath, stitchInfoDir, ...
                             stitchInfoFullpath, ProcessedDirStr, string(DS), string(DSR), strrep(mat2str(blockSize), ' ', ','), ...
@@ -625,13 +623,13 @@ while ~all(is_done_flag | trial_counter >= max_trial_num, 'all')
                             string(usePrimaryCoords), num2str(padSize, '%d,'), strrep(num2str(boundboxCrop, '%d,'), ' ', ''), ...
                             string(zNormalize), string(Save16bit), tileIdx_str, strrep(num2str(flippedTile, '%d,'), ' ', ''), ...
                             processFunPath{cind}, strrep(mat2str(stitchMIP), ' ', ','), string(bigStitchData), EdgeArtifacts, ...
-                            string(parseCluster), string(cpuOnlyNodes), string(mccMode), ConfigFile);
+                            string(parseCluster), string(mccMode), ConfigFile);
 
                         if exist(cur_tmp_fname, 'file') || (parseCluster && ~(masterCompute && xcorrShift && strcmpi(xcorrMode, 'primaryFirst') && isPrimaryCh))
                             % for cluster computing with master, check whether the job still alive. Otherwise, use waiting time
                             % for the check
                             if parseCluster
-                                if ~(masterCompute && f == lastF)
+                                if ~(masterCompute && f == lastF && job_ids(f) == 0)
                                     if useProcessedData
                                         dir_info = dir(tile_processed_fullpaths{1});
                                     else
@@ -640,14 +638,14 @@ while ~all(is_done_flag | trial_counter >= max_trial_num, 'all')
                                     datasize = dir_info.bytes;
                                     totalSize = datasize * numel(tile_fullpaths);
                                     % assume for double
-                                    totalDsize = totalSize * 8 / 1024^3;
+                                    totalDsize = totalSize * 4 / 1024^3;
                                     if strcmp(BlendMethod, 'mean') || strcmp(BlendMethod, 'median')
                                         mem_factor = 10;
                                     else
                                         mem_factor = 8;
                                     end
                                     if strcmp(pipeline, 'zarr')
-                                        mem_factor = 0.5;
+                                        mem_factor = 2;
                                     end
     
                                     % allocate 5 time of the size
@@ -655,12 +653,13 @@ while ~all(is_done_flag | trial_counter >= max_trial_num, 'all')
                                     job_id = job_ids(n, ncam, s, c, z);
                                     task_id = rem(f, 5000);
     
-                                    [job_id] = generic_single_job_submit_wrapper(func_str, job_id, task_id, ...
-                                        'jobLogFname', job_log_fname, 'jobErrorFname', job_log_error_fname', ...
-                                        'slurmConstraint', slurm_constraint_str, allocateMem=allocateMem, ...
+                                    [job_id, ~, submit_status] = generic_single_job_submit_wrapper(func_str, job_id, task_id, ...
+                                        'jobLogFname', job_log_fname, 'jobErrorFname', job_log_error_fname, ...
+                                        masterCompute=masterCompute, lastFile=f==lastF, allocateMem=allocateMem, ...
                                         mccMode=mccMode, ConfigFile=ConfigFile);
     
                                     job_ids(n, ncam, s, c, z) = job_id;
+                                    trial_counter(n, ncam, s, c, z) = trial_counter(n, ncam, s, c, z) + submit_status;
                                 end
                             else
                                 per_file_wait_time = unitWaitTime; % minite
@@ -704,7 +703,7 @@ while ~all(is_done_flag | trial_counter >= max_trial_num, 'all')
     % wait 30 seconds if some tasks are still computing
     if ~all(is_done_flag | trial_counter >= max_trial_num, 'all') || ...
             (parseCluster && any(job_status_flag & ~is_done_flag, 'all'))
-        pause(30);
+        pause(5);
     end
 end
 

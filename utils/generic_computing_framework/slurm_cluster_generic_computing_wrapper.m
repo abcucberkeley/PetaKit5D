@@ -29,7 +29,6 @@ ip.addParameter('masterCompute', true, @islogical); % master node participate in
 ip.addParameter('jobLogDir', '../job_logs', @ischar);
 ip.addParameter('tmpDir', '', @ischar);
 ip.addParameter('cpusPerTask', 1, @isnumeric);
-ip.addParameter('cpuOnlyNodes', ~true, @islogical);
 ip.addParameter('uuid', '', @ischar);
 ip.addParameter('maxTrialNum', 3, @isnumeric);
 ip.addParameter('unitWaitTime', 30, @isnumeric);
@@ -38,6 +37,7 @@ ip.addParameter('taskBatchNum', 1, @isnumeric); % aggragate several tasks togeth
 ip.addParameter('MatlabLaunchStr', 'module load matlab/r2022a; matlab -nodisplay -nosplash -nodesktop -nojvm -r', @ischar);
 ip.addParameter('BashLaunchStr', '', @ischar);
 ip.addParameter('SlurmParam', '-p abc --qos abc_normal -n1 --mem-per-cpu=21418M', @ischar);
+ip.addParameter('SlurmConstraint', '', @ischar);
 ip.addParameter('jobTimeLimit', 24, @isnumeric); % in hour, [] means no limit
 ip.addParameter('language', 'matlab', @ischar); % support matlab, bash
 
@@ -57,13 +57,13 @@ tmpDir = pr.tmpDir;
 parseCluster = pr.parseCluster;
 masterCompute = pr.masterCompute;
 cpusPerTask = pr.cpusPerTask;
-cpuOnlyNodes = pr.cpuOnlyNodes;
 maxTrialNum = pr.maxTrialNum;
 unitWaitTime = pr.unitWaitTime;
 maxJobNum = pr.maxJobNum;
 taskBatchNum = pr.taskBatchNum;
 uuid = pr.uuid;
 SlurmParam = pr.SlurmParam;
+SlurmConstraint = pr.SlurmConstraint;
 jobTimeLimit = pr.jobTimeLimit;
 MatlabLaunchStr = pr.MatlabLaunchStr;
 BashLaunchStr = pr.BashLaunchStr;
@@ -81,7 +81,7 @@ end
 
 % check if a slurm-based computing cluster exist
 if parseCluster 
-    [parseCluster, job_log_fname, job_log_error_fname, slurm_constraint_str] = checkSlurmCluster(dataPath, jobLogDir, cpuOnlyNodes);
+    [parseCluster, job_log_fname, job_log_error_fname] = checkSlurmCluster(dataPath, jobLogDir);
     time_str = '';
     if ~isempty(jobTimeLimit) && ~(contains(SlurmParam, ' -t ') || contains(SlurmParam, '--time'))
         % only round to minutes (minimum 1 minute);
@@ -117,6 +117,10 @@ if parseCluster
     task_ids = task_ids(:)';
     task_ids = task_ids(1 : nF);
     task_ids = rem(task_ids, 5000);
+    fprintf('Task number : %d, task batch size : %d, task batch number : %d\n', ...
+        nF, taskBatchNum, nB);
+else
+    fprintf('Task number : %d\n', nF);    
 end
 
 loop_counter = 0;
@@ -297,13 +301,13 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
                         cmd = sprintf(['sbatch --array=%d -o %s -e %s --cpus-per-task=%d %s %s %s ', ...
                             '--wrap="echo Matlab command:  \\\"%s\\\"; %s"'], ...
                             task_id, job_log_fname, job_log_error_fname, cpusPerTask, SlurmParam, ...
-                            slurm_constraint_str, time_str, matlab_cmd, process_cmd);
+                            SlurmConstraint, time_str, matlab_cmd, process_cmd);
                     elseif strcmpi(language, 'bash')
                         % process_cmd = func_str;
                         cmd = sprintf(['sbatch --array=%d -o %s -e %s --cpus-per-task=%d %s %s %s ', ...
                             '--wrap="echo $PWD; echo bash command:  \\\"%s\\\";  %s; %s"'], ...
                             task_id, job_log_fname, job_log_error_fname, cpusPerTask, SlurmParam, ...
-                            slurm_constraint_str, time_str, func_str, BashLaunchStr, func_str);
+                            SlurmConstraint, time_str, func_str, BashLaunchStr, func_str);
                     end
                     [status, cmdout] = system(cmd, '-echo');
                     if isempty(cmdout) || isempty(regexp(cmdout, 'Submitted batch job (\d+)\n', 'match'))

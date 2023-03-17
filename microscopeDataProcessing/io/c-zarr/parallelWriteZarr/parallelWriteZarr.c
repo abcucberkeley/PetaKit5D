@@ -24,13 +24,13 @@
 //mex -v COPTIMFLAGS="-DNDEBUG -O3" CFLAGS='$CFLAGS -fopenmp -O3' LDFLAGS='$LDFLAGS -fopenmp -O3' '-I/global/home/groups/software/sl-7.x86_64/modules/cBlosc/2.0.4/include/' '-I/global/home/groups/software/sl-7.x86_64/modules/cBlosc/zarr/include/' '-I/global/home/groups/software/sl-7.x86_64/modules/cJSON/1.7.15/include/' '-L/global/home/groups/software/sl-7.x86_64/modules/cBlosc/zarr/lib' -lblosc '-L/global/home/groups/software/sl-7.x86_64/modules/cBlosc/2.0.4/lib64' -lblosc2 '-L/global/home/groups/software/sl-7.x86_64/modules/cJSON/1.7.15/lib64' -lcjson -luuid parallelWriteZarr.c helperFunctions.c parallelReadZarr.c
 
 //With zlib
-//mex -v COPTIMFLAGS="-DNDEBUG -O3" LDOPTIMFLAGS="-O3 -DNDEBUG" CFLAGS='$CFLAGS -fopenmp -O3' LDFLAGS='$LDFLAGS -fopenmp -O3' '-I/global/home/groups/software/sl-7.x86_64/modules/cBlosc/2.0.4/include/' '-I/global/home/groups/software/sl-7.x86_64/modules/cBlosc/zarr/include/' '-I/global/home/groups/software/sl-7.x86_64/modules/cJSON/1.7.15/include/' '-L/global/home/groups/software/sl-7.x86_64/modules/cBlosc/zarr/lib' -lblosc '-L/global/home/groups/software/sl-7.x86_64/modules/cBlosc/2.0.4/lib64' -lblosc2 '-L/global/home/groups/software/sl-7.x86_64/modules/cJSON/1.7.15/lib64' -lcjson -luuid -lz parallelWriteZarr.c helperFunctions.c parallelReadZarr.c
+//mex -v COPTIMFLAGS="-DNDEBUG -O3" LDOPTIMFLAGS="-Wl',-rpath='''$ORIGIN'''' -O3 -DNDEBUG" CFLAGS='$CFLAGS -fopenmp -O3' LDFLAGS='$LDFLAGS -fopenmp -O3' '-I/global/home/groups/software/sl-7.x86_64/modules/cBlosc/2.0.4/include/' '-I/global/home/groups/software/sl-7.x86_64/modules/cBlosc/zarr/include/' '-I/global/home/groups/software/sl-7.x86_64/modules/cJSON/1.7.15/include/' '-L/global/home/groups/software/sl-7.x86_64/modules/cBlosc/zarr/lib' -lblosc '-L/global/home/groups/software/sl-7.x86_64/modules/cBlosc/2.0.4/lib64' -lblosc2 '-L/global/home/groups/software/sl-7.x86_64/modules/cJSON/1.7.15/lib64' -lcjson -luuid -lz parallelWriteZarr.c helperFunctions.c parallelReadZarr.c
 
 //mex -v COPTIMFLAGS="-O3 -fwrapv -DNDEBUG" CFLAGS='$CFLAGS -O3 -fopenmp' LDFLAGS='$LDFLAGS -O3 -fopenmp' '-I/global/home/groups/software/sl-7.x86_64/modules/cBlosc/2.0.4/include/' '-L/global/home/groups/software/sl-7.x86_64/modules/cBlosc/2.0.4/lib64' -lblosc2 zarrMex.c
 //
 //Windows
 //mex -v COPTIMFLAGS="-O3 -DNDEBUG" CFLAGS='$CFLAGS -O3 -fopenmp' LDFLAGS='$LDFLAGS -O3 -fopenmp' '-IC:\Program Files (x86)\bloscZarr\include' '-LC:\Program Files (x86)\bloscZarr\lib' -lblosc '-IC:\Program Files (x86)\cJSON\include\' '-LC:\Program Files (x86)\cJSON\lib' -lcjson '-IC:\Program Files (x86)\blosc\include' '-LC:\Program Files (x86)\blosc\lib' -lblosc2 parallelWriteZarr.c parallelReadZarr.c helperFunctions.c
-void parallelWriteZarrMex(void* zarr, char* folderName,uint64_t startX, uint64_t startY, uint64_t startZ, uint64_t endX, uint64_t endY,uint64_t endZ,uint64_t chunkXSize,uint64_t chunkYSize,uint64_t chunkZSize,uint64_t shapeX,uint64_t shapeY,uint64_t shapeZ,uint64_t origShapeX,uint64_t origShapeY,uint64_t origShapeZ, uint64_t bits, char order, uint8_t useUuid, uint8_t crop, char* cname, uint64_t clevel){
+void parallelWriteZarrMex(void* zarr, char* folderName,uint64_t startX, uint64_t startY, uint64_t startZ, uint64_t endX, uint64_t endY,uint64_t endZ,uint64_t chunkXSize,uint64_t chunkYSize,uint64_t chunkZSize,uint64_t shapeX,uint64_t shapeY,uint64_t shapeZ,uint64_t origShapeX,uint64_t origShapeY,uint64_t origShapeZ, uint64_t bits, char order, uint8_t useUuid, uint8_t crop, char* cname, uint64_t clevel, uint64_t subfolderSizeX, uint64_t subfolderSizeY, uint64_t subfolderSizeZ){
     char fileSepS[2];
     const char fileSep =
     #ifdef _WIN32
@@ -62,13 +62,6 @@ void parallelWriteZarrMex(void* zarr, char* folderName,uint64_t startX, uint64_t
     uint64_t zRest = 0;
     
     uint64_t uuidLen;
-    #ifdef __linux__
-    uuidLen = 36;
-    uuid_t binuuid;
-    uuid_generate_random(binuuid);
-    char *uuid = malloc(uuidLen+1);
-    uuid_unparse(binuuid, uuid);
-    #endif
     #ifdef _WIN32
     uuidLen = 5;
     char *uuid = malloc(uuidLen+1);
@@ -84,6 +77,12 @@ void parallelWriteZarrMex(void* zarr, char* folderName,uint64_t startX, uint64_t
     srand(aSeed);
     sprintf(uuid,"%.5d",rand() % 99999);
     free(seedArr);
+    #else
+    uuidLen = 36;
+    uuid_t binuuid;
+    uuid_generate_random(binuuid);
+    char *uuid = malloc(uuidLen+1);
+    uuid_unparse(binuuid, uuid);
     #endif
     int err = 0;
     char errString[10000];
@@ -95,10 +94,15 @@ void parallelWriteZarrMex(void* zarr, char* folderName,uint64_t startX, uint64_t
             if(f>=cI.numChunks || err) break;
             struct chunkAxisVals cAV = getChunkAxisVals(cI.chunkNames[f]);
             void* cRegion = NULL;
+            char* subfolderName = getSubfolderString(&cAV,subfolderSizeX,subfolderSizeY,subfolderSizeZ);
+            if(!subfolderName){
+                subfolderName = malloc(1);
+                subfolderName[0] = '\0';
+            }
             if(crop && ((((cAV.x)*chunkXSize) < startX || ((cAV.x+1)*chunkXSize > endX && endX < origShapeX))
             || (((cAV.y)*chunkYSize) < startY || ((cAV.y+1)*chunkYSize > endY && endY < origShapeY))
             || (((cAV.z)*chunkZSize) < startZ || ((cAV.z+1)*chunkZSize > endZ && endZ < origShapeZ)))){
-                cRegion = parallelReadZarrWrapper(folderName, crop, ((cAV.x)*chunkXSize)+1, ((cAV.y)*chunkYSize)+1, ((cAV.z)*chunkZSize)+1, (cAV.x+1)*chunkXSize, (cAV.y+1)*chunkYSize, (cAV.z+1)*chunkZSize);
+                cRegion = parallelReadZarrWrapper(folderName, crop, subfolderName, ((cAV.x)*chunkXSize)+1, ((cAV.y)*chunkYSize)+1, ((cAV.z)*chunkZSize)+1, (cAV.x+1)*chunkXSize, (cAV.y+1)*chunkYSize, (cAV.z+1)*chunkZSize);
             }
             if(order == 'F'){
                 for(int64_t z = cAV.z*chunkZSize; z < (cAV.z+1)*chunkZSize; z++){
@@ -307,9 +311,12 @@ void parallelWriteZarrMex(void* zarr, char* folderName,uint64_t startX, uint64_t
                 csize = csize - stream.avail_out;
             }
             //malloc +2 for null term and filesep
-            char *fileName = malloc(strlen(folderName)+1+strlen(cI.chunkNames[f])+uuidLen+1);
+
+            char* fileName = malloc(strlen(folderName)+1+strlen(subfolderName)+1+strlen(cI.chunkNames[f])+uuidLen+1);
             fileName[0] = '\0';
             strcat(fileName,folderName);
+            strcat(fileName,fileSepS);
+            strcat(fileName,subfolderName);
             strcat(fileName,fileSepS);
             strcat(fileName,cI.chunkNames[f]);
             
@@ -317,19 +324,19 @@ void parallelWriteZarrMex(void* zarr, char* folderName,uint64_t startX, uint64_t
             
             if(useUuid){
                 strcat(fileName,uuid);
-                char* fileNameFinal = strndup(fileName,strlen(folderName)+1+strlen(cI.chunkNames[f]));
+                char* fileNameFinal = strndup(fileName,strlen(folderName)+1+strlen(subfolderName)+1+strlen(cI.chunkNames[f]));
                 FILE *fileptr = fopen(fileName, "w+b");
                 fwrite(chunkC,csize,1,fileptr);
                 fclose(fileptr);
                 rename(fileName,fileNameFinal);
                 free(fileNameFinal);
             }
-            else{
-                
+            else{               
                 FILE *fileptr = fopen(fileName, "w+b");
                 fwrite(chunkC,csize,1,fileptr);
                 fclose(fileptr);
             }
+            free(subfolderName);
             free(fileName);
             free(cRegion);
         }
@@ -364,12 +371,15 @@ void mexFunction(int nlhs, mxArray *plhs[],
     uint8_t crop = 0;
     char* cname = NULL;
     uint64_t clevel = 5;
+    uint64_t subfolderSizeX = 0;
+    uint64_t subfolderSizeY = 0;
+    uint64_t subfolderSizeZ = 0;
 
     // Dims are 1 by default
     uint64_t iDims[3] = {1,1,1};
 
     if(nrhs < 3) mexErrMsgIdAndTxt("zarr:inputError","This functions requires at least 3 arguments");
-    else if(nrhs == 4 || nrhs == 5){
+    else if(nrhs == 4 || nrhs == 5 || nrhs == 6){
         if(mxGetN(prhs[3]) == 6){
             crop = 1;
             startX = (uint64_t)*(mxGetPr(prhs[3]))-1;
@@ -387,13 +397,19 @@ void mexFunction(int nlhs, mxArray *plhs[],
             if(startX+1 < 1 || startY+1 < 1 || startZ+1 < 1) mexErrMsgIdAndTxt("zarr:inputError","Lower bounds must be at least 1");
             if(endX-startX > iDims[0] || endY-startY > iDims[1] || endZ-startZ > iDims[2]) mexErrMsgIdAndTxt("zarr:inputError","Bounds are invalid for the input data size");
             
-            if(nrhs == 5){
+            if(nrhs >= 5){
                 cname = mxArrayToString(prhs[4]);
+            }
+            if(nrhs == 6){
+                if(mxGetN(prhs[5]) != 3) mexErrMsgIdAndTxt("zarr:inputError","subfolders must be an array of 3 numbers\n");
+                subfolderSizeX = (uint64_t)*(mxGetPr(prhs[5]));
+                subfolderSizeY = (uint64_t)*((mxGetPr(prhs[5])+1));
+                subfolderSizeZ = (uint64_t)*((mxGetPr(prhs[5])+2));
             }
         }
         else if(mxGetN(prhs[3]) != 3) mexErrMsgIdAndTxt("zarr:inputError","Input range is not 6 or 3");
     }
-    else if (nrhs > 5) mexErrMsgIdAndTxt("zarr:inputError","Number of input arguments must be 4 or less");
+    else if (nrhs > 6) mexErrMsgIdAndTxt("zarr:inputError","Number of input arguments must be 4 or less");
     if(!mxIsChar(prhs[0])) mexErrMsgIdAndTxt("zarr:inputError","The first argument must be a string");
     char* folderName = mxArrayToString(prhs[0]);
     // Handle the tilde character in filenames on Linux/Mac
@@ -475,11 +491,12 @@ void mexFunction(int nlhs, mxArray *plhs[],
             mkdir(folderName);
             #endif
             chmod(folderName, 0775);
+            createSubfolders(folderName,shapeX,shapeY,shapeZ,chunkXSize,chunkYSize,chunkZSize,subfolderSizeX,subfolderSizeY,subfolderSizeZ);
         }
         
         
-        setJSONValues(folderName,&chunkXSize,&chunkYSize,&chunkZSize,dtype,&order,&shapeX,&shapeY,&shapeZ,cname,&clevel);
-        setValuesFromJSON(folderName,&chunkXSize,&chunkYSize,&chunkZSize,dtype,&order,&shapeX,&shapeY,&shapeZ,&cname,&clevel);
+        setJSONValues(folderName,&chunkXSize,&chunkYSize,&chunkZSize,dtype,&order,&shapeX,&shapeY,&shapeZ,cname,&clevel,&subfolderSizeX,&subfolderSizeY,&subfolderSizeZ);
+        setValuesFromJSON(folderName,&chunkXSize,&chunkYSize,&chunkZSize,dtype,&order,&shapeX,&shapeY,&shapeZ,&cname,&clevel,&subfolderSizeX,&subfolderSizeY,&subfolderSizeZ);
         //}
         
     }
@@ -495,6 +512,7 @@ void mexFunction(int nlhs, mxArray *plhs[],
             if(endX-startX != iDims[0] || endY-startY != iDims[1] || endZ-startZ != iDims[2]) mexErrMsgIdAndTxt("zarr:inputError","Bounding box size does not match the size of the input data");
         }
         else {
+            
             #ifdef __linux__
             mkdir(folderName, 0775);
             #endif
@@ -502,13 +520,14 @@ void mexFunction(int nlhs, mxArray *plhs[],
             mkdir(folderName);
             #endif
             chmod(folderName, 0775);
-            setJSONValues(folderName,&chunkXSize,&chunkYSize,&chunkZSize,dtype,&order,&shapeX,&shapeY, &shapeZ,cname,&clevel);
+            createSubfolders(folderName,shapeX,shapeY,shapeZ,chunkXSize,chunkYSize,chunkZSize,subfolderSizeX,subfolderSizeY,subfolderSizeZ);
+            setJSONValues(folderName,&chunkXSize,&chunkYSize,&chunkZSize,dtype,&order,&shapeX,&shapeY, &shapeZ,cname,&clevel,&subfolderSizeX,&subfolderSizeY,&subfolderSizeZ);
         }
         
         char dtypeT[4];
         for(int i = 0; i < 4; i++) dtypeT[i] = dtype[i];
         
-        setValuesFromJSON(folderName,&chunkXSize,&chunkYSize,&chunkZSize,dtype,&order,&shapeX,&shapeY,&shapeZ,&cname,&clevel);
+        setValuesFromJSON(folderName,&chunkXSize,&chunkYSize,&chunkZSize,dtype,&order,&shapeX,&shapeY,&shapeZ,&cname,&clevel,&subfolderSizeX,&subfolderSizeY,&subfolderSizeZ);
         
         if(dtypeT[2] != dtype[2]){
             uint64_t size = (endX-startX)*(endY-startY)*(endZ-startZ);
@@ -649,28 +668,28 @@ void mexFunction(int nlhs, mxArray *plhs[],
         uint8_t* zarr;
         if(zarrC) zarr = (uint8_t*)zarrC;
         else zarr =  (uint8_t*)mxGetPr(prhs[1]);
-        parallelWriteZarrMex((void*)zarr,folderName,startX,startY,startZ,endX,endY,endZ,chunkXSize,chunkYSize,chunkZSize,shapeX,shapeY,shapeZ, origShapeX, origShapeY,origShapeZ, bits,order,useUuid,crop,cname,clevel);
+        parallelWriteZarrMex((void*)zarr,folderName,startX,startY,startZ,endX,endY,endZ,chunkXSize,chunkYSize,chunkZSize,shapeX,shapeY,shapeZ, origShapeX, origShapeY,origShapeZ, bits,order,useUuid,crop,cname,clevel,subfolderSizeX,subfolderSizeY,subfolderSizeZ);
     }
     else if(dtype[1] == 'u' && dtype[2] == '2'){
         uint64_t bits = 16;
         uint16_t* zarr;
         if(zarrC) zarr = (uint16_t*)zarrC;
         else zarr = (uint16_t*)mxGetPr(prhs[1]);
-        parallelWriteZarrMex((void*)zarr,folderName,startX,startY,startZ,endX,endY,endZ,chunkXSize,chunkYSize,chunkZSize,shapeX,shapeY,shapeZ, origShapeX, origShapeY,origShapeZ, bits,order,useUuid,crop,cname,clevel);
+        parallelWriteZarrMex((void*)zarr,folderName,startX,startY,startZ,endX,endY,endZ,chunkXSize,chunkYSize,chunkZSize,shapeX,shapeY,shapeZ, origShapeX, origShapeY,origShapeZ, bits,order,useUuid,crop,cname,clevel,subfolderSizeX,subfolderSizeY,subfolderSizeZ);
     }
     else if(dtype[1] == 'f' && dtype[2] == '4'){
         uint64_t bits = 32;
         float* zarr;
         if(zarrC) zarr = (float*)zarrC;
         else zarr = (float*)mxGetPr(prhs[1]);
-        parallelWriteZarrMex((void*)zarr,folderName,startX,startY,startZ,endX,endY,endZ,chunkXSize,chunkYSize,chunkZSize,shapeX,shapeY,shapeZ, origShapeX, origShapeY,origShapeZ, bits,order,useUuid,crop,cname,clevel);
+        parallelWriteZarrMex((void*)zarr,folderName,startX,startY,startZ,endX,endY,endZ,chunkXSize,chunkYSize,chunkZSize,shapeX,shapeY,shapeZ, origShapeX, origShapeY,origShapeZ, bits,order,useUuid,crop,cname,clevel,subfolderSizeX,subfolderSizeY,subfolderSizeZ);
     }
     else if(dtype[1] == 'f' && dtype[2] == '8'){
         uint64_t bits = 64;
         double* zarr;
         if(zarrC) zarr = (double*)zarrC;
         else zarr = (double*)mxGetPr(prhs[1]);
-        parallelWriteZarrMex((void*)zarr,folderName,startX,startY,startZ,endX,endY,endZ,chunkXSize,chunkYSize,chunkZSize,shapeX,shapeY,shapeZ, origShapeX, origShapeY,origShapeZ, bits,order,useUuid,crop,cname,clevel);
+        parallelWriteZarrMex((void*)zarr,folderName,startX,startY,startZ,endX,endY,endZ,chunkXSize,chunkYSize,chunkZSize,shapeX,shapeY,shapeZ, origShapeX, origShapeY,origShapeZ, bits,order,useUuid,crop,cname,clevel,subfolderSizeX,subfolderSizeY,subfolderSizeZ);
     }
     else{
         free(zarrC);

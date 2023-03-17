@@ -36,6 +36,9 @@ ip.addParameter('suffix', 'decon', @ischar);
 ip.addParameter('iterInterval', 5, @isnumeric); % iteration interval for FSC resolution plot
 ip.addParameter('parseCluster', true, @islogical);
 ip.addParameter('masterCompute', true, @islogical);
+ip.addParameter('mccMode', false, @islogical);
+ip.addParameter('ConfigFile', '', @ischar);
+
 ip.parse(dataPaths, varargin{:});
 
 pr = ip.Results;
@@ -61,7 +64,8 @@ suffix = pr.suffix;
 iterInterval = pr.iterInterval;
 parseCluster = pr.parseCluster;
 masterCompute = pr.masterCompute;
-
+mccMode = pr.mccMode;
+ConfigFile = pr.ConfigFile;
 
 tic
 if ischar(dataPaths)
@@ -178,8 +182,10 @@ func_strs = arrayfun(@(x) sprintf(['XR_one_image_FSC_analysis_frame(''%s'',''%s'
                 strrep(mat2str(bboxes{x}), ' ', ','), clipPer), ...
                 1 : numel(inputFullnames), 'unif', 0);
 
-slurm_cluster_generic_computing_wrapper(inputFullnames, outputFullnames, func_strs, ...
-    'cpusPerTask', 4, 'cpuOnlyNodes', false, 'parseCluster', parseCluster, 'masterCompute', masterCompute);
+memAllocate = prod(N) * 4 * 200 / 1024^3;
+generic_computing_frameworks_wrapper(inputFullnames, outputFullnames, func_strs, ...
+    cpusPerTask=4, memAllocate=memAllocate, parseCluster=parseCluster, masterCompute=masterCompute, ...
+    mccMode=mccMode, ConfigFile=ConfigFile);
 
 
 %% visualize FSC results

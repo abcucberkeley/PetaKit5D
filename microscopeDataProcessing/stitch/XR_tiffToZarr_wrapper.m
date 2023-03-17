@@ -30,7 +30,6 @@ ip.addParameter('bigData', true, @islogical);
 ip.addParameter('masterCompute', true, @islogical); % master node participate in the task computing. 
 ip.addParameter('jobLogDir', '../job_logs', @ischar);
 ip.addParameter('cpusPerTask', 1, @isnumeric);
-ip.addParameter('cpuOnlyNodes', false, @islogical);
 ip.addParameter('uuid', '', @ischar);
 ip.addParameter('maxTrialNum', 3, @isnumeric);
 ip.addParameter('unitWaitTime', 30, @isnumeric);
@@ -56,7 +55,6 @@ parseCluster = pr.parseCluster;
 bigData = pr.bigData;
 masterCompute = pr.masterCompute;
 cpusPerTask = pr.cpusPerTask;
-cpuOnlyNodes = pr.cpuOnlyNodes;
 mccMode = pr.mccMode;
 ConfigFile = pr.ConfigFile;
 
@@ -74,7 +72,7 @@ end
     
 % check if a slurm-based computing cluster exist
 if parseCluster 
-    [parseCluster, job_log_fname, job_log_error_fname, slurm_constraint_str] = checkSlurmCluster(dataPath, jobLogDir, cpuOnlyNodes);
+    [parseCluster, job_log_fname, job_log_error_fname] = checkSlurmCluster(dataPath, jobLogDir);
 end
 
 nC = numel(ChannelPatterns);
@@ -164,12 +162,12 @@ maxTrialNum = 2;
 is_done_flag = generic_computing_frameworks_wrapper(tiffFullpaths, zarrFullpaths, ...
     func_strs, 'parseCluster', parseCluster, 'masterCompute', masterCompute, ...
     'maxTrialNum', maxTrialNum,  'cpusPerTask', cpusPerTask, 'memAllocate', memAllocate, ...
-    'cpuOnlyNodes', cpuOnlyNodes, 'mccMode', mccMode, 'ConfigFile', ConfigFile);
+    'mccMode', mccMode, 'ConfigFile', ConfigFile);
 if ~all(is_done_flag)
-    generic_computing_frameworks_wrapper(tiffFullpaths, zarrFullpaths, ...
-        func_strs, 'parseCluster', parseCluster, 'masterCompute', masterCompute, ...
-        'maxTrialNum', maxTrialNum, 'cpusPerTask', cpusPerTask * 2, 'memAllocate', memAllocate * 2, ...
-        'cpuOnlyNodes', cpuOnlyNodes, 'mccMode', mccMode, 'ConfigFile', ConfigFile);
+    generic_computing_frameworks_wrapper(tiffFullpaths, zarrFullpaths, func_strs, ...
+        'parseCluster', parseCluster, 'masterCompute', masterCompute, 'maxTrialNum', maxTrialNum, ...
+        'cpusPerTask', cpusPerTask * 2, 'memAllocate', memAllocate * 2, 'mccMode', mccMode, ...
+        'ConfigFile', ConfigFile);
 end
 
 
