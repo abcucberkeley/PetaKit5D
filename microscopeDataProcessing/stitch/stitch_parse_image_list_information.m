@@ -232,6 +232,7 @@ if ~isempty(timepoints)
 end
 
 % predefine stitchInfo when xcorrMode is 'primaryFirst'
+primary_tab = [];
 if strcmp(xcorrMode, 'primaryFirst')
     if zlayerStitch
         primary_tab = tab(tab.ch == Ch(1) & tab.camera == Cam(1) & strcmp(tab.fullIter, fullIter{1}) & tab.stack == stackn(1) & tab.z == nz(1), :);        
