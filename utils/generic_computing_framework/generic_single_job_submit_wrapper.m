@@ -49,10 +49,13 @@ ip.parse(funcStr, job_id, task_id, varargin{:});
 pr = ip.Results;
 ConfigFile = pr.ConfigFile;
 
-persistent ConfigFile_orig confData;
+persistent ConfigFile_orig confData confModDate;
 if ~isempty(ConfigFile)
-    if ~strcmp(ConfigFile, ConfigFile_orig) || isempty(confData)
+    dir_info = dir(ConfigFile);
+    conf_date = dir_info.date;    
+    if ~strcmp(ConfigFile, ConfigFile_orig) || isempty(confData) || isempty(confModDate) || any(confModDate ~= conf_date)
         ConfigFile_orig = ConfigFile;
+        confModDate = conf_date;        
         fprintf('Set up cluster configuration according to %s...\n', ConfigFile);
         [~, ~, ext] = fileparts(ConfigFile);
         switch ext 

@@ -1,6 +1,6 @@
-function [is_done_flag] = slurm_cluster_generic_computing_wrapper(inputFullpaths, outputFullpaths, funcStrs, varargin)
-% generic computing framework that use a function handle/string as input
-% for the computing
+function [is_done_flag] = mcc_slurm_cluster_generic_computing_wrapper(inputFullpaths, outputFullpaths, funcStrs, varargin)
+% generic slurm computing framework that use a function handle/string as input
+% for the computing for mcc functions
 % 
 % 
 % Author: Xiongtao Ruan (10/30/2020)
@@ -34,12 +34,16 @@ ip.addParameter('maxTrialNum', 3, @isnumeric);
 ip.addParameter('unitWaitTime', 30, @isnumeric);
 ip.addParameter('maxJobNum', inf, @isnumeric); % submit limited number of jobs (pending/running)
 ip.addParameter('taskBatchNum', 1, @isnumeric); % aggragate several tasks together
-ip.addParameter('MatlabLaunchStr', 'module load matlab/r2022a; matlab -nodisplay -nosplash -nodesktop -nojvm -r', @ischar);
+ip.addParameter('mccRt', '/usr/local/MATLAB/R2022b', @ischar);
 ip.addParameter('BashLaunchStr', '', @ischar);
 ip.addParameter('SlurmParam', '-p abc --qos abc_normal -n1 --mem-per-cpu=21418M', @ischar);
 ip.addParameter('SlurmConstraint', '', @ischar);
+ip.addParameter('MCRParam', '/usr/local/MATLAB/R2022b', @ischar);
+ip.addParameter('MCCMasterStr', '/home/xruan/Projects/XR_Repository/mcc/run_mccMaster.sh', @ischar);
 ip.addParameter('jobTimeLimit', 24, @isnumeric); % in hour, [] means no limit
-ip.addParameter('language', 'matlab', @ischar); % support matlab, bash
+ip.addParameter('language', 'bash', @ischar); % support matlab, bash
+ip.addParameter('GNUparallel', false, @islogical); % support matlab, bash
+ip.addParameter('paraJobNum', 1, @isnumeric); % support matlab, bash
 
 ip.parse(inputFullpaths, outputFullpaths, funcStrs, varargin{:});
 
@@ -47,11 +51,18 @@ ip.parse(inputFullpaths, outputFullpaths, funcStrs, varargin{:});
 paths = split(which('slurm_cluster_generic_computing_wrapper'), 'LLSM5DTools');
 cd(paths{1});
 % use the setup within LLSM5DTools
-if ~exist('setup.m', 'file')
-    cd('LLSM5DTools');
+if ismcc || isdeployed
+    if ~exist('setup.m', 'file')
+        cd('../');
+    end
+else
+    if ~exist('setup.m', 'file')
+        cd('LLSM5DTools');
+    end
 end
 
 pr = ip.Results;
+ % Resolution = pr.Resolution;
 jobLogDir = pr.jobLogDir;
 tmpDir = pr.tmpDir;
 parseCluster = pr.parseCluster;
@@ -64,10 +75,12 @@ taskBatchNum = pr.taskBatchNum;
 uuid = pr.uuid;
 SlurmParam = pr.SlurmParam;
 SlurmConstraint = pr.SlurmConstraint;
+MCRParam = pr.MCRParam;
+MCCMasterStr = pr.MCCMasterStr;
 jobTimeLimit = pr.jobTimeLimit;
-MatlabLaunchStr = pr.MatlabLaunchStr;
 BashLaunchStr = pr.BashLaunchStr;
-language = pr.language;
+GNUparallel = pr.GNUparallel;
+paraJobNum = pr.paraJobNum;
 
 if isempty(uuid)
     uuid = get_uuid();
@@ -106,22 +119,54 @@ end
 input_exist_mat = output_exist_mat;
 input_exist_mat(~output_exist_mat) = batch_file_exist(inputFullpaths(~output_exist_mat), [], true);
 
+% write mcc strings to disk
+dt = char(datetime('now', 'Format', 'yyyyMMdd_HHmmSS'));
+
+if isempty(tmpDir)
+    funcInputDir = sprintf('%s/tmp/%s/', dataPath, dt);
+else
+    funcInputDir = sprintf('%s/%s/', tmpDir, dt);            
+end
+mkdir_recursive(funcInputDir);
+
+batchSize = taskBatchNum;
+nB = ceil(nF / batchSize);
+
+for b = 1 : nB
+    inputFn = sprintf('%s/input_%d.txt', funcInputDir, b);
+    
+    fid = fopen(inputFn, 'w');
+    
+    s = (b - 1) * batchSize + 1;
+    t = min(b * batchSize, nF);
+    if all(is_done_flag(s : t))
+        continue;
+    end
+
+    for f = s : t
+        func_str = funcStrs{f};
+        [func_name, var_str] = convert_function_string_to_mcc_string(func_str);
+        tline = sprintf('%s %s %s %s \n', MCCMasterStr, MCRParam, func_name, var_str);
+        fprintf(fid, tline);
+    end
+    fclose(fid);
+end
+
+% setup jobs
 trial_counter = zeros(nF, 1);
 if parseCluster
     job_ids = -ones(nF, 1);
     job_status_mat = -ones(nF, 2); % current and previous status
     job_timestamp_mat = zeros(nF, 1);
 
-    nB = ceil(nF / taskBatchNum);        
     task_ids = ones(taskBatchNum, 1) * (1 : nB);
     task_ids = task_ids(:)';
     task_ids = task_ids(1 : nF);
     task_ids = rem(task_ids, 5000);
-    fprintf('Task number : %d, task batch size : %d, task batch number : %d\n', ...
-        nF, taskBatchNum, nB);
-else
-    fprintf('Task number : %d\n', nF);    
 end
+
+fprintf('Task number : %d, task batch size : %d, task batch number : %d, job parallel number : %d\n', ...
+    nF, taskBatchNum, nB, paraJobNum);
 
 loop_counter = 0;
 nF_done = 0;
@@ -159,6 +204,9 @@ while (~parseCluster && ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
     for b = 1 : nB
         fs = (b - 1) * taskBatchNum + 1 : min(b * taskBatchNum, nF);
         task_id = rem(b, 5000);
+        if parseCluster
+            job_status_mat(fs, :) = repmat(min(job_status_mat(fs, :)), numel(fs), 1);
+        end
         
         % check output exist and job status every 10000 batches (except the
         % last small bacth (< 0.5 * n_status_check))
@@ -255,7 +303,8 @@ while (~parseCluster && ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
         end
         
         f = fs(end);
-                
+        inputFn = sprintf('%s/input_%d.txt', funcInputDir, b);
+
         % set parameter to skip job submission step in case of reaching max job
         % number and masterCompute is true
         skip_job_submission = false;
@@ -294,58 +343,33 @@ while (~parseCluster && ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
                     else
                         fprintf('Task % 4d:    Process %s ... \n', b, strjoin(fsnames(fs), ', '));    
                     end
-                    if strcmpi(language, 'matlab')
-                        matlab_setup_str = 'setup([],true)';
-
-                        matlab_cmd = sprintf('%s;t0_=tic;%s;toc(t0_)', matlab_setup_str, func_str);
-                        process_cmd = sprintf('%s \\"%s\\"', MatlabLaunchStr, matlab_cmd);
+                    if ~GNUparallel
                         cmd = sprintf(['sbatch --array=%d -o %s -e %s --cpus-per-task=%d %s %s %s ', ...
-                            '--wrap="echo Matlab command:  \\\"%s\\\"; %s"'], ...
+                            '--wrap="echo $PWD; echo bash command:  \\\"%s\\\";  %s; bash %s"'], ...
                             task_id, job_log_fname, job_log_error_fname, cpusPerTask, SlurmParam, ...
-                            SlurmConstraint, time_str, matlab_cmd, process_cmd);
-                    elseif strcmpi(language, 'bash')
-                        % process_cmd = func_str;
-                        cmd = sprintf(['sbatch --array=%d -o %s -e %s --cpus-per-task=%d %s %s %s ', ...
-                            '--wrap="echo $PWD; echo bash command:  \\\"%s\\\";  %s; %s"'], ...
+                            SlurmConstraint, time_str, func_str, BashLaunchStr, inputFn);
+                    else
+                        cmd = sprintf(['sbatch --array=%d -o %s -e %s --cpus-per-task=%d ', ...
+                            '--ntasks=1 %s %s %s --wrap="echo $PWD; echo bash command: \\\"%s\\\"; ', ...
+                            '%s; parallel --delay 0.1 \\\"srun --exclusive -c %d bash -c {}\\\" < %s"'], ...
                             task_id, job_log_fname, job_log_error_fname, cpusPerTask, SlurmParam, ...
-                            SlurmConstraint, time_str, func_str, BashLaunchStr, func_str);
+                            SlurmConstraint, time_str, inputFn, BashLaunchStr, floor(cpusPerTask / paraJobNum), inputFn);
+                        % in case of some jobs fail because of memory issue, directly use parallel for computing
+                        if trial_counter(f) <= 1
+                            cmd = sprintf(['sbatch --array=%d -o %s -e %s --cpus-per-task=%d ', ...
+                                '--ntasks=1 %s %s %s --wrap="echo $PWD; echo bash command: \\\"%s\\\"; ', ...
+                                '%s; parallel --jobs %d --delay 0.1  < %s"'], ...
+                                task_id, job_log_fname, job_log_error_fname, cpusPerTask, SlurmParam, ...
+                                SlurmConstraint, time_str, inputFn, BashLaunchStr, paraJobNum, inputFn);
+                        end
+                        % if tried twice, still fail, not use parallel computing
+                        if trial_counter(f) > 1
+                            GNUparallel = false;
+                        end
                     end
                     [status, cmdout] = system(cmd, '-echo');
                     if isempty(cmdout) || isempty(regexp(cmdout, 'Submitted batch job (\d+)\n', 'match'))
                         fprintf('Unable to run the code, save the func str to disk and load it to run\n');
-                        func_str_dir = sprintf('%s/func_strs/', tmpDir);
-                        if isempty(tmpDir)
-                            func_str_dir = sprintf('%s/func_strs/', outPath);
-                        end
-                        if ~exist(func_str_dir, 'dir')
-                            mkdir(func_str_dir);
-                        end
-                        
-                        if strcmpi(language, 'matlab')
-                            func_str_fn = sprintf('%s/func_str_f%04d_%s_%s.mat', func_str_dir, f, fsnames{f}, uuid);                            
-                            save('-v7.3', func_str_fn, 'func_str');
-                            
-                            matlab_cmd = sprintf('%s;t0_=tic;load(''%s'',''func_str'');func_str,feval(str2func([''@()'',func_str]));toc(t0_)', ...
-                                matlab_setup_str, func_str_fn);
-                            process_cmd = sprintf('%s \\"%s\\"', MatlabLaunchStr, matlab_cmd);
-                            cmd = sprintf(['sbatch --array=%d -o %s -e %s --cpus-per-task=%d %s %s ', ...
-                                '--wrap="echo Matlab command:  \\\"%s\\\"; %s"'], ...
-                                task_id, job_log_fname, job_log_error_fname, cpusPerTask, SlurmParam, ...
-                                slurm_constraint_str, matlab_cmd, process_cmd);                            
-                        elseif strcmpi(language, 'bash')
-                            func_str_fn = sprintf('%s/func_str_f%04d_%s_%s.sh', func_str_dir, f, fsnames{f}, uuid);     
-                            fid = fopen(func_str_fn, 'w');
-                            % escape '\ ' for writing to the disk
-                            func_str = strrep(func_str, '\ ', '\\ ');
-                            fprintf(fid, func_str);
-                            fclose(fid);
-                            
-                            cmd = sprintf(['sbatch --array=%d -o %s -e %s --cpus-per-task=%d %s %s ', ...
-                                '--wrap="echo $PWD; echo bash command:  \\\"%s\\\"; %s; bash %s"'], ...
-                                task_id, job_log_fname, job_log_error_fname, cpusPerTask, SlurmParam, ...
-                                slurm_constraint_str, func_str_fn, BashLaunchStr, func_str_fn);
-                        end
-                        [status, cmdout] = system(cmd, '-echo');
                     end
                     
                     job_id = regexp(cmdout, 'Submitted batch job (\d+)\n', 'tokens');
@@ -379,22 +403,19 @@ while (~parseCluster && ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
                     if timestamp - job_timestamp_mat(f) < 30
                         continue;
                     end
-                    if exist(outputFullpath, 'file') || exist(outputFullpath, 'dir')
+                    if all(is_done_flag(fs))
                         continue;
                     end
                 end
             end
             fprintf('Process %s with function %s... \n', strjoin(fsnames(fs), ', '), func_str);             
-            if strcmpi(language, 'matlab')
-                try 
-                    t0=tic; feval(str2func(['@()', func_str])); t1=toc(t0);
-                catch ME
-                    disp(ME)
-                    t0=tic; eval(func_str); t1=toc(t0);
-                end
-            elseif strcmpi(language, 'bash')
-                t0=tic; [status, cmdout] = system(func_str, '-echo'); t1=toc(t0);
+            if ~GNUparallel
+                % process_cmd = func_str;
+                cmd = sprintf(['%s; bash %s'], BashLaunchStr, inputFn);
+            else
+                cmd = sprintf(['%s; parallel --jobs %d --delay 0.1 < %s'], BashLaunchStr, paraJobNum, inputFn);                        
             end
+            t0=tic; [status, cmdout] = system(cmd, '-echo'); t1=toc(t0);
             fprintf('Elapsed time is %f seconds.\n', t1);
             trial_counter(fs) = trial_counter(fs) + 1;
             if ~parseCluster && exist(outputFullpath, 'file') && exist(tmpFullpath, 'file')

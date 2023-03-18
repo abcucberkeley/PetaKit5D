@@ -647,15 +647,16 @@ while ~all(is_done_flag | trial_counter >= max_trial_num, 'all')
                                     if strcmp(pipeline, 'zarr')
                                         mem_factor = 2;
                                     end
+                                    lastFile = masterCompute && f==lastF;
     
                                     % allocate 5 time of the size
                                     allocateMem = totalDsize * mem_factor;
                                     job_id = job_ids(n, ncam, s, c, z);
                                     task_id = rem(f, 5000);
-    
+                                    
                                     [job_id, ~, submit_status] = generic_single_job_submit_wrapper(func_str, job_id, task_id, ...
                                         'jobLogFname', job_log_fname, 'jobErrorFname', job_log_error_fname, ...
-                                        masterCompute=masterCompute, lastFile=f==lastF, allocateMem=allocateMem, ...
+                                        masterCompute=masterCompute, lastFile=lastFile, allocateMem=allocateMem, ...
                                         mccMode=mccMode, ConfigFile=ConfigFile);
     
                                     job_ids(n, ncam, s, c, z) = job_id;

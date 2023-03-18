@@ -153,7 +153,7 @@ for i = 1 : nF
 end
 
 [estMem, estGPUMem, rawImageSize] = XR_estimateComputingMemory(tiffFullpaths{1}, {'deconvolution'}, 'cudaDecon', false);
-memAllocate = rawImageSize * 2.5 * numel(tiffFullpath_group_i);
+memAllocate = rawImageSize * 2.25 * numel(tiffFullpath_group_i);
 if ~bigData
     memAllocate = memAllocate * 2;
 end

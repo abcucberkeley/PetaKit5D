@@ -133,6 +133,7 @@ switch clusterType
                 paraJobNum = floor(maxCPUNum / cpusPerTask);
                 cpusPerTask = maxCPUNum;
             end
+            taskBatchNum = round(taskBatchNum ./ paraBatchNum) * paraBatchNum;
             taskBatchNum = max(taskBatchNum, paraJobNum * paraBatchNum);
             taskBatchNum = max(taskBatchNum, minBatchNum);
 
