@@ -150,7 +150,7 @@ ip.addParameter('DSRCombined', true, @islogical);
 ip.addParameter('LLFFCorrection', false, @islogical);
 ip.addParameter('BKRemoval', false, @islogical);
 ip.addParameter('LowerLimit', 0.4, @isnumeric); % this value is the lowest
-ip.addParameter('constOffset', [], @(x) isempty(x) || isnumeric(x)); % If it is set, use constant background, instead of background from the camera.
+ip.addParameter('constOffset', [], @(x) isnumeric(x)); % If it is set, use constant background, instead of background from the camera.
 ip.addParameter('LSImagePaths', {'','',''}, @iscell);
 ip.addParameter('BackgroundPaths', {'','',''}, @iscell);
 ip.addParameter('resampleType', 'isotropic', @ischar); % resample type: given, isotropic, xy_isotropic
@@ -163,9 +163,10 @@ ip.addParameter('imageListFullpaths', '', @(x) ischar(x) || iscell(x));
 ip.addParameter('axisOrder', 'xyz', @(x) ischar(x));
 ip.addParameter('BlendMethod', 'none', @ischar);
 ip.addParameter('xcorrShift', false, @islogical);
-ip.addParameter('xcorrMode', 'primaryFirst', @(x) strcmpi(x, 'primary') || strcmpi(x, 'primaryFirst') || strcmpi(x, 'all')); % 'primary': choose one channel as primary channel, 
+ip.addParameter('xcorrMode', 'primaryFirst', @(x) ismember(lower(x), {'primary', 'primaryfirst', 'all'})); % 'primary': choose one channel as primary channel, 
 ip.addParameter('xyMaxOffset', 300, @isnumeric); % max offsets in xy axes
 ip.addParameter('zMaxOffset', 50, @isnumeric); % max offsets in z axis
+ip.addParameter('EdgeArtifacts', 2, @isnumeric);
 ip.addParameter('timepoints', [], @isnumeric); % stitch for given time points
 ip.addParameter('boundboxCrop', [], @(x) isnumeric(x) && (isempty(x) || all(size(x) == [3, 2]) || numel(x) == 6));
 ip.addParameter('primaryCh', '', @ischar);
@@ -198,27 +199,23 @@ ip.addParameter('GPUJob', false, @islogical); % use gpu for chuck deconvolution.
 ip.addParameter('largeFile', false, @islogical);
 ip.addParameter('parseCluster', true, @islogical);
 ip.addParameter('jobLogDir', '../job_logs', @ischar);
-ip.addParameter('cpusPerTask', 2, @isnumeric);
-ip.addParameter('cpuOnlyNodes', true, @islogical);
+ip.addParameter('cpusPerTask', 1, @isnumeric);
 ip.addParameter('uuid', '', @ischar);
 ip.addParameter('maxTrialNum', 3, @isnumeric);
 ip.addParameter('unitWaitTime', 1, @isnumeric);
 ip.addParameter('minModifyTime', 1, @isnumeric); % the minimum during of last modify time of a file, in minute.
 ip.addParameter('maxModifyTime', 10, @isnumeric); % the maximum during of last modify time of a file, in minute.
 ip.addParameter('maxWaitLoopNum', 10, @isnumeric); % the max number of loops the loop waits with all existing files processed. 
-ip.addParameter('MatlabLaunchStr', 'module load matlab/r2022a; matlab -nodisplay -nosplash -nodesktop -nojvm -r', @ischar);
-ip.addParameter('SlurmParam', '-p abc --qos abc_normal -n1 --mem-per-cpu=21418M', @ischar);
+ip.addParameter('mccMode', false, @islogical);
+ip.addParameter('ConfigFile', '', @ischar);
+ip.addParameter('GPUConfigFile', '', @ischar);
 
 ip.parse(dataPaths, varargin{:});
 
-% make sure the function is in the root of XR_Repository or LLSM5DTools. 
+% make sure the function is in the root of XR_Repository. 
 mpath = fileparts(which(mfilename));
-repo_rt = [mpath, '/../../'];
+repo_rt = [mpath, '/../'];
 cd(repo_rt);
-if ~exist([repo_rt, 'setup.m'], 'file')
-    repo_rt = [mpath, '/../'];
-    cd(repo_rt);
-end
 
 pr = ip.Results;
 Overwrite = pr.Overwrite;
@@ -236,7 +233,6 @@ resampleType = pr.resampleType;
 resample = pr.resample;
 dzFromEncoder = pr.dzFromEncoder;
 zarrFile = pr.zarrFile;
-saveZarr = pr.saveZarr;
 save3DStack = pr.save3DStack; % only for DS and DSR for now
 %deskew and rotate
 Deskew = pr.Deskew;
@@ -262,6 +258,7 @@ xcorrShift = pr.xcorrShift;
 xcorrMode = pr.xcorrMode;
 xyMaxOffset = pr.xyMaxOffset;
 zMaxOffset = pr.zMaxOffset;
+EdgeArtifacts = pr.EdgeArtifacts;
 boundboxCrop = pr.boundboxCrop;
 onlyFirstTP = pr.onlyFirstTP;
 timepoints = pr.timepoints;
@@ -297,17 +294,17 @@ debug = pr.debug;
 % job related
 largeFile = pr.largeFile;
 jobLogDir = pr.jobLogDir;
-parseCluster = pr.parseCluster;
 cpusPerTask = pr.cpusPerTask;
-cpuOnlyNodes = pr.cpuOnlyNodes;
+parseCluster = pr.parseCluster;
 uuid = pr.uuid;
 maxTrialNum = pr.maxTrialNum;
 unitWaitTime = pr.unitWaitTime;
 minModifyTime = pr.minModifyTime;
 maxModifyTime = pr.maxModifyTime;
 maxWaitLoopNum = pr.maxWaitLoopNum;
-MatlabLaunchStr = pr.MatlabLaunchStr;
-SlurmParam = pr.SlurmParam;
+mccMode = pr.mccMode;
+ConfigFile = pr.ConfigFile;
+GPUConfigFile = pr.GPUConfigFile;
 
 % suppress directory exists warning
 warning('off', 'MATLAB:MKDIR:DirectoryExists');
@@ -352,7 +349,7 @@ end
 
 % check if a slurm-based computing cluster exists
 if parseCluster
-    [parseCluster, job_log_fname, job_log_error_fname, slurm_constraint_str, jobLogDir] = checkSlurmCluster(dataPath, jobLogDir, cpuOnlyNodes);
+    [parseCluster, job_log_fname, job_log_error_fname] = checkSlurmCluster(dataPath, jobLogDir);
 end
 
 % for stitching, enable DS and DSR
@@ -627,8 +624,6 @@ if parseCluster
     dataSize_mat(:, 1) = dataSizes;
 end
 
-matlab_setup_str = 'setup([],true)';
-
 % use while loop to perform computing for all images
 ts = tic;
 while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all') || ...
@@ -702,7 +697,7 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all') || ...
                 ds_input_path = cellfun(@(x) [dataPath, x], gfname, 'unif', 0);
             end
             ds_input_str = sprintf('{''%s''}', strjoin(ds_input_path, ''','''));
-            
+
             func_str = sprintf(['XR_deskewRotateFrame(%s,%.20d,%.20d,''SkewAngle'',%.20d,', ...
                 '''ObjectiveScan'',%s,''ZstageScan'',%s,''Reverse'',%s,''LLFFCorrection'',%s,', ...
                 '''BKRemoval'',%s,''LowerLimit'',%.20d,''constOffset'',[%s],''LSImage'',''%s'',', ...
@@ -716,44 +711,23 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all') || ...
             
             if exist(tmpFullpath, 'file') || parseCluster
                 if parseCluster
-                    job_status = check_slurm_job_status(job_ids(f, 1), task_id);
-                    
-                    % if the job is still running, skip it. 
-                    if job_status == 1 
-                        continue;
+                    if ~DSRCombined
+                        estRequiredMemory = XR_estimateComputingMemory(frameFullpath, 'steps', {'deskew'});
+                    else
+                        estRequiredMemory = dataSize_mat(f, 1) / 2^30 * 2 * (7 + 3 / prod(resample) + trial_counter(f, 1) * 8);
                     end
-                    
-                    if job_status == -1
-                        % first estimate file size and decide whether cpusPerTask
-                        % is enough
-                        if ~DSRCombined
-                            estRequiredMemory = XR_estimateComputingMemory(frameFullpath, 'steps', {'deskew'});
-                        else
-                            estRequiredMemory = dataSize_mat(f, 1) / 2^30 * 2 * (7 + 3 / prod(resample) + trial_counter(f, 1) * 8);
-                        end
-                        cpusPerTask_ds = cpusPerTask;
-                        if cpusPerTask_ds * 20 < estRequiredMemory
-                            cpusPerTask_ds = min(24, ceil(estRequiredMemory / 20));
-                        else
-                            cpusPerTask_ds = min(cpusPerTask_ds, ceil(estRequiredMemory / 20));
-                        end
-                            
-                        matlab_cmd = sprintf('%s;tic;%s;toc', matlab_setup_str, func_str);
-                        process_cmd = sprintf('%s \\"%s\\"', MatlabLaunchStr, matlab_cmd);
-                        cmd = sprintf(['sbatch --array=%d -o %s -e %s --cpus-per-task=%d %s %s ', ...
-                            '--wrap="echo Matlab command:  \\\"%s\\\"; %s"'], task_id, job_log_fname, ...
-                            job_log_error_fname, cpusPerTask_ds, SlurmParam, slurm_constraint_str, ...
-                            matlab_cmd, process_cmd);
-                        [status, cmdout] = system(cmd, '-echo');
+                    allocateMem = estRequiredMemory;
 
-                        job_id = regexp(cmdout, 'Submitted batch job (\d+)\n', 'tokens');
-                        job_id = str2double(job_id{1}{1});
-                        job_ids(f, 1) = job_id;
-                        trial_counter(f, 1) = trial_counter(f, 1) + 1;
-                    end
+                    job_id = job_ids(f, 1);
+                    [job_id, ~, submit_status] = generic_single_job_submit_wrapper(func_str, job_id, task_id, ...
+                        'jobLogFname', job_log_fname, 'jobErrorFname', job_log_error_fname, ...
+                        allocateMem=allocateMem, mccMode=mccMode, ConfigFile=ConfigFile);
+
+                    job_ids(f, 1) = job_id;
+                    trial_counter(f, 1) = trial_counter(f, 1) + submit_status;
                 else
                     temp_file_info = dir(tmpFullpath);
-                    if (datenum(clock) - [temp_file_info.datenum]) * 24 * 60 < unitWaitTime
+                    if minutes(datetime('now') - temp_file_info.date) < unitWaitTime
                         continue; 
                     else
                         fclose(fopen(tmpFullpath, 'w'));
@@ -806,7 +780,7 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all') || ...
                 if any(stitch_flags_d) && (f == find(stitch_flags_d, 1, 'first'))
                     switch generateImageList
                         case 'from_encoder'
-                            imageListFullpaths{fdind} = stitch_generate_imagelist_from_encoder(dataPath, dz_f, ChannelPatterns);
+                            imageListFullpaths{fdind} = stitch_generate_imagelist_from_encoder(dataPath, dz_f);
                         case 'from_sqlite'
                             imageListFullpaths{fdind} = stitch_generate_imagelist_from_sqlite(dataPath);                        
                     end
@@ -826,7 +800,6 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all') || ...
             
             stitch_DS = false;
             stitch_DSR = true;
-            useProcessedData = true;
             ProcessedDirStr = 'DSR';
             resampleType = 'isotropic';
             zNormalize = false;
@@ -834,51 +807,47 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all') || ...
             bbox = boundboxCrop;
             imageListFullpath = imageListFullpaths{fdind};
             ChannelPatterns_str = sprintf('{''%s''}', strjoin(ChannelPatterns, ''','''));
+            if ~parseCluster
+                mccMode = false;
+                maxTrialNum = 1;
+            end
 
             func_str = sprintf(['XR_matlab_stitching_wrapper(''%s'',''%s'',''ResultDir'',''%s'',', ...
-                '''Streaming'',%s,''DS'',%s,''DSR'',%s,''ChannelPatterns'',%s,''useProcessedData'',%s,', ...
+                '''Streaming'',%s,''DS'',%s,''DSR'',%s,''ChannelPatterns'',%s,''ProcessedDirStr'',''%s'',', ...
                 '''axisOrder'',''%s'',''resampleType'',''%s'',''resample'',[%s],''Reverse'',%s,', ...
                 '''parseSettingFile'',%s,''xcorrShift'',%s,''xcorrMode'',''%s'',''xyMaxOffset'',%.10f,', ...
-                '''zMaxOffset'',%.10f,''BlendMethod'',''%s'',''zNormalize'',%s,''onlyFirstTP'',%s,', ...
-                '''timepoints'',[%s],''boundboxCrop'',[%s],''Save16bit'',%s,''primaryCh'',''%s'',', ...
-                '''stitchMIP'',%s,''onlineStitch'',%s,''pipeline'',''%s'')'], dataPath, imageListFullpath, ...
-                stitchResultDir, string(Streaming), string(stitch_DS), string(stitch_DSR), ChannelPatterns_str, ...
-                string(useProcessedData), ProcessedDirStr, axisOrder, resampleType, strrep(num2str(resample, '%.10d,'), ' ', ''), ...
-                string(Reverse), string(parseSettingFile), string(xcorrShift), xcorrMode, xyMaxOffset, ...
-                zMaxOffset, BlendMethod, string(zNormalize), string(onlyFirstTP), strrep(num2str(timepoints, '%d,'), ' ', ''), ...
+                '''zMaxOffset'',%.10f,''EdgeArtifacts'',%d,''BlendMethod'',''%s'',''zNormalize'',%s,', ...
+                '''onlyFirstTP'',%s,''timepoints'',[%s],''boundboxCrop'',[%s],''Save16bit'',%s,', ...
+                '''primaryCh'',''%s'',''stitchMIP'',%s,''onlineStitch'',%s,''pipeline'',''%s'',', ...
+                '''maxTrialNum'',%d,''mccMode'',%s,''ConfigFile'',''%s'')'], ...
+                dataPath, imageListFullpath, stitchResultDir, string(parseCluster & Streaming), string(stitch_DS), ...
+                string(stitch_DSR), ChannelPatterns_str, ProcessedDirStr, axisOrder, resampleType, ...
+                strrep(num2str(resample, '%.10d,'), ' ', ''), string(Reverse), string(parseSettingFile), ...
+                string(xcorrShift), xcorrMode, xyMaxOffset, zMaxOffset, EdgeArtifacts, BlendMethod, ...
+                string(zNormalize), string(onlyFirstTP), strrep(num2str(timepoints, '%d,'), ' ', ''), ...
                 strrep(num2str(bbox, '%d,'), ' ', ''), string(Save16bit(2)), primaryCh, ...
-                strrep(mat2str(stitchMIP), ' ', ','), string(onlineStitch), stitchPipeline);
+                strrep(mat2str(stitchMIP), ' ', ','), string(onlineStitch), stitchPipeline, ...
+                maxTrialNum, string(mccMode), ConfigFile);
 
             if parseCluster
                 dfirst_ind = find(fdinds == fdind, 1, 'first');
-                job_status = check_slurm_job_status(job_ids(dfirst_ind, 2));
-
-                if job_status == -1 % && ~stitch_running(fdind)
-                    % first estimate file size and decide whether cpusPerTask
-                    % is enough
-                    memFactor = 20;
-                    if any(stitchMIP)
-                        memFactor = 2;
-                    end
-                    estRequiredMemory = dataSize_mat(f, 1) / 2^30 * 2 * memFactor;
-                    cpusPerTask_stch = cpusPerTask;
-                    if cpusPerTask_stch * 20 < estRequiredMemory
-                        cpusPerTask_stch = min(24, ceil(estRequiredMemory / 20));
-                    end
-
-                    matlab_cmd = sprintf('%s;tic;%s;toc', matlab_setup_str, func_str);
-                    process_cmd = sprintf('%s \\"%s\\"', MatlabLaunchStr, matlab_cmd);
-                    cmd = sprintf(['sbatch --array=%d -o %s -e %s --cpus-per-task=%d %s %s ', ...
-                        '--wrap="echo Matlab command:  \\\"%s\\\"; %s"'], ...
-                        task_id, job_log_fname, job_log_error_fname, cpusPerTask_stch, SlurmParam, ...
-                        slurm_constraint_str, matlab_cmd, process_cmd);
-                    [status, cmdout] = system(cmd, '-echo');
-
-                    job_id = regexp(cmdout, 'Submitted batch job (\d+)\n', 'tokens');
-                    job_id = str2double(job_id{1}{1});
-                    job_ids(dfirst_ind, 2) = job_id;
-                    % stitch_running(fdind) = true;
+                job_id = job_ids(dfirst_ind, 2);
+                task_id = rem(dfirst_ind, 5000);
+                memFactor = 20;
+                if any(stitchMIP)
+                    memFactor = 2;
                 end
+                estRequiredMemory = dataSize_mat(f, 1) / 2^30 * 2 * memFactor;
+                allocateMem = estRequiredMemory;
+
+                [job_id, ~, submit_status] = generic_single_job_submit_wrapper(func_str, job_id, task_id, ...
+                    'jobLogFname', job_log_fname, 'jobErrorFname', job_log_error_fname, ...
+                    allocateMem=allocateMem, mccMode=mccMode, ConfigFile=ConfigFile);
+
+                job_ids(dfirst_ind, 2) = job_id;
+                job_ids(f, 2) = job_id;
+                trial_counter(dfirst_ind, 2) = trial_counter(dfirst_ind, 2) + submit_status;
+                trial_counter(f, 2) = trial_counter(f, 2) + submit_status;
             else
                 tic; feval(str2func(['@()', func_str])); toc;
             end
@@ -1045,48 +1014,29 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all') || ...
            
             if exist(dctmpFullpath, 'file') || parseCluster
                 if parseCluster
-                    job_status = check_slurm_job_status(job_ids(f, 3), task_id);
-
-                     % if the job is still running, skip it. 
-                    if job_status == 1 
-                        continue;
+                    if ~cudaDecon && ~GPUJob
+                        [estMem, estGPUMem] = XR_estimateComputingMemory(dcframeFullpath, {'deconvolution'}, ...
+                            'cudaDecon', false);
+                        allocateMem = estMem;
+                    end
+                    
+                    cur_ConfigFile = ConfigFile;
+                    if GPUJob && ~(largeFile && strcmp(largeMethod, 'inplace'))
+                        cur_ConfigFile = GPUConfigFile;
+                    else
+                        % SlurmParam = '-p abc --qos abc_normal -n1 --mem-per-cpu=21418M';
                     end
 
-                    if job_status == -1
-                        % for matlab decon,  decide how many cores. 
-                        if ~cudaDecon
-                            [estMem, estGPUMem] = XR_estimateComputingMemory('', {'deconvolution'}, ...
-                                'dataSize', dataSize_mat(f, 2), 'cudaDecon', false);
-                            cpusPerTask_dc = cpusPerTask;
-                            if cpusPerTask_dc * 20 < estMem
-                                cpusPerTask_dc = min(24, ceil(estMem / 20));
-                            end
-                        end
+                    job_id = job_ids(f, 3);
+                    [job_id, ~, submit_status] = generic_single_job_submit_wrapper(func_str, job_id, task_id, ...
+                        'jobLogFname', job_log_fname, 'jobErrorFname', job_log_error_fname, ...
+                        allocateMem=allocateMem, mccMode=mccMode, ConfigFile=cur_ConfigFile);
 
-                        % do not use rotation in decon functions
-                        matlab_cmd = sprintf('%s;tic;%s;toc', matlab_setup_str, func_str);
-                        process_cmd = sprintf('%s \\"%s\\"', MatlabLaunchStr, matlab_cmd);
-
-                        if cudaDecon
-                            cmd = sprintf(['sbatch --array=%d -o %s -e %s -p abc --gres=gpu:1 --qos ', ...
-                                'abc_normal -n1 --mem-per-cpu=33G --cpus-per-task=%d --wrap="%s"'], ...
-                                task_id, job_log_fname, job_log_error_fname, 5, process_cmd);
-                        else
-                            cmd = sprintf(['sbatch --array=%d -o %s -e %s --cpus-per-task=%d %s %s ', ...
-                                '--wrap="echo Matlab command:  \\\"%s\\\"; %s"'], task_id, job_log_fname, ...
-                                job_log_error_fname, cpusPerTask_dc, SlurmParam, slurm_constraint_str, ...
-                                matlab_cmd, process_cmd);
-                        end
-                        [status, cmdout] = system(cmd, '-echo');
-
-                        job_id = regexp(cmdout, 'Submitted batch job (\d+)\n', 'tokens');
-                        job_id = str2double(job_id{1}{1});
-                        job_ids(f, 3) = job_id;
-                        trial_counter(f, 3) = trial_counter(f, 3) + 1;
-                    end
+                    job_ids(f, 3) = job_id;
+                    trial_counter(f, 3) = trial_counter(f, 3) + submit_status;
                 else
                     temp_file_info = dir(dctmpFullpath);
-                    if (datenum(clock) - [temp_file_info.datenum]) * 24 * 60 < unitWaitTime
+                    if minutes(datetime('now') - temp_file_info.date) < unitWaitTime
                         continue; 
                     else
                         fclose(fopen(dctmpFullpath, 'w'));
@@ -1110,91 +1060,6 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all') || ...
                 end
             end
         end
-        
-        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-        %% rotation after decon
-        if RotateAfterDecon
-            % input chosen order is dsr, ds, raw (in decreased priority order)
-            if ~exist(deconFullpath, 'file')
-                if Decon
-                    continue;
-                end
-            end
-
-            rdcPath = rdcPaths{fdind};
-            rdcFullpath = sprintf('%s/%s_decon.tif', rdcPath, fsname);
-            rdctmpFullpath = sprintf('%s.tmp', rdcFullpath(1 : end - 4));
-            if exist(rdcFullpath, 'file')
-                is_done_flag(f, 4) = true;
-                if exist(rdctmpFullpath, 'file')
-                    delete(rdctmpFullpath);
-                end
-            end
-        else
-            is_done_flag(f, 4) = true;    
-        end
-
-        if ~is_done_flag(f, 4)
-            func_str = sprintf(['XR_RotateFrame3D(''%s'',%.20d,%.20d,''SkewAngle'',%.20d,', ...
-                '''ObjectiveScan'',%s,''Reverse'',%s,''Save16bit'',%s)'], deconFullpath, ...
-                xyPixelSize, dz_f, SkewAngle, string(ObjectiveScan), string(Reverse), string(Save16bit(4)));
-
-            if exist(rdctmpFullpath, 'file') || parseCluster
-                if parseCluster
-                    job_status = check_slurm_job_status(job_ids(f, 4), task_id);
-                    
-                    % if the job is still running, skip it. 
-                    if job_status == 1 
-                        continue;
-                    end
-                    
-                    if job_status == -1
-                        [estMem, estGPUMem] = XR_estimateComputingMemory('', {'deconvolution'}, ...
-                            'dataSize', dataSize_mat(f, 2), 'cudaDecon', false);
-                        cpusPerTask_dcr = cpusPerTask;
-                        if cpusPerTask_dcr * 20 < estMem
-                            cpusPerTask_dcr = min(24, ceil(estMem / 20));
-                        end
-
-                        matlab_cmd = sprintf('%s;tic;%s;toc', matlab_setup_str, func_str);
-                        process_cmd = sprintf('%s \\"%s\\"', MatlabLaunchStr, matlab_cmd);
-                        cmd = sprintf(['sbatch --array=%d -o %s -e %s --cpus-per-task=%d %s %s ', ...
-                            '--wrap="echo Matlab command:  \\\"%s\\\"; %s"'], ...
-                            task_id, job_log_fname, job_log_error_fname, cpusPerTask_dcr, SlurmParam, ...
-                            slurm_constraint_str, matlab_cmd, process_cmd);
-
-                        [status, cmdout] = system(cmd, '-echo');
-
-                        job_id = regexp(cmdout, 'Submitted batch job (\d+)\n', 'tokens');
-                        job_id = str2double(job_id{1}{1});
-                        job_ids(f, 4) = job_id;
-                        trial_counter(f, 4) = trial_counter(f, 4) + 1;    
-                    end
-                else
-                    temp_file_info = dir(rdctmpFullpath);
-                    if (datenum(clock) - [temp_file_info.datenum]) * 24 * 60 < unitWaitTime
-                    else
-                        fclose(fopen(rdctmpFullpath, 'w'));
-                    end
-                end
-            else
-                fclose(fopen(rdctmpFullpath, 'w'));
-            end
-            
-            if ~parseCluster
-                tic; feval(str2func(['@()', func_str])); toc;
-                trial_counter(f, 4) = trial_counter(f, 4) + 1;    
-            end
-            
-            % check if computing is done
-            if exist(rdcFullpath, 'file')
-                is_done_flag(f, 4) = true;
-                if exist(rdctmpFullpath, 'file')
-                    delete(rdctmpFullpath);
-                end
-            end
-        end
-        toc
     end
     
     %% wait for running jobs finishing and checking for new coming images
