@@ -295,6 +295,7 @@ while (~parseCluster && ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
                         fprintf('Task % 4d:    Process %s ... \n', b, strjoin(fsnames(fs), ', '));    
                     end
                     if strcmpi(language, 'matlab')
+                        func_str = strrep(func_str, '"', '\\\"');
                         matlab_setup_str = 'setup([],true)';
 
                         matlab_cmd = sprintf('%s;t0_=tic;%s;toc(t0_)', matlab_setup_str, func_str);
