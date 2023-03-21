@@ -174,7 +174,7 @@ n_status_check = 10000;
 start_time = datetime('now');
 ts = tic;
 while (~parseCluster && ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')) || ...
-        (parseCluster && ~all(is_done_flag | (trial_counter >= maxTrialNum & job_status_mat(:, 1) <= 0), 'all'))
+        (parseCluster && ~all(is_done_flag | (trial_counter >= maxTrialNum & job_status_mat(:, 1) < 0), 'all'))
     if parseCluster
         job_status_mat(~is_done_flag, 2) = job_status_mat(~is_done_flag, 1);
         job_status_mat(~is_done_flag, 1) = check_batch_slurm_jobs_status(job_ids(~is_done_flag), task_ids(~is_done_flag));
@@ -413,7 +413,11 @@ while (~parseCluster && ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
                 % process_cmd = func_str;
                 cmd = sprintf(['%s; bash %s'], BashLaunchStr, inputFn);
             else
-                cmd = sprintf(['%s; parallel --jobs %d --delay 0.1 < %s'], BashLaunchStr, paraJobNum, inputFn);                        
+                cmd = sprintf(['%s; parallel --jobs %d --delay 0.1 < %s'], BashLaunchStr, paraJobNum, inputFn);
+                if ismcc || isdeployed
+                    % reduce the load of master job in case of crash due to oom
+                    cmd = sprintf(['%s; parallel --jobs %d --delay 0.1 < %s'], BashLaunchStr, max(1, round(paraJobNum / 2)), inputFn);
+                end
             end
             t0=tic; [status, cmdout] = system(cmd, '-echo'); t1=toc(t0);
             fprintf('Elapsed time is %f seconds.\n', t1);

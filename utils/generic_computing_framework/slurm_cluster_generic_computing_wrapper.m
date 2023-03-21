@@ -129,7 +129,7 @@ n_status_check = 10000;
 start_time = datetime('now');
 ts = tic;
 while (~parseCluster && ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')) || ...
-        (parseCluster && ~all(is_done_flag | (trial_counter >= maxTrialNum & job_status_mat(:, 1) <= 0), 'all'))
+        (parseCluster && ~all(is_done_flag | (trial_counter >= maxTrialNum & job_status_mat(:, 1) < 0), 'all'))
     if parseCluster
         job_status_mat(~is_done_flag, 2) = job_status_mat(~is_done_flag, 1);
         job_status_mat(~is_done_flag, 1) = check_batch_slurm_jobs_status(job_ids(~is_done_flag), task_ids(~is_done_flag));
@@ -331,7 +331,7 @@ while (~parseCluster && ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
                             cmd = sprintf(['sbatch --array=%d -o %s -e %s --cpus-per-task=%d %s %s ', ...
                                 '--wrap="echo Matlab command:  \\\"%s\\\"; %s"'], ...
                                 task_id, job_log_fname, job_log_error_fname, cpusPerTask, SlurmParam, ...
-                                slurm_constraint_str, matlab_cmd, process_cmd);                            
+                                SlurmConstraint, matlab_cmd, process_cmd);                            
                         elseif strcmpi(language, 'bash')
                             func_str_fn = sprintf('%s/func_str_f%04d_%s_%s.sh', func_str_dir, f, fsnames{f}, uuid);     
                             fid = fopen(func_str_fn, 'w');
@@ -343,7 +343,7 @@ while (~parseCluster && ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
                             cmd = sprintf(['sbatch --array=%d -o %s -e %s --cpus-per-task=%d %s %s ', ...
                                 '--wrap="echo $PWD; echo bash command:  \\\"%s\\\"; %s; bash %s"'], ...
                                 task_id, job_log_fname, job_log_error_fname, cpusPerTask, SlurmParam, ...
-                                slurm_constraint_str, func_str_fn, BashLaunchStr, func_str_fn);
+                                SlurmConstraint, func_str_fn, BashLaunchStr, func_str_fn);
                         end
                         [status, cmdout] = system(cmd, '-echo');
                     end
