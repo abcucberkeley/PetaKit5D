@@ -58,8 +58,14 @@ switch ext
         bim_1 = blockedImage(imgFullpath_1, "Adapter", MPageTiffAdapter);
         bim_2 = blockedImage(imgFullpath_2, "Adapter", MPageTiffAdapter);
     case '.zarr'
-        bim_1 = blockedImage(imgFullpath_1, "Adapter", ZarrAdapter);
-        bim_2 = blockedImage(imgFullpath_2, "Adapter", ZarrAdapter);
+        try
+            bim_1 = blockedImage(imgFullpath_1, "Adapter", CZarrAdapter);
+            bim_2 = blockedImage(imgFullpath_2, "Adapter", CZarrAdapter);
+        catch ME
+            disp(ME)
+            bim_1 = blockedImage(imgFullpath_1, "Adapter", ZarrAdapter);
+            bim_2 = blockedImage(imgFullpath_2, "Adapter", ZarrAdapter);
+        end
 end
 
 sz_1 = bim_1.Size;

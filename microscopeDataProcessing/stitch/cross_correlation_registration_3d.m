@@ -59,7 +59,7 @@ switch ext
     case '.zarr'
         try
             bim_1 = blockedImage(imgFullpath_1, "Adapter", CZarrAdapter);
-            bim_2 = blockedImage(imgFullpath_2, "Adapter", CZarrAdapter);            
+            bim_2 = blockedImage(imgFullpath_2, "Adapter", CZarrAdapter);
         catch ME
             disp(ME)
             bim_1 = blockedImage(imgFullpath_1, "Adapter", ZarrAdapter);
