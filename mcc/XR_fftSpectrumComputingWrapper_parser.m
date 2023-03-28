@@ -14,6 +14,8 @@ ip.addParameter('ChannelPatterns', {}, @(x) ischar(x) || iscell(x));
 ip.addParameter('save3DStack', false, @(x) islogical(x) || ischar(x));
 ip.addParameter('background', 0, @(x) isnumeric(x) || ischar(x));
 ip.addParameter('Interp', 'linear', @ischar);
+ip.addParameter('mccMode', false, @(x) islogical(x) || ischar(x));
+ip.addParameter('ConfigFile', '', @ischar);
 
 ip.parse(dataPaths, varargin{:});
 
@@ -27,6 +29,8 @@ ChannelPatterns = pr.ChannelPatterns;
 save3DStack = pr.save3DStack;
 background = pr.background;
 Interp = pr.Interp;
+mccMode = pr.mccMode;
+ConfigFile = pr.ConfigFile;
 
 if ischar(dataPaths)
     dataPaths = eval(dataPaths);
@@ -56,11 +60,13 @@ end
 if ischar(background)
     background = str2num(background);
 end
+if ischar(mccMode)
+    mccMode = strcmp(mccMode,'true');
+end
 
 XR_fftSpectrumComputingWrapper(dataPaths,'Overwrite',Overwrite,...
     'xyPixelSize',xyPixelSize,'dz',dz,'outPixelSize',outPixelSize,...
     'N',N,'ChannelPatterns',ChannelPatterns,'save3DStack',save3DStack,...
-    'background',background,'Interp',Interp);
-
+    'background',background,'Interp',Interp,mccMode=mccMode, ConfigFile=ConfigFile);
 
 end

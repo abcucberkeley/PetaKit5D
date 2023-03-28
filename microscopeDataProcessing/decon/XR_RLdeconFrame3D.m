@@ -52,7 +52,7 @@ ip.addParameter('BatchSize', [1024, 1024, 1024] , @isnumeric); % in y, x, z
 ip.addParameter('BlockSize', [256, 256, 256], @isnumeric); % block overlap
 ip.addParameter('zarrSubSize', [], @isnumeric);
 ip.addParameter('largeFile', false, @islogical);
-ip.addParameter('largeMethod', 'MemoryJobs', @ischar); % memory jobs, memory single, inplace. 
+ip.addParameter('largeMethod', 'inmemory', @ischar); % memory jobs, memory single, inplace. 
 ip.addParameter('saveZarr', false, @islogical); % save as zarr
 ip.addParameter('deconMaskFns', {}, @iscell); % 2d masks to filter regions to decon, in xy, xz, yz order
 ip.addParameter('parseCluster', true, @islogical);

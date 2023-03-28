@@ -21,6 +21,8 @@ ip.addParameter('ChannelPatterns', {}, @(x) ischar(x) || iscell(x));
 ip.addParameter('save3DStack', false, @islogical);
 ip.addParameter('background', 0, @isnumeric);
 ip.addParameter('Interp', 'linear', @ischar);
+ip.addParameter('mccMode', false, @islogical);
+ip.addParameter('ConfigFile', '', @ischar);
 
 ip.parse(dataPaths, varargin{:});
 
@@ -39,6 +41,8 @@ ChannelPatterns = pr.ChannelPatterns;
 save3DStack = pr.save3DStack;
 background = pr.background;
 Interp = pr.Interp;
+mccMode = pr.mccMode;
+ConfigFile = pr.ConfigFile;
 
 if ischar(ChannelPatterns)
     ChannelPatterns = {ChannelPatterns};
@@ -106,8 +110,14 @@ func_strs = arrayfun(@(x) sprintf(['XR_fftSpectrumComputingFrame(''%s'',''%s'','
     strrep(mat2str(N), ' ', ','), string(save3DStack), background, Interp), ...
     1 : numel(allFullpaths), 'unif', 0);
 
-slurm_cluster_generic_computing_wrapper(allFullpaths, allSpctmFullpaths, func_strs, 'cpusPerTask', 6);
-
+sz = getImageSize(allFullpaths{1});
+memAllocate = prod(max(sz, N)) * 4 / 1024^3 * 15;
+[is_done_flag] = generic_computing_frameworks_wrapper(allFullpaths, allSpctmFullpaths, ...
+    func_strs, memAllocate=memAllocate, mccMode=mccMode, ConfigFile=ConfigFile);
+if ~all(is_done_flag)
+    [is_done_flag] = generic_computing_frameworks_wrapper(allFullpaths, allSpctmFullpaths, ...
+        func_strs, memAllocate=memAllocate * 2, mccMode=mccMode, ConfigFile=ConfigFile);
+end
 
 end
 

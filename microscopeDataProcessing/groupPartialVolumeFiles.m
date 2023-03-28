@@ -63,6 +63,15 @@ else
         datenum = datenum(include_flag);
         datasize = datasize(include_flag);
     end
+    
+    if isempty(fnames)
+        warning('The input image list is empty or none of the images matches ChannelPatterns.');
+        containPartVolume = false;
+        groupedFnames = {};
+        groupedDatenum = [];
+        groupedDatasize = [];
+        return;
+    end
 
     switch ext
         case {'.tif', '.tiff'}
