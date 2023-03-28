@@ -161,9 +161,9 @@ for f = 1 : nF
         string(largeZarr), string(saveZarr), strrep(mat2str(BlockSize), ' ', ','));
 end
 
-cpusPerTask = max(min(ceil(prod(sz) * 4 / 1024^3 * 8 / 20), 24), cpusPerTask);
+memAllocate = prod(sz) * 4 / 1024^3 * 8;
 generic_computing_frameworks_wrapper(frameFullpaths, cropFullpaths, func_strs, ...
-    'masterCompute', masterCompute, 'cpusPerTask', cpusPerTask, mccMode=mccMode, ...
-    ConfigFile=ConfigFile);
+    parseCluster=parseCluster, jobLogDir=jobLogDir, masterCompute=masterCompute, ...
+    cpusPerTask=cpusPerTask, memAllocate=memAllocate, mccMode=mccMode, ConfigFile=ConfigFile);
 
 end
