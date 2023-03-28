@@ -49,6 +49,8 @@ switch functionName
         XR_deskewRotateZarr_parser(varargin{1}, varargin{2}, varargin{3}, varargin{4:end});
     case 'XR_deskewRotateBlock'
         XR_deskewRotateBlock_parser(varargin{1}, varargin{2}, varargin{3}, varargin{4}, varargin{5}, varargin{6}, varargin{7}, varargin{8}, varargin{9}, varargin{10:end});
+    case 'XR_resample_dataset'
+        XR_resample_dataset_parser(varargin{1}, varargin{2}, varargin{3}, varargin{4:end});        
     case 'XR_resampleFrame'
         XR_resampleFrame_parser(varargin{1}, varargin{2}, varargin{3}, varargin{4:end});
     case 'XR_resampleSingleZarr'

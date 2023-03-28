@@ -1,5 +1,7 @@
 %% check whether mcc functions in this folder have the exactly same parameters as in their functions
 
+cd(fileparts(which(mfilename)));
+
 dir_info = dir('*_parser.m');
 
 parser_func_names = {dir_info.name}';
