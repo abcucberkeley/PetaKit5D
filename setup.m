@@ -40,6 +40,7 @@ end
 
 fprintf('Add matlab libraries to path...\n')
 addpath(genpath([codeRt]));
+rmpath(genpath([codeRt, '/mcc/mac']));
 
 % also add python libary
 if addPython
