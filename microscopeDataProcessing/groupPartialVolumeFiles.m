@@ -77,7 +77,13 @@ else
         case {'.tif', '.tiff'}
             bim = blockedImage([dataPath, filesep, fnames{1}], 'Adapter', MPageTiffAdapter);            
         case '.zarr'
-            bim = blockedImage([dataPath, filesep, fnames{1}], 'Adapter', ZarrAdapter);            
+            try 
+                bim = blockedImage([dataPath, filesep, fnames{1}], 'Adapter', CZarrAdapter);
+            catch ME
+                disp(ME);
+                disp('c-zarr is not working, use python zarr adaptoer...');
+                bim = blockedImage([dataPath, filesep, fnames{1}], 'Adapter', ZarrAdapter);
+            end
     end
 
     dtype = bim.ClassUnderlying;
