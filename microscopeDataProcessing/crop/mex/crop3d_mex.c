@@ -3,6 +3,10 @@
 #include <omp.h>
 #include "mex.h"
 
+// mex -v COPTIMFLAGS="-O3 -DNDEBUG" CFLAGS='$CFLAGS -O3 -fopenmp' LDFLAGS='$LDFLAGS -O3 -fopenmp' crop3d_mex.c
+// macOS
+// mex -v CC="/usr/local/bin/gcc-12" CXX="/usr/local/bin/g++-12" COPTIMFLAGS="-O3 -DNDEBUG" CFLAGS='$CFLAGS -O3 -fopenmp' LDFLAGS='$LDFLAGS -O3 -fopenmp' crop3d_mex.c
+
 void crop3d_mex(void* orig, void* crop, uint64_t startX, uint64_t startY, uint64_t startZ, uint64_t endX, uint64_t endY, uint64_t endZ, uint64_t origShapeX, uint64_t origShapeY, uint64_t origShapeZ, uint64_t shapeX, uint64_t shapeY, uint64_t shapeZ, uint64_t bits){
     uint64_t bytes = bits/8;
     #pragma omp parallel for collapse(2)

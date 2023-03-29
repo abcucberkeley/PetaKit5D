@@ -968,7 +968,7 @@ if SaveMIP
     if prod([nys, nxs, nzs]) * byte_num / 2^30 < 500
         saveMIP_zarr(nv_fullname, stcMIPname);
     else
-        XR_MIP_zarr(nv_fullname, mccMode=mccMode, ConfigFile=ConfigFile);
+        XR_MIP_zarr(nv_fullname, axis=[1, 1, 1], mccMode=mccMode, ConfigFile=ConfigFile);
     end
 end
 

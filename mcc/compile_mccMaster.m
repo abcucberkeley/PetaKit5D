@@ -1,5 +1,7 @@
 %% script to compile and configure mccMaster.m
 
+cpath = pwd;
+
 [fpath, fname] = fileparts(which('compile_mccMaster.m'));
 cd(fpath);
 
@@ -9,7 +11,7 @@ if ismac
     end
     mcc -v -R -nodisplay -C -d /Applications/LLSM5DToolsMCC -m mccMaster.m
 
-    cd('mac');
+    cd('/Applications/LLSM5DToolsMCC');
     system("sed -i '' '20i\'$'\n''  DYLD_LIBRARY_PATH=${DYLD_LIBRARY_PATH}:${exe_dir}/../../microscopeDataProcessing/io/c-zarr/parallelWriteZarr/mac; '$'\n''' run_mccMaster.sh");
     system("sed -i '' '20i\'$'\n''  # add custom library paths'$'\n''' run_mccMaster.sh");
 elseif isunix
@@ -31,3 +33,4 @@ elseif ispc
     copyfile('../../microscopeDataProcessing/io/c-zarr/parallelWriteZarr/windows/*dll', './');
 end
 
+cd(cpath);

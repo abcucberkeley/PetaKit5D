@@ -6,6 +6,8 @@
 #include "mex.h"
 
 // mex -v COPTIMFLAGS="-O3 -DNDEBUG" CFLAGS='$CFLAGS -O3 -fopenmp' LDFLAGS='$LDFLAGS -O3 -fopenmp' skewed_space_interp_mex.c
+// macOS
+// mex -v CC="/usr/local/bin/gcc-12" CXX="/usr/local/bin/g++-12" COPTIMFLAGS="-O3 -DNDEBUG" CFLAGS='$CFLAGS -O3 -fopenmp' LDFLAGS='$LDFLAGS -O3 -fopenmp' skewed_space_interp_mex.c
 
 void mexFunction(int nlhs, mxArray *plhs[],
         int nrhs, const mxArray *prhs[])
