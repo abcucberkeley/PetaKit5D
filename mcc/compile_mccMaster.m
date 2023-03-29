@@ -14,6 +14,12 @@ if ismac
     cd('/Applications/LLSM5DToolsMCC');
     system("sed -i '' '20i\'$'\n''  DYLD_LIBRARY_PATH=${DYLD_LIBRARY_PATH}:${exe_dir}/../../microscopeDataProcessing/io/c-zarr/parallelWriteZarr/mac; '$'\n''' run_mccMaster.sh");
     system("sed -i '' '20i\'$'\n''  # add custom library paths'$'\n''' run_mccMaster.sh");
+    % create a zip file in the repo folder
+    cd(fpath);
+    if ~exist('mac', 'dir')
+        mkdir('mac');
+    end
+    zip('mac/LLSM5DToolsMCC.zip', '/Applications/LLSM5DToolsMCC/*')
 elseif isunix
     if ~exist('linux', 'dir')
         mkdir('linux');
