@@ -25,8 +25,9 @@ elseif ispc
     if ~exist('windows', 'dir')
         mkdir('windows');
     end
-    mcc -v -R -nodisplay -d windows -m mccMaster.m
+    mcc -v -d windows -m mccMaster.m
     
     cd('windows');
+    copyfile('../../microscopeDataProcessing/io/c-zarr/parallelWriteZarr/windows/*dll', './');
 end
 
