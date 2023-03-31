@@ -228,7 +228,7 @@ if ischar(ZstageScan)
     ZstageScan = strcmp(ZstageScan,'true');
 end
 if ischar(Save16bit)
-    Save16bit = strcmp(Save16bit,'true');
+    Save16bit = eval(Save16bit);
 end
 if ischar(onlyFirstTP)
     onlyFirstTP = strcmp(onlyFirstTP,'true');
