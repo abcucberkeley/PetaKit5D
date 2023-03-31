@@ -355,11 +355,15 @@ while (~parseCluster && ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
                             SlurmConstraint, time_str, inputFn, BashLaunchStr, floor(cpusPerTask / paraJobNum), inputFn);
                         % in case of some jobs fail because of memory issue, directly use parallel for computing
                         if trial_counter(f) <= 1
+                            retry = 1;
+                            if paraJobNum > 1
+                                retry = 2;
+                            end
                             cmd = sprintf(['sbatch --array=%d -o %s -e %s --cpus-per-task=%d ', ...
                                 '--ntasks=1 %s %s %s --wrap="echo $PWD; echo bash command: \\\"%s\\\"; ', ...
-                                '%s; parallel --jobs %d --delay 0.1  < %s"'], ...
+                                '%s; parallel --jobs %d --retries %s --delay 0.2  < %s"'], ...
                                 task_id, job_log_fname, job_log_error_fname, cpusPerTask, SlurmParam, ...
-                                SlurmConstraint, time_str, inputFn, BashLaunchStr, paraJobNum, inputFn);
+                                SlurmConstraint, time_str, inputFn, BashLaunchStr, paraJobNum, retry, inputFn);
                         end
                         % if tried twice, still fail, not use parallel computing
                         if trial_counter(f) > 1

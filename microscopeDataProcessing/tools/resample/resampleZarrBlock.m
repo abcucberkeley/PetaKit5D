@@ -53,9 +53,6 @@ if ~exist(zarrFullpath, 'dir')
     error('The input zarr file %s doesnot exist!', zarrFullpath);
 end
 
-bim = blockedImage(zarrFullpath, 'Adapter', ZarrAdapter);
-iSz = bim.Size;
-
 if ~exist(dsFullpath, 'dir')
     error('The output zarr file %s doesnot exist!', dsFullpath);
 end
@@ -66,6 +63,7 @@ catch ME
     nv_bim = blockedImage(dsFullpath, 'Adapter', ZarrAdapter);
 end
 
+iSz = getImageSize(zarrFullpath);
 oBlockSize = BlockSize;
 if isempty(BatchSize)
     BatchSize = oBlockSize * 2;

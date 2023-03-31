@@ -31,12 +31,14 @@ p_31 = regexp(var_str, '''');
 p_41 = regexp(var_str, '''''');
 p_51 = regexp(var_str, ','''',');
 p_52 = regexp(var_str, '{''''}');
+p_53 = regexp(var_str, ',''''$');
 
 p_61 = regexp(var_str, '"');
 
 % remove ,'', from p_41
 p_41(ismember(p_41, p_51 + 1)) = [];
 p_41(ismember(p_41, p_52 + 1)) = [];
+p_41(ismember(p_41, p_53 + 1)) = [];
 
 % remove '''' from p_31
 p_31(ismember(p_31, [p_41, p_41 + 1])) = [];

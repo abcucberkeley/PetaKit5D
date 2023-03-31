@@ -16,6 +16,8 @@ ip.addParameter('Interp', 'linear', @(x) any(strcmpi(x, {'cubic', 'linear', 'nea
 ip.addParameter('parseCluster', true, @islogical);
 ip.addParameter('cpusPerTask', 1, @islogical);
 ip.addParameter('uuid', '', @ischar);
+ip.addParameter('mccMode', false, @islogical);
+ip.addParameter('ConfigFile', '', @ischar);
 
 ip.parse(zarrFullpath, dsFullpath, dsFactor, varargin{:});
 
@@ -27,6 +29,8 @@ Interp = pr.Interp;
 parseCluster = pr.parseCluster;
 cpusPerTask = pr.cpusPerTask;
 uuid = pr.uuid;
+mccMode = pr.mccMode;
+ConfigFile = pr.ConfigFile;
 
 if isempty(uuid)
     uuid = get_uuid();
@@ -107,12 +111,15 @@ end
 
 inputFullpaths = repmat({zarrFullpath}, numTasks, 1);
 
-is_done_flag= slurm_cluster_generic_computing_wrapper(inputFullpaths, outputFullpaths, ...
-    funcStrs, 'cpusPerTask', cpusPerTask, 'parseCluster', parseCluster);
+memAllocate = prod(batchSize) * 4 / 2^30 * 5;
+is_done_flag= generic_computing_frameworks_wrapper(inputFullpaths, outputFullpaths, ...
+    funcStrs, cpusPerTask=cpusPerTask, memAllocate=memAllocate, parseCluster=parseCluster, ...
+    mccMode=mccMode, ConfigFile=ConfigFile);
 
 if ~all(is_done_flag)
-    slurm_cluster_generic_computing_wrapper(inputFullpaths, outputFullpaths, ...
-        funcStrs, 'cpusPerTask', cpusPerTask * 2, 'parseCluster', parseCluster);
+    generic_computing_frameworks_wrapper(inputFullpaths, outputFullpaths, funcStrs, ...
+        cpusPerTask=cpusPerTask, memAllocate=memAllocate, parseCluster=parseCluster, ...
+        mccMode=mccMode, ConfigFile=ConfigFile);
 end    
 
 if exist(dsFullpath, 'dir')
