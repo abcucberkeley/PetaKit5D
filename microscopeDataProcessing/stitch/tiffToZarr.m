@@ -24,6 +24,7 @@ ip.addRequired('zarrFilename', @ischar);
 ip.addOptional('frame', [], @isnumeric);
 ip.addParameter('Overwrite', false, @islogical);
 ip.addParameter('blockSize', [500, 500, 250], @isnumeric);
+ip.addParameter('zarrSubSize', [20, 20, 20], @isnumeric);
 ip.addParameter('expand2dDim', true, @islogical); % expand the z dimension for 2d data
 ip.addParameter('flipZstack', false, @islogical);
 ip.addParameter('resample', [], @(x) isempty(x) || isnumeric(x));
@@ -39,6 +40,7 @@ ip.parse(tifFilename, zarrFilename, frame, varargin{:});
 pr = ip.Results;
 Overwrite = pr.Overwrite;
 blockSize = pr.blockSize;
+zarrSubSize = pr.zarrSubSize;
 expand2dDim = pr.expand2dDim;
 flipZstack = pr.flipZstack;
 resample = pr.resample;
@@ -217,24 +219,8 @@ else
 end
 tmpFilename = [zarrFilename '_' uuid];
 if ~exist(tmpFilename, 'dir')
-    try 
-        % nv_bim = blockedImage(tmpFilename, sz, blockSize, init_val, "Adapter", CZarrAdapter, 'Mode', 'w');
-        switch dtype
-            case 'single'
-                ddtype = 'f4';
-            case 'uint16'
-                ddtype = 'u2';
-            otherwise
-                error('Unsupported data type');
-        end
-        createZarrFile(tmpFilename, 'chunks', blockSize, 'dtype', ddtype, 'order', 'F', ...
-            'shape', sz, 'cname', compressor, 'level', 1);        
-    catch ME
-        disp(ME);
-        init_val = zeros(1, dtype);        
-        nv_bim = blockedImage(tmpFilename, sz, blockSize, init_val, "Adapter", ZarrAdapter, 'Mode', 'w');      
-        nv_bim.Adapter.close();        
-    end
+    createzarr(tmpFilename, dataSize=sz, blockSize=blockSize, dtype=dtype, ...
+        expand2dDim=expand2dDim, zarrSubSize=zarrSubSize);
 end
 
 % write zarr
