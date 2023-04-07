@@ -25,7 +25,8 @@ ip.addParameter('MemPerCPU', 20.9, @isnumeric);
 ip.addParameter('MemAllocate', [], @isnumeric);
 ip.addParameter('wholeNodeJob', false, @islogical); % allocate a whole node for parallel computing
 ip.addParameter('uuid', '', @ischar);
-ip.addParameter('GPUJob', false, @ischar);
+ip.addParameter('GPUJob', false, @islogical);
+ip.addParameter('GPUNum', 0, @isnumeric);
 ip.addParameter('maxTrialNum', 3, @isnumeric);
 ip.addParameter('unitWaitTime', 30, @isnumeric);
 ip.addParameter('maxJobNum', inf, @isnumeric); % submit limited number of jobs (pending/running)
@@ -93,6 +94,7 @@ MemAllocate = pr.MemAllocate;
 wholeNodeJob = pr.wholeNodeJob; 
 uuid = pr.uuid;
 GPUJob = pr.GPUJob;
+GPUNum = pr.GPUNum;
 maxTrialNum = pr.maxTrialNum;
 unitWaitTime = pr.unitWaitTime;
 maxJobNum = pr.maxJobNum;
@@ -111,9 +113,9 @@ GNUparallel = pr.GNUparallel;
 paraJobNum = pr.paraJobNum;
 
 if numel(funcStrs) == 1
-    mccMode = false;
     if masterCompute
         parseCluster = false;
+        mccMode = ismcc || isdeployed;        
     end
 end
 
@@ -130,10 +132,16 @@ switch clusterType
             if wholeNodeJob
                 paraJobNum = floor(maxCPUNum / cpusPerTask);
                 cpusPerTask = maxCPUNum;
+                if GPUJob
+                    paraJobNum = min(paraJobNum, GPUNum);
+                end                
             end
             taskBatchNum = ceil(taskBatchNum ./ paraBatchNum) * paraBatchNum;
             taskBatchNum = max(taskBatchNum, paraJobNum * paraBatchNum);
             taskBatchNum = max(taskBatchNum, minBatchNum);
+            if wholeNodeJob && GPUJob
+                taskBatchNum = ceil(taskBatchNum ./ paraJobNum) * paraJobNum;
+            end
 
             is_done_flag = mcc_slurm_cluster_generic_computing_wrapper(inputFullpaths, ...
                 outputFullpaths, funcStrs, parseCluster=parseCluster, masterCompute=masterCompute, ...
@@ -142,7 +150,7 @@ switch clusterType
                 maxJobNum=maxJobNum, taskBatchNum=taskBatchNum, BashLaunchStr=BashLaunchStr, ...
                 SlurmParam=SlurmParam, SlurmConstraint=SlurmConstraint, MCRParam=MCRParam, ...
                 MCCMasterStr=MCCMasterStr, jobTimeLimit=jobTimeLimit, language=language, ...
-                GNUparallel=GNUparallel, paraJobNum=paraJobNum);
+                GNUparallel=GNUparallel, paraJobNum=paraJobNum, GPUJob=GPUJob);
         else
             is_done_flag = slurm_cluster_generic_computing_wrapper(inputFullpaths, ...
                 outputFullpaths, funcStrs, parseCluster=parseCluster, masterCompute=masterCompute, ...

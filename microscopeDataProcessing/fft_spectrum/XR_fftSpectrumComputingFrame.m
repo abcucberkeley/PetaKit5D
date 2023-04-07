@@ -63,11 +63,11 @@ end
 im = im(s(1) : t(1), s(2) : t(2), :);
 
 if background ~= 0
-    im = double(im) - background;
+    im = single(im) - background;
     im = im .* (im > 0);
 end
 
-im = imresize3(double(im), round(size(im) .* [xyPixelSize, xyPixelSize, dz] ./ px), 'method', Interp);
+im = imresize3(single(im), round(size(im) .* [xyPixelSize, xyPixelSize, dz] ./ px), 'method', Interp);
 sz = size(im);
 
 hfN = (N - 1) / 2;

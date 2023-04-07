@@ -2,7 +2,7 @@ function mccMaster(functionName, varargin)
 % compile command
 
 %#function setup
-
+get_hostname();
 fprintf('Function name: %s\nVariables: %s \n', functionName, strjoin(varargin, ' '));
 t0 = tic;
 
@@ -75,6 +75,8 @@ switch functionName
         XR_fftSpectrumComputingFrame_parser(varargin{1}, varargin{2}, varargin{3:end});
     case 'simReconFrame'
         simReconFrame_parser(varargin{1}, varargin{2}, varargin{3:end});        
+    case 'replicateDataBlock'
+        replicateDataBlock_parser(varargin{1}, varargin{2}, varargin{3}, varargin{4}, varargin{5}, varargin{6:end});
 end
 
 toc(t0);

@@ -55,10 +55,10 @@ try
     end
     if isempty(zarrSubSize)
         createZarrFile(filepath, 'chunks', blockSize, 'dtype', ddtype, 'order', order, ...
-            'shape', dataSize, 'cname', compressor, 'level', 1); 
+            'shape', dataSize, 'cname', compressor, 'clevel', 1); 
     else
         createZarrFile(filepath, 'chunks', blockSize, 'dtype', ddtype, 'order', order, ...
-            'shape', dataSize, 'cname', compressor, 'level', 1, 'subfolders', zarrSubSize); 
+            'shape', dataSize, 'cname', compressor, 'clevel', 1, 'subfolders', zarrSubSize); 
     end
 catch ME
     disp(ME);

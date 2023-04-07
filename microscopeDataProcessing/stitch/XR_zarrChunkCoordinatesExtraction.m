@@ -21,7 +21,7 @@ ip.addParameter('BorderSize', 50, @(x) isnumeric(x) && numel(x) <= 3);
 
 ip.parse(volSize, varargin{:});
 
-if any(volSize < 2)
+if numel(volSize) < 3
     error('The volume size [%s] is not valid for a 3d volume.', num2str(volSize));
 end
 

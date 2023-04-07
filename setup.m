@@ -14,17 +14,13 @@ if nargin < 2
     addPython = false;
 end
 
-try
-    if ispc
-        [~, output] = system('hostname');
-    else
-        [~, output] = system('echo $HOSTNAME');
-    end
-    hostname = strip(output);
-    fprintf('Hostname: %s \n', hostname);
-catch ME
-    disp(ME);
+% show hostname
+if ispc
+    [~, output] = system('hostname');
+else
+    [~, output] = system('echo $HOSTNAME');
 end
+fprintf('Hostname: %s \n', strip(output));
 
 if nargin < 3 || isempty(pythonPath)
     if ispc

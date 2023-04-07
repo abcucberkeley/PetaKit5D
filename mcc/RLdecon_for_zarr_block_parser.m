@@ -110,7 +110,11 @@ if ischar(OTFCumThresh)
     OTFCumThresh = str2num(OTFCumThresh);
 end
 if ischar(skewed)
-    skewed = strcmp(skewed,'true');
+    if strcmp(skewed(1), '[')
+        skewed = [];
+    else
+        skewed = strcmp(skewed, 'true');
+    end
 end
 if ischar(fixIter)
     fixIter = strcmp(fixIter,'true');

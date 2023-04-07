@@ -780,7 +780,7 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all') || ...
                 if any(stitch_flags_d) && (f == find(stitch_flags_d, 1, 'first'))
                     switch generateImageList
                         case 'from_encoder'
-                            imageListFullpaths{fdind} = stitch_generate_imagelist_from_encoder(dataPath, dz_f);
+                            imageListFullpaths{fdind} = stitch_generate_imagelist_from_encoder(dataPath, dz_f, ChannelPatterns);
                         case 'from_sqlite'
                             imageListFullpaths{fdind} = stitch_generate_imagelist_from_sqlite(dataPath);                        
                     end

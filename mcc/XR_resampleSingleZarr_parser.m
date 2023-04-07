@@ -15,6 +15,8 @@ ip.addParameter('Interp', 'linear', @(x) any(strcmpi(x, {'cubic', 'linear', 'nea
 ip.addParameter('parseCluster', true, @(x) islogical || ischar(x));
 ip.addParameter('cpusPerTask', 1, @(x) islogical || ischar(x));
 ip.addParameter('uuid', '', @ischar);
+ip.addParameter('mccMode', false, @(x) islogical(x) || ischar(x));
+ip.addParameter('ConfigFile', '', @ischar);
 
 ip.parse(zarrFullpath, dsFullpath, dsFactor, varargin{:});
 
@@ -26,6 +28,8 @@ Interp = pr.Interp;
 parseCluster = pr.parseCluster;
 cpusPerTask = pr.cpusPerTask;
 uuid = pr.uuid;
+mccMode = pr.mccMode;
+ConfigFile = pr.ConfigFile;
 
 if ischar(dsFactor)
     dsFactor = str2num(dsFactor);
@@ -45,7 +49,13 @@ end
 if ischar(cpusPerTask)
     cpusPerTask = strcmp(cpusPerTask,'true');
 end
+if ischar(mccMode)
+    mccMode = strcmp(mccMode,'true');
+end
 
 XR_resampleSingleZarr(zarrFullpath,dsFullpath,dsFactor,'blockSize',blockSize,...
     'batchSize',batchSize,'BorderSize',BorderSize,'Interp',Interp,...
-    'parseCluster',parseCluster,'cpusPerTask',cpusPerTask,'uuid',uuid);
+    'parseCluster',parseCluster,'cpusPerTask',cpusPerTask,'uuid',uuid, mccMode=mccMode, ...
+    ConfigFile=ConfigFile);
+
+end

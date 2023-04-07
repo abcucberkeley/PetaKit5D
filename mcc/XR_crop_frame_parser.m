@@ -23,6 +23,8 @@ ip.addParameter('largeZarr', false, @(x) islogical(x) || ischar(x)); % use zarr 
 ip.addParameter('saveZarr', false , @(x) islogical(x) || ischar(x)); % save as zarr
 ip.addParameter('BlockSize', [500, 500, 500] , @(x) isnumeric(x) || ischar(x)); % save as zarr
 ip.addParameter('uuid', '', @ischar);
+ip.addParameter('mccMode', false, @(x) islogical(x) || ischar(x));
+ip.addParameter('ConfigFile', '', @ischar);
 
 ip.parse(dataFullpath, saveFullpath, bbox, varargin{:});
 
@@ -61,7 +63,12 @@ end
 if ischar(BlockSize)
     BlockSize = str2num(BlockSize);
 end
+if ischar(mccMode)
+    mccMode = strcmp(mccMode, 'true');
+end
 
 XR_crop_dataset(dataFullpath,saveFullpath,bbox,'overwrite',overwrite, ...
     'cropType',cropType,'pad',pad,'zarrFile',zarrFile,'largeZarr',...
-    largeZarr,'saveZarr',saveZarr,'BlockSize',BlockSize);
+    largeZarr,'saveZarr',saveZarr,'BlockSize',BlockSize, mccMode=mccMode, ConfigFile=ConfigFile);
+
+end

@@ -12,6 +12,7 @@ ip.addRequired('bbox', @isnumeric);
 ip.addParameter('pad', false, @islogical); % pad region that is outside the bbox
 ip.addParameter('BatchSize', [1024, 1024, 1024] , @isvector); % in y, x, z
 ip.addParameter('BlockSize', [256, 256, 256] , @isnumeric); % save as zarr
+ip.addParameter('zarrSubSize', [20, 20, 20] , @isvector); % in y, x, z
 ip.addParameter('parseCluster', true, @islogical);
 ip.addParameter('parseParfor', false, @islogical);
 ip.addParameter('masterCompute', true, @islogical); % master node participate in the task computing. 
@@ -28,6 +29,7 @@ pr = ip.Results;
 pad = pr.pad;
 BatchSize = pr.BatchSize;
 BlockSize = pr.BlockSize;
+zarrSubSize = pr.zarrSubSize;
 parseCluster = pr.parseCluster;
 parseParfor = pr.parseParfor;
 jobLogDir = pr.jobLogDir;
@@ -63,7 +65,7 @@ if ~exist(zarrFlagPath, 'dir')
     mkdir_recursive(zarrFlagPath);
 end 
 
-bim = blockedImage(zarrFullpath, 'Adapter', ZarrAdapter);
+bim = blockedImage(zarrFullpath, 'Adapter', CZarrAdapter);
 imSize = bim.Size;
 dtype = bim.ClassUnderlying;
 
@@ -86,15 +88,9 @@ batchBBoxes = batchBBoxes + [bbox(1 : 3), bbox(1 : 3)];
 
 % initialize zarr file
 cropTempPath = sprintf('%s/%s_%s.zarr', cropPath, fsname, uuid);
-init_val = zeros(1, dtype);
-try
-    crop_bim = blockedImage(cropTempPath, outSize, BlockSize, init_val, "Adapter", CZarrAdapter, 'Mode', 'w');
-catch ME
-    disp(ME);
-    crop_bim = blockedImage(cropTempPath, outSize, BlockSize, init_val, "Adapter", ZarrAdapter, 'Mode', 'w');
+if ~exist(cropTempPath, 'dir')
+    createzarr(cropTempPath, dataSize=outSize, blockSize=BlockSize, dtype=dtype, zarrSubSize=zarrSubSize);
 end
-crop_bim.Adapter.close();
-
 
 % set up parallel computing 
 numBatch = size(batchBBoxes, 1);
@@ -124,14 +120,14 @@ end
 % submit jobs 
 inputFullpaths = repmat({zarrFullpath}, numTasks, 1);
 if parseCluster || ~parseParfor
-    memAllocate = prod(batchBBoxes) * 4 * 2 / 1024^3;
-    is_done_flag= slurm_cluster_generic_computing_wrapper(inputFullpaths, ...
+    memAllocate = prod(BatchSize) * 4 * 2 / 1024^3;
+    is_done_flag= generic_computing_frameworks_wrapper(inputFullpaths, ...
         outputFullpaths, funcStrs, 'cpusPerTask', cpusPerTask, 'maxJobNum', maxJobNum, ...
         'memAllocate', memAllocate, 'taskBatchNum', taskBatchNum, 'masterCompute', masterCompute, ...
         'parseCluster', parseCluster, mccMode=mccMode, ConfigFile=ConfigFile);
 
     if ~all(is_done_flag)
-        is_done_flag= slurm_cluster_generic_computing_wrapper(inputFullpaths, ...
+        is_done_flag= generic_computing_frameworks_wrapper(inputFullpaths, ...
             outputFullpaths, funcStrs, 'cpusPerTask', cpusPerTask, 'maxJobNum', maxJobNum, ...
             'memAllocate', memAllocate * 2, 'taskBatchNum', taskBatchNum, 'masterCompute', masterCompute, ...
             'parseCluster', parseCluster, mccMode=mccMode, ConfigFile=ConfigFile);
@@ -155,7 +151,7 @@ if exist(cropTempPath, 'dir')
 end
 
 % generate MIPs 
-XR_MIP_zarr(cropFullpath, 'axis', [1, 1, 1]);
+XR_MIP_zarr(cropFullpath, 'axis', [1, 1, 1], mccMode=mccMode, ConfigFile=ConfigFile);
 
 
 end

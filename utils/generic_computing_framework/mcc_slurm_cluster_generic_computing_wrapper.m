@@ -29,6 +29,7 @@ ip.addParameter('masterCompute', true, @islogical); % master node participate in
 ip.addParameter('jobLogDir', '../job_logs', @ischar);
 ip.addParameter('tmpDir', '', @ischar);
 ip.addParameter('cpusPerTask', 1, @isnumeric);
+ip.addParameter('GPUJob', false, @islogical);
 ip.addParameter('uuid', '', @ischar);
 ip.addParameter('maxTrialNum', 3, @isnumeric);
 ip.addParameter('unitWaitTime', 30, @isnumeric);
@@ -67,6 +68,7 @@ tmpDir = pr.tmpDir;
 parseCluster = pr.parseCluster;
 masterCompute = pr.masterCompute;
 cpusPerTask = pr.cpusPerTask;
+GPUJob = pr.GPUJob;
 maxTrialNum = pr.maxTrialNum;
 unitWaitTime = pr.unitWaitTime;
 maxJobNum = pr.maxJobNum;
@@ -361,9 +363,16 @@ while (~parseCluster && ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
                             end
                             cmd = sprintf(['sbatch --array=%d -o %s -e %s --cpus-per-task=%d ', ...
                                 '--ntasks=1 %s %s %s --wrap="echo $PWD; echo bash command: \\\"%s\\\"; ', ...
-                                '%s; parallel --jobs %d --retries %s --delay 0.2  < %s"'], ...
+                                '%s; parallel --jobs %d --delay 0.2  < %s"'], ...
                                 task_id, job_log_fname, job_log_error_fname, cpusPerTask, SlurmParam, ...
-                                SlurmConstraint, time_str, inputFn, BashLaunchStr, paraJobNum, retry, inputFn);
+                                SlurmConstraint, time_str, inputFn, BashLaunchStr, paraJobNum, inputFn);
+                            if GPUJob
+                                cmd = sprintf(['sbatch --array=%d -o %s -e %s --cpus-per-task=%d ', ...
+                                    '--ntasks=1 %s %s %s --wrap="echo $PWD; echo bash command: \\\"%s\\\"; ', ...
+                                    '%s; parallel --jobs %d --delay 0.2 CUDA_VISIBLE_DEVICES=''\\$(({%%} - 1))'' eval {} < %s"'], ...
+                                    task_id, job_log_fname, job_log_error_fname, cpusPerTask, SlurmParam, ...
+                                    SlurmConstraint, time_str, inputFn, BashLaunchStr, paraJobNum, inputFn);
+                            end
                         end
                         % if tried twice, still fail, not use parallel computing
                         if trial_counter(f) > 1

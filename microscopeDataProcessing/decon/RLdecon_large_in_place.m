@@ -169,6 +169,11 @@ BorderSize = round((size(psf) + 10) / 2);
     'BlockSize', BlockSize, 'SameBatchSize', SameBatchSize, 'BorderSize', BorderSize);
 scaleFactor = 1.0;
 
+% sort regions based on the size
+[~, inds] = sortrows([prod(batchBBoxes(:, 4 : 6) - batchBBoxes(:, 1 : 3) + 1, 2), batchBBoxes]);
+batchBBoxes = batchBBoxes(inds, :);
+regionBBoxes = regionBBoxes(inds, :);
+
 % initialize zarr file
 if ~exist(deconTmppath, 'dir')
     try
@@ -187,7 +192,9 @@ numBatch = size(batchBBoxes, 1);
 
 if GPUJob
     if parseCluster
-        taskSize = max(100, round(numBatch / 5000));
+        if numBatch > 100
+            taskSize = max(100, round(numBatch / 5000));
+        end
     end
 
     maxJobNum = inf;
@@ -238,14 +245,14 @@ if ~parseParfor
     end
     is_done_flag= generic_computing_frameworks_wrapper(inputFullpaths, outputFullpaths, ...
         funcStrs, 'cpusPerTask', cpusPerTask, 'maxJobNum', maxJobNum, 'taskBatchNum', taskBatchNum, ...
-        'masterCompute', masterCompute, 'parseCluster', parseCluster, 'mccMode', mccMode, ...
-        'ConfigFile', cur_ConfigFile);
+        'masterCompute', masterCompute, 'parseCluster', parseCluster, 'GPUJob', GPUJob, ...
+        'mccMode', mccMode, 'ConfigFile', cur_ConfigFile);
 
     if ~all(is_done_flag)
         is_done_flag = generic_computing_frameworks_wrapper(inputFullpaths, outputFullpaths, ...
             funcStrs, 'cpusPerTask', cpusPerTask, 'maxJobNum', maxJobNum, 'taskBatchNum', taskBatchNum, ...
-            'masterCompute', masterCompute, 'parseCluster', parseCluster, 'mccMode', mccMode, ...
-            'ConfigFile', cur_ConfigFile);
+            'masterCompute', masterCompute, 'parseCluster', parseCluster, 'GPUJob', GPUJob, ...
+            'mccMode', mccMode, 'ConfigFile', cur_ConfigFile);
     end
 elseif parseParfor
     is_done_flag= matlab_parfor_generic_computing_wrapper(inputFullpaths, outputFullpaths, ...

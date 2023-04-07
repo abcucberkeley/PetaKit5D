@@ -50,7 +50,7 @@ ip.addParameter('errThresh', [], @isnumeric); % error threshold for simplified c
 ip.addParameter('CPUMaxMem', 500, @isnumeric); % CPU Memory in Gb
 ip.addParameter('BatchSize', [1024, 1024, 1024] , @isnumeric); % in y, x, z
 ip.addParameter('BlockSize', [256, 256, 256], @isnumeric); % block overlap
-ip.addParameter('zarrSubSize', [], @isnumeric);
+ip.addParameter('zarrSubSize', [20, 20, 20], @isnumeric);
 ip.addParameter('largeFile', false, @islogical);
 ip.addParameter('largeMethod', 'inmemory', @ischar); % memory jobs, memory single, inplace. 
 ip.addParameter('saveZarr', false, @islogical); % save as zarr

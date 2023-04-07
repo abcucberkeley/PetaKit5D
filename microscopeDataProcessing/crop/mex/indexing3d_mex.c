@@ -7,13 +7,15 @@
 // macOS
 // mex -v CC="/usr/local/bin/gcc-12" CXX="/usr/local/bin/g++-12" COPTIMFLAGS="-O3 -DNDEBUG" CFLAGS='$CFLAGS -O3 -fopenmp' LDFLAGS='$LDFLAGS -O3 -fopenmp' indexing3d_mex.c
 
-void indexing3d_mex(void* orig, void* region, uint64_t startX, uint64_t startY, uint64_t startZ, uint64_t endX, uint64_t endY, uint64_t endZ, uint64_t origShapeX, uint64_t origShapeY, uint64_t origShapeZ, uint64_t shapeX, uint64_t shapeY, uint64_t shapeZ, uint64_t bits){
+void indexing3d_mex(const void* restrict orig, void* restrict region, uint64_t startX, uint64_t startY, uint64_t startZ, uint64_t endX, uint64_t endY, uint64_t endZ, uint64_t origShapeX, uint64_t origShapeY, uint64_t origShapeZ, uint64_t shapeX, uint64_t shapeY, uint64_t shapeZ, uint64_t bits){
     uint64_t bytes = bits/8;
+    const uint64_t regionShapeXY = shapeX*shapeY;
+    const uint64_t origShapeXY = origShapeX*origShapeY;
 
     #pragma omp parallel for collapse(2)
-    for(int64_t z = startZ; z < endZ; z++){
-        for(int64_t y = startY; y < endY; y++){
-            memcpy((uint8_t*)orig+((startX+y*origShapeX+z*origShapeX*origShapeY)*bytes), (uint8_t*)region+(((y-startY)*shapeX+(z-startZ)*shapeX*shapeY)*bytes), shapeX*bytes);
+    for(uint64_t z = startZ; z < endZ; z++){
+        for(uint64_t y = startY; y < endY; y++){
+            memcpy((uint8_t*)orig+((startX+y*origShapeX+z*origShapeXY)*bytes), (uint8_t*)region+(((y-startY)*shapeX+(z-startZ)*regionShapeXY)*bytes), shapeX*bytes);
         }
     }
 }

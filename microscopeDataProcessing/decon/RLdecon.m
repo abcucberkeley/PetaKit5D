@@ -376,6 +376,15 @@ if ~file_exist_mat(1)
         end
     else
         deconvolved = rawdata;
+        if ~isempty(deconBbox)
+            try
+                deconvolved = crop3d_mex(deconvolved, deconBbox);
+            catch ME
+                disp(ME);
+                deconvolved = deconvolved(deconBbox(1) : deconBbox(4), deconBbox(2) : deconBbox(5), ...
+                    deconBbox(3) : deconBbox(6));
+            end
+        end
     end
 elseif Deskew || Rotate
     % load existing decon results

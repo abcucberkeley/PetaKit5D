@@ -23,6 +23,8 @@ ip.addParameter('largeZarr', false, @islogical); % use zarr file as input
 ip.addParameter('saveZarr', false , @islogical); % save as zarr
 ip.addParameter('BlockSize', [500, 500, 500] , @isnumeric); % save as zarr
 ip.addParameter('uuid', '', @ischar);
+ip.addParameter('mccMode', false, @islogical);
+ip.addParameter('ConfigFile', '', @ischar);
 
 ip.parse(dataFullpath, saveFullpath, bbox, varargin{:});
 
@@ -33,6 +35,8 @@ zarrFile = pr.zarrFile;
 largeZarr = pr.largeZarr;
 saveZarr = pr.saveZarr;
 BlockSize = pr.BlockSize;
+mccMode = pr.mccMode;
+ConfigFile = pr.ConfigFile;
 
 if ~exist(dataFullpath, 'file')
     warning('The file %s does not exist!', dataFullpath);
@@ -62,7 +66,8 @@ if zarrFile
         parseCluster = true;
         parseParfor = false;
         XR_crop_zarr(dataFullpath, saveFullpath, bbox, 'pad', pad, 'BatchSize', BatchSize, ...
-            'BlockSize', BlockSize, 'parseCluster', parseCluster, 'parseParfor', parseParfor);
+            'BlockSize', BlockSize, 'parseCluster', parseCluster, 'parseParfor', parseParfor, ...
+            mccMode=mccMode, ConfigFile=ConfigFile);
         return;
     end
     im = readzarr(dataFullpath, 'bbox', bbox_1);

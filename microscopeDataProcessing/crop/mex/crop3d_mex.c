@@ -7,12 +7,15 @@
 // macOS
 // mex -v CC="/usr/local/bin/gcc-12" CXX="/usr/local/bin/g++-12" COPTIMFLAGS="-O3 -DNDEBUG" CFLAGS='$CFLAGS -O3 -fopenmp' LDFLAGS='$LDFLAGS -O3 -fopenmp' crop3d_mex.c
 
-void crop3d_mex(void* orig, void* crop, uint64_t startX, uint64_t startY, uint64_t startZ, uint64_t endX, uint64_t endY, uint64_t endZ, uint64_t origShapeX, uint64_t origShapeY, uint64_t origShapeZ, uint64_t shapeX, uint64_t shapeY, uint64_t shapeZ, uint64_t bits){
-    uint64_t bytes = bits/8;
+void crop3d_mex(const void* restrict orig, void* restrict crop, const uint64_t startX, const uint64_t startY, const uint64_t startZ, const uint64_t endX, const uint64_t endY, const uint64_t endZ, const uint64_t origShapeX, const uint64_t origShapeY, const uint64_t origShapeZ, const uint64_t shapeX, const uint64_t shapeY, const uint64_t shapeZ, const uint64_t bits){
+    const uint64_t bytes = bits/8;
+    const uint64_t cropShapeXY = shapeX*shapeY;
+    const uint64_t origShapeXY = origShapeX*origShapeY;
+    
     #pragma omp parallel for collapse(2)
-    for(int64_t z = startZ; z < endZ; z++){
-        for(int64_t y = startY; y < endY; y++){
-            memcpy((uint8_t*)crop+((((y-startY)*shapeX)+((z-startZ)*shapeX*shapeY))*bytes),(uint8_t*)orig+((startX+(y*origShapeX)+(z*origShapeX*origShapeY))*bytes),shapeX*bytes);
+    for(uint64_t z = startZ; z < endZ; z++){
+        for(uint64_t y = startY; y < endY; y++){
+            memcpy((uint8_t*)crop+(((y-startY)*shapeX+(z-startZ)*cropShapeXY)*bytes),(uint8_t*)orig+((startX+(y*origShapeX)+(z*origShapeXY))*bytes),shapeX*bytes);
         }
     }
 }
