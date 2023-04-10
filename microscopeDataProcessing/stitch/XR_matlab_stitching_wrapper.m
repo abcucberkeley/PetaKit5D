@@ -257,7 +257,11 @@ end
 
 % check if a slurm-based computing cluster exists
 if parseCluster
-    [parseCluster, job_log_fname, job_log_error_fname] = checkSlurmCluster(dataPath, jobLogDir);
+    if multiLoc
+        [parseCluster, job_log_fname, job_log_error_fname] = checkSlurmCluster(dataPath{1}, jobLogDir);
+    else
+        [parseCluster, job_log_fname, job_log_error_fname] = checkSlurmCluster(dataPath, jobLogDir);
+    end
 end
 
 % uuid for the job

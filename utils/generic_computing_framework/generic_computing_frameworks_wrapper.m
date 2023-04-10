@@ -65,7 +65,7 @@ if ~isempty(ConfigFile)
                 raw = fread(fid);
                 fclose(fid);
                 str = char(raw');
-                confData = jsondecode(str);            
+                confData = jsondecode(str);
             case '.mat'
                 a = load(ConfigFile);
                 confData = a;

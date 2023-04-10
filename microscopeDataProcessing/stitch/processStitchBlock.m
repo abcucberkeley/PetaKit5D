@@ -1,4 +1,4 @@
-function [] = processStitchBlock(blockInds, BlockInfoFullname, PerBlockInfoFullname, flagFullname, stitchBlockInfo, zarrHeaders, nv_bim, varargin)
+function [] = processStitchBlock(blockInds, BlockInfoFullname, PerBlockInfoFullname, flagFullname, stitchBlockInfo, tileFns, nv_bim, varargin)
 % process each block for given block indices for zarr.
 % 
 % 
@@ -14,7 +14,7 @@ ip.addRequired('BlockInfoFullname', @(x) ischar(x));
 ip.addRequired('PerBlockInfoFullname', @(x) ischar(x));
 ip.addRequired('flagFullname', @(x) ischar(x));
 ip.addOptional('stitchBlockInfo', []);
-ip.addOptional('zarrHeaders', []);
+ip.addOptional('tileFns', []);
 ip.addOptional('nv_bim', []);
 ip.addParameter('Overwrite', false, @islogical);
 ip.addParameter('BlendMethod', 'mean', @ischar);
@@ -23,7 +23,7 @@ ip.addParameter('BlurSigma', 5, @isnumeric); % blurred sigma for blurred blend
 ip.addParameter('imdistFullpaths', {}, @iscell); % image distance paths
 ip.addParameter('weightDegree', 10, @isnumeric); % weight degree for image distances
 
-ip.parse(blockInds, BlockInfoFullname, PerBlockInfoFullname, flagFullname, stitchBlockInfo, zarrHeaders, nv_bim, varargin{:});
+ip.parse(blockInds, BlockInfoFullname, PerBlockInfoFullname, flagFullname, stitchBlockInfo, tileFns, nv_bim, varargin{:});
 
 Overwrite = ip.Results.Overwrite;
 BlendMethod = ip.Results.BlendMethod;
@@ -52,12 +52,22 @@ if exist(flagFullname, 'file')
 end
 
 if ~isempty(PerBlockInfoFullname)
-    a = load(PerBlockInfoFullname, 'stitchBlockInfo_t');
-    stitchBlockInfo = a.stitchBlockInfo_t;
+    [~, ~, ext] = fileparts(PerBlockInfoFullname);
+    switch ext
+        case '.mat'
+            a = load(PerBlockInfoFullname, 'stitchBlockInfo_t');
+            stitchBlockInfo = a.stitchBlockInfo_t;
+        case '.json'
+            fid = fopen(PerBlockInfoFullname);
+            raw = fread(fid);
+            fclose(fid);
+            str = char(raw');
+            stitchBlockInfo = jsondecode(str);
+    end
 end
 
 if ~isempty(BlockInfoFullname)
-    a = load(BlockInfoFullname, 'nv_bim', 'zarrHeaders');
+    a = load(BlockInfoFullname, 'nv_bim', 'tileFns');
     nv_bim = a.nv_bim;
     nv_bim.Adapter.getInfo;
     
@@ -65,16 +75,13 @@ if ~isempty(BlockInfoFullname)
         a = load(BlockInfoFullname, 'stitchBlockInfo');
         stitchBlockInfo = a.stitchBlockInfo(blockInds);
     end
-
-    zarrHeaders = a.zarrHeaders;
+    tileFns = a.tileFns;
 end
 
-Mode = nv_bim.Mode;
 imSize = nv_bim.Size;
 bSubSz = nv_bim.SizeInBlocks;
 blockSize = nv_bim.BlockSize;
 dtype = nv_bim.ClassUnderlying;
-level = 1;
 
 done_flag = false(numel(blockInds), 1);
 for i = 1 : numel(blockInds)
@@ -115,20 +122,24 @@ for i = 1 : numel(blockInds)
 
     % get the pixels for tile in the block
     for j = 1 : numTiles
-        tileInd = stchBlockInfo_i{j}.tileInd;
-        bim_j = zarrHeaders{tileInd};
-        bCoords = stchBlockInfo_i{j}.bCoords; 
-        bboxCoords = stchBlockInfo_i{j}.bboxCoords; 
-        block_j = bim_j.Adapter.getIORegion(bboxCoords(1 : 3), bboxCoords(4 : 6));
+        tileInd = stchBlockInfo_i(j).tileInd;
+        % bim_j = zarrHeaders{tileInd};
+        bCoords = stchBlockInfo_i(j).bCoords; 
+        bCoords = bCoords(:)';
+        bboxCoords = stchBlockInfo_i(j).bboxCoords;
+        bboxCoords = bboxCoords(:)';
+        % block_j = bim_j.Adapter.getIORegion(bboxCoords(1 : 3), bboxCoords(4 : 6));
+        block_j = readzarr(tileFns{tileInd}, bbox=bboxCoords);
         if ~isa(block_j, dtype)
             block_j = cast(block_j, dtype);
         end
         block_j_mregion = block_j;
         
         % remove overlap regions
-        m_blockInfo = stchBlockInfo_i{j}.mblockInfo;
+        m_blockInfo = stchBlockInfo_i(j).mblockInfo;
         for k = 1 : numel(m_blockInfo)
-            m_bboxCoords = m_blockInfo{k}.bboxCoords;
+            m_bboxCoords = m_blockInfo(k).bboxCoords;
+            m_bboxCoords = m_bboxCoords(:)';
             m_bbox = m_bboxCoords - repmat(bboxCoords(1 : 3), 1, 2) + 1;
             block_j_mregion(m_bbox(1) : m_bbox(4), m_bbox(2) : m_bbox(5), m_bbox(3) : m_bbox(6)) = 0;
         end

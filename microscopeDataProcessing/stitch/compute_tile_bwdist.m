@@ -17,12 +17,12 @@ if exist(bwdistFullpath, 'dir')
     return;
 end
 
-persistent zarrHeaders overlap_matrix ol_region_cell bkFn datenum
+persistent tileFns overlap_matrix ol_region_cell bkFn datenum
 dir_info = dir(blockInfoFullname);
-if ~(strcmpi(bkFn, blockInfoFullname) && datenum == dir_info.datenum) || isempty(zarrHeaders)
+if ~(strcmpi(bkFn, blockInfoFullname) && datenum == dir_info.datenum) || isempty(tileFns)
     bkFn = blockInfoFullname;
-    a = load(blockInfoFullname,'zarrHeaders', 'overlap_matrix', 'ol_region_cell');
-    zarrHeaders = a.zarrHeaders;
+    a = load(blockInfoFullname, 'tileFns', 'overlap_matrix', 'ol_region_cell');
+    tileFns = a.tileFns;
     overlap_matrix = a.overlap_matrix;
     ol_region_cell = a.ol_region_cell;
     dir_info = dir(bkFn);
@@ -30,13 +30,10 @@ if ~(strcmpi(bkFn, blockInfoFullname) && datenum == dir_info.datenum) || isempty
     clear a;
 end
 
-nF = numel(zarrHeaders);
+nF = numel(tileFns);
 i = tileInd;
-bim_i = zarrHeaders{i};
-% [~, fsname] = fileparts(bim_i.Source);
 
-% im_i = gather(bim_i);
-im_i = bim_i.Adapter.getIORegion([1, 1, 1], bim_i.Size);
+im_i = readzarr(tileFns{i});
 im_i_orig = im_i ~= 0;
 im_i([1, end], :, :) = 0;
 im_i(:, [1, end], :) = 0;
@@ -122,8 +119,8 @@ tmpFilename = [zarrFilename '_' uuid];
 % createZarrFile(tmpFilename, 'chunks', blockSize, 'dtype', 'f4', 'order', 'F', ...
 %     'shape', size(im_dist), 'cname', 'zstd', 'level', 2);
 try
-    createZarrFile(tmpFilename, 'chunks', blockSize, 'dtype', 'f4', 'order', 'F', ...
-        'shape', size(im_dist), 'cname', compressor, 'level', 1);    
+    zarrSubSize = [20, 20, 20];
+    createzarr(tmpFilename, dataSize=size(im_dist), blockSize=blockSize, dtype='single', zarrSubSize=zarrSubSize);
     % bim = blockedImage(tmpFilename, sz, blockSize, zeros(1, 'single'), "Adapter", CZarrAdapter, 'mode', 'w');
 catch ME
     disp(ME);

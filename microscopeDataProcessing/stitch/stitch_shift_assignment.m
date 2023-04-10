@@ -18,7 +18,7 @@ function [xyz_shift, d_shift] = stitch_shift_assignment(zarrFullpaths, xcorrDir,
 % xruan (06/20/2022): add input variable axisWeight for user defined weights for optimization
 % xruan (08/03/2022): fix bug for max offset bounds based on the coordinate orders
 % xruan (12/13/2022): change xcorr thresh as user defined parameter with default 0.25
-
+% xruan (04/07/2023): put xcorr results to subfolders if greater than 10k
 
 fprintf('Compute cross-correlation based registration between overlap tiles...\n');
 
@@ -100,7 +100,23 @@ end
 [ti, tj] = ind2sub(size(overlap_matrix), find(overlap_matrix));
 
 inputFullpaths = zarrFullpaths(ti);
-outputFullpaths = arrayfun(@(x) sprintf('%s/xcorr_tile_%d_tile_%d.mat', xcorrDir, ti(x), tj(x)), 1 : numel(ti), 'unif', 0);
+if numel(ti) > 10000
+    nP = numel(ti);
+    batchSize = 10000;
+    numBatch = ceil(nP ./ batchSize);
+    outputFullpaths = cell(nP, 1);
+    for i = 1 : numBatch
+        s = (i - 1) * batchSize + 1;
+        t = min(i * batchSize, nP);
+        xcorrSubdir = sprintf('%s/xcorr_%06d_%06d/', xcorrDir, s, t);
+        if ~exist(xcorrSubdir, 'dir')
+            mkdir(xcorrSubdir);
+        end
+        outputFullpaths(s : t) = arrayfun(@(x) sprintf('%s/xcorr_tile_%d_tile_%d.mat', xcorrSubdir, ti(x), tj(x)), s : t, 'unif', 0);
+    end
+else
+    outputFullpaths = arrayfun(@(x) sprintf('%s/xcorr_tile_%d_tile_%d.mat', xcorrDir, ti(x), tj(x)), 1 : numel(ti), 'unif', 0);
+end
 
 cuboid_mat = [xyz, xyz + (imSizes(:, [2, 1, 3]) - 1) .* [xf, yf, zf] * px];
 
@@ -125,7 +141,7 @@ else
 end
 
 rawImageSizes = prod((cuboid_overlap_ij_mat(:, 4 : 6) - cuboid_overlap_ij_mat(:, 1 : 3))' ./ (px * [xf; yf; zf])) * 8 / 1024^3;
-memAllocate = prctile(ceil(rawImageSizes) * 5, 90) * nodeFactor;
+memAllocate = prctile(ceil(rawImageSizes) * 6, 95) * nodeFactor;
 cpusPerTask_xcorr = 2;
 
 maxTrialNum_xcorr = 2;

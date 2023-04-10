@@ -417,21 +417,14 @@ XR_tiffToZarr_wrapper(tiffFullpaths, 'zarrPathstr', zarrPathstr, 'blockSize', ro
 
 % load all zarr headers as a cell array and get image size for all tiles
 imSizes = zeros(nF, 3);
-zarrHeaders = cell(nF, 1);
 for i = 1 : nF 
-    zarrFullpath = zarrFullpaths{i};
-    try 
-        bim = blockedImage(zarrFullpath, "Adapter", CZarrAdapter);
-    catch ME
-        disp(ME);
-        bim = blockedImage(zarrFullpath, "Adapter", ZarrAdapter);
-    end
-    zarrHeaders{i} = bim; 
+    zarrFullpath = zarrFullpaths{i};    
+    sz_i = getImageSize(zarrFullpath);
     
-    if any(stitchMIP) && numel(bim.Size) == 2
-        imSizes(i, :) = [bim.Size, 1];        
+    if any(stitchMIP) && numel(sz_i) == 2
+        imSizes(i, :) = [sz_i, 1];        
     else
-        imSizes(i, :) = bim.Size;
+        imSizes(i, :) = sz_i;
     end
 end
 
@@ -439,7 +432,7 @@ if all(imSizes(:, 3) == 1)
     stitch2D = true;
 end
 
-dtype = bim.ClassUnderlying;
+dtype = getImageDataType(zarrFullpaths{1});
 if Save16bit
     dtype = 'uint16';
 end 
@@ -491,13 +484,23 @@ xyz_shift = xyz;
 % calculate relative/absolute shifts between tiles
 if xcorrShift && isPrimaryCh
     xcorrDir = sprintf('%s/%s/xcorr/%s/', dataPath, ResultDir, nv_fsname);
-    assign_method = shiftMethod;
-    
-    MaxOffset = [xyMaxOffset, xyMaxOffset, zMaxOffset];
-    [xyz_shift, d_shift] = stitch_shift_assignment(zarrFullpaths, xcorrDir, imSizes, xyz, ...
-        px, [xf, yf, zf], overlap_matrix, overlap_regions, MaxOffset, xcorrDownsample, ...
-        xcorrThresh, tileIdx, assign_method, stitch2D, axisWeight, groupFile, parseCluster, ...
-        nodeFactor, mccMode, ConfigFile);
+    xcorrFinalFn = sprintf('%s/%s/xcorr/%s.mat', dataPath, ResultDir, nv_fsname);
+    if ~exist(xcorrFinalFn, 'file')
+        xcorTmpFn = sprintf('%s/%s/xcorr/%s_%s.mat', dataPath, ResultDir, nv_fsname, uuid);
+        assign_method = shiftMethod;
+        
+        MaxOffset = [xyMaxOffset, xyMaxOffset, zMaxOffset];
+        [xyz_shift, d_shift] = stitch_shift_assignment(zarrFullpaths, xcorrDir, imSizes, xyz, ...
+            px, [xf, yf, zf], overlap_matrix, overlap_regions, MaxOffset, xcorrDownsample, ...
+            xcorrThresh, tileIdx, assign_method, stitch2D, axisWeight, groupFile, parseCluster, ...
+            nodeFactor, mccMode, ConfigFile);
+        save('-v7.3', xcorTmpFn, 'xyz_shift', 'd_shift');
+        movefile(xcorTmpFn, xcorrFinalFn)
+    else
+        a = load(xcorrFinalFn, 'xyz_shift', 'd_shift');
+        xyz_shift = a.xyz_shift;
+        d_shift = a.d_shift;
+    end
 elseif ~isPrimaryCh
     if ~exist(stitchInfoFullpath, 'file')
         error('The stitch information filename %s does not exist!', stitchInfoFullpaths);
@@ -696,14 +699,13 @@ for i = 1 : nF
         else
             mblock_inds = [];
         end
-        mblockInfo_j = cell(numel(mblock_inds), 1);
+        mblockInfo_j = struct([]);
         for k = 1 : numel(mblock_inds)
             mblockInfo_k = mblockInfo_cell{mblock_inds(k)};
             ind_k = mblockInfo_k.blockInd == blockInd;
-            mb.bCoords = mblockInfo_k.bCoords(ind_k, :);
-            mb.wCoords = mblockInfo_k.wCoords(ind_k, :);
-            mb.bboxCoords = mblockInfo_k.bboxCoords(ind_k, :);
-            mblockInfo_j{k} = mb;
+            mblockInfo_j(k).bCoords = mblockInfo_k.bCoords(ind_k, :);
+            mblockInfo_j(k).wCoords = mblockInfo_k.wCoords(ind_k, :);
+            mblockInfo_j(k).bboxCoords = mblockInfo_k.bboxCoords(ind_k, :);
         end
         
         bblockInfo_j.tileInd = i;
@@ -712,10 +714,12 @@ for i = 1 : nF
         bblockInfo_j.bboxCoords = bboxCoords;
         bblockInfo_j.mblockInfo = mblockInfo_j;
         bblockInfo_j.borderSize = BorderSize;
-        
+                
         stitchBlockInfo{blockInd}{end + 1} = bblockInfo_j;
     end
 end
+inds = ~cellfun(@isempty, stitchBlockInfo);
+stitchBlockInfo(inds) = cellfun(@(x) cat(1, x{:}), stitchBlockInfo(inds), 'UniformOutput', false);
 
 % save block info and also the header for blocked image (for record and distributed computing in the future)
 stichInfoPath = [dataPath, filesep, ResultDir, filesep, stitchInfoDir];
@@ -755,7 +759,8 @@ catch ME
     nv_bim = blockedImage(nv_tmp_raw_fullname, 'Adapter', ZarrAdapter);
 end
 
-save('-v7.3', block_info_tmp_fullname, 'zarrHeaders', 'overlap_matrix', 'half_ol_region_cell', ...
+tileFns = zarrFullpaths;
+save('-v7.3', block_info_tmp_fullname, 'tileFns', 'overlap_matrix', 'half_ol_region_cell', ...
     'ol_region_cell', 'tileBlockInfo', 'bSubSz', 'nv_bim', 'BorderSize');
 movefile(block_info_tmp_fullname, block_info_fullname);
 
@@ -864,16 +869,24 @@ else
     [pstr, fsn] = fileparts(stitchInfoFullpath);
     PerBlockInfoPath = [pstr, '/', fsn];
 end
+
+
 imdistFullpaths_str = sprintf("{'%s'}", strjoin(imdistFullpaths, ''','''));    
 for t = 1 : numTasks
     blockInds = (t - 1) * taskSize + 1 : min(t * taskSize, numBlocks);
 
     % save block info searately for each task for faster access
-    PerBlockInfoFullpath = sprintf('%s/stitch_block_info_blocks_%d_%d.mat', PerBlockInfoPath, blockInds(1), blockInds(end));
+    % PerBlockInfoFullpath = sprintf('%s/stitch_block_info_blocks_%d_%d.mat', PerBlockInfoPath, blockInds(1), blockInds(end));
+    PerBlockInfoFullpath = sprintf('%s/stitch_block_info_blocks_%d_%d.json', PerBlockInfoPath, blockInds(1), blockInds(end));
     if isPrimaryCh
-        PerBlockInfoTmppath = sprintf('%s/stitch_block_info_blocks_%d_%d_%s.mat', PerBlockInfoPath, blockInds(1), blockInds(end), uuid);
+        % PerBlockInfoTmppath = sprintf('%s/stitch_block_info_blocks_%d_%d_%s.mat', PerBlockInfoPath, blockInds(1), blockInds(end), uuid);
+        PerBlockInfoTmppath = sprintf('%s/stitch_block_info_blocks_%d_%d_%s.json', PerBlockInfoPath, blockInds(1), blockInds(end), uuid);
         stitchBlockInfo_t = stitchBlockInfo(blockInds);
-        save('-v7.3', PerBlockInfoTmppath, 'blockInds', 'stitchBlockInfo_t');
+        % save('-v7.3', PerBlockInfoTmppath, 'blockInds', 'stitchBlockInfo_t');
+        s = jsonencode(stitchBlockInfo_t, 'PrettyPrint', true);
+        fid = fopen(PerBlockInfoTmppath, 'w');
+        fprintf(fid, s);
+        fclose(fid);
         movefile(PerBlockInfoTmppath, PerBlockInfoFullpath);
     end
     

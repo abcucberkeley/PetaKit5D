@@ -65,8 +65,9 @@ classdef CZarrAdapter < images.blocked.Adapter
             data = readzarr(obj.ZarrObj.loc, 'bbox', [regionStart, regionEnd]);
         end
          
-        function data = getIORegion(obj, regionStart, regionEnd)             
-            data = readzarr(obj.ZarrObj.loc, 'bbox', [regionStart, regionEnd]);
+        function data = getIORegion(obj, regionStart, regionEnd) 
+            bbox = [regionStart(:)', regionEnd(:)'];
+            data = readzarr(obj.ZarrObj.loc, 'bbox', bbox);
         end
     end
      

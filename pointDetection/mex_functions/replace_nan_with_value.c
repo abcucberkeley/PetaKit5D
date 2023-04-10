@@ -62,7 +62,7 @@ void mexFunction( int nlhs, mxArray *plhs[],
     nonnan_mat = mxGetPr(plhs[0]);
 
     #pragma omp parallel for
-    for (i=0;i<n_element;i++) {
+    for (uint64_t i=0;i<n_element;i++) {
 	    switch (mDType){
 	        case mxSINGLE_CLASS:
 		        if (isnan(*((float*)(nan_mat) + i)))

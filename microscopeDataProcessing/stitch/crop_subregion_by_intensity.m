@@ -20,7 +20,7 @@ end
 adj_axes(sz_2_adj <= dimNumThrsh) = [];
 
 mu_2 = mean(region_2(:));
-std_2 = std(region_2(:));
+std_2 = std(single(region_2(:)));
 region_2_bw = region_2 > mu_2 + 3 * std_2;
 
 for i = 1 : numel(adj_axes)
@@ -30,10 +30,10 @@ for i = 1 : numel(adj_axes)
 
     [~, pind] = max(fz_2);
 
-    fa_inds_2 = find(fz_2 > mean(fz_2) + 2 * (0.5 * (std(fz_2) + movstd(fz_2, 11))));
+    % fa_inds_2 = find(fz_2 > mean(fz_2) + 2 * (0.5 * (std(fz_2) + movstd(fz_2, 11))));
 
-    s = 1;
-    t = numel(fa_inds_2);
+    % s = 1;
+    % t = numel(fa_inds_2);
     sa_2 = 1;
     ta_2 = numel(fz_2);
 
@@ -63,8 +63,12 @@ for i = 1 : numel(adj_axes)
     crop_bbox(ax_i + 3) = ta_2;
 end
 
-region_2 = region_2(crop_bbox(1) : crop_bbox(4), crop_bbox(2) : crop_bbox(5), crop_bbox(3) : crop_bbox(6));
-
+try 
+    region_2 = crop3d_mex(region_2, crop_bbox);
+catch ME
+    disp(ME);
+    region_2 = region_2(crop_bbox(1) : crop_bbox(4), crop_bbox(2) : crop_bbox(5), crop_bbox(3) : crop_bbox(6));
+end
 
 end
 

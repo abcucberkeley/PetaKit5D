@@ -79,7 +79,6 @@ t1 = round((cuboid_overlap_12(4 : 6) - cuboid_1(1 : 3))' ./ (px * xyz_factors)) 
 t2 = round((cuboid_overlap_12(4 : 6) - cuboid_2(1 : 3))' ./ (px * xyz_factors)) + 1;
 
 region_2 = bim_2.Adapter.getIORegion(s2([2, 1, 3])', t2([2, 1, 3])');
-region_2 = single(region_2);
 
 % crop region 2 if one or more dimension is too large, if so, find a small
 % region with rich signal. 
@@ -99,12 +98,15 @@ if any(downSample ~= 1)
 %     region_2 = double(imresize3(region_2, 1 ./ downSample .* size(region_2), 'nearest'));
     % region_1 = double(imresize3(region_1, 1 ./ downSample .* size(region_1), 'nearest'));
     % region_2 = double(imresize3(region_2, 1 ./ downSample .* size(region_2), 'nearest'));
-    
     % resize by max pooling
-    region_2 = padarray(region_2, ceil(size(region_2) ./ downSample) .* downSample - size(region_2), 0, 'post');
-    fun = @(B, d) max(B, [], d);
-    region_2 = sepblockfun(region_2, downSample, fun);
+    try
+        region_2 = max_pooling_3d_mex(region_2, downSample);
+    catch ME
+        disp(ME);
+        region_2 = max_pooling_3d(region_2, downSample);    
+    end
 end
+region_2 = single(region_2);
 
 % calculate bbox for overlap regions
 maxoff_x = ceil(maxXOffset ./ downSample(2)) * downSample(2);
@@ -117,7 +119,6 @@ tr1 = min(t1 + boarder, sz_1([2, 1, 3])');
 
 % region_1 = bim_1.getRegion(sr1([2, 1, 3]), tr1([2, 1, 3]));
 region_1 = bim_1.Adapter.getIORegion(sr1([2, 1, 3])', tr1([2, 1, 3])');
-region_1 = single(region_1);
 
 % first resize to downsampled ones
 if any(downSample ~= 1)
@@ -127,10 +128,14 @@ if any(downSample ~= 1)
     % region_2 = double(imresize3(region_2, 1 ./ downSample .* size(region_2), 'nearest'));
     
     % resize by max pooling
-    region_1 = padarray(region_1, ceil(size(region_1) ./ downSample) .* downSample - size(region_1), 0, 'post');
-    fun = @(B, d) max(B, [], d);
-    region_1 = sepblockfun(region_1, downSample, fun);
+    try
+        region_1 = max_pooling_3d_mex(region_1, downSample);    
+    catch ME
+        disp(ME)
+        region_1 = max_pooling_3d(region_1, downSample);    
+    end
 end
+region_1 = single(region_1);
 
 % crop region 2
 sz_2 = size(region_2, [1, 2, 3]);

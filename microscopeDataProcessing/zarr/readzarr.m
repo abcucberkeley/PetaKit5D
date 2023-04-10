@@ -26,6 +26,9 @@ try
     end
 catch ME
     disp(ME);
+    if ~exist(filepath, 'dir')
+        error('zarr file %s does not exist!', filepath);
+    end
     disp('Use the alternative zarr reader (ZarrAdapter)...');   
     
     bim = blockedImage(filepath, "Adapter", ZarrAdapter);    

@@ -159,6 +159,7 @@ else
 end
 % change border size to +/-2 in y. 
 BorderSize = [2, 0, 0, 2, 0, 0];
+BorderSize = [1, 0, 0, 1, 0, 0];
 
 % set batches along y axis
 BatchSize = min(imSize, BatchSize);

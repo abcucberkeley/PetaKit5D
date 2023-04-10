@@ -12,6 +12,7 @@ arguments
     filepath char
     options.overwrite (1, 1) logical = false
     options.blockSize (1, :) {mustBeNumeric} = [500, 500, 500]
+    options.zarrSubSize (1, :) {mustBeNumeric} = [20, 20, 20]
     options.expand2dDim (1, 1) logical = true  % expand the z dimension for 2d data
     options.groupWrite (1, 1) logical = true
     options.bbox (1, :) {mustBeNumeric} = []
@@ -20,6 +21,7 @@ end
 overwrite = options.overwrite;
 expand2dDim = options.expand2dDim;
 blockSize = options.blockSize;
+zarrSubSize = options.zarrSubSize;
 groupWrite = options.groupWrite;
 bbox = options.bbox;
 
@@ -49,16 +51,14 @@ if isempty(bbox)
     end
 end
 
+newFile = false;
 try 
-    if ~exist(filepath, 'dir') || (exist(filepath, 'dir') && isempty(bbox))
+    if ~exist(filepath, 'dir')
         if exist(filepath, 'dir')
             rmdir(filepath, 's');
         end
-        bim = blockedImage(filepath, sz, blockSize, init_val, "Adapter", CZarrAdapter, 'Mode', 'w');
-        bim.Adapter.close();
-    else
-        bim = blockedImage(filepath, "Adapter", CZarrAdapter);
-        bim.Adapter.close();
+        createzarr(filepath, dataSize=outSize, blockSize=BlockSize, dtype=dtype, zarrSubSize=zarrSubSize);
+        newFile = true;
     end
 
     parallelWriteZarr(filepath, data, 1, bbox);
@@ -69,7 +69,8 @@ catch ME
         if exist(filepath, 'dir')
             rmdir(filepath, 's');
         end
-        bim = blockedImage(filepath, sz, blockSize, init_val, "Adapter", ZarrAdapter, 'Mode', 'w');             
+        bim = blockedImage(filepath, sz, blockSize, init_val, "Adapter", ZarrAdapter, 'Mode', 'w');
+        newFile = true;
     else
         bim = blockedImage(filepath, "Adapter", ZarrAdapter);
     end
@@ -87,7 +88,7 @@ catch ME
     bim.Adapter.close();
 end
 
-if groupWrite
+if groupWrite && newFile
     try
         fileattrib(filepath, '+w', 'g');
     catch

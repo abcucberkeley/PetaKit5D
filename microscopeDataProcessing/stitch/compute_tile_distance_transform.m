@@ -85,11 +85,11 @@ else
 end
 
 if isempty(zarrHeaders)
-    a = load(blockInfoFullname, 'zarrHeaders');
-    zarrHeaders = a.zarrHeaders;
+    a = load(blockInfoFullname, 'tileFns');
+    tileFns = a.tileFns;
 end
 
-imSize = zarrHeaders{1}.Size;
+imSize = getImageSize(tileFns{1});
 
 % memory needed
 memAllocate = prod(imSize) * 4 / 1024^3 * 10;

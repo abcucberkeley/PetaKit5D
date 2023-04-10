@@ -94,7 +94,8 @@ function integralImageA = integralImage(A,szT)
 szA = size(A);
 
 B = zeros( szA+2*szT-1, class(A));
-B( szT(1)+1:szT(1)+szA(1), szT(2)+1:szT(2)+szA(2), szT(3)+1:szT(3)+szA(3) ) = A;
+% B( szT(1)+1:szT(1)+szA(1), szT(2)+1:szT(2)+szA(2), szT(3)+1:szT(3)+szA(3) ) = A;
+indexing3d_mex(B, [szT+1, szT+szA], A);
 
 s = cumsum(B,1);
 % c = s(1+szT(1):end,:,:)-s(1:end-szT(1),:,:);
