@@ -2,7 +2,7 @@ mccMaster Executable
 
 1. Prerequisites for Deployment 
 
-Verify that MATLAB Runtime(R2022b) is installed.
+Verify that version 9.12 (R2022a) of the MATLAB Runtime is installed.   
 If not, you can run the MATLAB Runtime installer.
 To find its location, enter
   
@@ -10,7 +10,7 @@ To find its location, enter
       
 at the MATLAB prompt.
 
-Alternatively, download and install the Linux version of the MATLAB Runtime for R2022b 
+Alternatively, download and install the Linux version of the MATLAB Runtime for R2022a 
 from the following link on the MathWorks website:
 
     https://www.mathworks.com/products/compiler/mcr/index.html
@@ -31,14 +31,14 @@ Files to Package for Standalone
        ./run_mccMaster.sh <mcr_directory> <argument_list>
        
     at Linux or Mac command prompt. <mcr_directory> is the directory 
-    where MATLAB Runtime(R2022b) is installed or the directory where 
+    where version 9.12 of the MATLAB Runtime is installed or the directory where 
     MATLAB is installed on the machine. <argument_list> is all the 
     arguments you want to pass to your application. For example, 
 
-    If you have MATLAB Runtime(R2022b) installed in 
-    /mathworks/home/application/R2022b, run the shell script as:
+    If you have version 9.12 of the MATLAB Runtime installed in 
+    /mathworks/home/application/v912, run the shell script as:
     
-       ./run_mccMaster.sh /mathworks/home/application/R2022b
+       ./run_mccMaster.sh /mathworks/home/application/v912
        
     If you have MATLAB installed in /mathworks/devel/application/matlab, 
     run the shell script as:
@@ -64,22 +64,21 @@ Center.
 4. Appendix 
 
 A. Linux systems:
-In the following directions, replace MR/R2022b by the directory on the target machine 
-   where MATLAB is installed, or MR by the directory where the MATLAB Runtime is 
-   installed.
+In the following directions, replace MR/v912 by the directory on the target machine where 
+   MATLAB is installed, or MR by the directory where the MATLAB Runtime is installed.
 
 (1) Set the environment variable XAPPLRESDIR to this value:
 
-MR/R2022b/X11/app-defaults
+MR/v912/X11/app-defaults
 
 
 (2) If the environment variable LD_LIBRARY_PATH is undefined, set it to the following:
 
-MR/R2022b/runtime/glnxa64:MR/R2022b/bin/glnxa64:MR/R2022b/sys/os/glnxa64:MR/R2022b/sys/opengl/lib/glnxa64
+MR/v912/runtime/glnxa64:MR/v912/bin/glnxa64:MR/v912/sys/os/glnxa64:MR/v912/sys/opengl/lib/glnxa64
 
 If it is defined, set it to the following:
 
-${LD_LIBRARY_PATH}:MR/R2022b/runtime/glnxa64:MR/R2022b/bin/glnxa64:MR/R2022b/sys/os/glnxa64:MR/R2022b/sys/opengl/lib/glnxa64
+${LD_LIBRARY_PATH}:MR/v912/runtime/glnxa64:MR/v912/bin/glnxa64:MR/v912/sys/os/glnxa64:MR/v912/sys/opengl/lib/glnxa64
 
     For more detailed information about setting the MATLAB Runtime paths, see Package and 
    Distribute in the MATLAB Compiler documentation in the MathWorks Documentation Center.
