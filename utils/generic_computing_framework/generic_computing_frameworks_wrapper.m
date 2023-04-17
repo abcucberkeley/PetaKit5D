@@ -30,6 +30,7 @@ ip.addParameter('GPUNum', 0, @isnumeric);
 ip.addParameter('maxTrialNum', 3, @isnumeric);
 ip.addParameter('unitWaitTime', 30, @isnumeric);
 ip.addParameter('maxJobNum', inf, @isnumeric); % submit limited number of jobs (pending/running)
+ip.addParameter('minTaskJobNum', 1, @isnumeric); % split tasks to this given number workers if fewer, mayly for finishing tasks faster with more workers
 ip.addParameter('taskBatchNum', 1, @isnumeric); % aggragate several tasks together
 ip.addParameter('minBatchNum', 1, @isnumeric); % minimum batch size
 ip.addParameter('paraBatchNum', 1, @isnumeric); % number of jobs each worker works on in parallel
@@ -98,6 +99,7 @@ GPUNum = pr.GPUNum;
 maxTrialNum = pr.maxTrialNum;
 unitWaitTime = pr.unitWaitTime;
 maxJobNum = pr.maxJobNum;
+minTaskJobNum = pr.minTaskJobNum;
 taskBatchNum = pr.taskBatchNum;
 minBatchNum = pr.minBatchNum;
 paraBatchNum = pr.paraBatchNum;
@@ -139,6 +141,10 @@ switch clusterType
             taskBatchNum = ceil(taskBatchNum ./ paraBatchNum) * paraBatchNum;
             taskBatchNum = max(taskBatchNum, paraJobNum * paraBatchNum);
             taskBatchNum = max(taskBatchNum, minBatchNum);
+            if numel(inputFullpaths) / taskBatchNum < minTaskJobNum
+                taskBatchNum = max(ceil(numel(inputFullpaths) / minTaskJobNum), 1);
+            end
+
             if wholeNodeJob && GPUJob
                 taskBatchNum = ceil(taskBatchNum ./ paraJobNum) * paraJobNum;
             end

@@ -1,4 +1,4 @@
-function [] = processStitchBlock(blockInds, BlockInfoFullname, PerBlockInfoFullname, flagFullname, stitchBlockInfo, tileFns, nv_bim, varargin)
+function [] = processStitchBlock(blockInds, BlockInfoFullname, PerBlockInfoFullname, flagFullname, stitchFullname, stitchBlockInfo, tileFns, varargin)
 % process each block for given block indices for zarr.
 % 
 % 
@@ -13,24 +13,31 @@ ip.addRequired('blockInds', @isnumeric);
 ip.addRequired('BlockInfoFullname', @(x) ischar(x));
 ip.addRequired('PerBlockInfoFullname', @(x) ischar(x));
 ip.addRequired('flagFullname', @(x) ischar(x));
+ip.addRequired('stitchFullnanme', @(x) ischar(x));
 ip.addOptional('stitchBlockInfo', []);
 ip.addOptional('tileFns', []);
-ip.addOptional('nv_bim', []);
 ip.addParameter('Overwrite', false, @islogical);
+ip.addParameter('imSize', [], @isnumeric);
+ip.addParameter('blockSize', [], @isnumeric);
+ip.addParameter('dtype', 'uint16', @ischar);
 ip.addParameter('BlendMethod', 'mean', @ischar);
 ip.addParameter('BorderSize', [], @isnumeric);
 ip.addParameter('BlurSigma', 5, @isnumeric); % blurred sigma for blurred blend
 ip.addParameter('imdistFullpaths', {}, @iscell); % image distance paths
 ip.addParameter('weightDegree', 10, @isnumeric); % weight degree for image distances
 
-ip.parse(blockInds, BlockInfoFullname, PerBlockInfoFullname, flagFullname, stitchBlockInfo, tileFns, nv_bim, varargin{:});
+ip.parse(blockInds, BlockInfoFullname, PerBlockInfoFullname, flagFullname, stitchFullname, stitchBlockInfo, tileFns, varargin{:});
 
-Overwrite = ip.Results.Overwrite;
-BlendMethod = ip.Results.BlendMethod;
-BorderSize = ip.Results.BorderSize;
-BlurSigma = ip.Results.BlurSigma;
-imdistFullpaths = ip.Results.imdistFullpaths;
-wd = ip.Results.weightDegree;
+pr = ip.Results;
+Overwrite = pr.Overwrite;
+imSize = pr.imSize;
+blockSize = pr.blockSize;
+dtype = pr.dtype;
+BlendMethod = pr.BlendMethod;
+BorderSize = pr.BorderSize;
+BlurSigma = pr.BlurSigma;
+imdistFullpaths = pr.imdistFullpaths;
+wd = pr.weightDegree;
 
 if isempty(BorderSize) 
     BorderSize = [0, 0, 0];
@@ -67,26 +74,22 @@ if ~isempty(PerBlockInfoFullname)
 end
 
 if ~isempty(BlockInfoFullname)
-    a = load(BlockInfoFullname, 'nv_bim', 'tileFns');
-    nv_bim = a.nv_bim;
-    nv_bim.Adapter.getInfo;
-    
-    if isempty(PerBlockInfoFullname)
-        a = load(BlockInfoFullname, 'stitchBlockInfo');
-        stitchBlockInfo = a.stitchBlockInfo(blockInds);
-    end
+    a = load(BlockInfoFullname, 'tileFns');
     tileFns = a.tileFns;
 end
 
-imSize = nv_bim.Size;
-bSubSz = nv_bim.SizeInBlocks;
-blockSize = nv_bim.BlockSize;
-dtype = nv_bim.ClassUnderlying;
+bSubSz = ceil(imSize ./ blockSize);
+useGPU = gpuDeviceCount("available");
 
 done_flag = false(numel(blockInds), 1);
 for i = 1 : numel(blockInds)
     bi = blockInds(i);
     fprintf('Process block %d... ', bi);
+    if useGPU
+        a = rand(100, 100, 100, 'gpuArray');
+        b = rand(100, 100, 100, 'gpuArray');
+        c = ifftn(fftn(a) .* fftn(b));
+    end    
     tic;
     [suby, subx, subz] = ind2sub(bSubSz, bi);
     blockSub = [suby, subx, subz];
@@ -101,7 +104,8 @@ for i = 1 : numel(blockInds)
     if numTiles == 0
         nv_block = zeros(nbsz, dtype);
         % writeBlock(nv_bim, blockSub, nv_block, level, Mode);
-        nv_bim.Adapter.setRegion(obStart, obEnd, nv_block)
+        % nv_bim.Adapter.setRegion(obStart, obEnd, nv_block);
+        writezarr(nv_block, stitchFullname, bbox=[obStart, obEnd]);
         done_flag(i) = true;
         toc;
         continue;
@@ -177,14 +181,27 @@ for i = 1 : numel(blockInds)
         nv_block = tim_block;
         if any(BorderSize > 0)
             s = (blockSub ~= 1) .* BorderSize;
-            nv_block = nv_block(s(1) + 1 : s(1) + blockSize(1), s(2) + 1 : s(2) + blockSize(2), s(3) + 1 : s(3) + blockSize(3));
+            try
+                nv_block = crop3d_mex(nv_block, [s + 1, s + blockSize]);
+            catch ME
+                disp(ME)
+                disp(ME.stack);
+                nv_block = nv_block(s(1) + 1 : s(1) + blockSize(1), s(2) + 1 : s(2) + blockSize(2), s(3) + 1 : s(3) + blockSize(3));            
+            end
         end
         nv_block = cast(nv_block, dtype);
         % writeBlock(nv_bim, blockSub, nv_block, level, Mode);
         if any(nbsz ~= size(nv_block, [1, 2, 3]))
-            nv_block = nv_block(1 : nbsz(1), 1 : nbsz(2), 1 : nbsz(3));
+            try
+                nv_block = crop3d_mex(nv_block, [1, 1, 1, nbsz]);
+            catch ME
+                disp(ME)
+                disp(ME.stack);
+                nv_block = nv_block(1 : nbsz(1), 1 : nbsz(2), 1 : nbsz(3));
+            end
         end
-        nv_bim.Adapter.setRegion(obStart, obEnd, nv_block);
+        % nv_bim.Adapter.setRegion(obStart, obEnd, nv_block);
+        writezarr(nv_block, stitchFullname, bbox=[obStart, obEnd]);
         done_flag(i) = true;
         toc;
         continue;
@@ -193,7 +210,7 @@ for i = 1 : numel(blockInds)
     % convert to single for processing
     tim_block = single(tim_block);
     tim_f_block = single(tim_f_block);
-    
+
     if ~strcmp(BlendMethod, 'none') && ~strcmp(BlendMethod, 'blurred') && ~strcmp(BlendMethod, 'feather')
         tim_block(tim_block == 0) = nan; 
         tim_f_block(tim_f_block == 0) = nan;
@@ -270,7 +287,8 @@ for i = 1 : numel(blockInds)
     end
 
     nv_zero_inds = nv_block == 0 & nv_f_block ~= 0;
-    nv_block(nv_zero_inds) = nv_f_block(nv_zero_inds);
+    % nv_block(nv_zero_inds) = nv_f_block(nv_zero_inds);
+    nv_block = nv_block .* nv_zero_inds + nv_f_block .* (1 - nv_zero_inds);
     
     if strcmp(BlendMethod, 'blurred') && numTiles > 1
         nv_ind_block(nv_zero_inds) = nv_ind_f_block(nv_zero_inds);
@@ -288,7 +306,13 @@ for i = 1 : numel(blockInds)
     
     if any(BorderSize > 0)
         s = (blockSub ~= 1) .* BorderSize;
-        nv_block = nv_block(s(1) + 1 : s(1) + blockSize(1), s(2) + 1 : s(2) + blockSize(2), s(3) + 1 : s(3) + blockSize(3));
+        try
+            nv_block = crop3d_mex(nv_block, [s + 1, s + blockSize]);
+        catch ME
+            disp(ME)
+            disp(ME.stack);
+            nv_block = nv_block(s(1) + 1 : s(1) + blockSize(1), s(2) + 1 : s(2) + blockSize(2), s(3) + 1 : s(3) + blockSize(3));            
+        end
     end
     
     nv_block = cast(nv_block, dtype);
@@ -296,15 +320,23 @@ for i = 1 : numel(blockInds)
     % write the block to zarr file
     % writeBlock(nv_bim, blockSub, nv_block, level, Mode);
     if any(nbsz ~= size(nv_block, [1, 2, 3]))
-        nv_block = nv_block(1 : nbsz(1), 1 : nbsz(2), 1 : nbsz(3));
+        try
+            nv_block = crop3d_mex(nv_block, [1, 1, 1, nbsz]);
+        catch ME
+            disp(ME)
+            disp(ME.stack);
+            nv_block = nv_block(1 : nbsz(1), 1 : nbsz(2), 1 : nbsz(3));
+        end
     end    
-    nv_bim.Adapter.setRegion(obStart, obEnd, nv_block)
+    % nv_bim.Adapter.setRegion(obStart, obEnd, nv_block);
+    writezarr(nv_block, stitchFullname, bbox=[obStart, obEnd]);    
     done_flag(i) = true;
 
     toc;
 end
 
 if all(done_flag)
+    fprintf('Processing of blocks %d - %d are done!\n', blockInds(1), blockInds(end));
     fclose(fopen(flagFullname, 'w'));
 end
 

@@ -356,7 +356,6 @@ while ~all(is_done_flag | trial_counter >= max_trial_num, 'all')
                         end
 
                         f = sub2ind([numel(fullIter), numel(Cam), numel(stackn), numel(Ch), numel(nz)], n, ncam, s, c, z);
-                        task_id = f;
                         if zlayerStitch
                             cur_tab = tab(tab.ch == Ch(c) & tab.camera == Cam(ncam) & strcmp(tab.fullIter, fullIter{n}) & tab.stack == stackn(s) & tab.z == nz(z), :);
                         else
@@ -590,6 +589,7 @@ while ~all(is_done_flag | trial_counter >= max_trial_num, 'all')
                         xyz_str = strrep(mat2str(xyz), ' ', ',');  
                         tileIdx_str = strrep(mat2str(tileIdx), ' ', ',');
                         tileInfoFullpath = '';
+                        flippedTile_str = strrep(num2str(flippedTile, '%d,'), ' ', '');
 
                         % for tile number greater than 10, save the info to the disk and load it for the function
                         if numel(tile_fullpaths) > 10 && job_ids(n, ncam, s, c, z) == -1
@@ -597,12 +597,13 @@ while ~all(is_done_flag | trial_counter >= max_trial_num, 'all')
                             [~, fsname] = fileparts(stitch_save_fname);
                             tileInfoFullpath = sprintf('%s/stitchInfo/%s_tile_info.mat', stitching_rt, fsname);
                             tileInfoTmppath = sprintf('%s/stitchInfo/%s_tile_info_%s.mat', stitching_rt, fsname, uuid);
-                            save('-v7.3', tileInfoTmppath, 'tile_fullpaths', 'xyz', 'tileIdx');
+                            save('-v7.3', tileInfoTmppath, 'tile_fullpaths', 'xyz', 'tileIdx', 'flippedTile');
                             movefile(tileInfoTmppath, tileInfoFullpath);
                             
                             tile_fullpaths_str = '{}';
                             xyz_str = '[]';
                             tileIdx_str = '[]';
+                            flippedTile_str = '';
                         end
                         
                         cind = cellfun(@(x) contains(tile_fullpaths{1}, x), ChannelPatterns);
@@ -625,7 +626,7 @@ while ~all(is_done_flag | trial_counter >= max_trial_num, 'all')
                             overlapType, string(xcorrShift), xyMaxOffset, zMaxOffset, strrep(mat2str(xcorrDownsample), ' ', ','), ...
                             xcorrThresh, shiftMethod, strrep(mat2str(axisWeight), ' ', ','), groupFile, string(isPrimaryCh), ...
                             string(usePrimaryCoords), num2str(padSize, '%d,'), strrep(num2str(boundboxCrop, '%d,'), ' ', ''), ...
-                            string(zNormalize), string(Save16bit), tileIdx_str, strrep(num2str(flippedTile, '%d,'), ' ', ''), ...
+                            string(zNormalize), string(Save16bit), tileIdx_str, flippedTile_str, ...
                             processFunPath{cind}, strrep(mat2str(stitchMIP), ' ', ','), string(bigStitchData), EdgeArtifacts, ...
                             string(parseCluster), uuid, string(mccMode), ConfigFile);
 

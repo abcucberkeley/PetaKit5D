@@ -1,29 +1,35 @@
-function [] = cross_correlation_registration_2d_parser(imgFullpath_1, imgFullpath_2, xcorrFullpath, cuboid_1, cuboid_2, cuboid_overlap_12, px, xyz_factors, varargin)
-
-
-%#function cross_correlation_registration_2d
+function [] = cross_correlation_registration_wrapper_parser(imgFullpath_1, imgFullpath_2, xcorrFullpath, pair_indices, cuboid_1, cuboid_2, cuboid_overlap_12, px, xyz_factors, varargin)
 
 ip = inputParser;
 ip.CaseSensitive = false;
 ip.addRequired('imgFullpath_1', @ischar);
-ip.addRequired('imgFullpath_2', @ischar);
+ip.addRequired('imgFullpath_2', @(x) iscell(x) || ischar(x));
 ip.addRequired('xcorrFullpath', @ischar);
+ip.addRequired('pair_indices', @(x) isnumeric(x) || ischar(x));
 ip.addRequired('cuboid_1', @(x) isnumeric(x) || ischar(x));
 ip.addRequired('cuboid_2', @(x) isnumeric(x) || ischar(x));
 ip.addRequired('cuboid_overlap_12', @(x) isnumeric(x) || ischar(x));
 ip.addRequired('px', @(x) isnumeric(x) || ischar(x));
 ip.addRequired('xyz_factors', @(x) isnumeric(x) || ischar(x));
+ip.addParameter('Stitch2D', false, @(x) islogical(x) || ischar(x));
 ip.addParameter('downSample', [1, 1, 1], @(x) isnumeric(x) || ischar(x));
 ip.addParameter('MaxOffset', [300, 300, 50], @(x) isnumeric(x) || ischar(x));
 ip.addParameter('dimNumThrsh', 10000, @(x) isnumeric(x) || ischar(x));
 
-ip.parse(imgFullpath_1, imgFullpath_2, xcorrFullpath, cuboid_1, cuboid_2, cuboid_overlap_12, px, xyz_factors, varargin{:});
+ip.parse(imgFullpath_1, imgFullpath_2, xcorrFullpath, pair_indices, cuboid_1, cuboid_2, cuboid_overlap_12, px, xyz_factors, varargin{:});
 
 pr = ip.Results;
+Stitch2D = pr.Stitch2D;
 downSample = pr.downSample;
 MaxOffset = pr.MaxOffset;
 dimNumThrsh = pr.dimNumThrsh;
 
+if ischar(imgFullpath_2)
+    imgFullpath_2 = eval(imgFullpath_2);
+end
+if ischar(pair_indices)
+    pair_indices = str2num(pair_indices);
+end
 if ischar(cuboid_1)
     cuboid_1 = str2num(cuboid_1);
 end
@@ -36,6 +42,12 @@ end
 if ischar(px)
     px = str2double(px);
 end
+if ischar(xyz_factors)
+    xyz_factors = str2num(xyz_factors);
+end
+if ischar(Stitch2D)
+    Stitch2D = strcmp(Stitch2D, 'true');
+end
 if ischar(downSample)
     downSample = str2num(downSample);
 end
@@ -46,11 +58,8 @@ if ischar(dimNumThrsh)
     dimNumThrsh = str2double(dimNumThrsh);
 end
 
-cross_correlation_registration_2d(imgFullpath_1, imgFullpath_2, xcorrFullpath, ...
-    cuboid_1, cuboid_2, cuboid_overlap_12, px, xyz_factors, downSample=downSample, ...
-    MaxOffset=MaxOffset, dimNumThrsh=dimNumThrsh);
-
+cross_correlation_registration_wrapper(imgFullpath_1, imgFullpath_2, xcorrFullpath, ...
+    pair_indices, cuboid_1, cuboid_2, cuboid_overlap_12, px, xyz_factors, Stitch2D=Stitch2D, ...
+    downSample=downSample, MaxOffset=MaxOffset, dimNumThrsh=dimNumThrsh);
 
 end
-
-

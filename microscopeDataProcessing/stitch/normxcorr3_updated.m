@@ -40,12 +40,7 @@ end
 
 pSzT = prod(szT);
 
-% make the running-sum/integral-images of A and A^2, which are
-% used to speed up the computation of the NCC denominator
-intImgA = integralImage(A,szT);
-intImgA2 = integralImage(A.*A,szT);
-
-szOut = size(intImgA);
+szOut = szT + szA - 1;
 
 % compute the numerator of the NCC
 % emulate 3D correlation by rotating templates dimensions
@@ -55,12 +50,25 @@ rotT = flipdim(flipdim(flipdim(T,1),2),3); % this is rot90 in 3d
 fftRotT = fftn(rotT,szOut);
 fftA = fftn(A,szOut);
 corrTA = real(ifftn(fftA.*fftRotT));
-num = (corrTA - intImgA*sum(T(:))/pSzT ) / (pSzT-1);
+clear rotT fftRotT fftA;
+
+sumT = sum(T(:));
+denomT = std(T(:));
+clear T;
+
+% make the running-sum/integral-images of A and A^2, which are
+% used to speed up the computation of the NCC denominator
+intImgA = integralImage(A,szT);
+
+num = (corrTA - intImgA*sumT/pSzT ) / (pSzT-1);
+clear corrTA; 
 
 % compute the denominator of the NCC
+intImgA2 = integralImage(A.*A,szT);
+
 denomA = sqrt( ( intImgA2 - (intImgA.^2)/pSzT ) / (pSzT-1) );
-denomT = std(T(:));
 denom = denomT*denomA;
+clear A intImgA intImgA2 denomA;
 
 % compute the NCC
 s = warning('off', 'MATLAB:divideByZero');
@@ -74,7 +82,7 @@ try
     C = replace_nan_inf_with_value(C, 0);
 catch ME
     disp(ME)
-    C(denomA==0) = 0;
+    C(isnan(C)) = 0;
 end
 
 switch( lower(shape) )

@@ -13,6 +13,7 @@ ip.addRequired('zarrFullpath', @(x) ischar(x));
 ip.addParameter('axis', [0, 0, 1], @(x) isnumeric(x) || ischar(x)); % y, x, z
 ip.addParameter('BatchSize', [2048, 2048, 2048] , @(x) isvector(x) || ischar(x)); % in y, x, z
 ip.addParameter('BlockSize', [2048, 2048, 2048] , @(x) isvector(x) || ischar(x)); % in y, x, z
+ip.addParameter('zarrSubSize', [20, 20, 20] , @(x) isvector(x) || ischar(x)); % in y, x, z
 ip.addParameter('parseCluster', true, @(x) islogical(x) || ischar(x));
 ip.addParameter('parseParfor', false, @(x) islogical(x) || ischar(x));
 ip.addParameter('jobLogDir', '../job_logs/', @ischar);
@@ -28,6 +29,7 @@ pr = ip.Results;
 axis = pr.axis;
 BatchSize = pr.BatchSize;
 BlockSize = pr.BlockSize;
+zarrSubSize = pr.zarrSubSize;
 parseCluster = pr.parseCluster;
 parseParfor = pr.parseParfor;
 jobLogDir = pr.jobLogDir;
@@ -47,6 +49,9 @@ end
 if ischar(BlockSize)
     BlockSize = str2num(BlockSize);
 end
+if ischar(zarrSubSize)
+    zarrSubSize = str2num(zarrSubSize);
+end
 if ischar(parseCluster)
     parseCluster = strcmp(parseCluster,'true');
 end
@@ -64,7 +69,7 @@ if ischar(debug)
 end
 
 XR_MIP_zarr(zarrFullpath,'axis',axis,'BatchSize',BatchSize,'BlockSize',BlockSize, ...
-    'parseCluster',parseCluster,'parseParfor',parseParfor,'jobLogDir',jobLogDir, ...
+    'zarrSubSize', zarrSubSize, 'parseCluster',parseCluster,'parseParfor',parseParfor,'jobLogDir',jobLogDir, ...
     'masterCompute',masterCompute,'mccMode', mccMode, 'ConfigFile', ConfigFile, ...
     'uuid',uuid,'debug',debug);
 

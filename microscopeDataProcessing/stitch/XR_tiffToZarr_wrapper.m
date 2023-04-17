@@ -152,8 +152,12 @@ for i = 1 : nF
         compressor, usrFcn_strs{cind});
 end
 
-[estMem, estGPUMem, rawImageSize] = XR_estimateComputingMemory(tiffFullpaths{1}, {'deconvolution'}, 'cudaDecon', false);
-memAllocate = rawImageSize * 2.25 * numel(tiffFullpath_group_i);
+imSizes = zeros(numel(tiffFullpath_group_i), 3);
+for i = 1 : numel(tiffFullpath_group_i)
+    imSizes(i, :) = getImageSize(tiffFullpath_group_i{i});
+end
+imSize = [imSizes(1, 1 : 2), sum(imSizes(:, 3))];
+memAllocate = prod(imSize) * 4 / 1024^3 * 2.5;
 if ~bigData
     memAllocate = memAllocate * 2;
 end

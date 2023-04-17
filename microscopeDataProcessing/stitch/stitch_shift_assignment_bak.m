@@ -1,4 +1,4 @@
-function [xyz_shift, d_shift] = stitch_shift_assignment(zarrFullpaths, xcorrDir, imSizes, xyz, ...
+function [xyz_shift, d_shift] = stitch_shift_assignment_bak(zarrFullpaths, xcorrDir, imSizes, xyz, ...
     px, xyz_factors, overlap_matrix, overlap_regions, MaxOffset, xcorrDownsample, xcorrThresh, tileIdx, assign_method, ...
     stitch2D, axisWeight, groupFile, parseCluster, nodeFactor, mccMode, ConfigFile)
 % main function for stitch shift assignment 
@@ -19,10 +19,8 @@ function [xyz_shift, d_shift] = stitch_shift_assignment(zarrFullpaths, xcorrDir,
 % xruan (08/03/2022): fix bug for max offset bounds based on the coordinate orders
 % xruan (12/13/2022): change xcorr thresh as user defined parameter with default 0.25
 % xruan (04/07/2023): put xcorr results to subfolders if greater than 10k
-% xruan (04/15/2023): combine xcorrs by the leading tile indices. 
 
 fprintf('Compute cross-correlation based registration between overlap tiles...\n');
-t0 = tic();
 
 if isempty(axisWeight)
     axisWeight = [1, 0.1, 10]; % order y, x, z
@@ -101,91 +99,87 @@ switch assign_method
 end
 [ti, tj] = ind2sub(size(overlap_matrix), find(overlap_matrix));
 
-inputFullpaths = zarrFullpaths;
-
-batchSize = 10000;
-if nF > batchSize
-    numBatch = ceil(nF ./ batchSize);    
+inputFullpaths = zarrFullpaths(ti);
+if numel(ti) > 10000
+    nP = numel(ti);
+    batchSize = 10000;
+    numBatch = ceil(nP ./ batchSize);
+    outputFullpaths = cell(nP, 1);
     for i = 1 : numBatch
         s = (i - 1) * batchSize + 1;
-        t = min(i * batchSize, nF);        
-        xcorrSubdir = sprintf('%s/xcorr_tiles_%06d_%06d/', xcorrDir, s, t);
+        t = min(i * batchSize, nP);
+        xcorrSubdir = sprintf('%s/xcorr_%06d_%06d/', xcorrDir, s, t);
         if ~exist(xcorrSubdir, 'dir')
             mkdir(xcorrSubdir);
         end
-        outputFullpaths(s : t) = arrayfun(@(x) sprintf('%s/xcorr_tile_%d.mat', xcorrSubdir, x), s : t, 'unif', 0);
+        outputFullpaths(s : t) = arrayfun(@(x) sprintf('%s/xcorr_tile_%d_tile_%d.mat', xcorrSubdir, ti(x), tj(x)), s : t, 'unif', 0);
     end
 else
-    outputFullpaths = arrayfun(@(x) sprintf('%s/xcorr_tile_%d.mat', xcorrDir, x), 1 : nF, 'unif', 0);
+    outputFullpaths = arrayfun(@(x) sprintf('%s/xcorr_tile_%d_tile_%d.mat', xcorrDir, ti(x), tj(x)), 1 : numel(ti), 'unif', 0);
 end
+
+cuboid_mat = [xyz, xyz + (imSizes(:, [2, 1, 3]) - 1) .* [xf, yf, zf] * px];
 
 pinds = (ti - 1) * nF - ti .* (ti + 1) / 2 + tj;
 cuboid_overlap_ij_mat = overlap_regions(pinds, :);
 
-cuboid_mat = [xyz, xyz + (imSizes(:, [2, 1, 3]) - 1) .* [xf, yf, zf] * px];
-funcStrs = cell(nF, 1);
-for f = 1 : nF
-    inds_f = ti == f;
-    if ~any(inds_f)
-        continue;
-    end
-    ti_f = ti(inds_f);
-    tj_f = tj(inds_f);
-    pair_indices = [ti_f, tj_f];
-    
-    pinds_f = (ti_f - 1) * nF - ti_f .* (ti_f + 1) / 2 + tj_f;
-    cuboid_overlap_ij_mat_f = overlap_regions(pinds_f, :);
-    zarrFullpaths_j_str = sprintf('{''%s''}', strjoin(zarrFullpaths(tj_f), ''','''));
-
-    funcStrs{f} = sprintf(['cross_correlation_registration_wrapper(''%s'',%s,''%s'',', ...
-        '[%s],[%s],[%s],[%s],%0.20d,[%s],''Stitch2D'',%s,''downSample'',[%s],''MaxOffset'',%s)'], ...
-        zarrFullpaths{f}, zarrFullpaths_j_str, outputFullpaths{f}, strrep(mat2str(pair_indices), ' ', ','), ...
-        strrep(mat2str(cuboid_mat(f, :)), ' ', ','), strrep(mat2str(cuboid_mat(tj_f, :)), ' ', ','), ...
-        strrep(mat2str(cuboid_overlap_ij_mat_f), ' ', ','), px, sprintf('%.20d,%.20d,%.20d', xf, yf, zf), ...
-        string(stitch2D), strrep(num2str(xcorrDownsample, '%.20d,'), ' ', ''), strrep(mat2str(MaxOffset), ' ', ','));
+fprintf('Compute pairwise cross correlation between overlap tiles...\n');
+if stitch2D
+    funcStrs = arrayfun(@(x) sprintf(['cross_correlation_registration_2d(''%s'',''%s'',''%s'',', ...
+        '[%s],[%s],[%s],%0.20d,[%s],''downSample'',[%s],''MaxOffset'',%s)'], ...
+        zarrFullpaths{ti(x)}, zarrFullpaths{tj(x)}, outputFullpaths{x}, strrep(mat2str(cuboid_mat(ti(x), :)), ' ', ','), ...
+        strrep(mat2str(cuboid_mat(tj(x), :)), ' ', ','), strrep(mat2str(cuboid_overlap_ij_mat(x, :)), ' ', ','), ...
+        px, sprintf('%.20d,%.20d,%.20d', xf, yf, zf), strrep(num2str(xcorrDownsample, '%.20d,'), ' ', ''), ...
+        strrep(mat2str(MaxOffset), ' ', ',')), 1 : numel(ti), 'unif', 0);
+else    
+    funcStrs = arrayfun(@(x) sprintf(['cross_correlation_registration_3d(''%s'',''%s'',''%s'',', ...
+        '[%s],[%s],[%s],%0.20d,[%s],''downSample'',[%s],''MaxOffset'',%s)'], ...
+        zarrFullpaths{ti(x)}, zarrFullpaths{tj(x)}, outputFullpaths{x}, strrep(mat2str(cuboid_mat(ti(x), :)), ' ', ','), ...
+        strrep(mat2str(cuboid_mat(tj(x), :)), ' ', ','), strrep(mat2str(cuboid_overlap_ij_mat(x, :)), ' ', ','), ...
+        px, sprintf('%.20d,%.20d,%.20d', xf, yf, zf), strrep(num2str(xcorrDownsample, '%.20d,'), ' ', ''), ...
+        strrep(mat2str(MaxOffset), ' ', ',')), 1 : numel(ti), 'unif', 0);
 end
 
-include_inds = ~cellfun(@isempty, funcStrs);
-inputFullpaths = inputFullpaths(include_inds);
-outputFullpaths = outputFullpaths(include_inds);
-funcStrs = funcStrs(include_inds);
-
-fprintf('Compute pairwise cross correlation between overlap tiles...\n');
-
-rawImageSizes = prod((cuboid_overlap_ij_mat(:, 4 : 6) - cuboid_overlap_ij_mat(:, 1 : 3))' ./ (px * [xf; yf; zf])) * 4 / 1024^3;
-memAllocate = prctile(ceil(rawImageSizes) * 8, 95) * nodeFactor;
+rawImageSizes = prod((cuboid_overlap_ij_mat(:, 4 : 6) - cuboid_overlap_ij_mat(:, 1 : 3))' ./ (px * [xf; yf; zf])) * 8 / 1024^3;
+memAllocate = prctile(ceil(rawImageSizes) * 6, 95) * nodeFactor;
 cpusPerTask_xcorr = 2;
-maxTrialNum_xcorr = 2;
 
-for i = 1 : 3
-    is_done_flag = generic_computing_frameworks_wrapper(inputFullpaths, outputFullpaths, ...
-        funcStrs, 'cpusPerTask', cpusPerTask_xcorr * 2^(i - 1), 'maxTrialNum', maxTrialNum_xcorr, ...
-        'parseCluster', parseCluster, 'memAllocate', memAllocate * 2^(i - 1), ...
-        'mccMode', mccMode, 'ConfigFile', ConfigFile);
-    if all(is_done_flag)
-        break;
-    end
+maxTrialNum_xcorr = 2;
+is_done_flag = generic_computing_frameworks_wrapper(inputFullpaths, outputFullpaths, funcStrs, ...
+    'cpusPerTask', cpusPerTask_xcorr, 'maxTrialNum', maxTrialNum_xcorr, 'parseCluster', parseCluster, ...
+    'memAllocate', memAllocate, 'mccMode', mccMode, 'ConfigFile', ConfigFile);    
+
+maxTrialNum_xcorr = 2;    
+if ~all(is_done_flag)
+    is_done_flag = generic_computing_frameworks_wrapper(inputFullpaths, outputFullpaths, funcStrs, ...
+        'cpusPerTask', cpusPerTask_xcorr * 2, 'maxTrialNum', maxTrialNum_xcorr, 'parseCluster', parseCluster, ...
+        'memAllocate', memAllocate * 2, 'mccMode', mccMode, 'ConfigFile', ConfigFile);
+end
+
+maxTrialNum_xcorr = 2;
+if ~all(is_done_flag)
+    is_done_flag = generic_computing_frameworks_wrapper(inputFullpaths, outputFullpaths, funcStrs, ...
+        'cpusPerTask', cpusPerTask_xcorr * 4, 'maxTrialNum', maxTrialNum_xcorr, 'parseCluster', parseCluster, ...
+        'memAllocate', memAllocate * 4, 'mccMode', mccMode, 'ConfigFile', ConfigFile);
 end
 
 % collect results
 if all(is_done_flag)
-    d_w = zeros(nF * (nF - 1) / 2, 6);
+    d_w = zeros(numel(outputFullpaths), 6);
     for f = 1 : numel(outputFullpaths)
         xcorrFullpath = outputFullpaths{f};
-        a = load(xcorrFullpath);
-        relative_shift_mat_f = a.relative_shift_mat;
-        max_xcorr_mat_f = a.max_xcorr_mat;
-        pair_indices_f = a.pair_indices;
+        ind = pinds(f);
+        i = ti(f);
+        j = tj(f);
 
-        ti_f = pair_indices_f(:, 1);
-        tj_f = pair_indices_f(:, 2);
-        pinds_f = (ti_f - 1) * nF - ti_f .* (ti_f + 1) / 2 + tj_f;
-
-        order_flag = (0.5 - (xyz(ti_f, :) > xyz(tj_f, :))) * 2;
-        % order_flag = [1, 1, 1];
-        absolute_shift_mat(pinds_f, :) = [ti_f, tj_f, relative_shift_mat_f .* order_flag];
-        max_xcorr_mat(pinds_f, :) = [ti_f, tj_f, max_xcorr_mat_f];
-        d_w(pinds_f, :) = [max_xcorr_mat(pinds_f, :), absolute_shift_mat(pinds_f, 3 : 5)];
+        if exist(xcorrFullpath, 'file')
+            order_flag = (0.5 - (xyz(i, :) > xyz(j, :))) * 2;
+            % order_flag = [1, 1, 1];
+            a = load(xcorrFullpath);
+            absolute_shift_mat(ind, :) = [i, j, a.relative_shift .* order_flag];
+            max_xcorr_mat(ind, :) = [i, j, a.max_xcorr];
+            d_w(f, :) = [i, j, a.max_xcorr, absolute_shift_mat(ind, 3 : 5)];
+        end
     end
     absolute_shift_mat(absolute_shift_mat(:, 1) == 0 | absolute_shift_mat(:, 2) == 0, :) = [];
     max_xcorr_mat(max_xcorr_mat(:, 1) == 0 | max_xcorr_mat(:, 2) == 0, :) = [];
@@ -244,10 +238,9 @@ switch assign_method
         % increase bound for inter-group tiles
         inter_ginds = grpIdx(max_xcorr_mat(:, 1)) ~= grpIdx(max_xcorr_mat(:, 2));
         max_allow_shift(inter_ginds, :) = [-ones(sum(inter_ginds), 1) .* MaxOffset, ones(sum(inter_ginds), 1) .* MaxOffset] * 2; 
-
+        
         [d_shift] = stitch_global_group_assignment(nF, max_xcorr_mat, absolute_shift_mat, ...
-            overlap_matrix, max_allow_shift, xcorr_thresh, tileIdx, axisWeight, ...
-            grpIdx, cuboid_overlap_ij_mat, xcorrDir, parseCluster, nodeFactor, mccMode, ConfigFile);        
+            overlap_matrix, max_allow_shift, xcorr_thresh, tileIdx, axisWeight, grpIdx);        
     case 'test'
         neq = size(max_xcorr_mat, 1);
         max_shift_l = -ones(neq, 1) .* MaxOffset;
@@ -271,9 +264,6 @@ if ~false
 end
 
 xyz_shift = xyz + d_shift .* [xf, yf, zf] .* px;
-
-fprintf('xcorr registration is done!\n')
-toc(t0);
 
 end
 
@@ -389,6 +379,132 @@ for i = 1 : 3
     b = [u; -l];
 
     [x,resnorm,residual,exitflag,output,lambda] = lsqlin(C,d,A,b);
+    d_shift(:, i) = x;
+end
+
+% round to integers and normalize for the first tile.
+d_shift = round(d_shift);
+d_shift = d_shift - d_shift(1, :);
+
+end
+
+
+function [d_shift] = stitch_global_group_assignment(nF, max_xcorr_mat, absolute_shift_mat, overlap_matrix, max_allow_shift, xcorr_thresh, tileIdx, axisWeight, grpIdx)
+% Two-step optimization: 
+% step 1: grid method for tiles within each group
+% step 2: weighted constrained linear least square for shifts across groups
+% with the results from the first step as constrains. 
+% 
+% the weight is the function of max shift (currently just y=x). 
+% max allowed shift is based on the maxShift parameter and the number of
+% overlap between tiles.
+
+
+% step 1: grid method for tiles within the same group
+
+uniq_grp = unique(grpIdx);
+ng = numel(uniq_grp);
+
+all_gp_inds = false(size(max_xcorr_mat, 1), 1);
+d_shift_pre = zeros(nF, 3);
+for g = 1 : ng
+    gind = find(grpIdx == uniq_grp(g));
+    nF_g = numel(gind);
+    % new file indices within the group
+    new_finds = cumsum(grpIdx == uniq_grp(g));
+    
+    [~, gp_inds] = knnsearch(gind, [max_xcorr_mat(:, 1); max_xcorr_mat(:, 2)]);
+    gp_inds = all(reshape(gp_inds , [], 2) == 0, 2);
+    all_gp_inds = all_gp_inds | gp_inds;
+
+    max_xcorr_mat_g = max_xcorr_mat(gp_inds, :);
+    new_pinds = new_finds(max_xcorr_mat_g(:, 1 : 2)); 
+    max_xcorr_mat_g(:, 1 : 2) = new_pinds;
+    absolute_shift_mat_g = absolute_shift_mat(gp_inds, :);
+    absolute_shift_mat_g(:, 1 : 2) = new_pinds;
+    overlap_matrix_g = overlap_matrix(gind, gind);
+    max_allow_shift_g = max_allow_shift(gp_inds, :);
+    tileIdx_g = tileIdx(gind, :);
+
+    [d_shift_g] = stitch_global_grid_assignment(nF_g, max_xcorr_mat_g, absolute_shift_mat_g, ...
+        overlap_matrix_g, max_allow_shift_g, xcorr_thresh, tileIdx_g, axisWeight);
+    d_shift_pre(gind, :) = d_shift_g;
+end
+
+% if there is only one group, reduce to grid method
+if ng == 1
+    d_shift = round(d_shift_pre);
+    d_shift = d_shift - d_shift(1, :);
+    return;
+end
+
+% step 2: shifts across groups: only keep overlaps across groups
+
+gn_i = max_xcorr_mat(all_gp_inds, 1);
+gn_j = max_xcorr_mat(all_gp_inds, 2);
+overlap_matrix(sub2ind([nF, nF], gn_i, gn_j)) = 0;
+max_xcorr_mat(all_gp_inds, :) = [];
+absolute_shift_mat(all_gp_inds, :) = [];
+max_allow_shift(all_gp_inds, :) = [];
+
+neq = sum(overlap_matrix(:));
+
+R = zeros(neq, nF);
+
+[n_i, n_j] = find(overlap_matrix);
+
+inds_i = sub2ind(size(R), 1 : neq, n_i');
+inds_j = sub2ind(size(R), 1 : neq, n_j');
+
+R(inds_i) = -1; 
+R(inds_j) = 1;
+
+max_xcorr_mat_filt = max_xcorr_mat;
+filt_inds = max_xcorr_mat_filt(:, 3) < xcorr_thresh;
+max_xcorr_mat_filt(filt_inds, :) = [];
+% w = max_xcorr_mat_filt(:, 3);
+nP = size(max_xcorr_mat_filt, 1);
+% w = ones(nP, 1) * 0.00;
+w = ones(nP, 1) * 0.01;
+
+R_w = zeros(nP, nF);
+
+np_i = max_xcorr_mat_filt(:, 1);
+np_j = max_xcorr_mat_filt(:, 2);
+inds_i = sub2ind(size(R_w), 1 : nP, np_i');
+inds_j = sub2ind(size(R_w), 1 : nP, np_j');
+R_w(inds_i) = -1; 
+R_w(inds_j) = 1;
+
+W = diag(w);
+R_w = W.^0.5 * R_w;
+% R_w = R;
+
+d_w = absolute_shift_mat(~filt_inds, 3 : 5);
+d_w = W.^0.5 * d_w;
+
+% Aeq and beq: distances from tiles within the same groups.
+nE = numel(gn_i); 
+Aeq = zeros(nE, nF);
+einds_i = sub2ind(size(Aeq), 1 : nE, gn_i');
+einds_j = sub2ind(size(Aeq), 1 : nE, gn_j');
+Aeq(einds_i) = -1; 
+Aeq(einds_j) = 1;
+Beq = d_shift_pre(gn_j, :) - d_shift_pre(gn_i, :);
+
+d_shift = zeros(nF, 3);
+for i = 1 : 3
+    C = R_w;
+    d = d_w(:, i);
+    A = [R; -R];
+
+    l = max_allow_shift(:, i);
+    u = max_allow_shift(:, 3 + i);
+    b = [u; -l];
+
+    beq = Beq(:, i);
+
+    [x,resnorm,residual,exitflag,output,lambda] = lsqlin(C, d, A, b, Aeq, beq);
     d_shift(:, i) = x;
 end
 

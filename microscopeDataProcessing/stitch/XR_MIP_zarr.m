@@ -13,6 +13,7 @@ ip.addRequired('zarrFullpath', @(x) ischar(x));
 ip.addParameter('axis', [0, 0, 1], @isnumeric); % y, x, z
 ip.addParameter('BatchSize', [2048, 2048, 2048] , @isvector); % in y, x, z
 ip.addParameter('BlockSize', [2048, 2048, 2048] , @isvector); % in y, x, z
+ip.addParameter('zarrSubSize', [20, 20, 20] , @isvector); % in y, x, z
 ip.addParameter('parseCluster', true, @islogical);
 ip.addParameter('parseParfor', false, @islogical);
 ip.addParameter('jobLogDir', '../job_logs/', @ischar);
@@ -27,6 +28,7 @@ ip.parse(zarrFullpath, varargin{:});
 pr = ip.Results;
 axis = pr.axis;
 BatchSize = pr.BatchSize;
+zarrSubSize = pr.zarrSubSize;
 parseCluster = pr.parseCluster;
 parseParfor = pr.parseParfor;
 jobLogDir = pr.jobLogDir;
@@ -77,11 +79,32 @@ catch ME
 end
 imSize = bim.Size;
 dtype = bim.ClassUnderlying;
+inBlockSize = bim.BlockSize;
 
 % MIPs for each block
-BatchSize = min(imSize, BatchSize);
+BatchSize = min(imSize, max(BatchSize, ceil(BatchSize ./ inBlockSize) .* inBlockSize));
 bSubSz = ceil(imSize ./ BatchSize);
 numBatch = prod(bSubSz);
+
+% in case of out size too large for very large data that causes oom for the main 
+% job, increase batch size if necessary.
+byteNum = dataTypeToByteNumber(dtype);
+outVolSizes = zeros(3, 1);
+for i = 1 : 3
+    outVolSizes(i) = prod([imSize(setdiff(1 : 3, i)), bSubSz(i)]) * byteNum / 1024^3;
+end
+
+% if the max intermediate MIP files is greater than 100 GB, increase the BatchSize
+% by the blockSize in the axis with largest bSubSz
+while any(outVolSizes > 100)
+    [~, ind] = max(bSubSz);
+    BatchSize = min(imSize, BatchSize + inBlockSize .* ((1 : 3) == ind));
+    bSubSz = ceil(imSize ./ BatchSize);
+
+    for i = 1 : 3
+        outVolSizes(i) = prod([imSize(setdiff(1 : 3, i)), bSubSz(i)]) * byteNum / 1024^3;
+    end
+end
 
 [Y, X, Z] = ndgrid(1 : bSubSz(1), 1 : bSubSz(2), 1 : bSubSz(3));
 bSubs = [Y(:), X(:), Z(:)];
@@ -113,7 +136,6 @@ if all(zarr_done_flag)
 end
 
 % initialize zarr files
-init_val = zeros(1, dtype);
 for i = 1 : 3
     if exist(MIPZarrTmppaths{i}, 'dir')
         continue;
@@ -126,18 +148,12 @@ for i = 1 : 3
     BlockSize = BatchSize;
     BlockSize(axis_flag) = 1;
     
-    try
-        mip_bim = blockedImage(MIPZarrTmppaths{i}, outSize, BlockSize, init_val, "Adapter", CZarrAdapter, 'Mode', 'w');
-    catch ME
-        disp(ME);
-        mip_bim = blockedImage(MIPZarrTmppaths{i}, outSize, BlockSize, init_val, "Adapter", ZarrAdapter, 'Mode', 'w');
-    end
-    mip_bim.Adapter.close();
+    createzarr(MIPZarrTmppaths{i}, dataSize=outSize, blockSize=BlockSize, dtype=dtype, zarrSubSize=zarrSubSize);
 end
 
 % set up parallel computing 
 numBatch = size(batchBBoxes, 1);
-taskSize = max(5, min(10, round(numBatch / 5000))); % the number of batches a job should process
+taskSize = max(10, min(20, round(numBatch / 5000))); % the number of batches a job should process
 numTasks = ceil(numBatch / taskSize);
 
 maxJobNum = inf;
@@ -164,16 +180,17 @@ end
 % submit jobs 
 inputFullpaths = repmat({zarrFullpath}, numTasks, 1);
 if parseCluster || ~parseParfor
-    memAllocate = prod(BatchSize) * 4 / 2^30 * 1.5;
-    is_done_flag = false;    
+    memAllocate = prod(BatchSize) * byteNum / 2^30 * 2;
+    minTaskJobNum = max(min(numTasks, 10), round(numTasks / 5));
+    is_done_flag = false;
     for i = 1 : 3
         if all(is_done_flag)
             break;
         end
         is_done_flag = generic_computing_frameworks_wrapper(inputFullpaths, outputFullpaths, ...
             funcStrs, 'memAllocate', memAllocate * 2^(i-1), 'maxJobNum', maxJobNum, ...
-            'taskBatchNum', taskBatchNum, 'masterCompute', masterCompute, 'parseCluster', parseCluster, ...
-            'jobLogDir', jobLogDir, 'mccMode', mccMode, 'ConfigFile', ConfigFile);
+            'taskBatchNum', taskBatchNum, 'minTaskJobNum', minTaskJobNum, 'masterCompute', masterCompute, ...
+            'parseCluster', parseCluster, 'jobLogDir', jobLogDir, 'mccMode', mccMode, 'ConfigFile', ConfigFile);
     end
 elseif parseParfor
     GPUJob = false;

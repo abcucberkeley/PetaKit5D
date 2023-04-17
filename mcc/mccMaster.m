@@ -29,14 +29,16 @@ switch functionName
         XR_stitching_frame_zarr_dev_v1_parser(varargin{1}, varargin{2}, varargin{3:end});
     case 'tiffToZarr'
         tiffToZarr_parser(varargin{1}, varargin{2}, varargin{3}, varargin{4:end});        
-    case 'cross_correlation_registration_2d'
-        cross_correlation_registration_2d_parser(varargin{1}, varargin{2}, varargin{3}, varargin{4}, varargin{5}, varargin{6}, varargin{7}, varargin{8}, varargin{9:end});
-    case 'cross_correlation_registration_3d'
-        cross_correlation_registration_3d_parser(varargin{1}, varargin{2}, varargin{3}, varargin{4}, varargin{5}, varargin{6}, varargin{7}, varargin{8}, varargin{9:end});
+    case 'cross_correlation_registration_wrapper'
+        cross_correlation_registration_wrapper_parser(varargin{1}, varargin{2}, varargin{3}, varargin{4}, varargin{5}, varargin{6}, varargin{7}, varargin{8}, varargin{9}, varargin{10:end});
     case 'compute_tile_bwdist'
         compute_tile_bwdist_parser(varargin{1}, varargin{2}, varargin{3}, varargin{4}, varargin{5}, varargin{6}, varargin{7}, varargin{8});
     case 'processStitchBlock'
         processStitchBlock_parser(varargin{1}, varargin{2}, varargin{3}, varargin{4}, varargin{5}, varargin{6}, varargin{7}, varargin{8:end});
+    case 'stitch_organize_block_info'
+        stitch_organize_block_info_parser(varargin{1}, varargin{2}, varargin{3}, varargin{4}, varargin{5}, varargin{6:end});
+    case 'stitch_global_grid_assignment_wrapper'
+        stitch_global_grid_assignment_wrapper_parser(varargin{1}, varargin{2}, varargin{3}, varargin{4}, varargin{5});
     case 'XR_deskewRotateFrame'
         XR_deskewRotateFrame_parser(varargin{1}, varargin{2}, varargin{3}, varargin{4:end});
     case 'XR_RLdeconFrame3D'

@@ -41,7 +41,8 @@ maxXOffset = MaxOffset(2);
 maxYOffset = MaxOffset(1);
 maxZOffset = MaxOffset(3);
 
-if exist(xcorrFullpath, 'file')
+saveResult = ~isempty(xcorrFullpath);
+if saveResult && exist(xcorrFullpath, 'file')
     fprintf('The xcorr result %s already exists!\n', xcorrFullpath);
     return;
 end
@@ -166,13 +167,15 @@ if isempty(z_inds) || isempty(x_inds) || isempty(y_inds)
     relative_shift = [0, 0, 0];
     max_xcorr = 1;
     
-    uuid = get_uuid();
-    xcorrTmppath = sprintf('%s_%s.mat', xcorrFullpath(1 : end - 4), uuid);
-    save('-v7.3', xcorrTmppath, 'relative_shift', 'max_xcorr')
-    fileattrib(xcorrTmppath, '+w', 'g');
-    movefile(xcorrTmppath, xcorrFullpath);
+    if saveResult
+        uuid = get_uuid();
+        xcorrTmppath = sprintf('%s_%s.mat', xcorrFullpath(1 : end - 4), uuid);
+        save('-v7.3', xcorrTmppath, 'relative_shift', 'max_xcorr')
+        fileattrib(xcorrTmppath, '+w', 'g');
+        movefile(xcorrTmppath, xcorrFullpath);
+        fprintf('Done!\n');        
+    end
 
-    fprintf('Done!\n');
     return;
 end
 
@@ -193,15 +196,16 @@ sp2 = (sr1 - s1) - (src2 - 1) .* downSample(:);
 relative_shift = offset_yxz([2, 1, 3]) .* downSample([2, 1, 3]) + sp2'; % - [maxoff_xy, maxoff_xy, maxoff_z];
 relative_shift = relative_shift .* ((s1 >= s2)' - 0.5) * 2;
 
-fprintf('Save results ...\n');
-
-uuid = get_uuid();
-xcorrTmppath = sprintf('%s_%s.mat', xcorrFullpath(1 : end - 4), uuid);
-save('-v7.3', xcorrTmppath, 'relative_shift', 'max_xcorr')
-fileattrib(xcorrTmppath, '+w', 'g');
-movefile(xcorrTmppath, xcorrFullpath);
-
-fprintf('Done!\n');
+if saveResult
+    fprintf('Save results ...\n');
+    
+    uuid = get_uuid();
+    xcorrTmppath = sprintf('%s_%s.mat', xcorrFullpath(1 : end - 4), uuid);
+    save('-v7.3', xcorrTmppath, 'relative_shift', 'max_xcorr')
+    fileattrib(xcorrTmppath, '+w', 'g');
+    movefile(xcorrTmppath, xcorrFullpath);
+    fprintf('Done!\n');    
+end
 
 end
 

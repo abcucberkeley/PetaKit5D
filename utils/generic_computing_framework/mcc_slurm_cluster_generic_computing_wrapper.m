@@ -166,7 +166,7 @@ if parseCluster
     task_ids = rem(task_ids, 5000);
 end
 
-fprintf('Task number : %d, task batch size : %d, task batch number : %d, job parallel number : %d\n', ...
+fprintf('Task number : %d, task batch size : %d, task job number : %d, job parallel number : %d\n', ...
     nF, taskBatchNum, nB, paraJobNum);
 
 GNUparallel = GNUparallel & (paraJobNum > 1);
@@ -346,11 +346,12 @@ while (~parseCluster && ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
                     else
                         fprintf('Task % 4d:    Process %s ... \n', b, strjoin(fsnames(fs), ', '));    
                     end
-                    if ~GNUparallel
+                    % if tried twice, still fail, not use parallel computing
+                    if ~GNUparallel || trial_counter(f) > 1
                         cmd = sprintf(['sbatch --array=%d -o %s -e %s --cpus-per-task=%d %s %s %s ', ...
                             '--wrap="echo $PWD; echo bash command:  \\\"%s\\\";  %s; bash %s"'], ...
                             task_id, job_log_fname, job_log_error_fname, cpusPerTask, SlurmParam, ...
-                            SlurmConstraint, time_str, func_str, BashLaunchStr, inputFn);
+                            SlurmConstraint, time_str, inputFn, BashLaunchStr, inputFn);
                     else
                         cmd = sprintf(['sbatch --array=%d -o %s -e %s --cpus-per-task=%d ', ...
                             '--ntasks=1 %s %s %s --wrap="echo $PWD; echo bash command: \\\"%s\\\"; ', ...
@@ -359,15 +360,12 @@ while (~parseCluster && ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
                             SlurmConstraint, time_str, inputFn, BashLaunchStr, floor(cpusPerTask / paraJobNum), inputFn);
                         % in case of some jobs fail because of memory issue, directly use parallel for computing
                         if trial_counter(f) <= 1
-                            retry = 1;
-                            if paraJobNum > 1
-                                retry = 2;
-                            end
+                            paraJobNum_f = max(1, round(paraJobNum / (trial_counter(f) + 1)));
                             cmd = sprintf(['sbatch --array=%d -o %s -e %s --cpus-per-task=%d ', ...
                                 '--ntasks=1 %s %s %s --wrap="echo $PWD; echo bash command: \\\"%s\\\"; ', ...
                                 '%s; parallel --ungroup --jobs %d --delay 0.2  < %s"'], ...
                                 task_id, job_log_fname, job_log_error_fname, cpusPerTask, SlurmParam, ...
-                                SlurmConstraint, time_str, inputFn, BashLaunchStr, paraJobNum, inputFn);
+                                SlurmConstraint, time_str, inputFn, BashLaunchStr, paraJobNum_f, inputFn);
                             if GPUJob
                                 cmd = sprintf(['sbatch --array=%d -o %s -e %s --cpus-per-task=%d ', ...
                                     '--ntasks=1 %s %s %s --wrap="echo $PWD; echo bash command: \\\"%s\\\"; ', ...
@@ -375,10 +373,6 @@ while (~parseCluster && ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
                                     task_id, job_log_fname, job_log_error_fname, cpusPerTask, SlurmParam, ...
                                     SlurmConstraint, time_str, inputFn, BashLaunchStr, paraJobNum, inputFn);
                             end
-                        end
-                        % if tried twice, still fail, not use parallel computing
-                        if trial_counter(f) > 1
-                            GNUparallel = false;
                         end
                     end
                     [status, cmdout] = system(cmd, '-echo');
@@ -428,9 +422,9 @@ while (~parseCluster && ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
                 cmd = sprintf(['%s; bash %s'], BashLaunchStr, inputFn);
             else
                 cmd = sprintf(['%s; parallel --jobs %d --delay 0.1 < %s'], BashLaunchStr, paraJobNum, inputFn);
-                if ismcc || isdeployed
+                if (ismcc || isdeployed ) && trial_counter(f) == 0
                     % reduce the load of master job in case of crash due to oom
-                    cmd = sprintf(['%s; parallel --jobs %d --delay 0.1 < %s'], BashLaunchStr, max(1, round(paraJobNum / 2)), inputFn);
+                    cmd = sprintf(['%s; parallel --ungroup --jobs %d --delay 0.1 < %s'], BashLaunchStr, max(1, round(paraJobNum / 2)), inputFn);
                 end
             end
             t0=tic; [status, cmdout] = system(cmd, '-echo'); t1=toc(t0);
