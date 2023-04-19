@@ -11,7 +11,7 @@ ip.addRequired('tifFilename', @ischar);
 ip.addRequired('zarrFilename', @ischar);
 ip.addParameter('Overwrite', false, @islogical);
 ip.addParameter('usrFcn', '', @(x) isempty(x) || isa(x,'function_handle') || ischar(x));
-ip.addParameter('uuid', '', @isstr);
+ip.addParameter('uuid', '', @ischar);
 
 ip.parse(zarrFilename, tiffFilename, varargin{:});
 

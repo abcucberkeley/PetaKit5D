@@ -28,7 +28,9 @@ switch functionName
     case 'XR_stitching_frame_zarr_dev_v1'
         XR_stitching_frame_zarr_dev_v1_parser(varargin{1}, varargin{2}, varargin{3:end});
     case 'tiffToZarr'
-        tiffToZarr_parser(varargin{1}, varargin{2}, varargin{3}, varargin{4:end});        
+        tiffToZarr_parser(varargin{1}, varargin{2}, varargin{3}, varargin{4:end});
+    case 'zarrToTiff'
+        zarrToTiff_parser(varargin{1}, varargin{2}, varargin{3:end});
     case 'cross_correlation_registration_wrapper'
         cross_correlation_registration_wrapper_parser(varargin{1}, varargin{2}, varargin{3}, varargin{4}, varargin{5}, varargin{6}, varargin{7}, varargin{8}, varargin{9}, varargin{10:end});
     case 'compute_tile_bwdist'
