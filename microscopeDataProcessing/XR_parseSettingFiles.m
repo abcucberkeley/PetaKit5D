@@ -46,10 +46,14 @@ line_cell = cell(10000, 1);
 tline = fgetl(fid);
 counter = 1;
 line_cell{counter} = tline;
+% only read the first 100 lines
 while ischar(tline)
     tline = fgetl(fid);
     counter = counter + 1;
     line_cell{counter} = tline;
+    if counter > 100
+        break;
+    end
 end
 fclose(fid);
 
