@@ -27,8 +27,12 @@ switch functionName
         XR_matlab_stitching_wrapper_parser(varargin{1}, varargin{2}, varargin{3:end});
     case 'XR_stitching_frame_zarr_dev_v1'
         XR_stitching_frame_zarr_dev_v1_parser(varargin{1}, varargin{2}, varargin{3:end});
+    case 'XR_tiffToZarr_wrapper'
+        XR_tiffToZarr_wrapper_parser(varargin{1}, varargin{2:end});
     case 'tiffToZarr'
         tiffToZarr_parser(varargin{1}, varargin{2}, varargin{3}, varargin{4:end});
+    case 'XR_zarrToTiff_wrapper'
+        XR_zarrToTiff_wrapper_parser(varargin{1}, varargin{2:end});
     case 'zarrToTiff'
         zarrToTiff_parser(varargin{1}, varargin{2}, varargin{3:end});
     case 'cross_correlation_registration_wrapper'

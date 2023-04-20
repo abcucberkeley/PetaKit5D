@@ -20,7 +20,8 @@ ip.addParameter('maxTrialNum', 3, @isnumeric);
 ip.addParameter('unitWaitTime', 30, @isnumeric);
 ip.addParameter('MatlabLaunchStr', 'module load matlab/r2022a; matlab -nodisplay -nosplash -nodesktop -r', @ischar);
 ip.addParameter('SlurmParam', '-p abc --qos abc_normal -n1 --mem-per-cpu=21418M', @ischar);
-
+ip.addParameter('mccMode', false, @islogical);
+ip.addParameter('ConfigFile', '', @ischar);
 
 ip.parse(dataPaths, varargin{:});
 
@@ -29,6 +30,8 @@ pr = ip.Results;
 ChannelPatterns = pr.ChannelPatterns;
 resultDirStr = pr.resultDirStr;
 usrFcn = pr.usrFcn;
+mccMode = pr.mccMode;
+ConfigFile = pr.ConfigFile;
 
 if ischar(dataPaths)
     dataPaths = {dataPaths};
@@ -62,10 +65,11 @@ func_strs = arrayfun(@(x) sprintf(['zarrToTiff(''%s'',''%s'',''usrFcn'',''%s'')'
 imSize = getImageSize(allZarrFullpaths{1});
 cpusPerTask = min(24, ceil(prod(imSize) * 2 / 2^30 / 20 * 2));
 is_done_flag = slurm_cluster_generic_computing_wrapper(allZarrFullpaths, allTiffFullpaths, ...
-    func_strs, 'maxTrialNum', 2, 'cpusPerTask', cpusPerTask);
+    func_strs, 'maxTrialNum', 2, 'cpusPerTask', cpusPerTask, 'mccMode', mccMode, 'ConfigFile', ConfigFile);
 if ~all(is_done_flag)
     is_done_flag = slurm_cluster_generic_computing_wrapper(allZarrFullpaths, ...
-        allTiffFullpaths, func_strs, 'maxTrialNum', 1, 'cpusPerTask', min(24, cpusPerTask * 2));
+        allTiffFullpaths, func_strs, 'maxTrialNum', 1, 'cpusPerTask', min(24, cpusPerTask * 2), ...
+        'mccMode', mccMode, 'ConfigFile', ConfigFile);
 end
 
 
