@@ -653,7 +653,7 @@ if parseCluster
     taskSize = 10; % the number of blocks a job should process for [500, 500, 500]
     % keep task size inversely propotional to block size
     taskSize = max(1, round(prod([512, 512, 512]) / prod(blockSize) * taskSize));
-    taskSize = max(taskSize, ceil(numBlocks / 5000));
+    taskSize = max(taskSize, min(200, ceil(numBlocks / 5000)));
 else
     taskSize = numBlocks;
 end

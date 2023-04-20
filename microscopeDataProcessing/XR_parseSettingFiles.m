@@ -43,11 +43,11 @@ function [sInfo] = parseSingleSettingFile(fn)
 fid = fopen(fn, 'r');
 
 line_cell = cell(10000, 1);
-tline = fgetl(fid);
-counter = 1;
-line_cell{counter} = tline;
+% tline = fgetl(fid);
+counter = 0;
+% line_cell{counter} = tline;
 % only read the first 100 lines
-while ischar(tline)
+while ~feof(fid)
     tline = fgetl(fid);
     counter = counter + 1;
     line_cell{counter} = tline;
