@@ -85,6 +85,10 @@ switch functionName
         simReconFrame_parser(varargin{1}, varargin{2}, varargin{3:end});        
     case 'replicateDataBlock'
         replicateDataBlock_parser(varargin{1}, varargin{2}, varargin{3}, varargin{4}, varargin{5}, varargin{6:end});
+    case 'XR_psf_analysis_wrapper'
+        XR_psf_analysis_wrapper_parser(varargin{1}, varargin{2:end});
+    case 'XR_psf_detection_and_analysis_wrapper'
+        XR_psf_detection_and_analysis_wrapper_parser(varargin{1}, varargin{2:end});
 end
 
 toc(t0);
