@@ -24,6 +24,8 @@ ip.addParameter('RWFn', {'/clusterfs/fiona/Gokul/RW_PSFs/PSF_RW_515em_128_128_10
 ip.addParameter('sourceStr', 'test', @ischar);
 ip.addParameter('masterCompute', false, @islogical);
 % ip.addParameter('prefix', 'test_', @ischar);
+ip.addParameter('mccMode', false, @islogical);
+ip.addParameter('ConfigFile', '', @ischar);
 ip.parse(dataPaths, varargin{:});
 
 pr = ip.Results;
@@ -38,6 +40,8 @@ Channels = pr.Channels;
 RWFn = pr.RWFn;
 sourceStr = pr.sourceStr;
 masterCompute = pr.masterCompute;
+mccMode = pr.mccMode;
+ConfigFile = pr.ConfigFile;
 
 tic
 % rt = '/Users/xruan/Images/20210607_PSFs_L15_37C/';
@@ -111,10 +115,12 @@ func_strs(empty_inds) = [];
 % use cluster computing for the psf detection and cropping
 cpusPerTask = 24;
 is_done_flag = slurm_cluster_generic_computing_wrapper(frameFullpaths, outFullpaths, ...
-    func_strs, 'masterCompute', true, 'cpusPerTask', cpusPerTask);
+    func_strs, 'masterCompute', true, 'cpusPerTask', cpusPerTask, mccMode=mccMode, ...
+        ConfigFile=ConfigFile);
 if ~all(is_done_flag)
     slurm_cluster_generic_computing_wrapper(frameFullpaths, outFullpaths, ...
-        func_strs, 'masterCompute', true, 'cpusPerTask', cpusPerTask);
+        func_strs, 'masterCompute', true, 'cpusPerTask', cpusPerTask, mccMode=mccMode, ...
+        ConfigFile=ConfigFile);
 end   
 
 
@@ -132,7 +138,8 @@ disp(dataPath_exps);
 
 XR_psf_analysis_wrapper(dataPath_exps, 'dz', dz, 'angle', angle, 'ChannelPatterns', ChannelPatterns, ...
     'Channels', Channels, 'Deskew', Deskew, 'flipZstack', flipZstack, 'ObjectiveScan', ObjectiveScan, ...
-    'ZstageScan', ZstageScan, 'sourceStr', sourceStr, 'RWFn', RWFn, 'masterCompute', masterCompute);
+    'ZstageScan', ZstageScan, 'sourceStr', sourceStr, 'RWFn', RWFn, 'masterCompute', masterCompute, ...
+    mccMode=mccMode, ConfigFile=ConfigFile);
 
 
 end
