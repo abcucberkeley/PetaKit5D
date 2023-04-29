@@ -62,13 +62,18 @@ allTiffFullpaths = cat(1, allTiffFullpaths{:});
 func_strs = arrayfun(@(x) sprintf(['zarrToTiff(''%s'',''%s'',''usrFcn'',''%s'')'], ...
     allZarrFullpaths{x}, allTiffFullpaths{x}, usrFcn), 1 : numel(allZarrFullpaths), 'unif', 0);
 
-imSize = getImageSize(allZarrFullpaths{1});
-cpusPerTask = min(24, ceil(prod(imSize) * 2 / 2^30 / 20 * 2));
-is_done_flag = slurm_cluster_generic_computing_wrapper(allZarrFullpaths, allTiffFullpaths, ...
-    func_strs, 'maxTrialNum', 2, 'cpusPerTask', cpusPerTask, 'mccMode', mccMode, 'ConfigFile', ConfigFile);
+imSizes = zeros(numel(allZarrFullpaths), 3);
+for i = 1 : numel(allZarrFullpaths)
+    imSizes(i, :) = getImageSize(allZarrFullpaths{i});
+end
+imSize = [imSizes(1, 1 : 2), sum(imSizes(:, 3))];
+memAllocate = prod(imSize) * 4 / 1024^3 * 2.5;
+
+is_done_flag = generic_computing_frameworks_wrapper(allZarrFullpaths, allTiffFullpaths, ...
+    func_strs, 'maxTrialNum', 2, 'memAllocate', memAllocate, 'mccMode', mccMode, 'ConfigFile', ConfigFile);
 if ~all(is_done_flag)
-    is_done_flag = slurm_cluster_generic_computing_wrapper(allZarrFullpaths, ...
-        allTiffFullpaths, func_strs, 'maxTrialNum', 1, 'cpusPerTask', min(24, cpusPerTask * 2), ...
+    is_done_flag = generic_computing_frameworks_wrapper(allZarrFullpaths, ...
+        allTiffFullpaths, func_strs, 'maxTrialNum', 1, 'memAllocate', memAllocate, ...
         'mccMode', mccMode, 'ConfigFile', ConfigFile);
 end
 
