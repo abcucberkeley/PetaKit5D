@@ -14,7 +14,7 @@ ip.addParameter('batchSize', [512, 512, 512], @isnumeric); % size to process in 
 ip.addParameter('BorderSize', [5, 5, 5], @isnumeric); % padded boarder for each batch
 ip.addParameter('Interp', 'linear', @(x) any(strcmpi(x, {'cubic', 'linear', 'nearest'})));
 ip.addParameter('parseCluster', true, @islogical);
-ip.addParameter('cpusPerTask', 1, @islogical);
+ip.addParameter('cpusPerTask', 1, @isnumeric);
 ip.addParameter('uuid', '', @ischar);
 ip.addParameter('mccMode', false, @islogical);
 ip.addParameter('ConfigFile', '', @ischar);

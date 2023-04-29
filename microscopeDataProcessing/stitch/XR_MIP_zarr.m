@@ -94,12 +94,13 @@ for i = 1 : 3
     outVolSizes(i) = prod([imSize(setdiff(1 : 3, i)), bSubSz(i)]) * byteNum / 1024^3;
 end
 
-% if the max intermediate MIP files is greater than 100 GB, increase the BatchSize
-% by the blockSize in the axis with largest bSubSz
-while any(outVolSizes > 100)
-    [~, ind] = max(bSubSz);
+% if the max intermediate MIP files is greater than 200 GB, increase the BatchSize
+% by the blockSize in the axis with largest outVolSizes
+while any(outVolSizes > 200) && prod(BatchSize) * byteNum / 1024^3 < 200
+    [~, ind] = max(outVolSizes);
     BatchSize = min(imSize, BatchSize + inBlockSize .* ((1 : 3) == ind));
     bSubSz = ceil(imSize ./ BatchSize);
+    numBatch = prod(bSubSz);
 
     for i = 1 : 3
         outVolSizes(i) = prod([imSize(setdiff(1 : 3, i)), bSubSz(i)]) * byteNum / 1024^3;

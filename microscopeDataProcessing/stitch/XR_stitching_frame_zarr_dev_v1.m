@@ -262,9 +262,11 @@ if ~isPrimaryCh
         error('The stitch information filename %s does not exist!', stitchInfoFullpaths);
     end
     
-    a = load(stitchInfoFullpath, 'ip');
-    flippedTile = a.ip.Results.flippedTile;
-    
+    if isempty(flippedTile)
+        a = load(stitchInfoFullpath, 'flippedTile');
+        flippedTile = a.flippedTile;
+    end
+
     if usePrimaryCoords
         a = load(stitchInfoFullpath, 'xyz_orig');
         xyz = a.xyz_orig;
@@ -739,7 +741,7 @@ if isPrimaryCh
     stitch_info_tmp_fullname = sprintf('%s/%s/%s/%s_%s.mat', dataPath, ResultDir, stitchInfoDir, nv_fsname, uuid);
     stitchInfoFullpath =sprintf('%s/%s/%s/%s.mat', dataPath, ResultDir, stitchInfoDir, nv_fsname);
     pImSz = [nys, nxs, nzs];
-    save('-v7.3', stitch_info_tmp_fullname, 'ip', 'overlap_regions', 'overlap_matrix', ...
+    save('-v7.3', stitch_info_tmp_fullname, 'ip', 'flippedTile', 'overlap_regions', 'overlap_matrix', ...
         'd_shift', 'shiftMethod', 'pImSz', 'xf', 'yf', 'zf', 'px', 'PerBlockInfoFullpaths', 'imdistFullpaths', 'xyz_orig');
     movefile(stitch_info_tmp_fullname, stitchInfoFullpath);
 end
