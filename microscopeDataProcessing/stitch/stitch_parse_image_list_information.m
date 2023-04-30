@@ -11,6 +11,7 @@ arguments
     options.Streaming (1, 1) {islogical} = false
     options.stitchInfoFullpath char = ''
     options.stitchInfoPath char = ''
+    options.zarrFile (1, 1) {islogical} = false
     options.onlyFirstTP (1, 1) {islogical} = false
     options.ChannelPatterns {iscell} = {'CamA', 'CamB'}
     options.useProcessedData {islogical} = false
@@ -25,6 +26,7 @@ end
 Streaming = options.Streaming;
 stitchInfoFullpath = options.stitchInfoFullpath;
 stitch_info_path = options.stitchInfoPath;
+zarrFile = options.zarrFile;
 onlyFirstTP = options.onlyFirstTP;
 ChannelPatterns = options.ChannelPatterns;
 useProcessedData = options.useProcessedData;
@@ -37,25 +39,30 @@ onlineStitch = options.onlineStitch;
 
 % read image list csv file
 tab = readtable(imageListFileName, 'Delimiter','comma');
-% t_column_name = t.Properties.VariableNames;
 fn = tab.Filename;
+if zarrFile
+    partialvol = false;
+    ext = '.zarr';
+else
+    partialvol = ~cellfun(@isempty, regexpi(fn, '_part\d+.tif'));
+    ext = '.tif';
+end
 % remove records for partial volume files
-partialvol = ~cellfun(@isempty, regexpi(fn, '_part\d+.tif'));
 if any(partialvol)
     tab(partialvol, :) = [];
     fn = tab.Filename;
-end   
+end
+[~, fsn] = fileparts(fn);
 
 specifyCam = true;
 if all(~cellfun(@isempty, regexp(fn, '_Cam\w_ch', 'match')))
-    expression = '(?<prefix>\w*)Scan_Iter_(?<Iter>\d+)(?<subIter>_?(\d+_)*\d+?)_Cam(?<Cam>\w+)_ch(?<ch>\d+)_CAM\d_stack(?<stack>\d+)_(?<laser>\d+)nm_(?<abstime>\d+)msec_(?<fpgatime>\d+)msecAbs_(?<x>-?\d+)x_(?<y>-?\d+)y_(?<z>-?\d+)z_(?<t>\d+)t(?<suffix>_?\w*).tif';
+    expression = '(?<prefix>\w*)Scan_Iter_(?<Iter>\d+)(?<subIter>_?(\d+_)*\d+?)_Cam(?<Cam>\w+)_ch(?<ch>\d+)_CAM\d_stack(?<stack>\d+)_(?<laser>\d+)nm_(?<abstime>\d+)msec_(?<fpgatime>\d+)msecAbs_(?<x>-?\d+)x_(?<y>-?\d+)y_(?<z>-?\d+)z_(?<t>\d+)t(?<suffix>_?\w*)';
 elseif all(~cellfun(@isempty, regexp(fn, '_ch[0-9]_', 'match')))
-    expression = '(?<prefix>\w*)Scan_Iter_(?<Iter>\d+)(?<subIter>_?(\d+_)*\d+?)_ch(?<ch>\d+)_CAM\d_stack(?<stack>\d+)_(?<laser>\d+)nm_(?<abstime>\d+)msec_(?<fpgatime>\d+)msecAbs_(?<x>-?\d+)x_(?<y>-?\d+)y_(?<z>-?\d+)z_(?<t>\d+)t(?<suffix>_?\w*).tif';
+    expression = '(?<prefix>\w*)Scan_Iter_(?<Iter>\d+)(?<subIter>_?(\d+_)*\d+?)_ch(?<ch>\d+)_CAM\d_stack(?<stack>\d+)_(?<laser>\d+)nm_(?<abstime>\d+)msec_(?<fpgatime>\d+)msecAbs_(?<x>-?\d+)x_(?<y>-?\d+)y_(?<z>-?\d+)z_(?<t>\d+)t(?<suffix>_?\w*)';
     specifyCam = false;
 end
 
-tmp = regexpi(fn, expression, 'names');
-
+tmp = regexpi(fsn, expression, 'names');
 matched_inds = true(numel(tmp), 1);
 
 for f = 1:numel(tmp)
@@ -87,6 +94,9 @@ for f = 1:numel(tmp)
 end
 
 tab = tab(matched_inds, :);
+if zarrFile
+    tab.Filename = strrep(tab.Filename, '.tif', ext);
+end
 % sort t by tile indices, time, Iter
 tab = sortrows(tab, {'z', 'y', 'x', 't', 'fullIter'});
 
@@ -110,15 +120,12 @@ else
 end
 
 % check whether the image files in the image list file exist 
-dir_info = dir([dataPath, '/', '*.tif']);
+dir_info = dir([dataPath, '/', '*', ext]);
 imageFnames = {dir_info.name}';
 if isempty(dir_info)
     if useProcessedData
-        dir_info = dir([dataPath, ProcessedDirStr, '/', '*.tif']);
+        dir_info = dir([dataPath, ProcessedDirStr, '/', '*', ext]);
         imageFnames = {dir_info.name}';
-    elseif useExistDecon
-        dir_info = dir([dataPath, '/', DeconDirstr, '/', '*.tif']);
-        imageFnames = cellfun(@(x) [x(1 : end - 10), '.tif'], {dir_info.name}', 'unif', 0);
     else
         error('The tiles do not exist!');
     end

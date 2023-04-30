@@ -220,7 +220,7 @@ end
 tmpFilename = [zarrFilename '_' uuid];
 if ~exist(tmpFilename, 'dir')
     createzarr(tmpFilename, dataSize=sz, blockSize=blockSize, dtype=dtype, ...
-        expand2dDim=expand2dDim, zarrSubSize=zarrSubSize);
+        expand2dDim=expand2dDim, compressor=compressor, zarrSubSize=zarrSubSize);
 end
 
 % write zarr

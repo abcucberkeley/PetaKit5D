@@ -35,6 +35,8 @@ switch functionName
         XR_zarrToTiff_wrapper_parser(varargin{1}, varargin{2:end});
     case 'zarrToTiff'
         zarrToTiff_parser(varargin{1}, varargin{2}, varargin{3:end});
+    case 'stitch_process_zarr_tile'
+        stitch_process_zarr_tile_parser(varargin{1}, varargin{2}, varargin{3}, varargin{4}, varargin{5});        
     case 'cross_correlation_registration_wrapper'
         cross_correlation_registration_wrapper_parser(varargin{1}, varargin{2}, varargin{3}, varargin{4}, varargin{5}, varargin{6}, varargin{7}, varargin{8}, varargin{9}, varargin{10:end});
     case 'compute_tile_bwdist'

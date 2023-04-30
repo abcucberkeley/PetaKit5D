@@ -67,7 +67,7 @@ ip.addParameter('tileOutBbox', [], @isnumeric); % crop tile after processing
 ip.addParameter('TileOffset', 0, @isnumeric); % offset added to the tile
 ip.addParameter('df', [], @isnumeric);
 ip.addParameter('Save16bit', false , @islogical); % saves deskewed data as 16 bit -- not for quantification
-ip.addParameter('EdgeArtifacts', 2, @isnumeric);
+ip.addParameter('EdgeArtifacts', 0, @isnumeric);
 ip.addParameter('Decon', false, @islogical);
 ip.addParameter('DS', false, @islogical);
 ip.addParameter('DSR', false, @islogical);
@@ -93,6 +93,7 @@ ip.addParameter('shiftMethod', 'grid', @ischar); % {'local', 'global', 'grid', '
 ip.addParameter('axisWeight', [1, 0.1, 10], @isnumeric); % axis weight for optimization, y, x, z
 ip.addParameter('groupFile', '', @ischar); % file to define tile groups
 ip.addParameter('singleDistMap', ~false, @islogical); % compute distance map for the first tile and apply to all other tiles
+ip.addParameter('zarrFile', false, @islogical); 
 ip.addParameter('blockSize', [500, 500, 500], @isnumeric); 
 ip.addParameter('zarrSubSize', [20, 20, 20], @isnumeric); % zarr subfolder size
 ip.addParameter('saveMultires', false, @islogical); % save as multi resolution dataset
@@ -160,6 +161,7 @@ parseCluster = pr.parseCluster;
 masterCompute = pr.masterCompute;
 Save16bit = pr.Save16bit;
 EdgeArtifacts = pr.EdgeArtifacts;
+zarrFile = pr.zarrFile;
 blockSize = pr.blockSize;
 zarrSubSize = pr.zarrSubSize;
 BorderSize = pr.BorderSize;
@@ -341,16 +343,12 @@ if ~exist(pixelInfoFullpath, 'file')
     fclose(fopen(pixelInfoFullpath, 'w'));
 end
 
-% process tile filenames based on different processing for tiles
-[tiffFullpaths, zarrFullpaths, fsnames, zarrPathstr] = stitch_process_filenames( ...
-    tileFullpaths, ProcessedDirstr, stitchMIP, resample);
-
 % use single distance map for 
 if ~DS && ~DSR && ~any(stitchMIP)
     singleDistMap = true;
 end
 
-nF = numel(fsnames);
+nF = numel(tileFullpaths);
 
 if ~isempty(processFunPath)
     a = load(processFunPath);
@@ -387,9 +385,16 @@ end
 % check if there are partial files when converting tiff to zarr
 partialFile = ~DS && ~DSR;
 
+% process tile filenames based on different processing for tiles
+processTiles = ~zarrFile || (zarrFile && (~isempty(InputBbox) || ~isempty(tileOutBbox) ...
+    || ~isempty(fn) || any(zarr_flippedTile) || any(stitchResample ~= 1)));
+
+[inputFullpaths, zarrFullpaths, fsnames, zarrPathstr] = stitch_process_filenames( ...
+    tileFullpaths, ProcessedDirstr, stitchMIP, resample, zarrFile, processTiles);
+
 % first check if it is 2d stitch
 for f = 1 : nF
-    imSize = getImageSize(tiffFullpaths{f});
+    imSize = getImageSize(inputFullpaths{f});
     if imSize(3) > 1
         stitch2D = false;
         break;
@@ -409,14 +414,15 @@ if ~stitch2D && ~bigStitchData && nF > 4 && prod(imSize) * nF * 4 > (100 * 2^30)
 end
 if bigStitchData
     nodeFactor = 1;
-    compressor = 'zstd';    
+    compressor = 'zstd';
 end
 
-XR_tiffToZarr_wrapper(tiffFullpaths, 'zarrPathstr', zarrPathstr, 'blockSize', round(blockSize / 2), ...
-    'usrFcn', fn, 'flippedTile', zarr_flippedTile, 'resample', stitchResample, ...
-    'partialFile', partialFile, 'InputBbox', InputBbox, 'tileOutBbox', tileOutBbox, ...
-    'parseCluster', parseCluster, 'masterCompute', masterCompute, 'bigData', bigStitchData, ...
-    'mccMode', mccMode, 'ConfigFile', ConfigFile);
+% convert tiff to zarr (if inputs are tiff tiles), and process tiles
+stitch_process_tiles(inputFullpaths, 'zarrPathstr', zarrPathstr, 'zarrFile', zarrFile, ...
+    'blockSize', round(blockSize / 2), 'usrFcn', fn, 'flippedTile', zarr_flippedTile, ...
+    'resample', stitchResample, 'partialFile', partialFile, 'InputBbox', InputBbox, ...
+    'tileOutBbox', tileOutBbox, 'parseCluster', parseCluster, 'masterCompute', masterCompute, ...
+    'bigData', bigStitchData, 'mccMode', mccMode, 'ConfigFile', ConfigFile);
 
 % load all zarr headers as a cell array and get image size for all tiles
 imSizes = zeros(nF, 3);

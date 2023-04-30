@@ -1,9 +1,6 @@
 function [] = XR_stitching_frame_zarr_dev_v1_parser(tileFullpaths, coordinates, varargin)
 
 
-%#function XR_stitching_frame_zarr_dev_v1
-
-
 ip = inputParser;
 ip.CaseSensitive = false;
 ip.addRequired('tileFullpaths', @(x) iscell(x) || ischar(x));
@@ -55,6 +52,7 @@ ip.addParameter('shiftMethod', 'grid', @ischar); % {'local', 'global', 'grid', '
 ip.addParameter('axisWeight', [1, 0.1, 10], @(x) isnumeric(x) || ischar(x)); % axis weight for optimization, y, x, z
 ip.addParameter('groupFile', '', @ischar); % file to define tile groups
 ip.addParameter('singleDistMap', ~false, @(x) islogical(x) || ischar(x)); % compute distance map for the first tile and apply to all other tiles
+ip.addParameter('zarrFile', false, @(x) islogical(x) || ischar(x));
 ip.addParameter('blockSize', [500, 500, 500], @(x) isnumeric(x) || ischar(x)); 
 ip.addParameter('zarrSubSize', [], @(x) isnumeric(x) || ischar(x));
 ip.addParameter('saveMultires', false, @(x) islogical(x) || ischar(x)); % save as multi resolution dataset
@@ -136,6 +134,7 @@ maxTrialNum = pr.maxTrialNum;
 unitWaitTime = pr.unitWaitTime;
 Save16bit = pr.Save16bit;
 EdgeArtifacts = pr.EdgeArtifacts;
+zarrFile = pr.zarrFile;
 blockSize = pr.blockSize;
 zarrSubSize = pr.zarrSubSize;
 BorderSize = pr.BorderSize;
@@ -266,6 +265,9 @@ end
 if ischar(singleDistMap)
     singleDistMap = strcmp(singleDistMap, 'true');
 end
+if ischar(zarrFile)
+    zarrFile = strcmp(zarrFile, 'true');
+end
 if ischar(blockSize)
     blockSize = str2num(blockSize);
 end
@@ -335,7 +337,7 @@ XR_stitching_frame_zarr_dev_v1(tileFullpaths, coordinates, ResultPath=ResultPath
     boundboxCrop=boundboxCrop, zNormalize=zNormalize, xcorrDownsample=xcorrDownsample, ...
     xcorrThresh=xcorrThresh, xyMaxOffset=xyMaxOffset, zMaxOffset=zMaxOffset, ...
     shiftMethod=shiftMethod, axisWeight=axisWeight, groupFile=groupFile, singleDistMap=singleDistMap, ...
-    blockSize=blockSize, zarrSubSize=zarrSubSize, saveMultires=saveMultires, ...
+    zarrFile=zarrFile, blockSize=blockSize, zarrSubSize=zarrSubSize, saveMultires=saveMultires, ...
     resLevel=resLevel, BorderSize=BorderSize, BlurSigma=BlurSigma, SaveMIP=SaveMIP, ...
     tileIdx=tileIdx, processFunPath=processFunPath, stitchMIP=stitchMIP, stitch2D=stitch2D, ...
     bigStitchData=bigStitchData, parseCluster=parseCluster, masterCompute=masterCompute, ...
