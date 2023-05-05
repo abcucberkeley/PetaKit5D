@@ -94,6 +94,8 @@ ip.addParameter('axisWeight', [1, 0.1, 10], @isnumeric); % axis weight for optim
 ip.addParameter('groupFile', '', @ischar); % file to define tile groups
 ip.addParameter('singleDistMap', ~false, @islogical); % compute distance map for the first tile and apply to all other tiles
 ip.addParameter('zarrFile', false, @islogical); 
+ip.addParameter('largeZarr', false, @islogical); 
+ip.addParameter('poolSize', [], @isnumeric); % max pooling size for large zarr MIPs
 ip.addParameter('blockSize', [500, 500, 500], @isnumeric); 
 ip.addParameter('zarrSubSize', [20, 20, 20], @isnumeric); % zarr subfolder size
 ip.addParameter('saveMultires', false, @islogical); % save as multi resolution dataset
@@ -162,6 +164,8 @@ masterCompute = pr.masterCompute;
 Save16bit = pr.Save16bit;
 EdgeArtifacts = pr.EdgeArtifacts;
 zarrFile = pr.zarrFile;
+largeZarr = pr.largeZarr;
+poolSize = pr.poolSize;
 blockSize = pr.blockSize;
 zarrSubSize = pr.zarrSubSize;
 BorderSize = pr.BorderSize;
@@ -409,7 +413,7 @@ end
 % check if total input size is greater than 100 GB if bigStitchData is false
 nodeFactor = 2;
 compressor = 'lz4';
-if ~stitch2D && ~bigStitchData && nF > 4 && prod(imSize) * nF * 4 > (100 * 2^30)
+if (~stitch2D && ~bigStitchData && nF > 4 && prod(imSize) * nF * 4 > (100 * 2^30)) || largeZarr
     bigStitchData = true;
 end
 if bigStitchData
@@ -501,8 +505,8 @@ if xcorrShift && isPrimaryCh
         MaxOffset = [xyMaxOffset, xyMaxOffset, zMaxOffset];
         [xyz_shift, d_shift] = stitch_shift_assignment(zarrFullpaths, xcorrDir, imSizes, xyz, ...
             px, [xf, yf, zf], overlap_matrix, overlap_regions, MaxOffset, xcorrDownsample, ...
-            xcorrThresh, tileIdx, assign_method, stitch2D, axisWeight, groupFile, parseCluster, ...
-            nodeFactor, mccMode, ConfigFile);
+            xcorrThresh, tileIdx, assign_method, stitch2D, axisWeight, groupFile, largeZarr, ...
+            poolSize, parseCluster, nodeFactor, mccMode, ConfigFile);
         save('-v7.3', xcorTmpFn, 'xyz_shift', 'd_shift');
         movefile(xcorTmpFn, xcorrFinalFn)
     else
@@ -709,21 +713,22 @@ if strcmpi(BlendMethod, 'feather')
         mkdir(imdistPath);
         [imdistFullpaths] = compute_tile_distance_transform(block_info_fullname, stitchPath, ...
             zarrFullpaths, 'blendWeightDegree', blendWeightDegree, 'singleDistMap', singleDistMap, ...
-            'blockSize', round(blockSize / 2), 'compressor', compressor, 'parseCluster', parseCluster, ...
-            'mccMode', mccMode, 'ConfigFile', ConfigFile);
-        % imdistFullpaths = cellfun(@(x) [imdistPath, x, '.zarr'], fsnames, 'unif', 0);
+            'blockSize', round(blockSize / 2), 'compressor', compressor, 'largeZarr', largeZarr, ...
+            'poolSize', poolSize, 'parseCluster', parseCluster, 'mccMode', mccMode, 'ConfigFile', ConfigFile);
     else
         usePrimaryDist = true;
         if singleDistMap
             imSize_f = getImageSize(imdistFullpaths{1});
             usePrimaryDist = all(imSize_f == imSizes, 'all');
         else
-            for f = 1 : size(imSizes, 1)
-                imSize_f = getImageSize(imdistFullpaths{f});                
-                if any(imSize_f ~= imSizes(f, :))
-                    usePrimaryDist = false;
-                    break;
-                end            
+            if ~largeZarr
+                for f = 1 : size(imSizes, 1)
+                    imSize_f = getImageSize(imdistFullpaths{f});                
+                    if any(imSize_f ~= imSizes(f, :))
+                        usePrimaryDist = false;
+                        break;
+                    end
+                end
             end
         end
         if ~usePrimaryDist
@@ -731,8 +736,8 @@ if strcmpi(BlendMethod, 'feather')
             mkdir(imdistPath);
             [imdistFullpaths] = compute_tile_distance_transform(block_info_fullname, stitchPath, ...
                 zarrFullpaths, 'blendWeightDegree', blendWeightDegree, 'singleDistMap', singleDistMap, ...
-                'blockSize', round(blockSize / 2), 'compressor', compressor, 'parseCluster', parseCluster, ...
-                'mccMode', mccMode, 'ConfigFile', ConfigFile);
+                'blockSize', round(blockSize / 2), 'compressor', compressor, 'largeZarr', largeZarr, ...
+                'poolSize', poolSize, 'parseCluster', parseCluster, 'mccMode', mccMode, 'ConfigFile', ConfigFile);
         end
     end
     if singleDistMap
@@ -793,10 +798,11 @@ for t = 1 : numTasks
     zarrFlagFullpaths{t} = sprintf('%s/blocks_%d_%d.mat', zarrFlagPath, blockInds(1), blockInds(end));
     funcStrs{t} = sprintf(['processStitchBlock([%s],''%s'',''%s'',''%s'',''%s'',[],[],', ...
         '''imSize'',[%s],''blockSize'',[%s],''dtype'',''%s'',''BlendMethod'',''%s'',', ...
-        '''BorderSize'',[%s],''BlurSigma'',%d,''imdistFullpaths'',%s)'], ...
+        '''BorderSize'',[%s],''BlurSigma'',%d,''imdistFullpaths'',%s,''poolSize'',%s,''weightDegree'',%d)'], ...
         strrep(mat2str(blockInds), ' ', ','), block_info_fullname, PerBlockInfoFullpath, zarrFlagFullpaths{t}, ...
         nv_tmp_fullname, strrep(mat2str(nvSize), ' ', ','), strrep(mat2str(blockSize), ' ', ','), ...
-        dtype, BlendMethod, strrep(mat2str(BorderSize), ' ', ','), BlurSigma, imdistFullpaths_str);
+        dtype, BlendMethod, strrep(mat2str(BorderSize), ' ', ','), BlurSigma, imdistFullpaths_str, ...
+        strrep(mat2str(poolSize), ' ', ','), blendWeightDegree);
 end
 
 inputFullpaths = PerBlockInfoFullpaths;

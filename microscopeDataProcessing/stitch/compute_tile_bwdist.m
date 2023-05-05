@@ -17,14 +17,15 @@ if exist(bwdistFullpath, 'dir')
     return;
 end
 
-persistent tileFns overlap_matrix ol_region_cell bkFn datenum
+persistent tileFns overlap_matrix ol_region_cell overlap_map_mat bkFn datenum
 dir_info = dir(blockInfoFullname);
 if ~(strcmpi(bkFn, blockInfoFullname) && datenum == dir_info.datenum) || isempty(tileFns)
     bkFn = blockInfoFullname;
-    a = load(blockInfoFullname, 'tileFns', 'overlap_matrix', 'ol_region_cell');
+    a = load(blockInfoFullname, 'tileFns', 'overlap_matrix', 'ol_region_cell', 'overlap_map_mat');
     tileFns = a.tileFns;
     overlap_matrix = a.overlap_matrix;
     ol_region_cell = a.ol_region_cell;
+    overlap_map_mat = a.overlap_map_mat;
     dir_info = dir(bkFn);
     datenum = dir_info.datenum;
     clear a;
@@ -42,8 +43,7 @@ if ndims(im_i) == 3
 end
 im_i = im_i == 0;
 
-counter = 1;
-sz = size(im_i, [1 : 3]);
+sz = size(im_i, 1 : 3);
 im_dist = ones(sz, 'single');
 if singleDistMap
     im_i_c = im_i(:, :, round((sz(3) + 1) / 2));
@@ -62,9 +62,11 @@ else
             continue;
         end
         if i < j
-            mregion = ol_region_cell{i, j}{1};
+            ind = (j - 1) * nF + i;
+            mregion = ol_region_cell{overlap_map_mat(:, 2) == ind}{1};
         else
-            mregion = ol_region_cell{j, i}{2};
+            ind = (i - 1) * nF + j;
+            mregion = ol_region_cell{overlap_map_mat(:, 2) == ind}{2};
         end
 
         midx = mregion;
@@ -77,7 +79,12 @@ else
         end
 
         mbbox_pad = [max(mbbox(1 : 3) - 1, 1), min(mbbox(4 : 6) + 1, sz)];
-        im_ij = im_i(mbbox_pad(1) : mbbox_pad(4), mbbox_pad(2) : mbbox_pad(5), mbbox_pad(3) : mbbox_pad(6));
+        try 
+            im_ij = crop3d_mex(im_i, mbbox_pad);
+        catch ME
+            disp(ME)
+            im_ij = im_i(mbbox_pad(1) : mbbox_pad(4), mbbox_pad(2) : mbbox_pad(5), mbbox_pad(3) : mbbox_pad(6));
+        end
         % skip it when im_ij contains no object
         if ~any(im_ij(:))
             continue;
@@ -93,10 +100,12 @@ else
 
         s = mbbox(1 : 3) - mbbox_pad(1 : 3) + 1;
         t = mbbox(4 : 6) - mbbox_pad(1 : 3) + 1;
-        im_dist(mbbox(1) : mbbox(4), mbbox(2) : mbbox(5), mbbox(3) : mbbox(6)) = im_dist_ij(s(1) : t(1), s(2) : t(2), s(3) : t(3));
-        % im_i(mbbox(1) : mbbox(4), mbbox(2) : mbbox(5), mbbox(3) : mbbox(6)) = false;
-
-        counter = counter + 1;
+        try 
+            indexing3d_mex(im_dist, mbbox, crop3d_mex(im_dist_ij, [s', t']));
+        catch ME
+            disp(ME)
+            im_dist(mbbox(1) : mbbox(4), mbbox(2) : mbbox(5), mbbox(3) : mbbox(6)) = im_dist_ij(s(1) : t(1), s(2) : t(2), s(3) : t(3));
+        end
     end
 end
 
@@ -120,7 +129,8 @@ tmpFilename = [zarrFilename '_' uuid];
 %     'shape', size(im_dist), 'cname', 'zstd', 'level', 2);
 try
     zarrSubSize = [20, 20, 20];
-    createzarr(tmpFilename, dataSize=size(im_dist), blockSize=blockSize, dtype='single', zarrSubSize=zarrSubSize);
+    createzarr(tmpFilename, dataSize=size(im_dist), blockSize=blockSize, dtype='single', ...
+        compressor=compressor, zarrSubSize=zarrSubSize);
     % bim = blockedImage(tmpFilename, sz, blockSize, zeros(1, 'single'), "Adapter", CZarrAdapter, 'mode', 'w');
 catch ME
     disp(ME);

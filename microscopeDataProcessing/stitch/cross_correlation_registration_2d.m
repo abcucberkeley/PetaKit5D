@@ -38,6 +38,7 @@ downSample = pr.downSample;
 MaxOffset = pr.MaxOffset;
 dimNumThrsh = pr.dimNumThrsh;
 
+downSample = downSample(:)';
 maxXOffset = MaxOffset(2);
 maxYOffset = MaxOffset(1);
 maxZOffset = MaxOffset(3);
@@ -179,15 +180,15 @@ region_2 = region_2(y_inds, x_inds, z_inds);
 src2 = [x_inds(1); y_inds(1); z_inds(1)];
     
 % set lower and upper bound of the maxShifts
-sp2_down = (sr1 - s1) ./ downSample(:) - (src2 - 1);
-maxoff = [maxoff_y, maxoff_x, 1] ./ downSample;
+sp2_down = (sr1 - s1) ./ downSample([2, 1, 3])' - (src2 - 1);
+maxoff = [maxoff_x, maxoff_y, 1] ./ downSample([2, 1, 3]);
 maxShifts_lb = -sp2_down' - maxoff;
 maxShifts_ub = -sp2_down' + maxoff;
 maxShifts = [maxShifts_lb; maxShifts_ub];
 maxShifts = maxShifts(:, [2, 1, 3]);
 [offset_yxz, max_xcorr, C] = normxcorr2_max_shift(single(region_2), single(region_1), maxShifts);
 % [offset_yxz, max_xcorr, C] = normxcorr3_max_shift_crop(single(region_2), single(region_1), maxShifts);
-sp2 = (sr1 - s1) - (src2 - 1) .* downSample(:);
+sp2 = (sr1 - s1) - (src2 - 1) .* downSample([2, 1, 3])';
 relative_shift = offset_yxz([2, 1, 3]) .* downSample([2, 1, 3]) + sp2'; % - [maxoff_xy, maxoff_xy, maxoff_z];
 relative_shift = relative_shift .* ((s1 >= s2)' - 0.5) * 2;
 

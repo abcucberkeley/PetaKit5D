@@ -28,7 +28,7 @@ ip.addRequired('xyz_factors', @isnumeric);
 ip.addParameter('downSample', [1, 1, 1], @isnumeric);
 ip.addParameter('MaxOffset', [300, 300, 50], @isnumeric);
 ip.addParameter('dimNumThrsh', 10000, @isnumeric);
-% ip.addParameter('xyz_factor', 0.5, @isnumeric);
+ip.addParameter('blankNumTrsh', [], @isnumeric); % skip blank regions beyond this length when cropping template
 
 ip.parse(imgFullpath_1, imgFullpath_2, xcorrFullpath, cuboid_1, cuboid_2, cuboid_overlap_12, px, xyz_factors, varargin{:});
 
@@ -36,6 +36,9 @@ pr = ip.Results;
 downSample = pr.downSample;
 MaxOffset = pr.MaxOffset;
 dimNumThrsh = pr.dimNumThrsh;
+blankNumTrsh = pr.blankNumTrsh;
+
+downSample = downSample(:)';
 
 maxXOffset = MaxOffset(2);
 maxYOffset = MaxOffset(1);
@@ -84,7 +87,7 @@ region_2 = bim_2.Adapter.getIORegion(s2([2, 1, 3])', t2([2, 1, 3])');
 % crop region 2 if one or more dimension is too large, if so, find a small
 % region with rich signal. 
 if ~false    
-    [region_2, crop_bbox] = crop_subregion_by_intensity(region_2, dimNumThrsh);
+    [region_2, crop_bbox] = crop_subregion_by_intensity(region_2, dimNumThrsh, blankNumTrsh);
     
     s1 = s1 + (crop_bbox([2, 1, 3]) - 1)';
     t1 = s1 + (crop_bbox([5, 4, 6]) - crop_bbox([2, 1, 3]))';
@@ -95,10 +98,6 @@ end
 
 % first resize to downsampled ones
 if any(downSample ~= 1)
-%     region_1 = double(imresize3(region_1, 1 ./ downSample .* size(region_1), 'nearest'));
-%     region_2 = double(imresize3(region_2, 1 ./ downSample .* size(region_2), 'nearest'));
-    % region_1 = double(imresize3(region_1, 1 ./ downSample .* size(region_1), 'nearest'));
-    % region_2 = double(imresize3(region_2, 1 ./ downSample .* size(region_2), 'nearest'));
     % resize by max pooling
     try
         region_2 = max_pooling_3d_mex(region_2, downSample);
@@ -123,11 +122,6 @@ region_1 = bim_1.Adapter.getIORegion(sr1([2, 1, 3])', tr1([2, 1, 3])');
 
 % first resize to downsampled ones
 if any(downSample ~= 1)
-%     region_1 = double(imresize3(region_1, 1 ./ downSample .* size(region_1), 'nearest'));
-%     region_2 = double(imresize3(region_2, 1 ./ downSample .* size(region_2), 'nearest'));
-    % region_1 = double(imresize3(region_1, 1 ./ downSample .* size(region_1), 'nearest'));
-    % region_2 = double(imresize3(region_2, 1 ./ downSample .* size(region_2), 'nearest'));
-    
     % resize by max pooling
     try
         region_1 = max_pooling_3d_mex(region_1, downSample);    
@@ -160,7 +154,6 @@ y_inds = cap_region_2_inds(y_inds, sz_2(1), maxoff(1), bounds);
 x_inds = cap_region_2_inds(x_inds, sz_2(2), maxoff(2), bounds);
 z_inds = cap_region_2_inds(z_inds, sz_2(3), maxoff(3), bounds);
 
-
 % if empty again, just return none shift
 if isempty(z_inds) || isempty(x_inds) || isempty(y_inds)  
     fprintf('The non-empty area of the region 2 is too small, skip the xcorr computing, set relative_shift as [0, 0, 0]\n. Save results ...\n');
@@ -184,15 +177,15 @@ region_2 = region_2(y_inds, x_inds, z_inds);
 src2 = [x_inds(1); y_inds(1); z_inds(1)];
     
 % set lower and upper bound of the maxShifts
-sp2_down = (sr1 - s1) ./ downSample(:) - (src2 - 1);
-maxoff = [maxoff_y, maxoff_x, maxoff_z] ./ downSample;
+sp2_down = (sr1 - s1) ./ downSample([2, 1, 3])' - (src2 - 1);
+maxoff = [maxoff_x, maxoff_y, maxoff_z] ./ downSample([2, 1, 3]);
 maxShifts_lb = -sp2_down' - maxoff;
 maxShifts_ub = -sp2_down' + maxoff;
 maxShifts = [maxShifts_lb; maxShifts_ub];
-maxShifts = maxShifts(:, [2, 1, 3]);
+maxShifts = maxShifts(:, [2, 1, 3]); % maxShifts in yxz order
 [offset_yxz, max_xcorr, C] = normxcorr3_max_shift(single(region_2), single(region_1), maxShifts);
 % [offset_yxz, max_xcorr, C] = normxcorr3_max_shift_crop(single(region_2), single(region_1), maxShifts);
-sp2 = (sr1 - s1) - (src2 - 1) .* downSample(:);
+sp2 = (sr1 - s1) - (src2 - 1) .* downSample([2, 1, 3])';
 relative_shift = offset_yxz([2, 1, 3]) .* downSample([2, 1, 3]) + sp2'; % - [maxoff_xy, maxoff_xy, maxoff_z];
 relative_shift = relative_shift .* ((s1 >= s2)' - 0.5) * 2;
 

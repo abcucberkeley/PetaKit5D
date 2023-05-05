@@ -11,6 +11,7 @@ arguments
     options.Streaming (1, 1) {islogical} = false
     options.stitchInfoFullpath char = ''
     options.stitchInfoPath char = ''
+    options.zarrFile (1, 1) {islogical} = false    
     options.onlyFirstTP (1, 1) {islogical} = false
     options.ChannelPatterns {iscell} = {'CamA', 'CamB'}
     options.useProcessedData {islogical} = false
@@ -25,6 +26,7 @@ end
 Streaming = options.Streaming;
 stitchInfoFullpath = options.stitchInfoFullpath;
 stitch_info_path = options.stitchInfoPath;
+zarrFile = options.zarrFile;
 onlyFirstTP = options.onlyFirstTP;
 ChannelPatterns = options.ChannelPatterns;
 useProcessedData = options.useProcessedData;
@@ -34,7 +36,6 @@ subtimepoints = options.subtimepoints;
 xcorrMode = options.xcorrMode;
 primaryCh = options.primaryCh;
 onlineStitch = options.onlineStitch;
-
 
 % parase imagel list for each subregion
 nd = numel(dataPath);
@@ -51,14 +52,15 @@ prefix_cell = cell(nd, 1);
 zlayerStitch_cell = cell(nd, 1);
 stitchInfoFullpath_cell = cell(nd, 1);
 
-
 for d = 1 : nd
-    [tab, primary_tab, fullIter, Ch, Cam, stackn, nz, specifyCam, prefix, zlayerStitch, xcorrMode, stitchInfoFullpath_d] = ...
-        stitch_parse_image_list_information(dataPath{d}, imageListFileName{d}, Streaming=Streaming, ...
-        onlineStitch=onlineStitch, stitchInfoFullpath=stitchInfoFullpath, stitchInfoPath=stitch_info_path, ...
-        onlyFirstTP=onlyFirstTP, ChannelPatterns=ChannelPatterns, useProcessedData=useProcessedData, ...
-        ProcessedDirStr=ProcessedDirStr, timepoints=timepoints, ...
-        subtimepoints=subtimepoints, xcorrMode=xcorrMode, primaryCh=primaryCh);
+    [tab, primary_tab, fullIter, Ch, Cam, stackn, nz, specifyCam, prefix, zlayerStitch, ...
+        xcorrMode, stitchInfoFullpath_d] = stitch_parse_image_list_information(dataPath{d}, ...
+        imageListFileName{d}, Streaming=Streaming, onlineStitch=onlineStitch, ...
+        stitchInfoFullpath=stitchInfoFullpath, stitchInfoPath=stitch_info_path, ...
+        zarrFile=zarrFile, onlyFirstTP=onlyFirstTP, ChannelPatterns=ChannelPatterns, ...
+        useProcessedData=useProcessedData, ProcessedDirStr=ProcessedDirStr, ...
+        timepoints=timepoints, subtimepoints=subtimepoints, xcorrMode=xcorrMode, ...
+        primaryCh=primaryCh);
     
     tab.did(:) = d;
 
@@ -78,8 +80,8 @@ end
 % integrate image list information for all subregions
 tab = cat(1, tab_cell{:});
 fullIter = unique(cat(1, fullIter_cell{:}));
-Ch = unique(cat(1, Ch_cell{:}));
-Cam = unique(cat(1, Cam_cell{:}));
+Ch = unique(cat(1, Ch_cell{:}), 'stable');
+Cam = unique(cat(1, Cam_cell{:}), 'stable');
 stackn = unique(cat(1, stackn_cell{:}));
 nz = unique(cat(1, nz_cell{:}));
 specifyCam = unique(cat(1, specifyCam_cell{:}));
@@ -98,7 +100,6 @@ if strcmp(xcorrMode, 'primaryFirst')
         error('The Image List Info for the primary channel for the first time point does not exist!');
     end
 end
-
 
 end
 

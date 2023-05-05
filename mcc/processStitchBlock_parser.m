@@ -1,6 +1,5 @@
 function [] = processStitchBlock_parser(blockInds, BlockInfoFullname, PerBlockInfoFullname, flagFullname, stitchFullname, stitchBlockInfo, tileFns, varargin)
 
-%#function processStitchBlock
 
 ip = inputParser;
 ip.CaseSensitive = false;
@@ -19,6 +18,7 @@ ip.addParameter('BlendMethod', 'mean', @ischar);
 ip.addParameter('BorderSize', [], @(x) isnumeric(x) || ischar(x));
 ip.addParameter('BlurSigma', 5, @(x) isnumeric(x) || ischar(x)); % blurred sigma for blurred blend
 ip.addParameter('imdistFullpaths', {}, @(x) iscell(x) || ischar(x)); % image distance paths
+ip.addParameter('poolSize', [], @(x) isnumeric(x) || ischar(x)); % distance matrix with max pooling factors
 ip.addParameter('weightDegree', 10, @(x) isnumeric(x) || ischar(x)); % weight degree for image distances
 
 ip.parse(blockInds, BlockInfoFullname, PerBlockInfoFullname, flagFullname, stitchFullname, stitchBlockInfo, tileFns, varargin{:});
@@ -32,6 +32,7 @@ BlendMethod = pr.BlendMethod;
 BorderSize = pr.BorderSize;
 BlurSigma = pr.BlurSigma;
 imdistFullpaths = pr.imdistFullpaths;
+poolSize = pr.poolSize;
 weightDegree = pr.weightDegree;
 
 if ischar(blockInds)
@@ -61,6 +62,9 @@ end
 if ischar(imdistFullpaths)
     imdistFullpaths = eval(imdistFullpaths);
 end
+if ischar(poolSize)
+    poolSize = str2num(poolSize);
+end
 if ischar(weightDegree)
     weightDegree = str2double(weightDegree);
 end
@@ -69,7 +73,7 @@ processStitchBlock(blockInds, BlockInfoFullname, PerBlockInfoFullname, ...
     flagFullname, stitchFullname, stitchBlockInfo, tileFns, Overwrite=Overwrite, ...
     imSize=imSize, blockSize=blockSize, dtype=dtype, BlendMethod=BlendMethod, ...
     BorderSize=BorderSize, BlurSigma=BlurSigma,imdistFullpaths=imdistFullpaths, ...
-    weightDegree=weightDegree);
+    poolSize=poolSize, weightDegree=weightDegree);
 
 end
 

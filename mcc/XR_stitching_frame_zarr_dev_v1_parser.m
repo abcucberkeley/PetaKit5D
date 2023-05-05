@@ -53,6 +53,8 @@ ip.addParameter('axisWeight', [1, 0.1, 10], @(x) isnumeric(x) || ischar(x)); % a
 ip.addParameter('groupFile', '', @ischar); % file to define tile groups
 ip.addParameter('singleDistMap', ~false, @(x) islogical(x) || ischar(x)); % compute distance map for the first tile and apply to all other tiles
 ip.addParameter('zarrFile', false, @(x) islogical(x) || ischar(x));
+ip.addParameter('largeZarr', false, @(x) islogical(x) || ischar(x)); 
+ip.addParameter('poolSize', [], @(x) isnumeric(x) || ischar(x)); % max pooling size for large zarr MIPs
 ip.addParameter('blockSize', [500, 500, 500], @(x) isnumeric(x) || ischar(x)); 
 ip.addParameter('zarrSubSize', [], @(x) isnumeric(x) || ischar(x));
 ip.addParameter('saveMultires', false, @(x) islogical(x) || ischar(x)); % save as multi resolution dataset
@@ -135,6 +137,8 @@ unitWaitTime = pr.unitWaitTime;
 Save16bit = pr.Save16bit;
 EdgeArtifacts = pr.EdgeArtifacts;
 zarrFile = pr.zarrFile;
+largeZarr = pr.largeZarr;
+poolSize = pr.poolSize;
 blockSize = pr.blockSize;
 zarrSubSize = pr.zarrSubSize;
 BorderSize = pr.BorderSize;
@@ -268,6 +272,12 @@ end
 if ischar(zarrFile)
     zarrFile = strcmp(zarrFile, 'true');
 end
+if ischar(largeZarr)
+    largeZarr = strcmp(largeZarr, 'true');
+end
+if ischar(poolSize)
+    poolSize = str2num(poolSize);
+end
 if ischar(blockSize)
     blockSize = str2num(blockSize);
 end
@@ -337,9 +347,10 @@ XR_stitching_frame_zarr_dev_v1(tileFullpaths, coordinates, ResultPath=ResultPath
     boundboxCrop=boundboxCrop, zNormalize=zNormalize, xcorrDownsample=xcorrDownsample, ...
     xcorrThresh=xcorrThresh, xyMaxOffset=xyMaxOffset, zMaxOffset=zMaxOffset, ...
     shiftMethod=shiftMethod, axisWeight=axisWeight, groupFile=groupFile, singleDistMap=singleDistMap, ...
-    zarrFile=zarrFile, blockSize=blockSize, zarrSubSize=zarrSubSize, saveMultires=saveMultires, ...
-    resLevel=resLevel, BorderSize=BorderSize, BlurSigma=BlurSigma, SaveMIP=SaveMIP, ...
-    tileIdx=tileIdx, processFunPath=processFunPath, stitchMIP=stitchMIP, stitch2D=stitch2D, ...
+    zarrFile=zarrFile, largeZarr=largeZarr, poolSize=poolSize, blockSize=blockSize, ...
+    zarrSubSize=zarrSubSize, saveMultires=saveMultires, resLevel=resLevel, ...
+    BorderSize=BorderSize, BlurSigma=BlurSigma, SaveMIP=SaveMIP, tileIdx=tileIdx, ...
+    processFunPath=processFunPath, stitchMIP=stitchMIP, stitch2D=stitch2D, ...
     bigStitchData=bigStitchData, parseCluster=parseCluster, masterCompute=masterCompute, ...
     jobLogDir=jobLogDir, cpusPerTask=cpusPerTask, uuid=uuid, maxTrialNum=maxTrialNum, ...
     unitWaitTime=unitWaitTime, mccMode=mccMode, ConfigFile=ConfigFile, debug=debug);

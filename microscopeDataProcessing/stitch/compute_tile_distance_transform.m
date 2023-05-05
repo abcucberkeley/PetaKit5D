@@ -19,6 +19,8 @@ ip.addParameter('singleDistMap', true, @islogical);
 ip.addParameter('zarrHeaders', {}, @iscell);
 ip.addParameter('blockSize', [500, 500, 500], @isnumeric);
 ip.addParameter('compressor', 'lz4', @ischar);
+ip.addParameter('largeZarr', false, @islogical);
+ip.addParameter('poolSize', [], @isnumeric);
 ip.addParameter('parseCluster', true, @islogical);
 ip.addParameter('mccMode', false, @islogical);
 ip.addParameter('ConfigFile', '', @ischar);
@@ -33,26 +35,28 @@ singleDistMap = pr.singleDistMap;
 zarrHeaders = pr.zarrHeaders;
 blockSize = pr.blockSize;
 compressor = pr.compressor;
+largeZarr =  pr.largeZarr;
+poolSize =  pr.poolSize;
 parseCluster = pr.parseCluster;
 mccMode = pr.mccMode;
 ConfigFile = pr.ConfigFile;
-
 
 % define input, output and function handle for the cluster computing framework
 nF = numel(tileFullpaths);
 distPath = [stitchPath, 'imdist/'];
 
 % load overlap info
-a = load(blockInfoFullname, 'overlap_matrix', 'ol_region_cell');
+a = load(blockInfoFullname, 'overlap_matrix', 'ol_region_cell', 'overlap_map_mat');
 overlap_matrix = a.overlap_matrix;
 ol_region_cell = a.ol_region_cell;
+overlap_map_mat = a.overlap_map_mat;
 clear a;
 
 % check if the parameter file exist, if so, check if it is the same setting
 % as current running. 
 paramFullname = [distPath, 'parameters.mat'];
 if exist(paramFullname, 'file')
-    b = load(paramFullname, 'overlap_matrix', 'ol_region_cell');
+    b = load(paramFullname, 'overlap_matrix', 'ol_region_cell', 'overlap_map_mat');
     isSameSetting = singleDistMap || (all(size(overlap_matrix) == size(b.overlap_matrix)) && ...
         all(overlap_matrix == b.overlap_matrix, 'all') && ...
         all(cellfun(@isequal, ol_region_cell, b.ol_region_cell), 'all'));
@@ -65,23 +69,49 @@ else
 end
 mkdir(distPath);
 
-save('-v7.3', paramFullname, 'ip', 'overlap_matrix', 'ol_region_cell');
+save('-v7.3', paramFullname, 'ip', 'overlap_matrix', 'ol_region_cell', 'overlap_map_mat');
 
 if singleDistMap
     tileFullpaths = tileFullpaths(1);
 end
 inputFullpaths = tileFullpaths;
 [~, fsnames] = fileparts(tileFullpaths);
-if singleDistMap
-    outputFullpaths = {sprintf('%s/%s_wr_%d.zarr', distPath, fsnames, blendWeightDegree)};
-    funcStrs = arrayfun(@(x) sprintf('compute_tile_bwdist(''%s'',%d,''%s'',%d,%s,%s,''%s'',%s)', ...
-        blockInfoFullname, x, outputFullpaths{x}, blendWeightDegree, string(singleDistMap), ...
-        strrep(mat2str(blockSize), ' ', ','), compressor, string(Overwrite)), 1 : 1, 'unif', 0);    
+
+if largeZarr
+    switch numel(poolSize)
+        case 3
+            poolSize_str = sprintf('pooling_%d_%d_%d', poolSize(1), poolSize(2), poolSize(3));
+        case 6
+            poolSize_str = sprintf('pooling_%d_%d_%d_%d_%d_%d', poolSize(1), ...
+                poolSize(2), poolSize(3), poolSize(4), poolSize(5), poolSize(6));
+    end
+    if singleDistMap
+        outputFullpaths = {sprintf('%s/%s_z_%s_wr_%d.zarr', distPath, fsnames, ...
+            poolSize_str, blendWeightDegree)};
+        funcStrs = arrayfun(@(x) sprintf('compute_tile_bwdist_mip_slabs(''%s'',%d,''%s'',%d,%s,%s,''%s'',%s,%s)', ...
+            blockInfoFullname, x, outputFullpaths{x}, blendWeightDegree, string(singleDistMap), ...
+            strrep(mat2str(blockSize), ' ', ','), compressor, strrep(mat2str(poolSize), ' ', ','), ...
+            string(Overwrite)), 1 : 1, 'unif', 0);    
+    else
+        outputFullpaths = cellfun(@(x) sprintf('%s/%s_z_%s_wr_%d.zarr', distPath, x, ...
+            poolSize_str, blendWeightDegree), fsnames, 'unif', 0);
+        funcStrs = arrayfun(@(x) sprintf('compute_tile_bwdist_mip_slabs(''%s'',%d,''%s'',%d,%s,%s,''%s'',%s,%s)', ...
+            blockInfoFullname, x, outputFullpaths{x}, blendWeightDegree, string(singleDistMap), ...
+            strrep(mat2str(blockSize), ' ', ','), compressor, strrep(mat2str(poolSize), ' ', ','), ...
+            string(Overwrite)), 1 : nF, 'unif', 0);
+    end
 else
-    outputFullpaths = cellfun(@(x) sprintf('%s/%s_wr_%d.zarr', distPath, x, blendWeightDegree), fsnames, 'unif', 0);
-    funcStrs = arrayfun(@(x) sprintf('compute_tile_bwdist(''%s'',%d,''%s'',%d,%s,%s,''%s'',%s)', ...
-        blockInfoFullname, x, outputFullpaths{x}, blendWeightDegree, string(singleDistMap), ...
-        strrep(mat2str(blockSize), ' ', ','), compressor,string(Overwrite)), 1 : nF, 'unif', 0);
+    if singleDistMap
+        outputFullpaths = {sprintf('%s/%s_wr_%d.zarr', distPath, fsnames, blendWeightDegree)};
+        funcStrs = arrayfun(@(x) sprintf('compute_tile_bwdist(''%s'',%d,''%s'',%d,%s,%s,''%s'',%s)', ...
+            blockInfoFullname, x, outputFullpaths{x}, blendWeightDegree, string(singleDistMap), ...
+            strrep(mat2str(blockSize), ' ', ','), compressor, string(Overwrite)), 1 : 1, 'unif', 0);    
+    else
+        outputFullpaths = cellfun(@(x) sprintf('%s/%s_wr_%d.zarr', distPath, x, blendWeightDegree), fsnames, 'unif', 0);
+        funcStrs = arrayfun(@(x) sprintf('compute_tile_bwdist(''%s'',%d,''%s'',%d,%s,%s,''%s'',%s)', ...
+            blockInfoFullname, x, outputFullpaths{x}, blendWeightDegree, string(singleDistMap), ...
+            strrep(mat2str(blockSize), ' ', ','), compressor,string(Overwrite)), 1 : nF, 'unif', 0);
+    end
 end
 
 if isempty(zarrHeaders)

@@ -24,6 +24,7 @@ ip.addParameter('BlendMethod', 'mean', @ischar);
 ip.addParameter('BorderSize', [], @isnumeric);
 ip.addParameter('BlurSigma', 5, @isnumeric); % blurred sigma for blurred blend
 ip.addParameter('imdistFullpaths', {}, @iscell); % image distance paths
+ip.addParameter('poolSize', [], @isnumeric); % distance matrix with max pooling factors
 ip.addParameter('weightDegree', 10, @isnumeric); % weight degree for image distances
 
 ip.parse(blockInds, BlockInfoFullname, PerBlockInfoFullname, flagFullname, stitchFullname, stitchBlockInfo, tileFns, varargin{:});
@@ -37,11 +38,8 @@ BlendMethod = pr.BlendMethod;
 BorderSize = pr.BorderSize;
 BlurSigma = pr.BlurSigma;
 imdistFullpaths = pr.imdistFullpaths;
+poolSize = pr.poolSize;
 wd = pr.weightDegree;
-
-if isempty(BorderSize) 
-    BorderSize = [0, 0, 0];
-end
 
 % we assume the path exists, otherwise return error (in case of completion 
 % of processing for all blocks).
@@ -72,24 +70,34 @@ if ~isempty(PerBlockInfoFullname)
             stitchBlockInfo = jsondecode(str);
     end
 end
+if isstruct(stitchBlockInfo) && numel(blockInds) > 1
+    stitchBlockInfo = arrayfun(@(x) stitchBlockInfo(x, :), 1 : size(stitchBlockInfo, 1), 'unif', 0);
+end
 
 if ~isempty(BlockInfoFullname)
     a = load(BlockInfoFullname, 'tileFns');
     tileFns = a.tileFns;
 end
 
+if isempty(BorderSize) 
+    BorderSize = [0, 0, 0];
+end
+
+if strcmpi(BlendMethod, 'feather')
+    switch numel(poolSize)
+        case 3
+            psz = [1, 1, poolSize(3)];
+        case 6
+            psz = poolSize([4, 5, 3]);
+    end
+end
+
 bSubSz = ceil(imSize ./ blockSize);
-useGPU = gpuDeviceCount("available");
 
 done_flag = false(numel(blockInds), 1);
 for i = 1 : numel(blockInds)
     bi = blockInds(i);
     fprintf('Process block %d... ', bi);
-    if useGPU
-        a = rand(100, 100, 100, 'gpuArray');
-        b = rand(100, 100, 100, 'gpuArray');
-        c = ifftn(fftn(a) .* fftn(b));
-    end    
     tic;
     [suby, subx, subz] = ind2sub(bSubSz, bi);
     blockSub = [suby, subx, subz];
@@ -159,20 +167,31 @@ for i = 1 : numel(blockInds)
         end
 
         if numTiles > 1 && strcmpi(BlendMethod, 'feather')
-            % [~, fsname] = fileparts(bim_j.Source);
             if numel(imdistFullpaths) == 1
                 imdistFullpath = imdistFullpaths{1};                
             else
                 imdistFullpath = imdistFullpaths{tileInd};
             end
-            % bim_d_j = blockedImage(imdistFullpath, 'Adapter', ZarrAdapter);
-            % block_d_j = bim_d_j.Adapter.getIORegion(bboxCoords(1 : 3), bboxCoords(4 : 6));
+            if isempty(poolSize)
+                im_d_j = readzarr(imdistFullpath, 'bbox', bboxCoords);
+            else
+                % for now only consider pooling in z
+                dsz = getImageSize(imdistFullpath);
+                p_bboxCoords = bboxCoords;
+                p_bboxCoords(1 : 3) = max(1, floor(bboxCoords(1 : 3) ./ psz));
+                p_bboxCoords(4 : 6) = min(dsz, ceil(bboxCoords(4 : 6) ./ psz));
+                
+                im_d_j =  readzarr(imdistFullpath, 'bbox', p_bboxCoords);
+                im_d_j =  im_d_j .^ (1 / wd);
+                im_d_j = imresize3(im_d_j, bboxCoords(4 : 6) - bboxCoords(1 : 3) + 1, 'linear');
+                im_d_j = im_d_j .^ wd;
+            end
             try
-                indexing4d_mex(tim_d_block, [bCoords(1 : 3), j, bCoords(4 : 6), j], readzarr(imdistFullpath, 'bbox', bboxCoords));
+                indexing4d_mex(tim_d_block, [bCoords(1 : 3), j, bCoords(4 : 6), j], im_d_j);
             catch ME
                 disp(ME);
                 disp(ME.stack);
-                tim_d_block(bCoords(1) : bCoords(4), bCoords(2) : bCoords(5), bCoords(3) : bCoords(6), j) = readzarr(imdistFullpath, 'bbox', bboxCoords);
+                tim_d_block(bCoords(1) : bCoords(4), bCoords(2) : bCoords(5), bCoords(3) : bCoords(6), j) = im_d_j;
             end
         end
     end

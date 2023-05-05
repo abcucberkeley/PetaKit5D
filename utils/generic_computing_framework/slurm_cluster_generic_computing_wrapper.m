@@ -28,6 +28,7 @@ ip.addParameter('parseCluster', true, @islogical);
 ip.addParameter('masterCompute', true, @islogical); % master node participate in the task computing. 
 ip.addParameter('jobLogDir', '../job_logs', @ischar);
 ip.addParameter('tmpDir', '', @ischar);
+ip.addParameter('maxCPUNum', 24, @isnumeric);
 ip.addParameter('cpusPerTask', 1, @isnumeric);
 ip.addParameter('uuid', '', @ischar);
 ip.addParameter('maxTrialNum', 3, @isnumeric);
@@ -54,6 +55,7 @@ end
 pr = ip.Results;
 jobLogDir = pr.jobLogDir;
 tmpDir = pr.tmpDir;
+maxCPUNum = pr.maxCPUNum;
 parseCluster = pr.parseCluster;
 masterCompute = pr.masterCompute;
 cpusPerTask = pr.cpusPerTask;
@@ -287,6 +289,8 @@ while (~parseCluster && ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
                     continue;
                 end
 
+                cpusPerTask_f = min(maxCPUNum, cpusPerTask * (trial_counter(f) + 1));
+
                 % If there is no job, submit a job
                 if job_status_mat(f, 1) == -1 && job_status_mat(f, 2) == -1 && ~(masterCompute && b == lastP)
                     if rem(b, 50) == 0 || b == 1
@@ -302,13 +306,13 @@ while (~parseCluster && ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
                         process_cmd = sprintf('%s \\"%s\\"', MatlabLaunchStr, matlab_cmd);
                         cmd = sprintf(['sbatch --array=%d -o %s -e %s --cpus-per-task=%d %s %s %s ', ...
                             '--wrap="echo Matlab command:  \\\"%s\\\"; %s"'], ...
-                            task_id, job_log_fname, job_log_error_fname, cpusPerTask, SlurmParam, ...
+                            task_id, job_log_fname, job_log_error_fname, cpusPerTask_f, SlurmParam, ...
                             SlurmConstraint, time_str, matlab_cmd, process_cmd);
                     elseif strcmpi(language, 'bash')
                         % process_cmd = func_str;
                         cmd = sprintf(['sbatch --array=%d -o %s -e %s --cpus-per-task=%d %s %s %s ', ...
                             '--wrap="echo $PWD; echo bash command:  \\\"%s\\\";  %s; %s"'], ...
-                            task_id, job_log_fname, job_log_error_fname, cpusPerTask, SlurmParam, ...
+                            task_id, job_log_fname, job_log_error_fname, cpusPerTask_f, SlurmParam, ...
                             SlurmConstraint, time_str, func_str, BashLaunchStr, func_str);
                     end
                     [status, cmdout] = system(cmd, '-echo');
@@ -331,7 +335,7 @@ while (~parseCluster && ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
                             process_cmd = sprintf('%s \\"%s\\"', MatlabLaunchStr, matlab_cmd);
                             cmd = sprintf(['sbatch --array=%d -o %s -e %s --cpus-per-task=%d %s %s ', ...
                                 '--wrap="echo Matlab command:  \\\"%s\\\"; %s"'], ...
-                                task_id, job_log_fname, job_log_error_fname, cpusPerTask, SlurmParam, ...
+                                task_id, job_log_fname, job_log_error_fname, cpusPerTask_f, SlurmParam, ...
                                 SlurmConstraint, matlab_cmd, process_cmd);                            
                         elseif strcmpi(language, 'bash')
                             func_str_fn = sprintf('%s/func_str_f%04d_%s_%s.sh', func_str_dir, f, fsnames{f}, uuid);     
@@ -343,7 +347,7 @@ while (~parseCluster && ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
                             
                             cmd = sprintf(['sbatch --array=%d -o %s -e %s --cpus-per-task=%d %s %s ', ...
                                 '--wrap="echo $PWD; echo bash command:  \\\"%s\\\"; %s; bash %s"'], ...
-                                task_id, job_log_fname, job_log_error_fname, cpusPerTask, SlurmParam, ...
+                                task_id, job_log_fname, job_log_error_fname, cpusPerTask_f, SlurmParam, ...
                                 SlurmConstraint, func_str_fn, BashLaunchStr, func_str_fn);
                         end
                         [status, cmdout] = system(cmd, '-echo');

@@ -1,11 +1,17 @@
-function [region_2, crop_bbox] = crop_subregion_by_intensity(region_2, dimNumThrsh)
+function [region_2, crop_bbox] = crop_subregion_by_intensity(region_2, dimNumThrsh, blankNumTrsh)
 % Find the subregion with most rich signal
 % 
 %  Author: Xiongtao Ruan (02/04/2022)
+%
+%  xruan (05/04/2023): add support to exclude large blank region
 
 
 if nargin < 2 
     dimNumThrsh = 2000;
+end
+
+if nargin < 3
+    blankNumTrsh = [];
 end
 
 sz_2 = size(region_2);
@@ -30,35 +36,40 @@ for i = 1 : numel(adj_axes)
 
     [~, pind] = max(fz_2);
 
-    % fa_inds_2 = find(fz_2 > mean(fz_2) + 2 * (0.5 * (std(fz_2) + movstd(fz_2, 11))));
+    s = 1;
+    t = numel(fz_2);    
 
-    % s = 1;
-    % t = numel(fa_inds_2);
-    sa_2 = 1;
-    ta_2 = numel(fz_2);
+    if ~isempty(blankNumTrsh)
+         CC = bwconncomp(fz_2 == 0);
+         zero_seq_lengths = cellfun(@numel, CC.PixelIdxList);
+         PixelIdxList = CC.PixelIdxList(zero_seq_lengths >= blankNumTrsh);
+         PixelIdxList = cat(1, PixelIdxList{:});
+         s = max(PixelIdxList(PixelIdxList < pind));
+         t = min(PixelIdxList(PixelIdxList > pind));
+         if isempty(s)
+             s = 1;
+         end
+         if isempty(t)
+             t =  numel(fz_2);
+         end
+    end
 
-%     while ta_2 - sa_2 > dimNumThrsh
-%         if pind - sa_2 > ta_2 - pind
-%             s = s + 1; 
-%             sa_2 = fa_inds_2(s);
-%         else
-%             t = t - 1;
-%             ta_2 = fa_inds_2(t);        
-%         end        
-%     end
-
-    if numel(fz_2) > dimNumThrsh
-        if pind - 1 < dimNumThrsh / 2
-            sa_2 = 1;
-            ta_2 = sa_2 + dimNumThrsh - 1;
-        elseif numel(fz_2) - pind < dimNumThrsh / 2
-            ta_2 = numel(fz_2);
-            sa_2 = ta_2 - dimNumThrsh + 1;
+    if t - s + 1 <= dimNumThrsh
+        sa_2 = s;
+        ta_2 = t;
+    else 
+        if pind - s + 1 < dimNumThrsh / 2
+            sa_2 = s;
+            ta_2 = min(t, sa_2 + dimNumThrsh - 1);
+        elseif t - pind + 1 < dimNumThrsh / 2
+            ta_2 = t;
+            sa_2 = max(s, ta_2 - dimNumThrsh + 1);
         else
             sa_2 = pind - ceil((dimNumThrsh - 1) / 2) + 1;
             ta_2 = sa_2 + dimNumThrsh - 1;
         end        
     end
+    
     crop_bbox(ax_i) = sa_2;
     crop_bbox(ax_i + 3) = ta_2;
 end
@@ -71,5 +82,4 @@ catch ME
 end
 
 end
-
 

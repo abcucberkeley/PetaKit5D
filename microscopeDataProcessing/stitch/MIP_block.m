@@ -1,5 +1,8 @@
-function [done_flag] =  MIP_block(batchInds, zarrFullpath, MIPFullpaths, flagFullname, BatchBBoxes, bSubs, varargin)
+function [done_flag] =  MIP_block(batchInds, zarrFullpath, MIPFullpaths, flagFullname, BatchBBoxes, poolSize, varargin)
 % MIP for all axises for given blocks
+% 
+% xruan (05/01/2023): add support for user defined max pooling size (only
+% in one dimension for MIP slabs for now). 
 
 
 ip = inputParser;
@@ -9,12 +12,12 @@ ip.addRequired('zarrFullpath', @(x) ischar(x));
 ip.addRequired('MIPFullpaths', @(x) iscell(x));
 ip.addRequired('flagFullname', @(x) ischar(x));
 ip.addRequired('BatchBBoxes', @isnumeric);
-ip.addRequired('bSubs', @isnumeric);
+ip.addRequired('poolSize', @isnumeric);
 ip.addParameter('Overwrite', false, @islogical);
 ip.addParameter('uuid', '', @ischar);
 ip.addParameter('debug', false, @islogical);
 
-ip.parse(batchInds, zarrFullpath, MIPFullpaths, flagFullname, BatchBBoxes, bSubs, varargin{:});
+ip.parse(batchInds, zarrFullpath, MIPFullpaths, flagFullname, BatchBBoxes, poolSize, varargin{:});
 
 pr = ip.Results;
 Overwrite = pr.Overwrite;
@@ -50,6 +53,14 @@ end
 %     nv_bim_cell{i} = blockedImage(MIPFullpaths{i}, 'Adapter', ZarrAdapter);
 % end
 
+% if pool size is smaller than the batch size, use the max pooling routines.
+max_pooling = any(BatchBBoxes(1, 4 : 6) - BatchBBoxes(1, 1 : 3) + 1 > poolSize(1 : 3)) || (numel(poolSize) == 6 && any(poolSize(4 : 6) > 1));
+poolSize_1 = [1, 1, 1];
+if max_pooling && numel(poolSize) == 6
+    poolSize_1 = poolSize(4 : 6);
+    poolSize = poolSize(1 : 3);
+end
+
 done_flag = false(numel(batchInds), 1);
 for i = 1 : numel(batchInds)
     bi = batchInds(i);
@@ -63,15 +74,26 @@ for i = 1 : numel(batchInds)
     % in_batch = bim.getRegion(ibStart, ibEnd);
     % in_batch = bim.Adapter.getIORegion(ibStart, ibEnd);
     in_batch = readzarr(zarrFullpath, 'bbox', [ibStart, ibEnd]);
-
+    
     % MIP for each axis
     for j = 1 : 3
-        out_batch = max(in_batch, [], j);
+        poolSize_j = poolSize_1;
+        poolSize_j(j) = poolSize(j);
+        if max_pooling
+            try 
+                out_batch = max_pooling_3d_mex(in_batch, poolSize_j);
+            catch ME
+                disp(ME)
+                out_batch = max_pooling_3d(in_batch, poolSize_j);
+            end
+        else
+            out_batch = max(in_batch, [], j);
+        end
         
         obStart = BatchBBoxes(i, 1 : 3);
-        obStart(j) = bSubs(i, j);
+        obStart = floor((obStart - 1) ./ poolSize_j) + 1;
         obEnd = BatchBBoxes(i, 4 : 6);
-        obEnd(j) = bSubs(i, j);
+        obEnd = floor((obEnd - 1) ./ poolSize_j) + 1;
         
         % nv_bim_cell{j}.Adapter.setRegion(obStart, obEnd, out_batch);
         writezarr(out_batch, MIPFullpaths{j}, 'bbox', [obStart, obEnd])

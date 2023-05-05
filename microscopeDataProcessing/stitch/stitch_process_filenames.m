@@ -38,7 +38,7 @@ for i = 1 : nF
     fsnames{i} = fsname;
     
     if processTiles 
-        if ~isempty(resample)
+        if ~isempty(resample) && any(resample ~= 1)
             % complete resample to 3d
             rs = [ones(1, 4 - numel(resample)) * resample(1), resample(2 : end)];    
             zarrPathstr = sprintf('zarr_%d_%d_%d', rs(1), rs(2), rs(3));

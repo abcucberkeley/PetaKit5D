@@ -16,6 +16,9 @@ ip.addRequired('xyz_factors', @isnumeric);
 ip.addParameter('Stitch2D', false, @islogical);
 ip.addParameter('downSample', [1, 1, 1], @isnumeric);
 ip.addParameter('MaxOffset', [300, 300, 50], @isnumeric);
+ip.addParameter('largeZarr', false, @islogical);
+ip.addParameter('mipDirStr', '', @ischar);
+ip.addParameter('poolSize', [], @isnumeric);
 ip.addParameter('dimNumThrsh', 10000, @isnumeric);
 % ip.addParameter('xyz_factor', 0.5, @isnumeric);
 
@@ -25,6 +28,9 @@ pr = ip.Results;
 Stitch2D = pr.Stitch2D;
 downSample = pr.downSample;
 MaxOffset = pr.MaxOffset;
+largeZarr = pr.largeZarr;
+mipDirStr = pr.mipDirStr;
+poolSize = pr.poolSize;
 dimNumThrsh = pr.dimNumThrsh;
 
 if exist(xcorrFullpath, 'file')
@@ -39,6 +45,10 @@ nF = size(pair_indices, 1);
 
 relative_shift_mat = zeros(nF, 3);
 max_xcorr_mat = zeros(nF, 1);
+if largeZarr
+    relative_shift_mat_cell = cell(nF, 1);
+    max_xcorr_mat_cell = cell(nF, 1);
+end
 for i = 1 : nF
     tic
     imgFullpath_2i = imgFullpath_2{i};
@@ -50,6 +60,13 @@ for i = 1 : nF
         [relative_shift, max_xcorr] = cross_correlation_registration_2d(imgFullpath_1, ...
             imgFullpath_2i, '', cuboid_1i, cuboid_2i, cuboid_overlap_12i, px, xyz_factors, ...
             downSample=downSample, MaxOffset=MaxOffset, dimNumThrsh=dimNumThrsh);
+    elseif largeZarr
+        [relative_shift, max_xcorr, relative_shift_mat_i, max_xcorr_mat_i] = cross_correlation_registration_3d_mip_slabs( ...
+            imgFullpath_1, imgFullpath_2i, '', cuboid_1i, cuboid_2i, cuboid_overlap_12i, ...
+            px, xyz_factors, downSample=downSample, MaxOffset=MaxOffset, mipDirStr=mipDirStr, ...
+            poolSize=poolSize, dimNumThrsh=dimNumThrsh);
+        relative_shift_mat_cell{i} = relative_shift_mat_i;
+        max_xcorr_mat_cell{i} = max_xcorr_mat_i;
     else
         [relative_shift, max_xcorr] = cross_correlation_registration_3d(imgFullpath_1, ...
             imgFullpath_2i, '', cuboid_1i, cuboid_2i, cuboid_overlap_12i, px, xyz_factors, ...
@@ -64,7 +81,11 @@ fprintf('Save results ...\n');
 
 uuid = get_uuid();
 xcorrTmppath = sprintf('%s_%s.mat', xcorrFullpath(1 : end - 4), uuid);
-save('-v7.3', xcorrTmppath, 'relative_shift_mat', 'max_xcorr_mat', 'pair_indices');
+if largeZarr
+    save('-v7.3', xcorrTmppath, 'relative_shift_mat', 'max_xcorr_mat', 'pair_indices', 'relative_shift_mat_cell', 'max_xcorr_mat_cell');
+else
+    save('-v7.3', xcorrTmppath, 'relative_shift_mat', 'max_xcorr_mat', 'pair_indices');
+end
 fileattrib(xcorrTmppath, '+w', 'g');
 movefile(xcorrTmppath, xcorrFullpath);
 

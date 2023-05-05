@@ -57,7 +57,7 @@ try
         if exist(filepath, 'dir')
             rmdir(filepath, 's');
         end
-        createzarr(filepath, dataSize=outSize, blockSize=BlockSize, dtype=dtype, zarrSubSize=zarrSubSize);
+        createzarr(filepath, dataSize=sz, blockSize=blockSize, dtype=dtype, zarrSubSize=zarrSubSize);
         newFile = true;
     end
 
