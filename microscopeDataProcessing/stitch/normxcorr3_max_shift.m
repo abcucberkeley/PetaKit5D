@@ -12,12 +12,12 @@ if size(maxShifts, 1) == 1
     maxShifts = [-maxShifts; maxShifts];
 end
 
-tic
+% tic
 % C = normxcorr3(T, A);
 C = normxcorr3_updated(T, A);
-toc
+% toc
 
-sz_t = size(T);
+sz_t = size(T, 1 : 3);
 
 s = max(1, ceil(maxShifts(1, :) + sz_t));
 t = min(floor(maxShifts(2, :) + sz_t), size(C));

@@ -58,10 +58,10 @@ for i = 1 : numel(adj_axes)
         sa_2 = s;
         ta_2 = t;
     else 
-        if pind - s + 1 < dimNumThrsh / 2
+        if pind - s + 1 <= dimNumThrsh / 2
             sa_2 = s;
             ta_2 = min(t, sa_2 + dimNumThrsh - 1);
-        elseif t - pind + 1 < dimNumThrsh / 2
+        elseif t - pind + 1 <= dimNumThrsh / 2
             ta_2 = t;
             sa_2 = max(s, ta_2 - dimNumThrsh + 1);
         else

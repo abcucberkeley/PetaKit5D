@@ -136,9 +136,9 @@ if ~isPrimaryCh
 end
 
 % cluster setting
-cpusPerTask = 1;
+cpusPerTask = 2;
 masterCompute = true;
-memAllocate = blk_taskSize * 0.001;
+memAllocate = blk_taskSize * 0.0001;
 maxTrialNum = 2;
 
 if numTasks <= 2

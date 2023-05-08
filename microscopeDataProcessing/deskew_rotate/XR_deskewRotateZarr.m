@@ -12,7 +12,7 @@ function [is_done_flag] = XR_deskewRotateZarr(frameFullpath, xyPixelSize, dz, va
 
 ip = inputParser;
 ip.CaseSensitive = false;
-ip.addRequired('frameFullpaths', @(x) ischar(x) || iscell(x));
+ip.addRequired('frameFullpath', @(x) ischar(x) || iscell(x));
 ip.addRequired('xyPixelSize'); 
 ip.addRequired('dz'); 
 ip.addParameter('ObjectiveScan', false, @islogical);
@@ -86,6 +86,9 @@ end
 
 if ~exist(frameFullpath, 'dir')
     error('The input zarr file %s does not exist!', frameFullpath);
+end
+if iscell(frameFullpath)
+    frameFullpath = frameFullpath{1};
 end
 
 [dataPath, fsname, ext] = fileparts(frameFullpath);

@@ -42,8 +42,8 @@ if ~exist(resultPath, 'dir')
     fileattrib(resultPath, '+w', 'g');
 end
 save('-v7.3', [resultPath, '/parameters.mat'], 'pr');
+fileattrib([resultPath, '/parameters.mat'], '+w', 'g');
 resultPath = [simplifyPath(resultPath), '/'];
-
 
 % load slice coordinates
 fprintf('Process slice coordinates...\n');
@@ -234,7 +234,9 @@ coords_info_fn = sprintf('%s%scoordinates_info.mat', resultPath, filesep);
 coords_info_tmp_fn = sprintf('%s%scoordinates_info_%s.mat', resultPath, filesep, get_uuid());
 save('-v7.3', coords_info_tmp_fn, 'coords_struct', 'skipped_fns', 'CoordType', ...
     'global_xrange', 'x_st', 'dz_actual', 'duplicate_mat', 'global_duplicate');
+fileattrib(coords_info_tmp_fn, '+w', 'g');
 save(sprintf('%sdz_actual_%d.txt', resultPath, dz_actual), 'dz_actual', '-ASCII');
+fileattrib(sprintf('%sdz_actual_%d.txt', resultPath, dz_actual), '+w', 'g');
 movefile(coords_info_tmp_fn, coords_info_fn);
 
 end

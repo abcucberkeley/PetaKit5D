@@ -106,7 +106,6 @@ if any(downSample ~= 1)
         region_2 = max_pooling_3d(region_2, downSample);    
     end
 end
-region_2 = single(region_2);
 
 % calculate bbox for overlap regions
 maxoff_x = ceil(maxXOffset ./ downSample(2)) * downSample(2);
@@ -130,7 +129,9 @@ if any(downSample ~= 1)
         region_1 = max_pooling_3d(region_1, downSample);    
     end
 end
+
 region_1 = single(region_1);
+region_2 = single(region_2);
 
 % crop region 2
 sz_2 = size(region_2, [1, 2, 3]);
@@ -168,7 +169,6 @@ if isempty(z_inds) || isempty(x_inds) || isempty(y_inds)
         movefile(xcorrTmppath, xcorrFullpath);
         fprintf('Done!\n');        
     end
-
     return;
 end
 
@@ -212,6 +212,4 @@ function [inds] = cap_region_2_inds(inds, sz, max_off, bounds)
         inds = inds(inds > max(sz * bounds(1), min(sz * bounds(2), max_off / 2)) & inds < min(sz * (1 - bounds(1)), max(sz * (1 - bounds(2)), sz - max_off / 2)));
     end
 end
-
-
 

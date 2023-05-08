@@ -38,8 +38,8 @@ if exist(xcorrFullpath, 'file')
     return;
 end
 
-imgFullpath_2_str = sprintf('{''%s''}', strjoin(imgFullpath_2, ''',\n'''));
-fprintf('Compute xcorr shifts for tile:\n    %s\n  and tiles:\n   %s\n', imgFullpath_1, imgFullpath_2_str);
+% imgFullpath_2_str = sprintf('{''%s''}', strjoin(imgFullpath_2, ''',\n'''));
+% fprintf('Compute xcorr shifts for tile:\n    %s\n  and tiles:\n   %s\n', imgFullpath_1, imgFullpath_2_str);
 
 nF = size(pair_indices, 1);
 

@@ -206,7 +206,7 @@ fprintf('Compute pairwise cross correlation between overlap tiles...\n');
 pinds = (ti - 1) * nF - ti .* (ti + 1) / 2 + tj;
 cuboid_overlap_ij_mat = overlap_regions(pinds, :);
 rawImageSizes = prod((cuboid_overlap_ij_mat(:, 4 : 6) - cuboid_overlap_ij_mat(:, 1 : 3))' ./ (px * [xf; yf; zf])) * 4 / 1024^3;
-memAllocate = prctile(ceil(rawImageSizes) * 8, 95) * nodeFactor;
+memAllocate = prctile(ceil(rawImageSizes) * (3 + 40 / prod(xcorrDownsample)), 95) * nodeFactor;
 cpusPerTask_xcorr = 2;
 maxTrialNum_xcorr = 2;
 

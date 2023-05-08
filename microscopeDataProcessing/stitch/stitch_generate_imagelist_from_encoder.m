@@ -45,6 +45,7 @@ uuid = get_uuid();
 tmpout = sprintf('%s/ImageList_from_encoder_%s.csv', dataPath, uuid);
 fnout = sprintf('%s/ImageList_from_encoder.csv', dataPath);
 writetable(t, tmpout, 'Delimiter', ',');
+fileattrib(tmpout, '+w', 'g');
 movefile(tmpout, fnout);
 
 end

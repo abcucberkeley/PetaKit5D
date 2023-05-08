@@ -26,50 +26,51 @@ imageFilenames = imageFilenames(~cellfun(@isempty, regexp(imageFilenames, '^(?!.
 % imageFilenames = unique(imageFilenames);
 
 % first find the corresponding setting file for each image
-% [pathstrs, fsnames] = fileparts(imageFilenames);
+[pathstrs, fsnames] = fileparts(imageFilenames);
+sfns = arrayfun(@(x) [pathstrs{x}, filesep, fsnames{x}, '_Settings.txt'], 1 : numel(fsnames), 'unif', 0);
+sfns_exist_mat = batch_file_exist(sfns);
+
+if ~all(sfns_exist_mat)
+    % mapping with the iter and xyz tile number    
+    if all(~cellfun(@isempty, regexp(fsnames, '_Cam\w_ch', 'match')))
+        expression = '(?<prefix>\w*)Scan_Iter_(?<Iter>(\d+_)*\d+?)_Cam(?<Cam>\w+)_ch(?<ch>\d+)_CAM1_stack(?<stack>\d+)_(?<laser>\d+)nm_(?<abstime>\d+)msec_(?<fpgatime>\d+)msecAbs_(?<x>-?\d+)x_(?<y>-?\d+)y_(?<z>-?\d+)z_(?<t>\d+)t';
+    elseif all(~cellfun(@isempty, regexp(fsnames, '_ch[0-9]_', 'match')))
+        expression = '(?<prefix>\w*)Scan_Iter_(?<Iter>(\d+_)*\d+?)_ch(?<ch>\d+)_CAM1_stack(?<stack>\d+)_(?<laser>\d+)nm_(?<abstime>\d+)msec_(?<fpgatime>\d+)msecAbs_(?<x>-?\d+)x_(?<y>-?\d+)y_(?<z>-?\d+)z_(?<t>\d+)t';
+        % specifyCam = false;
+    end
+    tmp = regexpi(fsnames, expression, 'names');
+    
+    sfns_1 = arrayfun(@(x) sprintf('%s/%sScan_Iter_%s_%sx_%sy_%sz_%st_Settings.txt', ...
+        pathstrs{x}, tmp{x}.prefix, tmp{x}.Iter, tmp{x}.x, tmp{x}.y, tmp{x}.z, tmp{x}.t), ...
+        1 : numel(fsnames), 'unif', 0);
+    sfns_1_exist_mat = batch_file_exist(sfns_1);
+end
+
 sfn_cell = cell(numel(imageFilenames), 1);
 for i = 1 : numel(imageFilenames)
     [pathstr, fsname] = fileparts(imageFilenames{i});
-    fn = [fsname, '.tif'];
     
     % mapping with the filename
-    sfn_0 = [pathstr, filesep, fsname, '_Settings.txt'];
-    if exist(sfn_0, 'file')
-        sfn = sfn_0;
-        sfn_cell{i} = sfn;
+    if sfns_exist_mat(i)
+        sfn_cell{i} = sfns{i};
         continue;
     end
         
-    % mapping with the iter and xyz tile number
-    % specifyCam = true;
-    if all(~cellfun(@isempty, regexp(fn, '_Cam\w_ch', 'match')))
-        expression = '(?<prefix>\w*)Scan_Iter_(?<Iter>(\d+_)*\d+?)_Cam(?<Cam>\w+)_ch(?<ch>\d+)_CAM1_stack(?<stack>\d+)_(?<laser>\d+)nm_(?<abstime>\d+)msec_(?<fpgatime>\d+)msecAbs_(?<x>-?\d+)x_(?<y>-?\d+)y_(?<z>-?\d+)z_(?<t>\d+)t.tif';
-    elseif all(~cellfun(@isempty, regexp(fn, '_ch[0-9]_', 'match')))
-        expression = '(?<prefix>\w*)Scan_Iter_(?<Iter>(\d+_)*\d+?)_ch(?<ch>\d+)_CAM1_stack(?<stack>\d+)_(?<laser>\d+)nm_(?<abstime>\d+)msec_(?<fpgatime>\d+)msecAbs_(?<x>-?\d+)x_(?<y>-?\d+)y_(?<z>-?\d+)z_(?<t>\d+)t.tif';
-        % specifyCam = false;
-    end
-    tmp = regexpi(fn, expression, 'names');
-
-    sfn_1 = sprintf('%s/%sScan_Iter_%s_%sx_%sy_%sz_%st_Settings.txt', pathstr, tmp.prefix, tmp.Iter, tmp.x, tmp.y, tmp.z, tmp.t);
-    if exist(sfn_1, 'file')
-        sfn = sfn_1;
-        sfn_cell{i} = sfn;
+    if sfns_1_exist_mat(i)
+        sfn_cell{i} = sfns_1{i};
         continue;
     end
     
     % add another pattern
-    sfn_2 = sprintf('%s/%sScan_Iter_%s_Settings.txt', pathstr, tmp.prefix, tmp.Iter);
+    sfn_2 = sprintf('%s/%sScan_Iter_%s_Settings.txt', pathstr, tmp{i}.prefix, tmp{i}.Iter);
     if exist(sfn_2, 'file')
-        sfn = sfn_2;
-        sfn_cell{i} = sfn;
+        sfn_cell{i} = sfn_2;
         continue;
     end
-
 end
 
 % get the unique setting filenames
 [uniq_sfn_cell, ia, ic] = unique(sfn_cell);
-
 
 % then get setting info for each setting file
 uniq_settingInfo = XR_parseSettingFiles(uniq_sfn_cell);

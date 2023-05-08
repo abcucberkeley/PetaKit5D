@@ -21,18 +21,19 @@ function C = normxcorr3_updated(T, A, shape)
 % daniel eaton, 2005, danieljameseaton@gmail.com
 %
 % xruan (11/20/2022): adapted from normxcorr3.m and optimize performance for some bottleneck steps.
+% xruan (05/06/2023): add support for 1d and 2d matrix
 
 
 if nargin<3
 	shape = 'full';
 end
 
-if ndims(A)~=3 || ndims(T)~=3
-	error('A and T must be 3 dimensional matrices');
+if ndims(A)>3 || ndims(T)>3
+	error('A and T must be no more than 3 dimensional matrices');
 end
 
-szT = size(T);
-szA = size(A);
+szT = size(T, 1 : 3);
+szA = size(A, 1 : 3);
 
 if any(szT>szA)
 	error('template must be smaller than image');
@@ -99,7 +100,7 @@ end
 function integralImageA = integralImage(A,szT)
 % this is adapted from Matlab's normxcorr2
 
-szA = size(A);
+szA = size(A, 1 : 3);
 
 B = zeros( szA+2*szT-1, class(A));
 % B( szT(1)+1:szT(1)+szA(1), szT(2)+1:szT(2)+szA(2), szT(3)+1:szT(3)+szA(3) ) = A;

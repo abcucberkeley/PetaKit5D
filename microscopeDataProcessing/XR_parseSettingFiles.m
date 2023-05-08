@@ -15,17 +15,16 @@ ip.CaseSensitive = false;
 ip.addRequired('settingFilenames'); %
 ip.parse(settingFilenames, varargin{:});
 
+file_exist_mat = batch_file_exist(settingFilenames);
 
 settingInfo = struct();
 for i = 1 : numel(settingFilenames)
-    
-    fn = settingFilenames{i};
-    
-    if ~exist(fn, 'file')
+    if ~file_exist_mat(i)
         warning('Setting file %s does not exist, skip it.', fn)
         continue;
     end
-    
+
+    fn = settingFilenames{i};
     sInfo_i = parseSingleSettingFile(fn);
     fieldnms = fieldnames(sInfo_i);
     for j = 1 : numel(fieldnms)

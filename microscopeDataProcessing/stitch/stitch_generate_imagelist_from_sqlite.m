@@ -44,6 +44,7 @@ uuid = get_uuid();
 tmpout = sprintf('%s/ImageList_from_sqlite_%s.csv', dataPath, uuid);
 fnout = sprintf('%s/ImageList_from_sqlite.csv', dataPath);
 writetable(t, tmpout, 'Delimiter', ',');
+fileattrib(tmpout, '+w', 'g');
 movefile(tmpout, fnout);
 
 end

@@ -1,4 +1,4 @@
-function [] = processStitchBlock(blockInds, BlockInfoFullname, PerBlockInfoFullname, flagFullname, stitchFullname, stitchBlockInfo, tileFns, varargin)
+function [] = processStitchBlock_test(blockInds, BlockInfoFullname, PerBlockInfoFullname, flagFullname, stitchFullname, stitchBlockInfo, tileFns, varargin)
 % process each block for given block indices for zarr.
 % 
 % 
@@ -125,11 +125,11 @@ for i = 1 : numel(blockInds)
         bsz = blockSize;
     end
     
-    tim_block = zeros([bsz, numTiles], dtype);
     tim_f_block = zeros([bsz, numTiles], dtype);
-    
     if strcmpi(BlendMethod, 'feather')
         tim_d_block = zeros([bsz, numTiles], 'single');
+    else
+        tim_block = zeros([bsz, numTiles], dtype);
     end
 
     % get the pixels for tile in the block
@@ -145,24 +145,32 @@ for i = 1 : numel(blockInds)
         if ~isa(block_j, dtype)
             block_j = cast(block_j, dtype);
         end
-        block_j_mregion = block_j;
-        
-        % remove overlap regions
-        m_blockInfo = stchBlockInfo_i(j).mblockInfo;
-        for k = 1 : numel(m_blockInfo)
-            m_bboxCoords = m_blockInfo(k).bboxCoords;
-            m_bboxCoords = m_bboxCoords(:)';
-            m_bbox = m_bboxCoords - repmat(bboxCoords(1 : 3), 1, 2) + 1;
-            block_j_mregion(m_bbox(1) : m_bbox(4), m_bbox(2) : m_bbox(5), m_bbox(3) : m_bbox(6)) = 0;
+        if ~strcmpi(BlendMethod, 'feather')
+            block_j_mregion = block_j;
+            
+            % remove overlap regions
+            m_blockInfo = stchBlockInfo_i(j).mblockInfo;
+            for k = 1 : numel(m_blockInfo)
+                m_bboxCoords = m_blockInfo(k).bboxCoords;
+                m_bboxCoords = m_bboxCoords(:)';
+                m_bbox = m_bboxCoords - repmat(bboxCoords(1 : 3), 1, 2) + 1;
+                block_j_mregion(m_bbox(1) : m_bbox(4), m_bbox(2) : m_bbox(5), m_bbox(3) : m_bbox(6)) = 0;
+            end
+            
+            try
+                indexing4d_mex(tim_block, [bCoords(1 : 3), j, bCoords(4 : 6), j], block_j_mregion);
+            catch ME
+                disp(ME);
+                disp(ME.stack);            
+                tim_block(bCoords(1) : bCoords(4), bCoords(2) : bCoords(5), bCoords(3) : bCoords(6), j) = block_j_mregion;
+            end
         end
-        
+
         try
-            indexing4d_mex(tim_block, [bCoords(1 : 3), j, bCoords(4 : 6), j], block_j_mregion);
             indexing4d_mex(tim_f_block, [bCoords(1 : 3), j, bCoords(4 : 6), j], block_j);
         catch ME
             disp(ME);
             disp(ME.stack);            
-            tim_block(bCoords(1) : bCoords(4), bCoords(2) : bCoords(5), bCoords(3) : bCoords(6), j) = block_j_mregion;
             tim_f_block(bCoords(1) : bCoords(4), bCoords(2) : bCoords(5), bCoords(3) : bCoords(6), j) = block_j;
         end
 
@@ -197,7 +205,8 @@ for i = 1 : numel(blockInds)
     end
     
     if numTiles == 1
-        nv_block = tim_block;
+        % nv_block = tim_block;
+        nv_block = tim_f_block;
         if any(BorderSize > 0)
             s = (blockSub ~= 1) .* BorderSize;
             try
@@ -227,7 +236,9 @@ for i = 1 : numel(blockInds)
     end
     
     % convert to single for processing
-    tim_block = single(tim_block);
+    if ~strcmp(BlendMethod, 'feather')
+        tim_block = single(tim_block);
+    end
     tim_f_block = single(tim_f_block);
 
     if ~strcmp(BlendMethod, 'none') && ~strcmp(BlendMethod, 'blurred') && ~strcmp(BlendMethod, 'feather')
@@ -275,40 +286,40 @@ for i = 1 : numel(blockInds)
                 end
             end
         case 'feather'
-            if numTiles == 1
-                nv_block = tim_block(:, :, :, 1);
-                nv_f_block = tim_f_block(:, :, :, 1);  
-            else
-                % tim_d_block = (tim_d_block / 10) .^ wd;
-                % tim_d_block = tim_d_block .^ wd;
-                % tim_w_block = tim_d_block .* (tim_block ~= 0);
-                % tim_w_block = tim_w_block ./ sum(tim_w_block, 4);
-                % nv_block = sum(tim_block .* tim_w_block, 4);
-                
-                tim_w_block = tim_d_block .* (tim_f_block ~= 0);
-                % tim_w_block = tim_w_block ./ sum(tim_w_block, 4);
-                % nv_f_block = sum(tim_f_block .* tim_w_block, 4);
-                nv_f_block = sum(tim_f_block .* tim_w_block, 4) ./ sum(tim_w_block, 4); 
-                nv_block = nv_f_block;
-            end
+            % tim_d_block = (tim_d_block / 10) .^ wd;
+            % tim_d_block = tim_d_block .^ wd;
+            % tim_w_block = tim_d_block .* (tim_block ~= 0);
+            % tim_w_block = tim_w_block ./ sum(tim_w_block, 4);
+            % nv_block = sum(tim_block .* tim_w_block, 4);
+            
+            tim_w_block = tim_d_block .* (tim_f_block ~= 0);
+            % tim_w_block = tim_w_block ./ sum(tim_w_block, 4);
+            % nv_f_block = sum(tim_f_block .* tim_w_block, 4);
+            nv_block = sum(tim_f_block .* tim_w_block, 4) ./ sum(tim_w_block, 4); 
+            % nv_block = nv_f_block;
     end
-    clear tim_block tim_f_block;
+    clear tim_f_block;
     
     if ~strcmp(BlendMethod, 'none') && ~strcmp(BlendMethod, 'blurred')
         try 
             nv_block = replace_nan_with_value(nv_block, 0);
-            nv_f_block = replace_nan_with_value(nv_f_block, 0);
         catch ME
             disp(ME);
             nv_block(isnan(nv_block)) = 0;
-            nv_f_block(isnan(nv_f_block)) = 0;
         end
     end
-
-    nv_zero_inds = nv_block == 0 & nv_f_block ~= 0;
-    % nv_block(nv_zero_inds) = nv_f_block(nv_zero_inds);
-    nv_block = nv_block .* nv_zero_inds + nv_f_block .* (1 - nv_zero_inds);
-    
+    if ~strcmp(BlendMethod, 'feather') 
+        try 
+            nv_f_block = replace_nan_with_value(nv_f_block, 0);
+        catch ME
+            disp(ME);
+            nv_f_block(isnan(nv_f_block)) = 0;
+        end        
+        nv_zero_inds = nv_block == 0 & nv_f_block ~= 0;
+        % nv_block(nv_zero_inds) = nv_f_block(nv_zero_inds);
+        nv_block = nv_block .* nv_zero_inds + nv_f_block .* (1 - nv_zero_inds);
+    end
+        
     if strcmp(BlendMethod, 'blurred') && numTiles > 1
         nv_ind_block(nv_zero_inds) = nv_ind_f_block(nv_zero_inds);
         nv_ol_regions = false(bsz);

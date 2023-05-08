@@ -137,6 +137,7 @@ ip.addParameter('primaryCh', '', @(x) isempty(x) || ischar(x)); % format: CamA_c
 ip.addParameter('usePrimaryCoords', false, @islogical); 
 ip.addParameter('Save16bit', false, @islogical);
 ip.addParameter('EdgeArtifacts', 0, @isnumeric);
+ip.addParameter('saveMIP', true, @islogical);
 ip.addParameter('stitchMIP', [], @(x) islogical(x) && (numel(x) == 1 || numel(x) == 3)); % 1x3 vector or vector, by default, stitch MIP-z
 ip.addParameter('onlineStitch', false, @(x) islogical(x)); % support for online stitch (with partial number of tiles). 
 ip.addParameter('bigStitchData', false, @(x) islogical(x)); % support for online stitch (with partial number of tiles). 
@@ -202,6 +203,7 @@ primaryCh = pr.primaryCh;
 usePrimaryCoords = pr.usePrimaryCoords;
 Save16bit = pr.Save16bit;
 EdgeArtifacts = pr.EdgeArtifacts;
+saveMIP = pr.saveMIP;
 stitchMIP = pr.stitchMIP;
 onlineStitch = pr.onlineStitch;
 bigStitchData = pr.bigStitchData;
@@ -600,7 +602,7 @@ while ~all(is_done_flag | trial_counter >= max_trial_num, 'all')
                         flippedTile_str = strrep(num2str(flippedTile, '%d,'), ' ', '');
 
                         % for tile number greater than 10, save the info to the disk and load it for the function
-                        if numel(tile_fullpaths) > 10 && job_ids(n, ncam, s, c, z) == -1
+                        if numel(tile_fullpaths) > 10 && parseCluster && job_ids(n, ncam, s, c, z) == -1
                             fprintf('Save tile paths and coordinates to disk...\n');
                             [~, fsname] = fileparts(stitch_save_fname);
                             tileInfoFullpath = sprintf('%s/stitchInfo/%s_tile_info.mat', stitching_rt, fsname);
@@ -625,7 +627,7 @@ while ~all(is_done_flag | trial_counter >= max_trial_num, 'all')
                             '''shiftMethod'',''%s'',''axisWeight'',[%s],''groupFile'',''%s'',''isPrimaryCh'',%s,', ...
                             '''usePrimaryCoords'',%s,''padSize'',[%s],''boundboxCrop'',[%s],''zNormalize'',%s,''Save16bit'',%s,', ...
                             '''tileIdx'',%s,''flippedTile'',[%s],''processFunPath'',''%s'',''stitchMIP'',%s,''bigStitchData'',%s,', ...
-                            '''EdgeArtifacts'',%0.10f,''parseCluster'',%s,''uuid'',''%s'',''mccMode'',%s,''ConfigFile'',''%s'')'], ...
+                            '''EdgeArtifacts'',%0.10f,''saveMIP'',%s,''parseCluster'',%s,''uuid'',''%s'',''mccMode'',%s,''ConfigFile'',''%s'')'], ...
                             stitch_function_str, tile_fullpaths_str, xyz_str, axisOrder, px, dz, SkewAngle, string(Reverse), ...
                             string(ObjectiveScan), string(IOScan), stitch_save_fname, tileInfoFullpath, stitchInfoDir, ...
                             stitchInfoFullpath, ProcessedDirStr, string(DS), string(DSR), string(zarrFile), string(largeZarr), ...
@@ -636,8 +638,8 @@ while ~all(is_done_flag | trial_counter >= max_trial_num, 'all')
                             shiftMethod, strrep(mat2str(axisWeight), ' ', ','), groupFile, string(isPrimaryCh), ...
                             string(usePrimaryCoords), num2str(padSize, '%d,'), strrep(num2str(boundboxCrop, '%d,'), ' ', ''), ...
                             string(zNormalize), string(Save16bit), tileIdx_str, flippedTile_str, processFunPath{cind}, ...
-                            strrep(mat2str(stitchMIP), ' ', ','), string(bigStitchData), EdgeArtifacts, string(parseCluster), ...
-                            uuid, string(mccMode), ConfigFile);
+                            strrep(mat2str(stitchMIP), ' ', ','), string(bigStitchData), EdgeArtifacts, string(saveMIP), ...
+                            string(parseCluster), uuid, string(mccMode), ConfigFile);
 
                         if exist(cur_tmp_fname, 'file') || (parseCluster && ~(masterCompute && xcorrShift && strcmpi(xcorrMode, 'primaryFirst') && isPrimaryCh))
                             % for cluster computing with master, check whether the job still alive. Otherwise, use waiting time

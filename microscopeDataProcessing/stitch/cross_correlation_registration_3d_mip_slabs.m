@@ -83,8 +83,7 @@ for i = 1 : 3
     cuboid_2i = cuboid_2;
     cuboid_2i(4 : 6) = cuboid_2i(1 : 3) + (sz_i2([2, 1, 3]) - 2) * px .* xyz_factors_i;
     stitch2D = false;
-    [is_overlap, cuboid_overlap_12i] = cuboids_overlaps(reshape(cuboid_1i, 3, 2), reshape(cuboid_2i, 3, 2), stitch2D);
-    cuboid_overlap_12i = cuboid_overlap_12i(:)';
+    [is_overlap, cuboid_overlap_12i] = check_cuboids_overlaps(cuboid_1i, cuboid_2i, stitch2D);
 
     if ~is_overlap
         cuboid_1i = cuboid_1;

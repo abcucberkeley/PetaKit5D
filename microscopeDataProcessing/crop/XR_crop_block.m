@@ -66,8 +66,7 @@ for i = 1 : numel(batchInds)
     % load the region in input 
     % in_batch = bim.getRegion(ibStart, ibEnd);
     % in_batch = bim.Adapter.getIORegion(ibStart, ibEnd);
-    [is_overlap, cuboid_overlap] = cuboids_overlaps([[1, 1, 1]', imSize'], [ibStart', ibEnd'], false);
-    cuboid_overlap = cuboid_overlap(:)';
+    [is_overlap, cuboid_overlap] = check_cuboids_overlaps([[1, 1, 1], imSize], [ibStart, ibEnd], false);
     if ~is_overlap
         out_batch = zeros(obEnd - obStart, dtype);
     else

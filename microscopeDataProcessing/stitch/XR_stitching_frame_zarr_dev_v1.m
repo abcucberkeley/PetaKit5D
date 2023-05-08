@@ -474,20 +474,20 @@ end
 % integer folds of resolution. 
 xyz = round((xyz - min(xyz, [], 1)) ./ ([xf, yf, zf] * px)) .* ([xf, yf, zf] * px);
 
+cuboids = [xyz, xyz + (imSizes(:, [2, 1, 3]) - 1) .* [xf, yf, zf] * px];
 overlap_matrix = false(nF);
 overlap_regions = zeros(nF * (nF - 1) / 2, 6);
 for i = 1 : nF - 1
+    cuboid_i = cuboids(i, :);
+    cuboid_js = cuboids(i + 1 : end, :);
+    
+    [is_overlap_mat, cuboid_overlap_mat] = check_cuboids_overlaps(cuboid_i, cuboid_js, stitch2D);
     for j = i + 1 : nF
-        xyz_i = xyz(i, :);
-        xyz_j = xyz(j, :);
-        cuboid_i = [xyz_i; xyz_i + (imSizes(i, [2, 1, 3]) - 1) .* [xf, yf, zf] * px]';
-        cuboid_j = [xyz_j; xyz_j + (imSizes(j, [2, 1, 3]) - 1) .* [xf, yf, zf] * px]';
-        [is_overlap, cuboid_overlap] = cuboids_overlaps(cuboid_i, cuboid_j, stitch2D);
-        if is_overlap 
+        if is_overlap_mat(j - i)
             overlap_matrix(i, j) = true;
             % ind = 0.5 * i * (2 * j - i - 1);
             ind = (i - 1) * nF - i * (i + 1) / 2 + j;
-            overlap_regions(ind, :) = cuboid_overlap(:);
+            overlap_regions(ind, :) = cuboid_overlap_mat(j - i, :);
         end
     end
 end
@@ -541,29 +541,27 @@ if isempty(overlapType)
 end
 
 % to do: change to dictionary in the future
+cuboids = [xyz_shift, xyz_shift + (imSizes(:, [2, 1, 3]) - 1) .* [xf, yf, zf] * px];
+
 half_ol_region_cell = cell(nF * 8, 1);
 ol_region_cell = cell(nF * 8, 1);
 overlap_map_mat = zeros(nF * 8, 2);
 counter = 1;
 for i = 1 : nF - 1
-    for j = i + 1 : nF
-        if ~overlap_matrix(i, j)
-            continue;
-        end
-        
-        xyz_i = xyz_shift(i, :);
-        xyz_j = xyz_shift(j, :);
-        cuboid_i = [xyz_i; xyz_i + (imSizes(i, [2, 1, 3]) - 1) .* [xf, yf, zf] * px]';
-        cuboid_j = [xyz_j; xyz_j + (imSizes(j, [2, 1, 3]) - 1) .* [xf, yf, zf] * px]';
-        
-        % recheck if the overlapped tiles become not overlapped after shift
-        % (or with large resample factors)
-        [is_overlap, cuboid_overlap] = cuboids_overlaps(cuboid_i, cuboid_j, stitch2D);
-        if ~is_overlap 
+    cuboid_i = cuboids(i, :);
+    js = find(overlap_matrix(i, i + 1 : end)) + i;
+    cuboid_js = cuboids(js, :);
+    
+    % recheck if the overlapped tiles become not overlapped after shift
+    % (or with large resample factors)    
+    [is_overlap_mat] = check_cuboids_overlaps(cuboid_i, cuboid_js, stitch2D);
+    for j1 = 1 : numel(js)
+        j = js(j1);
+        if ~is_overlap_mat(j1) 
             overlap_matrix(i, j) = false;
             continue;
         end
-
+        cuboid_j = cuboids(j, :);
         ind = (j - 1) * nF + i;
         
         [mregion_1, mregion_2] = compute_half_of_overlap_region(cuboid_i, cuboid_j, ...
@@ -812,7 +810,7 @@ outputFullpaths = zarrFlagFullpaths;
 cpusPerTask = 1 * nodeFactor;
 memAllocate = prod(blockSize) * 4 / 1024^3 * 25;
 maxTrialNum = 2;
-jobTimeLimit = taskSize * (0.5 / 60);
+jobTimeLimit = taskSize * (2 / 60);
 
 if ~exist(nv_fullname, 'dir') 
     is_done_flag = generic_computing_frameworks_wrapper(inputFullpaths, outputFullpaths, ...

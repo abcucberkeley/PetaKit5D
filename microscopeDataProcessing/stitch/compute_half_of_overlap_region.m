@@ -21,13 +21,14 @@ overlapType = ip.Results.overlapType;
 halfOrder = ip.Results.halfOrder;
 stitch2D = ip.Results.stitch2D;
 
-[is_overlap, cubiod_overlap] = cuboids_overlaps(cuboid_1, cuboid_2, stitch2D);
+[is_overlap, cubiod_overlap] = check_cuboids_overlaps(cuboid_1, cuboid_2, stitch2D);
 
-s1 = round((cubiod_overlap(:, 1) - cuboid_1(:, 1)) ./ (px * xyz_factors)) + 1;
-s2 = round((cubiod_overlap(:, 1) - cuboid_2(:, 1)) ./ (px * xyz_factors)) + 1;
+xyz_factors = xyz_factors(:)';
+s1 = round((cubiod_overlap(1 : 3) - cuboid_1(1 : 3)) ./ (px * xyz_factors)) + 1;
+s2 = round((cubiod_overlap(1 : 3) - cuboid_2(1 : 3)) ./ (px * xyz_factors)) + 1;
 
-t1 = round((cubiod_overlap(:, 2) - cuboid_1(:, 1)) ./ (px * xyz_factors)) + 1;
-t2 = round((cubiod_overlap(:, 2) - cuboid_2(:, 1)) ./ (px * xyz_factors)) + 1;
+t1 = round((cubiod_overlap(4 : 6) - cuboid_1(4 : 6)) ./ (px * xyz_factors)) + 1;
+t2 = round((cubiod_overlap(4 : 6) - cuboid_2(4 : 6)) ./ (px * xyz_factors)) + 1;
 
 
 % split for the half of the 
@@ -42,8 +43,8 @@ if olLen(split_axis(1)) <= 1
     end
 end
 
-mregion_1 = [s1, t1];
-mregion_2 = [s2, t2];
+mregion_1 = [s1', t1'];
+mregion_2 = [s2', t2'];
 
 switch overlapType
     case 'zero'
