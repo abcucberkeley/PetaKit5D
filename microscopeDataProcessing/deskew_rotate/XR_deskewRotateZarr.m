@@ -83,12 +83,11 @@ else
     theta = SkewAngle * pi / 180;
     zAniso = sin(abs(theta)) * dz / xyPixelSize;
 end
-
-if ~exist(frameFullpath, 'dir')
-    error('The input zarr file %s does not exist!', frameFullpath);
-end
 if iscell(frameFullpath)
     frameFullpath = frameFullpath{1};
+end
+if ~exist(frameFullpath, 'dir')
+    error('The input zarr file %s does not exist!', frameFullpath);
 end
 
 [dataPath, fsname, ext] = fileparts(frameFullpath);
