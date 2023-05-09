@@ -87,8 +87,8 @@ function [] = XR_matlab_stitching_wrapper(dataPath, imageListFileName, varargin)
 
 ip = inputParser;
 ip.CaseSensitive = false;
-ip.addRequired('dataPath', @(x) ischar(x) || iscell(dataPath));
-ip.addRequired('imageListFileName', @(x) ischar(x) || iscell(dataPath));
+ip.addRequired('dataPath', @(x) ischar(x) || iscell(x));
+ip.addRequired('imageListFileName', @(x) ischar(x) || iscell(x));
 % ip.addParameter('Overwrite', true, @islogical);
 ip.addParameter('Streaming', false, @islogical);
 ip.addParameter('ChannelPatterns', {'CamA_ch0', 'CamA_ch1', 'CamB_ch0'}, @iscell);
@@ -232,6 +232,12 @@ dz = Resolution(end);
 if multiLoc
     stitching_rt = [dataPath{1}, '/', resultDir];
 else
+    if iscell(dataPath)
+        dataPath = dataPath{1};
+    end
+    if iscell(imageListFileName)
+        imageListFileName = imageListFileName{1};
+    end
     stitching_rt = [dataPath, '/', resultDir];
 end
 if ~exist(stitching_rt, 'dir')
