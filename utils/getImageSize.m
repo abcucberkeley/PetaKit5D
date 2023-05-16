@@ -28,6 +28,7 @@ if strcmp(filePath(end - 2 : end), 'tif') || strcmp(filePath(end - 3 : end), 'ti
     try
         imSize = getImageSize_mex(filePath);
     catch ME
+        disp(ME);
         if ~usejava('jvm') && ~useParpool
             % use binary search 
             tobj = Tiff(filePath, 'r');     
