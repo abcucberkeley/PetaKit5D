@@ -67,24 +67,23 @@ clear corrTA;
 % compute the denominator of the NCC
 intImgA2 = integralImage(A.*A,szT);
 
-denomA = sqrt( ( intImgA2 - (intImgA.^2)/pSzT ) / (pSzT-1) );
-denom = denomT*denomA;
-clear A intImgA intImgA2 denomA;
+denom = denomT * sqrt(max(intImgA2 - (intImgA.^2)/pSzT, 0) / (pSzT-1) );
+clear A intImgA intImgA2;
 
 % compute the NCC
-s = warning('off', 'MATLAB:divideByZero');
-C = num ./ denom;
-s = warning('on', 'MATLAB:divideByZero');
+% s = warning('off', 'MATLAB:divideByZero');
+C = num ./ (denom + eps) .* (denom ~= 0);
+% s = warning('on', 'MATLAB:divideByZero');
 
 % replace the NaN (if any) with 0's
 % zeroInd = find(denomA==0);
 % C(zeroInd) = 0;
-try
-    C = replace_nan_inf_with_value(C, 0);
-catch ME
-    disp(ME)
-    C(isnan(C)) = 0;
-end
+% try
+%     C = replace_nan_inf_with_value(C, 0);
+% catch ME
+%     disp(ME)
+%     C(isnan(C)) = 0;
+% end
 
 switch( lower(shape) )
 	case 'full'

@@ -1,4 +1,4 @@
-function [] = processStitchBlock_test(blockInds, BlockInfoFullname, PerBlockInfoFullname, flagFullname, stitchFullname, stitchBlockInfo, tileFns, varargin)
+function [] = processStitchBlock(blockInds, BlockInfoFullname, PerBlockInfoFullname, flagFullname, stitchFullname, stitchBlockInfo, tileFns, varargin)
 % process each block for given block indices for zarr.
 % 
 % 

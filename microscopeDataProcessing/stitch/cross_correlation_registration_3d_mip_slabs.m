@@ -90,11 +90,13 @@ for i = 1 : 3
         cuboid_2i = cuboid_2;
         cuboid_overlap_12i = cuboid_overlap_12;
     end
-
+    
+    tic
     [relative_shift_i, max_xcorr_i] = cross_correlation_registration_3d(imgFullpath_i1, ...
         imgFullpath_i2, '', cuboid_1i, cuboid_2i, cuboid_overlap_12i, px, xyz_factors_i, ...
         downSample=downSample_i, MaxOffset=MaxOffset_i, dimNumThrsh=dimNumThrsh, ...
         blankNumTrsh=blankNumTrsh);
+    toc
     relative_shift_mat(i, :) = relative_shift_i;
     max_xcorr_mat(i) = max_xcorr_i;
 end

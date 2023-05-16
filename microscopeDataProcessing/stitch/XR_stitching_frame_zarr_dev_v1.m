@@ -808,7 +808,7 @@ outputFullpaths = zarrFlagFullpaths;
 
 % cluster setting
 cpusPerTask = 1 * nodeFactor;
-memAllocate = prod(blockSize) * 4 / 1024^3 * 25;
+memAllocate = prod(blockSize) * 4 / 1024^3 * 20;
 maxTrialNum = 2;
 jobTimeLimit = taskSize * (2 / 60);
 

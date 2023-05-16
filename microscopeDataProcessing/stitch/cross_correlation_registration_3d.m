@@ -51,7 +51,7 @@ if saveResult && exist(xcorrFullpath, 'file')
 end
 
 fprintf('Compute xcorr shifts for tiles:\n    %s\n    %s\n', imgFullpath_1, imgFullpath_2);
-fprintf('Load overlap regions ...\n');
+% fprintf('Load overlap regions ...\n');
 
 % img_1(img_1 == 0) = nan;
 % img_2(img_2 == 0) = nan;

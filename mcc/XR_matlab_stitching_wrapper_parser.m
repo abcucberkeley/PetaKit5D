@@ -55,6 +55,7 @@ ip.addParameter('primaryCh', '', @(x) isempty(x) || ischar(x)); % format: CamA_c
 ip.addParameter('usePrimaryCoords', false, @(x) islogical(x) || ischar(x)); 
 ip.addParameter('Save16bit', false, @(x) islogical(x) || ischar(x));
 ip.addParameter('EdgeArtifacts', 2, @(x) isnumeric(x) || ischar(x));
+ip.addParameter('saveMIP', true, @(x) islogical(x) || ischar(x));
 ip.addParameter('stitchMIP', [], @(x) islogical(x) && (numel(x) == 1 || numel(x) == 3) || ischar(x)); % 1x3 vector or vector, by default, stitch MIP-z
 ip.addParameter('onlineStitch', false, @(x) islogical(x) || ischar(x)); % support for online stitch (with partial number of tiles). 
 ip.addParameter('bigStitchData', false, @(x) islogical(x) || ischar(x)); % support for online stitch (with partial number of tiles). 
@@ -120,6 +121,7 @@ primaryCh = pr.primaryCh;
 usePrimaryCoords = pr.usePrimaryCoords;
 Save16bit = pr.Save16bit;
 EdgeArtifacts = pr.EdgeArtifacts;
+saveMIP = pr.saveMIP;
 stitchMIP = pr.stitchMIP;
 onlineStitch = pr.onlineStitch;
 bigStitchData = pr.bigStitchData;
@@ -246,6 +248,9 @@ end
 if ischar(EdgeArtifacts)
     EdgeArtifacts = str2num(EdgeArtifacts);
 end
+if ischar(saveMIP)
+    saveMIP = str2num(saveMIP);
+end
 if ischar(stitchMIP)
     stitchMIP = str2num(stitchMIP);
 end
@@ -291,7 +296,7 @@ XR_matlab_stitching_wrapper(dataPath, imageListFileName, Streaming=Streaming,...
     timepoints=timepoints, subtimepoints=subtimepoints, xcorrMode=xcorrMode, ...
     shiftMethod=shiftMethod, axisWeight=axisWeight, groupFile=groupFile, primaryCh=primaryCh, ...
     usePrimaryCoords=usePrimaryCoords, Save16bit=Save16bit,EdgeArtifacts=EdgeArtifacts, ...
-    stitchMIP=stitchMIP, onlineStitch=onlineStitch, bigStitchData=bigStitchData, ...
+    saveMIP=saveMIP, stitchMIP=stitchMIP, onlineStitch=onlineStitch, bigStitchData=bigStitchData, ...
     pipeline=pipeline, processFunPath=processFunPath, parseCluster=parseCluster, ...
     masterCompute=masterCompute, jobLogDir=jobLogDir, cpusPerTask=cpusPerTask, ...
     uuid=uuid, maxTrialNum=maxTrialNum, unitWaitTime=unitWaitTime, mccMode=mccMode, ...

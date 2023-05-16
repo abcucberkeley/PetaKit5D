@@ -56,12 +56,6 @@ end
 if ~exist(dsFullpath, 'dir')
     error('The output zarr file %s doesnot exist!', dsFullpath);
 end
-try
-    nv_bim = blockedImage(dsFullpath, 'Adapter', CZarrAdapter);
-catch ME
-    disp(ME);    
-    nv_bim = blockedImage(dsFullpath, 'Adapter', ZarrAdapter);
-end
 
 iSz = getImageSize(zarrFullpath);
 oBlockSize = BlockSize;
@@ -70,7 +64,6 @@ if isempty(BatchSize)
 end
 
 baSubSz = ceil(iSz ./ round((BatchSize .* dsFactor)));
-dtype = nv_bim.ClassUnderlying;
 
 done_flag = false(numel(batchInds), 1);
 for i = 1 : numel(batchInds)
@@ -110,6 +103,7 @@ for i = 1 : numel(batchInds)
     else
         out_batch = imresize3(in_batch, outSize, Interp);
     end
+    clear in_batch;
 
     try
         out_batch = crop3d_mex(out_batch, [baStart, baEnd]);
@@ -118,7 +112,7 @@ for i = 1 : numel(batchInds)
         out_batch = out_batch(baStart(1) : baEnd(1), baStart(2) : baEnd(2), baStart(3) : baEnd(3));
     end
 
-    nv_bim.Adapter.setRegion(obStart, obEnd, out_batch);
+    writezarr(out_batch, dsFullpath, bbox=[obStart, obEnd]);
 
     done_flag(i) = true;
 

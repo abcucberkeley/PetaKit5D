@@ -111,7 +111,9 @@ end
 
 inputFullpaths = repmat({zarrFullpath}, numTasks, 1);
 
-memAllocate = prod(batchSize) * 4 / 2^30 * 5;
+dtype = getImageDataType(zarrFullpath);
+byteNum = dataTypeToByteNumber(dtype);
+memAllocate = prod(batchSize) * byteNum / 2^30 * (prod(dsFactor) + 1) * 2.25;
 is_done_flag= generic_computing_frameworks_wrapper(inputFullpaths, outputFullpaths, ...
     funcStrs, cpusPerTask=cpusPerTask, memAllocate=memAllocate, parseCluster=parseCluster, ...
     mccMode=mccMode, ConfigFile=ConfigFile);
