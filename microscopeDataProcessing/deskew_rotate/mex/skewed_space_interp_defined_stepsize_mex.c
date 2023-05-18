@@ -135,7 +135,6 @@ void mexFunction(int nlhs, mxArray *plhs[],
                 }
             }
         }
-
         
         for(uint64_t ind = zs_ind_mat[z]; ind <= zt_ind_mat[z]; ind++){
             // printf("%llu %llu\n", z, ind);

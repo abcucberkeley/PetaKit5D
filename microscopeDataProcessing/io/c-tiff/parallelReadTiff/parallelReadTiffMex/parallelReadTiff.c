@@ -295,7 +295,7 @@ void readTiffParallel2DBak(uint64_t x, uint64_t y, uint64_t z, const char* fileN
             if(dir>=z+startSlice) break;
 
             int counter = 0;
-            while(!TIFFSetDirectory(tif, (uint64_t)0) && counter<3){
+            while(!TIFFSetDirectory(tif, startSlice) && counter<3){
                 printf("Thread %d: File \"%s\" Directory \"%d\" failed to open. Try %d\n",w,fileName,dir,counter+1);
                 counter++;
             }
@@ -376,7 +376,7 @@ void readTiffParallel2D(uint64_t x, uint64_t y, uint64_t z, const char* fileName
 
 
         uint8_t counter = 0;
-        while(!TIFFSetDirectory(tif, 0) && counter<3){
+        while(!TIFFSetDirectory(tif, startSlice) && counter<3){
             printf("Thread %d: File \"%s\" Directory \"%d\" failed to open. Try %d\n",w,fileName,0,counter+1);
             counter++;
             if(counter == 3){

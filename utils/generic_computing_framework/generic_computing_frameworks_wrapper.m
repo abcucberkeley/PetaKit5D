@@ -30,11 +30,11 @@ ip.addParameter('GPUNum', 0, @isnumeric);
 ip.addParameter('maxTrialNum', 3, @isnumeric);
 ip.addParameter('unitWaitTime', 30, @isnumeric);
 ip.addParameter('maxJobNum', inf, @isnumeric); % submit limited number of jobs (pending/running)
-ip.addParameter('minTaskJobNum', 1, @isnumeric); % split tasks to this given number workers if fewer, mayly for finishing tasks faster with more workers
+ip.addParameter('minTaskJobNum', 1, @isnumeric); % split tasks to this given number workers if fewer, mainly for finishing tasks faster with more workers
 ip.addParameter('taskBatchNum', 1, @isnumeric); % aggragate several tasks together
 ip.addParameter('minBatchNum', 1, @isnumeric); % minimum batch size
-ip.addParameter('paraBatchNum', 1, @isnumeric); % number of jobs each worker works on in parallel
-ip.addParameter('MatlabLaunchStr', 'module load matlab/r2022a; matlab -nodisplay -nosplash -nodesktop -nojvm -r', @ischar);
+ip.addParameter('paraBatchNum', 1, @isnumeric); % number of parallel task batchs
+ip.addParameter('MatlabLaunchStr', 'module load matlab/r2023a; matlab -nodisplay -nosplash -nodesktop -nojvm -r', @ischar);
 ip.addParameter('BashLaunchStr', '', @ischar);
 ip.addParameter('SlurmParam', '-p abc --qos abc_normal -n1 --mem-per-cpu=21418M', @ischar);
 ip.addParameter('SlurmConstraint', '', @ischar);
@@ -53,6 +53,9 @@ ConfigFile = pr.ConfigFile;
 
 persistent ConfigFile_orig confData confModDate;
 if ~isempty(ConfigFile)
+    if ~exist(ConfigFile, 'file')
+        error('The cluster configuration file %s does not exist, please check and provide the right one!', ConfigFile);
+    end
     dir_info = dir(ConfigFile);
     conf_date = dir_info.date;
     if ~strcmp(ConfigFile, ConfigFile_orig) || isempty(confData) || isempty(confModDate) || any(confModDate ~= conf_date)
@@ -138,7 +141,7 @@ switch clusterType
                     paraJobNum = min(paraJobNum, GPUNum);
                 end                
             end
-            taskBatchNum = ceil(taskBatchNum ./ paraBatchNum) * paraBatchNum;
+            taskBatchNum = ceil(taskBatchNum ./ paraJobNum) * paraJobNum;
             taskBatchNum = max(taskBatchNum, paraJobNum * paraBatchNum);
             taskBatchNum = max(taskBatchNum, minBatchNum);
             if numel(inputFullpaths) / taskBatchNum < minTaskJobNum

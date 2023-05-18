@@ -58,6 +58,7 @@ if ~exist(dsFullpath, 'dir')
 end
 
 iSz = getImageSize(zarrFullpath);
+oSz = getImageSize(dsFullpath);
 oBlockSize = BlockSize;
 if isempty(BatchSize)
     BatchSize = oBlockSize * 2;
@@ -87,7 +88,8 @@ for i = 1 : numel(batchInds)
     
     % find the coresponding coordinates in the output
     obStart = round((ibStart_orig - 1) ./ dsFactor) + 1;
-    obEnd = round(ibEnd_orig ./ dsFactor);
+    obStart = round((obStart - 1) ./ BatchSize) .* BatchSize + 1;    
+    obEnd = min(obStart + BatchSize - 1, oSz);
     oBatchSize = obEnd - obStart + 1;
     
     % find the start in out batch

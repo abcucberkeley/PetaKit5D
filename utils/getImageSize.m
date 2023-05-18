@@ -73,7 +73,7 @@ if strcmp(filePath(end - 2 : end), 'tif') || strcmp(filePath(end - 3 : end), 'ti
     %     close(tobj);
         imSize = [Height, Width, Zstack];
     end
-elseif strcmp(filePath(end - 3 : end), 'zarr')
+elseif strcmp(filePath(end - 3 : end), 'zarr') || exist([filePath, '/.zarray'], 'file')
     try 
         bim = blockedImage(filePath, 'Adapter', CZarrAdapter);
     catch ME

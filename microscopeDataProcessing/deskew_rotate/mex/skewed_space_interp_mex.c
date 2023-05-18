@@ -65,8 +65,6 @@ void mexFunction(int nlhs, mxArray *plhs[],
     	zw_mat[i - 1] = zw;
     }
     
-    
-    
     #pragma omp parallel for
     for(uint64_t z = 0; z < sz[2]; z++){
         if(z == sz[2]-1){
