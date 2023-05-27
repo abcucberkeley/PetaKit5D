@@ -24,6 +24,7 @@ ip.addParameter('BlendMethod', 'mean', @ischar);
 ip.addParameter('BorderSize', [], @isnumeric);
 ip.addParameter('BlurSigma', 5, @isnumeric); % blurred sigma for blurred blend
 ip.addParameter('imdistFullpaths', {}, @iscell); % image distance paths
+ip.addParameter('imdistFileIdx', [], @isnumeric); % image distance paths indices
 ip.addParameter('poolSize', [], @isnumeric); % distance matrix with max pooling factors
 ip.addParameter('weightDegree', 10, @isnumeric); % weight degree for image distances
 
@@ -38,6 +39,7 @@ BlendMethod = pr.BlendMethod;
 BorderSize = pr.BorderSize;
 BlurSigma = pr.BlurSigma;
 imdistFullpaths = pr.imdistFullpaths;
+imdistFileIdx = pr.imdistFileIdx;
 poolSize = pr.poolSize;
 wd = pr.weightDegree;
 
@@ -178,7 +180,7 @@ for i = 1 : numel(blockInds)
             if numel(imdistFullpaths) == 1
                 imdistFullpath = imdistFullpaths{1};                
             else
-                imdistFullpath = imdistFullpaths{tileInd};
+                imdistFullpath = imdistFullpaths{imdistFileIdx(tileInd)};
             end
             if isempty(poolSize)
                 im_d_j = readzarr(imdistFullpath, 'bbox', bboxCoords);
@@ -191,6 +193,9 @@ for i = 1 : numel(blockInds)
                 
                 im_d_j =  readzarr(imdistFullpath, 'bbox', p_bboxCoords);
                 im_d_j =  im_d_j .^ (1 / wd);
+                if size(im_d_j, 3) == 1 && bboxCoords(3) ~= bboxCoords(6)
+                    im_d_j = repmat(im_d_j, 1, 1, 2);
+                end
                 im_d_j = imresize3(im_d_j, bboxCoords(4 : 6) - bboxCoords(1 : 3) + 1, 'linear');
                 im_d_j = im_d_j .^ wd;
             end

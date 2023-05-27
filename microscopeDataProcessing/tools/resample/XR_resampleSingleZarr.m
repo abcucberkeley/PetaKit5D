@@ -11,6 +11,7 @@ ip.addRequired('dsFullpath');
 ip.addRequired('dsFactors'); 
 ip.addParameter('blockSize', [256, 256, 256], @isnumeric); % blcoksize
 ip.addParameter('batchSize', [512, 512, 512], @isnumeric); % size to process in one batch 
+ip.addParameter('zarrSubSize', [20, 20, 20], @isnumeric);
 ip.addParameter('BorderSize', [5, 5, 5], @isnumeric); % padded boarder for each batch
 ip.addParameter('Interp', 'linear', @(x) any(strcmpi(x, {'cubic', 'linear', 'nearest'})));
 ip.addParameter('parseCluster', true, @islogical);
@@ -24,6 +25,7 @@ ip.parse(zarrFullpath, dsFullpath, dsFactor, varargin{:});
 pr = ip.Results;
 blockSize = pr.blockSize;
 batchSize = pr.batchSize;
+zarrSubSize = pr.zarrSubSize;
 BorderSize = pr.BorderSize;
 Interp = pr.Interp;
 parseCluster = pr.parseCluster;
@@ -64,16 +66,8 @@ catch ME
 end    
 dtype = bim.ClassUnderlying;
 sz = bim.Size;
-init_val = zeros(1, dtype);
 
 ds_size = round(sz ./ [dsFactor(1), dsFactor(2), dsFactor(3)]);
-try
-    ds_bim = blockedImage(dsTmppath, ds_size, blockSize, init_val, "Adapter", CZarrAdapter, 'Mode', 'w');
-catch ME
-    disp(ME);
-    ds_bim = blockedImage(dsTmppath, ds_size, blockSize, init_val, "Adapter", ZarrAdapter, 'Mode', 'w');
-end
-ds_bim.Adapter.close();
 
 % framework
 blockSize = min(ds_size, blockSize);
@@ -83,11 +77,24 @@ bSubSz = ceil(ds_size ./ batchSize);
 numBatch = prod(bSubSz);
 
 % process for each block based on all BlockInfo use distributed computing
-fprintf('Process blocks for downsampled data...\n')
+fprintf('Process blocks for resampled data...\n')
 
 zarrFlagPath = sprintf('%s/zarr_flag/%s_%s/', dsPath, dsfsname, uuid);
 if ~exist(zarrFlagPath, 'dir')
     mkdir_recursive(zarrFlagPath);
+end
+
+% initialize zarr file
+if exist(dsTmppath, 'dir')
+    bim = blockedImage(dsTmppath, 'Adapter', CZarrAdapter);
+    if any(bim.BlockSize ~= blockSize) || any(bim.Size ~= ds_size)
+        rmdir(dsTmppath, 's');
+        rmdir(zarrFlagPath, 's');
+        mkdir(zarrFlagPath);
+    end
+end
+if ~exist(dsTmppath, 'dir')
+    createzarr(dsTmppath, dataSize=ds_size, blockSize=blockSize, dtype=dtype, zarrSubSize=zarrSubSize);
 end
 
 taskSize = max(5, ceil(numBatch / 5000)); % the number of batches a job should process
@@ -113,7 +120,7 @@ inputFullpaths = repmat({zarrFullpath}, numTasks, 1);
 
 dtype = getImageDataType(zarrFullpath);
 byteNum = dataTypeToByteNumber(dtype);
-memAllocate = prod(batchSize) * byteNum / 2^30 * (prod(dsFactor) + 1) * 2.25;
+memAllocate = prod(batchSize) * byteNum / 2^30 * (prod(dsFactor) + 1) * 3;
 is_done_flag= generic_computing_frameworks_wrapper(inputFullpaths, outputFullpaths, ...
     funcStrs, cpusPerTask=cpusPerTask, memAllocate=memAllocate, parseCluster=parseCluster, ...
     mccMode=mccMode, ConfigFile=ConfigFile);
@@ -129,6 +136,7 @@ if exist(dsFullpath, 'dir')
 end
 movefile(dsTmppath, dsFullpath);
 rmdir(zarrFlagPath, 's');
+fprintf('Done!\n')
 
 end
 

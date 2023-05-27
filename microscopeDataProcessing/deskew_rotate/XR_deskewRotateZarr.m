@@ -159,8 +159,8 @@ else
     % exact proportions of rotated box
     outSize = round([ny, nx*cos(theta)+nz*zAniso*sin(abs(theta)), nz*zAniso*cos(theta)+nx*sin(abs(theta))]);
 end
-% change border size to +/-2 in y. 
-BorderSize = [2, 0, 0, 2, 0, 0];
+% change border size to +/-1 in y. 
+% BorderSize = [2, 0, 0, 2, 0, 0];
 BorderSize = [1, 0, 0, 1, 0, 0];
 
 % set batches along y axis
@@ -193,16 +193,16 @@ regionBBoxes(:, 2 : 3) = 1;
 regionBBoxes(:, 4 : 6) = min(regionBBoxes(:, 1 : 3) + [BatchSize(1), outSize(2 : 3)] - 1, outSize);
 
 % initialize zarr file
-if ~exist(dsrTmppath, 'dir')
-    try
-        createzarr(dsrTmppath, dataSize=outSize, blockSize=BlockSize, dtype=dtype, zarrSubSize=zarrSubSize);                
-    catch ME
-        disp(ME)
-        disp("Use alternative method (ZarrAdapter) to initialize the zarr file...");
-        init_val = zeros(1, dtype);        
-        dsr_bim = blockedImage(dsrTmppath, outSize, BlockSize, init_val, "Adapter", ZarrAdapter, 'Mode', 'w');
-        dsr_bim.Adapter.close();        
+if exist(dsrTmppath, 'dir')
+    bim = blockedImage(dsrTmppath, 'Adapter', CZarrAdapter);
+    if any(bim.BlockSize ~= BlockSize) || any(bim.Size ~= outSize)
+        rmdir(dsrTmppath, 's');
+        rmdir(zarrFlagPath, 's');
+        mkdir(zarrFlagPath);
     end
+end
+if ~exist(dsrTmppath, 'dir')
+    createzarr(dsrTmppath, dataSize=outSize, blockSize=BlockSize, dtype=dtype, zarrSubSize=zarrSubSize);                
 end
 
 % set up parallel computing 

@@ -15,8 +15,6 @@ ip.addParameter('cpusPerTask', 1, @(x) isnumeric(x) || ischar(x));
 ip.addParameter('uuid', '', @ischar);
 ip.addParameter('maxTrialNum', 3, @(x) isnumeric(x) || ischar(x));
 ip.addParameter('unitWaitTime', 30, @(x) isnumeric(x) || ischar(x));
-ip.addParameter('MatlabLaunchStr', 'module load matlab/r2022a; matlab -nodisplay -nosplash -nodesktop -r', @ischar);
-ip.addParameter('SlurmParam', '-p abc --qos abc_normal -n1 --mem-per-cpu=21418M', @ischar);
 ip.addParameter('mccMode', false, @(x) islogical(x) || ischar(x));
 ip.addParameter('ConfigFile', '', @ischar);
 

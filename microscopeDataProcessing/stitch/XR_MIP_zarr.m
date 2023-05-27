@@ -10,7 +10,7 @@ ip = inputParser;
 ip.CaseSensitive = false;
 ip.addRequired('zarrFullpath', @(x) ischar(x));
 ip.addParameter('mipDirStr', 'MIPs', @ischar); % y, x, z
-ip.addParameter('axis', [0, 0, 1], @isnumeric); % y, x, z
+ip.addParameter('axis', [1, 1, 1], @isnumeric); % y, x, z
 ip.addParameter('BatchSize', [2048, 2048, 2048] , @isnumeric); % in y, x, z
 ip.addParameter('poolSize', [] , @isnumeric); % pooling size for mips
 ip.addParameter('zarrSubSize', [20, 20, 20] , @isnumeric); % in y, x, z
@@ -57,10 +57,11 @@ end
 
 axis_strs = {'y', 'x', 'z'};
 MIPFullpaths = cellfun(@(x) sprintf('%s/%s_MIP_%s.tif', MIPPath, fsname, x), axis_strs, 'unif', 0);
+MIPZarrpaths = cellfun(@(x) sprintf('%s/%s_%s.zarr', MIPPath, fsname, x), axis_strs, 'unif', 0);
 
 done_flag = false(3, 1);
 for i = 1 : 3
-    done_flag(i) = (axis(i) == 0) | exist(MIPFullpaths{i}, 'file');
+    done_flag(i) = (axis(i) == 0) || ((~mipSlab && exist(MIPFullpaths{i}, 'file')) || (mipSlab && exist(MIPZarrpaths{i}, 'file')));
 end
 if all(done_flag)
     disp('The output results exist, skip it!');
@@ -132,7 +133,6 @@ batchBBoxes = zeros(numBatch, 6);
 batchBBoxes(:, 1 : 3) = (bSubs - 1) .* BatchSize + 1; 
 batchBBoxes(:, 4 : 6) = min(batchBBoxes(:, 1 : 3) + BatchSize - 1, imSize);
 
-MIPZarrpaths = cellfun(@(x) sprintf('%s/%s_%s.zarr', MIPPath, fsname, x), axis_strs, 'unif', 0);
 MIPZarrTmppaths = cellfun(@(x) sprintf('%s/%s_%s_%s.zarr', MIPPath, fsname, x, uuid), axis_strs, 'unif', 0);
 
 zarr_done_flag = false(3, 1);

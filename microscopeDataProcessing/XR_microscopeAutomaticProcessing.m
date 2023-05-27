@@ -716,12 +716,12 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all') || ...
                     else
                         estRequiredMemory = dataSize_mat(f, 1) / 2^30 * 2 * (7 + 3 / prod(resample) + trial_counter(f, 1) * 8);
                     end
-                    allocateMem = estRequiredMemory;
+                    memAllocate = estRequiredMemory;
 
                     job_id = job_ids(f, 1);
                     [job_id, ~, submit_status] = generic_single_job_submit_wrapper(func_str, job_id, task_id, ...
                         'jobLogFname', job_log_fname, 'jobErrorFname', job_log_error_fname, ...
-                        allocateMem=allocateMem, mccMode=mccMode, ConfigFile=ConfigFile);
+                        memAllocate=memAllocate, mccMode=mccMode, ConfigFile=ConfigFile);
 
                     job_ids(f, 1) = job_id;
                     trial_counter(f, 1) = trial_counter(f, 1) + submit_status;
@@ -838,11 +838,11 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all') || ...
                     memFactor = 2;
                 end
                 estRequiredMemory = dataSize_mat(f, 1) / 2^30 * 2 * memFactor;
-                allocateMem = estRequiredMemory;
+                memAllocate = estRequiredMemory;
 
                 [job_id, ~, submit_status] = generic_single_job_submit_wrapper(func_str, job_id, task_id, ...
                     'jobLogFname', job_log_fname, 'jobErrorFname', job_log_error_fname, ...
-                    allocateMem=allocateMem, mccMode=mccMode, ConfigFile=ConfigFile);
+                    memAllocate=memAllocate, mccMode=mccMode, ConfigFile=ConfigFile);
 
                 job_ids(dfirst_ind, 2) = job_id;
                 job_ids(f, 2) = job_id;
@@ -1017,7 +1017,7 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all') || ...
                     if ~cudaDecon && ~GPUJob
                         [estMem, estGPUMem] = XR_estimateComputingMemory(dcframeFullpath, {'deconvolution'}, ...
                             'cudaDecon', false);
-                        allocateMem = estMem;
+                        memAllocate = estMem;
                     end
                     
                     cur_ConfigFile = ConfigFile;
@@ -1030,7 +1030,7 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all') || ...
                     job_id = job_ids(f, 3);
                     [job_id, ~, submit_status] = generic_single_job_submit_wrapper(func_str, job_id, task_id, ...
                         'jobLogFname', job_log_fname, 'jobErrorFname', job_log_error_fname, ...
-                        allocateMem=allocateMem, mccMode=mccMode, ConfigFile=cur_ConfigFile);
+                        memAllocate=memAllocate, mccMode=mccMode, ConfigFile=cur_ConfigFile);
 
                     job_ids(f, 3) = job_id;
                     trial_counter(f, 3) = trial_counter(f, 3) + submit_status;

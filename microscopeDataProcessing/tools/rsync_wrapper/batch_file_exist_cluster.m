@@ -8,6 +8,9 @@ ip = inputParser;
 ip.CaseSensitive = false;
 ip.addRequired('fileFullpaths', @(x) ischar(x) || iscell(x));
 ip.addRequired('tmpDir', @(x) ischar(x));
+ip.addParameter('mccMode', false, @islogical);
+ip.addParameter('ConfigFile', '', @ischar);
+
 ip.parse(fileFullpaths, tmpDir, varargin{:});
 
 pr = ip.Results;
@@ -39,12 +42,13 @@ for i = 1 : numBatch
 end
 
 inputFlagpaths = repmat({paramFullpath}, numBatch, 1);
-cpusPerTask = 12;
+cpusPerTask = 1;
+memAllocate = 20;
 maxJobNum = inf;
-MatlabLaunchStr = 'module load matlab/r2022a; matlab -nodisplay -nosplash -nodesktop -r';
-is_done_flag = slurm_cluster_generic_computing_wrapper(inputFlagpaths, flagFullpaths, ...
+is_done_flag = generic_computing_frameworks_wrapper(inputFlagpaths, flagFullpaths, ...
     func_strs, 'tmpDir', flag_dir, 'language', 'matlab', 'MatlabLaunchStr', MatlabLaunchStr, ...
-    'cpusPerTask', cpusPerTask, 'maxJobNum', maxJobNum, 'masterCompute', ~false);
+    'cpusPerTask', cpusPerTask, 'memAllocate', memAllocate, 'maxJobNum', maxJobNum, ...
+    'masterCompute', ~false, 'mccMode', mccMode, 'ConfigFile', ConfigFile);
 
 % collect results
 file_exist_mat = cell(numBatch, 1);

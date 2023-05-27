@@ -6,6 +6,7 @@ ip = inputParser;
 ip.CaseSensitive = false;
 ip.addRequired('tiffFullpaths', @(x) iscell(x) || ischar(x));
 ip.addParameter('zarrPathstr', 'zarr', @ischar);
+ip.addParameter('locIds', [], @(x) isnumeric(x) || ischar(x)); % location ids for the tiles
 ip.addParameter('blockSize', [500, 500, 250], @(x) isnumeric(x) || ischar(x));
 ip.addParameter('flippedTile', [], @(x) isempty(x) || islogical(x) || ischar(x));
 ip.addParameter('resample', [], @(x) isempty(x) || isnumeric(x) || ischar(x));
@@ -13,7 +14,7 @@ ip.addParameter('partialFile', false, @(x) islogical(x) || ischar(x));
 ip.addParameter('ChannelPatterns', {'tif'}, @(x) iscell(x) || ischar(x));
 ip.addParameter('InputBbox', [], @(x) isnumeric(x) || ischar(x)); % crop input tile before processing
 ip.addParameter('tileOutBbox', [], @(x) isnumeric(x) || ischar(x)); % crop output tile after processing
-ip.addParameter('usrFcn', '', @(x) isempty(x) || isa(x,'function_handle') || ischar(x) || isstring(x) || iscell(x));
+ip.addParameter('processFunPath', '', @(x) isempty(x) || isa(x,'function_handle') || ischar(x) || isstring(x) || iscell(x));
 ip.addParameter('parseCluster', true, @(x) islogical(x) || ischar(x));
 ip.addParameter('bigData', true, @(x) islogical(x) || ischar(x));
 ip.addParameter('masterCompute', true, @(x) islogical(x) || ischar(x)); % master node participate in the task computing. 
@@ -31,6 +32,7 @@ ip.parse(tiffFullpaths, varargin{:});
 pr = ip.Results;
  % Resolution = pr.Resolution;
 zarrPathstr = pr.zarrPathstr;
+locIds = pr.locIds;
 blockSize = pr.blockSize;
 flippedTile = pr.flippedTile;
 resample = pr.resample;
@@ -38,7 +40,7 @@ partialFile = pr.partialFile;
 ChannelPatterns = pr.ChannelPatterns;
 InputBbox = pr.InputBbox;
 tileOutBbox = pr.tileOutBbox;
-usrFcn = pr.usrFcn;
+processFunPath = pr.processFunPath;
 jobLogDir = pr.jobLogDir;
 parseCluster = pr.parseCluster;
 bigData = pr.bigData;
@@ -49,6 +51,9 @@ ConfigFile = pr.ConfigFile;
 
 if ischar(tiffFullpaths)
     tiffFullpaths = eval(tiffFullpaths);
+end
+if ischar(locIds)
+    locIds = str2num(locIds);
 end
 if ischar(blockSize)
     blockSize = str2num(blockSize);
@@ -71,6 +76,9 @@ end
 if ischar(tileOutBbox)
     tileOutBbox = str2num(tileOutBbox);
 end
+if ischar(processFunPath)
+    processFunPath = eval(processFunPath);
+end
 if ischar(parseCluster)
     parseCluster = strcmp(parseCluster,'true');
 end
@@ -87,10 +95,10 @@ if ischar(mccMode)
     mccMode = strcmp(mccMode,'true');
 end
 
-XR_tiffToZarr_wrapper(tiffFullpaths,'zarrPathstr',zarrPathstr,'blockSize',...
-    blockSize,'flippedTile',flippedTile,'resample',resample,'partialFile',partialFile,...
+XR_tiffToZarr_wrapper(tiffFullpaths,'zarrPathstr',zarrPathstr,'locIds',locIds, ...
+    'blockSize',blockSize,'flippedTile',flippedTile,'resample',resample,'partialFile',partialFile,...
     'ChannelPatterns',ChannelPatterns,'InputBbox',InputBbox,'tileOutBbox',tileOutBbox,...
-    'usrFcn',usrFcn,'parseCluster',parseCluster,'bigData',bigData,'masterCompute',masterCompute,...
+    'processFunPath',processFunPath,'parseCluster',parseCluster,'bigData',bigData,'masterCompute',masterCompute,...
     'jobLogDir',jobLogDir,'cpusPerTask',cpusPerTask,'uuid',uuid,'maxTrialNum',maxTrialNum,...
     'unitWaitTime',unitWaitTime,'mccMode',mccMode,'ConfigFile',ConfigFile);
 

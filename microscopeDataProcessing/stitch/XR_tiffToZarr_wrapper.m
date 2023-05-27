@@ -12,11 +12,14 @@ function [] = XR_tiffToZarr_wrapper(tiffFullpaths, varargin)
 % xruan (02/16/2022): accelerate the code by first get filenames for every data folder.
 % xruan (07/05/2022): add support for single tiff file (char) conversion
 % xruan (08/25/2022): change CropToSize to tileOutBbox (more generic)
+% xruan (05/26/2023): add support for loc specific pocessing for multiLoc
+% datasets, support InputBbox and tileOutBbox for now
 
 ip = inputParser;
 ip.CaseSensitive = false;
 ip.addRequired('tiffFullpaths', @(x) iscell(x) || ischar(x));
 ip.addParameter('zarrPathstr', 'zarr', @ischar);
+ip.addParameter('locIds', [], @isnumeric); % location ids for the tiles
 ip.addParameter('blockSize', [500, 500, 250], @isnumeric);
 ip.addParameter('flippedTile', [], @(x) isempty(x) || islogical(x));
 ip.addParameter('resample', [], @(x) isempty(x) || isnumeric(x));
@@ -24,7 +27,7 @@ ip.addParameter('partialFile', false, @islogical);
 ip.addParameter('ChannelPatterns', {'tif'}, @iscell);
 ip.addParameter('InputBbox', [], @isnumeric); % crop input tile before processing
 ip.addParameter('tileOutBbox', [], @isnumeric); % crop output tile after processing
-ip.addParameter('usrFcn', '', @(x) isempty(x) || isa(x,'function_handle') || ischar(x) || isstring(x) || iscell(x));
+ip.addParameter('processFunPath', '', @(x) isempty(x) || isa(x,'function_handle') || ischar(x) || isstring(x) || iscell(x));
 ip.addParameter('parseCluster', true, @islogical);
 ip.addParameter('bigData', true, @islogical);
 ip.addParameter('masterCompute', true, @islogical); % master node participate in the task computing. 
@@ -42,6 +45,7 @@ ip.parse(tiffFullpaths, varargin{:});
 pr = ip.Results;
  % Resolution = pr.Resolution;
 zarrPathstr = pr.zarrPathstr;
+locIds = pr.locIds;
 blockSize = pr.blockSize;
 flippedTile = pr.flippedTile;
 resample = pr.resample;
@@ -49,7 +53,7 @@ partialFile = pr.partialFile;
 ChannelPatterns = pr.ChannelPatterns;
 InputBbox = pr.InputBbox;
 tileOutBbox = pr.tileOutBbox;
-usrFcn = pr.usrFcn;
+processFunPath = pr.processFunPath;
 jobLogDir = pr.jobLogDir;
 parseCluster = pr.parseCluster;
 bigData = pr.bigData;
@@ -76,17 +80,18 @@ if parseCluster
 end
 
 nC = numel(ChannelPatterns);
-usrFcn_strs = repmat({''}, nC, 1);
-if ~isempty(usrFcn)
-    if isa(usrFcn,'function_handle')
-        usrFcn_strs = repmat({func2str(usrFcn)}, nC, 1);
-    elseif ischar(usrFcn) || isstring(usrFcn)
-        usrFcn_strs = repmat({usrFcn}, nC, 1);
-    elseif iscell(usrFcn)
-        if isa(usrFcn{1},'function_handle')
-            usrFcn_strs = cellfun(@(x) func2str(x), usrFcn, 'unif', 0);
-        elseif ischar(usrFcn{1}) || isstring(usrFcn{1})
-            usrFcn_strs = usrFcn;
+usrFcn_strs = repmat({''}, nC, size(processFunPath, 2));
+fprintf('Process function paths:\n')
+disp(processFunPath');
+if ~isempty(processFunPath)
+    for i = 1 : size(processFunPath, 1)
+        for j = 1 : size(processFunPath, 2)
+            if isempty(processFunPath{i, j})
+                continue;
+            end
+            a = load(processFunPath{i, j});
+            usrFun = a.usrFun;
+            usrFcn_strs{i, j} = usrFun;
         end
     end
 end
@@ -107,6 +112,34 @@ if bigData
     compressor = 'zstd';
 else
     compressor = 'lz4';
+end
+
+uniq_locIds = unique(locIds);
+nLoc = numel(uniq_locIds);
+locSpecific = false;
+if numel(uniq_locIds) > 1 && (size(InputBbox, 1) == nLoc || size(tileOutBbox, 1) == nLoc || ...
+        size(usrFcn_strs, 2) == nLoc)
+    locSpecific = true;
+    if size(InputBbox, 1) <= 1
+        InputBbox = repmat({InputBbox}, nLoc, 1);
+    elseif size(InputBbox, 1) == nLoc
+        InputBbox = mat2cell(InputBbox, ones(1, size(InputBbox, 1)), size(InputBbox, 2));
+    else
+        error('The number of InputBbox (%d) does not match the number of tile locations (%d)!', size(InputBbox, 1), numel(uniq_locIds));
+    end
+    if size(tileOutBbox, 1) <= 1
+        tileOutBbox = repmat({tileOutBbox}, nLoc, 1);
+    elseif size(tileOutBbox, 1) == nLoc
+        tileOutBbox = mat2cell(tileOutBbox, ones(1, size(tileOutBbox, 1)), size(tileOutBbox, 2));
+    else
+        error('The number of tileOutBbox (%d) does not match the number of tile locations (%d)!', size(tileOutBbox, 1), numel(uniq_locIds));
+    end
+    if size(usrFcn_strs, 2) <= 1
+        usrFcn_strs = repmat(usrFcn_strs, 1, nLoc);
+    elseif size(usrFcn_strs, 2) == nLoc
+    else
+        error('The number of usrFcn (%d) does not match the number of tile locations (%d)!', size(usrFcn_strs, 2), numel(uniq_locIds));
+    end
 end
 
 zarrFullpaths = cell(nF, 1);
@@ -144,12 +177,23 @@ for i = 1 : nF
         error('The file %s does not match any channel patterns %s', tiffFullpath_i, string(ChannelPatterns));
     end
     
+    if locSpecific
+        locInd = uniq_locIds == locIds(i);
+        InputBbox_i = InputBbox{locInd};
+        tileOutBbox_i = tileOutBbox{locInd};
+        usrFcn_str_i = usrFcn_strs{cind, locInd};        
+    else
+        InputBbox_i = InputBbox;
+        tileOutBbox_i = tileOutBbox;
+        usrFcn_str_i = usrFcn_strs{cind, 1};
+    end
+    
     func_strs{i} = sprintf(['tiffToZarr(%s,''%s'',[],''BlockSize'',%s,''flipZstack'',%s,', ...
         '''resample'',%s,''InputBbox'',%s,''tileOutBbox'',%s,''compressor'',''%s'',''usrFcn'',"%s")'], ...
         sprintf('{''%s''}', strjoin(tiffFullpath_group_i, ''',''')), zarrFullpaths{i}, ...
         strrep(mat2str(blockSize), ' ', ','), string(flipZstack), strrep(mat2str(resample), ' ', ','), ...
-        strrep(mat2str(InputBbox), ' ', ','), strrep(mat2str(tileOutBbox), ' ', ','), ...
-        compressor, usrFcn_strs{cind});
+        strrep(mat2str(InputBbox_i), ' ', ','), strrep(mat2str(tileOutBbox_i), ' ', ','), ...
+        compressor, usrFcn_str_i);
 end
 
 imSizes = zeros(numel(tiffFullpath_group_i), 3);

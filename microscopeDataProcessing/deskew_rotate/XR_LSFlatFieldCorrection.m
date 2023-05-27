@@ -1,4 +1,4 @@
-function [Temp] = GU_LSFlatFieldCorrection(Rawdata,LSImage,background, varargin)
+function [Temp] = XR_LSFlatFieldCorrection(Rawdata,LSImage,background, varargin)
 
 % Gokul Upadhyayula, 2016
 % xruan (08/05/2020): add option for constant background after correction.
@@ -7,6 +7,7 @@ function [Temp] = GU_LSFlatFieldCorrection(Rawdata,LSImage,background, varargin)
 % use single format to save memory.
 % xruan (07/15/2022): add support to not subtract background from LS Image
 % (because in a lot of situations, the LS Image is estimated with no background).
+% xruan (05/26/2023): rename it in case of conflict with old versions
 
 ip = inputParser;
 ip.CaseSensitive = false;

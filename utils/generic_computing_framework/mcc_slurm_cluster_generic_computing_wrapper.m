@@ -425,10 +425,11 @@ while (~parseCluster && ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
                 % process_cmd = func_str;
                 cmd = sprintf(['%s; bash %s'], BashLaunchStr, inputFn);
             else
-                cmd = sprintf(['%s; parallel --jobs %d --delay 0.1 < %s'], BashLaunchStr, paraJobNum, inputFn);
-                if (ismcc || isdeployed ) && trial_counter(f) == 0
+                paraJobNum_f = max(1, round(paraJobNum / (trial_counter(f) + 1)));
+                cmd = sprintf(['%s; parallel --jobs %d --delay 0.1 < %s'], BashLaunchStr, paraJobNum_f, inputFn);
+                if ismcc || isdeployed
                     % reduce the load of master job in case of crash due to oom
-                    cmd = sprintf(['%s; parallel --ungroup --jobs %d --delay 0.1 < %s'], BashLaunchStr, max(1, paraJobNum - 1), inputFn);
+                    cmd = sprintf(['%s; parallel --ungroup --jobs %d --delay 0.1 < %s'], BashLaunchStr, max(1, paraJobNum_f - 1), inputFn);
                 end
             end
             t0=tic; [status, cmdout] = system(cmd, '-echo'); t1=toc(t0);

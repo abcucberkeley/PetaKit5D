@@ -258,19 +258,21 @@ if Decon
             psf = double(readtiff(psfFn));
             psf = psf_gen_new(psf, dzPSF, dz, medFactor, PSFGenMethod);
             
-            % crop psf to the bounding box (-/+ 1 pixel) and make sure the
-            % center doesn't shift
-            py = find(squeeze(sum(psf, [2, 3])));
-            px = find(squeeze(sum(psf, [1, 3])));
-            pz = find(squeeze(sum(psf, [1, 2])));
-            cropSz = [min(py(1) - 1, size(psf, 1) - py(end)), min(px(1) - 1, size(psf, 2) - px(end)), min(pz(1) - 1, size(psf, 3) - pz(end))] - 1;
-            cropSz = max(0, cropSz);
-            bbox = [cropSz + 1, size(psf) - cropSz];
-            psf = psf(bbox(1) : bbox(4), bbox(2) : bbox(5), bbox(3) : bbox(6));
+            if ~strcmp(RLMethod, 'omw')
+                % crop psf to the bounding box (-/+ 1 pixel) and make sure the
+                % center doesn't shift
+                py = find(squeeze(sum(psf, [2, 3])));
+                px = find(squeeze(sum(psf, [1, 3])));
+                pz = find(squeeze(sum(psf, [1, 2])));
+                cropSz = [min(py(1) - 1, size(psf, 1) - py(end)), min(px(1) - 1, size(psf, 2) - px(end)), min(pz(1) - 1, size(psf, 3) - pz(end))] - 1;
+                cropSz = max(0, cropSz);
+                bbox = [cropSz + 1, size(psf) - cropSz];
+                psf = psf(bbox(1) : bbox(4), bbox(2) : bbox(5), bbox(3) : bbox(6));
+            end
             
             for d = 1 : nd 
                 dataPath = dataPaths{d};
-                psfgen_filename = sprintf('%s/%s/psfgen/%s.tif', dataPath, deconName, psfFsn);
+                psfgen_filename = sprintf('%s/%s/psfgen/%s_%s.tif', dataPath, deconName, psfFsn, RLMethod);
                 tmp_filename = sprintf('%s/%s/psfgen/%s_%s.tif', dataPath, deconName, psfFsn, uuid);
                 writetiff(psf, tmp_filename);
                 movefile(tmp_filename, psfgen_filename)

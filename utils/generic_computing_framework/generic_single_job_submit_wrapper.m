@@ -25,13 +25,13 @@ ip.addParameter('maxCPUNum', 24, @isnumeric);
 ip.addParameter('minCPUNum', 1, @isnumeric);
 ip.addParameter('cpusPerTask', 1, @isnumeric);
 ip.addParameter('MemPerCPU', 20.9, @isnumeric);
-ip.addParameter('allocateMem', [], @isnumeric);
+ip.addParameter('memAllocate', [], @isnumeric);
 ip.addParameter('uuid', '', @ischar);
 ip.addParameter('maxTrialNum', 3, @isnumeric);
 ip.addParameter('unitWaitTime', 30, @isnumeric);
 ip.addParameter('maxJobNum', inf, @isnumeric); % submit limited number of jobs (pending/running)
 ip.addParameter('taskBatchNum', 1, @isnumeric); % aggragate several tasks together
-ip.addParameter('MatlabLaunchStr', 'module load matlab/r2022a; matlab -nodisplay -nosplash -nodesktop -nojvm -r', @ischar);
+ip.addParameter('MatlabLaunchStr', 'module load matlab/r2023a; matlab -nodisplay -nosplash -nodesktop -nojvm -r', @ischar);
 ip.addParameter('BashLaunchStr', '', @ischar);
 ip.addParameter('SlurmParam', '-p abc --qos abc_normal -n1 --mem-per-cpu=21418M', @ischar);
 ip.addParameter('SlurmConstraint', '', @ischar);
@@ -91,7 +91,7 @@ maxCPUNum = pr.maxCPUNum;
 minCPUNum = pr.minCPUNum;
 cpusPerTask = pr.cpusPerTask;
 MemPerCPU = pr.MemPerCPU;
-allocateMem = pr.allocateMem;
+memAllocate = pr.memAllocate;
 uuid = pr.uuid;
 maxTrialNum = pr.maxTrialNum;
 unitWaitTime = pr.unitWaitTime;
@@ -126,8 +126,8 @@ switch clusterType
 
         % If there is no job, submit a job
         if job_status == -1         
-            if ~isempty(allocateMem) && cpusPerTask * MemPerCPU < allocateMem
-                cpusPerTask = max(min(maxCPUNum, ceil(allocateMem / MemPerCPU)), minCPUNum);
+            if ~isempty(memAllocate) && cpusPerTask * MemPerCPU < memAllocate
+                cpusPerTask = max(min(maxCPUNum, ceil(memAllocate / MemPerCPU)), minCPUNum);
             end
             time_str = '';
             if ~isempty(jobTimeLimit) && ~(contains(SlurmParam, ' -t ') || contains(SlurmParam, '--time'))
@@ -152,6 +152,7 @@ switch clusterType
             cmd = sprintf('sbatch --array=%d -o %s -e %s --cpus-per-task=%d %s %s %s --wrap="echo Matlab command:  \\\"%s\\\"; %s"', ...
                 rem(task_id, 5000), jobLogFname, jobErrorFname, cpusPerTask, SlurmParam, ...
                 SlurmConstraint, time_str, funcStr, process_cmd);
+            disp(cmd);
             
             [status, cmdout] = system(cmd, '-echo');
     

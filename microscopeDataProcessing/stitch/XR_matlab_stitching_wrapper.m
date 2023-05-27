@@ -310,7 +310,13 @@ else
 end
 
 if ischar(processFunPath)
-    processFunPath = repmat({processFunPath}, numel(ChannelPatterns));
+    processFunPath = repmat({processFunPath}, numel(ChannelPatterns), 1);
+elseif iscell(processFunPath)
+    for i = 1 : numel(processFunPath)
+        if isempty(processFunPath{i})
+            processFunPath{i} = '';
+        end
+    end
 end
 
 %% do stitching computing
@@ -607,6 +613,9 @@ while ~all(is_done_flag | trial_counter >= max_trial_num, 'all')
                         tileInfoFullpath = '';
                         flippedTile_str = strrep(num2str(flippedTile, '%d,'), ' ', '');
 
+                        cind = cellfun(@(x) contains(tile_fullpaths{1}, x), ChannelPatterns);                        
+                        processFunPath_str = sprintf('{''%s''}', strjoin(processFunPath(cind, :), ''','''));
+
                         % for tile number greater than 10, save the info to the disk and load it for the function
                         if numel(tile_fullpaths) > 10 && parseCluster && job_ids(n, ncam, s, c, z) == -1
                             fprintf('Save tile paths and coordinates to disk...\n');
@@ -622,7 +631,6 @@ while ~all(is_done_flag | trial_counter >= max_trial_num, 'all')
                             flippedTile_str = '';
                         end
                         
-                        cind = cellfun(@(x) contains(tile_fullpaths{1}, x), ChannelPatterns);
                         func_str = sprintf(['%s(%s,%s,''axisOrder'',''%s'',''xyPixelSize'',%0.10f,''dz'',%0.10f,', ...
                             '''SkewAngle'',%0.10f,''Reverse'',%s,''ObjectiveScan'',%s,''IOScan'',%s,''resultPath'',''%s'',', ...
                             '''tileInfoFullpath'',''%s'',''stitchInfoDir'',''%s'',''stitchInfoFullpath'',''%s'',', ...
@@ -632,7 +640,7 @@ while ~all(is_done_flag | trial_counter >= max_trial_num, 'all')
                             '''xyMaxOffset'',%0.10f,''zMaxOffset'',%0.10f,''xcorrDownsample'',%s,''xcorrThresh'',%0.10f,', ...
                             '''shiftMethod'',''%s'',''axisWeight'',[%s],''groupFile'',''%s'',''isPrimaryCh'',%s,', ...
                             '''usePrimaryCoords'',%s,''padSize'',[%s],''boundboxCrop'',[%s],''zNormalize'',%s,''Save16bit'',%s,', ...
-                            '''tileIdx'',%s,''flippedTile'',[%s],''processFunPath'',''%s'',''stitchMIP'',%s,''bigStitchData'',%s,', ...
+                            '''tileIdx'',%s,''flippedTile'',[%s],''processFunPath'',%s,''stitchMIP'',%s,''bigStitchData'',%s,', ...
                             '''EdgeArtifacts'',%0.10f,''saveMIP'',%s,''parseCluster'',%s,''uuid'',''%s'',''mccMode'',%s,''ConfigFile'',''%s'')'], ...
                             stitch_function_str, tile_fullpaths_str, xyz_str, axisOrder, px, dz, SkewAngle, string(Reverse), ...
                             string(ObjectiveScan), string(IOScan), stitch_save_fname, tileInfoFullpath, stitchInfoDir, ...
@@ -643,7 +651,7 @@ while ~all(is_done_flag | trial_counter >= max_trial_num, 'all')
                             xyMaxOffset, zMaxOffset, strrep(mat2str(xcorrDownsample), ' ', ','), xcorrThresh, ...
                             shiftMethod, strrep(mat2str(axisWeight), ' ', ','), groupFile, string(isPrimaryCh), ...
                             string(usePrimaryCoords), num2str(padSize, '%d,'), strrep(num2str(boundboxCrop, '%d,'), ' ', ''), ...
-                            string(zNormalize), string(Save16bit), tileIdx_str, flippedTile_str, processFunPath{cind}, ...
+                            string(zNormalize), string(Save16bit), tileIdx_str, flippedTile_str, processFunPath_str, ...
                             strrep(mat2str(stitchMIP), ' ', ','), string(bigStitchData), EdgeArtifacts, string(saveMIP), ...
                             string(parseCluster), uuid, string(mccMode), ConfigFile);
 
@@ -653,11 +661,11 @@ while ~all(is_done_flag | trial_counter >= max_trial_num, 'all')
                             if parseCluster
                                 if ~(masterCompute && f == lastF && job_ids(f) == 0)
                                     if useProcessedData
-                                        dir_info = dir(tile_processed_fullpaths{1});
+                                        imSize = getImageSize(tile_processed_fullpaths{1});
                                     else
-                                        dir_info = dir(tile_fullpaths{1});                                    
+                                        imSize = getImageSize(tile_fullpaths{1});
                                     end
-                                    datasize = dir_info.bytes;
+                                    datasize = prod(imSize);
                                     totalSize = datasize * numel(tile_fullpaths);
                                     % assume for double
                                     totalDsize = totalSize * 4 / 1024^3;
@@ -672,13 +680,13 @@ while ~all(is_done_flag | trial_counter >= max_trial_num, 'all')
                                     lastFile = masterCompute && f==lastF;
     
                                     % allocate 5 time of the size
-                                    allocateMem = totalDsize * mem_factor;
+                                    memAllocate = totalDsize * mem_factor;
                                     job_id = job_ids(n, ncam, s, c, z);
                                     task_id = rem(f, 5000);
                                     
                                     [job_id, ~, submit_status] = generic_single_job_submit_wrapper(func_str, job_id, task_id, ...
                                         'jobLogFname', job_log_fname, 'jobErrorFname', job_log_error_fname, ...
-                                        masterCompute=masterCompute, lastFile=lastFile, allocateMem=allocateMem, ...
+                                        masterCompute=masterCompute, lastFile=lastFile, memAllocate=memAllocate, ...
                                         mccMode=mccMode, ConfigFile=ConfigFile);
     
                                     job_ids(n, ncam, s, c, z) = job_id;

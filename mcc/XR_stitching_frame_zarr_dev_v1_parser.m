@@ -63,7 +63,7 @@ ip.addParameter('BorderSize', [0, 0, 0], @(x) isnumeric(x) || ischar(x));
 ip.addParameter('BlurSigma', 10, @(x) isnumeric(x) || ischar(x));
 ip.addParameter('SaveMIP', true , @(x) islogical(x) || ischar(x)); % save MIP-z for stitch. 
 ip.addParameter('tileIdx', [] , @(x) isnumeric(x) || ischar(x)); % tile indices 
-ip.addParameter('processFunPath', '', @(x) isempty(x) || ischar(x)); % path of user-defined process function handle
+ip.addParameter('processFunPath', '', @(x) isempty(x) || iscell(x) || ischar(x)); % path of user-defined process function handle
 ip.addParameter('stitchMIP', [], @(x) isempty(x)  || (islogical(x) && (numel(x) == 1 || numel(x) == 3)) || ischar(x)); % 1x3 vector or vector, by default, stitch MIP-z
 ip.addParameter('stitch2D', false, @(x) islogical(x) || ischar(x));  
 ip.addParameter('bigStitchData', false, @(x) islogical(x) || ischar(x));  
@@ -301,6 +301,9 @@ if ischar(SaveMIP)
 end
 if ischar(tileIdx)
     tileIdx = str2num(tileIdx);
+end
+if ischar(processFunPath)
+    processFunPath = eval(processFunPath);
 end
 if ischar(stitchMIP)
     stitchMIP = str2num(stitchMIP);

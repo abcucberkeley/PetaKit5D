@@ -106,6 +106,7 @@ B = zeros( szA+2*szT-1, class(A));
 indexing3d_mex(B, [szT+1, szT+szA], A);
 
 s = cumsum(B,1);
+clear B;
 % c = s(1+szT(1):end,:,:)-s(1:end-szT(1),:,:);
 c = crop3d_mex(s, [1 + szT(1), 1, 1, size(s, 1 : 3)]) - crop3d_mex(s, [1, 1, 1, size(s, 1) - szT(1), size(s, 2 : 3)]);
 s = cumsum(c,2);

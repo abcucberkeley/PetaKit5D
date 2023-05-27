@@ -141,10 +141,10 @@ switch clusterType
                     paraJobNum = min(paraJobNum, GPUNum);
                 end                
             end
+            taskBatchNum = max(taskBatchNum, minBatchNum);            
             taskBatchNum = ceil(taskBatchNum ./ paraJobNum) * paraJobNum;
             taskBatchNum = max(taskBatchNum, paraJobNum * paraBatchNum);
-            taskBatchNum = max(taskBatchNum, minBatchNum);
-            if numel(inputFullpaths) / taskBatchNum < minTaskJobNum
+            if numel(inputFullpaths) / taskBatchNum < (minTaskJobNum / paraJobNum)
                 taskBatchNum = max(ceil(numel(inputFullpaths) / minTaskJobNum), 1);
             end
 
