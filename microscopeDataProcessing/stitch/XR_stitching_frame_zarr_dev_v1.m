@@ -760,6 +760,7 @@ if strcmpi(BlendMethod, 'feather')
     end
 else
     imdistFullpaths = {};
+    imdistFileIdx = [];
 end
 
 % save stitch information for primary channels if there is xcorr shift
