@@ -5,6 +5,7 @@ function [ psf ] = psf_gen_new(psf, dz_psf, dz_data, medFactor, PSFGenMethod)
 % where the peak is in. 
 % xruan (07/15/2021): for masked method, use 2D average (xz) intensity as
 % background, instead of one (x); also smooth the mask a little bit. 
+% xruan (05/31/2023): add support for 2d psf
 
 if nargin < 4
     medFactor = 1.5;
@@ -16,45 +17,79 @@ end
 
 
 %load TIFF
-psf_raw = double(psf);
-[ny, nx, nz] = size(psf);
+psf = single(psf);
+psf_raw = psf;
+[ny, nx, nz] = size(psf, 1 : 3);
 
 % subtract background estimated from the last Z section
-psf_raw_fl = psf_raw(:, :, [1:5, end-5:end]);
-% xruan (05/06/2021): check if the first and last slices contain positive values
-if any(psf_raw_fl(:) > 0)
+if nz > 1
+    psf_raw_fl = psf_raw(:, :, [1:5, end-4:end]);
+    % xruan (05/06/2021): check if the first and last slices contain positive values
+    if any(psf_raw_fl(:) > 0)
+        switch lower(PSFGenMethod)
+            case 'median'
+                psf_raw = psf_raw - medFactor * median(single(psf_raw_fl(psf_raw_fl > 0)));
+            %     % convert all negative pixels to 0
+                psf_raw = max(psf_raw, 0);
+                %  remove isolated points
+                psf_med = medfilt3(double(psf_raw), [3, 3, 3]);
+                BW = bwareaopen(psf_med > 0, 300, 26);
+                L = bwlabeln(BW);
+                [~, peakInd] = max(psf_med(:));
+                BW = L == L(peakInd);
+                BW = imclose(BW, strel('sphere', 3));
+                psf_raw = psf_raw .* BW;
+            case 'masked'
+            %     a = max(sqrt(abs(psf_raw([1:10, end-9:end], :, :) - 100)), [], [1, 3]) * 3  + mean(psf_raw([1:10, end-9:end], :, :), [1, 3]);
+            %     a = smooth(a, 0.1, 'rloess');
+            %     psf_raw = psf_raw - a';
+            %     psf_raw(psf_raw<0) = 0.0;
+        
+                psf_med = medfilt3(psf, [3, 3, 3]);
+                % a = max(sqrt(abs(psf_med([1:10, end-9:end], :, :) - 100)), [], [1, 3]) * 3  + mean(psf_med([1:10, end-9:end], :, :), [1, 3]);
+                a = max(sqrt(abs(psf_med([1:10, end-9:end], :, :) - 100)), [], [1]) * 3  + mean(psf_med([1:10, end-9:end], :, :), [1]);
+                psf_med_1 = psf_med - a;
+                BW = bwareaopen(psf_med_1 > 0, 300, 26);
+                % pick the connected component where the peak is in
+                L = bwlabeln(BW);
+                [~, peakInd] = max(psf_med(:));
+                BW = L == L(peakInd);
+                BW = imclose(BW, strel('sphere', 3));
+                
+                psf_raw = psf_raw .* BW - mean(psf_raw([1:10, end-9:end], :, :), [1, 3]);
+                psf_raw(psf_raw<0) = 0.0;
+        end
+    end
+else
+    % 2d 
     switch lower(PSFGenMethod)
         case 'median'
-            psf_raw = double(psf_raw) - medFactor * median(double(psf_raw_fl(psf_raw_fl > 0)));
-        %     % convert all negative pixels to 0
-            psf_raw(psf_raw<0) = 0.0;
+            psf_raw = psf_raw - medFactor * median(single(psf_raw(psf_raw > 0)));
+            % convert all negative pixels to 0
+            psf_raw = max(psf_raw, 0);
             %  remove isolated points
-            psf_med = medfilt3(double(psf_raw), [3, 3, 3]);
-            BW = bwareaopen(psf_med > 0, 300, 26);
+            psf_med = medfilt(psf_raw, [3, 3]);
+            BW = bwareaopen(psf_med > 0, 30, 8);
             L = bwlabeln(BW);
             [~, peakInd] = max(psf_med(:));
             BW = L == L(peakInd);
-            BW = imclose(BW, strel('sphere', 3));
+            BW = imclose(BW, strel('disk', 3));
             psf_raw = psf_raw .* BW;
         case 'masked'
-        %     a = max(sqrt(abs(psf_raw([1:10, end-9:end], :, :) - 100)), [], [1, 3]) * 3  + mean(psf_raw([1:10, end-9:end], :, :), [1, 3]);
-        %     a = smooth(a, 0.1, 'rloess');
-        %     psf_raw = psf_raw - a';
-        %     psf_raw(psf_raw<0) = 0.0;
-    
-            psf_med = medfilt3(double(psf), [3, 3, 3]);
+            psf_med = medfilt2(psf, [3, 3]);
             % a = max(sqrt(abs(psf_med([1:10, end-9:end], :, :) - 100)), [], [1, 3]) * 3  + mean(psf_med([1:10, end-9:end], :, :), [1, 3]);
-            a = max(sqrt(abs(psf_med([1:10, end-9:end], :, :) - 100)), [], [1]) * 3  + mean(psf_med([1:10, end-9:end], :, :), [1]);
+            a = max(sqrt(psf_med([1:10, end-9:end], :)), [], [1]) * 3  + mean(psf_med([1:10, end-9:end], :, :), [1]);
             psf_med_1 = psf_med - a;
-            BW = bwareaopen(psf_med_1 > 0, 300, 26);
+            BW = bwareaopen(psf_med_1 > 0, 50, 8);
             % pick the connected component where the peak is in
             L = bwlabeln(BW);
             [~, peakInd] = max(psf_med(:));
             BW = L == L(peakInd);
-            BW = imclose(BW, strel('sphere', 3));
+            BW = imclose(BW, strel('disk', 3));
             
             psf_raw = psf_raw .* BW - mean(psf_raw([1:10, end-9:end], :, :), [1, 3]);
             psf_raw(psf_raw<0) = 0.0;
+
     end
 end
 
@@ -99,6 +134,7 @@ else
     psf = psf_cropped;
 end
 
-psf(psf<0) = 0.0;
+psf = max(psf, 0);
+
 end
 

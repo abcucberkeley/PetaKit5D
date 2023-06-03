@@ -173,7 +173,6 @@ BlockSize = BatchSize;
 [BatchBBoxes, RegionBBoxes] = XR_zarrChunkCoordinatesExtraction(imSize, 'BatchSize', BatchSize, ...
     'BlockSize', BlockSize, 'SameBatchSize', SameBatchSize, 'BorderSize', BorderSize);
 % scaleFactor = prod(min(imSize, BatchSize));
-scaleFactor = 1.0;
 
 t0 = tic;
 fprintf('Deconvolving chunks...\n')

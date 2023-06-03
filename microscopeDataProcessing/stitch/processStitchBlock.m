@@ -193,10 +193,14 @@ for i = 1 : numel(blockInds)
                 
                 im_d_j =  readzarr(imdistFullpath, 'bbox', p_bboxCoords);
                 im_d_j =  im_d_j .^ (1 / wd);
-                if size(im_d_j, 3) == 1 && bboxCoords(3) ~= bboxCoords(6)
-                    im_d_j = repmat(im_d_j, 1, 1, 2);
+                if bboxCoords(3) == bboxCoords(6)
+                    im_d_j = imresize(im_d_j, bboxCoords(4 : 5) - bboxCoords(1 : 2) + 1, 'bilinear');                    
+                else
+                    if size(im_d_j, 3) == 1 
+                        im_d_j = repmat(im_d_j, 1, 1, 2);
+                    end
+                    im_d_j = imresize3(im_d_j, bboxCoords(4 : 6) - bboxCoords(1 : 3) + 1, 'linear');
                 end
-                im_d_j = imresize3(im_d_j, bboxCoords(4 : 6) - bboxCoords(1 : 3) + 1, 'linear');
                 im_d_j = im_d_j .^ wd;
             end
             try

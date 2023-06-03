@@ -49,7 +49,8 @@ sizeI = size(I);
 
 % 1. Prepare PSFs
 persistent H psz sq_p gpuNum last_useGPU
-if isempty(psz) || ~(all(psz == sizeI) && last_useGPU == useGPU && sq_p == sum(PSF .^ 2, 'all')) || (useGPU && ~existsOnGPU(H))
+if isempty(psz) || ~(numel(psz) == numel(sizeI) && all(psz == sizeI) && last_useGPU == useGPU ...
+        && sq_p == sum(PSF .^ 2, 'all')) || (useGPU && ~isempty(H) && gpuNum > 0 && ~existsOnGPU(H))
     psz = sizeI;
     
     gpuNum = 0;

@@ -31,18 +31,5 @@ max_inds = [y, x];
 
 max_off = [max_inds + (s - 1) - sz_t, 0];
 
-% k = 100;
-% mind = [];
-% while isempty(mind)
-%     [~, inds] = maxk(C(:), k);
-%     [y, x, z] = ind2sub(size(C), inds);
-%     offsets = [y, x, z] - size(T);
-%     % mind = find(all(abs(offsets) <= maxShifts, 2), 1, 'first');
-%     mind = find(all(offsets >= maxShifts(1, :) & offsets <= maxShifts(2, :), 2), 1, 'first');
-%     k = k * 10;
-% end
-% 
-% max_off = offsets(mind, :);
-% max_corr = C(y(mind), x(mind), z(mind));
 
 end

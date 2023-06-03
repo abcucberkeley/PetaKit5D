@@ -38,11 +38,12 @@ if isempty(dataSize) || contains(steps, 'deskew', 'IgnoreCase', true)
         imSize = getImageSize(filePath);    
     end
     % in some cases it only gets the size of the first slice. 
-    if imSize(3) == 1
+    [~, ~, ext] = fileparts(filePath);
+    if imSize(3) == 1 && (strcmp(ext, '.tif') || strcmp(ext, '.tiff'))
         dir_info = dir(filePath);
         rawImageSize = dir_info.bytes / 1024^3;
     else
-        % in double size
+        % in single size
         rawImageSize = prod(imSize) * 4 / 1024^3;
     end
 else

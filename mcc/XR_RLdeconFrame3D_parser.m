@@ -37,6 +37,7 @@ ip.addParameter('zarrSubSize', [], @(x) isnumeric(x) || ischar(x));
 ip.addParameter('largeFile', false, @(x) islogical(x) || ischar(x));
 ip.addParameter('largeMethod', 'MemoryJobs', @ischar); % memory jobs, memory single, inplace. 
 ip.addParameter('saveZarr', false, @(x) islogical(x) || ischar(x)); % save as zarr
+ip.addParameter('scaleFactor', [], @(x) isnumeric(x) || ischar(x)); % scale factor for result
 ip.addParameter('deconMaskFns', {}, @(x) iscell(x) || ischar(x)); % 2d masks to filter regions to decon, in xy, xz, yz order
 ip.addParameter('parseCluster', true, @(x) islogical(x) || ischar(x));
 ip.addParameter('parseParfor', false, @(x) islogical(x) || ischar(x));
@@ -96,6 +97,7 @@ zarrSubSize = pr.zarrSubSize;
 largeFile = pr.largeFile;
 largeMethod = pr.largeMethod;
 saveZarr = pr.saveZarr;
+scaleFactor = pr.scaleFactor;
 deconMaskFns = pr.deconMaskFns;
 
 parseCluster = pr.parseCluster;
@@ -199,6 +201,9 @@ end
 if ischar(saveZarr)
     saveZarr = strcmp(saveZarr, 'true');
 end
+if ischar(scaleFactor)
+    scaleFactor = str2num(scaleFactor);
+end
 if ischar(deconMaskFns)
     deconMaskFns = eval(deconMaskFns);
 end
@@ -247,11 +252,11 @@ XR_RLdeconFrame3D(frameFullpaths, xyPixelSize, dz, deconPath, PSFfile=PSFfile, .
     wienerAlpha=wienerAlpha, OTFCumThresh=OTFCumThresh, skewed=skewed, fixIter=fixIter, ...
     errThresh=errThresh, CPUMaxMem=CPUMaxMem, BatchSize=BatchSize, BlockSize=BlockSize, ...
     zarrSubSize=zarrSubSize, largeFile=largeFile, largeMethod=largeMethod, saveZarr=saveZarr, ...
-    deconMaskFns=deconMaskFns, parseCluster=parseCluster, parseParfor=parseParfor, ...
-    masterCompute=masterCompute, masterCPU=masterCPU, GPUJob=GPUJob, jobLogDir=jobLogDir, ...
-    cpusPerTask=cpusPerTask, uuid=uuid, maxTrialNum=maxTrialNum, unitWaitTime=unitWaitTime, ...
-    debug=debug, saveStep=saveStep, psfGen=psfGen, mccMode=mccMode, ConfigFile=ConfigFile, ...
-    GPUConfigFile=GPUConfigFile);
+    scaleFactor=scaleFactor, deconMaskFns=deconMaskFns, parseCluster=parseCluster, ...
+    parseParfor=parseParfor, masterCompute=masterCompute, masterCPU=masterCPU, ...
+    GPUJob=GPUJob, jobLogDir=jobLogDir, cpusPerTask=cpusPerTask, uuid=uuid, ...
+    maxTrialNum=maxTrialNum, unitWaitTime=unitWaitTime, debug=debug, saveStep=saveStep, ...
+    psfGen=psfGen, mccMode=mccMode, ConfigFile=ConfigFile, GPUConfigFile=GPUConfigFile);
 
 end
 

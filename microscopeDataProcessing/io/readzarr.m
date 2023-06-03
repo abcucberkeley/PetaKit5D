@@ -10,17 +10,20 @@ function [data, bim] = readzarr(filepath, options)
 arguments
     filepath char 
     options.bbox (1, :) {mustBeNumeric} = []
+    options.sparseData (1, :) {mustBeNumericOrLogical} = true
 end
 
 bbox = options.bbox;
+sparseData = options.sparseData;
 
 try 
     if isempty(bbox)
         data = parallelReadZarr(filepath);
     else
         bbox = bbox(:)';
-        data = parallelReadZarr(filepath, bbox);        
+        data = parallelReadZarr(filepath, 'bbox', bbox, 'sparse', sparseData); 
     end
+    
     if nargout == 2
         bim = blockedImage(filepath, "Adapter", CZarrAdapter);
     end

@@ -18,7 +18,6 @@ ip.addParameter('Overwrite', false, @islogical);
 ip.addParameter('blendWeightDegree', 10, @isnumeric);
 ip.addParameter('singleDistMap', true, @islogical);
 ip.addParameter('locIds', [], @isnumeric);
-ip.addParameter('zarrHeaders', {}, @iscell);
 ip.addParameter('blockSize', [500, 500, 500], @isnumeric);
 ip.addParameter('compressor', 'lz4', @ischar);
 ip.addParameter('largeZarr', false, @islogical);
@@ -35,7 +34,6 @@ Overwrite = pr.Overwrite;
 blendWeightDegree = pr.blendWeightDegree;
 singleDistMap = pr.singleDistMap;
 locIds = pr.locIds;
-zarrHeaders = pr.zarrHeaders;
 blockSize = pr.blockSize;
 compressor = pr.compressor;
 largeZarr =  pr.largeZarr;
@@ -43,10 +41,18 @@ poolSize =  pr.poolSize;
 parseCluster = pr.parseCluster;
 mccMode = pr.mccMode;
 ConfigFile = pr.ConfigFile;
+uuid = pr.uuid;
+if isempty(uuid)
+    uuid = get_uuid();
+end
 
 % define input, output and function handle for the cluster computing framework
 nF = numel(tileFullpaths);
-distPath = [stitchPath, 'imdist/'];
+[~, fsn] = fileparts(tileFullpaths{1});
+distPath = sprintf('%s/imdist/%s/', stitchPath, fsn);
+if ~exist(distPath, 'dir')
+    mkdir_recursive(distPath);
+end
 
 % load overlap info
 a = load(blockInfoFullname, 'overlap_matrix', 'ol_region_cell', 'overlap_map_mat');
@@ -67,12 +73,12 @@ if exist(paramFullname, 'file')
         disp('The existing distance transforms are not in the same setting as current running, delete them!')
         rmdir(distPath, 's');
     end
-else
-    rmdir(distPath, 's');
 end
 mkdir(distPath);
 
-save('-v7.3', paramFullname, 'ip', 'overlap_matrix', 'ol_region_cell', 'overlap_map_mat');
+paramTmpName = sprintf('%s/parameters_%s.mat', distPath, uuid);
+save('-v7.3', paramTmpName, 'ip', 'overlap_matrix', 'ol_region_cell', 'overlap_map_mat');
+movefile(paramTmpName, paramFullname);
 
 imdistFileIdx = (1 : nF)';
 distTileIdx = (1 : nF)';
@@ -131,12 +137,7 @@ else
         strrep(mat2str(blockSize), ' ', ','), compressor,string(Overwrite)), 1 : nF, 'unif', 0);
 end
 
-if isempty(zarrHeaders)
-    a = load(blockInfoFullname, 'tileFns');
-    tileFns = a.tileFns;
-end
-
-imSize = getImageSize(tileFns{1});
+imSize = getImageSize(tileFullpaths{1});
 
 % memory needed
 memAllocate = prod(imSize) * 4 / 1024^3 * 10;

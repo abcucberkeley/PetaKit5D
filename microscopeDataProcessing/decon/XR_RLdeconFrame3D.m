@@ -54,6 +54,7 @@ ip.addParameter('zarrSubSize', [20, 20, 20], @isnumeric);
 ip.addParameter('largeFile', false, @islogical);
 ip.addParameter('largeMethod', 'inmemory', @ischar); % memory jobs, memory single, inplace. 
 ip.addParameter('saveZarr', false, @islogical); % save as zarr
+ip.addParameter('scaleFactor', [], @isnumeric); % scale factor for result
 ip.addParameter('deconMaskFns', {}, @iscell); % 2d masks to filter regions to decon, in xy, xz, yz order
 ip.addParameter('parseCluster', true, @islogical);
 ip.addParameter('parseParfor', false, @islogical);
@@ -129,6 +130,7 @@ zarrSubSize = pr.zarrSubSize;
 largeFile = pr.largeFile;
 largeMethod = pr.largeMethod;
 saveZarr = pr.saveZarr;
+scaleFactor = pr.scaleFactor;
 deconMaskFns = pr.deconMaskFns;
 
 parseCluster = pr.parseCluster;
@@ -228,7 +230,6 @@ for f = 1 : nF
         outputFn = deconTmpPath;
         DSRCombined = true;
         Reverse = true;
-        scaleFactor = 1;
         save3Dstack = [false, false, false];
         mipAxis = [0, 0, 0];
     
@@ -293,10 +294,10 @@ for f = 1 : nF
             'DeconIter', DeconIter, 'RLMethod', RLMethod, 'skewed', skewed, ...
             'wienerAlpha', wienerAlpha, 'OTFCumThresh', OTFCumThresh, 'fixIter', fixIter, ...
             'BatchSize', BatchSize, 'BlockSize', BlockSize, 'zarrSubSize', zarrSubSize, ...
-            'deconMaskFns', deconMaskFns, 'parseCluster', parseCluster, 'parseParfor', parseParfor, ...
-            'masterCompute', masterCompute, 'jobLogDir', jobLogDir, 'cpusPerTask', cpusPerTask, ...
-            'GPUJob', GPUJob, 'uuid', uuid, 'debug', debug, 'psfGen', psfGen, ...
-            'mccMode', mccMode, 'ConfigFile', ConfigFile, 'GPUConfigFile', GPUConfigFile);
+            'scaleFactor', scaleFactor, 'deconMaskFns', deconMaskFns, 'parseCluster', parseCluster, ...
+            'parseParfor', parseParfor, 'masterCompute', masterCompute, 'jobLogDir', jobLogDir, ...
+            'cpusPerTask', cpusPerTask, 'GPUJob', GPUJob, 'uuid', uuid, 'debug', debug, ...
+            'psfGen', psfGen, 'mccMode', mccMode, 'ConfigFile', ConfigFile, 'GPUConfigFile', GPUConfigFile);
         return;
     end
     
@@ -308,8 +309,8 @@ for f = 1 : nF
             'DeconIter', DeconIter, 'RLMethod', RLMethod, 'skewed', skewed, ...
             'wienerAlpha', wienerAlpha, 'OTFCumThresh', OTFCumThresh, 'EdgeErosion', EdgeErosion, ...
             'fixIter', fixIter,'BatchSize', BatchSize, 'saveZarr', saveZarr, ...
-            'deconMaskFns', deconMaskFns, 'cpusPerTask', cpusPerTask, 'useGPU', GPUJob, ...
-            'uuid', uuid, 'debug', debug, 'psfGen', psfGen);
+            'scaleFactor', scaleFactor, 'deconMaskFns', deconMaskFns, 'cpusPerTask', cpusPerTask, ...
+            'useGPU', GPUJob, 'uuid', uuid, 'debug', debug, 'psfGen', psfGen);
         return;
     end
 end

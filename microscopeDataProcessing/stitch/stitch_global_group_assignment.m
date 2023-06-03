@@ -141,7 +141,7 @@ grp_dist_mat = zeros(ng, ng, 3);
 grp_pair_centroids = zeros(ng, ng, 6);
 for gi = 1 : ng - 1
     grpIdx_i = gind_cell{gi};    
-    for gj = i + 1 : ng
+    for gj = gi + 1 : ng
         grpIdx_j = gind_cell{gj};
         xcorr_pair_ij = ismember(max_xcorr_mat_filt(:, 1), grpIdx_i) & ismember(max_xcorr_mat_filt(:, 2), grpIdx_j);
         group_pair_sizes(gi, gj) = sum(xcorr_pair_ij);
@@ -199,7 +199,7 @@ R(inds_j) = 1;
 group_max_allow_shift = zeros(neq, 6);
 for gi = 1 : ng - 1
     grpIdx_i = gind_cell{gi};    
-    for gj = i + 1 : ng
+    for gj = gi + 1 : ng
         grpIdx_j = gind_cell{gj};
         xcorr_pair_ij = ismember(max_xcorr_mat_filt(:, 1), grpIdx_i) & ismember(max_xcorr_mat_filt(:, 2), grpIdx_j);
         if group_pair_sizes(gi, gj) == 0

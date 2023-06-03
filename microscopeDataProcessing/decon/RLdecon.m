@@ -190,7 +190,7 @@ end
 if ~isempty(inputFn)
     imSize = getImageSize(inputFn);
 else
-    imSize = size(rawdata);
+    imSize = size(rawdata, 1 : 3);
 end
 
 % prepare for PSF
@@ -214,17 +214,18 @@ if ischar(PSFfn)
         if psfGen && exist(psfgen_filename, 'file')
             fprintf('Load existing generated PSF %s for %s ...\n', psfgen_filename, PSFfn);   
             try 
-                psf = double(readtiff(psfgen_filename));
+                psf = single(readtiff(psfgen_filename));
                 psfGen = false;
             catch ME
                 disp(ME);
                 fprintf('Load PSF %s ...\n', PSFfn);                                            
-                psf = double(readtiff(PSFfn));
+                psf = single(readtiff(PSFfn));
             end
         else
             fprintf('Load PSF %s ...\n', PSFfn);                                            
-            psf = double(readtiff(PSFfn));
+            psf = single(readtiff(PSFfn));
         end
+        pSize = size(psf, 1 : 3);
 
         try 
             % xruan (05/05/2021) change to psf_gen_new
@@ -234,25 +235,27 @@ if ischar(PSFfn)
                 medFactor = 1.5;
                 PSFGenMethod = 'masked';
                 psf = psf_gen_new(psf, dzPSF, dz * dz_ratio, medFactor, PSFGenMethod);
-                
+                pSize = size(psf, 1 : 3);
+
                 if ~strcmp(RLMethod, 'omw')
                     % crop psf to the bounding box (-/+ 1 pixel) and make sure the
                     % center doesn't shift
                     py = find(squeeze(sum(psf, [2, 3])));
                     px = find(squeeze(sum(psf, [1, 3])));
                     pz = find(squeeze(sum(psf, [1, 2])));
-                    cropSz = [min(py(1) - 1, size(psf, 1) - py(end)), min(px(1) - 1, size(psf, 2) - px(end)), min(pz(1) - 1, size(psf, 3) - pz(end))] - 1;
+                    cropSz = [min(py(1) - 1, pSize(1) - py(end)), min(px(1) - 1, pSize(2) - px(end)), min(pz(1) - 1, pSize(3) - pz(end))] - 1;
                     cropSz = max(0, cropSz);
-                    bbox = [cropSz + 1, size(psf) - cropSz];
+                    bbox = [cropSz + 1, pSize - cropSz];
                     psf = psf(bbox(1) : bbox(4), bbox(2) : bbox(5), bbox(3) : bbox(6));
+                    pSize = size(psf, 1 : 3);
                 end
             end
             
             % crop psf if it is larger than data in any dimension
-            if any(size(psf) > imSize)
-                warning('The psf size %s is larger than the data size %s, crop it!', mat2str(size(psf)), mat2str(imSize));
-                s = max(0, floor((size(psf) - imSize) / 2)) + 1;
-                t = s + min(size(psf), imSize) - 1;
+            if any(pSize > imSize)
+                warning('The psf size %s is larger than the data size %s, crop it!', mat2str(pSize), mat2str(imSize));
+                s = max(0, floor((pSize - imSize) / 2)) + 1;
+                t = s + min(pSize, imSize) - 1;
                 psf = psf(s(1) : t(1), s(2) : t(2), s(3) : t(3));
             end
             
@@ -309,10 +312,11 @@ switch RLMethod
             writetiff(uint8(OTF_mask), bpTmpFn);
             movefile(bpTmpFn, bpFn);
         end
-        if any(size(psf_b) > imSize)
-            warning('The psf size %s is larger than the data size %s, crop it!', mat2str(size(psf_b)), mat2str(imSize));
-            s = max(0, floor((size(psf_b) - imSize) / 2)) + 1;
-            t = s + min(size(psf_b), imSize) - 1;
+        bSize = size(psf_b, 1 : 3);
+        if any(bSize > imSize)
+            warning('The psf size %s is larger than the data size %s, crop it!', mat2str(bSize), mat2str(imSize));
+            s = max(0, floor((bSize - imSize) / 2)) + 1;
+            t = s + min(bSize, imSize) - 1;
             psf_b = psf_b(s(1) : t(1), s(2) : t(2), s(3) : t(3));
         end
 end

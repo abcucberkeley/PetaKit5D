@@ -28,6 +28,7 @@ ip.addParameter('fixIter', false, @islogical); % CPU Memory in Gb
 ip.addParameter('BatchSize', [1024, 1024, 1024] , @isnumeric); % in y, x, z
 ip.addParameter('BlockSize', [256, 256, 256] , @isnumeric); % in y, x, z
 ip.addParameter('zarrSubSize', [20, 20, 20], @isnumeric); % zarr subfolder size
+ip.addParameter('scaleFactor', [], @isnumeric); % scale factor for result
 ip.addParameter('deconMaskFns', {}, @iscell); % 2d masks to filter regions to decon, in xy, xz, yz orders
 ip.addParameter('parseCluster', true, @islogical);
 ip.addParameter('parseParfor', false, @islogical);
@@ -74,6 +75,7 @@ debug = pr.debug;
 BatchSize = pr.BatchSize;
 BlockSize = pr.BlockSize;
 zarrSubSize = pr.zarrSubSize;
+scaleFactor = pr.scaleFactor;
 deconMaskFns = pr.deconMaskFns;
 
 tic
@@ -167,7 +169,6 @@ SameBatchSize = true;
 BorderSize = round((size(psf) + 10) / 2);
 [batchBBoxes, regionBBoxes] = XR_zarrChunkCoordinatesExtraction(imSize, 'BatchSize', BatchSize, ...
     'BlockSize', BlockSize, 'SameBatchSize', SameBatchSize, 'BorderSize', BorderSize);
-scaleFactor = 1.0;
 
 % sort regions based on the size
 [~, inds] = sortrows([prod(batchBBoxes(:, 4 : 6) - batchBBoxes(:, 1 : 3) + 1, 2), batchBBoxes]);

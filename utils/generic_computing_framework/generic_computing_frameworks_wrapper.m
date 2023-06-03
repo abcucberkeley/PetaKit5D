@@ -44,6 +44,7 @@ ip.addParameter('jobTimeLimit', 24, @isnumeric); % in hour, [] means no limit
 ip.addParameter('language', 'matlab', @ischar); % support matlab, bash
 ip.addParameter('GNUparallel', false, @islogical); % support matlab, bash
 ip.addParameter('paraJobNum', 1, @isnumeric); % support matlab, bash
+ip.addParameter('masterParaFactor', 1, @islogical); % master job parallel job percentage for mcc mode. 
 ip.addParameter('ConfigFile', '', @ischar); % cluster configuration file that override the default parameters
 
 ip.parse(inputFullpaths, outputFullpaths, funcStrs, varargin{:});
@@ -116,6 +117,7 @@ jobTimeLimit = pr.jobTimeLimit;
 language = pr.language;
 GNUparallel = pr.GNUparallel;
 paraJobNum = pr.paraJobNum;
+masterParaFactor = pr.masterParaFactor;
 
 if numel(funcStrs) == 1
     if masterCompute
@@ -159,7 +161,8 @@ switch clusterType
                 maxJobNum=maxJobNum, taskBatchNum=taskBatchNum, BashLaunchStr=BashLaunchStr, ...
                 SlurmParam=SlurmParam, SlurmConstraint=SlurmConstraint, MCRParam=MCRParam, ...
                 MCCMasterStr=MCCMasterStr, jobTimeLimit=jobTimeLimit, language=language, ...
-                GNUparallel=GNUparallel, paraJobNum=paraJobNum, GPUJob=GPUJob);
+                GNUparallel=GNUparallel, paraJobNum=paraJobNum, masterParaFactor=masterParaFactor, ...
+                GPUJob=GPUJob);
         else
             is_done_flag = slurm_cluster_generic_computing_wrapper(inputFullpaths, ...
                 outputFullpaths, funcStrs, parseCluster=parseCluster, masterCompute=masterCompute, ...

@@ -35,10 +35,10 @@ void mexFunction(int nlhs, mxArray *plhs[],
     uint64_t shapeY = 0;
     uint64_t shapeZ = 0;
     uint64_t* dims = (uint64_t*)mxGetDimensions(prhs[0]);
+    uint64_t numDim = (uint64_t*) mxGetNumberOfDimensions(prhs[0]);
     uint64_t origShapeX = dims[0];
-    uint64_t origShapeY = dims[1];
-    uint64_t origShapeZ = dims[2];
-
+    uint64_t origShapeY = (numDim <= 1) ? 1 : dims[1];    
+    uint64_t origShapeZ = (numDim <= 2) ? 1 : dims[2];
 
     if(mxGetN(prhs[1]) != 6) mexErrMsgIdAndTxt("crop:inputError","Input range for bbox is not 6");
     startX = (uint64_t)*(mxGetPr(prhs[1]))-1;
@@ -49,7 +49,6 @@ void mexFunction(int nlhs, mxArray *plhs[],
     endZ = (uint64_t)*((mxGetPr(prhs[1])+5));
         
     if(startX+1 < 1 || startY+1 < 1 || startZ+1 < 1) mexErrMsgIdAndTxt("crop:inputError","Lower bounds must be at least 1");
-
 
     if(endX > origShapeX || endY > origShapeY || endZ > origShapeZ) mexErrMsgIdAndTxt("crop:inputError","Upper bound is invalid");
 
@@ -94,5 +93,4 @@ void mexFunction(int nlhs, mxArray *plhs[],
     else{
         mexErrMsgIdAndTxt("tiff:dataTypeError","Data type not suppported");
     }
-    
 }

@@ -357,6 +357,7 @@ end
 if isempty(processFunPath) || all(cellfun(@isempty, processFunPath))
     processFunPath = {''};
     if EdgeArtifacts > 0
+        usrFun = '';
         if DSR 
             if ~any(stitchMIP)
                 usrFun = sprintf('@(x)erodeVolumeBy2DProjection(x,%d)', EdgeArtifacts);
@@ -698,12 +699,23 @@ else
     nv_tmp_raw_fullname = nv_tmp_fullname;
 end
 
+fresh_stitch = true;
 if exist(nv_tmp_raw_fullname, 'dir')
-    rmdir(nv_tmp_raw_fullname, 's');
+    nv_tmp_size = getImageSize(nv_tmp_raw_fullname);
+    if numel(nvSize) == nueml(nv_tmp_size) && all(nvSize == nv_tmp_size)
+        fresh_stitch = false;
+    else
+        rmdir(nv_tmp_raw_fullname, 's');
+    end
 end
 
-createzarr(nv_tmp_raw_fullname, dataSize=[nys, nxs, nzs], BlockSize=blockSize, ...
-    dtype=dtype, compressor=compressor, zarrSubSize=zarrSubSize);
+% do not overwrite the intermediate data if it exists, this is good for
+% large data when the master job runs out of time and new master job can
+% continue the stitching
+if fresh_stitch
+    createzarr(nv_tmp_raw_fullname, dataSize=[nys, nxs, nzs], BlockSize=blockSize, ...
+        dtype=dtype, compressor=compressor, zarrSubSize=zarrSubSize);
+end
 
 % add support for feather blending
 stitchPath = [dataPath, filesep, ResultDir, filesep];
@@ -796,7 +808,7 @@ numTasks = ceil(numBlocks / taskSize);
 % flag dir for files, make sure there is no flags from old runs.
 % wait more time zarr file computing
 zarrFlagPath = sprintf('%s/%s/zarr_flags/%s_%s/', dataPath, ResultDir, nv_fsname, uuid);
-if exist(zarrFlagPath, 'dir')
+if exist(zarrFlagPath, 'dir') && fresh_stitch
     rmdir(zarrFlagPath, 's')
 end
 mkdir(zarrFlagPath);

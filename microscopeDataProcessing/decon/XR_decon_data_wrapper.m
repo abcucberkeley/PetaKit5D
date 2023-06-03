@@ -71,6 +71,7 @@ ip.addParameter('largeFile', false, @islogical);
 ip.addParameter('largeMethod', 'inmemory', @ischar); % inmemory, inplace. 
 ip.addParameter('zarrFile', false, @islogical); % use zarr file as input
 ip.addParameter('saveZarr', false, @islogical); % save as zarr
+ip.addParameter('scaleFactor', [], @isnumeric); % scale factor for result
 ip.addParameter('deconMaskFns', {}, @iscell); % 2d masks to filter regions to decon, in xy, xz, yz order
 ip.addParameter('parseCluster', true, @islogical);
 ip.addParameter('parseParfor', false, @islogical);
@@ -145,6 +146,7 @@ largeFile = pr.largeFile;
 largeMethod = pr.largeMethod;
 zarrFile = pr.zarrFile;
 saveZarr = pr.saveZarr;
+scaleFactor = pr.scaleFactor;
 deconMaskFns = pr.deconMaskFns;
 
 jobLogDir = pr.jobLogDir;
@@ -255,7 +257,7 @@ if Decon
             
             medFactor = 1.5;
             PSFGenMethod = 'masked';
-            psf = double(readtiff(psfFn));
+            psf = single(readtiff(psfFn));
             psf = psf_gen_new(psf, dzPSF, dz, medFactor, PSFGenMethod);
             
             if ~strcmp(RLMethod, 'omw')
@@ -266,7 +268,7 @@ if Decon
                 pz = find(squeeze(sum(psf, [1, 2])));
                 cropSz = [min(py(1) - 1, size(psf, 1) - py(end)), min(px(1) - 1, size(psf, 2) - px(end)), min(pz(1) - 1, size(psf, 3) - pz(end))] - 1;
                 cropSz = max(0, cropSz);
-                bbox = [cropSz + 1, size(psf) - cropSz];
+                bbox = [cropSz + 1, size(psf, 1 : 3) - cropSz];
                 psf = psf(bbox(1) : bbox(4), bbox(2) : bbox(5), bbox(3) : bbox(6));
             end
             
@@ -437,15 +439,15 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
                     '''skewed'',[%s],''fixIter'',%s,''errThresh'',[%0.20f],''debug'',%s,''saveStep'',%d,', ...
                     '''psfGen'',%s,''saveZarr'',%s,''parseCluster'',%s,''parseParfor'',%s,''GPUJob'',%s,', ...
                     '''Save16bit'',%s,''largeFile'',%s,''largeMethod'',''%s'',''BatchSize'',%s,''BlockSize'',%s,', ...
-                    '''zarrSubSize'',%s,''deconMaskFns'',%s,''uuid'',''%s'',''mccMode'',%s,''ConfigFile'',''%s'',', ...
-                    '''GPUConfigFile'',''%s'')'], ...
+                    '''zarrSubSize'',%s,''scaleFactor'',%d,''deconMaskFns'',%s,''uuid'',''%s'',''mccMode'',%s,', ...
+                    '''ConfigFile'',''%s'',''GPUConfigFile'',''%s'')'], ...
                     dcframeFullpath, xyPixelSize, dc_dz, deconPath, psfFullpath, dc_dzPSF, Background, SkewAngle, ...
                     string(flipZstack), EdgeErosion, maskFullpath, string(SaveMaskfile), string(deconRotate), ...
                     DeconIter_f, RLMethod, wienerAlpha, OTFCumThresh_f, string(skewed), string(fixIter), errThresh, ...
                     string(debug), saveStep, string(psfGen), string(saveZarr), string(parseCluster),string(parseParfor), ... 
                     string(GPUJob), string(Save16bit), string(largeFile), largeMethod, strrep(mat2str(BatchSize), ' ', ','), ...
-                    strrep(mat2str(BlockSize), ' ', ','), strrep(mat2str(zarrSubSize), ' ', ','), deconMaskFns_str, ...
-                    uuid, string(mccMode), ConfigFile, GPUConfigFile);
+                    strrep(mat2str(BlockSize), ' ', ','), strrep(mat2str(zarrSubSize), ' ', ','), scaleFactor, ...
+                    deconMaskFns_str, uuid, string(mccMode), ConfigFile, GPUConfigFile);
             end
             
             if exist(dctmpFullpath, 'file') || parseCluster
@@ -453,9 +455,9 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
                     [estMem, estGPUMem] = XR_estimateComputingMemory(dcframeFullpath, {'deconvolution'}, ...
                         'cudaDecon', false);                    
                     if ~cudaDecon && ~GPUJob
-                        allocateMem = estMem * 2;
+                        memAllocate = estMem * 2;
                     else
-                        allocateMem = estMem * 4;
+                        memAllocate = estMem * 4;
                     end
                     
                     cur_ConfigFile = ConfigFile;
@@ -471,7 +473,7 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
                     job_id = job_ids(f, 1);
                     [job_id, ~, submit_status] = generic_single_job_submit_wrapper(func_str, ...
                         job_id, task_id, 'jobLogFname', job_log_fname, 'jobErrorFname', job_log_error_fname, ...
-                        lastFile=false, allocateMem=allocateMem, mccMode=mccMode, ConfigFile=cur_ConfigFile);
+                        lastFile=false, memAllocate=memAllocate, mccMode=mccMode, ConfigFile=cur_ConfigFile);
 
                     job_ids(f, 1) = job_id;
                     trial_counter(f, 1) = trial_counter(f, 1) + submit_status;

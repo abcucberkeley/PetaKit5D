@@ -91,7 +91,9 @@ if ~isempty(processFunPath)
             end            
             a = load(processFunPath{i, j});
             usrFun = a.usrFun;
-            usrFcn_strs{i, j} = usrFun;
+            if ~isempty(usrFun)            
+                usrFcn_strs{i, j} = usrFun;
+            end
         end
     end
 end

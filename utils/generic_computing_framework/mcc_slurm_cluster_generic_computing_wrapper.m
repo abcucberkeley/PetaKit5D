@@ -45,6 +45,7 @@ ip.addParameter('jobTimeLimit', 24, @isnumeric); % in hour, [] means no limit
 ip.addParameter('language', 'bash', @ischar); % support matlab, bash
 ip.addParameter('GNUparallel', false, @islogical); % support matlab, bash
 ip.addParameter('paraJobNum', 1, @isnumeric); % support matlab, bash
+ip.addParameter('masterParaFactor', 1, @isnumeric); % master job parallel job percentage
 
 ip.parse(inputFullpaths, outputFullpaths, funcStrs, varargin{:});
 
@@ -84,6 +85,7 @@ jobTimeLimit = pr.jobTimeLimit;
 BashLaunchStr = pr.BashLaunchStr;
 GNUparallel = pr.GNUparallel;
 paraJobNum = pr.paraJobNum;
+masterParaFactor = pr.masterParaFactor;
 
 if isempty(uuid)
     uuid = get_uuid();
@@ -425,11 +427,11 @@ while (~parseCluster && ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
                 % process_cmd = func_str;
                 cmd = sprintf(['%s; bash %s'], BashLaunchStr, inputFn);
             else
-                paraJobNum_f = max(1, round(paraJobNum / (trial_counter(f) + 1)));
+                paraJobNum_f = max(1, min(paraJobNum - 1, round(paraJobNum * masterParaFactor / (trial_counter(f) + 1))));
                 cmd = sprintf(['%s; parallel --jobs %d --delay 0.1 < %s'], BashLaunchStr, paraJobNum_f, inputFn);
                 if ismcc || isdeployed
                     % reduce the load of master job in case of crash due to oom
-                    cmd = sprintf(['%s; parallel --ungroup --jobs %d --delay 0.1 < %s'], BashLaunchStr, max(1, paraJobNum_f - 1), inputFn);
+                    cmd = sprintf(['%s; parallel --ungroup --jobs %d --delay 0.1 < %s'], BashLaunchStr, paraJobNum_f, inputFn);
                 end
             end
             t0=tic; [status, cmdout] = system(cmd, '-echo'); t1=toc(t0);

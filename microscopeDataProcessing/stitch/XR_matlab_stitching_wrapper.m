@@ -89,7 +89,7 @@ ip = inputParser;
 ip.CaseSensitive = false;
 ip.addRequired('dataPath', @(x) ischar(x) || iscell(x));
 ip.addRequired('imageListFileName', @(x) ischar(x) || iscell(x));
-% ip.addParameter('Overwrite', true, @islogical);
+% ip.addParameter('Overwrite', false, @islogical);
 ip.addParameter('Streaming', false, @islogical);
 ip.addParameter('ChannelPatterns', {'CamA_ch0', 'CamA_ch1', 'CamB_ch0'}, @iscell);
 ip.addParameter('multiLoc', false, @islogical); % use subregions from different folders

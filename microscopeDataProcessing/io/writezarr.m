@@ -16,6 +16,7 @@ arguments
     options.expand2dDim (1, 1) logical = true  % expand the z dimension for 2d data
     options.groupWrite (1, 1) logical = true
     options.bbox (1, :) {mustBeNumeric} = []
+    options.sparseData (1, :) logical = false
 end
 
 overwrite = options.overwrite;
@@ -24,6 +25,7 @@ blockSize = options.blockSize;
 zarrSubSize = options.zarrSubSize;
 groupWrite = options.groupWrite;
 bbox = options.bbox;
+sparseData = options.sparseData;
 
 dtype = class(data);
 sz = size(data);
@@ -61,7 +63,7 @@ try
         newFile = true;
     end
 
-    parallelWriteZarr(filepath, data, 1, bbox);
+    parallelWriteZarr(filepath, data, 'bbox', bbox, 'sparse', sparseData);
 catch ME
     disp(ME);
     disp('Use the alternative zarr writer (ZarrAdapter)...');    
