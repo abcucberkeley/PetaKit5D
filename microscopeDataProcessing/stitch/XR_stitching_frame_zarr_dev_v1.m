@@ -701,8 +701,11 @@ end
 
 fresh_stitch = true;
 if exist(nv_tmp_raw_fullname, 'dir')
-    nv_tmp_size = getImageSize(nv_tmp_raw_fullname);
-    if numel(nvSize) == nueml(nv_tmp_size) && all(nvSize == nv_tmp_size)
+    bim = blockedImage(nv_tmp_raw_fullname, 'Adapter', CZarrAdapter);
+    nv_tmp_size = bim.Size;
+    nv_tmp_block_size = bim.BlockSize;
+    if numel(nvSize) == numel(nv_tmp_size) && all(nvSize == nv_tmp_size) && ...
+            all(blockSize == nv_tmp_block_size)
         fresh_stitch = false;
     else
         rmdir(nv_tmp_raw_fullname, 's');

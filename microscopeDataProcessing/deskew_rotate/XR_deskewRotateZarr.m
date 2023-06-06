@@ -8,6 +8,7 @@ function [is_done_flag] = XR_deskewRotateZarr(frameFullpath, xyPixelSize, dz, va
 % Based on XR_deskewRotateFrame.m
 %
 % xruan (12/14/2022): add support for input bbox, that is, crop the data before dsr
+% xruan (06/03/2023): add support for resampling
 
 
 ip = inputParser;
@@ -111,16 +112,6 @@ else
     dsrTmppath = [dsrFullpath, '_', uuid];
 end
 
-tic
-fprintf(['reading ' fsname '...\n'])
-switch ext
-    case {'.tif', '.tiff'}
-        bim = blockedImage(frameFullpath, 'Adapter', MPageTiffAdapter);
-    case '.zarr'
-        bim = blockedImage(frameFullpath, 'Adapter', CZarrAdapter);
-end
-toc
-
 if Save16bit
     dtype = 'uint16';
 else
@@ -138,7 +129,7 @@ if ~exist(zarrFlagPath, 'dir')
 end
 
 % map input and output for xz
-bimSize = bim.Size;
+bimSize = getImageSize(frameFullpath);
 if ~isempty(inputBbox)
     wdStart = inputBbox(1 : 3);
     imSize = inputBbox(4 : 6) - wdStart + 1;
@@ -159,54 +150,49 @@ else
     % exact proportions of rotated box
     outSize = round([ny, nx*cos(theta)+nz*zAniso*sin(abs(theta)), nz*zAniso*cos(theta)+nx*sin(abs(theta))]);
 end
+
+rs = [1, 1, 1];
+if ~isempty(resample)
+    rs = resample;
+    outSize = round(outSize ./ rs([1,2,3]));
+end
+
 % change border size to +/-1 in y. 
 % BorderSize = [2, 0, 0, 2, 0, 0];
 BorderSize = [1, 0, 0, 1, 0, 0];
 
 % set batches along y axis
-BatchSize = min(imSize, BatchSize);
-BatchSize(2 : 3) = imSize(2 : 3);
-BlockSize = min(imSize, BlockSize);
-BlockSize = min(BatchSize, BlockSize);
+outBatchSize = min(outSize, BatchSize);
+outBatchSize(2 : 3) = outSize(2 : 3);
+outBlockSize = min(imSize, BlockSize);
+outBlockSize = min(outBatchSize, outBlockSize);
 
-bSubSz = ceil(imSize ./ BatchSize);
-numBatch = prod(bSubSz);
+[outBatchBBoxes, outRegionBBoxes, ~] = XR_zarrChunkCoordinatesExtraction(outSize, ...
+    BatchSize=outBatchSize, BlockSize=outBlockSize, SameBatchSize=false, BorderSize=BorderSize(1 : 3));
 
-[Y, X, Z] = ndgrid(1 : bSubSz(1), 1 : bSubSz(2), 1 : bSubSz(3));
-bSubs = [Y(:), X(:), Z(:)];
-clear Y X Z
-
-batchBBoxes = zeros(numBatch, 6);
-regionBBoxes = zeros(numBatch, 6);
-
-batchBBoxes(:, 1 : 3) = (bSubs - 1) .* BatchSize + wdStart; 
-batchBBoxes(:, 4 : 6) = min(batchBBoxes(:, 1 : 3) + BatchSize - 1, imSize + wdStart - 1);
-
-borderSizes(:, 1 : 3) = batchBBoxes(:, 1 : 3) - max(1, batchBBoxes(:, 1 : 3) - BorderSize(1 : 3));
-borderSizes(:, 4 : 6) = min(bimSize, batchBBoxes(:, 4 : 6) + BorderSize(4 : 6)) - batchBBoxes(:, 4 : 6);
-
-batchBBoxes(:, 1 : 3) = batchBBoxes(:, 1 : 3) - borderSizes(:, 1 : 3);
-batchBBoxes(:, 4 : 6) = batchBBoxes(:, 4 : 6) + borderSizes(:, 4 : 6);
-
-regionBBoxes(:, 1) = (bSubs(:, 1) - 1) .* BatchSize(1) + 1; 
-regionBBoxes(:, 2 : 3) = 1;
-regionBBoxes(:, 4 : 6) = min(regionBBoxes(:, 1 : 3) + [BatchSize(1), outSize(2 : 3)] - 1, outSize);
+inBatchBboxes = outBatchBBoxes;
+inBatchBboxes(:, 1) = round((inBatchBboxes(:, 1) - 1) .* rs(1)) + 1;
+inBatchBboxes(:, 2) = wdStart(2);
+inBatchBboxes(:, 3) = wdStart(3);
+inBatchBboxes(:, 4) = min(inBatchBboxes(:, 1) + round((outBatchBBoxes(:, 4) - outBatchBBoxes(:, 1) + 1) .* rs(1) - 1), bimSize(1));
+inBatchBboxes(:, 5) = inBatchBboxes(:, 2) + imSize(2) - 1;
+inBatchBboxes(:, 6) = inBatchBboxes(:, 3) + imSize(3) - 1;
 
 % initialize zarr file
 if exist(dsrTmppath, 'dir')
     bim = blockedImage(dsrTmppath, 'Adapter', CZarrAdapter);
-    if any(bim.BlockSize ~= BlockSize) || any(bim.Size ~= outSize)
+    if any(bim.BlockSize ~= outBlockSize) || any(bim.Size ~= outSize)
         rmdir(dsrTmppath, 's');
         rmdir(zarrFlagPath, 's');
         mkdir(zarrFlagPath);
     end
 end
 if ~exist(dsrTmppath, 'dir')
-    createzarr(dsrTmppath, dataSize=outSize, blockSize=BlockSize, dtype=dtype, zarrSubSize=zarrSubSize);                
+    createzarr(dsrTmppath, dataSize=outSize, blockSize=outBlockSize, dtype=dtype, zarrSubSize=zarrSubSize);                
 end
 
 % set up parallel computing 
-numBatch = size(batchBBoxes, 1);
+numBatch = size(inBatchBboxes, 1);
 if isempty(taskSize)
     taskSize = max(2, min(10, round(numBatch / 5000))); % the number of batches a job should process
 end
@@ -220,9 +206,9 @@ funcStrs = cell(numTasks, 1);
 outputFullpaths = cell(numTasks, 1);
 for i = 1 : numTasks
     batchInds = (i - 1) * taskSize + 1 : min(i * taskSize, numBatch);
-    batchBBoxes_i = batchBBoxes(batchInds, :);
-    borderSizes_i = borderSizes(batchInds, :);
-    regionBBoxes_i = regionBBoxes(batchInds, :);
+    inBatchBBoxes_i = inBatchBboxes(batchInds, :);
+    outBatchBBoxes_i = outBatchBBoxes(batchInds, :);
+    outRegionBBoxes_i = outRegionBBoxes(batchInds, :);
     
     zarrFlagFullpath = sprintf('%s/blocks_%d_%d.mat', zarrFlagPath, batchInds(1), batchInds(end));
     outputFullpaths{i} = zarrFlagFullpath;
@@ -230,20 +216,21 @@ for i = 1 : numTasks
     
     funcStrs{i} = sprintf(['XR_deskewRotateBlock([%s],''%s'',''%s'',''%s'',%s,%s,%s,', ...
         '%0.20d,%0.20d,''Overwrite'',%s,''SkewAngle'',%0.20d,''Reverse'',%s,', ...
-        '''flipZstack'',%s,''Interp'',''%s'',''uuid'',''%s'',''debug'',%s)'], ...
+        '''flipZstack'',%s,''Interp'',''%s'',''resample'',%s,''uuid'',''%s'',''debug'',%s)'], ...
         strrep(num2str(batchInds, '%d,'), ' ', ''), frameFullpath, dsrTmppath, ...
-        zarrFlagFullpath, strrep(mat2str(batchBBoxes_i), ' ', ','), strrep(mat2str(regionBBoxes_i), ' ', ','), ...
-        strrep(mat2str(borderSizes_i), ' ', ','), xyPixelSize, dz, string(Overwrite), ...
-        SkewAngle, string(Reverse), string(flipZstack), Interp, uuid, string(debug));
+        zarrFlagFullpath, strrep(mat2str(inBatchBBoxes_i), ' ', ','), strrep(mat2str(outBatchBBoxes_i), ' ', ','), ...
+        strrep(mat2str(outRegionBBoxes_i), ' ', ','), xyPixelSize, dz, string(Overwrite), ...
+        SkewAngle, string(Reverse), string(flipZstack), Interp, strrep(mat2str(resample), ' ', ','), ...
+        uuid, string(debug));
 end
 
 inputFullpaths = repmat({frameFullpath}, numTasks, 1);
 
 % submit jobs
 if parseCluster || ~parseParfor
-    inSize = batchBBoxes(1, 4 : 6) - batchBBoxes(1, 1 : 3) + 1;
-    outSize = regionBBoxes(1, 4 : 6) - regionBBoxes(1, 1 : 3) + 1;
-    memAllocate = (prod(inSize) * 4 / 1024^3 + prod(outSize) * 4 / 1024^3) * 2;
+    inSize = inBatchBboxes(1, 4 : 6) - inBatchBboxes(1, 1 : 3) + 1;
+    outSize = outBatchBBoxes(1, 4 : 6) - outBatchBBoxes(1, 1 : 3) + 1;
+    memAllocate = prod(inSize) * 4 / 1024^3 * 2 + prod(outSize) * 4 / 1024^3 .* (prod(resample) * 0.5 + 1.5);
 
     is_done_flag = generic_computing_frameworks_wrapper(inputFullpaths, outputFullpaths, ...
         funcStrs, 'cpusPerTask', cpusPerTask, 'maxJobNum', maxJobNum, 'taskBatchNum', taskBatchNum, ...

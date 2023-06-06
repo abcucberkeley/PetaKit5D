@@ -37,33 +37,52 @@ end
 
 function [MIP] = saveMIP_zarr_axis(zarrFullname, axis_ind)
 
-try
-    uuid = get_uuid();    
-    % for matlab R2020b, it may fail to write tiff file if this step
-    % runs before using Tiff write, to avoid the issue, we first write
-    % a rand image to tmp folder to initialize Tiff in matlab
-    writetiff(uint8(rand(10) > 0.5), sprintf('/tmp/%s.tif', uuid));
-    MIP = py.daskAPI.daskZarrMaxProjection(zarrFullname, axis_ind - 1);    
-catch ME
-    disp(ME);
-    disp('Use matlab image block method for MIP computing...');
-    try
-        im = readzarr(zarrFullname);
-        MIP = squeeze(max(im, [], axis_ind));
-    catch ME_1
-        disp(ME_1)
+% try
+%     uuid = get_uuid();    
+%     % for matlab R2020b, it may fail to write tiff file if this step
+%     % runs before using Tiff write, to avoid the issue, we first write
+%     % a rand image to tmp folder to initialize Tiff in matlab
+%     writetiff(uint8(rand(10) > 0.5), sprintf('/tmp/%s.tif', uuid));
+%     MIP = py.daskAPI.daskZarrMaxProjection(zarrFullname, axis_ind - 1);    
+% catch ME
+%     disp(ME);
+%     disp('Use matlab image block method for MIP computing...');
+%     try
+%         im = readzarr(zarrFullname);
+%         MIP = squeeze(max(im, [], axis_ind));
+%     catch ME_1
+%         disp(ME_1)
+% 
+%         % this step is pretty slow in a single node, takes ~15min for 313 GB data
+%         nv_bim = blockedImage(zarrFullname, 'Adapter', CZarrAdapter);
+%         
+%         blockSize = min(5000, nv_bim.BlockSize * 10);
+%         blockSize(axis_ind) = nv_bim.Size(axis_ind);
+%             
+%         bmip = apply(nv_bim, @(bs) max(bs.Data, [], axis_ind), 'blockSize', blockSize);
+%         MIP = gather(bmip);
+%     end
+%     disp('Done!');    
+% end
 
-        % this step is pretty slow in a single node, takes ~15min for 313 GB data
-        nv_bim = blockedImage(zarrFullname, 'Adapter', CZarrAdapter);
+
+try
+    im = readzarr(zarrFullname);
+    MIP = squeeze(max(im, [], axis_ind));
+catch ME_1
+    disp(ME_1)
+
+    this step is pretty slow in a single node, takes ~15min for 313 GB data
+    nv_bim = blockedImage(zarrFullname, 'Adapter', CZarrAdapter);
+    
+    blockSize = min(5000, nv_bim.BlockSize * 10);
+    blockSize(axis_ind) = nv_bim.Size(axis_ind);
         
-        blockSize = min(5000, nv_bim.BlockSize * 10);
-        blockSize(axis_ind) = nv_bim.Size(axis_ind);
-            
-        bmip = apply(nv_bim, @(bs) max(bs.Data, [], axis_ind), 'blockSize', blockSize);
-        MIP = gather(bmip);
-    end
-    disp('Done!');    
+    bmip = apply(nv_bim, @(bs) max(bs.Data, [], axis_ind), 'blockSize', blockSize);
+    MIP = gather(bmip);
 end
+disp('Done!');    
+
 
 end
 

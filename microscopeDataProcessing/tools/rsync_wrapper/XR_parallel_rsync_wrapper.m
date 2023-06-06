@@ -124,7 +124,7 @@ for n = 1 : 5
         inputFullpath_str = sprintf('%s', strjoin(inputFullpaths(s : t), ','));
         outPath_str = sprintf('%s', strjoin(outputPaths(s : t), ','));
 
-        func_strs{i} = sprintf(['bash %s/microscopeDataProcessing/io/rsync_wrapper/rsync_batch_files.sh ', ...
+        func_strs{i} = sprintf(['bash %s/microscopeDataProcessing/tools/rsync_wrapper/rsync_batch_files.sh ', ...
             '''''%s'''' ''''%s'''' '], codePath, inputFullpath_str, outPath_str);
     end
 

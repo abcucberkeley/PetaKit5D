@@ -202,7 +202,7 @@ end
 % submit jobs 
 inputFullpaths = repmat({zarrFullpath}, numTasks, 1);
 if parseCluster || ~parseParfor
-    memAllocate = prod(BatchSize) * byteNum / 2^30 * (2 + (2 * (~mccMode)));
+    memAllocate = prod(BatchSize) * byteNum / 2^30 * (2.5 + (1.5 * (~mccMode)));
     minTaskJobNum = max(min(numTasks, 10), round(numTasks / 5));
     is_done_flag = false;
     for i = 1 : 3
