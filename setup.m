@@ -24,7 +24,9 @@ fprintf('Hostname: %s \n', strip(output));
 
 if nargin < 3 || isempty(pythonPath)
     if ispc
-        pythonPath = sprintf('C:\Users\%s\Anaconda3\python.EXE', hostname);
+        if addPython && isempty(pythonPath)
+            error('Please provide your python install path!');
+        end
     else
         pythonPath = '~/anaconda3/bin/python';
     end

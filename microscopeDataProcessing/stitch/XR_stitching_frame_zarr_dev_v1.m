@@ -208,7 +208,7 @@ end
 
 % check if a slurm-based computing cluster exist
 if parseCluster 
-    [parseCluster, job_log_fname, job_log_error_fname] = checkSlurmCluster(dataPath, jobLogDir);
+    [parseCluster] = checkSlurmCluster(dataPath);
 end
 
 if isempty(uuid)

@@ -58,6 +58,9 @@ else
     dsTmppath = [dsFullpath, '_', uuid];
 end    
 
+if ~exist(zarrFullpath, 'dir')
+    error('The input file %s does not exist, pleast double check!', zarrFullpath);
+end
 try
     bim = blockedImage(zarrFullpath, "Adapter", CZarrAdapter);
 catch ME

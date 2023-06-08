@@ -72,7 +72,7 @@ try
 catch ME_1
     disp(ME_1)
 
-    this step is pretty slow in a single node, takes ~15min for 313 GB data
+    % this step is pretty slow in a single node, takes ~15min for 313 GB data
     nv_bim = blockedImage(zarrFullname, 'Adapter', CZarrAdapter);
     
     blockSize = min(5000, nv_bim.BlockSize * 10);

@@ -3,7 +3,13 @@ function [parseCluster, job_log_fname, job_log_error_fname, slurm_constraint_str
 % set parseCluster as false
 % 
 % Author: Xiongtao Ruan (10/04/2020)
+% 
+% xruan (06/06/2023): add support to only check cluster without jobLogDir
 
+
+if nargin < 2
+    jobLogDir = [];
+end
 
 % initial values
 parseCluster = true; 
@@ -16,6 +22,9 @@ slurm_constraint_str = '';
 if status ~= 0
     warning('A slurm-based computing cluster is not exist. Set parseCluster as false.')
     parseCluster = false;
+    return;
+end
+if isempty(jobLogDir)
     return;
 end
 if parseCluster && ~exist(jobLogDir, 'dir')
