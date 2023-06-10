@@ -24,6 +24,7 @@ elseif isunix
     if ~exist('linux', 'dir')
         mkdir('linux');
     end
+%     mcc -v -R -nodisplay -R -singleCompThread -d linux -m mccMaster.m
     mcc -v -R -nodisplay -d linux -m mccMaster.m
 
     cd('linux');

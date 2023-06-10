@@ -3,7 +3,7 @@ function [] = XR_MIP_wrapper(dataPaths, varargin)
 
 ip = inputParser;
 ip.CaseSensitive = false;
-ip.addRequired('dataPath', @(x) ischar(x) || iscell(x));
+ip.addRequired('dataPaths', @(x) ischar(x) || iscell(x));
 ip.addParameter('axis', [0, 0, 1], @isnumeric); % y, x, z
 ip.addParameter('ChannelPatterns', {'CamA_ch0', 'CamA_ch1', 'CamB_ch0'}, @iscell);
 ip.addParameter('zarrFile', false, @islogical); % use zarr file as input

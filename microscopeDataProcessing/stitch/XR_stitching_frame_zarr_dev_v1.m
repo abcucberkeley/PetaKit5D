@@ -97,6 +97,7 @@ ip.addParameter('zarrFile', false, @islogical);
 ip.addParameter('largeZarr', false, @islogical); 
 ip.addParameter('poolSize', [], @isnumeric); % max pooling size for large zarr MIPs
 ip.addParameter('blockSize', [500, 500, 500], @isnumeric); 
+ip.addParameter('batchSize', [500, 500, 500], @isnumeric); 
 ip.addParameter('zarrSubSize', [20, 20, 20], @isnumeric); % zarr subfolder size
 ip.addParameter('saveMultires', false, @islogical); % save as multi resolution dataset
 ip.addParameter('resLevel', 4, @isnumeric); % downsample to 2^1-2^resLevel
@@ -167,6 +168,7 @@ zarrFile = pr.zarrFile;
 largeZarr = pr.largeZarr;
 poolSize = pr.poolSize;
 blockSize = pr.blockSize;
+batchSize = pr.batchSize;
 zarrSubSize = pr.zarrSubSize;
 BorderSize = pr.BorderSize;
 BlurSigma = pr.BlurSigma;
@@ -647,8 +649,9 @@ int_xyz_shift = round(xyz_shift ./ ([xf, yf, zf] * px));
 % first obtain coordinate data structure for blocks
 blockSize = min([nys, nxs, nzs], blockSize);
 blockSize = min(median(imSizes), blockSize);
-bSubSz = ceil([nys, nxs, nzs] ./ blockSize);
-numBlocks = prod(bSubSz);
+batchSize = ceil(batchSize ./ blockSize) .* blockSize;
+bSubSz = ceil([nys, nxs, nzs] ./ batchSize);
+numBatches = prod(bSubSz);
 
 % for blurred option, set BoderSize as [3, 3, 3] if not set.
 if strcmp(BlendMethod, 'blurred') && (isempty(BorderSize) || all(BorderSize == 0))
@@ -662,23 +665,23 @@ if ~exist(stichInfoPath, 'dir')
     fileattrib(stichInfoPath, '+w', 'g');
 end
 
-if numBlocks < 30
+if numBatches < 30
     parseCluster = false;
 end
 
 if parseCluster
     taskSize = 10; % the number of blocks a job should process for [500, 500, 500]
     % keep task size inversely propotional to block size
-    taskSize = max(1, round(prod([512, 512, 512]) / prod(blockSize) * taskSize));
-    taskSize = max(taskSize, min(200, ceil(numBlocks / 5000)));
+    taskSize = max(1, round(prod([512, 512, 512]) / prod(batchSize) * taskSize));
+    taskSize = max(taskSize, min(200, ceil(numBatches / 5000)));
 else
-    taskSize = numBlocks;
+    taskSize = numBatches;
 end
 
 nvSize = [nys, nxs, nzs];
 
 [block_info_fullname, PerBlockInfoFullpaths] = stitch_process_block_info(int_xyz_shift, ...
-    imSizes, nvSize, blockSize, overlap_matrix, ol_region_cell, half_ol_region_cell, ...
+    imSizes, nvSize, batchSize, overlap_matrix, ol_region_cell, half_ol_region_cell, ...
     overlap_map_mat, BorderSize, zarrFullpaths, stichInfoPath, nv_fsname, isPrimaryCh, ...
     stitchInfoFullpath=stitchInfoFullpath, stitch2D=stitch2D, uuid=uuid, taskSize=taskSize, ...
     parseCluster=parseCluster, mccMode=mccMode, ConfigFile=ConfigFile);
@@ -806,7 +809,7 @@ end
 % process for each block based on all BlockInfo use distributed computing
 % framework (change to use the slurm generic computing framework)
 fprintf('Process blocks for stitched result...\n')
-numTasks = ceil(numBlocks / taskSize);
+numTasks = ceil(numBatches / taskSize);
 
 % flag dir for files, make sure there is no flags from old runs.
 % wait more time zarr file computing
@@ -821,19 +824,19 @@ funcStrs = cell(numTasks, 1);
 
 imdistFullpaths_str = sprintf("{'%s'}", strjoin(imdistFullpaths, ''','''));    
 for t = 1 : numTasks
-    blockInds = (t - 1) * taskSize + 1 : min(t * taskSize, numBlocks);
+    batchInds = (t - 1) * taskSize + 1 : min(t * taskSize, numBatches);
 
     % save block info searately for each task for faster access
     % PerBlockInfoFullpath = sprintf('%s/stitch_block_info_blocks_%d_%d.mat', PerBlockInfoPath, blockInds(1), blockInds(end));
     PerBlockInfoFullpath = PerBlockInfoFullpaths{t};
     
-    zarrFlagFullpaths{t} = sprintf('%s/blocks_%d_%d.mat', zarrFlagPath, blockInds(1), blockInds(end));
+    zarrFlagFullpaths{t} = sprintf('%s/blocks_%d_%d.mat', zarrFlagPath, batchInds(1), batchInds(end));
     funcStrs{t} = sprintf(['processStitchBlock([%s],''%s'',''%s'',''%s'',''%s'',[],[],', ...
-        '''imSize'',[%s],''blockSize'',[%s],''dtype'',''%s'',''BlendMethod'',''%s'',', ...
+        '''imSize'',[%s],''batchSize'',[%s],''dtype'',''%s'',''BlendMethod'',''%s'',', ...
         '''BorderSize'',[%s],''BlurSigma'',%d,''imdistFullpaths'',%s,''imdistFileIdx'',%s,', ...
-        '''poolSize'',%s,''weightDegree'',%d)'], strrep(mat2str(blockInds), ' ', ','), ...
+        '''poolSize'',%s,''weightDegree'',%d)'], strrep(mat2str(batchInds), ' ', ','), ...
         block_info_fullname, PerBlockInfoFullpath, zarrFlagFullpaths{t}, ...
-        nv_tmp_fullname, strrep(mat2str(nvSize), ' ', ','), strrep(mat2str(blockSize), ' ', ','), ...
+        nv_tmp_fullname, strrep(mat2str(nvSize), ' ', ','), strrep(mat2str(batchSize), ' ', ','), ...
         dtype, BlendMethod, strrep(mat2str(BorderSize), ' ', ','), BlurSigma, imdistFullpaths_str, ...
         strrep(mat2str(imdistFileIdx), ' ', ','), strrep(mat2str(poolSize), ' ', ','), blendWeightDegree);
 end
@@ -843,7 +846,7 @@ outputFullpaths = zarrFlagFullpaths;
 
 % cluster setting
 cpusPerTask = 1 * nodeFactor;
-memAllocate = prod(blockSize) * 4 / 1024^3 * 20;
+memAllocate = prod(batchSize) * 4 / 1024^3 * 20;
 maxTrialNum = 2;
 jobTimeLimit = taskSize * (2 / 60);
 

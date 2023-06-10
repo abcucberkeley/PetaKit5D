@@ -1,4 +1,4 @@
-function [] = processStitchBlock(blockInds, BlockInfoFullname, PerBlockInfoFullname, flagFullname, stitchFullname, stitchBlockInfo, tileFns, varargin)
+function [] = processStitchBlock(batchInds, BlockInfoFullname, PerBlockInfoFullname, flagFullname, stitchFullname, stitchBlockInfo, tileFns, varargin)
 % process each block for given block indices for zarr.
 % 
 % 
@@ -6,10 +6,11 @@ function [] = processStitchBlock(blockInds, BlockInfoFullname, PerBlockInfoFulln
 % xruan (11/18/2020) change imdistPath to imdistFullpath to enable using
 % distance map for the primary channel.
 % xruan (02/06/2021): for singleDistMap, directly use the first one (so don't need to repmat). 
+% xruan (06/10/2023): change blockSize to batchSize to allow larger batches with smaller chunks 
 
 ip = inputParser;
 ip.CaseSensitive = false;
-ip.addRequired('blockInds', @isnumeric);
+ip.addRequired('batchInds', @isnumeric);
 ip.addRequired('BlockInfoFullname', @(x) ischar(x));
 ip.addRequired('PerBlockInfoFullname', @(x) ischar(x));
 ip.addRequired('flagFullname', @(x) ischar(x));
@@ -18,7 +19,7 @@ ip.addOptional('stitchBlockInfo', []);
 ip.addOptional('tileFns', []);
 ip.addParameter('Overwrite', false, @islogical);
 ip.addParameter('imSize', [], @isnumeric);
-ip.addParameter('blockSize', [], @isnumeric);
+ip.addParameter('batchSize', [], @isnumeric);
 ip.addParameter('dtype', 'uint16', @ischar);
 ip.addParameter('BlendMethod', 'mean', @ischar);
 ip.addParameter('BorderSize', [], @isnumeric);
@@ -28,12 +29,12 @@ ip.addParameter('imdistFileIdx', [], @isnumeric); % image distance paths indices
 ip.addParameter('poolSize', [], @isnumeric); % distance matrix with max pooling factors
 ip.addParameter('weightDegree', 10, @isnumeric); % weight degree for image distances
 
-ip.parse(blockInds, BlockInfoFullname, PerBlockInfoFullname, flagFullname, stitchFullname, stitchBlockInfo, tileFns, varargin{:});
+ip.parse(batchInds, BlockInfoFullname, PerBlockInfoFullname, flagFullname, stitchFullname, stitchBlockInfo, tileFns, varargin{:});
 
 pr = ip.Results;
 Overwrite = pr.Overwrite;
 imSize = pr.imSize;
-blockSize = pr.blockSize;
+batchSize = pr.batchSize;
 dtype = pr.dtype;
 BlendMethod = pr.BlendMethod;
 BorderSize = pr.BorderSize;
@@ -53,7 +54,7 @@ if exist(flagFullname, 'file')
     if Overwrite
         delete(flagFullname);
     else
-        fprintf('The block files (%d - %d) already exist, skip them!\n', blockInds(1), blockInds(end));
+        fprintf('The block files (%d - %d) already exist, skip them!\n', batchInds(1), batchInds(end));
         return;
     end
 end
@@ -72,7 +73,7 @@ if ~isempty(PerBlockInfoFullname)
             stitchBlockInfo = jsondecode(str);
     end
 end
-if isstruct(stitchBlockInfo) && numel(blockInds) > 1
+if isstruct(stitchBlockInfo) && numel(batchInds) > 1
     stitchBlockInfo = arrayfun(@(x) stitchBlockInfo(x, :), 1 : size(stitchBlockInfo, 1), 'unif', 0);
 end
 
@@ -94,17 +95,17 @@ if strcmpi(BlendMethod, 'feather')
     end
 end
 
-bSubSz = ceil(imSize ./ blockSize);
+bSubSz = ceil(imSize ./ batchSize);
 
-done_flag = false(numel(blockInds), 1);
-for i = 1 : numel(blockInds)
-    bi = blockInds(i);
-    fprintf('Process block %d... ', bi);
+done_flag = false(numel(batchInds), 1);
+for i = 1 : numel(batchInds)
+    bi = batchInds(i);
+    fprintf('Process batch %d... ', bi);
     tic;
     [suby, subx, subz] = ind2sub(bSubSz, bi);
-    blockSub = [suby, subx, subz];
-    obStart = (blockSub - 1) .* blockSize + 1;
-    obEnd = min(obStart + blockSize - 1, imSize);
+    batchSub = [suby, subx, subz];
+    obStart = (batchSub - 1) .* batchSize + 1;
+    obEnd = min(obStart + batchSize - 1, imSize);
     nbsz = obEnd - obStart + 1;
 
     % stchBlockInfo_i = stitchBlockInfo{bi};
@@ -122,9 +123,9 @@ for i = 1 : numel(blockInds)
     end
     
     if any(BorderSize > 0)
-        bsz = blockSize + BorderSize .* ((blockSub ~= 1 & blockSub ~= bSubSz) + 1);
+        bsz = batchSize + BorderSize .* ((batchSub ~= 1 & batchSub ~= bSubSz) + 1);
     else
-        bsz = blockSize;
+        bsz = batchSize;
     end
     
     tim_f_block = zeros([bsz, numTiles], dtype);
@@ -217,13 +218,13 @@ for i = 1 : numel(blockInds)
         % nv_block = tim_block;
         nv_block = tim_f_block;
         if any(BorderSize > 0)
-            s = (blockSub ~= 1) .* BorderSize;
+            s = (batchSub ~= 1) .* BorderSize;
             try
-                nv_block = crop3d_mex(nv_block, [s + 1, s + blockSize]);
+                nv_block = crop3d_mex(nv_block, [s + 1, s + batchSize]);
             catch ME
                 disp(ME)
                 disp(ME.stack);
-                nv_block = nv_block(s(1) + 1 : s(1) + blockSize(1), s(2) + 1 : s(2) + blockSize(2), s(3) + 1 : s(3) + blockSize(3));            
+                nv_block = nv_block(s(1) + 1 : s(1) + batchSize(1), s(2) + 1 : s(2) + batchSize(2), s(3) + 1 : s(3) + batchSize(3));            
             end
         end
         nv_block = cast(nv_block, dtype);
@@ -344,13 +345,13 @@ for i = 1 : numel(blockInds)
     end
     
     if any(BorderSize > 0)
-        s = (blockSub ~= 1) .* BorderSize;
+        s = (batchSub ~= 1) .* BorderSize;
         try
-            nv_block = crop3d_mex(nv_block, [s + 1, s + blockSize]);
+            nv_block = crop3d_mex(nv_block, [s + 1, s + batchSize]);
         catch ME
             disp(ME)
             disp(ME.stack);
-            nv_block = nv_block(s(1) + 1 : s(1) + blockSize(1), s(2) + 1 : s(2) + blockSize(2), s(3) + 1 : s(3) + blockSize(3));            
+            nv_block = nv_block(s(1) + 1 : s(1) + batchSize(1), s(2) + 1 : s(2) + batchSize(2), s(3) + 1 : s(3) + batchSize(3));            
         end
     end
     
@@ -375,7 +376,7 @@ for i = 1 : numel(blockInds)
 end
 
 if all(done_flag)
-    fprintf('Processing of blocks %d - %d are done!\n', blockInds(1), blockInds(end));
+    fprintf('Processing of blocks %d - %d are done!\n', batchInds(1), batchInds(end));
     fclose(fopen(flagFullname, 'w'));
 end
 

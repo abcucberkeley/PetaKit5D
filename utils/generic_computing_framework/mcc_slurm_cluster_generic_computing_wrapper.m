@@ -140,14 +140,14 @@ nB = ceil(nF / batchSize);
 for b = 1 : nB
     inputFn = sprintf('%s/input_%d.txt', funcInputDir, b);
     
-    fid = fopen(inputFn, 'w');
-    
     s = (b - 1) * batchSize + 1;
     t = min(b * batchSize, nF);
     if all(is_done_flag(s : t))
         continue;
     end
 
+    fid = fopen(inputFn, 'w');
+    
     for f = s : t
         func_str = funcStrs{f};
         [func_name, var_str] = convert_function_string_to_mcc_string(func_str);
