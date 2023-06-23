@@ -22,6 +22,7 @@ function [xyz_shift, d_shift] = stitch_shift_assignment(zarrFullpaths, xcorrDir,
 % xruan (04/15/2023): combine xcorrs by the leading tile indices. 
 % xruan (05/01/2023): add support for large zarr xcorr. 
 
+
 fprintf('Compute cross-correlation based registration between overlap tiles...\n');
 t0 = tic();
 
@@ -106,7 +107,7 @@ mipDirStr = '';
 % poolSize = [];
 if largeZarr
     axis = [1, 1, 1];
-    BatchSize = [2000, 2000, 2000];
+    BatchSize = [1024, 1024, 1024];
     % poolSize = [5, 5, 5];
     if numel(poolSize) == 3
         mipDirStr = sprintf('MIP_Slabs_pooling_%d_%d_%d', poolSize(1), poolSize(2), poolSize(3));
@@ -171,29 +172,58 @@ end
 
 [ti, tj] = ind2sub(size(overlap_matrix), find(overlap_matrix));
 cuboid_mat = [xyz, xyz + (imSizes(:, [2, 1, 3]) - 1) .* [xf, yf, zf] * px];
-funcStrs = cell(nF, 1);
-for f = 1 : nF
-    inds_f = ti == f;
-    if ~any(inds_f)
-        continue;
-    end
-    ti_f = ti(inds_f);
-    tj_f = tj(inds_f);
-    pair_indices = [ti_f, tj_f];
-    
-    pinds_f = (ti_f - 1) * nF - ti_f .* (ti_f + 1) / 2 + tj_f;
-    cuboid_overlap_ij_mat_f = overlap_regions(pinds_f, :);
-    zarrFullpaths_j_str = sprintf('{''%s''}', strjoin(zarrFullpaths(tj_f), ''','''));
+% for large zarr xcorr, don't group xcorr calculation by tiles
+if largeZarr
+    inputFullpaths = zarrFullpaths(ti);
+    outputFullpaths = arrayfun(@(x) sprintf('%s/xcorr_tile_%d_%d.mat', xcorrDir, ti(x), tj(x)), 1 : numel(ti), 'unif', 0);
 
-    funcStrs{f} = sprintf(['cross_correlation_registration_wrapper(''%s'',%s,''%s'',', ...
-        '[%s],[%s],[%s],[%s],%0.20d,[%s],''Stitch2D'',%s,''downSample'',[%s],', ...
-        '''MaxOffset'',%s,''largeZarr'',%s,''mipDirStr'',''%s'',''poolSize'',%s)'], ...
-        zarrFullpaths{f}, zarrFullpaths_j_str, outputFullpaths{f}, strrep(mat2str(pair_indices), ' ', ','), ...
-        strrep(mat2str(cuboid_mat(f, :)), ' ', ','), strrep(mat2str(cuboid_mat(tj_f, :)), ' ', ','), ...
-        strrep(mat2str(cuboid_overlap_ij_mat_f), ' ', ','), px, sprintf('%.20d,%.20d,%.20d', xf, yf, zf), ...
-        string(stitch2D), strrep(num2str(xcorrDownsample, '%.20d,'), ' ', ''), ...
-        strrep(mat2str(MaxOffset), ' ', ','), string(largeZarr), mipDirStr, ...
-        strrep(mat2str(poolSize), ' ', ','));
+    funcStrs = cell(numel(ti), 1);
+    for f = 1 : numel(ti)
+        ti_f = ti(f);
+        tj_f = tj(f);
+        pair_indices = [ti_f, tj_f];
+        
+        pinds_f = (ti_f - 1) * nF - ti_f .* (ti_f + 1) / 2 + tj_f;
+        cuboid_overlap_ij_mat_f = overlap_regions(pinds_f, :);
+        zarrFullpaths_j_str = sprintf('{''%s''}', strjoin(zarrFullpaths(tj_f), ''','''));
+    
+        funcStrs{f} = sprintf(['cross_correlation_registration_wrapper(''%s'',%s,''%s'',', ...
+            '[%s],[%s],[%s],[%s],%0.20d,[%s],''Stitch2D'',%s,''downSample'',[%s],', ...
+            '''MaxOffset'',%s,''largeZarr'',%s,''mipDirStr'',''%s'',''poolSize'',%s,', ...
+            '''parseCluster'',%s,''mccMode'',%s,''ConfigFile'',''%s'')'], ...
+            zarrFullpaths{ti_f}, zarrFullpaths_j_str, outputFullpaths{f}, strrep(mat2str(pair_indices), ' ', ','), ...
+            strrep(mat2str(cuboid_mat(ti_f, :)), ' ', ','), strrep(mat2str(cuboid_mat(tj_f, :)), ' ', ','), ...
+            strrep(mat2str(cuboid_overlap_ij_mat_f), ' ', ','), px, sprintf('%.20d,%.20d,%.20d', xf, yf, zf), ...
+            string(stitch2D), strrep(num2str(xcorrDownsample, '%.20d,'), ' ', ''), strrep(mat2str(MaxOffset), ' ', ','), ...
+            string(largeZarr), mipDirStr, strrep(mat2str(poolSize), ' ', ','), string(parseCluster), ...
+            string(mccMode), ConfigFile);
+    end
+else
+    funcStrs = cell(nF, 1);
+    for f = 1 : nF
+        inds_f = ti == f;
+        if ~any(inds_f)
+            continue;
+        end
+        ti_f = ti(inds_f);
+        tj_f = tj(inds_f);
+        pair_indices = [ti_f, tj_f];
+        
+        pinds_f = (ti_f - 1) * nF - ti_f .* (ti_f + 1) / 2 + tj_f;
+        cuboid_overlap_ij_mat_f = overlap_regions(pinds_f, :);
+        zarrFullpaths_j_str = sprintf('{''%s''}', strjoin(zarrFullpaths(tj_f), ''','''));
+    
+        funcStrs{f} = sprintf(['cross_correlation_registration_wrapper(''%s'',%s,''%s'',', ...
+            '[%s],[%s],[%s],[%s],%0.20d,[%s],''Stitch2D'',%s,''downSample'',[%s],', ...
+            '''MaxOffset'',%s,''largeZarr'',%s,''mipDirStr'',''%s'',''poolSize'',%s,', ...
+            '''parseCluster'',%s,''mccMode'',%s,''ConfigFile'',''%s'')'], ...
+            zarrFullpaths{f}, zarrFullpaths_j_str, outputFullpaths{f}, strrep(mat2str(pair_indices), ' ', ','), ...
+            strrep(mat2str(cuboid_mat(f, :)), ' ', ','), strrep(mat2str(cuboid_mat(tj_f, :)), ' ', ','), ...
+            strrep(mat2str(cuboid_overlap_ij_mat_f), ' ', ','), px, sprintf('%.20d,%.20d,%.20d', xf, yf, zf), ...
+            string(stitch2D), strrep(num2str(xcorrDownsample, '%.20d,'), ' ', ''), strrep(mat2str(MaxOffset), ' ', ','), ...
+            string(largeZarr), mipDirStr, strrep(mat2str(poolSize), ' ', ','), string(parseCluster), ...
+            string(mccMode), ConfigFile);
+    end
 end
 
 include_inds = ~cellfun(@isempty, funcStrs);

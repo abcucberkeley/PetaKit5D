@@ -25,7 +25,7 @@ elseif isunix
         mkdir('linux');
     end
 %     mcc -v -R -nodisplay -R -singleCompThread -d linux -m mccMaster.m
-    mcc -v -R -nodisplay -d linux -m mccMaster.m
+    mcc -v -R -nodisplay -R -nojvm -d linux -m mccMaster.m
 
     cd('linux');
     system('sed -i ''21i\  LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:${exe_dir}/../../microscopeDataProcessing/io/c-zarr/parallelWriteZarr/linux;'' run_mccMaster.sh');

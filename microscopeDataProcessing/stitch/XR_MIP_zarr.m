@@ -84,6 +84,7 @@ catch ME
 end
 imSize = bim.Size;
 dtype = bim.ClassUnderlying;
+byteNum = dataTypeToByteNumber(dtype);
 
 % pool size for other axes
 poolSize_1 = [1, 1, 1];
@@ -95,6 +96,11 @@ else
         poolSize = poolSize(1 : 3);        
     end
     inBlockSize = lcm(poolSize, poolSize_1);
+    inBlockSize_1 = lcm(inBlockSize, bim.BlockSize);
+    % limit the block size to 10 GB
+    if prod(inBlockSize_1) * byteNum / 2^30 < 10
+        inBlockSize = inBlockSize_1;
+    end
 end
 
 % MIPs for each block
@@ -104,7 +110,6 @@ numBatch = prod(bSubSz);
 
 % in case of out size too large for very large data that causes oom for the main 
 % job, increase batch size if necessary.
-byteNum = dataTypeToByteNumber(dtype);
 if ~mipSlab
     outVolSizes = zeros(3, 1);
     for i = 1 : 3

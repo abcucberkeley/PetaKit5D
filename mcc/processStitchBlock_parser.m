@@ -12,7 +12,7 @@ ip.addOptional('stitchBlockInfo', [], @(x) isnumeric(x) || ischar(x));
 ip.addOptional('tileFns', [], @(x) iscell(x) || ischar(x));
 ip.addParameter('Overwrite', false, @(x) islogical(x) || ischar(x));
 ip.addParameter('imSize', [], @(x) isnumeric(x) || ischar(x));
-ip.addParameter('blockSize', [], @(x) isnumeric(x) || ischar(x));
+ip.addParameter('batchSize', [], @(x) isnumeric(x) || ischar(x));
 ip.addParameter('dtype', [], @(x) ischar(x));
 ip.addParameter('BlendMethod', 'mean', @ischar);
 ip.addParameter('BorderSize', [], @(x) isnumeric(x) || ischar(x));
@@ -27,7 +27,7 @@ ip.parse(blockInds, BlockInfoFullname, PerBlockInfoFullname, flagFullname, stitc
 pr = ip.Results;
 Overwrite = pr.Overwrite;
 imSize = pr.imSize;
-blockSize = pr.blockSize;
+batchSize = pr.batchSize;
 dtype = pr.dtype;
 BlendMethod = pr.BlendMethod;
 BorderSize = pr.BorderSize;
@@ -52,8 +52,8 @@ end
 if ischar(imSize)
     imSize = str2num(imSize);
 end
-if ischar(blockSize)
-    blockSize = str2num(blockSize);
+if ischar(batchSize)
+    batchSize = str2num(batchSize);
 end
 if ischar(BorderSize)
     BorderSize = str2num(BorderSize);
@@ -76,7 +76,7 @@ end
 
 processStitchBlock(blockInds, BlockInfoFullname, PerBlockInfoFullname, ...
     flagFullname, stitchFullname, stitchBlockInfo, tileFns, Overwrite=Overwrite, ...
-    imSize=imSize, blockSize=blockSize, dtype=dtype, BlendMethod=BlendMethod, ...
+    imSize=imSize, batchSize=batchSize, dtype=dtype, BlendMethod=BlendMethod, ...
     BorderSize=BorderSize, BlurSigma=BlurSigma,imdistFullpaths=imdistFullpaths, ...
     imdistFileIdx=imdistFileIdx, poolSize=poolSize, weightDegree=weightDegree);
 

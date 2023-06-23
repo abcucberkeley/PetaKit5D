@@ -1,7 +1,9 @@
 function [] = XR_resampleSingleZarr(zarrFullpath, dsFullpath, dsFactor, varargin)
 % 
 % Author: Xiongtao Ruan (12/14/2020)
+
 % xruan (11/09/2021): enable arbitray blockSize
+% xruan ( 06/22/2023): add support for bbox for input
 
 
 ip = inputParser;
@@ -9,6 +11,7 @@ ip.CaseSensitive = false;
 ip.addRequired('zarrFullpath'); 
 ip.addRequired('dsFullpath'); 
 ip.addRequired('dsFactors'); 
+ip.addParameter('bbox', [], @isnumeric); % bbox for input
 ip.addParameter('blockSize', [256, 256, 256], @isnumeric); % blcoksize
 ip.addParameter('batchSize', [512, 512, 512], @isnumeric); % size to process in one batch 
 ip.addParameter('zarrSubSize', [20, 20, 20], @isnumeric);
@@ -23,6 +26,7 @@ ip.addParameter('ConfigFile', '', @ischar);
 ip.parse(zarrFullpath, dsFullpath, dsFactor, varargin{:});
 
 pr = ip.Results;
+bbox = pr.bbox;
 blockSize = pr.blockSize;
 batchSize = pr.batchSize;
 zarrSubSize = pr.zarrSubSize;
@@ -70,7 +74,12 @@ end
 dtype = bim.ClassUnderlying;
 sz = bim.Size;
 
-ds_size = round(sz ./ [dsFactor(1), dsFactor(2), dsFactor(3)]);
+inSize = sz;
+if ~isempty(bbox)
+    inSize = bbox(4 : 6) - bbox(1 : 3) + 1;
+end
+
+ds_size = round(inSize ./ [dsFactor(1), dsFactor(2), dsFactor(3)]);
 
 % framework
 blockSize = min(ds_size, blockSize);
@@ -112,11 +121,12 @@ for i = 1 : numTasks
     zarrFlagFullpath = sprintf('%s/blocks_%d_%d.mat', zarrFlagPath, batchInds(1), batchInds(end));
     outputFullpaths{i} = zarrFlagFullpath;
     
-    funcStrs{i} = sprintf(['resampleZarrBlock([%s],''%s'',''%s'',''%s'',[%s],''Interp'',''%s'',', ...
-        '''BorderSize'',[%s],''batchSize'',[%s],''blockSize'',%s)'], strrep(num2str(batchInds, '%d,'), ' ', ''), ...
-        zarrFullpath, dsTmppath, zarrFlagFullpath, strrep(num2str(dsFactor(:)', '%d,'), ' ', ''), Interp, ...
-        strrep(num2str(BorderSize(:)', '%d,'), ' ', ''), strrep(num2str(batchSize(:)', '%d,'), ' ', ''), ...
-        strrep(mat2str(blockSize(:)'), ' ', ','));
+    funcStrs{i} = sprintf(['resampleZarrBlock([%s],''%s'',''%s'',''%s'',[%s],', ...
+        '''Interp'',''%s'',''bbox'',[%s],''BorderSize'',[%s],''batchSize'',[%s],', ...
+        '''blockSize'',%s)'], strrep(num2str(batchInds, '%d,'), ' ', ''), zarrFullpath, ...
+        dsTmppath, zarrFlagFullpath, strrep(num2str(dsFactor(:)', '%d,'), ' ', ''), Interp, ...
+        strrep(num2str(bbox(:)', '%d,'), ' ', ''), strrep(num2str(BorderSize(:)', '%d,'), ' ', ''), ...
+        strrep(num2str(batchSize(:)', '%d,'), ' ', ''), strrep(mat2str(blockSize(:)'), ' ', ','));
 end
 
 inputFullpaths = repmat({zarrFullpath}, numTasks, 1);

@@ -54,6 +54,7 @@ ip.addParameter('ProcessedDirstr', '', @ischar); % path str for processed data
 ip.addParameter('Overwrite', false, @islogical);
 ip.addParameter('SkewAngle', 32.45, @isscalar);
 ip.addParameter('axisOrder', 'x,y,z', @ischar);
+ip.addParameter('dataOrder', 'y,x,z', @ischar);
 ip.addParameter('flippedTile', [], @(x) isempty(x) || all(islogical(x) | isnumeric(x)));
 ip.addParameter('dz', 0.5, @isscalar);
 ip.addParameter('xyPixelSize', 0.108, @isscalar);
@@ -130,6 +131,7 @@ stitchInfoFullpath = pr.stitchInfoFullpath;
 SkewAngle = pr.SkewAngle;
 flippedTile = pr.flippedTile;
 axisOrder = pr.axisOrder;
+dataOrder = pr.dataOrder;
 dz = pr.dz;
 px = pr.xyPixelSize;
 ObjectiveScan = pr.ObjectiveScan;
@@ -335,6 +337,17 @@ if ~DSR
     zf = zAniso * zf;
 end
 
+% map xyz ratio with right data order
+switch strrep(dataOrder, ',', '')
+    case 'yzx'
+    case 'zyx'
+        xyz_f = [xf, yf, zf];
+        xf = xyz_f(1);
+        yf = xyz_f(3);
+        zf = xyz_f(2);
+    case 'xyz'
+end
+
 % create a text file to indicate pixel size
 pixelInfoFname = sprintf('px%0.5g_py%0.5g_pz%0.5g', px*xf, px*yf, px*zf);
 pixelInfoFullpath = sprintf('%s/%s/%s', dataPath, ResultDir, pixelInfoFname);
@@ -524,7 +537,7 @@ elseif ~isPrimaryCh
         error('The stitch information filename %s does not exist!', stitchInfoFullpaths);
     end
     
-    a = load(stitchInfoFullpath, 'overlap_matrix', 'd_shift', 'pImSz', 'imdistFullpaths', 'imdistFileIdx');
+    a = load(stitchInfoFullpath, 'overlap_matrix', 'd_shift', 'pImSz', 'pTileSizes', 'imdistFullpaths', 'imdistFileIdx');
     if ~all(a.overlap_matrix == overlap_matrix, 'all')
         warning('The overlap matrix of current overlap matrix is different from the one in the stitch info, use the common ones!')
         overlap_matrix = overlap_matrix & a.overlap_matrix;
@@ -533,6 +546,7 @@ elseif ~isPrimaryCh
     xyz_shift = xyz + d_shift .* [xf, yf, zf] .* px;
 
     pImSz = a.pImSz;
+    pTileSizes = a.pTileSizes;
     imdistFullpaths = a.imdistFullpaths;
     imdistFileIdx = a.imdistFileIdx;
 end
@@ -743,26 +757,7 @@ if strcmpi(BlendMethod, 'feather')
             'compressor', compressor, 'largeZarr', largeZarr, 'poolSize', poolSize, ...
             'parseCluster', parseCluster, 'mccMode', mccMode, 'ConfigFile', ConfigFile);
     else
-        usePrimaryDist = true;
-        if singleDistMap
-            for i = 1 : numel(uniq_locIds)
-                imSize_f = getImageSize(imdistFullpaths{uniq_inds(i)});                
-                usePrimaryDist = usePrimaryDist && all(imSize_f == imSizes(uniq_inds(i), :), 'all');
-                if ~usePrimaryDist
-                    break;
-                end
-            end
-        else
-            if ~largeZarr
-                for f = 1 : size(imSizes, 1)
-                    imSize_f = getImageSize(imdistFullpaths{f});                
-                    if any(imSize_f ~= imSizes(f, :))
-                        usePrimaryDist = false;
-                        break;
-                    end
-                end
-            end
-        end
+        usePrimaryDist = all(imSizes == pTileSizes, 'all');
         if ~usePrimaryDist
             imdistPath = [dataPath, filesep, ResultDir, '/imdist/'];
             mkdir(imdistPath);
@@ -772,9 +767,6 @@ if strcmpi(BlendMethod, 'feather')
                 'largeZarr', largeZarr, 'poolSize', poolSize, 'parseCluster', parseCluster, ...
                 'mccMode', mccMode, 'ConfigFile', ConfigFile);
         end
-    end
-    if singleDistMap
-        % imdistFullpaths = repmat(imdistFullpaths, nF, 1);
     end
 else
     imdistFullpaths = {};
@@ -786,8 +778,9 @@ if isPrimaryCh
     stitch_info_tmp_fullname = sprintf('%s/%s/%s/%s_%s.mat', dataPath, ResultDir, stitchInfoDir, nv_fsname, uuid);
     stitchInfoFullpath =sprintf('%s/%s/%s/%s.mat', dataPath, ResultDir, stitchInfoDir, nv_fsname);
     pImSz = [nys, nxs, nzs];
+    pTileSizes = imSizes;
     save('-v7.3', stitch_info_tmp_fullname, 'ip', 'flippedTile', 'overlap_regions', ...
-        'overlap_matrix', 'd_shift', 'shiftMethod', 'pImSz', 'xf', 'yf', 'zf', ...
+        'overlap_matrix', 'd_shift', 'shiftMethod', 'pImSz', 'pTileSizes', 'xf', 'yf', 'zf', ...
         'px', 'PerBlockInfoFullpaths', 'imdistFullpaths', 'imdistFileIdx', 'xyz_orig');
     movefile(stitch_info_tmp_fullname, stitchInfoFullpath);
 end

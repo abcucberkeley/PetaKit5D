@@ -35,6 +35,7 @@ zarrFile = pr.zarrFile;
 largeZarr = pr.largeZarr;
 saveZarr = pr.saveZarr;
 BlockSize = pr.BlockSize;
+uuid = pr.uuid;
 mccMode = pr.mccMode;
 ConfigFile = pr.ConfigFile;
 
@@ -92,7 +93,9 @@ if pad
 end
 
 % save data
-uuid = get_uuid();
+if isempty(uuid)
+    uuid = get_uuid();
+end
 if saveZarr
     tmpPath = sprintf('%s_%s.zarr', saveFullpath(1 : end - 5), uuid);
     writezarr(im, tmpPath, 'BlockSize', BlockSize);    

@@ -13,6 +13,7 @@ ip.addParameter('ProcessedDirstr', '', @ischar); % path str for processed data
 ip.addParameter('Overwrite', false, @(x) islogical(x) || ischar(x));
 ip.addParameter('SkewAngle', 32.45, @(x) isscalar(x) || ischar(x));
 ip.addParameter('axisOrder', 'x,y,z', @ischar);
+ip.addParameter('dataOrder', 'y,x,z', @ischar); % data axis order, in case data in zyx order
 ip.addParameter('flippedTile', [], @(x) all(islogical(x) | isnumeric(x)) || ischar(x));
 ip.addParameter('dz', 0.5, @(x) isscalar(x) || ischar(x));
 ip.addParameter('xyPixelSize', 0.108, @(x) isscalar(x) || ischar(x));
@@ -55,6 +56,7 @@ ip.addParameter('singleDistMap', ~false, @(x) islogical(x) || ischar(x)); % comp
 ip.addParameter('zarrFile', false, @(x) islogical(x) || ischar(x));
 ip.addParameter('largeZarr', false, @(x) islogical(x) || ischar(x)); 
 ip.addParameter('poolSize', [], @(x) isnumeric(x) || ischar(x)); % max pooling size for large zarr MIPs
+ip.addParameter('batchSize', [500, 500, 500], @(x) isnumeric(x) || ischar(x)); 
 ip.addParameter('blockSize', [500, 500, 500], @(x) isnumeric(x) || ischar(x)); 
 ip.addParameter('zarrSubSize', [], @(x) isnumeric(x) || ischar(x));
 ip.addParameter('saveMultires', false, @(x) islogical(x) || ischar(x)); % save as multi resolution dataset
@@ -88,6 +90,7 @@ stitchInfoFullpath = pr.stitchInfoFullpath;
 SkewAngle = pr.SkewAngle;
 flippedTile = pr.flippedTile;
 axisOrder = pr.axisOrder;
+dataOrder = pr.dataOrder;
 dz = pr.dz;
 xyPixelSize = pr.xyPixelSize;
 ObjectiveScan = pr.ObjectiveScan;
@@ -140,6 +143,7 @@ zarrFile = pr.zarrFile;
 largeZarr = pr.largeZarr;
 poolSize = pr.poolSize;
 blockSize = pr.blockSize;
+batchSize = pr.batchSize;
 zarrSubSize = pr.zarrSubSize;
 BorderSize = pr.BorderSize;
 BlurSigma = pr.BlurSigma;
@@ -153,7 +157,6 @@ uuid = pr.uuid;
 mccMode = pr.mccMode;
 ConfigFile = pr.ConfigFile;
 debug = pr.debug;
-
 
 if ischar(tileFullpaths) && strcmp(tileFullpaths(1), '{')
     tileFullpaths = eval(tileFullpaths);
@@ -281,6 +284,9 @@ end
 if ischar(blockSize)
     blockSize = str2num(blockSize);
 end
+if ischar(batchSize)
+    batchSize = str2num(batchSize);
+end
 if ischar(zarrSubSize)
     zarrSubSize = str2num(zarrSubSize);
 end
@@ -339,8 +345,8 @@ end
 XR_stitching_frame_zarr_dev_v1(tileFullpaths, coordinates, ResultPath=ResultPath,...
     tileInfoFullpath=tileInfoFullpath, stitchInfoDir=stitchInfoDir, stitchInfoFullpath=stitchInfoFullpath,...
     ProcessedDirstr=ProcessedDirstr, Overwrite=Overwrite, SkewAngle=SkewAngle, ...
-    axisOrder=axisOrder, flippedTile=flippedTile, dz=dz, xyPixelSize=xyPixelSize, ...
-    ObjectiveScan=ObjectiveScan, IOScan=IOScan, sCMOSCameraFlip=sCMOSCameraFlip, ...
+    axisOrder=axisOrder, dataOrder=dataOrder, flippedTile=flippedTile, dz=dz, ...
+    xyPixelSize=xyPixelSize, ObjectiveScan=ObjectiveScan, IOScan=IOScan, sCMOSCameraFlip=sCMOSCameraFlip, ...
     Reverse=Reverse, Crop=Crop, InputBbox=InputBbox, tileOutBbox=tileOutBbox, ...
     TileOffset=TileOffset, df=df, Save16bit=Save16bit, EdgeArtifacts=EdgeArtifacts, ...
     Decon=Decon, DS=DS, DSR=DSR, resampleType=resampleType, resample=resample, ...
@@ -351,9 +357,9 @@ XR_stitching_frame_zarr_dev_v1(tileFullpaths, coordinates, ResultPath=ResultPath
     xcorrThresh=xcorrThresh, xyMaxOffset=xyMaxOffset, zMaxOffset=zMaxOffset, ...
     shiftMethod=shiftMethod, axisWeight=axisWeight, groupFile=groupFile, singleDistMap=singleDistMap, ...
     zarrFile=zarrFile, largeZarr=largeZarr, poolSize=poolSize, blockSize=blockSize, ...
-    zarrSubSize=zarrSubSize, saveMultires=saveMultires, resLevel=resLevel, ...
-    BorderSize=BorderSize, BlurSigma=BlurSigma, SaveMIP=SaveMIP, tileIdx=tileIdx, ...
-    processFunPath=processFunPath, stitchMIP=stitchMIP, stitch2D=stitch2D, ...
+    batchSize=batchSize, zarrSubSize=zarrSubSize, saveMultires=saveMultires, ...
+    resLevel=resLevel, BorderSize=BorderSize, BlurSigma=BlurSigma, SaveMIP=SaveMIP, ...
+    tileIdx=tileIdx, processFunPath=processFunPath, stitchMIP=stitchMIP, stitch2D=stitch2D, ...
     bigStitchData=bigStitchData, parseCluster=parseCluster, masterCompute=masterCompute, ...
     jobLogDir=jobLogDir, cpusPerTask=cpusPerTask, uuid=uuid, maxTrialNum=maxTrialNum, ...
     unitWaitTime=unitWaitTime, mccMode=mccMode, ConfigFile=ConfigFile, debug=debug);

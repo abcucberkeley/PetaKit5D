@@ -54,6 +54,7 @@ jobLogDir = pr.jobLogDir;
 parseCluster = pr.parseCluster;
 masterCompute = pr.masterCompute;
 cpusPerTask = pr.cpusPerTask;
+uuid = pr.uuid;
 mccMode = pr.mccMode;
 ConfigFile = pr.ConfigFile;
 
@@ -156,10 +157,10 @@ for f = 1 : nF
     end
     
     func_strs{f} = sprintf(['XR_crop_frame(''%s'',''%s'',[%s],''pad'',%s,''zarrFile'',%s,', ...
-        '''largeZarr'',%s,''saveZarr'',%s,''BlockSize'',%s,''mccMode'',%s,''ConfigFile'',''%s'')'], ...
-        frameFullpath, cropFullpath, strrep(num2str(bbox_f, '%.10f,'), ' ', ''), ...
+        '''largeZarr'',%s,''saveZarr'',%s,''BlockSize'',%s,''uuid'',''%s'',''mccMode'',%s,', ...
+        '''ConfigFile'',''%s'')'], frameFullpath, cropFullpath, strrep(num2str(bbox_f, '%.10f,'), ' ', ''), ...
         string(pad), string(zarrFile), string(largeZarr), string(saveZarr), ...
-        strrep(mat2str(BlockSize), ' ', ','), string(mccMode), ConfigFile);
+        strrep(mat2str(BlockSize), ' ', ','), uuid, string(mccMode), ConfigFile);
 end
 
 memAllocate = prod(sz) * 4 / 1024^3 * 8;

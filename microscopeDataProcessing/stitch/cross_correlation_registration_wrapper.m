@@ -20,7 +20,9 @@ ip.addParameter('largeZarr', false, @islogical);
 ip.addParameter('mipDirStr', '', @ischar);
 ip.addParameter('poolSize', [], @isnumeric);
 ip.addParameter('dimNumThrsh', 10000, @isnumeric);
-% ip.addParameter('xyz_factor', 0.5, @isnumeric);
+ip.addParameter('parseCluster', true, @islogical);
+ip.addParameter('mccMode', false, @islogical);
+ip.addParameter('ConfigFile', '', @ischar);
 
 ip.parse(imgFullpath_1, imgFullpath_2, xcorrFullpath, pair_indices, cuboid_1, cuboid_2, cuboid_overlap_12, px, xyz_factors, varargin{:});
 
@@ -32,6 +34,9 @@ largeZarr = pr.largeZarr;
 mipDirStr = pr.mipDirStr;
 poolSize = pr.poolSize;
 dimNumThrsh = pr.dimNumThrsh;
+parseCluster = pr.parseCluster;
+mccMode = pr.mccMode;
+ConfigFile = pr.ConfigFile;
 
 if exist(xcorrFullpath, 'file')
     fprintf('The xcorr result %s already exists!\n', xcorrFullpath);
@@ -61,10 +66,16 @@ for i = 1 : nF
             imgFullpath_2i, '', cuboid_1i, cuboid_2i, cuboid_overlap_12i, px, xyz_factors, ...
             downSample=downSample, MaxOffset=MaxOffset, dimNumThrsh=dimNumThrsh);
     elseif largeZarr
+        if nF == 1
+            xcorrFullpath_i = sprintf('%s_mip_slabs.mat', xcorrFullpath(1 : end - 4));            
+        else
+            xcorrFullpath_i = sprintf('%s_%d_mip_slabs.mat', xcorrFullpath(1 : end - 4), pair_indices(i, 2));
+        end
         [relative_shift, max_xcorr, relative_shift_mat_i, max_xcorr_mat_i] = cross_correlation_registration_3d_mip_slabs( ...
-            imgFullpath_1, imgFullpath_2i, '', cuboid_1i, cuboid_2i, cuboid_overlap_12i, ...
-            px, xyz_factors, downSample=downSample, MaxOffset=MaxOffset, mipDirStr=mipDirStr, ...
-            poolSize=poolSize, dimNumThrsh=dimNumThrsh);
+            imgFullpath_1, imgFullpath_2i, xcorrFullpath_i, cuboid_1i, cuboid_2i, ...
+            cuboid_overlap_12i, px, xyz_factors, downSample=downSample, MaxOffset=MaxOffset, ...
+            mipDirStr=mipDirStr, poolSize=poolSize, dimNumThrsh=dimNumThrsh, ...
+            parseCluster=parseCluster, mccMode=mccMode, ConfigFile=ConfigFile);
         relative_shift_mat_cell{i} = relative_shift_mat_i;
         max_xcorr_mat_cell{i} = max_xcorr_mat_i;
     else

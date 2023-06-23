@@ -147,11 +147,14 @@ for b = 1 : nB
     end
 
     fid = fopen(inputFn, 'w');
-    
+
     for f = s : t
         func_str = funcStrs{f};
         [func_name, var_str] = convert_function_string_to_mcc_string(func_str);
-        tline = sprintf('%s %s %s %s \n', MCCMasterStr, MCRParam, func_name, var_str);
+        % tline = sprintf('%s %s %s %s \n', MCCMasterStr, MCRParam, func_name, var_str);
+        % check output file in bash to avoid waste of time in loading mcc program if the output file exists. 
+        tline = sprintf('if [ ! -f %s ]; then %s %s %s %s ; else echo output %s already exists; fi\n', ...
+            outputFullpaths{f}, MCCMasterStr, MCRParam, func_name, var_str, outputFullpaths{f});
         fprintf(fid, tline);
     end
     fclose(fid);
@@ -412,9 +415,10 @@ while (~parseCluster && ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
         if ~parseCluster || (parseCluster && masterCompute && b == lastP)
             if parseCluster && loop_counter > 0
                 % for nonpending killed jobs, wait a bit longer in case of just finished job.
+                % change the wait time to the maximum of 30s and half of computing time
                 if ~pending_flag
                     pause(1);
-                    if timestamp - job_timestamp_mat(f) < 30
+                    if timestamp - job_timestamp_mat(f) < min(max(30, t1 * 0.5), 180)
                         continue;
                     end
                     if all(is_done_flag(fs))

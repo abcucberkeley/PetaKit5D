@@ -379,9 +379,10 @@ while (~parseCluster && ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
         if ~parseCluster || (parseCluster && masterCompute && b == lastP)
             if parseCluster && loop_counter > 0
                 % for nonpending killed jobs, wait a bit longer in case of just finished job.
+                % change the wait time to the maximum of 30s and half of computing time
                 if ~pending_flag
                     pause(1);
-                    if timestamp - job_timestamp_mat(f) < 30
+                    if timestamp - job_timestamp_mat(f) < min(max(30, t1 * 0.5), 180)
                         continue;
                     end
                     if exist(outputFullpath, 'file') || exist(outputFullpath, 'dir')

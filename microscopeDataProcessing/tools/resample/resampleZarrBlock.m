@@ -14,20 +14,23 @@ ip.addRequired('dsFullpath', @(x) ischar(x));
 ip.addRequired('flagFullname', @(x) ischar(x));
 ip.addRequired('dsFactor', @isnumeric);
 % ip.addParameter('ResultDir', 'matlab_stitch', @ischar);
+ip.addParameter('bbox', [], @isnumeric);
 ip.addParameter('BatchSize', [], @isnumeric);
-ip.addParameter('Overwrite', false, @islogical);
-ip.addParameter('Interp', 'linear', @ischar);
 ip.addParameter('BlockSize', [], @isnumeric);
 ip.addParameter('BorderSize', [], @isnumeric);
+ip.addParameter('Overwrite', false, @islogical);
+ip.addParameter('Interp', 'linear', @ischar);
 % ip.addParameter('imdistPath', '', @ischar); % blurred sigma for blurred blend
 
 ip.parse(batchInds, zarrFullpath, dsFullpath, flagFullname, dsFactor, varargin{:});
 
-Overwrite = ip.Results.Overwrite;
-BatchSize = ip.Results.BatchSize;
-Interp = ip.Results.Interp;
-BlockSize = ip.Results.BlockSize;
-BorderSize = ip.Results.BorderSize;
+pr = ip.Results;
+Overwrite = pr.Overwrite;
+BatchSize = pr.BatchSize;
+Interp = pr.Interp;
+bbox = pr.bbox;
+BlockSize = pr.BlockSize;
+BorderSize = pr.BorderSize;
 
 if isempty(BorderSize) 
     BorderSize = [0, 0, 0];
@@ -57,7 +60,11 @@ if ~exist(dsFullpath, 'dir')
     error('The output zarr file %s doesnot exist!', dsFullpath);
 end
 
-iSz = getImageSize(zarrFullpath);
+sz = getImageSize(zarrFullpath);
+iSz = sz;
+if ~isempty(bbox)
+    iSz = bbox(4 : 6) - bbox(1 : 3) + 1;
+end
 oSz = getImageSize(dsFullpath);
 oBlockSize = BlockSize;
 if isempty(BatchSize)
@@ -75,20 +82,25 @@ for i = 1 : numel(batchInds)
     [suby, subx, subz] = ind2sub(baSubSz, bi);
     batchSub = [suby, subx, subz];
     
-    % get input coordinates 
+    % get input coordinates
     ibStart_orig = round((batchSub - 1) .* BatchSize .* dsFactor) + 1;
-    ibEnd_orig = min(round(batchSub .* BatchSize .* dsFactor), iSz);
-    
+    ibEnd_orig = min(round(batchSub .* BatchSize .* dsFactor), sz);
+    obStart = round((ibStart_orig - 1) ./ dsFactor) + 1;
+    obStart = round((obStart - 1) ./ BatchSize) .* BatchSize + 1;    
+
+    if ~isempty(bbox)
+        ibStart_orig = ibStart_orig + bbox(1 : 3) - 1;
+        ibEnd_orig = ibEnd_orig + bbox(1 : 3) - 1;
+    end
+
     ibStart = max(ibStart_orig - BorderSize, 1);
-    ibEnd = min(ibEnd_orig + BorderSize, iSz);
+    ibEnd = min(ibEnd_orig + BorderSize, sz);
     
     % load the region in input 
     % in_batch = bim.Adapter.getIORegion(ibStart, ibEnd);
     in_batch = readzarr(zarrFullpath, 'bbox', [ibStart, ibEnd]);
     
     % find the coresponding coordinates in the output
-    obStart = round((ibStart_orig - 1) ./ dsFactor) + 1;
-    obStart = round((obStart - 1) ./ BatchSize) .* BatchSize + 1;    
     obEnd = min(obStart + BatchSize - 1, oSz);
     oBatchSize = obEnd - obStart + 1;
     

@@ -54,10 +54,17 @@ if any(partialvol)
 end
 [~, fsn] = fileparts(fn);
 
+useMapFname = false;
+if  any(ismember(tab.Properties.VariableNames, 'mappedFilename'))
+    mapFsn = tab.mappedFilename;
+    useMapFname = true;
+    [~, fsn] = fileparts(mapFsn);
+end
+
 specifyCam = true;
-if all(~cellfun(@isempty, regexp(fn, '_Cam\w_ch', 'match')))
+if all(~cellfun(@isempty, regexp(fsn, '_Cam\w_ch', 'match')))
     expression = '(?<prefix>\w*)Scan_Iter_(?<Iter>\d+)(?<subIter>_?(\d+_)*\d+?)_Cam(?<Cam>\w+)_ch(?<ch>\d+)_CAM\d_stack(?<stack>\d+)_(?<laser>\d+)nm_(?<abstime>\d+)msec_(?<fpgatime>\d+)msecAbs_(?<x>-?\d+)x_(?<y>-?\d+)y_(?<z>-?\d+)z_(?<t>\d+)t(?<suffix>_?\w*)';
-elseif all(~cellfun(@isempty, regexp(fn, '_ch[0-9]_', 'match')))
+elseif all(~cellfun(@isempty, regexp(fsn, '_ch[0-9]_', 'match')))
     expression = '(?<prefix>\w*)Scan_Iter_(?<Iter>\d+)(?<subIter>_?(\d+_)*\d+?)_ch(?<ch>\d+)_CAM\d_stack(?<stack>\d+)_(?<laser>\d+)nm_(?<abstime>\d+)msec_(?<fpgatime>\d+)msecAbs_(?<x>-?\d+)x_(?<y>-?\d+)y_(?<z>-?\d+)z_(?<t>\d+)t(?<suffix>_?\w*)';
     specifyCam = false;
 end
@@ -132,12 +139,25 @@ if isempty(dir_info)
 end
 
 % filter filenames by channel patterns
-include_flag = false(numel(imageFnames), 1);
-imageFullnames = cellfun(@(x) [dataPath, '/', x], imageFnames, 'unif', 0);
-for c = 1 : numel(ChannelPatterns)
-    include_flag = include_flag | contains(imageFullnames, ChannelPatterns{c}) | contains(imageFullnames, regexpPattern(ChannelPatterns{c}));
+if useMapFname
+    include_flag = false(numel(fsn), 1);    
+    imageFullnames = cellfun(@(x) sprintf('%s/%s%s', dataPath, x, ext), fsn, 'unif', 0);    
+    for c = 1 : numel(ChannelPatterns)
+        include_flag = include_flag | contains(imageFullnames, ChannelPatterns{c}) ...
+            | contains(imageFullnames, regexpPattern(ChannelPatterns{c}));
+    end
+    if ~all(include_flag)
+        tab = tab(include_flag, :);
+    end
+else
+    include_flag = false(numel(imageFnames), 1);
+    imageFullnames = cellfun(@(x) [dataPath, '/', x], imageFnames, 'unif', 0);
+    for c = 1 : numel(ChannelPatterns)
+        include_flag = include_flag | contains(imageFullnames, ChannelPatterns{c}) ...
+            | contains(imageFullnames, regexpPattern(ChannelPatterns{c}));
+    end
+    imageFnames = imageFnames(include_flag);    
 end
-imageFnames = imageFnames(include_flag);
 
 [~, tFsnames] = fileparts(tab.Filename);
 image_file_exist_flag = true(numel(tFsnames), 1);
@@ -180,7 +200,7 @@ if (strcmpi(xcorrMode, 'primary') || strcmpi(xcorrMode, 'primaryFirst'))
         end
         pCam = primaryCh(4);
         pCh = str2double(primaryCh(end));
-        if ~any(contains(fn, ['_', primaryCh, '_'], 'IgnoreCase', true))
+        if ~any(contains(fsn, ['_', primaryCh, '_'], 'IgnoreCase', true))
             error('The given primary channel %s does not exist!', primaryCh);
         end
     else
@@ -193,7 +213,7 @@ if (strcmpi(xcorrMode, 'primary') || strcmpi(xcorrMode, 'primaryFirst'))
                 else
                     primaryCh = sprintf('ch%d', Ch(c));
                 end
-                if any(contains(fn, ['_', primaryCh, '_'], 'IgnoreCase', true))
+                if any(contains(fsn, ['_', primaryCh, '_'], 'IgnoreCase', true))
                     pCam = Cam(ncam);
                     pCh =  Ch(c);
                     break;
