@@ -73,7 +73,7 @@ if ~isempty(PerBlockInfoFullname)
             stitchBlockInfo = jsondecode(str);
     end
 end
-if isstruct(stitchBlockInfo) && numel(batchInds) > 1
+if isstruct(stitchBlockInfo)
     stitchBlockInfo = arrayfun(@(x) stitchBlockInfo(x, :), 1 : size(stitchBlockInfo, 1), 'unif', 0);
 end
 

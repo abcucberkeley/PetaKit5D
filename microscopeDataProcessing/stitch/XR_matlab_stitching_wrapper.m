@@ -350,10 +350,18 @@ end
     
 if ~bigStitchData && ~onlineStitch && ~any(stitchMIP) && ~Streaming && size(tab, 1) > 20
     tile_fnames = tab.Filename;
-    if multiLoc
-        tile_fullpath_1 =  [dataPath{tab.did(1)}, '/', tile_fnames{1}];
+    if useProcessedData
+        if multiLoc
+            tile_fullpath_1 =  [dataPath{tab.did(1)}, '/', ProcessedDirStr, '/', tile_fnames{1}];
+        else
+            tile_fullpath_1 =  [dataPath, '/', ProcessedDirStr, '/', tile_fnames{1}];
+        end
     else
-        tile_fullpath_1 =  [dataPath, '/', tile_fnames{1}];
+        if multiLoc
+            tile_fullpath_1 =  [dataPath{tab.did(1)}, '/', tile_fnames{1}];
+        else
+            tile_fullpath_1 =  [dataPath, '/', tile_fnames{1}];
+        end
     end
     sz = getImageSize(tile_fullpath_1);
     if prod(sz) * 4 * numel(tile_fnames) > 100 * 1024^3

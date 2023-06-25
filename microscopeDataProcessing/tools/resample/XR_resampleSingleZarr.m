@@ -142,7 +142,7 @@ if ~all(is_done_flag)
     generic_computing_frameworks_wrapper(inputFullpaths, outputFullpaths, funcStrs, ...
         cpusPerTask=cpusPerTask, memAllocate=memAllocate, parseCluster=parseCluster, ...
         mccMode=mccMode, ConfigFile=ConfigFile);
-end    
+end
 
 if exist(dsFullpath, 'dir')
     rmdir(dsFullpath, 's');

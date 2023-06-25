@@ -43,6 +43,12 @@ if ndims(im_i) == 3
 end
 im_i = im_i == 0;
 
+% remove isolated empty pixels 
+stat = regionprops3(im_i, 'volume');
+if numel(stat.Volume) > 1 && any(stat.Volume < 5)
+    im_i = bwareaopen(im_i, 5);
+end
+
 sz = size(im_i, 1 : 3);
 im_dist = ones(sz, 'single');
 if singleDistMap
