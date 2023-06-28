@@ -139,13 +139,13 @@ sz_2 = size(region_2, [1, 2, 3]);
 % region_2 = region_2(s2(2) : t2(2), s2(1) : t2(1), s2(3) : t2(3));
 region_2_nozeros = region_2 ~= 0;
 % select the region with at least 1/4 areas in the selected dimensions.
-z_inds = sum(region_2_nozeros, [1, 2]) > prod(sz_2([1, 2])) / 4;
+z_inds = 1;
 x_inds = sum(region_2_nozeros(:, :, z_inds), [1, 3]) > sz_2(1) * sum(z_inds) / 4;
 y_inds = sum(region_2_nozeros(:, x_inds, z_inds), [2, 3]) > sum(x_inds) * sum(z_inds) / 4;
 
 % reduce area threshold if the inds are empty
 if ~any(z_inds) || ~any(x_inds) || ~any(y_inds)  
-    z_inds = sum(region_2_nozeros, [1, 2]) > prod(sz_2([1, 2])) / 8;
+    z_inds = 1;
     x_inds = sum(region_2_nozeros(:, :, z_inds), [1, 3]) > sz_2(1) * sum(z_inds) / 8;
     y_inds = sum(region_2_nozeros(:, x_inds, z_inds), [2, 3]) > sum(x_inds) * sum(z_inds) / 8;
 end
@@ -156,9 +156,8 @@ end
 % x_inds = cap_region_2_inds(x_inds, sz_2(2), maxoff(2), bounds);
 % z_inds = cap_region_2_inds(z_inds, sz_2(3), maxoff(3), bounds);
 
-
 % if empty again, just return none shift
-if isempty(z_inds) || isempty(x_inds) || isempty(y_inds)  
+if ~any(z_inds) || ~any(x_inds) || ~any(y_inds)  
     fprintf('The non-empty area of the region 2 is too small, skip the xcorr computing, set relative_shift as [0, 0, 0]\n. Save results ...\n');
     relative_shift = [0, 0, 0];
     max_xcorr = 1;
