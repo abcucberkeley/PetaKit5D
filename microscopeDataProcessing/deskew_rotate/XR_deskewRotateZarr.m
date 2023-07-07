@@ -171,7 +171,7 @@ outBlockSize = min(outBatchSize, outBlockSize);
     BatchSize=outBatchSize, BlockSize=outBlockSize, SameBatchSize=false, BorderSize=BorderSize(1 : 3));
 
 inBatchBboxes = outBatchBBoxes;
-inBatchBboxes(:, 1) = round((inBatchBboxes(:, 1) - 1) .* rs(1)) + 1;
+inBatchBboxes(:, 1) = round((inBatchBboxes(:, 1) - 1) .* rs(1)) + wdStart(1);
 inBatchBboxes(:, 2) = wdStart(2);
 inBatchBboxes(:, 3) = wdStart(3);
 inBatchBboxes(:, 4) = min(inBatchBboxes(:, 1) + round((outBatchBBoxes(:, 4) - outBatchBBoxes(:, 1) + 1) .* rs(1) - 1), bimSize(1));

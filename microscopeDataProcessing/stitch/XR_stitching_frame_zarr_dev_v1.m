@@ -396,12 +396,13 @@ end
 if isempty(resample)
     resample = [1, 1, 1];
 end
-if DSR
-    stitchResample = [1, 1, 1];
-    zarr_flippedTile = false(size(flippedTile)); 
-else
+zarr_flippedTile = false(size(flippedTile)); 
+stitchResample = [1, 1, 1];
+if ~DSR
     stitchResample = resample;
-    zarr_flippedTile = flippedTile > 0;
+    if isempty(ProcessedDirstr)
+        zarr_flippedTile = flippedTile > 0;
+    end
 end
 % check if there are partial files when converting tiff to zarr
 partialFile = ~DS && ~DSR;

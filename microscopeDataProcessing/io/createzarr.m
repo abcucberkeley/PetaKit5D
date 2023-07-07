@@ -9,6 +9,7 @@ arguments
     options.overwrite (1, 1) logical = false
     options.dataSize (1, :) {mustBeNumeric} = [500, 500, 500]
     options.blockSize (1, :) {mustBeNumeric} = [500, 500, 500]
+    options.shardSize (1, :) {mustBeNumeric} = []    
     options.dtype char = 'uint16'
     options.order char = 'F'
     options.expand2dDim (1, 1) logical = true  % expand the z dimension for 2d data
@@ -19,6 +20,7 @@ end
 
 dataSize = options.dataSize;
 blockSize = options.blockSize;
+shardSize = options.shardSize;
 dtype = options.dtype;
 order = options.order;
 expand2dDim = options.expand2dDim;
@@ -54,11 +56,23 @@ try
         zarrSubSize = [];
     end
     if isempty(zarrSubSize)
-        createZarrFile(filepath, 'chunks', blockSize, 'dtype', ddtype, 'order', order, ...
-            'shape', dataSize, 'cname', compressor, 'clevel', 1); 
+        if isempty(shardSize)
+            createZarrFile(filepath, 'chunks', blockSize, 'dtype', ddtype, 'order', order, ...
+                'shape', dataSize, 'cname', compressor, 'clevel', 1);
+        else
+            createZarrFile(filepath, 'chunks', blockSize, 'chunk_shape', shardSize, ...
+                'dtype', ddtype, 'order', order, 'shape', dataSize, 'cname', compressor, ...
+                'clevel', 1);
+        end
     else
-        createZarrFile(filepath, 'chunks', blockSize, 'dtype', ddtype, 'order', order, ...
-            'shape', dataSize, 'cname', compressor, 'clevel', 1, 'subfolders', zarrSubSize); 
+        if isempty(shardSize) 
+            createZarrFile(filepath, 'chunks', blockSize, 'dtype', ddtype, 'order', order, ...
+                'shape', dataSize, 'cname', compressor, 'clevel', 1, 'subfolders', zarrSubSize);
+        else
+            createZarrFile(filepath, 'chunks', blockSize, 'chunk_shape', shardSize, ...
+                'dtype', ddtype, 'order', order, 'shape', dataSize, 'cname', compressor, ...
+                'clevel', 1, 'subfolders', zarrSubSize);            
+        end
     end
 catch ME
     disp(ME);

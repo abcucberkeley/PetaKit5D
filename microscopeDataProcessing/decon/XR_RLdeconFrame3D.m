@@ -172,10 +172,12 @@ for f = 1 : nF
     end 
 
     % check file size
-    [estMem] = XR_estimateComputingMemory(frameFullpath, {'deconvolution'}, 'cudaDecon', false);
+    % [estMem] = XR_estimateComputingMemory(frameFullpath, {'deconvolution'}, 'cudaDecon', false);
+    imSize = getImageSize(frameFullpath);
+    memRequired = prod(imSize) * 4 / 2^30 * 10;
     
     % The memory size is 500G
-    if estMem > CPUMaxMem
+    if memRequired > CPUMaxMem
         largeFile = true;
     end
 

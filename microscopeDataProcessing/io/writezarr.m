@@ -12,6 +12,7 @@ arguments
     filepath char
     options.overwrite (1, 1) logical = false
     options.blockSize (1, :) {mustBeNumeric} = [500, 500, 500]
+    options.shardSize (1, :) {mustBeNumeric} = []
     options.zarrSubSize (1, :) {mustBeNumeric} = [20, 20, 20]
     options.expand2dDim (1, 1) logical = true  % expand the z dimension for 2d data
     options.groupWrite (1, 1) logical = true
@@ -22,6 +23,7 @@ end
 overwrite = options.overwrite;
 expand2dDim = options.expand2dDim;
 blockSize = options.blockSize;
+shardSize = options.shardSize;
 zarrSubSize = options.zarrSubSize;
 groupWrite = options.groupWrite;
 bbox = options.bbox;
@@ -59,7 +61,7 @@ try
         if exist(filepath, 'dir')
             rmdir(filepath, 's');
         end
-        createzarr(filepath, dataSize=sz, blockSize=blockSize, dtype=dtype, zarrSubSize=zarrSubSize);
+        createzarr(filepath, dataSize=sz, blockSize=blockSize, shardSize=shardSize, dtype=dtype, zarrSubSize=zarrSubSize);
         newFile = true;
     end
 
