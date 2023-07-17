@@ -81,17 +81,12 @@ if ~exist(zarrFullpath, 'dir')
     error('The input zarr file %s doesnot exist!', zarrFullpath);
 end
 
-% bim = blockedImage(zarrFullpath, 'Adapter', ZarrAdapter);
-
 if ~exist(deconFullpath, 'dir')
     error('The output zarr file %s doesnot exist!', deconFullpath);
 end
-try 
-    nv_bim = blockedImage(deconFullpath, 'Adapter', CZarrAdapter);
-catch 
-    nv_bim = blockedImage(deconFullpath, 'Adapter', ZarrAdapter);
-end
-dtype = nv_bim.ClassUnderlying;
+
+zarrFile = true;
+dtype = getImageDataType(deconFullpath, zarrFile);
 finds = [1, 2; 2, 3; 1, 3];
 
 done_flag = false(numel(batchInds), 1);
@@ -158,6 +153,12 @@ for i = 1 : numel(batchInds)
     writezarr(out_batch, deconFullpath, 'bbox', [obStart, obEnd]);
     done_flag(i) = true;
     toc;
+
+    % in case the job is finished by other jobs, check the flag file every
+    % five loops if not using GPU
+    if ~useGPU && rem(i, 5) == 0 && exist(flagFullname, 'file')
+        break;
+    end
 end
 
 if all(done_flag)

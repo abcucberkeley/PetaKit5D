@@ -19,6 +19,7 @@ ip.addParameter('blendWeightDegree', 10, @isnumeric);
 ip.addParameter('singleDistMap', true, @islogical);
 ip.addParameter('locIds', [], @isnumeric);
 ip.addParameter('blockSize', [500, 500, 500], @isnumeric);
+ip.addParameter('shardSize', [], @isnumeric);
 ip.addParameter('compressor', 'lz4', @ischar);
 ip.addParameter('largeZarr', false, @islogical);
 ip.addParameter('poolSize', [], @isnumeric);
@@ -35,6 +36,7 @@ blendWeightDegree = pr.blendWeightDegree;
 singleDistMap = pr.singleDistMap;
 locIds = pr.locIds;
 blockSize = pr.blockSize;
+shardSize = pr.shardSize;
 compressor = pr.compressor;
 largeZarr =  pr.largeZarr;
 poolSize =  pr.poolSize;
@@ -126,15 +128,16 @@ if largeZarr
     end
     outputFullpaths = cellfun(@(x) sprintf('%s/%s_z_%s_wr_%d.zarr', distPath, x, ...
         poolSize_str, blendWeightDegree), fsnames, 'unif', 0);
-    funcStrs = arrayfun(@(x) sprintf('compute_tile_bwdist_mip_slabs(''%s'',%d,''%s'',%d,%s,%s,''%s'',%s,%s)', ...
-        blockInfoFullname, distTileIdx(x), outputFullpaths{x}, blendWeightDegree, string(singleDistMap), ...
-        strrep(mat2str(blockSize), ' ', ','), compressor, strrep(mat2str(poolSize), ' ', ','), ...
-        string(Overwrite)), 1 : nF, 'unif', 0);
+    funcStrs = arrayfun(@(x) sprintf('compute_tile_bwdist_mip_slabs(''%s'',%d,''%s'',%d,%s,%s,%s,''%s'',%s,%s)', ...
+        blockInfoFullname, distTileIdx(x), outputFullpaths{x}, blendWeightDegree, ...
+        string(singleDistMap), strrep(mat2str(blockSize), ' ', ','), strrep(mat2str(shardSize), ' ', ','), ...
+        compressor, strrep(mat2str(poolSize), ' ', ','), string(Overwrite)), 1 : nF, 'unif', 0);
 else
     outputFullpaths = cellfun(@(x) sprintf('%s/%s_wr_%d.zarr', distPath, x, blendWeightDegree), fsnames, 'unif', 0);
-    funcStrs = arrayfun(@(x) sprintf('compute_tile_bwdist(''%s'',%d,''%s'',%d,%s,%s,''%s'',%s)', ...
-        blockInfoFullname, distTileIdx(x), outputFullpaths{x}, blendWeightDegree, string(singleDistMap), ...
-        strrep(mat2str(blockSize), ' ', ','), compressor,string(Overwrite)), 1 : nF, 'unif', 0);
+    funcStrs = arrayfun(@(x) sprintf('compute_tile_bwdist(''%s'',%d,''%s'',%d,%s,%s,%s,''%s'',%s)', ...
+        blockInfoFullname, distTileIdx(x), outputFullpaths{x}, blendWeightDegree, ...
+        string(singleDistMap), strrep(mat2str(blockSize), ' ', ','), strrep(mat2str(shardSize), ' ', ','), ...
+        compressor,string(Overwrite)), 1 : nF, 'unif', 0);
 end
 
 imSize = getImageSize(tileFullpaths{1});

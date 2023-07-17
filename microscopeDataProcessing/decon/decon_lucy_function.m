@@ -1,4 +1,4 @@
-function [J_2, err_mat, k] = decon_lucy_function(I, PSF, NUMIT, Background, useGPU, Save16bit, bbox, debug, debug_folder, saveStep)
+function [J_2, err_mat, k] = decon_lucy_function(I, PSF, NUMIT, Background, useGPU, Save16bit, scaleFactor, bbox, debug, debug_folder, saveStep)
 % adapted from matlab deconvlucy.m
 % 
 % xruan (05/18/2021): add support for early stop with stop criteria
@@ -29,18 +29,22 @@ if nargin < 6
 end
 
 if nargin < 7
-    bbox = [];
+    scaleFactor = 1.0;
 end
 
 if nargin < 8
-    debug = false;
+    bbox = [];
 end
 
 if nargin < 9
-    debug_folder = './debug/';
+    debug = false;
 end
 
 if nargin < 10
+    debug_folder = './debug/';
+end
+
+if nargin < 11
     saveStep = 5;
 end
 
@@ -154,6 +158,10 @@ end
 
 if debug
     err_mat = err_mat(1 : istp, :);
+end
+
+if scaleFactor ~= 1
+    J_2 = J_2 * scaleFactor;
 end
 
 if Save16bit

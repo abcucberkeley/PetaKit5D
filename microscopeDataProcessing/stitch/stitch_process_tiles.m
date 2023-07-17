@@ -16,6 +16,7 @@ ip.addParameter('zarrPathstr', 'zarr', @ischar);
 ip.addParameter('zarrFile', false, @islogical); 
 ip.addParameter('locIds', [], @isnumeric); % location ids for the tiles
 ip.addParameter('blockSize', [500, 500, 250], @isnumeric);
+ip.addParameter('shardSize', [], @isnumeric);
 ip.addParameter('flippedTile', [], @(x) isempty(x) || islogical(x));
 ip.addParameter('resample', [], @(x) isempty(x) || isnumeric(x));
 ip.addParameter('partialFile', false, @islogical);
@@ -43,6 +44,7 @@ zarrPathstr = pr.zarrPathstr;
 zarrFile = pr.zarrFile;
 locIds = pr.locIds;
 blockSize = pr.blockSize;
+shardSize = pr.shardSize;
 flippedTile = pr.flippedTile;
 resample = pr.resample;
 partialFile = pr.partialFile;
@@ -60,11 +62,11 @@ ConfigFile = pr.ConfigFile;
 
 if ~zarrFile
     XR_tiffToZarr_wrapper(inputFullpaths, 'zarrPathstr', zarrPathstr, 'locIds', locIds, ...
-        'blockSize', blockSize, 'flippedTile', flippedTile, 'resample', resample, ...
-        'partialFile', partialFile, 'ChannelPatterns', ChannelPatterns, 'InputBbox', InputBbox, ...
-        'tileOutBbox', tileOutBbox, 'processFunPath', processFunPath, 'jobLogDir', jobLogDir, ...
-        'parseCluster', parseCluster, 'masterCompute', masterCompute, 'bigData', bigData, ...
-        'cpusPerTask', cpusPerTask, 'mccMode', mccMode, 'ConfigFile', ConfigFile);
+        'blockSize', blockSize, 'shardSize', shardSize, 'flippedTile', flippedTile, ...
+        'resample', resample, 'partialFile', partialFile, 'ChannelPatterns', ChannelPatterns, ...
+        'InputBbox', InputBbox, 'tileOutBbox', tileOutBbox, 'processFunPath', processFunPath, ...
+        'jobLogDir', jobLogDir, 'parseCluster', parseCluster, 'masterCompute', masterCompute, ...
+        'bigData', bigData, 'cpusPerTask', cpusPerTask, 'mccMode', mccMode, 'ConfigFile', ConfigFile);
     return;
 end
 
@@ -104,11 +106,12 @@ end
 
 nF = numel(inputFullpaths);
 
-if bigData
-    compressor = 'zstd';
-else
-    compressor = 'lz4';
-end
+% if bigData
+%     compressor = 'zstd';
+% else
+%     compressor = 'lz4';
+% end
+compressor = 'zstd';
 
 uniq_locIds = unique(locIds);
 nLoc = numel(uniq_locIds);
@@ -174,12 +177,13 @@ for i = 1 : nF
         usrFcn_str_i = usrFcn_strs{cind, 1};
     end
 
-    func_strs{i} = sprintf(['stitch_process_zarr_tile(%s,''%s'',[],''BlockSize'',%s,''flipZstack'',%s,', ...
-        '''resample'',%s,''InputBbox'',%s,''tileOutBbox'',%s,''compressor'',''%s'',''usrFcn'',"%s")'], ...
+    func_strs{i} = sprintf(['stitch_process_zarr_tile(%s,''%s'',[],''BlockSize'',%s,', ...
+        '''shardSize'',%s,''flipZstack'',%s,''resample'',%s,''InputBbox'',%s,', ...
+        '''tileOutBbox'',%s,''compressor'',''%s'',''usrFcn'',"%s")'], ...
         sprintf('{''%s''}', strjoin(inputFullpath_group_i, ''',''')), zarrFullpaths{i}, ...
-        strrep(mat2str(blockSize), ' ', ','), string(flipZstack), strrep(mat2str(resample), ' ', ','), ...
-        strrep(mat2str(InputBbox_i), ' ', ','), strrep(mat2str(tileOutBbox_i), ' ', ','), ...
-        compressor, usrFcn_str_i);
+        strrep(mat2str(blockSize), ' ', ','), strrep(mat2str(shardSize), ' ', ','), ...
+        string(flipZstack), strrep(mat2str(resample), ' ', ','), strrep(mat2str(InputBbox_i), ' ', ','), ...
+        strrep(mat2str(tileOutBbox_i), ' ', ','), compressor, usrFcn_str_i);
 end
 
 imSizes = zeros(numel(inputFullpath_group_i), 3);

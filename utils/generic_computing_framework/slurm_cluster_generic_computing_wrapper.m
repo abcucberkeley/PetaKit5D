@@ -30,6 +30,7 @@ ip.addParameter('jobLogDir', '../job_logs', @ischar);
 ip.addParameter('tmpDir', '', @ischar);
 ip.addParameter('maxCPUNum', 24, @isnumeric);
 ip.addParameter('cpusPerTask', 1, @isnumeric);
+ip.addParameter('GPUJob', false, @islogical);
 ip.addParameter('uuid', '', @ischar);
 ip.addParameter('maxTrialNum', 3, @isnumeric);
 ip.addParameter('unitWaitTime', 30, @isnumeric);
@@ -59,6 +60,7 @@ maxCPUNum = pr.maxCPUNum;
 parseCluster = pr.parseCluster;
 masterCompute = pr.masterCompute;
 cpusPerTask = pr.cpusPerTask;
+GPUJob = pr.GPUJob;
 maxTrialNum = pr.maxTrialNum;
 unitWaitTime = pr.unitWaitTime;
 maxJobNum = pr.maxJobNum;
@@ -288,8 +290,12 @@ while (~parseCluster && ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
                         && timestamp - job_timestamp_mat(f) < 45 - masterCompute * 15
                     continue;
                 end
-
-                cpusPerTask_f = min(maxCPUNum, cpusPerTask * (trial_counter(f) + 1));
+                
+                if GPUJob
+                    cpusPerTask_f = min(maxCPUNum, cpusPerTask);
+                else
+                    cpusPerTask_f = min(maxCPUNum, cpusPerTask * (trial_counter(f) + 1));
+                end
 
                 % If there is no job, submit a job
                 if job_status_mat(f, 1) == -1 && job_status_mat(f, 2) == -1 && ~(masterCompute && b == lastP)

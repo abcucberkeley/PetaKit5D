@@ -150,6 +150,7 @@ scaleFactor = pr.scaleFactor;
 deconMaskFns = pr.deconMaskFns;
 
 jobLogDir = pr.jobLogDir;
+cpusPerTask = pr.cpusPerTask;
 parseCluster = pr.parseCluster;
 parseParfor = pr.parseParfor;
 uuid = pr.uuid;
@@ -439,35 +440,34 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
                     '''skewed'',[%s],''fixIter'',%s,''errThresh'',[%0.20f],''debug'',%s,''saveStep'',%d,', ...
                     '''psfGen'',%s,''saveZarr'',%s,''parseCluster'',%s,''parseParfor'',%s,''GPUJob'',%s,', ...
                     '''Save16bit'',%s,''largeFile'',%s,''largeMethod'',''%s'',''BatchSize'',%s,''BlockSize'',%s,', ...
-                    '''zarrSubSize'',%s,''scaleFactor'',[%d],''deconMaskFns'',%s,''uuid'',''%s'',''mccMode'',%s,', ...
-                    '''ConfigFile'',''%s'',''GPUConfigFile'',''%s'')'], ...
+                    '''zarrSubSize'',%s,''scaleFactor'',[%d],''deconMaskFns'',%s,''uuid'',''%s'',''cpusPerTask'',%d,', ...
+                    '''mccMode'',%s,''ConfigFile'',''%s'',''GPUConfigFile'',''%s'')'], ...
                     dcframeFullpath, xyPixelSize, dc_dz, deconPath, psfFullpath, dc_dzPSF, Background, SkewAngle, ...
                     string(flipZstack), EdgeErosion, maskFullpath, string(SaveMaskfile), string(deconRotate), ...
                     DeconIter_f, RLMethod, wienerAlpha, OTFCumThresh_f, string(skewed), string(fixIter), errThresh, ...
                     string(debug), saveStep, string(psfGen), string(saveZarr), string(parseCluster),string(parseParfor), ... 
                     string(GPUJob), string(Save16bit), string(largeFile), largeMethod, strrep(mat2str(BatchSize), ' ', ','), ...
                     strrep(mat2str(BlockSize), ' ', ','), strrep(mat2str(zarrSubSize), ' ', ','), scaleFactor, ...
-                    deconMaskFns_str, uuid, string(mccMode), ConfigFile, GPUConfigFile);
+                    deconMaskFns_str, uuid, cpusPerTask, string(mccMode), ConfigFile, GPUConfigFile);
             end
             
             if exist(dctmpFullpath, 'file') || parseCluster
                 if parseCluster
-                    [estMem, estGPUMem] = XR_estimateComputingMemory(dcframeFullpath, {'deconvolution'}, ...
-                        'cudaDecon', false);                    
-                    if ~cudaDecon && ~GPUJob
-                        memAllocate = estMem * 2;
-                    else
-                        memAllocate = estMem * 4;
-                    end
-                    
+                    dsz = getImageSize(dcframeFullpath);
+                    estMem = prod(dsz) * 4 / 2^30;
                     cur_ConfigFile = ConfigFile;
-                    if GPUJob && ~(largeFile && strcmp(largeMethod, 'inplace'))
-                        % cpusPerTask_dc = 4;
-                        % SlurmParam = '-p abc_a100 --qos abc_normal -n1 --mem-per-cpu=32128M --gres=gpu:1';
-                        % slurm_constraint_str = '';
-                        cur_ConfigFile = GPUConfigFile;
+                    if ~GPUJob
+                        memAllocate = estMem * 2;
+                        if largeFile && strcmp(largeMethod, 'inplace')
+                            memAllocate = prod(BatchSize * 2) * 4 / 2^30 * 5;
+                        end
                     else
-                        % SlurmParam = '-p abc --qos abc_normal -n1 --mem-per-cpu=21418M';
+                        memAllocate = estMem * 10;
+                        if largeFile && strcmp(largeMethod, 'inplace')
+                            memAllocate = prod(BatchSize) * 4 / 2^30 * 20;
+                        else
+                            cur_ConfigFile = GPUConfigFile;
+                        end                        
                     end
 
                     job_id = job_ids(f, 1);

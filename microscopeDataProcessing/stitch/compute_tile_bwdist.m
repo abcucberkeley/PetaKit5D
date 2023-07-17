@@ -1,4 +1,4 @@
-function [] = compute_tile_bwdist(blockInfoFullname, tileInd, bwdistFullpath, weightDegree, singleDistMap, blockSize, compressor, Overwrite)
+function [] = compute_tile_bwdist(blockInfoFullname, tileInd, bwdistFullpath, weightDegree, singleDistMap, blockSize, shardSize, compressor, Overwrite)
 % compute distance transform for a tile after removing overlap regions.
 % 
 % Author: Xiongtao Ruan (10/29/2020)
@@ -7,7 +7,7 @@ function [] = compute_tile_bwdist(blockInfoFullname, tileInd, bwdistFullpath, we
 % xruan (11/19/2022): compute feather power within the distance map to save
 % time for stitching processing
 
-if nargin < 8
+if nargin < 9
     Overwrite = false;
 end
 
@@ -135,8 +135,8 @@ tmpFilename = [zarrFilename '_' uuid];
 %     'shape', size(im_dist), 'cname', 'zstd', 'level', 2);
 try
     zarrSubSize = [20, 20, 20];
-    createzarr(tmpFilename, dataSize=size(im_dist), blockSize=blockSize, dtype='single', ...
-        compressor=compressor, zarrSubSize=zarrSubSize);
+    createzarr(tmpFilename, dataSize=size(im_dist), blockSize=blockSize, shardSize=shardSize, ...
+        dtype='single', compressor=compressor, zarrSubSize=zarrSubSize);
     % bim = blockedImage(tmpFilename, sz, blockSize, zeros(1, 'single'), "Adapter", CZarrAdapter, 'mode', 'w');
 catch ME
     disp(ME);

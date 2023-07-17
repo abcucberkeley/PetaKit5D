@@ -190,14 +190,13 @@ end
 
 taskSize = 20; % the number of batches a job should process
 numBatch = size(batchBBoxes, 1);
+if parseCluster || GPUJob || strcmp(RLMethod, 'omw')
+    if numBatch > 200
+        taskSize = max(100, round(numBatch / 5000));
+    end
+end
 
 if GPUJob
-    if parseCluster
-        if numBatch > 100
-            taskSize = max(100, round(numBatch / 5000));
-        end
-    end
-
     maxJobNum = inf;
     cpusPerTask = 4;
     taskBatchNum = 1;
@@ -227,7 +226,7 @@ for i = 1 : numTasks
         '''%s'',%s,%s,%0.20d,%0.20d,''Save16bit'',%s,''Overwrite'',%s,''SkewAngle'',%0.20d,', ...
         '''flipZstack'',%s,''Background'',%0.20d,''dzPSF'',%0.20d,''DeconIter'',%d,', ...
         '''RLMethod'',''%s'',''wienerAlpha'',%0.20f,''OTFCumThresh'',%0.20f,', ...
-        '''skewed'',[%s],''fixIter'',%s,''scaleFactor'',%d,''useGPU'',%s,''deconMaskFns'',%s,', ...
+        '''skewed'',[%s],''fixIter'',%s,''scaleFactor'',[%d],''useGPU'',%s,''deconMaskFns'',%s,', ...
         '''uuid'',''%s'',''debug'',%s,''psfGen'',%s)'], ...
         strrep(num2str(batchInds, '%d,'), ' ', ''), frameFullpath, PSF, deconTmppath, zarrFlagFullpath, ...
         strrep(mat2str(batchBBoxes_i), ' ', ','), strrep(mat2str(regionBBoxes_i), ' ', ','), xyPixelSize, ...

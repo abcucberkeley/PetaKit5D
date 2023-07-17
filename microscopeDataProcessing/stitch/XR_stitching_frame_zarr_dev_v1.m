@@ -99,6 +99,7 @@ ip.addParameter('largeZarr', false, @islogical);
 ip.addParameter('poolSize', [], @isnumeric); % max pooling size for large zarr MIPs
 ip.addParameter('blockSize', [500, 500, 500], @isnumeric); 
 ip.addParameter('batchSize', [500, 500, 500], @isnumeric); 
+ip.addParameter('shardSize', [], @isnumeric); 
 ip.addParameter('zarrSubSize', [20, 20, 20], @isnumeric); % zarr subfolder size
 ip.addParameter('saveMultires', false, @islogical); % save as multi resolution dataset
 ip.addParameter('resLevel', 4, @isnumeric); % downsample to 2^1-2^resLevel
@@ -171,6 +172,7 @@ largeZarr = pr.largeZarr;
 poolSize = pr.poolSize;
 blockSize = pr.blockSize;
 batchSize = pr.batchSize;
+shardSize = pr.shardSize;
 zarrSubSize = pr.zarrSubSize;
 BorderSize = pr.BorderSize;
 BlurSigma = pr.BlurSigma;
@@ -431,6 +433,7 @@ end
 % check if total input size is greater than 100 GB if bigStitchData is false
 nodeFactor = 2;
 compressor = 'lz4';
+compressor = 'zstd';
 if (~stitch2D && ~bigStitchData && nF > 4 && prod(imSize) * nF * 4 > (100 * 2^30)) || largeZarr
     bigStitchData = true;
 end
@@ -442,10 +445,11 @@ end
 % convert tiff to zarr (if inputs are tiff tiles), and process tiles
 locIds = tileIdx(:, 4);
 stitch_process_tiles(inputFullpaths, 'zarrPathstr', zarrPathstr, 'zarrFile', zarrFile, ...
-    'locIds', locIds, 'blockSize', round(blockSize / 2), 'flippedTile', zarr_flippedTile, ...
-    'resample', stitchResample, 'partialFile', partialFile, 'InputBbox', InputBbox, ...
-    'tileOutBbox', tileOutBbox, 'processFunPath', processFunPath, 'parseCluster', parseCluster, ...
-    'masterCompute', masterCompute, 'bigData', bigStitchData, 'mccMode', mccMode, 'ConfigFile', ConfigFile);
+    'locIds', locIds, 'blockSize', round(blockSize / 2), 'shardSize', round(shardSize / 2), ...
+    'flippedTile', zarr_flippedTile, 'resample', stitchResample, 'partialFile', partialFile, ...
+    'InputBbox', InputBbox, 'tileOutBbox', tileOutBbox, 'processFunPath', processFunPath, ...
+    'parseCluster', parseCluster, 'masterCompute', masterCompute, 'bigData', bigStitchData, ...
+    'mccMode', mccMode, 'ConfigFile', ConfigFile);
 
 % load all zarr headers as a cell array and get image size for all tiles
 imSizes = zeros(nF, 3);
@@ -662,8 +666,9 @@ int_xyz_shift = round(xyz_shift ./ ([xf, yf, zf] * px));
 
 % to increase the scalability of the code, we use block-based processing
 % first obtain coordinate data structure for blocks
-blockSize = min([nys, nxs, nzs], blockSize);
-blockSize = min(median(imSizes), blockSize);
+batchSize = min([nys, nxs, nzs], batchSize);
+batchSize = min(median(imSizes), batchSize);
+blockSize = min(batchSize, blockSize);
 batchSize = ceil(batchSize ./ blockSize) .* blockSize;
 bSubSz = ceil([nys, nxs, nzs] ./ batchSize);
 numBatches = prod(bSubSz);
@@ -735,7 +740,7 @@ end
 % continue the stitching
 if fresh_stitch
     createzarr(nv_tmp_raw_fullname, dataSize=[nys, nxs, nzs], BlockSize=blockSize, ...
-        dtype=dtype, compressor=compressor, zarrSubSize=zarrSubSize);
+        shardSize=shardSize, dtype=dtype, compressor=compressor, zarrSubSize=zarrSubSize);
 end
 
 % add support for feather blending
@@ -754,9 +759,9 @@ if strcmpi(BlendMethod, 'feather')
         mkdir(imdistPath);
         [imdistFullpaths, imdistFileIdx] = compute_tile_distance_transform(block_info_fullname, ...
             stitchPath, zarrFullpaths, 'blendWeightDegree', blendWeightDegree, ...
-            'singleDistMap', singleDistMap, 'locIds', locIds, 'blockSize', round(blockSize / 2), ...
-            'compressor', compressor, 'largeZarr', largeZarr, 'poolSize', poolSize, ...
-            'parseCluster', parseCluster, 'mccMode', mccMode, 'ConfigFile', ConfigFile);
+            'singleDistMap', singleDistMap, 'locIds', locIds, 'blockSize', round(blockSize/2), ...
+            'shardSize', round(shardSize/2), 'compressor', compressor, 'largeZarr', largeZarr, ...
+            'poolSize', poolSize, 'parseCluster', parseCluster, 'mccMode', mccMode, 'ConfigFile', ConfigFile);
     else
         usePrimaryDist = all(imSizes == pTileSizes, 'all');
         if ~usePrimaryDist
@@ -764,9 +769,9 @@ if strcmpi(BlendMethod, 'feather')
             mkdir(imdistPath);
             [imdistFullpaths, imdistFileIdx] = compute_tile_distance_transform(block_info_fullname, stitchPath, ...
                 zarrFullpaths, 'blendWeightDegree', blendWeightDegree, 'singleDistMap', singleDistMap, ...
-                'locIds', locIds, 'blockSize', round(blockSize / 2), 'compressor', compressor, ...
-                'largeZarr', largeZarr, 'poolSize', poolSize, 'parseCluster', parseCluster, ...
-                'mccMode', mccMode, 'ConfigFile', ConfigFile);
+                'locIds', locIds, 'blockSize', round(blockSize/2), 'shardSize', round(shardSize/2), ...
+                'compressor', compressor, 'largeZarr', largeZarr, 'poolSize', poolSize, ...
+                'parseCluster', parseCluster, 'mccMode', mccMode, 'ConfigFile', ConfigFile);
         end
     end
 else

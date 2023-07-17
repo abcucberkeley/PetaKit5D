@@ -371,13 +371,13 @@ if ~file_exist_mat(1)
             case 'original'
                 deconvolved = deconvlucy(rawdata, psf, nIter);
             case 'simplified'
-                [deconvolved, err_mat, iter_run] = decon_lucy_function(rawdata, psf, nIter, Background, useGPU, Save16bit, deconBbox, debug, debug_folder, saveStep);
+                [deconvolved, err_mat, iter_run] = decon_lucy_function(rawdata, psf, nIter, Background, useGPU, Save16bit, scaleFactor, deconBbox, debug, debug_folder, saveStep);
             case 'omw'
-                [deconvolved, err_mat] = decon_lucy_omw_function(rawdata, psf, psf_b, nIter, Background, useGPU, Save16bit, deconBbox, debug, debug_folder, saveStep);          
+                [deconvolved, err_mat] = decon_lucy_omw_function(rawdata, psf, psf_b, nIter, Background, useGPU, Save16bit, scaleFactor, deconBbox, debug, debug_folder, saveStep);          
             case 'cudagen'
                 deconvolved = decon_lucy_cuda_function(single(rawdata), single(psf), nIter);            
         end
-        if scaleFactor ~= 1
+        if ~(strcmp(RLMethod, 'simplified') || strcmp(RLMethod, 'omw')) && scaleFactor ~= 1
             deconvolved = deconvolved * scaleFactor;
         end
     else

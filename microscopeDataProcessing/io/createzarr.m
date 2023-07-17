@@ -37,6 +37,15 @@ if numel(dataSize) == 2
     end
 end
 blockSize = min(dataSize, blockSize);
+if ~isempty(shardSize)
+    shardSize = min(blockSize, shardSize);
+    ind = rem(blockSize, shardSize) ~= 0;
+    if any(ind)
+        warning(['The shard size needs to be divisors of the block size, set', ...
+            'the size of the axis that is not divisor to be the block size.']);
+        shardSize(ind) = blockSize(ind);
+    end
+end
 % overwrite the zarr file
 if exist(filepath, 'dir')
     rmdir(filepath, 's');

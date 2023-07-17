@@ -345,8 +345,11 @@ while (~parseCluster && ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
                         && timestamp - job_timestamp_mat(f) < 45 - masterCompute * 15
                     continue;
                 end
-
-                cpusPerTask_f = min(maxCPUNum, cpusPerTask * (trial_counter(f) + 1));
+                if GPUJob
+                    cpusPerTask_f = min(maxCPUNum, cpusPerTask * (trial_counter(f) + 1));
+                else
+                    cpusPerTask_f = min(maxCPUNum, cpusPerTask);
+                end
 
                 % If there is no job, submit a job
                 if job_status_mat(f, 1) == -1 && job_status_mat(f, 2) == -1 && ~(masterCompute && b == lastP)
@@ -431,7 +434,11 @@ while (~parseCluster && ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
                 % process_cmd = func_str;
                 cmd = sprintf(['%s; bash %s'], BashLaunchStr, inputFn);
             else
-                paraJobNum_f = max(1, min(paraJobNum - 1, round(paraJobNum * masterParaFactor / (trial_counter(f) + 1))));
+                if GPUJob
+                    paraJobNum_f = max(1, min(paraJobNum - 1, round(paraJobNum * masterParaFactor)));
+                else
+                    paraJobNum_f = max(1, min(paraJobNum - 1, round(paraJobNum * masterParaFactor / (trial_counter(f) + 1))));
+                end
                 cmd = sprintf(['%s; parallel --jobs %d --delay 0.1 < %s'], BashLaunchStr, paraJobNum_f, inputFn);
                 if ismcc || isdeployed
                     % reduce the load of master job in case of crash due to oom
