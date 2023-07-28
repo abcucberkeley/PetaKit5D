@@ -117,6 +117,7 @@ outputFullpaths = strip(outputFullpaths, 'right', '/');
 output_exist_mat = batch_file_exist(outputFullpaths, [], true);
 if all(output_exist_mat)
     is_done_flag = ~is_done_flag;
+    fprintf('All output files (%d / %d) already exists!\n', nF, nF);        
     return;
 else
     is_done_flag = output_exist_mat;
@@ -468,6 +469,10 @@ while (~parseCluster && ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
         fprintf('Time %0.2f s: %d / %d (%0.2f%%) are finished!\n', toc(ts), nF_done, nF, nF_done / nF * 100);
     end
     loop_counter = loop_counter + 1;
+end
+
+if all(is_done_flag)
+    fprintf('All output files (%d / %d) are finished!\n', nF, nF);    
 end
 
 end

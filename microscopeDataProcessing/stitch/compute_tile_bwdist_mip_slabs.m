@@ -1,4 +1,4 @@
-function [] = compute_tile_bwdist_mip_slabs(blockInfoFullname, tileInd, bwdistFullpath, weightDegree, singleDistMap, blockSize, compressor, poolSize, Overwrite)
+function [] = compute_tile_bwdist_mip_slabs(blockInfoFullname, tileInd, bwdistFullpath, weightDegree, singleDistMap, blockSize, shardSize, compressor, poolSize, Overwrite)
 % compute distance transform for a tile for large zarr file with MIP slab
 % (only z for now). 
 %

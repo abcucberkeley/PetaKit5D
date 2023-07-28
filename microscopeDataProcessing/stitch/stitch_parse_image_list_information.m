@@ -160,6 +160,9 @@ else
 end
 
 [~, tFsnames] = fileparts(tab.Filename);
+if numel(tab.Filename) == 1
+    tFsnames = {tFsnames};
+end
 image_file_exist_flag = true(numel(tFsnames), 1);
 for f = 1 : numel(tab.Filename)
     if ~any(contains(imageFnames, tFsnames{f})) % || (useExistDecon && ~any(contains(imageFnames, tFsnames{f})))

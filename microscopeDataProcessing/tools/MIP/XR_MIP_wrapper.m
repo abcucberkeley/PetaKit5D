@@ -5,7 +5,7 @@ ip = inputParser;
 ip.CaseSensitive = false;
 ip.addRequired('dataPaths', @(x) ischar(x) || iscell(x));
 ip.addParameter('axis', [0, 0, 1], @isnumeric); % y, x, z
-ip.addParameter('ChannelPatterns', {'CamA_ch0', 'CamA_ch1', 'CamB_ch0'}, @iscell);
+ip.addParameter('ChannelPatterns', {'CamA_ch0', 'CamA_ch1', 'CamB_ch0', 'CamB_ch1'}, @iscell);
 ip.addParameter('zarrFile', false, @islogical); % use zarr file as input
 ip.addParameter('largeZarr', false, @islogical); % use zarr file as input
 ip.addParameter('Save16bit', true, @islogical);
