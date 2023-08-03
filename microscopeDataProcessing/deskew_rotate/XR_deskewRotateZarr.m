@@ -9,6 +9,7 @@ function [is_done_flag] = XR_deskewRotateZarr(frameFullpath, xyPixelSize, dz, va
 %
 % xruan (12/14/2022): add support for input bbox, that is, crop the data before dsr
 % xruan (06/03/2023): add support for resampling
+% xruan (08/02/2023): add support for MIP mask based cropping of input and output result
 
 
 ip = inputParser;
@@ -33,6 +34,7 @@ ip.addParameter('inputBbox', [], @(x) isempty(x) || isvector(x));
 ip.addParameter('taskSize', [], @isnumeric);
 ip.addParameter('resample', [], @(x) isempty(x) || isnumeric(x)); % resampling after rotation 
 ip.addParameter('Interp', 'linear', @(x) any(strcmpi(x, {'cubic', 'linear'})));
+ip.addParameter('maskFns', {}, @iscell); % 2d masks to filter regions to deskew and rotate, in xy, xz, yz order
 ip.addParameter('surffix', '', @ischar); % suffix for the folder
 ip.addParameter('parseCluster', true, @islogical);
 ip.addParameter('parseParfor', false, @islogical);
@@ -61,6 +63,7 @@ zarrSubSize = pr.zarrSubSize;
 inputBbox = pr.inputBbox;
 taskSize = pr.taskSize;
 Interp = pr.Interp;
+maskFns = pr.maskFns;
 surffix = pr.surffix;
 parseCluster = pr.parseCluster;
 parseParfor = pr.parseParfor;
@@ -128,8 +131,32 @@ if ~exist(zarrFlagPath, 'dir')
     mkdir_recursive(zarrFlagPath);
 end
 
+rs = [1, 1, 1];
+if ~isempty(resample)
+    rs = resample;
+end
+
 % map input and output for xz
 bimSize = getImageSize(frameFullpath);
+
+% use MIP masks to decide the input and output boudning box
+outputBbox = [];
+if ~isempty(maskFns)
+    fprintf('Compute input and out bounding boxes with MIP masks...\n')
+    disp(maskFns(:));
+
+    BorderSize = [100, 100, 100];
+    BorderSize = max(10, round(BorderSize ./ rs));
+    [maskInBbox, maskOutBbox] = XR_getDeskeRotateBoxesFromMasks(maskFns, BorderSize, ...
+        xyPixelSize, dz, SkewAngle, Reverse, rs, inputBbox);
+
+    inputBbox = maskInBbox;
+    outputBbox = maskOutBbox;
+
+    fprintf('Input bounding box: %s\n', mat2str(inputBbox));
+    fprintf('Output bounding box: %s\n', mat2str(outputBbox));    
+end
+
 if ~isempty(inputBbox)
     wdStart = inputBbox(1 : 3);
     imSize = inputBbox(4 : 6) - wdStart + 1;
@@ -145,17 +172,18 @@ nz = imSize(3);
 if ~ObjectiveScan
     % outSize = round([ny nxDs/cos(theta) h]);
     % calculate height; first & last 2 frames have interpolation artifacts
-    outSize = round([ny, (nx-1)*cos(theta)+(nz-1)*zAniso/sin(abs(theta)), (nx-1)*sin(abs(theta))-4]);
+    dsrOutSize = round([ny, (nx-1)*cos(theta)+(nz-1)*zAniso/sin(abs(theta)), (nx-1)*sin(abs(theta))-4]);
 else
     % exact proportions of rotated box
-    outSize = round([ny, nx*cos(theta)+nz*zAniso*sin(abs(theta)), nz*zAniso*cos(theta)+nx*sin(abs(theta))]);
+    dsrOutSize = round([ny, nx*cos(theta)+nz*zAniso*sin(abs(theta)), nz*zAniso*cos(theta)+nx*sin(abs(theta))]);
 end
+dsrOutSize = round(dsrOutSize ./ rs([1,2,3]));
 
-rs = [1, 1, 1];
-if ~isempty(resample)
-    rs = resample;
-    outSize = round(outSize ./ rs([1,2,3]));
+outSize = dsrOutSize;
+if isempty(outputBbox)
+    outputBbox = [1, 1, 1, dsrOutSize];
 end
+outSize(2 : 3) = outputBbox(5 : 6) - outputBbox(2 : 3) + 1;
 
 % change border size to +/-1 in y. 
 % BorderSize = [2, 0, 0, 2, 0, 0];
@@ -167,8 +195,8 @@ outBatchSize(2 : 3) = outSize(2 : 3);
 outBlockSize = min(imSize, BlockSize);
 outBlockSize = min(outBatchSize, outBlockSize);
 
-[outBatchBBoxes, outRegionBBoxes, ~] = XR_zarrChunkCoordinatesExtraction(outSize, ...
-    BatchSize=outBatchSize, BlockSize=outBlockSize, SameBatchSize=false, BorderSize=BorderSize(1 : 3));
+[outBatchBBoxes, outRegionBBoxes, outLocalBboxes] = XR_zarrChunkCoordinatesExtraction(dsrOutSize, ...
+    BatchSize=outBatchSize, BlockSize=outBlockSize, bbox=outputBbox, SameBatchSize=false, BorderSize=BorderSize(1 : 3));
 
 inBatchBboxes = outBatchBBoxes;
 inBatchBboxes(:, 1) = round((inBatchBboxes(:, 1) - 1) .* rs(1)) + wdStart(1);
@@ -209,19 +237,20 @@ for i = 1 : numTasks
     inBatchBBoxes_i = inBatchBboxes(batchInds, :);
     outBatchBBoxes_i = outBatchBBoxes(batchInds, :);
     outRegionBBoxes_i = outRegionBBoxes(batchInds, :);
+    outLocalBBoxes_i = outLocalBboxes(batchInds, :);
     
     zarrFlagFullpath = sprintf('%s/blocks_%d_%d.mat', zarrFlagPath, batchInds(1), batchInds(end));
     outputFullpaths{i} = zarrFlagFullpath;
     Overwrite = false;
     
-    funcStrs{i} = sprintf(['XR_deskewRotateBlock([%s],''%s'',''%s'',''%s'',%s,%s,%s,', ...
+    funcStrs{i} = sprintf(['XR_deskewRotateBlock([%s],''%s'',''%s'',''%s'',%s,%s,%s,%s,', ...
         '%0.20d,%0.20d,''Overwrite'',%s,''SkewAngle'',%0.20d,''Reverse'',%s,', ...
         '''flipZstack'',%s,''Interp'',''%s'',''resample'',%s,''uuid'',''%s'',''debug'',%s)'], ...
         strrep(num2str(batchInds, '%d,'), ' ', ''), frameFullpath, dsrTmppath, ...
         zarrFlagFullpath, strrep(mat2str(inBatchBBoxes_i), ' ', ','), strrep(mat2str(outBatchBBoxes_i), ' ', ','), ...
-        strrep(mat2str(outRegionBBoxes_i), ' ', ','), xyPixelSize, dz, string(Overwrite), ...
-        SkewAngle, string(Reverse), string(flipZstack), Interp, strrep(mat2str(resample), ' ', ','), ...
-        uuid, string(debug));
+        strrep(mat2str(outRegionBBoxes_i), ' ', ','), strrep(mat2str(outLocalBBoxes_i), ' ', ','), ...
+        xyPixelSize, dz, string(Overwrite), SkewAngle, string(Reverse), string(flipZstack), ...
+        Interp, strrep(mat2str(resample), ' ', ','), uuid, string(debug));
 end
 
 inputFullpaths = repmat({frameFullpath}, numTasks, 1);
@@ -230,7 +259,8 @@ inputFullpaths = repmat({frameFullpath}, numTasks, 1);
 if parseCluster || ~parseParfor
     inSize = inBatchBboxes(1, 4 : 6) - inBatchBboxes(1, 1 : 3) + 1;
     outSize = outBatchBBoxes(1, 4 : 6) - outBatchBBoxes(1, 1 : 3) + 1;
-    memAllocate = prod(inSize) * 4 / 1024^3 * 2 + prod(outSize) * 4 / 1024^3 .* (prod(resample) * 0.5 + 1.5);
+    outSize(2 : 3) = max(outSize(2 : 3), dsrOutSize(2 : 3));
+    memAllocate = prod(inSize) * 4 / 1024^3 * 2 + prod(outSize) * 4 / 1024^3 .* (prod(resample) * 0.6 + 1.5);
 
     is_done_flag = generic_computing_frameworks_wrapper(inputFullpaths, outputFullpaths, ...
         funcStrs, 'cpusPerTask', cpusPerTask, 'maxJobNum', maxJobNum, 'taskBatchNum', taskBatchNum, ...

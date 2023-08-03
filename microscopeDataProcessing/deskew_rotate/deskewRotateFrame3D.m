@@ -17,6 +17,7 @@ function [vol] = deskewRotateFrame3D(vol, angle, dz, xyPixelSize, varargin)
 % xruan (06/02/2022): change default xStepThresh to 1.96 (ds=0.25). 
 % xruan (07/17/2022): change default xStepThresh to 2.00 (ds=0.255). 
 % xruan (10/29/2022): refactor code to first decide whether interpolate in skewed space 
+% xruan (08/02/2023): add support for direct bounding box crop of output
 
 
 ip = inputParser;
@@ -25,8 +26,9 @@ ip.addRequired('vol');
 ip.addRequired('angle'); % typical value: 32.8
 ip.addRequired('dz'); % typical value: 0.2-0.5
 ip.addRequired('xyPixelSize'); % typical value: 0.1
-ip.addOptional('reverse', false, @islogical);
+ip.addParameter('reverse', false, @islogical);
 ip.addParameter('Crop', true, @islogical);
+ip.addParameter('bbox', [], @isnumeric);
 ip.addParameter('ObjectiveScan', false, @islogical);
 ip.addParameter('xStepThresh', 2.0, @isnumeric); % 2.344 for ds=0.3, 2.735 for ds=0.35
 ip.addParameter('resample', [], @isnumeric); % resample factor in xyz order. 
@@ -36,7 +38,7 @@ ip.parse(vol, angle, dz, xyPixelSize, varargin{:});
 
 pr = ip.Results;
 Reverse = pr.reverse;
-Crop = pr.Crop;
+bbox = pr.bbox;
 ObjectiveScan = pr.ObjectiveScan;
 xStepThresh = pr.xStepThresh;
 resample = pr.resample;
@@ -176,6 +178,9 @@ end
 
 %% summarized transform
 RA = imref3d(outSize, 1, 1, 1);
+if ~isempty(bbox)
+    RA = imref3d(bbox(4 : 6) - bbox(1 : 3) + 1, [bbox(2) - 0.5, bbox(5) + 0.5], [bbox(1) - 0.5, bbox(4) + 0.5], [bbox(3) - 0.5, bbox(6) + 0.5]);
+end
 if gpuProcess
     vol = gpuArray(vol);
 end
