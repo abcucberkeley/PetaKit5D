@@ -342,6 +342,7 @@ void readTiffParallel2DBak(uint64_t x, uint64_t y, uint64_t z, const char* fileN
     }
 }
 
+
 void readTiffParallel2D(uint64_t x, uint64_t y, uint64_t z, const char* fileName, void* tiff, uint64_t bits, uint64_t startSlice, uint64_t stripSize, uint8_t flipXY){
     int32_t numWorkers = omp_get_max_threads();
     uint64_t stripsPerDir = (uint64_t)ceil((double)y/(double)stripSize);
@@ -352,8 +353,13 @@ void readTiffParallel2D(uint64_t x, uint64_t y, uint64_t z, const char* fileName
     uint8_t err = 0;
     uint8_t errBak = 0;
     char errString[10000];
-
-
+    uint16_t compressed = 1;
+    TIFF* tif = TIFFOpen(fileName, "r");
+    TIFFGetField(tif, TIFFTAG_COMPRESSION, &compressed);
+    // The other method won't work on specific slices of 3D images for now
+    // so start slice must also be 0
+    if(compressed > 1 || startSlice){
+    TIFFClose(tif);
     #pragma omp parallel for
     for(w = 0; w < numWorkers; w++){
 
@@ -395,7 +401,7 @@ void readTiffParallel2D(uint64_t x, uint64_t y, uint64_t z, const char* fileName
             if(cBytes < 0){
                 #pragma omp critical
                 {
-                    errBak = 1;
+                    //errBak = 1;
                     err = 1;
                     sprintf(errString,"Thread %d: Strip %ld cannot be read\n",w,i);
                 }
@@ -447,12 +453,77 @@ void readTiffParallel2D(uint64_t x, uint64_t y, uint64_t z, const char* fileName
         free(buffer);
         TIFFClose(tif);
     }
+    }
+    else{
+        uint64_t stripsPerDir = (uint64_t)ceil((double)y/(double)stripSize);
+        #ifdef _WIN32
+        int fd = open(fileName,O_RDONLY | O_BINARY);
+        #else
+        int fd = open(fileName,O_RDONLY);
+        #endif
+        if(fd == -1) mexErrMsgIdAndTxt("disk:threadError","File \"%s\" cannot be opened from Disk\n",fileName);
+
+        if(!tif) mexErrMsgIdAndTxt("tiff:threadError","File \"%s\" cannot be opened\n",fileName);
+        uint64_t offset = 0;
+        uint64_t* offsets = NULL;
+        TIFFGetField(tif, TIFFTAG_STRIPOFFSETS, &offsets);
+        uint64_t* byteCounts = NULL;
+        TIFFGetField(tif, TIFFTAG_STRIPBYTECOUNTS, &byteCounts);
+        if(!offsets || !byteCounts) mexErrMsgIdAndTxt("tiff:threadError","Could not get offsets or byte counts from the tiff file\n");
+        offset = offsets[0];
+        uint64_t fOffset = offsets[stripsPerDir-1]+byteCounts[stripsPerDir-1];
+        uint64_t zSize = x*y*bytes;
+        TIFFSetDirectory(tif,1);
+        TIFFGetField(tif, TIFFTAG_STRIPOFFSETS, &offsets);
+        uint64_t gap = offsets[0]-fOffset;
+    
+        lseek(fd, offset, SEEK_SET);
+
+
+        TIFFClose(tif);
+        uint64_t curr = 0;
+        uint64_t bytesRead = 0;
+        // TESTING
+        // Not sure if we will need to read in chunks like for ImageJ
+        for(uint64_t i = 0; i < z; i++){
+            bytesRead = read(fd,tiff+curr,zSize);
+            curr += bytesRead;
+            lseek(fd,gap,SEEK_CUR);
+        }
+        close(fd);
+        uint64_t size = x*y*z*(bits/8);
+        void* tiffC = malloc(size);
+        memcpy(tiffC,tiff,size);
+        #pragma omp parallel for
+        for(uint64_t k = 0; k < z; k++){
+            for(uint64_t j = 0; j < x; j++){
+                for(uint64_t i = 0; i < y; i++){
+                    switch(bits){
+                        case 8:
+                            ((uint8_t*)tiff)[i+(j*y)+(k*x*y)] = ((uint8_t*)tiffC)[j+(i*x)+(k*x*y)];
+                            break;
+                        case 16:
+                            ((uint16_t*)tiff)[i+(j*y)+(k*x*y)] = ((uint16_t*)tiffC)[j+(i*x)+(k*x*y)];
+                            break;
+                        case 32:
+                            ((float*)tiff)[i+(j*y)+(k*x*y)] = ((float*)tiffC)[j+(i*x)+(k*x*y)];
+                            break;
+                        case 64:
+                            ((double*)tiff)[i+(j*y)+(k*x*y)] = ((double*)tiffC)[j+(i*x)+(k*x*y)];
+                            break;
+                    }
+                }
+            }
+        }
+        free(tiffC);
+    }
 
     if(err) {
         if(errBak) readTiffParallel2DBak(x, y, z, fileName, tiff, bits, startSlice, flipXY);
         else mexErrMsgIdAndTxt("tiff:threadError",errString);
     }
 }
+
 
 // Reading images saved by ImageJ
 void readTiffParallelImageJ(uint64_t x, uint64_t y, uint64_t z, const char* fileName, void* tiff, uint64_t bits, uint64_t startSlice, uint64_t stripSize, uint8_t flipXY){
