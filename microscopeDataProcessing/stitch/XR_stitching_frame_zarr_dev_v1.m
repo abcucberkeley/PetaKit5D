@@ -487,10 +487,15 @@ if ~isempty(flippedTile)
     end
 end
 
-if ~IOScan && ~DS && ~DSR
+if ~IOScan && ~ObjectiveScan && ~DS && ~DSR
     % convert coordinates in DSR space to skewned space
    xyz = [xyz(:, 3) / sin(theta), xyz(:, 2), -xyz(:, 1) * sin(theta) + xyz(:, 3) * cos(theta)];
 end
+
+if ObjectiveScan || DS
+    % convert coordinates in Objective Scan / DS space
+    xyz = [xyz(:, 1) * cos(theta) + xyz(:, 3) * sin(theta), xyz(:, 2), -xyz(:, 1) * sin(theta) + xyz(:, 3) * cos(theta)];
+end    
 
 % identify pairs between pairs
 % first slight shift xyz such that the distance between pairs are in

@@ -9,12 +9,13 @@
 #include "tiffio.h"
 #include "omp.h"
 #include "mex.h"
+
 //mex -v COPTIMFLAGS="-O3 -DNDEBUG" CFLAGS='$CFLAGS -O3 -fopenmp' LDFLAGS='$LDFLAGS -O3 -fopenmp' '-I/global/home/groups/software/sl-7.x86_64/modules/libtiff/4.1.0/libtiff/' '-L/global/home/groups/software/sl-7.x86_64/modules/libtiff/4.1.0/libtiff/' -ltiff parallelReadTiff.c
 //mex COMPFLAGS='$COMPFLAGS /openmp' '-IC:\Program Files (x86)\tiff\include\' '-LC:\Program Files (x86)\tiff\lib\' -ltiffd.lib C:\Users\Matt\Documents\parallelTiff\main.cpp
 
 //libtiff 4.4.0
 //mex -v COPTIMFLAGS="-O3 -DNDEBUG" LDOPTIMFLAGS="-O3 -DNDEBUG" CFLAGS='$CFLAGS -O3 -fopenmp' LDFLAGS='$LDFLAGS -O3 -fopenmp' '-I/clusterfs/fiona/matthewmueller/software/tiff-4.4.0/include' '-L/clusterfs/fiona/matthewmueller/software/tiff-4.4.0/lib' -ltiff parallelReadTiff.c
-
+//mex -v COPTIMFLAGS="" LDOPTIMFLAGS="" CFLAGS='$CFLAGS -g -fopenmp' LDFLAGS='$LDFLAGS -g -fopenmp' '-I/clusterfs/fiona/matthewmueller/software/tiff-4.4.0/include' '-L/clusterfs/fiona/matthewmueller/software/tiff-4.4.0/lib' -ltiff parallelReadTiff.c
 // Handle the tilde character in filenames on Linux/Mac
 #ifndef _WIN32
 #include <wordexp.h>
@@ -231,7 +232,7 @@ void readTiffParallel(uint64_t x, uint64_t y, uint64_t z, const char* fileName, 
         TIFFGetField(tif, TIFFTAG_STRIPOFFSETS, &offsets);
         uint64_t gap = offsets[0]-fOffset;
     
-        lseek(fd, offset, SEEK_SET);
+        lseek64(fd, offset, SEEK_SET);
 
 
         TIFFClose(tif);
@@ -242,7 +243,7 @@ void readTiffParallel(uint64_t x, uint64_t y, uint64_t z, const char* fileName, 
         for(uint64_t i = 0; i < z; i++){
             bytesRead = read(fd,tiff+curr,zSize);
             curr += bytesRead;
-            lseek(fd,gap,SEEK_CUR);
+            lseek64(fd,gap,SEEK_CUR);
         }
         close(fd);
         uint64_t size = x*y*z*(bits/8);
@@ -456,12 +457,15 @@ void readTiffParallel2D(uint64_t x, uint64_t y, uint64_t z, const char* fileName
     }
     else{
         uint64_t stripsPerDir = (uint64_t)ceil((double)y/(double)stripSize);
+        /*
         #ifdef _WIN32
-        int fd = open(fileName,O_RDONLY | O_BINARY);
+        int64_t fd = open64(fileName,O_RDONLY | O_BINARY);
         #else
-        int fd = open(fileName,O_RDONLY);
+        int64_t fd = open64(fileName,O_RDONLY);
         #endif
-        if(fd == -1) mexErrMsgIdAndTxt("disk:threadError","File \"%s\" cannot be opened from Disk\n",fileName);
+        */
+        FILE *fp = fopen(fileName, "rb");
+        if(!fp) mexErrMsgIdAndTxt("disk:threadError","File \"%s\" cannot be opened from Disk\n",fileName);
 
         if(!tif) mexErrMsgIdAndTxt("tiff:threadError","File \"%s\" cannot be opened\n",fileName);
         uint64_t offset = 0;
@@ -477,20 +481,18 @@ void readTiffParallel2D(uint64_t x, uint64_t y, uint64_t z, const char* fileName
         TIFFGetField(tif, TIFFTAG_STRIPOFFSETS, &offsets);
         uint64_t gap = offsets[0]-fOffset;
     
-        lseek(fd, offset, SEEK_SET);
+        fseek(fp, offset, SEEK_SET);
 
 
         TIFFClose(tif);
-        uint64_t curr = 0;
-        uint64_t bytesRead = 0;
+        //uint64_t curr = 0;
+        //int64_t bytesRead = 0;
         // TESTING
         // Not sure if we will need to read in chunks like for ImageJ
-        for(uint64_t i = 0; i < z; i++){
-            bytesRead = read(fd,tiff+curr,zSize);
-            curr += bytesRead;
-            lseek(fd,gap,SEEK_CUR);
-        }
-        close(fd);
+        
+        // for large files because read can only read so much at once
+        size_t bytesRead = fread(tiff, 1, zSize, fp);
+        fclose(fp);
         uint64_t size = x*y*z*(bits/8);
         void* tiffC = malloc(size);
         memcpy(tiffC,tiff,size);
@@ -540,7 +542,7 @@ void readTiffParallelImageJ(uint64_t x, uint64_t y, uint64_t z, const char* file
     if(offsets) offset = offsets[0];
 
     TIFFClose(tif);
-    lseek(fd, offset, SEEK_SET);
+    lseek64(fd, offset, SEEK_SET);
     uint64_t bytes = bits/8;
     //#pragma omp parallel for
     /*
