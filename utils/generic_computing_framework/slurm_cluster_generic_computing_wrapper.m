@@ -48,8 +48,9 @@ ip.parse(inputFullpaths, outputFullpaths, funcStrs, varargin{:});
 % move to the root path
 paths = split(which('slurm_cluster_generic_computing_wrapper'), 'LLSM5DTools');
 cd(paths{1});
+setupFn = [paths{1}, 'setup.m'];
 % use the setup within LLSM5DTools
-if ~exist('setup.m', 'file')
+if ~exist(setupFn, 'file')
     cd('LLSM5DTools');
 end
 
