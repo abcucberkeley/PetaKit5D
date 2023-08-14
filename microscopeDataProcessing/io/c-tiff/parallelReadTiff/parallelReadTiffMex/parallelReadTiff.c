@@ -103,7 +103,6 @@ void readTiffParallel(uint64_t x, uint64_t y, uint64_t z, const char* fileName, 
     uint16_t compressed = 1;
     TIFF* tif = TIFFOpen(fileName, "r");
     TIFFGetField(tif, TIFFTAG_COMPRESSION, &compressed);
-    
 
     
 
@@ -357,6 +356,7 @@ void readTiffParallel2D(uint64_t x, uint64_t y, uint64_t z, const char* fileName
     uint16_t compressed = 1;
     TIFF* tif = TIFFOpen(fileName, "r");
     TIFFGetField(tif, TIFFTAG_COMPRESSION, &compressed);
+
     // The other method won't work on specific slices of 3D images for now
     // so start slice must also be 0
     if(compressed > 1 || startSlice){
@@ -635,7 +635,10 @@ uint8_t isImageJIm(const char* fileName){
     char* tiffDesc = NULL;
     if(TIFFGetField(tif, TIFFTAG_IMAGEDESCRIPTION, &tiffDesc)){
         if(strstr(tiffDesc, "ImageJ")){
-            return 1;
+            uint16_t compressed = 1;
+            TIFFGetField(tif, TIFFTAG_COMPRESSION, &compressed);
+            if(compressed != 1) return 0;
+            else return 1;
         }
     }
     return 0;
