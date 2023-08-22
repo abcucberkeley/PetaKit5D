@@ -376,7 +376,7 @@ for i = 1 : numel(batchInds)
 end
 
 if all(done_flag)
-    fprintf('Processing of blocks %d - %d are done!\n', batchInds(1), batchInds(end));
+    fprintf('Processing of batches %d - %d are done!\n', batchInds(1), batchInds(end));
     fclose(fopen(flagFullname, 'w'));
 end
 

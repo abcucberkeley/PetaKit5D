@@ -40,6 +40,10 @@ for g = 1 : ng
     gind = find(grpIdx == uniq_grp(g));
     gind_cell{g} = gind;
     nF_g = numel(gind);
+    if nF_g == 1
+        continue;
+    end
+
     % new file indices within the group
     new_finds = cumsum(grpIdx == uniq_grp(g));
     

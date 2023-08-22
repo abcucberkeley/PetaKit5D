@@ -1,4 +1,4 @@
-function [] = compute_tile_bwdist_mip_slabs(blockInfoFullname, tileInd, bwdistFullpath, weightDegree, singleDistMap, blockSize, shardSize, compressor, poolSize, Overwrite)
+function [] = compute_tile_bwdist_mip_slabs(blockInfoFullname, tileInd, bwdistFullpath, weightDegree, singleDistMap, blockSize, shardSize, compressor, poolSize, distBbox, Overwrite)
 % compute distance transform for a tile for large zarr file with MIP slab
 % (only z for now). 
 %
@@ -6,7 +6,7 @@ function [] = compute_tile_bwdist_mip_slabs(blockInfoFullname, tileInd, bwdistFu
 % 
 % Author: Xiongtao Ruan (05/02/2023)
 
-if nargin < 9
+if nargin < 10
     Overwrite = false;
 end
 
@@ -38,6 +38,7 @@ tileFn = tileFns{i};
 switch numel(poolSize) 
     case 3
         MIPZFn = sprintf('%s/MIP_Slabs_pooling_%d_%d_%d/%s_z.zarr', dataPath, poolSize(1), poolSize(2), poolSize(3), fsn);
+        poolSize = [poolSize, 1, 1, 1];
     case 6
         MIPZFn = sprintf('%s/MIP_Slabs_pooling_%d_%d_%d_%d_%d_%d/%s_z.zarr', dataPath, ...
             poolSize(1), poolSize(2), poolSize(3), poolSize(4), poolSize(5), poolSize(6), fsn);        
@@ -79,6 +80,23 @@ im_dist = im_dist .* (permute(win_z, [2, 3, 1]) .^ weightDegree);
 im_dist = im_dist .* im_i_orig;
 clear im_i_orig im_i;
 
+if ~isempty(distBbox)
+    distBbox = distBbox ./ [poolSize(4 : 5), poolSize(3), poolSize(4 : 5), poolSize(3)];
+    distBbox = max(1, round(distBbox));
+    
+    bufferSize = 100;
+    bufferSizes = max(1, round(bufferSize ./ [poolSize(4 : 5), poolSize(3)]));
+    winType = 'hann';
+    dist_y = dist_weight_single_axis(sz(1), distBbox([1, 4]), bufferSizes(1), winType);
+    dist_x = dist_weight_single_axis(sz(2), distBbox([2, 5]), bufferSizes(2), winType);
+    dist_z = dist_weight_single_axis(sz(3), distBbox([3, 6]), bufferSizes(3), winType);
+
+    im_dist_wt = dist_y .* permute(dist_x, [2, 1]) .* permute(dist_z, [2, 3, 1]);
+    p = ceil(log10((min(win_z(win_z > 0)) * 0.1)^weightDegree) / log10(eps) + 0.5);
+    im_dist = im_dist .* (im_dist_wt .^ weightDegree + eps^p);
+    clear im_dist_wt;
+end
+
 % write to zarr
 zarrFilename = bwdistFullpath;
 tmpFilename = [zarrFilename '_' uuid];
@@ -87,8 +105,8 @@ tmpFilename = [zarrFilename '_' uuid];
 %     'shape', size(im_dist), 'cname', 'zstd', 'level', 2);
 try
     zarrSubSize = [20, 20, 20];
-    createzarr(tmpFilename, dataSize=size(im_dist), blockSize=blockSize, dtype='single', ...
-        compressor=compressor, zarrSubSize=zarrSubSize);
+    createzarr(tmpFilename, dataSize=size(im_dist), blockSize=blockSize, shardSize=shardSize, ...
+        dtype='single', compressor=compressor, zarrSubSize=zarrSubSize);
     % bim = blockedImage(tmpFilename, sz, blockSize, zeros(1, 'single'), "Adapter", CZarrAdapter, 'mode', 'w');
 catch ME
     disp(ME);

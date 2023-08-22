@@ -1,4 +1,4 @@
-function [] = compute_tile_bwdist(blockInfoFullname, tileInd, bwdistFullpath, weightDegree, singleDistMap, blockSize, shardSize, compressor, Overwrite)
+function [] = compute_tile_bwdist(blockInfoFullname, tileInd, bwdistFullpath, weightDegree, singleDistMap, blockSize, shardSize, compressor, distBbox, Overwrite)
 % compute distance transform for a tile after removing overlap regions.
 % 
 % Author: Xiongtao Ruan (10/29/2020)
@@ -7,7 +7,7 @@ function [] = compute_tile_bwdist(blockInfoFullname, tileInd, bwdistFullpath, we
 % xruan (11/19/2022): compute feather power within the distance map to save
 % time for stitching processing
 
-if nargin < 9
+if nargin < 10
     Overwrite = false;
 end
 
@@ -127,6 +127,18 @@ im_dist = im_dist .* (permute(win_z, [2, 3, 1]) .^ weightDegree);
 im_dist = im_dist .* im_i_orig;
 clear im_i_orig im_i;
 
+if ~isempty(distBbox)
+    bufferSize = 100;
+    winType = 'hann';
+    dist_y = dist_weight_single_axis(sz(1), distBbox([1, 4]), bufferSize, winType);
+    dist_x = dist_weight_single_axis(sz(2), distBbox([2, 5]), bufferSize, winType);
+    dist_z = dist_weight_single_axis(sz(3), distBbox([3, 6]), bufferSize, winType);
+
+    im_dist_wt = dist_y .* permute(dist_x, [2, 1]) .* permute(dist_z, [2, 3, 1]);
+    im_dist = im_dist .* (im_dist_wt .^ weightDegree + eps);
+    clear im_dist_wt;
+end
+
 % write to zarr
 zarrFilename = bwdistFullpath;
 tmpFilename = [zarrFilename '_' uuid];
@@ -158,3 +170,4 @@ end
 movefile(tmpFilename, zarrFilename);
 
 end
+

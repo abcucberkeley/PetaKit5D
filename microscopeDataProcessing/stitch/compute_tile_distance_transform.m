@@ -7,6 +7,7 @@ function [outputFullpaths, imdistFileIdx] = compute_tile_distance_transform(bloc
 % xruan (10/25/2021): add support for a single distance map for all tiles in 
 % feather blending (save time for computing).
 % xruan (05/26/2023): add support for a single distance map for each location 
+% xruan (08/20/2023): add support for bounding boxes for distance transform. 
 
 
 ip = inputParser;
@@ -18,6 +19,7 @@ ip.addParameter('Overwrite', false, @islogical);
 ip.addParameter('blendWeightDegree', 10, @isnumeric);
 ip.addParameter('singleDistMap', true, @islogical);
 ip.addParameter('locIds', [], @isnumeric);
+ip.addParameter('distBboxes', [], @isnumeric);
 ip.addParameter('blockSize', [500, 500, 500], @isnumeric);
 ip.addParameter('shardSize', [], @isnumeric);
 ip.addParameter('compressor', 'lz4', @ischar);
@@ -35,6 +37,7 @@ Overwrite = pr.Overwrite;
 blendWeightDegree = pr.blendWeightDegree;
 singleDistMap = pr.singleDistMap;
 locIds = pr.locIds;
+distBboxes = pr.distBboxes;
 blockSize = pr.blockSize;
 shardSize = pr.shardSize;
 compressor = pr.compressor;
@@ -110,6 +113,15 @@ if singleDistMap
         end
         distTileIdx = uniq_inds(uniq_mapped_inds);
     end
+    if ~isempty(distBboxes)
+        if size(distBboxes, 1) == 1
+            if numel(distTileIdx) > 1
+                distBboxes = repmat(distBboxes, numel(distTileIdx), 1);
+            end
+        elseif size(distBboxes, 1) ~= numel(distTileIdx)
+            error('Number of distance bounding box does not match the number of unique tile image sizes!')
+        end
+    end    
 end
 nF = numel(tileFullpaths);
 inputFullpaths = tileFullpaths;
@@ -118,6 +130,12 @@ if nF == 1
     fsnames = {fsnames};
 end
 
+if isempty(distBboxes)
+    distBbox_strs = repmat({'[]'}, nF, 1);
+else
+    distBbox_strs = arrayfun(@(x) strrep(mat2str(distBboxes(x, :)), ' ', ','), 1 : nF, 'unif', 0);
+end
+    
 if largeZarr
     switch numel(poolSize)
         case 3
@@ -128,16 +146,16 @@ if largeZarr
     end
     outputFullpaths = cellfun(@(x) sprintf('%s/%s_z_%s_wr_%d.zarr', distPath, x, ...
         poolSize_str, blendWeightDegree), fsnames, 'unif', 0);
-    funcStrs = arrayfun(@(x) sprintf('compute_tile_bwdist_mip_slabs(''%s'',%d,''%s'',%d,%s,%s,%s,''%s'',%s,%s)', ...
+    funcStrs = arrayfun(@(x) sprintf('compute_tile_bwdist_mip_slabs(''%s'',%d,''%s'',%d,%s,%s,%s,''%s'',%s,%s,%s)', ...
         blockInfoFullname, distTileIdx(x), outputFullpaths{x}, blendWeightDegree, ...
         string(singleDistMap), strrep(mat2str(blockSize), ' ', ','), strrep(mat2str(shardSize), ' ', ','), ...
-        compressor, strrep(mat2str(poolSize), ' ', ','), string(Overwrite)), 1 : nF, 'unif', 0);
+        compressor, strrep(mat2str(poolSize), ' ', ','), distBbox_strs{x}, string(Overwrite)), 1 : nF, 'unif', 0);
 else
     outputFullpaths = cellfun(@(x) sprintf('%s/%s_wr_%d.zarr', distPath, x, blendWeightDegree), fsnames, 'unif', 0);
-    funcStrs = arrayfun(@(x) sprintf('compute_tile_bwdist(''%s'',%d,''%s'',%d,%s,%s,%s,''%s'',%s)', ...
+    funcStrs = arrayfun(@(x) sprintf('compute_tile_bwdist(''%s'',%d,''%s'',%d,%s,%s,%s,''%s'',%s,%s)', ...
         blockInfoFullname, distTileIdx(x), outputFullpaths{x}, blendWeightDegree, ...
         string(singleDistMap), strrep(mat2str(blockSize), ' ', ','), strrep(mat2str(shardSize), ' ', ','), ...
-        compressor,string(Overwrite)), 1 : nF, 'unif', 0);
+        compressor, distBbox_strs{x}, string(Overwrite)), 1 : nF, 'unif', 0);
 end
 
 imSize = getImageSize(tileFullpaths{1});

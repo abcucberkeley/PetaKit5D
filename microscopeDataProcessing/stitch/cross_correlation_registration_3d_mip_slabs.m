@@ -86,7 +86,7 @@ for i = 1 : 3
     MaxOffset_i = ceil(MaxOffset ./ poolSize_1);
     MaxOffset_i(i) = ceil(MaxOffset(i) / poolSize(i));
     downSample_i = round(downSample ./ poolSize_1);
-    downSample_i(i) = 1;
+    downSample_i(i) = 2;
         
     sz_i1 = getImageSize(imgFullpath_i1);
     sz_i2 = getImageSize(imgFullpath_i2);
