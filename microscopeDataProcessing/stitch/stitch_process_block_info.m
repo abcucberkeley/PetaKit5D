@@ -81,8 +81,8 @@ for i = 1 : nF
     bboxEnd_mat(i, :) = [yridx(end), xridx(end), zridx(end)];
 end
 
-block_info_tmp_fullname = sprintf('%s/%s_block_info_%s.mat', stichInfoPath, nv_fsname, uuid);
-block_info_fullname = sprintf('%s/%s_block_info.mat', stichInfoPath, nv_fsname);
+block_info_tmp_fullname = sprintf('%s/%s_block_info_task_size_%d_%s.mat', stichInfoPath, nv_fsname, taskSize, uuid);
+block_info_fullname = sprintf('%s/%s_block_info_task_size_%d.mat', stichInfoPath, nv_fsname, taskSize);
 
 save('-v7.3', block_info_tmp_fullname, 'tileFns', 'int_xyz_shift', 'imSizes', 'overlap_matrix', 'half_ol_region_cell', ...
     'ol_region_cell', 'overlap_map_mat', 'bboxes', 'bboxStart_mat', 'bboxEnd_mat', 'nvSize', 'blockSize', 'bSubSz', 'BorderSize');
@@ -124,7 +124,7 @@ for t = 1 : numTasks
     bt = min(t * blk_taskSize, numBlocks);
 
     % save block info searately for each task for faster access
-    FlagFullpath = sprintf('%s/stitch_block_info_blocks_%d_%d.mat', PerBlockInfoFlagPath, bs, bt);
+    FlagFullpath = sprintf('%s/stitch_block_info_task_size_%d_blocks_%d_%d.mat', PerBlockInfoFlagPath, taskSize, bs, bt);
     FlagFullpaths{t} = FlagFullpath;
     funcStrs{t} = sprintf(['stitch_organize_block_info([%s],%d,''%s'',''%s'',', ...
         '''%s'',''BorderSize'',[%s])'], strrep(mat2str([bs, bt]), ' ', ','), taskSize, ...

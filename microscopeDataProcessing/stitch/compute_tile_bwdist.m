@@ -129,13 +129,18 @@ clear im_i_orig im_i;
 
 if ~isempty(distBbox)
     bufferSize = 100;
+    dfactor = 0.99;
     winType = 'hann';
-    dist_y = dist_weight_single_axis(sz(1), distBbox([1, 4]), bufferSize, winType);
-    dist_x = dist_weight_single_axis(sz(2), distBbox([2, 5]), bufferSize, winType);
-    dist_z = dist_weight_single_axis(sz(3), distBbox([3, 6]), bufferSize, winType);
+    dist_y = dist_weight_single_axis(sz(1), distBbox([1, 4]), bufferSize, dfactor, winType);
+    dist_x = dist_weight_single_axis(sz(2), distBbox([2, 5]), bufferSize, dfactor, winType);
+    dist_z = dist_weight_single_axis(sz(3), distBbox([3, 6]), bufferSize, dfactor, winType);
 
     im_dist_wt = dist_y .* permute(dist_x, [2, 1]) .* permute(dist_z, [2, 3, 1]);
-    im_dist = im_dist .* (im_dist_wt .^ weightDegree + eps);
+    im_dist_wt = im_dist_wt .^ weightDegree;
+    if dfactor > 0
+        im_dist_wt = max(im_dist_wt, 1e-40);
+    end
+    im_dist = im_dist .* im_dist_wt;
     clear im_dist_wt;
 end
 

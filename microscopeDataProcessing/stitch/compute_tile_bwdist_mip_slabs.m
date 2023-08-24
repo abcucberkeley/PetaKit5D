@@ -86,14 +86,18 @@ if ~isempty(distBbox)
     
     bufferSize = 100;
     bufferSizes = max(1, round(bufferSize ./ [poolSize(4 : 5), poolSize(3)]));
+    dfactor = 0.99;
     winType = 'hann';
-    dist_y = dist_weight_single_axis(sz(1), distBbox([1, 4]), bufferSizes(1), winType);
-    dist_x = dist_weight_single_axis(sz(2), distBbox([2, 5]), bufferSizes(2), winType);
-    dist_z = dist_weight_single_axis(sz(3), distBbox([3, 6]), bufferSizes(3), winType);
+    dist_y = distance_weight_single_axis(sz(1), distBbox([1, 4]), bufferSizes(1), dfactor, winType);
+    dist_x = distance_weight_single_axis(sz(2), distBbox([2, 5]), bufferSizes(2), dfactor, winType);
+    dist_z = distance_weight_single_axis(sz(3), distBbox([3, 6]), bufferSizes(3), dfactor, winType);
 
     im_dist_wt = dist_y .* permute(dist_x, [2, 1]) .* permute(dist_z, [2, 3, 1]);
-    p = ceil(log10((min(win_z(win_z > 0)) * 0.1)^weightDegree) / log10(eps) + 0.5);
-    im_dist = im_dist .* (im_dist_wt .^ weightDegree + eps^p);
+    im_dist_wt = im_dist_wt .^ weightDegree;
+    if dfactor > 0
+        im_dist_wt = max(im_dist_wt, 1e-40);
+    end
+    im_dist = im_dist .* im_dist_wt;
     clear im_dist_wt;
 end
 
