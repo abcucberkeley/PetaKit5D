@@ -163,9 +163,14 @@ imSize = getImageSize(tileFullpaths{1});
 % memory needed
 memAllocate = prod(imSize) * 4 / 1024^3 * 10;
 
+minTaskJobNum = 1;
+if memAllocate > 10
+    minTaskJobNum = numel(funcStrs);
+end
+
 generic_computing_frameworks_wrapper(inputFullpaths, outputFullpaths, funcStrs, ...
-    'memAllocate', memAllocate, 'parseCluster', parseCluster, mccMode=mccMode, ...
-    ConfigFile=ConfigFile);
+    'memAllocate', memAllocate, 'minTaskJobNum', minTaskJobNum, 'parseCluster', parseCluster, ...
+    mccMode=mccMode, ConfigFile=ConfigFile);
 
 end
 

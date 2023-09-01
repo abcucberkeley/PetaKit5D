@@ -1,5 +1,5 @@
 function XR_deskewRotateBlock_parser(batchInds, zarrFullpath, dsrFullpath, flagFullname, ...
-    inBatchBBoxes, outBatchBBoxes, outRegionBBoxes, xyPixelSize, dz, varargin)
+    inBatchBBoxes, outBatchBBoxes, outRegionBBoxes, outLocalBboxes, xyPixelSize, dz, varargin)
 % Deskew and/or rotate data for given blocks
 
 ip = inputParser;
@@ -12,6 +12,7 @@ ip.addRequired('flagFullname', @(x) ischar(x));
 ip.addRequired('inBatchBBoxes', @(x) isnumeric(x) || ischar(x));
 ip.addRequired('outBatchBBoxes', @(x) isnumeric(x) || ischar(x));
 ip.addRequired('outRegionBBoxes', @(x) isnumeric(x) || ischar(x));
+ip.addRequired('outLocalBboxes', @(x) isnumeric(x) || ischar(x));
 ip.addRequired('pixelSize', @(x) isnumeric(x) || ischar(x)); %in um
 ip.addRequired('dz', @(x) isnumeric(x) || ischar(x)); %in um
 % ip.addParameter('BlockSize', [], @isnumeric);
@@ -24,8 +25,8 @@ ip.addParameter('resample', [], @(x) isempty(x) || isnumeric(x) || ischar(x)); %
 ip.addParameter('uuid', '', @ischar);
 ip.addParameter('debug', false, @(x) islogical(x) || ischar(x));
 
-ip.parse(batchInds, zarrFullpath, dsrFullpath, flagFullname, ...
-    inBatchBBoxes, outBatchBBoxes, outRegionBBoxes, xyPixelSize, dz, varargin{:});
+ip.parse(batchInds, zarrFullpath, dsrFullpath, flagFullname, inBatchBBoxes, ...
+    outBatchBBoxes, outRegionBBoxes, outLocalBboxes, xyPixelSize, dz, varargin{:});
 
 pr = ip.Results;
 Overwrite = pr.Overwrite;
@@ -48,6 +49,9 @@ if ischar(outBatchBBoxes)
 end
 if ischar(outRegionBBoxes)
     outRegionBBoxes = str2num(outRegionBBoxes);
+end
+if ischar(outLocalBboxes)
+    outLocalBboxes = str2num(outLocalBboxes);
 end
 if ischar(xyPixelSize)
     xyPixelSize = str2num(xyPixelSize);
@@ -75,7 +79,7 @@ if ischar(debug)
 end
 
 XR_deskewRotateBlock(batchInds, zarrFullpath, dsrFullpath, flagFullname, inBatchBBoxes, ...
-    outBatchBBoxes, outRegionBBoxes, xyPixelSize, dz,'Overwrite',Overwrite, ...
+    outBatchBBoxes, outRegionBBoxes, outLocalBboxes, xyPixelSize, dz,'Overwrite',Overwrite, ...
     'SkewAngle',SkewAngle,'Reverse',Reverse,'flipZstack',flipZstack,'Interp',Interp, ...
     'resample',resample,'uuid',uuid,'debug',debug)
 

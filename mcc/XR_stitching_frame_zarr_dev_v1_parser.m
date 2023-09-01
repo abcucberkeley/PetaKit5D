@@ -53,11 +53,13 @@ ip.addParameter('shiftMethod', 'grid', @ischar); % {'local', 'global', 'grid', '
 ip.addParameter('axisWeight', [1, 0.1, 10], @(x) isnumeric(x) || ischar(x)); % axis weight for optimization, y, x, z
 ip.addParameter('groupFile', '', @ischar); % file to define tile groups
 ip.addParameter('singleDistMap', ~false, @(x) islogical(x) || ischar(x)); % compute distance map for the first tile and apply to all other tiles
+ip.addParameter('distBboxes', [], @(x) isnumeric(x) || ischar(x)); % bounding boxes for distance transform
 ip.addParameter('zarrFile', false, @(x) islogical(x) || ischar(x));
 ip.addParameter('largeZarr', false, @(x) islogical(x) || ischar(x)); 
 ip.addParameter('poolSize', [], @(x) isnumeric(x) || ischar(x)); % max pooling size for large zarr MIPs
 ip.addParameter('batchSize', [500, 500, 500], @(x) isnumeric(x) || ischar(x)); 
 ip.addParameter('blockSize', [500, 500, 500], @(x) isnumeric(x) || ischar(x)); 
+ip.addParameter('shardSize', [], @(x) isnumeric(x) || ischar(x)); 
 ip.addParameter('zarrSubSize', [], @(x) isnumeric(x) || ischar(x));
 ip.addParameter('saveMultires', false, @(x) islogical(x) || ischar(x)); % save as multi resolution dataset
 ip.addParameter('resLevel', 4, @(x) isnumeric(x) || ischar(x)); % downsample to 2^1-2^resLevel
@@ -129,6 +131,7 @@ xcorrThresh = pr.xcorrThresh;
 xyMaxOffset = pr.xyMaxOffset;
 zMaxOffset = pr.zMaxOffset;
 singleDistMap = pr.singleDistMap;
+distBboxes = pr.distBboxes;
 saveMultires = pr.saveMultires;
 resLevel = pr.resLevel;
 jobLogDir = pr.jobLogDir;
@@ -144,6 +147,7 @@ largeZarr = pr.largeZarr;
 poolSize = pr.poolSize;
 blockSize = pr.blockSize;
 batchSize = pr.batchSize;
+shardSize = pr.shardSize;
 zarrSubSize = pr.zarrSubSize;
 BorderSize = pr.BorderSize;
 BlurSigma = pr.BlurSigma;
@@ -272,6 +276,9 @@ end
 if ischar(singleDistMap)
     singleDistMap = strcmp(singleDistMap, 'true');
 end
+if ischar(distBboxes)
+    distBboxes = str2num(distBboxes);
+end
 if ischar(zarrFile)
     zarrFile = strcmp(zarrFile, 'true');
 end
@@ -286,6 +293,9 @@ if ischar(blockSize)
 end
 if ischar(batchSize)
     batchSize = str2num(batchSize);
+end
+if ischar(shardSize)
+    shardSize = str2num(shardSize);
 end
 if ischar(zarrSubSize)
     zarrSubSize = str2num(zarrSubSize);
@@ -356,13 +366,14 @@ XR_stitching_frame_zarr_dev_v1(tileFullpaths, coordinates, ResultPath=ResultPath
     boundboxCrop=boundboxCrop, zNormalize=zNormalize, xcorrDownsample=xcorrDownsample, ...
     xcorrThresh=xcorrThresh, xyMaxOffset=xyMaxOffset, zMaxOffset=zMaxOffset, ...
     shiftMethod=shiftMethod, axisWeight=axisWeight, groupFile=groupFile, singleDistMap=singleDistMap, ...
-    zarrFile=zarrFile, largeZarr=largeZarr, poolSize=poolSize, blockSize=blockSize, ...
-    batchSize=batchSize, zarrSubSize=zarrSubSize, saveMultires=saveMultires, ...
-    resLevel=resLevel, BorderSize=BorderSize, BlurSigma=BlurSigma, SaveMIP=SaveMIP, ...
-    tileIdx=tileIdx, processFunPath=processFunPath, stitchMIP=stitchMIP, stitch2D=stitch2D, ...
-    bigStitchData=bigStitchData, parseCluster=parseCluster, masterCompute=masterCompute, ...
-    jobLogDir=jobLogDir, cpusPerTask=cpusPerTask, uuid=uuid, maxTrialNum=maxTrialNum, ...
-    unitWaitTime=unitWaitTime, mccMode=mccMode, ConfigFile=ConfigFile, debug=debug);
+    distBboxes=distBboxes, zarrFile=zarrFile, largeZarr=largeZarr, poolSize=poolSize, ...
+    blockSize=blockSize, batchSize=batchSize, shardSize=shardSize, zarrSubSize=zarrSubSize, ...
+    saveMultires=saveMultires, resLevel=resLevel, BorderSize=BorderSize, BlurSigma=BlurSigma, ...
+    SaveMIP=SaveMIP, tileIdx=tileIdx, processFunPath=processFunPath, stitchMIP=stitchMIP, ...
+    stitch2D=stitch2D, bigStitchData=bigStitchData, parseCluster=parseCluster, ...
+    masterCompute=masterCompute, jobLogDir=jobLogDir, cpusPerTask=cpusPerTask, ...
+    uuid=uuid, maxTrialNum=maxTrialNum, unitWaitTime=unitWaitTime, mccMode=mccMode, ...
+    ConfigFile=ConfigFile, debug=debug);
 
 end
 

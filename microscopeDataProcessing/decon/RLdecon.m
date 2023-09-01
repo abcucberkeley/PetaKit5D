@@ -38,7 +38,10 @@ ip.addParameter('fixIter', true, @islogical);
 ip.addParameter('errThresh', [], @isnumeric); % error threshold for simplified code
 ip.addParameter('saveZarr', false, @islogical); % save as zarr
 ip.addParameter('BlockSize', [256, 256, 256], @isnumeric); % block overlap
+ip.addParameter('damper', 1, @isnumeric); % damp factor for decon result
 ip.addParameter('scaleFactor', [], @isnumeric); % scale factor for result
+ip.addParameter('deconOffset', 0, @isnumeric); % offset for decon result
+ip.addParameter('EdgeErosion', 0, @isnumeric); % edge erosion for decon result
 ip.addParameter('deconBbox', [], @isnumeric); % bounding box to crop data after decon
 ip.addParameter('debug', false, @islogical);
 ip.addParameter('saveStep', 5, @isnumeric); % save intermediate results every given iterations
@@ -79,7 +82,10 @@ fixIter = pr.fixIter;
 errThresh = pr.errThresh;
 saveZarr = pr.saveZarr;
 BlockSize = pr.BlockSize;
+damper = pr.damper;
 scaleFactor = pr.scaleFactor;
+deconOffset = pr.deconOffset;
+EdgeErosion = pr.EdgeErosion;
 deconBbox = pr.deconBbox;
 debug = pr.debug;
 saveStep = pr.saveStep;
@@ -355,7 +361,6 @@ if ~file_exist_mat(1)
     if nIter>0 && any(rawdata, 'all')
         fprintf('Deconvolution for frame %s with %s Method ...\n', inputFn, RLMethod);            
         if isempty(scaleFactor)
-            % scaleFactor = numel(rawdata);
             scaleFactor = 1;
         end
         psf = psf ./ sum(psf(:));
@@ -371,9 +376,17 @@ if ~file_exist_mat(1)
             case 'original'
                 deconvolved = deconvlucy(rawdata, psf, nIter);
             case 'simplified'
-                [deconvolved, err_mat, iter_run] = decon_lucy_function(rawdata, psf, nIter, Background, useGPU, Save16bit, scaleFactor, deconBbox, debug, debug_folder, saveStep);
+                [deconvolved, err_mat, iter_run] = decon_lucy_function(rawdata, ...
+                    psf, nIter, Background=Background, useGPU=useGPU, Save16bit=Save16bit, ...
+                    damper=damper, scaleFactor=scaleFactor, deconOffset=deconOffset, ...
+                    bbox=deconBbox, EdgeErosion=EdgeErosion, debug=debug, debug_folder=debug_folder, ...
+                    saveStep=saveStep);
             case 'omw'
-                [deconvolved, err_mat] = decon_lucy_omw_function(rawdata, psf, psf_b, nIter, Background, useGPU, Save16bit, scaleFactor, deconBbox, debug, debug_folder, saveStep);          
+                [deconvolved, err_mat] = decon_lucy_omw_function(rawdata, psf, ...
+                    psf_b, nIter, Background=Background, useGPU=useGPU, Save16bit=Save16bit, ...
+                    damper=damper, scaleFactor=scaleFactor, deconOffset=deconOffset, ...
+                    bbox=deconBbox, EdgeErosion=EdgeErosion, debug=debug, debug_folder=debug_folder, ...
+                    saveStep=saveStep);          
             case 'cudagen'
                 deconvolved = decon_lucy_cuda_function(single(rawdata), single(psf), nIter);            
         end

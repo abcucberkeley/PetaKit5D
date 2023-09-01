@@ -14,6 +14,7 @@ ip.addRequired('dsFullpath', @(x) ischar(x));
 ip.addRequired('flagFullname', @(x) ischar(x));
 ip.addRequired('dsFactor', @(x) isnumeric(x) || ischar(x));
 % ip.addParameter('ResultDir', 'matlab_stitch', @ischar);
+ip.addParameter('bbox', [], @(x) isnumeric(x) || ischar(x));
 ip.addParameter('BatchSize', [], @(x) isnumeric(x) || ischar(x));
 ip.addParameter('Overwrite', false, @(x) islogical(x) || ischar(x));
 ip.addParameter('Interp', 'linear', @ischar);
@@ -24,6 +25,7 @@ ip.addParameter('BorderSize', [], @(x) isnumeric(x) || ischar(x));
 ip.parse(batchInds, zarrFullpath, dsFullpath, flagFullname, dsFactor, varargin{:});
 
 Overwrite = ip.Results.Overwrite;
+bbox = ip.Results.bbox;
 BatchSize = ip.Results.BatchSize;
 Interp = ip.Results.Interp;
 BlockSize = ip.Results.BlockSize;
@@ -34,6 +36,9 @@ if ischar(batchInds)
 end
 if ischar(dsFactor)
     dsFactor = str2num(dsFactor);
+end
+if ischar(bbox)
+    bbox = str2num(bbox);
 end
 if ischar(BatchSize)
     BatchSize = str2num(BatchSize);
@@ -49,5 +54,7 @@ if ischar(BorderSize)
 end
 
  resampleZarrBlock(batchInds, zarrFullpath, dsFullpath, flagFullname, dsFactor, ...
-     'BatchSize', BatchSize, 'Overwrite', Overwrite, 'Interp', Interp, ...
+     'bbox', bbox, 'BatchSize', BatchSize, 'Overwrite', Overwrite, 'Interp', Interp, ...
      'BlockSize', BlockSize, 'BorderSize', BorderSize);
+
+end

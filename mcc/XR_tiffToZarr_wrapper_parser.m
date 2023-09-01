@@ -8,6 +8,7 @@ ip.addRequired('tiffFullpaths', @(x) iscell(x) || ischar(x));
 ip.addParameter('zarrPathstr', 'zarr', @ischar);
 ip.addParameter('locIds', [], @(x) isnumeric(x) || ischar(x)); % location ids for the tiles
 ip.addParameter('blockSize', [500, 500, 250], @(x) isnumeric(x) || ischar(x));
+ip.addParameter('shardSize', [], @(x) isnumeric(x) || ischar(x));
 ip.addParameter('flippedTile', [], @(x) isempty(x) || islogical(x) || ischar(x));
 ip.addParameter('resample', [], @(x) isempty(x) || isnumeric(x) || ischar(x));
 ip.addParameter('partialFile', false, @(x) islogical(x) || ischar(x));
@@ -34,6 +35,7 @@ pr = ip.Results;
 zarrPathstr = pr.zarrPathstr;
 locIds = pr.locIds;
 blockSize = pr.blockSize;
+shardSize = pr.shardSize;
 flippedTile = pr.flippedTile;
 resample = pr.resample;
 partialFile = pr.partialFile;
@@ -57,6 +59,9 @@ if ischar(locIds)
 end
 if ischar(blockSize)
     blockSize = str2num(blockSize);
+end
+if ischar(shardSize)
+    shardSize = str2num(shardSize);
 end
 if ischar(flippedTile)
     flippedTile = eval(flippedTile);
@@ -96,10 +101,11 @@ if ischar(mccMode)
 end
 
 XR_tiffToZarr_wrapper(tiffFullpaths,'zarrPathstr',zarrPathstr,'locIds',locIds, ...
-    'blockSize',blockSize,'flippedTile',flippedTile,'resample',resample,'partialFile',partialFile,...
-    'ChannelPatterns',ChannelPatterns,'InputBbox',InputBbox,'tileOutBbox',tileOutBbox,...
-    'processFunPath',processFunPath,'parseCluster',parseCluster,'bigData',bigData,'masterCompute',masterCompute,...
-    'jobLogDir',jobLogDir,'cpusPerTask',cpusPerTask,'uuid',uuid,'maxTrialNum',maxTrialNum,...
-    'unitWaitTime',unitWaitTime,'mccMode',mccMode,'ConfigFile',ConfigFile);
+    'blockSize',blockSize,'shardSize',shardSize,'flippedTile',flippedTile,'resample',resample, ...
+    'partialFile',partialFile,'ChannelPatterns',ChannelPatterns,'InputBbox',InputBbox, ...
+    'tileOutBbox',tileOutBbox,'processFunPath',processFunPath,'parseCluster',parseCluster, ...
+    'bigData',bigData,'masterCompute',masterCompute,'jobLogDir',jobLogDir,'cpusPerTask',cpusPerTask, ...
+    'uuid',uuid,'maxTrialNum',maxTrialNum,'unitWaitTime',unitWaitTime,'mccMode',mccMode, ...
+    'ConfigFile',ConfigFile);
 
 end

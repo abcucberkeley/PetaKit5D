@@ -1,4 +1,4 @@
-function [] = compute_tile_bwdist_mip_slabs_parser(blockInfoFullname, tileInd, bwdistFullpath, weightDegree, singleDistMap, blockSize, compressor, poolSize, Overwrite)
+function [] = compute_tile_bwdist_mip_slabs_parser(blockInfoFullname, tileInd, bwdistFullpath, weightDegree, singleDistMap, blockSize, shardSize, compressor, poolSize, distBbox, Overwrite)
 
 
 if ischar(tileInd)
@@ -13,15 +13,21 @@ end
 if ischar(blockSize)
     blockSize = str2num(blockSize);
 end
+if ischar(shardSize)
+    shardSize = str2num(shardSize);
+end
 if ischar(poolSize)
     poolSize = str2num(poolSize);
+end
+if ischar(distBbox)
+    distBbox = str2num(distBbox);
 end
 if ischar(Overwrite)
     Overwrite = strcmp(Overwrite, 'true');
 end
 
 compute_tile_bwdist_mip_slabs(blockInfoFullname, tileInd, bwdistFullpath, weightDegree, ...
-    singleDistMap, blockSize, compressor, poolSize, Overwrite)
+    singleDistMap, blockSize, shardSize, compressor, poolSize, distBbox, Overwrite)
 
 
 end

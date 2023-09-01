@@ -1,4 +1,4 @@
-function [] = compute_tile_bwdist_parser(blockInfoFullname, tileInd, bwdistFullpath, weightDegree, singleDistMap, blockSize, compressor, Overwrite)
+function [] = compute_tile_bwdist_parser(blockInfoFullname, tileInd, bwdistFullpath, weightDegree, singleDistMap, blockSize, shardSize, compressor, distBbox, Overwrite)
 
 
 %#function compute_tile_bwdist
@@ -15,11 +15,17 @@ end
 if ischar(blockSize)
     blockSize = str2num(blockSize);
 end
+if ischar(shardSize)
+    shardSize = str2num(shardSize);
+end
+if ischar(distBbox)
+    distBbox = str2num(distBbox);
+end
 if ischar(Overwrite)
     Overwrite = strcmp(Overwrite, 'true');
 end
 
-compute_tile_bwdist(blockInfoFullname, tileInd, bwdistFullpath, weightDegree, singleDistMap, blockSize, compressor, Overwrite)
+compute_tile_bwdist(blockInfoFullname, tileInd, bwdistFullpath, weightDegree, singleDistMap, blockSize, shardSize, compressor, distBbox, Overwrite)
 
 
 end

@@ -39,6 +39,7 @@ ip.addParameter('taskBatchNum', 1, @isnumeric); % aggragate several tasks togeth
 ip.addParameter('BashLaunchStr', '', @ischar);
 ip.addParameter('SlurmParam', '-p abc --qos abc_normal -n1 --mem-per-cpu=21418M', @ischar);
 ip.addParameter('SlurmConstraint', '', @ischar);
+ip.addParameter('MCRCacheRoot', '/tmp/', @ischar);
 ip.addParameter('MCRParam', '/usr/local/MATLAB/R2022b', @ischar);
 ip.addParameter('MCCMasterStr', '/home/xruan/Projects/XR_Repository/mcc/run_mccMaster.sh', @ischar);
 ip.addParameter('jobTimeLimit', 24, @isnumeric); % in hour, [] means no limit
@@ -82,6 +83,7 @@ taskBatchNum = pr.taskBatchNum;
 uuid = pr.uuid;
 SlurmParam = pr.SlurmParam;
 SlurmConstraint = pr.SlurmConstraint;
+MCRCacheRoot = pr.MCRCacheRoot;
 MCRParam = pr.MCRParam;
 MCCMasterStr = pr.MCCMasterStr;
 jobTimeLimit = pr.jobTimeLimit;
@@ -109,7 +111,7 @@ if parseCluster
         jobTimeLimit = max(jobTimeLimit, 1 / 60);
         h = floor(jobTimeLimit);
         m = round((jobTimeLimit - h) * 60);
-        time_str = sprintf(' -t %d:%d:00 ', h, m);
+        time_str = sprintf(' -t %d:%02d:00 ', h, m);
     end
 end
 
@@ -157,8 +159,8 @@ for b = 1 : nB
         [func_name, var_str] = convert_function_string_to_mcc_string(func_str);
         % tline = sprintf('%s %s %s %s \n', MCCMasterStr, MCRParam, func_name, var_str);
         % check output file in bash to avoid waste of time in loading mcc program if the output file exists. 
-        tline = sprintf('if [ ! -f %s ]; then %s %s %s %s ; else echo output %s already exists; fi\n', ...
-            outputFullpaths{f}, MCCMasterStr, MCRParam, func_name, var_str, outputFullpaths{f});
+        tline = sprintf('if [ ! -f %s ]; then MCR_CACHE_ROOT=%s %s %s %s %s ; else echo output %s already exists; fi\n', ...
+            outputFullpaths{f}, MCRCacheRoot, MCCMasterStr, MCRParam, func_name, var_str, outputFullpaths{f});
         fprintf(fid, tline);
     end
     fclose(fid);
@@ -371,7 +373,7 @@ while (~parseCluster && ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
                     else
                         cmd = sprintf(['sbatch --array=%d -o %s -e %s --cpus-per-task=%d ', ...
                             '--ntasks=1 %s %s %s --wrap="echo $PWD; echo bash command: \\\"%s\\\"; ', ...
-                            '%s; parallel --delay 0.1 \\\"srun --exclusive -c %d bash -c {}\\\" < %s"'], ...
+                            '%s; parallel --delay 0.2 \\\"srun --exclusive -c %d bash -c {}\\\" < %s"'], ...
                             task_id, job_log_fname, job_log_error_fname, cpusPerTask_f, SlurmParam, ...
                             SlurmConstraint, time_str, inputFn, BashLaunchStr, floor(cpusPerTask_f / paraJobNum), inputFn);
                         % in case of some jobs fail because of memory issue, directly use parallel for computing
@@ -443,10 +445,10 @@ while (~parseCluster && ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
                 else
                     paraJobNum_f = max(1, min(paraJobNum - 1, round(paraJobNum * masterParaFactor / (trial_counter(f) + 1))));
                 end
-                cmd = sprintf(['%s; parallel --jobs %d --delay 0.1 < %s'], BashLaunchStr, paraJobNum_f, inputFn);
+                cmd = sprintf(['%s; parallel --jobs %d --delay 0.2 < %s'], BashLaunchStr, paraJobNum_f, inputFn);
                 if ismcc || isdeployed
                     % reduce the load of master job in case of crash due to oom
-                    cmd = sprintf(['%s; parallel --ungroup --jobs %d --delay 0.1 < %s'], BashLaunchStr, paraJobNum_f, inputFn);
+                    cmd = sprintf(['%s; parallel --ungroup --jobs %d --delay 0.2 < %s'], BashLaunchStr, paraJobNum_f, inputFn);
                 end
             end
             t0=tic; [status, cmdout] = system(cmd, '-echo'); t1=toc(t0);

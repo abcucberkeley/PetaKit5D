@@ -17,7 +17,6 @@ function [] = XR_decon_data_wrapper(dataPaths, varargin)
 % xruan (10/19/2021): add support for dataset specific iteration
 
 
-
 ip = inputParser;
 ip.CaseSensitive = false;
 ip.KeepUnmatched = true;
@@ -71,7 +70,9 @@ ip.addParameter('largeFile', false, @islogical);
 ip.addParameter('largeMethod', 'inmemory', @ischar); % inmemory, inplace. 
 ip.addParameter('zarrFile', false, @islogical); % use zarr file as input
 ip.addParameter('saveZarr', false, @islogical); % save as zarr
-ip.addParameter('scaleFactor', [], @isnumeric); % scale factor for result
+ip.addParameter('damper', 1, @isnumeric); % damp factor for decon result
+ip.addParameter('scaleFactor', [], @isnumeric); % scale factor for decon result
+ip.addParameter('deconOffset', 0, @isnumeric); % offset for decon result
 ip.addParameter('deconMaskFns', {}, @iscell); % 2d masks to filter regions to decon, in xy, xz, yz order
 ip.addParameter('parseCluster', true, @islogical);
 ip.addParameter('parseParfor', false, @islogical);
@@ -146,7 +147,9 @@ largeFile = pr.largeFile;
 largeMethod = pr.largeMethod;
 zarrFile = pr.zarrFile;
 saveZarr = pr.saveZarr;
+damper = pr.damper;
 scaleFactor = pr.scaleFactor;
+deconOffset = pr.deconOffset;
 deconMaskFns = pr.deconMaskFns;
 
 jobLogDir = pr.jobLogDir;
@@ -189,6 +192,13 @@ end
 
 if numel(ChannelPatterns) > 1 && numel(OTFCumThresh) == 1
     OTFCumThresh = OTFCumThresh * ones(1, numel(ChannelPatterns));
+end
+
+if isempty(scaleFactor)
+    scaleFactor = 1;
+end
+if numel(ChannelPatterns) > 1 && numel(scaleFactor) == 1
+    scaleFactor = scaleFactor * ones(1, numel(scaleFactor));
 end
 
 if isempty(uuid)
@@ -376,7 +386,7 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
             SaveMaskfile = false;
             % do not apply erode by first time point for cuda decon for now
             % (04/19/2020)
-            if EdgeErosion > 0 && ErodeByFTP && ~cudaDecon
+            if EdgeErosion > 0 && ErodeByFTP && ~cudaDecon && ~(largeFile && strcmp(largeMethod, 'inplace'))
                 FTP_ind = FTP_inds(fdind);
                 if f == FTP_ind
                     SaveMaskfile = true;
@@ -414,6 +424,7 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
             psfFullpath = dc_psfFullpaths{psfMapping};
             DeconIter_f = DeconIter_mat(fdind);
             OTFCumThresh_f = OTFCumThresh(psfMapping);
+            scaleFactor_f = scaleFactor(psfMapping);
             flipZstack = flipZstack_mat(f);
             deconMaskFns_str = sprintf('{''%s''}', strjoin(deconMaskFns, ''','''));
             
@@ -440,15 +451,16 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
                     '''skewed'',[%s],''fixIter'',%s,''errThresh'',[%0.20f],''debug'',%s,''saveStep'',%d,', ...
                     '''psfGen'',%s,''saveZarr'',%s,''parseCluster'',%s,''parseParfor'',%s,''GPUJob'',%s,', ...
                     '''Save16bit'',%s,''largeFile'',%s,''largeMethod'',''%s'',''BatchSize'',%s,''BlockSize'',%s,', ...
-                    '''zarrSubSize'',%s,''scaleFactor'',[%d],''deconMaskFns'',%s,''uuid'',''%s'',''cpusPerTask'',%d,', ...
-                    '''mccMode'',%s,''ConfigFile'',''%s'',''GPUConfigFile'',''%s'')'], ...
+                    '''zarrSubSize'',%s,''damper'',%d,''scaleFactor'',[%d],''deconOffset'',%d,''deconMaskFns'',%s,', ...
+                    '''uuid'',''%s'',''cpusPerTask'',%d,''mccMode'',%s,''ConfigFile'',''%s'',''GPUConfigFile'',''%s'')'], ...
                     dcframeFullpath, xyPixelSize, dc_dz, deconPath, psfFullpath, dc_dzPSF, Background, SkewAngle, ...
                     string(flipZstack), EdgeErosion, maskFullpath, string(SaveMaskfile), string(deconRotate), ...
                     DeconIter_f, RLMethod, wienerAlpha, OTFCumThresh_f, string(skewed), string(fixIter), errThresh, ...
                     string(debug), saveStep, string(psfGen), string(saveZarr), string(parseCluster),string(parseParfor), ... 
                     string(GPUJob), string(Save16bit), string(largeFile), largeMethod, strrep(mat2str(BatchSize), ' ', ','), ...
-                    strrep(mat2str(BlockSize), ' ', ','), strrep(mat2str(zarrSubSize), ' ', ','), scaleFactor, ...
-                    deconMaskFns_str, uuid, cpusPerTask, string(mccMode), ConfigFile, GPUConfigFile);
+                    strrep(mat2str(BlockSize), ' ', ','), strrep(mat2str(zarrSubSize), ' ', ','), damper, ...
+                    scaleFactor_f, deconOffset, deconMaskFns_str, uuid, cpusPerTask, string(mccMode), ...
+                    ConfigFile, GPUConfigFile);
             end
             
             if exist(dctmpFullpath, 'file') || parseCluster

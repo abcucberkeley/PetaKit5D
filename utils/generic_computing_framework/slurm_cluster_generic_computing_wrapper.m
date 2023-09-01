@@ -95,7 +95,7 @@ if parseCluster
         jobTimeLimit = max(jobTimeLimit, 1 / 60);
         h = floor(jobTimeLimit);
         m = round((jobTimeLimit - h) * 60);
-        time_str = sprintf(' -t %d:%d:00 ', h, m);
+        time_str = sprintf(' -t %d:%02d:00 ', h, m);
     end
 end
 

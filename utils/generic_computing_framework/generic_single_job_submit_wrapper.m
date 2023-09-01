@@ -35,7 +35,8 @@ ip.addParameter('MatlabLaunchStr', 'module load matlab/r2023a; matlab -nodisplay
 ip.addParameter('BashLaunchStr', '', @ischar);
 ip.addParameter('SlurmParam', '-p abc --qos abc_normal -n1 --mem-per-cpu=21418M', @ischar);
 ip.addParameter('SlurmConstraint', '', @ischar);
-ip.addParameter('MCRParam', '/usr/local/MATLAB/R2022b', @ischar);
+ip.addParameter('MCRCacheRoot', '/tmp/', @ischar);
+ip.addParameter('MCRParam', '/usr/local/MATLAB/R2023a', @ischar);
 ip.addParameter('MCCMasterStr', '/home/xruan/Projects/XR_Repository/mcc/run_mccMaster.sh', @ischar);
 ip.addParameter('jobTimeLimit', 24, @isnumeric); % in hour, [] means no limit
 ip.addParameter('language', 'matlab', @ischar); % support matlab, bash
@@ -101,6 +102,7 @@ MatlabLaunchStr = pr.MatlabLaunchStr;
 BashLaunchStr = pr.BashLaunchStr;
 SlurmParam = pr.SlurmParam;
 SlurmConstraint = pr.SlurmConstraint;
+MCRCacheRoot = pr.MCRCacheRoot;
 MCRParam = pr.MCRParam;
 MCCMasterStr = pr.MCCMasterStr;
 jobTimeLimit = pr.jobTimeLimit;
@@ -142,7 +144,7 @@ switch clusterType
                 [func_name, var_str] = convert_function_string_to_mcc_string(funcStr);
                 % handle for nested "
                 var_str = strrep(var_str, '"', '\"');                
-                process_cmd = sprintf('%s %s %s %s \n', MCCMasterStr, MCRParam, func_name, var_str);
+                process_cmd = sprintf('MCR_CACHE_ROOT=%s %s %s %s %s \n', MCRCacheRoot, MCCMasterStr, MCRParam, func_name, var_str);
             else
                 matlab_setup_str = 'setup([],true)';
                 matlab_cmd = sprintf('%s;t0_=tic;%s;toc(t0_)', matlab_setup_str, funcStr);

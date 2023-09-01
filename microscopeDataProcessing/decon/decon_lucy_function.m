@@ -1,4 +1,4 @@
-function [J_2, err_mat, k] = decon_lucy_function(I, PSF, NUMIT, Background, useGPU, Save16bit, scaleFactor, bbox, debug, debug_folder, saveStep)
+function [J_2, err_mat, k] = decon_lucy_function(I, PSF, NUMIT, varargin)
 % adapted from matlab deconvlucy.m
 % 
 % xruan (05/18/2021): add support for early stop with stop criteria
@@ -14,38 +14,44 @@ function [J_2, err_mat, k] = decon_lucy_function(I, PSF, NUMIT, Background, useG
 % weighting or subsampling
 % xruan (11/17/2022): add save16bit, bbox, background option for faster processing 
 % on GPU, also remove err_thrsh and fixIter parameters
+% xruan (08/31/2023): add scaleFactor, deconOffset, damper, and
+%   EdgeErosion, and use input parser for parameters.
 
 
-if nargin < 4 || isempty(Background)
+ip = inputParser;
+ip.CaseSensitive = false;
+ip.addRequired('I', @isnumeric);
+ip.addRequired('PSF', @isnumeric);
+ip.addRequired('NUMIT', @isnumeric);
+ip.addParameter('Background', [], @isnumeric);
+ip.addParameter('useGPU', true, @islogical); % use GPU processing
+ip.addParameter('Save16bit', true, @islogical);
+ip.addParameter('damper', 1, @isnumeric); % damp factor for decon result
+ip.addParameter('scaleFactor', 1, @isnumeric); % scale factor for result
+ip.addParameter('deconOffset', 0, @isnumeric); % offset for decon result
+ip.addParameter('EdgeErosion', 0, @isnumeric); % edge erosion for decon result
+ip.addParameter('bbox', [], @isnumeric); % bounding box to crop data after decon
+ip.addParameter('debug', false, @islogical);
+ip.addParameter('debug_folder', './debug/', @ischar);
+ip.addParameter('saveStep', 1, @isnumeric); % save intermediate results every given iterations
+
+ip.parse(I, PSF, NUMIT, varargin{:});
+
+pr = ip.Results;
+Background = pr.Background;
+useGPU = pr.useGPU;
+Save16bit = pr.Save16bit;
+damper = pr.damper;
+scaleFactor = pr.scaleFactor;
+deconOffset = pr.deconOffset;
+EdgeErosion = pr.EdgeErosion;
+bbox = pr.bbox;
+debug = pr.debug;
+debug_folder = pr.debug_folder;
+saveStep = pr.saveStep;
+
+if isempty(Background)
     Background = 0;
-end
-
-if nargin < 5
-    useGPU = true;
-end
-
-if nargin < 6
-    Save16bit = false;
-end
-
-if nargin < 7
-    scaleFactor = 1.0;
-end
-
-if nargin < 8
-    bbox = [];
-end
-
-if nargin < 9
-    debug = false;
-end
-
-if nargin < 10
-    debug_folder = './debug/';
-end
-
-if nargin < 11
-    saveStep = 5;
 end
 
 PSF = single(PSF);
@@ -78,6 +84,9 @@ end
 % 2. Prepare parameters for iterations
 if useGPU
     I = gpuArray(I);
+    if deconOffset ~= 0 || EdgeErosion > 0
+        I_mask = I ~= 0;
+    end    
     if strcmp(underlyingType(I), 'uint16')
         I = I - uint16(Background);            
         I = single(I);
@@ -93,6 +102,9 @@ else
     if ~isa(I, 'double')
         I = single(I);
     end
+    if deconOffset ~= 0 || EdgeErosion > 0
+        I_mask = I ~= 0;
+    end    
     I = max(I - Background, 0);    
     classI = underlyingType(I);
 
@@ -160,8 +172,24 @@ if debug
     err_mat = err_mat(1 : istp, :);
 end
 
-if scaleFactor ~= 1
-    J_2 = J_2 * scaleFactor;
+clear J_3 J_4 Y;
+
+% post-processing of deconvolved result
+if damper > 1
+    J_2 = J_2 .* (J_2 <= damper * I) + min(J_2, damper * I .* (J_2 >= damper * I));
+end
+clear I;
+
+if EdgeErosion > 0
+    I_mask = decon_mask_edge_erosion(I_mask, EdgeErosion);
+end
+
+if scaleFactor ~= 1 || deconOffset ~= 0 || EdgeErosion > 0
+    if deconOffset ~= 0 || EdgeErosion > 0
+        J_2 = (J_2 * scaleFactor + deconOffset) .* I_mask;
+    else
+        J_2 = J_2 * scaleFactor;
+    end
 end
 
 if Save16bit
@@ -171,7 +199,7 @@ end
 if useGPU
     if ~isempty(bbox)
         J_2 = J_2(bbox(1) : bbox(4), bbox(2) : bbox(5), bbox(3) : bbox(6));
-    end    
+    end
     J_2 = gather(J_2);
 else
     if ~isempty(bbox)

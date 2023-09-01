@@ -624,22 +624,16 @@ if nF > 1 && xcorrShift
 else
     pad_size = [0, 0, 0];
 end
-% origin = min(xyz, [], 1) - pad_size;
-% dxyz = max(xyz, [], 1) + pad_size - origin;
 xyz_shift_orig = xyz_shift;
 origin = min(xyz_shift_orig, [], 1) - pad_size;
-dxyz = max(xyz_shift_orig, [], 1) + pad_size - origin;
 xyz_shift = xyz_shift_orig - origin;
 
-sx = max(imSizes(:, 2));
-sy = max(imSizes(:, 1));
-sz = max(imSizes(:, 3));
-
 if isPrimaryCh
-    nxs = round(dxyz(1)/(px*xf) + sx + 2);
-    nys = round(dxyz(2)/(px*yf) + sy + 2);
-    nzs = round(dxyz(3)/(px*zf) + sz + 2);
-    if any(stitchMIP) || max(sz == 1)
+    dxyz = max(xyz_shift_orig + imSizes(:, [2, 1, 3]) .* [xf, yf, zf] .* px) + pad_size - origin;
+    nxs = round(dxyz(1)/(px*xf) + 2);
+    nys = round(dxyz(2)/(px*yf) + 2);
+    nzs = round(dxyz(3)/(px*zf) + 2);    
+    if any(stitchMIP) || max(imSizes(:, 3) == 1)
         nzs = 1;       
     end
 else    

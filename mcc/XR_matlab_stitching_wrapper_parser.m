@@ -27,6 +27,7 @@ ip.addParameter('largeZarr', false, @(x) islogical(x) || ischar(x));
 ip.addParameter('poolSize', [], @(x) isnumeric(x) || ischar(x));
 ip.addParameter('blockSize', [500, 500, 500], @(x) isnumeric(x) || ischar(x));
 ip.addParameter('batchSize', [500, 500, 500], @(x) isnumeric(x) || ischar(x));
+ip.addParameter('shardSize', [], @(x) isnumeric(x) || ischar(x));
 ip.addParameter('zarrSubSize', [], @(x) isnumeric(x) || ischar(x));
 ip.addParameter('resampleType', 'xy_isotropic', @ischar); % by default use xy isotropic
 ip.addParameter('resample', [], @(x) isnumeric(x) || ischar(x)); % user-defined resample factor
@@ -57,6 +58,7 @@ ip.addParameter('primaryCh', '', @(x) isempty(x) || ischar(x)); % format: CamA_c
 ip.addParameter('usePrimaryCoords', false, @(x) islogical(x) || ischar(x)); 
 ip.addParameter('Save16bit', false, @(x) islogical(x) || ischar(x));
 ip.addParameter('EdgeArtifacts', 2, @(x) isnumeric(x) || ischar(x));
+ip.addParameter('distBboxes', [], @(x) isnumeric(x) || ischar(x)); % bounding boxes for distance transform
 ip.addParameter('saveMIP', true, @(x) islogical(x) || ischar(x));
 ip.addParameter('stitchMIP', [], @(x) islogical(x) && (numel(x) == 1 || numel(x) == 3) || ischar(x)); % 1x3 vector or vector, by default, stitch MIP-z
 ip.addParameter('onlineStitch', false, @(x) islogical(x) || ischar(x)); % support for online stitch (with partial number of tiles). 
@@ -96,6 +98,7 @@ largeZarr = pr.largeZarr;
 poolSize = pr.poolSize;
 blockSize = pr.blockSize;
 batchSize = pr.batchSize;
+shardSize = pr.shardSize;
 zarrSubSize = pr.zarrSubSize;
 resampleType = pr.resampleType;
 resample = pr.resample;
@@ -125,6 +128,7 @@ primaryCh = pr.primaryCh;
 usePrimaryCoords = pr.usePrimaryCoords;
 Save16bit = pr.Save16bit;
 EdgeArtifacts = pr.EdgeArtifacts;
+distBboxes = pr.distBboxes;
 saveMIP = pr.saveMIP;
 stitchMIP = pr.stitchMIP;
 onlineStitch = pr.onlineStitch;
@@ -192,8 +196,14 @@ end
 if ischar(batchSize)
     batchSize = str2num(batchSize);
 end
+if ischar(shardSize)
+    shardSize = str2num(shardSize);
+end
 if ischar(zarrSubSize)
     zarrSubSize = str2num(zarrSubSize);
+end
+if ischar(shardSize)
+    shardSize = str2num(shardSize);
 end
 if ischar(resample)
     resample = str2num(resample);
@@ -255,6 +265,9 @@ end
 if ischar(EdgeArtifacts)
     EdgeArtifacts = str2num(EdgeArtifacts);
 end
+if ischar(distBboxes)
+    distBboxes = str2num(distBboxes);
+end
 if ischar(saveMIP)
     saveMIP = str2num(saveMIP);
 end
@@ -295,19 +308,20 @@ XR_matlab_stitching_wrapper(dataPath, imageListFileName, Streaming=Streaming,...
     Reverse=Reverse, parseSettingFile=parseSettingFile, axisOrder=axisOrder, ...
     dataOrder=dataOrder, ObjectiveScan=ObjectiveScan, IOScan=IOScan, zarrFile=zarrFile, ...
     largeZarr=largeZarr, poolSize=poolSize, blockSize=blockSize, batchSize=batchSize, ...
-    zarrSubSize=zarrSubSize, resampleType=resampleType, resample=resample, InputBbox=InputBbox, ...
-    tileOutBbox=tileOutBbox, TileOffset=TileOffset, Resolution=Resolution,resultDir=resultDir, ...
-    BlendMethod=BlendMethod, overlapType=overlapType, xcorrShift=xcorrShift, xyMaxOffset=xyMaxOffset, ...
-    zMaxOffset=zMaxOffset, xcorrDownsample=xcorrDownsample, xcorrThresh=xcorrThresh, ...
-    padSize=padSize, boundboxCrop=boundboxCrop, zNormalize=zNormalize, onlyFirstTP=onlyFirstTP, ...
+    shardSize=shardSize, zarrSubSize=zarrSubSize, resampleType=resampleType, ...
+    resample=resample, InputBbox=InputBbox, tileOutBbox=tileOutBbox, TileOffset=TileOffset, ...
+    Resolution=Resolution,resultDir=resultDir, BlendMethod=BlendMethod, overlapType=overlapType, ...
+    xcorrShift=xcorrShift, xyMaxOffset=xyMaxOffset, zMaxOffset=zMaxOffset, ...
+    xcorrDownsample=xcorrDownsample, xcorrThresh=xcorrThresh, padSize=padSize, ...
+    boundboxCrop=boundboxCrop, zNormalize=zNormalize, onlyFirstTP=onlyFirstTP, ...
     timepoints=timepoints, subtimepoints=subtimepoints, xcorrMode=xcorrMode, ...
     shiftMethod=shiftMethod, axisWeight=axisWeight, groupFile=groupFile, primaryCh=primaryCh, ...
     usePrimaryCoords=usePrimaryCoords, Save16bit=Save16bit,EdgeArtifacts=EdgeArtifacts, ...
-    saveMIP=saveMIP, stitchMIP=stitchMIP, onlineStitch=onlineStitch, bigStitchData=bigStitchData, ...
-    pipeline=pipeline, processFunPath=processFunPath, parseCluster=parseCluster, ...
-    masterCompute=masterCompute, jobLogDir=jobLogDir, cpusPerTask=cpusPerTask, ...
-    uuid=uuid, maxTrialNum=maxTrialNum, unitWaitTime=unitWaitTime, mccMode=mccMode, ...
-    ConfigFile=ConfigFile);
+    distBboxes=distBboxes, saveMIP=saveMIP, stitchMIP=stitchMIP, onlineStitch=onlineStitch, ...
+    bigStitchData=bigStitchData, pipeline=pipeline, processFunPath=processFunPath, ...
+    parseCluster=parseCluster, masterCompute=masterCompute, jobLogDir=jobLogDir, ...
+    cpusPerTask=cpusPerTask, uuid=uuid, maxTrialNum=maxTrialNum, unitWaitTime=unitWaitTime, ...
+    mccMode=mccMode, ConfigFile=ConfigFile);
 
 end
 

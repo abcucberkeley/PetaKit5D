@@ -25,7 +25,9 @@ ip.addParameter('DeconIter', 15 , @isnumeric); % number of iterations
 ip.addParameter('EdgeErosion', 8 , @isnumeric); % erode edges for certain size.
 ip.addParameter('ErodeMaskfile', '', @ischar); % erode edges file
 ip.addParameter('SaveMaskfile', false, @islogical); % save mask file for common eroded mask
-ip.addParameter('scaleFactor', 1e8 , @isnumeric); % scale factor for data
+ip.addParameter('damper', 1, @isnumeric); % damp factor for decon result
+ip.addParameter('scaleFactor', [], @isnumeric); % scale factor for decon result
+ip.addParameter('deconOffset', 0, @isnumeric); % offset for decon result
 ip.addParameter('deconMaskFns', {} , @iscell); % Full paths of 2D mask zarr files, in xy, xz, yz order
 ip.addParameter('saveZarr', false, @islogical); % save as zarr
 % ip.addParameter('DoNotAdjustResForFFT', true , @islogical); % not crop chunks for deconvolution
@@ -55,7 +57,9 @@ SkewAngle = pr.SkewAngle;
 flipZstack = pr.flipZstack;
 dzPSF = pr.dzPSF;
 DeconIter = pr.DeconIter;
-% scaleFactor = pr.scaleFactor;
+damper = pr.damper;
+scaleFactor = pr.scaleFactor;
+deconOffset = pr.deconOffset;
 deconMaskFns = pr.deconMaskFns;
 saveZarr = pr.saveZarr;
 RLMethod = pr.RLMethod;
@@ -235,9 +239,10 @@ for i = 1 : numel(batchInds)
         'rawdata', in_batch, 'Save16bit', Save16bit, 'SkewAngle', SkewAngle, ...
         'Deskew', Deskew, 'Rotate', Rotate, 'DSRCombined', DSRCombined, 'Reverse', Reverse, ...
         'Background', Background, 'DeconIter', DeconIter, 'RLMethod', RLMethod, ...
-        'skewed', skewed, 'wienerAlpha', wienerAlpha, 'fixIter', fixIter, 'scaleFactor', scaleFactor, ...
-        'deconBbox', deconBbox, 'useGPU', useGPU, 'psfGen', psfGen, 'debug', debug, ...
-        'save3Dstack', save3Dstack, 'mipAxis', mipAxis);
+        'skewed', skewed, 'wienerAlpha', wienerAlpha, 'fixIter', fixIter, 'damper', damper, ...
+        'scaleFactor', scaleFactor, 'deconOffset', deconOffset, 'deconBbox', deconBbox, ...
+        'useGPU', useGPU, 'psfGen', psfGen, 'debug', debug, 'save3Dstack', save3Dstack, ...
+        'mipAxis', mipAxis);
     
     try 
         indexing3d_mex(imout, [obStart, obEnd], out_batch);

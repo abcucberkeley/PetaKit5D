@@ -17,8 +17,8 @@ end
 
 dist_weight = ones(sz, 1);
 
-s = endPoints(1);
-t = endPoints(2);
+s = max(1, endPoints(1));
+t = min(sz, endPoints(2));
 
 if s == 1 && t == sz
     return;

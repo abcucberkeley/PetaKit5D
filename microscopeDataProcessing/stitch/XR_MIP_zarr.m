@@ -181,7 +181,7 @@ end
 
 % set up parallel computing 
 numBatch = size(batchBBoxes, 1);
-taskSize = max(5, min(20, round(numBatch / 5000))); % the number of batches a job should process
+taskSize = max(10, min(20, round(numBatch / 5000))); % the number of batches a job should process
 numTasks = ceil(numBatch / taskSize);
 
 maxJobNum = inf;
@@ -208,7 +208,7 @@ end
 inputFullpaths = repmat({zarrFullpath}, numTasks, 1);
 if parseCluster || ~parseParfor
     memAllocate = prod(BatchSize) * byteNum / 2^30 * (2.5 + (1.5 * (~mccMode)));
-    minTaskJobNum = max(min(numTasks, 10), round(numTasks / 5));
+    minTaskJobNum = max(min(numTasks, 5), round(numTasks / 10));
     is_done_flag = false;
     for i = 1 : 3
         if all(is_done_flag)

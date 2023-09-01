@@ -86,7 +86,7 @@ for i = 1 : 3
     MaxOffset_i = ceil(MaxOffset ./ poolSize_1);
     MaxOffset_i(i) = ceil(MaxOffset(i) / poolSize(i));
     downSample_i = round(downSample ./ poolSize_1);
-    downSample_i(i) = 2;
+    downSample_i(i) = 4;
         
     sz_i1 = getImageSize(imgFullpath_i1);
     sz_i2 = getImageSize(imgFullpath_i2);
@@ -123,22 +123,15 @@ for i = 1 : 3
         string(stitch2D), strrep(num2str(downSample_i, '%.20d,'), ' ', ''), ...
         strrep(mat2str(MaxOffset_i), ' ', ','), string(largeZarr), mipDirStr_i, ...
         strrep(mat2str(poolSize_i), ' ', ','));
-
-%     tic
-%     [relative_shift_i, max_xcorr_i] = cross_correlation_registration_3d(imgFullpath_i1, ...
-%         imgFullpath_i2, '', cuboid_1i, cuboid_2i, cuboid_overlap_12i, px, xyz_factors_i, ...
-%         downSample=downSample_i, MaxOffset=MaxOffset_i, dimNumThrsh=dimNumThrsh, ...
-%         blankNumTrsh=blankNumTrsh);
-%     toc
-%     relative_shift_mat(i, :) = relative_shift_i;
-%     max_xcorr_mat(i) = max_xcorr_i;
 end
 
 memAllocate = max(prod(overlap_sizes, 2)) * 4 / 2^30 * 50;
+minTaskJobNum = 3;
 for i = 1 : 3
     is_done_flag = generic_computing_frameworks_wrapper(inputFullpaths, outputFullpaths, ...
         funcStrs, 'cpusPerTask', 2, 'maxTrialNum', 2, 'parseCluster', parseCluster, ...
-        'memAllocate', memAllocate * 2^(i - 1), 'mccMode', mccMode, 'ConfigFile', ConfigFile);
+        'memAllocate', memAllocate * 2^(i - 1), 'minTaskJobNum', minTaskJobNum, ...
+        'mccMode', mccMode, 'ConfigFile', ConfigFile);
     if all(is_done_flag)
         break;
     end

@@ -28,7 +28,10 @@ ip.addParameter('flipZstack', false, @islogical);
 ip.addParameter('Background', [], @isnumeric);
 ip.addParameter('dzPSF', 0.1 , @isnumeric); %in um
 ip.addParameter('DeconIter', 15 , @isnumeric); % number of iterations
-ip.addParameter('scaleFactor', 1e8 , @isnumeric); % scale factor for data
+ip.addParameter('damper', 1, @isnumeric); % damp factor for decon result
+ip.addParameter('scaleFactor', 1.0, @isnumeric); % scale factor for decon result
+ip.addParameter('deconOffset', 0, @isnumeric); % offset for decon result
+ip.addParameter('EdgeErosion', 0, @isnumeric); % edge erosion for decon result
 ip.addParameter('deconMaskFns', {} , @iscell); % Full paths of 2D mask zarr files, in xy, xz, yz order
 ip.addParameter('RLMethod', 'simplified' , @ischar); % rl method {'original', 'simplified', 'cudagen'}
 ip.addParameter('wienerAlpha', 0.005, @isnumeric);
@@ -51,7 +54,10 @@ flipZstack = pr.flipZstack;
 Background = pr.Background;
 dzPSF = pr.dzPSF;
 DeconIter = pr.DeconIter;
+damper = pr.damper;
 scaleFactor = pr.scaleFactor;
+deconOffset = pr.deconOffset;
+EdgeErosion = pr.EdgeErosion;
 deconMaskFns = pr.deconMaskFns;
 RLMethod = pr.RLMethod;
 skewed = pr.skewed;
@@ -144,9 +150,9 @@ for i = 1 : numel(batchInds)
         'Deskew', Deskew, 'Rotate', Rotate, 'DSRCombined', DSRCombined, 'Reverse', Reverse, ...
         'Background', Background, 'DeconIter', DeconIter, 'RLMethod', RLMethod, ...
         'skewed', skewed, 'wienerAlpha', wienerAlpha, 'OTFCumThresh', OTFCumThresh, ...
-        'fixIter', fixIter, 'scaleFactor', scaleFactor, 'deconBbox', deconBbox, ...
-        'useGPU', useGPU, 'psfGen', psfGen, 'debug', debug, 'save3Dstack', save3Dstack, ...
-        'mipAxis', mipAxis);
+        'fixIter', fixIter, 'damper', damper, 'scaleFactor', scaleFactor, 'deconOffset', deconOffset, ...
+        'EdgeErosion', EdgeErosion, 'deconBbox', deconBbox, 'useGPU', useGPU, ...
+        'psfGen', psfGen, 'debug', debug, 'save3Dstack', save3Dstack, 'mipAxis', mipAxis);
     
     clear in_batch;
 

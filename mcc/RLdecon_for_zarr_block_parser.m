@@ -26,7 +26,10 @@ ip.addParameter('flipZstack', false, @(x) islogical(x) || ischar(x));
 ip.addParameter('Background', [], @(x) isnumeric(x) || ischar(x));
 ip.addParameter('dzPSF', 0.1 , @(x) isnumeric(x) || ischar(x)); %in um
 ip.addParameter('DeconIter', 15 , @(x) isnumeric(x) || ischar(x)); % number of iterations
-ip.addParameter('scaleFactor', 1e8 , @(x) isnumeric(x) || ischar(x)); % scale factor for data
+ip.addParameter('damper', 1, @(x) isnumeric(x) || ischar(x)); % damp factor for decon result
+ip.addParameter('scaleFactor', 1.0, @(x) isnumeric(x) || ischar(x)); % scale factor for data
+ip.addParameter('deconOffset', 0, @(x) isnumeric(x) || ischar(x)); % offset for decon result
+ip.addParameter('EdgeErosion', 0, @(x) isnumeric(x) || ischar(x)); % edge erosion for decon result
 ip.addParameter('deconMaskFns', {} , @(x) iscell(x) || ischar(x)); % Full paths of 2D mask zarr files, in xy, xz, yz order
 ip.addParameter('RLMethod', 'simplified' , @ischar); % rl method {'original', 'simplified', 'cudagen'}
 ip.addParameter('wienerAlpha', 0.005, @(x) isnumeric(x) || ischar(x));
@@ -49,7 +52,10 @@ flipZstack = pr.flipZstack;
 Background = pr.Background;
 dzPSF = pr.dzPSF;
 DeconIter = pr.DeconIter;
+damper = pr.damper;
 scaleFactor = pr.scaleFactor;
+deconOffset = pr.deconOffset;
+EdgeErosion = pr.EdgeErosion;
 deconMaskFns = pr.deconMaskFns;
 RLMethod = pr.RLMethod;
 skewed = pr.skewed;
@@ -97,8 +103,17 @@ end
 if ischar(DeconIter)
     DeconIter = str2num(DeconIter);
 end
+if ischar(damper)
+    damper = str2num(damper);
+end
 if ischar(scaleFactor)
     scaleFactor = str2num(scaleFactor);
+end
+if ischar(deconOffset)
+    deconOffset = str2num(deconOffset);
+end
+if ischar(EdgeErosion)
+    EdgeErosion = str2num(EdgeErosion);
 end
 if ischar(deconMaskFns)
     deconMaskFns = eval(deconMaskFns);
@@ -130,9 +145,12 @@ if ischar(psfGen)
 end
 
 RLdecon_for_zarr_block(batchInds, zarrFullpath, psfFullpath, deconFullpath, ...
-    flagFullname, BatchBBoxes, RegionBBoxes, xyPixelSize, dz, 'Save16bit',Save16bit,...
-    'Overwrite',Overwrite,'SkewAngle',SkewAngle,'flipZstack',flipZstack,'Background',Background,...
-    'dzPSF',dzPSF,'DeconIter',DeconIter,'scaleFactor',scaleFactor,'deconMaskFns',deconMaskFns,...
-    'RLMethod',RLMethod,'wienerAlpha',wienerAlpha,'OTFCumThresh',OTFCumThresh,...
-    'skewed',skewed,'fixIter',fixIter,'useGPU',useGPU,'uuid',uuid,...
-    'debug',debug,'psfGen',psfGen)
+    flagFullname, BatchBBoxes, RegionBBoxes, xyPixelSize, dz, 'Save16bit',Save16bit, ...
+    'Overwrite',Overwrite,'SkewAngle',SkewAngle,'flipZstack',flipZstack,'Background',Background, ...
+    'dzPSF',dzPSF,'DeconIter',DeconIter,'damper',damper,'scaleFactor',scaleFactor, ...
+    'deconOffset',deconOffset,'EdgeErosion',EdgeErosion,'deconMaskFns',deconMaskFns, ...
+    'RLMethod',RLMethod,'wienerAlpha',wienerAlpha,'OTFCumThresh',OTFCumThresh, ...
+    'skewed',skewed,'fixIter',fixIter,'useGPU',useGPU,'uuid',uuid,'debug',debug, ...
+    'psfGen',psfGen)
+
+end

@@ -14,6 +14,7 @@ ip.addRequired('zarrFilename', @ischar);
 ip.addOptional('frame', [], @(x) isnumeric(x) || ischar(x));
 ip.addParameter('Overwrite', false, @(x) islogical(x) || ischar(x));
 ip.addParameter('blockSize', [500, 500, 250], @(x) isnumeric(x) || ischar(x));
+ip.addParameter('shardSize', [], @(x) isnumeric(x) || ischar(x));
 ip.addParameter('zarrSubSize', [20, 20, 20], @(x) isnumeric(x) || ischar(x));
 ip.addParameter('expand2dDim', true, @(x) islogical(x) || ischar(x)); % expand the z dimension for 2d data
 ip.addParameter('flipZstack', false, @(x) islogical(x) || ischar(x));
@@ -30,6 +31,7 @@ ip.parse(tifFilename, zarrFilename, frame, varargin{:});
 pr = ip.Results;
 Overwrite = pr.Overwrite;
 blockSize = pr.blockSize;
+shardSize = pr.shardSize;
 zarrSubSize = pr.zarrSubSize;
 expand2dDim = pr.expand2dDim;
 flipZstack = pr.flipZstack;
@@ -52,6 +54,9 @@ if ischar(Overwrite)
 end
 if ischar(blockSize)
     blockSize = str2num(blockSize);
+end
+if ischar(shardSize)
+    shardSize = str2num(shardSize);
 end
 if ischar(zarrSubSize)
     zarrSubSize = str2num(zarrSubSize);
@@ -76,9 +81,10 @@ if ischar(readWholeTiff)
 end
 
 tiffToZarr(tifFilename, zarrFilename, frame, 'Overwrite', Overwrite, 'blockSize', blockSize, ...
-    'zarrSubSize', zarrSubSize, 'expand2dDim', expand2dDim, 'flipZstack', flipZstack, ...
-    'resample', resample, 'InputBbox', InputBbox, 'tileOutBbox', tileOutBbox, ...
-    'readWholeTiff', readWholeTiff, 'compressor', compressor, 'usrFcn', usrFcn, 'uuid', uuid);
+    'shardSize', shardSize, 'zarrSubSize', zarrSubSize, 'expand2dDim', expand2dDim, ...
+    'flipZstack', flipZstack, 'resample', resample, 'InputBbox', InputBbox, ...
+    'tileOutBbox', tileOutBbox, 'readWholeTiff', readWholeTiff, 'compressor', compressor, ...
+    'usrFcn', usrFcn, 'uuid', uuid);
 
 end
 

@@ -8,6 +8,7 @@ ip.CaseSensitive = false;
 ip.addRequired('zarrFullpath'); 
 ip.addRequired('dsFullpath'); 
 ip.addRequired('dsFactors'); 
+ip.addParameter('bbox', [], @(x) isnumeric || ischar(x)); % bbox for input
 ip.addParameter('blockSize', [256, 256, 256], @(x) isnumeric || ischar(x)); % blcoksize
 ip.addParameter('batchSize', [512, 512, 512], @(x) isnumeric || ischar(x)); % size to process in one batch
 ip.addParameter('zarrSubSize', [20, 20, 20], @(x) isnumeric || ischar(x));
@@ -22,6 +23,7 @@ ip.addParameter('ConfigFile', '', @ischar);
 ip.parse(zarrFullpath, dsFullpath, dsFactor, varargin{:});
 
 pr = ip.Results;
+bbox = pr.bbox;
 blockSize = pr.blockSize;
 batchSize = pr.batchSize;
 BorderSize = pr.BorderSize;
@@ -34,6 +36,9 @@ ConfigFile = pr.ConfigFile;
 
 if ischar(dsFactor)
     dsFactor = str2num(dsFactor);
+end
+if ischar(bbox)
+    bbox = str2num(bbox);
 end
 if ischar(blockSize)
     blockSize = str2num(blockSize);
@@ -57,7 +62,7 @@ if ischar(mccMode)
     mccMode = strcmp(mccMode,'true');
 end
 
-XR_resampleSingleZarr(zarrFullpath,dsFullpath,dsFactor,'blockSize',blockSize,...
+XR_resampleSingleZarr(zarrFullpath,dsFullpath,dsFactor,'bbox',bbox,'blockSize',blockSize,...
     'batchSize',batchSize,'zarrSubSize',zarrSubSize,'BorderSize',BorderSize,...
     'Interp',Interp,'parseCluster',parseCluster,'cpusPerTask',cpusPerTask,...
     'uuid',uuid, mccMode=mccMode,ConfigFile=ConfigFile);
