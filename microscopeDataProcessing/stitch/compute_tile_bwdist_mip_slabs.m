@@ -39,7 +39,7 @@ switch numel(poolSize)
     case 3
         MIPZFn = sprintf('%s/MIP_Slabs_pooling_%d_%d_%d/%s_z.zarr', dataPath, poolSize(1), poolSize(2), poolSize(3), fsn);
         poolSize = [poolSize, 1, 1, 1];
-    case 6
+    case {6, 9}
         MIPZFn = sprintf('%s/MIP_Slabs_pooling_%d_%d_%d_%d_%d_%d/%s_z.zarr', dataPath, ...
             poolSize(1), poolSize(2), poolSize(3), poolSize(4), poolSize(5), poolSize(6), fsn);        
 end
@@ -85,6 +85,7 @@ if ~isempty(distBbox)
     distBbox = max(1, round(distBbox));
     
     bufferSize = 100;
+    % bufferSize = 50;
     bufferSizes = max(1, round(bufferSize ./ [poolSize(4 : 5), poolSize(3)]));
     dfactor = 0.99;
     winType = 'hann';
@@ -92,8 +93,7 @@ if ~isempty(distBbox)
     dist_x = distance_weight_single_axis(sz(2), distBbox([2, 5]), bufferSizes(2), dfactor, winType);
     dist_z = distance_weight_single_axis(sz(3), distBbox([3, 6]), bufferSizes(3), dfactor, winType);
 
-    im_dist_wt = dist_y .* permute(dist_x, [2, 1]) .* permute(dist_z, [2, 3, 1]);
-    im_dist_wt = im_dist_wt .^ weightDegree;
+    im_dist_wt = (dist_y .^ weightDegree) .* permute(dist_x .^ weightDegree, [2, 1]) .* permute(dist_z .^ weightDegree, [2, 3, 1]);
     if dfactor > 0
         im_dist_wt = max(im_dist_wt, 1e-40);
     end

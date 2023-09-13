@@ -25,6 +25,7 @@ ip.addParameter('downSample', [1, 1, 1], @isnumeric);
 ip.addParameter('MaxOffset', [300, 300, 50], @isnumeric);
 ip.addParameter('mipDirStr', '', @ischar);
 ip.addParameter('poolSize', [], @isnumeric);
+ip.addParameter('majorDownsample', 8, @isnumeric); % downsample in major axis
 ip.addParameter('dimNumThrsh', 10000, @isnumeric);
 ip.addParameter('blankNumTrsh', 200, @isnumeric); % skip blank regions beyond this length when cropping template
 ip.addParameter('parseCluster', true, @islogical);
@@ -38,6 +39,7 @@ downSample = pr.downSample;
 MaxOffset = pr.MaxOffset;
 mipDirStr = pr.mipDirStr;
 poolSize = pr.poolSize;
+majorDownsample = pr.majorDownsample;
 dimNumThrsh = pr.dimNumThrsh;
 blankNumTrsh = pr.blankNumTrsh;
 parseCluster = pr.parseCluster;
@@ -52,7 +54,7 @@ if saveResult && exist(xcorrFullpath, 'file')
 end
 
 poolSize_1 = [1, 1, 1];
-if numel(poolSize) == 6
+if numel(poolSize) >= 6
     poolSize_1 = poolSize(4 : 6);
     poolSize = poolSize(1 : 3);
 end
@@ -86,7 +88,7 @@ for i = 1 : 3
     MaxOffset_i = ceil(MaxOffset ./ poolSize_1);
     MaxOffset_i(i) = ceil(MaxOffset(i) / poolSize(i));
     downSample_i = round(downSample ./ poolSize_1);
-    downSample_i(i) = 4;
+    downSample_i(i) = majorDownsample;
         
     sz_i1 = getImageSize(imgFullpath_i1);
     sz_i2 = getImageSize(imgFullpath_i2);
@@ -148,6 +150,15 @@ for i = 1 : 3
     a = load(outputFullpaths{i});
     relative_shift_mat(i, :) = a.relative_shift_mat;
     max_xcorr_mat(i) = a.max_xcorr_mat;
+end
+
+% in case of failed xcorr with too small overlap, set max_xcorr_mat as 0 for weight.
+% determine failed case when the max corr is 0.2 greater than the rest ones.
+if any(max_xcorr_mat == 1 & all(relative_shift_mat == 0, 2))
+    if max(max_xcorr_mat) - median(max_xcorr_mat) > 0.2
+        ind = max_xcorr_mat == 1 & all(relative_shift_mat == 0, 2);
+        max_xcorr_mat(ind) = 0;
+    end
 end
 
 % use weighted average to estimate the final shift

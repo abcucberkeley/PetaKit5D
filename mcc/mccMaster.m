@@ -93,6 +93,8 @@ switch functionName
         XR_psf_analysis_wrapper_parser(varargin{1}, varargin{2:end});
     case 'XR_psf_detection_and_analysis_wrapper'
         XR_psf_detection_and_analysis_wrapper_parser(varargin{1}, varargin{2:end});
+    case 'image_intensity_correction_block'
+        image_intensity_correction_block_parser(varargin{1}, varargin{2}, varargin{3}, varargin{4}, varargin{5}, varargin{6}, varargin{7}, varargin{8:end});
 end
 
 toc(t0);

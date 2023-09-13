@@ -1,4 +1,4 @@
-function [xyz_shift, d_shift] = stitch_shift_assignment(zarrFullpaths, xcorrDir, imSizes, xyz, ...
+function [xyz_shift, dxyz_shift] = stitch_shift_assignment(zarrFullpaths, xcorrDir, imSizes, xyz, ...
     px, xyz_factors, overlap_matrix, overlap_regions, MaxOffset, xcorrDownsample, xcorrThresh, tileIdx, assign_method, ...
     stitch2D, axisWeight, groupFile, largeZarr, poolSize, parseCluster, nodeFactor, mccMode, ConfigFile)
 % main function for stitch shift assignment 
@@ -21,6 +21,7 @@ function [xyz_shift, d_shift] = stitch_shift_assignment(zarrFullpaths, xcorrDir,
 % xruan (04/07/2023): put xcorr results to subfolders if greater than 10k
 % xruan (04/15/2023): combine xcorrs by the leading tile indices. 
 % xruan (05/01/2023): add support for large zarr xcorr. 
+% xruan (09/06/2023): change output d_shift to dxyz_shift to include pixel size info 
 
 
 fprintf('Compute cross-correlation based registration between overlap tiles...\n');
@@ -141,10 +142,12 @@ if largeZarr
 
     inputFullpaths = zarrFullpaths;
     memAllocate = prod(BatchSize) * 4 / 2^30 * 3;
+    minTaskJobNum = round(nF / 2);
     for i = 1 : 3
         is_done_flag = generic_computing_frameworks_wrapper(inputFullpaths, outputFullpaths, ...
             funcStrs, 'cpusPerTask', 2, 'maxTrialNum', 2, 'parseCluster', parseCluster, ...
-            'memAllocate', memAllocate * 2^(i - 1), 'mccMode', mccMode, 'ConfigFile', ConfigFile);
+            'memAllocate', memAllocate * 2^(i - 1), 'minTaskJobNum', minTaskJobNum, ...
+            'mccMode', mccMode, 'ConfigFile', ConfigFile);
         if all(is_done_flag)
             break;
         end
@@ -198,6 +201,7 @@ if largeZarr
             string(largeZarr), mipDirStr, strrep(mat2str(poolSize), ' ', ','), string(parseCluster), ...
             string(mccMode), ConfigFile);
     end
+    minTaskJobNum = numel(ti);
 else
     funcStrs = cell(nF, 1);
     for f = 1 : nF
@@ -224,6 +228,7 @@ else
             string(largeZarr), mipDirStr, strrep(mat2str(poolSize), ' ', ','), string(parseCluster), ...
             string(mccMode), ConfigFile);
     end
+    minTaskJobNum = 1;
 end
 
 include_inds = ~cellfun(@isempty, funcStrs);
@@ -244,7 +249,7 @@ for i = 1 : 3
     is_done_flag = generic_computing_frameworks_wrapper(inputFullpaths, outputFullpaths, ...
         funcStrs, 'cpusPerTask', cpusPerTask_xcorr * 2^(i - 1), 'maxTrialNum', maxTrialNum_xcorr, ...
         'parseCluster', parseCluster, 'memAllocate', memAllocate * 2^(i - 1), ...
-        'mccMode', mccMode, 'ConfigFile', ConfigFile);
+        'minTaskJobNum', minTaskJobNum, 'mccMode', mccMode, 'ConfigFile', ConfigFile);
     if all(is_done_flag)
         break;
     end
@@ -353,7 +358,8 @@ if ~false
     end
 end
 
-xyz_shift = xyz + d_shift .* [xf, yf, zf] .* px;
+dxyz_shift = d_shift .* [xf, yf, zf] .* px;
+xyz_shift = xyz + dxyz_shift;
 
 fprintf('xcorr registration is done!\n')
 toc(t0);

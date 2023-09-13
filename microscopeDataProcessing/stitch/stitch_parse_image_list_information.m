@@ -104,8 +104,9 @@ tab = tab(matched_inds, :);
 if zarrFile
     tab.Filename = strrep(tab.Filename, '.tif', ext);
 end
-% sort t by tile indices, time, Iter
-tab = sortrows(tab, {'z', 'y', 'x', 't', 'fullIter'});
+% sort t by camera, ch, tile indices, time, Iter
+[tab, tinds] = sortrows(tab, {'camera', 'ch', 'z', 'y', 'x', 't', 'fullIter'});
+fsn = fsn(tinds);
 
 prefix = unique(tab.prefix);
 if ~isempty(prefix)

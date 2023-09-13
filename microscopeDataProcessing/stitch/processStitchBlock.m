@@ -90,7 +90,7 @@ if strcmpi(BlendMethod, 'feather')
     switch numel(poolSize)
         case 3
             psz = [1, 1, poolSize(3)];
-        case 6
+        case {6, 9}
             psz = poolSize([4, 5, 3]);
     end
 end

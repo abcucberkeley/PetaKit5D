@@ -3,7 +3,7 @@ function [done_flag] =  MIP_block(batchInds, zarrFullpath, MIPFullpaths, flagFul
 % 
 % xruan (05/01/2023): add support for user defined max pooling size (only
 % in one dimension for MIP slabs for now). 
-
+% xruan (09/06/2023): add support for resampling before max pooling (reducing noise)
 
 ip = inputParser;
 ip.CaseSensitive = false;
@@ -55,8 +55,15 @@ end
 
 % if pool size is smaller than the batch size, use the max pooling routines.
 max_pooling = any(BatchBBoxes(1, 4 : 6) - BatchBBoxes(1, 1 : 3) + 1 > poolSize(1 : 3)) || (numel(poolSize) == 6 && any(poolSize(4 : 6) > 1));
+resampling = any(BatchBBoxes(1, 4 : 6) - BatchBBoxes(1, 1 : 3) + 1 > poolSize(1 : 3)) || (numel(poolSize) == 9 && any(poolSize(7 : 9) > 1));
 poolSize_1 = [1, 1, 1];
-if max_pooling && numel(poolSize) == 6
+dsfactor = [1, 1, 1];
+if resampling && numel(poolSize) == 9
+    dsfactor = poolSize(7 : 9);
+    poolSize(1 : 3) = poolSize(1 : 3) ./ dsfactor;
+    poolSize(4 : 6) = poolSize(4 : 6) ./ dsfactor;
+end
+if max_pooling && numel(poolSize) >= 6
     poolSize_1 = poolSize(4 : 6);
     poolSize = poolSize(1 : 3);
 end
@@ -75,6 +82,10 @@ for i = 1 : numel(batchInds)
     % in_batch = bim.Adapter.getIORegion(ibStart, ibEnd);
     in_batch = readzarr(zarrFullpath, 'bbox', [ibStart, ibEnd]);
     
+    if resampling
+        in_batch = imresize3(in_batch, round(size(in_batch) ./ dsfactor), 'linear');
+    end
+
     % MIP for each axis
     for j = 1 : 3
         poolSize_j = poolSize_1;
@@ -91,9 +102,9 @@ for i = 1 : numel(batchInds)
         end
         
         obStart = BatchBBoxes(i, 1 : 3);
-        obStart = floor((obStart - 1) ./ poolSize_j) + 1;
+        obStart = floor((obStart - 1) ./ poolSize_j ./ dsfactor) + 1;
         obEnd = BatchBBoxes(i, 4 : 6);
-        obEnd = floor((obEnd - 1) ./ poolSize_j) + 1;
+        obEnd = floor((obEnd - 1) ./ poolSize_j ./ dsfactor) + 1;
         
         % nv_bim_cell{j}.Adapter.setRegion(obStart, obEnd, out_batch);
         writezarr(out_batch, MIPFullpaths{j}, 'bbox', [obStart, obEnd])

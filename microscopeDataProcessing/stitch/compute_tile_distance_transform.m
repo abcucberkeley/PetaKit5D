@@ -140,7 +140,7 @@ if largeZarr
     switch numel(poolSize)
         case 3
             poolSize_str = sprintf('pooling_%d_%d_%d', poolSize(1), poolSize(2), poolSize(3));
-        case 6
+        case {6, 9}
             poolSize_str = sprintf('pooling_%d_%d_%d_%d_%d_%d', poolSize(1), ...
                 poolSize(2), poolSize(3), poolSize(4), poolSize(5), poolSize(6));
     end

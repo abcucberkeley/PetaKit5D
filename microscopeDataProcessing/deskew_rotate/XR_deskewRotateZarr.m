@@ -17,6 +17,7 @@ ip.CaseSensitive = false;
 ip.addRequired('frameFullpath', @(x) ischar(x) || iscell(x));
 ip.addRequired('xyPixelSize'); 
 ip.addRequired('dz'); 
+ip.addParameter('resultDirStr', 'DSR/', @ischar);
 ip.addParameter('ObjectiveScan', false, @islogical);
 ip.addParameter('Overwrite', false, @islogical);
 ip.addParameter('Crop', false, @islogical);
@@ -49,6 +50,7 @@ ip.addParameter('ConfigFile', '', @ischar);
 ip.parse(frameFullpath, xyPixelSize, dz, varargin{:});
 
 pr = ip.Results;
+resultDirStr = pr.resultDirStr;
 Crop = pr.Crop;
 SkewAngle = pr.SkewAngle;
 Reverse = pr.Reverse;
@@ -95,7 +97,7 @@ if ~exist(frameFullpath, 'dir')
 end
 
 [dataPath, fsname, ext] = fileparts(frameFullpath);
-dsrPath = [dataPath, '/DSR/'];
+dsrPath = [dataPath, '/', resultDirStr];
 if ~exist(dsrPath, 'dir')
     mkdir(dsrPath);
 end

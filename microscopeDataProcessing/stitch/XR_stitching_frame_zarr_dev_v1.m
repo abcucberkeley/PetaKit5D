@@ -522,7 +522,7 @@ for i = 1 : nF - 1
     end
 end
 
-d_shift = zeros(nF, 3);
+dxyz_shift = zeros(nF, 3);
 xyz_shift = xyz;
 % calculate relative/absolute shifts between tiles
 if xcorrShift && isPrimaryCh
@@ -533,29 +533,29 @@ if xcorrShift && isPrimaryCh
         assign_method = shiftMethod;
         
         MaxOffset = [xyMaxOffset, xyMaxOffset, zMaxOffset];
-        [xyz_shift, d_shift] = stitch_shift_assignment(zarrFullpaths, xcorrDir, imSizes, xyz, ...
+        [xyz_shift, dxyz_shift] = stitch_shift_assignment(zarrFullpaths, xcorrDir, imSizes, xyz, ...
             px, [xf, yf, zf], overlap_matrix, overlap_regions, MaxOffset, xcorrDownsample, ...
             xcorrThresh, tileIdx, assign_method, stitch2D, axisWeight, groupFile, largeZarr, ...
             poolSize, parseCluster, nodeFactor, mccMode, ConfigFile);
-        save('-v7.3', xcorTmpFn, 'xyz_shift', 'd_shift');
+        save('-v7.3', xcorTmpFn, 'xyz_shift', 'dxyz_shift');
         movefile(xcorTmpFn, xcorrFinalFn)
     else
-        a = load(xcorrFinalFn, 'xyz_shift', 'd_shift');
+        a = load(xcorrFinalFn, 'xyz_shift', 'dxyz_shift');
         xyz_shift = a.xyz_shift;
-        d_shift = a.d_shift;
+        dxyz_shift = a.dxyz_shift;
     end
 elseif ~isPrimaryCh
     if ~exist(stitchInfoFullpath, 'file')
         error('The stitch information filename %s does not exist!', stitchInfoFullpaths);
     end
     
-    a = load(stitchInfoFullpath, 'overlap_matrix', 'd_shift', 'pImSz', 'pTileSizes', 'imdistFullpaths', 'imdistFileIdx');
+    a = load(stitchInfoFullpath, 'overlap_matrix', 'dxyz_shift', 'pImSz', 'pTileSizes', 'imdistFullpaths', 'imdistFileIdx');
     if ~all(a.overlap_matrix == overlap_matrix, 'all')
         warning('The overlap matrix of current overlap matrix is different from the one in the stitch info, use the common ones!')
         overlap_matrix = overlap_matrix & a.overlap_matrix;
     end
-    d_shift = a.d_shift;
-    xyz_shift = xyz + d_shift .* [xf, yf, zf] .* px;
+    dxyz_shift = a.dxyz_shift;
+    xyz_shift = xyz + dxyz_shift;
 
     pImSz = a.pImSz;
     pTileSizes = a.pTileSizes;
@@ -693,8 +693,9 @@ end
 if parseCluster
     taskSize = 10; % the number of blocks a job should process for [500, 500, 500]
     % keep task size inversely propotional to block size
-    taskSize = max(1, round(prod([512, 512, 512]) / prod(batchSize) * taskSize));
-    taskSize = max(taskSize, min(200, ceil(numBatches / 5000)));
+    taskRatio = prod([512, 512, 512]) / prod(batchSize);
+    taskSize = max(1, round(taskSize * taskRatio));
+    taskSize = max(taskSize, min(round(50 * taskRatio), ceil(numBatches / 5000)));
 else
     taskSize = numBatches;
 end
@@ -789,7 +790,7 @@ if isPrimaryCh
     pImSz = [nys, nxs, nzs];
     pTileSizes = imSizes;
     save('-v7.3', stitch_info_tmp_fullname, 'ip', 'flippedTile', 'overlap_regions', ...
-        'overlap_matrix', 'd_shift', 'shiftMethod', 'pImSz', 'pTileSizes', 'xf', 'yf', 'zf', ...
+        'overlap_matrix', 'dxyz_shift', 'shiftMethod', 'pImSz', 'pTileSizes', 'xf', 'yf', 'zf', ...
         'px', 'PerBlockInfoFullpaths', 'imdistFullpaths', 'imdistFileIdx', 'xyz_orig');
     movefile(stitch_info_tmp_fullname, stitchInfoFullpath);
 end
@@ -804,7 +805,7 @@ if strcmpi(BlendMethod, 'separate')
         movefile(nv_tmp_fullname, nv_fullname);
     else
         rmdir(nv_tmp_fullname, 's');
-    end    
+    end
     return;
 end
 
@@ -850,7 +851,7 @@ outputFullpaths = zarrFlagFullpaths;
 cpusPerTask = 1 * nodeFactor;
 memAllocate = prod(batchSize) * 4 / 1024^3 * 20;
 maxTrialNum = 2;
-jobTimeLimit = taskSize * (2 / 60);
+jobTimeLimit = taskSize * (3 / 60);
 
 if ~exist(nv_fullname, 'dir') 
     is_done_flag = generic_computing_frameworks_wrapper(inputFullpaths, outputFullpaths, ...

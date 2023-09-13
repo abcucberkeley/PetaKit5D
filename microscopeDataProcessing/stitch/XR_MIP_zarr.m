@@ -4,6 +4,9 @@ function XR_MIP_zarr(zarrFullpath, varargin)
 % 
 % 
 % Author: Xiongtao Ruan (02/17/2022)
+%
+% xruan (09/06/2023): add support for resampling before max pooling (reducing 
+%   noise). dsfactors are the 7-9 elements in poolSize, poolSize 1-6 contains dsfactor
 
 
 ip = inputParser;
@@ -88,13 +91,17 @@ byteNum = dataTypeToByteNumber(dtype);
 
 % pool size for other axes
 poolSize_1 = [1, 1, 1];
+dsfactor = [1, 1, 1];
 if isempty(poolSize)
     inBlockSize = bim.BlockSize;
 else
-    if numel(poolSize) == 6
-        poolSize_1 = poolSize(4 : 6);
-        poolSize = poolSize(1 : 3);        
+    if numel(poolSize) == 9
+        dsfactor = poolSize(7 : 9);
     end
+    if numel(poolSize) >= 6
+        poolSize_1 = poolSize(4 : 6);
+    end
+    poolSize = poolSize(1 : 3);
     inBlockSize = lcm(poolSize, poolSize_1);
     inBlockSize_1 = lcm(inBlockSize, bim.BlockSize);
     % limit the block size to 10 GB
@@ -181,7 +188,7 @@ end
 
 % set up parallel computing 
 numBatch = size(batchBBoxes, 1);
-taskSize = max(10, min(20, round(numBatch / 5000))); % the number of batches a job should process
+taskSize = max(5, min(10, round(numBatch / 5000))); % the number of batches a job should process
 numTasks = ceil(numBatch / taskSize);
 
 maxJobNum = inf;
@@ -201,14 +208,14 @@ for i = 1 : numTasks
     funcStrs{i} = sprintf(['MIP_block([%s],''%s'',%s,''%s'',%s,%s,''uuid'',''%s'',', ...
         '''debug'',%s)'], strrep(num2str(batchInds, '%d,'), ' ', ''), zarrFullpath, ...
         MIPZarrTmppaths_str, zarrFlagFullpath, strrep(mat2str(batchBBoxes_i), ' ', ','), ...
-        strrep(mat2str([poolSize, poolSize_1]), ' ', ','), uuid, string(debug));
+        strrep(mat2str([poolSize, poolSize_1, dsfactor]), ' ', ','), uuid, string(debug));
 end
 
 % submit jobs 
 inputFullpaths = repmat({zarrFullpath}, numTasks, 1);
 if parseCluster || ~parseParfor
     memAllocate = prod(BatchSize) * byteNum / 2^30 * (2.5 + (1.5 * (~mccMode)));
-    minTaskJobNum = max(min(numTasks, 5), round(numTasks / 10));
+    minTaskJobNum = max(min(numTasks, 5), round(numTasks / 50));
     is_done_flag = false;
     for i = 1 : 3
         if all(is_done_flag)
