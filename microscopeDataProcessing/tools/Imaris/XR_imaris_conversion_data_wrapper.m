@@ -17,6 +17,7 @@ ip.addParameter('ChannelPatterns', {'CamA_ch0', 'CamA_ch1', 'CamB_ch0'}, @iscell
 ip.addParameter('pixelSizes', [0.108, 0.108, 0.108], @isnumeric); % y, x, z
 ip.addParameter('zarrFile', false, @islogical); % use zarr file as input
 ip.addParameter('blockSize', [64, 64, 64], @isnumeric); % y, x, z
+ip.addParameter('bbox', [], @isnumeric); % ymin, xmin, zmin, ymax, xmax, zmax
 ip.addParameter('timepoints', [], @isnumeric); % number of time points included
 ip.addParameter('ImsConverter', '/clusterfs/fiona/matthewmueller/imarisWriter/writeImarisParallel', @islogical);
 ip.addParameter('parseCluster', true, @islogical);
@@ -36,6 +37,7 @@ ChannelPatterns = pr.ChannelPatterns;
 pixelSizes = pr.pixelSizes;
 zarrFile = pr.zarrFile;
 blockSize = pr.blockSize;
+bbox = pr.bbox;
 timepoints = pr.timepoints;
 ImsConverter = pr.ImsConverter;
 parseCluster = pr.parseCluster;
@@ -126,6 +128,11 @@ if ~isempty(timepoints)
 end
 blockSize_str = num2str(blockSize, '%d,'); 
 
+bbox_str = '';
+if ~isempty(bbox)
+    bbox_str = sprintf('-B %s', strrep(num2str(bbox, '%d,'), ' ', ''));
+end
+
 func_strs = cell(nd, 1);
 for d = 1 : nd
     dataPath_str = dataPaths{d};
@@ -133,9 +140,9 @@ for d = 1 : nd
         dataPath_str = strjoin(dataPaths{d}, ',');
     end 
 
-    func_strs{d} = sprintf('%s -P %s -F %s -r %s -v %s -o %s %s -b %s', ImsConverter, ...
+    func_strs{d} = sprintf('%s -P %s -F %s -r %s -v %s -o %s %s -b %s %s', ImsConverter, ...
         ChannelPatterns_str, dataPath_str, type_str, voxelsize_str, imsPaths{d}, time_str, ...
-        blockSize_str);
+        blockSize_str, bbox_str);
 end
 
 % use slurm job wrapper for computing

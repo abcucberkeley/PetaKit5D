@@ -188,7 +188,7 @@ end
 
 % set up parallel computing 
 numBatch = size(batchBBoxes, 1);
-taskSize = max(5, min(10, round(numBatch / 5000))); % the number of batches a job should process
+taskSize = max(10, min(20, round(numBatch / 5000))); % the number of batches a job should process
 numTasks = ceil(numBatch / taskSize);
 
 maxJobNum = inf;

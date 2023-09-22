@@ -58,13 +58,13 @@ im_dist = ones(sz, 'single');
 
 % distance in xy
 im_i_c = im_i(:, :, round((sz(3) + 1) / 2));
-im_dist_c = ((bwdist(im_i_c) + 1) / 10) .^ weightDegree;
+im_dist_c = fastPower(((bwdist(im_i_c) + 1) / 10), weightDegree);
 for z = 1 : sz(3)
     im_i_z = im_i(:, :, z);
-    if sum(im_i_z ~= im_i_c, 'all') == 0
-        im_dist(:, :, z) = im_dist_c;
+    if any(im_i_z ~= im_i_c, 'all')
+        im_dist(:, :, z) = fastPower(((bwdist(im_i_z) + 1) / 10), weightDegree);        
     else
-        im_dist(:, :, z) = ((bwdist(im_i(:, :, z)) + 1) / 10) .^ weightDegree;
+        im_dist(:, :, z) = im_dist_c;        
     end
 end
 
@@ -75,7 +75,7 @@ else
     win_z = tukeywin(sz(3) * 1.1, 0.5);
     win_z = win_z(round(sz(3) * 0.05) : round(sz(3) * 0.05) + sz(3) - 1);
 end
-im_dist = im_dist .* (permute(win_z, [2, 3, 1]) .^ weightDegree);
+im_dist = im_dist .* (permute(fastPower(win_z, weightDegree), [2, 3, 1]));
 
 im_dist = im_dist .* im_i_orig;
 clear im_i_orig im_i;
@@ -93,7 +93,7 @@ if ~isempty(distBbox)
     dist_x = distance_weight_single_axis(sz(2), distBbox([2, 5]), bufferSizes(2), dfactor, winType);
     dist_z = distance_weight_single_axis(sz(3), distBbox([3, 6]), bufferSizes(3), dfactor, winType);
 
-    im_dist_wt = (dist_y .^ weightDegree) .* permute(dist_x .^ weightDegree, [2, 1]) .* permute(dist_z .^ weightDegree, [2, 3, 1]);
+    im_dist_wt = (fastPower(dist_y, weightDegree)) .* permute(fastPower(dist_x, weightDegree), [2, 1]) .* permute(fastPower(dist_z, weightDegree), [2, 3, 1]);
     if dfactor > 0
         im_dist_wt = max(im_dist_wt, 1e-40);
     end

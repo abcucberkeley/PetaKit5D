@@ -341,14 +341,14 @@ if ~DSR
     zf = zAniso * zf;
 end
 
-% map xyz ratio with right data order
+% map xyz ratio with right data order: convert to the default yxz data order
 switch strrep(dataOrder, ',', '')
     case 'yzx'
     case 'zyx'
         xyz_f = [xf, yf, zf];
-        xf = xyz_f(1);
+        xf = xyz_f(2);
         yf = xyz_f(3);
-        zf = xyz_f(2);
+        zf = xyz_f(1);
     case 'xyz'
 end
 
@@ -690,14 +690,14 @@ if numBatches < 30
     parseCluster = false;
 end
 
+taskRatio = max(0.1, prod([512, 512, 512]) / prod(batchSize));
 if parseCluster
-    taskSize = 10; % the number of blocks a job should process for [500, 500, 500]
+    taskSize = 20; % the number of blocks a job should process for [512, 512, 512]
     % keep task size inversely propotional to block size
-    taskRatio = prod([512, 512, 512]) / prod(batchSize);
     taskSize = max(1, round(taskSize * taskRatio));
     taskSize = max(taskSize, min(round(50 * taskRatio), ceil(numBatches / 5000)));
 else
-    taskSize = numBatches;
+    taskSize = min(numBatches, round(500 * taskRatio));
 end
 
 nvSize = [nys, nxs, nzs];

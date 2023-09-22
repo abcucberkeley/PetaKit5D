@@ -63,9 +63,14 @@ if resampling && numel(poolSize) == 9
     poolSize(1 : 3) = poolSize(1 : 3) ./ dsfactor;
     poolSize(4 : 6) = poolSize(4 : 6) ./ dsfactor;
 end
+preMIPCompute = false;
 if max_pooling && numel(poolSize) >= 6
     poolSize_1 = poolSize(4 : 6);
     poolSize = poolSize(1 : 3);
+    if all(rem(poolSize, poolSize_1) == 0, 'all') && any(poolSize_1 > 1)
+        poolSize = poolSize ./ poolSize_1;
+        preMIPCompute = true;
+    end
 end
 
 done_flag = false(numel(batchInds), 1);
@@ -86,9 +91,17 @@ for i = 1 : numel(batchInds)
         in_batch = imresize3(in_batch, round(size(in_batch) ./ dsfactor), 'linear');
     end
 
+    if preMIPCompute
+        in_batch = max_pooling_3d_mex(in_batch, poolSize_1);
+    end
+
     % MIP for each axis
     for j = 1 : 3
-        poolSize_j = poolSize_1;
+        if preMIPCompute
+            poolSize_j = [1, 1, 1];
+        else
+            poolSize_j = poolSize_1;
+        end
         poolSize_j(j) = poolSize(j);
         if max_pooling
             try 

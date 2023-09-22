@@ -44,22 +44,22 @@ end
 im_i = im_i == 0;
 
 % remove isolated empty pixels 
-stat = regionprops3(im_i, 'volume');
-if numel(stat.Volume) > 1 && any(stat.Volume < 5)
-    im_i = bwareaopen(im_i, 5);
-end
+% stat = regionprops3(im_i, 'volume');
+% if numel(stat.Volume) > 1 && any(stat.Volume < 5)
+%     im_i = bwareaopen(im_i, 5);
+% end
 
 sz = size(im_i, 1 : 3);
 im_dist = ones(sz, 'single');
 if singleDistMap
     im_i_c = im_i(:, :, round((sz(3) + 1) / 2));
-    im_dist_c = ((bwdist(im_i_c) + 1) / 10) .^ weightDegree;
+    im_dist_c = fastPower((bwdist(im_i_c) + 1) / 10, weightDegree);
     for z = 1 : sz(3)
         im_i_z = im_i(:, :, z);
-        if sum(im_i_z ~= im_i_c, 'all') == 0
-            im_dist(:, :, z) = im_dist_c;
+        if any(im_i_z ~= im_i_c, 'all')
+            im_dist(:, :, z) = fastPower((bwdist(im_i_z) + 1) / 10, weightDegree);            
         else
-            im_dist(:, :, z) = ((bwdist(im_i(:, :, z)) + 1) / 10) .^ weightDegree;
+            im_dist(:, :, z) = im_dist_c;            
         end
     end
 else
@@ -101,7 +101,7 @@ else
         im_dist_ij = zeros(size(im_ij), 'single');
         for z = 1 : size(im_ij, 3)
             % im_dist_ij(:, :, z) = bwdist(im_ij(:, :, z)) + 1;
-            im_dist_ij(:, :, z) = ((bwdist(im_ij(:, :, z)) + 1) / 10) .^ weightDegree;
+            im_dist_ij(:, :, z) = fastPower((bwdist(im_ij(:, :, z)) + 1) / 10, weightDegree);
         end
 
         s = mbbox(1 : 3) - mbbox_pad(1 : 3) + 1;
@@ -122,7 +122,7 @@ else
     win_z = tukeywin(sz(3) * 1.1, 0.5);
     win_z = win_z(round(sz(3) * 0.05) : round(sz(3) * 0.05) + sz(3) - 1);
 end
-im_dist = im_dist .* (permute(win_z, [2, 3, 1]) .^ weightDegree);
+im_dist = im_dist .* permute(fastPower(win_z, weightDegree), [2, 3, 1]);
 
 im_dist = im_dist .* im_i_orig;
 clear im_i_orig im_i;
@@ -136,7 +136,7 @@ if ~isempty(distBbox)
     dist_z = distance_weight_single_axis(sz(3), distBbox([3, 6]), bufferSize, dfactor, winType);
 
     im_dist_wt = dist_y .* permute(dist_x, [2, 1]) .* permute(dist_z, [2, 3, 1]);
-    im_dist_wt = im_dist_wt .^ weightDegree;
+    im_dist_wt = fastPower(im_dist_wt, weightDegree);
     if dfactor > 0
         im_dist_wt = max(im_dist_wt, 1e-40);
     end

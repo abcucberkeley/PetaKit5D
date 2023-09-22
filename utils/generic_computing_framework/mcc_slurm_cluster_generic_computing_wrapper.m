@@ -57,8 +57,12 @@ cd(paths{1});
 setupFn = [paths{1}, 'setup.m'];
 % use the setup within LLSM5DTools
 if ismcc || isdeployed
-    if ~exist(setupFn, 'file')
-        cd('../');
+    if ~ispc
+        cd('/tmp/');
+    else
+        if ~exist(setupFn, 'file')
+            cd('../');
+        end
     end
 else
     if ~exist(setupFn, 'file')

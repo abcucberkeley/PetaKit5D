@@ -123,14 +123,16 @@ for i = 1 : numel(batchInds)
     end
     
     if any(BorderSize > 0)
-        bsz = batchSize + BorderSize .* ((batchSub ~= 1 & batchSub ~= bSubSz) + 1);
+        bsz = min(batchSize, nbsz) + BorderSize .* ((batchSub ~= 1 & batchSub ~= bSubSz) + 1);
     else
-        bsz = batchSize;
+        bsz = min(batchSize, nbsz);
     end
     
     tim_f_block = zeros([bsz, numTiles], dtype);
     if strcmpi(BlendMethod, 'feather')
-        tim_d_block = zeros([bsz, numTiles], 'single');
+        if numTiles > 1
+            tim_d_block = zeros([bsz, numTiles], 'single');
+        end
     else
         tim_block = zeros([bsz, numTiles], dtype);
     end
@@ -193,16 +195,22 @@ for i = 1 : numel(batchInds)
                 p_bboxCoords(4 : 6) = min(dsz, ceil(bboxCoords(4 : 6) ./ psz));
                 
                 im_d_j =  readzarr(imdistFullpath, 'bbox', p_bboxCoords);
-                im_d_j =  im_d_j .^ (1 / wd);
-                if bboxCoords(3) == bboxCoords(6)
-                    im_d_j = imresize(im_d_j, bboxCoords(4 : 5) - bboxCoords(1 : 2) + 1, 'bilinear');                    
-                else
-                    if size(im_d_j, 3) == 1 
-                        im_d_j = repmat(im_d_j, 1, 1, 2);
+                try
+                    im_d_j = feather_distance_map_resize_3d_mex(im_d_j, bboxCoords(4 : 6) - bboxCoords(1 : 3) + 1, wd);
+                catch ME
+                    disp(ME);
+                    im_d_j =  im_d_j .^ (1 / wd);
+                    if bboxCoords(3) == bboxCoords(6)
+                        im_d_j = imresize(im_d_j, bboxCoords(4 : 5) - bboxCoords(1 : 2) + 1, 'bilinear');                    
+                    else
+                        if size(im_d_j, 3) == 1 
+                            im_d_j = repmat(im_d_j, 1, 1, 2);
+                        end
+                        im_d_j = imresize3(im_d_j, bboxCoords(4 : 6) - bboxCoords(1 : 3) + 1, 'linear');
                     end
-                    im_d_j = imresize3(im_d_j, bboxCoords(4 : 6) - bboxCoords(1 : 3) + 1, 'linear');
+                    % im_d_j = im_d_j .^ wd;
+                    im_d_j = fastPower(im_d_j, wd);
                 end
-                im_d_j = im_d_j .^ wd;
             end
             try
                 indexing4d_mex(tim_d_block, [bCoords(1 : 3), j, bCoords(4 : 6), j], im_d_j);
@@ -248,8 +256,8 @@ for i = 1 : numel(batchInds)
     % convert to single for processing
     if ~strcmp(BlendMethod, 'feather')
         tim_block = single(tim_block);
+        tim_f_block = single(tim_f_block);        
     end
-    tim_f_block = single(tim_f_block);
 
     if ~strcmp(BlendMethod, 'none') && ~strcmp(BlendMethod, 'blurred') && ~strcmp(BlendMethod, 'feather')
         tim_block(tim_block == 0) = nan; 
@@ -302,15 +310,19 @@ for i = 1 : numel(batchInds)
             % tim_w_block = tim_w_block ./ sum(tim_w_block, 4);
             % nv_block = sum(tim_block .* tim_w_block, 4);
             
-            tim_w_block = tim_d_block .* (tim_f_block ~= 0);
-            % tim_w_block = tim_w_block ./ sum(tim_w_block, 4);
-            % nv_f_block = sum(tim_f_block .* tim_w_block, 4);
-            nv_block = sum(tim_f_block .* tim_w_block, 4) ./ sum(tim_w_block, 4); 
-            % nv_block = nv_f_block;
+            mex_compute = true;
+            try
+                nv_block = feather_blending_3d_mex(tim_f_block, tim_d_block);  
+            catch ME
+                disp(ME);
+                mex_compute = false;
+                tim_w_block = tim_d_block .* (tim_f_block ~= 0); 
+                nv_block = sum(single(tim_f_block) .* tim_w_block, 4) ./ sum(tim_w_block, 4);                 
+            end
     end
-    clear tim_f_block;
+    % clear tim_f_block;
     
-    if ~strcmp(BlendMethod, 'none') && ~strcmp(BlendMethod, 'blurred')
+    if ~strcmp(BlendMethod, 'none') && ~strcmp(BlendMethod, 'blurred') && ~(strcmp(BlendMethod, 'feather') && mex_compute)
         try 
             nv_block = replace_nan_with_value(nv_block, 0);
         catch ME
@@ -355,7 +367,7 @@ for i = 1 : numel(batchInds)
         end
     end
     
-    nv_block = cast(nv_block, dtype);
+    % nv_block = cast(nv_block, dtype);
     
     % write the block to zarr file
     % writeBlock(nv_bim, blockSub, nv_block, level, Mode);
