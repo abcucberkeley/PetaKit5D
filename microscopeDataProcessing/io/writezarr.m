@@ -18,6 +18,7 @@ arguments
     options.groupWrite (1, 1) logical = true
     options.bbox (1, :) {mustBeNumeric} = []
     options.sparseData (1, :) logical = false
+    options.dimSeparator char = '.'    
 end
 
 overwrite = options.overwrite;
@@ -28,6 +29,7 @@ zarrSubSize = options.zarrSubSize;
 groupWrite = options.groupWrite;
 bbox = options.bbox;
 sparseData = options.sparseData;
+dimSeparator = options.dimSeparator;
 
 dtype = class(data);
 sz = size(data);
@@ -61,7 +63,8 @@ try
         if exist(filepath, 'dir')
             rmdir(filepath, 's');
         end
-        createzarr(filepath, dataSize=sz, blockSize=blockSize, shardSize=shardSize, dtype=dtype, zarrSubSize=zarrSubSize);
+        createzarr(filepath, dataSize=sz, blockSize=blockSize, shardSize=shardSize, ...
+            dtype=dtype, zarrSubSize=zarrSubSize, dimSeparator=dimSeparator);
         newFile = true;
     end
 

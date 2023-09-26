@@ -12,7 +12,7 @@ ip.CaseSensitive = false;
 ip.KeepUnmatched = true;
 ip.addRequired('dataPaths');
 ip.addParameter('imsPathstr', 'imaris',  @(x) ischar(x));
-ip.addParameter('Overwrite', false,  @(x) (numel(x) == 1 || numel(x) == 2) && islogical(x));
+ip.addParameter('Overwrite', false,  @(x) islogical(x));
 ip.addParameter('ChannelPatterns', {'CamA_ch0', 'CamA_ch1', 'CamB_ch0'}, @iscell);
 ip.addParameter('pixelSizes', [0.108, 0.108, 0.108], @isnumeric); % y, x, z
 ip.addParameter('zarrFile', false, @islogical); % use zarr file as input

@@ -741,8 +741,12 @@ end
 % large data when the master job runs out of time and new master job can
 % continue the stitching
 if fresh_stitch
+    dimSeparator = '.';
+    if prod(ceil([nys, nxs, nzs] ./ blockSize)) > 10000
+        dimSeparator = '/';
+    end
     createzarr(nv_tmp_raw_fullname, dataSize=[nys, nxs, nzs], BlockSize=blockSize, ...
-        shardSize=shardSize, dtype=dtype, compressor=compressor, zarrSubSize=zarrSubSize);
+        shardSize=shardSize, dtype=dtype, compressor=compressor, dimSeparator=dimSeparator);
 end
 
 % add support for feather blending

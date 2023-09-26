@@ -16,6 +16,7 @@ arguments
     options.groupWrite (1, 1) logical = true
     options.compressor char = 'zstd'
     options.zarrSubSize (1, :) {mustBeNumeric} = []
+    options.dimSeparator char = '.'
 end
 
 dataSize = options.dataSize;
@@ -27,6 +28,7 @@ expand2dDim = options.expand2dDim;
 groupWrite = options.groupWrite;
 compressor = options.compressor;
 zarrSubSize = options.zarrSubSize;
+dimSeparator = options.dimSeparator;
 
 if numel(dataSize) == 2 
     if expand2dDim
@@ -67,20 +69,21 @@ try
     if isempty(zarrSubSize)
         if isempty(shardSize)
             createZarrFile(filepath, 'chunks', blockSize, 'dtype', ddtype, 'order', order, ...
-                'shape', dataSize, 'cname', compressor, 'clevel', 1);
+                'shape', dataSize, 'cname', compressor, 'clevel', 1, 'dimension_separator', dimSeparator);
         else
             createZarrFile(filepath, 'chunks', blockSize, 'chunk_shape', shardSize, ...
                 'dtype', ddtype, 'order', order, 'shape', dataSize, 'cname', compressor, ...
-                'clevel', 1);
+                'clevel', 1, 'dimension_separator', dimSeparator);
         end
     else
         if isempty(shardSize) 
             createZarrFile(filepath, 'chunks', blockSize, 'dtype', ddtype, 'order', order, ...
-                'shape', dataSize, 'cname', compressor, 'clevel', 1, 'subfolders', zarrSubSize);
+                'shape', dataSize, 'cname', compressor, 'clevel', 1, 'subfolders', zarrSubSize, ...
+                'dimension_separator', dimSeparator);
         else
             createZarrFile(filepath, 'chunks', blockSize, 'chunk_shape', shardSize, ...
                 'dtype', ddtype, 'order', order, 'shape', dataSize, 'cname', compressor, ...
-                'clevel', 1, 'subfolders', zarrSubSize);            
+                'clevel', 1, 'subfolders', zarrSubSize, 'dimension_separator', dimSeparator);            
         end
     end
 catch ME
