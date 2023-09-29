@@ -1,4 +1,4 @@
-function [] = gererate_single_MIP_mask(fn, fnout, intThresh, volThresh, blockSize, Save16bit, uuid)
+function [] = gererate_single_MIP_mask(fn, fnout, intThresh, volThresh, dilateSize, blockSize, Save16bit, uuid)
 % generate MIP masks based on intensity thresholding and object size
 %
 % Author: Xiongtao Ruan (08/02/2023)
@@ -13,14 +13,18 @@ if nargin < 4
 end
 
 if nargin < 5
-    blockSize = [256, 256, 1];
+    dilateSize = [0, 0];
 end
 
 if nargin < 6
-    Save16bit = true;
+    blockSize = [256, 256, 1];
 end
 
 if nargin < 7
+    Save16bit = true;
+end
+
+if nargin < 8
     uuid = get_uuid();
 end
 
@@ -53,7 +57,17 @@ bw = imopen(bw, strel('disk', n_se));
 
 bw = bwareaopen(bw, volThresh);
 
-bw = imdilate(bw, strel('disk', n_se));
+if dilateSize(1) == dilateSize(2)
+    bw = imdilate(bw, strel('disk', n_se + dilateSize(1)));
+else
+    bw = imdilate(bw, strel('disk', n_se));
+    if dilateSize(1) > 0
+        bw = imdilate(bw, strel('line', dilateSize(1) * 2 + 1, 90));
+    end
+    if dilateSize(2) > 0
+        bw = imdilate(bw, strel('line', dilateSize(2) * 2 + 1, 0));
+    end
+end
 
 bw = imfill(bw, 'hole');
 

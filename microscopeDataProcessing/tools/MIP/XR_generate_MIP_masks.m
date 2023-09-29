@@ -18,6 +18,7 @@ ip.addParameter('saveZarr', false, @islogical); % use zarr file as output
 ip.addParameter('blockSize', [256, 256, 1], @isnumeric); % zarr output block size
 ip.addParameter('intThresh', 100, @isnumeric); % intensity threshold
 ip.addParameter('volThresh', 100, @isnumeric); % volume threshold
+ip.addParameter('dilateSize', 100, @isnumeric); % dilate the mask to add some buffer room
 ip.addParameter('Save16bit', true, @islogical);
 ip.addParameter('uuid', '', @ischar);
 ip.addParameter('debug', false, @islogical);
@@ -38,6 +39,7 @@ saveZarr = pr.saveZarr;
 blockSize = pr.blockSize;
 intThresh = pr.intThresh;
 volThresh = pr.volThresh;
+dilateSize = pr.dilateSize;
 Save16bit = pr.Save16bit;
 
 uuid = pr.uuid;
@@ -118,12 +120,17 @@ fd_inds = arrayfun(@(x) ones(numel(fnames{x}), 1) * x, 1 : nd, 'unif', 0);
 fnames = cat(1, fnames{:});
 [~, fsns] = fileparts(fnames);
 fd_inds = cat(1, fd_inds{:});
+mip_axes = cat(1, mip_axes{:});
 nF = numel(fnames);
 if nF == 1
     fsns = {fsns};
 end
 
 %% use generic framework for the MIP mask computing
+
+if numel(dilateSize) == 1
+    dilateSize = repmat(dilateSize, 1, 3);
+end
 
 frameFullpaths = cell(nF, 1);
 outFullpaths = cell(nF, 1);
@@ -144,8 +151,11 @@ for f = 1 : nF
     end
     outFullpaths{f} = fnout;
     
-    func_strs{f} = sprintf(['gererate_single_MIP_mask(''%s'',''%s'',%d,%d,%s,%s,''%s'')'], ...
-        fn, fnout, intThresh, volThresh, strrep(mat2str(blockSize), ' ', ','), ...
+    dilateSize_f = dilateSize;
+    dilateSize_f(mip_axes(f)) = [];    
+    
+    func_strs{f} = sprintf(['gererate_single_MIP_mask(''%s'',''%s'',%d,%d,%s,%s,%s,''%s'')'], ...
+        fn, fnout, intThresh, volThresh, strrep(mat2str(dilateSize_f), ' ', ','), strrep(mat2str(blockSize), ' ', ','), ...
         string(Save16bit), uuid);
 end
 

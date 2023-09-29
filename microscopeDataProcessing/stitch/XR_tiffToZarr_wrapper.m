@@ -206,7 +206,12 @@ for i = 1 : numel(tiffFullpath_group_i)
     imSizes(i, :) = getImageSize(tiffFullpath_group_i{i});
 end
 imSize = [imSizes(1, 1 : 2), sum(imSizes(:, 3))];
-memAllocate = prod(imSize) * 4 / 1024^3 * 2.5;
+if all(isempty(usrFcn_strs))
+    memFactor = 2.25;
+else
+    memFactor = 2.75;
+end
+memAllocate = prod(imSize) * 4 / 1024^3 * memFactor;
 if ~bigData
     memAllocate = memAllocate * 2;
 end
