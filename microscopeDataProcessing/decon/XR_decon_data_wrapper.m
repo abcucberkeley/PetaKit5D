@@ -39,7 +39,7 @@ ip.addParameter('flipZstack', false, @islogical);
 ip.addParameter('Decon', true, @islogical);
 % decon parameters
 ip.addParameter('cudaDecon', false, @islogical);
-ip.addParameter('cppDecon', ~false, @islogical);
+ip.addParameter('cppDecon', false, @islogical);
 ip.addParameter('cppDeconPath', '/global/home/groups/software/sl-7.x86_64/modules/RLDecon_CPU/20200718/build-cluster/cpuDeconv', @ischar);
 ip.addParameter('loadModules', 'module load gcc/4.8.5; module load fftw/3.3.6-gcc; module load boost/1.65.1-gcc; module load libtiff/4.1.0; ', @ischar);
 ip.addParameter('cudaDeconPath', '/global/home/groups/software/sl-7.x86_64/modules/cudaDecon/bin/cudaDeconv' , @ischar);
@@ -55,6 +55,7 @@ ip.addParameter('DeconIter', 15 , @isnumeric); % number of iterations
 ip.addParameter('RLMethod', 'simplified' , @ischar); % rl method {'original', 'simplified', 'cudagen'}
 ip.addParameter('wienerAlpha', 0.005, @isnumeric); 
 ip.addParameter('OTFCumThresh', 0.9, @isnumeric); % OTF cumutative sum threshold
+ip.addParameter('hanWinBounds', [0.8, 1.0], @isnumeric); % apodization range for distance matrix
 ip.addParameter('skewed', [], @(x) isempty(x) || islogical(x)); % decon in skewed space
 ip.addParameter('fixIter', false, @islogical); 
 ip.addParameter('errThresh', [], @isnumeric); % error threshold for simplified code
