@@ -1,3 +1,5 @@
+function [] = compile_mccMaster()
+
 %% script to compile and configure mccMaster.m
 
 cpath = pwd;
@@ -32,6 +34,10 @@ elseif isunix
     system('sed -i ''21i\  LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:${exe_dir}/../../microscopeDataProcessing/io/cpp-tiff/linux;'' run_mccMaster.sh');
     system('sed -i ''21i\  LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:${exe_dir}/../../microscopeDataProcessing/io/cpp-zarr/linux;'' run_mccMaster.sh');
     system('sed -i ''21i\  # add custom library paths'' run_mccMaster.sh');
+    % disable printout of environment variables
+    system('sed -i ''14s/^/#/'' run_mccMaster.sh');
+    system('sed -i ''16s/^/#/'' run_mccMaster.sh');
+    system('sed -i ''25s/^/#/'' run_mccMaster.sh');    
 elseif ispc
     if ~exist('windows', 'dir')
         mkdir('windows');
@@ -44,3 +50,8 @@ elseif ispc
 end
 
 cd(cpath);
+
+
+end
+
+
