@@ -26,10 +26,11 @@ if strcmp(filePath(end - 2 : end), 'tif') || strcmp(filePath(end - 3 : end), 'ti
 %     end
 %    
     try
-        imSize = getImageSize_mex(filePath);
+        imSize = getImageSizeMex(filePath);
+        % imSize = getImageSize_mex_c(filePath);
     catch ME
         disp(ME);
-        if ~usejava('jvm') && ~useParpool
+        if ~usejava('jvm')
             % use binary search 
             tobj = Tiff(filePath, 'r');     
             Height = getTag(tobj, 'ImageLength');

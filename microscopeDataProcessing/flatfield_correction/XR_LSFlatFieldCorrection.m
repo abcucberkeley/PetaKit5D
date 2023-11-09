@@ -17,11 +17,13 @@ ip.addRequired('background'); %;
 ip.addParameter('LowerLimit', 0.4, @isnumeric); % this value is the lowest
 ip.addParameter('constOffset', [], @(x) isempty(x) || isnumeric(x)); % If it is set, use constant background, instead of background from the camera.
 ip.addParameter('LSBackground', true, @(x) islogical(x)); % true: subtract background; false: not subtract background
+ip.addParameter('LSRescale', true, @(x) islogical(x)); % true: rescale LS by maximum; false: use flat field as it is. 
 ip.parse(Rawdata, LSImage,background, varargin{:});
 
 pr = ip.Results;
 LowerLimit = ip.Results.LowerLimit;
 LSBackground = pr.LSBackground;
+LSRescale = pr.LSRescale;
 
 % average z planes of LS image
 if ndims(LSImage)==3
@@ -44,7 +46,9 @@ background = background(D(1)+1:D(1)+ImSize(1),D(2)+1:D(2)+ImSize(2));
 if LSBackground
     LSImage = single(LSImage) - single(background);
 end
-LSImage = single(LSImage)/single(max(LSImage(:)));
+if LSRescale
+    LSImage = single(LSImage)/single(max(LSImage(:)));
+end
 % Mask = repmat(LSImage,1,1,size(Rawdata,3));
 Mask = LSImage;
 % Mask(Mask<LowerLimit) = LowerLimit;

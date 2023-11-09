@@ -233,6 +233,7 @@ resampleType = pr.resampleType;
 resample = pr.resample;
 dzFromEncoder = pr.dzFromEncoder;
 zarrFile = pr.zarrFile;
+saveZarr = pr.saveZarr;
 save3DStack = pr.save3DStack; % only for DS and DSR for now
 %deskew and rotate
 Deskew = pr.Deskew;
@@ -350,6 +351,12 @@ end
 % check if a slurm-based computing cluster exists
 if parseCluster
     [parseCluster, job_log_fname, job_log_error_fname] = checkSlurmCluster(dataPath, jobLogDir);
+end
+
+% save zarr 
+ext = '.tif';
+if saveZarr
+    ext = '.zarr';
 end
 
 % for stitching, enable DS and DSR
@@ -592,8 +599,9 @@ else
 end
 
 %% check existing files and parse channels
-[fnames, fdinds, gfnames, partialvols, dataSizes, flipZstack_mat, latest_modify_times, FTP_inds, maskFullpaths] = ...
-    XR_parseImageFilenames(dataPaths, ChannelPatterns, parseSettingFile, flipZstack, Decon, deconPaths, Streaming, minModifyTime, zarrFile);
+[fnames, fdinds, gfnames, partialvols, dataSizes, flipZstack_mat, latest_modify_times, ...
+    FTP_inds, maskFullpaths] = XR_parseImageFilenames(dataPaths, ChannelPatterns, ...
+    parseSettingFile, flipZstack, Decon, deconPaths, Streaming, minModifyTime, zarrFile);
 
 nF = numel(fnames);
 
@@ -657,16 +665,16 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all') || ...
         if Deskew
             if ~DSRCombined
                 dsPath = dsPaths{fdind};
-                dsFullpath = [dsPath, fsname, '.tif'];
-                tmpFullpath = sprintf('%s.tmp', dsFullpath(1 : end - 4));
+                dsFullpath = [dsPath, fsname, ext];
+                tmpFullpath = sprintf('%s/%s.tmp', dsrPath, fsname);
             end
             if Rotate
                 dsrPath = dsrPaths{fdind};
-                dsrFullpath = [dsrPath, fsname, '.tif'];
-                tmpFullpath = sprintf('%s.tmp', dsrFullpath(1 : end - 4));                
+                dsrFullpath = [dsrPath, fsname, ext];
+                tmpFullpath = sprintf('%s/%s.tmp', dsrPath, fsname);                
             end
 
-            if (DSRCombined || exist(dsFullpath, 'file')) && (~Rotate || exist(dsrFullpath, 'file'))
+            if (DSRCombined || exist(dsFullpath, 'file') || exist(dsFullpath, 'dir')) && (~Rotate || exist(dsrFullpath, 'file') || exist(dsrFullpath, 'dir'))
                 is_done_flag(f, 1) = true;
                 if exist(tmpFullpath, 'file')
                     delete(tmpFullpath);
@@ -702,12 +710,12 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all') || ...
                 '''ObjectiveScan'',%s,''ZstageScan'',%s,''Reverse'',%s,''LLFFCorrection'',%s,', ...
                 '''BKRemoval'',%s,''LowerLimit'',%.20d,''constOffset'',[%s],''LSImage'',''%s'',', ...
                 '''BackgroundImage'',''%s'',''Rotate'',%s,''resample'',[%s],''DSRCombined'',%s,', ...
-                '''InputBbox'',%s,''flipZstack'',%s,''Save16bit'',%s,''save3DStack'',%s)'], ...
+                '''InputBbox'',%s,''flipZstack'',%s,''Save16bit'',%s,''save3DStack'',%s,''saveZarr'',%s)'], ...
                 ds_input_str, xyPixelSize, dz_f, SkewAngle, string(ObjectiveScan), string(ZstageScan), ...
                 string(Reverse),  string(LLFFCorrection), string(BKRemoval), LowerLimit, ...
                 num2str(constOffset, '%0.10f'),  LSImage, BackgroundImage, string(Rotate), ...
                 strrep(num2str(resample, '%d,'), ' ', ''),  string(DSRCombined), strrep(mat2str(InputBbox), ' ', ','), ...
-                string(flipZstack), string(Save16bit(1)), string(save3DStack));
+                string(flipZstack), string(Save16bit(1)), string(save3DStack), string(saveZarr));
             
             if exist(tmpFullpath, 'file') || parseCluster
                 if parseCluster
@@ -742,7 +750,7 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all') || ...
             end
 
             % check if computing is done
-            if (DSRCombined || exist(dsFullpath, 'file')) && (~Rotate || exist(dsrFullpath, 'file'))
+            if (DSRCombined || exist(dsFullpath, 'file') || exist(dsFullpath, 'dir')) && (~Rotate || exist(dsrFullpath, 'file') || exist(dsrFullpath, 'dir'))
                 is_done_flag(f, 1) = true;
                 if exist(tmpFullpath, 'file')
                     delete(tmpFullpath);
@@ -760,9 +768,9 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all') || ...
             % dir_info = dir(sprintf('%s/%s*Abs.tif', stchPath, fname(regexp(fname, 'Scan.*') : end - 43)));
             switch stitchPipeline
                 case 'zarr'
-                    stch_dir_info = dir(sprintf('%s/%s*Abs.zarr', stchPath, fname(1 : end - 43)));                                                   
+                    stch_dir_info = dir(sprintf('%s/%s*Abs.zarr', stchPath, fsname(1 : end - 39)));                                                   
                 case 'tiff'
-                    stch_dir_info = dir(sprintf('%s/%s*Abs.tif', stchPath, fname(1 : end - 43)));                                
+                    stch_dir_info = dir(sprintf('%s/%s*Abs.tif', stchPath, fsname(1 : end - 39)));                                
             end
             if ~isempty(stch_dir_info) 
                 stch_fname = stch_dir_info(1).name;
@@ -793,7 +801,7 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all') || ...
         if ~is_done_flag(f, 2)
             % if the deskew result is not available, wait for the deskew data
             % to be finished        
-            if ~parseCluster && (~exist(frameFullpath, 'file') || ~exist(dsrFullpath, 'file'))
+            if ~parseCluster && (~exist(frameFullpath, 'file') || ~exist(frameFullpath, 'dir') || ~exist(dsrFullpath, 'file') || ~exist(dsrFullpath, 'dir'))
                 % if DS or DSR, it means the deskew and rotation not done.
                 continue;
             end
@@ -811,6 +819,7 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all') || ...
                 mccMode = false;
                 maxTrialNum = 1;
             end
+            stitchZarrFile = saveZarr;
 
             func_str = sprintf(['XR_matlab_stitching_wrapper(''%s'',''%s'',''ResultDir'',''%s'',', ...
                 '''Streaming'',%s,''DS'',%s,''DSR'',%s,''ChannelPatterns'',%s,''ProcessedDirStr'',''%s'',', ...
@@ -819,7 +828,7 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all') || ...
                 '''zMaxOffset'',%.10f,''EdgeArtifacts'',%d,''BlendMethod'',''%s'',''zNormalize'',%s,', ...
                 '''onlyFirstTP'',%s,''timepoints'',[%s],''boundboxCrop'',[%s],''Save16bit'',%s,', ...
                 '''primaryCh'',''%s'',''stitchMIP'',%s,''onlineStitch'',%s,''pipeline'',''%s'',', ...
-                '''maxTrialNum'',%d,''mccMode'',%s,''ConfigFile'',''%s'')'], ...
+                '''zarrFile'',%s,''maxTrialNum'',%d,''mccMode'',%s,''ConfigFile'',''%s'')'], ...
                 dataPath, imageListFullpath, stitchResultDir, string(parseCluster & Streaming), string(stitch_DS), ...
                 string(stitch_DSR), ChannelPatterns_str, ProcessedDirStr, axisOrder, resampleType, ...
                 strrep(num2str(resample, '%.10d,'), ' ', ''), string(Reverse), string(parseSettingFile), ...
@@ -827,7 +836,7 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all') || ...
                 string(zNormalize), string(onlyFirstTP), strrep(num2str(timepoints, '%d,'), ' ', ''), ...
                 strrep(num2str(bbox, '%d,'), ' ', ''), string(Save16bit(2)), primaryCh, ...
                 strrep(mat2str(stitchMIP), ' ', ','), string(onlineStitch), stitchPipeline, ...
-                maxTrialNum, string(mccMode), ConfigFile);
+                string(stitchZarrFile), maxTrialNum, string(mccMode), ConfigFile);
 
             if parseCluster
                 dfirst_ind = find(fdinds == fdind, 1, 'first');
@@ -891,9 +900,9 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all') || ...
                 % in case fname not start with Scan_
                 % dir_info = dir(sprintf('%s/%s*Abs.tif', stchPath, fname(regexp(fname, 'Scan.*') : end - 43)));
                 if strcmp(stitchPipeline, 'zarr')
-                    dir_info = dir(sprintf('%s/%s*Abs.zarr', stchPath, fname(1 : end - 43)));
+                    dir_info = dir(sprintf('%s/%s*Abs.zarr', stchPath, fsname(1 : end - 39)));
                 else
-                    dir_info = dir(sprintf('%s/%s*Abs.tif', stchPath, fname(1 : end - 43)));
+                    dir_info = dir(sprintf('%s/%s*Abs.tif', stchPath, fsname(1 : end - 39)));
                 end
                 if isempty(dir_info) 
                     continue;
@@ -921,9 +930,9 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all') || ...
             end
                             
             deconPath = deconPaths{fdind};
-            deconFullpath = sprintf('%s/%s_decon.tif', deconPath, fsname);
+            deconFullpath = sprintf('%s/%s_decon%s', deconPath, fsname, ext);
             if Stitch
-                deconFullpath = sprintf('%s/%s_decon.tif', deconPath, stch_fsname);
+                deconFullpath = sprintf('%s/%s_decon%s', deconPath, stch_fsname, ext);
             end
             dctmpFullpath = sprintf('%s.tmp', deconFullpath(1 : end - 4));
 
@@ -950,7 +959,7 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all') || ...
                     % if decon result exist, but mask file not exist, rerun
                     % it to save the mask. 
                     if Stitch
-                        maskFullpaths{fdind} = sprintf('%s/Masks/%s_eroded.tif', deconPath, stch_fsname);
+                        maskFullpaths{fdind} = sprintf('%s/Masks/%s_eroded%s', deconPath, stch_fsname, ext);
                     end
                     if is_done_flag(f, 3) && ~exist(maskFullpaths{fdind}, 'file')
                         is_done_flag(f, 3) = false;
@@ -961,7 +970,7 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all') || ...
                     % only check for the ones not finished. 
                     if ~is_done_flag(f, 3)
                         maskFullpath = maskFullpaths{fdind};
-                        if ~exist(maskFullpath, 'file')
+                        if ~exist(maskFullpath, 'file') || ~exist(maskFullpath, 'dir')
                             continue;
                         end
 
@@ -1086,8 +1095,9 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all') || ...
     end
             
     % check whether there are new coming images (only for streaming option)
-    [fnames_new, fdinds_new, gfnames_new, partialvols_new, dataSizes_new, flipZstack_mat_new, latest_modify_times_new, FTP_inds_new, maskFullpaths_new] = ...
-    XR_parseImageFilenames(dataPaths, ChannelPatterns, parseSettingFile, flipZstack, Decon, deconPaths, Streaming, minModifyTime, zarrFile);
+    [fnames_new, fdinds_new, gfnames_new, partialvols_new, dataSizes_new, flipZstack_mat_new, ...
+        latest_modify_times_new, FTP_inds_new, maskFullpaths_new] = XR_parseImageFilenames(dataPaths, ...
+        ChannelPatterns, parseSettingFile, flipZstack, Decon, deconPaths, Streaming, minModifyTime, zarrFile);
     if isempty(fnames_new)
         continue;
     end

@@ -11,11 +11,21 @@ void indexing3d_mex(const void* restrict orig, void* restrict region, uint64_t s
     uint64_t bytes = bits/8;
     const uint64_t regionShapeXY = shapeX*shapeY;
     const uint64_t origShapeXY = origShapeX*origShapeY;
-
-    #pragma omp parallel for collapse(2)
-    for(uint64_t z = startZ; z < endZ; z++){
-        for(uint64_t y = startY; y < endY; y++){
-            memcpy((uint8_t*)orig+((startX+y*origShapeX+z*origShapeXY)*bytes), (uint8_t*)region+(((y-startY)*shapeX+(z-startZ)*regionShapeXY)*bytes), shapeX*bytes);
+    const int nthread = omp_get_num_threads();
+    
+    if (nthread > 1){
+        #pragma omp parallel for collapse(2) 
+        for(uint64_t z = startZ; z < endZ; z++){
+            for(uint64_t y = startY; y < endY; y++){
+                memcpy((uint8_t*)orig+((startX+y*origShapeX+z*origShapeXY)*bytes), (uint8_t*)region+(((y-startY)*shapeX+(z-startZ)*regionShapeXY)*bytes), shapeX*bytes);
+            }
+        }
+    }
+    else{
+        for(uint64_t z = startZ; z < endZ; z++){
+            for(uint64_t y = startY; y < endY; y++){
+                memcpy((uint8_t*)orig+((startX+y*origShapeX+z*origShapeXY)*bytes), (uint8_t*)region+(((y-startY)*shapeX+(z-startZ)*regionShapeXY)*bytes), shapeX*bytes);
+            }
         }
     }
 }

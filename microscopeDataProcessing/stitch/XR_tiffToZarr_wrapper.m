@@ -83,6 +83,7 @@ end
 
 nC = numel(ChannelPatterns);
 usrFcn_strs = repmat({''}, nC, max(1, size(processFunPath, 2)));
+keywords = repmat({{''}}, nC, max(1, size(processFunPath, 2)));
 fprintf('Process function paths:\n')
 disp(processFunPath');
 if ~isempty(processFunPath)
@@ -95,6 +96,9 @@ if ~isempty(processFunPath)
             usrFun = a.usrFun;
             if ~isempty(usrFun)
                 usrFcn_strs{i, j} = usrFun;
+            end
+            if isfield(a, 'keywords')
+                keywords{i, j} = a.keywords;
             end
         end
     end
@@ -122,8 +126,7 @@ compressor = 'zstd';
 uniq_locIds = unique(locIds);
 nLoc = numel(uniq_locIds);
 locSpecific = false;
-if numel(uniq_locIds) > 1 && (size(InputBbox, 1) == nLoc || size(tileOutBbox, 1) == nLoc || ...
-        size(usrFcn_strs, 2) == nLoc)
+if numel(uniq_locIds) > 1 && (size(InputBbox, 1) == nLoc || size(tileOutBbox, 1) == nLoc)
     locSpecific = true;
     if size(InputBbox, 1) <= 1
         InputBbox = repmat({InputBbox}, nLoc, 1);
@@ -138,12 +141,6 @@ if numel(uniq_locIds) > 1 && (size(InputBbox, 1) == nLoc || size(tileOutBbox, 1)
         tileOutBbox = mat2cell(tileOutBbox, ones(1, size(tileOutBbox, 1)), size(tileOutBbox, 2));
     else
         error('The number of tileOutBbox (%d) does not match the number of tile locations (%d)!', size(tileOutBbox, 1), numel(uniq_locIds));
-    end
-    if size(usrFcn_strs, 2) <= 1
-        usrFcn_strs = repmat(usrFcn_strs, 1, nLoc);
-    elseif size(usrFcn_strs, 2) == nLoc
-    else
-        error('The number of usrFcn (%d) does not match the number of tile locations (%d)!', size(usrFcn_strs, 2), numel(uniq_locIds));
     end
 end
 
@@ -186,13 +183,32 @@ for i = 1 : nF
         locInd = uniq_locIds == locIds(i);
         InputBbox_i = InputBbox{locInd};
         tileOutBbox_i = tileOutBbox{locInd};
-        usrFcn_str_i = usrFcn_strs{cind, locInd};        
+        % usrFcn_str_i = usrFcn_strs{cind, i, locInd};        
     else
         InputBbox_i = InputBbox;
         tileOutBbox_i = tileOutBbox;
-        usrFcn_str_i = usrFcn_strs{cind, 1};
+        % usrFcn_str_i = usrFcn_strs{cind, i};
     end
-    
+
+    % map user defined function to the tile handle based on the keywords
+    usrFcn_strs_c = usrFcn_strs(cind, :);
+    keywords_c = keywords(cind, :);
+    usrFcn_str_i = usrFcn_strs_c{1};
+    for j = 1 : numel(usrFcn_strs_c)
+        break_loops = false;
+        keywords_cj = keywords_c{j};
+        for k = 1 : numel(keywords_cj)
+            if contains(tiffFullpath_i, keywords_cj{k})
+                break_loops = true;
+                break;
+            end
+        end
+        if break_loops
+            usrFcn_str_i = usrFcn_strs_c{j};
+            break;
+        end
+    end
+
     func_strs{i} = sprintf(['tiffToZarr(%s,''%s'',[],''BlockSize'',%s,''shardSize'',%s,', ...
         '''flipZstack'',%s,''resample'',%s,''InputBbox'',%s,''tileOutBbox'',%s,', ...
         '''compressor'',''%s'',''usrFcn'',"%s")'], sprintf('{''%s''}', strjoin(tiffFullpath_group_i, ''',''')), ...

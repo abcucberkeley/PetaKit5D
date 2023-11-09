@@ -392,7 +392,9 @@ if isempty(processFunPath) || all(cellfun(@isempty, processFunPath))
         dt = char(datetime('now', 'Format', 'yyyyMMddHHmmSS'));
         fn = sprintf('%s/tmp/processFunction_%s.mat', pstr, dt);
         save('-v7.3', fn, 'usrFun');  
-        processFunPath = {fn};        
+        if ~isempty(usrFun)
+            processFunPath = {fn};        
+        end
     end
 end
 
@@ -416,7 +418,7 @@ processTiles = ~zarrFile || (zarrFile && (~isempty(InputBbox) || ~isempty(tileOu
     || any(~cellfun(@isempty, processFunPath)) || any(zarr_flippedTile) || any(stitchResample ~= 1)));
 
 [inputFullpaths, zarrFullpaths, fsnames, zarrPathstr] = stitch_process_filenames( ...
-    tileFullpaths, ProcessedDirstr, stitchMIP, resample, zarrFile, processTiles);
+    tileFullpaths, ProcessedDirstr, stitchMIP, stitchResample, zarrFile, processTiles);
 
 % first check if it is 2d stitch
 for f = 1 : nF

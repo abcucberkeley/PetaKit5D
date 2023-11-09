@@ -12,31 +12,63 @@ template <typename T>
 void feather_blending_3d_mex(const T* const &fmat, const float* const &dmat, float* &nmat, const uint64_t &shapeX, const uint64_t &shapeY, const uint64_t &shapeZ, const uint64_t &shapeT) {
     const uint64_t shapeXY = shapeX * shapeY;
     const uint64_t shapeXYZ = shapeX * shapeY * shapeZ;
+    const int nthread = omp_get_num_threads();
     
-    #pragma omp parallel for collapse(3)
-    for (uint64_t z = 0; z < shapeZ; z++) {
-        for (uint64_t y = 0; y < shapeY; y++) {
-            for (uint64_t x = 0; x < shapeX; x++) {
-                float sum_w = 0;
-                float nv = 0;
-                uint64_t ind_xyz = x + y * shapeX + z * shapeXY;
-                
-                // Calculate fmat and dmat pointers once
-                const T* f_ptr = fmat + ind_xyz;
-                const float* d_ptr = dmat + ind_xyz;
-
-                for (uint64_t t = 0; t < shapeT; t++) {
-                    if (*f_ptr != 0) {
-                        sum_w += *d_ptr;
-                        nv += static_cast<float>(*f_ptr) * *d_ptr;
+    if (nthread > 1){
+        #pragma omp parallel for collapse(3)
+        for (uint64_t z = 0; z < shapeZ; z++) {
+            for (uint64_t y = 0; y < shapeY; y++) {
+                for (uint64_t x = 0; x < shapeX; x++) {
+                    float sum_w = 0;
+                    float nv = 0;
+                    uint64_t ind_xyz = x + y * shapeX + z * shapeXY;
+                    
+                    // Calculate fmat and dmat pointers once
+                    const T* f_ptr = fmat + ind_xyz;
+                    const float* d_ptr = dmat + ind_xyz;
+    
+                    for (uint64_t t = 0; t < shapeT; t++) {
+                        if (*f_ptr != 0) {
+                            sum_w += *d_ptr;
+                            nv += static_cast<float>(*f_ptr) * *d_ptr;
+                        }
+                        // Move to the next slice in fmat and dmat
+                        f_ptr += shapeXYZ;
+                        d_ptr += shapeXYZ;
                     }
-                    // Move to the next slice in fmat and dmat
-                    f_ptr += shapeXYZ;
-                    d_ptr += shapeXYZ;
+                    // printf("%f %f\n", nv, sum_w);
+                    if (sum_w != 0) {
+                        *(nmat + ind_xyz) = nv / sum_w;
+                    }
                 }
-                // printf("%f %f\n", nv, sum_w);
-                if (sum_w != 0) {
-                    *(nmat + ind_xyz) = nv / sum_w;
+            }
+        }
+    }
+    else{
+        for (uint64_t z = 0; z < shapeZ; z++) {
+            for (uint64_t y = 0; y < shapeY; y++) {
+                for (uint64_t x = 0; x < shapeX; x++) {
+                    float sum_w = 0;
+                    float nv = 0;
+                    uint64_t ind_xyz = x + y * shapeX + z * shapeXY;
+                    
+                    // Calculate fmat and dmat pointers once
+                    const T* f_ptr = fmat + ind_xyz;
+                    const float* d_ptr = dmat + ind_xyz;
+    
+                    for (uint64_t t = 0; t < shapeT; t++) {
+                        if (*f_ptr != 0) {
+                            sum_w += *d_ptr;
+                            nv += static_cast<float>(*f_ptr) * *d_ptr;
+                        }
+                        // Move to the next slice in fmat and dmat
+                        f_ptr += shapeXYZ;
+                        d_ptr += shapeXYZ;
+                    }
+                    // printf("%f %f\n", nv, sum_w);
+                    if (sum_w != 0) {
+                        *(nmat + ind_xyz) = nv / sum_w;
+                    }
                 }
             }
         }

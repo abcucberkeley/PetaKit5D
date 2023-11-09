@@ -183,8 +183,8 @@ if parseCluster
     task_ids = rem(task_ids, 5000);
 end
 
-fprintf('Task number : %d, task batch size : %d, task job number : %d, job parallel number : %d\n', ...
-    nF, taskBatchNum, nB, paraJobNum);
+fprintf('Task number : %d, task batch size : %d, task parallel number : %d, job number : %d, \n', ...
+    nF, taskBatchNum, paraJobNum, nB);
 
 GNUparallel = GNUparallel & (paraJobNum > 1);
 

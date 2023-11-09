@@ -6,6 +6,7 @@ function [file_exist_mat] = batch_file_exist(fileFullpaths, outFullpath, useParp
 % 
 % xruan (03/15/2022): if nd is large, directly check the input files
 % xruan (09/06/2022): add support for thread based parallel computing 
+% xruan (10/05/2023): java.io seems not working for paths with ~ 
 
 if nargin < 2
     outFullpath = [];
@@ -77,7 +78,7 @@ if useParpool && nF > 100 && ~check_folder
     wait(fs, 'finished', nF / nworker * 0.1);
     file_exist_mat = fetchOutputs(fs) > 0;
 else
-    if usejava('jvm')
+    if usejava('jvm') && ~any(contains(fileFullpaths, '~'))
         for f = 1 : nF
             file_exist_mat(f) = java.io.File(fileFullpaths{f}).exists;
         end

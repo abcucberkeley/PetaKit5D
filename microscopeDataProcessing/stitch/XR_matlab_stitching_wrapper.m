@@ -678,10 +678,12 @@ while ~all(is_done_flag | trial_counter >= max_trial_num, 'all')
                             % for the check
                             if parseCluster
                                 if ~(masterCompute && f == lastF && job_ids(f) == 0)
-                                    if useProcessedData
-                                        imSize = getImageSize(tile_processed_fullpaths{1});
-                                    else
-                                        imSize = getImageSize(tile_fullpaths{1});
+                                    if ~exist('imSize', 'var')
+                                        if useProcessedData
+                                            imSize = getImageSize(tile_processed_fullpaths{1});
+                                        else
+                                            imSize = getImageSize(tile_fullpaths{1});
+                                        end
                                     end
                                     datasize = prod(imSize);
                                     totalSize = datasize * numel(tile_fullpaths);

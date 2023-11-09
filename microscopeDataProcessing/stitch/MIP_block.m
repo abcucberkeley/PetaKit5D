@@ -43,19 +43,14 @@ if ~exist(zarrFullpath, 'dir')
     error('The input zarr file %s doesnot exist!', zarrFullpath);
 end
 
-% bim = blockedImage(zarrFullpath, 'Adapter', ZarrAdapter);
-
-% nv_bim_cell = cell(3, 1);
-% for i = 1 : 3
-%     if ~exist(MIPFullpaths{i}, 'dir')
-%         error('The output zarr file %s does not exist!', MIPFullpaths{i});
-%     end
-%     nv_bim_cell{i} = blockedImage(MIPFullpaths{i}, 'Adapter', ZarrAdapter);
-% end
+poolSize_orig = poolSize;
+if numel(poolSize_orig) == 3
+    poolSize_orig = [poolSize_orig, 1, 1, 1];
+end
 
 % if pool size is smaller than the batch size, use the max pooling routines.
 max_pooling = any(BatchBBoxes(1, 4 : 6) - BatchBBoxes(1, 1 : 3) + 1 > poolSize(1 : 3)) || (numel(poolSize) == 6 && any(poolSize(4 : 6) > 1));
-resampling = any(BatchBBoxes(1, 4 : 6) - BatchBBoxes(1, 1 : 3) + 1 > poolSize(1 : 3)) || (numel(poolSize) == 9 && any(poolSize(7 : 9) > 1));
+resampling = any(BatchBBoxes(1, 4 : 6) - BatchBBoxes(1, 1 : 3) + 1 > poolSize(1 : 3)) && (numel(poolSize) == 9 && any(poolSize(7 : 9) > 1));
 poolSize_1 = [1, 1, 1];
 dsfactor = [1, 1, 1];
 if resampling && numel(poolSize) == 9
@@ -114,10 +109,13 @@ for i = 1 : numel(batchInds)
             out_batch = max(in_batch, [], j);
         end
         
+        poolSize_out = poolSize_orig(4 : 6);
+        poolSize_out(j) = poolSize_orig(j);
+
         obStart = BatchBBoxes(i, 1 : 3);
-        obStart = floor((obStart - 1) ./ poolSize_j ./ dsfactor) + 1;
+        obStart = floor((obStart - 1) ./ poolSize_out) + 1;
         obEnd = BatchBBoxes(i, 4 : 6);
-        obEnd = floor((obEnd - 1) ./ poolSize_j ./ dsfactor) + 1;
+        obEnd = floor((obEnd - 1) ./ poolSize_out) + 1;
         
         % nv_bim_cell{j}.Adapter.setRegion(obStart, obEnd, out_batch);
         writezarr(out_batch, MIPFullpaths{j}, 'bbox', [obStart, obEnd])

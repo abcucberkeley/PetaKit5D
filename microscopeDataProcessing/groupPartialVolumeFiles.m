@@ -109,7 +109,11 @@ else
         case {'.zarr'}
             for f = 1 : numel(fnames)
                 fn = [dataPath, filesep, fnames{f}];
-                datasize(f) = prod(getImageSize(fn)) * dbytes;
+                try
+                    datasize(f) = prod(getImageSize(fn)) * dbytes;
+                catch ME
+                    disp(ME);
+                end
             end
     end
 

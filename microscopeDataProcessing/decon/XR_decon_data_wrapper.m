@@ -199,7 +199,7 @@ if isempty(scaleFactor)
     scaleFactor = 1;
 end
 if numel(ChannelPatterns) > 1 && numel(scaleFactor) == 1
-    scaleFactor = scaleFactor * ones(1, numel(scaleFactor));
+    scaleFactor = scaleFactor * ones(1, numel(ChannelPatterns));
 end
 
 if isempty(uuid)
@@ -470,9 +470,9 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
                     estMem = prod(dsz) * 4 / 2^30;
                     cur_ConfigFile = ConfigFile;
                     if ~GPUJob
-                        memAllocate = estMem * 2;
+                        memAllocate = estMem * 10;
                         if largeFile && strcmp(largeMethod, 'inplace')
-                            memAllocate = prod(BatchSize * 2) * 4 / 2^30 * 5;
+                            memAllocate = prod(BatchSize * 2) * 4 / 2^30 * 10;
                         end
                     else
                         memAllocate = estMem * 10;
@@ -485,8 +485,9 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
 
                     job_id = job_ids(f, 1);
                     [job_id, ~, submit_status] = generic_single_job_submit_wrapper(func_str, ...
-                        job_id, task_id, 'jobLogFname', job_log_fname, 'jobErrorFname', job_log_error_fname, ...
-                        lastFile=false, memAllocate=memAllocate, mccMode=mccMode, ConfigFile=cur_ConfigFile);
+                        job_id, task_id, jobLogFname=job_log_fname, jobErrorFname=job_log_error_fname, ...
+                        lastFile=false, cpusPerTask=cpusPerTask, memAllocate=memAllocate, ...
+                        mccMode=mccMode, ConfigFile=cur_ConfigFile);
 
                     job_ids(f, 1) = job_id;
                     trial_counter(f, 1) = trial_counter(f, 1) + submit_status;

@@ -42,7 +42,11 @@ if ~exist(resultPath, 'dir')
     fileattrib(resultPath, '+w', 'g');
 end
 save('-v7.3', [resultPath, '/parameters.mat'], 'pr');
-fileattrib([resultPath, '/parameters.mat'], '+w', 'g');
+try
+    fileattrib([resultPath, '/parameters.mat'], '+w', 'g');
+catch ME
+    disp(ME);
+end
 resultPath = [simplifyPath(resultPath), '/'];
 
 % load slice coordinates
@@ -110,7 +114,7 @@ t_fns = t_fns(include_flag);
 % get time point/iteration, tile inds
 tile_xyz = true;
 if all(~cellfun(@isempty, regexp(t_fns{1}, '\d+x_\d+y_\d+z_\d+t', 'match')))
-    expression = '_(?<x>-?\d+)x_(?<y>-?\d+)y_(?<z>-?\d+)z_(?<t>\d+)t.tif';
+    expression = '_(?<x>-?\d+)x_(?<y>-?\d+)y_(?<z>-?\d+)z_(?<t>\d+)t';
 elseif all(~cellfun(@isempty, regexp(t_fns{1}, 'Iter_\d+', 'match')))
     expression = '_Iter_(?<t>\d+)_';
     tile_xyz = false;
@@ -236,7 +240,11 @@ save('-v7.3', coords_info_tmp_fn, 'coords_struct', 'skipped_fns', 'CoordType', .
     'global_xrange', 'x_st', 'dz_actual', 'duplicate_mat', 'global_duplicate');
 fileattrib(coords_info_tmp_fn, '+w', 'g');
 save(sprintf('%sdz_actual_%d.txt', resultPath, dz_actual), 'dz_actual', '-ASCII');
-fileattrib(sprintf('%sdz_actual_%d.txt', resultPath, dz_actual), '+w', 'g');
+try
+    fileattrib(sprintf('%sdz_actual_%d.txt', resultPath, dz_actual), '+w', 'g');
+catch ME
+    disp(ME);
+end
 movefile(coords_info_tmp_fn, coords_info_fn);
 
 end

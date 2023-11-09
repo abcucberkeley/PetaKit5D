@@ -16,7 +16,7 @@ ip.addParameter('ChannelPatterns', {'CamA_ch0', 'CamA_ch1', 'CamB_ch0', 'CamB_ch
 ip.addParameter('zarrFile', false, @islogical); % use zarr file as input
 ip.addParameter('saveZarr', false, @islogical); % use zarr file as output
 ip.addParameter('blockSize', [256, 256, 1], @isnumeric); % zarr output block size
-ip.addParameter('intThresh', 100, @isnumeric); % intensity threshold
+ip.addParameter('intThresh', [100, 100, 100], @isnumeric); % intensity threshold, y, x, z
 ip.addParameter('volThresh', 100, @isnumeric); % volume threshold
 ip.addParameter('dilateSize', 100, @isnumeric); % dilate the mask to add some buffer room
 ip.addParameter('Save16bit', true, @islogical);
@@ -128,6 +128,10 @@ end
 
 %% use generic framework for the MIP mask computing
 
+if numel(intThresh) == 1
+    intThresh = repmat(intThresh, 1, 3);
+end
+
 if numel(dilateSize) == 1
     dilateSize = repmat(dilateSize, 1, 3);
 end
@@ -154,8 +158,10 @@ for f = 1 : nF
     dilateSize_f = dilateSize;
     dilateSize_f(mip_axes(f)) = [];    
     
+    intThresh_f = intThresh(mip_axes(f));
+
     func_strs{f} = sprintf(['gererate_single_MIP_mask(''%s'',''%s'',%d,%d,%s,%s,%s,''%s'')'], ...
-        fn, fnout, intThresh, volThresh, strrep(mat2str(dilateSize_f), ' ', ','), strrep(mat2str(blockSize), ' ', ','), ...
+        fn, fnout, intThresh_f, volThresh, strrep(mat2str(dilateSize_f), ' ', ','), strrep(mat2str(blockSize), ' ', ','), ...
         string(Save16bit), uuid);
 end
 

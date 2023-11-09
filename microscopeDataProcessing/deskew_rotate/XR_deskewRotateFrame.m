@@ -165,7 +165,7 @@ if (~DSRCombined && (~exist(dsFullname, 'file') || ip.Results.Overwrite)) || DSR
             case {'.tif', '.tiff'}
                 frame = single(readtiff(framePath{1}));
             case {'.zarr'}
-                frame = readzarr(framePath{1});
+                frame = single(readzarr(framePath{1}));
         end                
     end
     if ~isempty(InputBbox)
@@ -250,8 +250,7 @@ if (~DSRCombined && (~exist(dsFullname, 'file') || ip.Results.Overwrite)) || DSR
                     fileattrib(dsMIPPath, '+w', 'g');
                 end
             end
-
-            dsMIPname = sprintf('%s%s_MIP_z.tif', dsMIPPath, fsname);
+            
             if splitCompute
                 bmip = apply(bo, @(bs) max(bs.Data, [], 3), 'blockSize', [bo.BlockSize(1:2), bo.Size(3)], 'useParallel', false);
                 mip = gather(bmip);
@@ -259,9 +258,14 @@ if (~DSRCombined && (~exist(dsFullname, 'file') || ip.Results.Overwrite)) || DSR
                 mip = max(ds, [], 3);
             end
             if Save16bit 
-                writetiff(uint16(mip), dsMIPname);
+                mip = uint16(mip);
+            end
+            if saveZarr
+                dsMIPname = sprintf('%s%s_MIP_z.tif', dsMIPPath, fsname);                
+                writetiff(mip, dsMIPname);
             else
-                writetiff(single(mip), dsMIPname);
+                dsMIPname = sprintf('%s%s_MIP_z.zarr', dsMIPPath, fsname);                
+                writezarr(mip, dsMIPname);
             end
         end
 
@@ -384,12 +388,18 @@ if ip.Results.Rotate || DSRCombined
                 end
             end
 
-            dsrMIPTmpname = sprintf('%s%s_MIP_z.tif_%s', dsrMIPPath, fsname, uuid);
-            dsrMIPname = sprintf('%s%s_MIP_z.tif', dsrMIPPath, fsname);
-            if ip.Results.Save16bit
-                writetiff(uint16(max(dsr, [], 3)), dsrMIPTmpname);
+            mip = max(dsr, [], 3);            
+            if Save16bit
+                mip = uint16(mip);
+            end
+            if saveZarr
+                dsrMIPname = sprintf('%s%s_MIP_z.zarr', dsrMIPPath, fsname);
+                dsrMIPTmpname = sprintf('%s%s_MIP_z.zarr_%s', dsrMIPPath, fsname, uuid);
+                writezarr(mip, dsrMIPTmpname);                                
             else
-                writetiff(single(max(dsr, [], 3)), dsrMIPTmpname);
+                dsrMIPname = sprintf('%s%s_MIP_z.tif', dsrMIPPath, fsname);
+                dsrMIPTmpname = sprintf('%s%s_MIP_z.tiff_%s', dsrMIPPath, fsname, uuid);
+                writetiff(mip, dsrMIPTmpname);                
             end
             movefile(dsrMIPTmpname, dsrMIPname);
         end

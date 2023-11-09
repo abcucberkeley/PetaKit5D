@@ -74,36 +74,69 @@ void feather_distance_map_resize_3d_mex(const float* dmat, float* rmat, const fl
     const uint64_t rShapeXY = rShapeX * rShapeY;
     const float d_inv = 1. / (float) d;
     const int d_int = (int) d;
+    const int nthread = omp_get_num_threads();
     
     // restore to the linear space 
     float* dmat_1 = (float *) malloc(shapeX * shapeY * shapeZ * sizeof(float));
-    #pragma omp parallel for collapse(3)
-    for (uint64_t z = 0; z < shapeZ; z++) {
-        for (uint64_t y = 0; y < shapeY; y++) {
-            for (uint64_t x = 0; x < shapeX; x++) {
-                uint64_t ind_xyz = x + y * shapeX + z * shapeXY;                
-                *(dmat_1 + ind_xyz) = powf(*(dmat + ind_xyz), d_inv);
+    if (nthread > 1){
+        #pragma omp parallel for collapse(3)
+        for (uint64_t z = 0; z < shapeZ; z++) {
+            for (uint64_t y = 0; y < shapeY; y++) {
+                for (uint64_t x = 0; x < shapeX; x++) {
+                    uint64_t ind_xyz = x + y * shapeX + z * shapeXY;                
+                    *(dmat_1 + ind_xyz) = powf(*(dmat + ind_xyz), d_inv);
+                }
             }
         }
     }
+    else{
+        for (uint64_t z = 0; z < shapeZ; z++) {
+            for (uint64_t y = 0; y < shapeY; y++) {
+                for (uint64_t x = 0; x < shapeX; x++) {
+                    uint64_t ind_xyz = x + y * shapeX + z * shapeXY;                
+                    *(dmat_1 + ind_xyz) = powf(*(dmat + ind_xyz), d_inv);
+                }
+            }
+        }
+    }
+        
 
     const float xfactor = rShapeX > 1 ? ((float)shapeX - 1.0) / ((float)rShapeX - 1.0) : 1.0;
     const float yfactor = rShapeY > 1 ? ((float)shapeY - 1.0) / ((float)rShapeY - 1.0) : 1.0;
     const float zfactor = rShapeZ > 1 ? ((float)shapeZ - 1.0) / ((float)rShapeZ - 1.0) : 1.0;
-
-    #pragma omp parallel for collapse(3)
-    for (uint64_t z = 0; z < rShapeZ; z++) {
-        for (uint64_t y = 0; y < rShapeY; y++) {
-            for (uint64_t x = 0; x < rShapeX; x++) {
-                float xr = (float)x * xfactor;
-                float yr = (float)y * yfactor;
-                float zr = (float)z * zfactor;
-
-                uint64_t ind_xyz = x + y * rShapeX + z * rShapeXY;
-
-                float dr = trilinearInterpolation(dmat_1, xr, yr, zr, shapeX, shapeY, shapeZ, shapeXY);
-                // *(rmat + ind_xyz) = powf(dr, d);
-                *(rmat + ind_xyz) = fastPower(dr, d_int);                
+    
+    if (nthread > 1){
+        #pragma omp parallel for collapse(3)
+        for (uint64_t z = 0; z < rShapeZ; z++) {
+            for (uint64_t y = 0; y < rShapeY; y++) {
+                for (uint64_t x = 0; x < rShapeX; x++) {
+                    float xr = (float)x * xfactor;
+                    float yr = (float)y * yfactor;
+                    float zr = (float)z * zfactor;
+    
+                    uint64_t ind_xyz = x + y * rShapeX + z * rShapeXY;
+    
+                    float dr = trilinearInterpolation(dmat_1, xr, yr, zr, shapeX, shapeY, shapeZ, shapeXY);
+                    // *(rmat + ind_xyz) = powf(dr, d);
+                    *(rmat + ind_xyz) = fastPower(dr, d_int);                
+                }
+            }
+        }
+    }
+    else{
+        for (uint64_t z = 0; z < rShapeZ; z++) {
+            for (uint64_t y = 0; y < rShapeY; y++) {
+                for (uint64_t x = 0; x < rShapeX; x++) {
+                    float xr = (float)x * xfactor;
+                    float yr = (float)y * yfactor;
+                    float zr = (float)z * zfactor;
+    
+                    uint64_t ind_xyz = x + y * rShapeX + z * rShapeXY;
+    
+                    float dr = trilinearInterpolation(dmat_1, xr, yr, zr, shapeX, shapeY, shapeZ, shapeXY);
+                    // *(rmat + ind_xyz) = powf(dr, d);
+                    *(rmat + ind_xyz) = fastPower(dr, d_int);                
+                }
             }
         }
     }

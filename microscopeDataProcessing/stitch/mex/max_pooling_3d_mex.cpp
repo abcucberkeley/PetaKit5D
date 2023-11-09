@@ -11,33 +11,66 @@ template <typename T>
 void max_pooling_3d_mex(const T* const &orig, T* const &out, const uint64_t &poolSizeX, const uint64_t &poolSizeY, const uint64_t &poolSizeZ, const uint64_t &origShapeX, const uint64_t &origShapeY, const uint64_t &origShapeZ, const uint64_t &shapeX, const uint64_t &shapeY, const uint64_t &shapeZ){
     const uint64_t origShapeXY = origShapeX * origShapeY;
     const uint64_t outShapeXY = shapeX * shapeY;
-
-    #pragma omp parallel for collapse(3)
-    for (uint64_t z = 0; z < shapeZ; ++z) {
-        for (uint64_t y = 0; y < shapeY; ++y) {
-            for (uint64_t x = 0; x < shapeX; ++x) {
-                const uint64_t zp1 = (z + 1) * poolSizeZ;
-                const uint64_t zp1min = zp1 < origShapeZ ? zp1 : origShapeZ;
-
-                const uint64_t yp1 = (y + 1) * poolSizeY;
-                const uint64_t yp1min = yp1 < origShapeY ? yp1 : origShapeY;
-
-                const uint64_t xp1 = (x + 1) * poolSizeX;
-                const uint64_t xp1min = xp1 < origShapeX ? xp1 : origShapeX;
-
-                T value = 0;
-                #pragma omp simd
-                for (uint64_t zi = z * poolSizeZ; zi < zp1min; ++zi){
-                    for (uint64_t yi = y * poolSizeY; yi < yp1min; yi++) {
-                        for (uint64_t xi = x * poolSizeX; xi < xp1min; xi++) {
-                            const T* p = orig + (zi * origShapeXY + yi * origShapeX + xi);
-                            value = (*p > value) ? *p : value;
+    const int nthread = omp_get_num_threads();
+    
+    if (nthread > 1){
+        #pragma omp parallel for collapse(3)
+        for (uint64_t z = 0; z < shapeZ; ++z) {
+            for (uint64_t y = 0; y < shapeY; ++y) {
+                for (uint64_t x = 0; x < shapeX; ++x) {
+                    const uint64_t zp1 = (z + 1) * poolSizeZ;
+                    const uint64_t zp1min = zp1 < origShapeZ ? zp1 : origShapeZ;
+    
+                    const uint64_t yp1 = (y + 1) * poolSizeY;
+                    const uint64_t yp1min = yp1 < origShapeY ? yp1 : origShapeY;
+    
+                    const uint64_t xp1 = (x + 1) * poolSizeX;
+                    const uint64_t xp1min = xp1 < origShapeX ? xp1 : origShapeX;
+    
+                    T value = 0;
+                    #pragma omp simd
+                    for (uint64_t zi = z * poolSizeZ; zi < zp1min; ++zi){
+                        for (uint64_t yi = y * poolSizeY; yi < yp1min; yi++) {
+                            for (uint64_t xi = x * poolSizeX; xi < xp1min; xi++) {
+                                const T* p = orig + (zi * origShapeXY + yi * origShapeX + xi);
+                                value = (*p > value) ? *p : value;
+                            }
                         }
                     }
+    
+                    T* p = out + (z * outShapeXY + y * shapeX + x);
+                    *p = value;
                 }
-
-                T* p = out + (z * outShapeXY + y * shapeX + x);
-                *p = value;
+            }
+        }
+    }
+    else{
+        for (uint64_t z = 0; z < shapeZ; ++z) {
+            for (uint64_t y = 0; y < shapeY; ++y) {
+                for (uint64_t x = 0; x < shapeX; ++x) {
+                    const uint64_t zp1 = (z + 1) * poolSizeZ;
+                    const uint64_t zp1min = zp1 < origShapeZ ? zp1 : origShapeZ;
+    
+                    const uint64_t yp1 = (y + 1) * poolSizeY;
+                    const uint64_t yp1min = yp1 < origShapeY ? yp1 : origShapeY;
+    
+                    const uint64_t xp1 = (x + 1) * poolSizeX;
+                    const uint64_t xp1min = xp1 < origShapeX ? xp1 : origShapeX;
+    
+                    T value = 0;
+                    #pragma omp simd
+                    for (uint64_t zi = z * poolSizeZ; zi < zp1min; ++zi){
+                        for (uint64_t yi = y * poolSizeY; yi < yp1min; yi++) {
+                            for (uint64_t xi = x * poolSizeX; xi < xp1min; xi++) {
+                                const T* p = orig + (zi * origShapeXY + yi * origShapeX + xi);
+                                value = (*p > value) ? *p : value;
+                            }
+                        }
+                    }
+    
+                    T* p = out + (z * outShapeXY + y * shapeX + x);
+                    *p = value;
+                }
             }
         }
     }

@@ -11,11 +11,21 @@ void crop3d_mex(const void* restrict orig, void* restrict crop, const uint64_t s
     const uint64_t bytes = bits/8;
     const uint64_t cropShapeXY = shapeX*shapeY;
     const uint64_t origShapeXY = origShapeX*origShapeY;
+    const int nthread = omp_get_num_threads();
     
-    #pragma omp parallel for collapse(2)
-    for(uint64_t z = startZ; z < endZ; z++){
-        for(uint64_t y = startY; y < endY; y++){
-            memcpy((uint8_t*)crop+(((y-startY)*shapeX+(z-startZ)*cropShapeXY)*bytes),(uint8_t*)orig+((startX+(y*origShapeX)+(z*origShapeXY))*bytes),shapeX*bytes);
+    if (nthread > 1){
+        #pragma omp parallel for collapse(2)
+        for(uint64_t z = startZ; z < endZ; z++){
+            for(uint64_t y = startY; y < endY; y++){
+                memcpy((uint8_t*)crop+(((y-startY)*shapeX+(z-startZ)*cropShapeXY)*bytes),(uint8_t*)orig+((startX+(y*origShapeX)+(z*origShapeXY))*bytes),shapeX*bytes);
+            }
+        }
+    }
+    else{
+        for(uint64_t z = startZ; z < endZ; z++){
+            for(uint64_t y = startY; y < endY; y++){
+                memcpy((uint8_t*)crop+(((y-startY)*shapeX+(z-startZ)*cropShapeXY)*bytes),(uint8_t*)orig+((startX+(y*origShapeX)+(z*origShapeXY))*bytes),shapeX*bytes);
+            }
         }
     }
 }

@@ -14,14 +14,26 @@ void indexing4d_mex(const void* restrict orig, void* restrict region, uint64_t s
     const uint64_t regionShapeXYZ = shapeX*shapeY*shapeZ;
     const uint64_t origShapeXY = origShapeX*origShapeY;
     const uint64_t origShapeXYZ = origShapeX*origShapeY*origShapeZ;
-
-    #pragma omp parallel for collapse(3)
-    for(uint64_t t = startT; t < endT; t++){
-	    for(uint64_t z = startZ; z < endZ; z++){
-		    for(uint64_t y = startY; y < endY; y++){
-		        memcpy((uint8_t*)orig+((startX+y*origShapeX+z*origShapeXY+t*origShapeXYZ)*bytes), (uint8_t*)region+(((y-startY)*shapeX+(z-startZ)*regionShapeXY+(t-startT)*regionShapeXYZ)*bytes), shapeX*bytes);
-		    }
-	    }
+    const int nthread = omp_get_num_threads();
+    
+    if (nthread > 1){
+        #pragma omp parallel for collapse(3) 
+        for(uint64_t t = startT; t < endT; t++){
+	        for(uint64_t z = startZ; z < endZ; z++){
+		        for(uint64_t y = startY; y < endY; y++){
+		            memcpy((uint8_t*)orig+((startX+y*origShapeX+z*origShapeXY+t*origShapeXYZ)*bytes), (uint8_t*)region+(((y-startY)*shapeX+(z-startZ)*regionShapeXY+(t-startT)*regionShapeXYZ)*bytes), shapeX*bytes);
+		        }
+	        }
+        }
+    }
+    else{
+        for(uint64_t t = startT; t < endT; t++){
+	        for(uint64_t z = startZ; z < endZ; z++){
+		        for(uint64_t y = startY; y < endY; y++){
+		            memcpy((uint8_t*)orig+((startX+y*origShapeX+z*origShapeXY+t*origShapeXYZ)*bytes), (uint8_t*)region+(((y-startY)*shapeX+(z-startZ)*regionShapeXY+(t-startT)*regionShapeXYZ)*bytes), shapeX*bytes);
+		        }
+	        }
+        }
     }
 }
 

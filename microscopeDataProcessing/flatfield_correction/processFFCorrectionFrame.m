@@ -1,8 +1,11 @@
-function frame = processFFCorrectionFrame(frame, LSImage, BackgroundImage, constOffset, LowerLimit, LSBackground, castDataType)
+function frame = processFFCorrectionFrame(frame, LSImage, BackgroundImage, constOffset, LowerLimit, LSBackground, LSRescale, castDataType)
 % flat field correction for a frame in memory
 
-if nargin < 7
+if nargin < 8
     castDataType =  false;
+end
+if nargin < 7
+    LSRescale =  true;
 end
 if nargin < 6
     LSBackground = true;
@@ -24,7 +27,7 @@ frame = single(frame);
 LSIm = readtiff(LSImage);
 BKIm = readtiff(BackgroundImage);
 frame = XR_LSFlatFieldCorrection(frame,LSIm,BKIm,'LowerLimit', LowerLimit, ...
-    'constOffset', constOffset, 'LSBackground', LSBackground);
+    'constOffset', constOffset, 'LSBackground', LSBackground, 'LSRescale', LSRescale);
 
 if castDataType
     frame = cast(frame, dtype);
