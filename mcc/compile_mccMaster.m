@@ -12,8 +12,8 @@ if ismac
     mcc -v -R -nodisplay -C -d /Applications/LLSM5DToolsMCC -m mccMaster.m
 
     cd('/Applications/LLSM5DToolsMCC');
-    system("sed -i '' '20i\'$'\n''  DYLD_LIBRARY_PATH=${DYLD_LIBRARY_PATH}:${exe_dir}/../../microscopeDataProcessing/io/cpp-tiff/linux; '$'\n''' run_mccMaster.sh");
-    system("sed -i '' '20i\'$'\n''  DYLD_LIBRARY_PATH=${DYLD_LIBRARY_PATH}:${exe_dir}/../../microscopeDataProcessing/io/cpp-zarr/linux; '$'\n''' run_mccMaster.sh");
+    system("sed -i '' '20i\'$'\n''  DYLD_LIBRARY_PATH=${DYLD_LIBRARY_PATH}:${exe_dir}/../../microscopeDataProcessing/io/cpp-tiff/mac; '$'\n''' run_mccMaster.sh");
+    system("sed -i '' '20i\'$'\n''  DYLD_LIBRARY_PATH=${DYLD_LIBRARY_PATH}:${exe_dir}/../../microscopeDataProcessing/io/cpp-zarr/max; '$'\n''' run_mccMaster.sh");
     system("sed -i '' '20i\'$'\n''  # add custom library paths'$'\n''' run_mccMaster.sh");
     % create a zip file in the repo folder
     cd(fpath);
@@ -39,7 +39,8 @@ elseif ispc
     mcc -v -d windows -m mccMaster.m
     
     cd('windows');
-    copyfile('../../microscopeDataProcessing/io/c-zarr/parallelWriteZarr/windows/*dll', './');
+    copyfile('../../microscopeDataProcessing/io/cpp-tiff/windows/*dll', './');
+    copyfile('../../microscopeDataProcessing/io/cpp-zarr/windows/*dll', './');
 end
 
 cd(cpath);
