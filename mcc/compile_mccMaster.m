@@ -15,7 +15,7 @@ if ismac
 
     cd('/Applications/LLSM5DToolsMCC');
     system("sed -i '' '20i\'$'\n''  DYLD_LIBRARY_PATH=${DYLD_LIBRARY_PATH}:${exe_dir}/../../microscopeDataProcessing/io/cpp-tiff/mac; '$'\n''' run_mccMaster.sh");
-    system("sed -i '' '20i\'$'\n''  DYLD_LIBRARY_PATH=${DYLD_LIBRARY_PATH}:${exe_dir}/../../microscopeDataProcessing/io/cpp-zarr/max; '$'\n''' run_mccMaster.sh");
+    system("sed -i '' '20i\'$'\n''  DYLD_LIBRARY_PATH=${DYLD_LIBRARY_PATH}:${exe_dir}/../../microscopeDataProcessing/io/cpp-zarr/mac; '$'\n''' run_mccMaster.sh");
     system("sed -i '' '20i\'$'\n''  # add custom library paths'$'\n''' run_mccMaster.sh");
     % create a zip file in the repo folder
     cd(fpath);
