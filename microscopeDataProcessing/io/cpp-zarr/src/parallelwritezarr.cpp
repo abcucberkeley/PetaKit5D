@@ -20,8 +20,6 @@
 #include "zarr.h"
 #include "zlib.h"
 
-//#include <iostream>
-
 uint32_t crc32c(const uint8_t* data, size_t length) {
     uint32_t crc = 0xFFFFFFFF;
     // CRC32C
@@ -72,7 +70,7 @@ uint8_t parallelWriteZarr(zarr &Zarr, void* zarrArr,
     if(sparse){
         zeroChunkUnc = calloc(s,bytes);
     }
-    //std::cout << "batchSize: " << batchSize << std::endl;
+
     int err = 0;
     std::string errString;
     #pragma omp parallel for
@@ -92,11 +90,6 @@ uint8_t parallelWriteZarr(zarr &Zarr, void* zarrArr,
         bool unWritten = true;
         for(int64_t f = w*batchSize; f < (w+1)*batchSize; f++){
             if(f>=Zarr.get_numChunks()  || err) break;
-            //std::cout << "w: " << w << std::endl;
-            //std::cout << "fLoop: " << f << std::endl;
-            //std::cout << "chunkName: " << Zarr.get_chunkNames(f) << std::endl;
-            //std::cout << "chunkNameConv: " << Zarr.chunkNameToShardName(Zarr.get_chunkNames(f)) << std::endl;
-            //std::cout << "currChunk: " << currChunk+1 << std::endl;
             lastF = f;
 
             if(Zarr.get_shard()){
@@ -335,11 +328,8 @@ uint8_t parallelWriteZarr(zarr &Zarr, void* zarrArr,
                 }
 
             }
-            //char* compressor = blosc_get_compressor();
-            //printf("Thread: %d Compressor: %s\n",w,compressor);
 
             // Use the same blosc compress as Zarr
-            //int64_t csize = blosc_compress(5, BLOSC_SHUFFLE, bytes, sB, chunkUnC, chunkC, sB+BLOSC_MAX_OVERHEAD);
             const std::string subfolderName = Zarr.get_subfoldersString(cAV);
             int64_t csize = 0;
 
@@ -355,16 +345,12 @@ uint8_t parallelWriteZarr(zarr &Zarr, void* zarrArr,
                 csize = blosc_compress_ctx(Zarr.get_clevel(), BLOSC_SHUFFLE, bytes, sB, chunkUnC, chunkC, sB+BLOSC_MAX_OVERHEAD,Zarr.get_cname().c_str(),0,nBloscThreads);
             }
             else{
-                //uint64_t sLength = sB;
                 csize = sB+BLOSC_MAX_OVERHEAD;
-                //compress2((Bytef*)chunkC,&csize,(Bytef*)chunkUnC,sB,1);
                 z_stream stream;
-                //memset(&stream, 0, sizeof(stream));
                 stream.zalloc = Z_NULL;
                 stream.zfree = Z_NULL;
                 stream.opaque = Z_NULL;
 
-                //char dummy = '\0';  // zlib does not like NULL output buffers (even if the uncompressed data is empty)
                 stream.next_in = (uint8_t*)chunkUnC;
                 stream.next_out = (uint8_t*)chunkC;
 
@@ -410,8 +396,6 @@ uint8_t parallelWriteZarr(zarr &Zarr, void* zarrArr,
                 csize = csize - stream.avail_out;
             }
             
-
-
             // Default write
             if(!Zarr.get_shard()){
                 std::string fileName(Zarr.get_fileName()+"/"+subfolderName+"/"+Zarr.get_chunkNames(f));
@@ -482,28 +466,18 @@ uint8_t parallelWriteZarr(zarr &Zarr, void* zarrArr,
             free(cRegion);
             cRegion = nullptr;
         }
-        //std::cout << unWritten << std::endl;
+
         if(Zarr.get_shard() && unWritten && (((uint64_t)((w)*batchSize)))<(Zarr.get_numChunks())){
             // calculate CRC32C
             uint32_t shardFooterCRC32C = crc32c(reinterpret_cast<uint8_t*>(shardFooter), shardFooterSize*sizeof(uint64_t));
-
             uint64_t f = lastF;
-            //std::cout << "SANITY" << std::endl;
-            //std::cout << Zarr.chunkNameToShardName(Zarr.get_chunkNames(f)) << std::endl;
-            //std::cout << ((w+1)*batchSize)-1 << std::endl;
-            //std::cout << Zarr.get_numChunks()*Zarr.get_numChunksPerShard() << std::endl;
             std::vector<uint64_t> pAV = Zarr.get_chunkAxisVals(Zarr.get_chunkNames(f));
-            /*
-            bool pad = (pAV[0] >= ceil((double)endCoords[0]/(double)Zarr.get_chunk_shape(0)) ||
-                pAV[1] >= ceil((double)endCoords[1]/(double)Zarr.get_chunk_shape(1)) ||
-                pAV[2] >= ceil((double)endCoords[2]/(double)Zarr.get_chunk_shape(2)));
-            */
+
             bool pad = pAV[0] > endCoords[0]/Zarr.get_chunk_shape(0) ||
                     pAV[1] > endCoords[1]/Zarr.get_chunk_shape(1) ||
                     pAV[2] > endCoords[2]/Zarr.get_chunk_shape(2);
 
             if(pad){
-                //std::cout << Zarr.chunkNameToShardName(Zarr.get_chunkNames(f)) << std::endl;
                 for(uint64_t i = currChunk; i < Zarr.get_numChunksPerShard(); i++){
                     shardFooter[i*2] = std::numeric_limits<uint64_t>::max();
                     shardFooter[(i*2)+1] = std::numeric_limits<uint64_t>::max();

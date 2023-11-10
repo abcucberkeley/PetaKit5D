@@ -125,7 +125,7 @@ if parseCluster
     task_ids = task_ids(:)';
     task_ids = task_ids(1 : nF);
     task_ids = rem(task_ids, 5000);
-    fprintf('Task number : %d, task batch size : %d, task batch number : %d\n', ...
+    fprintf('Task number : %d, task batch size : %d, job number : %d\n', ...
         nF, taskBatchNum, nB);
 else
     fprintf('Task number : %d\n', nF);    
