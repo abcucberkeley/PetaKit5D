@@ -6,7 +6,7 @@
 #
 exe_name=$0
 exe_dir=`dirname "$0"`
-echo "------------------------------------------"
+# echo "------------------------------------------"
 if [ "x$1" = "x" ]; then
   echo Usage:
   echo    $0 \<deployedMCRroot\> args
