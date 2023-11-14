@@ -97,6 +97,8 @@ switch functionName
         image_intensity_correction_block_parser(varargin{1}, varargin{2}, varargin{3}, varargin{4}, varargin{5}, varargin{6}, varargin{7}, varargin{8:end});
     case 'XR_imaris_conversion_data_wrapper'
         XR_imaris_conversion_data_wrapper_parser(varargin{1}, varargin{2:end});
+    case 'XR_visualize_OTF_mask_segmentation'
+        XR_visualize_OTF_mask_segmentation(varargin{1}, varargin{2}, varargin{3});
 end
 
 toc(t0);
