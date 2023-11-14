@@ -6,6 +6,7 @@ function [job_status] = check_batch_slurm_jobs_status(job_ids, array_ids)
 % Author: Xiongtao Ruan (02/07/2022)
 % 
 % xruan (03/16/2022): if the number of jobs is too large, query in batchs
+% xruan (11/11/2023): combine duplicate jobs to reduce number of queries. 
 
 if nargin < 2
     array_ids = [];
@@ -22,8 +23,21 @@ if ~any(valid_inds)
     return;
 end
 
-job_ids = job_ids(valid_inds);
-array_ids = array_ids(valid_inds);
+job_ids_orig = job_ids(valid_inds);
+array_ids_orig = array_ids(valid_inds);
+
+if isempty(array_ids)
+    job_array_ids = job_ids_orig;
+else
+    if max(array_ids_orig) < 1e4
+        job_array_ids = job_ids_orig * 1e4 + array_ids_orig;
+    else
+        job_array_ids = job_ids_orig * 10^(floor(log10(max(array_ids_orig))) + 1) + array_ids_orig;
+    end
+end
+[~, ia, ic] = unique(job_array_ids);
+job_ids = job_ids_orig(ia);
+array_ids = array_ids_orig(ia);
 
 % use batch query with batch size 5000
 nj = numel(job_ids);
@@ -79,7 +93,10 @@ for i = 1 : numel(job_id_s_m)
     end
 end
 
+if numel(job_array_ids) > numel(ia)
+    valid_job_status = valid_job_status(ic);
+end
+
 job_status(valid_inds) = valid_job_status;
 
 end
-

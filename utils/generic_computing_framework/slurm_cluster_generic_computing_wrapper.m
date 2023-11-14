@@ -17,6 +17,7 @@ function [is_done_flag] = slurm_cluster_generic_computing_wrapper(inputFullpaths
 %   per file to reduce the IO requirement. 
 % xruan (05/21/2022): check job status based on how many pending jobs, rather than each loop
 % xruan (08/25/2022): add support for time limit (in hour)
+% xruan (11/11/2023): add support for minimum query interval for jobs and file system
 
 
 ip = inputParser;
@@ -41,6 +42,7 @@ ip.addParameter('BashLaunchStr', '', @ischar);
 ip.addParameter('SlurmParam', '-p abc --qos abc_normal -n1 --mem-per-cpu=21418M', @ischar);
 ip.addParameter('SlurmConstraint', '', @ischar);
 ip.addParameter('jobTimeLimit', 24, @isnumeric); % in hour, [] means no limit
+ip.addParameter('queryInterval', 3, @isnumeric); % in second, by default 3 s. 
 ip.addParameter('language', 'matlab', @ischar); % support matlab, bash
 
 ip.parse(inputFullpaths, outputFullpaths, funcStrs, varargin{:});
@@ -72,6 +74,7 @@ uuid = pr.uuid;
 SlurmParam = pr.SlurmParam;
 SlurmConstraint = pr.SlurmConstraint;
 jobTimeLimit = pr.jobTimeLimit;
+queryInterval = pr.queryInterval;
 MatlabLaunchStr = pr.MatlabLaunchStr;
 BashLaunchStr = pr.BashLaunchStr;
 language = pr.language;
@@ -122,7 +125,7 @@ if parseCluster
 
     nB = ceil(nF / taskBatchNum);        
     task_ids = ones(taskBatchNum, 1) * (1 : nB);
-    task_ids = task_ids(:)';
+    task_ids = task_ids(:);
     task_ids = task_ids(1 : nF);
     task_ids = rem(task_ids, 5000);
     fprintf('Task number : %d, task batch size : %d, job number : %d\n', ...
@@ -136,16 +139,19 @@ nF_done = 0;
 n_status_check = 10000;
 start_time = datetime('now');
 ts = tic;
+qts = ts;
 while (~parseCluster && ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')) || ...
         (parseCluster && ~all(is_done_flag | (trial_counter >= maxTrialNum & job_status_mat(:, 1) < 0), 'all'))
-    if parseCluster
+    querySystem = ~parseCluster || (parseCluster && (loop_counter == 0 || toc(qts) > queryInterval));
+    if parseCluster && querySystem
         job_status_mat(~is_done_flag, 2) = job_status_mat(~is_done_flag, 1);
         job_status_mat(~is_done_flag, 1) = check_batch_slurm_jobs_status(job_ids(~is_done_flag), task_ids(~is_done_flag));
         timestamp = seconds(datetime('now') - start_time);
         job_timestamp_mat(job_status_mat(:, 1) >= 0) = timestamp;
+        qts = tic;
     end
         
-    if loop_counter > 0
+    if loop_counter > 0 && querySystem
         output_exist_mat(~is_done_flag) = batch_file_exist(outputFullpaths(~is_done_flag), [], true);
         is_done_flag(~is_done_flag) = output_exist_mat(~is_done_flag);        
     end
@@ -171,10 +177,8 @@ while (~parseCluster && ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
         % check output exist and job status every 10000 batches (except the
         % last small bacth (< 0.5 * n_status_check))
         if rem(b, n_status_check) == 0 && (b + n_status_check * 0.5 < nB)      
-            if loop_counter == 0 && parseCluster
-                numJobs = sum(job_status_mat(~is_done_flag, 1) >= 0);
-            end
-            if parseCluster && (loop_counter > 0 || (loop_counter == 0 && numJobs >= maxJobNum))
+            querySystem = ~parseCluster || (parseCluster &&  toc(qts) > queryInterval);
+            if parseCluster && querySystem
                 job_status_mat(:, 2) = job_status_mat(:, 1);
                 job_inds = ~is_done_flag & job_status_mat(:, 1) > -1;
 
@@ -183,9 +187,9 @@ while (~parseCluster && ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
                 is_done_flag(job_inds) = output_exist_mat(job_inds);                
                 
                 job_status_mat(job_inds, 1) = check_batch_slurm_jobs_status(job_ids(job_inds), task_ids(job_inds));
-                numJobs = sum(job_status_mat(~is_done_flag, 1) >= 0);
                 timestamp = seconds(datetime('now') - start_time);                
                 job_timestamp_mat(job_inds) = timestamp;
+                qts = tic;
                 if masterCompute
                     if b + n_status_check * 1.5 > nB
                         check_inds = b : nB;
@@ -422,11 +426,12 @@ while (~parseCluster && ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
     end
     
     if parseCluster && ~all(is_done_flag | trial_counter >= maxTrialNum, 'all') 
-        if masterCompute
-            pause(0.1);
-        else
-            pause(1);
+        wt = max(0.001, queryInterval - toc(qts) - 0.001);
+        % if all jobs are still pending, wait another query interval        
+        if ~masterCompute && ~any(job_status_mat(~is_done_flag, 1), 'all')
+            wt = wt + queryInterval;
         end
+        pause(wt);
     end
     if nF_done < sum(is_done_flag)
         nF_done = sum(is_done_flag);

@@ -6,6 +6,8 @@ function [is_done_flag] = generic_computing_frameworks_wrapper(inputFullpaths, o
 % 
 % Author Xiongtao Ruan (03/09/2023)
 
+% xruan (11/11/2023): add support for minimum query interval for jobs and file system
+
 
 ip = inputParser;
 ip.CaseSensitive = false;
@@ -42,6 +44,7 @@ ip.addParameter('MCRCacheRoot', '/tmp/', @ischar);
 ip.addParameter('MCRParam', '/usr/local/MATLAB/R2023a', @ischar);
 ip.addParameter('MCCMasterStr', '/home/xruan/Projects/XR_Repository/mcc/run_mccMaster.sh', @ischar);
 ip.addParameter('jobTimeLimit', 24, @isnumeric); % in hour, [] means no limit
+ip.addParameter('queryInterval', 3, @isnumeric); % in second, by default 3 s. 
 ip.addParameter('language', 'matlab', @ischar); % support matlab, bash
 ip.addParameter('GNUparallel', false, @islogical); % support matlab, bash
 ip.addParameter('paraJobNum', 1, @isnumeric); % support matlab, bash
@@ -116,6 +119,7 @@ MCRCacheRoot = pr.MCRCacheRoot;
 MCRParam = pr.MCRParam;
 MCCMasterStr = pr.MCCMasterStr;
 jobTimeLimit = pr.jobTimeLimit;
+queryInterval = pr.queryInterval;
 language = pr.language;
 GNUparallel = pr.GNUparallel;
 paraJobNum = pr.paraJobNum;
@@ -163,8 +167,8 @@ switch clusterType
                 maxJobNum=maxJobNum, taskBatchNum=taskBatchNum, BashLaunchStr=BashLaunchStr, ...
                 SlurmParam=SlurmParam, SlurmConstraint=SlurmConstraint, MCRCacheRoot=MCRCacheRoot, ...
                 MCRParam=MCRParam, MCCMasterStr=MCCMasterStr, jobTimeLimit=jobTimeLimit, ...
-                language=language, GNUparallel=GNUparallel, paraJobNum=paraJobNum, ...
-                masterParaFactor=masterParaFactor, GPUJob=GPUJob);
+                queryInterval=queryInterval, language=language, GNUparallel=GNUparallel, ...
+                paraJobNum=paraJobNum, masterParaFactor=masterParaFactor, GPUJob=GPUJob);
         else
             is_done_flag = slurm_cluster_generic_computing_wrapper(inputFullpaths, ...
                 outputFullpaths, funcStrs, parseCluster=parseCluster, masterCompute=masterCompute, ...
@@ -172,7 +176,8 @@ switch clusterType
                 uuid=uuid, maxTrialNum=maxTrialNum, unitWaitTime=unitWaitTime, ...
                 maxJobNum=maxJobNum, taskBatchNum=taskBatchNum, MatlabLaunchStr=MatlabLaunchStr, ...
                 BashLaunchStr=BashLaunchStr, SlurmParam=SlurmParam, SlurmConstraint=SlurmConstraint, ...
-                jobTimeLimit=jobTimeLimit, language=language, GPUJob=GPUJob);
+                jobTimeLimit=jobTimeLimit, queryInterval=queryInterval, language=language, ...
+                GPUJob=GPUJob);
         end
     case 'parfor'
         is_done_flag= matlab_parfor_generic_computing_wrapper(inputFullpaths, outputFullpaths, ...
