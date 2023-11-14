@@ -1,6 +1,5 @@
 function [] = compile_mccMaster()
-
-%% script to compile and configure mccMaster.m
+% script to compile and configure mccMaster.m
 
 cpath = pwd;
 
@@ -11,12 +10,18 @@ if ismac
     if ~exist('/Applications/LLSM5DToolsMCC', 'dir')
         mkdir('/Applications/LLSM5DToolsMCC');
     end
+    copyfile([fpath '/../microscopeDataProcessing/io/cpp-tiff/mac/*.dylib'],'/Applications/LLSM5DToolsMCC/');
+    copyfile([fpath '/../microscopeDataProcessing/io/cpp-zarr/mac/*.dylib'],'/Applications/LLSM5DToolsMCC/');
     mcc -v -R -nodisplay -C -d /Applications/LLSM5DToolsMCC -m mccMaster.m
 
     cd('/Applications/LLSM5DToolsMCC');
-    system("sed -i '' '20i\'$'\n''  DYLD_LIBRARY_PATH=${DYLD_LIBRARY_PATH}:${exe_dir}/../../microscopeDataProcessing/io/cpp-tiff/mac; '$'\n''' run_mccMaster.sh");
-    system("sed -i '' '20i\'$'\n''  DYLD_LIBRARY_PATH=${DYLD_LIBRARY_PATH}:${exe_dir}/../../microscopeDataProcessing/io/cpp-zarr/mac; '$'\n''' run_mccMaster.sh");
+    system("sed -i '' '20i\'$'\n''  DYLD_LIBRARY_PATH=${DYLD_LIBRARY_PATH}:/Applications/LLSM5DToolsMCC; '$'\n''' run_mccMaster.sh");
     system("sed -i '' '20i\'$'\n''  # add custom library paths'$'\n''' run_mccMaster.sh");
+    % disable printout of environment variables
+    system('sed -i '''' ''9s/^/#/'' run_mccMaster.sh');
+    system('sed -i '''' ''14s/^/#/'' run_mccMaster.sh');
+    system('sed -i '''' ''16s/^/#/'' run_mccMaster.sh');
+    system('sed -i '''' ''23s/^/#/'' run_mccMaster.sh');  
     % create a zip file in the repo folder
     cd(fpath);
     if ~exist('mac', 'dir')
@@ -35,6 +40,7 @@ elseif isunix
     system('sed -i ''21i\  LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:${exe_dir}/../../microscopeDataProcessing/io/cpp-zarr/linux;'' run_mccMaster.sh');
     system('sed -i ''21i\  # add custom library paths'' run_mccMaster.sh');
     % disable printout of environment variables
+    system('sed -i ''9s/^/#/'' run_mccMaster.sh');
     system('sed -i ''14s/^/#/'' run_mccMaster.sh');
     system('sed -i ''16s/^/#/'' run_mccMaster.sh');
     system('sed -i ''25s/^/#/'' run_mccMaster.sh');    
