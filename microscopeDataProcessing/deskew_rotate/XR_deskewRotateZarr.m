@@ -109,7 +109,7 @@ if exist(dsrFullpath, 'dir')
     return;
 end
 
-fprintf('Start Large-file Deskew and Rotate for %s...\n', fsname);
+fprintf('Start Large-file Deskew and Rotate for %s...\n', frameFullpath);
 
 if strcmp(dsrFullpath(end), '/')
     dsrTmppath = [dsrFullpath(1 : end-1), '_', uuid];

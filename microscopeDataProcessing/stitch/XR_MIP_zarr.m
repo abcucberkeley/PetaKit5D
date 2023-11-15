@@ -71,7 +71,7 @@ if all(done_flag)
     return;
 end
 
-fprintf('Start Large-file MIP for %s...\n', fsname);
+fprintf('Start Large-file MIP for %s...\n', zarrFullpath);
 
 tic
 zarrFlagPath = sprintf('%s/zarr_flag/%s_%s/', MIPPath, fsname, uuid);
@@ -215,7 +215,10 @@ end
 inputFullpaths = repmat({zarrFullpath}, numTasks, 1);
 if parseCluster || ~parseParfor
     memAllocate = prod(BatchSize) * byteNum / 2^30 * (2.5 + (1.5 * (~mccMode)));
-    minTaskJobNum = max(min(numTasks, 5), round(numTasks / 50));
+    minTaskJobNum = 1;
+    if ~mccMode
+        minTaskJobNum = max(min(numTasks, 5), round(numTasks / 50));
+    end
     is_done_flag = false;
     for i = 1 : 3
         if all(is_done_flag)

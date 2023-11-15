@@ -98,7 +98,7 @@ switch functionName
     case 'XR_imaris_conversion_data_wrapper'
         XR_imaris_conversion_data_wrapper_parser(varargin{1}, varargin{2:end});
     case 'XR_visualize_OTF_mask_segmentation'
-        XR_visualize_OTF_mask_segmentation(varargin{1}, varargin{2}, varargin{3});
+        XR_visualize_OTF_mask_segmentation_parser(varargin{1}, varargin{2}, varargin{3});
 end
 
 toc(t0);

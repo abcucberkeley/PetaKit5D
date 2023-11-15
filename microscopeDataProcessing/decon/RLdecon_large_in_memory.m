@@ -90,7 +90,7 @@ uuid = pr.uuid;
 tic
 [dataPath, fsname, ext] = fileparts(frameFullpath);
 [deconPath, fsn] = fileparts(deconFullpath);
-fprintf('Start Large-file RL Decon for %s...\n', fsname);
+fprintf('Start Large-file RL Decon for %s...\n', frameFullpath);
 
 % generate psf and use the cropped psf to decide the overlap region
 pp = readtiff(psfFullpath);

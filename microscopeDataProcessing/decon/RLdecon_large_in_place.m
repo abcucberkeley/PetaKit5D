@@ -106,7 +106,7 @@ if exist(deconFullpath, 'dir')
     return;
 end
 
-fprintf('Start Large-file RL Decon for %s...\n', fsname);
+fprintf('Start Large-file RL Decon for %s...\n', frameFullpath);
 
 if strcmp(deconFullpath(end), '/')
     deconTmppath = [deconFullpath(1 : end-1), '_', uuid];
