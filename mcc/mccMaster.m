@@ -49,6 +49,8 @@ switch functionName
         stitch_organize_block_info_parser(varargin{1}, varargin{2}, varargin{3}, varargin{4}, varargin{5}, varargin{6:end});
     case 'stitch_global_grid_assignment_wrapper'
         stitch_global_grid_assignment_wrapper_parser(varargin{1}, varargin{2}, varargin{3}, varargin{4}, varargin{5});
+    case 'XR_deskew_rotate_data_wrapper'
+        XR_deskew_rotate_data_wrapper(varargin{1}, varargin{2:end});
     case 'XR_deskewRotateFrame'
         XR_deskewRotateFrame_parser(varargin{1}, varargin{2}, varargin{3}, varargin{4:end});
     case 'XR_RLdeconFrame3D'

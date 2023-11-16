@@ -36,7 +36,7 @@ ip.addParameter('taskSize', [], @isnumeric);
 ip.addParameter('resample', [], @(x) isempty(x) || isnumeric(x)); % resampling after rotation 
 ip.addParameter('Interp', 'linear', @(x) any(strcmpi(x, {'cubic', 'linear'})));
 ip.addParameter('maskFns', {}, @iscell); % 2d masks to filter regions to deskew and rotate, in xy, xz, yz order
-ip.addParameter('surffix', '', @ischar); % suffix for the folder
+ip.addParameter('suffix', '', @ischar); % suffix for the folder
 ip.addParameter('parseCluster', true, @islogical);
 ip.addParameter('parseParfor', false, @islogical);
 ip.addParameter('masterCompute', true, @islogical); % master node participate in the task computing. 
@@ -66,7 +66,7 @@ inputBbox = pr.inputBbox;
 taskSize = pr.taskSize;
 Interp = pr.Interp;
 maskFns = pr.maskFns;
-surffix = pr.surffix;
+suffix = pr.suffix;
 parseCluster = pr.parseCluster;
 parseParfor = pr.parseParfor;
 jobLogDir = pr.jobLogDir;
@@ -141,9 +141,9 @@ end
 % map input and output for xz
 bimSize = getImageSize(frameFullpath);
 
-% use MIP masks to decide the input and output boudning box
+% use MIP masks to decide the input and output   boudning box
 outputBbox = [];
-if ~isempty(maskFns)
+if ~isempty(maskFns) && (iscell(maskFns) && ~isempty(maskFns{1}))
     fprintf('Compute input and out bounding boxes with MIP masks...\n')
     disp(maskFns(:));
 

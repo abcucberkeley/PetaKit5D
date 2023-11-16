@@ -34,7 +34,7 @@ ip.addParameter('DSRCombined', true, @(x) islogical(x) || ischar(x)); % combined
 ip.addParameter('resample', [], @(x) (isempty(x) || isnumeric(x)) || ischar(x)); % resampling after rotation 
 ip.addParameter('Interp', 'linear', @(x) any(strcmpi(x, {'cubic', 'linear'})) && ischar(x));
 ip.addParameter('maskFns', {}, @(x) iscell(x) || ischar(x)); % 2d masks to filter regions to deskew and rotate, in xy, xz, yz orde
-ip.addParameter('surffix', '', @ischar); % suffix for the folder
+ip.addParameter('suffix', '', @ischar); % suffix for the folder
 ip.addParameter('parseCluster', true, @(x) islogical(x) || ischar(x));
 ip.addParameter('parseParfor', false, @(x) islogical(x) || ischar(x));
 ip.addParameter('masterCompute', true, @(x) islogical(x) || ischar(x)); % master node participate in the task computing. 
@@ -67,7 +67,7 @@ inputBbox = pr.inputBbox;
 taskSize = pr.taskSize;
 Interp = pr.Interp;
 maskFns = pr.maskFns;
-surffix = pr.surffix;
+suffix = pr.suffix;
 parseCluster = pr.parseCluster;
 parseParfor = pr.parseParfor;
 jobLogDir = pr.jobLogDir;
@@ -163,7 +163,7 @@ XR_deskewRotateZarr(frameFullpath,xyPixelSize,dz,'resultDirStr',resultDirStr, ..
     'Reverse',Reverse,'flipZstack',flipZstack,'Save16bit',Save16bit,'SaveMIP',SaveMIP, ...
     'saveZarr',saveZarr,'BatchSize',BatchSize,'BlockSize',BlockSize,'inputBbox',inputBbox, ...
     'zarrSubSize',zarrSubSize,'taskSize',taskSize,'DSRCombined',DSRCombined, ...
-    'resample',resample,'Interp',Interp,'maskFns',maskFns,'surffix',surffix, ...
+    'resample',resample,'Interp',Interp,'maskFns',maskFns,'suffix',suffix, ...
     'parseCluster',parseCluster,'parseParfor',parseParfor,'masterCompute',masterCompute, ...
     'jobLogDir',jobLogDir,'cpusPerTask',cpusPerTask,'uuid',uuid,'debug',debug, ...
     'mccMode',mccMode,'ConfigFile',ConfigFile);
