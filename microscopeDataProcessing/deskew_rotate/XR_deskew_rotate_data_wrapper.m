@@ -49,7 +49,7 @@ ip.addParameter('parseCluster', true, @islogical);
 ip.addParameter('parseParfor', false, @islogical);
 ip.addParameter('masterCompute', true, @islogical); % master node participate in the task computing. 
 ip.addParameter('jobLogDir', '../job_logs', @ischar);
-ip.addParameter('cpusPerTask', 8, @isnumeric);
+ip.addParameter('cpusPerTask', 1, @isnumeric);
 ip.addParameter('uuid', '', @ischar);
 ip.addParameter('debug', false, @islogical);
 ip.addParameter('mccMode', false, @islogical);
@@ -315,7 +315,7 @@ end
 
 % estimate memory usuage
 dsz = getImageSize(inputFullpaths{1});
-if largeFile
+if largeFile && ~masterCompute
     memAllocate = prod([min(BatchSize(1), dsz(1)), dsz(2), dsz(3)]) * 4 / 2^30 * 10;
     cpusPerTask = 1;
 else

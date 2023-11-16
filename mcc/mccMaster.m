@@ -50,7 +50,7 @@ switch functionName
     case 'stitch_global_grid_assignment_wrapper'
         stitch_global_grid_assignment_wrapper_parser(varargin{1}, varargin{2}, varargin{3}, varargin{4}, varargin{5});
     case 'XR_deskew_rotate_data_wrapper'
-        XR_deskew_rotate_data_wrapper(varargin{1}, varargin{2:end});
+        XR_deskew_rotate_data_wrapper_parser(varargin{1}, varargin{2:end});
     case 'XR_deskewRotateFrame'
         XR_deskewRotateFrame_parser(varargin{1}, varargin{2}, varargin{3}, varargin{4:end});
     case 'XR_RLdeconFrame3D'

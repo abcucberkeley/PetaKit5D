@@ -79,7 +79,7 @@ debug = pr.debug;
 mccMode = pr.mccMode;
 ConfigFile = pr.ConfigFile;
 
-if ischar(frameFullpath)
+if ischar(frameFullpath) && strcmp(frameFullpath(1), '{')
     frameFullpath = eval(frameFullpath);
 end
 if ischar(xyPixelSize)

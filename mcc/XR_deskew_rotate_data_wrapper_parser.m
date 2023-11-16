@@ -109,6 +109,9 @@ debug = pr.debug;
 mccMode = pr.mccMode;
 ConfigFile = pr.ConfigFile;
 
+if ischar(dataPaths) && strcmp(dataPaths(1), '{')
+    dataPaths = eval(dataPaths);
+end
 if ischar(Deskew)
     Deskew = strcmp(Deskew, 'true');
 end
