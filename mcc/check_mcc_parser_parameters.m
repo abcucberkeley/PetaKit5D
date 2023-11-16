@@ -33,7 +33,7 @@ for i = 1 : nF
     extra_param_names = setdiff(parser_param_names, common_param_names);
     missing_param_names = setdiff(main_param_names, common_param_names);
     if ~isempty(extra_param_names)
-        disp('  Extra parameters:')        
+        disp('  Extra parameters:')
         disp(extra_param_names);
     end
     if ~isempty(missing_param_names)

@@ -27,7 +27,7 @@ ip.addParameter('flipZstack', false, @(x) islogical(x) || ischar(x));
 ip.addParameter('Decon', true, @(x) islogical(x) || ischar(x));
 % decon parameters
 ip.addParameter('cudaDecon', false, @(x) islogical(x) || ischar(x));
-ip.addParameter('cppDecon', ~false, @(x) islogical(x) || ischar(x));
+ip.addParameter('cppDecon', false, @(x) islogical(x) || ischar(x));
 ip.addParameter('cppDeconPath', '/global/home/groups/software/sl-7.x86_64/modules/RLDecon_CPU/20200718/build-cluster/cpuDeconv', @ischar);
 ip.addParameter('loadModules', 'module load gcc/4.8.5; module load fftw/3.3.6-gcc; module load boost/1.65.1-gcc; module load libtiff/4.1.0; ', @ischar);
 ip.addParameter('cudaDeconPath', '/global/home/groups/software/sl-7.x86_64/modules/cudaDecon/bin/cudaDeconv' , @ischar);
