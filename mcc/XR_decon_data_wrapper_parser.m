@@ -43,7 +43,7 @@ ip.addParameter('DeconIter', 15 , @(x) isnumeric(x) || ischar(x)); % number of i
 ip.addParameter('RLMethod', 'simplified' , @ischar); % rl method {'original', 'simplified', 'cudagen'}
 ip.addParameter('wienerAlpha', 0.005, @(x) isnumeric(x) || ischar(x)); 
 ip.addParameter('OTFCumThresh', 0.9, @(x) isnumeric(x) || ischar(x)); % OTF cumutative sum threshold
-ip.addParameter('hanWinBounds', [0.8, 1.0], isnumeric(x) || ischar(x)); % apodization range for distance matrix
+ip.addParameter('hanWinBounds', [0.8, 1.0], @(x) isnumeric(x) || ischar(x)); % apodization range for distance matrix
 ip.addParameter('skewed', [], @(x) (isempty(x) || islogical(x)) || ischar(x)); % decon in skewed space
 ip.addParameter('fixIter', false, @(x) islogical(x) || ischar(x)); 
 ip.addParameter('errThresh', [], @(x) isnumeric(x) || ischar(x)); % error threshold for simplified code
