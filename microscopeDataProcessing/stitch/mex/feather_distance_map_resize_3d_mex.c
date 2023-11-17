@@ -181,7 +181,7 @@ void mexFunction(int nlhs, mxArray *plhs[],
     if(mDType == mxSINGLE_CLASS){
         float* dmat = (float*)mxGetPr(prhs[0]);
 
-        plhs[0] = mxCreateNumericArray(3,dim,mxSINGLE_CLASS, mxREAL);
+        plhs[0] = mxCreateNumericArray(3,(mwSize*)dim,mxSINGLE_CLASS, mxREAL);
         float* rmat = (float*)mxGetPr(plhs[0]);
         
         feather_distance_map_resize_3d_mex(dmat, rmat, d, shapeX, shapeY, shapeZ, rShapeX, rShapeY, rShapeZ);
