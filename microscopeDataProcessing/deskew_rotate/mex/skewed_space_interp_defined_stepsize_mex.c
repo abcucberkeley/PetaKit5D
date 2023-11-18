@@ -4,6 +4,7 @@
 #include <math.h>
 #include <omp.h>
 #include <inttypes.h>
+#include <string.h>
 #include "mex.h"
 
 // mex -v COPTIMFLAGS="-O3 -DNDEBUG" CFLAGS='$CFLAGS -O3 -fopenmp' LDFLAGS='$LDFLAGS -O3 -fopenmp' skewed_space_interp_defined_stepsize_mex.c
@@ -23,6 +24,7 @@ void mexFunction(int nlhs, mxArray *plhs[],
     const uint8_t Reverse = (uint8_t)mxIsLogicalScalarTrue(prhs[3]);
 
     const uint64_t* sz = (uint64_t*)mxGetDimensions(prhs[0]);
+    uint64_t nxy = sz[0] * sz[1];
     uint64_t nint = (uint64_t) (floor(round((double)(sz[2] - 1) / stepsize * 10000) / 10000) + 1);
     uint64_t dim[3];
     dim[0] = sz[0];
@@ -88,23 +90,14 @@ void mexFunction(int nlhs, mxArray *plhs[],
         }
         // printf("%llu %f %llu %f %f %f %f %f\n", i, zout, zind, s, t, sw, tw, zw);
     }
-    /*
-    for(uint64_t z = 0; z < sz[2]; z++){
-        printf("%llu %llu %llu\n", z, zs_ind_mat[z], zt_ind_mat[z]);
-    }
-    */
-
+    
     #pragma omp parallel for
     for(uint64_t z = 0; z < sz[2]; z++){
         if(z == sz[2]-1){
-            if(zs_ind_mat[z] >= nint) 
-                continue;
-            uint64_t zIndex = nint-1;
-            for(uint64_t i = 0; i < sz[1]; i++){
-                for(uint64_t j = 0; j < sz[0]; j++){
-                    im_int[j+(i*sz[0])+(zIndex*sz[1]*sz[0])] = im[j+(i*sz[0])+(z*sz[1]*sz[0])];
-                }
-            }
+            if(zs_ind_mat[z] >= nint) continue;
+
+            uint64_t zint = nint-1;
+            memcpy(im_int+zint*nxy, im+z*nxy, nxy*sizeof(float));
             continue;
         }
 
@@ -112,28 +105,18 @@ void mexFunction(int nlhs, mxArray *plhs[],
         float* im_t = (float*)malloc(sz[0]*(sz[1]+xa)*sizeof(float));
 
         if(Reverse){
-            for(uint64_t i = 0; i < sz[1]+xa; i++){
-                for(uint64_t j = 0; j < sz[0]; j++){
-                    //im_s[j+((i+xa)*sz[0])] = im[j+(i*sz[0])+(z*sz[1]*sz[0])];
-                    //im_t[j+(i*sz[0])] = im[j+(i*sz[0])+((z+1)*sz[1]*sz[0])];
-                    if(i < xa) im_s[j+(i*sz[0])] = 0;
-                    else im_s[j+(i*sz[0])] = im[j+((i-xa)*sz[0])+(z*sz[1]*sz[0])];
-                    if(i>=sz[1]) im_t[j+(i*sz[0])] = 0;
-                    else im_t[j+(i*sz[0])] = im[j+(i*sz[0])+((z+1)*sz[1]*sz[0])];
-                }
-            }
+            memset(im_s, 0, xa*sz[0]*sizeof(float));
+            memcpy(im_s+xa*sz[0], im+z*nxy, nxy*sizeof(float));
+            
+            memcpy(im_t, im+(z+1)*nxy, nxy*sizeof(float));            
+            memset(im_t+nxy, 0, xa*sz[0]*sizeof(float));
         }
         else{
-            for(uint64_t i = 0; i < sz[1]+xa; i++){
-                for(uint64_t j = 0; j < sz[0]; j++){
-                    //im_s[j+(i*sz[0])] = im[j+(i*sz[0])+(z*sz[1]*sz[0])];
-                    //im_t[j+((i+xa)*sz[0])] = im[j+(i*sz[0])+((z+1)*sz[1]*sz[0])];
-                    if(i>=sz[1]) im_s[j+(i*sz[0])] = 0;
-                    else im_s[j+(i*sz[0])] = im[j+(i*sz[0])+((z+1)*sz[1]*sz[0])];
-                    if(i < xa) im_t[j+(i*sz[0])] = 0;
-                    else im_t[j+(i*sz[0])] = im[j+((i-xa)*sz[0])+(z*sz[1]*sz[0])];
-                }
-            }
+            memcpy(im_s, im+z*nxy, nxy*sizeof(float));
+            memset(im_s+nxy, 0, xa*sz[0]*sizeof(float));
+            
+            memset(im_t, 0, xa*sz[0]*sizeof(float));            
+            memcpy(im_t+xa*sz[0], im+(z+1)*nxy, nxy*sizeof(float));
         }
         
         for(uint64_t ind = zs_ind_mat[z]; ind <= zt_ind_mat[z]; ind++){
@@ -146,19 +129,18 @@ void mexFunction(int nlhs, mxArray *plhs[],
             float tw = tw_mat[zint];
             float zw = zw_mat[zint];
 
-            if(!sw){
-                for(uint64_t i = 0; i < sz[1]; i++){
-                    for(uint64_t j = 0; j < sz[0]; j++){
-                        im_int[j+(i*sz[0])+(zint*sz[1]*sz[0])] = im[j+(i*sz[0])+(z*sz[1]*sz[0])];
-                    }
-                }
+            if((!Reverse && !tw) || (Reverse && !sw)){
+                memcpy(im_int+zint*nxy, im+z*nxy, nxy*sizeof(float));
                 continue;
             }
+    
+            // printf("%llu %llu %f %f %f\n", s, t, sw, tw, zw);
+            #pragma omp parallel for 
             for(uint64_t i = 0; i < sz[1]; i++){
                 for(uint64_t j = 0; j < sz[0]; j++){
-                    im_int[j+(i*sz[0])+(zint*sz[1]*sz[0])] =
-                            ((im_s[j+((i+s)*sz[0])] * (1.0-sw) + im_s[j+((i+s+1)*sz[0])] * sw) * (1.0 - zw))
-                            + ((im_t[j+((i+t)*sz[0])] * (1.0-tw) + im_t[j+((i+t+1)*sz[0])] * tw) * zw);
+                    im_int[j+(i*sz[0])+(zint*nxy)] =
+                        ((im_s[j+((i+s)*sz[0])] * (1.0-sw) + im_s[j+((i+s+1)*sz[0])] * sw) * (1.0 - zw))
+                        + ((im_t[j+((i+t)*sz[0])] * (1.0-tw) + im_t[j+((i+t+1)*sz[0])] * tw) * zw);
                 }
             }
         }
