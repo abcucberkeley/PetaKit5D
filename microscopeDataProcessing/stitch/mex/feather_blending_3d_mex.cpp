@@ -109,7 +109,7 @@ void mexFunction(int nlhs, mxArray *plhs[],
         uint16_t* fmat = (uint16_t*)mxGetPr(prhs[0]);
         float* dmat = (float*)mxGetPr(prhs[1]);
 
-        plhs[0] = mxCreateNumericArray(3,dim,mxSINGLE_CLASS, mxREAL);
+        plhs[0] = mxCreateNumericArray(3,(mwSize*)dim,mxSINGLE_CLASS, mxREAL);
         float* nmat = (float*)mxGetPr(plhs[0]);
         
         feather_blending_3d_mex<uint16_t>(fmat, dmat, nmat, shapeX, shapeY, shapeZ, shapeT);
@@ -118,7 +118,7 @@ void mexFunction(int nlhs, mxArray *plhs[],
         float* fmat = (float*)mxGetPr(prhs[0]);
         float* dmat = (float*)mxGetPr(prhs[1]);
 
-        plhs[0] = mxCreateNumericArray(3,dim,mxSINGLE_CLASS, mxREAL);
+        plhs[0] = mxCreateNumericArray(3,(mwSize*)dim,mxSINGLE_CLASS, mxREAL);
         float* nmat = (float*)mxGetPr(plhs[0]);
         
         feather_blending_3d_mex<float>(fmat, dmat, nmat, shapeX, shapeY, shapeZ, shapeT);
