@@ -81,7 +81,7 @@ for z = 1 : sz(3)
         zw = zw_mat(zint);
 
         % assign the slice from the original image
-        if sw == 0
+        if (Reverse && sw == 0) || (~Reverse && tw == 0)
             im_int(:, :, zint) = im(:, :, z);
             continue;
         end

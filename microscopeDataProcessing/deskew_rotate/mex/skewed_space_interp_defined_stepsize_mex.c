@@ -129,7 +129,7 @@ void mexFunction(int nlhs, mxArray *plhs[],
             float tw = tw_mat[zint];
             float zw = zw_mat[zint];
 
-            if((!Reverse && !tw) || (Reverse && !sw)){
+            if((Reverse && !sw) || (!Reverse && !tw)){
                 memcpy(im_int+zint*nxy, im+z*nxy, nxy*sizeof(float));
                 continue;
             }
