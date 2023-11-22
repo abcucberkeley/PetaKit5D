@@ -61,17 +61,13 @@ if ~exist(dsFullpath, 'dir')
 end
 
 sz = getImageSize(zarrFullpath);
-iSz = sz;
-if ~isempty(bbox)
-    iSz = bbox(4 : 6) - bbox(1 : 3) + 1;
-end
 oSz = getImageSize(dsFullpath);
 oBlockSize = BlockSize;
 if isempty(BatchSize)
     BatchSize = oBlockSize * 2;
 end
 
-baSubSz = ceil(iSz ./ round((BatchSize .* dsFactor)));
+baSubSz = ceil(oSz ./ BatchSize);
 
 done_flag = false(numel(batchInds), 1);
 for i = 1 : numel(batchInds)

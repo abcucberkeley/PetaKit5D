@@ -139,9 +139,13 @@ is_done_flag= generic_computing_frameworks_wrapper(inputFullpaths, outputFullpat
     mccMode=mccMode, ConfigFile=ConfigFile);
 
 if ~all(is_done_flag)
-    generic_computing_frameworks_wrapper(inputFullpaths, outputFullpaths, funcStrs, ...
-        cpusPerTask=cpusPerTask, memAllocate=memAllocate, parseCluster=parseCluster, ...
+    is_done_flag = generic_computing_frameworks_wrapper(inputFullpaths, outputFullpaths, ...
+        funcStrs, cpusPerTask=cpusPerTask, memAllocate=memAllocate, parseCluster=parseCluster, ...
         mccMode=mccMode, ConfigFile=ConfigFile);
+end
+
+if ~all(is_done_flag)
+    error('%d / %d tasks failed!', sum(~is_done_flag), numel(~all(is_done_flag)));
 end
 
 if exist(dsFullpath, 'dir')

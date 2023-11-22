@@ -1,6 +1,10 @@
-function  [fig] = visualize_OTF_and_mask_outline(abs_OTF, OTF_mask)
+function  [fig] = visualize_OTF_and_mask_outline(abs_OTF, OTF_mask, visualize)
 % visualize OTF Mask on OTF
 
+
+if nargin < 3
+    visualize = true;
+end
 
 % abs_OTF = abs(fftshift(OTF));
 sz = size(abs_OTF, 1 : 3);
@@ -42,7 +46,11 @@ aps = [0.04, 0.2, ws(1), hs(1);
 if sz(3) == 1
     aps = [0.04, 0.2, 0.8, 0.7];
 end
-figure('visible', 'on');
+if visualize
+    figure('visible', 'on');
+else
+    figure('visible', 'off');
+end
 
 if sz(3) ~= 1
     set(gcf, 'Renderer', 'painters', 'Position', [1 1 1920 1080]);

@@ -1,4 +1,4 @@
-function [] = compile_mccMaster()
+function [] = compile_mccMaster(nojvm)
 % script to compile and configure mccMaster.m
 
 cpath = pwd;
@@ -34,8 +34,8 @@ elseif isunix
         mkdir('linux');
     end
     % mcc -v -R -nodisplay -R -singleCompThread -d linux -m mccMaster.m
-    % mcc -v -R -nodisplay -R -nojvm -d linux -m mccMaster.m
-    mcc -v -d linux -m mccMaster.m
+    mcc -v -R -nodisplay -R -nojvm -d linux -m mccMaster.m
+    % mcc -v -d linux -m mccMaster.m
 
     cd('linux');
     system('sed -i ''21i\  LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:${exe_dir}/../../microscopeDataProcessing/io/cpp-tiff/linux;'' run_mccMaster.sh');

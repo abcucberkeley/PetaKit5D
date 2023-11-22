@@ -296,7 +296,8 @@ switch RLMethod
             [psf_b, OTF_bp_omw, abs_OTF_c, OTF_mask] = omw_backprojector_generation(psf, wienerAlpha, skewed, 'OTFCumThresh', OTFCumThresh);
 
             if usejava('jvm')
-                fig = visualize_OTF_and_mask_outline(abs_OTF_c, OTF_mask);
+                visualize = false;
+                fig = visualize_OTF_and_mask_outline(abs_OTF_c, OTF_mask, visualize);
                 figFn = sprintf('%s/%s_back_projector_alpha_%0.6f_otf_cum_thresh_%0.6f_figure.png', psfgenPath, psfFsn, wienerAlpha, OTFCumThresh);
                 print(fig, figFn, '-dpng', '-r0');
                 close(fig);
