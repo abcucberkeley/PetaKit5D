@@ -1,6 +1,11 @@
 function [] = compile_mccMaster(nojvm)
 % script to compile and configure mccMaster.m
 
+% nojvm only for linux for now
+if nargin < 1
+    nojvm = true;
+end
+
 cpath = pwd;
 
 [fpath, fname] = fileparts(which('compile_mccMaster.m'));
@@ -34,7 +39,11 @@ elseif isunix
         mkdir('linux');
     end
     % mcc -v -R -nodisplay -R -singleCompThread -d linux -m mccMaster.m
-    mcc -v -R -nodisplay -R -nojvm -d linux -m mccMaster.m
+    if nojvm
+        mcc -v -R -nodisplay -R -nojvm -d linux -m mccMaster.m
+    else
+        mcc -v -d linux_with_jvm -m mccMaster.m
+    end
     % mcc -v -d linux -m mccMaster.m
 
     cd('linux');

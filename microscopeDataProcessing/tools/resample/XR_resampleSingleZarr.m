@@ -145,7 +145,7 @@ if ~all(is_done_flag)
 end
 
 if ~all(is_done_flag)
-    error('%d / %d tasks failed!', sum(~is_done_flag), numel(~all(is_done_flag)));
+    error('%d / %d tasks failed!', sum(~is_done_flag), numel(is_done_flag));
 end
 
 if exist(dsFullpath, 'dir')

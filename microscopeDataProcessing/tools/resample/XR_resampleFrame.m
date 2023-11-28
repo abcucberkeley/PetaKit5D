@@ -33,12 +33,7 @@ end
 if zarrFile
     im = readzarr(fn);
 else
-    try 
-        im = parallelReadTiff(fn);
-    catch ME
-        disp(ME);
-        im = readtiff(fn);
-    end
+    im = readtiff(fn);
 end
 im = single(im);
 
@@ -53,6 +48,9 @@ end
 outSize = round(size(im) ./ rs);
 
 if ismatrix(im)
+    if strcmpi(Interp, 'linear')
+        Interp = 'bilinear';
+    end
     im = imresize(im, outSize, 'Method', Interp);    
 else
     im = imresize3(im, outSize, 'Method', Interp);
