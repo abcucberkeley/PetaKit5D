@@ -62,10 +62,9 @@ masterCompute = pr.masterCompute;
 mccMode = pr.mccMode;
 ConfigFile = pr.ConfigFile;
 
-if ischar(dataPaths)
+if ischar(dataPaths) && strcmp(dataPaths(1), '{')
     dataPaths = eval(dataPaths);
 end
-
 if ischar(dz)
     dz = str2num(dz);
 end

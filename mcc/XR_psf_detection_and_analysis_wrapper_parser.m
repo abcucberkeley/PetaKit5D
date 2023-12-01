@@ -34,6 +34,9 @@ masterCompute = pr.masterCompute;
 mccMode = pr.mccMode;
 ConfigFile = pr.ConfigFile;
 
+if ischar(dataPaths) && strcmp(dataPaths(1), '{')
+    dataPaths = eval(dataPaths);
+end
 if ischar(xyPixelSize)
     xyPixelSize = str2num(xyPixelSize);
 end
