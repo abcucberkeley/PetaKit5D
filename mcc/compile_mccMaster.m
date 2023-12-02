@@ -35,8 +35,13 @@ if ismac
     end
     zip('mac/LLSM5DToolsMCC.zip', '/Applications/LLSM5DToolsMCC/*')
 elseif isunix
-    if ~exist('linux', 'dir')
-        mkdir('linux');
+    if nojvm
+        mdir = 'linux';
+    else
+        mdir = 'linux_with_jvm';
+    end
+    if ~exist(mdir, 'dir')
+        mkdir(mdir);
     end
     % mcc -v -R -nodisplay -R -singleCompThread -d linux -m mccMaster.m
     if nojvm
@@ -44,9 +49,8 @@ elseif isunix
     else
         mcc -v -d linux_with_jvm -m mccMaster.m
     end
-    % mcc -v -d linux -m mccMaster.m
-
-    cd('linux');
+    
+    cd(mdir);
     system('sed -i ''21i\  LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:${exe_dir}/../../microscopeDataProcessing/io/cpp-tiff/linux;'' run_mccMaster.sh');
     system('sed -i ''21i\  LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:${exe_dir}/../../microscopeDataProcessing/io/cpp-zarr/linux;'' run_mccMaster.sh');
     system('sed -i ''21i\  # add custom library paths'' run_mccMaster.sh');
