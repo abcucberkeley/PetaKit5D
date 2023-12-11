@@ -41,7 +41,7 @@ fixIter = true;
 % erode the edge after decon for number of pixels.
 EdgeErosion = 8;
 % save as 16bit, if false, save to single
-Save16bit = false;
+Save16bit = true;
 % use zarr file as input, if false, use tiff as input
 zarrFile = false;
 % number of cpu cores
@@ -65,6 +65,6 @@ XR_decon_data_wrapper(dataPaths, 'xyPixelSize', xyPixelSize, 'dz', dz, 'Reverse'
     'ChannelPatterns', ChannelPatterns, 'PSFFullpaths', PSFFullpaths, 'dzPSF', dzPSF, ...
     'parseSettingFile', parseSettingFile, 'Background', Background, 'CPPdecon', false, ...
     'CudaDecon', false, 'DeconIter', DeconIter, 'fixIter', fixIter, 'EdgeErosion', EdgeErosion, ...
-    'Save16bit', Save16bit, 'zarrFile', zarrFile, 'Save16bit', ~false, 'parseCluster', parseCluster, ...
+    'Save16bit', Save16bit, 'zarrFile', zarrFile, 'parseCluster', parseCluster, ...
     'largeFile', largeFile,  'GPUJob', GPUJob, 'debug', debug, 'cpusPerTask', cpusPerTask);
 
