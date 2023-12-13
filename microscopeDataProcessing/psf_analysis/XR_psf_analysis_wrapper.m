@@ -25,6 +25,7 @@ ip.addParameter('Save16bit', true, @islogical);
 ip.addParameter('bgFactor', 1.5, @isnumeric);
 ip.addParameter('RWFn', {'/clusterfs/fiona/Gokul/RW_PSFs/PSF_RW_515em_128_128_101_100nmSteps.tif', '/clusterfs/fiona/Gokul/RW_PSFs/PSF_RW_605em_128_128_101_100nmSteps.tif'}, @iscell);
 ip.addParameter('sourceStr', 'test', @ischar);
+ip.addParameter('parseCluster', true, @islogical);
 ip.addParameter('masterCompute', false, @islogical);
 ip.addParameter('mccMode', false, @islogical);
 ip.addParameter('ConfigFile', '', @ischar);
@@ -45,6 +46,7 @@ Save16bit = pr.Save16bit;
 bgFactor = pr.bgFactor;
 RWFn = pr.RWFn;
 sourceStr = pr.sourceStr;
+parseCluster = pr.parseCluster;
 masterCompute = pr.masterCompute;
 mccMode = pr.mccMode;
 ConfigFile = pr.ConfigFile;
@@ -81,7 +83,7 @@ if Deskew
                        'Overwrite', false, ...
                        'Streaming', false, ...
                        'cpusPerTask', 8, ...
-                       'parseCluster', ~false
+                       'parseCluster', parseCluster, ...
                        };
 
     % dsr
@@ -245,11 +247,10 @@ for i = 1 : 3
     end
 
     is_done_flag = generic_computing_frameworks_wrapper(frameFullpaths, figureFullpaths, ...
-        func_strs, 'maxTrialNum', maxTrialNum, 'masterCompute', masterCompute, ...
-        'cpusPerTask', cpusPerTask, memAllocate=memAllocate * i, mccMode=mccMode, ...
+        func_strs, maxTrialNum=maxTrialNum, parseCluster=parseCluster, masterCompute=masterCompute, ...
+        cpusPerTask=cpusPerTask, memAllocate=memAllocate * i, mccMode=mccMode, ...
         ConfigFile=ConfigFile);
 end
-
 
 
 end

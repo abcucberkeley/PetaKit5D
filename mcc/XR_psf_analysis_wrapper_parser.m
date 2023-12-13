@@ -17,6 +17,7 @@ ip.addParameter('Save16bit', true, @(x) islogical(x) || ischar(x));
 ip.addParameter('bgFactor', 1.5, @(x) isnumeric(x) || ischar(x));
 ip.addParameter('RWFn', {'/clusterfs/fiona/Gokul/RW_PSFs/PSF_RW_515em_128_128_101_100nmSteps.tif', '/clusterfs/fiona/Gokul/RW_PSFs/PSF_RW_605em_128_128_101_100nmSteps.tif'}, @(x) iscell(x) || ischar(x));
 ip.addParameter('sourceStr', 'test', @ischar);
+ip.addParameter('parseCluster', true, @(x) islogical(x) || ischar(x));
 ip.addParameter('masterCompute', false, @(x) islogical(x) || ischar(x));
 ip.addParameter('mccMode', false, @(x) islogical(x) || ischar(x));
 ip.addParameter('ConfigFile', '', @ischar);
@@ -37,6 +38,7 @@ Save16bit = pr.Save16bit;
 bgFactor = pr.bgFactor;
 RWFn = pr.RWFn;
 sourceStr = pr.sourceStr;
+parseCluster = pr.parseCluster;
 masterCompute = pr.masterCompute;
 mccMode = pr.mccMode;
 ConfigFile = pr.ConfigFile;
@@ -80,6 +82,9 @@ end
 if ischar(RWFn)
     RWFn = eval(RWFn);
 end
+if ischar(parseCluster)
+    parseCluster = strcmp(parseCluster, 'true');
+end
 if ischar(masterCompute)
     masterCompute = strcmp(masterCompute, 'true');
 end
@@ -92,7 +97,7 @@ XR_psf_analysis_wrapper(dataPaths, 'xyPixelSize', xyPixelSize, 'dz', dz, ...
     'ObjectiveScan', ObjectiveScan, 'ZstageScan', ZstageScan, ...
     'ChannelPatterns', ChannelPatterns, 'Channels', Channels, ...
     'Save16bit', Save16bit, 'bgFactor', bgFactor, 'RWFn', RWFn, ...
-    'sourceStr', sourceStr, 'masterCompute', masterCompute, ...
+    'sourceStr', sourceStr, 'parseCluster', parseCluster, 'masterCompute', masterCompute, ...
     'mccMode', mccMode, 'ConfigFile', ConfigFile);
 
 end

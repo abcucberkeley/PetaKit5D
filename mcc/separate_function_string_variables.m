@@ -128,7 +128,7 @@ for i = 1 : numel(kpts)
         if strcmp(var_i(end) , ',')
             var_i = var_i(1 : end - 1);
         end        
-        var_cell(ind) = strsplit(var_i, ',');
+        var_cell{ind} = strsplit(var_i, ',');
         ind = ind + 1;
     end
 end
