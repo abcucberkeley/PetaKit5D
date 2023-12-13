@@ -18,6 +18,8 @@ function [is_done_flag] = mcc_slurm_cluster_generic_computing_wrapper(inputFullp
 % xruan (05/21/2022): check job status based on how many pending jobs, rather than each loop
 % xruan (08/25/2022): add support for time limit (in hour)
 % xruan (11/11/2023): add support for minimum query interval for jobs and file system
+% xruan (12/12/2023): add support for the check of final output path to
+%   avoid workers to continue to work on intermediate steps when final output exists. 
 
 
 ip = inputParser;
@@ -25,6 +27,7 @@ ip.CaseSensitive = false;
 ip.addRequired('inputFullpaths', @(x) iscell(x) || ischar(x));
 ip.addRequired('outputFullpaths', @(x) iscell(x) || ischar(x));
 ip.addRequired('functionStrs', @(x) iscell(x) || ischar(x));
+ip.addParameter('finalOutFullpath', '', @(x) ischar(x));
 ip.addParameter('parseCluster', true, @islogical);
 ip.addParameter('masterCompute', true, @islogical); % master node participate in the task computing. 
 ip.addParameter('jobLogDir', '../job_logs', @ischar);
@@ -75,6 +78,7 @@ end
 
 pr = ip.Results;
  % Resolution = pr.Resolution;
+finalOutFullpath = pr.finalOutFullpath;
 jobLogDir = pr.jobLogDir;
 tmpDir = pr.tmpDir;
 maxCPUNum = pr.maxCPUNum;
@@ -104,6 +108,12 @@ if isempty(uuid)
 end
 if isempty(BashLaunchStr)
     BashLaunchStr = 'echo ';
+end
+
+if ~isempty(finalOutFullpath) && (exist(finalOutFullpath, 'dir') || exist(finalOutFullpath, 'file'))
+    is_done_flag = true(numel(inputFullpaths), 1);
+    fprintf('The final output file %s already exists!\n', finalOutFullpath);        
+    return;
 end
 
 [dataPath, ~] = fileparts(inputFullpaths{1});
@@ -150,26 +160,62 @@ mkdir_recursive(funcInputDir);
 batchSize = taskBatchNum;
 nB = ceil(nF / batchSize);
 
+runExtraTasks = true;
+task_inds_cell = arrayfun(@(x) (x - 1) * batchSize + 1 : min(x * batchSize, nF), 1 : nB, 'unif', 0);
+tlineStrs = repmat({''}, nF, 1);
+for f = 1 : nF
+    if output_exist_mat(f)
+        continue;
+    end
+    func_str = funcStrs{f};
+    [func_name, var_str] = convert_function_string_to_mcc_string(func_str);
+    % tline = sprintf('%s %s %s %s \n', MCCMasterStr, MCRParam, func_name, var_str);
+    % check output file in bash to avoid waste of time in loading mcc program if the output file exists.
+    if isempty(finalOutFullpath)
+        tlineStrs{f} = sprintf('if [ ! -f %s ]; then MCR_CACHE_ROOT=%s %s %s %s %s ; else echo output %s already exists; fi\n', ...
+            outputFullpaths{f}, MCRCacheRoot, MCCMasterStr, MCRParam, func_name, var_str, outputFullpaths{f});
+    else
+        tlineStrs{f} = sprintf('if [ ! -f %s ] && [ ! -f %s ] && [ ! -d %s ]; then MCR_CACHE_ROOT=%s %s %s %s %s ; else echo output %s already exists; fi\n', ...
+            outputFullpaths{f}, finalOutFullpath, finalOutFullpath, MCRCacheRoot, MCCMasterStr, MCRParam, func_name, var_str, outputFullpaths{f});
+    end
+end
+
 for b = 1 : nB
     inputFn = sprintf('%s/input_%d.txt', funcInputDir, b);
     
-    s = (b - 1) * batchSize + 1;
-    t = min(b * batchSize, nF);
-    if all(is_done_flag(s : t))
+    task_mat = task_inds_cell{b};
+    if runExtraTasks
+        task_set_inds = nB - b + 1 : -1 : b + 1;        
+        if any(output_exist_mat)
+            task_set_inds = [nB - b + 1 : -1 : b + 1, nB : -1 : max(b + 1, nB - b + 2)];
+            task_set_inds = unique(task_set_inds, 'stable');
+        end
+        % reorder the task sets: 
+        if ~isempty(task_set_inds)
+            order_inds = 1 : ceil(numel(task_set_inds)/ b) * b;
+            order_inds = reshape(order_inds, b, [])';
+            order_inds = order_inds(:);
+            order_inds(order_inds > numel(task_set_inds)) = [];
+            task_set_inds = task_set_inds(order_inds);
+
+            % only include the first 500 tasks for jobs other than the first job
+            if b > 1
+                task_set_inds = task_set_inds(1 : min(max(2, ceil(500 / batchSize)), numel(task_set_inds)));
+            end
+            
+            % use reverse order for the additional tasks within each set
+            task_mat_1 = arrayfun(@(x) flip(task_inds_cell{x}), task_set_inds, 'unif', 0);
+            task_mat_1 = cat(2, task_mat_1{:});
+            task_mat = [task_inds_cell{b}, task_mat_1];
+        end
+    end
+
+    if all(is_done_flag(task_mat))
         continue;
     end
 
     fid = fopen(inputFn, 'w');
-
-    for f = s : t
-        func_str = funcStrs{f};
-        [func_name, var_str] = convert_function_string_to_mcc_string(func_str);
-        % tline = sprintf('%s %s %s %s \n', MCCMasterStr, MCRParam, func_name, var_str);
-        % check output file in bash to avoid waste of time in loading mcc program if the output file exists. 
-        tline = sprintf('if [ ! -f %s ]; then MCR_CACHE_ROOT=%s %s %s %s %s ; else echo output %s already exists; fi\n', ...
-            outputFullpaths{f}, MCRCacheRoot, MCCMasterStr, MCRParam, func_name, var_str, outputFullpaths{f});
-        fprintf(fid, tline);
-    end
+    fprintf(fid, strjoin(tlineStrs(task_mat), ''));
     fclose(fid);
 end
 
@@ -482,6 +528,13 @@ while (~parseCluster && ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
         nF_done = sum(is_done_flag);
         fprintf('Time %0.2f s: %d / %d (%0.2f%%) are finished!\n', toc(ts), nF_done, nF, nF_done / nF * 100);
     end
+
+    if ~isempty(finalOutFullpath) && (exist(finalOutFullpath, 'dir') || exist(finalOutFullpath, 'file'))
+        is_done_flag = true(nF, 1);
+        fprintf('The final output file %s already exists!\n', finalOutFullpath);        
+        return;
+    end
+    
     loop_counter = loop_counter + 1;
 end
 

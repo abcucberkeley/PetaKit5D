@@ -48,7 +48,8 @@ wd = pr.weightDegree;
 % of processing for all blocks).
 flagPath = fileparts(flagFullname);
 if ~exist(flagPath, 'dir')
-    error('The block directory %s does not exist, skip the processing!', flagPath);
+    fprintf('The block directory %s does not exist, skip the processing!\n', flagPath);
+    return;
 end
 if exist(flagFullname, 'file')
     if Overwrite

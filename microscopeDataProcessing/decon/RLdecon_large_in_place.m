@@ -276,6 +276,9 @@ end
 if exist(deconTmppath, 'dir')
     movefile(deconTmppath, deconFullpath);
 end
+if exist(zarrFlagPath, 'dir')
+    rmdir(zarrFlagPath, 's');
+end
 
 % generate MIP z file
 deconMIPPath = sprintf('%s/MIPs/', deconPath);

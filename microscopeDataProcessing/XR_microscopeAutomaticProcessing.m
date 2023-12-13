@@ -666,7 +666,7 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all') || ...
             if ~DSRCombined
                 dsPath = dsPaths{fdind};
                 dsFullpath = [dsPath, fsname, ext];
-                tmpFullpath = sprintf('%s/%s.tmp', dsrPath, fsname);
+                tmpFullpath = sprintf('%s/%s.tmp', dsPath, fsname);
             end
             if Rotate
                 dsrPath = dsrPaths{fdind};

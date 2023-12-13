@@ -18,6 +18,8 @@ function [is_done_flag] = slurm_cluster_generic_computing_wrapper(inputFullpaths
 % xruan (05/21/2022): check job status based on how many pending jobs, rather than each loop
 % xruan (08/25/2022): add support for time limit (in hour)
 % xruan (11/11/2023): add support for minimum query interval for jobs and file system
+% xruan (12/12/2023): add support for the check of final output path to
+%   avoid workers to continue to work on intermediate steps when final output exists. 
 
 
 ip = inputParser;
@@ -25,6 +27,7 @@ ip.CaseSensitive = false;
 ip.addRequired('inputFullpaths', @(x) iscell(x) || ischar(x));
 ip.addRequired('outputFullpaths', @(x) iscell(x) || ischar(x));
 ip.addRequired('functionStrs', @(x) iscell(x) || ischar(x));
+ip.addParameter('finalOutFullpath', '', @(x) ischar(x));
 ip.addParameter('parseCluster', true, @islogical);
 ip.addParameter('masterCompute', true, @islogical); % master node participate in the task computing. 
 ip.addParameter('jobLogDir', '../job_logs', @ischar);
@@ -59,6 +62,7 @@ if ~exist(setupFn, 'file')
 end
 
 pr = ip.Results;
+finalOutFullpath = pr.finalOutFullpath;
 jobLogDir = pr.jobLogDir;
 tmpDir = pr.tmpDir;
 maxCPUNum = pr.maxCPUNum;
@@ -86,6 +90,12 @@ if isempty(BashLaunchStr)
     BashLaunchStr = 'echo ';
 end
 
+if ~isempty(finalOutFullpath) && (exist(finalOutFullpath, 'dir') || exist(finalOutFullpath, 'file'))
+    is_done_flag = true(numel(inputFullpaths), 1);
+    fprintf('The final output file %s already exists!\n', finalOutFullpath);        
+    return;
+end
+
 [dataPath, ~] = fileparts(inputFullpaths{1});
 [outPath, ~] = fileparts(outputFullpaths{1});
 
@@ -109,7 +119,7 @@ outputFullpaths = strip(outputFullpaths, 'right', '/');
 output_exist_mat = batch_file_exist(outputFullpaths, [], true);
 if all(output_exist_mat)
     is_done_flag = ~is_done_flag;
-    fprintf('All output files (%d / %d) already exists!\n', nF, nF);    
+    fprintf('All output files (%d / %d) already exist(s)!\n', nF, nF);    
     return;
 else
     is_done_flag = output_exist_mat;
@@ -437,6 +447,13 @@ while (~parseCluster && ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
         nF_done = sum(is_done_flag);
         fprintf('Time %0.2f s: %d / %d (%0.2f%%) are finished!\n', toc(ts), nF_done, nF, nF_done / nF * 100);
     end
+
+    if ~isempty(finalOutFullpath) && (exist(finalOutFullpath, 'dir') || exist(finalOutFullpath, 'file'))
+        is_done_flag = true(nF, 1);
+        fprintf('The final output file %s already exists!\n', finalOutFullpath);        
+        return;
+    end
+    
     loop_counter = loop_counter + 1;
 end
 

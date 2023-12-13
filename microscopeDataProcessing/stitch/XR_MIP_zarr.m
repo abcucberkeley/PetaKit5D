@@ -249,6 +249,10 @@ for i = 1 : 3
     end
 end
 
+if exist(zarrFlagPath, 'dir')
+    rmdir(zarrFlagPath, 's');
+end
+
 if mipSlab
     return;
 end
