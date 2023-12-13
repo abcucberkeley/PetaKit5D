@@ -1,5 +1,6 @@
 function [] = XR_psf_analysis_wrapper_parser(dataPaths, varargin)
 
+%#function XR_psf_analysis_plot
 
 ip = inputParser;
 ip.CaseSensitive = false;

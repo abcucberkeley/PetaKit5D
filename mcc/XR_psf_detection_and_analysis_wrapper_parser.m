@@ -1,5 +1,8 @@
 function [] = XR_psf_detection_and_analysis_wrapper_parser(dataPaths, varargin)
 
+%#function XR_psf_detection_and_cropping
+%#function XR_psf_analysis_plot
+
 ip = inputParser;
 ip.CaseSensitive = false;
 ip.addRequired('dataPaths');
