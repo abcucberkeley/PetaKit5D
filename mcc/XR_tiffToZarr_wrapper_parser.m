@@ -51,7 +51,7 @@ cpusPerTask = pr.cpusPerTask;
 mccMode = pr.mccMode;
 ConfigFile = pr.ConfigFile;
 
-if ischar(tiffFullpaths)
+if ischar(tiffFullpaths) && strcmp(tiffFullpaths(1), '{')
     tiffFullpaths = eval(tiffFullpaths);
 end
 if ischar(locIds)

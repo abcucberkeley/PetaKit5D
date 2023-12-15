@@ -194,6 +194,9 @@ for i = 1 : numel(batchInds)
                 p_bboxCoords = bboxCoords;
                 p_bboxCoords(1 : 3) = max(1, floor(bboxCoords(1 : 3) ./ psz));
                 p_bboxCoords(4 : 6) = min(dsz, ceil(bboxCoords(4 : 6) ./ psz));
+                if bboxCoords(6) == bboxCoords(3)
+                    p_bboxCoords(6) = p_bboxCoords(3);
+                end
                 
                 im_d_j =  readzarr(imdistFullpath, 'bbox', p_bboxCoords);
                 try
