@@ -48,6 +48,7 @@ parseCluster = pr.parseCluster;
 bigData = pr.bigData;
 masterCompute = pr.masterCompute;
 cpusPerTask = pr.cpusPerTask;
+uuid = pr.uuid;
 mccMode = pr.mccMode;
 ConfigFile = pr.ConfigFile;
 
