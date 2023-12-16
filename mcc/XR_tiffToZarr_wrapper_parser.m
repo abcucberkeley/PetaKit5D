@@ -49,6 +49,8 @@ bigData = pr.bigData;
 masterCompute = pr.masterCompute;
 cpusPerTask = pr.cpusPerTask;
 uuid = pr.uuid;
+maxTrialNum = pr.maxTrialNum;
+unitWaitTime = pr.unitWaitTime;
 mccMode = pr.mccMode;
 ConfigFile = pr.ConfigFile;
 
@@ -96,6 +98,12 @@ if ischar(masterCompute)
 end
 if ischar(cpusPerTask)
     cpusPerTask = str2num(cpusPerTask);
+end
+if ischar(maxTrialNum)
+    maxTrialNum = str2num(maxTrialNum);
+end
+if ischar(unitWaitTime)
+    unitWaitTime = str2num(unitWaitTime);
 end
 if ischar(mccMode)
     mccMode = strcmp(mccMode,'true');
