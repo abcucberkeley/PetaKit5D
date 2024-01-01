@@ -1,4 +1,4 @@
-Copyright 2020 Advanced Bioimaging Center
+Copyright 2024 Advanced Bioimaging Center
 University of California, Berkeley
 
 This program is free software; you can redistribute it and/or modify
