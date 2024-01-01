@@ -1,6 +1,10 @@
 *.mat
 *.m~
+*.asv
 .ipynb_checkpoints
+*.pyc
+*__pycache__*
 *.c~
 *.tif
 *.tiff
+

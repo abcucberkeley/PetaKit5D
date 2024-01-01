@@ -1,0 +1,2 @@
+run("Image Sequence...", "open=/Users/tying84/Documents/Humboldt_research/paper/NatureSubjournal/submission/revision_NCOMM/BaSiCsoftware/BaSiCPluginDemo/Demoexamples/Timelapse_brightfield/Uncorrected sort");
+run("BaSiC ", "processing_stack=Uncorrected flat-field=None dark-field=None shading_estimation=[Estimate shading profiles] shading_model=[Estimate flat-field only (ignore dark-field)] setting_regularisationparametes=Automatic temporal_drift=[Replace with temporal mean] correction_options=[Compute shading and correct images] lambda_flat=0.50 lambda_dark=0.50");
