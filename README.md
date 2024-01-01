@@ -17,6 +17,5 @@ The software also has an easy-to-use Graphical User Interface (GUI) without writ
 
 ## Reference:
 Please cite our paper if you found the software is useful for your research: 
-```
-Ruan X., Mueller, M., Liu G., Görlitz F., Fu T., Milkie D., Lillvis J., Killilea A., Betzig, E. and Upadhyayula S. (2023) Image processing tools for petabyte-scale light sheet microscopy data. bioRxiv. 
-```
+
+`Ruan X., Mueller, M., Liu G., Görlitz F., Fu T., Milkie D., Lillvis J., Killilea A., Betzig, E. and Upadhyayula S. (2023) Image processing tools for petabyte-scale light sheet microscopy data. bioRxiv.`
