@@ -40,6 +40,7 @@ ip.addParameter('maxTrialNum', 3, @isnumeric);
 ip.addParameter('unitWaitTime', 30, @isnumeric);
 ip.addParameter('maxJobNum', inf, @isnumeric); % submit limited number of jobs (pending/running)
 ip.addParameter('taskBatchNum', 1, @isnumeric); % aggragate several tasks together
+ip.addParameter('runExtraTasks', false, @islogical); % run tasks from other workers
 ip.addParameter('BashLaunchStr', '', @ischar);
 ip.addParameter('SlurmParam', '-p abc --qos abc_normal -n1 --mem-per-cpu=21418M', @ischar);
 ip.addParameter('SlurmConstraint', '', @ischar);
@@ -90,6 +91,7 @@ maxTrialNum = pr.maxTrialNum;
 unitWaitTime = pr.unitWaitTime;
 maxJobNum = pr.maxJobNum;
 taskBatchNum = pr.taskBatchNum;
+runExtraTasks = pr.runExtraTasks;
 uuid = pr.uuid;
 SlurmParam = pr.SlurmParam;
 SlurmConstraint = pr.SlurmConstraint;
@@ -160,7 +162,7 @@ mkdir_recursive(funcInputDir);
 batchSize = taskBatchNum;
 nB = ceil(nF / batchSize);
 
-runExtraTasks = true;
+% runExtraTasks = true;
 task_inds_cell = arrayfun(@(x) (x - 1) * batchSize + 1 : min(x * batchSize, nF), 1 : nB, 'unif', 0);
 tlineStrs = repmat({''}, nF, 1);
 for f = 1 : nF
@@ -541,7 +543,7 @@ end
 % cancel unfinished jobs 
 if parseCluster
     unfinished_job_ids = unique(job_ids);
-    unfinished_job_ids(unfinished_job_ids == 0) = [];
+    unfinished_job_ids(unfinished_job_ids <= 0) = [];
     if any(unfinished_job_ids)
         system(sprintf('scancel %s', num2str(unfinished_job_ids(:)')), '-echo');
     end

@@ -457,6 +457,15 @@ while (~parseCluster && ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
     loop_counter = loop_counter + 1;
 end
 
+% cancel unfinished jobs 
+if parseCluster
+    unfinished_job_ids = unique(job_ids);
+    unfinished_job_ids(unfinished_job_ids <= 0) = [];
+    if any(unfinished_job_ids)
+        system(sprintf('scancel %s', num2str(unfinished_job_ids(:)')), '-echo');
+    end
+end
+
 if all(is_done_flag)
     fprintf('All output files (%d / %d) are finished!\n', nF, nF);    
 end

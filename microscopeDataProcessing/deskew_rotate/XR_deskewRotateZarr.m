@@ -287,6 +287,7 @@ end
 if exist(dsrTmppath, 'dir')
     movefile(dsrTmppath, dsrFullpath);
 end
+rmdir(zarrFlagPath, 's');
 
 % generate MIP z file
 if SaveMIP
