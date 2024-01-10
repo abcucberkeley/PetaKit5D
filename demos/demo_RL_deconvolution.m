@@ -1,5 +1,8 @@
 % demo to run RL deconvolution with conventional and OMW methods
 
+clear, clc;
+setup();
+
 
 %% Step 1: get our demo data from zenodo/Dropbox (skip this step if the data is already downloaded)
 % download the example dataset from zenodo (https://doi.org/10.5281/zenodo.10471978) manually, 
@@ -299,15 +302,18 @@ title('OMW 2 iters')
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%% compare conventional, BW, and OMW methods for the same image (skewd space)
+%% compare conventional, WB, and OMW methods for the same image (skewd space)
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 fsn = 'Scan_Iter_0000_0000_CamB_ch0_CAM1_stack0000_488nm_0000000msec_0106060251msecAbs_000x_003y_000z_0000t';
 fn = [dataPath, fsn, '.tif'];
 psfFn = [dataPath, 'PSF/488_2_c.tif'];
 
+% read image and PSF
 im = readtiff(fn);
 psf = readtiff(psfFn);
+
+fprintf('Remove image background and clean PSF... \n');
 
 % remove background of the image
 bg = 100;
@@ -326,10 +332,12 @@ PSFGenMethod = 'masked';
 psf = psf_gen_new(psf, dz_psf, dz_data, medFactor, PSFGenMethod);
 psf = psf ./ sum(psf, 'all');
 
+fprintf('Done!\n');
 
 %% conventional RL decon
 % 30 iterations
 
+fprintf('Conventional RL deconvolution with 30 iterations... ');
 nIter = 30;
 tic
 rl_decon = decon_lucy_function(im, psf, nIter);
@@ -338,8 +346,8 @@ toc
 
 %% generate wb backprojector and decon
 %
-% the WB back projector is from the code in Guo et al. and included
-% third_parties/WBDeconvolution
+% the WB back projector is from the code in Guo et al. 2020 and the function 
+% is included LLSM5DTools/third_parties/WBDeconvolution for the comparision.
 
 % back projector type
 bp_type = 'wiener-butterworth';
@@ -356,6 +364,8 @@ iRes = [];
 % visualization flag
 verboseFlag = 1;
 [psf_wb_b, ~] = BackProjector(psf, bp_type, alpha, beta, n, resFlag, iRes, verboseFlag);
+
+fprintf('WB RL deconvolution with 2 iterations... ');
 
 % decon
 nIter = 2;
@@ -382,6 +392,8 @@ OTFCumThresh = 0.9;
 hanWinBounds = [0.8, 1.0];
 [b_omw, OTF_bp_omw, abs_OTF_c, OTF_mask] = omw_backprojector_generation(psf, alpha, skewed, ...
     'OTFCumThresh', OTFCumThresh, 'hanWinBounds', hanWinBounds);
+
+fprintf('OMW RL deconvolution with 2 iterations... ');
 
 % decon
 nIter = 2;

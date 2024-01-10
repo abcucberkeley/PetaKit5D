@@ -37,6 +37,10 @@ toc
 clear im_1;
 
 % fast Tiff reader
+% if im already exist, clear it to avoid the overhead to overwrite the variable
+if exist('im', 'var')
+    clear im;
+end
 fprintf('Cpp-Tiff reader: ');
 tic
 im = readtiff(fn);
@@ -45,7 +49,7 @@ fprintf('\n');
 
 %% replicate the data to 10000 frames
 % 
-nframe = 5000;
+nframe = 10000;
 
 im_rep = repmat(im, 1, 1, round(nframe / 500));
 disp(size(im_rep))
@@ -110,7 +114,7 @@ writezarr(im_rep, zarrFnout);
 toc
 clear im_rep;
 
-%% read Zarr with our faster writer
+%% read Zarr with our fast reader
 
 fprintf('Cpp-zarr reader for %d frames: ', nframe);
 tic

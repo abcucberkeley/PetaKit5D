@@ -72,7 +72,7 @@ im = readtiff(fn);
 toc
 
 %% deskew rotation
-%  size 1800 x 512 x 500
+% size 1800 x 512 x 500
 
 % conventional method (separate)
 xyPixelSize = 0.108;
@@ -117,7 +117,7 @@ clear im_rep;
 
 
 %% deskew rotation
-%  size 1800 x 512 x 2000
+% size 1800 x 512 x 2000
 % note: please make sure there is enough memory for old method (>125 GB)
 
 % result folder:

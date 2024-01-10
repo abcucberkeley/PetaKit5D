@@ -5,6 +5,9 @@
 % tiles, and large-scale deconvolution (inmemory option) works for tiff files 
 % that can fit to memory. 
 
+clear, clc;
+setup();
+
 
 %% Step 1: get our demo data from zenodo/Dropbox (skip this step if the data is already downloaded)
 % download the example dataset from zenodo (https://doi.org/10.5281/zenodo.10471978) manually, 
