@@ -597,7 +597,7 @@ while ~all(is_done_flag | trial_counter >= max_trial_num, 'all')
                             stitch_tile_nums = cellfun(@(x) str2double(x{1}{1}), stitch_tile_nums);
                             
                             for st = 1 : numel(stitch_tile_nums)
-                                cur_stitch_save_fname = [stitching_rt, filesep, stitch_save_files{st}];
+                                cur_stitch_save_fname = [stitching_rt, '/', stitch_save_files{st}];
                                 [~, cur_stitch_save_fsname] = fileparts(cur_stitch_save_fname);
                                 cur_stitch_save_mip_fname = sprintf('%s/MIPs/%s_MIP_z.tif', stitching_rt, cur_stitch_save_fsname);
                                 if stitch_tile_nums(st) < size(cur_tab, 1) && exist(cur_stitch_save_fname, ftype)

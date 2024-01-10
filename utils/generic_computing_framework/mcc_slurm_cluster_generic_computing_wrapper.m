@@ -72,7 +72,11 @@ if ismcc || isdeployed
     end
 else
     if ~exist(setupFn, 'file')
-        paths = split(funcFn, 'utils/generic_computing_framework');
+        if ispc
+            paths = split(funcFn, 'utils\generic_computing_framework');
+        else
+            paths = split(funcFn, 'utils/generic_computing_framework');        
+        end
         cd(paths{1});    
     end
 end

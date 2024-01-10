@@ -2,10 +2,17 @@
 
 %% Step 1: set parameters 
 % add the software to the path
-setup([],true);
+setup([]);
 
 % data path
-dataPath = '/clusterfs/fiona/Data/20220115_Korra_LLCPK_LFOV_0p1PSAmpKan/run1/';
+if ispc
+    destPath = fullfile(getenv('USERPROFILE'), 'Downloads');   
+    destPath = strrep(destPath, '\', '/');    
+else
+    destPath = '~/Downloads/';
+end
+
+dataPath = [destPath, '/LLSM5DTools_demo_cell_image_dataset/'];
 
 % image list path: csv file
 % if not available, run stitch_generate_imagelist_from_encoder(dataPath, dz)
@@ -35,7 +42,7 @@ axisOrder = '-x,y,z';
 BlendMethod = 'feather';
 
 % stitch dir string, inside dataPath
-stitchResultDir = 'matlab_stitch_xcorr_feather_skewed_zarr_test';
+stitchResultDir = 'matlab_stitch';
 
 % cross correlation registration, if false, directly stitch by the coordinates.
 xcorrShift = true;

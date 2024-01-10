@@ -66,7 +66,7 @@ ConfigFile = pr.ConfigFile;
 
 if ischar(tiffFullpaths)
     if exist(tiffFullpaths, 'dir')
-        dir_info = dir([tiffFullpaths, filesep, '*.tif']);
+        dir_info = dir([tiffFullpaths, '/', '*.tif']);
         fnames = {dir_info.name}';
         tiffFullpaths = cellfun(@(x) sprintf('%s/%s', tiffFullpaths, x), fnames, 'unif', 0);
     else
@@ -112,7 +112,7 @@ if partialFile
     for d = 1 : numel(udataPaths)
         dir_info = dir([udataPaths{d}, '/*tif']);
         fsnames = {dir_info.name}';
-        fnames_cell{d} = cellfun(@(x) [udataPaths{d}, filesep, x], fsnames, 'unif', 0);
+        fnames_cell{d} = cellfun(@(x) [udataPaths{d}, '/', x], fsnames, 'unif', 0);
     end
 end
 
@@ -162,7 +162,7 @@ for i = 1 : nF
         tiffFullpath_group_i = {tiffFullpath_i};        
     end
 
-    zarrPath = [dataPath, filesep, zarrPathstr];
+    zarrPath = [dataPath, '/', zarrPathstr];
     if ~exist(zarrPath, 'dir')
         mkdir(zarrPath);
     end

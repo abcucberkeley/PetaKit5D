@@ -41,5 +41,5 @@ elseif ispc
     if ~exist(releaseFolder, 'dir')
         mkdir(releaseFolder);
     end
-    mex  -outdir ../windows -output getImageSizeMex.mexw64 -v CXX="C:/mingw64/bin/g++" -v CXXOPTIMFLAGS="-DNDEBUG -O3" LDOPTIMFLAGS="-Wl',-rpath='''$ORIGIN'''' -O3 -DNDEBUG" CXXFLAGS='$CXXFLAGS -fopenmp -O3' LDFLAGS='$LDFLAGS -fopenmp -O3' -I'C:/Program Files (x86)/tiff/include' -L'C:\Program Files (x86)\tiff\lib' -ltiff.dll getimagesizemex.cpp ../src/helperfunctions.cpp
+    mex  -outdir ../windows -output getImageSizeMex.mexw64 -v CXX="C:/mingw64/bin/g++" CXXOPTIMFLAGS="-DNDEBUG -O3" LDOPTIMFLAGS="-Wl',-rpath='''$ORIGIN'''' -O3 -DNDEBUG" CXXFLAGS='$CXXFLAGS -fopenmp -O3' LDFLAGS='$LDFLAGS -fopenmp -O3' -I'C:/Program Files (x86)/tiff/include' -L'C:\Program Files (x86)\tiff\lib' -ltiff.dll getimagesizemex.cpp ../src/helperfunctions.cpp
 end

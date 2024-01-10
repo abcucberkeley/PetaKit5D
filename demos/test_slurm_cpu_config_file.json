@@ -1,0 +1,14 @@
+{
+  "MCRParam": "/global/home/users/user/bin/MATLAB_Runtime/R2022b",
+  "MCCMasterStr": "/clusterfs/fiona/user/LLSM5DTools/mcc/linux/run_mccMaster.sh",
+  "BashLaunchStr": "module load parallel/20190822",
+  "SlurmParam": "-p abc --qos abc_normal -n1 --mem-per-cpu=21418M",
+  "jobLogDir": "/clusterfs/fiona/user/Projects/job_logs",
+  "maxCPUNum": 24,
+  "minCPUNum": 1,
+  "wholeNodeJob": true,
+  "MemPerCPU": 20.9,
+  "GNUparallel": true,
+  "jobTimeLimit": 12,
+  "maxJobNum": 5000
+}

@@ -54,7 +54,11 @@ end
 % define input, output and function handle for the cluster computing framework
 nF = numel(tileFullpaths);
 [~, fsn] = fileparts(tileFullpaths{1});
-distPath = sprintf('%s/imdist/%s/', stitchPath, fsn);
+if ispc
+    distPath = sprintf('%s/imdist/', stitchPath);
+else
+    distPath = sprintf('%s/imdist/%s/', stitchPath, fsn);
+end
 if ~exist(distPath, 'dir')
     mkdir_recursive(distPath);
 end
