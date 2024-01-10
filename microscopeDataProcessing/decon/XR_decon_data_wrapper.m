@@ -191,6 +191,10 @@ if numel(Overwrite) == 1
     Overwrite = repmat(Overwrite, 1, 2);
 end
 
+if numel(ChannelPatterns) > 1 && numel(wienerAlpha) == 1
+    wienerAlpha = wienerAlpha * ones(1, numel(ChannelPatterns));
+end
+
 if numel(ChannelPatterns) > 1 && numel(OTFCumThresh) == 1
     OTFCumThresh = OTFCumThresh * ones(1, numel(ChannelPatterns));
 end
@@ -424,6 +428,7 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
             psfMapping =  ~cellfun(@isempty, regexpi(frameFullpath, ChannelPatterns));
             psfFullpath = dc_psfFullpaths{psfMapping};
             DeconIter_f = DeconIter_mat(fdind);
+            wienerAlpha_f = wienerAlpha(psfMapping);
             OTFCumThresh_f = OTFCumThresh(psfMapping);
             scaleFactor_f = scaleFactor(psfMapping);
             flipZstack = flipZstack_mat(f);
@@ -456,7 +461,7 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
                     '''uuid'',''%s'',''cpusPerTask'',%d,''mccMode'',%s,''ConfigFile'',''%s'',''GPUConfigFile'',''%s'')'], ...
                     dcframeFullpath, xyPixelSize, dc_dz, deconPath, psfFullpath, dc_dzPSF, Background, SkewAngle, ...
                     string(flipZstack), EdgeErosion, maskFullpath, string(SaveMaskfile), string(deconRotate), ...
-                    DeconIter_f, RLMethod, wienerAlpha, OTFCumThresh_f, string(skewed), string(fixIter), errThresh, ...
+                    DeconIter_f, RLMethod, wienerAlpha_f, OTFCumThresh_f, string(skewed), string(fixIter), errThresh, ...
                     string(debug), saveStep, string(psfGen), string(saveZarr), string(parseCluster),string(parseParfor), ... 
                     string(GPUJob), string(Save16bit), string(largeFile), largeMethod, strrep(mat2str(BatchSize), ' ', ','), ...
                     strrep(mat2str(BlockSize), ' ', ','), strrep(mat2str(zarrSubSize), ' ', ','), damper, ...

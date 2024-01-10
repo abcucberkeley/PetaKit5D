@@ -146,7 +146,7 @@ for i = 1 : nF
     
     inputFullpath_group_i = {inputFullpath_i};        
 
-    zarrPath = [dataPath, filesep, zarrPathstr];
+    zarrPath = [dataPath, '/', zarrPathstr];
     if ~exist(zarrPath, 'dir')
         mkdir(zarrPath);
     end

@@ -360,7 +360,7 @@ dir_info = dir(sprintf('%s/%s/px*_py*_pz*', dataPath, ResultDir));
 pixelFnames = {dir_info.name}';
 for i = 1 : numel(pixelFnames)
     if ~strcmp(pixelFnames{i}, pixelInfoFname)
-        delete([dir_info(i).folder, filesep, pixelFnames{i}])
+        delete([dir_info(i).folder, '/', pixelFnames{i}])
     end
 end
 
@@ -682,7 +682,7 @@ if strcmp(BlendMethod, 'blurred') && (isempty(BorderSize) || all(BorderSize == 0
 end
 
 % save block info (for record and distributed computing in the future)
-stichInfoPath = [dataPath, filesep, ResultDir, filesep, stitchInfoDir];
+stichInfoPath = [dataPath, '/', ResultDir, '/', stitchInfoDir];
 if ~exist(stichInfoPath, 'dir')
     mkdir(stichInfoPath);
     fileattrib(stichInfoPath, '+w', 'g');
@@ -752,7 +752,7 @@ if fresh_stitch
 end
 
 % add support for feather blending
-stitchPath = [dataPath, filesep, ResultDir, filesep];
+stitchPath = [dataPath, '/', ResultDir, '/'];
 if strcmpi(BlendMethod, 'feather') 
     % xruan disable singleDistMap if some tiles have different image sizes
     [uniq_locIds, uniq_inds] = unique(locIds);
@@ -763,7 +763,7 @@ if strcmpi(BlendMethod, 'feather')
         end
     end
     if isPrimaryCh 
-        imdistPath = [dataPath, filesep, ResultDir, '/imdist/'];
+        imdistPath = [dataPath, '/', ResultDir, '/imdist/'];
         mkdir(imdistPath);
         [imdistFullpaths, imdistFileIdx] = compute_tile_distance_transform(block_info_fullname, ...
             stitchPath, zarrFullpaths, 'blendWeightDegree', blendWeightDegree, ...
@@ -774,7 +774,7 @@ if strcmpi(BlendMethod, 'feather')
     else
         usePrimaryDist = all(imSizes == pTileSizes, 'all');
         if ~usePrimaryDist
-            imdistPath = [dataPath, filesep, ResultDir, '/imdist/'];
+            imdistPath = [dataPath, '/', ResultDir, '/imdist/'];
             mkdir(imdistPath);
             [imdistFullpaths, imdistFileIdx] = compute_tile_distance_transform(block_info_fullname, stitchPath, ...
                 zarrFullpaths, 'blendWeightDegree', blendWeightDegree, 'singleDistMap', singleDistMap, ...

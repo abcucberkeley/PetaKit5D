@@ -54,12 +54,18 @@ void DummyHandler(const char* module, const char* fmt, va_list ap)
     // ignore errors and warnings
 }
 
+// The check for if it is an ImageJ image needs to be improved in the future
 uint8_t isImageJIm(const char* fileName){
     TIFF* tif = TIFFOpen(fileName, "r");
     if(!tif) return 0;
     char* tiffDesc = NULL;
     if(TIFFGetField(tif, TIFFTAG_IMAGEDESCRIPTION, &tiffDesc)){
         if(strstr(tiffDesc, "ImageJ")){
+            // Check if the image was written by tifffile
+            char* tiffSoftware = NULL;
+            if(TIFFGetField(tif, TIFFTAG_SOFTWARE, &tiffSoftware)){
+                if(!strcmp(tiffSoftware,"tifffile.py")) return 0;
+            }
             uint16_t compressed = 1;
             TIFFGetField(tif, TIFFTAG_COMPRESSION, &compressed);
             if(compressed != 1) return 0;

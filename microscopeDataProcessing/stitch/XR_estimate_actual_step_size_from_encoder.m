@@ -234,8 +234,8 @@ dz_actual = mean(abs(d_x_all));
 
 % duplicate for all time points
 global_duplicate = any(duplicate_mat, 1);
-coords_info_fn = sprintf('%s%scoordinates_info.mat', resultPath, filesep);
-coords_info_tmp_fn = sprintf('%s%scoordinates_info_%s.mat', resultPath, filesep, get_uuid());
+coords_info_fn = sprintf('%s/coordinates_info.mat', resultPath);
+coords_info_tmp_fn = sprintf('%s/coordinates_info_%s.mat', resultPath, get_uuid());
 save('-v7.3', coords_info_tmp_fn, 'coords_struct', 'skipped_fns', 'CoordType', ...
     'global_xrange', 'x_st', 'dz_actual', 'duplicate_mat', 'global_duplicate');
 fileattrib(coords_info_tmp_fn, '+w', 'g');

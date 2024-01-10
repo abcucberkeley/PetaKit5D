@@ -34,8 +34,8 @@ writetiff(uint8(rand(10) > 0.5), sprintf('/tmp/%s.tif', uuid));
 for i = 1 : nF
     zarrFullpath = zarrFullpaths{i};
     [~, fsname, ext] = fileparts(zarrFullpath);
-    OutputFullname = [stitchPath, filesep, fsname, ext];
-    OutputTempname = [stitchPath, filesep, fsname, uuid, ext];
+    OutputFullname = [stitchPath, '/', fsname, ext];
+    OutputTempname = [stitchPath, '/', fsname, uuid, ext];
     
     if exist(OutputFullname, 'dir')
         continue;
@@ -71,8 +71,8 @@ for i = 1 : nF
     
     if convertToTiff
         bim = blockedImage(OutputFullname, 'Adapter', ZarrAdapter);
-        tiffFullname = [stitchPath, filesep, fsname, '.tif'];
-        tiffTempname = [stitchPath, filesep, fsname, uuid, '.tif'];
+        tiffFullname = [stitchPath, '/', fsname, '.tif'];
+        tiffTempname = [stitchPath, '/', fsname, uuid, '.tif'];
         write(bim, tiffTempname, 'Adapter', MPageTiffAdapter, 'BlockSize', [bim.Size(1), bim.Size(2), 5]);
         movefile(tiffTempname, tiffFullname);
     end
