@@ -29,7 +29,7 @@ dataPath = [destPath, '/LLSM5DTools_demo_cell_image_dataset/'];
 % subset of parameters based on your slurm cluster. 
 
 % if using MATLAB runtime, setup the runtime path in your cluster. 
-MCRParam = '/global/home/users/user/bin/MATLAB_Runtime/R2022b';
+MCRParam = '/global/home/users/user/bin/MATLAB_Runtime/R2023a';
 
 % the mcc master script path in your cluster. It is within LLSM5DTools/mcc/linux/run_mccMaster.sh
 MCCMasterStr = '/clusterfs/fiona/user/LLSM5DTools/mcc/linux/run_mccMaster.sh';
