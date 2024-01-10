@@ -5,12 +5,12 @@ Tools for efficient and scalable processing of petabyte-scale 5D live images or 
 ## Usage
 
 The tools have been tested with MATLAB R2022b-R2023a for Linux (Ubuntu), Windows, and MacOS. Here are the steps to use the software:
-1. Retrieve the source code by either cloning the GitHub repository or downloading the ZIP file. If downloading the zip file, unzip the file to a directory.
+1. Get the source code by either cloning the GitHub repository or downloading the ZIP file. If downloading the zip file, unzip the file to a directory.
 2. Launch MATLAB, and navigate to the software's root directory and add the software to path with `setup.m` in the command window.
 ```
     setup
 ```
-3. Create a script or function to setup the workflows for your image processing tasks by calling related functions. You may follow the examples in the [demos](https://github.com/abcucberkeley/LLSM5DTools/tree/dev/demos). The documentation of the parameters can refer to the [GUI wiki page](https://github.com/abcucberkeley/LLSM_Processing_GUI/wiki) or the parameter list in the related functions.
+3. Create a script or function to setup the workflows for your image processing tasks by calling related functions. You may follow the examples in the [demos](https://github.com/abcucberkeley/LLSM5DTools/tree/master/demos). The documentation of the parameters can refer to the [GUI wiki page](https://github.com/abcucberkeley/LLSM_Processing_GUI/wiki) or the parameter list in the related functions.
 
 
 ## Demos
