@@ -30,7 +30,7 @@ fsn = 'Scan_Iter_0000_0000_CamA_ch0_CAM1_stack0000_488nm_0000000msec_0106060251m
 fn = [dataPath, fsn, '.tif'];
 
 % conventional tiff reader
-fprintf('Conventional Tiff reader (libtiff): ');
+fprintf('Conventional Tiff reader (libtiff) for 500 frames: ');
 tic
 im_1 = readtiff_matlab(fn);
 toc
@@ -41,18 +41,29 @@ clear im_1;
 if exist('im', 'var')
     clear im;
 end
-fprintf('Cpp-Tiff reader: ');
+fprintf('Cpp-Tiff reader for 500 frames: ');
 tic
 im = readtiff(fn);
 toc
 fprintf('\n');
 
-%% replicate the data to 10000 frames
-% 
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% benchmark readers and writers on larger data with more frames
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%% replicate the data to 10000 frames 
+
+% Note: please make sure your system has at least 64 GB available RAM for
+% 10k frames; otherwise, you may need to reduce the number of frames. 
+
 nframe = 10000;
 
-im_rep = repmat(im, 1, 1, round(nframe / 500));
-disp(size(im_rep))
+im_rep = repmat(im, 1, 1, ceil(nframe / 500));
+if size(im_rep, 3) > nframe
+    im_rep = crop3d_mex(im_rep, [1, 1, 1, size(im_rep, 1), size(im_rep, 2), nframe]);
+end
+disp(size(im_rep));
 
 outPath = [dataPath, 'replicated/'];
 mkdir(outPath);
@@ -64,14 +75,14 @@ mkdir(outPath);
 
 fnout = sprintf('%s%s_frame_number_%d_conventional.tif', outPath, fsn, nframe);
 % conventional Tiff writer
-fprintf('Conventional Tiff writer (libtiff): ');
+fprintf('Conventional Tiff writer (libtiff) for %d frames: ', nframe);
 tic
 writetiff(im_rep, fnout, mode='libtiff');
 toc
 
 fnout = sprintf('%s%s_frame_number_%d.tif', outPath, fsn, nframe);
 % fast Tiff writer
-fprintf('Cpp-Tiff writer: ');
+fprintf('Cpp-Tiff writer for %d frames: ', nframe);
 tic
 writetiff(im_rep, fnout);
 toc
@@ -123,11 +134,11 @@ toc
 
 
 %% read/write Zarr with conventional zarr library (MATLAB interface of Zarr)
-% note: to make it work, conda in python need to be installed, and Zarr needs 
-% to be installed in an enviroment. Then, the environment need to be
-% activated and Matlab is launched in that enviroment
+% Note: to make it work, anaconda in python need to be installed, and zarr-python
+% needs to be installed in an enviroment. Then, the environment needs to be
+% activated and Matlab is launched from that enviroment.
 
-% setup environment to load python environment for matlab
+% setup environment to load the python environment for matlab
 setup([], true);
 
 zarrFnout_1 = sprintf('%s%s_frame_number_%d_conventional.zarr', outPath, fsn, nframe);
@@ -138,6 +149,9 @@ dataSize = size(im_rep);
 blockSize = [256, 256, 256];
 
 init_val = zeros(1, dtype);
+if exist(zarrFnout_1, 'dir')
+    rmdir(zarrFnout_1, "s");
+end
 bim = blockedImage(zarrFnout_1, dataSize, blockSize, init_val, "Adapter", ZarrAdapter, 'Mode', 'w');             
 bim.Adapter.close();
 

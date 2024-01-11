@@ -53,7 +53,7 @@ if exist(dataPath, 'dir')
     end
     
     if file_exist
-        fprintf('The dataset already exist at "%s", skip downloading!\n', dataPath);
+        fprintf('The dataset already exists in "%s", skip downloading!\n', dataPath);
         return;
     end
 end

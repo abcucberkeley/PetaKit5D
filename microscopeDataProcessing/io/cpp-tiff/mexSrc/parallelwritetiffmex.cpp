@@ -29,6 +29,7 @@ void mexFunction(int nlhs, mxArray *plhs[],
         mexCallMATLAB(1, mCharA, 1, mString, "char");
         fileName = mxArrayToString(mCharA[0]);
     }
+    if(mxIsEmpty(prhs[1])) mexErrMsgIdAndTxt("tiff:inputError","All input data axes must be of at least size 1");
 
     // Handle the tilde character in filenames on Linux/Mac
     #ifndef _WIN32

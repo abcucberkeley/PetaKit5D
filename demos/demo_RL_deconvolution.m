@@ -1,4 +1,7 @@
 % demo to run RL deconvolution with conventional and OMW methods
+% 
+% Note: please make sure your GPU has at least 32 GB available vRAM for
+% deconvolution on GPU to avoid out-of-memory issue; otherwise, you may run CPU deconvolution.
 
 clear, clc;
 setup();
@@ -125,6 +128,11 @@ XR_decon_data_wrapper(dataPaths, 'deconPathstr', deconPathstr, 'xyPixelSize', xy
     'zarrFile', zarrFile, 'parseCluster', parseCluster, 'largeFile', largeFile, ...
     'GPUJob', GPUJob, 'debug', debug, 'cpusPerTask', cpusPerTask);
 
+% release GPU if using GPU computing
+if GPUJob && gpuDeviceCount('available') > 0
+    reset(gpuDevice);
+end
+
 
 %% Step 4: Conventional RL deconvolution 
 %% Step 4.1: set parameters 
@@ -199,11 +207,15 @@ debug = false;
 XR_decon_data_wrapper(dataPaths, 'deconPathstr', deconPathstr, 'xyPixelSize', xyPixelSize, ...
     'dz', dz, 'Reverse', Reverse, 'ChannelPatterns', ChannelPatterns, 'PSFFullpaths', PSFFullpaths, ...
     'dzPSF', dzPSF, 'parseSettingFile', parseSettingFile, 'RLmethod', RLmethod, ...
-    'wienerAlpha', wienerAlpha, 'OTFCumThresh', OTFCumThresh, 'skewed', skewed, ...
     'Background', Background, 'CPPdecon', false, 'CudaDecon', false, 'DeconIter', DeconIter, ...
     'fixIter', fixIter, 'EdgeErosion', EdgeErosion, 'Save16bit', Save16bit, ...
     'zarrFile', zarrFile, 'parseCluster', parseCluster, 'largeFile', largeFile, ...
     'GPUJob', GPUJob, 'debug', debug, 'cpusPerTask', cpusPerTask);
+
+% release GPU if using GPU computing
+if GPUJob && gpuDeviceCount('available') > 0
+    reset(gpuDevice);
+end
 
 
 %% Step 5: deskew/rotate the deconvoluved results
@@ -290,7 +302,7 @@ clim([prctile(im_rl_decon_crop(:), 40), prctile(im_rl_decon_crop(:), 99)]);
 colormap('gray');
 axis equal
 axis off
-title('RL 30 iters')
+title('Conventional 30 iters')
 
 nexttile
 imagesc(im_omw_decon_crop);
@@ -313,7 +325,7 @@ psfFn = [dataPath, 'PSF/488_2_c.tif'];
 im = readtiff(fn);
 psf = readtiff(psfFn);
 
-fprintf('Remove image background and clean PSF... \n');
+fprintf('\nRemove image background and clean PSF... \n');
 
 % remove background of the image
 bg = 100;
@@ -334,14 +346,23 @@ psf = psf ./ sum(psf, 'all');
 
 fprintf('Done!\n');
 
+
 %% conventional RL decon
 % 30 iterations
 
 fprintf('Conventional RL deconvolution with 30 iterations... ');
+% use GPU by default, set to false if there is no GPU or run out of GPU VRAM
+useGPU = true;
+% number of iterations
 nIter = 30;
 tic
-rl_decon = decon_lucy_function(im, psf, nIter);
+rl_decon = decon_lucy_function(im, psf, nIter, useGPU=useGPU);
 toc
+
+% release GPU if using GPU computing
+if useGPU && gpuDeviceCount('available') > 0
+    reset(gpuDevice);
+end
 
 
 %% generate wb backprojector and decon
@@ -368,10 +389,19 @@ verboseFlag = 1;
 fprintf('WB RL deconvolution with 2 iterations... ');
 
 % decon
+% use GPU by default, set to false if there is no GPU or run out of GPU VRAM
+useGPU = true;
+% number of iterations
 nIter = 2;
 tic
-wb_decon = decon_lucy_omw_function(im, psf, psf_wb_b, nIter);
+wb_decon = decon_lucy_omw_function(im, psf, psf_wb_b, nIter, useGPU=useGPU);
 toc
+
+% release GPU if using GPU computing
+if useGPU && gpuDeviceCount('available') > 0
+    reset(gpuDevice);
+end
+
 
 %% omw decon
 
@@ -396,10 +426,18 @@ hanWinBounds = [0.8, 1.0];
 fprintf('OMW RL deconvolution with 2 iterations... ');
 
 % decon
+% use GPU by default, set to false if there is no GPU or run out of GPU VRAM
+useGPU = true;
+% number of iterations
 nIter = 2;
 tic
-omw_decon = decon_lucy_omw_function(im, psf, b_omw, nIter);
+omw_decon = decon_lucy_omw_function(im, psf, b_omw, nIter, useGPU=useGPU);
 toc
+
+% release GPU if using GPU computing
+if useGPU && gpuDeviceCount('available') > 0
+    reset(gpuDevice);
+end
 
 
 %% deskew/rotate raw and deconvolved data and also crop a small region for visualization
@@ -468,7 +506,7 @@ clim([prctile(rl_dsr_crop(:), 40), prctile(rl_dsr_crop(:), 99)]);
 colormap('gray');
 axis equal
 axis off
-title('RL 30 iters')
+title('Conventional 30 iters')
 
 nexttile
 imagesc(wb_dsr_crop);

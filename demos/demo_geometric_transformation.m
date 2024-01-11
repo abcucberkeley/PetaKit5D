@@ -75,32 +75,60 @@ toc
 % size 1800 x 512 x 500
 
 % conventional method (separate)
+% Note: please make sure there is enough memory for conventional method (>60 GB)
+
 xyPixelSize = 0.108;
 dz = 0.3;
 
-fprintf('Conventional deskew/rotation: \n')
+% remove old results
+if exist([dataPath, 'DS/', fsn, '.tif'], 'file') 
+    delete([dataPath, 'DS/', fsn, '.tif']);
+end
+if exist([dataPath, 'DSR/', fsn, '.tif'], 'file') 
+    delete([dataPath, 'DSR/', fsn, '.tif']);
+end
+
+fprintf('\nConventional deskew/rotation for 500 frames: \n')
 tic
 XR_deskewRotateFrame_old(fn, xyPixelSize, dz, 'rotate', true, 'Reverse', true, 'Save16bit', true);
 toc
 
-% rename result folders 
-movefile([dataPath, 'DS'], [dataPath, 'DS_separate']);
-movefile([dataPath, 'DSR'], [dataPath, 'DSR_separate']);
+% move results to method specific DS/DSR folders 
+if exist([dataPath, 'DS_separated'], 'dir') 
+    rmdir([dataPath, 'DS_separated'], 's');
+end
+if exist([dataPath, 'DSR_separated'], 'dir') 
+    rmdir([dataPath, 'DSR_separated'], 's');
+end
+mkdir([dataPath, 'DS_separated']);
+mkdir([dataPath, 'DSR_separated']);
+movefile([dataPath, 'DS/', fsn, '.tif'], [dataPath, 'DS_separated']);
+movefile([dataPath, 'DSR/', fsn, '.tif'], [dataPath, 'DSR_separated']);
 
 % current method (combined)
 
-fprintf('Combined deskew/rotation: \n')
+fprintf('Combined deskew/rotation for 500 frames: \n')
 tic
 XR_deskewRotateFrame(fn, xyPixelSize, dz, 'rotate', true, 'Reverse', true, 'Save16bit', true);
 toc
 
-movefile([dataPath, 'DSR'], [dataPath, 'DSR_combined']);
+% move results to method specific DSR folder
+if exist([dataPath, 'DSR_combined'], 'dir')
+    rmdir([dataPath, 'DSR_combined'], 's');
+end
+mkdir([dataPath, 'DSR_combined'])
+movefile([dataPath, 'DSR/', fsn, '.tif'], [dataPath, 'DSR_combined']);
 
 
 %% deskew/rotate for larger data with more frames
 
 % replicate the data to 2000 frames
-im_rep = repmat(im, 1, 1, 4);
+nframe = 2000;
+fprintf('\nReplicate data to %d frames... ', nframe);
+im_rep = repmat(im, 1, 1, ceil(nframe / 500));
+if size(im_rep, 3) > nframe
+    im_rep = crop3d_mex(im_rep, [1, 1, 1, size(im_rep, 1), size(im_rep, 2), nframe]);
+end
 size(im_rep)
 
 % save the data to disk
@@ -118,7 +146,7 @@ clear im_rep;
 
 %% deskew rotation
 % size 1800 x 512 x 2000
-% note: please make sure there is enough memory for old method (>125 GB)
+% Note: please make sure there is enough memory for conventional method (>125 GB)
 
 % result folder:
 % {destPath}/LLSM5DTools_demo_cell_image_dataset/replicated/DSR/
@@ -127,32 +155,45 @@ clear im_rep;
 xyPixelSize = 0.108;
 dz = 0.3;
 
-fprintf('Conventional deskew/rotation: \n')
+fprintf('\nConventional deskew/rotation for %d frames: \n', nframe)
 tic
 XR_deskewRotateFrame_old(fnrep, xyPixelSize, dz, 'rotate', true, 'Reverse', true, 'Save16bit', true);
 toc
 
-% rename result folders 
-movefile([outPath, 'DS'], [outPath, 'DS_separate']);
-movefile([outPath, 'DSR'], [outPath, 'DSR_separate']);
+% move the files to method specific DS/DSR folders
+if ~exist([outPath, 'DS_separate/'], 'dir') ||  ~exist([outPath, 'DSR_separate/'], 'dir')
+    mkdir([outPath, 'DS_separate/']);
+    mkdir([outPath, 'DSR_separate/']);
+end
+movefile([outPath, 'DS/', fsn, '_2k.tif'], [outPath, 'DS_separate/']);
+movefile([outPath, 'DSR/', fsn, '_2k.tif'], [outPath, 'DSR_separate/']);
 
 % current method (combined)
-fprintf('Combined deskew/rotation: \n')
+fprintf('Combined deskew/rotation for %d frames: \n', nframe)
 tic
 XR_deskewRotateFrame(fnrep, xyPixelSize, dz, 'rotate', true, 'Reverse', true, 'Save16bit', true);
 toc
 
-movefile([outPath, 'DSR'], [outPath, 'DSR_combined']);
+% move the file to method specific DSR folder
+if ~exist([outPath, 'DSR_combined/'], 'dir')
+    mkdir([outPath, 'DSR_combined/']);
+end
+movefile([outPath, 'DSR/', fsn, '_2k.tif'], [outPath, 'DSR_combined/']);
 
 
 %% deskew/rotatin with even larger data for combined method (failed with old method in a desktop with 512 GB RAM)
-% Please make sure your system has at least 60 GB RAM available
+% Note: please make sure your system has at least 60 GB RAM available
 
 % result folder:
 % {destPath}/LLSM5DTools_demo_cell_image_dataset/replicated/DSR/
 
 % replicate the data to 5000 frames
-im_rep = repmat(im, 1, 1, 10);
+nframe = 5000;
+fprintf('\nReplicate data to %d frames... ', nframe);
+im_rep = repmat(im, 1, 1, ceil(nframe / 500));
+if size(im_rep, 3) > nframe
+    im_rep = crop3d_mex(im_rep, [1, 1, 1, size(im_rep, 1), size(im_rep, 2), nframe]);
+end
 size(im_rep)
 
 % save the data to disk
@@ -168,11 +209,13 @@ clear im_rep;
 xyPixelSize = 0.108;
 dz = 0.3;
 
+fprintf('\nCombined deskew/rotation for %d frames: \n\n', nframe)
 tic
 XR_deskewRotateFrame(fnrep, xyPixelSize, dz, 'rotate', true, 'Reverse', true, 'Save16bit', true);
 toc
 
-movefile([outPath, 'DSR'], [outPath, 'DSR_combined']);
+% move the file to method specific DSR folder
+movefile([outPath, 'DSR/', fsn, '_5k.tif'], [outPath, 'DSR_combined']);
 
 
 

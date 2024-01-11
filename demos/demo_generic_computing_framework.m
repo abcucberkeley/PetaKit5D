@@ -102,7 +102,9 @@ fclose(fid);
 
 fprintf(['The code below is just for the illustration of how to set up a function ', ...
         'for the generic computing framework. \nThe actual function is crop_deskew_rotate_crop_demo_function.m\n'])
-return;
+
+% disable the code 
+if false
 
 % function [] = crop_deskew_rotate_crop_demo_function(inputFullpath, outputFullpath, skewAngle, xyPixelSize, dz, inBbox)
 % the function needs the path for the input and output, along with
@@ -152,6 +154,7 @@ movefile(tmpFn, outputFullpath);
 
 % end
 
+end
 
 %% setup running for multiple images
 

@@ -73,20 +73,7 @@ else
         return;
     end
 
-    switch ext
-        case {'.tif', '.tiff'}
-            bim = blockedImage([dataPath, filesep, fnames{1}], 'Adapter', MPageTiffAdapter);            
-        case '.zarr'
-            try 
-                bim = blockedImage([dataPath, filesep, fnames{1}], 'Adapter', CZarrAdapter);
-            catch ME
-                disp(ME);
-                disp('c-zarr is not working, use python zarr adaptoer...');
-                bim = blockedImage([dataPath, filesep, fnames{1}], 'Adapter', ZarrAdapter);
-            end
-    end
-
-    dtype = bim.ClassUnderlying;
+    dtype = getImageDataType([dataPath, filesep, fnames{1}]);
     switch dtype
         case 'uint8'
             dbytes = 1;

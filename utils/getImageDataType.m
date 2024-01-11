@@ -12,7 +12,9 @@ if nargin < 2
 end
 
 if strcmp(filePath(end - 2 : end), 'tif') || strcmp(filePath(end - 3 : end), 'tiff')
-    bim = blockedImage(filePath, 'Adapter', MPageTiffAdapter);
+    % directly call Big Image Tiff Reader using in MPageTiffAdapter.m
+    tobj = matlab.io.internal.BigImageTiffReader(filePath);
+    dtype = tobj.MLType;
 elseif strcmp(filePath(end - 3 : end), 'zarr') || zarrFile
     try 
         bim = blockedImage(filePath, 'Adapter', CZarrAdapter);
@@ -20,11 +22,11 @@ elseif strcmp(filePath(end - 3 : end), 'zarr') || zarrFile
         disp(ME);
         bim = blockedImage(filePath, 'Adapter', ZarrAdapter);
     end
+    dtype = bim.ClassUnderlying;
 else
     error('Unknown data type, currently only tiff and zarr files are supported!')
 end
 
-dtype = bim.ClassUnderlying;
 
 end
 

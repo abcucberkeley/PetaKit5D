@@ -26,13 +26,13 @@ elseif ismac
     if ~exist(releaseFolder, 'dir')
         mkdir(releaseFolder);
     end   
-    mex -v -outdir ../mac -output parallelWriteTiff.mexw64 CXX="/usr/local/bin/g++-13" CXXOPTIMFLAGS='-O3 -DNDEBUG' LDOPTIMFLAGS='-O3 -DNDEBUG' CXXFLAGS='-fno-common -arch x86_64 -mmacosx-version-min=10.15 -fexceptions -isysroot /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk -std=c++11 -O3 -fopenmp -DMATLAB_DEFAULT_RELEASE=R2017b  -DUSE_MEX_CMD   -DMATLAB_MEX_FILE' LDFLAGS='$LDFLAGS -O3 -fopenmp' '-I/usr/local/include/' -lstdc++ -ltiff parallelwritetiffmex.cpp ../src/lzwencode.cpp ../src/helperfunctions.cpp ../src/parallelwritetiff.cpp
+    mex -v -outdir ../mac -output parallelWriteTiff.mexw64 CXX="/usr/local/bin/g++-13" CXXOPTIMFLAGS='-O3 -DNDEBUG' LDOPTIMFLAGS='-O3 -DNDEBUG' CXXFLAGS='-fno-common -arch x86_64 -mmacosx-version-min=10.15 -fexceptions -isysroot /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk -std=c++11 -O3 -fopenmp -DMATLAB_DEFAULT_RELEASE=R2017b  -DUSE_MEX_CMD   -DMATLAB_MEX_FILE' LDFLAGS='$LDFLAGS -O3 -fopenmp' '-I/usr/local/include/' -ltiff parallelwritetiffmex.cpp ../src/lzwencode.cpp ../src/helperfunctions.cpp ../src/parallelwritetiff.cpp
 
     % We need to change all the current paths to be relative to the mex file
     system('install_name_tool -change /usr/local/opt/gcc/lib/gcc/current/libstdc++.6.dylib @loader_path/libstdc++.6.0.32.dylib ../mac/parallelWriteTiff.mexmaci64');
     system('install_name_tool -change /usr/local/opt/gcc/lib/gcc/current/libgomp.1.dylib @loader_path/libgomp.1.dylib ../mac/parallelWriteTiff.mexmaci64');
     system('install_name_tool -change @rpath/libtiff.6.dylib @loader_path/libtiff.6.0.1.dylib ../mac/parallelWriteTiff.mexmaci64');
-    system('install_name_tool -change /usr/local/opt/gcc/lib/gcc/current/libgcc_s.1.1.dylib @loader_path/libgcc_s.1.1.dylib ../mac/parallelWriteTiff.mexmaci64'); 
+    system('install_name_tool -change /usr/local/opt/gcc/lib/gcc/current/libgcc_s.1.1.dylib @loader_path/libgcc_s.1.1.0.dylib ../mac/parallelWriteTiff.mexmaci64'); 
 
     system('chmod 777 ../mac/parallelWriteTiff.mexmaci64');
 elseif ispc
