@@ -711,11 +711,11 @@ nvSize = [nys, nxs, nzs];
     parseCluster=parseCluster, mccMode=mccMode, ConfigFile=ConfigFile);
 
 % initial stitched block image and save header in the disk
-if ~ispc
-    nv_tmp_fullname = sprintf('%s/%s/%s_nv_%s', dataPath, ResultDir, nv_fsname, uuid);
-else
+if ispc && numel(uuid) > 4
     % for PC, the path length limit is 260, so make it shorter in case of beyond the limit
-    nv_tmp_fullname = sprintf('%s/%s/%s_nv_%s', dataPath, ResultDir, nv_fsname, uuid(1:5));    
+    nv_tmp_fullname = sprintf('%s/%s/%s_nv_%s', dataPath, ResultDir, nv_fsname, uuid(1:4));        
+else
+    nv_tmp_fullname = sprintf('%s/%s/%s_nv_%s', dataPath, ResultDir, nv_fsname, uuid);    
 end
 if saveMultires
     mkdir(nv_tmp_fullname);

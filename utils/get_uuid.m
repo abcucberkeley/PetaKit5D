@@ -4,6 +4,7 @@ function [uuid] = get_uuid()
 % Author: Xiongtao Ruan (02/22/2020)
 %
 % xruan (11/08/2022): for none-java method on windows, use a random num string instead. 
+% xruan (1/16/2023): for Windows, only keep first 4 letters to avoid too long file path issue
 
 if usejava('jvm') 
     uuid = char(java.util.UUID.randomUUID.toString);
@@ -16,5 +17,12 @@ else
         uuid = strip(cmdout);
     end
 end
+
+if ispc
+    if numel(uuid) > 4
+        uuid = uuid(1 : 4);
+    end
+end
+
 
 end
