@@ -86,7 +86,8 @@ classdef ZarrAdapter < images.blocked.Adapter
             
             if ispc 
                 if  numel(char(loc)) > 200
-                    [pth, loc] = fileparts(loc);
+                    [pth, loc, ext] = fileparts(loc);
+                    loc = loc + ext;
                     cd(pth);
                 end
             else

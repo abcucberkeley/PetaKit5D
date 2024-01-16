@@ -1,14 +1,33 @@
 %% demo to use our fast tiff/zarr readers and writers
 % also include comparison with conventional ones
 % 
-% Note: the acceleration over convetional methods depends on the number of
+% Note: the acceleration over conventional methods depends on the number of
 % CPU cores in your system. In the paper, we benchmarked in a 24-core
 % system. If your system has more cores, you may see even more accelerations. 
 % However, if your system has fewer cores, the acceleration may be not as much 
-% as we shown in the paper. 
+% as we showed in the paper. 
 
 clear, clc;
+
+fprintf('Fast Tiff/Zarr readers and writers demo...\n\n');
+
+% move to the LLSM5DTools root directory
+curPath = pwd;
+if ~endsWith(curPath, 'LLSM5DTools')
+    mfilePath = mfilename('fullpath');
+    if contains(mfilePath,'LiveEditorEvaluationHelper')
+        mfilePath = matlab.desktop.editor.getActiveFilename;
+    end
+    
+    mPath = fileparts(mfilePath);
+    if endsWith(mPath, 'demos')
+        cd(mPath);
+        cd('..')
+    end
+end
+
 setup();
+
 
 %% Step 1: get our demo data from zenodo/Dropbox (skip this step if the data is already downloaded)
 % download the example dataset from zenodo (https://doi.org/10.5281/zenodo.10471978) manually, 
@@ -69,13 +88,13 @@ outPath = [dataPath, 'replicated/'];
 mkdir(outPath);
 
 
-%% write the replicate data as Tiff format to disk
+%% write the replicated data as Tiff format to disk
 
 % write to disk as a Tiff file
 
 fnout = sprintf('%s%s_frame_number_%d_conventional.tif', outPath, fsn, nframe);
 % conventional Tiff writer
-fprintf('Conventional Tiff writer (libtiff) for %d frames: ', nframe);
+fprintf('Conventional Tiff writer (libtiff) for %d frames (takes ~3 min for 16-core CPUs): ', nframe);
 tic
 writetiff(im_rep, fnout, mode='libtiff');
 toc
@@ -94,7 +113,7 @@ fprintf('\n');
 clear im_rep;
 
 % conventional Tiff reader
-fprintf('Conventional Tiff reader (libtiff) for %d frames: ', nframe);
+fprintf('Conventional Tiff reader (libtiff) for %d frames (takes ~1.5 min for 16-core CPUs): ', nframe);
 tic
 im_rep = readtiff_matlab(fnout);
 toc
@@ -108,7 +127,7 @@ toc
 fprintf('\n');
 
 
-%% write the replicate data as Zarr format to disk
+%% write the replicated data as Zarr format to disk
 
 zarrFnout = sprintf('%s%s_frame_number_%d.zarr', outPath, fsn, nframe);
 
@@ -134,12 +153,24 @@ toc
 
 
 %% read/write Zarr with conventional zarr library (MATLAB interface of Zarr)
-% Note: to make it work, anaconda in python need to be installed, and zarr-python
-% needs to be installed in an enviroment. Then, the environment needs to be
-% activated and Matlab is launched from that enviroment.
+% Note: to make it work, anaconda in python need to be installed, and
+% zarr-python and dask need to be installed in an enviroment. Then, the environment 
+% needs to be activated and Matlab is launched from that enviroment.
+
+% this section and the following one is disabled by default. If you
+% installed Python enviroment as described above, please comment out the
+% code belew. 
+fprintf(['\nThe conventional Zarr reader and writer requies a Python enviroment as desribed in the comment above.\n', ...
+         'If you have installed the Python enviroment and launched Matlab from the environment,please comment \n', ...
+         'out the line below to allow the running of the convetional Zarr reader and writer.\n']);
+return;
 
 % setup environment to load the python environment for matlab
-setup([], true);
+% please provide your python executable path, i.e.,
+%   ~/anaconda3/envs/your_env/bin/python for linux and MacOS
+%   C:\Users\UserName\anaconda3\envs\your_env\python.EXE for Windows
+pythonPath = '/path/to/your/python';
+setup([], true, pythonPath);
 
 zarrFnout_1 = sprintf('%s%s_frame_number_%d_conventional.zarr', outPath, fsn, nframe);
 
@@ -163,7 +194,8 @@ bim.Adapter.setRegion(ones(1, numel(bim.Size)), bim.Size, im_rep)
 toc
 
 
-%% read zarr with conventional method
+%% read zarr with the conventional method
+% also requires the Python environment as metioned above
 
 clear im_rep;
 fprintf('MATLAB interface of Zarr reader for %d frames: ', nframe);
@@ -171,22 +203,6 @@ tic
 bim = blockedImage(zarrFnout_1, "Adapter", ZarrAdapter);
 im_rep = bim.Adapter.getIORegion(ones(1, numel(bim.Size)), bim.Size);
 toc
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 

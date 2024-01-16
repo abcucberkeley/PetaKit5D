@@ -4,6 +4,24 @@
 % deconvolution on GPU to avoid out-of-memory issue; otherwise, you may run CPU deconvolution.
 
 clear, clc;
+
+fprintf('Deconvolution demo...\n\n');
+
+% move to the LLSM5DTools root directory
+curPath = pwd;
+if ~endsWith(curPath, 'LLSM5DTools')
+    mfilePath = mfilename('fullpath');
+    if contains(mfilePath,'LiveEditorEvaluationHelper')
+        mfilePath = matlab.desktop.editor.getActiveFilename;
+    end
+    
+    mPath = fileparts(mfilePath);
+    if endsWith(mPath, 'demos')
+        cd(mPath);
+        cd('..')
+    end
+end
+
 setup();
 
 
@@ -218,7 +236,7 @@ if GPUJob && gpuDeviceCount('available') > 0
 end
 
 
-%% Step 5: deskew/rotate the deconvoluved results
+%% Step 5: deskew/rotate the deconvolved results
 
 % result folders:
 % {destPath}/LLSM5DTools_demo_cell_image_dataset/DSR/
@@ -368,7 +386,7 @@ end
 %% generate wb backprojector and decon
 %
 % the WB back projector is from the code in Guo et al. 2020 and the function 
-% is included LLSM5DTools/third_parties/WBDeconvolution for the comparision.
+% is included LLSM5DTools/third_parties/WBDeconvolution for the comparison.
 
 % back projector type
 bp_type = 'wiener-butterworth';
@@ -485,8 +503,7 @@ omw_dsr_crop = crop3d_mex(uint16(omw_dsr), bbox);
 clear omw_dsr;
 
 
-%% visualize the cropped region
-
+%% visualize the cropped region with different deconvolution methods
 
 figure, 
 set(gcf, 'color', 'w', 'position', [1, 1, 1600, 400])

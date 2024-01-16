@@ -6,6 +6,24 @@
 % that can fit to memory. 
 
 clear, clc;
+
+fprintf('Large-scale processing demo...\n\n');
+
+% move to the LLSM5DTools root directory
+curPath = pwd;
+if ~endsWith(curPath, 'LLSM5DTools')
+    mfilePath = mfilename('fullpath');
+    if contains(mfilePath,'LiveEditorEvaluationHelper')
+        mfilePath = matlab.desktop.editor.getActiveFilename;
+    end
+    
+    mPath = fileparts(mfilePath);
+    if endsWith(mPath, 'demos')
+        cd(mPath);
+        cd('..')
+    end
+end
+
 setup();
 
 

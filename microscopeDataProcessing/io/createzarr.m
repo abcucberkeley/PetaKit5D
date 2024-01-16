@@ -87,6 +87,11 @@ try
         end
     end
 catch ME
+    pe = pyenv;    
+    if pe.Status ~= "Loaded"
+        throw(ME);
+    end
+    
     disp(ME);
     disp('Use the alternative zarr initializer (ZarrAdapter)...');    
     init_val = zeros(1, dtype);
@@ -94,7 +99,7 @@ catch ME
     bim.Adapter.close();
 end
 
-if groupWrite
+if isunix && groupWrite
     try
         fileattrib(filepath, '+w', 'g');
     catch

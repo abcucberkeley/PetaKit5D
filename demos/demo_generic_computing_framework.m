@@ -5,7 +5,26 @@
 % Linux cluster with slurm. It works on local machines on Windows, Linux and MacOS. 
 
 clear, clc;
+
+fprintf('Generic computing framework demo...\n\n');
+
+% move to the LLSM5DTools root directory
+curPath = pwd;
+if ~endsWith(curPath, 'LLSM5DTools')
+    mfilePath = mfilename('fullpath');
+    if contains(mfilePath,'LiveEditorEvaluationHelper')
+        mfilePath = matlab.desktop.editor.getActiveFilename;
+    end
+    
+    mPath = fileparts(mfilePath);
+    if endsWith(mPath, 'demos')
+        cd(mPath);
+        cd('..')
+    end
+end
+
 setup();
+
 
 %% Step 1: get our demo data from zenodo/Dropbox (skip this step if the data is already downloaded)
 % download the example dataset from zenodo (https://doi.org/10.5281/zenodo.10471978) manually, 
@@ -106,7 +125,7 @@ fprintf(['The code below is just for the illustration of how to set up a functio
 % disable the code 
 if false
 
-% function [] = crop_deskew_rotate_crop_demo_function(inputFullpath, outputFullpath, skewAngle, xyPixelSize, dz, inBbox)
+% function [] = crop_deskew_rotate_demo_function(inputFullpath, outputFullpath, skewAngle, xyPixelSize, dz, inBbox)
 % the function needs the path for the input and output, along with
 % parameters. The function needs to first check if input and output exist,
 % it should skip the output file if it exists.
@@ -215,8 +234,8 @@ generic_computing_frameworks_wrapper(inputFullnames, outputFullnames, funcStrs, 
 
 % note: if there is no slurm cluster, it will run the task sequentially in
 % the current matlab session. In this situation, please delete any .tmp
-% file in the result folder from old incomplete runs if there are.
-% Otherwise, it will assume other workers are working on these tasks. 
+% file in the result folder from old incomplete runs if there are any.
+% Otherwise, the function will assume other workers are working on these tasks. 
 
 
 

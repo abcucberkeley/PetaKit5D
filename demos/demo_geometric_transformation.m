@@ -1,7 +1,26 @@
 % demo to run geometric transformation
 
 clear, clc;
+
+fprintf('Geometric transformation (deskew/rotation) demo...\n\n');
+
+% move to the LLSM5DTools root directory
+curPath = pwd;
+if ~endsWith(curPath, 'LLSM5DTools')
+    mfilePath = mfilename('fullpath');
+    if contains(mfilePath,'LiveEditorEvaluationHelper')
+        mfilePath = matlab.desktop.editor.getActiveFilename;
+    end
+    
+    mPath = fileparts(mfilePath);
+    if endsWith(mPath, 'demos')
+        cd(mPath);
+        cd('..')
+    end
+end
+
 setup();
+
 
 %% Step 1: get our demo data from zenodo/Dropbox (skip this step if the data is already downloaded)
 % download the example dataset from zenodo (https://doi.org/10.5281/zenodo.10471978) manually, 
@@ -146,7 +165,7 @@ clear im_rep;
 
 %% deskew rotation
 % size 1800 x 512 x 2000
-% Note: please make sure there is enough memory for conventional method (>125 GB)
+% Note: please make sure there is enough memory for the conventional method (>125 GB)
 
 % result folder:
 % {destPath}/LLSM5DTools_demo_cell_image_dataset/replicated/DSR/
@@ -181,7 +200,7 @@ end
 movefile([outPath, 'DSR/', fsn, '_2k.tif'], [outPath, 'DSR_combined/']);
 
 
-%% deskew/rotatin with even larger data for combined method (failed with old method in a desktop with 512 GB RAM)
+%% deskew/rotation with even larger data for combined method (failed with old method in a desktop with 512 GB RAM)
 % Note: please make sure your system has at least 60 GB RAM available
 
 % result folder:

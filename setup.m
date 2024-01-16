@@ -6,7 +6,6 @@ function setup(codeRt, addPython, pythonPath, addPrivate)
 
 
 if nargin < 1 || isempty(codeRt)
-    % code_rt = '/clusterfs/fiona/ABCCode/';
     codeRt = fileparts(which(mfilename));
 end
 
@@ -22,13 +21,16 @@ else
 end
 fprintf('Hostname: %s \n', strip(output));
 
-if nargin < 3 || isempty(pythonPath)
+if nargin < 3
+    pythonPath = '';
+end
+
+if addPython && isempty(pythonPath)
     if ispc
-        if addPython && isempty(pythonPath)
-            error('Please provide your python install path!');
-        end
+        error('Please provide your python install path!');
     else
         pythonPath = '~/anaconda3/bin/python';
+        fprintf('Use default python: %s .\n', pythonPath);        
     end
 end
 
@@ -46,17 +48,12 @@ if addPython
     try
         dir_info = dir(pythonPath);
         pe = pyenv;
-        if ~contains(pe.Executable, 'miniconda3', 'IgnoreCase', true) && ...
-                ~contains(pe.Executable, 'anaconda3', 'IgnoreCase', true) ...
-                && ~strcmp(fileparts(pe.Executable), dir_info.folder)
+        if pe.Status ~= "Loaded" && ~contains(pe.Executable, 'miniconda3', 'IgnoreCase', true) && ...
+                ~contains(pe.Executable, 'anaconda3', 'IgnoreCase', true) && ...
+                ~strcmp(fileparts(pe.Executable), dir_info.folder)
             pyenv('Version', pythonPath);
         end
 
-        % add some components from matlab R2020b for older versions.
-        if verLessThan('matlab', '9.9') 
-            addpath(genpath([codeRt, '/../third_parties/matlab_R2020b']));
-        end
-        
         % resolve license issue when using multiprocessing on Windows
         if ispc
             py.multiprocessing.spawn.set_executable(pe.Executable)

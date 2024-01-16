@@ -65,7 +65,6 @@ function [MIP] = saveMIP_zarr_axis(zarrFullname, axis_ind)
 %     disp('Done!');    
 % end
 
-
 try
     im = readzarr(zarrFullname);
     MIP = squeeze(max(im, [], axis_ind));

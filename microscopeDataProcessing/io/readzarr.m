@@ -28,10 +28,15 @@ try
         bim = blockedImage(filepath, "Adapter", CZarrAdapter);
     end
 catch ME
-    disp(ME);
     if ~exist(filepath, 'dir')
         error('zarr file %s does not exist!', filepath);
     end
+    pe = pyenv;
+    if pe.Status ~= "Loaded"
+        throw(ME);
+    end
+
+    disp(ME);
     disp('Use the alternative zarr reader (ZarrAdapter)...');   
     
     bim = blockedImage(filepath, "Adapter", ZarrAdapter);    

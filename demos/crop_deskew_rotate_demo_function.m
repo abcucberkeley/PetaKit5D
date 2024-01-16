@@ -1,4 +1,4 @@
-function [] = crop_deskew_rotate_crop_demo_function(inputFullpath, outputFullpath, skewAngle, xyPixelSize, dz, inBbox)
+function [] = crop_deskew_rotate_demo_function(inputFullpath, outputFullpath, skewAngle, xyPixelSize, dz, inBbox)
 % the function needs the path for the input and output, along with
 % parameters. The function needs to first check if input and output exist,
 % it should skip the output file if it exists.

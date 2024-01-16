@@ -70,6 +70,11 @@ try
 
     parallelWriteZarr(filepath, data, 'bbox', bbox, 'sparse', sparseData);
 catch ME
+    pe = pyenv;    
+    if pe.Status ~= "Loaded"
+        throw(ME);
+    end
+
     disp(ME);
     disp('Use the alternative zarr writer (ZarrAdapter)...');    
     if ~exist(filepath, 'dir') || (exist(filepath, 'dir') && isempty(bbox))
@@ -95,7 +100,7 @@ catch ME
     bim.Adapter.close();
 end
 
-if groupWrite && newFile
+if isunix && groupWrite && newFile
     try
         fileattrib(filepath, '+w', 'g');
     catch
