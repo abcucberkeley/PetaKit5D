@@ -169,10 +169,15 @@ return;
 % please provide your python executable path, i.e.,
 %   ~/anaconda3/envs/your_env/bin/python for linux and MacOS
 %   C:\Users\UserName\anaconda3\envs\your_env\python.EXE for Windows
-pythonPath = '/path/to/your/python';
-setup([], true, pythonPath);
+% pythonPath = '/path/to/your/python';
 
-zarrFnout_1 = sprintf('%s%s_frame_number_%d_conventional.zarr', outPath, fsn, nframe);
+pythonPath = pyenv().Executable;
+    % https://www.mathworks.com/help/matlab/matlab_external/install-supported-python-implementation.html
+setup([], true, pythonPath);
+pythonPath
+
+zarrFnout_1 = sprintf('%s%s_%d_c.zarr', outPath, fsn, nframe);
+fprintf('Writing to file : \n%s \n', zarrFnout_1);
 
 % create zarr file
 dtype = class(im_rep);

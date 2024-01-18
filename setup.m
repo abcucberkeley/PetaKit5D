@@ -22,7 +22,8 @@ end
 fprintf('Hostname: %s \n', strip(output));
 
 if nargin < 3
-    pythonPath = '';
+    pythonPath = pyenv().Executable;
+    % https://www.mathworks.com/help/matlab/matlab_external/install-supported-python-implementation.html
 end
 
 if addPython && isempty(pythonPath)
