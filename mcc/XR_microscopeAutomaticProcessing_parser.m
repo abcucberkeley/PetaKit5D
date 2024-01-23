@@ -47,7 +47,7 @@ ip.addParameter('resampleType', 'isotropic', @ischar); % resample type: given, i
 ip.addParameter('resample', [], @(x) isnumeric(x) || ischar(x)); % resample
 ip.addParameter('InputBbox', [], @(x) isnumeric(x) || ischar(x)); % bbox for input in deskew and rotate
 % stitch parameters
-ip.addParameter('stitchPipeline', 'matlab', @ischar); % matlab or zarr
+ip.addParameter('stitchPipeline', 'zarr', @ischar); % matlab or zarr
 ip.addParameter('stitchResultDir', '', @ischar);
 ip.addParameter('imageListFullpaths', '', @(x) ischar(x) || iscell(x));
 ip.addParameter('axisOrder', 'xyz', @(x) ischar(x));
