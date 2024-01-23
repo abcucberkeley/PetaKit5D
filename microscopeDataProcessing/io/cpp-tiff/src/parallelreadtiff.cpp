@@ -1,12 +1,10 @@
-#include <stdio.h>
 #include <cstdint>
-#include <math.h>
-#include <string.h>
-#include <unistd.h>
-#include <fcntl.h>
+#include <cmath>
+#include <cstring>
 #include <limits.h>
+#include <omp.h>
 #include "tiffio.h"
-#include "omp.h"
+
 
 // Backup method in case there are errors reading strips
 uint8_t readTiffParallelBak(uint64_t x, uint64_t y, uint64_t z, const char* fileName, void* tiff, uint64_t bits, uint64_t startSlice, uint8_t flipXY){

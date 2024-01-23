@@ -1,7 +1,11 @@
 #include <cstdint>
-#include <cstdlib>
 #include <cstring>
 #include <sys/stat.h>
+#include <string>
+// For std::replace
+#ifdef _WIN32
+#include <algorithm>
+#endif
 #include "tiffio.h"
 #include "helperfunctions.h"
 // Handle the tilde character in filenames on Linux/Mac
@@ -14,39 +18,51 @@ char* expandTilde(char* path) {
 }
 #endif
 
+bool folderExists(const std::string &folderName){
+    struct stat info;
+
+    if(stat(folderName.c_str(), &info) != 0)
+        return false;
+    else if(info.st_mode & S_IFDIR)
+        return true;
+    else
+        return false;
+}
+
+// Recursively make a directory
 void mkdirRecursive(const char *dir) {
-    char tmp[8192];
-    char *p = NULL;
-    size_t len;
+    if(folderExists(dir)) return;
+
+    std::string dirPath(dir);
+    if(!dirPath.size()) return;
+
+    // Convert all \\ to / if on Windows
     #ifdef _WIN32
-    char fileSep = '\\';
-    #else
-    char fileSep = '/';
+    std::replace(dirPath.begin(), dirPath.end(), '\\', '/');
     #endif
-    snprintf(tmp, sizeof(tmp),"%s",dir);
-    len = strlen(tmp);
-    if (tmp[len - 1] == fileSep)
-        tmp[len - 1] = 0;
-    for (p = tmp + 1; *p; p++){
-        if (*p == fileSep) {
-            *p = 0;
+
+    // If there is a slash at the end, remove it
+    if(dirPath.back() == '/') dirPath.pop_back();
+    
+    for(size_t i = 0; i < dirPath.size(); i++){
+        if(dirPath[i] == '/'){
+            dirPath[i] = '\0';
 
             #ifdef _WIN32
-            mkdir(tmp);
+            mkdir(dirPath.c_str());
             #else
-            mkdir(tmp, 0775);
+            mkdir(dirPath.c_str(), 0777);
             #endif
 
-            chmod(tmp, 0775);
-            *p = fileSep;
+            dirPath[i] = '/';
         }
     }
+
     #ifdef _WIN32
-    mkdir(tmp);
+    mkdir(dirPath.c_str());
     #else
-    mkdir(tmp, 0775);
+    mkdir(dirPath.c_str(), 0777);
     #endif
-    chmod(tmp, 0775);
 }
 
 void DummyHandler(const char* module, const char* fmt, va_list ap)
@@ -68,10 +84,12 @@ uint8_t isImageJIm(const char* fileName){
             }
             uint16_t compressed = 1;
             TIFFGetField(tif, TIFFTAG_COMPRESSION, &compressed);
+            TIFFClose(tif);
             if(compressed != 1) return 0;
             else return 1;
         }
     }
+    TIFFClose(tif);
     return 0;
 }
 
@@ -83,12 +101,14 @@ uint64_t imageJImGetZ(const char* fileName){
         if(strstr(tiffDesc, "ImageJ")){
             char* nZ = strstr(tiffDesc,"images=");
             if(nZ){
+                TIFFClose(tif);
                 nZ+=7;
                 char* temp;
                 return strtol(nZ,&temp,10);
             }
         }
     }
+    TIFFClose(tif);
     return 0;
 }
 

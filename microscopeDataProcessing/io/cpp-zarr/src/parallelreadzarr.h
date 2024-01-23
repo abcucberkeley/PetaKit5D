@@ -1,5 +1,6 @@
 #ifndef PARALLELREADZARR_H
 #define PARALLELREADZARR_H
+#include <cstdint>
 #include "zarr.h"
 uint8_t parallelReadZarr(zarr &Zarr, void* zarrArr,
                          const std::vector<uint64_t> &startCoords, 

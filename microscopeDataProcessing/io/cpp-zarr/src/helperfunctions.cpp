@@ -1,17 +1,12 @@
-#include <stdio.h>
-#include <stdint.h>
-#include <stdlib.h>
-#include <dirent.h>
-#include <string.h>
-#include <omp.h>
 #ifdef _WIN32
 #include <stdarg.h> 
 #include <sys/time.h>
+// For std::replace
+#include <algorithm>
 #else
 #include <uuid/uuid.h>
 #endif
 #include <sys/stat.h>
-#include <filesystem>
 #include "helperfunctions.h"
 #include "zarr.h"
 
@@ -103,36 +98,40 @@ bool folderExists(const std::string &folderName){
         return false;
 }
 
-// Recursively make a directory and set its permissions to 775
+// Recursively make a directory
 void mkdirRecursive(const char *dir) {
     if(folderExists(dir)) return;
-    char tmp[8192];
-    char *p = NULL;
-    size_t len;
-    snprintf(tmp, sizeof(tmp),"%s",dir);
-    len = strlen(tmp);
-    if (tmp[len - 1] == '/')
-        tmp[len - 1] = 0;
-    for (p = tmp + 1; *p; p++){
-        if (*p == '/') {
-            *p = 0;
+
+    std::string dirPath(dir);
+    if(!dirPath.size()) return;
+
+    // Convert all \\ to / if on Windows
+    #ifdef _WIN32
+    std::replace(dirPath.begin(), dirPath.end(), '\\', '/');
+    #endif
+
+    // If there is a slash at the end, remove it
+    if(dirPath.back() == '/') dirPath.pop_back();
+    
+    for(size_t i = 0; i < dirPath.size(); i++){
+        if(dirPath[i] == '/'){
+            dirPath[i] = '\0';
 
             #ifdef _WIN32
-            mkdir(tmp);
+            mkdir(dirPath.c_str());
             #else
-            mkdir(tmp, 0775);
+            mkdir(dirPath.c_str(), 0777);
             #endif
 
-            chmod(tmp, 0775);
-            *p = '/';
+            dirPath[i] = '/';
         }
     }
+
     #ifdef _WIN32
-    mkdir(tmp);
+    mkdir(dirPath.c_str());
     #else
-    mkdir(tmp, 0775);
+    mkdir(dirPath.c_str(), 0777);
     #endif
-    chmod(tmp, 0775);
 }
 
 bool fileExists(const std::string &fileName){

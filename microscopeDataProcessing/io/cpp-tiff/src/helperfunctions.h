@@ -1,6 +1,6 @@
 #ifndef HELPERFUNCTIONS_H
 #define HELPERFUNCTIONS_H
-#include <cstdarg>
+#include <cstdint>
 
 #ifndef _WIN32
 char* expandTilde(char* path);

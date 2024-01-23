@@ -145,7 +145,8 @@ largeMethod = 'inplace';
 % batch size to define each basic region for deconvolution (without
 % including border buffer), typically as multipler of blockSize, and can
 % fit to GPU if use GPU. 
-batchSize = [1024, 768, 768];
+% This size fits to GPUs with 24 GB or more vRAM for the demo data.
+batchSize = [512, 768, 768];
 % block size to define the zarr chunk size
 blockSize = [256, 256, 256];
 
@@ -158,6 +159,8 @@ debug = false;
 % the results will be saved in matlab_decon under the dataPaths. 
 % the next step is deskew/rotate (if in skewed space for x-stage scan) or 
 % rotate (if objective scan) or other processings. 
+
+% If using GPU, please make sure the batch can fit to GPU; otherwise, reduce batchSize
 
 % result folder:
 % {destPath}/LLSM5DTools_demo_cell_image_dataset/matlab_stitch/matlab_decon_omw/
@@ -199,7 +202,7 @@ saveZarr = true;
 % batch size for individual task, only the size in y is used, and it should
 % be the multiplier of blocksize in y. Also need to adjust accordingly
 % based on the available memory 
-BatchSize = [1024, 512, 512];
+BatchSize = [512, 512, 512];
 % block size to save the result 
 blockSize = [256, 256, 256];
 % save output as uint16 if true

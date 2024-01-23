@@ -1,25 +1,10 @@
-#include <stdio.h>
-#include <stdint.h>
-#include <stdlib.h>
-#include <dirent.h>
-#include <string.h>
-#include <omp.h>
-#include <stddef.h>
-#ifdef _WIN32
-#include <sys/time.h>
-#else
-#include <uuid/uuid.h>
-#endif
-#include <sys/stat.h>
-#include <fstream>
-#include <algorithm>
-#include "blosc.h"
+#include <cstdint>
+#include <cstring>
 #include "mex.h"
-#include "../src/parallelwritezarr.h"
 #include "../src/helperfunctions.h"
-#include "../src/zarr.h"
+#include "../src/parallelwritezarr.h"
 #include "../src/parallelreadzarr.h"
-#include "zlib.h"
+#include "../src/zarr.h"
 
 //compile
 //mex -v COPTIMFLAGS="-DNDEBUG -O3" CFLAGS='$CFLAGS -fopenmp -O3' LDFLAGS='$LDFLAGS -fopenmp -O3' '-I/global/home/groups/software/sl-7.x86_64/modules/cBlosc/2.0.4/include/' '-I/global/home/groups/software/sl-7.x86_64/modules/cBlosc/zarr/include/' '-I/global/home/groups/software/sl-7.x86_64/modules/cJSON/1.7.15/include/' '-L/global/home/groups/software/sl-7.x86_64/modules/cBlosc/zarr/lib' -lblosc '-L/global/home/groups/software/sl-7.x86_64/modules/cBlosc/2.0.4/lib64' -lblosc2 '-L/global/home/groups/software/sl-7.x86_64/modules/cJSON/1.7.15/lib64' -lcjson -luuid parallelWriteZarr.c helperFunctions.c parallelReadZarr.c

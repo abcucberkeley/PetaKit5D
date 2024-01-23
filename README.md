@@ -19,7 +19,7 @@ The main demos for the paper:
 - `demo_fast_tiff_zarr_readers_writers.m`: demo to illustrate Cpp-Tiff and Cpp-zarr readers and writers and compare with conventional readers and writers.
 - `demo_geometric_transformation.m`: demo to illustrate how to run deskew/rotation and compare between separated and combined deskew/rotation.
 - `demo_RL_deconvolution.m`: demo to illustrate how to run deconvolution and compare between conventional RL, WB (Guo et al. 2020), and OMW methods.
-- `demo_zarr_stitching.m`: demo to illustrate how to run stitching in both skewed and DSR spaces.
+- `demo_zarr_stitching.m`: demo to illustrate how to run stitching in both skewed and DSR spaces, along with the documentation for the setup of BigStitcher (Spark version) and Stitching-Spark for the stitching benchmarks in the paper.
 - `demo_large_scale_processing.m`: demo to illustrate how to set up large-scale processing for stitching, deconvolution, and deskew/rotation.
 
 

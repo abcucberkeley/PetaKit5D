@@ -1,7 +1,6 @@
 #ifndef HELPERFUNCTIONS_H
 #define HELPERFUNCTIONS_H
 #include <string>
-#include "zarr.h"
 
 #ifndef _WIN32
 const char* expandTilde(const char* path);

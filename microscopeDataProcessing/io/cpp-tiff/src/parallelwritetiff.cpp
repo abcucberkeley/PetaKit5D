@@ -1,11 +1,9 @@
-#include <stdint.h>
-#include <math.h>
-#include <stdlib.h>
-#include <string.h>
-#include "lzwencode.h"
+#include <cstdint>
+#include <cmath>
+#include <cstring>
+#include <omp.h>
 #include "tiffio.h"
-#include "omp.h"
-
+#include "lzwencode.h"
 
 uint8_t writeTiffSingle(const uint64_t x, const uint64_t y, const uint64_t z, const char* fileName, void* tiff, const void* tiffOld, const uint64_t bits, const uint64_t startSlice, const uint64_t stripSize, const char* mode, const bool transpose){
     TIFF* tif = NULL;

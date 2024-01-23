@@ -1,6 +1,6 @@
 #include "lzwencode.h"
 #include <math.h>
-#include <stdint.h>
+#include <cstdint>
 #include <assert.h>
 #include "tiffio.h"
 #define SIZEOF_WORDTYPE SIZEOF_SIZE_T

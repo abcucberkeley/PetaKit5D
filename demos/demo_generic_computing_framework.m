@@ -106,7 +106,7 @@ a.maxJobNum = maxJobNum;
 
 % save as json file
 s = jsonencode(a, PrettyPrint=true);
-configFile = [pwd, '/test_slurm_cpu_config_file.json'];
+configFile = [pwd, '/demos/test_slurm_cpu_config_file.json'];
 fid = fopen(configFile, 'w');
 fprintf(fid, s);
 fclose(fid);

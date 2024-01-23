@@ -1,6 +1,6 @@
 #ifndef PARALLELREADZARR_H
 #define PARALLELREADZARR_H
-#include <stdint.h>
+#include <cstdint>
 #include "zarr.h"
 
 uint8_t parallelWriteZarr(zarr &Zarr, void* zarrArr,

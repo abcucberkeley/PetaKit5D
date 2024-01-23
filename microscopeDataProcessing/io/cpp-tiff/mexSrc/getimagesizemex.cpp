@@ -1,9 +1,9 @@
-#include "tiffio.h"
-#include <stdio.h>
-#include <stdint.h>
-#include <string.h>
-#include "../src/helperfunctions.h"
+#include <cstdint>
+#include <cstring>
 #include "mex.h"
+#include "tiffio.h"
+#include "../src/helperfunctions.h"
+
 
 void mexFunction(int nlhs, mxArray *plhs[],
         int nrhs, const mxArray *prhs[])

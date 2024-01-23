@@ -130,7 +130,7 @@ end
 nF = numel(tileFullpaths);
 inputFullpaths = tileFullpaths;
 [~, fsnames] = fileparts(tileFullpaths);
-if nF == 1
+if nF == 1 && ~iscell(fsnames)
     fsnames = {fsnames};
 end
 

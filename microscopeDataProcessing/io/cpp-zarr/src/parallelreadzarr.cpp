@@ -1,5 +1,5 @@
 #include <fstream>
-#include <stdint.h>
+#include <cstdint>
 #include <omp.h>
 #include "parallelreadzarr.h"
 #include "blosc2.h"

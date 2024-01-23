@@ -1,6 +1,6 @@
 #ifndef ZARR_H
 #define ZARR_H
-#include <stdint.h>
+#include <cstdint>
 #include <vector>
 #include <string>
 #include <nlohmann/json.hpp>

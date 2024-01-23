@@ -1,18 +1,12 @@
-#include <stdio.h>
-#include <stdint.h>
-#include <stdlib.h>
-#include <dirent.h>
-#include <string.h>
+#include <cstdint>
+#include <cstring>
 #include <omp.h>
-#include <stddef.h>
 #ifdef _WIN32
 #include <sys/time.h>
 #else
 #include <uuid/uuid.h>
 #endif
-#include <sys/stat.h>
 #include <fstream>
-#include <algorithm>
 #include "blosc.h"
 #include "parallelreadzarr.h"
 #include "parallelwritezarr.h"

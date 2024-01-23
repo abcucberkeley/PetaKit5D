@@ -1,11 +1,7 @@
-#include <omp.h>
-#include <fstream>
-#include "../src/parallelreadzarr.h"
-#include "blosc2.h"
 #include "mex.h"
-#include "../src/zarr.h"
 #include "../src/helperfunctions.h"
-#include "zlib.h"
+#include "../src/parallelreadzarr.h"
+#include "../src/zarr.h"
 
 // TODO: FIX MEMORY LEAKS
 void mexFunction(int nlhs, mxArray *plhs[],
@@ -59,7 +55,7 @@ void mexFunction(int nlhs, mxArray *plhs[],
     }
     catch(const std::string &e){
         if(e.find("metadataFileMissing") != std::string::npos){
-            mexErrMsgIdAndTxt("zarr:zarrayError","Cannot open %s for writing. Try checking permissions or the file path.\n",e.substr(e.find(':')+1).c_str());
+            mexErrMsgIdAndTxt("zarr:zarrayError","Cannot open %s for reading. Try checking permissions or the file path.\n",e.substr(e.find(':')+1).c_str());
         }
         else if(e == "metadataIncomplete"){
             mexErrMsgIdAndTxt("zarr:zarrayError","Metadata is incomplete. Check the .zarray file");

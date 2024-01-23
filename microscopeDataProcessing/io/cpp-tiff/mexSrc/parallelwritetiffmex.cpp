@@ -1,13 +1,10 @@
-#include <stdint.h>
-#include <math.h>
-#include <stdlib.h>
-#include <string.h>
-#include <sys/stat.h>
+#include <cstdint>
+#include <cstring>
+#include "mex.h"
+#include "tiffio.h"
 #include "../src/helperfunctions.h"
 #include "../src/parallelwritetiff.h"
-#include "tiffio.h"
-#include "omp.h"
-#include "mex.h"
+
 
 void mexFunction(int nlhs, mxArray *plhs[],
                  int nrhs, const mxArray *prhs[])
