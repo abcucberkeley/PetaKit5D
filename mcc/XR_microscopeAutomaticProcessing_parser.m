@@ -71,7 +71,7 @@ ip.addParameter('cppDeconPath', '/global/home/groups/software/sl-7.x86_64/module
 ip.addParameter('loadModules', 'module load gcc/4.8.5; module load fftw/3.3.6-gcc; module load boost/1.65.1-gcc; module load libtiff/4.1.0; ', @ischar);
 ip.addParameter('cudaDeconPath', '/global/home/groups/software/sl-7.x86_64/modules/cudaDecon/bin/cudaDeconv' , @ischar);
 ip.addParameter('OTFGENPath', '/global/home/groups/software/sl-7.x86_64/modules/cudaDecon/bin/radialft' , @ischar); % point to radialft file
-ip.addParameter('DS', true, @(x) islogical(x) || ischar(x));
+ip.addParameter('DS', false, @(x) islogical(x) || ischar(x));
 ip.addParameter('DSR', false, @(x) islogical(x) || ischar(x));
 ip.addParameter('Background', [], @(x) isnumeric(x) || ischar(x));
 ip.addParameter('dzPSF', 0.1, @(x) isnumeric(x) || ischar(x));

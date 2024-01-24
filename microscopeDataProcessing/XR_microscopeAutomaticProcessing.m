@@ -180,7 +180,7 @@ ip.addParameter('cppDeconPath', '/global/home/groups/software/sl-7.x86_64/module
 ip.addParameter('loadModules', 'module load gcc/4.8.5; module load fftw/3.3.6-gcc; module load boost/1.65.1-gcc; module load libtiff/4.1.0; ', @ischar);
 ip.addParameter('cudaDeconPath', '/global/home/groups/software/sl-7.x86_64/modules/cudaDecon/bin/cudaDeconv' , @ischar);
 ip.addParameter('OTFGENPath', '/global/home/groups/software/sl-7.x86_64/modules/cudaDecon/bin/radialft' , @ischar); % point to radialft file
-ip.addParameter('DS', true, @islogical);
+ip.addParameter('DS', false, @islogical);
 ip.addParameter('DSR', false, @islogical);
 ip.addParameter('Background', [], @isnumeric);
 ip.addParameter('dzPSF', 0.1, @isnumeric);
@@ -799,9 +799,8 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all') || ...
         end
         
         if ~is_done_flag(f, 2)
-            % if the deskew result is not available, wait for the deskew data
-            % to be finished        
-            if ~parseCluster && (~exist(frameFullpath, 'file') || ~exist(frameFullpath, 'dir') || ~exist(dsrFullpath, 'file') || ~exist(dsrFullpath, 'dir'))
+            % if the deskew result is not available, wait for the deskew data to be finished        
+            if ~parseCluster && (~exist(frameFullpath, 'file') || ~exist(dsrFullpath, 'file'))
                 % if DS or DSR, it means the deskew and rotation not done.
                 continue;
             end
