@@ -223,14 +223,22 @@ parseCluster = false;
 % use master job for task computing or not. 
 masterCompute = true;
 
+% estimated memory requirement in GB
+memAllocate = 20;
+
 % configuration file for job submission
 configFile = '';
 
-% if true, use Matlab runtime (for the situation without matlab license)
+% if true, use Matlab runtime (for the situation without matlab license),
+% in this case, you can create a parser for the function, and add it to
+% mccMaster.m and compile the code with compile_mccMaster.m
+% the parser function for crop_deskew_rotate_demo_function.m is included in
+% the demo directory: crop_deskew_rotate_demo_function_parser.m
 mccMode = false;
 
 generic_computing_frameworks_wrapper(inputFullnames, outputFullnames, funcStrs, ...
-    parseCluster=parseCluster, masterCompute=masterCompute, configFile=configFile, mccMode=mccMode);
+    parseCluster=parseCluster, masterCompute=masterCompute, memAllocate=memAllocate, ...
+    configFile=configFile, mccMode=mccMode);
 
 % note: if there is no slurm cluster, it will run the task sequentially in
 % the current matlab session. In this situation, please delete any .tmp

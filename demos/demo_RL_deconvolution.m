@@ -128,6 +128,13 @@ largeFile = false;
 GPUJob = true;
 % if true, save intermediate results every 5 iterations.
 debug = false;
+% config file for the master jobs that runs on CPU node
+ConfigFile = '';
+% config file for the GPU job scheduling on GPU node
+GPUConfigFile = '';
+% if true, use Matlab runtime (for the situation without matlab license)
+mccMode = false;
+
 
 %% Step 3.2: run the deconvolution with given parameters. 
 % the results will be saved in matlab_decon under the dataPaths. 
@@ -144,7 +151,8 @@ XR_decon_data_wrapper(dataPaths, 'deconPathstr', deconPathstr, 'xyPixelSize', xy
     'Background', Background, 'CPPdecon', false, 'CudaDecon', false, 'DeconIter', DeconIter, ...
     'fixIter', fixIter, 'EdgeErosion', EdgeErosion, 'Save16bit', Save16bit, ...
     'zarrFile', zarrFile, 'parseCluster', parseCluster, 'largeFile', largeFile, ...
-    'GPUJob', GPUJob, 'debug', debug, 'cpusPerTask', cpusPerTask);
+    'GPUJob', GPUJob, 'debug', debug, 'cpusPerTask', cpusPerTask, 'ConfigFile', ConfigFile, ...
+    'GPUConfigFile', GPUConfigFile, 'mccMode', mccMode);
 
 % release GPU if using GPU computing
 if GPUJob && gpuDeviceCount('available') > 0
@@ -213,6 +221,12 @@ largeFile = false;
 GPUJob = true;
 % if true, save intermediate results every 5 iterations.
 debug = false;
+% config file for the master jobs that runs on CPU node
+ConfigFile = '';
+% config file for the GPU job scheduling on GPU node
+GPUConfigFile = '';
+% if true, use Matlab runtime (for the situation without matlab license)
+mccMode = false;
 
 %% Step 4.2: run the deconvolution with given parameters. 
 % the results will be saved in matlab_decon under the dataPaths. 
@@ -228,7 +242,8 @@ XR_decon_data_wrapper(dataPaths, 'deconPathstr', deconPathstr, 'xyPixelSize', xy
     'Background', Background, 'CPPdecon', false, 'CudaDecon', false, 'DeconIter', DeconIter, ...
     'fixIter', fixIter, 'EdgeErosion', EdgeErosion, 'Save16bit', Save16bit, ...
     'zarrFile', zarrFile, 'parseCluster', parseCluster, 'largeFile', largeFile, ...
-    'GPUJob', GPUJob, 'debug', debug, 'cpusPerTask', cpusPerTask);
+    'GPUJob', GPUJob, 'debug', debug, 'cpusPerTask', cpusPerTask, 'ConfigFile', ConfigFile, ...
+    'GPUConfigFile', GPUConfigFile, 'mccMode', mccMode);
 
 % release GPU if using GPU computing
 if GPUJob && gpuDeviceCount('available') > 0

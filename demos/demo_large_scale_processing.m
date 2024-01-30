@@ -43,6 +43,10 @@ dataPath = [destPath, '/LLSM5DTools_demo_cell_image_dataset/'];
 
 %% Step 2: stitching in the skewd space
 % the code is in demo_skewed_space_stitching.m
+%
+% note: if you would like to test the slurm cluster running of the
+% stitching, please update the parseCluster, configFile, mccMode in
+% demo_skewed_space_stitching.m
 
 % result folder:
 % {destPath}/LLSM5DTools_demo_cell_image_dataset/matlab_stitch/
@@ -154,6 +158,12 @@ blockSize = [256, 256, 256];
 GPUJob = true;
 % if true, save intermediate results every 5 iterations.
 debug = false;
+% config file for the master jobs that runs on CPU node
+ConfigFile = '';
+% config file for the GPU job scheduling on GPU node
+GPUConfigFile = '';
+% if true, use Matlab runtime (for the situation without matlab license)
+mccMode = false;
 
 %% Step 3.3: run the deconvolution with given parameters. 
 % the results will be saved in matlab_decon under the dataPaths. 
@@ -173,7 +183,13 @@ XR_decon_data_wrapper(dataPaths, 'deconPathstr', deconPathstr, 'xyPixelSize', xy
     'fixIter', fixIter, 'EdgeErosion', EdgeErosion, 'Save16bit', Save16bit, ...
     'zarrFile', zarrFile, 'batchSize', batchSize, 'blockSize', blockSize, ...
     'parseCluster', parseCluster, 'largeFile', largeFile, 'largeMethod', largeMethod, ...
-    'GPUJob', GPUJob, 'debug', debug, 'cpusPerTask', cpusPerTask);
+    'GPUJob', GPUJob, 'debug', debug, 'cpusPerTask', cpusPerTask, 'ConfigFile', ConfigFile, ...
+    'GPUConfigFile', GPUConfigFile, 'mccMode', mccMode);
+
+% release GPU if using GPU computing
+if GPUJob && gpuDeviceCount('available') > 0
+    reset(gpuDevice);
+end
 
 
 %% Step 4: large-scale deskew/rotation

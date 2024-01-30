@@ -101,6 +101,8 @@ switch functionName
         XR_imaris_conversion_data_wrapper_parser(varargin{1}, varargin{2:end});
     case 'XR_visualize_OTF_mask_segmentation'
         XR_visualize_OTF_mask_segmentation_parser(varargin{1}, varargin{2}, varargin{3});
+    case 'crop_deskew_rotate_demo_function'
+        crop_deskew_rotate_demo_function_parser(varargin{1}, varargin{2}, varargin{3}, varargin{4}, varargin{5}, varargin{6});        
 end
 
 toc(t0);

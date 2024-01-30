@@ -116,6 +116,17 @@ for i = 1 : numel(batchInds)
         obStart = floor((obStart - 1) ./ poolSize_out) + 1;
         obEnd = BatchBBoxes(i, 4 : 6);
         obEnd = floor((obEnd - 1) ./ poolSize_out) + 1;
+
+        if any(size(out_batch, 1 : 3) ~= obEnd - obStart + 1)
+            warning('The MIP out size does not match that in the bounding box!')
+            dsz = obEnd - obStart + 1 - size(out_batch);
+            if any(dsz > 0)
+                out_batch = padarray(out_batch, max(dsz, 0), 'post', 'replicate');
+            end
+            if any(dsz < 0)
+                out_batch = crop3d_mex(out_batch, [1, 1, 1, obEnd - obStart + 1 ]);
+            end
+        end
         
         % nv_bim_cell{j}.Adapter.setRegion(obStart, obEnd, out_batch);
         writezarr(out_batch, MIPFullpaths{j}, 'bbox', [obStart, obEnd])

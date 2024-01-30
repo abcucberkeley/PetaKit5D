@@ -101,6 +101,15 @@ processFunPath = '';
 % 0, to differentiate between image background and empty space. 
 TileOffset = 0;
 
+% use slurm cluster if true, otherwise use the local machine (master job)
+parseCluster = false;
+% use master job for task computing or not. 
+masterCompute = true;
+% configuration file for job submission
+configFile = '';
+% if true, use Matlab runtime (for the situation without matlab license)
+mccMode = false;
+
 
 %% Step 2: run the stitching with given parameters. 
 % the stitched results will be the zarr files in 'matlab_stitch_xcorr_feather_skewed_zarr'
@@ -114,9 +123,10 @@ XR_matlab_stitching_wrapper(dataPath, ImageListFullpath, ...
     'blockSize', blockSize, 'TileOffset', TileOffset, 'resampleType', resampleType, ...
     'resample', resample, 'Resolution', Resolution,'BlendMethod', BlendMethod, ...
     'resultDir', stitchResultDir, 'onlyFirstTP', onlyFirstTP, 'xyMaxOffset', xyMaxOffset, ...
-    'zMaxOffset', zMaxOffset, 'xcorrDownsample', xcorrDownsample,  'InputBbox', InputBbox, ...
+    'zMaxOffset', zMaxOffset, 'xcorrDownsample', xcorrDownsample, 'InputBbox', InputBbox, ...
     'tileOutBbox', tileOutBbox, 'pipeline', stitchPipeline,  'parseSettingFile', parseSettingFile, ...
-    'processFunPath', processFunPath, 'Save16bit', Save16bit, 'parseCluster', false);
+    'processFunPath', processFunPath, 'Save16bit', Save16bit, 'parseCluster', parseCluster, ...
+    'masterCompute', masterCompute, 'configFile', configFile, 'mccMode', mccMode);
 toc
 
 

@@ -39,6 +39,10 @@ dataPath = [destPath, '/LLSM5DTools_demo_cell_image_dataset/'];
 %% skewed space stitching
 % the skewed space stitching is in another demo demo_skewed_space_stitching.m
 % please refer to that demo for the details, here we directly run that demo
+%
+% note: if you would like to test the slurm cluster running of the
+% stitching, please update the parseCluster, configFile, mccMode in
+% demo_skewed_space_stitching.m
 
 % result folder:
 % {destPath}/LLSM5DTools_demo_cell_image_dataset/matlab_stitch/

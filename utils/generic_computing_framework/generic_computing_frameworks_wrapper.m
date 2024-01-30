@@ -141,9 +141,10 @@ end
 switch clusterType
     case 'slurm'
         if ~isempty(MemAllocate) && cpusPerTask * MemPerCPU < MemAllocate
-            cpusPerTask = min(maxCPUNum, max([minCPUNum, cpusPerTask, ceil(MemAllocate / MemPerCPU)]));
+            cpusPerTask = ceil(MemAllocate / MemPerCPU);
         end
-        
+        cpusPerTask = min(maxCPUNum, max(minCPUNum, cpusPerTask));
+
         if (ismcc || isdeployed || mccMode) && parseCluster
             % only allow master compute if the job itself is in mcc or deployed mode.
             masterCompute = (ismcc || isdeployed) && masterCompute;
