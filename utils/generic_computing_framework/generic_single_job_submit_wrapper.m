@@ -46,6 +46,31 @@ ip.addParameter('ConfigFile', '', @ischar); % cluster configuration file that ov
 
 ip.parse(funcStr, job_id, task_id, varargin{:});
 
+% move to the root path
+funcFn = which(mfilename);
+paths = split(funcFn, 'LLSM5DTools');
+cd(paths{1});
+setupFn = [paths{1}, 'setup.m'];
+% use the setup within LLSM5DTools
+if ismcc || isdeployed
+    if ~ispc
+        cd('/tmp/');
+    else
+        if ~exist(setupFn, 'file')
+            cd('../');
+        end
+    end
+else
+    if ~exist(setupFn, 'file')
+        if ispc
+            paths = split(funcFn, 'utils\generic_computing_framework');
+        else
+            paths = split(funcFn, 'utils/generic_computing_framework');        
+        end
+        cd(paths{1});    
+    end
+end
+
 pr = ip.Results;
 ConfigFile = pr.ConfigFile;
 

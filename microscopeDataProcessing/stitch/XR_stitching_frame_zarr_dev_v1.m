@@ -891,7 +891,7 @@ if ~exist(nv_fullname, 'dir') && ~all(is_done_flag)
     end
 end
 
-if ~debug
+if ~debug && exist(zarrFlagPath, 'dir')
     rmdir(zarrFlagPath, 's');
 end
 
