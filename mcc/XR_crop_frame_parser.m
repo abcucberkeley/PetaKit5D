@@ -35,11 +35,13 @@ zarrFile = pr.zarrFile;
 largeZarr = pr.largeZarr;
 saveZarr = pr.saveZarr;
 BlockSize = pr.BlockSize;
+mccMode = pr.mccMode;
+ConfigFile = pr.ConfigFile;
 
-if ischar(dataFullpath)
+if ischar(dataFullpath) && strcmp(dataFullpath(1), '{')
     dataFullpath = eval(dataFullpath);
 end
-if ischar(saveFullpath)
+if ischar(saveFullpath) && strcmp(saveFullpath(1), '{')
     saveFullpath = eval(saveFullpath);
 end
 if ischar(bbox)
@@ -67,8 +69,8 @@ if ischar(mccMode)
     mccMode = strcmp(mccMode, 'true');
 end
 
-XR_crop_dataset(dataFullpath,saveFullpath,bbox,'overwrite',overwrite, ...
-    'cropType',cropType,'pad',pad,'zarrFile',zarrFile,'largeZarr',...
-    largeZarr,'saveZarr',saveZarr,'BlockSize',BlockSize, mccMode=mccMode, ConfigFile=ConfigFile);
+XR_crop_frame(dataFullpath,saveFullpath,bbox,'overwrite',overwrite,'pad',pad, ...
+    'zarrFile',zarrFile,'largeZarr',largeZarr,'saveZarr',saveZarr,'BlockSize',BlockSize, ...
+    mccMode=mccMode, ConfigFile=ConfigFile);
 
 end

@@ -178,16 +178,37 @@ for f = 1 : nF
     % tline = sprintf('%s %s %s %s \n', MCCMasterStr, MCRParam, func_name, var_str);
     % check output file in bash to avoid waste of time in loading mcc program if the output file exists.
     if isempty(finalOutFullpath)
-        tlineStrs{f} = sprintf('if [ ! -f %s ]; then MCR_CACHE_ROOT=%s %s %s %s %s ; else echo output %s already exists; fi\n', ...
-            outputFullpaths{f}, MCRCacheRoot, MCCMasterStr, MCRParam, func_name, var_str, outputFullpaths{f});
+        if isunix
+            tlineStrs{f} = sprintf(['if [ ! -f "%s" ]; then MCR_CACHE_ROOT=%s ', ...
+                '%s "%s" %s %s ; else echo output "%s" already exists; fi\n'], ...
+                outputFullpaths{f}, MCRCacheRoot, MCCMasterStr, MCRParam, func_name, ...
+                var_str, outputFullpaths{f});
+        else
+            tlineStrs{f} = sprintf(['if not exist "%s" ( "%s" %s %s ) else ', ...
+                '( echo output "%s" already exists ) \n' ], outputFullpaths{f}, ...
+                MCCMasterStr, func_name, var_str, outputFullpaths{f});            
+        end
     else
-        tlineStrs{f} = sprintf('if [ ! -f %s ] && [ ! -f %s ] && [ ! -d %s ]; then MCR_CACHE_ROOT=%s %s %s %s %s ; else echo output %s already exists; fi\n', ...
-            outputFullpaths{f}, finalOutFullpath, finalOutFullpath, MCRCacheRoot, MCCMasterStr, MCRParam, func_name, var_str, outputFullpaths{f});
+        if isunix
+            tlineStrs{f} = sprintf('if [ ! -f "%s" ] && [ ! -f "%s" ] && [ ! -d "%s" ]; ', ... 
+                'then MCR_CACHE_ROOT=%s %s "%s" %s %s ; else echo output %s already exists; fi\n', ...
+                outputFullpaths{f}, finalOutFullpath, finalOutFullpath, MCRCacheRoot, ...
+                MCCMasterStr, MCRParam, func_name, var_str, outputFullpaths{f});
+        else
+            tlineStrs{f} = sprintf(['if not exist "%s" if not exist "%s" if not exist "%s" ', ...
+                '( "%s" %s %s ) else ( echo output "%s" already exists ) \n'], ...
+                outputFullpaths{f}, finalOutFullpath, finalOutFullpath, MCCMasterStr, ...
+                func_name, var_str, outputFullpaths{f});
+        end
     end
 end
 
 for b = 1 : nB
-    inputFn = sprintf('%s/input_%d.txt', funcInputDir, b);
+    if isunix
+        inputFn = sprintf('%s/input_%d.txt', funcInputDir, b);
+    else
+        inputFn = sprintf('%s/input_%d.bat', funcInputDir, b);
+    end        
     
     task_mat = task_inds_cell{b};
     if runExtraTasks
@@ -221,7 +242,11 @@ for b = 1 : nB
     end
 
     fid = fopen(inputFn, 'w');
-    fprintf(fid, strjoin(tlineStrs(task_mat), ''));
+    if isunix
+        fprintf(fid, strjoin(tlineStrs(task_mat), ''));        
+    else
+        fprintf(fid, ['@echo off\n' strjoin(tlineStrs(task_mat), '')]);        
+    end
     fclose(fid);
 end
 
@@ -379,7 +404,11 @@ while (~parseCluster && ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
         end
         
         f = fs(end);
-        inputFn = sprintf('%s/input_%d.txt', funcInputDir, b);
+        if isunix
+            inputFn = sprintf('%s/input_%d.txt', funcInputDir, b);
+        else
+            inputFn = sprintf('%s/input_%d.bat', funcInputDir, b);
+        end
 
         % set parameter to skip job submission step in case of reaching max job
         % number and masterCompute is true
@@ -498,7 +527,11 @@ while (~parseCluster && ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
             fprintf('Process %s with function %s... \n', strjoin(fsnames(fs), ', '), func_str);             
             if ~GNUparallel
                 % process_cmd = func_str;
-                cmd = sprintf(['%s; bash %s'], BashLaunchStr, inputFn);
+                if isunix
+                    cmd = sprintf(['%s; bash %s'], BashLaunchStr, inputFn);
+                else
+                    cmd = sprintf(['cmd /c "%s"'], inputFn);
+                end
             else
                 if GPUJob
                     paraJobNum_f = max(1, min(paraJobNum - 1, round(paraJobNum * masterParaFactor)));

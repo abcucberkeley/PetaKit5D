@@ -4,6 +4,9 @@ function [func_name, var_str] = convert_function_string_to_mcc_string(func_str)
 
 for j = 1 : numel(var_cell)
     var_j = var_cell{j};
+    if ispc
+        var_j = strrep(var_j, '''', '"');
+    end
     if strcmp(var_j(1), '{')
         var_j = '"' + string(var_j) + '"';
     end

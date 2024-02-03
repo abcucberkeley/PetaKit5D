@@ -61,15 +61,17 @@ end
 %
 %load all images in the TIF stack to a single 3D matrix:
 warning('off','all') % Suppress all the tiff warnings
-tstack  = Tiff(filenm);
-[I,J] = size(tstack.read());
-K = length(imfinfo(filenm));
-PSF3D = zeros(I,J,K);
-PSF3D(:,:,1)  = tstack.read();
-for n = 2:K
-    tstack.nextDirectory()
-    PSF3D(:,:,n) = tstack.read();
-end
+% tstack  = Tiff(filenm);
+% [I,J] = size(tstack.read());
+% K = length(imfinfo(filenm));
+% PSF3D = zeros(I,J,K);
+% PSF3D(:,:,1)  = tstack.read();
+% for n = 2:K
+%     tstack.nextDirectory()
+%     PSF3D(:,:,n) = tstack.read();
+% end
+PSF3D = readtiff(filenm);
+
 %%convert from integer type to double:
 %PSF3D = woof;
 PSF3Dexp = cast(PSF3D, 'double');

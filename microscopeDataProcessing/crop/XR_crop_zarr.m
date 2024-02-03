@@ -149,6 +149,9 @@ end
 if exist(cropTempPath, 'dir')
     movefile(cropTempPath, cropFullpath);
 end
+if exist(zarrFlagPath, 'dir')
+    rmdir(zarrFlagPath, 's');
+end
 
 % generate MIPs 
 XR_MIP_zarr(cropFullpath, 'axis', [1, 1, 1], mccMode=mccMode, ConfigFile=ConfigFile);

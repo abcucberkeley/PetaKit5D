@@ -59,12 +59,16 @@ end
 if ischar(dataPaths)
     dataPaths = {dataPaths};
 end
-
 nd = numel(dataPaths);
+if ispc
+    for d = 1 : nd
+        dataPaths{d} = strrep(dataPaths{d}, '\', '/');
+    end
+end
 for d = 1 : nd
     dataPath = dataPaths{d};
-    if ~strcmp(dataPath(end), filesep)
-        dataPaths{d} = [dataPath, filesep];
+    if ~strcmp(dataPath(end), '/')
+        dataPaths{d} = [dataPath, '/'];
     end
 end
 
