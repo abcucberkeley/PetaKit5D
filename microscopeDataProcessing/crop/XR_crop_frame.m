@@ -23,6 +23,7 @@ ip.addParameter('largeZarr', false, @islogical); % use zarr file as input
 ip.addParameter('saveZarr', false , @islogical); % save as zarr
 ip.addParameter('BlockSize', [500, 500, 500] , @isnumeric); % save as zarr
 ip.addParameter('uuid', '', @ischar);
+ip.addParameter('parseCluster', true, @islogical);
 ip.addParameter('mccMode', false, @islogical);
 ip.addParameter('ConfigFile', '', @ischar);
 
@@ -36,6 +37,7 @@ largeZarr = pr.largeZarr;
 saveZarr = pr.saveZarr;
 BlockSize = pr.BlockSize;
 uuid = pr.uuid;
+parseCluster = pr.parseCluster;
 mccMode = pr.mccMode;
 ConfigFile = pr.ConfigFile;
 
@@ -64,7 +66,6 @@ end
 if zarrFile
     if largeZarr
         BatchSize = min([1024, 1024, 1024], BlockSize * 4);
-        parseCluster = true;
         parseParfor = false;
         XR_crop_zarr(dataFullpath, saveFullpath, bbox, 'pad', pad, 'BatchSize', BatchSize, ...
             'BlockSize', BlockSize, 'parseCluster', parseCluster, 'parseParfor', parseParfor, ...

@@ -19,6 +19,7 @@ ip.addParameter('MinThreshold', 0, @(x) isnumeric(x) || ischar(x)); % if left em
 ip.addParameter('MaxThreshold', [], @(x) isnumeric(x) || ischar(x)); % if left empty, will use OTSU to calculate intensity to threshold;
 ip.addParameter('BaseThreshold', [], @(x) isnumeric(x) || ischar(x)); % if left empty, will use OTSU to calculate intensity to threshold;
 ip.addParameter('volThrsh', 1000, @(x) isvector(x) || ischar(x)); % set to zere if no "pre-cleaning" is necessary to remove high-freq noise; second value is for the DAN channel
+ip.addParameter('offset', 0, @(x) isnumeric(x) || ischar(x)); % offset to add to the cleaned image to make the background non-zero
 ip.addParameter('localWinSize', [15, 15, 23], @(x) isvector(x) || ischar(x)); % local window size for cropping local region
 ip.addParameter('SigmaThrsh', 4, @(x) isnumeric(x) || ischar(x)); % sigma threshold for point detection
 ip.addParameter('intThrsh', 10000, @(x) isnumeric(x) || ischar(x)); % intensity threshold for the peak to be removed
@@ -37,6 +38,7 @@ MinThreshold = pr.MinThreshold;
 MaxThreshold = pr.MaxThreshold;
 BaseThreshold = pr.BaseThreshold;
 volThrsh = pr.volThrsh;
+offset = pr.offset;
 localWinSize = pr.localWinSize;
 SigmaThrsh = pr.SigmaThrsh;
 intThrsh = pr.intThrsh;
@@ -78,6 +80,9 @@ end
 if ischar(volThrsh)
     volThrsh = str2num(volThrsh);
 end
+if ischar(offset)
+    offset = str2num(offset);
+end
 if ischar(localWinSize)
     localWinSize = str2num(localWinSize);
 end
@@ -97,7 +102,7 @@ end
 XR_ExM_PunctaRemoval_updated_block(batchInds, zarrFullpath, outFullpath, flagFullname, ...
     BatchBBoxes, RegionBBoxes, localBBoxes, Overwrite=Overwrite, Sigma=Sigma, ...
     OTSUMaxPer=OTSUMaxPer, MinThreshold=MinThreshold, MaxThreshold=MaxThreshold, ...
-    BaseThreshold=BaseThreshold, volThrsh=volThrsh, localWinSize=localWinSize, ...
+    BaseThreshold=BaseThreshold, volThrsh=volThrsh, offset=offset, localWinSize=localWinSize, ...
     SigmaThrsh=SigmaThrsh, intThrsh=intThrsh, initDetect=initDetect, detVolThrsh=detVolThrsh, ...
     uuid=uuid, debug=debug)
 
