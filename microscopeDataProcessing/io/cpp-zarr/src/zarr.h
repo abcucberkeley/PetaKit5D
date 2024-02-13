@@ -34,6 +34,7 @@ public:
     void set_dtype(const std::string &dtype);
     const std::string &get_fill_value() const;
     void set_fill_value(const std::string &fill_value);
+    void set_fill_value(const int64_t &fill_value);
     const std::string &get_order() const;
     void set_order(const std::string &order);
     const uint64_t &get_shape(const uint64_t &index) const;

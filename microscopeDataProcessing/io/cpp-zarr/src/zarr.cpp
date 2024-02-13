@@ -88,8 +88,8 @@ zarr_format(2), subfolders({0,0,0}), shard(false), chunk_shape({1,1,1})
             else fill_value = zarray.at("fill_value");
             // TODO: Make NaN actually NaN here and in other functions
             if(fill_value == "null" || fill_value == "NaN") fill_value = "0";
-            else if(fill_value == "Infinity") std::numeric_limits<uint64_t>::max();
-            else if(fill_value == "-Infinity") std::numeric_limits<uint64_t>::min();
+            else if(fill_value == "Infinity") fill_value = std::to_string(std::numeric_limits<int64_t>::max());
+            else if(fill_value == "-Infinity") fill_value = std::to_string(std::numeric_limits<int64_t>::min());
         }
         //filters = "";
 
@@ -200,6 +200,10 @@ void zarr::set_fill_value(const std::string &fill_value){
     this->fill_value = fill_value;
 }
 
+void zarr::set_fill_value(const int64_t &fill_value){
+    this->fill_value = std::to_string(fill_value);
+}
+
 const std::string &zarr::get_order() const{
     return order;
 }
@@ -246,14 +250,17 @@ void zarr::set_jsonValues(){
     // dimension_separator only if dimension_separator is "/"
     if(dimension_separator == "/") zarray["dimension_separator"] = dimension_separator;
 
-    // filters null for now
     zarray["dtype"] = dtype;
-    zarray["fill_value"] = fill_value;
+    if(fill_value == "NaN") zarray["fill_value"] = fill_value;
+    else if(fill_value == "null") zarray["fill_value"] = nullptr;
+    else if(fill_value == "Infinity") zarray["fill_value"] = std::numeric_limits<int64_t>::max();
+    else if(fill_value == "-Infinity") zarray["fill_value"] = std::numeric_limits<int64_t>::min();
+    else zarray["fill_value"] = std::stoll(fill_value);
     zarray["filters"] = nullptr;
-    zarray["order"] = order;
+    zarray["order"] = order;    
+    zarray["shape"] = shape;
 
     // zarr_format just 2 for now
-    zarray["shape"] = shape;
     zarray["zarr_format"] = 2;
     
     // Only add the subfolder parameter if subfolders is not all zeros

@@ -23,6 +23,7 @@ ip.addParameter('largeZarr', false, @(x) islogical(x) || ischar(x)); % use zarr 
 ip.addParameter('saveZarr', false , @(x) islogical(x) || ischar(x)); % save as zarr
 ip.addParameter('BlockSize', [500, 500, 500] , @(x) isnumeric(x) || ischar(x)); % save as zarr
 ip.addParameter('uuid', '', @ischar);
+ip.addParameter('parseCluster', true, @(x) islogical(x) || ischar(x));
 ip.addParameter('mccMode', false, @(x) islogical(x) || ischar(x));
 ip.addParameter('ConfigFile', '', @ischar);
 
@@ -35,6 +36,7 @@ zarrFile = pr.zarrFile;
 largeZarr = pr.largeZarr;
 saveZarr = pr.saveZarr;
 BlockSize = pr.BlockSize;
+parseCluster = pr.parseCluster;
 mccMode = pr.mccMode;
 ConfigFile = pr.ConfigFile;
 
@@ -65,12 +67,15 @@ end
 if ischar(BlockSize)
     BlockSize = str2num(BlockSize);
 end
+if ischar(parseCluster)
+    parseCluster = strcmp(parseCluster, 'true');
+end
 if ischar(mccMode)
     mccMode = strcmp(mccMode, 'true');
 end
 
 XR_crop_frame(dataFullpath,saveFullpath,bbox,'overwrite',overwrite,'pad',pad, ...
     'zarrFile',zarrFile,'largeZarr',largeZarr,'saveZarr',saveZarr,'BlockSize',BlockSize, ...
-    mccMode=mccMode, ConfigFile=ConfigFile);
+    parseCluster=parseCluster, mccMode=mccMode, ConfigFile=ConfigFile);
 
 end
