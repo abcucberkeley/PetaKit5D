@@ -1,11 +1,53 @@
 % demo to run microscope automatic pipeline for a single dataset without stitch
 
-%% Step 1: set parameters for each step. 
+% note: this demo is designed for quick processing of raw microscopy data 
+% during acquistion, providing fast feedback and inspection. For final
+% processing after acquistion, follow the functions outlined in the stitching, 
+% deconvolution, geometric transformation, and large-scale processing demos.
+
+
+clear, clc;
+
+fprintf('Microscopy pipeline for a single dataset...\n\n');
+
+% move to the LLSM5DTools root directory
+curPath = pwd;
+if ~endsWith(curPath, 'LLSM5DTools')
+    mfilePath = mfilename('fullpath');
+    if contains(mfilePath,'LiveEditorEvaluationHelper')
+        mfilePath = matlab.desktop.editor.getActiveFilename;
+    end
+    
+    mPath = fileparts(mfilePath);
+    if endsWith(mPath, 'demos')
+        cd(mPath);
+        cd('..')
+    end
+end
+
+setup();
+
+
+%% Step 1: get our demo data from zenodo/Dropbox (skip this step if the data is already downloaded)
+% download the example dataset from zenodo (https://doi.org/10.5281/zenodo.10471978) manually, 
+% or use the code below to download the data from Dropbox
+if ispc
+    destPath = fullfile(getenv('USERPROFILE'), 'Downloads');
+    destPath = strrep(destPath, '\', '/');
+else
+    destPath = '~/Downloads/';
+end
+demo_data_downloader(destPath);
+
+dataPath = [destPath, '/LLSM5DTools_demo_cell_image_dataset/'];
+
+
+%% Step 2: set parameters for each step. 
 % add the software to the path
 addpath(genpath('../'));
 
 % data path
-dataPath = '/clusterfs/fiona/Data/20200806_p35p4_Hex_Raptv_234-1_DLS/Exp01/';
+% defined above
 
 % general parameters.
 % pixel size in xy-plane
@@ -30,50 +72,27 @@ cpusPerTask = 24;
 Deskew = true; % deskew
 Rotate = true; % rotate after deskew
 Stitch = false; % stitch
-Decon = true; % deconvolution
+Decon = false; % deconvolution
 RotateAfterDecon = true; % rotate after deconvolution
 
-
 % flat field parameters (if LLFFCorrection is set to true) 
-LLFFCorrection = false;
+LLFFCorrection = true;
 % flat field image paths in the order of CamB_ch0 and CamA_ch0
-LSImagePaths = {'/clusterfs/fiona/Data/20200803_LLCPKI/20200803_Calibration/FF/AVG_488nm.tif',...
-'/clusterfs/fiona/Data/20200803_LLCPKI/20200803_Calibration/FF/AVG_560nm.tif'};
+LSImagePaths = {[dataPath, '/FF/averaged/ff_CamB_ch0_CAM1_stack0000_488nm_0000000msec_0096911533msecAbs_000x_000y_000z_0017t.tif'],...
+                [dataPath, '/FF/averaged/ff_CamA_ch0_CAM1_stack0000_488nm_0000000msec_0096911533msecAbs_000x_000y_000z_0017t.tif']};
 
 % camera background image paths in the order of CamB and CamA
-BackgroundPaths = {'/clusterfs/fiona/OrcaDC/Aang/Orca_Aang_AVG_Cam_B.tif',...
-    '/clusterfs/fiona/OrcaDC/Aang/Orca_Aang_AVG_Cam_A.tif'};
-
-
-% deconvolution parameters
-% by default, cpp decon is used 
-% cpp decon path
-cppDeconPath = '/global/home/groups/software/sl-7.x86_64/modules/RLDecon_CPU/20200718/build-cluster/cpuDeconv';
-% if the dependency libraries are not loaded, we may also need to load the
-% libraries. 
-% loadModules = '';
-cppDecon = true;
-% if cppDecon and cudaDecon (false by default) are false, it uses matlab decon
-% uncomment the line to use matlab decon. 
-% cppDecon = false;
-
-% psf full paths in the order of CamB_ch0 and CamA_ch0
-PSFFullpaths = {'/clusterfs/fiona/Data/20200806_p35p4_Hex_Raptv_234-1_DLS/20200806_Calibration/PSF/Hex/TotPSF_488_CamB_3.tif', ...
-'/clusterfs/fiona/Data/20200806_p35p4_Hex_Raptv_234-1_DLS/20200806_Calibration/PSF/Hex/TotPSF_560_CamA_5.tif'};
-% background for deconvolution
-Background = 100;
-% If Stitch is true, it will use stitched data as input. Otherwise, use DS,
-% DSR to specify use DS or DSR, or raw (both DS and DSR false) as input
-DS = true;
-DSR = false;
-
+BackgroundPaths = {[dataPath, '/FF/KorraFusions/AVG_DF400_CamB_10ms.tif'],...
+                   [dataPath, '/FF/KorraFusions/AVG_DF400_CamA_10ms.tif']};
 
 
 %% Step 2: run the analysis with given parameters. 
+
 XR_microscopeAutomaticProcessing(dataPath, 'xyPixelSize', xyPixelSize, 'dz', dz,  ...
     'Reverse', Reverse, 'ChannelPatterns', ChannelPatterns, 'Save16bit', Save16bit, ...
     'Overwrite', Overwrite,'Streaming', Streaming, 'Deskew', Deskew, 'Rotate', Rotate, ...
-    'Stitch', Stitch, 'Decon', Decon, 'cppDecon', cppDecon, 'cppDeconPath', cppDeconPath, ...
-    'RotateAfterDecon', RotateAfterDecon, 'PSFFullpaths', PSFFullpaths,'DS', DS, ...
-    'DSR', DSR, 'Background', Background, 'cpusPerTask', cpusPerTask);
+    'Stitch', Stitch, 'Decon', Decon, 'RotateAfterDecon', RotateAfterDecon, ...
+    'cpusPerTask', cpusPerTask);
+
+
 

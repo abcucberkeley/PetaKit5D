@@ -61,7 +61,7 @@ pr = ip.Results;
 ConfigFile = pr.ConfigFile;
 
 persistent ConfigFile_orig confData confModDate;
-if ~isempty(ConfigFile)
+if ~isempty(ConfigFile) && ConfigFile ~= ""
     if ~exist(ConfigFile, 'file')
         error('The cluster configuration file %s does not exist, please check and provide the right one!', ConfigFile);
     end

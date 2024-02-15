@@ -142,7 +142,7 @@ ip.addParameter('Save16bit', false, @islogical);
 ip.addParameter('EdgeArtifacts', 0, @isnumeric);
 ip.addParameter('distBboxes', [], @isnumeric); % bounding boxes for distance transform
 ip.addParameter('saveMIP', true, @islogical);
-ip.addParameter('stitchMIP', [], @(x) islogical(x) && (numel(x) == 1 || numel(x) == 3)); % 1x3 vector or vector, by default, stitch MIP-z
+ip.addParameter('stitchMIP', [], @(x) isempty(x)  || (islogical(x) && (numel(x) == 1 || numel(x) == 3))); % 1x3 vector or vector, by default, stitch MIP-z
 ip.addParameter('onlineStitch', false, @(x) islogical(x)); % support for online stitch (with partial number of tiles). 
 ip.addParameter('bigStitchData', false, @(x) islogical(x)); % support for online stitch (with partial number of tiles). 
 ip.addParameter('pipeline', 'zarr', @(x) strcmpi(x, 'matlab') || strcmpi(x, 'zarr'));

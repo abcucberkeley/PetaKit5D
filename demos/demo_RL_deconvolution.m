@@ -97,6 +97,8 @@ PSFFullpaths = {
 % RL method
 RLmethod = 'omw';
 % wiener filter parameter
+% alpha parameter should be adjusted based on SNR and data quality.
+% typically 0.002 - 0.01 for SNR ~20; 0.02 - 0.1 or higher for SNR ~7
 wienerAlpha = 0.005;
 % OTF thresholding parameter
 OTFCumThresh = 0.9;
@@ -446,6 +448,8 @@ XR_visualize_OTF_mask_segmentation(psfFn, OTFCumThresh, skewed);
 
 % generate omw backprojector
 % wiener filter parameter
+% alpha parameter should be adjusted based on SNR and data quality.
+% typically 0.002 - 0.01 for SNR ~20; 0.02 - 0.1 or higher for SNR ~7
 alpha = 0.005;
 % true if the PSF is in skew space
 skewed = true;

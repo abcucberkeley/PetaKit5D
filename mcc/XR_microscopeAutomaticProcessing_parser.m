@@ -61,7 +61,7 @@ ip.addParameter('timepoints', [], @(x) isnumeric(x) || ischar(x)); % stitch for 
 ip.addParameter('boundboxCrop', [], @(x) isnumeric(x) && (isempty(x) || all(size(x) == [3, 2]) || numel(x) == 6) || ischar(x));
 ip.addParameter('primaryCh', '', @ischar);
 % Integrate stitchMIP Later
-ip.addParameter('stitchMIP', [], @(x) (islogical(x) && (numel(x) == 1 || numel(x) == 3)) || ischar(x)); % 1x3 vector or vector, byt default, stitch MIP-z
+ip.addParameter('stitchMIP', [], @(x) isempty(x) || (islogical(x) && (numel(x) == 1 || numel(x) == 3)) || ischar(x)); % 1x3 vector or vector, by default, stitch MIP-z
 ip.addParameter('onlineStitch', false, @(x) islogical(x) || ischar(x)); % support for online stitch (with partial number of tiles). 
 ip.addParameter('generateImageList', '', @(x) ischar(x)); % for real time processing, {'', 'from_encoder', 'from_sqlite'}
 % decon parameters
@@ -316,9 +316,8 @@ if ischar(boundboxCrop)
 end
 
 if ischar(stitchMIP)
-    stitchMIP = eval(stitchMIP);
+    stitchMIP = str2num(stitchMIP);
 end
-
 if ischar(onlineStitch)
     onlineStitch = strcmp(onlineStitch,'true');
 end

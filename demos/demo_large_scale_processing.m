@@ -115,7 +115,9 @@ PSFFullpaths = {
 % RL method
 RLmethod = 'omw';
 % wiener filter parameter for CamA and CamB, respectively
-wienerAlpha = [0.008, 0.005];
+% alpha parameter should be adjusted based on SNR and data quality.
+% typically 0.002 - 0.01 for SNR ~20; 0.02 - 0.1 or higher for SNR ~7
+wienerAlpha = [0.05, 0.005];
 % OTF thresholding parameter
 OTFCumThresh = 0.9;
 % true if the PSF is in skew space
