@@ -27,7 +27,9 @@ The main demos for the paper:
 The software has an easy-to-use Graphical User Interface (GUI) without writing any code in another repository: [LLSM_Processing_GUI](https://github.com/abcucberkeley/LLSM_Processing_GUI). The GUI supports Windows, MacOS, and Linux (Ubuntu). For instructions on the installation and the usage of the LLSM_Processing_GUI, visit the [GUI wiki page](https://github.com/abcucberkeley/LLSM_Processing_GUI/wiki).
 
 ## Fast Tiff/Zarr readers and writers
-We also created independent repositories for Tiff/Zarr readers and writers for users who only need those functions: [Cpp-Tiff](https://github.com/abcucberkeley/cpp-tiff) and [Cpp-zarr](https://github.com/abcucberkeley/cpp-zarr).
+We created independent repositories for Tiff/Zarr readers and writers for users who only need those functions: [Cpp-Tiff](https://github.com/abcucberkeley/cpp-tiff) and [Cpp-zarr](https://github.com/abcucberkeley/cpp-zarr).
+
+We combined our Tiff/Zarr readers and [ImarisWriter](https://github.com/imaris/ImarisWriter) to develop a parallelized Imaris converter for Tiff and Zarr files. The C++ source code for this tool is available as an indepenent repository: [Parallel_Imaris_Writer](https://github.com/abcucberkeley/Parallel_Imaris_Writer).
 
 Based on these readers and writers, we also developed a Fiji Plugin for faster reading and writing of Tiff and Zarr files within Fiji, which can be accessed from [Parallel_Fiji_Visualizer](https://github.com/abcucberkeley/Parallel_Fiji_Visualizer).
 

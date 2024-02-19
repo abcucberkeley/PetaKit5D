@@ -14,7 +14,7 @@ ip.addRequired('dsFactors');
 ip.addParameter('bbox', [], @isnumeric); % bbox for input
 ip.addParameter('blockSize', [256, 256, 256], @isnumeric); % blcoksize
 ip.addParameter('batchSize', [512, 512, 512], @isnumeric); % size to process in one batch 
-ip.addParameter('zarrSubSize', [20, 20, 20], @isnumeric);
+ip.addParameter('zarrSubSize', [], @isnumeric);
 ip.addParameter('BorderSize', [5, 5, 5], @isnumeric); % padded boarder for each batch
 ip.addParameter('Interp', 'linear', @(x) any(strcmpi(x, {'cubic', 'linear', 'nearest'})));
 ip.addParameter('parseCluster', true, @islogical);
@@ -106,7 +106,12 @@ if exist(dsTmppath, 'dir')
     end
 end
 if ~exist(dsTmppath, 'dir')
-    createzarr(dsTmppath, dataSize=ds_size, blockSize=blockSize, dtype=dtype, zarrSubSize=zarrSubSize);
+    dimSeparator = '.';
+    if prod(ceil(ds_size ./ blockSize)) > 10000
+        dimSeparator = '/';
+    end
+    createzarr(dsTmppath, dataSize=ds_size, blockSize=blockSize, dtype=dtype, ...
+        zarrSubSize=zarrSubSize, dimSeparator=dimSeparator);
 end
 
 taskSize = max(5, ceil(numBatch / 5000)); % the number of batches a job should process
