@@ -4,7 +4,11 @@ Tools for efficient and scalable processing of petabyte-scale 5D live images or 
 
 ## Usage
 
-The tools have been tested with MATLAB R2022b-R2023a for Linux (Ubuntu), Windows, and MacOS. Here are the steps to use the software:
+The tools have been tested with MATLAB R2022b-R2023a for Linux (Ubuntu), Windows, and MacOS. Toolboxes required: 
+
+`Image Processing Toolbox, Optimization Toolbox, Parallel Computing Toolbox, Signal Processing Toolbox, and Statistics and Machine Learning Toolbox.`
+
+ Here are the steps to use the software:
 1. Get the source code by either cloning the GitHub repository or downloading the ZIP file. If downloading the zip file, unzip the file to a directory.
 2. Launch MATLAB, navigate to the software's root directory, and add the software to the path with `setup.m` in the command window.
 ```
