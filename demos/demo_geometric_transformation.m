@@ -44,14 +44,39 @@ dataPath = [destPath, '/LLSM5DTools_demo_cell_image_dataset/'];
 % {destPath}/LLSM5DTools_demo_cell_image_dataset/DSR/
 
 dataPath_exps = {dataPath};
+% run deskew if true
+Deskew = true;
+% run rotation if true
+Rotate = true;
+% use combined processing if true. Note: if you only need deskew without
+% rotation, set both Rotate and DSRCombined as false.
+DSRCombined = true;
 % xy pixel size
 xyPixelSize = 0.108;
 % z scan step size
 dz = 0.3;
+% Skew angle
+SkewAngle = 32.45;
+% if true, objective scan; otherwise, sample scan
+ObjectiveScan = false;
 % scan direction
 Reverse = true;
 % channel patterns to map the files for processing
 ChannelPatterns = {'CamA', 'CamB'};
+
+% flat field related parameters
+% disable flat field for this demo
+LLFFCorrection = false;
+% lower bound cap for flat field
+LowerLimit = 0.4;
+% constant offset after flat field correction
+constOffset = 1;
+% flat field image paths
+LSImagePaths = {[dataPath, 'FF/averaged/ff_CamA_ch0_CAM1_stack0000_488nm_0000000msec_0096911533msecAbs_000x_000y_000z_0017t.tif'], ...
+                [dataPath, 'FF/averaged/ff_CamB_ch0_CAM1_stack0000_488nm_0000000msec_0096911533msecAbs_000x_000y_000z_0017t.tif']};
+% background image paths
+BackgroundPaths = {[dataPath, 'FF/KorraFusions/AVG_DF400_CamA_10ms.tif'], ...
+                   [dataPath, 'FF/KorraFusions/AVG_DF400_CamB_10ms.tif']};
 
 % if true, use large scale processing pipeline (split, process, and then merge)
 largeFile = false;
@@ -73,8 +98,11 @@ configFile = '';
 % if true, use Matlab runtime (for the situation without matlab license)
 mccMode = false;
 
-XR_deskew_rotate_data_wrapper(dataPath_exps, xyPixelSize=xyPixelSize, dz=dz, ...
-    Reverse=Reverse, ChannelPatterns=ChannelPatterns, largeFile=largeFile, ...
+XR_deskew_rotate_data_wrapper(dataPath_exps, Deskew=Deskew, Rotate=Rotate, ...
+    DSRCombined=DSRCombined, xyPixelSize=xyPixelSize, dz=dz, SkewAngle=SkewAngle, ...
+    ObjectiveScan=ObjectiveScan, Reverse=Reverse, ChannelPatterns=ChannelPatterns, ...
+    LLFFCorrection=LLFFCorrection, LowerLimit=LowerLimit, constOffset=constOffset, ...
+    LSImagePaths=LSImagePaths, BackgroundPaths=BackgroundPaths, largeFile=largeFile, ...
     zarrFile=zarrFile, saveZarr=saveZarr, blockSize=blockSize, Save16bit=Save16bit, ...
     parseCluster=parseCluster, masterCompute=masterCompute, configFile=configFile, ...
     mccMode=mccMode);

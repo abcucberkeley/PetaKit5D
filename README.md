@@ -4,7 +4,7 @@ Tools for efficient and scalable processing of petabyte-scale 5D live images or 
 
 ## Usage
 
-The tools have been tested with MATLAB R2022b-R2023a for Linux (Ubuntu), Windows, and MacOS. Toolboxes required: 
+The tools have been tested with MATLAB R2022b-R2023a for Linux (Ubuntu 22.04), Windows (10 and 11), and MacOS (14). Toolboxes required:
 
 `Image Processing Toolbox, Optimization Toolbox, Parallel Computing Toolbox, Signal Processing Toolbox, and Statistics and Machine Learning Toolbox.`
 

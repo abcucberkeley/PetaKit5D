@@ -94,7 +94,37 @@ tileOutBbox = [];
 % chunk size in zarr
 blockSize = [256, 256, 256];
 
-% user defined processing function in tiff to zarr conversion, i.e., flat field correction
+% user defined processing function in tiff to zarr conversion, i.e., flat-field correction
+% here is the example code to enable flat field correction
+% define path to put the user defined function string (for the flat-field correction here).
+tmpPath = [dataPath, '/tmp/processFunc/'];
+mkdir(tmpPath);
+processFunPath = cell(numel(ChannelPatterns), 1);
+% lower bound cap for flat-field
+LowerLimit = 0.4;
+% if true, subtract background image from flat-field image first;
+% otherwise, use flat-field image as it is.
+LSBackground = false;
+% flat field image paths
+LSImagePaths = {[dataPath, 'FF/averaged/ff_CamA_ch0_CAM1_stack0000_488nm_0000000msec_0096911533msecAbs_000x_000y_000z_0017t.tif'], ...
+                [dataPath, 'FF/averaged/ff_CamB_ch0_CAM1_stack0000_488nm_0000000msec_0096911533msecAbs_000x_000y_000z_0017t.tif']};
+% background image paths
+BackgroundPaths = {[dataPath, 'FF/KorraFusions/AVG_DF400_CamA_10ms.tif'], ...
+                   [dataPath, 'FF/KorraFusions/AVG_DF400_CamB_10ms.tif']};
+% offset to add after flat-field correction
+TileOffset = 1;
+% date time to create a subfolder with the time stamp for the function string mat file.
+dt = char(datetime('now', 'Format', 'yyyyMMddHHmmSS'));
+for i = 1 : numel(ChannelPatterns)
+    usrFun = sprintf("@(x)processFFCorrectionFrame(x,'%s','%s',%d,%d,%s)", ...
+        LSImagePaths{i}, BackgroundPaths{i}, TileOffset, LowerLimit, string(LSBackground));
+
+    fn = sprintf('%s/processFunction_c%04d_%s.mat', tmpPath, i, dt);
+    save('-v7.3', fn, 'usrFun');
+    processFunPath{i} = fn;
+end
+
+% Currently, flat field correction is disabled in the demo. Comment this line to enable it.
 processFunPath = '';
 
 % tile offset: counts add to the image, used when the image background is

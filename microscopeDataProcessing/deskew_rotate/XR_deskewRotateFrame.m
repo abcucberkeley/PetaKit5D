@@ -73,9 +73,11 @@ ZstageScan = pr.ZstageScan;
 InputBbox = pr.InputBbox;
 flipZstack = pr.flipZstack;
 LLFFCorrection = pr.LLFFCorrection;
+LowerLimit = pr.LowerLimit;
 BKRemoval = pr.BKRemoval;
 LSImage = pr.LSImage;
 BackgroundImage = pr.BackgroundImage;
+constOffset = pr.constOffset;
 Save16bit = pr.Save16bit;
 save3DStack = pr.save3DStack;
 SaveMIP = pr.SaveMIP;
@@ -147,7 +149,11 @@ if ~DSRCombined
             fileattrib(dsPath, '+w', 'g');
         end
     end
-    dsFullname = [dsPath, fsname, '.tif'];
+    if saveZarr
+        dsFullname = [dsPath, fsname, '.zarr'];
+    else
+        dsFullname = [dsPath, fsname, '.tif'];
+    end
 end
 
 if (~DSRCombined && (~exist(dsFullname, 'file') || ip.Results.Overwrite)) || DSRCombined
@@ -183,15 +189,18 @@ if (~DSRCombined && (~exist(dsFullname, 'file') || ip.Results.Overwrite)) || DSR
         
     % flat field correction
     if LLFFCorrection
+        fprintf(['Flat-field correction for frame %s...\n', ...
+            '  Flat-field image: %s\n  Background image: %s\n'], ...
+            framePath{1}, LSImage, BackgroundImage);
         LSIm = readtiff(LSImage);
         BKIm = readtiff(BackgroundImage);            
-        frame = GU_LSFlatFieldCorrection(frame,LSIm,BKIm,'LowerLimit', ip.Results.LowerLimit, ...
-            'constOffset', ip.Results.constOffset);
+        frame = XR_LSFlatFieldCorrection(frame,LSIm,BKIm,'LowerLimit', LowerLimit, ...
+            'constOffset', constOffset);
     end
     % remove camera background
     if BKRemoval
         BKIm = readtiff(BackgroundImage);
-        frame = XR_CameraBackgroundRemoval(frame, BKIm, 'constOffset', ip.Results.constOffset);
+        frame = XR_CameraBackgroundRemoval(frame, BKIm, 'constOffset', constOffset);
     end
 
     if ~DSRCombined
@@ -261,10 +270,10 @@ if (~DSRCombined && (~exist(dsFullname, 'file') || ip.Results.Overwrite)) || DSR
                 mip = uint16(mip);
             end
             if saveZarr
-                dsMIPname = sprintf('%s%s_MIP_z.tif', dsMIPPath, fsname);                
+                dsMIPname = sprintf('%s%s_MIP_z.zarr', dsMIPPath, fsname);
                 writetiff(mip, dsMIPname);
             else
-                dsMIPname = sprintf('%s%s_MIP_z.zarr', dsMIPPath, fsname);                
+                dsMIPname = sprintf('%s%s_MIP_z.tif', dsMIPPath, fsname);
                 writezarr(mip, dsMIPname);
             end
         end
@@ -329,7 +338,11 @@ if ip.Results.Rotate || DSRCombined
         if ~DSRCombined
             fprintf('Rotate frame %s...\n', framePath{1});
             if ~exist('ds', 'var')
-                ds = single(readtiff(dsFullname));
+                if saveZarr
+                    ds = single(readzarr(dsFullname));
+                else
+                    ds = single(readtiff(dsFullname));
+                end
                 sz = getImageSize(framePath{1});
                 for i = 2 : numel(framePath)
                     sz_i = getImageSize(framePath{i});
