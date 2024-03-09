@@ -13,7 +13,7 @@ ip.addParameter('lastStart', [], @(x) isnumeric(x) || ischar(x)); % start coordi
 ip.addParameter('ChannelPatterns', {'CamA_ch0', 'CamB_ch0'}, @(x) iscell(x) || ischar(x));
 ip.addParameter('zarrFile', false , @(x) islogical(x) || ischar(x)); % read zarr
 ip.addParameter('largeZarr', false, @(x) islogical(x) || ischar(x)); % use zarr file as input
-ip.addParameter('saveZarr', false , @(x) islogical || ischar(x)); % save as zarr
+ip.addParameter('saveZarr', false , @(x) islogical(x) || ischar(x)); % save as zarr
 ip.addParameter('BlockSize', [500, 500, 500] , @(x) isnumeric(x) || ischar(x)); % save as zarr
 ip.addParameter('Save16bit', false, @(x) islogical(x) || ischar(x));
 ip.addParameter('parseCluster', true, @(x) islogical(x) || ischar(x));
