@@ -205,7 +205,7 @@ end
 if ischar(taskSize)
     taskSize = str2num(taskSize);
 end
-if ischar(constOffset)
+if ischar(resample)
     resample = str2num(resample);
 end
 if ischar(maskFns)
