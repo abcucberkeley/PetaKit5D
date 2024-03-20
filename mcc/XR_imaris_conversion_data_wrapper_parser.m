@@ -13,7 +13,7 @@ ip.addParameter('zarrFile', false, @(x) islogical(x) || ischar(x)); % use zarr f
 ip.addParameter('blockSize', [64, 64, 64], @(x) isnumeric(x) || ischar(x)); % y, x, z
 ip.addParameter('bbox', [], @(x) isnumeric(x) || ischar(x)); % ymin, xmin, zmin, ymax, xmax, zmax
 ip.addParameter('timepoints', [], @(x) isnumeric(x) || ischar(x)); % number of time points included
-ip.addParameter('ImsConverter', '/clusterfs/fiona/matthewmueller/imarisWriter/writeImarisParallel', @(x) islogical(x) || ischar(x));
+ip.addParameter('ImsConverter', '/clusterfs/fiona/matthewmueller/imarisWriter/writeImarisParallel', @(x) ischar(x));
 ip.addParameter('parseCluster', true, @(x) islogical(x) || ischar(x));
 ip.addParameter('jobLogDir', '../job_logs', @ischar);
 ip.addParameter('cpusPerTask', 24, @(x) isnumeric(x) || ischar(x));

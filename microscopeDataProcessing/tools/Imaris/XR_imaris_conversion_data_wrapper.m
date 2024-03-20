@@ -19,7 +19,7 @@ ip.addParameter('zarrFile', false, @islogical); % use zarr file as input
 ip.addParameter('blockSize', [64, 64, 64], @isnumeric); % y, x, z
 ip.addParameter('bbox', [], @isnumeric); % ymin, xmin, zmin, ymax, xmax, zmax
 ip.addParameter('timepoints', [], @isnumeric); % number of time points included
-ip.addParameter('ImsConverter', '/clusterfs/fiona/matthewmueller/imarisWriter/writeImarisParallel', @islogical);
+ip.addParameter('ImsConverter', '/clusterfs/fiona/matthewmueller/imarisWriter/writeImarisParallel', @ischar);
 ip.addParameter('parseCluster', true, @islogical);
 ip.addParameter('jobLogDir', '../job_logs', @ischar);
 ip.addParameter('cpusPerTask', 24, @isnumeric);
