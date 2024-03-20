@@ -215,7 +215,7 @@ if ischar(tileOutBbox)
     tileOutBbox = str2num(tileOutBbox);
 end
 if ischar(TileOffset)
-    TileOffset = strcmp(TileOffset,'true');
+    TileOffset = str2num(TileOffset);
 end
 if ischar(Resolution)
     Resolution = str2num(Resolution);
