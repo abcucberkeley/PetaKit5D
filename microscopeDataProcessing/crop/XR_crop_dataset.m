@@ -58,6 +58,10 @@ uuid = pr.uuid;
 mccMode = pr.mccMode;
 ConfigFile = pr.ConfigFile;
 
+if isempty(uuid)
+    uuid = get_uuid();
+end
+
 % temporary directory for intermediate results
 if ischar(dataPaths)
     dataPaths = {dataPaths};

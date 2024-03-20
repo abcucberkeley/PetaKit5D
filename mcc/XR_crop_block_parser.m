@@ -21,6 +21,7 @@ ip.parse(batchInds, zarrFullpath, cropFullpath, flagFullname, BatchBBoxes, Regio
 pr = ip.Results;
 Overwrite = pr.Overwrite;
 uuid = pr.uuid;
+debug = pr.debug;
 
 if ischar(batchInds)
     batchInds = str2num(batchInds);
@@ -34,6 +35,9 @@ end
 if ischar(Overwrite)
     Overwrite = strcmp(Overwrite,'true');
 end
+if ischar(debug)
+    debug = strcmp(debug,'true');
+end
 
 XR_crop_block(batchInds,zarrFullpath,cropFullpath,flagFullname,BatchBBoxes,...
-    RegionBBoxes,'Overwrite',Overwrite,'uuid',uuid);
+    RegionBBoxes,'Overwrite',Overwrite,'uuid',uuid, debug=debug);

@@ -36,6 +36,7 @@ zarrFile = pr.zarrFile;
 largeZarr = pr.largeZarr;
 saveZarr = pr.saveZarr;
 BlockSize = pr.BlockSize;
+uuid = pr.uuid;
 parseCluster = pr.parseCluster;
 mccMode = pr.mccMode;
 ConfigFile = pr.ConfigFile;
@@ -76,6 +77,6 @@ end
 
 XR_crop_frame(dataFullpath,saveFullpath,bbox,'overwrite',overwrite,'pad',pad, ...
     'zarrFile',zarrFile,'largeZarr',largeZarr,'saveZarr',saveZarr,'BlockSize',BlockSize, ...
-    parseCluster=parseCluster, mccMode=mccMode, ConfigFile=ConfigFile);
+    uuid=uuid, parseCluster=parseCluster, mccMode=mccMode, ConfigFile=ConfigFile);
 
 end

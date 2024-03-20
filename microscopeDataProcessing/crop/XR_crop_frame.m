@@ -41,6 +41,10 @@ parseCluster = pr.parseCluster;
 mccMode = pr.mccMode;
 ConfigFile = pr.ConfigFile;
 
+if isempty(uuid)
+    uuid = get_uuid();
+end
+
 if ~exist(dataFullpath, 'file')
     warning('The file %s does not exist!', dataFullpath);
     return;
@@ -68,8 +72,8 @@ if zarrFile
         BatchSize = min([1024, 1024, 1024], BlockSize * 4);
         parseParfor = false;
         XR_crop_zarr(dataFullpath, saveFullpath, bbox, 'pad', pad, 'BatchSize', BatchSize, ...
-            'BlockSize', BlockSize, 'parseCluster', parseCluster, 'parseParfor', parseParfor, ...
-            mccMode=mccMode, ConfigFile=ConfigFile);
+            'BlockSize', BlockSize, 'uuid', uuid, 'parseCluster', parseCluster, ...
+            'parseParfor', parseParfor, mccMode=mccMode, ConfigFile=ConfigFile);
         return;
     end
     im = readzarr(dataFullpath, 'bbox', bbox_1);
@@ -94,9 +98,6 @@ if pad
 end
 
 % save data
-if isempty(uuid)
-    uuid = get_uuid();
-end
 if saveZarr
     tmpPath = sprintf('%s_%s.zarr', saveFullpath(1 : end - 5), uuid);
     writezarr(im, tmpPath, 'BlockSize', BlockSize);    
