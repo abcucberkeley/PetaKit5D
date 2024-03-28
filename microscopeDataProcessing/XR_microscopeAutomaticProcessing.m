@@ -66,7 +66,7 @@ function [] = XR_microscopeAutomaticProcessing(dataPaths, varargin)
 %       'maxTrialNum' : Max number of times to rerun failure cases. 
 %      'unitWaitTime' : The wait time per file in minutes to check whether the computing is done.
 %     'minModifyTime' : The minimum time in minutes for the latest modified file to decide whether it is fully transferred.
-%     'maxModifyTime' :  The maximum time in minutes to check whether there are coming new files.
+%     'maxModifyTime' : The maximum time in minutes to check whether there are coming new files.
 %    'maxWaitLoopNum' : Number of maximum loops without any computing. Default: 10
 %
 %
@@ -203,8 +203,8 @@ ip.addParameter('cpusPerTask', 1, @isnumeric);
 ip.addParameter('uuid', '', @ischar);
 ip.addParameter('maxTrialNum', 3, @isnumeric);
 ip.addParameter('unitWaitTime', 1, @isnumeric);
-ip.addParameter('minModifyTime', 1, @isnumeric); % the minimum during of last modify time of a file, in minute.
-ip.addParameter('maxModifyTime', 10, @isnumeric); % the maximum during of last modify time of a file, in minute.
+ip.addParameter('minModifyTime', 1, @isnumeric); % the minimum duration of last modify time of a file, in minute.
+ip.addParameter('maxModifyTime', 10, @isnumeric); % the maximum duration of last modify time of a file, in minute.
 ip.addParameter('maxWaitLoopNum', 10, @isnumeric); % the max number of loops the loop waits with all existing files processed. 
 ip.addParameter('mccMode', false, @islogical);
 ip.addParameter('ConfigFile', '', @ischar);

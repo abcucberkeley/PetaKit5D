@@ -13,7 +13,7 @@ cd(fileparts(which(mfilename)));
 addpath(genpath('../'));
 
 %  rt is the root directory of datasets (if all datasets are within this folder)
-dataPath = {'/clusterfs/fiona/Data/20200806_p35p4_Hex_Raptv_234-1_DLS/Exp01/', ...
+dataPaths = {'/clusterfs/fiona/Data/20200806_p35p4_Hex_Raptv_234-1_DLS/Exp01/', ...
             '/clusterfs/fiona/Data/20200806_p35p4_Hex_Raptv_234-1_DLS/Exp02/', ...
             '/clusterfs/fiona/Data/20200806_p35p4_Hex_Raptv_234-1_DLS/Exp03/'};            
 
@@ -32,9 +32,17 @@ Save16bit = [true, true, true, true];
 Overwrite = false;
 % Processing for existing dataset
 Streaming = false;
+% use cluster for processing if true
+parseCluster = true;
 % number of cores for the pipeline (only for ABC cluster). For other
-% environment, this setting will be ignored. 
+% cluster environment, the number of core is determined by the larger one of this
+% setting and the estimated one based on the configFile. This setting is
+% ignored for local environment. 
 cpusPerTask = 24;
+% configuration file for job submission
+configFile = '';
+% if true, use Matlab runtime (for the situation without matlab license)
+mccMode = false;
 
 % define which step is included in the analysis
 Deskew = true; % deskew
@@ -43,6 +51,7 @@ Stitch = true; % stitch
 Decon = false; % deconvolution
 RotateAfterDecon = false; % rotate after deconvolution
 
+DSRCombined = true; % bypassing deskew and use combined processing
 
 % flat field parameters (if LLFFCorrection is set to true) 
 LLFFCorrection = true;
@@ -56,17 +65,35 @@ BackgroundPaths = {'/clusterfs/fiona/OrcaDC/Aang/Orca_Aang_AVG_Cam_B.tif',...
 
 % stitch parameters
 % image list csv file path for each dataset
-ImageListFullpaths = {[dataPath{1}, 'ImageList_Exp01.csv'], ...
-                      [dataPath{2}, 'ImageList_Exp02.csv'], ...
-                      [dataPath{3}, 'ImageList_Exp03.csv']};
+ImageListFullpaths = {[dataPaths{1}, 'ImageList_Exp01.csv'], ...
+                      [dataPaths{2}, 'ImageList_Exp02.csv'], ...
+                      [dataPaths{3}, 'ImageList_Exp03.csv']};
 % axis order for coordinates
 axisOrder = '-x,y,z';
 
+% parameters for real-time processing and feedback (when Streaming is true)
+% The minimum time in minutes for the latest modified file to decide whether it is fully transferred.
+minModifyTime = 1;
+% The maximum time in minutes to check whether there are coming new files.
+maxModifyTime = 10;
+% Number of maximum loops without any computing.
+maxWaitLoopNum = 10;
+
 
 %% Step 2: run the analysis with given parameters. 
-XR_microscopeAutomaticProcessing(dataPath, 'xyPixelSize', xyPixelSize, 'dz', dz,  ...
+
+% result folders:
+% {dataPaths}/DS/    (only when DSRCombined is false)
+% {dataPaths}/DSR/   
+% {dataPaths}/matlab_stitch/    
+
+XR_microscopeAutomaticProcessing(dataPaths, 'xyPixelSize', xyPixelSize, 'dz', dz,  ...
     'Reverse', Reverse, 'ChannelPatterns', ChannelPatterns, 'Save16bit', Save16bit, ...
     'Overwrite', Overwrite, 'Streaming', Streaming, 'Deskew', Deskew, 'Rotate', Rotate, ...
     'Stitch', Stitch, 'Decon', Decon, 'RotateAfterDecon', RotateAfterDecon, ...
-    'ImageListFullpaths', ImageListFullpaths, 'axisOrder', axisOrder, 'cpusPerTask', cpusPerTask);
+    'ImageListFullpaths', ImageListFullpaths, 'axisOrder', axisOrder, 'DSRCombined', DSRCombined, ...
+    'minModifyTime', minModifyTime, 'maxModifyTime', maxModifyTime, 'maxWaitLoopNum', maxWaitLoopNum, ...
+    'parseCluster', parseCluster, 'cpusPerTask', cpusPerTask, 'configFile', configFile, ...
+    'mccMode', mccMode);
+
 

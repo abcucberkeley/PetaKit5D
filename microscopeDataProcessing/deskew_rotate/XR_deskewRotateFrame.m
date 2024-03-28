@@ -271,10 +271,10 @@ if (~DSRCombined && (~exist(dsFullname, 'file') || ip.Results.Overwrite)) || DSR
             end
             if saveZarr
                 dsMIPname = sprintf('%s%s_MIP_z.zarr', dsMIPPath, fsname);
-                writetiff(mip, dsMIPname);
+                writezarr(mip, dsMIPname);
             else
                 dsMIPname = sprintf('%s%s_MIP_z.tif', dsMIPPath, fsname);
-                writezarr(mip, dsMIPname);
+                writetiff(mip, dsMIPname);
             end
         end
 

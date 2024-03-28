@@ -903,14 +903,16 @@ if saveMultires
 end
 
 % nv_fullname = sprintf('%s/%s/%s.zarr', dataPath, ResultDir, fsname_first(1:end-21));
-if ~exist(nv_fullname, 'dir')
-    movefile(nv_tmp_fullname, nv_fullname);
-else
-    if any(stitchMIP)
-        rmdir(nv_fullname, 's');
-        movefile(nv_tmp_fullname, nv_fullname);        
+if exist(nv_tmp_fullname, 'dir')
+    if ~exist(nv_fullname, 'dir')
+        movefile(nv_tmp_fullname, nv_fullname);
     else
-        rmdir(nv_tmp_fullname, 's');
+        if any(stitchMIP)
+            rmdir(nv_fullname, 's');
+            movefile(nv_tmp_fullname, nv_fullname);        
+        else
+            rmdir(nv_tmp_fullname, 's');
+        end
     end
 end
 

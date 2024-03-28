@@ -62,18 +62,28 @@ ChannelPatterns = {'CamB_ch0', 'CamA_ch0'};
 Save16bit = [true, true, true, true];
 % not overwrite existing results
 Overwrite = false;
-% Processing for existing dataset
+% Processing for existing dataset if false
 Streaming = false;
+% use cluster for processing if true
+parseCluster = true;
 % number of cores for the pipeline (only for ABC cluster). For other
-% environment, this setting will be ignored. 
+% cluster environment, the number of core is determined by the larger one of this
+% setting and the estimated one based on the configFile. This setting is
+% ignored for local environment. 
 cpusPerTask = 24;
+% configuration file for job submission
+configFile = '';
+% if true, use Matlab runtime (for the situation without matlab license)
+mccMode = false;
 
 % define which step is included in the analysis
 Deskew = true; % deskew
 Rotate = true; % rotate after deskew
 Stitch = false; % stitch
 Decon = false; % deconvolution
-RotateAfterDecon = true; % rotate after deconvolution
+RotateAfterDecon = false; % rotate after deconvolution
+
+DSRCombined = true; % bypassing deskew and use combined processing
 
 % flat field parameters (if LLFFCorrection is set to true) 
 LLFFCorrection = true;
@@ -85,14 +95,28 @@ LSImagePaths = {[dataPath, '/FF/averaged/ff_CamB_ch0_CAM1_stack0000_488nm_000000
 BackgroundPaths = {[dataPath, '/FF/KorraFusions/AVG_DF400_CamB_10ms.tif'],...
                    [dataPath, '/FF/KorraFusions/AVG_DF400_CamA_10ms.tif']};
 
+% parameters for real-time processing and feedback (when Streaming is true)
+% The minimum time in minutes for the latest modified file to decide whether it is fully transferred.
+minModifyTime = 1;
+% The maximum time in minutes to check whether there are coming new files.
+maxModifyTime = 10;
+% Number of maximum loops without any computing.
+maxWaitLoopNum = 10;
 
-%% Step 2: run the analysis with given parameters. 
+
+%% Step 3: run the analysis with given parameters. 
+
+% result folders:
+% {destPath}/LLSM5DTools_demo_cell_image_dataset/DS/    (only when DSRCombined is false)
+% {destPath}/LLSM5DTools_demo_cell_image_dataset/DSR/
 
 XR_microscopeAutomaticProcessing(dataPath, 'xyPixelSize', xyPixelSize, 'dz', dz,  ...
     'Reverse', Reverse, 'ChannelPatterns', ChannelPatterns, 'Save16bit', Save16bit, ...
     'Overwrite', Overwrite,'Streaming', Streaming, 'Deskew', Deskew, 'Rotate', Rotate, ...
     'Stitch', Stitch, 'Decon', Decon, 'RotateAfterDecon', RotateAfterDecon, ...
-    'cpusPerTask', cpusPerTask);
+    'DSRCombined', DSRCombined, 'minModifyTime', minModifyTime, 'maxModifyTime', maxModifyTime, ...
+    'maxWaitLoopNum', maxWaitLoopNum, 'parseCluster', parseCluster, 'cpusPerTask', cpusPerTask, ...
+    'configFile', configFile, 'mccMode', mccMode);
 
 
 
