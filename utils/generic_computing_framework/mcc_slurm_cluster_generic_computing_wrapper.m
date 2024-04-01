@@ -377,10 +377,11 @@ while (~parseCluster && ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
             fsnames{f} = fsname;
             if ~parseCluster
                 if isempty(tmpDir)
-                    tmpFullpath = sprintf('%s/%s.tmp', outputDir, fsname);
+                    curTmpDir = outputDir;
                 else
-                    tmpFullpath = sprintf('%s/%s.tmp', tmpDir, fsname);            
+                    curTmpDir = tmpDir;
                 end
+                tmpFullpath = sprintf('%s/%s.tmp', curTmpDir, fsname);
             end
             
             % if exist(outputFullpath, 'file') || exist(outputFullpath, 'dir')
@@ -413,8 +414,9 @@ while (~parseCluster && ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
         % set parameter to skip job submission step in case of reaching max job
         % number and masterCompute is true
         skip_job_submission = false;
-        if parseCluster && sum(job_status_mat(~is_done_flag(1 : taskBatchNum : nF), 1) >= 0) >= maxJobNum
-            skip_job_submission = true;
+        if parseCluster && nB > maxJobNum
+            job_done_flag = arrayfun(@(x) all(is_done_flag((x-1)*taskBatchNum+1 : min(x*taskBatchNum, nF))), 1 : nB)';
+            skip_job_submission = sum(job_status_mat(1 : taskBatchNum : nF, 1) >= 0 & ~job_done_flag) >= maxJobNum;
         end
         
         func_str = strjoin(funcStrs(fs), ';');
@@ -505,7 +507,7 @@ while (~parseCluster && ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
                 end
             end
         else
-            if ~parseCluster
+            if ~parseCluster && exist(curTmpDir, 'dir')
                 fclose(fopen(tmpFullpath, 'w'));
             end
         end

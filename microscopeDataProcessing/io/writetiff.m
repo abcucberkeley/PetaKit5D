@@ -30,20 +30,28 @@ end
 
 switch lower(Mode)
     case 'parallel'
-        try
-            pstr = fileparts(filepath);
-            if ~exist(pstr, 'dir')
-                mkdir_recursive(pstr);
+        use_alternative_writer = false;
+        if strcmp(options.compress, 'lzw')
+            try
+                pstr = fileparts(filepath);
+                if ~exist(pstr, 'dir')
+                    mkdir_recursive(pstr);
+                end
+                parallelWriteTiff(filepath, img, 'w');
+            catch ME
+                disp(ME)
+                use_alternative_writer = true;
             end
-            parallelWriteTiff(filepath, img, 'w');
-        catch ME
-            disp(ME)
+        else
+            use_alternative_writer = true;
+        end
+        if use_alternative_writer
             disp('Use the alternative tiff writer (saveastiff)...');
             options.message = false;
             options.overwrite = true;
-            saveastiff(img, filepath, options);            
+            saveastiff(img, filepath, options);
         end
-    case 'libtiff'
+    case {'libtiff', 'imwrite'}
         options.message = false;
         options.overwrite = true;
         saveastiff(img, filepath, options);
