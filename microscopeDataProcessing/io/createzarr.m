@@ -15,6 +15,7 @@ arguments
     options.expand2dDim (1, 1) logical = true  % expand the z dimension for 2d data
     options.groupWrite (1, 1) logical = true
     options.compressor char = 'zstd'
+    options.clevel (1, 1) {mustBeNumeric} = 1
     options.zarrSubSize (1, :) {mustBeNumeric} = []
     options.dimSeparator char = '.'
 end
@@ -27,6 +28,7 @@ order = options.order;
 expand2dDim = options.expand2dDim;
 groupWrite = options.groupWrite;
 compressor = options.compressor;
+clevel = options.clevel;
 zarrSubSize = options.zarrSubSize;
 dimSeparator = options.dimSeparator;
 
@@ -69,21 +71,21 @@ try
     if isempty(zarrSubSize)
         if isempty(shardSize)
             createZarrFile(filepath, 'chunks', blockSize, 'dtype', ddtype, 'order', order, ...
-                'shape', dataSize, 'cname', compressor, 'clevel', 1, 'dimension_separator', dimSeparator);
+                'shape', dataSize, 'cname', compressor, 'clevel', clevel, 'dimension_separator', dimSeparator);
         else
             createZarrFile(filepath, 'chunks', blockSize, 'chunk_shape', shardSize, ...
                 'dtype', ddtype, 'order', order, 'shape', dataSize, 'cname', compressor, ...
-                'clevel', 1, 'dimension_separator', dimSeparator);
+                'clevel', clevel, 'dimension_separator', dimSeparator);
         end
     else
         if isempty(shardSize) 
             createZarrFile(filepath, 'chunks', blockSize, 'dtype', ddtype, 'order', order, ...
-                'shape', dataSize, 'cname', compressor, 'clevel', 1, 'subfolders', zarrSubSize, ...
+                'shape', dataSize, 'cname', compressor, 'clevel', clevel, 'subfolders', zarrSubSize, ...
                 'dimension_separator', dimSeparator);
         else
             createZarrFile(filepath, 'chunks', blockSize, 'chunk_shape', shardSize, ...
                 'dtype', ddtype, 'order', order, 'shape', dataSize, 'cname', compressor, ...
-                'clevel', 1, 'subfolders', zarrSubSize, 'dimension_separator', dimSeparator);            
+                'clevel', clevel, 'subfolders', zarrSubSize, 'dimension_separator', dimSeparator);
         end
     end
 catch ME
