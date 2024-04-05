@@ -31,7 +31,7 @@ sCMOSCameraFlip = pr.sCMOSCameraFlip;
 Save16bit = pr.Save16bit;
 uuid = pr.uuid;
 
-if ischar(framePaths) && strcmp(framePaths(1), '{')
+if ischar(framePaths) && ~isempty(framePaths) && strcmp(framePaths(1), '{')
     framePaths = eval(framePaths);
 end
 if ischar(xyPixelSize)

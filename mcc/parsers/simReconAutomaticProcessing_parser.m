@@ -152,10 +152,10 @@ SlurmParam = pr.SlurmParam;
 intThresh = pr.intThresh;
 occThresh = pr.occThresh;
 
-if ischar(dataPaths) && strcmp(dataPaths(1), '{')
+if ischar(dataPaths) && ~isempty(dataPaths) && strcmp(dataPaths(1), '{')
     dataPaths = eval(dataPaths);
 end
-if ischar(PSFs) && strcmp(PSFs(1), '{')
+if ischar(PSFs) && ~isempty(PSFs) && strcmp(PSFs(1), '{')
     PSFs = eval(PSFs);
 end
 if ischar(Deskew)
@@ -188,7 +188,7 @@ end
 if ischar(Rotate)
     Rotate = str2num(Rotate);
 end
-if ischar(ChannelPatterns) && strcmp(ChannelPatterns(1), '{')
+if ischar(ChannelPatterns) && ~isempty(ChannelPatterns) && strcmp(ChannelPatterns(1), '{')
     ChannelPatterns = eval(ChannelPatterns);
 end
 if ischar(islattice)

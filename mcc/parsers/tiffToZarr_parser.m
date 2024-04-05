@@ -40,7 +40,7 @@ compressor = pr.compressor;
 usrFcn = pr.usrFcn;
 uuid = pr.uuid;
 
-if ischar(tifFilename) && strcmp(tifFilename(1), '{')
+if ischar(tifFilename) && ~isempty(tifFilename) && strcmp(tifFilename(1), '{')
     tifFilename = eval(tifFilename);
 end
 if ischar(frame)

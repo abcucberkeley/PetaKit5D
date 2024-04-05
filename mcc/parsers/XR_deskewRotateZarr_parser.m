@@ -69,7 +69,7 @@ debug = pr.debug;
 mccMode = pr.mccMode;
 ConfigFile = pr.ConfigFile;
 
-if ischar(frameFullpath) && strcmp(frameFullpath(1), '{')
+if ischar(frameFullpath) && ~isempty(frameFullpath) && strcmp(frameFullpath(1), '{')
     frameFullpath = eval(frameFullpath);
 end
 if ischar(xyPixelSize)
@@ -126,7 +126,7 @@ end
 if ischar(resample)
     resample = str2num(resample);
 end
-if ischar(maskFns) && strcmp(maskFns(1), '{')
+if ischar(maskFns) && ~isempty(maskFns) && strcmp(maskFns(1), '{')
     maskFns = eval(maskFns);
 end
 if ischar(parseCluster)

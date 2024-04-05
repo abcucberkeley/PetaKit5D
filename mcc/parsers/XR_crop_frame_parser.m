@@ -31,10 +31,10 @@ parseCluster = pr.parseCluster;
 mccMode = pr.mccMode;
 ConfigFile = pr.ConfigFile;
 
-if ischar(dataFullpath) && strcmp(dataFullpath(1), '{')
+if ischar(dataFullpath) && ~isempty(dataFullpath) && strcmp(dataFullpath(1), '{')
     dataFullpath = eval(dataFullpath);
 end
-if ischar(saveFullpath) && strcmp(saveFullpath(1), '{')
+if ischar(saveFullpath) && ~isempty(saveFullpath) && strcmp(saveFullpath(1), '{')
     saveFullpath = eval(saveFullpath);
 end
 if ischar(bbox)

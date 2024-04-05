@@ -40,7 +40,7 @@ weightDegree = pr.weightDegree;
 if ischar(batchInds)
     batchInds = str2num(batchInds);
 end
-if ischar(tileFns) && strcmp(tileFns(1), '{')
+if ischar(tileFns) && ~isempty(tileFns) && strcmp(tileFns(1), '{')
     tileFns = eval(tileFns);
 end
 if ischar(Overwrite)
@@ -58,7 +58,7 @@ end
 if ischar(BlurSigma)
     BlurSigma = str2num(BlurSigma);
 end
-if ischar(imdistFullpaths) && strcmp(imdistFullpaths(1), '{')
+if ischar(imdistFullpaths) && ~isempty(imdistFullpaths) && strcmp(imdistFullpaths(1), '{')
     imdistFullpaths = eval(imdistFullpaths);
 end
 if ischar(imdistFileIdx)

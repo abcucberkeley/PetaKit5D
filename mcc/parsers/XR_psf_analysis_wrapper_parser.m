@@ -45,7 +45,7 @@ masterCompute = pr.masterCompute;
 mccMode = pr.mccMode;
 ConfigFile = pr.ConfigFile;
 
-if ischar(dataPaths) && strcmp(dataPaths(1), '{')
+if ischar(dataPaths) && ~isempty(dataPaths) && strcmp(dataPaths(1), '{')
     dataPaths = eval(dataPaths);
 end
 if ischar(xyPixelSize)
@@ -69,7 +69,7 @@ end
 if ischar(ZstageScan)
     ZstageScan = str2num(ZstageScan);
 end
-if ischar(ChannelPatterns) && strcmp(ChannelPatterns(1), '{')
+if ischar(ChannelPatterns) && ~isempty(ChannelPatterns) && strcmp(ChannelPatterns(1), '{')
     ChannelPatterns = eval(ChannelPatterns);
 end
 if ischar(Channels)
@@ -81,7 +81,7 @@ end
 if ischar(bgFactor)
     bgFactor = str2num(bgFactor);
 end
-if ischar(RWFn) && strcmp(RWFn(1), '{')
+if ischar(RWFn) && ~isempty(RWFn) && strcmp(RWFn(1), '{')
     RWFn = eval(RWFn);
 end
 if ischar(parseCluster)

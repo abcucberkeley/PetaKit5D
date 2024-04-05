@@ -118,7 +118,7 @@ unitWaitTime = pr.unitWaitTime;
 intThresh = pr.intThresh;
 occThresh = pr.occThresh;
 
-if ischar(frameFullpaths) && strcmp(frameFullpaths(1), '{')
+if ischar(frameFullpaths) && ~isempty(frameFullpaths) && strcmp(frameFullpaths(1), '{')
     frameFullpaths = eval(frameFullpaths);
 end
 if ischar(islattice)

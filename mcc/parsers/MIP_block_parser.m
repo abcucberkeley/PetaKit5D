@@ -23,7 +23,7 @@ debug = pr.debug;
 if ischar(blockInds)
     blockInds = str2num(blockInds);
 end
-if ischar(MIPFullpaths) && strcmp(MIPFullpaths(1), '{')
+if ischar(MIPFullpaths) && ~isempty(MIPFullpaths) && strcmp(MIPFullpaths(1), '{')
     MIPFullpaths = eval(MIPFullpaths);
 end
 if ischar(BatchBBoxes)

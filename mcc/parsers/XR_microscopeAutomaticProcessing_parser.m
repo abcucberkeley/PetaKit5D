@@ -185,7 +185,7 @@ mccMode = pr.mccMode;
 ConfigFile = pr.ConfigFile;
 GPUConfigFile = pr.GPUConfigFile;
 
-if ischar(dataPaths) && strcmp(dataPaths(1), '{')
+if ischar(dataPaths) && ~isempty(dataPaths) && strcmp(dataPaths(1), '{')
     dataPaths = eval(dataPaths);
 end
 if ischar(Overwrite)
@@ -194,7 +194,7 @@ end
 if ischar(Streaming)
     Streaming = str2num(Streaming);
 end
-if ischar(ChannelPatterns) && strcmp(ChannelPatterns(1), '{')
+if ischar(ChannelPatterns) && ~isempty(ChannelPatterns) && strcmp(ChannelPatterns(1), '{')
     ChannelPatterns = eval(ChannelPatterns);
 end
 if ischar(Channels)
@@ -275,10 +275,10 @@ end
 if ischar(constOffset)
     constOffset = str2num(constOffset);
 end
-if ischar(LSImagePaths) && strcmp(LSImagePaths(1), '{')
+if ischar(LSImagePaths) && ~isempty(LSImagePaths) && strcmp(LSImagePaths(1), '{')
     LSImagePaths = eval(LSImagePaths);
 end
-if ischar(BackgroundPaths) && strcmp(BackgroundPaths(1), '{')
+if ischar(BackgroundPaths) && ~isempty(BackgroundPaths) && strcmp(BackgroundPaths(1), '{')
     BackgroundPaths = eval(BackgroundPaths);
 end
 if ischar(resample)
@@ -287,7 +287,7 @@ end
 if ischar(InputBbox)
     InputBbox = str2num(InputBbox);
 end
-if ischar(imageListFullpaths) && strcmp(imageListFullpaths(1), '{')
+if ischar(imageListFullpaths) && ~isempty(imageListFullpaths) && strcmp(imageListFullpaths(1), '{')
     imageListFullpaths = eval(imageListFullpaths);
 end
 if ischar(xcorrShift)
@@ -341,7 +341,7 @@ end
 if ischar(deconRotate)
     deconRotate = str2num(deconRotate);
 end
-if ischar(psfFullpaths) && strcmp(psfFullpaths(1), '{')
+if ischar(psfFullpaths) && ~isempty(psfFullpaths) && strcmp(psfFullpaths(1), '{')
     psfFullpaths = eval(psfFullpaths);
 end
 if ischar(DeconIter)

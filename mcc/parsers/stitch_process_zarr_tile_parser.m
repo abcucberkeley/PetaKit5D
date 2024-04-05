@@ -35,7 +35,7 @@ compressor = pr.compressor;
 usrFcn = pr.usrFcn;
 uuid = pr.uuid;
 
-if ischar(inputFilename) && strcmp(inputFilename(1), '{')
+if ischar(inputFilename) && ~isempty(inputFilename) && strcmp(inputFilename(1), '{')
     inputFilename = eval(inputFilename);
 end
 if ischar(frame)

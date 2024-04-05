@@ -138,13 +138,13 @@ mccMode = pr.mccMode;
 ConfigFile = pr.ConfigFile;
 GPUConfigFile = pr.GPUConfigFile;
 
-if ischar(dataPaths) && strcmp(dataPaths(1), '{')
+if ischar(dataPaths) && ~isempty(dataPaths) && strcmp(dataPaths(1), '{')
     dataPaths = eval(dataPaths);
 end
 if ischar(Overwrite)
     Overwrite = str2num(Overwrite);
 end
-if ischar(ChannelPatterns) && strcmp(ChannelPatterns(1), '{')
+if ischar(ChannelPatterns) && ~isempty(ChannelPatterns) && strcmp(ChannelPatterns(1), '{')
     ChannelPatterns = eval(ChannelPatterns);
 end
 if ischar(Channels)
@@ -204,7 +204,7 @@ end
 if ischar(deconRotate)
     deconRotate = str2num(deconRotate);
 end
-if ischar(psfFullpaths) && strcmp(psfFullpaths(1), '{')
+if ischar(psfFullpaths) && ~isempty(psfFullpaths) && strcmp(psfFullpaths(1), '{')
     psfFullpaths = eval(psfFullpaths);
 end
 if ischar(rotatePSF)
@@ -270,7 +270,7 @@ end
 if ischar(deconOffset)
     deconOffset = str2num(deconOffset);
 end
-if ischar(deconMaskFns) && strcmp(deconMaskFns(1), '{')
+if ischar(deconMaskFns) && ~isempty(deconMaskFns) && strcmp(deconMaskFns(1), '{')
     deconMaskFns = eval(deconMaskFns);
 end
 if ischar(parseCluster)

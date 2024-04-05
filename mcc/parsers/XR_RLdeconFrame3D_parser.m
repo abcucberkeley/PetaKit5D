@@ -110,7 +110,7 @@ mccMode = pr.mccMode;
 ConfigFile = pr.ConfigFile;
 GPUConfigFile = pr.GPUConfigFile;
 
-if ischar(frameFullpaths) && strcmp(frameFullpaths(1), '{')
+if ischar(frameFullpaths) && ~isempty(frameFullpaths) && strcmp(frameFullpaths(1), '{')
     frameFullpaths = eval(frameFullpaths);
 end
 if ischar(xyPixelSize)
@@ -203,7 +203,7 @@ end
 if ischar(deconOffset)
     deconOffset = str2num(deconOffset);
 end
-if ischar(deconMaskFns) && strcmp(deconMaskFns(1), '{')
+if ischar(deconMaskFns) && ~isempty(deconMaskFns) && strcmp(deconMaskFns(1), '{')
     deconMaskFns = eval(deconMaskFns);
 end
 if ischar(parseCluster)

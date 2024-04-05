@@ -109,7 +109,7 @@ end
 if ischar(EdgeErosion)
     EdgeErosion = str2num(EdgeErosion);
 end
-if ischar(deconMaskFns) && strcmp(deconMaskFns(1), '{')
+if ischar(deconMaskFns) && ~isempty(deconMaskFns) && strcmp(deconMaskFns(1), '{')
     deconMaskFns = eval(deconMaskFns);
 end
 if ischar(wienerAlpha)

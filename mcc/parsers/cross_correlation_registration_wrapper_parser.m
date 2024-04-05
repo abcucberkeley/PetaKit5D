@@ -37,7 +37,7 @@ parseCluster = pr.parseCluster;
 mccMode = pr.mccMode;
 ConfigFile = pr.ConfigFile;
 
-if ischar(imgFullpath_2) && strcmp(imgFullpath_2(1), '{')
+if ischar(imgFullpath_2) && ~isempty(imgFullpath_2) && strcmp(imgFullpath_2(1), '{')
     imgFullpath_2 = eval(imgFullpath_2);
 end
 if ischar(pair_indices)

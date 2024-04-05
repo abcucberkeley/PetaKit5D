@@ -35,10 +35,10 @@ unitWaitTime = pr.unitWaitTime;
 mccMode = pr.mccMode;
 ConfigFile = pr.ConfigFile;
 
-if ischar(dataPaths) && strcmp(dataPaths(1), '{')
+if ischar(dataPaths) && ~isempty(dataPaths) && strcmp(dataPaths(1), '{')
     dataPaths = eval(dataPaths);
 end
-if ischar(ChannelPatterns) && strcmp(ChannelPatterns(1), '{')
+if ischar(ChannelPatterns) && ~isempty(ChannelPatterns) && strcmp(ChannelPatterns(1), '{')
     ChannelPatterns = eval(ChannelPatterns);
 end
 if ischar(parseCluster)

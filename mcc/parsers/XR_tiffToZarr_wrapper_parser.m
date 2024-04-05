@@ -53,7 +53,7 @@ unitWaitTime = pr.unitWaitTime;
 mccMode = pr.mccMode;
 ConfigFile = pr.ConfigFile;
 
-if ischar(tiffFullpaths) && strcmp(tiffFullpaths(1), '{')
+if ischar(tiffFullpaths) && ~isempty(tiffFullpaths) && strcmp(tiffFullpaths(1), '{')
     tiffFullpaths = eval(tiffFullpaths);
 end
 if ischar(locIds)
@@ -74,7 +74,7 @@ end
 if ischar(partialFile)
     partialFile = str2num(partialFile);
 end
-if ischar(ChannelPatterns) && strcmp(ChannelPatterns(1), '{')
+if ischar(ChannelPatterns) && ~isempty(ChannelPatterns) && strcmp(ChannelPatterns(1), '{')
     ChannelPatterns = eval(ChannelPatterns);
 end
 if ischar(InputBbox)
@@ -83,7 +83,7 @@ end
 if ischar(tileOutBbox)
     tileOutBbox = str2num(tileOutBbox);
 end
-if ischar(processFunPath) && strcmp(processFunPath(1), '{')
+if ischar(processFunPath) && ~isempty(processFunPath) && strcmp(processFunPath(1), '{')
     processFunPath = eval(processFunPath);
 end
 if ischar(parseCluster)

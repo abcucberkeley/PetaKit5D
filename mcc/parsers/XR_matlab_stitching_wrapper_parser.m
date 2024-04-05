@@ -142,16 +142,16 @@ unitWaitTime = pr.unitWaitTime;
 mccMode = pr.mccMode;
 ConfigFile = pr.ConfigFile;
 
-if ischar(dataPath) && strcmp(dataPath(1), '{')
+if ischar(dataPath) && ~isempty(dataPath) && strcmp(dataPath(1), '{')
     dataPath = eval(dataPath);
 end
-if ischar(imageListFileName) && strcmp(imageListFileName(1), '{')
+if ischar(imageListFileName) && ~isempty(imageListFileName) && strcmp(imageListFileName(1), '{')
     imageListFileName = eval(imageListFileName);
 end
 if ischar(Streaming)
     Streaming = str2num(Streaming);
 end
-if ischar(ChannelPatterns) && strcmp(ChannelPatterns(1), '{')
+if ischar(ChannelPatterns) && ~isempty(ChannelPatterns) && strcmp(ChannelPatterns(1), '{')
     ChannelPatterns = eval(ChannelPatterns);
 end
 if ischar(multiLoc)
@@ -274,7 +274,7 @@ end
 if ischar(bigStitchData)
     bigStitchData = str2num(bigStitchData);
 end
-if ischar(processFunPath) && strcmp(processFunPath(1), '{')
+if ischar(processFunPath) && ~isempty(processFunPath) && strcmp(processFunPath(1), '{')
     processFunPath = eval(processFunPath);
 end
 if ischar(parseCluster)

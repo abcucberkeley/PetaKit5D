@@ -101,7 +101,7 @@ debug = pr.debug;
 mccMode = pr.mccMode;
 ConfigFile = pr.ConfigFile;
 
-if ischar(dataPaths) && strcmp(dataPaths(1), '{')
+if ischar(dataPaths) && ~isempty(dataPaths) && strcmp(dataPaths(1), '{')
     dataPaths = eval(dataPaths);
 end
 if ischar(Deskew)
@@ -113,7 +113,7 @@ end
 if ischar(Overwrite)
     Overwrite = str2num(Overwrite);
 end
-if ischar(ChannelPatterns) && strcmp(ChannelPatterns(1), '{')
+if ischar(ChannelPatterns) && ~isempty(ChannelPatterns) && strcmp(ChannelPatterns(1), '{')
     ChannelPatterns = eval(ChannelPatterns);
 end
 if ischar(dz)
@@ -158,10 +158,10 @@ end
 if ischar(constOffset)
     constOffset = str2num(constOffset);
 end
-if ischar(LSImagePaths) && strcmp(LSImagePaths(1), '{')
+if ischar(LSImagePaths) && ~isempty(LSImagePaths) && strcmp(LSImagePaths(1), '{')
     LSImagePaths = eval(LSImagePaths);
 end
-if ischar(BackgroundPaths) && strcmp(BackgroundPaths(1), '{')
+if ischar(BackgroundPaths) && ~isempty(BackgroundPaths) && strcmp(BackgroundPaths(1), '{')
     BackgroundPaths = eval(BackgroundPaths);
 end
 if ischar(Save16bit)
@@ -200,7 +200,7 @@ end
 if ischar(resample)
     resample = str2num(resample);
 end
-if ischar(maskFns) && strcmp(maskFns(1), '{')
+if ischar(maskFns) && ~isempty(maskFns) && strcmp(maskFns(1), '{')
     maskFns = eval(maskFns);
 end
 if ischar(parseCluster)

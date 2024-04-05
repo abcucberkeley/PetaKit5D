@@ -71,7 +71,7 @@ Interp = pr.Interp;
 surffix = pr.surffix;
 uuid = pr.uuid;
 
-if ischar(framePath) && strcmp(framePath(1), '{')
+if ischar(framePath) && ~isempty(framePath) && strcmp(framePath(1), '{')
     framePath = eval(framePath);
 end
 if ischar(xyPixelSize)
