@@ -18,8 +18,8 @@ ip.addParameter('parPoolSize', 24, @isnumeric);
 
 ip.addParameter('xyPixelSize',.108,@isnumeric); % typical value: 0.1
 ip.addParameter('dz',.5,@isnumeric); % typical value: 0.2-0.5
-ip.addOptional('SkewAngle', 32.45, @isscalar);
-ip.addOptional('Reverse', true, @islogical);
+ip.addParameter('SkewAngle', 32.45, @isscalar);
+ip.addParameter('Reverse', true, @islogical);
 
 ip.addParameter('Rotate',false,@islogical); % Rotate after deskew
 

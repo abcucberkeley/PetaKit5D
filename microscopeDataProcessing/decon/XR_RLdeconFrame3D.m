@@ -1,4 +1,4 @@
-function [] = XR_RLdeconFrame3D(frameFullpaths, xyPixelSize, dz, varargin)
+function [] = XR_RLdeconFrame3D(frameFullpaths, xyPixelSize, dz, deconPath, varargin)
 % cuda Deconvolution for a single frame. It support both small file that
 % can be fitted to a single GPU and also large files. For large files, it
 % split files into chunks for deconvolution and the combine them together. It
@@ -75,7 +75,7 @@ ip.addParameter('mccMode', false, @islogical);
 ip.addParameter('ConfigFile', '', @ischar);
 ip.addParameter('GPUConfigFile', '', @ischar);
 
-ip.parse(frameFullpaths, xyPixelSize, dz, varargin{:});
+ip.parse(frameFullpaths, xyPixelSize, dz, deconPath, varargin{:});
 
 if ischar(frameFullpaths)
     frameFullpaths = {frameFullpaths};

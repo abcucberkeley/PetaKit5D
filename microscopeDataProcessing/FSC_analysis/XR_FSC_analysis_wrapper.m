@@ -9,7 +9,7 @@ function XR_FSC_analysis_wrapper(dataPaths, varargin)
 
 ip = inputParser;
 ip.CaseSensitive = false;
-ip.addRequired('dataPaths');
+ip.addRequired('dataPaths', @(x) ischar(x) || iscell(x));
 ip.addParameter('outDirstr', 'FSCs', @ischar);
 ip.addParameter('xyPixelSize', 0.108, @isnumeric);
 ip.addParameter('dz', 0.1, @isnumeric);

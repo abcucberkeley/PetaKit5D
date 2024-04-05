@@ -20,7 +20,7 @@ function [] = XR_decon_data_wrapper(dataPaths, varargin)
 ip = inputParser;
 ip.CaseSensitive = false;
 ip.KeepUnmatched = true;
-ip.addRequired('dataPaths'); % data structure from loadConditionData
+ip.addRequired('dataPaths', @(x) ischar(x) || iscell(x)); % data structure from loadConditionData
 ip.addParameter('deconPathstr', '',  @(x) ischar(x));
 ip.addParameter('Overwrite', false,  @(x) (numel(x) == 1 || numel(x) == 2) && islogical(x));
 ip.addParameter('ChannelPatterns', {'CamA_ch0', 'CamA_ch1', 'CamB_ch0'}, @iscell);

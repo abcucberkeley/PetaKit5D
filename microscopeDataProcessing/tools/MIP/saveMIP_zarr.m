@@ -6,12 +6,22 @@ function saveMIP_zarr(zarrFullname, MIPFullname, dtype, axis)
 % xruan (03/03/2023): simplify the function and use readzarr as default
 % method other than dask
 
-if nargin < 3
-    nv_bim = blockedImage(zarrFullname, 'Adapter', CZarrAdapter);
-    dtype = nv_bim.ClassUnderlying;
-end
-if nargin < 4
-    axis = [0, 0, 1];
+
+ip = inputParser;
+ip.CaseSensitive = false;
+ip.addRequired('zarrFullname', @(x) ischar(x));
+ip.addRequired('MIPFullname', @(x) ischar(x));
+ip.addOptional('dtype',  '', @(x) ischar(x) || isstring(x));
+ip.addOptional('axis',  [0, 0, 1], @(x) isvector(x) || numel(x) == 3);
+
+ip.parse(zarrFullname, MIPFullname, dtype, axis);
+
+pr = ip.Results;
+dtype = pr.dtype;
+axis = pr.axis;
+
+if isempty(dtype)
+    dtype = getImageDataType(zarrFullname);
 end
 
 axis_strs = {'y', 'x', 'z'};

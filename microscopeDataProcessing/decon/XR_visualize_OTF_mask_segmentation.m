@@ -4,12 +4,17 @@ function [] = XR_visualize_OTF_mask_segmentation(psfFn, OTFCumThresh, skewed)
 % Author: Xiongtao Ruan (11/13/2023)
 
 
-if nargin < 3
-    skewed = [];
-end
-if nargin < 2
-    OTFCumThresh = 0.85;
-end
+ip = inputParser;
+ip.CaseSensitive = false;
+ip.addRequired('psfFn', @ischar);
+ip.addOptional('OTFCumThresh', 0.85, @(x) isscalar(x));
+ip.addOptional('skewed', [], @(x) isempty(x) || islogical(x));
+
+ip.parse(psfFn, OTFCumThresh, skewed);
+
+pr = ip.Results;
+OTFCumThresh = pr.OTFCumThresh;
+skewed = pr.skewed;
 
 % load PSF and clear up the PSF
 if ~exist(psfFn, 'file') && ~exist(psfFn, 'dir')

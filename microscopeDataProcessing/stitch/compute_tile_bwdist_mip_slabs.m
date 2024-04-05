@@ -6,6 +6,26 @@ function [] = compute_tile_bwdist_mip_slabs(blockInfoFullname, tileInd, bwdistFu
 % 
 % Author: Xiongtao Ruan (05/02/2023)
 
+
+ip = inputParser;
+ip.CaseSensitive = false;
+ip.addRequired('blockInfoFullname', @ischar);
+ip.addRequired('tileInd', @isscalar);
+ip.addRequired('bwdistFullpath', @ischar);
+ip.addRequired('weightDegree', @ischar);
+ip.addRequired('singleDistMap', @islogical);
+ip.addRequired('blockSize', @isvector);
+ip.addRequired('shardSize', @isvector);
+ip.addRequired('compressor', @ischar);
+ip.addRequired('poolSize', @isvector);
+ip.addRequired('distBbox', @isvector);
+ip.addOptional('Overwrite', false, @islogical);
+
+ip.parse(blockInfoFullname, tileInd, bwdistFullpath, weightDegree, singleDistMap, blockSize, shardSize, compressor, poolSize, distBbox, Overwrite);
+
+pr = ip.Results;
+Overwrite = pr.Overwrite;
+
 if nargin < 10
     Overwrite = false;
 end

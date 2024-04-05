@@ -3,6 +3,16 @@ function [] = stitch_global_grid_assignment_wrapper(inputFullpath, outputFullpat
 % for multiple groups
 
 
+ip = inputParser;
+ip.CaseSensitive = false;
+ip.addRequired('inputFullpath', @(x) ischar(x));
+ip.addRequired('outputFullpath', @(x) ischar(x));
+ip.addRequired('xcorr_thresh', @(x) isscalar(x));
+ip.addRequired('axisWeight', @(x) isvector(x));
+ip.addRequired('uuid', @(x) ischar(x));
+
+ip.parse(inputFullpath, outputFullpath, xcorr_thresh, axisWeight, uuid);
+
 if exist(outputFullpath, 'file')
     fprintf('output %s already exists, skip it!\n', outputFullpath);
     return;

@@ -2,7 +2,7 @@
 
 cd(fileparts(which(mfilename)));
 
-dir_info = dir('*_parser.m');
+dir_info = dir('./parsers/*_parser.m');
 
 parser_func_names = {dir_info.name}';
 

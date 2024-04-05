@@ -8,7 +8,7 @@ t0 = tic;
 
 ip = inputParser;
 ip.CaseSensitive = false;
-ip.addRequired('blockInds', @isnumeric);
+ip.addRequired('batchInds', @isnumeric);
 ip.addRequired('zarrFullpath', @(x) ischar(x));
 ip.addRequired('dsrFullpath', @(x) ischar(x));
 ip.addRequired('flagFullname', @(x) ischar(x));
@@ -17,7 +17,7 @@ ip.addRequired('inBatchBBoxes', @isnumeric);
 ip.addRequired('outBatchBBoxes', @isnumeric);
 ip.addRequired('outRegionBBoxes', @isnumeric);
 ip.addRequired('outLocalBboxes', @isnumeric);
-ip.addRequired('pixelSize', @isnumeric); %in um
+ip.addRequired('xyPixelSize', @isnumeric); %in um
 ip.addRequired('dz', @isnumeric); %in um
 % ip.addParameter('BlockSize', [], @isnumeric);
 ip.addParameter('Overwrite', false, @islogical);

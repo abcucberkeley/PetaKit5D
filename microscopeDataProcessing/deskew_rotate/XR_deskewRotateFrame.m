@@ -26,9 +26,9 @@ function [ds, dsr] = XR_deskewRotateFrame(framePath, xyPixelSize, dz, varargin)
 
 ip = inputParser;
 ip.CaseSensitive = false;
-ip.addRequired('framePath'); 
-ip.addRequired('xyPixelSize'); 
-ip.addRequired('dz'); 
+ip.addRequired('framePath', @(x) ischar(x) || iscell(x)); 
+ip.addRequired('xyPixelSize', @isscalar); 
+ip.addRequired('dz', @isscalar); 
 ip.addParameter('ObjectiveScan', false, @islogical);
 ip.addParameter('ZstageScan', false, @islogical);
 ip.addParameter('Overwrite', false, @islogical);

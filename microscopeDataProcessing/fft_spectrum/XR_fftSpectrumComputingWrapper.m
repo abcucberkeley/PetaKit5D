@@ -11,7 +11,7 @@ function XR_fftSpectrumComputingWrapper(dataPaths, varargin)
 
 ip = inputParser;
 ip.CaseSensitive = false;
-ip.addRequired('dataPaths'); % data structure from loadConditionData
+ip.addRequired('dataPaths', @(x) ischar(x) || iscell(x)); % data structure from loadConditionData
 ip.addParameter('Overwrite', false,  @(x) (numel(x) == 1 || numel(x) == 5) && islogical(x));
 ip.addParameter('xyPixelSize', 0.108, @isnumeric);
 ip.addParameter('dz', 0.1, @isnumeric); % actual pixel size in z

@@ -16,8 +16,8 @@ function XR_fftSpectrumComputingFrame(FrameFullpath, SpectrumFullname, varargin)
 
 ip = inputParser;
 ip.CaseSensitive = false;
-ip.addRequired('FrameFullpath');
-ip.addRequired('SpectrumFullname');
+ip.addRequired('FrameFullpath', @ischar);
+ip.addRequired('SpectrumFullname', @ischar);
 ip.addParameter('xyPixelSize', 0.108, @isnumeric);
 ip.addParameter('dz', 0.1, @isnumeric); % actual pixel size in z
 ip.addParameter('outPixelSize', [], @(x) isnumeric(x) || isempty(x)); % output pixel size

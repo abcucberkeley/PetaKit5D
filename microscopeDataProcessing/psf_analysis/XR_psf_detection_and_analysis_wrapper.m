@@ -11,7 +11,7 @@ function [] = XR_psf_detection_and_analysis_wrapper(dataPaths, varargin)
 
 ip = inputParser;
 ip.CaseSensitive = false;
-ip.addRequired('dataPaths');
+ip.addRequired('dataPaths', @(x) ischar(x) || iscell(x));
 ip.addParameter('xyPixelSize', 0.108, @isnumeric);
 ip.addParameter('dz', 0.1, @isnumeric);
 ip.addParameter('angle', 32.45, @isnumeric);

@@ -9,9 +9,9 @@ function [] = XR_RotateFrame3D(framePaths, xyPixelSize, dz, varargin)
 
 ip = inputParser;
 ip.CaseSensitive = false;
-ip.addRequired('framePaths'); 
-ip.addRequired('xyPixelSize'); 
-ip.addRequired('dz'); 
+ip.addRequired('framePaths', @(x) ischar(x) || iscell(x)); 
+ip.addRequired('xyPixelSize', @isscalar); 
+ip.addRequired('dz', @isscalar); 
 ip.addParameter('ObjectiveScan', false, @islogical);
 ip.addParameter('Overwrite', false, @islogical);
 ip.addParameter('Crop', true, @islogical);

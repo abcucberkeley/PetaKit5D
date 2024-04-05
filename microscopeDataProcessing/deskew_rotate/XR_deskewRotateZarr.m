@@ -15,8 +15,8 @@ function [is_done_flag] = XR_deskewRotateZarr(frameFullpath, xyPixelSize, dz, va
 ip = inputParser;
 ip.CaseSensitive = false;
 ip.addRequired('frameFullpath', @(x) ischar(x) || iscell(x));
-ip.addRequired('xyPixelSize'); 
-ip.addRequired('dz'); 
+ip.addRequired('xyPixelSize', @isscalar); 
+ip.addRequired('dz', @isscalar); 
 ip.addParameter('resultDirStr', 'DSR/', @ischar);
 ip.addParameter('ObjectiveScan', false, @islogical);
 ip.addParameter('Overwrite', false, @islogical);

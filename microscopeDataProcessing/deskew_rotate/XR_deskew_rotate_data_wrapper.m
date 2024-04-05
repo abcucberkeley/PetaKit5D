@@ -7,7 +7,7 @@ function XR_deskew_rotate_data_wrapper(dataPaths, varargin)
 ip = inputParser;
 ip.CaseSensitive = false;
 ip.KeepUnmatched = true;
-ip.addRequired('dataPaths');
+ip.addRequired('dataPaths', @(x) ischar(x) || iscell(x));
 ip.addParameter('DSDirStr', 'DS/', @ischar);
 ip.addParameter('DSRDirStr', 'DSR/', @ischar);
 ip.addParameter('Deskew', true, @islogical);

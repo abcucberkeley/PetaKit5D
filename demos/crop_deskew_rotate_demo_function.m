@@ -3,6 +3,18 @@ function [] = crop_deskew_rotate_demo_function(inputFullpath, outputFullpath, sk
 % parameters. The function needs to first check if input and output exist,
 % it should skip the output file if it exists.
 
+
+ip = inputParser;
+ip.CaseSensitive = false;
+ip.addRequired('inputFullpath', @ischar);
+ip.addRequired('outputFullpath', @ischar);
+ip.addRequired('skewAngle', @isscalar);
+ip.addRequired('xyPixelSize', @isscalar);
+ip.addRequired('dz', @isscalar);
+ip.addRequired('inBbox', @isvector);
+
+ip.parse(inputFullpath, outputFullpath, skewAngle, xyPixelSize, dz, inBbox);
+
 if ~exist(inputFullpath, 'file')
     error('The input file %s does not exist!', inputFullpath);
 end

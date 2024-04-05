@@ -7,9 +7,24 @@ function [] = compute_tile_bwdist(blockInfoFullname, tileInd, bwdistFullpath, we
 % xruan (11/19/2022): compute feather power within the distance map to save
 % time for stitching processing
 
-if nargin < 10
-    Overwrite = false;
-end
+
+ip = inputParser;
+ip.CaseSensitive = false;
+ip.addRequired('blockInfoFullname', @ischar);
+ip.addRequired('tileInd', @isscalar);
+ip.addRequired('bwdistFullpath', @ischar);
+ip.addRequired('weightDegree', @isscalar);
+ip.addRequired('singleDistMap', @islogical);
+ip.addRequired('blockSize', @isvector);
+ip.addRequired('shardSize', @(x) isempty(x) || isvector(x));
+ip.addRequired('compressor', @ischar);
+ip.addRequired('poolSize', @(x) isempty(x) || isvector(x));
+ip.addOptional('Overwrite', false, @islogical);
+
+ip.parse(blockInfoFullname, tileInd, bwdistFullpath, weightDegree, singleDistMap, blockSize, shardSize, compressor, distBbox, Overwrite);
+
+pr = ip.Results;
+Overwrite = pr.Overwrite;
 
 uuid = get_uuid();
 

@@ -119,7 +119,7 @@ function [] = XR_microscopeAutomaticProcessing(dataPaths, varargin)
 
 ip = inputParser;
 ip.CaseSensitive = false;
-ip.addRequired('dataPaths'); % data structure from loadConditionData
+ip.addRequired('dataPaths', @(x) ischar(x) || iscell(x)); % data structure from loadConditionData
 ip.addParameter('Overwrite', false,  @(x) (numel(x) == 1 || numel(x) == 5) && islogical(x));
 ip.addParameter('Streaming', true,  @islogical); % if true, check for new files. If false, assume all files transferred completely.
 ip.addParameter('ChannelPatterns', {'CamA_ch0', 'CamA_ch1', 'CamB_ch0'}, @iscell);

@@ -10,7 +10,7 @@ function XR_imaris_conversion_data_wrapper(dataPaths, varargin)
 ip = inputParser;
 ip.CaseSensitive = false;
 ip.KeepUnmatched = true;
-ip.addRequired('dataPaths');
+ip.addRequired('dataPaths', @(x) ischar(x) || iscell(x));
 ip.addParameter('imsPathstr', 'imaris',  @(x) ischar(x));
 ip.addParameter('Overwrite', false,  @(x) islogical(x));
 ip.addParameter('ChannelPatterns', {'CamA_ch0', 'CamA_ch1', 'CamB_ch0'}, @iscell);
