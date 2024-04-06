@@ -8,11 +8,12 @@ ip.addParameter('axis', [0, 0, 1], @isnumeric); % y, x, z
 ip.addParameter('ChannelPatterns', {'CamA_ch0', 'CamA_ch1', 'CamB_ch0', 'CamB_ch1'}, @iscell);
 ip.addParameter('zarrFile', false, @islogical); % use zarr file as input
 ip.addParameter('largeZarr', false, @islogical); % use zarr file as input
+ip.addParameter('BatchSize', [2048, 2048, 2048] , @isvector); % in y, x, z
 ip.addParameter('Save16bit', true, @islogical);
 ip.addParameter('parseCluster', true, @islogical);
 ip.addParameter('parseParfor', false, @islogical);
 ip.addParameter('masterCompute', true, @islogical); % master node participate in the task computing. 
-ip.addParameter('cpusPerTask', 3, @isnumeric);
+ip.addParameter('cpusPerTask', 3, @isscalar);
 ip.addParameter('jobLogDir', '../job_logs/', @ischar);
 ip.addParameter('uuid', '', @ischar);
 ip.addParameter('debug', false, @islogical);
@@ -26,6 +27,7 @@ axis = pr.axis;
 ChannelPatterns =  pr.ChannelPatterns;
 zarrFile = pr.zarrFile;
 largeZarr = pr.largeZarr;
+BatchSize = pr.BatchSize;
 Save16bit = pr.Save16bit;
 parseCluster = pr.parseCluster;
 parseParfor = pr.parseParfor;
@@ -124,9 +126,10 @@ for f = 1 : nF
     
     if zarrFile
         if largeZarr || any(axis(1 : 2))
-            func_strs{f} = sprintf(['XR_MIP_zarr(''%s'',''axis'',%s,''parseCluster'',%s,', ...
-                '''parseParfor'',%s,''jobLogDir'',''%s'',''mccMode'',%s,''ConfigFile'',''%s'')'], ...
-                frameFullpath, strrep(mat2str(axis), ' ', ','), string(parseCluster), ...
+            func_strs{f} = sprintf(['XR_MIP_zarr(''%s'',''axis'',%s,''BatchSize'',%s,', ...
+                '''parseCluster'',%s,''parseParfor'',%s,''jobLogDir'',''%s'',', ...
+                '''mccMode'',%s,''ConfigFile'',''%s'')'], frameFullpath, strrep(mat2str(axis), ' ', ','), ...
+                strrep(mat2str(BatchSize), ' ', ','), string(parseCluster), ...
                 string(parseParfor), jobLogDir, string(mccMode), ConfigFile);
         else
             func_strs{f} = sprintf(['saveMIP_zarr(''%s'',''%s'',''%s'')'], frameFullpath, ...

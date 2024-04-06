@@ -241,12 +241,20 @@ for b = 1 : nB
         continue;
     end
     
+    lineBatchSize = 5000;
+    if numel(task_mat) > 1000
+        lineDataSize = numel(tlineStrs{1}) * 2;
+        % limit the writing to 500 M per batch
+        lineBatchSize = min(5000, ceil(500 * 2^20 / (lineDataSize)));
+    end
+
     if isunix
-        writeTextFile(tlineStrs(task_mat), inputFn, 5000);
+        writeTextFile(tlineStrs(task_mat), inputFn, lineBatchSize);
     else
-        writeTextFile(cat(1, {'@echo off'}, tlineStrs(task_mat)), inputFn, 5000);        
+        writeTextFile(cat(1, {'@echo off'}, tlineStrs(task_mat)), inputFn, lineBatchSize);
     end
 end
+clear tlineStrs;
 
 % setup jobs
 trial_counter = zeros(nF, 1);

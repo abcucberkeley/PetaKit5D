@@ -141,9 +141,7 @@ parser_cell{t+2} = function_call_line;
 parser_cell{t+3} = '';
 parser_cell{t+4} = 'end';
 parser_cell{t+5} = '';
-parser_cell{t+6} = '';
-
-parser_cell(t+7 : end) = [];
+parser_cell(t+6 : end) = [];
 
 % write out to a file
 % if the parser function exist, check if the content is the same

@@ -154,7 +154,7 @@ if exist(zarrFlagPath, 'dir')
 end
 
 % generate MIPs 
-XR_MIP_zarr(cropFullpath, 'axis', [1, 1, 1], mccMode=mccMode, ConfigFile=ConfigFile);
+XR_MIP_zarr(cropFullpath, 'axis', [1, 1, 1], parseCluster=parseCluster, mccMode=mccMode, ConfigFile=ConfigFile);
 
 
 end

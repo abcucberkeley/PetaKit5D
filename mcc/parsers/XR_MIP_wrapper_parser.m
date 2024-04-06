@@ -12,11 +12,12 @@ ip.addParameter('axis', [0, 0, 1], @(x) isnumeric(x) || ischar(x)); % y, x, z
 ip.addParameter('ChannelPatterns', {'CamA_ch0', 'CamA_ch1', 'CamB_ch0', 'CamB_ch1'}, @(x) iscell(x) || ischar(x));
 ip.addParameter('zarrFile', false, @(x) islogical(x) || ischar(x)); % use zarr file as input
 ip.addParameter('largeZarr', false, @(x) islogical(x) || ischar(x)); % use zarr file as input
+ip.addParameter('BatchSize', [2048, 2048, 2048] , @(x) isvector(x) || ischar(x)); % in y, x, z
 ip.addParameter('Save16bit', true, @(x) islogical(x) || ischar(x));
 ip.addParameter('parseCluster', true, @(x) islogical(x) || ischar(x));
 ip.addParameter('parseParfor', false, @(x) islogical(x) || ischar(x));
 ip.addParameter('masterCompute', true, @(x) islogical(x) || ischar(x)); % master node participate in the task computing. 
-ip.addParameter('cpusPerTask', 3, @(x) isnumeric(x) || ischar(x));
+ip.addParameter('cpusPerTask', 3, @(x) isscalar(x) || ischar(x));
 ip.addParameter('jobLogDir', '../job_logs/', @ischar);
 ip.addParameter('uuid', '', @ischar);
 ip.addParameter('debug', false, @(x) islogical(x) || ischar(x));
@@ -30,6 +31,7 @@ axis = pr.axis;
 ChannelPatterns = pr.ChannelPatterns;
 zarrFile = pr.zarrFile;
 largeZarr = pr.largeZarr;
+BatchSize = pr.BatchSize;
 Save16bit = pr.Save16bit;
 parseCluster = pr.parseCluster;
 parseParfor = pr.parseParfor;
@@ -56,6 +58,9 @@ end
 if ischar(largeZarr)
     largeZarr = str2num(largeZarr);
 end
+if ischar(BatchSize)
+    BatchSize = str2num(BatchSize);
+end
 if ischar(Save16bit)
     Save16bit = str2num(Save16bit);
 end
@@ -79,9 +84,9 @@ if ischar(mccMode)
 end
 
 XR_MIP_wrapper(dataPaths, axis=axis, ChannelPatterns=ChannelPatterns, zarrFile=zarrFile, ...
-    largeZarr=largeZarr, Save16bit=Save16bit, parseCluster=parseCluster, parseParfor=parseParfor, ...
-    masterCompute=masterCompute, cpusPerTask=cpusPerTask, jobLogDir=jobLogDir, ...
-    uuid=uuid, debug=debug, mccMode=mccMode, ConfigFile=ConfigFile);
+    largeZarr=largeZarr, BatchSize=BatchSize, Save16bit=Save16bit, parseCluster=parseCluster, ...
+    parseParfor=parseParfor, masterCompute=masterCompute, cpusPerTask=cpusPerTask, ...
+    jobLogDir=jobLogDir, uuid=uuid, debug=debug, mccMode=mccMode, ConfigFile=ConfigFile);
 
 end
 

@@ -52,8 +52,7 @@ parser_cell{t + 3} = sprintf('toc(t0);');
 parser_cell{t + 4} = sprintf('');
 parser_cell{t + 5} = sprintf('end');
 parser_cell{t + 6} = sprintf('');
-parser_cell{t + 7} = sprintf('');
-parser_cell(t + 8 : end) = [];
+parser_cell(t + 7 : end) = [];
 
 % write out to a file
 % if the parser function exist, check if the content is the same

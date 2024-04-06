@@ -10,9 +10,8 @@ end
 if ischar(text_lines) || (iscell(text_lines) && numel(text_lines) <= batchSize)
     fid = fopen(filename, 'w');
     if iscell(text_lines)
-        text_lines = strjoin(text_lines, '\n');
+        text_lines = sprintf('%s\n', strjoin(text_lines, '\n'));
     end
-
     fwrite(fid, text_lines);
 elseif iscell(text_lines) && numel(text_lines) > batchSize
     if exist(filename, 'file')
