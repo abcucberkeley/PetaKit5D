@@ -3,7 +3,7 @@ function [done_flag] = image_intensity_correction_block_parser(batchInds, zarrFu
 
 ip = inputParser;
 ip.CaseSensitive = false;
-ip.addRequired('blockInds', @(x) isnumeric(x) || ischar(x));
+ip.addRequired('batchInds', @(x) isnumeric(x) || ischar(x));
 ip.addRequired('zarrFullpath', @(x) ischar(x));
 ip.addRequired('outFullpath', @(x) ischar(x));
 ip.addRequired('IntCorrFn', @(x) ischar(x));
@@ -25,8 +25,8 @@ lowerLimit = pr.lowerLimit;
 upperLimit = pr.upperLimit;
 Overwrite = pr.Overwrite;
 
-if ischar(blockInds)
-    blockInds = str2num(blockInds);
+if ischar(batchInds)
+    batchInds = str2num(batchInds);
 end
 if ischar(inBatchBBoxes)
     inBatchBBoxes = str2num(inBatchBBoxes);
@@ -50,7 +50,7 @@ if ischar(Overwrite)
     Overwrite = str2num(Overwrite);
 end
 
-image_intensity_correction_block(blockInds, zarrFullpath, outFullpath, IntCorrFn, ...
+image_intensity_correction_block(batchInds, zarrFullpath, outFullpath, IntCorrFn, ...
     flagFullname, inBatchBBoxes, outBatchBBoxes, constOffset=constOffset, constFactor=constFactor, ...
     lowerLimit=lowerLimit, upperLimit=upperLimit, Overwrite=Overwrite);
 

@@ -3,7 +3,7 @@ function [done_flag] = XR_crop_block_parser(batchInds, zarrFullpath, cropFullpat
 
 ip = inputParser;
 ip.CaseSensitive = false;
-ip.addRequired('blockInds', @(x) isnumeric(x) || ischar(x));
+ip.addRequired('batchInds', @(x) isnumeric(x) || ischar(x));
 ip.addRequired('zarrFullpath', @(x) ischar(x));
 ip.addRequired('cropFullpath', @(x) ischar(x));
 ip.addRequired('flagFullname', @(x) ischar(x));
@@ -20,8 +20,8 @@ Overwrite = pr.Overwrite;
 uuid = pr.uuid;
 debug = pr.debug;
 
-if ischar(blockInds)
-    blockInds = str2num(blockInds);
+if ischar(batchInds)
+    batchInds = str2num(batchInds);
 end
 if ischar(BatchBBoxes)
     BatchBBoxes = str2num(BatchBBoxes);
@@ -36,7 +36,7 @@ if ischar(debug)
     debug = str2num(debug);
 end
 
-XR_crop_block(blockInds, zarrFullpath, cropFullpath, flagFullname, BatchBBoxes, ...
+XR_crop_block(batchInds, zarrFullpath, cropFullpath, flagFullname, BatchBBoxes, ...
     RegionBBoxes, Overwrite=Overwrite, uuid=uuid, debug=debug);
 
 end

@@ -3,7 +3,7 @@ function [] = resampleZarrBlock_parser(batchInds, zarrFullpath, dsFullpath, flag
 
 ip = inputParser;
 ip.CaseSensitive = false;
-ip.addRequired('blockInds', @(x) isnumeric(x) || ischar(x));
+ip.addRequired('batchInds', @(x) isnumeric(x) || ischar(x));
 ip.addRequired('zarrFullpath', @(x) ischar(x));
 ip.addRequired('dsFullpath', @(x) ischar(x));
 ip.addRequired('flagFullname', @(x) ischar(x));
@@ -25,8 +25,8 @@ BorderSize = pr.BorderSize;
 Overwrite = pr.Overwrite;
 Interp = pr.Interp;
 
-if ischar(blockInds)
-    blockInds = str2num(blockInds);
+if ischar(batchInds)
+    batchInds = str2num(batchInds);
 end
 if ischar(dsFactor)
     dsFactor = str2num(dsFactor);
@@ -47,7 +47,7 @@ if ischar(Overwrite)
     Overwrite = str2num(Overwrite);
 end
 
-resampleZarrBlock(blockInds, zarrFullpath, dsFullpath, flagFullname, dsFactor, ...
+resampleZarrBlock(batchInds, zarrFullpath, dsFullpath, flagFullname, dsFactor, ...
     bbox=bbox, BatchSize=BatchSize, BlockSize=BlockSize, BorderSize=BorderSize, ...
     Overwrite=Overwrite, Interp=Interp);
 

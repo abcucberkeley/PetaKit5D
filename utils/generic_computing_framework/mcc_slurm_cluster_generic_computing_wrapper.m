@@ -313,8 +313,10 @@ while (~parseCluster && ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
     for b = 1 : nB
         fs = (b - 1) * taskBatchNum + 1 : min(b * taskBatchNum, nF);
         task_id = rem(b, 5000);
-        if parseCluster
-            job_status_mat(fs, :) = repmat(min(job_status_mat(fs, :)), numel(fs), 1);
+        if parseCluster && taskBatchNum > 1 && any(~is_done_flag(fs))
+            job_status_b = job_status_mat(fs, :);
+            job_status_b = job_status_b(~is_done_flag(fs), :);
+            job_status_mat(fs, :) = repmat(min(job_status_b, [], 1), numel(fs), 1);
         end
         
         % check output exist and job status every 10000 batches (except the

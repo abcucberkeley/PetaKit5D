@@ -6,7 +6,7 @@ function [done_flag] = XR_crop_block(batchInds, zarrFullpath, cropFullpath, flag
 
 ip = inputParser;
 ip.CaseSensitive = false;
-ip.addRequired('blockInds', @isnumeric);
+ip.addRequired('batchInds', @isnumeric);
 ip.addRequired('zarrFullpath', @(x) ischar(x));
 ip.addRequired('cropFullpath', @(x) ischar(x));
 ip.addRequired('flagFullname', @(x) ischar(x));

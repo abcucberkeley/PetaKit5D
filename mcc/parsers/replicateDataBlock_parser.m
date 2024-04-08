@@ -3,7 +3,7 @@ function [] = replicateDataBlock_parser(batchInds, zarrFullpath, repFullpath, fl
 
 ip = inputParser;
 ip.CaseSensitive = false;
-ip.addRequired('blockInds', @(x) isnumeric(x) || ischar(x));
+ip.addRequired('batchInds', @(x) isnumeric(x) || ischar(x));
 ip.addRequired('zarrFullpath', @(x) ischar(x));
 ip.addRequired('repFullpath', @(x) ischar(x));
 ip.addRequired('flagFullname', @(x) ischar(x));
@@ -17,8 +17,8 @@ pr = ip.Results;
 uuid = pr.uuid;
 debug = pr.debug;
 
-if ischar(blockInds)
-    blockInds = str2num(blockInds);
+if ischar(batchInds)
+    batchInds = str2num(batchInds);
 end
 if ischar(RegionBBoxes)
     RegionBBoxes = str2num(RegionBBoxes);
@@ -27,7 +27,7 @@ if ischar(debug)
     debug = str2num(debug);
 end
 
-replicateDataBlock(blockInds, zarrFullpath, repFullpath, flagFullname, RegionBBoxes, ...
+replicateDataBlock(batchInds, zarrFullpath, repFullpath, flagFullname, RegionBBoxes, ...
     uuid=uuid, debug=debug);
 
 end

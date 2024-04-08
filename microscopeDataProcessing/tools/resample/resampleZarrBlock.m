@@ -8,7 +8,7 @@ function [] = resampleZarrBlock(batchInds, zarrFullpath, dsFullpath, flagFullnam
 
 ip = inputParser;
 ip.CaseSensitive = false;
-ip.addRequired('blockInds', @isnumeric);
+ip.addRequired('batchInds', @isnumeric);
 ip.addRequired('zarrFullpath', @(x) ischar(x));
 ip.addRequired('dsFullpath', @(x) ischar(x));
 ip.addRequired('flagFullname', @(x) ischar(x));

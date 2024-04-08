@@ -3,7 +3,7 @@ function [done_flag] =  MIP_block_parser(batchInds, zarrFullpath, MIPFullpaths, 
 
 ip = inputParser;
 ip.CaseSensitive = false;
-ip.addRequired('blockInds', @(x) isnumeric(x) || ischar(x));
+ip.addRequired('batchInds', @(x) isnumeric(x) || ischar(x));
 ip.addRequired('zarrFullpath', @(x) ischar(x));
 ip.addRequired('MIPFullpaths', @(x) iscell(x) || ischar(x));
 ip.addRequired('flagFullname', @(x) ischar(x));
@@ -20,8 +20,8 @@ Overwrite = pr.Overwrite;
 uuid = pr.uuid;
 debug = pr.debug;
 
-if ischar(blockInds)
-    blockInds = str2num(blockInds);
+if ischar(batchInds)
+    batchInds = str2num(batchInds);
 end
 if ischar(MIPFullpaths) && ~isempty(MIPFullpaths) && strcmp(MIPFullpaths(1), '{')
     MIPFullpaths = eval(MIPFullpaths);
@@ -39,7 +39,7 @@ if ischar(debug)
     debug = str2num(debug);
 end
 
-MIP_block(blockInds, zarrFullpath, MIPFullpaths, flagFullname, BatchBBoxes, ...
+MIP_block(batchInds, zarrFullpath, MIPFullpaths, flagFullname, BatchBBoxes, ...
     poolSize, Overwrite=Overwrite, uuid=uuid, debug=debug);
 
 end
