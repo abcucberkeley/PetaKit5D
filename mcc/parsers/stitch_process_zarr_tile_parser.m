@@ -68,6 +68,9 @@ end
 if ischar(tileOutBbox)
     tileOutBbox = str2num(tileOutBbox);
 end
+if ischar(usrFcn) && ~isempty(usrFcn) && strcmp(usrFcn(1), '@')
+    usrFcn = eval(usrFcn);
+end
 
 stitch_process_zarr_tile(inputFilename, zarrFilename, frame, Overwrite=Overwrite, ...
     blockSize=blockSize, shardSize=shardSize, zarrSubSize=zarrSubSize, expand2dDim=expand2dDim, ...

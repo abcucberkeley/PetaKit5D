@@ -76,6 +76,9 @@ end
 if ischar(readWholeTiff)
     readWholeTiff = str2num(readWholeTiff);
 end
+if ischar(usrFcn) && ~isempty(usrFcn) && strcmp(usrFcn(1), '@')
+    usrFcn = eval(usrFcn);
+end
 
 tiffToZarr(tifFilename, zarrFilename, frame, Overwrite=Overwrite, blockSize=blockSize, ...
     shardSize=shardSize, zarrSubSize=zarrSubSize, expand2dDim=expand2dDim, ...

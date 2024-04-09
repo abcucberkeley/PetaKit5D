@@ -7,7 +7,7 @@ function [] = zarrToTiff(zarrFilename, tiffFilename, varargin)
 
 ip = inputParser;
 ip.CaseSensitive = false;
-ip.addRequired('tifFilename', @ischar);
+ip.addRequired('tiffFilename', @ischar);
 ip.addRequired('zarrFilename', @ischar);
 ip.addParameter('Overwrite', false, @islogical);
 ip.addParameter('usrFcn', '', @(x) isempty(x) || isa(x,'function_handle') || ischar(x));

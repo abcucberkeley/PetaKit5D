@@ -3,7 +3,7 @@ function [] = zarrToTiff_parser(zarrFilename, tiffFilename, varargin)
 
 ip = inputParser;
 ip.CaseSensitive = false;
-ip.addRequired('tifFilename', @ischar);
+ip.addRequired('tiffFilename', @ischar);
 ip.addRequired('zarrFilename', @ischar);
 ip.addParameter('Overwrite', false, @(x) islogical(x) || ischar(x));
 ip.addParameter('usrFcn', '', @(x) isempty(x) || isa(x,'function_handle') || ischar(x));
@@ -19,8 +19,12 @@ uuid = pr.uuid;
 if ischar(Overwrite)
     Overwrite = str2num(Overwrite);
 end
+if ischar(usrFcn) && ~isempty(usrFcn) && strcmp(usrFcn(1), '@')
+    usrFcn = eval(usrFcn);
+end
 
-zarrToTiff(tifFilename, zarrFilename, Overwrite=Overwrite, usrFcn=usrFcn, uuid=uuid);
+zarrToTiff(tiffFilename, zarrFilename, Overwrite=Overwrite, usrFcn=usrFcn, ...
+    uuid=uuid);
 
 end
 

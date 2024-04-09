@@ -243,7 +243,7 @@ t = 0;
 for i = 1 : numel(arg_names)
     arg_name_i = arg_names{i};
     func_handle = arg_func_handles{i};
-    if isempty(func_handle) || (contains(func_handle, 'ischar') && ~contains(func_handle, 'iscell'))
+    if isempty(func_handle) || (contains(func_handle, 'ischar') && ~contains(func_handle, 'iscell') && ~contains(func_handle, 'function_handle'))
         continue;
     end
 
@@ -253,8 +253,14 @@ for i = 1 : numel(arg_names)
         continue
     end
     
-    if contains(func_handle, 'iscell') 
+    if contains(func_handle, 'iscell')
         converter_lines{t+1} = sprintf('if ischar(%s) && ~isempty(%s) && strcmp(%s(1), ''{'')\n    %s = eval(%s);\nend', arg_name_i, arg_name_i, arg_name_i, arg_name_i, arg_name_i); 
+        t = t + 1;
+        continue
+    end
+
+    if contains(func_handle, 'function_handle')
+        converter_lines{t+1} = sprintf('if ischar(%s) && ~isempty(%s) && strcmp(%s(1), ''@'')\n    %s = eval(%s);\nend', arg_name_i, arg_name_i, arg_name_i, arg_name_i, arg_name_i);
         t = t + 1;
         continue
     end

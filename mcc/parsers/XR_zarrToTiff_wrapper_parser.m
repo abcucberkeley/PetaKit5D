@@ -41,6 +41,9 @@ end
 if ischar(ChannelPatterns) && ~isempty(ChannelPatterns) && strcmp(ChannelPatterns(1), '{')
     ChannelPatterns = eval(ChannelPatterns);
 end
+if ischar(usrFcn) && ~isempty(usrFcn) && strcmp(usrFcn(1), '@')
+    usrFcn = eval(usrFcn);
+end
 if ischar(parseCluster)
     parseCluster = str2num(parseCluster);
 end
