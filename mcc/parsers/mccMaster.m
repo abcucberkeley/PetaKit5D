@@ -113,6 +113,8 @@ switch functionName
         multiple_region_spectra_encoding_block_parser(varargin{1}, varargin{2}, varargin{3}, varargin{4}, varargin{5}, varargin{6:end});
     case 'crop_deskew_rotate_demo_function'
         crop_deskew_rotate_demo_function_parser(varargin{1}, varargin{2}, varargin{3}, varargin{4}, varargin{5}, varargin{6});
+    otherwise
+        error('The parser for function %s does not exist!', functionName);
 end
 
 toc(t0);

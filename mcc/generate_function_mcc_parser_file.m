@@ -153,10 +153,10 @@ if exist(fnout, 'file')
     tmp_parser_cell = readTextFile(tmpout);
 
     if strcmp(strjoin(tmp_parser_cell, '\n'), strjoin(exist_parser_cell, '\n'))
-        fprintf('    The function %s input parser remains the same, skip the update of the parser function.\n', funcName);
+        fprintf('    The input parser remains the same, skip the update of the parser function.\n');
         delete(tmpout);
     else
-        fprintf('    The function %s has changed, update the parser function.\n', funcName);
+        fprintf('    The function has changed, update the parser function.\n');
         movefile(tmpout, fnout);
     end
 else
