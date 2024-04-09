@@ -14,6 +14,10 @@ ip.addParameter('numStream', inf, @isnumeric); % number of streams for the trans
 ip.addParameter('SlurmParam', '-p abc --qos abc_normal -n1 --mem-per-cpu=21418M', @ischar); % slurm parameters 
 ip.addParameter('niceFactor', 0, @isnumeric); % nice factor for priority 
 ip.addParameter('includeSubdir', true, @islogical); % also transfer subfolders
+ip.addParameter('parseCluster', true, @islogical);
+ip.addParameter('masterCompute', false, @islogical);
+ip.addParameter('mccMode', false, @islogical);
+ip.addParameter('ConfigFile', '', @ischar);
 
 ip.parse(source, dest, varargin{:});
 
@@ -23,6 +27,11 @@ numStream = pr.numStream;
 SlurmParam = pr.SlurmParam;
 niceFactor = pr.niceFactor;
 includeSubdir = pr.includeSubdir;
+parseCluster = pr.parseCluster;
+masterCompute = pr.masterCompute;
+mccMode = pr.mccMode;
+ConfigFile = pr.ConfigFile;
+
 SlurmParam = sprintf('%s --nice=%d', SlurmParam, niceFactor);
 
 tic
@@ -132,10 +141,11 @@ for n = 1 : 5
     outputFlagpaths = flagFullpaths(max(1, batchSize - 1) : batchSize : end);
     maxJobNum = numStream;
 
-    is_done_flag = slurm_cluster_generic_computing_wrapper(inputFlagpaths, ...
+    is_done_flag = generic_computing_frameworks_wrapper(inputFlagpaths, ...
         outputFlagpaths, func_strs, 'tmpDir', tmpDir, 'language', 'bash', ...
         'SlurmParam', SlurmParam, 'cpusPerTask', cpusPerTask, 'maxJobNum', maxJobNum, ...
-        'masterCompute', ~false);
+        'masterCompute', masterCompute, parseCluster=parseCluster, mccMode=mccMode, ...
+        ConfigFile=ConfigFile);
 end
 
 % final check with all file rsync 

@@ -5,7 +5,28 @@ function [] = XR_psf_analysis_plot(frameFullname, figureFullname, RW_info_Fullna
 % Author: Xiongtao Ruan (07/28/2021)
 
 
+ip = inputParser;
+ip.CaseSensitive = false;
+ip.addRequired('frameFullname', @ischar);
+ip.addRequired('figureFullname', @ischar);
+ip.addRequired('RW_info_Fullname', @ischar);
+ip.addRequired('ch_ind', @isscalar);
+ip.addRequired('source_descrip', @ischar);
+ip.addRequired('xypixsize', @isscalar);
+ip.addRequired('zpixsize', @isscalar);
+ip.addRequired('NAdet', @isscalar);
+ip.addRequired('index', @isscalar);
+ip.addRequired('exc_lambda', @isscalar);
+ip.addRequired('det_lambda', @isscalar);
+ip.addRequired('PSFsubpix', @ischar);
+ip.addRequired('gamma', @isscalar);
+ip.addRequired('bgFactor', @isscalar);
+
+ip.parse(frameFullname, figureFullname, RW_info_Fullname, ch_ind, source_descrip, ...
+    xypixsize, zpixsize, NAdet, index, exc_lambda, det_lambda, PSFsubpix, gamma, bgFactor);
+
 if exist(figureFullname, 'file')
+    fprintf('The figure already exists, skip it!\n')
     return;
 end
 
