@@ -18,7 +18,7 @@ ip.addRequired('NAdet', @isscalar);
 ip.addRequired('index', @isscalar);
 ip.addRequired('exc_lambda', @isscalar);
 ip.addRequired('det_lambda', @isscalar);
-ip.addRequired('PSFsubpix', @ischar);
+ip.addRequired('PSFsubpix', @isvector);
 ip.addRequired('gamma', @isscalar);
 ip.addRequired('bgFactor', @isscalar);
 

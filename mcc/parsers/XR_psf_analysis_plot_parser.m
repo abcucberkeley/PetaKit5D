@@ -15,7 +15,7 @@ ip.addRequired('NAdet', @(x) isscalar(x) || ischar(x));
 ip.addRequired('index', @(x) isscalar(x) || ischar(x));
 ip.addRequired('exc_lambda', @(x) isscalar(x) || ischar(x));
 ip.addRequired('det_lambda', @(x) isscalar(x) || ischar(x));
-ip.addRequired('PSFsubpix', @ischar);
+ip.addRequired('PSFsubpix', @(x) isvector(x) || ischar(x));
 ip.addRequired('gamma', @(x) isscalar(x) || ischar(x));
 ip.addRequired('bgFactor', @(x) isscalar(x) || ischar(x));
 
@@ -44,6 +44,9 @@ if ischar(exc_lambda)
 end
 if ischar(det_lambda)
     det_lambda = str2num(det_lambda);
+end
+if ischar(PSFsubpix)
+    PSFsubpix = str2num(PSFsubpix);
 end
 if ischar(gamma)
     gamma = str2num(gamma);
