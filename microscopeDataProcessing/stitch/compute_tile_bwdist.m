@@ -18,7 +18,7 @@ ip.addRequired('singleDistMap', @islogical);
 ip.addRequired('blockSize', @isvector);
 ip.addRequired('shardSize', @(x) isempty(x) || isvector(x));
 ip.addRequired('compressor', @ischar);
-ip.addRequired('poolSize', @(x) isempty(x) || isvector(x));
+ip.addRequired('distBbox', @(x) isempty(x) || isvector(x));
 ip.addOptional('Overwrite', false, @islogical);
 
 ip.parse(blockInfoFullname, tileInd, bwdistFullpath, weightDegree, singleDistMap, blockSize, shardSize, compressor, distBbox, Overwrite);

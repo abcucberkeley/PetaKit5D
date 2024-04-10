@@ -84,7 +84,7 @@ switch functionName
     case 'saveMIP_tiff'
         saveMIP_tiff_parser(varargin{1}, varargin{2}, varargin{3:end});
     case 'XR_one_image_FSC_analysis_frame'
-        XR_one_image_FSC_analysis_frame_parser(varargin{1}, varargin{2:end});
+        XR_one_image_FSC_analysis_frame_parser(varargin{1}, varargin{2}, varargin{3:end});
     case 'XR_fftSpectrumComputingFrame'
         XR_fftSpectrumComputingFrame_parser(varargin{1}, varargin{2}, varargin{3:end});
     case 'simReconFrame'

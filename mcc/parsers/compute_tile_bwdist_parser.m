@@ -11,7 +11,7 @@ ip.addRequired('singleDistMap', @(x) islogical(x) || ischar(x));
 ip.addRequired('blockSize', @(x) isvector(x) || ischar(x));
 ip.addRequired('shardSize', @(x) isempty(x) || isvector(x) || ischar(x));
 ip.addRequired('compressor', @ischar);
-ip.addRequired('poolSize', @(x) isempty(x) || isvector(x) || ischar(x));
+ip.addRequired('distBbox', @(x) isempty(x) || isvector(x) || ischar(x));
 ip.addOptional('Overwrite', false, @(x) islogical(x) || ischar(x));
 
 ip.parse(blockInfoFullname, tileInd, bwdistFullpath, weightDegree, singleDistMap, blockSize, shardSize, compressor, distBbox, Overwrite);
@@ -33,15 +33,15 @@ end
 if ischar(shardSize)
     shardSize = str2num(shardSize);
 end
-if ischar(poolSize)
-    poolSize = str2num(poolSize);
+if ischar(distBbox)
+    distBbox = str2num(distBbox);
 end
 if ischar(Overwrite)
     Overwrite = str2num(Overwrite);
 end
 
 compute_tile_bwdist(blockInfoFullname, tileInd, bwdistFullpath, weightDegree, ...
-    singleDistMap, blockSize, shardSize, compressor, poolSize, Overwrite);
+    singleDistMap, blockSize, shardSize, compressor, distBbox, Overwrite);
 
 end
 

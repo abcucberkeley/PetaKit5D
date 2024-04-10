@@ -7,7 +7,7 @@ ip.addRequired('batchInds', @(x) isnumeric(x) || ischar(x));
 ip.addRequired('BlockInfoFullname', @(x) ischar(x));
 ip.addRequired('PerBlockInfoFullname', @(x) ischar(x));
 ip.addRequired('flagFullname', @(x) ischar(x));
-ip.addRequired('stitchFullnanme', @(x) ischar(x));
+ip.addRequired('stitchFullname', @(x) ischar(x));
 ip.addOptional('stitchBlockInfo', [], @(x) isempty(x) || isstruct(x) || ischar(x));
 ip.addOptional('tileFns', [], @(x) isempty(x) || iscell(x) || ischar(x));
 ip.addParameter('Overwrite', false, @(x) islogical(x) || ischar(x));
@@ -72,7 +72,7 @@ if ischar(weightDegree)
 end
 
 processStitchBlock(batchInds, BlockInfoFullname, PerBlockInfoFullname, flagFullname, ...
-    stitchFullnanme, stitchBlockInfo, tileFns, Overwrite=Overwrite, imSize=imSize, ...
+    stitchFullname, stitchBlockInfo, tileFns, Overwrite=Overwrite, imSize=imSize, ...
     batchSize=batchSize, dtype=dtype, BlendMethod=BlendMethod, BorderSize=BorderSize, ...
     BlurSigma=BlurSigma, imdistFullpaths=imdistFullpaths, imdistFileIdx=imdistFileIdx, ...
     poolSize=poolSize, weightDegree=weightDegree);

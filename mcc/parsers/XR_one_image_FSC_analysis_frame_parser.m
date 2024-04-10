@@ -4,6 +4,7 @@ function [fsc_mu, res_mu, fsc_cell, res_cell] = XR_one_image_FSC_analysis_frame_
 ip = inputParser;
 ip.CaseSensitive = false;
 ip.addRequired('fn', @(x) ischar(x) || isnumeric(x));
+ip.addRequired('fnout', @ischar);
 ip.addParameter('xyPixelSize', 0.108, @(x) isnumeric(x) || ischar(x));
 ip.addParameter('dz', 0.108, @(x) isnumeric(x) || ischar(x));
 ip.addParameter('dr', 1 , @(x) isnumeric(x) || ischar(x));
@@ -17,7 +18,7 @@ ip.addParameter('skipConeRegion', true, @(x) islogical(x) || ischar(x));
 ip.addParameter('clipPer', [], @(x) isnumeric(x) || ischar(x)); % clip intensity higher than the given percentile
 ip.addParameter('debug', false, @(x) islogical(x) || ischar(x));
 
-ip.parse(fn,  varargin{:});
+ip.parse(fn, fnout, varargin{:});
 
 pr = ip.Results;
 xyPixelSize = pr.xyPixelSize;
@@ -64,9 +65,9 @@ if ischar(debug)
     debug = str2num(debug);
 end
 
-XR_one_image_FSC_analysis_frame(fn, xyPixelSize=xyPixelSize, dz=dz, dr=dr, ...
-    dtheta=dtheta, resThreshMethod=resThreshMethod, resThresh=resThresh, N=N, ...
-    bbox=bbox, resAxis=resAxis, skipConeRegion=skipConeRegion, clipPer=clipPer, ...
+XR_one_image_FSC_analysis_frame(fn, fnout, xyPixelSize=xyPixelSize, dz=dz, ...
+    dr=dr, dtheta=dtheta, resThreshMethod=resThreshMethod, resThresh=resThresh, ...
+    N=N, bbox=bbox, resAxis=resAxis, skipConeRegion=skipConeRegion, clipPer=clipPer, ...
     debug=debug);
 
 end

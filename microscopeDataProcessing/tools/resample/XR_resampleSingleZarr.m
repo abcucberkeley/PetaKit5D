@@ -10,7 +10,7 @@ ip = inputParser;
 ip.CaseSensitive = false;
 ip.addRequired('zarrFullpath', @ischar); 
 ip.addRequired('dsFullpath', @ischar); 
-ip.addRequired('dsFactors', @isnumeric); 
+ip.addRequired('dsFactor', @isnumeric); 
 ip.addParameter('bbox', [], @isnumeric); % bbox for input
 ip.addParameter('blockSize', [256, 256, 256], @isnumeric); % blcoksize
 ip.addParameter('batchSize', [512, 512, 512], @isnumeric); % size to process in one batch 

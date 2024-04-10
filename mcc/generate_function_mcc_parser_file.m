@@ -5,7 +5,7 @@ function [func_lines, arg_lines, arg_types] = generate_function_mcc_parser_file(
 % Author: Xiongtao Ruan (04/04/2024)
 
 if nargin < 1
-    funcName = 'stitch_global_grid_assignment_wrapper';
+    funcName = 'XR_psf_analysis_plot';
 end
 if nargin < 2
     dpntFuncNames = '';
@@ -35,6 +35,18 @@ else
     tmp = regexp(func_define_line, '^ *function *([^ ]*)(', 'tokens');
 end
 func_name = tmp{1}{1};
+
+% get the required and optional arguments from the function line
+func_define_line_1 = func_define_line;
+if contains(func_define_line_1, '...')
+    func_define_line_1 = strrep(func_define_line_1, '...', '');
+    func_define_line_1 = strrep(func_define_line_1, newline, '');
+end
+tmp = regexp(func_define_line_1, '\((.*)\)', 'tokens');
+func_arg_names = strip(strsplit(tmp{1}{1}, ','));
+if strcmp(func_arg_names{end}, 'varargin')
+    func_arg_names = func_arg_names(1 : end - 1);
+end
 
 parser_func_name = sprintf('%s_parser', func_name);
 
@@ -75,6 +87,27 @@ else
         func_lines_1 = strjoin(func_lines, '\n');
         tmp = regexp(func_lines_1, ' *(ip.parse\([^)]*\);)', 'tokens');
         input_parser_func_line = tmp{1}{1};
+    end
+end
+
+% check if required and optional argument missing and if they follow the same orders
+ro_arg_names = arg_names(~contains(arg_types, 'parameter'));
+if numel(func_arg_names) ~= numel(ro_arg_names)
+    error('The number of required/optional arguments does not match that defined in the input parser!');
+else
+    for i = 1 : numel(func_arg_names) 
+        if ~strcmpi(func_arg_names{i}, ro_arg_names{i})
+            error('Argument %s does not match the one defined in the same order %s in the input parser!\n', func_arg_names{i}, ro_arg_names{i});
+        end
+    end
+
+    % sort the order of the argument to see if they match
+    func_arg_names_s = sort(func_arg_names);
+    ro_arg_names_s = sort(ro_arg_names);
+    for i = 1 : numel(func_arg_names_s) 
+        if ~strcmpi(func_arg_names_s{i}, ro_arg_names_s{i})
+            warning('Argument %s is not defined in the input parser!\n', func_arg_names_s{i}, ro_arg_names_s{i});
+        end
     end
 end
 

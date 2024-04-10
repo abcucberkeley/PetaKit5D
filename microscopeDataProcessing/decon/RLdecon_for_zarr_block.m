@@ -18,7 +18,7 @@ ip.addRequired('flagFullname', @(x) ischar(x));
 % ip.addParameter('ResultDir', 'matlab_stitch', @ischar);
 ip.addRequired('BatchBBoxes', @isnumeric);
 ip.addRequired('RegionBBoxes', @isnumeric);
-ip.addRequired('pixelSize', @isnumeric); %in um
+ip.addRequired('xyPixelSize', @isnumeric); %in um
 ip.addRequired('dz', @isnumeric); %in um
 % ip.addParameter('BlockSize', [], @isnumeric);
 ip.addParameter('Save16bit', false , @islogical);

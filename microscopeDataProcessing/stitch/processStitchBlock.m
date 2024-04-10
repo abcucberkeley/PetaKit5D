@@ -14,7 +14,7 @@ ip.addRequired('batchInds', @isnumeric);
 ip.addRequired('BlockInfoFullname', @(x) ischar(x));
 ip.addRequired('PerBlockInfoFullname', @(x) ischar(x));
 ip.addRequired('flagFullname', @(x) ischar(x));
-ip.addRequired('stitchFullnanme', @(x) ischar(x));
+ip.addRequired('stitchFullname', @(x) ischar(x));
 ip.addOptional('stitchBlockInfo', [], @(x) isempty(x) || isstruct(x));
 ip.addOptional('tileFns', [], @(x) isempty(x) || iscell(x));
 ip.addParameter('Overwrite', false, @islogical);

@@ -10,6 +10,7 @@ function [fsc_mu, res_mu, fsc_cell, res_cell] = XR_one_image_FSC_analysis_frame(
 ip = inputParser;
 ip.CaseSensitive = false;
 ip.addRequired('fn', @(x) ischar(x) || isnumeric(x));
+ip.addRequired('fnout', @ischar);
 ip.addParameter('xyPixelSize', 0.108, @isnumeric);
 ip.addParameter('dz', 0.108, @isnumeric);
 ip.addParameter('dr', 1 , @isnumeric);
@@ -23,7 +24,7 @@ ip.addParameter('skipConeRegion', true, @islogical);
 ip.addParameter('clipPer', [], @isnumeric); % clip intensity higher than the given percentile
 ip.addParameter('debug', false, @islogical);
 
-ip.parse(fn,  varargin{:});
+ip.parse(fn, fnout, varargin{:});
 
 pr = ip.Results;
 xyPixelSize = pr.xyPixelSize;

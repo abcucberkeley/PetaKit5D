@@ -11,7 +11,7 @@ ip.addRequired('deconFullpath', @(x) ischar(x));
 ip.addRequired('flagFullname', @(x) ischar(x));
 ip.addRequired('BatchBBoxes', @(x) isnumeric(x) || ischar(x));
 ip.addRequired('RegionBBoxes', @(x) isnumeric(x) || ischar(x));
-ip.addRequired('pixelSize', @(x) isnumeric(x) || ischar(x)); %in um
+ip.addRequired('xyPixelSize', @(x) isnumeric(x) || ischar(x)); %in um
 ip.addRequired('dz', @(x) isnumeric(x) || ischar(x)); %in um
 ip.addParameter('Save16bit', false , @(x) islogical(x) || ischar(x));
 ip.addParameter('Overwrite', false, @(x) islogical(x) || ischar(x));
@@ -70,8 +70,8 @@ end
 if ischar(RegionBBoxes)
     RegionBBoxes = str2num(RegionBBoxes);
 end
-if ischar(pixelSize)
-    pixelSize = str2num(pixelSize);
+if ischar(xyPixelSize)
+    xyPixelSize = str2num(xyPixelSize);
 end
 if ischar(dz)
     dz = str2num(dz);
@@ -135,7 +135,7 @@ if ischar(psfGen)
 end
 
 RLdecon_for_zarr_block(batchInds, zarrFullpath, psfFullpath, deconFullpath, ...
-    flagFullname, BatchBBoxes, RegionBBoxes, pixelSize, dz, Save16bit=Save16bit, ...
+    flagFullname, BatchBBoxes, RegionBBoxes, xyPixelSize, dz, Save16bit=Save16bit, ...
     Overwrite=Overwrite, SkewAngle=SkewAngle, flipZstack=flipZstack, Background=Background, ...
     dzPSF=dzPSF, DeconIter=DeconIter, damper=damper, scaleFactor=scaleFactor, ...
     deconOffset=deconOffset, EdgeErosion=EdgeErosion, deconMaskFns=deconMaskFns, ...
