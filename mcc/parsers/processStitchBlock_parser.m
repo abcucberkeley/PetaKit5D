@@ -40,10 +40,10 @@ weightDegree = pr.weightDegree;
 if ischar(batchInds)
     batchInds = str2num(batchInds);
 end
-if ischar(stitchBlockInfo) && ~isempty(stitchBlockInfo) && strcmp(stitchBlockInfo(1), '[')
+if ischar(stitchBlockInfo) && ~isempty(stitchBlockInfo) && (strcmp(stitchBlockInfo(1), '{') || strcmp(stitchBlockInfo(1), '[') || strcmp(stitchBlockInfo(1), '@'))
     stitchBlockInfo = eval(stitchBlockInfo);
 end
-if ischar(tileFns) && ~isempty(tileFns) && strcmp(tileFns(1), '{')
+if ischar(tileFns) && ~isempty(tileFns) && (strcmp(tileFns(1), '{') || strcmp(tileFns(1), '[') || strcmp(tileFns(1), '@'))
     tileFns = eval(tileFns);
 end
 if ischar(Overwrite)

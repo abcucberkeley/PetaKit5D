@@ -76,7 +76,7 @@ end
 if ischar(readWholeTiff)
     readWholeTiff = str2num(readWholeTiff);
 end
-if ischar(usrFcn) && ~isempty(usrFcn) && strcmp(usrFcn(1), '@')
+if ischar(usrFcn) && ~isempty(usrFcn) && (strcmp(usrFcn(1), '{') || strcmp(usrFcn(1), '[') || strcmp(usrFcn(1), '@'))
     usrFcn = eval(usrFcn);
 end
 

@@ -19,7 +19,7 @@ uuid = pr.uuid;
 if ischar(Overwrite)
     Overwrite = str2num(Overwrite);
 end
-if ischar(usrFcn) && ~isempty(usrFcn) && strcmp(usrFcn(1), '@')
+if ischar(usrFcn) && ~isempty(usrFcn) && (strcmp(usrFcn(1), '{') || strcmp(usrFcn(1), '[') || strcmp(usrFcn(1), '@'))
     usrFcn = eval(usrFcn);
 end
 

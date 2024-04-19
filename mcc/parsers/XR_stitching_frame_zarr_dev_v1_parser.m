@@ -318,7 +318,7 @@ end
 if ischar(tileIdx)
     tileIdx = str2num(tileIdx);
 end
-if ischar(processFunPath) && ~isempty(processFunPath) && strcmp(processFunPath(1), '{')
+if ischar(processFunPath) && ~isempty(processFunPath) && (strcmp(processFunPath(1), '{') || strcmp(processFunPath(1), '[') || strcmp(processFunPath(1), '@'))
     processFunPath = eval(processFunPath);
 end
 if ischar(stitchMIP)
