@@ -35,7 +35,6 @@ ip.addParameter('unitWaitTime', 30, @isnumeric);
 ip.addParameter('mccMode', false, @islogical);
 ip.addParameter('ConfigFile', '', @ischar);
 
-
 ip.parse(inputFullpaths, varargin{:});
 
 pr = ip.Results;
@@ -61,6 +60,7 @@ mccMode = pr.mccMode;
 ConfigFile = pr.ConfigFile;
 
 if ~zarrFile
+    fprintf('\nConvert tiles from Tiff to Zarr...\n');
     XR_tiffToZarr_wrapper(inputFullpaths, 'zarrPathstr', zarrPathstr, 'locIds', locIds, ...
         'blockSize', blockSize, 'shardSize', shardSize, 'flippedTile', flippedTile, ...
         'resample', resample, 'partialFile', partialFile, 'ChannelPatterns', ChannelPatterns, ...
@@ -73,6 +73,8 @@ end
 if isempty(zarrPathstr)
     return;
 end
+
+fprintf('\nPreprocess Zarr tiles...\n');
 
 [dataPath, ~] = fileparts(inputFullpaths{1});
     

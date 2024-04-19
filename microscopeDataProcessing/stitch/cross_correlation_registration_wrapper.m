@@ -100,6 +100,6 @@ end
 fileattrib(xcorrTmppath, '+w', 'g');
 movefile(xcorrTmppath, xcorrFullpath);
 
-fprintf('Done!\n');
+% fprintf('Done!\n');
 
 end

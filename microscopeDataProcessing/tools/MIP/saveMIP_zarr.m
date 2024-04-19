@@ -31,6 +31,7 @@ for i = 1 : 3
         continue;
     end
     axis_i = i;
+    fprintf('Generate MIP %s... ', axis_strs{i});
     MIP = saveMIP_zarr_axis(zarrFullname, axis_i);
     MIPFullname = sprintf('%s_MIP_%s.tif', MIPFullname(1 : end - 10), axis_strs{i});
     

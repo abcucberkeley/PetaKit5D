@@ -25,6 +25,9 @@ nd = numel(dataPaths);
 % cast dataPaths to column cell array (in case of row arrays)
 dataPaths = dataPaths(:);
 
+t0 = tic();
+fprintf('Parse image filenames for data path(s):\n    %s\n', strjoin(dataPaths, '\n    '));
+
 % check existing files and parse channels
 fnames_cell = cell(nd, 1);
 gfnames_cell = cell(nd, 1); % for grouped partial volume files
@@ -91,7 +94,11 @@ dataSizes = cat(1, datesize_cell{:});
 % filter filenames by channel patterns 
 % 07/13/2021 also include folder names for channel pattern filtering
 if isempty(fnames)
-    warning('There is no image files in the dataPaths, please check if dataPaths are correct!');
+    if zarrFile
+        warning('No Zarr format (*.zarr) image files found in the input data folder(s)! Please check if dataPaths are correct!');
+    else
+        warning('No Tiff format (*.tif) image files found in the input data folder(s)! Please check if dataPaths are correct!');
+    end
     fnames = {};
     gfnames = {};
     flipZstack_mat = logical([]);
@@ -151,7 +158,9 @@ for d = 1 : nd
         end
     end
 end    
-
+fprintf('Done! ')
+toc(t0);
+fprintf('\n')
 
 end
 

@@ -308,12 +308,6 @@ for i = 1 : numel(batchInds)
                 end
             end
         case 'feather'
-            % tim_d_block = (tim_d_block / 10) .^ wd;
-            % tim_d_block = tim_d_block .^ wd;
-            % tim_w_block = tim_d_block .* (tim_block ~= 0);
-            % tim_w_block = tim_w_block ./ sum(tim_w_block, 4);
-            % nv_block = sum(tim_block .* tim_w_block, 4);
-            
             mex_compute = true;
             try
                 nv_block = feather_blending_3d_mex(tim_f_block, tim_d_block);  

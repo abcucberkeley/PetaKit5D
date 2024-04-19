@@ -1,4 +1,4 @@
-function [done_flag] =  MIP_block(batchInds, zarrFullpath, MIPFullpaths, flagFullname, BatchBBoxes, poolSize, varargin)
+function [done_flag] =  MIP_block(batchInds, zarrFullpath, MIPFullpaths, flagFullname, BatchBBoxes, startCoord, poolSize, varargin)
 % MIP for all axises for given blocks
 % 
 % xruan (05/01/2023): add support for user defined max pooling size (only
@@ -12,12 +12,13 @@ ip.addRequired('zarrFullpath', @(x) ischar(x));
 ip.addRequired('MIPFullpaths', @(x) iscell(x));
 ip.addRequired('flagFullname', @(x) ischar(x));
 ip.addRequired('BatchBBoxes', @isnumeric);
+ip.addRequired('startCoord', @isnumeric);
 ip.addRequired('poolSize', @isnumeric);
 ip.addParameter('Overwrite', false, @islogical);
 ip.addParameter('uuid', '', @ischar);
 ip.addParameter('debug', false, @islogical);
 
-ip.parse(batchInds, zarrFullpath, MIPFullpaths, flagFullname, BatchBBoxes, poolSize, varargin{:});
+ip.parse(batchInds, zarrFullpath, MIPFullpaths, flagFullname, BatchBBoxes, startCoord, poolSize, varargin{:});
 
 pr = ip.Results;
 Overwrite = pr.Overwrite;
@@ -112,9 +113,9 @@ for i = 1 : numel(batchInds)
         poolSize_out = poolSize_orig(4 : 6);
         poolSize_out(j) = poolSize_orig(j);
 
-        obStart = BatchBBoxes(i, 1 : 3);
+        obStart = BatchBBoxes(i, 1 : 3) - startCoord + 1;
         obStart = floor((obStart - 1) ./ poolSize_out) + 1;
-        obEnd = BatchBBoxes(i, 4 : 6);
+        obEnd = BatchBBoxes(i, 4 : 6) - startCoord + 1;
         obEnd = floor((obEnd - 1) ./ poolSize_out) + 1;
 
         if any(size(out_batch, 1 : 3) ~= obEnd - obStart + 1)
@@ -140,7 +141,6 @@ end
 if all(done_flag)
     fclose(fopen(flagFullname, 'w'));
 end
-
 
 end
 

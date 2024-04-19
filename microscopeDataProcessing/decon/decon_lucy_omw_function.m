@@ -51,7 +51,7 @@ sizeI = size(I);
 
 % 1. Prepare PSFs
 persistent OTF_f OTF_b psz sq_b gpuNum last_useGPU
-if isempty(psz) || ~(numel(psz) == numel(sizeI) && all(psz == sizeI) && last_useGPU == useGPU ...
+if isempty(psz) || isempty(OTF_f) || ~(numel(psz) == numel(sizeI) && all(psz == sizeI) && last_useGPU == useGPU ...
         && sq_b == sum(PSF_b .^ 2, 'all')) || (useGPU && ~isempty(OTF_f) && gpuNum > 0 && ~existsOnGPU(OTF_f))
     psz = sizeI;
     

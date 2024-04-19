@@ -6,10 +6,10 @@ ip.CaseSensitive = false;
 ip.addRequired('blockInfoFullname', @ischar);
 ip.addRequired('tileInd', @(x) isscalar(x) || ischar(x));
 ip.addRequired('bwdistFullpath', @ischar);
-ip.addRequired('weightDegree', @ischar);
+ip.addRequired('weightDegree', @(x) isscalar(x) || ischar(x));
 ip.addRequired('singleDistMap', @(x) islogical(x) || ischar(x));
 ip.addRequired('blockSize', @(x) isvector(x) || ischar(x));
-ip.addRequired('shardSize', @(x) isvector(x) || ischar(x));
+ip.addRequired('shardSize', @(x) isempty(x) || isvector(x) || ischar(x));
 ip.addRequired('compressor', @ischar);
 ip.addRequired('poolSize', @(x) isvector(x) || ischar(x));
 ip.addRequired('distBbox', @(x) isvector(x) || ischar(x));
@@ -21,6 +21,9 @@ pr = ip.Results;
 
 if ischar(tileInd)
     tileInd = str2num(tileInd);
+end
+if ischar(weightDegree)
+    weightDegree = str2num(weightDegree);
 end
 if ischar(singleDistMap)
     singleDistMap = str2num(singleDistMap);

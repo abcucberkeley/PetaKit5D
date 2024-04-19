@@ -64,7 +64,12 @@ for d = 1 : nd
     dataPaths{d} = simplifyPath(dataPath);
     resultPaths{d} = simplifyPath(resultPath);    
     fileattrib(resultPath, '+w', 'g');
+
     save('-v7.3', [resultPath, '/parameters.mat'], 'pr');
+    s = jsonencode(pr, PrettyPrint=true);
+    fid = fopen([resultPath, '/parameters.json'], 'w');
+    fprintf(fid, s);
+    fclose(fid);        
 end
 
 % check if a slurm-based computing cluster exists
@@ -72,39 +77,14 @@ if parseCluster
     [parseCluster, job_log_fname, job_log_error_fname] = checkSlurmCluster(dataPaths{1}, jobLogDir);
 end
 
-fnames = cell(nd, 1);
-
-for d = 1 : nd
-    dataPath = dataPaths{d};
-    if zarrFile
-        dir_info = dir([dataPath, '/', '*.zarr']);        
-    else
-        dir_info = dir([dataPath, '/', '*.tif']);
-    end
-    fnames_d = {dir_info.name}';
-    nF = numel(fnames_d);
-    sz = getImageSize([dataPath, '/', fnames_d{1}]);    
-    nc = numel(ChannelPatterns);
-    ch_inds = false(nF, nc);
-    for c = 1 : nc
-        ch_inds(:, c) = contains(fnames_d, ChannelPatterns{c}, 'IgnoreCase', true) | contains(fnames_d, regexpPattern(ChannelPatterns{c}), 'IgnoreCase', true);
-    end
-    fnames_d = fnames_d(any(ch_inds, 2));
-    fnames{d} = fnames_d;
-end
-
-fd_inds = arrayfun(@(x) ones(numel(fnames{x}), 1) * x, 1 : nd, 'unif', 0);
-fnames = cat(1, fnames{:});
-[~, fsns] = fileparts(fnames);
-fd_inds = cat(1, fd_inds{:});
-nF = numel(fnames);
-if nF == 1
-    fsns = {fsns};
-end
+% parse image filenames
+[~, fsns, fd_inds, filepaths] = parseImageFilenames(dataPaths, zarrFile, ChannelPatterns);
+nF = numel(fsns);
+sz = getImageSize(filepaths{1});
 
 %% use generic framework for the MIP computing
 
-frameFullpaths = cell(nF, 1);
+frameFullpaths = filepaths;
 MIPFullpaths = cell(nF, 1);
 func_strs = cell(nF, 1);
 
@@ -114,30 +94,27 @@ fidx = find(axis, 1, 'last');
 axis_str = axis_strs{fidx};
 
 for f = 1 : nF
-    fname = fnames{f};
+    frameFullpath = frameFullpaths{f};
+
     d = fd_inds(f);
-    dataPath = dataPaths{d};
     resultPath = resultPaths{d};
-    
-    frameFullpath = [dataPath, '/', fname];
-    frameFullpaths{f} = frameFullpath;
     MIPFullpath = sprintf('%s/%s_MIP_%s.tif', resultPath, fsns{f}, axis_str);
     MIPFullpaths{f} = MIPFullpath;
     
     if zarrFile
-        if largeZarr || any(axis(1 : 2))
+        if largeZarr
             func_strs{f} = sprintf(['XR_MIP_zarr(''%s'',''axis'',%s,''BatchSize'',%s,', ...
                 '''parseCluster'',%s,''parseParfor'',%s,''jobLogDir'',''%s'',', ...
-                '''mccMode'',%s,''ConfigFile'',''%s'')'], frameFullpath, strrep(mat2str(axis), ' ', ','), ...
-                strrep(mat2str(BatchSize), ' ', ','), string(parseCluster), ...
+                '''mccMode'',%s,''ConfigFile'',''%s'')'], frameFullpath, mat2str_comma(axis), ...
+                mat2str_comma(BatchSize), string(parseCluster), ...
                 string(parseParfor), jobLogDir, string(mccMode), ConfigFile);
         else
-            func_strs{f} = sprintf(['saveMIP_zarr(''%s'',''%s'',''%s'')'], frameFullpath, ...
-                MIPFullpath, dtype);
+            func_strs{f} = sprintf(['saveMIP_zarr(''%s'',''%s'',''%s'',%s)'], frameFullpath, ...
+                MIPFullpath, dtype, mat2str_comma(axis));
         end
     else
         func_strs{f} = sprintf(['saveMIP_tiff(''%s'',''%s'',''dtype'',''%s'',''axis'',%s)'], ...
-            frameFullpath, MIPFullpath, dtype, strrep(mat2str(axis), ' ', ','));
+            frameFullpath, MIPFullpath, dtype, mat2str_comma(axis));
     end
 end
 

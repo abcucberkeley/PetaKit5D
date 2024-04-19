@@ -118,7 +118,7 @@ end
 
 if ~isempty(finalOutFullpath) && (exist(finalOutFullpath, 'dir') || exist(finalOutFullpath, 'file'))
     is_done_flag = true(numel(inputFullpaths), 1);
-    fprintf('The final output file %s already exists!\n', finalOutFullpath);        
+    fprintf('The final output file %s already exists!\n\n', finalOutFullpath);
     return;
 end
 
@@ -145,7 +145,7 @@ outputFullpaths = strip(outputFullpaths, 'right', '/');
 output_exist_mat = batch_file_exist(outputFullpaths, [], true);
 if all(output_exist_mat)
     is_done_flag = ~is_done_flag;
-    fprintf('All output files (%d / %d) already exists!\n', nF, nF);        
+    fprintf('All output files (%d / %d) already exists!\n\n', nF, nF);
     return;
 else
     is_done_flag = output_exist_mat;
@@ -534,7 +534,7 @@ while (~parseCluster && ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
                     end
                 end
             end
-            fprintf('Process %s with function %s... \n', strjoin(fsnames(fs), ', '), func_str);             
+            fprintf('\nProcess %s with function %s... \n', strjoin(fsnames(fs), ', '), func_str);
             if ~GNUparallel
                 % process_cmd = func_str;
                 if isunix
@@ -555,13 +555,11 @@ while (~parseCluster && ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
                 end
             end
             t0=tic; [status, cmdout] = system(cmd, '-echo'); t1=toc(t0);
-            fprintf('Elapsed time is %f seconds.\n', t1);
             trial_counter(fs) = trial_counter(fs) + 1;
             if ~parseCluster && exist(outputFullpath, 'file') && exist(tmpFullpath, 'file')
                 delete(tmpFullpath);
             end
-
-            fprintf('Done!\n');
+            fprintf('Done! Elapsed time is %f seconds.\n', t1);
         end
     end
     
@@ -580,7 +578,7 @@ while (~parseCluster && ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
 
     if ~isempty(finalOutFullpath) && (exist(finalOutFullpath, 'dir') || exist(finalOutFullpath, 'file'))
         is_done_flag = true(nF, 1);
-        fprintf('The final output file %s already exists!\n', finalOutFullpath);        
+        fprintf('The final output file %s already exists!\n', finalOutFullpath);
         break;
     end
     
@@ -597,7 +595,7 @@ if parseCluster
 end
 
 if all(is_done_flag)
-    fprintf('All output files (%d / %d) are finished!\n', nF, nF);    
+    fprintf('All output files (%d / %d) are finished!\n\n', nF, nF);
 end
 
 end

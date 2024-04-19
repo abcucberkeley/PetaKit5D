@@ -53,7 +53,7 @@ compressor = pr.compressor;
 usrFcn = pr.usrFcn;
 uuid = pr.uuid;
 
-t0 = tic;
+% t0 = tic;
 
 % remove the last slash
 zarrFilename = strip(zarrFilename, 'right', '/');
@@ -239,8 +239,8 @@ if exist(zarrFilename, 'dir')
     end
 end
 movefile(tmpFilename, zarrFilename);
-toc(t0);
-fprintf('Done!\n');
+% toc(t0);
+% fprintf('Done!\n');
 
 end
 

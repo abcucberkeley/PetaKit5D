@@ -578,7 +578,8 @@ while ~all(is_done_flag | trial_counter >= max_trial_num, 'all')
                                 stitch_save_fname = [stitch_save_fsname, '.zarr'];
                                 ftype = 'dir';
                         end
-                        
+                        [~, fsname] = fileparts(stitch_save_fname);
+
                         % for online stitch check if old results with fewer tiles exist, if so, delete them. 
                         if onlineStitch
                             switch pipeline
@@ -635,7 +636,6 @@ while ~all(is_done_flag | trial_counter >= max_trial_num, 'all')
                         % for tile number greater than 10, save the info to the disk and load it for the function
                         if numel(tile_fullpaths) > 10 && parseCluster && job_ids(n, ncam, s, c, z) == -1
                             fprintf('Save tile paths and coordinates to disk...\n');
-                            [~, fsname] = fileparts(stitch_save_fname);
                             tileInfoFullpath = sprintf('%s/stitchInfo/%s_tile_info.mat', stitching_rt, fsname);
                             tileInfoTmppath = sprintf('%s/stitchInfo/%s_tile_info_%s.mat', stitching_rt, fsname, uuid);
                             save('-v7.3', tileInfoTmppath, 'tile_fullpaths', 'xyz', 'tileIdx', 'flippedTile');
@@ -729,9 +729,11 @@ while ~all(is_done_flag | trial_counter >= max_trial_num, 'all')
                                 (xcorrShift && strcmpi(xcorrMode, 'primaryFirst') && isPrimaryCh ...
                                 && job_ids(n, ncam, s, c, z) == -1)))
                             trial_counter(n, ncam, s, c, z) = trial_counter(n, ncam, s, c, z) + 1;
-                            tic
+                            t0 = tic;
                             feval(str2func(['@()', func_str]));
-                            toc
+                            fprintf('\nStitching result %s is generated. ', fsname)
+                            toc(t0);
+                            fprintf('\n');
                         end
 
                         % check if computing is done

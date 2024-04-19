@@ -295,6 +295,7 @@ if Decon
                 writetiff(psf, tmp_filename);
                 movefile(tmp_filename, psfgen_filename)
             end
+            fprintf('Done!\n\n');
         end
         
         %{
@@ -331,6 +332,8 @@ if parseCluster
     job_ids = -ones(nF, 1);
 end
 
+nF_done = 0;
+ts = tic;
 % use while loop to perform computing for all images
 while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
     for f = 1 : nF
@@ -511,6 +514,7 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
             if ~parseCluster
                 % fileInfo = imfinfo(dsFullpath);
                 tic; feval(str2func(['@()', func_str])); toc;
+                fprintf('\n');
                 trial_counter(f, 1) = trial_counter(f, 1) + 1;
             end
             
@@ -527,8 +531,15 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
     % wait for running jobs finishing and checking for new coming images
     if ~all(is_done_flag | trial_counter >= maxTrialNum, 'all') 
         pause(30);
-        continue;
     end
+    if nF_done < sum(is_done_flag)
+        nF_done = sum(is_done_flag);
+        fprintf('Time %0.2f s: %d / %d (%0.2f%%) are finished!\n', toc(ts), nF_done, nF, nF_done / nF * 100);
+    end
+end
+
+if all(is_done_flag)
+    fprintf('All output files (%d / %d) are finished!\n\n', nF, nF);
 end
 
 end

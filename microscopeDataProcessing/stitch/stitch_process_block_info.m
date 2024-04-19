@@ -40,7 +40,7 @@ parseCluster = pr.parseCluster;
 mccMode = pr.mccMode;
 ConfigFile = pr.ConfigFile;
 
-t0 = tic();
+% t0 = tic();
 fprintf('Process stitch block information...\n')
 
 bSubSz = ceil(nvSize ./ blockSize);
@@ -162,8 +162,8 @@ for i = 1 : 3
     end
 end
 
-fprintf('Done!\n')
-toc(t0);
+% fprintf('Done!\n')
+% toc(t0);
 
 end
 

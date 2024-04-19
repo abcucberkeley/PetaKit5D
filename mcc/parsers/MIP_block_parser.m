@@ -1,4 +1,4 @@
-function [done_flag] =  MIP_block_parser(batchInds, zarrFullpath, MIPFullpaths, flagFullname, BatchBBoxes, poolSize, varargin)
+function [done_flag] =  MIP_block_parser(batchInds, zarrFullpath, MIPFullpaths, flagFullname, BatchBBoxes, startCoord, poolSize, varargin)
 
 
 ip = inputParser;
@@ -8,12 +8,13 @@ ip.addRequired('zarrFullpath', @(x) ischar(x));
 ip.addRequired('MIPFullpaths', @(x) iscell(x) || ischar(x));
 ip.addRequired('flagFullname', @(x) ischar(x));
 ip.addRequired('BatchBBoxes', @(x) isnumeric(x) || ischar(x));
+ip.addRequired('startCoord', @(x) isnumeric(x) || ischar(x));
 ip.addRequired('poolSize', @(x) isnumeric(x) || ischar(x));
 ip.addParameter('Overwrite', false, @(x) islogical(x) || ischar(x));
 ip.addParameter('uuid', '', @ischar);
 ip.addParameter('debug', false, @(x) islogical(x) || ischar(x));
 
-ip.parse(batchInds, zarrFullpath, MIPFullpaths, flagFullname, BatchBBoxes, poolSize, varargin{:});
+ip.parse(batchInds, zarrFullpath, MIPFullpaths, flagFullname, BatchBBoxes, startCoord, poolSize, varargin{:});
 
 pr = ip.Results;
 Overwrite = pr.Overwrite;
@@ -29,6 +30,9 @@ end
 if ischar(BatchBBoxes)
     BatchBBoxes = str2num(BatchBBoxes);
 end
+if ischar(startCoord)
+    startCoord = str2num(startCoord);
+end
 if ischar(poolSize)
     poolSize = str2num(poolSize);
 end
@@ -40,7 +44,7 @@ if ischar(debug)
 end
 
 MIP_block(batchInds, zarrFullpath, MIPFullpaths, flagFullname, BatchBBoxes, ...
-    poolSize, Overwrite=Overwrite, uuid=uuid, debug=debug);
+    startCoord, poolSize, Overwrite=Overwrite, uuid=uuid, debug=debug);
 
 end
 

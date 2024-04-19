@@ -12,8 +12,9 @@ function XR_MIP_zarr(zarrFullpath, varargin)
 ip = inputParser;
 ip.CaseSensitive = false;
 ip.addRequired('zarrFullpath', @(x) ischar(x));
-ip.addParameter('mipDirStr', 'MIPs', @ischar); % y, x, z
+ip.addParameter('mipDirStr', 'MIPs', @ischar); 
 ip.addParameter('axis', [1, 1, 1], @isnumeric); % y, x, z
+ip.addParameter('bbox', [] , @(x) isempty(x) || isvector(x)); % bbox to define the region for MIP
 ip.addParameter('BatchSize', [2048, 2048, 2048] , @isnumeric); % in y, x, z
 ip.addParameter('poolSize', [] , @isnumeric); % pooling size for mips
 ip.addParameter('zarrSubSize', [20, 20, 20] , @isnumeric); % in y, x, z
@@ -32,6 +33,7 @@ ip.parse(zarrFullpath, varargin{:});
 pr = ip.Results;
 mipDirStr = pr.mipDirStr;
 axis = pr.axis;
+bbox = pr.bbox;
 BatchSize = pr.BatchSize;
 poolSize = pr.poolSize;
 zarrSubSize = pr.zarrSubSize;
@@ -89,6 +91,13 @@ imSize = bim.Size;
 dtype = bim.ClassUnderlying;
 byteNum = dataTypeToByteNumber(dtype);
 
+inSize = imSize;
+startCoord = [1, 1, 1];
+if ~isempty(bbox)
+    inSize = bbox(4 : 6) - bbox(1 : 3) + 1;
+    startCoord = bbox(1 : 3);
+end
+
 % pool size for other axes
 poolSize_1 = [1, 1, 1];
 dsfactor = [1, 1, 1];
@@ -110,9 +119,9 @@ else
     end
 end
 
-% MIPs for each block
-BatchSize = min(imSize, max(BatchSize, ceil(BatchSize ./ inBlockSize) .* inBlockSize));
-bSubSz = ceil(imSize ./ BatchSize);
+% MIPs for each batch
+BatchSize = min(inSize, max(BatchSize, ceil(BatchSize ./ inBlockSize) .* inBlockSize));
+bSubSz = ceil(inSize ./ BatchSize);
 numBatch = prod(bSubSz);
 
 % in case of out size too large for very large data that causes oom for the main 
@@ -120,19 +129,19 @@ numBatch = prod(bSubSz);
 if ~mipSlab
     outVolSizes = zeros(3, 1);
     for i = 1 : 3
-        outVolSizes(i) = prod([imSize(setdiff(1 : 3, i)), bSubSz(i)]) * byteNum / 1024^3;
+        outVolSizes(i) = prod([inSize(setdiff(1 : 3, i)), bSubSz(i)]) * byteNum / 1024^3;
     end
     
     % if the max intermediate MIP files is greater than 100 GB, increase the BatchSize
     % by the blockSize in the axis with largest outVolSizes
     while any(outVolSizes > 100) && prod(BatchSize) * byteNum / 1024^3 < 100
         [~, ind] = max(outVolSizes);
-        BatchSize = min(imSize, BatchSize + inBlockSize .* ((1 : 3) == ind));
-        bSubSz = ceil(imSize ./ BatchSize);
+        BatchSize = min(inSize, BatchSize + inBlockSize .* ((1 : 3) == ind));
+        bSubSz = ceil(inSize ./ BatchSize);
         numBatch = prod(bSubSz);
     
         for i = 1 : 3
-            outVolSizes(i) = prod([imSize(setdiff(1 : 3, i)), bSubSz(i)]) * byteNum / 1024^3;
+            outVolSizes(i) = prod([inSize(setdiff(1 : 3, i)), bSubSz(i)]) * byteNum / 1024^3;
         end
     end
 end
@@ -142,7 +151,7 @@ bSubs = [Y(:), X(:), Z(:)];
 clear Y X Z
 
 batchBBoxes = zeros(numBatch, 6);
-batchBBoxes(:, 1 : 3) = (bSubs - 1) .* BatchSize + 1; 
+batchBBoxes(:, 1 : 3) = (bSubs - 1) .* BatchSize + startCoord;
 batchBBoxes(:, 4 : 6) = min(batchBBoxes(:, 1 : 3) + BatchSize - 1, imSize);
 
 MIPZarrTmppaths = cellfun(@(x) sprintf('%s/%s_%s_%s.zarr', MIPPath, fsname, x, uuid), axis_strs, 'unif', 0);
@@ -176,7 +185,7 @@ for i = 1 : 3
     axis_flag = false(3, 1);
     axis_flag(i) = true;
     
-    outSize = imSize;
+    outSize = inSize;
     outSize(axis_flag) = ceil(outSize(axis_flag) / poolSize(axis_flag));
     outSize(~axis_flag) = ceil(outSize(~axis_flag) ./ poolSize_1(~axis_flag));
     BlockSize_i = BatchSize;
@@ -205,10 +214,11 @@ for i = 1 : numTasks
     outputFullpaths{i} = zarrFlagFullpath;
     MIPZarrTmppaths_str = sprintf('{''%s''}', strjoin(MIPZarrTmppaths, ''','''));
     
-    funcStrs{i} = sprintf(['MIP_block([%s],''%s'',%s,''%s'',%s,%s,''uuid'',''%s'',', ...
+    funcStrs{i} = sprintf(['MIP_block([%s],''%s'',%s,''%s'',%s,%s,%s,''uuid'',''%s'',', ...
         '''debug'',%s)'], strrep(num2str(batchInds, '%d,'), ' ', ''), zarrFullpath, ...
         MIPZarrTmppaths_str, zarrFlagFullpath, strrep(mat2str(batchBBoxes_i), ' ', ','), ...
-        strrep(mat2str([poolSize, poolSize_1, dsfactor]), ' ', ','), uuid, string(debug));
+        strrep(mat2str(startCoord), ' ', ','), strrep(mat2str([poolSize, poolSize_1, dsfactor]), ' ', ','), ...
+        uuid, string(debug));
 end
 
 % submit jobs 

@@ -96,7 +96,7 @@ end
 
 if ~isempty(finalOutFullpath) && (exist(finalOutFullpath, 'dir') || exist(finalOutFullpath, 'file'))
     is_done_flag = true(numel(inputFullpaths), 1);
-    fprintf('The final output file %s already exists!\n', finalOutFullpath);        
+    fprintf('The final output file %s already exists!\n\n', finalOutFullpath);
     return;
 end
 
@@ -123,7 +123,7 @@ outputFullpaths = strip(outputFullpaths, 'right', '/');
 output_exist_mat = batch_file_exist(outputFullpaths, [], true);
 if all(output_exist_mat)
     is_done_flag = ~is_done_flag;
-    fprintf('All output files (%d / %d) already exist(s)!\n', nF, nF);    
+    fprintf('All output files (%d / %d) already exist(s)!\n\n', nF, nF);
     return;
 else
     is_done_flag = output_exist_mat;
@@ -145,7 +145,7 @@ if parseCluster
     fprintf('Task number : %d, task batch size : %d, job number : %d\n', ...
         nF, taskBatchNum, nB);
 else
-    fprintf('Task number : %d\n', nF);    
+    fprintf('Task number : %d\n', nF);
 end
 
 loop_counter = 0;
@@ -425,7 +425,7 @@ while (~parseCluster && ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
                     end
                 end
             end
-            fprintf('Process %s with function %s... \n', strjoin(fsnames(fs), ', '), func_str);             
+            fprintf('\nProcess %s with function %s... \n', strjoin(fsnames(fs), ', '), func_str);
             if strcmpi(language, 'matlab')
                 try 
                     t0=tic; feval(str2func(['@()', func_str])); t1=toc(t0);
@@ -436,13 +436,11 @@ while (~parseCluster && ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
             elseif strcmpi(language, 'bash')
                 t0=tic; [status, cmdout] = system(func_str, '-echo'); t1=toc(t0);
             end
-            fprintf('Elapsed time is %f seconds.\n', t1);
             trial_counter(fs) = trial_counter(fs) + 1;
             if ~parseCluster && exist(outputFullpath, 'file') && exist(tmpFullpath, 'file')
                 delete(tmpFullpath);
             end
-
-            fprintf('Done!\n');
+            fprintf('Done! Elapsed time is %f seconds.\n', t1);
         end
     end
     
@@ -456,12 +454,15 @@ while (~parseCluster && ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
     end
     if nF_done < sum(is_done_flag)
         nF_done = sum(is_done_flag);
+        if nF_done == nF
+            fprintf('\n');
+        end
         fprintf('Time %0.2f s: %d / %d (%0.2f%%) are finished!\n', toc(ts), nF_done, nF, nF_done / nF * 100);
     end
 
     if ~isempty(finalOutFullpath) && (exist(finalOutFullpath, 'dir') || exist(finalOutFullpath, 'file'))
         is_done_flag = true(nF, 1);
-        fprintf('The final output file %s already exists!\n', finalOutFullpath);        
+        fprintf('The final output file %s already exists!\n', finalOutFullpath);
         return;
     end
     
@@ -478,7 +479,7 @@ if parseCluster
 end
 
 if all(is_done_flag)
-    fprintf('All output files (%d / %d) are finished!\n', nF, nF);    
+    fprintf('All output files (%d / %d) are finished!\n\n', nF, nF);
 end
 
 end

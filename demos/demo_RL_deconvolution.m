@@ -114,11 +114,13 @@ DeconIter = 2;
 % decon to 80 iterations (not use the criteria for early stop)
 fixIter = true;
 % erode the edge after decon for number of pixels.
-EdgeErosion = 8;
-% save as 16bit, if false, save to single
+EdgeErosion = 0;
+% save as 16bit; if false, save to single
 Save16bit = true;
-% use zarr file as input, if false, use tiff as input
+% use zarr file as input; if false, use tiff as input
 zarrFile = false;
+% save output as zarr file; if false,s ave as tiff
+saveZarr = false;
 % number of cpu cores
 cpusPerTask = 24;
 % use cluster computing for different images
@@ -152,9 +154,9 @@ XR_decon_data_wrapper(dataPaths, 'deconPathstr', deconPathstr, 'xyPixelSize', xy
     'wienerAlpha', wienerAlpha, 'OTFCumThresh', OTFCumThresh, 'skewed', skewed, ...
     'Background', Background, 'CPPdecon', false, 'CudaDecon', false, 'DeconIter', DeconIter, ...
     'fixIter', fixIter, 'EdgeErosion', EdgeErosion, 'Save16bit', Save16bit, ...
-    'zarrFile', zarrFile, 'parseCluster', parseCluster, 'largeFile', largeFile, ...
-    'GPUJob', GPUJob, 'debug', debug, 'cpusPerTask', cpusPerTask, 'ConfigFile', ConfigFile, ...
-    'GPUConfigFile', GPUConfigFile, 'mccMode', mccMode);
+    'zarrFile', zarrFile, 'saveZarr', saveZarr, 'parseCluster', parseCluster, ...
+    'largeFile', largeFile, 'GPUJob', GPUJob, 'debug', debug, 'cpusPerTask', cpusPerTask, ...
+    'ConfigFile', ConfigFile, 'GPUConfigFile', GPUConfigFile, 'mccMode', mccMode);
 
 % release GPU if using GPU computing
 if GPUJob && gpuDeviceCount('available') > 0
@@ -207,11 +209,13 @@ DeconIter = 30;
 % decon to 80 iterations (not use the criteria for early stop)
 fixIter = true;
 % erode the edge after decon for number of pixels.
-EdgeErosion = 8;
-% save as 16bit, if false, save to single
+EdgeErosion = 0;
+% save as 16 bit; if false, save to single
 Save16bit = true;
-% use zarr file as input, if false, use tiff as input
+% use zarr file as input; if false, use tiff as input
 zarrFile = false;
+% save output as zarr file; if false,s ave as tiff
+saveZarr = false;
 % number of cpu cores
 cpusPerTask = 24;
 % use cluster computing for different images
@@ -243,9 +247,9 @@ XR_decon_data_wrapper(dataPaths, 'deconPathstr', deconPathstr, 'xyPixelSize', xy
     'dzPSF', dzPSF, 'parseSettingFile', parseSettingFile, 'RLmethod', RLmethod, ...
     'Background', Background, 'CPPdecon', false, 'CudaDecon', false, 'DeconIter', DeconIter, ...
     'fixIter', fixIter, 'EdgeErosion', EdgeErosion, 'Save16bit', Save16bit, ...
-    'zarrFile', zarrFile, 'parseCluster', parseCluster, 'largeFile', largeFile, ...
-    'GPUJob', GPUJob, 'debug', debug, 'cpusPerTask', cpusPerTask, 'ConfigFile', ConfigFile, ...
-    'GPUConfigFile', GPUConfigFile, 'mccMode', mccMode);
+    'zarrFile', zarrFile, 'saveZarr', saveZarr, 'parseCluster', parseCluster, ...
+    'largeFile', largeFile, 'GPUJob', GPUJob, 'debug', debug, 'cpusPerTask', cpusPerTask, ...
+    'ConfigFile', ConfigFile, 'GPUConfigFile', GPUConfigFile, 'mccMode', mccMode);
 
 % release GPU if using GPU computing
 if GPUJob && gpuDeviceCount('available') > 0
@@ -295,9 +299,9 @@ configFile = '';
 mccMode = false;
 
 XR_deskew_rotate_data_wrapper(dataPath_exps, xyPixelSize=xyPixelSize, dz=dz, ...
-    Reverse=Reverse, largeFile=largeFile, zarrFile=zarrFile, saveZarr=saveZarr, ...
-    Save16bit=Save16bit, parseCluster=parseCluster, masterCompute=masterCompute, ...
-    configFile=configFile, mccMode=mccMode);
+    Reverse=Reverse, ChannelPatterns=ChannelPatterns, largeFile=largeFile, ...
+    zarrFile=zarrFile, saveZarr=saveZarr, Save16bit=Save16bit, parseCluster=parseCluster, ...
+    masterCompute=masterCompute, configFile=configFile, mccMode=mccMode);
 
 
 %% visualize raw, RL decon, and OMW decon

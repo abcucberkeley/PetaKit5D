@@ -363,6 +363,7 @@ xyz_shift = xyz + dxyz_shift;
 
 fprintf('xcorr registration is done!\n')
 toc(t0);
+fprintf('\n');
 
 end
 

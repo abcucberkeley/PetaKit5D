@@ -64,7 +64,7 @@ switch functionName
     case 'XR_deskewRotateBlock'
         XR_deskewRotateBlock_parser(varargin{1}, varargin{2}, varargin{3}, varargin{4}, varargin{5}, varargin{6}, varargin{7}, varargin{8}, varargin{9}, varargin{10}, varargin{11:end});
     case 'XR_resample_dataset'
-        XR_resample_dataset_parser(varargin{1}, varargin{2}, varargin{3}, varargin{4:end});
+        XR_resample_dataset_parser(varargin{1}, varargin{2}, varargin{3:end});
     case 'XR_resampleFrame'
         XR_resampleFrame_parser(varargin{1}, varargin{2}, varargin{3}, varargin{4:end});
     case 'XR_resampleSingleZarr'
@@ -80,7 +80,7 @@ switch functionName
     case 'saveMIP_zarr'
         saveMIP_zarr_parser(varargin{1}, varargin{2}, varargin{3}, varargin{4});
     case 'MIP_block'
-        MIP_block_parser(varargin{1}, varargin{2}, varargin{3}, varargin{4}, varargin{5}, varargin{6}, varargin{7:end});
+        MIP_block_parser(varargin{1}, varargin{2}, varargin{3}, varargin{4}, varargin{5}, varargin{6}, varargin{7}, varargin{8:end});
     case 'saveMIP_tiff'
         saveMIP_tiff_parser(varargin{1}, varargin{2}, varargin{3:end});
     case 'XR_one_image_FSC_analysis_frame'

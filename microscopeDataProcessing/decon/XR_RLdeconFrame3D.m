@@ -151,7 +151,7 @@ if isempty(uuid)
     uuid = get_uuid();
 end
 
-tic
+% tic
 if parseCluster 
     [status, ~] = system('sinfo');
     if status ~= 0
@@ -247,7 +247,7 @@ for f = 1 : nF
             'scaleFactor', scaleFactor, 'deconOffset', deconOffset, 'errThresh', errThresh, ...
             'saveStep', saveStep, 'useGPU', GPUJob, 'psfGen', psfGen, 'debug', debug, ...
             'save3Dstack', save3Dstack, 'mipAxis', mipAxis);
-        toc
+        % toc
 
         if EdgeErosion > 0
             fprintf('Erode edges of deconvolved data w.r.t. raw data...\n');        
@@ -282,9 +282,9 @@ for f = 1 : nF
         end
         deconMIPFullPath = sprintf('%s%s_MIP_z.tif', deconMIPPath, fsname);
         writetiff(max(im,[],3), deconMIPFullPath);
-        toc
+        % toc
         if exist(deconFullPath, 'file')
-            fprintf('Completed RL deconvolution of %s.\n', frameFullpath);
+            fprintf('Done! ');
             continue;
         end
     end
@@ -324,6 +324,6 @@ for f = 1 : nF
     end
 end
 
-toc
+% toc
 
 end
