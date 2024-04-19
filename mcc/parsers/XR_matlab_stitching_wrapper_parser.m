@@ -250,9 +250,6 @@ end
 if ischar(axisWeight)
     axisWeight = str2num(axisWeight);
 end
-if ischar(primaryCh) && ~isempty(primaryCh) && (strcmp(primaryCh(1), '[') || strcmp(primaryCh(1), '{'))
-    primaryCh = eval(primaryCh);
-end
 if ischar(usePrimaryCoords)
     usePrimaryCoords = str2num(usePrimaryCoords);
 end
@@ -277,7 +274,7 @@ end
 if ischar(bigStitchData)
     bigStitchData = str2num(bigStitchData);
 end
-if ischar(processFunPath) && ~isempty(processFunPath) && strcmp(processFunPath(1), '{')
+if ischar(processFunPath) && ~isempty(processFunPath) && (strcmp(processFunPath(1), '{') || strcmp(processFunPath(1), '[') || strcmp(processFunPath(1), '@'))
     processFunPath = eval(processFunPath);
 end
 if ischar(parseCluster)

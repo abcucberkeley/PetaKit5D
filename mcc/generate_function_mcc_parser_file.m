@@ -276,44 +276,51 @@ t = 0;
 for i = 1 : numel(arg_names)
     arg_name_i = arg_names{i};
     func_handle = arg_func_handles{i};
-    if isempty(func_handle) || (contains(func_handle, 'ischar') && ~contains(func_handle, 'iscell') ...
-            && ~contains(func_handle, 'function_handle') && ~contains(func_handle, 'isstruct') && ~contains(func_handle, 'isempty'))
+    if isempty(func_handle)
         continue;
     end
 
-    if contains(func_handle, 'isnumeric') || contains(func_handle, 'islogical') || contains(func_handle, 'isvector') || contains(func_handle, 'isscalar')
-        converter_lines{t+1} = sprintf('if ischar(%s)\n    %s = str2num(%s);\nend', arg_name_i, arg_name_i, arg_name_i); 
-        t = t + 1;
-        continue
-    end
-    
-    if contains(func_handle, 'iscell')
-        converter_lines{t+1} = sprintf('if ischar(%s) && ~isempty(%s) && strcmp(%s(1), ''{'')\n    %s = eval(%s);\nend', ...
-            arg_name_i, arg_name_i, arg_name_i, arg_name_i, arg_name_i); 
-        t = t + 1;
-        continue
-    end
+    func_type_mat = zeros(6, 1);
 
-    if contains(func_handle, 'isstruct')
-        converter_lines{t+1} = sprintf('if ischar(%s) && ~isempty(%s) && strcmp(%s(1), ''['')\n    %s = eval(%s);\nend', ...
-            arg_name_i, arg_name_i, arg_name_i, arg_name_i, arg_name_i); 
-        t = t + 1;
-        continue
+    if contains(func_handle, 'ischar') || contains(func_handle, 'isstring')
+        func_type_mat(1) = true;
     end
-    
-    if contains(func_handle, 'function_handle')
-        converter_lines{t+1} = sprintf('if ischar(%s) && ~isempty(%s) && strcmp(%s(1), ''@'')\n    %s = eval(%s);\nend', ...
-            arg_name_i, arg_name_i, arg_name_i, arg_name_i, arg_name_i);
-        t = t + 1;
-        continue
-    end
-    
     if contains(func_handle, 'isempty')
-        converter_lines{t+1} = sprintf('if ischar(%s) && ~isempty(%s) && (strcmp(%s(1), ''['') || strcmp(%s(1), ''{''))\n    %s = eval(%s);\nend', ...
-            arg_name_i, arg_name_i, arg_name_i, arg_name_i, arg_name_i, arg_name_i); 
-        t = t + 1;
-        continue
+        func_type_mat(2) = true;
     end    
+    if contains(func_handle, 'isnumeric') || contains(func_handle, 'islogical') ...
+            || contains(func_handle, 'isvector') || contains(func_handle, 'isscalar')
+        func_type_mat(3) = true;
+    end
+    if contains(func_handle, 'iscell')
+        func_type_mat(4) = true;
+    end
+    if contains(func_handle, 'isstruct')
+        func_type_mat(5) = true;
+    end
+    if contains(func_handle, 'function_handle')
+        func_type_mat(6) = true;
+    end
+    
+    % if no function handle, or the type is char/string (along with empty
+    % or numeric), skip the conversion
+    if sum(func_type_mat) == 0 || (sum(func_type_mat) == 1 && func_type_mat(1)) ...
+            || (func_type_mat(1) && any(func_type_mat(2 : 3)) && ~any(func_type_mat(4 : 6)))
+        continue;
+    end
+    % if there is only one non-char/string type, or mix of multiple types,
+    % do the conversion according to the type
+    if sum(func_type_mat(2 :6)) == 1
+        str_mode = find(func_type_mat(2 : 6)) + 1;
+    else
+        if func_type_mat(2) && func_type_mat(3)
+            str_mode = 7;
+        else
+            str_mode = 8;
+        end
+    end
+    converter_lines{t+1} = convert_parameter_type_string(arg_name_i, str_mode);
+    t = t + 1;    
 end
 
 converter_lines(t + 1 : end) = [];
@@ -355,6 +362,37 @@ for i = 1 : numel(arg_names)
     end
     counter = counter + numel(cur_str);    
     function_call_line = sprintf('%s%s', function_call_line, cur_str);
+end
+
+end
+
+
+function [out_str] = convert_parameter_type_string(arg_name, mode)
+% 1: char/string; 2: empty; 3: numeric/scalar/vector/logical; 4: cell; 5: struct; 
+% 6: function handle; 7: empty or numeric; 8/otherwise, mix of empty, cell
+% struct or function handle with/without char
+
+switch mode
+    case 1 
+        out_str = '';    
+    case 2
+        out_str = sprintf('if ischar(%s) && ~isempty(%s) && (strcmp(%s(1), ''['') || strcmp(%s(1), ''{''))\n    %s = eval(%s);\nend', ...
+            arg_name, arg_name, arg_name, arg_name, arg_name, arg_name); 
+    case {3, 7}
+        out_str = sprintf('if ischar(%s)\n    %s = str2num(%s);\nend', arg_name, arg_name, arg_name); 
+    case 4
+        out_str = sprintf('if ischar(%s) && ~isempty(%s) && strcmp(%s(1), ''{'')\n    %s = eval(%s);\nend', ...
+            arg_name, arg_name, arg_name, arg_name, arg_name); 
+    case 5
+        out_str = sprintf('if ischar(%s) && ~isempty(%s) && strcmp(%s(1), ''['')\n    %s = eval(%s);\nend', ...
+            arg_name, arg_name, arg_name, arg_name, arg_name); 
+    case 6
+        out_str = sprintf('if ischar(%s) && ~isempty(%s) && strcmp(%s(1), ''@'')\n    %s = eval(%s);\nend', ...
+            arg_name, arg_name, arg_name, arg_name, arg_name);
+    otherwise
+        out_str = sprintf(['if ischar(%s) && ~isempty(%s) && (strcmp(%s(1), ''{'') ', ...
+            '|| strcmp(%s(1), ''['') || strcmp(%s(1), ''@''))\n    %s = eval(%s);\nend'], ...
+            arg_name, arg_name, arg_name, arg_name, arg_name, arg_name, arg_name);
 end
 
 end

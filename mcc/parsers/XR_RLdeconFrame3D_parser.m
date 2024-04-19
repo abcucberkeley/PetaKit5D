@@ -119,9 +119,6 @@ end
 if ischar(dz)
     dz = str2num(dz);
 end
-if ischar(deconPath) && ~isempty(deconPath) && (strcmp(deconPath(1), '[') || strcmp(deconPath(1), '{'))
-    deconPath = eval(deconPath);
-end
 if ischar(Overwrite)
     Overwrite = str2num(Overwrite);
 end

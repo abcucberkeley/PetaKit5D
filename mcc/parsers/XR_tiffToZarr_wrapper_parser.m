@@ -83,7 +83,7 @@ end
 if ischar(tileOutBbox)
     tileOutBbox = str2num(tileOutBbox);
 end
-if ischar(processFunPath) && ~isempty(processFunPath) && strcmp(processFunPath(1), '{')
+if ischar(processFunPath) && ~isempty(processFunPath) && (strcmp(processFunPath(1), '{') || strcmp(processFunPath(1), '[') || strcmp(processFunPath(1), '@'))
     processFunPath = eval(processFunPath);
 end
 if ischar(parseCluster)

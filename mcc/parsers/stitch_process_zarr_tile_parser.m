@@ -68,7 +68,7 @@ end
 if ischar(tileOutBbox)
     tileOutBbox = str2num(tileOutBbox);
 end
-if ischar(usrFcn) && ~isempty(usrFcn) && strcmp(usrFcn(1), '@')
+if ischar(usrFcn) && ~isempty(usrFcn) && (strcmp(usrFcn(1), '{') || strcmp(usrFcn(1), '[') || strcmp(usrFcn(1), '@'))
     usrFcn = eval(usrFcn);
 end
 
