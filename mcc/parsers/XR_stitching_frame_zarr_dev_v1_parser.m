@@ -60,11 +60,9 @@ ip.addParameter('poolSize', [], @(x) isnumeric(x) || ischar(x)); % max pooling s
 ip.addParameter('blockSize', [500, 500, 500], @(x) isnumeric(x) || ischar(x)); 
 ip.addParameter('batchSize', [500, 500, 500], @(x) isnumeric(x) || ischar(x)); 
 ip.addParameter('shardSize', [], @(x) isnumeric(x) || ischar(x)); 
-ip.addParameter('zarrSubSize', [20, 20, 20], @(x) isnumeric(x) || ischar(x)); % zarr subfolder size
 ip.addParameter('saveMultires', false, @(x) islogical(x) || ischar(x)); % save as multi resolution dataset
 ip.addParameter('resLevel', 4, @(x) isnumeric(x) || ischar(x)); % downsample to 2^1-2^resLevel
 ip.addParameter('BorderSize', [0, 0, 0], @(x) isnumeric(x) || ischar(x));
-ip.addParameter('BlurSigma', 10, @(x) isnumeric(x) || ischar(x));
 ip.addParameter('SaveMIP', true , @(x) islogical(x) || ischar(x)); % save MIP-z for stitch. 
 ip.addParameter('tileIdx', [] , @(x) isnumeric(x) || ischar(x)); % tile indices 
 ip.addParameter('processFunPath', '', @(x) isempty(x) || iscell(x) || ischar(x)); % path of user-defined process function handle
@@ -140,11 +138,9 @@ poolSize = pr.poolSize;
 blockSize = pr.blockSize;
 batchSize = pr.batchSize;
 shardSize = pr.shardSize;
-zarrSubSize = pr.zarrSubSize;
 saveMultires = pr.saveMultires;
 resLevel = pr.resLevel;
 BorderSize = pr.BorderSize;
-BlurSigma = pr.BlurSigma;
 SaveMIP = pr.SaveMIP;
 tileIdx = pr.tileIdx;
 processFunPath = pr.processFunPath;
@@ -297,9 +293,6 @@ end
 if ischar(shardSize)
     shardSize = str2num(shardSize);
 end
-if ischar(zarrSubSize)
-    zarrSubSize = str2num(zarrSubSize);
-end
 if ischar(saveMultires)
     saveMultires = str2num(saveMultires);
 end
@@ -308,9 +301,6 @@ if ischar(resLevel)
 end
 if ischar(BorderSize)
     BorderSize = str2num(BorderSize);
-end
-if ischar(BlurSigma)
-    BlurSigma = str2num(BlurSigma);
 end
 if ischar(SaveMIP)
     SaveMIP = str2num(SaveMIP);
@@ -367,13 +357,12 @@ XR_stitching_frame_zarr_dev_v1(tileFullpaths, coordinates, ResultPath=ResultPath
     xcorrThresh=xcorrThresh, xyMaxOffset=xyMaxOffset, zMaxOffset=zMaxOffset, ...
     shiftMethod=shiftMethod, axisWeight=axisWeight, groupFile=groupFile, singleDistMap=singleDistMap, ...
     distBboxes=distBboxes, zarrFile=zarrFile, largeZarr=largeZarr, poolSize=poolSize, ...
-    blockSize=blockSize, batchSize=batchSize, shardSize=shardSize, zarrSubSize=zarrSubSize, ...
-    saveMultires=saveMultires, resLevel=resLevel, BorderSize=BorderSize, BlurSigma=BlurSigma, ...
-    SaveMIP=SaveMIP, tileIdx=tileIdx, processFunPath=processFunPath, stitchMIP=stitchMIP, ...
-    stitch2D=stitch2D, bigStitchData=bigStitchData, parseCluster=parseCluster, ...
-    masterCompute=masterCompute, jobLogDir=jobLogDir, cpusPerTask=cpusPerTask, ...
-    uuid=uuid, maxTrialNum=maxTrialNum, unitWaitTime=unitWaitTime, mccMode=mccMode, ...
-    ConfigFile=ConfigFile, debug=debug);
+    blockSize=blockSize, batchSize=batchSize, shardSize=shardSize, saveMultires=saveMultires, ...
+    resLevel=resLevel, BorderSize=BorderSize, SaveMIP=SaveMIP, tileIdx=tileIdx, ...
+    processFunPath=processFunPath, stitchMIP=stitchMIP, stitch2D=stitch2D, ...
+    bigStitchData=bigStitchData, parseCluster=parseCluster, masterCompute=masterCompute, ...
+    jobLogDir=jobLogDir, cpusPerTask=cpusPerTask, uuid=uuid, maxTrialNum=maxTrialNum, ...
+    unitWaitTime=unitWaitTime, mccMode=mccMode, ConfigFile=ConfigFile, debug=debug);
 
 end
 

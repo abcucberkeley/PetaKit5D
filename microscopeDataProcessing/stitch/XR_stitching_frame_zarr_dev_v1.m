@@ -101,11 +101,9 @@ ip.addParameter('poolSize', [], @isnumeric); % max pooling size for large zarr M
 ip.addParameter('blockSize', [500, 500, 500], @isnumeric); 
 ip.addParameter('batchSize', [500, 500, 500], @isnumeric); 
 ip.addParameter('shardSize', [], @isnumeric); 
-ip.addParameter('zarrSubSize', [20, 20, 20], @isnumeric); % zarr subfolder size
 ip.addParameter('saveMultires', false, @islogical); % save as multi resolution dataset
 ip.addParameter('resLevel', 4, @isnumeric); % downsample to 2^1-2^resLevel
 ip.addParameter('BorderSize', [0, 0, 0], @isnumeric);
-ip.addParameter('BlurSigma', 10, @isnumeric);
 ip.addParameter('SaveMIP', true , @islogical); % save MIP-z for stitch. 
 ip.addParameter('tileIdx', [] , @isnumeric); % tile indices 
 ip.addParameter('processFunPath', '', @(x) isempty(x) || iscell(x) || ischar(x)); % path of user-defined process function handle
@@ -175,9 +173,7 @@ poolSize = pr.poolSize;
 blockSize = pr.blockSize;
 batchSize = pr.batchSize;
 shardSize = pr.shardSize;
-zarrSubSize = pr.zarrSubSize;
 BorderSize = pr.BorderSize;
-BlurSigma = pr.BlurSigma;
 SaveMIP = pr.SaveMIP;
 tileIdx = pr.tileIdx;
 processFunPath = pr.processFunPath;
@@ -676,11 +672,6 @@ batchSize = ceil(batchSize ./ blockSize) .* blockSize;
 bSubSz = ceil([nys, nxs, nzs] ./ batchSize);
 numBatches = prod(bSubSz);
 
-% for blurred option, set BoderSize as [3, 3, 3] if not set.
-if strcmp(BlendMethod, 'blurred') && (isempty(BorderSize) || all(BorderSize == 0))
-    BorderSize = [3, 3, 3];
-end
-
 % save block info (for record and distributed computing in the future)
 stichInfoPath = [dataPath, '/', ResultDir, '/', stitchInfoDir];
 if ~exist(stichInfoPath, 'dir')
@@ -704,7 +695,7 @@ end
 
 nvSize = [nys, nxs, nzs];
 
-[block_info_fullname, PerBlockInfoFullpaths] = stitch_process_block_info(int_xyz_shift, ...
+[block_info_fullname, PerBlockInfoFullpaths, block_info_bytes] = stitch_process_block_info(int_xyz_shift, ...
     imSizes, nvSize, batchSize, overlap_matrix, ol_region_cell, half_ol_region_cell, ...
     overlap_map_mat, BorderSize, zarrFullpaths, stichInfoPath, nv_fsname, isPrimaryCh, ...
     stitchInfoFullpath=stitchInfoFullpath, stitch2D=stitch2D, uuid=uuid, taskSize=taskSize, ...
@@ -842,16 +833,24 @@ for t = 1 : numTasks
     zarrFlagFullpaths{t} = sprintf('%s/blocks_%d_%d.mat', zarrFlagPath, batchInds(1), batchInds(end));
     funcStrs{t} = sprintf(['processStitchBlock([%s],''%s'',''%s'',''%s'',''%s'',[],[],', ...
         '''imSize'',[%s],''batchSize'',[%s],''dtype'',''%s'',''BlendMethod'',''%s'',', ...
-        '''BorderSize'',[%s],''BlurSigma'',%d,''imdistFullpaths'',%s,''imdistFileIdx'',%s,', ...
+        '''BorderSize'',[%s],''imdistFullpaths'',%s,''imdistFileIdx'',%s,', ...
         '''poolSize'',%s,''weightDegree'',%d)'], strrep(mat2str(batchInds), ' ', ','), ...
         block_info_fullname, PerBlockInfoFullpath, zarrFlagFullpaths{t}, ...
         nv_tmp_fullname, strrep(mat2str(nvSize), ' ', ','), strrep(mat2str(batchSize), ' ', ','), ...
-        dtype, BlendMethod, strrep(mat2str(BorderSize), ' ', ','), BlurSigma, imdistFullpaths_str, ...
+        dtype, BlendMethod, strrep(mat2str(BorderSize), ' ', ','), imdistFullpaths_str, ...
         strrep(mat2str(imdistFileIdx), ' ', ','), strrep(mat2str(poolSize), ' ', ','), blendWeightDegree);
 end
 
 inputFullpaths = PerBlockInfoFullpaths;
 outputFullpaths = zarrFlagFullpaths;
+
+if parseCluster
+    % reorder tasks to make time consuming task first
+    [~, sinds] = sort(block_info_bytes, 'descend');
+    inputFullpaths = inputFullpaths(sinds);
+    outputFullpaths = outputFullpaths(sinds);
+    funcStrs = funcStrs(sinds);
+end
 
 % cluster setting
 cpusPerTask = 1 * nodeFactor;

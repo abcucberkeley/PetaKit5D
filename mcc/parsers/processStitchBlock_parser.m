@@ -14,9 +14,8 @@ ip.addParameter('Overwrite', false, @(x) islogical(x) || ischar(x));
 ip.addParameter('imSize', [], @(x) isnumeric(x) || ischar(x));
 ip.addParameter('batchSize', [], @(x) isnumeric(x) || ischar(x));
 ip.addParameter('dtype', 'uint16', @ischar);
-ip.addParameter('BlendMethod', 'mean', @ischar);
+ip.addParameter('BlendMethod', 'feather', @ischar);
 ip.addParameter('BorderSize', [], @(x) isnumeric(x) || ischar(x));
-ip.addParameter('BlurSigma', 5, @(x) isnumeric(x) || ischar(x)); % blurred sigma for blurred blend
 ip.addParameter('imdistFullpaths', {}, @(x) iscell(x) || ischar(x)); % image distance paths
 ip.addParameter('imdistFileIdx', [], @(x) isnumeric(x) || ischar(x)); % image distance paths indices
 ip.addParameter('poolSize', [], @(x) isnumeric(x) || ischar(x)); % distance matrix with max pooling factors
@@ -31,7 +30,6 @@ batchSize = pr.batchSize;
 dtype = pr.dtype;
 BlendMethod = pr.BlendMethod;
 BorderSize = pr.BorderSize;
-BlurSigma = pr.BlurSigma;
 imdistFullpaths = pr.imdistFullpaths;
 imdistFileIdx = pr.imdistFileIdx;
 poolSize = pr.poolSize;
@@ -58,9 +56,6 @@ end
 if ischar(BorderSize)
     BorderSize = str2num(BorderSize);
 end
-if ischar(BlurSigma)
-    BlurSigma = str2num(BlurSigma);
-end
 if ischar(imdistFullpaths) && ~isempty(imdistFullpaths) && strcmp(imdistFullpaths(1), '{')
     imdistFullpaths = eval(imdistFullpaths);
 end
@@ -77,8 +72,8 @@ end
 processStitchBlock(batchInds, BlockInfoFullname, PerBlockInfoFullname, flagFullname, ...
     stitchFullname, stitchBlockInfo, tileFns, Overwrite=Overwrite, imSize=imSize, ...
     batchSize=batchSize, dtype=dtype, BlendMethod=BlendMethod, BorderSize=BorderSize, ...
-    BlurSigma=BlurSigma, imdistFullpaths=imdistFullpaths, imdistFileIdx=imdistFileIdx, ...
-    poolSize=poolSize, weightDegree=weightDegree);
+    imdistFullpaths=imdistFullpaths, imdistFileIdx=imdistFileIdx, poolSize=poolSize, ...
+    weightDegree=weightDegree);
 
 end
 

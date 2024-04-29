@@ -154,10 +154,10 @@ input_exist_mat = output_exist_mat;
 input_exist_mat(~output_exist_mat) = batch_file_exist(inputFullpaths(~output_exist_mat), [], true);
 
 % write mcc strings to disk
-dt = char(datetime('now', 'Format', 'yyyyMMdd_HHmmSS'));
+dt = char(datetime('now', 'Format', 'yyyyMMdd_HHmmss_SSSSSSSSS'));
 
 if isempty(tmpDir)
-    funcInputDir = sprintf('%s/tmp/%s/', dataPath, dt);
+    funcInputDir = sprintf('%s/tmp/%s_%s/', dataPath, dt, uuid(1 : 6));
 else
     funcInputDir = sprintf('%s/%s/', tmpDir, dt);            
 end
@@ -596,6 +596,9 @@ end
 
 if all(is_done_flag)
     fprintf('All output files (%d / %d) are finished!\n\n', nF, nF);
+    if exist(funcInputDir, 'dir')
+        rmdir(funcInputDir, 's');
+    end
 end
 
 end

@@ -1,4 +1,4 @@
-function [block_info_fullname, PerBlockInfoFullpaths] = stitch_process_block_info(int_xyz_shift, imSizes, nvSize, blockSize, overlap_matrix, ol_region_cell, half_ol_region_cell, overlap_map_mat, BorderSize, tileFns, stichInfoPath, nv_fsname, isPrimaryCh, varargin)
+function [block_info_fullname, PerBlockInfoFullpaths, block_info_bytes] = stitch_process_block_info(int_xyz_shift, imSizes, nvSize, blockSize, overlap_matrix, ol_region_cell, half_ol_region_cell, overlap_map_mat, BorderSize, tileFns, stichInfoPath, nv_fsname, isPrimaryCh, varargin)
 % move the block information processing code to this file to enable cluster
 % processing for large scale data with many tiles
 %  
@@ -92,7 +92,7 @@ movefile(block_info_tmp_fullname, block_info_fullname);
 % files with cluster computing
 
 if isPrimaryCh 
-    PerBlockInfoPath = sprintf('%s/%s/', stichInfoPath, nv_fsname);
+    PerBlockInfoPath = sprintf('%s/%s_task_size_%d/', stichInfoPath, nv_fsname, taskSize);
     mkdir(PerBlockInfoPath);
     PerBlockInfoFlagPath = sprintf('%s/block_flags/', PerBlockInfoPath);
     mkdir(PerBlockInfoFlagPath);    
@@ -110,7 +110,12 @@ for t = 1 : numTasks
     PerBlockInfoFullpaths{t} = sprintf('%s/stitch_block_info_blocks_%d_%d.json', PerBlockInfoPath, bs, bt);
 end
 
+block_info_bytes = [];
 if ~isPrimaryCh
+    % collect the block info data size if using cluster
+    if parseCluster
+        block_info_bytes = get_block_info_file_bytes(PerBlockInfoPath);
+    end    
     return;
 end
 
@@ -131,19 +136,12 @@ for t = 1 : numTasks
         block_info_fullname, PerBlockInfoPath, FlagFullpath, strrep(mat2str(BorderSize), ' ', ','));
 end
 
-if ~isPrimaryCh
-    return;
-end
-
 % cluster setting
 cpusPerTask = 2;
 masterCompute = true;
 memAllocate = blk_taskSize * 0.0001;
 maxTrialNum = 2;
 
-if numTasks <= 2
-    parseCluster = false;
-end
 minTaskJobNum = 1;
 if numTasks >= 4
     minTaskJobNum = 2;
@@ -162,8 +160,31 @@ for i = 1 : 3
     end
 end
 
+if ~all(is_done_flag)
+    error('Some block (%d / %d) info file cannot finished!', sum(~is_done_flag), numel(is_done_flag));
+end
+
+% collect the block info data size if using cluster
+if parseCluster
+    block_info_bytes = get_block_info_file_bytes(PerBlockInfoPath);
+end
+
 % fprintf('Done!\n')
 % toc(t0);
+
+end
+
+
+function [block_info_bytes] = get_block_info_file_bytes(PerBlockInfoPath)
+
+dir_info = dir([PerBlockInfoPath, '*.json']);
+fsn = {dir_info.name};
+s_mat = regexp(fsn, 'stitch_block_info_blocks_(\d+)_\d+.json', 'tokens');
+s_mat = cellfun(@(x) str2double(x{1}{1}), s_mat);
+block_info_bytes = [dir_info.bytes];
+
+[~, inds] = sort(s_mat);
+block_info_bytes = block_info_bytes(inds);
 
 end
 

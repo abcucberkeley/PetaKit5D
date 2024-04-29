@@ -14,7 +14,7 @@ void indexing4d_mex(const void* restrict orig, void* restrict region, uint64_t s
     const uint64_t regionShapeXYZ = shapeX*shapeY*shapeZ;
     const uint64_t origShapeXY = origShapeX*origShapeY;
     const uint64_t origShapeXYZ = origShapeX*origShapeY*origShapeZ;
-    const int nthread = omp_get_num_threads();
+    const uint16_t nthread = omp_get_max_threads();
     
     if (nthread > 1){
         #pragma omp parallel for collapse(3) 

@@ -280,7 +280,7 @@ for i = 1 : numel(arg_names)
         continue;
     end
 
-    func_type_mat = zeros(6, 1);
+    func_type_mat = false(6, 1);
 
     if contains(func_handle, 'ischar') || contains(func_handle, 'isstring')
         func_type_mat(1) = true;

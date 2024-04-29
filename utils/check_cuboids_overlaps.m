@@ -39,12 +39,17 @@ cuboid_12 = cuboid_1(:, 4 : 6);
 cuboid_21 = cuboid_2(:, 1 : 3);
 cuboid_22 = cuboid_2(:, 4 : 6);
 
-ol_1 = cuboid_11 <= cuboid_21 & cuboid_21 <= cuboid_12;
-ol_2 = cuboid_11 <= cuboid_22 & cuboid_22 <= cuboid_12;
-ol_3 = cuboid_21 <= cuboid_12 & cuboid_12 <= cuboid_22;
-ol_4 = cuboid_21 <= cuboid_12 & cuboid_12 <= cuboid_22;
+% ol_1 = cuboid_11 <= cuboid_21 & cuboid_21 <= cuboid_12;
+% ol_2 = cuboid_11 <= cuboid_22 & cuboid_22 <= cuboid_12;
+% ol_3 = cuboid_21 <= cuboid_11 & cuboid_11 <= cuboid_22;
+% ol_4 = cuboid_21 <= cuboid_12 & cuboid_12 <= cuboid_22;
+% 
+% is_overlap_mat = all(ol_1 | ol_2 | ol_3 | ol_4, 2);
 
-is_overlap_mat = all(ol_1 | ol_2 | ol_3 | ol_4, 2);
+% check overlap from the non-overlap perspective
+nol_1 = cuboid_22 < cuboid_11;
+nol_2 = cuboid_12 < cuboid_21;
+is_overlap_mat = ~any(nol_1 | nol_2, 2);
 
 cuboid_overlap_mat = [];
 if nargout > 1 && any(is_overlap_mat)

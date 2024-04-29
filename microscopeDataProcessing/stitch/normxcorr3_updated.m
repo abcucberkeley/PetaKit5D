@@ -47,15 +47,14 @@ szOut = szT + szA - 1;
 % emulate 3D correlation by rotating templates dimensions
 % in 3D frequency-domain correlation is MUCH faster than the spatial-domain
 % variety
-rotT = flipdim(flipdim(flipdim(T,1),2),3); % this is rot90 in 3d
-fftRotT = fftn(rotT,szOut);
-fftA = fftn(A,szOut);
-corrTA = real(ifftn(fftA.*fftRotT));
-clear rotT fftRotT fftA;
+% rotT = flipdim(flipdim(flipdim(T,1),2),3); % this is rot90 in 3d
+% fftRotT = fftn(rotT,szOut);
+% fftA = fftn(A,szOut);
+corrTA = real(ifftn(fftn(A,szOut).*fftn(T(end:-1:1, end:-1:1, end:-1:1), szOut)));
 
 sumT = sum(T(:));
 denomT = std(T(:));
-clear T;
+% clear T;
 
 % make the running-sum/integral-images of A and A^2, which are
 % used to speed up the computation of the NCC denominator
@@ -68,7 +67,7 @@ clear corrTA;
 intImgA2 = integralImage(A.*A,szT);
 
 denom = denomT * sqrt(max(intImgA2 - (intImgA.^2)/pSzT, 0) / (pSzT-1) );
-clear A intImgA intImgA2;
+clear intImgA intImgA2;
 
 % compute the NCC
 % s = warning('off', 'MATLAB:divideByZero');

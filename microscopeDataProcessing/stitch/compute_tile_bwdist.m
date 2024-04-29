@@ -65,19 +65,20 @@ im_i = im_i == 0;
 % end
 
 sz = size(im_i, 1 : 3);
-im_dist = ones(sz, 'single');
 if singleDistMap
     im_i_c = im_i(:, :, round((sz(3) + 1) / 2));
     im_dist_c = fastPower((bwdist(im_i_c) + 1) / 10, weightDegree);
+    im_dist = repmat(im_dist_c, 1, 1, sz(3));
+    same_z_inds = squeeze(all(im_i == im_i_c, [1, 2]));
     for z = 1 : sz(3)
-        im_i_z = im_i(:, :, z);
-        if any(im_i_z ~= im_i_c, 'all')
-            im_dist(:, :, z) = fastPower((bwdist(im_i_z) + 1) / 10, weightDegree);            
-        else
-            im_dist(:, :, z) = im_dist_c;            
+        if same_z_inds(z)
+            continue;
         end
+        im_i_z = im_i(:, :, z);
+        im_dist(:, :, z) = fastPower((bwdist(im_i_z) + 1) / 10, weightDegree);            
     end
 else
+    im_dist = ones(sz, 'single');
     for j = 1 : nF
         if ~overlap_matrix(i, j) && ~overlap_matrix(j, i)
             continue;
@@ -153,7 +154,7 @@ if ~isempty(distBbox)
     im_dist_wt = dist_y .* permute(dist_x, [2, 1]) .* permute(dist_z, [2, 3, 1]);
     im_dist_wt = fastPower(im_dist_wt, weightDegree);
     if dfactor > 0
-        im_dist_wt = max(im_dist_wt, 1e-40);
+        im_dist_wt = max(im_dist_wt, 1e-45);
     end
     im_dist = im_dist .* im_dist_wt;
     clear im_dist_wt;

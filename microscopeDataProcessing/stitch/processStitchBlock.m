@@ -6,7 +6,10 @@ function [] = processStitchBlock(batchInds, BlockInfoFullname, PerBlockInfoFulln
 % xruan (11/18/2020) change imdistPath to imdistFullpath to enable using
 % distance map for the primary channel.
 % xruan (02/06/2021): for singleDistMap, directly use the first one (so don't need to repmat). 
-% xruan (06/10/2023): change blockSize to batchSize to allow larger batches with smaller chunks 
+% xruan (06/10/2023): change blockSize to batchSize to allow larger batches with smaller chunks
+% xruan (04/18/2024): Optimize feather blending, directly save a region from a tile if the weight is dominant, update mex functions. 
+% xruan (04/24/2024): remove blurred blending option. 
+
 
 ip = inputParser;
 ip.CaseSensitive = false;
@@ -21,9 +24,8 @@ ip.addParameter('Overwrite', false, @islogical);
 ip.addParameter('imSize', [], @isnumeric);
 ip.addParameter('batchSize', [], @isnumeric);
 ip.addParameter('dtype', 'uint16', @ischar);
-ip.addParameter('BlendMethod', 'mean', @ischar);
+ip.addParameter('BlendMethod', 'feather', @ischar);
 ip.addParameter('BorderSize', [], @isnumeric);
-ip.addParameter('BlurSigma', 5, @isnumeric); % blurred sigma for blurred blend
 ip.addParameter('imdistFullpaths', {}, @iscell); % image distance paths
 ip.addParameter('imdistFileIdx', [], @isnumeric); % image distance paths indices
 ip.addParameter('poolSize', [], @isnumeric); % distance matrix with max pooling factors
@@ -38,7 +40,6 @@ batchSize = pr.batchSize;
 dtype = pr.dtype;
 BlendMethod = pr.BlendMethod;
 BorderSize = pr.BorderSize;
-BlurSigma = pr.BlurSigma;
 imdistFullpaths = pr.imdistFullpaths;
 imdistFileIdx = pr.imdistFileIdx;
 poolSize = pr.poolSize;
@@ -94,14 +95,21 @@ if strcmpi(BlendMethod, 'feather')
         case {6, 9}
             psz = poolSize([4, 5, 3]);
     end
+    dsz_mat = zeros(numel(imdistFullpaths), 3);
+    for i = 1 : numel(imdistFullpaths)
+        dsz_mat(i, :) = getImageSize(imdistFullpaths{i});
+    end
 end
 
 bSubSz = ceil(imSize ./ batchSize);
+% feather blending dominant factor
+dmtFactor = 1000;
 
 done_flag = false(numel(batchInds), 1);
 for i = 1 : numel(batchInds)
     bi = batchInds(i);
     fprintf('Process batch %d... ', bi);
+    
     tic;
     [suby, subx, subz] = ind2sub(bSubSz, bi);
     batchSub = [suby, subx, subz];
@@ -109,14 +117,11 @@ for i = 1 : numel(batchInds)
     obEnd = min(obStart + batchSize - 1, imSize);
     nbsz = obEnd - obStart + 1;
 
-    % stchBlockInfo_i = stitchBlockInfo{bi};
     stchBlockInfo_i = stitchBlockInfo{i};
     numTiles = numel(stchBlockInfo_i);
     
     if numTiles == 0
         nv_block = zeros(nbsz, dtype);
-        % writeBlock(nv_bim, blockSub, nv_block, level, Mode);
-        % nv_bim.Adapter.setRegion(obStart, obEnd, nv_block);
         writezarr(nv_block, stitchFullname, bbox=[obStart, obEnd]);
         done_flag(i) = true;
         toc;
@@ -129,29 +134,160 @@ for i = 1 : numel(batchInds)
         bsz = min(batchSize, nbsz);
     end
     
-    tim_f_block = zeros([bsz, numTiles], dtype);
+    tileInd_mat = zeros(numTiles, 1);
+    bCoords_mat = zeros(numTiles, 6);
+    bboxCoords_mat = zeros(numTiles, 6);
+
+    for j = 1 : numTiles
+        tileInd = stchBlockInfo_i(j).tileInd;
+        tileInd_mat(j) = tileInd;
+        bCoords = stchBlockInfo_i(j).bCoords; 
+        bCoords = bCoords(:)';
+        bCoords_mat(j, :) = bCoords;
+        bboxCoords = stchBlockInfo_i(j).bboxCoords;
+        bboxCoords = bboxCoords(:)';
+        bboxCoords_mat(j, :) = bboxCoords;
+    end
+
     if strcmpi(BlendMethod, 'feather')
+        dbsz = bsz;
         if numTiles > 1
-            tim_d_block = zeros([bsz, numTiles], 'single');
+            % determine common overlap region
+            bCoords_c = [1, 1, 1, bsz];
+            if numTiles == 2
+                bCoords_c = [max(bCoords_mat(:, 1 : 3)), min(bCoords_mat(:, 4 : 6))];
+            elseif numTiles > 2
+                [s, t] = find(triu(ones(numTiles), 1));
+                [~, cuboid_overlap_mat] = check_cuboids_overlaps(bCoords_mat(s, :), bCoords_mat(t, :), false);
+                if any(cuboid_overlap_mat == 0, 'all')
+                    cuboid_overlap_mat = cuboid_overlap_mat(~any(cuboid_overlap_mat == 0, 2), :);
+                end
+                if isempty(cuboid_overlap_mat)
+                    cuboid_overlap_mat = bCoords_mat;
+                end
+                bCoords_c = [min(cuboid_overlap_mat(:, 1 : 3), [], 1), max(cuboid_overlap_mat(:, 4 : 6), [], 1)];
+                % include any tiles that does not have the overlap with other tiles (rare but may happen)
+                if any(bCoords_mat(:, 1 : 3) > bCoords_c(4 : 6), 'all') || any(bCoords_mat(:, 4 : 6) < bCoords_c(1 : 3), 'all')
+                    inds = any(bCoords_mat(:, 1 : 3) > bCoords_c(4 : 6) | bCoords_mat(:, 4 : 6) < bCoords_c(1 : 3), 2);
+                    bCoords_c = [min([bCoords_mat(inds, 1 : 3); bCoords_c(1 : 3)], [], 1), max([bCoords_mat(inds, 4 : 6); bCoords_c(4 : 6)], [], 1)];
+                end
+            end
+            dbsz = bCoords_c(4 : 6) - bCoords_c(1 : 3) + 1;
+            % define the batch as full if the overlap region is over 80% of the total volume
+            is_full_batch = prod(dbsz ./ bsz) >= 0.8;
+
+            if is_full_batch
+                bCoords_c = [1, 1, 1, bsz];
+                dbsz = bsz;
+            end
+
+            if isempty(poolSize) || (~isempty(poolSize) && numTiles == 2)
+                tim_d_block = zeros([dbsz, numTiles], 'single');
+            else
+                tim_d_block_cell = cell(numTiles, 1);
+                d_ranges_mat = zeros(numTiles, 2);
+                dbsz_mat = zeros(numTiles, 3);
+            end
+            
+            for j = 1 : numTiles
+                tileInd = tileInd_mat(j);
+                bCoords = bCoords_mat(j, :);
+                bboxCoords = bboxCoords_mat(j, :);
+                dbCoords = [max(bCoords_c(1 : 3), bCoords(1 : 3)), min(bCoords_c(4 : 6), bCoords(4 : 6))];
+                dbboxCoords = bboxCoords - bCoords + dbCoords;
+                dbsz_j = dbCoords(4 : 6) - dbCoords(1 : 3) + 1;
+                dbsz_mat(j, :) = dbsz_j;
+
+                if numel(imdistFullpaths) == 1
+                    imdistFullpath = imdistFullpaths{1};
+                    dsz = dsz_mat;
+                else
+                    imdistFullpath = imdistFullpaths{imdistFileIdx(tileInd)};
+                    dsz = dsz_mat(imdistFileIdx(tileInd), :);
+                end
+                if isempty(poolSize)
+                    im_d_j = readzarr(imdistFullpath, 'bbox', dbboxCoords);
+                    tim_d_block = indexing4d(tim_d_block, im_d_j, [dbCoords(1 : 3) - bCoords_c(1 : 3) + 1, j, dbCoords(4 : 6) - bCoords_c(1 : 3) + 1, j]);                    
+                else
+                    % for now only consider pooling in z
+                    p_bboxCoords = bboxCoords;
+                    p_bboxCoords(1 : 3) = max(1, round(dbboxCoords(1 : 3) ./ psz));
+                    p_bboxCoords(4 : 6) = min(dsz, p_bboxCoords(1 : 3) + ceil(dbsz_j ./ psz) - 1);
+                    if bboxCoords(6) == dbboxCoords(3)
+                        p_bboxCoords(6) = p_bboxCoords(3);
+                    end
+                    
+                    im_d_j =  readzarr(imdistFullpath, 'bbox', p_bboxCoords);
+                    if numTiles == 2
+                        im_d_j = feather_distance_map_resize_3d(im_d_j, [1, 1, 1, dbsz_j], wd);
+                        tim_d_block = indexing4d(tim_d_block, im_d_j, [dbCoords(1 : 3) - bCoords_c(1 : 3) + 1, j, dbCoords(4 : 6) - bCoords_c(1 : 3) + 1, j]);                        
+                    else
+                        max_d_j = max(im_d_j, [], 'all');
+                        min_d_j = min(im_d_j, [], 'all');
+                        tim_d_block_cell{j} = im_d_j;
+                        d_ranges_mat(j, :) = [max_d_j, min_d_j];
+                    end
+                end
+            end
+            if ~isempty(poolSize) && numTiles > 2 
+                tim_d_block = zeros([dbsz, numTiles], 'single');
+                
+                minor_inds = false(numTiles, 1);
+                if any(all(dbsz_mat == dbsz, 2))
+                    minor_inds = max(d_ranges_mat(all(dbsz_mat == dbsz, 2), 2)) > dmtFactor .^ (1/10) * d_ranges_mat(:, 1);
+                end
+                % if there is only one major tile, do not load distance map
+                if sum(~minor_inds) > 1
+                    for j = 1 : numTiles
+                        if minor_inds(j)
+                            continue;
+                        end
+                        bCoords = bCoords_mat(j, :);
+                        dbCoords = [max(bCoords_c(1 : 3), bCoords(1 : 3)), min(bCoords_c(4 : 6), bCoords(4 : 6))];
+                        dbsz_j = dbsz_mat(j, :);
+                        im_d_j = tim_d_block_cell{j};
+                        im_d_j = feather_distance_map_resize_3d(im_d_j, [1, 1, 1, dbsz_j], wd);
+                        tim_d_block = indexing4d(tim_d_block, im_d_j, [dbCoords(1 : 3) - bCoords_c(1 : 3) + 1, j, dbCoords(4 : 6) - bCoords_c(1 : 3) + 1, j]);
+                    end
+                end
+            end
+        end
+
+        tim_f_block = zeros([dbsz, numTiles], dtype);
+        if numTiles > 1 && ~is_full_batch
+            tim_block = zeros([bsz, 1], dtype);
         end
     else
         tim_block = zeros([bsz, numTiles], dtype);
+        tim_f_block = zeros([bsz, numTiles], dtype);
     end
 
     % get the pixels for tile in the block
     for j = 1 : numTiles
-        tileInd = stchBlockInfo_i(j).tileInd;
-        % bim_j = zarrHeaders{tileInd};
-        bCoords = stchBlockInfo_i(j).bCoords; 
-        bCoords = bCoords(:)';
-        bboxCoords = stchBlockInfo_i(j).bboxCoords;
-        bboxCoords = bboxCoords(:)';
-        % block_j = bim_j.Adapter.getIORegion(bboxCoords(1 : 3), bboxCoords(4 : 6));
+        tileInd = tileInd_mat(j);
+        bCoords = bCoords_mat(j, :);
+        bboxCoords = bboxCoords_mat(j, :);
+        
+        if strcmpi(BlendMethod, 'feather') && numTiles > 2 && ~isempty(poolSize) && minor_inds(j)
+            continue;
+        end
         block_j = readzarr(tileFns{tileInd}, bbox=bboxCoords);
         if ~isa(block_j, dtype)
             block_j = cast(block_j, dtype);
         end
-        if ~strcmpi(BlendMethod, 'feather')
+        if strcmpi(BlendMethod, 'feather')
+            if numTiles > 1
+                dbCoords = [max(bCoords_c(1 : 3), bCoords(1 : 3)), min(bCoords_c(4 : 6), bCoords(4 : 6))];
+                if ~is_full_batch
+                    tim_block = indexing4d(tim_block, block_j, [bCoords(1 : 3), 1, bCoords(4 : 6), 1]);
+                    tim_f_block = indexing4d(tim_f_block, block_j, [dbCoords(1 : 3) - bCoords_c(1 : 3) + 1, j, dbCoords(4 : 6) - bCoords_c(1 : 3) + 1, j], ...
+                        [dbCoords(1 : 3) - bCoords(1 : 3) + 1, 1, dbCoords(4 : 6) - bCoords(1 : 3) + 1, 1]);
+                else
+                    tim_f_block = indexing4d(tim_f_block, block_j, [bCoords(1 : 3), j, bCoords(4 : 6), j]);
+                end
+                continue;
+            end
+        else
             block_j_mregion = block_j;
             
             % remove overlap regions
@@ -162,96 +298,124 @@ for i = 1 : numel(batchInds)
                 m_bbox = m_bboxCoords - repmat(bboxCoords(1 : 3), 1, 2) + 1;
                 block_j_mregion(m_bbox(1) : m_bbox(4), m_bbox(2) : m_bbox(5), m_bbox(3) : m_bbox(6)) = 0;
             end
-            
-            try
-                indexing4d_mex(tim_block, [bCoords(1 : 3), j, bCoords(4 : 6), j], block_j_mregion);
-            catch ME
-                disp(ME);
-                disp(ME.stack);            
-                tim_block(bCoords(1) : bCoords(4), bCoords(2) : bCoords(5), bCoords(3) : bCoords(6), j) = block_j_mregion;
-            end
+            tim_block = indexing4d(tim_block, block_j_mregion, [bCoords(1 : 3), j, bCoords(4 : 6), j]);
         end
-
-        try
-            indexing4d_mex(tim_f_block, [bCoords(1 : 3), j, bCoords(4 : 6), j], block_j);
-        catch ME
-            disp(ME);
-            disp(ME.stack);            
-            tim_f_block(bCoords(1) : bCoords(4), bCoords(2) : bCoords(5), bCoords(3) : bCoords(6), j) = block_j;
+        
+        if numTiles == 1 && all(bCoords(4 : 6) - bCoords(1 : 3) + 1 == bsz)
+            tim_f_block = block_j;
+        else
+            tim_f_block = indexing4d(tim_f_block, block_j, [bCoords(1 : 3), j, bCoords(4 : 6), j]);                
         end
+    end
 
-        if numTiles > 1 && strcmpi(BlendMethod, 'feather')
-            if numel(imdistFullpaths) == 1
-                imdistFullpath = imdistFullpaths{1};                
-            else
-                imdistFullpath = imdistFullpaths{imdistFileIdx(tileInd)};
-            end
-            if isempty(poolSize)
-                im_d_j = readzarr(imdistFullpath, 'bbox', bboxCoords);
-            else
-                % for now only consider pooling in z
-                dsz = getImageSize(imdistFullpath);
-                p_bboxCoords = bboxCoords;
-                p_bboxCoords(1 : 3) = max(1, floor(bboxCoords(1 : 3) ./ psz));
-                p_bboxCoords(4 : 6) = min(dsz, ceil(bboxCoords(4 : 6) ./ psz));
-                if bboxCoords(6) == bboxCoords(3)
-                    p_bboxCoords(6) = p_bboxCoords(3);
+    % for feather blending large scale processing (numTile > 2), if any element in the
+    % major tiles are zero, load the region of minor tiles
+    if strcmpi(BlendMethod, 'feather') && numTiles > 2 && ~isempty(poolSize) && any(minor_inds)
+        [major_valid_mat, unvalid_bbox] = check_major_tile_valid(tim_f_block, ~minor_inds);
+        % also ensure the major tiles cover regions minor tiles covered
+        [major_cover, uncover_bbox_mat] = check_major_tile_cover(bCoords_mat, ~minor_inds);
+        major_inds = ~minor_inds;
+
+        if ~major_valid_mat || ~any(major_cover(~minor_inds))
+            for j = 1 : numTiles
+                if major_inds(j) && sum(major_inds) > 1 && major_cover(j)
+                    continue;
+                end
+                if ~major_cover(j)
+                    if ~major_valid_mat
+                        uCoords = [min(unvalid_bbox(1 : 3), uncover_bbox_mat(j, 1 : 3)), max(unvalid_bbox(4 : 6), uncover_bbox_mat(j, 4 : 6))];
+                    else
+                        uCoords = uncover_bbox_mat(j, :);
+                    end
+                else
+                    if ~major_valid_mat
+                        uCoords = unvalid_bbox;
+                    else
+                        uCoords = [];
+                    end
                 end
                 
-                im_d_j =  readzarr(imdistFullpath, 'bbox', p_bboxCoords);
-                try
-                    im_d_j = feather_distance_map_resize_3d_mex(im_d_j, bboxCoords(4 : 6) - bboxCoords(1 : 3) + 1, wd);
-                catch ME
-                    disp(ME);
-                    im_d_j =  im_d_j .^ (1 / wd);
-                    if bboxCoords(3) == bboxCoords(6)
-                        im_d_j = imresize(im_d_j, bboxCoords(4 : 5) - bboxCoords(1 : 2) + 1, 'bilinear');                    
-                    else
-                        if size(im_d_j, 3) == 1 
-                            im_d_j = repmat(im_d_j, 1, 1, 2);
-                        end
-                        im_d_j = imresize3(im_d_j, bboxCoords(4 : 6) - bboxCoords(1 : 3) + 1, 'linear');
-                    end
-                    % im_d_j = im_d_j .^ wd;
-                    im_d_j = fastPower(im_d_j, wd);
+                if isempty(uCoords)
+                    continue;
                 end
+
+                tileInd = tileInd_mat(j);
+                bCoords = bCoords_mat(j, :);
+                bboxCoords = bboxCoords_mat(j, :);
+
+                if any(bCoords(1 : 3) > uCoords(4 : 6) | bCoords(4 : 6) < uCoords(1 : 3))
+                    continue;
+                end
+                
+                uCoords = [max(bCoords(1 : 3), uCoords(1 : 3)), min(bCoords(4 : 6), uCoords(4 : 6))];
+                uBboxCoords = [bboxCoords(1 :3) - bCoords(1 : 3) + uCoords(1 : 3), bboxCoords(1 :3) - bCoords(1 : 3) + uCoords(4 : 6)];
+
+                dbCoords = [max(bCoords_c(1 : 3), bCoords(1 : 3)), min(bCoords_c(4 : 6), bCoords(4 : 6))];
+                udbCoords = [max(bCoords_c(1 : 3), uCoords(1 : 3)), min(bCoords_c(4 : 6), uCoords(4 : 6))];
+                udbsz_j = udbCoords(4 : 6) - udbCoords(1 : 3) + 1;
+
+                if ~major_inds(j)
+                    % read the region
+                    block_j = readzarr(tileFns{tileInd}, bbox=uBboxCoords);
+                    if ~isa(block_j, dtype)
+                        block_j = cast(block_j, dtype);
+                    end
+                    
+                    if ~is_full_batch
+                        tim_block = indexing4d(tim_block, block_j, [uCoords(1 : 3), 1, uCoords(4 : 6), 1]);
+                        tim_f_block = indexing4d(tim_f_block, block_j, [udbCoords(1 : 3) - bCoords_c(1 : 3) + 1, j, udbCoords(4 : 6) - bCoords_c(1 : 3) + 1, j], ...
+                            [udbCoords(1 : 3) - uCoords(1 : 3) + 1, 1, udbCoords(4 : 6) - uCoords(1 : 3) + 1, 1]);
+                    else
+                        tim_f_block = indexing4d(tim_f_block, block_j, [uCoords(1 : 3), j, uCoords(4 : 6), j]);
+                    end
+    
+                    if sum(minor_inds) == 1
+                        im_d_j = ones(udbsz_j, 'single') * d_ranges_mat(j, 1);
+                        tim_d_block = indexing4d(tim_d_block, im_d_j, [udbCoords(1 : 3) - bCoords_c(1 : 3) + 1, j, udbCoords(4 : 6) - bCoords_c(1 : 3) + 1, j]);
+                        minor_inds(j) = false;                    
+                        continue;
+                    end
+                end
+                                
+                % read the distance map and resize
+                im_d_j = tim_d_block_cell{j};
+                p_udbCoords = udbCoords;
+                p_udbCoords(1 : 3) = max(1, round((udbCoords(1 : 3) - dbCoords(1 : 3) + 1) ./ psz));
+                p_udbCoords(4 : 6) = min(size(im_d_j), p_udbCoords(1 : 3) + ceil(udbsz_j ./ psz) - 1);
+                if udbCoords(6) == udbCoords(3)
+                    p_udbCoords(6) = p_udbCoords(3);
+                end
+                
+                im_d_j = crop3d(im_d_j, p_udbCoords);
+                im_d_j = feather_distance_map_resize_3d(im_d_j, [1, 1, 1, udbsz_j], wd);
+                tim_d_block = indexing4d(tim_d_block, im_d_j, [udbCoords(1 : 3) - bCoords_c(1 : 3) + 1, j, udbCoords(4 : 6) - bCoords_c(1 : 3) + 1, j]);
+                
+                minor_inds(j) = false;
             end
-            try
-                indexing4d_mex(tim_d_block, [bCoords(1 : 3), j, bCoords(4 : 6), j], im_d_j);
-            catch ME
-                disp(ME);
-                disp(ME.stack);
-                tim_d_block(bCoords(1) : bCoords(4), bCoords(2) : bCoords(5), bCoords(3) : bCoords(6), j) = im_d_j;
+        end
+
+        % if there is only one major tile, set numTiles as 1 and directly save it.
+        if sum(~minor_inds) == 1 && all(major_cover)
+            if ~is_full_batch
+                tim_f_block = tim_block;
+            else
+                major_ind = find(~minor_inds);
+                tim_f_block = crop4d(tim_f_block, [1, 1, 1, major_ind, dbsz, major_ind]);
             end
+            numTiles = 1;
         end
     end
     
     if numTiles == 1
-        % nv_block = tim_block;
-        nv_block = tim_f_block;
         if any(BorderSize > 0)
             s = (batchSub ~= 1) .* BorderSize;
-            try
-                nv_block = crop3d_mex(nv_block, [s + 1, s + batchSize]);
-            catch ME
-                disp(ME)
-                disp(ME.stack);
-                nv_block = nv_block(s(1) + 1 : s(1) + batchSize(1), s(2) + 1 : s(2) + batchSize(2), s(3) + 1 : s(3) + batchSize(3));            
-            end
+            tim_f_block = crop3d(tim_f_block, [s + 1, s + batchSize]);
         end
-        nv_block = cast(nv_block, dtype);
-        % writeBlock(nv_bim, blockSub, nv_block, level, Mode);
-        if any(nbsz ~= size(nv_block, [1, 2, 3]))
-            try
-                nv_block = crop3d_mex(nv_block, [1, 1, 1, nbsz]);
-            catch ME
-                disp(ME)
-                disp(ME.stack);
-                nv_block = nv_block(1 : nbsz(1), 1 : nbsz(2), 1 : nbsz(3));
-            end
+        tim_f_block = cast(tim_f_block, dtype);
+        if any(nbsz ~= size(tim_f_block, [1, 2, 3]))
+            tim_f_block = crop3d(tim_f_block, [1, 1, 1, nbsz]);            
         end
-        % nv_bim.Adapter.setRegion(obStart, obEnd, nv_block);
-        writezarr(nv_block, stitchFullname, bbox=[obStart, obEnd]);
+        writezarr(tim_f_block, stitchFullname, bbox=[obStart, obEnd]);
         done_flag(i) = true;
         toc;
         continue;
@@ -263,7 +427,7 @@ for i = 1 : numel(batchInds)
         tim_f_block = single(tim_f_block);        
     end
 
-    if ~strcmp(BlendMethod, 'none') && ~strcmp(BlendMethod, 'blurred') && ~strcmp(BlendMethod, 'feather')
+    if ~strcmp(BlendMethod, 'none') && ~strcmp(BlendMethod, 'feather')
         tim_block(tim_block == 0) = nan; 
         tim_f_block(tim_f_block == 0) = nan;
     end
@@ -291,36 +455,17 @@ for i = 1 : numel(batchInds)
         case 'median'
             nv_block = nanmedian(tim_block, 4);
             nv_f_block = nanmedian(tim_f_block, 4);
-        case 'blurred'
-            if numTiles == 1
-                nv_block = tim_block(:, :, :, 1);
-                nv_f_block = tim_f_block(:, :, :, 1);  
-            else
-                nv_block = zeros(bsz, 'single');
-                nv_f_block = zeros(bsz, 'single');                
-                nv_ind_block = zeros(bsz, 'single');
-                nv_ind_f_block = zeros(bsz, 'single');
-                for j = 1 : numTiles
-                    nv_ind_block(nv_block == 0 & tim_block(:, :, :, j) ~= 0) = j; 
-                    nv_block = nv_block + tim_block(:, :, :, j) .* (nv_block == 0);
-                    nv_ind_f_block(nv_f_block == 0 & tim_f_block(:, :, :, j) ~= 0) = j;
-                    nv_f_block = nv_f_block + tim_f_block(:, :, :, j) .* (nv_f_block == 0);
-                end
-            end
         case 'feather'
-            mex_compute = true;
-            try
-                nv_block = feather_blending_3d_mex(tim_f_block, tim_d_block);  
-            catch ME
-                disp(ME);
-                mex_compute = false;
-                tim_w_block = tim_d_block .* (tim_f_block ~= 0); 
-                nv_block = sum(single(tim_f_block) .* tim_w_block, 4) ./ sum(tim_w_block, 4);                 
+            if is_full_batch
+                [nv_block, mex_compute] = feather_blending_3d(tim_f_block, tim_d_block);
+            else
+                [nv_block, mex_compute] = feather_blending_3d(tim_f_block, tim_d_block, tim_block, bCoords_c);
             end
+        otherwise
+            error('Unsupported blending method: %s.', BlendMethod);
     end
-    % clear tim_f_block;
     
-    if ~strcmp(BlendMethod, 'none') && ~strcmp(BlendMethod, 'blurred') && ~(strcmp(BlendMethod, 'feather') && mex_compute)
+    if ~strcmp(BlendMethod, 'none') && ~(strcmp(BlendMethod, 'feather') && mex_compute)
         try 
             nv_block = replace_nan_with_value(nv_block, 0);
         catch ME
@@ -336,49 +481,18 @@ for i = 1 : numel(batchInds)
             nv_f_block(isnan(nv_f_block)) = 0;
         end        
         nv_zero_inds = nv_block == 0 & nv_f_block ~= 0;
-        % nv_block(nv_zero_inds) = nv_f_block(nv_zero_inds);
         nv_block = nv_block .* nv_zero_inds + nv_f_block .* (1 - nv_zero_inds);
     end
-        
-    if strcmp(BlendMethod, 'blurred') && numTiles > 1
-        nv_ind_block(nv_zero_inds) = nv_ind_f_block(nv_zero_inds);
-        nv_ol_regions = false(bsz);
-        nv_ind_block_bw = nv_ind_block > 0;
-        ksz = max(BorderSize) * 2 + 1;        
-        for j = 1 : numTiles
-            nv_ol_j = nv_ind_block == j;
-            nv_ol_j = imdilate(nv_ol_j, strel('cube', ksz));
-            nv_ol_regions = nv_ol_regions | (nv_ol_j & nv_ind_block_bw & (nv_ind_block ~= j));
-        end
-        nv_block_blur = imgaussfilt3(nv_block, BlurSigma);
-        nv_block(nv_ol_regions) = nv_block_blur(nv_ol_regions);
-    end
-    
+            
     if any(BorderSize > 0)
         s = (batchSub ~= 1) .* BorderSize;
-        try
-            nv_block = crop3d_mex(nv_block, [s + 1, s + batchSize]);
-        catch ME
-            disp(ME)
-            disp(ME.stack);
-            nv_block = nv_block(s(1) + 1 : s(1) + batchSize(1), s(2) + 1 : s(2) + batchSize(2), s(3) + 1 : s(3) + batchSize(3));            
-        end
+        nv_block = crop3d(nv_block, [s + 1, s + batchSize]);
     end
-    
-    % nv_block = cast(nv_block, dtype);
-    
+        
     % write the block to zarr file
-    % writeBlock(nv_bim, blockSub, nv_block, level, Mode);
     if any(nbsz ~= size(nv_block, [1, 2, 3]))
-        try
-            nv_block = crop3d_mex(nv_block, [1, 1, 1, nbsz]);
-        catch ME
-            disp(ME)
-            disp(ME.stack);
-            nv_block = nv_block(1 : nbsz(1), 1 : nbsz(2), 1 : nbsz(3));
-        end
+        nv_block = crop3d(nv_block, [1, 1, 1, nbsz]);        
     end    
-    % nv_bim.Adapter.setRegion(obStart, obEnd, nv_block);
     writezarr(nv_block, stitchFullname, bbox=[obStart, obEnd]);    
     done_flag(i) = true;
 

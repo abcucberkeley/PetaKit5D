@@ -125,7 +125,7 @@ for i = 1 : numel(batchInds)
                 out_batch = padarray(out_batch, max(dsz, 0), 'post', 'replicate');
             end
             if any(dsz < 0)
-                out_batch = crop3d_mex(out_batch, [1, 1, 1, obEnd - obStart + 1 ]);
+                out_batch = crop3d(out_batch, [1, 1, 1, obEnd - obStart + 1 ]);
             end
         end
         
