@@ -14,7 +14,8 @@ end
 
 % tic
 % C = normxcorr3(T, A);
-C = normxcorr3_updated(T, A);
+% C = normxcorr3_updated(T, A);
+C = normxcorr3_fast(T, A);
 % toc
 
 sz_t = size(T, 1 : 3);
@@ -22,7 +23,8 @@ sz_t = size(T, 1 : 3);
 s = max(1, ceil(maxShifts(1, :) + sz_t));
 t = min(floor(maxShifts(2, :) + sz_t), size(C));
 
-C = C(s(1) : t(1), s(2) : t(2), s(3) : t(3));
+% C = C(s(1) : t(1), s(2) : t(2), s(3) : t(3));
+C = crop3d(C, [s, t]);
 
 [max_corr, ind] = max(C(:));
 [y, x, z] = ind2sub(size(C), ind);

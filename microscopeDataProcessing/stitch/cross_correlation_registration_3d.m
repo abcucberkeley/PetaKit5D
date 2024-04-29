@@ -130,8 +130,8 @@ if any(downSample ~= 1)
     end
 end
 
-region_1 = single(region_1);
-region_2 = single(region_2);
+% region_1 = single(region_1);
+% region_2 = single(region_2);
 
 % crop region 2
 sz_2 = size(region_2, [1, 2, 3]);
@@ -190,7 +190,7 @@ relative_shift = offset_yxz([2, 1, 3]) .* downSample([2, 1, 3]) + sp2'; % - [max
 relative_shift = relative_shift .* ((s1 >= s2)' - 0.5) * 2;
 
 if saveResult
-    fprintf('Save results ...\n');
+    fprintf('Save results ...');
     
     uuid = get_uuid();
     xcorrTmppath = sprintf('%s_%s.mat', xcorrFullpath(1 : end - 4), uuid);

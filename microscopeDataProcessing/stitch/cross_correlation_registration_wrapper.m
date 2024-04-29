@@ -88,7 +88,7 @@ for i = 1 : nF
     toc
 end
 
-fprintf('Save results ...\n');
+fprintf('Save results ... ');
 
 uuid = get_uuid();
 xcorrTmppath = sprintf('%s_%s.mat', xcorrFullpath(1 : end - 4), uuid);
@@ -100,6 +100,6 @@ end
 fileattrib(xcorrTmppath, '+w', 'g');
 movefile(xcorrTmppath, xcorrFullpath);
 
-% fprintf('Done!\n');
+fprintf('Done!\n');
 
 end

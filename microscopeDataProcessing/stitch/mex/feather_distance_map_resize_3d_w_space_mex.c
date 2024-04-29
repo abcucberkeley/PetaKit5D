@@ -9,8 +9,6 @@
 // macOS
 // mex -v CC="/usr/local/bin/gcc-12" CXX="/usr/local/bin/g++-12" COPTIMFLAGS="-O3 -DNDEBUG" CFLAGS='$CFLAGS -O3 -fopenmp' LDFLAGS='$LDFLAGS -O3 -fopenmp' feather_distance_map_resize_3d_mex.c
 
-// 04/24/2024: change the input distance map in the linear space
-
 float fastPower(float base, int exponent) {
     // Only for integer exponent
     if (exponent < 0) {
@@ -47,6 +45,11 @@ float trilinearInterpolation(const float* dmat, const float x, const float y, co
     float xd = x - x0;
     float yd = y - y0;
     float zd = z - z0;
+
+    // float c00 = dmat[x0][y0][z0] * (1 - xd) + dmat[x1][y0][z0] * xd;
+    // float c10 = dmat[x0][y1][z0] * (1 - xd) + dmat[x1][y1][z0] * xd;
+    // float c01 = dmat[x0][y0][z1] * (1 - xd) + dmat[x1][y0][z1] * xd;
+    // float c11 = dmat[x0][y1][z1] * (1 - xd) + dmat[x1][y1][z1] * xd;
     
     uint64_t xyz_ind = x0 + y0 * shapeX + z0 * shapeXY;
     uint64_t ys = yi * shapeX;
@@ -69,9 +72,35 @@ float trilinearInterpolation(const float* dmat, const float x, const float y, co
 void feather_distance_map_resize_3d_mex(const float* dmat, float* rmat, const float d, const uint64_t shapeX, const uint64_t shapeY, const uint64_t shapeZ, const uint64_t rShapeX, const uint64_t rShapeY, const uint64_t rShapeZ) {
     const uint64_t shapeXY = shapeX * shapeY;
     const uint64_t rShapeXY = rShapeX * rShapeY;
+    const float d_inv = 1. / (float) d;
     const int d_int = (int) d;
-    const uint16_t nthread = omp_get_max_threads();
+    const int nthread = omp_get_max_threads();
     
+    // restore to the linear space 
+    float* dmat_1 = (float *) malloc(shapeX * shapeY * shapeZ * sizeof(float));
+    if (nthread > 1){
+        #pragma omp parallel for collapse(3)
+        for (uint64_t z = 0; z < shapeZ; z++) {
+            for (uint64_t y = 0; y < shapeY; y++) {
+                for (uint64_t x = 0; x < shapeX; x++) {
+                    uint64_t ind_xyz = x + y * shapeX + z * shapeXY;                
+                    *(dmat_1 + ind_xyz) = powf(*(dmat + ind_xyz), d_inv);
+                }
+            }
+        }
+    }
+    else{
+        for (uint64_t z = 0; z < shapeZ; z++) {
+            for (uint64_t y = 0; y < shapeY; y++) {
+                for (uint64_t x = 0; x < shapeX; x++) {
+                    uint64_t ind_xyz = x + y * shapeX + z * shapeXY;                
+                    *(dmat_1 + ind_xyz) = powf(*(dmat + ind_xyz), d_inv);
+                }
+            }
+        }
+    }
+        
+
     const float xfactor = rShapeX > 1 ? ((float)shapeX - 1.0) / ((float)rShapeX - 1.0) : 1.0;
     const float yfactor = rShapeY > 1 ? ((float)shapeY - 1.0) / ((float)rShapeY - 1.0) : 1.0;
     const float zfactor = rShapeZ > 1 ? ((float)shapeZ - 1.0) / ((float)rShapeZ - 1.0) : 1.0;
@@ -87,7 +116,8 @@ void feather_distance_map_resize_3d_mex(const float* dmat, float* rmat, const fl
     
                     uint64_t ind_xyz = x + y * rShapeX + z * rShapeXY;
     
-                    float dr = trilinearInterpolation(dmat, xr, yr, zr, shapeX, shapeY, shapeZ, shapeXY);
+                    float dr = trilinearInterpolation(dmat_1, xr, yr, zr, shapeX, shapeY, shapeZ, shapeXY);
+                    // *(rmat + ind_xyz) = powf(dr, d);
                     *(rmat + ind_xyz) = fastPower(dr, d_int);                
                 }
             }
@@ -103,12 +133,14 @@ void feather_distance_map_resize_3d_mex(const float* dmat, float* rmat, const fl
     
                     uint64_t ind_xyz = x + y * rShapeX + z * rShapeXY;
     
-                    float dr = trilinearInterpolation(dmat, xr, yr, zr, shapeX, shapeY, shapeZ, shapeXY);
+                    float dr = trilinearInterpolation(dmat_1, xr, yr, zr, shapeX, shapeY, shapeZ, shapeXY);
+                    // *(rmat + ind_xyz) = powf(dr, d);
                     *(rmat + ind_xyz) = fastPower(dr, d_int);                
                 }
             }
         }
     }
+    free(dmat_1);
 }
 
 
@@ -145,6 +177,7 @@ void mexFunction(int nlhs, mxArray *plhs[],
     float d = (float) mxGetScalar(prhs[2]);
 
     mxClassID mDType = mxGetClassID(prhs[0]);
+    // if(mDType != mDType_d) mexErrMsgIdAndTxt("feather_blending:inputError","The data type of the distance map does not match that of the data!");
     if(mDType == mxSINGLE_CLASS){
         float* dmat = (float*)mxGetPr(prhs[0]);
 

@@ -144,6 +144,23 @@ switch clusterType
             cpusPerTask = ceil(MemAllocate / MemPerCPU);
         end
         cpusPerTask = min(maxCPUNum, max(minCPUNum, cpusPerTask));
+        % if cpu per task is less than half of max cpu num, round to a factor of the max cpu num
+        % if cpu per task is 75% of max cpu num, just assign to max CPU num
+        if rem(maxCPUNum, cpusPerTask) ~= 0 && numel(factor(maxCPUNum)) > 1
+            cpusPerTask_orig = cpusPerTask;
+            if maxCPUNum / cpusPerTask > 2
+                while rem(maxCPUNum, cpusPerTask) > 1
+                    if cpusPerTask / cpusPerTask_orig >= 2
+                        break;
+                    end
+                    cpusPerTask = cpusPerTask + 1;
+                end
+            else
+                if cpusPerTask / maxCPUNum > 0.75
+                    cpusPerTask = maxCPUNum;
+                end
+            end
+        end
 
         if (ismcc || isdeployed || mccMode) && parseCluster
             % only allow master compute if the job itself is in mcc or deployed mode.

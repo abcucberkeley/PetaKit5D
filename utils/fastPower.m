@@ -5,6 +5,10 @@ if exponent < 0
     base = 1 ./ base;
     exponent = -exponent;
 end
+if exponent == 1
+    result = base;
+    return;
+end
 
 result = 1;
 while exponent > 0

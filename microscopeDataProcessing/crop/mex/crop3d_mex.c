@@ -11,7 +11,7 @@ void crop3d_mex(const void* restrict orig, void* restrict crop, const uint64_t s
     const uint64_t bytes = bits/8;
     const uint64_t cropShapeXY = shapeX*shapeY;
     const uint64_t origShapeXY = origShapeX*origShapeY;
-    const int nthread = omp_get_num_threads();
+    const int nthread = omp_get_max_threads();
     
     if (nthread > 1){
         #pragma omp parallel for collapse(2)

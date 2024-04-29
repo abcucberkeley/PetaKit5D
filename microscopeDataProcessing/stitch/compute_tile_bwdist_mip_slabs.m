@@ -5,6 +5,8 @@ function [] = compute_tile_bwdist_mip_slabs(blockInfoFullname, tileInd, bwdistFu
 % copied from compute_tile_bwdist.m
 % 
 % Author: Xiongtao Ruan (05/02/2023)
+%
+% xruan (04/20/2024): change to not apply weightDegree
 
 
 ip = inputParser;
@@ -50,10 +52,7 @@ if ~(strcmpi(bkFn, blockInfoFullname) && datenum == dir_info.datenum) || isempty
     clear a;
 end
 
-nF = numel(tileFns);
-i = tileInd;
-
-tileFn = tileFns{i};
+tileFn = tileFns{tileInd};
 [dataPath, fsn] = fileparts(tileFn);
 switch numel(poolSize) 
     case 3
@@ -73,19 +72,20 @@ if ndims(im_i) == 3
 end
 im_i = im_i == 0;
 
-sz = size(im_i, [1 : 3]);
-im_dist = ones(sz, 'single');
+sz = size(im_i, 1 : 3);
 
 % distance in xy
 im_i_c = im_i(:, :, round((sz(3) + 1) / 2));
-im_dist_c = fastPower(((bwdist(im_i_c) + 1) / 10), weightDegree);
+im_dist_c = (bwdist(im_i_c) + 1) / 10;
+im_dist = repmat(im_dist_c, 1, 1, sz(3));
+
+same_z_inds = squeeze(all(im_i == im_i_c, [1, 2]));
 for z = 1 : sz(3)
-    im_i_z = im_i(:, :, z);
-    if any(im_i_z ~= im_i_c, 'all')
-        im_dist(:, :, z) = fastPower(((bwdist(im_i_z) + 1) / 10), weightDegree);        
-    else
-        im_dist(:, :, z) = im_dist_c;        
+    if same_z_inds(z)
+        continue;
     end
+    im_i_z = im_i(:, :, z);
+    im_dist(:, :, z) = (bwdist(im_i_z) + 1) / 10;
 end
 
 % apply a window in z direction
@@ -95,7 +95,7 @@ else
     win_z = tukeywin(sz(3) * 1.1, 0.5);
     win_z = win_z(round(sz(3) * 0.05) : round(sz(3) * 0.05) + sz(3) - 1);
 end
-im_dist = im_dist .* (permute(fastPower(win_z, weightDegree), [2, 3, 1]));
+im_dist = im_dist .* (permute(win_z, [2, 3, 1]));
 
 im_dist = im_dist .* im_i_orig;
 clear im_i_orig im_i;
@@ -109,13 +109,13 @@ if ~isempty(distBbox)
     bufferSizes = max(1, round(bufferSize ./ [poolSize(4 : 5), poolSize(3)]));
     dfactor = 0.99;
     winType = 'hann';
-    dist_y = distance_weight_single_axis(sz(1), distBbox([1, 4]), bufferSizes(1), dfactor, winType);
-    dist_x = distance_weight_single_axis(sz(2), distBbox([2, 5]), bufferSizes(2), dfactor, winType);
-    dist_z = distance_weight_single_axis(sz(3), distBbox([3, 6]), bufferSizes(3), dfactor, winType);
+    dist_y = distance_weight_single_axis(sz(1), distBbox([1, 4]), bufferSizes(1), dfactor ^ poolSize(4), winType);
+    dist_x = distance_weight_single_axis(sz(2), distBbox([2, 5]), bufferSizes(2), dfactor ^ poolSize(5), winType);
+    dist_z = distance_weight_single_axis(sz(3), distBbox([3, 6]), bufferSizes(3), dfactor ^ poolSize(3), winType);
 
-    im_dist_wt = (fastPower(dist_y, weightDegree)) .* permute(fastPower(dist_x, weightDegree), [2, 1]) .* permute(fastPower(dist_z, weightDegree), [2, 3, 1]);
+    im_dist_wt = dist_y .* permute(dist_x, [2, 1]) .* permute(dist_z, [2, 3, 1]);
     if dfactor > 0
-        im_dist_wt = max(im_dist_wt, 1e-40);
+        im_dist_wt = max(im_dist_wt, (1e-50) .^ (1 / weightDegree));
     end
     im_dist = im_dist .* im_dist_wt;
     clear im_dist_wt;
@@ -124,19 +124,12 @@ end
 % write to zarr
 zarrFilename = bwdistFullpath;
 tmpFilename = [zarrFilename '_' uuid];
-% write(bim_dist, tmpFilename, "BlockSize", bim_i.BlockSize, "Adapter", ZarrAdapter);
-% createZarrFile(tmpFilename, 'chunks', blockSize, 'dtype', 'f4', 'order', 'F', ...
-%     'shape', size(im_dist), 'cname', 'zstd', 'level', 2);
-try
-    zarrSubSize = [20, 20, 20];
-    createzarr(tmpFilename, dataSize=size(im_dist), blockSize=blockSize, shardSize=shardSize, ...
-        dtype='single', compressor=compressor, zarrSubSize=zarrSubSize);
-    % bim = blockedImage(tmpFilename, sz, blockSize, zeros(1, 'single'), "Adapter", CZarrAdapter, 'mode', 'w');
-catch ME
-    disp(ME);
-    bim = blockedImage(tmpFilename, sz, blockSize, zeros(1, 'single'), "Adapter", ZarrAdapter, 'mode', 'w');
-    bim.Adapter.close();    
-end    
+dimSeparator = '.';
+if prod(ceil(sz / blockSize)) > 10000
+    dimSeparator = '/';
+end
+createzarr(tmpFilename, dataSize=sz, blockSize=blockSize, shardSize=shardSize, ...
+    dtype='single', compressor=compressor, dimSeparator=dimSeparator);
 writezarr(im_dist, tmpFilename);
 
 % mv tmp result folder to output folder
