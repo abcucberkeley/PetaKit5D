@@ -73,14 +73,14 @@ void mexFunction(int nlhs, mxArray *plhs[],
     mxClassID mDType = mxGetClassID(prhs[0]);
     if(mDType == mxUINT8_CLASS){
         uint64_t bits = 8;
-        plhs[0] = mxCreateNumericArray(3,dim,mxUINT8_CLASS, mxREAL);
+        plhs[0] = mxCreateNumericArray(3,(mwSize*)dim,mxUINT8_CLASS, mxREAL);
         uint8_t* crop = (uint8_t*)mxGetPr(plhs[0]);
         uint8_t* orig = (uint8_t*)mxGetPr(prhs[0]);
         crop3d_mex((void*)orig,(void*)crop,startX,startY,startZ,endX,endY,endZ,origShapeX,origShapeY,origShapeZ,shapeX,shapeY,shapeZ,bits);
     }
     else if(mDType == mxUINT16_CLASS){
         uint64_t bits = 16;
-        plhs[0] = mxCreateNumericArray(3,dim,mxUINT16_CLASS, mxREAL);
+        plhs[0] = mxCreateNumericArray(3,(mwSize*)dim,mxUINT16_CLASS, mxREAL);
         uint16_t* crop = (uint16_t*)mxGetPr(plhs[0]);
         uint16_t* orig = (uint16_t*)mxGetPr(prhs[0]);
         uint64_t size = origShapeX*origShapeY*origShapeZ;
@@ -88,14 +88,14 @@ void mexFunction(int nlhs, mxArray *plhs[],
     }
     else if(mDType == mxSINGLE_CLASS){
         uint64_t bits = 32;
-        plhs[0] = mxCreateNumericArray(3,dim,mxSINGLE_CLASS, mxREAL);
+        plhs[0] = mxCreateNumericArray(3,(mwSize*)dim,mxSINGLE_CLASS, mxREAL);
         float* crop = (float*)mxGetPr(plhs[0]);
         float* orig = (float*)mxGetPr(prhs[0]);
         crop3d_mex((void*)orig,(void*)crop,startX,startY,startZ,endX,endY,endZ,origShapeX,origShapeY,origShapeZ,shapeX,shapeY,shapeZ,bits);
     }
     else if(mDType == mxDOUBLE_CLASS){
         uint64_t bits = 64;
-        plhs[0] = mxCreateNumericArray(3,dim,mxDOUBLE_CLASS, mxREAL);
+        plhs[0] = mxCreateNumericArray(3,(mwSize*)dim,mxDOUBLE_CLASS, mxREAL);
         double* crop = (double*)mxGetPr(plhs[0]);
         double* orig = (double*)mxGetPr(prhs[0]);
         crop3d_mex((void*)orig,(void*)crop,startX,startY,startZ,endX,endY,endZ,origShapeX,origShapeY,origShapeZ,shapeX,shapeY,shapeZ,bits);

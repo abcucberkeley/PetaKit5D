@@ -26,7 +26,7 @@ void mexFunction(int nlhs, mxArray *plhs[],
     dim[0] = sz[0];
     dim[1] = sz[1];
     dim[2] = (sz[2] - 1) * nint + 1;
-    plhs[0] = mxCreateNumericArray(3,dim,mxSINGLE_CLASS, mxREAL);
+    plhs[0] = mxCreateNumericArray(3, (mwSize*)dim, mxSINGLE_CLASS, mxREAL);
     
     float* im_int = (float*)mxGetPr(plhs[0]);
     
