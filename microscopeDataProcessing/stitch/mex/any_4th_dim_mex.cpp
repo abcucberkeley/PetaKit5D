@@ -207,7 +207,7 @@ void mexFunction(int nlhs, mxArray *plhs[],
         plhs[0] = mxCreateLogicalMatrix(1, 1);
         bool* valid_flag = (bool*)mxGetPr(plhs[0]);
         uint64_t bSize[2] = {1, 6};
-        plhs[1] = mxCreateNumericArray(2, bSize, mxUINT64_CLASS, mxREAL);
+        plhs[1] = mxCreateNumericArray(2, (mwSize*) bSize, mxUINT64_CLASS, mxREAL);
         uint64_t* ubbox = (uint64_t*)mxGetPr(plhs[1]);
         
         any_4th_dim_mex<uint16_t>(fmat, amat, valid_flag, shapeX, shapeY, shapeZ, shapeT, numA);
@@ -218,7 +218,7 @@ void mexFunction(int nlhs, mxArray *plhs[],
         plhs[0] = mxCreateLogicalMatrix(1, 1);
         bool* valid_flag = (bool*)mxGetPr(plhs[0]);
         uint64_t bSize[2] = {1, 6};        
-        plhs[1] = mxCreateNumericArray(2, bSize, mxUINT64_CLASS, mxREAL);
+        plhs[1] = mxCreateNumericArray(2, (mwSize*) bSize, mxUINT64_CLASS, mxREAL);
         uint64_t* ubbox = (uint64_t*)mxGetPr(plhs[1]);
         
         any_4th_dim_mex<float>(fmat, amat, valid_flag, shapeX, shapeY, shapeZ, shapeT, numA);
