@@ -13,6 +13,10 @@ baseDir = pwd;
 
 if(~isempty(LLSM5DToolsBaseDir))
     cd([LLSM5DToolsBaseDir '/./microscopeDataProcessing']);
+else
+    funcFn = which(mfilename);
+    path = fileparts(funcFn);
+    cd(path);
 end
     
 [~,name,~]=fileparts(pwd);

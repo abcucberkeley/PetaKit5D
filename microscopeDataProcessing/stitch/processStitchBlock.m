@@ -372,16 +372,16 @@ for i = 1 : numel(batchInds)
                     if sum(minor_inds) == 1
                         im_d_j = ones(udbsz_j, 'single') * d_ranges_mat(j, 1);
                         tim_d_block = indexing4d(tim_d_block, im_d_j, [udbCoords(1 : 3) - bCoords_c(1 : 3) + 1, j, udbCoords(4 : 6) - bCoords_c(1 : 3) + 1, j]);
-                        minor_inds(j) = false;                    
+                        minor_inds(j) = false;
                         continue;
                     end
                 end
-                                
+
                 % read the distance map and resize
                 im_d_j = tim_d_block_cell{j};
                 p_udbCoords = udbCoords;
                 p_udbCoords(1 : 3) = max(1, round((udbCoords(1 : 3) - dbCoords(1 : 3) + 1) ./ psz));
-                p_udbCoords(4 : 6) = min(size(im_d_j), p_udbCoords(1 : 3) + ceil(udbsz_j ./ psz) - 1);
+                p_udbCoords(4 : 6) = min(size(im_d_j, 1 : 3), p_udbCoords(1 : 3) + ceil(udbsz_j ./ psz) - 1);
                 if udbCoords(6) == udbCoords(3)
                     p_udbCoords(6) = p_udbCoords(3);
                 end

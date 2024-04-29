@@ -138,28 +138,28 @@ void mexFunction(int nlhs, mxArray *plhs[],
     if(mDType == mxUINT8_CLASS){
         uint64_t bytes = 1;
         uint8_t* orig = (uint8_t*)mxGetPr(prhs[0]);
-        plhs[0] = mxCreateNumericArray(4,rdims,mxUINT8_CLASS, mxREAL);        
+        plhs[0] = mxCreateNumericArray(4,(mwSize*)rdims,mxUINT8_CLASS, mxREAL);        
         uint8_t* region = (uint8_t*)mxGetPr(plhs[0]);
         crop4d_mex<uint8_t>(orig, region, dims, bbox, bytes);
     }
     else if(mDType == mxUINT16_CLASS){
         uint64_t bytes = 2;
         uint16_t* orig = (uint16_t*)mxGetPr(prhs[0]);
-        plhs[0] = mxCreateNumericArray(4,rdims,mxUINT16_CLASS, mxREAL);        
+        plhs[0] = mxCreateNumericArray(4,(mwSize*)rdims,mxUINT16_CLASS, mxREAL);        
         uint16_t* region = (uint16_t*)mxGetPr(plhs[0]);
         crop4d_mex<uint16_t>(orig, region, dims, bbox, bytes);
     }
     else if(mDType == mxSINGLE_CLASS){
         uint64_t bytes = 4;
         float* orig = (float*)mxGetPr(prhs[0]);
-        plhs[0] = mxCreateNumericArray(4,rdims,mxSINGLE_CLASS, mxREAL);        
+        plhs[0] = mxCreateNumericArray(4,(mwSize*)rdims,mxSINGLE_CLASS, mxREAL);        
         float* region = (float*)mxGetPr(plhs[0]);
         crop4d_mex<float>(orig, region, dims, bbox, bytes);
     }
     else if(mDType == mxDOUBLE_CLASS){
         uint64_t bytes = 8;
         double* orig = (double*)mxGetPr(prhs[0]);
-        plhs[0] = mxCreateNumericArray(4,rdims,mxDOUBLE_CLASS, mxREAL);        
+        plhs[0] = mxCreateNumericArray(4,(mwSize*)rdims,mxDOUBLE_CLASS, mxREAL);        
         double* region = (double*)mxGetPr(plhs[0]);
         crop4d_mex<double>(orig, region, dims, bbox, bytes);
     }
