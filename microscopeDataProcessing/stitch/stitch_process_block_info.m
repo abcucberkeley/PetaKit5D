@@ -98,7 +98,7 @@ if isPrimaryCh
     mkdir(PerBlockInfoFlagPath);    
 else
     [pstr, fsn] = fileparts(stitchInfoFullpath);
-    PerBlockInfoPath = [pstr, '/', fsn];
+    PerBlockInfoPath = sprintf('%s/%s_task_size_%d/', pstr, fsn, taskSize);
 end
 
 numTasks = ceil(numBlocks / taskSize);
