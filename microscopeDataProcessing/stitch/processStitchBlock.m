@@ -314,11 +314,11 @@ for i = 1 : numel(batchInds)
         [major_valid_mat, unvalid_bbox] = check_major_tile_valid(tim_f_block, ~minor_inds);
         % also ensure the major tiles cover regions minor tiles covered
         [major_cover, uncover_bbox_mat] = check_major_tile_cover(bCoords_mat, ~minor_inds);
-        major_inds = ~minor_inds;
+        orig_major_inds = ~minor_inds;
 
         if ~major_valid_mat || ~any(major_cover(~minor_inds))
             for j = 1 : numTiles
-                if major_inds(j) && sum(major_inds) > 1 && major_cover(j)
+                if orig_major_inds(j) && sum(orig_major_inds) > 1 && major_cover(j)
                     continue;
                 end
                 if ~major_cover(j)
@@ -351,10 +351,11 @@ for i = 1 : numel(batchInds)
                 uBboxCoords = [bboxCoords(1 :3) - bCoords(1 : 3) + uCoords(1 : 3), bboxCoords(1 :3) - bCoords(1 : 3) + uCoords(4 : 6)];
 
                 dbCoords = [max(bCoords_c(1 : 3), bCoords(1 : 3)), min(bCoords_c(4 : 6), bCoords(4 : 6))];
+                dbsz_j = dbCoords(4 : 6) - dbCoords(1 : 3) + 1;
                 udbCoords = [max(bCoords_c(1 : 3), uCoords(1 : 3)), min(bCoords_c(4 : 6), uCoords(4 : 6))];
                 udbsz_j = udbCoords(4 : 6) - udbCoords(1 : 3) + 1;
 
-                if ~major_inds(j)
+                if minor_inds(j)
                     % read the region
                     block_j = readzarr(tileFns{tileInd}, bbox=uBboxCoords);
                     if ~isa(block_j, dtype)
@@ -370,7 +371,7 @@ for i = 1 : numel(batchInds)
                     end
     
                     if sum(minor_inds) == 1
-                        im_d_j = ones(udbsz_j, 'single') * d_ranges_mat(j, 1);
+                        im_d_j = ones(udbsz_j, 'single') * d_ranges_mat(j, 1)^wd;
                         tim_d_block = indexing4d(tim_d_block, im_d_j, [udbCoords(1 : 3) - bCoords_c(1 : 3) + 1, j, udbCoords(4 : 6) - bCoords_c(1 : 3) + 1, j]);
                         minor_inds(j) = false;
                         continue;
@@ -379,17 +380,22 @@ for i = 1 : numel(batchInds)
 
                 % read the distance map and resize
                 im_d_j = tim_d_block_cell{j};
-                p_udbCoords = udbCoords;
-                p_udbCoords(1 : 3) = max(1, round((udbCoords(1 : 3) - dbCoords(1 : 3) + 1) ./ psz));
-                p_udbCoords(4 : 6) = min(size(im_d_j, 1 : 3), p_udbCoords(1 : 3) + ceil(udbsz_j ./ psz) - 1);
-                if udbCoords(6) == udbCoords(3)
-                    p_udbCoords(6) = p_udbCoords(3);
+                % there will only be one major tile in this case, so direct assign the weight
+                if orig_major_inds(j)
+                    im_d_j = ones(dbsz_j, 'single') * d_ranges_mat(j, 1)^wd;
+                    tim_d_block = indexing4d(tim_d_block, im_d_j, [dbCoords(1 : 3) - bCoords_c(1 : 3) + 1, j, dbCoords(4 : 6) - bCoords_c(1 : 3) + 1, j]);
+                else
+                    p_udbCoords = udbCoords;
+                    p_udbCoords(1 : 3) = max(1, round((udbCoords(1 : 3) - dbCoords(1 : 3) + 1) ./ psz));
+                    p_udbCoords(4 : 6) = min(size(im_d_j, 1 : 3), p_udbCoords(1 : 3) + ceil(udbsz_j ./ psz) - 1);
+                    if udbCoords(6) == udbCoords(3)
+                        p_udbCoords(6) = p_udbCoords(3);
+                    end
+
+                    im_d_j = crop3d(im_d_j, p_udbCoords);
+                    im_d_j = feather_distance_map_resize_3d(im_d_j, [1, 1, 1, udbsz_j], wd);
+                    tim_d_block = indexing4d(tim_d_block, im_d_j, [udbCoords(1 : 3) - bCoords_c(1 : 3) + 1, j, udbCoords(4 : 6) - bCoords_c(1 : 3) + 1, j]);
                 end
-                
-                im_d_j = crop3d(im_d_j, p_udbCoords);
-                im_d_j = feather_distance_map_resize_3d(im_d_j, [1, 1, 1, udbsz_j], wd);
-                tim_d_block = indexing4d(tim_d_block, im_d_j, [udbCoords(1 : 3) - bCoords_c(1 : 3) + 1, j, udbCoords(4 : 6) - bCoords_c(1 : 3) + 1, j]);
-                
                 minor_inds(j) = false;
             end
         end
