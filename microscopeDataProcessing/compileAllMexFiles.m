@@ -99,7 +99,7 @@ end
 if(~ismac)
     mex -v COPTIMFLAGS="-O3 -DNDEBUG" CFLAGS='$CFLAGS -O3 -fopenmp' LDFLAGS='$LDFLAGS -O3 -fopenmp' crop4d_mex.cpp
 else
-    mex -v CC="/usr/local/bin/gcc-13" CXX="/usr/local/bin/g++-13" COPTIMFLAGS="-O3 -DNDEBUG" CFLAGS='$CFLAGS -O3 -fopenmp' LDFLAGS='$LDFLAGS -O3 -fopenmp' crop4d_mex.cpp
+    mex -v CXX="/usr/local/bin/g++-13" CXXFLAGS='-fno-common -arch x86_64 -mmacosx-version-min=10.15 -fexceptions -isysroot /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk -std=c++11 -O3 -fopenmp -DMATLAB_DEFAULT_RELEASE=R2017b  -DUSE_MEX_CMD   -DMATLAB_MEX_FILE' CXXOPTIMFLAGS="-O3 -DNDEBUG" LDFLAGS='$LDFLAGS -O3 -fopenmp' crop4d_mex.cpp
 end
 
 % indexing3d_mex
@@ -120,7 +120,7 @@ end
 if(~ismac)
     mex -v COPTIMFLAGS="-O3 -DNDEBUG" CFLAGS='$CFLAGS -O3 -fopenmp' LDFLAGS='$LDFLAGS -O3 -fopenmp' indexing4d_crop_mex.cpp
 else
-    mex -v CC="/usr/local/bin/gcc-13" CXX="/usr/local/bin/g++-13" COPTIMFLAGS="-O3 -DNDEBUG" CFLAGS='$CFLAGS -O3 -fopenmp' LDFLAGS='$LDFLAGS -O3 -fopenmp' indexing4d_crop_mex.cpp
+    mex -v CXX="/usr/local/bin/g++-13" CXXFLAGS='-fno-common -arch x86_64 -mmacosx-version-min=10.15 -fexceptions -isysroot /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk -std=c++11 -O3 -fopenmp -DMATLAB_DEFAULT_RELEASE=R2017b  -DUSE_MEX_CMD   -DMATLAB_MEX_FILE' CXXOPTIMFLAGS="-O3 -DNDEBUG" LDFLAGS='$LDFLAGS -O3 -fopenmp' indexing4d_crop_mex.cpp
 end
 
 cd(baseDir);
