@@ -1,5 +1,5 @@
 function [] = demo_data_downloader(destPath)
-% automatically download demo dataset from zenodo
+% automatically download demo dataset from Dropbox
 
 
 if nargin == 0 || isempty(destPath)
@@ -26,30 +26,39 @@ if exist(dataPath, 'dir')
     file_exist = true;
     
     % tile files
-    file_exist = file_exist & sum(matches(fsns, "Scan" + wildcardPattern + "tif")) == 16;
+    file_exist = file_exist && sum(matches(fsns, "Scan" + wildcardPattern + "tif")) == 16;
 
     % image list
-    file_exist = file_exist & sum(matches(fsns, "ImageList_from_encoder.csv")) == 1;
+    file_exist = file_exist && sum(matches(fsns, "ImageList_from_encoder.csv")) == 1;
     
     % PSF
-    file_exist = file_exist & sum(matches(fsns, "PSF")) == 1;
+    file_exist = file_exist && sum(matches(fsns, "PSF")) == 1;
     
     % Flat field
-    file_exist = file_exist & sum(matches(fsns, "FF")) == 1;
+    file_exist = file_exist && sum(matches(fsns, "FF")) == 1;
     
     % check if PSF and FF files exist
     if file_exist
         dir_info = dir([dataPath, 'PSF/*tif']);
         fsns = {dir_info.name};
-        file_exist = file_exist & numel(fsns) == 2;
+        file_exist = file_exist && numel(fsns) == 2;
+
+        % check RW PSFs
+        if exist([dataPath, 'PSF/RW_PSFs'], 'dir')
+            dir_info = dir([dataPath, 'PSF/RW_PSFs/*tif']);
+            fsns = {dir_info.name};
+            file_exist = file_exist && numel(fsns) == 2;
+        else
+            file_exist = false;
+        end
 
         dir_info = dir([dataPath, 'FF/averaged/*tif']);
         fsns = {dir_info.name};
-        file_exist = file_exist & numel(fsns) == 2;
+        file_exist = file_exist && numel(fsns) == 2;
 
         dir_info = dir([dataPath, 'FF/KorraFusions/*tif']);
         fsns = {dir_info.name};
-        file_exist = file_exist & numel(fsns) == 2;        
+        file_exist = file_exist && numel(fsns) == 2;
     end
     
     if file_exist
@@ -58,10 +67,10 @@ if exist(dataPath, 'dir')
     end
 end
 
-% The demo dataset is available in zenodo. We also shared the dataset from
+% The demo dataset is available in zenodo (https://zenodo.org/records/11136975). We also shared the dataset from
 % Drobox to allow much faster downloads. 
-% url = 'https://zenodo.org/records/10471979/files/LLSM5DTools_demo_cell_image_dataset.tar';
-url = 'https://www.dropbox.com/scl/fi/dszpkbrp44c0qpagr1wxl/LLSM5DTools_demo_cell_image_dataset.tar?rlkey=p4pll0l42xt6fekm47m8jzni7&dl=1';
+% url = 'https://zenodo.org/records/11136975/files/LLSM5DTools_demo_cell_image_dataset.tar?download=1';
+url = 'https://www.dropbox.com/scl/fi/3q5q3y8rrs4jooorj53dx/LLSM5DTools_demo_cell_image_dataset.tar?rlkey=tiyqezc6u9imyb347ani9w8ds&st=nlzj78y1&dl=1';
 
 fprintf('Download demo dataset from Dropbox...\n')
 filename = [destPath, '/LLSM5DTools_demo_cell_image_dataset.tar'];
