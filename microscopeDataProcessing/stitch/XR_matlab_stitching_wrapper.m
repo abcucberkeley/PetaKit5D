@@ -208,6 +208,7 @@ processFunPath = pr.processFunPath;
 jobLogDir = pr.jobLogDir;
 parseCluster = pr.parseCluster;
 masterCompute = pr.masterCompute;
+cpusPerTask = pr.cpusPerTask;
 uuid = pr.uuid;
 maxTrialNum = pr.maxTrialNum;
 unitWaitTime = pr.unitWaitTime;
@@ -431,7 +432,7 @@ while ~all(is_done_flag | trial_counter >= max_trial_num, 'all')
                         end
 
                         % check if files exist for streaming option, and also
-                        % if useExistDSR is true, check the DSR files exist.
+                        % if useProcessedData is true, check the processed files exist.
                         if streaming
                             is_tile_exist = cellfun(@(x) exist(x, 'file'), tile_fullpaths);
                             if ~all(is_tile_exist)
@@ -553,18 +554,11 @@ while ~all(is_done_flag | trial_counter >= max_trial_num, 'all')
 
                         % for online stitch check if old results with fewer tiles exist, if so, delete them. 
                         if onlineStitch
-                            switch pipeline
-                                case 'matlab'
-                                    % dir_info = dir([stitch_save_fsname(1:end-8), '*ntile.tif']);
-                                    dir_info = dir([stitch_save_fsname(1 : end - 32), '_*msecAbs_', z_str(2:5), '*ntile.tif']);
-                                    stitch_save_files = {dir_info.name}';
+                            % xruan: for bidirectional scan, the fpga time may change
+                            % dir_info = dir([stitch_save_fsname(1:end-8), '*ntile.zarr']);
+                            dir_info = dir([stitch_save_fsname(1 : end - 32), '_*msecAbs_', z_str(2:5), '*ntile.zarr']);
+                            stitch_save_files = {dir_info.name}';
 
-                                case 'zarr'
-                                    % xruan: for bidirectional scan, the fpga time may change
-                                    % dir_info = dir([stitch_save_fsname(1:end-8), '*ntile.zarr']);
-                                    dir_info = dir([stitch_save_fsname(1 : end - 32), '_*msecAbs_', z_str(2:5), '*ntile.zarr']);
-                                    stitch_save_files = {dir_info.name}';                                    
-                            end
                             stitch_tile_nums = regexp(stitch_save_files, '_(\d+)ntile', 'tokens');
                             stitch_tile_nums = cellfun(@(x) str2double(x{1}{1}), stitch_tile_nums);
                             
@@ -659,14 +653,8 @@ while ~all(is_done_flag | trial_counter >= max_trial_num, 'all')
                                     totalSize = datasize * numel(tile_fullpaths);
                                     % assume for double
                                     totalDsize = totalSize * 4 / 1024^3;
-                                    if strcmp(blendMethod, 'mean') || strcmp(blendMethod, 'median')
-                                        mem_factor = 10;
-                                    else
-                                        mem_factor = 8;
-                                    end
-                                    if strcmp(pipeline, 'zarr')
-                                        mem_factor = 2;
-                                    end
+                                    mem_factor = 2;
+
                                     lastFile = masterCompute && f==lastF;
     
                                     % allocate 5 time of the size
@@ -676,8 +664,8 @@ while ~all(is_done_flag | trial_counter >= max_trial_num, 'all')
                                     
                                     [job_id, ~, submit_status] = generic_single_job_submit_wrapper(func_str, job_id, task_id, ...
                                         'jobLogFname', job_log_fname, 'jobErrorFname', job_log_error_fname, ...
-                                        masterCompute=masterCompute, lastFile=lastFile, memAllocate=memAllocate, ...
-                                        mccMode=mccMode, configFile=configFile);
+                                        masterCompute=masterCompute, cpusPerTask=cpusPerTask, lastFile=lastFile, ...
+                                        memAllocate=memAllocate, mccMode=mccMode, configFile=configFile);
     
                                     job_ids(n, ncam, s, c, z) = job_id;
                                     trial_counter(n, ncam, s, c, z) = trial_counter(n, ncam, s, c, z) + submit_status;
