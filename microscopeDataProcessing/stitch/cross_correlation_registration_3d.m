@@ -99,12 +99,7 @@ end
 % first resize to downsampled ones
 if any(downSample ~= 1)
     % resize by max pooling
-    try
-        region_2 = max_pooling_3d_mex(region_2, downSample);
-    catch ME
-        disp(ME);
-        region_2 = max_pooling_3d(region_2, downSample);    
-    end
+    region_2 = max_pooling_3d(region_2, downSample);    
 end
 
 % calculate bbox for overlap regions
@@ -122,12 +117,7 @@ region_1 = bim_1.Adapter.getIORegion(sr1([2, 1, 3])', tr1([2, 1, 3])');
 % first resize to downsampled ones
 if any(downSample ~= 1)
     % resize by max pooling
-    try
-        region_1 = max_pooling_3d_mex(region_1, downSample);    
-    catch ME
-        disp(ME)
-        region_1 = max_pooling_3d(region_1, downSample);    
-    end
+    region_1 = max_pooling_3d(region_1, downSample);    
 end
 
 % region_1 = single(region_1);

@@ -1,20 +1,21 @@
-function [] = XR_tiffToZarr_wrapper_parser(tiffFullpaths, varargin)
+function [] = XR_tiffToZarr_wrapper_parser(dataPaths, varargin)
 
 
 %#function tiffToZarr
 
 ip = inputParser;
 ip.CaseSensitive = false;
-ip.addRequired('tiffFullpaths', @(x) iscell(x) || ischar(x));
-ip.addParameter('zarrPathstr', 'zarr', @ischar);
+ip.addRequired('dataPaths', @(x) iscell(x) || ischar(x));
+ip.addParameter('tiffFullpaths', '', @(x) iscell(x) || ischar(x));
+ip.addParameter('resultDirName', 'zarr', @ischar);
 ip.addParameter('locIds', [], @(x) isnumeric(x) || ischar(x)); % location ids for the tiles
 ip.addParameter('blockSize', [500, 500, 250], @(x) isnumeric(x) || ischar(x));
 ip.addParameter('shardSize', [], @(x) isnumeric(x) || ischar(x));
 ip.addParameter('flippedTile', [], @(x) isempty(x) || islogical(x) || ischar(x));
-ip.addParameter('resample', [], @(x) isempty(x) || isnumeric(x) || ischar(x));
+ip.addParameter('resampleFactor', [], @(x) isempty(x) || isnumeric(x) || ischar(x));
 ip.addParameter('partialFile', false, @(x) islogical(x) || ischar(x));
-ip.addParameter('ChannelPatterns', {'tif'}, @(x) iscell(x) || ischar(x));
-ip.addParameter('InputBbox', [], @(x) isnumeric(x) || ischar(x)); % crop input tile before processing
+ip.addParameter('channelPatterns', {'tif'}, @(x) iscell(x) || ischar(x));
+ip.addParameter('inputBbox', [], @(x) isnumeric(x) || ischar(x)); % crop input tile before processing
 ip.addParameter('tileOutBbox', [], @(x) isnumeric(x) || ischar(x)); % crop output tile after processing
 ip.addParameter('processFunPath', '', @(x) isempty(x) || isa(x,'function_handle') || ischar(x) || isstring(x) || iscell(x));
 ip.addParameter('parseCluster', true, @(x) islogical(x) || ischar(x));
@@ -24,22 +25,23 @@ ip.addParameter('jobLogDir', '../job_logs', @ischar);
 ip.addParameter('cpusPerTask', 1, @(x) isnumeric(x) || ischar(x));
 ip.addParameter('uuid', '', @ischar);
 ip.addParameter('maxTrialNum', 3, @(x) isnumeric(x) || ischar(x));
-ip.addParameter('unitWaitTime', 30, @(x) isnumeric(x) || ischar(x));
+ip.addParameter('unitWaitTime', 3, @(x) isnumeric(x) || ischar(x));
 ip.addParameter('mccMode', false, @(x) islogical(x) || ischar(x));
-ip.addParameter('ConfigFile', '', @ischar);
+ip.addParameter('configFile', '', @ischar);
 
-ip.parse(tiffFullpaths, varargin{:});
+ip.parse(dataPaths, varargin{:});
 
 pr = ip.Results;
-zarrPathstr = pr.zarrPathstr;
+tiffFullpaths = pr.tiffFullpaths;
+resultDirName = pr.resultDirName;
 locIds = pr.locIds;
 blockSize = pr.blockSize;
 shardSize = pr.shardSize;
 flippedTile = pr.flippedTile;
-resample = pr.resample;
+resampleFactor = pr.resampleFactor;
 partialFile = pr.partialFile;
-ChannelPatterns = pr.ChannelPatterns;
-InputBbox = pr.InputBbox;
+channelPatterns = pr.channelPatterns;
+inputBbox = pr.inputBbox;
 tileOutBbox = pr.tileOutBbox;
 processFunPath = pr.processFunPath;
 parseCluster = pr.parseCluster;
@@ -51,8 +53,11 @@ uuid = pr.uuid;
 maxTrialNum = pr.maxTrialNum;
 unitWaitTime = pr.unitWaitTime;
 mccMode = pr.mccMode;
-ConfigFile = pr.ConfigFile;
+configFile = pr.configFile;
 
+if ischar(dataPaths) && ~isempty(dataPaths) && strcmp(dataPaths(1), '{')
+    dataPaths = eval(dataPaths);
+end
 if ischar(tiffFullpaths) && ~isempty(tiffFullpaths) && strcmp(tiffFullpaths(1), '{')
     tiffFullpaths = eval(tiffFullpaths);
 end
@@ -68,17 +73,17 @@ end
 if ischar(flippedTile)
     flippedTile = str2num(flippedTile);
 end
-if ischar(resample)
-    resample = str2num(resample);
+if ischar(resampleFactor)
+    resampleFactor = str2num(resampleFactor);
 end
 if ischar(partialFile)
     partialFile = str2num(partialFile);
 end
-if ischar(ChannelPatterns) && ~isempty(ChannelPatterns) && strcmp(ChannelPatterns(1), '{')
-    ChannelPatterns = eval(ChannelPatterns);
+if ischar(channelPatterns) && ~isempty(channelPatterns) && strcmp(channelPatterns(1), '{')
+    channelPatterns = eval(channelPatterns);
 end
-if ischar(InputBbox)
-    InputBbox = str2num(InputBbox);
+if ischar(inputBbox)
+    inputBbox = str2num(inputBbox);
 end
 if ischar(tileOutBbox)
     tileOutBbox = str2num(tileOutBbox);
@@ -108,13 +113,13 @@ if ischar(mccMode)
     mccMode = str2num(mccMode);
 end
 
-XR_tiffToZarr_wrapper(tiffFullpaths, zarrPathstr=zarrPathstr, locIds=locIds, ...
-    blockSize=blockSize, shardSize=shardSize, flippedTile=flippedTile, resample=resample, ...
-    partialFile=partialFile, ChannelPatterns=ChannelPatterns, InputBbox=InputBbox, ...
-    tileOutBbox=tileOutBbox, processFunPath=processFunPath, parseCluster=parseCluster, ...
-    bigData=bigData, masterCompute=masterCompute, jobLogDir=jobLogDir, cpusPerTask=cpusPerTask, ...
-    uuid=uuid, maxTrialNum=maxTrialNum, unitWaitTime=unitWaitTime, mccMode=mccMode, ...
-    ConfigFile=ConfigFile);
+XR_tiffToZarr_wrapper(dataPaths, tiffFullpaths=tiffFullpaths, resultDirName=resultDirName, ...
+    locIds=locIds, blockSize=blockSize, shardSize=shardSize, flippedTile=flippedTile, ...
+    resampleFactor=resampleFactor, partialFile=partialFile, channelPatterns=channelPatterns, ...
+    inputBbox=inputBbox, tileOutBbox=tileOutBbox, processFunPath=processFunPath, ...
+    parseCluster=parseCluster, bigData=bigData, masterCompute=masterCompute, ...
+    jobLogDir=jobLogDir, cpusPerTask=cpusPerTask, uuid=uuid, maxTrialNum=maxTrialNum, ...
+    unitWaitTime=unitWaitTime, mccMode=mccMode, configFile=configFile);
 
 end
 

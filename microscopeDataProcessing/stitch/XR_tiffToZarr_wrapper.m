@@ -1,4 +1,4 @@
-function [] = XR_tiffToZarr_wrapper(tiffFullpaths, varargin)
+function [] = XR_tiffToZarr_wrapper(dataPaths, varargin)
 % The wrapper for convert a list of tiff files (a data folder) to zarr
 %
 % Author: Xiongtao Ruan (10/02/2020)
@@ -14,19 +14,21 @@ function [] = XR_tiffToZarr_wrapper(tiffFullpaths, varargin)
 % xruan (08/25/2022): change CropToSize to tileOutBbox (more generic)
 % xruan (05/26/2023): add support for loc specific pocessing for multiLoc
 % datasets, support InputBbox and tileOutBbox for now
+% xruan (05/06/2024): change required input as dataPaths for general usages
 
 ip = inputParser;
 ip.CaseSensitive = false;
-ip.addRequired('tiffFullpaths', @(x) iscell(x) || ischar(x));
-ip.addParameter('zarrPathstr', 'zarr', @ischar);
+ip.addRequired('dataPaths', @(x) iscell(x) || ischar(x));
+ip.addParameter('tiffFullpaths', '', @(x) iscell(x) || ischar(x));
+ip.addParameter('resultDirName', 'zarr', @ischar);
 ip.addParameter('locIds', [], @isnumeric); % location ids for the tiles
 ip.addParameter('blockSize', [500, 500, 250], @isnumeric);
 ip.addParameter('shardSize', [], @isnumeric);
 ip.addParameter('flippedTile', [], @(x) isempty(x) || islogical(x));
-ip.addParameter('resample', [], @(x) isempty(x) || isnumeric(x));
+ip.addParameter('resampleFactor', [], @(x) isempty(x) || isnumeric(x));
 ip.addParameter('partialFile', false, @islogical);
-ip.addParameter('ChannelPatterns', {'tif'}, @iscell);
-ip.addParameter('InputBbox', [], @isnumeric); % crop input tile before processing
+ip.addParameter('channelPatterns', {'tif'}, @iscell);
+ip.addParameter('inputBbox', [], @isnumeric); % crop input tile before processing
 ip.addParameter('tileOutBbox', [], @isnumeric); % crop output tile after processing
 ip.addParameter('processFunPath', '', @(x) isempty(x) || isa(x,'function_handle') || ischar(x) || isstring(x) || iscell(x));
 ip.addParameter('parseCluster', true, @islogical);
@@ -36,24 +38,24 @@ ip.addParameter('jobLogDir', '../job_logs', @ischar);
 ip.addParameter('cpusPerTask', 1, @isnumeric);
 ip.addParameter('uuid', '', @ischar);
 ip.addParameter('maxTrialNum', 3, @isnumeric);
-ip.addParameter('unitWaitTime', 30, @isnumeric);
+ip.addParameter('unitWaitTime', 3, @isnumeric);
 ip.addParameter('mccMode', false, @islogical);
-ip.addParameter('ConfigFile', '', @ischar);
+ip.addParameter('configFile', '', @ischar);
 
-
-ip.parse(tiffFullpaths, varargin{:});
+ip.parse(dataPaths, varargin{:});
 
 pr = ip.Results;
  % Resolution = pr.Resolution;
-zarrPathstr = pr.zarrPathstr;
+tiffFullpaths = pr.tiffFullpaths;
+resultDirName = pr.resultDirName;
 locIds = pr.locIds;
 blockSize = pr.blockSize;
 shardSize= pr.shardSize;
 flippedTile = pr.flippedTile;
-resample = pr.resample;
+resampleFactor = pr.resampleFactor;
 partialFile = pr.partialFile;
-ChannelPatterns = pr.ChannelPatterns;
-InputBbox = pr.InputBbox;
+channelPatterns = pr.channelPatterns;
+inputBbox = pr.inputBbox;
 tileOutBbox = pr.tileOutBbox;
 processFunPath = pr.processFunPath;
 jobLogDir = pr.jobLogDir;
@@ -62,7 +64,34 @@ bigData = pr.bigData;
 masterCompute = pr.masterCompute;
 cpusPerTask = pr.cpusPerTask;
 mccMode = pr.mccMode;
-ConfigFile = pr.ConfigFile;
+configFile = pr.configFile;
+
+if ~isempty(dataPaths)
+    if ischar(dataPaths)
+        dataPaths = {dataPaths};
+    end
+    
+    nd = numel(dataPaths);
+    resultPaths = cell(nd, 1);
+    for d = 1 : nd
+        dataPaths{d} = simplifyPath(dataPaths{d});
+        resultPath = [dataPaths{d}, '/' resultDirName, '/'];
+        resultPaths{d} = resultPath;
+        mkdir(resultPath);
+        fileattrib(resultPath, '+w', 'g');
+    
+        save('-v7.3', [resultPath, '/parameters.mat'], 'pr');
+        s = jsonencode(pr, PrettyPrint=true);
+        fid = fopen([resultPath, '/parameters.json'], 'w');
+        fprintf(fid, s);
+        fclose(fid);
+    end
+    
+    % parse image filenames
+    zarrFile = false;
+    [~, ~, ~, filepaths] = parseImageFilenames(dataPaths, zarrFile, channelPatterns);
+    tiffFullpaths = filepaths;
+end
 
 if ischar(tiffFullpaths)
     if exist(tiffFullpaths, 'dir')
@@ -81,7 +110,7 @@ if parseCluster
     [parseCluster, job_log_fname, job_log_error_fname] = checkSlurmCluster(dataPath, jobLogDir);
 end
 
-nC = numel(ChannelPatterns);
+nC = numel(channelPatterns);
 usrFcn_strs = repmat({''}, nC, max(1, size(processFunPath, 2)));
 keywords = repmat({{''}}, nC, max(1, size(processFunPath, 2)));
 fprintf('Process function paths:\n')
@@ -126,14 +155,14 @@ compressor = 'zstd';
 uniq_locIds = unique(locIds);
 nLoc = numel(uniq_locIds);
 locSpecific = false;
-if numel(uniq_locIds) > 1 && (size(InputBbox, 1) == nLoc || size(tileOutBbox, 1) == nLoc)
+if numel(uniq_locIds) > 1 && (size(inputBbox, 1) == nLoc || size(tileOutBbox, 1) == nLoc)
     locSpecific = true;
-    if size(InputBbox, 1) <= 1
-        InputBbox = repmat({InputBbox}, nLoc, 1);
-    elseif size(InputBbox, 1) == nLoc
-        InputBbox = mat2cell(InputBbox, ones(1, size(InputBbox, 1)), size(InputBbox, 2));
+    if size(inputBbox, 1) <= 1
+        inputBbox = repmat({inputBbox}, nLoc, 1);
+    elseif size(inputBbox, 1) == nLoc
+        inputBbox = mat2cell(inputBbox, ones(1, size(inputBbox, 1)), size(inputBbox, 2));
     else
-        error('The number of InputBbox (%d) does not match the number of tile locations (%d)!', size(InputBbox, 1), numel(uniq_locIds));
+        error('The number of InputBbox (%d) does not match the number of tile locations (%d)!', size(inputBbox, 1), numel(uniq_locIds));
     end
     if size(tileOutBbox, 1) <= 1
         tileOutBbox = repmat({tileOutBbox}, nLoc, 1);
@@ -162,30 +191,30 @@ for i = 1 : nF
         tiffFullpath_group_i = {tiffFullpath_i};        
     end
 
-    zarrPath = [dataPath, '/', zarrPathstr];
+    zarrPath = [dataPath, '/', resultDirName];
     if ~exist(zarrPath, 'dir')
         mkdir(zarrPath);
     end
 
-    zarrFullpaths{i} = sprintf('%s/%s/%s.zarr/', dataPath, zarrPathstr, fsname_i);
+    zarrFullpaths{i} = sprintf('%s/%s/%s.zarr/', dataPath, resultDirName, fsname_i);
     if ~isempty(flippedTile)
         flipZstack = flippedTile(i);
     else
         flipZstack = false;
     end
     
-    cind = cellfun(@(x) contains(tiffFullpath_i, x), ChannelPatterns);
+    cind = cellfun(@(x) contains(tiffFullpath_i, x), channelPatterns);
     if ~any(cind)
-        error('The file %s does not match any channel patterns %s', tiffFullpath_i, string(ChannelPatterns));
+        error('The file %s does not match any channel patterns %s', tiffFullpath_i, string(channelPatterns));
     end
     
     if locSpecific
         locInd = uniq_locIds == locIds(i);
-        InputBbox_i = InputBbox{locInd};
+        inputBbox_i = inputBbox{locInd};
         tileOutBbox_i = tileOutBbox{locInd};
         % usrFcn_str_i = usrFcn_strs{cind, i, locInd};        
     else
-        InputBbox_i = InputBbox;
+        inputBbox_i = inputBbox;
         tileOutBbox_i = tileOutBbox;
         % usrFcn_str_i = usrFcn_strs{cind, i};
     end
@@ -210,10 +239,10 @@ for i = 1 : nF
     end
 
     func_strs{i} = sprintf(['tiffToZarr(%s,''%s'',[],''BlockSize'',%s,''shardSize'',%s,', ...
-        '''flipZstack'',%s,''resample'',%s,''InputBbox'',%s,''tileOutBbox'',%s,', ...
+        '''flipZstack'',%s,''resampleFactor'',%s,''inputBbox'',%s,''tileOutBbox'',%s,', ...
         '''compressor'',''%s'',''usrFcn'',"%s")'], sprintf('{''%s''}', strjoin(tiffFullpath_group_i, ''',''')), ...
         zarrFullpaths{i}, strrep(mat2str(blockSize), ' ', ','), strrep(mat2str(shardSize), ' ', ','), ...
-        string(flipZstack), strrep(mat2str(resample), ' ', ','), strrep(mat2str(InputBbox_i), ' ', ','), ...
+        string(flipZstack), strrep(mat2str(resampleFactor), ' ', ','), strrep(mat2str(inputBbox_i), ' ', ','), ...
         strrep(mat2str(tileOutBbox_i), ' ', ','), compressor, usrFcn_str_i);
 end
 
@@ -236,12 +265,12 @@ maxTrialNum = 2;
 is_done_flag = generic_computing_frameworks_wrapper(tiffFullpaths, zarrFullpaths, ...
     func_strs, 'parseCluster', parseCluster, 'masterCompute', masterCompute, ...
     'maxTrialNum', maxTrialNum,  'cpusPerTask', cpusPerTask, 'memAllocate', memAllocate, ...
-    'mccMode', mccMode, 'ConfigFile', ConfigFile);
+    'mccMode', mccMode, 'configFile', configFile);
 if ~all(is_done_flag)
     generic_computing_frameworks_wrapper(tiffFullpaths, zarrFullpaths, func_strs, ...
         'parseCluster', parseCluster, 'masterCompute', masterCompute, 'maxTrialNum', maxTrialNum, ...
         'cpusPerTask', cpusPerTask * 2, 'memAllocate', memAllocate * 2, 'mccMode', mccMode, ...
-        'ConfigFile', ConfigFile);
+        'configFile', configFile);
 end
 
 

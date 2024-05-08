@@ -32,8 +32,8 @@ ip.addRequired('angle'); % typical value: 32.8
 ip.addRequired('dz'); % typical value: 0.2-0.5
 ip.addRequired('xyPixelSize'); % typical value: 0.1
 ip.addOptional('reverse', false, @islogical);
-ip.addParamValue('Crop', false, @islogical);
-ip.addParamValue('Interp', 'linear', @(x) any(strcmpi(x, {'cubic', 'linear'})));
+ip.addParameter('Crop', false, @islogical);
+ip.addParameter('Interp', 'linear', @(x) any(strcmpi(x, {'cubic', 'linear'})));
 ip.parse(vol, angle, dz, xyPixelSize, varargin{:});
 
 [ny,nx,nz] = size(vol);

@@ -13,7 +13,7 @@ arguments
     options.stitchInfoPath char = ''
     options.zarrFile (1, 1) {islogical} = false    
     options.onlyFirstTP (1, 1) {islogical} = false
-    options.ChannelPatterns {iscell} = {'CamA', 'CamB'}
+    options.channelPatterns {iscell} = {'CamA', 'CamB'}
     options.useProcessedData {islogical} = false
     options.ProcessedDirStr char = ''    
     options.timepoints (:, 1) {mustBeNumeric} = []
@@ -28,7 +28,7 @@ stitchInfoFullpath = options.stitchInfoFullpath;
 stitch_info_path = options.stitchInfoPath;
 zarrFile = options.zarrFile;
 onlyFirstTP = options.onlyFirstTP;
-ChannelPatterns = options.ChannelPatterns;
+channelPatterns = options.channelPatterns;
 useProcessedData = options.useProcessedData;
 ProcessedDirStr = options.ProcessedDirStr;
 timepoints = options.timepoints;
@@ -57,7 +57,7 @@ for d = 1 : nd
         xcorrMode, stitchInfoFullpath_d] = stitch_parse_image_list_information(dataPath{d}, ...
         imageListFileName{d}, Streaming=Streaming, onlineStitch=onlineStitch, ...
         stitchInfoFullpath=stitchInfoFullpath, stitchInfoPath=stitch_info_path, ...
-        zarrFile=zarrFile, onlyFirstTP=onlyFirstTP, ChannelPatterns=ChannelPatterns, ...
+        zarrFile=zarrFile, onlyFirstTP=onlyFirstTP, channelPatterns=channelPatterns, ...
         useProcessedData=useProcessedData, ProcessedDirStr=ProcessedDirStr, ...
         timepoints=timepoints, subtimepoints=subtimepoints, xcorrMode=xcorrMode, ...
         primaryCh=primaryCh);

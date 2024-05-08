@@ -18,15 +18,15 @@ ip.addParameter('angle', 32.45, @isnumeric);
 ip.addParameter('cropSize', [256, 128, 201], @isnumeric);
 ip.addParameter('flipZstack', false, @islogical);
 ip.addParameter('distThresh', [256, 128, 201], @isnumeric);
-ip.addParameter('ChannelPatterns', {'CamA_ch0', 'CamB_ch0'}, @iscell);
-ip.addParameter('Channels', [488, 560], @isnumeric);
+ip.addParameter('channelPatterns', {'CamA_ch0', 'CamB_ch0'}, @iscell);
+ip.addParameter('channels', [488, 560], @isnumeric);
 ip.addParameter('RWFn', {'/clusterfs/fiona/Gokul/RW_PSFs/PSF_RW_515em_128_128_101_100nmSteps.tif', '/clusterfs/fiona/Gokul/RW_PSFs/PSF_RW_605em_128_128_101_100nmSteps.tif'}, @iscell);
 ip.addParameter('sourceStr', 'test', @ischar);
 ip.addParameter('parseCluster', true, @islogical);
 ip.addParameter('masterCompute', false, @islogical);
 % ip.addParameter('prefix', 'test_', @ischar);
 ip.addParameter('mccMode', false, @islogical);
-ip.addParameter('ConfigFile', '', @ischar);
+ip.addParameter('configFile', '', @ischar);
 ip.parse(dataPaths, varargin{:});
 
 pr = ip.Results;
@@ -36,14 +36,14 @@ angle = pr.angle;
 cropSize = pr.cropSize;
 flipZstack = pr.flipZstack;
 distThresh = pr.distThresh;
-ChannelPatterns = pr.ChannelPatterns;
-Channels = pr.Channels;
+channelPatterns = pr.channelPatterns;
+channels = pr.channels;
 RWFn = pr.RWFn;
 sourceStr = pr.sourceStr;
 parseCluster = pr.parseCluster;
 masterCompute = pr.masterCompute;
 mccMode = pr.mccMode;
-ConfigFile = pr.ConfigFile;
+configFile = pr.configFile;
 
 tic
 % rt = '/Users/xruan/Images/20210607_PSFs_L15_37C/';
@@ -73,8 +73,8 @@ prefixes = cat(1, prefix_cell{:});
 fns_cell = cat(1, fns_cell{:});
 
 include_flag = false(numel(fns_cell), 1);
-for c = 1 : numel(ChannelPatterns)
-    include_flag = include_flag | contains(fns_cell, ChannelPatterns{c});
+for c = 1 : numel(channelPatterns)
+    include_flag = include_flag | contains(fns_cell, channelPatterns{c});
 end
 fns_cell = fns_cell(include_flag);
 
@@ -120,11 +120,11 @@ cpusPerTask = 24;
 memAllocate = prod(getImageSize(frameFullpaths{1})) * 4 / 1024^3 * 100;
 is_done_flag = generic_computing_frameworks_wrapper(frameFullpaths, outFullpaths, ...
     func_strs, 'masterCompute', true, 'cpusPerTask', cpusPerTask, memAllocate=memAllocate, ...
-    mccMode=mccMode, ConfigFile=ConfigFile);
+    mccMode=mccMode, configFile=configFile);
 if ~all(is_done_flag)
     generic_computing_frameworks_wrapper(frameFullpaths, outFullpaths, ...
         func_strs, 'masterCompute', true, 'cpusPerTask', cpusPerTask, memAllocate=memAllocate, ...
-        mccMode=mccMode, ConfigFile=ConfigFile);
+        mccMode=mccMode, configFile=configFile);
 end   
 
 
@@ -133,17 +133,17 @@ end
 % deskew psf if it is in skewed space
 Deskew = true;
 % z stage scan 
-ZstageScan = false;
+zStageScan = false;
 % objective scan or not
-ObjectiveScan = false;
+objectiveScan = false;
 
 dataPath_exps = cellfun(@(x) [x, '/Cropped/'], dataPaths, 'unif', 0);
 disp(dataPath_exps);
 
-XR_psf_analysis_wrapper(dataPath_exps, 'dz', dz, 'angle', angle, 'ChannelPatterns', ChannelPatterns, ...
-    'Channels', Channels, 'Deskew', Deskew, 'flipZstack', flipZstack, 'ObjectiveScan', ObjectiveScan, ...
-    'ZstageScan', ZstageScan, 'sourceStr', sourceStr, 'RWFn', RWFn, parseCluster=parseCluster, ...
-    masterCompute=masterCompute, mccMode=mccMode, ConfigFile=ConfigFile);
+XR_psf_analysis_wrapper(dataPath_exps, 'dz', dz, 'angle', angle, 'channelPatterns', channelPatterns, ...
+    'Channels', channels, 'Deskew', Deskew, 'flipZstack', flipZstack, 'objectiveScan', objectiveScan, ...
+    'zStageScan', zStageScan, 'sourceStr', sourceStr, 'RWFn', RWFn, parseCluster=parseCluster, ...
+    masterCompute=masterCompute, mccMode=mccMode, configFile=configFile);
 
 
 end

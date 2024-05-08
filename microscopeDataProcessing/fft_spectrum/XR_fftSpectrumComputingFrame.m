@@ -1,4 +1,4 @@
-function XR_fftSpectrumComputingFrame(FrameFullpath, SpectrumFullname, varargin)
+function XR_fftSpectrumComputingFrame(frameFullpath, spectrumFullname, varargin)
 % compute fft spectrum in log scale for a given image
 % 
 % Author: Xiongtao Ruan (11/25/2020)
@@ -16,33 +16,35 @@ function XR_fftSpectrumComputingFrame(FrameFullpath, SpectrumFullname, varargin)
 
 ip = inputParser;
 ip.CaseSensitive = false;
-ip.addRequired('FrameFullpath', @ischar);
-ip.addRequired('SpectrumFullname', @ischar);
+ip.addRequired('frameFullpath', @ischar);
+ip.addRequired('spectrumFullname', @ischar);
 ip.addParameter('xyPixelSize', 0.108, @isnumeric);
 ip.addParameter('dz', 0.1, @isnumeric); % actual pixel size in z
+ip.addParameter('zarrFile', false, @islogical); % input as zarr
 ip.addParameter('outPixelSize', [], @(x) isnumeric(x) || isempty(x)); % output pixel size
-ip.addParameter('N', [1001, 1001, 1001], @isnumeric);
+ip.addParameter('outSize', [1001, 1001, 1001], @isnumeric);
 ip.addParameter('save3DStack', false, @islogical);
 ip.addParameter('background', 0, @isnumeric);
-ip.addParameter('Interp', 'linear', @ischar);
-ip.parse(FrameFullpath, SpectrumFullname, varargin{:});
+ip.addParameter('interpMethod', 'linear', @ischar);
+ip.parse(frameFullpath, spectrumFullname, varargin{:});
 
 pr = ip.Results;
 xyPixelSize = pr.xyPixelSize;
 dz = pr.dz;
+zarrFile = pr.zarrFile;
 outPixelSize = pr.outPixelSize;
-N = pr.N;
+N = pr.outSize;
 save3DStack = pr.save3DStack;
 background = pr.background;
-Interp = pr.Interp;
+interpMethod = pr.interpMethod;
 
 uuid = get_uuid();
 
-if exist(SpectrumFullname, 'file')
+if exist(spectrumFullname, 'file')
     return;
 end
 
-sz = getImageSize(FrameFullpath);
+sz = getImageSize(frameFullpath);
 
 % resize image to make it isotropic
 if isempty(outPixelSize)
@@ -55,19 +57,19 @@ keep_size = min(sz, ceil(N ./ ([xyPixelSize, xyPixelSize, dz] ./ px)) .* 1.1);
 s = max(1, ceil((sz - keep_size) / 2));
 t = min(sz, s + keep_size - 1);
 
-try
-    im = parallelReadTiff(FrameFullpath, [s(3), t(3)]);
-catch
-    im = readtiff(FrameFullpath, 'range', s(3) : t(3));
+if zarrFile
+    im = readzarr(frameFullpath, inputBbox=[s, t]);
+else
+    im = readtiff(frameFullpath, 'range', s(3) : t(3));
+    im = im(s(1) : t(1), s(2) : t(2), :);
 end
-im = im(s(1) : t(1), s(2) : t(2), :);
 
 if background ~= 0
     im = single(im) - background;
     im = im .* (im > 0);
 end
 
-im = imresize3(single(im), round(size(im) .* [xyPixelSize, xyPixelSize, dz] ./ px), 'method', Interp);
+im = imresize3(single(im), round(size(im) .* [xyPixelSize, xyPixelSize, dz] ./ px), 'method', interpMethod);
 sz = size(im);
 
 hfN = (N - 1) / 2;
@@ -85,7 +87,7 @@ end
 im = abs(fftshift(fftn(im)));
 im = im ./ max(im(:));
 
-[FFTPath, fsname] = fileparts(SpectrumFullname);
+[FFTPath, fsname] = fileparts(spectrumFullname);
 
 spectrumTmpname = [FFTPath, filesep, fsname, '_', uuid, '.tif'];
 if save3DStack
@@ -132,7 +134,7 @@ FFTMIPFullpath = [FFTCSPath, fsname, '_center_xz.tif'];
 writetiff(squeeze(MIP), FFTMIPFullpath);
 
 % move to final filename
-movefile(spectrumTmpname, SpectrumFullname);
+movefile(spectrumTmpname, spectrumFullname);
 
 
 end

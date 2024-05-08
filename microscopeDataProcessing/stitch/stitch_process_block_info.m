@@ -27,7 +27,7 @@ ip.addParameter('taskSize', 10, @isnumeric);
 ip.addParameter('uuid', '', @ischar);
 ip.addParameter('parseCluster', true, @islogical);
 ip.addParameter('mccMode', false, @islogical);
-ip.addParameter('ConfigFile', '', @ischar);
+ip.addParameter('configFile', '', @ischar);
 
 ip.parse(int_xyz_shift, imSizes, nvSize, blockSize, overlap_matrix, ol_region_cell, half_ol_region_cell, overlap_map_mat, BorderSize, tileFns, stichInfoPath, nv_fsname, isPrimaryCh, varargin{:});
 
@@ -38,7 +38,7 @@ taskSize = pr.taskSize;
 uuid = pr.uuid;
 parseCluster = pr.parseCluster;
 mccMode = pr.mccMode;
-ConfigFile = pr.ConfigFile;
+configFile = pr.configFile;
 
 % t0 = tic();
 fprintf('Process stitch block information...\n')
@@ -154,7 +154,7 @@ for i = 1 : 3
     is_done_flag = generic_computing_frameworks_wrapper(inputFullpaths, outputFullpaths, ...
         funcStrs, 'cpusPerTask', cpusPerTask, 'memAllocate', memAllocate, 'minTaskJobNum', minTaskJobNum, ...
         'maxTrialNum', maxTrialNum, 'masterCompute', masterCompute, 'parseCluster', parseCluster, ...
-        'mccMode', mccMode, 'ConfigFile', ConfigFile);
+        'mccMode', mccMode, 'configFile', configFile);
     if all(is_done_flag)
         break;
     end

@@ -1,5 +1,5 @@
 function [fnames, fdinds, gfnames, partialvols, dataSizes, flipZstack_mat, latest_modify_times, FTP_inds, maskFullpaths] = ...
-    XR_parseImageFilenames(dataPaths, ChannelPatterns, parseSettingFile, flipZstack, Decon, deconPaths, Streaming, minModifyTime, zarrFile)
+    XR_parseImageFilenames(dataPaths, channelPatterns, parseSettingFile, flipZstack, Decon, deconPaths, Streaming, minModifyTime, zarrFile)
 % move the filename parsing code in microscope pipeline as an independent
 % function to simpolify the microscope pipeline.
 % Support both non-streaming and streaming modes
@@ -39,7 +39,7 @@ for d = 1 : nd
     % dir_info = dir([dataPath, '*.tif']);
     % fnames_d = {dir_info.name}';
     [containPartialVolume, groupedFnames_d, groupedDatenum, groupedDatasize] = groupPartialVolumeFiles(dataPath, ...
-        'ext', ext, 'ChannelPatterns', ChannelPatterns);
+        'ext', ext, 'channelPatterns', channelPatterns);
     if any(containPartialVolume)
         fnames_d = cellfun(@(x) x{1}, groupedFnames_d, 'unif', 0);
         datenum_d = cellfun(@(x) max(x), groupedDatenum);
@@ -58,7 +58,7 @@ for d = 1 : nd
     if Streaming
         last_modify_time = (datenum(clock) - datenum_d) * 24 * 60;
         % exclude last two frames
-        latest_modify_time = max(mink(last_modify_time, numel(ChannelPatterns)));
+        latest_modify_time = max(mink(last_modify_time, numel(channelPatterns)));
         latest_modify_times(d) = latest_modify_time;
         
         % medium of number of partial files in group files
@@ -109,8 +109,8 @@ end
 
 fullnames = cellfun(@(x, y) [x, y], dataPaths(fdinds), fnames, 'unif', 0);
 include_flag = false(numel(fnames), 1);
-for c = 1 : numel(ChannelPatterns)
-    include_flag = include_flag | contains(fullnames, ChannelPatterns{c}) | contains(fullnames, regexpPattern(ChannelPatterns{c}));
+for c = 1 : numel(channelPatterns)
+    include_flag = include_flag | contains(fullnames, channelPatterns{c}) | contains(fullnames, regexpPattern(channelPatterns{c}));
 end
 fnames = fnames(include_flag);
 fdinds = fdinds(include_flag);
@@ -140,12 +140,12 @@ for d = 1 : nd
     end
     while isempty(FTPfname)
         fullnames_d = cellfun(@(x) [dataPaths{d}, x], fnames_cell{d}, 'unif', 0);
-        all_inds = contains(fullnames_d, ChannelPatterns{c}) | contains(fullnames_d, regexpPattern(ChannelPatterns{c}));
+        all_inds = contains(fullnames_d, channelPatterns{c}) | contains(fullnames_d, regexpPattern(channelPatterns{c}));
         if ~isempty(all_inds) && ~isempty(find(all_inds, 1, 'first'))
             FTPfname = fnames_cell{d}{find(all_inds, 1, 'first')};
         end
         c = c + 1;
-        if c > numel(ChannelPatterns)
+        if c > numel(channelPatterns)
             break;
         end
     end

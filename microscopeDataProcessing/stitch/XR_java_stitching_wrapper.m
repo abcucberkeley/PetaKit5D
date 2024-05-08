@@ -15,7 +15,7 @@ function [] = XR_java_stitching_wrapper(imageDirName, imageListFileName, varargi
 %      'parseCluster' : Use slurm-based cluster computing. Default: true. 
 %         'jobLogDir' : Log directory for the slurm jobs. 
 %       'cpusPerTask' : Number of cpus for a job. Default: 12
-%         'Save16bit' : true|{false}. Save final results as 16bit or single. 
+%         'save16bit' : true|{false}. Save final results as 16bit or single. 
 %              'uuid' : unique string for a job for saving files. 
 %       'maxTrialNum' : Max number of times to rerun failure cases. 
 %      'unitWaitTime' : For computing without cluster, the wait time per      
@@ -37,7 +37,7 @@ ip.addParameter('resultDir', 'stitching', @isstr);
 ip.addParameter('parseCluster', true, @islogical);
 ip.addParameter('jobLogDir', '../job_logs', @isstr);
 ip.addParameter('cpusPerTask', 12, @isnumeric);
-ip.addParameter('Save16bit', false, @islogical);
+ip.addParameter('save16bit', false, @islogical);
 ip.addParameter('uuid', '', @isstr);
 ip.addParameter('maxTrialNum', 3, @isnumeric);
 ip.addParameter('unitWaitTime', 2, @isnumeric);
@@ -53,7 +53,7 @@ resultDir = pr.resultDir;
 jobLogDir = pr.jobLogDir;
 parseCluster = pr.parseCluster;
 cpusPerTask = pr.cpusPerTask;
-Save16bit = pr.Save16bit;
+save16bit = pr.save16bit;
 uuid = pr.uuid;
 maxTrialNum = pr.maxTrialNum;
 unitWaitTime = pr.unitWaitTime;
@@ -86,7 +86,7 @@ if isempty(uuid)
 end
 
 ffcorrect_str = string(ffcorrect);
-Save16bit_str = string(Save16bit);
+save16bit_str = string(save16bit);
 
 if numel(Resolution) == 2
     res_str = sprintf('%g,%g,%g', Resolution(1), Resolution(1), Resolution(2));
@@ -263,8 +263,8 @@ while ~all(is_done_flag | trial_counter >= max_trial_num, 'all') ...
                         job_log_fname = [jobLogDir, '/job_%A_%a.out'];
                         job_log_error_fname = [jobLogDir, '/job_%A_%a.err'];
                                                 
-                        matlab_cmd = sprintf('setup([],true);java_stitching_frame_wrapper(''%s'',''%s'',''axisOrder'',''%s'',''ffcorrect'',%s,''Resolution'',[%s],''wavelength'',%d,''stitchResultFname'',''%s'',''Save16bit'',%s);toc;', ...
-                            imageDirName, cur_csv_fname, axisOrder, ffcorrect_str, res_str, laser, stitch_save_fname, Save16bit_str);
+                        matlab_cmd = sprintf('setup([],true);java_stitching_frame_wrapper(''%s'',''%s'',''axisOrder'',''%s'',''ffcorrect'',%s,''Resolution'',[%s],''wavelength'',%d,''stitchResultFname'',''%s'',''save16bit'',%s);toc;', ...
+                            imageDirName, cur_csv_fname, axisOrder, ffcorrect_str, res_str, laser, stitch_save_fname, save16bit_str);
                         stitch_cmd = sprintf('module load matlab/r2021a; matlab -nodisplay -nosplash -nodesktop -r \\"%s\\"', matlab_cmd);
                         cmd = sprintf('sbatch --array=%d -o %s -e %s -p abc --qos abc_normal -n1 --mem-per-cpu=20G --cpus-per-task=%d --wrap="%s"', ...
                             task_id, job_log_fname, job_log_error_fname, cpusPerTask, stitch_cmd);
@@ -276,7 +276,7 @@ while ~all(is_done_flag | trial_counter >= max_trial_num, 'all') ...
                     else
                         java_stitching_frame_wrapper(imageDirName, cur_csv_fname, 'axisOrder', axisOrder, ...
                             'ffcorrect', ffcorrect, 'Resolution', Resolution, 'wavelength', laser, ...
-                            'stitchResultFname', stitch_save_fname, 'Save16bit', Save16bit, 'uuid', uuid);
+                            'stitchResultFname', stitch_save_fname, 'save16bit', save16bit, 'uuid', uuid);
                     end
                     
                     trial_counter(n, ncam, c, s) = trial_counter(n, ncam, c, s) + 1;    

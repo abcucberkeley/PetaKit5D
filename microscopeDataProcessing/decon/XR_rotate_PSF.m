@@ -8,7 +8,7 @@ ip = inputParser;
 ip.CaseSensitive = false;
 ip.addRequired('PSFfile'); 
 ip.addParameter('Overwrite', false, @islogical);
-ip.addParameter('ObjectiveScan', false, @islogical);
+ip.addParameter('objectiveScan', false, @islogical);
 ip.addParameter('xyPixelSize', 0.108, @isscalar);
 ip.addParameter('dz', 0.1, @isscalar);
 ip.addParameter('SkewAngle', 32.45, @isscalar);
@@ -25,7 +25,7 @@ xyPixelSize = pr.xyPixelSize;
 dz = pr.dz;
 Reverse = pr.Reverse;
 SkewAngle = pr.SkewAngle;
-ObjectiveScan = pr.ObjectiveScan;
+objectiveScan = pr.objectiveScan;
 Save16bit = pr.Save16bit;
 
 uuid = ip.Results.uuid;
@@ -45,7 +45,7 @@ if exist(rtFullname, 'file') && ~Overwrite
 end
 
 % decide zAniso
-if ObjectiveScan
+if objectiveScan
     zAniso = dz / xyPixelSize;
 else
     theta = SkewAngle * pi / 180;
@@ -54,7 +54,7 @@ else
 end
 
 im = double(readtiff(PSFfile));
-im_rt = rotateFrame3D(im, SkewAngle, zAniso, Reverse, 'Crop', true, 'ObjectiveScan', ObjectiveScan);
+im_rt = rotateFrame3D(im, SkewAngle, zAniso, Reverse, 'Crop', true, 'objectiveScan', objectiveScan);
 
 % pad 0 with median 
 med = median(im_rt(im_rt > 0 & im_rt < prctile(im_rt(im_rt > 0), pr.HighPrctile)));

@@ -6,8 +6,8 @@ function [] = XR_zarrToTiff_wrapper_parser(dataPaths, varargin)
 ip = inputParser;
 ip.CaseSensitive = false;
 ip.addRequired('dataPaths', @(x) iscell(x) || ischar(x));
-ip.addParameter('ChannelPatterns', {'CamA', 'CamB'}, @(x) iscell(x) || ischar(x));
-ip.addParameter('resultDirStr', 'tiffs/', @ischar);
+ip.addParameter('resultDirName', 'tiffs', @ischar);
+ip.addParameter('channelPatterns', {'CamA', 'CamB'}, @(x) iscell(x) || ischar(x));
 ip.addParameter('usrFcn', '', @(x) isempty(x) || isa(x,'function_handle') || ischar(x));
 ip.addParameter('parseCluster', true, @(x) islogical(x) || ischar(x));
 ip.addParameter('masterCompute', true, @(x) islogical(x) || ischar(x)); % master node participate in the task computing. 
@@ -17,13 +17,13 @@ ip.addParameter('uuid', '', @ischar);
 ip.addParameter('maxTrialNum', 3, @(x) isnumeric(x) || ischar(x));
 ip.addParameter('unitWaitTime', 30, @(x) isnumeric(x) || ischar(x));
 ip.addParameter('mccMode', false, @(x) islogical(x) || ischar(x));
-ip.addParameter('ConfigFile', '', @ischar);
+ip.addParameter('configFile', '', @ischar);
 
 ip.parse(dataPaths, varargin{:});
 
 pr = ip.Results;
-ChannelPatterns = pr.ChannelPatterns;
-resultDirStr = pr.resultDirStr;
+resultDirName = pr.resultDirName;
+channelPatterns = pr.channelPatterns;
 usrFcn = pr.usrFcn;
 parseCluster = pr.parseCluster;
 masterCompute = pr.masterCompute;
@@ -33,13 +33,13 @@ uuid = pr.uuid;
 maxTrialNum = pr.maxTrialNum;
 unitWaitTime = pr.unitWaitTime;
 mccMode = pr.mccMode;
-ConfigFile = pr.ConfigFile;
+configFile = pr.configFile;
 
 if ischar(dataPaths) && ~isempty(dataPaths) && strcmp(dataPaths(1), '{')
     dataPaths = eval(dataPaths);
 end
-if ischar(ChannelPatterns) && ~isempty(ChannelPatterns) && strcmp(ChannelPatterns(1), '{')
-    ChannelPatterns = eval(ChannelPatterns);
+if ischar(channelPatterns) && ~isempty(channelPatterns) && strcmp(channelPatterns(1), '{')
+    channelPatterns = eval(channelPatterns);
 end
 if ischar(usrFcn) && ~isempty(usrFcn) && (strcmp(usrFcn(1), '{') || strcmp(usrFcn(1), '[') || strcmp(usrFcn(1), '@'))
     usrFcn = eval(usrFcn);
@@ -63,10 +63,10 @@ if ischar(mccMode)
     mccMode = str2num(mccMode);
 end
 
-XR_zarrToTiff_wrapper(dataPaths, ChannelPatterns=ChannelPatterns, resultDirStr=resultDirStr, ...
+XR_zarrToTiff_wrapper(dataPaths, resultDirName=resultDirName, channelPatterns=channelPatterns, ...
     usrFcn=usrFcn, parseCluster=parseCluster, masterCompute=masterCompute, ...
     jobLogDir=jobLogDir, cpusPerTask=cpusPerTask, uuid=uuid, maxTrialNum=maxTrialNum, ...
-    unitWaitTime=unitWaitTime, mccMode=mccMode, ConfigFile=ConfigFile);
+    unitWaitTime=unitWaitTime, mccMode=mccMode, configFile=configFile);
 
 end
 

@@ -13,7 +13,7 @@ arguments
     options.stitchInfoPath char = ''
     options.zarrFile (1, 1) {islogical} = false
     options.onlyFirstTP (1, 1) {islogical} = false
-    options.ChannelPatterns {iscell} = {'CamA', 'CamB'}
+    options.channelPatterns {iscell} = {'CamA', 'CamB'}
     options.useProcessedData {islogical} = false
     options.ProcessedDirStr char = ''
     options.timepoints (:, 1) {mustBeNumeric} = []
@@ -28,7 +28,7 @@ stitchInfoFullpath = options.stitchInfoFullpath;
 stitch_info_path = options.stitchInfoPath;
 zarrFile = options.zarrFile;
 onlyFirstTP = options.onlyFirstTP;
-ChannelPatterns = options.ChannelPatterns;
+channelPatterns = options.channelPatterns;
 useProcessedData = options.useProcessedData;
 ProcessedDirStr = options.ProcessedDirStr;
 timepoints = options.timepoints;
@@ -143,9 +143,9 @@ end
 if useMapFname
     include_flag = false(numel(fsn), 1);    
     imageFullnames = cellfun(@(x) sprintf('%s/%s%s', dataPath, x, ext), fsn, 'unif', 0);    
-    for c = 1 : numel(ChannelPatterns)
-        include_flag = include_flag | contains(imageFullnames, ChannelPatterns{c}) ...
-            | contains(imageFullnames, regexpPattern(ChannelPatterns{c}));
+    for c = 1 : numel(channelPatterns)
+        include_flag = include_flag | contains(imageFullnames, channelPatterns{c}) ...
+            | contains(imageFullnames, regexpPattern(channelPatterns{c}));
     end
     if ~all(include_flag)
         tab = tab(include_flag, :);
@@ -153,9 +153,9 @@ if useMapFname
 else
     include_flag = false(numel(imageFnames), 1);
     imageFullnames = cellfun(@(x) [dataPath, '/', x], imageFnames, 'unif', 0);
-    for c = 1 : numel(ChannelPatterns)
-        include_flag = include_flag | contains(imageFullnames, ChannelPatterns{c}) ...
-            | contains(imageFullnames, regexpPattern(ChannelPatterns{c}));
+    for c = 1 : numel(channelPatterns)
+        include_flag = include_flag | contains(imageFullnames, channelPatterns{c}) ...
+            | contains(imageFullnames, regexpPattern(channelPatterns{c}));
     end
     imageFnames = imageFnames(include_flag);    
 end

@@ -12,7 +12,7 @@ function [] = stitch_generate_imagelist_from_tile_positions(dataPath, varargin)
 ip = inputParser;
 ip.CaseSensitive = false;
 ip.addRequired('dataPath', @(x) ischar(x) || iscell(x));
-ip.addParameter('ChannelPatterns', {'CamA_ch0', 'CamA_ch1', 'CamB_ch0'}, @iscell);
+ip.addParameter('channelPatterns', {'CamA_ch0', 'CamA_ch1', 'CamB_ch0'}, @iscell);
 ip.addParameter('DS', false, @islogical);
 ip.addParameter('DSR', false, @islogical);
 ip.addParameter('xyPixelSize', 0.108, @isnumeric);
@@ -21,7 +21,7 @@ ip.addParameter('SkewAngle', 32.45, @isnumeric);
 ip.addParameter('Reverse', false, @islogical);
 ip.addParameter('axisOrder', 'x,y,z', @ischar); % stage coordinates axis order
 ip.addParameter('dataOrder', 'y,x,z', @ischar); % data axis order, in case data in zyx order
-ip.addParameter('ObjectiveScan', false, @islogical);
+ip.addParameter('objectiveScan', false, @islogical);
 ip.addParameter('IOScan', false, @islogical);
 ip.addParameter('zarrFile', false, @islogical);
 ip.addParameter('overlapSize', [100, 100, 0], @isnumeric);
@@ -32,7 +32,7 @@ ip.parse(dataPath, varargin{:});
 
 pr = ip.Results;
 % Overwrite = pr.Overwrite;
-ChannelPatterns = pr.ChannelPatterns;
+channelPatterns = pr.channelPatterns;
 DS = pr.DS;
 DSR = pr.DSR;
 xyPixelSize = pr.xyPixelSize;
@@ -41,7 +41,7 @@ SkewAngle = pr.SkewAngle;
 Reverse = pr.Reverse;
 axisOrder = pr.axisOrder;
 dataOrder = pr.dataOrder;
-ObjectiveScan = pr.ObjectiveScan;
+objectiveScan = pr.objectiveScan;
 IOScan =  pr.IOScan;
 zarrFile = pr.zarrFile;
 overlapSize = pr.overlapSize;

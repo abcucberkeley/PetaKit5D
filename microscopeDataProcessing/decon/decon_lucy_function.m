@@ -25,8 +25,8 @@ ip.addRequired('PSF', @isnumeric);
 ip.addRequired('NUMIT', @isnumeric);
 ip.addParameter('Background', [], @isnumeric);
 ip.addParameter('useGPU', true, @islogical); % use GPU processing
-ip.addParameter('Save16bit', true, @islogical);
-ip.addParameter('damper', 1, @isnumeric); % damp factor for decon result
+ip.addParameter('save16bit', true, @islogical);
+ip.addParameter('dampFactor', 1, @isnumeric); % damp factor for decon result
 ip.addParameter('scaleFactor', 1, @isnumeric); % scale factor for result
 ip.addParameter('deconOffset', 0, @isnumeric); % offset for decon result
 ip.addParameter('EdgeErosion', 0, @isnumeric); % edge erosion for decon result
@@ -40,8 +40,8 @@ ip.parse(I, PSF, NUMIT, varargin{:});
 pr = ip.Results;
 Background = pr.Background;
 useGPU = pr.useGPU;
-Save16bit = pr.Save16bit;
-damper = pr.damper;
+save16bit = pr.save16bit;
+dampFactor = pr.dampFactor;
 scaleFactor = pr.scaleFactor;
 deconOffset = pr.deconOffset;
 EdgeErosion = pr.EdgeErosion;
@@ -175,8 +175,8 @@ end
 clear J_3 J_4 Y;
 
 % post-processing of deconvolved result
-if damper > 1
-    J_2 = J_2 .* (J_2 <= damper * I) + min(J_2, damper * I .* (J_2 >= damper * I));
+if dampFactor > 1
+    J_2 = J_2 .* (J_2 <= dampFactor * I) + min(J_2, dampFactor * I .* (J_2 >= dampFactor * I));
 end
 clear I;
 
@@ -192,7 +192,7 @@ if scaleFactor ~= 1 || deconOffset ~= 0 || EdgeErosion > 0
     end
 end
 
-if Save16bit
+if save16bit
     J_2 = uint16(J_2);
 end
 

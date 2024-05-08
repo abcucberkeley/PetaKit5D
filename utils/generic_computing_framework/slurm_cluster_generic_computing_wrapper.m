@@ -37,7 +37,7 @@ ip.addParameter('cpusPerTask', 1, @isnumeric);
 ip.addParameter('GPUJob', false, @islogical);
 ip.addParameter('uuid', '', @ischar);
 ip.addParameter('maxTrialNum', 3, @isnumeric);
-ip.addParameter('unitWaitTime', 30, @isnumeric);
+ip.addParameter('unitWaitTime', 3, @isnumeric);
 ip.addParameter('maxJobNum', inf, @isnumeric); % submit limited number of jobs (pending/running)
 ip.addParameter('taskBatchNum', 1, @isnumeric); % aggragate several tasks together
 ip.addParameter('MatlabLaunchStr', 'module load matlab/r2023a; matlab -nodisplay -nosplash -nodesktop -nojvm -r', @ischar);
@@ -335,7 +335,7 @@ while (~parseCluster && ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
                     end
                     if strcmpi(language, 'matlab')
                         func_str = strrep(func_str, '"', '\\\"');
-                        matlab_setup_str = 'setup([],true)';
+                        matlab_setup_str = 'setup([])';
 
                         matlab_cmd = sprintf('%s;t0_=tic;%s;toc(t0_)', matlab_setup_str, func_str);
                         process_cmd = sprintf('%s \\"%s\\"', MatlabLaunchStr, matlab_cmd);

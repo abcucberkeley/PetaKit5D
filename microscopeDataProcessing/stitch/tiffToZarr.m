@@ -28,8 +28,8 @@ ip.addParameter('shardSize', [], @isnumeric);
 ip.addParameter('zarrSubSize', [20, 20, 20], @isnumeric);
 ip.addParameter('expand2dDim', true, @islogical); % expand the z dimension for 2d data
 ip.addParameter('flipZstack', false, @islogical);
-ip.addParameter('resample', [], @(x) isempty(x) || isnumeric(x));
-ip.addParameter('InputBbox', [], @(x) isnumeric(x));
+ip.addParameter('resampleFactor', [], @(x) isempty(x) || isnumeric(x));
+ip.addParameter('inputBbox', [], @(x) isnumeric(x));
 ip.addParameter('tileOutBbox', [], @(x) isempty(x) || isnumeric(x));
 ip.addParameter('readWholeTiff', true, @islogical);
 ip.addParameter('compressor', 'lz4', @ischar);
@@ -45,8 +45,8 @@ shardSize = pr.shardSize;
 zarrSubSize = pr.zarrSubSize;
 expand2dDim = pr.expand2dDim;
 flipZstack = pr.flipZstack;
-resample = pr.resample;
-InputBbox = pr.InputBbox;
+resampleFactor = pr.resampleFactor;
+inputBbox = pr.inputBbox;
 tileOutBbox = pr.tileOutBbox;
 readWholeTiff = pr.readWholeTiff;
 compressor = pr.compressor;
@@ -81,7 +81,7 @@ else
 end
 
 % if InputBbox is nonempty, read whole tiff
-if ~isempty(InputBbox)
+if ~isempty(inputBbox)
     readWholeTiff = true;
 end
 
@@ -100,12 +100,12 @@ else
         end
         if readWholeTiff
             I = readtiff(tifFilename);
-            if ~isempty(InputBbox)
+            if ~isempty(inputBbox)
                 try
-                    I = crop3d_mex(I, InputBbox);
+                    I = crop3d_mex(I, inputBbox);
                 catch ME
                     disp(ME);
-                    I = I(InputBbox(1) : InputBbox(4), InputBbox(2) : InputBbox(5), InputBbox(3) : InputBbox(6));
+                    I = I(inputBbox(1) : inputBbox(4), inputBbox(2) : inputBbox(5), inputBbox(3) : inputBbox(6));
                 end
             end
             sz = size(I);
@@ -139,12 +139,12 @@ else
             I{i} = readtiff(tifFilename{i});
         end
         I = cat(3, I{:});
-        if ~isempty(InputBbox)
+        if ~isempty(inputBbox)
             try
-                I = crop3d_mex(I, InputBbox);
+                I = crop3d_mex(I, inputBbox);
             catch ME
                 disp(ME);
-                I = I(InputBbox(1) : InputBbox(4), InputBbox(2) : InputBbox(5), InputBbox(3) : InputBbox(6));
+                I = I(inputBbox(1) : inputBbox(4), inputBbox(2) : inputBbox(5), inputBbox(3) : inputBbox(6));
             end
         end
         if ismatrix(I)
@@ -189,8 +189,8 @@ if ~isempty(tileOutBbox)
     end
 end
 
-if ~isempty(resample) && ~all(resample == 1)
-    rs = resample(:)';
+if ~isempty(resampleFactor) && ~all(resampleFactor == 1)
+    rs = resampleFactor(:)';
     % complete rs to 3d in case it is not
     rs = [ones(1, 4 - numel(rs)) * rs(1), rs(2:end)];    
     outSize = round(bim.Size ./ rs);

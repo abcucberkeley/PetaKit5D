@@ -13,14 +13,14 @@ ip.addRequired('BatchBBoxes', @(x) isnumeric(x) || ischar(x));
 ip.addRequired('RegionBBoxes', @(x) isnumeric(x) || ischar(x));
 ip.addRequired('xyPixelSize', @(x) isnumeric(x) || ischar(x)); %in um
 ip.addRequired('dz', @(x) isnumeric(x) || ischar(x)); %in um
-ip.addParameter('Save16bit', false , @(x) islogical(x) || ischar(x));
+ip.addParameter('save16bit', false , @(x) islogical(x) || ischar(x));
 ip.addParameter('Overwrite', false, @(x) islogical(x) || ischar(x));
 ip.addParameter('SkewAngle', -32.45 , @(x) isnumeric(x) || ischar(x));
 ip.addParameter('flipZstack', false, @(x) islogical(x) || ischar(x)); 
 ip.addParameter('Background', [], @(x) isnumeric(x) || ischar(x));
 ip.addParameter('dzPSF', 0.1 , @(x) isnumeric(x) || ischar(x)); %in um
 ip.addParameter('DeconIter', 15 , @(x) isnumeric(x) || ischar(x)); % number of iterations
-ip.addParameter('damper', 1, @(x) isnumeric(x) || ischar(x)); % damp factor for decon result
+ip.addParameter('dampFactor', 1, @(x) isnumeric(x) || ischar(x)); % damp factor for decon result
 ip.addParameter('scaleFactor', 1.0, @(x) isnumeric(x) || ischar(x)); % scale factor for decon result
 ip.addParameter('deconOffset', 0, @(x) isnumeric(x) || ischar(x)); % offset for decon result
 ip.addParameter('EdgeErosion', 0, @(x) isnumeric(x) || ischar(x)); % edge erosion for decon result
@@ -39,14 +39,14 @@ ip.parse(batchInds, zarrFullpath, psfFullpath, deconFullpath, flagFullname, ...
     BatchBBoxes, RegionBBoxes, xyPixelSize, dz, varargin{:});
 
 pr = ip.Results;
-Save16bit = pr.Save16bit;
+save16bit = pr.save16bit;
 Overwrite = pr.Overwrite;
 SkewAngle = pr.SkewAngle;
 flipZstack = pr.flipZstack;
 Background = pr.Background;
 dzPSF = pr.dzPSF;
 DeconIter = pr.DeconIter;
-damper = pr.damper;
+dampFactor = pr.dampFactor;
 scaleFactor = pr.scaleFactor;
 deconOffset = pr.deconOffset;
 EdgeErosion = pr.EdgeErosion;
@@ -76,8 +76,8 @@ end
 if ischar(dz)
     dz = str2num(dz);
 end
-if ischar(Save16bit)
-    Save16bit = str2num(Save16bit);
+if ischar(save16bit)
+    save16bit = str2num(save16bit);
 end
 if ischar(Overwrite)
     Overwrite = str2num(Overwrite);
@@ -97,8 +97,8 @@ end
 if ischar(DeconIter)
     DeconIter = str2num(DeconIter);
 end
-if ischar(damper)
-    damper = str2num(damper);
+if ischar(dampFactor)
+    dampFactor = str2num(dampFactor);
 end
 if ischar(scaleFactor)
     scaleFactor = str2num(scaleFactor);
@@ -135,9 +135,9 @@ if ischar(psfGen)
 end
 
 RLdecon_for_zarr_block(batchInds, zarrFullpath, psfFullpath, deconFullpath, ...
-    flagFullname, BatchBBoxes, RegionBBoxes, xyPixelSize, dz, Save16bit=Save16bit, ...
+    flagFullname, BatchBBoxes, RegionBBoxes, xyPixelSize, dz, save16bit=save16bit, ...
     Overwrite=Overwrite, SkewAngle=SkewAngle, flipZstack=flipZstack, Background=Background, ...
-    dzPSF=dzPSF, DeconIter=DeconIter, damper=damper, scaleFactor=scaleFactor, ...
+    dzPSF=dzPSF, DeconIter=DeconIter, dampFactor=dampFactor, scaleFactor=scaleFactor, ...
     deconOffset=deconOffset, EdgeErosion=EdgeErosion, deconMaskFns=deconMaskFns, ...
     RLMethod=RLMethod, wienerAlpha=wienerAlpha, OTFCumThresh=OTFCumThresh, ...
     skewed=skewed, fixIter=fixIter, useGPU=useGPU, uuid=uuid, debug=debug, ...

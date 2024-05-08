@@ -19,7 +19,7 @@ ip.addRequired('outputFullpath');
 ip.addParameter('dsFactors', [2, 2; 4, 4; 8, 8; 16, 16; 32, 32], @isnumeric); % downsample factors
 ip.addParameter('blockSize', [256, 256, 256], @isnumeric); % blockSize
 ip.addParameter('batchSize', [512, 512, 512], @isnumeric); % batchSize
-ip.addParameter('Interp', 'linear', @(x) any(strcmpi(x, {'cubic', 'linear', 'nearest'})));
+ip.addParameter('interpMethod', 'linear', @(x) any(strcmpi(x, {'cubic', 'linear', 'nearest'})));
 ip.addParameter('includeRaw', ~false, @islogical); % include raw data
 % ip.addParameter('suffix', '', @ischar); % suffix for the folder
 ip.addParameter('uuid', '', @ischar);
@@ -31,7 +31,7 @@ pr = ip.Results;
 dsFactors = pr.dsFactors;
 blockSize = pr.blockSize;
 batchSize = pr.batchSize;
-Interp = pr.Interp;
+interpMethod = pr.interpMethod;
 includeRaw = pr.includeRaw;
 uuid = pr.uuid;
 
@@ -84,7 +84,7 @@ for i = 1 : size(dsFactors, 1)
     end        
         
     XR_resampleSingleZarr(dsTmpFullpath_im1, dsTmpFullpath, dsFactor_i, 'blockSize', blockSize_i, ...
-        'batchSize', batchSize_i, 'Interp', Interp, 'uuid', uuid);
+        'batchSize', batchSize_i, 'interpMethod', interpMethod, 'uuid', uuid);
     
     if exist(dsTmpFullpath, 'dir')
         movefile(dsTmpFullpath, dsFullpath);

@@ -81,7 +81,7 @@ for i = 1 : numel(batchInds)
     % load the region in input 
     % in_batch = bim.getRegion(ibStart, ibEnd);
     % in_batch = bim.Adapter.getIORegion(ibStart, ibEnd);
-    in_batch = readzarr(zarrFullpath, 'bbox', [ibStart, ibEnd]);
+    in_batch = readzarr(zarrFullpath, 'inputBbox', [ibStart, ibEnd]);
     
     if resampling
         in_batch = imresize3(in_batch, round(size(in_batch) ./ dsfactor), 'linear');

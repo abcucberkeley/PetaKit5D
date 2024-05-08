@@ -41,8 +41,8 @@ void mexFunction(int nlhs, mxArray *plhs[],
     for(uint64_t i = 1; i < nint; i++){
         double s;
         double t;
-	double zw;
-	zw = (double) i / (double) nint;
+	    double zw;
+	    zw = (double) i / (double) nint;
         if(Reverse){
             s = ceil(xstep) - xstep * zw;
             t = xstep * (1 - zw);

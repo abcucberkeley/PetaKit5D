@@ -1,4 +1,4 @@
-function [] = XR_resampleFrame(fn, fnout, rsfactor, varargin)
+function [] = XR_resampleFrame(fn, fnout, resampleFactor, varargin)
 % resample image for a single frame
 %
 % 
@@ -10,21 +10,21 @@ ip = inputParser;
 ip.CaseSensitive = false;
 ip.addRequired('fn', @ischar);
 ip.addRequired('fnout', @ischar);
-ip.addRequired('rsfactor', @isnumeric);
-ip.addParameter('bbox', [], @isnumeric); % bbox for input
-ip.addParameter('Interp', 'linear', @ischar);
-ip.addParameter('Save16bit', true ,@islogical); % saves 16bit, else single
+ip.addRequired('resampleFactor', @isnumeric);
+ip.addParameter('inputBbox', [], @isnumeric); % bbox for input
+ip.addParameter('interpMethod', 'linear', @ischar);
+ip.addParameter('save16bit', true ,@islogical); % saves 16bit, else single
 ip.addParameter('zarrFile', false, @islogical);
 ip.addParameter('saveZarr', false, @islogical); % use zarr file as output
 ip.addParameter('blockSize', [256, 256, 256], @isnumeric); % blcoksize
 ip.addParameter('uuid', '', @ischar);
 
-ip.parse(fn, fnout, rsfactor, varargin{:});
+ip.parse(fn, fnout, resampleFactor, varargin{:});
 
 pr = ip.Results;
-bbox = pr.bbox;
-Interp = pr.Interp;
-Save16bit = pr.Save16bit;
+inputBbox = pr.inputBbox;
+interpMethod = pr.interpMethod;
+save16bit = pr.save16bit;
 zarrFile = pr.zarrFile;
 saveZarr = pr.saveZarr;
 blockSize = pr.blockSize;
@@ -40,13 +40,13 @@ if exist(fnout, 'file')
 end
 
 if zarrFile
-    im = readzarr(fn, bbox=bbox);
+    im = readzarr(fn, inputBbox=inputBbox);
 else
-    if isempty(bbox)
+    if isempty(inputBbox)
         im = readtiff(fn);
     else
-        im = readtiff(fn, range=[bbox(3), bbox(6)]);
-        bbox_1 = [bbox(1), bbox(2), 1, bbox(4), bbox(5), bbox(6) - bbox(3) + 1];
+        im = readtiff(fn, range=[inputBbox(3), inputBbox(6)]);
+        bbox_1 = [inputBbox(1), inputBbox(2), 1, inputBbox(4), inputBbox(5), inputBbox(6) - inputBbox(3) + 1];
         try
             im = crop3d_mex(im, bbox_1);
         catch ME
@@ -58,7 +58,7 @@ else
 end
 im = single(im);
 
-rs = rsfactor(:)';
+rs = resampleFactor(:)';
 if ismatrix(im)
     rs = [ones(1, 3 - numel(rs)) * rs(1), rs(2:end)];    
 else
@@ -69,15 +69,15 @@ end
 outSize = round(size(im) ./ rs);
 
 if ismatrix(im)
-    if strcmpi(Interp, 'linear')
-        Interp = 'bilinear';
+    if strcmpi(interpMethod, 'linear')
+        interpMethod = 'bilinear';
     end
-    im = imresize(im, outSize, 'Method', Interp);    
+    im = imresize(im, outSize, 'Method', interpMethod);    
 else
-    im = imresize3(im, outSize, 'Method', Interp);
+    im = imresize3(im, outSize, 'Method', interpMethod);
 end
 
-if Save16bit
+if save16bit
     im = uint16(im);
 end
 

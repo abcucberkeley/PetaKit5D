@@ -11,41 +11,55 @@ ip = inputParser;
 ip.CaseSensitive = false;
 ip.KeepUnmatched = true;
 ip.addRequired('dataPaths', @(x) ischar(x) || iscell(x));
-ip.addParameter('imsPathstr', 'imaris',  @(x) ischar(x));
-ip.addParameter('Overwrite', false,  @(x) islogical(x));
-ip.addParameter('ChannelPatterns', {'CamA_ch0', 'CamA_ch1', 'CamB_ch0'}, @iscell);
+ip.addParameter('resultDirName', 'imaris',  @(x) ischar(x));
+ip.addParameter('overwrite', false,  @(x) islogical(x));
+ip.addParameter('channelPatterns', {'CamA_ch0', 'CamA_ch1', 'CamB_ch0'}, @iscell);
 ip.addParameter('pixelSizes', [0.108, 0.108, 0.108], @isnumeric); % y, x, z
 ip.addParameter('zarrFile', false, @islogical); % use zarr file as input
 ip.addParameter('blockSize', [64, 64, 64], @isnumeric); % y, x, z
-ip.addParameter('bbox', [], @isnumeric); % ymin, xmin, zmin, ymax, xmax, zmax
+ip.addParameter('inputBbox', [], @isnumeric); % ymin, xmin, zmin, ymax, xmax, zmax
 ip.addParameter('timepoints', [], @isnumeric); % number of time points included
-ip.addParameter('ImsConverter', '/clusterfs/fiona/matthewmueller/imarisWriter/writeImarisParallel', @ischar);
+ip.addParameter('converterPath', '', @ischar);
 ip.addParameter('parseCluster', true, @islogical);
+ip.addParameter('masterCompute', true, @islogical);
 ip.addParameter('jobLogDir', '../job_logs', @ischar);
 ip.addParameter('cpusPerTask', 24, @isnumeric);
 ip.addParameter('uuid', '', @ischar);
 ip.addParameter('mccMode', false, @islogical);
-ip.addParameter('ConfigFile', '', @ischar);
+ip.addParameter('configFile', '', @ischar);
 
 ip.parse(dataPaths, varargin{:});
 
 % parameters
 pr = ip.Results;
-imsPathstr = pr.imsPathstr;
-Overwrite = pr.Overwrite;
-ChannelPatterns = pr.ChannelPatterns;
+resultDirName = pr.resultDirName;
+overwrite = pr.overwrite;
+channelPatterns = pr.channelPatterns;
 pixelSizes = pr.pixelSizes;
 zarrFile = pr.zarrFile;
 blockSize = pr.blockSize;
-bbox = pr.bbox;
+inputBbox = pr.inputBbox;
 timepoints = pr.timepoints;
-ImsConverter = pr.ImsConverter;
+converterPath = pr.converterPath;
 parseCluster = pr.parseCluster;
 jobLogDir = pr.jobLogDir;
 cpusPerTask = pr.cpusPerTask;
 uuid = pr.uuid;
 mccMode = pr.mccMode;
-ConfigFile = pr.ConfigFile;
+configFile = pr.configFile;
+
+% if converter path is not provided, use the default one in the repo
+if isempty(converterPath)
+    mfilePath = fileparts(which(mfilename));
+    if ispc
+        mfilePath = strrep(mfilePath, '\', '/');
+        converterPath = sprintf('%s/Parallel_Imaris_Writer/windows/parallelimariswriter', mfilePath);        
+    elseif ismac
+        converterPath = sprintf('%s/Parallel_Imaris_Writer/mac/parallelimariswriter', mfilePath);
+    else
+        converterPath = sprintf('%s/Parallel_Imaris_Writer/linux/parallelimariswriter', mfilePath);
+    end
+end
 
 % suppress directory exists warning
 warning('off', 'MATLAB:MKDIR:DirectoryExists');
@@ -57,13 +71,16 @@ end
 nd = numel(dataPaths);
 for d = 1 : nd
     dataPath = dataPaths{d};
-    if ~strcmp(dataPath(end), filesep)
-        dataPaths{d} = [dataPath, filesep];
+    if ispc
+        dataPath = strrep(dataPath, '\', '/');
+    end
+    if ~strcmp(dataPath(end), '/')
+        dataPaths{d} = [dataPath, '/'];
     end
 end
 
-if numel(Overwrite) == 1
-    Overwrite = repmat(Overwrite, 1, 2);
+if numel(overwrite) == 1
+    overwrite = repmat(overwrite, 1, 2);
 end
 
 % check if a slurm-based computing cluster exists
@@ -73,8 +90,8 @@ end
 
 % handle output directories.
 imsName = 'imaris';
-if ~isempty(imsPathstr)
-    imsName = imsPathstr;
+if ~isempty(resultDirName)
+    imsName = resultDirName;
 end
     
 imsPaths = cell(nd, 1);
@@ -96,8 +113,8 @@ for d = 1 : nd
         inputFullpaths{d} = sprintf('%s/%s', dataPath_fst, fsn{1});
     end
 
-    imsPath = [dataPath_fst, imsName, filesep];
-    if Overwrite(1) && exist(imsPath, 'dir')
+    imsPath = [dataPath_fst, imsName, '/'];
+    if overwrite(1) && exist(imsPath, 'dir')
         rmdir(imsPath, 's');
     end
     if ~exist(imsPath, 'dir')
@@ -114,7 +131,7 @@ end
 
 %% setup jobs and computing
 
-ChannelPatterns_str = strjoin(ChannelPatterns, ',');
+channelPatterns_str = strjoin(channelPatterns, ',');
 % voxelsize_str = strrep(mat2str(pixelSizes), ' ', ',');
 voxelsize_str = num2str(pixelSizes, '%.20f,');
 type_str = 'tiff';
@@ -129,8 +146,8 @@ end
 blockSize_str = num2str(blockSize, '%d,'); 
 
 bbox_str = '';
-if ~isempty(bbox)
-    bbox_str = sprintf('-B %s', strrep(num2str(bbox, '%d,'), ' ', ''));
+if ~isempty(inputBbox)
+    bbox_str = sprintf('-B %s', strrep(num2str(inputBbox, '%d,'), ' ', ''));
 end
 
 func_strs = cell(nd, 1);
@@ -139,17 +156,16 @@ for d = 1 : nd
     if iscell(dataPaths{d})
         dataPath_str = strjoin(dataPaths{d}, ',');
     end 
-
-    func_strs{d} = sprintf('%s -P %s -F %s -r %s -v %s -o %s %s -b %s %s', ImsConverter, ...
-        ChannelPatterns_str, dataPath_str, type_str, voxelsize_str, imsPaths{d}, time_str, ...
+    
+    func_strs{d} = sprintf('"%s" -P "%s" -F "%s" -r %s -v %s -o "%s" %s -b %s %s', converterPath, ...
+        channelPatterns_str, dataPath_str, type_str, voxelsize_str, imsPaths{d}, time_str, ...
         blockSize_str, bbox_str);
 end
 
 % use slurm job wrapper for computing
 generic_computing_frameworks_wrapper(inputFullpaths, outputFullpaths, func_strs, ...
     'cpusPerTask', cpusPerTask, 'parseCluster', parseCluster, 'language', 'bash', ...
-    mccMode=mccMode, ConfigFile=ConfigFile);
+    mccMode=mccMode, configFile=configFile);
 
 end
-
 

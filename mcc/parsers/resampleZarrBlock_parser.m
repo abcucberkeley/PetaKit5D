@@ -1,4 +1,4 @@
-function [] = resampleZarrBlock_parser(batchInds, zarrFullpath, dsFullpath, flagFullname, dsFactor, varargin)
+function [] = resampleZarrBlock_parser(batchInds, zarrFullpath, dsFullpath, flagFullname, resampleFactor, varargin)
 
 
 ip = inputParser;
@@ -7,49 +7,49 @@ ip.addRequired('batchInds', @(x) isnumeric(x) || ischar(x));
 ip.addRequired('zarrFullpath', @(x) ischar(x));
 ip.addRequired('dsFullpath', @(x) ischar(x));
 ip.addRequired('flagFullname', @(x) ischar(x));
-ip.addRequired('dsFactor', @(x) isnumeric(x) || ischar(x));
-ip.addParameter('bbox', [], @(x) isnumeric(x) || ischar(x));
-ip.addParameter('BatchSize', [], @(x) isnumeric(x) || ischar(x));
-ip.addParameter('BlockSize', [], @(x) isnumeric(x) || ischar(x));
-ip.addParameter('BorderSize', [], @(x) isnumeric(x) || ischar(x));
-ip.addParameter('Overwrite', false, @(x) islogical(x) || ischar(x));
-ip.addParameter('Interp', 'linear', @ischar);
+ip.addRequired('resampleFactor', @(x) isnumeric(x) || ischar(x));
+ip.addParameter('inputBbox', [], @(x) isnumeric(x) || ischar(x));
+ip.addParameter('batchSize', [], @(x) isnumeric(x) || ischar(x));
+ip.addParameter('blockSize', [], @(x) isnumeric(x) || ischar(x));
+ip.addParameter('borderSize', [], @(x) isnumeric(x) || ischar(x));
+ip.addParameter('overwrite', false, @(x) islogical(x) || ischar(x));
+ip.addParameter('interpMethod', 'linear', @ischar);
 
-ip.parse(batchInds, zarrFullpath, dsFullpath, flagFullname, dsFactor, varargin{:});
+ip.parse(batchInds, zarrFullpath, dsFullpath, flagFullname, resampleFactor, varargin{:});
 
 pr = ip.Results;
-bbox = pr.bbox;
-BatchSize = pr.BatchSize;
-BlockSize = pr.BlockSize;
-BorderSize = pr.BorderSize;
-Overwrite = pr.Overwrite;
-Interp = pr.Interp;
+inputBbox = pr.inputBbox;
+batchSize = pr.batchSize;
+blockSize = pr.blockSize;
+borderSize = pr.borderSize;
+overwrite = pr.overwrite;
+interpMethod = pr.interpMethod;
 
 if ischar(batchInds)
     batchInds = str2num(batchInds);
 end
-if ischar(dsFactor)
-    dsFactor = str2num(dsFactor);
+if ischar(resampleFactor)
+    resampleFactor = str2num(resampleFactor);
 end
-if ischar(bbox)
-    bbox = str2num(bbox);
+if ischar(inputBbox)
+    inputBbox = str2num(inputBbox);
 end
-if ischar(BatchSize)
-    BatchSize = str2num(BatchSize);
+if ischar(batchSize)
+    batchSize = str2num(batchSize);
 end
-if ischar(BlockSize)
-    BlockSize = str2num(BlockSize);
+if ischar(blockSize)
+    blockSize = str2num(blockSize);
 end
-if ischar(BorderSize)
-    BorderSize = str2num(BorderSize);
+if ischar(borderSize)
+    borderSize = str2num(borderSize);
 end
-if ischar(Overwrite)
-    Overwrite = str2num(Overwrite);
+if ischar(overwrite)
+    overwrite = str2num(overwrite);
 end
 
-resampleZarrBlock(batchInds, zarrFullpath, dsFullpath, flagFullname, dsFactor, ...
-    bbox=bbox, BatchSize=BatchSize, BlockSize=BlockSize, BorderSize=BorderSize, ...
-    Overwrite=Overwrite, Interp=Interp);
+resampleZarrBlock(batchInds, zarrFullpath, dsFullpath, flagFullname, resampleFactor, ...
+    inputBbox=inputBbox, batchSize=batchSize, blockSize=blockSize, borderSize=borderSize, ...
+    overwrite=overwrite, interpMethod=interpMethod);
 
 end
 

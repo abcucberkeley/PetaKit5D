@@ -29,21 +29,21 @@ ip.addRequired('xyPixelSize'); % typical value: 0.1
 ip.addParameter('reverse', false, @islogical);
 ip.addParameter('Crop', true, @islogical);
 ip.addParameter('bbox', [], @isnumeric);
-ip.addParameter('ObjectiveScan', false, @islogical);
+ip.addParameter('objectiveScan', false, @islogical);
 ip.addParameter('xStepThresh', 2.0, @isnumeric); % 2.344 for ds=0.3, 2.735 for ds=0.35
-ip.addParameter('resample', [], @isnumeric); % resample factor in xyz order. 
+ip.addParameter('resampleFactor', [], @isnumeric); % resample factor in xyz order. 
 ip.addParameter('gpuProcess', false, @islogical); % use gpu for the processing. 
-ip.addParameter('Interp', 'linear', @(x) any(strcmpi(x, {'cubic', 'linear'})));
+ip.addParameter('interpMethod', 'linear', @(x) any(strcmpi(x, {'cubic', 'linear'})));
 ip.parse(vol, angle, dz, xyPixelSize, varargin{:});
 
 pr = ip.Results;
 Reverse = pr.reverse;
 bbox = pr.bbox;
-ObjectiveScan = pr.ObjectiveScan;
+objectiveScan = pr.objectiveScan;
 xStepThresh = pr.xStepThresh;
-resample = pr.resample;
+resampleFactor = pr.resampleFactor;
 gpuProcess = pr.gpuProcess;
-Interp = pr.Interp;
+interpMethod = pr.interpMethod;
 
 [ny,nx,nz] = size(vol);
 
@@ -51,14 +51,14 @@ Interp = pr.Interp;
 theta = angle * pi/180;
 dx = cos(theta)*dz/xyPixelSize; % pixels shifted slice to slice in x
 
-if ip.Results.ObjectiveScan
+if ip.Results.objectiveScan
     zAniso = dz / xyPixelSize;
 else
     zAniso = sin(abs(theta)) * dz / xyPixelSize;
 end
 
 % use original dz to decide outSize
-if ~ObjectiveScan
+if ~objectiveScan
     % outSize = round([ny nxDs/cos(theta) h]);
     % calculate height; first & last 2 frames have interpolation artifacts
     outSize = round([ny, (nx-1)*cos(theta)+(nz-1)*zAniso/sin(abs(theta)), (nx-1)*sin(abs(theta))-4]);
@@ -68,7 +68,7 @@ else
 end
 
 %% skew space interpolation
-if ~ObjectiveScan && abs(dx) > xStepThresh
+if ~objectiveScan && abs(dx) > xStepThresh
     % skewed space interplation combined dsr
     fprintf('The step size is greater than the threshold, use skewed space interpolation for combined deskew rotate...\n');
     % for dx only slightly larger than xStepThresh, we interpolate to
@@ -98,7 +98,7 @@ if ~ObjectiveScan && abs(dx) > xStepThresh
     dz = dzout;
     dx = cos(theta)*dz/xyPixelSize; % pixels shifted slice to slice in x
 
-    if ip.Results.ObjectiveScan
+    if ip.Results.objectiveScan
         zAniso = dz / xyPixelSize;
     else
         zAniso = sin(abs(theta)) * dz / xyPixelSize;
@@ -116,7 +116,7 @@ end
 nxDs = ceil((nz-1)*dx) + nx; % width of output volume as if there is DS.
 
 % shear transform matrix
-if ObjectiveScan
+if objectiveScan
     nxDs = nx;
     ds_S = eye(4);
 else
@@ -155,7 +155,7 @@ T2 = [1 0 0 0
       (outSize([2 1 3])+1)/2 1];
 
 %% resampling after deskew and rotate
-rs = resample;
+rs = resampleFactor;
 if ~isempty(rs)
     RT1 = [1 0 0 0
            0 1 0 0
@@ -185,7 +185,7 @@ if gpuProcess
     vol = gpuArray(vol);
 end
 
-[vol] = imwarp(vol, affine3d(ds_S*(T1*S*R*T2)*(RT1*RS*RT2)), Interp, 'FillValues', 0, 'OutputView', RA);
+[vol] = imwarp(vol, affine3d(ds_S*(T1*S*R*T2)*(RT1*RS*RT2)), interpMethod, 'FillValues', 0, 'OutputView', RA);
 if gpuProcess
     vol = gather(vol);
 end    

@@ -1,10 +1,10 @@
-function [resample, zAniso] = XR_checkResampleSetting(resample_type, resample, ObjectiveScan, SkewAngle, xyPixelSize, dz);
+function [resample, zAniso] = XR_checkResampleSetting(resample_type, resample, objectiveScan, SkewAngle, xyPixelSize, dz);
 % check resample settings
 %
 % Author: Xiongtao Ruan (01/13/2021)
 
 
-if ObjectiveScan
+if objectiveScan
     zAniso = dz/xyPixelSize;    
 else
     zAniso = sind(SkewAngle)*dz/xyPixelSize;

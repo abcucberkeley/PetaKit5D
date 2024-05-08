@@ -1,4 +1,4 @@
-function [] = gererate_single_MIP_mask(fn, fnout, intThresh, volThresh, dilateSize, blockSize, Save16bit, uuid)
+function [] = gererate_single_MIP_mask(fn, fnout, intThresh, volThresh, dilateSize, blockSize, save16bit, uuid)
 % generate MIP masks based on intensity thresholding and object size
 %
 % Author: Xiongtao Ruan (08/02/2023)
@@ -21,7 +21,7 @@ if nargin < 6
 end
 
 if nargin < 7
-    Save16bit = true;
+    save16bit = true;
 end
 
 if nargin < 8
@@ -33,7 +33,7 @@ if exist(fnout, 'file') || exist(fnout, 'dir')
     return;
 end    
 
-if Save16bit
+if save16bit
     dtype = 'uint16';
 else
     dtype = 'single';
@@ -107,7 +107,7 @@ end
 
 tmpFnout = sprintf('%s/%s_%s%s', outPath, fsn, uuid, ext);
 
-if Save16bit
+if save16bit
     bw = uint16(bw);
 else
     bw = single(bw);

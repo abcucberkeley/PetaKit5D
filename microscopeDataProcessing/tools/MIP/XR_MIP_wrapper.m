@@ -4,12 +4,13 @@ function [] = XR_MIP_wrapper(dataPaths, varargin)
 ip = inputParser;
 ip.CaseSensitive = false;
 ip.addRequired('dataPaths', @(x) ischar(x) || iscell(x));
+ip.addParameter('resultDirName', 'MIPs', @ischar);
 ip.addParameter('axis', [0, 0, 1], @isnumeric); % y, x, z
-ip.addParameter('ChannelPatterns', {'CamA_ch0', 'CamA_ch1', 'CamB_ch0', 'CamB_ch1'}, @iscell);
+ip.addParameter('channelPatterns', {'CamA_ch0', 'CamA_ch1', 'CamB_ch0', 'CamB_ch1'}, @iscell);
 ip.addParameter('zarrFile', false, @islogical); % use zarr file as input
 ip.addParameter('largeZarr', false, @islogical); % use zarr file as input
-ip.addParameter('BatchSize', [2048, 2048, 2048] , @isvector); % in y, x, z
-ip.addParameter('Save16bit', true, @islogical);
+ip.addParameter('batchSize', [2048, 2048, 2048] , @isvector); % in y, x, z
+ip.addParameter('save16bit', true, @islogical);
 ip.addParameter('parseCluster', true, @islogical);
 ip.addParameter('parseParfor', false, @islogical);
 ip.addParameter('masterCompute', true, @islogical); % master node participate in the task computing. 
@@ -18,24 +19,25 @@ ip.addParameter('jobLogDir', '../job_logs/', @ischar);
 ip.addParameter('uuid', '', @ischar);
 ip.addParameter('debug', false, @islogical);
 ip.addParameter('mccMode', false, @islogical);
-ip.addParameter('ConfigFile', '', @ischar);
+ip.addParameter('configFile', '', @ischar);
 
 ip.parse(dataPaths, varargin{:});
 
 pr = ip.Results;
+resultDirName = pr.resultDirName;
 axis = pr.axis;
-ChannelPatterns =  pr.ChannelPatterns;
+channelPatterns =  pr.channelPatterns;
 zarrFile = pr.zarrFile;
 largeZarr = pr.largeZarr;
-BatchSize = pr.BatchSize;
-Save16bit = pr.Save16bit;
+batchSize = pr.batchSize;
+save16bit = pr.save16bit;
 parseCluster = pr.parseCluster;
 parseParfor = pr.parseParfor;
 jobLogDir = pr.jobLogDir;
 masterCompute = pr.masterCompute;
 cpusPerTask = pr.cpusPerTask;
 mccMode = pr.mccMode;
-ConfigFile = pr.ConfigFile;
+configFile = pr.configFile;
 
 uuid = pr.uuid;
 % uuid for the job
@@ -48,7 +50,7 @@ if ischar(dataPaths)
     dataPaths = {dataPaths};
 end
 
-if Save16bit
+if save16bit
     dtype = 'uint16';
 else
     dtype = 'single';
@@ -58,12 +60,16 @@ nd = numel(dataPaths);
 resultPaths = cell(nd, 1);
 for d = 1 : nd
     dataPath = dataPaths{d};
-    resultPath = [dataPath, '/MIPs/'];
+    resultPath = sprintf('%s/%s/', dataPath, resultDirName);
     mkdir(resultPath);
     
     dataPaths{d} = simplifyPath(dataPath);
-    resultPaths{d} = simplifyPath(resultPath);    
-    fileattrib(resultPath, '+w', 'g');
+    resultPaths{d} = simplifyPath(resultPath);
+    try 
+        fileattrib(resultPath, '+w', 'g');
+    catch ME
+        disp(ME);
+    end
 
     save('-v7.3', [resultPath, '/parameters.mat'], 'pr');
     s = jsonencode(pr, PrettyPrint=true);
@@ -78,7 +84,7 @@ if parseCluster
 end
 
 % parse image filenames
-[~, fsns, fd_inds, filepaths] = parseImageFilenames(dataPaths, zarrFile, ChannelPatterns);
+[~, fsns, fd_inds, filepaths] = parseImageFilenames(dataPaths, zarrFile, channelPatterns);
 nF = numel(fsns);
 sz = getImageSize(filepaths{1});
 
@@ -103,11 +109,11 @@ for f = 1 : nF
     
     if zarrFile
         if largeZarr
-            func_strs{f} = sprintf(['XR_MIP_zarr(''%s'',''axis'',%s,''BatchSize'',%s,', ...
-                '''parseCluster'',%s,''parseParfor'',%s,''jobLogDir'',''%s'',', ...
-                '''mccMode'',%s,''ConfigFile'',''%s'')'], frameFullpath, mat2str_comma(axis), ...
-                mat2str_comma(BatchSize), string(parseCluster), ...
-                string(parseParfor), jobLogDir, string(mccMode), ConfigFile);
+            func_strs{f} = sprintf(['XR_MIP_zarr(''%s'',''resultDirName'',''%s'',', ...
+                '''axis'',%s,''batchSize'',%s,''parseCluster'',%s,''parseParfor'',%s,', ...
+                '''jobLogDir'',''%s'',''mccMode'',%s,''configFile'',''%s'')'], ...
+                frameFullpath, resultDirName, mat2str_comma(axis), mat2str_comma(batchSize), ...
+                string(parseCluster), string(parseParfor), jobLogDir, string(mccMode), configFile);
         else
             func_strs{f} = sprintf(['saveMIP_zarr(''%s'',''%s'',''%s'',%s)'], frameFullpath, ...
                 MIPFullpath, dtype, mat2str_comma(axis));
@@ -126,7 +132,7 @@ memAllocate = prod(sz) * 4 / 1024^3 * 4;
 generic_computing_frameworks_wrapper(frameFullpaths, MIPFullpaths, func_strs, ...
     parseCluster=parseCluster, jobLogDir=jobLogDir, masterCompute=masterCompute, ...
     taskBatchNum=taskBatchNum, cpusPerTask=cpusPerTask, memAllocate=memAllocate, ...
-    mccMode=mccMode, ConfigFile=ConfigFile);
+    mccMode=mccMode, configFile=configFile);
 
 end
 

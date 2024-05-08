@@ -56,18 +56,18 @@ inBbox = [max(inputBbox(1 : 3), bbox(1 : 3) - BorderSize), min(inputBbox(4 : 6),
 % deskew and rotate MIP y
 im_y = im_y(inBbox(2) : inBbox(5), inBbox(3) : inBbox(6));
 frame = single(permute(im_y, [3, 1, 2]));
-ObjectiveScan = false;
+objectiveScan = false;
 
 rs = [1, 1, 1];
 if ~isempty(resample)
     rs(1) = resample(2);
     rs(3) = resample(3);
 end
-Interp = 'linear';
+interpMethod = 'linear';
 xStepThresh = 2;
 
 dsr = deskewRotateFrame3D(frame, SkewAngle, dz, xyPixelSize, 'reverse', Reverse, ...
-    'bbox', [], 'ObjectiveScan', ObjectiveScan, 'resample', rs, 'Interp', Interp, ...
+    'bbox', [], 'objectiveScan', objectiveScan, 'resample', rs, 'interpMethod', interpMethod, ...
     'xStepThresh', xStepThresh);
 
 dsr = squeeze(dsr);

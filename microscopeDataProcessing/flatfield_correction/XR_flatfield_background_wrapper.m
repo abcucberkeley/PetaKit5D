@@ -21,7 +21,7 @@ function [] = XR_flatfield_background_wrapper(dataPaths, varargin)
 %      'parseCluster' : Use slurm-based cluster computing. Default: true. 
 %         'jobLogDir' : Log directory for the slurm jobs. 
 %       'cpusPerTask' : Number of cpus for a job. Default: 12
-%         'Save16bit' : true|{false}. Save final results as 16bit or single. 
+%         'save16bit' : true|{false}. Save final results as 16bit or single. 
 %              'uuid' : unique string for a job for saving files. 
 %       'maxTrialNum' : Max number of times to rerun failure cases. 
 %      'unitWaitTime' : For computing without cluster, the wait time per      
@@ -41,24 +41,24 @@ ip.CaseSensitive = false;
 ip.addRequired('dataPaths', @(x) ischar(x) || iscell(x));
 % ip.addParameter('Overwrite', true, @islogical);
 ip.addParameter('resultDirStr', 'matlab_flat_field_estimation', @ischar);
-ip.addParameter('ChannelPatterns', {'CamA_ch0', 'CamB_ch0'}, @iscell); % only compute first time point (for deciding cropping bouding box)
+ip.addParameter('channelPatterns', {'CamA_ch0', 'CamB_ch0'}, @iscell); % only compute first time point (for deciding cropping bouding box)
 ip.addParameter('estimationMode', 'per_image', @ischar); % 'cam_ch', 'came_ch_iter', 'came_ch_iter_stack', or 'per_image'
 ip.addParameter('onlyFirstTP', false, @islogical); % only compute first time point (for deciding cropping bouding box)
-ip.addParameter('Save16bit', false, @islogical);
+ip.addParameter('save16bit', false, @islogical);
 ip.addParameter('saveMIP', false, @islogical); % save MIPs
 ip.addParameter('parseCluster', true, @islogical);
 ip.addParameter('masterCompute', true, @islogical); % master node participate in the task computing. 
 ip.addParameter('jobLogDir', '../job_logs', @ischar);
 ip.addParameter('cpusPerTask', 24, @isnumeric);
 ip.addParameter('mccMode', false, @ischar);
-ip.addParameter('ConfigFile', '', @ischar);
+ip.addParameter('configFile', '', @ischar);
 ip.addParameter('uuid', '', @ischar);
 
 ip.parse(dataPaths, varargin{:});
 
 pr = ip.Results;
 % Overwrite = pr.Overwrite;
-ChannelPatterns = pr.ChannelPatterns;
+channelPatterns = pr.channelPatterns;
 estimationMode = pr.estimationMode;
 resultDirStr = pr.resultDirStr;
 saveMIP = pr.saveMIP;
@@ -67,7 +67,7 @@ parseCluster = pr.parseCluster;
 masterCompute = pr.masterCompute;
 cpusPerTask = pr.cpusPerTask;
 mccMode = pr.mccMode;
-ConfigFile = pr.ConfigFile;
+configFile = pr.configFile;
 uuid = pr.uuid;
 
 
@@ -127,7 +127,7 @@ deconPaths = '';
 Streaming = false;
 
 [fnames, fdinds, gfnames, partialvols, dataSizes, flipZstack_mat, FTP_inds, maskFullpaths] = ...
-    XR_parseImageFilenames(dataPaths, ChannelPatterns, parseSettingFile, flipZstack, Decon, deconPaths, Streaming);
+    XR_parseImageFilenames(dataPaths, channelPatterns, parseSettingFile, flipZstack, Decon, deconPaths, Streaming);
 
 nF = numel(fnames);
 
@@ -273,12 +273,12 @@ memAllocate = prod(imSize) * byteNum / 2^30 * 5;
 
 is_done_flag= generic_computing_frameworks_wrapper(inputFullpaths, outputFullpaths, ...
     funcStrs, cpusPerTask=cpusPerTask, memAllocate=memAllocate, parseCluster=parseCluster, ...
-    masterCompute=masterCompute, mccMode=mccMode, ConfigFile=ConfigFile);
+    masterCompute=masterCompute, mccMode=mccMode, configFile=configFile);
 
 if ~all(is_done_flag)
     generic_computing_frameworks_wrapper(inputFullpaths, outputFullpaths, funcStrs, ...
         cpusPerTask=cpusPerTask, memAllocate=memAllocate*2, parseCluster=parseCluster, ...
-        masterCompute=masterCompute, mccMode=mccMode, ConfigFile=ConfigFile);
+        masterCompute=masterCompute, mccMode=mccMode, configFile=configFile);
 end
 
 %% collect results and take average

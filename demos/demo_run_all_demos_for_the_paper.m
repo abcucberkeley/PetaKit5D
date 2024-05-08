@@ -18,4 +18,7 @@ demo_zarr_stitching;
 fprintf('\nLarge-scale processing demo...\n');
 demo_large_scale_processing;
 
+fprintf('\nUseful tools demo...\n');
+demo_useful_tools;
+
 fprintf('\nAll demos are finished!\n');

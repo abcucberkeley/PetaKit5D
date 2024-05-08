@@ -16,14 +16,14 @@ ip.addRequired('dataPath', @(x) isempty(x) || ischar(x));
 ip.addOptional('fileFullpathList', {}, @(x) isempty(x) || iscell(x));
 ip.addParameter('ext', '.tif', @(x) ischar(x));
 ip.addParameter('onlyFirstTP', false, @(x) ischar(x));
-ip.addParameter('ChannelPatterns', {}, @(x) iscell(x));
+ip.addParameter('channelPatterns', {}, @(x) iscell(x));
 
 ip.parse(dataPath, varargin{:});
 
 fileFullpathList = ip.Results.fileFullpathList;
 ext = ip.Results.ext;
 onlyFirstTP = ip.Results.onlyFirstTP;
-ChannelPatterns = ip.Results.ChannelPatterns;
+channelPatterns = ip.Results.channelPatterns;
 
 fprintf('Check partial volume files... ');
 
@@ -53,11 +53,11 @@ else
     datenum = [dir_info.datenum];
     datasize = [dir_info.bytes]';
     
-    if ~isempty(ChannelPatterns)
+    if ~isempty(channelPatterns)
         include_flag = false(numel(fnames), 1);
         fns = cellfun(@(x) [dataPath, filesep, x], fnames, 'unif', 0);
-        for c = 1 : numel(ChannelPatterns)
-            include_flag = include_flag | contains(fns, ChannelPatterns{c}) | contains(fns, regexpPattern(ChannelPatterns{c}));
+        for c = 1 : numel(channelPatterns)
+            include_flag = include_flag | contains(fns, channelPatterns{c}) | contains(fns, regexpPattern(channelPatterns{c}));
         end
         fnames = fnames(include_flag);
         datenum = datenum(include_flag);
@@ -65,7 +65,7 @@ else
     end
     
     if isempty(fnames)
-        warning('The input image list is empty or none of the images matches ChannelPatterns.');
+        warning('The input image list is empty or none of the images matches channelPatterns.');
         containPartVolume = false;
         groupedFnames = {};
         groupedDatenum = [];

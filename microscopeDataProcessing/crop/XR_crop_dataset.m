@@ -1,4 +1,4 @@
-function [] = XR_crop_dataset(dataPaths, resultPaths, bbox, varargin)
+function [] = XR_crop_dataset(dataPaths, inputBbox, varargin)
 % crop a dataset via cluster computing
 % 
 %
@@ -17,46 +17,47 @@ function [] = XR_crop_dataset(dataPaths, resultPaths, bbox, varargin)
 ip = inputParser;
 ip.CaseSensitive = false;
 ip.addRequired('dataPaths', @(x) ischar(x) || iscell(x));
-ip.addRequired('resultPaths', @(x) ischar(x) || iscell(x));
-ip.addRequired('bbox', @isnumeric);
+ip.addRequired('inputBbox', @isnumeric);
+ip.addParameter('resultDirName', 'Cropped', @ischar);
 ip.addParameter('cropType', 'fixed', @ischar); % fixed or moving or center
 ip.addParameter('pad', false, @islogical); % pad region that is outside the bbox
-ip.addParameter('lastStart', [], @isnumeric); % start coordinate of the last time point
-ip.addParameter('ChannelPatterns', {'CamA_ch0', 'CamB_ch0'}, @iscell);
+ip.addParameter('lastStartCoords', [], @isnumeric); % start coordinate of the last time point
+ip.addParameter('channelPatterns', {'CamA_ch0', 'CamB_ch0'}, @iscell);
 ip.addParameter('zarrFile', false , @islogical); % read zarr
 ip.addParameter('largeZarr', false, @islogical); % use zarr file as input
 ip.addParameter('saveZarr', false , @islogical); % save as zarr
-ip.addParameter('BlockSize', [500, 500, 500] , @isnumeric); % save as zarr
-ip.addParameter('Save16bit', false, @islogical);
+ip.addParameter('blockSize', [500, 500, 500] , @isnumeric);
+ip.addParameter('save16bit', false, @islogical);
 ip.addParameter('parseCluster', true, @islogical);
 ip.addParameter('masterCompute', true, @islogical); % master node participate in the task computing. 
 ip.addParameter('jobLogDir', '../job_logs', @ischar);
 ip.addParameter('cpusPerTask', 2, @isnumeric);
 ip.addParameter('uuid', '', @ischar);
 ip.addParameter('mccMode', false, @islogical);
-ip.addParameter('ConfigFile', '', @ischar);
+ip.addParameter('configFile', '', @ischar);
 
-ip.parse(dataPaths, resultPaths, bbox, varargin{:});
+ip.parse(dataPaths, inputBbox, varargin{:});
 
 warning('off', 'MATLAB:MKDIR:DirectoryExists');
 
 pr = ip.Results;
 % Overwrite = pr.Overwrite;
+resultDirName = pr.resultDirName;
 cropType = pr.cropType;
 pad = pr.pad;
-lastStart = pr.lastStart;
-ChannelPatterns = pr.ChannelPatterns;
+lastStartCoords = pr.lastStartCoords;
+channelPatterns = pr.channelPatterns;
 zarrFile = pr.zarrFile;
 largeZarr = pr.largeZarr;
 saveZarr = pr.saveZarr;
-BlockSize = pr.BlockSize;
+blockSize = pr.blockSize;
 jobLogDir = pr.jobLogDir;
 parseCluster = pr.parseCluster;
 masterCompute = pr.masterCompute;
 cpusPerTask = pr.cpusPerTask;
 uuid = pr.uuid;
 mccMode = pr.mccMode;
-ConfigFile = pr.ConfigFile;
+configFile = pr.configFile;
 
 if isempty(uuid)
     uuid = get_uuid();
@@ -65,18 +66,24 @@ end
 % temporary directory for intermediate results
 if ischar(dataPaths)
     dataPaths = {dataPaths};
-    resultPaths = {resultPaths};
 end
 
 nd = numel(dataPaths);
+resultPaths = cell(nd, 1);
 for d = 1 : nd
     dataPath = dataPaths{d};
-    resultPath = resultPaths{d};
-    mkdir(resultPath);
+    resultPath = sprintf('%s/%s/', dataPath, resultDirName);
+    if ~exist(resultPath, 'dir')
+        mkdir(resultPath);
+    end
     
     dataPaths{d} = simplifyPath(dataPath);
     resultPaths{d} = simplifyPath(resultPath);
-    fileattrib(resultPath, '+w', 'g');
+    try
+        fileattrib(resultPath, '+w', 'g');
+    catch ME
+        disp(ME);
+    end
     save('-v7.3', [resultPath, '/parameters.mat'], 'pr');
 end
 
@@ -97,10 +104,10 @@ for d = 1 : nd
     nF = numel(fnames_d);
     sz = getImageSize([dataPath, '/', fnames_d{1}]);
     fnames_d = sort(fnames_d); % filenames are in order of time points
-    nc = numel(ChannelPatterns);
+    nc = numel(channelPatterns);
     ch_inds = false(nF, nc);
     for c = 1 : nc
-        ch_inds(:, c) = contains(fnames_d, ChannelPatterns{c}, 'IgnoreCase', true) | contains(fnames_d, regexpPattern(ChannelPatterns{c}), 'IgnoreCase', true);
+        ch_inds(:, c) = contains(fnames_d, channelPatterns{c}, 'IgnoreCase', true) | contains(fnames_d, regexpPattern(channelPatterns{c}), 'IgnoreCase', true);
     end
     fnames_d = fnames_d(any(ch_inds, 2));
     fnames{d} = fnames_d;
@@ -111,7 +118,7 @@ for d = 1 : nd
         ch_tps = sum(ch_tps .* ch_inds, 2);
         max_tp = max(ch_tps);
         max_tp_mat(d) = max_tp;
-        if any(bbox(4 : 6) - bbox(1 : 3) + lastStart > sz)
+        if any(inputBbox(4 : 6) - inputBbox(1 : 3) + lastStartCoords > sz)
             error('The moving bounding box moves out of the image for the last time point!')
         end
     end
@@ -144,11 +151,11 @@ for f = 1 : nF
 
     if strcmp(cropType, 'moving')
         max_tp = max_tp_mat(d);
-        bbox_size = bbox(4 : 6) - bbox(1 : 3) + 1;
-        bbox_start_f = bbox(1 : 3) + round((lastStart - bbox(1 : 3)) / (max_tp - 1) * (ch_tps(f) - 1));
+        bbox_size = inputBbox(4 : 6) - inputBbox(1 : 3) + 1;
+        bbox_start_f = inputBbox(1 : 3) + round((lastStartCoords - inputBbox(1 : 3)) / (max_tp - 1) * (ch_tps(f) - 1));
         bbox_f = [bbox_start_f, bbox_start_f + bbox_size - 1];
     elseif strcmp(cropType, 'center')
-        bbox_size = bbox(4 : 6) - bbox(1 : 3) + 1;
+        bbox_size = inputBbox(4 : 6) - inputBbox(1 : 3) + 1;
         % half size
         hsize = floor(bbox_size / 2);
         imSize = getImageSize(frameFullpath);
@@ -157,20 +164,20 @@ for f = 1 : nF
         bbox_start_f = center - hsize;
         bbox_f = [bbox_start_f, bbox_start_f + bbox_size - 1];        
     else
-        bbox_f = bbox;
+        bbox_f = inputBbox;
     end
     
     func_strs{f} = sprintf(['XR_crop_frame(''%s'',''%s'',[%s],''pad'',%s,''zarrFile'',%s,', ...
         '''largeZarr'',%s,''saveZarr'',%s,''BlockSize'',%s,''uuid'',''%s'',''parseCluster'',%s,', ...
-        '''mccMode'',%s,''ConfigFile'',''%s'')'], frameFullpath, cropFullpath, ...
+        '''mccMode'',%s,''configFile'',''%s'')'], frameFullpath, cropFullpath, ...
         strrep(num2str(bbox_f, '%.10f,'), ' ', ''), string(pad), string(zarrFile), ...
-        string(largeZarr), string(saveZarr), strrep(mat2str(BlockSize), ' ', ','), ...
-        uuid, string(parseCluster), string(mccMode), ConfigFile);
+        string(largeZarr), string(saveZarr), strrep(mat2str(blockSize), ' ', ','), ...
+        uuid, string(parseCluster), string(mccMode), configFile);
 end
 
 memAllocate = prod(sz) * 4 / 1024^3 * 8;
 generic_computing_frameworks_wrapper(frameFullpaths, cropFullpaths, func_strs, ...
     parseCluster=parseCluster, jobLogDir=jobLogDir, masterCompute=masterCompute, ...
-    cpusPerTask=cpusPerTask, memAllocate=memAllocate, mccMode=mccMode, ConfigFile=ConfigFile);
+    cpusPerTask=cpusPerTask, memAllocate=memAllocate, mccMode=mccMode, configFile=configFile);
 
 end

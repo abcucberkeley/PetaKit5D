@@ -11,7 +11,7 @@ ip.addParameter('dr', 1 , @(x) isnumeric(x) || ischar(x));
 ip.addParameter('dtheta', pi / 12 , @(x) isnumeric(x) || ischar(x));
 ip.addParameter('resThreshMethod', 'fixed', @ischar);
 ip.addParameter('resThresh', 0.2, @(x) isnumeric(x) || ischar(x));
-ip.addParameter('N', [501, 501, 501], @(x) isnumeric(x) || ischar(x));
+ip.addParameter('halfSize', [501, 501, 501], @(x) isnumeric(x) || ischar(x));
 ip.addParameter('bbox', [], @(x) isnumeric(x) || ischar(x));
 ip.addParameter('resAxis', 'xz', @ischar);
 ip.addParameter('skipConeRegion', true, @(x) islogical(x) || ischar(x));
@@ -27,7 +27,7 @@ dr = pr.dr;
 dtheta = pr.dtheta;
 resThreshMethod = pr.resThreshMethod;
 resThresh = pr.resThresh;
-N = pr.N;
+halfSize = pr.halfSize;
 bbox = pr.bbox;
 resAxis = pr.resAxis;
 skipConeRegion = pr.skipConeRegion;
@@ -49,8 +49,8 @@ end
 if ischar(resThresh)
     resThresh = str2num(resThresh);
 end
-if ischar(N)
-    N = str2num(N);
+if ischar(halfSize)
+    halfSize = str2num(halfSize);
 end
 if ischar(bbox)
     bbox = str2num(bbox);
@@ -67,8 +67,8 @@ end
 
 XR_one_image_FSC_analysis_frame(fn, fnout, xyPixelSize=xyPixelSize, dz=dz, ...
     dr=dr, dtheta=dtheta, resThreshMethod=resThreshMethod, resThresh=resThresh, ...
-    N=N, bbox=bbox, resAxis=resAxis, skipConeRegion=skipConeRegion, clipPer=clipPer, ...
-    debug=debug);
+    halfSize=halfSize, bbox=bbox, resAxis=resAxis, skipConeRegion=skipConeRegion, ...
+    clipPer=clipPer, debug=debug);
 
 end
 

@@ -105,7 +105,7 @@ OTFCumThresh = 0.9;
 % true if the PSF is in skew space
 skewed = true;
 % deconvolution result path string (within dataPath)
-deconPathstr = 'matlab_decon_omw';
+resultDirName = 'matlab_decon_omw';
 
 % background to subtract
 Background = 100;
@@ -148,7 +148,7 @@ mccMode = false;
 % result folder:
 % {destPath}/LLSM5DTools_demo_cell_image_dataset/matlab_decon_omw/
 
-XR_decon_data_wrapper(dataPaths, 'deconPathstr', deconPathstr, 'xyPixelSize', xyPixelSize, ...
+XR_decon_data_wrapper(dataPaths, 'resultDirName', resultDirName, 'xyPixelSize', xyPixelSize, ...
     'dz', dz, 'Reverse', Reverse, 'ChannelPatterns', ChannelPatterns, 'PSFFullpaths', PSFFullpaths, ...
     'dzPSF', dzPSF, 'parseSettingFile', parseSettingFile, 'RLmethod', RLmethod, ...
     'wienerAlpha', wienerAlpha, 'OTFCumThresh', OTFCumThresh, 'skewed', skewed, ...
@@ -200,7 +200,7 @@ PSFFullpaths = {
 % RL method
 RLmethod = 'simplified';
 % deconvolution result path string (within dataPath)
-deconPathstr = 'matlab_decon_conventional';
+resultDirName = 'matlab_decon_conventional';
 
 % background to subtract
 Background = 100;
@@ -242,7 +242,7 @@ mccMode = false;
 % result folder:
 % {destPath}/LLSM5DTools_demo_cell_image_dataset/matlab_decon_conventional/
 
-XR_decon_data_wrapper(dataPaths, 'deconPathstr', deconPathstr, 'xyPixelSize', xyPixelSize, ...
+XR_decon_data_wrapper(dataPaths, 'resultDirName', resultDirName, 'xyPixelSize', xyPixelSize, ...
     'dz', dz, 'Reverse', Reverse, 'ChannelPatterns', ChannelPatterns, 'PSFFullpaths', PSFFullpaths, ...
     'dzPSF', dzPSF, 'parseSettingFile', parseSettingFile, 'RLmethod', RLmethod, ...
     'Background', Background, 'CPPdecon', false, 'CudaDecon', false, 'DeconIter', DeconIter, ...

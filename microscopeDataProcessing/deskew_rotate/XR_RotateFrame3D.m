@@ -12,7 +12,7 @@ ip.CaseSensitive = false;
 ip.addRequired('framePaths', @(x) ischar(x) || iscell(x)); 
 ip.addRequired('xyPixelSize', @isscalar); 
 ip.addRequired('dz', @isscalar); 
-ip.addParameter('ObjectiveScan', false, @islogical);
+ip.addParameter('objectiveScan', false, @islogical);
 ip.addParameter('Overwrite', false, @islogical);
 ip.addParameter('Crop', true, @islogical);
 ip.addParameter('bbox', [], @(x) isnumeric(x));
@@ -20,7 +20,7 @@ ip.addParameter('resample', [], @(x) isnumeric(x)); % resampling after rotation
 ip.addParameter('SkewAngle', 31.5, @isscalar);
 ip.addParameter('Reverse', false, @islogical);
 ip.addParameter('sCMOSCameraFlip', false, @islogical);
-ip.addParameter('Save16bit', false , @islogical); % saves deskewed data as 16 bit -- not for quantification
+ip.addParameter('save16bit', false , @islogical); % saves deskewed data as 16 bit -- not for quantification
 ip.addParameter('uuid', '', @ischar);
 
 ip.parse(framePaths, xyPixelSize, dz, varargin{:});
@@ -38,8 +38,8 @@ bbox = pr.bbox;
 resample = pr.resample;
 Reverse = pr.Reverse;
 SkewAngle = pr.SkewAngle;
-ObjectiveScan = pr.ObjectiveScan;
-Save16bit = pr.Save16bit;
+objectiveScan = pr.objectiveScan;
+save16bit = pr.save16bit;
 
 uuid = pr.uuid;
 % uuid for the job
@@ -48,7 +48,7 @@ if isempty(uuid)
 end
     
 % decide zAniso
-if ObjectiveScan
+if objectiveScan
     zAniso = dz / xyPixelSize;
 else
     theta = SkewAngle * pi / 180;
@@ -79,14 +79,14 @@ for f = 1 : numel(framePaths)
             im = double(readtiff(framePath));
         end
         im_rt = rotateFrame3D(im, SkewAngle, zAniso, Reverse, 'Crop', Crop, ...
-            'resample', resample, 'ObjectiveScan', ObjectiveScan);
+            'resample', resample, 'objectiveScan', objectiveScan);
         
         if ~isempty(bbox)
             im_rt = im_rt(bbox(1) : bbox(4), bbox(2) : bbox(5), bbox(3) : bbox(6));            
         end
         
         rtTempName = sprintf('%s%s_%s.tif', rtPath, fsname, uuid);
-        if Save16bit
+        if save16bit
             writetiff(uint16(im_rt), rtTempName);
         else
             writetiff(single(im_rt), rtTempName);

@@ -9,7 +9,7 @@ ip.addRequired('dz', @(x) isnumeric(x) || ischar(x));
 ip.addOptional('deconPath', '', @(x) ischar(x) || isempty(x));
 ip.addParameter('PSFfile', '', @ischar);
 ip.addParameter('Overwrite', false , @(x) islogical(x) || ischar(x));
-ip.addParameter('Save16bit', false , @(x) islogical(x) || ischar(x));
+ip.addParameter('save16bit', false , @(x) islogical(x) || ischar(x));
 ip.addParameter('Rotate', false , @(x) islogical(x) || ischar(x));
 ip.addParameter('Deskew', false , @(x) islogical(x) || ischar(x));
 ip.addParameter('SkewAngle', -32.45 , @(x) isnumeric(x) || ischar(x));
@@ -30,13 +30,13 @@ ip.addParameter('skewed', [], @(x) isempty(x) || islogical(x) || ischar(x)); % d
 ip.addParameter('fixIter', false, @(x) islogical(x) || ischar(x)); % CPU Memory in Gb
 ip.addParameter('errThresh', [], @(x) isnumeric(x) || ischar(x)); % error threshold for simplified code
 ip.addParameter('CPUMaxMem', 500, @(x) isnumeric(x) || ischar(x)); % CPU Memory in Gb
-ip.addParameter('BatchSize', [1024, 1024, 1024] , @(x) isnumeric(x) || ischar(x)); % in y, x, z
-ip.addParameter('BlockSize', [256, 256, 256], @(x) isnumeric(x) || ischar(x)); % block overlap
+ip.addParameter('batchSize', [1024, 1024, 1024] , @(x) isnumeric(x) || ischar(x)); % in y, x, z
+ip.addParameter('blockSize', [256, 256, 256], @(x) isnumeric(x) || ischar(x)); % block overlap
 ip.addParameter('zarrSubSize', [20, 20, 20], @(x) isnumeric(x) || ischar(x));
 ip.addParameter('largeFile', false, @(x) islogical(x) || ischar(x));
 ip.addParameter('largeMethod', 'inmemory', @ischar); % memory jobs, memory single, inplace. 
 ip.addParameter('saveZarr', false, @(x) islogical(x) || ischar(x)); % save as zarr
-ip.addParameter('damper', 1, @(x) isnumeric(x) || ischar(x)); % damp factor for decon result
+ip.addParameter('dampFactor', 1, @(x) isnumeric(x) || ischar(x)); % damp factor for decon result
 ip.addParameter('scaleFactor', [], @(x) isnumeric(x) || ischar(x)); % scale factor for decon result
 ip.addParameter('deconOffset', 0, @(x) isnumeric(x) || ischar(x)); % offset for decon result
 ip.addParameter('deconMaskFns', {}, @(x) iscell(x) || ischar(x)); % 2d masks to filter regions to decon, in xy, xz, yz order
@@ -54,7 +54,7 @@ ip.addParameter('debug', false, @(x) islogical(x) || ischar(x));
 ip.addParameter('saveStep', 5, @(x) isnumeric(x) || ischar(x)); % save intermediate results every given iterations
 ip.addParameter('psfGen', true, @(x) islogical(x) || ischar(x)); % psf generation
 ip.addParameter('mccMode', false, @(x) islogical(x) || ischar(x));
-ip.addParameter('ConfigFile', '', @ischar);
+ip.addParameter('configFile', '', @ischar);
 ip.addParameter('GPUConfigFile', '', @ischar);
 
 ip.parse(frameFullpaths, xyPixelSize, dz, deconPath, varargin{:});
@@ -62,7 +62,7 @@ ip.parse(frameFullpaths, xyPixelSize, dz, deconPath, varargin{:});
 pr = ip.Results;
 PSFfile = pr.PSFfile;
 Overwrite = pr.Overwrite;
-Save16bit = pr.Save16bit;
+save16bit = pr.save16bit;
 Rotate = pr.Rotate;
 Deskew = pr.Deskew;
 SkewAngle = pr.SkewAngle;
@@ -83,13 +83,13 @@ skewed = pr.skewed;
 fixIter = pr.fixIter;
 errThresh = pr.errThresh;
 CPUMaxMem = pr.CPUMaxMem;
-BatchSize = pr.BatchSize;
-BlockSize = pr.BlockSize;
+batchSize = pr.batchSize;
+blockSize = pr.blockSize;
 zarrSubSize = pr.zarrSubSize;
 largeFile = pr.largeFile;
 largeMethod = pr.largeMethod;
 saveZarr = pr.saveZarr;
-damper = pr.damper;
+dampFactor = pr.dampFactor;
 scaleFactor = pr.scaleFactor;
 deconOffset = pr.deconOffset;
 deconMaskFns = pr.deconMaskFns;
@@ -107,7 +107,7 @@ debug = pr.debug;
 saveStep = pr.saveStep;
 psfGen = pr.psfGen;
 mccMode = pr.mccMode;
-ConfigFile = pr.ConfigFile;
+configFile = pr.configFile;
 GPUConfigFile = pr.GPUConfigFile;
 
 if ischar(frameFullpaths) && ~isempty(frameFullpaths) && strcmp(frameFullpaths(1), '{')
@@ -122,8 +122,8 @@ end
 if ischar(Overwrite)
     Overwrite = str2num(Overwrite);
 end
-if ischar(Save16bit)
-    Save16bit = str2num(Save16bit);
+if ischar(save16bit)
+    save16bit = str2num(save16bit);
 end
 if ischar(Rotate)
     Rotate = str2num(Rotate);
@@ -179,11 +179,11 @@ end
 if ischar(CPUMaxMem)
     CPUMaxMem = str2num(CPUMaxMem);
 end
-if ischar(BatchSize)
-    BatchSize = str2num(BatchSize);
+if ischar(batchSize)
+    batchSize = str2num(batchSize);
 end
-if ischar(BlockSize)
-    BlockSize = str2num(BlockSize);
+if ischar(blockSize)
+    blockSize = str2num(blockSize);
 end
 if ischar(zarrSubSize)
     zarrSubSize = str2num(zarrSubSize);
@@ -194,8 +194,8 @@ end
 if ischar(saveZarr)
     saveZarr = str2num(saveZarr);
 end
-if ischar(damper)
-    damper = str2num(damper);
+if ischar(dampFactor)
+    dampFactor = str2num(dampFactor);
 end
 if ischar(scaleFactor)
     scaleFactor = str2num(scaleFactor);
@@ -244,18 +244,18 @@ if ischar(mccMode)
 end
 
 XR_RLdeconFrame3D(frameFullpaths, xyPixelSize, dz, deconPath, PSFfile=PSFfile, ...
-    Overwrite=Overwrite, Save16bit=Save16bit, Rotate=Rotate, Deskew=Deskew, ...
+    Overwrite=Overwrite, save16bit=save16bit, Rotate=Rotate, Deskew=Deskew, ...
     SkewAngle=SkewAngle, flipZstack=flipZstack, Background=Background, EdgeSoften=EdgeSoften, ...
     zEdgeSoften=zEdgeSoften, Crop=Crop, dzPSF=dzPSF, DeconIter=DeconIter, EdgeErosion=EdgeErosion, ...
     ErodeMaskfile=ErodeMaskfile, SaveMaskfile=SaveMaskfile, RLMethod=RLMethod, ...
     wienerAlpha=wienerAlpha, OTFCumThresh=OTFCumThresh, skewed=skewed, fixIter=fixIter, ...
-    errThresh=errThresh, CPUMaxMem=CPUMaxMem, BatchSize=BatchSize, BlockSize=BlockSize, ...
+    errThresh=errThresh, CPUMaxMem=CPUMaxMem, batchSize=batchSize, blockSize=blockSize, ...
     zarrSubSize=zarrSubSize, largeFile=largeFile, largeMethod=largeMethod, ...
-    saveZarr=saveZarr, damper=damper, scaleFactor=scaleFactor, deconOffset=deconOffset, ...
+    saveZarr=saveZarr, dampFactor=dampFactor, scaleFactor=scaleFactor, deconOffset=deconOffset, ...
     deconMaskFns=deconMaskFns, parseCluster=parseCluster, parseParfor=parseParfor, ...
     masterCompute=masterCompute, masterCPU=masterCPU, GPUJob=GPUJob, jobLogDir=jobLogDir, ...
     cpusPerTask=cpusPerTask, uuid=uuid, maxTrialNum=maxTrialNum, unitWaitTime=unitWaitTime, ...
-    debug=debug, saveStep=saveStep, psfGen=psfGen, mccMode=mccMode, ConfigFile=ConfigFile, ...
+    debug=debug, saveStep=saveStep, psfGen=psfGen, mccMode=mccMode, configFile=configFile, ...
     GPUConfigFile=GPUConfigFile);
 
 end

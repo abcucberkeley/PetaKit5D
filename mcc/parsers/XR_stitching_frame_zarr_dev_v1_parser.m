@@ -17,7 +17,7 @@ ip.addParameter('dataOrder', 'y,x,z', @ischar);
 ip.addParameter('flippedTile', [], @(x) isempty(x) || all(islogical(x) | isnumeric(x)) || ischar(x));
 ip.addParameter('dz', 0.5, @(x) isscalar(x) || ischar(x));
 ip.addParameter('xyPixelSize', 0.108, @(x) isscalar(x) || ischar(x));
-ip.addParameter('ObjectiveScan', false, @(x) islogical(x) || ischar(x));
+ip.addParameter('objectiveScan', false, @(x) islogical(x) || ischar(x));
 ip.addParameter('IOScan', false, @(x) islogical(x) || ischar(x));
 ip.addParameter('sCMOSCameraFlip', false, @(x) islogical(x) || ischar(x));
 ip.addParameter('Reverse', false, @(x) islogical(x) || ischar(x));
@@ -26,7 +26,7 @@ ip.addParameter('InputBbox', [], @(x) isnumeric(x) || ischar(x)); % crop input t
 ip.addParameter('tileOutBbox', [], @(x) isnumeric(x) || ischar(x)); % crop tile after processing
 ip.addParameter('TileOffset', 0, @(x) isnumeric(x) || ischar(x)); % offset added to the tile
 ip.addParameter('df', [], @(x) isnumeric(x) || ischar(x));
-ip.addParameter('Save16bit', false , @(x) islogical(x) || ischar(x)); % saves deskewed data as 16 bit -- not for quantification
+ip.addParameter('save16bit', false , @(x) islogical(x) || ischar(x)); % saves deskewed data as 16 bit -- not for quantification
 ip.addParameter('EdgeArtifacts', 0, @(x) isnumeric(x) || ischar(x));
 ip.addParameter('Decon', false, @(x) islogical(x) || ischar(x));
 ip.addParameter('DS', false, @(x) islogical(x) || ischar(x));
@@ -43,7 +43,7 @@ ip.addParameter('isPrimaryCh', true, @(x) islogical(x) || ischar(x));
 ip.addParameter('usePrimaryCoords', false, @(x) islogical(x) || ischar(x)); % use primary coordinates for secondary channels/tps
 ip.addParameter('stitchPadSize', [2, 2, 1], @(x) isnumeric(x) && numel(x) == 3 || ischar(x));
 ip.addParameter('padSize', [], @(x) isnumeric(x) && (isempty(x) || numel(x) == 3) || ischar(x));
-ip.addParameter('boundboxCrop', [], @(x) isnumeric(x) && (isempty(x) || all(size(x) == [3, 2]) || numel(x) == 6) || ischar(x));
+ip.addParameter('outBbox', [], @(x) isnumeric(x) && (isempty(x) || all(size(x) == [3, 2]) || numel(x) == 6) || ischar(x));
 ip.addParameter('zNormalize', false, @(x) islogical(x) || ischar(x));
 ip.addParameter('xcorrDownsample', [2, 2, 1], @(x) isnumeric(x) || ischar(x)); % y,x,z
 ip.addParameter('xcorrThresh', 0.25, @(x) isnumeric(x) || ischar(x)); % threshold of of xcorr, ignore shift if xcorr below this threshold.
@@ -63,7 +63,7 @@ ip.addParameter('shardSize', [], @(x) isnumeric(x) || ischar(x));
 ip.addParameter('saveMultires', false, @(x) islogical(x) || ischar(x)); % save as multi resolution dataset
 ip.addParameter('resLevel', 4, @(x) isnumeric(x) || ischar(x)); % downsample to 2^1-2^resLevel
 ip.addParameter('BorderSize', [0, 0, 0], @(x) isnumeric(x) || ischar(x));
-ip.addParameter('SaveMIP', true , @(x) islogical(x) || ischar(x)); % save MIP-z for stitch. 
+ip.addParameter('saveMIP', true , @(x) islogical(x) || ischar(x)); % save MIP-z for stitch. 
 ip.addParameter('tileIdx', [] , @(x) isnumeric(x) || ischar(x)); % tile indices 
 ip.addParameter('processFunPath', '', @(x) isempty(x) || iscell(x) || ischar(x)); % path of user-defined process function handle
 ip.addParameter('stitchMIP', [], @(x) isempty(x)  || (islogical(x) && (numel(x) == 1 || numel(x) == 3)) || ischar(x)); % 1x3 vector or vector, by default, stitch MIP-z
@@ -77,7 +77,7 @@ ip.addParameter('uuid', '', @ischar);
 ip.addParameter('maxTrialNum', 3, @(x) isnumeric(x) || ischar(x));
 ip.addParameter('unitWaitTime', 30, @(x) isnumeric(x) || ischar(x));
 ip.addParameter('mccMode', false, @(x) islogical(x) || ischar(x));
-ip.addParameter('ConfigFile', '', @ischar);
+ip.addParameter('configFile', '', @ischar);
 ip.addParameter('debug', false, @(x) islogical(x) || ischar(x));
 
 ip.parse(tileFullpaths, coordinates, varargin{:});
@@ -95,7 +95,7 @@ dataOrder = pr.dataOrder;
 flippedTile = pr.flippedTile;
 dz = pr.dz;
 xyPixelSize = pr.xyPixelSize;
-ObjectiveScan = pr.ObjectiveScan;
+objectiveScan = pr.objectiveScan;
 IOScan = pr.IOScan;
 sCMOSCameraFlip = pr.sCMOSCameraFlip;
 Reverse = pr.Reverse;
@@ -104,7 +104,7 @@ InputBbox = pr.InputBbox;
 tileOutBbox = pr.tileOutBbox;
 TileOffset = pr.TileOffset;
 df = pr.df;
-Save16bit = pr.Save16bit;
+save16bit = pr.save16bit;
 EdgeArtifacts = pr.EdgeArtifacts;
 Decon = pr.Decon;
 DS = pr.DS;
@@ -121,7 +121,7 @@ isPrimaryCh = pr.isPrimaryCh;
 usePrimaryCoords = pr.usePrimaryCoords;
 stitchPadSize = pr.stitchPadSize;
 padSize = pr.padSize;
-boundboxCrop = pr.boundboxCrop;
+outBbox = pr.outBbox;
 zNormalize = pr.zNormalize;
 xcorrDownsample = pr.xcorrDownsample;
 xcorrThresh = pr.xcorrThresh;
@@ -141,7 +141,7 @@ shardSize = pr.shardSize;
 saveMultires = pr.saveMultires;
 resLevel = pr.resLevel;
 BorderSize = pr.BorderSize;
-SaveMIP = pr.SaveMIP;
+saveMIP = pr.saveMIP;
 tileIdx = pr.tileIdx;
 processFunPath = pr.processFunPath;
 stitchMIP = pr.stitchMIP;
@@ -155,7 +155,7 @@ uuid = pr.uuid;
 maxTrialNum = pr.maxTrialNum;
 unitWaitTime = pr.unitWaitTime;
 mccMode = pr.mccMode;
-ConfigFile = pr.ConfigFile;
+configFile = pr.configFile;
 debug = pr.debug;
 
 if ischar(tileFullpaths) && ~isempty(tileFullpaths) && strcmp(tileFullpaths(1), '{')
@@ -179,8 +179,8 @@ end
 if ischar(xyPixelSize)
     xyPixelSize = str2num(xyPixelSize);
 end
-if ischar(ObjectiveScan)
-    ObjectiveScan = str2num(ObjectiveScan);
+if ischar(objectiveScan)
+    objectiveScan = str2num(objectiveScan);
 end
 if ischar(IOScan)
     IOScan = str2num(IOScan);
@@ -206,8 +206,8 @@ end
 if ischar(df)
     df = str2num(df);
 end
-if ischar(Save16bit)
-    Save16bit = str2num(Save16bit);
+if ischar(save16bit)
+    save16bit = str2num(save16bit);
 end
 if ischar(EdgeArtifacts)
     EdgeArtifacts = str2num(EdgeArtifacts);
@@ -248,8 +248,8 @@ end
 if ischar(padSize)
     padSize = str2num(padSize);
 end
-if ischar(boundboxCrop)
-    boundboxCrop = str2num(boundboxCrop);
+if ischar(outBbox)
+    outBbox = str2num(outBbox);
 end
 if ischar(zNormalize)
     zNormalize = str2num(zNormalize);
@@ -302,8 +302,8 @@ end
 if ischar(BorderSize)
     BorderSize = str2num(BorderSize);
 end
-if ischar(SaveMIP)
-    SaveMIP = str2num(SaveMIP);
+if ischar(saveMIP)
+    saveMIP = str2num(saveMIP);
 end
 if ischar(tileIdx)
     tileIdx = str2num(tileIdx);
@@ -346,23 +346,23 @@ XR_stitching_frame_zarr_dev_v1(tileFullpaths, coordinates, ResultPath=ResultPath
     tileInfoFullpath=tileInfoFullpath, stitchInfoDir=stitchInfoDir, stitchInfoFullpath=stitchInfoFullpath, ...
     ProcessedDirstr=ProcessedDirstr, Overwrite=Overwrite, SkewAngle=SkewAngle, ...
     axisOrder=axisOrder, dataOrder=dataOrder, flippedTile=flippedTile, dz=dz, ...
-    xyPixelSize=xyPixelSize, ObjectiveScan=ObjectiveScan, IOScan=IOScan, sCMOSCameraFlip=sCMOSCameraFlip, ...
+    xyPixelSize=xyPixelSize, objectiveScan=objectiveScan, IOScan=IOScan, sCMOSCameraFlip=sCMOSCameraFlip, ...
     Reverse=Reverse, Crop=Crop, InputBbox=InputBbox, tileOutBbox=tileOutBbox, ...
-    TileOffset=TileOffset, df=df, Save16bit=Save16bit, EdgeArtifacts=EdgeArtifacts, ...
+    TileOffset=TileOffset, df=df, save16bit=save16bit, EdgeArtifacts=EdgeArtifacts, ...
     Decon=Decon, DS=DS, DSR=DSR, resampleType=resampleType, resample=resample, ...
     deconRotate=deconRotate, BlendMethod=BlendMethod, blendWeightDegree=blendWeightDegree, ...
     halfOrder=halfOrder, overlapType=overlapType, xcorrShift=xcorrShift, isPrimaryCh=isPrimaryCh, ...
     usePrimaryCoords=usePrimaryCoords, stitchPadSize=stitchPadSize, padSize=padSize, ...
-    boundboxCrop=boundboxCrop, zNormalize=zNormalize, xcorrDownsample=xcorrDownsample, ...
+    outBbox=outBbox, zNormalize=zNormalize, xcorrDownsample=xcorrDownsample, ...
     xcorrThresh=xcorrThresh, xyMaxOffset=xyMaxOffset, zMaxOffset=zMaxOffset, ...
     shiftMethod=shiftMethod, axisWeight=axisWeight, groupFile=groupFile, singleDistMap=singleDistMap, ...
     distBboxes=distBboxes, zarrFile=zarrFile, largeZarr=largeZarr, poolSize=poolSize, ...
     blockSize=blockSize, batchSize=batchSize, shardSize=shardSize, saveMultires=saveMultires, ...
-    resLevel=resLevel, BorderSize=BorderSize, SaveMIP=SaveMIP, tileIdx=tileIdx, ...
+    resLevel=resLevel, BorderSize=BorderSize, saveMIP=saveMIP, tileIdx=tileIdx, ...
     processFunPath=processFunPath, stitchMIP=stitchMIP, stitch2D=stitch2D, ...
     bigStitchData=bigStitchData, parseCluster=parseCluster, masterCompute=masterCompute, ...
     jobLogDir=jobLogDir, cpusPerTask=cpusPerTask, uuid=uuid, maxTrialNum=maxTrialNum, ...
-    unitWaitTime=unitWaitTime, mccMode=mccMode, ConfigFile=ConfigFile, debug=debug);
+    unitWaitTime=unitWaitTime, mccMode=mccMode, configFile=configFile, debug=debug);
 
 end
 

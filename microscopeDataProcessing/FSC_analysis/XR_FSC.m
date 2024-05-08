@@ -13,7 +13,7 @@ ip.addParameter('dtheta', pi / 12 , @isnumeric);
 ip.addParameter('resThreshMethod', 'fixed', @ischar);
 ip.addParameter('resThresh', 0.2, @isnumeric);
 ip.addParameter('skipConeRegion', true, @islogical);
-ip.addParameter('N', [501, 501, 501], @isnumeric);
+ip.addParameter('halfSize', [501, 501, 501], @isnumeric);
 ip.addParameter('debug', false, @islogical);
 
 ip.parse(im1, im2, varargin{:});
@@ -26,10 +26,10 @@ dtheta = pr.dtheta;
 resThreshMethod = pr.resThreshMethod;
 resThresh = pr.resThresh;
 skipConeRegion = pr.skipConeRegion;
-N = pr.N;
+halfSize = pr.halfSize;
 debug = pr.debug;
 
-hfN = (N - 1) / 2;
+hfN = (halfSize - 1) / 2;
 
 % don't resample image 
 % psz = min(xyPixelSize, dz);
@@ -38,19 +38,19 @@ hfN = (N - 1) / 2;
 %     im2 = imresize3(im2, round(size(im2) .* [xyPixelSize, xyPixelSize, dz] / psz));
 % end
 
-if any(size(im1) ~= N)
+if any(size(im1) ~= halfSize)
     sz1 = size(im1);
-    im1 = padarray(im1, max(0, floor((N - sz1) / 2)), 0, 'pre');
-    im1 = padarray(im1, max(0, ceil((N - sz1) / 2)), 0, 'post');
+    im1 = padarray(im1, max(0, floor((halfSize - sz1) / 2)), 0, 'pre');
+    im1 = padarray(im1, max(0, ceil((halfSize - sz1) / 2)), 0, 'post');
     
     c_1 = round((size(im1) + 1) / 2);
     im1 = im1(c_1(1) - hfN(1) : c_1(1) + hfN(1), c_1(2) - hfN(2) : c_1(2) + hfN(2), c_1(3) - hfN(3) : c_1(3) + hfN(3));
 end
 
-if any(size(im2) ~= N)
+if any(size(im2) ~= halfSize)
     sz2 = size(im2);    
-    im2 = padarray(im2, max(0, floor((N - sz2) / 2)), 0, 'pre');
-    im2 = padarray(im2, max(0, ceil((N - sz2) / 2)), 0, 'post');
+    im2 = padarray(im2, max(0, floor((halfSize - sz2) / 2)), 0, 'pre');
+    im2 = padarray(im2, max(0, ceil((halfSize - sz2) / 2)), 0, 'post');
     
     c_2 = round((size(im2) + 1) / 2);
     im2 = im2(c_2(1) - hfN(1) : c_2(1) + hfN(1), c_2(2) - hfN(2) : c_2(2) + hfN(2), c_2(3) - hfN(3) : c_2(3) + hfN(3));
@@ -58,20 +58,19 @@ end
 
 % apply hamming windowing
 if ~false 
-    hwd = hamming(N(1));
+    hwd = hamming(halfSize(1));
     window = (hwd .* reshape(hwd, 1, numel(hwd)) .* reshape(hwd, 1, 1, numel(hwd))) .^ (1 / 3);
     
     im1 = im1 .* window;
     im2 = im2 .* window;
 end
 
-
 % don't caclculate shells every time
 persistent azimuth r N_orig
 
-if isempty(N_orig) || N_orig ~= N(1)
-    N_orig = N(1);
-    [X, Y, Z] = meshgrid(-(N(2) - 1) / 2 : (N(2) - 1) / 2, -(N(1) - 1) / 2 : (N(1) - 1) / 2, -(N(3) - 1) / 2 : (N(3) - 1) / 2);
+if isempty(N_orig) || N_orig ~= halfSize(1)
+    N_orig = halfSize(1);
+    [X, Y, Z] = meshgrid(-(halfSize(2) - 1) / 2 : (halfSize(2) - 1) / 2, -(halfSize(1) - 1) / 2 : (halfSize(1) - 1) / 2, -(halfSize(3) - 1) / 2 : (halfSize(3) - 1) / 2);
 
     [azimuth,elevation,r] = cart2sph(X, Y, Z);
     % use y axis as the rotation axis
@@ -88,7 +87,7 @@ shells_a(shells_a == max(shells_a(:))) = min(shells_a(:));
 % uniq_re = unique([shells_r(:), shells_e(:)], 'row');
 % uniq_re(uniq_re(:, 1) > (N(1) - 1) / 2 + 1, :) = []; 
 
-shells_r((shells_r - 1) * dr > (N(1) - 1) / 2 + 1) = round(((N(1) - 1) / 2 + 1) / dr) + 1;
+shells_r((shells_r - 1) * dr > (halfSize(1) - 1) / 2 + 1) = round(((halfSize(1) - 1) / 2 + 1) / dr) + 1;
 shells_a(shells_r == max(shells_r(:))) = max(shells_a(:)) + 1;
 
 max_r = max(shells_r(:));
@@ -160,7 +159,7 @@ frc_mat(1, frc_mat(1, :) == 0) = 1;
 % Number of Fourier frequencies in each cell
 % n_xi = accumarray(shells(:), ones([numel(shells),1]));
 
-fsc.r = ((1 : (max_r-1))' - 1) * dr / ((N(1) - 1) / 2);
+fsc.r = ((1 : (max_r-1))' - 1) * dr / ((halfSize(1) - 1) / 2);
 fsc.thetas = (unique_e - 1) * dtheta;
 fsc.fsc = frc_mat;
 fsc.npoints = npoints_mat;

@@ -8,12 +8,13 @@ function [] = XR_MIP_wrapper_parser(dataPaths, varargin)
 ip = inputParser;
 ip.CaseSensitive = false;
 ip.addRequired('dataPaths', @(x) ischar(x) || iscell(x));
+ip.addParameter('resultDirName', 'MIPs', @ischar);
 ip.addParameter('axis', [0, 0, 1], @(x) isnumeric(x) || ischar(x)); % y, x, z
-ip.addParameter('ChannelPatterns', {'CamA_ch0', 'CamA_ch1', 'CamB_ch0', 'CamB_ch1'}, @(x) iscell(x) || ischar(x));
+ip.addParameter('channelPatterns', {'CamA_ch0', 'CamA_ch1', 'CamB_ch0', 'CamB_ch1'}, @(x) iscell(x) || ischar(x));
 ip.addParameter('zarrFile', false, @(x) islogical(x) || ischar(x)); % use zarr file as input
 ip.addParameter('largeZarr', false, @(x) islogical(x) || ischar(x)); % use zarr file as input
-ip.addParameter('BatchSize', [2048, 2048, 2048] , @(x) isvector(x) || ischar(x)); % in y, x, z
-ip.addParameter('Save16bit', true, @(x) islogical(x) || ischar(x));
+ip.addParameter('batchSize', [2048, 2048, 2048] , @(x) isvector(x) || ischar(x)); % in y, x, z
+ip.addParameter('save16bit', true, @(x) islogical(x) || ischar(x));
 ip.addParameter('parseCluster', true, @(x) islogical(x) || ischar(x));
 ip.addParameter('parseParfor', false, @(x) islogical(x) || ischar(x));
 ip.addParameter('masterCompute', true, @(x) islogical(x) || ischar(x)); % master node participate in the task computing. 
@@ -22,17 +23,18 @@ ip.addParameter('jobLogDir', '../job_logs/', @ischar);
 ip.addParameter('uuid', '', @ischar);
 ip.addParameter('debug', false, @(x) islogical(x) || ischar(x));
 ip.addParameter('mccMode', false, @(x) islogical(x) || ischar(x));
-ip.addParameter('ConfigFile', '', @ischar);
+ip.addParameter('configFile', '', @ischar);
 
 ip.parse(dataPaths, varargin{:});
 
 pr = ip.Results;
+resultDirName = pr.resultDirName;
 axis = pr.axis;
-ChannelPatterns = pr.ChannelPatterns;
+channelPatterns = pr.channelPatterns;
 zarrFile = pr.zarrFile;
 largeZarr = pr.largeZarr;
-BatchSize = pr.BatchSize;
-Save16bit = pr.Save16bit;
+batchSize = pr.batchSize;
+save16bit = pr.save16bit;
 parseCluster = pr.parseCluster;
 parseParfor = pr.parseParfor;
 masterCompute = pr.masterCompute;
@@ -41,7 +43,7 @@ jobLogDir = pr.jobLogDir;
 uuid = pr.uuid;
 debug = pr.debug;
 mccMode = pr.mccMode;
-ConfigFile = pr.ConfigFile;
+configFile = pr.configFile;
 
 if ischar(dataPaths) && ~isempty(dataPaths) && strcmp(dataPaths(1), '{')
     dataPaths = eval(dataPaths);
@@ -49,8 +51,8 @@ end
 if ischar(axis)
     axis = str2num(axis);
 end
-if ischar(ChannelPatterns) && ~isempty(ChannelPatterns) && strcmp(ChannelPatterns(1), '{')
-    ChannelPatterns = eval(ChannelPatterns);
+if ischar(channelPatterns) && ~isempty(channelPatterns) && strcmp(channelPatterns(1), '{')
+    channelPatterns = eval(channelPatterns);
 end
 if ischar(zarrFile)
     zarrFile = str2num(zarrFile);
@@ -58,11 +60,11 @@ end
 if ischar(largeZarr)
     largeZarr = str2num(largeZarr);
 end
-if ischar(BatchSize)
-    BatchSize = str2num(BatchSize);
+if ischar(batchSize)
+    batchSize = str2num(batchSize);
 end
-if ischar(Save16bit)
-    Save16bit = str2num(Save16bit);
+if ischar(save16bit)
+    save16bit = str2num(save16bit);
 end
 if ischar(parseCluster)
     parseCluster = str2num(parseCluster);
@@ -83,10 +85,11 @@ if ischar(mccMode)
     mccMode = str2num(mccMode);
 end
 
-XR_MIP_wrapper(dataPaths, axis=axis, ChannelPatterns=ChannelPatterns, zarrFile=zarrFile, ...
-    largeZarr=largeZarr, BatchSize=BatchSize, Save16bit=Save16bit, parseCluster=parseCluster, ...
-    parseParfor=parseParfor, masterCompute=masterCompute, cpusPerTask=cpusPerTask, ...
-    jobLogDir=jobLogDir, uuid=uuid, debug=debug, mccMode=mccMode, ConfigFile=ConfigFile);
+XR_MIP_wrapper(dataPaths, resultDirName=resultDirName, axis=axis, channelPatterns=channelPatterns, ...
+    zarrFile=zarrFile, largeZarr=largeZarr, batchSize=batchSize, save16bit=save16bit, ...
+    parseCluster=parseCluster, parseParfor=parseParfor, masterCompute=masterCompute, ...
+    cpusPerTask=cpusPerTask, jobLogDir=jobLogDir, uuid=uuid, debug=debug, mccMode=mccMode, ...
+    configFile=configFile);
 
 end
 

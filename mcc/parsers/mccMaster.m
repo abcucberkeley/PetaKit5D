@@ -12,7 +12,7 @@ switch functionName
     case 'XR_decon_data_wrapper'
         XR_decon_data_wrapper_parser(varargin{1}, varargin{2:end});
     case 'XR_crop_dataset'
-        XR_crop_dataset_parser(varargin{1}, varargin{2}, varargin{3}, varargin{4:end});
+        XR_crop_dataset_parser(varargin{1}, varargin{2}, varargin{3:end});
     case 'XR_fftSpectrumComputingWrapper'
         XR_fftSpectrumComputingWrapper_parser(varargin{1}, varargin{2:end});
     case 'XR_FSC_analysis_wrapper'

@@ -1,9 +1,9 @@
-function [] = resampleZarrBlock(batchInds, zarrFullpath, dsFullpath, flagFullname, dsFactor, varargin)
+function [] = resampleZarrBlock(batchInds, zarrFullpath, dsFullpath, flagFullname, resampleFactor, varargin)
 % resample each block for given block indices for zarr.
 % 
 % 
 % Author: Xiongtao Ruan (12/19/2020) change to the point of view of output,
-% especially for batch size and blocksize;
+% especially for batch size and blockSize;
 
 
 ip = inputParser;
@@ -12,28 +12,28 @@ ip.addRequired('batchInds', @isnumeric);
 ip.addRequired('zarrFullpath', @(x) ischar(x));
 ip.addRequired('dsFullpath', @(x) ischar(x));
 ip.addRequired('flagFullname', @(x) ischar(x));
-ip.addRequired('dsFactor', @isnumeric);
+ip.addRequired('resampleFactor', @isnumeric);
 % ip.addParameter('ResultDir', 'matlab_stitch', @ischar);
-ip.addParameter('bbox', [], @isnumeric);
-ip.addParameter('BatchSize', [], @isnumeric);
-ip.addParameter('BlockSize', [], @isnumeric);
-ip.addParameter('BorderSize', [], @isnumeric);
-ip.addParameter('Overwrite', false, @islogical);
-ip.addParameter('Interp', 'linear', @ischar);
+ip.addParameter('inputBbox', [], @isnumeric);
+ip.addParameter('batchSize', [], @isnumeric);
+ip.addParameter('blockSize', [], @isnumeric);
+ip.addParameter('borderSize', [], @isnumeric);
+ip.addParameter('overwrite', false, @islogical);
+ip.addParameter('interpMethod', 'linear', @ischar);
 % ip.addParameter('imdistPath', '', @ischar); % blurred sigma for blurred blend
 
-ip.parse(batchInds, zarrFullpath, dsFullpath, flagFullname, dsFactor, varargin{:});
+ip.parse(batchInds, zarrFullpath, dsFullpath, flagFullname, resampleFactor, varargin{:});
 
 pr = ip.Results;
-Overwrite = pr.Overwrite;
-BatchSize = pr.BatchSize;
-Interp = pr.Interp;
-bbox = pr.bbox;
-BlockSize = pr.BlockSize;
-BorderSize = pr.BorderSize;
+overwrite = pr.overwrite;
+batchSize = pr.batchSize;
+interpMethod = pr.interpMethod;
+inputBbox = pr.inputBbox;
+blockSize = pr.blockSize;
+borderSize = pr.borderSize;
 
-if isempty(BorderSize) 
-    BorderSize = [0, 0, 0];
+if isempty(borderSize) 
+    borderSize = [0, 0, 0];
 end
 
 % we assume the path exists, otherwise return error (in case of completion 
@@ -44,7 +44,7 @@ if ~exist(flagPath, 'dir')
 end
 
 if exist(flagFullname, 'file')
-    if Overwrite
+    if overwrite
         delete(flagFullname);
     else
         fprintf('The batch files (%d - %d) already exist, skip them!\n', batchInds(1), batchInds(end));
@@ -62,12 +62,12 @@ end
 
 sz = getImageSize(zarrFullpath);
 oSz = getImageSize(dsFullpath);
-oBlockSize = BlockSize;
-if isempty(BatchSize)
-    BatchSize = oBlockSize * 2;
+oblockSize = blockSize;
+if isempty(batchSize)
+    batchSize = oblockSize * 2;
 end
 
-baSubSz = ceil(oSz ./ BatchSize);
+baSubSz = ceil(oSz ./ batchSize);
 
 done_flag = false(numel(batchInds), 1);
 for i = 1 : numel(batchInds)
@@ -79,39 +79,39 @@ for i = 1 : numel(batchInds)
     batchSub = [suby, subx, subz];
     
     % get input coordinates
-    ibStart_orig = round((batchSub - 1) .* BatchSize .* dsFactor) + 1;
-    ibEnd_orig = min(round(batchSub .* BatchSize .* dsFactor), sz);
-    obStart = round((ibStart_orig - 1) ./ dsFactor) + 1;
-    obStart = round((obStart - 1) ./ BatchSize) .* BatchSize + 1;    
+    ibStart_orig = round((batchSub - 1) .* batchSize .* resampleFactor) + 1;
+    ibEnd_orig = min(round(batchSub .* batchSize .* resampleFactor), sz);
+    obStart = round((ibStart_orig - 1) ./ resampleFactor) + 1;
+    obStart = round((obStart - 1) ./ batchSize) .* batchSize + 1;    
 
-    if ~isempty(bbox)
-        ibStart_orig = ibStart_orig + bbox(1 : 3) - 1;
-        ibEnd_orig = ibEnd_orig + bbox(1 : 3) - 1;
+    if ~isempty(inputBbox)
+        ibStart_orig = ibStart_orig + inputBbox(1 : 3) - 1;
+        ibEnd_orig = ibEnd_orig + inputBbox(1 : 3) - 1;
     end
 
-    ibStart = max(ibStart_orig - BorderSize, 1);
-    ibEnd = min(ibEnd_orig + BorderSize, sz);
+    ibStart = max(ibStart_orig - borderSize, 1);
+    ibEnd = min(ibEnd_orig + borderSize, sz);
     
     % load the region in input 
     % in_batch = bim.Adapter.getIORegion(ibStart, ibEnd);
-    in_batch = readzarr(zarrFullpath, 'bbox', [ibStart, ibEnd]);
+    in_batch = readzarr(zarrFullpath, 'inputBbox', [ibStart, ibEnd]);
     
     % find the coresponding coordinates in the output
-    obEnd = min(obStart + BatchSize - 1, oSz);
-    oBatchSize = obEnd - obStart + 1;
+    obEnd = min(obStart + batchSize - 1, oSz);
+    obatchSize = obEnd - obStart + 1;
     
     % find the start in out batch
-    baStart = round((ibStart_orig - ibStart) ./ dsFactor) + 1;
-    baEnd = baStart + oBatchSize - 1;
+    baStart = round((ibStart_orig - ibStart) ./ resampleFactor) + 1;
+    baEnd = baStart + obatchSize - 1;
     
     % handle edge blocks
-    outSize = max(round(size(in_batch) ./ dsFactor), baEnd);
+    outSize = max(round(size(in_batch) ./ resampleFactor), baEnd);
 
     % resize batch
-    if all(dsFactor == 1)
+    if all(resampleFactor == 1)
         out_batch = in_batch;
     else
-        out_batch = imresize3(in_batch, outSize, Interp);
+        out_batch = imresize3(in_batch, outSize, interpMethod);
     end
     clear in_batch;
 
@@ -122,7 +122,7 @@ for i = 1 : numel(batchInds)
         out_batch = out_batch(baStart(1) : baEnd(1), baStart(2) : baEnd(2), baStart(3) : baEnd(3));
     end
 
-    writezarr(out_batch, dsFullpath, bbox=[obStart, obEnd]);
+    writezarr(out_batch, dsFullpath, inputBbox=[obStart, obEnd]);
 
     done_flag(i) = true;
 

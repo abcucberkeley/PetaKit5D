@@ -10,10 +10,10 @@ ip = inputParser;
 ip.CaseSensitive = false;
 ip.addRequired('frameFullpaths', @(x) ischar(x) || iscell(x));
 ip.addRequired('outFullpath', @(x) ischar(x) || iscell(x));
-ip.addParameter('Save16bit', false , @islogical);
+ip.addParameter('save16bit', false , @islogical);
 ip.addParameter('rsFactor', 60000 , @isnumeric);
 ip.addParameter('rsRange', [0, 65535] , @isnumeric);
-ip.addParameter('BatchSize', [1024, 1024, 1024] , @isvector); % in y, x, z
+ip.addParameter('batchSize', [1024, 1024, 1024] , @isvector); % in y, x, z
 ip.addParameter('BlockSize', [256, 256, 256] , @isvector); % in y, x, z
 ip.addParameter('jobLogDir', '../job_logs', @ischar);
 ip.addParameter('parseCluster', true, @islogical); %  
@@ -28,7 +28,7 @@ ip.parse(frameFullpath, rsPath, varargin{:});
 pr = ip.Results;    
 
 % parameters
-Save16bit = pr.Save16bit;
+save16bit = pr.save16bit;
 rsFactor = pr.rsFactor;
 rsRange = pr.rsRange;
 GPUJob = pr.GPUJob;
@@ -38,7 +38,7 @@ useGPU = true;
 % info. Currently use 99. 
 % simplified version related options
 
-BatchSize = pr.BatchSize;
+batchSize = pr.batchSize;
 BlockSize = pr.BlockSize;
 
 tic
@@ -81,7 +81,7 @@ toc
 % not consider edge erosion for now
 
 % dtype = class(im);
-if Save16bit
+if save16bit
     dtype = 'uint16';
 else
     dtype = 'single';
@@ -105,10 +105,10 @@ end
 imSize = bim.Size;
 
 % BlockSize = nv_bim.BlockSize;
-SameBatchSize = false;
+sameBatchSize = false;
 BorderSize = 0;
-[batchBBoxes, regionBBoxes] = XR_zarrChunkCoordinatesExtraction(imSize, 'BatchSize', BatchSize, ...
-    'BlockSize', BlockSize, 'SameBatchSize', SameBatchSize, 'BorderSize', BorderSize);
+[batchBBoxes, regionBBoxes] = XR_zarrChunkCoordinatesExtraction(imSize, 'batchSize', batchSize, ...
+    'BlockSize', BlockSize, 'sameBatchSize', sameBatchSize, 'BorderSize', BorderSize);
 
 
 % initialize zarr file

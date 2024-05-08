@@ -26,7 +26,7 @@ ip.addRequired('dz', @isnumeric);
 ip.addOptional('deconPath', '', @(x) ischar(x) || isempty(x));
 ip.addParameter('PSFfile', '', @ischar);
 ip.addParameter('Overwrite', false , @islogical);
-ip.addParameter('Save16bit', false , @islogical);
+ip.addParameter('save16bit', false , @islogical);
 ip.addParameter('Rotate', false , @islogical);
 ip.addParameter('Deskew', false , @islogical);
 ip.addParameter('SkewAngle', -32.45 , @isnumeric);
@@ -48,13 +48,13 @@ ip.addParameter('skewed', [], @(x) isempty(x) || islogical(x)); % decon in skewe
 ip.addParameter('fixIter', false, @islogical); % CPU Memory in Gb
 ip.addParameter('errThresh', [], @isnumeric); % error threshold for simplified code
 ip.addParameter('CPUMaxMem', 500, @isnumeric); % CPU Memory in Gb
-ip.addParameter('BatchSize', [1024, 1024, 1024] , @isnumeric); % in y, x, z
-ip.addParameter('BlockSize', [256, 256, 256], @isnumeric); % block overlap
+ip.addParameter('batchSize', [1024, 1024, 1024] , @isnumeric); % in y, x, z
+ip.addParameter('blockSize', [256, 256, 256], @isnumeric); % block overlap
 ip.addParameter('zarrSubSize', [20, 20, 20], @isnumeric);
 ip.addParameter('largeFile', false, @islogical);
 ip.addParameter('largeMethod', 'inmemory', @ischar); % memory jobs, memory single, inplace. 
 ip.addParameter('saveZarr', false, @islogical); % save as zarr
-ip.addParameter('damper', 1, @isnumeric); % damp factor for decon result
+ip.addParameter('dampFactor', 1, @isnumeric); % damp factor for decon result
 ip.addParameter('scaleFactor', [], @isnumeric); % scale factor for decon result
 ip.addParameter('deconOffset', 0, @isnumeric); % offset for decon result
 ip.addParameter('deconMaskFns', {}, @iscell); % 2d masks to filter regions to decon, in xy, xz, yz order
@@ -72,7 +72,7 @@ ip.addParameter('debug', false, @islogical);
 ip.addParameter('saveStep', 5, @isnumeric); % save intermediate results every given iterations
 ip.addParameter('psfGen', true, @islogical); % psf generation
 ip.addParameter('mccMode', false, @islogical);
-ip.addParameter('ConfigFile', '', @ischar);
+ip.addParameter('configFile', '', @ischar);
 ip.addParameter('GPUConfigFile', '', @ischar);
 
 ip.parse(frameFullpaths, xyPixelSize, dz, deconPath, varargin{:});
@@ -95,7 +95,7 @@ Deskew = pr.Deskew;
 SkewAngle = pr.SkewAngle;
 flipZstack = pr.flipZstack;
 Rotate = pr.Rotate;
-Save16bit = pr.Save16bit;
+save16bit = pr.save16bit;
 Crop = pr.Crop;
 RLMethod = lower(pr.RLMethod);
 wienerAlpha = pr.wienerAlpha;
@@ -125,13 +125,13 @@ saveStep = pr.saveStep;
 psfGen = pr.psfGen;
 
 CPUMaxMem = pr.CPUMaxMem;
-BatchSize = pr.BatchSize;
-BlockSize = pr.BlockSize;
+batchSize = pr.batchSize;
+blockSize = pr.blockSize;
 zarrSubSize = pr.zarrSubSize;
 largeFile = pr.largeFile;
 largeMethod = pr.largeMethod;
 saveZarr = pr.saveZarr;
-damper = pr.damper;
+dampFactor = pr.dampFactor;
 scaleFactor = pr.scaleFactor;
 deconOffset = pr.deconOffset;
 deconMaskFns = pr.deconMaskFns;
@@ -144,7 +144,7 @@ masterCompute = pr.masterCompute;
 maxTrialNum = pr.maxTrialNum;
 uuid = pr.uuid;
 mccMode = pr.mccMode;
-ConfigFile = pr.ConfigFile;
+configFile = pr.configFile;
 GPUConfigFile = pr.GPUConfigFile;
 
 if isempty(uuid)
@@ -239,11 +239,11 @@ for f = 1 : nF
         mipAxis = [0, 0, 0];
     
         im = RLdecon(inputFn, outputFn, PSFfile, xyPixelSize, dz, dzPSF, ...
-            'rawdata', [], 'Save16bit', Save16bit, 'SkewAngle', SkewAngle, ...
+            'rawdata', [], 'save16bit', save16bit, 'SkewAngle', SkewAngle, ...
             'Deskew', Deskew, 'Rotate', Rotate, 'DSRCombined', DSRCombined, ...
             'Reverse', Reverse, 'Background', Background, 'DeconIter', DeconIter, ...
             'RLMethod', RLMethod, 'skewed', skewed, 'wienerAlpha', wienerAlpha, ...
-            'OTFCumThresh', OTFCumThresh, 'fixIter', fixIter, 'damper', damper, ...
+            'OTFCumThresh', OTFCumThresh, 'fixIter', fixIter, 'dampFactor', dampFactor, ...
             'scaleFactor', scaleFactor, 'deconOffset', deconOffset, 'errThresh', errThresh, ...
             'saveStep', saveStep, 'useGPU', GPUJob, 'psfGen', psfGen, 'debug', debug, ...
             'save3Dstack', save3Dstack, 'mipAxis', mipAxis);
@@ -260,14 +260,14 @@ for f = 1 : nF
             im = im .* cast(im_bw_erode, class(im));
         end
         deconTmpPath_eroded = sprintf('%s_%s_eroded.tif', deconFullPath(1:end-4), uuid);
-        if Save16bit
+        if save16bit
             im = uint16(im);
         else
             im = single(im);
         end
         
         if saveZarr
-            writezarr(im, deconTmpPath_eroded, 'blockSize', BlockSize);
+            writezarr(im, deconTmpPath_eroded, 'blockSize', blockSize);
         else
             writetiff(im, deconTmpPath_eroded);
         end
@@ -295,16 +295,16 @@ for f = 1 : nF
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
     if strcmpi(largeMethod, 'inplace')
         RLdecon_large_in_place(frameFullpath, xyPixelSize, dz, deconPath, PSFfile, ...
-            'Save16bit', Save16bit, 'Deskew', Deskew, 'SkewAngle', SkewAngle, ...
+            'save16bit', save16bit, 'Deskew', Deskew, 'SkewAngle', SkewAngle, ...
             'flipZstack', flipZstack, 'Background', Background, 'dzPSF', dzPSF, ...
             'DeconIter', DeconIter, 'RLMethod', RLMethod, 'skewed', skewed, ...
             'wienerAlpha', wienerAlpha, 'OTFCumThresh', OTFCumThresh, 'fixIter', fixIter, ...
-            'BatchSize', BatchSize, 'BlockSize', BlockSize, 'zarrSubSize', zarrSubSize, ...
-            'damper', damper, 'scaleFactor', scaleFactor, 'deconOffset', deconOffset, ...
+            'batchSize', batchSize, 'blockSize', blockSize, 'zarrSubSize', zarrSubSize, ...
+            'dampFactor', dampFactor, 'scaleFactor', scaleFactor, 'deconOffset', deconOffset, ...
             'EdgeErosion', EdgeErosion, 'deconMaskFns', deconMaskFns, 'parseCluster', parseCluster, ...
             'parseParfor', parseParfor, 'masterCompute', masterCompute, 'jobLogDir', jobLogDir, ...
             'cpusPerTask', cpusPerTask, 'GPUJob', GPUJob, 'uuid', uuid, 'debug', debug, ...
-            'psfGen', psfGen, 'mccMode', mccMode', 'ConfigFile', ConfigFile, ...
+            'psfGen', psfGen, 'mccMode', mccMode', 'configFile', configFile, ...
             'GPUConfigFile', GPUConfigFile);
         return;
     end
@@ -312,12 +312,12 @@ for f = 1 : nF
     % to do: put the code below to a function as in memory computing
     if strcmpi(largeMethod, 'inmemory')
         RLdecon_large_in_memory(frameFullpath, PSFfile, deconFullPath, xyPixelSize, dz, ...
-            'Save16bit', Save16bit, 'Deskew', Deskew, 'SkewAngle', SkewAngle, ...
+            'save16bit', save16bit, 'Deskew', Deskew, 'SkewAngle', SkewAngle, ...
             'flipZstack', flipZstack, 'Background', Background, 'dzPSF', dzPSF, ...
             'DeconIter', DeconIter, 'RLMethod', RLMethod, 'skewed', skewed, ...
             'wienerAlpha', wienerAlpha, 'OTFCumThresh', OTFCumThresh, 'EdgeErosion', EdgeErosion, ...
-            'fixIter', fixIter,'BatchSize', BatchSize, 'saveZarr', saveZarr, ...
-            'damper', damper, 'scaleFactor', scaleFactor, 'deconOffset', deconOffset, ...
+            'fixIter', fixIter,'batchSize', batchSize, 'saveZarr', saveZarr, ...
+            'dampFactor', dampFactor, 'scaleFactor', scaleFactor, 'deconOffset', deconOffset, ...
             'deconMaskFns', deconMaskFns, 'useGPU', GPUJob, 'uuid', uuid, 'debug', debug, ...
             'psfGen', psfGen);
         return;

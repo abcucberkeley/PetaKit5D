@@ -20,7 +20,7 @@ void max_pooling_3d_mex(const T* const &orig, T* const &out, const uint64_t &poo
                 for (uint64_t x = 0; x < shapeX; ++x) {
                     const uint64_t zp1 = (z + 1) * poolSizeZ;
                     const uint64_t zp1min = zp1 < origShapeZ ? zp1 : origShapeZ;
-    
+
                     const uint64_t yp1 = (y + 1) * poolSizeY;
                     const uint64_t yp1min = yp1 < origShapeY ? yp1 : origShapeY;
     
@@ -28,7 +28,8 @@ void max_pooling_3d_mex(const T* const &orig, T* const &out, const uint64_t &poo
                     const uint64_t xp1min = xp1 < origShapeX ? xp1 : origShapeX;
     
                     T max_value = 0;
-                    #pragma omp parallel for simd reduction(max:max_value)
+                    // disable simd which is very slow for Windows
+                    // #pragma omp parallel for simd reduction(max:max_value)
                     for (uint64_t zi = z * poolSizeZ; zi < zp1min; ++zi){
                         for (uint64_t yi = y * poolSizeY; yi < yp1min; yi++) {
                             for (uint64_t xi = x * poolSizeX; xi < xp1min; xi++) {

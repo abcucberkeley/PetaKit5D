@@ -12,10 +12,10 @@ function XR_MIP_zarr(zarrFullpath, varargin)
 ip = inputParser;
 ip.CaseSensitive = false;
 ip.addRequired('zarrFullpath', @(x) ischar(x));
-ip.addParameter('mipDirStr', 'MIPs', @ischar); 
+ip.addParameter('resultDirName', 'MIPs', @ischar); 
 ip.addParameter('axis', [1, 1, 1], @isnumeric); % y, x, z
-ip.addParameter('bbox', [] , @(x) isempty(x) || isvector(x)); % bbox to define the region for MIP
-ip.addParameter('BatchSize', [2048, 2048, 2048] , @isnumeric); % in y, x, z
+ip.addParameter('inputBbox', [] , @(x) isempty(x) || isvector(x)); % bbox to define the region for MIP
+ip.addParameter('batchSize', [2048, 2048, 2048] , @isnumeric); % in y, x, z
 ip.addParameter('poolSize', [] , @isnumeric); % pooling size for mips
 ip.addParameter('zarrSubSize', [20, 20, 20] , @isnumeric); % in y, x, z
 ip.addParameter('mipSlab', false, @islogical); % compute MIP slabs (without the final MIPs)
@@ -24,17 +24,17 @@ ip.addParameter('parseParfor', false, @islogical);
 ip.addParameter('jobLogDir', '../job_logs/', @ischar);
 ip.addParameter('masterCompute', true, @islogical); % master node participate in the task computing. 
 ip.addParameter('mccMode', false, @islogical);
-ip.addParameter('ConfigFile', '', @ischar);
+ip.addParameter('configFile', '', @ischar);
 ip.addParameter('uuid', '', @ischar);
 ip.addParameter('debug', false, @islogical);
 
 ip.parse(zarrFullpath, varargin{:});
 
 pr = ip.Results;
-mipDirStr = pr.mipDirStr;
+resultDirName = pr.resultDirName;
 axis = pr.axis;
-bbox = pr.bbox;
-BatchSize = pr.BatchSize;
+inputBbox = pr.inputBbox;
+batchSize = pr.batchSize;
 poolSize = pr.poolSize;
 zarrSubSize = pr.zarrSubSize;
 mipSlab = pr.mipSlab;
@@ -43,7 +43,7 @@ parseParfor = pr.parseParfor;
 jobLogDir = pr.jobLogDir;
 masterCompute = pr.masterCompute;
 mccMode = pr.mccMode;
-ConfigFile = pr.ConfigFile;
+configFile = pr.configFile;
 
 uuid = pr.uuid;
 % uuid for the job
@@ -55,7 +55,7 @@ debug = pr.debug;
 zarrFullpath = strip(zarrFullpath, 'right', filesep);
 [dataPath, fsname, ext] = fileparts(zarrFullpath);
 
-MIPPath = sprintf('%s/%s/', dataPath, mipDirStr);
+MIPPath = sprintf('%s/%s/', dataPath, resultDirName);
 if ~exist(MIPPath, 'dir')
     mkdir(MIPPath);
 end
@@ -93,16 +93,16 @@ byteNum = dataTypeToByteNumber(dtype);
 
 inSize = imSize;
 startCoord = [1, 1, 1];
-if ~isempty(bbox)
-    inSize = bbox(4 : 6) - bbox(1 : 3) + 1;
-    startCoord = bbox(1 : 3);
+if ~isempty(inputBbox)
+    inSize = inputBbox(4 : 6) - inputBbox(1 : 3) + 1;
+    startCoord = inputBbox(1 : 3);
 end
 
 % pool size for other axes
 poolSize_1 = [1, 1, 1];
 dsfactor = [1, 1, 1];
 if isempty(poolSize)
-    inBlockSize = bim.BlockSize;
+    inblockSize = bim.BlockSize;
 else
     if numel(poolSize) == 9
         dsfactor = poolSize(7 : 9);
@@ -111,17 +111,17 @@ else
         poolSize_1 = poolSize(4 : 6);
     end
     poolSize = poolSize(1 : 3);
-    inBlockSize = lcm(poolSize, poolSize_1);
-    inBlockSize_1 = lcm(inBlockSize, bim.BlockSize);
+    inblockSize = lcm(poolSize, poolSize_1);
+    inblockSize_1 = lcm(inblockSize, bim.BlockSize);
     % limit the block size to 10 GB
-    if prod(inBlockSize_1) * byteNum / 2^30 < 10
-        inBlockSize = inBlockSize_1;
+    if prod(inblockSize_1) * byteNum / 2^30 < 10
+        inblockSize = inblockSize_1;
     end
 end
 
 % MIPs for each batch
-BatchSize = min(inSize, max(BatchSize, ceil(BatchSize ./ inBlockSize) .* inBlockSize));
-bSubSz = ceil(inSize ./ BatchSize);
+batchSize = min(inSize, max(batchSize, ceil(batchSize ./ inblockSize) .* inblockSize));
+bSubSz = ceil(inSize ./ batchSize);
 numBatch = prod(bSubSz);
 
 % in case of out size too large for very large data that causes oom for the main 
@@ -132,12 +132,12 @@ if ~mipSlab
         outVolSizes(i) = prod([inSize(setdiff(1 : 3, i)), bSubSz(i)]) * byteNum / 1024^3;
     end
     
-    % if the max intermediate MIP files is greater than 100 GB, increase the BatchSize
+    % if the max intermediate MIP files is greater than 100 GB, increase the batchSize
     % by the blockSize in the axis with largest outVolSizes
-    while any(outVolSizes > 100) && prod(BatchSize) * byteNum / 1024^3 < 100
+    while any(outVolSizes > 100) && prod(batchSize) * byteNum / 1024^3 < 100
         [~, ind] = max(outVolSizes);
-        BatchSize = min(inSize, BatchSize + inBlockSize .* ((1 : 3) == ind));
-        bSubSz = ceil(inSize ./ BatchSize);
+        batchSize = min(inSize, batchSize + inblockSize .* ((1 : 3) == ind));
+        bSubSz = ceil(inSize ./ batchSize);
         numBatch = prod(bSubSz);
     
         for i = 1 : 3
@@ -151,8 +151,8 @@ bSubs = [Y(:), X(:), Z(:)];
 clear Y X Z
 
 batchBBoxes = zeros(numBatch, 6);
-batchBBoxes(:, 1 : 3) = (bSubs - 1) .* BatchSize + startCoord;
-batchBBoxes(:, 4 : 6) = min(batchBBoxes(:, 1 : 3) + BatchSize - 1, imSize);
+batchBBoxes(:, 1 : 3) = (bSubs - 1) .* batchSize + startCoord;
+batchBBoxes(:, 4 : 6) = min(batchBBoxes(:, 1 : 3) + batchSize - 1, imSize);
 
 MIPZarrTmppaths = cellfun(@(x) sprintf('%s/%s_%s_%s.zarr', MIPPath, fsname, x, uuid), axis_strs, 'unif', 0);
 
@@ -174,7 +174,7 @@ if all(zarr_done_flag) && ~mipSlab
 end
 
 if isempty(poolSize)
-    poolSize = BatchSize;
+    poolSize = batchSize;
 end
 
 % initialize zarr files
@@ -188,11 +188,11 @@ for i = 1 : 3
     outSize = inSize;
     outSize(axis_flag) = ceil(outSize(axis_flag) / poolSize(axis_flag));
     outSize(~axis_flag) = ceil(outSize(~axis_flag) ./ poolSize_1(~axis_flag));
-    BlockSize_i = BatchSize;
-    BlockSize_i(axis_flag) = ceil(BatchSize(axis_flag) / poolSize(axis_flag));
-    BlockSize_i(~axis_flag) = ceil(BatchSize(~axis_flag) ./ poolSize_1(~axis_flag));
+    blockSize_i = batchSize;
+    blockSize_i(axis_flag) = ceil(batchSize(axis_flag) / poolSize(axis_flag));
+    blockSize_i(~axis_flag) = ceil(batchSize(~axis_flag) ./ poolSize_1(~axis_flag));
     
-    createzarr(MIPZarrTmppaths{i}, dataSize=outSize, blockSize=BlockSize_i, dtype=dtype, zarrSubSize=zarrSubSize);
+    createzarr(MIPZarrTmppaths{i}, dataSize=outSize, blockSize=blockSize_i, dtype=dtype, zarrSubSize=zarrSubSize);
 end
 
 % set up parallel computing 
@@ -224,7 +224,7 @@ end
 % submit jobs 
 inputFullpaths = repmat({zarrFullpath}, numTasks, 1);
 if parseCluster || ~parseParfor
-    memAllocate = prod(BatchSize) * byteNum / 2^30 * (2.5 + (1.5 * (~mccMode)));
+    memAllocate = prod(batchSize) * byteNum / 2^30 * (2.5 + (1.5 * (~mccMode)));
     minTaskJobNum = 1;
     if ~mccMode
         minTaskJobNum = max(min(numTasks, 5), round(numTasks / 50));
@@ -237,7 +237,7 @@ if parseCluster || ~parseParfor
         is_done_flag = generic_computing_frameworks_wrapper(inputFullpaths, outputFullpaths, ...
             funcStrs, 'memAllocate', memAllocate * 2^(i-1), 'maxJobNum', maxJobNum, ...
             'taskBatchNum', taskBatchNum, 'minTaskJobNum', minTaskJobNum, 'masterCompute', masterCompute, ...
-            'parseCluster', parseCluster, 'jobLogDir', jobLogDir, 'mccMode', mccMode, 'ConfigFile', ConfigFile);
+            'parseCluster', parseCluster, 'jobLogDir', jobLogDir, 'mccMode', mccMode, 'configFile', configFile);
     end
 elseif parseParfor
     GPUJob = false;

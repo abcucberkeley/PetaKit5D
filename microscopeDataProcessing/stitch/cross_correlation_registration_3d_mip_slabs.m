@@ -30,7 +30,7 @@ ip.addParameter('dimNumThrsh', 10000, @isnumeric);
 ip.addParameter('blankNumTrsh', 200, @isnumeric); % skip blank regions beyond this length when cropping template
 ip.addParameter('parseCluster', true, @islogical);
 ip.addParameter('mccMode', false, @islogical);
-ip.addParameter('ConfigFile', '', @ischar);
+ip.addParameter('configFile', '', @ischar);
 
 ip.parse(imgFullpath_1, imgFullpath_2, xcorrFullpath, cuboid_1, cuboid_2, cuboid_overlap_12, px, xyz_factors, varargin{:});
 
@@ -44,7 +44,7 @@ dimNumThrsh = pr.dimNumThrsh;
 blankNumTrsh = pr.blankNumTrsh;
 parseCluster = pr.parseCluster;
 mccMode = pr.mccMode;
-ConfigFile = pr.ConfigFile;
+configFile = pr.configFile;
 
 saveResult = ~isempty(xcorrFullpath);
 if saveResult && exist(xcorrFullpath, 'file')
@@ -133,7 +133,7 @@ for i = 1 : 3
     is_done_flag = generic_computing_frameworks_wrapper(inputFullpaths, outputFullpaths, ...
         funcStrs, 'cpusPerTask', 2, 'maxTrialNum', 2, 'parseCluster', parseCluster, ...
         'memAllocate', memAllocate * 2^(i - 1), 'minTaskJobNum', minTaskJobNum, ...
-        'mccMode', mccMode, 'ConfigFile', ConfigFile);
+        'mccMode', mccMode, 'configFile', configFile);
     if all(is_done_flag)
         break;
     end

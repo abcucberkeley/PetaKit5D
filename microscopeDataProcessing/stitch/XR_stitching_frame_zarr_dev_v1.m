@@ -58,7 +58,7 @@ ip.addParameter('dataOrder', 'y,x,z', @ischar);
 ip.addParameter('flippedTile', [], @(x) isempty(x) || all(islogical(x) | isnumeric(x)));
 ip.addParameter('dz', 0.5, @isscalar);
 ip.addParameter('xyPixelSize', 0.108, @isscalar);
-ip.addParameter('ObjectiveScan', false, @islogical);
+ip.addParameter('objectiveScan', false, @islogical);
 ip.addParameter('IOScan', false, @islogical);
 ip.addParameter('sCMOSCameraFlip', false, @islogical);
 ip.addParameter('Reverse', false, @islogical);
@@ -67,7 +67,7 @@ ip.addParameter('InputBbox', [], @isnumeric); % crop input tile before processin
 ip.addParameter('tileOutBbox', [], @isnumeric); % crop tile after processing
 ip.addParameter('TileOffset', 0, @isnumeric); % offset added to the tile
 ip.addParameter('df', [], @isnumeric);
-ip.addParameter('Save16bit', false , @islogical); % saves deskewed data as 16 bit -- not for quantification
+ip.addParameter('save16bit', false , @islogical); % saves deskewed data as 16 bit -- not for quantification
 ip.addParameter('EdgeArtifacts', 0, @isnumeric);
 ip.addParameter('Decon', false, @islogical);
 ip.addParameter('DS', false, @islogical);
@@ -84,7 +84,7 @@ ip.addParameter('isPrimaryCh', true, @islogical);
 ip.addParameter('usePrimaryCoords', false, @islogical); % use primary coordinates for secondary channels/tps
 ip.addParameter('stitchPadSize', [2, 2, 1], @(x) isnumeric(x) && numel(x) == 3);
 ip.addParameter('padSize', [], @(x) isnumeric(x) && (isempty(x) || numel(x) == 3));
-ip.addParameter('boundboxCrop', [], @(x) isnumeric(x) && (isempty(x) || all(size(x) == [3, 2]) || numel(x) == 6));
+ip.addParameter('outBbox', [], @(x) isnumeric(x) && (isempty(x) || all(size(x) == [3, 2]) || numel(x) == 6));
 ip.addParameter('zNormalize', false, @islogical);
 ip.addParameter('xcorrDownsample', [2, 2, 1], @isnumeric); % y,x,z
 ip.addParameter('xcorrThresh', 0.25, @isnumeric); % threshold of of xcorr, ignore shift if xcorr below this threshold.
@@ -104,7 +104,7 @@ ip.addParameter('shardSize', [], @isnumeric);
 ip.addParameter('saveMultires', false, @islogical); % save as multi resolution dataset
 ip.addParameter('resLevel', 4, @isnumeric); % downsample to 2^1-2^resLevel
 ip.addParameter('BorderSize', [0, 0, 0], @isnumeric);
-ip.addParameter('SaveMIP', true , @islogical); % save MIP-z for stitch. 
+ip.addParameter('saveMIP', true , @islogical); % save MIP-z for stitch. 
 ip.addParameter('tileIdx', [] , @isnumeric); % tile indices 
 ip.addParameter('processFunPath', '', @(x) isempty(x) || iscell(x) || ischar(x)); % path of user-defined process function handle
 ip.addParameter('stitchMIP', [], @(x) isempty(x)  || (islogical(x) && (numel(x) == 1 || numel(x) == 3))); % 1x3 vector or vector, by default, stitch MIP-z
@@ -118,7 +118,7 @@ ip.addParameter('uuid', '', @ischar);
 ip.addParameter('maxTrialNum', 3, @isnumeric);
 ip.addParameter('unitWaitTime', 30, @isnumeric);
 ip.addParameter('mccMode', false, @islogical);
-ip.addParameter('ConfigFile', '', @ischar);
+ip.addParameter('configFile', '', @ischar);
 ip.addParameter('debug', false, @islogical);
 
 ip.parse(tileFullpaths, coordinates, varargin{:});
@@ -134,7 +134,7 @@ axisOrder = pr.axisOrder;
 dataOrder = pr.dataOrder;
 dz = pr.dz;
 px = pr.xyPixelSize;
-ObjectiveScan = pr.ObjectiveScan;
+objectiveScan = pr.objectiveScan;
 IOScan = pr.IOScan;
 InputBbox = pr.InputBbox;
 tileOutBbox = pr.tileOutBbox;
@@ -153,7 +153,7 @@ groupFile = pr.groupFile;
 isPrimaryCh = pr.isPrimaryCh;
 usePrimaryCoords = pr.usePrimaryCoords;
 stitchPadSize = pr.stitchPadSize;
-boundboxCrop = pr.boundboxCrop;
+outBbox = pr.outBbox;
 xcorrDownsample = pr.xcorrDownsample;
 xcorrThresh = pr.xcorrThresh;
 xyMaxOffset = pr.xyMaxOffset;
@@ -165,7 +165,7 @@ resLevel = pr.resLevel;
 jobLogDir = pr.jobLogDir;
 parseCluster = pr.parseCluster;
 masterCompute = pr.masterCompute;
-Save16bit = pr.Save16bit;
+save16bit = pr.save16bit;
 EdgeArtifacts = pr.EdgeArtifacts;
 zarrFile = pr.zarrFile;
 largeZarr = pr.largeZarr;
@@ -174,7 +174,7 @@ blockSize = pr.blockSize;
 batchSize = pr.batchSize;
 shardSize = pr.shardSize;
 BorderSize = pr.BorderSize;
-SaveMIP = pr.SaveMIP;
+saveMIP = pr.saveMIP;
 tileIdx = pr.tileIdx;
 processFunPath = pr.processFunPath;
 stitchMIP = pr.stitchMIP;
@@ -182,7 +182,7 @@ stitch2D = pr.stitch2D;
 bigStitchData = pr.bigStitchData;
 uuid = pr.uuid;
 mccMode = pr.mccMode;
-ConfigFile = pr.ConfigFile;
+configFile = pr.configFile;
 debug = pr.debug;
 
 %  load tile paths and coordinates from file.
@@ -299,7 +299,7 @@ if isempty(tileNum)
 end
 tileNum = tileNum(order_sign_mat(1, :));
 
-if ObjectiveScan || IOScan
+if objectiveScan || IOScan
     zAniso = dz/px;    
 else
     zAniso = sind(SkewAngle)*dz/px;
@@ -444,12 +444,12 @@ end
 
 % convert tiff to zarr (if inputs are tiff tiles), and process tiles
 locIds = tileIdx(:, 4);
-stitch_process_tiles(inputFullpaths, 'zarrPathstr', zarrPathstr, 'zarrFile', zarrFile, ...
+stitch_process_tiles(inputFullpaths, 'resultDirName', zarrPathstr, 'zarrFile', zarrFile, ...
     'locIds', locIds, 'blockSize', round(blockSize / 2), 'shardSize', round(shardSize / 2), ...
     'flippedTile', zarr_flippedTile, 'resample', stitchResample, 'partialFile', partialFile, ...
     'InputBbox', InputBbox, 'tileOutBbox', tileOutBbox, 'processFunPath', processFunPath, ...
     'parseCluster', parseCluster, 'masterCompute', masterCompute, 'bigData', bigStitchData, ...
-    'mccMode', mccMode, 'ConfigFile', ConfigFile);
+    'mccMode', mccMode, 'configFile', configFile);
 
 % load all zarr headers as a cell array and get image size for all tiles
 imSizes = zeros(nF, 3);
@@ -469,7 +469,7 @@ if all(imSizes(:, 3) == 1)
 end
 
 dtype = getImageDataType(zarrFullpaths{1});
-if Save16bit
+if save16bit
     dtype = 'uint16';
 end 
 
@@ -487,12 +487,12 @@ if ~isempty(flippedTile)
     end
 end
 
-if ~IOScan && ~ObjectiveScan && ~DS && ~DSR
+if ~IOScan && ~objectiveScan && ~DS && ~DSR
     % convert coordinates in DSR space to skewned space
    xyz = [xyz(:, 3) / sin(theta), xyz(:, 2), -xyz(:, 1) * sin(theta) + xyz(:, 3) * cos(theta)];
 end
 
-if ObjectiveScan || DS
+if objectiveScan || DS
     % convert coordinates in Objective Scan / DS space
     xyz = [xyz(:, 1) * cos(theta) + xyz(:, 3) * sin(theta), xyz(:, 2), -xyz(:, 1) * sin(theta) + xyz(:, 3) * cos(theta)];
 end    
@@ -534,7 +534,7 @@ if xcorrShift && isPrimaryCh
         [xyz_shift, dxyz_shift] = stitch_shift_assignment(zarrFullpaths, xcorrDir, imSizes, xyz, ...
             px, [xf, yf, zf], overlap_matrix, overlap_regions, MaxOffset, xcorrDownsample, ...
             xcorrThresh, tileIdx, assign_method, stitch2D, axisWeight, groupFile, largeZarr, ...
-            poolSize, parseCluster, nodeFactor, mccMode, ConfigFile);
+            poolSize, parseCluster, nodeFactor, mccMode, configFile);
         save('-v7.3', xcorTmpFn, 'xyz_shift', 'dxyz_shift');
         movefile(xcorTmpFn, xcorrFinalFn)
     else
@@ -641,8 +641,8 @@ else
 end
 
 % bouding box crop by redefining coordinate system and image size
-if ~isempty(boundboxCrop)
-    bbox = boundboxCrop;
+if ~isempty(outBbox)
+    bbox = outBbox;
     if any(isinf(bbox(4 : 6)))
         stchSz = [nys, nxs, nzs];
         bbox_end = bbox(4 : 6);
@@ -699,7 +699,7 @@ nvSize = [nys, nxs, nzs];
     imSizes, nvSize, batchSize, overlap_matrix, ol_region_cell, half_ol_region_cell, ...
     overlap_map_mat, BorderSize, zarrFullpaths, stichInfoPath, nv_fsname, isPrimaryCh, ...
     stitchInfoFullpath=stitchInfoFullpath, stitch2D=stitch2D, uuid=uuid, taskSize=taskSize, ...
-    parseCluster=parseCluster, mccMode=mccMode, ConfigFile=ConfigFile);
+    parseCluster=parseCluster, mccMode=mccMode, configFile=configFile);
 
 % initial stitched block image and save header in the disk
 if ispc && numel(uuid) > 4
@@ -738,7 +738,7 @@ if fresh_stitch
     if prod(ceil([nys, nxs, nzs] ./ blockSize)) > 10000
         dimSeparator = '/';
     end
-    createzarr(nv_tmp_raw_fullname, dataSize=[nys, nxs, nzs], BlockSize=blockSize, ...
+    createzarr(nv_tmp_raw_fullname, dataSize=[nys, nxs, nzs], blockSize=blockSize, ...
         shardSize=shardSize, dtype=dtype, compressor=compressor, dimSeparator=dimSeparator);
 end
 
@@ -761,7 +761,7 @@ if strcmpi(BlendMethod, 'feather')
             'singleDistMap', singleDistMap, 'locIds', locIds, 'distBboxes', distBboxes, ...
             'blockSize', round(blockSize/2), 'shardSize', round(shardSize/2), ...
             'compressor', compressor, 'largeZarr', largeZarr, 'poolSize', poolSize, ...
-            'parseCluster', parseCluster, 'mccMode', mccMode, 'ConfigFile', ConfigFile);
+            'parseCluster', parseCluster, 'mccMode', mccMode, 'configFile', configFile);
     else
         usePrimaryDist = all(imSizes == pTileSizes, 'all');
         if ~usePrimaryDist
@@ -772,7 +772,7 @@ if strcmpi(BlendMethod, 'feather')
                 'locIds', locIds, 'distBboxes', distBboxes, 'blockSize', round(blockSize/2), ...
                 'shardSize', round(shardSize/2), 'compressor', compressor, 'largeZarr', largeZarr, ...
                 'poolSize', poolSize, 'parseCluster', parseCluster, 'mccMode', mccMode, ...
-                'ConfigFile', ConfigFile);
+                'configFile', configFile);
         end
     end
 else
@@ -863,7 +863,7 @@ if ~exist(nv_fullname, 'dir')
         funcStrs, 'finalOutFullpath', nv_fullname, 'cpusPerTask', cpusPerTask, ...
         'memAllocate', memAllocate, 'jobTimeLimit', jobTimeLimit, 'maxTrialNum', maxTrialNum, ...
         'masterCompute', masterCompute, 'parseCluster', parseCluster, 'mccMode', mccMode, ...
-        'ConfigFile', ConfigFile);
+        'configFile', configFile);
 end
 
 % retry with more resources and longer time
@@ -873,7 +873,7 @@ for i = 1 : 3
             funcStrs, 'finalOutFullpath', nv_fullname, 'cpusPerTask', cpusPerTask * 2^i, ...
             'jobTimeLimit', jobTimeLimit * 2^i, 'maxTrialNum', maxTrialNum, ...
             'masterCompute', masterCompute, 'parseCluster', parseCluster, 'mccMode', mccMode, ...
-            'ConfigFile', ConfigFile);
+            'configFile', configFile);
     end
 end
 
@@ -916,7 +916,7 @@ if exist(nv_tmp_fullname, 'dir')
 end
 
 % save MIP
-if SaveMIP
+if saveMIP
     t0 = tic;    
     stcMIPPath = sprintf('%s/%s/MIPs/', dataPath, ResultDir);
     if ~exist(stcMIPPath, 'dir')
@@ -930,7 +930,7 @@ if SaveMIP
         saveMIP_zarr(nv_fullname, stcMIPname, dtype, [1, 1, 1]);
     else
         XR_MIP_zarr(nv_fullname, axis=[1, 1, 1], parseCluster=parseCluster, ...
-            mccMode=mccMode, ConfigFile=ConfigFile);
+            mccMode=mccMode, configFile=configFile);
     end
     toc(t0);
 end

@@ -1,51 +1,49 @@
-function [] = XR_resampleSingleZarr(zarrFullpath, rsFullpath, rsFactor, varargin)
+function [] = XR_resampleSingleZarr(zarrFullpath, rsFullpath, resampleFactor, varargin)
 % 
 % Author: Xiongtao Ruan (12/14/2020)
 
 % xruan (11/09/2021): enable arbitray blockSize
-% xruan ( 06/22/2023): add support for bbox for input
+% xruan ( 06/22/2023): add support for inputBbox for input
 
 
 ip = inputParser;
 ip.CaseSensitive = false;
 ip.addRequired('zarrFullpath', @ischar); 
 ip.addRequired('rsFullpath', @ischar); 
-ip.addRequired('rsFactor', @isnumeric); 
-ip.addParameter('bbox', [], @isnumeric); % bbox for input
+ip.addRequired('resampleFactor', @isnumeric); 
+ip.addParameter('inputBbox', [], @isnumeric); % inputBbox for input
 ip.addParameter('blockSize', [256, 256, 256], @isnumeric); % blcoksize
 ip.addParameter('batchSize', [512, 512, 512], @isnumeric); % size to process in one batch 
-ip.addParameter('zarrSubSize', [], @isnumeric);
-ip.addParameter('BorderSize', [5, 5, 5], @isnumeric); % padded boarder for each batch
-ip.addParameter('Interp', 'linear', @(x) ischar(x) && any(strcmpi(x, {'cubic', 'linear', 'nearest'})));
+ip.addParameter('borderSize', [5, 5, 5], @isnumeric); % padded boarder for each batch
+ip.addParameter('interpMethod', 'linear', @(x) ischar(x) && any(strcmpi(x, {'cubic', 'linear', 'nearest'})));
 ip.addParameter('parseCluster', true, @islogical);
 ip.addParameter('cpusPerTask', 1, @isscalar);
 ip.addParameter('uuid', '', @ischar);
 ip.addParameter('mccMode', false, @islogical);
-ip.addParameter('ConfigFile', '', @ischar);
+ip.addParameter('configFile', '', @ischar);
 
-ip.parse(zarrFullpath, rsFullpath, rsFactor, varargin{:});
+ip.parse(zarrFullpath, rsFullpath, resampleFactor, varargin{:});
 
 pr = ip.Results;
-bbox = pr.bbox;
+inputBbox = pr.inputBbox;
 blockSize = pr.blockSize;
 batchSize = pr.batchSize;
-zarrSubSize = pr.zarrSubSize;
-BorderSize = pr.BorderSize;
-Interp = pr.Interp;
+borderSize = pr.borderSize;
+interpMethod = pr.interpMethod;
 parseCluster = pr.parseCluster;
 cpusPerTask = pr.cpusPerTask;
 uuid = pr.uuid;
 mccMode = pr.mccMode;
-ConfigFile = pr.ConfigFile;
+configFile = pr.configFile;
 
 if isempty(uuid)
     uuid = get_uuid();
 end
 
-if numel(rsFactor) == 1
-    rsFactor = ones(1, 3) * rsFactor;
-elseif numel(rsFactor) == 2
-    rsFactor = [rsFactor(1), rsFactor(1), rsFactor(2)];
+if numel(resampleFactor) == 1
+    resampleFactor = ones(1, 3) * resampleFactor;
+elseif numel(resampleFactor) == 2
+    resampleFactor = [resampleFactor(1), resampleFactor(1), resampleFactor(2)];
 end
 
 % check if the group folder exist
@@ -75,11 +73,11 @@ dtype = bim.ClassUnderlying;
 sz = bim.Size;
 
 inSize = sz;
-if ~isempty(bbox)
-    inSize = bbox(4 : 6) - bbox(1 : 3) + 1;
+if ~isempty(inputBbox)
+    inSize = inputBbox(4 : 6) - inputBbox(1 : 3) + 1;
 end
 
-rs_size = round(inSize ./ [rsFactor(1), rsFactor(2), rsFactor(3)]);
+rs_size = round(inSize ./ [resampleFactor(1), resampleFactor(2), resampleFactor(3)]);
 
 % framework
 blockSize = min(rs_size, blockSize);
@@ -111,7 +109,7 @@ if ~exist(rsTmpPath, 'dir')
         dimSeparator = '/';
     end
     createzarr(rsTmpPath, dataSize=rs_size, blockSize=blockSize, dtype=dtype, ...
-        zarrSubSize=zarrSubSize, dimSeparator=dimSeparator);
+        dimSeparator=dimSeparator);
 end
 
 taskSize = max(5, ceil(numBatch / 5000)); % the number of batches a job should process
@@ -127,10 +125,10 @@ for i = 1 : numTasks
     outputFullpaths{i} = zarrFlagFullpath;
     
     funcStrs{i} = sprintf(['resampleZarrBlock([%s],''%s'',''%s'',''%s'',[%s],', ...
-        '''Interp'',''%s'',''bbox'',[%s],''BorderSize'',[%s],''batchSize'',[%s],', ...
+        '''interpMethod'',''%s'',''inputBbox'',[%s],''borderSize'',[%s],''batchSize'',[%s],', ...
         '''blockSize'',%s)'], strrep(num2str(batchInds, '%d,'), ' ', ''), zarrFullpath, ...
-        rsTmpPath, zarrFlagFullpath, strrep(num2str(rsFactor(:)', '%d,'), ' ', ''), Interp, ...
-        strrep(num2str(bbox(:)', '%d,'), ' ', ''), strrep(num2str(BorderSize(:)', '%d,'), ' ', ''), ...
+        rsTmpPath, zarrFlagFullpath, strrep(num2str(resampleFactor(:)', '%d,'), ' ', ''), interpMethod, ...
+        strrep(num2str(inputBbox(:)', '%d,'), ' ', ''), strrep(num2str(borderSize(:)', '%d,'), ' ', ''), ...
         strrep(num2str(batchSize(:)', '%d,'), ' ', ''), strrep(mat2str(blockSize(:)'), ' ', ','));
 end
 
@@ -138,15 +136,15 @@ inputFullpaths = repmat({zarrFullpath}, numTasks, 1);
 
 dtype = getImageDataType(zarrFullpath);
 byteNum = dataTypeToByteNumber(dtype);
-memAllocate = prod(batchSize) * byteNum / 2^30 * (prod(rsFactor) + 1) * 3;
+memAllocate = prod(batchSize) * byteNum / 2^30 * (prod(resampleFactor) + 1) * 3;
 is_done_flag= generic_computing_frameworks_wrapper(inputFullpaths, outputFullpaths, ...
     funcStrs, finalOutFullpath=rsFullpath, cpusPerTask=cpusPerTask, memAllocate=memAllocate, ...
-    parseCluster=parseCluster, mccMode=mccMode, ConfigFile=ConfigFile);
+    parseCluster=parseCluster, mccMode=mccMode, configFile=configFile);
 
 if ~all(is_done_flag)
     is_done_flag = generic_computing_frameworks_wrapper(inputFullpaths, outputFullpaths, ...
         funcStrs, finalOutFullpath=rsFullpath, cpusPerTask=cpusPerTask, memAllocate=memAllocate, ...
-        parseCluster=parseCluster, mccMode=mccMode, ConfigFile=ConfigFile);
+        parseCluster=parseCluster, mccMode=mccMode, configFile=configFile);
 end
 
 if ~all(is_done_flag)

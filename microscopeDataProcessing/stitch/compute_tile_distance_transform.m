@@ -27,7 +27,7 @@ ip.addParameter('largeZarr', false, @islogical);
 ip.addParameter('poolSize', [], @isnumeric);
 ip.addParameter('parseCluster', true, @islogical);
 ip.addParameter('mccMode', false, @islogical);
-ip.addParameter('ConfigFile', '', @ischar);
+ip.addParameter('configFile', '', @ischar);
 ip.addParameter('uuid', '', @ischar);
 
 ip.parse(blockInfoFullname, stitchPath, tileFullpaths, varargin{:});
@@ -45,7 +45,7 @@ largeZarr =  pr.largeZarr;
 poolSize =  pr.poolSize;
 parseCluster = pr.parseCluster;
 mccMode = pr.mccMode;
-ConfigFile = pr.ConfigFile;
+configFile = pr.configFile;
 uuid = pr.uuid;
 if isempty(uuid)
     uuid = get_uuid();
@@ -174,7 +174,7 @@ end
 
 generic_computing_frameworks_wrapper(inputFullpaths, outputFullpaths, funcStrs, ...
     'memAllocate', memAllocate, 'minTaskJobNum', minTaskJobNum, 'parseCluster', parseCluster, ...
-    mccMode=mccMode, ConfigFile=ConfigFile);
+    mccMode=mccMode, configFile=configFile);
 
 end
 

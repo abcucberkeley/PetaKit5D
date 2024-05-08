@@ -8,7 +8,7 @@ ip = inputParser;
 ip.CaseSensitive = false;
 ip.addRequired('dataPath', @ischar);
 ip.addParameter('CoordType', 'FPGA', @ischar); % FPGA or MCS2
-ip.addParameter('ChannelPatterns', {'CamA_ch0', 'CamB_ch0'}, @iscell);
+ip.addParameter('channelPatterns', {'CamA_ch0', 'CamB_ch0'}, @iscell);
 ip.addParameter('pixelSize', 0.108, @isnumeric);
 ip.addParameter('dz', 0.2, @isnumeric);
 ip.addParameter('angle', 32.45 , @isnumeric);
@@ -29,7 +29,7 @@ CoordType = pr.CoordType;
 pixelSize = pr.pixelSize;
 dz = pr.dz;
 angle = pr.angle;
-ChannelPatterns = pr.ChannelPatterns;
+channelPatterns = pr.channelPatterns;
 OnlyCoordinates = pr.OnlyCoordinates;
 xThresh = pr.xThresh;
 skipMissingFile = pr.skipMissingFile;
@@ -96,8 +96,8 @@ t = cat(1, t_cell{:});
 t_fns = unique(t.Filename);
 % channel patterns
 include_flag = false(numel(t_fns), 1);
-for c = 1 : numel(ChannelPatterns)
-    include_flag = include_flag | contains(t_fns, ChannelPatterns{c}) | contains(t_fns, regexpPattern(ChannelPatterns{c}));
+for c = 1 : numel(channelPatterns)
+    include_flag = include_flag | contains(t_fns, channelPatterns{c}) | contains(t_fns, regexpPattern(channelPatterns{c}));
 end
 
 % exclude files that are not in the folder

@@ -15,13 +15,13 @@ ip.addRequired('imSizes', @isnumeric);
 ip.addRequired('pImSz', @isnumeric);
 ip.addParameter('Overwrite', false, @islogical);
 ip.addParameter('convertToTiff', true, @islogical);
-ip.addParameter('SaveMIP', true, @islogical);
+ip.addParameter('saveMIP', true, @islogical);
 
 ip.parse(zarrFullpaths, stitchPath, stIndices, imSizes, pImSz, varargin{:});
 
 Overwrite = ip.Results.Overwrite;
 convertToTiff = ip.Results.convertToTiff;
-SaveMIP = ip.Results.SaveMIP;
+saveMIP = ip.Results.saveMIP;
 
 uuid = get_uuid();
 nys = pImSz(1);
@@ -77,7 +77,7 @@ for i = 1 : nF
         movefile(tiffTempname, tiffFullname);
     end
     
-    if SaveMIP
+    if saveMIP
         stcMIPPath = sprintf('%s/MIPs/', stitchPath);
         if ~exist(stcMIPPath, 'dir')
             mkdir(stcMIPPath);

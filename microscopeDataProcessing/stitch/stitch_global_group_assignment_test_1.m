@@ -1,6 +1,6 @@
 function [d_shift] = stitch_global_group_assignment_test_1(nF, max_xcorr_mat, absolute_shift_mat, ...
     overlap_matrix, max_allow_shift, xcorr_thresh, tileIdx, axisWeight, grpIdx, ...
-    cuboid_overlap_ij_mat, xcorrDir, parseCluster, nodeFactor, mccMode, ConfigFile)
+    cuboid_overlap_ij_mat, xcorrDir, parseCluster, nodeFactor, mccMode, configFile)
 % Two-step optimization: 
 % step 1: grid method for tiles within each group
 % step 2: weighted constrained linear least square for shifts across groups
@@ -83,7 +83,7 @@ if parseCluster
     for i = 1 : 3
         is_done_flag = generic_computing_frameworks_wrapper(inputFullpaths, outputFullpaths, ...
             funcStrs, 'maxTrialNum', maxTrialNum_xcorr, 'parseCluster', parseCluster, ...
-            'memAllocate', memAllocate * 2^(i - 1), 'mccMode', mccMode, 'ConfigFile', ConfigFile);
+            'memAllocate', memAllocate * 2^(i - 1), 'mccMode', mccMode, 'configFile', configFile);
         if all(is_done_flag)
             break;
         end

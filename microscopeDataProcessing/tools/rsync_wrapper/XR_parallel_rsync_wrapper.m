@@ -17,7 +17,7 @@ ip.addParameter('includeSubdir', true, @islogical); % also transfer subfolders
 ip.addParameter('parseCluster', true, @islogical);
 ip.addParameter('masterCompute', false, @islogical);
 ip.addParameter('mccMode', false, @islogical);
-ip.addParameter('ConfigFile', '', @ischar);
+ip.addParameter('configFile', '', @ischar);
 
 ip.parse(source, dest, varargin{:});
 
@@ -30,7 +30,7 @@ includeSubdir = pr.includeSubdir;
 parseCluster = pr.parseCluster;
 masterCompute = pr.masterCompute;
 mccMode = pr.mccMode;
-ConfigFile = pr.ConfigFile;
+configFile = pr.configFile;
 
 SlurmParam = sprintf('%s --nice=%d', SlurmParam, niceFactor);
 
@@ -145,7 +145,7 @@ for n = 1 : 5
         outputFlagpaths, func_strs, 'tmpDir', tmpDir, 'language', 'bash', ...
         'SlurmParam', SlurmParam, 'cpusPerTask', cpusPerTask, 'maxJobNum', maxJobNum, ...
         'masterCompute', masterCompute, parseCluster=parseCluster, mccMode=mccMode, ...
-        ConfigFile=ConfigFile);
+        configFile=configFile);
 end
 
 % final check with all file rsync 

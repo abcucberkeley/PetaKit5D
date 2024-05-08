@@ -14,7 +14,7 @@ ip.addParameter('dr', 1 , @isnumeric);
 ip.addParameter('dtheta', pi / 12 , @isnumeric);
 ip.addParameter('resThreshMethod', 'fixed', @ischar);
 ip.addParameter('resThresh', 0.2, @isnumeric);
-ip.addParameter('N', [501, 501, 501], @isnumeric);
+ip.addParameter('halfSize', [501, 501, 501], @isnumeric);
 ip.addParameter('bbox', [], @isnumeric);
 ip.addParameter('resAxis', 'xz', @ischar);
 ip.addParameter('skipConeRegion', true, @islogical);
@@ -30,7 +30,7 @@ dr = pr.dr;
 dtheta = pr.dtheta;
 resThreshMethod = pr.resThreshMethod;
 resThresh = pr.resThresh;
-N = pr.N;
+halfSize = pr.halfSize;
 bbox = pr.bbox;
 resAxis = pr.resAxis;
 skipConeRegion = pr.skipConeRegion;
@@ -84,44 +84,41 @@ end
 
 % crop image if any size is greater than the 2 folder of split images
 sz = size(im);
-if any(sz > N * 2)
-    hsz = floor((sz - N * 2) / 2);
+if any(sz > halfSize * 2)
+    hsz = floor((sz - halfSize * 2) / 2);
     s = max(1, hsz);
-    t = min(sz, s + N * 2 - 1);
+    t = min(sz, s + halfSize * 2 - 1);
     
     im = im(s(1) : t(1), s(2) : t(2), s(3) : t(3));
     sz = size(im);    
 end
 
-if any(sz < N * 2)
-    lsz = floor((N * 2 - sz) / 2);
-    rsz = N * 2 - sz - lsz;
+if any(sz < halfSize * 2)
+    lsz = floor((halfSize * 2 - sz) / 2);
+    rsz = halfSize * 2 - sz - lsz;
     im = padarray(im, lsz, 0, 'pre');
     im = padarray(im, rsz, 0, 'post');
 end
 
-im = reshape(im, 2, N(1), 2, N(2), 2, N(3));
+im = reshape(im, 2, halfSize(1), 2, halfSize(2), 2, halfSize(3));
 im = permute(im, [2, 4, 6, 1, 3, 5]);
 
 % fsc computing
-tic
 [fsc_1, res_1] = XR_FSC(im(:, :, :, 1, 1, 1), im(:, :, :, 2, 2, 2), ...
-    'xyPixelSize', xyPixelSize, 'dz', dz, 'dr', dr, 'dtheta', dtheta, 'N', N, ...
+    'xyPixelSize', xyPixelSize, 'dz', dz, 'dr', dr, 'dtheta', dtheta, 'halfSize', halfSize, ...
     'skipConeRegion', skipConeRegion);
 [fsc_2, res_2] = XR_FSC(im(:, :, :, 2, 1, 1), im(:, :, :, 1, 2, 2), ...
-    'xyPixelSize', xyPixelSize, 'dz', dz, 'dr', dr, 'dtheta', dtheta, 'N', N, ...
+    'xyPixelSize', xyPixelSize, 'dz', dz, 'dr', dr, 'dtheta', dtheta, 'halfSize', halfSize, ...
     'skipConeRegion', skipConeRegion);    
 [fsc_3, res_3] = XR_FSC(im(:, :, :, 1, 2, 1), im(:, :, :, 2, 1, 2), ...
-    'xyPixelSize', xyPixelSize, 'dz', dz, 'dr', dr, 'dtheta', dtheta, 'N', N, ...
+    'xyPixelSize', xyPixelSize, 'dz', dz, 'dr', dr, 'dtheta', dtheta, 'halfSize', halfSize, ...
     'skipConeRegion', skipConeRegion);    
 [fsc_4, res_4] = XR_FSC(im(:, :, :, 1, 1, 2), im(:, :, :, 2, 2, 1), ...
-    'xyPixelSize', xyPixelSize, 'dz', dz, 'dr', dr, 'dtheta', dtheta, 'N', N, ...
+    'xyPixelSize', xyPixelSize, 'dz', dz, 'dr', dr, 'dtheta', dtheta, 'halfSize', halfSize, ...
     'skipConeRegion', skipConeRegion);    
-toc
 
 fsc_cell = {fsc_1, fsc_2, fsc_3, fsc_4};
 res_cell = {res_1, res_2, res_3, res_4};
-
 
 % resolution computing
 fsc_mu = fsc_1;

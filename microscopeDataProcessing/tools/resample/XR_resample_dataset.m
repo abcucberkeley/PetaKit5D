@@ -1,6 +1,6 @@
-function [] = XR_resample_dataset(dataPaths, rsfactor, varargin)
+function [] = XR_resample_dataset(dataPaths, resampleFactor, varargin)
 % resample a dataset via cluster computing
-% rsfactor [5,5,5] (yxz) means downsample data by 5x5x5
+% resampleFactor [5,5,5] (yxz) means downsample data by 5x5x5
 % 
 %
 % Author: Xiongtao Ruan (01/15/2021)
@@ -12,49 +12,49 @@ function [] = XR_resample_dataset(dataPaths, rsfactor, varargin)
 ip = inputParser;
 ip.CaseSensitive = false;
 ip.addRequired('dataPaths', @(x) ischar(x) || iscell(x));
-ip.addRequired('rsfactor', @isnumeric);
-ip.addParameter('outDirStr', 'resampled', @ischar);
-ip.addParameter('ChannelPatterns', {'CamA_ch0', 'CamA_ch1', 'CamB_ch0', 'CamB_ch1'}, @iscell);
-ip.addParameter('bbox', [], @isnumeric); % bbox for input
-ip.addParameter('Interp', 'linear', @(x) ischar(x) && any(strcmpi(x, {'cubic', 'linear', 'nearest'})));
-ip.addParameter('Save16bit', true, @islogical);
+ip.addRequired('resampleFactor', @isnumeric);
+ip.addParameter('resultDirName', 'resampled', @ischar);
+ip.addParameter('channelPatterns', {'CamA_ch0', 'CamA_ch1', 'CamB_ch0', 'CamB_ch1'}, @iscell);
+ip.addParameter('inputBbox', [], @isnumeric); % bbox for input
+ip.addParameter('interpMethod', 'linear', @(x) ischar(x) && any(strcmpi(x, {'cubic', 'linear', 'nearest'})));
+ip.addParameter('save16bit', true, @islogical);
 ip.addParameter('zarrFile', false, @islogical);
 ip.addParameter('largeZarr', false, @islogical);
 ip.addParameter('saveZarr', false, @islogical); % use zarr file as output
 ip.addParameter('blockSize', [256, 256, 256], @isnumeric); % blcoksize
 ip.addParameter('batchSize', [512, 512, 512], @isnumeric); % size to process in one batch
-ip.addParameter('BorderSize', [5, 5, 5], @isnumeric); % padded boarder for each batch
+ip.addParameter('borderSize', [5, 5, 5], @isnumeric); % padded boarder for each batch
 ip.addParameter('parseCluster', true, @islogical);
 ip.addParameter('jobLogDir', '../job_logs', @ischar);
 ip.addParameter('masterCompute', true, @islogical); % master node participate in the task computing. 
 ip.addParameter('cpusPerTask', 2, @isscalar);
 ip.addParameter('uuid', '', @ischar);
 ip.addParameter('mccMode', false, @islogical);
-ip.addParameter('ConfigFile', '', @ischar);
+ip.addParameter('configFile', '', @ischar);
 
-ip.parse(dataPaths, rsfactor, varargin{:});
+ip.parse(dataPaths, resampleFactor, varargin{:});
 
 warning('off', 'MATLAB:MKDIR:DirectoryExists');
 
 pr = ip.Results;
-outDirStr = pr.outDirStr;
-ChannelPatterns = pr.ChannelPatterns;
-bbox = pr.bbox;
-Interp = pr.Interp;
-Save16bit = pr.Save16bit;
+resultDirName = pr.resultDirName;
+channelPatterns = pr.channelPatterns;
+inputBbox = pr.inputBbox;
+interpMethod = pr.interpMethod;
+save16bit = pr.save16bit;
 zarrFile = pr.zarrFile;
 largeZarr = pr.largeZarr;
 saveZarr = pr.saveZarr;
 blockSize = pr.blockSize;
 batchSize = pr.batchSize;
-BorderSize = pr.BorderSize;
+borderSize = pr.borderSize;
 parseCluster = pr.parseCluster;
 jobLogDir = pr.jobLogDir;
 masterCompute = pr.masterCompute;
 cpusPerTask = pr.cpusPerTask;
 uuid = pr.uuid;
 mccMode = pr.mccMode;
-ConfigFile = pr.ConfigFile;
+configFile = pr.configFile;
 
 if isempty(uuid)
     uuid = get_uuid();
@@ -68,7 +68,7 @@ nd = numel(dataPaths);
 resultPaths = cell(nd, 1);
 for d = 1 : nd
     dataPaths{d} = simplifyPath(dataPaths{d});
-    resultPath = [dataPaths{d}, '/' outDirStr, '/'];
+    resultPath = [dataPaths{d}, '/' resultDirName, '/'];
     resultPaths{d} = resultPath;
     mkdir(resultPath);
     fileattrib(resultPath, '+w', 'g');
@@ -81,7 +81,7 @@ for d = 1 : nd
 end
 
 % parse image filenames
-[fnames, fsns, fd_inds, filepaths] = parseImageFilenames(dataPaths, zarrFile, ChannelPatterns);
+[fnames, fsns, fd_inds, filepaths] = parseImageFilenames(dataPaths, zarrFile, channelPatterns);
 nF = numel(fnames);
 sz = getImageSize(filepaths{1});
 dtype = getImageDataType(filepaths{1});
@@ -100,27 +100,27 @@ resultFullpaths = arrayfun(@(x) sprintf('%s/%s%s', resultPaths{fd_inds(x)}, fsns
 
 if largeZarr
     func_strs = arrayfun(@(x) sprintf(['XR_resampleSingleZarr(''%s'',''%s'',%s,', ...
-        '''bbox'',%s,''blockSize'',%s,''batchSize'',%s,''BorderSize'',%s,', ...
-        '''Interp'',''%s'',''parseCluster'',%s,''cpusPerTask'',%d,''uuid'',''%s'',', ...
-        '''mccMode'',%s,''ConfigFile'',''%s'')'], frameFullpaths{x}, ...
-        resultFullpaths{x}, mat2str_comma(rsfactor, 10), mat2str_comma(bbox), ...
-        mat2str_comma(blockSize), mat2str_comma(batchSize), mat2str_comma(BorderSize), ...
-        Interp, string(parseCluster),cpusPerTask, uuid, string(mccMode), string(ConfigFile)), ...
+        '''inputBbox'',%s,''blockSize'',%s,''batchSize'',%s,''borderSize'',%s,', ...
+        '''interpMethod'',''%s'',''parseCluster'',%s,''cpusPerTask'',%d,''uuid'',''%s'',', ...
+        '''mccMode'',%s,''configFile'',''%s'')'], frameFullpaths{x}, ...
+        resultFullpaths{x}, mat2str_comma(resampleFactor, 10), mat2str_comma(inputBbox), ...
+        mat2str_comma(blockSize), mat2str_comma(batchSize), mat2str_comma(borderSize), ...
+        interpMethod, string(parseCluster),cpusPerTask, uuid, string(mccMode), string(configFile)), ...
         1 : nF, 'unif', false);
 
-    memAllocate = prod(batchSize) * byteNum / 2^30 * (prod(rsfactor) + 1) * 3;
+    memAllocate = prod(batchSize) * byteNum / 2^30 * (prod(resampleFactor) + 1) * 3;
 else
     func_strs = arrayfun(@(x) sprintf(['XR_resampleFrame(''%s'',''%s'',[%s],', ...
-        '''bbox'',%s,''zarrFile'',%s,''saveZarr'',%s,''Interp'',''%s'',''Save16bit'',%s,', ...
-        '''uuid'',''%s'')'], frameFullpaths{x}, resultFullpaths{x}, mat2str_comma(rsfactor, 10), ...
-        mat2str_comma(bbox), string(zarrFile), string(saveZarr), Interp, string(Save16bit), ...
+        '''inputBbox'',%s,''zarrFile'',%s,''saveZarr'',%s,''interpMethod'',''%s'',''save16bit'',%s,', ...
+        '''uuid'',''%s'')'], frameFullpaths{x}, resultFullpaths{x}, mat2str_comma(resampleFactor, 10), ...
+        mat2str_comma(inputBbox), string(zarrFile), string(saveZarr), interpMethod, string(save16bit), ...
         uuid), 1 : nF, 'unif', false);
 
-    memAllocate = prod(sz) * byteNum / 1024^3 * (2 + 2 / prod(rsfactor));
+    memAllocate = prod(sz) * byteNum / 1024^3 * (2 + 2 / prod(resampleFactor));
 end
 
 generic_computing_frameworks_wrapper(frameFullpaths, resultFullpaths, func_strs, ...
     parseCluster=parseCluster, jobLogDir=jobLogDir, masterCompute=masterCompute, ...
-    cpusPerTask=cpusPerTask, memAllocate=memAllocate, mccMode=mccMode, ConfigFile=ConfigFile);
+    cpusPerTask=cpusPerTask, memAllocate=memAllocate, mccMode=mccMode, configFile=configFile);
 
 end

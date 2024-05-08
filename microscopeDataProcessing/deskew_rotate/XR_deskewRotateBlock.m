@@ -19,13 +19,13 @@ ip.addRequired('outRegionBBoxes', @isnumeric);
 ip.addRequired('outLocalBboxes', @isnumeric);
 ip.addRequired('xyPixelSize', @isnumeric); %in um
 ip.addRequired('dz', @isnumeric); %in um
-% ip.addParameter('BlockSize', [], @isnumeric);
+% ip.addParameter('blockSize', [], @isnumeric);
 ip.addParameter('Overwrite', false, @islogical);
 ip.addParameter('SkewAngle', 32.45 , @isnumeric);
 ip.addParameter('Reverse', true, @islogical); 
 ip.addParameter('flipZstack', false, @islogical); 
-ip.addParameter('Interp', 'linear', @(x) any(strcmpi(x, {'cubic', 'linear'})));
-ip.addParameter('resample', [], @(x) isempty(x) || isnumeric(x)); % resampling after rotation 
+ip.addParameter('interpMethod', 'linear', @(x) any(strcmpi(x, {'cubic', 'linear'})));
+ip.addParameter('resampleFactor', [], @(x) isempty(x) || isnumeric(x)); % resampling after rotation 
 ip.addParameter('uuid', '', @ischar);
 ip.addParameter('debug', false, @islogical);
 
@@ -37,8 +37,8 @@ Overwrite = pr.Overwrite;
 SkewAngle = pr.SkewAngle;
 Reverse = pr.Reverse;
 flipZstack = pr.flipZstack;
-Interp = pr.Interp;
-resample = pr.resample;
+interpMethod = pr.interpMethod;
+resampleFactor = pr.resampleFactor;
 uuid = pr.uuid;
 
 % we assume the path exists, otherwise return error (in case of completion 
@@ -75,17 +75,17 @@ for i = 1 : numel(batchInds)
     outBbox = outRegionBBoxes(i, :);
     
     % load the region in input 
-    in_batch = readzarr(zarrFullpath, 'bbox', inBbox);
+    in_batch = readzarr(zarrFullpath, 'inputBbox', inBbox);
     in_batch = single(in_batch);
     
     % deskew and rotate    
-    ObjectiveScan = false;
+    objectiveScan = false;
     
     dsrBbox = outLocalBboxes(i, :) + [1, outBatchBBoxes(i, 2 : 3), 1, outBatchBBoxes(i, 2 : 3)] - 1;
     
     out_batch = deskewRotateFrame3D(in_batch, SkewAngle, dz, xyPixelSize, ...
-                'reverse', Reverse, 'bbox', dsrBbox, 'ObjectiveScan', ObjectiveScan, ...
-                'resample', resample, 'Interp', Interp);
+                'reverse', Reverse, 'bbox', dsrBbox, 'objectiveScan', objectiveScan, ...
+                'resampleFactor', resampleFactor, 'interpMethod', interpMethod);
     clear in_batch;
     
     writezarr(out_batch, dsrFullpath, 'bbox', outBbox);

@@ -37,7 +37,7 @@ ip.addParameter('cpusPerTask', 1, @isnumeric);
 ip.addParameter('GPUJob', false, @islogical);
 ip.addParameter('uuid', '', @ischar);
 ip.addParameter('maxTrialNum', 3, @isnumeric);
-ip.addParameter('unitWaitTime', 30, @isnumeric);
+ip.addParameter('unitWaitTime', 3, @isnumeric);
 ip.addParameter('maxJobNum', inf, @isnumeric); % submit limited number of jobs (pending/running)
 ip.addParameter('taskBatchNum', 1, @isnumeric); % aggragate several tasks together
 ip.addParameter('runExtraTasks', false, @islogical); % run tasks from other workers

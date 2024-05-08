@@ -33,7 +33,7 @@ ip.addParameter('uuid', '', @ischar);
 ip.addParameter('GPUJob', false, @islogical);
 ip.addParameter('GPUNum', 0, @isnumeric);
 ip.addParameter('maxTrialNum', 3, @isnumeric);
-ip.addParameter('unitWaitTime', 30, @isnumeric);
+ip.addParameter('unitWaitTime', 3, @isnumeric);
 ip.addParameter('maxJobNum', inf, @isnumeric); % submit limited number of jobs (pending/running)
 ip.addParameter('minTaskJobNum', 1, @isnumeric); % split tasks to this given number workers if fewer, mainly for finishing tasks faster with more workers
 ip.addParameter('taskBatchNum', 1, @isnumeric); % aggragate several tasks together

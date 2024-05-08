@@ -22,7 +22,7 @@ ip.addParameter('poolSize', [], @isnumeric);
 ip.addParameter('dimNumThrsh', 10000, @isnumeric);
 ip.addParameter('parseCluster', true, @islogical);
 ip.addParameter('mccMode', false, @islogical);
-ip.addParameter('ConfigFile', '', @ischar);
+ip.addParameter('configFile', '', @ischar);
 
 ip.parse(imgFullpath_1, imgFullpath_2, xcorrFullpath, pair_indices, cuboid_1, cuboid_2, cuboid_overlap_12, px, xyz_factors, varargin{:});
 
@@ -36,7 +36,7 @@ poolSize = pr.poolSize;
 dimNumThrsh = pr.dimNumThrsh;
 parseCluster = pr.parseCluster;
 mccMode = pr.mccMode;
-ConfigFile = pr.ConfigFile;
+configFile = pr.configFile;
 
 if exist(xcorrFullpath, 'file')
     fprintf('The xcorr result %s already exists!\n', xcorrFullpath);
@@ -75,7 +75,7 @@ for i = 1 : nF
             imgFullpath_1, imgFullpath_2i, xcorrFullpath_i, cuboid_1i, cuboid_2i, ...
             cuboid_overlap_12i, px, xyz_factors, downSample=downSample, MaxOffset=MaxOffset, ...
             mipDirStr=mipDirStr, poolSize=poolSize, dimNumThrsh=dimNumThrsh, ...
-            parseCluster=parseCluster, mccMode=mccMode, ConfigFile=ConfigFile);
+            parseCluster=parseCluster, mccMode=mccMode, configFile=configFile);
         relative_shift_mat_cell{i} = relative_shift_mat_i;
         max_xcorr_mat_cell{i} = max_xcorr_mat_i;
     else

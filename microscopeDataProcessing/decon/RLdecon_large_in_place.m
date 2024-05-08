@@ -13,7 +13,7 @@ ip.addRequired('pixelSize', @isnumeric);
 ip.addRequired('dz', @isnumeric);
 ip.addRequired('deconPath', @(x) ischar(x) || isempty(x));
 ip.addRequired('PSF', @(x) ischar(x) || isempty(x));
-ip.addParameter('Save16bit', false , @islogical);
+ip.addParameter('save16bit', false , @islogical);
 ip.addParameter('Deskew', false , @islogical);
 ip.addParameter('SkewAngle', -32.45 , @isnumeric);
 ip.addParameter('flipZstack', false, @islogical); 
@@ -25,10 +25,10 @@ ip.addParameter('wienerAlpha', 0.005, @isnumeric);
 ip.addParameter('OTFCumThresh', 0.9, @isnumeric); % OTF cumutative sum threshold
 ip.addParameter('skewed', [], @(x) isempty(x) || islogical(x)); % decon in skewed space
 ip.addParameter('fixIter', false, @islogical); % CPU Memory in Gb
-ip.addParameter('BatchSize', [1024, 1024, 1024] , @isnumeric); % in y, x, z
-ip.addParameter('BlockSize', [256, 256, 256] , @isnumeric); % in y, x, z
+ip.addParameter('batchSize', [1024, 1024, 1024] , @isnumeric); % in y, x, z
+ip.addParameter('blockSize', [256, 256, 256] , @isnumeric); % in y, x, z
 ip.addParameter('zarrSubSize', [20, 20, 20], @isnumeric); % zarr subfolder size
-ip.addParameter('damper', 1, @isnumeric); % damp factor for decon result
+ip.addParameter('dampFactor', 1, @isnumeric); % damp factor for decon result
 ip.addParameter('scaleFactor', [], @isnumeric); % scale factor for decon result
 ip.addParameter('deconOffset', 0, @isnumeric); % offset for decon result
 ip.addParameter('EdgeErosion', 0, @isnumeric); % edge erosion for decon result
@@ -43,7 +43,7 @@ ip.addParameter('uuid', '', @ischar);
 ip.addParameter('debug', false, @islogical);
 ip.addParameter('psfGen', true, @islogical); % psf generation
 ip.addParameter('mccMode', false, @islogical);
-ip.addParameter('ConfigFile', '', @ischar);
+ip.addParameter('configFile', '', @ischar);
 ip.addParameter('GPUConfigFile', '', @ischar);
 
 ip.parse(frameFullpath, xyPixelSize, dz, deconPath, PSF, varargin{:});
@@ -60,7 +60,7 @@ skewed = pr.skewed;
 Deskew = pr.Deskew;
 SkewAngle = pr.SkewAngle;
 flipZstack = pr.flipZstack;
-Save16bit = pr.Save16bit;
+save16bit = pr.save16bit;
 GPUJob = pr.GPUJob;
 useGPU = GPUJob;
 psfGen = pr.psfGen;
@@ -75,10 +75,10 @@ end
 fixIter = pr.fixIter;
 debug = pr.debug;
 
-BatchSize = pr.BatchSize;
-BlockSize = pr.BlockSize;
+batchSize = pr.batchSize;
+blockSize = pr.blockSize;
 zarrSubSize = pr.zarrSubSize;
-damper = pr.damper;
+dampFactor = pr.dampFactor;
 scaleFactor = pr.scaleFactor;
 deconOffset = pr.deconOffset;
 EdgeErosion = pr.EdgeErosion;
@@ -95,7 +95,7 @@ if isempty(uuid)
     uuid = get_uuid();
 end
 mccMode = pr.mccMode;
-ConfigFile = pr.ConfigFile;
+configFile = pr.configFile;
 GPUConfigFile = pr.GPUConfigFile;
 
 [dataPath, fsname, ext] = fileparts(frameFullpath);
@@ -151,7 +151,7 @@ fprintf(['reading ' fsname '...\n'])
 
 % not consider edge erosion for now
 
-if Save16bit
+if save16bit
     dtype = 'uint16';
 else
     dtype = 'single';
@@ -170,11 +170,11 @@ imSize = getImageSize(frameFullpath);
 toc
 
 tic
-% BlockSize = nv_bim.BlockSize;
-SameBatchSize = true;
+% blockSize = nv_bim.BlockSize;
+sameBatchSize = true;
 BorderSize = round((size(psf) + 10) / 2);
-[batchBBoxes, regionBBoxes] = XR_zarrChunkCoordinatesExtraction(imSize, 'BatchSize', BatchSize, ...
-    'BlockSize', BlockSize, 'SameBatchSize', SameBatchSize, 'BorderSize', BorderSize);
+[batchBBoxes, regionBBoxes] = XR_zarrChunkCoordinatesExtraction(imSize, 'batchSize', batchSize, ...
+    'blockSize', blockSize, 'sameBatchSize', sameBatchSize, 'BorderSize', BorderSize);
 
 % sort regions based on the size
 [~, inds] = sortrows([prod(batchBBoxes(:, 4 : 6) - batchBBoxes(:, 1 : 3) + 1, 2), batchBBoxes]);
@@ -184,12 +184,12 @@ regionBBoxes = regionBBoxes(inds, :);
 % initialize zarr file
 if ~exist(deconTmppath, 'dir')
     try
-        createzarr(deconTmppath, dataSize=imSize, blockSize=BlockSize, dtype=dtype, zarrSubSize=zarrSubSize);        
+        createzarr(deconTmppath, dataSize=imSize, blockSize=blockSize, dtype=dtype, zarrSubSize=zarrSubSize);        
     catch ME
         disp(ME)
         disp("Use alternative method (ZarrAdapter) to initialize the zarr file...");
         init_val = zeros(1, dtype);
-        decon_bim = blockedImage(deconTmppath, imSize, BlockSize, init_val, "Adapter", ZarrAdapter, 'Mode', 'w');
+        decon_bim = blockedImage(deconTmppath, imSize, blockSize, init_val, "Adapter", ZarrAdapter, 'Mode', 'w');
         decon_bim.Adapter.close();
     end        
 end
@@ -229,15 +229,15 @@ for i = 1 : numTasks
     deconMaskFns_str = sprintf('{''%s''}', strjoin(deconMaskFns, ''','''));
 
     funcStrs{i} = sprintf(['RLdecon_for_zarr_block([%s],''%s'',''%s'',''%s'',', ...
-        '''%s'',%s,%s,%0.20d,%0.20d,''Save16bit'',%s,''Overwrite'',%s,''SkewAngle'',%0.20d,', ...
+        '''%s'',%s,%s,%0.20d,%0.20d,''save16bit'',%s,''Overwrite'',%s,''SkewAngle'',%0.20d,', ...
         '''flipZstack'',%s,''Background'',%0.20d,''dzPSF'',%0.20d,''DeconIter'',%d,', ...
         '''RLMethod'',''%s'',''wienerAlpha'',%0.20f,''OTFCumThresh'',%0.20f,', ...
-        '''skewed'',[%s],''fixIter'',%s,''damper'',%d,''scaleFactor'',[%d],''deconOffset'',%d,', ...
+        '''skewed'',[%s],''fixIter'',%s,''dampFactor'',%d,''scaleFactor'',[%d],''deconOffset'',%d,', ...
         '''EdgeErosion'',%d,''useGPU'',%s,''deconMaskFns'',%s,''uuid'',''%s'',''debug'',%s,''psfGen'',%s)'], ...
         strrep(num2str(batchInds, '%d,'), ' ', ''), frameFullpath, PSF, deconTmppath, zarrFlagFullpath, ...
         strrep(mat2str(batchBBoxes_i), ' ', ','), strrep(mat2str(regionBBoxes_i), ' ', ','), xyPixelSize, ...
-        dz, string(Save16bit), string(Overwrite), SkewAngle, string(flipZstack), Background, dzPSF, ...
-        DeconIter, RLMethod, wienerAlpha, OTFCumThresh, string(skewed), string(fixIter), damper, ...
+        dz, string(save16bit), string(Overwrite), SkewAngle, string(flipZstack), Background, dzPSF, ...
+        DeconIter, RLMethod, wienerAlpha, OTFCumThresh, string(skewed), string(fixIter), dampFactor, ...
         scaleFactor, deconOffset, EdgeErosion, string(useGPU), deconMaskFns_str, uuid, string(debug), ...
         string(psfGen));
 end
@@ -246,20 +246,20 @@ inputFullpaths = repmat({frameFullpath}, numTasks, 1);
 % submit jobs
 if ~parseParfor
     if GPUJob
-        cur_ConfigFile = GPUConfigFile;
+        cur_configFile = GPUConfigFile;
     else
-        cur_ConfigFile = ConfigFile;
+        cur_configFile = configFile;
     end
     is_done_flag= generic_computing_frameworks_wrapper(inputFullpaths, outputFullpaths, ...
         funcStrs, 'cpusPerTask', cpusPerTask, 'maxJobNum', maxJobNum, 'taskBatchNum', taskBatchNum, ...
         'masterCompute', masterCompute, 'parseCluster', parseCluster, 'GPUJob', GPUJob, ...
-        'mccMode', mccMode, 'ConfigFile', cur_ConfigFile);
+        'mccMode', mccMode, 'configFile', cur_configFile);
 
     if ~all(is_done_flag)
         is_done_flag = generic_computing_frameworks_wrapper(inputFullpaths, outputFullpaths, ...
             funcStrs, 'cpusPerTask', cpusPerTask, 'maxJobNum', maxJobNum, 'taskBatchNum', taskBatchNum, ...
             'masterCompute', masterCompute, 'parseCluster', parseCluster, 'GPUJob', GPUJob, ...
-            'mccMode', mccMode, 'ConfigFile', cur_ConfigFile);
+            'mccMode', mccMode, 'configFile', cur_configFile);
     end
 elseif parseParfor
     is_done_flag= matlab_parfor_generic_computing_wrapper(inputFullpaths, outputFullpaths, ...
@@ -286,7 +286,7 @@ if ~exist(deconMIPPath, 'dir')
     mkdir(deconMIPPath);
     fileattrib(deconMIPPath, '+w', 'g');
 end
-XR_MIP_zarr(deconFullpath, axis=[1, 1, 1], mccMode=mccMode, ConfigFile=ConfigFile);
+XR_MIP_zarr(deconFullpath, axis=[1, 1, 1], mccMode=mccMode, configFile=configFile);
 toc
 
 end

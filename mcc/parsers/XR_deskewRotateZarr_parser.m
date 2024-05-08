@@ -7,23 +7,22 @@ ip.addRequired('frameFullpath', @(x) ischar(x) || iscell(x));
 ip.addRequired('xyPixelSize', @(x) isscalar(x) || ischar(x)); 
 ip.addRequired('dz', @(x) isscalar(x) || ischar(x)); 
 ip.addParameter('resultDirStr', 'DSR/', @ischar);
-ip.addParameter('ObjectiveScan', false, @(x) islogical(x) || ischar(x));
-ip.addParameter('Overwrite', false, @(x) islogical(x) || ischar(x));
-ip.addParameter('Crop', false, @(x) islogical(x) || ischar(x));
-ip.addParameter('SkewAngle', 32.45, @(x) isscalar(x) || ischar(x));
-ip.addParameter('Reverse', false, @(x) islogical(x) || ischar(x));
+ip.addParameter('objectiveScan', false, @(x) islogical(x) || ischar(x));
+ip.addParameter('overwrite', false, @(x) islogical(x) || ischar(x));
+ip.addParameter('crop', false, @(x) islogical(x) || ischar(x));
+ip.addParameter('skewAngle', 32.45, @(x) isscalar(x) || ischar(x));
+ip.addParameter('reverse', false, @(x) islogical(x) || ischar(x));
 ip.addParameter('DSRCombined', true, @(x) islogical(x) || ischar(x)); % combined processing 
 ip.addParameter('flipZstack', false, @(x) islogical(x) || ischar(x));
-ip.addParameter('Save16bit', false , @(x) islogical(x) || ischar(x)); % saves deskewed data as 16 bit -- not for quantification
-ip.addParameter('SaveMIP', true , @(x) islogical(x) || ischar(x)); % save MIP-z for ds and dsr. 
+ip.addParameter('save16bit', false , @(x) islogical(x) || ischar(x)); % saves deskewed data as 16 bit -- not for quantification
+ip.addParameter('saveMIP', true , @(x) islogical(x) || ischar(x)); % save MIP-z for ds and dsr. 
 ip.addParameter('saveZarr', false , @(x) islogical(x) || ischar(x)); % save as zarr
-ip.addParameter('BatchSize', [1024, 1024, 1024] , @(x) isvector(x) || ischar(x)); % in y, x, z
-ip.addParameter('BlockSize', [256, 256, 256], @(x) isvector(x) || ischar(x)); % in y, x, z
-ip.addParameter('zarrSubSize', [20, 20, 20], @(x) isnumeric(x) || ischar(x)); % zarr subfolder size
+ip.addParameter('batchSize', [1024, 1024, 1024] , @(x) isvector(x) || ischar(x)); % in y, x, z
+ip.addParameter('blockSize', [256, 256, 256], @(x) isvector(x) || ischar(x)); % in y, x, z
 ip.addParameter('inputBbox', [], @(x) isempty(x) || isvector(x) || ischar(x));
 ip.addParameter('taskSize', [], @(x) isnumeric(x) || ischar(x));
-ip.addParameter('resample', [], @(x) isempty(x) || isnumeric(x) || ischar(x)); % resampling after rotation 
-ip.addParameter('Interp', 'linear', @(x) any(strcmpi(x, {'cubic', 'linear'})) || ischar(x));
+ip.addParameter('resampleFactor', [], @(x) isempty(x) || isnumeric(x) || ischar(x)); % resampling after rotation 
+ip.addParameter('interpMethod', 'linear', @(x) any(strcmpi(x, {'cubic', 'linear'})) || ischar(x));
 ip.addParameter('maskFns', {}, @(x) iscell(x) || ischar(x)); % 2d masks to filter regions to deskew and rotate, in xy, xz, yz order
 ip.addParameter('suffix', '', @ischar); % suffix for the folder
 ip.addParameter('parseCluster', true, @(x) islogical(x) || ischar(x));
@@ -34,29 +33,28 @@ ip.addParameter('cpusPerTask', 8, @(x) isnumeric(x) || ischar(x));
 ip.addParameter('uuid', '', @ischar);
 ip.addParameter('debug', false, @(x) islogical(x) || ischar(x));
 ip.addParameter('mccMode', false, @(x) islogical(x) || ischar(x));
-ip.addParameter('ConfigFile', '', @ischar);
+ip.addParameter('configFile', '', @ischar);
 
 ip.parse(frameFullpath, xyPixelSize, dz, varargin{:});
 
 pr = ip.Results;
 resultDirStr = pr.resultDirStr;
-ObjectiveScan = pr.ObjectiveScan;
-Overwrite = pr.Overwrite;
-Crop = pr.Crop;
-SkewAngle = pr.SkewAngle;
-Reverse = pr.Reverse;
+objectiveScan = pr.objectiveScan;
+overwrite = pr.overwrite;
+crop = pr.crop;
+skewAngle = pr.skewAngle;
+reverse = pr.reverse;
 DSRCombined = pr.DSRCombined;
 flipZstack = pr.flipZstack;
-Save16bit = pr.Save16bit;
-SaveMIP = pr.SaveMIP;
+save16bit = pr.save16bit;
+saveMIP = pr.saveMIP;
 saveZarr = pr.saveZarr;
-BatchSize = pr.BatchSize;
-BlockSize = pr.BlockSize;
-zarrSubSize = pr.zarrSubSize;
+batchSize = pr.batchSize;
+blockSize = pr.blockSize;
 inputBbox = pr.inputBbox;
 taskSize = pr.taskSize;
-resample = pr.resample;
-Interp = pr.Interp;
+resampleFactor = pr.resampleFactor;
+interpMethod = pr.interpMethod;
 maskFns = pr.maskFns;
 suffix = pr.suffix;
 parseCluster = pr.parseCluster;
@@ -67,7 +65,7 @@ cpusPerTask = pr.cpusPerTask;
 uuid = pr.uuid;
 debug = pr.debug;
 mccMode = pr.mccMode;
-ConfigFile = pr.ConfigFile;
+configFile = pr.configFile;
 
 if ischar(frameFullpath) && ~isempty(frameFullpath) && strcmp(frameFullpath(1), '{')
     frameFullpath = eval(frameFullpath);
@@ -78,20 +76,20 @@ end
 if ischar(dz)
     dz = str2num(dz);
 end
-if ischar(ObjectiveScan)
-    ObjectiveScan = str2num(ObjectiveScan);
+if ischar(objectiveScan)
+    objectiveScan = str2num(objectiveScan);
 end
-if ischar(Overwrite)
-    Overwrite = str2num(Overwrite);
+if ischar(overwrite)
+    overwrite = str2num(overwrite);
 end
-if ischar(Crop)
-    Crop = str2num(Crop);
+if ischar(crop)
+    crop = str2num(crop);
 end
-if ischar(SkewAngle)
-    SkewAngle = str2num(SkewAngle);
+if ischar(skewAngle)
+    skewAngle = str2num(skewAngle);
 end
-if ischar(Reverse)
-    Reverse = str2num(Reverse);
+if ischar(reverse)
+    reverse = str2num(reverse);
 end
 if ischar(DSRCombined)
     DSRCombined = str2num(DSRCombined);
@@ -99,23 +97,20 @@ end
 if ischar(flipZstack)
     flipZstack = str2num(flipZstack);
 end
-if ischar(Save16bit)
-    Save16bit = str2num(Save16bit);
+if ischar(save16bit)
+    save16bit = str2num(save16bit);
 end
-if ischar(SaveMIP)
-    SaveMIP = str2num(SaveMIP);
+if ischar(saveMIP)
+    saveMIP = str2num(saveMIP);
 end
 if ischar(saveZarr)
     saveZarr = str2num(saveZarr);
 end
-if ischar(BatchSize)
-    BatchSize = str2num(BatchSize);
+if ischar(batchSize)
+    batchSize = str2num(batchSize);
 end
-if ischar(BlockSize)
-    BlockSize = str2num(BlockSize);
-end
-if ischar(zarrSubSize)
-    zarrSubSize = str2num(zarrSubSize);
+if ischar(blockSize)
+    blockSize = str2num(blockSize);
 end
 if ischar(inputBbox)
     inputBbox = str2num(inputBbox);
@@ -123,8 +118,8 @@ end
 if ischar(taskSize)
     taskSize = str2num(taskSize);
 end
-if ischar(resample)
-    resample = str2num(resample);
+if ischar(resampleFactor)
+    resampleFactor = str2num(resampleFactor);
 end
 if ischar(maskFns) && ~isempty(maskFns) && strcmp(maskFns(1), '{')
     maskFns = eval(maskFns);
@@ -149,13 +144,13 @@ if ischar(mccMode)
 end
 
 XR_deskewRotateZarr(frameFullpath, xyPixelSize, dz, resultDirStr=resultDirStr, ...
-    ObjectiveScan=ObjectiveScan, Overwrite=Overwrite, Crop=Crop, SkewAngle=SkewAngle, ...
-    Reverse=Reverse, DSRCombined=DSRCombined, flipZstack=flipZstack, Save16bit=Save16bit, ...
-    SaveMIP=SaveMIP, saveZarr=saveZarr, BatchSize=BatchSize, BlockSize=BlockSize, ...
-    zarrSubSize=zarrSubSize, inputBbox=inputBbox, taskSize=taskSize, resample=resample, ...
-    Interp=Interp, maskFns=maskFns, suffix=suffix, parseCluster=parseCluster, ...
+    objectiveScan=objectiveScan, overwrite=overwrite, crop=crop, skewAngle=skewAngle, ...
+    reverse=reverse, DSRCombined=DSRCombined, flipZstack=flipZstack, save16bit=save16bit, ...
+    saveMIP=saveMIP, saveZarr=saveZarr, batchSize=batchSize, blockSize=blockSize, ...
+    inputBbox=inputBbox, taskSize=taskSize, resampleFactor=resampleFactor, ...
+    interpMethod=interpMethod, maskFns=maskFns, suffix=suffix, parseCluster=parseCluster, ...
     parseParfor=parseParfor, masterCompute=masterCompute, jobLogDir=jobLogDir, ...
-    cpusPerTask=cpusPerTask, uuid=uuid, debug=debug, mccMode=mccMode, ConfigFile=ConfigFile);
+    cpusPerTask=cpusPerTask, uuid=uuid, debug=debug, mccMode=mccMode, configFile=configFile);
 
 end
 

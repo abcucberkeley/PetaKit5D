@@ -14,42 +14,44 @@ ip.CaseSensitive = false;
 ip.addRequired('dataPaths', @(x) ischar(x) || iscell(x));
 ip.addParameter('xyPixelSize', 0.108, @isnumeric);
 ip.addParameter('dz', 0.1, @isnumeric);
-ip.addParameter('angle', 32.45, @isnumeric);
-ip.addParameter('Deskew', true, @islogical);
+ip.addParameter('skewAngle', 32.45, @isnumeric);
+ip.addParameter('deskew', true, @islogical);
 ip.addParameter('flipZstack', false, @islogical);
-ip.addParameter('ObjectiveScan', false, @islogical);
-ip.addParameter('ZstageScan', false, @islogical);
-ip.addParameter('ChannelPatterns', {'CamA_ch0', 'CamB_ch0'}, @iscell);
-ip.addParameter('Channels', [488, 560], @isnumeric);
-ip.addParameter('Save16bit', true, @islogical);
+ip.addParameter('objectiveScan', false, @islogical);
+ip.addParameter('zStageScan', false, @islogical);
+ip.addParameter('channelPatterns', {'CamA_ch0', 'CamB_ch0'}, @iscell);
+ip.addParameter('channels', [488, 560], @isnumeric);
+ip.addParameter('save16bit', true, @islogical);
 ip.addParameter('bgFactor', 1.5, @isnumeric);
 ip.addParameter('RWFn', {'/clusterfs/fiona/Gokul/RW_PSFs/PSF_RW_515em_128_128_101_100nmSteps.tif', '/clusterfs/fiona/Gokul/RW_PSFs/PSF_RW_605em_128_128_101_100nmSteps.tif'}, @iscell);
 ip.addParameter('sourceStr', 'test', @ischar);
 ip.addParameter('parseCluster', true, @islogical);
 ip.addParameter('masterCompute', false, @islogical);
+ip.addParameter('cpusPerTask', 8, @isscalar);
 ip.addParameter('mccMode', false, @islogical);
-ip.addParameter('ConfigFile', '', @ischar);
+ip.addParameter('configFile', '', @ischar);
 
 ip.parse(dataPaths, varargin{:});
 
 pr = ip.Results;
 dz = pr.dz;
 xyPixelSize = pr.xyPixelSize;
-angle = pr.angle;
-Deskew = pr.Deskew;
+skewAngle = pr.skewAngle;
+deskew = pr.deskew;
 flipZstack = pr.flipZstack;
-ObjectiveScan = pr.ObjectiveScan;
-ZstageScan = pr.ZstageScan;
-ChannelPatterns = pr.ChannelPatterns;
-Channels = pr.Channels;
-Save16bit = pr.Save16bit;
+objectiveScan = pr.objectiveScan;
+zStageScan = pr.zStageScan;
+channelPatterns = pr.channelPatterns;
+channels = pr.channels;
+save16bit = pr.save16bit;
 bgFactor = pr.bgFactor;
 RWFn = pr.RWFn;
 sourceStr = pr.sourceStr;
 parseCluster = pr.parseCluster;
 masterCompute = pr.masterCompute;
+cpusPerTask = pr.cpusPerTask;
 mccMode = pr.mccMode;
-ConfigFile = pr.ConfigFile;
+configFile = pr.configFile;
 
 tic
 % rt = '/Users/xruan/Images/20210607_PSFs_L15_37C/';
@@ -66,54 +68,51 @@ disp(dataPath_exps);
 
 %% deskew psfs
 
-if Deskew
+if deskew
     % dataPath_exps = cellfun(@(x) [x, '/'], dataPaths, 'unif', 0);
     disp(dataPath_exps);
 
-    % Save16bit = true;
+    % save16bit = true;
     Reverse = true;
 
     general_options = {'xyPixelSize', xyPixelSize, ...
                        'dz' dz, ...
-                       'SkewAngle', angle, ...
+                       'SkewAngle', skewAngle, ...
                        'Reverse', Reverse, ...
-                       'ZstageScan', ZstageScan, ...                       
-                       'ChannelPatterns', ChannelPatterns, ...
-                       'Save16bit', Save16bit...
+                       'zStageScan', zStageScan, ...                       
+                       'channelPatterns', channelPatterns, ...
+                       'save16bit', save16bit...
                        'Overwrite', false, ...
                        'Streaming', false, ...
-                       'cpusPerTask', 8, ...
+                       'cpusPerTask', cpusPerTask, ...
                        'parseCluster', parseCluster, ...
                        'masterCompute', masterCompute, ...
                        'mccMode', mccMode, ...
-                       'ConfigFile', ConfigFile, ...
+                       'configFile', configFile, ...
                        };
 
     % dsr
     % Rotate is for DSR, set Rotate as true if DSR is needed.
     dsr_options = {'Deskew', true, ...
-                   'Rotate', ~true, ...
+                   'Rotate', false, ...
                    'DSRCombined', false, ...
-                   'parseSettingFile', ~true, ...  
+                   'parseSettingFile', false, ...  
                    'flipZstack', flipZstack, ...
-                   'LLFFCorrection', ~true,...
+                   'FFCorrection', false,...
                   };
 
     % stitch
     stitch_options = {};
 
-    % decon          
-    decon_options = {'Decon', ~true};
-
     XR_microscopeAutomaticProcessing(dataPath_exps, general_options{:}, ...
-        dsr_options{:}, stitch_options{:}, decon_options{:});
+        dsr_options{:}, stitch_options{:});
 
 end
 
 
 %% psf analysis
 
-if Deskew
+if deskew
     dataPath_exps = cellfun(@(x) [x, '/DS/'], dataPaths, 'unif', 0);
 end
     
@@ -125,14 +124,14 @@ gamma = 0.5;
 source_descrip = sourceStr;
 
 xypixsize= xyPixelSize * 1000;
-if ObjectiveScan
+if objectiveScan
     zpixsize = dz * 1000;    
     % PSFsubpix = [128, 128, round((501 - 1) * 0.04 / dz * sind(angle)) + 1];   
-elseif ZstageScan
-    zpixsize = dz * cosd(angle) * 1000;
+elseif zStageScan
+    zpixsize = dz * cosd(skewAngle) * 1000;
     % PSFsubpix = [128, 128, round((501 - 1) * 0.04 / dz) + 1];                
 else
-    zpixsize = dz * sind(angle) * 1000;
+    zpixsize = dz * sind(skewAngle) * 1000;
     % PSFsubpix = [128, 128, round((501 - 1) * 0.04 / dz) + 1];        
 end
 PSFsubpix = [128, 128, round(100 * 100 / zpixsize) + 1];
@@ -141,11 +140,11 @@ zpixsize_RW = 0.1 * 1000;
 PSFsubpix_RW = [128, 128, 101];
 bgFactor_RW = 0;
 
-RW_info = cell(numel(ChannelPatterns), 1);
+RW_info = cell(numel(channelPatterns), 1);
 
 % run psf analysis for RW images
-for c = 1 : numel(ChannelPatterns)
-    Channel_k = Channels(c);
+for c = 1 : numel(channelPatterns)
+    Channel_k = channels(c);
     RWFn_k = RWFn{c};
     switch Channel_k
         case 488
@@ -197,8 +196,8 @@ for d = 1 : numel(dataPath_exps)
     fn = cellfun(@(x) [rtd, x], fsn, 'unif', 0);
     
     include_flag = false(numel(fn), 1);
-    for c = 1 : numel(ChannelPatterns)
-        include_flag = include_flag | contains(fn, ChannelPatterns{c}) | contains(fn, regexpPattern(ChannelPatterns{c}));
+    for c = 1 : numel(channelPatterns)
+        include_flag = include_flag | contains(fn, channelPatterns{c}) | contains(fn, regexpPattern(channelPatterns{c}));
     end
     fn = fn(include_flag);
     fsn = fsn(include_flag);
@@ -208,12 +207,12 @@ for d = 1 : numel(dataPath_exps)
     
     func_strs{d} = cell(numel(fn), 1);
     for f = 1 : numel(fn)
-        ch_ind = cellfun(@(x) contains(fn{f}, x), ChannelPatterns);
+        ch_ind = cellfun(@(x) contains(fn{f}, x), channelPatterns);
         if ~any(ch_ind)
             continue;
         end
         
-        Channel_k = Channels(ch_ind);
+        Channel_k = channels(ch_ind);
         switch Channel_k
             case 488
                 exc_lambda = 488;
@@ -252,7 +251,7 @@ for i = 1 : 3
     is_done_flag = generic_computing_frameworks_wrapper(frameFullpaths, figureFullpaths, ...
         func_strs, maxTrialNum=maxTrialNum, parseCluster=parseCluster, masterCompute=masterCompute, ...
         cpusPerTask=cpusPerTask, memAllocate=memAllocate * i, mccMode=mccMode, ...
-        ConfigFile=ConfigFile);
+        configFile=configFile);
 end
 
 

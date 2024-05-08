@@ -9,19 +9,19 @@ function [data, bim] = readzarr(filepath, options)
 
 arguments
     filepath char 
-    options.bbox (1, :) {mustBeNumeric} = []
+    options.inputBbox (1, :) {mustBeNumeric} = []
     options.sparseData (1, :) {mustBeNumericOrLogical} = true
 end
 
-bbox = options.bbox;
+inputBbox = options.inputBbox;
 sparseData = options.sparseData;
 
 try 
-    if isempty(bbox)
+    if isempty(inputBbox)
         data = parallelReadZarr(filepath);
     else
-        bbox = bbox(:)';
-        data = parallelReadZarr(filepath, 'bbox', bbox, 'sparse', sparseData); 
+        inputBbox = inputBbox(:)';
+        data = parallelReadZarr(filepath, 'bbox', inputBbox, 'sparse', sparseData); 
     end
     
     if nargout == 2
@@ -40,10 +40,10 @@ catch ME
     disp('Use the alternative zarr reader (ZarrAdapter)...');   
     
     bim = blockedImage(filepath, "Adapter", ZarrAdapter);    
-    if isempty(bbox)
+    if isempty(inputBbox)
         data = bim.Adapter.getIORegion([1, 1, 1], bim.Size);    
     else
-        data = bim.Adapter.getIORegion(bbox(1 : 3), bbox(4 : 6));
+        data = bim.Adapter.getIORegion(inputBbox(1 : 3), inputBbox(4 : 6));
     end
 end
 

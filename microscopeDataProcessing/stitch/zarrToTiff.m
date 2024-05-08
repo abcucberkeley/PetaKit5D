@@ -76,7 +76,7 @@ end
 
 % mv tmp result folder to output folder
 movefile(tmpFilename, tiffFilename);
-fprintf('Done!\n');
+% fprintf('Done!\n');
 
 end
 

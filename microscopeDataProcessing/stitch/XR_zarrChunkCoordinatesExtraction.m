@@ -13,10 +13,10 @@ function [batchBBoxes, regionBBoxes, localBBoxes] = XR_zarrChunkCoordinatesExtra
 ip = inputParser;
 ip.CaseSensitive = false;
 ip.addRequired('volSize', @(x) isvector(x) && numel(x) == 3);
-ip.addParameter('BatchSize', [1024,1024,1024], @(x) isvector(x) && numel(x) == 3 && all(x >= 1)); % in y, x, z
+ip.addParameter('batchSize', [1024,1024,1024], @(x) isvector(x) && numel(x) == 3 && all(x >= 1)); % in y, x, z
 ip.addParameter('BlockSize', [256, 256, 256], @(x) isnumeric(x) && numel(x) <= 3); 
 ip.addParameter('bbox', [], @(x) isempty(x) || (isnumeric(x) && numel(x) == 6)); % bounding box for which region to process
-ip.addParameter('SameBatchSize', true, @(x) islogical(x)); % same batch size before adding borderSize
+ip.addParameter('sameBatchSize', true, @(x) islogical(x)); % same batch size before adding borderSize
 ip.addParameter('BorderSize', 50, @(x) isnumeric(x) && numel(x) <= 3);
 
 ip.parse(volSize, varargin{:});
@@ -27,9 +27,9 @@ end
 
 pr = ip.Results;
 
-BatchSize = pr.BatchSize;
+batchSize = pr.batchSize;
 BlockSize = pr.BlockSize;
-SameBatchSize = pr.SameBatchSize;
+sameBatchSize = pr.sameBatchSize;
 BorderSize = pr.BorderSize;
 bbox = pr.bbox;
 
@@ -44,13 +44,13 @@ end
 
 wdSize = wdEnd - wdStart + 1;
 
-BatchSize = min(wdSize, BatchSize);
+batchSize = min(wdSize, batchSize);
 BlockSize = min(wdSize, BlockSize);
 
 % normalize batch size so it contains complete blocksizes 
-BatchSize = ceil(BatchSize ./ BlockSize) .* BlockSize;
+batchSize = ceil(batchSize ./ BlockSize) .* BlockSize;
 
-bSubSz = ceil(wdSize ./ BatchSize);
+bSubSz = ceil(wdSize ./ batchSize);
 numBatch = prod(bSubSz);
 
 regionBBoxes = zeros(numBatch, 6);
@@ -59,14 +59,14 @@ regionBBoxes = zeros(numBatch, 6);
 bSubs = [Y(:), X(:), Z(:)];
 clear Y X Z
 
-regionBBoxes(:, 1 : 3) = (bSubs - 1) .* BatchSize + wdStart; 
-regionBBoxes(:, 4 : 6) = min(regionBBoxes(:, 1 : 3) + BatchSize - 1, wdEnd);
+regionBBoxes(:, 1 : 3) = (bSubs - 1) .* batchSize + wdStart; 
+regionBBoxes(:, 4 : 6) = min(regionBBoxes(:, 1 : 3) + batchSize - 1, wdEnd);
 
 % get batch bbox from region bbox
 batchBBoxes = regionBBoxes;
 
-if SameBatchSize
-    batchBBoxes(:, 1 : 3) = batchBBoxes(:, 4 : 6) - BatchSize + 1;
+if sameBatchSize
+    batchBBoxes(:, 1 : 3) = batchBBoxes(:, 4 : 6) - batchSize + 1;
 end
 
 batchBBoxes(:, 1 : 3) = max(1, batchBBoxes(:, 1 : 3) - BorderSize);

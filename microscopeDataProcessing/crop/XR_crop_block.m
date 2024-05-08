@@ -70,7 +70,7 @@ for i = 1 : numel(batchInds)
     if ~is_overlap
         out_batch = zeros(obEnd - obStart, dtype);
     else
-        out_batch = readzarr(zarrFullpath, 'bbox', [cuboid_overlap(1 : 3), cuboid_overlap(4 : 6)]);
+        out_batch = readzarr(zarrFullpath, 'inputBbox', [cuboid_overlap(1 : 3), cuboid_overlap(4 : 6)]);
         if ~all(cuboid_overlap == [ibStart, ibEnd])
             out_batch = padarray(out_batch, cuboid_overlap(1 : 3) - ibStart, 0, 'pre');
             out_batch = padarray(out_batch, ibEnd - cuboid_overlap(4 : 6), 0, 'post');

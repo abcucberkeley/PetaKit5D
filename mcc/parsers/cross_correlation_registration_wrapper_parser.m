@@ -21,7 +21,7 @@ ip.addParameter('poolSize', [], @(x) isnumeric(x) || ischar(x));
 ip.addParameter('dimNumThrsh', 10000, @(x) isnumeric(x) || ischar(x));
 ip.addParameter('parseCluster', true, @(x) islogical(x) || ischar(x));
 ip.addParameter('mccMode', false, @(x) islogical(x) || ischar(x));
-ip.addParameter('ConfigFile', '', @ischar);
+ip.addParameter('configFile', '', @ischar);
 
 ip.parse(imgFullpath_1, imgFullpath_2, xcorrFullpath, pair_indices, cuboid_1, cuboid_2, cuboid_overlap_12, px, xyz_factors, varargin{:});
 
@@ -35,7 +35,7 @@ poolSize = pr.poolSize;
 dimNumThrsh = pr.dimNumThrsh;
 parseCluster = pr.parseCluster;
 mccMode = pr.mccMode;
-ConfigFile = pr.ConfigFile;
+configFile = pr.configFile;
 
 if ischar(imgFullpath_2) && ~isempty(imgFullpath_2) && strcmp(imgFullpath_2(1), '{')
     imgFullpath_2 = eval(imgFullpath_2);
@@ -87,7 +87,7 @@ cross_correlation_registration_wrapper(imgFullpath_1, imgFullpath_2, xcorrFullpa
     pair_indices, cuboid_1, cuboid_2, cuboid_overlap_12, px, xyz_factors, Stitch2D=Stitch2D, ...
     downSample=downSample, MaxOffset=MaxOffset, largeZarr=largeZarr, mipDirStr=mipDirStr, ...
     poolSize=poolSize, dimNumThrsh=dimNumThrsh, parseCluster=parseCluster, ...
-    mccMode=mccMode, ConfigFile=ConfigFile);
+    mccMode=mccMode, configFile=configFile);
 
 end
 

@@ -25,6 +25,7 @@ The main demos for the paper:
 - `demo_RL_deconvolution.m`: demo to illustrate how to run deconvolution and compare between conventional RL, WB (Guo et al. 2020), and OMW methods.
 - `demo_zarr_stitching.m`: demo to illustrate how to run stitching in both skewed and DSR spaces, along with the documentation for the setup of BigStitcher (Spark version) and Stitching-Spark for the stitching benchmarks in the paper.
 - `demo_large_scale_processing.m`: demo to illustrate how to set up large-scale processing for stitching, deconvolution, and deskew/rotation.
+- `demo_useful_tools.m`: demo to illustrate how to set up the running for a sets of commonly used tools, i.e., resampling, cropping, max projection, tiff/zarr conversion, imaris file conversion and so on. 
 
 
 ## GUI

@@ -62,7 +62,7 @@ ChannelPatterns = {'CamB_ch0', 'CamA_ch0'};
 Save16bit = [true, true, true, true];
 % not overwrite existing results
 Overwrite = false;
-% Processing for existing dataset if false
+% Processing for existing dataset. Set it as true for real-time processing
 Streaming = false;
 % use cluster for processing if true
 parseCluster = true;
@@ -80,20 +80,18 @@ mccMode = false;
 Deskew = true; % deskew
 Rotate = true; % rotate after deskew
 Stitch = false; % stitch
-Decon = false; % deconvolution
-RotateAfterDecon = false; % rotate after deconvolution
 
 DSRCombined = true; % bypassing deskew and use combined processing
 
-% flat field parameters (if LLFFCorrection is set to true) 
-LLFFCorrection = true;
+% flat field parameters (if FFCorrection is set to true) 
+FFCorrection = true;
 % lower bound cap for flat field
 LowerLimit = 0.4;
 % add a constant background value after correction to avoid zero background. 
 % if empty, add the background image back after correction.
 constOffset = 1;
 % flat field image paths in the order of CamB_ch0 and CamA_ch0 as defined in ChannelPatterns
-LSImagePaths = {[dataPath, '/FF/averaged/ff_CamB_ch0_CAM1_stack0000_488nm_0000000msec_0096911533msecAbs_000x_000y_000z_0017t.tif'],...
+FFImagePaths = {[dataPath, '/FF/averaged/ff_CamB_ch0_CAM1_stack0000_488nm_0000000msec_0096911533msecAbs_000x_000y_000z_0017t.tif'],...
                 [dataPath, '/FF/averaged/ff_CamA_ch0_CAM1_stack0000_488nm_0000000msec_0096911533msecAbs_000x_000y_000z_0017t.tif']};
 % camera background image paths in the order of CamB and CamA as defined in ChannelPatterns
 BackgroundPaths = {[dataPath, '/FF/KorraFusions/AVG_DF400_CamB_10ms.tif'],...
@@ -117,9 +115,8 @@ maxWaitLoopNum = 10;
 XR_microscopeAutomaticProcessing(dataPath, 'xyPixelSize', xyPixelSize, 'dz', dz,  ...
     'Reverse', Reverse, 'ChannelPatterns', ChannelPatterns, 'Save16bit', Save16bit, ...
     'Overwrite', Overwrite,'Streaming', Streaming, 'Deskew', Deskew, 'Rotate', Rotate, ...
-    'Stitch', Stitch, 'Decon', Decon, 'RotateAfterDecon', RotateAfterDecon, ...
-    'DSRCombined', DSRCombined, 'LLFFCorrection', LLFFCorrection, 'LowerLimit', LowerLimit, ...
-    'constOffset', constOffset, 'LSImagePaths', LSImagePaths, 'BackgroundPaths', BackgroundPaths, ...
+    'Stitch', Stitch, 'DSRCombined', DSRCombined, 'FFCorrection', FFCorrection, 'LowerLimit', LowerLimit, ...
+    'constOffset', constOffset, 'FFImagePaths', FFImagePaths, 'BackgroundPaths', BackgroundPaths, ...
     'minModifyTime', minModifyTime, 'maxModifyTime', maxModifyTime, 'maxWaitLoopNum', maxWaitLoopNum, ...
     'parseCluster', parseCluster, 'cpusPerTask', cpusPerTask, 'configFile', configFile, ...
     'mccMode', mccMode);

@@ -19,7 +19,7 @@ ip.addParameter('zarrSubSize', [20, 20, 20], @isnumeric);
 ip.addParameter('expand2dDim', true, @islogical); % expand the z dimension for 2d data
 ip.addParameter('flipZstack', false, @islogical);
 ip.addParameter('resample', [], @(x) isempty(x) || isnumeric(x));
-ip.addParameter('InputBbox', [], @(x) isnumeric(x));
+ip.addParameter('inputBbox', [], @(x) isnumeric(x));
 ip.addParameter('tileOutBbox', [], @(x) isempty(x) || isnumeric(x));
 ip.addParameter('compressor', 'lz4', @ischar);
 ip.addParameter('usrFcn', '', @(x) isempty(x) || isa(x,'function_handle') || ischar(x) || isstring(x));
@@ -35,7 +35,7 @@ zarrSubSize = pr.zarrSubSize;
 expand2dDim = pr.expand2dDim;
 flipZstack = pr.flipZstack;
 resample = pr.resample;
-InputBbox = pr.InputBbox;
+inputBbox = pr.inputBbox;
 tileOutBbox = pr.tileOutBbox;
 compressor = pr.compressor;
 usrFcn = pr.usrFcn;
@@ -74,7 +74,7 @@ if ~isempty(frame)
         blockSize = blockSize(1 : 2);
     end
 else
-    frame = readzarr(inputFilename, bbox=InputBbox);
+    frame = readzarr(inputFilename, inputBbox=inputBbox);
 
     sz = size(frame);
     if ismatrix(frame)
@@ -99,14 +99,7 @@ if flipZstack
 end    
 
 % bounding box crop for output
-if ~isempty(tileOutBbox)
-    try
-        frame = crop3d_mex(frame, bbox);
-    catch ME
-        disp(ME);
-        frame = frame(bbox(1) : bbox(4), bbox(2) : bbox(5), bbox(3) : bbox(6));
-    end
-end
+frame = crop3d(frame, tileOutBbox);
 
 if ~isempty(resample) && ~all(resample == 1)
     rs = resample(:)';

@@ -12,35 +12,35 @@ ip.CaseSensitive = false;
 ip.addRequired('dataPaths', @(x) ischar(x) || iscell(x));
 ip.addParameter('ResultDirStr', 'masks', @ischar); % y, x, z
 ip.addParameter('axis', [1, 1, 1], @isnumeric); % y, x, z
-ip.addParameter('ChannelPatterns', {'CamA_ch0', 'CamA_ch1', 'CamB_ch0', 'CamB_ch1'}, @iscell);
+ip.addParameter('channelPatterns', {'CamA_ch0', 'CamA_ch1', 'CamB_ch0', 'CamB_ch1'}, @iscell);
 ip.addParameter('zarrFile', false, @islogical); % use zarr file as input
 ip.addParameter('saveZarr', false, @islogical); % use zarr file as output
 ip.addParameter('blockSize', [256, 256, 1], @isnumeric); % zarr output block size
 ip.addParameter('intThresh', [100, 100, 100], @isnumeric); % intensity threshold, y, x, z
 ip.addParameter('volThresh', 100, @isnumeric); % volume threshold
 ip.addParameter('dilateSize', 100, @isnumeric); % dilate the mask to add some buffer room
-ip.addParameter('Save16bit', true, @islogical);
+ip.addParameter('save16bit', true, @islogical);
 ip.addParameter('uuid', '', @ischar);
 ip.addParameter('debug', false, @islogical);
 ip.addParameter('parseCluster', true, @islogical);
 ip.addParameter('masterCompute', true, @islogical); % master node participate in the task computing. 
 ip.addParameter('cpusPerTask', 3, @isnumeric);
 ip.addParameter('mccMode', false, @islogical);
-ip.addParameter('ConfigFile', '', @ischar);
+ip.addParameter('configFile', '', @ischar);
 
 ip.parse(dataPaths, varargin{:});
 
 pr = ip.Results;
 ResultDirStr = pr.ResultDirStr;
 axis = pr.axis;
-ChannelPatterns =  pr.ChannelPatterns;
+channelPatterns =  pr.channelPatterns;
 zarrFile = pr.zarrFile;
 saveZarr = pr.saveZarr;
 blockSize = pr.blockSize;
 intThresh = pr.intThresh;
 volThresh = pr.volThresh;
 dilateSize = pr.dilateSize;
-Save16bit = pr.Save16bit;
+save16bit = pr.save16bit;
 
 uuid = pr.uuid;
 % uuid for the job
@@ -53,7 +53,7 @@ parseCluster = pr.parseCluster;
 masterCompute = pr.masterCompute;
 cpusPerTask = pr.cpusPerTask;
 mccMode = pr.mccMode;
-ConfigFile = pr.ConfigFile;
+configFile = pr.configFile;
 
 if ischar(dataPaths)
     dataPaths = {dataPaths};
@@ -86,10 +86,10 @@ for d = 1 : nd
     fnames_d = {dir_info.name}';
     nF = numel(fnames_d);
     sz = getImageSize([dataPath, '/', fnames_d{1}]);    
-    nc = numel(ChannelPatterns);
+    nc = numel(channelPatterns);
     ch_inds = false(nF, nc);
     for c = 1 : nc
-        ch_inds(:, c) = contains(fnames_d, ChannelPatterns{c}, 'IgnoreCase', true) | contains(fnames_d, regexpPattern(ChannelPatterns{c}), 'IgnoreCase', true);
+        ch_inds(:, c) = contains(fnames_d, channelPatterns{c}, 'IgnoreCase', true) | contains(fnames_d, regexpPattern(channelPatterns{c}), 'IgnoreCase', true);
     end
     fnames_d = fnames_d(any(ch_inds, 2));
     
@@ -162,14 +162,14 @@ for f = 1 : nF
 
     func_strs{f} = sprintf(['gererate_single_MIP_mask(''%s'',''%s'',%d,%d,%s,%s,%s,''%s'')'], ...
         fn, fnout, intThresh_f, volThresh, strrep(mat2str(dilateSize_f), ' ', ','), strrep(mat2str(blockSize), ' ', ','), ...
-        string(Save16bit), uuid);
+        string(save16bit), uuid);
 end
 
 taskBatchNum = max(1, round(nF /1000));
 memAllocate = prod(sz) * 4 / 1024^3 * 20;
 generic_computing_frameworks_wrapper(frameFullpaths, outFullpaths, func_strs, ...
     parseCluster=parseCluster, masterCompute=masterCompute, taskBatchNum=taskBatchNum, ...
-    cpusPerTask=cpusPerTask, memAllocate=memAllocate, mccMode=mccMode, ConfigFile=ConfigFile);
+    cpusPerTask=cpusPerTask, memAllocate=memAllocate, mccMode=mccMode, configFile=configFile);
 
 
 end

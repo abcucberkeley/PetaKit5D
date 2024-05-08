@@ -21,11 +21,11 @@ ip.addParameter('pad', false, @islogical); % pad region that is outside the bbox
 ip.addParameter('zarrFile', false , @islogical); % read zarr
 ip.addParameter('largeZarr', false, @islogical); % use zarr file as input
 ip.addParameter('saveZarr', false , @islogical); % save as zarr
-ip.addParameter('BlockSize', [500, 500, 500] , @isnumeric); % save as zarr
+ip.addParameter('blockSize', [500, 500, 500] , @isnumeric); % save as zarr
 ip.addParameter('uuid', '', @ischar);
 ip.addParameter('parseCluster', true, @islogical);
 ip.addParameter('mccMode', false, @islogical);
-ip.addParameter('ConfigFile', '', @ischar);
+ip.addParameter('configFile', '', @ischar);
 
 ip.parse(dataFullpath, saveFullpath, bbox, varargin{:});
 
@@ -35,11 +35,11 @@ pad = pr.pad;
 zarrFile = pr.zarrFile;
 largeZarr = pr.largeZarr;
 saveZarr = pr.saveZarr;
-BlockSize = pr.BlockSize;
+blockSize = pr.blockSize;
 uuid = pr.uuid;
 parseCluster = pr.parseCluster;
 mccMode = pr.mccMode;
-ConfigFile = pr.ConfigFile;
+configFile = pr.configFile;
 
 if isempty(uuid)
     uuid = get_uuid();
@@ -69,14 +69,14 @@ end
 % read data
 if zarrFile
     if largeZarr
-        BatchSize = min([1024, 1024, 1024], BlockSize * 4);
+        batchSize = min([1024, 1024, 1024], blockSize * 4);
         parseParfor = false;
-        XR_crop_zarr(dataFullpath, saveFullpath, bbox, 'pad', pad, 'BatchSize', BatchSize, ...
-            'BlockSize', BlockSize, 'uuid', uuid, 'parseCluster', parseCluster, ...
-            'parseParfor', parseParfor, mccMode=mccMode, ConfigFile=ConfigFile);
+        XR_crop_zarr(dataFullpath, saveFullpath, bbox, 'pad', pad, 'batchSize', batchSize, ...
+            'blockSize', blockSize, 'uuid', uuid, 'parseCluster', parseCluster, ...
+            'parseParfor', parseParfor, mccMode=mccMode, configFile=configFile);
         return;
     end
-    im = readzarr(dataFullpath, 'bbox', bbox_1);
+    im = readzarr(dataFullpath, 'inputBbox', bbox_1);
 else
     im = readtiff(dataFullpath, 'range', [bbox_1(3), bbox_1(6)]);
     try
@@ -100,13 +100,13 @@ end
 % save data
 if saveZarr
     tmpPath = sprintf('%s_%s.zarr', saveFullpath(1 : end - 5), uuid);
-    writezarr(im, tmpPath, 'BlockSize', BlockSize);    
+    writezarr(im, tmpPath, 'blockSize', blockSize);    
 else
     tmpPath = sprintf('%s_%s.tif', saveFullpath(1 : end - 4), uuid);
     writetiff(im, tmpPath);
 end
 movefile(tmpPath, saveFullpath);
 
-fprintf('Done!\n\n');
+% fprintf('Done!\n\n');
 
 end

@@ -13,7 +13,7 @@ ip.addParameter('includeSubdir', true, @(x) islogical(x) || ischar(x)); % also t
 ip.addParameter('parseCluster', true, @(x) islogical(x) || ischar(x));
 ip.addParameter('masterCompute', false, @(x) islogical(x) || ischar(x));
 ip.addParameter('mccMode', false, @(x) islogical(x) || ischar(x));
-ip.addParameter('ConfigFile', '', @ischar);
+ip.addParameter('configFile', '', @ischar);
 
 ip.parse(source, dest, varargin{:});
 
@@ -26,7 +26,7 @@ includeSubdir = pr.includeSubdir;
 parseCluster = pr.parseCluster;
 masterCompute = pr.masterCompute;
 mccMode = pr.mccMode;
-ConfigFile = pr.ConfigFile;
+configFile = pr.configFile;
 
 if ischar(cpusPerTask)
     cpusPerTask = str2num(cpusPerTask);
@@ -53,7 +53,7 @@ end
 XR_parallel_rsync_wrapper(source, dest, cpusPerTask=cpusPerTask, numStream=numStream, ...
     SlurmParam=SlurmParam, niceFactor=niceFactor, includeSubdir=includeSubdir, ...
     parseCluster=parseCluster, masterCompute=masterCompute, mccMode=mccMode, ...
-    ConfigFile=ConfigFile);
+    configFile=configFile);
 
 end
 

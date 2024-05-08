@@ -14,8 +14,8 @@ ip.addRequired('dz', @isnumeric);
 ip.addRequired('dzPSF', @isnumeric);
 ip.addParameter('rawdata', [], @isnumeric); 
 ip.addParameter('nTapering', 0, @isnumeric); 
-ip.addParameter('Save16bit', false , @islogical);
-ip.addParameter('ObjectiveScan', false, @islogical);
+ip.addParameter('save16bit', false , @islogical);
+ip.addParameter('objectiveScan', false, @islogical);
 % deskew and rotation options
 ip.addParameter('Deskew', false , @islogical);
 ip.addParameter('Rotate', false , @islogical);
@@ -23,7 +23,7 @@ ip.addParameter('DSRCombined', true , @islogical);
 ip.addParameter('Reverse', false, @islogical);
 ip.addParameter('SkewAngle', 32.45 , @isnumeric);
 ip.addParameter('flipZstack', false, @islogical); 
-ip.addParameter('Interp', 'linear', @isnumeric); 
+ip.addParameter('interpMethod', 'linear', @isnumeric); 
 ip.addParameter('Crop', false, @islogical); 
 ip.addParameter('xStepThresh', 2, @isnumeric); 
 % decon parameters
@@ -37,8 +37,8 @@ ip.addParameter('skewed', [], @(x) isempty(x) || islogical(x)); % decon in skewe
 ip.addParameter('fixIter', true, @islogical);
 ip.addParameter('errThresh', [], @isnumeric); % error threshold for simplified code
 ip.addParameter('saveZarr', false, @islogical); % save as zarr
-ip.addParameter('BlockSize', [256, 256, 256], @isnumeric); % block overlap
-ip.addParameter('damper', 1, @isnumeric); % damp factor for decon result
+ip.addParameter('blockSize', [256, 256, 256], @isnumeric); % block overlap
+ip.addParameter('dampFactor', 1, @isnumeric); % damp factor for decon result
 ip.addParameter('scaleFactor', [], @isnumeric); % scale factor for result
 ip.addParameter('deconOffset', 0, @isnumeric); % offset for decon result
 ip.addParameter('EdgeErosion', 0, @isnumeric); % edge erosion for decon result
@@ -57,8 +57,8 @@ pr = ip.Results;
 rawdata = pr.rawdata;
 pr.rawdata = [];
 nTapering = pr.nTapering;
-Save16bit = pr.Save16bit;
-ObjectiveScan = pr.ObjectiveScan;
+save16bit = pr.save16bit;
+objectiveScan = pr.objectiveScan;
 % deskew and rotation
 Deskew = pr.Deskew;
 DSRCombined = pr.DSRCombined;
@@ -66,7 +66,7 @@ Rotate = pr.Rotate;
 Reverse = pr.Reverse;
 SkewAngle = pr.SkewAngle;
 flipZstack = pr.flipZstack;
-Interp = pr.Interp;
+interpMethod = pr.interpMethod;
 xStepThresh = pr.xStepThresh;
 % decon
 Background = pr.Background;
@@ -81,8 +81,8 @@ skewed = pr.skewed;
 fixIter = pr.fixIter;
 errThresh = pr.errThresh;
 saveZarr = pr.saveZarr;
-BlockSize = pr.BlockSize;
-damper = pr.damper;
+blockSize = pr.blockSize;
+dampFactor = pr.dampFactor;
 scaleFactor = pr.scaleFactor;
 deconOffset = pr.deconOffset;
 EdgeErosion = pr.EdgeErosion;
@@ -95,7 +95,7 @@ psfGen = pr.psfGen;
 uuid = pr.uuid;
 
 SkewAngle = abs(SkewAngle);
-if ~ObjectiveScan
+if ~objectiveScan
     dz_ratio = sind(SkewAngle);
 else
     dz_ratio = 1;
@@ -142,7 +142,7 @@ if Deskew
     end
 end
 
-if ObjectiveScan
+if objectiveScan
     Deskew = false;
     if Rotate
         dsrPath = sprintf('%s/Rotated/', deconPath);    
@@ -150,7 +150,7 @@ if ObjectiveScan
     end
 end
 
-if ~Deskew && Rotate && ~ObjectiveScan
+if ~Deskew && Rotate && ~objectiveScan
     Deskew = true;
     DSRCombined = true;
 end
@@ -378,14 +378,14 @@ if ~file_exist_mat(1)
                 deconvolved = deconvlucy(rawdata, psf, nIter);
             case 'simplified'
                 [deconvolved, err_mat, iter_run] = decon_lucy_function(rawdata, ...
-                    psf, nIter, Background=Background, useGPU=useGPU, Save16bit=Save16bit, ...
-                    damper=damper, scaleFactor=scaleFactor, deconOffset=deconOffset, ...
+                    psf, nIter, Background=Background, useGPU=useGPU, save16bit=save16bit, ...
+                    dampFactor=dampFactor, scaleFactor=scaleFactor, deconOffset=deconOffset, ...
                     bbox=deconBbox, EdgeErosion=EdgeErosion, debug=debug, debug_folder=debug_folder, ...
                     saveStep=saveStep);
             case 'omw'
                 [deconvolved, err_mat] = decon_lucy_omw_function(rawdata, psf, ...
-                    psf_b, nIter, Background=Background, useGPU=useGPU, Save16bit=Save16bit, ...
-                    damper=damper, scaleFactor=scaleFactor, deconOffset=deconOffset, ...
+                    psf_b, nIter, Background=Background, useGPU=useGPU, save16bit=save16bit, ...
+                    dampFactor=dampFactor, scaleFactor=scaleFactor, deconOffset=deconOffset, ...
                     bbox=deconBbox, EdgeErosion=EdgeErosion, debug=debug, debug_folder=debug_folder, ...
                     saveStep=saveStep);          
             case 'cudagen'
@@ -419,7 +419,7 @@ end
 
 clear rawdata;
 
-if ObjectiveScan
+if objectiveScan
     Deskew = false;
 end
 
@@ -435,7 +435,7 @@ if Deskew && (~Rotate || ~DSRCombined)
         end
     
         ds = deskewFrame3D(deconvolved, SkewAngle, dz, xyPixelSize, Reverse, ...
-            'Crop', Crop, 'Interp', Interp); 
+            'Crop', Crop, 'interpMethod', interpMethod); 
             
         MIPFn = sprintf('%s/MIPs/%s_MIP_z.tif', dsPath, fsname);
         saveMIP_frame(ds, MIPFn, 'axis', mipAxis);
@@ -443,15 +443,15 @@ if Deskew && (~Rotate || ~DSRCombined)
         if save3Dstack(2)
             if saveZarr 
                 dsTmpPath = sprintf('%s%s_%s.zarr', dsPath, fsname, uuid);
-                if Save16bit
-                    writezarr(uint16(ds), dsTmpPath, 'blockSize', BlockSize);            
+                if save16bit
+                    writezarr(uint16(ds), dsTmpPath, 'blockSize', blockSize);            
                 else
-                    writezarr(ds, dsTmpPath, 'blockSize', BlockSize);
+                    writezarr(ds, dsTmpPath, 'blockSize', blockSize);
                 end
             else
                 dsTmpPath = sprintf('%s%s_%s.tif', dsPath, fsname, uuid);                
                 writetiff(ds, dsTmpPath);
-                if Save16bit
+                if save16bit
                     writetiff(uint16(ds), dsTmpPath);
                 else
                     writetiff(ds, dsTmpPath);
@@ -472,24 +472,24 @@ if Deskew && (~Rotate || ~DSRCombined)
     if Rotate
         fprintf('Rotate deskewed deconvolved frame %s...\n', fsname);        
         dsr = rotateFrame3D(ds, SkewAngle, zAniso, Reverse,...
-            'Crop', true, 'ObjectiveScan', ObjectiveScan, 'Interp', Interp);
+            'Crop', true, 'objectiveScan', objectiveScan, 'interpMethod', interpMethod);
         ds = [];
     end
 elseif Deskew && Rotate && DSRCombined
     fprintf('Deskew, rotate and resample for deconvolved frame %s...\n', fsname);                
     dsr = deskewRotateFrame3D(deconvolved, SkewAngle, dz, xyPixelSize, ...
-        'reverse', Reverse, 'Crop', true, 'ObjectiveScan', ObjectiveScan, ...
-        'resample', Resample, 'Interp', Interp, 'xStepThresh', xStepThresh);
+        'reverse', Reverse, 'Crop', true, 'objectiveScan', objectiveScan, ...
+        'resample', Resample, 'interpMethod', interpMethod, 'xStepThresh', xStepThresh);
 end
 
-if ObjectiveScan && Rotate    
+if objectiveScan && Rotate    
     fprintf('Rotate deconvolved frame %s...\n', fsname);                
     dsr = rotateFrame3D(deconvolved, SkewAngle, zAniso, Reverse,...
-        'Crop', true, 'ObjectiveScan', ObjectiveScan, 'Interp', Interp);
+        'Crop', true, 'objectiveScan', objectiveScan, 'interpMethod', interpMethod);
 end
 
 if Rotate 
-    if Save16bit
+    if save16bit
         dsr = uint16(dsr);
     else
         dsr = single(dsr);
@@ -501,7 +501,7 @@ if Rotate
     if save3Dstack(3)
         if saveZarr 
             dsrTmpPath = sprintf('%s%s_%s.zarr', dsrPath, fsname, uuid);
-            writezarr(dsr, dsrTmpPath, 'blockSize', BlockSize);
+            writezarr(dsr, dsrTmpPath, 'blockSize', blockSize);
         else
             dsrTmpPath = sprintf('%s%s_%s.tif', dsrPath, fsname, uuid);
             writetiff(dsr, dsrTmpPath);
@@ -531,7 +531,7 @@ if nIter > 0 && strcmp(RLMethod, 'simplified')
     save(sprintf('%sactual_iterations_%d.txt', infoFn(1 : end - 8), iter_run), 'iter_run', '-ASCII');
 end
 
-if Save16bit
+if save16bit
     deconvolved = uint16(deconvolved);
 end
 
@@ -547,7 +547,7 @@ end
 if save3Dstack(1)
     if saveZarr 
         deconTmpPath = sprintf('%s_%s.zarr', outputFn(1 : end - 4), uuid);                
-        writezarr(deconvolved, deconTmpPath, 'blockSize', BlockSize);
+        writezarr(deconvolved, deconTmpPath, 'blockSize', blockSize);
     else
         deconTmpPath = sprintf('%s_%s.tif', outputFn(1 : end - 4), uuid);        
         writetiff(deconvolved, deconTmpPath);

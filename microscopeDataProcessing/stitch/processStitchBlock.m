@@ -206,7 +206,7 @@ for i = 1 : numel(batchInds)
                     dsz = dsz_mat(imdistFileIdx(tileInd), :);
                 end
                 if isempty(poolSize)
-                    im_d_j = readzarr(imdistFullpath, 'bbox', dbboxCoords);
+                    im_d_j = readzarr(imdistFullpath, 'inputBbox', dbboxCoords);
                     tim_d_block = indexing4d(tim_d_block, im_d_j, [dbCoords(1 : 3) - bCoords_c(1 : 3) + 1, j, dbCoords(4 : 6) - bCoords_c(1 : 3) + 1, j]);                    
                 else
                     % for now only consider pooling in z
@@ -217,7 +217,7 @@ for i = 1 : numel(batchInds)
                         p_bboxCoords(6) = p_bboxCoords(3);
                     end
                     
-                    im_d_j =  readzarr(imdistFullpath, 'bbox', p_bboxCoords);
+                    im_d_j =  readzarr(imdistFullpath, 'inputBbox', p_bboxCoords);
                     if numTiles == 2
                         im_d_j = feather_distance_map_resize_3d(im_d_j, [1, 1, 1, dbsz_j], wd);
                         tim_d_block = indexing4d(tim_d_block, im_d_j, [dbCoords(1 : 3) - bCoords_c(1 : 3) + 1, j, dbCoords(4 : 6) - bCoords_c(1 : 3) + 1, j]);                        
@@ -271,7 +271,7 @@ for i = 1 : numel(batchInds)
         if strcmpi(BlendMethod, 'feather') && numTiles > 2 && ~isempty(poolSize) && minor_inds(j)
             continue;
         end
-        block_j = readzarr(tileFns{tileInd}, bbox=bboxCoords);
+        block_j = readzarr(tileFns{tileInd}, inputBbox=bboxCoords);
         if ~isa(block_j, dtype)
             block_j = cast(block_j, dtype);
         end
@@ -357,7 +357,7 @@ for i = 1 : numel(batchInds)
 
                 if minor_inds(j)
                     % read the region
-                    block_j = readzarr(tileFns{tileInd}, bbox=uBboxCoords);
+                    block_j = readzarr(tileFns{tileInd}, inputBbox=uBboxCoords);
                     if ~isa(block_j, dtype)
                         block_j = cast(block_j, dtype);
                     end

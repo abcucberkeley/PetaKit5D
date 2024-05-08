@@ -21,14 +21,14 @@ ip.addRequired('RegionBBoxes', @isnumeric);
 ip.addRequired('xyPixelSize', @isnumeric); %in um
 ip.addRequired('dz', @isnumeric); %in um
 % ip.addParameter('BlockSize', [], @isnumeric);
-ip.addParameter('Save16bit', false , @islogical);
+ip.addParameter('save16bit', false , @islogical);
 ip.addParameter('Overwrite', false, @islogical);
 ip.addParameter('SkewAngle', -32.45 , @isnumeric);
 ip.addParameter('flipZstack', false, @islogical); 
 ip.addParameter('Background', [], @isnumeric);
 ip.addParameter('dzPSF', 0.1 , @isnumeric); %in um
 ip.addParameter('DeconIter', 15 , @isnumeric); % number of iterations
-ip.addParameter('damper', 1, @isnumeric); % damp factor for decon result
+ip.addParameter('dampFactor', 1, @isnumeric); % damp factor for decon result
 ip.addParameter('scaleFactor', 1.0, @isnumeric); % scale factor for decon result
 ip.addParameter('deconOffset', 0, @isnumeric); % offset for decon result
 ip.addParameter('EdgeErosion', 0, @isnumeric); % edge erosion for decon result
@@ -47,14 +47,14 @@ ip.parse(batchInds, zarrFullpath, psfFullpath, deconFullpath, flagFullname, ...
     BatchBBoxes, RegionBBoxes, xyPixelSize, dz, varargin{:});
 
 pr = ip.Results;
-Save16bit = pr.Save16bit;
+save16bit = pr.save16bit;
 Overwrite = pr.Overwrite;
 SkewAngle = pr.SkewAngle;
 flipZstack = pr.flipZstack;
 Background = pr.Background;
 dzPSF = pr.dzPSF;
 DeconIter = pr.DeconIter;
-damper = pr.damper;
+dampFactor = pr.dampFactor;
 scaleFactor = pr.scaleFactor;
 deconOffset = pr.deconOffset;
 EdgeErosion = pr.EdgeErosion;
@@ -110,7 +110,7 @@ for i = 1 : numel(batchInds)
     if ~(isempty(deconMaskFns) || isempty(deconMaskFns{1}))
         skipDecon = false;
         for f = 1 : 3
-            im_f = readzarr(deconMaskFns{f}, 'bbox', [obStart(finds(f, :)), 1, obEnd(finds(f, :)), 1]);
+            im_f = readzarr(deconMaskFns{f}, 'inputBbox', [obStart(finds(f, :)), 1, obEnd(finds(f, :)), 1]);
             if ~any(im_f(:))
                 skipDecon = true;
                 break;
@@ -127,7 +127,7 @@ for i = 1 : numel(batchInds)
     end
 
     % load the region in input 
-    in_batch = readzarr(zarrFullpath, 'bbox', [ibStart, ibEnd]);
+    in_batch = readzarr(zarrFullpath, 'inputBbox', [ibStart, ibEnd]);
 
     % deconvolution
     inputFn = '';
@@ -146,11 +146,11 @@ for i = 1 : numel(batchInds)
     deconBbox = [baStart, baEnd];
 
     out_batch = RLdecon(inputFn, outputFn, psfFullpath, xyPixelSize, dz, dzPSF, ...
-        'rawdata', in_batch, 'Save16bit', Save16bit, 'SkewAngle', SkewAngle, ...
+        'rawdata', in_batch, 'save16bit', save16bit, 'SkewAngle', SkewAngle, ...
         'Deskew', Deskew, 'Rotate', Rotate, 'DSRCombined', DSRCombined, 'Reverse', Reverse, ...
         'Background', Background, 'DeconIter', DeconIter, 'RLMethod', RLMethod, ...
         'skewed', skewed, 'wienerAlpha', wienerAlpha, 'OTFCumThresh', OTFCumThresh, ...
-        'fixIter', fixIter, 'damper', damper, 'scaleFactor', scaleFactor, 'deconOffset', deconOffset, ...
+        'fixIter', fixIter, 'dampFactor', dampFactor, 'scaleFactor', scaleFactor, 'deconOffset', deconOffset, ...
         'EdgeErosion', EdgeErosion, 'deconBbox', deconBbox, 'useGPU', useGPU, ...
         'psfGen', psfGen, 'debug', debug, 'save3Dstack', save3Dstack, 'mipAxis', mipAxis);
     

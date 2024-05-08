@@ -10,23 +10,18 @@ function XR_FSC_analysis_wrapper(dataPaths, varargin)
 ip = inputParser;
 ip.CaseSensitive = false;
 ip.addRequired('dataPaths', @(x) ischar(x) || iscell(x));
-ip.addParameter('outDirstr', 'FSCs', @ischar);
+ip.addParameter('resultDirName', 'FSCs', @ischar);
 ip.addParameter('xyPixelSize', 0.108, @isnumeric);
 ip.addParameter('dz', 0.1, @isnumeric);
-% ip.addParameter('angle', 32.45, @isnumeric);
 ip.addParameter('dr', 1 , @isnumeric);
 ip.addParameter('dtheta', pi / 12 , @isnumeric);
 ip.addParameter('resThreshMethod', 'fixed', @ischar);
 ip.addParameter('resThresh', 0.2, @isnumeric);
-ip.addParameter('N', [251, 251, 251], @isnumeric);
-ip.addParameter('bbox', [], @isnumeric);
+ip.addParameter('halfSize', [251, 251, 251], @isnumeric);
+ip.addParameter('inputBbox', [], @isnumeric);
 ip.addParameter('resAxis', 'xz', @ischar);
 ip.addParameter('skipConeRegion', true, @islogical);
-% ip.addParameter('Deskew', true, @islogical);
-% ip.addParameter('flipZstack', false, @islogical);
-% ip.addParameter('ObjectiveScan', false, @islogical);
-% ip.addParameter('ZstageScan', false, @islogical);
-ip.addParameter('ChannelPatterns', {'tif'}, @iscell);
+ip.addParameter('channelPatterns', {'tif'}, @iscell);
 ip.addParameter('Channels', [488, 560], @isnumeric);
 ip.addParameter('multiRegions', false, @islogical);
 ip.addParameter('regionInterval', [50, 50, -1], @isnumeric); % yxz, -1 means only center
@@ -36,25 +31,26 @@ ip.addParameter('suffix', 'decon', @ischar);
 ip.addParameter('iterInterval', 5, @isnumeric); % iteration interval for FSC resolution plot
 ip.addParameter('parseCluster', true, @islogical);
 ip.addParameter('masterCompute', true, @islogical);
+ip.addParameter('cpusPerTask', 4, @isscalar);
 ip.addParameter('mccMode', false, @islogical);
-ip.addParameter('ConfigFile', '', @ischar);
+ip.addParameter('configFile', '', @ischar);
 
 ip.parse(dataPaths, varargin{:});
 
 pr = ip.Results;
-outDirstr = pr.outDirstr;
+resultDirName = pr.resultDirName;
 dz = pr.dz;
 xyPixelSize = pr.xyPixelSize;
 % angle = pr.angle;
 dr = pr.dr;
 dtheta = pr.dtheta;
-N = pr.N;
-bbox = pr.bbox;
+halfSize = pr.halfSize;
+inputBbox = pr.inputBbox;
 resThreshMethod = pr.resThreshMethod;
 resThresh = pr.resThresh;
 resAxis = pr.resAxis;
 skipConeRegion = pr.skipConeRegion;
-ChannelPatterns = pr.ChannelPatterns;
+channelPatterns = pr.channelPatterns;
 Channels = pr.Channels;
 multiRegions = pr.multiRegions;
 regionInterval = pr.regionInterval;
@@ -64,8 +60,9 @@ suffix = pr.suffix;
 iterInterval = pr.iterInterval;
 parseCluster = pr.parseCluster;
 masterCompute = pr.masterCompute;
+cpusPerTask = pr.cpusPerTask;
 mccMode = pr.mccMode;
-ConfigFile = pr.ConfigFile;
+configFile = pr.configFile;
 
 tic
 if ischar(dataPaths)
@@ -98,7 +95,7 @@ for i = 1 : numel(dataPath_exps)
         imSizes{i} =  cellfun(@(x) getImageSize([dataPath_i, x]), fsn, 'unif', 0);
     end
     
-    fscPath = [dataPath_i, outDirstr, '/'];
+    fscPath = [dataPath_i, resultDirName, '/'];
     mkdir(fscPath);
     outputFullnames{i} = cellfun(@(x) [fscPath, x(1 : end - 4), '.mat'], fsn, 'unif', 0);
 end
@@ -111,15 +108,15 @@ end
 
 % filter filenames by channel patterns
 include_flag = false(numel(inputFullnames), 1);
-for c = 1 : numel(ChannelPatterns)
-    include_flag = include_flag | contains(inputFullnames, ChannelPatterns{c}) | contains(inputFullnames, regexpPattern(ChannelPatterns{c}));
+for c = 1 : numel(channelPatterns)
+    include_flag = include_flag | contains(inputFullnames, channelPatterns{c}) | contains(inputFullnames, regexpPattern(channelPatterns{c}));
 end
 inputFullnames = inputFullnames(include_flag);
 outputFullnames = outputFullnames(include_flag);
 nF = numel(inputFullnames);
 
 % process bbox for multiple regions
-bboxes = repmat({bbox}, nF, 1);
+bboxes = repmat({inputBbox}, nF, 1);
 if multiRegions
     imSizes = imSizes(include_flag);
     imSizes = cat(1, imSizes{:});
@@ -129,27 +126,27 @@ if multiRegions
         d = regionInterval;
 
         for f = 1 : nF
-            ycs = cs(1) : -d(1) : N + 1;
-            ycs = [ycs(end : -1 : 2), cs(1) : d(1) : imSizes(f, 1) - N + 1];
+            ycs = cs(1) : -d(1) : halfSize + 1;
+            ycs = [ycs(end : -1 : 2), cs(1) : d(1) : imSizes(f, 1) - halfSize + 1];
             if d(1) == -1
                 ycs = cs(f, 1);
             end
 
-            xcs = cs(2) : -d(2) : N + 1;
-            xcs = [xcs(end : -1 : 2), cs(2) : d(2) : imSizes(f, 2) - N + 1];
+            xcs = cs(2) : -d(2) : halfSize + 1;
+            xcs = [xcs(end : -1 : 2), cs(2) : d(2) : imSizes(f, 2) - halfSize + 1];
             if d(2) == -1
                 xcs = cs(f, 2);
             end
 
-            zcs = cs(3) : -d(3) : N + 1;
-            zcs = [zcs(end : -1 : 2), cs(3) : d(3) : imSizes(f, 3) - N + 1];
+            zcs = cs(3) : -d(3) : halfSize + 1;
+            zcs = [zcs(end : -1 : 2), cs(3) : d(3) : imSizes(f, 3) - halfSize + 1];
             if d(3) == -1
                 zcs = cs(f, 3);
             end
             
             [Y, X, Z] = ndgrid(ycs, xcs, zcs);
 
-            bbox_i = [[Y(:), X(:), Z(:)] - N, [Y(:), X(:), Z(:)] + N - 1];
+            bbox_i = [[Y(:), X(:), Z(:)] - halfSize, [Y(:), X(:), Z(:)] + halfSize - 1];
             if any(bbox_i(:, 1 : 3) < 1 & bbox_i(:, 4 : 6) > imSizes(f, :), 'all')
                 bbox_i(:, 1 : 3) = bbox_i(:, 1 : 3) .* (bbox_i(:, 1 : 3) >= 1) + (bbox_i(:, 1 : 3) < 1);
                 bbox_i(:, 4 : 6) = bbox_i(:, 4 : 6) .* (bbox_i(:, 4 : 6) <= imSizes(f, :)) ...
@@ -161,7 +158,7 @@ if multiRegions
 
     if ~isempty(regionGrid)
         for f = 1 : nF
-            bbox_i = [regionGrid - N, regionGrid + N - 1];
+            bbox_i = [regionGrid - halfSize, regionGrid + halfSize - 1];
             if any(bbox_i(:, 1 : 3) < 1 & bbox_i(:, 4 : 6) > imSizes(f, :), 'all')
                 bbox_i(:, 1 : 3) = bbox_i(:, 1 : 3) .* (bbox_i(:, 1 : 3) >= 1) + (bbox_i(:, 1 : 3) < 1);
                 bbox_i(:, 4 : 6) = bbox_i(:, 4 : 6) .* (bbox_i(:, 4 : 6) <= imSizes(f, :)) ...
@@ -175,23 +172,23 @@ end
 
 func_strs = arrayfun(@(x) sprintf(['XR_one_image_FSC_analysis_frame(''%s'',''%s'',', ...
                 '''xyPixelSize'',%0.20f,''dz'',%0.20f,''dr'',%0.20f,''dtheta'',%0.20f,', ...
-                '''N'',%s,''resThreshMethod'',''%s'',''resThresh'',%0.20f,''resAxis'',''%s'',', ...
+                '''halfSize'',%s,''resThreshMethod'',''%s'',''resThresh'',%0.20f,''resAxis'',''%s'',', ...
                 '''skipConeRegion'',%s,''bbox'',%s,''clipPer'',[%0.20f])'], inputFullnames{x}, ...
-                outputFullnames{x}, xyPixelSize, dz, dr, dtheta, strrep(mat2str(N), ' ', ','), ...
+                outputFullnames{x}, xyPixelSize, dz, dr, dtheta, strrep(mat2str(halfSize), ' ', ','), ...
                 resThreshMethod, resThresh, resAxis, string(skipConeRegion), ...
                 strrep(mat2str(bboxes{x}), ' ', ','), clipPer), ...
                 1 : numel(inputFullnames), 'unif', 0);
 
-memAllocate = prod(N) * 4 * 200 / 1024^3;
+memAllocate = prod(halfSize) * 4 * 200 / 1024^3;
 generic_computing_frameworks_wrapper(inputFullnames, outputFullnames, func_strs, ...
-    cpusPerTask=4, memAllocate=memAllocate, parseCluster=parseCluster, masterCompute=masterCompute, ...
-    mccMode=mccMode, ConfigFile=ConfigFile);
+    cpusPerTask=cpusPerTask, memAllocate=memAllocate, parseCluster=parseCluster, masterCompute=masterCompute, ...
+    mccMode=mccMode, configFile=configFile);
 
 
 %% visualize FSC results
 
 iter = iterInterval;
-nC = numel(ChannelPatterns);
+nC = numel(channelPatterns);
 ntheta = round(2 * pi / dtheta) + 1;
 
 if ~multiRegions
@@ -207,10 +204,10 @@ if ~multiRegions
             mkdir(figurePath);
         end
     
-        fscPath = [dataPath_exp_d, outDirstr, '/'];
+        fscPath = [dataPath_exp_d, resultDirName, '/'];
     
         for c = 1 : nC
-            include_flag = contains(inputFullnames, ChannelPatterns{c}) | contains(inputFullnames, regexpPattern(ChannelPatterns{c}));
+            include_flag = contains(inputFullnames, channelPatterns{c}) | contains(inputFullnames, regexpPattern(channelPatterns{c}));
             fsns_c = fsns(include_flag);
             if isempty(fsns_c)
                 continue;
@@ -306,10 +303,10 @@ else
             mkdir(figurePath);
         end
     
-        fscPath = [dataPath_exp_d, outDirstr, '/'];
+        fscPath = [dataPath_exp_d, resultDirName, '/'];
     
         for c = 1 : nC
-            include_flag = contains(inputFullnames, ChannelPatterns{c}) | contains(inputFullnames, regexpPattern(ChannelPatterns{c}));
+            include_flag = contains(inputFullnames, channelPatterns{c}) | contains(inputFullnames, regexpPattern(channelPatterns{c}));
             fsns_c = fsns(include_flag);
             if isempty(fsns_c)
                 continue;
@@ -371,7 +368,7 @@ else
     
             f0 = gcf();
             figureFullname = sprintf('%s/fsc_average_resolution_vs_decon_iterations_ch_%d_%s.png', figurePath, Channels(c), suffix);
-            print(f0, '-painters','-dpng', '-loose', figureFullname);
+            print(f0, '-vector','-dpng', '-loose', figureFullname);
             figureFullname = sprintf('%s/fsc_average_resolution_vs_decon_iterations_ch_%d_%s.fig', figurePath, Channels(c), suffix);
             saveas(f0, figureFullname);
     
@@ -380,7 +377,7 @@ else
             yticks(0.2 : 0.025 : 0.5)
     
             figureFullname = sprintf('%s/fsc_average_resolution_vs_decon_iterations_ch_%d_%s_res_0p2_0p5.png', figurePath, Channels(c), suffix);
-            print(f0, '-painters','-dpng', '-loose', figureFullname);
+            print(f0, '-vector','-dpng', '-loose', figureFullname);
             figureFullname = sprintf('%s/fsc_average_resolution_vs_decon_iterations_ch_%d_%s_res_0p2_0p5.fig', figurePath, Channels(c), suffix);
             saveas(f0, figureFullname);
             
@@ -401,7 +398,7 @@ else
     
                     f0 = gcf();
                     figureFullname = sprintf('%s/fsc_res_vs_thetas_%s_%s.png', figurePath, fsns_c{i}(1 : end - 4), suffix);
-                    print(f0, '-painters','-dpng', '-loose', figureFullname);
+                    print(f0, '-vector','-dpng', '-loose', figureFullname);
                     close(f0);
                 end
             end

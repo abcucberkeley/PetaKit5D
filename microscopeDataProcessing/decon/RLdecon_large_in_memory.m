@@ -9,7 +9,7 @@ ip.addRequired('deconFullpath', @(x) ischar(x));
 ip.addRequired('psfFullpath', @(x) ischar(x));
 ip.addRequired('xyPixelSize', @isnumeric);
 ip.addRequired('dz', @isnumeric);
-ip.addParameter('Save16bit', false , @islogical);
+ip.addParameter('save16bit', false , @islogical);
 ip.addParameter('Rotate', false , @islogical);
 ip.addParameter('Deskew', false , @islogical);
 ip.addParameter('SkewAngle', -32.45 , @isnumeric);
@@ -25,7 +25,7 @@ ip.addParameter('DeconIter', 15 , @isnumeric); % number of iterations
 ip.addParameter('EdgeErosion', 8 , @isnumeric); % erode edges for certain size.
 ip.addParameter('ErodeMaskfile', '', @ischar); % erode edges file
 ip.addParameter('SaveMaskfile', false, @islogical); % save mask file for common eroded mask
-ip.addParameter('damper', 1, @isnumeric); % damp factor for decon result
+ip.addParameter('dampFactor', 1, @isnumeric); % damp factor for decon result
 ip.addParameter('scaleFactor', [], @isnumeric); % scale factor for decon result
 ip.addParameter('deconOffset', 0, @isnumeric); % offset for decon result
 ip.addParameter('deconMaskFns', {} , @iscell); % Full paths of 2D mask zarr files, in xy, xz, yz order
@@ -37,7 +37,7 @@ ip.addParameter('OTFCumThresh', 0.9, @isnumeric); % OTF cumutative sum threshold
 ip.addParameter('skewed', [], @(x) isempty(x) || islogical(x)); % decon in skewed space
 ip.addParameter('fixIter', true, @islogical); % 
 ip.addParameter('errThresh', [], @isnumeric); % error threshold for simplified code
-ip.addParameter('BatchSize', [1024, 1024, 1024] , @isnumeric); % in y, x, z
+ip.addParameter('batchSize', [1024, 1024, 1024] , @isnumeric); % in y, x, z
 ip.addParameter('Overlap', 200, @isnumeric); % block overlap
 ip.addParameter('CPUMaxMem', 500, @isnumeric); % CPU Memory in Gb
 ip.addParameter('parseCluster', true, @islogical);
@@ -50,14 +50,14 @@ ip.parse(frameFullpath, psfFullpath, deconFullpath, xyPixelSize, dz, varargin{:}
 
 pr = ip.Results;
 % Overwrite = pr.Overwrite;
-Save16bit = pr.Save16bit;
+save16bit = pr.save16bit;
 Deskew = pr.Deskew;
 Rotate = pr.Rotate;
 SkewAngle = pr.SkewAngle;
 flipZstack = pr.flipZstack;
 dzPSF = pr.dzPSF;
 DeconIter = pr.DeconIter;
-damper = pr.damper;
+dampFactor = pr.dampFactor;
 scaleFactor = pr.scaleFactor;
 deconOffset = pr.deconOffset;
 deconMaskFns = pr.deconMaskFns;
@@ -68,7 +68,7 @@ OTFCumThresh = pr.OTFCumThresh;
 skewed = pr.skewed;
 fixIter = pr.fixIter;
 errThresh = pr.errThresh;
-BatchSize = pr.BatchSize;
+batchSize = pr.batchSize;
 psfGen = pr.psfGen;
 useGPU = pr.useGPU;
 EdgeErosion = pr.EdgeErosion;
@@ -165,18 +165,18 @@ end
 % calculate number of chunks to break the image file
 imSize = size(im);
 % dtype = class(im);
-if Save16bit
+if save16bit
     dtype = 'uint16';
 else
     dtype = 'single';
 end
 
-SameBatchSize = ~true;
+sameBatchSize = ~true;
 BorderSize = round((size(psf) + 10) / 2);
-BlockSize = BatchSize;
-[BatchBBoxes, RegionBBoxes] = XR_zarrChunkCoordinatesExtraction(imSize, 'BatchSize', BatchSize, ...
-    'BlockSize', BlockSize, 'SameBatchSize', SameBatchSize, 'BorderSize', BorderSize);
-% scaleFactor = prod(min(imSize, BatchSize));
+BlockSize = batchSize;
+[BatchBBoxes, RegionBBoxes] = XR_zarrChunkCoordinatesExtraction(imSize, 'batchSize', batchSize, ...
+    'BlockSize', BlockSize, 'sameBatchSize', sameBatchSize, 'BorderSize', BorderSize);
+% scaleFactor = prod(min(imSize, batchSize));
 
 t0 = tic;
 fprintf('Deconvolving chunks...\n')
@@ -200,7 +200,7 @@ for i = 1 : numel(batchInds)
     if ~(isempty(deconMaskFns) || isempty(deconMaskFns{1}))
         skipDecon = false;
         for f = 1 : 3
-            im_f = readzarr(deconMaskFns{f}, 'bbox', [obStart(finds(f, :)), 1, obEnd(finds(f, :)), 1]);
+            im_f = readzarr(deconMaskFns{f}, 'inputBbox', [obStart(finds(f, :)), 1, obEnd(finds(f, :)), 1]);
             if ~any(im_f(:))
                 skipDecon = true;
                 break;
@@ -236,10 +236,10 @@ for i = 1 : numel(batchInds)
     deconBbox = [baStart, baEnd];
 
     out_batch = RLdecon(inputFn, outputFn, psfFullpath, xyPixelSize, dz, dzPSF, ...
-        'rawdata', in_batch, 'Save16bit', Save16bit, 'SkewAngle', SkewAngle, ...
+        'rawdata', in_batch, 'save16bit', save16bit, 'SkewAngle', SkewAngle, ...
         'Deskew', Deskew, 'Rotate', Rotate, 'DSRCombined', DSRCombined, 'Reverse', Reverse, ...
         'Background', Background, 'DeconIter', DeconIter, 'RLMethod', RLMethod, ...
-        'skewed', skewed, 'wienerAlpha', wienerAlpha, 'fixIter', fixIter, 'damper', damper, ...
+        'skewed', skewed, 'wienerAlpha', wienerAlpha, 'fixIter', fixIter, 'dampFactor', dampFactor, ...
         'scaleFactor', scaleFactor, 'deconOffset', deconOffset, 'deconBbox', deconBbox, ...
         'useGPU', useGPU, 'psfGen', psfGen, 'debug', debug, 'save3Dstack', save3Dstack, ...
         'mipAxis', mipAxis);
@@ -276,7 +276,7 @@ if ~isempty(ErodeMaskfile) && exist(ErodeMaskfile, 'file')
     im = im .* cast(im_bw_erode, class(im));
 end
 
-if pr.Save16bit
+if pr.save16bit
     im = uint16(im);
 else
     im = single(im);

@@ -9,7 +9,7 @@ ip.CaseSensitive = false;
 ip.addRequired('fileFullpaths', @(x) ischar(x) || iscell(x));
 ip.addRequired('tmpDir', @(x) ischar(x));
 ip.addParameter('mccMode', false, @islogical);
-ip.addParameter('ConfigFile', '', @ischar);
+ip.addParameter('configFile', '', @ischar);
 
 ip.parse(fileFullpaths, tmpDir, varargin{:});
 
@@ -48,7 +48,7 @@ maxJobNum = inf;
 is_done_flag = generic_computing_frameworks_wrapper(inputFlagpaths, flagFullpaths, ...
     func_strs, 'tmpDir', flag_dir, 'language', 'matlab', 'MatlabLaunchStr', MatlabLaunchStr, ...
     'cpusPerTask', cpusPerTask, 'memAllocate', memAllocate, 'maxJobNum', maxJobNum, ...
-    'masterCompute', ~false, 'mccMode', mccMode, 'ConfigFile', ConfigFile);
+    'masterCompute', ~false, 'mccMode', mccMode, 'configFile', configFile);
 
 % collect results
 file_exist_mat = cell(numBatch, 1);

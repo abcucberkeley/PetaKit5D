@@ -12,14 +12,14 @@ ip.addParameter('bbox', [], @isnumeric); % bbox for input
 ip.addParameter('blockSize', [256, 256, 256], @isnumeric); % blcoksize
 ip.addParameter('batchSize', [512, 512, 512], @isnumeric); % size to process in one batch 
 ip.addParameter('zarrSubSize', [20, 20, 20], @isnumeric);
-ip.addParameter('Save16bit', true , @islogical); % save result data as 16 bit
+ip.addParameter('save16bit', true , @islogical); % save result data as 16 bit
 ip.addParameter('flipEmptyValue', false , @islogical); % 65535 to 0 for empty region
 ip.addParameter('parseCluster', true, @islogical);
 ip.addParameter('masterCompute', true, @islogical);
 ip.addParameter('cpusPerTask', 1, @isnumeric);
 ip.addParameter('uuid', '', @ischar);
 ip.addParameter('mccMode', false, @islogical);
-ip.addParameter('ConfigFile', '', @ischar);
+ip.addParameter('configFile', '', @ischar);
 
 ip.parse(n5Fullpath, varargin{:});
 
@@ -35,7 +35,7 @@ masterCompute = pr.masterCompute;
 cpusPerTask = pr.cpusPerTask;
 uuid = pr.uuid;
 mccMode = pr.mccMode;
-ConfigFile = pr.ConfigFile;
+configFile = pr.configFile;
 
 if isempty(uuid)
     uuid = get_uuid();
@@ -87,8 +87,8 @@ numBatch = prod(bSubSz);
 
 BorderSize = [0, 0, 0];
 
-[outBatchBBoxes, ~, ~] = XR_zarrChunkCoordinatesExtraction(outSize, BatchSize=batchSize, ...
-    BlockSize=blockSize, SameBatchSize=false, BorderSize=BorderSize);
+[outBatchBBoxes, ~, ~] = XR_zarrChunkCoordinatesExtraction(outSize, batchSize=batchSize, ...
+    BlockSize=blockSize, sameBatchSize=false, BorderSize=BorderSize);
 
 inBatchBboxes = outBatchBBoxes + [wdStart, wdStart] - 1;
 
@@ -139,12 +139,12 @@ inputFullpaths = repmat({n5Fullpath}, numTasks, 1);
 memAllocate = prod(batchSize) * 4 / 2^30 * 2.5;
 is_done_flag= generic_computing_frameworks_wrapper(inputFullpaths, outputFullpaths, ...
     funcStrs, parseCluster=parseCluster, masterCompute=masterCompute, cpusPerTask=cpusPerTask, ...
-    memAllocate=memAllocate, mccMode=mccMode, ConfigFile=ConfigFile);
+    memAllocate=memAllocate, mccMode=mccMode, configFile=configFile);
 
 if ~all(is_done_flag)
     generic_computing_frameworks_wrapper(inputFullpaths, outputFullpaths, funcStrs, ...
         parseCluster=parseCluster, masterCompute=masterCompute, cpusPerTask=cpusPerTask, ...
-        memAllocate=memAllocate * 2, mccMode=mccMode, ConfigFile=ConfigFile);
+        memAllocate=memAllocate * 2, mccMode=mccMode, configFile=configFile);
 end
 
 if exist(resultFullpath, 'dir')

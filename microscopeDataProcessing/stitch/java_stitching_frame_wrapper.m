@@ -14,7 +14,7 @@ ip.addParameter('ffcorrect', false, @islogical);
 ip.addParameter('Resolution', [], @isnumeric);
 ip.addParameter('wavelength', [], @isnumeric);
 ip.addParameter('stitchResultFname', '', @isstr);
-ip.addParameter('Save16bit', false, @islogical);
+ip.addParameter('save16bit', false, @islogical);
 ip.addParameter('uuid', '', @isstr);
 
 ip.parse(imageDirName, imageListFileName, varargin{:});
@@ -25,7 +25,7 @@ axisOrder = pr.axisOrder;
 ffcorrect = pr.ffcorrect;
 Resolution = pr.Resolution;
 stitchResultFname = pr.stitchResultFname;
-Save16bit = pr.Save16bit;
+save16bit = pr.save16bit;
 uuid = pr.uuid;
 wavelength = pr.wavelength;
 
@@ -102,7 +102,7 @@ end
 
 % avoid different jobs save the same file
 stitch_save_fname_tmp = sprintf('%s%s%s', stitch_save_fname(1 : end - 4), uuid, stitch_save_fname(end - 3 : end));
-if Save16bit
+if save16bit
     writetiff(uint16(img_stitch), stitch_save_fname_tmp);
 else
     writetiff(single(img_stitch), stitch_save_fname_tmp);

@@ -29,64 +29,67 @@ ip.CaseSensitive = false;
 ip.addRequired('framePath', @(x) ischar(x) || iscell(x)); 
 ip.addRequired('xyPixelSize', @isscalar); 
 ip.addRequired('dz', @isscalar); 
-ip.addParameter('ObjectiveScan', false, @islogical);
-ip.addParameter('ZstageScan', false, @islogical);
-ip.addParameter('Overwrite', false, @islogical);
-ip.addParameter('Crop', false, @islogical);
-ip.addParameter('SkewAngle', 32.45, @isscalar);
-ip.addParameter('Reverse', false, @islogical);
-ip.addParameter('Rotate', false, @islogical);
-ip.addParameter('InputBbox', [], @isnumeric); % bounding box apply to input
+ip.addParameter('DSDirName', 'DS/', @ischar);
+ip.addParameter('DSRDirName', 'DSR/', @ischar);
+ip.addParameter('objectiveScan', false, @islogical);
+ip.addParameter('zStageScan', false, @islogical);
+ip.addParameter('overwrite', false, @islogical);
+ip.addParameter('crop', false, @islogical);
+ip.addParameter('skewAngle', 32.45, @isscalar);
+ip.addParameter('reverse', false, @islogical);
+ip.addParameter('rotate', false, @islogical);
+ip.addParameter('inputBbox', [], @isnumeric); % bounding box apply to input
 ip.addParameter('flipZstack', false, @islogical);
 % sCMOS camera flip
 ip.addParameter('sCMOSCameraFlip', false, @islogical);
 % LLSM Flat-FieldCorrection
-ip.addParameter('LLFFCorrection', false, @islogical);
-ip.addParameter('LowerLimit', 0.4, @isnumeric); % this value is the lowest
-ip.addParameter('LSImage', '' , @ischar);
-ip.addParameter('BackgroundImage', '' , @ischar);
+ip.addParameter('FFCorrection', false, @islogical);
+ip.addParameter('lowerLimit', 0.4, @isnumeric); % this value is the lowest
+ip.addParameter('FFImage', '' , @ischar);
+ip.addParameter('backgroundImage', '' , @ischar);
 ip.addParameter('constOffset', [], @(x) isnumeric(x)); % If it is set, use constant background, instead of background from the camera.
 ip.addParameter('BKRemoval', false, @islogical);
-ip.addParameter('Save16bit', false , @islogical); % saves deskewed data as 16 bit -- not for quantification
-ip.addParameter('RescaleRotate', false , @islogical); % Rescale rotated data to [0 65535]
+ip.addParameter('save16bit', false , @islogical); % saves deskewed data as 16 bit -- not for quantification
+ip.addParameter('rescaleRotate', false , @islogical); % Rescale rotated data to [0 65535]
 ip.addParameter('save3DStack', true , @islogical); % option to save 3D stack or not
-ip.addParameter('SaveMIP', true , @islogical); % save MIP-z for ds and dsr. 
+ip.addParameter('saveMIP', true , @islogical); % save MIP-z for ds and dsr. 
 ip.addParameter('saveZarr', false , @islogical); % save as zarr
 ip.addParameter('blockSize', [500, 500, 500] , @isnumeric); % save as zarr
 ip.addParameter('xStepThresh', 2.0, @isnumeric); % 2.344 for ds=0.3, 2.735 for ds=0.35
-ip.addParameter('aname', '', @ischar); % XR allow user-defined result path
-ip.addParameter('ZoffsetCorrection', false, @islogical); % xruan: add option for correction of z offset
+ip.addParameter('zOffsetCorrection', false, @islogical); % xruan: add option for correction of z offset
 ip.addParameter('DSRCombined', true, @islogical); % combined processing 
-ip.addParameter('resample', [], @(x) isnumeric(x)); % resampling after rotation 
-ip.addParameter('Interp', 'linear', @(x) any(strcmpi(x, {'cubic', 'linear'})));
+ip.addParameter('resampleFactor', [], @(x) isnumeric(x)); % resampling after rotation 
+ip.addParameter('interpMethod', 'linear', @(x) any(strcmpi(x, {'cubic', 'linear'})));
 ip.addParameter('surffix', '', @ischar); % suffix for the folder
 ip.addParameter('uuid', '', @ischar);
 
 ip.parse(framePath, xyPixelSize, dz, varargin{:});
 
 pr = ip.Results;
-Crop = pr.Crop;
-SkewAngle = pr.SkewAngle;
-Reverse = pr.Reverse;
-ObjectiveScan = pr.ObjectiveScan;
-ZstageScan = pr.ZstageScan;
-InputBbox = pr.InputBbox;
+DSDirName = pr.DSDirName;
+DSRDirName = pr.DSRDirName;
+crop = pr.crop;
+skewAngle = pr.skewAngle;
+reverse = pr.reverse;
+objectiveScan = pr.objectiveScan;
+zStageScan = pr.zStageScan;
+inputBbox = pr.inputBbox;
 flipZstack = pr.flipZstack;
-LLFFCorrection = pr.LLFFCorrection;
-LowerLimit = pr.LowerLimit;
+FFCorrection = pr.FFCorrection;
+lowerLimit = pr.lowerLimit;
 BKRemoval = pr.BKRemoval;
-LSImage = pr.LSImage;
-BackgroundImage = pr.BackgroundImage;
+FFImage = pr.FFImage;
+backgroundImage = pr.backgroundImage;
 constOffset = pr.constOffset;
-Save16bit = pr.Save16bit;
+save16bit = pr.save16bit;
 save3DStack = pr.save3DStack;
-SaveMIP = pr.SaveMIP;
+saveMIP = pr.saveMIP;
 DSRCombined = pr.DSRCombined;
-resample = pr.resample;
+resampleFactor = pr.resampleFactor;
 saveZarr = pr.saveZarr;
 blockSize = pr.blockSize;
 xStepThresh = pr.xStepThresh;
-Interp = pr.Interp;
+interpMethod = pr.interpMethod;
 surffix = pr.surffix;
 
 uuid = pr.uuid;
@@ -96,26 +99,26 @@ if isempty(uuid)
 end
 
 % not convert to negative it for the wrapper
-% if Reverse
-%     SkewAngle = -abs(SkewAngle);
+% if reverse
+%     skewAngle = -abs(skewAngle);
 % end
 
 % decide zAniso
-if ObjectiveScan
+if objectiveScan
     zAniso = dz / xyPixelSize;
-elseif ZstageScan
-    theta = SkewAngle * pi / 180;
+elseif zStageScan
+    theta = skewAngle * pi / 180;
     zAniso = cos(abs(theta)) * dz / xyPixelSize;    
 else
-    theta = SkewAngle * pi / 180;
+    theta = skewAngle * pi / 180;
     zAniso = sin(abs(theta)) * dz / xyPixelSize;
 end
 
-if ZstageScan
-    SkewAngle_1 = 90 - SkewAngle;
-    Reverse =  ~Reverse;
+if zStageScan
+    skewAngle_1 = 90 - skewAngle;
+    reverse =  ~reverse;
 else
-    SkewAngle_1 = SkewAngle;
+    skewAngle_1 = skewAngle;
 end
 
 %% deskew frame
@@ -142,7 +145,7 @@ end
 % Create DS result dire
 [rt, fsname] = fileparts(framePath{1});
 if ~DSRCombined    
-    dsPath = sprintf('%s/DS%s/', rt, surffix);
+    dsPath = sprintf('%s/%s%s/', rt, DSDirName, surffix);
     if ~exist(dsPath, 'dir')
         mkdir(dsPath);
         if ~ispc
@@ -156,7 +159,7 @@ if ~DSRCombined
     end
 end
 
-if (~DSRCombined && (~exist(dsFullname, 'file') || ip.Results.Overwrite)) || DSRCombined
+if (~DSRCombined && (~exist(dsFullname, 'file') || ip.Results.overwrite)) || DSRCombined
     % frame = double(readtiff(framePath));
     if combinedFrame
         frame_cell = cell(numel(framePath), 1);
@@ -174,12 +177,12 @@ if (~DSRCombined && (~exist(dsFullname, 'file') || ip.Results.Overwrite)) || DSR
                 frame = single(readzarr(framePath{1}));
         end                
     end
-    if ~isempty(InputBbox)
+    if ~isempty(inputBbox)
         try 
-            frame = crop3d_mex(frame, InputBbox);
+            frame = crop3d_mex(frame, inputBbox);
         catch ME
             disp(ME);
-            frame = frame(InputBbox(1) : InputBbox(4), InputBbox(2) : InputBbox(5), InputBbox(3) : InputBbox(6));
+            frame = frame(inputBbox(1) : inputBbox(4), inputBbox(2) : inputBbox(5), inputBbox(3) : inputBbox(6));
         end
     end
     
@@ -188,18 +191,18 @@ if (~DSRCombined && (~exist(dsFullname, 'file') || ip.Results.Overwrite)) || DSR
     end
         
     % flat field correction
-    if LLFFCorrection
+    if FFCorrection
         fprintf(['Flat-field correction for frame %s...\n', ...
             '  Flat-field image: %s\n  Background image: %s\n'], ...
-            framePath{1}, LSImage, BackgroundImage);
-        LSIm = readtiff(LSImage);
-        BKIm = readtiff(BackgroundImage);            
-        frame = XR_LSFlatFieldCorrection(frame,LSIm,BKIm,'LowerLimit', LowerLimit, ...
+            framePath{1}, FFImage, backgroundImage);
+        LSIm = readtiff(FFImage);
+        BKIm = readtiff(backgroundImage);            
+        frame = XR_LSFlatFieldCorrection(frame,LSIm,BKIm,'lowerLimit', lowerLimit, ...
             'constOffset', constOffset);
     end
     % remove camera background
     if BKRemoval
-        BKIm = readtiff(BackgroundImage);
+        BKIm = readtiff(backgroundImage);
         frame = XR_CameraBackgroundRemoval(frame, BKIm, 'constOffset', constOffset);
     end
 
@@ -214,8 +217,8 @@ if (~DSRCombined && (~exist(dsFullname, 'file') || ip.Results.Overwrite)) || DSR
         
         if ~splitCompute
             try 
-                ds = deskewFrame3D(frame, SkewAngle_1, dz, xyPixelSize, Reverse, ...
-                    'Crop', Crop, 'Interp', Interp); 
+                ds = deskewFrame3D(frame, skewAngle_1, dz, xyPixelSize, reverse, ...
+                    'crop', crop, 'Interp', interpMethod); 
                 clear frame;
             catch ME
                 disp(ME);
@@ -232,17 +235,17 @@ if (~DSRCombined && (~exist(dsFullname, 'file') || ip.Results.Overwrite)) || DSR
             % other axes. 
             blockSize = sz;
             blockSize(1) = min(ceil(blockSize(1) / 8), 150);
-            bim = blockedImage(frame, 'BlockSize', blockSize);
+            bim = blockedImage(frame, 'blockSize', blockSize);
             OutputLocation = sprintf('%s/%s_%s', dsPath, fsname, uuid);
             BorderSize = [5, 0, 0];
             % TrimBorder = true;
-            if Save16bit 
-                bo = apply(bim, @(bs) uint16(trimBorder(deskewFrame3D(single(bs.Data), SkewAngle_1, dz, ...
-                    xyPixelSize, Reverse, 'crop', Crop, 'Interp', Interp), BorderSize, 'both')), 'blockSize', bim.BlockSize, ...
+            if save16bit 
+                bo = apply(bim, @(bs) uint16(trimBorder(deskewFrame3D(single(bs.Data), skewAngle_1, dz, ...
+                    xyPixelSize, reverse, 'crop', crop, 'Interp', interpMethod), BorderSize, 'both')), 'blockSize', bim.BlockSize, ...
                     'OutputLocation', OutputLocation, 'BorderSize', BorderSize, 'useParallel', false);
             else
-                bo = apply(bim, @(bs) trimBorder(deskewFrame3D(single(bs.Data), SkewAngle_1, dz, ...
-                    xyPixelSize, Reverse, 'crop', Crop, 'Interp', Interp), BorderSize, 'both'), 'blockSize', bim.BlockSize, ...
+                bo = apply(bim, @(bs) trimBorder(deskewFrame3D(single(bs.Data), skewAngle_1, dz, ...
+                    xyPixelSize, reverse, 'crop', crop, 'Interp', interpMethod), BorderSize, 'both'), 'blockSize', bim.BlockSize, ...
                     'OutputLocation', OutputLocation, 'BorderSize', BorderSize, 'useParallel', false);
             end
             clear frame bim;
@@ -251,7 +254,7 @@ if (~DSRCombined && (~exist(dsFullname, 'file') || ip.Results.Overwrite)) || DSR
         end            
 
         % save MIP
-        if SaveMIP
+        if saveMIP
             dsMIPPath = sprintf('%s/MIPs/', dsPath);
             if ~exist(dsMIPPath, 'dir')
                 mkdir(dsMIPPath);
@@ -261,12 +264,12 @@ if (~DSRCombined && (~exist(dsFullname, 'file') || ip.Results.Overwrite)) || DSR
             end
             
             if splitCompute
-                bmip = apply(bo, @(bs) max(bs.Data, [], 3), 'blockSize', [bo.BlockSize(1:2), bo.Size(3)], 'useParallel', false);
+                bmip = apply(bo, @(bs) max(bs.Data, [], 3), 'blockSize', [bo.blockSize(1:2), bo.Size(3)], 'useParallel', false);
                 mip = gather(bmip);
             else
                 mip = max(ds, [], 3);
             end
-            if Save16bit 
+            if save16bit 
                 mip = uint16(mip);
             end
             if saveZarr
@@ -282,14 +285,14 @@ if (~DSRCombined && (~exist(dsFullname, 'file') || ip.Results.Overwrite)) || DSR
         if save3DStack
             if splitCompute
                 if saveZarr
-                    write(bo, dsTempname, 'BlockSize', min(bo.Size, blockSize), 'Adapter', ZarrAdapter);
+                    write(bo, dsTempname, 'blockSize', min(bo.Size, blockSize), 'Adapter', ZarrAdapter);
                 else
-                    write(bo, dsTempname, 'BlockSize', [bo.Size(1), bo.Size(2), min(bo.Size(3), 100)], 'Adapter', MPageTiffAdapter);
+                    write(bo, dsTempname, 'blockSize', [bo.Size(1), bo.Size(2), min(bo.Size(3), 100)], 'Adapter', MPageTiffAdapter);
                 end
                 rmdir(OutputLocation, 's');
                 clear bo
             else                
-                if Save16bit
+                if save16bit
                     if saveZarr
                         writezarr(uint16(ds), dsTempname, 'blockSize', blockSize);
                     else
@@ -313,8 +316,8 @@ end
 
 %% rotate frame
 
-if ip.Results.Rotate || DSRCombined
-    dsrPath = sprintf('%s/DSR%s/', rt, surffix);
+if ip.Results.rotate || DSRCombined
+    dsrPath = sprintf('%s/%s%s/', rt, DSRDirName, surffix);
     if ~exist(dsrPath, 'dir')
         mkdir(dsrPath);
         if ~ispc
@@ -328,15 +331,15 @@ if ip.Results.Rotate || DSRCombined
         dsrFullname = [dsrPath, fsname, '.tif'];
     end
     
-    if ~isempty(resample)
-        rs = resample(:)';
+    if ~isempty(resampleFactor)
+        rs = resampleFactor(:)';
         % complete rs to 3d in case it is not
-        resample = [ones(1, 4 - numel(rs)) * rs(1), rs(2:end)];    
+        resampleFactor = [ones(1, 4 - numel(rs)) * rs(1), rs(2:end)];    
     end
             
     if (~saveZarr && ~exist(dsrFullname, 'file')) || (saveZarr && ~exist(dsrFullname, 'dir'))
         if ~DSRCombined
-            fprintf('Rotate frame %s...\n', framePath{1});
+            fprintf('rotate frame %s...\n', framePath{1});
             if ~exist('ds', 'var')
                 if saveZarr
                     ds = single(readzarr(dsFullname));
@@ -353,24 +356,24 @@ if ip.Results.Rotate || DSRCombined
             ny = sz(1);
             nx = sz(2);
             nz = sz(3);
-            if ~ObjectiveScan
-                % calculate height; first & last 2 frames have interpolation artifacts
+            if ~objectiveScan
+                % calculate height; first & last 2 frames have interpMethodolation artifacts
                 outSize = round([ny, (nx-1)*cos(theta)+(nz-1)*zAniso/sin(abs(theta)), (nx-1)*sin(abs(theta))-4]);
             else
                 % exact proportions of rotated box
                 outSize = round([ny, nx*cos(theta)+nz*zAniso*sin(abs(theta)), nz*zAniso*cos(theta)+nx*sin(abs(theta))]);
             end
             
-            dsr = rotateFrame3D(ds, SkewAngle_1, zAniso, Reverse, 'Crop', true, ...
-                'resample', resample, 'ObjectiveScan', ObjectiveScan, 'outSize', outSize, 'Interp', Interp);
+            dsr = rotateFrame3D(ds, skewAngle_1, zAniso, reverse, 'crop', true, ...
+                'resample', resampleFactor, 'objectiveScan', objectiveScan, 'outSize', outSize, 'Interp', interpMethod);
             if nargout == 0
                 clear ds;
             end
         else
             % add support for resample before dsr for big data
-            if ~isempty(resample) && any(resample ~= 1) && size(frame, 3) > 1000
-                outPixelSize = resample * xyPixelSize;
-                pre_rs = min(outPixelSize) ./ [xyPixelSize, xyPixelSize, dz .* sind(SkewAngle_1)];
+            if ~isempty(resampleFactor) && any(resampleFactor ~= 1) && size(frame, 3) > 1000
+                outPixelSize = resampleFactor * xyPixelSize;
+                pre_rs = min(outPixelSize) ./ [xyPixelSize, xyPixelSize, dz .* sind(skewAngle_1)];
                 pre_rs(3) = max(1, round(pre_rs(3)));
                 
                 % resample data pre-DSR
@@ -381,18 +384,18 @@ if ip.Results.Rotate || DSRCombined
                 % define new xyPixelSize, dz, resample after resample
                 xyPixelSize = xyPixelSize * pre_rs(1);
                 dz = dz * pre_rs(3);
-                resample = outPixelSize ./ min(outPixelSize);
+                resampleFactor = outPixelSize ./ min(outPixelSize);
             end
 
-            fprintf('Deskew, Rotate and resample for frame %s...\n', framePath{1});            
-            dsr = deskewRotateFrame3D(frame, SkewAngle_1, dz, xyPixelSize, ...
-                'reverse', Reverse, 'Crop', true, 'ObjectiveScan', ObjectiveScan, ...
-                'resample', resample, 'Interp', Interp, 'xStepThresh', xStepThresh);
+            fprintf('Deskew, rotate and resample for frame %s...\n', framePath{1});            
+            dsr = deskewRotateFrame3D(frame, skewAngle_1, dz, xyPixelSize, ...
+                'reverse', reverse, 'crop', true, 'objectiveScan', objectiveScan, ...
+                'resampleFactor', resampleFactor, 'interpMethod', interpMethod, 'xStepThresh', xStepThresh);
             clear frame;
         end
         
         % save MIP
-        if SaveMIP
+        if saveMIP
             dsrMIPPath = sprintf('%s/MIPs/', dsrPath);
             if ~exist(dsrMIPPath, 'dir')
                 mkdir(dsrMIPPath);
@@ -402,7 +405,7 @@ if ip.Results.Rotate || DSRCombined
             end
 
             mip = max(dsr, [], 3);            
-            if Save16bit
+            if save16bit
                 mip = uint16(mip);
             end
             if saveZarr
@@ -423,12 +426,12 @@ if ip.Results.Rotate || DSRCombined
             dsrTempName = sprintf('%s%s_%s.tif', dsrPath, fsname, uuid);            
         end
         
-        if ip.Results.RescaleRotate
+        if ip.Results.rescaleRotate
             iRange = [min(dsr(:)), max(dsr(:))];
             dsr = scaleContrast(dsr, iRange, [0 65535]);
         end
         
-        if ip.Results.Save16bit
+        if ip.Results.save16bit
             dsr = uint16(dsr);
         else
             dsr = single(dsr);
@@ -436,7 +439,7 @@ if ip.Results.Rotate || DSRCombined
         
         if save3DStack
             if saveZarr
-                writezarr(dsr, dsrTempName, 'BlockSize', blockSize);
+                writezarr(dsr, dsrTempName, 'blockSize', blockSize);
             else
                 writetiff(dsr, dsrTempName);
             end

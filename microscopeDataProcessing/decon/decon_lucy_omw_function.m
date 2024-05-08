@@ -1,11 +1,11 @@
 function [J, err_mat] = decon_lucy_omw_function(I, PSF_f, PSF_b, NUMIT, varargin)
 % RL decon with alternative backprojector OTF masked wiener (OMW) method
-%   Save16bit: for GPU compute, convert to 16bit before transfer from GPU to CPU 
+%   save16bit: for GPU compute, convert to 16bit before transfer from GPU to CPU 
 %   bbox: for GPU compute, crop the data first before transfer from GPU to CPU
 %
 % Author: Xiongtao Ruan (11/10/2022)
 %
-% xruan (08/31/2023): add scaleFactor, deconOffset, damper, and
+% xruan (08/31/2023): add scaleFactor, deconOffset, dampFactor, and
 %   EdgeErosion, and use input parser for parameters.
 
 
@@ -17,8 +17,8 @@ ip.addRequired('PSF_b', @isnumeric);
 ip.addRequired('NUMIT', @isnumeric);
 ip.addParameter('Background', [], @isnumeric);
 ip.addParameter('useGPU', true, @islogical); % use GPU processing
-ip.addParameter('Save16bit', true, @islogical);
-ip.addParameter('damper', 1, @isnumeric); % damp factor for decon result
+ip.addParameter('save16bit', true, @islogical);
+ip.addParameter('dampFactor', 1, @isnumeric); % damp factor for decon result
 ip.addParameter('scaleFactor', 1, @isnumeric); % scale factor for result
 ip.addParameter('deconOffset', 0, @isnumeric); % offset for decon result
 ip.addParameter('EdgeErosion', 0, @isnumeric); % edge erosion for decon result
@@ -32,8 +32,8 @@ ip.parse(I, PSF_f, PSF_b, NUMIT, varargin{:});
 pr = ip.Results;
 Background = pr.Background;
 useGPU = pr.useGPU;
-Save16bit = pr.Save16bit;
-damper = pr.damper;
+save16bit = pr.save16bit;
+dampFactor = pr.dampFactor;
 scaleFactor = pr.scaleFactor;
 deconOffset = pr.deconOffset;
 EdgeErosion = pr.EdgeErosion;
@@ -143,8 +143,8 @@ if debug
 end
 
 % post-processing of deconvolved result
-if damper > 1
-    J = J .* (J <= damper * I) + min(J, damper * I .* (J >= damper * I));
+if dampFactor > 1
+    J = J .* (J <= dampFactor * I) + min(J, dampFactor * I .* (J >= dampFactor * I));
 end
 clear I CX;
 
@@ -160,7 +160,7 @@ if scaleFactor ~= 1 || deconOffset ~= 0 || EdgeErosion > 0
     end
 end
 
-if Save16bit
+if save16bit
     J = uint16(J);
 end
 

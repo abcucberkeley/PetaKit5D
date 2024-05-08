@@ -11,11 +11,11 @@ ip.addParameter('pad', false, @(x) islogical(x) || ischar(x)); % pad region that
 ip.addParameter('zarrFile', false , @(x) islogical(x) || ischar(x)); % read zarr
 ip.addParameter('largeZarr', false, @(x) islogical(x) || ischar(x)); % use zarr file as input
 ip.addParameter('saveZarr', false , @(x) islogical(x) || ischar(x)); % save as zarr
-ip.addParameter('BlockSize', [500, 500, 500] , @(x) isnumeric(x) || ischar(x)); % save as zarr
+ip.addParameter('blockSize', [500, 500, 500] , @(x) isnumeric(x) || ischar(x)); % save as zarr
 ip.addParameter('uuid', '', @ischar);
 ip.addParameter('parseCluster', true, @(x) islogical(x) || ischar(x));
 ip.addParameter('mccMode', false, @(x) islogical(x) || ischar(x));
-ip.addParameter('ConfigFile', '', @ischar);
+ip.addParameter('configFile', '', @ischar);
 
 ip.parse(dataFullpath, saveFullpath, bbox, varargin{:});
 
@@ -25,11 +25,11 @@ pad = pr.pad;
 zarrFile = pr.zarrFile;
 largeZarr = pr.largeZarr;
 saveZarr = pr.saveZarr;
-BlockSize = pr.BlockSize;
+blockSize = pr.blockSize;
 uuid = pr.uuid;
 parseCluster = pr.parseCluster;
 mccMode = pr.mccMode;
-ConfigFile = pr.ConfigFile;
+configFile = pr.configFile;
 
 if ischar(dataFullpath) && ~isempty(dataFullpath) && strcmp(dataFullpath(1), '{')
     dataFullpath = eval(dataFullpath);
@@ -55,8 +55,8 @@ end
 if ischar(saveZarr)
     saveZarr = str2num(saveZarr);
 end
-if ischar(BlockSize)
-    BlockSize = str2num(BlockSize);
+if ischar(blockSize)
+    blockSize = str2num(blockSize);
 end
 if ischar(parseCluster)
     parseCluster = str2num(parseCluster);
@@ -66,8 +66,8 @@ if ischar(mccMode)
 end
 
 XR_crop_frame(dataFullpath, saveFullpath, bbox, overwrite=overwrite, pad=pad, ...
-    zarrFile=zarrFile, largeZarr=largeZarr, saveZarr=saveZarr, BlockSize=BlockSize, ...
-    uuid=uuid, parseCluster=parseCluster, mccMode=mccMode, ConfigFile=ConfigFile);
+    zarrFile=zarrFile, largeZarr=largeZarr, saveZarr=saveZarr, blockSize=blockSize, ...
+    uuid=uuid, parseCluster=parseCluster, mccMode=mccMode, configFile=configFile);
 
 end
 
