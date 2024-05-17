@@ -25,7 +25,6 @@ ip.addOptional('frame', [], @isnumeric);
 ip.addParameter('Overwrite', false, @islogical);
 ip.addParameter('blockSize', [500, 500, 250], @isnumeric);
 ip.addParameter('shardSize', [], @isnumeric);
-ip.addParameter('zarrSubSize', [20, 20, 20], @isnumeric);
 ip.addParameter('expand2dDim', true, @islogical); % expand the z dimension for 2d data
 ip.addParameter('flipZstack', false, @islogical);
 ip.addParameter('resampleFactor', [], @(x) isempty(x) || isnumeric(x));
@@ -42,7 +41,6 @@ pr = ip.Results;
 Overwrite = pr.Overwrite;
 blockSize = pr.blockSize;
 shardSize = pr.shardSize;
-zarrSubSize = pr.zarrSubSize;
 expand2dDim = pr.expand2dDim;
 flipZstack = pr.flipZstack;
 resampleFactor = pr.resampleFactor;
@@ -101,12 +99,7 @@ else
         if readWholeTiff
             I = readtiff(tifFilename);
             if ~isempty(inputBbox)
-                try
-                    I = crop3d_mex(I, inputBbox);
-                catch ME
-                    disp(ME);
-                    I = I(inputBbox(1) : inputBbox(4), inputBbox(2) : inputBbox(5), inputBbox(3) : inputBbox(6));
-                end
+                I = crop3d(I, inputBbox);
             end
             sz = size(I);
             if ismatrix(I)
@@ -140,12 +133,7 @@ else
         end
         I = cat(3, I{:});
         if ~isempty(inputBbox)
-            try
-                I = crop3d_mex(I, inputBbox);
-            catch ME
-                disp(ME);
-                I = I(inputBbox(1) : inputBbox(4), inputBbox(2) : inputBbox(5), inputBbox(3) : inputBbox(6));
-            end
+            I = crop3d(I, inputBbox);
         end
         if ismatrix(I)
             blockSize = blockSize(1 : 2);
@@ -177,12 +165,7 @@ if ~isempty(tileOutBbox)
     bbox = tileOutBbox;
     if isa(bim.Adapter, 'images.blocked.InMemory')
         bim = gather(bim);
-        try
-            bim = crop3d_mex(bim, bbox);
-        catch ME
-            disp(ME);
-            bim = bim(bbox(1) : bbox(4), bbox(2) : bbox(5), bbox(3) : bbox(6));
-        end
+        bim = crop3d(bim, bbox);
         bim = blockedImage(bim, 'BlockSize', blockSize);
     else
         bim = bim.crop(bbox(1 : 3), bbox(4 : 6));
@@ -221,8 +204,12 @@ else
 end
 tmpFilename = [zarrFilename '_' uuid];
 if ~exist(tmpFilename, 'dir')
+    dimSeparator = '.';
+    if prod(ceil(sz ./ blockSize)) > 10000
+        dimSeparator = '/';
+    end
     createzarr(tmpFilename, dataSize=sz, blockSize=blockSize, shardSize=shardSize, ...
-        dtype=dtype, expand2dDim=expand2dDim, compressor=compressor, zarrSubSize=zarrSubSize);
+        dtype=dtype, expand2dDim=expand2dDim, compressor=compressor, dimSeparator=dimSeparator);
 end
 
 % write zarr

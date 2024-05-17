@@ -162,6 +162,7 @@ while (~parseCluster && ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
         job_status_mat(~is_done_flag, 1) = check_batch_slurm_jobs_status(job_ids(~is_done_flag), task_ids(~is_done_flag));
         timestamp = seconds(datetime('now') - start_time);
         job_timestamp_mat(job_status_mat(:, 1) >= 0) = timestamp;
+        pending_flag = any(job_status_mat(~is_done_flag, 1) == 0);
         qts = tic;
     end
         
@@ -208,6 +209,7 @@ while (~parseCluster && ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
                 job_status_mat(job_inds, 1) = check_batch_slurm_jobs_status(job_ids(job_inds), task_ids(job_inds));
                 timestamp = seconds(datetime('now') - start_time);                
                 job_timestamp_mat(job_inds) = timestamp;
+                pending_flag = any(job_status_mat(~is_done_flag, 1) == 0);
                 qts = tic;
                 if masterCompute
                     if b + n_status_check * 1.5 > nB
@@ -300,7 +302,6 @@ while (~parseCluster && ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
         if ~skip_job_submission && (parseCluster || exist(tmpFullpath, 'file'))
             if parseCluster
                 % kill the first pending job and use master node do the computing.
-                pending_flag = false;
                 if job_status_mat(f, 1) == 0 && (masterCompute && b == lastP)
                     system(sprintf('scancel %d_%d', job_ids(f), task_id), '-echo');
                     pending_flag = true;
@@ -416,11 +417,10 @@ while (~parseCluster && ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
                 % for nonpending killed jobs, wait a bit longer in case of just finished job.
                 % change the wait time to the maximum of 30s and half of computing time
                 if ~pending_flag
-                    pause(1);
                     if timestamp - job_timestamp_mat(f) < min(max(30, t1 * 0.5), 180)
                         continue;
                     end
-                    if exist(outputFullpath, 'file') || exist(outputFullpath, 'dir')
+                    if all(is_done_flag(fs))
                         continue;
                     end
                 end
@@ -462,7 +462,7 @@ while (~parseCluster && ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
 
     if ~isempty(finalOutFullpath) && (exist(finalOutFullpath, 'dir') || exist(finalOutFullpath, 'file'))
         is_done_flag = true(nF, 1);
-        fprintf('The final output file %s already exists!\n', finalOutFullpath);
+        fprintf('Time %0.2f s: The final output file %s already exists!\n', toc(ts), finalOutFullpath);
         return;
     end
     
@@ -479,7 +479,7 @@ if parseCluster
 end
 
 if all(is_done_flag)
-    fprintf('All output files (%d / %d) are finished!\n\n', nF, nF);
+    fprintf('Time %0.2f s: All output files (%d / %d) are finished!\n\n', toc(ts), nF, nF);
 end
 
 end

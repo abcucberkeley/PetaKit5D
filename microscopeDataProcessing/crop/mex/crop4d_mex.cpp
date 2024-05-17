@@ -135,7 +135,14 @@ void mexFunction(int nlhs, mxArray *plhs[],
     }    
 
     mxClassID mDType = mxGetClassID(prhs[0]);
-    if(mDType == mxUINT8_CLASS){
+    if(mDType == mxLOGICAL_CLASS){
+        uint64_t bytes = 1;
+        bool* orig = (bool*)mxGetPr(prhs[0]);        
+        plhs[0] = mxCreateLogicalArray(4,(mwSize*)rdims);
+        bool* region = (bool*)mxGetPr(plhs[0]);
+        crop4d_mex<bool>(orig, region, dims, bbox, bytes);
+    }    
+    else if(mDType == mxUINT8_CLASS){
         uint64_t bytes = 1;
         uint8_t* orig = (uint8_t*)mxGetPr(prhs[0]);
         plhs[0] = mxCreateNumericArray(4,(mwSize*)rdims,mxUINT8_CLASS, mxREAL);        

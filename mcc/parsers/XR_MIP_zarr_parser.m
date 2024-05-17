@@ -9,7 +9,6 @@ ip.addParameter('axis', [1, 1, 1], @(x) isnumeric(x) || ischar(x)); % y, x, z
 ip.addParameter('inputBbox', [] , @(x) isempty(x) || isvector(x) || ischar(x)); % bbox to define the region for MIP
 ip.addParameter('batchSize', [2048, 2048, 2048] , @(x) isnumeric(x) || ischar(x)); % in y, x, z
 ip.addParameter('poolSize', [] , @(x) isnumeric(x) || ischar(x)); % pooling size for mips
-ip.addParameter('zarrSubSize', [20, 20, 20] , @(x) isnumeric(x) || ischar(x)); % in y, x, z
 ip.addParameter('mipSlab', false, @(x) islogical(x) || ischar(x)); % compute MIP slabs (without the final MIPs)
 ip.addParameter('parseCluster', true, @(x) islogical(x) || ischar(x));
 ip.addParameter('parseParfor', false, @(x) islogical(x) || ischar(x));
@@ -28,7 +27,6 @@ axis = pr.axis;
 inputBbox = pr.inputBbox;
 batchSize = pr.batchSize;
 poolSize = pr.poolSize;
-zarrSubSize = pr.zarrSubSize;
 mipSlab = pr.mipSlab;
 parseCluster = pr.parseCluster;
 parseParfor = pr.parseParfor;
@@ -51,9 +49,6 @@ end
 if ischar(poolSize)
     poolSize = str2num(poolSize);
 end
-if ischar(zarrSubSize)
-    zarrSubSize = str2num(zarrSubSize);
-end
 if ischar(mipSlab)
     mipSlab = str2num(mipSlab);
 end
@@ -74,10 +69,9 @@ if ischar(debug)
 end
 
 XR_MIP_zarr(zarrFullpath, resultDirName=resultDirName, axis=axis, inputBbox=inputBbox, ...
-    batchSize=batchSize, poolSize=poolSize, zarrSubSize=zarrSubSize, mipSlab=mipSlab, ...
-    parseCluster=parseCluster, parseParfor=parseParfor, jobLogDir=jobLogDir, ...
-    masterCompute=masterCompute, mccMode=mccMode, configFile=configFile, uuid=uuid, ...
-    debug=debug);
+    batchSize=batchSize, poolSize=poolSize, mipSlab=mipSlab, parseCluster=parseCluster, ...
+    parseParfor=parseParfor, jobLogDir=jobLogDir, masterCompute=masterCompute, ...
+    mccMode=mccMode, configFile=configFile, uuid=uuid, debug=debug);
 
 end
 

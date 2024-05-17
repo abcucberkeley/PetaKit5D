@@ -1,4 +1,4 @@
-function [Temp] = XR_LSFlatFieldCorrection(Rawdata,LSImage,background, varargin)
+function [Temp] = XR_LSFlatFieldCorrection(Rawdata, LSImage,background, varargin)
 
 % Gokul Upadhyayula, 2016
 % xruan (08/05/2020): add option for constant background after correction.
@@ -16,14 +16,17 @@ ip.addRequired('LSImage'); %
 ip.addRequired('background'); %;
 ip.addParameter('LowerLimit', 0.4, @isnumeric); % this value is the lowest
 ip.addParameter('constOffset', [], @(x) isempty(x) || isnumeric(x)); % If it is set, use constant background, instead of background from the camera.
-ip.addParameter('LSBackground', true, @(x) islogical(x)); % true: subtract background; false: not subtract background
+ip.addParameter('removeFFImBackground', true, @(x) islogical(x)); % true: subtract background; false: not subtract background
 ip.addParameter('LSRescale', true, @(x) islogical(x)); % true: rescale LS by maximum; false: use flat field as it is. 
+ip.addParameter('castDataType', true, @(x) islogical(x)); % true: cast the data type the same as input, otherwise output as single. 
 ip.parse(Rawdata, LSImage,background, varargin{:});
 
 pr = ip.Results;
-LowerLimit = ip.Results.LowerLimit;
-LSBackground = pr.LSBackground;
+LowerLimit = pr.LowerLimit;
+constOffset = pr.constOffset;
+removeFFImBackground = pr.removeFFImBackground;
 LSRescale = pr.LSRescale;
+castDataType = pr.castDataType;
 
 % average z planes of LS image
 if ndims(LSImage)==3
@@ -36,49 +39,48 @@ MapSize = size(LSImage);
 D =ceil((MapSize-ImSize)/2);
 LSImage = LSImage(D(1)+1:D(1)+ImSize(1),D(2)+1:D(2)+ImSize(2));
 
-
 % crop Bk data if necessary
 MapSize = size(background);
 D =ceil((MapSize-ImSize)/2);
 background = background(D(1)+1:D(1)+ImSize(1),D(2)+1:D(2)+ImSize(2));
 
 % Prepare LS Flat-field correction mask
-if LSBackground
+if removeFFImBackground
     LSImage = single(LSImage) - single(background);
 end
 if LSRescale
     LSImage = single(LSImage)/single(max(LSImage(:)));
 end
-% Mask = repmat(LSImage,1,1,size(Rawdata,3));
-Mask = LSImage;
 % Mask(Mask<LowerLimit) = LowerLimit;
-Mask = max(Mask, LowerLimit);
+LSImage = max(LSImage, LowerLimit);
 % background = repmat(background,1,1,size(Rawdata,3));
 
-% Temp = double(Rawdata);
-Temp = single(Rawdata);
-clear Rawdata;
-Temp = Temp-single(background);
-% Temp(Temp<0) = 0;
-% Temp = Temp .* (Temp >= 0);
-Temp = max(Temp, 0);
-
-% correct for odd numbered pixels
-if size(Temp,1)<size(Mask,1)
-    % Mask(end,:,:) = [];
-    Mask(end,:) = [];
+try 
+    if ~isempty(constOffset)
+        Temp = flat_field_correction_3d_mex(Rawdata, LSImage, background, castDataType, constOffset);
+    else
+        Temp = flat_field_correction_3d_mex(Rawdata, LSImage, background, castDataType);        
+    end
+catch ME
+    disp(ME)
+    % Temp = double(Rawdata);
+    Temp = single(Rawdata);
+    dtype = class(Rawdata);
+    clear Rawdata;
+    Temp = Temp-single(background);
+    % Temp(Temp<0) = 0;
+    % Temp = Temp .* (Temp >= 0);
+    Temp = max(Temp, 0);
+    
+    % LS Flat-field correction
+    if ~isempty(constOffset)
+        Temp = Temp./single(LSImage) + constOffset;
+    else
+        Temp = Temp./single(LSImage) + single(background);
+    end
+    if castDataType 
+        Temp = cast(Temp, dtype);
+    end
 end
-if size(Temp,2)<size(Mask,2)
-    % Mask(:,end,:) = [];
-    Mask(:,end) = [];
+
 end
-
-% LS Flat-field correction
-if ~isempty(ip.Results.constOffset)
-    Temp = Temp./single(Mask) + ip.Results.constOffset;
-else
-    Temp = Temp./single(Mask) + single(background);
-end
-% Temp = single(Temp);
-
-

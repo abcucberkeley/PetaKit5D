@@ -14,7 +14,7 @@ ip.CaseSensitive = false;
 ip.addRequired('dataPaths', @(x) ischar(x) || iscell(x));
 ip.addParameter('xyPixelSize', 0.108, @isnumeric);
 ip.addParameter('dz', 0.1, @isnumeric);
-ip.addParameter('angle', 32.45, @isnumeric);
+ip.addParameter('skewAngle', 32.45, @isnumeric);
 ip.addParameter('cropSize', [256, 128, 201], @isnumeric);
 ip.addParameter('flipZstack', false, @islogical);
 ip.addParameter('distThresh', [256, 128, 201], @isnumeric);
@@ -32,7 +32,7 @@ ip.parse(dataPaths, varargin{:});
 pr = ip.Results;
 dz = pr.dz;
 xyPixelSize = pr.xyPixelSize;
-angle = pr.angle;
+skewAngle = pr.skewAngle;
 cropSize = pr.cropSize;
 flipZstack = pr.flipZstack;
 distThresh = pr.distThresh;
@@ -104,8 +104,8 @@ for i = 1 : numel(prefixes)
    
     fns_i_str = sprintf('{''%s''}', strjoin(fns_i, ''','''));
     func_strs{i} = sprintf(['XR_psf_detection_and_cropping(%s,''%s'',''xyPixelSize'',%.20f,''dz'',%.20f,' ...
-        '''angle'',%.20f,''cropSize'',[%s],''distThresh'',[%s],''prefix'',''%s'')'], fns_i_str, ...
-        result_dir, xyPixelSize, dz, angle, strrep(num2str(cropSize, '%.10f,'), ' ', ''), ...
+        '''skewAngle'',%.20f,''cropSize'',[%s],''distThresh'',[%s],''prefix'',''%s'')'], fns_i_str, ...
+        result_dir, xyPixelSize, dz, skewAngle, strrep(num2str(cropSize, '%.10f,'), ' ', ''), ...
         strrep(num2str(distThresh, '%.10f,'), ' ', ''), prefix);
 end
 
@@ -140,11 +140,10 @@ objectiveScan = false;
 dataPath_exps = cellfun(@(x) [x, '/Cropped/'], dataPaths, 'unif', 0);
 disp(dataPath_exps);
 
-XR_psf_analysis_wrapper(dataPath_exps, 'dz', dz, 'angle', angle, 'channelPatterns', channelPatterns, ...
+XR_psf_analysis_wrapper(dataPath_exps, 'dz', dz, 'skewAngle', skewAngle, 'channelPatterns', channelPatterns, ...
     'Channels', channels, 'Deskew', Deskew, 'flipZstack', flipZstack, 'objectiveScan', objectiveScan, ...
     'zStageScan', zStageScan, 'sourceStr', sourceStr, 'RWFn', RWFn, parseCluster=parseCluster, ...
     masterCompute=masterCompute, mccMode=mccMode, configFile=configFile);
-
 
 end
 

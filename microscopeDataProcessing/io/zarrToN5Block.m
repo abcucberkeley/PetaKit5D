@@ -54,7 +54,7 @@ for i = 1 : numel(batchInds)
     outBbox = outBatchBBoxes(i, :);
 
     % load the region in input 
-    in_batch = readzarr(zarrFullpath, 'bbox', inBbox);
+    in_batch = readzarr(zarrFullpath, 'inputBbox', inBbox);
     bim.Adapter.setRegion(outBbox(1 : 3), outBbox(4 : 6), in_batch);
 
     done_flag(i) = true;

@@ -250,13 +250,21 @@ imSizes = zeros(numel(tiffFullpath_group_i), 3);
 for i = 1 : numel(tiffFullpath_group_i)
     imSizes(i, :) = getImageSize(tiffFullpath_group_i{i});
 end
+dtype = getImageDataType(tiffFullpath_group_i{1});
+byteNum = dataTypeToByteNumber(dtype);
+
 imSize = [imSizes(1, 1 : 2), sum(imSizes(:, 3))];
 if all(isempty(usrFcn_strs))
-    memFactor = 2.25;
+    memFactor = 2.5;
 else
-    memFactor = 2.75;
+    % for our own flat field code, set memFactor as 2.75, and other user defined function, set memFactor as 4
+    if contains(usrFcn_strs{1}, 'processFFCorrectionFrame')
+        memFactor = 2.75;
+    else
+        memFactor = 4;
+    end
 end
-memAllocate = prod(imSize) * 4 / 1024^3 * memFactor;
+memAllocate = prod(imSize) * byteNum / 1024^3 * memFactor;
 if ~bigData
     memAllocate = memAllocate * 2;
 end
@@ -273,7 +281,5 @@ if ~all(is_done_flag)
         'configFile', configFile);
 end
 
-
 end
-
 

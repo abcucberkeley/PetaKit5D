@@ -3,11 +3,28 @@
 #include <stdio.h>
 #include <omp.h>
 #include <math.h>
+#include <type_traits>
 #include "mex.h"
 
 // mex -v COPTIMFLAGS="-O3 -DNDEBUG" CFLAGS='$CFLAGS -O3 -fopenmp' LDFLAGS='$LDFLAGS -O3 -fopenmp' feather_blending_3d_mex.cpp
 // macOS
 // mex -v CC="/usr/local/bin/gcc-12" CXX="/usr/local/bin/g++-12" COPTIMFLAGS="-O3 -DNDEBUG" CFLAGS='$CFLAGS -O3 -fopenmp' LDFLAGS='$LDFLAGS -O3 -fopenmp' indexing4d_mex.c
+
+// Template function to check if the type is int, uint16_t, or uint8_t
+template<typename T>
+constexpr bool is_integral_type() {
+    return std::is_same<T, int>::value || std::is_same<T, uint16_t>::value || std::is_same<T, uint8_t>::value;
+}
+
+// Template function to round the output if it's an integral type
+template<typename T>
+T round_output(float value) {
+    if constexpr (is_integral_type<T>()) {
+        return static_cast<T>(value + 0.5); // Round to nearest integer
+    } else {
+        return static_cast<T>(value); // No rounding for other types
+    }
+}
 
 template <typename T>
 void feather_blending_3d_mex(const T* const &fmat, const float* const &dmat, T* &nmat, const uint64_t &shapeX, const uint64_t &shapeY, const uint64_t &shapeZ, const uint64_t &shapeT) {
@@ -41,7 +58,7 @@ void feather_blending_3d_mex(const T* const &fmat, const float* const &dmat, T* 
                     }
                     // printf("%f %f\n", nv, sum_w);
                     if (sum_w != 0) {
-                        *(nmat + ind_xyz) = static_cast<T>(round(nv / sum_w));
+                        *(nmat + ind_xyz) = round_output<T>(nv / sum_w);
                     }
                 }
             }
@@ -70,7 +87,7 @@ void feather_blending_3d_mex(const T* const &fmat, const float* const &dmat, T* 
                     }
                     // printf("%f %f\n", nv, sum_w);
                     if (sum_w != 0) {
-                        *(nmat + ind_xyz) = static_cast<T>(round(nv / sum_w));
+                        *(nmat + ind_xyz) = round_output<T>(nv / sum_w);
                     }
                 }
             }

@@ -158,7 +158,13 @@ void mexFunction(int nlhs, mxArray *plhs[],
     mxClassID mDType_region = mxGetClassID(prhs[2]);
     if(mDType != mDType_region) mexErrMsgIdAndTxt("indexing:inputError","The data type of the region does not match that of the data!");
 
-    if(mDType == mxUINT8_CLASS){
+    if(mDType == mxLOGICAL_CLASS){
+        uint64_t bytes = 1;
+        bool* orig = (bool*)mxGetPr(prhs[0]);
+        bool* region = (bool*)mxGetPr(prhs[2]);
+        indexing4d_mex<bool>(orig, region, dims, rdims, bbox, rbbox, bytes);
+    }
+    else if(mDType == mxUINT8_CLASS){
         uint64_t bytes = 1;
         uint8_t* orig = (uint8_t*)mxGetPr(prhs[0]);
         uint8_t* region = (uint8_t*)mxGetPr(prhs[2]);

@@ -174,7 +174,7 @@ for i = 1 : numel(batchInds)
             end
             dbsz = bCoords_c(4 : 6) - bCoords_c(1 : 3) + 1;
             % define the batch as full if the overlap region is over 80% of the total volume
-            is_full_batch = prod(dbsz ./ bsz) >= 0.8;
+            is_full_batch = prod(dbsz ./ bsz) >= 0.8 || any(dbsz <= 0);
 
             if is_full_batch
                 bCoords_c = [1, 1, 1, bsz];

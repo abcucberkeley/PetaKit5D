@@ -217,7 +217,7 @@ configFile = pr.configFile;
 
 % make root directory
 if multiLoc
-    stitching_rt = [dataPath{1}, '/', resultDir];
+    stitching_rt = [dataPath{1}, '/', resultDirName];
 else
     if iscell(dataPath)
         dataPath = dataPath{1};
