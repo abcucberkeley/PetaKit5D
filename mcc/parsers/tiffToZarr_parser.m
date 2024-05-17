@@ -12,7 +12,6 @@ ip.addOptional('frame', [], @(x) isnumeric(x) || ischar(x));
 ip.addParameter('Overwrite', false, @(x) islogical(x) || ischar(x));
 ip.addParameter('blockSize', [500, 500, 250], @(x) isnumeric(x) || ischar(x));
 ip.addParameter('shardSize', [], @(x) isnumeric(x) || ischar(x));
-ip.addParameter('zarrSubSize', [20, 20, 20], @(x) isnumeric(x) || ischar(x));
 ip.addParameter('expand2dDim', true, @(x) islogical(x) || ischar(x)); % expand the z dimension for 2d data
 ip.addParameter('flipZstack', false, @(x) islogical(x) || ischar(x));
 ip.addParameter('resampleFactor', [], @(x) isempty(x) || isnumeric(x) || ischar(x));
@@ -29,7 +28,6 @@ pr = ip.Results;
 Overwrite = pr.Overwrite;
 blockSize = pr.blockSize;
 shardSize = pr.shardSize;
-zarrSubSize = pr.zarrSubSize;
 expand2dDim = pr.expand2dDim;
 flipZstack = pr.flipZstack;
 resampleFactor = pr.resampleFactor;
@@ -55,9 +53,6 @@ end
 if ischar(shardSize)
     shardSize = str2num(shardSize);
 end
-if ischar(zarrSubSize)
-    zarrSubSize = str2num(zarrSubSize);
-end
 if ischar(expand2dDim)
     expand2dDim = str2num(expand2dDim);
 end
@@ -81,10 +76,9 @@ if ischar(usrFcn) && ~isempty(usrFcn) && (strcmp(usrFcn(1), '{') || strcmp(usrFc
 end
 
 tiffToZarr(tifFilename, zarrFilename, frame, Overwrite=Overwrite, blockSize=blockSize, ...
-    shardSize=shardSize, zarrSubSize=zarrSubSize, expand2dDim=expand2dDim, ...
-    flipZstack=flipZstack, resampleFactor=resampleFactor, inputBbox=inputBbox, ...
-    tileOutBbox=tileOutBbox, readWholeTiff=readWholeTiff, compressor=compressor, ...
-    usrFcn=usrFcn, uuid=uuid);
+    shardSize=shardSize, expand2dDim=expand2dDim, flipZstack=flipZstack, resampleFactor=resampleFactor, ...
+    inputBbox=inputBbox, tileOutBbox=tileOutBbox, readWholeTiff=readWholeTiff, ...
+    compressor=compressor, usrFcn=usrFcn, uuid=uuid);
 
 end
 

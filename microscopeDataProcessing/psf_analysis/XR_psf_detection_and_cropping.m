@@ -15,7 +15,7 @@ ip.addRequired('fn');
 ip.addRequired('resultDir'); 
 ip.addParameter('xyPixelSize', 0.108, @isnumeric);
 ip.addParameter('dz', 0.1, @isnumeric);
-ip.addParameter('angle', 32.45, @isnumeric);
+ip.addParameter('skewAngle', 32.45, @isnumeric);
 ip.addParameter('cropSize', [256, 128, 201], @isnumeric);
 ip.addParameter('distThresh', [256, 128, 201], @isnumeric);
 ip.addParameter('prefix', 'test_', @ischar);
@@ -25,7 +25,7 @@ ip.parse(fn, resultDir, varargin{:});
 pr = ip.Results;
 dz = pr.dz;
 pixelSize = pr.xyPixelSize;
-angle = pr.angle;
+skewAngle = pr.skewAngle;
 cropSize = pr.cropSize;
 distThresh = pr.distThresh;
 prefix = pr.prefix;
@@ -54,7 +54,7 @@ im(isnan(im)) = 0;
 
 %% radon transform for the given angle
 
-theta = angle;
+theta = skewAngle;
 theta_1 = atand(tand(theta) * pixelSize / (dz * sind(theta)));
 radon_y = cell(sz(1), 1);
 for y = 1 : sz(1)

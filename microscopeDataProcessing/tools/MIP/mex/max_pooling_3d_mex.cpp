@@ -108,30 +108,36 @@ void mexFunction( int nlhs, mxArray *plhs[],
     dim[1] = shapeY;
     dim[2] = shapeZ;
 
-    mxClassID mDType = mxGetClassID(prhs[0]);    
-    if(mDType == mxUINT8_CLASS){
+    mxClassID mDType = mxGetClassID(prhs[0]);
+    if(mDType == mxLOGICAL_CLASS){
+        plhs[0] = mxCreateLogicalArray(3, (mwSize*)dim);
+        bool* out = (bool*)mxGetPr(plhs[0]);
+        const bool* orig = (bool*)mxGetPr(prhs[0]);
+        max_pooling_3d_mex<bool>(orig, out, poolSizeX, poolSizeY, poolSizeZ, origShapeX, origShapeY, origShapeZ, shapeX, shapeY, shapeZ);
+    }
+    else if(mDType == mxUINT8_CLASS){
         plhs[0] = mxCreateNumericArray(3,(mwSize*)dim,mxUINT8_CLASS, mxREAL);
         uint8_t* out = (uint8_t*)mxGetPr(plhs[0]);
         const uint8_t* orig = (uint8_t*)mxGetPr(prhs[0]);
-        max_pooling_3d_mex<uint8_t>(orig,out, poolSizeX, poolSizeY, poolSizeZ, origShapeX, origShapeY, origShapeZ, shapeX, shapeY, shapeZ);
+        max_pooling_3d_mex<uint8_t>(orig, out, poolSizeX, poolSizeY, poolSizeZ, origShapeX, origShapeY, origShapeZ, shapeX, shapeY, shapeZ);
     }
     else if(mDType == mxUINT16_CLASS){
         plhs[0] = mxCreateNumericArray(3,(mwSize*)dim,mxUINT16_CLASS, mxREAL);
         uint16_t* out = (uint16_t*)mxGetPr(plhs[0]);
         const uint16_t* orig = (uint16_t*)mxGetPr(prhs[0]);
-        max_pooling_3d_mex<uint16_t>(orig,out, poolSizeX, poolSizeY, poolSizeZ, origShapeX, origShapeY, origShapeZ, shapeX, shapeY, shapeZ);
+        max_pooling_3d_mex<uint16_t>(orig, out, poolSizeX, poolSizeY, poolSizeZ, origShapeX, origShapeY, origShapeZ, shapeX, shapeY, shapeZ);
     }
     else if(mDType == mxSINGLE_CLASS){
         plhs[0] = mxCreateNumericArray(3,(mwSize*)dim,mxSINGLE_CLASS, mxREAL);
         float* out = (float*)mxGetPr(plhs[0]);
         const float* orig = (float*)mxGetPr(prhs[0]);
-        max_pooling_3d_mex<float>(orig,out, poolSizeX, poolSizeY, poolSizeZ, origShapeX, origShapeY, origShapeZ, shapeX, shapeY, shapeZ);
+        max_pooling_3d_mex<float>(orig, out, poolSizeX, poolSizeY, poolSizeZ, origShapeX, origShapeY, origShapeZ, shapeX, shapeY, shapeZ);
     }
     else if(mDType == mxDOUBLE_CLASS){
         plhs[0] = mxCreateNumericArray(3,(mwSize*)dim,mxDOUBLE_CLASS, mxREAL);
         double* out = (double*)mxGetPr(plhs[0]);
         const double* orig = (double*)mxGetPr(prhs[0]);
-        max_pooling_3d_mex<double>(orig,out, poolSizeX, poolSizeY, poolSizeZ, origShapeX, origShapeY, origShapeZ, shapeX, shapeY, shapeZ);
+        max_pooling_3d_mex<double>(orig, out, poolSizeX, poolSizeY, poolSizeZ, origShapeX, origShapeY, origShapeZ, shapeX, shapeY, shapeZ);
     }
     else{
         mexErrMsgIdAndTxt("mat:dataTypeError","Data type not suppported");

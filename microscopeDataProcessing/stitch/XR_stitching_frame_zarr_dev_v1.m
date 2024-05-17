@@ -852,9 +852,11 @@ if parseCluster
     funcStrs = funcStrs(sinds);
 end
 
+byte_num = dataTypeToByteNumber(dtype);
+
 % cluster setting
 cpusPerTask = 1 * nodeFactor;
-memAllocate = prod(batchSize) * 4 / 1024^3 * 20;
+memAllocate = prod(batchSize) * byte_num / 1024^3 * 20;
 maxTrialNum = 2;
 jobTimeLimit = taskSize * (3 / 60);
 
@@ -925,7 +927,6 @@ if saveMIP
     end
     stcMIPname = sprintf('%s%s_MIP_z.tif', stcMIPPath, nv_fsname);
     % for data greater than 250 GB, use the cluster based MIP.
-    byte_num = dataTypeToByteNumber(dtype);
     if prod([nys, nxs, nzs]) * byte_num / 2^30 < 250
         saveMIP_zarr(nv_fullname, stcMIPname, dtype, [1, 1, 1]);
     else

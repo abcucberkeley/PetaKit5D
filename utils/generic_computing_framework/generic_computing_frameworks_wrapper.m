@@ -84,7 +84,8 @@ if ~isempty(ConfigFile) && ConfigFile ~= ""
                 confData = a;
         end
         disp('Cluster configuration:');
-        disp(confData);        
+        disp(confData);
+        fprintf('\n');        
     end
 
     conf_keys = fields(confData);
@@ -146,7 +147,7 @@ switch clusterType
         cpusPerTask = min(maxCPUNum, max(minCPUNum, cpusPerTask));
         % if cpu per task is less than half of max cpu num, round to a factor of the max cpu num
         % if cpu per task is 75% of max cpu num, just assign to max CPU num
-        if rem(maxCPUNum, cpusPerTask) ~= 0 && numel(factor(maxCPUNum)) > 1
+        if parseCluster && ~wholeNodeJob && rem(maxCPUNum, cpusPerTask) ~= 0 && numel(factor(maxCPUNum)) > 1
             cpusPerTask_orig = cpusPerTask;
             if maxCPUNum / cpusPerTask > 2
                 while rem(maxCPUNum, cpusPerTask) > 1
@@ -162,7 +163,7 @@ switch clusterType
             end
         end
 
-        if (ismcc || isdeployed || mccMode) && parseCluster
+        if (ismcc || isdeployed || mccMode)
             % only allow master compute if the job itself is in mcc or deployed mode.
             masterCompute = (ismcc || isdeployed) && masterCompute;
 
@@ -171,7 +172,7 @@ switch clusterType
                 cpusPerTask = maxCPUNum;
                 if GPUJob
                     paraJobNum = min(paraJobNum, GPUNum);
-                end                
+                end
             end
             taskBatchNum = max(taskBatchNum, minBatchNum);            
             taskBatchNum = ceil(taskBatchNum ./ paraJobNum) * paraJobNum;

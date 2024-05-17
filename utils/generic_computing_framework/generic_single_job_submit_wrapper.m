@@ -136,57 +136,65 @@ GNUparallel = pr.GNUparallel;
 paraJobNum = pr.paraJobNum;
 
 submit_status = 0;
-switch clusterType
-    case 'slurm'
-        array_id = rem(task_id, 5000);
-        job_status = check_slurm_job_status(job_id, array_id);
-    
-        % kill the last pending job and use master node do the computing.
-        if job_status == 0.5 && (masterCompute && lastFile)
-            system(sprintf('scancel %d_%d', job_id, array_id), '-echo');
-        end
-
-        % if the job is still running, skip it. 
-        if job_status == 1 || (masterCompute && lastFile)
-            return;
-        end
-
-        % If there is no job, submit a job
-        if job_status == -1         
-            if ~isempty(memAllocate) && cpusPerTask * MemPerCPU < memAllocate
-                cpusPerTask = max(min(maxCPUNum, ceil(memAllocate / MemPerCPU)), minCPUNum);
-            end
-            time_str = '';
-            if ~isempty(jobTimeLimit) && ~(contains(SlurmParam, ' -t ') || contains(SlurmParam, '--time'))
-                % only round to minutes (minimum 1 minute);
-                jobTimeLimit = max(jobTimeLimit, 1 / 60);
-                h = floor(jobTimeLimit);
-                m = round((jobTimeLimit - h) * 60);
-                time_str = sprintf(' -t %d:%d:00 ', h, m);
-            end
-            
-            if ismcc || isdeployed || mccMode
-                [func_name, var_str] = convert_function_string_to_mcc_string(funcStr);
-                % handle for nested "
-                var_str = strrep(var_str, '"', '\"');                
-                process_cmd = sprintf('MCR_CACHE_ROOT=%s %s %s %s %s \n', MCRCacheRoot, MCCMasterStr, MCRParam, func_name, var_str);
-            else
-                matlab_setup_str = 'setup([],true)';
-                matlab_cmd = sprintf('%s;t0_=tic;%s;toc(t0_)', matlab_setup_str, funcStr);
-                process_cmd = sprintf('%s \\"%s\\"', MatlabLaunchStr, matlab_cmd);
+trial_counter = 0;
+while submit_status == 0 && trial_counter < maxTrialNum
+    switch clusterType
+        case 'slurm'
+            array_id = rem(task_id, 5000);
+            job_status = check_slurm_job_status(job_id, array_id);
+        
+            % kill the last pending job and use master node do the computing.
+            if job_status == 0.5 && (masterCompute && lastFile)
+                system(sprintf('scancel %d_%d', job_id, array_id), '-echo');
             end
     
-            cmd = sprintf('sbatch --array=%d -o %s -e %s --cpus-per-task=%d %s %s %s --wrap="echo Matlab command:  \\\"%s\\\"; %s"', ...
-                rem(task_id, 5000), jobLogFname, jobErrorFname, cpusPerTask, SlurmParam, ...
-                SlurmConstraint, time_str, funcStr, process_cmd);
-            disp(cmd);
-            
-            [status, cmdout] = system(cmd, '-echo');
+            % if the job is still running, skip it. 
+            if job_status == 1 || (masterCompute && lastFile)
+                return;
+            end
     
-            job_id = regexp(cmdout, 'Submitted batch job (\d+)\n', 'tokens');
-            job_id = str2double(job_id{1}{1});
-            submit_status = 1;
-        end
+            % If there is no job, submit a job
+            if job_status == -1         
+                if ~isempty(memAllocate) && cpusPerTask * MemPerCPU < memAllocate
+                    cpusPerTask = max(min(maxCPUNum, ceil(memAllocate / MemPerCPU)), minCPUNum);
+                end
+                time_str = '';
+                if ~isempty(jobTimeLimit) && ~(contains(SlurmParam, ' -t ') || contains(SlurmParam, '--time'))
+                    % only round to minutes (minimum 1 minute);
+                    jobTimeLimit = max(jobTimeLimit, 1 / 60);
+                    h = floor(jobTimeLimit);
+                    m = round((jobTimeLimit - h) * 60);
+                    time_str = sprintf(' -t %d:%d:00 ', h, m);
+                end
+                
+                if ismcc || isdeployed || mccMode
+                    [func_name, var_str] = convert_function_string_to_mcc_string(funcStr);
+                    % handle for nested "
+                    var_str = strrep(var_str, '"', '\"');                
+                    process_cmd = sprintf('MCR_CACHE_ROOT=%s %s %s %s %s \n', MCRCacheRoot, MCCMasterStr, MCRParam, func_name, var_str);
+                else
+                    matlab_setup_str = 'setup([],true)';
+                    matlab_cmd = sprintf('%s;t0_=tic;%s;toc(t0_)', matlab_setup_str, funcStr);
+                    process_cmd = sprintf('%s \\"%s\\"', MatlabLaunchStr, matlab_cmd);
+                end
+        
+                cmd = sprintf('sbatch --array=%d -o %s -e %s --cpus-per-task=%d %s %s %s --wrap="echo Matlab command:  \\\"%s\\\"; %s"', ...
+                    rem(task_id, 5000), jobLogFname, jobErrorFname, cpusPerTask, SlurmParam, ...
+                    SlurmConstraint, time_str, funcStr, process_cmd);
+                disp(cmd);
+                
+                [status, cmdout] = system(cmd, '-echo');
+        
+                job_out_info = regexp(cmdout, 'Submitted batch job (\d+)\n', 'tokens');
+                if ~isempty(job_out_info) && ~isempty(job_out_info{1})
+                    job_id = str2double(job_out_info{1}{1});
+                    submit_status = 1;
+                else
+                    fprintf('Job submission failed, try again!\n')
+                end
+                trial_counter = trial_counter + 1;
+            end
+    end
 end
 
 end

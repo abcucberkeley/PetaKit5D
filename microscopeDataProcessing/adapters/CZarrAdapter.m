@@ -85,8 +85,14 @@ classdef CZarrAdapter < images.blocked.Adapter
                 cd(pth);                    
             end
 
+            dimSeparator = '.';
+            if prod(ceil(info.Size / info.IOBlockSize)) > 10000
+                dimSeparator = '/';
+            end
+
             createzarr(char(loc), dataSize=info.Size, blockSize=info.IOBlockSize, ...
-                dtype=info.Datatype, order='F', compressor='zstd', zarrSubSize=[]);
+                dtype=info.Datatype, order='F', compressor='zstd', zarrSubSize=[], ...
+                dimSeparator=dimSeparator);
 
             openToRead(obj, loc);
             obj.ZarrInfo =  info;

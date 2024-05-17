@@ -71,7 +71,14 @@ void mexFunction(int nlhs, mxArray *plhs[],
     dim[2] = shapeZ;
 
     mxClassID mDType = mxGetClassID(prhs[0]);
-    if(mDType == mxUINT8_CLASS){
+    if(mDType == mxLOGICAL_CLASS){
+        uint64_t bits = 8;
+        plhs[0] = mxCreateLogicalArray(3,(mwSize*)dim);
+        bool* crop = (bool*)mxGetPr(plhs[0]);
+        bool* orig = (bool*)mxGetPr(prhs[0]);
+        crop3d_mex((void*)orig,(void*)crop,startX,startY,startZ,endX,endY,endZ,origShapeX,origShapeY,origShapeZ,shapeX,shapeY,shapeZ,bits);
+    }
+    else if(mDType == mxUINT8_CLASS){
         uint64_t bits = 8;
         plhs[0] = mxCreateNumericArray(3,(mwSize*)dim,mxUINT8_CLASS, mxREAL);
         uint8_t* crop = (uint8_t*)mxGetPr(plhs[0]);
@@ -101,6 +108,6 @@ void mexFunction(int nlhs, mxArray *plhs[],
         crop3d_mex((void*)orig,(void*)crop,startX,startY,startZ,endX,endY,endZ,origShapeX,origShapeY,origShapeZ,shapeX,shapeY,shapeZ,bits);
     }
     else{
-        mexErrMsgIdAndTxt("tiff:dataTypeError","Data type not suppported");
+        mexErrMsgIdAndTxt("crop:dataTypeError","Data type not suppported");
     }
 }

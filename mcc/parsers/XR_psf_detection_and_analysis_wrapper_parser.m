@@ -9,7 +9,7 @@ ip.CaseSensitive = false;
 ip.addRequired('dataPaths', @(x) ischar(x) || iscell(x));
 ip.addParameter('xyPixelSize', 0.108, @(x) isnumeric(x) || ischar(x));
 ip.addParameter('dz', 0.1, @(x) isnumeric(x) || ischar(x));
-ip.addParameter('angle', 32.45, @(x) isnumeric(x) || ischar(x));
+ip.addParameter('skewAngle', 32.45, @(x) isnumeric(x) || ischar(x));
 ip.addParameter('cropSize', [256, 128, 201], @(x) isnumeric(x) || ischar(x));
 ip.addParameter('flipZstack', false, @(x) islogical(x) || ischar(x));
 ip.addParameter('distThresh', [256, 128, 201], @(x) isnumeric(x) || ischar(x));
@@ -27,7 +27,7 @@ ip.parse(dataPaths, varargin{:});
 pr = ip.Results;
 xyPixelSize = pr.xyPixelSize;
 dz = pr.dz;
-angle = pr.angle;
+skewAngle = pr.skewAngle;
 cropSize = pr.cropSize;
 flipZstack = pr.flipZstack;
 distThresh = pr.distThresh;
@@ -49,8 +49,8 @@ end
 if ischar(dz)
     dz = str2num(dz);
 end
-if ischar(angle)
-    angle = str2num(angle);
+if ischar(skewAngle)
+    skewAngle = str2num(skewAngle);
 end
 if ischar(cropSize)
     cropSize = str2num(cropSize);
@@ -81,7 +81,7 @@ if ischar(mccMode)
 end
 
 XR_psf_detection_and_analysis_wrapper(dataPaths, xyPixelSize=xyPixelSize, dz=dz, ...
-    angle=angle, cropSize=cropSize, flipZstack=flipZstack, distThresh=distThresh, ...
+    skewAngle=skewAngle, cropSize=cropSize, flipZstack=flipZstack, distThresh=distThresh, ...
     channelPatterns=channelPatterns, channels=channels, RWFn=RWFn, sourceStr=sourceStr, ...
     parseCluster=parseCluster, masterCompute=masterCompute, mccMode=mccMode, ...
     configFile=configFile);

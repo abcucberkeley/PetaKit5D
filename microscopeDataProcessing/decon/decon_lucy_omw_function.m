@@ -171,12 +171,7 @@ if useGPU
     J = gather(J);
 else
     if ~isempty(bbox)
-        try 
-            J = crop3d_mex(J, bbox);
-        catch ME
-            disp(ME);
-            J = J(bbox(1) : bbox(4), bbox(2) : bbox(5), bbox(3) : bbox(6));
-        end
+        J = crop3d(J, bbox);
     end
 end
 

@@ -13,7 +13,7 @@ arguments
     options.overwrite (1, 1) logical = false
     options.blockSize (1, :) {mustBeNumeric} = [500, 500, 500]
     options.shardSize (1, :) {mustBeNumeric} = []
-    options.zarrSubSize (1, :) {mustBeNumeric} = [20, 20, 20]
+    options.zarrSubSize (1, :) {mustBeNumeric} = []
     options.expand2dDim (1, 1) logical = true  % expand the z dimension for 2d data
     options.groupWrite (1, 1) logical = true
     options.bbox (1, :) {mustBeNumeric} = []

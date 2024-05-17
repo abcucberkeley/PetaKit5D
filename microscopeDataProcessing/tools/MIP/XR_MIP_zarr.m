@@ -17,7 +17,6 @@ ip.addParameter('axis', [1, 1, 1], @isnumeric); % y, x, z
 ip.addParameter('inputBbox', [] , @(x) isempty(x) || isvector(x)); % bbox to define the region for MIP
 ip.addParameter('batchSize', [2048, 2048, 2048] , @isnumeric); % in y, x, z
 ip.addParameter('poolSize', [] , @isnumeric); % pooling size for mips
-ip.addParameter('zarrSubSize', [20, 20, 20] , @isnumeric); % in y, x, z
 ip.addParameter('mipSlab', false, @islogical); % compute MIP slabs (without the final MIPs)
 ip.addParameter('parseCluster', true, @islogical);
 ip.addParameter('parseParfor', false, @islogical);
@@ -36,7 +35,6 @@ axis = pr.axis;
 inputBbox = pr.inputBbox;
 batchSize = pr.batchSize;
 poolSize = pr.poolSize;
-zarrSubSize = pr.zarrSubSize;
 mipSlab = pr.mipSlab;
 parseCluster = pr.parseCluster;
 parseParfor = pr.parseParfor;
@@ -191,8 +189,11 @@ for i = 1 : 3
     blockSize_i = batchSize;
     blockSize_i(axis_flag) = ceil(batchSize(axis_flag) / poolSize(axis_flag));
     blockSize_i(~axis_flag) = ceil(batchSize(~axis_flag) ./ poolSize_1(~axis_flag));
-    
-    createzarr(MIPZarrTmppaths{i}, dataSize=outSize, blockSize=blockSize_i, dtype=dtype, zarrSubSize=zarrSubSize);
+    dimSeparator = '.';
+    if prod(ceil(outSize ./ blockSize_i)) > 10000
+        dimSeparator = '/';
+    end
+    createzarr(MIPZarrTmppaths{i}, dataSize=outSize, blockSize=blockSize_i, dtype=dtype, dimSeparator=dimSeparator);
 end
 
 % set up parallel computing 
