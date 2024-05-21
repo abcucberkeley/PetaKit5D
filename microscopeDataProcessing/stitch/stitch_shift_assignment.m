@@ -242,7 +242,9 @@ sz = getImageSize(zarrFullpaths{1});
 pinds = (ti - 1) * nF - ti .* (ti + 1) / 2 + tj;
 cuboid_overlap_ij_mat = overlap_regions(pinds, :);
 rawImageSizes = prod(min((cuboid_overlap_ij_mat(:, 4 : 6) - cuboid_overlap_ij_mat(:, 1 : 3))' ./ (px * [xf; yf; zf]) + MaxOffset(:), sz(:))) * 4 / 1024^3;
-memAllocate = prctile(ceil(rawImageSizes) * (1.5 + 24 / prod(xcorrDownsample)), 99) * nodeFactor;
+% memAllocate = prctile(ceil(rawImageSizes) * (1.5 + 24 / prod(xcorrDownsample)), 99) * nodeFactor;
+% allocate slight more memory for faster computing and in case of oom
+memAllocate = prctile(ceil(rawImageSizes) * (2 + 30 / prod(xcorrDownsample)), 99) * nodeFactor;
 cpusPerTask_xcorr = 2;
 maxTrialNum_xcorr = 2;
 

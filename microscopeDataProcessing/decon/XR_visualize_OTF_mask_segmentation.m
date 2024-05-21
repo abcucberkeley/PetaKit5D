@@ -1,4 +1,4 @@
-function [] = XR_visualize_OTF_mask_segmentation(psfFn, OTFCumThresh, skewed)
+function [] = XR_visualize_OTF_mask_segmentation(psfFn, OTFCumThresh, skewed, varargin)
 % visualze OTF mask outline segmented with given threshold overlay with OTF
 % 
 % Author: Xiongtao Ruan (11/13/2023)
@@ -9,12 +9,14 @@ ip.CaseSensitive = false;
 ip.addRequired('psfFn', @ischar);
 ip.addOptional('OTFCumThresh', 0.85, @(x) isscalar(x));
 ip.addOptional('skewed', [], @(x) isempty(x) || islogical(x));
+ip.addParameter('minIntThrsh', 2.5e-3, @(x) isnumeric(x));
 
-ip.parse(psfFn, OTFCumThresh, skewed);
+ip.parse(psfFn, OTFCumThresh, skewed, varargin{:});
 
 pr = ip.Results;
 OTFCumThresh = pr.OTFCumThresh;
 skewed = pr.skewed;
+minIntThrsh = pr.minIntThrsh;
 
 % load PSF and clear up the PSF
 if ~exist(psfFn, 'file') && ~exist(psfFn, 'dir')
@@ -41,7 +43,7 @@ fprintf('OTFCumThresh: %f, skewed: %s\n', OTFCumThresh, string(skewed));
 alpha = 0.01;
 hanWinBounds = [0.8, 1.0];
 [b_omw, OTF_bp_omw, abs_OTF_c, OTF_mask] = omw_backprojector_generation(psf, alpha, skewed, ...
-    'OTFCumThresh', OTFCumThresh, 'hanWinBounds', hanWinBounds);
+    'OTFCumThresh', OTFCumThresh, 'hanWinBounds', hanWinBounds, minIntThrsh=minIntThrsh);
 
 % visualize OTF mask on top of OTF 
 fig = visualize_OTF_and_mask_outline(abs_OTF_c, OTF_mask);

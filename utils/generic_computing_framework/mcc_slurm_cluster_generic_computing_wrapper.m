@@ -259,26 +259,26 @@ end
 
 % if masterCompute is true, add extra tasks for the master job in case it just waits for long time
 % each extra batch is 1/10 of the original 
-if masterCompute && batchSize > 1
-    batchSize_m = max(ceil(batchSize / 10), paraJobNum - 1);
+if masterCompute && batchSize > 1 && nB > 1
+    batchSize_m = max([ceil(batchSize / 10), paraJobNum - 1, ceil(nF / 50000)]);
     nB_m = ceil(nF / batchSize_m);
     task_inds_cell = task_inds_cell(1 : end - 1)';
     task_inds_mat = cat(1, task_inds_cell{:});
     task_inds_mat = task_inds_mat(end : -1 : 1, end : -1 : 1);
     nF_m = numel(task_inds_mat);
     mainExtraInputFns= cell(nB_m, 1);
+    main_extra_task_inds_cell = cell(nB_m, 1);
     
     mainfuncInputDir = sprintf('%s/main_extra_tasks/', funcInputDir);
     mkdir(mainfuncInputDir);
-    % only consider the first 10000 extra batchs, otherwise it may be too
-    % many task files in a folder.
-    for b = 1 : min(nB_m, 10000)
+    for b = 1 : nB_m
         if isunix
             inputFn = sprintf('%s/input_main_extra_%d.txt', mainfuncInputDir, b);
         else
             inputFn = sprintf('%s/input_main_extra_%d.bat', mainfuncInputDir, b);
         end
         task_mat = task_inds_mat((b - 1) * batchSize_m + 1 : min(b * batchSize_m, nF_m));
+        main_extra_task_inds_cell{b} = task_mat;
         if all(is_done_flag(task_mat))
             continue;
         end
@@ -354,7 +354,7 @@ while (~parseCluster && ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
         % waiting time in each iteration. 
         lastP = find(~is_done_flag & trial_counter < maxTrialNum, 1, 'first');
         nB = nF;
-    end    
+    end
     fsnames = cell(1, nF);
     for b = 1 : nB
         fs = (b - 1) * taskBatchNum + 1 : min(b * taskBatchNum, nF);
@@ -454,7 +454,7 @@ while (~parseCluster && ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
                 end
             end
         end
-    
+
         if all(is_done_flag(fs) | trial_counter(fs) >= maxTrialNum)
             continue;
         end
@@ -487,7 +487,7 @@ while (~parseCluster && ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
                     continue;
                 end
                 
-                % check if the job just finished, if masterCompute 30s, if not, 45s
+                % check if the job just finished, if masterCompute 30 s, if not, 45 s
                 if loop_counter > 0 && trial_counter(f) > 0 && job_status_mat(f, 1) == -1 ...
                         && timestamp - job_timestamp_mat(f) < 45 - masterCompute * 15
                     continue;
@@ -562,42 +562,30 @@ while (~parseCluster && ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
             end
         end
 
-        if ~parseCluster || (parseCluster && masterCompute && (b == lastP || (loop_counter > 0 && ~pending_flag)))
-            run_extra_task_batch = false;
+        if ~parseCluster || (parseCluster && masterCompute && b == lastP && ~(runExtraTasks && b == 1))
             if parseCluster && loop_counter > 0
                 % for nonpending killed jobs, wait a bit longer in case of just finished job.
                 % change the wait time to the maximum of 30s and half of computing time
-                run_extra_task_batch = ~(b == lastP && job_status_mat(f, 1) <= 0) && ~pending_flag && batchSize > 1 && main_extra_ind <= nB_m;
-
                 if ~pending_flag
-                    if run_extra_task_batch
-                        inputFn = mainExtraInputFns{main_extra_ind};
-                    else
-                        if timestamp - job_timestamp_mat(f) < min(max(30, t1 * 0.5), 180)
-                            continue;
-                        end
-                        if all(is_done_flag(fs))
-                            continue;
-                        end
+                    if timestamp - job_timestamp_mat(f) < min(max(30, t1 * 0.5), 180)
+                        continue;
+                    end
+                    if all(is_done_flag(fs))
+                        continue;
                     end
                 end
             end
-            if run_extra_task_batch
-                fprintf('\nProcess extra task batch %d ... \n', main_extra_ind);
-            else
-                fprintf('\nProcess task batch %d ... \n', b);
-                fprintf('\nProcess %s with function %s... \n', strjoin(fsnames(fs), ', '), func_str);
-            end
+            fprintf('\nProcess task batch %d ... \n', b);
+            fprintf('\nProcess %s with function %s... \n', strjoin(fsnames(fs), ', '), func_str);
             if ~GNUparallel
-                % process_cmd = func_str;
                 if isunix
                     cmd = sprintf(['%s; bash %s'], BashLaunchStr, inputFn);
                 else
                     cmd = sprintf(['cmd /c "%s"'], inputFn);
                 end
             else
-                if GPUJob || run_extra_task_batch
-                    paraJobNum_f = max(1, min(paraJobNum - 1, round(paraJobNum * masterParaFactor)));
+                if GPUJob || ~parseCluster
+                    paraJobNum_f = max(1, min(paraJobNum, round(paraJobNum * masterParaFactor)));
                 else
                     paraJobNum_f = max(1, min(paraJobNum - 1, round(paraJobNum * masterParaFactor / (trial_counter(f) + 1))));
                 end
@@ -608,21 +596,56 @@ while (~parseCluster && ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
                 end
             end
             t0=tic; [status, cmdout] = system(cmd, '-echo'); t1=toc(t0);
-            if run_extra_task_batch
-                main_extra_ind = main_extra_ind + 1;
-            else
-                trial_counter(fs) = trial_counter(fs) + 1;
-                if ~parseCluster && exist(outputFullpath, 'file') && exist(tmpFullpath, 'file')
-                    delete(tmpFullpath);
-                end
+            trial_counter(fs) = trial_counter(fs) + 1;
+            if ~parseCluster && exist(outputFullpath, 'file') && exist(tmpFullpath, 'file')
+                delete(tmpFullpath);
             end
-            fprintf('Done! Elapsed time is %f seconds.\n', t1);
+            fprintf('Done! Elapsed time is %f seconds.\n\n', t1);
         end
     end
     
+    % run extra task
+    run_extra_task_batch = parseCluster && masterCompute && loop_counter > 0 && ...
+        all(job_status_mat(~is_done_flag, 1) > 0) && batchSize > 1 && nB > 1 && main_extra_ind <= nB_m;
+    if run_extra_task_batch
+        while main_extra_ind <= nB_m && all(is_done_flag(main_extra_task_inds_cell{main_extra_ind}))
+            main_extra_ind = main_extra_ind + 1;
+        end
+        if main_extra_ind > nB_m
+            if ~all(is_done_flag)
+                main_extra_ind = 1;
+            else
+                continue;
+            end
+        end
+        inputFn = mainExtraInputFns{main_extra_ind};
+        fprintf('\nProcess extra task batch %d ... \n', main_extra_ind);
+        if ~GNUparallel
+            if isunix
+                cmd = sprintf(['%s; bash %s'], BashLaunchStr, inputFn);
+            else
+                cmd = sprintf(['cmd /c "%s"'], inputFn);
+            end
+        else
+            if parseCluster
+                paraJobNum_f = max(1, min(paraJobNum - 1, round(paraJobNum * masterParaFactor)));
+            else
+                paraJobNum_f = max(1, min(paraJobNum, round(paraJobNum * masterParaFactor)));
+            end
+            cmd = sprintf(['%s; parallel --jobs %d --delay 0.2 < %s'], BashLaunchStr, paraJobNum_f, inputFn);
+            if ismcc || isdeployed
+                % reduce the load of master job in case of crash due to oom
+                cmd = sprintf(['%s; parallel --ungroup --jobs %d --delay 0.2 < %s'], BashLaunchStr, paraJobNum_f, inputFn);
+            end
+        end
+        t0=tic; [status, cmdout] = system(cmd, '-echo'); t1=toc(t0);
+        main_extra_ind = main_extra_ind + 1;
+        fprintf('Done! Elapsed time is %f seconds.\n\n', t1);
+    end
+
     if parseCluster && ~all(is_done_flag | trial_counter >= maxTrialNum, 'all') 
         wt = max(0.001, queryInterval - toc(qts) - 0.001);
-        % if all jobs are still pending, wait another query interval        
+        % if all jobs are still pending, wait another query interval
         if ~masterCompute && ~any(job_status_mat(~is_done_flag, 1), 'all')
             wt = wt + queryInterval;
         end
@@ -635,19 +658,19 @@ while (~parseCluster && ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
 
     if ~isempty(finalOutFullpath) && (exist(finalOutFullpath, 'dir') || exist(finalOutFullpath, 'file'))
         is_done_flag = true(nF, 1);
-        fprintf('The final output file %s already exists!\n', finalOutFullpath);
+        fprintf('Time %0.2f s: The final output file %s already exists!\n', toc(ts), finalOutFullpath);
         break;
     end
     
     loop_counter = loop_counter + 1;
 end
 
-% cancel unfinished jobs 
+% cancel unfinished jobs
 if parseCluster
     unfinished_job_ids = unique(job_ids);
     unfinished_job_ids(unfinished_job_ids <= 0) = [];
     if any(unfinished_job_ids)
-        system(sprintf('scancel %s', num2str(unfinished_job_ids(:)')), '-echo');
+        system(sprintf('scancel %s &', num2str(unfinished_job_ids(:)')), '-echo');
     end
 end
 
