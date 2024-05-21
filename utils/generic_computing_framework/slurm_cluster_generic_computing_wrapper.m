@@ -474,7 +474,7 @@ if parseCluster
     unfinished_job_ids = unique(job_ids);
     unfinished_job_ids(unfinished_job_ids <= 0) = [];
     if any(unfinished_job_ids)
-        system(sprintf('scancel %s', num2str(unfinished_job_ids(:)')), '-echo');
+        system(sprintf('scancel %s &', num2str(unfinished_job_ids(:)')), '-echo');
     end
 end
 

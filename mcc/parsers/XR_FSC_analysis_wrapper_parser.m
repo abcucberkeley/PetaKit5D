@@ -9,7 +9,7 @@ ip.addRequired('dataPaths', @(x) ischar(x) || iscell(x));
 ip.addParameter('resultDirName', 'FSCs', @ischar);
 ip.addParameter('xyPixelSize', 0.108, @(x) isnumeric(x) || ischar(x));
 ip.addParameter('dz', 0.1, @(x) isnumeric(x) || ischar(x));
-ip.addParameter('dr', 1 , @(x) isnumeric(x) || ischar(x));
+ip.addParameter('dr', 10, @(x) isnumeric(x) || ischar(x));
 ip.addParameter('dtheta', pi / 12 , @(x) isnumeric(x) || ischar(x));
 ip.addParameter('resThreshMethod', 'fixed', @ischar);
 ip.addParameter('resThresh', 0.2, @(x) isnumeric(x) || ischar(x));

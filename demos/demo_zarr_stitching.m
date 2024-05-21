@@ -384,6 +384,7 @@ end
 %% Step A4: run BigStitcher using the Slurm cluster
 % Step A4.1: Start your master spark node and initialize your worker nodes
 %{
+module load blosc/1.21.5
 module load spark/3.4.1
 module load java/11.0.0.1
 start-master.sh

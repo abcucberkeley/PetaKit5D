@@ -13,7 +13,7 @@ ip.addRequired('dataPaths', @(x) ischar(x) || iscell(x));
 ip.addParameter('resultDirName', 'FSCs', @ischar);
 ip.addParameter('xyPixelSize', 0.108, @isnumeric);
 ip.addParameter('dz', 0.1, @isnumeric);
-ip.addParameter('dr', 1 , @isnumeric);
+ip.addParameter('dr', 10, @isnumeric);
 ip.addParameter('dtheta', pi / 12 , @isnumeric);
 ip.addParameter('resThreshMethod', 'fixed', @ischar);
 ip.addParameter('resThresh', 0.2, @isnumeric);
