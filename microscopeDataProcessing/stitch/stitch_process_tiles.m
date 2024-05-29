@@ -94,8 +94,17 @@ if ~isempty(processFunPath)
             if isempty(processFunPath{i, j})
                 continue;
             end            
-            a = load(processFunPath{i, j});
-            usrFun = a.usrFun;
+            [~, ~, ext] = fileparts(processFunPath{i, j});
+            switch ext
+                case '.mat'
+                    a = load(processFunPath{i, j});
+                    usrFun = a.usrFun;
+                case '.txt'
+                    a = readTextFile(processFunPath{i, j});
+                    usrFun = a{1};
+                otherwise
+                    error('Unknown file type for the processed function file!')
+            end
             if ~isempty(usrFun)            
                 usrFcn_strs{i, j} = usrFun;
             end

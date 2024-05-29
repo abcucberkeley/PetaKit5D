@@ -177,12 +177,25 @@ switch clusterType
             taskBatchNum = max(taskBatchNum, minBatchNum);            
             taskBatchNum = ceil(taskBatchNum ./ paraJobNum) * paraJobNum;
             taskBatchNum = max(taskBatchNum, paraJobNum * paraBatchNum);
-            if numel(inputFullpaths) / taskBatchNum < (minTaskJobNum / paraJobNum)
-                taskBatchNum = max(ceil(numel(inputFullpaths) / minTaskJobNum), 1);
+            numTasks = numel(inputFullpaths);
+            if numTasks / taskBatchNum < (minTaskJobNum / paraJobNum)
+                taskBatchNum = max(ceil(numTasks / minTaskJobNum), 1);
             end
 
-            if wholeNodeJob && GPUJob
-                taskBatchNum = ceil(taskBatchNum ./ paraJobNum) * paraJobNum;
+            if wholeNodeJob
+                % if running extra tasks, make sure the number of jobs equal to the multiplier 
+                % of the max job num or max job num + 1 if master computer is true. 
+                if runExtraTasks && rem(ceil(numTasks / taskBatchNum), maxJobNum + masterCompute) ~= 0
+                    taskBatchNum = ceil((numTasks + taskBatchNum * 0.1 * masterCompute) / (max(1, floor(numTasks / ((maxJobNum + masterCompute) * taskBatchNum))) * (maxJobNum + masterCompute)));
+                end
+                if GPUJob
+                    taskBatchNum = ceil(taskBatchNum ./ paraJobNum) * paraJobNum;
+                else
+                    taskBatchNum = min(2 * taskBatchNum, ceil(taskBatchNum ./ paraJobNum) * paraJobNum);
+                    if ceil(numTasks / taskBatchNum) < minTaskJobNum
+                        taskBatchNum = ceil(numTasks / minTaskJobNum);
+                    end
+                end
             end
 
             is_done_flag = mcc_slurm_cluster_generic_computing_wrapper(inputFullpaths, ...

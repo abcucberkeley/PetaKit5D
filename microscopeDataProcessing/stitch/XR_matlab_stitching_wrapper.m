@@ -599,19 +599,21 @@ while ~all(is_done_flag | trial_counter >= max_trial_num, 'all')
                         processFunPath_str = sprintf('{''%s''}', strjoin(processFunPath(cind, :), ''','''));
 
                         % for tile number greater than 10, save the info to the disk and load it for the function
-                        if numel(tile_fullpaths) > 10 && parseCluster && job_ids(n, ncam, s, c, z) == -1
-                            fprintf('Save tile paths and coordinates to disk...\n');
+                        if numel(tile_fullpaths) > 10 && parseCluster
                             tileInfoFullpath = sprintf('%s/stitchInfo/%s_tile_info.mat', stitching_rt, fsname);
-                            tileInfoTmppath = sprintf('%s/stitchInfo/%s_tile_info_%s.mat', stitching_rt, fsname, uuid);
-                            save('-v7.3', tileInfoTmppath, 'tile_fullpaths', 'xyz', 'tileIdx', 'flippedTile');
-                            movefile(tileInfoTmppath, tileInfoFullpath);
+                            if ~exist(tileInfoFullpath, 'file')
+                                fprintf('Save tile paths and coordinates to disk...\n');
+                                tileInfoTmppath = sprintf('%s/stitchInfo/%s_tile_info_%s.mat', stitching_rt, fsname, uuid);
+                                save('-v7.3', tileInfoTmppath, 'tile_fullpaths', 'xyz', 'tileIdx', 'flippedTile');
+                                movefile(tileInfoTmppath, tileInfoFullpath);
+                            end
                             
                             tile_fullpaths_str = '{}';
                             xyz_str = '[]';
                             tileIdx_str = '[]';
                             flippedTile_str = '';
                         end
-                        
+
                         func_str = sprintf(['XR_stitching_frame_zarr_dev_v1(%s,%s,''axisOrder'',''%s'',''dataOrder'',''%s'',', ...
                             '''xyPixelSize'',%0.10f,''dz'',%0.10f,''skewAngle'',%0.10f,''reverse'',%s,''objectiveScan'',%s,', ...
                             '''IOScan'',%s,''resultPath'',''%s'',''tileInfoFullpath'',''%s'',''stitchInfoDir'',''%s'',', ...

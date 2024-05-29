@@ -474,7 +474,7 @@ while (~parseCluster && ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
         if ~skip_job_submission && (parseCluster || exist(tmpFullpath, 'file'))
             if parseCluster
                 % kill the first pending job and use master node do the computing.
-                if job_status_mat(f, 1) == 0 && (masterCompute && b == lastP)
+                if job_status_mat(f, 1) == 0 && (masterCompute && b == lastP && ~(runExtraTasks && nB > 1 && b == 1))
                     system(sprintf('scancel %d_%d', job_ids(f), task_id), '-echo');
                     pending_flag = true;
                     trial_counter(fs) = trial_counter(fs) - 1;
@@ -508,27 +508,27 @@ while (~parseCluster && ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
                     % if tried twice, still fail, not use parallel computing
                     if ~GNUparallel || trial_counter(f) > 1
                         cmd = sprintf(['sbatch --array=%d -o %s -e %s --cpus-per-task=%d %s %s %s ', ...
-                            '--wrap="echo $PWD; echo bash command:  \\\"%s\\\";  %s; bash %s"'], ...
+                            '--wrap="date; echo $PWD; echo bash command:  \\\"%s\\\";  %s; bash %s"'], ...
                             task_id, job_log_fname, job_log_error_fname, cpusPerTask_f, SlurmParam, ...
                             SlurmConstraint, time_str, inputFn, BashLaunchStr, inputFn);
                     else
                         cmd = sprintf(['sbatch --array=%d -o %s -e %s --cpus-per-task=%d ', ...
-                            '--ntasks=1 %s %s %s --wrap="echo $PWD; echo bash command: \\\"%s\\\"; ', ...
-                            '%s; parallel --delay 0.2 \\\"srun --exclusive -c %d bash -c {}\\\" < %s"'], ...
+                            '--ntasks=1 %s %s %s --wrap="date; echo $PWD; echo bash command: \\\"%s\\\"; ', ...
+                            '%s; parallel --retries 2 --delay 0.2 \\\"srun --exclusive -c %d bash -c {}\\\" < %s"'], ...
                             task_id, job_log_fname, job_log_error_fname, cpusPerTask_f, SlurmParam, ...
                             SlurmConstraint, time_str, inputFn, BashLaunchStr, floor(cpusPerTask_f / paraJobNum), inputFn);
                         % in case of some jobs fail because of memory issue, directly use parallel for computing
                         if trial_counter(f) <= 1
                             paraJobNum_f = max(1, round(paraJobNum / (trial_counter(f) + 1)));
                             cmd = sprintf(['sbatch --array=%d -o %s -e %s --cpus-per-task=%d ', ...
-                                '--ntasks=1 %s %s %s --wrap="echo $PWD; echo bash command: \\\"%s\\\"; ', ...
-                                '%s; parallel --ungroup --jobs %d --delay 0.2 < %s"'], ...
+                                '--ntasks=1 %s %s %s --wrap="date; echo $PWD; echo bash command: \\\"%s\\\"; ', ...
+                                '%s; parallel --ungroup --retries 2 --jobs %d --delay 0.2 < %s"'], ...
                                 task_id, job_log_fname, job_log_error_fname, cpusPerTask_f, SlurmParam, ...
                                 SlurmConstraint, time_str, inputFn, BashLaunchStr, paraJobNum_f, inputFn);
                             if GPUJob
                                 cmd = sprintf(['sbatch --array=%d -o %s -e %s --cpus-per-task=%d ', ...
-                                    '--ntasks=1 %s %s %s --wrap="echo $PWD; echo bash command: \\\"%s\\\"; ', ...
-                                    '%s; parallel --ungroup --jobs %d --delay 0.2 CUDA_VISIBLE_DEVICES=''\\$(({%%} - 1))'' eval {} < %s"'], ...
+                                    '--ntasks=1 %s %s %s --wrap="date; echo $PWD; echo bash command: \\\"%s\\\"; ', ...
+                                    '%s; parallel --ungroup --retries 2 --jobs %d --delay 0.2 CUDA_VISIBLE_DEVICES=''\\$(({%%} - 1))'' eval {} < %s"'], ...
                                     task_id, job_log_fname, job_log_error_fname, cpusPerTask_f, SlurmParam, ...
                                     SlurmConstraint, time_str, inputFn, BashLaunchStr, paraJobNum, inputFn);
                             end
@@ -562,7 +562,7 @@ while (~parseCluster && ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
             end
         end
 
-        if ~parseCluster || (parseCluster && masterCompute && b == lastP && ~(runExtraTasks && b == 1))
+        if ~parseCluster || (parseCluster && masterCompute && b == lastP && ~(runExtraTasks && nB > 1 && b == 1))
             if parseCluster && loop_counter > 0
                 % for nonpending killed jobs, wait a bit longer in case of just finished job.
                 % change the wait time to the maximum of 30s and half of computing time
@@ -589,10 +589,10 @@ while (~parseCluster && ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
                 else
                     paraJobNum_f = max(1, min(paraJobNum - 1, round(paraJobNum * masterParaFactor / (trial_counter(f) + 1))));
                 end
-                cmd = sprintf(['%s; parallel --jobs %d --delay 0.2 < %s'], BashLaunchStr, paraJobNum_f, inputFn);
+                cmd = sprintf(['%s; parallel --retries 2 --jobs %d --delay 0.2 < %s'], BashLaunchStr, paraJobNum_f, inputFn);
                 if ismcc || isdeployed
                     % reduce the load of master job in case of crash due to oom
-                    cmd = sprintf(['%s; parallel --ungroup --jobs %d --delay 0.2 < %s'], BashLaunchStr, paraJobNum_f, inputFn);
+                    cmd = sprintf(['%s; parallel --ungroup --retries 2 --jobs %d --delay 0.2 < %s'], BashLaunchStr, paraJobNum_f, inputFn);
                 end
             end
             t0=tic; [status, cmdout] = system(cmd, '-echo'); t1=toc(t0);
@@ -632,10 +632,10 @@ while (~parseCluster && ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
             else
                 paraJobNum_f = max(1, min(paraJobNum, round(paraJobNum * masterParaFactor)));
             end
-            cmd = sprintf(['%s; parallel --jobs %d --delay 0.2 < %s'], BashLaunchStr, paraJobNum_f, inputFn);
+            cmd = sprintf(['%s; parallel --retries 2 --jobs %d --delay 0.2 < %s'], BashLaunchStr, paraJobNum_f, inputFn);
             if ismcc || isdeployed
                 % reduce the load of master job in case of crash due to oom
-                cmd = sprintf(['%s; parallel --ungroup --jobs %d --delay 0.2 < %s'], BashLaunchStr, paraJobNum_f, inputFn);
+                cmd = sprintf(['%s; parallel --ungroup --retries 2 --jobs %d --delay 0.2 < %s'], BashLaunchStr, paraJobNum_f, inputFn);
             end
         end
         t0=tic; [status, cmdout] = system(cmd, '-echo'); t1=toc(t0);

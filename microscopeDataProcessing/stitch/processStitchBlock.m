@@ -304,7 +304,7 @@ for i = 1 : numel(batchInds)
         if numTiles == 1 && all(bCoords(4 : 6) - bCoords(1 : 3) + 1 == bsz)
             tim_f_block = block_j;
         else
-            tim_f_block = indexing4d(tim_f_block, block_j, [bCoords(1 : 3), j, bCoords(4 : 6), j]);                
+            tim_f_block = indexing4d(tim_f_block, block_j, [bCoords(1 : 3), j, bCoords(4 : 6), j]);
         end
     end
 
@@ -361,7 +361,7 @@ for i = 1 : numel(batchInds)
                     if ~isa(block_j, dtype)
                         block_j = cast(block_j, dtype);
                     end
-                    
+
                     if ~is_full_batch
                         tim_block = indexing4d(tim_block, block_j, [uCoords(1 : 3), 1, uCoords(4 : 6), 1]);
                         tim_f_block = indexing4d(tim_f_block, block_j, [udbCoords(1 : 3) - bCoords_c(1 : 3) + 1, j, udbCoords(4 : 6) - bCoords_c(1 : 3) + 1, j], ...
@@ -369,7 +369,7 @@ for i = 1 : numel(batchInds)
                     else
                         tim_f_block = indexing4d(tim_f_block, block_j, [uCoords(1 : 3), j, uCoords(4 : 6), j]);
                     end
-    
+
                     if sum(minor_inds) == 1
                         im_d_j = ones(udbsz_j, 'single') * d_ranges_mat(j, 1)^wd;
                         tim_d_block = indexing4d(tim_d_block, im_d_j, [udbCoords(1 : 3) - bCoords_c(1 : 3) + 1, j, udbCoords(4 : 6) - bCoords_c(1 : 3) + 1, j]);
@@ -411,7 +411,7 @@ for i = 1 : numel(batchInds)
             numTiles = 1;
         end
     end
-    
+
     if numTiles == 1
         if any(BorderSize > 0)
             s = (batchSub ~= 1) .* BorderSize;

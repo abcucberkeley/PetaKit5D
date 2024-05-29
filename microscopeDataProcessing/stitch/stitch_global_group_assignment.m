@@ -86,11 +86,11 @@ if parseCluster
     maxTrialNum_xcorr = 2;
     minTaskJobNum = 1;
     if ng >= 4
-        minTaskJobNum = max(2, round(ng / 2));
+        minTaskJobNum = max(2, round(ng / 8));
     end
-    if ng_max > 1000
-        minTaskJobNum = ng;
-    end
+    % if ng_max > 1000
+    %     minTaskJobNum = ng;
+    % end
     for i = 1 : 3
         is_done_flag = generic_computing_frameworks_wrapper(inputFullpaths, outputFullpaths, ...
             funcStrs, 'maxTrialNum', maxTrialNum_xcorr, 'parseCluster', parseCluster, ...

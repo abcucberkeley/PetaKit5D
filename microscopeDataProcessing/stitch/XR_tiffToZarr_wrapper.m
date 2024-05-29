@@ -113,16 +113,27 @@ end
 nC = numel(channelPatterns);
 usrFcn_strs = repmat({''}, nC, max(1, size(processFunPath, 2)));
 keywords = repmat({{''}}, nC, max(1, size(processFunPath, 2)));
-fprintf('Process function paths:\n')
-disp(processFunPath');
+if ~isempty(processFunPath)
+    fprintf('Process function paths:\n')
+    disp(processFunPath');
+end
 if ~isempty(processFunPath)
     for i = 1 : size(processFunPath, 1)
         for j = 1 : size(processFunPath, 2)
             if isempty(processFunPath{i, j})
                 continue;
             end
-            a = load(processFunPath{i, j});
-            usrFun = a.usrFun;
+            [~, ~, ext] = fileparts(processFunPath{i, j});
+            switch ext
+                case '.mat'
+                    a = load(processFunPath{i, j});
+                    usrFun = a.usrFun;
+                case '.txt'
+                    a = readTextFile(processFunPath{i, j});
+                    usrFun = a{1};
+                otherwise
+                    error('Unknown file type for the processed function file!')
+            end
             if ~isempty(usrFun)
                 usrFcn_strs{i, j} = usrFun;
             end

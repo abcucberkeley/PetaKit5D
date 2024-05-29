@@ -127,6 +127,9 @@ if singleDistMap
         end
     end    
 end
+if all(imdistFileIdx == imdistFileIdx(1))
+    imdistFileIdx = imdistFileIdx(1);
+end
 nF = numel(tileFullpaths);
 inputFullpaths = tileFullpaths;
 [~, fsnames] = fileparts(tileFullpaths);
