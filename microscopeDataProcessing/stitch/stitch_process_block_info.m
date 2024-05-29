@@ -24,6 +24,7 @@ ip.addRequired('isPrimaryCh', @islogical);
 ip.addParameter('stitchInfoFullpath', '', @ischar);
 ip.addParameter('stitch2D', false, @islogical);
 ip.addParameter('taskSize', 10, @isnumeric);
+ip.addParameter('maxFileNumPerFolder', 20000, @(x)isscalar(x));  
 ip.addParameter('uuid', '', @ischar);
 ip.addParameter('parseCluster', true, @islogical);
 ip.addParameter('mccMode', false, @islogical);
@@ -35,6 +36,7 @@ pr = ip.Results;
 stitchInfoFullpath = pr.stitchInfoFullpath;
 stitch2D = pr.stitch2D;
 taskSize = pr.taskSize;
+maxFileNumPerFolder =  pr.maxFileNumPerFolder;
 uuid = pr.uuid;
 parseCluster = pr.parseCluster;
 mccMode = pr.mccMode;
@@ -75,7 +77,7 @@ for i = 1 : nF
     if isempty(xidx) || isempty(yidx) || isempty(zidx)
         continue;
     end
-        
+
     bboxes(i, :) = [yidx(1), xidx(1), zidx(1), yidx(end), xidx(end), zidx(end)];
     bboxStart_mat(i, :) = [yridx(1), xridx(1), zridx(1)];
     bboxEnd_mat(i, :) = [yridx(end), xridx(end), zridx(end)];
@@ -102,38 +104,72 @@ else
 end
 
 numTasks = ceil(numBlocks / taskSize);
+% if the number of task greater than 20000, save them in separate folders
+nFile = maxFileNumPerFolder;
+PerBlockInfoPath_cell = {PerBlockInfoPath};
+if numTasks > nFile
+    nFolder = ceil(numTasks / nFile);
+    PerBlockInfoPath_cell = cell(nFolder, 1);
+    for t = 1 : nFolder
+        bs = (t - 1) * nFile + 1;
+        bt = min(t * nFile, numTasks);
+        PerBlockInfoPath_t = sprintf('%s/task_size_%d_tasks_%d_%d/', PerBlockInfoPath, taskSize, bs, bt);
+        mkdir(PerBlockInfoPath_t);
+        PerBlockInfoPath_cell{t} = PerBlockInfoPath_t;
+    end
+end
 PerBlockInfoFullpaths = cell(numTasks, 1);
 for t = 1 : numTasks
-    bs = (t - 1) * taskSize + 1; 
+    bs = (t - 1) * taskSize + 1;
     bt = min(t * taskSize, numBlocks);
     
-    PerBlockInfoFullpaths{t} = sprintf('%s/stitch_block_info_blocks_%d_%d.json', PerBlockInfoPath, bs, bt);
+    if numTasks > nFile
+        PerBlockInfoFullpaths{t} = sprintf('%s/stitch_block_info_blocks_%d_%d.json', PerBlockInfoPath_cell{ceil(t / nFile)}, bs, bt);        
+    else
+        PerBlockInfoFullpaths{t} = sprintf('%s/stitch_block_info_blocks_%d_%d.json', PerBlockInfoPath, bs, bt);        
+    end
 end
 
 block_info_bytes = [];
 if ~isPrimaryCh
     % collect the block info data size if using cluster
     if parseCluster
-        block_info_bytes = get_block_info_file_bytes(PerBlockInfoPath);
+        block_info_bytes = get_block_info_file_bytes(PerBlockInfoPath_cell);
     end    
     return;
 end
 
 blk_taskSize = max(1e5, min(1e6, taskSize * 500));
 blk_taskSize = ceil(blk_taskSize / taskSize) * taskSize;
-numTasks = ceil(numBlocks / blk_taskSize);
-FlagFullpaths = cell(numTasks, 1);
-funcStrs = cell(numTasks, 1);
-for t = 1 : numTasks
+if numTasks > nFile
+    blk_taskSize = min(blk_taskSize, nFile * taskSize);
+    if blk_taskSize < nFile * taskSize
+        for i = 1 : ceil(log2(nFile * taskSize / blk_taskSize))
+            cur_blk_taskSize = nFile * taskSize / 2^i;
+            if blk_taskSize > cur_blk_taskSize || floor(cur_blk_taskSize) ~= cur_blk_taskSize
+                break;
+            end
+        end
+        blk_taskSize = nFile * taskSize / 2^(i-1);
+    end
+end
+blk_numTasks = ceil(numBlocks / blk_taskSize);
+FlagFullpaths = cell(blk_numTasks, 1);
+funcStrs = cell(blk_numTasks, 1);
+for t = 1 : blk_numTasks
     bs = (t - 1) * blk_taskSize + 1; 
     bt = min(t * blk_taskSize, numBlocks);
 
     % save block info searately for each task for faster access
     FlagFullpath = sprintf('%s/stitch_block_info_task_size_%d_blocks_%d_%d.mat', PerBlockInfoFlagPath, taskSize, bs, bt);
     FlagFullpaths{t} = FlagFullpath;
+    PerBlockInfoPath_t = PerBlockInfoPath;
+    if numTasks > nFile
+        PerBlockInfoPath_t = PerBlockInfoPath_cell{ceil(bs / (nFile * taskSize))};
+    end
     funcStrs{t} = sprintf(['stitch_organize_block_info([%s],%d,''%s'',''%s'',', ...
         '''%s'',''BorderSize'',[%s])'], strrep(mat2str([bs, bt]), ' ', ','), taskSize, ...
-        block_info_fullname, PerBlockInfoPath, FlagFullpath, strrep(mat2str(BorderSize), ' ', ','));
+        block_info_fullname, PerBlockInfoPath_t, FlagFullpath, strrep(mat2str(BorderSize), ' ', ','));
 end
 
 % cluster setting
@@ -143,11 +179,11 @@ memAllocate = blk_taskSize * 0.0001;
 maxTrialNum = 2;
 
 minTaskJobNum = 1;
-if numTasks >= 4
+if blk_numTasks >= 4
     minTaskJobNum = 2;
 end
 
-inputFullpaths = repmat({block_info_fullname}, numTasks, 1);
+inputFullpaths = repmat({block_info_fullname}, blk_numTasks, 1);
 outputFullpaths = FlagFullpaths;
 
 for i = 1 : 3
@@ -166,23 +202,31 @@ end
 
 % collect the block info data size if using cluster
 if parseCluster
-    block_info_bytes = get_block_info_file_bytes(PerBlockInfoPath);
+    block_info_bytes = get_block_info_file_bytes(PerBlockInfoPath_cell);
 end
-
-% fprintf('Done!\n')
-% toc(t0);
 
 end
 
 
-function [block_info_bytes] = get_block_info_file_bytes(PerBlockInfoPath)
+function [block_info_bytes] = get_block_info_file_bytes(PerBlockInfoPath_cell)
 
-dir_info = dir([PerBlockInfoPath, '*.json']);
-fsn = {dir_info.name};
-s_mat = regexp(fsn, 'stitch_block_info_blocks_(\d+)_\d+.json', 'tokens');
-s_mat = cellfun(@(x) str2double(x{1}{1}), s_mat);
-block_info_bytes = [dir_info.bytes];
+nF = numel(PerBlockInfoPath_cell);
+s_mat_cell = cell(nF, 1);
+block_info_bytes_cell = cell(nF, 1);
+for t = 1 : numel(PerBlockInfoPath_cell)
+    PerBlockInfoPath = PerBlockInfoPath_cell{t};
+    dir_info = dir([PerBlockInfoPath, '*.json']);
+    fsn = {dir_info.name};
+    s_mat = regexp(fsn, 'stitch_block_info_blocks_(\d+)_\d+.json', 'tokens');
+    s_mat = cellfun(@(x) str2double(x{1}{1}), s_mat);
+    block_info_bytes = [dir_info.bytes];
 
+    s_mat_cell{t} = s_mat(:);
+    block_info_bytes_cell{t} = block_info_bytes(:);
+end
+
+s_mat = cat(1, s_mat_cell{:});
+block_info_bytes = cat(1, block_info_bytes_cell{:});
 [~, inds] = sort(s_mat);
 block_info_bytes = block_info_bytes(inds);
 

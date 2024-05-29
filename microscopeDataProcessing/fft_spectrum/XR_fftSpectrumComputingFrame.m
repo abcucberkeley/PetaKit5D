@@ -60,7 +60,7 @@ t = min(sz, s + keep_size - 1);
 if zarrFile
     im = readzarr(frameFullpath, inputBbox=[s, t]);
 else
-    im = readtiff(frameFullpath, 'range', s(3) : t(3));
+    im = readtiff(frameFullpath, 'range', [s(3), t(3)]);
     im = im(s(1) : t(1), s(2) : t(2), :);
 end
 

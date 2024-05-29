@@ -69,6 +69,7 @@ ip.addParameter('processFunPath', '', @(x) isempty(x) || iscell(x) || ischar(x))
 ip.addParameter('stitchMIP', [], @(x) isempty(x)  || (islogical(x) && (numel(x) == 1 || numel(x) == 3)) || ischar(x)); % 1x3 vector or vector, by default, stitch MIP-z
 ip.addParameter('stitch2D', false, @(x)islogical(x) || ischar(x));  
 ip.addParameter('bigStitchData', false, @(x)islogical(x) || ischar(x));  
+ip.addParameter('maxFileNumPerFolder', 20000, @(x)isscalar(x) || ischar(x));  
 ip.addParameter('parseCluster', true, @(x) islogical(x) || ischar(x));
 ip.addParameter('masterCompute', true, @(x) islogical(x) || ischar(x)); % master node participate in the task computing. 
 ip.addParameter('jobLogDir', '../job_logs', @ischar);
@@ -147,6 +148,7 @@ processFunPath = pr.processFunPath;
 stitchMIP = pr.stitchMIP;
 stitch2D = pr.stitch2D;
 bigStitchData = pr.bigStitchData;
+maxFileNumPerFolder = pr.maxFileNumPerFolder;
 parseCluster = pr.parseCluster;
 masterCompute = pr.masterCompute;
 jobLogDir = pr.jobLogDir;
@@ -320,6 +322,9 @@ end
 if ischar(bigStitchData)
     bigStitchData = str2num(bigStitchData);
 end
+if ischar(maxFileNumPerFolder)
+    maxFileNumPerFolder = str2num(maxFileNumPerFolder);
+end
 if ischar(parseCluster)
     parseCluster = str2num(parseCluster);
 end
@@ -360,9 +365,10 @@ XR_stitching_frame_zarr_dev_v1(tileFullpaths, coordinates, ResultPath=ResultPath
     blockSize=blockSize, batchSize=batchSize, shardSize=shardSize, saveMultires=saveMultires, ...
     resLevel=resLevel, BorderSize=BorderSize, saveMIP=saveMIP, tileIdx=tileIdx, ...
     processFunPath=processFunPath, stitchMIP=stitchMIP, stitch2D=stitch2D, ...
-    bigStitchData=bigStitchData, parseCluster=parseCluster, masterCompute=masterCompute, ...
-    jobLogDir=jobLogDir, cpusPerTask=cpusPerTask, uuid=uuid, maxTrialNum=maxTrialNum, ...
-    unitWaitTime=unitWaitTime, mccMode=mccMode, configFile=configFile, debug=debug);
+    bigStitchData=bigStitchData, maxFileNumPerFolder=maxFileNumPerFolder, parseCluster=parseCluster, ...
+    masterCompute=masterCompute, jobLogDir=jobLogDir, cpusPerTask=cpusPerTask, ...
+    uuid=uuid, maxTrialNum=maxTrialNum, unitWaitTime=unitWaitTime, mccMode=mccMode, ...
+    configFile=configFile, debug=debug);
 
 end
 

@@ -110,6 +110,7 @@ ip.addParameter('processFunPath', '', @(x) isempty(x) || iscell(x) || ischar(x))
 ip.addParameter('stitchMIP', [], @(x) isempty(x)  || (islogical(x) && (numel(x) == 1 || numel(x) == 3))); % 1x3 vector or vector, by default, stitch MIP-z
 ip.addParameter('stitch2D', false, @(x)islogical(x));  
 ip.addParameter('bigStitchData', false, @(x)islogical(x));  
+ip.addParameter('maxFileNumPerFolder', 20000, @(x)isscalar(x));
 ip.addParameter('parseCluster', true, @islogical);
 ip.addParameter('masterCompute', true, @islogical); % master node participate in the task computing. 
 ip.addParameter('jobLogDir', '../job_logs', @ischar);
@@ -180,6 +181,7 @@ processFunPath = pr.processFunPath;
 stitchMIP = pr.stitchMIP;
 stitch2D = pr.stitch2D;
 bigStitchData = pr.bigStitchData;
+maxFileNumPerFolder = pr.maxFileNumPerFolder;
 uuid = pr.uuid;
 mccMode = pr.mccMode;
 configFile = pr.configFile;
@@ -432,7 +434,6 @@ end
 
 % check if total input size is greater than 100 GB if bigStitchData is false
 nodeFactor = 2;
-compressor = 'lz4';
 compressor = 'zstd';
 if (~stitch2D && ~bigStitchData && nF > 4 && prod(imSize) * nF * 4 > (100 * 2^30)) || largeZarr
     bigStitchData = true;
@@ -452,16 +453,9 @@ stitch_process_tiles(inputFullpaths, 'resultDirName', zarrPathstr, 'zarrFile', z
     'mccMode', mccMode, 'configFile', configFile);
 
 % load all zarr headers as a cell array and get image size for all tiles
-imSizes = zeros(nF, 3);
-for i = 1 : nF 
-    zarrFullpath = zarrFullpaths{i};    
-    sz_i = getImageSize(zarrFullpath);
-    
-    if any(stitchMIP) && numel(sz_i) == 2
-        imSizes(i, :) = [sz_i, 1];        
-    else
-        imSizes(i, :) = sz_i;
-    end
+imSizes = getImageSizeBatch(zarrFullpaths);
+if any(stitchMIP) && size(imSizes, 2) == 2
+    imSizes = [imSizes, ones(nF, 1)];
 end
 
 if all(imSizes(:, 3) == 1)
@@ -666,7 +660,7 @@ int_xyz_shift = round(xyz_shift ./ ([xf, yf, zf] * px));
 % to increase the scalability of the code, we use block-based processing
 % first obtain coordinate data structure for blocks
 batchSize = min([nys, nxs, nzs], batchSize);
-batchSize = min(median(imSizes), batchSize);
+batchSize = min(median(imSizes) * 2, batchSize);
 blockSize = min(batchSize, blockSize);
 batchSize = ceil(batchSize ./ blockSize) .* blockSize;
 bSubSz = ceil([nys, nxs, nzs] ./ batchSize);
@@ -699,7 +693,7 @@ nvSize = [nys, nxs, nzs];
     imSizes, nvSize, batchSize, overlap_matrix, ol_region_cell, half_ol_region_cell, ...
     overlap_map_mat, BorderSize, zarrFullpaths, stichInfoPath, nv_fsname, isPrimaryCh, ...
     stitchInfoFullpath=stitchInfoFullpath, stitch2D=stitch2D, uuid=uuid, taskSize=taskSize, ...
-    parseCluster=parseCluster, mccMode=mccMode, configFile=configFile);
+    maxFileNumPerFolder=maxFileNumPerFolder, parseCluster=parseCluster, mccMode=mccMode, configFile=configFile);
 
 % initial stitched block image and save header in the disk
 if ispc && numel(uuid) > 4
@@ -767,12 +761,12 @@ if strcmpi(BlendMethod, 'feather')
         if ~usePrimaryDist
             imdistPath = [dataPath, '/', ResultDir, '/imdist/'];
             mkdir(imdistPath);
-            [imdistFullpaths, imdistFileIdx] = compute_tile_distance_transform(block_info_fullname, stitchPath, ...
-                zarrFullpaths, 'blendWeightDegree', blendWeightDegree, 'singleDistMap', singleDistMap, ...
-                'locIds', locIds, 'distBboxes', distBboxes, 'blockSize', round(blockSize/2), ...
-                'shardSize', round(shardSize/2), 'compressor', compressor, 'largeZarr', largeZarr, ...
-                'poolSize', poolSize, 'parseCluster', parseCluster, 'mccMode', mccMode, ...
-                'configFile', configFile);
+            [imdistFullpaths, imdistFileIdx] = compute_tile_distance_transform(block_info_fullname, ...
+                stitchPath, zarrFullpaths, 'blendWeightDegree', blendWeightDegree, ...
+                'singleDistMap', singleDistMap, 'locIds', locIds, 'distBboxes', distBboxes, ...
+                'blockSize', round(blockSize/2), 'shardSize', round(shardSize/2), ...
+                'compressor', compressor, 'largeZarr', largeZarr, 'poolSize', poolSize, ...
+                'parseCluster', parseCluster, 'mccMode', mccMode, 'configFile', configFile);
         end
     end
 else
@@ -818,27 +812,47 @@ if exist(zarrFlagPath, 'dir') && fresh_stitch
     rmdir(zarrFlagPath, 's')
 end
 mkdir(zarrFlagPath);
+zarrFlagPath_cell = {zarrFlagPath};
+if numTasks > maxFileNumPerFolder
+    nFolder = ceil(numTasks / maxFileNumPerFolder);
+    for f = 1 : nFolder
+        s = (f - 1) * maxFileNumPerFolder + 1;
+        t = f * maxFileNumPerFolder;
+        zarrFlagPath_f = sprintf('%s/tasks_%d_%d/', zarrFlagPath, s, t);
+        mkdir(zarrFlagPath_f);
+        zarrFlagPath_cell{f} = zarrFlagPath_f;
+    end
+end
 
 zarrFlagFullpaths = cell(numTasks, 1);
 funcStrs = cell(numTasks, 1);
 
-imdistFullpaths_str = sprintf("{'%s'}", strjoin(imdistFullpaths, ''','''));    
+imdistFullpaths_str = sprintf("{'%s'}", strjoin(imdistFullpaths, ''','''));
+
+param_str = sprintf(['''%s'',[],[],''imSize'',[%s],''batchSize'',[%s],''dtype'',', ...
+    '''%s'',''BlendMethod'',''%s'',''BorderSize'',[%s],''imdistFullpaths'',%s,', ...
+    '''imdistFileIdx'',%s,''poolSize'',%s,''weightDegree'',%d'], nv_tmp_fullname, ...
+    strrep(mat2str(nvSize), ' ', ','), strrep(mat2str(batchSize), ' ', ','), ...
+    dtype, BlendMethod, strrep(mat2str(BorderSize), ' ', ','), imdistFullpaths_str, ...
+    strrep(mat2str(imdistFileIdx), ' ', ','), strrep(mat2str(poolSize), ' ', ','), ...
+    blendWeightDegree);
+funcStrs_func = @(batchInds, PerBlockInfoFullpath, zarrFlagFullpath) sprintf( ...
+    'processStitchBlock([%s],''%s'',''%s'',''%s'',%s)', strrep(mat2str(batchInds), ' ', ','), ...
+    block_info_fullname, PerBlockInfoFullpath, zarrFlagFullpath, param_str);
+
 for t = 1 : numTasks
     batchInds = (t - 1) * taskSize + 1 : min(t * taskSize, numBatches);
 
     % save block info searately for each task for faster access
     % PerBlockInfoFullpath = sprintf('%s/stitch_block_info_blocks_%d_%d.mat', PerBlockInfoPath, blockInds(1), blockInds(end));
     PerBlockInfoFullpath = PerBlockInfoFullpaths{t};
-    
-    zarrFlagFullpaths{t} = sprintf('%s/blocks_%d_%d.mat', zarrFlagPath, batchInds(1), batchInds(end));
-    funcStrs{t} = sprintf(['processStitchBlock([%s],''%s'',''%s'',''%s'',''%s'',[],[],', ...
-        '''imSize'',[%s],''batchSize'',[%s],''dtype'',''%s'',''BlendMethod'',''%s'',', ...
-        '''BorderSize'',[%s],''imdistFullpaths'',%s,''imdistFileIdx'',%s,', ...
-        '''poolSize'',%s,''weightDegree'',%d)'], strrep(mat2str(batchInds), ' ', ','), ...
-        block_info_fullname, PerBlockInfoFullpath, zarrFlagFullpaths{t}, ...
-        nv_tmp_fullname, strrep(mat2str(nvSize), ' ', ','), strrep(mat2str(batchSize), ' ', ','), ...
-        dtype, BlendMethod, strrep(mat2str(BorderSize), ' ', ','), imdistFullpaths_str, ...
-        strrep(mat2str(imdistFileIdx), ' ', ','), strrep(mat2str(poolSize), ' ', ','), blendWeightDegree);
+
+    if numTasks > maxFileNumPerFolder
+        zarrFlagFullpaths{t} = sprintf('%s/blocks_%d_%d.mat', zarrFlagPath_cell{ceil(t / maxFileNumPerFolder)}, batchInds(1), batchInds(end));
+    else
+        zarrFlagFullpaths{t} = sprintf('%s/blocks_%d_%d.mat', zarrFlagPath, batchInds(1), batchInds(end));
+    end
+    funcStrs{t} = funcStrs_func(batchInds, PerBlockInfoFullpath, zarrFlagFullpaths{t});
 end
 
 inputFullpaths = PerBlockInfoFullpaths;
@@ -846,10 +860,16 @@ outputFullpaths = zarrFlagFullpaths;
 
 if parseCluster
     % reorder tasks to make time consuming task first
+    % if there are more than 10000 tasks, mix the task between 25% hardest
+    % and 25% easiest ones
     [~, sinds] = sort(block_info_bytes, 'descend');
+    if numTasks > 10000
+        sinds_1 = reshape(sinds(1 : floor(numTasks / 4) * 4), [], 4)';
+        sinds(1 : floor(numTasks / 4) * 4) = sinds_1(:);
+    end
     inputFullpaths = inputFullpaths(sinds);
     outputFullpaths = outputFullpaths(sinds);
-    funcStrs = funcStrs(sinds);
+    funcStrs = funcStrs(sinds);    
 end
 
 byte_num = dataTypeToByteNumber(dtype);

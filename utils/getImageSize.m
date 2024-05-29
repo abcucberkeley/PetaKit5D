@@ -75,15 +75,15 @@ if strcmp(filePath(end - 2 : end), 'tif') || strcmp(filePath(end - 3 : end), 'ti
         imSize = [Height, Width, Zstack];
     end
 elseif strcmp(filePath(end - 3 : end), 'zarr') || exist([filePath, '/.zarray'], 'file')
-    try 
-        bim = blockedImage(filePath, 'Adapter', CZarrAdapter);
-    catch ME
-        disp(ME);
-        bim = blockedImage(filePath, 'Adapter', ZarrAdapter);
-    end
-    imSize = bim.Size;
-end
+    zarrayFn = [filePath, '/.zarray'];
+    fid = fopen(zarrayFn);
+    raw = fread(fid);
+    fclose(fid);
+    str = char(raw');
+    jdata = jsondecode(str);
 
+    imSize = jdata.shape(:)';
+end
 
 end
 
