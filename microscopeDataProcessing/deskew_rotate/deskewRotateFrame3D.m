@@ -188,12 +188,8 @@ end
 [vol] = imwarp(vol, affine3d(ds_S*(T1*S*R*T2)*(RT1*RS*RT2)), interpMethod, 'FillValues', 0, 'OutputView', RA);
 if gpuProcess
     vol = gather(vol);
-end    
-
-
 end
 
-
-
+end
 
 
