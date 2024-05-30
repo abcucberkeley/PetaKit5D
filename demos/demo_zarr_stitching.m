@@ -391,7 +391,7 @@ start-master.sh
 %}
 % example code in slurm submit script initWorker.sh with one node
 %{
-#!/bin/sh 
+#!/bin/sh
 #SBATCH --qos=abc_high
 #SBATCH --partition=abc
 #SBATCH --account=co_abc

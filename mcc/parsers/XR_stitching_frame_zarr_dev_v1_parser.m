@@ -69,7 +69,7 @@ ip.addParameter('processFunPath', '', @(x) isempty(x) || iscell(x) || ischar(x))
 ip.addParameter('stitchMIP', [], @(x) isempty(x)  || (islogical(x) && (numel(x) == 1 || numel(x) == 3)) || ischar(x)); % 1x3 vector or vector, by default, stitch MIP-z
 ip.addParameter('stitch2D', false, @(x)islogical(x) || ischar(x));  
 ip.addParameter('bigStitchData', false, @(x)islogical(x) || ischar(x));  
-ip.addParameter('maxFileNumPerFolder', 20000, @(x)isscalar(x) || ischar(x));  
+ip.addParameter('maxFileNumPerFolder', 20000, @(x)isscalar(x) || ischar(x));
 ip.addParameter('parseCluster', true, @(x) islogical(x) || ischar(x));
 ip.addParameter('masterCompute', true, @(x) islogical(x) || ischar(x)); % master node participate in the task computing. 
 ip.addParameter('jobLogDir', '../job_logs', @ischar);
