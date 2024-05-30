@@ -186,7 +186,8 @@ switch clusterType
                 % if running extra tasks, make sure the number of jobs equal to the multiplier 
                 % of the max job num or max job num + 1 if master computer is true. 
                 if runExtraTasks && rem(ceil(numTasks / taskBatchNum), maxJobNum + masterCompute) ~= 0
-                    taskBatchNum = ceil((numTasks + taskBatchNum * 0.1 * masterCompute) / (max(1, floor(numTasks / ((maxJobNum + masterCompute) * taskBatchNum))) * (maxJobNum + masterCompute)));
+                    taskBatchNum_1 = ceil((numTasks + taskBatchNum * 0.1 * masterCompute) / (max(1, floor(numTasks / ((maxJobNum + masterCompute) * taskBatchNum))) * (maxJobNum + masterCompute)));
+                    taskBatchNum = max(min(taskBatchNum, numTasks), taskBatchNum_1);
                 end
                 if GPUJob
                     taskBatchNum = ceil(taskBatchNum ./ paraJobNum) * paraJobNum;
