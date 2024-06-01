@@ -121,5 +121,7 @@ end
 
 toc(t0);
 
+exit;
+
 end
 
