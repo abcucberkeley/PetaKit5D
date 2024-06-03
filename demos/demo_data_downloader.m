@@ -67,10 +67,10 @@ if exist(dataPath, 'dir')
     end
 end
 
-% The demo dataset is available in zenodo (https://zenodo.org/records/11136975). We also shared the dataset from
+% The demo dataset is available in zenodo (https://zenodo.org/records/11459033). We also shared the dataset from
 % Drobox to allow much faster downloads. 
-% url = 'https://zenodo.org/records/11136975/files/PetaKit5D_demo_cell_image_dataset.tar?download=1';
-url = 'https://www.dropbox.com/scl/fi/3q5q3y8rrs4jooorj53dx/PetaKit5D_demo_cell_image_dataset.tar?rlkey=tiyqezc6u9imyb347ani9w8ds&st=nlzj78y1&dl=1';
+% url = 'https://zenodo.org/records/11459033/files/PetaKit5D_demo_cell_image_dataset.tar?download=1';
+url = 'https://www.dropbox.com/scl/fi/legqpbbnpfbu0onpxs5mn/PetaKit5D_demo_cell_image_dataset.tar?rlkey=mvl8yw668fiqyadokmwftpqud&st=lze2x5wg&dl=1';
 
 fprintf('Download demo dataset from Dropbox...\n')
 filename = [destPath, '/PetaKit5D_demo_cell_image_dataset.tar'];
