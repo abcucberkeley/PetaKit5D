@@ -48,10 +48,10 @@ ip.parse(funcStr, job_id, task_id, varargin{:});
 
 % move to the root path
 funcFn = which(mfilename);
-paths = split(funcFn, 'LLSM5DTools');
+paths = split(funcFn, 'PetaKit5D');
 cd(paths{1});
 setupFn = [paths{1}, 'setup.m'];
-% use the setup within LLSM5DTools
+% use the setup within PetaKit5D
 if ismcc || isdeployed
     if ~ispc
         cd('/tmp/');

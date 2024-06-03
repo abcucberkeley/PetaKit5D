@@ -15,28 +15,28 @@ cd(fpath);
 
 if ismac
     if nojvm
-        mdir = 'LLSM5DToolsMCC/mac';
+        mdir = 'PetaKit5DMCC/mac';
     else
-        mdir = 'LLSM5DToolsMCC/mac_with_jvm';
+        mdir = 'PetaKit5DMCC/mac_with_jvm';
     end
     
     mccPath = ['/Applications/', mdir];
     if ~exist(mccPath, 'dir')
         mkdir_recursive(mccPath);
     end
-    % mcc -v -R -nodisplay -C -d /Applications/LLSM5DToolsMCC -m mccMaster.m
+    % mcc -v -R -nodisplay -C -d /Applications/PetaKit5DMCC -m mccMaster.m
     copyfile([fpath '/../microscopeDataProcessing/io/cpp-tiff/mac/*.dylib'], ['/Applications/', mdir, '/']);
     copyfile([fpath '/../microscopeDataProcessing/io/cpp-zarr/mac/*.dylib'], ['/Applications/', mdir, '/']);
     if nojvm
-        mcc -v -R -nodisplay -R -nojvm -C -d /Applications/LLSM5DToolsMCC/mac -m mccMaster.m
+        mcc -v -R -nodisplay -R -nojvm -C -d /Applications/PetaKit5DMCC/mac -m mccMaster.m
     else
-        mcc -v -C -d /Applications/LLSM5DToolsMCC/mac_with_jvm -m mccMaster.m
+        mcc -v -C -d /Applications/PetaKit5DMCC/mac_with_jvm -m mccMaster.m
     end
     cd(mccPath);
     if nojvm
-        system("sed -i '' '20i\'$'\n''  DYLD_LIBRARY_PATH=${DYLD_LIBRARY_PATH}:/Applications/LLSM5DToolsMCC/mac; '$'\n''' run_mccMaster.sh");
+        system("sed -i '' '20i\'$'\n''  DYLD_LIBRARY_PATH=${DYLD_LIBRARY_PATH}:/Applications/PetaKit5DMCC/mac; '$'\n''' run_mccMaster.sh");
     else
-        system("sed -i '' '20i\'$'\n''  DYLD_LIBRARY_PATH=${DYLD_LIBRARY_PATH}:/Applications/LLSM5DToolsMCC/mac_with_jvm; '$'\n''' run_mccMaster.sh");
+        system("sed -i '' '20i\'$'\n''  DYLD_LIBRARY_PATH=${DYLD_LIBRARY_PATH}:/Applications/PetaKit5DMCC/mac_with_jvm; '$'\n''' run_mccMaster.sh");
     end
     system("sed -i '' '20i\'$'\n''  # add custom library paths'$'\n''' run_mccMaster.sh");
     % disable printout of environment variables
@@ -50,7 +50,7 @@ if ismac
         mkdir('mac');
     end
     if zipMac
-        zip('mac/LLSM5DToolsMCC.zip', '/Applications/LLSM5DToolsMCC/*')
+        zip('mac/PetaKit5DMCC.zip', '/Applications/PetaKit5DMCC/*')
     end
 elseif isunix
     if nojvm

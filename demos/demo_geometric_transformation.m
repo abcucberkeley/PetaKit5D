@@ -4,9 +4,9 @@ clear, clc;
 
 fprintf('Geometric transformation (deskew/rotation) demo...\n\n');
 
-% move to the LLSM5DTools root directory
+% move to the PetaKit5D root directory
 curPath = pwd;
-if ~endsWith(curPath, 'LLSM5DTools')
+if ~endsWith(curPath, 'PetaKit5D')
     mfilePath = mfilename('fullpath');
     if contains(mfilePath,'LiveEditorEvaluationHelper')
         mfilePath = matlab.desktop.editor.getActiveFilename;
@@ -33,7 +33,7 @@ else
 end
 demo_data_downloader(destPath);
 
-dataPath = [destPath, '/LLSM5DTools_demo_cell_image_dataset/'];
+dataPath = [destPath, '/PetaKit5D_demo_cell_image_dataset/'];
 
 
 %% use the data wrapper to run deskew/rotation for all tiles in the data path
@@ -41,7 +41,7 @@ dataPath = [destPath, '/LLSM5DTools_demo_cell_image_dataset/'];
 % voxel size as xyPixelSize.
 
 % result folder:
-% {destPath}/LLSM5DTools_demo_cell_image_dataset/DSR/
+% {destPath}/PetaKit5D_demo_cell_image_dataset/DSR/
 
 dataPath_exps = {dataPath};
 % run deskew if true
@@ -197,7 +197,7 @@ clear im_rep;
 % Note: please make sure there is enough memory for the conventional method (>125 GB)
 
 % result folder:
-% {destPath}/LLSM5DTools_demo_cell_image_dataset/replicated/DSR/
+% {destPath}/PetaKit5D_demo_cell_image_dataset/replicated/DSR/
 
 % conventional method (separate)
 xyPixelSize = 0.108;
@@ -233,7 +233,7 @@ movefile([outPath, 'DSR/', fsn, '_2k.tif'], [outPath, 'DSR_combined/']);
 % Note: please make sure your system has at least 60 GB RAM available
 
 % result folder:
-% {destPath}/LLSM5DTools_demo_cell_image_dataset/replicated/DSR/
+% {destPath}/PetaKit5D_demo_cell_image_dataset/replicated/DSR/
 
 % replicate the data to 5000 frames
 nframe = 5000;

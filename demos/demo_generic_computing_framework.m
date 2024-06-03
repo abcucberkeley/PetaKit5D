@@ -8,9 +8,9 @@ clear, clc;
 
 fprintf('Generic computing framework demo...\n\n');
 
-% move to the LLSM5DTools root directory
+% move to the PetaKit5D root directory
 curPath = pwd;
-if ~endsWith(curPath, 'LLSM5DTools')
+if ~endsWith(curPath, 'PetaKit5D')
     mfilePath = mfilename('fullpath');
     if contains(mfilePath,'LiveEditorEvaluationHelper')
         mfilePath = matlab.desktop.editor.getActiveFilename;
@@ -37,7 +37,7 @@ else
 end
 demo_data_downloader(destPath);
 
-dataPath = [destPath, '/LLSM5DTools_demo_cell_image_dataset/'];
+dataPath = [destPath, '/PetaKit5D_demo_cell_image_dataset/'];
 
 
 %% example define configuration files for the slurm cluster (skip this step if running locally)
@@ -50,8 +50,8 @@ dataPath = [destPath, '/LLSM5DTools_demo_cell_image_dataset/'];
 % if using MATLAB runtime, setup the runtime path in your cluster. 
 MCRParam = '/global/home/users/user/bin/MATLAB_Runtime/R2023a';
 
-% the mcc master script path in your cluster. It is within LLSM5DTools/mcc/linux/run_mccMaster.sh
-MCCMasterStr = '/clusterfs/fiona/user/LLSM5DTools/mcc/linux/run_mccMaster.sh';
+% the mcc master script path in your cluster. It is within PetaKit5D/mcc/linux/run_mccMaster.sh
+MCCMasterStr = '/clusterfs/fiona/user/PetaKit5D/mcc/linux/run_mccMaster.sh';
 
 % bash commands to be executed before running for worker jobs, i.e., setup environmental variables. 
 % here we show an example for loading the GNU-parallel function for parallel running within a job. 
@@ -178,7 +178,7 @@ end
 %% setup running for multiple images
 
 % result folder:
-% {destPath}/LLSM5DTools_demo_cell_image_dataset/Cropped_DSR/
+% {destPath}/PetaKit5D_demo_cell_image_dataset/Cropped_DSR/
 
 % get filenames
 dir_info = dir([dataPath, '*.tif']);

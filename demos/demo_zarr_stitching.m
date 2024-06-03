@@ -4,9 +4,9 @@ clear, clc;
 
 fprintf('Stitching demo...\n\n');
 
-% move to the LLSM5DTools root directory
+% move to the PetaKit5D root directory
 curPath = pwd;
-if ~endsWith(curPath, 'LLSM5DTools')
+if ~endsWith(curPath, 'PetaKit5D')
     mfilePath = mfilename('fullpath');
     if contains(mfilePath,'LiveEditorEvaluationHelper')
         mfilePath = matlab.desktop.editor.getActiveFilename;
@@ -33,7 +33,7 @@ else
 end
 demo_data_downloader(destPath);
 
-dataPath = [destPath, '/LLSM5DTools_demo_cell_image_dataset/'];
+dataPath = [destPath, '/PetaKit5D_demo_cell_image_dataset/'];
 
 
 %% skewed space stitching
@@ -45,7 +45,7 @@ dataPath = [destPath, '/LLSM5DTools_demo_cell_image_dataset/'];
 % demo_skewed_space_stitching.m
 
 % result folder:
-% {destPath}/LLSM5DTools_demo_cell_image_dataset/matlab_stitch/
+% {destPath}/PetaKit5D_demo_cell_image_dataset/matlab_stitch/
 
 demo_skewed_space_stitching
 
@@ -53,7 +53,7 @@ demo_skewed_space_stitching
 %% deskew/rotate stitched data
 
 % result folder:
-% {destPath}/LLSM5DTools_demo_cell_image_dataset/matlab_stitch/DSR/
+% {destPath}/PetaKit5D_demo_cell_image_dataset/matlab_stitch/DSR/
 
 dataPath_exps = {[dataPath, 'matlab_stitch/']};
 
@@ -107,7 +107,7 @@ XR_deskew_rotate_data_wrapper(dataPath_exps, xyPixelSize=xyPixelSize, dz=dz, ...
 % save results in Zarr format
 
 % result folder:
-% {destPath}/LLSM5DTools_demo_cell_image_dataset/DSR/
+% {destPath}/PetaKit5D_demo_cell_image_dataset/DSR/
 
 dataPath_exps = {dataPath};
 
@@ -157,14 +157,14 @@ XR_deskew_rotate_data_wrapper(dataPath_exps, xyPixelSize=xyPixelSize, dz=dz, ...
 %% stitching in DSR space
 
 % result folder:
-% {destPath}/LLSM5DTools_demo_cell_image_dataset/matlab_stitch_dsr/
+% {destPath}/PetaKit5D_demo_cell_image_dataset/matlab_stitch_dsr/
 
 % Step 1: set parameters 
 % add the software to the path
 setup([]);
 
 % data path
-dataPath = [destPath, '/LLSM5DTools_demo_cell_image_dataset/'];
+dataPath = [destPath, '/PetaKit5D_demo_cell_image_dataset/'];
 
 % image list path: csv file
 % if not available, run stitch_generate_imagelist_from_encoder(dataPath, dz)
@@ -317,7 +317,7 @@ pythonPath = '/path/to/your/python';
 setup([], true, pythonPath);
 
 %% Step A3.2 Convert Zarr files to N5 format
-dataPath = [destPath, 'LLSM5DTools_demo_cell_image_dataset/'];
+dataPath = [destPath, 'PetaKit5D_demo_cell_image_dataset/'];
 DSRPath = [dataPath, '/DSR/'];
 %   only include the first time point of CamB
 channel = 'Scan_Iter_0000_0000_CamB_ch0';
@@ -426,8 +426,8 @@ spark-submit --master spark://10.17.209.11:7077 \
             --executor-cores 24 \
             --class net.preibisch.bigstitcher.spark.AffineFusion \
              /your/BigStitcher/Installation/path/BigStitcher-Spark/target/BigStitcher-Spark-0.0.2-SNAPSHOT.jar \
-            -x  ${destPath}/LLSM5DTools_demo_cell_image_dataset/DSR/test_cell_data_DSR_CamB_with_xcorr.xml \
-            -o ${destPath}/LLSM5DTools_demo_cell_image_dataset/DSR/test_cell_data_DSR_CamB.n5 -d '/ch488/s0' \
+            -x  ${destPath}/PetaKit5D_demo_cell_image_dataset/DSR/test_cell_data_DSR_CamB_with_xcorr.xml \
+            -o ${destPath}/PetaKit5D_demo_cell_image_dataset/DSR/test_cell_data_DSR_CamB.n5 -d '/ch488/s0' \
             --UINT16 --minIntensity 1 --maxIntensity 65535 --channelId 0
 %}
 
@@ -442,7 +442,7 @@ masterCompute = true;
 N5ToZarr(fn, flipEmptyValue=flipEmptyValue, masterCompute=masterCompute);
 
 % output zarr is in 
-% {destPath}/LLSM5DTools_demo_cell_image_dataset/DSR/test_cell_data_DSR_CamB.n5/ch488/zarr/s0.zarr
+% {destPath}/PetaKit5D_demo_cell_image_dataset/DSR/test_cell_data_DSR_CamB.n5/ch488/zarr/s0.zarr
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -453,7 +453,7 @@ N5ToZarr(fn, flipEmptyValue=flipEmptyValue, masterCompute=masterCompute);
 %% Step B3. Run DSR on the demo data with demo_geometric_transformation.m and save the result as tiff format. 
 % below is the code to run the deskew/rotation for CamB time point 0
 
-dataPath = [destPath, 'LLSM5DTools_demo_cell_image_dataset/'];
+dataPath = [destPath, 'PetaKit5D_demo_cell_image_dataset/'];
 dataPath_exps = {dataPath};
 % xy pixel size
 xyPixelSize = 0.108;
@@ -504,7 +504,7 @@ writetable(tmp, outFn);
 
 %% Step B5. Run the stitching-spark conversion script to generate a json file from the image list
 % example (all the following is a one line cmd): python ./startup-scripts/spark-local/parse-imagelist-metadata.py 
-% -b ./LLSM5DTools_demo_cell_image_dataset/DSR/ -a x,y,z -i ./LLSM5DTools_demo_cell_image_dataset/DSR/ImageList_from_encoder_t0_CamB.csv 
+% -b ./PetaKit5D_demo_cell_image_dataset/DSR/ -a x,y,z -i ./PetaKit5D_demo_cell_image_dataset/DSR/ImageList_from_encoder_t0_CamB.csv 
 % -r .108,.108,.108
 % Step B6. Start your master spark node and initialize your worker nodes
 %{
@@ -551,7 +551,7 @@ spark-submit --master spark://10.17.209.11:7077 \
             --executor-memory 500G \
             --executor-cores 24 \
             --class org.janelia.flatfield.FlatfieldCorrection \
-            ${stitching_install_path}/target/stitching-spark-1.9.1-SNAPSHOT.jar -i ${destPath}/LLSM5DTools_demo_cell_image_dataset/DSR/488nm.json
+            ${stitching_install_path}/target/stitching-spark-1.9.1-SNAPSHOT.jar -i ${destPath}/PetaKit5D_demo_cell_image_dataset/DSR/488nm.json
 %}
 
 % Stitching Spark CMD
@@ -562,7 +562,7 @@ spark-submit --master spark://10.17.209.11:7077 \
             --executor-memory 500G \
             --executor-cores 24 \
             --class org.janelia.stitching.StitchingSpark \
-            ${stitching_install_path}/target/stitching-spark-1.9.1-SNAPSHOT.jar --stitch -i ${destPath}/LLSM5DTools_demo_cell_image_dataset/DSR/488nm.json
+            ${stitching_install_path}/target/stitching-spark-1.9.1-SNAPSHOT.jar --stitch -i ${destPath}/PetaKit5D_demo_cell_image_dataset/DSR/488nm.json
 %}
 
 % Export Spark CMD
@@ -573,7 +573,7 @@ spark-submit --master spark://10.17.209.11:7077 \
             --executor-memory 500G \
             --executor-cores 24 \
             --class org.janelia.stitching.StitchingSpark \
-            ${stitching_install_path}/target/stitching-spark-1.9.1-SNAPSHOT.jar --fuse -i ${destPath}/LLSM5DTools_demo_cell_image_dataset/DSR/488nm-final.json
+            ${stitching_install_path}/target/stitching-spark-1.9.1-SNAPSHOT.jar --fuse -i ${destPath}/PetaKit5D_demo_cell_image_dataset/DSR/488nm-final.json
 %}
 
 % N5 to Tiff Spark CMD
@@ -584,7 +584,7 @@ spark-submit --master spark://10.17.209.11:7077 \
             --executor-memory 500G \
             --executor-cores 24 \
             --class org.janelia.stitching.N5ToSliceTiffSpark \
-            ${stitching_install_path}/target/stitching-spark-1.9.1-SNAPSHOT.jar -i ${destPath}/LLSM5DTools_demo_cell_image_dataset/DSR/export.n5
+            ${stitching_install_path}/target/stitching-spark-1.9.1-SNAPSHOT.jar -i ${destPath}/PetaKit5D_demo_cell_image_dataset/DSR/export.n5
 %}
 
 
@@ -598,6 +598,6 @@ masterCompute = true;
 N5ToZarr(fn, flipEmptyValue=flipEmptyValue, masterCompute=masterCompute);
 
 % output zarr is in 
-% {destPath}/LLSM5DTools_demo_cell_image_dataset/DSR/export.n5/c0/zarr/s0.zarr
+% {destPath}/PetaKit5D_demo_cell_image_dataset/DSR/export.n5/c0/zarr/s0.zarr
 
 

@@ -39,8 +39,8 @@ tic
 setupFn = which('setup.m');
 [codePath, ~, ~] = fileparts(setupFn);
 cd(codePath);
-if ~contains(codePath, 'LLSM5DTools')
-    cd('LLSM5DTools');
+if ~contains(codePath, 'PetaKit5D')
+    cd('PetaKit5D');
 end
 codePath = pwd;
 

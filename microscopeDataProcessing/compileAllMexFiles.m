@@ -1,18 +1,18 @@
 function [] = compileAllMexFiles(varargin)
 
-% Intended to be run from LLSM5DTools/microscopeDataProcessing or pass the
-% path to the LLSM5DTools base dir
+% Intended to be run from PetaKit5D/microscopeDataProcessing or pass the
+% path to the PetaKit5D base dir
 ip = inputParser;
 ip.CaseSensitive = false;
-ip.addOptional('LLSM5DToolsBaseDir', '', @ischar);
+ip.addOptional('PetaKit5DBaseDir', '', @ischar);
 ip.parse(varargin{:});
 
-LLSM5DToolsBaseDir = ip.Results.LLSM5DToolsBaseDir;
+PetaKit5DBaseDir = ip.Results.PetaKit5DBaseDir;
 
 baseDir = pwd;
 
-if(~isempty(LLSM5DToolsBaseDir))
-    cd([LLSM5DToolsBaseDir '/./microscopeDataProcessing']);
+if(~isempty(PetaKit5DBaseDir))
+    cd([PetaKit5DBaseDir '/./microscopeDataProcessing']);
 else
     funcFn = which(mfilename);
     path = fileparts(funcFn);
@@ -21,7 +21,7 @@ end
     
 [~,name,~]=fileparts(pwd);
 if ~strcmp(name,'microscopeDataProcessing')
-    error('Pass the path to the LLSM5DTools base dir or be in the LLSM5DTools/microscopeDataProcessing dir');
+    error('Pass the path to the PetaKit5D base dir or be in the PetaKit5D/microscopeDataProcessing dir');
 end
 
 cd('./deskew_rotate/mex');

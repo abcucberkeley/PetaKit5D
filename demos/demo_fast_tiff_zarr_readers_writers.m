@@ -11,9 +11,9 @@ clear, clc;
 
 fprintf('Fast Tiff/Zarr readers and writers demo...\n\n');
 
-% move to the LLSM5DTools root directory
+% move to the PetaKit5D root directory
 curPath = pwd;
-if ~endsWith(curPath, 'LLSM5DTools')
+if ~endsWith(curPath, 'PetaKit5D')
     mfilePath = mfilename('fullpath');
     if contains(mfilePath,'LiveEditorEvaluationHelper')
         mfilePath = matlab.desktop.editor.getActiveFilename;
@@ -40,7 +40,7 @@ else
 end
 demo_data_downloader(destPath);
 
-dataPath = [destPath, '/LLSM5DTools_demo_cell_image_dataset/'];
+dataPath = [destPath, '/PetaKit5D_demo_cell_image_dataset/'];
 
 
 %% read a tiff file
