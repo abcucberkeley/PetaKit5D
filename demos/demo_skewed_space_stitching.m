@@ -12,7 +12,7 @@ else
     destPath = '~/Downloads/';
 end
 
-dataPath = [destPath, '/LLSM5DTools_demo_cell_image_dataset/'];
+dataPath = [destPath, '/PetaKit5D_demo_cell_image_dataset/'];
 
 % image list path: csv file
 % if not available, run stitch_generate_imagelist_from_encoder(dataPath, dz)

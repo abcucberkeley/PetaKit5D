@@ -20,9 +20,9 @@ clear, clc;
 
 fprintf('Useful tools demo...\n\n');
 
-% move to the LLSM5DTools root directory
+% move to the PetaKit5D root directory
 curPath = pwd;
-if ~endsWith(curPath, 'LLSM5DTools')
+if ~endsWith(curPath, 'PetaKit5D')
     mfilePath = mfilename('fullpath');
     if contains(mfilePath,'LiveEditorEvaluationHelper')
         mfilePath = matlab.desktop.editor.getActiveFilename;
@@ -49,7 +49,7 @@ else
 end
 demo_data_downloader(destPath);
 
-dataPath = [destPath, '/LLSM5DTools_demo_cell_image_dataset/'];
+dataPath = [destPath, '/PetaKit5D_demo_cell_image_dataset/'];
 
 
 %% run deconvolution that are used for some tools (or running the deconvolution demo)
@@ -132,7 +132,7 @@ GPUConfigFile = '';
 mccMode = false;
 
 % result folder:
-% {destPath}/LLSM5DTools_demo_cell_image_dataset/matlab_decon_omw/
+% {destPath}/PetaKit5D_demo_cell_image_dataset/matlab_decon_omw/
 
 XR_decon_data_wrapper(dataPaths, 'resultDirName', resultDirName, 'xyPixelSize', xyPixelSize, ...
     'dz', dz, 'Reverse', Reverse, 'ChannelPatterns', ChannelPatterns, 'PSFFullpaths', PSFFullpaths, ...
@@ -153,8 +153,8 @@ end
 %% run deskew/rotation to generate deskew/rotate results that are used for some tools
 
 % result folder:
-% {destPath}/LLSM5DTools_demo_cell_image_dataset/matlab_decon_omw/DS_for_useful_tools/
-% {destPath}/LLSM5DTools_demo_cell_image_dataset/matlab_decon_omw/DSR_for_useful_tools/
+% {destPath}/PetaKit5D_demo_cell_image_dataset/matlab_decon_omw/DS_for_useful_tools/
+% {destPath}/PetaKit5D_demo_cell_image_dataset/matlab_decon_omw/DSR_for_useful_tools/
 
 dataPaths = {[dataPath, 'matlab_decon_omw/']};
 
@@ -233,7 +233,7 @@ XR_deskew_rotate_data_wrapper(dataPaths, DSDirName=DSDirName, DSRDirName=DSRDirN
 % resample data according to the resample factor in one or multiple folders. 
 
 % result folder:
-% {destPath}/LLSM5DTools_demo_cell_image_dataset/resampled/
+% {destPath}/PetaKit5D_demo_cell_image_dataset/resampled/
 
 fprintf('\nResampling tool... \n\n');
 
@@ -288,7 +288,7 @@ XR_resample_dataset(dataPaths, resampleFactor, resultDirName=resultDirName, ...
 % crop images with given bounding box in one or multiple folders. 
 
 % result folder:
-% {destPath}/LLSM5DTools_demo_cell_image_dataset/Cropped/
+% {destPath}/PetaKit5D_demo_cell_image_dataset/Cropped/
 
 fprintf('\nCropping tool... \n\n');
 
@@ -335,7 +335,7 @@ XR_crop_dataset(dataPaths, inputBbox, resultDirName=resultDirName, channelPatter
 % run max projection in one or multiple folders. 
 
 % result folder:
-% {destPath}/LLSM5DTools_demo_cell_image_dataset/MIPs/
+% {destPath}/PetaKit5D_demo_cell_image_dataset/MIPs/
 
 fprintf('\nMax intensity projection tool... \n\n');
 
@@ -381,7 +381,7 @@ XR_MIP_wrapper(dataPaths, resultDirName=resultDirName, axis=axis, channelPattern
 % stack with log10 applied.
 
 % result folder:
-% {destPath}/LLSM5DTools_demo_cell_image_dataset/matlab_decon_omw/DS_for_useful_tools/FFT/
+% {destPath}/PetaKit5D_demo_cell_image_dataset/matlab_decon_omw/DS_for_useful_tools/FFT/
 
 fprintf('\nFourier space analysis tool... \n\n');
 
@@ -428,7 +428,7 @@ XR_fftSpectrumComputingWrapper(dataPaths, 'resultDirName', resultDirName, ...
 % compare the patterns with theoretical widefield PSF (Richards & Wolf)
 
 % result folder:
-% {destPath}/LLSM5DTools_demo_cell_image_dataset/PSF/DS/PSFAnalysis/
+% {destPath}/PetaKit5D_demo_cell_image_dataset/PSF/DS/PSFAnalysis/
 
 fprintf('\nPSF analysis tool... \n\n');
 
@@ -562,7 +562,7 @@ GPUConfigFile = '';
 mccMode = false;
 
 % result folder:
-% {destPath}/LLSM5DTools_demo_cell_image_dataset/matlab_decon_omw/
+% {destPath}/PetaKit5D_demo_cell_image_dataset/matlab_decon_omw/
 
 XR_decon_data_wrapper(dataPaths, 'resultDirName', resultDirName, 'xyPixelSize', xyPixelSize, ...
     'dz', dz, 'Reverse', Reverse, 'ChannelPatterns', ChannelPatterns, 'PSFFullpaths', PSFFullpaths, ...
@@ -588,8 +588,8 @@ end
 % of iterations.  
 
 % result folder:
-% {destPath}/LLSM5DTools_demo_cell_image_dataset/matlab_decon_omw_debug/Scan_Iter_0000_0000_CamB_ch0_CAM1_stack0000_488nm_0000000msec_0106060251msecAbs_000x_003y_000z_0000t_debug/FSCs
-% {destPath}/LLSM5DTools_demo_cell_image_dataset/matlab_decon_omw_debug/Scan_Iter_0000_0000_CamB_ch0_CAM1_stack0000_488nm_0000000msec_0106060251msecAbs_000x_003y_000z_0000t_debug/figures
+% {destPath}/PetaKit5D_demo_cell_image_dataset/matlab_decon_omw_debug/Scan_Iter_0000_0000_CamB_ch0_CAM1_stack0000_488nm_0000000msec_0106060251msecAbs_000x_003y_000z_0000t_debug/FSCs
+% {destPath}/PetaKit5D_demo_cell_image_dataset/matlab_decon_omw_debug/Scan_Iter_0000_0000_CamB_ch0_CAM1_stack0000_488nm_0000000msec_0106060251msecAbs_000x_003y_000z_0000t_debug/figures
 
 fprintf('\nFourier Shell Correlation (FSC) analysis tool... \n\n');
 
@@ -650,7 +650,7 @@ XR_FSC_analysis_wrapper(dataPaths, 'resultDirName', resultDirName, 'xyPixelSize'
 % convert tiff to zarr files in one or multiple folders
 
 % result folder:
-% {destPath}/LLSM5DTools_demo_cell_image_dataset/tiff_to_zarr/
+% {destPath}/PetaKit5D_demo_cell_image_dataset/tiff_to_zarr/
 
 fprintf('\nTiff to Zarr conversion tool... \n\n');
 
@@ -685,7 +685,7 @@ XR_tiffToZarr_wrapper(dataPaths, resultDirName=resultDirName, channelPatterns=ch
 % convert zarr to tiff files in one or multiple folders
 
 % result folder:
-% {destPath}/LLSM5DTools_demo_cell_image_dataset/matlab_decon_omw/DSR_for_useful_tools/tiffs/
+% {destPath}/PetaKit5D_demo_cell_image_dataset/matlab_decon_omw/DSR_for_useful_tools/tiffs/
 
 fprintf('\nZarr to Tiff conversion tool... \n\n');
 
@@ -721,7 +721,7 @@ XR_zarrToTiff_wrapper(dataPaths, resultDirName=resultDirName, channelPatterns=ch
 % with the order of filenames. 
 
 % result folder:
-% {destPath}/LLSM5DTools_demo_cell_image_dataset/matlab_decon_omw/DSR_for_useful_tools/imaris/
+% {destPath}/PetaKit5D_demo_cell_image_dataset/matlab_decon_omw/DSR_for_useful_tools/imaris/
 
 fprintf('\nTiff/Zarr to Imaris conversion tool... \n\n');
 

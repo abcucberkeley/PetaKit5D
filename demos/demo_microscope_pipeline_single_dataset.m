@@ -10,9 +10,9 @@ clear, clc;
 
 fprintf('Microscopy pipeline for a single dataset...\n\n');
 
-% move to the LLSM5DTools root directory
+% move to the PetaKit5D root directory
 curPath = pwd;
-if ~endsWith(curPath, 'LLSM5DTools')
+if ~endsWith(curPath, 'PetaKit5D')
     mfilePath = mfilename('fullpath');
     if contains(mfilePath,'LiveEditorEvaluationHelper')
         mfilePath = matlab.desktop.editor.getActiveFilename;
@@ -39,7 +39,7 @@ else
 end
 demo_data_downloader(destPath);
 
-dataPath = [destPath, '/LLSM5DTools_demo_cell_image_dataset/'];
+dataPath = [destPath, '/PetaKit5D_demo_cell_image_dataset/'];
 
 
 %% Step 2: set parameters for each step. 
@@ -116,9 +116,9 @@ maxWaitLoopNum = 10;
 %% Step 3: run the analysis with given parameters. 
 
 % result folders:
-% {destPath}/LLSM5DTools_demo_cell_image_dataset/DS/    (only when DSRCombined is false)
-% {destPath}/LLSM5DTools_demo_cell_image_dataset/DSR/
-% {destPath}/LLSM5DTools_demo_cell_image_dataset/matlab_stitch/
+% {destPath}/PetaKit5D_demo_cell_image_dataset/DS/    (only when DSRCombined is false)
+% {destPath}/PetaKit5D_demo_cell_image_dataset/DSR/
+% {destPath}/PetaKit5D_demo_cell_image_dataset/matlab_stitch/
 
 XR_microscopeAutomaticProcessing(dataPath, 'xyPixelSize', xyPixelSize, 'dz', dz,  ...
     'Reverse', Reverse, 'ChannelPatterns', ChannelPatterns, 'Save16bit', Save16bit, ...

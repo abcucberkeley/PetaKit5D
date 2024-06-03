@@ -15,7 +15,7 @@ if ispc
     destPath = strrep(destPath, '\', '/');
 end
 
-dataPath = [strip(destPath, 'right', '/'), '/LLSM5DTools_demo_cell_image_dataset/'];
+dataPath = [strip(destPath, 'right', '/'), '/PetaKit5D_demo_cell_image_dataset/'];
 
 % check if dataset already downloaded
 if exist(dataPath, 'dir')
@@ -69,18 +69,18 @@ end
 
 % The demo dataset is available in zenodo (https://zenodo.org/records/11136975). We also shared the dataset from
 % Drobox to allow much faster downloads. 
-% url = 'https://zenodo.org/records/11136975/files/LLSM5DTools_demo_cell_image_dataset.tar?download=1';
-url = 'https://www.dropbox.com/scl/fi/3q5q3y8rrs4jooorj53dx/LLSM5DTools_demo_cell_image_dataset.tar?rlkey=tiyqezc6u9imyb347ani9w8ds&st=nlzj78y1&dl=1';
+% url = 'https://zenodo.org/records/11136975/files/PetaKit5D_demo_cell_image_dataset.tar?download=1';
+url = 'https://www.dropbox.com/scl/fi/3q5q3y8rrs4jooorj53dx/PetaKit5D_demo_cell_image_dataset.tar?rlkey=tiyqezc6u9imyb347ani9w8ds&st=nlzj78y1&dl=1';
 
 fprintf('Download demo dataset from Dropbox...\n')
-filename = [destPath, '/LLSM5DTools_demo_cell_image_dataset.tar'];
+filename = [destPath, '/PetaKit5D_demo_cell_image_dataset.tar'];
 outputfilename = websave(filename, url);
 
 fprintf('Download finished! \nUntar dataset...\n')
 if ~ismac
     untar(outputfilename, destPath);
 else
-    system(sprintf('tar -vxf %s/LLSM5DTools_demo_cell_image_dataset.tar -C %s', destPath, destPath));
+    system(sprintf('tar -vxf %s/PetaKit5D_demo_cell_image_dataset.tar -C %s', destPath, destPath));
 end
 
 fprintf('Untar dataset finished! \nDelete the tar file...\n');

@@ -7,9 +7,9 @@ clear, clc;
 
 fprintf('Deconvolution demo...\n\n');
 
-% move to the LLSM5DTools root directory
+% move to the PetaKit5D root directory
 curPath = pwd;
-if ~endsWith(curPath, 'LLSM5DTools')
+if ~endsWith(curPath, 'PetaKit5D')
     mfilePath = mfilename('fullpath');
     if contains(mfilePath,'LiveEditorEvaluationHelper')
         mfilePath = matlab.desktop.editor.getActiveFilename;
@@ -36,7 +36,7 @@ else
 end
 demo_data_downloader(destPath);
 
-dataPath = [destPath, '/LLSM5DTools_demo_cell_image_dataset/'];
+dataPath = [destPath, '/PetaKit5D_demo_cell_image_dataset/'];
 
 
 %% Step 2: test the parameter for OMW backward projector
@@ -146,7 +146,7 @@ mccMode = false;
 % rotate (if objective scan) or other processings. 
 
 % result folder:
-% {destPath}/LLSM5DTools_demo_cell_image_dataset/matlab_decon_omw/
+% {destPath}/PetaKit5D_demo_cell_image_dataset/matlab_decon_omw/
 
 XR_decon_data_wrapper(dataPaths, 'resultDirName', resultDirName, 'xyPixelSize', xyPixelSize, ...
     'dz', dz, 'Reverse', Reverse, 'ChannelPatterns', ChannelPatterns, 'PSFFullpaths', PSFFullpaths, ...
@@ -240,7 +240,7 @@ mccMode = false;
 % rotate (if objective scan) or other processings. 
 
 % result folder:
-% {destPath}/LLSM5DTools_demo_cell_image_dataset/matlab_decon_conventional/
+% {destPath}/PetaKit5D_demo_cell_image_dataset/matlab_decon_conventional/
 
 XR_decon_data_wrapper(dataPaths, 'resultDirName', resultDirName, 'xyPixelSize', xyPixelSize, ...
     'dz', dz, 'Reverse', Reverse, 'ChannelPatterns', ChannelPatterns, 'PSFFullpaths', PSFFullpaths, ...
@@ -260,9 +260,9 @@ end
 %% Step 5: deskew/rotate the deconvolved results
 
 % result folders:
-% {destPath}/LLSM5DTools_demo_cell_image_dataset/DSR/
-% {destPath}/LLSM5DTools_demo_cell_image_dataset/matlab_decon_omw/DSR/
-% {destPath}/LLSM5DTools_demo_cell_image_dataset/matlab_decon_conventional/DSR/
+% {destPath}/PetaKit5D_demo_cell_image_dataset/DSR/
+% {destPath}/PetaKit5D_demo_cell_image_dataset/matlab_decon_omw/DSR/
+% {destPath}/PetaKit5D_demo_cell_image_dataset/matlab_decon_conventional/DSR/
 
 dataPath_exps = {
                  [dataPath], ...
@@ -407,7 +407,7 @@ end
 %% generate wb backprojector and decon
 %
 % the WB back projector is from the code in Guo et al. 2020 and the function 
-% is included LLSM5DTools/third_parties/WBDeconvolution for the comparison.
+% is included PetaKit5D/third_parties/WBDeconvolution for the comparison.
 
 % back projector type
 bp_type = 'wiener-butterworth';

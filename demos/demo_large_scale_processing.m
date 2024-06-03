@@ -9,9 +9,9 @@ clear, clc;
 
 fprintf('Large-scale processing demo...\n\n');
 
-% move to the LLSM5DTools root directory
+% move to the PetaKit5D root directory
 curPath = pwd;
-if ~endsWith(curPath, 'LLSM5DTools')
+if ~endsWith(curPath, 'PetaKit5D')
     mfilePath = mfilename('fullpath');
     if contains(mfilePath,'LiveEditorEvaluationHelper')
         mfilePath = matlab.desktop.editor.getActiveFilename;
@@ -38,7 +38,7 @@ else
 end
 demo_data_downloader(destPath);
 
-dataPath = [destPath, '/LLSM5DTools_demo_cell_image_dataset/'];
+dataPath = [destPath, '/PetaKit5D_demo_cell_image_dataset/'];
 
 
 %% Step 2: stitching in the skewd space
@@ -49,7 +49,7 @@ dataPath = [destPath, '/LLSM5DTools_demo_cell_image_dataset/'];
 % demo_skewed_space_stitching.m
 
 % result folder:
-% {destPath}/LLSM5DTools_demo_cell_image_dataset/matlab_stitch/
+% {destPath}/PetaKit5D_demo_cell_image_dataset/matlab_stitch/
 
 demo_skewed_space_stitching
 
@@ -175,7 +175,7 @@ mccMode = false;
 % If using GPU, please make sure the batch can fit to GPU; otherwise, reduce batchSize
 
 % result folder:
-% {destPath}/LLSM5DTools_demo_cell_image_dataset/matlab_stitch/matlab_decon_omw/
+% {destPath}/PetaKit5D_demo_cell_image_dataset/matlab_stitch/matlab_decon_omw/
 
 XR_decon_data_wrapper(dataPaths, 'resultDirName', resultDirName, 'xyPixelSize', xyPixelSize, ...
     'dz', dz, 'Reverse', Reverse, 'ChannelPatterns', ChannelPatterns, 'PSFFullpaths', PSFFullpaths, ...
@@ -197,7 +197,7 @@ end
 %% Step 4: large-scale deskew/rotation
 
 % result folder:
-% {destPath}/LLSM5DTools_demo_cell_image_dataset/matlab_stitch/matlab_decon_omw/DSR/
+% {destPath}/PetaKit5D_demo_cell_image_dataset/matlab_stitch/matlab_decon_omw/DSR/
 
 % data path for data to be deconvolved, also support for multiple data folders
 dataPath_exps = {[dataPath, 'matlab_stitch/matlab_decon_omw/']};
