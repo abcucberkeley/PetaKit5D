@@ -163,7 +163,7 @@ switch clusterType
             end
         end
 
-        if (ismcc || isdeployed || mccMode)
+        if (ismcc || isdeployed || mccMode) && strcmp(language, 'matlab')
             % only allow master compute if the job itself is in mcc or deployed mode.
             masterCompute = (ismcc || isdeployed) && masterCompute;
 

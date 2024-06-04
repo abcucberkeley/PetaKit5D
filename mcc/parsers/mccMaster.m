@@ -121,7 +121,9 @@ end
 
 toc(t0);
 
-exit;
+if ismcc
+    exit;
+end
 
 end
 

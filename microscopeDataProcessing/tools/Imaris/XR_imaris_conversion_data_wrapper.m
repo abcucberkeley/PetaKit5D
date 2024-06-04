@@ -76,6 +76,8 @@ for d = 1 : nd
     end
     if ~strcmp(dataPath(end), '/')
         dataPaths{d} = [dataPath, '/'];
+    else
+        dataPaths{d} = dataPath;
     end
 end
 
@@ -104,9 +106,10 @@ for d = 1 : nd
         dataPath_fst = dataPath{1};
     end
     
-    dir_info = dir([dataPath_fst, '*tif']);
     if zarrFile
         dir_info = dir([dataPath_fst, '*zarr']);
+    else
+        dir_info = dir([dataPath_fst, '*tif']);        
     end
     fsn = {dir_info.name}';
     if ~isempty(fsn)

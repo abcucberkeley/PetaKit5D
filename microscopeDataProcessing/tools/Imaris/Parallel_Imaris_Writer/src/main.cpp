@@ -23,6 +23,7 @@ gcc -I. -L. -o bpImarisWriter96TestProgram.exe bpImarisWriter96TestProgram.c -lb
 #include "parallelreadtiff.h"
 #include "zarr.h"
 #include "parallelreadzarr.h"
+#include <sstream>
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -31,6 +32,19 @@ gcc -I. -L. -o bpImarisWriter96TestProgram.exe bpImarisWriter96TestProgram.c -lb
 #include <stdint.h>
 #include <sys/stat.h>
 #include <omp.h>
+
+#ifndef _WIN32
+#include <wordexp.h>
+// Expand the tilde to the home directory on Mac and Linux
+const char* expandTilde(const char* path) {
+    if(strchr(path,'~')){
+        wordexp_t expPath;
+        wordexp(path, &expPath, 0);
+        return expPath.we_wordv[0];
+    }
+    else return path;
+}
+#endif
 
 typedef struct
 {
@@ -177,6 +191,22 @@ void convertToImaris(int argc, char **argv)
     }
     const char* delim = ",";
 
+    // Expand the tilde to the home directory on Mac and Linux
+    #ifndef _WIN32
+    std::stringstream folderNamesStrean(folderNames);
+    std::string token;
+    std::string folderNamesString;
+
+    while(std::getline(folderNamesStrean, token, delim[0]))
+    {
+        folderNamesString.append(expandTilde(token.c_str()));
+        folderNamesString.append(delim);
+    }
+    folderNamesString.pop_back();
+    free(folderNames);
+    folderNames = strdup(folderNamesString.c_str());
+    #endif
+
     if(!reader){
         printf("Reader type not specified. Defaulting to tiff.\n");
         reader = "tiff";
@@ -200,6 +230,10 @@ void convertToImaris(int argc, char **argv)
     #ifdef WIN32
     int madeDir = mkdir(outputDirString);
     #else
+    // Expand the tilde to the home directory on Mac and Linux
+    const char* expandedOutputDirString = expandTilde(outputDirString);
+    free(outputDirString);
+    outputDirString = strdup(expandedOutputDirString);
     int madeDir = mkdir(outputDirString, 0775);
     #endif
     outputDir = opendir(outputDirString);
