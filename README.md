@@ -14,7 +14,7 @@ The tools have been tested with MATLAB R2022b-R2023a for Linux (Ubuntu 22.04), W
 ```
     setup
 ```
-3. Create a script or function to set up the workflows for your image processing tasks by calling related functions. You may follow the examples in the [demos](https://github.com/abcucberkeley/PetaKit5D/tree/master/demos). The documentation of the parameters can refer to the [GUI wiki page](https://github.com/abcucberkeley/LLSM_Processing_GUI/wiki) or the parameter list in the related functions.
+3. Create a script or function to set up the workflows for your image processing tasks by calling related functions. You may follow the examples in the [demos](https://github.com/abcucberkeley/PetaKit5D/tree/main/demos). The documentation of the parameters can refer to the [GUI wiki page](https://github.com/abcucberkeley/PetaKit5D-GUI/wiki) or the parameter list in the related functions.
 
 
 ## Demos
@@ -29,7 +29,7 @@ The main demos for the paper:
 
 
 ## GUI
-The software has an easy-to-use Graphical User Interface (GUI) without writing any code in another repository: [LLSM_Processing_GUI](https://github.com/abcucberkeley/LLSM_Processing_GUI). The GUI supports Windows, MacOS, and Linux (Ubuntu). For instructions on the installation and the usage of the LLSM_Processing_GUI, visit the [GUI wiki page](https://github.com/abcucberkeley/LLSM_Processing_GUI/wiki).
+The software has an easy-to-use Graphical User Interface (GUI) without writing any code in another repository: [PetaKit5D-GUI](https://github.com/abcucberkeley/PetaKit5D-GUI). The GUI supports Windows, MacOS, and Linux (Ubuntu). For instructions on the installation and the usage of the PetaKit5D-GUI, visit the [GUI wiki page](https://github.com/abcucberkeley/PetaKit5D-GUI/wiki).
 
 ## Fast Tiff/Zarr readers and writers
 We created independent repositories for Tiff/Zarr readers and writers for users who only need those functions: [Cpp-Tiff](https://github.com/abcucberkeley/cpp-tiff) and [Cpp-zarr](https://github.com/abcucberkeley/cpp-zarr).
