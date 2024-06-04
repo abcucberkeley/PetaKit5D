@@ -140,10 +140,11 @@ if numel(funcStrs) == 1
 end
 
 % add check of whether configFile and mcc runtime exist for mcc Mode
-if mccMode
-    mccMode = mccMode && ~isempty(ConfigFile) && ConfigFile ~= "" && exist([MCRParam, '/bin/mcc'], 'file') && exist(MCCMasterStr, 'file');
+if ismcc || isdeployed || mccMode
+    mccAvail = ~isempty(ConfigFile) && ConfigFile ~= "" && exist([MCRParam, '/bin/mcc'], 'file') && exist(MCCMasterStr, 'file');
+    mccMode = mccMode && mccAvail;
     if ~mccMode
-        warning('The configFile is empty or the MCRParam or MCCMasterStr does not set correctly, mccMode is set to false!');
+        warning('The configFile is empty or the MCRParam or MCCMasterStr are not set correctly, mccMode is set to false!');
     end
 end
 
@@ -171,7 +172,7 @@ switch clusterType
             end
         end
 
-        if (ismcc || isdeployed || mccMode) && strcmp(language, 'matlab')
+        if (ismcc || isdeployed || mccMode) && mccAvail && strcmp(language, 'matlab')
             % only allow master compute if the job itself is in mcc or deployed mode.
             masterCompute = (ismcc || isdeployed) && masterCompute;
 
