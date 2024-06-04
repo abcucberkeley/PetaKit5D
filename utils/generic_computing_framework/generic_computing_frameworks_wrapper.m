@@ -139,6 +139,14 @@ if numel(funcStrs) == 1
     end
 end
 
+% add check of whether configFile and mcc runtime exist for mcc Mode
+if mccMode
+    mccMode = mccMode && ~isempty(ConfigFile) && ConfigFile ~= "" && exist([MCRParam, '/bin/mcc'], 'file') && exist(MCCMasterStr, 'file');
+    if ~mccMode
+        warning('The configFile is empty or the MCRParam or MCCMasterStr does not set correctly, mccMode is set to false!');
+    end
+end
+
 switch clusterType
     case 'slurm'
         if ~isempty(MemAllocate) && cpusPerTask * MemPerCPU < MemAllocate
