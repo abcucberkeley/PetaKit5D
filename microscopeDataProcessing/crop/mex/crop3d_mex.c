@@ -45,7 +45,7 @@ void mexFunction(int nlhs, mxArray *plhs[],
     uint64_t shapeY = 0;
     uint64_t shapeZ = 0;
     uint64_t* dims = (uint64_t*)mxGetDimensions(prhs[0]);
-    uint64_t numDim = (uint64_t*) mxGetNumberOfDimensions(prhs[0]);
+    uint64_t numDim = (uint64_t) mxGetNumberOfDimensions(prhs[0]);
     uint64_t origShapeX = dims[0];
     uint64_t origShapeY = (numDim <= 1) ? 1 : dims[1];    
     uint64_t origShapeZ = (numDim <= 2) ? 1 : dims[2];

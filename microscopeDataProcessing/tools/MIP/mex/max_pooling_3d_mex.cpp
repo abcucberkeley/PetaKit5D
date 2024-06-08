@@ -89,9 +89,10 @@ void mexFunction( int nlhs, mxArray *plhs[],
 
     /*  get the dimensions of the matrix input x */
     const uint64_t* dims = (uint64_t*)mxGetDimensions(prhs[0]);
+    const uint64_t numDim = (uint64_t)mxGetNumberOfDimensions(prhs[0]);
     const uint64_t origShapeX = dims[0];
-    const uint64_t origShapeY = dims[1];
-    const uint64_t origShapeZ = dims[2];
+    const uint64_t origShapeY = (numDim <= 1) ? 1 : dims[1];
+    const uint64_t origShapeZ = (numDim <= 2) ? 1 : dims[2];
     
     const uint64_t poolSizeX = (uint64_t)* mxGetPr(prhs[1]);
     const uint64_t poolSizeY = (uint64_t)* (mxGetPr(prhs[1])+1);
