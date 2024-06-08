@@ -1,5 +1,5 @@
 function [xy_exp_PSF, xz_exp_PSF, yz_exp_PSF, xy_exp_OTF, xz_exp_OTF, yz_exp_OTF, xOTF_linecut, yOTF_linecut, zOTF_linecut, zOTF_bowtie_linecut, zOTF_bowtie_linecut_yz] = ...
-    Load_and_Plot_Exp_Overall_xzPSF_xzOTF_update(filenm, source_descrip, xypixsize, zpixsize, NAdet, index, exc_lambda, det_lambda, PSFsubpix, gamma, bgFactor)
+    Load_and_Plot_Exp_Overall_xzPSF_xzOTF_update(filenm, source_descrip, xypixsize, zpixsize, NAdet, index, exc_lambda, det_lambda, PSFsubpix, gamma, bgFactor, visible)
 %
 %LOAD_AND_PLOT_EXP_OVERALL_xzPSF_xzOTF  Loads a 3D TIFF stack of an experimentally
 %measured overall PSF, and plots it along with the OTF determined by its
@@ -52,13 +52,10 @@ if nargin < 11
     % bgFactor = 1.15;
     bgFactor = 1.5;
 end
-%
-%hardwire the filename location for now:
-%filenm = 'C:\Users\betzige\Dropbox (HHMI)\HexLLS_CF0p02_FF1_complete_benchmark\complete_benchmark\Hex\totalPSF\560nm_Hex_CFp02_FF1_p55p40_c-7p5um_PSF.tif';
-%filenm = 'C:\Users\betzige\Dropbox (HHMI)\For Gokul and Gaoxiang\20210223_WF-PSF\488nm\488nm_WF-PSF_bead1.tif';
-%filenm = 'C:\Users\betzige\Dropbox (HHMI)\For Gokul and Gaoxiang\20210223_WF-PSF\488nm\488nm_WF-PSF_RotatedDO_bead1.tif';
-% filenm = 'C:\AO-SwAK\LLS calcs Jan 2021\detection PSF and OTF\NA1p0\experimental OTFs\PSF 488_450ms from Gaoxiang.tif';
-%
+if nargin < 12
+    visible = true;
+end
+
 %load all images in the TIF stack to a single 3D matrix:
 warning('off','all') % Suppress all the tiff warnings
 % tstack  = Tiff(filenm);
@@ -262,7 +259,11 @@ yz_exp_PSF = yz_exp_PSF(hsz(1) - 50 : hsz(1) + 50, hsz(2) - 50 : hsz(2) + 50);
 A = size(yz_exp_PSF);
 %
 
-fig = figure('Renderer', 'painters', 'Position', [10 10 2500 1100]);
+if visible
+    fig = figure('Renderer', 'painters', 'Position', [10 10 2500 1100], 'visible', 'on');
+else
+    fig = figure('Renderer', 'painters', 'Position', [10 10 2500 1100], 'visible', 'off');
+end
 %calc and plot the experimental overall PSF:
 % figure  %create a new figure window for the plots
 % actually yz psf

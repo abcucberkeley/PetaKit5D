@@ -27,7 +27,7 @@ setup();
 
 
 %% Step 1: get our demo data from zenodo/Dropbox (skip this step if the data is already downloaded)
-% download the example dataset from zenodo (https://doi.org/10.5281/zenodo.10471978) manually, 
+% download the example dataset from zenodo (https://doi.org/10.5281/zenodo.1492027) manually, 
 % or use the code below to download the data from Dropbox
 if ispc
     destPath = fullfile(getenv('USERPROFILE'), 'Downloads');

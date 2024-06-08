@@ -98,7 +98,7 @@ switch functionName
     case 'XR_psf_detection_and_analysis_wrapper'
         XR_psf_detection_and_analysis_wrapper_parser(varargin{1}, varargin{2:end});
     case 'XR_psf_analysis_plot'
-        XR_psf_analysis_plot_parser(varargin{1}, varargin{2}, varargin{3}, varargin{4}, varargin{5}, varargin{6}, varargin{7}, varargin{8}, varargin{9}, varargin{10}, varargin{11}, varargin{12}, varargin{13}, varargin{14});
+        XR_psf_analysis_plot_parser(varargin{1}, varargin{2}, varargin{3}, varargin{4}, varargin{5}, varargin{6}, varargin{7}, varargin{8}, varargin{9}, varargin{10}, varargin{11}, varargin{12}, varargin{13}, varargin{14}, varargin{15:end});
     case 'image_intensity_correction_block'
         image_intensity_correction_block_parser(varargin{1}, varargin{2}, varargin{3}, varargin{4}, varargin{5}, varargin{6}, varargin{7}, varargin{8:end});
     case 'XR_imaris_conversion_data_wrapper'

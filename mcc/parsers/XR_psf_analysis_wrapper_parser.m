@@ -19,6 +19,7 @@ ip.addParameter('save16bit', true, @(x) islogical(x) || ischar(x));
 ip.addParameter('bgFactor', 1.5, @(x) isnumeric(x) || ischar(x));
 ip.addParameter('RWFn', {'/clusterfs/fiona/Gokul/RW_PSFs/PSF_RW_515em_128_128_101_100nmSteps.tif', '/clusterfs/fiona/Gokul/RW_PSFs/PSF_RW_605em_128_128_101_100nmSteps.tif'}, @(x) iscell(x) || ischar(x));
 ip.addParameter('sourceStr', 'test', @ischar);
+ip.addParameter('visible', true, @(x) islogical(x) || ischar(x));
 ip.addParameter('parseCluster', true, @(x) islogical(x) || ischar(x));
 ip.addParameter('masterCompute', false, @(x) islogical(x) || ischar(x));
 ip.addParameter('cpusPerTask', 8, @(x) isscalar(x) || ischar(x));
@@ -41,6 +42,7 @@ save16bit = pr.save16bit;
 bgFactor = pr.bgFactor;
 RWFn = pr.RWFn;
 sourceStr = pr.sourceStr;
+visible = pr.visible;
 parseCluster = pr.parseCluster;
 masterCompute = pr.masterCompute;
 cpusPerTask = pr.cpusPerTask;
@@ -86,6 +88,9 @@ end
 if ischar(RWFn) && ~isempty(RWFn) && strcmp(RWFn(1), '{')
     RWFn = eval(RWFn);
 end
+if ischar(visible)
+    visible = str2num(visible);
+end
 if ischar(parseCluster)
     parseCluster = str2num(parseCluster);
 end
@@ -102,7 +107,7 @@ end
 XR_psf_analysis_wrapper(dataPaths, xyPixelSize=xyPixelSize, dz=dz, skewAngle=skewAngle, ...
     deskew=deskew, flipZstack=flipZstack, objectiveScan=objectiveScan, zStageScan=zStageScan, ...
     channelPatterns=channelPatterns, channels=channels, save16bit=save16bit, ...
-    bgFactor=bgFactor, RWFn=RWFn, sourceStr=sourceStr, parseCluster=parseCluster, ...
+    bgFactor=bgFactor, RWFn=RWFn, sourceStr=sourceStr, visible=visible, parseCluster=parseCluster, ...
     masterCompute=masterCompute, cpusPerTask=cpusPerTask, mccMode=mccMode, ...
     configFile=configFile);
 

@@ -1,5 +1,5 @@
 function [] = XR_psf_analysis_plot_parser(frameFullname, figureFullname, RW_info_Fullname, ...
-    ch_ind, source_descrip, xypixsize, zpixsize, NAdet, index, exc_lambda, det_lambda, PSFsubpix, gamma, bgFactor)
+    ch_ind, source_descrip, xypixsize, zpixsize, NAdet, index, exc_lambda, det_lambda, PSFsubpix, gamma, bgFactor, varargin)
 
 
 ip = inputParser;
@@ -18,11 +18,13 @@ ip.addRequired('det_lambda', @(x) isscalar(x) || ischar(x));
 ip.addRequired('PSFsubpix', @(x) isvector(x) || ischar(x));
 ip.addRequired('gamma', @(x) isscalar(x) || ischar(x));
 ip.addRequired('bgFactor', @(x) isscalar(x) || ischar(x));
+ip.addParameter('visible', true, @(x) islogical(x) || ischar(x));
 
 ip.parse(frameFullname, figureFullname, RW_info_Fullname, ch_ind, source_descrip, ...
-    xypixsize, zpixsize, NAdet, index, exc_lambda, det_lambda, PSFsubpix, gamma, bgFactor);
+    xypixsize, zpixsize, NAdet, index, exc_lambda, det_lambda, PSFsubpix, gamma, bgFactor, varargin{:});
 
 pr = ip.Results;
+visible = pr.visible;
 
 if ischar(ch_ind)
     ch_ind = str2num(ch_ind);
@@ -54,10 +56,13 @@ end
 if ischar(bgFactor)
     bgFactor = str2num(bgFactor);
 end
+if ischar(visible)
+    visible = str2num(visible);
+end
 
 XR_psf_analysis_plot(frameFullname, figureFullname, RW_info_Fullname, ch_ind, ...
     source_descrip, xypixsize, zpixsize, NAdet, index, exc_lambda, det_lambda, ...
-    PSFsubpix, gamma, bgFactor);
+    PSFsubpix, gamma, bgFactor, visible=visible);
 
 end
 

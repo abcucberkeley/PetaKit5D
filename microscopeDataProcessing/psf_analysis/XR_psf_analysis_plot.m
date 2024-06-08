@@ -1,5 +1,5 @@
 function [] = XR_psf_analysis_plot(frameFullname, figureFullname, RW_info_Fullname, ...
-    ch_ind, source_descrip, xypixsize, zpixsize, NAdet, index, exc_lambda, det_lambda, PSFsubpix, gamma, bgFactor)
+    ch_ind, source_descrip, xypixsize, zpixsize, NAdet, index, exc_lambda, det_lambda, PSFsubpix, gamma, bgFactor, varargin)
 % perform psf analysis and plot the figures
 % 
 % Author: Xiongtao Ruan (07/28/2021)
@@ -21,9 +21,13 @@ ip.addRequired('det_lambda', @isscalar);
 ip.addRequired('PSFsubpix', @isvector);
 ip.addRequired('gamma', @isscalar);
 ip.addRequired('bgFactor', @isscalar);
+ip.addParameter('visible', true, @islogical);
 
 ip.parse(frameFullname, figureFullname, RW_info_Fullname, ch_ind, source_descrip, ...
-    xypixsize, zpixsize, NAdet, index, exc_lambda, det_lambda, PSFsubpix, gamma, bgFactor);
+    xypixsize, zpixsize, NAdet, index, exc_lambda, det_lambda, PSFsubpix, gamma, bgFactor, varargin{:});
+
+pr = ip.Results;
+visible = pr.visible;
 
 if exist(figureFullname, 'file')
     fprintf('The figure already exists, skip it!\n')
@@ -43,7 +47,7 @@ zOTF_bowtie_linecut_RW = RW_info{ch_ind}{6};
 [xy_exp_PSF, xz_exp_PSF, yz_exp_PSF, xy_exp_OTF, xz_exp_OTF, yz_exp_OTF, xOTF_linecut, ...
     yOTF_linecut, zOTF_linecut, zOTF_bowtie_linecut, zOTF_bowtie_linecut_yz] = ...
     Load_and_Plot_Exp_Overall_xzPSF_xzOTF_update(frameFullname, source_descrip, ...
-    xypixsize, zpixsize, NAdet, index, exc_lambda, det_lambda, PSFsubpix, gamma, bgFactor);
+    xypixsize, zpixsize, NAdet, index, exc_lambda, det_lambda, PSFsubpix, gamma, bgFactor, visible);
 
 % save the information in mat file
 [~, fsname] = fileparts(frameFullname);
@@ -62,7 +66,11 @@ f0 = gcf();
 print(f0, '-painters','-dpng', '-loose',[result_dir filesep 'comp_' fsname '.png']);
 close all
 
-figure('Renderer', 'painters', 'Position', [10 10 600 600]);
+if visible
+    figure('Renderer', 'painters', 'Position', [10 10 600 600]);
+else
+    figure('Renderer', 'painters', 'Position', [10 10 600 600], 'visible', 'off');
+end
 % figure;
 A = size(xz_exp_OTF);
 D = size(zOTF_linecut);
@@ -103,6 +111,10 @@ legend([{'OTF along kz','OTF along kx','Bowtie OTF along kx', 'RW OTF along kz',
 
 f0 = gcf();
 print(f0, '-painters','-dpng', '-loose', figureFullname);
+
+if ~visible
+    close all;
+end
 
 end
 
