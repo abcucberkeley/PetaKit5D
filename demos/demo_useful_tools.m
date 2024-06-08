@@ -39,7 +39,7 @@ setup();
 
 
 %% get our demo data from zenodo/Dropbox (skip this step if the data is already downloaded)
-% download the example dataset from zenodo (https://doi.org/10.5281/zenodo.10471978) manually, 
+% download the example dataset from zenodo (https://doi.org/10.5281/zenodo.1492027) manually, 
 % or use the code below to download the data from Dropbox
 if ispc
     destPath = fullfile(getenv('USERPROFILE'), 'Downloads');
@@ -452,6 +452,8 @@ RWFn = {[dataPath, 'PSF/RW_PSFs/PSF_RW_515em_128_128_101_100nmSteps.tif'], ...
         };
 % source description
 sourceStr = 'Demo PSF';
+% if true display the figures
+visible = true;
 
 % use cluster computing for different images
 parseCluster = false;
@@ -467,7 +469,7 @@ configFile = '';
 XR_psf_analysis_wrapper(dataPaths, 'xyPixelSize', xyPixelSize, 'dz', dz, ...
     'skewAngle', skewAngle, 'ChannelPatterns', ChannelPatterns, 'Channels', Channels, ...
     'Deskew', Deskew, 'ObjectiveScan', ObjectiveScan, 'sourceStr', sourceStr, ...
-    'RWFn', RWFn, parseCluster=parseCluster, masterCompute=masterCompute, ...
+    'RWFn', RWFn, visible=visible, parseCluster=parseCluster, masterCompute=masterCompute, ...
     cpusPerTask=cpusPerTask, mccMode=mccMode, configFile=configFile);
 
 

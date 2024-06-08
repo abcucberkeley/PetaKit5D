@@ -25,6 +25,7 @@ ip.addParameter('save16bit', true, @islogical);
 ip.addParameter('bgFactor', 1.5, @isnumeric);
 ip.addParameter('RWFn', {'/clusterfs/fiona/Gokul/RW_PSFs/PSF_RW_515em_128_128_101_100nmSteps.tif', '/clusterfs/fiona/Gokul/RW_PSFs/PSF_RW_605em_128_128_101_100nmSteps.tif'}, @iscell);
 ip.addParameter('sourceStr', 'test', @ischar);
+ip.addParameter('visible', true, @islogical);
 ip.addParameter('parseCluster', true, @islogical);
 ip.addParameter('masterCompute', false, @islogical);
 ip.addParameter('cpusPerTask', 8, @isscalar);
@@ -47,6 +48,7 @@ save16bit = pr.save16bit;
 bgFactor = pr.bgFactor;
 RWFn = pr.RWFn;
 sourceStr = pr.sourceStr;
+visible = pr.visible;
 parseCluster = pr.parseCluster;
 masterCompute = pr.masterCompute;
 cpusPerTask = pr.cpusPerTask;
@@ -106,9 +108,7 @@ if deskew
 
     XR_microscopeAutomaticProcessing(dataPath_exps, general_options{:}, ...
         dsr_options{:}, stitch_options{:});
-
 end
-
 
 %% psf analysis
 
@@ -161,7 +161,7 @@ for c = 1 : numel(channelPatterns)
     [xy_exp_PSF_RW, xz_exp_PSF_RW, yz_exp_PSF_RW, xy_exp_OTF_RW, xz_exp_OTF_RW, ...
         yz_exp_OTF_RW, xOTF_linecut_RW, yOTF_linecut_RW, zOTF_linecut_RW, zOTF_bowtie_linecut_RW, ...
         zOTF_bowtie_linecut_yz] = Load_and_Plot_Exp_Overall_xzPSF_xzOTF_update(RWFn_k, source_descrip, ...
-        xypixsize, zpixsize_RW, NAdet, index, exc_lambda, det_lambda, PSFsubpix_RW, gamma, bgFactor_RW);
+        xypixsize, zpixsize_RW, NAdet, index, exc_lambda, det_lambda, PSFsubpix_RW, gamma, bgFactor_RW, visible);
     
     RW_info{c} = {xz_exp_PSF_RW, xz_exp_OTF_RW, xOTF_linecut_RW, yOTF_linecut_RW, zOTF_linecut_RW, zOTF_bowtie_linecut_RW};  
 end
@@ -226,10 +226,10 @@ for d = 1 : numel(dataPath_exps)
         end
         
         func_strs{d}{f} = sprintf(['XR_psf_analysis_plot(''%s'',''%s'',''%s'',', ...
-            '%d,''%s'',%.20f,%.20f,%.20f,%.20f,%.20f,%.20f,%s,%.20f,%.20f)'], fn{f}, ...
+            '%d,''%s'',%.20f,%.20f,%.20f,%.20f,%.20f,%.20f,%s,%.20f,%.20f,''visible'',%s)'], fn{f}, ...
             figureFullpaths{d}{f}, RW_info_fullnames{d}, find(ch_ind), source_descrip, xypixsize, ...
             zpixsize, NAdet, index, exc_lambda, det_lambda, strrep(mat2str(PSFsubpix), ' ', ','), ...
-            gamma, bgFactor);
+            gamma, bgFactor, string(visible));
     end
 end
 
