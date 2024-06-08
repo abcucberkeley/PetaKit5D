@@ -3,11 +3,9 @@ function [] = XR_phase_image_flat_field_correction(fns, outPath, const)
 %
 % 1. subtract gaussian blurred image (sigma=100) from the raw data. 
 % 2. add 1100 counts to the image from step 1 to make all pixels positive (this number may change when running all time points). 
-% 3. use the BaSiC software to estimate flatfield using all 25 tiles from step 2, and apply the flatfield correction to the tiles. 
+% 3. use the BaSiC software to estimate flatfield using all tiles at a time point from step 2, and apply the flatfield correction to the tiles. 
 %
 % Author: Xiongtao Ruan (08/22/2022)
-%
-% rename from prcs_janelia_20220428_phase_image.m to XR_phase_image_flat_field_correction.m
 
 
 if nargin < 3
@@ -22,7 +20,11 @@ end
 fnouts = cellfun(@(x) [outPath, x, '.tif'], fsns, 'unif', 0);
 uuid = get_uuid();
 % tmpouts = cellfun(@(x) [outPath, x, '_', uuid, '.tif'], fsns, 'unif', 0);
-tmpouts = cellfun(@(x) ['/dev/shm/', x, '_', uuid, '.tif'], fsns, 'unif', 0);
+if ismac || ispc
+    tmpouts = cellfun(@(x) [outPath, x, '_', uuid, '.tif'], fsns, 'unif', 0);
+else
+    tmpouts = cellfun(@(x) ['/dev/shm/', x, '_', uuid, '.tif'], fsns, 'unif', 0);
+end
 
 nF = numel(fns);
 is_done_flag = false(nF, 1);
@@ -70,8 +72,6 @@ end
 
 ffFn = sprintf('%s/%s_flatfield.mat', ffPath, fsns{1});
 save('-v7.3', ffFn, 'minval', 'flatfield');
-
-
 
 end
 

@@ -96,7 +96,7 @@ end
 for d = 1 : nd
     dataPath = dataPaths{d};
     if zarrFile
-        dir_info = dir([dataPath, '/', '*.zarr']);        
+        dir_info = dir([dataPath, '/', '*.zarr']);
     else
         dir_info = dir([dataPath, '/', '*.tif']);
     end

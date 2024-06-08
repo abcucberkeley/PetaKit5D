@@ -9,7 +9,7 @@ ip.CaseSensitive = false;
 ip.addRequired('psfFn', @ischar);
 ip.addOptional('OTFCumThresh', 0.85, @(x) isscalar(x));
 ip.addOptional('skewed', [], @(x) isempty(x) || islogical(x));
-ip.addParameter('minIntThrsh', 2.5e-3, @(x) isnumeric(x));
+ip.addParameter('minIntThrsh', 1e-3, @(x) isnumeric(x));
 
 ip.parse(psfFn, OTFCumThresh, skewed, varargin{:});
 

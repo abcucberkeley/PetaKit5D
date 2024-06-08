@@ -61,6 +61,7 @@ end
 if nargout == 4
     filepaths = arrayfun(@(x) sprintf('%s/%s', dataPaths{fd_inds(x)}, fnames{x}), ...
         1 : nF, 'UniformOutput', false);
+    filepaths = filepaths';
 end
 
 end
