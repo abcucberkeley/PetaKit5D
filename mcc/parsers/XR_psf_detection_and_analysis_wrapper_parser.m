@@ -17,6 +17,7 @@ ip.addParameter('channelPatterns', {'CamA_ch0', 'CamB_ch0'}, @(x) iscell(x) || i
 ip.addParameter('channels', [488, 560], @(x) isnumeric(x) || ischar(x));
 ip.addParameter('RWFn', {'/clusterfs/fiona/Gokul/RW_PSFs/PSF_RW_515em_128_128_101_100nmSteps.tif', '/clusterfs/fiona/Gokul/RW_PSFs/PSF_RW_605em_128_128_101_100nmSteps.tif'}, @(x) iscell(x) || ischar(x));
 ip.addParameter('sourceStr', 'test', @ischar);
+ip.addParameter('visible', true, @(x) islogical(x) || ischar(x));
 ip.addParameter('parseCluster', true, @(x) islogical(x) || ischar(x));
 ip.addParameter('masterCompute', false, @(x) islogical(x) || ischar(x));
 ip.addParameter('mccMode', false, @(x) islogical(x) || ischar(x));
@@ -35,6 +36,7 @@ channelPatterns = pr.channelPatterns;
 channels = pr.channels;
 RWFn = pr.RWFn;
 sourceStr = pr.sourceStr;
+visible = pr.visible;
 parseCluster = pr.parseCluster;
 masterCompute = pr.masterCompute;
 mccMode = pr.mccMode;
@@ -70,6 +72,9 @@ end
 if ischar(RWFn) && ~isempty(RWFn) && strcmp(RWFn(1), '{')
     RWFn = eval(RWFn);
 end
+if ischar(visible)
+    visible = str2num(visible);
+end
 if ischar(parseCluster)
     parseCluster = str2num(parseCluster);
 end
@@ -83,8 +88,8 @@ end
 XR_psf_detection_and_analysis_wrapper(dataPaths, xyPixelSize=xyPixelSize, dz=dz, ...
     skewAngle=skewAngle, cropSize=cropSize, flipZstack=flipZstack, distThresh=distThresh, ...
     channelPatterns=channelPatterns, channels=channels, RWFn=RWFn, sourceStr=sourceStr, ...
-    parseCluster=parseCluster, masterCompute=masterCompute, mccMode=mccMode, ...
-    configFile=configFile);
+    visible=visible, parseCluster=parseCluster, masterCompute=masterCompute, ...
+    mccMode=mccMode, configFile=configFile);
 
 end
 

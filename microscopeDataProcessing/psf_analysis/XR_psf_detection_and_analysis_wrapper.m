@@ -22,6 +22,7 @@ ip.addParameter('channelPatterns', {'CamA_ch0', 'CamB_ch0'}, @iscell);
 ip.addParameter('channels', [488, 560], @isnumeric);
 ip.addParameter('RWFn', {'/clusterfs/fiona/Gokul/RW_PSFs/PSF_RW_515em_128_128_101_100nmSteps.tif', '/clusterfs/fiona/Gokul/RW_PSFs/PSF_RW_605em_128_128_101_100nmSteps.tif'}, @iscell);
 ip.addParameter('sourceStr', 'test', @ischar);
+ip.addParameter('visible', true, @islogical);
 ip.addParameter('parseCluster', true, @islogical);
 ip.addParameter('masterCompute', false, @islogical);
 % ip.addParameter('prefix', 'test_', @ischar);
@@ -40,6 +41,7 @@ channelPatterns = pr.channelPatterns;
 channels = pr.channels;
 RWFn = pr.RWFn;
 sourceStr = pr.sourceStr;
+visible = pr.visible;
 parseCluster = pr.parseCluster;
 masterCompute = pr.masterCompute;
 mccMode = pr.mccMode;
@@ -142,7 +144,7 @@ disp(dataPath_exps);
 
 XR_psf_analysis_wrapper(dataPath_exps, 'dz', dz, 'skewAngle', skewAngle, 'channelPatterns', channelPatterns, ...
     'Channels', channels, 'Deskew', Deskew, 'flipZstack', flipZstack, 'objectiveScan', objectiveScan, ...
-    'zStageScan', zStageScan, 'sourceStr', sourceStr, 'RWFn', RWFn, parseCluster=parseCluster, ...
+    'zStageScan', zStageScan, 'sourceStr', sourceStr, 'RWFn', RWFn, visible=visible, parseCluster=parseCluster, ...
     masterCompute=masterCompute, mccMode=mccMode, configFile=configFile);
 
 end
