@@ -12,7 +12,7 @@ ip.addRequired('skewed');
 ip.addParameter('OTFCumThresh', 0.9, @isnumeric);
 ip.addParameter('OTFAreaThresh', 100, @isnumeric);
 ip.addParameter('hanWinBounds', [0.8, 1], @(x) isnumeric(x) && numel(x) == 2);
-ip.addParameter('minIntThrsh', 2.5e-3, @(x) isnumeric(x));
+ip.addParameter('minIntThrsh', 1e-3, @(x) isnumeric(x));
 
 ip.parse(psf, alpha, skewed, varargin{:});
 

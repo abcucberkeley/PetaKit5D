@@ -2,6 +2,7 @@
 
 Tools for efficient and scalable processing of petabyte-scale 5D live images or large specimen images from lattice light-sheet microscopy (LLSM) and other light sheet microscopies, as well as other imaging modalities. It is featured by fast image readers and writers (for Tiff and Zarr), combined image deskew/rotation, instantly converged Richardson-Lucy (RL) deconvolution, and scalable Zarr-based stitching. It also contains some other useful tools, including 3D point detection and point tracking (based on Aguet, Upadhyayula et al., 2016), cropping, resampling, max projection, PSF analysis and visualization, and more.
 
+
 ## Usage
 
 The tools have been tested with MATLAB R2022b-R2023a for Linux (Ubuntu 22.04), Windows (10 and 11), and MacOS (14). Toolboxes required:
@@ -11,9 +12,9 @@ The tools have been tested with MATLAB R2022b-R2023a for Linux (Ubuntu 22.04), W
  Here are the steps to use the software:
 1. Get the source code by either cloning the GitHub repository or downloading the ZIP file. If downloading the zip file, unzip the file to a directory.
 2. Launch MATLAB, navigate to the software's root directory, and add the software to the path with `setup.m` in the command window.
-```
-    setup
-```
+````
+   setup
+````
 3. Create a script or function to set up the workflows for your image processing tasks by calling related functions. You may follow the examples in the [demos](https://github.com/abcucberkeley/PetaKit5D/tree/main/demos). The documentation of the parameters can refer to the [GUI wiki page](https://github.com/abcucberkeley/PetaKit5D-GUI/wiki) or the parameter list in the related functions.
 
 
@@ -26,10 +27,21 @@ The main demos for the paper:
 - `demo_zarr_stitching.m`: demo to illustrate how to run stitching in both skewed and DSR spaces, along with the documentation for the setup of BigStitcher (Spark version) and Stitching-Spark for the stitching benchmarks in the paper.
 - `demo_large_scale_processing.m`: demo to illustrate how to set up large-scale processing for stitching, deconvolution, and deskew/rotation.
 - `demo_useful_tools.m`: demo to illustrate how to set up the running for a sets of commonly used tools, i.e., resampling, cropping, max projection, tiff/zarr conversion, imaris file conversion and so on. 
+- `demo_phase_and_2photon_stitching.m`: demo to illustrate how to set up the running for image list generation and stitching for 2D phase and 3D 2-photon data. 
+- `demo_widefield_and_confocal_deconvolution.m`: demo to illustrate how to set up the running of deconvolution for widefield and confocal data with OMW method. 
+
+
+## Python wrappers
+We created Python wrappers for the main functions by calling MATLAB runtime in another repository: [PyPetaKit5D](https://github.com/abcucberkeley/PyPetaKit5D). The package of the Python wrappers can be installed using this command:
+````
+pip install --no-binary :all: --no-cache-dir PyPetaKit5D
+````
+The parameters for the Python wrappers are identical to those in MATLAB. The documentation of the parameters can refer to the [GUI wiki page](https://github.com/abcucberkeley/PetaKit5D-GUI/wiki). 
 
 
 ## GUI
 The software has an easy-to-use Graphical User Interface (GUI) without writing any code in another repository: [PetaKit5D-GUI](https://github.com/abcucberkeley/PetaKit5D-GUI). The GUI supports Windows, MacOS, and Linux (Ubuntu). For instructions on the installation and the usage of the PetaKit5D-GUI, visit the [GUI wiki page](https://github.com/abcucberkeley/PetaKit5D-GUI/wiki).
+
 
 ## Fast Tiff/Zarr readers and writers
 We created independent repositories for Tiff/Zarr readers and writers for users who only need those functions: [Cpp-Tiff](https://github.com/abcucberkeley/cpp-tiff) and [Cpp-zarr](https://github.com/abcucberkeley/cpp-zarr).

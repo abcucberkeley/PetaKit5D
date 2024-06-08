@@ -64,7 +64,7 @@ switch( lower(shape) )
 	case 'valid'
 		C = C(szT(1):end-szT(1)+1,szT(1):end-szT(2)+1,szT(3):end-szT(3)+1);
 	otherwise
-		error(sprintf('unknown SHAPE %s, assuming FULL by default', shape));
+		error('unknown SHAPE %s, assuming FULL by default', shape);
 end
 
 

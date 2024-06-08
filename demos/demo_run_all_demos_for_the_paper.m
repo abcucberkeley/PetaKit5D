@@ -21,4 +21,11 @@ demo_large_scale_processing;
 fprintf('\nUseful tools demo...\n');
 demo_useful_tools;
 
+fprintf('\nPhase and 2-Photon stitching demo...\n');
+demo_phase_and_2photon_stitching;
+
+fprintf('\nWidefield and Confocal deconvolution demo...\n');
+demo_widefield_and_confocal_deconvolution;
+
+
 fprintf('\nAll demos are finished!\n');

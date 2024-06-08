@@ -49,6 +49,8 @@ switch functionName
         stitch_organize_block_info_parser(varargin{1}, varargin{2}, varargin{3}, varargin{4}, varargin{5}, varargin{6:end});
     case 'stitch_global_grid_assignment_wrapper'
         stitch_global_grid_assignment_wrapper_parser(varargin{1}, varargin{2}, varargin{3}, varargin{4}, varargin{5});
+    case 'XR_generate_image_list_wrapper'
+        XR_generate_image_list_wrapper_parser(varargin{1}, varargin{2}, varargin{3:end});
     case 'XR_deskew_rotate_data_wrapper'
         XR_deskew_rotate_data_wrapper_parser(varargin{1}, varargin{2:end});
     case 'XR_deskewRotateFrame'
@@ -111,6 +113,8 @@ switch functionName
         XR_ExM_PunctaRemoval_interpolated_background_block_parser(varargin{1}, varargin{2}, varargin{3}, varargin{4}, varargin{5}, varargin{6}, varargin{7}, varargin{8}, varargin{9:end});
     case 'XR_ExM_Segmentation_interpolated_background_block'
         XR_ExM_Segmentation_interpolated_background_block_parser(varargin{1}, varargin{2}, varargin{3}, varargin{4}, varargin{5}, varargin{6}, varargin{7}, varargin{8}, varargin{9:end});
+    case 'XR_ExM_Skeletonization_block'
+        XR_ExM_Skeletonization_block_parser(varargin{1}, varargin{2}, varargin{3}, varargin{4}, varargin{5}, varargin{6}, varargin{7}, varargin{8:end});
     case 'multiple_region_spectra_encoding_block'
         multiple_region_spectra_encoding_block_parser(varargin{1}, varargin{2}, varargin{3}, varargin{4}, varargin{5}, varargin{6:end});
     case 'crop_deskew_rotate_demo_function'

@@ -202,7 +202,11 @@ if (strcmpi(xcorrMode, 'primary') || strcmpi(xcorrMode, 'primaryFirst'))
         elseif ~specifyCam && isempty(regexpi(primaryCh, 'ch[0-9]', 'once'))
             error("primaryCh must be empty or with format 'ch[0-9]'");            
         end
-        pCam = primaryCh(4);
+        if specifyCam
+            pCam = primaryCh(4);
+        else
+            pCam = [];
+        end
         pCh = str2double(primaryCh(end));
         if ~any(contains(fsn, ['_', primaryCh, '_'], 'IgnoreCase', true))
             error('The given primary channel %s does not exist!', primaryCh);
@@ -234,7 +238,7 @@ if (strcmpi(xcorrMode, 'primary') || strcmpi(xcorrMode, 'primaryFirst'))
     if Ch(1) ~= pCh
         Ch = [pCh; Ch(Ch ~= pCh)];
     end
-    if ~strcmpi(Cam(1), pCam)
+    if specifyCam && ~strcmpi(Cam(1), pCam)
         ind = regexpi(Cam', pCam);
         Cam = Cam([ind, 1 : ind - 1, ind + 1 : end]);
     end
@@ -254,12 +258,6 @@ if ~isempty(timepoints)
         subIter = cellfun(@(x) str2double(x(6 : 9)), fullIter);
         fullIter = fullIter(ismember([Iter, subIter], [timepoints(:), subtimepoints(:)], 'rows'));
     end
-
-%     if ~isempty(subsubtimepoints)
-%         subIter = cellfun(@(x) str2double(x(6 : 9)), fullIter);
-%         subSubIter = cellfun(@(x) str2double(x(11 : 14)), fullIter);
-%         fullIter = fullIter(ismember([Iter, subIter, subSubIter], [timepoints(:), subtimepoints(:), subsubtimepoints(:)], 'rows'));
-%     end
 end
 
 % predefine stitchInfo when xcorrMode is 'primaryFirst'
