@@ -97,15 +97,8 @@ end
 
 % first resize to downsampled ones
 if any(downSample ~= 1)
-%     region_1 = double(imresize3(region_1, 1 ./ downSample .* size(region_1), 'nearest'));
-%     region_2 = double(imresize3(region_2, 1 ./ downSample .* size(region_2), 'nearest'));
-    % region_1 = double(imresize3(region_1, 1 ./ downSample .* size(region_1), 'nearest'));
-    % region_2 = double(imresize3(region_2, 1 ./ downSample .* size(region_2), 'nearest'));
-    
     % resize by max pooling
-    region_2 = padarray(region_2, ceil(size(region_2) ./ downSample(1 : 2)) .* downSample(1 : 2) - size(region_2), 0, 'post');
-    fun = @(B, d) max(B, [], d);
-    region_2 = sepblockfun(region_2, downSample, fun);
+    region_2 = max_pooling_3d(region_2, downSample);
 end
 
 % calculate bbox for overlap regions
@@ -123,15 +116,8 @@ region_1 = single(region_1);
 
 % first resize to downsampled ones
 if any(downSample ~= 1)
-%     region_1 = double(imresize3(region_1, 1 ./ downSample .* size(region_1), 'nearest'));
-%     region_2 = double(imresize3(region_2, 1 ./ downSample .* size(region_2), 'nearest'));
-    % region_1 = double(imresize3(region_1, 1 ./ downSample .* size(region_1), 'nearest'));
-    % region_2 = double(imresize3(region_2, 1 ./ downSample .* size(region_2), 'nearest'));
-    
     % resize by max pooling
-    region_1 = padarray(region_1, ceil(size(region_1) ./ downSample(1 : 2)) .* downSample(1 : 2) - size(region_1), 0, 'post');
-    fun = @(B, d) max(B, [], d);
-    region_1 = sepblockfun(region_1, downSample(1 : 2), fun);
+    region_1 = max_pooling_3d(region_1, downSample);
 end
 
 % crop region 2
@@ -149,12 +135,6 @@ if ~any(z_inds) || ~any(x_inds) || ~any(y_inds)
     x_inds = sum(region_2_nozeros(:, :, z_inds), [1, 3]) > sz_2(1) * sum(z_inds) / 8;
     y_inds = sum(region_2_nozeros(:, x_inds, z_inds), [2, 3]) > sum(x_inds) * sum(z_inds) / 8;
 end
-
-% bounds = [0.1, 0.25];
-% maxoff = [maxoff_y, maxoff_x, 1] ./ downSample;
-% y_inds = cap_region_2_inds(y_inds, sz_2(1), maxoff(1), bounds);
-% x_inds = cap_region_2_inds(x_inds, sz_2(2), maxoff(2), bounds);
-% z_inds = cap_region_2_inds(z_inds, sz_2(3), maxoff(3), bounds);
 
 % if empty again, just return none shift
 if ~any(z_inds) || ~any(x_inds) || ~any(y_inds)  
@@ -174,9 +154,11 @@ if ~any(z_inds) || ~any(x_inds) || ~any(y_inds)
     return;
 end
 
-region_2 = region_2(y_inds, x_inds, z_inds);
-% src2 = [find(x_inds, 1, 'first'); find(y_inds, 1, 'first'); find(z_inds, 1, 'first')];
-src2 = [x_inds(1); y_inds(1); z_inds(1)];
+if ~all(y_inds([1, end]) & x_inds([1, end]))
+    region_2 = region_2(y_inds, x_inds, z_inds);
+end
+src2 = [find(x_inds, 1, 'first'); find(y_inds, 1, 'first'); 1];
+% src2 = [x_inds(1); y_inds(1); z_inds(1)];
     
 % set lower and upper bound of the maxShifts
 sp2_down = (sr1 - s1) ./ downSample([2, 1, 3])' - (src2 - 1);

@@ -162,7 +162,10 @@ if isempty(z_inds) || isempty(x_inds) || isempty(y_inds)
     return;
 end
 
-region_2 = region_2(y_inds, x_inds, z_inds);
+if y_inds(1) ~= 1 || y_inds(end) ~= sz_2(1) || x_inds(1) ~= 1 || x_inds(end) ~= sz_2(2) || z_inds(1) ~= 1 || z_inds(end) ~= sz_2(3)
+    % region_2 = region_2(y_inds, x_inds, z_inds);
+    region_2 = crop3d(region_2, [y_inds(1), x_inds(1), z_inds(1), y_inds(end), x_inds(end), z_inds(end)]);
+end
 % src2 = [find(x_inds, 1, 'first'); find(y_inds, 1, 'first'); find(z_inds, 1, 'first')];
 src2 = [x_inds(1); y_inds(1); z_inds(1)];
     
