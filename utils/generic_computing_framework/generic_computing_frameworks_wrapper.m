@@ -141,7 +141,7 @@ end
 
 % add check of whether configFile and mcc runtime exist for mcc Mode
 if ismcc || isdeployed || mccMode
-    mccAvail = ~isempty(ConfigFile) && ConfigFile ~= "" && exist([MCRParam, '/bin/mcc'], 'file') && exist(MCCMasterStr, 'file');
+    mccAvail = ~isempty(ConfigFile) && ConfigFile ~= "" && exist([MCRParam, '/bin/'], 'dir') && exist(MCCMasterStr, 'file');
     mccMode = mccMode && mccAvail;
     if ~mccMode
         warning('The configFile is empty or the MCRParam or MCCMasterStr are not set correctly, mccMode is set to false!');
