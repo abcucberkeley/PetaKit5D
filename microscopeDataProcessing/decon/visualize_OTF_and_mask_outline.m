@@ -1,9 +1,9 @@
-function  [fig] = visualize_OTF_and_mask_outline(abs_OTF, OTF_mask, visualize)
+function  [fig] = visualize_OTF_and_mask_outline(abs_OTF, OTF_mask, visible)
 % visualize OTF Mask on OTF
 
 
 if nargin < 3
-    visualize = true;
+    visible = true;
 end
 
 % abs_OTF = abs(fftshift(OTF));
@@ -46,7 +46,7 @@ aps = [0.04, 0.2, ws(1), hs(1);
 if sz(3) == 1
     aps = [0.04, 0.2, 0.8, 0.7];
 end
-if visualize
+if visible
     figure('visible', 'on');
 else
     figure('visible', 'off');
