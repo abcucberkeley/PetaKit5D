@@ -115,6 +115,8 @@ switch functionName
         XR_ExM_Segmentation_interpolated_background_block_parser(varargin{1}, varargin{2}, varargin{3}, varargin{4}, varargin{5}, varargin{6}, varargin{7}, varargin{8}, varargin{9:end});
     case 'XR_ExM_Skeletonization_block'
         XR_ExM_Skeletonization_block_parser(varargin{1}, varargin{2}, varargin{3}, varargin{4}, varargin{5}, varargin{6}, varargin{7}, varargin{8:end});
+    case 'XR_ExM_Myelination_Analysis_block'
+        XR_ExM_Myelination_Analysis_block_parser(varargin{1}, varargin{2}, varargin{3}, varargin{4}, varargin{5}, varargin{6}, varargin{7:end});
     case 'multiple_region_spectra_encoding_block'
         multiple_region_spectra_encoding_block_parser(varargin{1}, varargin{2}, varargin{3}, varargin{4}, varargin{5}, varargin{6:end});
     case 'crop_deskew_rotate_demo_function'

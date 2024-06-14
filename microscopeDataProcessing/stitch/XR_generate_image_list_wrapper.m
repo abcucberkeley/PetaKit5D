@@ -48,11 +48,20 @@ overlapSize = pr.overlapSize;
 overlapSizeType = pr.overlapSizeType;
 uuid = pr.uuid;
 
+if ischar(dataPaths)
+    dataPaths = {dataPaths};
+end
+nd = numel(dataPaths);
+
 switch lower(generationMethod)
     case 'encoder'
-        stitch_generate_imagelist_from_encoder(dataPaths, dz, channelPatterns);
+        for d = 1 : nd
+            stitch_generate_imagelist_from_encoder(dataPaths{d}, dz, channelPatterns);
+        end
     case 'sqlite'
-        stitch_generate_imagelist_from_sqlite(dataPaths);        
+        for d = 1 : nd        
+            stitch_generate_imagelist_from_sqlite(dataPaths{d});        
+        end
     case 'tile_position'
         stitch_generate_imagelist_from_tile_positions(dataPaths, channelPatterns=channelPatterns, ...
             tilePatterns=tilePatterns, xyPixelSize=xyPixelSize, dz=dz, skewAngle=skewAngle, ...
