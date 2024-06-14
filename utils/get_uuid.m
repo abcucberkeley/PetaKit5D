@@ -13,8 +13,12 @@ else
         rng('shuffle');
         uuid = num2str(randi(2^53-1));
     else
-        [~, cmdout] = system('uuidgen');
-        uuid = strip(cmdout);
+        [status, cmdout] = system('uuidgen');
+        if status == 0
+            uuid = strip(cmdout);
+        else
+            uuid = num2str(randi(2^53-1));
+        end
     end
 end
 
@@ -23,6 +27,5 @@ if ispc
         uuid = uuid(1 : 4);
     end
 end
-
 
 end
