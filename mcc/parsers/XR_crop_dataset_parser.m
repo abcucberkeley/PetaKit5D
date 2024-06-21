@@ -16,7 +16,7 @@ ip.addParameter('zarrFile', false , @(x) islogical(x) || ischar(x)); % read zarr
 ip.addParameter('largeZarr', false, @(x) islogical(x) || ischar(x)); % use zarr file as input
 ip.addParameter('saveZarr', false , @(x) islogical(x) || ischar(x)); % save as zarr
 ip.addParameter('blockSize', [500, 500, 500] , @(x) isnumeric(x) || ischar(x));
-ip.addParameter('save16bit', false, @(x) islogical(x) || ischar(x));
+ip.addParameter('save16bit', true, @(x) islogical(x) || ischar(x));
 ip.addParameter('parseCluster', true, @(x) islogical(x) || ischar(x));
 ip.addParameter('masterCompute', true, @(x) islogical(x) || ischar(x)); % master node participate in the task computing. 
 ip.addParameter('jobLogDir', '../job_logs', @ischar);

@@ -113,7 +113,7 @@ containPartVolume = ~cellfun(@isempty, regexpi(fileFullpathList, ['_part\d+', ex
 % datanum in original format (different from the ones with partial volumes)
 if ~any(containPartVolume)
     fprintf('\nNo partial volume files found.\n');
-    groupedFnames = fnames;
+    groupedFnames = cellfun(@(x) {x}, fnames, 'unif', 0);
     groupedDatenum = datenum;
     groupedDatasize = datasize;
     return;

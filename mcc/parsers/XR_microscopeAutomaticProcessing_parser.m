@@ -21,7 +21,7 @@ ip.addParameter('xyPixelSize', 0.108, @(x) isscalar(x) || ischar(x));
 ip.addParameter('reverse', true, @(x) islogical(x) || ischar(x));
 ip.addParameter('objectiveScan', false, @(x) islogical(x) || ischar(x));
 ip.addParameter('zStageScan', false, @(x) islogical(x) || ischar(x));
-ip.addParameter('save16bit', [false, false, false, false], @(x) (numel(x) == 1 || numel(x) == 4) && islogical(x) || ischar(x));
+ip.addParameter('save16bit', [true, true, true, true], @(x) (numel(x) == 1 || numel(x) == 4) && islogical(x) || ischar(x));
 ip.addParameter('onlyFirstTP', false, @(x) islogical(x) || ischar(x));
 ip.addParameter('dzFromEncoder', false, @(x) islogical(x) || ischar(x));
 ip.addParameter('zarrFile', false, @(x) islogical(x) || ischar(x)); % use zarr file as input

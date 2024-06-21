@@ -27,7 +27,7 @@ ip.addParameter('zarrFile', false , @islogical); % read zarr
 ip.addParameter('largeZarr', false, @islogical); % use zarr file as input
 ip.addParameter('saveZarr', false , @islogical); % save as zarr
 ip.addParameter('blockSize', [500, 500, 500] , @isnumeric);
-ip.addParameter('save16bit', false, @islogical);
+ip.addParameter('save16bit', true, @islogical);
 ip.addParameter('parseCluster', true, @islogical);
 ip.addParameter('masterCompute', true, @islogical); % master node participate in the task computing. 
 ip.addParameter('jobLogDir', '../job_logs', @ischar);

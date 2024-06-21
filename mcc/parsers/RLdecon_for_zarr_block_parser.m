@@ -13,7 +13,7 @@ ip.addRequired('BatchBBoxes', @(x) isnumeric(x) || ischar(x));
 ip.addRequired('RegionBBoxes', @(x) isnumeric(x) || ischar(x));
 ip.addRequired('xyPixelSize', @(x) isnumeric(x) || ischar(x)); %in um
 ip.addRequired('dz', @(x) isnumeric(x) || ischar(x)); %in um
-ip.addParameter('save16bit', false , @(x) islogical(x) || ischar(x));
+ip.addParameter('save16bit', true , @(x) islogical(x) || ischar(x));
 ip.addParameter('Overwrite', false, @(x) islogical(x) || ischar(x));
 ip.addParameter('SkewAngle', -32.45 , @(x) isnumeric(x) || ischar(x));
 ip.addParameter('flipZstack', false, @(x) islogical(x) || ischar(x)); 

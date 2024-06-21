@@ -25,7 +25,7 @@ ip.addParameter('skewAngle', 32.45, @isscalar);
 ip.addParameter('reverse', false, @islogical);
 ip.addParameter('DSRCombined', true, @(x) islogical(x)); % combined processing 
 ip.addParameter('flipZstack', false, @islogical);
-ip.addParameter('save16bit', false , @islogical); % saves deskewed data as 16 bit -- not for quantification
+ip.addParameter('save16bit', true , @islogical); % saves deskewed data as 16 bit -- not for quantification
 ip.addParameter('saveMIP', true , @islogical); % save MIP-z for ds and dsr. 
 ip.addParameter('saveZarr', false , @islogical); % save as zarr
 ip.addParameter('batchSize', [1024, 1024, 1024] , @isvector); % in y, x, z

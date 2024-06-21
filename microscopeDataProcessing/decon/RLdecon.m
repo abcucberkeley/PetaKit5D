@@ -14,7 +14,7 @@ ip.addRequired('dz', @isnumeric);
 ip.addRequired('dzPSF', @isnumeric);
 ip.addParameter('rawdata', [], @isnumeric); 
 ip.addParameter('nTapering', 0, @isnumeric); 
-ip.addParameter('save16bit', false , @islogical);
+ip.addParameter('save16bit', true , @islogical);
 ip.addParameter('objectiveScan', false, @islogical);
 % deskew and rotation options
 ip.addParameter('Deskew', false , @islogical);

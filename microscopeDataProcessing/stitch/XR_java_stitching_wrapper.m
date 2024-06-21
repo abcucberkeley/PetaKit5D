@@ -37,7 +37,7 @@ ip.addParameter('resultDir', 'stitching', @isstr);
 ip.addParameter('parseCluster', true, @islogical);
 ip.addParameter('jobLogDir', '../job_logs', @isstr);
 ip.addParameter('cpusPerTask', 12, @isnumeric);
-ip.addParameter('save16bit', false, @islogical);
+ip.addParameter('save16bit', true, @islogical);
 ip.addParameter('uuid', '', @isstr);
 ip.addParameter('maxTrialNum', 3, @isnumeric);
 ip.addParameter('unitWaitTime', 2, @isnumeric);

@@ -35,7 +35,7 @@ ip.addParameter('inputBbox', [], @(x) isnumeric(x) || ischar(x)); % crop input t
 ip.addParameter('tileOutBbox', [], @(x) isnumeric(x) || ischar(x)); % crop tile after processing 
 ip.addParameter('tileOffset', 0, @(x) isnumeric(x) || ischar(x)); % offset added to tile
 ip.addParameter('resultDirName', 'matlab_stitch', @ischar);
-ip.addParameter('blendMethod', 'none', @ischar);
+ip.addParameter('blendMethod', 'feather', @ischar);
 ip.addParameter('overlapType', '', @ischar); % '', 'none', 'half', or 'full'
 ip.addParameter('xcorrShift', true, @(x) islogical(x) || ischar(x));
 ip.addParameter('xyMaxOffset', 300, @(x) isvector(x) && numel(x) <= 2 || ischar(x)); % max offsets in xy axes
@@ -50,7 +50,7 @@ ip.addParameter('axisWeight', [1, 0.1, 10], @(x) isnumeric(x) || ischar(x)); % a
 ip.addParameter('groupFile', '', @ischar); % file to define tile groups
 ip.addParameter('primaryCh', '', @(x) isempty(x) || ischar(x)); % format: CamA_ch0. If it is empty, use the first channel as primary channel
 ip.addParameter('usePrimaryCoords', false, @(x) islogical(x) || ischar(x)); 
-ip.addParameter('save16bit', false, @(x) islogical(x) || ischar(x));
+ip.addParameter('save16bit', true, @(x) islogical(x) || ischar(x));
 ip.addParameter('edgeArtifacts', 0, @(x) isnumeric(x) || ischar(x));
 ip.addParameter('distBboxes', [], @(x) isnumeric(x) || ischar(x)); % bounding boxes for distance transform
 ip.addParameter('saveMIP', true, @(x) islogical(x) || ischar(x));

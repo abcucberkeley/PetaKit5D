@@ -24,7 +24,7 @@ ip.addParameter('FFImage', '' , @ischar);
 ip.addParameter('backgroundImage', '' , @ischar);
 ip.addParameter('constOffset', [], @(x) isnumeric(x) || ischar(x)); % If it is set, use constant background, instead of background from the camera.
 ip.addParameter('BKRemoval', false, @(x) islogical(x) || ischar(x));
-ip.addParameter('save16bit', false , @(x) islogical(x) || ischar(x)); % saves deskewed data as 16 bit -- not for quantification
+ip.addParameter('save16bit', true , @(x) islogical(x) || ischar(x)); % saves deskewed data as 16 bit -- not for quantification
 ip.addParameter('rescaleRotate', false , @(x) islogical(x) || ischar(x)); % Rescale rotated data to [0 65535]
 ip.addParameter('save3DStack', true , @(x) islogical(x) || ischar(x)); % option to save 3D stack or not
 ip.addParameter('saveMIP', true , @(x) islogical(x) || ischar(x)); % save MIP-z for ds and dsr. 

@@ -14,7 +14,7 @@ ip.addParameter('ffcorrect', false, @islogical);
 ip.addParameter('Resolution', [], @isnumeric);
 ip.addParameter('wavelength', [], @isnumeric);
 ip.addParameter('stitchResultFname', '', @isstr);
-ip.addParameter('save16bit', false, @islogical);
+ip.addParameter('save16bit', true, @islogical);
 ip.addParameter('uuid', '', @isstr);
 
 ip.parse(imageDirName, imageListFileName, varargin{:});

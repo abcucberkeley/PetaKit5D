@@ -20,7 +20,7 @@ ip.addParameter('resample', [], @(x) isnumeric(x)); % resampling after rotation
 ip.addParameter('SkewAngle', 31.5, @isscalar);
 ip.addParameter('Reverse', false, @islogical);
 ip.addParameter('sCMOSCameraFlip', false, @islogical);
-ip.addParameter('save16bit', false , @islogical); % saves deskewed data as 16 bit -- not for quantification
+ip.addParameter('save16bit', true , @islogical); % saves deskewed data as 16 bit -- not for quantification
 ip.addParameter('uuid', '', @ischar);
 
 ip.parse(framePaths, xyPixelSize, dz, varargin{:});

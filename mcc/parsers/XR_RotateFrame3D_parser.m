@@ -14,7 +14,7 @@ ip.addParameter('resample', [], @(x) isnumeric(x) || ischar(x)); % resampling af
 ip.addParameter('SkewAngle', 31.5, @(x) isscalar(x) || ischar(x));
 ip.addParameter('Reverse', false, @(x) islogical(x) || ischar(x));
 ip.addParameter('sCMOSCameraFlip', false, @(x) islogical(x) || ischar(x));
-ip.addParameter('save16bit', false , @(x) islogical(x) || ischar(x)); % saves deskewed data as 16 bit -- not for quantification
+ip.addParameter('save16bit', true , @(x) islogical(x) || ischar(x)); % saves deskewed data as 16 bit -- not for quantification
 ip.addParameter('uuid', '', @ischar);
 
 ip.parse(framePaths, xyPixelSize, dz, varargin{:});
