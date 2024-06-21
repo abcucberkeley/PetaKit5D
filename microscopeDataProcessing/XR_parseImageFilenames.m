@@ -40,20 +40,20 @@ for d = 1 : nd
     % fnames_d = {dir_info.name}';
     [containPartialVolume, groupedFnames_d, groupedDatenum, groupedDatasize] = groupPartialVolumeFiles(dataPath, ...
         'ext', ext, 'channelPatterns', channelPatterns);
+
+    fnames_d = cellfun(@(x) x{1}, groupedFnames_d, 'unif', 0);
     if any(containPartialVolume)
-        fnames_d = cellfun(@(x) x{1}, groupedFnames_d, 'unif', 0);
         datenum_d = cellfun(@(x) max(x), groupedDatenum);
         % datesize_d = cellfun(@(x) max(x), groupedDatasize);
         datesize_d = groupedDatasize;
     else
-        fnames_d = groupedFnames_d;
         datenum_d = groupedDatenum;
         datesize_d = groupedDatasize;
     end
     
     if isempty(fnames_d)
         continue;
-    end    
+    end
     
     if Streaming
         last_modify_time = (datenum(clock) - datenum_d) * 24 * 60;

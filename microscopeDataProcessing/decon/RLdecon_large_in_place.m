@@ -13,7 +13,7 @@ ip.addRequired('pixelSize', @isnumeric);
 ip.addRequired('dz', @isnumeric);
 ip.addRequired('deconPath', @(x) ischar(x) || isempty(x));
 ip.addRequired('PSF', @(x) ischar(x) || isempty(x));
-ip.addParameter('save16bit', false , @islogical);
+ip.addParameter('save16bit', true , @islogical);
 ip.addParameter('Deskew', false , @islogical);
 ip.addParameter('SkewAngle', -32.45 , @isnumeric);
 ip.addParameter('flipZstack', false, @islogical); 

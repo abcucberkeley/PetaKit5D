@@ -21,7 +21,7 @@ ip.addRequired('RegionBBoxes', @isnumeric);
 ip.addRequired('xyPixelSize', @isnumeric); %in um
 ip.addRequired('dz', @isnumeric); %in um
 % ip.addParameter('BlockSize', [], @isnumeric);
-ip.addParameter('save16bit', false , @islogical);
+ip.addParameter('save16bit', true , @islogical);
 ip.addParameter('Overwrite', false, @islogical);
 ip.addParameter('SkewAngle', -32.45 , @isnumeric);
 ip.addParameter('flipZstack', false, @islogical); 

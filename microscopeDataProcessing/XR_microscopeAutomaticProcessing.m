@@ -128,7 +128,7 @@ ip.addParameter('xyPixelSize', 0.108, @isscalar);
 ip.addParameter('reverse', true, @islogical);
 ip.addParameter('objectiveScan', false, @islogical);
 ip.addParameter('zStageScan', false, @islogical);
-ip.addParameter('save16bit', [false, false, false, false], @(x) (numel(x) == 1 || numel(x) == 4) && islogical(x));
+ip.addParameter('save16bit', [true, true, true, true], @(x) (numel(x) == 1 || numel(x) == 4) && islogical(x));
 ip.addParameter('onlyFirstTP', false, @islogical);
 ip.addParameter('dzFromEncoder', false, @islogical);
 ip.addParameter('zarrFile', false, @islogical); % use zarr file as input

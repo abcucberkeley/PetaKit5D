@@ -10,7 +10,7 @@ ip = inputParser;
 ip.CaseSensitive = false;
 ip.addRequired('frameFullpaths', @(x) ischar(x) || iscell(x));
 ip.addRequired('outFullpath', @(x) ischar(x) || iscell(x));
-ip.addParameter('save16bit', false , @islogical);
+ip.addParameter('save16bit', true , @islogical);
 ip.addParameter('rsFactor', 60000 , @isnumeric);
 ip.addParameter('rsRange', [0, 65535] , @isnumeric);
 ip.addParameter('batchSize', [1024, 1024, 1024] , @isvector); % in y, x, z

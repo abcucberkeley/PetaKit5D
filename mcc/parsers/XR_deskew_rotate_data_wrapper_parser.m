@@ -26,7 +26,7 @@ ip.addParameter('lowerLimit', 0.4, @(x) isnumeric(x) || ischar(x)); % this value
 ip.addParameter('constOffset', [], @(x) isnumeric(x) || ischar(x)); % If it is set, use constant background, instead of background from the camera.
 ip.addParameter('FFImagePaths', {'','',''}, @(x) iscell(x) || ischar(x));
 ip.addParameter('backgroundPaths', {'','',''}, @(x) iscell(x) || ischar(x));
-ip.addParameter('save16bit', false , @(x) islogical(x) || ischar(x)); % saves deskewed data as 16 bit -- not for quantification
+ip.addParameter('save16bit', true , @(x) islogical(x) || ischar(x)); % saves deskewed data as 16 bit -- not for quantification
 ip.addParameter('save3DStack', true , @(x) islogical(x) || ischar(x)); % option to save 3D stack or not
 ip.addParameter('saveMIP', true , @(x) islogical(x) || ischar(x)); % save MIP-z for ds and dsr. 
 ip.addParameter('largeFile', false, @(x) islogical(x) || ischar(x));

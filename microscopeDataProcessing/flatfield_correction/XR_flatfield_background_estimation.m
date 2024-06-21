@@ -18,7 +18,7 @@ ip.addParameter('MovieSelector', 'cell', @ischar);
 ip.addParameter('sigmaThresh', 8, @isnumeric); % camera sigma threshold for background image, for sCMOS, std should be around 4, set a higher one
 ip.addParameter('sigmaFactor', 4, @isnumeric); % std factor to decide background image
 ip.addParameter('probThresh', 0.001, @isnumeric); % probability threshold for high count images, 1% for 4sigma
-ip.addParameter('save16bit', false , @islogical); % saves deskewed data as 16 bit -- not for quantification
+ip.addParameter('save16bit', true , @islogical); % saves deskewed data as 16 bit -- not for quantification
 ip.addParameter('saveMIP', false, @islogical); % save MIPs
 ip.addParameter('uuid', '', @ischar);
 

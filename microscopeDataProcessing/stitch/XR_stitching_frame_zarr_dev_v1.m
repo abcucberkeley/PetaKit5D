@@ -67,7 +67,7 @@ ip.addParameter('InputBbox', [], @isnumeric); % crop input tile before processin
 ip.addParameter('tileOutBbox', [], @isnumeric); % crop tile after processing
 ip.addParameter('TileOffset', 0, @isnumeric); % offset added to the tile
 ip.addParameter('df', [], @isnumeric);
-ip.addParameter('save16bit', false , @islogical); % saves deskewed data as 16 bit -- not for quantification
+ip.addParameter('save16bit', true , @islogical); % saves deskewed data as 16 bit -- not for quantification
 ip.addParameter('EdgeArtifacts', 0, @isnumeric);
 ip.addParameter('Decon', false, @islogical);
 ip.addParameter('DS', false, @islogical);

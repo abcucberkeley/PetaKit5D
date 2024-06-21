@@ -9,7 +9,7 @@ ip.addRequired('dz', @(x) isnumeric(x) || ischar(x));
 ip.addOptional('deconPath', '', @(x) ischar(x) || isempty(x));
 ip.addParameter('PSFfile', '', @ischar);
 ip.addParameter('Overwrite', false , @(x) islogical(x) || ischar(x));
-ip.addParameter('save16bit', false , @(x) islogical(x) || ischar(x));
+ip.addParameter('save16bit', true , @(x) islogical(x) || ischar(x));
 ip.addParameter('Rotate', false , @(x) islogical(x) || ischar(x));
 ip.addParameter('Deskew', false , @(x) islogical(x) || ischar(x));
 ip.addParameter('SkewAngle', -32.45 , @(x) isnumeric(x) || ischar(x));

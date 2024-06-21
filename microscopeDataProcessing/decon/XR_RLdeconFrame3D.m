@@ -25,11 +25,11 @@ ip.addRequired('xyPixelSize', @isnumeric);
 ip.addRequired('dz', @isnumeric);
 ip.addOptional('deconPath', '', @(x) ischar(x) || isempty(x));
 ip.addParameter('PSFfile', '', @ischar);
-ip.addParameter('Overwrite', false , @islogical);
-ip.addParameter('save16bit', false , @islogical);
-ip.addParameter('Rotate', false , @islogical);
-ip.addParameter('Deskew', false , @islogical);
-ip.addParameter('SkewAngle', -32.45 , @isnumeric);
+ip.addParameter('Overwrite', false, @islogical);
+ip.addParameter('save16bit', true, @islogical);
+ip.addParameter('Rotate', false, @islogical);
+ip.addParameter('Deskew', false, @islogical);
+ip.addParameter('SkewAngle', -32.45, @isnumeric);
 ip.addParameter('flipZstack', false, @islogical); 
 ip.addParameter('Background', [], @isnumeric);
 ip.addParameter('EdgeSoften', 5, @isnumeric); % # ofxy px to soften

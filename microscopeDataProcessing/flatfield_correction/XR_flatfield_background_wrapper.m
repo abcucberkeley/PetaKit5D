@@ -44,7 +44,7 @@ ip.addParameter('resultDirStr', 'matlab_flat_field_estimation', @ischar);
 ip.addParameter('channelPatterns', {'CamA_ch0', 'CamB_ch0'}, @iscell); % only compute first time point (for deciding cropping bouding box)
 ip.addParameter('estimationMode', 'per_image', @ischar); % 'cam_ch', 'came_ch_iter', 'came_ch_iter_stack', or 'per_image'
 ip.addParameter('onlyFirstTP', false, @islogical); % only compute first time point (for deciding cropping bouding box)
-ip.addParameter('save16bit', false, @islogical);
+ip.addParameter('save16bit', true, @islogical);
 ip.addParameter('saveMIP', false, @islogical); % save MIPs
 ip.addParameter('parseCluster', true, @islogical);
 ip.addParameter('masterCompute', true, @islogical); % master node participate in the task computing. 

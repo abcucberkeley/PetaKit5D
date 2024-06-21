@@ -15,12 +15,12 @@ ip.addParameter('channelPatterns', {'CamA_ch0', 'CamA_ch1', 'CamB_ch0'}, @(x) is
 ip.addParameter('skewAngle', 32.45, @(x) isscalar(x) || ischar(x));
 ip.addParameter('dz', 0.5, @(x) isscalar(x) || ischar(x));
 ip.addParameter('xyPixelSize', 0.108, @(x) isvector(x) && numel(x) <= 2 || ischar(x));
-ip.addParameter('save16bit', false, @(x) numel(x) == 1 && islogical(x) || ischar(x));
+ip.addParameter('save16bit', true, @(x) numel(x) == 1 && islogical(x) || ischar(x));
 ip.addParameter('parseSettingFile', false, @(x) islogical(x) || ischar(x)); % use setting file to decide whether filp Z stack or not, it is  poirier over flipZstack
 ip.addParameter('flipZstack', false, @(x) islogical(x) || ischar(x));
 ip.addParameter('background', [], @(x) isnumeric(x) || ischar(x));
 ip.addParameter('dzPSF', 0.1, @(x) isnumeric(x) || ischar(x));
-ip.addParameter('edgeErosion', 8, @(x) isnumeric(x) || ischar(x));
+ip.addParameter('edgeErosion', 0, @(x) isnumeric(x) || ischar(x));
 ip.addParameter('erodeByFTP', true, @(x) islogical(x) || ischar(x)); % Edge erosion by the first time point (ranked the first in the inital file list for each dataset).
 ip.addParameter('psfFullpaths', {'','',''}, @(x) iscell(x) || ischar(x));
 ip.addParameter('deconIter', 15 , @(x) isnumeric(x) || ischar(x)); % number of iterations

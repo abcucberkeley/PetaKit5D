@@ -27,13 +27,13 @@ ip.addParameter('channelPatterns', {'CamA_ch0', 'CamA_ch1', 'CamB_ch0'}, @iscell
 ip.addParameter('skewAngle', 32.45, @isscalar);
 ip.addParameter('dz', 0.5, @isscalar);
 ip.addParameter('xyPixelSize', 0.108, @(x) isvector(x) && numel(x) <= 2);
-ip.addParameter('save16bit', false, @(x) numel(x) == 1 && islogical(x));
+ip.addParameter('save16bit', true, @(x) numel(x) == 1 && islogical(x));
 ip.addParameter('parseSettingFile', false, @islogical); % use setting file to decide whether filp Z stack or not, it is  poirier over flipZstack
 ip.addParameter('flipZstack', false, @islogical);
 % decon parameters
 ip.addParameter('background', [], @isnumeric);
 ip.addParameter('dzPSF', 0.1, @isnumeric);
-ip.addParameter('edgeErosion', 8, @isnumeric);
+ip.addParameter('edgeErosion', 0, @isnumeric);
 ip.addParameter('erodeByFTP', true, @islogical); % Edge erosion by the first time point (ranked the first in the inital file list for each dataset).
 ip.addParameter('psfFullpaths', {'','',''}, @iscell);
 ip.addParameter('deconIter', 15 , @isnumeric); % number of iterations
