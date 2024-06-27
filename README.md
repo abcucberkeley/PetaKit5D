@@ -15,7 +15,7 @@ The tools have been tested with MATLAB R2022b-R2023a for Linux (Ubuntu 22.04), W
 ````
    setup
 ````
-3. Create a script or function to set up the workflows for your image processing tasks by calling related functions. You may follow the examples in the [demos](https://github.com/abcucberkeley/PetaKit5D/tree/main/demos). The documentation of the parameters can refer to [major_functions_deocumentation.txt](https://github.com/abcucberkeley/PetaKit5D/blob/main/major_functions_deocumentation.txt), the [GUI wiki page](https://github.com/abcucberkeley/PetaKit5D-GUI/wiki), or the parameter list in the related functions.
+3. Create a script or function to set up the workflows for your image processing tasks by calling related functions. You may follow the examples in the [demos](https://github.com/abcucberkeley/PetaKit5D/tree/main/demos). The documentation of the parameters can refer to [major_functions_documentation.txt](https://github.com/abcucberkeley/PetaKit5D/blob/main/major_functions_documentation.txt), the [GUI wiki page](https://github.com/abcucberkeley/PetaKit5D-GUI/wiki), or the parameter list in the related functions.
 
 
 ## Demos
@@ -36,7 +36,7 @@ We created Python wrappers for the main functions by calling MATLAB runtime in a
 ````
 pip install --no-binary :all: --no-cache-dir PyPetaKit5D
 ````
-The parameters for the Python wrappers are identical to those in MATLAB. The documentation of the parameters can refer to [major_functions_deocumentation.txt](https://github.com/abcucberkeley/PetaKit5D/blob/main/major_functions_deocumentation.txt) or the [GUI wiki page](https://github.com/abcucberkeley/PetaKit5D-GUI/wiki). 
+The parameters for the Python wrappers are identical to those in MATLAB. The documentation of the parameters can refer to [major_functions_documentation.txt](https://github.com/abcucberkeley/PetaKit5D/blob/main/major_functions_documentation.txt) or the [GUI wiki page](https://github.com/abcucberkeley/PetaKit5D-GUI/wiki). 
 
 
 ## GUI
