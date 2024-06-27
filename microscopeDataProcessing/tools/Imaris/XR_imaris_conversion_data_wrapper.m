@@ -1,10 +1,29 @@
 function XR_imaris_conversion_data_wrapper(dataPaths, varargin)
-% wrapper to convert dataset to ims file
+% Dataset level wrapper to convert dataset to Imaris file.
+%
+%
+% Required inputs:
+%           dataPaths : char or cell array. Directory paths for the datasets. Either a string for a single dataset or a cell array of paths for several datasets with same experimental settings.
+%
+% Parameters (as 'specifier'-value pairs):
+%       resultDirName : char (default: 'imaris'). Result directory under data paths.
+%           overwrite : true|false (default: false). Overwrite existing results
+%     channelPatterns : a cell array (default: {'CamA_ch0', 'CamA_ch1', 'CamB_ch0'}).  Channel identifiers for included channels. 
+%          pixelSizes : 1x3 vector (default: [0.108, 0.108, 0.108]). Pixel sizes in um, in yxz order.
+%            zarrFile : true|false (default: false). Use Zarr file as input.
+%           blockSize : 1x3 vector (default: [64, 64, 64]). Block/chunk size for Imaris output.
+%           inputBbox : empty or 1x6 vector (default: []). Input bounding box for crop. Definiation: [ymin, xmin, zmin, ymax, xmax, zmax].
+%       converterPath : empty or char (default: ''). Converter binary path. If empty, use the default one within the software.
+%        parseCluster : true|false (default: true). Use slurm cluster for the processing.
+%       masterCompute : true|false (default: true). Master job node is involved in the processing.
+%           jobLogDir : char (default: '../job_logs'). Path for the slurm job logs.
+%         cpusPerTask : a number (default: 1). The number of cpu cores per task for slurm job submission.
+%                uuid : empty or a uuid string (default: ''). uuid string as part of the temporate result paths.
+%             mccMode : true|false (default: false). Use mcc mode.
+%          configFile : empty or char (default: ''). Path for the config file for job submission.
+%
 %
 % Author: Xiongtao Ruan (06/23/2022)
-% 
-% xruan (07/28/2022): add support for user defined chunk size
-
 
 
 ip = inputParser;
@@ -14,11 +33,10 @@ ip.addRequired('dataPaths', @(x) ischar(x) || iscell(x));
 ip.addParameter('resultDirName', 'imaris',  @(x) ischar(x));
 ip.addParameter('overwrite', false,  @(x) islogical(x));
 ip.addParameter('channelPatterns', {'CamA_ch0', 'CamA_ch1', 'CamB_ch0'}, @iscell);
-ip.addParameter('pixelSizes', [0.108, 0.108, 0.108], @isnumeric); % y, x, z
-ip.addParameter('zarrFile', false, @islogical); % use zarr file as input
-ip.addParameter('blockSize', [64, 64, 64], @isnumeric); % y, x, z
-ip.addParameter('inputBbox', [], @isnumeric); % ymin, xmin, zmin, ymax, xmax, zmax
-ip.addParameter('timepoints', [], @isnumeric); % number of time points included
+ip.addParameter('pixelSizes', [0.108, 0.108, 0.108], @isnumeric);
+ip.addParameter('zarrFile', false, @islogical);
+ip.addParameter('blockSize', [64, 64, 64], @isnumeric);
+ip.addParameter('inputBbox', [], @isnumeric);
 ip.addParameter('converterPath', '', @ischar);
 ip.addParameter('parseCluster', true, @islogical);
 ip.addParameter('masterCompute', true, @islogical);
@@ -39,7 +57,6 @@ pixelSizes = pr.pixelSizes;
 zarrFile = pr.zarrFile;
 blockSize = pr.blockSize;
 inputBbox = pr.inputBbox;
-timepoints = pr.timepoints;
 converterPath = pr.converterPath;
 parseCluster = pr.parseCluster;
 jobLogDir = pr.jobLogDir;
@@ -142,10 +159,6 @@ if zarrFile
     type_str = 'zarr';
 end
 % optional flags, also include flag str
-time_str = '';
-if ~isempty(timepoints)
-    time_str = sprintf('-t %d', timepoints);
-end
 blockSize_str = num2str(blockSize, '%d,'); 
 
 bbox_str = '';
@@ -160,8 +173,8 @@ for d = 1 : nd
         dataPath_str = strjoin(dataPaths{d}, ',');
     end 
     
-    func_strs{d} = sprintf('"%s" -P "%s" -F "%s" -r %s -v %s -o "%s" %s -b %s %s', converterPath, ...
-        channelPatterns_str, dataPath_str, type_str, voxelsize_str, imsPaths{d}, time_str, ...
+    func_strs{d} = sprintf('"%s" -P "%s" -F "%s" -r %s -v %s -o "%s" -b %s %s', converterPath, ...
+        channelPatterns_str, dataPath_str, type_str, voxelsize_str, imsPaths{d}, ...
         blockSize_str, bbox_str);
 end
 

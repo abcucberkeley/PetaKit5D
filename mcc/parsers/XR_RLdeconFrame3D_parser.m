@@ -8,11 +8,11 @@ ip.addRequired('xyPixelSize', @(x) isnumeric(x) || ischar(x));
 ip.addRequired('dz', @(x) isnumeric(x) || ischar(x));
 ip.addOptional('deconPath', '', @(x) ischar(x) || isempty(x));
 ip.addParameter('PSFfile', '', @ischar);
-ip.addParameter('Overwrite', false , @(x) islogical(x) || ischar(x));
-ip.addParameter('save16bit', true , @(x) islogical(x) || ischar(x));
-ip.addParameter('Rotate', false , @(x) islogical(x) || ischar(x));
-ip.addParameter('Deskew', false , @(x) islogical(x) || ischar(x));
-ip.addParameter('SkewAngle', -32.45 , @(x) isnumeric(x) || ischar(x));
+ip.addParameter('Overwrite', false, @(x) islogical(x) || ischar(x));
+ip.addParameter('save16bit', true, @(x) islogical(x) || ischar(x));
+ip.addParameter('Rotate', false, @(x) islogical(x) || ischar(x));
+ip.addParameter('Deskew', false, @(x) islogical(x) || ischar(x));
+ip.addParameter('SkewAngle', -32.45, @(x) isnumeric(x) || ischar(x));
 ip.addParameter('flipZstack', false, @(x) islogical(x) || ischar(x)); 
 ip.addParameter('Background', [], @(x) isnumeric(x) || ischar(x));
 ip.addParameter('EdgeSoften', 5, @(x) isnumeric(x) || ischar(x)); % # ofxy px to soften
@@ -39,7 +39,7 @@ ip.addParameter('saveZarr', false, @(x) islogical(x) || ischar(x)); % save as za
 ip.addParameter('dampFactor', 1, @(x) isnumeric(x) || ischar(x)); % damp factor for decon result
 ip.addParameter('scaleFactor', [], @(x) isnumeric(x) || ischar(x)); % scale factor for decon result
 ip.addParameter('deconOffset', 0, @(x) isnumeric(x) || ischar(x)); % offset for decon result
-ip.addParameter('deconMaskFns', {}, @(x) iscell(x) || ischar(x)); % 2d masks to filter regions to decon, in xy, xz, yz order
+ip.addParameter('maskFullpaths', {}, @(x) iscell(x) || ischar(x)); % 2d masks to filter regions to decon, in xy, xz, yz order
 ip.addParameter('parseCluster', true, @(x) islogical(x) || ischar(x));
 ip.addParameter('parseParfor', false, @(x) islogical(x) || ischar(x));
 ip.addParameter('masterCompute', true, @(x) islogical(x) || ischar(x)); % master node participate in the task computing. 
@@ -92,7 +92,7 @@ saveZarr = pr.saveZarr;
 dampFactor = pr.dampFactor;
 scaleFactor = pr.scaleFactor;
 deconOffset = pr.deconOffset;
-deconMaskFns = pr.deconMaskFns;
+maskFullpaths = pr.maskFullpaths;
 parseCluster = pr.parseCluster;
 parseParfor = pr.parseParfor;
 masterCompute = pr.masterCompute;
@@ -203,8 +203,8 @@ end
 if ischar(deconOffset)
     deconOffset = str2num(deconOffset);
 end
-if ischar(deconMaskFns) && ~isempty(deconMaskFns) && strcmp(deconMaskFns(1), '{')
-    deconMaskFns = eval(deconMaskFns);
+if ischar(maskFullpaths) && ~isempty(maskFullpaths) && strcmp(maskFullpaths(1), '{')
+    maskFullpaths = eval(maskFullpaths);
 end
 if ischar(parseCluster)
     parseCluster = str2num(parseCluster);
@@ -252,7 +252,7 @@ XR_RLdeconFrame3D(frameFullpaths, xyPixelSize, dz, deconPath, PSFfile=PSFfile, .
     errThresh=errThresh, CPUMaxMem=CPUMaxMem, batchSize=batchSize, blockSize=blockSize, ...
     zarrSubSize=zarrSubSize, largeFile=largeFile, largeMethod=largeMethod, ...
     saveZarr=saveZarr, dampFactor=dampFactor, scaleFactor=scaleFactor, deconOffset=deconOffset, ...
-    deconMaskFns=deconMaskFns, parseCluster=parseCluster, parseParfor=parseParfor, ...
+    maskFullpaths=maskFullpaths, parseCluster=parseCluster, parseParfor=parseParfor, ...
     masterCompute=masterCompute, masterCPU=masterCPU, GPUJob=GPUJob, jobLogDir=jobLogDir, ...
     cpusPerTask=cpusPerTask, uuid=uuid, maxTrialNum=maxTrialNum, unitWaitTime=unitWaitTime, ...
     debug=debug, saveStep=saveStep, psfGen=psfGen, mccMode=mccMode, configFile=configFile, ...

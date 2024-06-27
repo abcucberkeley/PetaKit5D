@@ -1,0 +1,568 @@
+Major functions parameter documentation
+        
+
+XR_deskew_rotate_data_wrapper.m
+dataset level deskew/rotate wrapper, support small and large scale deskew/rotate
+
+Required inputs:
+          dataPaths : char or cell array. Directory paths for the datasets. Either a string for a single dataset or a cell array of paths for several datasets with same experimental settings.
+
+Parameters:
+          DSDirName : char (default: 'DS'). Result directory name under dataPaths.
+         DSRDirName : char (default: 'DSR'). Deskew/rotation result directory name under dataPaths.
+             deskew : true|false (default: true). Deskew the data.
+             rotate : true|false (default: true). Rotate deskewed data.
+          overwrite : true|false (default: false). Overwrite existing results
+    channelPatterns : a cell array (default: {'CamA_ch0', 'CamA_ch1', 'CamB_ch0', 'CamB_ch1'}).  Channel identifiers for included channels. 
+                 dz : a number (default: 0.5). Scan interval in um.
+        xyPixelSize : a number (default: 0.108). Pixel size in um.
+          skewAngle : a number (default: 32.45). Skew angle (in degree) of the stage.
+      objectiveScan : true|false (default: false). Objective scan.
+         zStageScan : true|false (default: false). Z stage scan (orthogonal to objective scan).
+            reverse : true|false (default: false). Inverse direction of z axis. 
+         flipZstack : true|false (default: false). Flip z stacks.
+   parseSettingFile : true|false (default: false). Use the setting file to decide whether filp z stacks or not.
+               crop : true|false (default: false). Crop the data to smaller for rotation (removing extra empty regions).
+        DSRCombined : true|false (default: true). Use combined processing for deskew and rotation.
+       FFCorrection : true|false (default: false). Flat-field correction.
+          BKRemoval : true|false (default: false). Remove background during flat-field correction.
+         lowerLimit : a number between 0 and 1 (default: 0.4). Lower limit to cap the flat field image. 
+        constOffset : empty or a number (default: []). If empty, add the background; if not, add the const offset after flat field correction.
+       FFImagePaths : empty or a cell array of paths for corresponding channels (default: {'', '', ''}). Flat field image paths.
+    backgroundPaths : empty or a cell array of paths for corresponding channels (default: {'', '', ''}). Background image paths.
+          save16bit : true|false (default: true). Save 16bit result for deskew/rotate. 
+        save3DStack : true|false (default: true). Save 3D stack for DS and DSR. 
+            saveMIP : true|false (default: true). Save MIPs after deskew/rotate.
+          largeFile : true|false (default: false). Use large scale deskew/rotation strategy.
+           zarrFile : true|false (default: false). Use Zarr file as input.
+           saveZarr : true|false (default: false). Save results as Zarr files.
+          batchSize : 1x3 vector (default: [1024, 1024, 1024]). Batch size per stitching task.
+          blockSize : 1x3 vector (default: [256, 256, 256]). Block/chunk size for zarr output.
+          inputBbox : empty or 1x6 vector (default: []). Input bounding box for crop. Definiation: [ymin, xmin, zmin, ymax, xmax, zmax].
+           taskSize : empty or a number (default: []). Number of tasks per job for large-scale deskew/rotation.
+     resampleFactor : empty or 1x1, 1x2 or 1x3 vector (default: []). Resampling factor after rotation. Empty: no resampling; axis order yxz.
+       interpMethod : 'linear'|'cubic' (default: 'linear'). Interpolation method for geometric transformations in deskew and rotation.
+      maskFullpaths : empty or a cell array (default: {}). 2D projective masks to filter regions for large scale deskew/rotation, in xy, xz, and yz order.
+       parseCluster : true|false (default: true). Use slurm cluster for the processing.
+        parseParfor : true|false (default: false). Use matlab parfor for paralle processing.
+      masterCompute : true|false (default: true). Master job node is involved in the processing.
+          jobLogDir : char (default: '../job_logs'). Path for the slurm job logs.
+        cpusPerTask : a number (default: 1). The number of cpu cores per task for slurm job submission.
+               uuid : empty or a uuid string (default: ''). uuid string as part of the temporate result paths.
+              debug : true|false (default: false). Debug mode. Not actually used in this function. Reserved for future use.
+            mccMode : true|false (default: false). Use mcc mode.
+         configFile : empty or char (default: ''). Path for the config file for job submission.
+
+
+
+XR_decon_data_wrapper.m
+Dataset level deconvolution wrapper.
+
+Required inputs:
+          dataPaths : char or cell array. Directory paths for the datasets. Either a string for a single dataset or a cell array of paths for several datasets with same experimental settings and PSFs.
+
+Parameters:
+      resultDirName : char (default: 'matlab_decon'). Result directory under data paths.
+          overwrite : true|false or 1x3 bool vector (default: false). Overwrite existing results
+    channelPatterns : a cell array (default: {'CamA_ch0', 'CamA_ch1', 'CamB_ch0'}).  Channel identifiers for included channels. 
+          skewAngle : a number (default: 32.45). Skew angle (in degree) of the stage.
+                 dz : a number (default: 0.5). Scan interval in um.
+        xyPixelSize : a number (default: 0.108). Pixel size in um.
+          save16bit : 1x1 or 1x2 bool vector (default: [true, true]). Save 16bit result for deskew/rotate and stitch. 
+   parseSettingFile : true|false (default: false). Use the setting file to decide whether filp z stacks or not.
+         flipZstack : true|false (default: false). Flip z stacks.
+         background : empty or a number (default: []). Background subtraction before deconvolution.
+              dzPSF : a number (default: 0.5). Scan interval in um for PSF.
+        edgeErosion : a number (default: 0). Number of pixels to erode after deconvolution to remove edge artifacts.
+         erodeByFTP : true|false (default: true). Apply the erosion mask from the first time point.
+       psfFullpaths : char or a cell array (default: {'','',''}). Paths of PSF with the same order as channelPatterns.
+          deconIter : a number or 1x#dataset (default: 15). Deconvolution iteration. If it is a vector with 1x#dateset, apply specific iterations for datasets.
+           RLMethod : 'original'|'simplified'|'omw' (default: 'simplified'). 'original': matlab deconvlucy.m (no GPU support); 'simplified': our implemention based on deconvlucy.m with GPU support; 'omw': OMW deconvolution.
+        wienerAlpha : a number or 1x#channel (default: 0.005). Wiener parameter. If it is a 1x#channel vector, apply a specific parameter per channel mapping to channelPatterns.
+       OTFCumThresh : a number or 1x#channel (default: 0.9). Accumulated energy quantile to segment OTF mask. Smaller number means tighter threshold with smaller masks. 
+      hannWinBounds : 1x2 vector (default: [0.8, 1]). Apodization range for distance matrix with Hann window function. 0 means the center of support, and 1 means the edge of support. 
+             skewed : empty or true|false (default: []). Parameter for OTF segmentation based on PSF space. If true, PSF is in the skewed space. If empty, automatically deteriming if PSF is in skewed space.
+              debug : true|false (default: false). Debug mode for simplified and OMW method. If true, save the intermediate steps every n iterations (n is defined by saveStep).
+           saveStep : a number (default: 5). For debug mode, determine the interval to save intermediate results.
+             psfGen : true|false (default: true). Generate a clean version of PSF by removing background or other isolated bright regions.
+             GPUJob : true|false (default: false). Use GPU for deconvolution
+        deconRotate : true|false (default: false). Run rotation after deconvolution.
+          batchSize : 1x3 vector (default: [1024, 1024, 1024]). Batch size per deconvolution task.
+          blockSize : 1x3 vector (default: [256, 256, 256]). Block/chunk size for zarr output.
+          largeFile : true|false (default: false). Use large scale deconvolution strategy.
+        largeMethod : 'inmemory'|'inplace' (default: 'inmemory'). Method for large scale deconvolution. 'inmemory': read data in memory and deconvolve region by region. 'inplace': only read the region for deconvolution in a batch, and write the result to disk, only support Zarr.
+           zarrFile : true|false (default: false). Use Zarr file as input.
+           saveZarr : true|false (default: false). Save results as Zarr files.
+         dampFactor : a number (default: 1). Damp factor for decon result by capping the intensity by the product of the raw data and the damp factor.
+        scaleFactor : empty or 1x#channel (default: []). Scale factor apply to deconvolution result. If it is a 1x#channel vector, apply a specific parameter per channel mapping to channelPatterns.
+        deconOffset : a number (default: 0). Offset added to the decon result.
+      maskFullpaths : empty or a cell array (default: {}). 2D projective masks to filter regions for decon in 'inplace' large decon method, in xy, xz, and yz order.
+       parseCluster : true|false (default: true). Use slurm cluster for the processing.
+        parseParfor : true|false (default: false). Use matlab parfor for paralle processing.
+      masterCompute : true|false (default: true). Master job node is involved in the processing.
+          jobLogDir : char (default: '../job_logs'). Path for the slurm job logs.
+        cpusPerTask : a number (default: 1). The number of cpu cores per task for slurm job submission.
+               uuid : empty or a uuid string (default: ''). uuid string as part of the temporate result paths.
+       unitWaitTime : a number (default: 1). The wait time per file in minutes to check whether the computing is done.
+        maxTrialNum : a number (default: 3). The max number of retries for a task.
+            mccMode : true|false (default: false). Use mcc mode.
+         configFile : empty or char (default: ''). Path for the config file for job submission in CPU.
+      GPUConfigFile : empty or char (default: ''). Path for the config file for job submission for GPU deconvolution (The conductor job can be in a CPU node).
+
+
+
+XR_microscopeAutomaticProcessing.m
+Automatic image processing pipeline for microscopy data. It can perform deskew w/o rotation, and stitching. It supports both existing data in the directories or real-time transferring of data from other sources, i.e., microscope.
+
+Required inputs:
+          dataPaths : char or cell array. Directory paths for the datasets. Either a string for a single dataset or a cell array of paths for several datasets with same experimental settings.
+
+Parameters:
+          overwrite : true|false or 1x3 bool vector (default: false). Overwrite existing results
+          streaming : true|false (default: true). True for real-time processing, and false for existing data
+    channelPatterns : a cell array (default: {'CamA_ch0', 'CamA_ch1', 'CamB_ch0'}).  Channel identifiers for included channels. 
+          skewAngle : a number (default: 32.45). Skew angle (in degree) of the stage.
+                 dz : a number (default: 0.5). Scan interval in um.
+        xyPixelSize : a number (default: 0.108). Pixel size in um.
+            reverse : true|false (default: false). Inverse direction of z axis. 
+      objectiveScan : true|false (default: false). Objective scan.
+         zStageScan : true|false (default: false). Z stage scan (orthogonal to objective scan).
+          save16bit : 1x1 or 1x2 bool vector (default: [true, true]). Save 16bit result for deskew/rotate and stitch. 
+      dzFromEncoder : true|false (default: false). Estimate dz from encoder positions.
+           zarrFile : true|false (default: false). Use Zarr file as input.
+           saveZarr : true|false (default: false). Save results as Zarr files.
+        save3DStack : true|false (default: true). Save 3D stack for DS and DSR. 
+             deskew : true|false (default: true). Deskew the data.
+             rotate : true|false (default: true). Rotate deskewed data.
+             stitch : true|false (default: false). Stitch deskewed and rotated data.
+   parseSettingFile : true|false (default: false). Use the setting file to decide whether filp z stacks or not.
+         flipZstack : true|false (default: false). Flip z stacks.
+        DSRCombined : true|false (default: true). Use combined processing for deskew and rotation.
+       FFCorrection : true|false (default: false). Flat-field correction.
+          BKRemoval : true|false (default: false). Remove background during flat-field correction.
+         lowerLimit : a number between 0 and 1 (default: 0.4). Lower limit to cap the flat field image. 
+        constOffset : empty or a number (default: []). If empty, add the background; if not, add the const offset after flat field correction.
+       FFImagePaths : empty or a cell array of paths for corresponding channels (default: {'', '', ''}). Flat field image paths.
+    backgroundPaths : empty or a cell array of paths for corresponding channels (default: {'', '', ''}). Background image paths.
+       resampleType : 'given'|'isotropic'|'xy_isotropic' (default: 'isotropic'). given: user-defined, xy_isotropic: xy isotropic, and z 
+     resampleFactor : empty or 1x1, 1x2 or 1x3 vector (default: []). Resampling factor. Empty: no resampling; axis order yxz.
+          inputBbox : empty or 1x6 vector (default: []). Input bounding box for crop. Definiation: [ymin, xmin, zmin, ymax, xmax, zmax].
+stitchResultDirName : empty or char (default: ''). Result directory name for stitching.
+ imageListFullpaths : empty or char or cell array (default: ''). Path(s) for image list.
+          axisOrder : char (default: 'xyz'). Axis order mapping for coordinates in image list. With combinations of -, x, y, and z. '-yxz' means negative -y map to x, x maps to y, and z maps to z.
+        blendMethod : 'none'|'feather'|'mean'|'median'|'max' (default: 'none'). Blending method for stitching.
+         xcorrShift : true|false (default: false). Xcorr registration for stitching.
+          xcorrMode : 'primary'|'primaryFirst'|'all' (default: 'primaryFirst'). Xcorr registration mode. 'primary': use all time points in primary channel. 'primaryFirst': use the first time point in primary channel. 'all': registration within each time point and channel.
+        xyMaxOffset : a number (default: 300). Max offsets in voxel in xy axes in the registration.
+         zMaxOffset : a number (default: 50). Max offset in voxel in z axis in the registration.
+      edgeArtifacts : a number (default: 2). The number of voxels from the border to erode to remove edge artifacts. 
+          primaryCh : empty or char (default: ''). The primary channel for registration. Must be one from channelPatterns.
+          stitchMIP : empty or 1x1 or 1x3 bool vector (default: []). Stitching MIP for given axis. Order yxz. 
+       onlineStitch : true|false (default: false). Support for online stitch (with partial number of tiles).
+  generateImageList : ''|'from_encoder'|'from_sqlite' (default: ''). Method to generate image list.
+       parseCluster : true|false (default: true). Use slurm cluster for the processing.
+      masterCompute : true|false (default: true). Master job node is involved in the processing.
+          jobLogDir : char (default: '../job_logs'). Path for the slurm job logs.
+        cpusPerTask : a number (default: 1). The number of cpu cores per task for slurm job submission.
+               uuid : empty or a uuid string (default: ''). uuid string as part of the temporate result paths.
+        maxTrialNum : a number (default: 3). The max number of retries for a task.
+       unitWaitTime : a number (default: 1). The wait time per file in minutes to check whether the computing is done.
+      minModifyTime : a number (default: 10). The minimum time in minutes for the latest modified file to decide whether it is fully transferred.
+      maxModifyTime : a number (default: 10). The maximum time in minutes to check whether there are coming new files.
+     maxWaitLoopNum : a number (default: 10). Number of maximum loops without any computing.
+            mccMode : true|false (default: false). Use mcc mode.
+         configFile : empty or char (default: ''). Path for the config file for job submission.
+
+
+
+XR_matlab_stitching_wrapper.m
+Wrapper for the stitching pipeline.
+
+Inputs :   
+          dataPaths : char or cell array. Directory paths for the tiles. Either a string for a single path or a cell array of paths for tiles within different directories.
+ imageListFullpaths : char or cell array. Path(s) for image list. The order of imageListFullpaths need to map to the dataPaths. 
+
+Parameters (as 'specifier'-value pairs): 
+      resultDirName : char (default: 'matlab_stitch'). Result directory under data paths.
+          streaming : true|false (default: false). True for real-time processing, and false for existing data
+    channelPatterns : a cell array (default: {'CamA_ch0', 'CamA_ch1', 'CamB_ch0'}).  Channel identifiers for included channels. 
+           multiLoc : true|{false}. Tiles are in multiple folders, with a group per folder.
+    processedDirStr : empty or char (default: ''). Processed directory name under dataPath.
+ stitchInfoFullpath : empty or char (default: ''). Stitch info path. If provided, use the information to stitch the data.
+                 DS : true|false (default: false). Data is in deskewed space.
+                DSR : true|false (default: false). Data is in deskew/rotated space (with stage coordinates).
+        xyPixelSize : a number (default: 0.108). Pixel size in um.
+                 dz : a number (default: 0.5). Scan interval in um.
+          skewAngle : a number (default: 32.45). Skew angle (in degree) of the stage.
+            reverse : true|false (default: false). Inverse direction of z axis. 
+   parseSettingFile : true|false (default: false). Use the setting file to decide whether filp z stacks or not.
+          axisOrder : char (default: 'x,y,z'). Axis order mapping for coordinates in image list. With combinations of -, x, y, and z. '-yxz' means negative -y map to x, x maps to y, and z maps to z.
+          dataOrder : char (default: 'y,x,z'). Axis order mapping for data. 'y,x,z' means the first, second and third axes are y, x, and z, respectively.
+      objectiveScan : true|false (default: false). Objective scan. This is the scan as in the DS space.
+             IOScan : true|false (default: false). Inverted objective scan. This is the scan with the stage coordinates (DSR space). 
+           zarrFile : true|false (default: false). Use Zarr file as input.
+          largeZarr : true|false (default: false). Use large-scale stitching strategy, i.e., use MIP slabs for registration and distance transforms.
+           poolSize : empty or 1x6 or 1x8 vectors (default: []). MIP slab generation downsampling factor for stitching large tiles. 
+          batchSize : 1x3 vector (default: [512, 512, 512]). Batch size per stitching task.
+          blockSize : 1x3 vector (default: [256, 256, 256]). Block/chunk size for zarr output.
+          shardSize : empty or 1x3 vector (default: []). If not empty, set shard size in zarr output. 
+       resampleType : 'given'|'isotropic'|'xy_isotropic' (default: 'isotropic'). given: user-defined, xy_isotropic: xy isotropic, and z 
+     resampleFactor : empty or 1x1, 1x2 or 1x3 vector (default: []). Resampling factor. Empty: no resampling; axis order yxz.
+          inputBbox : empty or 1x6 vector (default: []). Input bounding box for crop for tiles. Definiation: [ymin, xmin, zmin, ymax, xmax, zmax].
+        tileOutBbox : empty or 1x6 vector (default: []). Crop tiles after preprocessing. Definiation: [ymin, xmin, zmin, ymax, xmax, zmax].
+         tileOffset : a number (default: 0). Offset added to tiles during preprocessing.
+        blendMethod : 'none'|'feather'|'mean'|'median'|'max' (default: 'feather'). Blending method for stitching. 'none' means taking half overlap from each tile; 'mean', 'median' and 'max' means use the mean, median or max intensity in the overlap region. 'feather' means feather blending.
+        overlapType : ''|'none'|'half'|'full' (default: ''). Method to handle overlap regions for blending (feather use 'full'). 'none', 'half', and 'full' means the overlap region to use for blending. If empty, use 'none' for none blending, and 'half' for others.
+         xcorrShift : true|false (default: false). Xcorr registration for stitching.
+        xyMaxOffset : a number (default: 300). Max offsets in voxel in xy axes in the registration.
+         zMaxOffset : a number (default: 50). Max offset in voxel in z axis in the registration.
+    xcorrDownsample : 1x3 vector (default: [2, 2, 1]). Downsampling factor for registration in yxz axis order.
+        xcorrThresh : a number (default: 0.25). Threshold for max xcorr value. The registration for a pair of tiles is not considered if belowing this threshold.
+            outBbox : empty or 1x6 vector (default: []). Only output the stitching result for the given output. Definiation: [ymin, xmin, zmin, ymax, xmax, zmax].
+          xcorrMode : 'primary'|'primaryFirst'|'all' (default: 'primaryFirst'). Xcorr registration mode. 'primary': use all time points in primary channel. 'primaryFirst': use the first time point in primary channel. 'all': registration within each time point and channel.
+        shiftMethod : 'local'|'global'|'grid'|'group' (default: 'grid'). Registration optimization method. 'local': use minimum spinning tree; 'global': use all pairs of neighbors; 'grid': use direct neighbors; 'group': use grid method within group, then across groups.
+         axisWeight : 1x3 vector (default: [1, 0.1, 10]). Weights for the axes to be considered during registration optimization in yxz orders.
+          groupFile : char (default: ''). File to define tile groups for 'group' option in shiftMethod. The format is the tile indices x, y, z, followed by gropu id.
+          primaryCh : empty or char (default: ''). The primary channel for registration. Must be one from channelPatterns.
+   usePrimaryCoords : true|false (default: false). Use the coordinates from the primary channel for stitching.
+          save16bit : true|false (default: true). Save 16bit result for stitch result; otherwise save as single. 
+      edgeArtifacts : a number (default: 2). The number of voxels from the border to erode to remove edge artifacts. 
+         distBboxes : empty or 1x6 or #Tilex6 vectors (default: []). Bounding boxes to define the distance transform for feather blending. Low weights are assigned outside the bounding boxes.
+            saveMIP : true|false (default: true). Save MIPs after stitching.
+          stitchMIP : empty or 1x1 or 1x3 bool vector (default: []). Stitching MIP for given axis. Order yxz. 
+       onlineStitch : true|{false}. Support for online stitch (with partial number of tiles).
+     processFunPath : empty or char (default: ''). Path for user-defined process function handle. Support .mat or .txt formats.
+       parseCluster : true|false (default: true). Use slurm cluster for the processing.
+      masterCompute : true|false (default: true). Master job node is involved in the processing.
+          jobLogDir : char (default: '../job_logs'). Path for the slurm job logs.
+        cpusPerTask : a number (default: 8). The number of cpu cores per task for slurm job submission.
+               uuid : empty or a uuid string (default: ''). uuid string as part of the temporate result paths.
+        maxTrialNum : a number (default: 3). The max number of retries for a task.
+       unitWaitTime : a number (default: 0.1). The wait time per file in minutes to check whether the computing is done.
+            mccMode : true|false (default: false). Use mcc mode.
+         configFile : empty or char (default: ''). Path for the config file for job submission.
+
+
+
+XR_crop_dataset.m
+Dataset level wrapper for the cropping tool with a given cropping bounding box.
+
+Required inputs:
+          dataPaths : char or cell array. Directory paths for the datasets. Either a string for a single dataset or a cell array of paths for several datasets with same experimental settings.
+          inputBbox : 1x6 vector. Input bounding box for crop. Definiation: [ymin, xmin, zmin, ymax, xmax, zmax].
+
+Parameters:
+      resultDirName : char (default: 'Cropped'). Crop result directory under data path.
+           cropType : 'fixed'|'moving'|'center' (default: 'fixed'). 'fixed': fixed bounding box; 'moving': crop the first time point with inputBbox, and linearly move the bbox according to the last time point coordinates (lastStartCoords); 'center': crop the center of the images with the size defined by inputBbox.
+                pad : true|false (default: false). Pad an empty region if the bounding box is outside of the image.
+    lastStartCoords : empty or 1x3 vector. The start coordinates for the last time point for 'moving' crop type.
+    channelPatterns : a cell array (default: {'CamA_ch0', 'CamB_ch0'}).  Channel identifiers for included channels. 
+           zarrFile : true|false (default: false). Use Zarr file as input.
+          largeFile : true|false (default: false). Use large-scale crop strategy with in-place read and write cropped regions. Only for Zarr files.
+           saveZarr : true|false (default: false). Save results as Zarr files.
+          batchSize : 1x3 vector (default: [1024, 1024, 1024]). Batch size per task for large scale cropping.
+          blockSize : 1x3 vector (default: [256, 256, 256]). Block/chunk size for zarr output.
+          save16bit : true|false (default: true). Save 16bit result for deskew/rotate and stitch. 
+       parseCluster : true|false (default: true). Use slurm cluster for the processing.
+      masterCompute : true|false (default: true). Master job node is involved in the processing.
+          jobLogDir : char (default: '../job_logs'). Path for the slurm job logs.
+        cpusPerTask : a number (default: 2). The number of cpu cores per task for slurm job submission.
+               uuid : empty or a uuid string (default: ''). uuid string as part of the temporate result paths.
+            mccMode : true|false (default: false). Use mcc mode.
+         configFile : empty or char (default: ''). Path for the config file for job submission.
+
+
+
+XR_resample_dataset.m
+Dataset level wrapper for resampling tools. 
+ResampleFactor [5,5,5] (yxz) means downsample data by 5x5x5.
+
+Required inputs:
+          dataPaths : char or cell array. Directory paths for the datasets. Either a string for a single dataset or a cell array of paths for several datasets with same experimental settings.
+     resampleFactor : 1x1, 1x2 or 1x3 vector. Resampling factor in yxz order. Greater than 1 means downsampling. The first number for y, and the last number for z, the middle (if exist) or the first number for x.
+
+Parameters (as 'specifier'-value pairs):
+      resultDirName : char (default: 'matlab_stitch'). Resampling result directory under data path.
+    channelPatterns : a cell array (default: {'CamA_ch0', 'CamA_ch1', 'CamB_ch0', 'CamB_ch1'}).  Channel identifiers for included channels. 
+          inputBbox : empty or 1x6 vector (default: []). Input bounding box for crop. Definiation: [ymin, xmin, zmin, ymax, xmax, zmax].
+       interpMethod : 'linear'|'cubic'|'nearest' (default: 'linear'). Interpolation method for geometric transformations in deskew and rotation.
+          save16bit : true|false (default: true). Save 16bit result for the result. 
+           zarrFile : true|false (default: false). Use Zarr file as input.
+          largeFile : true|false (default: false). Use large scale resampling strategy with batch processing. Only for Zarr files.
+           saveZarr : true|false (default: false). Save results as Zarr files.
+          blockSize : 1x3 vector (default: [256, 256, 256]). Block/chunk size for zarr output.
+          batchSize : 1x3 vector (default: [512, 512, 512]). Batch size per stitching task.
+         borderSize : 1x3 vector (default: [5, 5, 5]. Padded border for each batch.
+       parseCluster : true|false (default: true). Use slurm cluster for the processing.
+          jobLogDir : char (default: '../job_logs'). Path for the slurm job logs.
+      masterCompute : true|false (default: true). Master job node is involved in the processing.
+        cpusPerTask : a number (default: 1). The number of cpu cores per task for slurm job submission.
+               uuid : empty or a uuid string (default: ''). uuid string as part of the temporate result paths.
+            mccMode : true|false (default: false). Use mcc mode.
+         configFile : empty or char (default: ''). Path for the config file for job submission.
+
+
+
+XR_fftSpectrumComputingWrapper.m
+Dataset level wrapper for fft spectrum computing.
+For each image, the default outputs are central slices and MIPs of power spectrum with gamma 0.5. If save 3D stack, the log10 power spectrum is saved. 
+
+Required inputs:
+          dataPaths : char or cell array. Directory paths for the datasets. Either a string for a single dataset or a cell array of paths for several datasets with same experimental settings.
+
+Parameters (as 'specifier'-value pairs):
+      resultDirName : char (default: 'FFT'). Result directory under data path.
+          overwrite : true|false (default: false). Overwrite existing results
+        xyPixelSize : a number (default: 0.108). Pixel size in um.
+                 dz : a number (default: 0.5). Scan interval in um.
+           zarrFile : true|false (default: false). Use Zarr file as input.
+       outPixelSize : empty or a number (default: []). Voxel size for output. This number applies to all three axes. If empty, the minimum of xyPixelSize and dz is used.
+            outSize : 1x3 vector (default: [1001, 1001, 1001]). Output size for the FFT spectrum computing. The image is cropped/padded to this size. Must be the same across all axes.
+    channelPatterns : a cell array (default: {}).  Channel identifiers for included channels. If not provided, process all images in dataPaths.
+        save3DStack : true|false (default: false). Save 3D stack for FFT power spectrum (in log10 scale). 
+         background : a number (default: 0). Background subtraction before FFT computing.
+       interpMethod : 'linear'|'cubic'|'lanczos2'|'lanczos3' (default: 'linear'). Interpolation method for resampling to out pixel size.
+       parseCluster : true|false (default: true). Use slurm cluster for the processing.
+      masterCompute : true|false (default: true). Master job node is involved in the processing.
+        cpusPerTask : a number (default: 1). The number of cpu cores per task for slurm job submission.
+              debug : true|false (default: false). Debug mode for simplified and OMW method. If true, save the intermediate steps every n iterations (n is defined by saveStep).
+            mccMode : true|false (default: false). Use mcc mode.
+         configFile : empty or char (default: ''). Path for the config file for job submission.
+
+
+
+XR_FSC_analysis_wrapper.m
+Wrapper for datasets level FSC analysis, visualization of mean resolution (0 for x (or y), pi/2 for z).
+
+Required inputs:
+          dataPaths : char or cell array. Directory paths for the datasets. Either a string for a single dataset or a cell array of paths for several datasets with same experimental settings.
+
+Parameters (as 'specifier'-value pairs):
+      resultDirName : char (default: 'FSCs'). Result directory under data paths.
+        xyPixelSize : a number (default: 0.108). Pixel size in um.
+                 dz : a number (default: 0.5). Scan interval in um.
+                 dr : a number (default: 10). Radial interval in pixel.
+             dtheta : a number between 0 and 2 pi (default: pi/12). Angular interval. 
+    resThreshMethod : 'fixed'|'half-bit'|'one-bit' (default: 'fixed'). Resolution thresholding method. 'fixed': fixed threshold; 'half-bit' and 'one-bit': half or one bit thresholding.
+          resThresh : a number (default: 0.2). Resolution threshold for 'fixed' thresholding method.
+           halfSize : 1x3 vector (default: [251, 251, 251]). Half image size for FSC computing. Must be the same number for all three axes, and no greater than half of the image size.
+          inputBbox : empty or 1x6 vector (default: []). Input bounding box for crop. Definiation: [ymin, xmin, zmin, ymax, xmax, zmax].
+            resAxis : 'xz'|'yz' (default: 'xz'). FSC computing major axes.
+     skipConeRegion : true|false (default: true). Skip the cone region along z axis (containing noisy spectrum).
+    channelPatterns : a cell array (default: {'tif'}).  Channel identifiers for included channels. 
+           channels : 1x#Channels (default: [488, 560]). Wavelength for the channels.
+       multiRegions : true|false (default: false). Select multiple regions for FSC resolution computing.
+     regionInterval : 1x3 vector (default: [50, 50, -1]). Region interval for multi-region FSC analysis in yxz order. -1 means only the center.
+         regionGrid : empty or nx3 vector (default: []). User provided grid for region centers for multi-region FSC analysis.
+            clipPer : empty or a number. Clip the high intensity voxels based on the given percentile. If empty, not clip.
+             suffix : char (default: 'decon'). Suffix for the figure titles.
+       iterInterval : a number (default: 5). Iteration interval for FSC resolution plot.
+       parseCluster : true|false (default: true). Use slurm cluster for the processing.
+      masterCompute : true|false (default: true). Master job node is involved in the processing.
+        cpusPerTask : a number (default: 1). The number of cpu cores per task for slurm job submission.
+            mccMode : true|false (default: false). Use mcc mode.
+         configFile : empty or char (default: ''). Path for the config file for job submission.
+
+
+
+XR_generate_image_list_wrapper.m
+Wrapper to generate image list for a given generation method: encoder, sqlite, or tile_position 
+It saves as a csv file with name ImageList_from_*.csv in the dataPaths. The format is consistent with old csv files. 
+
+Required inputs:
+          dataPaths : char or cell array. Directory paths for the datasets. Either a string for a single dataset or a cell array of paths for several datasets with same experimental settings.
+   generationMethod : 'encoder'|'sqlite'|'tile_position'. Image list generation method. 'encoder': from encoder positions; 'sqlite': from sqlite database; 'tile_position': estimated from user-provided overlap size between neighboring tiles.
+
+Parameters (as 'specifier'-value pairs):
+    channelPatterns : a cell array (default: {'CamA_ch0', 'CamA_ch1', 'CamB_ch0'}).  Channel identifiers for included channels. 
+       tilePatterns : a 1x5 cell array (default: {'0000t', 'ch0', '000x', '000y', '000z'}). Patterns for time, channel, x, y and z to localize tiles. It should be the combination of word and numbers in the form of [a-zA-Z]*[0-9]* or [0-9]*[a-zA-Z]*.
+                 DS : true|false (default: false). Data is in deskewed space.
+                DSR : true|false (default: false). Data is in deskew/rotated space (with stage coordinates).
+        xyPixelSize : a number (default: 0.108). Pixel size in um.
+                 dz : a number (default: 0.5). Scan interval in um.
+          skewAngle : a number (default: 32.45). Skew angle (in degree) of the stage.
+          axisOrder : char (default: 'xyz'). Axis order mapping for coordinates in image list. With combinations of -, x, y, and z. '-yxz' means negative -y map to x, x maps to y, and z maps to z.
+          dataOrder : char (default: 'y,x,z'). Axis order mapping for data. 'y,x,z' means the first, second and third axes are y, x, and z, respectively.
+      objectiveScan : true|false (default: false). Objective scan.
+             IOScan : true|false (default: false). Inverted objective scan. This is the scan with the stage coordinates (DSR space). 
+           zarrFile : true|false (default: false). Use Zarr file as input.
+        overlapSize : empty or 1x3 vector (default: []). Overlap size between tiles in pixel or um. If in pixels, axis order is yxz; if in um, axis order is xyz.
+    overlapSizeType : 'pixel'|'um' (default: 'pixel'). The unit for the overlap size.
+               uuid : empty or a uuid string (default: ''). uuid string as part of the temporate result paths.
+
+
+
+XR_imaris_conversion_data_wrapper.m
+Required inputs:
+          dataPaths : char or cell array. Directory paths for the datasets. Either a string for a single dataset or a cell array of paths for several datasets with same experimental settings.
+
+Parameters (as 'specifier'-value pairs):
+      resultDirName : char (default: 'imaris'). Result directory under data paths.
+          overwrite : true|false (default: false). Overwrite existing results
+    channelPatterns : a cell array (default: {'CamA_ch0', 'CamA_ch1', 'CamB_ch0'}).  Channel identifiers for included channels. 
+         pixelSizes : 1x3 vector (default: [0.108, 0.108, 0.108]). Pixel sizes in um, in yxz order.
+           zarrFile : true|false (default: false). Use Zarr file as input.
+          blockSize : 1x3 vector (default: [64, 64, 64]). Block/chunk size for Imaris output.
+          inputBbox : empty or 1x6 vector (default: []). Input bounding box for crop. Definiation: [ymin, xmin, zmin, ymax, xmax, zmax].
+      converterPath : empty or char (default: ''). Converter binary path. If empty, use the default one within the software.
+       parseCluster : true|false (default: true). Use slurm cluster for the processing.
+      masterCompute : true|false (default: true). Master job node is involved in the processing.
+          jobLogDir : char (default: '../job_logs'). Path for the slurm job logs.
+        cpusPerTask : a number (default: 1). The number of cpu cores per task for slurm job submission.
+               uuid : empty or a uuid string (default: ''). uuid string as part of the temporate result paths.
+            mccMode : true|false (default: false). Use mcc mode.
+         configFile : empty or char (default: ''). Path for the config file for job submission.
+
+
+XR_MIP_wrapper.m
+Dataset level wrapper to convert dataset to Imaris file.
+
+Required inputs:
+          dataPaths : char or cell array. Directory paths for the datasets. Either a string for a single dataset or a cell array of paths for several datasets with same experimental settings.
+
+Parameters (as 'specifier'-value pairs):
+      resultDirName : char (default: 'matlab_decon'). Result directory under data paths.
+               axis : 1x3 vector (default: [0, 0, 1]). MIP generation for given axis in yxz order. It generate the MIP when the number is nonzero. 
+    channelPatterns : a cell array (default: {'CamA_ch0', 'CamA_ch1', 'CamB_ch0', 'CamB_ch1'}).  Channel identifiers for included channels. 
+           zarrFile : true|false (default: false). Use Zarr file as input.
+          largeFile : true|false (default: false). Use large scale deskew/rotation strategy.
+          batchSize : 1x3 vector (default: [2048, 2048, 2048]). Batch size per stitching task.
+          save16bit : true|false (default: true). Save 16bit result for deskew/rotate. 
+       parseCluster : true|false (default: true). Use slurm cluster for the processing.
+        parseParfor : true|false (default: false). Use matlab parfor for paralle processing.
+      masterCompute : true|false (default: true). Master job node is involved in the processing.
+        cpusPerTask : a number (default: 3). The number of cpu cores per task for slurm job submission.
+          jobLogDir : char (default: '../job_logs'). Path for the slurm job logs.
+               uuid : empty or a uuid string (default: ''). uuid string as part of the temporate result paths.
+              debug : true|false (default: false). Debug mode. Not actually used in this function. Reserved for future use.
+            mccMode : true|false (default: false). Use mcc mode.
+         configFile : empty or char (default: ''). Path for the config file for job submission.
+
+
+
+XR_psf_analysis_wrapper.m
+PSF analysis and visualization wrapper for isolated PSFs.
+
+Required inputs:
+          dataPaths : char or cell array. Directory paths for the datasets. Either a string for a single dataset or a cell array of paths for several datasets with same experimental settings.
+
+Parameters (as 'specifier'-value pairs):
+        xyPixelSize : a number (default: 0.108). Pixel size in um.
+                 dz : a number (default: 0.5). Scan interval in um.
+          skewAngle : a number (default: 32.45). Skew angle (in degree) of the stage.
+             deskew : true|false (default: true). Deskew the data.
+         flipZstack : true|false (default: false). Flip z stacks.
+      objectiveScan : true|false (default: false). Objective scan.
+         zStageScan : true|false (default: false). Z stage scan (orthogonal to objective scan).
+    channelPatterns : a cell array (default: {'CamA_ch0', 'CamB_ch0'}).  Channel identifiers for included channels. 
+           channels : 1x#Channels (default: [488, 560]). Wavelength for the channels.
+          save16bit : true|false (default: true). Save 16bit result for deskew/rotate. 
+           bgFactor : a number (default: 1.5). PSF generation background remove factor.
+               RWFn : a cell array with 1x#channels (default: {'', ''}). Richards Wolf theoretical Widefield PSF paths mapped to the channels.
+          sourceStr : char (default: 'test'). Source of the PSF shown in the title of the PSF analysis plots.
+            visible : true|false (default: true). Make figure visible; otherwise, plot the figure in the background.
+       parseCluster : true|false (default: true). Use slurm cluster for the processing.
+      masterCompute : true|false (default: true). Master job node is involved in the processing.
+        cpusPerTask : a number (default: 8). The number of cpu cores per task for slurm job submission.
+            mccMode : true|false (default: false). Use mcc mode.
+         configFile : empty or char (default: ''). Path for the config file for job submission.
+
+
+
+XR_psf_detection_and_analysis_wrapper.m
+Check psf and crop them from the raw image that contain many PSF patterns. 
+The idea is to detect local maximum in radon image for the skewed angle in xz to get the peaks of psfs. Then, remove peaks if they are close to each other or to the boarder. Finally, crop the psfs for kept peaks for given crop size. 
+
+Required inputs:
+          dataPaths : char or cell array. Directory paths for the datasets. Either a string for a single dataset or a cell array of paths for several datasets with same experimental settings.
+
+Parameters (as 'specifier'-value pairs):
+        xyPixelSize : a number (default: 0.108). Pixel size in um.
+                 dz : a number (default: 0.5). Scan interval in um.
+          skewAngle : a number (default: 32.45). Skew angle (in degree) of the stage.
+           cropSize : 1x3 vector (default: [256, 128, 201]). Size to crop isolated PSFs.
+         flipZstack : true|false (default: false). Flip z stacks.
+         distThresh : 1x3 vector (default: [256, 128, 201]). Distance threshold between detected PSF centers in yxz. Only keep isolated PSFs beyond the distance thresholds.
+    channelPatterns : a cell array (default: {'CamA_ch0', 'CamA_ch1', 'CamB_ch0', 'CamB_ch1'}).  Channel identifiers for included channels. 
+           channels : 1x#Channels (default: [488, 560]). Wavelength for the channels.
+               RWFn : a cell array with 1x#channels (default: {'', ''}). Richards Wolf theoretical Widefield PSF paths mapped to the channels.
+          sourceStr : char (default: 'test'). Source of the PSF shown in the title of the PSF analysis plots.
+            visible : true|false (default: true). Make figure visible; otherwise, plot the figure in the background.
+       parseCluster : true|false (default: true). Use slurm cluster for the processing.
+      masterCompute : true|false (default: true). Master job node is involved in the processing.
+        cpusPerTask : a number (default: 8). The number of cpu cores per task for slurm job submission.
+            mccMode : true|false (default: false). Use mcc mode.
+         configFile : empty or char (default: ''). Path for the config file for job submission.
+
+
+
+XR_tiffToZarr_wrapper.m
+Dataset level wrapper for convert a list of Tiff files to Zarr.
+
+Required inputs:
+          dataPaths : char or cell array. Directory paths for the datasets. Either a string for a single dataset or a cell array of paths for several datasets with same experimental settings.
+
+Parameters (as 'specifier'-value pairs):
+      tiffFullpaths : empty or char or cell array (default: ''). A single Tiff file path in char, or a list of Tiff file paths in a cell array. If empty, get the Tiff files from dataPaths.
+      resultDirName : char (default: 'zarr'). Result directory under data paths.
+             locIds : empty or 1x#Tile vector (default: []). Location ids for the tiles (only used in stitching).
+          blockSize : 1x3 vector (default: [256, 256, 256]). Block/chunk size for zarr output.
+          shardSize : empty or 1x3 vector (default: []). If not empty, set shard size in zarr output. 
+        flippedTile : empty or 1x#Tile vector (default: []). Define if a tile is flipped, if so, flip the flipped tiles back. If empty, tiles are not flipped.
+     resampleFactor : empty or 1x1, 1x2 or 1x3 vector (default: []). Resampling factor after rotation. Empty: no resampling; axis order yxz.
+        partialFile : true|false (default: false). If true, check if containing partial files ending with *_part[0-9][0-9][0-9].tif. Append partial files to the main ones if there are.
+    channelPatterns : a cell array (default: {'tif'}).  Channel identifiers for included channels. 
+          inputBbox : empty or 1x6 vector (default: []). Input bounding box for crop. Definiation: [ymin, xmin, zmin, ymax, xmax, zmax].
+        tileOutBbox : empty or 1x6 vector (default: []). Crop tiles after preprocessing. Definiation: [ymin, xmin, zmin, ymax, xmax, zmax].
+     processFunPath : empty or char (default: ''). Path for user-defined process function handle. Support .mat or .txt formats.
+       parseCluster : true|false (default: true). Use slurm cluster for the processing.
+            bigData : true|false (default: true). Big dataset, use fewer resources for each task to all more parallel task running.
+      masterCompute : true|false (default: true). Master job node is involved in the processing.
+          jobLogDir : char (default: '../job_logs'). Path for the slurm job logs.
+        cpusPerTask : a number (default: 1). The number of cpu cores per task for slurm job submission.
+               uuid : empty or a uuid string (default: ''). uuid string as part of the temporate result paths.
+        maxTrialNum : a number (default: 3). The max number of retries for a task.
+       unitWaitTime : a number (default: 1). The wait time per file in minutes to check whether the computing is done.
+            mccMode : true|false (default: false). Use mcc mode.
+         configFile : empty or char (default: ''). Path for the config file for job submission.
+
+
+
+XR_zarrToTiff_wrapper.m
+Dataset level wrapper for converting Zarr files in dataPaths to Tiff.
+
+Required inputs:
+          dataPaths : char or cell array. Directory paths for the datasets. Either a string for a single dataset or a cell array of paths for several datasets with same experimental settings.
+
+Parameters (as 'specifier'-value pairs):
+      resultDirName : char (default: 'matlab_decon'). Result directory under data paths.
+    channelPatterns : a cell array (default: {'CamA_ch0', 'CamB_ch0'}).  Channel identifiers for included channels. 
+             usrFcn : empty or a function handle or char (default: ''). User defined function handle applying to the image.
+       parseCluster : true|false (default: true). Use slurm cluster for the processing.
+      masterCompute : true|false (default: true). Master job node is involved in the processing.
+          jobLogDir : char (default: '../job_logs'). Path for the slurm job logs.
+        cpusPerTask : a number (default: 1). The number of cpu cores per task for slurm job submission.
+               uuid : empty or a uuid string (default: ''). uuid string as part of the temporate result paths.
+        maxTrialNum : a number (default: 3). The max number of retries for a task.
+       unitWaitTime : a number (default: 1). The wait time per file in minutes to check whether the computing is done.
+            mccMode : true|false (default: false). Use mcc mode.
+         configFile : empty or char (default: ''). Path for the config file for job submission.
+
+
+
+XR_visualize_OTF_mask_segmentation.m
+Visualze OTF mask outline segmented with given threshold overlay with OTF.
+
+Required inputs:
+              psfFn : char. PSF file path
+
+Optional inputs:
+       OTFCumThresh : a number (default: 0.9). Accumulated energy quantile to segment OTF mask. Smaller number means tighter threshold with smaller masks. 
+             skewed : empty or true|false (default: []). Parameter for OTF segmentation based on PSF space. If true, PSF is in the skewed space. If empty, automatically deteriming if PSF is in skewed space.
+
+Parameters (as 'specifier'-value pairs):
+        minIntThrsh : a number (default: 1e-3). Minimum intensity threshold for OTF segmentation.
+            visible : true|false (default: true). Make figure visible; otherwise, plot the figure in the background.
+            saveFig : true|false (default: false). Save figure to disk.
+
+

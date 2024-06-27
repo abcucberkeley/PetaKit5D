@@ -1,19 +1,45 @@
 function [] = XR_MIP_wrapper(dataPaths, varargin)   
-% generate MIP for dataset
+% dataset level wrapper for MIP generation
+%
+%
+% Required inputs:
+%           dataPaths : char or cell array. Directory paths for the datasets. Either a string for a single dataset or a cell array of paths for several datasets with same experimental settings.
+%
+% Parameters (as 'specifier'-value pairs):
+%       resultDirName : char (default: 'matlab_decon'). Result directory under data paths.
+%                axis : 1x3 vector (default: [0, 0, 1]). MIP generation for given axis in yxz order. It generate the MIP when the number is nonzero. 
+%     channelPatterns : a cell array (default: {'CamA_ch0', 'CamA_ch1', 'CamB_ch0', 'CamB_ch1'}).  Channel identifiers for included channels. 
+%            zarrFile : true|false (default: false). Use Zarr file as input.
+%           largeFile : true|false (default: false). Use large scale deskew/rotation strategy.
+%           batchSize : 1x3 vector (default: [2048, 2048, 2048]). Batch size per stitching task.
+%           save16bit : true|false (default: true). Save 16bit result for deskew/rotate. 
+%        parseCluster : true|false (default: true). Use slurm cluster for the processing.
+%         parseParfor : true|false (default: false). Use matlab parfor for paralle processing.
+%       masterCompute : true|false (default: true). Master job node is involved in the processing.
+%         cpusPerTask : a number (default: 3). The number of cpu cores per task for slurm job submission.
+%           jobLogDir : char (default: '../job_logs'). Path for the slurm job logs.
+%                uuid : empty or a uuid string (default: ''). uuid string as part of the temporate result paths.
+%               debug : true|false (default: false). Debug mode. Not actually used in this function. Reserved for future use.
+%             mccMode : true|false (default: false). Use mcc mode.
+%          configFile : empty or char (default: ''). Path for the config file for job submission.
+%
+%
+% Author: Xiongtao Ruan
+
 
 ip = inputParser;
 ip.CaseSensitive = false;
 ip.addRequired('dataPaths', @(x) ischar(x) || iscell(x));
 ip.addParameter('resultDirName', 'MIPs', @ischar);
-ip.addParameter('axis', [0, 0, 1], @isnumeric); % y, x, z
+ip.addParameter('axis', [0, 0, 1], @isnumeric);
 ip.addParameter('channelPatterns', {'CamA_ch0', 'CamA_ch1', 'CamB_ch0', 'CamB_ch1'}, @iscell);
-ip.addParameter('zarrFile', false, @islogical); % use zarr file as input
-ip.addParameter('largeZarr', false, @islogical); % use zarr file as input
-ip.addParameter('batchSize', [2048, 2048, 2048] , @isvector); % in y, x, z
+ip.addParameter('zarrFile', false, @islogical);
+ip.addParameter('largeFile', false, @islogical);
+ip.addParameter('batchSize', [2048, 2048, 2048] , @isvector);
 ip.addParameter('save16bit', true, @islogical);
 ip.addParameter('parseCluster', true, @islogical);
 ip.addParameter('parseParfor', false, @islogical);
-ip.addParameter('masterCompute', true, @islogical); % master node participate in the task computing. 
+ip.addParameter('masterCompute', true, @islogical); 
 ip.addParameter('cpusPerTask', 3, @isscalar);
 ip.addParameter('jobLogDir', '../job_logs/', @ischar);
 ip.addParameter('uuid', '', @ischar);
@@ -28,7 +54,7 @@ resultDirName = pr.resultDirName;
 axis = pr.axis;
 channelPatterns =  pr.channelPatterns;
 zarrFile = pr.zarrFile;
-largeZarr = pr.largeZarr;
+largeFile = pr.largeFile;
 batchSize = pr.batchSize;
 save16bit = pr.save16bit;
 parseCluster = pr.parseCluster;
@@ -108,7 +134,7 @@ for f = 1 : nF
     MIPFullpaths{f} = MIPFullpath;
     
     if zarrFile
-        if largeZarr
+        if largeFile
             func_strs{f} = sprintf(['XR_MIP_zarr(''%s'',''resultDirName'',''%s'',', ...
                 '''axis'',%s,''batchSize'',%s,''parseCluster'',%s,''parseParfor'',%s,', ...
                 '''jobLogDir'',''%s'',''mccMode'',%s,''configFile'',''%s'')'], ...
@@ -124,7 +150,7 @@ for f = 1 : nF
     end
 end
 
-if parseParfor && ~largeZarr
+if parseParfor && ~largeFile
     matlab_parfor_generic_computing_wrapper(frameFullpaths, MIPFullpaths, func_strs, 'GPUJob', false, 'nworker', 12)
 end
 taskBatchNum = max(1, round(nF /1000));

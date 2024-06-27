@@ -4,7 +4,7 @@ function [] = XR_visualize_OTF_mask_segmentation_parser(psfFn, OTFCumThresh, ske
 ip = inputParser;
 ip.CaseSensitive = false;
 ip.addRequired('psfFn', @ischar);
-ip.addOptional('OTFCumThresh', 0.85, @(x) isscalar(x) || ischar(x));
+ip.addOptional('OTFCumThresh', 0.9, @(x) isscalar(x) || ischar(x));
 ip.addOptional('skewed', [], @(x) isempty(x) || islogical(x) || ischar(x));
 ip.addParameter('minIntThrsh', 1e-3, @(x) isnumeric(x) || ischar(x));
 ip.addParameter('visible',  true, @(x) islogical(x) || ischar(x));

@@ -1,13 +1,35 @@
 function [] = XR_psf_detection_and_analysis_wrapper(dataPaths, varargin)
-% check psf and crop them from the raw calibration image. 
-%
+% Check psf and crop them from the raw image that contain many PSF patterns. 
 % The idea is to detect local maximum in radon image for the skewed angle in xz to
 % get the peaks of psfs. Then, remove peaks if they are close to each other
 % or to the boarder. Finally, crop the psfs for kept peaks for given crop
 % size. 
+%
+%
+% Required inputs:
+%           dataPaths : char or cell array. Directory paths for the datasets. Either a string for a single dataset or a cell array of paths for several datasets with same experimental settings.
+%
+% Parameters (as 'specifier'-value pairs):
+%         xyPixelSize : a number (default: 0.108). Pixel size in um.
+%                  dz : a number (default: 0.5). Scan interval in um.
+%           skewAngle : a number (default: 32.45). Skew angle (in degree) of the stage.
+%            cropSize : 1x3 vector (default: [256, 128, 201]). Size to crop isolated PSFs.
+%          flipZstack : true|false (default: false). Flip z stacks.
+%          distThresh : 1x3 vector (default: [256, 128, 201]). Distance threshold between detected PSF centers in yxz. Only keep isolated PSFs beyond the distance thresholds.
+%     channelPatterns : a cell array (default: {'CamA_ch0', 'CamA_ch1', 'CamB_ch0', 'CamB_ch1'}).  Channel identifiers for included channels. 
+%            channels : 1x#Channels (default: [488, 560]). Wavelength for the channels.
+%                RWFn : a cell array with 1x#channels (default: {'', ''}). Richards Wolf theoretical Widefield PSF paths mapped to the channels.
+%           sourceStr : char (default: 'test'). Source of the PSF shown in the title of the PSF analysis plots.
+%             visible : true|false (default: true). Make figure visible; otherwise, plot the figure in the background.
+%        parseCluster : true|false (default: true). Use slurm cluster for the processing.
+%       masterCompute : true|false (default: true). Master job node is involved in the processing.
+%         cpusPerTask : a number (default: 8). The number of cpu cores per task for slurm job submission.
+%             mccMode : true|false (default: false). Use mcc mode.
+%          configFile : empty or char (default: ''). Path for the config file for job submission.
+%
 % 
-% xruan (07/29/2021): change deskew and analysis step with
-% XR_psf_analysis_wrapper.m
+% Author: Xiongtao Ruan (07/2021)
+
 
 ip = inputParser;
 ip.CaseSensitive = false;
@@ -20,12 +42,12 @@ ip.addParameter('flipZstack', false, @islogical);
 ip.addParameter('distThresh', [256, 128, 201], @isnumeric);
 ip.addParameter('channelPatterns', {'CamA_ch0', 'CamB_ch0'}, @iscell);
 ip.addParameter('channels', [488, 560], @isnumeric);
-ip.addParameter('RWFn', {'/clusterfs/fiona/Gokul/RW_PSFs/PSF_RW_515em_128_128_101_100nmSteps.tif', '/clusterfs/fiona/Gokul/RW_PSFs/PSF_RW_605em_128_128_101_100nmSteps.tif'}, @iscell);
+ip.addParameter('RWFn', {'', ''}, @iscell);
 ip.addParameter('sourceStr', 'test', @ischar);
 ip.addParameter('visible', true, @islogical);
 ip.addParameter('parseCluster', true, @islogical);
 ip.addParameter('masterCompute', false, @islogical);
-% ip.addParameter('prefix', 'test_', @ischar);
+ip.addParameter('cpusPerTask', 8, @isscalar);
 ip.addParameter('mccMode', false, @islogical);
 ip.addParameter('configFile', '', @ischar);
 ip.parse(dataPaths, varargin{:});
@@ -44,6 +66,7 @@ sourceStr = pr.sourceStr;
 visible = pr.visible;
 parseCluster = pr.parseCluster;
 masterCompute = pr.masterCompute;
+cpusPerTask = pr.cpusPerTask;
 mccMode = pr.mccMode;
 configFile = pr.configFile;
 
@@ -118,7 +141,6 @@ func_strs(empty_inds) = [];
 
 
 % use cluster computing for the psf detection and cropping
-cpusPerTask = 24;
 memAllocate = prod(getImageSize(frameFullpaths{1})) * 4 / 1024^3 * 100;
 is_done_flag = generic_computing_frameworks_wrapper(frameFullpaths, outFullpaths, ...
     func_strs, 'masterCompute', true, 'cpusPerTask', cpusPerTask, memAllocate=memAllocate, ...
@@ -145,7 +167,7 @@ disp(dataPath_exps);
 XR_psf_analysis_wrapper(dataPath_exps, 'dz', dz, 'skewAngle', skewAngle, 'channelPatterns', channelPatterns, ...
     'Channels', channels, 'Deskew', Deskew, 'flipZstack', flipZstack, 'objectiveScan', objectiveScan, ...
     'zStageScan', zStageScan, 'sourceStr', sourceStr, 'RWFn', RWFn, visible=visible, parseCluster=parseCluster, ...
-    masterCompute=masterCompute, mccMode=mccMode, configFile=configFile);
+    masterCompute=masterCompute, cpusPerTask=cpusPerTask, mccMode=mccMode, configFile=configFile);
 
 end
 

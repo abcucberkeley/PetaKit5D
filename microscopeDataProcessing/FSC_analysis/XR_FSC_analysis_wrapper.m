@@ -1,11 +1,39 @@
 function XR_FSC_analysis_wrapper(dataPaths, varargin)
-% wrapper for datasets level FSC analysis, visualization of mean resolution
-% resolution output: 0 for x, pi/2 for z.
+% Wrapper for datasets level FSC analysis, visualization of mean resolution (0 for x (or y), pi/2 for z).
+%
+%
+% Required inputs:
+%           dataPaths : char or cell array. Directory paths for the datasets. Either a string for a single dataset or a cell array of paths for several datasets with same experimental settings.
+%
+% Parameters (as 'specifier'-value pairs):
+%       resultDirName : char (default: 'FSCs'). Result directory under data paths.
+%         xyPixelSize : a number (default: 0.108). Pixel size in um.
+%                  dz : a number (default: 0.5). Scan interval in um.
+%                  dr : a number (default: 10). Radial interval in pixel.
+%              dtheta : a number between 0 and 2 pi (default: pi/12). Angular interval. 
+%     resThreshMethod : 'fixed'|'half-bit'|'one-bit' (default: 'fixed'). Resolution thresholding method. 'fixed': fixed threshold; 'half-bit' and 'one-bit': half or one bit thresholding.
+%           resThresh : a number (default: 0.2). Resolution threshold for 'fixed' thresholding method.
+%            halfSize : 1x3 vector (default: [251, 251, 251]). Half image size for FSC computing. Must be the same number for all three axes, and no greater than half of the image size.
+%           inputBbox : empty or 1x6 vector (default: []). Input bounding box for crop. Definiation: [ymin, xmin, zmin, ymax, xmax, zmax].
+%             resAxis : 'xz'|'yz' (default: 'xz'). FSC computing major axes.
+%      skipConeRegion : true|false (default: true). Skip the cone region along z axis (containing noisy spectrum).
+%     channelPatterns : a cell array (default: {'tif'}).  Channel identifiers for included channels. 
+%            channels : 1x#Channels (default: [488, 560]). Wavelength for the channels.
+%        multiRegions : true|false (default: false). Select multiple regions for FSC resolution computing.
+%      regionInterval : 1x3 vector (default: [50, 50, -1]). Region interval for multi-region FSC analysis in yxz order. -1 means only the center.
+%          regionGrid : empty or nx3 vector (default: []). User provided grid for region centers for multi-region FSC analysis.
+%             clipPer : empty or a number. Clip the high intensity voxels based on the given percentile. If empty, not clip.
+%              suffix : char (default: 'decon'). Suffix for the figure titles.
+%        iterInterval : a number (default: 5). Iteration interval for FSC resolution plot.
+%        parseCluster : true|false (default: true). Use slurm cluster for the processing.
+%       masterCompute : true|false (default: true). Master job node is involved in the processing.
+%         cpusPerTask : a number (default: 1). The number of cpu cores per task for slurm job submission.
+%             mccMode : true|false (default: false). Use mcc mode.
+%          configFile : empty or char (default: ''). Path for the config file for job submission.
+%
 %
 % Author: Xiongtao Ruan (12/10/2021)
-% 
-% xruan (05/12/2022): add support for multi-region FSCs
-% xruan (06/09/2022): add support for clipping very bright spots
+
 
 ip = inputParser;
 ip.CaseSensitive = false;
@@ -22,13 +50,13 @@ ip.addParameter('inputBbox', [], @isnumeric);
 ip.addParameter('resAxis', 'xz', @ischar);
 ip.addParameter('skipConeRegion', true, @islogical);
 ip.addParameter('channelPatterns', {'tif'}, @iscell);
-ip.addParameter('Channels', [488, 560], @isnumeric);
+ip.addParameter('channels', [488, 560], @isnumeric);
 ip.addParameter('multiRegions', false, @islogical);
-ip.addParameter('regionInterval', [50, 50, -1], @isnumeric); % yxz, -1 means only center
-ip.addParameter('regionGrid', [], @isnumeric); % user provided grid for region centers, N x 3
-ip.addParameter('clipPer', [], @isnumeric); % clip intensity higher than the given percentile
+ip.addParameter('regionInterval', [50, 50, -1], @isnumeric);
+ip.addParameter('regionGrid', [], @isnumeric);
+ip.addParameter('clipPer', [], @isnumeric);
 ip.addParameter('suffix', 'decon', @ischar);
-ip.addParameter('iterInterval', 5, @isnumeric); % iteration interval for FSC resolution plot
+ip.addParameter('iterInterval', 5, @isnumeric);
 ip.addParameter('parseCluster', true, @islogical);
 ip.addParameter('masterCompute', true, @islogical);
 ip.addParameter('cpusPerTask', 4, @isscalar);
@@ -41,7 +69,6 @@ pr = ip.Results;
 resultDirName = pr.resultDirName;
 dz = pr.dz;
 xyPixelSize = pr.xyPixelSize;
-% angle = pr.angle;
 dr = pr.dr;
 dtheta = pr.dtheta;
 halfSize = pr.halfSize;
@@ -51,7 +78,7 @@ resThresh = pr.resThresh;
 resAxis = pr.resAxis;
 skipConeRegion = pr.skipConeRegion;
 channelPatterns = pr.channelPatterns;
-Channels = pr.Channels;
+channels = pr.channels;
 multiRegions = pr.multiRegions;
 regionInterval = pr.regionInterval;
 regionGrid = pr.regionGrid;
@@ -253,18 +280,18 @@ if ~multiRegions
             ylabel('Resolution (um)');
     
             f0 = gcf();
-            figureFullname = sprintf('%s/fsc_average_resolution_vs_decon_iterations_ch_%d_%s.png', figurePath, Channels(c), suffix);
+            figureFullname = sprintf('%s/fsc_average_resolution_vs_decon_iterations_ch_%d_%s.png', figurePath, channels(c), suffix);
             print(f0, '-painters','-dpng', '-loose', figureFullname);
-            figureFullname = sprintf('%s/fsc_average_resolution_vs_decon_iterations_ch_%d_%s.fig', figurePath, Channels(c), suffix);
+            figureFullname = sprintf('%s/fsc_average_resolution_vs_decon_iterations_ch_%d_%s.fig', figurePath, channels(c), suffix);
             saveas(f0, figureFullname);
     
             % rescale y axis 
             ylim([0.2, 0.5])
             yticks(0.2 : 0.025 : 0.5)
     
-            figureFullname = sprintf('%s/fsc_average_resolution_vs_decon_iterations_ch_%d_%s_res_0p2_0p5.png', figurePath, Channels(c), suffix);
+            figureFullname = sprintf('%s/fsc_average_resolution_vs_decon_iterations_ch_%d_%s_res_0p2_0p5.png', figurePath, channels(c), suffix);
             print(f0, '-painters','-dpng', '-loose', figureFullname);
-            figureFullname = sprintf('%s/fsc_average_resolution_vs_decon_iterations_ch_%d_%s_res_0p2_0p5.fig', figurePath, Channels(c), suffix);
+            figureFullname = sprintf('%s/fsc_average_resolution_vs_decon_iterations_ch_%d_%s_res_0p2_0p5.fig', figurePath, channels(c), suffix);
             saveas(f0, figureFullname);
             
             close(f0);
@@ -367,18 +394,18 @@ else
             ylabel('Resolution (um)');
     
             f0 = gcf();
-            figureFullname = sprintf('%s/fsc_average_resolution_vs_decon_iterations_ch_%d_%s.png', figurePath, Channels(c), suffix);
+            figureFullname = sprintf('%s/fsc_average_resolution_vs_decon_iterations_ch_%d_%s.png', figurePath, channels(c), suffix);
             print(f0, '-vector','-dpng', '-loose', figureFullname);
-            figureFullname = sprintf('%s/fsc_average_resolution_vs_decon_iterations_ch_%d_%s.fig', figurePath, Channels(c), suffix);
+            figureFullname = sprintf('%s/fsc_average_resolution_vs_decon_iterations_ch_%d_%s.fig', figurePath, channels(c), suffix);
             saveas(f0, figureFullname);
     
             % rescale y axis 
             ylim([0.2, 0.5])
             yticks(0.2 : 0.025 : 0.5)
     
-            figureFullname = sprintf('%s/fsc_average_resolution_vs_decon_iterations_ch_%d_%s_res_0p2_0p5.png', figurePath, Channels(c), suffix);
+            figureFullname = sprintf('%s/fsc_average_resolution_vs_decon_iterations_ch_%d_%s_res_0p2_0p5.png', figurePath, channels(c), suffix);
             print(f0, '-vector','-dpng', '-loose', figureFullname);
-            figureFullname = sprintf('%s/fsc_average_resolution_vs_decon_iterations_ch_%d_%s_res_0p2_0p5.fig', figurePath, Channels(c), suffix);
+            figureFullname = sprintf('%s/fsc_average_resolution_vs_decon_iterations_ch_%d_%s_res_0p2_0p5.fig', figurePath, channels(c), suffix);
             saveas(f0, figureFullname);
             
             close(f0);

@@ -23,7 +23,7 @@ ip.addParameter('distBboxes', [], @isnumeric);
 ip.addParameter('blockSize', [500, 500, 500], @isnumeric);
 ip.addParameter('shardSize', [], @isnumeric);
 ip.addParameter('compressor', 'lz4', @ischar);
-ip.addParameter('largeZarr', false, @islogical);
+ip.addParameter('largeFile', false, @islogical);
 ip.addParameter('poolSize', [], @isnumeric);
 ip.addParameter('parseCluster', true, @islogical);
 ip.addParameter('mccMode', false, @islogical);
@@ -41,7 +41,7 @@ distBboxes = pr.distBboxes;
 blockSize = pr.blockSize;
 shardSize = pr.shardSize;
 compressor = pr.compressor;
-largeZarr =  pr.largeZarr;
+largeFile =  pr.largeFile;
 poolSize =  pr.poolSize;
 parseCluster = pr.parseCluster;
 mccMode = pr.mccMode;
@@ -143,7 +143,7 @@ else
     distBbox_strs = arrayfun(@(x) strrep(mat2str(distBboxes(x, :)), ' ', ','), 1 : nF, 'unif', 0);
 end
     
-if largeZarr
+if largeFile
     switch numel(poolSize)
         case 3
             poolSize_str = sprintf('pooling_%d_%d_%d', poolSize(1), poolSize(2), poolSize(3));

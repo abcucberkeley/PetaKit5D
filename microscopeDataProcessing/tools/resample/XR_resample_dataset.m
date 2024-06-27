@@ -1,12 +1,34 @@
 function [] = XR_resample_dataset(dataPaths, resampleFactor, varargin)
-% resample a dataset via cluster computing
-% resampleFactor [5,5,5] (yxz) means downsample data by 5x5x5
+% Dataset level wrapper for resampling tools. 
+% ResampleFactor [5,5,5] (yxz) means downsample data by 5x5x5.
+% 
+%
+% Required inputs:
+%           dataPaths : char or cell array. Directory paths for the datasets. Either a string for a single dataset or a cell array of paths for several datasets with same experimental settings.
+%      resampleFactor : 1x1, 1x2 or 1x3 vector. Resampling factor in yxz order. Greater than 1 means downsampling. The first number for y, and the last number for z, the middle (if exist) or the first number for x.
+%
+% Parameters (as 'specifier'-value pairs):
+%       resultDirName : char (default: 'matlab_stitch'). Resampling result directory under data path.
+%     channelPatterns : a cell array (default: {'CamA_ch0', 'CamA_ch1', 'CamB_ch0', 'CamB_ch1'}).  Channel identifiers for included channels. 
+%           inputBbox : empty or 1x6 vector (default: []). Input bounding box for crop. Definiation: [ymin, xmin, zmin, ymax, xmax, zmax].
+%        interpMethod : 'linear'|'cubic'|'nearest' (default: 'linear'). Interpolation method for geometric transformations in deskew and rotation.
+%           save16bit : true|false (default: true). Save 16bit result for the result. 
+%            zarrFile : true|false (default: false). Use Zarr file as input.
+%           largeFile : true|false (default: false). Use large scale resampling strategy with batch processing. Only for Zarr files.
+%            saveZarr : true|false (default: false). Save results as Zarr files.
+%           blockSize : 1x3 vector (default: [256, 256, 256]). Block/chunk size for zarr output.
+%           batchSize : 1x3 vector (default: [512, 512, 512]). Batch size per stitching task.
+%          borderSize : 1x3 vector (default: [5, 5, 5]. Padded border for each batch.
+%        parseCluster : true|false (default: true). Use slurm cluster for the processing.
+%           jobLogDir : char (default: '../job_logs'). Path for the slurm job logs.
+%       masterCompute : true|false (default: true). Master job node is involved in the processing.
+%         cpusPerTask : a number (default: 1). The number of cpu cores per task for slurm job submission.
+%                uuid : empty or a uuid string (default: ''). uuid string as part of the temporate result paths.
+%             mccMode : true|false (default: false). Use mcc mode.
+%          configFile : empty or char (default: ''). Path for the config file for job submission.
 % 
 %
 % Author: Xiongtao Ruan (01/15/2021)
-% 
-% xruan (03/09/2022): add support for zarr
-% xruan (04/17/2024): add support for large zarr
 
 
 ip = inputParser;
@@ -19,7 +41,7 @@ ip.addParameter('inputBbox', [], @isnumeric); % bbox for input
 ip.addParameter('interpMethod', 'linear', @(x) ischar(x) && any(strcmpi(x, {'cubic', 'linear', 'nearest'})));
 ip.addParameter('save16bit', true, @islogical);
 ip.addParameter('zarrFile', false, @islogical);
-ip.addParameter('largeZarr', false, @islogical);
+ip.addParameter('largeFile', false, @islogical);
 ip.addParameter('saveZarr', false, @islogical); % use zarr file as output
 ip.addParameter('blockSize', [256, 256, 256], @isnumeric); % blcoksize
 ip.addParameter('batchSize', [512, 512, 512], @isnumeric); % size to process in one batch
@@ -43,7 +65,7 @@ inputBbox = pr.inputBbox;
 interpMethod = pr.interpMethod;
 save16bit = pr.save16bit;
 zarrFile = pr.zarrFile;
-largeZarr = pr.largeZarr;
+largeFile = pr.largeFile;
 saveZarr = pr.saveZarr;
 blockSize = pr.blockSize;
 batchSize = pr.batchSize;
@@ -98,7 +120,7 @@ end
 resultFullpaths = arrayfun(@(x) sprintf('%s/%s%s', resultPaths{fd_inds(x)}, fsns{x}, ext), ...
     1 : nF, 'UniformOutput', false);
 
-if largeZarr
+if largeFile
     func_strs = arrayfun(@(x) sprintf(['XR_resampleSingleZarr(''%s'',''%s'',%s,', ...
         '''inputBbox'',%s,''blockSize'',%s,''batchSize'',%s,''borderSize'',%s,', ...
         '''interpMethod'',''%s'',''parseCluster'',%s,''cpusPerTask'',%d,''uuid'',''%s'',', ...

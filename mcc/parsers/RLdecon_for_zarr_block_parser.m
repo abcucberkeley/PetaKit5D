@@ -24,7 +24,7 @@ ip.addParameter('dampFactor', 1, @(x) isnumeric(x) || ischar(x)); % damp factor 
 ip.addParameter('scaleFactor', 1.0, @(x) isnumeric(x) || ischar(x)); % scale factor for decon result
 ip.addParameter('deconOffset', 0, @(x) isnumeric(x) || ischar(x)); % offset for decon result
 ip.addParameter('EdgeErosion', 0, @(x) isnumeric(x) || ischar(x)); % edge erosion for decon result
-ip.addParameter('deconMaskFns', {} , @(x) iscell(x) || ischar(x)); % Full paths of 2D mask zarr files, in xy, xz, yz order
+ip.addParameter('maskFullpaths', {} , @(x) iscell(x) || ischar(x)); % Full paths of 2D mask zarr files, in xy, xz, yz order
 ip.addParameter('RLMethod', 'simplified' , @ischar); % rl method {'original', 'simplified', 'cudagen'}
 ip.addParameter('wienerAlpha', 0.005, @(x) isnumeric(x) || ischar(x));
 ip.addParameter('OTFCumThresh', 0.9, @(x) isnumeric(x) || ischar(x)); % OTF cumutative sum threshold
@@ -50,7 +50,7 @@ dampFactor = pr.dampFactor;
 scaleFactor = pr.scaleFactor;
 deconOffset = pr.deconOffset;
 EdgeErosion = pr.EdgeErosion;
-deconMaskFns = pr.deconMaskFns;
+maskFullpaths = pr.maskFullpaths;
 RLMethod = pr.RLMethod;
 wienerAlpha = pr.wienerAlpha;
 OTFCumThresh = pr.OTFCumThresh;
@@ -109,8 +109,8 @@ end
 if ischar(EdgeErosion)
     EdgeErosion = str2num(EdgeErosion);
 end
-if ischar(deconMaskFns) && ~isempty(deconMaskFns) && strcmp(deconMaskFns(1), '{')
-    deconMaskFns = eval(deconMaskFns);
+if ischar(maskFullpaths) && ~isempty(maskFullpaths) && strcmp(maskFullpaths(1), '{')
+    maskFullpaths = eval(maskFullpaths);
 end
 if ischar(wienerAlpha)
     wienerAlpha = str2num(wienerAlpha);
@@ -138,7 +138,7 @@ RLdecon_for_zarr_block(batchInds, zarrFullpath, psfFullpath, deconFullpath, ...
     flagFullname, BatchBBoxes, RegionBBoxes, xyPixelSize, dz, save16bit=save16bit, ...
     Overwrite=Overwrite, SkewAngle=SkewAngle, flipZstack=flipZstack, Background=Background, ...
     dzPSF=dzPSF, DeconIter=DeconIter, dampFactor=dampFactor, scaleFactor=scaleFactor, ...
-    deconOffset=deconOffset, EdgeErosion=EdgeErosion, deconMaskFns=deconMaskFns, ...
+    deconOffset=deconOffset, EdgeErosion=EdgeErosion, maskFullpaths=maskFullpaths, ...
     RLMethod=RLMethod, wienerAlpha=wienerAlpha, OTFCumThresh=OTFCumThresh, ...
     skewed=skewed, fixIter=fixIter, useGPU=useGPU, uuid=uuid, debug=debug, ...
     psfGen=psfGen);

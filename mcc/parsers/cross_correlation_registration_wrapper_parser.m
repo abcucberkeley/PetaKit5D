@@ -15,7 +15,7 @@ ip.addRequired('xyz_factors', @(x) isnumeric(x) || ischar(x));
 ip.addParameter('Stitch2D', false, @(x) islogical(x) || ischar(x));
 ip.addParameter('downSample', [1, 1, 1], @(x) isnumeric(x) || ischar(x));
 ip.addParameter('MaxOffset', [300, 300, 50], @(x) isnumeric(x) || ischar(x));
-ip.addParameter('largeZarr', false, @(x) islogical(x) || ischar(x));
+ip.addParameter('largeFile', false, @(x) islogical(x) || ischar(x));
 ip.addParameter('mipDirStr', '', @ischar);
 ip.addParameter('poolSize', [], @(x) isnumeric(x) || ischar(x));
 ip.addParameter('dimNumThrsh', 10000, @(x) isnumeric(x) || ischar(x));
@@ -29,7 +29,7 @@ pr = ip.Results;
 Stitch2D = pr.Stitch2D;
 downSample = pr.downSample;
 MaxOffset = pr.MaxOffset;
-largeZarr = pr.largeZarr;
+largeFile = pr.largeFile;
 mipDirStr = pr.mipDirStr;
 poolSize = pr.poolSize;
 dimNumThrsh = pr.dimNumThrsh;
@@ -67,8 +67,8 @@ end
 if ischar(MaxOffset)
     MaxOffset = str2num(MaxOffset);
 end
-if ischar(largeZarr)
-    largeZarr = str2num(largeZarr);
+if ischar(largeFile)
+    largeFile = str2num(largeFile);
 end
 if ischar(poolSize)
     poolSize = str2num(poolSize);
@@ -85,7 +85,7 @@ end
 
 cross_correlation_registration_wrapper(imgFullpath_1, imgFullpath_2, xcorrFullpath, ...
     pair_indices, cuboid_1, cuboid_2, cuboid_overlap_12, px, xyz_factors, Stitch2D=Stitch2D, ...
-    downSample=downSample, MaxOffset=MaxOffset, largeZarr=largeZarr, mipDirStr=mipDirStr, ...
+    downSample=downSample, MaxOffset=MaxOffset, largeFile=largeFile, mipDirStr=mipDirStr, ...
     poolSize=poolSize, dimNumThrsh=dimNumThrsh, parseCluster=parseCluster, ...
     mccMode=mccMode, configFile=configFile);
 

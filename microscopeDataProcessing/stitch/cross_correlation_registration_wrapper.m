@@ -16,7 +16,7 @@ ip.addRequired('xyz_factors', @isnumeric);
 ip.addParameter('Stitch2D', false, @islogical);
 ip.addParameter('downSample', [1, 1, 1], @isnumeric);
 ip.addParameter('MaxOffset', [300, 300, 50], @isnumeric);
-ip.addParameter('largeZarr', false, @islogical);
+ip.addParameter('largeFile', false, @islogical);
 ip.addParameter('mipDirStr', '', @ischar);
 ip.addParameter('poolSize', [], @isnumeric);
 ip.addParameter('dimNumThrsh', 10000, @isnumeric);
@@ -30,7 +30,7 @@ pr = ip.Results;
 Stitch2D = pr.Stitch2D;
 downSample = pr.downSample;
 MaxOffset = pr.MaxOffset;
-largeZarr = pr.largeZarr;
+largeFile = pr.largeFile;
 mipDirStr = pr.mipDirStr;
 poolSize = pr.poolSize;
 dimNumThrsh = pr.dimNumThrsh;
@@ -50,7 +50,7 @@ nF = size(pair_indices, 1);
 
 relative_shift_mat = zeros(nF, 3);
 max_xcorr_mat = zeros(nF, 1);
-if largeZarr
+if largeFile
     relative_shift_mat_cell = cell(nF, 1);
     max_xcorr_mat_cell = cell(nF, 1);
 end
@@ -65,7 +65,7 @@ for i = 1 : nF
         [relative_shift, max_xcorr] = cross_correlation_registration_2d(imgFullpath_1, ...
             imgFullpath_2i, '', cuboid_1i, cuboid_2i, cuboid_overlap_12i, px, xyz_factors, ...
             downSample=downSample, MaxOffset=MaxOffset, dimNumThrsh=dimNumThrsh);
-    elseif largeZarr
+    elseif largeFile
         if nF == 1
             xcorrFullpath_i = sprintf('%s_mip_slabs.mat', xcorrFullpath(1 : end - 4));            
         else
@@ -92,7 +92,7 @@ fprintf('Save results ... ');
 
 uuid = get_uuid();
 xcorrTmppath = sprintf('%s_%s.mat', xcorrFullpath(1 : end - 4), uuid);
-if largeZarr
+if largeFile
     save('-v7.3', xcorrTmppath, 'relative_shift_mat', 'max_xcorr_mat', 'pair_indices', 'relative_shift_mat_cell', 'max_xcorr_mat_cell');
 else
     save('-v7.3', xcorrTmppath, 'relative_shift_mat', 'max_xcorr_mat', 'pair_indices');

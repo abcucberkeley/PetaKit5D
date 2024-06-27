@@ -32,7 +32,7 @@ ip.addParameter('dampFactor', 1, @isnumeric); % damp factor for decon result
 ip.addParameter('scaleFactor', 1.0, @isnumeric); % scale factor for decon result
 ip.addParameter('deconOffset', 0, @isnumeric); % offset for decon result
 ip.addParameter('EdgeErosion', 0, @isnumeric); % edge erosion for decon result
-ip.addParameter('deconMaskFns', {} , @iscell); % Full paths of 2D mask zarr files, in xy, xz, yz order
+ip.addParameter('maskFullpaths', {} , @iscell); % Full paths of 2D mask zarr files, in xy, xz, yz order
 ip.addParameter('RLMethod', 'simplified' , @ischar); % rl method {'original', 'simplified', 'cudagen'}
 ip.addParameter('wienerAlpha', 0.005, @isnumeric);
 ip.addParameter('OTFCumThresh', 0.9, @isnumeric); % OTF cumutative sum threshold
@@ -58,7 +58,7 @@ dampFactor = pr.dampFactor;
 scaleFactor = pr.scaleFactor;
 deconOffset = pr.deconOffset;
 EdgeErosion = pr.EdgeErosion;
-deconMaskFns = pr.deconMaskFns;
+maskFullpaths = pr.maskFullpaths;
 RLMethod = pr.RLMethod;
 skewed = pr.skewed;
 wienerAlpha = pr.wienerAlpha;
@@ -107,10 +107,10 @@ for i = 1 : numel(batchInds)
     obEnd = RegionBBoxes(i, 4 : 6);
 
     % use masks to determine whether to run the decon or directly save an empty region
-    if ~(isempty(deconMaskFns) || isempty(deconMaskFns{1}))
+    if ~(isempty(maskFullpaths) || isempty(maskFullpaths{1}))
         skipDecon = false;
         for f = 1 : 3
-            im_f = readzarr(deconMaskFns{f}, 'inputBbox', [obStart(finds(f, :)), 1, obEnd(finds(f, :)), 1]);
+            im_f = readzarr(maskFullpaths{f}, 'inputBbox', [obStart(finds(f, :)), 1, obEnd(finds(f, :)), 1]);
             if ~any(im_f(:))
                 skipDecon = true;
                 break;

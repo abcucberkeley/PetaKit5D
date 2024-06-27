@@ -4,6 +4,12 @@
 % Note: the OMW method may need more than 2 or 3 iterations to converge,
 % like 10-100 iterations with relative larger wiener factor (0.01 - 1). 
 % Confocal images may have similar parameter settings as light sheet images.
+%
+% The parameters demonstrated here are usually a subset of those available 
+% for the functions, with the rest using default values. For a comprehensive 
+% list of parameters and their defaults, please see the function's parameter 
+% list (or input parser) or refer to the parameter documentation (major_functions_documentation.txt).
+
 
 clear, clc;
 

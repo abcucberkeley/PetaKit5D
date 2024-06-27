@@ -34,8 +34,7 @@ ip.addParameter('inputBbox', [], @(x) isempty(x) || isvector(x));
 ip.addParameter('taskSize', [], @isnumeric);
 ip.addParameter('resampleFactor', [], @(x) isempty(x) || isnumeric(x)); % resampling after rotation 
 ip.addParameter('interpMethod', 'linear', @(x) any(strcmpi(x, {'cubic', 'linear'})));
-ip.addParameter('maskFns', {}, @iscell); % 2d masks to filter regions to deskew and rotate, in xy, xz, yz order
-ip.addParameter('suffix', '', @ischar); % suffix for the folder
+ip.addParameter('maskFullpaths', {}, @iscell); % 2d masks to filter regions to deskew and rotate, in xy, xz, yz order
 ip.addParameter('parseCluster', true, @islogical);
 ip.addParameter('parseParfor', false, @islogical);
 ip.addParameter('masterCompute', true, @islogical); % master node participate in the task computing. 
@@ -63,8 +62,7 @@ blockSize = pr.blockSize;
 inputBbox = pr.inputBbox;
 taskSize = pr.taskSize;
 interpMethod = pr.interpMethod;
-maskFns = pr.maskFns;
-suffix = pr.suffix;
+maskFullpaths = pr.maskFullpaths;
 parseCluster = pr.parseCluster;
 parseParfor = pr.parseParfor;
 jobLogDir = pr.jobLogDir;
@@ -141,13 +139,13 @@ bimSize = getImageSize(frameFullpath);
 
 % use MIP masks to decide the input and output   boudning box
 outputBbox = [];
-if ~isempty(maskFns) && (iscell(maskFns) && ~isempty(maskFns{1}))
+if ~isempty(maskFullpaths) && (iscell(maskFullpaths) && ~isempty(maskFullpaths{1}))
     fprintf('Compute input and out bounding boxes with MIP masks...\n')
-    disp(maskFns(:));
+    disp(maskFullpaths(:));
 
     BorderSize = [100, 100, 100];
     BorderSize = max(10, round(BorderSize ./ rs));
-    [maskInBbox, maskOutBbox] = XR_getDeskeRotateBoxesFromMasks(maskFns, BorderSize, ...
+    [maskInBbox, maskOutBbox] = XR_getDeskeRotateBoxesFromMasks(maskFullpaths, BorderSize, ...
         xyPixelSize, dz, skewAngle, reverse, rs, inputBbox);
 
     inputBbox = maskInBbox;

@@ -1,10 +1,15 @@
 % demo to run microscope automatic pipeline for multiple datasets with same 
 % experiment settings with stitch
 
-% note: this demo is designed for quick processing of raw microscopy data 
+% Note: this demo is designed for quick processing of raw microscopy data 
 % during acquistion, providing fast feedback and inspection. For final
 % processing after acquistion, follow the functions outlined in the stitching, 
 % deconvolution, geometric transformation, and large-scale processing demos.
+%
+% The parameters demonstrated here are usually a subset of those available 
+% for the functions, with the rest using default values. For a comprehensive 
+% list of parameters and their defaults, please see the function's parameter 
+% list (or input parser) or refer to the parameter documentation (major_functions_documentation.txt).
 
 
 %% Step 1: set parameters for each step. 

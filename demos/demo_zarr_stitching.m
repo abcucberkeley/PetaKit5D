@@ -1,4 +1,10 @@
 % demo to run ZarrStitcher on both skewed data and deskew/rotated data.
+%
+% Note: The parameters demonstrated here are usually a subset of those available 
+% for the functions, with the rest using default values. For a comprehensive 
+% list of parameters and their defaults, please see the function's parameter 
+% list (or input parser) or refer to the parameter documentation (major_functions_documentation.txt).
+
 
 clear, clc;
 

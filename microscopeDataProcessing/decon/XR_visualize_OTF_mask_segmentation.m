@@ -1,13 +1,27 @@
 function [] = XR_visualize_OTF_mask_segmentation(psfFn, OTFCumThresh, skewed, varargin)
-% visualze OTF mask outline segmented with given threshold overlay with OTF
+% Visualze OTF mask outline segmented with given threshold overlay with OTF.
 % 
+%
+% Required inputs:
+%               psfFn : char. PSF file path
+% 
+% Optional inputs:
+%        OTFCumThresh : a number (default: 0.9). Accumulated energy quantile to segment OTF mask. Smaller number means tighter threshold with smaller masks. 
+%              skewed : empty or true|false (default: []). Parameter for OTF segmentation based on PSF space. If true, PSF is in the skewed space. If empty, automatically deteriming if PSF is in skewed space.
+%
+% Parameters (as 'specifier'-value pairs):
+%         minIntThrsh : a number (default: 1e-3). Minimum intensity threshold for OTF segmentation.
+%             visible : true|false (default: true). Make figure visible; otherwise, plot the figure in the background.
+%             saveFig : true|false (default: false). Save figure to disk.
+%
+%
 % Author: Xiongtao Ruan (11/13/2023)
 
 
 ip = inputParser;
 ip.CaseSensitive = false;
 ip.addRequired('psfFn', @ischar);
-ip.addOptional('OTFCumThresh', 0.85, @(x) isscalar(x));
+ip.addOptional('OTFCumThresh', 0.9, @(x) isscalar(x));
 ip.addOptional('skewed', [], @(x) isempty(x) || islogical(x));
 ip.addParameter('minIntThrsh', 1e-3, @(x) isnumeric(x));
 ip.addParameter('visible',  true, @(x) islogical(x));

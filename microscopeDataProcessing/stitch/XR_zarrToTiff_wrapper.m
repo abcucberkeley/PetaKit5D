@@ -1,23 +1,41 @@
 function [] = XR_zarrToTiff_wrapper(dataPaths, varargin)
-% The wrapper for convert all zarr files in dataPaths to tiff
+% Dataset level wrapper for converting Zarr files in dataPaths to Tiff.
+%
+%
+% Required inputs:
+%           dataPaths : char or cell array. Directory paths for the datasets. Either a string for a single dataset or a cell array of paths for several datasets with same experimental settings.
+%
+% Parameters (as 'specifier'-value pairs):
+%       resultDirName : char (default: 'matlab_decon'). Result directory under data paths.
+%     channelPatterns : a cell array (default: {'CamA_ch0', 'CamB_ch0'}).  Channel identifiers for included channels. 
+%              usrFcn : empty or a function handle or char (default: ''). User defined function handle applying to the image.
+%        parseCluster : true|false (default: true). Use slurm cluster for the processing.
+%       masterCompute : true|false (default: true). Master job node is involved in the processing.
+%           jobLogDir : char (default: '../job_logs'). Path for the slurm job logs.
+%         cpusPerTask : a number (default: 1). The number of cpu cores per task for slurm job submission.
+%                uuid : empty or a uuid string (default: ''). uuid string as part of the temporate result paths.
+%         maxTrialNum : a number (default: 3). The max number of retries for a task.
+%        unitWaitTime : a number (default: 1). The wait time per file in minutes to check whether the computing is done.
+%             mccMode : true|false (default: false). Use mcc mode.
+%          configFile : empty or char (default: ''). Path for the config file for job submission.
+%
 %
 % Author: Xiongtao Ruan (01/19/2021)
-% 
-% xruan (10/11/2020): add function handle for processing before saving to zarr
+
 
 ip = inputParser;
 ip.CaseSensitive = false;
 ip.addRequired('dataPaths', @(x) iscell(x) || ischar(x));
 ip.addParameter('resultDirName', 'tiffs', @ischar);
-ip.addParameter('channelPatterns', {'CamA', 'CamB'}, @iscell);
+ip.addParameter('channelPatterns', {'CamA_ch0', 'CamB_ch0'}, @iscell);
 ip.addParameter('usrFcn', '', @(x) isempty(x) || isa(x,'function_handle') || ischar(x));
 ip.addParameter('parseCluster', true, @islogical);
-ip.addParameter('masterCompute', true, @islogical); % master node participate in the task computing. 
+ip.addParameter('masterCompute', true, @islogical); 
 ip.addParameter('jobLogDir', '../job_logs', @ischar);
 ip.addParameter('cpusPerTask', 1, @isnumeric);
 ip.addParameter('uuid', '', @ischar);
 ip.addParameter('maxTrialNum', 3, @isnumeric);
-ip.addParameter('unitWaitTime', 30, @isnumeric);
+ip.addParameter('unitWaitTime', 1, @isnumeric);
 ip.addParameter('mccMode', false, @islogical);
 ip.addParameter('configFile', '', @ischar);
 

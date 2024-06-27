@@ -19,9 +19,10 @@ ip.addRequired('bbox', @isnumeric);
 ip.addParameter('overwrite', false, @islogical); % start coordinate of the last time point
 ip.addParameter('pad', false, @islogical); % pad region that is outside the bbox
 ip.addParameter('zarrFile', false , @islogical); % read zarr
-ip.addParameter('largeZarr', false, @islogical); % use zarr file as input
+ip.addParameter('largeFile', false, @islogical); % use zarr file as input
 ip.addParameter('saveZarr', false , @islogical); % save as zarr
-ip.addParameter('blockSize', [500, 500, 500] , @isnumeric); % save as zarr
+ip.addParameter('batchSize', [1024, 1024, 1024] , @isnumeric);
+ip.addParameter('blockSize', [256, 256, 256] , @isnumeric);
 ip.addParameter('uuid', '', @ischar);
 ip.addParameter('parseCluster', true, @islogical);
 ip.addParameter('mccMode', false, @islogical);
@@ -33,8 +34,9 @@ pr = ip.Results;
 overwrite = pr.overwrite;
 pad = pr.pad;
 zarrFile = pr.zarrFile;
-largeZarr = pr.largeZarr;
+largeFile = pr.largeFile;
 saveZarr = pr.saveZarr;
+batchSize = pr.batchSize;
 blockSize = pr.blockSize;
 uuid = pr.uuid;
 parseCluster = pr.parseCluster;
@@ -68,8 +70,7 @@ end
 
 % read data
 if zarrFile
-    if largeZarr
-        batchSize = min([1024, 1024, 1024], blockSize * 4);
+    if largeFile
         parseParfor = false;
         XR_crop_zarr(dataFullpath, saveFullpath, bbox, 'pad', pad, 'batchSize', batchSize, ...
             'blockSize', blockSize, 'uuid', uuid, 'parseCluster', parseCluster, ...

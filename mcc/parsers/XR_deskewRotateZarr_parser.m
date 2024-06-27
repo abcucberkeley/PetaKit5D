@@ -23,8 +23,7 @@ ip.addParameter('inputBbox', [], @(x) isempty(x) || isvector(x) || ischar(x));
 ip.addParameter('taskSize', [], @(x) isnumeric(x) || ischar(x));
 ip.addParameter('resampleFactor', [], @(x) isempty(x) || isnumeric(x) || ischar(x)); % resampling after rotation 
 ip.addParameter('interpMethod', 'linear', @(x) any(strcmpi(x, {'cubic', 'linear'})) || ischar(x));
-ip.addParameter('maskFns', {}, @(x) iscell(x) || ischar(x)); % 2d masks to filter regions to deskew and rotate, in xy, xz, yz order
-ip.addParameter('suffix', '', @ischar); % suffix for the folder
+ip.addParameter('maskFullpaths', {}, @(x) iscell(x) || ischar(x)); % 2d masks to filter regions to deskew and rotate, in xy, xz, yz order
 ip.addParameter('parseCluster', true, @(x) islogical(x) || ischar(x));
 ip.addParameter('parseParfor', false, @(x) islogical(x) || ischar(x));
 ip.addParameter('masterCompute', true, @(x) islogical(x) || ischar(x)); % master node participate in the task computing. 
@@ -55,8 +54,7 @@ inputBbox = pr.inputBbox;
 taskSize = pr.taskSize;
 resampleFactor = pr.resampleFactor;
 interpMethod = pr.interpMethod;
-maskFns = pr.maskFns;
-suffix = pr.suffix;
+maskFullpaths = pr.maskFullpaths;
 parseCluster = pr.parseCluster;
 parseParfor = pr.parseParfor;
 masterCompute = pr.masterCompute;
@@ -121,8 +119,8 @@ end
 if ischar(resampleFactor)
     resampleFactor = str2num(resampleFactor);
 end
-if ischar(maskFns) && ~isempty(maskFns) && strcmp(maskFns(1), '{')
-    maskFns = eval(maskFns);
+if ischar(maskFullpaths) && ~isempty(maskFullpaths) && strcmp(maskFullpaths(1), '{')
+    maskFullpaths = eval(maskFullpaths);
 end
 if ischar(parseCluster)
     parseCluster = str2num(parseCluster);
@@ -148,7 +146,7 @@ XR_deskewRotateZarr(frameFullpath, xyPixelSize, dz, resultDirStr=resultDirStr, .
     reverse=reverse, DSRCombined=DSRCombined, flipZstack=flipZstack, save16bit=save16bit, ...
     saveMIP=saveMIP, saveZarr=saveZarr, batchSize=batchSize, blockSize=blockSize, ...
     inputBbox=inputBbox, taskSize=taskSize, resampleFactor=resampleFactor, ...
-    interpMethod=interpMethod, maskFns=maskFns, suffix=suffix, parseCluster=parseCluster, ...
+    interpMethod=interpMethod, maskFullpaths=maskFullpaths, parseCluster=parseCluster, ...
     parseParfor=parseParfor, masterCompute=masterCompute, jobLogDir=jobLogDir, ...
     cpusPerTask=cpusPerTask, uuid=uuid, debug=debug, mccMode=mccMode, configFile=configFile);
 

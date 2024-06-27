@@ -8,19 +8,19 @@ ip.CaseSensitive = false;
 ip.addRequired('dataPaths', @(x) iscell(x) || ischar(x));
 ip.addParameter('tiffFullpaths', '', @(x) iscell(x) || ischar(x));
 ip.addParameter('resultDirName', 'zarr', @ischar);
-ip.addParameter('locIds', [], @(x) isnumeric(x) || ischar(x)); % location ids for the tiles
-ip.addParameter('blockSize', [500, 500, 250], @(x) isnumeric(x) || ischar(x));
+ip.addParameter('locIds', [], @(x) isnumeric(x) || ischar(x));
+ip.addParameter('blockSize', [256, 256, 256], @(x) isnumeric(x) || ischar(x));
 ip.addParameter('shardSize', [], @(x) isnumeric(x) || ischar(x));
 ip.addParameter('flippedTile', [], @(x) isempty(x) || islogical(x) || ischar(x));
 ip.addParameter('resampleFactor', [], @(x) isempty(x) || isnumeric(x) || ischar(x));
 ip.addParameter('partialFile', false, @(x) islogical(x) || ischar(x));
 ip.addParameter('channelPatterns', {'tif'}, @(x) iscell(x) || ischar(x));
-ip.addParameter('inputBbox', [], @(x) isnumeric(x) || ischar(x)); % crop input tile before processing
-ip.addParameter('tileOutBbox', [], @(x) isnumeric(x) || ischar(x)); % crop output tile after processing
+ip.addParameter('inputBbox', [], @(x) isnumeric(x) || ischar(x));
+ip.addParameter('tileOutBbox', [], @(x) isnumeric(x) || ischar(x));
 ip.addParameter('processFunPath', '', @(x) isempty(x) || isa(x,'function_handle') || ischar(x) || isstring(x) || iscell(x));
 ip.addParameter('parseCluster', true, @(x) islogical(x) || ischar(x));
 ip.addParameter('bigData', true, @(x) islogical(x) || ischar(x));
-ip.addParameter('masterCompute', true, @(x) islogical(x) || ischar(x)); % master node participate in the task computing. 
+ip.addParameter('masterCompute', true, @(x) islogical(x) || ischar(x));
 ip.addParameter('jobLogDir', '../job_logs', @ischar);
 ip.addParameter('cpusPerTask', 1, @(x) isnumeric(x) || ischar(x));
 ip.addParameter('uuid', '', @ischar);

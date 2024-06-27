@@ -7,15 +7,15 @@ ip = inputParser;
 ip.CaseSensitive = false;
 ip.addRequired('dataPaths', @(x) iscell(x) || ischar(x));
 ip.addParameter('resultDirName', 'tiffs', @ischar);
-ip.addParameter('channelPatterns', {'CamA', 'CamB'}, @(x) iscell(x) || ischar(x));
+ip.addParameter('channelPatterns', {'CamA_ch0', 'CamB_ch0'}, @(x) iscell(x) || ischar(x));
 ip.addParameter('usrFcn', '', @(x) isempty(x) || isa(x,'function_handle') || ischar(x));
 ip.addParameter('parseCluster', true, @(x) islogical(x) || ischar(x));
-ip.addParameter('masterCompute', true, @(x) islogical(x) || ischar(x)); % master node participate in the task computing. 
+ip.addParameter('masterCompute', true, @(x) islogical(x) || ischar(x)); 
 ip.addParameter('jobLogDir', '../job_logs', @ischar);
 ip.addParameter('cpusPerTask', 1, @(x) isnumeric(x) || ischar(x));
 ip.addParameter('uuid', '', @ischar);
 ip.addParameter('maxTrialNum', 3, @(x) isnumeric(x) || ischar(x));
-ip.addParameter('unitWaitTime', 30, @(x) isnumeric(x) || ischar(x));
+ip.addParameter('unitWaitTime', 1, @(x) isnumeric(x) || ischar(x));
 ip.addParameter('mccMode', false, @(x) islogical(x) || ischar(x));
 ip.addParameter('configFile', '', @ischar);
 

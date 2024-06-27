@@ -6,6 +6,12 @@
 % system. If your system has more cores, you may see even more accelerations. 
 % However, if your system has fewer cores, the acceleration may be not as much 
 % as we showed in the paper. 
+%
+% The parameters demonstrated here are usually a subset of those available 
+% for the functions, with the rest using default values. For a comprehensive 
+% list of parameters and their defaults, please see the function's parameter 
+% list (or input parser) or refer to the parameter documentation (major_functions_documentation.txt).
+
 
 clear, clc;
 

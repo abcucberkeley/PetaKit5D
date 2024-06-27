@@ -1,148 +1,130 @@
-function [] = XR_matlab_stitching_wrapper(dataPath, imageListFileName, varargin)
-% wrapper for java stitching pipeline. 
+function [] = XR_matlab_stitching_wrapper(dataPaths, imageListFullpaths, varargin)
+% Wrapper for the stitching pipeline.
 % 
 % 
-% Inputs :   
-%        imageDirName : full path for the directory of the images to be stitched
-%   imageListFileName : full path for the coordinate information csv file
+% Required inputs :   
+%          dataPaths : char or cell array. Directory paths for the tiles. Either a string for a single path or a cell array of paths for tiles within different directories.
+% imageListFullpaths : char or cell array. Path(s) for image list. The order of imageListFullpaths need to map to the dataPaths. 
 %
-% Options (as 'specifier'-value pairs): 
-%
-%         'axisOrder' : Axis mapping of the coordinate system. Default: 'xyz'.
-%         'ffcorrect' : flat field correction. Default: false.
-%        'Resolution' : Image resolution in um, 2D (same for xy) or 3D vector.  
-%         'resultDir' : name of stitching result directory. The directory is child directory of imageDirname
-%       'blendMethod' : Blend method for overlap regions. Available: none, mean, max, median. Default: mean
-%           'padSize' : Pad or crop the stitched image, empty (default) or 
-%                       a 1X3 vector of integers (y, x, z). Postive for pad and negative for crop. 
-%      'outBbox' : Crop the stitched image by some bounding box, empty (default, no crop) 
-%                       or a 3X2 vector for start and end indices of the bounding box (y, x, z).      
-%        'zNormalize' : normalize background along z-axis by the median. Default: false.
-%      'parseCluster' : Use slurm-based cluster computing. Default: true. 
-%         'jobLogDir' : Log directory for the slurm jobs. 
-%       'cpusPerTask' : Number of cpus for a job. Default: 12
-%         'save16bit' : true|{false}. Save final results as 16bit or single. 
-%              'uuid' : unique string for a job for saving files. 
-%       'maxTrialNum' : Max number of times to rerun failure cases. 
-%      'unitWaitTime' : For computing without cluster, the wait time per      
-%                       file in minutes, in order to check whether the computing is done. 
+% Parameters (as 'specifier'-value pairs): 
+%      resultDirName : char (default: 'matlab_stitch'). Result directory under data path.
+%          streaming : true|false (default: false). True for real-time processing, and false for existing data
+%    channelPatterns : a cell array (default: {'CamA_ch0', 'CamA_ch1', 'CamB_ch0'}).  Channel identifiers for included channels. 
+%           multiLoc : true|{false}. Tiles are in multiple folders, with a group per folder.
+%    processedDirStr : empty or char (default: ''). Processed directory name under dataPath.
+% stitchInfoFullpath : empty or char (default: ''). Stitch info path. If provided, use the information to stitch the data.
+%                 DS : true|false (default: false). Data is in deskewed space.
+%                DSR : true|false (default: false). Data is in deskew/rotated space (with stage coordinates).
+%        xyPixelSize : a number (default: 0.108). Pixel size in um.
+%                 dz : a number (default: 0.5). Scan interval in um.
+%          skewAngle : a number (default: 32.45). Skew angle (in degree) of the stage.
+%            reverse : true|false (default: false). Inverse direction of z axis. 
+%   parseSettingFile : true|false (default: false). Use the setting file to decide whether filp z stacks or not.
+%          axisOrder : char (default: 'x,y,z'). Axis order mapping for coordinates in image list. With combinations of -, x, y, and z. '-yxz' means negative -y map to x, x maps to y, and z maps to z.
+%          dataOrder : char (default: 'y,x,z'). Axis order mapping for data. 'y,x,z' means the first, second and third axes are y, x, and z, respectively.
+%      objectiveScan : true|false (default: false). Objective scan. This is the scan as in the DS space.
+%             IOScan : true|false (default: false). Inverted objective scan. This is the scan with the stage coordinates (DSR space). 
+%           zarrFile : true|false (default: false). Use Zarr file as input.
+%          largeFile : true|false (default: false). Use large-scale stitching strategy, i.e., use MIP slabs for registration and distance transforms.
+%           poolSize : empty or 1x6 or 1x8 vectors (default: []). MIP slab generation downsampling factor for stitching large tiles. 
+%          batchSize : 1x3 vector (default: [512, 512, 512]). Batch size per stitching task.
+%          blockSize : 1x3 vector (default: [256, 256, 256]). Block/chunk size for zarr output.
+%          shardSize : empty or 1x3 vector (default: []). If not empty, set shard size in zarr output.
+%       resampleType : 'given'|'isotropic'|'xy_isotropic' (default: 'isotropic'). given: user-defined, xy_isotropic: xy isotropic, and z 
+%     resampleFactor : empty or 1x1, 1x2 or 1x3 vector (default: []). Resampling factor. Empty: no resampling; axis order yxz.
+%          inputBbox : empty or 1x6 vector (default: []). Input bounding box for crop for tiles. Definiation: [ymin, xmin, zmin, ymax, xmax, zmax].
+%        tileOutBbox : empty or 1x6 vector (default: []). Crop tiles after preprocessing. Definiation: [ymin, xmin, zmin, ymax, xmax, zmax].
+%         tileOffset : a number (default: 0). Offset added to tiles during preprocessing.
+%        blendMethod : 'none'|'feather'|'mean'|'median'|'max' (default: 'feather'). Blending method for stitching. 'none' means taking half overlap from each tile; 'mean', 'median' and 'max' means use the mean, median or max intensity in the overlap region. 'feather' means feather blending.
+%        overlapType : ''|'none'|'half'|'full' (default: ''). Method to handle overlap regions for blending (feather use 'full'). 'none', 'half', and 'full' means the overlap region to use for blending. If empty, use 'none' for none blending, and 'half' for others.
+%         xcorrShift : true|false (default: false). Xcorr registration for stitching.
+%        xyMaxOffset : a number (default: 300). Max offsets in voxel in xy axes in the registration.
+%         zMaxOffset : a number (default: 50). Max offset in voxel in z axis in the registration.
+%    xcorrDownsample : 1x3 vector (default: [2, 2, 1]). Downsampling factor for registration in yxz axis order.
+%        xcorrThresh : a number (default: 0.25). Threshold for max xcorr value. The registration for a pair of tiles is not considered if belowing this threshold.
+%            outBbox : empty or 1x6 vector (default: []). Only output the stitching result for the given output. Definiation: [ymin, xmin, zmin, ymax, xmax, zmax].
+%          xcorrMode : 'primary'|'primaryFirst'|'all' (default: 'primaryFirst'). Xcorr registration mode. 'primary': use all time points in primary channel. 'primaryFirst': use the first time point in primary channel. 'all': registration within each time point and channel.
+%        shiftMethod : 'local'|'global'|'grid'|'group' (default: 'grid'). Registration optimization method. 'local': use minimum spinning tree; 'global': use all pairs of neighbors; 'grid': use direct neighbors; 'group': use grid method within group, then across groups.
+%         axisWeight : 1x3 vector (default: [1, 0.1, 10]). Weights for the axes to be considered during registration optimization in yxz orders.
+%          groupFile : char (default: ''). File to define tile groups for 'group' option in shiftMethod. The format is the tile indices x, y, z, followed by gropu id.
+%          primaryCh : empty or char (default: ''). The primary channel for registration. Must be one from channelPatterns.
+%   usePrimaryCoords : true|false (default: false). Use the coordinates from the primary channel for stitching.
+%          save16bit : true|false (default: true). Save 16bit result for stitch result; otherwise save as single. 
+%      edgeArtifacts : a number (default: 2). The number of voxels from the border to erode to remove edge artifacts. 
+%         distBboxes : empty or 1x6 or #Tilex6 vectors (default: []). Bounding boxes to define the distance transform for feather blending. Low weights are assigned outside the bounding boxes.
+%            saveMIP : true|false (default: true). Save MIPs after stitching.
+%          stitchMIP : empty or 1x1 or 1x3 bool vector (default: []). Stitching MIP for given axis. Order yxz. 
+%       onlineStitch : true|{false}. Support for online stitch (with partial number of tiles).
+%     processFunPath : empty or char (default: ''). Path for user-defined process function handle. Support .mat or .txt formats.
+%       parseCluster : true|false (default: true). Use slurm cluster for the processing.
+%      masterCompute : true|false (default: true). Master job node is involved in the processing.
+%          jobLogDir : char (default: '../job_logs'). Path for the slurm job logs.
+%        cpusPerTask : a number (default: 8). The number of cpu cores per task for slurm job submission.
+%               uuid : empty or a uuid string (default: ''). uuid string as part of the temporate result paths.
+%        maxTrialNum : a number (default: 3). The max number of retries for a task.
+%       unitWaitTime : a number (default: 0.1). The wait time per file in minutes to check whether the computing is done.
+%            mccMode : true|false (default: false). Use mcc mode.
+%         configFile : empty or char (default: ''). Path for the config file for job submission.
 %
 %
 % Author: Xiongtao Ruan (02/18/2020)
-%
-% xruan: add xcorr based stitching
-% xruan (04/06/2020): add option for computing of only first time point and
-% save parameter mat files for the running. 
-% xruan (06/19/2020): add option for applying shifts from primary channel for other channels. 
-% xruan (06/19/2020): add option for applying shifts from primary channel of the first time point. 
-% xruan (07/11/2020): For primary first option, if masterCPU is true, use
-%                     master script to do the computing to save computing resources. 
-% xruan (07/11/2020): add option for cpu only nodes
-% xruan (07/13/2020): add option for streaming mode (where the data is coming 
-%                     in real time). Also, check if the frame
-% xruan (07/21/2020): add support for new name format (Tile_XXX before Scan)
-% xruan (07/21/2020): fix issue for default primary channel in case it is not exist. 
-% xruan (07/26/2020): add option to use existing stitch info to stitch for all images (including first time point) 
-% xruan (08/01/2020): add support for file names without CamA/B
-% xruan (08/02/2020): add support for increase cpuPerTasks if the result is
-%                     expect to be large
-% xruan (08/02/2020): add support for primary channel for no xcorrshift
-% xruan (08/17/2020): add support for stitching of DSR decon (only for
-% existing DSR decon files).
-% xruan (08/20/2020): add support for objective scan
-% xruan (08/23/2020): add option for overlap type (full)
-% xruan (09/23/2020): add prefix for filename in case string before Scan
-% xruan (10/05/2020): add zarr-based stitching pipeline as an option; use
-%                     tile number in each dimension for pad size computing
-% xruan (10/06/2020): filter out partial file records in image list
-% xruan (10/18/2020): remove incomplete time point for primary or primaryfirst options
-% xruan (10/23/2020): add support for chosen time points and allow empty
-%                     folder for raw data if using DSR or DSR decon
-% xruan (10/24/2020): add support for user-defined processing on tiles
-% xruan (12/06/2020): add support for subIter/fullIter for Iter, and
-%                     flipped tiles
-% xruan (12/09/2020): add support for using primary coordinates for secondary channels/tps
-% xruan (02/24/2021): add support for user defined xy, z max offsets for xcorr registration
-% xruan (03/24/2021): add support for processing of given channels
-% xruan (07/04/2021): ignore tif files recorded in Image List files that
-%   do not match the file pattern. 
-% xruan (07/05/2021): add support for user defined resample (arbitary factor)
-% xruan (07/15/2021): extend subiteration to unlimited number of sets
-% xruan (08/25/2021): add support for channel-specific user functions
-% xruan (10/13/2021): add support for cropping tiles; add support for
-%                     skewed space stitching with reference (for decon data)
-% xruan (10/28/2021): add support for IO scan
-% xruan (12/17/2021): add support for 2d stitching (e.g., MIPs), only with dsr for now
-% xruan (01/03/2022): add support for online stitch (partial stitch) for each layer
-% xruan (01/25/2022): add support for loading tileFullpaths and coordinates from file.
-% xruan (01/31/2022): add support for negative tile numbers in xyz. 
-% xruan (06/20/2022): add input variable axisWeight for user defined weights for optimization
-% xruan (08/25/2022): change CropToSize to tileOutBbox (more generic)
-% xruan (12/13/2022): change xcorr thresh as user defined parameter with default 0.25
-% xruan (02/15/2023): add support for multi-location stitching (tiles are
-%   in different subfolders and/or subgroups). 
-% xruan (04/29/2023): add support for zarr files directly as inputs, 
-%                     and also for stitching of large zarr files
 
 
 ip = inputParser;
 ip.CaseSensitive = false;
-ip.addRequired('dataPath', @(x) ischar(x) || iscell(x));
-ip.addRequired('imageListFileName', @(x) ischar(x) || iscell(x));
-% ip.addParameter('Overwrite', false, @islogical);
+ip.addRequired('dataPaths', @(x) ischar(x) || iscell(x));
+ip.addRequired('imageListFullpaths', @(x) ischar(x) || iscell(x));
+ip.addParameter('resultDirName', 'matlab_stitch', @ischar);
 ip.addParameter('streaming', false, @islogical);
 ip.addParameter('channelPatterns', {'CamA_ch0', 'CamA_ch1', 'CamB_ch0'}, @iscell);
-ip.addParameter('multiLoc', false, @islogical); % use subregions from different folders
-ip.addParameter('processedDirStr', '', @ischar); % path for using existing exist processed data (i.e., DSR, decon)
-ip.addParameter('stitchInfoFullpath', '', @ischar); % use exist stitch info for stitching
+ip.addParameter('multiLoc', false, @islogical); 
+ip.addParameter('processedDirStr', '', @ischar);
+ip.addParameter('stitchInfoFullpath', '', @ischar);
 ip.addParameter('DS', false, @islogical);
 ip.addParameter('DSR', false, @islogical);
 ip.addParameter('xyPixelSize', 0.108, @isnumeric);
 ip.addParameter('dz', 0.5, @isnumeric);
 ip.addParameter('skewAngle', 32.45, @isnumeric);
 ip.addParameter('reverse', false, @islogical);
-ip.addParameter('parseSettingFile', false, @islogical); % use setting file to decide whether filp Z stack or not.
-ip.addParameter('axisOrder', 'x,y,z', @ischar); % stage coordinates axis order
-ip.addParameter('dataOrder', 'y,x,z', @ischar); % data axis order, in case data in zyx order
+ip.addParameter('parseSettingFile', false, @islogical);
+ip.addParameter('axisOrder', 'x,y,z', @ischar);
+ip.addParameter('dataOrder', 'y,x,z', @ischar);
 ip.addParameter('objectiveScan', false, @islogical);
 ip.addParameter('IOScan', false, @islogical);
 ip.addParameter('zarrFile', false, @islogical);
-ip.addParameter('largeZarr', false, @islogical);
+ip.addParameter('largeFile', false, @islogical);
 ip.addParameter('poolSize', [], @isnumeric);
-ip.addParameter('batchSize', [500, 500, 500], @isnumeric);
-ip.addParameter('blockSize', [500, 500, 500], @isnumeric);
+ip.addParameter('batchSize', [512, 512, 512], @isnumeric);
+ip.addParameter('blockSize', [256, 256, 256], @isnumeric);
 ip.addParameter('shardSize', [], @isnumeric);
-ip.addParameter('resampleType', 'xy_isotropic', @ischar); % by default use xy isotropic
-ip.addParameter('resampleFactor', [], @isnumeric); % user-defined resample factor
-ip.addParameter('inputBbox', [], @isnumeric); % crop input tile before processing
-ip.addParameter('tileOutBbox', [], @isnumeric); % crop tile after processing 
-ip.addParameter('tileOffset', 0, @isnumeric); % offset added to tile
-ip.addParameter('resultDirName', 'matlab_stitch', @ischar);
+ip.addParameter('resampleType', 'xy_isotropic', @ischar);
+ip.addParameter('resampleFactor', [], @isnumeric);
+ip.addParameter('inputBbox', [], @isnumeric);
+ip.addParameter('tileOutBbox', [], @isnumeric);
+ip.addParameter('tileOffset', 0, @isnumeric);
 ip.addParameter('blendMethod', 'feather', @ischar);
-ip.addParameter('overlapType', '', @ischar); % '', 'none', 'half', or 'full'
+ip.addParameter('overlapType', '', @ischar);
 ip.addParameter('xcorrShift', true, @islogical);
-ip.addParameter('xyMaxOffset', 300, @(x) isvector(x) && numel(x) <= 2); % max offsets in xy axes
-ip.addParameter('zMaxOffset', 50, @isnumeric); % max offsets in z axis
-ip.addParameter('xcorrDownsample', [2, 2, 1], @isnumeric); % max offsets in z axis
-ip.addParameter('xcorrThresh', 0.25, @isnumeric); % threshold of of xcorr, ignore shift if xcorr below this threshold.
-ip.addParameter('padSize', [], @(x) isnumeric(x) && (isempty(x) || numel(x) == 3));
+ip.addParameter('xyMaxOffset', 300, @(x) isvector(x) && numel(x) <= 2);
+ip.addParameter('zMaxOffset', 50, @isnumeric);
+ip.addParameter('xcorrDownsample', [2, 2, 1], @isnumeric);
+ip.addParameter('xcorrThresh', 0.25, @isnumeric);
 ip.addParameter('outBbox', [], @(x) isnumeric(x) && (isempty(x) || all(size(x) == [3, 2]) || numel(x) == 6));
-ip.addParameter('xcorrMode', 'primaryFirst', @(x) ismember(x, {'primary', 'primaryFirst', 'all'}));  % 'primary': choose one channel as primary channel, 
-        % 'all': xcorr shift for each channel;  % 'primaryFirst': the primary channel of first time point
-ip.addParameter('shiftMethod', 'grid', @ischar); % {'local', 'global', 'grid', 'group', 'test'}
-ip.addParameter('axisWeight', [1, 0.1, 10], @isnumeric); % axis weight for optimization, y, x, z
-ip.addParameter('groupFile', '', @ischar); % file to define tile groups
-ip.addParameter('primaryCh', '', @(x) isempty(x) || ischar(x)); % format: CamA_ch0. If it is empty, use the first channel as primary channel
+ip.addParameter('xcorrMode', 'primaryFirst', @(x) ismember(x, {'primary', 'primaryFirst', 'all'}));
+ip.addParameter('shiftMethod', 'grid', @ischar);
+ip.addParameter('axisWeight', [1, 0.1, 10], @isnumeric);
+ip.addParameter('groupFile', '', @ischar);
+ip.addParameter('primaryCh', '', @(x) isempty(x) || ischar(x));
 ip.addParameter('usePrimaryCoords', false, @islogical); 
 ip.addParameter('save16bit', true, @islogical);
 ip.addParameter('edgeArtifacts', 0, @isnumeric);
-ip.addParameter('distBboxes', [], @isnumeric); % bounding boxes for distance transform
+ip.addParameter('distBboxes', [], @isnumeric);
 ip.addParameter('saveMIP', true, @islogical);
-ip.addParameter('stitchMIP', [], @(x) isempty(x)  || (islogical(x) && (numel(x) == 1 || numel(x) == 3))); % 1x3 vector or vector, by default, stitch MIP-z
-ip.addParameter('onlineStitch', false, @(x) islogical(x)); % support for online stitch (with partial number of tiles). 
-ip.addParameter('processFunPath', '', @(x) isempty(x) || ischar(x) || iscell(x)); % path of user-defined process function handle
+ip.addParameter('stitchMIP', [], @(x) isempty(x)  || (islogical(x) && (numel(x) == 1 || numel(x) == 3)));
+ip.addParameter('onlineStitch', false, @(x) islogical(x));
+ip.addParameter('processFunPath', '', @(x) isempty(x) || ischar(x) || iscell(x));
 ip.addParameter('parseCluster', true, @islogical);
-ip.addParameter('masterCompute', true, @islogical); % master node participate in the task computing. 
+ip.addParameter('masterCompute', true, @islogical);
 ip.addParameter('jobLogDir', '../job_logs', @ischar);
 ip.addParameter('cpusPerTask', 8, @isnumeric);
 ip.addParameter('uuid', '', @ischar);
@@ -151,10 +133,10 @@ ip.addParameter('unitWaitTime', 0.1, @isnumeric);
 ip.addParameter('mccMode', false, @islogical);
 ip.addParameter('configFile', '', @ischar);
 
-ip.parse(dataPath, imageListFileName, varargin{:});
+ip.parse(dataPaths, imageListFullpaths, varargin{:});
 
 pr = ip.Results;
-% Overwrite = pr.Overwrite;
+resultDirName = pr.resultDirName;
 streaming = pr.streaming;
 channelPatterns = pr.channelPatterns;
 multiLoc = pr.multiLoc;
@@ -172,7 +154,7 @@ dataOrder = pr.dataOrder;
 objectiveScan = pr.objectiveScan;
 IOScan =  pr.IOScan;
 zarrFile = pr.zarrFile;
-largeZarr = pr.largeZarr;
+largeFile = pr.largeFile;
 poolSize = pr.poolSize;
 batchSize = pr.batchSize;
 blockSize = pr.blockSize;
@@ -182,7 +164,6 @@ resampleFactor = pr.resampleFactor;
 inputBbox = pr.inputBbox;
 tileOutBbox = pr.tileOutBbox;
 tileOffset = pr.tileOffset;
-resultDirName = pr.resultDirName;
 blendMethod = pr.blendMethod;
 overlapType = pr.overlapType;
 xcorrShift = pr.xcorrShift;
@@ -190,7 +171,6 @@ xyMaxOffset = pr.xyMaxOffset;
 zMaxOffset = pr.zMaxOffset;
 xcorrDownsample = pr.xcorrDownsample;
 xcorrThresh = pr.xcorrThresh;
-padSize = pr.padSize;
 outBbox = pr.outBbox;
 xcorrMode = pr.xcorrMode;
 shiftMethod = pr.shiftMethod;
@@ -217,15 +197,15 @@ configFile = pr.configFile;
 
 % make root directory
 if multiLoc
-    stitching_rt = [dataPath{1}, '/', resultDirName];
+    stitching_rt = [dataPaths{1}, '/', resultDirName];
 else
-    if iscell(dataPath)
-        dataPath = dataPath{1};
+    if iscell(dataPaths)
+        dataPaths = dataPaths{1};
     end
-    if iscell(imageListFileName)
-        imageListFileName = imageListFileName{1};
+    if iscell(imageListFullpaths)
+        imageListFullpaths = imageListFullpaths{1};
     end
-    stitching_rt = [dataPath, '/', resultDirName];
+    stitching_rt = [dataPaths, '/', resultDirName];
 end
 if ~exist(stitching_rt, 'dir')
     mkdir(stitching_rt);
@@ -261,9 +241,9 @@ end
 % check if a slurm-based computing cluster exists
 if parseCluster
     if multiLoc
-        [parseCluster, job_log_fname, job_log_error_fname] = checkSlurmCluster(dataPath{1}, jobLogDir);
+        [parseCluster, job_log_fname, job_log_error_fname] = checkSlurmCluster(dataPaths{1}, jobLogDir);
     else
-        [parseCluster, job_log_fname, job_log_error_fname] = checkSlurmCluster(dataPath, jobLogDir);
+        [parseCluster, job_log_fname, job_log_error_fname] = checkSlurmCluster(dataPaths, jobLogDir);
     end
 end
 
@@ -282,13 +262,13 @@ useProcessedData = ~isempty(processedDirStr);
 
 if multiLoc
     [tab, primary_tab, fullIter, Ch, Cam, stackn, nz, specifyCam, prefix, zlayerStitch, xcorrMode, stitchInfoFullpath] = ...
-        stitch_parse_multi_loc_image_list_information(dataPath, imageListFileName, streaming=streaming, ...
+        stitch_parse_multi_loc_image_list_information(dataPaths, imageListFullpaths, streaming=streaming, ...
         onlineStitch=onlineStitch, stitchInfoFullpath=stitchInfoFullpath, stitchInfoPath=stitch_info_path, ...
         zarrFile=zarrFile, channelPatterns=channelPatterns, useProcessedData=useProcessedData, ...
         processedDirStr=processedDirStr, xcorrMode=xcorrMode, primaryCh=primaryCh);
 else
     [tab, primary_tab, fullIter, Ch, Cam, stackn, nz, specifyCam, prefix, zlayerStitch, xcorrMode, stitchInfoFullpath] = ...
-        stitch_parse_image_list_information(dataPath, imageListFileName, streaming=streaming, ...
+        stitch_parse_image_list_information(dataPaths, imageListFullpaths, streaming=streaming, ...
         onlineStitch=onlineStitch, stitchInfoFullpath=stitchInfoFullpath, stitchInfoPath=stitch_info_path, ...
         zarrFile=zarrFile, channelPatterns=channelPatterns, useProcessedData=useProcessedData, ...
         processedDirStr=processedDirStr, xcorrMode=xcorrMode, primaryCh=primaryCh);
@@ -334,15 +314,15 @@ if ~onlineStitch && ~any(stitchMIP) && ~streaming && size(tab, 1) > 20
     tile_fnames = tab.Filename;
     if useProcessedData
         if multiLoc
-            tile_fullpath_1 =  [dataPath{tab.did(1)}, '/', processedDirStr, '/', tile_fnames{1}];
+            tile_fullpath_1 =  [dataPaths{tab.did(1)}, '/', processedDirStr, '/', tile_fnames{1}];
         else
-            tile_fullpath_1 =  [dataPath, '/', processedDirStr, '/', tile_fnames{1}];
+            tile_fullpath_1 =  [dataPaths, '/', processedDirStr, '/', tile_fnames{1}];
         end
     else
         if multiLoc
-            tile_fullpath_1 =  [dataPath{tab.did(1)}, '/', tile_fnames{1}];
+            tile_fullpath_1 =  [dataPaths{tab.did(1)}, '/', tile_fnames{1}];
         else
-            tile_fullpath_1 =  [dataPath, '/', tile_fnames{1}];
+            tile_fullpath_1 =  [dataPaths, '/', tile_fnames{1}];
         end
     end
     sz = getImageSize(tile_fullpath_1);
@@ -418,10 +398,10 @@ while ~all(is_done_flag | trial_counter >= max_trial_num, 'all')
                             nF = numel(tile_fnames);
                             tile_fullpaths = cell(nF, 1);
                             for f = 1 : nF
-                                tile_fullpaths{f} = sprintf('%s/%s', dataPath{cur_tab.did(f)}, tile_fnames{f});
+                                tile_fullpaths{f} = sprintf('%s/%s', dataPaths{cur_tab.did(f)}, tile_fnames{f});
                             end
                         else
-                            tile_fullpaths = cellfun(@(x) [dataPath, '/', x], tile_fnames, 'unif', 0);
+                            tile_fullpaths = cellfun(@(x) [dataPaths, '/', x], tile_fnames, 'unif', 0);
                         end
 
                         % parse setting file 
@@ -447,10 +427,10 @@ while ~all(is_done_flag | trial_counter >= max_trial_num, 'all')
                                 nF = numel(tile_fnames);
                                 tile_processed_fullpaths = cell(nF, 1);
                                 for f = 1 : nF
-                                    tile_processed_fullpaths{f} = sprintf('%s/%s/%s', dataPath{cur_tab.did(f)}, processedDirStr, tile_fnames{f});
+                                    tile_processed_fullpaths{f} = sprintf('%s/%s/%s', dataPaths{cur_tab.did(f)}, processedDirStr, tile_fnames{f});
                                 end
                             else
-                                tile_processed_fullpaths = cellfun(@(x) [dataPath, '/', processedDirStr, '/', x], tile_fnames, 'unif', 0);
+                                tile_processed_fullpaths = cellfun(@(x) [dataPaths, '/', processedDirStr, '/', x], tile_fnames, 'unif', 0);
                             end
                             is_processed_tile_exist = cellfun(@(x) exist(x, 'file'), tile_processed_fullpaths);
                             if streaming
@@ -618,23 +598,23 @@ while ~all(is_done_flag | trial_counter >= max_trial_num, 'all')
                             '''xyPixelSize'',%0.10f,''dz'',%0.10f,''skewAngle'',%0.10f,''reverse'',%s,''objectiveScan'',%s,', ...
                             '''IOScan'',%s,''resultPath'',''%s'',''tileInfoFullpath'',''%s'',''stitchInfoDir'',''%s'',', ...
                             '''stitchInfoFullpath'',''%s'',''processedDirStr'',''%s'',''DS'',%s,''DSR'',%s,''zarrFile'',%s,', ...
-                            '''largeZarr'',%s,''poolSize'',%s,''batchSize'',%s,''blockSize'',%s,''shardSize'',%s,''resampleType'',''%s'',', ...
+                            '''largeFile'',%s,''poolSize'',%s,''batchSize'',%s,''blockSize'',%s,''shardSize'',%s,''resampleType'',''%s'',', ...
                             '''resample'',[%s],''inputBbox'',%s,''tileOutBbox'',%s,''tileOffset'',%d,''blendMethod'',''%s'',', ...
                             '''overlapType'',''%s'',''xcorrShift'',%s,''xyMaxOffset'',%0.10f,''zMaxOffset'',%0.10f,''xcorrDownsample'',%s,', ...
                             '''xcorrThresh'',%0.10f,''shiftMethod'',''%s'',''axisWeight'',[%s],''groupFile'',''%s'',''isPrimaryCh'',%s,', ...
-                            '''usePrimaryCoords'',%s,''padSize'',[%s],''outBbox'',[%s],''save16bit'',%s,', ...
+                            '''usePrimaryCoords'',%s,''outBbox'',[%s],''save16bit'',%s,', ...
                             '''tileIdx'',%s,''flippedTile'',[%s],''processFunPath'',%s,''stitchMIP'',%s,''bigStitchData'',%s,', ...
                             '''edgeArtifacts'',%0.10f,''distBboxes'',%s,''saveMIP'',%s,''parseCluster'',%s,''uuid'',''%s'',', ...
                             '''mccMode'',%s,''configFile'',''%s'')'], ...
                             tile_fullpaths_str, xyz_str, axisOrder, dataOrder, xyPixelSize, dz, skewAngle, string(reverse), ...
                             string(objectiveScan), string(IOScan), stitch_save_fname, tileInfoFullpath, stitchInfoDir, ...
-                            stitchInfoFullpath, processedDirStr, string(DS), string(DSR), string(zarrFile), string(largeZarr), ...
+                            stitchInfoFullpath, processedDirStr, string(DS), string(DSR), string(zarrFile), string(largeFile), ...
                             strrep(mat2str(poolSize), ' ', ','), strrep(mat2str(batchSize), ' ', ','), strrep(mat2str(blockSize), ' ', ','), ...
                             strrep(mat2str(shardSize), ' ', ','), resampleType, strrep(num2str(resampleFactor, '%.10d,'), ' ', ''),  ...
                             strrep(mat2str(inputBbox), ' ', ','), strrep(mat2str(tileOutBbox), ' ', ','), tileOffset, blendMethod, overlapType, ...
                             string(xcorrShift), xyMaxOffset, zMaxOffset, strrep(mat2str(xcorrDownsample), ' ', ','), xcorrThresh, shiftMethod, ...
                             strrep(mat2str(axisWeight), ' ', ','), groupFile, string(isPrimaryCh), string(usePrimaryCoords), ...
-                            num2str(padSize, '%d,'), strrep(num2str(outBbox, '%d,'), ' ', ''), ...
+                            strrep(num2str(outBbox, '%d,'), ' ', ''), ...
                             string(save16bit), tileIdx_str, flippedTile_str, processFunPath_str, strrep(mat2str(stitchMIP), ' ', ','), ...
                             string(bigStitchData), edgeArtifacts, strrep(mat2str(distBboxes), ' ', ','), string(saveMIP), ...
                             string(parseCluster), uuid, string(mccMode), configFile);

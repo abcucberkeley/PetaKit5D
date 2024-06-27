@@ -1,6 +1,12 @@
 % demo to run stitching for non-light-sheet modalities (phase and 2-Photon) images
 % 
 % This may also apply to other microscopy modalities for both 2D and 3D images
+%
+% Note: The parameters demonstrated here are usually a subset of those available 
+% for the functions, with the rest using default values. For a comprehensive 
+% list of parameters and their defaults, please see the function's parameter 
+% list (or input parser) or refer to the parameter documentation (major_functions_documentation.txt).
+
 
 clear, clc;
 

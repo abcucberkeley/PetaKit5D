@@ -42,7 +42,6 @@ ip.addParameter('xcorrShift', true, @(x) islogical(x) || ischar(x));
 ip.addParameter('isPrimaryCh', true, @(x) islogical(x) || ischar(x));
 ip.addParameter('usePrimaryCoords', false, @(x) islogical(x) || ischar(x)); % use primary coordinates for secondary channels/tps
 ip.addParameter('stitchPadSize', [2, 2, 1], @(x) isnumeric(x) && numel(x) == 3 || ischar(x));
-ip.addParameter('padSize', [], @(x) isnumeric(x) && (isempty(x) || numel(x) == 3) || ischar(x));
 ip.addParameter('outBbox', [], @(x) isnumeric(x) && (isempty(x) || all(size(x) == [3, 2]) || numel(x) == 6) || ischar(x));
 ip.addParameter('zNormalize', false, @(x) islogical(x) || ischar(x));
 ip.addParameter('xcorrDownsample', [2, 2, 1], @(x) isnumeric(x) || ischar(x)); % y,x,z
@@ -55,7 +54,7 @@ ip.addParameter('groupFile', '', @ischar); % file to define tile groups
 ip.addParameter('singleDistMap', ~false, @(x) islogical(x) || ischar(x)); % compute distance map for the first tile and apply to all other tiles
 ip.addParameter('distBboxes', [], @(x) isnumeric(x) || ischar(x)); % bounding boxes for distance transform
 ip.addParameter('zarrFile', false, @(x) islogical(x) || ischar(x)); 
-ip.addParameter('largeZarr', false, @(x) islogical(x) || ischar(x)); 
+ip.addParameter('largeFile', false, @(x) islogical(x) || ischar(x)); 
 ip.addParameter('poolSize', [], @(x) isnumeric(x) || ischar(x)); % max pooling size for large zarr MIPs
 ip.addParameter('blockSize', [500, 500, 500], @(x) isnumeric(x) || ischar(x)); 
 ip.addParameter('batchSize', [500, 500, 500], @(x) isnumeric(x) || ischar(x)); 
@@ -121,7 +120,6 @@ xcorrShift = pr.xcorrShift;
 isPrimaryCh = pr.isPrimaryCh;
 usePrimaryCoords = pr.usePrimaryCoords;
 stitchPadSize = pr.stitchPadSize;
-padSize = pr.padSize;
 outBbox = pr.outBbox;
 zNormalize = pr.zNormalize;
 xcorrDownsample = pr.xcorrDownsample;
@@ -134,7 +132,7 @@ groupFile = pr.groupFile;
 singleDistMap = pr.singleDistMap;
 distBboxes = pr.distBboxes;
 zarrFile = pr.zarrFile;
-largeZarr = pr.largeZarr;
+largeFile = pr.largeFile;
 poolSize = pr.poolSize;
 blockSize = pr.blockSize;
 batchSize = pr.batchSize;
@@ -247,9 +245,6 @@ end
 if ischar(stitchPadSize)
     stitchPadSize = str2num(stitchPadSize);
 end
-if ischar(padSize)
-    padSize = str2num(padSize);
-end
 if ischar(outBbox)
     outBbox = str2num(outBbox);
 end
@@ -280,8 +275,8 @@ end
 if ischar(zarrFile)
     zarrFile = str2num(zarrFile);
 end
-if ischar(largeZarr)
-    largeZarr = str2num(largeZarr);
+if ischar(largeFile)
+    largeFile = str2num(largeFile);
 end
 if ischar(poolSize)
     poolSize = str2num(poolSize);
@@ -357,11 +352,11 @@ XR_stitching_frame_zarr_dev_v1(tileFullpaths, coordinates, ResultPath=ResultPath
     Decon=Decon, DS=DS, DSR=DSR, resampleType=resampleType, resample=resample, ...
     deconRotate=deconRotate, BlendMethod=BlendMethod, blendWeightDegree=blendWeightDegree, ...
     halfOrder=halfOrder, overlapType=overlapType, xcorrShift=xcorrShift, isPrimaryCh=isPrimaryCh, ...
-    usePrimaryCoords=usePrimaryCoords, stitchPadSize=stitchPadSize, padSize=padSize, ...
-    outBbox=outBbox, zNormalize=zNormalize, xcorrDownsample=xcorrDownsample, ...
-    xcorrThresh=xcorrThresh, xyMaxOffset=xyMaxOffset, zMaxOffset=zMaxOffset, ...
-    shiftMethod=shiftMethod, axisWeight=axisWeight, groupFile=groupFile, singleDistMap=singleDistMap, ...
-    distBboxes=distBboxes, zarrFile=zarrFile, largeZarr=largeZarr, poolSize=poolSize, ...
+    usePrimaryCoords=usePrimaryCoords, stitchPadSize=stitchPadSize, outBbox=outBbox, ...
+    zNormalize=zNormalize, xcorrDownsample=xcorrDownsample, xcorrThresh=xcorrThresh, ...
+    xyMaxOffset=xyMaxOffset, zMaxOffset=zMaxOffset, shiftMethod=shiftMethod, ...
+    axisWeight=axisWeight, groupFile=groupFile, singleDistMap=singleDistMap, ...
+    distBboxes=distBboxes, zarrFile=zarrFile, largeFile=largeFile, poolSize=poolSize, ...
     blockSize=blockSize, batchSize=batchSize, shardSize=shardSize, saveMultires=saveMultires, ...
     resLevel=resLevel, BorderSize=BorderSize, saveMIP=saveMIP, tileIdx=tileIdx, ...
     processFunPath=processFunPath, stitchMIP=stitchMIP, stitch2D=stitch2D, ...

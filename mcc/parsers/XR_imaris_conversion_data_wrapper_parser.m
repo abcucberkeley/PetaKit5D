@@ -7,11 +7,10 @@ ip.addRequired('dataPaths', @(x) ischar(x) || iscell(x));
 ip.addParameter('resultDirName', 'imaris',  @(x) ischar(x));
 ip.addParameter('overwrite', false,  @(x) islogical(x) || ischar(x));
 ip.addParameter('channelPatterns', {'CamA_ch0', 'CamA_ch1', 'CamB_ch0'}, @(x) iscell(x) || ischar(x));
-ip.addParameter('pixelSizes', [0.108, 0.108, 0.108], @(x) isnumeric(x) || ischar(x)); % y, x, z
-ip.addParameter('zarrFile', false, @(x) islogical(x) || ischar(x)); % use zarr file as input
-ip.addParameter('blockSize', [64, 64, 64], @(x) isnumeric(x) || ischar(x)); % y, x, z
-ip.addParameter('inputBbox', [], @(x) isnumeric(x) || ischar(x)); % ymin, xmin, zmin, ymax, xmax, zmax
-ip.addParameter('timepoints', [], @(x) isnumeric(x) || ischar(x)); % number of time points included
+ip.addParameter('pixelSizes', [0.108, 0.108, 0.108], @(x) isnumeric(x) || ischar(x));
+ip.addParameter('zarrFile', false, @(x) islogical(x) || ischar(x));
+ip.addParameter('blockSize', [64, 64, 64], @(x) isnumeric(x) || ischar(x));
+ip.addParameter('inputBbox', [], @(x) isnumeric(x) || ischar(x));
 ip.addParameter('converterPath', '', @ischar);
 ip.addParameter('parseCluster', true, @(x) islogical(x) || ischar(x));
 ip.addParameter('masterCompute', true, @(x) islogical(x) || ischar(x));
@@ -31,7 +30,6 @@ pixelSizes = pr.pixelSizes;
 zarrFile = pr.zarrFile;
 blockSize = pr.blockSize;
 inputBbox = pr.inputBbox;
-timepoints = pr.timepoints;
 converterPath = pr.converterPath;
 parseCluster = pr.parseCluster;
 masterCompute = pr.masterCompute;
@@ -62,9 +60,6 @@ end
 if ischar(inputBbox)
     inputBbox = str2num(inputBbox);
 end
-if ischar(timepoints)
-    timepoints = str2num(timepoints);
-end
 if ischar(parseCluster)
     parseCluster = str2num(parseCluster);
 end
@@ -80,7 +75,7 @@ end
 
 XR_imaris_conversion_data_wrapper(dataPaths, resultDirName=resultDirName, overwrite=overwrite, ...
     channelPatterns=channelPatterns, pixelSizes=pixelSizes, zarrFile=zarrFile, ...
-    blockSize=blockSize, inputBbox=inputBbox, timepoints=timepoints, converterPath=converterPath, ...
+    blockSize=blockSize, inputBbox=inputBbox, converterPath=converterPath, ...
     parseCluster=parseCluster, masterCompute=masterCompute, jobLogDir=jobLogDir, ...
     cpusPerTask=cpusPerTask, uuid=uuid, mccMode=mccMode, configFile=configFile);
 

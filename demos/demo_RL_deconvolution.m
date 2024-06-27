@@ -2,6 +2,12 @@
 % 
 % Note: please make sure your GPU has at least 32 GB available vRAM for
 % deconvolution on GPU to avoid out-of-memory issue; otherwise, you may run CPU deconvolution.
+%
+% The parameters demonstrated here are usually a subset of those available 
+% for the functions, with the rest using default values. For a comprehensive 
+% list of parameters and their defaults, please see the function's parameter 
+% list (or input parser) or refer to the parameter documentation (major_functions_documentation.txt).
+
 
 clear, clc;
 
@@ -44,7 +50,7 @@ dataPath = [destPath, '/PetaKit5D_demo_cell_image_dataset/'];
 % Cam A
 psfFn = [dataPath, 'PSF/560_c.tif'];
 % OTF thresholding parameter
-OTFCumThresh = 0.9;
+OTFCumThresh = 0.88;
 % true if the PSF is in skew space
 skewed = true;
 XR_visualize_OTF_mask_segmentation(psfFn, OTFCumThresh, skewed);
@@ -55,7 +61,7 @@ XR_visualize_OTF_mask_segmentation(psfFn, OTFCumThresh, skewed);
 % Cam B
 psfFn = [dataPath, 'PSF/488_2_c.tif'];
 % OTF thresholding parameter
-OTFCumThresh = 0.9;
+OTFCumThresh = 0.88;
 % true if the PSF is in skew space
 skewed = true;
 XR_visualize_OTF_mask_segmentation(psfFn, OTFCumThresh, skewed);
@@ -101,7 +107,7 @@ RLmethod = 'omw';
 % typically 0.002 - 0.01 for SNR ~20; 0.02 - 0.1 or higher for SNR ~7
 wienerAlpha = 0.005;
 % OTF thresholding parameter
-OTFCumThresh = 0.9;
+OTFCumThresh = 0.87;
 % true if the PSF is in skew space
 skewed = true;
 % deconvolution result path string (within dataPath)
@@ -198,7 +204,7 @@ PSFFullpaths = {
 % RL method
 RLmethod = 'simplified';
 % deconvolution result path string (within dataPath)
-resultDirName = 'matlab_decon_conventional';
+resultDirName = 'matlab_decon_traditional';
 
 % background to subtract
 Background = 100;
@@ -236,7 +242,7 @@ mccMode = false;
 % rotate (if objective scan) or other processings. 
 
 % result folder:
-% {destPath}/PetaKit5D_demo_cell_image_dataset/matlab_decon_conventional/
+% {destPath}/PetaKit5D_demo_cell_image_dataset/matlab_decon_traditional/
 
 XR_decon_data_wrapper(dataPaths, 'resultDirName', resultDirName, 'xyPixelSize', xyPixelSize, ...
     'dz', dz, 'Reverse', Reverse, 'ChannelPatterns', ChannelPatterns, 'PSFFullpaths', PSFFullpaths, ...
@@ -258,12 +264,12 @@ end
 % result folders:
 % {destPath}/PetaKit5D_demo_cell_image_dataset/DSR/
 % {destPath}/PetaKit5D_demo_cell_image_dataset/matlab_decon_omw/DSR/
-% {destPath}/PetaKit5D_demo_cell_image_dataset/matlab_decon_conventional/DSR/
+% {destPath}/PetaKit5D_demo_cell_image_dataset/matlab_decon_traditional/DSR/
 
 dataPath_exps = {
                  [dataPath], ...
                  [dataPath,'matlab_decon_omw/'], ...
-                 [dataPath,'matlab_decon_conventional/'], ...
+                 [dataPath,'matlab_decon_traditional/'], ...
                 };
 
 % xy pixel size in um
@@ -304,7 +310,7 @@ XR_deskew_rotate_data_wrapper(dataPath_exps, xyPixelSize=xyPixelSize, dz=dz, ...
 
 fsn = 'Scan_Iter_0000_0000_CamB_ch0_CAM1_stack0000_488nm_0000000msec_0106060251msecAbs_000x_003y_000z_0000t';
 fns = {[dataPath, 'DSR/', fsn, '.tif'], ...
-       [dataPath,'matlab_decon_conventional/DSR/', fsn, '.tif'], ...
+       [dataPath,'matlab_decon_traditional/DSR/', fsn, '.tif'], ...
        [dataPath,'matlab_decon_omw/DSR/', fsn, '.tif'], ...       
       };
 
@@ -337,7 +343,7 @@ clim([prctile(im_rl_decon_crop(:), 40), prctile(im_rl_decon_crop(:), 99)]);
 colormap('gray');
 axis equal
 axis off
-title('Conventional 30 iters')
+title('Traditional (Biggs) 30 iters')
 
 nexttile
 imagesc(im_omw_decon_crop);
@@ -382,10 +388,10 @@ psf = psf ./ sum(psf, 'all');
 fprintf('Done!\n');
 
 
-%% conventional RL decon
+%% Traditional (Biggs) RL decon
 % 30 iterations
 
-fprintf('Conventional RL deconvolution with 30 iterations... ');
+fprintf('Traditional (Biggs) RL deconvolution with 30 iterations... ');
 % use GPU by default, set to false if there is no GPU or run out of GPU VRAM
 useGPU = true;
 % number of iterations
@@ -441,7 +447,7 @@ end
 %% omw decon
 
 % OTF thresholding parameter
-OTFCumThresh = 0.9;
+OTFCumThresh = 0.88;
 % true if the PSF is in skew space
 skewed = true;
 XR_visualize_OTF_mask_segmentation(psfFn, OTFCumThresh, skewed);
@@ -454,7 +460,7 @@ alpha = 0.005;
 % true if the PSF is in skew space
 skewed = true;
 % OTF cumulative percentile threshold for OTF mask segmentation
-OTFCumThresh = 0.9;
+OTFCumThresh = 0.88;
 % hann window range applied to the distance transform, 0.0 means the center and 1.0 means border of OTF mask
 hanWinBounds = [0.8, 1.0];
 [b_omw, OTF_bp_omw, abs_OTF_c, OTF_mask] = omw_backprojector_generation(psf, alpha, skewed, ...
@@ -542,7 +548,7 @@ clim([prctile(rl_dsr_crop(:), 40), prctile(rl_dsr_crop(:), 99)]);
 colormap('gray');
 axis equal
 axis off
-title('Conventional 30 iters')
+title('Traditional (Biggs) 30 iters')
 
 nexttile
 imagesc(wb_dsr_crop);

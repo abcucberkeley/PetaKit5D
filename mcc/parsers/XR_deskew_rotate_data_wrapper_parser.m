@@ -17,32 +17,31 @@ ip.addParameter('objectiveScan', false, @(x) islogical(x) || ischar(x));
 ip.addParameter('zStageScan', false, @(x) islogical(x) || ischar(x));
 ip.addParameter('reverse', false, @(x) islogical(x) || ischar(x));
 ip.addParameter('flipZstack', false, @(x) islogical(x) || ischar(x));
-ip.addParameter('parseSettingFile', false, @(x) islogical(x) || ischar(x)); % use setting file to decide whether filp Z stack or not, it is  poirier over flipZstack
+ip.addParameter('parseSettingFile', false, @(x) islogical(x) || ischar(x));
 ip.addParameter('crop', false, @(x) islogical(x) || ischar(x));
-ip.addParameter('DSRCombined', true, @(x) islogical(x) || ischar(x)); % combined processing 
+ip.addParameter('DSRCombined', true, @(x) islogical(x) || ischar(x));
 ip.addParameter('FFCorrection', false, @(x) islogical(x) || ischar(x));
 ip.addParameter('BKRemoval', false, @(x) islogical(x) || ischar(x));
-ip.addParameter('lowerLimit', 0.4, @(x) isnumeric(x) || ischar(x)); % this value is the lowest
-ip.addParameter('constOffset', [], @(x) isnumeric(x) || ischar(x)); % If it is set, use constant background, instead of background from the camera.
+ip.addParameter('lowerLimit', 0.4, @(x) isnumeric(x) || ischar(x));
+ip.addParameter('constOffset', [], @(x) isnumeric(x) || ischar(x));
 ip.addParameter('FFImagePaths', {'','',''}, @(x) iscell(x) || ischar(x));
 ip.addParameter('backgroundPaths', {'','',''}, @(x) iscell(x) || ischar(x));
-ip.addParameter('save16bit', true , @(x) islogical(x) || ischar(x)); % saves deskewed data as 16 bit -- not for quantification
-ip.addParameter('save3DStack', true , @(x) islogical(x) || ischar(x)); % option to save 3D stack or not
-ip.addParameter('saveMIP', true , @(x) islogical(x) || ischar(x)); % save MIP-z for ds and dsr. 
+ip.addParameter('save16bit', true , @(x) islogical(x) || ischar(x));
+ip.addParameter('save3DStack', true , @(x) islogical(x) || ischar(x));
+ip.addParameter('saveMIP', true , @(x) islogical(x) || ischar(x));
 ip.addParameter('largeFile', false, @(x) islogical(x) || ischar(x));
-ip.addParameter('zarrFile', false, @(x) islogical(x) || ischar(x)); % use zarr file as input
-ip.addParameter('saveZarr', false , @(x) islogical(x) || ischar(x)); % save as zarr
-ip.addParameter('batchSize', [1024, 1024, 1024] , @(x) isvector(x) || ischar(x)); % in y, x, z
-ip.addParameter('blockSize', [256, 256, 256], @(x) isvector(x) || ischar(x)); % in y, x, z
+ip.addParameter('zarrFile', false, @(x) islogical(x) || ischar(x));
+ip.addParameter('saveZarr', false , @(x) islogical(x) || ischar(x));
+ip.addParameter('batchSize', [1024, 1024, 1024] , @(x) isvector(x) || ischar(x));
+ip.addParameter('blockSize', [256, 256, 256], @(x) isvector(x) || ischar(x));
 ip.addParameter('inputBbox', [], @(x) isempty(x) || isvector(x) || ischar(x));
 ip.addParameter('taskSize', [], @(x) isnumeric(x) || ischar(x));
-ip.addParameter('resampleFactor', [], @(x) isempty(x) || isnumeric(x) || ischar(x)); % resampling after rotation 
+ip.addParameter('resampleFactor', [], @(x) isempty(x) || isnumeric(x) || ischar(x));
 ip.addParameter('interpMethod', 'linear', @(x) any(strcmpi(x, {'cubic', 'linear'})) || ischar(x));
-ip.addParameter('maskFns', {}, @(x) iscell(x) || ischar(x)); % 2d masks to filter regions to deskew and rotate, in xy, xz, yz order
-ip.addParameter('suffix', '', @ischar); % suffix for the folder
+ip.addParameter('maskFullpaths', {}, @(x) iscell(x) || ischar(x));
 ip.addParameter('parseCluster', true, @(x) islogical(x) || ischar(x));
 ip.addParameter('parseParfor', false, @(x) islogical(x) || ischar(x));
-ip.addParameter('masterCompute', true, @(x) islogical(x) || ischar(x)); % master node participate in the task computing. 
+ip.addParameter('masterCompute', true, @(x) islogical(x) || ischar(x));
 ip.addParameter('jobLogDir', '../job_logs', @ischar);
 ip.addParameter('cpusPerTask', 1, @(x) isnumeric(x) || ischar(x));
 ip.addParameter('uuid', '', @ischar);
@@ -87,8 +86,7 @@ inputBbox = pr.inputBbox;
 taskSize = pr.taskSize;
 resampleFactor = pr.resampleFactor;
 interpMethod = pr.interpMethod;
-maskFns = pr.maskFns;
-suffix = pr.suffix;
+maskFullpaths = pr.maskFullpaths;
 parseCluster = pr.parseCluster;
 parseParfor = pr.parseParfor;
 masterCompute = pr.masterCompute;
@@ -195,8 +193,8 @@ end
 if ischar(resampleFactor)
     resampleFactor = str2num(resampleFactor);
 end
-if ischar(maskFns) && ~isempty(maskFns) && strcmp(maskFns(1), '{')
-    maskFns = eval(maskFns);
+if ischar(maskFullpaths) && ~isempty(maskFullpaths) && strcmp(maskFullpaths(1), '{')
+    maskFullpaths = eval(maskFullpaths);
 end
 if ischar(parseCluster)
     parseCluster = str2num(parseCluster);
@@ -226,8 +224,8 @@ XR_deskew_rotate_data_wrapper(dataPaths, DSDirName=DSDirName, DSRDirName=DSRDirN
     backgroundPaths=backgroundPaths, save16bit=save16bit, save3DStack=save3DStack, ...
     saveMIP=saveMIP, largeFile=largeFile, zarrFile=zarrFile, saveZarr=saveZarr, ...
     batchSize=batchSize, blockSize=blockSize, inputBbox=inputBbox, taskSize=taskSize, ...
-    resampleFactor=resampleFactor, interpMethod=interpMethod, maskFns=maskFns, ...
-    suffix=suffix, parseCluster=parseCluster, parseParfor=parseParfor, masterCompute=masterCompute, ...
+    resampleFactor=resampleFactor, interpMethod=interpMethod, maskFullpaths=maskFullpaths, ...
+    parseCluster=parseCluster, parseParfor=parseParfor, masterCompute=masterCompute, ...
     jobLogDir=jobLogDir, cpusPerTask=cpusPerTask, uuid=uuid, debug=debug, mccMode=mccMode, ...
     configFile=configFile);
 

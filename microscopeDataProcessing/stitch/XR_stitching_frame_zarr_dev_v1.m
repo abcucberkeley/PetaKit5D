@@ -83,7 +83,6 @@ ip.addParameter('xcorrShift', true, @islogical);
 ip.addParameter('isPrimaryCh', true, @islogical);
 ip.addParameter('usePrimaryCoords', false, @islogical); % use primary coordinates for secondary channels/tps
 ip.addParameter('stitchPadSize', [2, 2, 1], @(x) isnumeric(x) && numel(x) == 3);
-ip.addParameter('padSize', [], @(x) isnumeric(x) && (isempty(x) || numel(x) == 3));
 ip.addParameter('outBbox', [], @(x) isnumeric(x) && (isempty(x) || all(size(x) == [3, 2]) || numel(x) == 6));
 ip.addParameter('zNormalize', false, @islogical);
 ip.addParameter('xcorrDownsample', [2, 2, 1], @isnumeric); % y,x,z
@@ -96,7 +95,7 @@ ip.addParameter('groupFile', '', @ischar); % file to define tile groups
 ip.addParameter('singleDistMap', ~false, @islogical); % compute distance map for the first tile and apply to all other tiles
 ip.addParameter('distBboxes', [], @isnumeric); % bounding boxes for distance transform
 ip.addParameter('zarrFile', false, @islogical); 
-ip.addParameter('largeZarr', false, @islogical); 
+ip.addParameter('largeFile', false, @islogical); 
 ip.addParameter('poolSize', [], @isnumeric); % max pooling size for large zarr MIPs
 ip.addParameter('blockSize', [500, 500, 500], @isnumeric); 
 ip.addParameter('batchSize', [500, 500, 500], @isnumeric); 
@@ -169,7 +168,7 @@ masterCompute = pr.masterCompute;
 save16bit = pr.save16bit;
 EdgeArtifacts = pr.EdgeArtifacts;
 zarrFile = pr.zarrFile;
-largeZarr = pr.largeZarr;
+largeFile = pr.largeFile;
 poolSize = pr.poolSize;
 blockSize = pr.blockSize;
 batchSize = pr.batchSize;
@@ -435,7 +434,7 @@ end
 % check if total input size is greater than 100 GB if bigStitchData is false
 nodeFactor = 2;
 compressor = 'zstd';
-if (~stitch2D && ~bigStitchData && nF > 4 && prod(imSize) * nF * 4 > (100 * 2^30)) || largeZarr
+if (~stitch2D && ~bigStitchData && nF > 4 && prod(imSize) * nF * 4 > (100 * 2^30)) || largeFile
     bigStitchData = true;
 end
 if bigStitchData
@@ -527,7 +526,7 @@ if xcorrShift && isPrimaryCh
         MaxOffset = [xyMaxOffset, xyMaxOffset, zMaxOffset];
         [xyz_shift, dxyz_shift] = stitch_shift_assignment(zarrFullpaths, xcorrDir, imSizes, xyz, ...
             px, [xf, yf, zf], overlap_matrix, overlap_regions, MaxOffset, xcorrDownsample, ...
-            xcorrThresh, tileIdx, assign_method, stitch2D, axisWeight, groupFile, largeZarr, ...
+            xcorrThresh, tileIdx, assign_method, stitch2D, axisWeight, groupFile, largeFile, ...
             poolSize, parseCluster, nodeFactor, mccMode, configFile);
         save('-v7.3', xcorTmpFn, 'xyz_shift', 'dxyz_shift');
         movefile(xcorTmpFn, xcorrFinalFn)
@@ -754,7 +753,7 @@ if strcmpi(BlendMethod, 'feather')
             stitchPath, zarrFullpaths, 'blendWeightDegree', blendWeightDegree, ...
             'singleDistMap', singleDistMap, 'locIds', locIds, 'distBboxes', distBboxes, ...
             'blockSize', round(blockSize/2), 'shardSize', round(shardSize/2), ...
-            'compressor', compressor, 'largeZarr', largeZarr, 'poolSize', poolSize, ...
+            'compressor', compressor, 'largeFile', largeFile, 'poolSize', poolSize, ...
             'parseCluster', parseCluster, 'mccMode', mccMode, 'configFile', configFile);
     else
         usePrimaryDist = all(imSizes == pTileSizes, 'all');
@@ -765,7 +764,7 @@ if strcmpi(BlendMethod, 'feather')
                 stitchPath, zarrFullpaths, 'blendWeightDegree', blendWeightDegree, ...
                 'singleDistMap', singleDistMap, 'locIds', locIds, 'distBboxes', distBboxes, ...
                 'blockSize', round(blockSize/2), 'shardSize', round(shardSize/2), ...
-                'compressor', compressor, 'largeZarr', largeZarr, 'poolSize', poolSize, ...
+                'compressor', compressor, 'largeFile', largeFile, 'poolSize', poolSize, ...
                 'parseCluster', parseCluster, 'mccMode', mccMode, 'configFile', configFile);
         end
     end

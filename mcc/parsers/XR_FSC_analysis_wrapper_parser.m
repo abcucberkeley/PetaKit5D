@@ -18,13 +18,13 @@ ip.addParameter('inputBbox', [], @(x) isnumeric(x) || ischar(x));
 ip.addParameter('resAxis', 'xz', @ischar);
 ip.addParameter('skipConeRegion', true, @(x) islogical(x) || ischar(x));
 ip.addParameter('channelPatterns', {'tif'}, @(x) iscell(x) || ischar(x));
-ip.addParameter('Channels', [488, 560], @(x) isnumeric(x) || ischar(x));
+ip.addParameter('channels', [488, 560], @(x) isnumeric(x) || ischar(x));
 ip.addParameter('multiRegions', false, @(x) islogical(x) || ischar(x));
-ip.addParameter('regionInterval', [50, 50, -1], @(x) isnumeric(x) || ischar(x)); % yxz, -1 means only center
-ip.addParameter('regionGrid', [], @(x) isnumeric(x) || ischar(x)); % user provided grid for region centers, N x 3
-ip.addParameter('clipPer', [], @(x) isnumeric(x) || ischar(x)); % clip intensity higher than the given percentile
+ip.addParameter('regionInterval', [50, 50, -1], @(x) isnumeric(x) || ischar(x));
+ip.addParameter('regionGrid', [], @(x) isnumeric(x) || ischar(x));
+ip.addParameter('clipPer', [], @(x) isnumeric(x) || ischar(x));
 ip.addParameter('suffix', 'decon', @ischar);
-ip.addParameter('iterInterval', 5, @(x) isnumeric(x) || ischar(x)); % iteration interval for FSC resolution plot
+ip.addParameter('iterInterval', 5, @(x) isnumeric(x) || ischar(x));
 ip.addParameter('parseCluster', true, @(x) islogical(x) || ischar(x));
 ip.addParameter('masterCompute', true, @(x) islogical(x) || ischar(x));
 ip.addParameter('cpusPerTask', 4, @(x) isscalar(x) || ischar(x));
@@ -46,7 +46,7 @@ inputBbox = pr.inputBbox;
 resAxis = pr.resAxis;
 skipConeRegion = pr.skipConeRegion;
 channelPatterns = pr.channelPatterns;
-Channels = pr.Channels;
+channels = pr.channels;
 multiRegions = pr.multiRegions;
 regionInterval = pr.regionInterval;
 regionGrid = pr.regionGrid;
@@ -89,8 +89,8 @@ end
 if ischar(channelPatterns) && ~isempty(channelPatterns) && strcmp(channelPatterns(1), '{')
     channelPatterns = eval(channelPatterns);
 end
-if ischar(Channels)
-    Channels = str2num(Channels);
+if ischar(channels)
+    channels = str2num(channels);
 end
 if ischar(multiRegions)
     multiRegions = str2num(multiRegions);
@@ -123,7 +123,7 @@ end
 XR_FSC_analysis_wrapper(dataPaths, resultDirName=resultDirName, xyPixelSize=xyPixelSize, ...
     dz=dz, dr=dr, dtheta=dtheta, resThreshMethod=resThreshMethod, resThresh=resThresh, ...
     halfSize=halfSize, inputBbox=inputBbox, resAxis=resAxis, skipConeRegion=skipConeRegion, ...
-    channelPatterns=channelPatterns, Channels=Channels, multiRegions=multiRegions, ...
+    channelPatterns=channelPatterns, channels=channels, multiRegions=multiRegions, ...
     regionInterval=regionInterval, regionGrid=regionGrid, clipPer=clipPer, ...
     suffix=suffix, iterInterval=iterInterval, parseCluster=parseCluster, masterCompute=masterCompute, ...
     cpusPerTask=cpusPerTask, mccMode=mccMode, configFile=configFile);

@@ -15,7 +15,7 @@ The tools have been tested with MATLAB R2022b-R2023a for Linux (Ubuntu 22.04), W
 ````
    setup
 ````
-3. Create a script or function to set up the workflows for your image processing tasks by calling related functions. You may follow the examples in the [demos](https://github.com/abcucberkeley/PetaKit5D/tree/main/demos). The documentation of the parameters can refer to the [GUI wiki page](https://github.com/abcucberkeley/PetaKit5D-GUI/wiki) or the parameter list in the related functions.
+3. Create a script or function to set up the workflows for your image processing tasks by calling related functions. You may follow the examples in the [demos](https://github.com/abcucberkeley/PetaKit5D/tree/main/demos). The documentation of the parameters can refer to [major_functions_deocumentation.txt](https://github.com/abcucberkeley/PetaKit5D/blob/main/major_functions_deocumentation.txt), the [GUI wiki page](https://github.com/abcucberkeley/PetaKit5D-GUI/wiki), or the parameter list in the related functions.
 
 
 ## Demos
@@ -23,7 +23,7 @@ The main demos for the paper:
 - `demo_generic_computing_framework.m`: demo to illustrate how to use generic computing framework for user-defined functions.
 - `demo_fast_tiff_zarr_readers_writers.m`: demo to illustrate Cpp-Tiff and Cpp-zarr readers and writers and compare with conventional readers and writers.
 - `demo_geometric_transformation.m`: demo to illustrate how to run deskew/rotation and compare between separated and combined deskew/rotation.
-- `demo_RL_deconvolution.m`: demo to illustrate how to run deconvolution and compare between conventional RL, WB (Guo et al. 2020), and OMW methods.
+- `demo_RL_deconvolution.m`: demo to illustrate how to run deconvolution and compare between traditional RL (Biggs version), WB (Guo et al. 2020), and OMW methods.
 - `demo_zarr_stitching.m`: demo to illustrate how to run stitching in both skewed and DSR spaces, along with the documentation for the setup of BigStitcher (Spark version) and Stitching-Spark for the stitching benchmarks in the paper.
 - `demo_large_scale_processing.m`: demo to illustrate how to set up large-scale processing for stitching, deconvolution, and deskew/rotation.
 - `demo_useful_tools.m`: demo to illustrate how to set up the running for a sets of commonly used tools, i.e., resampling, cropping, max projection, tiff/zarr conversion, imaris file conversion and so on. 
@@ -36,7 +36,7 @@ We created Python wrappers for the main functions by calling MATLAB runtime in a
 ````
 pip install --no-binary :all: --no-cache-dir PyPetaKit5D
 ````
-The parameters for the Python wrappers are identical to those in MATLAB. The documentation of the parameters can refer to the [GUI wiki page](https://github.com/abcucberkeley/PetaKit5D-GUI/wiki). 
+The parameters for the Python wrappers are identical to those in MATLAB. The documentation of the parameters can refer to [major_functions_deocumentation.txt](https://github.com/abcucberkeley/PetaKit5D/blob/main/major_functions_deocumentation.txt) or the [GUI wiki page](https://github.com/abcucberkeley/PetaKit5D-GUI/wiki). 
 
 
 ## GUI

@@ -1,4 +1,9 @@
 % demo to run skewed space stitching
+%
+% Note: The parameters demonstrated here are usually a subset of those available 
+% for the functions, with the rest using default values. For a comprehensive 
+% list of parameters and their defaults, please see the function's parameter 
+% list (or input parser) or refer to the parameter documentation (major_functions_documentation.txt).
 
 %% Step 1: set parameters 
 % add the software to the path

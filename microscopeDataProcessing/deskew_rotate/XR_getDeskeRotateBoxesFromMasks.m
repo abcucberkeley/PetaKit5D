@@ -1,4 +1,4 @@
-function [inBbox, outBbox, dsr] = XR_getDeskeRotateBoxesFromMasks(maskFns, BorderSize, xyPixelSize, dz, SkewAngle, Reverse, resample, inputBbox)
+function [inBbox, outBbox, dsr] = XR_getDeskeRotateBoxesFromMasks(maskFullpaths, BorderSize, xyPixelSize, dz, SkewAngle, Reverse, resample, inputBbox)
 % estimate input and output bbox for deskew and rotation by providing the
 % MIP masks. 
 %
@@ -17,7 +17,7 @@ bboxes = zeros(3, 4);
 sz = zeros(1, 3);
 
 for i = 1 : 3
-    fn = maskFns{i};
+    fn = maskFullpaths{i};
     
     [~, ~, ext] = fileparts(fn);
     switch ext

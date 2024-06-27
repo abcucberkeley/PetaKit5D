@@ -43,7 +43,7 @@ ip.addParameter('saveZarr', false, @(x) islogical(x) || ischar(x)); % save as za
 ip.addParameter('dampFactor', 1, @(x) isnumeric(x) || ischar(x)); % damp factor for decon result
 ip.addParameter('scaleFactor', [], @(x) isnumeric(x) || ischar(x)); % scale factor for decon result
 ip.addParameter('deconOffset', 0, @(x) isnumeric(x) || ischar(x)); % offset for decon result
-ip.addParameter('deconMaskFns', {}, @(x) iscell(x) || ischar(x)); % 2d masks to filter regions to decon, in xy, xz, yz order
+ip.addParameter('maskFullpaths', {}, @(x) iscell(x) || ischar(x)); % 2d masks to filter regions to decon, in xy, xz, yz order
 ip.addParameter('parseCluster', true, @(x) islogical(x) || ischar(x));
 ip.addParameter('parseParfor', false, @(x) islogical(x) || ischar(x));
 ip.addParameter('masterCompute', true, @(x) islogical(x) || ischar(x)); % master node participate in the task computing. 
@@ -93,7 +93,7 @@ saveZarr = pr.saveZarr;
 dampFactor = pr.dampFactor;
 scaleFactor = pr.scaleFactor;
 deconOffset = pr.deconOffset;
-deconMaskFns = pr.deconMaskFns;
+maskFullpaths = pr.maskFullpaths;
 parseCluster = pr.parseCluster;
 parseParfor = pr.parseParfor;
 masterCompute = pr.masterCompute;
@@ -202,8 +202,8 @@ end
 if ischar(deconOffset)
     deconOffset = str2num(deconOffset);
 end
-if ischar(deconMaskFns) && ~isempty(deconMaskFns) && strcmp(deconMaskFns(1), '{')
-    deconMaskFns = eval(deconMaskFns);
+if ischar(maskFullpaths) && ~isempty(maskFullpaths) && strcmp(maskFullpaths(1), '{')
+    maskFullpaths = eval(maskFullpaths);
 end
 if ischar(parseCluster)
     parseCluster = str2num(parseCluster);
@@ -236,7 +236,7 @@ XR_decon_data_wrapper(dataPaths, resultDirName=resultDirName, overwrite=overwrit
     debug=debug, saveStep=saveStep, psfGen=psfGen, GPUJob=GPUJob, deconRotate=deconRotate, ...
     batchSize=batchSize, blockSize=blockSize, largeFile=largeFile, largeMethod=largeMethod, ...
     zarrFile=zarrFile, saveZarr=saveZarr, dampFactor=dampFactor, scaleFactor=scaleFactor, ...
-    deconOffset=deconOffset, deconMaskFns=deconMaskFns, parseCluster=parseCluster, ...
+    deconOffset=deconOffset, maskFullpaths=maskFullpaths, parseCluster=parseCluster, ...
     parseParfor=parseParfor, masterCompute=masterCompute, jobLogDir=jobLogDir, ...
     cpusPerTask=cpusPerTask, uuid=uuid, unitWaitTime=unitWaitTime, maxTrialNum=maxTrialNum, ...
     mccMode=mccMode, configFile=configFile, GPUConfigFile=GPUConfigFile);

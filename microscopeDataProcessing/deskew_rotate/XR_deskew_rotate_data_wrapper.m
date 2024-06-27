@@ -1,6 +1,57 @@
 function XR_deskew_rotate_data_wrapper(dataPaths, varargin)
-% data-level deskew/rotate wrapper, support small and large scale deskew/rotate
+% dataset level deskew/rotate wrapper, support small and large scale deskew/rotate
 % 
+%
+% Required inputs:
+%           dataPaths : char or cell array. Directory paths for the datasets. Either a string for a single dataset or a cell array of paths for several datasets with same experimental settings.
+% 
+% Parameters (as 'specifier'-value pairs): 
+%           DSDirName : char (default: 'DS'). Deskew result directory name under dataPaths.
+%          DSRDirName : char (default: 'DSR'). Deskew/rotation result directory name under dataPaths.
+%              deskew : true|false (default: true). Deskew the data.
+%              rotate : true|false (default: true). Rotate deskewed data.
+%           overwrite : true|false (default: false). Overwrite existing results
+%     channelPatterns : a cell array (default: {'CamA_ch0', 'CamA_ch1', 'CamB_ch0', 'CamB_ch1'}).  Channel identifiers for included channels. 
+%                  dz : a number (default: 0.5). Scan interval in um.
+%         xyPixelSize : a number (default: 0.108). Pixel size in um.
+%           skewAngle : a number (default: 32.45). Skew angle (in degree) of the stage.
+%       objectiveScan : true|false (default: false). Objective scan.
+%          zStageScan : true|false (default: false). Z stage scan (orthogonal to objective scan).
+%             reverse : true|false (default: false). Inverse direction of z axis. 
+%          flipZstack : true|false (default: false). Flip z stacks.
+%    parseSettingFile : true|false (default: false). Use the setting file to decide whether filp z stacks or not.
+%                crop : true|false (default: false). Crop the data to smaller for rotation (removing extra empty regions).
+%         DSRCombined : true|false (default: true). Use combined processing for deskew and rotation.
+%        FFCorrection : true|false (default: false). Flat-field correction.
+%           BKRemoval : true|false (default: false). Remove background during flat-field correction.
+%          lowerLimit : a number between 0 and 1 (default: 0.4). Lower limit to cap the flat field image. 
+%         constOffset : empty or a number (default: []). If empty, add the background; if not, add the const offset after flat field correction.
+%        FFImagePaths : empty or a cell array of paths for corresponding channels (default: {'', '', ''}). Flat field image paths.
+%     backgroundPaths : empty or a cell array of paths for corresponding channels (default: {'', '', ''}). Background image paths.
+%           save16bit : true|false (default: true). Save 16bit result for deskew/rotate. 
+%         save3DStack : true|false (default: true). Save 3D stack for DS and DSR. 
+%             saveMIP : true|false (default: true). Save MIPs after deskew/rotate.
+%           largeFile : true|false (default: false). Use large scale deskew/rotation strategy.
+%            zarrFile : true|false (default: false). Use Zarr file as input.
+%            saveZarr : true|false (default: false). Save results as Zarr files.
+%           batchSize : 1x3 vector (default: [1024, 1024, 1024]). Batch size per stitching task.
+%           blockSize : 1x3 vector (default: [256, 256, 256]). Block/chunk size for zarr output.
+%           inputBbox : empty or 1x6 vector (default: []). Input bounding box for crop. Definiation: [ymin, xmin, zmin, ymax, xmax, zmax].
+%            taskSize : empty or a number (default: []). Number of tasks per job for large-scale deskew/rotation.
+%      resampleFactor : empty or 1x1, 1x2 or 1x3 vector (default: []). Resampling factor after rotation. Empty: no resampling; axis order yxz.
+%        interpMethod : 'linear'|'cubic' (default: 'linear'). Interpolation method for geometric transformations in deskew and rotation.
+%       maskFullpaths : empty or a cell array (default: {}). 2D projective masks to filter regions for large scale deskew/rotation, in xy, xz, and yz order.
+%        parseCluster : true|false (default: true). Use slurm cluster for the processing.
+%         parseParfor : true|false (default: false). Use matlab parfor for paralle processing.
+%       masterCompute : true|false (default: true). Master job node is involved in the processing.
+%           jobLogDir : char (default: '../job_logs'). Path for the slurm job logs.
+%         cpusPerTask : a number (default: 1). The number of cpu cores per task for slurm job submission.
+%                uuid : empty or a uuid string (default: ''). uuid string as part of the temporate result paths.
+%               debug : true|false (default: false). Debug mode. Not actually used in this function. Reserved for future use.
+%             mccMode : true|false (default: false). Use mcc mode.
+%          configFile : empty or char (default: ''). Path for the config file for job submission.
+%
+%
 % Author: Xiongtao Ruan (11/15/2023)
 
 
@@ -21,32 +72,31 @@ ip.addParameter('objectiveScan', false, @islogical);
 ip.addParameter('zStageScan', false, @islogical);
 ip.addParameter('reverse', false, @islogical);
 ip.addParameter('flipZstack', false, @islogical);
-ip.addParameter('parseSettingFile', false, @islogical); % use setting file to decide whether filp Z stack or not, it is  poirier over flipZstack
+ip.addParameter('parseSettingFile', false, @islogical);
 ip.addParameter('crop', false, @islogical);
-ip.addParameter('DSRCombined', true, @(x) islogical(x)); % combined processing 
+ip.addParameter('DSRCombined', true, @(x) islogical(x));
 ip.addParameter('FFCorrection', false, @islogical);
 ip.addParameter('BKRemoval', false, @islogical);
-ip.addParameter('lowerLimit', 0.4, @isnumeric); % this value is the lowest
-ip.addParameter('constOffset', [], @(x) isnumeric(x)); % If it is set, use constant background, instead of background from the camera.
+ip.addParameter('lowerLimit', 0.4, @isnumeric);
+ip.addParameter('constOffset', [], @(x) isnumeric(x));
 ip.addParameter('FFImagePaths', {'','',''}, @iscell);
 ip.addParameter('backgroundPaths', {'','',''}, @iscell);
-ip.addParameter('save16bit', true , @islogical); % saves deskewed data as 16 bit -- not for quantification
-ip.addParameter('save3DStack', true , @islogical); % option to save 3D stack or not
-ip.addParameter('saveMIP', true , @islogical); % save MIP-z for ds and dsr. 
+ip.addParameter('save16bit', true , @islogical);
+ip.addParameter('save3DStack', true , @islogical);
+ip.addParameter('saveMIP', true , @islogical);
 ip.addParameter('largeFile', false, @islogical);
-ip.addParameter('zarrFile', false, @islogical); % use zarr file as input
-ip.addParameter('saveZarr', false , @islogical); % save as zarr
-ip.addParameter('batchSize', [1024, 1024, 1024] , @isvector); % in y, x, z
-ip.addParameter('blockSize', [256, 256, 256], @isvector); % in y, x, z
+ip.addParameter('zarrFile', false, @islogical);
+ip.addParameter('saveZarr', false , @islogical);
+ip.addParameter('batchSize', [1024, 1024, 1024] , @isvector);
+ip.addParameter('blockSize', [256, 256, 256], @isvector);
 ip.addParameter('inputBbox', [], @(x) isempty(x) || isvector(x));
 ip.addParameter('taskSize', [], @isnumeric);
-ip.addParameter('resampleFactor', [], @(x) isempty(x) || isnumeric(x)); % resampling after rotation 
+ip.addParameter('resampleFactor', [], @(x) isempty(x) || isnumeric(x));
 ip.addParameter('interpMethod', 'linear', @(x) any(strcmpi(x, {'cubic', 'linear'})));
-ip.addParameter('maskFns', {}, @iscell); % 2d masks to filter regions to deskew and rotate, in xy, xz, yz order
-ip.addParameter('suffix', '', @ischar); % suffix for the folder
+ip.addParameter('maskFullpaths', {}, @iscell);
 ip.addParameter('parseCluster', true, @islogical);
 ip.addParameter('parseParfor', false, @islogical);
-ip.addParameter('masterCompute', true, @islogical); % master node participate in the task computing. 
+ip.addParameter('masterCompute', true, @islogical);
 ip.addParameter('jobLogDir', '../job_logs', @ischar);
 ip.addParameter('cpusPerTask', 1, @isnumeric);
 ip.addParameter('uuid', '', @ischar);
@@ -103,8 +153,7 @@ inputBbox = pr.inputBbox;
 taskSize = pr.taskSize;
 resampleFactor = pr.resampleFactor;
 interpMethod = pr.interpMethod;
-maskFns = pr.maskFns;
-suffix = pr.suffix;
+maskFullpaths = pr.maskFullpaths;
 % job related parameters
 parseCluster = pr.parseCluster;
 parseParfor = pr.parseParfor;
@@ -222,7 +271,7 @@ Decon = false;
 deconPaths = {};
 Streaming = false;
 minModifyTime = 1;
-[fnames, fdinds, gfnames, partialvols, dataSizes, flipZstack_mat, latest_modify_times, FTP_inds, maskFullpaths] = ...
+[fnames, fdinds, gfnames, partialvols, dataSizes, flipZstack_mat, latest_modify_times, FTP_inds] = ...
     XR_parseImageFilenames(dataPaths, channelPatterns, parseSettingFile, flipZstack, Decon, deconPaths, Streaming, minModifyTime, zarrFile);
 
 nF = numel(fnames);
@@ -258,12 +307,12 @@ for f = 1 : nF
     end
 
     if largeFile
-        maskFns_str =  sprintf('{''%s''}', strjoin(maskFns, ''','''));
+        maskFullpaths_str =  sprintf('{''%s''}', strjoin(maskFullpaths, ''','''));
         func_str = sprintf(['XR_deskewRotateZarr(''%s'',%.20d,%.20d,''resultDirStr'',''%s'',', ...
             '''overwrite'',%s,''objectiveScan'',%s,''skewAngle'',%d,''reverse'',%s,''flipZstack'',%s,', ...
             '''crop'',%s,''DSRCombined'',%s,''save16bit'',%s,''saveMIP'',%s,''saveZarr'',%s,', ...
             '''batchSize'',%s,''blockSize'',%s,''inputBbox'',%s,''taskSize'',%s,', ...
-            '''resampleFactor'',%s,''interpMethod'',''%s'',''maskFns'',%s,''suffix'',''%s'',''parseCluster'',%s,', ...
+            '''resampleFactor'',%s,''interpMethod'',''%s'',''maskFullpaths'',%s,''parseCluster'',%s,', ...
             '''parseParfor'',%s,''masterCompute'',%s,''jobLogDir'',''%s'',''cpusPerTask'',%d,',...
             '''uuid'',''%s'',''debug'',%s,''mccMode'',%s,''configFile'',''%s'')'], ...
             frameFullpath, xyPixelSize, dz, DSRDirName, string(overwrite), string(objectiveScan), ...
@@ -271,7 +320,7 @@ for f = 1 : nF
             string(save16bit), string(saveMIP), string(saveZarr), strrep(mat2str(batchSize), ' ', ','), ...
             strrep(mat2str(blockSize), ' ', ','), strrep(mat2str(inputBbox), ' ', ','), ...
             strrep(mat2str(taskSize), ' ', ','), strrep(mat2str(resampleFactor), ' ', ','), ...
-            interpMethod, maskFns_str, suffix, string(parseCluster), string(parseParfor), ...
+            interpMethod, maskFullpaths_str, string(parseCluster), string(parseParfor), ...
             string(masterCompute), jobLogDir, cpusPerTask, uuid, string(debug), ...
             string(mccMode), configFile);
     else

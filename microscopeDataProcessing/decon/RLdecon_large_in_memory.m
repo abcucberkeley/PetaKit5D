@@ -28,7 +28,7 @@ ip.addParameter('SaveMaskfile', false, @islogical); % save mask file for common 
 ip.addParameter('dampFactor', 1, @isnumeric); % damp factor for decon result
 ip.addParameter('scaleFactor', [], @isnumeric); % scale factor for decon result
 ip.addParameter('deconOffset', 0, @isnumeric); % offset for decon result
-ip.addParameter('deconMaskFns', {} , @iscell); % Full paths of 2D mask zarr files, in xy, xz, yz order
+ip.addParameter('maskFullpaths', {} , @iscell); % Full paths of 2D mask zarr files, in xy, xz, yz order
 ip.addParameter('saveZarr', false, @islogical); % save as zarr
 % ip.addParameter('DoNotAdjustResForFFT', true , @islogical); % not crop chunks for deconvolution
 ip.addParameter('RLMethod', 'simplified' , @ischar); % rl method {'original', 'simplified', 'cudagen'}
@@ -60,7 +60,7 @@ DeconIter = pr.DeconIter;
 dampFactor = pr.dampFactor;
 scaleFactor = pr.scaleFactor;
 deconOffset = pr.deconOffset;
-deconMaskFns = pr.deconMaskFns;
+maskFullpaths = pr.maskFullpaths;
 saveZarr = pr.saveZarr;
 RLMethod = pr.RLMethod;
 wienerAlpha = pr.wienerAlpha;
@@ -197,10 +197,10 @@ for i = 1 : numel(batchInds)
     obEnd = RegionBBoxes(i, 4 : 6);
 
     % use masks to determine whether to run the decon or directly save an empty region
-    if ~(isempty(deconMaskFns) || isempty(deconMaskFns{1}))
+    if ~(isempty(maskFullpaths) || isempty(maskFullpaths{1}))
         skipDecon = false;
         for f = 1 : 3
-            im_f = readzarr(deconMaskFns{f}, 'inputBbox', [obStart(finds(f, :)), 1, obEnd(finds(f, :)), 1]);
+            im_f = readzarr(maskFullpaths{f}, 'inputBbox', [obStart(finds(f, :)), 1, obEnd(finds(f, :)), 1]);
             if ~any(im_f(:))
                 skipDecon = true;
                 break;

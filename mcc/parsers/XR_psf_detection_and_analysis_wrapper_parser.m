@@ -15,11 +15,12 @@ ip.addParameter('flipZstack', false, @(x) islogical(x) || ischar(x));
 ip.addParameter('distThresh', [256, 128, 201], @(x) isnumeric(x) || ischar(x));
 ip.addParameter('channelPatterns', {'CamA_ch0', 'CamB_ch0'}, @(x) iscell(x) || ischar(x));
 ip.addParameter('channels', [488, 560], @(x) isnumeric(x) || ischar(x));
-ip.addParameter('RWFn', {'/clusterfs/fiona/Gokul/RW_PSFs/PSF_RW_515em_128_128_101_100nmSteps.tif', '/clusterfs/fiona/Gokul/RW_PSFs/PSF_RW_605em_128_128_101_100nmSteps.tif'}, @(x) iscell(x) || ischar(x));
+ip.addParameter('RWFn', {'', ''}, @(x) iscell(x) || ischar(x));
 ip.addParameter('sourceStr', 'test', @ischar);
 ip.addParameter('visible', true, @(x) islogical(x) || ischar(x));
 ip.addParameter('parseCluster', true, @(x) islogical(x) || ischar(x));
 ip.addParameter('masterCompute', false, @(x) islogical(x) || ischar(x));
+ip.addParameter('cpusPerTask', 8, @(x) isscalar(x) || ischar(x));
 ip.addParameter('mccMode', false, @(x) islogical(x) || ischar(x));
 ip.addParameter('configFile', '', @ischar);
 
@@ -39,6 +40,7 @@ sourceStr = pr.sourceStr;
 visible = pr.visible;
 parseCluster = pr.parseCluster;
 masterCompute = pr.masterCompute;
+cpusPerTask = pr.cpusPerTask;
 mccMode = pr.mccMode;
 configFile = pr.configFile;
 
@@ -81,6 +83,9 @@ end
 if ischar(masterCompute)
     masterCompute = str2num(masterCompute);
 end
+if ischar(cpusPerTask)
+    cpusPerTask = str2num(cpusPerTask);
+end
 if ischar(mccMode)
     mccMode = str2num(mccMode);
 end
@@ -89,7 +94,7 @@ XR_psf_detection_and_analysis_wrapper(dataPaths, xyPixelSize=xyPixelSize, dz=dz,
     skewAngle=skewAngle, cropSize=cropSize, flipZstack=flipZstack, distThresh=distThresh, ...
     channelPatterns=channelPatterns, channels=channels, RWFn=RWFn, sourceStr=sourceStr, ...
     visible=visible, parseCluster=parseCluster, masterCompute=masterCompute, ...
-    mccMode=mccMode, configFile=configFile);
+    cpusPerTask=cpusPerTask, mccMode=mccMode, configFile=configFile);
 
 end
 

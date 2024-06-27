@@ -11,7 +11,7 @@ ip.addParameter('inputBbox', [], @(x) isnumeric(x) || ischar(x)); % bbox for inp
 ip.addParameter('interpMethod', 'linear', @(x) ischar(x) && any(strcmpi(x, {'cubic', 'linear', 'nearest'})));
 ip.addParameter('save16bit', true, @(x) islogical(x) || ischar(x));
 ip.addParameter('zarrFile', false, @(x) islogical(x) || ischar(x));
-ip.addParameter('largeZarr', false, @(x) islogical(x) || ischar(x));
+ip.addParameter('largeFile', false, @(x) islogical(x) || ischar(x));
 ip.addParameter('saveZarr', false, @(x) islogical(x) || ischar(x)); % use zarr file as output
 ip.addParameter('blockSize', [256, 256, 256], @(x) isnumeric(x) || ischar(x)); % blcoksize
 ip.addParameter('batchSize', [512, 512, 512], @(x) isnumeric(x) || ischar(x)); % size to process in one batch
@@ -33,7 +33,7 @@ inputBbox = pr.inputBbox;
 interpMethod = pr.interpMethod;
 save16bit = pr.save16bit;
 zarrFile = pr.zarrFile;
-largeZarr = pr.largeZarr;
+largeFile = pr.largeFile;
 saveZarr = pr.saveZarr;
 blockSize = pr.blockSize;
 batchSize = pr.batchSize;
@@ -64,8 +64,8 @@ end
 if ischar(zarrFile)
     zarrFile = str2num(zarrFile);
 end
-if ischar(largeZarr)
-    largeZarr = str2num(largeZarr);
+if ischar(largeFile)
+    largeFile = str2num(largeFile);
 end
 if ischar(saveZarr)
     saveZarr = str2num(saveZarr);
@@ -94,7 +94,7 @@ end
 
 XR_resample_dataset(dataPaths, resampleFactor, resultDirName=resultDirName, ...
     channelPatterns=channelPatterns, inputBbox=inputBbox, interpMethod=interpMethod, ...
-    save16bit=save16bit, zarrFile=zarrFile, largeZarr=largeZarr, saveZarr=saveZarr, ...
+    save16bit=save16bit, zarrFile=zarrFile, largeFile=largeFile, saveZarr=saveZarr, ...
     blockSize=blockSize, batchSize=batchSize, borderSize=borderSize, parseCluster=parseCluster, ...
     jobLogDir=jobLogDir, masterCompute=masterCompute, cpusPerTask=cpusPerTask, ...
     uuid=uuid, mccMode=mccMode, configFile=configFile);

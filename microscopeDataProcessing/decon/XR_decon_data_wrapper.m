@@ -1,20 +1,61 @@
 function [] = XR_decon_data_wrapper(dataPaths, varargin)
-% data-level deconvolution wrapper, support cuda decon, cpp decon and
-% matlab decon. Adapted from the microscope pipeline. 
-% Support of option to rotate PSF, also user-defined resolution.
+% Dataset level deconvolution wrapper.
 % 
+%
+% Required inputs :   
+%          dataPaths : char or cell array. Directory paths for the datasets. Either a string for a single dataset or a cell array of paths for several datasets with same experimental settings and PSFs. 
+%
+% Parameters (as 'specifier'-value pairs): 
+%      resultDirName : char (default: 'matlab_decon'). Result directory under data paths.
+%          overwrite : true|false or 1x3 bool vector (default: false). Overwrite existing results
+%    channelPatterns : a cell array (default: {'CamA_ch0', 'CamA_ch1', 'CamB_ch0'}).  Channel identifiers for included channels. 
+%          skewAngle : a number (default: 32.45). Skew angle (in degree) of the stage.
+%                 dz : a number (default: 0.5). Scan interval in um.
+%        xyPixelSize : a number (default: 0.108). Pixel size in um.
+%          save16bit : 1x1 or 1x2 bool vector (default: [true, true]). Save 16bit result for deskew/rotate and stitch. 
+%   parseSettingFile : true|false (default: false). Use the setting file to decide whether filp z stacks or not.
+%         flipZstack : true|false (default: false). Flip z stacks.
+%         background : empty or a number (default: []). Background subtraction before deconvolution.
+%              dzPSF : a number (default: 0.5). Scan interval in um for PSF.
+%        edgeErosion : a number (default: 0). Number of pixels to erode after deconvolution to remove edge artifacts.
+%         erodeByFTP : true|false (default: true). Apply the erosion mask from the first time point.
+%       psfFullpaths : char or a cell array (default: {'','',''}). Paths of PSF with the same order as channelPatterns.
+%          deconIter : a number or 1x#dataset (default: 15). Deconvolution iteration. If it is a vector with 1x#dateset, apply specific iterations for datasets.
+%           RLMethod : 'original'|'simplified'|'omw' (default: 'simplified'). 'original': matlab deconvlucy.m (no GPU support); 'simplified': our implemention based on deconvlucy.m with GPU support; 'omw': OMW deconvolution.
+%        wienerAlpha : a number or 1x#channel (default: 0.005). Wiener parameter. If it is a 1x#channel vector, apply a specific parameter per channel mapping to channelPatterns.
+%       OTFCumThresh : a number or 1x#channel (default: 0.9). Accumulated energy quantile to segment OTF mask. Smaller number means tighter threshold with smaller masks. 
+%      hannWinBounds : 1x2 vector (default: [0.8, 1]). Apodization range for distance matrix with Hann window function. 0 means the center of support, and 1 means the edge of support. 
+%             skewed : empty or true|false (default: []). Parameter for OTF segmentation based on PSF space. If true, PSF is in the skewed space. If empty, automatically deteriming if PSF is in skewed space.
+%              debug : true|false (default: false). Debug mode for simplified and OMW method. If true, save the intermediate steps every n iterations (n is defined by saveStep).
+%           saveStep : a number (default: 5). For debug mode, determine the interval to save intermediate results.
+%             psfGen : true|false (default: true). Generate a clean version of PSF by removing background or other isolated bright regions.
+%             GPUJob : true|false (default: false). Use GPU for deconvolution
+%        deconRotate : true|false (default: false). Run rotation after deconvolution.
+%          batchSize : 1x3 vector (default: [1024, 1024, 1024]). Batch size per deconvolution task.
+%          blockSize : 1x3 vector (default: [256, 256, 256]). Block/chunk size for zarr output.
+%          largeFile : true|false (default: false). Use large scale deconvolution strategy.
+%        largeMethod : 'inmemory'|'inplace' (default: 'inmemory'). Method for large scale deconvolution. 'inmemory': read data in memory and deconvolve region by region. 'inplace': only read the region for deconvolution in a batch, and write the result to disk, only support Zarr.
+%           zarrFile : true|false (default: false). Use Zarr file as input.
+%           saveZarr : true|false (default: false). Save results as Zarr files.
+%         dampFactor : a number (default: 1). Damp factor for decon result by capping the intensity by the product of the raw data and the damp factor.
+%        scaleFactor : empty or 1x#channel (default: []). Scale factor apply to deconvolution result. If it is a 1x#channel vector, apply a specific parameter per channel mapping to channelPatterns.
+%        deconOffset : a number (default: 0). Offset added to the decon result.
+%      maskFullpaths : empty or a cell array (default: {}). 2D masks to filter regions for decon in 'inplace' large decon method, in xy, xz, and yz order.
+%       parseCluster : true|false (default: true). Use slurm cluster for the processing.
+%        parseParfor : true|false (default: false). Use matlab parfor for paralle processing.
+%      masterCompute : true|false (default: true). Master job node is involved in the processing.
+%          jobLogDir : char (default: '../job_logs'). Path for the slurm job logs.
+%        cpusPerTask : a number (default: 1). The number of cpu cores per task for slurm job submission.
+%               uuid : empty or a uuid string (default: ''). uuid string as part of the temporate result paths.
+%       unitWaitTime : a number (default: 1). The wait time per file in minutes to check whether the computing is done.
+%        maxTrialNum : a number (default: 3). The max number of retries for a task.
+%            mccMode : true|false (default: false). Use mcc mode.
+%         configFile : empty or char (default: ''). Path for the config file for job submission in CPU.
+%      GPUConfigFile : empty or char (default: ''). Path for the config file for job submission for GPU deconvolution (The conductor job can be in a CPU node).
+%
+%
 % Author: Xiongtao Ruan
 % Date: (08/26/2020)
-% 
-% xruan (10/26/2020): add support for zarr
-% xruan (03/24/2021): add support for normalization of intensity by the
-% first time point when saving to 16bit. 
-% xruan (03/25/2021): add options for different versions of rl method
-% xruan (06/10/2021): add support for threshold and debug mode in simplified version. 
-% xruan (06/11/2021): add support for gpu computing for chuck decon in matlab decon wrapper
-% xruan (07/13/2021): add support for the processing of flipped files
-% (currently only add support for matlab decon)
-% xruan (10/19/2021): add support for dataset specific iteration
 
 
 ip = inputParser;
@@ -58,7 +99,7 @@ ip.addParameter('saveZarr', false, @islogical); % save as zarr
 ip.addParameter('dampFactor', 1, @isnumeric); % damp factor for decon result
 ip.addParameter('scaleFactor', [], @isnumeric); % scale factor for decon result
 ip.addParameter('deconOffset', 0, @isnumeric); % offset for decon result
-ip.addParameter('deconMaskFns', {}, @iscell); % 2d masks to filter regions to decon, in xy, xz, yz order
+ip.addParameter('maskFullpaths', {}, @iscell); % 2d masks to filter regions to decon, in xy, xz, yz order
 ip.addParameter('parseCluster', true, @islogical);
 ip.addParameter('parseParfor', false, @islogical);
 ip.addParameter('masterCompute', true, @islogical); % master node participate in the task computing. 
@@ -121,7 +162,7 @@ saveZarr = pr.saveZarr;
 dampFactor = pr.dampFactor;
 scaleFactor = pr.scaleFactor;
 deconOffset = pr.deconOffset;
-deconMaskFns = pr.deconMaskFns;
+maskFullpaths = pr.maskFullpaths;
 
 jobLogDir = pr.jobLogDir;
 cpusPerTask = pr.cpusPerTask;
@@ -260,7 +301,7 @@ end
 Streaming = false;
 Decon = true;
 minModifyTime = 1;
-[fnames, fdinds, gfnames, partialvols, dataSizes, flipZstack_mat, latest_modify_times, FTP_inds, maskFullpaths] = ...
+[fnames, fdinds, gfnames, partialvols, dataSizes, flipZstack_mat, latest_modify_times, FTP_inds, erodeMaskFullpaths] = ...
     XR_parseImageFilenames(dataPaths, channelPatterns, parseSettingFile, flipZstack, Decon, deconPaths, Streaming, minModifyTime, zarrFile);
 
 nF = numel(fnames);
@@ -330,7 +371,7 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
         end
         
         % for erodeByFTP, check if the mask file exist
-        maskFullpath = '';
+        erodeMaskFullpath = '';
         SaveMaskfile = false;
         % do not apply erode by first time point for cuda decon for now
         % (04/19/2020)
@@ -340,25 +381,25 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
                 SaveMaskfile = true;
                 % if decon result exist, but mask file not exist, rerun
                 % it to save the mask. 
-                if is_done_flag(f, 1) && ~exist(maskFullpaths{fdind}, 'file')
+                if is_done_flag(f, 1) && ~exist(erodeMaskFullpaths{fdind}, 'file')
                     is_done_flag(f, 1) = false;
                     delete(deconFullpath);
                 end
             else
                 % only check for the ones not finished. 
                 if ~is_done_flag(f, 1)
-                    maskFullpath = maskFullpaths{fdind};
-                    if ~exist(maskFullpath, 'file')
+                    erodeMaskFullpath = erodeMaskFullpaths{fdind};
+                    if ~exist(erodeMaskFullpath, 'file')
                         continue;
                     end
 
-                    mask_sz = getImageSize(maskFullpath);
+                    mask_sz = getImageSize(erodeMaskFullpath);
                     img_sz = getImageSize(dcframeFullpath);
                     if any(mask_sz ~= img_sz)
                         warning(['The image size [%s] does not match the defined ', ... 
                             'mask size [%s], use its own mask for edge erosion...'], ...
                             num2str(img_sz, '%d '), num2str(mask_sz, '%d '));
-                        maskFullpath = '';
+                        erodeMaskFullpath = '';
                     end
                 end
             end
@@ -372,7 +413,7 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
             OTFCumThresh_f = OTFCumThresh(psfMapping);
             scaleFactor_f = scaleFactor(psfMapping);
             flipZstack = flipZstack_mat(f);
-            deconMaskFns_str = sprintf('{''%s''}', strjoin(deconMaskFns, ''','''));
+            maskFullpaths_str = sprintf('{''%s''}', strjoin(maskFullpaths, ''','''));
             
             func_str = sprintf(['XR_RLdeconFrame3D(''%s'',%.10f,%.10f,''%s'',''PSFfile'',''%s'',', ...
                 '''dzPSF'',%.10f,''background'',[%d],''skewAngle'',%d,''flipZstack'',%s,', ...
@@ -381,16 +422,16 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
                 '''skewed'',[%s],''debug'',%s,''saveStep'',%d,''psfGen'',%s,''saveZarr'',%s,', ...
                 '''parseCluster'',%s,''parseParfor'',%s,''GPUJob'',%s,''save16bit'',%s,', ...
                 '''largeFile'',%s,''largeMethod'',''%s'',''batchSize'',%s,''blockSize'',%s,', ...
-                '''dampFactor'',%d,''scaleFactor'',[%d],''deconOffset'',%d,''deconMaskFns'',%s,', ...
+                '''dampFactor'',%d,''scaleFactor'',[%d],''deconOffset'',%d,''maskFullpaths'',%s,', ...
                 '''uuid'',''%s'',''cpusPerTask'',%d,''mccMode'',%s,''configFile'',''%s'',''GPUConfigFile'',''%s'')'], ...
                 dcframeFullpath, xyPixelSize, dc_dz, deconPath, psfFullpath, ...
                 dc_dzPSF, background, skewAngle, string(flipZstack), edgeErosion, ...
-                maskFullpath, string(SaveMaskfile), string(deconRotate), deconIter_f, ...
+                erodeMaskFullpath, string(SaveMaskfile), string(deconRotate), deconIter_f, ...
                 RLMethod, wienerAlpha_f, OTFCumThresh_f, string(skewed), string(debug), ...
                 saveStep, string(psfGen), string(saveZarr), string(parseCluster), ...
                 string(parseParfor), string(GPUJob), string(save16bit), string(largeFile), ...
                 largeMethod, strrep(mat2str(batchSize), ' ', ','), strrep(mat2str(blockSize), ' ', ','), ...
-                dampFactor, scaleFactor_f, deconOffset, deconMaskFns_str, uuid, ...
+                dampFactor, scaleFactor_f, deconOffset, maskFullpaths_str, uuid, ...
                 cpusPerTask, string(mccMode), configFile, GPUConfigFile);
             
             if exist(dctmpFullpath, 'file') || parseCluster

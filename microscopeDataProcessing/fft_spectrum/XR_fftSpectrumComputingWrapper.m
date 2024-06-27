@@ -1,30 +1,51 @@
 function XR_fftSpectrumComputingWrapper(dataPaths, varargin)
-% data wrapper for fft spectrum computing
+% Dataset level wrapper for fft spectrum computing.
+% For each image, the default outputs are central slices and MIPs of power 
+% spectrum with gamma 0.5. If save 3D stack, the log10 power spectrum is saved. 
 % 
+%
+% Required inputs:
+%           dataPaths : char or cell array. Directory paths for the datasets. Either a string for a single dataset or a cell array of paths for several datasets with same experimental settings.
+%
+% Parameters (as 'specifier'-value pairs):
+%       resultDirName : char (default: 'FFT'). Result directory under data path.
+%           overwrite : true|false (default: false). Overwrite existing results
+%         xyPixelSize : a number (default: 0.108). Pixel size in um.
+%                  dz : a number (default: 0.5). Scan interval in um.
+%            zarrFile : true|false (default: false). Use Zarr file as input.
+%        outPixelSize : empty or a number (default: []). Voxel size for output. This number applies to all three axes. If empty, the minimum of xyPixelSize and dz is used.
+%             outSize : 1x3 vector (default: [1001, 1001, 1001]). Output size for the FFT spectrum computing. The image is cropped/padded to this size. Must be the same across all axes.
+%     channelPatterns : a cell array (default: {}).  Channel identifiers for included channels. If not provided, process all images in dataPaths.
+%         save3DStack : true|false (default: false). Save 3D stack for FFT power spectrum (in log10 scale). 
+%          background : a number (default: 0). Background subtraction before FFT computing.
+%        interpMethod : 'linear'|'cubic'|'lanczos2'|'lanczos3' (default: 'linear'). Interpolation method for resampling to out pixel size.
+%        parseCluster : true|false (default: true). Use slurm cluster for the processing.
+%       masterCompute : true|false (default: true). Master job node is involved in the processing.
+%         cpusPerTask : a number (default: 1). The number of cpu cores per task for slurm job submission.
+%               debug : true|false (default: false). Debug mode for simplified and OMW method. If true, save the intermediate steps every n iterations (n is defined by saveStep).
+%             mccMode : true|false (default: false). Use mcc mode.
+%          configFile : empty or char (default: ''). Path for the config file for job submission.
+%
+%
 % Author: Xiongtao Ruan (11/25/2020)
-% xruan (11/11/2021): add support for rescale to isotropic and crop/pad to
-% given size (1001 in each dimension)
-% xruan (12/13/2021): add background subtraction
-% xruan (01/03/2022): add support for output voxel size
-% xruan (07/18/2022): add support for different interpolation methods for resampling
 
 
 ip = inputParser;
 ip.CaseSensitive = false;
-ip.addRequired('dataPaths', @(x) ischar(x) || iscell(x)); % data structure from loadConditionData
+ip.addRequired('dataPaths', @(x) ischar(x) || iscell(x));
 ip.addParameter('resultDirName', 'FFT',  @ischar);
 ip.addParameter('overwrite', false,  @(x) (numel(x) == 1) && islogical(x));
 ip.addParameter('xyPixelSize', 0.108, @isnumeric);
-ip.addParameter('dz', 0.1, @isnumeric); % actual pixel size in z
-ip.addParameter('zarrFile', false, @islogical); % input as zarr
-ip.addParameter('outPixelSize', [], @(x) isnumeric(x) || isempty(x)); % output pixel size
+ip.addParameter('dz', 0.1, @isnumeric);
+ip.addParameter('zarrFile', false, @islogical);
+ip.addParameter('outPixelSize', [], @(x) isnumeric(x) || isempty(x));
 ip.addParameter('outSize', [1001, 1001, 1001], @isnumeric);
 ip.addParameter('channelPatterns', {}, @(x) ischar(x) || iscell(x));
 ip.addParameter('save3DStack', false, @islogical);
 ip.addParameter('background', 0, @isnumeric);
 ip.addParameter('interpMethod', 'linear', @ischar);
 ip.addParameter('parseCluster', true, @islogical);
-ip.addParameter('masterCompute', true, @islogical); % master node participate in the task computing. 
+ip.addParameter('masterCompute', true, @islogical);
 ip.addParameter('cpusPerTask', 3, @isscalar);
 ip.addParameter('debug', false, @islogical);
 ip.addParameter('mccMode', false, @islogical);

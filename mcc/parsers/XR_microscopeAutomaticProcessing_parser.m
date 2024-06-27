@@ -11,9 +11,9 @@ function [] = XR_microscopeAutomaticProcessing_parser(dataPaths, varargin)
 
 ip = inputParser;
 ip.CaseSensitive = false;
-ip.addRequired('dataPaths', @(x) ischar(x) || iscell(x)); % data structure from loadConditionData
-ip.addParameter('overwrite', false,  @(x) (numel(x) == 1 || numel(x) == 5) && islogical(x) || ischar(x));
-ip.addParameter('streaming', true,  @(x) islogical(x) || ischar(x)); % if true, check for new files. If false, assume all files transferred completely.
+ip.addRequired('dataPaths', @(x) ischar(x) || iscell(x));
+ip.addParameter('overwrite', false,  @(x) (numel(x) == 1 || numel(x) == 3) && islogical(x) || ischar(x));
+ip.addParameter('streaming', true,  @(x) islogical(x) || ischar(x));
 ip.addParameter('channelPatterns', {'CamA_ch0', 'CamA_ch1', 'CamB_ch0'}, @(x) iscell(x) || ischar(x));
 ip.addParameter('skewAngle', 32.45, @(x) isscalar(x) || ischar(x));
 ip.addParameter('dz', 0.5, @(x) isscalar(x) || ischar(x));
@@ -21,42 +21,39 @@ ip.addParameter('xyPixelSize', 0.108, @(x) isscalar(x) || ischar(x));
 ip.addParameter('reverse', true, @(x) islogical(x) || ischar(x));
 ip.addParameter('objectiveScan', false, @(x) islogical(x) || ischar(x));
 ip.addParameter('zStageScan', false, @(x) islogical(x) || ischar(x));
-ip.addParameter('save16bit', [true, true, true, true], @(x) (numel(x) == 1 || numel(x) == 4) && islogical(x) || ischar(x));
-ip.addParameter('onlyFirstTP', false, @(x) islogical(x) || ischar(x));
+ip.addParameter('save16bit', [true, true], @(x) (numel(x) == 1 || numel(x) == 2) && islogical(x) || ischar(x));
 ip.addParameter('dzFromEncoder', false, @(x) islogical(x) || ischar(x));
-ip.addParameter('zarrFile', false, @(x) islogical(x) || ischar(x)); % use zarr file as input
-ip.addParameter('saveZarr', false, @(x) islogical(x) || ischar(x)); % use zarr file as output
-ip.addParameter('save3DStack', true , @(x) islogical(x) || ischar(x)); % option to save 3D stack or not
+ip.addParameter('zarrFile', false, @(x) islogical(x) || ischar(x));
+ip.addParameter('saveZarr', false, @(x) islogical(x) || ischar(x));
+ip.addParameter('save3DStack', true , @(x) islogical(x) || ischar(x));
 ip.addParameter('deskew', true, @(x) islogical(x) || ischar(x));
 ip.addParameter('rotate', true, @(x) islogical(x) || ischar(x));
 ip.addParameter('stitch', false, @(x) islogical(x) || ischar(x));
-ip.addParameter('parseSettingFile', false, @(x) islogical(x) || ischar(x)); % use setting file to decide whether filp Z stack or not.
-ip.addParameter('flipZstack', false, @(x) islogical(x) || ischar(x)); % 
+ip.addParameter('parseSettingFile', false, @(x) islogical(x) || ischar(x));
+ip.addParameter('flipZstack', false, @(x) islogical(x) || ischar(x));
 ip.addParameter('DSRCombined', true, @(x) islogical(x) || ischar(x)); 
 ip.addParameter('FFCorrection', false, @(x) islogical(x) || ischar(x));
 ip.addParameter('BKRemoval', false, @(x) islogical(x) || ischar(x));
-ip.addParameter('lowerLimit', 0.4, @(x) isnumeric(x) || ischar(x)); % this value is the lowest
-ip.addParameter('constOffset', [], @(x) isnumeric(x) || ischar(x)); % If it is set, use constant background, instead of background from the camera.
+ip.addParameter('lowerLimit', 0.4, @(x) isnumeric(x) || ischar(x));
+ip.addParameter('constOffset', [], @(x) isnumeric(x) || ischar(x));
 ip.addParameter('FFImagePaths', {'','',''}, @(x) iscell(x) || ischar(x));
 ip.addParameter('backgroundPaths', {'','',''}, @(x) iscell(x) || ischar(x));
-ip.addParameter('resampleType', 'isotropic', @ischar); % resampleFactor type: given, isotropic, xy_isotropic
-ip.addParameter('resampleFactor', [], @(x) isnumeric(x) || ischar(x)); % resampleFactor
-ip.addParameter('inputBbox', [], @(x) isnumeric(x) || ischar(x)); % bbox for input in deskew and rotate
-ip.addParameter('stitchPipeline', 'zarr', @ischar); % matlab or zarr
+ip.addParameter('resampleType', 'isotropic', @ischar);
+ip.addParameter('resampleFactor', [], @(x) isnumeric(x) || ischar(x));
+ip.addParameter('inputBbox', [], @(x) isnumeric(x) || ischar(x));
 ip.addParameter('stitchResultDirName', '', @ischar);
 ip.addParameter('imageListFullpaths', '', @(x) ischar(x) || iscell(x));
 ip.addParameter('axisOrder', 'xyz', @(x) ischar(x));
 ip.addParameter('blendMethod', 'none', @ischar);
 ip.addParameter('xcorrShift', false, @(x) islogical(x) || ischar(x));
-ip.addParameter('xcorrMode', 'primaryFirst', @(x) ismember(lower(x), {'primary', 'primaryfirst', 'all'}) || ischar(x)); % 'primary': choose one channel as primary channel, 
-ip.addParameter('xyMaxOffset', 300, @(x) isnumeric(x) || ischar(x)); % max offsets in xy axes
-ip.addParameter('zMaxOffset', 50, @(x) isnumeric(x) || ischar(x)); % max offsets in z axis
+ip.addParameter('xcorrMode', 'primaryFirst', @(x) ismember(lower(x), {'primary', 'primaryfirst', 'all'}) || ischar(x));
+ip.addParameter('xyMaxOffset', 300, @(x) isnumeric(x) || ischar(x));
+ip.addParameter('zMaxOffset', 50, @(x) isnumeric(x) || ischar(x));
 ip.addParameter('edgeArtifacts', 2, @(x) isnumeric(x) || ischar(x));
 ip.addParameter('primaryCh', '', @ischar);
-ip.addParameter('stitchMIP', [], @(x) isempty(x)  || (islogical(x) && (numel(x) == 1 || numel(x) == 3)) || ischar(x)); % 1x3 vector or vector, by default, stitch MIP-z
-ip.addParameter('onlineStitch', false, @(x) islogical(x) || ischar(x)); % support for online stitch (with partial number of tiles). 
-ip.addParameter('generateImageList', '', @(x) ischar(x)); % for real time processing, {'', 'from_encoder', 'from_sqlite'}
-ip.addParameter('largeFile', false, @(x) islogical(x) || ischar(x));
+ip.addParameter('stitchMIP', [], @(x) isempty(x)  || (islogical(x) && (numel(x) == 1 || numel(x) == 3)) || ischar(x));
+ip.addParameter('onlineStitch', false, @(x) islogical(x) || ischar(x));
+ip.addParameter('generateImageList', '', @(x) ischar(x));
 ip.addParameter('parseCluster', true, @(x) islogical(x) || ischar(x));
 ip.addParameter('masterCompute', true, @(x) islogical(x) || ischar(x));
 ip.addParameter('jobLogDir', '../job_logs', @ischar);
@@ -64,12 +61,11 @@ ip.addParameter('cpusPerTask', 1, @(x) isnumeric(x) || ischar(x));
 ip.addParameter('uuid', '', @ischar);
 ip.addParameter('maxTrialNum', 3, @(x) isnumeric(x) || ischar(x));
 ip.addParameter('unitWaitTime', 1, @(x) isnumeric(x) || ischar(x));
-ip.addParameter('minModifyTime', 1, @(x) isnumeric(x) || ischar(x)); % the minimum duration of last modify time of a file, in minute.
-ip.addParameter('maxModifyTime', 10, @(x) isnumeric(x) || ischar(x)); % the maximum duration of last modify time of a file, in minute.
-ip.addParameter('maxWaitLoopNum', 10, @(x) isnumeric(x) || ischar(x)); % the max number of loops the loop waits with all existing files processed. 
+ip.addParameter('minModifyTime', 1, @(x) isnumeric(x) || ischar(x));
+ip.addParameter('maxModifyTime', 10, @(x) isnumeric(x) || ischar(x));
+ip.addParameter('maxWaitLoopNum', 10, @(x) isnumeric(x) || ischar(x));
 ip.addParameter('mccMode', false, @(x) islogical(x) || ischar(x));
 ip.addParameter('configFile', '', @ischar);
-ip.addParameter('GPUConfigFile', '', @ischar);
 
 ip.parse(dataPaths, varargin{:});
 
@@ -84,7 +80,6 @@ reverse = pr.reverse;
 objectiveScan = pr.objectiveScan;
 zStageScan = pr.zStageScan;
 save16bit = pr.save16bit;
-onlyFirstTP = pr.onlyFirstTP;
 dzFromEncoder = pr.dzFromEncoder;
 zarrFile = pr.zarrFile;
 saveZarr = pr.saveZarr;
@@ -104,7 +99,6 @@ backgroundPaths = pr.backgroundPaths;
 resampleType = pr.resampleType;
 resampleFactor = pr.resampleFactor;
 inputBbox = pr.inputBbox;
-stitchPipeline = pr.stitchPipeline;
 stitchResultDirName = pr.stitchResultDirName;
 imageListFullpaths = pr.imageListFullpaths;
 axisOrder = pr.axisOrder;
@@ -118,7 +112,6 @@ primaryCh = pr.primaryCh;
 stitchMIP = pr.stitchMIP;
 onlineStitch = pr.onlineStitch;
 generateImageList = pr.generateImageList;
-largeFile = pr.largeFile;
 parseCluster = pr.parseCluster;
 masterCompute = pr.masterCompute;
 jobLogDir = pr.jobLogDir;
@@ -131,7 +124,6 @@ maxModifyTime = pr.maxModifyTime;
 maxWaitLoopNum = pr.maxWaitLoopNum;
 mccMode = pr.mccMode;
 configFile = pr.configFile;
-GPUConfigFile = pr.GPUConfigFile;
 
 if ischar(dataPaths) && ~isempty(dataPaths) && strcmp(dataPaths(1), '{')
     dataPaths = eval(dataPaths);
@@ -165,9 +157,6 @@ if ischar(zStageScan)
 end
 if ischar(save16bit)
     save16bit = str2num(save16bit);
-end
-if ischar(onlyFirstTP)
-    onlyFirstTP = str2num(onlyFirstTP);
 end
 if ischar(dzFromEncoder)
     dzFromEncoder = str2num(dzFromEncoder);
@@ -244,9 +233,6 @@ end
 if ischar(onlineStitch)
     onlineStitch = str2num(onlineStitch);
 end
-if ischar(largeFile)
-    largeFile = str2num(largeFile);
-end
 if ischar(parseCluster)
     parseCluster = str2num(parseCluster);
 end
@@ -278,21 +264,19 @@ end
 XR_microscopeAutomaticProcessing(dataPaths, overwrite=overwrite, streaming=streaming, ...
     channelPatterns=channelPatterns, skewAngle=skewAngle, dz=dz, xyPixelSize=xyPixelSize, ...
     reverse=reverse, objectiveScan=objectiveScan, zStageScan=zStageScan, save16bit=save16bit, ...
-    onlyFirstTP=onlyFirstTP, dzFromEncoder=dzFromEncoder, zarrFile=zarrFile, ...
-    saveZarr=saveZarr, save3DStack=save3DStack, deskew=deskew, rotate=rotate, ...
-    stitch=stitch, parseSettingFile=parseSettingFile, flipZstack=flipZstack, ...
-    DSRCombined=DSRCombined, FFCorrection=FFCorrection, BKRemoval=BKRemoval, ...
-    lowerLimit=lowerLimit, constOffset=constOffset, FFImagePaths=FFImagePaths, ...
+    dzFromEncoder=dzFromEncoder, zarrFile=zarrFile, saveZarr=saveZarr, save3DStack=save3DStack, ...
+    deskew=deskew, rotate=rotate, stitch=stitch, parseSettingFile=parseSettingFile, ...
+    flipZstack=flipZstack, DSRCombined=DSRCombined, FFCorrection=FFCorrection, ...
+    BKRemoval=BKRemoval, lowerLimit=lowerLimit, constOffset=constOffset, FFImagePaths=FFImagePaths, ...
     backgroundPaths=backgroundPaths, resampleType=resampleType, resampleFactor=resampleFactor, ...
-    inputBbox=inputBbox, stitchPipeline=stitchPipeline, stitchResultDirName=stitchResultDirName, ...
-    imageListFullpaths=imageListFullpaths, axisOrder=axisOrder, blendMethod=blendMethod, ...
-    xcorrShift=xcorrShift, xcorrMode=xcorrMode, xyMaxOffset=xyMaxOffset, zMaxOffset=zMaxOffset, ...
-    edgeArtifacts=edgeArtifacts, primaryCh=primaryCh, stitchMIP=stitchMIP, ...
-    onlineStitch=onlineStitch, generateImageList=generateImageList, largeFile=largeFile, ...
+    inputBbox=inputBbox, stitchResultDirName=stitchResultDirName, imageListFullpaths=imageListFullpaths, ...
+    axisOrder=axisOrder, blendMethod=blendMethod, xcorrShift=xcorrShift, xcorrMode=xcorrMode, ...
+    xyMaxOffset=xyMaxOffset, zMaxOffset=zMaxOffset, edgeArtifacts=edgeArtifacts, ...
+    primaryCh=primaryCh, stitchMIP=stitchMIP, onlineStitch=onlineStitch, generateImageList=generateImageList, ...
     parseCluster=parseCluster, masterCompute=masterCompute, jobLogDir=jobLogDir, ...
     cpusPerTask=cpusPerTask, uuid=uuid, maxTrialNum=maxTrialNum, unitWaitTime=unitWaitTime, ...
     minModifyTime=minModifyTime, maxModifyTime=maxModifyTime, maxWaitLoopNum=maxWaitLoopNum, ...
-    mccMode=mccMode, configFile=configFile, GPUConfigFile=GPUConfigFile);
+    mccMode=mccMode, configFile=configFile);
 
 end
 

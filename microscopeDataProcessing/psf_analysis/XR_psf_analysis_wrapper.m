@@ -1,12 +1,33 @@
 function [] = XR_psf_analysis_wrapper(dataPaths, varargin)
-% psf analysis wrapper
+% PSF analysis and visualization wrapper for isolated PSFs.
 %
-% xruan (07/27/2021): add support for z-stage scan
-% xruan (07/28/2021): save RW line cut info to avoid the computing in each iteration, 
-% and add parallel computing for plotting
-% xruan (08/16/2021): add support for flipped psfs
-% xruan (12/21/2021): add support for background subtraction factor
-% xruan (04/12/2022): update z size in PSFsubpix to match it for RW image
+%
+% Required inputs:
+%           dataPaths : char or cell array. Directory paths for the datasets. Either a string for a single dataset or a cell array of paths for several datasets with same experimental settings.
+%
+% Parameters (as 'specifier'-value pairs):
+%         xyPixelSize : a number (default: 0.108). Pixel size in um.
+%                  dz : a number (default: 0.5). Scan interval in um.
+%           skewAngle : a number (default: 32.45). Skew angle (in degree) of the stage.
+%              deskew : true|false (default: true). Deskew the data.
+%          flipZstack : true|false (default: false). Flip z stacks.
+%       objectiveScan : true|false (default: false). Objective scan.
+%          zStageScan : true|false (default: false). Z stage scan (orthogonal to objective scan).
+%     channelPatterns : a cell array (default: {'CamA_ch0', 'CamB_ch0'}).  Channel identifiers for included channels. 
+%            channels : 1x#Channels (default: [488, 560]). Wavelength for the channels.
+%           save16bit : true|false (default: true). Save 16bit result for deskew/rotate. 
+%            bgFactor : a number (default: 1.5). PSF generation background remove factor.
+%                RWFn : a cell array with 1x#channels (default: {'', ''}). Richards Wolf theoretical Widefield PSF paths mapped to the channels.
+%           sourceStr : char (default: 'test'). Source of the PSF shown in the title of the PSF analysis plots.
+%             visible : true|false (default: true). Make figure visible; otherwise, plot the figure in the background.
+%        parseCluster : true|false (default: true). Use slurm cluster for the processing.
+%       masterCompute : true|false (default: true). Master job node is involved in the processing.
+%         cpusPerTask : a number (default: 8). The number of cpu cores per task for slurm job submission.
+%             mccMode : true|false (default: false). Use mcc mode.
+%          configFile : empty or char (default: ''). Path for the config file for job submission.
+%
+%
+% Author: Xiongtao Ruan (07/2021)
 
 
 ip = inputParser;
@@ -23,7 +44,7 @@ ip.addParameter('channelPatterns', {'CamA_ch0', 'CamB_ch0'}, @iscell);
 ip.addParameter('channels', [488, 560], @isnumeric);
 ip.addParameter('save16bit', true, @islogical);
 ip.addParameter('bgFactor', 1.5, @isnumeric);
-ip.addParameter('RWFn', {'/clusterfs/fiona/Gokul/RW_PSFs/PSF_RW_515em_128_128_101_100nmSteps.tif', '/clusterfs/fiona/Gokul/RW_PSFs/PSF_RW_605em_128_128_101_100nmSteps.tif'}, @iscell);
+ip.addParameter('RWFn', {'', ''}, @iscell);
 ip.addParameter('sourceStr', 'test', @ischar);
 ip.addParameter('visible', true, @islogical);
 ip.addParameter('parseCluster', true, @islogical);
@@ -81,7 +102,7 @@ if deskew
                        'dz' dz, ...
                        'SkewAngle', skewAngle, ...
                        'Reverse', Reverse, ...
-                       'zStageScan', zStageScan, ...                       
+                       'zStageScan', zStageScan, ...
                        'channelPatterns', channelPatterns, ...
                        'save16bit', save16bit...
                        'Overwrite', false, ...

@@ -1,17 +1,33 @@
 function [] = XR_crop_dataset(dataPaths, inputBbox, varargin)
-% crop a dataset via cluster computing
+% Dataset level wrapper for the cropping tool with a given cropping bounding box.
 % 
+% 
+% Required inputs:
+%           dataPaths : char or cell array. Directory paths for the datasets. Either a string for a single dataset or a cell array of paths for several datasets with same experimental settings.
+%           inputBbox : 1x6 vector. Input bounding box for crop. Definiation: [ymin, xmin, zmin, ymax, xmax, zmax].
+%
+% Parameters (as 'specifier'-value pairs):
+%       resultDirName : char (default: 'Cropped'). Crop result directory under data path.
+%            cropType : 'fixed'|'moving'|'center' (default: 'fixed'). 'fixed': fixed bounding box; 'moving': crop the first time point with inputBbox, and linearly move the bbox according to the last time point coordinates (lastStartCoords); 'center': crop the center of the images with the size defined by inputBbox.
+%                 pad : true|false (default: false). Pad an empty region if the bounding box is outside of the image.
+%     lastStartCoords : empty or 1x3 vector. The start coordinates for the last time point for 'moving' crop type.
+%     channelPatterns : a cell array (default: {'CamA_ch0', 'CamB_ch0'}).  Channel identifiers for included channels. 
+%            zarrFile : true|false (default: false). Use Zarr file as input.
+%           largeFile : true|false (default: false). Use large-scale crop strategy with in-place read and write cropped regions. Only for Zarr files.
+%            saveZarr : true|false (default: false). Save results as Zarr files.
+%           batchSize : 1x3 vector (default: [1024, 1024, 1024]). Batch size per task for large scale cropping.
+%           blockSize : 1x3 vector (default: [256, 256, 256]). Block/chunk size for zarr output.
+%           save16bit : true|false (default: true). Save 16bit result for deskew/rotate and stitch. 
+%        parseCluster : true|false (default: true). Use slurm cluster for the processing.
+%       masterCompute : true|false (default: true). Master job node is involved in the processing.
+%           jobLogDir : char (default: '../job_logs'). Path for the slurm job logs.
+%         cpusPerTask : a number (default: 2). The number of cpu cores per task for slurm job submission.
+%                uuid : empty or a uuid string (default: ''). uuid string as part of the temporate result paths.
+%             mccMode : true|false (default: false). Use mcc mode.
+%          configFile : empty or char (default: ''). Path for the config file for job submission.
+%
 %
 % Author: Xiongtao Ruan (02/18/2020)
-% 
-% xruan (08/22/2020): add group write permission for the result folder
-% xruan (08/23/2020): add option for not using tmp directory if write to a new folder.
-% xruan (01/15/2021): refactor code and add option for moving bounding box.
-% xruan (06/25/2021): add support for crop from center, the size is from bbox
-% xruan (07/13/2021): add option to pad data if it is outside of the bbox
-% xruan (07/13/2021): add support for multiple datasets
-% xruan (01/25/2022): add support for zarr read and write
-% xruan (06/03/2022): add support for large zarr files
 
 
 ip = inputParser;
@@ -19,17 +35,18 @@ ip.CaseSensitive = false;
 ip.addRequired('dataPaths', @(x) ischar(x) || iscell(x));
 ip.addRequired('inputBbox', @isnumeric);
 ip.addParameter('resultDirName', 'Cropped', @ischar);
-ip.addParameter('cropType', 'fixed', @ischar); % fixed or moving or center
-ip.addParameter('pad', false, @islogical); % pad region that is outside the bbox
-ip.addParameter('lastStartCoords', [], @isnumeric); % start coordinate of the last time point
+ip.addParameter('cropType', 'fixed', @ischar);
+ip.addParameter('pad', false, @islogical);
+ip.addParameter('lastStartCoords', [], @isnumeric);
 ip.addParameter('channelPatterns', {'CamA_ch0', 'CamB_ch0'}, @iscell);
-ip.addParameter('zarrFile', false , @islogical); % read zarr
-ip.addParameter('largeZarr', false, @islogical); % use zarr file as input
-ip.addParameter('saveZarr', false , @islogical); % save as zarr
-ip.addParameter('blockSize', [500, 500, 500] , @isnumeric);
+ip.addParameter('zarrFile', false , @islogical);
+ip.addParameter('largeFile', false, @islogical);
+ip.addParameter('saveZarr', false , @islogical);
+ip.addParameter('batchSize', [1024, 1024, 1024] , @isnumeric);
+ip.addParameter('blockSize', [256, 256, 256] , @isnumeric);
 ip.addParameter('save16bit', true, @islogical);
 ip.addParameter('parseCluster', true, @islogical);
-ip.addParameter('masterCompute', true, @islogical); % master node participate in the task computing. 
+ip.addParameter('masterCompute', true, @islogical);
 ip.addParameter('jobLogDir', '../job_logs', @ischar);
 ip.addParameter('cpusPerTask', 2, @isnumeric);
 ip.addParameter('uuid', '', @ischar);
@@ -48,8 +65,9 @@ pad = pr.pad;
 lastStartCoords = pr.lastStartCoords;
 channelPatterns = pr.channelPatterns;
 zarrFile = pr.zarrFile;
-largeZarr = pr.largeZarr;
+largeFile = pr.largeFile;
 saveZarr = pr.saveZarr;
+batchSize = pr.batchSize;
 blockSize = pr.blockSize;
 jobLogDir = pr.jobLogDir;
 parseCluster = pr.parseCluster;
@@ -168,10 +186,10 @@ for f = 1 : nF
     end
     
     func_strs{f} = sprintf(['XR_crop_frame(''%s'',''%s'',[%s],''pad'',%s,''zarrFile'',%s,', ...
-        '''largeZarr'',%s,''saveZarr'',%s,''BlockSize'',%s,''uuid'',''%s'',''parseCluster'',%s,', ...
+        '''largeFile'',%s,''saveZarr'',%s,''batchSize'',%s,''blockSize'',%s,''uuid'',''%s'',''parseCluster'',%s,', ...
         '''mccMode'',%s,''configFile'',''%s'')'], frameFullpath, cropFullpath, ...
         strrep(num2str(bbox_f, '%.10f,'), ' ', ''), string(pad), string(zarrFile), ...
-        string(largeZarr), string(saveZarr), strrep(mat2str(blockSize), ' ', ','), ...
+        string(largeFile), string(saveZarr), mat2str_comma(batchSize), strrep(mat2str(blockSize), ' ', ','), ...
         uuid, string(parseCluster), string(mccMode), configFile);
 end
 

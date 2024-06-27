@@ -1,8 +1,14 @@
 % demo to run some useful tools
 
-% Note: useful tools for image processing, support tiff/zarr, and
-% large-scale image data. If you would like to test the slurm cluster running of the
-% tools, please update the parseCluster, configFile, mccMode
+% Note: useful tools for image processing, support tiff/zarr, and large-scale 
+% image data. If you would like to test the slurm cluster running of the tools, 
+% please update the parseCluster, configFile, mccMode.
+%
+% The parameters demonstrated here are usually a subset of those available 
+% for the functions, with the rest using default values. For a comprehensive 
+% list of parameters and their defaults, please see the function's parameter 
+% list (or input parser) or refer to the parameter documentation (major_functions_documentation.txt).
+%
 %
 % List of tools in the demo: 
 %   resample
@@ -251,7 +257,7 @@ save16bit = true;
 % true if input is in zarr format
 zarrFile = false;
 % true for large files that the processing cannot fit into memory
-largeZarr = false;
+largeFile = false;
 % save output as zarr if true
 saveZarr = false;
 % block size to define the zarr chunk size, only needed for zarr file
@@ -274,7 +280,7 @@ configFile = '';
 
 XR_resample_dataset(dataPaths, resampleFactor, resultDirName=resultDirName, ...
     channelPatterns=channelPatterns, interpMethod=interpMethod, save16bit=save16bit, ...
-    zarrFile=zarrFile, largeZarr=largeZarr, saveZarr=saveZarr, blockSize=blockSize, ...
+    zarrFile=zarrFile, largeFile=largeFile, saveZarr=saveZarr, blockSize=blockSize, ...
     batchSize=batchSize, borderSize=borderSize, parseCluster=parseCluster, ...
     masterCompute=masterCompute, cpusPerTask=cpusPerTask, mccMode=mccMode, ...
     configFile=configFile);
@@ -302,7 +308,7 @@ channelPatterns = {'CamA_ch0', 'CamB_ch0'};
 % true if input is in zarr format
 zarrFile = false;
 % true for large files that the processing cannot fit into memory
-largeZarr = false;
+largeFile = false;
 % save output as zarr if true
 saveZarr = false;
 % block size to define the zarr chunk size, only needed for zarr file
@@ -322,7 +328,7 @@ mccMode = false;
 configFile = '';
 
 XR_crop_dataset(dataPaths, inputBbox, resultDirName=resultDirName, channelPatterns=channelPatterns, ...
-    zarrFile=zarrFile, largeZarr=largeZarr, saveZarr=saveZarr, blockSize=blockSize, ...
+    zarrFile=zarrFile, largeFile=largeFile, saveZarr=saveZarr, blockSize=blockSize, ...
     save16bit=save16bit, parseCluster=parseCluster, masterCompute=masterCompute, ...
     cpusPerTask=cpusPerTask, mccMode=mccMode, configFile=configFile);
 
@@ -348,7 +354,7 @@ channelPatterns = {'CamA_ch0', 'CamB_ch0'};
 % true if input is in zarr format
 zarrFile = false;
 % true for large files that the processing cannot fit into memory
-largeZarr = false;
+largeFile = false;
 % batch size for a task, only needed for zarr file
 batchSize = [1024, 1024, 1024];
 % save as 16 bit if true
@@ -366,7 +372,7 @@ mccMode = false;
 configFile = '';
 
 XR_MIP_wrapper(dataPaths, resultDirName=resultDirName, axis=axis, channelPatterns=channelPatterns, ...
-    zarrFile=zarrFile, largeZarr=largeZarr, batchSize=batchSize, save16bit=save16bit, ...
+    zarrFile=zarrFile, largeFile=largeFile, batchSize=batchSize, save16bit=save16bit, ...
     parseCluster=parseCluster, masterCompute=masterCompute, cpusPerTask=cpusPerTask, ...
     mccMode=mccMode, configFile=configFile);
 

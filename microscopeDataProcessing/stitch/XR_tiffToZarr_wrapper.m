@@ -1,39 +1,56 @@
 function [] = XR_tiffToZarr_wrapper(dataPaths, varargin)
-% The wrapper for convert a list of tiff files (a data folder) to zarr
+% Dataset level wrapper for convert a list of Tiff files to Zarr.
+%
+%
+% Required inputs:
+%           dataPaths : char or cell array. Directory paths for the datasets. Either a string for a single dataset or a cell array of paths for several datasets with same experimental settings.
+%
+% Parameters (as 'specifier'-value pairs):
+%       tiffFullpaths : empty or char or cell array (default: ''). A single Tiff file path in char, or a list of Tiff file paths in a cell array. If empty, get the Tiff files from dataPaths.
+%       resultDirName : char (default: 'zarr'). Result directory under data paths.
+%              locIds : empty or 1x#Tile vector (default: []). Location ids for the tiles (only used in stitching).
+%           blockSize : 1x3 vector (default: [256, 256, 256]). Block/chunk size for zarr output.
+%           shardSize : empty or 1x3 vector (default: []). If not empty, set shard size in zarr output. 
+%         flippedTile : empty or 1x#Tile vector (default: []). Define if a tile is flipped, if so, flip the flipped tiles back. If empty, tiles are not flipped.
+%      resampleFactor : empty or 1x1, 1x2 or 1x3 vector (default: []). Resampling factor after rotation. Empty: no resampling; axis order yxz.
+%         partialFile : true|false (default: false). If true, check if containing partial files ending with *_part[0-9][0-9][0-9].tif. Append partial files to the main ones if there are.
+%     channelPatterns : a cell array (default: {'tif'}).  Channel identifiers for included channels. 
+%           inputBbox : empty or 1x6 vector (default: []). Input bounding box for crop. Definiation: [ymin, xmin, zmin, ymax, xmax, zmax].
+%         tileOutBbox : empty or 1x6 vector (default: []). Crop tiles after preprocessing. Definiation: [ymin, xmin, zmin, ymax, xmax, zmax].
+%      processFunPath : empty or char (default: ''). Path for user-defined process function handle. Support .mat or .txt formats.
+%        parseCluster : true|false (default: true). Use slurm cluster for the processing.
+%             bigData : true|false (default: true). Big dataset, use fewer resources for each task to all more parallel task running.
+%       masterCompute : true|false (default: true). Master job node is involved in the processing.
+%           jobLogDir : char (default: '../job_logs'). Path for the slurm job logs.
+%         cpusPerTask : a number (default: 1). The number of cpu cores per task for slurm job submission.
+%                uuid : empty or a uuid string (default: ''). uuid string as part of the temporate result paths.
+%         maxTrialNum : a number (default: 3). The max number of retries for a task.
+%        unitWaitTime : a number (default: 1). The wait time per file in minutes to check whether the computing is done.
+%             mccMode : true|false (default: false). Use mcc mode.
+%          configFile : empty or char (default: ''). Path for the config file for job submission.
+%
 %
 % Author: Xiongtao Ruan (10/02/2020)
-% 
-% xruan (10/11/2020): add function handle for processing before saving to zarr
-% xruan (07/26/2021): add support for flipped tile
-% xruan (07/27/2021): add support for resampling; simplify cluster job submission.
-% xruan (08/25/2021): add support for channel-specific user functions
-% xruan (09/23/2021): add support for including partial files 
-% xruan (10/13/2021): add support for cropping data
-% xruan (02/16/2022): accelerate the code by first get filenames for every data folder.
-% xruan (07/05/2022): add support for single tiff file (char) conversion
-% xruan (08/25/2022): change CropToSize to tileOutBbox (more generic)
-% xruan (05/26/2023): add support for loc specific pocessing for multiLoc
-% datasets, support InputBbox and tileOutBbox for now
-% xruan (05/06/2024): change required input as dataPaths for general usages
+
 
 ip = inputParser;
 ip.CaseSensitive = false;
 ip.addRequired('dataPaths', @(x) iscell(x) || ischar(x));
 ip.addParameter('tiffFullpaths', '', @(x) iscell(x) || ischar(x));
 ip.addParameter('resultDirName', 'zarr', @ischar);
-ip.addParameter('locIds', [], @isnumeric); % location ids for the tiles
-ip.addParameter('blockSize', [500, 500, 250], @isnumeric);
+ip.addParameter('locIds', [], @isnumeric);
+ip.addParameter('blockSize', [256, 256, 256], @isnumeric);
 ip.addParameter('shardSize', [], @isnumeric);
 ip.addParameter('flippedTile', [], @(x) isempty(x) || islogical(x));
 ip.addParameter('resampleFactor', [], @(x) isempty(x) || isnumeric(x));
 ip.addParameter('partialFile', false, @islogical);
 ip.addParameter('channelPatterns', {'tif'}, @iscell);
-ip.addParameter('inputBbox', [], @isnumeric); % crop input tile before processing
-ip.addParameter('tileOutBbox', [], @isnumeric); % crop output tile after processing
+ip.addParameter('inputBbox', [], @isnumeric);
+ip.addParameter('tileOutBbox', [], @isnumeric);
 ip.addParameter('processFunPath', '', @(x) isempty(x) || isa(x,'function_handle') || ischar(x) || isstring(x) || iscell(x));
 ip.addParameter('parseCluster', true, @islogical);
 ip.addParameter('bigData', true, @islogical);
-ip.addParameter('masterCompute', true, @islogical); % master node participate in the task computing. 
+ip.addParameter('masterCompute', true, @islogical);
 ip.addParameter('jobLogDir', '../job_logs', @ischar);
 ip.addParameter('cpusPerTask', 1, @isnumeric);
 ip.addParameter('uuid', '', @ischar);
