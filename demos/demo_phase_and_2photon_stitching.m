@@ -132,7 +132,7 @@ XR_generate_image_list_wrapper(currDataPath, generationMethod, xyPixelSize=xyPix
 % so we use the 2D stitching scheme
 
 % result folder:
-% {destPath}/PetaKit5D_2P_Confocal_Phase_Widefield_demo_datasets/Phase/ff_corrected/matlab_stitch_2d_phase/
+% {destPath}/PetaKit5D_2P_Confocal_Phase_Widefield_demo_datasets/Phase/ff_corrected/matlab_stitch/
 
 
 currDataPath = [dataPath, 'Phase/ff_corrected/'];
@@ -141,7 +141,7 @@ currDataPath = [dataPath, 'Phase/ff_corrected/'];
 ImageListFullpath = [dataPath, 'Phase/ImageList_all_timepoints.csv'];
 
 % stitch dir string, inside currDataPath
-resultDirName = 'matlab_stitch_2d_phase';
+resultDirName = 'matlab_stitch';
 
 % stitch in DS space
 DS = false;
