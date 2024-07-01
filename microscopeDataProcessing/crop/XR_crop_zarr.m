@@ -12,7 +12,6 @@ ip.addRequired('bbox', @isnumeric);
 ip.addParameter('pad', false, @islogical); % pad region that is outside the bbox
 ip.addParameter('batchSize', [1024, 1024, 1024] , @isvector); % in y, x, z
 ip.addParameter('blockSize', [256, 256, 256] , @isnumeric); % save as zarr
-ip.addParameter('zarrSubSize', [20, 20, 20] , @isvector); % in y, x, z
 ip.addParameter('parseCluster', true, @islogical);
 ip.addParameter('parseParfor', false, @islogical);
 ip.addParameter('masterCompute', true, @islogical); % master node participate in the task computing. 
@@ -29,7 +28,6 @@ pr = ip.Results;
 pad = pr.pad;
 batchSize = pr.batchSize;
 blockSize = pr.blockSize;
-zarrSubSize = pr.zarrSubSize;
 parseCluster = pr.parseCluster;
 parseParfor = pr.parseParfor;
 jobLogDir = pr.jobLogDir;
@@ -89,7 +87,11 @@ batchBBoxes = batchBBoxes + [bbox(1 : 3), bbox(1 : 3)];
 % initialize zarr file
 cropTempPath = sprintf('%s/%s_%s.zarr', cropPath, fsname, uuid);
 if ~exist(cropTempPath, 'dir')
-    createzarr(cropTempPath, dataSize=outSize, blockSize=blockSize, dtype=dtype, zarrSubSize=zarrSubSize);
+    dimSeparator = '.';
+    if prod(ceil(outSize ./ blockSize)) > 10000
+        dimSeparator = '/';
+    end
+    createzarr(cropTempPath, dataSize=outSize, blockSize=blockSize, dtype=dtype, dimSeparator=dimSeparator);
 end
 
 % set up parallel computing 

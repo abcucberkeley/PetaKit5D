@@ -27,7 +27,6 @@ ip.addParameter('skewed', [], @(x) isempty(x) || islogical(x)); % decon in skewe
 ip.addParameter('fixIter', false, @islogical); % CPU Memory in Gb
 ip.addParameter('batchSize', [1024, 1024, 1024] , @isnumeric); % in y, x, z
 ip.addParameter('blockSize', [256, 256, 256] , @isnumeric); % in y, x, z
-ip.addParameter('zarrSubSize', [20, 20, 20], @isnumeric); % zarr subfolder size
 ip.addParameter('dampFactor', 1, @isnumeric); % damp factor for decon result
 ip.addParameter('scaleFactor', [], @isnumeric); % scale factor for decon result
 ip.addParameter('deconOffset', 0, @isnumeric); % offset for decon result
@@ -77,7 +76,6 @@ debug = pr.debug;
 
 batchSize = pr.batchSize;
 blockSize = pr.blockSize;
-zarrSubSize = pr.zarrSubSize;
 dampFactor = pr.dampFactor;
 scaleFactor = pr.scaleFactor;
 deconOffset = pr.deconOffset;
@@ -182,16 +180,13 @@ batchBBoxes = batchBBoxes(inds, :);
 regionBBoxes = regionBBoxes(inds, :);
 
 % initialize zarr file
+
 if ~exist(deconTmppath, 'dir')
-    try
-        createzarr(deconTmppath, dataSize=imSize, blockSize=blockSize, dtype=dtype, zarrSubSize=zarrSubSize);        
-    catch ME
-        disp(ME)
-        disp("Use alternative method (ZarrAdapter) to initialize the zarr file...");
-        init_val = zeros(1, dtype);
-        decon_bim = blockedImage(deconTmppath, imSize, blockSize, init_val, "Adapter", ZarrAdapter, 'Mode', 'w');
-        decon_bim.Adapter.close();
-    end        
+    dimSeparator = '.';
+    if prod(ceil(imSize ./ blockSize)) > 10000
+        dimSeparator = '/';
+    end
+    createzarr(deconTmppath, dataSize=imSize, blockSize=blockSize, dtype=dtype, dimSeparator=dimSeparator);
 end
 
 taskSize = 20; % the number of batches a job should process

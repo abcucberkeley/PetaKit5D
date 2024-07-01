@@ -166,16 +166,13 @@ tmpFilename = [zarrFilename '_' uuid];
 % write(bim_dist, tmpFilename, "BlockSize", bim_i.BlockSize, "Adapter", ZarrAdapter);
 % createZarrFile(tmpFilename, 'chunks', blockSize, 'dtype', 'f4', 'order', 'F', ...
 %     'shape', size(im_dist), 'cname', 'zstd', 'level', 2);
-try
-    zarrSubSize = [20, 20, 20];
-    createzarr(tmpFilename, dataSize=size(im_dist), blockSize=blockSize, shardSize=shardSize, ...
-        dtype='single', compressor=compressor, zarrSubSize=zarrSubSize);
-    % bim = blockedImage(tmpFilename, sz, blockSize, zeros(1, 'single'), "Adapter", CZarrAdapter, 'mode', 'w');
-catch ME
-    disp(ME);
-    bim = blockedImage(tmpFilename, sz, blockSize, zeros(1, 'single'), "Adapter", ZarrAdapter, 'mode', 'w');
-    bim.Adapter.close();    
-end    
+if ~exist(tmpFilename, 'dir')
+    dimSeparator = '.';
+    if prod(ceil(sz ./ blockSize)) > 10000
+        dimSeparator = '/';
+    end
+    createzarr(tmpFilename, dataSize=sz, blockSize=blockSize, dtype='single', dimSeparator=dimSeparator);
+end
 writezarr(im_dist, tmpFilename);
 
 % mv tmp result folder to output folder

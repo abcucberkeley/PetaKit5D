@@ -93,8 +93,8 @@ for d = 1 : nd
     end
     fnames_d = fnames_d(any(ch_inds, 2));
     
-    mip_axes_d = zeros(nF, 1);
     nF = numel(fnames_d);
+    mip_axes_d = zeros(nF, 1);
     axis_inds = false(nF, 3);
     for i = 1 : 3
         axis_pattern = sprintf('MIP_%s', axis_strs{i});

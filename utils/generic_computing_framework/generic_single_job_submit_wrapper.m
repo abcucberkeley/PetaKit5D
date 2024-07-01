@@ -135,6 +135,14 @@ language = pr.language;
 GNUparallel = pr.GNUparallel;
 paraJobNum = pr.paraJobNum;
 
+if exist(jobLogDir, 'dir')
+    dataPath = tempdir();
+    if ispc
+        dataPath = strrep(dataPath, '\', '/');
+    end
+    [parseCluster, jobLogFname, jobErrorFname] = checkSlurmCluster(dataPath, jobLogDir);
+end
+
 submit_status = 0;
 trial_counter = 0;
 while submit_status == 0 && trial_counter < maxTrialNum

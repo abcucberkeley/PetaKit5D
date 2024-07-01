@@ -15,7 +15,6 @@ ip.addOptional('frame', [], @isnumeric);
 ip.addParameter('Overwrite', false, @islogical);
 ip.addParameter('blockSize', [500, 500, 250], @isnumeric);
 ip.addParameter('shardSize', [], @isnumeric); 
-ip.addParameter('zarrSubSize', [20, 20, 20], @isnumeric);
 ip.addParameter('expand2dDim', true, @islogical); % expand the z dimension for 2d data
 ip.addParameter('flipZstack', false, @islogical);
 ip.addParameter('resample', [], @(x) isempty(x) || isnumeric(x));
@@ -31,7 +30,6 @@ pr = ip.Results;
 Overwrite = pr.Overwrite;
 blockSize = pr.blockSize;
 shardSize = pr.shardSize;
-zarrSubSize = pr.zarrSubSize;
 expand2dDim = pr.expand2dDim;
 flipZstack = pr.flipZstack;
 resample = pr.resample;
@@ -134,8 +132,12 @@ end
 
 tmpFilename = [zarrFilename '_' uuid];
 if ~exist(tmpFilename, 'dir')
+    dimSeparator = '.';
+    if prod(ceil(sz ./ blockSize)) > 10000
+        dimSeparator = '/';
+    end
     createzarr(tmpFilename, dataSize=sz, blockSize=blockSize, shardSize=shardSize, ...
-        dtype=dtype, expand2dDim=expand2dDim, compressor=compressor, zarrSubSize=zarrSubSize);
+        dtype=dtype, expand2dDim=expand2dDim, compressor=compressor, dimSeparator=dimSeparator);
 end
 
 % write zarr
