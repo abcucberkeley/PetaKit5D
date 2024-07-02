@@ -12,7 +12,7 @@ ip.addRequired('blockSize', @(x) isvector(x) || ischar(x));
 ip.addRequired('shardSize', @(x) isempty(x) || isvector(x) || ischar(x));
 ip.addRequired('compressor', @ischar);
 ip.addRequired('poolSize', @(x) isvector(x) || ischar(x));
-ip.addRequired('distBbox', @(x) isvector(x) || ischar(x));
+ip.addRequired('distBbox', @(x) isnumeric(x) || ischar(x));
 ip.addOptional('Overwrite', false, @(x) islogical(x) || ischar(x));
 
 ip.parse(blockInfoFullname, tileInd, bwdistFullpath, weightDegree, singleDistMap, blockSize, shardSize, compressor, poolSize, distBbox, Overwrite);
