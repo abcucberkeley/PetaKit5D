@@ -77,10 +77,11 @@ uint8_t isImageJIm(const char* fileName){
     char* tiffDesc = NULL;
     if(TIFFGetField(tif, TIFFTAG_IMAGEDESCRIPTION, &tiffDesc)){
         if(strstr(tiffDesc, "ImageJ")){
-            // Check if the image was written by tifffile
-            char* tiffSoftware = NULL;
-            if(TIFFGetField(tif, TIFFTAG_SOFTWARE, &tiffSoftware)){
-                if(!strcmp(tiffSoftware,"tifffile.py")) return 0;
+            uint64_t* size = getImageSize(fileName);
+            if(size[2] > 1){
+                if(TIFFSetDirectory(tif,1)){
+                    return 0;
+                }
             }
             uint16_t compressed = 1;
             TIFFGetField(tif, TIFFTAG_COMPRESSION, &compressed);
@@ -112,11 +113,7 @@ uint64_t imageJImGetZ(const char* fileName){
     return 0;
 }
 
-
-// The following are unused maybe?
-
 uint64_t* getImageSize(const char* fileName){
-
     TIFFSetWarningHandler(DummyHandler);
     TIFF* tif = TIFFOpen(fileName, "r");
     if(!tif) printf("File \"%s\" cannot be opened",fileName);
@@ -165,7 +162,5 @@ uint64_t getDataType(const char* fileName){
     TIFFClose(tif);
 
     return bits;
-
-
 }
 

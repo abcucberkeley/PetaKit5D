@@ -4,6 +4,7 @@
 #include <limits.h>
 #include <omp.h>
 #include "tiffio.h"
+#include "../src/helperfunctions.h"
 
 
 // Backup method in case there are errors reading strips
@@ -37,7 +38,8 @@ uint8_t readTiffParallelBak(uint64_t x, uint64_t y, uint64_t z, const char* file
             {
                 TIFFReadScanline(tif, buffer, i, 0);
                 if(!flipXY){
-                    memcpy(tiff+((i*x)*bytes),buffer,x*bytes);
+                    // Probably need to fix this
+                    memcpy(tiff+(((i*y)+((dir-startSlice)*(x*y)))*bytes),buffer,x*bytes);
                     continue;
                 }
                 //loading the data into a buffer
@@ -144,7 +146,7 @@ uint8_t readTiffParallel(uint64_t x, uint64_t y, uint64_t z, const char* fileNam
                         break;
                     }
                     if(!flipXY){
-                        memcpy(tiff+((i*stripSize*x)*bytes),buffer,cBytes);
+                        memcpy(tiff+(((i*stripSize*x)+((dir-startSlice)*(x*y)))*bytes),buffer,cBytes);
                         continue;
                     }
                     switch(bits){
@@ -475,7 +477,7 @@ uint8_t readTiffParallel2D(uint64_t x, uint64_t y, uint64_t z, const char* fileN
        		err = 1;
 			return err;
 		}
-		 offset = offsets[0];
+		offset = offsets[0];
         uint64_t fOffset = offsets[stripsPerDir-1]+byteCounts[stripsPerDir-1];
         uint64_t zSize = x*y*bytes;
         TIFFSetDirectory(tif,1);
@@ -489,31 +491,33 @@ uint8_t readTiffParallel2D(uint64_t x, uint64_t y, uint64_t z, const char* fileN
 
         size_t bytesRead = fread(tiff, 1, zSize, fp);
         fclose(fp);
-        uint64_t size = x*y*z*(bits/8);
-        void* tiffC = malloc(size);
-        memcpy(tiffC,tiff,size);
-        #pragma omp parallel for
-        for(uint64_t k = 0; k < z; k++){
-            for(uint64_t j = 0; j < x; j++){
-                for(uint64_t i = 0; i < y; i++){
-                    switch(bits){
-                        case 8:
-                            ((uint8_t*)tiff)[i+(j*y)+(k*x*y)] = ((uint8_t*)tiffC)[j+(i*x)+(k*x*y)];
-                            break;
-                        case 16:
-                            ((uint16_t*)tiff)[i+(j*y)+(k*x*y)] = ((uint16_t*)tiffC)[j+(i*x)+(k*x*y)];
-                            break;
-                        case 32:
-                            ((float*)tiff)[i+(j*y)+(k*x*y)] = ((float*)tiffC)[j+(i*x)+(k*x*y)];
-                            break;
-                        case 64:
-                            ((double*)tiff)[i+(j*y)+(k*x*y)] = ((double*)tiffC)[j+(i*x)+(k*x*y)];
-                            break;
+        if(flipXY){
+            uint64_t size = x*y*z*(bits/8);
+            void* tiffC = malloc(size);
+            memcpy(tiffC,tiff,size);
+            #pragma omp parallel for
+            for(uint64_t k = 0; k < z; k++){
+                for(uint64_t j = 0; j < x; j++){
+                    for(uint64_t i = 0; i < y; i++){
+                        switch(bits){
+                            case 8:
+                                ((uint8_t*)tiff)[i+(j*y)+(k*x*y)] = ((uint8_t*)tiffC)[j+(i*x)+(k*x*y)];
+                                break;
+                            case 16:
+                                ((uint16_t*)tiff)[i+(j*y)+(k*x*y)] = ((uint16_t*)tiffC)[j+(i*x)+(k*x*y)];
+                                break;
+                            case 32:
+                                ((float*)tiff)[i+(j*y)+(k*x*y)] = ((float*)tiffC)[j+(i*x)+(k*x*y)];
+                                break;
+                            case 64:
+                                ((double*)tiff)[i+(j*y)+(k*x*y)] = ((double*)tiffC)[j+(i*x)+(k*x*y)];
+                                break;
+                        }
                     }
                 }
             }
+            free(tiffC);
         }
-        free(tiffC);
     }
 
     if(err) {
@@ -635,4 +639,148 @@ uint8_t readTiffParallelImageJ(uint64_t x, uint64_t y, uint64_t z, const char* f
         free(tiffC);
     }
 	return err;
+}
+
+
+// tiff pointer guaranteed to be NULL or the correct size array for the tiff file
+void* readTiffParallelWrapperHelper(const char* fileName, void* tiff, uint8_t flipXY)
+{
+	TIFFSetWarningHandler(DummyHandler);
+	TIFF* tif = TIFFOpen(fileName, "r");
+	if(!tif) return NULL;
+
+	uint64_t x = 1,y = 1,z = 1,bits = 1, startSlice = 0;
+	TIFFGetField(tif, TIFFTAG_IMAGEWIDTH, &x);
+	TIFFGetField(tif, TIFFTAG_IMAGELENGTH, &y);
+
+	uint16_t s = 0, m = 0, t = 1;
+	while(TIFFSetDirectory(tif,t)){
+		s = t;
+		t *= 8;
+		if(s > t){
+			t = 65535;
+			printf("Number of slices > 32768\n");
+			break;
+		}
+	}
+	while(s != t){
+		m = (s+t+1)/2;
+		if(TIFFSetDirectory(tif,m)){
+			s = m;
+		}
+		else{
+			if(m > 0) t = m-1;
+			else t = m;
+		}
+	}
+	z = s+1;
+
+	TIFFGetField(tif, TIFFTAG_BITSPERSAMPLE, &bits);
+	uint64_t stripSize = 1;
+	TIFFGetField(tif, TIFFTAG_ROWSPERSTRIP, &stripSize);
+	TIFFClose(tif);
+
+	// Check if image is an imagej image with imagej metadata
+	// Get the correct
+	uint8_t imageJIm = 0;
+	if(isImageJIm(fileName)){
+		imageJIm = 1;
+		uint64_t tempZ = imageJImGetZ(fileName);
+		if(tempZ) z = tempZ;
+	}
+
+
+	if(imageJIm){
+		if(bits == 8){
+			if(!tiff) tiff = (uint8_t*)malloc(x*y*z*sizeof(uint8_t));
+			readTiffParallelImageJ(x,y,z,fileName, (void*)tiff, bits, startSlice, stripSize,flipXY);
+			return (void*)tiff;
+		}
+		else if(bits == 16){
+			if(!tiff) tiff = (uint16_t*)malloc(x*y*z*sizeof(uint16_t));
+			readTiffParallelImageJ(x,y,z,fileName, (void*)tiff, bits, startSlice, stripSize, flipXY);
+			return (void*)tiff;
+		}
+		else if(bits == 32){
+			if(!tiff) tiff = (float*)malloc(x*y*z*sizeof(float));
+			readTiffParallelImageJ(x,y,z,fileName, (void*)tiff, bits, startSlice, stripSize, flipXY);
+			return (void*)tiff;
+		}
+		else if(bits == 64){
+			if(!tiff) tiff = (double*)malloc(x*y*z*sizeof(double));
+			readTiffParallelImageJ(x,y,z,fileName, (void*)tiff, bits, startSlice, stripSize, flipXY);
+			return (void*)tiff;
+		}
+		else{
+			return NULL;
+		}
+	}
+	else if(z <= 1){
+		if(bits == 8){
+			if(!tiff) tiff = (uint8_t*)malloc(x*y*z*sizeof(uint8_t));
+			readTiffParallel2D(x,y,z,fileName, (void*)tiff, bits, startSlice, stripSize,flipXY);
+			return (void*)tiff;
+		}
+		else if(bits == 16){
+			if(!tiff) tiff = (uint16_t*)malloc(x*y*z*sizeof(uint16_t));
+			readTiffParallel2D(x,y,z,fileName, (void*)tiff, bits, startSlice, stripSize, flipXY);
+			return (void*)tiff;
+		}
+		else if(bits == 32){
+			if(!tiff) tiff = (float*)malloc(x*y*z*sizeof(float));
+			readTiffParallel2D(x,y,z,fileName, (void*)tiff, bits, startSlice, stripSize, flipXY);
+			return (void*)tiff;
+		}
+		else if(bits == 64){
+			if(!tiff) tiff = (double*)malloc(x*y*z*sizeof(double));
+			readTiffParallel2D(x,y,z,fileName, (void*)tiff, bits, startSlice, stripSize, flipXY);
+			return (void*)tiff;
+		}
+		else{
+			return NULL;
+		}
+	}
+	else{
+		if(bits == 8){
+			if(!tiff) tiff = (uint8_t*)malloc(x*y*z*sizeof(uint8_t));
+			readTiffParallel(x,y,z,fileName, (void*)tiff, bits, startSlice, stripSize, flipXY);
+			return (void*)tiff;
+		}
+		else if(bits == 16){
+			if(!tiff) tiff = (uint16_t*)malloc(x*y*z*sizeof(uint16_t));
+			readTiffParallel(x,y,z,fileName, (void*)tiff, bits, startSlice, stripSize, flipXY);
+			return (void*)tiff;
+		}
+		else if(bits == 32){
+			if(!tiff) tiff = (float*)malloc(x*y*z*sizeof(float));
+			readTiffParallel(x,y,z,fileName, (void*)tiff, bits, startSlice, stripSize, flipXY);
+			return (void*)tiff;
+		}
+		else if(bits == 64){
+			if(!tiff) tiff = (double*)malloc(x*y*z*sizeof(double));
+			readTiffParallel(x,y,z,fileName, (void*)tiff, bits, startSlice, stripSize, flipXY);
+			return (void*)tiff;
+		}
+		else{
+			return NULL;
+		}
+	}
+
+	// Should never get here but return NULL if we do
+	return NULL;
+}
+
+void* readTiffParallelWrapper(const char* fileName)
+{
+	return readTiffParallelWrapperHelper(fileName,NULL,1);
+}
+
+void* readTiffParallelWrapperNoXYFlip(const char* fileName)
+{
+	return readTiffParallelWrapperHelper(fileName,NULL,0);
+}
+
+// tTiff doesn't matter as tiff is set in the function
+void readTiffParallelWrapperSet(const char* fileName, void* tiff){
+	void* tTiff = readTiffParallelWrapperHelper(fileName,tiff,0);
 }

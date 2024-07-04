@@ -4,6 +4,7 @@
 #include <omp.h>
 #include "tiffio.h"
 #include "lzwencode.h"
+#include "helperfunctions.h"
 
 uint8_t writeTiffSingle(const uint64_t x, const uint64_t y, const uint64_t z, const char* fileName, void* tiff, const void* tiffOld, const uint64_t bits, const uint64_t startSlice, const uint64_t stripSize, const char* mode, const bool transpose){
     TIFF* tif = NULL;
@@ -512,4 +513,40 @@ uint8_t writeTiffParallelWrapper(const uint64_t x, const uint64_t y, const uint6
     uint8_t ret = writeTiffParallel(x, y, z, fileName, tiff, data, bits, startSlice, stripSize, mode, transpose);
     free(tiff);
     return ret;
+}
+
+void writeTiffParallelHelper(const char* fileName, void* tiffOld, uint64_t bits, const char* mode, uint64_t x, uint64_t y, uint64_t z, uint64_t startSlice, uint8_t flipXY)
+{
+	// Check if folder exists, if not then make it (recursive if needed)
+	char* folderName = strdup(fileName);
+	char *lastSlash = NULL;
+    #ifdef _WIN32
+    lastSlash = strrchr(folderName, '\\');
+    #else
+    lastSlash = strrchr(folderName, '/');
+    #endif
+	if(lastSlash){
+		*lastSlash = '\0';
+		FILE* f = fopen(folderName,"r");
+		if(f){
+			fclose(f);
+		}
+		else{
+			mkdirRecursive(folderName);
+		}
+	}
+	free(folderName);
+
+	TIFFSetWarningHandler(DummyHandler);
+
+	if(!mode) mode = "w";
+
+	// For 2D images MATLAB passes in the 3rd dim as 0 so we set it to 1;
+	if(!z){
+		z = 1;
+	}
+
+	uint64_t stripSize = 512;
+
+	writeTiffParallelWrapper(x,y,z,fileName, tiffOld, bits, startSlice, stripSize, mode, flipXY);
 }
