@@ -32,7 +32,7 @@ The main demos for the paper:
 
 
 ## Python wrappers
-We created Python wrappers for the main functions by calling MATLAB runtime in another repository: [PyPetaKit5D](https://github.com/abcucberkeley/PyPetaKit5D). The package of the Python wrappers can be installed using this command:
+We created Python wrappers for the main functions by calling MATLAB runtime in another repository: [PyPetaKit5D](https://github.com/abcucberkeley/PyPetaKit5D). This library is only available on Linux for now. The package of the Python wrappers can be installed using this command:
 ````
 pip install --no-binary :all: --no-cache-dir PyPetaKit5D
 ````
