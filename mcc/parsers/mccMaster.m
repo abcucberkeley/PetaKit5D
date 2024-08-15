@@ -105,20 +105,6 @@ switch functionName
         XR_imaris_conversion_data_wrapper_parser(varargin{1}, varargin{2:end});
     case 'XR_visualize_OTF_mask_segmentation'
         XR_visualize_OTF_mask_segmentation_parser(varargin{1}, varargin{2}, varargin{3}, varargin{4:end});
-    case 'XR_ExM_PunctaRemoval_updated_block'
-        XR_ExM_PunctaRemoval_updated_block_parser(varargin{1}, varargin{2}, varargin{3}, varargin{4}, varargin{5}, varargin{6}, varargin{7}, varargin{8:end});
-    case 'XR_ExM_PunctaRemoval_background_estimation_block'
-        XR_ExM_PunctaRemoval_background_estimation_block_parser(varargin{1}, varargin{2}, varargin{3}, varargin{4}, varargin{5:end});
-    case 'XR_ExM_PunctaRemoval_interpolated_background_block'
-        XR_ExM_PunctaRemoval_interpolated_background_block_parser(varargin{1}, varargin{2}, varargin{3}, varargin{4}, varargin{5}, varargin{6}, varargin{7}, varargin{8}, varargin{9:end});
-    case 'XR_ExM_Segmentation_interpolated_background_block'
-        XR_ExM_Segmentation_interpolated_background_block_parser(varargin{1}, varargin{2}, varargin{3}, varargin{4}, varargin{5}, varargin{6}, varargin{7}, varargin{8}, varargin{9:end});
-    case 'XR_ExM_Skeletonization_block'
-        XR_ExM_Skeletonization_block_parser(varargin{1}, varargin{2}, varargin{3}, varargin{4}, varargin{5}, varargin{6}, varargin{7}, varargin{8:end});
-    case 'XR_ExM_Myelination_Analysis_block'
-        XR_ExM_Myelination_Analysis_block_parser(varargin{1}, varargin{2}, varargin{3}, varargin{4}, varargin{5}, varargin{6}, varargin{7:end});
-    case 'multiple_region_spectra_encoding_block'
-        multiple_region_spectra_encoding_block_parser(varargin{1}, varargin{2}, varargin{3}, varargin{4}, varargin{5}, varargin{6:end});
     case 'crop_deskew_rotate_demo_function'
         crop_deskew_rotate_demo_function_parser(varargin{1}, varargin{2}, varargin{3}, varargin{4}, varargin{5}, varargin{6});
     otherwise
