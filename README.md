@@ -36,8 +36,7 @@ We created Python wrappers for the main functions by calling MATLAB runtime in a
 ````
 pip install --no-binary :all: --no-cache-dir PyPetaKit5D
 ````
-The parameters for the Python wrappers are identical to those in MATLAB. The documentation of the parameters can refer to [major_functions_documentation.txt](https://github.com/abcucberkeley/PetaKit5D/blob/main/major_functions_documentation.txt) or the [GUI wiki page](https://github.com/abcucberkeley/PetaKit5D-GUI/wiki). 
-
+Please refer to the [example notebooks](https://github.com/abcucberkeley/PyPetaKit5D/blob/main/notebooks) for step-by-step usage examples using our demo datasets. The parameters for the Python wrappers are identical to those in MATLAB. The documentation of the parameters can refer to [major_functions_documentation.txt](https://github.com/abcucberkeley/PetaKit5D/blob/main/major_functions_documentation.txt) or the [GUI wiki page](https://github.com/abcucberkeley/PetaKit5D-GUI/wiki).
 
 ## GUI
 The software has an easy-to-use Graphical User Interface (GUI) without writing any code in another repository: [PetaKit5D-GUI](https://github.com/abcucberkeley/PetaKit5D-GUI). The GUI supports Windows, MacOS, and Linux (Ubuntu). For instructions on the installation and the usage of the PetaKit5D-GUI, visit the [GUI wiki page](https://github.com/abcucberkeley/PetaKit5D-GUI/wiki).
@@ -54,4 +53,4 @@ Based on these readers and writers, we also developed a Fiji Plugin for faster r
 ## Reference:
 Please cite our paper if you find the software useful for your research:
 
-`Ruan X., Mueller, M., Liu G., Görlitz F., Fu T., Milkie D., Lillvis, J.L., Kuhn, A., Herr, C.Y.A., Hercule, W., Nienhaus, M., Killilea, A.N., Betzig, E. and Upadhyayula S. (2024) Image processing tools for petabyte-scale light sheet microscopy data. bioRxiv. bioRxiv 2023.12.31.573734; doi: https://doi.org/10.1101/2023.12.31.573734`
+`Ruan, X., Mueller, M., Liu, G., Görlitz, F., Fu, T., Milkie, D.E., Lillvis, J.L., Kuhn, A., Chong, J.G., Hong, J.L., Herr, C.Y.A., Hercule, W., Nienhaus, M., Killilea, A.N., Betzig, E. and Upadhyayula, S. (2024) Image processing tools for petabyte-scale light sheet microscopy data. bioRxiv. bioRxiv 2023.12.31.573734; doi: https://doi.org/10.1101/2023.12.31.573734`
