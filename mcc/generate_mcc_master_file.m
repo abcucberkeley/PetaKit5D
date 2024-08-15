@@ -1,11 +1,15 @@
-function [] = generate_mcc_master_file(funcNames, posArgNums, paramArgNums, outPath)
+function [] = generate_mcc_master_file(funcNames, posArgNums, paramArgNums, outPath, outFuncName)
 % automatically generate mcc master function
 %
 % Author: Xiongtao Ruan (04/04/2024)
 
 
+if nargin < 5
+    outFuncName = 'mccMaster';
+end
+
 parser_cell = cell(numel(funcNames) * 2 + 20, 1);
-parser_cell{1} = sprintf('function mccMaster(functionName, varargin)');
+parser_cell{1} = sprintf('function %s(functionName, varargin)', outFuncName);
 parser_cell{2} = sprintf('');
 parser_cell{3} = sprintf('%%#function setup');
 parser_cell{4} = sprintf('');
@@ -59,18 +63,18 @@ parser_cell(t + 10 : end) = [];
 
 % write out to a file
 % if the parser function exist, check if the content is the same
-fnout = sprintf('%s/mccMaster.m',  outPath);
+fnout = sprintf('%s/%s.m',  outPath, outFuncName);
 if exist(fnout, 'file')
     exist_parser_cell = readTextFile(fnout);
-    tmpout = sprintf('%s/mccMaster_tmp.m',  outPath);
+    tmpout = sprintf('%s/%s_tmp.m',  outPath, outFuncName);
     writeTextFile(parser_cell, tmpout);
     tmp_parser_cell = readTextFile(tmpout);
 
     if strcmp(strjoin(tmp_parser_cell, '\n'), strjoin(exist_parser_cell, '\n'))
-        fprintf('    The function mccMaster.m remains the same, skip the update of the function.\n');
+        fprintf('    The function %s.m remains the same, skip the update of the function.\n', outFuncName);
         delete(tmpout);
     else
-        fprintf('    The function mccMaster.m has changed, update the parser function.\n');
+        fprintf('    The function %s.m has changed, update the parser function.\n', outFuncName);
         movefile(tmpout, fnout);
     end
 else

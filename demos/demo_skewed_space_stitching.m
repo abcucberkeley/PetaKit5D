@@ -53,18 +53,15 @@ stitchResultDir = 'matlab_stitch';
 % cross correlation registration, if false, directly stitch by the coordinates.
 xcorrShift = true;
 
-%if true, only stitch first time point
-onlyFirstTP = false;
-
-% stitch pipeline, no need to change, zarr pipeline is the mostly used one.
-stitchPipeline = 'zarr';
-
 % xcorr registration on the primary channel, and other channels uses the
 % registration informaion from the primary channel
 PrimaryCh = 'CamB_ch0';
 
 % channels to stitch
 ChannelPatterns = {'CamA_ch0', 'CamB_ch0'};
+
+% use zarr file as input, if false, use tiff as input
+zarrFile = false;
 
 % if true, save result as 16bit, if false, save as single
 Save16bit = true;
@@ -159,7 +156,7 @@ t0 = tic;
 XR_matlab_stitching_wrapper(dataPath, ImageListFullpath, 'DS', DS, 'DSR', DSR, ...
     'SkewAngle', SkewAngle, 'xyPixelSize', xyPixelSize, 'dz', dz, 'Reverse', Reverse, ...
     'axisOrder', axisOrder, 'xcorrShift', xcorrShift, 'ChannelPatterns', ChannelPatterns, ...
-    'PrimaryCh', PrimaryCh, 'batchSize', batchSize, 'blockSize', blockSize, ...
+    'PrimaryCh', PrimaryCh, 'zarrFile', zarrFile, 'batchSize', batchSize, 'blockSize', blockSize, ...
     'TileOffset', TileOffset, 'resampleType', resampleType, 'resampleFactor', resampleFactor, ...
     'BlendMethod', BlendMethod, 'resultDir', stitchResultDir, 'xyMaxOffset', xyMaxOffset, ...
     'zMaxOffset', zMaxOffset, 'xcorrDownsample', xcorrDownsample, 'InputBbox', InputBbox, ...

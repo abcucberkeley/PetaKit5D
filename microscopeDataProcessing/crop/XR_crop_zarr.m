@@ -12,6 +12,7 @@ ip.addRequired('bbox', @isnumeric);
 ip.addParameter('pad', false, @islogical); % pad region that is outside the bbox
 ip.addParameter('batchSize', [1024, 1024, 1024] , @isvector); % in y, x, z
 ip.addParameter('blockSize', [256, 256, 256] , @isnumeric); % save as zarr
+ip.addParameter('saveMIP', true, @islogical);
 ip.addParameter('parseCluster', true, @islogical);
 ip.addParameter('parseParfor', false, @islogical);
 ip.addParameter('masterCompute', true, @islogical); % master node participate in the task computing. 
@@ -28,6 +29,7 @@ pr = ip.Results;
 pad = pr.pad;
 batchSize = pr.batchSize;
 blockSize = pr.blockSize;
+saveMIP = pr.saveMIP;
 parseCluster = pr.parseCluster;
 parseParfor = pr.parseParfor;
 jobLogDir = pr.jobLogDir;
@@ -155,9 +157,10 @@ if exist(zarrFlagPath, 'dir')
     rmdir(zarrFlagPath, 's');
 end
 
-% generate MIPs 
-XR_MIP_zarr(cropFullpath, 'axis', [1, 1, 1], parseCluster=parseCluster, mccMode=mccMode, configFile=configFile);
-
+% generate MIPs
+if saveMIP
+    XR_MIP_zarr(cropFullpath, 'axis', [1, 1, 1], parseCluster=parseCluster, mccMode=mccMode, configFile=configFile);
+end
 
 end
 

@@ -87,7 +87,7 @@ elseif ispc
         mkdir(mdir);
     end
     if nojvm
-        mcc -v -R -nodisplay -R -nojvm -d windows -m mccMaster.m
+        mcc -v -R -nojvm -d windows -m mccMaster.m
     else
         mcc -v -d windows_with_jvm -m mccMaster.m
     end

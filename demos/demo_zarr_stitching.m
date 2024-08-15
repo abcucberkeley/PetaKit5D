@@ -215,12 +215,6 @@ stitchResultDir = 'matlab_stitch_dsr';
 % cross correlation registration, if false, directly stitch by the coordinates.
 xcorrShift = true;
 
-%if true, only stitch first time point
-onlyFirstTP = false;
-
-% stitch pipeline, no need to change, zarr pipeline is the mostly used one.
-stitchPipeline = 'zarr';
-
 % xcorr registration on the primary channel, and other channels uses the
 % registration informaion from the primary channel
 PrimaryCh = 'CamB_ch0';

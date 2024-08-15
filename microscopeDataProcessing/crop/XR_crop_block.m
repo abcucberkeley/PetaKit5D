@@ -63,17 +63,17 @@ for i = 1 : numel(batchInds)
     obStart = RegionBBoxes(i, 1 : 3);
     obEnd = RegionBBoxes(i, 4 : 6);
     
-    % load the region in input 
-    % in_batch = bim.getRegion(ibStart, ibEnd);
-    % in_batch = bim.Adapter.getIORegion(ibStart, ibEnd);
+    % load the region in input
     [is_overlap, cuboid_overlap] = check_cuboids_overlaps([[1, 1, 1], imSize], [ibStart, ibEnd], false);
     if ~is_overlap
-        out_batch = zeros(obEnd - obStart, dtype);
+        out_batch = zeros(obEnd - obStart + 1, dtype);
     else
-        out_batch = readzarr(zarrFullpath, 'inputBbox', [cuboid_overlap(1 : 3), cuboid_overlap(4 : 6)]);
         if ~all(cuboid_overlap == [ibStart, ibEnd])
-            out_batch = padarray(out_batch, cuboid_overlap(1 : 3) - ibStart, 0, 'pre');
-            out_batch = padarray(out_batch, ibEnd - cuboid_overlap(4 : 6), 0, 'post');
+            out_batch = zeros(obEnd - obStart + 1, dtype);
+            out_batch_i = readzarr(zarrFullpath, 'inputBbox', [cuboid_overlap(1 : 3), cuboid_overlap(4 : 6)]);
+            out_batch = indexing4d(out_batch, out_batch_i, [cuboid_overlap(1 : 3) - ibStart + 1, 1, cuboid_overlap(4 : 6) - ibStart + 1, 1]);
+        else
+            out_batch = readzarr(zarrFullpath, 'inputBbox', [cuboid_overlap(1 : 3), cuboid_overlap(4 : 6)]);
         end
     end
 
