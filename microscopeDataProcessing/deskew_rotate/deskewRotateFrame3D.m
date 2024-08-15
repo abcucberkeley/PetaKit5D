@@ -1,4 +1,4 @@
-function [vol] = deskewRotateFrame3D(vol, angle, dz, xyPixelSize, varargin)
+function [volout] = deskewRotateFrame3D(vol, angle, dz, xyPixelSize, varargin)
 % Applies a shear transform to convert raw light sheet microscopy data
 % into a volume with real-world coordinates. After deskew, rotate the view of
 % the volume, followed by resampling (optional). 
@@ -72,12 +72,20 @@ if ~objectiveScan && abs(dx) > xStepThresh
     % skewed space interplation combined dsr
     fprintf('The step size is greater than the threshold, use skewed space interpolation for combined deskew rotate...\n');
     % for dx only slightly larger than xStepThresh, we interpolate to
-    % isotropic (approximate), so it is not oversampled a lot to save memory. 
+    % a step size lower than the threshold, and the ratio between dz /
+    % dzout ceils to the faction of 1/n with 10% to the threshold.
     if abs(dx) / xStepThresh < 1.5
-        dzout = xyPixelSize / sin(theta);
+        % dzout = xyPixelSize / sin(theta);
+        dzout_thresh = xyPixelSize * xStepThresh / cos(theta);
+        dzout = dz / (ceil((dz / dzout_thresh) / (1 / 2)) *(1 / 2));
+        counter = 1;
+        while dzout / dzout_thresh < 0.95
+            dzout = dz / (ceil((dz / dzout_thresh) / (1 / (counter + 2))) *(1 / (counter + 2)));
+            counter = counter + 1;
+        end
         % round it by the significant digits of dz
-        sf = 10^floor(log10(dz));
-        dzout = round(dzout / sf ) * sf;
+        % sf = 10^floor(log10(dz));
+        % dzout = round(dzout / sf ) * sf;
     else
         ndiv = ceil(abs(dx) / xStepThresh);
         dzout = dz / ndiv;
@@ -87,14 +95,14 @@ if ~objectiveScan && abs(dx) > xStepThresh
 
     % add the mex version skewed space interpolation as default
     try 
-        vol = skewed_space_interp_defined_stepsize_mex(vol, abs(dx), int_stepsize, Reverse);
+        vol_1 = skewed_space_interp_defined_stepsize_mex(vol, abs(dx), int_stepsize, Reverse);
     catch ME
         disp(ME);
-        vol = skewed_space_interp_defined_stepsize(vol, abs(dx), int_stepsize, 'Reverse', Reverse);
+        vol_1 = skewed_space_interp_defined_stepsize(vol, abs(dx), int_stepsize, 'Reverse', Reverse);
     end
     
     % update parameters after interpolation
-    [ny,nx,nz] = size(vol);
+    [ny,nx,nz] = size(vol_1);
     dz = dzout;
     dx = cos(theta)*dz/xyPixelSize; % pixels shifted slice to slice in x
 
@@ -103,6 +111,8 @@ if ~objectiveScan && abs(dx) > xStepThresh
     else
         zAniso = sin(abs(theta)) * dz / xyPixelSize;
     end
+else
+    vol_1 = vol;
 end
 
 %% deskew
@@ -182,12 +192,34 @@ if ~isempty(bbox)
     RA = imref3d(bbox(4 : 6) - bbox(1 : 3) + 1, [bbox(2) - 0.5, bbox(5) + 0.5], [bbox(1) - 0.5, bbox(4) + 0.5], [bbox(3) - 0.5, bbox(6) + 0.5]);
 end
 if gpuProcess
-    vol = gpuArray(vol);
+    vol_1 = gpuArray(vol_1);
 end
 
-[vol] = imwarp(vol, affine3d(ds_S*(T1*S*R*T2)*(RT1*RS*RT2)), interpMethod, 'FillValues', 0, 'OutputView', RA);
+if gpuProcess || (~isempty(rs) && any(rs ~= 1))
+    [volout] = imwarp(vol_1, affine3d(ds_S*(T1*S*R*T2)*(RT1*RS*RT2)), interpMethod, 'FillValues', 0, 'OutputView', RA);
+else    
+    try 
+        % convert the transformation matrix to backward and the form for c/c++
+        offset = zeros(4, 4);
+        offset(4, 1 : 3) = 1;
+        if ~objectiveScan && Reverse
+            ds_S(4, 1) = ds_S(4, 1) - dx;
+        end
+        tmat = eye(4) / (ds_S*((T1+offset)*S*R*(T2-offset))*(RT1*RS*RT2))';
+        tmat = tmat([2, 1, 3, 4], [2, 1, 3, 4]);
+
+        if ~isempty(bbox)
+            volout = volume_deskew_rotate_warp_mex(vol_1, tmat, bbox);
+        else
+            volout = volume_deskew_rotate_warp_mex(vol_1, tmat, [1, 1, 1, outSize]);
+        end
+    catch ME
+        disp(ME);
+        [volout] = imwarp(vol_1, affine3d(ds_S*(T1*S*R*T2)*(RT1*RS*RT2)), interpMethod, 'FillValues', 0, 'OutputView', RA);
+    end
+end
 if gpuProcess
-    vol = gather(vol);
+    volout = gather(volout);
 end
 
 end
