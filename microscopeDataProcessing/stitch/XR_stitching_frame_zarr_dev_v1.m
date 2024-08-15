@@ -788,8 +788,11 @@ end
 % for separate blend, save each tile separately in the proposed location in
 % stitched image
 if strcmpi(BlendMethod, 'separate')
-    st_indices = round(xyz_shift ./ ([xf, yf, zf] * px));    
-    processStitchSeparteTiles(zarrFullpaths, stitchPath, st_indices, imSizes, pImSz);
+    st_indices = int_xyz_shift;
+    batchSize = max([2048, 2048, 2048], blockSize);
+    processStitchSeparteTiles(zarrFullpaths, stitchPath, st_indices, pImSz, ...
+        batchSize=batchSize, blockSize=blockSize, parseCluster=parseCluster, ...
+        masterCompute=masterCompute, mccMode=mccMode, configFile=configFile);
     nv_fullname = sprintf('%s/%s/%s.zarr', dataPath, ResultDir, nv_fsname);
     if ~exist(nv_fullname, 'dir')
         movefile(nv_tmp_fullname, nv_fullname);
@@ -945,8 +948,9 @@ if saveMIP
         fileattrib(stcMIPPath, '+w', 'g');
     end
     stcMIPname = sprintf('%s%s_MIP_z.tif', stcMIPPath, nv_fsname);
-    % for data greater than 250 GB, use the cluster based MIP.
-    if prod([nys, nxs, nzs]) * byte_num / 2^30 < 250
+    % for data greater than half of the system memory, use the cluster based MIP.
+    totalMem = getSystemMemory();
+    if prod([nys, nxs, nzs]) * byte_num / 2^30 < totalMem / 2
         saveMIP_zarr(nv_fullname, stcMIPname, dtype, [1, 1, 1]);
     else
         XR_MIP_zarr(nv_fullname, axis=[1, 1, 1], parseCluster=parseCluster, ...

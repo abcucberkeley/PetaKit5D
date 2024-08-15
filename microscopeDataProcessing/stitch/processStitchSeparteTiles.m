@@ -1,92 +1,88 @@
-function [] = processStitchSeparteTiles(zarrFullpaths, stitchPath, stIndices, imSizes, pImSz, varargin)
+function [] = processStitchSeparteTiles(zarrFullpaths, stitchPath, stIndices, pImSz, varargin)
 % process the tiles in the corresponding location in the stitched image as
 % separte images. 
 % 
 % 
 % Author: Xiongtao Ruan (11/19/2020)
-% distance map for the primary channel.
+%
+% (07/08/2024): use crop function to pad the tiles to the size of the stitched image.
+
 
 ip = inputParser;
 ip.CaseSensitive = false;
 ip.addRequired('zarrFullpaths', @iscell);
 ip.addRequired('stitchPath', @(x) ischar(x));
 ip.addRequired('stIndices', @isnumeric);
-ip.addRequired('imSizes', @isnumeric);
 ip.addRequired('pImSz', @isnumeric);
 ip.addParameter('Overwrite', false, @islogical);
-ip.addParameter('convertToTiff', true, @islogical);
 ip.addParameter('saveMIP', true, @islogical);
+ip.addParameter('batchSize', [1024, 1024, 1024] , @isvector);
+ip.addParameter('blockSize', [256, 256, 256] , @isnumeric);
+ip.addParameter('parseCluster', true, @islogical);
+ip.addParameter('masterCompute', true, @islogical);
+ip.addParameter('cpusPerTask', 1, @isnumeric);
+ip.addParameter('uuid', '', @ischar);
+ip.addParameter('debug', false, @islogical);
+ip.addParameter('mccMode', false, @islogical);
+ip.addParameter('configFile', '', @ischar);
 
-ip.parse(zarrFullpaths, stitchPath, stIndices, imSizes, pImSz, varargin{:});
+ip.parse(zarrFullpaths, stitchPath, stIndices, pImSz, varargin{:});
 
-Overwrite = ip.Results.Overwrite;
-convertToTiff = ip.Results.convertToTiff;
-saveMIP = ip.Results.saveMIP;
+pr = ip.Results;
+saveMIP = pr.saveMIP;
+batchSize = pr.batchSize;
+blockSize = pr.blockSize;
+parseCluster = pr.parseCluster;
+masterCompute = pr.masterCompute;
+cpusPerTask = pr.cpusPerTask;
+uuid = pr.uuid;
+mccMode = pr.mccMode;
+configFile = pr.configFile;
 
-uuid = get_uuid();
-nys = pImSz(1);
-nxs = pImSz(2);
-nzs = pImSz(3);
+if isempty(uuid)
+    uuid = get_uuid();
+end
 
 nF = numel(zarrFullpaths);
-% incase of error of saving tiff after calling dask
-writetiff(uint8(rand(10) > 0.5), sprintf('/tmp/%s.tif', uuid));
-for i = 1 : nF
-    zarrFullpath = zarrFullpaths{i};
+outputFullpaths = cell(nF, 1);
+funcStrs = cell(nF, 1);
+
+for f = 1 : nF
+    zarrFullpath = zarrFullpaths{f};
     [~, fsname, ext] = fileparts(zarrFullpath);
-    OutputFullname = [stitchPath, '/', fsname, ext];
-    OutputTempname = [stitchPath, '/', fsname, uuid, ext];
+    outputFullpath = [stitchPath, '/', fsname, ext];
+    outputFullpaths{f} = outputFullpath;
     
-    if exist(OutputFullname, 'dir')
-        continue;
-    end
-    
-    fprintf('Process tile %d : %s ...\n', i, fsname);
-    st_idx = stIndices(i, :);
+    st_idx = stIndices(f, :);
+    bbox = [2 - st_idx([2, 1, 3]), 2 - st_idx([2, 1, 3]) + pImSz - 1];
+    pad = true;
+    parseParfor = false;
 
-    sx = imSizes(i, 2);
-    sy = imSizes(i, 1);
-    sz = imSizes(i, 3);
-    xridx = max(1, 1 - st_idx(1)) : min(sx, nxs - st_idx(1));
-    yridx = max(1, 1 - st_idx(2)) : min(sy, nys - st_idx(2));
-    zridx = max(1, 1 - st_idx(3)) : min(sz, nzs - st_idx(3));
-        
-    xidx = st_idx(1) + xridx;
-    yidx = st_idx(2) + yridx;
-    zidx = st_idx(3) + zridx;
-    
-    pad_width = [yidx(1) - 1, nys - yidx(end); xidx(1) - 1, nxs - xidx(end); zidx(1) - 1, nzs - zidx(end)];
-    pad_width = cast(pad_width, 'int32');
-    pad_width_cell = mat2cell(pad_width', 2, [1, 1, 1]);
+    funcStrs{f} = sprintf(['XR_crop_zarr(''%s'',''%s'',%s,''pad'',%s,''batchSize'',%s,', ...
+        '''blockSize'',%s,''saveMIP'',%s,''parseCluster'',%s,''parseParfor'',%s,', ...
+        '''masterCompute'',%s,''cpusPerTask'',%d,''uuid'',''%s'',''mccMode'',%s,''configFile'',''%s'')'], ...
+        zarrFullpath, outputFullpath, mat2str_comma(bbox), string(pad), mat2str_comma(batchSize), ...
+        mat2str_comma(blockSize), string(saveMIP), string(parseCluster), string(parseParfor), ...
+        string(masterCompute), cpusPerTask, uuid, string(mccMode), configFile);
+end
 
-    pypad_width = {py.tuple(pad_width_cell{1}), py.tuple(pad_width_cell{2}), py.tuple(pad_width_cell{3})};
-    pypad_width = py.tuple(pypad_width);
-    py.daskAPI.daskZarrPadArray(zarrFullpath, OutputTempname, pypad_width);
-    
-    if ~exist(OutputFullname, 'dir')
-        movefile(OutputTempname, OutputFullname);
-    else
-        rmdir(OutputFullname, 's');
+dtype = getImageDataType(zarrFullpaths{1});
+byte_num = dataTypeToByteNumber(dtype);
+
+% cluster setting
+memAllocate = prod(batchSize) * byte_num / 1024^3 * 10;
+maxTrialNum = 2;
+is_done_flag = false;
+
+% retry with more resources and longer time
+for i = 1 : 3
+    if ~all(is_done_flag)
+        is_done_flag = generic_computing_frameworks_wrapper(zarrFullpaths, outputFullpaths, ...
+            funcStrs, 'cpusPerTask', cpusPerTask * 2^(i-1), 'memAllocate', memAllocate * 2^(i-1), ...
+            'maxTrialNum', maxTrialNum, 'masterCompute', masterCompute, 'parseCluster', parseCluster, ...
+            'mccMode', mccMode, 'configFile', configFile);
     end
-    
-    if convertToTiff
-        bim = blockedImage(OutputFullname, 'Adapter', ZarrAdapter);
-        tiffFullname = [stitchPath, '/', fsname, '.tif'];
-        tiffTempname = [stitchPath, '/', fsname, uuid, '.tif'];
-        write(bim, tiffTempname, 'Adapter', MPageTiffAdapter, 'BlockSize', [bim.Size(1), bim.Size(2), 5]);
-        movefile(tiffTempname, tiffFullname);
-    end
-    
-    if saveMIP
-        stcMIPPath = sprintf('%s/MIPs/', stitchPath);
-        if ~exist(stcMIPPath, 'dir')
-            mkdir(stcMIPPath);
-            fileattrib(stcMIPPath, '+w', 'g');
-        end
-        stcMIPname = sprintf('%s%s_MIP_z.tif', stcMIPPath, fsname);
-        saveMIP_zarr(OutputFullname, stcMIPname);
-    end
-    fprintf('Done!\n');
 end
 
 end
+

@@ -12,13 +12,12 @@ arguments
     options.stitchInfoFullpath char = ''
     options.stitchInfoPath char = ''
     options.zarrFile (1, 1) {islogical} = false
-    options.onlyFirstTP (1, 1) {islogical} = false
     options.channelPatterns {iscell} = {'CamA', 'CamB'}
     options.useProcessedData {islogical} = false
     options.ProcessedDirStr char = ''
     options.timepoints (:, 1) {mustBeNumeric} = []
     options.subtimepoints (:, 1) {mustBeNumeric} = []
-    options.xcorrMode char {mustBeMember(options.xcorrMode, {'primaryFirst', 'primary', 'all'})} = 'primaryFirst'
+    options.xcorrMode char {mustBeMember(options.xcorrMode, {'primaryFirst', 'primary', 'all', 'stitchInfo'})} = 'primaryFirst'
     options.primaryCh char = ''
     options.onlineStitch (1, 1) {islogical} = false
 end
@@ -27,7 +26,6 @@ Streaming = options.Streaming;
 stitchInfoFullpath = options.stitchInfoFullpath;
 stitch_info_path = options.stitchInfoPath;
 zarrFile = options.zarrFile;
-onlyFirstTP = options.onlyFirstTP;
 channelPatterns = options.channelPatterns;
 useProcessedData = options.useProcessedData;
 ProcessedDirStr = options.ProcessedDirStr;
@@ -186,7 +184,6 @@ end
 
 if ~isempty(stitchInfoFullpath) 
     if exist(stitchInfoFullpath, 'file')
-        % xcorrShift = true;
         xcorrMode = 'stitchInfo';
     else
         error('The user defined stitch info file %s does not exist!', stitchInfoFullpath);
@@ -242,11 +239,6 @@ if (strcmpi(xcorrMode, 'primary') || strcmpi(xcorrMode, 'primaryFirst'))
         ind = regexpi(Cam', pCam);
         Cam = Cam([ind, 1 : ind - 1, ind + 1 : end]);
     end
-end
-
-if onlyFirstTP
-    fullIter = fullIter(1);
-    timepoints = [];
 end
 
 % xruan (01/21/2021): modify to separate timepoints, subtimepoints, subsubtimepoints
