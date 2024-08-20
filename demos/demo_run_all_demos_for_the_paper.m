@@ -27,5 +27,6 @@ demo_phase_and_2photon_stitching;
 fprintf('\nWidefield and Confocal deconvolution demo...\n');
 demo_widefield_and_confocal_deconvolution;
 
+close all;
 
 fprintf('\nAll demos are finished!\n');

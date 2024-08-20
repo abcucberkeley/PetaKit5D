@@ -92,7 +92,7 @@ if ~objectiveScan && abs(dx) > xStepThresh
     end
     int_stepsize = dzout / dz;
     fprintf('Input dz: %f , interpolated dz: %f\n', dz, dzout);
-
+    % t0 = tic;
     % add the mex version skewed space interpolation as default
     try 
         vol_1 = skewed_space_interp_defined_stepsize_mex(vol, abs(dx), int_stepsize, Reverse);
@@ -100,7 +100,8 @@ if ~objectiveScan && abs(dx) > xStepThresh
         disp(ME);
         vol_1 = skewed_space_interp_defined_stepsize(vol, abs(dx), int_stepsize, 'Reverse', Reverse);
     end
-    
+    % fprintf('Skewed space interpolation time: %f s\n', toc(t0));
+
     % update parameters after interpolation
     [ny,nx,nz] = size(vol_1);
     dz = dzout;
