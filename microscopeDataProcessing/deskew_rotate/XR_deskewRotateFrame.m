@@ -405,7 +405,8 @@ if ip.Results.rotate || DSRCombined
             fprintf('Deskew, rotate and resample for frame %s...\n', framePath{1});
             dsr = deskewRotateFrame3D(frame, skewAngle_1, dz, xyPixelSize, ...
                 'reverse', reverse, 'crop', true, 'objectiveScan', objectiveScan, ...
-                'resampleFactor', resampleFactor, 'interpMethod', interpMethod, 'xStepThresh', xStepThresh);
+                'resampleFactor', resampleFactor, 'interpMethod', interpMethod, ...
+                'xStepThresh', xStepThresh, 'save16bit', save16bit);
 
             t_dsr = toc(t_dsr);
             fprintf('Combined deskew/rotation processing time: %0.6f s\n', t_dsr);
