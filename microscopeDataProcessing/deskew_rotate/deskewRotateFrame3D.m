@@ -33,6 +33,7 @@ ip.addParameter('objectiveScan', false, @islogical);
 ip.addParameter('xStepThresh', 2.0, @isnumeric); % 2.344 for ds=0.3, 2.735 for ds=0.35
 ip.addParameter('resampleFactor', [], @isnumeric); % resample factor in xyz order. 
 ip.addParameter('gpuProcess', false, @islogical); % use gpu for the processing. 
+ip.addParameter('save16bit', false, @islogical); % direct output results as 16bit for mex functions
 ip.addParameter('interpMethod', 'linear', @(x) any(strcmpi(x, {'cubic', 'linear'})));
 ip.parse(vol, angle, dz, xyPixelSize, varargin{:});
 
@@ -43,10 +44,10 @@ objectiveScan = pr.objectiveScan;
 xStepThresh = pr.xStepThresh;
 resampleFactor = pr.resampleFactor;
 gpuProcess = pr.gpuProcess;
+save16bit = pr.save16bit;
 interpMethod = pr.interpMethod;
 
 [ny,nx,nz] = size(vol);
-
 
 theta = angle * pi/180;
 dx = cos(theta)*dz/xyPixelSize; % pixels shifted slice to slice in x
@@ -95,7 +96,7 @@ if ~objectiveScan && abs(dx) > xStepThresh
     % t0 = tic;
     % add the mex version skewed space interpolation as default
     try 
-        vol_1 = skewed_space_interp_defined_stepsize_mex(vol, abs(dx), int_stepsize, Reverse);
+        vol_1 = skewed_space_interp_defined_stepsize_mex(vol, abs(dx), int_stepsize, Reverse, save16bit);
     catch ME
         disp(ME);
         vol_1 = skewed_space_interp_defined_stepsize(vol, abs(dx), int_stepsize, 'Reverse', Reverse);
@@ -210,9 +211,9 @@ else
         tmat = tmat([2, 1, 3, 4], [2, 1, 3, 4]);
 
         if ~isempty(bbox)
-            volout = volume_deskew_rotate_warp_mex(vol_1, tmat, bbox);
+            volout = volume_deskew_rotate_warp_mex(vol_1, tmat, bbox, save16bit);
         else
-            volout = volume_deskew_rotate_warp_mex(vol_1, tmat, [1, 1, 1, outSize]);
+            volout = volume_deskew_rotate_warp_mex(vol_1, tmat, [1, 1, 1, outSize], save16bit);
         end
     catch ME
         disp(ME);
