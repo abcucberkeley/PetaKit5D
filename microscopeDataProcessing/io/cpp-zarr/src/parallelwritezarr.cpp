@@ -270,7 +270,7 @@ uint8_t parallelWriteZarr(zarr &Zarr, void* zarrArr,
                 }
             }
             else if (Zarr.get_order() == "C"){
-                for(int64_t x = cAV[0]*Zarr.get_chunks(2); x < (cAV[0]+1)*Zarr.get_chunks(0); x++){
+                for(int64_t x = cAV[0]*Zarr.get_chunks(0); x < (cAV[0]+1)*Zarr.get_chunks(0); x++){
                     for(int64_t y = cAV[1]*Zarr.get_chunks(1); y < (cAV[1]+1)*Zarr.get_chunks(1); y++){
                         for(int64_t z = cAV[2]*Zarr.get_chunks(2); z < (cAV[2]+1)*Zarr.get_chunks(2); z++){
                             switch(bytes){
