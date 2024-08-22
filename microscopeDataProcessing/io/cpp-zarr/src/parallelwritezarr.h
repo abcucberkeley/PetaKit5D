@@ -1,5 +1,5 @@
-#ifndef PARALLELREADZARR_H
-#define PARALLELREADZARR_H
+#ifndef PARALLELWRITEZARR_H
+#define PARALLELWRITEZARR_H
 #include <cstdint>
 #include "zarr.h"
 
