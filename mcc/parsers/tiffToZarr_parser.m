@@ -18,7 +18,7 @@ ip.addParameter('resampleFactor', [], @(x) isempty(x) || isnumeric(x) || ischar(
 ip.addParameter('inputBbox', [], @(x) isnumeric(x) || ischar(x));
 ip.addParameter('tileOutBbox', [], @(x) isempty(x) || isnumeric(x) || ischar(x));
 ip.addParameter('readWholeTiff', true, @(x) islogical(x) || ischar(x));
-ip.addParameter('compressor', 'lz4', @ischar);
+ip.addParameter('compressor', 'zstd', @ischar);
 ip.addParameter('usrFcn', '', @(x) isempty(x) || isa(x,'function_handle') || ischar(x) || isstring(x));
 ip.addParameter('uuid', '', @ischar);
 

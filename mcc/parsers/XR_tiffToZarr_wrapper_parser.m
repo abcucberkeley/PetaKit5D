@@ -17,6 +17,7 @@ ip.addParameter('partialFile', false, @(x) islogical(x) || ischar(x));
 ip.addParameter('channelPatterns', {'tif'}, @(x) iscell(x) || ischar(x));
 ip.addParameter('inputBbox', [], @(x) isnumeric(x) || ischar(x));
 ip.addParameter('tileOutBbox', [], @(x) isnumeric(x) || ischar(x));
+ip.addParameter('readWholeTiff', true, @(x) islogical(x) || ischar(x));
 ip.addParameter('processFunPath', '', @(x) isempty(x) || isa(x,'function_handle') || ischar(x) || isstring(x) || iscell(x));
 ip.addParameter('parseCluster', true, @(x) islogical(x) || ischar(x));
 ip.addParameter('bigData', true, @(x) islogical(x) || ischar(x));
@@ -43,6 +44,7 @@ partialFile = pr.partialFile;
 channelPatterns = pr.channelPatterns;
 inputBbox = pr.inputBbox;
 tileOutBbox = pr.tileOutBbox;
+readWholeTiff = pr.readWholeTiff;
 processFunPath = pr.processFunPath;
 parseCluster = pr.parseCluster;
 bigData = pr.bigData;
@@ -88,6 +90,9 @@ end
 if ischar(tileOutBbox)
     tileOutBbox = str2num(tileOutBbox);
 end
+if ischar(readWholeTiff)
+    readWholeTiff = str2num(readWholeTiff);
+end
 if ischar(processFunPath) && ~isempty(processFunPath) && (strcmp(processFunPath(1), '{') || strcmp(processFunPath(1), '[') || strcmp(processFunPath(1), '@'))
     processFunPath = eval(processFunPath);
 end
@@ -116,10 +121,11 @@ end
 XR_tiffToZarr_wrapper(dataPaths, tiffFullpaths=tiffFullpaths, resultDirName=resultDirName, ...
     locIds=locIds, blockSize=blockSize, shardSize=shardSize, flippedTile=flippedTile, ...
     resampleFactor=resampleFactor, partialFile=partialFile, channelPatterns=channelPatterns, ...
-    inputBbox=inputBbox, tileOutBbox=tileOutBbox, processFunPath=processFunPath, ...
-    parseCluster=parseCluster, bigData=bigData, masterCompute=masterCompute, ...
-    jobLogDir=jobLogDir, cpusPerTask=cpusPerTask, uuid=uuid, maxTrialNum=maxTrialNum, ...
-    unitWaitTime=unitWaitTime, mccMode=mccMode, configFile=configFile);
+    inputBbox=inputBbox, tileOutBbox=tileOutBbox, readWholeTiff=readWholeTiff, ...
+    processFunPath=processFunPath, parseCluster=parseCluster, bigData=bigData, ...
+    masterCompute=masterCompute, jobLogDir=jobLogDir, cpusPerTask=cpusPerTask, ...
+    uuid=uuid, maxTrialNum=maxTrialNum, unitWaitTime=unitWaitTime, mccMode=mccMode, ...
+    configFile=configFile);
 
 end
 

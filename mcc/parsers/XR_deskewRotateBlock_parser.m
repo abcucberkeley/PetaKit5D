@@ -18,6 +18,7 @@ ip.addParameter('Overwrite', false, @(x) islogical(x) || ischar(x));
 ip.addParameter('SkewAngle', 32.45 , @(x) isnumeric(x) || ischar(x));
 ip.addParameter('Reverse', true, @(x) islogical(x) || ischar(x)); 
 ip.addParameter('flipZstack', false, @(x) islogical(x) || ischar(x)); 
+ip.addParameter('save16bit', true, @(x) islogical(x) || ischar(x));
 ip.addParameter('interpMethod', 'linear', @(x) any(strcmpi(x, {'cubic', 'linear'})) || ischar(x));
 ip.addParameter('resampleFactor', [], @(x) isempty(x) || isnumeric(x) || ischar(x)); % resampling after rotation 
 ip.addParameter('uuid', '', @ischar);
@@ -31,6 +32,7 @@ Overwrite = pr.Overwrite;
 SkewAngle = pr.SkewAngle;
 Reverse = pr.Reverse;
 flipZstack = pr.flipZstack;
+save16bit = pr.save16bit;
 interpMethod = pr.interpMethod;
 resampleFactor = pr.resampleFactor;
 uuid = pr.uuid;
@@ -69,6 +71,9 @@ end
 if ischar(flipZstack)
     flipZstack = str2num(flipZstack);
 end
+if ischar(save16bit)
+    save16bit = str2num(save16bit);
+end
 if ischar(resampleFactor)
     resampleFactor = str2num(resampleFactor);
 end
@@ -78,8 +83,8 @@ end
 
 XR_deskewRotateBlock(batchInds, zarrFullpath, dsrFullpath, flagFullname, inBatchBBoxes, ...
     outBatchBBoxes, outRegionBBoxes, outLocalBboxes, xyPixelSize, dz, Overwrite=Overwrite, ...
-    SkewAngle=SkewAngle, Reverse=Reverse, flipZstack=flipZstack, interpMethod=interpMethod, ...
-    resampleFactor=resampleFactor, uuid=uuid, debug=debug);
+    SkewAngle=SkewAngle, Reverse=Reverse, flipZstack=flipZstack, save16bit=save16bit, ...
+    interpMethod=interpMethod, resampleFactor=resampleFactor, uuid=uuid, debug=debug);
 
 end
 
