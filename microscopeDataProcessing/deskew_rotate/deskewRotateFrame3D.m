@@ -197,7 +197,7 @@ if gpuProcess
     vol_1 = gpuArray(vol_1);
 end
 
-if gpuProcess || (~isempty(rs) && any(rs ~= 1))
+if gpuProcess || (~isempty(rs) && any(rs ~= 1)) || ~strcmpi(interpMethod, 'linear')
     [volout] = imwarp(vol_1, affine3d(ds_S*(T1*S*R*T2)*(RT1*RS*RT2)), interpMethod, 'FillValues', 0, 'OutputView', RA);
 else    
     try 
