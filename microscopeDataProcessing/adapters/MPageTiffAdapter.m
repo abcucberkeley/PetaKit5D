@@ -101,7 +101,7 @@ classdef MPageTiffAdapter < images.blocked.Adapter
 
         function data = getIORegion(obj, regionStart, regionEnd)
             tiffFileName = obj.FileName;            
-            data = readtiff(char(tiffFileName), [regionStart(3), regionEnd(3)]);
+            data = readtiff(char(tiffFileName), range=[regionStart(3), regionEnd(3)]);
             try
                 data = crop3d_mex(data, [regionStart(1 : 2), 1, regionEnd(1 : 2), size(data, 3)]);
             catch ME
