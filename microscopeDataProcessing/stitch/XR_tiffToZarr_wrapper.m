@@ -17,6 +17,7 @@ function [] = XR_tiffToZarr_wrapper(dataPaths, varargin)
 %     channelPatterns : a cell array (default: {'tif'}).  Channel identifiers for included channels. 
 %           inputBbox : empty or 1x6 vector (default: []). Input bounding box for crop. Definiation: [ymin, xmin, zmin, ymax, xmax, zmax].
 %         tileOutBbox : empty or 1x6 vector (default: []). Crop tiles after preprocessing. Definiation: [ymin, xmin, zmin, ymax, xmax, zmax].
+%       readWholeTiff : true|false (default: true). Read the entire image for the conversion. Set it to false when the image is too large to fit to the RAM.
 %      processFunPath : empty or char (default: ''). Path for user-defined process function handle. Support .mat or .txt formats.
 %        parseCluster : true|false (default: true). Use slurm cluster for the processing.
 %             bigData : true|false (default: true). Big dataset, use fewer resources for each task to all more parallel task running.
@@ -47,6 +48,7 @@ ip.addParameter('partialFile', false, @islogical);
 ip.addParameter('channelPatterns', {'tif'}, @iscell);
 ip.addParameter('inputBbox', [], @isnumeric);
 ip.addParameter('tileOutBbox', [], @isnumeric);
+ip.addParameter('readWholeTiff', true, @islogical);
 ip.addParameter('processFunPath', '', @(x) isempty(x) || isa(x,'function_handle') || ischar(x) || isstring(x) || iscell(x));
 ip.addParameter('parseCluster', true, @islogical);
 ip.addParameter('bigData', true, @islogical);
@@ -74,6 +76,7 @@ partialFile = pr.partialFile;
 channelPatterns = pr.channelPatterns;
 inputBbox = pr.inputBbox;
 tileOutBbox = pr.tileOutBbox;
+readWholeTiff = pr.readWholeTiff;
 processFunPath = pr.processFunPath;
 jobLogDir = pr.jobLogDir;
 parseCluster = pr.parseCluster;
@@ -268,10 +271,11 @@ for i = 1 : nF
 
     func_strs{i} = sprintf(['tiffToZarr(%s,''%s'',[],''BlockSize'',%s,''shardSize'',%s,', ...
         '''flipZstack'',%s,''resampleFactor'',%s,''inputBbox'',%s,''tileOutBbox'',%s,', ...
-        '''compressor'',''%s'',''usrFcn'',"%s")'], sprintf('{''%s''}', strjoin(tiffFullpath_group_i, ''',''')), ...
-        zarrFullpaths{i}, strrep(mat2str(blockSize), ' ', ','), strrep(mat2str(shardSize), ' ', ','), ...
-        string(flipZstack), strrep(mat2str(resampleFactor), ' ', ','), strrep(mat2str(inputBbox_i), ' ', ','), ...
-        strrep(mat2str(tileOutBbox_i), ' ', ','), compressor, usrFcn_str_i);
+        '''readWholeTiff'',%s,''compressor'',''%s'',''usrFcn'',"%s")'], sprintf('{''%s''}', ...
+        strjoin(tiffFullpath_group_i, ''',''')), zarrFullpaths{i}, strrep(mat2str(blockSize), ' ', ','), ...
+        strrep(mat2str(shardSize), ' ', ','), string(flipZstack), strrep(mat2str(resampleFactor), ' ', ','), ...
+        strrep(mat2str(inputBbox_i), ' ', ','), strrep(mat2str(tileOutBbox_i), ' ', ','), ...
+        string(readWholeTiff), compressor, usrFcn_str_i);
 end
 
 imSizes = zeros(numel(tiffFullpath_group_i), 3);

@@ -24,6 +24,7 @@ ip.addParameter('Overwrite', false, @islogical);
 ip.addParameter('SkewAngle', 32.45 , @isnumeric);
 ip.addParameter('Reverse', true, @islogical); 
 ip.addParameter('flipZstack', false, @islogical); 
+ip.addParameter('save16bit', true, @islogical);
 ip.addParameter('interpMethod', 'linear', @(x) any(strcmpi(x, {'cubic', 'linear'})));
 ip.addParameter('resampleFactor', [], @(x) isempty(x) || isnumeric(x)); % resampling after rotation 
 ip.addParameter('uuid', '', @ischar);
@@ -37,6 +38,7 @@ Overwrite = pr.Overwrite;
 SkewAngle = pr.SkewAngle;
 Reverse = pr.Reverse;
 flipZstack = pr.flipZstack;
+save16bit = pr.save16bit;
 interpMethod = pr.interpMethod;
 resampleFactor = pr.resampleFactor;
 uuid = pr.uuid;
@@ -65,6 +67,8 @@ if ~exist(dsrFullpath, 'dir')
     error('The output zarr file %s doesnot exist!', dsrFullpath);
 end
 
+dtype = getImageDataType(zarrFullpath);
+
 done_flag = false(numel(batchInds), 1);
 for i = 1 : numel(batchInds)
     bi = batchInds(i);
@@ -76,8 +80,10 @@ for i = 1 : numel(batchInds)
     
     % load the region in input 
     in_batch = readzarr(zarrFullpath, 'inputBbox', inBbox);
-    in_batch = single(in_batch);
-    
+    if (save16bit && ~strcmp(dtype, 'uint16')) || ~save16bit
+        in_batch = single(in_batch);
+    end
+
     % deskew and rotate    
     objectiveScan = false;
     
@@ -85,9 +91,11 @@ for i = 1 : numel(batchInds)
     
     out_batch = deskewRotateFrame3D(in_batch, SkewAngle, dz, xyPixelSize, ...
                 'reverse', Reverse, 'bbox', dsrBbox, 'objectiveScan', objectiveScan, ...
-                'resampleFactor', resampleFactor, 'interpMethod', interpMethod);
+                'resampleFactor', resampleFactor, 'save16bit', save16bit, 'interpMethod', interpMethod);
     clear in_batch;
-    
+    if save16bit && ~strcmp(dtype, 'uint16')
+        out_batch = uint16(out_batch + 0.5);
+    end
     writezarr(out_batch, dsrFullpath, 'bbox', outBbox);
     clear out_batch;
     done_flag(i) = true;

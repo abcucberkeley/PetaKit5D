@@ -514,6 +514,7 @@ Parameters (as 'specifier'-value pairs):
     channelPatterns : a cell array (default: {'tif'}).  Channel identifiers for included channels. 
           inputBbox : empty or 1x6 vector (default: []). Input bounding box for crop. Definiation: [ymin, xmin, zmin, ymax, xmax, zmax].
         tileOutBbox : empty or 1x6 vector (default: []). Crop tiles after preprocessing. Definiation: [ymin, xmin, zmin, ymax, xmax, zmax].
+      readWholeTiff : true|false (default: true). Read the entire image for the conversion. Set it to false when the image is too large to fit to the RAM.
      processFunPath : empty or char (default: ''). Path for user-defined process function handle. Support .mat or .txt formats.
        parseCluster : true|false (default: true). Use slurm cluster for the processing.
             bigData : true|false (default: true). Big dataset, use fewer resources for each task to all more parallel task running.

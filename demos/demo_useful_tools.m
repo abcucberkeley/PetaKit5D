@@ -666,7 +666,19 @@ channelPatterns = {'CamA_ch0', 'CamB_ch0'};
 % use cluster computing for different images
 % bounding box to crop the files in the conversion: [ymin, xmin, zmin, ymax, xmax, zmax]
 inputBbox = [];
+% chunk size for the Zarr file. Note: If the xy dimensions of the image are 
+% too large, you may need to reduce the block size in the z dimension. 
+% This is because the converter loads the entire xy frames corresponding to 
+% the block size in z, even when readWholeTiff if false.
+blockSize = [256, 256, 256];
+% If true, read the entire Tiff file to RAM for the conversion. If false,
+% use blockedImage to read partial images for the conversion to reduce RAM
+% need, especially for large images. There are additional overhead when readWholeTiff is false.
+% When flippedTile is true, or resampling or user-defined processing is defined, 
+% readWholeTiff will be set as true automatically.
+readWholeTiff = true;
 
+% use cluster computing for different images
 parseCluster = false;
 % master compute
 masterCompute = true;
@@ -678,8 +690,9 @@ mccMode = false;
 configFile = '';
 
 XR_tiffToZarr_wrapper(dataPaths, resultDirName=resultDirName, channelPatterns=channelPatterns, ...
-    inputBbox=inputBbox, parseCluster=parseCluster, masterCompute=masterCompute, ...
-    cpusPerTask=cpusPerTask, mccMode=mccMode, configFile=configFile);
+    inputBbox=inputBbox, blockSize=blockSize, readWholeTiff=readWholeTiff, ...
+    parseCluster=parseCluster, masterCompute=masterCompute, cpusPerTask=cpusPerTask, ...
+    mccMode=mccMode, configFile=configFile);
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -698,8 +711,8 @@ dataPaths = {[dataPath, 'matlab_decon_omw/DSR_for_useful_tools/']};
 resultDirName = 'tiffs';
 % channel patterns to map the files for processing
 channelPatterns = {'CamA_ch0', 'CamB_ch0'};
-% use cluster computing for different images
 
+% use cluster computing for different images
 parseCluster = false;
 % master compute
 masterCompute = true;
@@ -742,6 +755,7 @@ zarrFile = true;
 % block size for the imaris file
 blockSize = [64, 64, 64];
 
+% use cluster computing for different images
 parseCluster = false;
 % master compute
 masterCompute = true;

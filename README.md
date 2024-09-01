@@ -2,6 +2,10 @@
 
 Tools for efficient and scalable processing of petabyte-scale 5D live images or large specimen images from lattice light-sheet microscopy (LLSM) and other light sheet microscopies, as well as other imaging modalities. It is featured by fast image readers and writers (for Tiff and Zarr), combined image deskew/rotation, instantly converged Richardson-Lucy (RL) deconvolution, and scalable Zarr-based stitching. It also contains some other useful tools, including 3D point detection and point tracking (based on Aguet, Upadhyayula et al., 2016), cropping, resampling, max projection, PSF analysis and visualization, and more.
 
+## Hardware
+The software works best on a Slurm-based Linux computing cluster with multiple CPU and GPU nodes for scalable, large-scale processing. For CPU nodes, we recommend at least 16 GB of RAM per core. For GPU nodes, we currently only support NVIDIA GPUs and recommend at least 24 GB of VRAM per GPU.
+
+The software can also run on a single workstation for smaller-scale image processing tasks (up to ~1 TB, otherwise may take very long). We recommend at least 64 GB of RAM, although a smaller size may still work. For relative large images that cause memory issues, we suggest converting the images to Zarr format and applying large-scale processing strategies.
 
 ## Usage
 

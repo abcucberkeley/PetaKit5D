@@ -31,7 +31,7 @@ ip.addParameter('resampleFactor', [], @(x) isempty(x) || isnumeric(x));
 ip.addParameter('inputBbox', [], @(x) isnumeric(x));
 ip.addParameter('tileOutBbox', [], @(x) isempty(x) || isnumeric(x));
 ip.addParameter('readWholeTiff', true, @islogical);
-ip.addParameter('compressor', 'lz4', @ischar);
+ip.addParameter('compressor', 'zstd', @ischar);
 ip.addParameter('usrFcn', '', @(x) isempty(x) || isa(x,'function_handle') || ischar(x) || isstring(x));
 ip.addParameter('uuid', '', @ischar);
 
@@ -78,8 +78,11 @@ else
     end
 end
 
-% if InputBbox is nonempty, read whole tiff
-if ~isempty(inputBbox)
+applyUserFcn = ~(isstring(usrFcn) || isempty(usrFcn)) || (isstring(usrFcn) && ~isempty(usrFcn{1}));
+
+% if flipZstack is true, or resampleFactor is nonempty, or apply user
+% function, set read whole tiff as true.
+if flipZstack || ~isempty(resampleFactor) || applyUserFcn
     readWholeTiff = true;
 end
 
@@ -97,9 +100,11 @@ else
             tifFilename = tifFilename{1};
         end
         if readWholeTiff
-            I = readtiff(tifFilename);
             if ~isempty(inputBbox)
-                I = crop3d(I, inputBbox);
+                I = readtiff(tifFilename, range=[inputBbox(3), inputBbox(6)]);
+                I = crop3d(I, [inputBbox(1 : 2), 1, inputBbox(4 : 5), size(I, 3)]);
+            else
+                I = readtiff(tifFilename);
             end
             sz = size(I);
             if ismatrix(I)
@@ -107,7 +112,7 @@ else
                     blockSize(3) = 1;
                     sz(3) = 1;
                 else
-                    blockSize =  blockSize(1 : 2);                    
+                    blockSize =  blockSize(1 : 2);
                 end
             end
             blockSize = min(blockSize, sz);
@@ -118,10 +123,13 @@ else
                 bim = blockedImage(tifFilename, "Adapter", MPageTiffAdapter);
             catch ME
                 disp(ME)
-                fprintf('Use BioFormats to read the tif file ...\n');
+                fprintf('Use BioFormats to read the tiff file ...\n');
                 im = bfOpen3DVolume(tifFilename);
                 bim = blockedImage(im{1,1}{1,1});
                 clear im;
+            end
+            if ~isempty(inputBbox)
+                bim = bim.crop(inputBbox(1 : 3), inputBbox(4 : 6));
             end
         end
     else
@@ -181,7 +189,7 @@ if ~isempty(resampleFactor) && ~all(resampleFactor == 1)
 end
 sz = bim.Size;
 
-if ~(isstring(usrFcn) || isempty(usrFcn)) || (isstring(usrFcn) && ~isempty(usrFcn{1}))
+if applyUserFcn
     disp(usrFcn)
     if ischar(usrFcn) || isstring(usrFcn)
         usrFcn = str2func(usrFcn);
@@ -213,7 +221,22 @@ if ~exist(tmpFilename, 'dir')
 end
 
 % write zarr
-writezarr(cast(gather(bim), dtype), tmpFilename, 'blockSize', blockSize);
+if readWholeTiff
+    writezarr(cast(gather(bim), dtype), tmpFilename, 'blockSize', blockSize);
+else
+    for i = 1 : ceil(sz(3) / blockSize(3))
+        zs = (i - 1) * blockSize(3) + 1;
+        zt = min(i * blockSize(3), sz(3));
+        bbox = [1, 1, zs, sz(1), sz(2), zt];
+        if ~isempty(inputBbox) || ~isempty(outBbox)
+            bbox_in = bbox + [floor(bim.WorldStart), floor(bim.WorldStart)];
+        else
+            bbox_in = bbox;
+        end
+        im_i = bim.Adapter.getIORegion(bbox_in(1 : 3), bbox_in(4 : 6));
+        writezarr(im_i, tmpFilename, bbox=bbox);
+    end
+end
 
 % mv tmp result folder to output folder
 if exist(zarrFilename, 'dir')
