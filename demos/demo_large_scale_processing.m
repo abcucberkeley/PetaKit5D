@@ -3,7 +3,13 @@
 % Note: Large-scale stitching with large tiles, large-scale deconvolution (inplace) 
 % and deskew/rotation only works for zarr input. Large-scale stitching with small
 % tiles, and large-scale deconvolution (inmemory option) works for tiff files 
-% that can fit to memory. 
+% that can fit to memory.
+%
+% The large-scale processing frameworks work for both slurm-based computing
+% cluster and single workstations. For single workstations, if there are
+% memory issue when processing relative large image, we recommend
+% converting the image to Zarr format, and using batch processing as
+% demonstrated in this demo.
 %
 % The parameters demonstrated here are usually a subset of those available 
 % for the functions, with the rest using default values. For a comprehensive 
