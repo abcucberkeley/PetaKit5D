@@ -156,12 +156,12 @@ Reverse = true;
 ObjectiveScan = false;
 resample = [];
 Interp = 'linear';
+% direct input and output as 16 bit while actual deskew/rotation in single
+save16bit = true;
 
-dsr = deskewRotateFrame3D(single(im), Angle, dz, xyPixelSize, 'reverse', Reverse, ...
-    'Crop', true, 'ObjectiveScan', ObjectiveScan, 'resample', resample, 'Interp', Interp);
-
-% convert image to uint16
-dsr = uint16(dsr);
+dsr = deskewRotateFrame3D(im, Angle, dz, xyPixelSize, 'reverse', Reverse, ...
+    'Crop', true, 'ObjectiveScan', ObjectiveScan, 'resample', resample, 'Interp', Interp, ...
+    'save16bit', save16bit);
 
 % write the image to disk with the given file name
 % also to ensure the result file is complete, we first write to an
@@ -169,7 +169,7 @@ dsr = uint16(dsr);
 
 % get uuid
 uuid = get_uuid();
-tmpFn = sprintf('%s_%s.tif', outputFullpath(1 : end - 4));
+tmpFn = sprintf('%s_%s.tif', outputFullpath(1 : end - 4), uuid);
 
 % write to temporary file
 writetiff(dsr, tmpFn);
