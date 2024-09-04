@@ -212,6 +212,7 @@ if (~DSRCombined && (~exist(dsFullname, 'file') || ip.Results.overwrite)) || DSR
 
     if ~DSRCombined
         fprintf('Deskew frame %s...\n', framePath{1});
+        t_ds = tic;
         splitCompute = false;
         sz = size(frame);
         % 03/23/2021, for image with more than 1000 slices, directly split to blocks for the processing
@@ -256,14 +257,16 @@ if (~DSRCombined && (~exist(dsFullname, 'file') || ip.Results.overwrite)) || DSR
             clear frame bim;
             % ds = gather(bo);
             % rmdir(OutputLocation, 's');
-        end            
+        end
+        t_ds = toc(t_ds);
+        fprintf('Deskew processing time: %0.6f s\n', t_ds);
 
         % save MIP
         if saveMIP
             dsMIPPath = sprintf('%s/MIPs/', dsPath);
             if ~exist(dsMIPPath, 'dir')
                 mkdir(dsMIPPath);
-                if ~ispc                
+                if ~ispc
                     fileattrib(dsMIPPath, '+w', 'g');
                 end
             end
@@ -274,7 +277,7 @@ if (~DSRCombined && (~exist(dsFullname, 'file') || ip.Results.overwrite)) || DSR
             else
                 mip = max(ds, [], 3);
             end
-            if save16bit 
+            if save16bit
                 mip = uint16(mip);
             end
             if saveZarr
@@ -286,7 +289,12 @@ if (~DSRCombined && (~exist(dsFullname, 'file') || ip.Results.overwrite)) || DSR
             end
         end
 
-        dsTempname = sprintf('%s%s_%s.tif', dsPath, fsname, uuid);
+        t_write = tic;
+        if saveZarr
+            dsTempname = sprintf('%s%s_%s.zarr', dsPath, fsname, uuid);
+        else
+            dsTempname = sprintf('%s%s_%s.tif', dsPath, fsname, uuid);
+        end
         if save3DStack
             if splitCompute
                 if saveZarr
@@ -316,6 +324,8 @@ if (~DSRCombined && (~exist(dsFullname, 'file') || ip.Results.overwrite)) || DSR
             fclose(fopen(dsTempname, 'w'));
             movefile(dsTempname, dsFullname);            
         end
+        t_write = toc(t_write);
+        fprintf('Deskew result write time: %0.6f s\n', t_write);
     end
 end
 
@@ -374,7 +384,7 @@ if ip.Results.rotate || DSRCombined
                 'resample', resampleFactor, 'objectiveScan', objectiveScan, 'outSize', outSize, 'Interp', interpMethod);
 
             t_dsr = toc(t_dsr);
-            fprintf('Deskew/rotation processing time: %0.6f s\n', t_dsr);
+            fprintf('Rotation processing time: %0.6f s\n', t_dsr);
 
             if nargout == 0
                 clear ds;
@@ -398,7 +408,7 @@ if ip.Results.rotate || DSRCombined
                     resampleFactor = outPixelSize ./ min(outPixelSize);
                 end
             end
-            if ~save16bit
+            if ~save16bit && ~isa(frame, 'uint16')
                 frame = single(frame);
             end
 
