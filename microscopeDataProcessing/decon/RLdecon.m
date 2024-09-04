@@ -411,9 +411,9 @@ elseif Deskew || Rotate
     [~, ~, ext] = fileparts(outputFn);
     switch ext
         case {'.tif', '.tiff'}
-            deconvolved = single(readtiff(outputFn));
+            deconvolved = readtiff(outputFn);
         case '.zarr'
-            deconvolved = single(readzarr(outputFn));
+            deconvolved = readzarr(outputFn);
     end
 end
 
@@ -434,7 +434,7 @@ if Deskew && (~Rotate || ~DSRCombined)
             end        
         end
     
-        ds = deskewFrame3D(deconvolved, SkewAngle, dz, xyPixelSize, Reverse, ...
+        ds = deskewFrame3D(single(deconvolved), SkewAngle, dz, xyPixelSize, Reverse, ...
             'Crop', Crop, 'interpMethod', interpMethod); 
             
         MIPFn = sprintf('%s/MIPs/%s_MIP_z.tif', dsPath, fsname);
@@ -479,12 +479,13 @@ elseif Deskew && Rotate && DSRCombined
     fprintf('Deskew, rotate and resample for deconvolved frame %s...\n', fsname);                
     dsr = deskewRotateFrame3D(deconvolved, SkewAngle, dz, xyPixelSize, ...
         'reverse', Reverse, 'Crop', true, 'objectiveScan', objectiveScan, ...
-        'resample', Resample, 'interpMethod', interpMethod, 'xStepThresh', xStepThresh);
+        'resample', Resample, 'interpMethod', interpMethod, 'xStepThresh', xStepThresh, ...
+        'save16bit', save16bit);
 end
 
 if objectiveScan && Rotate    
     fprintf('Rotate deconvolved frame %s...\n', fsname);                
-    dsr = rotateFrame3D(deconvolved, SkewAngle, zAniso, Reverse,...
+    dsr = rotateFrame3D(single(deconvolved), SkewAngle, zAniso, Reverse,...
         'Crop', true, 'objectiveScan', objectiveScan, 'interpMethod', interpMethod);
 end
 

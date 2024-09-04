@@ -497,32 +497,34 @@ ObjectiveScan = false;
 resample = [];
 % interpolation type
 Interp = 'linear';
+% directly save result to 16bit
+save16bit = true;
 
 % bbox for crop
 bbox = [1040, 250, 133, 1240, 450, 133];
 
-raw_dsr = deskewRotateFrame3D(single(im), Angle, dz, xyPixelSize, ...
+raw_dsr = deskewRotateFrame3D(im, Angle, dz, xyPixelSize, ...
     'reverse', Reverse, 'Crop', true, 'ObjectiveScan', ObjectiveScan, ...
-    'resample', resample, 'Interp', Interp);
-raw_dsr_crop = crop3d_mex(uint16(raw_dsr), bbox);
+    'resample', resample, 'Interp', Interp, 'save16bit', save16bit);
+raw_dsr_crop = crop3d_mex(raw_dsr, bbox);
 clear raw_dsr;
 
-rl_dsr = deskewRotateFrame3D(single(rl_decon), Angle, dz, xyPixelSize, ...
+rl_dsr = deskewRotateFrame3D(rl_decon, Angle, dz, xyPixelSize, ...
     'reverse', Reverse, 'Crop', true, 'ObjectiveScan', ObjectiveScan, ...
-    'resample', resample, 'Interp', Interp);
-rl_dsr_crop = crop3d_mex(uint16(rl_dsr), bbox);
+    'resample', resample, 'Interp', Interp, 'save16bit', save16bit);
+rl_dsr_crop = crop3d_mex(rl_dsr, bbox);
 clear rl_dsr;
 
-wb_dsr = deskewRotateFrame3D(single(wb_decon), Angle, dz, xyPixelSize, ...
+wb_dsr = deskewRotateFrame3D(wb_decon, Angle, dz, xyPixelSize, ...
     'reverse', Reverse, 'Crop', true, 'ObjectiveScan', ObjectiveScan, ...
-    'resample', resample, 'Interp', Interp);
-wb_dsr_crop = crop3d_mex(uint16(wb_dsr), bbox);
+    'resample', resample, 'Interp', Interp, 'save16bit', save16bit);
+wb_dsr_crop = crop3d_mex(wb_dsr, bbox);
 clear wb_dsr;
 
-omw_dsr = deskewRotateFrame3D(single(omw_decon), Angle, dz, xyPixelSize, ...
+omw_dsr = deskewRotateFrame3D(omw_decon, Angle, dz, xyPixelSize, ...
     'reverse', Reverse, 'Crop', true, 'ObjectiveScan', ObjectiveScan, ...
-    'resample', resample, 'Interp', Interp);
-omw_dsr_crop = crop3d_mex(uint16(omw_dsr), bbox);
+    'resample', resample, 'Interp', Interp, 'save16bit', save16bit);
+omw_dsr_crop = crop3d_mex(omw_dsr, bbox);
 clear omw_dsr;
 
 

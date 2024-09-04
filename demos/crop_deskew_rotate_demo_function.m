@@ -35,20 +35,20 @@ Reverse = true;
 ObjectiveScan = false;
 resample = [];
 Interp = 'linear';
+% direct input and output as 16 bit while actual deskew/rotation in single
+save16bit = true;
 
-dsr = deskewRotateFrame3D(single(im), skewAngle, dz, xyPixelSize, 'reverse', Reverse, ...
-    'Crop', true, 'ObjectiveScan', ObjectiveScan, 'resample', resample, 'Interp', Interp);
+dsr = deskewRotateFrame3D(im, skewAngle, dz, xyPixelSize, 'reverse', Reverse, ...
+    'Crop', true, 'ObjectiveScan', ObjectiveScan, 'resample', resample, 'Interp', Interp, ...
+    'save16bit', save16bit);
 
-% convert image to uint16
-dsr = uint16(dsr);
-
-% write the image to disk with the given file name
+% write the image to disk with the given file nameedit demos/demo_RL_deconvolution.m
 % also to ensure the result file is complete, we first write to an
 % temporary file, and then rename the temporary file to the final output file
 
 % get uuid
 uuid = get_uuid();
-tmpFn = sprintf('%s_%s.tif', outputFullpath(1 : end - 4));
+tmpFn = sprintf('%s_%s.tif', outputFullpath(1 : end - 4), uuid);
 
 % write to temporary file
 writetiff(dsr, tmpFn);
