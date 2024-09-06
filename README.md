@@ -5,7 +5,7 @@ Tools for efficient and scalable processing of petabyte-scale 5D live images or 
 ## Hardware
 The software works best on a Slurm-based Linux computing cluster with multiple CPU and GPU nodes for scalable, large-scale processing. For CPU nodes, we recommend at least 16 GB of RAM per core. For GPU nodes, we currently only support NVIDIA GPUs and recommend at least 24 GB of VRAM per GPU.
 
-The software can also run on a single workstation for smaller-scale image processing tasks (up to ~1 TB, otherwise may take very long). We recommend at least 64 GB of RAM, although a smaller size may still work. For relative large images that cause memory issues, we suggest converting the images to Zarr format and applying large-scale processing strategies.
+The software can also run on a single workstation for smaller-scale image processing tasks (up to ~1 TB, otherwise may take very long). We recommend at least 256 GB of RAM, although a smaller size may still work depending on data sizes and specific processing tasks. For relative large datasets that cause memory issues, we suggest converting the images to Zarr format and applying large-scale processing strategies.
 
 ## Usage
 
