@@ -14,10 +14,10 @@ ip.addParameter('Rotate', false, @(x) islogical(x) || ischar(x));
 ip.addParameter('Deskew', false, @(x) islogical(x) || ischar(x));
 ip.addParameter('SkewAngle', -32.45, @(x) isnumeric(x) || ischar(x));
 ip.addParameter('flipZstack', false, @(x) islogical(x) || ischar(x)); 
+ip.addParameter('Reverse', true, @(x) islogical(x) || ischar(x));
 ip.addParameter('Background', [], @(x) isnumeric(x) || ischar(x));
 ip.addParameter('EdgeSoften', 5, @(x) isnumeric(x) || ischar(x)); % # ofxy px to soften
 ip.addParameter('zEdgeSoften', 2, @(x) isnumeric(x) || ischar(x)); % # ofxy px to soften
-ip.addParameter('Crop', [], @(x) isnumeric(x) || ischar(x)); % requires lower and higher values for cropping
 ip.addParameter('dzPSF', 0.1 , @(x) isnumeric(x) || ischar(x)); %in um
 ip.addParameter('DeconIter', 15 , @(x) isnumeric(x) || ischar(x)); % number of iterations
 ip.addParameter('EdgeErosion', 8 , @(x) isnumeric(x) || ischar(x)); % erode edges for certain size.
@@ -26,6 +26,7 @@ ip.addParameter('SaveMaskfile', false, @(x) islogical(x) || ischar(x)); % save m
 ip.addParameter('RLMethod', 'simplified' , @ischar); % rl method {'original', 'simplified', 'cudagen'}
 ip.addParameter('wienerAlpha', 0.005, @(x) isnumeric(x) || ischar(x)); 
 ip.addParameter('OTFCumThresh', 0.9, @(x) isnumeric(x) || ischar(x)); % OTF cumutative sum threshold
+ip.addParameter('hannWinBounds', [0.8, 1.0], @(x) isnumeric(x) || ischar(x)); % apodization range for distance matrix
 ip.addParameter('skewed', [], @(x) isempty(x) || islogical(x) || ischar(x)); % decon in skewed space
 ip.addParameter('fixIter', false, @(x) islogical(x) || ischar(x)); % CPU Memory in Gb
 ip.addParameter('errThresh', [], @(x) isnumeric(x) || ischar(x)); % error threshold for simplified code
@@ -35,6 +36,8 @@ ip.addParameter('blockSize', [256, 256, 256], @(x) isnumeric(x) || ischar(x)); %
 ip.addParameter('largeFile', false, @(x) islogical(x) || ischar(x));
 ip.addParameter('largeMethod', 'inmemory', @ischar); % memory jobs, memory single, inplace. 
 ip.addParameter('saveZarr', false, @(x) islogical(x) || ischar(x)); % save as zarr
+ip.addParameter('save3Dstack', [true, true, true], @(x) islogical(x) || ischar(x)); % save 3d stack
+ip.addParameter('mipAxis', [0, 0, 1], @(x) isnumeric(x) || ischar(x)); % save MIPs, in y, x, z
 ip.addParameter('dampFactor', 1, @(x) isnumeric(x) || ischar(x)); % damp factor for decon result
 ip.addParameter('scaleFactor', [], @(x) isnumeric(x) || ischar(x)); % scale factor for decon result
 ip.addParameter('deconOffset', 0, @(x) isnumeric(x) || ischar(x)); % offset for decon result
@@ -66,10 +69,10 @@ Rotate = pr.Rotate;
 Deskew = pr.Deskew;
 SkewAngle = pr.SkewAngle;
 flipZstack = pr.flipZstack;
+Reverse = pr.Reverse;
 Background = pr.Background;
 EdgeSoften = pr.EdgeSoften;
 zEdgeSoften = pr.zEdgeSoften;
-Crop = pr.Crop;
 dzPSF = pr.dzPSF;
 DeconIter = pr.DeconIter;
 EdgeErosion = pr.EdgeErosion;
@@ -78,6 +81,7 @@ SaveMaskfile = pr.SaveMaskfile;
 RLMethod = pr.RLMethod;
 wienerAlpha = pr.wienerAlpha;
 OTFCumThresh = pr.OTFCumThresh;
+hannWinBounds = pr.hannWinBounds;
 skewed = pr.skewed;
 fixIter = pr.fixIter;
 errThresh = pr.errThresh;
@@ -87,6 +91,8 @@ blockSize = pr.blockSize;
 largeFile = pr.largeFile;
 largeMethod = pr.largeMethod;
 saveZarr = pr.saveZarr;
+save3Dstack = pr.save3Dstack;
+mipAxis = pr.mipAxis;
 dampFactor = pr.dampFactor;
 scaleFactor = pr.scaleFactor;
 deconOffset = pr.deconOffset;
@@ -135,6 +141,9 @@ end
 if ischar(flipZstack)
     flipZstack = str2num(flipZstack);
 end
+if ischar(Reverse)
+    Reverse = str2num(Reverse);
+end
 if ischar(Background)
     Background = str2num(Background);
 end
@@ -143,9 +152,6 @@ if ischar(EdgeSoften)
 end
 if ischar(zEdgeSoften)
     zEdgeSoften = str2num(zEdgeSoften);
-end
-if ischar(Crop)
-    Crop = str2num(Crop);
 end
 if ischar(dzPSF)
     dzPSF = str2num(dzPSF);
@@ -164,6 +170,9 @@ if ischar(wienerAlpha)
 end
 if ischar(OTFCumThresh)
     OTFCumThresh = str2num(OTFCumThresh);
+end
+if ischar(hannWinBounds)
+    hannWinBounds = str2num(hannWinBounds);
 end
 if ischar(skewed)
     skewed = str2num(skewed);
@@ -188,6 +197,12 @@ if ischar(largeFile)
 end
 if ischar(saveZarr)
     saveZarr = str2num(saveZarr);
+end
+if ischar(save3Dstack)
+    save3Dstack = str2num(save3Dstack);
+end
+if ischar(mipAxis)
+    mipAxis = str2num(mipAxis);
 end
 if ischar(dampFactor)
     dampFactor = str2num(dampFactor);
@@ -240,17 +255,18 @@ end
 
 XR_RLdeconFrame3D(frameFullpaths, xyPixelSize, dz, deconPath, PSFfile=PSFfile, ...
     Overwrite=Overwrite, save16bit=save16bit, Rotate=Rotate, Deskew=Deskew, ...
-    SkewAngle=SkewAngle, flipZstack=flipZstack, Background=Background, EdgeSoften=EdgeSoften, ...
-    zEdgeSoften=zEdgeSoften, Crop=Crop, dzPSF=dzPSF, DeconIter=DeconIter, EdgeErosion=EdgeErosion, ...
-    ErodeMaskfile=ErodeMaskfile, SaveMaskfile=SaveMaskfile, RLMethod=RLMethod, ...
-    wienerAlpha=wienerAlpha, OTFCumThresh=OTFCumThresh, skewed=skewed, fixIter=fixIter, ...
-    errThresh=errThresh, CPUMaxMem=CPUMaxMem, batchSize=batchSize, blockSize=blockSize, ...
-    largeFile=largeFile, largeMethod=largeMethod, saveZarr=saveZarr, dampFactor=dampFactor, ...
-    scaleFactor=scaleFactor, deconOffset=deconOffset, maskFullpaths=maskFullpaths, ...
-    parseCluster=parseCluster, parseParfor=parseParfor, masterCompute=masterCompute, ...
-    masterCPU=masterCPU, GPUJob=GPUJob, jobLogDir=jobLogDir, cpusPerTask=cpusPerTask, ...
-    uuid=uuid, maxTrialNum=maxTrialNum, unitWaitTime=unitWaitTime, debug=debug, ...
-    saveStep=saveStep, psfGen=psfGen, mccMode=mccMode, configFile=configFile, ...
+    SkewAngle=SkewAngle, flipZstack=flipZstack, Reverse=Reverse, Background=Background, ...
+    EdgeSoften=EdgeSoften, zEdgeSoften=zEdgeSoften, dzPSF=dzPSF, DeconIter=DeconIter, ...
+    EdgeErosion=EdgeErosion, ErodeMaskfile=ErodeMaskfile, SaveMaskfile=SaveMaskfile, ...
+    RLMethod=RLMethod, wienerAlpha=wienerAlpha, OTFCumThresh=OTFCumThresh, ...
+    hannWinBounds=hannWinBounds, skewed=skewed, fixIter=fixIter, errThresh=errThresh, ...
+    CPUMaxMem=CPUMaxMem, batchSize=batchSize, blockSize=blockSize, largeFile=largeFile, ...
+    largeMethod=largeMethod, saveZarr=saveZarr, save3Dstack=save3Dstack, mipAxis=mipAxis, ...
+    dampFactor=dampFactor, scaleFactor=scaleFactor, deconOffset=deconOffset, ...
+    maskFullpaths=maskFullpaths, parseCluster=parseCluster, parseParfor=parseParfor, ...
+    masterCompute=masterCompute, masterCPU=masterCPU, GPUJob=GPUJob, jobLogDir=jobLogDir, ...
+    cpusPerTask=cpusPerTask, uuid=uuid, maxTrialNum=maxTrialNum, unitWaitTime=unitWaitTime, ...
+    debug=debug, saveStep=saveStep, psfGen=psfGen, mccMode=mccMode, configFile=configFile, ...
     GPUConfigFile=GPUConfigFile);
 
 end
