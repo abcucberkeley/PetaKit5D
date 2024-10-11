@@ -73,7 +73,7 @@ demo_skewed_space_stitching
 % Cam A
 psfFn = [dataPath, 'PSF/560_c.tif'];
 % OTF thresholding parameter
-OTFCumThresh = 0.9;
+OTFCumThresh = 0.88;
 % true if the PSF is in skew space
 skewed = true;
 XR_visualize_OTF_mask_segmentation(psfFn, OTFCumThresh, skewed);
@@ -131,7 +131,7 @@ RLmethod = 'omw';
 % typically 0.002 - 0.01 for SNR ~20; 0.02 - 0.1 or higher for SNR ~7
 wienerAlpha = [0.05, 0.005];
 % OTF thresholding parameter
-OTFCumThresh = 0.9;
+OTFCumThresh = [0.88, 0.9];
 % true if the PSF is in skew space
 skewed = true;
 % deconvolution result path string (within dataPath)
