@@ -144,6 +144,7 @@ deconIter = pr.deconIter;
 RLMethod = pr.RLMethod;
 wienerAlpha = pr.wienerAlpha;
 OTFCumThresh = pr.OTFCumThresh;
+hannWinBounds = pr.hannWinBounds;
 skewed = pr.skewed;
 GPUJob = pr.GPUJob;
 % simplified version related options
@@ -236,7 +237,7 @@ deconName = resultDirName;
 if isempty(deconName)
     deconName = 'matlab_decon';
 end
-    
+
 deconPaths = cell(nd, 1);
 for d = 1 : nd
     dataPath = dataPaths{d};
@@ -250,7 +251,7 @@ for d = 1 : nd
         fileattrib(deconPath, '+w', 'g');
     end
     deconPaths{d} = deconPath;
-    
+
     % save decon parameters
     save('-v7.3', [deconPath, '/parameters.mat'], 'pr');
     writetable(struct2table(pr, 'AsArray', true), [deconPath, '/parameters.txt'])
@@ -264,7 +265,7 @@ for f = 1 : numel(psfFullpaths)
     if psfGen 
         fprintf('PSF generation for %s ...\n', psfFn);
         [~, psfFsn] = fileparts(psfFn);
-        
+
         medFactor = 1.5;
         PSFGenMethod = 'masked';
         psf = single(readtiff(psfFn));
@@ -281,7 +282,7 @@ for f = 1 : numel(psfFullpaths)
             bbox = [cropSz + 1, size(psf, 1 : 3) - cropSz];
             psf = psf(bbox(1) : bbox(4), bbox(2) : bbox(5), bbox(3) : bbox(6));
         end
-        
+
         for d = 1 : nd 
             dataPath = dataPaths{d};
             psfgen_filename = sprintf('%s/%s/psfgen/%s_%s.tif', dataPath, deconName, psfFsn, RLMethod);
@@ -357,7 +358,7 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
                         
         deconPath = deconPaths{fdind};
         if saveZarr
-            deconFullpath = sprintf('%s/%s.zarr', deconPath, fsname);                
+            deconFullpath = sprintf('%s/%s.zarr', deconPath, fsname);
         else
             deconFullpath = sprintf('%s/%s.tif', deconPath, fsname);
         end
@@ -381,7 +382,7 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
                 SaveMaskfile = true;
                 % if decon result exist, but mask file not exist, rerun
                 % it to save the mask. 
-                if is_done_flag(f, 1) && ~exist(erodeMaskFullpaths{fdind}, 'file')
+                if is_done_flag(f, 1) && ~exist(erodeMaskFullpaths{fdind}, 'dir')
                     is_done_flag(f, 1) = false;
                     delete(deconFullpath);
                 end
@@ -389,7 +390,7 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
                 % only check for the ones not finished. 
                 if ~is_done_flag(f, 1)
                     erodeMaskFullpath = erodeMaskFullpaths{fdind};
-                    if ~exist(erodeMaskFullpath, 'file')
+                    if ~exist(erodeMaskFullpath, 'dir')
                         continue;
                     end
 
@@ -414,12 +415,12 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
             scaleFactor_f = scaleFactor(psfMapping);
             flipZstack = flipZstack_mat(f);
             maskFullpaths_str = sprintf('{''%s''}', strjoin(maskFullpaths, ''','''));
-            
+
             func_str = sprintf(['XR_RLdeconFrame3D(''%s'',%.10f,%.10f,''%s'',''PSFfile'',''%s'',', ...
                 '''dzPSF'',%.10f,''background'',[%d],''skewAngle'',%d,''flipZstack'',%s,', ...
                 '''edgeErosion'',%d,''ErodeMaskfile'',''%s'',''SaveMaskfile'',%s,''Rotate'',%s,', ...
                 '''deconIter'',%d,''RLMethod'',''%s'',''wienerAlpha'',%.20f,''OTFCumThresh'',%.20f,', ...
-                '''skewed'',[%s],''debug'',%s,''saveStep'',%d,''psfGen'',%s,''saveZarr'',%s,', ...
+                '''hannWinBounds'',%s,''skewed'',[%s],''debug'',%s,''saveStep'',%d,''psfGen'',%s,''saveZarr'',%s,', ...
                 '''parseCluster'',%s,''parseParfor'',%s,''GPUJob'',%s,''save16bit'',%s,', ...
                 '''largeFile'',%s,''largeMethod'',''%s'',''batchSize'',%s,''blockSize'',%s,', ...
                 '''dampFactor'',%d,''scaleFactor'',[%d],''deconOffset'',%d,''maskFullpaths'',%s,', ...
@@ -427,13 +428,14 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
                 dcframeFullpath, xyPixelSize, dc_dz, deconPath, psfFullpath, ...
                 dc_dzPSF, background, skewAngle, string(flipZstack), edgeErosion, ...
                 erodeMaskFullpath, string(SaveMaskfile), string(deconRotate), deconIter_f, ...
-                RLMethod, wienerAlpha_f, OTFCumThresh_f, string(skewed), string(debug), ...
-                saveStep, string(psfGen), string(saveZarr), string(parseCluster), ...
-                string(parseParfor), string(GPUJob), string(save16bit), string(largeFile), ...
-                largeMethod, strrep(mat2str(batchSize), ' ', ','), strrep(mat2str(blockSize), ' ', ','), ...
-                dampFactor, scaleFactor_f, deconOffset, maskFullpaths_str, uuid, ...
-                cpusPerTask, string(mccMode), configFile, GPUConfigFile);
-            
+                RLMethod, wienerAlpha_f, OTFCumThresh_f, mat2str_comma(hannWinBounds), ...
+                string(skewed), string(debug), saveStep, string(psfGen), string(saveZarr), ...
+                string(parseCluster), string(parseParfor), string(GPUJob), string(save16bit), ...
+                string(largeFile), largeMethod, strrep(mat2str(batchSize), ' ', ','), ...
+                strrep(mat2str(blockSize), ' ', ','), dampFactor, scaleFactor_f, ...
+                deconOffset, maskFullpaths_str, uuid, cpusPerTask, string(mccMode), ...
+                configFile, GPUConfigFile);
+
             if exist(dctmpFullpath, 'file') || parseCluster
                 if parseCluster
                     dsz = getImageSize(dcframeFullpath);
@@ -450,7 +452,7 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
                             memAllocate = prod(batchSize) * 4 / 2^30 * 20;
                         else
                             cur_configFile = GPUConfigFile;
-                        end                        
+                        end
                     end
 
                     job_id = job_ids(f, 1);
@@ -479,7 +481,7 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
                 fprintf('\n');
                 trial_counter(f, 1) = trial_counter(f, 1) + 1;
             end
-            
+
             % check if computing is done
             if exist(deconFullpath, 'file') || (saveZarr && exist(deconFullpath, 'dir'))
                 is_done_flag(f, 1) = true;
@@ -489,7 +491,7 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
             end
         end
     end
-    
+
     % wait for running jobs finishing and checking for new coming images
     if ~all(is_done_flag | trial_counter >= maxTrialNum, 'all') 
         pause(30);

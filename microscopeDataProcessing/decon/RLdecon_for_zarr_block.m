@@ -36,6 +36,7 @@ ip.addParameter('maskFullpaths', {} , @iscell); % Full paths of 2D mask zarr fil
 ip.addParameter('RLMethod', 'simplified' , @ischar); % rl method {'original', 'simplified', 'cudagen'}
 ip.addParameter('wienerAlpha', 0.005, @isnumeric);
 ip.addParameter('OTFCumThresh', 0.9, @isnumeric); % OTF cumutative sum threshold
+ip.addParameter('hannWinBounds', [0.8, 1.0], @isnumeric); % apodization range for distance matrix
 ip.addParameter('skewed', [], @(x) isempty(x) || islogical(x)); % decon in skewed space
 ip.addParameter('fixIter', false, @islogical); % CPU Memory in Gb
 ip.addParameter('useGPU', false, @islogical); % use gpu for chuck deconvolution. 
@@ -63,6 +64,7 @@ RLMethod = pr.RLMethod;
 skewed = pr.skewed;
 wienerAlpha = pr.wienerAlpha;
 OTFCumThresh = pr.OTFCumThresh;
+hannWinBounds = pr.hannWinBounds;
 useGPU = pr.useGPU;
 uuid = pr.uuid;
 psfGen = pr.psfGen;
@@ -150,9 +152,10 @@ for i = 1 : numel(batchInds)
         'Deskew', Deskew, 'Rotate', Rotate, 'DSRCombined', DSRCombined, 'Reverse', Reverse, ...
         'Background', Background, 'DeconIter', DeconIter, 'RLMethod', RLMethod, ...
         'skewed', skewed, 'wienerAlpha', wienerAlpha, 'OTFCumThresh', OTFCumThresh, ...
-        'fixIter', fixIter, 'dampFactor', dampFactor, 'scaleFactor', scaleFactor, 'deconOffset', deconOffset, ...
-        'EdgeErosion', EdgeErosion, 'deconBbox', deconBbox, 'useGPU', useGPU, ...
-        'psfGen', psfGen, 'debug', debug, 'save3Dstack', save3Dstack, 'mipAxis', mipAxis);
+        'hannWinBounds', hannWinBounds, 'fixIter', fixIter, 'dampFactor', dampFactor, ...
+        'scaleFactor', scaleFactor, 'deconOffset', deconOffset, 'EdgeErosion', EdgeErosion, ...
+        'deconBbox', deconBbox, 'useGPU', useGPU, 'psfGen', psfGen, 'debug', debug, ...
+        'save3Dstack', save3Dstack, 'mipAxis', mipAxis);
     
     clear in_batch;
 

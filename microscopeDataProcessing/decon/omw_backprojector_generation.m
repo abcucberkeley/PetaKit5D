@@ -11,7 +11,7 @@ ip.addRequired('alpha');
 ip.addRequired('skewed'); 
 ip.addParameter('OTFCumThresh', 0.9, @isnumeric);
 ip.addParameter('OTFAreaThresh', 100, @isnumeric);
-ip.addParameter('hanWinBounds', [0.8, 1], @(x) isnumeric(x) && numel(x) == 2);
+ip.addParameter('hannWinBounds', [0.8, 1], @(x) isnumeric(x) && numel(x) == 2);
 ip.addParameter('minIntThrsh', 1e-3, @(x) isnumeric(x));
 
 ip.parse(psf, alpha, skewed, varargin{:});
@@ -19,7 +19,7 @@ ip.parse(psf, alpha, skewed, varargin{:});
 pr = ip.Results;
 otf_thresh = pr.OTFCumThresh;
 area_thresh = pr.OTFAreaThresh;
-han_bounds = pr.hanWinBounds;
+han_bounds = pr.hannWinBounds;
 minIntThrsh = pr.minIntThrsh;
 
 if isempty(psf) || all(psf == 0, 'all')

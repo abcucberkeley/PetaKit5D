@@ -31,10 +31,11 @@ ip.addParameter('Rotate', false, @islogical);
 ip.addParameter('Deskew', false, @islogical);
 ip.addParameter('SkewAngle', -32.45, @isnumeric);
 ip.addParameter('flipZstack', false, @islogical); 
+ip.addParameter('Reverse', true, @islogical);
 ip.addParameter('Background', [], @isnumeric);
 ip.addParameter('EdgeSoften', 5, @isnumeric); % # ofxy px to soften
 ip.addParameter('zEdgeSoften', 2, @isnumeric); % # ofxy px to soften
-ip.addParameter('Crop', [], @isnumeric); % requires lower and higher values for cropping
+% ip.addParameter('Crop', [], @isnumeric); % requires lower and higher values for cropping
 ip.addParameter('dzPSF', 0.1 , @isnumeric); %in um
 ip.addParameter('DeconIter', 15 , @isnumeric); % number of iterations
 ip.addParameter('EdgeErosion', 8 , @isnumeric); % erode edges for certain size.
@@ -44,6 +45,7 @@ ip.addParameter('SaveMaskfile', false, @islogical); % save mask file for common 
 ip.addParameter('RLMethod', 'simplified' , @ischar); % rl method {'original', 'simplified', 'cudagen'}
 ip.addParameter('wienerAlpha', 0.005, @isnumeric); 
 ip.addParameter('OTFCumThresh', 0.9, @isnumeric); % OTF cumutative sum threshold
+ip.addParameter('hannWinBounds', [0.8, 1.0], @isnumeric); % apodization range for distance matrix
 ip.addParameter('skewed', [], @(x) isempty(x) || islogical(x)); % decon in skewed space
 ip.addParameter('fixIter', false, @islogical); % CPU Memory in Gb
 ip.addParameter('errThresh', [], @isnumeric); % error threshold for simplified code
@@ -53,6 +55,8 @@ ip.addParameter('blockSize', [256, 256, 256], @isnumeric); % block overlap
 ip.addParameter('largeFile', false, @islogical);
 ip.addParameter('largeMethod', 'inmemory', @ischar); % memory jobs, memory single, inplace. 
 ip.addParameter('saveZarr', false, @islogical); % save as zarr
+ip.addParameter('save3Dstack', [true, true, true], @islogical); % save 3d stack
+ip.addParameter('mipAxis', [0, 0, 1], @isnumeric); % save MIPs, in y, x, z
 ip.addParameter('dampFactor', 1, @isnumeric); % damp factor for decon result
 ip.addParameter('scaleFactor', [], @isnumeric); % scale factor for decon result
 ip.addParameter('deconOffset', 0, @isnumeric); % offset for decon result
@@ -94,20 +98,19 @@ Deskew = pr.Deskew;
 SkewAngle = pr.SkewAngle;
 flipZstack = pr.flipZstack;
 Rotate = pr.Rotate;
+Reverse = pr.Reverse;
 save16bit = pr.save16bit;
-Crop = pr.Crop;
+% Crop = pr.Crop;
 RLMethod = lower(pr.RLMethod);
 wienerAlpha = pr.wienerAlpha;
 OTFCumThresh = pr.OTFCumThresh;
+hannWinBounds = pr.hannWinBounds;
 skewed = pr.skewed;
 GPUJob = pr.GPUJob;
 
 EdgeErosion = pr.EdgeErosion;
 
 ErodeMaskfile = pr.ErodeMaskfile;
-if ~isempty(ErodeMaskfile) && exist(ErodeMaskfile, 'file')
-    EdgeErosion = 0; % set EdgeErosion length as 0.
-end
 SaveMaskfile = pr.SaveMaskfile;
 
 % check if background information available. Currently use 100. 
@@ -129,6 +132,9 @@ blockSize = pr.blockSize;
 largeFile = pr.largeFile;
 largeMethod = pr.largeMethod;
 saveZarr = pr.saveZarr;
+save3Dstack = pr.save3Dstack;
+mipAxis = pr.mipAxis;
+
 dampFactor = pr.dampFactor;
 scaleFactor = pr.scaleFactor;
 deconOffset = pr.deconOffset;
@@ -139,7 +145,6 @@ parseParfor = pr.parseParfor;
 jobLogDir = pr.jobLogDir;
 cpusPerTask = pr.cpusPerTask;
 masterCompute = pr.masterCompute;
-maxTrialNum = pr.maxTrialNum;
 uuid = pr.uuid;
 mccMode = pr.mccMode;
 configFile = pr.configFile;
@@ -158,6 +163,13 @@ if parseCluster
     end
 end
 
+save3Dstack(2) = save3Dstack(2) & Deskew;
+save3Dstack(3) = save3Dstack(3) & Rotate;
+
+if ~largeFile && ~any(save3Dstack) && ~any(mipAxis > 0)
+    error('Either the 3D stack or the MIP for at least one axis needs to be saved!')
+end
+
 nF = numel(frameFullpaths);
 for f = 1 : nF
     frameFullpath = frameFullpaths{f};
@@ -171,7 +183,10 @@ for f = 1 : nF
         deconPath = [pathstr, '/', 'matlab_decon'];
         mkdir(deconPath);
     end 
-
+    if save3Dstack(3)
+        DSRPath = sprintf('%s/DSR/', deconPath);
+        mkdir(DSRPath);
+    end
     % check file size
     % [estMem] = XR_estimateComputingMemory(frameFullpath, {'deconvolution'}, 'cudaDecon', false);
     imSize = getImageSize(frameFullpath);
@@ -188,12 +203,19 @@ for f = 1 : nF
     else
         deconFullPath = [deconPath '/' fsname '.tif'];
     end
+    if save3Dstack(3)
+        if saveZarr
+            dsrFullPath = [DSRPath '/' fsname '.zarr'];
+        else
+            dsrFullPath = [DSRPath '/' fsname '.tif'];
+        end
+    end    
     if (exist(deconFullPath, 'file') || (saveZarr && exist(deconFullPath, 'dir'))) && ~pr.Overwrite
         disp('Deconvolution results already exist, skip it!');
         continue;
     end
     if ~largeFile
-        if EdgeErosion > 0
+        if EdgeErosion > 0 && SaveMaskfile
             fprintf('Create eroded masks using raw data...\n');
             switch ext
                 case {'.tif', '.tiff'}
@@ -201,88 +223,55 @@ for f = 1 : nF
                 case '.zarr'
                     im_raw = readzarr(frameFullpath);
             end
-                    
+
             if flipZstack
                 im_raw = flip(im_raw, 3);
             end
-                
-            im_bw_erode = im_raw > 0;
-            clear im_raw;
-            im_bw_erode([1, end], :, :) = false;
-            im_bw_erode(:, [1, end], :) = false;
-            im_bw_erode(:, :, [1, end]) = false;
-            im_bw_erode = bwdist(~im_bw_erode) > EdgeErosion - 1;
             
+            im_bw_erode = decon_mask_edge_erosion(im_raw > 0, EdgeErosion);
+            clear im_raw;
+
             % save mask file as common one for other time points/channels
             if SaveMaskfile
                 maskPath = [deconPath, '/', 'Masks'];
                 if ~exist(maskPath, 'dir')
                     mkdir(maskPath);
                 end
-                maskFullPath = sprintf('%s/%s_eroded.tif', maskPath, fsname);
-                maskTmpPath = sprintf('%s/%s_eroded_%s.tif', maskPath, fsname, uuid);
-                writetiff(uint8(im_bw_erode), maskTmpPath);
+                maskFullPath = sprintf('%s/%s_eroded.zarr', maskPath, fsname);
+                maskTmpPath = sprintf('%s/%s_eroded_%s.zarr', maskPath, fsname, uuid);
+                writezarr(uint8(im_bw_erode), maskTmpPath, 'blockSize', blockSize);
+                if exist(maskFullPath, 'dir')
+                    rmdirs(maskFullPath, 's');
+                end
                 movefile(maskTmpPath, maskFullPath);
             end
+            ErodeMaskfile = maskFullPath;
         end
-    end
 
-    if ~largeFile
-        deconTmpPath = sprintf('%s_%s_decon.tif', deconFullPath(1:end-10), uuid); 
+        % deconTmpPath = sprintf('%s_%s_decon.tif', deconFullPath(1:end-10), uuid); 
         inputFn = frameFullpath;
-        outputFn = deconTmpPath;
+        outputFn = deconFullPath;
         DSRCombined = true;
-        Reverse = true;
-        save3Dstack = [false, false, false];
-        mipAxis = [0, 0, 0];
-    
-        im = RLdecon(inputFn, outputFn, PSFfile, xyPixelSize, dz, dzPSF, ...
-            'rawdata', [], 'save16bit', save16bit, 'SkewAngle', SkewAngle, ...
-            'Deskew', Deskew, 'Rotate', Rotate, 'DSRCombined', DSRCombined, ...
-            'Reverse', Reverse, 'Background', Background, 'DeconIter', DeconIter, ...
-            'RLMethod', RLMethod, 'skewed', skewed, 'wienerAlpha', wienerAlpha, ...
-            'OTFCumThresh', OTFCumThresh, 'fixIter', fixIter, 'dampFactor', dampFactor, ...
-            'scaleFactor', scaleFactor, 'deconOffset', deconOffset, 'errThresh', errThresh, ...
-            'saveStep', saveStep, 'useGPU', GPUJob, 'psfGen', psfGen, 'debug', debug, ...
-            'save3Dstack', save3Dstack, 'mipAxis', mipAxis);
-        % toc
+        % Reverse = true;
+        % save3Dstack = [false, false, false];
+        % mipAxis = [0, 0, 0];
 
-        if EdgeErosion > 0
-            fprintf('Erode edges of deconvolved data w.r.t. raw data...\n');        
-            im = im .* cast(im_bw_erode, class(im));
-        end
+        t0 = tic;
+        RLdecon(inputFn, outputFn, PSFfile, xyPixelSize, dz, dzPSF, 'rawdata', [], ...
+            'save16bit', save16bit, 'SkewAngle', SkewAngle, 'Deskew', Deskew, ...
+            'Rotate', Rotate, 'DSRCombined', DSRCombined, 'Reverse', Reverse, ...
+            'Background', Background, 'DeconIter', DeconIter, 'RLMethod', RLMethod, ...
+            'skewed', skewed, 'wienerAlpha', wienerAlpha, 'OTFCumThresh', OTFCumThresh, ...
+            'hannWinBounds', hannWinBounds, 'saveZarr', saveZarr, 'blockSize', blockSize, ...
+            'fixIter', fixIter, 'dampFactor', dampFactor, 'scaleFactor', scaleFactor, ...
+            'deconOffset', deconOffset, 'EdgeErosion', EdgeErosion, 'ErodeMaskfile', ErodeMaskfile, ...
+            'errThresh', errThresh, 'saveStep', saveStep, 'useGPU', GPUJob, ...
+            'psfGen', psfGen, 'debug', debug, 'save3Dstack', save3Dstack, 'mipAxis', mipAxis);
 
-        if ~isempty(ErodeMaskfile) && exist(ErodeMaskfile, 'file')
-            fprintf('Erode edges of deconvolved data using a predefined mask...\n');    
-            im_bw_erode = readtiff(ErodeMaskfile);
-            im = im .* cast(im_bw_erode, class(im));
-        end
-        deconTmpPath_eroded = sprintf('%s_%s_eroded.tif', deconFullPath(1:end-4), uuid);
-        if save16bit
-            im = uint16(im);
-        else
-            im = single(im);
-        end
-        
-        if saveZarr
-            writezarr(im, deconTmpPath_eroded, 'blockSize', blockSize);
-        else
-            writetiff(im, deconTmpPath_eroded);
-        end
-        movefile(deconTmpPath_eroded, deconFullPath);
-        delete(deconTmpPath);
-        deconTmpMIPPath = sprintf('%s/%s_%s_MIP_z.tif', deconPath, fsname, uuid); 
-        delete(deconTmpMIPPath);
-
-        deconMIPPath = sprintf('%s/MIPs/', deconPath);
-        if ~exist(deconMIPPath, 'dir')
-            mkdir(deconMIPPath);
-        end
-        deconMIPFullPath = sprintf('%s%s_MIP_z.tif', deconMIPPath, fsname);
-        writetiff(max(im,[],3), deconMIPFullPath);
-        % toc
-        if exist(deconFullPath, 'file')
+        if (save3Dstack(1) && (exist(deconFullPath, 'file') || exist(deconFullPath, 'dir'))) ...
+                || (save3Dstack(3) && (exist(dsrFullPath, 'file') || exist(dsrFullPath, 'dir')))
             fprintf('Done! ');
+            toc(t0);
             continue;
         end
     end
@@ -296,28 +285,28 @@ for f = 1 : nF
             'save16bit', save16bit, 'Deskew', Deskew, 'SkewAngle', SkewAngle, ...
             'flipZstack', flipZstack, 'Background', Background, 'dzPSF', dzPSF, ...
             'DeconIter', DeconIter, 'RLMethod', RLMethod, 'skewed', skewed, ...
-            'wienerAlpha', wienerAlpha, 'OTFCumThresh', OTFCumThresh, 'fixIter', fixIter, ...
-            'batchSize', batchSize, 'blockSize', blockSize, 'dampFactor', dampFactor, ...
-            'scaleFactor', scaleFactor, 'deconOffset', deconOffset, 'EdgeErosion', EdgeErosion, ...
-            'maskFullpaths', maskFullpaths, 'parseCluster', parseCluster, ...
+            'wienerAlpha', wienerAlpha, 'OTFCumThresh', OTFCumThresh, 'hannWinBounds', hannWinBounds, ...
+            'fixIter', fixIter, 'batchSize', batchSize, 'blockSize', blockSize, ...
+            'dampFactor', dampFactor, 'scaleFactor', scaleFactor, 'deconOffset', deconOffset, ...
+            'EdgeErosion', EdgeErosion, 'maskFullpaths', maskFullpaths, 'parseCluster', parseCluster, ...
             'parseParfor', parseParfor, 'masterCompute', masterCompute, 'jobLogDir', jobLogDir, ...
             'cpusPerTask', cpusPerTask, 'GPUJob', GPUJob, 'uuid', uuid, 'debug', debug, ...
             'psfGen', psfGen, 'mccMode', mccMode', 'configFile', configFile, ...
             'GPUConfigFile', GPUConfigFile);
         return;
     end
-    
+
     % to do: put the code below to a function as in memory computing
     if strcmpi(largeMethod, 'inmemory')
         RLdecon_large_in_memory(frameFullpath, PSFfile, deconFullPath, xyPixelSize, dz, ...
             'save16bit', save16bit, 'Deskew', Deskew, 'SkewAngle', SkewAngle, ...
             'flipZstack', flipZstack, 'Background', Background, 'dzPSF', dzPSF, ...
             'DeconIter', DeconIter, 'RLMethod', RLMethod, 'skewed', skewed, ...
-            'wienerAlpha', wienerAlpha, 'OTFCumThresh', OTFCumThresh, 'EdgeErosion', EdgeErosion, ...
-            'fixIter', fixIter,'batchSize', batchSize, 'saveZarr', saveZarr, ...
-            'dampFactor', dampFactor, 'scaleFactor', scaleFactor, 'deconOffset', deconOffset, ...
-            'maskFullpaths', maskFullpaths, 'useGPU', GPUJob, 'uuid', uuid, 'debug', debug, ...
-            'psfGen', psfGen);
+            'wienerAlpha', wienerAlpha, 'OTFCumThresh', OTFCumThresh, 'hannWinBounds', hannWinBounds, ...
+            'EdgeErosion', EdgeErosion, 'fixIter', fixIter,'batchSize', batchSize, ...
+            'saveZarr', saveZarr, 'dampFactor', dampFactor, 'scaleFactor', scaleFactor, ...
+            'deconOffset', deconOffset, 'maskFullpaths', maskFullpaths, 'useGPU', GPUJob, ...
+            'uuid', uuid, 'debug', debug, 'psfGen', psfGen);
         return;
     end
 end

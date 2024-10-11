@@ -33,6 +33,7 @@ ip.addParameter('DeconIter', 15 , @isnumeric); % number of iterations
 ip.addParameter('RLMethod', 'omw' , @ischar); % rl method {'original', 'simplified', 'omw', 'cudagen'}
 ip.addParameter('wienerAlpha', 0.005, @isnumeric); % alpha for wiener in OMW method
 ip.addParameter('OTFCumThresh', 0.9, @isnumeric); % OTF cumutative sum threshold
+ip.addParameter('hannWinBounds', [0.8, 1.0], @isnumeric); % apodization range for distance matrix
 ip.addParameter('skewed', [], @(x) isempty(x) || islogical(x)); % decon in skewed space
 ip.addParameter('fixIter', true, @islogical);
 ip.addParameter('errThresh', [], @isnumeric); % error threshold for simplified code
@@ -42,6 +43,7 @@ ip.addParameter('dampFactor', 1, @isnumeric); % damp factor for decon result
 ip.addParameter('scaleFactor', [], @isnumeric); % scale factor for result
 ip.addParameter('deconOffset', 0, @isnumeric); % offset for decon result
 ip.addParameter('EdgeErosion', 0, @isnumeric); % edge erosion for decon result
+ip.addParameter('ErodeMaskfile', '', @ischar); % erode mask file
 ip.addParameter('deconBbox', [], @isnumeric); % bounding box to crop data after decon
 ip.addParameter('debug', false, @islogical);
 ip.addParameter('saveStep', 5, @isnumeric); % save intermediate results every given iterations
@@ -77,6 +79,7 @@ nIter = pr.DeconIter;
 RLMethod = pr.RLMethod;
 wienerAlpha = pr.wienerAlpha;
 OTFCumThresh = pr.OTFCumThresh;
+hannWinBounds = pr.hannWinBounds;
 skewed = pr.skewed;
 fixIter = pr.fixIter;
 errThresh = pr.errThresh;
@@ -86,6 +89,7 @@ dampFactor = pr.dampFactor;
 scaleFactor = pr.scaleFactor;
 deconOffset = pr.deconOffset;
 EdgeErosion = pr.EdgeErosion;
+ErodeMaskfile = pr.ErodeMaskfile;
 deconBbox = pr.deconBbox;
 debug = pr.debug;
 saveStep = pr.saveStep;
@@ -293,7 +297,7 @@ switch RLMethod
             fprintf('OMW back projector generation for %s ...\n', PSFfn);        
             
             bpTmpFn = sprintf('%s/%s_back_projector_alpha_%0.6f_otf_cum_thresh_%0.6f_%s.tif', psfgenPath, psfFsn, wienerAlpha, OTFCumThresh, loc_uuid);
-            [psf_b, OTF_bp_omw, abs_OTF_c, OTF_mask] = omw_backprojector_generation(psf, wienerAlpha, skewed, 'OTFCumThresh', OTFCumThresh);
+            [psf_b, OTF_bp_omw, abs_OTF_c, OTF_mask] = omw_backprojector_generation(psf, wienerAlpha, skewed, 'OTFCumThresh', OTFCumThresh, 'hannWinBounds', hannWinBounds);
 
             if usejava('jvm')
                 visible = false;
@@ -357,6 +361,8 @@ if ~strcmp(RLMethod, 'omw') && ~strcmp(RLMethod, 'simplified')
     rawdata = max(single(rawdata) - Background, 0);        
 end
 
+useExistErodeMask = EdgeErosion > 0 &&  ~isempty(ErodeMaskfile) && exist(ErodeMaskfile, 'file');
+
 % call Richardson-Lucy
 if ~file_exist_mat(1)
     if nIter>0 && any(rawdata, 'all')
@@ -373,6 +379,11 @@ if ~file_exist_mat(1)
             debug_folder = '/tmp/';
         end
         
+        EdgeErosion_in = EdgeErosion;
+        if useExistErodeMask
+            EdgeErosion_in = 0;
+        end
+
         switch RLMethod 
             case 'original'
                 deconvolved = deconvlucy(rawdata, psf, nIter);
@@ -380,13 +391,13 @@ if ~file_exist_mat(1)
                 [deconvolved, err_mat, iter_run] = decon_lucy_function(rawdata, ...
                     psf, nIter, Background=Background, useGPU=useGPU, save16bit=save16bit, ...
                     dampFactor=dampFactor, scaleFactor=scaleFactor, deconOffset=deconOffset, ...
-                    bbox=deconBbox, EdgeErosion=EdgeErosion, debug=debug, debug_folder=debug_folder, ...
+                    bbox=deconBbox, EdgeErosion=EdgeErosion_in, debug=debug, debug_folder=debug_folder, ...
                     saveStep=saveStep);
             case 'omw'
                 [deconvolved, err_mat] = decon_lucy_omw_function(rawdata, psf, ...
                     psf_b, nIter, Background=Background, useGPU=useGPU, save16bit=save16bit, ...
                     dampFactor=dampFactor, scaleFactor=scaleFactor, deconOffset=deconOffset, ...
-                    bbox=deconBbox, EdgeErosion=EdgeErosion, debug=debug, debug_folder=debug_folder, ...
+                    bbox=deconBbox, EdgeErosion=EdgeErosion_in, debug=debug, debug_folder=debug_folder, ...
                     saveStep=saveStep);          
             case 'cudagen'
                 deconvolved = decon_lucy_cuda_function(single(rawdata), single(psf), nIter);            
@@ -394,16 +405,16 @@ if ~file_exist_mat(1)
         if ~(strcmp(RLMethod, 'simplified') || strcmp(RLMethod, 'omw')) && scaleFactor ~= 1
             deconvolved = deconvolved * scaleFactor;
         end
+
+        if useExistErodeMask
+            mask = readzarr(ErodeMaskfile);
+            deconvolved = deconvolved .* cast(mask > 0, class(deconvolved));
+            clear mask;
+        end
     else
         deconvolved = rawdata;
         if ~isempty(deconBbox)
-            try
-                deconvolved = crop3d_mex(deconvolved, deconBbox);
-            catch ME
-                disp(ME);
-                deconvolved = deconvolved(deconBbox(1) : deconBbox(4), deconBbox(2) : deconBbox(5), ...
-                    deconBbox(3) : deconBbox(6));
-            end
+            deconvolved = crop3d(deconvolved, deconBbox);
         end
     end
 elseif Deskew || Rotate
@@ -441,21 +452,21 @@ if Deskew && (~Rotate || ~DSRCombined)
         saveMIP_frame(ds, MIPFn, 'axis', mipAxis);
         
         if save3Dstack(2)
-            if saveZarr 
+            if saveZarr
                 dsTmpPath = sprintf('%s%s_%s.zarr', dsPath, fsname, uuid);
                 if save16bit
-                    writezarr(uint16(ds), dsTmpPath, 'blockSize', blockSize);            
+                    writezarr(uint16(ds), dsTmpPath, 'blockSize', blockSize);
                 else
                     writezarr(ds, dsTmpPath, 'blockSize', blockSize);
                 end
             else
-                dsTmpPath = sprintf('%s%s_%s.tif', dsPath, fsname, uuid);                
+                dsTmpPath = sprintf('%s%s_%s.tif', dsPath, fsname, uuid);
                 writetiff(ds, dsTmpPath);
                 if save16bit
                     writetiff(uint16(ds), dsTmpPath);
                 else
                     writetiff(ds, dsTmpPath);
-                end        
+                end
             end
             movefile(dsTmpPath, dsFn);
         end
@@ -470,13 +481,13 @@ if Deskew && (~Rotate || ~DSRCombined)
     end
 
     if Rotate
-        fprintf('Rotate deskewed deconvolved frame %s...\n', fsname);        
+        fprintf('Rotate deskewed deconvolved frame %s...\n', fsname);
         dsr = rotateFrame3D(ds, SkewAngle, zAniso, Reverse,...
             'Crop', true, 'objectiveScan', objectiveScan, 'interpMethod', interpMethod);
         ds = [];
     end
 elseif Deskew && Rotate && DSRCombined
-    fprintf('Deskew, rotate and resample for deconvolved frame %s...\n', fsname);                
+    fprintf('Deskew, rotate and resample for deconvolved frame %s...\n', fsname);
     dsr = deskewRotateFrame3D(deconvolved, SkewAngle, dz, xyPixelSize, ...
         'reverse', Reverse, 'Crop', true, 'objectiveScan', objectiveScan, ...
         'resample', Resample, 'interpMethod', interpMethod, 'xStepThresh', xStepThresh, ...
@@ -484,7 +495,7 @@ elseif Deskew && Rotate && DSRCombined
 end
 
 if objectiveScan && Rotate    
-    fprintf('Rotate deconvolved frame %s...\n', fsname);                
+    fprintf('Rotate deconvolved frame %s...\n', fsname);
     dsr = rotateFrame3D(single(deconvolved), SkewAngle, zAniso, Reverse,...
         'Crop', true, 'objectiveScan', objectiveScan, 'interpMethod', interpMethod);
 end
@@ -511,7 +522,7 @@ if Rotate
     end
 end
 
-% if the output file is empty, directly return the deconvolved results. 
+% if the output file is empty, directly return the deconvolved results.
 if isempty(outputFn)
     return;
 end
@@ -527,7 +538,7 @@ if nIter > 0 && strcmp(RLMethod, 'simplified')
     if ~exist(infoPath, 'dir')
         mkdir(infoPath);
     end
-    infoFn = sprintf('%s/%s_info.mat', infoPath, outputFsn);
+    infoFn = sprintf('%s/%s_info.mat', infoPath, outFsn);
     save('-v7.3', infoFn, 'err_mat', 'nIter', 'fixIter', 'errThresh', 'debug');
     save(sprintf('%sactual_iterations_%d.txt', infoFn(1 : end - 8), iter_run), 'iter_run', '-ASCII');
 end
@@ -537,7 +548,7 @@ if save16bit
 end
 
 if length(mipAxis) ~= 3
-    warning('Exactly 3 parameters are needed for -M')
+    warning('Exactly 3 parameters are needed for MIP axes')
 else
     if any(mipAxis)
         MIPFn = sprintf('%s/MIPs/%s_MIP_z.tif', deconPath, fsname);
@@ -546,11 +557,11 @@ else
 end
 
 if save3Dstack(1)
-    if saveZarr 
-        deconTmpPath = sprintf('%s_%s.zarr', outputFn(1 : end - 4), uuid);                
+    if saveZarr
+        deconTmpPath = sprintf('%s_%s.zarr', outputFn(1 : end - 4), uuid);
         writezarr(deconvolved, deconTmpPath, 'blockSize', blockSize);
     else
-        deconTmpPath = sprintf('%s_%s.tif', outputFn(1 : end - 4), uuid);        
+        deconTmpPath = sprintf('%s_%s.tif', outputFn(1 : end - 4), uuid);
         writetiff(deconvolved, deconTmpPath);
     end
     movefile(deconTmpPath, outputFn);
