@@ -428,7 +428,11 @@ while (~parseCluster && ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
             fprintf('\nProcess %s with function %s... \n', strjoin(fsnames(fs), ', '), func_str);
             if strcmpi(language, 'matlab')
                 try 
-                    t0=tic; feval(str2func(['@()', func_str])); t1=toc(t0);
+                    if numel(fs) == 1
+                        t0=tic; feval(str2func(['@()', func_str])); t1=toc(t0);
+                    else
+                        t0=tic; eval(func_str); t1=toc(t0);
+                    end
                 catch ME
                     disp(ME)
                     t0=tic; eval(func_str); t1=toc(t0);
