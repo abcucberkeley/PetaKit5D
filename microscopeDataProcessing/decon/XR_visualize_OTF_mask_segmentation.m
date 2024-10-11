@@ -59,9 +59,9 @@ psf = psf ./ sum(psf, 'all');
 % generate OTF mask and OMW backward projector
 fprintf('OTFCumThresh: %f, skewed: %s\n', OTFCumThresh, string(skewed));
 alpha = 0.01;
-hanWinBounds = [0.8, 1.0];
+hannWinBounds = [0.8, 1.0];
 [b_omw, OTF_bp_omw, abs_OTF_c, OTF_mask] = omw_backprojector_generation(psf, alpha, skewed, ...
-    'OTFCumThresh', OTFCumThresh, 'hanWinBounds', hanWinBounds, minIntThrsh=minIntThrsh);
+    'OTFCumThresh', OTFCumThresh, 'hannWinBounds', hannWinBounds, minIntThrsh=minIntThrsh);
 
 % visualize OTF mask on top of OTF 
 fig = visualize_OTF_and_mask_outline(abs_OTF_c, OTF_mask, visible);

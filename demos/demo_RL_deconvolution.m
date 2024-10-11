@@ -460,9 +460,9 @@ skewed = true;
 % OTF cumulative percentile threshold for OTF mask segmentation
 OTFCumThresh = 0.88;
 % hann window range applied to the distance transform, 0.0 means the center and 1.0 means border of OTF mask
-hanWinBounds = [0.8, 1.0];
+hannWinBounds = [0.8, 1.0];
 [b_omw, OTF_bp_omw, abs_OTF_c, OTF_mask] = omw_backprojector_generation(psf, alpha, skewed, ...
-    'OTFCumThresh', OTFCumThresh, 'hanWinBounds', hanWinBounds);
+    'OTFCumThresh', OTFCumThresh, 'hannWinBounds', hannWinBounds);
 
 fprintf('OMW RL deconvolution with 2 iterations... ');
 

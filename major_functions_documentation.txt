@@ -23,6 +23,8 @@ Parameters:
          flipZstack : true|false (default: false). Flip z stacks.
    parseSettingFile : true|false (default: false). Use the setting file to decide whether filp z stacks or not.
                crop : true|false (default: false). Crop the data to smaller for rotation (removing extra empty regions).
+     inputAxisOrder : char (default: 'yxz'). Input data axis order. It permutes the input if the order is not 'yxz'. Only works for non-default axis orders when largeFile is false for now.
+    outputAxisOrder : char (default: 'yxz'). Output data axis order. It permutes the output if the order is not 'yxz'. Only works for non-default axis orders when largeFile is false for now.
         DSRCombined : true|false (default: true). Use combined processing for deskew and rotation.
        FFCorrection : true|false (default: false). Flat-field correction.
           BKRemoval : true|false (default: false). Remove background during flat-field correction.

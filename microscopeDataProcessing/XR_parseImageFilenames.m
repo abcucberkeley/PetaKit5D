@@ -154,7 +154,7 @@ for d = 1 : nd
         FTP_inds(d) = ind_d;
         [~, FTPfsname] = fileparts(FTPfname);        
         if Decon
-            maskFullpaths{d} = sprintf('%s/Masks/%s_eroded.tif', deconPaths{d}, FTPfsname);
+            maskFullpaths{d} = sprintf('%s/Masks/%s_eroded.zarr', deconPaths{d}, FTPfsname);
         end
     end
 end    

@@ -28,6 +28,7 @@ ip.addParameter('maskFullpaths', {} , @(x) iscell(x) || ischar(x)); % Full paths
 ip.addParameter('RLMethod', 'simplified' , @ischar); % rl method {'original', 'simplified', 'cudagen'}
 ip.addParameter('wienerAlpha', 0.005, @(x) isnumeric(x) || ischar(x));
 ip.addParameter('OTFCumThresh', 0.9, @(x) isnumeric(x) || ischar(x)); % OTF cumutative sum threshold
+ip.addParameter('hannWinBounds', [0.8, 1.0], @(x) isnumeric(x) || ischar(x)); % apodization range for distance matrix
 ip.addParameter('skewed', [], @(x) isempty(x) || islogical(x) || ischar(x)); % decon in skewed space
 ip.addParameter('fixIter', false, @(x) islogical(x) || ischar(x)); % CPU Memory in Gb
 ip.addParameter('useGPU', false, @(x) islogical(x) || ischar(x)); % use gpu for chuck deconvolution. 
@@ -54,6 +55,7 @@ maskFullpaths = pr.maskFullpaths;
 RLMethod = pr.RLMethod;
 wienerAlpha = pr.wienerAlpha;
 OTFCumThresh = pr.OTFCumThresh;
+hannWinBounds = pr.hannWinBounds;
 skewed = pr.skewed;
 fixIter = pr.fixIter;
 useGPU = pr.useGPU;
@@ -118,6 +120,9 @@ end
 if ischar(OTFCumThresh)
     OTFCumThresh = str2num(OTFCumThresh);
 end
+if ischar(hannWinBounds)
+    hannWinBounds = str2num(hannWinBounds);
+end
 if ischar(skewed)
     skewed = str2num(skewed);
 end
@@ -140,8 +145,8 @@ RLdecon_for_zarr_block(batchInds, zarrFullpath, psfFullpath, deconFullpath, ...
     dzPSF=dzPSF, DeconIter=DeconIter, dampFactor=dampFactor, scaleFactor=scaleFactor, ...
     deconOffset=deconOffset, EdgeErosion=EdgeErosion, maskFullpaths=maskFullpaths, ...
     RLMethod=RLMethod, wienerAlpha=wienerAlpha, OTFCumThresh=OTFCumThresh, ...
-    skewed=skewed, fixIter=fixIter, useGPU=useGPU, uuid=uuid, debug=debug, ...
-    psfGen=psfGen);
+    hannWinBounds=hannWinBounds, skewed=skewed, fixIter=fixIter, useGPU=useGPU, ...
+    uuid=uuid, debug=debug, psfGen=psfGen);
 
 end
 
