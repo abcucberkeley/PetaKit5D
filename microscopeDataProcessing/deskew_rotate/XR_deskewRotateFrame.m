@@ -37,6 +37,8 @@ ip.addParameter('overwrite', false, @islogical);
 ip.addParameter('crop', false, @islogical);
 ip.addParameter('skewAngle', 32.45, @isscalar);
 ip.addParameter('reverse', false, @islogical);
+ip.addParameter('inputAxisOrder', 'yxz', @ischar);
+ip.addParameter('outputAxisOrder', 'yxz', @ischar);
 ip.addParameter('rotate', false, @islogical);
 ip.addParameter('inputBbox', [], @isnumeric); % bounding box apply to input
 ip.addParameter('flipZstack', false, @islogical);
@@ -73,6 +75,8 @@ skewAngle = pr.skewAngle;
 reverse = pr.reverse;
 objectiveScan = pr.objectiveScan;
 zStageScan = pr.zStageScan;
+inputAxisOrder = pr.inputAxisOrder;
+outputAxisOrder = pr.outputAxisOrder;
 inputBbox = pr.inputBbox;
 flipZstack = pr.flipZstack;
 FFCorrection = pr.FFCorrection;
@@ -208,6 +212,12 @@ if (~DSRCombined && (~exist(dsFullname, 'file') || ip.Results.overwrite)) || DSR
     if BKRemoval
         BKIm = readtiff(backgroundImage);
         frame = XR_CameraBackgroundRemoval(frame, BKIm, 'constOffset', constOffset);
+    end
+    
+    % add support for data with axis orders other than yxz
+    input_order_mat = axis_order_mapping(inputAxisOrder, 'yxz');
+    if ~issorted(input_order_mat, 'ascend')
+        frame = permute(frame, input_order_mat);
     end
 
     if ~DSRCombined
@@ -424,6 +434,12 @@ if ip.Results.rotate || DSRCombined
             clear frame;
         end
         
+        % add support for data with axis orders other than yxz
+        output_order_mat = axis_order_mapping(outputAxisOrder, 'yxz');
+        if ~issorted(output_order_mat, 'ascend')
+            dsr = permute(dsr, output_order_mat);
+        end
+
         % save MIP
         if saveMIP
             dsrMIPPath = sprintf('%s/MIPs/', dsrPath);
