@@ -57,4 +57,4 @@ Based on these readers and writers, we also developed a Fiji Plugin for faster r
 ## Reference:
 Please cite our paper if you find the software useful for your research:
 
-`Ruan, X., Mueller, M., Liu, G., Görlitz, F., Fu, T., Milkie, D.E., Lillvis, J.L., Kuhn, A., Chong, J.G., Hong, J.L., Herr, C.Y.A., Hercule, W., Nienhaus, M., Killilea, A.N., Betzig, E. and Upadhyayula, S. (2024) Image processing tools for petabyte-scale light sheet microscopy data. bioRxiv. bioRxiv 2023.12.31.573734; doi: https://doi.org/10.1101/2023.12.31.573734`
+`Ruan, X., Mueller, M., Liu, G., Görlitz, F., Fu, T., Milkie, D.E., Lillvis, J.L., Kuhn, A., Chong, J.G., Hong, J.L., Herr, C.Y.A., Hercule, W., Nienhaus, M., Killilea, A.N., Betzig, E. and Upadhyayula, S. Image processing tools for petabyte-scale light sheet microscopy data. Nature Methods (2024). https://doi.org/10.1038/s41592-024-02475-4`
