@@ -73,7 +73,7 @@ ip.addParameter('Decon', false, @islogical);
 ip.addParameter('DS', false, @islogical);
 ip.addParameter('DSR', false, @islogical);
 ip.addParameter('resampleType', 'xy_isotropic', @ischar);
-ip.addParameter('resample', [], @isnumeric);
+ip.addParameter('resampleFactor', [], @isnumeric);
 ip.addParameter('deconRotate', false, @islogical);
 ip.addParameter('BlendMethod', 'none', @ischar);
 ip.addParameter('blendWeightDegree', 10, @isnumeric);
@@ -272,7 +272,7 @@ xyz_orig = xyz;
 % for secondary channel/time point, use flippedTile from the primary channel. 
 if ~isPrimaryCh
     if ~exist(stitchInfoFullpath, 'file')
-        error('The stitch information filename %s does not exist!', stitchInfoFullpaths);
+        error('The stitch information filename %s does not exist!', stitchInfoFullpath);
     end
     
     if isempty(flippedTile)
@@ -308,16 +308,16 @@ end
 theta = SkewAngle * pi/180;
 % dx = cos(theta)*dz/xyPixelSize;
 resample_type = pr.resampleType;
-resample = pr.resample;
-if ~isempty(resample)
+resampleFactor = pr.resampleFactor;
+if ~isempty(resampleFactor)
     resample_type = 'given';
 end
 
 switch resample_type
     case 'given'
-        xf = resample(1);
-        yf = resample(2);
-        zf = resample(3);
+        xf = resampleFactor(1);
+        yf = resampleFactor(2);
+        zf = resampleFactor(3);
     case 'method_1'  %% old one
         zf = cot(abs(theta));
         yf = 1;
@@ -396,13 +396,13 @@ if isempty(processFunPath) || all(cellfun(@isempty, processFunPath))
 end
 
 % change stitch resample to [1, 1, 1] for DSR (because we resample DSR for the future).
-if isempty(resample)
-    resample = [1, 1, 1];
+if isempty(resampleFactor)
+    resampleFactor = [1, 1, 1];
 end
 zarr_flippedTile = false(size(flippedTile)); 
 stitchResample = [1, 1, 1];
 if ~DSR
-    stitchResample = resample;
+    stitchResample = resampleFactor;
     if isempty(ProcessedDirstr)
         zarr_flippedTile = flippedTile > 0;
     end
