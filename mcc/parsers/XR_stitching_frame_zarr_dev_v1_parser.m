@@ -32,7 +32,7 @@ ip.addParameter('Decon', false, @(x) islogical(x) || ischar(x));
 ip.addParameter('DS', false, @(x) islogical(x) || ischar(x));
 ip.addParameter('DSR', false, @(x) islogical(x) || ischar(x));
 ip.addParameter('resampleType', 'xy_isotropic', @ischar);
-ip.addParameter('resample', [], @(x) isnumeric(x) || ischar(x));
+ip.addParameter('resampleFactor', [], @(x) isnumeric(x) || ischar(x));
 ip.addParameter('deconRotate', false, @(x) islogical(x) || ischar(x));
 ip.addParameter('BlendMethod', 'none', @ischar);
 ip.addParameter('blendWeightDegree', 10, @(x) isnumeric(x) || ischar(x));
@@ -110,7 +110,7 @@ Decon = pr.Decon;
 DS = pr.DS;
 DSR = pr.DSR;
 resampleType = pr.resampleType;
-resample = pr.resample;
+resampleFactor = pr.resampleFactor;
 deconRotate = pr.deconRotate;
 BlendMethod = pr.BlendMethod;
 blendWeightDegree = pr.blendWeightDegree;
@@ -221,8 +221,8 @@ end
 if ischar(DSR)
     DSR = str2num(DSR);
 end
-if ischar(resample)
-    resample = str2num(resample);
+if ischar(resampleFactor)
+    resampleFactor = str2num(resampleFactor);
 end
 if ischar(deconRotate)
     deconRotate = str2num(deconRotate);
@@ -349,7 +349,7 @@ XR_stitching_frame_zarr_dev_v1(tileFullpaths, coordinates, ResultPath=ResultPath
     xyPixelSize=xyPixelSize, objectiveScan=objectiveScan, IOScan=IOScan, sCMOSCameraFlip=sCMOSCameraFlip, ...
     Reverse=Reverse, Crop=Crop, InputBbox=InputBbox, tileOutBbox=tileOutBbox, ...
     TileOffset=TileOffset, df=df, save16bit=save16bit, EdgeArtifacts=EdgeArtifacts, ...
-    Decon=Decon, DS=DS, DSR=DSR, resampleType=resampleType, resample=resample, ...
+    Decon=Decon, DS=DS, DSR=DSR, resampleType=resampleType, resampleFactor=resampleFactor, ...
     deconRotate=deconRotate, BlendMethod=BlendMethod, blendWeightDegree=blendWeightDegree, ...
     halfOrder=halfOrder, overlapType=overlapType, xcorrShift=xcorrShift, isPrimaryCh=isPrimaryCh, ...
     usePrimaryCoords=usePrimaryCoords, stitchPadSize=stitchPadSize, outBbox=outBbox, ...
