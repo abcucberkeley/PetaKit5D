@@ -20,6 +20,8 @@
 %   Tiff to Zarr converter
 %   Zarr to Tiff converter
 %   Imaris converter
+%   Imaris converter
+%   Image list generator from tile list
 
 
 clear, clc;
@@ -770,4 +772,64 @@ XR_imaris_conversion_data_wrapper(dataPaths, 'ChannelPatterns', ChannelPatterns,
     'pixelSizes', pixelSizes, 'zarrFile', zarrFile, 'blockSize', blockSize, ...
     parseCluster=parseCluster, masterCompute=masterCompute, cpusPerTask=cpusPerTask, ...
     mccMode=mccMode, configFile=configFile);
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Image list generator from tile list
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% use user provide tile filenames, tile indices, and tile intervals to
+% generate the image list for stitching. Tile indices are nF x 5 in tcxyz
+% order, and tile intervals is 1 x 3 in um in xyz order.
+
+% result file:
+% {destPath}/PetaKit5D_demo_cell_image_dataset/ImageList_from_tile_list.csv
+
+dataPaths = {dataPath};
+
+% tile filenames without including folder names
+tileFilenames = {'Scan_Iter_0000_0000_CamA_ch0_CAM1_stack0000_488nm_0000000msec_0106060251msecAbs_000x_003y_000z_0000t.tif', ...
+                 'Scan_Iter_0000_0000_CamA_ch0_CAM1_stack0000_488nm_0000000msec_0106082240msecAbs_000x_002y_000z_0000t.tif', ...
+                 'Scan_Iter_0000_0000_CamA_ch0_CAM1_stack0000_488nm_0000000msec_0106104333msecAbs_000x_001y_000z_0000t.tif', ...
+                 'Scan_Iter_0000_0000_CamA_ch0_CAM1_stack0000_488nm_0000000msec_0106126432msecAbs_000x_000y_000z_0000t.tif', ...
+                 'Scan_Iter_0000_0000_CamB_ch0_CAM1_stack0000_488nm_0000000msec_0106060251msecAbs_000x_003y_000z_0000t.tif', ...
+                 'Scan_Iter_0000_0000_CamB_ch0_CAM1_stack0000_488nm_0000000msec_0106082240msecAbs_000x_002y_000z_0000t.tif', ...
+                 'Scan_Iter_0000_0000_CamB_ch0_CAM1_stack0000_488nm_0000000msec_0106104333msecAbs_000x_001y_000z_0000t.tif', ...
+                 'Scan_Iter_0000_0000_CamB_ch0_CAM1_stack0000_488nm_0000000msec_0106126432msecAbs_000x_000y_000z_0000t.tif', ...
+                 'Scan_Iter_0000_0001_CamA_ch0_CAM1_stack0000_488nm_0000000msec_0106148492msecAbs_000x_003y_000z_0001t.tif', ...
+                 'Scan_Iter_0000_0001_CamA_ch0_CAM1_stack0000_488nm_0000000msec_0106170570msecAbs_000x_002y_000z_0001t.tif', ...
+                 'Scan_Iter_0000_0001_CamA_ch0_CAM1_stack0000_488nm_0000000msec_0106192817msecAbs_000x_001y_000z_0001t.tif', ...
+                 'Scan_Iter_0000_0001_CamA_ch0_CAM1_stack0000_488nm_0000000msec_0106215043msecAbs_000x_000y_000z_0001t.tif', ...
+                 'Scan_Iter_0000_0001_CamB_ch0_CAM1_stack0000_488nm_0000000msec_0106148492msecAbs_000x_003y_000z_0001t.tif', ...
+                 'Scan_Iter_0000_0001_CamB_ch0_CAM1_stack0000_488nm_0000000msec_0106170570msecAbs_000x_002y_000z_0001t.tif', ...
+                 'Scan_Iter_0000_0001_CamB_ch0_CAM1_stack0000_488nm_0000000msec_0106192817msecAbs_000x_001y_000z_0001t.tif', ...
+                 'Scan_Iter_0000_0001_CamB_ch0_CAM1_stack0000_488nm_0000000msec_0106215043msecAbs_000x_000y_000z_0001t.tif', ...
+                };
+
+% tile indices in order tcxyz for the corresponding tiles defined in tileFilenames
+tileIndices = [0, 0, 0, 3, 0;
+               0, 0, 0, 2, 0;
+               0, 0, 0, 1, 0;
+               0, 0, 0, 0, 0;
+               0, 1, 0, 3, 0;
+               0, 1, 0, 2, 0;
+               0, 1, 0, 1, 0;
+               0, 1, 0, 0, 0;
+               1, 0, 0, 3, 0;
+               1, 0, 0, 2, 0;
+               1, 0, 0, 1, 0;
+               1, 0, 0, 0, 0;
+               1, 1, 0, 3, 0;
+               1, 1, 0, 2, 0;
+               1, 1, 0, 1, 0;
+               1, 1, 0, 0, 0;
+               ];
+
+% intervals between tiles in um in order xyz
+tileInterval = [0, 189.4, 0];
+
+% image list generation method
+generationMethod = 'tile_list';
+
+XR_generate_image_list_wrapper(dataPaths, generationMethod, tileFilenames=tileFilenames, ...
+    tileIndices=tileIndices, tileInterval=tileInterval);
 
