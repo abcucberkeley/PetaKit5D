@@ -1,6 +1,31 @@
 function [] = stitch_generate_imagelist_from_tile_list(dataPaths, tileFilenames, tileIndices, tileInterval, varargin)
 % generate image list file from a given list of tile files.
 % 
+% Required inputs:
+%           dataPaths : char or cell array. Directory paths for the datasets. Either a string for a single dataset or a cell array of paths for several datasets with same experimental settings.
+%       tileFilenames : a #file x 1 cell array (default: {}). List of tile filenames
+%         tileIndices : a #file x 5 array (default: []). Tile indices for corresponding tiles in tileFilenames, order: tcxyz.
+%        tileInterval : a 1x3 array (default: []). Interval between adjancy tiles in um, order: xyz.
+%
+% Parameters (as 'specifier'-value pairs):
+%     channelPatterns : a cell array (default: {'CamA_ch0', 'CamA_ch1', 'CamB_ch0'}).  Channel identifiers for included channels. 
+%        tilePatterns : a 1x5 cell array (default: {'0000t', 'ch0', '000x', '000y', '000z'}). Patterns for time, channel, x, y and z to localize tiles. It should be the combination of word and numbers in the form of [a-zA-Z]*[0-9]* or [0-9]*[a-zA-Z]*.
+%       tileFilenames : a #file x 1 cell array (default: {}). List of tile filenames
+%         tileIndices : a #file x 5 array (default: []). Tile indices for corresponding tiles in tileFilenames, order: tcxyz.
+%        tileInterval : a 1x3 array (default: []). Interval between adjancy tiles in um, order: xyz.
+%                  DS : true|false (default: false). Data is in deskewed space.
+%                 DSR : true|false (default: false). Data is in deskew/rotated space (with stage coordinates).
+%         xyPixelSize : a number (default: 0.108). Pixel size in um.
+%                  dz : a number (default: 0.5). Scan interval in um.
+%           skewAngle : a number (default: 32.45). Skew angle (in degree) of the stage.
+%           axisOrder : char (default: 'xyz'). Axis order mapping for coordinates in image list. With combinations of -, x, y, and z. '-yxz' means negative -y map to x, x maps to y, and z maps to z.
+%           dataOrder : char (default: 'y,x,z'). Axis order mapping for data. 'y,x,z' means the first, second and third axes are y, x, and z, respectively.
+%       objectiveScan : true|false (default: false). Objective scan.
+%              IOScan : true|false (default: false). Inverted objective scan. This is the scan with the stage coordinates (DSR space). 
+%            zarrFile : true|false (default: false). Use Zarr file as input.
+%         overlapSize : empty or 1x3 vector (default: []). Overlap size between tiles in pixel or um. If in pixels, axis order is yxz; if in um, axis order is xyz.
+%     overlapSizeType : 'pixel'|'um' (default: 'pixel'). The unit for the overlap size.
+%                uuid : empty or a uuid string (default: ''). uuid string as part of the temporate result paths.
 %
 % Author: Xiongtao Ruan (11/18/2024)
 
@@ -9,8 +34,8 @@ ip = inputParser;
 ip.CaseSensitive = false;
 ip.addRequired('dataPaths', @(x) ischar(x) || iscell(x));
 ip.addRequired('tileFilenames', @(x) ischar(x) || iscell(x));
-ip.addRequired('tileIndices', @(x) isnumeric(x) && size(x, 2) == 5); % 5 x nF: tcxyz
-ip.addRequired('tileInterval', @(x) isnumeric(x) && size(x, 2) == 3); % in um
+ip.addRequired('tileIndices', @(x) isnumeric(x) && size(x, 2) == 5);
+ip.addRequired('tileInterval', @(x) isnumeric(x) && size(x, 2) == 3);
 ip.addParameter('uuid', '', @ischar);
 
 ip.parse(dataPaths, tileFilenames, tileIndices, tileInterval, varargin{:});
@@ -28,6 +53,10 @@ end
 
 fnames = tileFilenames;
 nF = numel(fnames);
+
+if size(tileIndices, 1) ~= nF
+    error('The number of rows of tileIndices (%d) does not match the number of tiles (%d)!', size(tileIndices, 1), nF);
+end
 
 filepaths = cellfun(@(x) [dataPaths{1}, x], fnames, 'UniformOutput', false);
 
