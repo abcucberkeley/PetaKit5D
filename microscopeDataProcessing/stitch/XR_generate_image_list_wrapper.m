@@ -5,13 +5,13 @@ function [] = XR_generate_image_list_wrapper(dataPaths, generationMethod, vararg
 % 
 % Required inputs:
 %           dataPaths : char or cell array. Directory paths for the datasets. Either a string for a single dataset or a cell array of paths for several datasets with same experimental settings.
-%    generationMethod : 'encoder'|'sqlite'|'tile_position'. Image list generation method. 'encoder': from encoder positions; 'sqlite': from sqlite database; 'tile_position': estimated from user-provided overlap size between neighboring tiles.
+%    generationMethod : 'encoder'|'sqlite'|'tile_position'|'tile_list'. Image list generation method. 'encoder': from encoder positions; 'sqlite': from sqlite database; 'tile_position': estimated from user-provided overlap size between neighboring tiles; 'tile_list': user-provided tile names, tile indices, and tile intervals.
 %
 % Parameters (as 'specifier'-value pairs):
 %     channelPatterns : a cell array (default: {'CamA_ch0', 'CamA_ch1', 'CamB_ch0'}).  Channel identifiers for included channels. 
 %        tilePatterns : a 1x5 cell array (default: {'0000t', 'ch0', '000x', '000y', '000z'}). Patterns for time, channel, x, y and z to localize tiles. It should be the combination of word and numbers in the form of [a-zA-Z]*[0-9]* or [0-9]*[a-zA-Z]*.
 %       tileFilenames : a #file x 1 cell array (default: {}). List of tile filenames
-%         tileIndices : a 1x5 cell array (default: []). Tile indices for corresponding tiles in tileFilenames, order: tcxyz.
+%         tileIndices : a #file x 5 array (default: []). Tile indices for corresponding tiles in tileFilenames, order: tcxyz.
 %        tileInterval : a 1x3 array (default: []). Interval between adjancy tiles in um, order: xyz.
 %                  DS : true|false (default: false). Data is in deskewed space.
 %                 DSR : true|false (default: false). Data is in deskew/rotated space (with stage coordinates).
@@ -38,8 +38,8 @@ ip.addRequired('generationMethod', @(x) ischar(x));
 ip.addParameter('channelPatterns', {'CamA_ch0', 'CamA_ch1', 'CamB_ch0'}, @iscell);
 ip.addParameter('tilePatterns', {'0000t', 'ch0', '000x', '000y', '000z'}, @iscell);
 ip.addParameter('tileFilenames', {}, @iscell);
-ip.addParameter('tileIndices', [], @isnumeric);
-ip.addParameter('tileInterval', [], @isnumeric);
+ip.addParameter('tileIndices', [], @(x) isempty(x) || (isnumeric(x) && size(x, 2) == 5));
+ip.addParameter('tileInterval', [], @(x) isempty(x) || (isnumeric(x) && size(x, 1) == 1 && size(x, 2) == 3));
 ip.addParameter('DS', false, @islogical);
 ip.addParameter('DSR', false, @islogical);
 ip.addParameter('xyPixelSize', 0.108, @isnumeric);
