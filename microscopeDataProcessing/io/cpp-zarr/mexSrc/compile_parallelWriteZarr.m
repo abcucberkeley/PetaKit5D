@@ -13,7 +13,7 @@ if isunix && ~ismac
             mex -outdir ../linux -output parallelWriteZarr.mexa64 -v CXXOPTIMFLAGS="" LDOPTIMFLAGS="-Wl',-rpath='''$ORIGIN'''' -O0 -g" CXXFLAGS='$CXXFLAGS -fopenmp -O0 -g' LDFLAGS='$LDFLAGS -fopenmp -O0 -g' -I'/clusterfs/fiona/matthewmueller/cppZarrTest' -I'/global/home/groups/software/sl-7.x86_64/modules/cBlosc/2.8.0/include/' '-L/global/home/groups/software/sl-7.x86_64/modules/cBlosc/2.8.0/lib64' -I'/global/home/groups/software/sl-7.x86_64/modules/cBlosc/zarr/include/' '-L/global/home/groups/software/sl-7.x86_64/modules/cBlosc/zarr/lib' -lblosc -lblosc2 -lz -luuid parallelwritezarrmex.cpp ../src/parallelwritezarr.cpp ../src/helperfunctions.cpp ../src/zarr.cpp ../src/parallelreadzarr.cpp
         end
     else
-        mex -outdir ../linux -output parallelWriteZarr.mexa64 -v CXXOPTIMFLAGS="-DNDEBUG -O2" LDOPTIMFLAGS="-Wl',-rpath='''$ORIGIN'''' -O2 -DNDEBUG" CXXFLAGS='$CXXFLAGS -fopenmp -O2' LDFLAGS='$LDFLAGS -fopenmp -O2' -I'/clusterfs/fiona/matthewmueller/cppZarrTest' -I'/global/home/groups/software/rocky-8.x86_64/modules/c-blosc2/2.10.2/include/' '-L/global/home/groups/software/rocky-8.x86_64/modules/c-blosc2/2.10.2/lib64/' -I'/global/home/groups/software/rocky-8.x86_64/modules/c-blosc/1.21.5/include/' '-L/global/home/groups/software/rocky-8.x86_64/modules/c-blosc/1.21.5/lib64/' -lblosc -lblosc2 -lz -luuid parallelwritezarrmex.cpp ../src/parallelwritezarr.cpp ../src/helperfunctions.cpp ../src/zarr.cpp ../src/parallelreadzarr.cpp
+        mex -outdir ../linux -output parallelWriteZarr.mexa64 -v CXXOPTIMFLAGS="-DNDEBUG -O2" LDOPTIMFLAGS="-Wl',-rpath='''$ORIGIN'''' -O2 -DNDEBUG" CXXFLAGS='$CXXFLAGS -fopenmp -O2' LDFLAGS='$LDFLAGS -fopenmp -O2' -I'/clusterfs/fiona/matthewmueller/cppZarrTest/c-zarr/jenkinsBuild/install/include' -L'/clusterfs/fiona/matthewmueller/cppZarrTest/c-zarr/jenkinsBuild/install/lib64' -lcppZarr parallelwritezarrmex.cpp
     end
     % Need to change the library name because matlab preloads their own version
     % of libstdc++
@@ -33,17 +33,14 @@ elseif ismac
         %mex -v -g CXX="/usr/local/opt/llvm/bin/clang++" CXXOPTIMFLAGS="" LDOPTIMFLAGS='-g -O0 -Wall -Wextra' CXXFLAGS='$CXXFLAGS -g -O0 -Wall -Wextra -fopenmp' LDFLAGS='$LDFLAGS -g -O0 -fopenmp' '-I/usr/local/include/' -L'/usr/local/lib/' -lblosc -lblosc2 -lz -luuid parallelwritezarr.cpp helperfunctions.cpp zarr.cpp parallelwritezarrread.cpp
         %mex -v -g CXXOPTIMFLAGS='' LDOPTIMFLAGS='-g -O0' CXXFLAGS='$CXXFLAGS -O0 -Xpreprocessor -fopenmp' LDFLAGS='$LDFLAGS -g -O0 -Xpreprocessor -fopenmp' '-I/usr/local/opt/libomp/include' '-I/usr/include' '-I/usr/local/include/' -L'/usr/local/lib/' -L'/usr/local/opt/libomp/lib' -lomp -lblosc -lblosc2 -lz -luuid parallelwritezarr.cpp helperfunctions.cpp zarr.cpp parallelwritezarrread.cpp
     else
-        mex -outdir ../mac -output parallelWriteZarr.mexa64 -v CXX="/usr/local/bin/g++-13" CXXOPTIMFLAGS='-O2 -DNDEBUG' LDOPTIMFLAGS='-O2 -DNDEBUG' CXXFLAGS='-fno-common -arch x86_64 -mmacosx-version-min=10.15 -fexceptions -isysroot /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk -std=c++11 -O2 -fopenmp -DMATLAB_DEFAULT_RELEASE=R2017b  -DUSE_MEX_CMD   -DMATLAB_MEX_FILE' LDFLAGS='$LDFLAGS -O2 -fopenmp' '-I/usr/local/include/' /usr/local/opt/gcc/lib/gcc/current/libstdc++.a -lblosc -lblosc2 -lz -luuid parallelwritezarrmex.cpp ../src/parallelwritezarr.cpp ../src/helperfunctions.cpp ../src/zarr.cpp ../src/parallelreadzarr.cpp
+        mex -outdir ../mac -output parallelWriteZarr.mexa64 -v CXX="/usr/local/bin/g++-13" CXXOPTIMFLAGS='-O2 -DNDEBUG' LDOPTIMFLAGS='-O2 -DNDEBUG' CXXFLAGS='-fno-common -arch x86_64 -mmacosx-version-min=10.15 -fexceptions -isysroot /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk -std=c++11 -O2 -fopenmp -DMATLAB_DEFAULT_RELEASE=R2017b  -DUSE_MEX_CMD   -DMATLAB_MEX_FILE' LDFLAGS='$LDFLAGS -O2 -fopenmp' -I'/Users/abcx86mac/c-zarr/jenkinsBuild/install/include' -L'/Users/abcx86mac/c-zarr/jenkinsBuild/install/lib' /usr/local/opt/gcc/lib/gcc/current/libstdc++.a -lcppZarr parallelwritezarrmex.cpp
     end
     
     % We need to change all the current paths to be relative to the mex file
     %system('install_name_tool -change /usr/local/opt/gcc/lib/gcc/current/libstdc++.6.dylib @loader_path/libstdc++.6.0.32.dylib ../mac/parallelWriteZarr.mexmaci64');
     system('install_name_tool -change /usr/local/opt/gcc/lib/gcc/current/libgcc_s.1.1.dylib @loader_path/libgcc_s.1.1.0.dylib ../mac/parallelWriteZarr.mexmaci64');
-    system('install_name_tool -change /usr/local/opt/ossp-uuid/lib/libuuid.16.dylib @loader_path/libuuid.16.22.0.dylib ../mac/parallelWriteZarr.mexmaci64');
     system('install_name_tool -change /usr/local/opt/gcc/lib/gcc/current/libgomp.1.dylib @loader_path/libgomp.1.dylib ../mac/parallelWriteZarr.mexmaci64');    
-    system('install_name_tool -change @rpath/libblosc.1.dylib @loader_path/libblosc.1.21.0.0.dylib ../mac/parallelWriteZarr.mexmaci64');
-    system('install_name_tool -change @rpath/libblosc2.2.dylib @loader_path/libblosc2.2.8.0.dylib ../mac/parallelWriteZarr.mexmaci64');
-    system('install_name_tool -change /usr/lib/libz.1.dylib @loader_path/libz.1.2.13.dylib ../mac/parallelWriteZarr.mexmaci64');    
+    system('install_name_tool -change @rpath/libcppZarr.dylib @loader_path/libcppZarr.dylib ../mac/parallelWriteZarr.mexmaci64');
 
     system('chmod 777 ../mac/parallelWriteZarr.mexmaci64');
 elseif ispc
@@ -52,5 +49,5 @@ elseif ispc
     if ~exist(releaseFolder, 'dir')
         mkdir(releaseFolder);
     end
-    mex -outdir ../windows -output parallelWriteZarr.mexa64 -v CXX="C:/mingw64/bin/g++" CXXOPTIMFLAGS="-DNDEBUG -O2" LDOPTIMFLAGS="-Wl',-rpath='''$ORIGIN'''' -O2 -DNDEBUG" CXXFLAGS='$CXXFLAGS -fopenmp -O2' LDFLAGS='$LDFLAGS -fopenmp -O2' -I'C:/Program Files (x86)/nlohmann_json/include' -I'C:/Program Files (x86)/blosc2/include' '-LC:/Program Files (x86)/blosc2/lib' -I'C:/Program Files (x86)/blosc/include' '-LC:/Program Files (x86)/blosc/lib' -I'C:/Program Files (x86)/zlib/include' '-LC:/Program Files (x86)/zlib/lib' -lblosc.dll -lblosc2.dll -lzlib.dll parallelwritezarrmex.cpp ../src/parallelwritezarr.cpp ../src/helperfunctions.cpp ../src/zarr.cpp ../src/parallelreadzarr.cpp
+    mex -outdir ../windows -output parallelWriteZarr.mexa64 -v CXX="C:/mingw64/bin/g++" CXXOPTIMFLAGS="-DNDEBUG -O2" LDOPTIMFLAGS="-Wl',-rpath='''$ORIGIN'''' -O2 -DNDEBUG" CXXFLAGS='$CXXFLAGS -fopenmp -O2' LDFLAGS='$LDFLAGS -fopenmp -O2' -I'C:/Users/matt/Documents/GitHub/c-zarr/jenkinsBuild/install/include' -L'C:/Users/matt/Documents/GitHub/c-zarr/jenkinsBuild/install/lib' C:\mingw64\lib\gcc\x86_64-w64-mingw32\12.2.0\libgcc_eh.a -lcppZarr.dll parallelwritezarrmex.cpp
 end

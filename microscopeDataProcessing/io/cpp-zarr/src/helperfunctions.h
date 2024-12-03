@@ -23,4 +23,10 @@ void mkdirRecursive(const char *dir);
 bool fileExists(const std::string &fileName);
 
 void makeDimensionFolders(const std::string &fileName);
+
+bool isLittleEndian();
+
+bool oppositeEndianness(const std::string &dtype);
+
+void swapArrayEndianness(void* array, const size_t elementSize, const size_t numElements);
 #endif

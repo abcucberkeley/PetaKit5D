@@ -7,6 +7,7 @@
 #include <uuid/uuid.h>
 #endif
 #include <sys/stat.h>
+#include <omp.h>
 #include "helperfunctions.h"
 #include "zarr.h"
 
@@ -145,4 +146,29 @@ bool fileExists(const std::string &fileName){
 void makeDimensionFolders(const std::string &fileName){
     size_t lastSlash = fileName.find_last_of("/");
     mkdirRecursive(fileName.substr(0,lastSlash).c_str());
+}
+
+bool isLittleEndian(){
+    uint16_t number = 1;
+    return *reinterpret_cast<uint8_t*>(&number) == 1;
+}
+
+bool oppositeEndianness(const std::string &dtype){
+    if(isLittleEndian()){
+        if(dtype[0] == '<') return false;
+    }
+    else{
+        if(dtype[0] == '>') return false;
+    }
+    return true;
+}
+
+void swapArrayEndianness(void* array, const size_t elementSize, const size_t numElements){
+    uint8_t* data = reinterpret_cast<uint8_t*>(array); // Cast array to byte pointer
+
+    #pragma omp parallel for
+    for (size_t i = 0; i < numElements; ++i) {
+        uint8_t* elementPtr = data + i * elementSize; // Pointer to the current element
+        std::reverse(elementPtr, elementPtr + elementSize); // Reverse bytes within the element
+    }
 }

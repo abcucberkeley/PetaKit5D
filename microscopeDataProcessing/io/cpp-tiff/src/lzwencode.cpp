@@ -88,8 +88,8 @@ typedef struct {
 static void
 cl_hash(hash_t* enc_hashtab)
 {
-    register hash_t *hp = &enc_hashtab[HSIZE-1];
-    register long i = HSIZE-8;
+    hash_t *hp = &enc_hashtab[HSIZE-1];
+    long i = HSIZE-8;
 
     do {
         i -= 8;
@@ -112,9 +112,9 @@ uint64_t lzwEncode(uint8_t* unCompr, uint8_t* compr, tmsize_t cc){
     hash_t* enc_hashtab = (hash_t*)_TIFFmalloc(HSIZE*sizeof (hash_t));
     //compr = (uint8_t*)malloc(cc);
     uint8_t* bp = unCompr;
-    register long fcode;
-    register hash_t *hp;
-    register int h, c;
+    long fcode;
+    hash_t *hp;
+    int h, c;
     hcode_t ent;
     long disp;
     tmsize_t incount, outcount, checkpoint;
@@ -123,7 +123,7 @@ uint64_t lzwEncode(uint8_t* unCompr, uint8_t* compr, tmsize_t cc){
     long nextbits;
     int free_ent, maxcode, nbits;
     uint8_t* op;
-    uint8_t* limit;
+    //uint8_t* limit;
 
     //(void) s;
     unsigned short lzw_nbits = BITS_MIN;
@@ -167,13 +167,13 @@ uint64_t lzwEncode(uint8_t* unCompr, uint8_t* compr, tmsize_t cc){
         c = *bp++; cc--; incount++;
         fcode = ((long)c << BITS_MAX) + ent;
         h = (c << HSHIFT) ^ ent;	/* xor hashing */
-#ifdef _WINDOWS
+        #ifdef _WINDOWS
         /*
-             * Check hash index for an overflow.
-             */
+        * Check hash index for an overflow.
+        */
         if (h >= HSIZE)
             h -= HSIZE;
-#endif
+        #endif
         hp = &enc_hashtab[h];
         if (hp->hash == fcode) {
             ent = hp->code;
@@ -181,8 +181,8 @@ uint64_t lzwEncode(uint8_t* unCompr, uint8_t* compr, tmsize_t cc){
         }
         if (hp->hash >= 0) {
             /*
-                 * Primary hash failed, check secondary hash.
-                 */
+            * Primary hash failed, check secondary hash.
+            */
             disp = HSIZE - h;
             if (h == 0)
                 disp = 1;

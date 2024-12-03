@@ -242,7 +242,7 @@ void zarr::set_jsonValues(){
         zarray["compressor"]["shuffle"] = shuffle;
     }
     else if(cname == "gzip"){
-        zarray["compressor"]["id"] = id;
+        zarray["compressor"]["id"] = cname;
         zarray["compressor"]["level"] = clevel;
     }
     else throw std::string("unsupportedCompressor"); 

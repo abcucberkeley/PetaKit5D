@@ -1,5 +1,6 @@
 #include <cstdint>
 #include <cstring>
+#include <string>
 #include "mex.h"
 #include "tiffio.h"
 #include "../src/helperfunctions.h"
@@ -27,6 +28,23 @@ void mexFunction(int nlhs, mxArray *plhs[],
         fileName = mxArrayToString(mCharA[0]);
     }
     if(mxIsEmpty(prhs[1])) mexErrMsgIdAndTxt("tiff:inputError","All input data axes must be of at least size 1");
+
+    std::string compression = "lzw";
+    if(nrhs == 3){
+        if(!mxIsClass(prhs[2], "string")){
+            if(!mxIsChar(prhs[2])) mexErrMsgIdAndTxt("tiff:inputError","The third argument must be a string");
+            compression = mxArrayToString(prhs[0]);
+        }
+        else{
+            mxArray* mString[1];
+            mxArray* mCharA[1];
+
+            // Convert string to char array
+            mString[0] = mxDuplicateArray(prhs[2]);
+            mexCallMATLAB(1, mCharA, 1, mString, "char");
+            compression = mxArrayToString(mCharA[0]);
+        }
+    }
 
     // Handle the tilde character in filenames on Linux/Mac
     #ifndef _WIN32
@@ -66,7 +84,7 @@ void mexFunction(int nlhs, mxArray *plhs[],
     uint64_t* dims = (uint64_t*) mxGetDimensions(prhs[1]);
 
 
-    uint64_t x = dims[1],y = dims[0],z = dims[2],bits = 0, startSlice = 0;
+    uint64_t x = dims[1], y = dims[0], z = dims[2], bits = 0, startSlice = 0;
 
     // For 2D images MATLAB passes in the 3rd dim as 0 so we set it to 1;
     if(!z){
@@ -92,7 +110,7 @@ void mexFunction(int nlhs, mxArray *plhs[],
 
     uint64_t stripSize = 512;
     void* data = (void*)mxGetPr(prhs[1]);
-    uint8_t err = writeTiffParallelWrapper(x,y,z,fileName,data,bits,startSlice,stripSize,mode,true);
+    uint8_t err = writeTiffParallelWrapper(x,y,z,fileName,data,bits,startSlice,stripSize,mode,true,compression);
 
     if(err) mexErrMsgIdAndTxt("tiff:tiffError","An Error occured within the write function");
 }

@@ -323,6 +323,7 @@ uint8_t parallelReadZarr(zarr &Zarr, void* zarrArr,
         }
         free(zarrArrC);
     }
+    if(oppositeEndianness(Zarr.get_dtype())) swapArrayEndianness(zarrArr,bytes,readShape[0]*readShape[1]*readShape[2]);
     return 0;
 }
 
@@ -349,7 +350,8 @@ void* parallelReadZarrWriteWrapper(zarr Zarr, const bool &crop,
     Zarr.set_chunkInfo(startCoords, endCoords);
     uint8_t err = 0;
     uint64_t readSize = readShape[0]*readShape[1]*readShape[2];
-    if(Zarr.get_dtype() == "<u1"){
+    std::string dType = Zarr.get_dtype().substr(1);
+    if(dType == "u1"){
         uint64_t bits = 8;
         uint8_t* zarrArr = nullptr;
         if(stoi(Zarr.get_fill_value())){
@@ -364,7 +366,7 @@ void* parallelReadZarrWriteWrapper(zarr Zarr, const bool &crop,
         }
         else return (void*)zarrArr;
     }
-    else if(Zarr.get_dtype() == "<u2"){
+    else if(dType == "u2"){
         uint64_t bits = 16;
         uint16_t* zarrArr = nullptr;
         if(stoi(Zarr.get_fill_value())){
@@ -379,7 +381,7 @@ void* parallelReadZarrWriteWrapper(zarr Zarr, const bool &crop,
         }
         else return (void*)zarrArr;
     }
-    else if(Zarr.get_dtype() == "<f4"){
+    else if(dType == "f4"){
         uint64_t bits = 32;
         float* zarrArr = nullptr;
         if(stoi(Zarr.get_fill_value())){
@@ -394,7 +396,7 @@ void* parallelReadZarrWriteWrapper(zarr Zarr, const bool &crop,
         }
         else return (void*)zarrArr;
     }
-    else if(Zarr.get_dtype() == "<f8"){
+    else if(dType == "f8"){
         uint64_t bits = 64;
         double* zarrArr = nullptr;
         if(stoi(Zarr.get_fill_value())){

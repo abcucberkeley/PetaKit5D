@@ -80,9 +80,11 @@ uint8_t isImageJIm(const char* fileName){
             uint64_t* size = getImageSize(fileName);
             if(size[2] > 1){
                 if(TIFFSetDirectory(tif,1)){
+                    free(size);
                     return 0;
                 }
             }
+            free(size);
             uint16_t compressed = 1;
             TIFFGetField(tif, TIFFTAG_COMPRESSION, &compressed);
             TIFFClose(tif);
