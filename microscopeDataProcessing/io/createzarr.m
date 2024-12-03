@@ -56,10 +56,14 @@ if exist(filepath, 'dir')
 end
 
 switch dtype
+    case 'double'
+        ddtype = 'f8';
     case 'single'
         ddtype = 'f4';
     case 'uint16'
         ddtype = 'u2';
+    case 'uint8'
+        ddtype = 'u1';
     otherwise
         error('Unsupported data type');
 end
