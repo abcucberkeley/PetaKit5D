@@ -50,7 +50,7 @@ ip.addParameter('dataOrder', 'y,x,z', @ischar);
 ip.addParameter('objectiveScan', false, @islogical);
 ip.addParameter('IOScan', false, @islogical);
 ip.addParameter('zarrFile', false, @islogical);
-ip.addParameter('overlapSize', [], @isnumeric);
+ip.addParameter('overlapSize', [10, 10, 10], @isnumeric);
 ip.addParameter('overlapSizeType', 'pixel', @(x) ischar(x) && ismember(lower(x), {'pixel', 'um'}));
 ip.addParameter('uuid', '', @ischar);
 
