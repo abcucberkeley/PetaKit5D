@@ -20,7 +20,7 @@ ip.addParameter('dataOrder', 'y,x,z', @ischar);
 ip.addParameter('objectiveScan', false, @(x) islogical(x) || ischar(x));
 ip.addParameter('IOScan', false, @(x) islogical(x) || ischar(x));
 ip.addParameter('zarrFile', false, @(x) islogical(x) || ischar(x));
-ip.addParameter('overlapSize', [], @(x) isnumeric(x) || ischar(x));
+ip.addParameter('overlapSize', [10, 10, 10], @(x) isnumeric(x) || ischar(x));
 ip.addParameter('overlapSizeType', 'pixel', @(x) ischar(x) && ismember(lower(x), {'pixel', 'um'}));
 ip.addParameter('uuid', '', @ischar);
 
