@@ -15,6 +15,8 @@ uint8_t isImageJIm(const char* fileName);
 
 uint64_t imageJImGetZ(const char* fileName);
 
+uint32_t getImageSizeZ(const char* fileName);
+
 uint64_t* getImageSize(const char* fileName);
 
 uint64_t getDataType(const char* fileName);

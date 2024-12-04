@@ -19,32 +19,6 @@ uint8_t writeTiffSingle(const uint64_t x, const uint64_t y, const uint64_t z, co
         }
     }
     else if(!strcmp(mode,"a")){
-        tif = TIFFOpen(fileName, "r");
-        if(!tif){
-            printf("Error: File \"%s\" cannot be opened",fileName);
-			return 1;
-        }
-        uint16_t s = 0, m = 0, t = 1;
-        while(TIFFSetDirectory(tif,t)){
-            s = t;
-            t *= 8;
-            if(s > t){
-                t = 65535;
-                printf("Number of slices > 32768");
-                break;
-            }
-        }
-        while(s != t){
-            m = (s+t+1)/2;
-            if(TIFFSetDirectory(tif,m)){
-                s = m;
-            }
-            else{
-                if(m > 0) t = m-1;
-                else t = m;
-            }
-        }
-        TIFFClose(tif);
         tif = TIFFOpen(fileName, "a8");
         if(!tif){
             printf("Error: File \"%s\" cannot be opened",fileName);

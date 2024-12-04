@@ -38,27 +38,7 @@ void mexFunction(int nlhs, mxArray *plhs[],
     if(nrhs == 1){
         TIFFGetField(tif, TIFFTAG_IMAGEWIDTH, &x);
         TIFFGetField(tif, TIFFTAG_IMAGELENGTH, &y);
-        uint16_t s = 0, m = 0, t = 1;   
-        while(TIFFSetDirectory(tif,t)){
-            s = t;
-            t *= 8;
-            if(s > t){ 
-                t = 65535;
-                printf("Number of slices > 32768\n");
-                break;
-            }
-        }
-        while(s != t){
-            m = (s+t+1)/2;
-            if(TIFFSetDirectory(tif,m)){
-                s = m;
-            }
-            else{
-                if(m > 0) t = m-1;
-                else t = m;
-            }
-        }
-        z = s+1;
+        z = getImageSizeZ(fileName);
     }
     else{
         mexErrMsgIdAndTxt("tiff:inputError","Function only accepts one input argument");       
