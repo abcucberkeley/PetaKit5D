@@ -85,177 +85,104 @@ uint8_t readTiffParallel(uint64_t x, uint64_t y, uint64_t z, const char* fileNam
     int32_t batchSize = (z-1)/numWorkers+1;
     uint64_t bytes = bits/8;
 
-    uint16_t compressed = 1;
-    TIFF* tif = TIFFOpen(fileName, "r");
-    TIFFGetField(tif, TIFFTAG_COMPRESSION, &compressed);
-
-    
-
     int32_t w;
     uint8_t errBak = 0;
     uint8_t err = 0;
     char errString[10000];
-    if(compressed > 1 || z < 32768){
-        TIFFClose(tif);
-        #pragma omp parallel for
-        for(w = 0; w < numWorkers; w++){
+    #pragma omp parallel for
+    for(w = 0; w < numWorkers; w++){
 
-            uint8_t outCounter = 0;
-            TIFF* tif = TIFFOpen(fileName, "r");
-            while(!tif){
-                tif = TIFFOpen(fileName, "r");
-                if(outCounter == 3){
+        uint8_t outCounter = 0;
+        TIFF* tif = TIFFOpen(fileName, "r");
+        while(!tif){
+            tif = TIFFOpen(fileName, "r");
+            if(outCounter == 3){
+                #pragma omp critical
+                {
+                    err = 1;
+                    sprintf(errString,"Thread %d: File \"%s\" cannot be opened\n",w,fileName);
+                }
+                continue;
+            }
+            outCounter++;
+        }
+
+        void* buffer = malloc(x*stripSize*bytes);
+        for(int64_t dir = startSlice+(w*batchSize); dir < startSlice+((w+1)*batchSize); dir++){
+            if(dir>=z+startSlice || err) break;
+
+            uint8_t counter = 0;
+            while(!TIFFSetDirectory(tif, (uint64_t)dir) && counter<3){
+                counter++;
+                if(counter == 3){
                     #pragma omp critical
                     {
                         err = 1;
                         sprintf(errString,"Thread %d: File \"%s\" cannot be opened\n",w,fileName);
                     }
+                }
+            }
+            if(err) break;
+            for (int64_t i = 0; i*stripSize < y; i++)
+            {
+
+                //loading the data into a buffer
+                int64_t cBytes = TIFFReadEncodedStrip(tif, i, buffer, stripSize*x*bytes);
+                if(cBytes < 0){
+                    #pragma omp critical
+                    {
+                        errBak = 1;
+                        err = 1;
+                        sprintf(errString,"Thread %d: Strip %ld cannot be read\n",w,i);
+                    }
+                    break;
+                }
+                if(!flipXY){
+                    memcpy(tiff+(((i*stripSize*x)+((dir-startSlice)*(x*y)))*bytes),buffer,cBytes);
                     continue;
                 }
-                outCounter++;
-            }
-
-            void* buffer = malloc(x*stripSize*bytes);
-            for(int64_t dir = startSlice+(w*batchSize); dir < startSlice+((w+1)*batchSize); dir++){
-                if(dir>=z+startSlice || err) break;
-
-                uint8_t counter = 0;
-                while(!TIFFSetDirectory(tif, (uint64_t)dir) && counter<3){
-                    counter++;
-                    if(counter == 3){
-                        #pragma omp critical
-                        {
-                            err = 1;
-                            sprintf(errString,"Thread %d: File \"%s\" cannot be opened\n",w,fileName);
+                switch(bits){
+                    case 8:
+                        // Map Values to flip x and y for MATLAB
+                        for(int64_t k = 0; k < stripSize; k++){
+                            if((k+(i*stripSize)) >= y) break;
+                            for(int64_t j = 0; j < x; j++){
+                                ((uint8_t*)tiff)[((j*y)+(k+(i*stripSize)))+((dir-startSlice)*(x*y))] = ((uint8_t*)buffer)[j+(k*x)];
+                            }
                         }
-                    }
-                }
-                if(err) break;
-                for (int64_t i = 0; i*stripSize < y; i++)
-                {
-
-                    //loading the data into a buffer
-                    int64_t cBytes = TIFFReadEncodedStrip(tif, i, buffer, stripSize*x*bytes);
-                    if(cBytes < 0){
-                        #pragma omp critical
-                        {
-                            errBak = 1;
-                            err = 1;
-                            sprintf(errString,"Thread %d: Strip %ld cannot be read\n",w,i);
+                                break;
+                    case 16:
+                        // Map Values to flip x and y for MATLAB
+                        for(int64_t k = 0; k < stripSize; k++){
+                            if((k+(i*stripSize)) >= y) break;
+                            for(int64_t j = 0; j < x; j++){
+                                ((uint16_t*)tiff)[((j*y)+(k+(i*stripSize)))+((dir-startSlice)*(x*y))] = ((uint16_t*)buffer)[j+(k*x)];
+                            }
                         }
-                        break;
-                    }
-                    if(!flipXY){
-                        memcpy(tiff+(((i*stripSize*x)+((dir-startSlice)*(x*y)))*bytes),buffer,cBytes);
-                        continue;
-                    }
-                    switch(bits){
-                        case 8:
-                            // Map Values to flip x and y for MATLAB
-                            for(int64_t k = 0; k < stripSize; k++){
-                                if((k+(i*stripSize)) >= y) break;
-                                for(int64_t j = 0; j < x; j++){
-                                    ((uint8_t*)tiff)[((j*y)+(k+(i*stripSize)))+((dir-startSlice)*(x*y))] = ((uint8_t*)buffer)[j+(k*x)];
-                                }
+                                break;
+                    case 32:
+                        // Map Values to flip x and y for MATLAB
+                        for(int64_t k = 0; k < stripSize; k++){
+                            if((k+(i*stripSize)) >= y) break;
+                            for(int64_t j = 0; j < x; j++){
+                                ((float*)tiff)[((j*y)+(k+(i*stripSize)))+((dir-startSlice)*(x*y))] = ((float*)buffer)[j+(k*x)];
                             }
-                                    break;
-                        case 16:
-                            // Map Values to flip x and y for MATLAB
-                            for(int64_t k = 0; k < stripSize; k++){
-                                if((k+(i*stripSize)) >= y) break;
-                                for(int64_t j = 0; j < x; j++){
-                                    ((uint16_t*)tiff)[((j*y)+(k+(i*stripSize)))+((dir-startSlice)*(x*y))] = ((uint16_t*)buffer)[j+(k*x)];
-                                }
+                        }
+                                break;
+                    case 64:
+                        // Map Values to flip x and y for MATLAB
+                        for(int64_t k = 0; k < stripSize; k++){
+                            if((k+(i*stripSize)) >= y) break;
+                            for(int64_t j = 0; j < x; j++){
+                                ((double*)tiff)[((j*y)+(k+(i*stripSize)))+((dir-startSlice)*(x*y))] = ((double*)buffer)[j+(k*x)];
                             }
-                                    break;
-                        case 32:
-                            // Map Values to flip x and y for MATLAB
-                            for(int64_t k = 0; k < stripSize; k++){
-                                if((k+(i*stripSize)) >= y) break;
-                                for(int64_t j = 0; j < x; j++){
-                                    ((float*)tiff)[((j*y)+(k+(i*stripSize)))+((dir-startSlice)*(x*y))] = ((float*)buffer)[j+(k*x)];
-                                }
-                            }
-                                    break;
-                        case 64:
-                            // Map Values to flip x and y for MATLAB
-                            for(int64_t k = 0; k < stripSize; k++){
-                                if((k+(i*stripSize)) >= y) break;
-                                for(int64_t j = 0; j < x; j++){
-                                    ((double*)tiff)[((j*y)+(k+(i*stripSize)))+((dir-startSlice)*(x*y))] = ((double*)buffer)[j+(k*x)];
-                                }
-                            }
-                                    break;
-                    }
+                        }
+                                break;
                 }
             }
-            free(buffer);
-            TIFFClose(tif);
         }
-    }
-    else{
-        uint64_t stripsPerDir = (uint64_t)ceil((double)y/(double)stripSize);
-        FILE *fp = fopen(fileName, "rb");
-        if(!fp) {
-			printf("File \"%s\" cannot be opened from Disk\n",fileName);
-			err = 1;
-			return err;
-		}
-
-        if(!tif){ 
-			printf("File \"%s\" cannot be opened\n",fileName);
-			err = 1;
-			return err;
-		}
-        
-		uint64_t offset = 0;
-        uint64_t* offsets = NULL;
-        TIFFGetField(tif, TIFFTAG_STRIPOFFSETS, &offsets);
-        uint64_t* byteCounts = NULL;
-        TIFFGetField(tif, TIFFTAG_STRIPBYTECOUNTS, &byteCounts);
-        if(!offsets || !byteCounts){ 
-			printf("Could not get offsets or byte counts from the tiff file\n");
-        	err = 1;
-			return err;
-		}
-		offset = offsets[0];
-        uint64_t fOffset = offsets[stripsPerDir-1]+byteCounts[stripsPerDir-1];
-        uint64_t zSize = fOffset-offset;
-        TIFFSetDirectory(tif,1);
-        TIFFGetField(tif, TIFFTAG_STRIPOFFSETS, &offsets);
-        uint64_t gap = offsets[0]-fOffset;
-    
-        fseek(fp, offset, SEEK_SET);
-
-
+        free(buffer);
         TIFFClose(tif);
-        size_t bytesRead = fread(tiff, 1, zSize, fp);
-        fclose(fp);
-        uint64_t size = x*y*z*(bits/8);
-        void* tiffC = malloc(size);
-        memcpy(tiffC,tiff,size);
-        #pragma omp parallel for
-        for(uint64_t k = 0; k < z; k++){
-            for(uint64_t j = 0; j < x; j++){
-                for(uint64_t i = 0; i < y; i++){
-                    switch(bits){
-                        case 8:
-                            ((uint8_t*)tiff)[i+(j*y)+(k*x*y)] = ((uint8_t*)tiffC)[j+(i*x)+(k*x*y)];
-                            break;
-                        case 16:
-                            ((uint16_t*)tiff)[i+(j*y)+(k*x*y)] = ((uint16_t*)tiffC)[j+(i*x)+(k*x*y)];
-                            break;
-                        case 32:
-                            ((float*)tiff)[i+(j*y)+(k*x*y)] = ((float*)tiffC)[j+(i*x)+(k*x*y)];
-                            break;
-                        case 64:
-                            ((double*)tiff)[i+(j*y)+(k*x*y)] = ((double*)tiffC)[j+(i*x)+(k*x*y)];
-                            break;
-                    }
-                }
-            }
-        }
-        free(tiffC);
     }
     if(err){
         if(errBak) return readTiffParallelBak(x, y, z, fileName, tiff, bits, startSlice, flipXY);
