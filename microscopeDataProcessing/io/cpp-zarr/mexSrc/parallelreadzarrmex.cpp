@@ -13,6 +13,7 @@ void mexFunction(int nlhs, mxArray *plhs[],
     std::vector<uint64_t> startCoords = {0,0,0};
     std::vector<uint64_t> endCoords = {0,0,0};
     bool bbox = false;
+    bool useCtx = true;
     bool sparse = false;
     std::string folderName(mxArrayToString(prhs[0]));
 
@@ -104,7 +105,7 @@ void mexFunction(int nlhs, mxArray *plhs[],
             plhs[0] = mxCreateNumericArray(3,(mwSize*)dim,mxUINT8_CLASS, mxREAL);
             zarrArr = (uint8_t*)mxGetPr(plhs[0]);
         }
-        err = parallelReadZarr(Zarr, (void*)zarrArr,startCoords,endCoords,readShape,bits,false,sparse);
+        err = parallelReadZarr(Zarr, (void*)zarrArr,startCoords,endCoords,readShape,bits,useCtx,sparse);
     }
     else if(Zarr.get_dtype().find("u2") != std::string::npos){
         uint64_t bits = 16;
@@ -118,7 +119,7 @@ void mexFunction(int nlhs, mxArray *plhs[],
             plhs[0] = mxCreateNumericArray(3,(mwSize*)dim,mxUINT16_CLASS, mxREAL);
             zarrArr = (uint16_t*)mxGetPr(plhs[0]);
         }
-        err = parallelReadZarr(Zarr, (void*)zarrArr,startCoords,endCoords,readShape,bits,false,sparse);
+        err = parallelReadZarr(Zarr, (void*)zarrArr,startCoords,endCoords,readShape,bits,useCtx,sparse);
     }
     else if(Zarr.get_dtype().find("f4") != std::string::npos){
         uint64_t bits = 32;
@@ -132,7 +133,7 @@ void mexFunction(int nlhs, mxArray *plhs[],
             plhs[0] = mxCreateNumericArray(3,(mwSize*)dim,mxSINGLE_CLASS, mxREAL);
             zarrArr = (float*)mxGetPr(plhs[0]);
         }
-        err = parallelReadZarr(Zarr, (void*)zarrArr,startCoords,endCoords,readShape,bits,false,sparse);
+        err = parallelReadZarr(Zarr, (void*)zarrArr,startCoords,endCoords,readShape,bits,useCtx,sparse);
     }
     else if(Zarr.get_dtype().find("f8") != std::string::npos){
         uint64_t bits = 64;
@@ -146,7 +147,7 @@ void mexFunction(int nlhs, mxArray *plhs[],
             plhs[0] = mxCreateNumericArray(3,(mwSize*)dim,mxDOUBLE_CLASS, mxREAL);
             zarrArr = (double*)mxGetPr(plhs[0]);
         }
-        err = parallelReadZarr(Zarr, (void*)zarrArr,startCoords,endCoords,readShape,bits,false,sparse);
+        err = parallelReadZarr(Zarr, (void*)zarrArr,startCoords,endCoords,readShape,bits,useCtx,sparse);
     }
     else{
         mexErrMsgIdAndTxt("tiff:dataTypeError","Data type not suppported");
