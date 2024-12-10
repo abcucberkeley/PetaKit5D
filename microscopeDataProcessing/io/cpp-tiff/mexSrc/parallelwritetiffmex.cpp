@@ -30,9 +30,9 @@ void mexFunction(int nlhs, mxArray *plhs[],
     if(mxIsEmpty(prhs[1])) mexErrMsgIdAndTxt("tiff:inputError","All input data axes must be of at least size 1");
 
     std::string compression = "lzw";
-    if(nrhs == 3){
-        if(!mxIsClass(prhs[2], "string")){
-            if(!mxIsChar(prhs[2])) mexErrMsgIdAndTxt("tiff:inputError","The third argument must be a string");
+    if(nrhs == 4){
+        if(!mxIsClass(prhs[3], "string")){
+            if(!mxIsChar(prhs[3])) mexErrMsgIdAndTxt("tiff:inputError","The fourth argument must be a string");
             compression = mxArrayToString(prhs[0]);
         }
         else{
@@ -40,7 +40,7 @@ void mexFunction(int nlhs, mxArray *plhs[],
             mxArray* mCharA[1];
 
             // Convert string to char array
-            mString[0] = mxDuplicateArray(prhs[2]);
+            mString[0] = mxDuplicateArray(prhs[3]);
             mexCallMATLAB(1, mCharA, 1, mString, "char");
             compression = mxArrayToString(mCharA[0]);
         }
