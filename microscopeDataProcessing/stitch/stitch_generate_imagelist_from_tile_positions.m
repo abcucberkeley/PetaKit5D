@@ -71,6 +71,9 @@ if all(~cellfun(@isempty, regexp(fsns, '_Cam\w_ch', 'match')))
 elseif all(~cellfun(@isempty, regexp(fsns, '_ch[0-9]_', 'match')))
     expression = '(?<prefix>\w*)Scan_Iter_(?<Iter>\d+)(?<subIter>_?(\d+_)*\d+?)_ch(?<ch>\d+)_CAM\d_stack(?<stack>\d+)_(?<laser>\d+)nm_(?<abstime>\d+)msec_(?<fpgatime>\d+)msecAbs_(?<x>-?\d+)x_(?<y>-?\d+)y_(?<z>-?\d+)z_(?<t>\d+)t(?<suffix>_?\w*)';
     specifyCam = false;
+else
+    expression = '';
+    specifyCam = false;
 end
 
 tmp = regexp(fsns, expression, 'tokens');
