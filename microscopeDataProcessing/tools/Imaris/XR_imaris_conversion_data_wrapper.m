@@ -65,6 +65,14 @@ uuid = pr.uuid;
 mccMode = pr.mccMode;
 configFile = pr.configFile;
 
+if isempty(uuid)
+    if ispc
+        uuid = num2str(randi(1024));
+    else
+        uuid = get_uuid();
+    end
+end
+
 % if converter path is not provided, use the default one in the repo
 if isempty(converterPath)
     mfilePath = fileparts(which(mfilename));
@@ -115,6 +123,8 @@ end
     
 imsPaths = cell(nd, 1);
 inputFullpaths = cell(nd, 1);
+tmpFsns = cell(nd, 1);
+tmpFullpaths = cell(nd, 1);
 outputFullpaths = cell(nd, 1);
 for d = 1 : nd
     dataPath = dataPaths{d};
@@ -132,6 +142,7 @@ for d = 1 : nd
     if ~isempty(fsn)
         inputFullpaths{d} = sprintf('%s/%s', dataPath_fst, fsn{1});
     end
+    [~, ffsn] = fileparts(fsn{1});
 
     imsPath = [dataPath_fst, imsName, '/'];
     if overwrite(1) && exist(imsPath, 'dir')
@@ -142,11 +153,19 @@ for d = 1 : nd
         fileattrib(imsPath, '+w', 'g');
     end
     imsPaths{d} = imsPath;
-    outputFullpaths{d} = [imsPath, 'output.ims'];
+    if ~ispc
+        if strcmp(imsPath(1 : 2), '~/')
+            homedir = getenv('HOME');
+            imsPath = sprintf('%s%s', homedir, imsPath(2 : end));
+        end
+    end
+    tmpFsns{d} = sprintf('%s_%s', ffsn, uuid);
+    tmpFullpaths{d} = sprintf('%s%s_%s.ims', imsPath, ffsn, uuid);
+    outputFullpaths{d} = sprintf('%s%s.ims', imsPath, ffsn);
     
     % save decon parameters
-    save('-v7.3', [imsPath, '/parameters.mat'], 'pr');
-    writetable(struct2table(pr, 'AsArray', true), [imsPath, '/parameters.txt'])
+    save('-v7.3', [imsPath, 'parameters.mat'], 'pr');
+    writetable(struct2table(pr, 'AsArray', true), [imsPath, 'parameters.txt'])
 end
 
 %% setup jobs and computing
@@ -172,10 +191,15 @@ for d = 1 : nd
     if iscell(dataPaths{d})
         dataPath_str = strjoin(dataPaths{d}, ',');
     end 
-    
-    func_strs{d} = sprintf('"%s" -P "%s" -F "%s" -r %s -v %s -o "%s" -b %s %s', converterPath, ...
-        channelPatterns_str, dataPath_str, type_str, voxelsize_str, imsPaths{d}, ...
-        blockSize_str, bbox_str);
+    if ispc
+        rename_str = sprintf('powershell -command "mv "%s" "%s""', tmpFullpaths{d}, outputFullpaths{d});
+    else
+        rename_str = sprintf('mv "%s" "%s"', tmpFullpaths{d}, outputFullpaths{d});
+    end
+
+    func_strs{d} = sprintf('"%s" -P "%s" -F "%s" -n "%s" -r %s -v %s -o "%s" -b %s %s && %s', converterPath, ...
+        channelPatterns_str, dataPath_str, tmpFsns{d}, type_str, voxelsize_str, imsPaths{d}, ...
+        blockSize_str, bbox_str, rename_str);
 end
 
 % use slurm job wrapper for computing
