@@ -192,7 +192,7 @@ for d = 1 : nd
         dataPath_str = strjoin(dataPaths{d}, ',');
     end 
     if ispc
-        rename_str = sprintf('ren "%s" "%s"', tmpFullpaths{d}, outputFullpaths{d});
+        rename_str = sprintf('powershell -command "mv "%s" "%s""', tmpFullpaths{d}, outputFullpaths{d});
     else
         rename_str = sprintf('mv "%s" "%s"', tmpFullpaths{d}, outputFullpaths{d});
     end
