@@ -12,7 +12,7 @@ end
 nF = numel(filePaths);
 
 % when there are more than 100 files, use background pool
-if useParpool && nF > 100
+if ~ispc && useParpool && nF > 100
     p = backgroundPool;
     nworker = p.NumWorkers;
 
