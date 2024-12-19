@@ -181,7 +181,7 @@ while submit_status == 0 && trial_counter < maxTrialNum
                     var_str = strrep(var_str, '"', '\"');                
                     process_cmd = sprintf('MCR_CACHE_ROOT=%s %s %s %s %s \n', MCRCacheRoot, MCCMasterStr, MCRParam, func_name, var_str);
                 else
-                    matlab_setup_str = 'setup([],true)';
+                    matlab_setup_str = 'setup([])';
                     matlab_cmd = sprintf('%s;t0_=tic;%s;toc(t0_)', matlab_setup_str, funcStr);
                     process_cmd = sprintf('%s \\"%s\\"', MatlabLaunchStr, matlab_cmd);
                 end
