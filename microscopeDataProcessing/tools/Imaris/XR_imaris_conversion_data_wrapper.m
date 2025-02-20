@@ -171,14 +171,13 @@ end
 %% setup jobs and computing
 
 channelPatterns_str = strjoin(channelPatterns, ',');
-% voxelsize_str = strrep(mat2str(pixelSizes), ' ', ',');
-voxelsize_str = num2str(pixelSizes, '%.20f,');
+voxelsize_str = strrep(num2str(pixelSizes, '%.20f,'), ' ', '');
 type_str = 'tiff';
 if zarrFile
     type_str = 'zarr';
 end
 % optional flags, also include flag str
-blockSize_str = num2str(blockSize, '%d,'); 
+blockSize_str = strrep(num2str(blockSize, '%d,'), ' ', '');
 
 bbox_str = '';
 if ~isempty(inputBbox)
