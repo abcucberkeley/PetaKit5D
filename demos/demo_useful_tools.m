@@ -20,7 +20,6 @@
 %   Tiff to Zarr converter
 %   Zarr to Tiff converter
 %   Imaris converter
-%   Imaris converter
 %   Image list generator from tile list
 
 
@@ -768,10 +767,10 @@ mccMode = false;
 % config file for the master jobs that runs on CPU node
 configFile = '';
 
-XR_imaris_conversion_data_wrapper(dataPaths, 'ChannelPatterns', ChannelPatterns, ...
-    'pixelSizes', pixelSizes, 'zarrFile', zarrFile, 'blockSize', blockSize, ...
-    parseCluster=parseCluster, masterCompute=masterCompute, cpusPerTask=cpusPerTask, ...
-    mccMode=mccMode, configFile=configFile);
+XR_imaris_conversion_data_wrapper(dataPaths, 'resultDirName', resultDirName, ...
+    'ChannelPatterns', ChannelPatterns, 'pixelSizes', pixelSizes, 'zarrFile', zarrFile, ...
+    'blockSize', blockSize, parseCluster=parseCluster, masterCompute=masterCompute, ...
+    cpusPerTask=cpusPerTask, mccMode=mccMode, configFile=configFile);
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%

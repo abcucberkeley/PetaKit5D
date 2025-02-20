@@ -141,4 +141,5 @@ void mexFunction(int nlhs, mxArray *plhs[],
     free(t_mat);
     free(sw_mat);
     free(tw_mat);
+    free(zw_mat);
 }
