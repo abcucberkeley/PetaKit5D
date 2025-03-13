@@ -431,6 +431,14 @@ if stitch2D && nF < 50
     parseCluster = false;
 end
 
+if largeFile
+    if isempty(poolSize)
+        error('poolSize must not be empty when largeFile is true!');
+    end
+else
+    poolSize = [];
+end
+
 % check if total input size is greater than 100 GB if bigStitchData is false
 nodeFactor = 2;
 compressor = 'zstd';
