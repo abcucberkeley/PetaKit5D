@@ -95,7 +95,7 @@ for i = 1 : numel(kpts)
     s = kpts(i);
     % before first pair
     if all(s < p_pairs(:, 1))
-        var_cell(ind) = var_str(s : min(s, p_pairs(:)) - 1);
+        var_cell{ind} = var_str(s : max(s, min(p_pairs(:)) - 2));
         ind = ind + 1;
     end
     if any(p_pairs(:, 1) <= s & p_pairs(:, 2) > s)
