@@ -82,7 +82,7 @@ ip.addParameter('overlapType', '', @ischar); % '', 'none', 'half', or 'full'
 ip.addParameter('xcorrShift', true, @islogical);
 ip.addParameter('isPrimaryCh', true, @islogical);
 ip.addParameter('usePrimaryCoords', false, @islogical); % use primary coordinates for secondary channels/tps
-ip.addParameter('stitchPadSize', [2, 2, 1], @(x) isnumeric(x) && numel(x) == 3);
+ip.addParameter('stitchPadSize', [2, 2, 2], @(x) isnumeric(x) && numel(x) == 3);
 ip.addParameter('outBbox', [], @(x) isnumeric(x) && (isempty(x) || all(size(x) == [3, 2]) || numel(x) == 6));
 ip.addParameter('zNormalize', false, @islogical);
 ip.addParameter('xcorrDownsample', [2, 2, 1], @isnumeric); % y,x,z
@@ -133,7 +133,7 @@ flippedTile = pr.flippedTile;
 axisOrder = pr.axisOrder;
 dataOrder = pr.dataOrder;
 dz = pr.dz;
-px = pr.xyPixelSize;
+xyPixelSize = pr.xyPixelSize;
 objectiveScan = pr.objectiveScan;
 IOScan = pr.IOScan;
 InputBbox = pr.InputBbox;
@@ -263,6 +263,9 @@ for i = 1 : 3
     [~, order_sign_mat(1, :)] = sort(axisOrder_pure);
     order_sign_mat(2, i) = 1 - 2 * contains(axisOrder, ['-', xyz_str(i)]);
 end
+dataOrder_pure = strrep(strrep(dataOrder, ',', ''), '-', '');
+[~, data_order_mat] = sort(dataOrder_pure);
+
 xyz = coordinates(:, order_sign_mat(1, :)) .* order_sign_mat(2, :);
 
 % normalize coordinates to zero
@@ -301,9 +304,9 @@ end
 tileNum = tileNum(order_sign_mat(1, :));
 
 if objectiveScan || IOScan
-    zAniso = dz/px;    
+    zAniso = dz/xyPixelSize;
 else
-    zAniso = sind(SkewAngle)*dz/px;
+    zAniso = sind(SkewAngle)*dz/xyPixelSize;
 end
 theta = SkewAngle * pi/180;
 % dx = cos(theta)*dz/xyPixelSize;
@@ -338,19 +341,12 @@ if ~DSR
     zf = zAniso * zf;
 end
 
-% map xyz ratio with right data order: convert to the default yxz data order
-switch strrep(dataOrder, ',', '')
-    case 'yzx'
-    case 'zyx'
-        xyz_f = [xf, yf, zf];
-        xf = xyz_f(2);
-        yf = xyz_f(3);
-        zf = xyz_f(1);
-    case 'xyz'
-end
+xp = xyPixelSize * xf;
+yp = xyPixelSize * yf;
+zp = xyPixelSize * zf;
 
 % create a text file to indicate pixel size
-pixelInfoFname = sprintf('px%0.5g_py%0.5g_pz%0.5g', px*xf, px*yf, px*zf);
+pixelInfoFname = sprintf('px%0.5g_py%0.5g_pz%0.5g', xp, yp, zp);
 pixelInfoFullpath = sprintf('%s/%s/%s', dataPath, ResultDir, pixelInfoFname);
 % check if there is some other pixel size file
 dir_info = dir(sprintf('%s/%s/px*_py*_pz*', dataPath, ResultDir));
@@ -420,7 +416,7 @@ processTiles = ~zarrFile || (zarrFile && (~isempty(InputBbox) || ~isempty(tileOu
 % first check if it is 2d stitch
 for f = 1 : nF
     imSize = getImageSize(inputFullpaths{f});
-    if imSize(3) > 1
+    if imSize(data_order_mat == 3) > 1
         stitch2D = false;
         break;
     end
@@ -465,7 +461,7 @@ if any(stitchMIP) && size(imSizes, 2) == 2
     imSizes = [imSizes, ones(nF, 1)];
 end
 
-if all(imSizes(:, 3) == 1)
+if all(imSizes(:, data_order_mat(3)) == 1)
     stitch2D = true;
 end
 
@@ -474,36 +470,12 @@ if save16bit
     dtype = 'uint16';
 end 
 
-% adjust the x coordinates for flipped tiles.
-if ~isempty(flippedTile)
-    flippedTile = flippedTile > 0;
-    if DSR    
-        offsize = (imSizes(:, 2) - 1) * xf - imSizes(:, 3) * cot(theta) * zf;
-        % offsize = - imSizes(:, 3) * cot(theta) * zf;
-        % offsize = 0;
-        xyz(:, 1) = xyz(:, 1) - offsize .* flippedTile(:) * px * order_sign_mat(2, 1);
-    else
-        offsize = (imSizes(:, 3) - 1) * zf / sin(theta);
-        xyz(:, 1) = xyz(:, 1) - offsize .* flippedTile(:) * px * order_sign_mat(2, 1);        
-    end
-end
-
-if ~IOScan && ~objectiveScan && ~DS && ~DSR
-    % convert coordinates in DSR space to skewned space
-   xyz = [xyz(:, 3) / sin(theta), xyz(:, 2), -xyz(:, 1) * sin(theta) + xyz(:, 3) * cos(theta)];
-end
-
-if objectiveScan || DS
-    % convert coordinates in Objective Scan / DS space
-    xyz = [xyz(:, 1) * cos(theta) + xyz(:, 3) * sin(theta), xyz(:, 2), -xyz(:, 1) * sin(theta) + xyz(:, 3) * cos(theta)];
-end    
+% process coordinates based on the space of the data
+xyz = stitch_process_coordinates(xyz, imSizes, flippedTile, order_sign_mat, data_order_mat, xp, yp, zp, theta, IOScan, objectiveScan, DS, DSR);
+[~, data_order_reverse_mat] = sort(data_order_mat);
 
 % identify pairs between pairs
-% first slight shift xyz such that the distance between pairs are in
-% integer folds of resolution. 
-xyz = round((xyz - min(xyz, [], 1)) ./ ([xf, yf, zf] * px)) .* ([xf, yf, zf] * px);
-
-cuboids = [xyz, xyz + (imSizes(:, [2, 1, 3]) - 1) .* [xf, yf, zf] * px];
+cuboids = [xyz, xyz + (imSizes(:, data_order_mat) - 1) .* [xp, yp, zp]];
 overlap_matrix = false(nF);
 overlap_regions = zeros(nF * (nF - 1) / 2, 6);
 for i = 1 : nF - 1
@@ -533,7 +505,7 @@ if xcorrShift && isPrimaryCh
         
         MaxOffset = [xyMaxOffset, xyMaxOffset, zMaxOffset];
         [xyz_shift, dxyz_shift] = stitch_shift_assignment(zarrFullpaths, xcorrDir, imSizes, xyz, ...
-            px, [xf, yf, zf], overlap_matrix, overlap_regions, MaxOffset, xcorrDownsample, ...
+           [xp, yp, zp], data_order_mat, overlap_matrix, overlap_regions, MaxOffset, xcorrDownsample, ...
             xcorrThresh, tileIdx, assign_method, stitch2D, axisWeight, groupFile, largeFile, ...
             poolSize, parseCluster, nodeFactor, mccMode, configFile);
         save('-v7.3', xcorTmpFn, 'xyz_shift', 'dxyz_shift');
@@ -572,7 +544,7 @@ if isempty(overlapType)
 end
 
 % to do: change to dictionary in the future
-cuboids = [xyz_shift, xyz_shift + (imSizes(:, [2, 1, 3]) - 1) .* [xf, yf, zf] * px];
+cuboids = [xyz_shift, xyz_shift + (imSizes(:, data_order_mat) - 1) .* [xp, yp, zp]];
 
 half_ol_region_cell = cell(nF * 8, 1);
 ol_region_cell = cell(nF * 8, 1);
@@ -599,12 +571,12 @@ for i = 1 : nF - 1
         ind = (j - 1) * nF + i;
         
         [mregion_1, mregion_2] = compute_half_of_overlap_region(cuboid_i, cuboid_j, ...
-            px, [xf, yf, zf]', 'overlapType', overlapType, 'halfOrder', halfOrder, 'stitch2D', stitch2D);
+            [xp, yp, zp]', 'overlapType', overlapType, 'halfOrder', halfOrder, 'stitch2D', stitch2D);
         % half_ol_region_cell{i, j} = {mregion_1, mregion_2};
         half_ol_region_cell{counter} = {mregion_1, mregion_2};
 
         [mregion_11, mregion_21] = compute_half_of_overlap_region(cuboid_i, cuboid_j, ...
-            px, [xf, yf, zf]', 'overlapType', 'zero', 'halfOrder', halfOrder, 'stitch2D', stitch2D);
+            [xp, yp, zp]', 'overlapType', 'zero', 'halfOrder', halfOrder, 'stitch2D', stitch2D);
         % ol_region_cell{i, j} = {mregion_11, mregion_21};
         ol_region_cell{counter} = {mregion_11, mregion_21};
         overlap_map_mat(counter, :) = [counter, ind];
@@ -619,7 +591,7 @@ overlap_map_mat(counter : end, :) = [];
 % also pad the tiles such that the images of all time points and different
 % channels are the same
 if nF > 1 && xcorrShift
-    pad_size = [xf, yf, zf] .* stitchPadSize .* tileNum([2, 1, 3]) * px;
+    pad_size = [xp, yp, zp] .* stitchPadSize(data_order_mat) .* tileNum;
 else
     pad_size = [0, 0, 0];
 end
@@ -628,49 +600,44 @@ origin = min(xyz_shift_orig, [], 1) - pad_size;
 xyz_shift = xyz_shift_orig - origin;
 
 if isPrimaryCh
-    dxyz = max(xyz_shift_orig + imSizes(:, [2, 1, 3]) .* [xf, yf, zf] .* px) + pad_size - origin;
-    nxs = round(dxyz(1)/(px*xf) + 2);
-    nys = round(dxyz(2)/(px*yf) + 2);
-    nzs = round(dxyz(3)/(px*zf) + 2);    
-    if any(stitchMIP) || max(imSizes(:, 3) == 1)
-        nzs = 1;       
+    dxyz = max(xyz_shift_orig + imSizes(:, data_order_mat) .* [xp, yp, zp]) + pad_size - origin;
+    vxyz = round(dxyz ./ [xp, yp, zp] + 2);
+    nvSize = vxyz(data_order_reverse_mat);
+    if any(stitchMIP) || max(imSizes(:, data_order_mat(3)) == 1)
+        nvSize(data_order_mat(3)) = 1;
     end
 else    
-    nys = pImSz(1);
-    nxs = pImSz(2);
-    nzs = pImSz(3);
+    nvSize = pImSz;
 end
 
 % bouding box crop by redefining coordinate system and image size
 if ~isempty(outBbox)
     bbox = outBbox;
     if any(isinf(bbox(4 : 6)))
-        stchSz = [nys, nxs, nzs];
+        stchSz = nvSize;
         bbox_end = bbox(4 : 6);
         bbox_end(isinf(bbox_end)) = stchSz(isinf(bbox_end));
         bbox(4 : 6) = bbox_end;
     end
     
-    pad_size_l = pad_size - (bbox([2, 1, 3]) - 1) .* [xf, yf, zf] * px; 
+    pad_size_l = pad_size - (bbox(data_order_mat) - 1) .* [xp, yp, zp];
     % pad_size_r = pad_size + (bbox([5, 4, 6]) - [nys, nxs, nzs]) .* [xf, yf, zf] * px; 
     origin = min(xyz_shift_orig, [], 1) - pad_size_l;
     % dxyz = max(xyz_shift, [], 1) + pad_size_r - origin;
     xyz_shift = xyz_shift_orig - origin;
     
-    nys = bbox(4) - bbox(1) + 1;
-    nxs = bbox(5) - bbox(2) + 1;
-    nzs = bbox(6) - bbox(3) + 1;
+    nvSize = bbox(4 : 6) - bbox(1 : 3) + 1;
 end
 
-int_xyz_shift = round(xyz_shift ./ ([xf, yf, zf] * px));
+int_xyz_shift = round(xyz_shift ./ [xp, yp, zp]);
 
 % to increase the scalability of the code, we use block-based processing
 % first obtain coordinate data structure for blocks
-batchSize = min([nys, nxs, nzs], batchSize);
+batchSize = min(nvSize, batchSize);
 batchSize = min(median(imSizes) * 2, batchSize);
 blockSize = min(batchSize, blockSize);
 batchSize = ceil(batchSize ./ blockSize) .* blockSize;
-bSubSz = ceil([nys, nxs, nzs] ./ batchSize);
+bSubSz = ceil(nvSize ./ batchSize);
 numBatches = prod(bSubSz);
 
 % save block info (for record and distributed computing in the future)
@@ -694,10 +661,8 @@ else
     taskSize = min(numBatches, round(500 * taskRatio));
 end
 
-nvSize = [nys, nxs, nzs];
-
 [block_info_fullname, PerBlockInfoFullpaths, block_info_bytes] = stitch_process_block_info(int_xyz_shift, ...
-    imSizes, nvSize, batchSize, overlap_matrix, ol_region_cell, half_ol_region_cell, ...
+    imSizes, nvSize, batchSize, data_order_mat, overlap_matrix, ol_region_cell, half_ol_region_cell, ...
     overlap_map_mat, BorderSize, zarrFullpaths, stichInfoPath, nv_fsname, isPrimaryCh, ...
     stitchInfoFullpath=stitchInfoFullpath, stitch2D=stitch2D, uuid=uuid, taskSize=taskSize, ...
     maxFileNumPerFolder=maxFileNumPerFolder, parseCluster=parseCluster, mccMode=mccMode, configFile=configFile);
@@ -736,10 +701,10 @@ end
 % continue the stitching
 if fresh_stitch
     dimSeparator = '.';
-    if prod(ceil([nys, nxs, nzs] ./ blockSize)) > 10000
+    if prod(ceil(nvSize ./ blockSize)) > 10000
         dimSeparator = '/';
     end
-    createzarr(nv_tmp_raw_fullname, dataSize=[nys, nxs, nzs], blockSize=blockSize, ...
+    createzarr(nv_tmp_raw_fullname, dataSize=nvSize, blockSize=blockSize, ...
         shardSize=shardSize, dtype=dtype, compressor=compressor, dimSeparator=dimSeparator);
 end
 
@@ -758,7 +723,7 @@ if strcmpi(BlendMethod, 'feather')
         imdistPath = [dataPath, '/', ResultDir, '/imdist/'];
         mkdir(imdistPath);
         [imdistFullpaths, imdistFileIdx] = compute_tile_distance_transform(block_info_fullname, ...
-            stitchPath, zarrFullpaths, 'blendWeightDegree', blendWeightDegree, ...
+            stitchPath, zarrFullpaths, 'dataOrderMat', data_order_mat, 'blendWeightDegree', blendWeightDegree, ...
             'singleDistMap', singleDistMap, 'locIds', locIds, 'distBboxes', distBboxes, ...
             'blockSize', round(blockSize/2), 'shardSize', round(shardSize/2), ...
             'compressor', compressor, 'largeFile', largeFile, 'poolSize', poolSize, ...
@@ -769,7 +734,7 @@ if strcmpi(BlendMethod, 'feather')
             imdistPath = [dataPath, '/', ResultDir, '/imdist/'];
             mkdir(imdistPath);
             [imdistFullpaths, imdistFileIdx] = compute_tile_distance_transform(block_info_fullname, ...
-                stitchPath, zarrFullpaths, 'blendWeightDegree', blendWeightDegree, ...
+                stitchPath, zarrFullpaths, dataOrderMat', data_order_mat, 'blendWeightDegree', blendWeightDegree, ...
                 'singleDistMap', singleDistMap, 'locIds', locIds, 'distBboxes', distBboxes, ...
                 'blockSize', round(blockSize/2), 'shardSize', round(shardSize/2), ...
                 'compressor', compressor, 'largeFile', largeFile, 'poolSize', poolSize, ...
@@ -782,14 +747,14 @@ else
 end
 
 % save stitch information for primary channels if there is xcorr shift
-if isPrimaryCh 
+if isPrimaryCh
     stitch_info_tmp_fullname = sprintf('%s/%s/%s/%s_%s.mat', dataPath, ResultDir, stitchInfoDir, nv_fsname, uuid);
     stitchInfoFullpath =sprintf('%s/%s/%s/%s.mat', dataPath, ResultDir, stitchInfoDir, nv_fsname);
-    pImSz = [nys, nxs, nzs];
+    pImSz = nvSize;
     pTileSizes = imSizes;
     save('-v7.3', stitch_info_tmp_fullname, 'ip', 'flippedTile', 'overlap_regions', ...
-        'overlap_matrix', 'dxyz_shift', 'shiftMethod', 'pImSz', 'pTileSizes', 'xf', 'yf', 'zf', ...
-        'px', 'PerBlockInfoFullpaths', 'imdistFullpaths', 'imdistFileIdx', 'xyz_orig');
+        'overlap_matrix', 'dxyz_shift', 'shiftMethod', 'pImSz', 'pTileSizes', 'xp', 'yp', 'zp', ...
+        'data_order_mat', 'PerBlockInfoFullpaths', 'imdistFullpaths', 'imdistFileIdx', 'xyz_orig');
     movefile(stitch_info_tmp_fullname, stitchInfoFullpath);
 end
 
@@ -958,7 +923,7 @@ if saveMIP
     stcMIPname = sprintf('%s%s_MIP_z.tif', stcMIPPath, nv_fsname);
     % for data greater than half of the system memory, use the cluster based MIP.
     totalMem = getSystemMemory();
-    if prod([nys, nxs, nzs]) * byte_num / 2^30 < totalMem / 2
+    if prod(nvSize) * byte_num / 2^30 < totalMem / 2
         saveMIP_zarr(nv_fullname, stcMIPname, dtype, [1, 1, 1]);
     else
         XR_MIP_zarr(nv_fullname, axis=[1, 1, 1], parseCluster=parseCluster, ...

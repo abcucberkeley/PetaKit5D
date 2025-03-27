@@ -1,4 +1,4 @@
-function [mregion_1, mregion_2] = compute_half_of_overlap_region(cuboid_1, cuboid_2, px, xyz_factors, varargin)
+function [mregion_1, mregion_2] = compute_half_of_overlap_region(cuboid_1, cuboid_2, xyz_voxelsizes, varargin)
 % reduce overlap region size for two images
 % 
 % 
@@ -9,13 +9,12 @@ ip = inputParser;
 ip.CaseSensitive = false;
 ip.addRequired('cuboid_1', @isnumeric);
 ip.addRequired('cuboid_2', @isnumeric);
-ip.addRequired('px', @isnumeric);
-ip.addRequired('xyz_factors', @isnumeric);
+ip.addRequired('xyz_voxelsizes', @isnumeric);
 ip.addParameter('overlapType', 'half', @ischar);
 ip.addParameter('halfOrder', [2, 3, 1], @isnumeric);
 ip.addParameter('stitch2D', false, @islogical);
 
-ip.parse(cuboid_1, cuboid_2, px, xyz_factors, varargin{:});
+ip.parse(cuboid_1, cuboid_2, xyz_voxelsizes, varargin{:});
 
 overlapType = ip.Results.overlapType;
 halfOrder = ip.Results.halfOrder;
@@ -23,12 +22,12 @@ stitch2D = ip.Results.stitch2D;
 
 [is_overlap, cubiod_overlap] = check_cuboids_overlaps(cuboid_1, cuboid_2, stitch2D);
 
-xyz_factors = xyz_factors(:)';
-s1 = round((cubiod_overlap(1 : 3) - cuboid_1(1 : 3)) ./ (px * xyz_factors)) + 1;
-s2 = round((cubiod_overlap(1 : 3) - cuboid_2(1 : 3)) ./ (px * xyz_factors)) + 1;
+xyz_voxelsizes = xyz_voxelsizes(:)';
+s1 = round((cubiod_overlap(1 : 3) - cuboid_1(1 : 3)) ./ xyz_voxelsizes) + 1;
+s2 = round((cubiod_overlap(1 : 3) - cuboid_2(1 : 3)) ./ xyz_voxelsizes) + 1;
 
-t1 = round((cubiod_overlap(4 : 6) - cuboid_1(4 : 6)) ./ (px * xyz_factors)) + 1;
-t2 = round((cubiod_overlap(4 : 6) - cuboid_2(4 : 6)) ./ (px * xyz_factors)) + 1;
+t1 = round((cubiod_overlap(4 : 6) - cuboid_1(4 : 6)) ./ xyz_voxelsizes) + 1;
+t2 = round((cubiod_overlap(4 : 6) - cuboid_2(4 : 6)) ./ xyz_voxelsizes) + 1;
 
 
 % split for the half of the 

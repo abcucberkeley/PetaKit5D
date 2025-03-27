@@ -1,4 +1,4 @@
-function [block_info_fullname, PerBlockInfoFullpaths, block_info_bytes] = stitch_process_block_info(int_xyz_shift, imSizes, nvSize, blockSize, overlap_matrix, ol_region_cell, half_ol_region_cell, overlap_map_mat, BorderSize, tileFns, stichInfoPath, nv_fsname, isPrimaryCh, varargin)
+function [block_info_fullname, PerBlockInfoFullpaths, block_info_bytes] = stitch_process_block_info(int_xyz_shift, imSizes, nvSize, blockSize, data_order_mat, overlap_matrix, ol_region_cell, half_ol_region_cell, overlap_map_mat, BorderSize, tileFns, stichInfoPath, nv_fsname, isPrimaryCh, varargin)
 % move the block information processing code to this file to enable cluster
 % processing for large scale data with many tiles
 %  
@@ -12,6 +12,7 @@ ip.addRequired('int_xyz_shift', @isnumeric);
 ip.addRequired('imSizes', @isnumeric);
 ip.addRequired('nvSize', @isnumeric);
 ip.addRequired('blockSize', @isnumeric);
+ip.addRequired('data_order_mat', @isnumeric);
 ip.addRequired('overlap_matrix', @islogical);
 ip.addRequired('ol_region_cell', @iscell);
 ip.addRequired('half_ol_region_cell', @iscell);
@@ -30,7 +31,7 @@ ip.addParameter('parseCluster', true, @islogical);
 ip.addParameter('mccMode', false, @islogical);
 ip.addParameter('configFile', '', @ischar);
 
-ip.parse(int_xyz_shift, imSizes, nvSize, blockSize, overlap_matrix, ol_region_cell, half_ol_region_cell, overlap_map_mat, BorderSize, tileFns, stichInfoPath, nv_fsname, isPrimaryCh, varargin{:});
+ip.parse(int_xyz_shift, imSizes, nvSize, blockSize, data_order_mat, overlap_matrix, ol_region_cell, half_ol_region_cell, overlap_map_mat, BorderSize, tileFns, stichInfoPath, nv_fsname, isPrimaryCh, varargin{:});
 
 pr = ip.Results;
 stitchInfoFullpath = pr.stitchInfoFullpath;
@@ -48,39 +49,36 @@ fprintf('Process stitch block information...\n')
 bSubSz = ceil(nvSize ./ blockSize);
 numBlocks = prod(bSubSz);
 nF = size(imSizes, 1);
-nxs = nvSize(2);
-nys = nvSize(1);
-nzs = nvSize(3);
 
 bboxes = zeros(nF, 6);
 bboxStart_mat = zeros(nF, 3);
 bboxEnd_mat = zeros(nF, 3);
 
+zind = data_order_mat(3);
+
+[~, data_order_reverse_mat] = sort(data_order_mat);
+int_xyz_shift = int_xyz_shift(:, data_order_reverse_mat);
 for i = 1 : nF
     st_idx = int_xyz_shift(i, :);
-    % if any(st_idx < 1) || any(st_idx > [nxs, nys, nzs])
-    % bound idx to the positions of the stitched image
-    sx = imSizes(i, 2);
-    sy = imSizes(i, 1);
-    sz = imSizes(i, 3);
-    xridx = max(1, 1 - st_idx(1)) : min(sx, nxs - st_idx(1));
-    yridx = max(1, 1 - st_idx(2)) : min(sy, nys - st_idx(2));
-    zridx = max(1, 1 - st_idx(3)) : min(sz, nzs - st_idx(3));
-
-    xidx = st_idx(1) + xridx;
-    yidx = st_idx(2) + yridx;
-    zidx = st_idx(3) + zridx;
-    if stitch2D
-        zridx = 1;
-        zidx = 1;
-    end    
-    if isempty(xidx) || isempty(yidx) || isempty(zidx)
-        continue;
+    imSize = imSizes(i, :);
+    for j = 1 : 3
+        ridx = max(1, 1 - st_idx(j)) : min(imSize(j), nvSize(j) - st_idx(j));
+        idx = st_idx(j) + ridx;
+        if stitch2D && zind == j
+            idx = 1;
+            ridx = 1;
+        end
+        if isempty(idx)
+            bboxes(i, :) = 0;
+            bboxStart_mat(i, :) = 0;
+            bboxEnd_mat(i, :) = 0;
+            break;
+        end
+        bboxes(i, j) = idx(1);
+        bboxes(i, j + 3) = idx(end);
+        bboxStart_mat(i, j) = ridx(1);
+        bboxEnd_mat(i, j) = ridx(end);
     end
-
-    bboxes(i, :) = [yidx(1), xidx(1), zidx(1), yidx(end), xidx(end), zidx(end)];
-    bboxStart_mat(i, :) = [yridx(1), xridx(1), zridx(1)];
-    bboxEnd_mat(i, :) = [yridx(end), xridx(end), zridx(end)];
 end
 
 block_info_tmp_fullname = sprintf('%s/%s_block_info_task_size_%d_%s.mat', stichInfoPath, nv_fsname, taskSize, uuid);

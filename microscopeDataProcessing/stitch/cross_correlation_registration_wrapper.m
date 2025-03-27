@@ -1,4 +1,4 @@
-function [] = cross_correlation_registration_wrapper(imgFullpath_1, imgFullpath_2, xcorrFullpath, pair_indices, cuboid_1, cuboid_2, cuboid_overlap_12, px, xyz_factors, varargin)
+function [] = cross_correlation_registration_wrapper(imgFullpath_1, imgFullpath_2, xcorrFullpath, pair_indices, cuboid_1, cuboid_2, cuboid_overlap_12, xyz_voxelsizes, data_order_mat, varargin)
 % wrapper for 2d/3d cross correlation computing, for giving tile indices,
 % boundled by leading tile indices. 
 
@@ -11,8 +11,8 @@ ip.addRequired('pair_indices', @isnumeric);
 ip.addRequired('cuboid_1', @isnumeric);
 ip.addRequired('cuboid_2', @isnumeric);
 ip.addRequired('cuboid_overlap_12', @isnumeric);
-ip.addRequired('px', @isnumeric);
-ip.addRequired('xyz_factors', @isnumeric);
+ip.addRequired('xyz_voxelsizes', @isnumeric);
+ip.addRequired('data_order_mat', @isnumeric);
 ip.addParameter('Stitch2D', false, @islogical);
 ip.addParameter('downSample', [1, 1, 1], @isnumeric);
 ip.addParameter('MaxOffset', [300, 300, 50], @isnumeric);
@@ -24,7 +24,7 @@ ip.addParameter('parseCluster', true, @islogical);
 ip.addParameter('mccMode', false, @islogical);
 ip.addParameter('configFile', '', @ischar);
 
-ip.parse(imgFullpath_1, imgFullpath_2, xcorrFullpath, pair_indices, cuboid_1, cuboid_2, cuboid_overlap_12, px, xyz_factors, varargin{:});
+ip.parse(imgFullpath_1, imgFullpath_2, xcorrFullpath, pair_indices, cuboid_1, cuboid_2, cuboid_overlap_12, xyz_voxelsizes, data_order_mat, varargin{:});
 
 pr = ip.Results;
 Stitch2D = pr.Stitch2D;
@@ -63,8 +63,8 @@ for i = 1 : nF
 
     if Stitch2D
         [relative_shift, max_xcorr] = cross_correlation_registration_2d(imgFullpath_1, ...
-            imgFullpath_2i, '', cuboid_1i, cuboid_2i, cuboid_overlap_12i, px, xyz_factors, ...
-            downSample=downSample, MaxOffset=MaxOffset, dimNumThrsh=dimNumThrsh);
+            imgFullpath_2i, '', cuboid_1i, cuboid_2i, cuboid_overlap_12i, xyz_voxelsizes, ...
+            data_order_mat, downSample=downSample, MaxOffset=MaxOffset, dimNumThrsh=dimNumThrsh);
     elseif largeFile
         if nF == 1
             xcorrFullpath_i = sprintf('%s_mip_slabs.mat', xcorrFullpath(1 : end - 4));            
@@ -73,15 +73,15 @@ for i = 1 : nF
         end
         [relative_shift, max_xcorr, relative_shift_mat_i, max_xcorr_mat_i] = cross_correlation_registration_3d_mip_slabs( ...
             imgFullpath_1, imgFullpath_2i, xcorrFullpath_i, cuboid_1i, cuboid_2i, ...
-            cuboid_overlap_12i, px, xyz_factors, downSample=downSample, MaxOffset=MaxOffset, ...
-            mipDirStr=mipDirStr, poolSize=poolSize, dimNumThrsh=dimNumThrsh, ...
+            cuboid_overlap_12i, xyz_voxelsizes, data_order_mat, downSample=downSample, ...
+            MaxOffset=MaxOffset, mipDirStr=mipDirStr, poolSize=poolSize, dimNumThrsh=dimNumThrsh, ...
             parseCluster=parseCluster, mccMode=mccMode, configFile=configFile);
         relative_shift_mat_cell{i} = relative_shift_mat_i;
         max_xcorr_mat_cell{i} = max_xcorr_mat_i;
     else
         [relative_shift, max_xcorr] = cross_correlation_registration_3d(imgFullpath_1, ...
-            imgFullpath_2i, '', cuboid_1i, cuboid_2i, cuboid_overlap_12i, px, xyz_factors, ...
-            downSample=downSample, MaxOffset=MaxOffset, dimNumThrsh=dimNumThrsh);
+            imgFullpath_2i, '', cuboid_1i, cuboid_2i, cuboid_overlap_12i, xyz_voxelsizes, ...
+            data_order_mat, downSample=downSample, MaxOffset=MaxOffset, dimNumThrsh=dimNumThrsh);
     end
     relative_shift_mat(i, :) = relative_shift;
     max_xcorr_mat(i) = max_xcorr;

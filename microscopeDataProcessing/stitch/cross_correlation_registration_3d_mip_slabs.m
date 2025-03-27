@@ -1,4 +1,4 @@
-function [relative_shift, max_xcorr, relative_shift_mat, max_xcorr_mat] = cross_correlation_registration_3d_mip_slabs(imgFullpath_1, imgFullpath_2, xcorrFullpath, cuboid_1, cuboid_2, cuboid_overlap_12, px, xyz_factors, varargin)
+function [relative_shift, max_xcorr, relative_shift_mat, max_xcorr_mat] = cross_correlation_registration_3d_mip_slabs(imgFullpath_1, imgFullpath_2, xcorrFullpath, cuboid_1, cuboid_2, cuboid_overlap_12, xyz_voxelsizes, data_order_mat, varargin)
 % compute shift between a pair of tiles in stitching based on cross-correlation 
 % for large zarr files using the MIP slabs. 
 % 
@@ -19,8 +19,8 @@ ip.addRequired('xcorrFullpath', @ischar);
 ip.addRequired('cuboid_1', @isnumeric);
 ip.addRequired('cuboid_2', @isnumeric);
 ip.addRequired('cuboid_overlap_12', @isnumeric);
-ip.addRequired('px', @isnumeric);
-ip.addRequired('xyz_factors', @isnumeric);
+ip.addRequired('xyz_voxelsizes', @isnumeric);
+ip.addRequired('data_order_mat', @isnumeric);
 ip.addParameter('downSample', [1, 1, 1], @isnumeric);
 ip.addParameter('MaxOffset', [300, 300, 50], @isnumeric);
 ip.addParameter('mipDirStr', '', @ischar);
@@ -32,7 +32,7 @@ ip.addParameter('parseCluster', true, @islogical);
 ip.addParameter('mccMode', false, @islogical);
 ip.addParameter('configFile', '', @ischar);
 
-ip.parse(imgFullpath_1, imgFullpath_2, xcorrFullpath, cuboid_1, cuboid_2, cuboid_overlap_12, px, xyz_factors, varargin{:});
+ip.parse(imgFullpath_1, imgFullpath_2, xcorrFullpath, cuboid_1, cuboid_2, cuboid_overlap_12, xyz_voxelsizes, data_order_mat, varargin{:});
 
 pr = ip.Results;
 downSample = pr.downSample;
@@ -61,8 +61,9 @@ end
 
 fprintf('Compute xcorr shifts for tiles with MIP slab method:\n    %s\n    %s\n', imgFullpath_1, imgFullpath_2);
 mipFullpaths = cell(3, 2);
-axis_strs = {'y', 'x', 'z'};
-xyz_inds = [2, 1, 3];
+axis_strs = {'x', 'y', 'z'};
+xyz_inds = data_order_mat;
+axis_strs = axis_strs(xyz_inds);
 
 inputFullpaths = cell(3, 1);
 outputFullpaths = cell(3, 1);
@@ -83,8 +84,8 @@ for i = 1 : 3
     imgFullpath_i1 = mipFullpaths{i, 1};
     imgFullpath_i2 = mipFullpaths{i, 2};
 
-    xyz_factors_i = xyz_factors .* poolSize_1([2, 1, 3]);
-    xyz_factors_i(xyz_inds(i)) = xyz_factors(xyz_inds(i)) * poolSize(i);
+    xyz_voxelsizes_i = xyz_voxelsizes .* poolSize_1(xyz_voxelsizes);
+    xyz_voxelsizes_i(xyz_inds(i)) = xyz_voxelsizes(xyz_inds(i)) * poolSize(i);
     MaxOffset_i = ceil(MaxOffset ./ poolSize_1);
     MaxOffset_i(i) = ceil(MaxOffset(i) / poolSize(i));
     downSample_i = round(downSample ./ poolSize_1);
@@ -93,9 +94,9 @@ for i = 1 : 3
     sz_i1 = getImageSize(imgFullpath_i1);
     sz_i2 = getImageSize(imgFullpath_i2);
     cuboid_1i = cuboid_1;
-    cuboid_1i(4 : 6) = cuboid_1i(1 : 3) + (sz_i1([2, 1, 3]) - 2) * px .* xyz_factors_i;
+    cuboid_1i(4 : 6) = cuboid_1i(1 : 3) + (sz_i1(data_order_mat) - 2) * xyz_voxelsizes_i;
     cuboid_2i = cuboid_2;
-    cuboid_2i(4 : 6) = cuboid_2i(1 : 3) + (sz_i2([2, 1, 3]) - 2) * px .* xyz_factors_i;
+    cuboid_2i(4 : 6) = cuboid_2i(1 : 3) + (sz_i2(data_order_mat) - 2) * xyz_voxelsizes_i;
 
     stitch2D = false;
     [is_overlap, cuboid_overlap_12i] = check_cuboids_overlaps(cuboid_1i, cuboid_2i, stitch2D);
@@ -106,7 +107,7 @@ for i = 1 : 3
         cuboid_overlap_12i = cuboid_overlap_12;
     end
 
-    overlap_sizes(i, :) = ceil((cuboid_overlap_12i(4 : 6) - cuboid_overlap_12i(1 : 3)) ./ px ./ xyz_factors_i) + MaxOffset_i;
+    overlap_sizes(i, :) = ceil((cuboid_overlap_12i(4 : 6) - cuboid_overlap_12i(1 : 3)) ./ xyz_voxelsizes_i) + MaxOffset_i;
     
     imgFullpath_i2_str = sprintf('{''%s''}', imgFullpath_i2);
     largeFile = false;    
@@ -117,12 +118,12 @@ for i = 1 : 3
     inputFullpaths{i} = imgFullpath_i1;
     outputFullpaths{i} = sprintf('%s_%s.mat', xcorrFullpath(1 : end - 4), axis_strs{i});
     funcStrs{i} = sprintf(['cross_correlation_registration_wrapper(''%s'',%s,''%s'',', ...
-        '[%s],[%s],[%s],[%s],%0.20d,[%s],''Stitch2D'',%s,''downSample'',[%s],', ...
+        '[%s],[%s],[%s],[%s],%s,%s,''Stitch2D'',%s,''downSample'',[%s],', ...
         '''MaxOffset'',%s,''largeFile'',%s,''mipDirStr'',''%s'',''poolSize'',%s)'], ...
         imgFullpath_i1, imgFullpath_i2_str, outputFullpaths{i}, strrep(mat2str(pair_indices), ' ', ','), ...
         strrep(mat2str(cuboid_1i), ' ', ','), strrep(mat2str(cuboid_2i), ' ', ','), ...
-        strrep(mat2str(cuboid_overlap_12i), ' ', ','), px, strrep(mat2str(xyz_factors_i), ' ', ','), ...
-        string(stitch2D), strrep(num2str(downSample_i, '%.20d,'), ' ', ''), ...
+        strrep(mat2str(cuboid_overlap_12i), ' ', ','), mat2str_comma(xyz_voxelsizes), ...
+        mat2str_comma(data_order_mat), string(stitch2D), strrep(num2str(downSample_i, '%.20d,'), ' ', ''), ...
         strrep(mat2str(MaxOffset_i), ' ', ','), string(largeFile), mipDirStr_i, ...
         strrep(mat2str(poolSize_i), ' ', ','));
 end

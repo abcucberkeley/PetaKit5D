@@ -1,4 +1,4 @@
-function [] = compute_tile_bwdist(blockInfoFullname, tileInd, bwdistFullpath, weightDegree, singleDistMap, blockSize, shardSize, compressor, distBbox, Overwrite)
+function [] = compute_tile_bwdist(blockInfoFullname, tileInd, bwdistFullpath, weightDegree, singleDistMap, blockSize, shardSize, compressor, distBbox, dataOrderMat, Overwrite)
 % compute distance transform for a tile after removing overlap regions.
 % 
 % Author: Xiongtao Ruan (10/29/2020)
@@ -19,9 +19,10 @@ ip.addRequired('blockSize', @isvector);
 ip.addRequired('shardSize', @(x) isempty(x) || isvector(x));
 ip.addRequired('compressor', @ischar);
 ip.addRequired('distBbox', @(x) isempty(x) || isvector(x));
+ip.addRequired('dataOrderMat', @(x) isvector(x));
 ip.addOptional('Overwrite', false, @islogical);
 
-ip.parse(blockInfoFullname, tileInd, bwdistFullpath, weightDegree, singleDistMap, blockSize, shardSize, compressor, distBbox, Overwrite);
+ip.parse(blockInfoFullname, tileInd, bwdistFullpath, weightDegree, singleDistMap, blockSize, shardSize, compressor, distBbox, dataOrderMat, Overwrite);
 
 pr = ip.Results;
 Overwrite = pr.Overwrite;
@@ -50,6 +51,10 @@ nF = numel(tileFns);
 i = tileInd;
 
 im_i = readzarr(tileFns{i});
+if dataOrderMat(3) ~= 3
+    im_i = permute(im_i, dataOrderMat);
+end
+
 im_i_orig = im_i ~= 0;
 im_i([1, end], :, :) = 0;
 im_i(:, [1, end], :) = 0;
@@ -142,6 +147,12 @@ im_dist = im_dist .* permute(fastPower(win_z, weightDegree), [2, 3, 1]);
 
 im_dist = im_dist .* im_i_orig;
 clear im_i_orig im_i;
+
+if dataOrderMat(3) ~= 3
+    [~, data_order_reverse_mat] = sort(dataOrderMat);
+    im_dist = permute(im_dist, data_order_reverse_mat);
+    sz = size(im_dist, 1:3);
+end
 
 if ~isempty(distBbox)
     bufferSize = 100;

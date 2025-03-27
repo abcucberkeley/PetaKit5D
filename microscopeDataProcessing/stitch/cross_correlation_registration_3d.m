@@ -1,4 +1,4 @@
-function [relative_shift, max_xcorr] = cross_correlation_registration_3d(imgFullpath_1, imgFullpath_2, xcorrFullpath, cuboid_1, cuboid_2, cuboid_overlap_12, px, xyz_factors, varargin)
+function [relative_shift, max_xcorr] = cross_correlation_registration_3d(imgFullpath_1, imgFullpath_2, xcorrFullpath, cuboid_1, cuboid_2, cuboid_overlap_12, xyz_voxelsizes, data_order_mat, varargin)
 % compute shift between a pair of tiles in stitching based on
 % cross-correlation using image block framework.
 % 
@@ -23,14 +23,14 @@ ip.addRequired('xcorrFullpath', @ischar);
 ip.addRequired('cuboid_1', @isnumeric);
 ip.addRequired('cuboid_2', @isnumeric);
 ip.addRequired('cuboid_overlap_12', @isnumeric);
-ip.addRequired('px', @isnumeric);
-ip.addRequired('xyz_factors', @isnumeric);
+ip.addRequired('xyz_voxelsizes', @isnumeric);
+ip.addRequired('data_order_mat', @isnumeric);
 ip.addParameter('downSample', [1, 1, 1], @isnumeric);
 ip.addParameter('MaxOffset', [300, 300, 50], @isnumeric);
 ip.addParameter('dimNumThrsh', 10000, @isnumeric);
 ip.addParameter('blankNumTrsh', [], @isnumeric); % skip blank regions beyond this length when cropping template
 
-ip.parse(imgFullpath_1, imgFullpath_2, xcorrFullpath, cuboid_1, cuboid_2, cuboid_overlap_12, px, xyz_factors, varargin{:});
+ip.parse(imgFullpath_1, imgFullpath_2, xcorrFullpath, cuboid_1, cuboid_2, cuboid_overlap_12, xyz_voxelsizes, data_order_mat, varargin{:});
 
 pr = ip.Results;
 downSample = pr.downSample;
@@ -40,9 +40,15 @@ blankNumTrsh = pr.blankNumTrsh;
 
 downSample = downSample(:)';
 
-maxXOffset = MaxOffset(2);
-maxYOffset = MaxOffset(1);
-maxZOffset = MaxOffset(3);
+xdo = data_order_mat == 1;
+ydo = data_order_mat == 2;
+zdo = data_order_mat == 3;
+
+[~, data_order_reverse_mat] = sort(data_order_mat);
+
+maxXOffset = MaxOffset(xdo);
+maxYOffset = MaxOffset(ydo);
+maxZOffset = MaxOffset(zdo);
 
 saveResult = ~isempty(xcorrFullpath);
 if saveResult && exist(xcorrFullpath, 'file')
@@ -75,24 +81,24 @@ sz_1 = bim_1.Size;
 
 % note: cuboid_overlap_12, cuboid_1 and xyz_factors are in xyz order.
 % s1 = round((cuboid_overlap_12(:, 1) - cuboid_1(:, 1)) ./ (px * xyz_factors)) + 1;
-xyz_factors = xyz_factors(:);
-s1 = round((cuboid_overlap_12(1 : 3) - cuboid_1(1 : 3))' ./ (px * xyz_factors)) + 1;
-s2 = round((cuboid_overlap_12(1 : 3) - cuboid_2(1 : 3))' ./ (px * xyz_factors)) + 1;
+xyz_voxelsizes = xyz_voxelsizes(:);
+s1 = round((cuboid_overlap_12(1 : 3) - cuboid_1(1 : 3))' ./ xyz_voxelsizes) + 1;
+s2 = round((cuboid_overlap_12(1 : 3) - cuboid_2(1 : 3))' ./ xyz_voxelsizes) + 1;
 
-t1 = round((cuboid_overlap_12(4 : 6) - cuboid_1(1 : 3))' ./ (px * xyz_factors)) + 1;
-t2 = round((cuboid_overlap_12(4 : 6) - cuboid_2(1 : 3))' ./ (px * xyz_factors)) + 1;
+t1 = round((cuboid_overlap_12(4 : 6) - cuboid_1(1 : 3))' ./ xyz_voxelsizes) + 1;
+t2 = round((cuboid_overlap_12(4 : 6) - cuboid_2(1 : 3))' ./ xyz_voxelsizes) + 1;
 
-region_2 = bim_2.Adapter.getIORegion(s2([2, 1, 3])', t2([2, 1, 3])');
+region_2 = bim_2.Adapter.getIORegion(s2(data_order_reverse_mat)', t2(data_order_reverse_mat)');
 
 % crop region 2 if one or more dimension is too large, if so, find a small
 % region with rich signal. 
 if ~false    
     [region_2, crop_bbox] = crop_subregion_by_intensity(region_2, dimNumThrsh, blankNumTrsh);
     
-    s1 = s1 + (crop_bbox([2, 1, 3]) - 1)';
-    t1 = s1 + (crop_bbox([5, 4, 6]) - crop_bbox([2, 1, 3]))';
+    s1 = s1 + (crop_bbox(data_order_mat) - 1)';
+    t1 = s1 + (crop_bbox(data_order_mat + 3) - crop_bbox(data_order_mat))';
     
-    s2 = s2 + (crop_bbox([2, 1, 3]) - 1)';
+    s2 = s2 + (crop_bbox(data_order_mat) - 1)';
     % t2 = s2 + (crop_bbox([5, 4, 6]) - crop_bbox([2, 1, 3]))';    
 end
 
@@ -103,25 +109,22 @@ if any(downSample ~= 1)
 end
 
 % calculate bbox for overlap regions
-maxoff_x = ceil(maxXOffset ./ downSample(2)) * downSample(2);
-maxoff_y = ceil(maxYOffset ./ downSample(1)) * downSample(1);
-maxoff_z = ceil(maxZOffset ./ downSample(3)) * downSample(3);
+maxoff_x = ceil(maxXOffset ./ downSample(xdo)) * downSample(xdo);
+maxoff_y = ceil(maxYOffset ./ downSample(ydo)) * downSample(ydo);
+maxoff_z = ceil(maxZOffset ./ downSample(zdo)) * downSample(zdo);
 
 boarder = [maxoff_x; maxoff_y; maxoff_z];
 sr1 = max(s1 - boarder, 1);
-tr1 = min(t1 + boarder, sz_1([2, 1, 3])');
+tr1 = min(t1 + boarder, sz_1(data_order_mat)');
 
 % region_1 = bim_1.getRegion(sr1([2, 1, 3]), tr1([2, 1, 3]));
-region_1 = bim_1.Adapter.getIORegion(sr1([2, 1, 3])', tr1([2, 1, 3])');
+region_1 = bim_1.Adapter.getIORegion(sr1(data_order_reverse_mat)', tr1(data_order_reverse_mat)');
 
 % first resize to downsampled ones
 if any(downSample ~= 1)
     % resize by max pooling
     region_1 = max_pooling_3d(region_1, downSample);    
 end
-
-% region_1 = single(region_1);
-% region_2 = single(region_2);
 
 % crop region 2
 sz_2 = size(region_2, [1, 2, 3]);
@@ -166,20 +169,21 @@ if y_inds(1) ~= 1 || y_inds(end) ~= sz_2(1) || x_inds(1) ~= 1 || x_inds(end) ~= 
     % region_2 = region_2(y_inds, x_inds, z_inds);
     region_2 = crop3d(region_2, [y_inds(1), x_inds(1), z_inds(1), y_inds(end), x_inds(end), z_inds(end)]);
 end
-% src2 = [find(x_inds, 1, 'first'); find(y_inds, 1, 'first'); find(z_inds, 1, 'first')];
-src2 = [x_inds(1); y_inds(1); z_inds(1)];
-    
+% src2 = [x_inds(1); y_inds(1); z_inds(1)];
+src2 = [y_inds(1); x_inds(1); z_inds(1)];
+src2 = src2(data_order_mat);
+
 % set lower and upper bound of the maxShifts
-sp2_down = (sr1 - s1) ./ downSample([2, 1, 3])' - (src2 - 1);
-maxoff = [maxoff_x, maxoff_y, maxoff_z] ./ downSample([2, 1, 3]);
+sp2_down = (sr1 - s1) ./ downSample(data_order_mat)' - (src2 - 1);
+maxoff = [maxoff_x, maxoff_y, maxoff_z] ./ downSample(data_order_mat);
 maxShifts_lb = -sp2_down' - maxoff;
 maxShifts_ub = -sp2_down' + maxoff;
-maxShifts = [maxShifts_lb; maxShifts_ub];
-maxShifts = maxShifts(:, [2, 1, 3]); % maxShifts in yxz order
+maxShifts = [maxShifts_lb; maxShifts_ub]; % in xyz order
+maxShifts = maxShifts(:, data_order_reverse_mat); % maxShifts in actual data order
 [offset_yxz, max_xcorr, C] = normxcorr3_max_shift(single(region_2), single(region_1), maxShifts);
 % [offset_yxz, max_xcorr, C] = normxcorr3_max_shift_crop(single(region_2), single(region_1), maxShifts);
-sp2 = (sr1 - s1) - (src2 - 1) .* downSample([2, 1, 3])';
-relative_shift = offset_yxz([2, 1, 3]) .* downSample([2, 1, 3]) + sp2'; % - [maxoff_xy, maxoff_xy, maxoff_z];
+sp2 = (sr1 - s1) - (src2 - 1) .* downSample(data_order_mat)';
+relative_shift = offset_yxz(data_order_mat) .* downSample(data_order_mat) + sp2'; % - [maxoff_xy, maxoff_xy, maxoff_z];
 relative_shift = relative_shift .* ((s1 >= s2)' - 0.5) * 2;
 
 if saveResult

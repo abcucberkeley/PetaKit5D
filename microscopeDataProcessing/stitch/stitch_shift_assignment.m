@@ -1,5 +1,5 @@
 function [xyz_shift, dxyz_shift] = stitch_shift_assignment(zarrFullpaths, xcorrDir, imSizes, xyz, ...
-    px, xyz_factors, overlap_matrix, overlap_regions, MaxOffset, xcorrDownsample, xcorrThresh, tileIdx, assign_method, ...
+    xyz_voxelsizes, data_order_mat, overlap_matrix, overlap_regions, MaxOffset, xcorrDownsample, xcorrThresh, tileIdx, assign_method, ...
     stitch2D, axisWeight, groupFile, largeFile, poolSize, parseCluster, nodeFactor, mccMode, configFile)
 % main function for stitch shift assignment 
 % The main code is taken from XR_stitching_frame_zarr_dev_v1.m (to simplify
@@ -37,9 +37,9 @@ if ~exist(xcorrDir, 'dir')
     mkdir_recursive(xcorrDir, true);
 end
 
-xf = xyz_factors(1);
-yf = xyz_factors(2);
-zf = xyz_factors(3);
+xp = xyz_voxelsizes(1);
+yp = xyz_voxelsizes(2);
+zp = xyz_voxelsizes(3);
 
 nF = numel(zarrFullpaths);
 absolute_shift_mat = zeros(nF * (nF - 1) / 2, 5); % order: x, y, z
@@ -174,14 +174,14 @@ else
 end
 
 [ti, tj] = ind2sub(size(overlap_matrix), find(overlap_matrix));
-cuboid_mat = [xyz, xyz + (imSizes(:, [2, 1, 3]) - 1) .* [xf, yf, zf] * px];
+cuboid_mat = [xyz, xyz + (imSizes(:, data_order_mat) - 1) .* xyz_voxelsizes];
 
-param_str = sprintf(['%0.20d,[%s],''Stitch2D'',%s,''downSample'',[%s],', ...
+param_str = sprintf(['[%s],[%s],''Stitch2D'',%s,''downSample'',[%s],', ...
     '''MaxOffset'',%s,''largeFile'',%s,''mipDirStr'',''%s'',''poolSize'',%s,', ...
-    '''parseCluster'',%s,''mccMode'',%s,''configFile'',''%s'''], px, sprintf('%.20d,%.20d,%.20d', xf, yf, zf), ...
-    string(stitch2D), strrep(num2str(xcorrDownsample, '%.20d,'), ' ', ''), strrep(mat2str(MaxOffset), ' ', ','), ...
-    string(largeFile), mipDirStr, strrep(mat2str(poolSize), ' ', ','), string(parseCluster), ...
-    string(mccMode), configFile);
+    '''parseCluster'',%s,''mccMode'',%s,''configFile'',''%s'''], sprintf('%.20d,%.20d,%.20d', xp, yp, zp), ...
+    mat2str_comma(data_order_mat), string(stitch2D), strrep(num2str(xcorrDownsample, '%.20d,'), ' ', ''), ...
+    strrep(mat2str(MaxOffset), ' ', ','), string(largeFile), mipDirStr, strrep(mat2str(poolSize), ' ', ','), ...
+    string(parseCluster), string(mccMode), configFile);
 funcStrs_func = @(zarrFullpath_i, zarrFullpaths_j_str, outputFullpath_i, ...
     pair_indices, cuboid_mat_i, cuboid_mat_j, cuboid_overlap_ij_mat) ...
     sprintf(['cross_correlation_registration_wrapper(''%s'',%s,''%s'',', ...
@@ -242,7 +242,7 @@ fprintf('Compute pairwise cross correlation between overlap tiles...\n');
 sz = getImageSize(zarrFullpaths{1});
 pinds = (ti - 1) * nF - ti .* (ti + 1) / 2 + tj;
 cuboid_overlap_ij_mat = overlap_regions(pinds, :);
-rawImageSizes = prod(min((cuboid_overlap_ij_mat(:, 4 : 6) - cuboid_overlap_ij_mat(:, 1 : 3))' ./ (px * [xf; yf; zf]) + MaxOffset(:), sz(:))) * 4 / 1024^3;
+rawImageSizes = prod(min((cuboid_overlap_ij_mat(:, 4 : 6) - cuboid_overlap_ij_mat(:, 1 : 3))' ./ xyz_voxelsizes(:) + MaxOffset(:), sz(:))) * 4 / 1024^3;
 % memAllocate = prctile(ceil(rawImageSizes) * (1.5 + 24 / prod(xcorrDownsample)), 99) * nodeFactor;
 % allocate slight more memory for faster computing and in case of oom
 memAllocate = prctile(ceil(rawImageSizes) * (2 + 30 / prod(xcorrDownsample)), 99) * nodeFactor;
@@ -296,7 +296,7 @@ switch assign_method
     case 'global'
         neq = size(max_xcorr_mat, 1);
         max_shift_l = -ones(neq, 1) .* MaxOffset;
-        max_shift_u = (cuboid_overlap_ij_mat(:, 4 : 6) - cuboid_overlap_ij_mat(:, 1 : 3)) ./ (px .* [xf, yf, zf]);
+        max_shift_u = (cuboid_overlap_ij_mat(:, 4 : 6) - cuboid_overlap_ij_mat(:, 1 : 3)) ./ xyz_voxelsizes;
         max_shift_u = min(max_shift_u - 1, MaxOffset);
         
         % max_allow_shift = [max_shift_l, max_shift_u];
@@ -307,7 +307,7 @@ switch assign_method
     case 'grid'
         neq = size(max_xcorr_mat, 1);
         max_shift_l = -ones(neq, 1) .* MaxOffset;
-        max_shift_u = (cuboid_overlap_ij_mat(:, 4 : 6) - cuboid_overlap_ij_mat(:, 1 : 3)) ./ (px .* [xf, yf, zf]);
+        max_shift_u = (cuboid_overlap_ij_mat(:, 4 : 6) - cuboid_overlap_ij_mat(:, 1 : 3)) ./ xyz_voxelsizes;
         % max_shift_u = min(max_shift_u - 1, MaxOffset);
         max_shift_u = min(max_shift_u - 3, MaxOffset);
 
@@ -323,7 +323,7 @@ switch assign_method
     case 'group'
         neq = size(max_xcorr_mat, 1);
         max_shift_l = -ones(neq, 1) .* MaxOffset;
-        max_shift_u = (cuboid_overlap_ij_mat(:, 4 : 6) - cuboid_overlap_ij_mat(:, 1 : 3)) ./ (px .* [xf, yf, zf]);
+        max_shift_u = (cuboid_overlap_ij_mat(:, 4 : 6) - cuboid_overlap_ij_mat(:, 1 : 3)) ./ xyz_voxelsizes;
         max_shift_u = min(max_shift_u - 1, MaxOffset);
 
         if stitch2D
@@ -343,7 +343,7 @@ switch assign_method
     case 'test'
         neq = size(max_xcorr_mat, 1);
         max_shift_l = -ones(neq, 1) .* MaxOffset;
-        max_shift_u = (cuboid_overlap_ij_mat(:, 4 : 6) - cuboid_overlap_ij_mat(:, 1 : 3)) ./ (px .* [xf, yf, zf]);
+        max_shift_u = (cuboid_overlap_ij_mat(:, 4 : 6) - cuboid_overlap_ij_mat(:, 1 : 3)) ./ xyz_voxelsizes;
         max_shift_u = min(max_shift_u - 1, MaxOffset);
         
         max_allow_shift = [max_shift_l, max_shift_u];
@@ -362,7 +362,7 @@ if ~false
     end
 end
 
-dxyz_shift = d_shift .* [xf, yf, zf] .* px;
+dxyz_shift = d_shift .* xyz_voxelsizes;
 xyz_shift = xyz + dxyz_shift;
 
 fprintf('xcorr registration is done!\n')

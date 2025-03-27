@@ -1,4 +1,4 @@
-function [] = compute_tile_bwdist_mip_slabs(blockInfoFullname, tileInd, bwdistFullpath, weightDegree, singleDistMap, blockSize, shardSize, compressor, poolSize, distBbox, Overwrite)
+function [] = compute_tile_bwdist_mip_slabs(blockInfoFullname, tileInd, bwdistFullpath, weightDegree, singleDistMap, blockSize, shardSize, compressor, poolSize, distBbox, dataOrderMat, Overwrite)
 % compute distance transform for a tile for large zarr file with MIP slab
 % (only z for now). 
 %
@@ -21,9 +21,10 @@ ip.addRequired('shardSize', @(x) isempty(x) || isvector(x));
 ip.addRequired('compressor', @ischar);
 ip.addRequired('poolSize', @isvector);
 ip.addRequired('distBbox', @isnumeric);
+ip.addRequired('dataOrderMat', @(x) isvector(x));
 ip.addOptional('Overwrite', false, @islogical);
 
-ip.parse(blockInfoFullname, tileInd, bwdistFullpath, weightDegree, singleDistMap, blockSize, shardSize, compressor, poolSize, distBbox, Overwrite);
+ip.parse(blockInfoFullname, tileInd, bwdistFullpath, weightDegree, singleDistMap, blockSize, shardSize, compressor, poolSize, distBbox, dataOrderMat, Overwrite);
 
 pr = ip.Results;
 Overwrite = pr.Overwrite;
@@ -64,6 +65,10 @@ switch numel(poolSize)
 end
 
 im_i = readzarr(MIPZFn);
+if dataOrderMat(3) ~= 3
+    zdo = find(dataOrderMat == 3);
+    im_i = permute(im_i, [setdiff(1 : 3, zdo), zdo]);
+end
 im_i_orig = im_i ~= 0;
 im_i([1, end], :, :) = 0;
 im_i(:, [1, end], :) = 0;
@@ -99,6 +104,11 @@ im_dist = im_dist .* (permute(win_z, [2, 3, 1]));
 
 im_dist = im_dist .* im_i_orig;
 clear im_i_orig im_i;
+
+if dataOrderMat(3) ~= 3
+    inds = 1 : 3;
+    im_dist = permute(im_dist, [inds(inds < zdo), 3, setdiff(inds, [inds(inds < zdo), 3])]);
+end
 
 if ~isempty(distBbox)
     distBbox = distBbox ./ [poolSize(4 : 5), poolSize(3), poolSize(4 : 5), poolSize(3)];

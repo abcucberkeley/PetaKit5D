@@ -16,6 +16,7 @@ ip.addRequired('blockInfoFullname', @ischar);
 ip.addRequired('stitchPath', @ischar);
 ip.addRequired('tileFullpaths', @iscell);
 ip.addParameter('Overwrite', false, @islogical);
+ip.addParameter('dataOrderMat', [2, 1, 3], @isnumeric);
 ip.addParameter('blendWeightDegree', 10, @isnumeric);
 ip.addParameter('singleDistMap', true, @islogical);
 ip.addParameter('locIds', [], @isnumeric);
@@ -34,6 +35,7 @@ ip.parse(blockInfoFullname, stitchPath, tileFullpaths, varargin{:});
 
 pr = ip.Results;
 Overwrite = pr.Overwrite;
+dataOrderMat = pr.dataOrderMat;
 blendWeightDegree = pr.blendWeightDegree;
 singleDistMap = pr.singleDistMap;
 locIds = pr.locIds;
@@ -153,16 +155,16 @@ if largeFile
     end
     outputFullpaths = cellfun(@(x) sprintf('%s/%s_z_%s_wr_1_for_%d.zarr', distPath, x, ...
         poolSize_str, blendWeightDegree), fsnames, 'unif', 0);
-    funcStrs = arrayfun(@(x) sprintf('compute_tile_bwdist_mip_slabs(''%s'',%d,''%s'',%d,%s,%s,%s,''%s'',%s,%s,%s)', ...
+    funcStrs = arrayfun(@(x) sprintf('compute_tile_bwdist_mip_slabs(''%s'',%d,''%s'',%d,%s,%s,%s,''%s'',%s,%s,%s,%s)', ...
         blockInfoFullname, distTileIdx(x), outputFullpaths{x}, blendWeightDegree, ...
         string(singleDistMap), strrep(mat2str(blockSize), ' ', ','), strrep(mat2str(shardSize), ' ', ','), ...
-        compressor, strrep(mat2str(poolSize), ' ', ','), distBbox_strs{x}, string(Overwrite)), 1 : nF, 'unif', 0);
+        compressor, strrep(mat2str(poolSize), ' ', ','), distBbox_strs{x}, mat2str_comma(dataOrderMat), string(Overwrite)), 1 : nF, 'unif', 0);
 else
     outputFullpaths = cellfun(@(x) sprintf('%s/%s_wr_%d.zarr', distPath, x, blendWeightDegree), fsnames, 'unif', 0);
-    funcStrs = arrayfun(@(x) sprintf('compute_tile_bwdist(''%s'',%d,''%s'',%d,%s,%s,%s,''%s'',%s,%s)', ...
+    funcStrs = arrayfun(@(x) sprintf('compute_tile_bwdist(''%s'',%d,''%s'',%d,%s,%s,%s,''%s'',%s,%s,%s)', ...
         blockInfoFullname, distTileIdx(x), outputFullpaths{x}, blendWeightDegree, ...
         string(singleDistMap), strrep(mat2str(blockSize), ' ', ','), strrep(mat2str(shardSize), ' ', ','), ...
-        compressor, distBbox_strs{x}, string(Overwrite)), 1 : nF, 'unif', 0);
+        compressor, distBbox_strs{x}, mat2str_comma(dataOrderMat), string(Overwrite)), 1 : nF, 'unif', 0);
 end
 
 imSize = getImageSize(tileFullpaths{1});
