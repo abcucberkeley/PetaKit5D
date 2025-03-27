@@ -50,7 +50,12 @@ if ismac
         mkdir('mac');
     end
     if zipMac
-        zip('mac/PetaKit5DMCC.zip', '/Applications/PetaKit5DMCC/*')
+        [~, result] = system('uname -m');
+        if contains(result, 'arm64')
+            zip('mac/PetaKit5DMCC_arm64.zip', '/Applications/PetaKit5DMCC/*');
+        else
+            zip('mac/PetaKit5DMCC.zip', '/Applications/PetaKit5DMCC/*');
+        end
     end
 elseif isunix
     if nojvm
