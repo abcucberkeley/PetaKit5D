@@ -1,4 +1,4 @@
-function [] = cross_correlation_registration_wrapper_parser(imgFullpath_1, imgFullpath_2, xcorrFullpath, pair_indices, cuboid_1, cuboid_2, cuboid_overlap_12, px, xyz_factors, varargin)
+function [] = cross_correlation_registration_wrapper_parser(imgFullpath_1, imgFullpath_2, xcorrFullpath, pair_indices, cuboid_1, cuboid_2, cuboid_overlap_12, xyz_voxelsizes, data_order_mat, varargin)
 
 
 ip = inputParser;
@@ -10,8 +10,8 @@ ip.addRequired('pair_indices', @(x) isnumeric(x) || ischar(x));
 ip.addRequired('cuboid_1', @(x) isnumeric(x) || ischar(x));
 ip.addRequired('cuboid_2', @(x) isnumeric(x) || ischar(x));
 ip.addRequired('cuboid_overlap_12', @(x) isnumeric(x) || ischar(x));
-ip.addRequired('px', @(x) isnumeric(x) || ischar(x));
-ip.addRequired('xyz_factors', @(x) isnumeric(x) || ischar(x));
+ip.addRequired('xyz_voxelsizes', @(x) isnumeric(x) || ischar(x));
+ip.addRequired('data_order_mat', @(x) isnumeric(x) || ischar(x));
 ip.addParameter('Stitch2D', false, @(x) islogical(x) || ischar(x));
 ip.addParameter('downSample', [1, 1, 1], @(x) isnumeric(x) || ischar(x));
 ip.addParameter('MaxOffset', [300, 300, 50], @(x) isnumeric(x) || ischar(x));
@@ -23,7 +23,7 @@ ip.addParameter('parseCluster', true, @(x) islogical(x) || ischar(x));
 ip.addParameter('mccMode', false, @(x) islogical(x) || ischar(x));
 ip.addParameter('configFile', '', @ischar);
 
-ip.parse(imgFullpath_1, imgFullpath_2, xcorrFullpath, pair_indices, cuboid_1, cuboid_2, cuboid_overlap_12, px, xyz_factors, varargin{:});
+ip.parse(imgFullpath_1, imgFullpath_2, xcorrFullpath, pair_indices, cuboid_1, cuboid_2, cuboid_overlap_12, xyz_voxelsizes, data_order_mat, varargin{:});
 
 pr = ip.Results;
 Stitch2D = pr.Stitch2D;
@@ -52,11 +52,11 @@ end
 if ischar(cuboid_overlap_12)
     cuboid_overlap_12 = str2num(cuboid_overlap_12);
 end
-if ischar(px)
-    px = str2num(px);
+if ischar(xyz_voxelsizes)
+    xyz_voxelsizes = str2num(xyz_voxelsizes);
 end
-if ischar(xyz_factors)
-    xyz_factors = str2num(xyz_factors);
+if ischar(data_order_mat)
+    data_order_mat = str2num(data_order_mat);
 end
 if ischar(Stitch2D)
     Stitch2D = str2num(Stitch2D);
@@ -84,9 +84,9 @@ if ischar(mccMode)
 end
 
 cross_correlation_registration_wrapper(imgFullpath_1, imgFullpath_2, xcorrFullpath, ...
-    pair_indices, cuboid_1, cuboid_2, cuboid_overlap_12, px, xyz_factors, Stitch2D=Stitch2D, ...
-    downSample=downSample, MaxOffset=MaxOffset, largeFile=largeFile, mipDirStr=mipDirStr, ...
-    poolSize=poolSize, dimNumThrsh=dimNumThrsh, parseCluster=parseCluster, ...
+    pair_indices, cuboid_1, cuboid_2, cuboid_overlap_12, xyz_voxelsizes, data_order_mat, ...
+    Stitch2D=Stitch2D, downSample=downSample, MaxOffset=MaxOffset, largeFile=largeFile, ...
+    mipDirStr=mipDirStr, poolSize=poolSize, dimNumThrsh=dimNumThrsh, parseCluster=parseCluster, ...
     mccMode=mccMode, configFile=configFile);
 
 end

@@ -41,7 +41,7 @@ ip.addParameter('overlapType', '', @ischar); % '', 'none', 'half', or 'full'
 ip.addParameter('xcorrShift', true, @(x) islogical(x) || ischar(x));
 ip.addParameter('isPrimaryCh', true, @(x) islogical(x) || ischar(x));
 ip.addParameter('usePrimaryCoords', false, @(x) islogical(x) || ischar(x)); % use primary coordinates for secondary channels/tps
-ip.addParameter('stitchPadSize', [2, 2, 1], @(x) isnumeric(x) && numel(x) == 3 || ischar(x));
+ip.addParameter('stitchPadSize', [2, 2, 2], @(x) isnumeric(x) && numel(x) == 3 || ischar(x));
 ip.addParameter('outBbox', [], @(x) isnumeric(x) && (isempty(x) || all(size(x) == [3, 2]) || numel(x) == 6) || ischar(x));
 ip.addParameter('zNormalize', false, @(x) islogical(x) || ischar(x));
 ip.addParameter('xcorrDownsample', [2, 2, 1], @(x) isnumeric(x) || ischar(x)); % y,x,z

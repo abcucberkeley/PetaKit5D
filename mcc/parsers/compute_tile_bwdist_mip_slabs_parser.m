@@ -1,4 +1,4 @@
-function [] = compute_tile_bwdist_mip_slabs_parser(blockInfoFullname, tileInd, bwdistFullpath, weightDegree, singleDistMap, blockSize, shardSize, compressor, poolSize, distBbox, Overwrite)
+function [] = compute_tile_bwdist_mip_slabs_parser(blockInfoFullname, tileInd, bwdistFullpath, weightDegree, singleDistMap, blockSize, shardSize, compressor, poolSize, distBbox, dataOrderMat, Overwrite)
 
 
 ip = inputParser;
@@ -13,9 +13,10 @@ ip.addRequired('shardSize', @(x) isempty(x) || isvector(x) || ischar(x));
 ip.addRequired('compressor', @ischar);
 ip.addRequired('poolSize', @(x) isvector(x) || ischar(x));
 ip.addRequired('distBbox', @(x) isnumeric(x) || ischar(x));
+ip.addRequired('dataOrderMat', @(x) isvector(x) || ischar(x));
 ip.addOptional('Overwrite', false, @(x) islogical(x) || ischar(x));
 
-ip.parse(blockInfoFullname, tileInd, bwdistFullpath, weightDegree, singleDistMap, blockSize, shardSize, compressor, poolSize, distBbox, Overwrite);
+ip.parse(blockInfoFullname, tileInd, bwdistFullpath, weightDegree, singleDistMap, blockSize, shardSize, compressor, poolSize, distBbox, dataOrderMat, Overwrite);
 
 pr = ip.Results;
 
@@ -40,12 +41,16 @@ end
 if ischar(distBbox)
     distBbox = str2num(distBbox);
 end
+if ischar(dataOrderMat)
+    dataOrderMat = str2num(dataOrderMat);
+end
 if ischar(Overwrite)
     Overwrite = str2num(Overwrite);
 end
 
 compute_tile_bwdist_mip_slabs(blockInfoFullname, tileInd, bwdistFullpath, weightDegree, ...
-    singleDistMap, blockSize, shardSize, compressor, poolSize, distBbox, Overwrite);
+    singleDistMap, blockSize, shardSize, compressor, poolSize, distBbox, dataOrderMat, ...
+    Overwrite);
 
 end
 
