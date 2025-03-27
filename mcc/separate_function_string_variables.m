@@ -97,6 +97,7 @@ for i = 1 : numel(kpts)
     if all(s < p_pairs(:, 1))
         var_cell{ind} = var_str(s : max(s, min(p_pairs(:)) - 2));
         ind = ind + 1;
+        continue;
     end
     if any(p_pairs(:, 1) <= s & p_pairs(:, 2) > s)
         % within a pair
