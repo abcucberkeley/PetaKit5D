@@ -383,7 +383,11 @@ if isempty(processFunPath) || all(cellfun(@isempty, processFunPath))
             end
         end
         dt = char(datetime('now', 'Format', 'yyyyMMddHHmmSS'));
-        fn = sprintf('%s/tmp/processFunction_%s.mat', pstr, dt);
+        tmpDir = sprintf('%s/tmp/', pstr);
+        fn = sprintf('%s/processFunction_%s.mat', tmpDir, dt);
+        if ~exist(tmpDir, 'dir')
+            mkdir(tmpDir);
+        end
         save('-v7.3', fn, 'usrFun');  
         if ~isempty(usrFun)
             processFunPath = {fn};        

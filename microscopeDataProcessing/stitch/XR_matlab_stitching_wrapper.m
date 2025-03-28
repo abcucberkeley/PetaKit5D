@@ -700,9 +700,5 @@ while ~all(is_done_flag | trial_counter >= max_trial_num, 'all')
     end
 end
 
-if exist(stitching_tmp, 'dir')
-    rmdir(stitching_tmp, 's');
-end
-
 end
 
