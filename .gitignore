@@ -7,4 +7,8 @@
 *.c~
 *.tif
 *.tiff
-mccExcludedFiles.log
+mcc/linux/*
+mcc/linux_with_jvm/*
+mcc/mac/*
+mcc/windows/*
+mcc/windows_with_jvm/*
