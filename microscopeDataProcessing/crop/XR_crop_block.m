@@ -77,7 +77,7 @@ for i = 1 : numel(batchInds)
         end
     end
 
-    writezarr(out_batch, cropFullpath, 'bbox', [obStart, obEnd])
+    writezarr(out_batch, cropFullpath, 'bbox', [obStart, obEnd], create=false)
 
     done_flag(i) = true;
     toc;

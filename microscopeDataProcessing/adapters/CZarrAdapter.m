@@ -113,13 +113,13 @@ classdef CZarrAdapter < images.blocked.Adapter
             regionEnd = min(obj.ZarrObj.shape, regionStart + obj.ZarrInfo.IOBlockSize - 1);
             % say a 4x1 data as 2D in python. Error looks like:
             writezarr(data, obj.ZarrObj.loc, 'blockSize', obj.ZarrObj.chunks, ...
-                'bbox', [regionStart, regionEnd]);
+                'bbox', [regionStart, regionEnd], create=false);
         end
         
         function setRegion(obj, regionStart, regionEnd, data)
             % TODO - handle singleton dimensions, not sure how to convert
             writezarr(data, obj.ZarrObj.loc, 'blockSize', obj.ZarrObj.chunks, ...
-                'bbox', [regionStart, regionEnd]);
+                'bbox', [regionStart, regionEnd], create=false);
         end
         
         function setData(obj, data)

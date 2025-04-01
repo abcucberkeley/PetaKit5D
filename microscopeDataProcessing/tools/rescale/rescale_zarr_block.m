@@ -67,7 +67,7 @@ for i = 1 : numel(batchInds)
     out_batch = out_batch(baStart(1) : baEnd(1), baStart(2) : baEnd(2), baStart(3) : baEnd(3));
     
     % nv_bim.Adapter.setRegion(obStart, obEnd, out_batch)
-    writezarr(out_batch, bbox=[obStart, obEnd]);
+    writezarr(out_batch, bbox=[obStart, obEnd], create=false);
     done_flag(i) = true;
 
     toc;

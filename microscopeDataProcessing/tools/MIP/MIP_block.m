@@ -130,7 +130,7 @@ for i = 1 : numel(batchInds)
         end
         
         % nv_bim_cell{j}.Adapter.setRegion(obStart, obEnd, out_batch);
-        writezarr(out_batch, MIPFullpaths{j}, 'bbox', [obStart, obEnd])
+        writezarr(out_batch, MIPFullpaths{j}, 'bbox', [obStart, obEnd], create=false)
     end
 
     done_flag(i) = true;

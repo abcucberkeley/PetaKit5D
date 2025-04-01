@@ -121,7 +121,7 @@ for i = 1 : numel(batchInds)
         
         if skipDecon
             % nv_bim.Adapter.setRegion(obStart, obEnd, zeros(obEnd - obStart + 1, dtype));
-            writezarr(zeros(obEnd - obStart + 1, dtype), deconFullpath, 'bbox', [obStart, obEnd]);
+            writezarr(zeros(obEnd - obStart + 1, dtype), deconFullpath, 'bbox', [obStart, obEnd], create=false);
             done_flag(i) = true;
             toc;
             continue;
@@ -159,7 +159,7 @@ for i = 1 : numel(batchInds)
     
     clear in_batch;
 
-    writezarr(out_batch, deconFullpath, 'bbox', [obStart, obEnd]);
+    writezarr(out_batch, deconFullpath, 'bbox', [obStart, obEnd], create=false);
     done_flag(i) = true;
     toc;
 

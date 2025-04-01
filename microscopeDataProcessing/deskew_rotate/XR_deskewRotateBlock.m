@@ -96,7 +96,7 @@ for i = 1 : numel(batchInds)
     if save16bit && ~strcmp(dtype, 'uint16')
         out_batch = uint16(out_batch + 0.5);
     end
-    writezarr(out_batch, dsrFullpath, 'bbox', outBbox);
+    writezarr(out_batch, dsrFullpath, 'bbox', outBbox, create=false);
     clear out_batch;
     done_flag(i) = true;
 

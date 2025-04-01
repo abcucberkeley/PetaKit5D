@@ -18,7 +18,8 @@ arguments
     options.groupWrite (1, 1) logical = true
     options.bbox (1, :) {mustBeNumeric} = []
     options.sparseData (1, :) logical = false
-    options.dimSeparator char = '.'    
+    options.dimSeparator char = '.'
+    options.create logical = true
 end
 
 overwrite = options.overwrite;
@@ -30,6 +31,7 @@ groupWrite = options.groupWrite;
 bbox = options.bbox;
 sparseData = options.sparseData;
 dimSeparator = options.dimSeparator;
+create = options.create;
 
 dtype = class(data);
 sz = size(data);
@@ -60,12 +62,16 @@ end
 newFile = false;
 try 
     if ~exist(filepath, 'dir')
-        if exist(filepath, 'dir')
-            rmdir(filepath, 's');
+        if create
+            if exist(filepath, 'dir')
+                rmdir(filepath, 's');
+            end
+            createzarr(filepath, dataSize=sz, blockSize=blockSize, shardSize=shardSize, ...
+                dtype=dtype, zarrSubSize=zarrSubSize, dimSeparator=dimSeparator);
+            newFile = true;
+        else
+            error('The zarr file %s does not exist!', filepath);
         end
-        createzarr(filepath, dataSize=sz, blockSize=blockSize, shardSize=shardSize, ...
-            dtype=dtype, zarrSubSize=zarrSubSize, dimSeparator=dimSeparator);
-        newFile = true;
     end
 
     parallelWriteZarr(filepath, data, 'bbox', bbox, 'sparse', sparseData);
@@ -78,11 +84,15 @@ catch ME
     disp(ME);
     disp('Use the alternative zarr writer (ZarrAdapter)...');    
     if ~exist(filepath, 'dir') || (exist(filepath, 'dir') && isempty(bbox))
-        if exist(filepath, 'dir')
-            rmdir(filepath, 's');
+        if create
+            if exist(filepath, 'dir')
+                rmdir(filepath, 's');
+            end
+            bim = blockedImage(filepath, sz, blockSize, init_val, "Adapter", ZarrAdapter, 'Mode', 'w');
+            newFile = true;
+        else
+            error('The zarr file %s does not exist!', filepath);
         end
-        bim = blockedImage(filepath, sz, blockSize, init_val, "Adapter", ZarrAdapter, 'Mode', 'w');
-        newFile = true;
     else
         bim = blockedImage(filepath, "Adapter", ZarrAdapter);
     end

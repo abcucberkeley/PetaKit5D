@@ -122,7 +122,7 @@ for i = 1 : numel(batchInds)
     
     if numTiles == 0
         nv_block = zeros(nbsz, dtype);
-        writezarr(nv_block, stitchFullname, bbox=[obStart, obEnd]);
+        writezarr(nv_block, stitchFullname, bbox=[obStart, obEnd], create=false);
         done_flag(i) = true;
         toc;
         continue;
@@ -421,7 +421,7 @@ for i = 1 : numel(batchInds)
         if any(nbsz ~= size(tim_f_block, [1, 2, 3]))
             tim_f_block = crop3d(tim_f_block, [1, 1, 1, nbsz]);            
         end
-        writezarr(tim_f_block, stitchFullname, bbox=[obStart, obEnd]);
+        writezarr(tim_f_block, stitchFullname, bbox=[obStart, obEnd], create=false);
         done_flag(i) = true;
         toc;
         continue;
@@ -499,7 +499,7 @@ for i = 1 : numel(batchInds)
     if any(nbsz ~= size(nv_block, [1, 2, 3]))
         nv_block = crop3d(nv_block, [1, 1, 1, nbsz]);        
     end    
-    writezarr(nv_block, stitchFullname, bbox=[obStart, obEnd]);    
+    writezarr(nv_block, stitchFullname, bbox=[obStart, obEnd], create=false);    
     done_flag(i) = true;
 
     toc;

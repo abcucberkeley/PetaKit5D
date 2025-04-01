@@ -61,7 +61,7 @@ for i = 1 : numel(batchInds)
     if flipEmptyValue
         in_batch = in_batch .* cast(in_batch ~= 65535, dtype);
     end
-    writezarr(in_batch, outFullpath, bbox=outBbox);
+    writezarr(in_batch, outFullpath, bbox=outBbox, create=false);
 
     done_flag(i) = true;
 
