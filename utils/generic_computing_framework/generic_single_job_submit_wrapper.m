@@ -164,8 +164,9 @@ while submit_status == 0 && trial_counter < maxTrialNum
             % If there is no job, submit a job
             if job_status == -1         
                 if ~isempty(memAllocate) && cpusPerTask * MemPerCPU < memAllocate
-                    cpusPerTask = max(min(maxCPUNum, ceil(memAllocate / MemPerCPU)), minCPUNum);
+                    cpusPerTask = ceil(MemAllocate / MemPerCPU);
                 end
+                cpusPerTask = min(maxCPUNum, max(minCPUNum, cpusPerTask));
                 time_str = '';
                 if ~isempty(jobTimeLimit) && ~(contains(SlurmParam, ' -t ') || contains(SlurmParam, '--time'))
                     % only round to minutes (minimum 1 minute);
