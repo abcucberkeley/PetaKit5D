@@ -4,7 +4,9 @@
 #include <omp.h>
 #include <math.h>
 #include <type_traits>
+#ifdef __x86_64__
 #include <immintrin.h>
+#endif
 #include <limits>
 #include "mex.h"
 
@@ -15,7 +17,7 @@
 // c++ version of simplified geometric transformation for deskew/rotation without resampling, and output to isotropic voxels.
 
 
-#ifdef __APPLE__
+#ifndef __x86_64__
 
 void compute_weighted_sum_sequential(const float* a, const float* b, const float* c, const float* d, 
                           float* result, float wa, float wb, float wc, float wd, size_t len) {

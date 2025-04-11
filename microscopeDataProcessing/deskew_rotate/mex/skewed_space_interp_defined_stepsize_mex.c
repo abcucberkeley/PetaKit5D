@@ -5,7 +5,9 @@
 #include <omp.h>
 #include <inttypes.h>
 #include <string.h>
+#ifdef __x86_64__
 #include <immintrin.h> // For AVX/AVX2
+#endif
 #include "mex.h"
 
 // mex -v COPTIMFLAGS="-O3 -DNDEBUG" CFLAGS='$CFLAGS -O3 -fopenmp -mavx2' LDFLAGS='$LDFLAGS -O3 -fopenmp -mavx2' skewed_space_interp_defined_stepsize_mex.c
@@ -15,7 +17,7 @@
 // skewed space interpolation using simd for weighted sum calculation
 
 
-#ifdef __APPLE__
+#ifndef __x86_64__
 
 void compute_weighted_sum_two_vectors_sequential(const float* a, const float* b, float* result, 
                                       float wa, float wb, size_t len) {
