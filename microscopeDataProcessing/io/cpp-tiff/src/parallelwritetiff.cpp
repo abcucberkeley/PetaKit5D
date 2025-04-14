@@ -287,7 +287,7 @@ uint8_t writeTiffParallelWrapper(const uint64_t x, const uint64_t y, const uint6
     return ret;
 }
 
-void writeTiffParallelHelper(const char* fileName, const void* tiffOld, uint64_t bits, const char* mode, uint64_t x, uint64_t y, uint64_t z, uint64_t startSlice, uint8_t flipXY, const std::string &compression)
+void writeTiffParallelHelper(const char* fileName, const void* tiffOld, uint64_t bits, const char* mode, uint64_t x, uint64_t y, uint64_t z, uint64_t startSlice, const bool transpose, const std::string &compression)
 {
 	// Check if folder exists, if not then make it (recursive if needed)
 	char* folderName = strdup(fileName);
@@ -320,5 +320,5 @@ void writeTiffParallelHelper(const char* fileName, const void* tiffOld, uint64_t
 
 	uint64_t stripSize = 512;
 
-    writeTiffParallelWrapper(x, y, z, fileName, tiffOld, bits, startSlice, stripSize, mode, flipXY, compression);
+    writeTiffParallelWrapper(x, y, z, fileName, tiffOld, bits, startSlice, stripSize, mode, transpose, compression);
 }

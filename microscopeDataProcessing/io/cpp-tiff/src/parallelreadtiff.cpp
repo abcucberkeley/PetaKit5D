@@ -1,6 +1,7 @@
 #include <cstdint>
 #include <cmath>
 #include <cstring>
+#include <vector>
 #include <limits.h>
 #include <omp.h>
 #include "tiffio.h"
@@ -566,7 +567,7 @@ uint8_t readTiffParallelImageJ(uint64_t x, uint64_t y, uint64_t z, const char* f
 
 
 // tiff pointer guaranteed to be NULL or the correct size array for the tiff file
-void* readTiffParallelWrapperHelper(const char* fileName, void* tiff, uint8_t flipXY)
+void* readTiffParallelWrapperHelper(const char* fileName, void* tiff, uint8_t flipXY, const std::vector<uint64_t> &zRange = {})
 {
 	TIFFSetWarningHandler(DummyHandler);
 	TIFF* tif = TIFFOpen(fileName, "r");
@@ -590,6 +591,17 @@ void* readTiffParallelWrapperHelper(const char* fileName, void* tiff, uint8_t fl
 		uint64_t tempZ = imageJImGetZ(fileName);
 		if(tempZ) z = tempZ;
 	}
+
+    if(zRange.size()){
+        if(zRange.size() == 2){
+            startSlice = zRange[0];
+            z = zRange[1];
+        }
+        else{
+            startSlice = zRange[0];
+            z = zRange[0]+1;
+        }
+    }
 
 
 	if(imageJIm){
@@ -677,9 +689,9 @@ void* readTiffParallelWrapper(const char* fileName)
 	return readTiffParallelWrapperHelper(fileName,NULL,1);
 }
 
-void* readTiffParallelWrapperNoXYFlip(const char* fileName)
+void* readTiffParallelWrapperNoXYFlip(const char* fileName, const std::vector<uint64_t> &zRange)
 {
-	return readTiffParallelWrapperHelper(fileName,NULL,0);
+	return readTiffParallelWrapperHelper(fileName,NULL,0,zRange);
 }
 
 // tTiff doesn't matter as tiff is set in the function
