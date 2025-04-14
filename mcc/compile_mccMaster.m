@@ -24,9 +24,13 @@ if ismac
     if ~exist(mccPath, 'dir')
         mkdir_recursive(mccPath);
     end
+    ioReleaseFolder = 'mac';
+    if computer == "MACA64"
+        ioReleaseFolder = 'macArm';
+    end
     % mcc -v -R -nodisplay -C -d /Applications/PetaKit5DMCC -m mccMaster.m
-    copyfile([fpath '/../microscopeDataProcessing/io/cpp-tiff/mac/*.dylib'], ['/Applications/', mdir, '/']);
-    copyfile([fpath '/../microscopeDataProcessing/io/cpp-zarr/mac/*.dylib'], ['/Applications/', mdir, '/']);
+    copyfile([fpath '/../microscopeDataProcessing/io/cpp-tiff/' ioReleaseFolder '/*.dylib'], ['/Applications/', mdir, '/']);
+    copyfile([fpath '/../microscopeDataProcessing/io/cpp-zarr/' ioReleaseFolder '/*.dylib'], ['/Applications/', mdir, '/']);
     if nojvm
         mcc -v -R -nodisplay -R -nojvm -C -d /Applications/PetaKit5DMCC/mac -m mccMaster.m
     else
@@ -50,12 +54,7 @@ if ismac
         mkdir('mac');
     end
     if zipMac
-        [~, result] = system('uname -m');
-        if contains(result, 'arm64')
-            zip('mac/PetaKit5DMCC_arm64.zip', '/Applications/PetaKit5DMCC/*');
-        else
-            zip('mac/PetaKit5DMCC.zip', '/Applications/PetaKit5DMCC/*');
-        end
+        zip('mac/PetaKit5DMCC.zip', '/Applications/PetaKit5DMCC/*');
     end
 elseif isunix
     if nojvm
