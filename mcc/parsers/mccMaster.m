@@ -112,6 +112,7 @@ switch functionName
 end
 
 toc(t0);
+fprintf('\n');
 
 if ismcc
     exit;
