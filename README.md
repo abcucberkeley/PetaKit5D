@@ -9,12 +9,12 @@ The software can also run on a single workstation for smaller-scale image proces
 
 ## Usage
 
-The tools have been tested with MATLAB R2022b-R2023a for Linux (Ubuntu 22.04), Windows (10 and 11), and MacOS (14). Toolboxes required:
+The tools have been tested with MATLAB R2023a-R2024b for Linux (Ubuntu 22.04, other distributions may also work), Windows (10 and 11), and MacOS (13 or newer). Toolboxes required:
 
 `Image Processing Toolbox, Optimization Toolbox, Parallel Computing Toolbox, Signal Processing Toolbox, and Statistics and Machine Learning Toolbox.`
 
  Here are the steps to use the software:
-1. Get the source code by either cloning the GitHub repository or downloading the ZIP file. If downloading the zip file, unzip the file to a directory.
+1. Downloading the lastest [release](https://github.com/abcucberkeley/PetaKit5D/releases) (preferred) for your OS or cloning the source code from GitHub repository or downloading the ZIP file. If downloading the zip file, unzip the file to a directory. If you clone the source code or download the ZIP file and need MCC runtime, you must first compile it by executing `compile_mccMaster.m` in MATLAB.
 2. Launch MATLAB, navigate to the software's root directory, and add the software to the path with `setup.m` in the command window.
 ````
    setup
