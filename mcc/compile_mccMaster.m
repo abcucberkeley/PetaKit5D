@@ -1,10 +1,13 @@
-function [] = compile_mccMaster(nojvm, zipMac)
+function [] = compile_mccMaster(nojvm, createMCRInstaller, zipMac)
 % script to compile and configure mccMaster.m
 
 if nargin < 1
     nojvm = true;
 end
 if nargin < 2
+    createMCRInstaller = false;
+end
+if nargin < 3
     zipMac = true;
 end
 
@@ -98,6 +101,14 @@ elseif ispc
     cd(mdir);
     copyfile('../../microscopeDataProcessing/io/cpp-tiff/windows/*dll', './');
     copyfile('../../microscopeDataProcessing/io/cpp-zarr/windows/*dll', './');
+end
+
+if createMCRInstaller
+    cd(fpath);
+    if ismac
+        mdir = ['/Applications/', mdir];
+    end
+    compiler.runtime.customInstaller("installMCR", [mdir '/requiredMCRProducts.txt'], RuntimeDelivery="web");
 end
 
 cd(cpath);
