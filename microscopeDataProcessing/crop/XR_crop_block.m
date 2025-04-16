@@ -64,10 +64,11 @@ for i = 1 : numel(batchInds)
     obEnd = RegionBBoxes(i, 4 : 6);
     
     % load the region in input
-    [is_overlap, cuboid_overlap] = check_cuboids_overlaps([[1, 1, 1], imSize], [ibStart, ibEnd], false);
+    is_overlap = ~(any(ibEnd < 1) | any(ibStart > imSize));
     if ~is_overlap
         out_batch = zeros(obEnd - obStart + 1, dtype);
     else
+        cuboid_overlap = [max(1, ibStart), min(imSize, ibEnd)];
         if ~all(cuboid_overlap == [ibStart, ibEnd])
             out_batch = zeros(obEnd - obStart + 1, dtype);
             out_batch_i = readzarr(zarrFullpath, 'inputBbox', [cuboid_overlap(1 : 3), cuboid_overlap(4 : 6)]);

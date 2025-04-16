@@ -84,7 +84,7 @@ BorderSize = 0;
     'BorderSize', BorderSize);
 
 % bbox for the actual input data
-batchBBoxes = batchBBoxes + [bbox(1 : 3), bbox(1 : 3)];
+batchBBoxes = batchBBoxes + [bbox(1 : 3), bbox(1 : 3)] - 1;
 
 % initialize zarr file
 cropTempPath = sprintf('%s/%s_%s.zarr', cropPath, fsname, uuid);
