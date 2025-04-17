@@ -47,9 +47,15 @@ void mexFunction(int nlhs, mxArray *plhs[],
     uint64_t x = 1,y = 1,z = 1,bits = 1, startSlice = 0;
     TIFFGetField(tif, TIFFTAG_IMAGEWIDTH, &x);
     TIFFGetField(tif, TIFFTAG_IMAGELENGTH, &y);
-
+    
+    uint8_t imageJIm = 0;
     if(nrhs == 1){
         z = getImageSizeZ(fileName);
+        if(isImageJIm(fileName)){
+            imageJIm = 1;
+            uint64_t tempZ = imageJImGetZ(fileName);
+            if(tempZ) z = tempZ;
+        }
     }
     else{
         if(mxGetN(prhs[1]) != 2){
@@ -58,7 +64,13 @@ void mexFunction(int nlhs, mxArray *plhs[],
         else{
             startSlice = (uint64_t)*(mxGetPr(prhs[1]))-1;
             z = (uint64_t)*((mxGetPr(prhs[1])+1))-startSlice;
-            if (!TIFFSetDirectory(tif,startSlice+z-1) || !TIFFSetDirectory(tif,startSlice)){
+            uint64_t maxSize = 0;
+            if(isImageJIm(fileName)){
+                imageJIm = 1;
+                maxSize = imageJImGetZ(fileName);
+            }
+            else maxSize = getImageSizeZ(fileName);
+            if (startSlice < 0 || startSlice+z > maxSize){
                 mexErrMsgIdAndTxt("tiff:rangeOutOfBound","Range is out of bounds");
             }
         }
@@ -69,19 +81,10 @@ void mexFunction(int nlhs, mxArray *plhs[],
     TIFFGetField(tif, TIFFTAG_ROWSPERSTRIP, &stripSize);
     TIFFClose(tif);
 
-    uint8_t imageJIm = 0;
-    if(isImageJIm(fileName)){
-        imageJIm = 1;
-        uint64_t tempZ = imageJImGetZ(fileName);
-        if(tempZ) z = tempZ;
-    }
-
     uint64_t dim[3];
     dim[0] = y;
     dim[1] = x;
     dim[2] = z;
-
-
 
     // Case for ImageJ
     uint8_t err = 0;
