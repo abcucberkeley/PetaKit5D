@@ -10,4 +10,6 @@ else
     S = sprintf('[%s]', strip(num2str(A, sprintf('%%0.%df,', sn)), ','));
 end
 
+S = strrep(S, ' ', '');
+
 end
