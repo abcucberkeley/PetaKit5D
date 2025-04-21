@@ -139,8 +139,14 @@ for d = 1 : nd
         dir_info = dir([dataPath_fst, '*tif']);        
     end
     fsn = {dir_info.name}';
+    for c = 1 : numel(channelPatterns)
+        fsn = fsn(contains(fsn, channelPatterns{c}));
+    end
     if ~isempty(fsn)
         inputFullpaths{d} = sprintf('%s/%s', dataPath_fst, fsn{1});
+    else
+        warning('Folder %s does not contain any file that contains the given channel patterns!', dataPath);
+        continue;
     end
     [~, ffsn] = fileparts(fsn{1});
 
@@ -187,6 +193,9 @@ end
 func_strs = cell(nd, 1);
 for d = 1 : nd
     dataPath_str = dataPaths{d};
+    if isempty(outputFullpaths{d})
+        continue;
+    end
     if iscell(dataPaths{d})
         dataPath_str = strjoin(dataPaths{d}, ',');
     end 
