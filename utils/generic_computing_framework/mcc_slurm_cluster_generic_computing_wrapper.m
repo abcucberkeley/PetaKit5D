@@ -45,7 +45,7 @@ ip.addParameter('BashLaunchStr', '', @ischar);
 ip.addParameter('SlurmParam', '-p abc --qos abc_normal -n1 --mem-per-cpu=21418M', @ischar);
 ip.addParameter('SlurmConstraint', '', @ischar);
 ip.addParameter('MCRCacheRoot', '/tmp/', @ischar);
-ip.addParameter('MCRParam', '/usr/local/MATLAB/R2023a', @ischar);
+ip.addParameter('MCRParam', '/usr/local/MATLAB/R2024b', @ischar);
 ip.addParameter('MCCMasterStr', '/home/xruan/Projects/XR_Repository/mcc/run_mccMaster.sh', @ischar);
 ip.addParameter('jobTimeLimit', 24, @isnumeric); % in hour, [] means no limit
 ip.addParameter('queryInterval', 3, @isnumeric); % in second, by default 3 s. 
