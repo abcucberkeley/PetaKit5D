@@ -139,9 +139,12 @@ for d = 1 : nd
         dir_info = dir([dataPath_fst, '*tif']);        
     end
     fsn = {dir_info.name}';
+    is_included = false(numel(fsn), 1);
     for c = 1 : numel(channelPatterns)
-        fsn = fsn(contains(fsn, channelPatterns{c}));
+        is_included = is_included | contains(fsn, channelPatterns{c});
     end
+    fsn = fsn(is_included);
+
     if ~isempty(fsn)
         inputFullpaths{d} = sprintf('%s/%s', dataPath_fst, fsn{1});
     else
