@@ -26,8 +26,8 @@ ip.addParameter('tmpDir', '', @ischar);
 ip.addParameter('maxCPUNum', 24, @isnumeric);
 ip.addParameter('minCPUNum', 1, @isnumeric);
 ip.addParameter('cpusPerTask', 1, @isnumeric);
-ip.addParameter('MemPerCPU', 20.9, @isnumeric);
-ip.addParameter('MemAllocate', [], @isnumeric);
+ip.addParameter('memPerCPU', 20.9, @isnumeric);
+ip.addParameter('memAllocate', [], @isnumeric);
 ip.addParameter('wholeNodeJob', false, @islogical); % allocate a whole node for parallel computing
 ip.addParameter('uuid', '', @ischar);
 ip.addParameter('GPUJob', false, @islogical);
@@ -104,8 +104,8 @@ tmpDir = pr.tmpDir;
 maxCPUNum = pr.maxCPUNum;
 minCPUNum = pr.minCPUNum;
 cpusPerTask = pr.cpusPerTask;
-MemPerCPU = pr.MemPerCPU;
-MemAllocate = pr.MemAllocate;
+memPerCPU = pr.memPerCPU;
+memAllocate = pr.memAllocate;
 wholeNodeJob = pr.wholeNodeJob; 
 uuid = pr.uuid;
 GPUJob = pr.GPUJob;
@@ -150,8 +150,8 @@ end
 
 switch clusterType
     case 'slurm'
-        if ~isempty(MemAllocate) && cpusPerTask * MemPerCPU < MemAllocate
-            cpusPerTask = ceil(MemAllocate / MemPerCPU);
+        if ~isempty(memAllocate) && cpusPerTask * memPerCPU < memAllocate
+            cpusPerTask = ceil(memAllocate / memPerCPU);
         end
         cpusPerTask = min(maxCPUNum, max(minCPUNum, cpusPerTask));
         % if cpu per task is less than half of max cpu num, round to a factor of the max cpu num

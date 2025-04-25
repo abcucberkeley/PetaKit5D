@@ -24,7 +24,7 @@ ip.addParameter('tmpDir', '', @ischar);
 ip.addParameter('maxCPUNum', 24, @isnumeric);
 ip.addParameter('minCPUNum', 1, @isnumeric);
 ip.addParameter('cpusPerTask', 1, @isnumeric);
-ip.addParameter('MemPerCPU', 20.9, @isnumeric);
+ip.addParameter('memPerCPU', 20.9, @isnumeric);
 ip.addParameter('memAllocate', [], @isnumeric);
 ip.addParameter('uuid', '', @ischar);
 ip.addParameter('maxTrialNum', 3, @isnumeric);
@@ -116,7 +116,7 @@ tmpDir = pr.tmpDir;
 maxCPUNum = pr.maxCPUNum;
 minCPUNum = pr.minCPUNum;
 cpusPerTask = pr.cpusPerTask;
-MemPerCPU = pr.MemPerCPU;
+memPerCPU = pr.memPerCPU;
 memAllocate = pr.memAllocate;
 uuid = pr.uuid;
 maxTrialNum = pr.maxTrialNum;
@@ -163,8 +163,8 @@ while submit_status == 0 && trial_counter < maxTrialNum
     
             % If there is no job, submit a job
             if job_status == -1         
-                if ~isempty(memAllocate) && cpusPerTask * MemPerCPU < memAllocate
-                    cpusPerTask = ceil(MemAllocate / MemPerCPU);
+                if ~isempty(memAllocate) && cpusPerTask * memPerCPU < memAllocate
+                    cpusPerTask = ceil(memAllocate / memPerCPU);
                 end
                 cpusPerTask = min(maxCPUNum, max(minCPUNum, cpusPerTask));
                 time_str = '';

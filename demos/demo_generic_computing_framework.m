@@ -84,7 +84,7 @@ wholeNodeJob = true;
 
 % memory mapping per cpu core in GB. If there are 502 GB in 24 core node,
 % then it is 20.9 GB per core. 
-MemPerCPU = 20.9;
+memPerCPU = 20.9;
 
 % use GNU parallel for computing, only available in mccMode 
 GNUparallel = true;
@@ -105,7 +105,7 @@ a.jobLogDir = jobLogDir;
 a.maxCPUNum = maxCPUNum;
 a.minCPUNum = minCPUNum;
 a.wholeNodeJob = wholeNodeJob;
-a.MemPerCPU = MemPerCPU;
+a.memPerCPU = memPerCPU;
 a.GNUparallel = GNUparallel;
 a.jobTimeLimit = jobTimeLimit;
 a.maxJobNum = maxJobNum;
