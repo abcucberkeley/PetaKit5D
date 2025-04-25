@@ -54,12 +54,13 @@ parser_cell{t + 1} = sprintf('    otherwise\n        error(''The parser for func
 parser_cell{t + 2} = sprintf('end');
 parser_cell{t + 3} = sprintf('');
 parser_cell{t + 4} = sprintf('toc(t0);');
-parser_cell{t + 5} = sprintf('');
-parser_cell{t + 6} = sprintf('if ismcc\n    exit;\nend');
-parser_cell{t + 7} = sprintf('');
-parser_cell{t + 8} = sprintf('end');
-parser_cell{t + 9} = sprintf('');
-parser_cell(t + 10 : end) = [];
+parser_cell{t + 5} = sprintf('fprintf(''\\n'');');
+parser_cell{t + 6} = sprintf('');
+parser_cell{t + 7} = sprintf('if ismcc\n    exit;\nend');
+parser_cell{t + 8} = sprintf('');
+parser_cell{t + 9} = sprintf('end');
+parser_cell{t + 10} = sprintf('');
+parser_cell(t + 11 : end) = [];
 
 % write out to a file
 % if the parser function exist, check if the content is the same
