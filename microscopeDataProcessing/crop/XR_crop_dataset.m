@@ -86,6 +86,10 @@ if ischar(dataPaths)
     dataPaths = {dataPaths};
 end
 
+if largeFile
+    saveZarr = true;
+end
+
 nd = numel(dataPaths);
 resultPaths = cell(nd, 1);
 for d = 1 : nd
