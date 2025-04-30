@@ -360,6 +360,7 @@ while (~parseCluster && ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
                         end
                         if ~exist(func_str_dir, 'dir')
                             mkdir(func_str_dir);
+                            fileattrib(func_str_dir, '+w', 'g');
                         end
                         
                         if strcmpi(language, 'matlab')

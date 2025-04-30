@@ -160,6 +160,7 @@ for i = 1 : nF
     zarrPath = [dataPath, '/', resultDirName];
     if ~exist(zarrPath, 'dir')
         mkdir(zarrPath);
+        fileattrib(zarrPath, '+w', 'g');
     end
 
     zarrFullpaths{i} = sprintf('%s/%s/%s.zarr/', dataPath, resultDirName, fsname_i);

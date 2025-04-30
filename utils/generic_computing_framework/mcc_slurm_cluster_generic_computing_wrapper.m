@@ -161,7 +161,8 @@ if isempty(tmpDir)
 else
     funcInputDir = sprintf('%s/%s/', tmpDir, dt);            
 end
-mkdir_recursive(funcInputDir);
+group_write = true;
+mkdir_recursive(funcInputDir, group_write);
 
 batchSize = taskBatchNum;
 nB = ceil(nF / batchSize);
