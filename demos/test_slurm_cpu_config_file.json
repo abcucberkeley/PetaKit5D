@@ -7,7 +7,7 @@
   "maxCPUNum": 24,
   "minCPUNum": 1,
   "wholeNodeJob": true,
-  "MemPerCPU": 20.9,
+  "memPerCPU": 20.9,
   "GNUparallel": true,
   "jobTimeLimit": 12,
   "maxJobNum": 5000
