@@ -19,7 +19,7 @@ pr = ip.Results;
 channelPatterns = pr.channelPatterns;
 mapTilename = pr.mapTilename;
 
-dir_info = dir([dataPath, '*.sqlite3']);
+dir_info = dir([dataPath, '/*.sqlite3']);
 fsns = {dir_info.name}';
 
 % preallocate for 1000 rows, which should be enough for most siutations.
@@ -43,7 +43,7 @@ t = table('Size', sz, 'VariableTypes', varTypes, 'VariableNames', varNames);
 
 counter = 0;
 for f = 1 : numel(fsns)
-    dbfile = [dataPath, fsns{f}];
+    dbfile = [dataPath, '/', fsns{f}];
     conn = sqlite(dbfile, 'readonly');
 
     sqlquery = 'SELECT * FROM ImageListView_NoNull';
