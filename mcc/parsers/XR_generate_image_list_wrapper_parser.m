@@ -6,6 +6,7 @@ ip.CaseSensitive = false;
 ip.addRequired('dataPaths', @(x) ischar(x) || iscell(x));
 ip.addRequired('generationMethod', @(x) ischar(x));
 ip.addParameter('channelPatterns', {'CamA_ch0', 'CamA_ch1', 'CamB_ch0'}, @(x) iscell(x) || ischar(x));
+ip.addParameter('mapTilename', true, @(x) islogical(x) || ischar(x));
 ip.addParameter('tilePatterns', {'0000t', 'ch0', '000x', '000y', '000z'}, @(x) iscell(x) || ischar(x));
 ip.addParameter('tileFilenames', {}, @(x) iscell(x) || ischar(x));
 ip.addParameter('tileIndices', [], @(x) isempty(x) || (isnumeric(x) && size(x, 2) == 5) || ischar(x));
@@ -28,6 +29,7 @@ ip.parse(dataPaths, generationMethod, varargin{:});
 
 pr = ip.Results;
 channelPatterns = pr.channelPatterns;
+mapTilename = pr.mapTilename;
 tilePatterns = pr.tilePatterns;
 tileFilenames = pr.tileFilenames;
 tileIndices = pr.tileIndices;
@@ -51,6 +53,9 @@ if ischar(dataPaths) && ~isempty(dataPaths) && strcmp(dataPaths(1), '{')
 end
 if ischar(channelPatterns) && ~isempty(channelPatterns) && strcmp(channelPatterns(1), '{')
     channelPatterns = eval(channelPatterns);
+end
+if ischar(mapTilename)
+    mapTilename = str2num(mapTilename);
 end
 if ischar(tilePatterns) && ~isempty(tilePatterns) && strcmp(tilePatterns(1), '{')
     tilePatterns = eval(tilePatterns);
@@ -93,9 +98,9 @@ if ischar(overlapSize)
 end
 
 XR_generate_image_list_wrapper(dataPaths, generationMethod, channelPatterns=channelPatterns, ...
-    tilePatterns=tilePatterns, tileFilenames=tileFilenames, tileIndices=tileIndices, ...
-    tileInterval=tileInterval, DS=DS, DSR=DSR, xyPixelSize=xyPixelSize, dz=dz, ...
-    skewAngle=skewAngle, axisOrder=axisOrder, dataOrder=dataOrder, objectiveScan=objectiveScan, ...
+    mapTilename=mapTilename, tilePatterns=tilePatterns, tileFilenames=tileFilenames, ...
+    tileIndices=tileIndices, tileInterval=tileInterval, DS=DS, DSR=DSR, xyPixelSize=xyPixelSize, ...
+    dz=dz, skewAngle=skewAngle, axisOrder=axisOrder, dataOrder=dataOrder, objectiveScan=objectiveScan, ...
     IOScan=IOScan, zarrFile=zarrFile, overlapSize=overlapSize, overlapSizeType=overlapSizeType, ...
     uuid=uuid);
 
