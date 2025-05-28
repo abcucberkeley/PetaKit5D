@@ -214,7 +214,9 @@ end
 
 % save parameters 
 save('-v7.3', [stitching_rt, '/parameters.mat'], 'pr');
-writetable(struct2table(pr, 'AsArray', true), [stitching_rt, '/parameters.txt'])
+writeJsonFile(pr, [stitching_rt, '/parameters.json']);
+fileattrib([stitching_rt, '/parameters.mat'], '+w', 'g');
+fileattrib([stitching_rt, '/parameters.json'], '+w', 'g');
 
 % check if axis order is valid
 axisOrder = strrep(axisOrder, ' ', '');
@@ -228,14 +230,14 @@ stitchInfoDir = 'stitchInfo';
 stitch_info_path = [stitching_rt, '/', stitchInfoDir];
 if ~exist(stitch_info_path, 'dir')
     mkdir(stitch_info_path);
-    fileattrib(stitch_info_path, '+w', 'g');            
+    fileattrib(stitch_info_path, '+w', 'g');
 end
 
 % temporary directory for intermediate results
 stitching_tmp = [stitching_rt, '/', 'tmp'];
 if ~exist(stitching_tmp, 'dir')
     mkdir(stitching_tmp);
-    fileattrib(stitching_tmp, '+w', 'g');            
+    fileattrib(stitching_tmp, '+w', 'g');
 end
 
 % check if a slurm-based computing cluster exists

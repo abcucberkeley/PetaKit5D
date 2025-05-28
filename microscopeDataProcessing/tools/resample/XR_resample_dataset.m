@@ -96,10 +96,7 @@ for d = 1 : nd
     fileattrib(resultPath, '+w', 'g');
 
     save('-v7.3', [resultPath, '/parameters.mat'], 'pr');
-    s = jsonencode(pr, PrettyPrint=true);
-    fid = fopen([resultPath, '/parameters.json'], 'w');
-    fprintf(fid, s);
-    fclose(fid);
+    writeJsonFile(pr, [resultPath, '/parameters.json']);
 end
 
 % parse image filenames

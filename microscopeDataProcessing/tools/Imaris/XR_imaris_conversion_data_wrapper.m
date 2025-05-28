@@ -172,9 +172,9 @@ for d = 1 : nd
     tmpFullpaths{d} = sprintf('%s%s_%s.ims', imsPath, ffsn, uuid);
     outputFullpaths{d} = sprintf('%s%s.ims', imsPath, ffsn);
     
-    % save decon parameters
+    % save parameters
     save('-v7.3', [imsPath, 'parameters.mat'], 'pr');
-    writetable(struct2table(pr, 'AsArray', true), [imsPath, 'parameters.txt'])
+    writeJsonFile(pr, [imsPath, 'parameters.json']);
 end
 
 %% setup jobs and computing

@@ -73,6 +73,6 @@ movefile(rtTempName, rtFullname);
 
 % save parameters 
 save('-v7.3', [rotPSFdir, '/parameters.mat'], 'pr');
-writetable(struct2table(pr, 'AsArray', true), [rotPSFdir, '/parameters.txt'])
+writeJsonFile(pr, [rotPSFdir, '/parameters.json']);
 
 end

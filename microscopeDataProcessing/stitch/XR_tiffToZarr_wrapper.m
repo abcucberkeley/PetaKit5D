@@ -101,10 +101,7 @@ if ~isempty(dataPaths)
         fileattrib(resultPath, '+w', 'g');
     
         save('-v7.3', [resultPath, '/parameters.mat'], 'pr');
-        s = jsonencode(pr, PrettyPrint=true);
-        fid = fopen([resultPath, '/parameters.json'], 'w');
-        fprintf(fid, s);
-        fclose(fid);
+        writeJsonFile(pr, [resultPath, '/parameters.json']);
     end
     
     % parse image filenames
@@ -225,6 +222,7 @@ for i = 1 : nF
     zarrPath = [dataPath, '/', resultDirName];
     if ~exist(zarrPath, 'dir')
         mkdir(zarrPath);
+        fileattrib(zarrPath, '+w', 'g');
     end
 
     zarrFullpaths{i} = sprintf('%s/%s/%s.zarr/', dataPath, resultDirName, fsname_i);

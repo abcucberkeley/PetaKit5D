@@ -359,6 +359,7 @@ end
 
 if ~exist(pixelInfoFullpath, 'file')
     fclose(fopen(pixelInfoFullpath, 'w'));
+    fileattrib(pixelInfoFullpath, '+w', 'g');
 end
 
 % use single distance map for 
@@ -726,6 +727,7 @@ if strcmpi(BlendMethod, 'feather')
     if isPrimaryCh 
         imdistPath = [dataPath, '/', ResultDir, '/imdist/'];
         mkdir(imdistPath);
+        fileattrib(imdistPath, '+w', 'g');
         [imdistFullpaths, imdistFileIdx] = compute_tile_distance_transform(block_info_fullname, ...
             stitchPath, zarrFullpaths, 'dataOrderMat', data_order_mat, 'blendWeightDegree', blendWeightDegree, ...
             'singleDistMap', singleDistMap, 'locIds', locIds, 'distBboxes', distBboxes, ...
@@ -737,6 +739,7 @@ if strcmpi(BlendMethod, 'feather')
         if ~usePrimaryDist
             imdistPath = [dataPath, '/', ResultDir, '/imdist/'];
             mkdir(imdistPath);
+            fileattrib(imdistPath, '+w', 'g');
             [imdistFullpaths, imdistFileIdx] = compute_tile_distance_transform(block_info_fullname, ...
                 stitchPath, zarrFullpaths, 'dataOrderMat', data_order_mat, 'blendWeightDegree', blendWeightDegree, ...
                 'singleDistMap', singleDistMap, 'locIds', locIds, 'distBboxes', distBboxes, ...
@@ -786,11 +789,14 @@ numTasks = ceil(numBatches / taskSize);
 
 % flag dir for files, make sure there is no flags from old runs.
 % wait more time zarr file computing
+zarrFlagRootPath = sprintf('%s/%s/zarr_flags/', dataPath, ResultDir);
 zarrFlagPath = sprintf('%s/%s/zarr_flags/%s_%s/', dataPath, ResultDir, nv_fsname, uuid);
 if exist(zarrFlagPath, 'dir') && fresh_stitch
     rmdir(zarrFlagPath, 's')
 end
 mkdir(zarrFlagPath);
+fileattrib(zarrFlagRootPath, '+w', 'g');
+fileattrib(zarrFlagPath, '+w', 'g');
 zarrFlagPath_cell = {zarrFlagPath};
 if numTasks > maxFileNumPerFolder
     nFolder = ceil(numTasks / maxFileNumPerFolder);
@@ -799,6 +805,7 @@ if numTasks > maxFileNumPerFolder
         t = f * maxFileNumPerFolder;
         zarrFlagPath_f = sprintf('%s/tasks_%d_%d/', zarrFlagPath, s, t);
         mkdir(zarrFlagPath_f);
+        fileattrib(zarrFlagPath_f, '+w', 'g');
         zarrFlagPath_cell{f} = zarrFlagPath_f;
     end
 end

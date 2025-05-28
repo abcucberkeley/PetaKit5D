@@ -258,16 +258,10 @@ for d = 1 : nd
     % save ds/dsr parameters
     if saveDS && ~rotate
         save('-v7.3', [dsPath, '/parameters.mat'], 'pr');
-        s = jsonencode(pr, PrettyPrint=true);
-        fid = fopen([dsPath, '/parameters.json'], 'w');
-        fprintf(fid, s);
-        fclose(fid);
+        writeJsonFile(pr, [dsPath, '/parameters.json']);
     else
         save('-v7.3', [dsrPath, '/parameters.mat'], 'pr');
-        s = jsonencode(pr, PrettyPrint=true);
-        fid = fopen([dsrPath, '/parameters.json'], 'w');
-        fprintf(fid, s);
-        fclose(fid);
+        writeJsonFile(pr, [dsrPath, '/parameters.json']);
     end
 end
 

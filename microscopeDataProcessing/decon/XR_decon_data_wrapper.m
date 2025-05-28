@@ -254,7 +254,7 @@ for d = 1 : nd
 
     % save decon parameters
     save('-v7.3', [deconPath, '/parameters.mat'], 'pr');
-    writetable(struct2table(pr, 'AsArray', true), [deconPath, '/parameters.txt'])
+    writeJsonFile(pr, [deconPath, '/parameters.json']);
 end
 
 for f = 1 : numel(psfFullpaths)

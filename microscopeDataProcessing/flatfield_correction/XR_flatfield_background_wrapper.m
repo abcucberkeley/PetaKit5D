@@ -92,8 +92,8 @@ for d = 1 : nd
     
     % save parameters 
     save('-v7.3', [bg_rt, '/parameters.mat'], 'pr');
-    writetable(struct2table(pr, 'AsArray', true), [bg_rt, '/parameters.txt'])
-    
+    writeJsonFile(pr, [bg_rt, '/parameters.json']);
+
     % temporary directory for intermediate results
     cdr_tmp = [bg_rt, filesep, 'tmp'];
     if ~exist(cdr_tmp, 'dir')
