@@ -9,6 +9,7 @@ function [] = XR_generate_image_list_wrapper(dataPaths, generationMethod, vararg
 %
 % Parameters (as 'specifier'-value pairs):
 %     channelPatterns : a cell array (default: {'CamA_ch0', 'CamA_ch1', 'CamB_ch0'}).  Channel identifiers for included channels. 
+%         mapTilename : true|false (default: true). Map arbitray tilenames to standard ones (for sqlite method only for now).
 %        tilePatterns : a 1x5 cell array (default: {'0000t', 'ch0', '000x', '000y', '000z'}). Patterns for time, channel, x, y and z to localize tiles. It should be the combination of word and numbers in the form of [a-zA-Z]*[0-9]* or [0-9]*[a-zA-Z]*.
 %       tileFilenames : a #file x 1 cell array (default: {}). List of tile filenames
 %         tileIndices : a #file x 5 array (default: []). Tile indices for corresponding tiles in tileFilenames, order: tcxyz.
@@ -36,6 +37,7 @@ ip.CaseSensitive = false;
 ip.addRequired('dataPaths', @(x) ischar(x) || iscell(x));
 ip.addRequired('generationMethod', @(x) ischar(x));
 ip.addParameter('channelPatterns', {'CamA_ch0', 'CamA_ch1', 'CamB_ch0'}, @iscell);
+ip.addParameter('mapTilename', true, @islogical);
 ip.addParameter('tilePatterns', {'0000t', 'ch0', '000x', '000y', '000z'}, @iscell);
 ip.addParameter('tileFilenames', {}, @iscell);
 ip.addParameter('tileIndices', [], @(x) isempty(x) || (isnumeric(x) && size(x, 2) == 5));
@@ -59,6 +61,7 @@ ip.parse(dataPaths, generationMethod, varargin{:});
 pr = ip.Results;
 % Overwrite = pr.Overwrite;
 channelPatterns = pr.channelPatterns;
+mapTilename = pr.mapTilename;
 tilePatterns = pr.tilePatterns;
 tileFilenames = pr.tileFilenames;
 tileIndices = pr.tileIndices;
@@ -89,7 +92,7 @@ switch lower(generationMethod)
         end
     case 'sqlite'
         for d = 1 : nd        
-            stitch_generate_imagelist_from_sqlite(dataPaths{d});        
+            stitch_generate_imagelist_from_sqlite(dataPaths{d}, channelPatterns=channelPatterns, mapTilename=mapTilename);
         end
     case 'tile_position'
         stitch_generate_imagelist_from_tile_positions(dataPaths, channelPatterns=channelPatterns, ...

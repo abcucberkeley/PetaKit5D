@@ -377,6 +377,7 @@ Required inputs:
 
 Parameters (as 'specifier'-value pairs):
     channelPatterns : a cell array (default: {'CamA_ch0', 'CamA_ch1', 'CamB_ch0'}).  Channel identifiers for included channels. 
+        mapTilename : true|false (default: true). Map arbitray tilenames to standard ones (for sqlite method only for now).
        tilePatterns : a 1x5 cell array (default: {'0000t', 'ch0', '000x', '000y', '000z'}). Patterns for time, channel, x, y and z to localize tiles. It should be the combination of word and numbers in the form of [a-zA-Z]*[0-9]* or [0-9]*[a-zA-Z]*.
                  DS : true|false (default: false). Data is in deskewed space.
                 DSR : true|false (default: false). Data is in deskew/rotated space (with stage coordinates).
