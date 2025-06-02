@@ -58,10 +58,16 @@ for f = 1 : numel(fsns)
 
     ntile = size(results, 1);
     if mapTilename
-        t(counter + 1 : counter + ntile, :) = results(:, [3, 3, 3, 17 : 22]);
-        tile_info_tab(counter + 1 : counter + ntile, :) = results(:, [3 : 13]);
+        t(counter + 1 : counter + ntile, :) = results(:, {'Filename', 'Filename', 'Filename', ...
+            'Mean_X_MCS2_Position_um', 'Mean_Y_MCS2_Position_um', 'Mean_Z_MCS2_Position_um', ...
+            'Mean_X_Target_Position_um', 'Mean_Y_Target_Position_um', 'Mean_Z_Target_Position_um'});
+        tile_info_tab(counter + 1 : counter + ntile, :) = results(:, {'Filename', ...
+            'Camera', 'Channel', 'Laser_nm', 'File_Stack_Index', 'Elapsed_ms', ...
+            'Absolute_ms', 'Tile_index_X', 'Tile_index_Y', 'Tile_index_Z', 'Tile_index_T'});
     else
-        t(counter + 1 : counter + ntile, :) = results(:, [3, 3, 17 : 22]);
+        t(counter + 1 : counter + ntile, :) = results(:, {'Filename', 'Filename', ...
+            'Mean_X_MCS2_Position_um', 'Mean_Y_MCS2_Position_um', 'Mean_Z_MCS2_Position_um', ...
+            'Mean_X_Target_Position_um', 'Mean_Y_Target_Position_um', 'Mean_Z_Target_Position_um'});
     end
     counter = counter + ntile;
 end
