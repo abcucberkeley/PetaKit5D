@@ -15,7 +15,7 @@ ip.addParameter('inputBbox', [], @isnumeric); % inputBbox for input
 ip.addParameter('blockSize', [256, 256, 256], @isnumeric); % blcoksize
 ip.addParameter('batchSize', [512, 512, 512], @isnumeric); % size to process in one batch 
 ip.addParameter('borderSize', [5, 5, 5], @isnumeric); % padded boarder for each batch
-ip.addParameter('interpMethod', 'linear', @(x) ischar(x) && any(strcmpi(x, {'cubic', 'linear', 'nearest'})));
+ip.addParameter('interpMethod', 'linear', @(x) ischar(x) && any(strcmpi(x, {'cubic', 'linear', 'nearest', 'max', 'mean'})));
 ip.addParameter('parseCluster', true, @islogical);
 ip.addParameter('cpusPerTask', 1, @isscalar);
 ip.addParameter('uuid', '', @ischar);
@@ -40,7 +40,7 @@ if isempty(uuid)
     uuid = get_uuid();
 end
 
-if numel(resampleFactor) == 1
+if isscalar(resampleFactor)
     resampleFactor = ones(1, 3) * resampleFactor;
 elseif numel(resampleFactor) == 2
     resampleFactor = [resampleFactor(1), resampleFactor(1), resampleFactor(2)];

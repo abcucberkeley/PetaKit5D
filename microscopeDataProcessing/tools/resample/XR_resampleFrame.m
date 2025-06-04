@@ -68,13 +68,20 @@ end
 
 outSize = round(size(im) ./ rs);
 
-if ismatrix(im)
-    if strcmpi(interpMethod, 'linear')
-        interpMethod = 'bilinear';
-    end
-    im = imresize(im, outSize, 'Method', interpMethod);    
-else
-    im = imresize3(im, outSize, 'Method', interpMethod);
+switch interpMethod
+    case {'nearest', 'linear', 'cubic'}
+        if ismatrix(im)
+            if strcmpi(interpMethod, 'linear')
+                interpMethod = 'bilinear';
+            end
+            im = imresize(im, outSize, 'Method', interpMethod);
+        else
+            im = imresize3(im, outSize, 'Method', interpMethod);
+        end
+    case 'max'
+        im = max_pooling_3d(im, rs);
+    case 'mean'
+        im = imresize3_average(im, rs);
 end
 
 if save16bit

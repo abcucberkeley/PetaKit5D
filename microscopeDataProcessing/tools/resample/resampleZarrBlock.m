@@ -13,14 +13,12 @@ ip.addRequired('zarrFullpath', @(x) ischar(x));
 ip.addRequired('dsFullpath', @(x) ischar(x));
 ip.addRequired('flagFullname', @(x) ischar(x));
 ip.addRequired('resampleFactor', @isnumeric);
-% ip.addParameter('ResultDir', 'matlab_stitch', @ischar);
 ip.addParameter('inputBbox', [], @isnumeric);
 ip.addParameter('batchSize', [], @isnumeric);
 ip.addParameter('blockSize', [], @isnumeric);
 ip.addParameter('borderSize', [], @isnumeric);
 ip.addParameter('overwrite', false, @islogical);
 ip.addParameter('interpMethod', 'linear', @ischar);
-% ip.addParameter('imdistPath', '', @ischar); % blurred sigma for blurred blend
 
 ip.parse(batchInds, zarrFullpath, dsFullpath, flagFullname, resampleFactor, varargin{:});
 
@@ -111,7 +109,14 @@ for i = 1 : numel(batchInds)
     if all(resampleFactor == 1)
         out_batch = in_batch;
     else
-        out_batch = imresize3(in_batch, outSize, interpMethod);
+        switch interpMethod
+            case {'nearest', 'linear', 'cubic'}
+                out_batch = imresize3(in_batch, outSize, interpMethod);
+            case 'max'
+                out_batch = max_pooling_3d(in_batch, resampleFactor);
+            case 'mean'
+                out_batch = imresize3_average(in_batch, resampleFactor);
+        end
     end
     clear in_batch;
 

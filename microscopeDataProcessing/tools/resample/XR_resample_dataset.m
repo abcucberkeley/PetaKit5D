@@ -11,7 +11,7 @@ function [] = XR_resample_dataset(dataPaths, resampleFactor, varargin)
 %       resultDirName : char (default: 'matlab_stitch'). Resampling result directory under data path.
 %     channelPatterns : a cell array (default: {'CamA_ch0', 'CamA_ch1', 'CamB_ch0', 'CamB_ch1'}).  Channel identifiers for included channels. 
 %           inputBbox : empty or 1x6 vector (default: []). Input bounding box for crop. Definiation: [ymin, xmin, zmin, ymax, xmax, zmax].
-%        interpMethod : 'linear'|'cubic'|'nearest' (default: 'linear'). Interpolation method for geometric transformations in deskew and rotation.
+%        interpMethod : 'linear'|'cubic'|'nearest'|'max'|'mean' (default: 'linear'). Interpolation method. 'max' and 'mean' only support integer resample factors.
 %           save16bit : true|false (default: true). Save 16bit result for the result. 
 %            zarrFile : true|false (default: false). Use Zarr file as input.
 %           largeFile : true|false (default: false). Use large scale resampling strategy with batch processing. Only for Zarr files.
@@ -38,7 +38,7 @@ ip.addRequired('resampleFactor', @isnumeric);
 ip.addParameter('resultDirName', 'resampled', @ischar);
 ip.addParameter('channelPatterns', {'CamA_ch0', 'CamA_ch1', 'CamB_ch0', 'CamB_ch1'}, @iscell);
 ip.addParameter('inputBbox', [], @isnumeric); % bbox for input
-ip.addParameter('interpMethod', 'linear', @(x) ischar(x) && any(strcmpi(x, {'cubic', 'linear', 'nearest'})));
+ip.addParameter('interpMethod', 'linear', @(x) ischar(x) && any(strcmpi(x, {'cubic', 'linear', 'nearest', 'max', 'mean'})));
 ip.addParameter('save16bit', true, @islogical);
 ip.addParameter('zarrFile', false, @islogical);
 ip.addParameter('largeFile', false, @islogical);
