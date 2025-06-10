@@ -282,7 +282,7 @@ if (~DSRCombined && (~exist(dsFullname, 'file') || ip.Results.overwrite)) || DSR
             end
 
             if splitCompute
-                bmip = apply(bo, @(bs) max(bs.Data, [], 3), 'blockSize', [bo.blockSize(1:2), bo.Size(3)], 'useParallel', false);
+                bmip = apply(bo, @(bs) max(bs.Data, [], 3), 'blockSize', [bo.BlockSize(1:2), bo.Size(3)], 'useParallel', false);
                 mip = gather(bmip);
             else
                 mip = max(ds, [], 3);
