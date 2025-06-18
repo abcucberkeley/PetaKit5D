@@ -10,7 +10,7 @@ ip.addParameter('inputBbox', [], @(x) isnumeric(x) || ischar(x)); % inputBbox fo
 ip.addParameter('blockSize', [256, 256, 256], @(x) isnumeric(x) || ischar(x)); % blcoksize
 ip.addParameter('batchSize', [512, 512, 512], @(x) isnumeric(x) || ischar(x)); % size to process in one batch 
 ip.addParameter('borderSize', [5, 5, 5], @(x) isnumeric(x) || ischar(x)); % padded boarder for each batch
-ip.addParameter('interpMethod', 'linear', @(x) ischar(x) && any(strcmpi(x, {'cubic', 'linear', 'nearest'})));
+ip.addParameter('interpMethod', 'linear', @(x) ischar(x) && any(strcmpi(x, {'cubic', 'linear', 'nearest', 'max', 'mean'})));
 ip.addParameter('parseCluster', true, @(x) islogical(x) || ischar(x));
 ip.addParameter('cpusPerTask', 1, @(x) isscalar(x) || ischar(x));
 ip.addParameter('uuid', '', @ischar);

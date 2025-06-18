@@ -8,7 +8,7 @@ ip.addRequired('resampleFactor', @(x) isnumeric(x) || ischar(x));
 ip.addParameter('resultDirName', 'resampled', @ischar);
 ip.addParameter('channelPatterns', {'CamA_ch0', 'CamA_ch1', 'CamB_ch0', 'CamB_ch1'}, @(x) iscell(x) || ischar(x));
 ip.addParameter('inputBbox', [], @(x) isnumeric(x) || ischar(x)); % bbox for input
-ip.addParameter('interpMethod', 'linear', @(x) ischar(x) && any(strcmpi(x, {'cubic', 'linear', 'nearest'})));
+ip.addParameter('interpMethod', 'linear', @(x) ischar(x) && any(strcmpi(x, {'cubic', 'linear', 'nearest', 'max', 'mean'})));
 ip.addParameter('save16bit', true, @(x) islogical(x) || ischar(x));
 ip.addParameter('zarrFile', false, @(x) islogical(x) || ischar(x));
 ip.addParameter('largeFile', false, @(x) islogical(x) || ischar(x));
