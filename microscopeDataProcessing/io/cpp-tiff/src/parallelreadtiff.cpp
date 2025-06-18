@@ -326,7 +326,7 @@ uint8_t readTiffParallel2D(uint64_t x, uint64_t y, uint64_t z, const char* fileN
                 if(cBytes < 0){
                     #pragma omp critical
                     {
-                        //errBak = 1;
+                        errBak = 1;
                         err = 1;
                         sprintf(errString,"Thread %d: Strip %ld cannot be read\n",w,i);
                     }
