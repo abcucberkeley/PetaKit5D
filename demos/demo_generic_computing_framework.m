@@ -54,7 +54,7 @@ dataPath = [destPath, '/PetaKit5D_demo_cell_image_dataset/'];
 % subset of parameters based on your slurm cluster. 
 
 % if using MATLAB runtime, setup the runtime path in your cluster. 
-MCRParam = '/global/home/users/user/bin/MATLAB_Runtime/R2023a';
+MCRParam = '/global/home/users/user/bin/MATLAB_Runtime/R2024b';
 
 % the mcc master script path in your cluster. It is within PetaKit5D/mcc/linux/run_mccMaster.sh
 MCCMasterStr = '/clusterfs/fiona/user/PetaKit5D/mcc/linux/run_mccMaster.sh';
