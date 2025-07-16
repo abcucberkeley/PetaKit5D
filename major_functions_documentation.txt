@@ -570,3 +570,29 @@ Parameters (as 'specifier'-value pairs):
             saveFig : true|false (default: false). Save figure to disk.
 
 
+XR_unmix_channels_zarr.m
+Unmixing a channel by subtracting another channel with a factor
+
+Required inputs:
+          zarrFullpaths : char or cell array. Directory paths for the zarr files for different channels.
+           unmixFactors : 1x#Channel numerial array. Unmixing factors for different channels.
+
+Parameters (as 'specifier'-value pairs):
+               mode : char (default: 'linear'). Mode of unmixing. linear: linear unmixing; gaussian: gaussian unmixing
+        unmixSigmas : empty or 1x#Channel (default: []). Sigmas for gaussian unmixing.
+      resultDirName : char (default: 'Unmixed'). Result directory under data paths.
+         channelInd : a number from 1 - #Channel (default: 1). The channel to unmix.
+          batchSize : 1x3 vector (default: [1024, 1024, 1024]). Batch size per unmixing task.
+          blockSize : 1x3 vector (default: [256, 256, 256]). Block/chunk size for zarr output.
+         borderSize : 1x3 vector (default: [0, 0, 0]). Padded border for each batch.
+       parseCluster : true|false (default: true). Use slurm cluster for the processing.
+        parseParfor : true|false (default: false). Use matlab parfor for paralle processing.
+      masterCompute : true|false (default: true). Master job node is involved in the processing.
+          jobLogDir : char (default: '../job_logs'). Path for the slurm job logs.
+        cpusPerTask : a number (default: 1). The number of cpu cores per task for slurm job submission.
+         configFile : empty or char (default: ''). Path for the config file for job submission.
+            mccMode : true|false (default: false). Use mcc mode.
+               uuid : empty or a uuid string (default: ''). uuid string as part of the temporate result paths.
+              debug : true|false (default: false). Debug mode reserved for future use.
+
+
