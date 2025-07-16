@@ -107,6 +107,12 @@ switch functionName
         XR_visualize_OTF_mask_segmentation_parser(varargin{1}, varargin{2}, varargin{3}, varargin{4:end});
     case 'crop_deskew_rotate_demo_function'
         crop_deskew_rotate_demo_function_parser(varargin{1}, varargin{2}, varargin{3}, varargin{4}, varargin{5}, varargin{6});
+    case 'XR_unmix_channels_zarr'
+        XR_unmix_channels_zarr_parser(varargin{1}, varargin{2}, varargin{3:end});
+    case 'unmix_channels_block'
+        unmix_channels_block_parser(varargin{1}, varargin{2}, varargin{3}, varargin{4}, varargin{5}, varargin{6}, varargin{7:end});
+    case 'unmix_channels_gaussian_block'
+        unmix_channels_gaussian_block_parser(varargin{1}, varargin{2}, varargin{3}, varargin{4}, varargin{5}, varargin{6}, varargin{7}, varargin{8}, varargin{9}, varargin{10:end});
     otherwise
         error('The parser for function %s does not exist!', functionName);
 end
