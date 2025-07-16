@@ -596,3 +596,40 @@ Parameters (as 'specifier'-value pairs):
               debug : true|false (default: false). Debug mode reserved for future use.
 
 
+XR_ExM_PunctaRemoval_zarr.m
+Puncta removal for a zarr file
+
+Required inputs:
+       zarrFullpath : char or cell array. Directory path(s) to the input Zarr file(s).
+
+Parameters (as 'specifier'-value pairs):
+               mode : char or cell (default: 'updated'). Processing mode. 
+                      Options include: 'updated': updated method, 'bg_interpolated': based on interpolated background, and 'bg_estimation': background estimation.
+         bgFullpath : char (default: ''). File path to user-provided background data.
+           bgFactor : numeric (default: 1.0). Scaling factor applied to user-provided background data.
+              Sigma : numeric (default: 2.5). Sigma value for 3D Gaussian filtering.
+         OTSUMaxPer : numeric (default: 99.9). Maximum percentile of data used for Otsu thresholding.
+       MinThreshold : numeric array (default: [0, 0]). Minimum threshold values for each channel.
+                      If empty, thresholds are determined using Otsu's method.
+       MaxThreshold : numeric array (default: []). Maximum threshold values per channel.
+                      If empty, thresholds are determined using Otsu's method.
+      BaseThreshold : numeric array (default: []). Base threshold values.
+                      If empty, thresholds are determined using Otsu's method.
+           volThrsh : numeric (default: 1000). Volume threshold to remove small isolated objects.
+             offset : numeric (default: 0). Offset value added to cleaned image to avoid zero background.
+       localWinSize : 1x3 vector (default: [15, 15, 23]). Local window size for regional cropping (y, x, z).
+         SigmaThrsh : numeric (default: 4). Sigma threshold for point detection.
+           intThrsh : numeric (default: 10000). Intensity threshold for removing bright peaks.
+         initDetect : char (default: '2d'). Initial detection method. Options: '2d' (MIP), '3d' (volume).
+        detVolThrsh : numeric (default: 5000). Volume threshold for object detection.
+               bbox : vector or empty (default: []). Bounding box specifying region of interest.
+          batchSize : 1x3 vector (default: [1024, 1024, 1024]). Batch size for processing (y, x, z).
+          blockSize : 1x3 vector (default: [256, 256, 256]). Block size for Zarr output (y, x, z).
+          Save16bit : true|false (default: false). Save output as 16-bit.
+               uuid : char (default: ''). UUID string to label intermediate or final results.
+              debug : true|false (default: false). Enable debug mode.
+       parseCluster : true|false (default: true). Use SLURM cluster for parallel processing.
+      masterCompute : true|false (default: true). Whether the master job node also runs computations.
+        cpusPerTask : numeric (default: 1). Number of CPU cores allocated per task.
+            mccMode : true|false (default: false). Enable compiled MATLAB (MCC) mode.
+         configFile : char (default: ''). Path to config file for job submission.
