@@ -113,6 +113,14 @@ switch functionName
         unmix_channels_block_parser(varargin{1}, varargin{2}, varargin{3}, varargin{4}, varargin{5}, varargin{6}, varargin{7:end});
     case 'unmix_channels_gaussian_block'
         unmix_channels_gaussian_block_parser(varargin{1}, varargin{2}, varargin{3}, varargin{4}, varargin{5}, varargin{6}, varargin{7}, varargin{8}, varargin{9}, varargin{10:end});
+    case 'XR_bioformats_to_tiff_data_wrapper'
+        XR_bioformats_to_tiff_data_wrapper_parser(varargin{1}, varargin{2:end});
+    case 'XR_resave_zarr_wrapper'
+        XR_resave_zarr_wrapper_parser(varargin{1}, varargin{2:end});
+    case 'XR_resaveSingleZarr'
+        XR_resaveSingleZarr_parser(varargin{1}, varargin{2}, varargin{3:end});
+    case 'resaveZarrBlock'
+        resaveZarrBlock_parser(varargin{1}, varargin{2}, varargin{3}, varargin{4}, varargin{5}, varargin{6}, varargin{7:end});
     otherwise
         error('The parser for function %s does not exist!', functionName);
 end
