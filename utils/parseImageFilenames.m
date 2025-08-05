@@ -1,9 +1,11 @@
-function [fnames, fsns, fd_inds, filepaths] = parseImageFilenames(dataPaths, zarrFile, ChannelPatterns)
+function [fnames, fsns, fd_inds, filepaths] = parseImageFilenames(dataPaths, zarrFile, ChannelPatterns, varargin)
 % parse image filenames for given data paths for tiff or zarr for given
 % channel pattens. This is a simpler version of XR_parseImageFilenames.m
 % for only existing Tiff or Zarr files with given channel patterns.
 %
 % Author: Xiongtao Ruan (04/17/2024)
+%
+% 08/04/2025: add support for other data fromats
 
 
 ip = inputParser;
@@ -11,8 +13,12 @@ ip.CaseSensitive = false;
 ip.addRequired('dataPaths', @(x) ischar(x) || iscell(x));
 ip.addRequired('zarrFile', @islogical);
 ip.addRequired('ChannelPatterns', @iscell);
+ip.addParameter('dataFormats', {}, @iscell);
 
-ip.parse(dataPaths, zarrFile, ChannelPatterns);
+ip.parse(dataPaths, zarrFile, ChannelPatterns, varargin{:});
+
+pr = ip.Results;
+dataFormats = pr.dataFormats;
 
 if ischar(dataPaths)
     dataPaths = {dataPaths};
@@ -29,9 +35,22 @@ for d = 1 : nd
     if zarrFile
         dir_info = dir([dataPath, '/', '*.zarr']);        
     else
-        dir_info = dir([dataPath, '/', '*.tif']);
+        if isempty(dataFormats)
+            dir_info = dir([dataPath, '/', '*.tif']);
+        else
+            dir_info = dir([dataPath, '/', '*']);
+        end
     end
     fnames_d = {dir_info.name}';
+    
+    if ~zarrFile && ~isempty(dataFormats)
+        format_inds = false(numel(fnames_d), numel(dataFormats));
+        for f = 1 : numel(dataFormats)
+            format_inds(:, f) = endsWith(fnames_d, dataFormats{f}, 'IgnoreCase', true);
+        end
+        fnames_d = fnames_d(any(format_inds, 2));
+    end
+
     nF = numel(fnames_d);
     ch_inds = false(nF, nc);
     for c = 1 : nc
