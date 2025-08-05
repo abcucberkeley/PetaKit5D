@@ -65,7 +65,7 @@ switch dtype
     case 'uint8'
         ddtype = 'u1';
     otherwise
-        error('Unsupported data type');
+        error('Unsupported data type %s', dtype);
 end
 
 try

@@ -1,5 +1,5 @@
 {
-  "MCRParam": "/global/home/users/user/bin/MATLAB_Runtime/R2023a",
+  "MCRParam": "/global/home/users/user/bin/MATLAB_Runtime/R2024b",
   "MCCMasterStr": "/clusterfs/fiona/user/PetaKit5D/mcc/linux/run_mccMaster.sh",
   "BashLaunchStr": "module load parallel/20190822",
   "SlurmParam": "-p abc --qos abc_normal -n1 --mem-per-cpu=21418M",

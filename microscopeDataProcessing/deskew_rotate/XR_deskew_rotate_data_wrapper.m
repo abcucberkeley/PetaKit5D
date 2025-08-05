@@ -181,8 +181,8 @@ end
 nd = numel(dataPaths);
 for d = 1 : nd
     dataPath = dataPaths{d};
-    if ~strcmp(dataPath(end), filesep)
-        dataPaths{d} = [dataPath, filesep];
+    if ~strcmp(dataPath(end), '/')
+        dataPaths{d} = [dataPath, '/'];
     end
 end
 
@@ -228,11 +228,11 @@ for d = 1 : nd
     dataPath = dataPaths{d};
     
     if saveDS
-        dsPath = [dataPath, DSDirName, filesep];
+        dsPath = [dataPath, DSDirName, '/'];
         dsPaths{d, 1} = dsPath;        
     end
     if rotate
-        dsrPath = [dataPath, DSRDirName, filesep];
+        dsrPath = [dataPath, DSRDirName, '/'];
         dsrPaths{d, 1} = dsrPath;        
     end
 

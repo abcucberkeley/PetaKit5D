@@ -17,7 +17,7 @@ function [] = XR_resample_dataset(dataPaths, resampleFactor, varargin)
 %           largeFile : true|false (default: false). Use large scale resampling strategy with batch processing. Only for Zarr files.
 %            saveZarr : true|false (default: false). Save results as Zarr files.
 %           blockSize : 1x3 vector (default: [256, 256, 256]). Block/chunk size for zarr output.
-%           batchSize : 1x3 vector (default: [512, 512, 512]). Batch size per stitching task.
+%           batchSize : 1x3 vector (default: [512, 512, 512]). Batch size per task.
 %          borderSize : 1x3 vector (default: [5, 5, 5]. Padded border for each batch.
 %        parseCluster : true|false (default: true). Use slurm cluster for the processing.
 %           jobLogDir : char (default: '../job_logs'). Path for the slurm job logs.

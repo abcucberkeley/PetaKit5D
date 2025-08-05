@@ -783,6 +783,8 @@ XR_imaris_conversion_data_wrapper(dataPaths, 'resultDirName', resultDirName, ...
 % result file:
 % {destPath}/PetaKit5D_demo_cell_image_dataset/ImageList_from_tile_list.csv
 
+fprintf('\nImage list generation tool from tile list... \n\n');
+
 dataPaths = {dataPath};
 
 % tile filenames without including folder names
@@ -832,3 +834,78 @@ generationMethod = 'tile_list';
 XR_generate_image_list_wrapper(dataPaths, generationMethod, tileFilenames=tileFilenames, ...
     tileIndices=tileIndices, tileInterval=tileInterval);
 
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Channel Unmixing for Zarr Files
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% This example demonstrates how to unmix overlapping spectral channels from
+% Zarr files using XR_unmix_channels_zarr. This is useful in multichannel
+% microscopy data where fluorophores bleed into neighboring channels.
+%
+% Input: two or more zarr files with channel bleedthrough
+% Output: unmixed channels stored in the same zarr files
+
+% result file:
+% {destPath}/PetaKit5D_demo_cell_image_dataset/DSR/Unmixed/
+
+
+% Input Zarr file paths (two channels to be unmixed)
+fn_a = [dataPath, 'DSR/Scan_Iter_0000_0000_CamA_ch0_CAM1_stack0000_488nm_0000000msec_0106060251msecAbs_000x_003y_000z_0000t.zarr'];
+fn_b = [dataPath, 'DSR/Scan_Iter_0000_0000_CamB_ch0_CAM1_stack0000_488nm_0000000msec_0106060251msecAbs_000x_003y_000z_0000t.zarr'];
+zarrFullpaths = {fn_a, fn_b};
+
+% Linear unmixing weights: output = ch1 * 1 + ch2 * (-0.1)
+unmixFactors = [1, -0.05];
+
+% Name of the subdirectory for saving unmixed results
+resultDirName = 'Unmixed';
+
+% Unmixing mode: 'linear' or 'gaussian'
+mode = 'linear';
+
+% Standard deviations for Gaussian unmixing (leave empty for linear mode)
+unmixSigmas = [];
+
+% Index of the output unmixed channel: 1 for the first channel, 2 for the second, etc
+channelInd = 1;
+
+% Size of each processing batch [Y X Z]
+batchSize = [1024, 1024, 1024];
+
+% Block (chunk) size for writing Zarr outputs
+blockSize = [256, 256, 256];
+
+% Border size (overlap) around each batch
+borderSize = [0, 0, 0];
+
+% Whether to submit jobs to SLURM cluster
+parseCluster = true;
+
+% Whether the master job node participates in processing
+masterCompute = true;
+
+% Number of CPU cores per task
+cpusPerTask = 4;
+
+% Directory for job logs (used if parseCluster is true)
+jobLogDir = '../job_logs';
+
+% Optional: Path to SLURM config file for job submission
+configFile = '';
+
+% Whether to run in MATLAB Compiler (MCC) mode
+mccMode = false;
+
+% Optional: UUID string for temporary output directories (auto-generated if empty)
+uuid = '';
+
+% Debug mode (reserved for future use)
+debug = false;
+
+% Run the unmixing operation
+XR_unmix_channels_zarr(zarrFullpaths, unmixFactors, 'resultDirName', resultDirName, ...
+    'mode', mode, 'unmixSigmas', unmixSigmas, 'channelInd', channelInd, 'batchSize', batchSize, ...
+    'blockSize', blockSize, 'borderSize', borderSize, 'parseCluster', parseCluster, ...
+    'parseParfor', parseParfor, 'masterCompute', masterCompute, 'cpusPerTask', cpusPerTask, ...
+    'jobLogDir', jobLogDir, 'configFile', configFile, 'mccMode', mccMode, 'uuid', uuid, ...
+    'debug', debug);

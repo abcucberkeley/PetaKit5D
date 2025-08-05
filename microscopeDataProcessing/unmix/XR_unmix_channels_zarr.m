@@ -54,7 +54,7 @@ ip.parse(zarrFullpaths, unmixFactors, varargin{:});
 pr = ip.Results;
 mode = pr.mode;
 unmixSigmas = pr.unmixSigmas;
-pthstr = pr.pthstr;
+resultDirName = pr.resultDirName;
 channelInd = pr.channelInd;
 BatchSize = pr.batchSize;
 BlockSize = pr.blockSize;
@@ -77,7 +77,7 @@ debug = pr.debug;
 zarrFullpaths = strip(zarrFullpaths, 'right', filesep);
 [dataPath, fsname, ext] = fileparts(zarrFullpaths{channelInd});
 
-unmixPath = [dataPath, '/', pthstr, '/'];
+unmixPath = [dataPath, '/', resultDirName, '/'];
 if ~exist(unmixPath, 'dir')
     mkdir(unmixPath);
 end
