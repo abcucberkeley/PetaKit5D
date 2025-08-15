@@ -633,3 +633,44 @@ Parameters (as 'specifier'-value pairs):
         cpusPerTask : numeric (default: 1). Number of CPU cores allocated per task.
             mccMode : true|false (default: false). Enable compiled MATLAB (MCC) mode.
          configFile : char (default: ''). Path to config file for job submission.
+
+
+XR_resave_zarr_wrapper.m
+Dataset-level wrapper for resaving Zarr files with different parameters.
+
+Required inputs:
+       dataPaths : char or cell array. Directory path(s) to the input dataset(s). Can be a single string for one dataset or a cell array for multiple datasets with identical experimental settings.
+
+Parameters (as 'specifier'-value pairs):
+      resultDirName : char (default: 'resaved_zarr'). Name of the output directory under each dataset path.
+          batchSize : 1x3 numeric vector (default: [512, 512, 512]). Size of data chunks for each processing task (y, x, z).
+          blockSize : 1x3 numeric vector (default: [256, 256, 256]). Block size (i.e., chunk size) used in Zarr output (y, x, z).
+          shardSize : 1x3 numeric vector or empty (default: []). Reserved for future use to set shard size in Zarr output.
+    channelPatterns : cell array (default: {'.zarr'}). Patterns or identifiers for selecting included channels.
+          inputBbox : 1x6 numeric vector or empty (default: []). Bounding box for cropping input data. Format: [ymin, xmin, zmin, ymax, xmax, zmax].
+       parseCluster : true|false (default: true). Use SLURM cluster for distributed computation.
+          largeFile : true|false (default: true). Enable processing for large files.
+      masterCompute : true|false (default: true). Whether the master job node also performs computation.
+          jobLogDir : char (default: '../job_logs'). Directory path for SLURM job logs.
+        cpusPerTask : numeric (default: 1). Number of CPU cores allocated per task.
+               uuid : char or empty (default: ''). UUID string for naming intermediate result folders.
+            mccMode : true|false (default: false). Enable compiled MATLAB (MCC) mode.
+         configFile : char or empty (default: ''). Path to job submission configuration file.
+
+
+XR_bioformats_to_tiff_or_zarr_wrapper.m
+convert various microscopy data format (nd2 and czi by default) to separated 3d tiff or zarr files (xyz)
+
+Required inputs:
+          dataPaths : char or cell array. Directory paths for the datasets. Either a string for a single dataset or a cell array of paths for several datasets with same experimental settings.
+
+Parameters (as 'specifier'-value pairs):
+      resultDirName : char (default: 'tiffs'). Result directory under data paths for saving results.
+    channelPatterns : cell array (default: {'.nd2', '.czi'}). File name patterns or extensions for identifying the image channels to be included.
+          nChannels : numeric scalar (default: 2). Number of channels in each dataset.
+       dataFormats  : cell array (default: {'.nd2', '.czi'}). File formats to be processed. Other formats can be added as long as bioFormats can read it.
+          saveZarr  : true|false (default: false). Save output data in Zarr format.
+          blockSize : 1x3 numeric vector (default: [256, 256, 256]). Block/chunk size for Zarr output.
+         overWrite  : true|false (default: false). Overwrite existing output if it exists.
+              uuid  : char (default: ''). UUID string used as part of the temporary or result paths.
+
