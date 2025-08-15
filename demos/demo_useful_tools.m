@@ -910,6 +910,73 @@ XR_unmix_channels_zarr(zarrFullpaths, unmixFactors, 'resultDirName', resultDirNa
     'configFile', configFile, 'mccMode', mccMode, 'uuid', uuid, 'debug', debug);
 
 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Resaving Zarr Files
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% This example demonstrates how to resave Zarr files with new chunking,
+% batch sizes, or cropping using XR_resave_zarr_wrapper. This is useful for
+% optimizing data layout for downstream processing or transferring large
+% datasets between storage systems.
+%
+% Input: One or more Zarr datasets
+% Output: Resaved Zarr datasets with updated parameters
+
+% result file:
+% {destPath}/PetaKit5D_demo_cell_image_dataset/DSR/resaved_zarr/
+
+% Root path to the dataset (example: one dataset path)
+dataPaths = [dataPath, 'DSR/'];
+
+% You can also pass multiple datasets as a cell array:
+% dataPaths = {
+%     '/Data/Dataset1/',
+%     '/Data/Dataset2/'
+% };
+
+% Name of the subdirectory for saving resaved Zarr files
+resultDirName = 'resaved_zarr';
+
+% Batch size for processing [Y X Z]
+batchSize = [512, 512, 512];
+
+% Block (chunk) size for writing Zarr outputs
+blockSize = [512, 512, 512];
+
+% Channel patterns to include in processing
+channelPatterns = {'.zarr'};
+
+% Optional: Input bounding box for cropping
+% Format: [ymin, xmin, zmin, ymax, xmax, zmax]
+inputBbox = [];
+
+% Whether to submit jobs to SLURM cluster
+parseCluster = true;
+
+% Whether processing involves large files
+largeFile = true;
+
+% Whether the master job node participates in processing
+masterCompute = true;
+
+% Number of CPU cores per task (for SLURM)
+cpusPerTask = 4;
+
+% Optional: UUID string for temporary result paths
+uuid = '';
+
+% Whether to run in MATLAB Compiler (MCC) mode
+mccMode = false;
+
+% Optional: SLURM config file path
+configFile = '';
+
+% Run the resave operation
+XR_resave_zarr_wrapper(dataPaths, 'resultDirName', resultDirName, 'batchSize', batchSize, ...
+    'blockSize', blockSize, 'channelPatterns', channelPatterns, 'inputBbox', inputBbox, ...
+    'parseCluster', parseCluster, 'largeFile', largeFile, 'masterCompute', masterCompute, ...
+    'cpusPerTask', cpusPerTask, 'uuid', uuid, 'mccMode', mccMode, 'configFile', configFile);
+
+
 %% Note: the demos below are only for illustration purpose, and not for actual running
 return;
 
@@ -924,13 +991,13 @@ return;
 % Note: this demo will not run as no demo image is provided. Users can
 % adapt it to their images. 
 
-% Input data paths (single file or multiple)
+% Input data paths (single folder or multiple)
 dataPaths = { ...
-    '/data/microscopy/sample1.nd2', ...
-    '/data/microscopy/sample2.czi' ...
+    '/data/microscopy/sample_dataset_1/', ...
+    '/data/microscopy/sample_dataset_2/' ...
 };
 
-% Directory name where results will be stored (relative to each data file’s folder)
+% Directory name where results will be stored (relative to each data folder)
 resultDirName = 'tiffs';
 
 % File patterns to match channels
