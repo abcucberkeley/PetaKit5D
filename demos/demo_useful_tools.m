@@ -906,6 +906,56 @@ debug = false;
 XR_unmix_channels_zarr(zarrFullpaths, unmixFactors, 'resultDirName', resultDirName, ...
     'mode', mode, 'unmixSigmas', unmixSigmas, 'channelInd', channelInd, 'batchSize', batchSize, ...
     'blockSize', blockSize, 'borderSize', borderSize, 'parseCluster', parseCluster, ...
-    'parseParfor', parseParfor, 'masterCompute', masterCompute, 'cpusPerTask', cpusPerTask, ...
-    'jobLogDir', jobLogDir, 'configFile', configFile, 'mccMode', mccMode, 'uuid', uuid, ...
-    'debug', debug);
+    'masterCompute', masterCompute, 'cpusPerTask', cpusPerTask, 'jobLogDir', jobLogDir, ...
+    'configFile', configFile, 'mccMode', mccMode, 'uuid', uuid, 'debug', debug);
+
+
+%% Note: the demos below are only for illustration purpose, and not for actual running
+return;
+
+
+% =========================================================================
+%% convert various microscopy data formats (.nd2 and .czi by default) to tiff or zarr in 3d (xyz)
+% =========================================================================
+%
+% Input: microscopy data files in .nd2 or .czi format. Other formats can be added as long as bioFormats can read the data.
+% Output: converted TIFF or Zarr datasets stored in the specified directory
+%
+% Note: this demo will not run as no demo image is provided. Users can
+% adapt it to their images. 
+
+% Input data paths (single file or multiple)
+dataPaths = { ...
+    '/data/microscopy/sample1.nd2', ...
+    '/data/microscopy/sample2.czi' ...
+};
+
+% Directory name where results will be stored (relative to each data file’s folder)
+resultDirName = 'tiffs';
+
+% File patterns to match channels
+channelPatterns = {'.nd2', '.czi'};
+
+% Number of channels in the dataset
+nChannels = 2;
+
+% Supported data formats (Bio-Formats compatible). Other formats can be added as long as Bio-Formats can read data.
+dataFormats = {'.nd2', '.czi'};
+
+% Whether to save Zarr instead of TIFF
+saveZarr = false;
+
+% Chunk/block size for Zarr output [Y X Z]
+blockSize = [256, 256, 256];
+
+% Whether to overwrite existing results
+overWrite = false;
+
+% Optional unique identifier for temporary output folders
+uuid = '';
+
+% Run the conversion
+XR_bioformats_to_tiff_or_zarr_wrapper(dataPaths, 'resultDirName', resultDirName, ...
+    'channelPatterns', channelPatterns, 'nChannels', nChannels, 'dataFormats', dataFormats, ...
+    'saveZarr', saveZarr, 'blockSize', blockSize, 'overWrite', overWrite, 'uuid', uuid);
+
