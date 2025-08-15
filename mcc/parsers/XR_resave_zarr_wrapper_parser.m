@@ -16,8 +16,6 @@ ip.addParameter('masterCompute', true, @(x) islogical(x) || ischar(x));
 ip.addParameter('jobLogDir', '../job_logs', @ischar);
 ip.addParameter('cpusPerTask', 1, @(x) isnumeric(x) || ischar(x));
 ip.addParameter('uuid', '', @ischar);
-ip.addParameter('maxTrialNum', 3, @(x) isnumeric(x) || ischar(x));
-ip.addParameter('unitWaitTime', 3, @(x) isnumeric(x) || ischar(x));
 ip.addParameter('mccMode', false, @(x) islogical(x) || ischar(x));
 ip.addParameter('configFile', '', @ischar);
 
@@ -36,8 +34,6 @@ masterCompute = pr.masterCompute;
 jobLogDir = pr.jobLogDir;
 cpusPerTask = pr.cpusPerTask;
 uuid = pr.uuid;
-maxTrialNum = pr.maxTrialNum;
-unitWaitTime = pr.unitWaitTime;
 mccMode = pr.mccMode;
 configFile = pr.configFile;
 
@@ -71,12 +67,6 @@ end
 if ischar(cpusPerTask)
     cpusPerTask = str2num(cpusPerTask);
 end
-if ischar(maxTrialNum)
-    maxTrialNum = str2num(maxTrialNum);
-end
-if ischar(unitWaitTime)
-    unitWaitTime = str2num(unitWaitTime);
-end
 if ischar(mccMode)
     mccMode = str2num(mccMode);
 end
@@ -84,8 +74,8 @@ end
 XR_resave_zarr_wrapper(dataPaths, resultDirName=resultDirName, batchSize=batchSize, ...
     blockSize=blockSize, shardSize=shardSize, channelPatterns=channelPatterns, ...
     inputBbox=inputBbox, parseCluster=parseCluster, largeFile=largeFile, masterCompute=masterCompute, ...
-    jobLogDir=jobLogDir, cpusPerTask=cpusPerTask, uuid=uuid, maxTrialNum=maxTrialNum, ...
-    unitWaitTime=unitWaitTime, mccMode=mccMode, configFile=configFile);
+    jobLogDir=jobLogDir, cpusPerTask=cpusPerTask, uuid=uuid, mccMode=mccMode, ...
+    configFile=configFile);
 
 end
 

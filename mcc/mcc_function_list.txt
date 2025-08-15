@@ -53,7 +53,7 @@ crop_deskew_rotate_demo_function
 XR_unmix_channels_zarr 
 unmix_channels_block 
 unmix_channels_gaussian_block
-XR_bioformats_to_tiff_data_wrapper
+XR_bioformats_to_tiff_or_zarr_wrapper
 XR_resave_zarr_wrapper
 XR_resaveSingleZarr
 resaveZarrBlock
