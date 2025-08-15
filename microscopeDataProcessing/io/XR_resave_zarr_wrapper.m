@@ -6,7 +6,6 @@ function [] = XR_resave_zarr_wrapper(dataPaths, varargin)
 %           dataPaths : char or cell array. Directory paths for the datasets. Either a string for a single dataset or a cell array of paths for several datasets with same experimental settings.
 %
 % Parameters (as 'specifier'-value pairs):
-%       tiffFullpaths : empty or char or cell array (default: ''). A single Tiff file path in char, or a list of Tiff file paths in a cell array. If empty, get the Tiff files from dataPaths.
 %       resultDirName : char (default: 'resaved_zarr'). Result directory under data paths.
 %           batchSize : 1x3 vector (default: [512, 512, 512]). Batch size per task.
 %           blockSize : 1x3 vector (default: [256, 256, 256]). Block/chunk size for zarr output.
@@ -19,8 +18,6 @@ function [] = XR_resave_zarr_wrapper(dataPaths, varargin)
 %           jobLogDir : char (default: '../job_logs'). Path for the slurm job logs.
 %         cpusPerTask : a number (default: 1). The number of cpu cores per task for slurm job submission.
 %                uuid : empty or a uuid string (default: ''). uuid string as part of the temporate result paths.
-%         maxTrialNum : a number (default: 3). The max number of retries for a task.
-%        unitWaitTime : a number (default: 1). The wait time per file in minutes to check whether the computing is done.
 %             mccMode : true|false (default: false). Use mcc mode.
 %          configFile : empty or char (default: ''). Path for the config file for job submission.
 %
@@ -43,8 +40,6 @@ ip.addParameter('masterCompute', true, @islogical);
 ip.addParameter('jobLogDir', '../job_logs', @ischar);
 ip.addParameter('cpusPerTask', 1, @isnumeric);
 ip.addParameter('uuid', '', @ischar);
-ip.addParameter('maxTrialNum', 3, @isnumeric);
-ip.addParameter('unitWaitTime', 3, @isnumeric);
 ip.addParameter('mccMode', false, @islogical);
 ip.addParameter('configFile', '', @ischar);
 
