@@ -73,7 +73,7 @@ Parameters:
           save16bit : 1x1 or 1x2 bool vector (default: [true, true]). Save 16bit result for deskew/rotate and stitch. 
    parseSettingFile : true|false (default: false). Use the setting file to decide whether filp z stacks or not.
          flipZstack : true|false (default: false). Flip z stacks.
-         background : empty or a number (default: []). Background subtraction before deconvolution.
+         background : empty or a number or 1x#channel (default: []). Background subtraction before deconvolution. If empty, set as 100.
               dzPSF : a number (default: 0.5). Scan interval in um for PSF.
         edgeErosion : a number (default: 0). Number of pixels to erode after deconvolution to remove edge artifacts.
          erodeByFTP : true|false (default: true). Apply the erosion mask from the first time point.
