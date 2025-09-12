@@ -73,7 +73,7 @@ if nF == 0
         warning('No Tiff format (*.tif) image files found in the input data folder(s)! Please check if dataPaths are correct!');
     end
 end
-if nF == 1
+if nF == 1 && ~iscell(fsns)
     fsns = {fsns};
 end
 
