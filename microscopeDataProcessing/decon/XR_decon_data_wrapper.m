@@ -15,7 +15,7 @@ function [] = XR_decon_data_wrapper(dataPaths, varargin)
 %          save16bit : 1x1 or 1x2 bool vector (default: [true, true]). Save 16bit result for deskew/rotate and stitch. 
 %   parseSettingFile : true|false (default: false). Use the setting file to decide whether filp z stacks or not.
 %         flipZstack : true|false (default: false). Flip z stacks.
-%         background : empty or a number (default: []). Background subtraction before deconvolution.
+%         background : empty or a number or 1x#channel (default: []). Background subtraction before deconvolution. If empty, set as 100.
 %              dzPSF : a number (default: 0.5). Scan interval in um for PSF.
 %        edgeErosion : a number (default: 0). Number of pixels to erode after deconvolution to remove edge artifacts.
 %         erodeByFTP : true|false (default: true). Apply the erosion mask from the first time point.
@@ -204,22 +204,29 @@ else
     deconIter_mat = deconIter * ones(size(deconIter_mat));
 end
 
-if numel(overwrite) == 1
+if isscalar(overwrite)
     overwrite = repmat(overwrite, 1, 2);
 end
 
-if numel(channelPatterns) > 1 && numel(wienerAlpha) == 1
+if numel(channelPatterns) > 1 && isscalar(wienerAlpha)
     wienerAlpha = wienerAlpha * ones(1, numel(channelPatterns));
 end
 
-if numel(channelPatterns) > 1 && numel(OTFCumThresh) == 1
+if numel(channelPatterns) > 1 && isscalar(OTFCumThresh)
     OTFCumThresh = OTFCumThresh * ones(1, numel(channelPatterns));
+end
+
+if isempty(background)
+    background = 100;
+end
+if numel(channelPatterns) > 1 && isscalar(background)
+    background = background * ones(1, numel(channelPatterns));
 end
 
 if isempty(scaleFactor)
     scaleFactor = 1;
 end
-if numel(channelPatterns) > 1 && numel(scaleFactor) == 1
+if numel(channelPatterns) > 1 && isscalar(scaleFactor)
     scaleFactor = scaleFactor * ones(1, numel(channelPatterns));
 end
 
@@ -409,6 +416,7 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
         if ~is_done_flag(f, 1)     
             psfMapping =  ~cellfun(@isempty, regexpi(frameFullpath, channelPatterns));
             psfFullpath = dc_psfFullpaths{psfMapping};
+            background_f = background(psfMapping);
             deconIter_f = deconIter_mat(fdind);
             wienerAlpha_f = wienerAlpha(psfMapping);
             OTFCumThresh_f = OTFCumThresh(psfMapping);
@@ -426,7 +434,7 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
                 '''dampFactor'',%d,''scaleFactor'',[%d],''deconOffset'',%d,''maskFullpaths'',%s,', ...
                 '''uuid'',''%s'',''cpusPerTask'',%d,''mccMode'',%s,''configFile'',''%s'',''GPUConfigFile'',''%s'')'], ...
                 dcframeFullpath, xyPixelSize, dc_dz, deconPath, psfFullpath, ...
-                dc_dzPSF, background, skewAngle, string(flipZstack), edgeErosion, ...
+                dc_dzPSF, background_f, skewAngle, string(flipZstack), edgeErosion, ...
                 erodeMaskFullpath, string(SaveMaskfile), string(deconRotate), deconIter_f, ...
                 RLMethod, wienerAlpha_f, OTFCumThresh_f, mat2str_comma(hannWinBounds), ...
                 string(skewed), string(debug), saveStep, string(psfGen), string(saveZarr), ...
