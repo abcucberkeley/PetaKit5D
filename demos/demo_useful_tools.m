@@ -835,8 +835,104 @@ XR_generate_image_list_wrapper(dataPaths, generationMethod, tileFilenames=tileFi
     tileIndices=tileIndices, tileInterval=tileInterval);
 
 
+
+
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%% Channel Unmixing for Zarr Files
+%% Channel Unmixing
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% This example demonstrates how to use XR_unmix_channels_data_wrapper to
+% correct for spectral bleed-through between image channels. This is a common
+% task in fluorescence microscopy where the emission spectrum of one dye
+% leaks into the detection channel of another.
+%
+% Input: A path to a dataset containing multiple image channels (e.g., TIFFs/zarr).
+% Output: A new subfolder containing the unmixed image channel.
+
+% result file:
+% {destPath}/PetaKit5D_demo_cell_image_dataset/Unmixed/
+
+% Base path to the dataset.
+dataPaths = {dataPath};
+
+% The unmixing matrix. In this case, for a 2-channel setup, we are
+% correcting channel 1 by subtracting 10% of channel 2's signal from it.
+% The formula applied is: new_channel1 = 1*channel1 - 0.1*channel2.
+unmixFactors = [1, -0.1];
+
+% The unmixing mode to be used. Can be 'linear' or 'gaussian'.
+mode = 'linear';
+
+% Sigmas for Gaussian unmixing. Only used when 'mode' is 'gaussian'.
+unmixSigmas = [];
+
+% Name of the subdirectory within the dataPath where results will be saved.
+resultDirName = 'Unmixed';
+
+% Patterns to identify the image files for each channel.
+channelPatterns = {'CamA', 'CamB'};
+
+% The index of the channel to apply the unmixing to. Here, it's the first channel.
+channelInd = 1;
+
+% Specifies if the input data is in Zarr format. Set to false for TIFFs.
+zarrFile = false;
+
+% Flag for special handling of very large files.
+largeFile = false;
+
+% If true, save the output in Zarr format. If false, saves as Tiff.
+saveZarr = false;
+
+% If true, save the output as 16-bit integers.
+save16bit = true;
+
+% The size of data batches [y, x, z] for processing.
+batchSize = [1024, 1024, 1024];
+
+% The chunk/block size [y, x, z] for writing data.
+blockSize = [256, 256, 256];
+
+% The size of the border [y, x, z] to overlap between adjacent blocks.
+borderSize = [0, 0, 0];
+
+% If true, sets up and uses a parallel computing cluster (e.g., SLURM).
+parseCluster = true;
+
+% If true, the master node also participates in computation.
+masterCompute = true;
+
+% Directory for saving logs from cluster jobs.
+jobLogDir = '../job_logs';
+
+% The number of CPU cores to allocate for each parallel task.
+cpusPerTask = 3;
+
+% Path to an optional configuration file for slurm job submission.
+configFile = '';
+
+% Set to true if running the code as a compiled MATLAB application.
+mccMode = false;
+
+% A unique identifier for the processing run, used for temporary files.
+uuid = '';
+
+% If true, enables debug mode for more verbose output.
+debug = false;
+
+% Run the channel unmixing function with the specified parameters.
+XR_unmix_channels_data_wrapper(dataPath, 'unmixFactors', unmixFactors, ...
+    'mode', mode, 'unmixSigmas', unmixSigmas, 'resultDirName', resultDirName, ...
+    'channelPatterns', channelPatterns, 'channelInd', channelInd, 'zarrFile', zarrFile, ...
+    'largeFile', largeFile, 'saveZarr', saveZarr, 'save16bit', save16bit, ...
+    'batchSize', batchSize, 'blockSize', blockSize, 'borderSize', borderSize, ...
+    'parseCluster', parseCluster, 'masterCompute', masterCompute, 'jobLogDir', jobLogDir, ...
+    'cpusPerTask', cpusPerTask, 'configFile', configFile, 'mccMode', mccMode, ...
+    'uuid', uuid, 'debug', debug);
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Channel Unmixing for Zarr Files (can use the data level wrapper)
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % This example demonstrates how to unmix overlapping spectral channels from
 % Zarr files using XR_unmix_channels_zarr. This is useful in multichannel
@@ -855,7 +951,7 @@ fn_b = [dataPath, 'DSR/Scan_Iter_0000_0000_CamB_ch0_CAM1_stack0000_488nm_0000000
 zarrFullpaths = {fn_a, fn_b};
 
 % Linear unmixing weights: output = ch1 * 1 + ch2 * (-0.1)
-unmixFactors = [1, -0.05];
+unmixFactors = [1, -0.1];
 
 % Name of the subdirectory for saving unmixed results
 resultDirName = 'Unmixed';
