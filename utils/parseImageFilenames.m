@@ -1,11 +1,12 @@
-function [fnames, fsns, fd_inds, filepaths] = parseImageFilenames(dataPaths, zarrFile, ChannelPatterns, varargin)
+function [fnames, fsns, fd_inds, filepaths, ch_inds] = parseImageFilenames(dataPaths, zarrFile, ChannelPatterns, varargin)
 % parse image filenames for given data paths for tiff or zarr for given
 % channel pattens. This is a simpler version of XR_parseImageFilenames.m
-% for only existing Tiff or Zarr files with given channel patterns.
+% for only existing Tiff (with no partial files) or Zarr files with given channel patterns.
 %
 % Author: Xiongtao Ruan (04/17/2024)
 %
 % 08/04/2025: add support for other data fromats
+% 09/17/2025: add output for channel ids, if a files matches multiple channel patterns, go with the first one.
 
 
 ip = inputParser;
@@ -29,6 +30,7 @@ fprintf('Parse image filenames for data path(s):\n    %s\n', strjoin(dataPaths, 
 nd = numel(dataPaths);
 nc = numel(ChannelPatterns);
 fnames = cell(nd, 1);
+ch_inds_cell = cell(nd, 1);
 
 for d = 1 : nd
     dataPath = dataPaths{d};
@@ -52,13 +54,15 @@ for d = 1 : nd
     end
 
     nF = numel(fnames_d);
-    ch_inds = false(nF, nc);
+    ch_inds_d = false(nF, nc);
     for c = 1 : nc
-        ch_inds(:, c) = contains(fnames_d, ChannelPatterns{c}, 'IgnoreCase', true) | ...
+        ch_inds_d(:, c) = contains(fnames_d, ChannelPatterns{c}, 'IgnoreCase', true) | ...
             contains(fnames_d, regexpPattern(ChannelPatterns{c}), 'IgnoreCase', true);
     end
-    fnames_d = fnames_d(any(ch_inds, 2));
+    include_flag = any(ch_inds_d, 2);
+    fnames_d = fnames_d(include_flag);
     fnames{d} = fnames_d;
+    ch_inds_cell{d} = ch_inds_d(include_flag, :);
 end
 
 fd_inds = arrayfun(@(x) ones(numel(fnames{x}), 1) * x, 1 : nd, 'unif', 0);
@@ -77,10 +81,15 @@ if nF == 1 && ~iscell(fsns)
     fsns = {fsns};
 end
 
-if nargout == 4
+if nargout >= 4
     filepaths = arrayfun(@(x) sprintf('%s/%s', dataPaths{fd_inds(x)}, fnames{x}), ...
         1 : nF, 'UniformOutput', false);
     filepaths = filepaths';
+end
+
+if nargout == 5
+    ch_inds = cat(1, ch_inds_cell{:});
+    ch_inds = arrayfun(@(x) find(ch_inds(x, :), 1, 'first'), 1 : size(ch_inds, 1))';
 end
 
 end
