@@ -267,10 +267,12 @@ if ~multiRegions
             set(gcf, 'color', 'w')
             set(gcf, 'visible', 'off')
             plot(iter : iter : (numel(res_mu_mat)) * iter, res_mu_mat)
-            % hold on, plot(0 : 200, mean(res_mat_double(:, 1 : end - 1), 2))
     
-            [~, mind] = min(res_mu_mat);
+            [min_res, mind] = min(res_mu_mat);
             hold on, plot((mind) * iter, res_mu_mat(mind), 'o');
+            
+            % plot the line of 1.01 * min_res (to better determine the optimal iterations)
+            hold on, plot(0 : iter : (numel(res_mu_mat)) * iter, ones(1, numel(res_mu_mat) + 1) * min_res * 1.01, '--');
     
             % annotation('textarrow', [0.3 0.5], [0.6, 0.5], 'String', sprintf('Iter = %d', mind -1));
             text(mind * iter, min(res_mu_mat(mind) * 1.3, res_mu_mat(mind) * 0.9 + max(res_mu_mat) * 0.1), sprintf('Iter = %d', (mind) * iter))
