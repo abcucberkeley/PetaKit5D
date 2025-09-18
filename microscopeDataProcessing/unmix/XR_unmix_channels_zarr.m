@@ -36,6 +36,7 @@ ip.addParameter('mode', 'linear', @ischar); % linear vs gaussian
 ip.addParameter('unmixSigmas', [], @isnumeric); 
 ip.addParameter('resultDirName', 'Unmixed', @ischar); 
 ip.addParameter('channelInd', 1, @isnumeric); % unmix for which channel
+ip.addParameter('save16bit', true, @islogical);
 ip.addParameter('batchSize', [1024, 1024, 1024] , @isvector); % in y, x, z
 ip.addParameter('blockSize', [256, 256, 256] , @isvector); % in y, x, z
 ip.addParameter('borderSize', [0, 0, 0] , @isvector); % in y, x, z
@@ -56,8 +57,9 @@ mode = pr.mode;
 unmixSigmas = pr.unmixSigmas;
 resultDirName = pr.resultDirName;
 channelInd = pr.channelInd;
-BatchSize = pr.batchSize;
-BlockSize = pr.blockSize;
+save16bit = pr.save16bit;
+batchSize = pr.batchSize;
+blockSize = pr.blockSize;
 borderSize = pr.borderSize;
 parseCluster = pr.parseCluster;
 parseParfor = pr.parseParfor;
@@ -107,20 +109,20 @@ imSize = getImageSize(zarrFullpaths{channelInd});
 dtype = getImageDataType(zarrFullpaths{channelInd});
 
 % MIPs for each block
-BatchSize = min(imSize, BatchSize);
-BlockSize = min(BatchSize, BlockSize);
-SameBatchSize = ~true;
-[batchBBoxes, regionBBoxes, localBBoxes] = XR_zarrChunkCoordinatesExtraction(imSize, 'BatchSize', BatchSize, ...
-    'BlockSize', BlockSize, 'SameBatchSize', SameBatchSize, 'BorderSize', borderSize);
+batchSize = min(imSize, batchSize);
+blockSize = min(batchSize, blockSize);
+sameBatchSize = ~true;
+[batchBBoxes, regionBBoxes, localBBoxes] = XR_zarrChunkCoordinatesExtraction(imSize, 'batchSize', batchSize, ...
+    'blockSize', blockSize, 'sameBatchSize', sameBatchSize, 'borderSize', borderSize);
 
 % initialize zarr files
 if ~exist(unmixTmppath, 'dir')
     outSize = imSize;
     dimSeparator = '.';
-    if prod(ceil(outSize ./ BlockSize)) > 10000
+    if prod(ceil(outSize ./ blockSize)) > 10000
         dimSeparator = '/';
     end    
-    createzarr(unmixTmppath, dataSize=outSize, BlockSize=BlockSize, dtype=dtype, dimSeparator=dimSeparator);
+    createzarr(unmixTmppath, dataSize=outSize, BlockSize=blockSize, dtype=dtype, dimSeparator=dimSeparator);
 end
 
 % set up parallel computing 
@@ -162,7 +164,7 @@ for i = 1 : numTasks
 end
 
 % submit jobs
-memAllocate = prod(BatchSize) * 4 / 1024^3 * memFactor;
+memAllocate = prod(batchSize) * 4 / 1024^3 * memFactor;
 inputFullpaths = repmat({zarrFullpaths{channelInd}}, numTasks, 1);
 if parseCluster || ~parseParfor 
     is_done_flag= generic_computing_frameworks_wrapper(inputFullpaths, outputFullpaths, ...
@@ -190,10 +192,14 @@ end
 if exist(unmixFullpath, 'dir') && exist(unmixTmppath, 'dir')
     rmdir(unmixFullpath, 's');
 end
+
 if exist(unmixTmppath, 'dir')
     movefile(unmixTmppath, unmixFullpath);
 end
 
+if exist(zarrFlagPath, 'dir')
+    rmdir(zarrFlagPath, 's');
+end
 
 end
 
