@@ -50,6 +50,8 @@ image_intensity_correction_block
 XR_imaris_conversion_data_wrapper
 XR_visualize_OTF_mask_segmentation
 crop_deskew_rotate_demo_function
+XR_unmix_channels_data_wrapper
+XR_unmix_channels_frame
 XR_unmix_channels_zarr 
 unmix_channels_block 
 unmix_channels_gaussian_block

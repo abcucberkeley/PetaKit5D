@@ -107,6 +107,10 @@ switch functionName
         XR_visualize_OTF_mask_segmentation_parser(varargin{1}, varargin{2}, varargin{3}, varargin{4:end});
     case 'crop_deskew_rotate_demo_function'
         crop_deskew_rotate_demo_function_parser(varargin{1}, varargin{2}, varargin{3}, varargin{4}, varargin{5}, varargin{6});
+    case 'XR_unmix_channels_data_wrapper'
+        XR_unmix_channels_data_wrapper_parser(varargin{1}, varargin{2:end});
+    case 'XR_unmix_channels_frame'
+        XR_unmix_channels_frame_parser(varargin{1}, varargin{2}, varargin{3:end});
     case 'XR_unmix_channels_zarr'
         XR_unmix_channels_zarr_parser(varargin{1}, varargin{2}, varargin{3:end});
     case 'unmix_channels_block'
