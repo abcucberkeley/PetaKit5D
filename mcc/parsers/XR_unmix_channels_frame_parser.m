@@ -9,6 +9,12 @@ ip.addParameter('mode', 'linear', @ischar); % linear vs gaussian
 ip.addParameter('unmixSigmas', [], @(x) isnumeric(x) || ischar(x)); 
 ip.addParameter('resultDirName', 'Unmixed', @ischar); 
 ip.addParameter('channelInd', 1, @(x) isnumeric(x) || ischar(x)); % unmix for which channel
+ip.addParameter('FFCorrection', false, @(x) islogical(x) || ischar(x));
+ip.addParameter('lowerLimit', 0.4, @(x) isnumeric(x) || ischar(x));
+ip.addParameter('FFImagePaths', {'','',''}, @(x) iscell(x) || ischar(x));
+ip.addParameter('backgroundPaths', {'','',''}, @(x) iscell(x) || ischar(x));
+ip.addParameter('constBackground', [], @(x) isnumeric(x) || ischar(x));
+ip.addParameter('constOffset', [], @(x) isnumeric(x) || ischar(x));
 ip.addParameter('save16bit', true, @(x) islogical(x) || ischar(x)); 
 ip.addParameter('zarrFile', false, @(x) islogical(x) || ischar(x)); 
 ip.addParameter('saveZarr', false, @(x) islogical(x) || ischar(x)); 
@@ -23,6 +29,12 @@ mode = pr.mode;
 unmixSigmas = pr.unmixSigmas;
 resultDirName = pr.resultDirName;
 channelInd = pr.channelInd;
+FFCorrection = pr.FFCorrection;
+lowerLimit = pr.lowerLimit;
+FFImagePaths = pr.FFImagePaths;
+backgroundPaths = pr.backgroundPaths;
+constBackground = pr.constBackground;
+constOffset = pr.constOffset;
 save16bit = pr.save16bit;
 zarrFile = pr.zarrFile;
 saveZarr = pr.saveZarr;
@@ -42,6 +54,24 @@ end
 if ischar(channelInd)
     channelInd = str2num(channelInd);
 end
+if ischar(FFCorrection)
+    FFCorrection = str2num(FFCorrection);
+end
+if ischar(lowerLimit)
+    lowerLimit = str2num(lowerLimit);
+end
+if ischar(FFImagePaths) && ~isempty(FFImagePaths) && strcmp(FFImagePaths(1), '{')
+    FFImagePaths = eval(FFImagePaths);
+end
+if ischar(backgroundPaths) && ~isempty(backgroundPaths) && strcmp(backgroundPaths(1), '{')
+    backgroundPaths = eval(backgroundPaths);
+end
+if ischar(constBackground)
+    constBackground = str2num(constBackground);
+end
+if ischar(constOffset)
+    constOffset = str2num(constOffset);
+end
 if ischar(save16bit)
     save16bit = str2num(save16bit);
 end
@@ -59,7 +89,9 @@ if ischar(debug)
 end
 
 XR_unmix_channels_frame(frameFullpaths, unmixFactors, mode=mode, unmixSigmas=unmixSigmas, ...
-    resultDirName=resultDirName, channelInd=channelInd, save16bit=save16bit, ...
+    resultDirName=resultDirName, channelInd=channelInd, FFCorrection=FFCorrection, ...
+    lowerLimit=lowerLimit, FFImagePaths=FFImagePaths, backgroundPaths=backgroundPaths, ...
+    constBackground=constBackground, constOffset=constOffset, save16bit=save16bit, ...
     zarrFile=zarrFile, saveZarr=saveZarr, blockSize=blockSize, uuid=uuid, debug=debug);
 
 end

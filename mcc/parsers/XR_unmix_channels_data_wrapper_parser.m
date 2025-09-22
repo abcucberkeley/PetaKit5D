@@ -10,6 +10,12 @@ ip.addParameter('unmixSigmas', [], @(x) isnumeric(x) || ischar(x));
 ip.addParameter('resultDirName', 'Unmixed', @ischar); 
 ip.addParameter('channelPatterns', {'CamA', 'CamB'}, @(x) iscell(x) || ischar(x));
 ip.addParameter('channelInd', 1, @(x) isnumeric(x) || ischar(x)); % unmix for which channel
+ip.addParameter('FFCorrection', false, @(x) islogical(x) || ischar(x));
+ip.addParameter('lowerLimit', 0.4, @(x) isnumeric(x) || ischar(x));
+ip.addParameter('FFImagePaths', {'',''}, @(x) iscell(x) || ischar(x));
+ip.addParameter('backgroundPaths', {'',''}, @(x) iscell(x) || ischar(x));
+ip.addParameter('constBackground', [], @(x) isnumeric(x) || ischar(x));
+ip.addParameter('constOffset', [], @(x) isnumeric(x) || ischar(x));
 ip.addParameter('zarrFile', false, @(x) islogical(x) || ischar(x));
 ip.addParameter('largeFile', false, @(x) islogical(x) || ischar(x));
 ip.addParameter('saveZarr', false, @(x) islogical(x) || ischar(x));
@@ -35,6 +41,12 @@ unmixSigmas = pr.unmixSigmas;
 resultDirName = pr.resultDirName;
 channelPatterns = pr.channelPatterns;
 channelInd = pr.channelInd;
+FFCorrection = pr.FFCorrection;
+lowerLimit = pr.lowerLimit;
+FFImagePaths = pr.FFImagePaths;
+backgroundPaths = pr.backgroundPaths;
+constBackground = pr.constBackground;
+constOffset = pr.constOffset;
 zarrFile = pr.zarrFile;
 largeFile = pr.largeFile;
 saveZarr = pr.saveZarr;
@@ -65,6 +77,24 @@ if ischar(channelPatterns) && ~isempty(channelPatterns) && strcmp(channelPattern
 end
 if ischar(channelInd)
     channelInd = str2num(channelInd);
+end
+if ischar(FFCorrection)
+    FFCorrection = str2num(FFCorrection);
+end
+if ischar(lowerLimit)
+    lowerLimit = str2num(lowerLimit);
+end
+if ischar(FFImagePaths) && ~isempty(FFImagePaths) && strcmp(FFImagePaths(1), '{')
+    FFImagePaths = eval(FFImagePaths);
+end
+if ischar(backgroundPaths) && ~isempty(backgroundPaths) && strcmp(backgroundPaths(1), '{')
+    backgroundPaths = eval(backgroundPaths);
+end
+if ischar(constBackground)
+    constBackground = str2num(constBackground);
+end
+if ischar(constOffset)
+    constOffset = str2num(constOffset);
 end
 if ischar(zarrFile)
     zarrFile = str2num(zarrFile);
@@ -105,7 +135,9 @@ end
 
 XR_unmix_channels_data_wrapper(dataPaths, unmixFactors=unmixFactors, mode=mode, ...
     unmixSigmas=unmixSigmas, resultDirName=resultDirName, channelPatterns=channelPatterns, ...
-    channelInd=channelInd, zarrFile=zarrFile, largeFile=largeFile, saveZarr=saveZarr, ...
+    channelInd=channelInd, FFCorrection=FFCorrection, lowerLimit=lowerLimit, ...
+    FFImagePaths=FFImagePaths, backgroundPaths=backgroundPaths, constBackground=constBackground, ...
+    constOffset=constOffset, zarrFile=zarrFile, largeFile=largeFile, saveZarr=saveZarr, ...
     save16bit=save16bit, batchSize=batchSize, blockSize=blockSize, borderSize=borderSize, ...
     parseCluster=parseCluster, masterCompute=masterCompute, jobLogDir=jobLogDir, ...
     cpusPerTask=cpusPerTask, configFile=configFile, mccMode=mccMode, uuid=uuid, ...
