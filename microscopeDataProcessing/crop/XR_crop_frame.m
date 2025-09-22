@@ -18,6 +18,7 @@ ip.addRequired('saveFullpath', @(x) ischar(x) || iscell(x));
 ip.addRequired('bbox', @isnumeric);
 ip.addParameter('overwrite', false, @islogical); % start coordinate of the last time point
 ip.addParameter('pad', false, @islogical); % pad region that is outside the bbox
+ip.addParameter('padValue', 0, @isnumeric); % pad region that is outside the bbox
 ip.addParameter('zarrFile', false , @islogical); % read zarr
 ip.addParameter('largeFile', false, @islogical); % use zarr file as input
 ip.addParameter('saveZarr', false , @islogical); % save as zarr
@@ -25,6 +26,8 @@ ip.addParameter('batchSize', [1024, 1024, 1024] , @isnumeric);
 ip.addParameter('blockSize', [256, 256, 256] , @isnumeric);
 ip.addParameter('uuid', '', @ischar);
 ip.addParameter('parseCluster', true, @islogical);
+ip.addParameter('masterCompute', true, @islogical);
+ip.addParameter('cpusPerTask', 1, @isnumeric);
 ip.addParameter('mccMode', false, @islogical);
 ip.addParameter('configFile', '', @ischar);
 
@@ -33,6 +36,7 @@ ip.parse(dataFullpath, saveFullpath, bbox, varargin{:});
 pr = ip.Results;
 overwrite = pr.overwrite;
 pad = pr.pad;
+padValue = pr.padValue;
 zarrFile = pr.zarrFile;
 largeFile = pr.largeFile;
 saveZarr = pr.saveZarr;
@@ -40,6 +44,8 @@ batchSize = pr.batchSize;
 blockSize = pr.blockSize;
 uuid = pr.uuid;
 parseCluster = pr.parseCluster;
+masterCompute = pr.masterCompute;
+cpusPerTask = pr.cpusPerTask;
 mccMode = pr.mccMode;
 configFile = pr.configFile;
 
@@ -74,7 +80,8 @@ if zarrFile
         parseParfor = false;
         XR_crop_zarr(dataFullpath, saveFullpath, bbox, 'pad', pad, 'batchSize', batchSize, ...
             'blockSize', blockSize, 'uuid', uuid, 'parseCluster', parseCluster, ...
-            'parseParfor', parseParfor, mccMode=mccMode, configFile=configFile);
+            'parseParfor', parseParfor, masterCompute=masterCompute, cpusPerTask=cpusPerTask, ...
+            mccMode=mccMode, configFile=configFile);
         return;
     end
     im = readzarr(dataFullpath, 'inputBbox', bbox_1);
@@ -91,10 +98,10 @@ end
 % pad cropped data
 if pad 
     if any(bbox(1 : 3) < 1)
-        im = padarray(im, max(0, 1 - bbox(1 : 3)), 0, 'pre');
+        im = padarray(im, max(0, 1 - bbox(1 : 3)), padValue, 'pre');
     end
     if any(bbox(4 : 6) > imSize)
-        im = padarray(im, max(0, bbox(4 : 6) - imSize), 0, 'post');        
+        im = padarray(im, max(0, bbox(4 : 6) - imSize), padValue, 'post');
     end
 end
 
