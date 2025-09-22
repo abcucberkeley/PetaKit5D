@@ -835,7 +835,112 @@ XR_generate_image_list_wrapper(dataPaths, generationMethod, tileFilenames=tileFi
     tileIndices=tileIndices, tileInterval=tileInterval);
 
 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Chromatic Shift Correction
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% This example demonstrates how to use XR_chromatic_shift_correction_data_wrapper
+% to correct for chromatic aberration between image channels. Chromatic
+% aberration in microscopy causes different wavelengths (channels) of light
+% to be focused at slightly different positions, resulting in a spatial
+% shift between the recorded channels. This function corrects this by
+% applying an integer voxel offset to align the channels.
+%
+% The offset can either be provided directly by the user or estimated
+% automatically from Point Spread Function (PSF) images.
+%
+% Input: A path to a dataset containing multiple image channels (e.g., TIFFs/zarr).
+% Output: A new subfolder containing the images with channels aligned.
 
+% result file:
+% {destPath}/PetaKit5D_demo_cell_image_dataset/Chromatic_Shift_Corrected/
+
+fprintf('\nChromatic Shift Correction... \n\n');
+
+% Base path to the dataset(s). Can be a single path or a cell array of paths.
+dataPaths = {dataPath};
+
+% The chromatic shift to apply, specified as [y, x, z] offsets in voxels,
+% each row corresponds to a channel defined in channelPatterns.
+% If left empty ([]), the script will attempt to estimate the offset from PSF files.
+chromaticOffset = [0, 0, 0; % no shift in first channel
+                   1, -5, -2]; % shift by +1 voxels in y, -5 in x, and -2 in z in second channel.
+
+% Name of the subdirectory within each dataPath where results will be saved.
+resultDirName = 'Chromatic_Shift_Corrected';
+
+% Determines the output image size.
+% 'valid': Output is the size of the overlapping region between channels.
+% 'same': Output is the same size as the input image.
+% 'full': Output is large enough to contain the entire shifted image.
+mode = 'valid';
+
+% Value used for padding areas with no image data after shifting (used in 'same' and 'full' modes).
+padValue = 0;
+
+% Resets the origin coordinates. This is only applicable when 'mode' is 'same'.
+newOrigin = [];
+
+% File extensions or patterns used to identify image files for each channel.
+% The correction is applied to the second channel to align it with the first.
+channelPatterns = {'CamA', 'CamB'};
+
+% Full paths to PSF files, one for each channel. The PSFs should be taken for the same tetraspeck beads.
+% These are only required if 'chromaticOffset' is empty and needs to be estimated.
+psfFullpaths = {};
+
+% The maximum expected offset [y, x, z] for automatic chromatic measurement from PSFs.
+maxOffset = [20, 20, 20];
+
+% The amount [y, x, z] to crop from the edges of PSFs for chromatic measurement.
+cropLength = [0, 0, 0];
+
+% Specifies if the input data is in Zarr format. Set to false for TIFFs.
+zarrFile = false;
+
+% Flag for special handling of very large files that may not fit in memory.
+largeFile = false;
+
+% If true, save the output in Zarr format. If false, saves as Tiff.
+saveZarr = false;
+
+% The size of data batches [y, x, z] for processing.
+batchSize = [1024, 1024, 1024];
+
+% The chunk/block size [y, x, z] for writing data, relevant for Zarr and large Tiffs.
+blockSize = [256, 256, 256];
+
+% If true, sets up and uses a parallel computing cluster (e.g., SLURM).
+parseCluster = true;
+
+% If true, the master node also participates in computation.
+masterCompute = true;
+
+% Directory for saving logs from cluster jobs.
+jobLogDir = '../job_logs';
+
+% The number of CPU cores to allocate for each parallel task.
+cpusPerTask = 3;
+
+% Path to an optional configuration file for slurm job submission.
+configFile = '';
+
+% Set to true if running the code as a compiled MATLAB application.
+mccMode = false;
+
+% A unique identifier for the processing run, used for temporary files.
+uuid = '';
+
+% If true, enables debug mode for more verbose output.
+debug = false;
+
+% Run the chromatic shift correction function with the specified parameters.
+XR_chromatic_shift_correction_data_wrapper(dataPaths, 'chromaticOffset', chromaticOffset, ...
+    'resultDirName', resultDirName, 'mode', mode, 'padValue', padValue, 'newOrigin', newOrigin, ...
+    'channelPatterns', channelPatterns, 'psfFullpaths', psfFullpaths, 'maxOffset', maxOffset, ...
+    'cropLength', cropLength, 'zarrFile', zarrFile, 'largeFile', largeFile, 'saveZarr', saveZarr, ...
+    'batchSize', batchSize, 'blockSize', blockSize, 'parseCluster', parseCluster, ...
+    'masterCompute', masterCompute, 'jobLogDir', jobLogDir, 'cpusPerTask', cpusPerTask, ...
+    'configFile', configFile, 'mccMode', mccMode, 'uuid', uuid, 'debug', debug);
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -851,6 +956,8 @@ XR_generate_image_list_wrapper(dataPaths, generationMethod, tileFilenames=tileFi
 
 % result file:
 % {destPath}/PetaKit5D_demo_cell_image_dataset/Unmixed/
+
+fprintf('\nChannel Unmixing... \n\n');
 
 % Base path to the dataset.
 dataPaths = {dataPath};
@@ -944,6 +1051,7 @@ XR_unmix_channels_data_wrapper(dataPath, 'unmixFactors', unmixFactors, ...
 % result file:
 % {destPath}/PetaKit5D_demo_cell_image_dataset/DSR/Unmixed/
 
+fprintf('\nChannel Unmixing for Zarr Files... \n\n');
 
 % Input Zarr file paths (two channels to be unmixed)
 fn_a = [dataPath, 'DSR/Scan_Iter_0000_0000_CamA_ch0_CAM1_stack0000_488nm_0000000msec_0106060251msecAbs_000x_003y_000z_0000t.zarr'];
@@ -1020,6 +1128,8 @@ XR_unmix_channels_zarr(zarrFullpaths, unmixFactors, 'resultDirName', resultDirNa
 % result file:
 % {destPath}/PetaKit5D_demo_cell_image_dataset/DSR/resaved_zarr/
 
+fprintf('\nResaving Zarr Files... \n\n');
+
 % Root path to the dataset (example: one dataset path)
 dataPaths = [dataPath, 'DSR/'];
 
@@ -1086,6 +1196,8 @@ return;
 %
 % Note: this demo will not run as no demo image is provided. Users can
 % adapt it to their images. 
+
+fprintf('\nConvert Special Microscopy Data Formats to 3D Tiffl or Zarr Files... \n\n');
 
 % Input data paths (single folder or multiple)
 dataPaths = { ...
