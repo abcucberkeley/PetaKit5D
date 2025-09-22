@@ -12,6 +12,16 @@ ip.addParameter('mode', 'linear', @ischar); % linear vs gaussian
 ip.addParameter('unmixSigmas', [], @isnumeric); 
 ip.addParameter('resultDirName', 'Unmixed', @ischar); 
 ip.addParameter('channelInd', 1, @isnumeric); % unmix for which channel
+% flat field parameters
+ip.addParameter('FFCorrection', false, @islogical);
+ip.addParameter('lowerLimit', 0.4, @isnumeric);
+ip.addParameter('FFImagePaths', {'','',''}, @iscell);
+ip.addParameter('backgroundPaths', {'','',''}, @iscell);
+% background subtraction with constant background instead of background image
+ip.addParameter('constBackground', [], @isnumeric);
+% constant offset after unmixing
+ip.addParameter('constOffset', [], @(x) isnumeric(x));
+% input and output parameters
 ip.addParameter('save16bit', true, @islogical); 
 ip.addParameter('zarrFile', false, @islogical); 
 ip.addParameter('saveZarr', false, @islogical); 
@@ -26,6 +36,12 @@ mode = pr.mode;
 unmixSigmas = pr.unmixSigmas;
 resultDirName = pr.resultDirName;
 channelInd = pr.channelInd;
+FFCorrection = pr.FFCorrection;
+lowerLimit = pr.lowerLimit;
+FFImagePaths = pr.FFImagePaths;
+backgroundPaths = pr.backgroundPaths;
+constBackground = pr.constBackground;
+constOffset = pr.constOffset;
 save16bit = pr.save16bit;
 zarrFile = pr.zarrFile;
 saveZarr = pr.saveZarr;
@@ -66,19 +82,34 @@ tic
 
 imSize = getImageSize(frameFullpaths{channelInd});
 
-nC = numel(frameFullpaths);
-if nC ~= numel(unmixFactors)
-    error('The number of images does not match that of the unmixing factors!');
-end
+nc = numel(frameFullpaths);
 
 im = zeros(imSize, 'single');
-for c = 1 : nC
+for c = 1 : nc
     if zarrFile
         im_c = readzarr(frameFullpaths{c});
     else
         im_c = readtiff(frameFullpaths{c});
     end
     im_c = single(im_c);
+
+    % flat field correction
+    if FFCorrection
+        FFImage = FFImagePaths{c};
+        backgroundImage = backgroundPaths{c};
+        fprintf(['Flat-field correction for frame %s...\n', ...
+            '  Flat-field image: %s\n  Background image: %s\n'], ...
+            frameFullpaths{c}, FFImage, backgroundImage);
+        LSIm = readtiff(FFImage);
+        BKIm = readtiff(backgroundImage);
+        % do not add background offset after ff correction.
+        im_c = XR_LSFlatFieldCorrection(im_c,LSIm,BKIm,'lowerLimit', lowerLimit, ...
+            'constOffset', 0);
+    end
+    if ~isempty(constBackground)
+        im_c = im_c - constBackground(c);
+    end
+
     switch mode
         case 'linear'
         case 'gaussian'
@@ -90,6 +121,12 @@ for c = 1 : nC
 end
 
 im = max(0, im);
+
+% add background offset after unmixing if it is nozero.
+if ~isempty(constOffset) && constOffset ~= 0
+    im = im + constOffset;
+end
+
 if save16bit
     im = cast(im, 'uint16');
 end
