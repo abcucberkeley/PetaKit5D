@@ -571,6 +571,38 @@ Parameters (as 'specifier'-value pairs):
 
 
 
+XR_chromatic_shift_correction_data_wrapper.m
+Chromatic shift correction with integer offset voxels, with either user provided offsets or estimated from PSFs.
+
+Required inputs:
+          dataPaths : char or cell array. Path(s) to the dataset(s) to be processed. Can be a single path as a char string or multiple paths in a cell array.
+
+Parameters (as 'specifier'-value pairs):
+    chromaticOffset : numeric array, [] or #channelx3 (default: []). The chromatic shift to apply, specified as [y, x, z] offsets in voxels, each row corresponds to a channel defined in channelPatterns.
+      resultDirName : char (default: 'Chromatic_Shift_Corrected'). Name of the subdirectory within each dataPath where results will be saved.
+               mode : char (default: 'valid'). Determines the output size. Options are 'valid' (only the overlapping region), 'same' (same size as input), or 'full' (large enough to contain the entire shifted image).
+           padValue : numeric scalar (default: 0). Value used for padding areas with no image data after shifting.
+          newOrigin : numeric vector (default: []). Resets the origin coordinates, applicable only when 'mode' is 'same'.
+    channelPatterns : cell array (default: {'CamA', 'CamB'}). File extensions or patterns used to identify image files for each channel.
+       psfFullpaths : cell array (default: {}). Full paths to PSF files, if needed for the process, same order as channelPatterns.
+          maxOffset : 1x3 numeric vector (default: [20, 20, 20]). The maximum expected offset [y, x, z] for chromatic measurement.
+         cropLength : 1x3 numeric vector (default: [0, 0, 0]). The amount [y, x, z] to crop from the edges for chromatic measurement.
+           zarrFile : true|false (default: false). Specifies if the input data is in Zarr format.
+          largeFile : true|false (default: false). Flag to indicate if the input files are large and require special handling.
+           saveZar  : true|false (default: false). If true, the output is saved in Zarr format; otherwise, saved in Tiff format.
+          batchSize : 1x3 numeric vector (default: [1024, 1024, 1024]). The size of data batches [y, x, z] for processing.
+          blockSize : 1x3 numeric vector (default: [256, 256, 256]). The chunk/block size [y, x, z] for writing data, especially for Zarr.
+       parseCluster : true|false (default: true). If true, sets up the parallel computing cluster environment.
+      masterCompute : true|false (default: true). If true, the master node will also participate in computation tasks.
+          jobLogDir : char (default: '../job_logs'). Directory for saving logs from cluster jobs.
+        cpusPerTask : numeric scalar (default: 3). The number of CPU cores to allocate for each parallel task.
+         configFile : char (default: ''). Path to an optional configuration file for slurm job submission settings.
+            mccMode : true|false (default: false). Set to true if running the code as a compiled application (using MATLAB Compiler).
+               uuid : char (default: ''). A unique identifier string for this processing run, often used for temporary files.
+              debug : true|false (default: false). If true, enables debug mode which may provide more verbose output.
+
+
+
 XR_unmix_channels_data_wrapper.m
 Unmixing a channel by subtracting a weighted fraction of other channels
 
