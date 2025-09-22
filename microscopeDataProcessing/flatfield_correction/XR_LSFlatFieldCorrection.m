@@ -56,6 +56,8 @@ LSImage = max(LSImage, LowerLimit);
 % background = repmat(background,1,1,size(Rawdata,3));
 
 try 
+    LSImage = single(LSImage);
+    background = single(background);
     if ~isempty(constOffset)
         Temp = flat_field_correction_3d_mex(Rawdata, LSImage, background, castDataType, constOffset);
     else
