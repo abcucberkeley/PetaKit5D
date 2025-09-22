@@ -24,7 +24,7 @@ function XR_deskew_rotate_data_wrapper(dataPaths, varargin)
 %      inputAxisOrder : char (default: 'yxz'). Input data axis order. It permutes the input if the order is not 'yxz'. Only works for non-default axis orders when largeFile is false for now.
 %     outputAxisOrder : char (default: 'yxz'). Output data axis order. It permutes the output if the order is not 'yxz'. Only works for non-default axis orders when largeFile is false for now.
 %         DSRCombined : true|false (default: true). Use combined processing for deskew and rotation.
-%        FFCorrection : true|false (default: false). Flat-field correction.
+%        FFCorrection : true|false (default: false). Flat-field correction. Only for small files (largeFile = false).
 %           BKRemoval : true|false (default: false). Remove background during flat-field correction.
 %          lowerLimit : a number between 0 and 1 (default: 0.4). Lower limit to cap the flat field image. 
 %         constOffset : empty or a number (default: []). If empty, add the background; if not, add the const offset after flat field correction.
@@ -282,7 +282,6 @@ outputFullpaths = cell(nF, 1);
 funcStrs = cell(nF, 1);
 
 for f = 1 : nF
-
     % first deskew and rotation
     fname = fnames{f};
     [~, fsname] = fileparts(fname);
