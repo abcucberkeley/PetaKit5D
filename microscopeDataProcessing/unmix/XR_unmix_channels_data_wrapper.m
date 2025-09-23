@@ -161,7 +161,11 @@ else
         fd_ind_d = find(fd_inds == d);
         fnames_d = fnames(fd_ind_d);
         fd_ch_group_d = groupImageFilenamesByChannels(fnames_d, channelPatterns, ch_inds);
-        fd_ch_groups_cell{d} = fd_ind_d(fd_ch_group_d);
+        if size(fd_ch_group_d, 1) == 1
+            fd_ch_groups_cell{d} = fd_ind_d(fd_ch_group_d)';
+        else
+            fd_ch_groups_cell{d} = fd_ind_d(fd_ch_group_d);
+        end
     end
     fd_ch_groups = cat(1, fd_ch_groups_cell{:});
 end
