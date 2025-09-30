@@ -225,9 +225,9 @@ for f = 1 : ng
 end
 
 if largeFile
-    memAllocate = prod(batchSize) * 4 * 2.5;    
+    memAllocate = prod(batchSize) / 1024^3 * 4 * 2.5;
 else
-    memAllocate = prod(imSize) * 4 * 2.5;
+    memAllocate = prod(imSize) / 1024^3 * 4 * 2.5;
 end
 
 generic_computing_frameworks_wrapper(frameFullpaths, resultFullpaths, func_strs, ...

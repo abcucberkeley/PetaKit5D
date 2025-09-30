@@ -195,9 +195,9 @@ for f = 1 : nF
 end
 
 if largeFile
-    memAllocate = prod(batchSize) * 4 * 2.5;    
+    memAllocate = prod(batchSize) / 1024^3 * 4 * 2.5;
 else
-    memAllocate = prod(max(imSizes, [], 1)) * 4 * 2.5;
+    memAllocate = prod(max(imSizes, [], 1)) / 1024^3 * 4 * 2.5;
 end
 
 is_done_flag = generic_computing_frameworks_wrapper(frameFullpaths, resultFullpaths, func_strs, ...
