@@ -86,6 +86,10 @@ nc = numel(frameFullpaths);
 
 im = zeros(imSize, 'single');
 for c = 1 : nc
+    if unmixFactors(c) == 0
+        continue;
+    end
+
     if zarrFile
         im_c = readzarr(frameFullpaths{c});
     else
