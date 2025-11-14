@@ -356,6 +356,7 @@ while (~parseCluster && ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
         lastP = find(~is_done_flag & trial_counter < maxTrialNum, 1, 'first');
         nB = nF;
     end
+
     fsnames = cell(1, nF);
     for b = 1 : nB
         fs = (b - 1) * taskBatchNum + 1 : min(b * taskBatchNum, nF);
@@ -365,7 +366,7 @@ while (~parseCluster && ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
             job_status_b = job_status_b(~is_done_flag(fs), :);
             job_status_mat(fs, :) = repmat(min(job_status_b, [], 1), numel(fs), 1);
         end
-        
+
         % check output exist and job status every 10000 batches (except the
         % last small bacth (< 0.5 * n_status_check))
         if rem(b, n_status_check) == 0 && (b + n_status_check * 0.5 < nB)

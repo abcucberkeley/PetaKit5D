@@ -79,14 +79,9 @@ if ~exist(zarrFlagPath, 'dir')
     mkdir_recursive(zarrFlagPath);
 end 
 
-try
-    bim = blockedImage(zarrFullpath, 'Adapter', CZarrAdapter);
-catch ME
-    disp(ME);
-    bim = blockedImage(zarrFullpath, 'Adapter', ZarrAdapter);    
-end
-imSize = bim.Size;
-dtype = bim.ClassUnderlying;
+zInfo = getZarrInfo(zarrFullpath);
+imSize = zInfo.size;
+dtype = zInfo.dtype;
 byteNum = dataTypeToByteNumber(dtype);
 
 inSize = imSize;
@@ -100,7 +95,7 @@ end
 poolSize_1 = [1, 1, 1];
 dsfactor = [1, 1, 1];
 if isempty(poolSize)
-    inblockSize = bim.BlockSize;
+    inblockSize = zInfo.blockSize;
 else
     if numel(poolSize) == 9
         dsfactor = poolSize(7 : 9);
