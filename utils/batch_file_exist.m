@@ -48,6 +48,9 @@ check_folder = false;
 if (nd < 3) && (nF / nd > 100)
     for d = 1 : nd
         pstr_d = uniq_pstrs{d};
+        if ~exist(pstr_d, 'dir')
+            continue;
+        end
         
         dir_info = dir(pstr_d);
         dir_info(1 : 2) = [];
