@@ -33,6 +33,7 @@ ip.addRequired('dataPaths', @(x) ischar(x) || iscell(x));
 ip.addParameter('resultDirName', 'MIPs', @ischar);
 ip.addParameter('axis', [0, 0, 1], @isnumeric);
 ip.addParameter('channelPatterns', {'CamA_ch0', 'CamA_ch1', 'CamB_ch0', 'CamB_ch1'}, @iscell);
+ip.addParameter('inputBbox', [] , @(x) isempty(x) || isvector(x));
 ip.addParameter('zarrFile', false, @islogical);
 ip.addParameter('largeFile', false, @islogical);
 ip.addParameter('batchSize', [2048, 2048, 2048] , @isvector);
@@ -53,6 +54,7 @@ pr = ip.Results;
 resultDirName = pr.resultDirName;
 axis = pr.axis;
 channelPatterns =  pr.channelPatterns;
+inputBbox = pr.inputBbox;
 zarrFile = pr.zarrFile;
 largeFile = pr.largeFile;
 batchSize = pr.batchSize;
@@ -133,17 +135,18 @@ for f = 1 : nF
     if zarrFile
         if largeFile
             func_strs{f} = sprintf(['XR_MIP_zarr(''%s'',''resultDirName'',''%s'',', ...
-                '''axis'',%s,''batchSize'',%s,''parseCluster'',%s,''parseParfor'',%s,', ...
-                '''jobLogDir'',''%s'',''mccMode'',%s,''configFile'',''%s'')'], ...
-                frameFullpath, resultDirName, mat2str_comma(axis), mat2str_comma(batchSize), ...
-                string(parseCluster), string(parseParfor), jobLogDir, string(mccMode), configFile);
+                '''axis'',%s,''inputBbox'',%s,''batchSize'',%s,''parseCluster'',%s,''parseParfor'',%s,', ...
+                '''jobLogDir'',''%s'',''mccMode'',%s,''configFile'',''%s'',''uuid'',''%s'')'], ...
+                frameFullpath, resultDirName, mat2str_comma(axis), mat2str_comma(inputBbox), ...
+                mat2str_comma(batchSize), string(parseCluster), string(parseParfor), ...
+                jobLogDir, string(mccMode), configFile, uuid);
         else
-            func_strs{f} = sprintf(['saveMIP_zarr(''%s'',''%s'',''%s'',%s)'], frameFullpath, ...
-                MIPFullpath, dtype, mat2str_comma(axis));
+            func_strs{f} = sprintf(['saveMIP_zarr(''%s'',''%s'',''dtype'',''%s'',''axis'',%s,''inputBbox'',%s)'], ...
+                frameFullpath, MIPFullpath, dtype, mat2str_comma(axis), mat2str_comma(inputBbox));
         end
     else
-        func_strs{f} = sprintf(['saveMIP_tiff(''%s'',''%s'',''dtype'',''%s'',''axis'',%s)'], ...
-            frameFullpath, MIPFullpath, dtype, mat2str_comma(axis));
+        func_strs{f} = sprintf(['saveMIP_tiff(''%s'',''%s'',''dtype'',''%s'',''axis'',%s,''inputBbox'',%s)'], ...
+            frameFullpath, MIPFullpath, dtype, mat2str_comma(axis), mat2str_comma(inputBbox));
     end
 end
 

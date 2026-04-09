@@ -9,8 +9,9 @@ ip = inputParser;
 ip.CaseSensitive = false;
 ip.addRequired('frameFullname', @ischar); 
 ip.addRequired('MIPFullname', @ischar); 
-ip.addParameter('dtype', 'uint16', @ischar); % suffix for the folder
-ip.addParameter('axis', [0, 0, 1], @isnumeric); % suffix for the folder
+ip.addParameter('dtype', 'uint16', @ischar);
+ip.addParameter('axis', [0, 0, 1], @isnumeric);
+ip.addParameter('inputBbox', [] , @(x) isempty(x) || isvector(x));
 
 ip.parse(frameFullname, MIPFullname, varargin{:});
 
@@ -19,10 +20,20 @@ if exist(MIPFullname, 'file')
     return;
 end
 
-dtype = ip.Results.dtype;
-axis = ip.Results.axis;
+pr = ip.Results;
+dtype = pr.dtype;
+axis = pr.axis;
+inputBbox = pr.inputBbox;
 
-im = readtiff(frameFullname);
+if isempty(inputBbox)
+    im = readtiff(frameFullname);
+else
+    im = readtiff(frameFullname, 'range', [inputBbox(3), inputBbox(6)]);
+    bbox = inputBbox;
+    bbox(3) = 1;
+    bbox(6) = size(im, 3);
+    im = crop3d(im, bbox);
+end
 
 for i = 1 : 3
     if axis(i) == 0

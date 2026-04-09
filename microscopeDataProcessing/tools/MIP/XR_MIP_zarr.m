@@ -161,7 +161,7 @@ if all(zarr_done_flag) && ~mipSlab
         if axis(i) == 0
             continue;
         end
-        saveMIP_zarr(MIPZarrpaths{i}, MIPFullpaths{i}, dtype, (1 : 3) == i);
+        saveMIP_zarr(MIPZarrpaths{i}, MIPFullpaths{i}, dtype=dtype, axis=(1 : 3) == i);
     end
     return;
 end
@@ -268,8 +268,7 @@ for i = 1 : 3
     if axis(i) == 0
         continue;
     end
-    saveMIP_zarr(MIPZarrpaths{i}, MIPFullpaths{i}, dtype, (1 : 3) == i);
+    saveMIP_zarr(MIPZarrpaths{i}, MIPFullpaths{i}, dtype=dtype, axis=(1 : 3) == i);
 end
 
 end
-
