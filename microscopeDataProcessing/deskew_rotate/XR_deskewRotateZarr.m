@@ -137,7 +137,7 @@ end
 % map input and output for xz
 bimSize = getImageSize(frameFullpath);
 
-% use MIP masks to decide the input and output   boudning box
+% use MIP masks to decide the input and output boudning box
 outputBbox = [];
 if ~isempty(maskFullpaths) && (iscell(maskFullpaths) && ~isempty(maskFullpaths{1}))
     fprintf('Compute input and out bounding boxes with MIP masks...\n')
