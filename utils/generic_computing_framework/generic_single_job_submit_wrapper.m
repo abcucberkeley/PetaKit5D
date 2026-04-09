@@ -31,7 +31,7 @@ ip.addParameter('maxTrialNum', 3, @isnumeric);
 ip.addParameter('unitWaitTime', 30, @isnumeric);
 ip.addParameter('maxJobNum', inf, @isnumeric); % submit limited number of jobs (pending/running)
 ip.addParameter('taskBatchNum', 1, @isnumeric); % aggragate several tasks together
-ip.addParameter('MatlabLaunchStr', 'module load matlab/r2023a; matlab -nodisplay -nosplash -nodesktop -nojvm -r', @ischar);
+ip.addParameter('MatlabLaunchStr', 'module load matlab/r2024b; matlab -nodisplay -nosplash -nodesktop -nojvm -r', @ischar);
 ip.addParameter('BashLaunchStr', '', @ischar);
 ip.addParameter('SlurmParam', '-p abc --qos abc_normal -n1 --mem-per-cpu=21418M', @ischar);
 ip.addParameter('SlurmConstraint', '', @ischar);
@@ -152,7 +152,7 @@ while submit_status == 0 && trial_counter < maxTrialNum
             job_status = check_slurm_job_status(job_id, array_id);
         
             % kill the last pending job and use master node do the computing.
-            if job_status == 0.5 && (masterCompute && lastFile)
+            if job_status == 0 && (masterCompute && lastFile)
                 system(sprintf('scancel %d_%d', job_id, array_id), '-echo');
             end
     
