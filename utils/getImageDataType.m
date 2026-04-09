@@ -16,13 +16,8 @@ if strcmp(filePath(end - 2 : end), 'tif') || strcmp(filePath(end - 3 : end), 'ti
     tobj = matlab.io.internal.BigImageTiffReader(filePath);
     dtype = tobj.MLType;
 elseif strcmp(filePath(end - 3 : end), 'zarr') || zarrFile
-    try 
-        bim = blockedImage(filePath, 'Adapter', CZarrAdapter);
-    catch ME
-        disp(ME);
-        bim = blockedImage(filePath, 'Adapter', ZarrAdapter);
-    end
-    dtype = bim.ClassUnderlying;
+    zInfo = getZarrInfo(filePath);
+    dtype = zInfo.dtype;
 else
     error('Unknown data type, currently only tiff and zarr files are supported!')
 end
