@@ -188,17 +188,17 @@ debug = pr.debug;
 
 %  load tile paths and coordinates from file.
 if ~isempty(tileInfoFullpath)
-    a = load(tileInfoFullpath);
-    tileFullpaths = a.tile_fullpaths;
-    coordinates = a.xyz;
-    tileIdx = a.tileIdx;
-    flippedTile = a.flippedTile;
-    clear a;
+	a = load(tileInfoFullpath);
+	tileFullpaths = a.tile_fullpaths;
+	coordinates = a.xyz;
+	tileIdx = a.tileIdx;
+	flippedTile = a.flippedTile;
+	clear a;
 end
 
 [dataPath, fsname_first] = fileparts(tileFullpaths{1});
 if isempty(ResultPath)
-    ResultPath = sprintf('%s/%s/%s.zarr', dataPath, 'matlab_stitch', fsname_first(1:end-21));
+	ResultPath = sprintf('%s/%s/%s.zarr', dataPath, 'matlab_stitch', fsname_first(1:end-21));
 end
 
 nF = numel(tileFullpaths);
@@ -206,18 +206,18 @@ nF = numel(tileFullpaths);
 % for 2d stitch, use the same worker to do all computing, to reduce the
 % overhead of lauching other workers. 
 if any(stitchMIP)
-    if nF < 50
-        parseCluster = false;
-    end
+	if nF < 50
+		parseCluster = false;
+	end
 end        
 
 % check if a slurm-based computing cluster exist
 if parseCluster 
-    [parseCluster] = checkSlurmCluster(dataPath);
+	[parseCluster] = checkSlurmCluster(dataPath);
 end
 
 if isempty(uuid)
-    uuid = get_uuid();
+	uuid = get_uuid();
 end
 
 nv_fullname = ResultPath;
@@ -227,41 +227,41 @@ nv_fullname = ResultPath;
 % first check if the result already exist
 % nv_fullname = sprintf('%s/%s/%s.zarr', dataPath, ResultDir, fsname_first(1:end-21));
 if exist(nv_fullname, 'dir')
-    fprintf('Stitched result %s is already exist, skip it!\n', nv_fullname);
-    return;
+	fprintf('Stitched result %s is already exist, skip it!\n', nv_fullname);
+	return;
 end
 
 fprintf('Stitch for tiles:\n%s\n', strjoin(tileFullpaths, '\n'));
 
 if IOScan
-    DSR = false;
+	DSR = false;
 end
 
 % expand stitchMIP to 3d array, if more than 1 axis true, use the first one.
 if any(stitchMIP)
-    if numel(stitchMIP) == 1
-        stitchMIP = [false, false, stitchMIP];
-    end
-    if sum(stitchMIP) > 1
-        aind = find(stitchMIP, 1, 'first');
-        stitchMIP = false(1, 3);
-        stitchMIP(aind) = true;        
-    end
+	if numel(stitchMIP) == 1
+		stitchMIP = [false, false, stitchMIP];
+	end
+	if sum(stitchMIP) > 1
+		aind = find(stitchMIP, 1, 'first');
+		stitchMIP = false(1, 3);
+		stitchMIP(aind) = true;        
+	end
 end
 
 % check if axis order is valid
 axisOrder = strrep(axisOrder, ' ', '');
 pattern = '^(-?x,?-?y,?-?z|-?y,?-?x,?-?z|-?z,?-?y,?-?x|-?x,?-?z,?-?y|-?x,?-?z,?-?y|-?y,?-?z,?-?x)$';
 if ~regexpi(axisOrder, pattern)
-    error("The axisOrder is not right, it must has the form like 'y,x,z' or '-x,y,z' (flipped in x-axis)!");
+	error("The axisOrder is not right, it must has the form like 'y,x,z' or '-x,y,z' (flipped in x-axis)!");
 end
 
 order_sign_mat = zeros(2, 3); % first row: order for permute; second row: sign
 axisOrder_pure = strrep(strrep(axisOrder, ',', ''), '-', '');
 xyz_str = 'xyz';
 for i = 1 : 3
-    [~, order_sign_mat(1, :)] = sort(axisOrder_pure);
-    order_sign_mat(2, i) = 1 - 2 * contains(axisOrder, ['-', xyz_str(i)]);
+	[~, order_sign_mat(1, :)] = sort(axisOrder_pure);
+	order_sign_mat(2, i) = 1 - 2 * contains(axisOrder, ['-', xyz_str(i)]);
 end
 dataOrder_pure = strrep(strrep(dataOrder, ',', ''), '-', '');
 [~, data_order_mat] = sort(dataOrder_pure);
@@ -274,71 +274,71 @@ xyz_orig = xyz;
 
 % for secondary channel/time point, use flippedTile from the primary channel. 
 if ~isPrimaryCh
-    if ~exist(stitchInfoFullpath, 'file')
-        error('The stitch information filename %s does not exist!', stitchInfoFullpath);
-    end
-    
-    if isempty(flippedTile)
-        a = load(stitchInfoFullpath, 'flippedTile');
-        flippedTile = a.flippedTile;
-    end
+	if ~exist(stitchInfoFullpath, 'file')
+		error('The stitch information filename %s does not exist!', stitchInfoFullpath);
+	end
 
-    if usePrimaryCoords
-        a = load(stitchInfoFullpath, 'xyz_orig');
-        xyz = a.xyz_orig;
-    end
+	if isempty(flippedTile)
+		a = load(stitchInfoFullpath, 'flippedTile');
+		flippedTile = a.flippedTile;
+	end
+
+	if usePrimaryCoords
+		a = load(stitchInfoFullpath, 'xyz_orig');
+		xyz = a.xyz_orig;
+	end
 end
 
 if ~isempty(tileIdx)
-    % sort tiles based on tileIdx (handle zigzag orders)
-    [tileIdx, sinds] = sortrows(tileIdx, [4, 3, 2, 1]);
-    xyz = xyz(sinds, :);
-    tileFullpaths = tileFullpaths(sinds);
+	% sort tiles based on tileIdx (handle zigzag orders)
+	[tileIdx, sinds] = sortrows(tileIdx, [4, 3, 2, 1]);
+	xyz = xyz(sinds, :);
+	tileFullpaths = tileFullpaths(sinds);
 elseif isempty(tileIdx)
-    tileIdx = zeros(nF, 4);
+	tileIdx = zeros(nF, 4);
 end
 tileNum = [numel(unique(tileIdx(:,1))), numel(unique(tileIdx(:,2))), numel(unique(tileIdx(:,3)))];
 if isempty(tileNum)
-    tileNum = zeros(1, nF);
+	tileNum = zeros(1, nF);
 end
 tileNum = tileNum(order_sign_mat(1, :));
 
 if objectiveScan || IOScan
-    zAniso = dz/xyPixelSize;
+	zAniso = dz/xyPixelSize;
 else
-    zAniso = sind(SkewAngle)*dz/xyPixelSize;
+	zAniso = sind(SkewAngle)*dz/xyPixelSize;
 end
 theta = SkewAngle * pi/180;
 % dx = cos(theta)*dz/xyPixelSize;
 resample_type = pr.resampleType;
 resampleFactor = pr.resampleFactor;
 if ~isempty(resampleFactor)
-    resample_type = 'given';
+	resample_type = 'given';
 end
 
 switch resample_type
-    case 'given'
-        xf = resampleFactor(1);
-        yf = resampleFactor(2);
-        zf = resampleFactor(3);
-    case 'method_1'  %% old one
-        zf = cot(abs(theta));
-        yf = 1;
-        % xf = cos(abs(theta)) + tan(abs(theta))*sin(abs(theta));
-        xf = 1 / cos(abs(theta));
-    case 'isotropic'  %% isotropic
-        zf = 1;
-        yf = 1;
-        xf = 1;
-    case 'xy_isotropic' %% x, y isotropic and z: r_z / r_x
-        zf = sqrt((sin(theta) ^ 2 + zAniso ^ 2 * cos(theta) ^ 2) / (cos(theta) ^ 2 + zAniso ^ 2 * sin(theta) ^ 2));
-        yf = 1;
-        xf = 1;
+	case 'given'
+		xf = resampleFactor(1);
+		yf = resampleFactor(2);
+		zf = resampleFactor(3);
+	case 'method_1'  %% old one
+		zf = cot(abs(theta));
+		yf = 1;
+		% xf = cos(abs(theta)) + tan(abs(theta))*sin(abs(theta));
+		xf = 1 / cos(abs(theta));
+	case 'isotropic'  %% isotropic
+		zf = 1;
+		yf = 1;
+		xf = 1;
+	case 'xy_isotropic' %% x, y isotropic and z: r_z / r_x
+		zf = sqrt((sin(theta) ^ 2 + zAniso ^ 2 * cos(theta) ^ 2) / (cos(theta) ^ 2 + zAniso ^ 2 * sin(theta) ^ 2));
+		yf = 1;
+		xf = 1;
 end
 
 % for skewed space stitch, match the resample factor with actual aspect ratio [1, 1, zAniso]. 
 if ~DSR
-    zf = zAniso * zf;
+	zf = zAniso * zf;
 end
 
 xp = xyPixelSize * xf;
@@ -352,127 +352,127 @@ pixelInfoFullpath = sprintf('%s/%s/%s', dataPath, ResultDir, pixelInfoFname);
 dir_info = dir(sprintf('%s/%s/px*_py*_pz*', dataPath, ResultDir));
 pixelFnames = {dir_info.name}';
 for i = 1 : numel(pixelFnames)
-    if ~strcmp(pixelFnames{i}, pixelInfoFname)
-        delete([dir_info(i).folder, '/', pixelFnames{i}])
-    end
+	if ~strcmp(pixelFnames{i}, pixelInfoFname)
+		delete([dir_info(i).folder, '/', pixelFnames{i}])
+	end
 end
 
 if ~exist(pixelInfoFullpath, 'file')
-    fclose(fopen(pixelInfoFullpath, 'w'));
-    fileattrib(pixelInfoFullpath, '+w', 'g');
+	fclose(fopen(pixelInfoFullpath, 'w'));
+	fileattrib(pixelInfoFullpath, '+w', 'g');
 end
 
 % use single distance map for 
 if ~DS && ~DSR && ~any(stitchMIP)
-    singleDistMap = true;
+	singleDistMap = true;
 end
 
 if isempty(processFunPath) || all(cellfun(@isempty, processFunPath))
-    processFunPath = {''};
-    if EdgeArtifacts > 0
-        usrFun = '';
-        if DSR 
-            if ~any(stitchMIP)
-                usrFun = sprintf('@(x)erodeVolumeBy2DProjection(x,%d)', EdgeArtifacts);
-            end
-        else
-            % for skewed space stitch add 1 count to avoid 0 in the image
-            if TileOffset ~= 0
-                usrFun = sprintf('@(x)erodeVolumeBy2DProjection(x+%d,%d)', TileOffset, EdgeArtifacts);                
-            else
-                usrFun = sprintf('@(x)erodeVolumeBy2DProjection(x,%d)', EdgeArtifacts);
-            end
-        end
-        dt = char(datetime('now', 'Format', 'yyyyMMddHHmmSS'));
-        tmpDir = sprintf('%s/tmp/', pstr);
-        fn = sprintf('%s/processFunction_%s.mat', tmpDir, dt);
-        if ~exist(tmpDir, 'dir')
-            mkdir(tmpDir);
-        end
-        save('-v7.3', fn, 'usrFun');  
-        if ~isempty(usrFun)
-            processFunPath = {fn};        
-        end
-    end
+	processFunPath = {''};
+	if EdgeArtifacts > 0
+		usrFun = '';
+		if DSR 
+			if ~any(stitchMIP)
+				usrFun = sprintf('@(x)erodeVolumeBy2DProjection(x,%d)', EdgeArtifacts);
+			end
+		else
+			% for skewed space stitch add 1 count to avoid 0 in the image
+			if TileOffset ~= 0
+				usrFun = sprintf('@(x)erodeVolumeBy2DProjection(x+%d,%d)', TileOffset, EdgeArtifacts);                
+			else
+				usrFun = sprintf('@(x)erodeVolumeBy2DProjection(x,%d)', EdgeArtifacts);
+			end
+		end
+		dt = char(datetime('now', 'Format', 'yyyyMMddHHmmSS'));
+		tmpDir = sprintf('%s/tmp/', pstr);
+		fn = sprintf('%s/processFunction_%s.mat', tmpDir, dt);
+		if ~exist(tmpDir, 'dir')
+			mkdir(tmpDir);
+		end
+		save('-v7.3', fn, 'usrFun');  
+		if ~isempty(usrFun)
+			processFunPath = {fn};        
+		end
+	end
 end
 
 % change stitch resample to [1, 1, 1] for DSR (because we resample DSR for the future).
 if isempty(resampleFactor)
-    resampleFactor = [1, 1, 1];
+	resampleFactor = [1, 1, 1];
 end
 zarr_flippedTile = false(size(flippedTile)); 
 stitchResample = [1, 1, 1];
 if ~DSR
-    stitchResample = resampleFactor;
-    if isempty(ProcessedDirstr)
-        zarr_flippedTile = flippedTile > 0;
-    end
+	stitchResample = resampleFactor;
+	if isempty(ProcessedDirstr)
+		zarr_flippedTile = flippedTile > 0;
+	end
 end
 % check if there are partial files when converting tiff to zarr
 partialFile = ~DS && ~DSR;
 
 % process tile filenames based on different processing for tiles
 processTiles = ~zarrFile || (zarrFile && (~isempty(InputBbox) || ~isempty(tileOutBbox) ...
-    || any(~cellfun(@isempty, processFunPath)) || any(zarr_flippedTile) || any(stitchResample ~= 1)));
+	|| any(~cellfun(@isempty, processFunPath)) || any(zarr_flippedTile) || any(stitchResample ~= 1)));
 
 [inputFullpaths, zarrFullpaths, fsnames, zarrPathstr] = stitch_process_filenames( ...
-    tileFullpaths, ProcessedDirstr, stitchMIP, stitchResample, zarrFile, processTiles);
+	tileFullpaths, ProcessedDirstr, stitchMIP, stitchResample, zarrFile, processTiles);
 
 % first check if it is 2d stitch
 for f = 1 : nF
-    imSize = getImageSize(inputFullpaths{f});
-    if imSize(data_order_mat == 3) > 1
-        stitch2D = false;
-        break;
-    end
-    stitch2D = true;
+	imSize = getImageSize(inputFullpaths{f});
+	if imSize(data_order_mat == 3) > 1
+		stitch2D = false;
+		break;
+	end
+	stitch2D = true;
 end
 
 if stitch2D && nF < 50
-    parseCluster = false;
+	parseCluster = false;
 end
 
 if largeFile
-    if isempty(poolSize)
-        error('poolSize must not be empty when largeFile is true!');
-    end
+	if isempty(poolSize)
+		error('poolSize must not be empty when largeFile is true!');
+	end
 else
-    poolSize = [];
+	poolSize = [];
 end
 
 % check if total input size is greater than 100 GB if bigStitchData is false
 nodeFactor = 2;
 compressor = 'zstd';
 if (~stitch2D && ~bigStitchData && nF > 4 && prod(imSize) * nF * 4 > (100 * 2^30)) || largeFile
-    bigStitchData = true;
+	bigStitchData = true;
 end
 if bigStitchData
-    nodeFactor = 1;
-    compressor = 'zstd';
+	nodeFactor = 1;
+	compressor = 'zstd';
 end
 
 % convert tiff to zarr (if inputs are tiff tiles), and process tiles
 locIds = tileIdx(:, 4);
 stitch_process_tiles(inputFullpaths, 'resultDirName', zarrPathstr, 'zarrFile', zarrFile, ...
-    'locIds', locIds, 'blockSize', round(blockSize / 2), 'shardSize', round(shardSize / 2), ...
-    'flippedTile', zarr_flippedTile, 'resample', stitchResample, 'partialFile', partialFile, ...
-    'InputBbox', InputBbox, 'tileOutBbox', tileOutBbox, 'processFunPath', processFunPath, ...
-    'parseCluster', parseCluster, 'masterCompute', masterCompute, 'bigData', bigStitchData, ...
-    'mccMode', mccMode, 'configFile', configFile);
+	'locIds', locIds, 'blockSize', round(blockSize / 2), 'shardSize', round(shardSize / 2), ...
+	'flippedTile', zarr_flippedTile, 'resample', stitchResample, 'partialFile', partialFile, ...
+	'InputBbox', InputBbox, 'tileOutBbox', tileOutBbox, 'processFunPath', processFunPath, ...
+	'parseCluster', parseCluster, 'masterCompute', masterCompute, 'bigData', bigStitchData, ...
+	'mccMode', mccMode, 'configFile', configFile);
 
 % load all zarr headers as a cell array and get image size for all tiles
 imSizes = getImageSizeBatch(zarrFullpaths);
 if any(stitchMIP) && size(imSizes, 2) == 2
-    imSizes = [imSizes, ones(nF, 1)];
+	imSizes = [imSizes, ones(nF, 1)];
 end
 
 if all(imSizes(:, data_order_mat(3)) == 1)
-    stitch2D = true;
+	stitch2D = true;
 end
 
 dtype = getImageDataType(zarrFullpaths{1});
 if save16bit
-    dtype = 'uint16';
+	dtype = 'uint16';
 end 
 
 % process coordinates based on the space of the data
@@ -484,68 +484,68 @@ cuboids = [xyz, xyz + (imSizes(:, data_order_mat) - 1) .* [xp, yp, zp]];
 overlap_matrix = false(nF);
 overlap_regions = zeros(nF * (nF - 1) / 2, 6);
 for i = 1 : nF - 1
-    cuboid_i = cuboids(i, :);
-    cuboid_js = cuboids(i + 1 : end, :);
-    
-    [is_overlap_mat, cuboid_overlap_mat] = check_cuboids_overlaps(cuboid_i, cuboid_js, stitch2D);
-    for j = i + 1 : nF
-        if is_overlap_mat(j - i)
-            overlap_matrix(i, j) = true;
-            % ind = 0.5 * i * (2 * j - i - 1);
-            ind = (i - 1) * nF - i * (i + 1) / 2 + j;
-            overlap_regions(ind, :) = cuboid_overlap_mat(j - i, :);
-        end
-    end
+	cuboid_i = cuboids(i, :);
+	cuboid_js = cuboids(i + 1 : end, :);
+
+	[is_overlap_mat, cuboid_overlap_mat] = check_cuboids_overlaps(cuboid_i, cuboid_js, stitch2D);
+	for j = i + 1 : nF
+		if is_overlap_mat(j - i)
+			overlap_matrix(i, j) = true;
+			% ind = 0.5 * i * (2 * j - i - 1);
+			ind = (i - 1) * nF - i * (i + 1) / 2 + j;
+			overlap_regions(ind, :) = cuboid_overlap_mat(j - i, :);
+		end
+	end
 end
 
 dxyz_shift = zeros(nF, 3);
 xyz_shift = xyz;
 % calculate relative/absolute shifts between tiles
 if xcorrShift && isPrimaryCh
-    xcorrDir = sprintf('%s/%s/xcorr/%s/', dataPath, ResultDir, nv_fsname);
-    xcorrFinalFn = sprintf('%s/%s/xcorr/%s.mat', dataPath, ResultDir, nv_fsname);
-    if ~exist(xcorrFinalFn, 'file')
-        xcorTmpFn = sprintf('%s/%s/xcorr/%s_%s.mat', dataPath, ResultDir, nv_fsname, uuid);
-        assign_method = shiftMethod;
-        
-        MaxOffset = [xyMaxOffset, xyMaxOffset, zMaxOffset];
-        [xyz_shift, dxyz_shift] = stitch_shift_assignment(zarrFullpaths, xcorrDir, imSizes, xyz, ...
-           [xp, yp, zp], data_order_mat, overlap_matrix, overlap_regions, MaxOffset, xcorrDownsample, ...
-            xcorrThresh, tileIdx, assign_method, stitch2D, axisWeight, groupFile, largeFile, ...
-            poolSize, parseCluster, nodeFactor, mccMode, configFile);
-        save('-v7.3', xcorTmpFn, 'xyz_shift', 'dxyz_shift');
-        movefile(xcorTmpFn, xcorrFinalFn)
-    else
-        a = load(xcorrFinalFn, 'xyz_shift', 'dxyz_shift');
-        xyz_shift = a.xyz_shift;
-        dxyz_shift = a.dxyz_shift;
-    end
-elseif ~isPrimaryCh
-    if ~exist(stitchInfoFullpath, 'file')
-        error('The stitch information filename %s does not exist!', stitchInfoFullpaths);
-    end
-    
-    a = load(stitchInfoFullpath, 'overlap_matrix', 'dxyz_shift', 'pImSz', 'pTileSizes', 'imdistFullpaths', 'imdistFileIdx');
-    if ~all(a.overlap_matrix == overlap_matrix, 'all')
-        warning('The overlap matrix of current overlap matrix is different from the one in the stitch info, use the common ones!')
-        overlap_matrix = overlap_matrix & a.overlap_matrix;
-    end
-    dxyz_shift = a.dxyz_shift;
-    xyz_shift = xyz + dxyz_shift;
+	xcorrDir = sprintf('%s/%s/xcorr/%s/', dataPath, ResultDir, nv_fsname);
+	xcorrFinalFn = sprintf('%s/%s/xcorr/%s.mat', dataPath, ResultDir, nv_fsname);
+	if ~exist(xcorrFinalFn, 'file')
+		xcorTmpFn = sprintf('%s/%s/xcorr/%s_%s.mat', dataPath, ResultDir, nv_fsname, uuid);
+		assign_method = shiftMethod;
 
-    pImSz = a.pImSz;
-    pTileSizes = a.pTileSizes;
-    imdistFullpaths = a.imdistFullpaths;
-    imdistFileIdx = a.imdistFileIdx;
+		MaxOffset = [xyMaxOffset, xyMaxOffset, zMaxOffset];
+		[xyz_shift, dxyz_shift] = stitch_shift_assignment(zarrFullpaths, xcorrDir, imSizes, xyz, ...
+			[xp, yp, zp], data_order_mat, overlap_matrix, overlap_regions, MaxOffset, xcorrDownsample, ...
+			xcorrThresh, tileIdx, assign_method, stitch2D, axisWeight, groupFile, largeFile, ...
+			poolSize, parseCluster, nodeFactor, mccMode, configFile);
+		save('-v7.3', xcorTmpFn, 'xyz_shift', 'dxyz_shift');
+		movefile(xcorTmpFn, xcorrFinalFn)
+	else
+		a = load(xcorrFinalFn, 'xyz_shift', 'dxyz_shift');
+		xyz_shift = a.xyz_shift;
+		dxyz_shift = a.dxyz_shift;
+	end
+elseif ~isPrimaryCh
+	if ~exist(stitchInfoFullpath, 'file')
+		error('The stitch information filename %s does not exist!', stitchInfoFullpaths);
+	end
+
+	a = load(stitchInfoFullpath, 'overlap_matrix', 'dxyz_shift', 'pImSz', 'pTileSizes', 'imdistFullpaths', 'imdistFileIdx');
+	if ~all(a.overlap_matrix == overlap_matrix, 'all')
+		warning('The overlap matrix of current overlap matrix is different from the one in the stitch info, use the common ones!')
+		overlap_matrix = overlap_matrix & a.overlap_matrix;
+	end
+	dxyz_shift = a.dxyz_shift;
+	xyz_shift = xyz + dxyz_shift;
+
+	pImSz = a.pImSz;
+	pTileSizes = a.pTileSizes;
+	imdistFullpaths = a.imdistFullpaths;
+	imdistFileIdx = a.imdistFileIdx;
 end
 
 % use half of overlap region for pairs of tiles with overlap
 if isempty(overlapType)
-    if strcmp(BlendMethod, 'none')
-        overlapType = 'none';
-    else
-        overlapType = 'half';
-    end
+	if strcmp(BlendMethod, 'none')
+		overlapType = 'none';
+	else
+		overlapType = 'half';
+	end
 end
 
 % to do: change to dictionary in the future
@@ -556,37 +556,37 @@ ol_region_cell = cell(nF * 8, 1);
 overlap_map_mat = zeros(nF * 8, 2);
 counter = 1;
 for i = 1 : nF - 1
-    cuboid_i = cuboids(i, :);
-    js = find(overlap_matrix(i, i + 1 : end)) + i;
-    if isempty(js)
-        continue;
-    end
-    cuboid_js = cuboids(js, :);
-    
-    % recheck if the overlapped tiles become not overlapped after shift
-    % (or with large resample factors)    
-    [is_overlap_mat] = check_cuboids_overlaps(cuboid_i, cuboid_js, stitch2D);
-    for j1 = 1 : numel(js)
-        j = js(j1);
-        if ~is_overlap_mat(j1) 
-            overlap_matrix(i, j) = false;
-            continue;
-        end
-        cuboid_j = cuboids(j, :);
-        ind = (j - 1) * nF + i;
-        
-        [mregion_1, mregion_2] = compute_half_of_overlap_region(cuboid_i, cuboid_j, ...
-            [xp, yp, zp]', 'overlapType', overlapType, 'halfOrder', halfOrder, 'stitch2D', stitch2D);
-        % half_ol_region_cell{i, j} = {mregion_1, mregion_2};
-        half_ol_region_cell{counter} = {mregion_1, mregion_2};
+	cuboid_i = cuboids(i, :);
+	js = find(overlap_matrix(i, i + 1 : end)) + i;
+	if isempty(js)
+		continue;
+	end
+	cuboid_js = cuboids(js, :);
 
-        [mregion_11, mregion_21] = compute_half_of_overlap_region(cuboid_i, cuboid_j, ...
-            [xp, yp, zp]', 'overlapType', 'zero', 'halfOrder', halfOrder, 'stitch2D', stitch2D);
-        % ol_region_cell{i, j} = {mregion_11, mregion_21};
-        ol_region_cell{counter} = {mregion_11, mregion_21};
-        overlap_map_mat(counter, :) = [counter, ind];
-        counter = counter + 1;
-    end
+	% recheck if the overlapped tiles become not overlapped after shift
+	% (or with large resample factors)    
+	[is_overlap_mat] = check_cuboids_overlaps(cuboid_i, cuboid_js, stitch2D);
+	for j1 = 1 : numel(js)
+		j = js(j1);
+		if ~is_overlap_mat(j1) 
+			overlap_matrix(i, j) = false;
+			continue;
+		end
+		cuboid_j = cuboids(j, :);
+		ind = (j - 1) * nF + i;
+
+		[mregion_1, mregion_2] = compute_half_of_overlap_region(cuboid_i, cuboid_j, ...
+			[xp, yp, zp]', 'overlapType', overlapType, 'halfOrder', halfOrder, 'stitch2D', stitch2D);
+		% half_ol_region_cell{i, j} = {mregion_1, mregion_2};
+		half_ol_region_cell{counter} = {mregion_1, mregion_2};
+
+		[mregion_11, mregion_21] = compute_half_of_overlap_region(cuboid_i, cuboid_j, ...
+			[xp, yp, zp]', 'overlapType', 'zero', 'halfOrder', halfOrder, 'stitch2D', stitch2D);
+		% ol_region_cell{i, j} = {mregion_11, mregion_21};
+		ol_region_cell{counter} = {mregion_11, mregion_21};
+		overlap_map_mat(counter, :) = [counter, ind];
+		counter = counter + 1;
+	end
 end
 half_ol_region_cell(counter : end) = [];
 ol_region_cell(counter : end) = [];
@@ -596,42 +596,42 @@ overlap_map_mat(counter : end, :) = [];
 % also pad the tiles such that the images of all time points and different
 % channels are the same
 if nF > 1 && xcorrShift
-    pad_size = [xp, yp, zp] .* stitchPadSize(data_order_mat) .* tileNum;
+	pad_size = [xp, yp, zp] .* stitchPadSize(data_order_mat) .* tileNum;
 else
-    pad_size = [0, 0, 0];
+	pad_size = [0, 0, 0];
 end
 xyz_shift_orig = xyz_shift;
 origin = min(xyz_shift_orig, [], 1) - pad_size;
 xyz_shift = xyz_shift_orig - origin;
 
 if isPrimaryCh
-    dxyz = max(xyz_shift_orig + imSizes(:, data_order_mat) .* [xp, yp, zp]) + pad_size - origin;
-    vxyz = round(dxyz ./ [xp, yp, zp] + 2);
-    nvSize = vxyz(data_order_reverse_mat);
-    if any(stitchMIP) || max(imSizes(:, data_order_mat(3)) == 1)
-        nvSize(data_order_mat(3)) = 1;
-    end
+	dxyz = max(xyz_shift_orig + imSizes(:, data_order_mat) .* [xp, yp, zp]) + pad_size - origin;
+	vxyz = round(dxyz ./ [xp, yp, zp] + 2);
+	nvSize = vxyz(data_order_reverse_mat);
+	if any(stitchMIP) || max(imSizes(:, data_order_mat(3)) == 1)
+		nvSize(data_order_mat(3)) = 1;
+	end
 else    
-    nvSize = pImSz;
+	nvSize = pImSz;
 end
 
 % bouding box crop by redefining coordinate system and image size
 if ~isempty(outBbox)
-    bbox = outBbox;
-    if any(isinf(bbox(4 : 6)))
-        stchSz = nvSize;
-        bbox_end = bbox(4 : 6);
-        bbox_end(isinf(bbox_end)) = stchSz(isinf(bbox_end));
-        bbox(4 : 6) = bbox_end;
-    end
-    
-    pad_size_l = pad_size - (bbox(data_order_mat) - 1) .* [xp, yp, zp];
-    % pad_size_r = pad_size + (bbox([5, 4, 6]) - [nys, nxs, nzs]) .* [xf, yf, zf] * px; 
-    origin = min(xyz_shift_orig, [], 1) - pad_size_l;
-    % dxyz = max(xyz_shift, [], 1) + pad_size_r - origin;
-    xyz_shift = xyz_shift_orig - origin;
-    
-    nvSize = bbox(4 : 6) - bbox(1 : 3) + 1;
+	bbox = outBbox;
+	if any(isinf(bbox(4 : 6)))
+		stchSz = nvSize;
+		bbox_end = bbox(4 : 6);
+		bbox_end(isinf(bbox_end)) = stchSz(isinf(bbox_end));
+		bbox(4 : 6) = bbox_end;
+	end
+
+	pad_size_l = pad_size - (bbox(data_order_mat) - 1) .* [xp, yp, zp];
+	% pad_size_r = pad_size + (bbox([5, 4, 6]) - [nys, nxs, nzs]) .* [xf, yf, zf] * px; 
+	origin = min(xyz_shift_orig, [], 1) - pad_size_l;
+	% dxyz = max(xyz_shift, [], 1) + pad_size_r - origin;
+	xyz_shift = xyz_shift_orig - origin;
+
+	nvSize = bbox(4 : 6) - bbox(1 : 3) + 1;
 end
 
 int_xyz_shift = round(xyz_shift ./ [xp, yp, zp]);
@@ -648,138 +648,138 @@ numBatches = prod(bSubSz);
 % save block info (for record and distributed computing in the future)
 stichInfoPath = [dataPath, '/', ResultDir, '/', stitchInfoDir];
 if ~exist(stichInfoPath, 'dir')
-    mkdir(stichInfoPath);
-    fileattrib(stichInfoPath, '+w', 'g');
+	mkdir(stichInfoPath);
+	fileattrib(stichInfoPath, '+w', 'g');
 end
 
 if numBatches < 30
-    parseCluster = false;
+	parseCluster = false;
 end
 
 taskRatio = max(0.1, prod([512, 512, 512]) / prod(batchSize));
 if parseCluster
-    taskSize = 20; % the number of blocks a job should process for [512, 512, 512]
-    % keep task size inversely propotional to block size
-    taskSize = max(1, round(taskSize * taskRatio));
-    taskSize = max(taskSize, min(round(50 * taskRatio), ceil(numBatches / 5000)));
+	taskSize = 20; % the number of blocks a job should process for [512, 512, 512]
+	% keep task size inversely propotional to block size
+	taskSize = max(1, round(taskSize * taskRatio));
+	taskSize = max(taskSize, min(round(50 * taskRatio), ceil(numBatches / 5000)));
 else
-    taskSize = min(numBatches, round(500 * taskRatio));
+	taskSize = min(numBatches, round(500 * taskRatio));
 end
 
 [block_info_fullname, PerBlockInfoFullpaths, block_info_bytes] = stitch_process_block_info(int_xyz_shift, ...
-    imSizes, nvSize, batchSize, data_order_mat, overlap_matrix, ol_region_cell, half_ol_region_cell, ...
-    overlap_map_mat, BorderSize, zarrFullpaths, stichInfoPath, nv_fsname, isPrimaryCh, ...
-    stitchInfoFullpath=stitchInfoFullpath, stitch2D=stitch2D, uuid=uuid, taskSize=taskSize, ...
-    maxFileNumPerFolder=maxFileNumPerFolder, parseCluster=parseCluster, mccMode=mccMode, configFile=configFile);
+	imSizes, nvSize, batchSize, data_order_mat, overlap_matrix, ol_region_cell, half_ol_region_cell, ...
+	overlap_map_mat, BorderSize, zarrFullpaths, stichInfoPath, nv_fsname, isPrimaryCh, ...
+	stitchInfoFullpath=stitchInfoFullpath, stitch2D=stitch2D, uuid=uuid, taskSize=taskSize, ...
+	maxFileNumPerFolder=maxFileNumPerFolder, parseCluster=parseCluster, mccMode=mccMode, configFile=configFile);
 
 % initial stitched block image and save header in the disk
 if ispc && numel(uuid) > 4
-    % for PC, the path length limit is 260, so make it shorter in case of beyond the limit
-    nv_tmp_fullname = sprintf('%s/%s/%s_nv_%s', dataPath, ResultDir, nv_fsname, uuid(1:4));        
+	% for PC, the path length limit is 260, so make it shorter in case of beyond the limit
+	nv_tmp_fullname = sprintf('%s/%s/%s_nv_%s', dataPath, ResultDir, nv_fsname, uuid(1:4));        
 else
-    nv_tmp_fullname = sprintf('%s/%s/%s_nv_%s', dataPath, ResultDir, nv_fsname, uuid);    
+	nv_tmp_fullname = sprintf('%s/%s/%s_nv_%s', dataPath, ResultDir, nv_fsname, uuid);    
 end
 if saveMultires
-    mkdir(nv_tmp_fullname);
-    py.zarr.open_group(nv_tmp_fullname, pyargs('mode', 'w'));
-    
-    nv_tmp_raw_fullname = sprintf('%s/L_1_1_1', nv_tmp_fullname);
+	mkdir(nv_tmp_fullname);
+	py.zarr.open_group(nv_tmp_fullname, pyargs('mode', 'w'));
+
+	nv_tmp_raw_fullname = sprintf('%s/L_1_1_1', nv_tmp_fullname);
 else
-    nv_tmp_raw_fullname = nv_tmp_fullname;
+	nv_tmp_raw_fullname = nv_tmp_fullname;
 end
 
 fresh_stitch = true;
 if exist(nv_tmp_raw_fullname, 'dir')
-    bim = blockedImage(nv_tmp_raw_fullname, 'Adapter', CZarrAdapter);
-    nv_tmp_size = bim.Size;
-    nv_tmp_block_size = bim.BlockSize;
-    if numel(nvSize) == numel(nv_tmp_size) && all(nvSize == nv_tmp_size) && ...
-            all(blockSize == nv_tmp_block_size)
-        fresh_stitch = false;
-    else
-        rmdir(nv_tmp_raw_fullname, 's');
-    end
+	bim = blockedImage(nv_tmp_raw_fullname, 'Adapter', CZarrAdapter);
+	nv_tmp_size = bim.Size;
+	nv_tmp_block_size = bim.BlockSize;
+	if numel(nvSize) == numel(nv_tmp_size) && all(nvSize == nv_tmp_size) && ...
+			all(blockSize == nv_tmp_block_size)
+		fresh_stitch = false;
+	else
+		rmdir(nv_tmp_raw_fullname, 's');
+	end
 end
 
 % do not overwrite the intermediate data if it exists, this is good for
 % large data when the master job runs out of time and new master job can
 % continue the stitching
 if fresh_stitch
-    dimSeparator = '.';
-    if prod(ceil(nvSize ./ blockSize)) > 10000
-        dimSeparator = '/';
-    end
-    createzarr(nv_tmp_raw_fullname, dataSize=nvSize, blockSize=blockSize, ...
-        shardSize=shardSize, dtype=dtype, compressor=compressor, dimSeparator=dimSeparator);
+	dimSeparator = '.';
+	if prod(ceil(nvSize ./ blockSize)) > 10000
+		dimSeparator = '/';
+	end
+	createzarr(nv_tmp_raw_fullname, dataSize=nvSize, blockSize=blockSize, ...
+		shardSize=shardSize, dtype=dtype, compressor=compressor, dimSeparator=dimSeparator);
 end
 
 % add support for feather blending
 stitchPath = [dataPath, '/', ResultDir, '/'];
 if strcmpi(BlendMethod, 'feather') 
-    % xruan disable singleDistMap if some tiles have different image sizes
-    [uniq_locIds, uniq_inds] = unique(locIds);
-    for i = 1 : numel(uniq_locIds)
-        singleDistMap = singleDistMap && all(imSizes(locIds == uniq_locIds(i), :) == imSizes(uniq_inds(i), :), 'all');
-        if ~singleDistMap
-            break;
-        end
-    end
-    if isPrimaryCh 
-        imdistPath = [dataPath, '/', ResultDir, '/imdist/'];
-        mkdir(imdistPath);
-        fileattrib(imdistPath, '+w', 'g');
-        [imdistFullpaths, imdistFileIdx] = compute_tile_distance_transform(block_info_fullname, ...
-            stitchPath, zarrFullpaths, 'dataOrderMat', data_order_mat, 'blendWeightDegree', blendWeightDegree, ...
-            'singleDistMap', singleDistMap, 'locIds', locIds, 'distBboxes', distBboxes, ...
-            'blockSize', round(blockSize/2), 'shardSize', round(shardSize/2), ...
-            'compressor', compressor, 'largeFile', largeFile, 'poolSize', poolSize, ...
-            'parseCluster', parseCluster, 'mccMode', mccMode, 'configFile', configFile);
-    else
-        usePrimaryDist = all(imSizes == pTileSizes, 'all');
-        if ~usePrimaryDist
-            imdistPath = [dataPath, '/', ResultDir, '/imdist/'];
-            mkdir(imdistPath);
-            fileattrib(imdistPath, '+w', 'g');
-            [imdistFullpaths, imdistFileIdx] = compute_tile_distance_transform(block_info_fullname, ...
-                stitchPath, zarrFullpaths, 'dataOrderMat', data_order_mat, 'blendWeightDegree', blendWeightDegree, ...
-                'singleDistMap', singleDistMap, 'locIds', locIds, 'distBboxes', distBboxes, ...
-                'blockSize', round(blockSize/2), 'shardSize', round(shardSize/2), ...
-                'compressor', compressor, 'largeFile', largeFile, 'poolSize', poolSize, ...
-                'parseCluster', parseCluster, 'mccMode', mccMode, 'configFile', configFile);
-        end
-    end
+	% xruan disable singleDistMap if some tiles have different image sizes
+	[uniq_locIds, uniq_inds] = unique(locIds);
+	for i = 1 : numel(uniq_locIds)
+		singleDistMap = singleDistMap && all(imSizes(locIds == uniq_locIds(i), :) == imSizes(uniq_inds(i), :), 'all');
+		if ~singleDistMap
+			break;
+		end
+	end
+	if isPrimaryCh 
+		imdistPath = [dataPath, '/', ResultDir, '/imdist/'];
+		mkdir(imdistPath);
+		fileattrib(imdistPath, '+w', 'g');
+		[imdistFullpaths, imdistFileIdx] = compute_tile_distance_transform(block_info_fullname, ...
+			stitchPath, zarrFullpaths, 'dataOrderMat', data_order_mat, 'blendWeightDegree', blendWeightDegree, ...
+			'singleDistMap', singleDistMap, 'locIds', locIds, 'distBboxes', distBboxes, ...
+			'blockSize', round(blockSize/2), 'shardSize', round(shardSize/2), ...
+			'compressor', compressor, 'largeFile', largeFile, 'poolSize', poolSize, ...
+			'parseCluster', parseCluster, 'mccMode', mccMode, 'configFile', configFile);
+	else
+		usePrimaryDist = all(imSizes == pTileSizes, 'all');
+		if ~usePrimaryDist
+			imdistPath = [dataPath, '/', ResultDir, '/imdist/'];
+			mkdir(imdistPath);
+			fileattrib(imdistPath, '+w', 'g');
+			[imdistFullpaths, imdistFileIdx] = compute_tile_distance_transform(block_info_fullname, ...
+				stitchPath, zarrFullpaths, 'dataOrderMat', data_order_mat, 'blendWeightDegree', blendWeightDegree, ...
+				'singleDistMap', singleDistMap, 'locIds', locIds, 'distBboxes', distBboxes, ...
+				'blockSize', round(blockSize/2), 'shardSize', round(shardSize/2), ...
+				'compressor', compressor, 'largeFile', largeFile, 'poolSize', poolSize, ...
+				'parseCluster', parseCluster, 'mccMode', mccMode, 'configFile', configFile);
+		end
+	end
 else
-    imdistFullpaths = {};
-    imdistFileIdx = [];
+	imdistFullpaths = {};
+	imdistFileIdx = [];
 end
 
 % save stitch information for primary channels if there is xcorr shift
 if isPrimaryCh
-    stitch_info_tmp_fullname = sprintf('%s/%s/%s/%s_%s.mat', dataPath, ResultDir, stitchInfoDir, nv_fsname, uuid);
-    stitchInfoFullpath =sprintf('%s/%s/%s/%s.mat', dataPath, ResultDir, stitchInfoDir, nv_fsname);
-    pImSz = nvSize;
-    pTileSizes = imSizes;
-    save('-v7.3', stitch_info_tmp_fullname, 'ip', 'flippedTile', 'overlap_regions', ...
-        'overlap_matrix', 'dxyz_shift', 'shiftMethod', 'pImSz', 'pTileSizes', 'xp', 'yp', 'zp', ...
-        'data_order_mat', 'PerBlockInfoFullpaths', 'imdistFullpaths', 'imdistFileIdx', 'xyz_orig');
-    movefile(stitch_info_tmp_fullname, stitchInfoFullpath);
+	stitch_info_tmp_fullname = sprintf('%s/%s/%s/%s_%s.mat', dataPath, ResultDir, stitchInfoDir, nv_fsname, uuid);
+	stitchInfoFullpath =sprintf('%s/%s/%s/%s.mat', dataPath, ResultDir, stitchInfoDir, nv_fsname);
+	pImSz = nvSize;
+	pTileSizes = imSizes;
+	save('-v7.3', stitch_info_tmp_fullname, 'ip', 'flippedTile', 'overlap_regions', ...
+		'overlap_matrix', 'dxyz_shift', 'shiftMethod', 'pImSz', 'pTileSizes', 'xp', 'yp', 'zp', ...
+		'data_order_mat', 'PerBlockInfoFullpaths', 'imdistFullpaths', 'imdistFileIdx', 'xyz_orig');
+	movefile(stitch_info_tmp_fullname, stitchInfoFullpath);
 end
 
 % for separate blend, save each tile separately in the proposed location in
 % stitched image
 if strcmpi(BlendMethod, 'separate')
-    st_indices = int_xyz_shift;
-    batchSize = max([2048, 2048, 2048], blockSize);
-    processStitchSeparteTiles(zarrFullpaths, stitchPath, st_indices, pImSz, ...
-        batchSize=batchSize, blockSize=blockSize, parseCluster=parseCluster, ...
-        masterCompute=masterCompute, mccMode=mccMode, configFile=configFile);
-    nv_fullname = sprintf('%s/%s/%s.zarr', dataPath, ResultDir, nv_fsname);
-    if ~exist(nv_fullname, 'dir')
-        movefile(nv_tmp_fullname, nv_fullname);
-    else
-        rmdir(nv_tmp_fullname, 's');
-    end
-    return;
+	st_indices = int_xyz_shift;
+	batchSize = max([2048, 2048, 2048], blockSize);
+	processStitchSeparteTiles(zarrFullpaths, stitchPath, st_indices, pImSz, ...
+		batchSize=batchSize, blockSize=blockSize, parseCluster=parseCluster, ...
+		masterCompute=masterCompute, mccMode=mccMode, configFile=configFile);
+	nv_fullname = sprintf('%s/%s/%s.zarr', dataPath, ResultDir, nv_fsname);
+	if ~exist(nv_fullname, 'dir')
+		movefile(nv_tmp_fullname, nv_fullname);
+	else
+		rmdir(nv_tmp_fullname, 's');
+	end
+	return;
 end
 
 % process for each block based on all BlockInfo use distributed computing
@@ -792,22 +792,22 @@ numTasks = ceil(numBatches / taskSize);
 zarrFlagRootPath = sprintf('%s/%s/zarr_flags/', dataPath, ResultDir);
 zarrFlagPath = sprintf('%s/%s/zarr_flags/%s_%s/', dataPath, ResultDir, nv_fsname, uuid);
 if exist(zarrFlagPath, 'dir') && fresh_stitch
-    rmdir(zarrFlagPath, 's')
+	rmdir(zarrFlagPath, 's')
 end
 mkdir(zarrFlagPath);
 fileattrib(zarrFlagRootPath, '+w', 'g');
 fileattrib(zarrFlagPath, '+w', 'g');
 zarrFlagPath_cell = {zarrFlagPath};
 if numTasks > maxFileNumPerFolder
-    nFolder = ceil(numTasks / maxFileNumPerFolder);
-    for f = 1 : nFolder
-        s = (f - 1) * maxFileNumPerFolder + 1;
-        t = f * maxFileNumPerFolder;
-        zarrFlagPath_f = sprintf('%s/tasks_%d_%d/', zarrFlagPath, s, t);
-        mkdir(zarrFlagPath_f);
-        fileattrib(zarrFlagPath_f, '+w', 'g');
-        zarrFlagPath_cell{f} = zarrFlagPath_f;
-    end
+	nFolder = ceil(numTasks / maxFileNumPerFolder);
+	for f = 1 : nFolder
+		s = (f - 1) * maxFileNumPerFolder + 1;
+		t = f * maxFileNumPerFolder;
+		zarrFlagPath_f = sprintf('%s/tasks_%d_%d/', zarrFlagPath, s, t);
+		mkdir(zarrFlagPath_f);
+		fileattrib(zarrFlagPath_f, '+w', 'g');
+		zarrFlagPath_cell{f} = zarrFlagPath_f;
+	end
 end
 
 zarrFlagFullpaths = cell(numTasks, 1);
@@ -816,46 +816,46 @@ funcStrs = cell(numTasks, 1);
 imdistFullpaths_str = sprintf("{'%s'}", strjoin(imdistFullpaths, ''','''));
 
 param_str = sprintf(['''%s'',[],[],''imSize'',[%s],''batchSize'',[%s],''dtype'',', ...
-    '''%s'',''BlendMethod'',''%s'',''BorderSize'',[%s],''imdistFullpaths'',%s,', ...
-    '''imdistFileIdx'',%s,''poolSize'',%s,''weightDegree'',%d'], nv_tmp_fullname, ...
-    strrep(mat2str(nvSize), ' ', ','), strrep(mat2str(batchSize), ' ', ','), ...
-    dtype, BlendMethod, strrep(mat2str(BorderSize), ' ', ','), imdistFullpaths_str, ...
-    strrep(mat2str(imdistFileIdx), ' ', ','), strrep(mat2str(poolSize), ' ', ','), ...
-    blendWeightDegree);
+	'''%s'',''BlendMethod'',''%s'',''BorderSize'',[%s],''imdistFullpaths'',%s,', ...
+	'''imdistFileIdx'',%s,''poolSize'',%s,''weightDegree'',%d'], nv_tmp_fullname, ...
+strrep(mat2str(nvSize), ' ', ','), strrep(mat2str(batchSize), ' ', ','), ...
+dtype, BlendMethod, strrep(mat2str(BorderSize), ' ', ','), imdistFullpaths_str, ...
+strrep(mat2str(imdistFileIdx), ' ', ','), strrep(mat2str(poolSize), ' ', ','), ...
+blendWeightDegree);
 funcStrs_func = @(batchInds, PerBlockInfoFullpath, zarrFlagFullpath) sprintf( ...
-    'processStitchBlock([%s],''%s'',''%s'',''%s'',%s)', strrep(mat2str(batchInds), ' ', ','), ...
-    block_info_fullname, PerBlockInfoFullpath, zarrFlagFullpath, param_str);
+	'processStitchBlock([%s],''%s'',''%s'',''%s'',%s)', strrep(mat2str(batchInds), ' ', ','), ...
+	block_info_fullname, PerBlockInfoFullpath, zarrFlagFullpath, param_str);
 
 for t = 1 : numTasks
-    batchInds = (t - 1) * taskSize + 1 : min(t * taskSize, numBatches);
+	batchInds = (t - 1) * taskSize + 1 : min(t * taskSize, numBatches);
 
-    % save block info searately for each task for faster access
-    % PerBlockInfoFullpath = sprintf('%s/stitch_block_info_blocks_%d_%d.mat', PerBlockInfoPath, blockInds(1), blockInds(end));
-    PerBlockInfoFullpath = PerBlockInfoFullpaths{t};
+	% save block info searately for each task for faster access
+	% PerBlockInfoFullpath = sprintf('%s/stitch_block_info_blocks_%d_%d.mat', PerBlockInfoPath, blockInds(1), blockInds(end));
+	PerBlockInfoFullpath = PerBlockInfoFullpaths{t};
 
-    if numTasks > maxFileNumPerFolder
-        zarrFlagFullpaths{t} = sprintf('%s/blocks_%d_%d.mat', zarrFlagPath_cell{ceil(t / maxFileNumPerFolder)}, batchInds(1), batchInds(end));
-    else
-        zarrFlagFullpaths{t} = sprintf('%s/blocks_%d_%d.mat', zarrFlagPath, batchInds(1), batchInds(end));
-    end
-    funcStrs{t} = funcStrs_func(batchInds, PerBlockInfoFullpath, zarrFlagFullpaths{t});
+	if numTasks > maxFileNumPerFolder
+		zarrFlagFullpaths{t} = sprintf('%s/blocks_%d_%d.mat', zarrFlagPath_cell{ceil(t / maxFileNumPerFolder)}, batchInds(1), batchInds(end));
+	else
+		zarrFlagFullpaths{t} = sprintf('%s/blocks_%d_%d.mat', zarrFlagPath, batchInds(1), batchInds(end));
+	end
+	funcStrs{t} = funcStrs_func(batchInds, PerBlockInfoFullpath, zarrFlagFullpaths{t});
 end
 
 inputFullpaths = PerBlockInfoFullpaths;
 outputFullpaths = zarrFlagFullpaths;
 
 if parseCluster
-    % reorder tasks to make time consuming task first
-    % if there are more than 10000 tasks, mix the task between 25% hardest
-    % and 25% easiest ones
-    [~, sinds] = sort(block_info_bytes, 'descend');
-    if numTasks > 10000
-        sinds_1 = reshape(sinds(1 : floor(numTasks / 4) * 4), [], 4)';
-        sinds(1 : floor(numTasks / 4) * 4) = sinds_1(:);
-    end
-    inputFullpaths = inputFullpaths(sinds);
-    outputFullpaths = outputFullpaths(sinds);
-    funcStrs = funcStrs(sinds);    
+	% reorder tasks to make time consuming task first
+	% if there are more than 10000 tasks, mix the task between 25% hardest
+	% and 25% easiest ones
+	[~, sinds] = sort(block_info_bytes, 'descend');
+	if numTasks > 10000
+		sinds_1 = reshape(sinds(1 : floor(numTasks / 4) * 4), [], 4)';
+		sinds(1 : floor(numTasks / 4) * 4) = sinds_1(:);
+	end
+	inputFullpaths = inputFullpaths(sinds);
+	outputFullpaths = outputFullpaths(sinds);
+	funcStrs = funcStrs(sinds);    
 end
 
 byte_num = dataTypeToByteNumber(dtype);
@@ -867,75 +867,75 @@ maxTrialNum = 2;
 jobTimeLimit = taskSize * (3 / 60);
 
 if ~exist(nv_fullname, 'dir') 
-    is_done_flag = generic_computing_frameworks_wrapper(inputFullpaths, outputFullpaths, ...
-        funcStrs, 'finalOutFullpath', nv_fullname, 'cpusPerTask', cpusPerTask, ...
-        'memAllocate', memAllocate, 'jobTimeLimit', jobTimeLimit, 'maxTrialNum', maxTrialNum, ...
-        'masterCompute', masterCompute, 'parseCluster', parseCluster, 'mccMode', mccMode, ...
-        'configFile', configFile);
+	is_done_flag = generic_computing_frameworks_wrapper(inputFullpaths, outputFullpaths, ...
+		funcStrs, 'finalOutFullpath', nv_fullname, 'cpusPerTask', cpusPerTask, ...
+		'memAllocate', memAllocate, 'jobTimeLimit', jobTimeLimit, 'maxTrialNum', maxTrialNum, ...
+		'masterCompute', masterCompute, 'parseCluster', parseCluster, 'mccMode', mccMode, ...
+		'configFile', configFile);
 end
 
 % retry with more resources and longer time
 for i = 1 : 3
-    if ~exist(nv_fullname, 'dir') && ~all(is_done_flag)
-        is_done_flag = generic_computing_frameworks_wrapper(inputFullpaths, outputFullpaths, ...
-            funcStrs, 'finalOutFullpath', nv_fullname, 'cpusPerTask', cpusPerTask * 2^i, ...
-            'jobTimeLimit', jobTimeLimit * 2^i, 'maxTrialNum', maxTrialNum, ...
-            'masterCompute', masterCompute, 'parseCluster', parseCluster, 'mccMode', mccMode, ...
-            'configFile', configFile);
-    end
+	if ~exist(nv_fullname, 'dir') && ~all(is_done_flag)
+		is_done_flag = generic_computing_frameworks_wrapper(inputFullpaths, outputFullpaths, ...
+			funcStrs, 'finalOutFullpath', nv_fullname, 'cpusPerTask', cpusPerTask * 2^i, ...
+			'jobTimeLimit', jobTimeLimit * 2^i, 'maxTrialNum', maxTrialNum, ...
+			'masterCompute', masterCompute, 'parseCluster', parseCluster, 'mccMode', mccMode, ...
+			'configFile', configFile);
+	end
 end
 
 if ~exist(nv_fullname, 'dir') && ~all(is_done_flag)
-    if ~debug
-        rmdir(nv_tmp_fullname, 's');
-        rmdir(zarrFlagPath, 's');
-    end
-    if exist(nv_fullname, 'dir')
-        fprintf('Stitched result %s is finished by another job, skip it!\n', nv_fullname);
-        return;
-    else
-        error('The block processing for blocks [%s] cannot be finished!', num2str(find(~is_done_flag)'));
-    end
+	if ~debug
+		rmdir(nv_tmp_fullname, 's');
+		rmdir(zarrFlagPath, 's');
+	end
+	if exist(nv_fullname, 'dir')
+		fprintf('Stitched result %s is finished by another job, skip it!\n', nv_fullname);
+		return;
+	else
+		error('The block processing for blocks [%s] cannot be finished!', num2str(find(~is_done_flag)'));
+	end
 end
 
 if ~debug && exist(zarrFlagPath, 'dir')
-    rmdir(zarrFlagPath, 's');
+	rmdir(zarrFlagPath, 's');
 end
 
 % create multiresolution zarr file
 if saveMultires
-    zarrFullpath = nv_tmp_raw_fullname;
-    outputFullpath = nv_tmp_raw_fullname;
-    XR_multiresZarrGeneration(zarrFullpath, outputFullpath, varargin)    
+	zarrFullpath = nv_tmp_raw_fullname;
+	outputFullpath = nv_tmp_raw_fullname;
+	XR_multiresZarrGeneration(zarrFullpath, outputFullpath, varargin)    
 end
 
 % nv_fullname = sprintf('%s/%s/%s.zarr', dataPath, ResultDir, fsname_first(1:end-21));
 if exist(nv_tmp_fullname, 'dir')
-    if ~exist(nv_fullname, 'dir')
-        movefile(nv_tmp_fullname, nv_fullname);
-    else
-        if any(stitchMIP)
-            rmdir(nv_fullname, 's');
-            movefile(nv_tmp_fullname, nv_fullname);        
-        else
-            rmdir(nv_tmp_fullname, 's');
-        end
-    end
+	if ~exist(nv_fullname, 'dir')
+		movefile(nv_tmp_fullname, nv_fullname);
+	else
+		if any(stitchMIP)
+			rmdir(nv_fullname, 's');
+			movefile(nv_tmp_fullname, nv_fullname);        
+		else
+			rmdir(nv_tmp_fullname, 's');
+		end
+	end
 end
 
 % save MIP
 if saveMIP
-    t0 = tic;    
-    stcMIPPath = sprintf('%s/%s/MIPs/', dataPath, ResultDir);
-    if ~exist(stcMIPPath, 'dir')
-        mkdir(stcMIPPath);
-        fileattrib(stcMIPPath, '+w', 'g');
-    end
-    stcMIPname = sprintf('%s%s_MIP_z.tif', stcMIPPath, nv_fsname);
-    % for data greater than half of the system memory, use the cluster based MIP.
-    totalMem = getSystemMemory();
+	t0 = tic;    
+	stcMIPPath = sprintf('%s/%s/MIPs/', dataPath, ResultDir);
+	if ~exist(stcMIPPath, 'dir')
+		mkdir(stcMIPPath);
+		fileattrib(stcMIPPath, '+w', 'g');
+	end
+	stcMIPname = sprintf('%s%s_MIP_z.tif', stcMIPPath, nv_fsname);
+	% for data greater than half of the system memory, use the cluster based MIP.
+	totalMem = getSystemMemory();
     if prod(nvSize) * byte_num / 2^30 < totalMem / 2
-        saveMIP_zarr(nv_fullname, stcMIPname, dtype, [1, 1, 1]);
+		saveMIP_zarr(nv_fullname, stcMIPname, dtype=dtype, axis=[0, 0, 1]);
     else
         XR_MIP_zarr(nv_fullname, axis=[1, 1, 1], parseCluster=parseCluster, ...
             mccMode=mccMode, configFile=configFile);

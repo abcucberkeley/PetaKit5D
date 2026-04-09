@@ -577,7 +577,13 @@ while ~all(is_done_flag | trial_counter >= max_trial_num, 'all')
                         tileInfoFullpath = '';
                         flippedTile_str = strrep(num2str(flippedTile, '%d,'), ' ', '');
 
-                        cind = cellfun(@(x) contains(tile_fullpaths{1}, x), channelPatterns);                        
+                        cind = cellfun(@(x) contains(tile_fullpaths{1}, x), channelPatterns);
+                        if cind == 0
+                            if ismember('mappedFilename', cur_tab.Properties.VariableNames)
+                                cind = cellfun(@(x) contains(cur_tab.mappedFilename{1}, x), channelPatterns);
+                            end
+                        end
+
                         processFunPath_str = sprintf('{''%s''}', strjoin(processFunPath(cind, :), ''','''));
 
                         % for tile number greater than 10, save the info to the disk and load it for the function

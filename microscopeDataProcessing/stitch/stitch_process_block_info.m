@@ -95,10 +95,13 @@ if isPrimaryCh
     PerBlockInfoPath = sprintf('%s/%s_task_size_%d/', stichInfoPath, nv_fsname, taskSize);
     mkdir(PerBlockInfoPath);
     PerBlockInfoFlagPath = sprintf('%s/block_flags/', PerBlockInfoPath);
-    mkdir(PerBlockInfoFlagPath);    
+    mkdir(PerBlockInfoFlagPath);
 else
     [pstr, fsn] = fileparts(stitchInfoFullpath);
     PerBlockInfoPath = sprintf('%s/%s_task_size_%d/', pstr, fsn, taskSize);
+    if ~exist(PerBlockInfoPath, 'dir')
+        error('The Per Block Info path for the primary channel %s does not exist!', PerBlockInfoPath);
+    end
 end
 
 numTasks = ceil(numBlocks / taskSize);

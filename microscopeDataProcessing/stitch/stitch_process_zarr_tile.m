@@ -97,7 +97,9 @@ if flipZstack
 end    
 
 % bounding box crop for output
-frame = crop3d(frame, tileOutBbox);
+if ~isempty(tileOutBbox)
+    frame = crop3d(frame, tileOutBbox);
+end
 
 if ~isempty(resample) && ~all(resample == 1)
     rs = resample(:)';
