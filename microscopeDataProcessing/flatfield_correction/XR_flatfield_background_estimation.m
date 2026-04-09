@@ -14,6 +14,7 @@ ip.addRequired('frameFullnames');
 ip.addRequired('resultFullname'); 
 ip.addParameter('objectiveScan', false, @islogical);
 ip.addParameter('Overwrite', false, @islogical);
+ip.addParameter('zarrFile', false, @islogical);
 ip.addParameter('MovieSelector', 'cell', @ischar);
 ip.addParameter('sigmaThresh', 8, @isnumeric); % camera sigma threshold for background image, for sCMOS, std should be around 4, set a higher one
 ip.addParameter('sigmaFactor', 4, @isnumeric); % std factor to decide background image
@@ -26,6 +27,7 @@ ip.parse(frameFullnames, resultFullname, varargin{:});
 
 pr = ip.Results;
 Overwrite = pr.Overwrite;
+zarrFile = pr.zarrFile;
 sigmaThresh = pr.sigmaThresh;
 sigmaFactor = pr.sigmaFactor;
 probThresh = pr.probThresh;
@@ -41,16 +43,18 @@ if exist(resultFullname, 'file') && ~Overwrite
     return;
 end
 
-im = cell(numel(frameFullnames), 1);
-for i = 1 : numel(frameFullnames)
-    try
-        im{i} = parallelReadTiff(frameFullnames{i});
-    catch ME
+nF = numel(frameFullnames);
+im = cell(nF, 1);
+if zarrFile
+    for i = 1 : nF
+        im{i} = readzarr(frameFullnames{i});
+    end
+else
+    for i = 1 : nF
         im{i} = readtiff(frameFullnames{i});
     end
-end
+end    
 im = single(cat(3, im{:}));
-% numSlice = size(source, 3);
 
 if saveMIP
     MIP = max(im, [], 3);

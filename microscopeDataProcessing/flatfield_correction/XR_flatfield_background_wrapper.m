@@ -44,6 +44,7 @@ ip.addParameter('resultDirStr', 'matlab_flat_field_estimation', @ischar);
 ip.addParameter('channelPatterns', {'CamA_ch0', 'CamB_ch0'}, @iscell); % only compute first time point (for deciding cropping bouding box)
 ip.addParameter('estimationMode', 'per_image', @ischar); % 'cam_ch', 'came_ch_iter', 'came_ch_iter_stack', or 'per_image'
 ip.addParameter('onlyFirstTP', false, @islogical); % only compute first time point (for deciding cropping bouding box)
+ip.addParameter('zarrFile', false, @islogical);
 ip.addParameter('save16bit', true, @islogical);
 ip.addParameter('saveMIP', false, @islogical); % save MIPs
 ip.addParameter('parseCluster', true, @islogical);
@@ -60,6 +61,7 @@ pr = ip.Results;
 % Overwrite = pr.Overwrite;
 channelPatterns = pr.channelPatterns;
 estimationMode = pr.estimationMode;
+zarrFile = pr.zarrFile;
 resultDirStr = pr.resultDirStr;
 saveMIP = pr.saveMIP;
 jobLogDir = pr.jobLogDir;
@@ -125,9 +127,10 @@ flipZstack = false;
 Decon = false;
 deconPaths = '';
 Streaming = false;
+minModifyTime = 0;
 
 [fnames, fdinds, gfnames, partialvols, dataSizes, flipZstack_mat, FTP_inds, maskFullpaths] = ...
-    XR_parseImageFilenames(dataPaths, channelPatterns, parseSettingFile, flipZstack, Decon, deconPaths, Streaming);
+    XR_parseImageFilenames(dataPaths, channelPatterns, parseSettingFile, flipZstack, Decon, deconPaths, Streaming, minModifyTime, zarrFile);
 
 nF = numel(fnames);
 
@@ -138,11 +141,17 @@ nF = numel(fnames);
 fn = fnames;
 dbytes = dataSizes;
 
+if zarrFile
+    ext = '.zarr';
+else
+    ext = '.tif';
+end
+
 specifyCam = true;
 if all(~cellfun(@isempty, regexp(fn, '_Cam\w_ch', 'match')))
-    expression = '(?<prefix>\w*)Scan_Iter_(?<Iter>\d+)(?<subIter>_?\d+?_?\d+?)_Cam(?<Cam>\w+)_ch(?<ch>\d+)_CAM1_stack(?<stack>\d+)_(?<laser>\d+)nm_(?<abstime>\d+)msec_(?<fpgatime>\d+)msecAbs_(?<x>-?\d+)x_(?<y>-?\d+)y_(?<z>-?\d+)z_(?<t>\d+)t.tif';
+    expression = ['(?<prefix>\w*)Scan_Iter_(?<Iter>\d+)(?<subIter>_?\d+?_?\d+?)_Cam(?<Cam>\w+)_ch(?<ch>\d+)_CAM1_stack(?<stack>\d+)_(?<laser>\d+)nm_(?<abstime>\d+)msec_(?<fpgatime>\d+)msecAbs_(?<x>-?\d+)x_(?<y>-?\d+)y_(?<z>-?\d+)z_(?<t>\d+)t', ext];
 elseif all(~cellfun(@isempty, regexp(fn, '_ch[0-9]_', 'match')))
-    expression = '(?<prefix>\w*)Scan_Iter_(?<Iter>\d+)(?<subIter>_?\d+?_?\d+?)_ch(?<ch>\d+)_CAM1_stack(?<stack>\d+)_(?<laser>\d+)nm_(?<abstime>\d+)msec_(?<fpgatime>\d+)msecAbs_(?<x>-?\d+)x_(?<y>-?\d+)y_(?<z>-?\d+)z_(?<t>\d+)t.tif';
+    expression = ['(?<prefix>\w*)Scan_Iter_(?<Iter>\d+)(?<subIter>_?\d+?_?\d+?)_ch(?<ch>\d+)_CAM1_stack(?<stack>\d+)_(?<laser>\d+)nm_(?<abstime>\d+)msec_(?<fpgatime>\d+)msecAbs_(?<x>-?\d+)x_(?<y>-?\d+)y_(?<z>-?\d+)z_(?<t>\d+)t', ext];
     specifyCam = false;
 end
 
@@ -257,11 +266,11 @@ if ~strcmp(estimationMode, 'per_image')
 elseif strcmp(estimationMode, 'per_image')
     inputFullpaths = arrayfun(@(x) sprintf('%s/%s', dataPaths{fdinds(x)}, fnames{x}), 1 : nF, 'unif', 0);
     input_str_filenames = arrayfun(@(x) cellfun(@(y) sprintf('%s/%s', dataPaths{fdinds(x)}, y), gfnames{x}, 'unif', 0), 1 : nF, 'unif', 0); 
-    outputFullpaths = arrayfun(@(x) sprintf('%s/%s/%s.mat', dataPaths{fdinds(x)}, resultDirStr, fnames{x}(1 : end - 4)), 1 : nF, 'unif', 0);
+    outputFullpaths = arrayfun(@(x) sprintf('%s/%s/%s.mat', dataPaths{fdinds(x)}, resultDirStr, fnames{x}(1 : end - 4 - zarrFile)), 1 : nF, 'unif', 0);
 end
 
-funcStrs = arrayfun(@(x) sprintf('XR_flatfield_background_estimation(%s,''%s'',''saveMIP'',%s)', ...
-    sprintf('{''%s''}', strjoin(input_str_filenames{x}, ''',''')), outputFullpaths{x}, string(saveMIP)), ...
+funcStrs = arrayfun(@(x) sprintf('XR_flatfield_background_estimation(%s,''%s'',''zarrFile'',%s,''saveMIP'',%s)', ...
+    sprintf('{''%s''}', strjoin(input_str_filenames{x}, ''',''')), outputFullpaths{x}, string(zarrFile), string(saveMIP)), ...
     1 : numel(inputFullpaths), 'unif', 0);
 
 imSizes = cellfun(@(y) getImageSize(sprintf('%s/%s', dataPaths{fdinds(1)}, y)), gfnames{1}, 'unif', 0);
@@ -301,7 +310,11 @@ for d = 1 : nd
                 continue;
             end
             
-            cur_inds = find(contains(outputFullpaths, sprintf('Cam%s_ch%d', Cam(ncam), Ch(c))));
+            if specifyCam
+                cur_inds = find(contains(outputFullpaths, sprintf('Cam%s_ch%d', Cam(ncam), Ch(c))));
+            else
+                cur_inds = find(contains(outputFullpaths, sprintf('ch%d', Ch(c))));
+            end
             if isempty(cur_inds)
                 continue;
             end
