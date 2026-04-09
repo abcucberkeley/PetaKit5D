@@ -173,6 +173,9 @@ tic
 % blockSize = nv_bim.BlockSize;
 sameBatchSize = true;
 BorderSize = round((size(psf) + 10) / 2);
+if EdgeErosion > 0
+    BorderSize = max(BorderSize, EdgeErosion + 1);
+end
 [batchBBoxes, regionBBoxes] = XR_zarrChunkCoordinatesExtraction(imSize, 'batchSize', batchSize, ...
     'blockSize', blockSize, 'sameBatchSize', sameBatchSize, 'BorderSize', BorderSize);
 
@@ -191,10 +194,14 @@ if ~exist(deconTmppath, 'dir')
     createzarr(deconTmppath, dataSize=imSize, blockSize=blockSize, dtype=dtype, dimSeparator=dimSeparator);
 end
 
-taskSize = 20; % the number of batches a job should process
+if GPUJob
+    taskSize = 20; % the number of batches a job should process
+else
+    taskSize = 5;
+end
 numBatch = size(batchBBoxes, 1);
 if parseCluster || GPUJob || strcmp(RLMethod, 'omw')
-    if numBatch > 200
+    if numBatch > 1000
         taskSize = max(100, round(numBatch / 5000));
     end
 end

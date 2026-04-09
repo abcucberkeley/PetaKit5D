@@ -175,6 +175,9 @@ end
 
 sameBatchSize = ~true;
 BorderSize = round((size(psf) + 10) / 2);
+if EdgeErosion > 0
+    BorderSize = max(BorderSize, EdgeErosion + 1);
+end
 BlockSize = batchSize;
 [BatchBBoxes, RegionBBoxes] = XR_zarrChunkCoordinatesExtraction(imSize, 'batchSize', batchSize, ...
     'BlockSize', BlockSize, 'sameBatchSize', sameBatchSize, 'BorderSize', BorderSize);
@@ -245,7 +248,7 @@ for i = 1 : numel(batchInds)
         'hannWinBounds', hannWinBounds, 'fixIter', fixIter, 'dampFactor', dampFactor, ...
         'scaleFactor', scaleFactor, 'deconOffset', deconOffset, 'deconBbox', deconBbox, ...
         'useGPU', useGPU, 'psfGen', psfGen, 'debug', debug, 'save3Dstack', save3Dstack, ...
-        'mipAxis', mipAxis);
+        'EdgeErosion', EdgeErosion, 'mipAxis', mipAxis);
     
     try 
         indexing3d_mex(imout, [obStart, obEnd], out_batch);

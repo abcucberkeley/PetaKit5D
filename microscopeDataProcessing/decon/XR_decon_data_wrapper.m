@@ -418,8 +418,13 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
             psfFullpath = dc_psfFullpaths{psfMapping};
             background_f = background(psfMapping);
             deconIter_f = deconIter_mat(fdind);
-            wienerAlpha_f = wienerAlpha(psfMapping);
-            OTFCumThresh_f = OTFCumThresh(psfMapping);
+            if strcmp(RLMethod, 'omw')
+                wienerAlpha_f = wienerAlpha(psfMapping);
+                OTFCumThresh_f = OTFCumThresh(psfMapping);
+            else
+                wienerAlpha_f = wienerAlpha(1);
+                OTFCumThresh_f = OTFCumThresh(1);
+            end
             scaleFactor_f = scaleFactor(psfMapping);
             flipZstack = flipZstack_mat(f);
             maskFullpaths_str = sprintf('{''%s''}', strjoin(maskFullpaths, ''','''));
