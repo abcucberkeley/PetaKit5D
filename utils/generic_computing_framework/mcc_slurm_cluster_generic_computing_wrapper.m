@@ -157,7 +157,19 @@ input_exist_mat(~output_exist_mat) = batch_file_exist(inputFullpaths(~output_exi
 dt = char(datetime('now', 'Format', 'yyyyMMdd_HHmmss_SSSSSSSSS'));
 
 if isempty(tmpDir)
-    funcInputDir = sprintf('%s/tmp/%s_%s/', dataPath, dt, uuid(1 : 6));
+    rtTmpDir = sprintf('%s/tmp/', dataPath);
+    if exist(rtTmpDir, 'dir')
+        % check write permission for the tmp dir
+        testFile = sprintf('%s/%s.tmp', rtTmpDir, uuid);
+        [fid, errmsg] = fopen(testFile, 'w');
+        if fid ~= -1
+            fclose(fid);
+            delete(testFile);
+        else
+            rtTmpDir = sprintf('%s/tmp_%s/', dataPath, uuid(1 : 6));
+        end
+    end
+    funcInputDir = sprintf('%s/%s_%s/', rtTmpDir, dt, uuid(1 : 6));
 else
     funcInputDir = sprintf('%s/%s/', tmpDir, dt);            
 end
@@ -681,6 +693,12 @@ if all(is_done_flag)
     fprintf('Time %0.2f s: All output files (%d / %d) are finished!\n\n', toc(ts), nF, nF);
     if exist(funcInputDir, 'dir')
         rmdir(funcInputDir, 's');
+    end
+    if isempty(tmpDir)
+        rtTmpDir = sprintf('%s/tmp_%s/', dataPath, uuid(1 : 6));
+        if exist(rtTmpDir, 'dir')
+            rmdir(rtTmpDir, 's');
+        end
     end
 end
 
