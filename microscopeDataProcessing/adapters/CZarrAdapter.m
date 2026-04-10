@@ -35,8 +35,14 @@ classdef CZarrAdapter < images.blocked.Adapter
             obj.ZarrObj.shape = jdata.shape(:)';
             if contains(jdata.dtype, 'u2')
                 obj.ZarrObj.dtype = 'uint16';
+            elseif contains(jdata.dtype, 'u1')
+                obj.ZarrObj.dtype = 'uint8';
             elseif contains(jdata.dtype, 'f4')
                 obj.ZarrObj.dtype = 'single';
+            elseif contains(jdata.dtype, 'f8')
+                obj.ZarrObj.dtype = 'double';
+            else
+                error('Unsupported format! Currently supported formats: uint8, uint16, single, double.')
             end        
         end
          
@@ -45,10 +51,14 @@ classdef CZarrAdapter < images.blocked.Adapter
             info.IOBlockSize = obj.ZarrObj.chunks;
             % xruan (11/18/2020): add support for multiple data types
             switch string(obj.ZarrObj.dtype)
+                case {'double'}
+                    info.Datatype = "double";
                 case {"float32", "single"}
                     info.Datatype = "single";
                 case "uint16"
                     info.Datatype = "uint16";
+                case "uint8"
+                    info.Datatype = "uint8";
             end
             % info.Datatype = string(obj.ZarrObj.dtype.name);
             info.InitialValue = cast(0, info.Datatype);
