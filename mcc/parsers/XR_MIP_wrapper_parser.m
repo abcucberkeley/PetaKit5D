@@ -11,6 +11,7 @@ ip.addRequired('dataPaths', @(x) ischar(x) || iscell(x));
 ip.addParameter('resultDirName', 'MIPs', @ischar);
 ip.addParameter('axis', [0, 0, 1], @(x) isnumeric(x) || ischar(x));
 ip.addParameter('channelPatterns', {'CamA_ch0', 'CamA_ch1', 'CamB_ch0', 'CamB_ch1'}, @(x) iscell(x) || ischar(x));
+ip.addParameter('inputBbox', [] , @(x) isempty(x) || isvector(x) || ischar(x));
 ip.addParameter('zarrFile', false, @(x) islogical(x) || ischar(x));
 ip.addParameter('largeFile', false, @(x) islogical(x) || ischar(x));
 ip.addParameter('batchSize', [2048, 2048, 2048] , @(x) isvector(x) || ischar(x));
@@ -31,6 +32,7 @@ pr = ip.Results;
 resultDirName = pr.resultDirName;
 axis = pr.axis;
 channelPatterns = pr.channelPatterns;
+inputBbox = pr.inputBbox;
 zarrFile = pr.zarrFile;
 largeFile = pr.largeFile;
 batchSize = pr.batchSize;
@@ -53,6 +55,9 @@ if ischar(axis)
 end
 if ischar(channelPatterns) && ~isempty(channelPatterns) && strcmp(channelPatterns(1), '{')
     channelPatterns = eval(channelPatterns);
+end
+if ischar(inputBbox)
+    inputBbox = str2num(inputBbox);
 end
 if ischar(zarrFile)
     zarrFile = str2num(zarrFile);
@@ -86,10 +91,10 @@ if ischar(mccMode)
 end
 
 XR_MIP_wrapper(dataPaths, resultDirName=resultDirName, axis=axis, channelPatterns=channelPatterns, ...
-    zarrFile=zarrFile, largeFile=largeFile, batchSize=batchSize, save16bit=save16bit, ...
-    parseCluster=parseCluster, parseParfor=parseParfor, masterCompute=masterCompute, ...
-    cpusPerTask=cpusPerTask, jobLogDir=jobLogDir, uuid=uuid, debug=debug, mccMode=mccMode, ...
-    configFile=configFile);
+    inputBbox=inputBbox, zarrFile=zarrFile, largeFile=largeFile, batchSize=batchSize, ...
+    save16bit=save16bit, parseCluster=parseCluster, parseParfor=parseParfor, ...
+    masterCompute=masterCompute, cpusPerTask=cpusPerTask, jobLogDir=jobLogDir, ...
+    uuid=uuid, debug=debug, mccMode=mccMode, configFile=configFile);
 
 end
 

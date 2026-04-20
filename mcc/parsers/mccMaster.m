@@ -80,7 +80,7 @@ switch functionName
     case 'XR_MIP_zarr'
         XR_MIP_zarr_parser(varargin{1}, varargin{2:end});
     case 'saveMIP_zarr'
-        saveMIP_zarr_parser(varargin{1}, varargin{2}, varargin{3}, varargin{4});
+        saveMIP_zarr_parser(varargin{1}, varargin{2}, varargin{3:end});
     case 'MIP_block'
         MIP_block_parser(varargin{1}, varargin{2}, varargin{3}, varargin{4}, varargin{5}, varargin{6}, varargin{7}, varargin{8:end});
     case 'saveMIP_tiff'
