@@ -108,13 +108,12 @@ end
 % end
 
 % decide zAniso
+theta = skewAngle * pi / 180;
 if objectiveScan
     zAniso = dz / xyPixelSize;
 elseif zStageScan
-    theta = skewAngle * pi / 180;
     zAniso = cos(abs(theta)) * dz / xyPixelSize;    
 else
-    theta = skewAngle * pi / 180;
     zAniso = sin(abs(theta)) * dz / xyPixelSize;
 end
 
