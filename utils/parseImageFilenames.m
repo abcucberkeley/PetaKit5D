@@ -92,4 +92,9 @@ if nargout == 5
     ch_inds = arrayfun(@(x) find(ch_inds(x, :), 1, 'first'), 1 : size(ch_inds, 1))';
 end
 
+% check if the filenames are empty
+if numel(fnames) == 0
+    warning('The input data folder(s) is empty, or no file matches the channel pattern, or file type (tiff/zarr) is not correctly setup. Please check.')
+end    
+
 end
