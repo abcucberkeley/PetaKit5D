@@ -278,11 +278,12 @@ hit:
                     return 0;
         op = tif->tif_rawdata;
     }*/
-    if (enc_oldcode != (hcode_t) -1) {
-        free_ent = lzw_free_ent;
-
-        PutNextCode(op, enc_oldcode);
-        enc_oldcode = (hcode_t) -1;
+    if (ent != (hcode_t) -1) {
+        // Flush the final pending code. This used enc_oldcode, which is never
+        // updated in the loop (always -1), so the last code was dropped -- the
+        // caller worked around it by over-reading extraBytes past the strip.
+        PutNextCode(op, ent);
+        ent = (hcode_t) -1;
         free_ent ++;
 
         if (free_ent == CODE_MAX-1) {

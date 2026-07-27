@@ -176,3 +176,31 @@ uint64_t getDataType(const char* fileName){
     return bits;
 }
 
+// Returns the samples per pixel (1 = grayscale, 3 = RGB, 4 = RGBA).
+// Uses the defaulted getter so files that omit the tag report 1.
+uint64_t getSamplesPerPixel(const char* fileName){
+    TIFFSetWarningHandler(DummyHandler);
+    TIFF* tif = TIFFOpen(fileName, "r");
+    if(!tif){ printf("File \"%s\" cannot be opened",fileName); return 1; }
+
+    uint16_t spp = 1;
+    TIFFGetFieldDefaulted(tif, TIFFTAG_SAMPLESPERPIXEL, &spp);
+    TIFFClose(tif);
+
+    return spp;
+}
+
+// Returns the sample format (1 = unsigned int, 2 = signed int, 3 = IEEE float).
+// Uses the defaulted getter so files that omit the tag report unsigned int.
+uint64_t getSampleFormat(const char* fileName){
+    TIFFSetWarningHandler(DummyHandler);
+    TIFF* tif = TIFFOpen(fileName, "r");
+    if(!tif){ printf("File \"%s\" cannot be opened",fileName); return 1; }
+
+    uint16_t sf = SAMPLEFORMAT_UINT;
+    TIFFGetFieldDefaulted(tif, TIFFTAG_SAMPLEFORMAT, &sf);
+    TIFFClose(tif);
+
+    return sf;
+}
+

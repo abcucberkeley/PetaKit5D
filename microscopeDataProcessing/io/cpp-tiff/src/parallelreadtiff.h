@@ -10,7 +10,7 @@ uint8_t readTiffParallel2D(uint64_t x, uint64_t y, uint64_t z, const char* fileN
 
 uint8_t readTiffParallelImageJ(uint64_t x, uint64_t y, uint64_t z, const char* fileName, void* tiff, uint64_t bits, uint64_t startSlice, uint64_t stripSize, uint8_t flipXY);
 
-void* readTiffParallelWrapper(const char* fileName);
+void* readTiffParallelWrapper(const char* fileName, const std::vector<uint64_t> &zRange = {});
 
 void* readTiffParallelWrapperNoXYFlip(const char* fileName, const std::vector<uint64_t> &zRange = {});
 

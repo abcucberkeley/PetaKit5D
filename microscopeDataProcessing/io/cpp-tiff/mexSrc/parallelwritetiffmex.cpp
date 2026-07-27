@@ -33,7 +33,7 @@ void mexFunction(int nlhs, mxArray *plhs[],
     if(nrhs == 4){
         if(!mxIsClass(prhs[3], "string")){
             if(!mxIsChar(prhs[3])) mexErrMsgIdAndTxt("tiff:inputError","The fourth argument must be a string");
-            compression = mxArrayToString(prhs[0]);
+            compression = mxArrayToString(prhs[3]);
         }
         else{
             mxArray* mString[1];
@@ -92,25 +92,24 @@ void mexFunction(int nlhs, mxArray *plhs[],
     }
 
     mxClassID mDType = mxGetClassID(prhs[1]);
-    if(mDType == mxUINT8_CLASS){
-        bits = 8;
-    }
-    else if(mDType == mxUINT16_CLASS){
-        bits = 16;
-    }
-    else if(mDType == mxSINGLE_CLASS){
-        bits = 32;
-    }
-    else if(mDType == mxDOUBLE_CLASS){
-        bits = 64;
-    }
+    uint16_t sampleFormat = SAMPLEFORMAT_UINT;
+    if(mDType == mxUINT8_CLASS){        bits = 8;  sampleFormat = SAMPLEFORMAT_UINT; }
+    else if(mDType == mxINT8_CLASS){    bits = 8;  sampleFormat = SAMPLEFORMAT_INT; }
+    else if(mDType == mxUINT16_CLASS){  bits = 16; sampleFormat = SAMPLEFORMAT_UINT; }
+    else if(mDType == mxINT16_CLASS){   bits = 16; sampleFormat = SAMPLEFORMAT_INT; }
+    else if(mDType == mxUINT32_CLASS){  bits = 32; sampleFormat = SAMPLEFORMAT_UINT; }
+    else if(mDType == mxINT32_CLASS){   bits = 32; sampleFormat = SAMPLEFORMAT_INT; }
+    else if(mDType == mxSINGLE_CLASS){  bits = 32; sampleFormat = SAMPLEFORMAT_IEEEFP; }
+    else if(mDType == mxUINT64_CLASS){  bits = 64; sampleFormat = SAMPLEFORMAT_UINT; }
+    else if(mDType == mxINT64_CLASS){   bits = 64; sampleFormat = SAMPLEFORMAT_INT; }
+    else if(mDType == mxDOUBLE_CLASS){  bits = 64; sampleFormat = SAMPLEFORMAT_IEEEFP; }
     else{
         mexErrMsgIdAndTxt("tiff:dataTypeError","Data type not suppported");
     }
 
     uint64_t stripSize = 512;
-    void* data = (void*)mxGetPr(prhs[1]);
-    uint8_t err = writeTiffParallelWrapper(x,y,z,fileName,data,bits,startSlice,stripSize,mode,true,compression);
+    void* data = mxGetData(prhs[1]);
+    uint8_t err = writeTiffParallelWrapper(x,y,z,fileName,data,bits,startSlice,stripSize,mode,true,compression,sampleFormat);
 
     if(err) mexErrMsgIdAndTxt("tiff:tiffError","An Error occured within the write function");
 }

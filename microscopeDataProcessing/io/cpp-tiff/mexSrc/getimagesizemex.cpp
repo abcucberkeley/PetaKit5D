@@ -50,10 +50,23 @@ void mexFunction(int nlhs, mxArray *plhs[],
 		if(tempZ) z = tempZ;
 	}
 
-    plhs[0] = mxCreateNumericMatrix(1,3,mxDOUBLE_CLASS, mxREAL);
-    double* dims = (double*)mxGetPr(plhs[0]);
-    dims[0] = y;
-    dims[1] = x;
-    dims[2] = z;
-    
+    // Report channels as a 4th element only for RGB/RGBA, so grayscale callers
+    // that expect [y x z] are unaffected.
+    uint64_t samples = getSamplesPerPixel(fileName);
+    if(samples > 1){
+        plhs[0] = mxCreateNumericMatrix(1,4,mxDOUBLE_CLASS, mxREAL);
+        double* dims = (double*)mxGetPr(plhs[0]);
+        dims[0] = y;
+        dims[1] = x;
+        dims[2] = z;
+        dims[3] = samples;
+    }
+    else{
+        plhs[0] = mxCreateNumericMatrix(1,3,mxDOUBLE_CLASS, mxREAL);
+        double* dims = (double*)mxGetPr(plhs[0]);
+        dims[0] = y;
+        dims[1] = x;
+        dims[2] = z;
+    }
+
 }
