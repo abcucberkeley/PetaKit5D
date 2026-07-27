@@ -9,7 +9,7 @@ The software can also run on a single workstation for smaller-scale image proces
 
 ## Usage
 
-The tools have been tested with MATLAB R2023a-R2024b for Linux (Ubuntu 22.04, other distributions may also work), Windows (10 and 11), and MacOS (13 or newer). Toolboxes required:
+The tools have been tested with MATLAB R2023a-R2024b for Linux (Ubuntu 22.04, other distributions may also work), Windows (10 and 11), and MacOS (13 or newer, starting with version 1.4.7, only ARM Mac is supported). Toolboxes required:
 
 `Image Processing Toolbox, Optimization Toolbox, Parallel Computing Toolbox, Signal Processing Toolbox, and Statistics and Machine Learning Toolbox.`
 
