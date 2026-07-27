@@ -106,7 +106,7 @@ if numSlice > 200
 end
 
 [pathstr, fname, ext] = fileparts(resultFullname);
-resultTempname = [pathstr, fname, '_', uuid, ext];
+resultTempname = [pathstr, '/', fname, '_', uuid, ext];
 % save('-v7.3', resultTempname, 'im', 'mu', 'sigma', 'med', 'numSlice');
 save('-v7.3', resultTempname, 'imp', 'mu', 'sigma', 'med', 'numSlice', 'pmat');
 movefile(resultTempname, resultFullname);
