@@ -128,6 +128,37 @@ void CheckErrors(bpImageConverterCPtr aConverter)
     }
 }
 
+// Fill one Imaris block-sized buffer from the read-block data. Row-wise
+// memcpy/memset instead of per-voxel index math + a per-voxel type switch --
+// profiling showed the old per-voxel loop was ~1/4 of the whole conversion's CPU.
+// src==NULL (a pure zero-pad read-block) yields all zeros. Indexing reduces to the
+// whole-image indices when there is a single read-block (x0=y0=z0=0, xN=shapeX,
+// yN=shapeY).
+template<typename T>
+static void fillBlock(T* buf, const T* src,
+        uint64_t vX, uint64_t vY, uint64_t vZ,
+        uint64_t bx, uint64_t by, uint64_t bz,
+        uint64_t shapeX, uint64_t shapeY, uint64_t shapeZ,
+        uint64_t x0, uint64_t y0, uint64_t z0, uint64_t xN, uint64_t yN){
+    const uint64_t gxBase = vX*bx, gyBase = vY*by, gzBase = vZ*bz;
+    const uint64_t avail  = (gxBase < shapeX) ? (shapeX - gxBase) : 0;
+    const uint64_t xValid = !src ? 0 : (avail < bx ? avail : bx);   // in-image cols of this block
+    #pragma omp parallel for collapse(2)
+    for(uint64_t z = 0; z < bz; ++z){
+        for(uint64_t y = 0; y < by; ++y){
+            T* brow = buf + y*bx + z*bx*by;
+            const uint64_t gy = gyBase + y, gz = gzBase + z;
+            if(xValid == 0 || gy >= shapeY || gz >= shapeZ){
+                memset(brow, 0, bx*sizeof(T));                       // row entirely outside the image
+            } else {
+                const T* srow = src + (gxBase - x0) + (gy - y0)*xN + (gz - z0)*xN*yN;
+                memcpy(brow, srow, xValid*sizeof(T));               // contiguous in-image run
+                if(xValid < bx) memset(brow + xValid, 0, (bx - xValid)*sizeof(T));  // zero-pad tail
+            }
+        }
+    }
+}
+
 void convertToImaris(int argc, char **argv)
 {
     int64_t timepoints = -1;
@@ -145,11 +176,12 @@ void convertToImaris(int argc, char **argv)
     char* outName = NULL;
 	char* reader = NULL;
 	char* blockSizes = NULL;
+	char* blockProcessString = NULL;
 	
 	uint8_t crop = 0;
 	char* boundingBoxString = NULL;
 	uint64_t boundingBox[6] = {0,0,0,0,0,0};
-    while (( option_index = getopt(argc, argv, ":c:P:t:f:F:o:r:v:n:b:B:")) != -1){
+    while (( option_index = getopt(argc, argv, ":c:P:t:f:F:o:r:v:n:b:B:C:")) != -1){
         switch (option_index) {
         case 'c':
             channels = atoi(optarg);
@@ -184,6 +216,9 @@ void convertToImaris(int argc, char **argv)
 		case 'B':
 			crop = 1;
 			boundingBoxString = strdup(optarg);
+			break;
+		case 'C':
+			blockProcessString = strdup(optarg);
 			break;
         default:
             printf("Option incorrect\n");
@@ -540,6 +575,28 @@ void convertToImaris(int argc, char **argv)
     unsigned int vNBlocksC = NumBlocks(aImageSize.mValueC, aBlockSize.mValueC);
     unsigned int vNBlocksT = NumBlocks(aImageSize.mValueT, aBlockSize.mValueT);
 
+    // Processing block (-C): how much of a timepoint to hold in RAM at once,
+    // expressed in whole Imaris blocks so an output block never straddles a read.
+    // Default (no -C) = the whole timepoint in one read (prior behavior). For tiff
+    // only Z is blocked (full X/Y slabs); zarr blocks in all three.
+    uint64_t cbX = vNBlocksX, cbY = vNBlocksY, cbZ = vNBlocksZ;
+    if(blockProcessString){
+        char* saveptrC = NULL;
+        char* cC = strtok_r(blockProcessString,delim,&saveptrC);
+        uint64_t userX = strtoull(cC,NULL,10);
+        cC = strtok_r(NULL,delim,&saveptrC);
+        uint64_t userY = strtoull(cC,NULL,10);
+        cC = strtok_r(NULL,delim,&saveptrC);
+        uint64_t userZ = strtoull(cC,NULL,10);
+        cbZ = userZ < aBlockSize.mValueZ ? 1 : (userZ + aBlockSize.mValueZ - 1) / aBlockSize.mValueZ;
+        if(strcmp(reader,"tiff")){   // non-tiff (zarr): also block X and Y
+            cbX = userX < aBlockSize.mValueX ? 1 : (userX + aBlockSize.mValueX - 1) / aBlockSize.mValueX;
+            cbY = userY < aBlockSize.mValueY ? 1 : (userY + aBlockSize.mValueY - 1) / aBlockSize.mValueY;
+        }
+        printf("Processing Block (chunks XYZ): %llu,%llu,%llu\n",
+               (unsigned long long)cbX,(unsigned long long)cbY,(unsigned long long)cbZ);
+    }
+
     bpConverterTypesC_Index5D aBlockIndex = {
         0, 0, 0, 0, 0
     };
@@ -562,59 +619,59 @@ void convertToImaris(int argc, char **argv)
             fflush(stdout);
             //if(strcmp("i", "i"))
             //uint16_t* vData = (uint16_t*)readTiffParallelWrapper(fileName);
-            void* vData;
-            if(!strcmp(reader,"tiff")) vData = readTiffParallelWrapper(fileName);
-            else vData = readZarrParallelHelper(fileName,boundingBox[0],boundingBox[1],boundingBox[2],boundingBox[3],boundingBox[4],boundingBox[5],0);
+            // Iterate the Imaris block grid in read-block-sized groups and read only
+            // that sub-region of the timepoint at a time (bounded RAM). Walking the
+            // SAME grid as a whole read keeps the output byte-for-byte identical.
+            for (uint64_t vZbase = 0; vZbase < vNBlocksZ; vZbase += cbZ) {
+              uint64_t vZlimit = (vZbase+cbZ < vNBlocksZ) ? vZbase+cbZ : vNBlocksZ;
+              uint64_t z0 = vZbase*aBlockSize.mValueZ;
+              uint64_t zEnd = vZlimit*aBlockSize.mValueZ; if(zEnd > shapeZ) zEnd = shapeZ;
+              uint64_t zN = (z0 < shapeZ) ? zEnd-z0 : 0;
+            for (uint64_t vYbase = 0; vYbase < vNBlocksY; vYbase += cbY) {
+              uint64_t vYlimit = (vYbase+cbY < vNBlocksY) ? vYbase+cbY : vNBlocksY;
+              uint64_t y0 = vYbase*aBlockSize.mValueY;
+              uint64_t yEnd = vYlimit*aBlockSize.mValueY; if(yEnd > shapeY) yEnd = shapeY;
+              uint64_t yN = (y0 < shapeY) ? yEnd-y0 : 0;
+            for (uint64_t vXbase = 0; vXbase < vNBlocksX; vXbase += cbX) {
+              uint64_t vXlimit = (vXbase+cbX < vNBlocksX) ? vXbase+cbX : vNBlocksX;
+              uint64_t x0 = vXbase*aBlockSize.mValueX;
+              uint64_t xEnd = vXlimit*aBlockSize.mValueX; if(xEnd > shapeX) xEnd = shapeX;
+              uint64_t xN = (x0 < shapeX) ? xEnd-x0 : 0;
 
-            for (uint64_t vZ = 0; vZ < vNBlocksZ; ++vZ) {
+            // Read this read-block. NULL when it is entirely in the zero-pad region
+            // (nothing to read) -- the fill loop zero-fills those blocks.
+            void* vData = NULL;
+            if(xN && yN && zN){
+                if(!strcmp(reader,"tiff")){
+                    // full X/Y, a Z-slab; a whole-Z read uses the original call so the
+                    // default (no -C) path stays byte-identical (and ImageJ-safe).
+                    if(zN == shapeZ) vData = readTiffParallelWrapper(fileName);
+                    else vData = readTiffParallelWrapper(fileName, {z0, z0+zN});
+                }
+                else vData = readZarrParallelHelper(fileName,
+                                 boundingBox[0]+x0, boundingBox[1]+y0, boundingBox[2]+z0,
+                                 boundingBox[0]+xEnd, boundingBox[1]+yEnd, boundingBox[2]+zEnd, 0);
+            }
+
+            for (uint64_t vZ = vZbase; vZ < vZlimit; ++vZ) {
                 aBlockIndex.mValueZ = vZ;
-                for (uint64_t vY = 0; vY < vNBlocksY; ++vY) {
+                for (uint64_t vY = vYbase; vY < vYlimit; ++vY) {
                     aBlockIndex.mValueY = vY;
-                    for (uint64_t vX = 0; vX < vNBlocksX; ++vX) {
+                    for (uint64_t vX = vXbase; vX < vXlimit; ++vX) {
                         aBlockIndex.mValueX = vX;
-                        #pragma omp parallel for collapse(3)
-                        for(uint64_t z = 0; z < aBlockSize.mValueZ; z++){
-                            for(uint64_t y = 0; y < aBlockSize.mValueY; y++){
-                                for(uint64_t x = 0; x < aBlockSize.mValueX; x++){
-                                    if(x+(vX*aBlockSize.mValueX) >= shapeX || y+(vY*aBlockSize.mValueY) >= shapeY || z+(vZ*aBlockSize.mValueZ) >= shapeZ){
-                                        switch(bits){
-                                            case 8:
-                                                ((uint8_t*)buffer)[x+(y*aBlockSize.mValueX)+(z*aBlockSize.mValueX*aBlockSize.mValueY)] = 0;
-                                                break;
-                                            case 16:
-                                                ((uint16_t*)buffer)[x+(y*aBlockSize.mValueX)+(z*aBlockSize.mValueX*aBlockSize.mValueY)] = 0;
-                                                break;
-                                            case 32:
-                                                ((float*)buffer)[x+(y*aBlockSize.mValueX)+(z*aBlockSize.mValueX*aBlockSize.mValueY)] = 0;
-                                                break;
-                                            case 64:
-                                                ((double*)buffer)[x+(y*aBlockSize.mValueX)+(z*aBlockSize.mValueX*aBlockSize.mValueY)] = 0;
-                                                break;
-                                        }
-                                        //buffer[x+(y*aBlockSize.mValueX)+(z*aBlockSize.mValueX*aBlockSize.mValueY)] = 0;
-                                    }
-                                    else{
-                                        uint64_t nX = (x+(vX*aBlockSize.mValueX));
-                                        uint64_t nY = ((y+(vY*aBlockSize.mValueY))*shapeX);
-                                        uint64_t nZ = ((z+(vZ*aBlockSize.mValueZ))*shapeX*shapeY);
-                                        switch(bits){
-                                            case 8:
-                                                ((uint8_t*)buffer)[x+(y*aBlockSize.mValueX)+(z*aBlockSize.mValueX*aBlockSize.mValueY)] = ((uint8_t*)vData)[nX+nY+nZ];
-                                                break;
-                                            case 16:
-                                                ((uint16_t*)buffer)[x+(y*aBlockSize.mValueX)+(z*aBlockSize.mValueX*aBlockSize.mValueY)] = ((uint16_t*)vData)[nX+nY+nZ];
-                                                break;
-                                            case 32:
-                                                ((float*)buffer)[x+(y*aBlockSize.mValueX)+(z*aBlockSize.mValueX*aBlockSize.mValueY)] = ((float*)vData)[nX+nY+nZ];
-                                                break;
-                                            case 64:
-                                                ((double*)buffer)[x+(y*aBlockSize.mValueX)+(z*aBlockSize.mValueX*aBlockSize.mValueY)] = ((double*)vData)[nX+nY+nZ];
-                                                break;
-                                        }
-                                        //buffer[x+(y*aBlockSize.mValueX)+(z*aBlockSize.mValueX*aBlockSize.mValueY)] = vData[nX+nY+nZ];
-                                    }
-                                }
-                            }
+                        switch(bits){
+                            case 8:  fillBlock<uint8_t> ((uint8_t*)buffer, (const uint8_t*)vData,
+                                        vX,vY,vZ, aBlockSize.mValueX,aBlockSize.mValueY,aBlockSize.mValueZ,
+                                        shapeX,shapeY,shapeZ, x0,y0,z0, xN,yN); break;
+                            case 16: fillBlock<uint16_t>((uint16_t*)buffer,(const uint16_t*)vData,
+                                        vX,vY,vZ, aBlockSize.mValueX,aBlockSize.mValueY,aBlockSize.mValueZ,
+                                        shapeX,shapeY,shapeZ, x0,y0,z0, xN,yN); break;
+                            case 32: fillBlock<float>   ((float*)buffer,   (const float*)vData,
+                                        vX,vY,vZ, aBlockSize.mValueX,aBlockSize.mValueY,aBlockSize.mValueZ,
+                                        shapeX,shapeY,shapeZ, x0,y0,z0, xN,yN); break;
+                            case 64: fillBlock<double>  ((double*)buffer,  (const double*)vData,
+                                        vX,vY,vZ, aBlockSize.mValueX,aBlockSize.mValueY,aBlockSize.mValueZ,
+                                        shapeX,shapeY,shapeZ, x0,y0,z0, xN,yN); break;
                         }
                         switch(bits){
                             case 8:
@@ -635,7 +692,10 @@ void convertToImaris(int argc, char **argv)
                     }
                 }
             }
-            free(vData);
+            free(vData);   // free(NULL) is a no-op for pure zero-pad read-blocks
+            }
+            }
+            }
         }
     }
     free(buffer);

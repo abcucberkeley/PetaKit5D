@@ -80,7 +80,7 @@ if isempty(converterPath)
         mfilePath = strrep(mfilePath, '\', '/');
         converterPath = sprintf('%s/Parallel_Imaris_Writer/windows/parallelimariswriter', mfilePath);        
     elseif ismac
-        converterPath = sprintf('%s/Parallel_Imaris_Writer/mac/parallelimariswriter', mfilePath);
+        converterPath = sprintf('%s/Parallel_Imaris_Writer/macArm/parallelimariswriter', mfilePath);
     else
         converterPath = sprintf('%s/Parallel_Imaris_Writer/linux/parallelimariswriter', mfilePath);
     end
