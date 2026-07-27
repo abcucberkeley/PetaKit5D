@@ -162,5 +162,12 @@ fprintf('Done! ')
 toc(t0);
 fprintf('\n')
 
+% check if the filenames are empty
+if ~Streaming
+    if numel(fnames) == 0
+        warning('The input data folder(s) is empty, or no file matches the channel pattern, or file type (tiff/zarr) is not correctly setup. Please check.')
+    end    
+end
+
 end
 
