@@ -71,6 +71,8 @@ end
 
 bw = imfill(bw, 'hole');
 
+bw = bwareaopen(bw, volThresh);
+
 [outPath, fsn, ext] = fileparts(fnout);
 
 % save bounding box
