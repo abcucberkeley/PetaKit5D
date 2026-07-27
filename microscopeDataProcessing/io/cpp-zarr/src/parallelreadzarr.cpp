@@ -299,28 +299,30 @@ uint8_t parallelReadZarr(zarr &Zarr, void* zarrArr,
         return 1;
     }
     else if (Zarr.get_order() == "C"){
-        // This transpose can potentially be optimized more        
-        #pragma omp parallel for collapse(3)
-        for(size_t j = 0; j < readShape[1]; j++) {
-            for(size_t i = 0; i < readShape[0]; i++) {
-                for(size_t k = 0; k < readShape[2]; k++) {
-                    switch(bytes){
-                        case 1:
-                            *(((uint8_t*)zarrArr)+(k*readShape[0]*readShape[1])+(j*readShape[0])+i) = *((uint8_t*)zarrArrC+(i*readShape[1]*readShape[2])+(j*readShape[2])+k);
-                            break;
-                        case 2:
-                            *(((uint16_t*)zarrArr)+(k*readShape[0]*readShape[1])+(j*readShape[0])+i) = *((uint16_t*)zarrArrC+(i*readShape[1]*readShape[2])+(j*readShape[2])+k);
-                            break;
-                        case 4:
-                            *(((float*)zarrArr)+(k*readShape[0]*readShape[1])+(j*readShape[0])+i) = *((float*)zarrArrC+(i*readShape[1]*readShape[2])+(j*readShape[2])+k);
-                            break;
-                        case 8:
-                            *(((double*)zarrArr)+(k*readShape[0]*readShape[1])+(j*readShape[0])+i) = *((double*)zarrArrC+(i*readShape[1]*readShape[2])+(j*readShape[2])+k);
-                            break;
-                    }
-                }
-            }
+        // Transpose the C-order temp buffer into the F-order output.
+        // Cache-blocked over the i/k plane (per j-slice) with the dtype switch
+        // hoisted out of the element loop; both are far faster than a naive
+        // element-by-element transpose carrying a per-element type switch.
+        const size_t RS0=readShape[0], RS1=readShape[1], RS2=readShape[2];
+        const size_t B=16;
+        #define CZ_TRANSPOSE(T) do { \
+            T* dst=(T*)zarrArr; const T* src=(const T*)zarrArrC; \
+            _Pragma("omp parallel for schedule(static)") \
+            for(size_t j=0;j<RS1;j++){ \
+                for(size_t ii=0; ii<RS0; ii+=B){ const size_t iend=(ii+B<RS0)?ii+B:RS0; \
+                    for(size_t kk=0; kk<RS2; kk+=B){ const size_t kend=(kk+B<RS2)?kk+B:RS2; \
+                        for(size_t i=ii;i<iend;i++){ \
+                            const T* s = src + i*RS1*RS2 + j*RS2; \
+                            T* d = dst + j*RS0 + i; \
+                            for(size_t k=kk;k<kend;k++) d[k*RS0*RS1] = s[k]; \
+                        } } } } } while(0)
+        switch(bytes){
+            case 1: CZ_TRANSPOSE(uint8_t); break;
+            case 2: CZ_TRANSPOSE(uint16_t); break;
+            case 4: CZ_TRANSPOSE(float); break;
+            case 8: CZ_TRANSPOSE(double); break;
         }
+        #undef CZ_TRANSPOSE
         free(zarrArrC);
     }
     if(oppositeEndianness(Zarr.get_dtype())) swapArrayEndianness(zarrArr,bytes,readShape[0]*readShape[1]*readShape[2]);

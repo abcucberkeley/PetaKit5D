@@ -70,7 +70,11 @@ uint8_t parallelWriteZarr(zarr &Zarr, void* zarrArr,
     #pragma omp parallel for
     for(int32_t w = 0; w < numWorkers; w++){
         void* chunkUnC = malloc(sB);
-        void* chunkC = malloc(sB+BLOSC_MAX_OVERHEAD);
+        // gzip/deflate can expand incompressible data beyond blosc's
+        // BLOSC_MAX_OVERHEAD guarantee, so size the compressed-chunk buffer to a
+        // bound big enough for every codec (compressBound also covers gzip).
+        const uint64_t chunkCCap = (uint64_t)compressBound(sB) + 64;
+        void* chunkC = malloc(chunkCCap);
         void* cRegion = nullptr;
         int64_t currChunk = -1;
         uint64_t shardFooterSize;
@@ -345,7 +349,7 @@ uint8_t parallelWriteZarr(zarr &Zarr, void* zarrArr,
                 csize = blosc_compress_ctx(Zarr.get_clevel(), BLOSC_SHUFFLE, bytes, sB, chunkUnC, chunkC, sB+BLOSC_MAX_OVERHEAD,Zarr.get_cname().c_str(),0,nBloscThreads);
             }
             else{
-                csize = sB+BLOSC_MAX_OVERHEAD;
+                csize = chunkCCap;
                 z_stream stream;
                 stream.zalloc = Z_NULL;
                 stream.zfree = Z_NULL;
