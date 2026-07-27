@@ -241,7 +241,7 @@ for f = 1 : nF
                 maskTmpPath = sprintf('%s/%s_eroded_%s.zarr', maskPath, fsname, uuid);
                 writezarr(uint8(im_bw_erode), maskTmpPath, 'blockSize', blockSize);
                 if exist(maskFullPath, 'dir')
-                    rmdirs(maskFullPath, 's');
+                    rmdir(maskFullPath, 's');
                 end
                 movefile(maskTmpPath, maskFullPath);
             end
