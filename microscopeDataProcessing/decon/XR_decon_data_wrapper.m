@@ -383,7 +383,7 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
         SaveMaskfile = false;
         % do not apply erode by first time point for cuda decon for now
         % (04/19/2020)
-        if edgeErosion > 0 && erodeByFTP && ~(largeFile && strcmp(largeMethod, 'inplace'))
+        if edgeErosion > 0 && erodeByFTP && ~largeFile
             FTP_ind = FTP_inds(fdind);
             if f == FTP_ind
                 SaveMaskfile = true;
