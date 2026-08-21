@@ -135,9 +135,9 @@ func_strs = arrayfun(@(x) sprintf(['XR_resaveSingleZarr(''%s'',''%s'',''inputBbo
     1 : nF, 'unif', false);
 
 if largeFile
-    memAllocate = prod(batchSize) * byteNum / 2^30 * 1.5;
+    memAllocate = prod(batchSize) * byteNum / 2^30 * 1.9;
 else
-    memAllocate = prod(sz) * byteNum / 2^30 * 1.5;    
+    memAllocate = prod(sz) * byteNum / 2^30 * 1.9;
 end
 
 generic_computing_frameworks_wrapper(frameFullpaths, resultFullpaths, func_strs, ...
