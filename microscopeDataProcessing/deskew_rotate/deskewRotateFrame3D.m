@@ -31,7 +31,7 @@ ip.addParameter('Crop', true, @islogical);
 ip.addParameter('bbox', [], @isnumeric);
 ip.addParameter('objectiveScan', false, @islogical);
 ip.addParameter('xStepThresh', 2.0, @isnumeric); % 2.344 for ds=0.3, 2.735 for ds=0.35
-ip.addParameter('resampleFactor', [], @isnumeric); % resample factor in xyz order. 
+ip.addParameter('resampleFactor', [], @isnumeric); % resample factor after rotation, [x y z] (RS scales imwarp x first); [1 1 sin(angle)*dz/xyPixelSize] keeps the raw sampling density
 ip.addParameter('gpuProcess', false, @islogical); % use gpu for the processing. 
 ip.addParameter('save16bit', false, @islogical); % direct output results as 16bit for mex functions
 ip.addParameter('interpMethod', 'linear', @(x) any(strcmpi(x, {'cubic', 'linear'})));
@@ -70,7 +70,12 @@ end
 
 do_interp = ~objectiveScan && abs(dx) > xStepThresh;
 rs = resampleFactor;
-use_fast_method = ~(gpuProcess || (~isempty(rs) && any(rs ~= 1)) || ~strcmpi(interpMethod, 'linear'));
+% The mex warp hard-codes the DSR sparsity: input x depends only on output z,
+% input z on output x and z, and y passes through with unit stride. A z-only
+% factor keeps that structure, so it stays on the mex path (validated against
+% imwarp); any x or y factor takes the imwarp path as before.
+rs_slow = ~isempty(rs) && any(rs(1:2) ~= 1);
+use_fast_method = ~(gpuProcess || rs_slow || ~strcmpi(interpMethod, 'linear'));
 %% skew space interpolation
 if do_interp
     % skewed space interplation combined dsr
@@ -215,7 +220,10 @@ else
     if ~objectiveScan && Reverse
         ds_S(4, 1) = ds_S(4, 1) - dx;
     end
-    tmat = eye(4) / (ds_S*((T1+offset)*S*R*(T2-offset))*(RT1*RS*RT2))';
+    % offset converts imwarp's 1-based pixel centers to the mex's 0-based indices:
+    % +1 on the input side, -1 on the OUTPUT side, i.e. after the last (resample)
+    % translation. Putting -offset on T2 shifts the output by (1 - 1/rs) when RS ~= I.
+    tmat = eye(4) / (ds_S*((T1+offset)*S*R*T2)*(RT1*RS*(RT2-offset)))';
     tmat = tmat([2, 1, 3, 4], [2, 1, 3, 4]);
 
     if ~isempty(bbox)

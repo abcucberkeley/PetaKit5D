@@ -68,6 +68,17 @@ SkewAngle = 32.45;
 ObjectiveScan = false;
 % scan direction
 Reverse = true;
+% resampling factor after rotation, [y, x, z] (empty: no resampling).
+% By default the rotated volume is isotropic at xyPixelSize. For sample scan the
+% acquisition's z sampling perpendicular to the light sheet is sin(SkewAngle)*dz,
+% so isotropic output oversamples z by sin(SkewAngle)*dz/xyPixelSize (~1.5x for
+% this demo, ~1.9x for dz=0.35 and xyPixelSize=0.098) and roughly doubles the
+% voxel count without adding information. To keep the acquisition's sampling
+% density instead (about half the voxels), set
+%   resampleFactor = [1, 1, sind(SkewAngle) * dz / xyPixelSize];
+% A z-only factor like this runs on the fast combined mex path; any other factor
+% falls back to imwarp. Anisotropic output: the z voxel size is then sin(SkewAngle)*dz.
+resampleFactor = [];
 % input data axis order, default: yxz. If it is not 'yxz', it will permute 
 % the input (after all the preprocessing, e.g., flat field correction) to 'yxz'.
 % Only works for non-default axis orders when largeFile is false for now.
@@ -122,7 +133,7 @@ XR_deskew_rotate_data_wrapper(dataPath_exps, Deskew=Deskew, Rotate=Rotate, ...
     FFImagePaths=FFImagePaths, BackgroundPaths=BackgroundPaths, largeFile=largeFile, ...
     zarrFile=zarrFile, saveZarr=saveZarr, blockSize=blockSize, Save16bit=Save16bit, ...
     parseCluster=parseCluster, masterCompute=masterCompute, configFile=configFile, ...
-    mccMode=mccMode);
+    mccMode=mccMode, resampleFactor=resampleFactor);
 
 
 %% compare separate deskew/rotation vs combined deskew/rotation

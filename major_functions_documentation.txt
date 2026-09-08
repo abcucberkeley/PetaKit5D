@@ -42,7 +42,7 @@ Parameters:
           blockSize : 1x3 vector (default: [256, 256, 256]). Block/chunk size for zarr output.
           inputBbox : empty or 1x6 vector (default: []). Input bounding box for crop. Definiation: [ymin, xmin, zmin, ymax, xmax, zmax].
            taskSize : empty or a number (default: []). Number of tasks per job for large-scale deskew/rotation.
-     resampleFactor : empty or 1x1, 1x2 or 1x3 vector (default: []). Resampling factor after rotation. Empty: no resampling; axis order yxz.
+     resampleFactor : empty or 1x1, 1x2 or 1x3 vector (default: []). Resampling factor after rotation. Empty: no resampling; axis order yxz. A z-only factor ([1, 1, rz]) runs on the fast combined mex path; any other factor uses imwarp.
        interpMethod : 'linear'|'cubic' (default: 'linear'). Interpolation method for geometric transformations in deskew and rotation.
       maskFullpaths : empty or a cell array (default: {}). 2D projective masks to filter regions for large scale deskew/rotation, in xy, xz, and yz order.
        parseCluster : true|false (default: true). Use slurm cluster for the processing.
