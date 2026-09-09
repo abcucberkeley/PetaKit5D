@@ -76,8 +76,8 @@ Reverse = true;
 % voxel count without adding information. To keep the acquisition's sampling
 % density instead (about half the voxels), set
 %   resampleFactor = [1, 1, sind(SkewAngle) * dz / xyPixelSize];
-% A z-only factor like this runs on the fast combined mex path; any other factor
-% falls back to imwarp. Anisotropic output: the z voxel size is then sin(SkewAngle)*dz.
+% Factors on x and/or z (like this one) run on the fast combined mex path; a y
+% factor falls back to imwarp. Anisotropic output: the z voxel size is then sin(SkewAngle)*dz.
 resampleFactor = [];
 % input data axis order, default: yxz. If it is not 'yxz', it will permute 
 % the input (after all the preprocessing, e.g., flat field correction) to 'yxz'.

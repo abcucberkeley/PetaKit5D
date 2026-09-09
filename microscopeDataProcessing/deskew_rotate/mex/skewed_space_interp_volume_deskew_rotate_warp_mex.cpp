@@ -101,8 +101,10 @@ void compute_weighted_sum_two_vectors(const float* a, const float* b, float* res
     const __m256 wa_vec = _mm256_set1_ps(wa);
     const __m256 wb_vec = _mm256_set1_ps(wb);
 
+    // whole vectors only; the scalar tail below handles the remainder (never read past len)
+    const size_t len8 = len - (len % 8);
     #pragma omp parallel for
-    for (size_t i = 0; i < len; i += 8) {
+    for (size_t i = 0; i < len8; i += 8) {
         // Load 8 floats from each vector
         __m256 va = _mm256_loadu_ps(&a[i]);
         __m256 vb = _mm256_loadu_ps(&b[i]);
@@ -135,8 +137,10 @@ void compute_weighted_sum(const float* a, const float* b, const float* c, const 
     const __m256 wc_vec = _mm256_set1_ps(wc);
     const __m256 wd_vec = _mm256_set1_ps(wd);
 
+    // whole vectors only; the scalar tail below handles the remainder (never read past len)
+    const size_t len8 = len - (len % 8);
     #pragma omp parallel for
-    for (size_t i = 0; i < len; i += 8) {
+    for (size_t i = 0; i < len8; i += 8) {
         // Load 8 floats from each vector
         __m256 va = _mm256_loadu_ps(&a[i]);
         __m256 vb = _mm256_loadu_ps(&b[i]);

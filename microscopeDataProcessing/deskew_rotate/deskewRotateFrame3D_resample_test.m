@@ -1,17 +1,18 @@
 function deskewRotateFrame3D_resample_test()
-% Tests for deskewRotateFrame3D with resampleFactor on the fast (mex) path.
+% Tests for deskewRotateFrame3D: matrix-derived mex path, index conjugation, resampling.
 %
-% Run:  matlab -batch "run setup.m; deskewRotateFrame3D_resample_test"
+% Run:  matlab -batch "setup; deskewRotateFrame3D_resample_test"
 %
-% A z-only (or x-only) resampleFactor keeps the sparsity the DSR mex hard-codes
-% (input x depends only on output z; input z on output x,z; y passes through),
-% so those factors must run on the fused mex path rather than the materialized
-% skewed-space interpolation + imwarp path. A y factor breaks the pass-through
-% and must stay on imwarp.
+% The warp mex implements one affine class (dsr_mex_accepts); everything else must go
+% through imwarp, and whatever goes through the mex must agree with imwarp on the same
+% matrix. imwarp calls are detected by shadowing imwarp with a function that throws
+% 'dsr_test:imwarpCalled'.
 %
-% imwarp calls are detected by shadowing imwarp with a function that throws
-% 'dsr_test:imwarpCalled' (deskewRotateFrame3D's mex try/catch falls back to
-% imwarp, so a broken mex is caught too).
+% The oracle (dsr_reference / dsr_matrices) re-derives the transform independently of
+% deskewRotateFrame3D and applies it with imwarp, for sample and objective scan. The
+% duplication is deliberate, in the spirit of demo_geometric_transformation's old-vs-new
+% comparison: it checks the transform itself, not just two interpolators fed one matrix.
+% Drift between production and this reference is a test failure by design.
 
 angle = 32.45;
 dz = 0.35;
@@ -29,23 +30,20 @@ fclose(fid);
 cleanup = onCleanup(@() cleanup_shadow(shadow_dir));
 
 results = {};
+results{end+1} = run_case('mex_accepts_classifies', @() case_mex_accepts_classifies(vol, angle, dz, xy, rs_native));
 results{end+1} = run_case('native_z_uses_fast_path', @() case_native_z_uses_fast_path(vol, angle, dz, xy, rs_native, shadow_dir));
 results{end+1} = run_case('native_z_matches_imwarp_reference', @() case_native_z_matches_imwarp_reference(vol, angle, dz, xy, rs_native, shadow_dir));
-results{end+1} = run_case('native_z_voxel_count', @() case_native_z_voxel_count(vol, angle, dz, xy, rs_native, shadow_dir));
+results{end+1} = run_case('reverse_false_default_matches_imwarp', @() case_reverse_false_default_matches_imwarp(vol, angle, dz, xy, shadow_dir));
+results{end+1} = run_case('x_only_factor_fast_and_matches', @() case_x_only_factor_fast_and_matches(vol, angle, dz, xy, shadow_dir));
 results{end+1} = run_case('y_factor_still_imwarp', @() case_y_factor_still_imwarp(vol, angle, dz, xy, shadow_dir));
-results{end+1} = run_case('objective_scan_unaffected', @() case_objective_scan_unaffected(vol, angle, dz, xy, shadow_dir));
+results{end+1} = run_case('objective_scan_rotation_uses_imwarp_and_matches', @() case_objective_scan_rotation(vol, angle, dz, xy, rs_native, shadow_dir));
+results{end+1} = run_case('double_input_uses_imwarp_matches', @() case_double_input_uses_imwarp(vol, angle, dz, xy, rs_native, shadow_dir));
+results{end+1} = run_case('native_z_voxel_count', @() case_native_z_voxel_count(vol, angle, dz, xy, rs_native, shadow_dir));
 results{end+1} = run_case('identity_factor_is_byte_identical', @() case_identity_factor_is_byte_identical(vol, angle, dz, xy, shadow_dir));
+% last: an overrunning kernel can corrupt the heap and take the runner down with it
+results{end+1} = run_case('odd_row_single_precision_completes', @() case_odd_row_single_precision(angle, dz, xy, rs_native, shadow_dir));
 
-failed = 0;
-for i = 1 : numel(results)
-    r = results{i};
-    if r.ok
-        fprintf('PASS  %s\n', r.name);
-    else
-        failed = failed + 1;
-        fprintf('FAIL  %s\n      %s\n', r.name, r.msg);
-    end
-end
+failed = sum(cellfun(@(r) ~r.ok, results));
 fprintf('%d/%d passed\n', numel(results) - failed, numel(results));
 if failed > 0
     error('dsr_test:failed', '%d test(s) failed', failed);
@@ -55,8 +53,21 @@ end
 
 %% ---------------------------------------------------------------- cases
 
+function case_mex_accepts_classifies(vol, angle, dz, xy, rs_native)
+sz = size(vol);
+T = @(rev, rs, objective) mex_matrix(sz, angle, dz, xy, rev, rs, objective);
+assert(dsr_mex_accepts(T(false, [], false)), 'sample scan, reverse=false rejected');
+assert(dsr_mex_accepts(T(true, [], false)), 'sample scan, reverse=true rejected');
+assert(dsr_mex_accepts(T(true, rs_native, false)), 'z-only factor rejected');
+assert(dsr_mex_accepts(T(true, [2, 1, 1], false)), 'x-only factor rejected');
+assert(~dsr_mex_accepts(T(true, [1, 2, 1], false)), 'y factor accepted (breaks dim-1 pass-through)');
+assert(~dsr_mex_accepts(T(true, [], true)), 'objective-scan rotation accepted (drops T(2,2)=cos)');
+Rgen = [cosd(20) 0 -sind(20) 0; 0 cosd(10) 0 0; sind(20) 0 cosd(20) 0; 0 0 0 1];
+assert(~dsr_mex_accepts(Rgen), 'generic rotation accepted');
+end
+
+
 function case_native_z_uses_fast_path(vol, angle, dz, xy, rs, shadow_dir)
-% RED before the fix: any resampleFactor forces the imwarp path.
 for reverse = [false, true]
     with_shadow(shadow_dir, @() deskewRotateFrame3D(vol, angle, dz, xy, ...
         'reverse', reverse, 'resampleFactor', rs, 'save16bit', true));
@@ -65,36 +76,67 @@ end
 
 
 function case_native_z_matches_imwarp_reference(vol, angle, dz, xy, rs, shadow_dir)
-% The fused mex with a z-only factor must agree with imwarp on the same affine
-% at least as well as the existing (rs = []) fast path does.
-% The baseline is measured in-test: with reverse=true the mex and imwarp agree to
-% ~1 gray level, so the bound is tight there; with reverse=false the existing
-% (rs = []) mex path already differs from imwarp (a pre-existing offset, not
-% touched here), so the bound is "no worse than today".
 for reverse = [false, true]
-    base_fast = deskewRotateFrame3D(vol, angle, dz, xy, 'reverse', reverse, 'save16bit', true);
-    base_ref = reference_imwarp(vol, angle, dz, xy, reverse, []);
-    [base_max, base_rms] = interior_diff(base_fast, base_ref);
-
-    out_fast = with_shadow(shadow_dir, @() deskewRotateFrame3D(vol, angle, dz, xy, ...
+    out = with_shadow(shadow_dir, @() deskewRotateFrame3D(vol, angle, dz, xy, ...
         'reverse', reverse, 'resampleFactor', rs, 'save16bit', true));
-    out_ref = reference_imwarp(vol, angle, dz, xy, reverse, rs);
-    assert(isequal(size(out_fast), size(out_ref)), ...
-        'reverse=%d: size %s vs reference %s', reverse, mat2str(size(out_fast)), mat2str(size(out_ref)));
-    [err_max, err_rms] = interior_diff(out_fast, out_ref);
-    tol_max = max(2, base_max);
-    tol_rms = max(1, 1.1 * base_rms);
-    assert(err_max <= tol_max, 'reverse=%d: max |diff| %g > %g (rs=[] baseline %g)', reverse, err_max, tol_max, base_max);
-    assert(err_rms <= tol_rms, 'reverse=%d: rms diff %.2f > %.2f (rs=[] baseline %.2f)', reverse, err_rms, tol_rms, base_rms);
-    fprintf('      reverse=%d: native-z max %g rms %.2f | rs=[] baseline max %g rms %.2f\n', ...
-        reverse, err_max, err_rms, base_max, base_rms);
+    ref = dsr_reference(vol, angle, dz, xy, reverse, rs, false);
+    assert_close(out, ref, 2, sprintf('native z, reverse=%d', reverse));
 end
+end
+
+
+function case_reverse_false_default_matches_imwarp(vol, angle, dz, xy, shadow_dir)
+% Default path, reverse=false: the shear must be applied to 1-based planes like imwarp.
+out = with_shadow(shadow_dir, @() deskewRotateFrame3D(vol, angle, dz, xy, 'reverse', false, 'save16bit', true));
+ref = dsr_reference(vol, angle, dz, xy, false, [], false);
+assert_close(out, ref, 2, 'reverse=false default');
+end
+
+
+function case_x_only_factor_fast_and_matches(vol, angle, dz, xy, shadow_dir)
+rs = [2, 1, 1];
+for reverse = [false, true]
+    out = with_shadow(shadow_dir, @() deskewRotateFrame3D(vol, angle, dz, xy, ...
+        'reverse', reverse, 'resampleFactor', rs, 'save16bit', true));
+    ref = dsr_reference(vol, angle, dz, xy, reverse, rs, false);
+    assert_close(out, ref, 2, sprintf('x-only factor, reverse=%d', reverse));
+end
+end
+
+
+function case_y_factor_still_imwarp(vol, angle, dz, xy, shadow_dir)
+assert_calls_imwarp(shadow_dir, @() deskewRotateFrame3D(vol, angle, dz, xy, ...
+    'resampleFactor', [1, 2, 1], 'save16bit', true), 'resampleFactor=[1 2 1]');
+end
+
+
+function case_objective_scan_rotation(vol, angle, dz, xy, rs_native, shadow_dir)
+% Objective scan with rotation: input x depends on output x, which the mex drops.
+for rs = {[], rs_native}
+    assert_calls_imwarp(shadow_dir, @() deskewRotateFrame3D(vol, angle, dz, xy, ...
+        'objectiveScan', true, 'resampleFactor', rs{1}, 'save16bit', true), ...
+        sprintf('objectiveScan rs=%s', mat2str(rs{1})));
+    out = deskewRotateFrame3D(vol, angle, dz, xy, 'objectiveScan', true, 'resampleFactor', rs{1}, 'save16bit', true);
+    ref = dsr_reference(vol, angle, dz, xy, false, rs{1}, true);
+    assert(isequal(size(out), size(ref)), 'objectiveScan rs=%s: size %s vs %s', mat2str(rs{1}), mat2str(size(out)), mat2str(size(ref)));
+    assert_close(out, ref, 2, sprintf('objectiveScan rs=%s', mat2str(rs{1})));
+end
+end
+
+
+function case_double_input_uses_imwarp(vol, angle, dz, xy, rs, shadow_dir)
+% The mex has no double kernel: double input goes to imwarp with the untouched transform.
+vold = double(vol);
+assert_calls_imwarp(shadow_dir, @() deskewRotateFrame3D(vold, angle, dz, xy, ...
+    'reverse', true, 'resampleFactor', rs, 'save16bit', false), 'double input');
+out = deskewRotateFrame3D(vold, angle, dz, xy, 'reverse', true, 'resampleFactor', rs, 'save16bit', false);
+ref = dsr_reference(vold, angle, dz, xy, true, rs, false);
+assert(isequal(size(out), size(ref)), 'double: size %s vs %s', mat2str(size(out)), mat2str(size(ref)));
+assert_close(out, ref, 1e-6 * double(max(ref(:))), 'double input');
 end
 
 
 function case_native_z_voxel_count(vol, angle, dz, xy, rs, shadow_dir)
-% Native-z output has ~the raw voxel count (parallelogram box padding only);
-% the isotropic default is ~2x.
 out_native = with_shadow(shadow_dir, @() deskewRotateFrame3D(vol, angle, dz, xy, ...
     'resampleFactor', rs, 'save16bit', true));
 out_iso = deskewRotateFrame3D(vol, angle, dz, xy, 'save16bit', true);
@@ -106,46 +148,33 @@ assert(abs(size(out_iso, 3) / size(out_native, 3) - rs(3)) < 0.1, ...
 end
 
 
-function case_y_factor_still_imwarp(vol, angle, dz, xy, shadow_dir)
-% Only a z-only factor is on the mex path. An x or y factor (rs(1), rs(2) in this
-% function's [x y z] order) must still go through imwarp, as before the change.
-for rs = {[1, 2, 1], [2, 1, 1]}
-    called = false;
-    try
-        with_shadow(shadow_dir, @() deskewRotateFrame3D(vol, angle, dz, xy, ...
-            'resampleFactor', rs{1}, 'save16bit', true));
-    catch ME
-        if ~strcmp(ME.identifier, 'dsr_test:imwarpCalled')
-            rethrow(ME);
-        end
-        called = true;
-    end
-    assert(called, 'resampleFactor=%s did not call imwarp', mat2str(rs{1}));
-end
-end
-
-
-function case_objective_scan_unaffected(vol, angle, dz, xy, shadow_dir)
-out = with_shadow(shadow_dir, @() deskewRotateFrame3D(vol, angle, dz, xy, ...
-    'objectiveScan', true, 'save16bit', true));
-[ny, nx, nz] = size(vol);
-theta = angle * pi / 180;
-zAniso = dz / xy;
-expected = round([ny, nx * cos(theta) + nz * zAniso * sin(abs(theta)), nz * zAniso * cos(theta) + nx * sin(abs(theta))]);
-assert(isequal(size(out), expected), 'objective-scan size %s != %s', mat2str(size(out)), mat2str(expected));
-end
-
-
 function case_identity_factor_is_byte_identical(vol, angle, dz, xy, shadow_dir)
-% resampleFactor=[1 1 1] goes through the RS/RT1/RT2 block with identity scaling
-% and must reproduce the rs=[] output byte for byte: pins the -offset placement
-% (any shift from the resample translation would show up here) for both scan
-% directions, on the fast path.
 for reverse = [false, true]
     a = deskewRotateFrame3D(vol, angle, dz, xy, 'reverse', reverse, 'save16bit', true);
     b = with_shadow(shadow_dir, @() deskewRotateFrame3D(vol, angle, dz, xy, ...
         'reverse', reverse, 'resampleFactor', [1, 1, 1], 'save16bit', true));
     assert(isequal(a, b), 'reverse=%d: rs=[1 1 1] differs from rs=[] in %d voxels', reverse, sum(a(:) ~= b(:)));
+end
+end
+
+
+function case_odd_row_single_precision(angle, dz, xy, rs, shadow_dir)
+% Row lengths not divisible by 8 must not overrun the AVX kernels (float path), with and
+% without a resample factor and with a cropped output width.
+for ny = [17, 23]
+    v = single(synthetic_volume(ny, 40, 33));   % bounds test: only the row length matters
+    for rsi = {[], rs}
+        out = with_shadow(shadow_dir, @() deskewRotateFrame3D(v, angle, dz, xy, ...
+            'reverse', true, 'resampleFactor', rsi{1}, 'save16bit', false));
+        ref = dsr_reference(v, angle, dz, xy, true, rsi{1}, false);
+        assert(isequal(size(out), size(ref)), 'ny=%d rs=%s: size %s vs %s', ny, mat2str(rsi{1}), mat2str(size(out)), mat2str(size(ref)));
+        assert_close(out, ref, 1e-3 * double(max(ref(:))), sprintf('single ny=%d rs=%s', ny, mat2str(rsi{1})));
+    end
+    full = dsr_reference(v, angle, dz, xy, true, [], false);
+    bbox = [1, 3, 1, ny, 3 + 21, size(full, 3)];  % width 22, not divisible by 8
+    out = with_shadow(shadow_dir, @() deskewRotateFrame3D(v, angle, dz, xy, 'reverse', true, 'bbox', bbox, 'save16bit', false));
+    ref = full(bbox(1) : bbox(4), bbox(2) : bbox(5), bbox(3) : bbox(6));
+    assert_close(out, ref, 1e-3 * double(max(ref(:))), sprintf('single ny=%d bbox', ny));
 end
 end
 
@@ -158,7 +187,7 @@ rng(7);
 [Y, X, Z] = ndgrid(1 : ny, 1 : nx, 1 : nz);
 vol = 200 + 0.3 * X + 0.2 * Z;
 for k = 1 : 12
-    c = [randi([8, ny - 8]), randi([8, nx - 8]), randi([6, nz - 6])];
+    c = [randi([8, max(9, ny - 8)]), randi([8, nx - 8]), randi([6, nz - 6])];
     s = 3 + 4 * rand;
     vol = vol + 3000 * rand * exp(-((Y - c(1)).^2 + (X - c(2)).^2 + (Z - c(3)).^2) / (2 * s^2));
 end
@@ -173,6 +202,30 @@ c = onCleanup(@() rmpath(shadow_dir));
 end
 
 
+function assert_calls_imwarp(shadow_dir, fn, what)
+called = false;
+try
+    with_shadow(shadow_dir, fn);
+catch ME
+    if ~strcmp(ME.identifier, 'dsr_test:imwarpCalled')
+        rethrow(ME);
+    end
+    called = true;
+end
+assert(called, '%s did not call imwarp', what);
+end
+
+
+function assert_close(a, b, tol, what)
+% interior only: the mex and imwarp differ in edge handling by design (2-voxel border)
+assert(isequal(size(a), size(b)), '%s: size %s vs reference %s', what, mat2str(size(a)), mat2str(size(b)));
+a = double(a(3 : end - 2, 3 : end - 2, 3 : end - 2));
+b = double(b(3 : end - 2, 3 : end - 2, 3 : end - 2));
+d = abs(a(:) - b(:));
+assert(max(d) <= tol, '%s: max |diff| %g > %g (rms %.3f)', what, max(d), tol, sqrt(mean(d .^ 2)));
+end
+
+
 function cleanup_shadow(shadow_dir)
 if any(strcmp(strsplit(path, pathsep), shadow_dir))
     rmpath(shadow_dir);
@@ -182,39 +235,37 @@ end
 
 
 function r = run_case(name, fn)
+% prints as it goes: a kernel overrun can kill the process before the summary
 r = struct('name', name, 'ok', true, 'msg', '');
 try
     fn();
+    fprintf('PASS  %s\n', name);
 catch ME
     r.ok = false;
     r.msg = ME.message;
+    fprintf('FAIL  %s\n      %s\n', name, ME.message);
 end
 end
 
 
-function [err_max, err_rms] = interior_diff(a, b)
-% ignore a 2-voxel border: the mex and imwarp differ in edge handling by design
-a = double(a(3 : end - 2, 3 : end - 2, 3 : end - 2));
-b = double(b(3 : end - 2, 3 : end - 2, 3 : end - 2));
-d = abs(a(:) - b(:));
-err_max = max(d);
-err_rms = sqrt(mean(d .^ 2));
-end
-
-
-function volout = reference_imwarp(vol, angle, dz, xyPixelSize, Reverse, rs)
-% The non-fast branch of deskewRotateFrame3D (skewed-space interpolation to a
-% finer dz when the per-slice shift exceeds xStepThresh, then one imwarp with
-% shear * z-scale * rotate * resample), written out independently as the oracle.
+function [M, outSize, vol_1] = dsr_matrices(vol, angle, dz, xyPixelSize, Reverse, rs, objectiveScan, materialize)
+% The imwarp forward transform (1-based pixel centres) exactly as deskewRotateFrame3D
+% composes it: skewed-space interpolation to a finer dz when the per-slice shift exceeds
+% xStepThresh (sample scan only), then shear * z-scale * rotate * resample.
 xStepThresh = 2.0;
 [ny, nx, nz] = size(vol);
 theta = angle * pi / 180;
 dx = cos(theta) * dz / xyPixelSize;
-zAniso = sin(abs(theta)) * dz / xyPixelSize;
-outSize = round([ny, (nx - 1) * cos(theta) + (nz - 1) * zAniso / sin(abs(theta)), (nx - 1) * sin(abs(theta)) - 4]);
+if objectiveScan
+    zAniso = dz / xyPixelSize;
+    outSize = round([ny, nx * cos(theta) + nz * zAniso * sin(abs(theta)), nz * zAniso * cos(theta) + nx * sin(abs(theta))]);
+else
+    zAniso = sin(abs(theta)) * dz / xyPixelSize;
+    outSize = round([ny, (nx - 1) * cos(theta) + (nz - 1) * zAniso / sin(abs(theta)), (nx - 1) * sin(abs(theta)) - 4]);
+end
 
 vol_1 = vol;
-if abs(dx) > xStepThresh
+if ~objectiveScan && abs(dx) > xStepThresh
     if abs(dx) / xStepThresh < 1.5
         dzout_thresh = xyPixelSize * xStepThresh / cos(theta);
         dzout = dz / ceil(dz / dzout_thresh);
@@ -227,8 +278,16 @@ if abs(dx) > xStepThresh
         dzout = dz / ceil(abs(dx) / xStepThresh);
     end
     int_stepsize = dzout / dz;
-    vol_1 = skewed_space_interp_defined_stepsize_mex(vol, abs(dx), int_stepsize, Reverse, true);
-    [ny, nx, nz] = size(vol_1);
+    if materialize
+        if isa(vol, 'single') || isa(vol, 'uint16')
+            vol_1 = skewed_space_interp_defined_stepsize_mex(vol, abs(dx), int_stepsize, Reverse, isa(vol, 'uint16'));
+        else
+            vol_1 = skewed_space_interp_defined_stepsize(vol, abs(dx), int_stepsize, 'Reverse', Reverse);
+        end
+        nz = size(vol_1, 3);
+    else
+        nz = floor(round((nz - 1) / int_stepsize * 100000) / 100000) + 1;
+    end
     dz = dzout;
     dx = cos(theta) * dz / xyPixelSize;
     zAniso = sin(abs(theta)) * dz / xyPixelSize;
@@ -242,7 +301,12 @@ else
     xstep = -dx;
 end
 nxDs = ceil((nz - 1) * dx) + nx;
-ds_S = [1 0 0 0; 0 1 0 0; xstep 0 1 0; xshift 0 0 1];
+if objectiveScan
+    nxDs = nx;
+    ds_S = eye(4);
+else
+    ds_S = [1 0 0 0; 0 1 0 0; xstep 0 1 0; xshift 0 0 1];
+end
 if Reverse
     theta = -theta;
 end
@@ -259,6 +323,21 @@ if ~isempty(rs)
 else
     RT1 = eye(4); RS = eye(4); RT2 = eye(4);
 end
+M = ds_S * (T1 * S * R * T2) * (RT1 * RS * RT2);
+end
+
+
+function T = mex_matrix(sz, angle, dz, xy, Reverse, rs, objectiveScan)
+% 0-based backward map in mex axis order: what deskewRotateFrame3D hands the kernel.
+M = dsr_matrices(zeros(sz, 'uint16'), angle, dz, xy, Reverse, rs, objectiveScan, false);
+P = eye(4); P(4, 1 : 3) = 1;
+T = eye(4) / (P * M / P)';
+T = T([2, 1, 3, 4], [2, 1, 3, 4]);
+end
+
+
+function volout = dsr_reference(vol, angle, dz, xyPixelSize, Reverse, rs, objectiveScan)
+[M, outSize, vol_1] = dsr_matrices(vol, angle, dz, xyPixelSize, Reverse, rs, objectiveScan, true);
 RA = imref3d(outSize, 1, 1, 1);
-volout = imwarp(vol_1, affine3d(ds_S * (T1 * S * R * T2) * (RT1 * RS * RT2)), 'linear', 'FillValues', 0, 'OutputView', RA);
+volout = imwarp(vol_1, affine3d(M), 'linear', 'FillValues', 0, 'OutputView', RA);
 end

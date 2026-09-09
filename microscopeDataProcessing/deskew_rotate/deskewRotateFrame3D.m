@@ -70,16 +70,14 @@ end
 
 do_interp = ~objectiveScan && abs(dx) > xStepThresh;
 rs = resampleFactor;
-% The mex warp hard-codes the DSR sparsity: input x depends only on output z,
-% input z on output x and z, and y passes through with unit stride. A z-only
-% factor keeps that structure, so it stays on the mex path (validated against
-% imwarp); any x or y factor takes the imwarp path as before.
-rs_slow = ~isempty(rs) && any(rs(1:2) ~= 1);
-use_fast_method = ~(gpuProcess || rs_slow || ~strcmpi(interpMethod, 'linear'));
-%% skew space interpolation
+if ~isempty(rs)
+    validateattributes(rs, {'numeric'}, {'positive', 'finite'}, mfilename, 'resampleFactor');
+end
+nz_in = nz;
+dz_in = dz;
+%% skew space interpolation parameters (the volume is only materialized on the imwarp path)
 if do_interp
     % skewed space interplation combined dsr
-    fprintf('The step size is greater than the threshold, use skewed space interpolation for combined deskew rotate...\n');
     % for dx only slightly larger than xStepThresh, we interpolate to
     % a step size lower than the threshold, and the ratio between dz /
     % dzout ceils to the faction of 1/n with 10% to the threshold.
@@ -101,24 +99,9 @@ if do_interp
         dzout = dz / ndiv;
     end
     int_stepsize = dzout / dz;
-    fprintf('Input dz: %f , interpolated dz: %f\n', dz, dzout);
 
-    if ~use_fast_method
-        t0 = tic;
-        % add the mex version skewed space interpolation as default
-        try
-            vol_1 = skewed_space_interp_defined_stepsize_mex(vol, abs(dx), int_stepsize, Reverse, save16bit);
-        catch ME
-            disp(ME);
-            vol_1 = skewed_space_interp_defined_stepsize(vol, abs(dx), int_stepsize, 'Reverse', Reverse);
-        end
-        fprintf('Skewed space interpolation time: %f s\n', toc(t0));
-
-        % update parameters after interpolation
-        [ny,nx,nz] = size(vol_1);
-    else
-        nz = floor(round((nz - 1) / int_stepsize * 100000) / 100000) + 1;
-    end
+    % geometry after interpolation; the one definition of the plane count (see interpolatedPlanes)
+    nz = interpolatedPlanes(nz, int_stepsize);
     dx_orig = dx;
     dz = dzout;
     dx = cos(theta)*dz/xyPixelSize; % pixels shifted slice to slice in x
@@ -128,8 +111,6 @@ if do_interp
     else
         zAniso = sin(abs(theta)) * dz / xyPixelSize;
     end
-else
-    vol_1 = vol;
 end
 
 %% deskew
@@ -203,29 +184,78 @@ else
 end
 
 %% summarized transform
+% M is the forward transform for imwarp (1-based pixel centres). The mex takes the same
+% map as a backward matrix in 0-based indices and its own axis order: one conjugation
+% by P converts the whole map, so the shear needs no index-dependent adjustment.
+M = ds_S*(T1*S*R*T2)*(RT1*RS*RT2);
+P = eye(4);
+P(4, 1 : 3) = 1;
+tmat = eye(4) / (P*M/P)';
+tmat = tmat([2, 1, 3, 4], [2, 1, 3, 4]);
+
+% the warp mex implements one affine class (dsr_mex_accepts) for single/uint16 input;
+% everything else goes through imwarp with M
+in_class = dsr_mex_accepts(tmat);
+dtype_ok = isa(vol, 'single') || isa(vol, 'uint16');
+linear = strcmpi(interpMethod, 'linear');
+use_fast_method = in_class && dtype_ok && linear && ~gpuProcess;
+
+% one line that reproduces the decision from a log: geometry in, geometry out, and the gates
+if do_interp
+    dz_str = sprintf('%.4g -> %.4g (skew-space interpolation x%d)', dz_in, dz, round(1 / int_stepsize));
+else
+    dz_str = sprintf('%.4g', dz_in);
+end
+if isempty(rs)
+    rs_str = '[]';
+else
+    rs_str = mat2str(rs, 4);
+end
+fprintf('Deskew/rotate: input %dx%dx%d %s, dz %s, xy %.4g, skew %.4g, reverse %d, objectiveScan %d, resampleFactor %s, output %s\n', ...
+    ny, nx, nz_in, class(vol), dz_str, xyPixelSize, angle, Reverse, objectiveScan, rs_str, mat2str(outSize));
+if use_fast_method
+    if do_interp
+        fprintf('Deskew/rotate: combined mex path (fused skew-space interpolation + warp).\n');
+    else
+        fprintf('Deskew/rotate: combined mex path (warp).\n');
+    end
+else
+    fprintf('Deskew/rotate: imwarp path (in mex class: %d, dtype ok: %d, linear: %d, gpu: %d). Backward map (mex axes, 0-based):\n', ...
+        in_class, dtype_ok, linear, gpuProcess);
+    disp(round(tmat, 4));
+end
+
 RA = imref3d(outSize, 1, 1, 1);
 if ~isempty(bbox)
     RA = imref3d(bbox(4 : 6) - bbox(1 : 3) + 1, [bbox(2) - 0.5, bbox(5) + 0.5], [bbox(1) - 0.5, bbox(4) + 0.5], [bbox(3) - 0.5, bbox(6) + 0.5]);
 end
-if gpuProcess
-    vol_1 = gpuArray(vol_1);
-end
 
 if ~use_fast_method
-    [volout] = imwarp(vol_1, affine3d(ds_S*(T1*S*R*T2)*(RT1*RS*RT2)), interpMethod, 'FillValues', 0, 'OutputView', RA);
-else
-    % convert the transformation matrix to backward and the form for c/c++
-    offset = zeros(4, 4);
-    offset(4, 1 : 3) = 1;
-    if ~objectiveScan && Reverse
-        ds_S(4, 1) = ds_S(4, 1) - dx;
+    vol_1 = vol;
+    if do_interp
+        t0 = tic;
+        % the interpolation mex handles single/uint16; other types use the MATLAB version
+        if isa(vol, 'single') || isa(vol, 'uint16')
+            try
+                vol_1 = skewed_space_interp_defined_stepsize_mex(vol, abs(dx_orig), int_stepsize, Reverse, save16bit);
+            catch ME
+                disp(ME);
+                vol_1 = skewed_space_interp_defined_stepsize(vol, abs(dx_orig), int_stepsize, 'Reverse', Reverse);
+            end
+        else
+            vol_1 = skewed_space_interp_defined_stepsize(vol, abs(dx_orig), int_stepsize, 'Reverse', Reverse);
+        end
+        fprintf('Skewed space interpolation time: %f s\n', toc(t0));
+        % M was built for interpolatedPlanes(nz_in); a materializer that disagrees would shift the output
+        assert(size(vol_1, 3) == nz, 'deskewRotateFrame3D:planeCount', ...
+            'skewed-space interpolation produced %d planes, transform expects %d (nz_in %d, step %.6g)', ...
+            size(vol_1, 3), nz, nz_in, int_stepsize);
     end
-    % offset converts imwarp's 1-based pixel centers to the mex's 0-based indices:
-    % +1 on the input side, -1 on the OUTPUT side, i.e. after the last (resample)
-    % translation. Putting -offset on T2 shifts the output by (1 - 1/rs) when RS ~= I.
-    tmat = eye(4) / (ds_S*((T1+offset)*S*R*T2)*(RT1*RS*(RT2-offset)))';
-    tmat = tmat([2, 1, 3, 4], [2, 1, 3, 4]);
-
+    if gpuProcess
+        vol_1 = gpuArray(vol_1);
+    end
+    [volout] = imwarp(vol_1, affine3d(M), interpMethod, 'FillValues', 0, 'OutputView', RA);
+else
     if ~isempty(bbox)
         bbox_in = bbox;
     else
@@ -236,26 +266,30 @@ else
         try
             volout = skewed_space_interp_volume_deskew_rotate_warp_mex(vol, abs(dx_orig), int_stepsize, Reverse, tmat, bbox_in, save16bit);
         catch ME
+            fprintf('Deskew/rotate: fused mex failed, fall back to skew-space interpolation + warp mex.\n');
             disp(ME);
             try
                 vol_1 = skewed_space_interp_defined_stepsize_mex(vol, abs(dx_orig), int_stepsize, Reverse, save16bit);
             catch ME
+                fprintf('Deskew/rotate: interpolation mex failed, fall back to the MATLAB interpolation.\n');
                 disp(ME);
                 vol_1 = skewed_space_interp_defined_stepsize(vol, abs(dx_orig), int_stepsize, 'Reverse', Reverse);
             end
             try
                 volout = volume_deskew_rotate_warp_mex(vol_1, tmat, bbox_in, save16bit);
             catch ME
+                fprintf('Deskew/rotate: warp mex failed, fall back to imwarp.\n');
                 disp(ME);
-                [volout] = imwarp(vol_1, affine3d(ds_S*(T1*S*R*T2)*(RT1*RS*RT2)), interpMethod, 'FillValues', 0, 'OutputView', RA);
+                [volout] = imwarp(vol_1, affine3d(M), interpMethod, 'FillValues', 0, 'OutputView', RA);
             end
         end
     else
         try
-            volout = volume_deskew_rotate_warp_mex(vol_1, tmat, bbox_in, save16bit);
+            volout = volume_deskew_rotate_warp_mex(vol, tmat, bbox_in, save16bit);
         catch ME
+            fprintf('Deskew/rotate: warp mex failed, fall back to imwarp.\n');
             disp(ME);
-            [volout] = imwarp(vol_1, affine3d(ds_S*(T1*S*R*T2)*(RT1*RS*RT2)), interpMethod, 'FillValues', 0, 'OutputView', RA);
+            [volout] = imwarp(vol, affine3d(M), interpMethod, 'FillValues', 0, 'OutputView', RA);
         end
     end
 end
@@ -263,6 +297,14 @@ if gpuProcess
     volout = gather(volout);
 end
 
+end
+
+
+function n = interpolatedPlanes(nz, int_stepsize)
+% Plane count after skewed-space interpolation to step int_stepsize (fraction of dz). This is
+% the arithmetic the interpolation mex uses (rounded at 1e-5 against float slop) and the one
+% definition the transform is built from; the imwarp path asserts the materialized volume matches.
+n = floor(round((nz - 1) / int_stepsize * 100000) / 100000) + 1;
 end
 
 
