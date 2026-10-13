@@ -1,0 +1,79 @@
+name: Tests
+
+on:
+  push:
+    branches: [main, dev, test]
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    # weekly, to catch breakage from runner image or MATLAB updates
+    - cron: '0 9 * * 1'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: ${{ matrix.release }} on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    # the R2026b jobs preview the upcoming migration and may fail without
+    # failing the workflow
+    continue-on-error: ${{ matrix.release != 'R2024b' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # To migrate, change R2024b to R2026b here and above, and drop the
+        # second entry. Labels are pinned: ubuntu-latest moves to 26.04,
+        # which neither release supports, and macos-15 is Apple silicon.
+        release: [R2024b, R2026b]
+        os: [ubuntu-24.04, windows-2025, macos-15]
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: matlab-actions/setup-matlab@v3
+        with:
+          release: ${{ matrix.release }}
+          # no cache: these products take ~3.5 GB per OS and release, which
+          # exceeds the 10 GB repository cache limit; installing takes ~3 min.
+          # Curve Fitting is used by FSC analysis and point detection.
+          products: >
+            Image_Processing_Toolbox
+            Optimization_Toolbox
+            Parallel_Computing_Toolbox
+            Signal_Processing_Toolbox
+            Statistics_and_Machine_Learning_Toolbox
+            Curve_Fitting_Toolbox
+
+      # short temp paths on Windows (the default has a RUNNER~1 short name)
+      - if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          echo "TMP=${{ runner.temp }}" >> "$GITHUB_ENV"
+          echo "TEMP=${{ runner.temp }}" >> "$GITHUB_ENV"
+
+      - name: Run tests
+        uses: matlab-actions/run-command@v3
+        with:
+          command: addpath('tests'); results = run_tests('outputDir', 'test-results'); assertSuccess(results);
+
+      # tests for bugs that are not fixed yet; informational only. A test
+      # that passes here means the bug is fixed: remove its KnownIssue tag.
+      - name: Check known issues
+        if: ${{ !cancelled() && matrix.release == 'R2024b' && runner.os == 'Linux' }}
+        continue-on-error: true
+        uses: matlab-actions/run-command@v3
+        with:
+          command: addpath('tests'); run_tests('tag', 'KnownIssue', 'outputDir', 'test-results/known-issues', 'summaryTitle', 'Known issues (expected to fail until fixed)');
+
+      - if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-results-${{ matrix.release }}-${{ matrix.os }}
+          path: test-results/
+          if-no-files-found: ignore

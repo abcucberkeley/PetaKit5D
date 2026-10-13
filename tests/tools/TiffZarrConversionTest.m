@@ -1,0 +1,141 @@
+classdef TiffZarrConversionTest < pktest.TestCase
+    % tiff <-> zarr conversion (XR_tiffToZarr_wrapper, XR_zarrToTiff_wrapper,
+    % tiffToZarr, zarrToTiff) and zarr resaving (XR_resave_zarr_wrapper).
+    % XR_zarrToTiff_wrapper doesn't forward parseCluster to the job
+    % framework, so on a machine with Slurm it submits jobs; the shared
+    % pktest.NoSlurmFixture keeps it local.
+
+    properties (Constant)
+        ImSize = [40, 36, 12]
+        Channels = {'CamA_ch0', 'CamB_ch0'}
+    end
+
+    methods (Test, TestTags = {'Integration'})
+        function tiffToZarrWrapper(testCase)
+            [dataPath, ims, names] = testCase.writeDataset('tif');
+            XR_tiffToZarr_wrapper(dataPath, 'channelPatterns', testCase.Channels, 'blockSize', [16, 16, 4], ...
+                'parseCluster', false, 'masterCompute', true);
+            resultPath = [dataPath, 'zarr/'];
+            for i = 1 : 2
+                fn = [resultPath, names{i}, '.zarr'];
+                testCase.verifyEqual(readzarr(fn), ims{i}, names{i});
+                info = getZarrInfo(fn);
+                testCase.verifyEqual(info.blockSize, [16, 16, 4]);
+                testCase.verifyEqual(info.compressor.cname, 'zstd');
+            end
+            testCase.verifyFalse(exist([resultPath, names{3}, '.zarr'], 'dir') > 0, ...
+                'A file that matches no channel pattern was converted.');
+        end
+
+        function tiffToZarrWrapperWithInputBbox(testCase)
+            [dataPath, ims, names] = testCase.writeDataset('tif');
+            b = [5, 7, 3, 30, 33, 10];
+            XR_tiffToZarr_wrapper(dataPath, 'channelPatterns', testCase.Channels(1), 'inputBbox', b, ...
+                'resultDirName', 'tiff_to_zarr', 'parseCluster', false, 'masterCompute', true);
+            out = readzarr([dataPath, 'tiff_to_zarr/', names{1}, '.zarr']);
+            testCase.verifyEqual(out, ims{1}(b(1) : b(4), b(2) : b(5), b(3) : b(6)));
+        end
+
+        function tiffToZarrWrapperWithoutReadingWholeTiff(testCase)
+            % reads the tiff in blocks with blockedImage instead of at once
+            [dataPath, ims, names] = testCase.writeDataset('tif');
+            b = [1, 1, 1, testCase.ImSize];
+            XR_tiffToZarr_wrapper(dataPath, 'channelPatterns', testCase.Channels(1), 'readWholeTiff', false, ...
+                'inputBbox', b, 'blockSize', [16, 16, 4], 'parseCluster', false, 'masterCompute', true);
+            testCase.verifyEqual(readzarr([dataPath, 'zarr/', names{1}, '.zarr']), ims{1});
+        end
+
+        function zarrToTiffWrapper(testCase)
+            [dataPath, ims, names] = testCase.writeDataset('zarr');
+            XR_zarrToTiff_wrapper(dataPath, 'channelPatterns', testCase.Channels, ...
+                'parseCluster', false, 'masterCompute', true);
+            resultPath = [dataPath, 'tiffs/'];
+            for i = 1 : 2
+                testCase.verifyEqual(readtiff([resultPath, names{i}, '.tif']), ims{i}, names{i});
+            end
+            testCase.verifyFalse(exist([resultPath, names{3}, '.tif'], 'file') > 0, ...
+                'A file that matches no channel pattern was converted.');
+        end
+
+        function resaveZarrChangesChunks(testCase)
+            [dataPath, ims, names] = testCase.writeDataset('zarr');
+            XR_resave_zarr_wrapper(dataPath, 'blockSize', [8, 8, 4], 'channelPatterns', {'.zarr'}, ...
+                'largeFile', false, 'parseCluster', false, 'masterCompute', true);
+            for i = 1 : 3
+                fn = [dataPath, 'resaved_zarr/', names{i}, '.zarr'];
+                testCase.verifyEqual(readzarr(fn), ims{i}, names{i});
+                testCase.verifyEqual(getZarrInfo(fn).blockSize, [8, 8, 4]);
+            end
+        end
+
+        function resaveLargeZarrInBatches(testCase)
+            [dataPath, ims, names] = testCase.writeDataset('zarr');
+            b = [5, 7, 3, 30, 33, 10];
+            XR_resave_zarr_wrapper(dataPath, 'batchSize', [16, 16, 4], 'blockSize', [8, 8, 4], 'inputBbox', b, ...
+                'channelPatterns', testCase.Channels(1), 'largeFile', true, 'parseCluster', false, 'masterCompute', true);
+            out = readzarr([dataPath, 'resaved_zarr/', names{1}, '.zarr']);
+            testCase.verifyEqual(out, ims{1}(b(1) : b(4), b(2) : b(5), b(3) : b(6)));
+        end
+    end
+
+    methods (Test, TestTags = {'Unit'})
+        function singleFileRoundTrip(testCase)
+            dataPath = testCase.createTempFolder();
+            im = uint16(randi(60000, testCase.ImSize));
+            writetiff(im, [dataPath, 'im.tif']);
+            % the third input (in-memory frame) must be given, see the known
+            % issue optionalFrameCanBeOmitted
+            tiffToZarr([dataPath, 'im.tif'], [dataPath, 'im.zarr'], [], 'blockSize', [16, 16, 4]);
+            testCase.verifyEqual(readzarr([dataPath, 'im.zarr']), im);
+            testCase.verifyEqual(getZarrInfo([dataPath, 'im.zarr']).blockSize, [16, 16, 4]);
+            zarrToTiff([dataPath, 'im.zarr'], [dataPath, 'back.tif']);
+            testCase.verifyEqual(readtiff([dataPath, 'back.tif']), im);
+        end
+
+        function tiffToZarrFromMemory(testCase)
+            % the optional third input converts data that is already loaded
+            dataPath = testCase.createTempFolder();
+            im = single(randn(testCase.ImSize));
+            tiffToZarr('', [dataPath, 'im.zarr'], im, 'blockSize', [16, 16, 4]);
+            testCase.verifyEqual(readzarr([dataPath, 'im.zarr']), im);
+        end
+    end
+
+    methods (Test, TestTags = {'Unit', 'KnownIssue'})
+        function optionalFrameCanBeOmitted(testCase)
+            % KNOWN ISSUE: tiffToZarr declares frame with ip.addOptional, but
+            % its signature tiffToZarr(tifFilename, zarrFilename, frame,
+            % varargin) binds the third input positionally and the code uses
+            % that variable instead of pr.frame, so tiffToZarr(tif, zarr,
+            % 'blockSize', [16, 16, 4]) treats 'blockSize' as the image data
+            % (blockedImage error). The wrappers always pass [] explicitly.
+            % Fix: use varargin only, or frame = pr.frame after parsing.
+            dataPath = testCase.createTempFolder();
+            im = uint16(randi(60000, testCase.ImSize));
+            writetiff(im, [dataPath, 'im.tif']);
+            try
+                tiffToZarr([dataPath, 'im.tif'], [dataPath, 'im.zarr'], 'blockSize', [16, 16, 4]);
+            catch ME
+                testCase.verifyFail(sprintf('tiffToZarr without the frame input failed: %s', ME.message));
+                return;
+            end
+            testCase.verifyEqual(readzarr([dataPath, 'im.zarr']), im);
+        end
+    end
+
+    methods (Access = private)
+        function [dataPath, ims, names] = writeDataset(testCase, format)
+            dataPath = testCase.createTempFolder();
+            names = {'scan_CamA_ch0_t0000', 'scan_CamB_ch0_t0000', 'scan_CamA_ch1_t0000'};
+            ims = cell(1, 3);
+            for i = 1 : 3
+                ims{i} = uint16(randi(60000, testCase.ImSize));
+                if strcmp(format, 'zarr')
+                    writezarr(ims{i}, [dataPath, names{i}, '.zarr'], 'blockSize', [16, 16, 4]);
+                else
+                    writetiff(ims{i}, [dataPath, names{i}, '.tif']);
+                end
+            end
+        end
+    end
+end

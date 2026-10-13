@@ -12,3 +12,6 @@ mcc/linux_with_jvm/*
 mcc/mac/*
 mcc/windows/*
 mcc/windows_with_jvm/*
+
+# reference outputs for tests/golden/GoldenOutputTest.m
+!tests/golden/data/*.mat

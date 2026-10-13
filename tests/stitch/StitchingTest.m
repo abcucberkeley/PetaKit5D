@@ -1,0 +1,396 @@
+classdef StitchingTest < pktest.TestCase
+    % XR_matlab_stitching_wrapper on tiles cut from synthetic ground truth
+    % volumes at known positions. With exact positions (xcorrShift false)
+    % the stitched volume must reproduce the ground truth voxel by voxel.
+    %
+    % Canvas convention: the minimum tile corner lands at voxel 1 and the
+    % canvas has 2 extra (zero) voxels at the end of every axis. With
+    % xcorrShift, 2 * #tiles (per axis) voxels of padding are added on both
+    % sides. 0 means "no data" in stitching, so ground truths are nonzero.
+
+    properties (Constant)
+        XYPixelSize = 0.108
+        StitchName = 'Scan_Iter_0000_0000_CamA_ch0_CAM1_stack0000_488nm_0000000msec_0000000000msecAbs'
+    end
+
+    properties (TestParameter)
+        blendMethod = {'none', 'feather', 'max', 'mean', 'median'}
+        axisOrder = struct('x', 'x,y,z', 'minusX', '-x,y,z')
+        thinTileDepth = struct('nz8', 8, 'nz20', 20)
+    end
+
+    methods (Test, TestTags = {'Integration'})
+        function exactPositionsReproduceGroundTruth(testCase, blendMethod)
+            % 2 x 2 tiles in DSR space, as in demo_zarr_stitching.m
+            dataPath = testCase.createTempFolder();
+            gt = testCase.randomVolume([100, 120, 32]);
+            csvFn = testCase.writeTiles(dataPath, gt, [0, 0, 0; 36, 0, 0; 0, 48, 0; 36, 48, 0], [64, 72, 32]);
+
+            testCase.stitch(dataPath, csvFn, 'blendMethod', blendMethod);
+
+            out = testCase.readResult(dataPath);
+            testCase.verifyEqual(size(out), [102, 122, 34]);
+            testCase.verifyEqual(out(1 : 100, 1 : 120, 1 : 32), gt, 'The stitched volume differs from the ground truth.');
+            testCase.verifyEqual(nnz(out) - nnz(out(1 : 100, 1 : 120, 1 : 32)), 0, 'Voxels outside the tiles are nonzero.');
+
+            mip = readtiff(sprintf('%smatlab_stitch/MIPs/%s_MIP_z.tif', dataPath, testCase.StitchName));
+            testCase.verifyEqual(mip, max(out, [], 3), 'The z MIP does not match the stitched volume.');
+
+            info = load(sprintf('%smatlab_stitch/stitchInfo/%s.mat', dataPath, testCase.StitchName));
+            testCase.verifyEqual(info.pImSz, [102, 122, 34]);
+            testCase.verifyEqual(size(info.pTileSizes, 1), 4);
+        end
+
+        function tiles2D(testCase)
+            % single page tiles, as for the 2D phase data in
+            % demo_phase_and_2photon_stitching.m
+            dataPath = testCase.createTempFolder();
+            gt = testCase.randomVolume([100, 120]);
+            csvFn = testCase.writeTiles(dataPath, gt, [0, 0, 0; 36, 0, 0; 0, 48, 0; 36, 48, 0], [64, 72, 1]);
+
+            testCase.stitch(dataPath, csvFn, 'blendMethod', 'feather');
+
+            out = testCase.readResult(dataPath);
+            testCase.verifyEqual(size(out), [102, 122]);
+            testCase.verifyEqual(out(1 : 100, 1 : 120), gt);
+        end
+
+        function ioScanUsesStagePositionsAsIs(testCase)
+            % objective/IO scan tiles in x and z (z offsets in units of dz),
+            % as for the 3D 2-photon data in demo_phase_and_2photon_stitching.m
+            dataPath = testCase.createTempFolder();
+            dz = 0.5;
+            gt = testCase.randomVolume([64, 104, 40]);
+            csvFn = testCase.writeTiles(dataPath, gt, [0, 0, 0; 0, 40, 0; 0, 0, 16; 0, 40, 16], [64, 64, 24], ...
+                [testCase.XYPixelSize, testCase.XYPixelSize, dz]);
+
+            testCase.stitch(dataPath, csvFn, 'DSR', false, 'IOScan', true, 'dz', dz, 'blendMethod', 'none');
+
+            out = testCase.readResult(dataPath);
+            testCase.verifyEqual(size(out), [66, 106, 42]);
+            testCase.verifyEqual(out(1 : 64, 1 : 104, 1 : 40), gt);
+        end
+
+        function skewedSpacePlacement(testCase, axisOrder)
+            % stitching in skewed space (demo_skewed_space_stitching.m): a
+            % stage x step of n * dz is n raw frames in z; stage y is y. With
+            % '-x,y,z' the stage x direction is flipped.
+            dataPath = testCase.createTempFolder();
+            dz = 0.3;
+            n = 10;
+            gt = testCase.randomVolume([100, 64, 50]);
+            % [y0, x0, z0] in the ground truth; stage X of the tiles is set below
+            xFlipped = startsWith(axisOrder, '-');
+            zStart = [n, 0];
+            if xFlipped
+                zStart = [0, n];
+            end
+            starts = [0, 0, zStart(1); 36, 0, zStart(1); 0, 0, zStart(2); 36, 0, zStart(2)];
+            stageXYZ = [0, 0, 0; 0, 36 * testCase.XYPixelSize, 0; n * dz, 0, 0; n * dz, 36 * testCase.XYPixelSize, 0];
+            tileIdx = [0, 0, 0; 0, 1, 0; 1, 0, 0; 1, 1, 0];
+            csvFn = testCase.writeTiles(dataPath, gt, starts, [64, 64, 40], [], stageXYZ, tileIdx);
+
+            testCase.stitch(dataPath, csvFn, 'DSR', false, 'dz', dz, 'skewAngle', 32.45, 'reverse', true, ...
+                'axisOrder', axisOrder, 'blendMethod', 'feather');
+
+            out = testCase.readResult(dataPath);
+            testCase.verifyEqual(size(out), [102, 66, 52]);
+            testCase.verifyEqual(out(1 : 100, 1 : 64, 1 : 50), gt);
+        end
+
+        function skewedSpaceRegistration(testCase)
+            % registration in skewed space with the demo settings ('-x,y,z',
+            % feather): the y = 1 tiles are listed 4 voxels off in y
+            dataPath = testCase.createTempFolder();
+            px = testCase.XYPixelSize;
+            dz = 0.3;
+            n = 10;
+            gt = testCase.randomVolume([100, 64, 50]);
+            starts = [0, 0, 0; 36, 0, 0; 0, 0, n; 36, 0, n];
+            stageXYZ = [0, 0, 0; 0, 40 * px, 0; n * dz, 0, 0; n * dz, 40 * px, 0];
+            tileIdx = [0, 0, 0; 0, 1, 0; 1, 0, 0; 1, 1, 0];
+            csvFn = testCase.writeTiles(dataPath, gt, starts, [64, 64, 40], [], stageXYZ, tileIdx);
+
+            testCase.stitch(dataPath, csvFn, 'DSR', false, 'dz', dz, 'skewAngle', 32.45, 'reverse', true, ...
+                'axisOrder', '-x,y,z', 'blendMethod', 'feather', 'xcorrShift', true, 'xcorrDownsample', [1, 1, 1], ...
+                'xyMaxOffset', 20, 'zMaxOffset', 10);
+
+            testCase.verifyEqual(testCase.cropToData(testCase.readResult(dataPath)), gt, ...
+                'Registration in skewed space did not recover the tile positions.');
+        end
+
+        function registration2DTiles(testCase)
+            % 2D registration with xcorrMode 'primary' (all time points of the
+            % primary channel), as for the phase data in
+            % demo_phase_and_2photon_stitching.m
+            dataPath = testCase.createTempFolder();
+            px = testCase.XYPixelSize;
+            gt = testCase.randomVolume([64, 104]);
+            csvFn = testCase.writeTiles(dataPath, gt, [0, 0, 0; 0, 40, 0], [64, 64, 1], [], ...
+                [0, 0, 0; 44 * px, 0, 0], [0, 0, 0; 1, 0, 0]);
+
+            testCase.stitch(dataPath, csvFn, 'DSR', false, 'IOScan', true, 'xcorrShift', true, 'xcorrMode', 'primary', ...
+                'xcorrDownsample', [1, 1, 1], 'xyMaxOffset', 20, 'zMaxOffset', 10, 'blendMethod', 'feather', ...
+                'blockSize', [64, 64, 1], 'batchSize', [256, 256, 1]);
+
+            testCase.verifyEqual(testCase.cropToData(testCase.readResult(dataPath)), gt, ...
+                '2D registration did not recover the tile position.');
+        end
+
+        function processedZarrTiles(testCase)
+            % DSR tiles saved as zarr in a subfolder with the image list
+            % refering to the raw tif names (ProcessedDirStr='DSR',
+            % zarrFile=true), as in demo_zarr_stitching.m
+            dataPath = testCase.createTempFolder();
+            gt = testCase.randomVolume([100, 120, 32]);
+            csvFn = testCase.writeTiles(dataPath, gt, [0, 0, 0; 36, 0, 0; 0, 48, 0; 36, 48, 0], [64, 72, 32], ...
+                [], [], [], 'tileDir', 'DSR', 'saveFormat', 'zarr');
+
+            testCase.stitch(dataPath, csvFn, 'zarrFile', true, 'processedDirStr', 'DSR', 'blendMethod', 'feather');
+
+            out = testCase.readResult(dataPath);
+            testCase.verifyEqual(size(out), [102, 122, 34]);
+            testCase.verifyEqual(out(1 : 100, 1 : 120, 1 : 32), gt);
+        end
+
+        function processFunctionIsAppliedToTiles(testCase)
+            % user process function saved in a .mat file, as the flat field
+            % correction in demo_phase_and_2photon_stitching.m. With a flat
+            % flat-field image, background 100 and offset 1, x -> x - 99.
+            dataPath = testCase.createTempFolder();
+            gt = testCase.randomVolume([100, 120, 32]);
+            csvFn = testCase.writeTiles(dataPath, gt, [0, 0, 0; 36, 0, 0; 0, 48, 0; 36, 48, 0], [64, 72, 32]);
+
+            ffFn = [dataPath, 'flatfield/flatfield.tif'];
+            bgFn = [dataPath, 'flatfield/background.tif'];
+            writetiff(1000 * ones(64, 72, 'uint16'), ffFn);
+            writetiff(100 * ones(64, 72, 'uint16'), bgFn);
+            usrFun = sprintf("@(x)erodeVolumeBy2DProjection(processFFCorrectionFrame(x,'%s','%s',%d,%d,%s),%0.10d)", ...
+                ffFn, bgFn, 1, 0.4, string(false), 0);
+            funFn = [dataPath, 'processFunction.mat'];
+            save('-v7.3', funFn, 'usrFun');
+
+            testCase.stitch(dataPath, csvFn, 'blendMethod', 'none', 'processFunPath', {funFn});
+
+            out = testCase.readResult(dataPath);
+            testCase.verifyEqual(out(1 : 100, 1 : 120, 1 : 32), gt - 99);
+        end
+
+        function xcorrRecoversPerturbedTilePosition(testCase)
+            % the second tile is listed 4 voxels off in x; registration must
+            % recover the true position. Even shifts avoid the +/-1 rounding
+            % of the global position solver for two tiles.
+            dataPath = testCase.createTempFolder();
+            px = testCase.XYPixelSize;
+            gt = testCase.randomVolume([64, 104, 32]);
+            stageXYZ = [0, 0, 0; 44 * px, 0, 0];
+            csvFn = testCase.writeTiles(dataPath, gt, [0, 0, 0; 0, 40, 0], [64, 64, 32], [], stageXYZ, [0, 0, 0; 1, 0, 0]);
+
+            testCase.stitch(dataPath, csvFn, 'xcorrShift', true, 'xcorrDownsample', [1, 1, 1], ...
+                'xyMaxOffset', 20, 'zMaxOffset', 10, 'blendMethod', 'none');
+
+            xcorrInfo = load(sprintf('%smatlab_stitch/xcorr/%s.mat', dataPath, testCase.StitchName));
+            testCase.verifyEqual(round(xcorrInfo.dxyz_shift / px), [0, 0, 0; -4, 0, 0], ...
+                'Registration did not recover the true tile offset.');
+
+            out = testCase.readResult(dataPath);
+            % padding of 2 * #tiles voxels per axis on both sides
+            testCase.verifyEqual(size(out), [64 + 2 * 2 + 2, 104 + 2 * 4 + 2, 32 + 2 * 2 + 2]);
+            testCase.verifyEqual(out(3 : 66, 5 : 108, 3 : 34), gt);
+        end
+
+        function primaryChannelRegistrationAppliesToOtherChannels(testCase)
+            % xcorrMode 'primaryFirst': the shift found in the primary channel
+            % (CamA) is used for CamB, whose overlap is featureless so it
+            % could not be registered on its own
+            dataPath = testCase.createTempFolder();
+            px = testCase.XYPixelSize;
+            gtA = testCase.randomVolume([64, 104, 32]);
+            gtB = testCase.randomVolume([64, 104, 32]);
+            gtB(:, 41 : 64, :) = 30000;
+            stageXYZ = [0, 0, 0; 44 * px, 0, 0];
+            tileIdx = [0, 0, 0; 1, 0, 0];
+            testCase.writeTiles(dataPath, gtA, [0, 0, 0; 0, 40, 0], [64, 64, 32], [], stageXYZ, tileIdx, 'cam', 'A');
+            csvFn = testCase.writeTiles(dataPath, gtB, [0, 0, 0; 0, 40, 0], [64, 64, 32], [], stageXYZ, tileIdx, 'cam', 'B');
+
+            testCase.stitch(dataPath, csvFn, 'channelPatterns', {'CamA_ch0', 'CamB_ch0'}, 'primaryCh', 'CamA_ch0', ...
+                'xcorrShift', true, 'xcorrDownsample', [1, 1, 1], 'xyMaxOffset', 20, 'zMaxOffset', 10, 'blendMethod', 'none');
+
+            outA = testCase.readResult(dataPath);
+            outB = testCase.readResult(dataPath, 'matlab_stitch', strrep(testCase.StitchName, 'CamA', 'CamB'));
+            testCase.verifyEqual(outA(3 : 66, 5 : 108, 3 : 34), gtA);
+            testCase.verifyEqual(outB(3 : 66, 5 : 108, 3 : 34), gtB, ...
+                'The secondary channel was not stitched with the primary channel registration.');
+        end
+    end
+
+    methods (Test, TestTags = {'Integration', 'KnownIssue'})
+        function largeFileStitching(testCase)
+            % KNOWN ISSUE: large scale stitching (largeFile with poolSize)
+            % errors while computing the MIP slabs for registration:
+            % XR_MIP_zarr.m:108 uses bim.BlockSize, but bim no longer exists
+            % since 9911d83 ("Unable to resolve the name 'bim.BlockSize'").
+            % Fix: use zInfo.blockSize.
+            dataPath = testCase.createTempFolder();
+            gt = testCase.randomVolume([100, 120, 32]);
+            csvFn = testCase.writeTiles(dataPath, gt, [0, 0, 0; 36, 0, 0; 0, 48, 0; 36, 48, 0], [64, 72, 32]);
+
+            testCase.stitch(dataPath, csvFn, 'blendMethod', 'feather', 'largeFile', true, 'poolSize', [2, 2, 2], ...
+                'batchSize', [32, 32, 16], 'blockSize', [16, 16, 16], 'xcorrShift', true, ...
+                'xcorrDownsample', [1, 1, 1], 'xyMaxOffset', 20, 'zMaxOffset', 10);
+
+            out = testCase.readResult(dataPath);
+            % padding of 2 * #tiles voxels per axis on both sides
+            testCase.verifyEqual(size(out), [100 + 2 * 4 + 2, 120 + 2 * 4 + 2, 32 + 2 * 2 + 2]);
+            testCase.verifyEqual(out(5 : 104, 5 : 124, 3 : 34), gt);
+        end
+
+        function noneBlendTakesHalfOverlapFromEachTile(testCase)
+            % KNOWN ISSUE: 'none' blending is documented as "taking half
+            % overlap from each tile", but the lower index tile wins in the
+            % whole overlap: compute_half_of_overlap_region.m:29-30 computes
+            % the region end relative to the cuboid end (always <= 1, so the
+            % half regions are empty; regression from d9a099b) and
+            % processStitchBlock.m:489-490 inverts the mask that keeps
+            % existing values (regression from 4a78ade).
+            dataPath = testCase.createTempFolder();
+            gt = testCase.randomVolume([64, 104, 32], [1000, 50000]);
+            tiles = struct('im', {gt(:, 1 : 64, :), gt(:, 41 : 104, :) + 5000}, 'idx', {[0, 0, 0], [1, 0, 0]}, ...
+                'xyz', {[0, 0, 0], [40 * testCase.XYPixelSize, 0, 0]});
+            [~, csvFn] = pktest.writeStitchTiles(dataPath, tiles);
+
+            testCase.stitch(dataPath, csvFn, 'blendMethod', 'none');
+
+            out = testCase.readResult(dataPath);
+            expected = [gt(:, 1 : 52, :), gt(:, 53 : 104, :) + 5000];
+            % allow the split to be off by a couple of columns
+            testCase.verifyEqual(out(1 : 64, [1 : 50, 55 : 104], 1 : 32), expected(:, [1 : 50, 55 : 104], :), ...
+                'The overlap is not split between the two tiles.');
+        end
+
+        function featherBlendingWithThinTiles(testCase, thinTileDepth)
+            % KNOWN ISSUE: the feather z window in compute_tile_bwdist.m:143-144
+            % starts at round(nz * 0.05), which picks tukeywin's exact 0 for
+            % 10 <= nz <= 29 (the first slice gets weight 0 and comes out 0
+            % when the whole block is blended) and index 0 for nz <= 9
+            % (error). Fix: start the window at max(1, ...) past the zero.
+            nz = thinTileDepth;
+            dataPath = testCase.createTempFolder();
+            gt = testCase.randomVolume([100, 120, nz]);
+            csvFn = testCase.writeTiles(dataPath, gt, [0, 0, 0; 36, 0, 0; 0, 48, 0; 36, 48, 0], [64, 72, nz]);
+
+            testCase.stitch(dataPath, csvFn, 'blendMethod', 'feather');
+
+            out = testCase.readResult(dataPath);
+            testCase.verifyEqual(out(1 : 100, 1 : 120, 1 : nz), gt, ...
+                sprintf('Feather blending of %d-slice tiles does not reproduce the ground truth.', nz));
+        end
+
+        function largeFileWithoutRegistration(testCase)
+            % KNOWN ISSUE: with largeFile, feather blending reads MIP slabs
+            % (compute_tile_bwdist_mip_slabs.m:67) that are only generated
+            % in the registration step (stitch_shift_assignment.m:107-150),
+            % so largeFile stitching without xcorrShift errors ("zarr file
+            % .../MIP_Slabs_pooling_2_2_2/..._z.zarr does not exist").
+            % Fix: generate the MIP slabs whenever largeFile is true (which
+            % also needs the XR_MIP_zarr fix in largeFileStitching).
+            dataPath = testCase.createTempFolder();
+            gt = testCase.randomVolume([100, 120, 32]);
+            csvFn = testCase.writeTiles(dataPath, gt, [0, 0, 0; 36, 0, 0; 0, 48, 0; 36, 48, 0], [64, 72, 32]);
+
+            testCase.stitch(dataPath, csvFn, 'blendMethod', 'feather', 'largeFile', true, 'poolSize', [2, 2, 2], ...
+                'batchSize', [32, 32, 16], 'blockSize', [16, 16, 16]);
+
+            out = testCase.readResult(dataPath);
+            testCase.verifyEqual(out(1 : 100, 1 : 120, 1 : 32), gt);
+        end
+
+        function localShiftMethod(testCase)
+            % KNOWN ISSUE: shiftMethod 'local' errors in
+            % stitch_local_assignment.m:49 (adds a 1x3 row to a 1x5 row of
+            % absolute_shift_mat).
+            dataPath = testCase.createTempFolder();
+            px = testCase.XYPixelSize;
+            gt = testCase.randomVolume([64, 104, 32]);
+            csvFn = testCase.writeTiles(dataPath, gt, [0, 0, 0; 0, 40, 0], [64, 64, 32], [], ...
+                [0, 0, 0; 44 * px, 0, 0], [0, 0, 0; 1, 0, 0]);
+
+            testCase.stitch(dataPath, csvFn, 'xcorrShift', true, 'xcorrDownsample', [1, 1, 1], ...
+                'xyMaxOffset', 20, 'zMaxOffset', 10, 'blendMethod', 'none', 'shiftMethod', 'local');
+
+            out = testCase.readResult(dataPath);
+            testCase.verifyEqual(out(3 : 66, 5 : 108, 3 : 34), gt);
+        end
+    end
+
+    methods (Access = private)
+        function [gt] = randomVolume(~, sz, intRange)
+            % nonzero random uint16 values (0 means no data in stitching)
+            if nargin < 3
+                intRange = [1000, 60000];
+            end
+            gt = uint16(randi(intRange, sz));
+        end
+
+        function [csvFn] = writeTiles(testCase, dataPath, gt, starts, tileSize, pixelSizes, stageXYZ, tileIdx, varargin)
+            % cut tiles of tileSize ([y, x, z]) at 0-based voxel offsets
+            % starts ([y0, x0, z0] per row) from the ground truth. By default
+            % the stage coordinates are the offsets times the voxel size
+            % and the tile indices follow the positions.
+            if nargin < 6 || isempty(pixelSizes)
+                pixelSizes = testCase.XYPixelSize * [1, 1, 1];
+            end
+            nT = size(starts, 1);
+            if nargin < 7 || isempty(stageXYZ)
+                stageXYZ = starts(:, [2, 1, 3]) .* pixelSizes([2, 1, 3]);
+            end
+            if nargin < 8 || isempty(tileIdx)
+                xyzStarts = starts(:, [2, 1, 3]);
+                tileIdx = zeros(nT, 3);
+                for i = 1 : 3
+                    [~, ~, tileIdx(:, i)] = unique(xyzStarts(:, i));
+                end
+                tileIdx = tileIdx - 1;
+            end
+            tiles = struct('im', cell(nT, 1), 'idx', [], 'xyz', []);
+            for i = 1 : nT
+                s = starts(i, :);
+                if ismatrix(gt)
+                    tiles(i).im = gt(s(1) + 1 : s(1) + tileSize(1), s(2) + 1 : s(2) + tileSize(2));
+                else
+                    tiles(i).im = gt(s(1) + 1 : s(1) + tileSize(1), s(2) + 1 : s(2) + tileSize(2), s(3) + 1 : s(3) + tileSize(3));
+                end
+                tiles(i).idx = tileIdx(i, :);
+                tiles(i).xyz = stageXYZ(i, :);
+            end
+            [~, csvFn] = pktest.writeStitchTiles(dataPath, tiles, varargin{:});
+        end
+
+        function [] = stitch(testCase, dataPath, csvFn, varargin)
+            % defaults for exact DSR stitching; later name-value pairs win
+            XR_matlab_stitching_wrapper(dataPath, csvFn, 'DSR', true, 'resampleType', 'isotropic', ...
+                'xyPixelSize', testCase.XYPixelSize, 'axisOrder', 'x,y,z', 'xcorrShift', false, ...
+                'channelPatterns', {'CamA_ch0'}, 'primaryCh', 'CamA_ch0', 'parseCluster', false, varargin{:});
+        end
+
+        function [im] = cropToData(~, im)
+            % crop to the bounding box of the nonzero voxels
+            ranges = cell(1, ndims(im));
+            for d = 1 : ndims(im)
+                inds = find(any(im ~= 0, setdiff(1 : ndims(im), d)));
+                ranges{d} = inds(1) : inds(end);
+            end
+            im = im(ranges{:});
+        end
+
+        function [out] = readResult(testCase, dataPath, resultDirName, name)
+            if nargin < 3
+                resultDirName = 'matlab_stitch';
+            end
+            if nargin < 4
+                name = testCase.StitchName;
+            end
+            out = readzarr(sprintf('%s%s/%s.zarr', dataPath, resultDirName, name));
+        end
+    end
+end
