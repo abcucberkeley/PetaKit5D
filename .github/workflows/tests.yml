@@ -57,10 +57,31 @@ jobs:
           echo "TMP=${{ runner.temp }}" >> "$GITHUB_ENV"
           echo "TEMP=${{ runner.temp }}" >> "$GITHUB_ENV"
 
+      # On Windows and macOS, MATLAB hangs or crashes while shutting down
+      # after the PetaKit5D mex files have been used, so finishCI stops it
+      # right after the tests and the next step checks the results instead
+      # of MATLAB's exit code.
       - name: Run tests
+        timeout-minutes: 45
+        continue-on-error: ${{ runner.os != 'Linux' }}
         uses: matlab-actions/run-command@v3
         with:
-          command: addpath('tests'); results = run_tests('outputDir', 'test-results'); assertSuccess(results);
+          command: addpath('tests'); results = run_tests('outputDir', 'test-results'); pktest.finishCI(results, 'test-results');
+
+      - name: Check test results
+        if: ${{ !cancelled() }}
+        shell: bash
+        run: |
+          if [ ! -f test-results/status.txt ]; then
+            echo "::error::MATLAB stopped before the tests finished"
+            exit 1
+          fi
+          cat test-results/status.txt
+          failed=$(awk '$1 == "failed" {print $2}' test-results/status.txt)
+          if [ "$failed" != "0" ]; then
+            echo "::error::$failed test(s) failed"
+            exit 1
+          fi
 
       # tests for bugs that are not fixed yet; informational only. A test
       # that passes here means the bug is fixed: remove its KnownIssue tag.

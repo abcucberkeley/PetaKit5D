@@ -85,6 +85,11 @@ allowed to fail and preview the migration. To switch releases, edit the
 `release` list in the workflow. Results are on each job's summary page,
 and JUnit XML files are uploaded as artifacts.
 
+Because MATLAB doesn't shut down cleanly on Windows and macOS (see Known
+issues), the CI command ends with `pktest.finishCI`, which writes
+`test-results/status.txt` and then stops MATLAB on those platforms; the next
+step fails the job if tests failed or the status file is missing.
+
 MATLAB is licensed automatically for public repositories by the
 `matlab-actions` steps. The runners have no GPU, so `GPU` tests are skipped
 there; run them on a GPU node (`srun --gres=gpu:1 ...`).
@@ -127,6 +132,7 @@ comment has the details.
 | Test | Problem |
 |---|---|
 | `DeskewRotateFrame3DTest/forwardScanCanvasOriginMatchesConvention` | For `reverse=false`, the default (mex) path output is shifted by about one voxel relative to the separate and cubic paths. |
+| `DeskewRotateFrame3DTest/save16bitRoundsToNearest` | On Linux and Windows, uint16 deskew/rotation output is rounded up (`ceil`) instead of to the nearest integer (AVX kernels add 0.5 and then round), so it is biased by +0.5 and differs from macOS. |
 | `XRDeskewRotateFrameTest/objectiveScanSeparatePathIsNotDeskewed` | The separate path deskews objective scan data before rotating it. |
 | `XRDeskewRotateFrameTest/zStageScanSeparateMatchesCombined` | The separate path uses the wrong angle for the z stage scan output size. |
 | `AxisOrderMappingTest`, `XRDeskewRotateFrameTest/inputAxisOrderZYXIsPermutedToYXZ` | `axis_order_mapping` returns the inverse permutation for `'zyx'` and `'xzy'`. |
@@ -167,7 +173,21 @@ comment has the details.
 | `DeconFrameTest/simplifiedInfoFilesGoToTheDeconInfoFolder` | Info files land in the result folder (`sprintf` argument mismatch). |
 | `ImageInfoTest/queryingMetadataKeepsWarningState` | `getImageSize`/`getZarrInfo` turn off all warnings for the rest of the session. |
 
+**Platform-specific.** These tests skip themselves on the affected platform
+with a `KNOWN ISSUE` message (`assumeNoKnownIssueOn`); remove the platform
+from the call when the bug is fixed.
+
+| Test | Platform | Problem |
+|---|---|---|
+| `TiffIOTest/readsSingleIfdImageJStack` | ARM macOS | The macArm Cpp-Tiff binaries read only the first slice of single-IFD ImageJ stacks (`getImageSize` reports 1 slice). |
+| `ZarrIOTest/partialWritesUpdateOnlyTheRegion` | Windows | Rewriting existing zarr chunks keeps the old data: Cpp-Zarr renames a temporary file over the chunk, which fails on Windows when the chunk exists. |
+
 Not covered by a test:
+
+- On Windows and macOS, MATLAB hangs (Windows) or crashes in a thread
+  cleanup handler (macOS) while shutting down after the PetaKit5D mex files
+  have been used, most likely because an OpenMP runtime is unloaded while
+  its worker threads are alive. CI works around it (see below).
 
 - Dataset wrappers fail (`cd` error) when the repository folder path doesn't
   contain `PetaKit5D` (case-sensitive), or when a parent folder name contains
@@ -216,8 +236,9 @@ update_golden_data('decon_omw')   % or update_golden_data() for all
 - Prefer exact or analytic checks (round trips, comparison with plain
   MATLAB code, known geometry) over stored numbers. Use
   `verifyImagesClose` with a justified tolerance where results are not exact.
-- Keep tests portable: no shell commands, forward slashes in paths, and
-  `assumeMexAvailable` for mex files that are missing on some platforms.
+- Keep tests portable: no shell commands, forward slashes in paths,
+  `assumeMexAvailable` for mex files that are missing on some platforms, and
+  `assumeNoKnownIssueOn` for bugs that only affect some platforms.
 - Single-precision inputs to the deskew/rotation mex functions must have a
   first dimension that is a multiple of 8 until the SIMD overflow issue is
   fixed (see `DeskewMexSourceTest`).

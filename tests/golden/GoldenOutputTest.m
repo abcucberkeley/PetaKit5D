@@ -50,14 +50,17 @@ classdef GoldenOutputTest < pktest.TestCase
             px = 0.108;
             angle = 32.45;
             switch name
+                % the float path, rounded to keep the references small; the
+                % uint16 path rounds differently on macOS (see
+                % DeskewRotateFrame3DTest/save16bitRoundsToNearest)
                 case 'deskew_rotate_sample_scan'
-                    vol = GoldenOutputTest.skewedVolume();
-                    out.dsr = deskewRotateFrame3D(vol, angle, 0.2, px, 'reverse', true, 'save16bit', true);
+                    vol = single(GoldenOutputTest.skewedVolume());
+                    out.dsr = uint16(round(deskewRotateFrame3D(vol, angle, 0.2, px, 'reverse', true)));
 
                 case 'deskew_rotate_skewed_interp'
                     % dz = 0.3 interpolates in skewed space before deskew/rotation
-                    vol = GoldenOutputTest.skewedVolume();
-                    out.dsr = deskewRotateFrame3D(vol, angle, 0.3, px, 'reverse', true, 'save16bit', true);
+                    vol = single(GoldenOutputTest.skewedVolume());
+                    out.dsr = uint16(round(deskewRotateFrame3D(vol, angle, 0.3, px, 'reverse', true)));
 
                 case 'deskew_rotate_resampled'
                     vol = single(GoldenOutputTest.skewedVolume());

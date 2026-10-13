@@ -59,6 +59,15 @@ classdef (SharedTestFixtures = {pktest.PathFixture, pktest.NoSlurmFixture}) Test
             end
         end
 
+        function [] = assumeNoKnownIssueOn(testCase, platforms, description)
+            % skip on platforms (mexext values, e.g. 'mexmaca64' or
+            % 'mexw64') where the test fails because of a known bug that
+            % only affects them. List it in tests/README.md and remove the
+            % platform when the bug is fixed.
+            testCase.assumeFalse(ismember(mexext, cellstr(platforms)), ...
+                sprintf('KNOWN ISSUE on %s: %s', mexext, description));
+        end
+
         function [] = assumeGPUAvailable(testCase)
             hasGPU = false;
             try

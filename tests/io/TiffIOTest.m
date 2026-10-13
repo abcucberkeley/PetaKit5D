@@ -105,6 +105,9 @@ classdef TiffIOTest < pktest.TestCase
         function readsSingleIfdImageJStack(testCase)
             % ImageJ saves stacks over 4 GB with only the first IFD; the
             % number of slices is in the 'images=' description entry
+            testCase.assumeNoKnownIssueOn('mexmaca64', ['the ARM macOS Cpp-Tiff binaries ', ...
+                '(cpp-tiff/macArm) read only the first slice of single-IFD ImageJ stacks; ', ...
+                'getImageSize also reports 1 slice']);
             im = testCase.randomImage([20, 30, 9], 'uint16');
             fn = [testCase.createTempFolder(), 'imagej.tif'];
             testCase.writeImageJStack(im, fn, true);
