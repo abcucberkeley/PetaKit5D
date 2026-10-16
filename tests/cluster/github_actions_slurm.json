@@ -1,0 +1,5 @@
+{
+    "SlurmParam": "-n1 --mem-per-cpu=256M",
+    "maxCPUNum": 4,
+    "memPerCPU": 0.25
+}

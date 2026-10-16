@@ -98,3 +98,63 @@ jobs:
           name: test-results-${{ matrix.release }}-${{ matrix.os }}
           path: test-results/
           if-no-files-found: ignore
+
+  # the job framework in Slurm cluster mode, on a single-node Slurm cluster
+  # set up on the runner (tests/cluster/SlurmClusterTest.m). Jobs run bash
+  # tasks only: MATLAB is licensed only inside the matlab-actions steps, so
+  # jobs can't start MATLAB here (those tests run on the lab cluster).
+  cluster:
+    name: Slurm cluster mode (R2024b on ubuntu-24.04)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    services:
+      # Slurm accounting database for setup-slurm-action
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+        ports:
+          - "8888:3306"
+        options: --health-cmd="mysqladmin ping" --health-interval=10s --health-timeout=5s --health-retries=3
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: koesterlab/setup-slurm-action@v1
+        with:
+          cpus: 2
+          memory: 8000
+
+      - uses: matlab-actions/setup-matlab@v3
+        with:
+          release: R2024b
+
+      - name: Run cluster tests
+        uses: matlab-actions/run-command@v3
+        env:
+          PETAKIT5D_TEST_SLURM_CONFIG: ${{ github.workspace }}/tests/cluster/github_actions_slurm.json
+        with:
+          command: addpath('tests'); results = run_tests('tag', 'Cluster', 'outputDir', 'test-results', 'summaryTitle', 'Slurm cluster mode'); pktest.finishCI(results, 'test-results');
+
+      - name: Check test results
+        if: ${{ !cancelled() }}
+        shell: bash
+        run: |
+          if [ ! -f test-results/status.txt ]; then
+            echo "::error::MATLAB stopped before the tests finished"
+            exit 1
+          fi
+          cat test-results/status.txt
+          awk '$1 == "passed" && $2 == 0 {exit 1}' test-results/status.txt || { echo "::error::No cluster test ran"; exit 1; }
+          failed=$(awk '$1 == "failed" {print $2}' test-results/status.txt)
+          if [ "$failed" != "0" ]; then
+            echo "::error::$failed test(s) failed"
+            exit 1
+          fi
+
+      - if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-results-cluster
+          path: test-results/
+          if-no-files-found: ignore

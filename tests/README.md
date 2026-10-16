@@ -44,6 +44,7 @@ cluster) and never submit Slurm jobs: `pktest.NoSlurmFixture` hides `sinfo`,
 | `Slow` | Takes more than ~30 s. |
 | `GPU` | Needs a CUDA GPU; reported as incomplete (skipped) without one. |
 | `DemoData` | Runs on the published demo dataset; skipped unless `PETAKIT5D_DEMO_DATA` is set (see below). |
+| `Cluster` | Submits real Slurm jobs; skipped unless `PETAKIT5D_TEST_SLURM_CONFIG` is set (see below). |
 | `KnownIssue` | Checks the correct behavior for a bug that is not fixed yet (see below). |
 
 Tests that need something the machine doesn't have (a GPU, or a mex file
@@ -76,6 +77,43 @@ and with `junit 'test-results/test-results.xml'` to show the results in
 Jenkins. The same MATLAB command works on the Windows and Mac Jenkins
 machines.
 
+### Slurm cluster mode
+
+All other tests run the job framework locally (`parseCluster=false`).
+`tests/cluster/SlurmClusterTest.m` tests cluster mode: tasks submitted with
+`sbatch`, polled with `squeue`, task batches, resubmission with more CPUs,
+the final output check, and (optionally) MATLAB tasks and a data wrapper
+running as jobs. The tests submit real jobs, so they only run when these
+environment variables are set:
+
+| Variable | Meaning |
+|---|---|
+| `PETAKIT5D_TEST_SLURM_CONFIG` | Required. JSON cluster configuration passed to the framework as `configFile` (`SlurmParam`, `MatlabLaunchStr`, `maxCPUNum`, `memPerCPU`); see `tests/cluster/github_actions_slurm.json`. |
+| `PETAKIT5D_TEST_SLURM_SCRATCH` | Folder on storage the compute nodes can reach, for test data and job logs (default `tempdir`, which only works on a single-node cluster). |
+| `PETAKIT5D_TEST_SLURM_MATLAB` | `true` to also run the tests whose jobs start MATLAB. |
+
+For example, on the lab cluster (from a compute node):
+
+```matlab
+setenv('PETAKIT5D_TEST_SLURM_CONFIG', '/path/to/abc_slurm_config.json')
+setenv('PETAKIT5D_TEST_SLURM_SCRATCH', '/clusterfs/fiona/<user>/pk5d_test_scratch')
+setenv('PETAKIT5D_TEST_SLURM_MATLAB', 'true')
+run_tests('tag', 'Cluster')
+```
+
+with a configuration like
+
+```json
+{
+    "SlurmParam": "-p abc --qos abc_normal -n1 --mem-per-cpu=4G",
+    "MatlabLaunchStr": "module load matlab/r2024b; matlab -nodisplay -nosplash -nodesktop -nojvm -r",
+    "maxCPUNum": 24,
+    "memPerCPU": 4
+}
+```
+
+Each test names its jobs `pk5dtest_<id>` and cancels them when it ends.
+
 ## Continuous integration
 
 `.github/workflows/tests.yml` runs `run_tests` on every push and pull request
@@ -90,8 +128,13 @@ issues), the CI command ends with `pktest.finishCI`, which writes
 `test-results/status.txt` and then stops MATLAB on those platforms; the next
 step fails the job if tests failed or the status file is missing.
 
+A separate job sets up a single-node Slurm cluster on the Ubuntu runner
+(`koesterlab/setup-slurm-action`) and runs the `Cluster` tests there with
+bash tasks; jobs can't start MATLAB on GitHub (see below), so the MATLAB
+task tests run on the lab cluster.
+
 MATLAB is licensed automatically for public repositories by the
-`matlab-actions` steps. The runners have no GPU, so `GPU` tests are skipped
+`matlab-actions` steps, and only inside them. The runners have no GPU, so `GPU` tests are skipped
 there; run them on a GPU node (`srun --gres=gpu:1 ...`).
 
 ## Known issues
@@ -148,6 +191,7 @@ comment has the details.
 | `ChromaticShiftCorrectionTest/fullModeContainsBothChannels` | Chromatic shift `'full'` mode computes the output size from the bounding box starts and flips the offset sign. |
 | `ImarisConversionTest/imageSizeIsNotPaddedToBlocks` | The Parallel_Imaris_Writer pads the image size to multiples of the block size (and counts the padding in the histograms). |
 | `DeskewRotateDataWrapperTest/saveMIPFalseWritesNoMIP`, `blockSizeIsUsedForZarrOutput` | `saveMIP` and `blockSize` are not passed on by the deskew/rotate wrapper. |
+| `SlurmClusterTest/finalOutputCancelsRemainingJobs` | When the final output appears, the Slurm cluster loop returns without cancelling the remaining jobs, so they keep running after the call returns. |
 
 **Errors**
 
@@ -202,6 +246,9 @@ Not covered by a test:
 - Deskew only (`deskew=true, rotate=false`) with the default
   `DSRCombined=true` writes DSR instead of DS, then waits ~3 minutes per retry
   before failing.
+- `XR_deskew_rotate_data_wrapper` doesn't pass `jobLogDir` to the job
+  framework, so Slurm job logs go to `../job_logs` (relative to the repository)
+  or the data folder.
 
 ## Golden outputs
 
@@ -250,7 +297,7 @@ Every workflow in `demos/` is covered by tests on synthetic data:
 | Demo | Tests |
 |---|---|
 | `demo_fast_tiff_zarr_readers_writers` | `io/TiffIOTest` (Cpp-Tiff vs MATLAB readers, write modes, ranges, >65535 pages, ImageJ stacks), `io/ZarrIOTest` (round trips, compressors, chunking, partial writes), `crop/CropMexTest`, `demo_data/DemoDatasetTest` (real data). The Python zarr section is disabled in the demo and not tested. |
-| `demo_generic_computing_framework` | `framework/GenericComputingFrameworkDemoTest` (config file, the demo's crop + deskew/rotate function through the framework), `framework/GenericComputingFrameworkTest`. Compiled (mcc) mode isn't run; `framework/McCParserConsistencyTest` checks that the mcc parsers match the functions. |
+| `demo_generic_computing_framework` | `framework/GenericComputingFrameworkDemoTest` (config file, the demo's crop + deskew/rotate function through the framework), `framework/GenericComputingFrameworkTest`, `cluster/SlurmClusterTest` (Slurm cluster mode, opt-in). Compiled (mcc) mode isn't run; `framework/McCParserConsistencyTest` checks that the mcc parsers match the functions. |
 | `demo_geometric_transformation` | `deskew_rotate/DeskewRotateDataWrapperTest` (data wrapper, zarr output, flat field, large file), `deskew_rotate/DeskewRotateFrame3DTest` and `XRDeskewRotateFrameTest` (combined vs separate, geometry), `demo_data/DemoDatasetTest` (combined vs separate on real data). |
 | `demo_RL_deconvolution` | `decon/DeconFrameTest` (OTF mask visualization), `decon/DeconWrapperTest` (OMW and traditional RL through the wrapper, deskew/rotation of the results), `decon/DeconFunctionTest` (`psf_gen_new`, `decon_lucy_function`, WB back projector, OMW back projector), `decon/DeconGPUTest` (GPU), `demo_data/DemoDatasetTest` (OMW on real data). |
 | `demo_zarr_stitching` | `stitch/StitchingTest` (DSR-space stitching of processed zarr tiles, feather blending, cross-correlation registration, primary channel). The BigStitcher and Stitching-Spark sections use external tools and aren't tested. |

@@ -4,7 +4,9 @@ classdef NoSlurmFixture < matlab.unittest.fixtures.Fixture
     % forward parseCluster to the job framework (e.g., XR_zarrToTiff_wrapper),
     % so on a machine with Slurm they would submit real jobs. With the
     % stubs, checkSlurmCluster sees no cluster and everything runs locally.
-    % Windows has no Slurm, so nothing is changed there.
+    % Windows has no Slurm, so nothing is changed there. The stub folder is
+    % in PETAKIT5D_TEST_SLURM_STUBS so pktest.RealSlurmFixture can lift it
+    % for the opt-in cluster tests.
 
     properties (Access = private)
         OriginalPath
@@ -29,6 +31,7 @@ classdef NoSlurmFixture < matlab.unittest.fixtures.Fixture
             end
             fixture.OriginalPath = getenv('PATH');
             setenv('PATH', [fixture.StubFolder, pathsep, fixture.OriginalPath]);
+            setenv('PETAKIT5D_TEST_SLURM_STUBS', fixture.StubFolder);
             fixture.SetupDescription = 'Hid Slurm commands behind failing stubs';
         end
 
@@ -37,6 +40,7 @@ classdef NoSlurmFixture < matlab.unittest.fixtures.Fixture
                 return;
             end
             setenv('PATH', fixture.OriginalPath);
+            setenv('PETAKIT5D_TEST_SLURM_STUBS', '');
             if exist(fixture.StubFolder, 'dir')
                 rmdir(fixture.StubFolder, 's');
             end

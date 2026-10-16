@@ -5,7 +5,7 @@ function [results] = run_tests(varargin)
 %
 %
 % Parameters (as 'specifier'-value pairs):
-%                 tag : char or cell array (default: {}). Only run tests with any of these tags: 'Unit', 'Integration', 'Golden', 'Slow', 'GPU', 'DemoData', 'KnownIssue'.
+%                 tag : char or cell array (default: {}). Only run tests with any of these tags: 'Unit', 'Integration', 'Golden', 'Slow', 'GPU', 'DemoData', 'Cluster', 'KnownIssue'.
 %          excludeTag : char or cell array (default: {}). Skip tests with any of these tags.
 %  includeKnownIssues : true|false (default: false). Also run 'KnownIssue' tests, which check the correct behavior for bugs that are not fixed yet (see tests/README.md). They always run if 'KnownIssue' is in tag.
 %                name : char or cell array (default: {}). Only run tests whose names match any of these patterns (* is a wildcard), e.g., '*Decon*'.

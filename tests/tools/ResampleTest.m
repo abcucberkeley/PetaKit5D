@@ -8,8 +8,10 @@ classdef ResampleTest < pktest.TestCase
     end
 
     properties (TestParameter)
+        % 'down3' doesn't divide the image size (40 / 3 = 13.3), which pins
+        % the rounding of the output size
         resampleFactor = struct('down2', [2, 2, 2], 'zOnly', [1, 1, 2], 'up2xy', [0.5, 0.5, 1], ...
-            'nonInteger', [1.5, 1.5, 1.5])
+            'nonInteger', [1.5, 1.5, 1.5], 'down3', [3, 3, 3])
         interpMethod = {'linear', 'cubic', 'nearest', 'max', 'mean'}
     end
 
