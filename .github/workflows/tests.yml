@@ -107,23 +107,12 @@ jobs:
     name: Slurm cluster mode (R2024b on ubuntu-24.04)
     runs-on: ubuntu-24.04
     timeout-minutes: 60
-    services:
-      # Slurm accounting database for setup-slurm-action
-      mysql:
-        image: mysql:8.0
-        env:
-          MYSQL_ROOT_PASSWORD: root
-        ports:
-          - "8888:3306"
-        options: --health-cmd="mysqladmin ping" --health-interval=10s --health-timeout=5s --health-retries=3
 
     steps:
       - uses: actions/checkout@v7
 
-      - uses: koesterlab/setup-slurm-action@v1
-        with:
-          cpus: 2
-          memory: 8000
+      - name: Set up Slurm
+        run: sudo bash tests/cluster/setup_github_actions_slurm.sh
 
       - uses: matlab-actions/setup-matlab@v3
         with:
@@ -151,6 +140,10 @@ jobs:
             echo "::error::$failed test(s) failed"
             exit 1
           fi
+
+      - name: Show Slurm logs
+        if: failure()
+        run: sudo tail -n 100 /var/log/slurm/slurmctld.log /var/log/slurm/slurmd.log
 
       - if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v7

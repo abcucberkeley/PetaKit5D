@@ -129,9 +129,10 @@ issues), the CI command ends with `pktest.finishCI`, which writes
 step fails the job if tests failed or the status file is missing.
 
 A separate job sets up a single-node Slurm cluster on the Ubuntu runner
-(`koesterlab/setup-slurm-action`) and runs the `Cluster` tests there with
-bash tasks; jobs can't start MATLAB on GitHub (see below), so the MATLAB
-task tests run on the lab cluster.
+(`tests/cluster/setup_github_actions_slurm.sh`, Ubuntu's Slurm 23.11 without
+an accounting database) and runs the `Cluster` tests there with bash tasks;
+jobs can't start MATLAB on GitHub (see below), so the MATLAB task tests run
+on the lab cluster.
 
 MATLAB is licensed automatically for public repositories by the
 `matlab-actions` steps, and only inside them. The runners have no GPU, so `GPU` tests are skipped
