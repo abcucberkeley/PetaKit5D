@@ -150,16 +150,9 @@ classdef CropDatasetTest < pktest.TestCase
             testCase.verifyEqual(readtiff([resultPath, testCase.Names{1}, '.tif']), sentinel);
             testCase.verifyEqual(readtiff([resultPath, testCase.Names{2}, '.tif']), testCase.crop(testCase.Images{2}, testCase.Bbox));
         end
-    end
 
-    methods (Test, TestTags = {'Integration', 'KnownIssue'})
         function tiffInputSavedAsZarr(testCase)
-            % KNOWN ISSUE: with tif input and saveZarr=true, XR_crop_dataset
-            % keeps the input file name (XR_crop_dataset.m, cropFullpath only
-            % changes the extension for zarr input) and XR_crop_frame strips 5
-            % characters ('.zarr') from it, so the result is a zarr folder
-            % named '<name>.tif'. Fix: replace the extension with .zarr when
-            % saveZarr is true, for both input formats.
+            % tif input saved as zarr used to get a zarr folder named *.tif
             testCase.writeDataset('tif');
             XR_crop_dataset(testCase.DataPath, testCase.Bbox, 'channelPatterns', testCase.Channels(1), ...
                 'saveZarr', true, 'parseCluster', false, 'masterCompute', true);

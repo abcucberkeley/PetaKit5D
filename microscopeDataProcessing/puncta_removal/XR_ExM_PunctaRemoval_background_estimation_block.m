@@ -26,6 +26,16 @@ OTSUMaxPer = pr.OTSUMaxPer;
 MinThreshold = pr.MinThreshold;
 MaxThreshold = pr.MaxThreshold;
 BaseThreshold = pr.BaseThreshold;
+
+% empty max/base thresholds (determined with OTSU) don't bound the masks
+maxBound = MaxThreshold;
+if isempty(maxBound)
+    maxBound = inf;
+end
+baseBound = BaseThreshold;
+if isempty(baseBound)
+    baseBound = -inf;
+end
 Overwrite = pr.Overwrite;
 uuid = pr.uuid;
 
@@ -88,7 +98,7 @@ for i = 1 : numel(batchInds)
     % use MIP mask to determine the actual base threshold
     T_min = prctile(mip_i(mip_i > 0), 1);    
     T_med = median(mip_i(mip_i > 0));    
-    mip_bg = imgaussfilt(min(mip_i, MaxThreshold), Sigma * 20);
+    mip_bg = imgaussfilt(min(mip_i, maxBound), Sigma * 20);
     mip_mask_i = mip_i > mip_bg;
     alpha = 1.1;
     beta = alpha;
@@ -96,21 +106,21 @@ for i = 1 : numel(batchInds)
         mip_mask_i = mip_i > mip_bg * beta;
         beta = beta * alpha;
     end
-    mip_mask_i = ~imdilate(mip_mask_i, strel('disk', 5)) & (mip_i > max(BaseThreshold, T_min) & mip_i < max(T_med, MaxThreshold));
+    mip_mask_i = ~imdilate(mip_mask_i, strel('disk', 5)) & (mip_i > max(baseBound, T_min) & mip_i < max(T_med, maxBound));
     mip_mask_i = imopen(mip_mask_i, strel('disk', 5));
     mip_mask_i = imerode(mip_mask_i, strel('disk', 5));
     T_mask = mode(mip_i(mip_mask_i));
     if T_mask < prctile(mip_i(mip_mask_i), 25)
         T_mask = median(mip_i(mip_mask_i));
     end
-    T_mask = max(BaseThreshold, min(T_mask, MaxThreshold));
+    T_mask = max(baseBound, min(T_mask, maxBound));
 
     if ~isempty(BaseThreshold)
         % weighted average to consider both local and global effects
         if isempty(T)
             T = MinThreshold;
         end
-        if T > MaxThreshold
+        if T > maxBound
             T = MaxThreshold;
         end
         T = 0.9 * max([BaseThreshold, T_mask]) + 0.1 * T;

@@ -7,7 +7,7 @@ function XR_unmix_channels_zarr(zarrFullpaths, unmixFactors, varargin)
 %
 % Parameters (as 'specifier'-value pairs):
 %                mode : char (default: 'linear'). Mode of unmixing. linear: linear unmixing; gaussian: gaussian unmixing
-%         unmixSigmas : empty or 1x#Channel (default: []). Sigmas for gaussian unmixing.
+%         unmixSigmas : empty, #Channel x 1 or #Channel x 3 (default: []). Sigmas for gaussian unmixing, one row per channel.
 %       resultDirName : char (default: 'Unmixed'). Result directory under data paths.
 %          channelInd : a number from 1 - #Channel (default: 1). The channel to unmix.
 %           batchSize : 1x3 vector (default: [1024, 1024, 1024]). Batch size per unmixing task.

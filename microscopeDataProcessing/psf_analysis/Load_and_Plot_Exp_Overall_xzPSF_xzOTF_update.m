@@ -57,7 +57,9 @@ if nargin < 12
 end
 
 %load all images in the TIF stack to a single 3D matrix:
-warning('off','all') % Suppress all the tiff warnings
+% Suppress all the tiff warnings while loading and plotting
+warnState = warning('off', 'all');
+restoreWarnings = onCleanup(@() warning(warnState));
 % tstack  = Tiff(filenm);
 % [I,J] = size(tstack.read());
 % K = length(imfinfo(filenm));

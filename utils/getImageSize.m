@@ -12,7 +12,9 @@ function [imSize] = getImageSize(filePath)
 % xruan (01/14/2022): use mex version by default
 
 
-warning ('off','all');
+% hide warnings (e.g., for unknown tiff tags) only during the query
+warnState = warning('off', 'all');
+restoreWarnings = onCleanup(@() warning(warnState));
 
 if strcmp(filePath(end - 2 : end), 'tif') || strcmp(filePath(end - 3 : end), 'tiff')
     % tobj = Tiff(filePath, 'r');

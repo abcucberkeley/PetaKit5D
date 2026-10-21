@@ -49,12 +49,20 @@ switch lower(Mode)
             disp('Use the alternative tiff writer (saveastiff)...');
             options.message = false;
             options.overwrite = true;
-            saveastiff(img, filepath, options);
+            % saveastiff returns an error code instead of raising errors
+            % when message is false
+            res = saveastiff(img, filepath, options);
+            if res ~= 0
+                error('Unable to write %s (saveastiff error code %d).', filepath, res);
+            end
         end
     case {'libtiff', 'imwrite'}
         options.message = false;
         options.overwrite = true;
-        saveastiff(img, filepath, options);
+        res = saveastiff(img, filepath, options);
+        if res ~= 0
+            error('Unable to write %s (saveastiff error code %d).', filepath, res);
+        end
 end
 
 if groupWrite && ~ispc

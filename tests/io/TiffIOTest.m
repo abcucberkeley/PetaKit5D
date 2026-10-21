@@ -131,17 +131,9 @@ classdef TiffIOTest < pktest.TestCase
             testCase.verifyEqual(readtiff(fn, 'range', [3, 6]), im(:, :, 3 : 6), ...
                 'readtiff with a range returned the wrong slices of an ImageJ stack.');
         end
-    end
-
-    methods (Test, TestTags = {'Unit', 'KnownIssue'})
 
         function unsupportedInputIsNotSilentlyDropped(testCase)
-            % KNOWN ISSUE: parallelWriteTiff rejects 4-D and empty arrays,
-            % writetiff falls back to saveastiff with message=false, which
-            % returns an error code instead of throwing, so no file is
-            % written and no error is raised (writetiff.m, saveastiff.m).
-            % Fix: check the saveastiff return code (or validate the input
-            % dimensions up front) and error.
+            % writetiff used to ignore the error code of its fallback writer
             dataPath = testCase.createTempFolder();
             inputs = {zeros(4, 4, 2, 2, 'uint16'), zeros(0, 0, 'uint16')};
             names = {'4-D', 'empty'};

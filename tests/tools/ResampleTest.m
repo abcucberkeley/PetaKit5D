@@ -84,6 +84,15 @@ classdef ResampleTest < pktest.TestCase
             expected = uint16(imresize3(single(im), round(testCase.ImSize / 2), 'Method', 'linear'));
             testCase.verifyEqual(readzarr([dataPath, 'out.zarr']), expected);
         end
+
+        function image2dWithYxzFactor(testCase)
+            % 2D images used to be resampled with the x and z factors of a yxz factor
+            dataPath = testCase.createTempFolder();
+            writetiff(uint16(randi(60000, 40, 36)), [dataPath, 'im.tif']);
+            XR_resampleFrame([dataPath, 'im.tif'], [dataPath, 'out.tif'], [1, 2, 4]);
+            testCase.verifyEqual(size(readtiff([dataPath, 'out.tif'])), [40, 18], ...
+                'A 2-D image was not resampled with the y and x factors.');
+        end
     end
 
     methods (Test, TestTags = {'Integration'})
@@ -125,21 +134,10 @@ classdef ResampleTest < pktest.TestCase
             % +/-1 from rounding uint16 vs single interpolation results
             testCase.verifyImagesClose(out, expected, 'relTol', 1e-4, 'absTol', 1);
         end
-    end
 
-    methods (Test, TestTags = {'Integration', 'KnownIssue'})
         function largeZarrWithDefaultBorderSize(testCase)
-            % KNOWN ISSUE: resampleZarrBlock.m resizes each batch together with
-            % its border and crops the result at baStart = round((ibStart_orig
-            % - ibStart) ./ resampleFactor) + 1. If the border is not a
-            % multiple of the factor (the default borderSize [5, 5, 5] with a
-            % factor of 2), the batch is sampled on a grid shifted by half an
-            % output voxel, so large-file resampling differs from in-memory
-            % resampling almost everywhere (by up to ~10% of the intensity
-            % range for this noise image) and has seams at batch borders.
-            % Fix: round the border up to a multiple of the factor, e.g.,
-            % borderSize = ceil(borderSize ./ rs) .* rs, or account for the
-            % offset when computing the output grid.
+            % batches used to be shifted by half an output voxel when the border
+            % (default [5, 5, 5]) is not a multiple of the factor
             [dataPath, ims, names] = testCase.writeDataset('zarr');
             XR_resample_dataset(dataPath, [2, 2, 2], 'channelPatterns', testCase.Channels(1), 'zarrFile', true, ...
                 'largeFile', true, 'saveZarr', true, 'batchSize', [16, 16, 4], 'blockSize', [8, 8, 2], ...
@@ -147,21 +145,6 @@ classdef ResampleTest < pktest.TestCase
             out = readzarr([dataPath, 'resampled/', names{1}, '.zarr']);
             expected = uint16(imresize3(single(ims{1}), round(testCase.ImSize / 2), 'Method', 'linear'));
             testCase.verifyImagesClose(out, expected, 'relTol', 1e-4, 'absTol', 1);
-        end
-    end
-
-    methods (Test, TestTags = {'Unit', 'KnownIssue'})
-        function image2dWithYxzFactor(testCase)
-            % KNOWN ISSUE: for 2-D images XR_resampleFrame.m expands the factor
-            % with [ones(1, 3 - numel(rs)) * rs(1), rs(2 : end)], so a yxz
-            % factor [a, b, c] becomes [b, c] instead of [a, b]. Dataset
-            % wrappers pass yxz factors, so 2-D images are resampled with the
-            % x and z factors. Fix: use rs(1 : 2) for 2-D images.
-            dataPath = testCase.createTempFolder();
-            writetiff(uint16(randi(60000, 40, 36)), [dataPath, 'im.tif']);
-            XR_resampleFrame([dataPath, 'im.tif'], [dataPath, 'out.tif'], [1, 2, 4]);
-            testCase.verifyEqual(size(readtiff([dataPath, 'out.tif'])), [40, 18], ...
-                'A 2-D image was not resampled with the y and x factors.');
         end
     end
 

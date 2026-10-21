@@ -165,9 +165,12 @@ for f = 1 : nF
     
     frameFullpath = [dataPath, '/', fname];
     frameFullpaths{f} = frameFullpath;
-    cropFullpath = [resultPath, '/', fname];
-    if zarrFile && ~saveZarr
-        cropFullpath = [resultPath, '/', fname(1 : end - 5), '.tif'];
+    % the output format follows saveZarr, whatever the input format
+    [~, fsn] = fileparts(fname);
+    if saveZarr
+        cropFullpath = [resultPath, '/', fsn, '.zarr'];
+    else
+        cropFullpath = [resultPath, '/', fsn, '.tif'];
     end
     cropFullpaths{f} = cropFullpath;
 

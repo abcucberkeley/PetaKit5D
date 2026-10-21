@@ -60,16 +60,10 @@ classdef ImageInfoTest < pktest.TestCase
             imwrite(zeros(4, 4, 'uint8'), fn);
             testCase.verifyError(@() getImageDataType(fn), ?MException);
         end
-    end
 
-    methods (Test, TestTags = {'Unit', 'KnownIssue'})
         function queryingMetadataKeepsWarningState(testCase)
-            % KNOWN ISSUE: getImageSize.m (line 15) and getZarrInfo.m (line 8)
-            % call warning('off', 'all') and never restore it. Nearly every
-            % wrapper calls getImageSize, so after the first wrapper call all
-            % warnings stay disabled for the rest of the MATLAB session.
-            % Fix: ws = warning('off', 'all'); c = onCleanup(@() warning(ws));
-            % or remove the call.
+            % getImageSize and getZarrInfo used to turn off all warnings for the rest
+            % of the session
             dataPath = testCase.createTempFolder();
             writetiff(zeros(4, 4, 2, 'uint16'), [dataPath, 'im.tif']);
             writezarr(zeros(4, 4, 2, 'uint16'), [dataPath, 'im.zarr']);
@@ -84,4 +78,5 @@ classdef ImageInfoTest < pktest.TestCase
                 'getZarrInfo turned all warnings off.');
         end
     end
+
 end

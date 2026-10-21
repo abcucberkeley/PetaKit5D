@@ -60,6 +60,10 @@ im = single(im);
 
 rs = resampleFactor(:)';
 if ismatrix(im)
+    % a yxz factor uses its y and x factors
+    if numel(rs) == 3
+        rs = rs(1 : 2);
+    end
     rs = [ones(1, 3 - numel(rs)) * rs(1), rs(2:end)];    
 else
     % complete rs to 3d in case it is not

@@ -51,7 +51,7 @@ ip.addParameter('parseCluster', true, @islogical);
 ip.addParameter('masterCompute', true, @islogical); % master node participate in the task computing. 
 ip.addParameter('jobLogDir', '../job_logs', @ischar);
 ip.addParameter('cpusPerTask', 24, @isnumeric);
-ip.addParameter('mccMode', false, @ischar);
+ip.addParameter('mccMode', false, @islogical);
 ip.addParameter('configFile', '', @ischar);
 ip.addParameter('uuid', '', @ischar);
 

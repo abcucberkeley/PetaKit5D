@@ -1,26 +1,20 @@
 classdef PunctaRemovalTest < pktest.TestCase
     % XR_ExM_PunctaRemoval_zarr (expansion microscopy puncta removal): a
-    % smooth stained background with a few very bright puncta. The puncta
-    % must be removed and the output must keep the input size.
+    % large stained structure and a few small, very bright puncta on a dark
+    % background. The puncta must be removed, the structure kept, and the
+    % output must keep the input size.
 
     properties (Constant)
         Puncta = [20, 20, 20; 40, 44, 30; 30, 50, 45]
         PunctumAmplitude = 20000
+        % y, x, z ranges of the stained structure
+        Structure = {45 : 60, 5 : 30, 5 : 35}
     end
 
-    methods (Test, TestTags = {'Integration', 'KnownIssue'})
+    methods (Test, TestTags = {'Integration'})
         function removesPunctaWithDefaultThresholds(testCase)
-            % KNOWN ISSUE: XR_ExM_PunctaRemoval_zarr.m builds the 'updated'
-            % (default) task string with scalar %0.20d conversions for
-            % MinThreshold, MaxThreshold and BaseThreshold. The defaults
-            % ([0, 0], [] and [], i.e., Otsu thresholds) shift all later
-            % sprintf arguments, so the task string is invalid MATLAB
-            % ("Invalid expression") and the function always fails with
-            % default settings. Formatting them with mat2str is not enough:
-            % XR_ExM_PunctaRemoval_updated_block.m uses MaxThreshold and
-            % BaseThreshold unconditionally (e.g., min(mip_i, MaxThreshold)),
-            % which fails for the empty defaults, and the issues in
-            % removesPunctaWithScalarThresholds also apply.
+            % the task string used to be invalid with the default (empty)
+            % thresholds, and the block function couldn't handle them
             [zarrFn, vol] = testCase.punctaVolume();
             XR_ExM_PunctaRemoval_zarr(zarrFn, 'batchSize', [64, 64, 64], 'blockSize', [32, 32, 32], ...
                 'parseCluster', false, 'masterCompute', true);
@@ -28,18 +22,11 @@ classdef PunctaRemovalTest < pktest.TestCase
         end
 
         function removesPunctaWithScalarThresholds(testCase)
-            % KNOWN ISSUE: even with scalar thresholds, the 'updated' task
-            % string passes 'uuid' to XR_ExM_PunctaRemoval_updated_block,
-            % which has no uuid parameter ("'uuid' is not a recognized
-            % parameter"). Fix: add the parameter to the block function or
-            % drop it from the task string. Further along the same path,
-            % XR_ExM_PunctaRemoval_updated_block.m:171 calls the misspelled
-            % XR_ExM_PunctalRemovalPointDetection, and
-            % XR_ExM_PunctaRemoval_zarr.m:328 passes the undefined ConfigFile
-            % (the variable is configFile).
+            % the task string used to pass parameters the block function
+            % doesn't take, and the block called a misspelled function
             [zarrFn, vol] = testCase.punctaVolume();
             XR_ExM_PunctaRemoval_zarr(zarrFn, 'batchSize', [64, 64, 64], 'blockSize', [32, 32, 32], ...
-                'MinThreshold', 0, 'MaxThreshold', 2000, 'BaseThreshold', 300, 'volThrsh', 100, ...
+                'MinThreshold', 0, 'MaxThreshold', 3000, 'BaseThreshold', 1000, ...
                 'parseCluster', false, 'masterCompute', true);
             testCase.verifyPunctaRemoved(zarrFn, vol);
         end
@@ -48,8 +35,9 @@ classdef PunctaRemovalTest < pktest.TestCase
     methods (Access = private)
         function [zarrFn, vol] = punctaVolume(testCase)
             dataPath = testCase.createTempFolder();
-            vol = pktest.texture([64, 64, 64], 4, [500, 1000]) + ...
-                pktest.beads([64, 64, 64], testCase.Puncta, 1.5, testCase.PunctumAmplitude, 0);
+            vol = 100 + pktest.beads([64, 64, 64], testCase.Puncta, 1.5, testCase.PunctumAmplitude, 0);
+            st = testCase.Structure;
+            vol(st{:}) = vol(st{:}) + 4900 + 200 * randn(cellfun(@numel, st));
             zarrFn = [dataPath, 'expanded.zarr'];
             writezarr(single(vol), zarrFn, blockSize=[32, 32, 32]);
         end
@@ -64,6 +52,10 @@ classdef PunctaRemovalTest < pktest.TestCase
                 testCase.verifyLessThan(out(p(1), p(2), p(3)), 0.1 * testCase.PunctumAmplitude, ...
                     sprintf('Punctum at %s was not removed.', mat2str(p)));
             end
+            % the interior of the structure (its edges are smoothed)
+            inner = cellfun(@(r) r(4 : end - 3), testCase.Structure, 'unif', 0);
+            testCase.verifyEqual(mean(out(inner{:}), 'all'), mean(vol(inner{:}), 'all'), 'RelTol', 0.01, ...
+                'The stained structure was not kept.');
         end
     end
 end

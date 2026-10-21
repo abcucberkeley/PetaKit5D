@@ -65,16 +65,10 @@ classdef ChromaticShiftCorrectionTest < pktest.TestCase
             outB = readzarr([dataPath, 'Chromatic_Shift_Corrected/', sprintf(testCase.Fsn, 'CamB'), '.zarr']);
             testCase.verifyEqual(outB, outA);
         end
-    end
 
-    methods (Test, TestTags = {'Integration', 'KnownIssue'})
         function sameModeKeepsImageSize(testCase)
-            % KNOWN ISSUE: XR_chromatic_shift_correction_data_wrapper.m:160
-            % tests isempty(neworigin) (lowercase), an undefined variable,
-            % so 'same' mode always errors. Renaming it to newOrigin is not
-            % enough: :164 has the same flipped bbox sign as 'full' mode (see
-            % fullModeContainsBothChannels), and the default origin (:162)
-            % shifts even an unshifted channel by half the overlap.
+            % 'same' mode used to error (neworigin undefined), flip the offsets and
+            % shift the output by half the image by default
             [dataPath, ~, ~] = testCase.shiftedChannels(testCase.Offset);
 
             testCase.runCorrection(dataPath, 'same', 'chromaticOffset', testCase.Offset);
@@ -87,11 +81,8 @@ classdef ChromaticShiftCorrectionTest < pktest.TestCase
         end
 
         function fullModeContainsBothChannels(testCase)
-            % KNOWN ISSUE: in 'full' mode (wrapper lines 166-168), fullSize
-            % is computed from the bbox starts only (columns 1:3 instead of
-            % 4:6), so the output is offset-sized instead of the union of
-            % the channels, and the bbox is relative to the canvas instead
-            % of each channel (sign flipped).
+            % 'full' mode used to size the output from the bounding box starts and
+            % flip the offsets
             [dataPath, ~, ~] = testCase.shiftedChannels(testCase.Offset);
 
             testCase.runCorrection(dataPath, 'full', 'chromaticOffset', testCase.Offset);

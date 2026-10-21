@@ -5,7 +5,9 @@ function [zInfo] = getZarrInfo(filePath)
 % Author: Xiongtao Ruan (06/2024)
 
 
-warning ('off','all');
+% hide warnings (e.g., for unknown tiff tags) only during the query
+warnState = warning('off', 'all');
+restoreWarnings = onCleanup(@() warning(warnState));
 
 zInfo = struct();
 if strcmp(filePath(end - 3 : end), 'zarr') || exist([filePath, '/.zarray'], 'file')

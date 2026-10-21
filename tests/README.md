@@ -167,16 +167,12 @@ lists the ones that may be intended.
 | `MexPackagingTest` | 15 ARM macOS mex files (crop, deskew/rotate, flat field, stitch, MIP) load Homebrew's `libgomp` by absolute path; without Homebrew gcc@13 they only load if cpp-tiff/cpp-zarr was used first in the session. |
 | `AutomaticProcessingTest/demoParameterSetIsAccepted` | The three `demo_microscope_pipeline_*.m` demos pass a 4-element `Save16bit`, which `XR_microscopeAutomaticProcessing` rejects since deconvolution was removed from it (abd53f9); the demos are out of date. |
 | `PointDetectionTest/lowSNRDetectionRuns` | `DetectionMethod='lowSNR'`, which all three point detection demos use, calls `crop_image_by_bounding_box`, which doesn't exist. |
-| `PunctaRemovalTest/removesPunctaWithDefaultThresholds` | `XR_ExM_PunctaRemoval_zarr` with default thresholds builds an invalid task string (`%0.20d` with empty/vector thresholds), so default puncta removal never runs. There are more bugs further along this path (see the test comments). |
 
 **Wrong or silently ignored results**
 
 | Test | Problem |
 |---|---|
 | `DeskewRotateFrame3DTest/save16bitRoundsToNearest` | On Linux and Windows, uint16 deskew/rotation output is rounded up (`ceil`) instead of to the nearest integer (AVX kernels add 0.5 and then round), so it is biased by +0.5 and differs from macOS. |
-| `ResampleTest/image2dWithYxzFactor` | 2D resampling uses the wrong elements of a yxz factor. |
-| `ChromaticShiftCorrectionTest/fullModeContainsBothChannels` | Chromatic shift `'full'` mode computes the output size from the bounding box starts and flips the offset sign. |
-| `ResampleTest/largeZarrWithDefaultBorderSize` | Large-file resampling with the default `borderSize` shifts every batch after the first by half an output voxel. |
 | `ImarisConversionTest/imageSizeIsNotPaddedToBlocks` | The Parallel_Imaris_Writer adds `size mod blockSize` to the image size it records (e.g., 20 becomes 24 with blocks of 16) and counts the padding in the histograms. |
 
 **Errors**
@@ -184,14 +180,7 @@ lists the ones that may be intended.
 | Test | Problem |
 |---|---|
 | `XRDeskewRotateFrameTest/backgroundRemovalRuns` | `BKRemoval=true` calls `XR_CameraBackgroundRemoval`, which isn't in PetaKit5D (old mcc builds show it in the author's private repository). |
-| `ChromaticShiftCorrectionTest/sameModeKeepsImageSize` | Chromatic shift `'same'` mode errors (undefined `neworigin`). |
-| `UnmixChannelsTest/gaussianUnmixingThroughDataWrapper` | Gaussian unmixing through the data wrapper fails for per-channel sigmas (`mat2str_comma` of a matrix). |
-| `PunctaRemovalTest/removesPunctaWithScalarThresholds` | The puncta removal task string passes `'uuid'`, which the block function doesn't accept; further along, it calls a misspelled function and passes an undefined `ConfigFile`. |
-| `FlatfieldBackgroundEstimationTest/acceptsMccModeFalse` | `XR_flatfield_background_wrapper` validates `mccMode` with `@ischar`. |
-| `TiffIOTest/unsupportedInputIsNotSilentlyDropped` | `writetiff` of 4D or empty data writes nothing and raises no error. |
-| `CropDatasetTest/tiffInputSavedAsZarr` | Cropping tif input to zarr creates a zarr folder named `*.tif`. |
 | `CropMexTest/indexing4dMexSupportsLogical` | `indexing4d_mex` rejects logical input (missing `else`). |
-| `ImageInfoTest/queryingMetadataKeepsWarningState` | `getImageSize`/`getZarrInfo` turn off all warnings for the rest of the session. |
 
 **May be intended.** These tests fail, but the behavior may be deliberate.
 Ask the author before fixing them; if it is intended, remove the test (or
@@ -284,7 +273,7 @@ Every workflow in `demos/` is covered by tests on synthetic data:
 | `demo_RL_deconvolution` | `decon/DeconFrameTest` (OTF mask visualization), `decon/DeconWrapperTest` (OMW and traditional RL through the wrapper, deskew/rotation of the results), `decon/DeconFunctionTest` (`psf_gen_new`, `decon_lucy_function`, WB back projector, OMW back projector), `decon/DeconGPUTest` (GPU), `demo_data/DemoDatasetTest` (OMW on real data). |
 | `demo_zarr_stitching` | `stitch/StitchingTest` (DSR-space stitching of processed zarr tiles, feather blending, cross-correlation registration, primary channel). The BigStitcher and Stitching-Spark sections use external tools and aren't tested. |
 | `demo_skewed_space_stitching` | `stitch/StitchingTest/skewedSpacePlacement`, `skewedSpaceRegistration`. |
-| `demo_large_scale_processing` | `stitch/StitchingTest/largeFile*` (known issue), `decon/DeconWrapperTest/largeFile*`, `deskew_rotate/DeskewRotateDataWrapperTest/largeFileMatchesRegular`. |
+| `demo_large_scale_processing` | `stitch/StitchingTest/largeFile*`, `decon/DeconWrapperTest/largeFile*`, `deskew_rotate/DeskewRotateDataWrapperTest/largeFileMatchesRegular`. |
 | `demo_useful_tools` | `tools/ResampleTest`, `crop/CropDatasetTest`, `tools/MIPTest`, `tools/TiffZarrConversionTest`, `deskew_rotate/DeskewRotateDataWrapperTest/deskewOnlyWritesDS`, `analysis/FFTSpectrumTest`, `analysis/PSFAnalysisTest`, `analysis/FSCAnalysisTest`, `analysis/ImarisConversionTest`, `analysis/ChromaticShiftCorrectionTest`, `analysis/UnmixChannelsTest`. |
 | `demo_phase_and_2photon_stitching` | `stitch/PhaseFlatFieldCorrectionTest`, `stitch/ImageListGenerationTest` (tile positions, pixel and micron overlaps, non-standard names), `stitch/StitchingTest` (2D tiles, IOScan with flipped axes, processing function). |
 | `demo_widefield_and_confocal_deconvolution` | `decon/DeconWrapperTest/widefieldDemoSettingsWithPlainFilenames`. |

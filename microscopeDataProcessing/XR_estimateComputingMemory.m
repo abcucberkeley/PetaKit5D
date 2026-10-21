@@ -20,7 +20,9 @@ ip.addParameter('GPUMaxMem', 12, @isnumeric);
 
 ip.parse(filePath, varargin{:});
 
-warning('off', 'all');
+% hide warnings only during the estimate
+warnState = warning('off', 'all');
+restoreWarnings = onCleanup(@() warning(warnState));
 
 steps = ip.Results.steps;
 imSize = ip.Results.imSize;

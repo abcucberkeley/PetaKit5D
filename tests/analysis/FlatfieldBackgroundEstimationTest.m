@@ -53,14 +53,9 @@ classdef FlatfieldBackgroundEstimationTest < pktest.TestCase
             testCase.verifyLessThan(abs(mean(err)), 0.3);
             testCase.verifyLessThan(max(abs(err)), 5);
         end
-    end
 
-    methods (Test, TestTags = {'Integration', 'KnownIssue'})
         function acceptsMccModeFalse(testCase)
-            % KNOWN ISSUE: XR_flatfield_background_wrapper.m validates
-            % mccMode with @ischar, so passing mccMode=false (as the other
-            % wrappers and the demos do) fails input validation. Fix: use
-            % @islogical.
+            % mccMode used to be validated with @ischar
             dataPath = testCase.createTempFolder();
             writetiff(testCase.darkStack(testCase.DarkLevel * ones(48, 40)), [dataPath, sprintf(testCase.Fsn, 'CamA')]);
 

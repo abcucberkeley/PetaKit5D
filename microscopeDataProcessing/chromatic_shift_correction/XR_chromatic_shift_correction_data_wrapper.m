@@ -157,15 +157,19 @@ for d = 1 : nd
             ch_bboxes_d = overlap_bbox - [ch_bboxes_d(:, 1 : 3), ch_bboxes_d(:, 1 : 3)] + 1;
             pad = false;
         case 'same'
-            if isempty(neworigin)
+            origin_d = newOrigin;
+            if isempty(origin_d)
+                % center the output on the overlap of the channels
                 overlap_bbox = [max(ch_bboxes_d(:, 1 : 3), [], 1),  min(ch_bboxes_d(:, 4 : 6), [], 1)];
-                newOrigin = overlap_bbox(1 : 3) - floor((overlap_bbox(4 : 6) - overlap_bbox(1 : 3) + 1) / 2);
+                overlapSize = overlap_bbox(4 : 6) - overlap_bbox(1 : 3) + 1;
+                origin_d = overlap_bbox(1 : 3) + floor((overlapSize - imSize) / 2);
             end
-            ch_bboxes_d = [ch_bboxes_d(:, 1 : 3) - newOrigin + 1, ch_bboxes_d(:, 1 : 3) - newOrigin + imSize];
+            % the output region in the coordinates of each channel
+            ch_bboxes_d = [origin_d - ch_bboxes_d(:, 1 : 3) + 1, origin_d - ch_bboxes_d(:, 1 : 3) + imSize];
         case 'full'
-            newOrigin = min(ch_bboxes_d(:, 1 : 3), [], 1);
-            fullSize = max(ch_bboxes_d(:, 1 : 3), [], 1) - newOrigin + 1;
-            ch_bboxes_d = [ch_bboxes_d(:, 1 : 3) - newOrigin + 1, ch_bboxes_d(:, 1 : 3) - newOrigin + fullSize];
+            origin_d = min(ch_bboxes_d(:, 1 : 3), [], 1);
+            fullSize = max(ch_bboxes_d(:, 4 : 6), [], 1) - origin_d + 1;
+            ch_bboxes_d = [origin_d - ch_bboxes_d(:, 1 : 3) + 1, origin_d - ch_bboxes_d(:, 1 : 3) + fullSize];
     end
     ch_bboxes_cell{d} = ch_bboxes_d;
 end

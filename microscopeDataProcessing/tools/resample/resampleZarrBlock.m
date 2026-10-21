@@ -33,6 +33,9 @@ borderSize = pr.borderSize;
 if isempty(borderSize) 
     borderSize = [0, 0, 0];
 end
+% a border that is a multiple of the resample factor keeps each batch on the
+% grid of the whole output
+borderSize = round(ceil(borderSize ./ resampleFactor) .* resampleFactor);
 
 % we assume the path exists, otherwise return error (in case of completion 
 % of processing for all blocks).
