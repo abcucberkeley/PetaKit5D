@@ -210,6 +210,8 @@ xyPixelSize = 0.108;
 dz = 0.3;
 % input bounding box for the crop: [ymin, xmin, zmin, ymax, xmax, zmax]
 inBbox = [101, 1, 1, 1700, 512, 500];
+% the tiles in the published dataset have 100 slices
+inBbox(4 : 6) = min(inBbox(4 : 6), getImageSize(inputFullnames{1}));
 
 % define function strings for the processing
 nF = numel(inputFullnames);
