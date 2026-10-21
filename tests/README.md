@@ -190,6 +190,16 @@ document the limitation).
 | `XRDeskewRotateFrameTest/objectiveScanSeparatePathIsNotDeskewed` | With `DSRCombined=false`, objective scan data is deskewed before it is rotated, unlike the combined path and the rest of the code, which treat raw objective scan data as already unskewed. Should the separate path only rotate? |
 | `McCParserConsistencyTest` (2 tests) | `mcc_function_list.txt` lists `image_intensity_correction_block` and `replicateDataBlock`, which have no source here (likely in the author's private repository, which the mcc binaries are built from), and f6f2379 left `multiple_region_spectra_encoding_block_parser.m` behind. Keep them? |
 
+**Choices made in fixes.** Where fixing a bug meant picking a behavior,
+these were picked; confirm them with the author.
+
+| Function | Choice |
+|---|---|
+| `XR_chromatic_shift_correction_data_wrapper` | Without `newOrigin`, `'same'` mode centers the output on the overlap of the channels (the old default shifted even unshifted data by half the image). Keeping the reference channel in place (origin `[1, 1, 1]`) would be the alternative. |
+| `XR_ExM_PunctaRemoval_zarr` | `MinThreshold` defaults to `0` instead of `[0, 0]` (a per-channel vector can't work for a single zarr), and empty `MaxThreshold`/`BaseThreshold` don't bound the masks. |
+| `XR_runDetTrack3d` | `DetectionMethod` defaults to `'lowSNR'` (the old default `'update_3'` matched no method; the demos pair `'lowSNR'` with `Analysis_update_3`). |
+| `XR_deskew_rotate_data_wrapper` | Deskew only (`rotate=false`) uses the separate path even with `DSRCombined=true`, as `XR_microscopeAutomaticProcessing` does, instead of rejecting the combination. |
+
 **Platform-specific.** Tests for bugs that affect only some platforms skip
 themselves there with a `KNOWN ISSUE` message (`assumeNoKnownIssueOn`);
 remove the platform from the call when the bug is fixed. These are mex
