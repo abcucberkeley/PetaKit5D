@@ -26,8 +26,8 @@ xyz_voxelsizes = xyz_voxelsizes(:)';
 s1 = round((cubiod_overlap(1 : 3) - cuboid_1(1 : 3)) ./ xyz_voxelsizes) + 1;
 s2 = round((cubiod_overlap(1 : 3) - cuboid_2(1 : 3)) ./ xyz_voxelsizes) + 1;
 
-t1 = round((cubiod_overlap(4 : 6) - cuboid_1(4 : 6)) ./ xyz_voxelsizes) + 1;
-t2 = round((cubiod_overlap(4 : 6) - cuboid_2(4 : 6)) ./ xyz_voxelsizes) + 1;
+t1 = round((cubiod_overlap(4 : 6) - cuboid_1(1 : 3)) ./ xyz_voxelsizes) + 1;
+t2 = round((cubiod_overlap(4 : 6) - cuboid_2(1 : 3)) ./ xyz_voxelsizes) + 1;
 
 
 % split for the half of the 

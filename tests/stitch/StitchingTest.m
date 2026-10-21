@@ -222,17 +222,11 @@ classdef StitchingTest < pktest.TestCase
             testCase.verifyEqual(outB(3 : 66, 5 : 108, 3 : 34), gtB, ...
                 'The secondary channel was not stitched with the primary channel registration.');
         end
-    end
 
-    methods (Test, TestTags = {'Integration', 'KnownIssue'})
         function largeFileStitching(testCase)
-            % KNOWN ISSUE: large scale stitching (largeFile with poolSize)
-            % errors while computing the MIP slabs for registration:
-            % XR_MIP_zarr.m:108 uses bim.BlockSize, but bim no longer exists
-            % since 1128146 ("Unable to resolve the name 'bim.BlockSize'").
-            % Fix: use zInfo.blockSize. compute_tile_bwdist_mip_slabs.m:100-101
-            % has the window rounding of featherBlendingWithThinTiles, and
-            % these tiles have 16 pooled slices, so it may need that fix too.
+            % large-file stitching used to fail making the MIP slabs (bim undefined
+            % in XR_MIP_zarr) and registering them (three slips in
+            % cross_correlation_registration_3d_mip_slabs from a86c36d)
             dataPath = testCase.createTempFolder();
             gt = testCase.randomVolume([100, 120, 32]);
             csvFn = testCase.writeTiles(dataPath, gt, [0, 0, 0; 36, 0, 0; 0, 48, 0; 36, 48, 0], [64, 72, 32]);
@@ -247,17 +241,26 @@ classdef StitchingTest < pktest.TestCase
             testCase.verifyEqual(out(5 : 104, 5 : 124, 3 : 34), gt);
         end
 
+        function largeFileWithoutRegistration(testCase)
+            % the distance maps use MIP slabs, which used to be made only by the
+            % registration (xcorrShift)
+            dataPath = testCase.createTempFolder();
+            gt = testCase.randomVolume([100, 120, 32]);
+            csvFn = testCase.writeTiles(dataPath, gt, [0, 0, 0; 36, 0, 0; 0, 48, 0; 36, 48, 0], [64, 72, 32]);
+
+            testCase.stitch(dataPath, csvFn, 'blendMethod', 'feather', 'largeFile', true, 'poolSize', [2, 2, 2], ...
+                'batchSize', [32, 32, 16], 'blockSize', [16, 16, 16]);
+
+            out = testCase.readResult(dataPath);
+            testCase.verifyEqual(out(1 : 100, 1 : 120, 1 : 32), gt);
+        end
+
         function noneBlendTakesHalfOverlapFromEachTile(testCase)
-            % KNOWN ISSUE: 'none' blending is documented as "taking half
-            % overlap from each tile", but the lower index tile wins in the
-            % whole overlap: compute_half_of_overlap_region.m:29-30 computes
-            % the region end relative to the cuboid end (always <= 1, so the
-            % half regions are empty; regression from d9a099b) and
-            % processStitchBlock.m:489-490 inverts the mask that keeps
-            % existing values (regression from 4a78ade). The split axis is
-            % the first in halfOrder (default [3, 2, 1], xyz) with more than
-            % one voxel of overlap, z for these tiles, so this checks only
-            % that half of the overlap comes from each tile.
+            % 'none' blending used to take the whole overlap from the lower index tile
+            % (regressions from d9a099b and 4a78ade). The split axis is the first in
+            % halfOrder (default [3, 2, 1], xyz) with more than one voxel of overlap,
+            % z for these tiles, so this checks only that half of the overlap comes
+            % from each tile.
             dataPath = testCase.createTempFolder();
             gt = testCase.randomVolume([64, 104, 32], [1000, 50000]);
             tiles = struct('im', {gt(:, 1 : 64, :), gt(:, 41 : 104, :) + 5000}, 'idx', {[0, 0, 0], [1, 0, 0]}, ...
@@ -281,11 +284,8 @@ classdef StitchingTest < pktest.TestCase
         end
 
         function featherBlendingWithThinTiles(testCase, thinTileDepth)
-            % KNOWN ISSUE: the feather z window in compute_tile_bwdist.m:143-144
-            % starts at round(nz * 0.05), which picks tukeywin's exact 0 for
-            % 10 <= nz <= 29 (the first slice gets weight 0 and comes out 0
-            % when the whole block is blended) and index 0 for nz <= 9
-            % (error). Fix: start the window at max(1, ...) past the zero.
+            % the feather z window used to give the first slice weight 0 for 10-29
+            % slices and index 0 (error) for fewer than 10
             nz = thinTileDepth;
             dataPath = testCase.createTempFolder();
             gt = testCase.randomVolume([100, 120, nz]);
@@ -298,29 +298,8 @@ classdef StitchingTest < pktest.TestCase
                 sprintf('Feather blending of %d-slice tiles does not reproduce the ground truth.', nz));
         end
 
-        function largeFileWithoutRegistration(testCase)
-            % KNOWN ISSUE: with largeFile, feather blending reads MIP slabs
-            % (compute_tile_bwdist_mip_slabs.m:67) that are only generated
-            % in the registration step (stitch_shift_assignment.m:107-150),
-            % so largeFile stitching without xcorrShift errors ("zarr file
-            % .../MIP_Slabs_pooling_2_2_2/..._z.zarr does not exist").
-            % Fix: generate the MIP slabs whenever largeFile is true (which
-            % also needs the XR_MIP_zarr fix in largeFileStitching).
-            dataPath = testCase.createTempFolder();
-            gt = testCase.randomVolume([100, 120, 32]);
-            csvFn = testCase.writeTiles(dataPath, gt, [0, 0, 0; 36, 0, 0; 0, 48, 0; 36, 48, 0], [64, 72, 32]);
-
-            testCase.stitch(dataPath, csvFn, 'blendMethod', 'feather', 'largeFile', true, 'poolSize', [2, 2, 2], ...
-                'batchSize', [32, 32, 16], 'blockSize', [16, 16, 16]);
-
-            out = testCase.readResult(dataPath);
-            testCase.verifyEqual(out(1 : 100, 1 : 120, 1 : 32), gt);
-        end
-
         function localShiftMethod(testCase)
-            % KNOWN ISSUE: shiftMethod 'local' errors in
-            % stitch_local_assignment.m:49 (adds a 1x3 row to a 1x5 row of
-            % absolute_shift_mat).
+            % 'local' used to read the shift table in its layout before 812679e
             dataPath = testCase.createTempFolder();
             px = testCase.XYPixelSize;
             gt = testCase.randomVolume([64, 104, 32]);

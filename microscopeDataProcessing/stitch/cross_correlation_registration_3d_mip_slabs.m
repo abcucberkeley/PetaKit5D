@@ -84,7 +84,7 @@ for i = 1 : 3
     imgFullpath_i1 = mipFullpaths{i, 1};
     imgFullpath_i2 = mipFullpaths{i, 2};
 
-    xyz_voxelsizes_i = xyz_voxelsizes .* poolSize_1(xyz_voxelsizes);
+    xyz_voxelsizes_i = xyz_voxelsizes .* poolSize_1(xyz_inds);
     xyz_voxelsizes_i(xyz_inds(i)) = xyz_voxelsizes(xyz_inds(i)) * poolSize(i);
     MaxOffset_i = ceil(MaxOffset ./ poolSize_1);
     MaxOffset_i(i) = ceil(MaxOffset(i) / poolSize(i));
@@ -94,9 +94,9 @@ for i = 1 : 3
     sz_i1 = getImageSize(imgFullpath_i1);
     sz_i2 = getImageSize(imgFullpath_i2);
     cuboid_1i = cuboid_1;
-    cuboid_1i(4 : 6) = cuboid_1i(1 : 3) + (sz_i1(data_order_mat) - 2) * xyz_voxelsizes_i;
+    cuboid_1i(4 : 6) = cuboid_1i(1 : 3) + (sz_i1(data_order_mat) - 2) .* xyz_voxelsizes_i;
     cuboid_2i = cuboid_2;
-    cuboid_2i(4 : 6) = cuboid_2i(1 : 3) + (sz_i2(data_order_mat) - 2) * xyz_voxelsizes_i;
+    cuboid_2i(4 : 6) = cuboid_2i(1 : 3) + (sz_i2(data_order_mat) - 2) .* xyz_voxelsizes_i;
 
     stitch2D = false;
     [is_overlap, cuboid_overlap_12i] = check_cuboids_overlaps(cuboid_1i, cuboid_2i, stitch2D);
@@ -122,7 +122,7 @@ for i = 1 : 3
         '''MaxOffset'',%s,''largeFile'',%s,''mipDirStr'',''%s'',''poolSize'',%s)'], ...
         imgFullpath_i1, imgFullpath_i2_str, outputFullpaths{i}, strrep(mat2str(pair_indices), ' ', ','), ...
         strrep(mat2str(cuboid_1i), ' ', ','), strrep(mat2str(cuboid_2i), ' ', ','), ...
-        strrep(mat2str(cuboid_overlap_12i), ' ', ','), mat2str_comma(xyz_voxelsizes), ...
+        strrep(mat2str(cuboid_overlap_12i), ' ', ','), mat2str_comma(xyz_voxelsizes_i), ...
         mat2str_comma(data_order_mat), string(stitch2D), strrep(num2str(downSample_i, '%.20d,'), ' ', ''), ...
         strrep(mat2str(MaxOffset_i), ' ', ','), string(largeFile), mipDirStr_i, ...
         strrep(mat2str(poolSize_i), ' ', ','));

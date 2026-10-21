@@ -9,23 +9,14 @@ d_shift = zeros(nF, 3);
 max_xcorr_mat(max_xcorr_mat(:, 3) < xcorr_thresh, 3) = 0.001;        
 G = graph(max_xcorr_mat(:, 1), max_xcorr_mat(:, 2), -max_xcorr_mat(:, 3));
 T = minspantree(G, 'type', 'forest');
-aj = full(adjacency(T));
-if any(size(aj) ~= nF)
-    aj = padarray(aj, nF - size(aj), 0, 'post');
-end
-% overlap_matrix = overlap_matrix .* aj;
-[inds_i, inds_j] = find(overlap_matrix .* aj);
-absolute_shift_mat_orig = absolute_shift_mat;
-absolute_shift_mat = absolute_shift_mat * 0;        
-if numel(inds_i) > 0
-    tinds = (inds_i - 1) * nF - inds_i .* (inds_i + 1) / 2 + inds_j;
-    absolute_shift_mat(tinds, :) = absolute_shift_mat_orig(tinds, :);
-end
+% absolute_shift_mat has a row [i, j, x, y, z] for each tile pair with an
+% xcorr, and only the pairs in the tree are used below
 
 % xruan (11/05/2021) change to use DFS search to just shift to the tile's precessor
 % search from node 1
 v = dfsearch(T, 1);
-visit_flag = false(numel(v), 1);
+% indexed by tile, and tiles without overlaps are not in v
+visit_flag = false(nF, 1);
 for i = 1 : numel(v)
     n_i = v(i);
     if i == 1
@@ -44,9 +35,9 @@ for i = 1 : numel(v)
         t = n_pr;
         st_sign = -1;
     end
-    ind = (s - 1) * nF - s * (s + 1) / 2 + t;
+    ind = find(absolute_shift_mat(:, 1) == s & absolute_shift_mat(:, 2) == t, 1);
 
-    d_shift(n_i, :) = d_shift(n_pr, :) + st_sign .* absolute_shift_mat(ind, :);
+    d_shift(n_i, :) = d_shift(n_pr, :) + st_sign .* absolute_shift_mat(ind, 3 : 5);
     visit_flag(n_i) = true;
 end
 

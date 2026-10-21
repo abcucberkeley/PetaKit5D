@@ -105,7 +105,7 @@ else
     end
     poolSize = poolSize(1 : 3);
     inblockSize = lcm(poolSize, poolSize_1);
-    inblockSize_1 = lcm(inblockSize, bim.BlockSize);
+    inblockSize_1 = lcm(inblockSize, zInfo.blockSize(:)');
     % limit the block size to 10 GB
     if prod(inblockSize_1) * byteNum / 2^30 < 10
         inblockSize = inblockSize_1;

@@ -146,6 +146,9 @@ else
 end
     
 if largeFile
+    % the distance maps use the MIP slabs, which the registration makes
+    % only with xcorrShift
+    compute_tile_mip_slabs(tileFullpaths, poolSize, parseCluster, mccMode, configFile);
     switch numel(poolSize)
         case 3
             poolSize_str = sprintf('pooling_%d_%d_%d', poolSize(1), poolSize(2), poolSize(3));

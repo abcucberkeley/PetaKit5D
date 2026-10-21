@@ -61,6 +61,26 @@ classdef ImageListGenerationTest < pktest.TestCase
                 testCase.verifyEncoderImageList(dataPaths{d}, fns{d}, mcs2{d});
             end
         end
+
+        function tilePositionStepsForNonSquareTiles(testCase)
+            % the x and y steps used to be swapped for non-square tiles
+            dataPath = testCase.createTempFolder();
+            px = testCase.XYPixelSize;
+            % 48 x 64 (y x) tiles in a 2 x 2 grid
+            for xi = 0 : 1
+                for yi = 0 : 1
+                    writetiff(ones(48, 64, 'uint16'), sprintf(['%sScan_Iter_0000_CamB_ch0_CAM1_stack0000_642nm_', ...
+                        '0000000msec_0000000000msecAbs_%03dx_%03dy_000z_0000t.tif'], dataPath, xi, yi));
+                end
+            end
+
+            XR_generate_image_list_wrapper(dataPath, 'tile_position', 'xyPixelSize', px, ...
+                'channelPatterns', {'Scan'}, 'overlapSize', [8, 8, 1], 'overlapSizeType', 'pixel', 'IOScan', true);
+
+            tab = readtable([dataPath, 'ImageList_from_tile_positions.csv'], 'Delimiter', 'comma');
+            testCase.verifyEqual(max(tab.StageX_um_), (64 - 8) * px, 'AbsTol', 1e-9, 'Wrong tile step in x.');
+            testCase.verifyEqual(max(tab.StageY_um_), (48 - 8) * px, 'AbsTol', 1e-9, 'Wrong tile step in y.');
+        end
     end
 
     methods (Test, TestTags = {'Integration'})
@@ -178,32 +198,6 @@ classdef ImageListGenerationTest < pktest.TestCase
             out = readzarr([dataPath, 'matlab_stitch/', dir_info(1).name]);
             testCase.verifyEqual(out(1 : 40, 1 : 72, 1 : 32), gt + 1000, ...
                 'The process function was not applied to tiles whose channel is only in mappedFilename.');
-        end
-    end
-
-    methods (Test, TestTags = {'Unit', 'KnownIssue'})
-        function tilePositionStepsForNonSquareTiles(testCase)
-            % KNOWN ISSUE: stitch_generate_imagelist_from_tile_positions.m
-            % computes positions as (tileIndices - ts) .* sz_1([2, 1, 3])
-            % with sz_1 already in x, y, z order, so the x step uses the tile
-            % height and the y step the tile width. Square tiles hide it.
-            % Fix: use sz_1 without reordering.
-            dataPath = testCase.createTempFolder();
-            px = testCase.XYPixelSize;
-            % 48 x 64 (y x) tiles in a 2 x 2 grid
-            for xi = 0 : 1
-                for yi = 0 : 1
-                    writetiff(ones(48, 64, 'uint16'), sprintf(['%sScan_Iter_0000_CamB_ch0_CAM1_stack0000_642nm_', ...
-                        '0000000msec_0000000000msecAbs_%03dx_%03dy_000z_0000t.tif'], dataPath, xi, yi));
-                end
-            end
-
-            XR_generate_image_list_wrapper(dataPath, 'tile_position', 'xyPixelSize', px, ...
-                'channelPatterns', {'Scan'}, 'overlapSize', [8, 8, 1], 'overlapSizeType', 'pixel', 'IOScan', true);
-
-            tab = readtable([dataPath, 'ImageList_from_tile_positions.csv'], 'Delimiter', 'comma');
-            testCase.verifyEqual(max(tab.StageX_um_), (64 - 8) * px, 'AbsTol', 1e-9, 'Wrong tile step in x.');
-            testCase.verifyEqual(max(tab.StageY_um_), (48 - 8) * px, 'AbsTol', 1e-9, 'Wrong tile step in y.');
         end
     end
 

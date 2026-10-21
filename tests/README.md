@@ -165,7 +165,6 @@ lists the ones that may be intended.
 |---|---|
 | `DeskewMexSourceTest` | The AVX loops in the deskew/rotation mex files (`volume_deskew_rotate_warp_mex.cpp:66`, `skewed_space_interp_volume_deskew_rotate_warp_mex.cpp:105,139`, `skewed_space_interp_defined_stepsize_mex.c:103,137`) run up to 7 floats past each row. On Linux/Windows, single-precision input whose first dimension is not a multiple of 8 corrupts memory and can crash MATLAB. |
 | `MexPackagingTest` | 15 ARM macOS mex files (crop, deskew/rotate, flat field, stitch, MIP) load Homebrew's `libgomp` by absolute path; without Homebrew gcc@13 they only load if cpp-tiff/cpp-zarr was used first in the session. |
-| `StitchingTest/largeFileStitching`, `largeFileWithoutRegistration` | Large-file stitching fails (`XR_MIP_zarr.m:108` uses an undefined `bim`; MIP slabs only exist with `xcorrShift`). |
 | `AutomaticProcessingTest/demoParameterSetIsAccepted` | The three `demo_microscope_pipeline_*.m` demos pass a 4-element `Save16bit`, which `XR_microscopeAutomaticProcessing` rejects since deconvolution was removed from it (abd53f9); the demos are out of date. |
 | `PointDetectionTest/lowSNRDetectionRuns` | `DetectionMethod='lowSNR'`, which all three point detection demos use, calls `crop_image_by_bounding_box`, which doesn't exist. |
 | `PunctaRemovalTest/removesPunctaWithDefaultThresholds` | `XR_ExM_PunctaRemoval_zarr` with default thresholds builds an invalid task string (`%0.20d` with empty/vector thresholds), so default puncta removal never runs. There are more bugs further along this path (see the test comments). |
@@ -175,9 +174,6 @@ lists the ones that may be intended.
 | Test | Problem |
 |---|---|
 | `DeskewRotateFrame3DTest/save16bitRoundsToNearest` | On Linux and Windows, uint16 deskew/rotation output is rounded up (`ceil`) instead of to the nearest integer (AVX kernels add 0.5 and then round), so it is biased by +0.5 and differs from macOS. |
-| `StitchingTest/noneBlendTakesHalfOverlapFromEachTile` | `'none'` blending takes the whole overlap from the lower-index tile instead of half from each. |
-| `StitchingTest/featherBlendingWithThinTiles` | Feather blending fails for tiles with fewer than 10 slices and zeroes the first slice for 10-29 slices. |
-| `ImageListGenerationTest/tilePositionStepsForNonSquareTiles` | Image lists from tile positions swap the x and y steps for non-square tiles. |
 | `ResampleTest/image2dWithYxzFactor` | 2D resampling uses the wrong elements of a yxz factor. |
 | `ChromaticShiftCorrectionTest/fullModeContainsBothChannels` | Chromatic shift `'full'` mode computes the output size from the bounding box starts and flips the offset sign. |
 | `ResampleTest/largeZarrWithDefaultBorderSize` | Large-file resampling with the default `borderSize` shifts every batch after the first by half an output voxel. |
@@ -188,7 +184,6 @@ lists the ones that may be intended.
 | Test | Problem |
 |---|---|
 | `XRDeskewRotateFrameTest/backgroundRemovalRuns` | `BKRemoval=true` calls `XR_CameraBackgroundRemoval`, which isn't in PetaKit5D (old mcc builds show it in the author's private repository). |
-| `StitchingTest/localShiftMethod` | `shiftMethod='local'` errors. |
 | `ChromaticShiftCorrectionTest/sameModeKeepsImageSize` | Chromatic shift `'same'` mode errors (undefined `neworigin`). |
 | `UnmixChannelsTest/gaussianUnmixingThroughDataWrapper` | Gaussian unmixing through the data wrapper fails for per-channel sigmas (`mat2str_comma` of a matrix). |
 | `PunctaRemovalTest/removesPunctaWithScalarThresholds` | The puncta removal task string passes `'uuid'`, which the block function doesn't accept; further along, it calls a misspelled function and passes an undefined `ConfigFile`. |

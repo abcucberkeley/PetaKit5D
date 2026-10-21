@@ -140,8 +140,12 @@ end
 if ismatrix(im_i)
     win_z = 1;
 else
-    win_z = tukeywin(sz(3) * 1.1, 0.5);
-    win_z = win_z(round(sz(3) * 0.05) : round(sz(3) * 0.05) + sz(3) - 1);
+    % a window 10% (and at least 2 slices) longer than the stack, so that no
+    % slice gets the zero weight at its ends
+    nw = max(round(sz(3) * 1.1), sz(3) + 2);
+    win_z = tukeywin(nw, 0.5);
+    ws = max(round(sz(3) * 0.05), 2);
+    win_z = win_z(ws : ws + sz(3) - 1);
 end
 im_dist = im_dist .* permute(fastPower(win_z, weightDegree), [2, 3, 1]);
 

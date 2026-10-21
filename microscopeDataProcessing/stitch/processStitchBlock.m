@@ -486,8 +486,9 @@ for i = 1 : numel(batchInds)
             disp(ME);
             nv_f_block(isnan(nv_f_block)) = 0;
         end        
+        % fill the voxels the block doesn't cover yet
         nv_zero_inds = nv_block == 0 & nv_f_block ~= 0;
-        nv_block = nv_block .* nv_zero_inds + nv_f_block .* (1 - nv_zero_inds);
+        nv_block = nv_block .* (1 - nv_zero_inds) + nv_f_block .* nv_zero_inds;
     end
             
     if any(BorderSize > 0)

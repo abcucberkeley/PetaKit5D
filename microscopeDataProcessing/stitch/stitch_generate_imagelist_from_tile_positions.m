@@ -216,7 +216,8 @@ for n = 1:numel(fullIter)
 
                 tileIndices = [cur_tab.x, cur_tab.y, cur_tab.z];
 
-                xyz(inds, :) = (tileIndices - ts) .* sz_1([2, 1, 3]);
+                % tile indices and sz_1 are both in xyz order
+                xyz(inds, :) = (tileIndices - ts) .* sz_1;
             end
         end
     end
