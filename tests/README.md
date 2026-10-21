@@ -163,8 +163,7 @@ comment has the details.
 |---|---|
 | `DeskewMexSourceTest` | The AVX loops in the deskew/rotation mex files (`volume_deskew_rotate_warp_mex.cpp:66`, `skewed_space_interp_volume_deskew_rotate_warp_mex.cpp:105,139`, `skewed_space_interp_defined_stepsize_mex.c:103,137`) run up to 7 floats past each row. On Linux/Windows, single-precision input whose first dimension is not a multiple of 8 corrupts memory and can crash MATLAB. |
 | `DeskewRotateFrame3DTest/objectiveScanPreservesContent` | Combined deskew/rotation of objective scan data returns an all-zero volume (`volume_deskew_rotate_warp_mex` assumes sample scan). |
-| `MexPackagingTest` | 15 ARM macOS mex files and the bundled `libcppZarr.dylib` load Homebrew's `libgomp` by absolute path; without Homebrew gcc@13 they only load if cpp-tiff/cpp-zarr was used first in the session. |
-| `TiffIOTest/rangeReadOfImageJStack` | Range reads of single-IFD ImageJ stacks (how Fiji saves stacks over 4 GB) return the first slices instead of the requested ones. |
+| `MexPackagingTest` | 15 ARM macOS mex files (crop, deskew/rotate, flat field, stitch, MIP) load Homebrew's `libgomp` by absolute path; without Homebrew gcc@13 they only load if cpp-tiff/cpp-zarr was used first in the session. |
 | `ResampleTest/largeZarrWithDefaultBorderSize` | Large-file resampling with the default `borderSize` shifts every batch after the first by half an output voxel. |
 | `StitchingTest/largeFileStitching`, `largeFileWithoutRegistration` | Large-file stitching fails (`XR_MIP_zarr.m:108` uses an undefined `bim`; MIP slabs only exist with `xcorrShift`). |
 | `AutomaticProcessingTest/demoParameterSetIsAccepted` | The three `demo_microscope_pipeline_*.m` demos pass a 4-element `Save16bit`, which `XR_microscopeAutomaticProcessing` rejects. |
@@ -218,14 +217,10 @@ comment has the details.
 | `DeconFrameTest/simplifiedInfoFilesGoToTheDeconInfoFolder` | Info files land in the result folder (`sprintf` argument mismatch). |
 | `ImageInfoTest/queryingMetadataKeepsWarningState` | `getImageSize`/`getZarrInfo` turn off all warnings for the rest of the session. |
 
-**Platform-specific.** These tests skip themselves on the affected platform
-with a `KNOWN ISSUE` message (`assumeNoKnownIssueOn`); remove the platform
-from the call when the bug is fixed.
-
-| Test | Platform | Problem |
-|---|---|---|
-| `TiffIOTest/readsSingleIfdImageJStack` | ARM macOS | The macArm Cpp-Tiff binaries read only the first slice of single-IFD ImageJ stacks (`getImageSize` reports 1 slice). |
-| `ZarrIOTest/partialWritesUpdateOnlyTheRegion` | Windows | Rewriting existing zarr chunks keeps the old data: Cpp-Zarr renames a temporary file over the chunk, which fails on Windows when the chunk exists. |
+**Platform-specific.** Tests for bugs that affect only some platforms skip
+themselves there with a `KNOWN ISSUE` message (`assumeNoKnownIssueOn`);
+remove the platform from the call when the bug is fixed. There are none at
+the moment.
 
 Not covered by a test:
 

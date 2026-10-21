@@ -33,7 +33,7 @@ elseif ismac
         if ~exist(releaseFolder, 'dir')
             mkdir(releaseFolder);
         end
-        mex -outdir ../macArm -output createZarrFile.mexmaca64 -v CXX="/opt/homebrew/bin/g++-13" CXXOPTIMFLAGS='-O2 -DNDEBUG' LDOPTIMFLAGS='-O2 -DNDEBUG' CXXFLAGS='-fno-common -arch arm64 -mmacosx-version-min=10.15 -fexceptions -isysroot /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk -std=c++11 -O2 -fopenmp -DMATLAB_DEFAULT_RELEASE=R2017b  -DUSE_MEX_CMD   -DMATLAB_MEX_FILE' LDFLAGS='$LDFLAGS -O2 -fopenmp' -I'/Users/abcarmmac/cpp-zarr/jenkinsBuild/install/include/' -L'/Users/abcabcmac/cpp-zarr/jenkinsBuild/install/lib' /opt/homebrew/opt/gcc@13/lib/gcc/13/libstdc++.a -lcppZarr createzarrfilemex.cpp
+        mex -outdir ../macArm -output createZarrFile.mexmaca64 -v CXX="/opt/homebrew/bin/g++-13" CXXOPTIMFLAGS='-O2 -DNDEBUG' LDOPTIMFLAGS='-O2 -DNDEBUG' CXXFLAGS='-fno-common -arch arm64 -mmacosx-version-min=10.15 -fexceptions -isysroot /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk -std=c++11 -O2 -fopenmp -DMATLAB_DEFAULT_RELEASE=R2017b  -DUSE_MEX_CMD   -DMATLAB_MEX_FILE' LDFLAGS='$LDFLAGS -O2 -fopenmp' -I'/Users/abcarmmac/cpp-zarr/jenkinsBuild/install/include/' -L'/Users/abcarmmac/cpp-zarr/jenkinsBuild/install/lib' /opt/homebrew/opt/gcc@13/lib/gcc/13/libstdc++.a -lcppZarr createzarrfilemex.cpp
     
         % We need to change all the current paths to be relative to the mex file
         %system('install_name_tool -change /usr/local/opt/gcc/lib/gcc/current/libstdc++.6.dylib @loader_path/libstdc++.6.0.32.dylib ../mac/createZarrFile.mexmaci64');

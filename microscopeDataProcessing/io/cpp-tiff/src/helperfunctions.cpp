@@ -6,8 +6,12 @@
 #ifdef _WIN32
 #include <algorithm>
 #endif
+#include <omp.h>
 #include "tiffio.h"
 #include "helperfunctions.h"
+#ifdef __linux__
+#include <fcntl.h>
+#endif
 // Handle the tilde character in filenames on Linux/Mac
 #ifndef _WIN32
 #include <wordexp.h>
@@ -70,6 +74,30 @@ void DummyHandler(const char* module, const char* fmt, va_list ap)
     // ignore errors and warnings
 }
 
+// Open a file for walking its directory chain. Counting directories touches a
+// few bytes per IFD (entry count + next-IFD offset), and the IFDs of a stack
+// are spread through the whole file, so the walk is one dependent disk read per
+// IFD. With libtiff's default memory-mapped open each of those reads is a page
+// fault that also pulls in the ~128 KB read-ahead window around the IFD; on a
+// cold cache that made a 10,000-directory file take ~8 s to count (1.3 GB read
+// for ~0.1 MB of IFDs). On Linux, opening without mmap ("rm") plus a random-
+// access hint reads only the touched pages: ~1.6 s, ~40 MB, warm walks
+// unchanged. Windows and macOS measured slower this way (the extra read() per
+// hop costs more than the mapped fault path there), so they keep the default
+// mmap open. Only the count uses this; the readers keep their mmap handles.
+static TIFF* openForDirectoryWalk(const char* fileName){
+#ifdef __linux__
+    TIFF* tif = TIFFOpen(fileName, "rm");
+    if(!tif) return NULL;
+  #ifdef POSIX_FADV_RANDOM
+    posix_fadvise(TIFFFileno(tif), 0, 0, POSIX_FADV_RANDOM);
+  #endif
+    return tif;
+#else
+    return TIFFOpen(fileName, "r");
+#endif
+}
+
 // The check for if it is an ImageJ image needs to be improved in the future
 uint8_t isImageJIm(const char* fileName){
     TIFF* tif = TIFFOpen(fileName, "r");
@@ -77,18 +105,15 @@ uint8_t isImageJIm(const char* fileName){
     char* tiffDesc = NULL;
     if(TIFFGetField(tif, TIFFTAG_IMAGEDESCRIPTION, &tiffDesc)){
         if(strstr(tiffDesc, "ImageJ")){
-            uint64_t* size = getImageSize(fileName);
-            if(size[2] > 1){
-                if(TIFFSetDirectory(tif,1)){
-                    free(size);
-                    return 0;
-                }
-            }
-            free(size);
+            // The ImageJ fast layout is a single uncompressed IFD followed by
+            // the raw slices. Read the compression from directory 0 first, then
+            // probe for a second directory (one hop) instead of counting the
+            // whole chain, which walked every IFD of a normal multi-page file.
             uint16_t compressed = 1;
             TIFFGetField(tif, TIFFTAG_COMPRESSION, &compressed);
+            uint8_t multiDir = TIFFSetDirectory(tif,1) ? 1 : 0;
             TIFFClose(tif);
-            if(compressed != 1) return 0;
+            if(multiDir || compressed != 1) return 0;
             else return 1;
         }
     }
@@ -104,10 +129,14 @@ uint64_t imageJImGetZ(const char* fileName){
         if(strstr(tiffDesc, "ImageJ")){
             char* nZ = strstr(tiffDesc,"images=");
             if(nZ){
-                TIFFClose(tif);
-                nZ+=7;
+                // Parse before TIFFClose: tiffDesc points into libtiff's
+                // directory storage, which TIFFClose frees. Reading it after
+                // the close only worked by allocator luck on Linux/Windows and
+                // returned garbage on macOS.
                 char* temp;
-                return strtol(nZ,&temp,10);
+                uint64_t z = strtol(nZ+7,&temp,10);
+                TIFFClose(tif);
+                return z;
             }
         }
     }
@@ -115,12 +144,10 @@ uint64_t imageJImGetZ(const char* fileName){
     return 0;
 }
 
-uint32_t getImageSizeZ(const char* fileName){
-    TIFFSetWarningHandler(DummyHandler);
-    TIFF* tif = TIFFOpen(fileName, "r");
-    if(!tif) printf("File \"%s\" cannot be opened",fileName);
-
-    uint32_t s = 0, m = 0, t = 1, z = 1;
+// The number of directories, found by stepping ahead 8x at a time and then
+// bisecting; the handle starts on directory 0.
+static uint32_t countDirectories(TIFF* tif){
+    uint32_t s = 0, m = 0, t = 1;
     while(TIFFSetDirectory(tif,t)){
         s = t;
         t *= 8;
@@ -140,15 +167,69 @@ uint32_t getImageSizeZ(const char* fileName){
             else t = m;
         }
     }
-    z = s+1;
+    return s+1;
+}
+
+uint32_t getImageSizeZ(const char* fileName){
+    TIFFSetWarningHandler(DummyHandler);
+    TIFF* tif = openForDirectoryWalk(fileName);
+    if(!tif){ printf("File \"%s\" cannot be opened\n",fileName); return 0; }
+    const uint32_t z = countDirectories(tif);
     TIFFClose(tif);
     return z;
+}
+
+uint8_t getTiffInfo(const char* fileName, TiffInfo &info){
+    TIFFSetWarningHandler(DummyHandler);
+    TIFF* tif = openForDirectoryWalk(fileName);
+    if(!tif) return 1;
+    info = TiffInfo();
+    uint32_t x = 1, y = 1, rowsPerStrip = 0;
+    uint16_t bits = 1, spp = 1, planarConfig = PLANARCONFIG_CONTIG, sampleFormat = SAMPLEFORMAT_UINT, compression = COMPRESSION_NONE;
+    TIFFGetField(tif, TIFFTAG_IMAGEWIDTH, &x);
+    TIFFGetField(tif, TIFFTAG_IMAGELENGTH, &y);
+    TIFFGetField(tif, TIFFTAG_BITSPERSAMPLE, &bits);
+    TIFFGetFieldDefaulted(tif, TIFFTAG_ROWSPERSTRIP, &rowsPerStrip);
+    TIFFGetFieldDefaulted(tif, TIFFTAG_SAMPLESPERPIXEL, &spp);
+    TIFFGetFieldDefaulted(tif, TIFFTAG_PLANARCONFIG, &planarConfig);
+    TIFFGetFieldDefaulted(tif, TIFFTAG_SAMPLEFORMAT, &sampleFormat);
+    TIFFGetFieldDefaulted(tif, TIFFTAG_COMPRESSION, &compression);
+    info.x = x; info.y = y; info.bits = bits; info.samples = spp;
+    info.sampleFormat = sampleFormat; info.stripSize = rowsPerStrip; info.compression = compression;
+    info.planar = spp > 1 && planarConfig == PLANARCONFIG_SEPARATE;
+    info.tiled = TIFFIsTiled(tif);
+    // The description belongs to directory 0, which the walk below frees, so
+    // it is parsed first.
+    bool imageJDescription = false;
+    char* desc = NULL;
+    if(TIFFGetField(tif, TIFFTAG_IMAGEDESCRIPTION, &desc) && desc && strstr(desc, "ImageJ")){
+        imageJDescription = true;
+        const char* images = strstr(desc, "images=");
+        if(images){
+            char* end;
+            info.imageJImages = strtol(images+7, &end, 10);
+        }
+    }
+    info.directories = countDirectories(tif);
+    TIFFClose(tif);
+    info.z = info.directories;
+    info.imageJ = imageJDescription && info.directories == 1 && compression == COMPRESSION_NONE && !info.tiled && !info.planar;
+    if(info.imageJ && info.imageJImages) info.z = info.imageJImages;
+    return 0;
+}
+
+int callThreads(){
+    return omp_get_max_threads();
+}
+
+void setCallThreads(int n){
+    if(n > 0) omp_set_num_threads(n);
 }
 
 uint64_t* getImageSize(const char* fileName){
     TIFFSetWarningHandler(DummyHandler);
     TIFF* tif = TIFFOpen(fileName, "r");
-    if(!tif) printf("File \"%s\" cannot be opened",fileName);
+    if(!tif){ printf("File \"%s\" cannot be opened\n",fileName); return NULL; }
 
     uint64_t x = 1,y = 1,z = 1;
     TIFFGetField(tif, TIFFTAG_IMAGEWIDTH, &x);
@@ -167,7 +248,7 @@ uint64_t* getImageSize(const char* fileName){
 uint64_t getDataType(const char* fileName){
     TIFFSetWarningHandler(DummyHandler);
     TIFF* tif = TIFFOpen(fileName, "r");
-    if(!tif) printf("File \"%s\" cannot be opened",fileName);
+    if(!tif){ printf("File \"%s\" cannot be opened\n",fileName); return 0; }
 
     uint64_t bits = 1;
     TIFFGetField(tif, TIFFTAG_BITSPERSAMPLE, &bits);

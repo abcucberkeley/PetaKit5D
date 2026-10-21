@@ -126,11 +126,8 @@ classdef ZarrIOTest < pktest.TestCase
 
         function partialWritesUpdateOnlyTheRegion(testCase)
             % also rewrites existing chunks, which takes a different code
-            % path (rename over an existing file) than the first write
-            testCase.assumeNoKnownIssueOn('mexw64', ['rewriting existing zarr chunks keeps the ', ...
-                'old data: Cpp-Zarr writes each chunk to a temporary file and renames it over the ', ...
-                'existing one (cpp-zarr/src/parallelwritezarr.cpp), but rename() fails on Windows ', ...
-                'when the target exists and the return value is not checked']);
+            % path (rename over an existing file) than the first write. On
+            % Windows, rewrites kept the old data before Cpp-Zarr 1.6.0.
             im = testCase.randomImage(testCase.ImSize, 'uint16');
             fn = [testCase.createTempFolder(), 'im.zarr'];
             createzarr(fn, 'dataSize', size(im), 'blockSize', [16, 16, 5], 'dtype', 'uint16');

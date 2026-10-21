@@ -104,10 +104,9 @@ classdef TiffIOTest < pktest.TestCase
 
         function readsSingleIfdImageJStack(testCase)
             % ImageJ saves stacks over 4 GB with only the first IFD; the
-            % number of slices is in the 'images=' description entry
-            testCase.assumeNoKnownIssueOn('mexmaca64', ['the ARM macOS Cpp-Tiff binaries ', ...
-                '(cpp-tiff/macArm) read only the first slice of single-IFD ImageJ stacks; ', ...
-                'getImageSize also reports 1 slice']);
+            % number of slices is in the 'images=' description entry. The
+            % ARM macOS binaries read only the first slice before Cpp-Tiff
+            % 1.6.1.
             im = testCase.randomImage([20, 30, 9], 'uint16');
             fn = [testCase.createTempFolder(), 'imagej.tif'];
             testCase.writeImageJStack(im, fn, true);
@@ -117,28 +116,24 @@ classdef TiffIOTest < pktest.TestCase
             testCase.verifyEqual(getImageSize(fn), size(im));
             % regression test for range reads of such stacks (f369d36), which
             % used to fail the bounds check; the content of range reads is
-            % checked by the known issue rangeReadOfImageJStack
+            % checked by rangeReadOfImageJStack
             testCase.verifyEqual(size(readtiff(fn, 'range', [3, 6])), [20, 30, 4]);
         end
-    end
 
-    methods (Test, TestTags = {'Unit', 'KnownIssue'})
         function rangeReadOfImageJStack(testCase)
-            % KNOWN ISSUE: for single-IFD ImageJ stacks (how ImageJ saves
-            % stacks over 4 GB), Cpp-Tiff ignores the start of the range:
-            % readTiffParallelImageJ (cpp-tiff/src/parallelreadtiff.cpp) seeks
-            % to the first strip offset without adding startSlice * x * y *
-            % bytes, so readtiff(fn, 'range', [3, 6]) returns slices 1-4.
-            % Cropping (XR_crop_frame), MIPs and resampling with inputBbox read
-            % only the bbox z-range, so they silently get the wrong slices of
-            % large Fiji-saved stacks. Fix: fseek(fp, offset + startSlice * x
-            % * y * bytes, SEEK_SET).
+            % before Cpp-Tiff 1.6.1, range reads of single-IFD ImageJ stacks
+            % ignored the start of the range (slices 1-4 for [3, 6]), so
+            % cropping, MIPs and resampling with inputBbox got the wrong
+            % slices of large Fiji-saved stacks
             im = testCase.randomImage([20, 30, 9], 'uint16');
             fn = [testCase.createTempFolder(), 'imagej.tif'];
             testCase.writeImageJStack(im, fn, true);
             testCase.verifyEqual(readtiff(fn, 'range', [3, 6]), im(:, :, 3 : 6), ...
                 'readtiff with a range returned the wrong slices of an ImageJ stack.');
         end
+    end
+
+    methods (Test, TestTags = {'Unit', 'KnownIssue'})
 
         function unsupportedInputIsNotSilentlyDropped(testCase)
             % KNOWN ISSUE: parallelWriteTiff rejects 4-D and empty arrays,

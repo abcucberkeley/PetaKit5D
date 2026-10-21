@@ -10,9 +10,9 @@ classdef MexPackagingTest < pktest.TestCase
     methods (Test, TestTags = {'Unit', 'KnownIssue'})
         function macArmBinariesOnlyLoadBundledOrSystemLibraries(testCase)
             % KNOWN ISSUE: the 15 crop, deskew/rotate, flat-field, stitch
-            % and MIP .mexmaca64 files and the bundled cpp-zarr
-            % libcppZarr.dylib load /opt/homebrew/opt/gcc@13/lib/gcc/13/libgomp.1.dylib
-            % by absolute path. On a Mac without Homebrew gcc@13 they only
+            % and MIP .mexmaca64 files load
+            % /opt/homebrew/opt/gcc@13/lib/gcc/13/libgomp.1.dylib by
+            % absolute path. On a Mac without Homebrew gcc@13 they only
             % load if a cpp-tiff/cpp-zarr call happened to load the bundled
             % libgomp (which has that install name) first; otherwise the
             % code silently falls back to slower MATLAB code, or errors
@@ -38,10 +38,11 @@ classdef MexPackagingTest < pktest.TestCase
 
     methods (Test, TestTags = {'Unit'})
         function cppTiffAndZarrLoadBundledLibraries(testCase)
-            % the cpp-tiff/cpp-zarr mex files themselves are packaged
+            % the cpp-tiff/cpp-zarr mex files and libraries are packaged
             % correctly; keep them that way
             files = [testCase.findFiles('getImageSizeMex.mexmaca64'), testCase.findFiles('parallel*Tiff.mexmaca64'), ...
-                testCase.findFiles('*Zarr*.mexmaca64')];
+                testCase.findFiles('*Zarr*.mexmaca64'), testCase.findFiles('libcppTiff.dylib'), ...
+                testCase.findFiles('libcppZarr.dylib')];
             testCase.assertNotEmpty(files);
             for i = 1 : numel(files)
                 deps = pktest.machoDylibs(files{i});

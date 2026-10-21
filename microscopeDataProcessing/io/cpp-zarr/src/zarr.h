@@ -51,10 +51,40 @@ public:
     const std::string chunkNameToShardName(const std::string &chunkName) const;
 
     const std::vector<uint64_t> chunkToShard(const std::vector<uint64_t> &cAV) const;
+    // Shard index layout (Zarr v3 sharding_indexed index_location and
+    // index_codecs): at the start of each shard instead of the end (the
+    // default), and whether a CRC32C checksum follows it (the default)
+    bool get_shardIndexAtStart() const;
+    bool get_shardIndexChecksum() const;
     const uint64_t get_ShardPosition(const std::vector<uint64_t> &cAV) const;
 
     const uint64_t get_chunkShardPosition(const std::vector<uint64_t> &cAV) const;
 
+    // Zarr format of the array's metadata: 2 (.zarray) or 3 (zarr.json)
+    uint64_t get_zarr_format() const;
+    // Write Zarr v3 metadata (zarr.json) instead of v2 (.zarray) from
+    // write_zarray(). Also sets v3's defaults, C order and "/" in chunk names
+    // ("c/0/0/0"); set_order or set_dimension_separator after it changes them.
+    void set_zarr_format(const uint64_t zarr_format);
+    // Blosc shuffle: 0 none, 1 byte, 2 bit
+    uint64_t get_shuffle() const;
+    // Turn the v2 array this object was opened from into a Zarr v3 array by
+    // writing a zarr.json that describes its existing chunk files (no data is
+    // rewritten) and removing its .zarray. Throws "v3Unsupported:why" for what
+    // v3 cannot describe (subfolders, zlib, shard shapes that are not a multiple
+    // of the inner chunk shape).
+    void convert_to_v3();
+    // Path of a chunk (or shard) file inside the array's folder: its name, after
+    // the "c" prefix of Zarr v3's default chunk key encoding
+    const std::string chunkKey(const std::string &chunkName) const;
+    // Axes of a stored chunk from slowest to fastest: 0..n-1 for C order,
+    // n-1..0 for F order, any permutation for a Zarr v3 transpose codec
+    const std::vector<uint64_t> get_chunkAxisOrder() const;
+    // How each stored chunk is compressed: "none", "blosc", "gzip" or "zstd"
+    // (Zarr v3 zstd codec, or numcodecs Zstd in v2)
+    const std::string get_compressor() const;
+    // Whether a CRC32C checksum follows each stored chunk (Zarr v3 crc32c codec)
+    bool get_chunkChecksum() const;
 
     const std::vector<uint64_t> get_chunkAxisVals(const std::string &fileName) const;
     void set_chunkInfo(const std::vector<uint64_t> &startCoords,
@@ -64,7 +94,16 @@ public:
     const std::string &get_errString() const;
     void set_errString(const std::string &errString);
     const uint64_t dtypeBytes() const;
+    // Number of dimensions of the array (length of shape)
+    uint64_t get_ndims() const;
+    // Fit chunks, subfolders and chunk_shape to the number of dimensions: extra
+    // trailing values (e.g. the 3D defaults on a 2D array) are dropped, missing
+    // ones get chunks 256 on the first three axes and 1 after, subfolders 0 and
+    // chunk_shape 1.
+    void normalizeDims();
 private:
+    void parseZarrJson();
+    json v3Metadata(const bool existingChunks) const;
     void set_jsonValues();
     void write_jsonValues();
     void set_shardData();

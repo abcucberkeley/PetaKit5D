@@ -40,22 +40,19 @@ void mexFunction(int nlhs, mxArray *plhs[],
     //}
 
 
-    TIFFSetWarningHandler(DummyHandler);
-    TIFF* tif = TIFFOpen(fileName, "r");
-    if(!tif) mexErrMsgIdAndTxt("tiff:inputError","File \"%s\" cannot be opened",fileName);
+    // Everything the read needs, from one open and one walk of the directories
+    // (it was four or five opens).
+    TiffInfo info;
+    if(getTiffInfo(fileName, info)) mexErrMsgIdAndTxt("tiff:inputError","File \"%s\" cannot be opened",fileName);
 
-    uint64_t x = 1,y = 1,z = 1,bits = 1, startSlice = 0;
-    TIFFGetField(tif, TIFFTAG_IMAGEWIDTH, &x);
-    TIFFGetField(tif, TIFFTAG_IMAGELENGTH, &y);
-    
-    uint8_t imageJIm = 0;
+    uint64_t x = info.x, y = info.y, z = 1, bits = info.bits, startSlice = 0;
+    const uint64_t spp = info.samples;
+    // The ImageJ reader takes the pixels as one contiguous block, which is not
+    // how tiled or planar (separate color planes) data is laid out, so
+    // info.imageJ leaves those out.
+    const uint8_t imageJIm = info.imageJ;
     if(nrhs == 1){
-        z = getImageSizeZ(fileName);
-        if(isImageJIm(fileName)){
-            imageJIm = 1;
-            uint64_t tempZ = imageJImGetZ(fileName);
-            if(tempZ) z = tempZ;
-        }
+        z = info.z;
     }
     else{
         if(mxGetN(prhs[1]) != 2){
@@ -64,33 +61,22 @@ void mexFunction(int nlhs, mxArray *plhs[],
         else{
             startSlice = (uint64_t)*(mxGetPr(prhs[1]))-1;
             z = (uint64_t)*((mxGetPr(prhs[1])+1))-startSlice;
-            uint64_t maxSize = 0;
-            if(isImageJIm(fileName)){
-                imageJIm = 1;
-                maxSize = imageJImGetZ(fileName);
-            }
-            else maxSize = getImageSizeZ(fileName);
+            const uint64_t maxSize = imageJIm ? info.imageJImages : info.directories;
             if (startSlice < 0 || startSlice+z > maxSize){
                 mexErrMsgIdAndTxt("tiff:rangeOutOfBound","Range is out of bounds");
             }
         }
     }
 
-    TIFFGetField(tif, TIFFTAG_BITSPERSAMPLE, &bits);
-    uint64_t stripSize = 1;
-    TIFFGetField(tif, TIFFTAG_ROWSPERSTRIP, &stripSize);
-    uint16_t spp = 1, planar = 1;
-    TIFFGetFieldDefaulted(tif, TIFFTAG_SAMPLESPERPIXEL, &spp);
-    TIFFGetFieldDefaulted(tif, TIFFTAG_PLANARCONFIG, &planar);
-    TIFFClose(tif);
+    // libtiff's own value: the TIFF default (2^32 - 1, one strip) when the tag
+    // is missing. The readers limit it to the image height.
+    uint64_t stripSize = info.stripSize;
+    uint16_t compression = info.compression;
 
     uint64_t samples = spp;
-    // ImageJ hyperstacks are grayscale (channels live in metadata); RGB ImageJ is out of scope.
-    if(imageJIm) samples = 1;
-    if(samples > 1 && planar == 2)
-        mexErrMsgIdAndTxt("tiff:planarError","Planar (PLANARCONFIG=2) RGB TIFFs are not supported");
 
-    // Channel-last MATLAB layout: 3D (y,x,z) grayscale, or 4D (y,x,c,z) for RGB/RGBA.
+    // Channel-last MATLAB layout: 3D (y,x,z) grayscale, or 4D (y,x,c,z) for RGB/RGBA,
+    // whether the file stores the colors interleaved (chunky) or as separate planes.
     uint64_t dim[4];
     dim[0] = y;
     dim[1] = x;
@@ -99,7 +85,7 @@ void mexFunction(int nlhs, mxArray *plhs[],
     else           { ndim = 3; dim[2] = z; }
 
     // Pick the MATLAB class from bit depth + sample format (2=signed int, 3=float, else unsigned).
-    uint64_t sampleFormat = getSampleFormat(fileName);
+    uint64_t sampleFormat = info.sampleFormat;
     mxClassID classID = mxUINT8_CLASS;
     if(bits == 8)       classID = (sampleFormat == 2) ? mxINT8_CLASS  : mxUINT8_CLASS;
     else if(bits == 16) classID = (sampleFormat == 2) ? mxINT16_CLASS : mxUINT16_CLASS;
@@ -114,6 +100,6 @@ void mexFunction(int nlhs, mxArray *plhs[],
     uint8_t err = 0;
     if(imageJIm)    err = readTiffParallelImageJ(x,y,z,fileName, tiff, bits, startSlice, stripSize, flipXY);
     else if(z <= 1) err = readTiffParallel2D(x,y,z,fileName, tiff, bits, startSlice, stripSize, flipXY);
-    else            err = readTiffParallel(x,y,z,fileName, tiff, bits, startSlice, stripSize, flipXY);
+    else            err = readTiffParallel(x,y,z,fileName, tiff, bits, startSlice, stripSize, flipXY, compression);
     if(err) mexErrMsgIdAndTxt("tiff:tiffError","An Error occured within the read function");
 }

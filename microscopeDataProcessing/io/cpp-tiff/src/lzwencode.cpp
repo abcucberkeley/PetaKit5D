@@ -315,9 +315,12 @@ hit:
 
     //return outcount*8;
     totalOut += outcount;
-    //return (totalOut/8);
+    (void)totalOut;
     _TIFFfree(enc_hashtab);
-    return (uint64_t)ceil((double)totalOut/8.0);//+4;
+    // The bytes actually written. Rounding the bit count up instead could count
+    // a byte or two of the uninitialized buffer past the last code, so the same
+    // data did not always produce the same file.
+    return (uint64_t)(op - compr);
 }
 
 
