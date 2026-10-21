@@ -96,16 +96,11 @@ classdef CropMexTest < pktest.TestCase
             testCase.verifyEqual(trimBorder(im, bs, 'pre'), im(3 : end, 4 : end, 2 : end));
             testCase.verifyEqual(trimBorder(im, bs, 'post'), im(1 : end - 2, 1 : end - 3, 1 : end - 1));
         end
-    end
 
-    methods (Test, TestTags = {'Unit', 'KnownIssue'})
         function indexing4dMexSupportsLogical(testCase)
-            % KNOWN ISSUE: indexing4d_mex.c (around line 110) starts the uint8
-            % branch with 'if' instead of 'else if', so logical input is
-            % copied by the logical branch and then rejected by the final
-            % else with "Data type not suppported". The indexing4d wrapper
-            % hides it by falling back to (slower) MATLAB indexing.
-            % Fix: 'else if (mDType == mxUINT8_CLASS)'.
+            % logical input used to fall through to the uint8 branch and be rejected
+            testCase.assumeNoKnownIssueOn({'mexw64', 'mexmaca64'}, ['the Windows and ARM macOS ', ...
+                'indexing4d_mex files predate the fix; rebuild them with compileAllMexFiles']);
             [A, expected, b, R] = testCase.indexing4dInputs('logical');
             expected(b(1) : b(5), b(2) : b(6), b(3) : b(7), b(4) : b(8)) = R;
             try

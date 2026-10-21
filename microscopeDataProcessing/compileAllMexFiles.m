@@ -1,7 +1,12 @@
 function [] = compileAllMexFiles(varargin)
-
+% compile the mex files of PetaKit5D for the current platform
+%
 % Intended to be run from PetaKit5D/microscopeDataProcessing or pass the
-% path to the PetaKit5D base dir
+% path to the PetaKit5D base dir. Linux and Windows use the configured mex
+% compilers (GCC, MinGW-w64 on Windows). ARM macOS uses Homebrew gcc@13
+% (brew install gcc@13); the mex files there load the libgomp copied next
+% to them (@loader_path), so that they don't need Homebrew to run.
+
 ip = inputParser;
 ip.CaseSensitive = false;
 ip.addOptional('PetaKit5DBaseDir', '', @ischar);
@@ -18,134 +23,91 @@ else
     path = fileparts(funcFn);
     cd(path);
 end
-    
+
 [~,name,~]=fileparts(pwd);
 if ~strcmp(name,'microscopeDataProcessing')
     error('Pass the path to the PetaKit5D base dir or be in the PetaKit5D/microscopeDataProcessing dir');
 end
+srcDir = pwd;
 
-cd('./deskew_rotate/mex');
+% folder, source file, and whether it uses AVX2 on x86
+mexFiles = {'deskew_rotate/mex', 'skewed_space_interp_defined_stepsize_mex.c', true;
+    'deskew_rotate/mex', 'skewed_space_interp_mex.c', false;
+    'deskew_rotate/mex', 'volume_deskew_rotate_warp_mex.cpp', true;
+    'deskew_rotate/mex', 'skewed_space_interp_volume_deskew_rotate_warp_mex.cpp', true;
+    'stitch/mex', 'feather_blending_3d_mex.cpp', false;
+    'stitch/mex', 'feather_blending_3d_with_indexing_mex.cpp', false;
+    'stitch/mex', 'feather_distance_map_resize_3d_mex.c', false;
+    'stitch/mex', 'integral_image_3d_mex.cpp', false;
+    'stitch/mex', 'any_4th_dim_mex.cpp', false;
+    'tools/MIP/mex', 'max_pooling_3d_mex.cpp', false;
+    'crop/mex', 'crop3d_mex.c', false;
+    'crop/mex', 'crop4d_mex.cpp', false;
+    'crop/mex', 'indexing3d_mex.c', false;
+    'crop/mex', 'indexing4d_mex.c', false;
+    'crop/mex', 'indexing4d_crop_mex.cpp', false;
+    'flatfield_correction/mex', 'flat_field_correction_3d_mex.cpp', false};
 
-% skewed_space_interp_defined_stepsize_mex
-if(~ismac)
-    mex -v COPTIMFLAGS="-O3 -DNDEBUG" CFLAGS='$CFLAGS -O3 -fopenmp -mavx2' LDFLAGS='$LDFLAGS -O3 -fopenmp -mavx2' skewed_space_interp_defined_stepsize_mex.c
-else
-    mex -v CC="/usr/local/bin/gcc-13" CXX="/usr/local/bin/g++-13" COPTIMFLAGS="-O3 -DNDEBUG" CFLAGS='$CFLAGS -O3 -fopenmp' LDFLAGS='$LDFLAGS -O3 -fopenmp' skewed_space_interp_defined_stepsize_mex.c
+for i = 1 : size(mexFiles, 1)
+    cd([srcDir, '/', mexFiles{i, 1}]);
+    buildMex(mexFiles{i, 2}, mexFiles{i, 3});
 end
 
-% skewed_space_interp_mex
-if(~ismac)
-    mex -v COPTIMFLAGS="-O3 -DNDEBUG" CFLAGS='$CFLAGS -O3 -fopenmp' LDFLAGS='$LDFLAGS -O3 -fopenmp' skewed_space_interp_mex.c
-else
-    mex -v CC="/usr/local/bin/gcc-13" CXX="/usr/local/bin/g++-13" COPTIMFLAGS="-O3 -DNDEBUG" CFLAGS='$CFLAGS -O3 -fopenmp' LDFLAGS='$LDFLAGS -O3 -fopenmp' skewed_space_interp_defined_stepsize_mex.c
-end
-
-% volume_deskew_rotate_warp_mex
-if(~ismac)
-    mex -v COPTIMFLAGS="-O3 -DNDEBUG" CFLAGS='$CFLAGS -O3 -fopenmp -mavx2' LDFLAGS='$LDFLAGS -O3 -fopenmp -mavx2' volume_deskew_rotate_warp_mex.cpp
-else
-    mex -v CXX="/usr/local/bin/g++-13" CXXFLAGS='-fno-common -arch x86_64 -mmacosx-version-min=10.15 -fexceptions -isysroot /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk -std=c++11 -O3 -fopenmp -DMATLAB_DEFAULT_RELEASE=R2017b  -DUSE_MEX_CMD   -DMATLAB_MEX_FILE' CXXOPTIMFLAGS="-O3 -DNDEBUG" LDFLAGS='$LDFLAGS -O3 -fopenmp' volume_deskew_rotate_warp_mex.cpp
-end
-
-% skewed_space_interp_volume_deskew_rotate_warp_mex
-if(~ismac)
-    mex -v COPTIMFLAGS="-O3 -DNDEBUG" CFLAGS='$CFLAGS -O3 -fopenmp -mavx2' LDFLAGS='$LDFLAGS -O3 -fopenmp -mavx2' skewed_space_interp_volume_deskew_rotate_warp_mex.cpp
-else
-    mex -v CXX="/usr/local/bin/g++-13" CXXFLAGS='-fno-common -arch x86_64 -mmacosx-version-min=10.15 -fexceptions -isysroot /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk -std=c++11 -O3 -fopenmp -DMATLAB_DEFAULT_RELEASE=R2017b  -DUSE_MEX_CMD   -DMATLAB_MEX_FILE' CXXOPTIMFLAGS="-O3 -DNDEBUG" LDFLAGS='$LDFLAGS -O3 -fopenmp' skewed_space_interp_volume_deskew_rotate_warp_mex.cpp
-end
-
-cd('../../stitch/mex');
-
-% feather_blending_3d_mex
-if(~ismac)
-    mex -v COPTIMFLAGS="-O3 -DNDEBUG" CFLAGS='$CFLAGS -O3 -fopenmp' LDFLAGS='$LDFLAGS -O3 -fopenmp' feather_blending_3d_mex.cpp
-else
-    mex -v CC="/usr/local/bin/gcc-13" CXX="/usr/local/bin/g++-13" COPTIMFLAGS="-O3 -DNDEBUG" CFLAGS='$CFLAGS -O3 -fopenmp' CXXFLAGS='-fno-common -arch arm64 -mmacosx-version-min=10.15 -fexceptions -isysroot /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk -std=c++11 -O3 -fopenmp -DMATLAB_DEFAULT_RELEASE=R2017b  -DUSE_MEX_CMD   -DMATLAB_MEX_FILE' LDFLAGS='$LDFLAGS -O3 -fopenmp' LDFLAGS='$LDFLAGS -O3 -fopenmp' feather_blending_3d_mex.cpp
-end
-
-% feather_blending_3d_with_indexing_mex
-if(~ismac)
-    mex -v COPTIMFLAGS="-O3 -DNDEBUG" CFLAGS='$CFLAGS -O3 -fopenmp' LDFLAGS='$LDFLAGS -O3 -fopenmp' feather_blending_3d_with_indexing_mex.cpp
-else
-    mex -v CC="/usr/local/bin/gcc-13" CXX="/usr/local/bin/g++-13" COPTIMFLAGS="-O3 -DNDEBUG" CFLAGS='$CFLAGS -O3 -fopenmp' CXXFLAGS='-fno-common -arch arm64 -mmacosx-version-min=10.15 -fexceptions -isysroot /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk -std=c++11 -O3 -fopenmp -DMATLAB_DEFAULT_RELEASE=R2017b  -DUSE_MEX_CMD   -DMATLAB_MEX_FILE' LDFLAGS='$LDFLAGS -O3 -fopenmp' LDFLAGS='$LDFLAGS -O3 -fopenmp' feather_blending_3d_with_indexing_mex.cpp
-end
-
-% feather_distance_map_resize_3d_mex
-if(~ismac)
-    mex -v COPTIMFLAGS="-O3 -DNDEBUG" CFLAGS='$CFLAGS -O3 -fopenmp' LDFLAGS='$LDFLAGS -O3 -fopenmp' feather_distance_map_resize_3d_mex.c
-else
-    mex -v CC="/usr/local/bin/gcc-13" CXX="/usr/local/bin/g++-13" COPTIMFLAGS="-O3 -DNDEBUG" CFLAGS='$CFLAGS -O3 -fopenmp' CXXFLAGS='-fno-common -arch arm64 -mmacosx-version-min=10.15 -fexceptions -isysroot /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk -std=c++11 -O3 -fopenmp -DMATLAB_DEFAULT_RELEASE=R2017b  -DUSE_MEX_CMD   -DMATLAB_MEX_FILE' LDFLAGS='$LDFLAGS -O3 -fopenmp' feather_distance_map_resize_3d_mex.c
-end
-
-% integral_image_3d_mex
-if(~ismac)
-    mex -v COPTIMFLAGS="-O3 -DNDEBUG" CFLAGS='$CFLAGS -O3 -fopenmp' LDFLAGS='$LDFLAGS -O3 -fopenmp' integral_image_3d_mex.cpp
-else
-    mex -v CC="/usr/local/bin/gcc-13" CXX="/usr/local/bin/g++-13" COPTIMFLAGS="-O3 -DNDEBUG" CFLAGS='$CFLAGS -O3 -fopenmp' CXXFLAGS='-fno-common -arch arm64 -mmacosx-version-min=10.15 -fexceptions -isysroot /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk -std=c++11 -O3 -fopenmp -DMATLAB_DEFAULT_RELEASE=R2017b  -DUSE_MEX_CMD   -DMATLAB_MEX_FILE' LDFLAGS='$LDFLAGS -O3 -fopenmp' integral_image_3d_mex.cpp
-end
-
-% any_4th_dim_mex
-if(~ismac)
-    mex -v COPTIMFLAGS="-O3 -DNDEBUG" CFLAGS='$CFLAGS -O3 -fopenmp' LDFLAGS='$LDFLAGS -O3 -fopenmp' any_4th_dim_mex.cpp
-else
-    mex -v CC="/usr/local/bin/gcc-13" CXX="/usr/local/bin/g++-13" COPTIMFLAGS="-O3 -DNDEBUG" CFLAGS='$CFLAGS -O3 -fopenmp' CXXFLAGS='-fno-common -arch arm64 -mmacosx-version-min=10.15 -fexceptions -isysroot /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk -std=c++11 -O3 -fopenmp -DMATLAB_DEFAULT_RELEASE=R2017b  -DUSE_MEX_CMD   -DMATLAB_MEX_FILE' LDFLAGS='$LDFLAGS -O3 -fopenmp' any_4th_dim_mex.cpp
-end
-
-cd('../../tools/MIP/mex/');
-
-% max_pooling_3d_mex
-if(~ismac)
-    mex -v COPTIMFLAGS="-O3 -DNDEBUG" CFLAGS='$CFLAGS -O3 -fopenmp' LDFLAGS='$LDFLAGS -O3 -fopenmp' max_pooling_3d_mex.cpp
-else
-    mex -v CC="/usr/local/bin/gcc-13" CXX="/usr/local/bin/g++-13" COPTIMFLAGS="-O3 -DNDEBUG" CFLAGS='$CFLAGS -O3 -fopenmp' CXXFLAGS='-fno-common -arch arm64 -mmacosx-version-min=10.15 -fexceptions -isysroot /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk -std=c++11 -O3 -fopenmp -DMATLAB_DEFAULT_RELEASE=R2017b  -DUSE_MEX_CMD   -DMATLAB_MEX_FILE' LDFLAGS='$LDFLAGS -O3 -fopenmp' LDFLAGS='$LDFLAGS -O3 -fopenmp' max_pooling_3d_mex.cpp
-end
-
-cd('../../../crop/mex');
-
-% crop3d_mex
-if(~ismac)
-    mex -v COPTIMFLAGS="-O3 -DNDEBUG" CFLAGS='$CFLAGS -O3 -fopenmp' LDFLAGS='$LDFLAGS -O3 -fopenmp' crop3d_mex.c
-else
-    mex -v CC="/usr/local/bin/gcc-13" CXX="/usr/local/bin/g++-13" COPTIMFLAGS="-O3 -DNDEBUG" CFLAGS='$CFLAGS -O3 -fopenmp' LDFLAGS='$LDFLAGS -O3 -fopenmp' crop3d_mex.c
-end
-
-% crop4d_mex
-if(~ismac)
-    mex -v COPTIMFLAGS="-O3 -DNDEBUG" CFLAGS='$CFLAGS -O3 -fopenmp' LDFLAGS='$LDFLAGS -O3 -fopenmp' crop4d_mex.cpp
-else
-    mex -v CXX="/usr/local/bin/g++-13" CXXFLAGS='-fno-common -arch x86_64 -mmacosx-version-min=10.15 -fexceptions -isysroot /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk -std=c++11 -O3 -fopenmp -DMATLAB_DEFAULT_RELEASE=R2017b  -DUSE_MEX_CMD   -DMATLAB_MEX_FILE' CXXOPTIMFLAGS="-O3 -DNDEBUG" LDFLAGS='$LDFLAGS -O3 -fopenmp' crop4d_mex.cpp
-end
-
-% indexing3d_mex
-if(~ismac)
-    mex -v COPTIMFLAGS="-O3 -DNDEBUG" CFLAGS='$CFLAGS -O3 -fopenmp' LDFLAGS='$LDFLAGS -O3 -fopenmp' indexing3d_mex.c
-else
-    mex -v CC="/usr/local/bin/gcc-13" CXX="/usr/local/bin/g++-13" COPTIMFLAGS="-O3 -DNDEBUG" CFLAGS='$CFLAGS -O3 -fopenmp' LDFLAGS='$LDFLAGS -O3 -fopenmp' indexing3d_mex.c
-end
-
-% indexing4d_mex
-if(~ismac)
-    mex -v COPTIMFLAGS="-O3 -DNDEBUG" CFLAGS='$CFLAGS -O3 -fopenmp' LDFLAGS='$LDFLAGS -O3 -fopenmp' indexing4d_mex.c
-else
-    mex -v CC="/usr/local/bin/gcc-13" CXX="/usr/local/bin/g++-13" COPTIMFLAGS="-O3 -DNDEBUG" CFLAGS='$CFLAGS -O3 -fopenmp' LDFLAGS='$LDFLAGS -O3 -fopenmp' indexing4d_mex.c
-end
-
-% indexing4d_crop_mex
-if(~ismac)
-    mex -v COPTIMFLAGS="-O3 -DNDEBUG" CFLAGS='$CFLAGS -O3 -fopenmp' LDFLAGS='$LDFLAGS -O3 -fopenmp' indexing4d_crop_mex.cpp
-else
-    mex -v CXX="/usr/local/bin/g++-13" CXXFLAGS='-fno-common -arch x86_64 -mmacosx-version-min=10.15 -fexceptions -isysroot /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk -std=c++11 -O3 -fopenmp -DMATLAB_DEFAULT_RELEASE=R2017b  -DUSE_MEX_CMD   -DMATLAB_MEX_FILE' CXXOPTIMFLAGS="-O3 -DNDEBUG" LDFLAGS='$LDFLAGS -O3 -fopenmp' indexing4d_crop_mex.cpp
-end
-
-cd('../../flatfield_correction/mex');
-
-% flat_field_correction_3d_mex
-if(~ismac)
-    mex -v COPTIMFLAGS="-O3 -DNDEBUG" CFLAGS='$CFLAGS -O3 -fopenmp' LDFLAGS='$LDFLAGS -O3 -fopenmp' flat_field_correction_3d_mex.cpp
-else
-    mex -v CXX="/usr/local/bin/g++-13" CXXFLAGS='-fno-common -arch x86_64 -mmacosx-version-min=10.15 -fexceptions -isysroot /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk -std=c++11 -O3 -fopenmp -DMATLAB_DEFAULT_RELEASE=R2017b  -DUSE_MEX_CMD   -DMATLAB_MEX_FILE' CXXOPTIMFLAGS="-O3 -DNDEBUG" LDFLAGS='$LDFLAGS -O3 -fopenmp' flat_field_correction_3d_mex.cpp
+if ismac
+    % the mex files must not load libraries from Homebrew
+    for i = 1 : size(mexFiles, 1)
+        [~, fsn] = fileparts(mexFiles{i, 2});
+        mexFn = sprintf('%s/%s/%s.%s', srcDir, mexFiles{i, 1}, fsn, mexext);
+        [~, deps] = system(sprintf('otool -L "%s"', mexFn));
+        if contains(deps, '/opt/homebrew/')
+            warning('%s still loads libraries from Homebrew:\n%s', mexFn, deps);
+        end
+    end
 end
 
 cd(baseDir);
+
+end
+
+
+function [] = buildMex(srcFn, useAVX)
+% build one mex file in the current folder
+
+[~, fsn, ext] = fileparts(srcFn);
+isCpp = strcmp(ext, '.cpp');
+if ~ismac
+    avxFlag = '';
+    if useAVX
+        avxFlag = ' -mavx2';
+    end
+    if isCpp
+        mex('-v', 'CXXOPTIMFLAGS=-O3 -DNDEBUG', ['CXXFLAGS=$CXXFLAGS -O3 -fopenmp', avxFlag], ...
+            ['LDFLAGS=$LDFLAGS -O3 -fopenmp', avxFlag], srcFn);
+    else
+        mex('-v', 'COPTIMFLAGS=-O3 -DNDEBUG', ['CFLAGS=$CFLAGS -O3 -fopenmp', avxFlag], ...
+            ['LDFLAGS=$LDFLAGS -O3 -fopenmp', avxFlag], srcFn);
+    end
+    return;
+end
+
+% ARM macOS with Homebrew gcc@13; libstdc++ and libgcc are linked
+% statically, and libgomp is loaded from the mex folder
+gccDir = '/opt/homebrew/opt/gcc@13/lib/gcc/13';
+macFlags = ['-fno-common -arch arm64 -mmacosx-version-min=11.0 -fexceptions ', ...
+    '-isysroot /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk -O3 -fopenmp ', ...
+    '-DMATLAB_DEFAULT_RELEASE=R2017b -DUSE_MEX_CMD -DMATLAB_MEX_FILE'];
+if isCpp
+    mex('-v', 'CXX=/opt/homebrew/bin/g++-13', 'CXXOPTIMFLAGS=-O3 -DNDEBUG', ['CXXFLAGS=', macFlags, ' -std=c++11'], ...
+        'LDFLAGS=$LDFLAGS -O3 -fopenmp -static-libgcc', [gccDir, '/libstdc++.a'], srcFn);
+else
+    mex('-v', 'CC=/opt/homebrew/bin/gcc-13', 'COPTIMFLAGS=-O3 -DNDEBUG', ['CFLAGS=', macFlags], ...
+        'LDFLAGS=$LDFLAGS -O3 -fopenmp -static-libgcc', srcFn);
+end
+mexFn = [fsn, '.', mexext];
+system(sprintf('install_name_tool -change %s/libgomp.1.dylib @loader_path/libgomp.1.dylib %s', gccDir, mexFn));
+system(sprintf('codesign --force --sign - %s', mexFn));
+if ~exist('libgomp.1.dylib', 'file')
+    copyfile([gccDir, '/libgomp.1.dylib'], 'libgomp.1.dylib');
+end
 
 end

@@ -8,17 +8,11 @@ classdef DeskewMexSourceTest < pktest.TestCase
             'skewed_space_interp_defined_stepsize_mex.c'}
     end
 
-    methods (Test, TestTags = {'Unit', 'KnownIssue'})
+    methods (Test, TestTags = {'Unit'})
         function simdLoopsStayInsideTheRow(testCase, sourceFile)
-            % KNOWN ISSUE: the AVX float loops are written as
-            %   for (size_t i = 0; i < len; i += 8) { ... _mm256_storeu_ps(&result[i], ...) }
-            % so the last iteration loads and stores up to 7 floats past the
-            % end of the row when len is not a multiple of 8. For
-            % single-precision input whose first dimension isn't a multiple
-            % of 8, this overwrites the next row and finally runs past the
-            % output buffer (heap corruption, MATLAB crashes with
-            % "malloc(): corrupted top size"). Linux and Windows only (x86
-            % SIMD path). Fix: use i + 8 <= len, as the 16-bit loops do.
+            % the AVX float loops used to run up to 7 floats past each row
+            % (heap corruption for single-precision input whose first
+            % dimension isn't a multiple of 8)
             src = fileread(fullfile(pktest.repoRoot(), 'microscopeDataProcessing', 'deskew_rotate', 'mex', sourceFile));
             lines = splitlines(src);
             unsafe = find(~cellfun(@isempty, regexp(lines, 'for\s*\(\s*size_t\s+i\s*=\s*0\s*;\s*i\s*<\s*len\s*;\s*i\s*\+=\s*(8|16)\s*\)', 'once')));

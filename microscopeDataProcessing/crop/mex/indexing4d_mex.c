@@ -108,7 +108,7 @@ void mexFunction(int nlhs, mxArray *plhs[],
         bool* region = (bool*)mxGetPr(prhs[2]);
         indexing4d_mex((void*)orig, (void*)region, startX,startY,startZ,startT,endX,endY,endZ,endT,origShapeX,origShapeY,origShapeZ,origShapeT,shapeX,shapeY,shapeZ,shapeT,bits);
     }
-    if(mDType == mxUINT8_CLASS){
+    else if(mDType == mxUINT8_CLASS){
         uint64_t bits = 8;
         uint8_t* orig = (uint8_t*)mxGetPr(prhs[0]);
         uint8_t* region = (uint8_t*)mxGetPr(prhs[2]);

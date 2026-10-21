@@ -101,8 +101,10 @@ void compute_weighted_sum_two_vectors(const float* a, const float* b, float* res
     const __m256 wa_vec = _mm256_set1_ps(wa);
     const __m256 wb_vec = _mm256_set1_ps(wb);
 
+    // full blocks of 8 floats; the loop after this one handles the rest
+    const size_t len8 = len - (len % 8);
     #pragma omp parallel for
-    for (size_t i = 0; i < len; i += 8) {
+    for (size_t i = 0; i < len8; i += 8) {
         // Load 8 floats from each vector
         __m256 va = _mm256_loadu_ps(&a[i]);
         __m256 vb = _mm256_loadu_ps(&b[i]);
@@ -135,8 +137,10 @@ void compute_weighted_sum(const float* a, const float* b, const float* c, const 
     const __m256 wc_vec = _mm256_set1_ps(wc);
     const __m256 wd_vec = _mm256_set1_ps(wd);
 
+    // full blocks of 8 floats; the loop after this one handles the rest
+    const size_t len8 = len - (len % 8);
     #pragma omp parallel for
-    for (size_t i = 0; i < len; i += 8) {
+    for (size_t i = 0; i < len8; i += 8) {
         // Load 8 floats from each vector
         __m256 va = _mm256_loadu_ps(&a[i]);
         __m256 vb = _mm256_loadu_ps(&b[i]);
@@ -342,9 +346,9 @@ void compute_weighted_sum_two_vectors_16bit(const uint16_t* a, const uint16_t* b
         __m256 result_high = _mm256_add_ps(_mm256_mul_ps(a_float_high, wa_vec), _mm256_mul_ps(b_float_high, wb_vec));
         result_high = _mm256_add_ps(result_high, half_vec);
 
-        // Convert float back to uint32_t
-        __m256i result_int_low  = _mm256_cvtps_epi32(result_low);
-        __m256i result_int_high = _mm256_cvtps_epi32(result_high);
+        // Convert float back to uint32_t, truncating: with the 0.5 added above, this rounds to nearest
+        __m256i result_int_low  = _mm256_cvttps_epi32(result_low);
+        __m256i result_int_high = _mm256_cvttps_epi32(result_high);
 
         // Pack the results back to uint16_t and store them
         __m256i result_uint16 = _mm256_packus_epi32(result_int_low, result_int_high);
@@ -406,9 +410,9 @@ void compute_weighted_sum_16bit(const uint16_t* a, const uint16_t* b, const uint
                                            _mm256_add_ps(_mm256_mul_ps(c_float_high, wc_vec), _mm256_mul_ps(d_float_high, wd_vec)));
         result_high = _mm256_add_ps(result_high, half_vec);
 
-        // Convert float back to uint32_t
-        __m256i result_int_low  = _mm256_cvtps_epi32(result_low);
-        __m256i result_int_high = _mm256_cvtps_epi32(result_high);
+        // Convert float back to uint32_t, truncating: with the 0.5 added above, this rounds to nearest
+        __m256i result_int_low  = _mm256_cvttps_epi32(result_low);
+        __m256i result_int_high = _mm256_cvttps_epi32(result_high);
 
         // Pack the results back to uint16_t and store them
         __m256i result_uint16 = _mm256_packus_epi32(result_int_low, result_int_high);

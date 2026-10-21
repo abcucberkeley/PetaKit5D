@@ -144,18 +144,11 @@ classdef DeskewRotateFrame3DTest < pktest.TestCase
             testCase.verifyEqual(double(sum(out, 'all') / sum(vol, 'all')), dz / testCase.XYPixelSize, 'RelTol', 0.02, ...
                 'Objective scan deskew/rotation lost the image content.');
         end
-    end
 
-    methods (Test, TestTags = {'Unit', 'KnownIssue'})
         function save16bitRoundsToNearest(testCase)
-            % KNOWN ISSUE: on Linux and Windows the AVX uint16 kernels add
-            % 0.5 and then convert with _mm256_cvtps_epi32, which rounds to
-            % nearest itself, so the result is ceil(x) instead of round(x)
-            % (volume_deskew_rotate_warp_mex.cpp; the skewed_space_interp*
-            % mex sources do the same, and with interpolation some voxels
-            % are 2 too high). uint16 deskew/rotation output is biased by
-            % +0.5 on average and differs from macOS, whose scalar code
-            % rounds correctly. Fix: convert with _mm256_cvttps_epi32.
+            % the AVX uint16 kernels used to add 0.5 and then round, which is ceil
+            testCase.assumeNoKnownIssueOn('mexw64', ['the Windows deskew/rotation mex files predate the ', ...
+                'rounding fix; rebuild them with compileAllMexFiles']);
             [~, vol] = testCase.beadGrid();
             vol = uint16(vol + 100);
             out = deskewRotateFrame3D(vol, testCase.SkewAngle, 0.2, testCase.XYPixelSize, 'reverse', true, 'save16bit', true);

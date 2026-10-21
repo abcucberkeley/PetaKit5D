@@ -163,14 +163,12 @@ lists the ones that may be intended.
 
 | Test | Problem |
 |---|---|
-| `DeskewMexSourceTest` | The AVX loops in the deskew/rotation mex files (`volume_deskew_rotate_warp_mex.cpp:66`, `skewed_space_interp_volume_deskew_rotate_warp_mex.cpp:105,139`, `skewed_space_interp_defined_stepsize_mex.c:103,137`) run up to 7 floats past each row. On Linux/Windows, single-precision input whose first dimension is not a multiple of 8 corrupts memory and can crash MATLAB. |
 | `MexPackagingTest` | 15 ARM macOS mex files (crop, deskew/rotate, flat field, stitch, MIP) load Homebrew's `libgomp` by absolute path; without Homebrew gcc@13 they only load if cpp-tiff/cpp-zarr was used first in the session. |
 
 **Wrong or silently ignored results**
 
 | Test | Problem |
 |---|---|
-| `DeskewRotateFrame3DTest/save16bitRoundsToNearest` | On Linux and Windows, uint16 deskew/rotation output is rounded up (`ceil`) instead of to the nearest integer (AVX kernels add 0.5 and then round), so it is biased by +0.5 and differs from macOS. |
 | `ImarisConversionTest/imageSizeIsNotPaddedToBlocks` | The Parallel_Imaris_Writer adds `size mod blockSize` to the image size it records (e.g., 20 becomes 24 with blocks of 16) and counts the padding in the histograms. |
 
 **Errors**
@@ -178,7 +176,6 @@ lists the ones that may be intended.
 | Test | Problem |
 |---|---|
 | `XRDeskewRotateFrameTest/backgroundRemovalRuns` | `BKRemoval=true` calls `XR_CameraBackgroundRemoval`, which isn't in PetaKit5D (old mcc builds show it in the author's private repository). |
-| `CropMexTest/indexing4dMexSupportsLogical` | `indexing4d_mex` rejects logical input (missing `else`). |
 
 **May be intended.** These tests fail, but the behavior may be deliberate.
 Ask the author before fixing them; if it is intended, remove the test (or
@@ -195,8 +192,14 @@ document the limitation).
 
 **Platform-specific.** Tests for bugs that affect only some platforms skip
 themselves there with a `KNOWN ISSUE` message (`assumeNoKnownIssueOn`);
-remove the platform from the call when the bug is fixed. There are none at
-the moment.
+remove the platform from the call when the bug is fixed. These are mex
+fixes whose Linux binaries are rebuilt, but not yet the others (rebuild them
+with `compileAllMexFiles`, e.g., with the Jenkins mex stage).
+
+| Test | Platform | Problem |
+|---|---|---|
+| `DeskewRotateFrame3DTest/save16bitRoundsToNearest` | Windows | The deskew/rotation mex files round uint16 output up (`ceil`) and their AVX loops run up to 7 floats past each row, which corrupts memory for single-precision input whose first dimension is not a multiple of 8. |
+| `CropMexTest/indexing4dMexSupportsLogical` | Windows, ARM macOS | `indexing4d_mex` rejects logical input. |
 
 Not covered by a test:
 
@@ -249,8 +252,8 @@ update_golden_data('decon_omw')   % or update_golden_data() for all
   `assumeMexAvailable` for mex files that are missing on some platforms, and
   `assumeNoKnownIssueOn` for bugs that only affect some platforms.
 - Single-precision inputs to the deskew/rotation mex functions must have a
-  first dimension that is a multiple of 8 until the SIMD overflow issue is
-  fixed (see `DeskewMexSourceTest`).
+  first dimension that is a multiple of 8 until the Windows binaries with the
+  SIMD overflow fix are built (see the platform-specific known issues).
 
 ## Demo coverage
 
