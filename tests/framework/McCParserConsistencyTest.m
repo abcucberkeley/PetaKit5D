@@ -81,7 +81,7 @@ classdef McCParserConsistencyTest < pktest.TestCase
 
     methods (Test, TestTags = {'Unit', 'KnownIssue'})
         function everyListedFunctionHasSource(testCase)
-            % KNOWN ISSUE: image_intensity_correction_block and
+            % KNOWN ISSUE (may be intended): image_intensity_correction_block and
             % replicateDataBlock are listed in mcc/mcc_function_list.txt and
             % dispatched by mccMaster.m, but their source is not in this
             % repository, so compile_mccMaster can't include them and
@@ -93,7 +93,7 @@ classdef McCParserConsistencyTest < pktest.TestCase
         end
 
         function noOrphanParsers(testCase)
-            % KNOWN ISSUE: mcc/parsers/multiple_region_spectra_encoding_block_parser.m
+            % KNOWN ISSUE (may be intended): mcc/parsers/multiple_region_spectra_encoding_block_parser.m
             % is not in the function list or mccMaster.m and its function
             % does not exist. Fix: delete the stale parser.
             dir_info = dir(testCase.mccDir('parsers/*_parser.m'));

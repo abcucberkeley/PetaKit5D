@@ -71,7 +71,10 @@ classdef ChromaticShiftCorrectionTest < pktest.TestCase
         function sameModeKeepsImageSize(testCase)
             % KNOWN ISSUE: XR_chromatic_shift_correction_data_wrapper.m:160
             % tests isempty(neworigin) (lowercase), an undefined variable,
-            % so 'same' mode always errors. Fix: use newOrigin.
+            % so 'same' mode always errors. Renaming it to newOrigin is not
+            % enough: :164 has the same flipped bbox sign as 'full' mode (see
+            % fullModeContainsBothChannels), and the default origin (:162)
+            % shifts even an unshifted channel by half the overlap.
             [dataPath, ~, ~] = testCase.shiftedChannels(testCase.Offset);
 
             testCase.runCorrection(dataPath, 'same', 'chromaticOffset', testCase.Offset);

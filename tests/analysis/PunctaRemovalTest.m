@@ -16,7 +16,11 @@ classdef PunctaRemovalTest < pktest.TestCase
             % ([0, 0], [] and [], i.e., Otsu thresholds) shift all later
             % sprintf arguments, so the task string is invalid MATLAB
             % ("Invalid expression") and the function always fails with
-            % default settings. Fix: format them with mat2str.
+            % default settings. Formatting them with mat2str is not enough:
+            % XR_ExM_PunctaRemoval_updated_block.m uses MaxThreshold and
+            % BaseThreshold unconditionally (e.g., min(mip_i, MaxThreshold)),
+            % which fails for the empty defaults, and the issues in
+            % removesPunctaWithScalarThresholds also apply.
             [zarrFn, vol] = testCase.punctaVolume();
             XR_ExM_PunctaRemoval_zarr(zarrFn, 'batchSize', [64, 64, 64], 'blockSize', [32, 32, 32], ...
                 'parseCluster', false, 'masterCompute', true);
@@ -28,7 +32,11 @@ classdef PunctaRemovalTest < pktest.TestCase
             % string passes 'uuid' to XR_ExM_PunctaRemoval_updated_block,
             % which has no uuid parameter ("'uuid' is not a recognized
             % parameter"). Fix: add the parameter to the block function or
-            % drop it from the task string.
+            % drop it from the task string. Further along the same path,
+            % XR_ExM_PunctaRemoval_updated_block.m:171 calls the misspelled
+            % XR_ExM_PunctalRemovalPointDetection, and
+            % XR_ExM_PunctaRemoval_zarr.m:328 passes the undefined ConfigFile
+            % (the variable is configFile).
             [zarrFn, vol] = testCase.punctaVolume();
             XR_ExM_PunctaRemoval_zarr(zarrFn, 'batchSize', [64, 64, 64], 'blockSize', [32, 32, 32], ...
                 'MinThreshold', 0, 'MaxThreshold', 2000, 'BaseThreshold', 300, 'volThrsh', 100, ...

@@ -43,9 +43,10 @@ classdef PointDetectionTest < pktest.TestCase
 
     methods (Test, TestTags = {'Integration'})
         function runDetectionWritesDetectionsAndMask(testCase)
-            % getShortPath (used for messages) splits paths with
-            % regexp(path, filesep), which doesn't work with '\' on Windows
-            testCase.assumeFalse(ispc, 'getShortPath does not handle Windows paths.');
+            % getShortPath (used for messages) only splits paths on filesep,
+            % so on Windows it errors for paths with '/' separators, which
+            % these tests (and PetaKit5D's other functions) use
+            testCase.assumeFalse(ispc, 'getShortPath does not handle ''/'' separators on Windows.');
             [data, dataPath] = testCase.movieData(1);
 
             XR_runDetection3D(data, 'Sigma', testCase.Sigma, 'DetectionMethod', 'speedup', 'WriteAmira', false, ...
@@ -65,7 +66,7 @@ classdef PointDetectionTest < pktest.TestCase
         function trackingLinksSpotsAcrossFrames(testCase)
             % detection + tracking (demo step 5.1) on a 3-frame movie with
             % spots moving by a fraction of a voxel per frame
-            testCase.assumeFalse(ispc, 'getShortPath does not handle Windows paths.');
+            testCase.assumeFalse(ispc, 'getShortPath does not handle ''/'' separators on Windows.');
             velocity = [0.6, 1.0, 0.4];
             [data, dataPath] = testCase.movieData(3, velocity);
             resultsPath = {[dataPath, 'Analysis/']};
@@ -109,7 +110,7 @@ classdef PointDetectionTest < pktest.TestCase
             % demos) calls XR_estimate_overall_background_information,
             % which calls crop_image_by_bounding_box, a function that does
             % not exist in the repository.
-            testCase.assumeFalse(ispc, 'getShortPath does not handle Windows paths.');
+            testCase.assumeFalse(ispc, 'getShortPath does not handle ''/'' separators on Windows.');
             [data, dataPath] = testCase.movieData(1);
 
             XR_runDetection3D(data, 'Sigma', testCase.Sigma, 'DetectionMethod', 'lowSNR', 'WriteAmira', false, ...

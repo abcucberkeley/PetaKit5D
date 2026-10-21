@@ -87,12 +87,13 @@ classdef MIPTest < pktest.TestCase
 
     methods (Test, TestTags = {'Unit', 'KnownIssue'})
         function maxPoolingOfNegativeValues(testCase)
-            % KNOWN ISSUE: max_pooling_3d_mex initializes each block maximum
-            % with 0, so blocks with only negative values return 0 instead of
-            % their maximum (the MATLAB fallback in max_pooling_3d.m is
-            % correct). Affects 'max' resampling of data with negative values,
-            % e.g., after background subtraction. Fix: initialize with the
-            % first voxel of the block (or -inf).
+            % KNOWN ISSUE (may be intended): max_pooling_3d_mex initializes
+            % each block maximum with 0, so blocks with only negative values
+            % return 0 instead of their maximum. The MATLAB fallback
+            % (max_pooling_3d.m) zero-pads edge blocks, so it does the same
+            % there. Non-negative input may be an intended precondition (the
+            % mex has no signed integer types, and stitching treats 0 as no
+            % data); if not, initialize with the first voxel of the block.
             im = -single(1 : 8)';
             im = reshape(im, 2, 2, 2);
             testCase.verifyEqual(max_pooling_3d_mex(im, [2, 2, 2]), single(-1));

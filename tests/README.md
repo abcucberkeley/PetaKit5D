@@ -154,21 +154,22 @@ fixed, its test starts passing: remove the `KnownIssue` tag so it guards
 against the bug coming back.
 
 Current known issues (found while writing these tests; each was confirmed by
-running the test). The test name is the place to start; its `KNOWN ISSUE:`
-comment has the details.
+running the test, and re-checked against the code's history, documentation
+and callers for signs that the behavior is intended). The test name is the
+place to start; its `KNOWN ISSUE:` comment has the details. The last table
+lists the ones that may be intended.
 
 **High impact**
 
 | Test | Problem |
 |---|---|
 | `DeskewMexSourceTest` | The AVX loops in the deskew/rotation mex files (`volume_deskew_rotate_warp_mex.cpp:66`, `skewed_space_interp_volume_deskew_rotate_warp_mex.cpp:105,139`, `skewed_space_interp_defined_stepsize_mex.c:103,137`) run up to 7 floats past each row. On Linux/Windows, single-precision input whose first dimension is not a multiple of 8 corrupts memory and can crash MATLAB. |
-| `DeskewRotateFrame3DTest/objectiveScanPreservesContent` | Combined deskew/rotation of objective scan data returns an all-zero volume (`volume_deskew_rotate_warp_mex` assumes sample scan). |
+| `DeskewRotateFrame3DTest/objectiveScanPreservesContent` | Combined deskew/rotation of objective scan data keeps only ~6.5% of the image content (`volume_deskew_rotate_warp_mex` assumes sample scan). |
 | `MexPackagingTest` | 15 ARM macOS mex files (crop, deskew/rotate, flat field, stitch, MIP) load Homebrew's `libgomp` by absolute path; without Homebrew gcc@13 they only load if cpp-tiff/cpp-zarr was used first in the session. |
-| `ResampleTest/largeZarrWithDefaultBorderSize` | Large-file resampling with the default `borderSize` shifts every batch after the first by half an output voxel. |
 | `StitchingTest/largeFileStitching`, `largeFileWithoutRegistration` | Large-file stitching fails (`XR_MIP_zarr.m:108` uses an undefined `bim`; MIP slabs only exist with `xcorrShift`). |
-| `AutomaticProcessingTest/demoParameterSetIsAccepted` | The three `demo_microscope_pipeline_*.m` demos pass a 4-element `Save16bit`, which `XR_microscopeAutomaticProcessing` rejects. |
+| `AutomaticProcessingTest/demoParameterSetIsAccepted` | The three `demo_microscope_pipeline_*.m` demos pass a 4-element `Save16bit`, which `XR_microscopeAutomaticProcessing` rejects since deconvolution was removed from it (abd53f9); the demos are out of date. |
 | `PointDetectionTest/lowSNRDetectionRuns` | `DetectionMethod='lowSNR'`, which all three point detection demos use, calls `crop_image_by_bounding_box`, which doesn't exist. |
-| `PunctaRemovalTest/removesPunctaWithDefaultThresholds` | `XR_ExM_PunctaRemoval_zarr` with default thresholds builds an invalid task string (`%0.20d` with empty/vector thresholds), so default puncta removal never runs. |
+| `PunctaRemovalTest/removesPunctaWithDefaultThresholds` | `XR_ExM_PunctaRemoval_zarr` with default thresholds builds an invalid task string (`%0.20d` with empty/vector thresholds), so default puncta removal never runs. There are more bugs further along this path (see the test comments). |
 
 **Wrong or silently ignored results**
 
@@ -178,18 +179,17 @@ comment has the details.
 | `DeskewRotateFrame3DTest/save16bitRoundsToNearest` | On Linux and Windows, uint16 deskew/rotation output is rounded up (`ceil`) instead of to the nearest integer (AVX kernels add 0.5 and then round), so it is biased by +0.5 and differs from macOS. |
 | `XRDeskewRotateFrameTest/objectiveScanSeparatePathIsNotDeskewed` | The separate path deskews objective scan data before rotating it. |
 | `XRDeskewRotateFrameTest/zStageScanSeparateMatchesCombined` | The separate path uses the wrong angle for the z stage scan output size. |
-| `AxisOrderMappingTest`, `XRDeskewRotateFrameTest/inputAxisOrderZYXIsPermutedToYXZ` | `axis_order_mapping` returns the inverse permutation for `'zyx'` and `'xzy'`. |
+| `XRDeskewRotateFrameTest/inputAxisOrderZYXIsPermutedToYXZ` | Input axis orders `'zyx'` and `'xzy'` are permuted the wrong way: `XR_deskewRotateFrame.m:217-219` needs `ipermute` (`axis_order_mapping` itself is right, as the output side uses it). |
 | `DeconFunctionTest/psfGenKeepsEvenSizePSFAtTheFFTCenter` | `psf_gen_new` centers even-size PSFs one voxel off, shifting deconvolution results. |
-| `DeconFunctionTest/changedPSFWithSameEnergyIsNotIgnored` | The persistent OTF cache in `decon_lucy_function`/`decon_lucy_omw_function` reuses a stale OTF for a shifted or mirrored PSF (or a new forward PSF in OMW). |
 | `DeconFrameTest/overwriteRecomputesTheResult` | `Overwrite=true` keeps the old deconvolution result. |
 | `DeconFrameTest/flipZstackFlipsTheResult` | `flipZstack` is ignored for regular (non-large) files. |
 | `StitchingTest/noneBlendTakesHalfOverlapFromEachTile` | `'none'` blending takes the whole overlap from the lower-index tile instead of half from each. |
 | `StitchingTest/featherBlendingWithThinTiles` | Feather blending fails for tiles with fewer than 10 slices and zeroes the first slice for 10-29 slices. |
 | `ImageListGenerationTest/tilePositionStepsForNonSquareTiles` | Image lists from tile positions swap the x and y steps for non-square tiles. |
 | `ResampleTest/image2dWithYxzFactor` | 2D resampling uses the wrong elements of a yxz factor. |
-| `MIPTest/maxPoolingOfNegativeValues` | `max_pooling_3d_mex` returns 0 for all-negative blocks. |
 | `ChromaticShiftCorrectionTest/fullModeContainsBothChannels` | Chromatic shift `'full'` mode computes the output size from the bounding box starts and flips the offset sign. |
-| `ImarisConversionTest/imageSizeIsNotPaddedToBlocks` | The Parallel_Imaris_Writer pads the image size to multiples of the block size (and counts the padding in the histograms). |
+| `ResampleTest/largeZarrWithDefaultBorderSize` | Large-file resampling with the default `borderSize` shifts every batch after the first by half an output voxel. |
+| `ImarisConversionTest/imageSizeIsNotPaddedToBlocks` | The Parallel_Imaris_Writer adds `size mod blockSize` to the image size it records (e.g., 20 becomes 24 with blocks of 16) and counts the padding in the histograms. |
 | `DeskewRotateDataWrapperTest/saveMIPFalseWritesNoMIP`, `blockSizeIsUsedForZarrOutput` | `saveMIP` and `blockSize` are not passed on by the deskew/rotate wrapper. |
 | `SlurmClusterTest/finalOutputCancelsRemainingJobs` | When the final output appears, the Slurm cluster loop returns without cancelling the remaining jobs, so they keep running after the call returns. |
 
@@ -197,25 +197,33 @@ comment has the details.
 
 | Test | Problem |
 |---|---|
-| `DeskewRotateDataWrapperTest/objectiveScanLargeFileRuns` | Large-file objective scan deskew/rotation fails (`theta` undefined in `XR_deskewRotateZarr`). |
+| `DeskewRotateDataWrapperTest/objectiveScanLargeFileRuns` | Large-file objective scan deskew/rotation fails (`theta` undefined in `XR_deskewRotateZarr`); it was never implemented for large files, so implement it or reject it up front. |
 | `XRDeskewRotateFrameTest/backgroundRemovalRuns` | `BKRemoval=true` calls `XR_CameraBackgroundRemoval`, which doesn't exist. |
 | `DeconFrameTest/allZeroFrameIsDeconvolved` | An all-zero frame with `'simplified'` errors (`err_mat` undefined), aborting the run. |
-| `DeconWrapperTest/originalMethodWorksWithMultipleBatches` | `'original'` with a multi-batch large file fails (no `deconBbox` crop). |
+| `DeconWrapperTest/originalMethodWorksWithMultipleBatches` | `'original'` with a multi-batch large file fails (no `deconBbox` crop); support it or reject it up front. |
 | `StitchingTest/localShiftMethod` | `shiftMethod='local'` errors. |
 | `ChromaticShiftCorrectionTest/sameModeKeepsImageSize` | Chromatic shift `'same'` mode errors (undefined `neworigin`). |
 | `UnmixChannelsTest/gaussianUnmixingThroughDataWrapper` | Gaussian unmixing through the data wrapper fails for per-channel sigmas (`mat2str_comma` of a matrix). |
-| `PunctaRemovalTest/removesPunctaWithScalarThresholds` | The puncta removal task string passes `'uuid'`, which the block function doesn't accept. |
+| `PunctaRemovalTest/removesPunctaWithScalarThresholds` | The puncta removal task string passes `'uuid'`, which the block function doesn't accept; further along, it calls a misspelled function and passes an undefined `ConfigFile`. |
 | `FlatfieldBackgroundEstimationTest/acceptsMccModeFalse` | `XR_flatfield_background_wrapper` validates `mccMode` with `@ischar`. |
 | `GenericComputingFrameworkTest/masterParaFactorAcceptsFractions` | `generic_computing_frameworks_wrapper` validates `masterParaFactor` with `@islogical`. |
-| `BatchFileExistTest/existingOutputFileReturnsCachedResult` | `batch_file_exist` returns without assigning its output when the cached result file exists. |
-| `FunctionStringParsingTest` (3 tests) | mcc mode task string parsing: `f(1,2,'a')` isn't split, `f(1,2)` loses its arguments, `f('','a')` errors. |
-| `McCParserConsistencyTest` (2 tests) | `mcc_function_list.txt` lists `image_intensity_correction_block` and `replicateDataBlock`, which have no source; `multiple_region_spectra_encoding_block_parser.m` is stale. |
 | `TiffIOTest/unsupportedInputIsNotSilentlyDropped` | `writetiff` of 4D or empty data writes nothing and raises no error. |
 | `CropDatasetTest/tiffInputSavedAsZarr` | Cropping tif input to zarr creates a zarr folder named `*.tif`. |
 | `CropMexTest/indexing4dMexSupportsLogical` | `indexing4d_mex` rejects logical input (missing `else`). |
-| `TiffZarrConversionTest/optionalFrameCanBeOmitted` | `tiffToZarr` binds `frame` positionally, so name-value calls without it fail. |
 | `DeconFrameTest/simplifiedInfoFilesGoToTheDeconInfoFolder` | Info files land in the result folder (`sprintf` argument mismatch). |
 | `ImageInfoTest/queryingMetadataKeepsWarningState` | `getImageSize`/`getZarrInfo` turn off all warnings for the rest of the session. |
+
+**May be intended.** These tests fail, but the behavior may be deliberate.
+Ask the author before fixing them; if it is intended, remove the test (or
+document the limitation).
+
+| Test | Question |
+|---|---|
+| `MIPTest/maxPoolingOfNegativeValues` | `max_pooling_3d_mex` returns 0 for all-negative blocks (the MATLAB fallback does too, at edge blocks). Is non-negative input a precondition? |
+| `DeconFunctionTest/changedPSFWithSameEnergyIsNotIgnored` | The OTF cache in `decon_lucy_function`/`decon_lucy_omw_function` keys on the image size and the PSF's sum of squares, so a shifted or mirrored PSF (or a new forward PSF in OMW) reuses a stale OTF. The pipeline never does that; should direct calls with arbitrary PSFs in one session be correct? |
+| `BatchFileExistTest/existingOutputFileReturnsCachedResult` | `batch_file_exist` returns without assigning its output when the cached result file exists. Its only caller runs it as a cluster task and reads that file itself; should a direct call return the cached result? |
+| `FunctionStringParsingTest` (3 tests) | mcc mode task string parsing: `f(1,2,'a')` isn't split, `f(1,2)` loses its arguments, `f('','a')` errors. PetaKit5D never generates these forms; should mcc mode accept any call string (e.g., users' own functions, as `demo_generic_computing_framework` invites)? |
+| `McCParserConsistencyTest` (2 tests) | `mcc_function_list.txt` lists `image_intensity_correction_block` and `replicateDataBlock`, which have no source here (likely in the author's private repository, which the mcc binaries are built from), and f6f2379 left `multiple_region_spectra_encoding_block_parser.m` behind. Keep them? |
 
 **Platform-specific.** Tests for bugs that affect only some platforms skip
 themselves there with a `KNOWN ISSUE` message (`assumeNoKnownIssueOn`);
@@ -235,10 +243,22 @@ Not covered by a test:
   (`slurm_cluster_generic_computing_wrapper.m:55`,
   `generic_single_job_submit_wrapper.m:51`,
   `mcc_slurm_cluster_generic_computing_wrapper.m:61`).
-- Point detection (`XR_runDetection3D`) fails on Windows: `getShortPath` splits
-  paths with `regexp(path, filesep)`. These tests are skipped on Windows.
-- Point detection doesn't work on ARM macOS: its mex files were never built
-  for it (see `MexInventoryTest`).
+- Point detection (`XR_runDetection3D`) fails on Windows for paths with `/`
+  separators, which PetaKit5D's other functions and these tests use:
+  `getShortPath` only splits on `filesep` (native `\` paths work). These tests
+  are skipped on Windows.
+- Point detection isn't available on ARM macOS: its mex files were never
+  built for it (see `MexInventoryTest`). A platform gap rather than a code bug,
+  but README.md doesn't say so.
+- `XR_runDetTrack3d` defaults `DetectionMethod` to `'update_3'`, which
+  `XR_runDetection3D` doesn't handle (`pstruct` undefined); the demos pass
+  `'lowSNR'`.
+- `parseParfor=true` (crop, MIP, unmixing, large-file deskew/rotate) always
+  fails: `matlab_parfor_generic_computing_wrapper.m:27-28` splits its own path
+  on `'XiongtaoScripts'` and then `cd`s to the file.
+- For objective scan, `XR_deskew_rotate_data_wrapper.m:200` compares
+  `DSRDirName` with `'DSR/'`, but the default is `'DSR'`, so the intended
+  rename of the output folder to `rotated/` never happens.
 - Deskew only (`deskew=true, rotate=false`) with the default
   `DSRCombined=true` writes DSR instead of DS, then waits ~3 minutes per retry
   before failing.

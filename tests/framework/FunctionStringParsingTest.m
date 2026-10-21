@@ -52,7 +52,7 @@ classdef FunctionStringParsingTest < pktest.TestCase
 
     methods (Test, TestTags = {'Unit', 'KnownIssue'})
         function splitsLeadingUnquotedArguments(testCase)
-            % KNOWN ISSUE: separate_function_string_variables.m:97-101 takes
+            % KNOWN ISSUE (may be intended): separate_function_string_variables.m:97-101 takes
             % the whole text before the first quoted/bracketed argument as
             % one argument, so 'f(1,2,''a'')' gives {'1,2', '''a'''}. Fix:
             % strsplit that leading text on ',' as the between-pairs branch
@@ -62,7 +62,7 @@ classdef FunctionStringParsingTest < pktest.TestCase
         end
 
         function keepsArgumentsWithoutQuotesOrBrackets(testCase)
-            % KNOWN ISSUE: with no quoted/bracketed argument at all
+            % KNOWN ISSUE (may be intended): with no quoted/bracketed argument at all
             % (p_pairs is empty), separate_function_string_variables.m:97
             % takes var_str(s : max(s, min([]) - 2)) and loses the
             % arguments: 'f(1,2)' gives a single empty argument. Fix:
@@ -72,7 +72,7 @@ classdef FunctionStringParsingTest < pktest.TestCase
         end
 
         function acceptsEmptyStringAsFirstArgument(testCase)
-            % KNOWN ISSUE: '''''' (an empty char) is only recognized when it
+            % KNOWN ISSUE (may be intended): '''''' (an empty char) is only recognized when it
             % follows a comma or is inside {} (patterns ,'', {''} and ,''$
             % at separate_function_string_variables.m:31-33), so an empty
             % first argument errors with "'' are not fully paired".

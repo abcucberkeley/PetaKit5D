@@ -256,12 +256,14 @@ classdef DeconWrapperTest < pktest.TestCase
 
     methods (Test, TestTags = {'Integration', 'KnownIssue'})
         function originalMethodWorksWithMultipleBatches(testCase)
-            % KNOWN ISSUE: RLdecon.m:387-388 runs deconvlucy for
-            % RLMethod='original' but never applies deconBbox (and it is not
-            % applied for DeconIter=0 with a non-empty bbox either), so in
-            % the in-memory large-file path every batch returns its padded
-            % size and RLdecon_large_in_memory fails to place it. Fix: crop
-            % with deconBbox after deconvlucy as the other methods do.
+            % KNOWN ISSUE (or reject it up front): RLdecon.m:387-388 runs
+            % deconvlucy for RLMethod='original' but never applies deconBbox,
+            % so in the in-memory large-file path every batch returns its
+            % padded size and RLdecon_large_in_memory fails to place it.
+            % Before b578df6 the large-file paths silently used 'simplified'
+            % instead. Fix: crop with deconBbox after deconvlucy as the other
+            % methods do, or reject 'original' for large files with a clear
+            % error (then this test should expect that error).
             d = testCase.createDataset({'A'}, 1);
             try
                 testCase.runWrapper(d, 'RLMethod', 'original', 'deconIter', 3, 'edgeErosion', 0, ...

@@ -1,38 +1,21 @@
 classdef AxisOrderMappingTest < pktest.TestCase
-    % axis_order_mapping(inputAxisOrder, 'yxz') must give the permutation
-    % that brings data stored in inputAxisOrder back to yxz.
+    % axis_order_mapping(axisOrder, 'yxz') is the permutation that stores
+    % yxz data in axisOrder (dimension i holds axis axisOrder(i)), which is
+    % how XR_deskewRotateFrame applies outputAxisOrder. Bringing data
+    % stored in axisOrder back to yxz takes the inverse (ipermute), see the
+    % known issue XRDeskewRotateFrameTest/inputAxisOrderZYXIsPermutedToYXZ.
 
     properties (TestParameter)
-        % self-inverse permutations of yxz
-        swapOrder = {'yxz', 'xyz', 'zxy', 'yzx'}
-        % 3-cycles
-        cycleOrder = {'zyx', 'xzy'}
+        axisOrder = {'yxz', 'xyz', 'zxy', 'yzx', 'zyx', 'xzy'}
     end
 
     methods (Test, TestTags = {'Unit'})
-        function permutesBackToYXZ(testCase, swapOrder)
-            testCase.verifyRoundTrip(swapOrder);
-        end
-    end
-
-    methods (Test, TestTags = {'Unit', 'KnownIssue'})
-        function cyclicOrdersPermuteBackToYXZ(testCase, cycleOrder)
-            % KNOWN ISSUE: utils/axis_order_mapping.m computes
-            % order_mat(i) = strfind(outputAxisOrder, inputAxisOrder(i)),
-            % which is the inverse permutation; it only works when the
-            % permutation is its own inverse. Fix: swap the two arguments
-            % of strfind.
-            testCase.verifyRoundTrip(cycleOrder);
-        end
-    end
-
-    methods (Access = private)
-        function [] = verifyRoundTrip(testCase, order)
+        function storesYXZDataInTheGivenOrder(testCase, axisOrder)
             vol = reshape(1 : 2 * 3 * 4, [2, 3, 4]);
-            % data stored in the given order: dimension i holds axis order(i)
-            stored = permute(vol, arrayfun(@(c) strfind('yxz', c), order));
-            testCase.verifyEqual(permute(stored, axis_order_mapping(order, 'yxz')), vol, ...
-                sprintf('axis_order_mapping(''%s'', ''yxz'') does not restore yxz.', order));
+            stored = permute(vol, axis_order_mapping(axisOrder, 'yxz'));
+            % the axes have different lengths, so the size pins the order
+            testCase.verifySize(stored, arrayfun(@(c) size(vol, strfind('yxz', c)), axisOrder), ...
+                sprintf('axis_order_mapping(''%s'', ''yxz'') does not store yxz data in that order.', axisOrder));
         end
     end
 end

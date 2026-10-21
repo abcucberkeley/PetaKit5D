@@ -229,8 +229,10 @@ classdef StitchingTest < pktest.TestCase
             % KNOWN ISSUE: large scale stitching (largeFile with poolSize)
             % errors while computing the MIP slabs for registration:
             % XR_MIP_zarr.m:108 uses bim.BlockSize, but bim no longer exists
-            % since 9911d83 ("Unable to resolve the name 'bim.BlockSize'").
-            % Fix: use zInfo.blockSize.
+            % since 1128146 ("Unable to resolve the name 'bim.BlockSize'").
+            % Fix: use zInfo.blockSize. compute_tile_bwdist_mip_slabs.m:100-101
+            % has the window rounding of featherBlendingWithThinTiles, and
+            % these tiles have 16 pooled slices, so it may need that fix too.
             dataPath = testCase.createTempFolder();
             gt = testCase.randomVolume([100, 120, 32]);
             csvFn = testCase.writeTiles(dataPath, gt, [0, 0, 0; 36, 0, 0; 0, 48, 0; 36, 48, 0], [64, 72, 32]);
@@ -252,7 +254,10 @@ classdef StitchingTest < pktest.TestCase
             % the region end relative to the cuboid end (always <= 1, so the
             % half regions are empty; regression from d9a099b) and
             % processStitchBlock.m:489-490 inverts the mask that keeps
-            % existing values (regression from 4a78ade).
+            % existing values (regression from 4a78ade). The split axis is
+            % the first in halfOrder (default [3, 2, 1], xyz) with more than
+            % one voxel of overlap, z for these tiles, so this checks only
+            % that half of the overlap comes from each tile.
             dataPath = testCase.createTempFolder();
             gt = testCase.randomVolume([64, 104, 32], [1000, 50000]);
             tiles = struct('im', {gt(:, 1 : 64, :), gt(:, 41 : 104, :) + 5000}, 'idx', {[0, 0, 0], [1, 0, 0]}, ...
@@ -262,9 +267,16 @@ classdef StitchingTest < pktest.TestCase
             testCase.stitch(dataPath, csvFn, 'blendMethod', 'none');
 
             out = testCase.readResult(dataPath);
-            expected = [gt(:, 1 : 52, :), gt(:, 53 : 104, :) + 5000];
-            % allow the split to be off by a couple of columns
-            testCase.verifyEqual(out(1 : 64, [1 : 50, 55 : 104], 1 : 32), expected(:, [1 : 50, 55 : 104], :), ...
+            out = out(1 : 64, 1 : 104, 1 : 32);
+            testCase.verifyEqual(out(:, 1 : 40, :), gt(:, 1 : 40, :), 'Tile 1 outside the overlap.');
+            testCase.verifyEqual(out(:, 65 : 104, :), gt(:, 65 : 104, :) + 5000, 'Tile 2 outside the overlap.');
+            % overlap columns 41-64: tile 2 is offset by 5000, so each voxel
+            % shows which tile it came from
+            overlap = out(:, 41 : 64, :);
+            fromTile1 = overlap == gt(:, 41 : 64, :);
+            fromTile2 = overlap == gt(:, 41 : 64, :) + 5000;
+            testCase.verifyTrue(all(fromTile1 | fromTile2, 'all'), 'The overlap has voxels from neither tile.');
+            testCase.verifyEqual(nnz(fromTile1) / numel(overlap), 0.5, 'AbsTol', 0.1, ...
                 'The overlap is not split between the two tiles.');
         end
 

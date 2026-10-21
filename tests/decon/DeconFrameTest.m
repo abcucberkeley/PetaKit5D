@@ -115,8 +115,9 @@ classdef DeconFrameTest < pktest.TestCase
         function flipZstackFlipsTheResult(testCase)
             % KNOWN ISSUE: XR_RLdeconFrame3D.m:260-269 doesn't pass
             % flipZstack to RLdecon, so the regular path never flips the
-            % stack (the saved erosion mask and the large-file path do).
-            % Fix: add 'flipZstack', flipZstack to the RLdecon call.
+            % stack (regression from b578df6; the saved erosion mask and the
+            % 'inmemory' large-file method do flip). Fix: add 'flipZstack',
+            % flipZstack to the RLdecon call.
             [fn, psfFn] = testCase.writeFrame();
             dataPath = fileparts(fn);
             testCase.runFrame(fn, [dataPath, '/noflip/'], psfFn, 'DeconIter', 3, 'flipZstack', false);

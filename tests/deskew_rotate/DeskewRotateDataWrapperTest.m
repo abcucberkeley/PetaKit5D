@@ -160,10 +160,14 @@ classdef DeskewRotateDataWrapperTest < pktest.TestCase
         end
 
         function objectiveScanLargeFileRuns(testCase)
-            % KNOWN ISSUE: XR_deskewRotateZarr only sets theta for sample
-            % scan (XR_deskewRotateZarr.m:82-87) but uses it for objective
-            % scan (line 176); XR_deskewRotateBlock also hard-codes
-            % objectiveScan = false (XR_deskewRotateBlock.m:88).
+            % KNOWN ISSUE (or reject it up front): XR_deskewRotateZarr only
+            % sets theta for sample scan (XR_deskewRotateZarr.m:82-87) but
+            % uses it for objective scan (line 176). Large-file objective
+            % scan was never implemented: XR_deskewRotateBlock hard-codes
+            % objectiveScan = false (XR_deskewRotateBlock.m:88), so fixing
+            % theta alone gives sample scan geometry. Either implement it or
+            % error clearly, as the wrapper does for other unsupported
+            % combinations (then this test should expect that error).
             dataPath = testCase.createTempFolder();
             frame = testCase.makeFrame(1);
             writezarr(frame, [dataPath, testCase.FsnA0, '.zarr']);

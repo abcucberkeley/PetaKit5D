@@ -126,13 +126,15 @@ classdef UnmixChannelsTest < pktest.TestCase
 
     methods (Test, TestTags = {'Integration', 'KnownIssue'})
         function gaussianUnmixingThroughDataWrapper(testCase)
-            % KNOWN ISSUE: XR_unmix_channels_data_wrapper.m:254 formats
+            % KNOWN ISSUE: XR_unmix_channels_data_wrapper.m:206,220 format
             % unmixSigmas with mat2str_comma(unmixSigmas, 10), which only
             % works for row vectors, but the frame function indexes it per
             % channel as unmixSigmas(c, :) (XR_unmix_channels_frame.m), so a
             % per-channel sigma matrix can't be passed through the wrapper.
-            % Fix: format it with strrep(mat2str(unmixSigmas), ' ', ',') as
-            % XR_unmix_channels_zarr does.
+            % The documented 1 x #channels form fails in the frame function,
+            % so no unmixSigmas works with two or more blurred channels. Fix:
+            % format it with strrep(mat2str(unmixSigmas), ' ', ',') as
+            % XR_unmix_channels_zarr does, and document one row per channel.
             [dataPath, chA, chB] = testCase.twoChannelData(false);
             sigmas = [0, 0, 0; 1, 1, 1];
 

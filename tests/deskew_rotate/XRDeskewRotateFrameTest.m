@@ -138,6 +138,17 @@ classdef XRDeskewRotateFrameTest < pktest.TestCase
             testCase.verifyEqual(readtiff([dataPath, 'xyz/DSR/', testCase.Fsn, '.tif']), expected);
         end
 
+        function outputAxisOrderZYXPermutesTheResult(testCase)
+            % a 3-cycle, which a self-inverse order like 'xyz' can't tell
+            % apart from its inverse
+            [dataPath, fn, frame] = testCase.writeFrame();
+            XR_deskewRotateFrame(fn, testCase.XYPixelSize, testCase.Dz, 'reverse', true, 'outputAxisOrder', 'zyx');
+
+            expected = deskewRotateFrame3D(frame, testCase.SkewAngle, testCase.Dz, testCase.XYPixelSize, ...
+                'reverse', true, 'save16bit', true);
+            testCase.verifyEqual(readtiff([dataPath, 'DSR/', testCase.Fsn, '.tif']), permute(expected, [3, 1, 2]));
+        end
+
         function existingOutputIsNotRecomputed(testCase)
             [dataPath, fn, frame] = testCase.writeFrame();
             XR_deskewRotateFrame(fn, testCase.XYPixelSize, testCase.Dz, 'reverse', true);
@@ -191,8 +202,14 @@ classdef XRDeskewRotateFrameTest < pktest.TestCase
         end
 
         function inputAxisOrderZYXIsPermutedToYXZ(testCase)
-            % KNOWN ISSUE: axis_order_mapping returns the inverse
-            % permutation for 3-cycles (see AxisOrderMappingTest).
+            % KNOWN ISSUE: XR_deskewRotateFrame.m:217-219 applies
+            % permute(frame, axis_order_mapping(inputAxisOrder, 'yxz')),
+            % the permutation that stores yxz data in inputAxisOrder (as the
+            % output side correctly uses it, see AxisOrderMappingTest). For
+            % the input, that is the inverse of what is needed, which only
+            % shows for 3-cycles: 'zyx' input ends up as 'xzy'. Fix: use
+            % ipermute there; don't change axis_order_mapping, which would
+            % break outputAxisOrder.
             [dataPath, ~, frame] = testCase.writeFrame();
             fnZYX = [dataPath, 'zyx/', testCase.Fsn, '.tif'];
             writetiff(permute(frame, [3, 1, 2]), fnZYX);

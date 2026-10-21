@@ -66,7 +66,7 @@ classdef BatchFileExistTest < pktest.TestCase
 
     methods (Test, TestTags = {'Unit', 'KnownIssue'})
         function existingOutputFileReturnsCachedResult(testCase)
-            % KNOWN ISSUE: batch_file_exist.m:28-30 returns early when the
+            % KNOWN ISSUE (may be intended): batch_file_exist.m:28-30 returns early when the
             % result file outFullpath already exists, before file_exist_mat
             % is assigned, so a second call errors with "Output argument
             % file_exist_mat not assigned". Fix: load file_exist_mat from

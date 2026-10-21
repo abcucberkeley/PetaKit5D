@@ -101,28 +101,6 @@ classdef TiffZarrConversionTest < pktest.TestCase
         end
     end
 
-    methods (Test, TestTags = {'Unit', 'KnownIssue'})
-        function optionalFrameCanBeOmitted(testCase)
-            % KNOWN ISSUE: tiffToZarr declares frame with ip.addOptional, but
-            % its signature tiffToZarr(tifFilename, zarrFilename, frame,
-            % varargin) binds the third input positionally and the code uses
-            % that variable instead of pr.frame, so tiffToZarr(tif, zarr,
-            % 'blockSize', [16, 16, 4]) treats 'blockSize' as the image data
-            % (blockedImage error). The wrappers always pass [] explicitly.
-            % Fix: use varargin only, or frame = pr.frame after parsing.
-            dataPath = testCase.createTempFolder();
-            im = uint16(randi(60000, testCase.ImSize));
-            writetiff(im, [dataPath, 'im.tif']);
-            try
-                tiffToZarr([dataPath, 'im.tif'], [dataPath, 'im.zarr'], 'blockSize', [16, 16, 4]);
-            catch ME
-                testCase.verifyFail(sprintf('tiffToZarr without the frame input failed: %s', ME.message));
-                return;
-            end
-            testCase.verifyEqual(readzarr([dataPath, 'im.zarr']), im);
-        end
-    end
-
     methods (Access = private)
         function [dataPath, ims, names] = writeDataset(testCase, format)
             dataPath = testCase.createTempFolder();

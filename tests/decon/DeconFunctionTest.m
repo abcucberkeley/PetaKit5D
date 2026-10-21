@@ -293,7 +293,7 @@ classdef DeconFunctionTest < pktest.TestCase
         end
 
         function changedPSFWithSameEnergyIsNotIgnored(testCase, method)
-            % KNOWN ISSUE: decon_lucy_function.m:61-63 and
+            % KNOWN ISSUE (may be intended): decon_lucy_function.m:61-63 and
             % decon_lucy_omw_function.m:54-56 cache the OTF in persistent
             % variables keyed on the image size and sum(PSF .^ 2) (only of
             % PSF_b for OMW). A shifted or mirrored PSF (e.g., a second

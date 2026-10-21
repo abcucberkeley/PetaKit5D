@@ -173,8 +173,9 @@ classdef DeskewRotateFrame3DTest < pktest.TestCase
 
         function objectiveScanPreservesContent(testCase)
             % KNOWN ISSUE: volume_deskew_rotate_warp_mex assumes a sample scan
-            % (input x is computed from output z only), so the default fast
-            % path returns an all-zero volume for objective scan.
+            % (input x is computed from output z only), so for objective scan
+            % the default fast path keeps only ~6.5% of the image content
+            % (regression from 4d6d90f, which sent objective scan to the mex).
             dz = 0.2;
             [~, vol] = testCase.beadGrid();
             out = deskewRotateFrame3D(vol, testCase.SkewAngle, dz, testCase.XYPixelSize, 'objectiveScan', true);
