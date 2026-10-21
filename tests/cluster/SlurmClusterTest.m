@@ -157,23 +157,24 @@ classdef SlurmClusterTest < pktest.TestCase
             testCase.verifyLessThan(toc(t0), 300, 'The framework kept waiting after the final output existed.');
             testCase.verifyEqual(isDone(:)', true(1, 3));
         end
-    end
 
-    methods (Test, TestTags = {'Cluster', 'Integration', 'KnownIssue'})
         function finalOutputCancelsRemainingJobs(testCase)
-            % KNOWN ISSUE: when the final output appears, the polling loop in
-            % slurm_cluster_generic_computing_wrapper.m returns right away
-            % (the finalOutFullpath check at the end of the loop) and skips the
-            % scancel of unfinished jobs after the loop, so the remaining jobs
-            % keep running (and using the allocation) after the call returns.
+            % once the final output exists, the framework returns and
+            % cancels the jobs still running (it used to return before the
+            % scancel, leaving them running)
             dataPath = testCase.createSharedFolder();
             [inputs, outputs, funcStrs] = testCase.bashTasks(dataPath, 3, 'sleepSeconds', [0, 600, 600]);
             finalFn = [dataPath, 'final.txt'];
             funcStrs{1} = sprintf('%s && cp %s %s', funcStrs{1}, outputs{1}, finalFn);
             testCase.runFramework(dataPath, inputs, outputs, funcStrs, 'finalOutFullpath', finalFn);
 
-            pause(5);
+            % cancelled jobs can take a few seconds to leave the queue
+            t0 = tic;
             [~, cmdout] = system(sprintf('squeue -h --name=%s', testCase.JobName));
+            while ~isempty(strtrim(cmdout)) && toc(t0) < 60
+                pause(2);
+                [~, cmdout] = system(sprintf('squeue -h --name=%s', testCase.JobName));
+            end
             testCase.verifyEmpty(strtrim(cmdout), sprintf('Jobs still queued after the final output existed:\n%s', cmdout));
         end
     end
@@ -245,11 +246,9 @@ classdef SlurmClusterTest < pktest.TestCase
                 expected = deskewRotateFrame3D(frames{i}, 32.45, 0.2, 0.108, 'reverse', true, 'save16bit', true);
                 testCase.verifyEqual(readtiff([dataPath, 'DSR/', sprintf(fsn, cams{i}), '.tif']), expected);
             end
-            % the wrapper doesn't pass jobLogDir on, so the job logs go to
-            % ../job_logs (relative to the repository) if it exists, or to
-            % the data folder
-            logDirs = {[dataPath, 'job_logs'], fullfile(fileparts(pktest.repoRoot()), 'job_logs')};
-            testCase.verifyGreaterThanOrEqual(testCase.countJobLogs(logDirs, dataPath), 2, 'The frames were not processed as Slurm jobs.');
+            % the job logs go to jobLogDir (the wrapper used to drop it)
+            testCase.verifyGreaterThanOrEqual(testCase.countJobLogs({[dataPath, 'job_logs']}, dataPath), 2, ...
+                'The frames were not processed as Slurm jobs, or their logs are not in jobLogDir.');
         end
     end
 

@@ -52,7 +52,7 @@ ip.addParameter('queryInterval', 3, @isnumeric); % in second, by default 3 s.
 ip.addParameter('language', 'matlab', @ischar); % support matlab, bash
 ip.addParameter('GNUparallel', false, @islogical); % support matlab, bash
 ip.addParameter('paraJobNum', 1, @isnumeric); % support matlab, bash
-ip.addParameter('masterParaFactor', 1, @islogical); % master job parallel job percentage for mcc mode. 
+ip.addParameter('masterParaFactor', 1, @isnumeric); % master job parallel job percentage for mcc mode. 
 ip.addParameter('ConfigFile', '', @ischar); % cluster configuration file that override the default parameters
 
 ip.parse(inputFullpaths, outputFullpaths, funcStrs, varargin{:});

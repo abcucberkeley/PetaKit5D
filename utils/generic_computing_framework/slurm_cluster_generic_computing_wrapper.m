@@ -53,7 +53,9 @@ ip.parse(inputFullpaths, outputFullpaths, funcStrs, varargin{:});
 % move to the root path
 funcFn = which(mfilename);
 paths = split(funcFn, 'PetaKit5D');
-cd(paths{1});
+if numel(paths) > 1 && exist(paths{1}, 'dir')
+    cd(paths{1});
+end
 setupFn = [paths{1}, 'setup.m'];
 % use the setup within PetaKit5D
 if ~exist(setupFn, 'file')
@@ -469,7 +471,7 @@ while (~parseCluster && ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
     if ~isempty(finalOutFullpath) && (exist(finalOutFullpath, 'dir') || exist(finalOutFullpath, 'file'))
         is_done_flag = true(nF, 1);
         fprintf('Time %0.2f s: The final output file %s already exists!\n', toc(ts), finalOutFullpath);
-        return;
+        break;
     end
     
     loop_counter = loop_counter + 1;

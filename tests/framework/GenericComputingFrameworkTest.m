@@ -159,15 +159,10 @@ classdef GenericComputingFrameworkTest < pktest.TestCase
                 'parseCluster', false, 'ConfigFile', [dataPath, 'missing.json']), ?MException);
             testCase.verifyEmpty(testCase.readLog(logFn));
         end
-    end
 
-    methods (Test, TestTags = {'Unit', 'KnownIssue'})
         function masterParaFactorAcceptsFractions(testCase)
-            % KNOWN ISSUE: generic_computing_frameworks_wrapper.m:55 validates
-            % masterParaFactor (the fraction of parallel jobs on the master
-            % in mcc mode) with @islogical, so any number but 0/1 logical
-            % fails input validation. The mcc wrapper declares it
-            % @isnumeric. Fix: use @isnumeric.
+            % masterParaFactor is the fraction of parallel jobs on the master
+            % in mcc mode; it used to be validated with @islogical
             [inFns, outFns, logFn] = testCase.makeTasks(2);
             funcStrs = testCase.taskStrings(inFns, outFns, logFn, 'copy');
 
@@ -175,6 +170,24 @@ classdef GenericComputingFrameworkTest < pktest.TestCase
                 'parseCluster', false, 'masterCompute', true, 'masterParaFactor', 0.5);
 
             testCase.verifyEqual(flags, true(2, 1));
+        end
+    end
+
+    methods (Test, TestTags = {'Integration', 'Slow'})
+        function parforWrapperRunsEveryTask(testCase)
+            % starts a local pool with 2 workers. parseParfor used to fail
+            % on the first line, which looked for the root path in
+            % 'XiongtaoScripts'.
+            [inFns, outFns, logFn] = testCase.makeTasks(2);
+            funcStrs = testCase.taskStrings(inFns, outFns, logFn, 'copy');
+            testCase.addTeardown(@() delete(gcp('nocreate')));
+
+            flags = matlab_parfor_generic_computing_wrapper(inFns, outFns, funcStrs, 'GPUJob', false, 'nworker', 2);
+
+            testCase.verifyTrue(all(flags));
+            for i = 1 : 2
+                testCase.verifyEqual(fileread(outFns{i}), fileread(inFns{i}));
+            end
         end
     end
 

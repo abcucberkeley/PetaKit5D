@@ -216,7 +216,7 @@ end
 % use slurm job wrapper for computing
 generic_computing_frameworks_wrapper(inputFullpaths, outputFullpaths, func_strs, ...
     'cpusPerTask', cpusPerTask, 'parseCluster', parseCluster, 'language', 'bash', ...
-    mccMode=mccMode, configFile=configFile);
+    jobLogDir=jobLogDir, mccMode=mccMode, configFile=configFile);
 
 end
 

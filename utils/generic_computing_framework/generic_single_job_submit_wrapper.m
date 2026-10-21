@@ -49,7 +49,9 @@ ip.parse(funcStr, job_id, task_id, varargin{:});
 % move to the root path
 funcFn = which(mfilename);
 paths = split(funcFn, 'PetaKit5D');
-cd(paths{1});
+if numel(paths) > 1 && exist(paths{1}, 'dir')
+    cd(paths{1});
+end
 setupFn = [paths{1}, 'setup.m'];
 % use the setup within PetaKit5D
 if ismcc || isdeployed

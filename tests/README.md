@@ -191,7 +191,6 @@ lists the ones that may be intended.
 | `ResampleTest/largeZarrWithDefaultBorderSize` | Large-file resampling with the default `borderSize` shifts every batch after the first by half an output voxel. |
 | `ImarisConversionTest/imageSizeIsNotPaddedToBlocks` | The Parallel_Imaris_Writer adds `size mod blockSize` to the image size it records (e.g., 20 becomes 24 with blocks of 16) and counts the padding in the histograms. |
 | `DeskewRotateDataWrapperTest/saveMIPFalseWritesNoMIP`, `blockSizeIsUsedForZarrOutput` | `saveMIP` and `blockSize` are not passed on by the deskew/rotate wrapper. |
-| `SlurmClusterTest/finalOutputCancelsRemainingJobs` | When the final output appears, the Slurm cluster loop returns without cancelling the remaining jobs, so they keep running after the call returns. |
 
 **Errors**
 
@@ -206,7 +205,6 @@ lists the ones that may be intended.
 | `UnmixChannelsTest/gaussianUnmixingThroughDataWrapper` | Gaussian unmixing through the data wrapper fails for per-channel sigmas (`mat2str_comma` of a matrix). |
 | `PunctaRemovalTest/removesPunctaWithScalarThresholds` | The puncta removal task string passes `'uuid'`, which the block function doesn't accept; further along, it calls a misspelled function and passes an undefined `ConfigFile`. |
 | `FlatfieldBackgroundEstimationTest/acceptsMccModeFalse` | `XR_flatfield_background_wrapper` validates `mccMode` with `@ischar`. |
-| `GenericComputingFrameworkTest/masterParaFactorAcceptsFractions` | `generic_computing_frameworks_wrapper` validates `masterParaFactor` with `@islogical`. |
 | `TiffIOTest/unsupportedInputIsNotSilentlyDropped` | `writetiff` of 4D or empty data writes nothing and raises no error. |
 | `CropDatasetTest/tiffInputSavedAsZarr` | Cropping tif input to zarr creates a zarr folder named `*.tif`. |
 | `CropMexTest/indexing4dMexSupportsLogical` | `indexing4d_mex` rejects logical input (missing `else`). |
@@ -237,12 +235,6 @@ Not covered by a test:
   have been used, most likely because an OpenMP runtime is unloaded while
   its worker threads are alive. CI works around it (see below).
 
-- Dataset wrappers fail (`cd` error) when the repository folder path doesn't
-  contain `PetaKit5D` (case-sensitive), or when a parent folder name contains
-  it, e.g. `/data/my_PetaKit5D_tests/PetaKit5D`
-  (`slurm_cluster_generic_computing_wrapper.m:55`,
-  `generic_single_job_submit_wrapper.m:51`,
-  `mcc_slurm_cluster_generic_computing_wrapper.m:61`).
 - Point detection (`XR_runDetection3D`) fails on Windows for paths with `/`
   separators, which PetaKit5D's other functions and these tests use:
   `getShortPath` only splits on `filesep` (native `\` paths work). These tests
@@ -253,18 +245,12 @@ Not covered by a test:
 - `XR_runDetTrack3d` defaults `DetectionMethod` to `'update_3'`, which
   `XR_runDetection3D` doesn't handle (`pstruct` undefined); the demos pass
   `'lowSNR'`.
-- `parseParfor=true` (crop, MIP, unmixing, large-file deskew/rotate) always
-  fails: `matlab_parfor_generic_computing_wrapper.m:27-28` splits its own path
-  on `'XiongtaoScripts'` and then `cd`s to the file.
 - For objective scan, `XR_deskew_rotate_data_wrapper.m:200` compares
   `DSRDirName` with `'DSR/'`, but the default is `'DSR'`, so the intended
   rename of the output folder to `rotated/` never happens.
 - Deskew only (`deskew=true, rotate=false`) with the default
   `DSRCombined=true` writes DSR instead of DS, then waits ~3 minutes per retry
   before failing.
-- `XR_deskew_rotate_data_wrapper` doesn't pass `jobLogDir` to the job
-  framework, so Slurm job logs go to `../job_logs` (relative to the repository)
-  or the data folder.
 
 ## Golden outputs
 

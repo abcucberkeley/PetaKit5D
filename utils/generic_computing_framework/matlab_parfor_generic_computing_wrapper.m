@@ -25,8 +25,21 @@ ip.addParameter('language', 'matlab', @ischar); % support matlab, bash
 ip.parse(inputFullpaths, outputFullpaths, funcStrs, varargin{:});
 
 % move to the root path
-paths = split(which('matlab_parfor_generic_computing_wrapper'), 'XiongtaoScripts');
-cd(paths{1});
+funcFn = which(mfilename);
+paths = split(funcFn, 'PetaKit5D');
+if numel(paths) > 1 && exist(paths{1}, 'dir')
+    cd(paths{1});
+end
+setupFn = [paths{1}, 'setup.m'];
+% use the setup within PetaKit5D
+if ~exist(setupFn, 'file')
+    if ispc
+        paths = split(funcFn, 'utils\generic_computing_framework');
+    else
+        paths = split(funcFn, 'utils/generic_computing_framework');
+    end
+    cd(paths{1});
+end
 
 pr = ip.Results;
 GPUJob = pr.GPUJob;

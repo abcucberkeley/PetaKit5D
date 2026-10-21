@@ -45,6 +45,7 @@ pr = ip.Results;
 resultDirName = pr.resultDirName;
 channelPatterns = pr.channelPatterns;
 usrFcn = pr.usrFcn;
+jobLogDir = pr.jobLogDir;
 mccMode = pr.mccMode;
 configFile = pr.configFile;
 
@@ -94,11 +95,11 @@ imSize = [imSizes(1, 1 : 2), sum(imSizes(:, 3))];
 memAllocate = prod(imSize) * 4 / 1024^3 * 2.5;
 
 is_done_flag = generic_computing_frameworks_wrapper(allZarrFullpaths, allTiffFullpaths, ...
-    func_strs, 'maxTrialNum', 2, 'memAllocate', memAllocate, 'mccMode', mccMode, 'configFile', configFile);
+    func_strs, 'maxTrialNum', 2, 'memAllocate', memAllocate, 'jobLogDir', jobLogDir, 'mccMode', mccMode, 'configFile', configFile);
 if ~all(is_done_flag)
     is_done_flag = generic_computing_frameworks_wrapper(allZarrFullpaths, ...
         allTiffFullpaths, func_strs, 'maxTrialNum', 1, 'memAllocate', memAllocate, ...
-        'mccMode', mccMode, 'configFile', configFile);
+        'jobLogDir', jobLogDir, 'mccMode', mccMode, 'configFile', configFile);
 end
 
 

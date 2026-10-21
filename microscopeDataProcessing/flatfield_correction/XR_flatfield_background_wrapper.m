@@ -282,12 +282,12 @@ memAllocate = prod(imSize) * byteNum / 2^30 * 5;
 
 is_done_flag= generic_computing_frameworks_wrapper(inputFullpaths, outputFullpaths, ...
     funcStrs, cpusPerTask=cpusPerTask, memAllocate=memAllocate, parseCluster=parseCluster, ...
-    masterCompute=masterCompute, mccMode=mccMode, configFile=configFile);
+    masterCompute=masterCompute, jobLogDir=jobLogDir, mccMode=mccMode, configFile=configFile);
 
 if ~all(is_done_flag)
     generic_computing_frameworks_wrapper(inputFullpaths, outputFullpaths, funcStrs, ...
         cpusPerTask=cpusPerTask, memAllocate=memAllocate*2, parseCluster=parseCluster, ...
-        masterCompute=masterCompute, mccMode=mccMode, configFile=configFile);
+        masterCompute=masterCompute, jobLogDir=jobLogDir, mccMode=mccMode, configFile=configFile);
 end
 
 %% collect results and take average
