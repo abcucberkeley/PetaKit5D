@@ -60,6 +60,18 @@ classdef DeskewRotateDataWrapperTest < pktest.TestCase
             testCase.verifyFalse(isfolder([dataPath, 'DSR']));
         end
 
+        function deskewOnlyWithCombinedDefaultWritesDS(testCase)
+            % DSRCombined=true (the default) used to send deskew only to the
+            % combined path, which writes DSR, and then wait minutes for DS
+            % before failing
+            [dataPath, frames] = testCase.writeDataset();
+            testCase.runWrapper(dataPath, 'rotate', false, 'DSRCombined', true);
+            ds = readtiff([dataPath, 'DS/', testCase.FsnA0, '.tif']);
+            testCase.verifyEqual(ds, uint16(deskewFrame3D(single(frames{1}), testCase.SkewAngle, testCase.Dz, ...
+                testCase.XYPixelSize, true, 'Crop', false)));
+            testCase.verifyFalse(isfolder([dataPath, 'DSR']));
+        end
+
         function separateDeskewRotateWritesBoth(testCase)
             dataPath = testCase.writeDataset();
             testCase.runWrapper(dataPath, 'DSRCombined', false);
@@ -137,48 +149,34 @@ classdef DeskewRotateDataWrapperTest < pktest.TestCase
             testCase.verifyEqual(readtiff([dataPath, 'DSR/', testCase.FsnA0, '.tif']), testCase.expectedDSR(frame));
             testCase.verifyFalse(isfile([dataPath, 'DSR/', testCase.FsnA0, '_part0001.tif']));
         end
-    end
 
-    methods (Test, TestTags = {'Integration', 'KnownIssue'})
         function saveMIPFalseWritesNoMIP(testCase)
-            % KNOWN ISSUE: saveMIP is not passed on to XR_deskewRotateFrame
-            % (task string in XR_deskew_rotate_data_wrapper.m:347-358), so MIPs
-            % are always written.
+            % saveMIP and blockSize used to be dropped from the task string
+            % of regular (not large) files
             dataPath = testCase.writeDataset();
             testCase.runWrapper(dataPath, 'saveMIP', false);
             testCase.verifyFalse(isfolder([dataPath, 'DSR/MIPs']), 'MIPs were written although saveMIP is false.');
         end
 
         function blockSizeIsUsedForZarrOutput(testCase)
-            % KNOWN ISSUE: blockSize is not passed on to XR_deskewRotateFrame
-            % (task string in XR_deskew_rotate_data_wrapper.m:347-358), so zarr
-            % output uses the frame default [500, 500, 500].
             dataPath = testCase.writeDataset();
             testCase.runWrapper(dataPath, 'saveZarr', true, 'blockSize', [16, 32, 16]);
             info = getZarrInfo([dataPath, 'DSR/', testCase.FsnA0, '.zarr']);
             testCase.verifyEqual(info.blockSize(:)', [16, 32, 16]);
         end
 
-        function objectiveScanLargeFileRuns(testCase)
-            % KNOWN ISSUE (or reject it up front): XR_deskewRotateZarr only
-            % sets theta for sample scan (XR_deskewRotateZarr.m:82-87) but
-            % uses it for objective scan (line 176). Large-file objective
-            % scan was never implemented: XR_deskewRotateBlock hard-codes
-            % objectiveScan = false (XR_deskewRotateBlock.m:88), so fixing
-            % theta alone gives sample scan geometry. Either implement it or
-            % error clearly, as the wrapper does for other unsupported
-            % combinations (then this test should expect that error).
+        function objectiveScanLargeFileIsRejected(testCase)
+            % the large-file block processing only supports sample scan; it
+            % used to fail inside the tasks with an undefined variable
             dataPath = testCase.createTempFolder();
-            frame = testCase.makeFrame(1);
-            writezarr(frame, [dataPath, testCase.FsnA0, '.zarr']);
-            testCase.runWrapper(dataPath, 'zarrFile', true, 'largeFile', true, 'objectiveScan', true, ...
-                'batchSize', [16, 1024, 1024]);
-            dsr = readzarr([dataPath, 'DSR/', testCase.FsnA0, '.zarr']);
-            % a correct pure rotation (see DeskewRotateFrame3DTest)
-            expected = deskewRotateFrame3D(single(frame), testCase.SkewAngle, testCase.Dz, testCase.XYPixelSize, ...
-                'objectiveScan', true, 'interpMethod', 'cubic');
-            testCase.verifyEqual(size(dsr), size(expected));
-            testCase.verifyEqual(double(sum(dsr, 'all')), double(sum(expected, 'all')), 'RelTol', 0.02);
+            writezarr(testCase.makeFrame(1), [dataPath, testCase.FsnA0, '.zarr']);
+            try
+                testCase.runWrapper(dataPath, 'zarrFile', true, 'largeFile', true, 'objectiveScan', true, ...
+                    'batchSize', [16, 1024, 1024]);
+                testCase.verifyFail('Large-file objective scan did not raise an error.');
+            catch ME
+                testCase.verifySubstring(ME.message, 'objective scan is not supported');
+            end
         end
     end
 

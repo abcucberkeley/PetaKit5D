@@ -41,14 +41,15 @@ classdef DeskewRotateFrame3DTest < pktest.TestCase
             testCase.verifyLessThan(residual, 0.6, 'Bead positions are not consistent with an affine map.');
         end
 
-        function canvasOriginMatchesConvention(testCase, dz)
+        function canvasOriginMatchesConvention(testCase, dz, reverse)
             % the output canvas origin matters downstream (e.g., stitching
             % in DSR space): the fitted map must put the bead grid where the
-            % centered deskew/rotation convention puts it
+            % centered deskew/rotation convention puts it. The fast (mex)
+            % path used to be one shear step off for reverse=false.
             [raw, vol] = testCase.beadGrid();
-            out = deskewRotateFrame3D(vol, testCase.SkewAngle, dz, testCase.XYPixelSize, 'reverse', true);
+            out = deskewRotateFrame3D(vol, testCase.SkewAngle, dz, testCase.XYPixelSize, 'reverse', reverse);
 
-            [~, expectedPos] = testCase.expectedSampleScanMap(dz, true, raw);
+            [~, expectedPos] = testCase.expectedSampleScanMap(dz, reverse, raw);
             actual = testCase.fitMap(out, raw, expectedPos);
             testCase.verifyEqual([raw, ones(size(raw, 1), 1)] * actual', expectedPos, 'AbsTol', 0.25);
         end
@@ -133,24 +134,19 @@ classdef DeskewRotateFrame3DTest < pktest.TestCase
             testCase.verifyEqual([raw, ones(size(raw, 1), 1)] * actual', expectedPos, 'AbsTol', 0.25);
             testCase.verifyEqual(double(sum(out, 'all') / sum(vol, 'all')), q, 'RelTol', 0.02);
         end
+
+        function objectiveScanPreservesContent(testCase)
+            % objective scan used to go through volume_deskew_rotate_warp_mex,
+            % which assumes a sample scan and kept ~6.5% of the content
+            dz = 0.2;
+            [~, vol] = testCase.beadGrid();
+            out = deskewRotateFrame3D(vol, testCase.SkewAngle, dz, testCase.XYPixelSize, 'objectiveScan', true);
+            testCase.verifyEqual(double(sum(out, 'all') / sum(vol, 'all')), dz / testCase.XYPixelSize, 'RelTol', 0.02, ...
+                'Objective scan deskew/rotation lost the image content.');
+        end
     end
 
     methods (Test, TestTags = {'Unit', 'KnownIssue'})
-        function forwardScanCanvasOriginMatchesConvention(testCase, dz)
-            % KNOWN ISSUE: for reverse=false the fast (mex) path samples raw
-            % x one shear step off (in deskewRotateFrame3D the ds_S
-            % correction before the mex call is only applied if Reverse),
-            % so the default linear output is shifted ~1 voxel relative to
-            % the cubic/imwarp path and the separate deskew + rotate path.
-            [raw, vol] = testCase.beadGrid();
-            out = deskewRotateFrame3D(vol, testCase.SkewAngle, dz, testCase.XYPixelSize, 'reverse', false);
-
-            [~, expectedPos] = testCase.expectedSampleScanMap(dz, false, raw);
-            actual = testCase.fitMap(out, raw, expectedPos);
-            testCase.verifyEqual([raw, ones(size(raw, 1), 1)] * actual', expectedPos, 'AbsTol', 0.25, ...
-                'Forward scan output is shifted relative to the deskew/rotation convention.');
-        end
-
         function save16bitRoundsToNearest(testCase)
             % KNOWN ISSUE: on Linux and Windows the AVX uint16 kernels add
             % 0.5 and then convert with _mm256_cvtps_epi32, which rounds to
@@ -169,18 +165,6 @@ classdef DeskewRotateFrame3DTest < pktest.TestCase
             mismatched = nnz(out(notTie) ~= uint16(round(ref(notTie)))) / nnz(notTie);
             testCase.verifyLessThan(mismatched, 1e-3, ...
                 sprintf('%.1f%% of the uint16 voxels are not rounded to the nearest integer.', 100 * mismatched));
-        end
-
-        function objectiveScanPreservesContent(testCase)
-            % KNOWN ISSUE: volume_deskew_rotate_warp_mex assumes a sample scan
-            % (input x is computed from output z only), so for objective scan
-            % the default fast path keeps only ~6.5% of the image content
-            % (regression from 4d6d90f, which sent objective scan to the mex).
-            dz = 0.2;
-            [~, vol] = testCase.beadGrid();
-            out = deskewRotateFrame3D(vol, testCase.SkewAngle, dz, testCase.XYPixelSize, 'objectiveScan', true);
-            testCase.verifyEqual(double(sum(out, 'all') / sum(vol, 'all')), dz / testCase.XYPixelSize, 'RelTol', 0.02, ...
-                'Objective scan deskew/rotation lost the image content.');
         end
     end
 

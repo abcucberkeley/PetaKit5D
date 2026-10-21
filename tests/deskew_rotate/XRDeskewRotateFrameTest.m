@@ -159,6 +159,30 @@ classdef XRDeskewRotateFrameTest < pktest.TestCase
             XR_deskewRotateFrame(fn, testCase.XYPixelSize, testCase.Dz, 'reverse', true);
             testCase.verifyEqual(readtiff(dsrFn), first);
         end
+
+        function zStageScanSeparateMatchesCombined(testCase)
+            % the separate path used to size its output with skewAngle
+            % instead of the 90 - skewAngle it rotates by
+            [dataPath, fn] = testCase.writeFrame();
+            XR_deskewRotateFrame(fn, testCase.XYPixelSize, testCase.Dz, 'zStageScan', true);
+            combinedSize = getImageSize([dataPath, 'DSR/', testCase.Fsn, '.tif']);
+            rmdir([dataPath, 'DSR'], 's');
+            XR_deskewRotateFrame(fn, testCase.XYPixelSize, testCase.Dz, 'zStageScan', true, 'DSRCombined', false, 'rotate', true);
+            testCase.verifyEqual(getImageSize([dataPath, 'DSR/', testCase.Fsn, '.tif']), combinedSize);
+        end
+
+        function inputAxisOrderZYXIsPermutedToYXZ(testCase)
+            % a 3-cycle, which used to be permuted the wrong way ('zyx' input
+            % ended up as 'xzy'; see AxisOrderMappingTest)
+            [dataPath, ~, frame] = testCase.writeFrame();
+            fnZYX = [dataPath, 'zyx/', testCase.Fsn, '.tif'];
+            writetiff(permute(frame, [3, 1, 2]), fnZYX);
+            XR_deskewRotateFrame(fnZYX, testCase.XYPixelSize, testCase.Dz, 'reverse', true, 'inputAxisOrder', 'zyx');
+
+            expected = deskewRotateFrame3D(frame, testCase.SkewAngle, testCase.Dz, testCase.XYPixelSize, ...
+                'reverse', true, 'save16bit', true);
+            testCase.verifyEqual(readtiff([dataPath, 'zyx/DSR/', testCase.Fsn, '.tif']), expected);
+        end
     end
 
     methods (Test, TestTags = {'Integration', 'KnownIssue'})
@@ -172,21 +196,8 @@ classdef XRDeskewRotateFrameTest < pktest.TestCase
             testCase.verifyTrue(isfile([dataPath, 'DSR/', testCase.Fsn, '.tif']));
         end
 
-        function zStageScanSeparateMatchesCombined(testCase)
-            % KNOWN ISSUE: the separate path computes outSize with theta
-            % from skewAngle (XR_deskewRotateFrame.m:386) but rotates with
-            % 90 - skewAngle for z stage scan, so its size and geometry
-            % differ from the combined path.
-            [dataPath, fn] = testCase.writeFrame();
-            XR_deskewRotateFrame(fn, testCase.XYPixelSize, testCase.Dz, 'zStageScan', true);
-            combinedSize = getImageSize([dataPath, 'DSR/', testCase.Fsn, '.tif']);
-            rmdir([dataPath, 'DSR'], 's');
-            XR_deskewRotateFrame(fn, testCase.XYPixelSize, testCase.Dz, 'zStageScan', true, 'DSRCombined', false, 'rotate', true);
-            testCase.verifyEqual(getImageSize([dataPath, 'DSR/', testCase.Fsn, '.tif']), combinedSize);
-        end
-
         function objectiveScanSeparatePathIsNotDeskewed(testCase)
-            % KNOWN ISSUE: for objective scan the separate path still
+            % KNOWN ISSUE (may be intended): for objective scan the separate path still
             % deskews (deskewFrame3D is called without an objective scan
             % option in XR_deskewRotateFrame.m:235) before rotating, so beads
             % end up sheared relative to a pure rotation.
@@ -199,25 +210,6 @@ classdef XRDeskewRotateFrameTest < pktest.TestCase
             [~, expectedPos] = testCase.beadPositions(expected);
             testCase.verifyEqual(pktest.centroids(single(dsr) - 100, expectedPos, 6), ...
                 pktest.centroids(expected - 100, expectedPos, 6), 'AbsTol', 0.5);
-        end
-
-        function inputAxisOrderZYXIsPermutedToYXZ(testCase)
-            % KNOWN ISSUE: XR_deskewRotateFrame.m:217-219 applies
-            % permute(frame, axis_order_mapping(inputAxisOrder, 'yxz')),
-            % the permutation that stores yxz data in inputAxisOrder (as the
-            % output side correctly uses it, see AxisOrderMappingTest). For
-            % the input, that is the inverse of what is needed, which only
-            % shows for 3-cycles: 'zyx' input ends up as 'xzy'. Fix: use
-            % ipermute there; don't change axis_order_mapping, which would
-            % break outputAxisOrder.
-            [dataPath, ~, frame] = testCase.writeFrame();
-            fnZYX = [dataPath, 'zyx/', testCase.Fsn, '.tif'];
-            writetiff(permute(frame, [3, 1, 2]), fnZYX);
-            XR_deskewRotateFrame(fnZYX, testCase.XYPixelSize, testCase.Dz, 'reverse', true, 'inputAxisOrder', 'zyx');
-
-            expected = deskewRotateFrame3D(frame, testCase.SkewAngle, testCase.Dz, testCase.XYPixelSize, ...
-                'reverse', true, 'save16bit', true);
-            testCase.verifyEqual(readtiff([dataPath, 'zyx/DSR/', testCase.Fsn, '.tif']), expected);
         end
     end
 

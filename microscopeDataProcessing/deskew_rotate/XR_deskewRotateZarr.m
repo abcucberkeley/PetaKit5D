@@ -78,13 +78,14 @@ debug = pr.debug;
 mccMode = pr.mccMode;
 configFile = pr.configFile;
 
-% decide zAniso
+% the block processing (XR_deskewRotateBlock) only supports sample scan
 if objectiveScan
-    zAniso = dz / xyPixelSize;
-else
-    theta = skewAngle * pi / 180;
-    zAniso = sin(abs(theta)) * dz / xyPixelSize;
+    error('Currently objective scan is not supported for large scale deskew/rotation!\n')
 end
+
+% decide zAniso
+theta = skewAngle * pi / 180;
+zAniso = sin(abs(theta)) * dz / xyPixelSize;
 if iscell(frameFullpath)
     frameFullpath = frameFullpath{1};
 end

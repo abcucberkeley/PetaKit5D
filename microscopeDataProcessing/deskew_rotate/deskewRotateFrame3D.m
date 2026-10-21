@@ -70,7 +70,8 @@ end
 
 do_interp = ~objectiveScan && abs(dx) > xStepThresh;
 rs = resampleFactor;
-use_fast_method = ~(gpuProcess || (~isempty(rs) && any(rs ~= 1)) || ~strcmpi(interpMethod, 'linear'));
+% the mex only supports sample scan (it computes input x from output z only)
+use_fast_method = ~(objectiveScan || gpuProcess || (~isempty(rs) && any(rs ~= 1)) || ~strcmpi(interpMethod, 'linear'));
 %% skew space interpolation
 if do_interp
     % skewed space interplation combined dsr
@@ -212,10 +213,10 @@ else
     % convert the transformation matrix to backward and the form for c/c++
     offset = zeros(4, 4);
     offset(4, 1 : 3) = 1;
-    if ~objectiveScan && Reverse
-        ds_S(4, 1) = ds_S(4, 1) - dx;
-    end
-    tmat = eye(4) / (ds_S*((T1+offset)*S*R*(T2-offset))*(RT1*RS*RT2))';
+    % 0-based indices shift the shear translation by one step
+    ds_S_c = ds_S;
+    ds_S_c(4, 1) = ds_S_c(4, 1) + xstep;
+    tmat = eye(4) / (ds_S_c*((T1+offset)*S*R*(T2-offset))*(RT1*RS*RT2))';
     tmat = tmat([2, 1, 3, 4], [2, 1, 3, 4]);
 
     if ~isempty(bbox)

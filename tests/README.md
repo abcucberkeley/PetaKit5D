@@ -164,7 +164,6 @@ lists the ones that may be intended.
 | Test | Problem |
 |---|---|
 | `DeskewMexSourceTest` | The AVX loops in the deskew/rotation mex files (`volume_deskew_rotate_warp_mex.cpp:66`, `skewed_space_interp_volume_deskew_rotate_warp_mex.cpp:105,139`, `skewed_space_interp_defined_stepsize_mex.c:103,137`) run up to 7 floats past each row. On Linux/Windows, single-precision input whose first dimension is not a multiple of 8 corrupts memory and can crash MATLAB. |
-| `DeskewRotateFrame3DTest/objectiveScanPreservesContent` | Combined deskew/rotation of objective scan data keeps only ~6.5% of the image content (`volume_deskew_rotate_warp_mex` assumes sample scan). |
 | `MexPackagingTest` | 15 ARM macOS mex files (crop, deskew/rotate, flat field, stitch, MIP) load Homebrew's `libgomp` by absolute path; without Homebrew gcc@13 they only load if cpp-tiff/cpp-zarr was used first in the session. |
 | `StitchingTest/largeFileStitching`, `largeFileWithoutRegistration` | Large-file stitching fails (`XR_MIP_zarr.m:108` uses an undefined `bim`; MIP slabs only exist with `xcorrShift`). |
 | `AutomaticProcessingTest/demoParameterSetIsAccepted` | The three `demo_microscope_pipeline_*.m` demos pass a 4-element `Save16bit`, which `XR_microscopeAutomaticProcessing` rejects since deconvolution was removed from it (abd53f9); the demos are out of date. |
@@ -175,11 +174,7 @@ lists the ones that may be intended.
 
 | Test | Problem |
 |---|---|
-| `DeskewRotateFrame3DTest/forwardScanCanvasOriginMatchesConvention` | For `reverse=false`, the default (mex) path output is shifted by about one voxel relative to the separate and cubic paths. |
 | `DeskewRotateFrame3DTest/save16bitRoundsToNearest` | On Linux and Windows, uint16 deskew/rotation output is rounded up (`ceil`) instead of to the nearest integer (AVX kernels add 0.5 and then round), so it is biased by +0.5 and differs from macOS. |
-| `XRDeskewRotateFrameTest/objectiveScanSeparatePathIsNotDeskewed` | The separate path deskews objective scan data before rotating it. |
-| `XRDeskewRotateFrameTest/zStageScanSeparateMatchesCombined` | The separate path uses the wrong angle for the z stage scan output size. |
-| `XRDeskewRotateFrameTest/inputAxisOrderZYXIsPermutedToYXZ` | Input axis orders `'zyx'` and `'xzy'` are permuted the wrong way: `XR_deskewRotateFrame.m:217-219` needs `ipermute` (`axis_order_mapping` itself is right, as the output side uses it). |
 | `DeconFunctionTest/psfGenKeepsEvenSizePSFAtTheFFTCenter` | `psf_gen_new` centers even-size PSFs one voxel off, shifting deconvolution results. |
 | `DeconFrameTest/overwriteRecomputesTheResult` | `Overwrite=true` keeps the old deconvolution result. |
 | `DeconFrameTest/flipZstackFlipsTheResult` | `flipZstack` is ignored for regular (non-large) files. |
@@ -190,14 +185,12 @@ lists the ones that may be intended.
 | `ChromaticShiftCorrectionTest/fullModeContainsBothChannels` | Chromatic shift `'full'` mode computes the output size from the bounding box starts and flips the offset sign. |
 | `ResampleTest/largeZarrWithDefaultBorderSize` | Large-file resampling with the default `borderSize` shifts every batch after the first by half an output voxel. |
 | `ImarisConversionTest/imageSizeIsNotPaddedToBlocks` | The Parallel_Imaris_Writer adds `size mod blockSize` to the image size it records (e.g., 20 becomes 24 with blocks of 16) and counts the padding in the histograms. |
-| `DeskewRotateDataWrapperTest/saveMIPFalseWritesNoMIP`, `blockSizeIsUsedForZarrOutput` | `saveMIP` and `blockSize` are not passed on by the deskew/rotate wrapper. |
 
 **Errors**
 
 | Test | Problem |
 |---|---|
-| `DeskewRotateDataWrapperTest/objectiveScanLargeFileRuns` | Large-file objective scan deskew/rotation fails (`theta` undefined in `XR_deskewRotateZarr`); it was never implemented for large files, so implement it or reject it up front. |
-| `XRDeskewRotateFrameTest/backgroundRemovalRuns` | `BKRemoval=true` calls `XR_CameraBackgroundRemoval`, which doesn't exist. |
+| `XRDeskewRotateFrameTest/backgroundRemovalRuns` | `BKRemoval=true` calls `XR_CameraBackgroundRemoval`, which isn't in PetaKit5D (old mcc builds show it in the author's private repository). |
 | `DeconFrameTest/allZeroFrameIsDeconvolved` | An all-zero frame with `'simplified'` errors (`err_mat` undefined), aborting the run. |
 | `DeconWrapperTest/originalMethodWorksWithMultipleBatches` | `'original'` with a multi-batch large file fails (no `deconBbox` crop); support it or reject it up front. |
 | `StitchingTest/localShiftMethod` | `shiftMethod='local'` errors. |
@@ -221,6 +214,7 @@ document the limitation).
 | `DeconFunctionTest/changedPSFWithSameEnergyIsNotIgnored` | The OTF cache in `decon_lucy_function`/`decon_lucy_omw_function` keys on the image size and the PSF's sum of squares, so a shifted or mirrored PSF (or a new forward PSF in OMW) reuses a stale OTF. The pipeline never does that; should direct calls with arbitrary PSFs in one session be correct? |
 | `BatchFileExistTest/existingOutputFileReturnsCachedResult` | `batch_file_exist` returns without assigning its output when the cached result file exists. Its only caller runs it as a cluster task and reads that file itself; should a direct call return the cached result? |
 | `FunctionStringParsingTest` (3 tests) | mcc mode task string parsing: `f(1,2,'a')` isn't split, `f(1,2)` loses its arguments, `f('','a')` errors. PetaKit5D never generates these forms; should mcc mode accept any call string (e.g., users' own functions, as `demo_generic_computing_framework` invites)? |
+| `XRDeskewRotateFrameTest/objectiveScanSeparatePathIsNotDeskewed` | With `DSRCombined=false`, objective scan data is deskewed before it is rotated, unlike the combined path and the rest of the code, which treat raw objective scan data as already unskewed. Should the separate path only rotate? |
 | `McCParserConsistencyTest` (2 tests) | `mcc_function_list.txt` lists `image_intensity_correction_block` and `replicateDataBlock`, which have no source here (likely in the author's private repository, which the mcc binaries are built from), and f6f2379 left `multiple_region_spectra_encoding_block_parser.m` behind. Keep them? |
 
 **Platform-specific.** Tests for bugs that affect only some platforms skip
@@ -248,9 +242,6 @@ Not covered by a test:
 - For objective scan, `XR_deskew_rotate_data_wrapper.m:200` compares
   `DSRDirName` with `'DSR/'`, but the default is `'DSR'`, so the intended
   rename of the output folder to `rotated/` never happens.
-- Deskew only (`deskew=true, rotate=false`) with the default
-  `DSRCombined=true` writes DSR instead of DS, then waits ~3 minutes per retry
-  before failing.
 
 ## Golden outputs
 

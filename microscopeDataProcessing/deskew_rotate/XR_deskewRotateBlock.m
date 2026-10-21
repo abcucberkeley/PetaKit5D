@@ -94,7 +94,8 @@ for i = 1 : numel(batchInds)
                 'resampleFactor', resampleFactor, 'save16bit', save16bit, 'interpMethod', interpMethod);
     clear in_batch;
     if save16bit && ~strcmp(dtype, 'uint16')
-        out_batch = uint16(out_batch + 0.5);
+        % uint16 rounds to the nearest integer
+        out_batch = uint16(out_batch);
     end
     writezarr(out_batch, dsrFullpath, 'bbox', outBbox, create=false);
     clear out_batch;

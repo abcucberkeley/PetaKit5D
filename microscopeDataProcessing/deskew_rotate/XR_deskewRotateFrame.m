@@ -214,9 +214,10 @@ if (~DSRCombined && (~exist(dsFullname, 'file') || ip.Results.overwrite)) || DSR
     end
     
     % add support for data with axis orders other than yxz
+    % axis_order_mapping gives the permutation from yxz to inputAxisOrder
     input_order_mat = axis_order_mapping(inputAxisOrder, 'yxz');
     if ~issorted(input_order_mat, 'ascend')
-        frame = permute(frame, input_order_mat);
+        frame = ipermute(frame, input_order_mat);
     end
 
     if ~DSRCombined
@@ -381,12 +382,14 @@ if ip.Results.rotate || DSRCombined
             ny = sz(1);
             nx = sz(2);
             nz = sz(3);
+            % the angle of the rotation (90 - skewAngle for z stage scan)
+            theta_1 = skewAngle_1 * pi / 180;
             if ~objectiveScan
                 % calculate height; first & last 2 frames have interpMethodolation artifacts
-                outSize = round([ny, (nx-1)*cos(theta)+(nz-1)*zAniso/sin(abs(theta)), (nx-1)*sin(abs(theta))-4]);
+                outSize = round([ny, (nx-1)*cos(theta_1)+(nz-1)*zAniso/sin(abs(theta_1)), (nx-1)*sin(abs(theta_1))-4]);
             else
                 % exact proportions of rotated box
-                outSize = round([ny, nx*cos(theta)+nz*zAniso*sin(abs(theta)), nz*zAniso*cos(theta)+nx*sin(abs(theta))]);
+                outSize = round([ny, nx*cos(theta_1)+nz*zAniso*sin(abs(theta_1)), nz*zAniso*cos(theta_1)+nx*sin(abs(theta_1))]);
             end
 
             dsr = rotateFrame3D(ds, skewAngle_1, zAniso, reverse, 'crop', true, ...

@@ -206,8 +206,16 @@ if largeFile
     if ~rotate
         error('Currently only combined DSR is supported for large scale deskew/rotation!\n')
     end
+    if objectiveScan
+        error('Currently objective scan is not supported for large scale deskew/rotation!\n')
+    end
     DSRCombined = true;
     saveZarr = true;
+end
+
+% deskew only is done by the separate path (the combined path only writes DSR)
+if ~rotate
+    DSRCombined = false;
 end
 
 % save zarr 
@@ -350,12 +358,12 @@ for f = 1 : nF
             '''BKRemoval'',%s,''lowerLimit'',%.20d,''constOffset'',[%s],''FFImage'',''%s'',', ...
             '''BackgroundImage'',''%s'',''rotate'',%s,''resampleFactor'',[%s],''DSRCombined'',%s,', ...
             '''inputBbox'',%s,''flipZstack'',%s,''save16bit'',%s,''save3DStack'',%s,''saveZarr'',%s,', ...
-            '''interpMethod'',''%s'')'], ds_input_str, xyPixelSize, dz_f, DSDirName, DSRDirName, skewAngle, ...
+            '''blockSize'',%s,''saveMIP'',%s,''interpMethod'',''%s'')'], ds_input_str, xyPixelSize, dz_f, DSDirName, DSRDirName, skewAngle, ...
             string(objectiveScan), string(zStageScan), string(reverse), inputAxisOrder, outputAxisOrder, ...
             string(FFCorrection), string(BKRemoval), lowerLimit, num2str(constOffset, '%0.10f'), FFImage, ...
             BackgroundImage, string(rotate), strrep(mat2str(resampleFactor), ' ', ','), string(DSRCombined), ...
             strrep(mat2str(inputBbox), ' ', ','), string(flipZstack), string(save16bit(1)), string(save3DStack), ...
-            string(saveZarr), interpMethod);
+            string(saveZarr), strrep(mat2str(blockSize), ' ', ','), string(saveMIP), interpMethod);
     end
     
     funcStrs{f} = func_str;
