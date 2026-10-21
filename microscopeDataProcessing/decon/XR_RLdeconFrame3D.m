@@ -210,9 +210,23 @@ for f = 1 : nF
             dsrFullPath = [DSRPath '/' fsname '.tif'];
         end
     end    
-    if (exist(deconFullPath, 'file') || (saveZarr && exist(deconFullPath, 'dir'))) && ~pr.Overwrite
-        disp('Deconvolution results already exist, skip it!');
-        continue;
+    if exist(deconFullPath, 'file') || (saveZarr && exist(deconFullPath, 'dir'))
+        if ~pr.Overwrite
+            disp('Deconvolution results already exist, skip it!');
+            continue;
+        end
+        % the decon functions skip existing results, so remove them
+        resultFullPaths = {deconFullPath};
+        if save3Dstack(3)
+            resultFullPaths{end + 1} = dsrFullPath;
+        end
+        for k = 1 : numel(resultFullPaths)
+            if exist(resultFullPaths{k}, 'dir')
+                rmdir(resultFullPaths{k}, 's');
+            elseif exist(resultFullPaths{k}, 'file')
+                delete(resultFullPaths{k});
+            end
+        end
     end
     if ~largeFile
         if EdgeErosion > 0 && SaveMaskfile
@@ -266,7 +280,8 @@ for f = 1 : nF
             'fixIter', fixIter, 'dampFactor', dampFactor, 'scaleFactor', scaleFactor, ...
             'deconOffset', deconOffset, 'EdgeErosion', EdgeErosion, 'ErodeMaskfile', ErodeMaskfile, ...
             'errThresh', errThresh, 'saveStep', saveStep, 'useGPU', GPUJob, ...
-            'psfGen', psfGen, 'debug', debug, 'save3Dstack', save3Dstack, 'mipAxis', mipAxis);
+            'psfGen', psfGen, 'debug', debug, 'save3Dstack', save3Dstack, 'mipAxis', mipAxis, ...
+            'flipZstack', flipZstack);
 
         if (save3Dstack(1) && (exist(deconFullPath, 'file') || exist(deconFullPath, 'dir'))) ...
                 || (save3Dstack(3) && (exist(dsrFullPath, 'file') || exist(dsrFullPath, 'dir')))

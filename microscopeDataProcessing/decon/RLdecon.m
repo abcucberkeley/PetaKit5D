@@ -387,6 +387,9 @@ if ~file_exist_mat(1)
         switch RLMethod 
             case 'original'
                 deconvolved = deconvlucy(rawdata, psf, nIter);
+                if ~isempty(deconBbox)
+                    deconvolved = crop3d(deconvolved, deconBbox);
+                end
             case 'simplified'
                 [deconvolved, err_mat, iter_run] = decon_lucy_function(rawdata, ...
                     psf, nIter, Background=Background, useGPU=useGPU, save16bit=save16bit, ...
@@ -532,9 +535,9 @@ if ~any(save3Dstack)
     return;
 end
 
-% save err mat for simplified method
-if nIter > 0 && strcmp(RLMethod, 'simplified')
-    infoPath = sprintf('%s/%s/decon_info/', deconPath);
+% save err mat for simplified method (not run for all-zero data)
+if nIter > 0 && strcmp(RLMethod, 'simplified') && exist('err_mat', 'var')
+    infoPath = sprintf('%s/decon_info/', deconPath);
     if ~exist(infoPath, 'dir')
         mkdir(infoPath);
     end

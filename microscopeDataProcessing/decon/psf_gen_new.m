@@ -115,7 +115,8 @@ if zt - peakz > nz / 2
     nz = size(psf_raw, 3);  
 end
 
-psf_cropped=circshift(psf_raw, round(([ny, nx, nz] + 1) / 2 - [peaky,peakx,peakz]));
+% center at floor(n / 2) + 1, the FFT center the OTF computation expects
+psf_cropped=circshift(psf_raw, floor([ny, nx, nz] / 2) + 1 - [peaky,peakx,peakz]);
 
 % center the PSF in z; otherwise RL decon results are shifted in z
 % psf_cropped=circshift(psf_cropped, [0, 0, round(nz/2-peakz)]);

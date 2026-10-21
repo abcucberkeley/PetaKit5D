@@ -274,24 +274,19 @@ classdef DeconFunctionTest < pktest.TestCase
                 '''psfGen'', false, ''useGPU'', false, ''Background'', 100, ''DeconIter'', 0)']);
             testCase.verifyEqual(out, im);
         end
-    end
 
-    methods (Test, TestTags = {'Unit', 'KnownIssue'})
         function psfGenKeepsEvenSizePSFAtTheFFTCenter(testCase)
-            % KNOWN ISSUE: psf_gen_new.m:118 centers the peak with
-            % circshift(psf, round((size + 1) / 2 - peak)). For even sizes
-            % (size + 1) / 2 is x.5, and round() goes away from zero, so a
-            % peak at or right of the FFT center floor(n / 2) + 1 lands one
-            % voxel left of it. decon_psf2otf takes floor(n / 2) + 1 as the
-            % center, so the deconvolved image is shifted by one voxel along
-            % every even dimension. Fix: shift to floor(size / 2) + 1.
+            % psf_gen_new used to center even-size PSFs one voxel off the FFT
+            % center, depending on where the peak started
             psf = pktest.deconPSF([32, 32, 32], testCase.PSFSigma);
             out = psf_gen_new(psf, 0.2, 0.2);
             [~, ind] = max(out(:));
             [y, x, z] = ind2sub(size(out), ind);
             testCase.verifyEqual([y, x, z], [17, 17, 17], 'The PSF peak moved away from the FFT center.');
         end
+    end
 
+    methods (Test, TestTags = {'Unit', 'KnownIssue'})
         function changedPSFWithSameEnergyIsNotIgnored(testCase, method)
             % KNOWN ISSUE (may be intended): decon_lucy_function.m:61-63 and
             % decon_lucy_omw_function.m:54-56 cache the OTF in persistent

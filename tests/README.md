@@ -175,9 +175,6 @@ lists the ones that may be intended.
 | Test | Problem |
 |---|---|
 | `DeskewRotateFrame3DTest/save16bitRoundsToNearest` | On Linux and Windows, uint16 deskew/rotation output is rounded up (`ceil`) instead of to the nearest integer (AVX kernels add 0.5 and then round), so it is biased by +0.5 and differs from macOS. |
-| `DeconFunctionTest/psfGenKeepsEvenSizePSFAtTheFFTCenter` | `psf_gen_new` centers even-size PSFs one voxel off, shifting deconvolution results. |
-| `DeconFrameTest/overwriteRecomputesTheResult` | `Overwrite=true` keeps the old deconvolution result. |
-| `DeconFrameTest/flipZstackFlipsTheResult` | `flipZstack` is ignored for regular (non-large) files. |
 | `StitchingTest/noneBlendTakesHalfOverlapFromEachTile` | `'none'` blending takes the whole overlap from the lower-index tile instead of half from each. |
 | `StitchingTest/featherBlendingWithThinTiles` | Feather blending fails for tiles with fewer than 10 slices and zeroes the first slice for 10-29 slices. |
 | `ImageListGenerationTest/tilePositionStepsForNonSquareTiles` | Image lists from tile positions swap the x and y steps for non-square tiles. |
@@ -191,8 +188,6 @@ lists the ones that may be intended.
 | Test | Problem |
 |---|---|
 | `XRDeskewRotateFrameTest/backgroundRemovalRuns` | `BKRemoval=true` calls `XR_CameraBackgroundRemoval`, which isn't in PetaKit5D (old mcc builds show it in the author's private repository). |
-| `DeconFrameTest/allZeroFrameIsDeconvolved` | An all-zero frame with `'simplified'` errors (`err_mat` undefined), aborting the run. |
-| `DeconWrapperTest/originalMethodWorksWithMultipleBatches` | `'original'` with a multi-batch large file fails (no `deconBbox` crop); support it or reject it up front. |
 | `StitchingTest/localShiftMethod` | `shiftMethod='local'` errors. |
 | `ChromaticShiftCorrectionTest/sameModeKeepsImageSize` | Chromatic shift `'same'` mode errors (undefined `neworigin`). |
 | `UnmixChannelsTest/gaussianUnmixingThroughDataWrapper` | Gaussian unmixing through the data wrapper fails for per-channel sigmas (`mat2str_comma` of a matrix). |
@@ -201,7 +196,6 @@ lists the ones that may be intended.
 | `TiffIOTest/unsupportedInputIsNotSilentlyDropped` | `writetiff` of 4D or empty data writes nothing and raises no error. |
 | `CropDatasetTest/tiffInputSavedAsZarr` | Cropping tif input to zarr creates a zarr folder named `*.tif`. |
 | `CropMexTest/indexing4dMexSupportsLogical` | `indexing4d_mex` rejects logical input (missing `else`). |
-| `DeconFrameTest/simplifiedInfoFilesGoToTheDeconInfoFolder` | Info files land in the result folder (`sprintf` argument mismatch). |
 | `ImageInfoTest/queryingMetadataKeepsWarningState` | `getImageSize`/`getZarrInfo` turn off all warnings for the rest of the session. |
 
 **May be intended.** These tests fail, but the behavior may be deliberate.

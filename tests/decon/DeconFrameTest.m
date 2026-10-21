@@ -90,14 +90,9 @@ classdef DeconFrameTest < pktest.TestCase
             % automatic skewed space detection and a minimum intensity threshold
             evalc('XR_visualize_OTF_mask_segmentation(psfFn, 0.65, [], ''minIntThrsh'', 1e-3, ''visible'', false)');
         end
-    end
 
-    methods (Test, TestTags = {'Integration', 'KnownIssue'})
         function overwriteRecomputesTheResult(testCase)
-            % KNOWN ISSUE: XR_RLdeconFrame3D.m:213 honors Overwrite, but
-            % RLdecon.m:195-198 returns early whenever the output exists, so
-            % Overwrite=true leaves the old result (non-large path). Fix:
-            % pass Overwrite to RLdecon or delete the old output first.
+            % RLdecon skips existing results, so Overwrite used to keep the old one
             [fn, psfFn] = testCase.writeFrame();
             deconPath = [fileparts(fn), '/decon/'];
             testCase.runFrame(fn, deconPath, psfFn, 'DeconIter', 3);
@@ -113,11 +108,7 @@ classdef DeconFrameTest < pktest.TestCase
         end
 
         function flipZstackFlipsTheResult(testCase)
-            % KNOWN ISSUE: XR_RLdeconFrame3D.m:260-269 doesn't pass
-            % flipZstack to RLdecon, so the regular path never flips the
-            % stack (regression from b578df6; the saved erosion mask and the
-            % 'inmemory' large-file method do flip). Fix: add 'flipZstack',
-            % flipZstack to the RLdecon call.
+            % flipZstack used to be dropped for regular (not large) files
             [fn, psfFn] = testCase.writeFrame();
             dataPath = fileparts(fn);
             testCase.runFrame(fn, [dataPath, '/noflip/'], psfFn, 'DeconIter', 3, 'flipZstack', false);
@@ -128,26 +119,9 @@ classdef DeconFrameTest < pktest.TestCase
                 flip(readtiff([dataPath, '/noflip/', fsn, '.tif']), 3), 'relTol', 1e-3, 'name', 'flipped result');
         end
 
-        function simplifiedInfoFilesGoToTheDeconInfoFolder(testCase)
-            % KNOWN ISSUE: RLdecon.m:537 builds the folder with
-            % sprintf('%s/%s/decon_info/', deconPath) (two %s, one value),
-            % so the info .mat/.txt files land next to the results instead
-            % of in decon_info/. Fix: sprintf('%s/decon_info/', deconPath).
-            [fn, psfFn] = testCase.writeFrame();
-            deconPath = [fileparts(fn), '/decon/'];
-            testCase.runFrame(fn, deconPath, psfFn, 'DeconIter', 3);
-            [~, fsn] = fileparts(fn);
-            testCase.verifyTrue(exist([deconPath, 'decon_info/', fsn, '_info.mat'], 'file') == 2, ...
-                sprintf('decon_info/%s_info.mat is missing (found in the result folder: %d).', fsn, ...
-                exist([deconPath, fsn, '_info.mat'], 'file') == 2));
-        end
-
         function allZeroFrameIsDeconvolved(testCase)
-            % KNOWN ISSUE: for an all-zero image RLdecon.m:368 skips the
-            % decon, but RLdecon.m:536-544 still saves err_mat and iter_run
-            % for 'simplified', which are undefined, so empty tiles (e.g.,
-            % outside the sample) make the whole run error. Fix: only save
-            % the info if the decon ran.
+            % an all-zero frame used to error when saving the 'simplified' info
+            % (err_mat is only set when the decon runs)
             [fn, psfFn] = testCase.writeFrame([], [], zeros(testCase.ImSize, 'uint16'));
             deconPath = [fileparts(fn), '/decon/'];
             try
@@ -158,6 +132,17 @@ classdef DeconFrameTest < pktest.TestCase
             end
             [~, fsn] = fileparts(fn);
             testCase.verifyEqual(readtiff([deconPath, fsn, '.tif']), zeros(testCase.ImSize, 'uint16'));
+        end
+
+        function simplifiedInfoFilesGoToTheDeconInfoFolder(testCase)
+            % the info files used to land in the result folder
+            [fn, psfFn] = testCase.writeFrame();
+            deconPath = [fileparts(fn), '/decon/'];
+            testCase.runFrame(fn, deconPath, psfFn, 'DeconIter', 3);
+            [~, fsn] = fileparts(fn);
+            testCase.verifyTrue(exist([deconPath, 'decon_info/', fsn, '_info.mat'], 'file') == 2, ...
+                sprintf('decon_info/%s_info.mat is missing (found in the result folder: %d).', fsn, ...
+                exist([deconPath, fsn, '_info.mat'], 'file') == 2));
         end
     end
 
