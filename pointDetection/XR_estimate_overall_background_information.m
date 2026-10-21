@@ -30,7 +30,11 @@ backgroundInfo_mat = zeros(win_num, 3);
 % corp image to the by the bounding box
 nan_mat = isnan(frame);
 frame = replace_nan_with_value(frame, 0);
-[frame, bbox] = crop_image_by_bounding_box(frame);
+bbox = getImageBoundingBox(frame);
+if isempty(bbox)
+    bbox = [1, 1, 1, size(frame, 1 : 3)];
+end
+frame = frame(bbox(1) : bbox(4), bbox(2) : bbox(5), bbox(3) : bbox(6));
 nan_mat = nan_mat(bbox(1) : bbox(4), bbox(2) : bbox(5), bbox(3) : bbox(6));
 sz = size(frame);
 

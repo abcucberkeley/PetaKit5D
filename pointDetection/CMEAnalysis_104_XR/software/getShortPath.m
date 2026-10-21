@@ -30,10 +30,10 @@ if numel(data.channels)>1
     mCh = strcmp(data.channels, data.source);
     sCh = setdiff(1:length(data.channels),mCh);
     spath = data.channels{sCh(1)};
-    idx = regexp(spath, filesep);
+    idx = regexp(spath, '[\\/]'); % either separator, also on Windows
     spath = spath(idx(end-level-1)+1:idx(end-1));
 else
     spath = data.channels{1};
-    idx = regexp(spath, filesep);
+    idx = regexp(spath, '[\\/]'); % either separator, also on Windows
     spath = spath(idx(max(1,end-level))+1:idx(end)-1);
 end

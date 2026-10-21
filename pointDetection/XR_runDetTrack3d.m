@@ -67,7 +67,7 @@ ip.addParameter('WindowSize', []);
 ip.addParameter('Mode', 'xyzAc', @ischar); % do not change unless necessary
 ip.addParameter('FitMixtures', false, @islogical); % fairly robust
 ip.addParameter('MaxMixtures', 2, @(x) numel(x)==1 && x>0 && round(x)==x);
-ip.addParameter('DetectionMethod', 'update_3', @ischar);
+ip.addParameter('DetectionMethod', 'lowSNR', @ischar);
 ip.addParameter('BackgroundCorrection', false, @islogical); % background correction
 
 % tracking options

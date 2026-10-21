@@ -52,6 +52,36 @@ classdef AutomaticProcessingTest < pktest.TestCase
                 testCase.verifyTrue(exist(sprintf('%sDSR/MIPs/%s_MIP_z.tif', dataPath, fsn), 'file') == 2);
             end
         end
+
+        function demoParameterSetIsAccepted(testCase)
+            % the demos used to pass a 4-element Save16bit (for steps that were
+            % removed from the pipeline in abd53f9), which the pipeline rejects
+            demos = {'demo_microscope_pipeline_single_dataset', 'demo_microscope_pipeline_single_dataset_nostitch', ...
+                'demo_microscope_pipeline_multiple_dataset'};
+            save16bits = cell(1, numel(demos));
+            for i = 1 : numel(demos)
+                tokens = regexp(fileread(fullfile(pktest.repoRoot(), 'demos', [demos{i}, '.m'])), ...
+                    '(?m)^\s*Save16bit\s*=\s*([^;\r\n]+);', 'tokens', 'once');
+                testCase.assertNotEmpty(tokens, sprintf('%s no longer sets Save16bit.', demos{i}));
+                save16bits{i} = eval(tokens{1});
+            end
+
+            dataPath = testCase.createTempFolder();
+            writetiff(uint16(pktest.beads([64, 64, 40], [32, 30, 20], 2, 2000, 300)), testCase.tileFilename(dataPath, 'CamA_ch0', 0));
+            for i = 1 : numel(demos)
+                try
+                    XR_microscopeAutomaticProcessing(dataPath, 'xyPixelSize', testCase.XYPixelSize, 'dz', testCase.Dz, ...
+                        'Reverse', true, 'ChannelPatterns', {'CamA_ch0'}, 'Save16bit', save16bits{i}, ...
+                        'Overwrite', false, 'Streaming', false, 'Deskew', true, 'Rotate', true, 'Stitch', false, ...
+                        'DSRCombined', true, 'minModifyTime', 1, 'maxModifyTime', 10, 'maxWaitLoopNum', 10, ...
+                        'parseCluster', false, 'cpusPerTask', 4, 'configFile', '', 'mccMode', false);
+                catch ME
+                    testCase.verifyFail(sprintf('The Save16bit of %s (%s) is rejected: %s', demos{i}, ...
+                        mat2str(save16bits{i}), ME.message));
+                end
+            end
+            testCase.verifyTrue(exist(strrep(testCase.tileFilename(dataPath, 'CamA_ch0', 0), dataPath, [dataPath, 'DSR/']), 'file') == 2);
+        end
     end
 
     methods (Test, TestTags = {'Integration', 'Slow'})
@@ -86,44 +116,6 @@ classdef AutomaticProcessingTest < pktest.TestCase
                 testCase.verifyEqual(out(1 : sz(1), 1 : sz(2), 1 : sz(3)), expected{d}, ...
                     sprintf('Dataset %d: stitched DSR tiles differ from the DSR of the whole volume.', d));
             end
-        end
-    end
-
-    methods (Test, TestTags = {'Integration', 'KnownIssue'})
-        function demoParameterSetIsAccepted(testCase)
-            % KNOWN ISSUE: demo_microscope_pipeline_single_dataset.m,
-            % demo_microscope_pipeline_single_dataset_nostitch.m and
-            % demo_microscope_pipeline_multiple_dataset.m pass
-            % Save16bit = [true, true, true, true] (deskew/rotate, stitch,
-            % decon and rotation after decon), but abd53f9 removed
-            % deconvolution from XR_microscopeAutomaticProcessing, which now
-            % accepts 1 or 2 elements, so the demos stop with "The value of
-            % 'save16bit' is invalid". Fix the demos (use [true, true]).
-            demos = {'demo_microscope_pipeline_single_dataset', 'demo_microscope_pipeline_single_dataset_nostitch', ...
-                'demo_microscope_pipeline_multiple_dataset'};
-            save16bits = cell(1, numel(demos));
-            for i = 1 : numel(demos)
-                tokens = regexp(fileread(fullfile(pktest.repoRoot(), 'demos', [demos{i}, '.m'])), ...
-                    '(?m)^\s*Save16bit\s*=\s*([^;\r\n]+);', 'tokens', 'once');
-                testCase.assertNotEmpty(tokens, sprintf('%s no longer sets Save16bit.', demos{i}));
-                save16bits{i} = eval(tokens{1});
-            end
-
-            dataPath = testCase.createTempFolder();
-            writetiff(uint16(pktest.beads([64, 64, 40], [32, 30, 20], 2, 2000, 300)), testCase.tileFilename(dataPath, 'CamA_ch0', 0));
-            for i = 1 : numel(demos)
-                try
-                    XR_microscopeAutomaticProcessing(dataPath, 'xyPixelSize', testCase.XYPixelSize, 'dz', testCase.Dz, ...
-                        'Reverse', true, 'ChannelPatterns', {'CamA_ch0'}, 'Save16bit', save16bits{i}, ...
-                        'Overwrite', false, 'Streaming', false, 'Deskew', true, 'Rotate', true, 'Stitch', false, ...
-                        'DSRCombined', true, 'minModifyTime', 1, 'maxModifyTime', 10, 'maxWaitLoopNum', 10, ...
-                        'parseCluster', false, 'cpusPerTask', 4, 'configFile', '', 'mccMode', false);
-                catch ME
-                    testCase.verifyFail(sprintf('The Save16bit of %s (%s) is rejected: %s', demos{i}, ...
-                        mat2str(save16bits{i}), ME.message));
-                end
-            end
-            testCase.verifyTrue(exist(strrep(testCase.tileFilename(dataPath, 'CamA_ch0', 0), dataPath, [dataPath, 'DSR/']), 'file') == 2);
         end
     end
 

@@ -31,8 +31,8 @@ dz = 0.3;
 Reverse = true;
 % Channel identifiers and orders. 
 ChannelPatterns = {'CamB_ch0', 'CamA_ch0'};
-% Save 16bit for deskew/rotate, stitch, deconvolution, and rotation after decon
-Save16bit = [true, true, true, true];
+% Save 16bit for deskew/rotate and stitch
+Save16bit = [true, true];
 % not overwrite existing results
 Overwrite = false;
 % Processing for existing dataset. Set it as true for real-time processing

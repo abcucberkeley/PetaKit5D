@@ -165,8 +165,6 @@ lists the ones that may be intended.
 |---|---|
 | `DeskewMexSourceTest` | The AVX loops in the deskew/rotation mex files (`volume_deskew_rotate_warp_mex.cpp:66`, `skewed_space_interp_volume_deskew_rotate_warp_mex.cpp:105,139`, `skewed_space_interp_defined_stepsize_mex.c:103,137`) run up to 7 floats past each row. On Linux/Windows, single-precision input whose first dimension is not a multiple of 8 corrupts memory and can crash MATLAB. |
 | `MexPackagingTest` | 15 ARM macOS mex files (crop, deskew/rotate, flat field, stitch, MIP) load Homebrew's `libgomp` by absolute path; without Homebrew gcc@13 they only load if cpp-tiff/cpp-zarr was used first in the session. |
-| `AutomaticProcessingTest/demoParameterSetIsAccepted` | The three `demo_microscope_pipeline_*.m` demos pass a 4-element `Save16bit`, which `XR_microscopeAutomaticProcessing` rejects since deconvolution was removed from it (abd53f9); the demos are out of date. |
-| `PointDetectionTest/lowSNRDetectionRuns` | `DetectionMethod='lowSNR'`, which all three point detection demos use, calls `crop_image_by_bounding_box`, which doesn't exist. |
 
 **Wrong or silently ignored results**
 
@@ -207,16 +205,9 @@ Not covered by a test:
   have been used, most likely because an OpenMP runtime is unloaded while
   its worker threads are alive. CI works around it (see below).
 
-- Point detection (`XR_runDetection3D`) fails on Windows for paths with `/`
-  separators, which PetaKit5D's other functions and these tests use:
-  `getShortPath` only splits on `filesep` (native `\` paths work). These tests
-  are skipped on Windows.
 - Point detection isn't available on ARM macOS: its mex files were never
   built for it (see `MexInventoryTest`). A platform gap rather than a code bug,
   but README.md doesn't say so.
-- `XR_runDetTrack3d` defaults `DetectionMethod` to `'update_3'`, which
-  `XR_runDetection3D` doesn't handle (`pstruct` undefined); the demos pass
-  `'lowSNR'`.
 - For objective scan, `XR_deskew_rotate_data_wrapper.m:200` compares
   `DSRDirName` with `'DSR/'`, but the default is `'DSR'`, so the intended
   rename of the output folder to `rotated/` never happens.
@@ -277,6 +268,6 @@ Every workflow in `demos/` is covered by tests on synthetic data:
 | `demo_useful_tools` | `tools/ResampleTest`, `crop/CropDatasetTest`, `tools/MIPTest`, `tools/TiffZarrConversionTest`, `deskew_rotate/DeskewRotateDataWrapperTest/deskewOnlyWritesDS`, `analysis/FFTSpectrumTest`, `analysis/PSFAnalysisTest`, `analysis/FSCAnalysisTest`, `analysis/ImarisConversionTest`, `analysis/ChromaticShiftCorrectionTest`, `analysis/UnmixChannelsTest`. |
 | `demo_phase_and_2photon_stitching` | `stitch/PhaseFlatFieldCorrectionTest`, `stitch/ImageListGenerationTest` (tile positions, pixel and micron overlaps, non-standard names), `stitch/StitchingTest` (2D tiles, IOScan with flipped axes, processing function). |
 | `demo_widefield_and_confocal_deconvolution` | `decon/DeconWrapperTest/widefieldDemoSettingsWithPlainFilenames`. |
-| `demo_microscope_pipeline_*` | `pipeline/AutomaticProcessingTest` (flat field + deskew/rotation, deskew/rotation + stitching of several datasets; the demos' parameter set is a known issue). |
-| `demo_point_detection_3d_*` | `point_detection/PointDetectionTest` (sigma estimation, detection, tracking; `'lowSNR'` detection is a known issue). Condition loading, track processing and lifetime analysis aren't tested. |
+| `demo_microscope_pipeline_*` | `pipeline/AutomaticProcessingTest` (flat field + deskew/rotation, deskew/rotation + stitching of several datasets, the demos' parameter set). |
+| `demo_point_detection_3d_*` | `point_detection/PointDetectionTest` (sigma estimation, detection including `'lowSNR'`, tracking). Condition loading, track processing and lifetime analysis aren't tested. |
 | Not in the demos | `flatfield/FlatFieldCorrectionTest`, `analysis/FlatfieldBackgroundEstimationTest`, `analysis/PunctaRemovalTest`, `golden/GoldenOutputTest`, `platform/*` (mex inventory and packaging, path shadowing). |

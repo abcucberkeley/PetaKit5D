@@ -202,8 +202,8 @@ for k = 1:data.movieLength % parfor
                 if isnan(ResidualSigmaThresh_device) || ResidualSigmaThresh_device < backgroundInfo(3) * bg_std_factor
                     % xruan 12/06/2019 if the estimate sigma is too large, which means the
                     % backgroud of the image may be uneven, in this case,
-                    % we use the sigma from device. 
-                    if ResidualSigmaThresh_device * 1.5 > (backgroundInfo(3) * bg_std_factor)
+                    % we use the sigma from device (if it is known).
+                    if isnan(ResidualSigmaThresh_device) || ResidualSigmaThresh_device * 1.5 > (backgroundInfo(3) * bg_std_factor)
                         ResidualSigmaThresh =  backgroundInfo(3) * bg_std_factor;
                     else
                         ResidualSigmaThresh = ResidualSigmaThresh_device;

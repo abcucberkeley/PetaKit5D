@@ -43,10 +43,8 @@ classdef PointDetectionTest < pktest.TestCase
 
     methods (Test, TestTags = {'Integration'})
         function runDetectionWritesDetectionsAndMask(testCase)
-            % getShortPath (used for messages) only splits paths on filesep,
-            % so on Windows it errors for paths with '/' separators, which
-            % these tests (and PetaKit5D's other functions) use
-            testCase.assumeFalse(ispc, 'getShortPath does not handle ''/'' separators on Windows.');
+            % getShortPath (used for messages) used to fail on Windows for
+            % paths with '/' separators, which these tests use
             [data, dataPath] = testCase.movieData(1);
 
             XR_runDetection3D(data, 'Sigma', testCase.Sigma, 'DetectionMethod', 'speedup', 'WriteAmira', false, ...
@@ -66,7 +64,6 @@ classdef PointDetectionTest < pktest.TestCase
         function trackingLinksSpotsAcrossFrames(testCase)
             % detection + tracking (demo step 5.1) on a 3-frame movie with
             % spots moving by a fraction of a voxel per frame
-            testCase.assumeFalse(ispc, 'getShortPath does not handle ''/'' separators on Windows.');
             velocity = [0.6, 1.0, 0.4];
             [data, dataPath] = testCase.movieData(3, velocity);
             resultsPath = {[dataPath, 'Analysis/']};
@@ -102,16 +99,13 @@ classdef PointDetectionTest < pktest.TestCase
             testCase.verifyEqual(sigmaZ, 2.4, 'AbsTol', 0.15);
             testCase.verifyEqual([XYZ.y, XYZ.x, XYZ.z], [24, 24, 24], 'AbsTol', 0.2);
         end
-    end
 
-    methods (Test, TestTags = {'Integration', 'KnownIssue'})
         function lowSNRDetectionRuns(testCase)
-            % KNOWN ISSUE: DetectionMethod 'lowSNR' (used in both detection
-            % demos) calls XR_estimate_overall_background_information,
-            % which calls crop_image_by_bounding_box, a function that does
-            % not exist in the repository.
-            testCase.assumeFalse(ispc, 'getShortPath does not handle ''/'' separators on Windows.');
-            [data, dataPath] = testCase.movieData(1);
+            % 'lowSNR' (used in the detection demos) used to call
+            % crop_image_by_bounding_box, which doesn't exist, and to drop
+            % all detections without a camera noise threshold. It filters
+            % detections by their residual std, which assumes camera noise.
+            [data, dataPath] = testCase.movieData(1, [0, 0, 0], 'camera');
 
             XR_runDetection3D(data, 'Sigma', testCase.Sigma, 'DetectionMethod', 'lowSNR', 'WriteAmira', false, ...
                 'Overwrite', true, 'ResultsPath', {[dataPath, 'Analysis/']}, 'BackgroundCorrection', true);
@@ -122,19 +116,31 @@ classdef PointDetectionTest < pktest.TestCase
     end
 
     methods (Access = private)
-        function [vol] = spotVolume(testCase, shift)
+        function [vol] = spotVolume(testCase, shift, noise)
+            % noise: 'gaussian' (std 5) or 'camera' (photon and read noise)
             if nargin < 2
                 shift = [0, 0, 0];
             end
+            if nargin < 3
+                noise = 'gaussian';
+            end
             vol = double(pktest.beads([64, 64, 64], testCase.Spots + shift, testCase.Sigma, testCase.Amplitude, ...
-                testCase.Background)) + 5 * randn(64, 64, 64);
+                testCase.Background));
+            if strcmp(noise, 'camera')
+                vol = poissrnd(vol) + 2 * randn(64, 64, 64);
+            else
+                vol = vol + 5 * randn(64, 64, 64);
+            end
         end
 
-        function [data, dataPath] = movieData(testCase, nFrames, velocity)
+        function [data, dataPath] = movieData(testCase, nFrames, velocity, noise)
             % minimal movie structure as returned by XR_loadConditionData3D;
             % spots move by velocity [y, x, z] voxels per frame
             if nargin < 3
                 velocity = [0, 0, 0];
+            end
+            if nargin < 4
+                noise = 'gaussian';
             end
             dataPath = testCase.createTempFolder();
             chPath = [dataPath, 'ch1/'];
@@ -142,7 +148,7 @@ classdef PointDetectionTest < pktest.TestCase
             frameFns = cell(1, nFrames);
             for k = 1 : nFrames
                 frameFns{k} = sprintf('%sframe_%04d.tif', chPath, k);
-                writetiff(uint16(testCase.spotVolume((k - 1) * velocity)), frameFns{k});
+                writetiff(uint16(testCase.spotVolume((k - 1) * velocity, noise)), frameFns{k});
             end
             data = struct('source', chPath, 'channels', {{chPath}}, 'movieLength', nFrames, ...
                 'framePathsDS', {{frameFns}}, 'zAniso', 1.5);
