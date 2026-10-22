@@ -369,7 +369,7 @@ classdef DeconWrapperTest < pktest.TestCase
             testCase.assumeFalse(ispc, 'The fake Slurm needs a POSIX shell.');
             d = testCase.createDataset({'A'}, 1);
             slurm = testCase.applyFixture(pktest.FakeSlurmFixture);
-            pauses = testCase.applyFixture(pktest.FunctionSpyFixture('pause'));
+            pauses = testCase.applyFixture(pktest.FunctionSpyFixture('pause', [], 20));
             % the fake jobs never run: one round submits, the next resubmits,
             % the last checks that the second job is gone
             testCase.runWrapper(d, 'parseCluster', true, 'maxTrialNum', 2, 'jobLogDir', [d.root, 'logs']);
@@ -386,7 +386,7 @@ classdef DeconWrapperTest < pktest.TestCase
             d = testCase.createDataset({'A'}, 1);
             slurm = testCase.applyFixture(pktest.FakeSlurmFixture);
             slurm.setJobStates('1000_1', {'PD', 'R', 'R', 'done'});
-            pauses = testCase.applyFixture(pktest.FunctionSpyFixture('pause'));
+            pauses = testCase.applyFixture(pktest.FunctionSpyFixture('pause', [], 20));
             testCase.runWrapper(d, 'parseCluster', true, 'maxTrialNum', 1, 'jobLogDir', [d.root, 'logs']);
             testCase.verifyEqual(slurm.callCount('sbatch'), 1, 'The last try was submitted again.');
             % a check before submitting, then one per round until the job is gone
@@ -400,7 +400,7 @@ classdef DeconWrapperTest < pktest.TestCase
             testCase.assumeFalse(ispc, 'The fake Slurm needs a POSIX shell.');
             d = testCase.createDataset({'A'}, 20);
             slurm = testCase.applyFixture(pktest.FakeSlurmFixture);
-            pauses = testCase.applyFixture(pktest.FunctionSpyFixture('pause'));
+            pauses = testCase.applyFixture(pktest.FunctionSpyFixture('pause', [], 20));
             % the fake jobs never run: one round submits, the next resubmits
             testCase.runWrapper(d, 'parseCluster', true, 'maxTrialNum', 2, 'jobLogDir', [d.root, 'logs']);
             testCase.verifyEqual(slurm.callCount('sbatch'), 40);

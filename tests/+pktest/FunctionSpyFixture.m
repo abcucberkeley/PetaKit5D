@@ -4,18 +4,25 @@ classdef FunctionSpyFixture < matlab.unittest.fixtures.Fixture
     % (e.g., the job settings a wrapper forwards). The spy is first on the
     % path while the fixture is set up. An optional function given to the
     % constructor runs at each call (e.g., to make files another job would).
+    % An optional maximum number of calls makes the spy error once it is
+    % exceeded, so that a caller stuck in a loop (e.g., of pause) fails the
+    % test instead of hanging it.
 
     properties (SetAccess = private)
         FunctionName
         Folder
         OnCall
+        MaxCalls = Inf
     end
 
     methods
-        function fixture = FunctionSpyFixture(functionName, onCall)
+        function fixture = FunctionSpyFixture(functionName, onCall, maxCalls)
             fixture.FunctionName = functionName;
             if nargin > 1
                 fixture.OnCall = onCall;
+            end
+            if nargin > 2
+                fixture.MaxCalls = maxCalls;
             end
         end
 
@@ -32,13 +39,21 @@ classdef FunctionSpyFixture < matlab.unittest.fixtures.Fixture
                 '    calls = a.calls;'
                 'end'
                 'calls{end + 1} = varargin;'
-                'save(spyFn, ''calls'');'
+                'save(spyFn, ''calls'');'};
+            if isfinite(fixture.MaxCalls)
+                lines = [lines; {
+                    sprintf('if numel(calls) > %d', fixture.MaxCalls)
+                    sprintf('    error(''pktest:FunctionSpyFixture:TooManyCalls'', ''%s was called more than %d times.'');', ...
+                        fixture.FunctionName, fixture.MaxCalls)
+                    'end'}];
+            end
+            lines = [lines; {
                 'onCallFn = [fileparts(mfilename(''fullpath'')), ''/onCall.mat''];'
                 'if exist(onCallFn, ''file'')'
                 '    a = load(onCallFn);'
                 '    a.onCall();'
                 'end'
-                'end'};
+                'end'}];
             fid = fopen(sprintf('%s/%s.m', fixture.Folder, fixture.FunctionName), 'w');
             fprintf(fid, '%s\n', lines{:});
             fclose(fid);
@@ -84,7 +99,8 @@ classdef FunctionSpyFixture < matlab.unittest.fixtures.Fixture
 
     methods (Access = protected)
         function [tf] = isCompatible(fixture, other)
-            tf = strcmp(fixture.FunctionName, other.FunctionName) && isempty(fixture.OnCall) && isempty(other.OnCall);
+            tf = strcmp(fixture.FunctionName, other.FunctionName) && isempty(fixture.OnCall) && isempty(other.OnCall) ...
+                && isequal(fixture.MaxCalls, other.MaxCalls);
         end
     end
 end

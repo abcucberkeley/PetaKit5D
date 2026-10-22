@@ -176,7 +176,7 @@ classdef StitchingTest < pktest.TestCase
             csvFn = testCase.writeTiles(dataPath, gt, [0, 0, 0; 36, 0, 0; 0, 48, 0; 36, 48, 0], [64, 72, 32]);
             slurm = testCase.applyFixture(pktest.FakeSlurmFixture);
             slurm.setJobStates('1000_1', {'PD', 'R', 'done'});
-            testCase.applyFixture(pktest.FunctionSpyFixture('pause'));
+            testCase.applyFixture(pktest.FunctionSpyFixture('pause', [], 20));
             testCase.stitch(dataPath, csvFn, 'parseCluster', true, 'masterCompute', false, 'maxTrialNum', 1, ...
                 'jobLogDir', [dataPath, 'logs']);
             testCase.verifyEqual(slurm.callCount('sbatch'), 1, 'The last try was submitted again.');

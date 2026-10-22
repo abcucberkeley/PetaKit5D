@@ -95,7 +95,7 @@ classdef AutomaticProcessingTest < pktest.TestCase
             logPath = [dataPath, 'logs/'];
             mkdir(logPath);
             slurm = testCase.applyFixture(pktest.FakeSlurmFixture);
-            pauses = testCase.applyFixture(pktest.FunctionSpyFixture('pause'));
+            pauses = testCase.applyFixture(pktest.FunctionSpyFixture('pause', [], 20));
 
             % the fake jobs never run: one round submits, the next resubmits
             args = {'xyPixelSize', testCase.XYPixelSize, 'dz', testCase.Dz, 'reverse', true, ...
@@ -180,9 +180,11 @@ classdef AutomaticProcessingTest < pktest.TestCase
             slurm = testCase.applyFixture(pktest.FakeSlurmFixture);
             % jobs in submission order: deskew of tile 1 (1000), stitching of
             % the dataset (1001), deskew of tile 2 (1002); the deskew jobs end
-            % at once without results
-            slurm.setJobStates('1001_1', {'PD', 'R', 'done'});
-            testCase.applyFixture(pktest.FunctionSpyFixture('pause'));
+            % at once without results, the stitching job runs for longer, so
+            % that only it keeps the run going. Each file of the dataset
+            % checks it once per round.
+            slurm.setJobStates('1001_1', {'PD', 'R', 'R', 'R', 'done'});
+            testCase.applyFixture(pktest.FunctionSpyFixture('pause', [], 20));
             evalc(['XR_microscopeAutomaticProcessing(dataPath, ''xyPixelSize'', px, ''dz'', testCase.Dz, ', ...
                 '''reverse'', true, ''channelPatterns'', {''CamA_ch0''}, ''streaming'', false, ', ...
                 '''stitch'', true, ''imageListFullpaths'', {csvFn}, ''parseCluster'', true, ', ...
@@ -190,7 +192,7 @@ classdef AutomaticProcessingTest < pktest.TestCase
             testCase.verifyEqual(slurm.callCount('sbatch'), 3, 'A last try was submitted again.');
             checks = slurm.history();
             checks = checks(startsWith(checks, 'squeue') & contains(checks, '1001_1'));
-            testCase.verifyGreaterThanOrEqual(numel(checks), 3, 'The stitching job was not checked until it ended.');
+            testCase.verifyGreaterThanOrEqual(numel(checks), 5, 'The stitching job was not checked until it ended.');
         end
 
         function streamingProcessesNewFiles(testCase)
