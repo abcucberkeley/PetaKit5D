@@ -49,6 +49,7 @@ ip.addParameter('parseParfor', false, @(x) islogical(x) || ischar(x));
 ip.addParameter('masterCompute', true, @(x) islogical(x) || ischar(x)); % master node participate in the task computing. 
 ip.addParameter('jobLogDir', '../job_logs', @ischar);
 ip.addParameter('cpusPerTask', 2, @(x) isnumeric(x) || ischar(x));
+ip.addParameter('taskBatchNum', [], @(x) isnumeric(x) || ischar(x)); % files per job, [] for automatic
 ip.addParameter('uuid', '', @ischar);
 ip.addParameter('unitWaitTime', 1, @(x) isnumeric(x) || ischar(x));
 ip.addParameter('maxTrialNum', 3, @(x) isnumeric(x) || ischar(x));
@@ -99,6 +100,7 @@ parseParfor = pr.parseParfor;
 masterCompute = pr.masterCompute;
 jobLogDir = pr.jobLogDir;
 cpusPerTask = pr.cpusPerTask;
+taskBatchNum = pr.taskBatchNum;
 uuid = pr.uuid;
 unitWaitTime = pr.unitWaitTime;
 maxTrialNum = pr.maxTrialNum;
@@ -217,6 +219,9 @@ end
 if ischar(cpusPerTask)
     cpusPerTask = str2num(cpusPerTask);
 end
+if ischar(taskBatchNum)
+    taskBatchNum = str2num(taskBatchNum);
+end
 if ischar(unitWaitTime)
     unitWaitTime = str2num(unitWaitTime);
 end
@@ -238,8 +243,8 @@ XR_decon_data_wrapper(dataPaths, resultDirName=resultDirName, overwrite=overwrit
     zarrFile=zarrFile, saveZarr=saveZarr, dampFactor=dampFactor, scaleFactor=scaleFactor, ...
     deconOffset=deconOffset, maskFullpaths=maskFullpaths, parseCluster=parseCluster, ...
     parseParfor=parseParfor, masterCompute=masterCompute, jobLogDir=jobLogDir, ...
-    cpusPerTask=cpusPerTask, uuid=uuid, unitWaitTime=unitWaitTime, maxTrialNum=maxTrialNum, ...
-    mccMode=mccMode, configFile=configFile, GPUConfigFile=GPUConfigFile);
+    cpusPerTask=cpusPerTask, taskBatchNum=taskBatchNum, uuid=uuid, unitWaitTime=unitWaitTime, ...
+    maxTrialNum=maxTrialNum, mccMode=mccMode, configFile=configFile, GPUConfigFile=GPUConfigFile);
 
 end
 

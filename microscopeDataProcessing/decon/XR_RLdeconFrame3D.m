@@ -271,7 +271,7 @@ for f = 1 : nF
         % mipAxis = [0, 0, 0];
 
         t0 = tic;
-        RLdecon(inputFn, outputFn, PSFfile, xyPixelSize, dz, dzPSF, 'rawdata', [], ...
+        decon_args = {'rawdata', [], ...
             'save16bit', save16bit, 'SkewAngle', SkewAngle, 'Deskew', Deskew, ...
             'Rotate', Rotate, 'DSRCombined', DSRCombined, 'Reverse', Reverse, ...
             'Background', Background, 'DeconIter', DeconIter, 'RLMethod', RLMethod, ...
@@ -279,9 +279,20 @@ for f = 1 : nF
             'hannWinBounds', hannWinBounds, 'saveZarr', saveZarr, 'blockSize', blockSize, ...
             'fixIter', fixIter, 'dampFactor', dampFactor, 'scaleFactor', scaleFactor, ...
             'deconOffset', deconOffset, 'EdgeErosion', EdgeErosion, 'ErodeMaskfile', ErodeMaskfile, ...
-            'errThresh', errThresh, 'saveStep', saveStep, 'useGPU', GPUJob, ...
+            'errThresh', errThresh, 'saveStep', saveStep, ...
             'psfGen', psfGen, 'debug', debug, 'save3Dstack', save3Dstack, 'mipAxis', mipAxis, ...
-            'flipZstack', flipZstack);
+            'flipZstack', flipZstack};
+        try
+            RLdecon(inputFn, outputFn, PSFfile, xyPixelSize, dz, dzPSF, decon_args{:}, 'useGPU', GPUJob);
+        catch ME
+            % a file that doesn't fit on the GPU (memory or the gpuArray
+            % size limit) is deconvolved on the CPU instead of failing
+            if ~(GPUJob && is_gpu_capacity_error(ME))
+                rethrow(ME);
+            end
+            warning('%s does not fit on the GPU (%s), deconvolve it on the CPU instead...', inputFn, ME.message);
+            RLdecon(inputFn, outputFn, PSFfile, xyPixelSize, dz, dzPSF, decon_args{:}, 'useGPU', false);
+        end
 
         if (save3Dstack(1) && (exist(deconFullPath, 'file') || exist(deconFullPath, 'dir'))) ...
                 || (save3Dstack(3) && (exist(dsrFullPath, 'file') || exist(dsrFullPath, 'dir')))
@@ -327,5 +338,15 @@ for f = 1 : nF
 end
 
 % toc
+
+end
+
+
+function [tf] = is_gpu_capacity_error(ME)
+% the GPU ran out of memory (in an array, an operation or an FFT plan), or
+% the data is over the gpuArray size limit (2^31 - 1 elements)
+
+tf = any(strcmp(ME.identifier, {'parallel:gpu:array:OOM', 'parallel:gpu:array:OOMForOperation', ...
+    'parallel:gpu:array:FFTPlanInternalError', 'parallel:gpu:array:pmaxsize'}));
 
 end

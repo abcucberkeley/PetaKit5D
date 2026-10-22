@@ -59,6 +59,9 @@ if isempty(psz) || isempty(OTF_f) || ~(numel(psz) == numel(sizeI) && all(psz == 
     last_useGPU = useGPU;
     if useGPU
         gpuNum = gpuDeviceCount("available");
+        if gpuNum == 0
+            warning('No GPU is available, so the deconvolution runs on the CPU.');
+        end
     end
 
     PSF_f = single(PSF_f);    
@@ -82,8 +85,9 @@ if useGPU
         I_mask = I ~= 0;
     end
     if strcmp(underlyingType(I), 'uint16')
+        % keep uint16 input as uint16 on the GPU (2 instead of 4 bytes per
+        % voxel); it is cast to the class of J where it is used (exact)
         I = I - uint16(Background);            
-        I = single(I);
     else
         I = max(I - Background, 0);    
     end
@@ -97,6 +101,9 @@ else
     I = max(I - Background, 0);
 end
 J = I;
+if strcmp(underlyingType(J), 'uint16')
+    J = single(J);
+end
 
 % 2. L_R Iterations
 estep = saveStep;
@@ -107,7 +114,13 @@ for k = 1 : NUMIT
     CX = real(ifftn(fftn(J) .* OTF_f));
     % CX = CX + (CX < eps) * eps;
     CX = max(CX, eps);
-    J = real(ifftn(fftn(I ./ CX) .* OTF_b)) .* J;
+    % one FFT step per statement, and CX freed at the end, so that at most two
+    % complex volumes are on the GPU at a time (the same operations)
+    CX = fftn(cast(I, 'like', J) ./ CX);
+    CX = CX .* OTF_b;
+    CX = ifftn(CX);
+    J = real(CX) .* J;
+    clear CX;
     % J = J .* (J > 0);
     J = max(J, 0);
             
@@ -144,6 +157,7 @@ end
 
 % post-processing of deconvolved result
 if dampFactor > 1
+    I = cast(I, 'like', J);
     J = J .* (J <= dampFactor * I) + min(J, dampFactor * I .* (J >= dampFactor * I));
 end
 clear I CX;

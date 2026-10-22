@@ -144,6 +144,31 @@ classdef DeconFrameTest < pktest.TestCase
                 sprintf('decon_info/%s_info.mat is missing (found in the result folder: %d).', fsn, ...
                 exist([deconPath, fsn, '_info.mat'], 'file') == 2));
         end
+
+        function fileThatDoesNotFitOnTheGPUIsDeconvolvedOnTheCPU(testCase)
+            % a file larger than the GPU memory (or the gpuArray size limit)
+            % used to fail in every GPU job, until the wrapper gave up; it is
+            % now deconvolved on the CPU. A stand-in RLdecon runs out of GPU
+            % memory when useGPU is true.
+            [fn, psfFn] = testCase.writeFrame();
+            deconPath = [fileparts(fn), '/decon/'];
+            for errId = {'parallel:gpu:array:OOM', 'parallel:gpu:array:OOMForOperation', ...
+                    'parallel:gpu:array:FFTPlanInternalError', 'parallel:gpu:array:pmaxsize'}
+                fake = testCase.writeFakeRLdecon(errId{1});
+                testCase.runFrame(fn, deconPath, psfFn, 'DeconIter', 3, 'GPUJob', true, 'Overwrite', true);
+                testCase.verifyEqual(testCase.fakeUseGPU(fake), [true, false], errId{1});
+            end
+            [~, fsn] = fileparts(fn);
+            testCase.verifyTrue(exist([deconPath, fsn, '.tif'], 'file') == 2);
+        end
+
+        function otherGPUJobErrorsAreNotRetriedOnTheCPU(testCase)
+            [fn, psfFn] = testCase.writeFrame();
+            fake = testCase.writeFakeRLdecon('MATLAB:test:otherError');
+            testCase.verifyError(@() testCase.runFrame(fn, [fileparts(fn), '/decon/'], psfFn, 'GPUJob', true), ...
+                'MATLAB:test:otherError');
+            testCase.verifyEqual(testCase.fakeUseGPU(fake), true);
+        end
     end
 
     methods (Access = private)
@@ -173,6 +198,42 @@ classdef DeconFrameTest < pktest.TestCase
             args = [{'PSFfile', psfFn, 'dzPSF', testCase.Dz, 'Background', testCase.Background, ...
                 'RLMethod', 'simplified', 'EdgeErosion', 0, 'parseCluster', false, 'GPUJob', false}, varargin];
             evalc('XR_RLdeconFrame3D(fn, testCase.XYPixelSize, testCase.Dz, deconPath, args{:})');
+        end
+
+        function [folder] = writeFakeRLdecon(testCase, errId)
+            % an RLdecon first on the path that records its arguments, errors
+            % with errId when useGPU is true, and writes a result otherwise
+            folder = [testCase.createTempFolder(), 'fake/'];
+            mkdir(folder);
+            lines = {
+                'function [] = RLdecon(varargin)'
+                '% test stand-in written by DeconFrameTest'
+                'callFn = [fileparts(mfilename(''fullpath'')), ''/calls.mat''];'
+                'calls = {};'
+                'if exist(callFn, ''file'')'
+                '    a = load(callFn);'
+                '    calls = a.calls;'
+                'end'
+                'calls{end + 1} = varargin;'
+                'save(callFn, ''calls'');'
+                'ind = find(cellfun(@(x) ischar(x) && strcmp(x, ''useGPU''), varargin), 1, ''last'');'
+                'if varargin{ind + 1}'
+                sprintf('    error(''%s'', ''No GPU for this test.'');', errId)
+                'end'
+                'writetiff(zeros(4, 4, 4, ''uint16''), varargin{2});'
+                'end'};
+            fid = fopen([folder, 'RLdecon.m'], 'w');
+            fprintf(fid, '%s\n', lines{:});
+            fclose(fid);
+            testCase.applyFixture(matlab.unittest.fixtures.PathFixture(folder, 'Position', 'begin'));
+            testCase.addTeardown(@() clear('RLdecon'));
+            clear('RLdecon');
+        end
+
+        function [useGPU] = fakeUseGPU(~, folder)
+            % the useGPU argument of each call of the stand-in RLdecon
+            a = load([folder, 'calls.mat']);
+            useGPU = cellfun(@(c) c{find(cellfun(@(x) ischar(x) && strcmp(x, 'useGPU'), c), 1, 'last') + 1}, a.calls);
         end
     end
 end

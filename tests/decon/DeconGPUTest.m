@@ -11,6 +11,9 @@ classdef DeconGPUTest < pktest.TestCase
     properties (TestParameter)
         method = {'simplified', 'omw'}
         inputClass = {'uint16', 'single'}
+        anyInputClass = {'uint16', 'single', 'double'}
+        % an FFT-friendly size and one with prime factors (other cuFFT plans)
+        gpuSize = struct('smooth', [48, 48, 40], 'oddPrimes', [61, 53, 37])
     end
 
     methods (TestMethodSetup)
@@ -39,6 +42,38 @@ classdef DeconGPUTest < pktest.TestCase
             testCase.verifyClass(gpu, class(cpu));
             % different FFT libraries, single precision
             testCase.verifyImagesClose(gpu, cpu, 'relTol', 1e-4);
+        end
+    end
+
+    methods (Test, TestTags = {'Unit', 'GPU'})
+        function gpuLoopMatchesThePreviousFormulation(testCase, method, anyInputClass, gpuSize)
+            % the decon loops run one FFT step per statement and keep uint16
+            % input as uint16 on the GPU, which saves 6 bytes per voxel of GPU
+            % memory; the results are bit-identical to the previous loops
+            % (tests/decon/private/*_before.m)
+            psf = pktest.deconPSF([31, 31, 31], testCase.PSFSigma);
+            pos = [12, 14, 10; 24.3, 23.6, 20.2; 36, 30, 28; 15, 35, 25; 33, 12, 15];
+            im = cast(uint16(pktest.beads(gpuSize, pos, testCase.BlurSigma, 1000, testCase.Background)), anyInputClass);
+            [~, b] = evalc('omw_backprojector_generation(psf, 0.005, false)');
+            optionSets = {{'save16bit', true}, {'save16bit', false}, ...
+                {'save16bit', false, 'dampFactor', 1.2, 'EdgeErosion', 4, 'deconOffset', 3, 'scaleFactor', 1.5}, ...
+                {'save16bit', true, 'bbox', [3, 4, 2, gpuSize - [4, 3, 2]]}};
+            for o = 1 : numel(optionSets)
+                args = [{'Background', testCase.Background, 'useGPU', true}, optionSets{o}];
+                clear decon_lucy_function decon_lucy_omw_function decon_lucy_function_before decon_lucy_omw_function_before
+                for call = 1 : 2
+                    % the second call uses the cached OTFs
+                    switch method
+                        case 'simplified'
+                            expected = decon_lucy_function_before(im, psf, 4, args{:});
+                            actual = decon_lucy_function(im, psf, 4, args{:});
+                        case 'omw'
+                            expected = decon_lucy_omw_function_before(im, psf, b, 2, args{:});
+                            actual = decon_lucy_omw_function(im, psf, b, 2, args{:});
+                    end
+                    testCase.verifyEqual(actual, expected, sprintf('Options %d, call %d.', o, call));
+                end
+            end
         end
     end
 

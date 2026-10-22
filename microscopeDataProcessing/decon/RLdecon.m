@@ -289,40 +289,7 @@ end
 % generate or load back projectors
 switch RLMethod
     case 'omw'
-        bpFn = sprintf('%s/%s_back_projector_alpha_%0.6f_otf_cum_thresh_%0.6f.tif', psfgenPath, psfFsn, wienerAlpha, OTFCumThresh);
-        if exist(bpFn, 'file')
-            fprintf('Load existing OMW back projector %s for %s ...\n', bpFn, PSFfn);                    
-            psf_b = readtiff(bpFn);
-        else
-            fprintf('OMW back projector generation for %s ...\n', PSFfn);        
-            
-            bpTmpFn = sprintf('%s/%s_back_projector_alpha_%0.6f_otf_cum_thresh_%0.6f_%s.tif', psfgenPath, psfFsn, wienerAlpha, OTFCumThresh, loc_uuid);
-            [psf_b, OTF_bp_omw, abs_OTF_c, OTF_mask] = omw_backprojector_generation(psf, wienerAlpha, skewed, 'OTFCumThresh', OTFCumThresh, 'hannWinBounds', hannWinBounds);
-
-            if usejava('jvm')
-                visible = false;
-                fig = visualize_OTF_and_mask_outline(abs_OTF_c, OTF_mask, visible);
-                figFn = sprintf('%s/%s_back_projector_alpha_%0.6f_otf_cum_thresh_%0.6f_figure.png', psfgenPath, psfFsn, wienerAlpha, OTFCumThresh);
-                print(fig, figFn, '-dpng', '-r0');
-                close(fig);
-            end
-
-            % write back projector
-            writetiff(psf_b, bpTmpFn);
-            movefile(bpTmpFn, bpFn);
-            
-            % write OTF
-            bpFn = sprintf('%s/%s_OTF.tif', psfgenPath, psfFsn);
-            bpTmpFn = sprintf('%s/%s_OTF_%s.tif', psfgenPath, psfFsn, loc_uuid);
-            writetiff(abs_OTF_c, bpTmpFn);
-            movefile(bpTmpFn, bpFn);
-
-            % write OTF mask 
-            bpFn = sprintf('%s/%s_OTF_mask_otf_cum_thresh_%0.6f.tif', psfgenPath, psfFsn, OTFCumThresh);
-            bpTmpFn = sprintf('%s/%s_OTF_mask_otf_cum_thresh_%0.6f_%s.tif', psfgenPath, psfFsn, OTFCumThresh, loc_uuid);
-            writetiff(uint8(OTF_mask), bpTmpFn);
-            movefile(bpTmpFn, bpFn);
-        end
+        psf_b = omw_backprojector_files(psf, psfgenPath, psfFsn, wienerAlpha, OTFCumThresh, skewed, hannWinBounds, PSFfn);
         bSize = size(psf_b, 1 : 3);
         if any(bSize > imSize)
             warning('The psf size %s is larger than the data size %s, crop it!', mat2str(bSize), mat2str(imSize));

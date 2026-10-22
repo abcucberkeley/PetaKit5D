@@ -16,6 +16,11 @@ classdef DeconFunctionTest < pktest.TestCase
     properties (TestParameter)
         method = {'simplified', 'omw'}
         inputClass = {'uint16', 'single'}
+        anyInputClass = {'uint16', 'single', 'double'}
+        % post-processing options of the decon functions
+        deconOptions = struct('uint16Output', {{'save16bit', true}}, 'singleOutput', {{'save16bit', false}}, ...
+            'dampErosionOffsetScale', {{'save16bit', false, 'dampFactor', 1.2, 'EdgeErosion', 4, 'deconOffset', 3, 'scaleFactor', 1.5}}, ...
+            'bbox', {{'save16bit', true, 'bbox', [3, 4, 2, 44, 45, 36]}})
     end
 
     properties (SetAccess = private)
@@ -134,9 +139,13 @@ classdef DeconFunctionTest < pktest.TestCase
             testCase.assumeFalse(hasGPU, 'Checks the fallback on machines without a GPU.');
             im = testCase.blurredBeads();
             outCPU = testCase.runDecon(method, im, testCase.PSF, testCase.BackProjector, 3, 'Background', testCase.Background, 'save16bit', false);
+            % it says so: a GPU job on a GPU that can't be used (e.g. one that
+            % needs a reset) used to run on the CPU without a word
+            lastwarn('');
             outGPU = testCase.runDecon(method, im, testCase.PSF, testCase.BackProjector, 3, 'Background', testCase.Background, ...
                 'save16bit', false, 'useGPU', true);
             testCase.verifyEqual(outGPU, outCPU);
+            testCase.verifySubstring(lastwarn, 'No GPU is available');
         end
 
         function wienerButterworthBackProjectorWorksWithOMWDecon(testCase)
@@ -283,6 +292,30 @@ classdef DeconFunctionTest < pktest.TestCase
             [~, ind] = max(out(:));
             [y, x, z] = ind2sub(size(out), ind);
             testCase.verifyEqual([y, x, z], [17, 17, 17], 'The PSF peak moved away from the FFT center.');
+        end
+    end
+
+    methods (Test, TestTags = {'Unit'})
+        function loopMatchesThePreviousFormulation(testCase, method, anyInputClass, deconOptions)
+            % the decon loops run one FFT step per statement (and keep uint16
+            % input as uint16 on the GPU) to save GPU memory; the results are
+            % bit-identical to the previous loops (tests/decon/private/*_before.m),
+            % here on the CPU and in DeconGPUTest on the GPU
+            im = cast(testCase.blurredBeads(), anyInputClass);
+            args = [{'Background', testCase.Background, 'useGPU', false}, deconOptions];
+            clear decon_lucy_function_before decon_lucy_omw_function_before
+            for call = 1 : 2
+                % the second call uses the cached OTFs
+                switch method
+                    case 'simplified'
+                        expected = decon_lucy_function_before(im, testCase.PSF, 4, args{:});
+                        actual = decon_lucy_function(im, testCase.PSF, 4, args{:});
+                    case 'omw'
+                        expected = decon_lucy_omw_function_before(im, testCase.PSF, testCase.BackProjector, 2, args{:});
+                        actual = decon_lucy_omw_function(im, testCase.PSF, testCase.BackProjector, 2, args{:});
+                end
+                testCase.verifyEqual(actual, expected, sprintf('Call %d.', call));
+            end
         end
     end
 

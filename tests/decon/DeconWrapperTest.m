@@ -437,6 +437,23 @@ classdef DeconWrapperTest < pktest.TestCase
             testCase.verifyNumElements(pauses.getCalls(), 4);
         end
 
+        function clusterModeWaitsForTheLastTryOfAJobOfSeveralFiles(testCase)
+            % files that share a job also wait for it on their last try,
+            % without submitting it again
+            testCase.assumeFalse(ispc, 'The fake Slurm needs a POSIX shell.');
+            d = testCase.createDataset({'A'}, 2);
+            slurm = testCase.applyFixture(pktest.FakeSlurmFixture);
+            % the job of both files has the task id of the first
+            slurm.setJobStates('1000_1', {'PD', 'R', 'R', 'done'});
+            testCase.applyFixture(pktest.FunctionSpyFixture('pause', [], 20));
+            testCase.runWrapper(d, 'parseCluster', true, 'maxTrialNum', 1, 'taskBatchNum', 2, ...
+                'jobLogDir', [d.root, 'logs']);
+            testCase.verifyEqual(slurm.callCount('sbatch'), 1, 'The last try was submitted again.');
+            checks = slurm.history();
+            checks = checks(startsWith(checks, 'squeue') & contains(checks, '1000_1'));
+            testCase.verifyNumElements(checks, 4, 'The job was not checked until it ended.');
+        end
+
         function clusterModeWaitGrowsWithUnfinishedFiles(testCase)
             % the wait between rounds is 0.3 s per unfinished file: 6 s for
             % 20 files (between the 3 s minimum and the 30 s maximum)
@@ -450,6 +467,166 @@ classdef DeconWrapperTest < pktest.TestCase
             waits = cellfun(@(x) x{1}, pauses.getCalls());
             % the second round also waits for the last tries' jobs to end
             testCase.verifyEqual(waits, [6, 6], 'AbsTol', 1e-9, 'The wait for 20 unfinished files should be 6 s.');
+        end
+
+        function gpuJobsTakeAtMostFourCPUs(testCase)
+            % GPU jobs got the CPU-oriented cpusPerTask (24 in the demos),
+            % capped only by the GPU config's maxCPUNum (16), so one GPU job
+            % took a whole 16-core 4-GPU node and 3 of its GPUs idled. The GPU
+            % config's minCPUNum still raises it (nodes with more cores per
+            % GPU), and CPU jobs keep cpusPerTask.
+            testCase.assumeFalse(ispc, 'The fake Slurm needs a POSIX shell.');
+            d = testCase.createDataset({'A'}, 2);
+            cases = {struct('minCPUNum', 1), true, 4; struct('minCPUNum', 8), true, 8; struct(), false, 24};
+            for i = 1 : size(cases, 1)
+                slurm = testCase.applyFixture(pktest.FakeSlurmFixture);
+                config = testCase.writeGPUConfig(d.root, cases{i, 1});
+                testCase.runWrapper(d, 'resultDirName', sprintf('decon_%d', i), 'parseCluster', true, ...
+                    'GPUJob', cases{i, 2}, 'GPUConfigFile', config, 'cpusPerTask', 24, 'maxTrialNum', 1, ...
+                    'jobLogDir', [d.root, 'logs']);
+                cpus = cellfun(@(x) str2double(regexp(x, '--cpus-per-task=(\d+)', 'tokens', 'once')), testCase.sbatchLines(slurm));
+                testCase.verifyEqual(cpus, repmat(cases{i, 3}, 2, 1), sprintf('Case %d (GPUJob %d).', i, cases{i, 2}));
+            end
+        end
+
+        function gpuJobsTakeSeveralFilesWithTheSameSettings(testCase)
+            % a job per file starts MATLAB (or the MATLAB Runtime) and the
+            % GPU for about as long as a GPU decon of a tile takes; with
+            % taskBatchNum, files with the same settings (here the channel)
+            % share a job, and the jobs give the same results as one file
+            % at a time
+            testCase.assumeFalse(ispc, 'The fake Slurm needs a POSIX shell.');
+            d = testCase.createDataset({'A', 'B'}, 3, {[1.5, 2], [2.5, 3]});
+            slurm = testCase.applyFixture(pktest.FakeSlurmFixture);
+            args = {'RLMethod', 'simplified', 'deconIter', 3, 'GPUJob', true};
+            testCase.runWrapper(d, args{:}, 'resultDirName', 'decon_jobs', 'parseCluster', true, ...
+                'GPUConfigFile', testCase.writeGPUConfig(d.root, struct()), 'taskBatchNum', 2, ...
+                'maxTrialNum', 1, 'jobLogDir', [d.root, 'logs']);
+            funcStrs = testCase.sbatchFuncStrs(slurm);
+            testCase.assertEqual(numel(funcStrs), 4, 'Expected 2 jobs per channel (2 + 1 files).');
+            jobFiles = cellfun(@(x) regexp(x, '/data/(\w+)\.tif''', 'tokens'), funcStrs, 'unif', 0);
+            jobFiles = cellfun(@(x) [x{:}], jobFiles, 'unif', 0);
+            testCase.verifyEqual(jobFiles, {d.fsns(1 : 2); d.fsns(3); d.fsns(4 : 5); d.fsns(6)});
+
+            % run the jobs here and compare with one file at a time
+            for i = 1 : numel(funcStrs)
+                evalc('feval(str2func([''@()'', funcStrs{i}]))');
+            end
+            testCase.runWrapper(d, args{:}, 'resultDirName', 'decon_local');
+            for f = 1 : numel(d.fsns)
+                testCase.verifyEqual(readtiff(sprintf('%sdecon_jobs/%s.tif', d.dataPath, d.fsns{f})), ...
+                    readtiff(sprintf('%sdecon_local/%s.tif', d.dataPath, d.fsns{f})), d.fsns{f});
+            end
+        end
+
+        function runningJobIsNotSubmittedAgain(testCase)
+            % the job of two files runs for two rounds and then ends without
+            % results, so its files are submitted again, one per job
+            testCase.assumeFalse(ispc, 'The fake Slurm needs a POSIX shell.');
+            d = testCase.createDataset({'A'}, 2);
+            slurm = testCase.applyFixture(pktest.FakeSlurmFixture);
+            testCase.applyFixture(pktest.FunctionSpyFixture('pause'));
+            % the first job is 1000, array task 1 (the task id of its first file)
+            slurm.setJobStates('1000_1', {'R', 'R', 'done'});
+            testCase.runWrapper(d, 'parseCluster', true, 'GPUJob', true, 'taskBatchNum', 2, 'maxTrialNum', 2, ...
+                'GPUConfigFile', testCase.writeGPUConfig(d.root, struct()), 'jobLogDir', [d.root, 'logs']);
+            jobFiles = cellfun(@(x) regexp(x, '/data/(\w+)\.tif''', 'tokens'), testCase.sbatchFuncStrs(slurm), 'unif', 0);
+            jobFiles = cellfun(@(x) [x{:}], jobFiles, 'unif', 0);
+            testCase.verifyEqual(jobFiles, {d.fsns; d.fsns(1); d.fsns(2)});
+            % one status check per round for the shared job
+            testCase.verifyEqual(nnz(contains(slurm.calls('squeue'), '1000_1')), 3);
+        end
+
+        function retriedFilesGetAJobEach(testCase)
+            % a file that fails would make its whole job fail again and use
+            % up the trials of the other files, so files are retried alone.
+            % The fake jobs never run: the second round retries both files.
+            testCase.assumeFalse(ispc, 'The fake Slurm needs a POSIX shell.');
+            d = testCase.createDataset({'A'}, 2);
+            slurm = testCase.applyFixture(pktest.FakeSlurmFixture);
+            testCase.applyFixture(pktest.FunctionSpyFixture('pause'));
+            testCase.runWrapper(d, 'parseCluster', true, 'GPUJob', true, 'taskBatchNum', 2, 'maxTrialNum', 2, ...
+                'GPUConfigFile', testCase.writeGPUConfig(d.root, struct()), 'jobLogDir', [d.root, 'logs']);
+            jobFiles = cellfun(@(x) regexp(x, '/data/(\w+)\.tif''', 'tokens'), testCase.sbatchFuncStrs(slurm), 'unif', 0);
+            jobFiles = cellfun(@(x) [x{:}], jobFiles, 'unif', 0);
+            testCase.verifyEqual(jobFiles, {d.fsns; d.fsns(1); d.fsns(2)});
+        end
+
+        function filesOfDifferentSizesGoToDifferentJobs(testCase)
+            % a job keeps the OTFs of its first file on the GPU, so a file
+            % of another size would need memory for both
+            testCase.assumeFalse(ispc, 'The fake Slurm needs a POSIX shell.');
+            d = testCase.createDataset({'A'}, 3);
+            im = readtiff(d.rawFns{2});
+            writetiff(im(:, :, 1 : end - 4), d.rawFns{2});
+            slurm = testCase.applyFixture(pktest.FakeSlurmFixture);
+            testCase.runWrapper(d, 'parseCluster', true, 'GPUJob', true, 'taskBatchNum', 3, 'maxTrialNum', 1, ...
+                'GPUConfigFile', testCase.writeGPUConfig(d.root, struct()), 'jobLogDir', [d.root, 'logs']);
+            jobFiles = cellfun(@(x) regexp(x, '/data/(\w+)\.tif''', 'tokens'), testCase.sbatchFuncStrs(slurm), 'unif', 0);
+            jobFiles = cellfun(@(x) [x{:}], jobFiles, 'unif', 0);
+            testCase.verifyEqual(jobFiles, {d.fsns([1, 3]); d.fsns(2)});
+        end
+
+        function gpuJobsTakeUpToEightFilesWhileThereAreSixteenJobs(testCase)
+            % without taskBatchNum, GPU jobs take floor(files / 16) files,
+            % at most 8, so small datasets keep one file per job
+            testCase.assumeFalse(ispc, 'The fake Slurm needs a POSIX shell.');
+            d = testCase.createDataset({'A'}, 40);
+            slurm = testCase.applyFixture(pktest.FakeSlurmFixture);
+            testCase.runWrapper(d, 'parseCluster', true, 'GPUJob', true, 'maxTrialNum', 1, ...
+                'GPUConfigFile', testCase.writeGPUConfig(d.root, struct()), 'jobLogDir', [d.root, 'logs']);
+            funcStrs = testCase.sbatchFuncStrs(slurm);
+            nFiles = cellfun(@(x) numel(regexp(x, '\.tif''', 'match')) - 1, funcStrs);
+            testCase.verifyEqual(nFiles, 2 * ones(20, 1), 'Expected 20 jobs of 2 files for 40 files.');
+        end
+
+        function omwBackProjectorIsMadeOnceBeforeTheJobs(testCase)
+            % on the cluster every first job of a PSF made the back projector
+            % (with the job's threads, which change it in the last bits); the
+            % wrapper now makes it once, as RLdecon would from the PSF
+            % with two datasets, made once and copied to the second one
+            testCase.assumeFalse(ispc, 'The fake Slurm needs a POSIX shell.');
+            d = testCase.createDataset({'A'}, 2);
+            d2 = testCase.createDataset({'A'}, 1);
+            d.dataPaths = {d.dataPath, d2.dataPath};
+            testCase.applyFixture(pktest.FakeSlurmFixture);
+            testCase.runWrapper(d, 'RLMethod', 'omw', 'deconIter', 2, ...
+                'wienerAlpha', 0.005, 'OTFCumThresh', 0.9, 'skewed', false, 'parseCluster', true, 'GPUJob', true, ...
+                'maxTrialNum', 1, 'GPUConfigFile', testCase.writeGPUConfig(d.root, struct()), 'jobLogDir', [d.root, 'logs']);
+            for dataPath = {d.dataPath, d2.dataPath}
+                psfgenPath = [dataPath{1}, 'matlab_decon/psfgen/', d.psfFsns{1}];
+                bpFn = [psfgenPath, '_back_projector_alpha_0.005000_otf_cum_thresh_0.900000.tif'];
+                testCase.assertTrue(exist(bpFn, 'file') == 2, 'The wrapper did not make the back projector.');
+                psf = single(readtiff([psfgenPath, '_omw.tif']));
+                [~, expected] = evalc('omw_backprojector_generation(psf, 0.005, false, ''OTFCumThresh'', 0.9, ''hannWinBounds'', [0.8, 1])');
+                testCase.verifyEqual(readtiff(bpFn), expected);
+                testCase.verifyTrue(exist([psfgenPath, '_OTF.tif'], 'file') == 2);
+                testCase.verifyTrue(exist([psfgenPath, '_OTF_mask_otf_cum_thresh_0.900000.tif'], 'file') == 2);
+            end
+        end
+
+        function compiledJobGetsAllFilesOfItsBatch(testCase)
+            % in mcc mode the job's command line goes through the MATLAB
+            % Runtime parser, which must turn the file list back into a cell
+            testCase.assumeFalse(ispc, 'The fake Slurm and the argument split need a POSIX shell.');
+            d = testCase.createDataset({'A'}, 2);
+            slurm = testCase.applyFixture(pktest.FakeSlurmFixture);
+            testCase.runWrapper(d, 'parseCluster', true, 'GPUJob', true, 'mccMode', true, 'taskBatchNum', 2, ...
+                'maxTrialNum', 1, 'GPUConfigFile', testCase.writeGPUConfig(d.root, struct()), 'jobLogDir', [d.root, 'logs']);
+            log = fileread([slurm.Folder, '/sbatch.log']);
+            argStr = regexp(log, 'XR_RLdeconFrame3D ([^\n]*)', 'tokens', 'once');
+            testCase.assertNotEmpty(argStr, 'No compiled XR_RLdeconFrame3D command was submitted.');
+            % split the arguments as the job's shell does
+            [status, out] = system(sprintf('printf ''[%%s]\\n'' %s', argStr{1}));
+            testCase.assertEqual(status, 0);
+            mccArgs = regexp(strip(out), '^\[(.*)\]$', 'tokens', 'lineanchors', 'dotexceptnewline');
+            mccArgs = cellfun(@(x) x{1}, mccArgs, 'unif', 0);
+            spy = testCase.applyFixture(pktest.FunctionSpyFixture('XR_RLdeconFrame3D'));
+            XR_RLdeconFrame3D_parser(mccArgs{:});
+            calls = spy.getCalls();
+            testCase.assertNumElements(calls, 1);
+            testCase.verifyEqual(calls{1}{1}, strcat(d.dataPath, d.fsns, '.tif'));
+            testCase.verifyEqual(spy.getOption(1, 'GPUJob'), true);
         end
     end
 
@@ -498,13 +675,46 @@ classdef DeconWrapperTest < pktest.TestCase
         end
 
         function [] = runWrapper(testCase, d, varargin)
-            % XR_decon_data_wrapper with the dataset settings; varargin
-            % adds or overrides parameters
+            % XR_decon_data_wrapper with the dataset settings (on
+            % d.dataPaths if set); varargin adds or overrides parameters
             args = [{'channelPatterns', d.channelPatterns, 'psfFullpaths', d.psfFns, ...
                 'xyPixelSize', testCase.XYPixelSize, 'dz', testCase.Dz, 'dzPSF', testCase.Dz, ...
                 'background', testCase.Background, 'edgeErosion', 0, 'save16bit', true, ...
                 'parseCluster', false, 'GPUJob', false}, varargin];
-            evalc('XR_decon_data_wrapper({d.dataPath}, args{:})');
+            dataPaths = {d.dataPath};
+            if isfield(d, 'dataPaths')
+                dataPaths = d.dataPaths;
+            end
+            evalc('XR_decon_data_wrapper(dataPaths, args{:})');
+        end
+
+        function [fn] = writeGPUConfig(~, folder, overrides)
+            % a GPU job config like the production one for 16-core nodes
+            % with 4 GPUs; overrides replace or add keys. Each config gets a
+            % new file name, because the framework caches a config by name
+            % and modification time (1 s resolution).
+            config = struct('SlurmParam', '-p gpu_test -n1 --mem-per-cpu=32128M --gres=gpu:1', ...
+                'MemPerCPU', 31.375, 'maxCPUNum', 16, 'minCPUNum', 4);
+            names = fieldnames(overrides);
+            for i = 1 : numel(names)
+                config.(names{i}) = overrides.(names{i});
+            end
+            [~, uuid] = fileparts(tempname);
+            fn = sprintf('%sgpu_config_%s.json', folder, uuid);
+            fid = fopen(fn, 'w');
+            fprintf(fid, '%s', jsonencode(config));
+            fclose(fid);
+        end
+
+        function [lines] = sbatchLines(~, slurm)
+            % the arguments of each sbatch call of MATLAB jobs (one line each)
+            lines = slurm.calls('sbatch');
+        end
+
+        function [funcStrs] = sbatchFuncStrs(testCase, slurm)
+            % the function string of each submitted MATLAB job, in order
+            funcStrs = regexp(testCase.sbatchLines(slurm), 'Matlab command:\s+"(XR_RLdeconFrame3D\(.+?\))";', 'tokens', 'once');
+            funcStrs = cellfun(@(x) x{1}, funcStrs, 'unif', 0);
         end
     end
 

@@ -67,6 +67,9 @@ if isempty(psz) || ~(numel(psz) == numel(sizeI) && all(psz == sizeI) && last_use
     last_useGPU = useGPU;
     if useGPU
         gpuNum = gpuDeviceCount("available");
+        if gpuNum == 0
+            warning('No GPU is available, so the deconvolution runs on the CPU.');
+        end
     end
 
     sq_p = sum(PSF .^ 2, 'all');
@@ -88,14 +91,17 @@ if useGPU
         I_mask = I ~= 0;
     end    
     if strcmp(underlyingType(I), 'uint16')
+        % keep uint16 input as uint16 on the GPU (2 instead of 4 bytes per
+        % voxel); it is cast to the class of J_2 where it is used (exact)
         I = I - uint16(Background);            
-        I = single(I);
+        classI = 'single';
+        J_2 = single(I);
     else
         I = max(I - Background, 0);    
+        classI = underlyingType(I);
+        J_2 = I;
     end
-    classI = underlyingType(I);
 
-    J_2 = I;
     J_3 = zeros(sizeI, classI, 'gpuArray');
     J_4 = zeros(prod(sizeI), 1, classI, 'gpuArray');
 else
@@ -135,11 +141,17 @@ for k = 1 : NUMIT
     % directly compute CC within the same function to reduce overhead 
     ReBlurred = max(real(ifftn(H.*fftn(Y))), eps);
     % ReBlurred = ReBlurred + (ReBlurred == 0) * eps;
-    ReBlurred = I./ReBlurred;
+    ReBlurred = cast(I, 'like', J_2)./ReBlurred;
     
     % 3.c Determine next iteration image & apply positivity constraint
     J_3 = J_2;
-    J_2 = max(Y.*real(ifftn(conj(H).*fftn(ReBlurred))),0);
+    % one FFT step per statement, and ReBlurred freed at the end, so that at
+    % most two complex volumes are on the GPU at a time (the same operations)
+    ReBlurred = fftn(ReBlurred);
+    ReBlurred = conj(H) .* ReBlurred;
+    ReBlurred = ifftn(ReBlurred);
+    J_2 = max(Y .* real(ReBlurred), 0);
+    clear ReBlurred;
         
     if debug
         err_mat(k, 1:2) = [k, mean((double(J_2) - double(I)) .^ 2, 'all')];
@@ -176,6 +188,7 @@ clear J_3 J_4 Y;
 
 % post-processing of deconvolved result
 if dampFactor > 1
+    I = cast(I, 'like', J_2);
     J_2 = J_2 .* (J_2 <= dampFactor * I) + min(J_2, dampFactor * I .* (J_2 >= dampFactor * I));
 end
 clear I;

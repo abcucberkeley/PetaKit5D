@@ -45,7 +45,8 @@ function [] = XR_decon_data_wrapper(dataPaths, varargin)
 %        parseParfor : true|false (default: false). Use matlab parfor for paralle processing.
 %      masterCompute : true|false (default: true). Master job node is involved in the processing.
 %          jobLogDir : char (default: '../job_logs'). Path for the slurm job logs.
-%        cpusPerTask : a number (default: 1). The number of cpu cores per task for slurm job submission.
+%        cpusPerTask : a number (default: 1). The number of cpu cores per task for slurm job submission. GPU jobs (with GPUConfigFile) use at most 4, so that every GPU of a node can work; the GPU config's minCPUNum can raise it.
+%       taskBatchNum : empty or a number (default: []). The maximum number of files per slurm job. Files with the same settings and size share a job, which saves the start of MATLAB or the MATLAB Runtime and the GPU per file. If empty, GPU jobs take up to 8 files as long as there are at least 16 jobs, and other jobs one file.
 %               uuid : empty or a uuid string (default: ''). uuid string as part of the temporate result paths.
 %       unitWaitTime : a number (default: 1). The wait time per file in minutes to check whether the computing is done.
 %        maxTrialNum : a number (default: 3). The max number of retries for a task.
@@ -105,6 +106,7 @@ ip.addParameter('parseParfor', false, @islogical);
 ip.addParameter('masterCompute', true, @islogical); % master node participate in the task computing. 
 ip.addParameter('jobLogDir', '../job_logs', @ischar);
 ip.addParameter('cpusPerTask', 2, @isnumeric);
+ip.addParameter('taskBatchNum', [], @isnumeric); % files per job, [] for automatic
 ip.addParameter('uuid', '', @ischar);
 ip.addParameter('unitWaitTime', 1, @isnumeric);
 ip.addParameter('maxTrialNum', 3, @isnumeric);
@@ -167,6 +169,7 @@ maskFullpaths = pr.maskFullpaths;
 
 jobLogDir = pr.jobLogDir;
 cpusPerTask = pr.cpusPerTask;
+taskBatchNum = pr.taskBatchNum;
 parseCluster = pr.parseCluster;
 parseParfor = pr.parseParfor;
 masterCompute = pr.masterCompute;
@@ -314,6 +317,56 @@ minModifyTime = 1;
 
 nF = numel(fnames);
 
+% for jobs on the cluster, make the OMW back projector of each PSF here once,
+% instead of in every first job of a PSF; it also changes in the last bits
+% with the number of threads, so this way it doesn't depend on the job sizes
+if parseCluster && strcmp(RLMethod, 'omw') && ~largeFile
+    % the parameters as the jobs get them from the function string
+    hannWinBounds_j = str2num(mat2str_comma(hannWinBounds));
+    for p = 1 : min(numel(psfFullpaths), numel(channelPatterns))
+        psfFn = psfFullpaths{p};
+        [~, psfFsn] = fileparts(psfFn);
+        wienerAlpha_j = str2double(sprintf('%.20f', wienerAlpha(p)));
+        OTFCumThresh_j = str2double(sprintf('%.20f', OTFCumThresh(p)));
+        bpFsns = {sprintf('%s_back_projector_alpha_%0.6f_otf_cum_thresh_%0.6f.tif', psfFsn, wienerAlpha_j, OTFCumThresh_j), ...
+            sprintf('%s_OTF.tif', psfFsn), sprintf('%s_OTF_mask_otf_cum_thresh_%0.6f.tif', psfFsn, OTFCumThresh_j)};
+        srcPath = '';
+        for d = 1 : nd
+            % the first file of the channel in the dataset
+            fullnames_d = strcat(dataPaths{d}, fnames(fdinds == d));
+            ind = find(~cellfun(@isempty, regexpi(fullnames_d, channelPatterns{p})), 1);
+            if isempty(ind)
+                continue;
+            end
+            psfgenPath = sprintf('%s/%s/psfgen/', dataPaths{d}, deconName);
+            if psfGen
+                psf = single(readtiff(sprintf('%s/%s_%s.tif', psfgenPath, psfFsn, RLMethod)));
+            else
+                psf = single(readtiff(psfFn));
+            end
+            % RLdecon crops a PSF larger than the data first
+            if any(size(psf, 1 : 3) > getImageSize(fullnames_d{ind}))
+                continue;
+            end
+            if ~exist(psfgenPath, 'dir')
+                mkdir(psfgenPath);
+            end
+            if isempty(srcPath)
+                % without the figure, as in the cluster jobs (no Java)
+                omw_backprojector_files(psf, psfgenPath, psfFsn, wienerAlpha_j, OTFCumThresh_j, skewed, hannWinBounds_j, psfFn, false);
+                srcPath = psfgenPath;
+            elseif ~exist([psfgenPath, bpFsns{1}], 'file')
+                % same PSF and parameters as in the first dataset
+                for i = 1 : numel(bpFsns)
+                    if exist([srcPath, bpFsns{i}], 'file')
+                        copyfile([srcPath, bpFsns{i}], [psfgenPath, bpFsns{i}]);
+                    end
+                end
+            end
+        end
+    end
+end
+
 % flags: for thee: deskew w/o rotate, decon w/o rotate, rotate
 is_done_flag = false(nF, 1);
 trial_counter = zeros(nF, 1);
@@ -324,20 +377,48 @@ if ~Decon
 end
 if parseCluster
     job_ids = -ones(nF, 1);
+    % array task id of each file's job (a job with several files has the
+    % task id of its first file)
+    job_task_ids = zeros(nF, 1);
 end
 % files whose job is pending or running: after the last try, the wrapper
 % waits for its job before it returns
 job_active = false(nF, 1);
 
+% files per cluster job: a GPU deconvolves a tile in about as long as a job
+% takes to start MATLAB or the MATLAB Runtime and the GPU, so by default GPU
+% jobs take several files, while keeping enough jobs for the GPUs of several
+% nodes (decided in each round from the files to submit)
+autoBatch = isempty(taskBatchNum);
+if ~autoBatch
+    taskBatchNum = max(1, round(taskBatchNum));
+end
+batchFiles = parseCluster && ~largeFile && ((autoBatch && GPUJob) || (~autoBatch && taskBatchNum > 1));
+
 nF_done = 0;
 ts = tic;
 % use while loop to perform computing for all images
 while ~all(is_done_flag | (trial_counter >= maxTrialNum & ~job_active), 'all')
+    % files to submit in jobs of several files in this round
+    sub_flag = false(nF, 1);
+    sub_func_strs = cell(nF, 1);
+    sub_frames = cell(nF, 1);
+    sub_sizes = cell(nF, 1);
+    sub_outNames = cell(nF, 1);
+    sub_mems = zeros(nF, 1);
+    sub_cpus = zeros(nF, 1);
+    sub_configFiles = cell(nF, 1);
+    % results finished by cluster jobs: on NFS, exist sees a new file up to
+    % ~30 s late, a listing of the folder at once (a finished job whose
+    % result is not seen yet would be submitted again)
+    if parseCluster
+        deconListings = list_folders(deconPaths);
+    end
     for f = 1 : nF
         if all(is_done_flag(f, :))
             continue;
         end
-        
+
         % first deskew and rotation
         fname = fnames{f};
         [~, fsname] = fileparts(fname);
@@ -374,7 +455,9 @@ while ~all(is_done_flag | (trial_counter >= maxTrialNum & ~job_active), 'all')
         end
         dctmpFullpath = sprintf('%s.tmp', deconFullpath(1 : end - 4));
 
-        if exist(deconFullpath, 'file') || (saveZarr && exist(deconFullpath, 'dir'))
+        [~, deconFsn, deconExt] = fileparts(deconFullpath);
+        if exist(deconFullpath, 'file') || (saveZarr && exist(deconFullpath, 'dir')) ...
+                || (parseCluster && any(strcmp(deconListings{fdind}, [deconFsn, deconExt])))
             is_done_flag(f, 1) = true;
             if exist(dctmpFullpath, 'file')
                 delete(dctmpFullpath);
@@ -391,8 +474,9 @@ while ~all(is_done_flag | (trial_counter >= maxTrialNum & ~job_active), 'all')
             if f == FTP_ind
                 SaveMaskfile = true;
                 % if decon result exist, but mask file not exist, rerun
-                % it to save the mask. 
-                if is_done_flag(f, 1) && ~exist(erodeMaskFullpaths{fdind}, 'dir')
+                % it to save the mask.
+                if is_done_flag(f, 1) && ~exist(erodeMaskFullpaths{fdind}, 'dir') ...
+                        && ~(parseCluster && in_listing(erodeMaskFullpaths{fdind}))
                     is_done_flag(f, 1) = false;
                     delete(deconFullpath);
                 end
@@ -457,6 +541,7 @@ while ~all(is_done_flag | (trial_counter >= maxTrialNum & ~job_active), 'all')
                     dsz = getImageSize(dcframeFullpath);
                     estMem = prod(dsz) * 4 / 2^30;
                     cur_configFile = configFile;
+                    cpusPerTask_f = cpusPerTask;
                     if ~GPUJob
                         memAllocate = estMem * 10;
                         if largeFile && strcmp(largeMethod, 'inplace')
@@ -468,24 +553,46 @@ while ~all(is_done_flag | (trial_counter >= maxTrialNum & ~job_active), 'all')
                             memAllocate = prod(batchSize) * 4 / 2^30 * 20;
                         else
                             cur_configFile = GPUConfigFile;
+                            % the GPU deconvolves and the CPUs only read and write
+                            % the file, so a GPU job takes at most 4 CPUs, which
+                            % lets every GPU of a 16-core 4-GPU node work (the
+                            % CPU-oriented cpusPerTask took a whole node for one GPU)
+                            if ~largeFile && ~isempty(GPUConfigFile)
+                                cpusPerTask_f = min(cpusPerTask, 4);
+                            end
                         end
                     end
 
-                    job_id = job_ids(f, 1);
-                    if trial_counter(f, 1) < maxTrialNum
-                        [job_id, job_status, submit_status] = generic_single_job_submit_wrapper(func_str, ...
-                            job_id, task_id, jobLogFname=job_log_fname, jobErrorFname=job_log_error_fname, ...
-                            lastFile=false, cpusPerTask=cpusPerTask, memAllocate=memAllocate, ...
-                            mccMode=mccMode, configFile=cur_configFile);
+                    if batchFiles
+                        % submitted after this round with other files of the
+                        % same settings, unless its job is still pending or
+                        % running or it was submitted maxTrialNum times
+                        sub_flag(f) = true;
+                        sub_func_strs{f} = func_str;
+                        sub_frames{f} = dcframeFullpath;
+                        sub_sizes{f} = mat2str(dsz);
+                        sub_outNames{f} = [deconFsn, deconExt];
+                        sub_mems(f) = memAllocate;
+                        sub_cpus(f) = cpusPerTask_f;
+                        sub_configFiles{f} = cur_configFile;
                     else
-                        % the last try: only check whether its job is still there
-                        job_status = check_slurm_job_status(job_id, rem(task_id, 5000));
-                        submit_status = 0;
-                    end
+                        job_id = job_ids(f, 1);
+                        if trial_counter(f, 1) < maxTrialNum
+                            [job_id, job_status, submit_status] = generic_single_job_submit_wrapper(func_str, ...
+                                job_id, task_id, jobLogFname=job_log_fname, jobErrorFname=job_log_error_fname, ...
+                                lastFile=false, cpusPerTask=cpusPerTask_f, memAllocate=memAllocate, ...
+                                mccMode=mccMode, configFile=cur_configFile);
+                        else
+                            % the last try: only check whether its job is still there
+                            job_status = check_slurm_job_status(job_id, rem(task_id, 5000));
+                            submit_status = 0;
+                        end
 
-                    job_ids(f, 1) = job_id;
-                    trial_counter(f, 1) = trial_counter(f, 1) + submit_status;
-                    job_active(f) = submit_status > 0 || job_status >= 0;
+                        job_ids(f, 1) = job_id;
+                        job_task_ids(f) = task_id;
+                        trial_counter(f, 1) = trial_counter(f, 1) + submit_status;
+                        job_active(f) = submit_status > 0 || job_status >= 0;
+                    end
                 else
                     temp_file_info = dir(dctmpFullpath);
                     if minutes(datetime('now') - [temp_file_info.date]) < unitWaitTime
@@ -515,6 +622,69 @@ while ~all(is_done_flag | (trial_counter >= maxTrialNum & ~job_active), 'all')
         end
     end
 
+    % submit the collected files in their order, up to batchNum files with
+    % the same settings per job; files whose job is still pending or running
+    % wait for it
+    if parseCluster && any(sub_flag)
+        sub_inds = find(sub_flag);
+        [jobs, ~, job_inds] = unique([job_ids(sub_inds), job_task_ids(sub_inds)], 'rows');
+        job_live = false(size(jobs, 1), 1);
+        for j = 1 : size(jobs, 1)
+            if jobs(j, 1) > 0
+                job_live(j) = check_slurm_job_status(jobs(j, 1), jobs(j, 2)) >= 0;
+            end
+        end
+        % a file waits for its job while it is pending or running
+        job_active(sub_inds) = job_live(job_inds);
+        sub_inds = sub_inds(~job_live(job_inds));
+        % a job may have finished since the listing at the start of the round
+        rechecked = sub_inds(trial_counter(sub_inds) > 0);
+        if ~isempty(rechecked)
+            deconListings = list_folders(deconPaths);
+            out_done = arrayfun(@(x) any(strcmp(deconListings{fdinds(x)}, sub_outNames{x})), rechecked);
+            is_done_flag(rechecked(out_done), 1) = true;
+            sub_inds = setdiff(sub_inds, rechecked(out_done), 'stable');
+        end
+        % files whose jobs ended maxTrialNum times are not submitted again
+        sub_inds = sub_inds(trial_counter(sub_inds) < maxTrialNum);
+        % files submitted before (their job failed) get a job each, so that
+        % a file that fails can't use up the trials of others
+        retry = trial_counter(sub_inds) > 0;
+        % by default up to 8 files per job, as long as there are 16 jobs
+        batchNum = taskBatchNum;
+        if autoBatch
+            batchNum = max(1, min(8, floor(sum(~retry) / 16)));
+        end
+        % a job takes files of the same settings (the function string after
+        % the file path) and size, so the GPU keeps the OTFs of the first one
+        param_strs = cellfun(@(x, y) x(numel(sprintf('XR_RLdeconFrame3D(''%s''', y)) + 1 : end), ...
+            sub_func_strs(sub_inds), sub_frames(sub_inds), 'unif', 0);
+        [~, ~, param_inds] = unique(strcat(param_strs, '|', sub_sizes(sub_inds)), 'stable');
+        param_inds(retry) = max([param_inds; 0]) + (1 : nnz(retry))';
+        for p = 1 : max([param_inds; 0])
+            p_pos = find(param_inds == p);
+            for b = 1 : ceil(numel(p_pos) / batchNum)
+                b_pos = p_pos((b - 1) * batchNum + 1 : min(b * batchNum, numel(p_pos)));
+                bfs = sub_inds(b_pos);
+                func_str = sub_func_strs{bfs(1)};
+                if numel(bfs) > 1
+                    frame_strs = cellfun(@(x) sprintf('''%s''', x), sub_frames(bfs), 'unif', 0);
+                    func_str = sprintf('XR_RLdeconFrame3D({%s}%s', strjoin(frame_strs(:)', ','), param_strs{b_pos(1)});
+                end
+                task_id = rem(bfs(1), 5000);
+                [job_id, ~, submit_status] = generic_single_job_submit_wrapper(func_str, ...
+                    -1, task_id, jobLogFname=job_log_fname, jobErrorFname=job_log_error_fname, ...
+                    lastFile=false, cpusPerTask=sub_cpus(bfs(1)), memAllocate=max(sub_mems(bfs)), ...
+                    mccMode=mccMode, configFile=sub_configFiles{bfs(1)});
+
+                job_ids(bfs) = job_id;
+                job_task_ids(bfs) = task_id;
+                trial_counter(bfs) = trial_counter(bfs) + submit_status;
+                job_active(bfs) = submit_status > 0;
+            end
+        end
+    end
+
     % wait for running jobs finishing and checking for new coming images
     if ~all(is_done_flag | (trial_counter >= maxTrialNum & ~job_active), 'all')
         % with jobs on the cluster, check again soon when few files are left;
@@ -534,6 +704,29 @@ end
 if all(is_done_flag)
     fprintf('All output files (%d / %d) are finished!\n\n', nF, nF);
 end
+
+end
+
+
+function [listings] = list_folders(folders)
+% the names in each folder (results are moved into place under their final
+% names, so a listed name is a finished result)
+
+listings = cell(numel(folders), 1);
+for i = 1 : numel(folders)
+    dir_info = dir(folders{i});
+    listings{i} = {dir_info.name};
+end
+
+end
+
+
+function [tf] = in_listing(fullpath)
+% true if the listing of the folder of fullpath has its name
+
+[pstr, fsn, ext] = fileparts(fullpath);
+listing = list_folders({pstr});
+tf = any(strcmp(listing{1}, [fsn, ext]));
 
 end
 
