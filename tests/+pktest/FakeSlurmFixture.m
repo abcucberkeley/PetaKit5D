@@ -3,11 +3,14 @@ classdef FakeSlurmFixture < matlab.unittest.fixtures.Fixture
     % without a cluster. Stubs first on the PATH: sinfo succeeds, sbatch
     % prints a new job id (1000, 1001, ...), squeue lists the jobs whose
     % states a test set with setJobStates, and scancel does nothing. Every
-    % call is logged, so tests can count them. Not available on Windows.
+    % call is logged, so tests can count them, and history lists all calls
+    % in order. Not available on Windows.
     %
     % A job's states are used one per squeue call, and the last one stays:
     % setJobStates('123_7', {'PD', 'PD', 'R'}) reports the job pending
-    % twice and then running. The state 'done' means the job is gone.
+    % twice and then running. The state 'done' means the job is gone. The
+    % jobs run nothing, but a job can write (empty) output files when it
+    % is first reported running, and rejectSubmissions makes sbatch fail.
 
     properties (SetAccess = private)
         Folder
@@ -26,6 +29,12 @@ classdef FakeSlurmFixture < matlab.unittest.fixtures.Fixture
             mkdir([fixture.Folder, '/state']);
             fixture.writeStub('sinfo', {'echo "PARTITION AVAIL TIMELIMIT NODES STATE NODELIST"'});
             fixture.writeStub('sbatch', { ...
+                'r=$(cat "$D/reject" 2>/dev/null || echo 0)', ...
+                'if [ "$r" -gt 0 ]; then', ...
+                '  echo $((r - 1)) > "$D/reject"', ...
+                '  echo "sbatch: error: Batch job submission failed: Socket timed out on send/recv operation" >&2', ...
+                '  exit 1', ...
+                'fi', ...
                 'n=$(cat "$D/next_id" 2>/dev/null || echo 1000)', ...
                 'echo $((n + 1)) > "$D/next_id"', ...
                 'echo "Submitted batch job $n"'});
@@ -42,6 +51,10 @@ classdef FakeSlurmFixture < matlab.unittest.fixtures.Fixture
                 '  [ -f "$f" ] || continue', ...
                 '  st=$(head -n 1 "$f")', ...
                 '  if [ $(wc -l < "$f") -gt 1 ]; then tail -n +2 "$f" > "$f.next" && mv "$f.next" "$f"; fi', ...
+                '  if [ "$st" = "R" ] && [ -f "$f.outputs" ]; then', ...
+                '    while IFS= read -r o; do : > "$o"; done < "$f.outputs"', ...
+                '    rm "$f.outputs"', ...
+                '  fi', ...
                 '  [ "$st" = "done" ] && continue', ...
                 '  echo "             $id       abc     wrap     user  $st       0:01      1 n0001"', ...
                 'done'});
@@ -57,10 +70,26 @@ classdef FakeSlurmFixture < matlab.unittest.fixtures.Fixture
             end
         end
 
-        function setJobStates(fixture, jobId, states)
-            % jobId as squeue shows it, e.g., '123_7' for task 7 of job 123
+        function setJobStates(fixture, jobId, states, outputs)
+            % jobId as squeue shows it, e.g., '123_7' for task 7 of job 123.
+            % outputs (optional): files the job writes (empty) when squeue
+            % first reports it running, e.g., the result of its first task,
+            % or all its results while it is still exiting
             fid = fopen(sprintf('%s/state/%s', fixture.Folder, jobId), 'w');
             fprintf(fid, '%s\n', states{:});
+            fclose(fid);
+            if nargin > 3
+                fid = fopen(sprintf('%s/state/%s.outputs', fixture.Folder, jobId), 'w');
+                fprintf(fid, '%s\n', outputs{:});
+                fclose(fid);
+            end
+        end
+
+        function rejectSubmissions(fixture, n)
+            % the next n sbatch calls fail without submitting a job, as
+            % when the Slurm controller is busy
+            fid = fopen([fixture.Folder, '/reject'], 'w');
+            fprintf(fid, '%d\n', n);
             fclose(fid);
         end
 
@@ -80,6 +109,15 @@ classdef FakeSlurmFixture < matlab.unittest.fixtures.Fixture
                 args = splitlines(strip(fileread(fn)));
             end
         end
+
+        function [cmds] = history(fixture)
+            % every call of all commands in call order, as 'command arguments'
+            fn = [fixture.Folder, '/history.log'];
+            cmds = {};
+            if exist(fn, 'file')
+                cmds = splitlines(strip(fileread(fn)));
+            end
+        end
     end
 
     methods (Access = protected)
@@ -93,7 +131,7 @@ classdef FakeSlurmFixture < matlab.unittest.fixtures.Fixture
         function writeStub(fixture, cmd, body)
             fn = sprintf('%s/%s', fixture.Folder, cmd);
             fid = fopen(fn, 'w');
-            fprintf(fid, '#!/bin/sh\nD="$(dirname "$0")"\necho "$*" >> "$D/%s.log"\n', cmd);
+            fprintf(fid, '#!/bin/sh\nD="$(dirname "$0")"\necho "$*" >> "$D/%s.log"\necho "%s $*" >> "$D/history.log"\n', cmd, cmd);
             fprintf(fid, '%s\n', body{:});
             fclose(fid);
             fileattrib(fn, '+x');

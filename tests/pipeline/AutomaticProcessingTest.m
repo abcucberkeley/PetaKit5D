@@ -82,6 +82,31 @@ classdef AutomaticProcessingTest < pktest.TestCase
             end
             testCase.verifyTrue(exist(strrep(testCase.tileFilename(dataPath, 'CamA_ch0', 0), dataPath, [dataPath, 'DSR/']), 'file') == 2);
         end
+
+        function clusterModeWaitGrowsWithUnfinishedFiles(testCase)
+            % with jobs on the cluster the pipeline always waited 30 s between
+            % rounds, so the last results were seen up to 30 s late; it now
+            % waits 0.3 s per unfinished file, at least 3 s and at most 30 s
+            testCase.assumeFalse(ispc, 'The fake Slurm needs a POSIX shell.');
+            dataPath = testCase.createTempFolder();
+            for y = 0 : 19
+                writetiff(zeros(16, 16, 8, 'uint16'), testCase.tileFilename(dataPath, 'CamA_ch0', y));
+            end
+            logPath = [dataPath, 'logs/'];
+            mkdir(logPath);
+            slurm = testCase.applyFixture(pktest.FakeSlurmFixture);
+            pauses = testCase.applyFixture(pktest.FunctionSpyFixture('pause'));
+
+            % the fake jobs never run: one round submits, the next resubmits
+            args = {'xyPixelSize', testCase.XYPixelSize, 'dz', testCase.Dz, 'reverse', true, ...
+                'channelPatterns', {'CamA_ch0'}, 'streaming', false, 'deskew', true, 'rotate', true, ...
+                'stitch', false, 'DSRCombined', true, 'parseCluster', true, 'maxTrialNum', 2, 'jobLogDir', logPath};
+            evalc('XR_microscopeAutomaticProcessing(dataPath, args{:})');
+
+            testCase.verifyEqual(slurm.callCount('sbatch'), 40);
+            waits = cellfun(@(x) x{1}, pauses.getCalls());
+            testCase.verifyEqual(waits, 6, 'AbsTol', 1e-9, 'The wait for 20 unfinished files should be 6 s.');
+        end
     end
 
     methods (Test, TestTags = {'Integration', 'Slow'})

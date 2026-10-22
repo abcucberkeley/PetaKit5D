@@ -242,10 +242,12 @@ update_golden_data('decon_omw')   % or update_golden_data() for all
   forward-slash path with a trailing slash, as the demos use.
 - Always pass `parseCluster=false` to wrappers.
 - To test how code talks to Slurm, apply `pktest.FakeSlurmFixture`: fake
-  `sbatch`/`squeue`/`scancel`/`sinfo` that log their calls, with job states
-  the test sets (pending, running, done). To test what a wrapper passes on,
-  replace the callee with `pktest.FrameworkSpyFixture` (the job framework) or
-  `pktest.FunctionSpyFixture('name')` (any function without outputs).
+  `sbatch`/`squeue`/`scancel`/`sinfo` that log their calls (also in call
+  order), with job states the test sets (pending, running, done), outputs a
+  job writes when it starts running, and rejected submissions. To test what
+  a wrapper passes on, replace the callee with `pktest.FrameworkSpyFixture`
+  (the job framework) or `pktest.FunctionSpyFixture('name')` (any function
+  without outputs).
 - To test the order in which a task writes its files, apply
   `pktest.MovefileSpyFixture`: it records every `movefile` with the files
   next to its destination at that moment. A task must write everything else

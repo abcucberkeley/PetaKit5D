@@ -345,6 +345,20 @@ classdef DeconWrapperTest < pktest.TestCase
             waits = cellfun(@(x) x{1}, pauses.getCalls());
             testCase.verifyEqual(waits, 3);
         end
+
+        function clusterModeWaitGrowsWithUnfinishedFiles(testCase)
+            % the wait between rounds is 0.3 s per unfinished file: 6 s for
+            % 20 files (between the 3 s minimum and the 30 s maximum)
+            testCase.assumeFalse(ispc, 'The fake Slurm needs a POSIX shell.');
+            d = testCase.createDataset({'A'}, 20);
+            slurm = testCase.applyFixture(pktest.FakeSlurmFixture);
+            pauses = testCase.applyFixture(pktest.FunctionSpyFixture('pause'));
+            % the fake jobs never run: one round submits, the next resubmits
+            testCase.runWrapper(d, 'parseCluster', true, 'maxTrialNum', 2, 'jobLogDir', [d.root, 'logs']);
+            testCase.verifyEqual(slurm.callCount('sbatch'), 40);
+            waits = cellfun(@(x) x{1}, pauses.getCalls());
+            testCase.verifyEqual(waits, 6, 'AbsTol', 1e-9, 'The wait for 20 unfinished files should be 6 s.');
+        end
     end
 
     methods (Access = private)

@@ -2,6 +2,7 @@ classdef GenericComputingFrameworkTest < pktest.TestCase
     % generic_computing_frameworks_wrapper in local mode (parseCluster =
     % false): tasks run sequentially in this MATLAB session. Tasks call
     % pktest.frameworkTask, which logs every call so runs can be counted.
+    % The clusterMode tests submit to a fake Slurm (pktest.FakeSlurmFixture).
 
     methods (TestMethodSetup)
         function clearConfigCache(testCase)
@@ -189,6 +190,63 @@ classdef GenericComputingFrameworkTest < pktest.TestCase
 
             arrays = cellfun(@(x) str2double(regexp(x, '--array=(\d+)', 'tokens', 'once')), slurm.calls('sbatch'));
             testCase.verifyEqual(sort(arrays(:))', 1 : 3, 'Each task should be submitted once.');
+        end
+
+        function clusterModeCountsJobUntilAllItsTasksAreDone(testCase)
+            % with taskBatchNum > 1 a job runs several tasks; it counts
+            % against maxJobNum until all of them are done, not just one
+            testCase.assumeFalse(ispc, 'The fake Slurm needs a POSIX shell.');
+            slurm = testCase.applyFixture(pktest.FakeSlurmFixture);
+            [inFns, outFns, logFn, dataPath] = testCase.makeTasks(4);
+            funcStrs = testCase.taskStrings(inFns, outFns, logFn, 'noop');
+            % the job of batch 1 (tasks 1 and 2) writes the output of task
+            % 1 at the first poll and is gone at the fourth
+            slurm.setJobStates('1000_1', {'R', 'R', 'R', 'done'}, outFns(1));
+
+            evalc(['generic_computing_frameworks_wrapper(inFns, outFns, funcStrs, ''parseCluster'', true, ', ...
+                '''masterCompute'', false, ''maxTrialNum'', 1, ''maxJobNum'', 1, ''taskBatchNum'', 2, ', ...
+                '''queryInterval'', 0, ''jobLogDir'', dataPath)']);
+
+            cmds = slurm.history();
+            submit2 = find(startsWith(cmds, 'sbatch') & contains(cmds, '--array=2 '));
+            testCase.assertNumElements(submit2, 1, 'Batch 2 should be submitted once.');
+            polls = find(startsWith(cmds, 'squeue') & contains(cmds, '1000_1'));
+            testCase.assertGreaterThanOrEqual(numel(polls), 4, 'The job of batch 1 was not polled until it ended.');
+            testCase.verifyGreaterThan(submit2, polls(4), ...
+                'Batch 2 was submitted while the job of batch 1 was still running.');
+        end
+
+        function clusterModeFinishedShortLastBatchFreesItsJobSlot(testCase)
+            % a batch whose tasks are all done stops counting against
+            % maxJobNum even while its job is still listed (e.g., exiting).
+            % Here the batch is the last one and shorter than taskBatchNum;
+            % the count pads it to taskBatchNum tasks, which must count as done.
+            testCase.assumeFalse(ispc, 'The fake Slurm needs a POSIX shell.');
+            slurm = testCase.applyFixture(pktest.FakeSlurmFixture);
+            [inFns, outFns, logFn, dataPath] = testCase.makeTasks(3);
+            funcStrs = testCase.taskStrings(inFns, outFns, logFn, 'noop');
+            % Slurm rejects batch 1 (tasks 1 and 2) and the framework's
+            % immediate retry, so batch 2 (task 3) is submitted first; its
+            % job writes the output at the first poll and stays listed
+            slurm.rejectSubmissions(2);
+            slurm.setJobStates('1000_2', {'R'}, outFns(3));
+            % a framework that holds batch 1 back forever is stopped by a
+            % watchdog that writes the final output
+            finalFn = [dataPath, 'final.txt'];
+            watchdog = timer('StartDelay', 20, 'TimerFcn', @(~, ~) fclose(fopen(finalFn, 'w')));
+            testCase.addTeardown(@() delete(watchdog));
+            testCase.addTeardown(@() stop(watchdog));
+            start(watchdog);
+
+            evalc(['generic_computing_frameworks_wrapper(inFns, outFns, funcStrs, ''parseCluster'', true, ', ...
+                '''masterCompute'', false, ''maxTrialNum'', 1, ''maxJobNum'', 1, ''taskBatchNum'', 2, ', ...
+                '''queryInterval'', 0, ''jobLogDir'', dataPath, ''finalOutFullpath'', finalFn)']);
+
+            testCase.verifyFalse(exist(finalFn, 'file') == 2, ...
+                'The finished batch 2 kept counting as a job until the watchdog stopped the framework.');
+            arrays = cellfun(@(x) str2double(regexp(x, '--array=(\d+)', 'tokens', 'once')), slurm.calls('sbatch'));
+            testCase.verifyEqual(arrays(:)', [1, 1, 2, 1], ...
+                'Batch 1 should be submitted again once batch 2 is done.');
         end
 
         function missingConfigFileErrors(testCase)
