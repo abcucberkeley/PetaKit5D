@@ -184,6 +184,28 @@ classdef XRDeskewRotateFrameTest < pktest.TestCase
             testCase.verifyEqual(readtiff([dataPath, 'zyx/DSR/', testCase.Fsn, '.tif']), expected);
         end
 
+        function rotationOfSavedDeskewedVolumeKeepsCropAndAxisOrder(testCase)
+            % rotating a deskewed volume read back from disk (deskewed in an
+            % earlier run) sized its output from the raw files, ignoring
+            % inputBbox and the input axis order. single output, so that the
+            % saved deskewed volume equals the one in memory.
+            [dataPath, ~, frame] = testCase.writeFrame();
+            fnZYX = [dataPath, 'zyx/', testCase.Fsn, '.tif'];
+            writetiff(permute(frame, [3, 1, 2]), fnZYX);
+            % z, y, x ranges in the file's zyx order
+            args = {'reverse', true, 'inputAxisOrder', 'zyx', 'inputBbox', [3, 9, 5, 72, 56, 90], ...
+                'DSRCombined', false, 'save16bit', false};
+            XR_deskewRotateFrame(fnZYX, testCase.XYPixelSize, testCase.Dz, args{:}, 'rotate', false);
+            XR_deskewRotateFrame(fnZYX, testCase.XYPixelSize, testCase.Dz, args{:}, 'rotate', true);
+            dsrFn = [dataPath, 'zyx/DSR/', testCase.Fsn, '.tif'];
+            twoRuns = readtiff(dsrFn);
+
+            rmdir([dataPath, 'zyx/DS'], 's');
+            rmdir([dataPath, 'zyx/DSR'], 's');
+            XR_deskewRotateFrame(fnZYX, testCase.XYPixelSize, testCase.Dz, args{:}, 'rotate', true);
+            testCase.verifyEqual(twoRuns, readtiff(dsrFn));
+        end
+
         function privateZarrResultsAreWrittenInPlace(testCase)
             % without a given uuid (the data wrapper) the temporary DS and DSR
             % results are private to the call and their chunks are written

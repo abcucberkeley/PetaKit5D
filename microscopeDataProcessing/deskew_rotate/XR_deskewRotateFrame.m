@@ -381,6 +381,12 @@ if ip.Results.rotate || DSRCombined
                     sz_i = getImageSize(framePath{i});
                     sz(3) = sz(3) + sz_i(3);
                 end
+                % the size the deskew had: after inputBbox, in yxz order
+                if ~isempty(inputBbox)
+                    sz = inputBbox(4 : 6) - inputBbox(1 : 3) + 1;
+                end
+                input_order_mat = axis_order_mapping(inputAxisOrder, 'yxz');
+                sz(input_order_mat) = sz;
             end
 
             ny = sz(1);
