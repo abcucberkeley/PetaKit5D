@@ -163,6 +163,13 @@ void get_4th_dim_unvalid_bbox(const T* const &fmat, const bool* const &amat, uin
 void mexFunction(int nlhs, mxArray *plhs[],
         int nrhs, const mxArray *prhs[])
 {
+#ifdef __APPLE__
+    // keep the mex file loaded until MATLAB exits: GCC's OpenMP runtime leaves
+    // thread exit handlers in it, so unloading it crashes MATLAB on exit
+    if (!mexIsLocked()) {
+        mexLock();
+    }
+#endif
     if (nrhs != 2) mexErrMsgIdAndTxt("any_4th_dim_mex:inputError","Number of input arguments must be 2");
     if (nlhs != 2) mexErrMsgIdAndTxt("any_4th_dim_mex:outputError","Number of output arguments must be 2");
 

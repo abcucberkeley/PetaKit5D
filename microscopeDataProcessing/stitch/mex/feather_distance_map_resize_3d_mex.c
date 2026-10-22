@@ -115,6 +115,13 @@ void feather_distance_map_resize_3d_mex(const float* dmat, float* rmat, const fl
 void mexFunction(int nlhs, mxArray *plhs[],
         int nrhs, const mxArray *prhs[])
 {
+#ifdef __APPLE__
+    // keep the mex file loaded until MATLAB exits: GCC's OpenMP runtime leaves
+    // thread exit handlers in it, so unloading it crashes MATLAB on exit
+    if (!mexIsLocked()) {
+        mexLock();
+    }
+#endif
     if (nrhs != 3) mexErrMsgIdAndTxt("feather_blending:inputError","Number of input arguments must be 3");
     if (nlhs != 1) mexErrMsgIdAndTxt("feather_blending:outputError","Number of output arguments must be 1");
 

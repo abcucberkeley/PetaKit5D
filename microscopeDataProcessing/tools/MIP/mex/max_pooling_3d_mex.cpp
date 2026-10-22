@@ -79,6 +79,13 @@ void max_pooling_3d_mex(const T* const &orig, T* const &out, const uint64_t &poo
 void mexFunction( int nlhs, mxArray *plhs[],
                   int nrhs, const mxArray *prhs[])
 {
+#ifdef __APPLE__
+    // keep the mex file loaded until MATLAB exits: GCC's OpenMP runtime leaves
+    // thread exit handlers in it, so unloading it crashes MATLAB on exit
+    if (!mexIsLocked()) {
+        mexLock();
+    }
+#endif
     /*  check for proper number of arguments */
     if(nrhs!=2) 
         mexErrMsgTxt("Two input required.");

@@ -105,6 +105,13 @@ void crop4d_mex(const T* const &orig, T* &region, const uint64_t* const &dims, c
 void mexFunction(int nlhs, mxArray *plhs[],
         int nrhs, const mxArray *prhs[])
 {
+#ifdef __APPLE__
+    // keep the mex file loaded until MATLAB exits: GCC's OpenMP runtime leaves
+    // thread exit handlers in it, so unloading it crashes MATLAB on exit
+    if (!mexIsLocked()) {
+        mexLock();
+    }
+#endif
     if (nrhs != 2) mexErrMsgIdAndTxt("crop:inputError","Number of input arguments must be 2");
     
     if (nlhs != 1) mexErrMsgIdAndTxt("crop:outputError","Number of output arguments must be 1");

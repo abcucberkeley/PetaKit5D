@@ -87,6 +87,13 @@ void flat_field_correction_3d_mex(const T* const &imat, const float* const &fmat
 void mexFunction(int nlhs, mxArray *plhs[],
         int nrhs, const mxArray *prhs[])
 {
+#ifdef __APPLE__
+    // keep the mex file loaded until MATLAB exits: GCC's OpenMP runtime leaves
+    // thread exit handlers in it, so unloading it crashes MATLAB on exit
+    if (!mexIsLocked()) {
+        mexLock();
+    }
+#endif
     if (nrhs != 4 && nrhs != 5) mexErrMsgIdAndTxt("flat_field_correction_3d_mex:inputError","Number of input arguments must be 3 or 4");
     if (nlhs != 1) mexErrMsgIdAndTxt("flat_field_correction_3d_mex:outputError","Number of output arguments must be 1");
 

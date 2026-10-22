@@ -412,6 +412,13 @@ void transformVolume_16bit(const uint16_t* const &dmat, const double (&tmat)[4][
 void mexFunction(int nlhs, mxArray *plhs[],
         int nrhs, const mxArray *prhs[])
 {
+#ifdef __APPLE__
+    // keep the mex file loaded until MATLAB exits: GCC's OpenMP runtime leaves
+    // thread exit handlers in it, so unloading it crashes MATLAB on exit
+    if (!mexIsLocked()) {
+        mexLock();
+    }
+#endif
     if (nrhs != 4) mexErrMsgIdAndTxt("volume_warp:inputError","Number of input arguments must be 4");
     if (nlhs != 1) mexErrMsgIdAndTxt("volume_warp:outputError","Number of output arguments must be 1");
     

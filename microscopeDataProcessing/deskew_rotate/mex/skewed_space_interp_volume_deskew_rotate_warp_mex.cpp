@@ -1175,6 +1175,13 @@ void determine_interpolation_indexing(const uint64_t n, const double stepSize, u
 
 void mexFunction(int nlhs, mxArray *plhs[],
         int nrhs, const mxArray *prhs[]){
+#ifdef __APPLE__
+    // keep the mex file loaded until MATLAB exits: GCC's OpenMP runtime leaves
+    // thread exit handlers in it, so unloading it crashes MATLAB on exit
+    if (!mexIsLocked()) {
+        mexLock();
+    }
+#endif
 
     if (nrhs != 7) mexErrMsgIdAndTxt("volume_warp:inputError","Number of input arguments must be 7");
     if (nlhs != 1) mexErrMsgIdAndTxt("volume_warp:outputError","Number of output arguments must be 1");

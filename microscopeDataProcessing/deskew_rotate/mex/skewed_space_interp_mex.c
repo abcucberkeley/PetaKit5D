@@ -12,6 +12,13 @@
 void mexFunction(int nlhs, mxArray *plhs[],
         int nrhs, const mxArray *prhs[])
 {
+#ifdef __APPLE__
+    // keep the mex file loaded until MATLAB exits: GCC's OpenMP runtime leaves
+    // thread exit handlers in it, so unloading it crashes MATLAB on exit
+    if (!mexIsLocked()) {
+        mexLock();
+    }
+#endif
     mxClassID mDType = mxGetClassID(prhs[0]);
     if(mDType != mxSINGLE_CLASS){
         mexErrMsgIdAndTxt("skewed_space_interp:dataTypeError","Only Data of type Single is supported");

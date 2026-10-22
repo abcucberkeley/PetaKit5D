@@ -105,6 +105,13 @@ void indexing4d_mex(T* &orig, const T* const &region, const uint64_t* const &dim
 void mexFunction(int nlhs, mxArray *plhs[],
         int nrhs, const mxArray *prhs[])
 {
+#ifdef __APPLE__
+    // keep the mex file loaded until MATLAB exits: GCC's OpenMP runtime leaves
+    // thread exit handlers in it, so unloading it crashes MATLAB on exit
+    if (!mexIsLocked()) {
+        mexLock();
+    }
+#endif
     if (nrhs != 3 && nrhs !=4) mexErrMsgIdAndTxt("indexing:inputError","Number of input arguments must be 3 or 4");
     
     if (nlhs != 0) mexErrMsgIdAndTxt("indexing:outputError","Number of output arguments must be 0");

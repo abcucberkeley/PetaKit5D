@@ -196,10 +196,14 @@ these were picked; confirm them with the author.
 
 Not covered by a test:
 
-- On Windows and macOS, MATLAB hangs (Windows) or crashes (macOS) while
-  shutting down after the PetaKit5D mex files have been used, most likely
-  because an OpenMP runtime is unloaded while its worker threads are alive.
-  CI works around it (see below).
+- On macOS, MATLAB crashes while exiting after the cpp-tiff/cpp-zarr mex
+  files have been used. GCC's runtime (OpenMP and emulated thread-local
+  storage) registers thread exit handlers in each mex file and the libraries it
+  loads; MATLAB unloads them while exiting, and the handlers then run in
+  unloaded code. The PetaKit5D mex files lock themselves in memory on macOS
+  (`mexLock`), which fixes it for them; cpp-tiff/cpp-zarr need the same change.
+  On GitHub's Windows runners, MATLAB has also hung while exiting after the
+  tests. CI works around both (see below).
 
 - Point detection isn't available on ARM macOS: its mex files were never
   built for it (see `MexInventoryTest`), and six of them (`fitGaussian2D`,

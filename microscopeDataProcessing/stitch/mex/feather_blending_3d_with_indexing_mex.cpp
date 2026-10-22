@@ -107,6 +107,13 @@ void feather_blending_3d_mex(const T* const &fmat, const float* const &dmat, T* 
 void mexFunction(int nlhs, mxArray *plhs[],
         int nrhs, const mxArray *prhs[])
 {
+#ifdef __APPLE__
+    // keep the mex file loaded until MATLAB exits: GCC's OpenMP runtime leaves
+    // thread exit handlers in it, so unloading it crashes MATLAB on exit
+    if (!mexIsLocked()) {
+        mexLock();
+    }
+#endif
     if (nrhs != 4) mexErrMsgIdAndTxt("feather_blending:inputError","Number of input arguments must be 4");
     if (nlhs != 0) mexErrMsgIdAndTxt("feather_blending:outputError","Number of output arguments must be 0");
 
