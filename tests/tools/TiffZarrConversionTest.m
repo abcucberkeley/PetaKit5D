@@ -127,6 +127,59 @@ classdef TiffZarrConversionTest < pktest.TestCase
             tiffToZarr('', [dataPath, 'im.zarr'], im, 'blockSize', [16, 16, 4]);
             testCase.verifyEqual(readzarr([dataPath, 'im.zarr']), im);
         end
+
+        function tiffToZarrProcessingOptions(testCase)
+            % flip in z, then crop (tileOutBbox), resample, and the user
+            % function, in that order; the result has the input's type
+            dataPath = testCase.createTempFolder();
+            im = uint16(randi(60000, testCase.ImSize));
+            writetiff(im, [dataPath, 'im.tif']);
+            b = [3, 4, 2, 38, 30, 11];
+            tiffToZarr([dataPath, 'im.tif'], [dataPath, 'flip.zarr'], [], 'blockSize', [16, 16, 4], ...
+                'flipZstack', true, 'tileOutBbox', b, 'usrFcn', '@(x) single(x) / 3');
+            expected = flip(im, 3);
+            expected = uint16(single(expected(b(1) : b(4), b(2) : b(5), b(3) : b(6))) / 3);
+            testCase.verifyEqual(readzarr([dataPath, 'flip.zarr']), expected);
+
+            tiffToZarr([dataPath, 'im.tif'], [dataPath, 'rs.zarr'], [], 'blockSize', [16, 16, 4], ...
+                'resampleFactor', [1, 1, 2]);
+            testCase.verifyEqual(readzarr([dataPath, 'rs.zarr']), imresize3(im, round(testCase.ImSize ./ [1, 1, 2])));
+        end
+
+        function tiffToZarrReadsRegions(testCase)
+            % readWholeTiff false reads the tiff by regions; without
+            % inputBbox it failed on an undefined variable (outBbox)
+            dataPath = testCase.createTempFolder();
+            im = uint16(randi(60000, testCase.ImSize));
+            writetiff(im, [dataPath, 'im.tif']);
+            tiffToZarr([dataPath, 'im.tif'], [dataPath, 'whole.zarr'], [], 'blockSize', [16, 16, 4], ...
+                'readWholeTiff', false);
+            testCase.verifyEqual(readzarr([dataPath, 'whole.zarr']), im);
+            b = [3, 4, 2, 38, 30, 11];
+            tiffToZarr([dataPath, 'im.tif'], [dataPath, 'crop.zarr'], [], 'blockSize', [16, 16, 4], ...
+                'readWholeTiff', false, 'tileOutBbox', b);
+            testCase.verifyEqual(readzarr([dataPath, 'crop.zarr']), im(b(1) : b(4), b(2) : b(5), b(3) : b(6)));
+        end
+
+        function tiffToZarrPartialFilesAndFrames(testCase)
+            % partial files are joined along z; an in-memory frame gets the
+            % same processing as a file; a 2D image becomes one z slice
+            dataPath = testCase.createTempFolder();
+            im = uint16(randi(60000, testCase.ImSize));
+            writetiff(im(:, :, 1 : 5), [dataPath, 'part1.tif']);
+            writetiff(im(:, :, 6 : end), [dataPath, 'part2.tif']);
+            tiffToZarr({[dataPath, 'part1.tif'], [dataPath, 'part2.tif']}, [dataPath, 'parts.zarr'], [], ...
+                'blockSize', [16, 16, 4]);
+            testCase.verifyEqual(readzarr([dataPath, 'parts.zarr']), im);
+
+            tiffToZarr('', [dataPath, 'frame.zarr'], im, 'blockSize', [16, 16, 4], 'flipZstack', true);
+            testCase.verifyEqual(readzarr([dataPath, 'frame.zarr']), flip(im, 3));
+
+            writetiff(im(:, :, 1), [dataPath, 'im2d.tif']);
+            tiffToZarr([dataPath, 'im2d.tif'], [dataPath, 'im2d.zarr'], [], 'blockSize', [16, 16, 4]);
+            testCase.verifyEqual(readzarr([dataPath, 'im2d.zarr']), im(:, :, 1));
+            testCase.verifyEqual(getZarrInfo([dataPath, 'im2d.zarr']).size, [testCase.ImSize(1 : 2), 1]);
+        end
     end
 
     methods (Access = private)

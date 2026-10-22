@@ -86,14 +86,16 @@ if flipZstack || ~isempty(resampleFactor) || applyUserFcn
     readWholeTiff = true;
 end
 
-% load tiff file as image block file
-% Direct conversion should be faster. 
+% load the image; it is processed as an array, and as a blocked image only
+% when the tiff is read by regions (readWholeTiff false)
+I = [];
+bim = [];
 if ~isempty(frame)
     if ismatrix(frame)
         blockSize = blockSize(1 : 2);
     end
     blockSize = min(blockSize, size(frame));    
-    bim = blockedImage(frame, "BlockSize", blockSize);
+    I = frame;
 else
     if ischar(tifFilename) || numel(tifFilename) == 1
         if iscell(tifFilename)
@@ -116,8 +118,6 @@ else
                 end
             end
             blockSize = min(blockSize, sz);
-            bim = blockedImage(I, "BlockSize", blockSize(1 : ndims(I)));
-            clear I;
         else
             try
                 bim = blockedImage(tifFilename, "Adapter", MPageTiffAdapter);
@@ -125,11 +125,15 @@ else
                 disp(ME)
                 fprintf('Use BioFormats to read the tiff file ...\n');
                 im = bfOpen3DVolume(tifFilename);
-                bim = blockedImage(im{1,1}{1,1});
+                I = im{1,1}{1,1};
                 clear im;
             end
             if ~isempty(inputBbox)
-                bim = bim.crop(inputBbox(1 : 3), inputBbox(4 : 6));
+                if isempty(bim)
+                    I = crop3d(I, inputBbox);
+                else
+                    bim = bim.crop(inputBbox(1 : 3), inputBbox(4 : 6));
+                end
             end
         end
     else
@@ -147,23 +151,26 @@ else
             blockSize = blockSize(1 : 2);
         end        
         blockSize = min(blockSize, size(I));        
-        bim = blockedImage(I, "BlockSize", blockSize);
-        clear I;
     end
     if ~isempty(gcp('nocreate'))
         parfevalOnAll(@clearvars, 0)
     end
 end
 
-sz = bim.Size;
-dtype = bim.ClassUnderlying;
+if isempty(bim)
+    sz = size(I);
+    dtype = class(I);
+else
+    sz = bim.Size;
+    dtype = bim.ClassUnderlying;
+end
 if any(sz == 0)
     fprintf('The input image is empty, skip it!\n');
     return;
 end    
 
 if flipZstack
-    bim = apply(bim, @(bs) flip(bs.Data, 3), 'BlockSize', sz);
+    I = flip(I, 3);
 end    
 
 % bounding box crop for output
@@ -171,10 +178,8 @@ if ~isempty(tileOutBbox)
     % halfCrop = floor((bim.Size - CropToSize) / 2);
     % bbox = [halfCrop + 1, halfCrop +  CropToSize];
     bbox = tileOutBbox;
-    if isa(bim.Adapter, 'images.blocked.InMemory')
-        bim = gather(bim);
-        bim = crop3d(bim, bbox);
-        bim = blockedImage(bim, 'BlockSize', blockSize);
+    if isempty(bim)
+        I = crop3d(I, bbox);
     else
         bim = bim.crop(bbox(1 : 3), bbox(4 : 6));
     end
@@ -184,17 +189,21 @@ if ~isempty(resampleFactor) && ~all(resampleFactor == 1)
     rs = resampleFactor(:)';
     % complete rs to 3d in case it is not
     rs = [ones(1, 4 - numel(rs)) * rs(1), rs(2:end)];    
-    outSize = round(bim.Size ./ rs);
-    bim = apply(bim, @(bs) imresize3(bs.Data, outSize), 'BlockSize', sz);
+    outSize = round(size(I) ./ rs);
+    I = imresize3(I, outSize);
 end
-sz = bim.Size;
+if isempty(bim)
+    sz = size(I);
+else
+    sz = bim.Size;
+end
 
 if applyUserFcn
     disp(usrFcn)
     if ischar(usrFcn) || isstring(usrFcn)
         usrFcn = str2func(usrFcn);
     end
-    bim = apply(bim, @(bs) usrFcn(bs.Data), 'BlockSize', sz);
+    I = usrFcn(I);
 end
 if numel(sz) == 2
     if expand2dDim 
@@ -221,14 +230,14 @@ if ~exist(tmpFilename, 'dir')
 end
 
 % write zarr
-if readWholeTiff
-    writezarr(cast(gather(bim), dtype), tmpFilename, 'blockSize', blockSize);
+if isempty(bim)
+    writezarr(cast(I, dtype), tmpFilename, 'blockSize', blockSize);
 else
     for i = 1 : ceil(sz(3) / blockSize(3))
         zs = (i - 1) * blockSize(3) + 1;
         zt = min(i * blockSize(3), sz(3));
         bbox = [1, 1, zs, sz(1), sz(2), zt];
-        if ~isempty(inputBbox) || ~isempty(outBbox)
+        if ~isempty(inputBbox) || ~isempty(tileOutBbox)
             bbox_in = bbox + [floor(bim.WorldStart), floor(bim.WorldStart)];
         else
             bbox_in = bbox;
