@@ -108,6 +108,26 @@ classdef AutomaticProcessingTest < pktest.TestCase
             % the second round also waits for the last tries' jobs to end
             testCase.verifyEqual(waits, [6, 6], 'AbsTol', 1e-9, 'The wait for 20 unfinished files should be 6 s.');
         end
+
+        function clusterModeSeesResultsOtherNodesJustMade(testCase)
+            % on NFS, exist() can miss a file another node just made for 30
+            % s or more, so the pipeline saw finished deskew results a round
+            % late; it now checks them with batch_file_exist, which sees them
+            % at once. The stub reports them made, so no job is submitted.
+            testCase.assumeFalse(ispc, 'The fake Slurm needs a POSIX shell.');
+            dataPath = testCase.createTempFolder();
+            writetiff(zeros(16, 16, 8, 'uint16'), testCase.tileFilename(dataPath, 'CamA_ch0', 0));
+            logPath = [dataPath, 'logs/'];
+            mkdir(logPath);
+            slurm = testCase.applyFixture(pktest.FakeSlurmFixture);
+            testCase.applyFixture(pktest.FunctionStubFixture('batch_file_exist', true));
+            testCase.applyFixture(pktest.FunctionSpyFixture('pause', [], 20));
+            args = {'xyPixelSize', testCase.XYPixelSize, 'dz', testCase.Dz, 'reverse', true, ...
+                'channelPatterns', {'CamA_ch0'}, 'streaming', false, 'deskew', true, 'rotate', true, ...
+                'stitch', false, 'DSRCombined', true, 'parseCluster', true, 'maxTrialNum', 2, 'jobLogDir', logPath};
+            evalc('XR_microscopeAutomaticProcessing(dataPath, args{:})');
+            testCase.verifyEqual(slurm.callCount('sbatch'), 0, 'A deskew job was submitted for a finished result.');
+        end
     end
 
     methods (Test, TestTags = {'Integration', 'Slow'})

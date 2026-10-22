@@ -458,7 +458,9 @@ while ~all(is_done_flag | (trial_counter >= maxTrialNum & ~job_active), 'all') |
                 tmpFullpath = sprintf('%s/%s.tmp', dsrPath, fsname);                
             end
 
-            if (DSRCombined || exist(dsFullpath, 'file') || exist(dsFullpath, 'dir')) && (~rotate || exist(dsrFullpath, 'file') || exist(dsrFullpath, 'dir'))
+            % batch_file_exist sees a result another node just made, which
+            % exist() can miss for 30 s or more
+            if (DSRCombined || batch_file_exist({dsFullpath})) && (~rotate || batch_file_exist({dsrFullpath}))
                 is_done_flag(f, 1) = true;
                 if exist(tmpFullpath, 'file')
                     delete(tmpFullpath);
@@ -544,7 +546,7 @@ while ~all(is_done_flag | (trial_counter >= maxTrialNum & ~job_active), 'all') |
             end
 
             % check if computing is done
-            if (DSRCombined || exist(dsFullpath, 'file') || exist(dsFullpath, 'dir')) && (~rotate || exist(dsrFullpath, 'file') || exist(dsrFullpath, 'dir'))
+            if (DSRCombined || batch_file_exist({dsFullpath})) && (~rotate || batch_file_exist({dsrFullpath}))
                 is_done_flag(f, 1) = true;
                 if exist(tmpFullpath, 'file')
                     delete(tmpFullpath);

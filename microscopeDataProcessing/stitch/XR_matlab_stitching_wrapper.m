@@ -542,7 +542,9 @@ while ~all(is_done_flag | (trial_counter >= max_trial_num & ~job_status_flag), '
                             end
 
                             % for secondary channels, if the stitchInfo file  not exist, wait the stitching for the primary channel
-                            if ~isPrimaryCh && ~exist(stitchInfoFullpath, 'file')
+                            % (batch_file_exist sees a file another node just
+                            % made, which exist() can miss for 30 s or more)
+                            if ~isPrimaryCh && ~batch_file_exist({stitchInfoFullpath})
                                 continue;
                             end
                         end
@@ -593,7 +595,7 @@ while ~all(is_done_flag | (trial_counter >= max_trial_num & ~job_status_flag), '
                         end
                             
                         % first check if the computing is done
-                        if exist(stitch_save_fname, ftype)
+                        if batch_file_exist({stitch_save_fname})
                             is_done_flag(n, ncam, s, c, z) = true; 
                             if exist(cur_tmp_fname, 'file')
                                 delete(cur_tmp_fname);
@@ -727,7 +729,7 @@ while ~all(is_done_flag | (trial_counter >= max_trial_num & ~job_status_flag), '
                         end
 
                         % check if computing is done
-                        if exist(stitch_save_fname, ftype)
+                        if batch_file_exist({stitch_save_fname})
                             is_done_flag(n, ncam, s, c, z) = true;
                             if exist(cur_tmp_fname, 'file')
                                 delete(cur_tmp_fname);
