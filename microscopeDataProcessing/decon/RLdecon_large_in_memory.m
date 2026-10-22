@@ -149,10 +149,17 @@ if EdgeErosion > 0
     end
     if ~(SaveMaskfile && exist(maskFullPath, 'file'))
         im_bw_erode = im > 0;
-        im_bw_erode([1, end], :, :) = false;
-        im_bw_erode(:, [1, end], :) = false;
-        im_bw_erode(:, :, [1, end]) = false;
-        im_bw_erode = bwdist(~im_bw_erode) > EdgeErosion - 1;
+        if ndims(im_bw_erode) == 3 && all(size(im_bw_erode) > 2 * EdgeErosion) && all(im_bw_erode, 'all')
+            % without zeros, the distance to the border is the distance to the
+            % nearest face, so the mask is the volume without EdgeErosion
+            % voxels at each face (much faster than bwdist)
+            im_bw_erode = decon_mask_edge_erosion(im_bw_erode, EdgeErosion);
+        else
+            im_bw_erode([1, end], :, :) = false;
+            im_bw_erode(:, [1, end], :) = false;
+            im_bw_erode(:, :, [1, end]) = false;
+            im_bw_erode = bwdist(~im_bw_erode) > EdgeErosion - 1;
+        end
     else
         im_bw_erode = readtiff(maskFullPath) > 0;
     end

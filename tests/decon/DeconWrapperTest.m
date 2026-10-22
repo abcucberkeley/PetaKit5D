@@ -181,6 +181,37 @@ classdef DeconWrapperTest < pktest.TestCase
             testCase.verifyEmpty(added, 'Files were written after the result was moved into place.');
         end
 
+        function largeFileErosionMaskMatchesDistanceMap(testCase)
+            % the in-memory large-file path erodes the edges with a distance
+            % map of the data; without zeros that is the volume without
+            % EdgeErosion voxels at each face, made without bwdist. Data with
+            % zeros (e.g., outside a deskewed region) keeps bwdist.
+            d = testCase.createDataset({'A'}, 1);
+            im = readtiff(d.rawFns{1});
+            % a slanted corner without data, where the distance map differs
+            % from the 2D disk and z line erosion used for other masks
+            [y, x, z] = ndgrid(1 : size(im, 1), 1 : size(im, 2), 1 : size(im, 3));
+            im(y + 2 * x + 3 * z < 60) = 0;
+            fsnZeros = strrep(d.fsns{1}, '0000t', '0001t');
+            writetiff(im, [d.dataPath, fsnZeros, '.tif']);
+            e = 3;
+            deconPath = [d.root, 'large/'];
+            for fsn = {d.fsns{1}, fsnZeros}
+                % SaveMaskfile isn't passed on by the wrapper
+                evalc(['RLdecon_large_in_memory([d.dataPath, fsn{1}, ''.tif''], d.psfFns{1}, [deconPath, fsn{1}, ''.tif''], ', ...
+                    'testCase.XYPixelSize, testCase.Dz, ''Background'', testCase.Background, ''dzPSF'', testCase.Dz, ', ...
+                    '''DeconIter'', 1, ''EdgeErosion'', e, ''SaveMaskfile'', true, ''batchSize'', [64, 64, 64], ', ...
+                    '''useGPU'', false, ''parseCluster'', false)']);
+                bw = readtiff([d.dataPath, fsn{1}, '.tif']) > 0;
+                bw([1, end], :, :) = false;
+                bw(:, [1, end], :) = false;
+                bw(:, :, [1, end]) = false;
+                expected = bwdist(~bw) > e - 1;
+                mask = readtiff(sprintf('%sMasks/%s_eroded.tif', deconPath, fsn{1})) > 0;
+                testCase.verifyEqual(mask, expected, fsn{1});
+            end
+        end
+
         function largeFileInPlaceMakesMIPsBeforePublishing(testCase)
             % as above for the in-place large-file path, which made its MIPs
             % with XR_MIP_zarr after moving the result into place
