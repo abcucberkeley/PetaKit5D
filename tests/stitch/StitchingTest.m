@@ -466,6 +466,32 @@ classdef StitchingTest < pktest.TestCase
             testCase.verifyEqual(out(5 : 104, 5 : 124, 3 : 34), gt);
         end
 
+        function largeFileRegistrationRecoversPerturbedTilePosition(testCase)
+            % large-file registration built the task of each tile pair with
+            % the tile and box at the pair's index instead of its first tile,
+            % so beyond two tiles it registered the wrong tiles. The third
+            % tile is listed 2 voxels off in x.
+            dataPath = testCase.createTempFolder();
+            px = testCase.XYPixelSize;
+            gt = testCase.randomVolume([100, 120, 32]);
+            stageXYZ = [0, 0, 0; 0, 36 * px, 0; 50 * px, 0, 0; 48 * px, 36 * px, 0];
+            csvFn = testCase.writeTiles(dataPath, gt, [0, 0, 0; 36, 0, 0; 0, 48, 0; 36, 48, 0], [64, 72, 32], ...
+                [], stageXYZ, [0, 0, 0; 0, 1, 0; 1, 0, 0; 1, 1, 0]);
+
+            testCase.stitch(dataPath, csvFn, 'blendMethod', 'feather', 'largeFile', true, 'poolSize', [2, 2, 2], ...
+                'batchSize', [32, 32, 16], 'blockSize', [16, 16, 16], 'xcorrShift', true, ...
+                'xcorrDownsample', [1, 1, 1], 'xyMaxOffset', 20, 'zMaxOffset', 10);
+
+            xcorrInfo = load(sprintf('%smatlab_stitch/xcorr/%s.mat', dataPath, testCase.StitchName));
+            % one tile moves 2 voxels back in x (the rows follow the tile
+            % order of the stitching, x first)
+            shifts = round(xcorrInfo.dxyz_shift / px);
+            testCase.verifyEqual(sortrows(shifts), [-2, 0, 0; 0, 0, 0; 0, 0, 0; 0, 0, 0], ...
+                sprintf('Registration did not recover the true tile offset: %s.', mat2str(shifts)));
+            out = testCase.readResult(dataPath);
+            testCase.verifyEqual(out(5 : 104, 5 : 124, 3 : 34), gt);
+        end
+
         function largeFileWithoutRegistration(testCase)
             % the distance maps use MIP slabs, which used to be made only by the
             % registration (xcorrShift)
