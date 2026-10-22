@@ -10,6 +10,13 @@
 void mexFunction(int nlhs, mxArray *plhs[],
                  int nrhs, const mxArray *prhs[])
 {
+#if defined(__APPLE__)
+    // keep the mex file loaded until MATLAB exits; unloading it crashes
+    // MATLAB on exit on macOS (Windows exits cleanly without this)
+    if (!mexIsLocked()) {
+        mexLock();
+    }
+#endif
     if(nrhs < 2) mexErrMsgIdAndTxt("tiff:inputError","This function requires at least 2 arguments");
 
     // Check if the fileName is a char array or matlab style

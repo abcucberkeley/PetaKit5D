@@ -12,6 +12,12 @@
 void mexFunction(int nlhs, mxArray *plhs[],
                  int nrhs, const mxArray *prhs[])
 {
+#if defined(__APPLE__)
+    // keep the mex file loaded until MATLAB exits; unloading it crashes MATLAB on exit
+    if (!mexIsLocked()) {
+        mexLock();
+    }
+#endif
     if(nrhs < 1) mexErrMsgIdAndTxt("zarr:inputError","This functions requires at least 1 argument\n");
     if(nrhs == 2) mexErrMsgIdAndTxt("zarr:inputError","This functions does not accept only 2 arguments\n");
     if(!mxIsChar(prhs[0])) mexErrMsgIdAndTxt("zarr:inputError","The first argument must be a string\n");

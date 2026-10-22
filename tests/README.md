@@ -123,10 +123,12 @@ allowed to fail and preview the migration. To switch releases, edit the
 `release` list in the workflow. Results are on each job's summary page,
 and JUnit XML files are uploaded as artifacts.
 
-Because MATLAB doesn't shut down cleanly on Windows and macOS (see Known
-issues), the CI command ends with `pktest.finishCI`, which writes
-`test-results/status.txt` and then stops MATLAB on those platforms; the next
-step fails the job if tests failed or the status file is missing.
+Because MATLAB has hung while shutting down on GitHub's Windows runners (see
+Known issues), the CI command ends with `pktest.finishCI`, which writes
+`test-results/status.txt` and then stops MATLAB on Windows and macOS; the next
+step fails the job if tests failed or the status file is missing. (On macOS,
+MATLAB used to crash while exiting until the PetaKit5D and cpp-tiff/cpp-zarr
+mex files started locking themselves in memory.)
 
 A separate job sets up a single-node Slurm cluster on the Ubuntu runner
 (`tests/cluster/setup_github_actions_slurm.sh`, Ubuntu's Slurm 23.11 without
@@ -196,14 +198,9 @@ these were picked; confirm them with the author.
 
 Not covered by a test:
 
-- On macOS, MATLAB crashes while exiting after the cpp-tiff/cpp-zarr mex
-  files have been used. GCC's runtime (OpenMP and emulated thread-local
-  storage) registers thread exit handlers in each mex file and the libraries it
-  loads; MATLAB unloads them while exiting, and the handlers then run in
-  unloaded code. The PetaKit5D mex files lock themselves in memory on macOS
-  (`mexLock`), which fixes it for them; cpp-tiff/cpp-zarr need the same change.
-  On GitHub's Windows runners, MATLAB has also hung while exiting after the
-  tests. CI works around both (see below).
+- On GitHub's Windows runners, MATLAB has hung while exiting after the tests
+  (cause not found; on a local Windows 10 machine it exits cleanly). CI works
+  around it (see below).
 
 - Point detection isn't available on ARM macOS: its mex files were never
   built for it (see `MexInventoryTest`), and six of them (`fitGaussian2D`,
