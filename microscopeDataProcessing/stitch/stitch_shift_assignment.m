@@ -1,6 +1,6 @@
 function [xyz_shift, dxyz_shift] = stitch_shift_assignment(zarrFullpaths, xcorrDir, imSizes, xyz, ...
     xyz_voxelsizes, data_order_mat, overlap_matrix, overlap_regions, MaxOffset, xcorrDownsample, xcorrThresh, tileIdx, assign_method, ...
-    stitch2D, axisWeight, groupFile, largeFile, poolSize, parseCluster, nodeFactor, mccMode, configFile)
+    stitch2D, axisWeight, groupFile, largeFile, poolSize, parseCluster, nodeFactor, mccMode, configFile, localWorkerNum)
 % main function for stitch shift assignment 
 % The main code is taken from XR_stitching_frame_zarr_dev_v1.m (to simplify
 % the function).
@@ -26,6 +26,10 @@ function [xyz_shift, dxyz_shift] = stitch_shift_assignment(zarrFullpaths, xcorrD
 
 fprintf('Compute cross-correlation based registration between overlap tiles...\n');
 t0 = tic();
+
+if nargin < 23
+    localWorkerNum = 1;
+end
 
 if isempty(axisWeight)
     axisWeight = [1, 0.1, 10]; % order y, x, z
@@ -209,7 +213,8 @@ for i = 1 : 3
     is_done_flag = generic_computing_frameworks_wrapper(inputFullpaths, outputFullpaths, ...
         funcStrs, 'cpusPerTask', cpusPerTask_xcorr * 2^(i - 1), 'maxTrialNum', maxTrialNum_xcorr, ...
         'parseCluster', parseCluster, 'memAllocate', memAllocate * 2^(i - 1), ...
-        'minTaskJobNum', minTaskJobNum, 'mccMode', mccMode, 'configFile', configFile);
+        'minTaskJobNum', minTaskJobNum, 'mccMode', mccMode, 'configFile', configFile, ...
+        'localWorkerNum', localWorkerNum);
     if all(is_done_flag)
         break;
     end

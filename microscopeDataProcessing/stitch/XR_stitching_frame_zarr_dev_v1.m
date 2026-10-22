@@ -119,6 +119,7 @@ ip.addParameter('maxTrialNum', 3, @isnumeric);
 ip.addParameter('unitWaitTime', 30, @isnumeric);
 ip.addParameter('mccMode', false, @islogical);
 ip.addParameter('configFile', '', @ischar);
+ip.addParameter('localWorkerNum', 1, @isnumeric); % without cluster, run tasks on up to this many local MATLAB workers
 ip.addParameter('debug', false, @islogical);
 
 ip.parse(tileFullpaths, coordinates, varargin{:});
@@ -184,6 +185,7 @@ maxFileNumPerFolder = pr.maxFileNumPerFolder;
 uuid = pr.uuid;
 mccMode = pr.mccMode;
 configFile = pr.configFile;
+localWorkerNum = pr.localWorkerNum;
 debug = pr.debug;
 
 %  load tile paths and coordinates from file.
@@ -512,7 +514,7 @@ if xcorrShift && isPrimaryCh
 		[xyz_shift, dxyz_shift] = stitch_shift_assignment(zarrFullpaths, xcorrDir, imSizes, xyz, ...
 			[xp, yp, zp], data_order_mat, overlap_matrix, overlap_regions, MaxOffset, xcorrDownsample, ...
 			xcorrThresh, tileIdx, assign_method, stitch2D, axisWeight, groupFile, largeFile, ...
-			poolSize, parseCluster, nodeFactor, mccMode, configFile);
+			poolSize, parseCluster, nodeFactor, mccMode, configFile, localWorkerNum);
 		save('-v7.3', xcorTmpFn, 'xyz_shift', 'dxyz_shift');
 		movefile(xcorTmpFn, xcorrFinalFn)
 	else
@@ -664,6 +666,19 @@ if parseCluster
 	taskSize = max(taskSize, min(round(50 * taskRatio), ceil(numBatches / 5000)));
 else
 	taskSize = min(numBatches, round(500 * taskRatio));
+	% about 4 tasks per local worker
+	if localWorkerNum > 1
+		taskSize = min(taskSize, ceil(numBatches / (4 * localWorkerNum)));
+	end
+end
+% secondary channels use the per-task block info of the primary channel, so
+% they take its task size, which depends on the mode and the local workers
+if ~isPrimaryCh && any(strcmp(who('-file', stitchInfoFullpath), 'PerBlockInfoFullpaths'))
+	a = load(stitchInfoFullpath, 'PerBlockInfoFullpaths');
+	tok = regexp(a.PerBlockInfoFullpaths{1}, '_task_size_(\d+)', 'tokens', 'once');
+	if ~isempty(tok)
+		taskSize = str2double(tok{1});
+	end
 end
 
 [block_info_fullname, PerBlockInfoFullpaths, block_info_bytes] = stitch_process_block_info(int_xyz_shift, ...
@@ -888,7 +903,7 @@ if ~exist(nv_fullname, 'dir')
 		funcStrs, 'finalOutFullpath', nv_fullname, 'cpusPerTask', cpusPerTask, ...
 		'memAllocate', memAllocate, 'jobTimeLimit', jobTimeLimit, 'maxTrialNum', maxTrialNum, ...
 		'masterCompute', masterCompute, 'parseCluster', parseCluster, 'jobLogDir', jobLogDir, 'mccMode', mccMode, ...
-		'configFile', configFile);
+		'configFile', configFile, 'localWorkerNum', localWorkerNum);
 end
 
 % retry with more resources and longer time

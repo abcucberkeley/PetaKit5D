@@ -54,6 +54,7 @@ ip.addParameter('GNUparallel', false, @islogical); % support matlab, bash
 ip.addParameter('paraJobNum', 1, @isnumeric); % support matlab, bash
 ip.addParameter('masterParaFactor', 1, @isnumeric); % master job parallel job percentage for mcc mode. 
 ip.addParameter('ConfigFile', '', @ischar); % cluster configuration file that override the default parameters
+ip.addParameter('localWorkerNum', 1, @isnumeric); % without cluster, run up to this many tasks at once on a local MATLAB process pool
 
 ip.parse(inputFullpaths, outputFullpaths, funcStrs, varargin{:});
 
@@ -138,6 +139,7 @@ language = pr.language;
 GNUparallel = pr.GNUparallel;
 paraJobNum = pr.paraJobNum;
 masterParaFactor = pr.masterParaFactor;
+localWorkerNum = pr.localWorkerNum;
 
 if numel(funcStrs) == 1
     if masterCompute
@@ -176,6 +178,22 @@ switch clusterType
                 if cpusPerTask / maxCPUNum > 0.75
                     cpusPerTask = maxCPUNum;
                 end
+            end
+        end
+
+        % without cluster, run the tasks on a local process pool first, as
+        % many at once as half of the memory holds (a worker takes about 2 GB
+        % besides its task); the framework below retries any unfinished task
+        % in this MATLAB
+        if ~parseCluster && localWorkerNum > 1 && iscell(funcStrs) && numel(funcStrs) > 1 ...
+                && strcmp(language, 'matlab') && ~(ismcc || isdeployed)
+            workerNum = localWorkerNum;
+            if ~isempty(memAllocate)
+                workerNum = min(workerNum, floor(getSystemMemory() / 2 / (memAllocate + 2)));
+            end
+            if workerNum > 1
+                matlab_pool_generic_computing_wrapper(inputFullpaths, outputFullpaths, funcStrs, ...
+                    finalOutFullpath=finalOutFullpath, workerNum=workerNum);
             end
         end
 

@@ -47,9 +47,10 @@ cluster) and never submit Slurm jobs: `pktest.NoSlurmFixture` hides `sinfo`,
 | `Cluster` | Submits real Slurm jobs; skipped unless `PETAKIT5D_TEST_SLURM_CONFIG` is set (see below). |
 | `KnownIssue` | Checks the correct behavior for a bug that is not fixed yet (see below). |
 
-Tests that need something the machine doesn't have (a GPU, or a mex file
-that isn't built for the platform) are reported as *incomplete* instead of
-failing, and don't fail `assertSuccess`.
+Tests that need something the machine doesn't have (a GPU, the Parallel
+Computing Toolbox for the local process pool tests, or a mex file that isn't
+built for the platform) are reported as *incomplete* instead of failing, and
+don't fail `assertSuccess`.
 
 ### Real data
 
@@ -272,7 +273,7 @@ Every workflow in `demos/` is covered by tests on synthetic data:
 | Demo | Tests |
 |---|---|
 | `demo_fast_tiff_zarr_readers_writers` | `io/TiffIOTest` (Cpp-Tiff vs MATLAB readers, write modes, ranges, >65535 pages, ImageJ stacks), `io/ZarrIOTest` (round trips, compressors, chunking, partial writes), `crop/CropMexTest`, `demo_data/DemoDatasetTest` (real data). The Python zarr section is disabled in the demo and not tested. |
-| `demo_generic_computing_framework` | `framework/GenericComputingFrameworkDemoTest` (config file, the demo's crop + deskew/rotate function through the framework), `framework/GenericComputingFrameworkTest`, `cluster/SlurmClusterTest` (Slurm cluster mode, opt-in). Compiled (mcc) mode isn't run; `framework/McCParserConsistencyTest` checks that the mcc parsers match the functions. |
+| `demo_generic_computing_framework` | `framework/GenericComputingFrameworkDemoTest` (config file, the demo's crop + deskew/rotate function through the framework), `framework/GenericComputingFrameworkTest`, `framework/LocalPoolFrameworkTest` (tasks on a local process pool), `cluster/SlurmClusterTest` (Slurm cluster mode, opt-in). Compiled (mcc) mode isn't run; `framework/McCParserConsistencyTest` checks that the mcc parsers match the functions. |
 | `demo_geometric_transformation` | `deskew_rotate/DeskewRotateDataWrapperTest` (data wrapper, zarr output, flat field, large file), `deskew_rotate/DeskewRotateFrame3DTest` and `XRDeskewRotateFrameTest` (combined vs separate, geometry), `demo_data/DemoDatasetTest` (combined vs separate on real data). |
 | `demo_RL_deconvolution` | `decon/DeconFrameTest` (OTF mask visualization), `decon/DeconWrapperTest` (OMW and traditional RL through the wrapper, deskew/rotation of the results), `decon/DeconFunctionTest` (`psf_gen_new`, `decon_lucy_function`, WB back projector, OMW back projector), `decon/DeconGPUTest` (GPU), `demo_data/DemoDatasetTest` (OMW on real data). |
 | `demo_zarr_stitching` | `stitch/StitchingTest` (DSR-space stitching of processed zarr tiles, feather blending, cross-correlation registration, primary channel). The BigStitcher and Stitching-Spark sections use external tools and aren't tested. |

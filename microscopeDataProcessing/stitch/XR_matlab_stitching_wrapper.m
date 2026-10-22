@@ -65,6 +65,7 @@ function [] = XR_matlab_stitching_wrapper(dataPaths, imageListFullpaths, varargi
 %       unitWaitTime : a number (default: 0.1). The wait time per file in minutes to check whether the computing is done.
 %            mccMode : true|false (default: false). Use mcc mode.
 %         configFile : empty or char (default: ''). Path for the config file for job submission.
+%     localWorkerNum : empty or a number (default: []). Without a cluster, run the tasks on up to this many workers of a local MATLAB process pool (Parallel Computing Toolbox), fewer if the memory is short. Empty: up to 8 workers, one per 3 cores, for datasets with at least 32 tiles per volume to register (xcorrShift) or 32 G voxels in total, otherwise 1 (one task at a time in this MATLAB).
 %
 %
 % Author: Xiongtao Ruan (02/18/2020)
@@ -132,6 +133,7 @@ ip.addParameter('maxTrialNum', 3, @isnumeric);
 ip.addParameter('unitWaitTime', 0.1, @isnumeric);
 ip.addParameter('mccMode', false, @islogical);
 ip.addParameter('configFile', '', @ischar);
+ip.addParameter('localWorkerNum', [], @isnumeric);
 
 ip.parse(dataPaths, imageListFullpaths, varargin{:});
 
@@ -194,6 +196,7 @@ maxTrialNum = pr.maxTrialNum;
 unitWaitTime = pr.unitWaitTime;
 mccMode = pr.mccMode;
 configFile = pr.configFile;
+localWorkerNum = pr.localWorkerNum;
 
 % make root directory
 if multiLoc
@@ -282,6 +285,30 @@ elseif iscell(processFunPath)
     for i = 1 : numel(processFunPath)
         if isempty(processFunPath{i})
             processFunPath{i} = '';
+        end
+    end
+end
+
+% without cluster, run the tasks of large datasets on a local MATLAB process
+% pool: with many tiles per volume to register or many voxels to blend, the
+% time saved outweighs starting the pool (~15 s)
+if isempty(localWorkerNum)
+    localWorkerNum = 1;
+    if ~parseCluster && ~isdeployed && size(tab, 1) > 0 && license('test', 'Distrib_Computing_Toolbox') ...
+            && ~isempty(which('gcp'))
+        if multiLoc
+            tileFullpath = sprintf('%s/%s/%s', dataPaths{tab.did(1)}, processedDirStr, tab.Filename{1});
+        else
+            tileFullpath = sprintf('%s/%s/%s', dataPaths, processedDirStr, tab.Filename{1});
+        end
+        % tiles of the first volume
+        tileNum = sum(tab.ch == Ch(1) & tab.camera == Cam(1) & strcmp(tab.fullIter, fullIter{1}) ...
+            & tab.stack == stackn(1) & (~zlayerStitch | tab.z == nz(1)));
+        if exist(tileFullpath, 'file') || exist(tileFullpath, 'dir')
+            tileVoxelNum = prod(getImageSize(tileFullpath));
+            if (xcorrShift && tileNum >= 32) || size(tab, 1) * tileVoxelNum >= 32e9
+                localWorkerNum = max(1, min(8, floor(maxNumCompThreads / 3)));
+            end
         end
     end
 end
@@ -629,6 +656,11 @@ while ~all(is_done_flag | (trial_counter >= max_trial_num & ~job_status_flag), '
                             string(save16bit), tileIdx_str, flippedTile_str, processFunPath_str, strrep(mat2str(stitchMIP), ' ', ','), ...
                             string(bigStitchData), edgeArtifacts, strrep(mat2str(distBboxes), ' ', ','), string(saveMIP), ...
                             string(parseCluster), uuid, string(mccMode), configFile);
+                        % only then, so that compiled stitching jobs built before
+                        % the option still run
+                        if ~parseCluster && localWorkerNum > 1
+                            func_str = sprintf('%s,''localWorkerNum'',%d)', func_str(1 : end - 1), localWorkerNum);
+                        end
 
                         if exist(cur_tmp_fname, 'file') || (parseCluster && ~(masterCompute && xcorrShift && strcmpi(xcorrMode, 'primaryFirst') && isPrimaryCh))
                             % for cluster computing with master, check whether the job still alive. Otherwise, use waiting time

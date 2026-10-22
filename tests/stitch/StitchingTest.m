@@ -184,6 +184,55 @@ classdef StitchingTest < pktest.TestCase
             testCase.verifyEqual(slurm.callCount('squeue'), 4);
         end
 
+        function secondaryChannelUsesTheTaskSizeOfThePrimary(testCase)
+            % the secondary channel reads the per-task block info of the
+            % primary channel, whose task size depends on the local
+            % workers it was stitched with. The stub leaves no memory for
+            % the workers, so all tasks run in this MATLAB.
+            testCase.applyFixture(pktest.FunctionStubFixture('getSystemMemory', 0));
+            dataPath = testCase.createTempFolder();
+            px = testCase.XYPixelSize;
+            gtA = testCase.randomVolume([64, 104, 32]);
+            gtB = testCase.randomVolume([64, 104, 32]);
+            stageXYZ = [0, 0, 0; 40 * px, 0, 0];
+            tileIdx = [0, 0, 0; 1, 0, 0];
+            testCase.writeTiles(dataPath, gtA, [0, 0, 0; 0, 40, 0], [64, 64, 32], [], stageXYZ, tileIdx, 'cam', 'A');
+            csvFn = testCase.writeTiles(dataPath, gtB, [0, 0, 0; 0, 40, 0], [64, 64, 32], [], stageXYZ, tileIdx, 'cam', 'B');
+            opts = {'primaryCh', 'CamA_ch0', 'blendMethod', 'feather', 'batchSize', [32, 32, 16], 'blockSize', [16, 16, 16]};
+
+            testCase.stitch(dataPath, csvFn, opts{:}, 'channelPatterns', {'CamA_ch0'}, 'localWorkerNum', 4);
+            testCase.stitch(dataPath, csvFn, opts{:}, 'channelPatterns', {'CamA_ch0', 'CamB_ch0'}, 'localWorkerNum', 1);
+
+            outB = testCase.readResult(dataPath, 'matlab_stitch', strrep(testCase.StitchName, 'CamA', 'CamB'));
+            testCase.verifyEqual(outB(1 : 64, 1 : 104, 1 : 32), gtB);
+        end
+
+        function largeDatasetsUseLocalWorkers(testCase)
+            % without localWorkerNum, the volumes of datasets with 32 or more
+            % tiles per volume to register are stitched with local workers,
+            % smaller ones one task at a time in this MATLAB
+            testCase.assumeTrue(license('test', 'Distrib_Computing_Toolbox') && ~isempty(which('gcp')), ...
+                'Needs the Parallel Computing Toolbox.');
+            spy = testCase.applyFixture(pktest.FunctionSpyFixture('XR_stitching_frame_zarr_dev_v1'));
+            testCase.applyFixture(pktest.FunctionSpyFixture('pause', [], 20));
+            for nT = [4, 32]
+                dataPath = testCase.createTempFolder();
+                [x, y] = ndgrid(0 : 3, 0 : nT / 4 - 1);
+                tiles = struct('im', repmat({ones(8, 8, 2, 'uint16')}, nT, 1), 'idx', num2cell([x(:), y(:), zeros(nT, 1)], 2), ...
+                    'xyz', num2cell([x(:), y(:), zeros(nT, 1)] * 6 * testCase.XYPixelSize, 2));
+                [~, csvFn] = pktest.writeStitchTiles(dataPath, tiles);
+                testCase.stitch(dataPath, csvFn, 'xcorrShift', true, 'maxTrialNum', 1);
+            end
+            testCase.assertNumElements(spy.getCalls(), 2);
+            testCase.verifyEmpty(spy.getOption(1, 'localWorkerNum'), 'The small dataset used local workers.');
+            workerNum = max(1, min(8, floor(maxNumCompThreads / 3)));
+            if workerNum > 1
+                testCase.verifyEqual(spy.getOption(2, 'localWorkerNum'), workerNum);
+            else
+                testCase.verifyEmpty(spy.getOption(2, 'localWorkerNum'));
+            end
+        end
+
         function tiles2D(testCase)
             % single page tiles, as for the 2D phase data in
             % demo_phase_and_2photon_stitching.m
@@ -441,6 +490,34 @@ classdef StitchingTest < pktest.TestCase
                 sprintf('Feather blending of %d-slice tiles does not reproduce the ground truth.', nz));
         end
 
+        function tilesOfDifferentSizesGetTheirOwnDistanceMaps(testCase)
+            % tiles of one location with different sizes get a distance map
+            % each. Their overlap regions were cropped with a 3 x 2 bounding
+            % box, which crop3d_mex rejected (the error was printed and a
+            % MATLAB copy used instead).
+            dataPath = testCase.createTempFolder();
+            gt = testCase.randomVolume([100, 120, 32]);
+            starts = [0, 0, 0; 36, 0, 0; 0, 48, 0; 36, 48, 0];
+            % tile 1 is narrower; tile 3 still covers the columns it lacks
+            sizes = [64, 68, 32; 64, 72, 32; 64, 72, 32; 64, 72, 32];
+            tiles = struct('im', cell(4, 1), 'idx', [], 'xyz', []);
+            for i = 1 : 4
+                s = starts(i, :);
+                tiles(i).im = gt(s(1) + 1 : s(1) + sizes(i, 1), s(2) + 1 : s(2) + sizes(i, 2), s(3) + 1 : s(3) + sizes(i, 3));
+                tiles(i).idx = [s(2) > 0, s(1) > 0, 0];
+                tiles(i).xyz = s([2, 1, 3]) * testCase.XYPixelSize;
+            end
+            [~, csvFn] = pktest.writeStitchTiles(dataPath, tiles);
+
+            out = evalc('testCase.stitch(dataPath, csvFn, ''blendMethod'', ''feather'')');
+
+            testCase.verifyNumElements(dir(sprintf('%smatlab_stitch/imdist/**/*.zarr', dataPath)), 4, ...
+                'Each tile should have its own distance map.');
+            testCase.verifyEmpty(strfind(out, 'Input range for bbox'), 'Cropping the distance map regions failed.');
+            result = testCase.readResult(dataPath);
+            testCase.verifyEqual(result(1 : 100, 1 : 120, 1 : 32), gt);
+        end
+
         function localShiftMethod(testCase)
             % 'local' used to read the shift table in its layout before 812679e
             dataPath = testCase.createTempFolder();
@@ -454,6 +531,48 @@ classdef StitchingTest < pktest.TestCase
 
             out = testCase.readResult(dataPath);
             testCase.verifyEqual(out(3 : 66, 5 : 108, 3 : 34), gt);
+        end
+    end
+
+    methods (Test, TestTags = {'Integration', 'Slow'})
+        function localWorkersGiveTheSameResult(testCase)
+            % with local workers, the tiles are registered and blended (in
+            % several tasks) on a local process pool; the result is that of
+            % one task at a time in this MATLAB
+            testCase.assumeTrue(license('test', 'Distrib_Computing_Toolbox') && ~isempty(which('gcp')), ...
+                'Needs the Parallel Computing Toolbox.');
+            if isempty(gcp('nocreate'))
+                testCase.addTeardown(@() delete(gcp('nocreate')));
+            end
+            % memory for the workers whatever the machine
+            testCase.applyFixture(pktest.FunctionStubFixture('getSystemMemory', 1024));
+            px = testCase.XYPixelSize;
+            gt = testCase.randomVolume([100, 120, 32]);
+            % the third tile is listed 2 voxels off in x
+            stageXYZ = [0, 0, 0; 0, 36 * px, 0; 50 * px, 0, 0; 48 * px, 36 * px, 0];
+            opts = {'blendMethod', 'feather', 'xcorrShift', true, 'xcorrDownsample', [1, 1, 1], 'xyMaxOffset', 10, ...
+                'zMaxOffset', 5, 'batchSize', [32, 32, 16], 'blockSize', [16, 16, 16]};
+            outs = cell(2, 1);
+            mips = cell(2, 1);
+            for k = 1 : 2
+                dataPath = testCase.createTempFolder();
+                csvFn = testCase.writeTiles(dataPath, gt, [0, 0, 0; 36, 0, 0; 0, 48, 0; 36, 48, 0], ...
+                    [64, 72, 32], [], stageXYZ, [0, 0, 0; 0, 1, 0; 1, 0, 0; 1, 1, 0]);
+                workerNum = 3 - k;
+                out = evalc('testCase.stitch(dataPath, csvFn, opts{:}, ''localWorkerNum'', workerNum)');
+                outs{k} = testCase.readResult(dataPath);
+                mips{k} = readtiff(sprintf('%smatlab_stitch/MIPs/%s_MIP_z.tif', dataPath, testCase.StitchName));
+                info = load(sprintf('%smatlab_stitch/stitchInfo/%s.mat', dataPath, testCase.StitchName), 'PerBlockInfoFullpaths');
+                if k == 1
+                    testCase.verifyGreaterThan(numel(info.PerBlockInfoFullpaths), 1, 'The blending ran in one task.');
+                    testCase.verifyNumElements(strfind(out, 'on the local pool'), 2, ...
+                        'The registration and the blending tasks did not run on the local pool.');
+                else
+                    testCase.verifyNumElements(info.PerBlockInfoFullpaths, 1);
+                end
+            end
+            testCase.verifyEqual(outs{1}, outs{2}, 'The result with local workers differs.');
+            testCase.verifyEqual(mips{1}, mips{2}, 'The MIP with local workers differs.');
         end
     end
 

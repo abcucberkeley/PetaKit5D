@@ -101,6 +101,10 @@ if strcmpi(BlendMethod, 'feather')
     for i = 1 : numel(imdistFullpaths)
         dsz_mat(i, :) = getImageSize(imdistFullpaths{i});
     end
+    % distance maps of up to two batches in total are read whole at first
+    % use, instead of a region per tile and batch
+    imdists = cell(numel(imdistFullpaths), 1);
+    cacheDist = isempty(poolSize) && sum(prod(dsz_mat, 2)) <= 2 * prod(batchSize);
 end
 
 bSubSz = ceil(imSize ./ batchSize);
@@ -210,13 +214,21 @@ for i = 1 : numel(batchInds)
                 dbsz_mat(j, :) = dbsz_j;
 
                 if numel(imdistFullpaths) == 1
+                    di = 1;
                     imdistFullpath = imdistFullpaths{1};
                     dsz = dsz_mat;
                 else
-                    imdistFullpath = imdistFullpaths{imdistFileIdx(tileInd)};
-                    dsz = dsz_mat(imdistFileIdx(tileInd), :);
+                    di = imdistFileIdx(tileInd);
+                    imdistFullpath = imdistFullpaths{di};
+                    dsz = dsz_mat(di, :);
                 end
-                if isempty(poolSize)
+                if cacheDist
+                    if isempty(imdists{di})
+                        imdists{di} = readzarr(imdistFullpath);
+                    end
+                    tim_d_block = indexing4d(tim_d_block, imdists{di}, [dbCoords(1 : 3) - bCoords_c(1 : 3) + 1, j, dbCoords(4 : 6) - bCoords_c(1 : 3) + 1, j], ...
+                        [dbboxCoords(1 : 3), 1, dbboxCoords(4 : 6), 1]);
+                elseif isempty(poolSize)
                     im_d_j = readzarr(imdistFullpath, 'inputBbox', dbboxCoords);
                     tim_d_block = indexing4d(tim_d_block, im_d_j, [dbCoords(1 : 3) - bCoords_c(1 : 3) + 1, j, dbCoords(4 : 6) - bCoords_c(1 : 3) + 1, j]);                    
                 else

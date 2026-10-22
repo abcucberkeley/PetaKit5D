@@ -128,7 +128,7 @@ else
         s = mbbox(1 : 3) - mbbox_pad(1 : 3) + 1;
         t = mbbox(4 : 6) - mbbox_pad(1 : 3) + 1;
         try 
-            indexing3d_mex(im_dist, mbbox, crop3d_mex(im_dist_ij, [s', t']));
+            indexing3d_mex(im_dist, mbbox, crop3d_mex(im_dist_ij, [s, t]));
         catch ME
             disp(ME)
             im_dist(mbbox(1) : mbbox(4), mbbox(2) : mbbox(5), mbbox(3) : mbbox(6)) = im_dist_ij(s(1) : t(1), s(2) : t(2), s(3) : t(3));

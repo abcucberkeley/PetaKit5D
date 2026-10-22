@@ -65,6 +65,7 @@ ip.addParameter('maxTrialNum', 3, @(x) isnumeric(x) || ischar(x));
 ip.addParameter('unitWaitTime', 0.1, @(x) isnumeric(x) || ischar(x));
 ip.addParameter('mccMode', false, @(x) islogical(x) || ischar(x));
 ip.addParameter('configFile', '', @ischar);
+ip.addParameter('localWorkerNum', [], @(x) isnumeric(x) || ischar(x));
 
 ip.parse(dataPaths, imageListFullpaths, varargin{:});
 
@@ -127,6 +128,7 @@ maxTrialNum = pr.maxTrialNum;
 unitWaitTime = pr.unitWaitTime;
 mccMode = pr.mccMode;
 configFile = pr.configFile;
+localWorkerNum = pr.localWorkerNum;
 
 if ischar(dataPaths) && ~isempty(dataPaths) && strcmp(dataPaths(1), '{')
     dataPaths = eval(dataPaths);
@@ -263,6 +265,9 @@ end
 if ischar(mccMode)
     mccMode = str2num(mccMode);
 end
+if ischar(localWorkerNum)
+    localWorkerNum = str2num(localWorkerNum);
+end
 
 XR_matlab_stitching_wrapper(dataPaths, imageListFullpaths, resultDirName=resultDirName, ...
     streaming=streaming, channelPatterns=channelPatterns, multiLoc=multiLoc, ...
@@ -281,7 +286,7 @@ XR_matlab_stitching_wrapper(dataPaths, imageListFullpaths, resultDirName=resultD
     saveMIP=saveMIP, stitchMIP=stitchMIP, onlineStitch=onlineStitch, processFunPath=processFunPath, ...
     parseCluster=parseCluster, masterCompute=masterCompute, jobLogDir=jobLogDir, ...
     cpusPerTask=cpusPerTask, uuid=uuid, maxTrialNum=maxTrialNum, unitWaitTime=unitWaitTime, ...
-    mccMode=mccMode, configFile=configFile);
+    mccMode=mccMode, configFile=configFile, localWorkerNum=localWorkerNum);
 
 end
 

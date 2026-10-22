@@ -78,6 +78,7 @@ ip.addParameter('maxTrialNum', 3, @(x) isnumeric(x) || ischar(x));
 ip.addParameter('unitWaitTime', 30, @(x) isnumeric(x) || ischar(x));
 ip.addParameter('mccMode', false, @(x) islogical(x) || ischar(x));
 ip.addParameter('configFile', '', @ischar);
+ip.addParameter('localWorkerNum', 1, @(x) isnumeric(x) || ischar(x)); % without cluster, run tasks on up to this many local MATLAB workers
 ip.addParameter('debug', false, @(x) islogical(x) || ischar(x));
 
 ip.parse(tileFullpaths, coordinates, varargin{:});
@@ -156,6 +157,7 @@ maxTrialNum = pr.maxTrialNum;
 unitWaitTime = pr.unitWaitTime;
 mccMode = pr.mccMode;
 configFile = pr.configFile;
+localWorkerNum = pr.localWorkerNum;
 debug = pr.debug;
 
 if ischar(tileFullpaths) && ~isempty(tileFullpaths) && strcmp(tileFullpaths(1), '{')
@@ -338,6 +340,9 @@ end
 if ischar(mccMode)
     mccMode = str2num(mccMode);
 end
+if ischar(localWorkerNum)
+    localWorkerNum = str2num(localWorkerNum);
+end
 if ischar(debug)
     debug = str2num(debug);
 end
@@ -363,7 +368,7 @@ XR_stitching_frame_zarr_dev_v1(tileFullpaths, coordinates, ResultPath=ResultPath
     bigStitchData=bigStitchData, maxFileNumPerFolder=maxFileNumPerFolder, parseCluster=parseCluster, ...
     masterCompute=masterCompute, jobLogDir=jobLogDir, cpusPerTask=cpusPerTask, ...
     uuid=uuid, maxTrialNum=maxTrialNum, unitWaitTime=unitWaitTime, mccMode=mccMode, ...
-    configFile=configFile, debug=debug);
+    configFile=configFile, localWorkerNum=localWorkerNum, debug=debug);
 
 end
 
