@@ -41,6 +41,79 @@ classdef StitchingTest < pktest.TestCase
             testCase.verifyEqual(size(info.pTileSizes, 1), 4);
         end
 
+        function mipIsMadeBeforePublishing(testCase)
+            % the stitching wrapper and the pipeline count a volume as
+            % stitched once its result exists; the stitched MIP was written
+            % after the result was moved into place
+            dataPath = testCase.createTempFolder();
+            gt = testCase.randomVolume([100, 120, 32]);
+            csvFn = testCase.writeTiles(dataPath, gt, [0, 0, 0; 36, 0, 0; 0, 48, 0; 36, 48, 0], [64, 72, 32]);
+            moves = testCase.applyFixture(pktest.MovefileSpyFixture);
+            testCase.stitch(dataPath, csvFn);
+            resultFn = sprintf('%smatlab_stitch/%s.zarr', dataPath, testCase.StitchName);
+            testCase.assertTrue(moves.wasMoved(resultFn), 'The result was not moved into place.');
+            published = moves.filesWhenMoved(resultFn);
+            testCase.verifyTrue(ismember(sprintf('MIPs/%s_MIP_z.tif', testCase.StitchName), published), ...
+                'The MIP was written after the result was moved into place.');
+            added = setdiff(pktest.MovefileSpyFixture.listFiles([dataPath, 'matlab_stitch']), ...
+                [published; {[testCase.StitchName, '.zarr']}]);
+            testCase.verifyEmpty(added, 'Files were written after the result was moved into place.');
+        end
+
+        function largeVolumeMIPsAreMadeBeforePublishing(testCase)
+            % volumes over half the memory get their MIPs from XR_MIP_zarr,
+            % which names them after its input: the temporary result must
+            % be named after the final one
+            dataPath = testCase.createTempFolder();
+            gt = testCase.randomVolume([100, 120, 32]);
+            csvFn = testCase.writeTiles(dataPath, gt, [0, 0, 0; 36, 0, 0; 0, 48, 0; 36, 48, 0], [64, 72, 32]);
+            testCase.applyFixture(pktest.FunctionStubFixture('getSystemMemory', 0));
+            moves = testCase.applyFixture(pktest.MovefileSpyFixture);
+            testCase.stitch(dataPath, csvFn);
+            resultFn = sprintf('%smatlab_stitch/%s.zarr', dataPath, testCase.StitchName);
+            testCase.assertTrue(moves.wasMoved(resultFn), 'The result was not moved into place.');
+            mips = strcat('MIPs/', testCase.StitchName, {'_MIP_y.tif'; '_MIP_x.tif'; '_MIP_z.tif'});
+            testCase.verifyEqual(ismember(mips, moves.filesWhenMoved(resultFn)), true(3, 1), ...
+                'MIPs were missing when the result was moved into place.');
+            out = testCase.readResult(dataPath);
+            mip = readtiff(sprintf('%smatlab_stitch/MIPs/%s_MIP_z.tif', dataPath, testCase.StitchName));
+            testCase.verifyEqual(mip, max(out, [], 3), 'The z MIP does not match the stitched volume.');
+        end
+
+        function separateBlendWritesEachTileOnTheCanvas(testCase)
+            % blendMethod 'separate' writes each tile, padded to the stitched
+            % canvas, as its own result (cropped with XR_crop_zarr, with MIPs)
+            dataPath = testCase.createTempFolder();
+            gt = testCase.randomVolume([100, 120, 32]);
+            starts = [0, 0, 0; 36, 0, 0; 0, 48, 0; 36, 48, 0];
+            tileSize = [64, 72, 32];
+            csvFn = testCase.writeTiles(dataPath, gt, starts, tileSize);
+
+            testCase.stitch(dataPath, csvFn, 'blendMethod', 'separate');
+
+            resultPath = [dataPath, 'matlab_stitch/'];
+            testCase.verifyTrue(isfolder([resultPath, testCase.StitchName, '.zarr']), 'The stitched result is missing.');
+            outs = dir([resultPath, '*.zarr']);
+            outs = setdiff({outs.name}, {[testCase.StitchName, '.zarr']});
+            testCase.assertNumElements(outs, 4);
+            placed = zeros(0, 3);
+            for i = 1 : numel(outs)
+                out = readzarr([resultPath, outs{i}]);
+                testCase.verifyEqual(size(out), [102, 122, 34], outs{i});
+                % the tile sits at its position, with zeros around it
+                [y, x, z] = ind2sub(size(out), find(out));
+                s = [min(y), min(x), min(z)] - 1;
+                placed(end + 1, :) = s;
+                tile = zeros(size(out), 'like', out);
+                tile(s(1) + 1 : s(1) + tileSize(1), s(2) + 1 : s(2) + tileSize(2), s(3) + 1 : s(3) + tileSize(3)) = ...
+                    gt(s(1) + 1 : s(1) + tileSize(1), s(2) + 1 : s(2) + tileSize(2), s(3) + 1 : s(3) + tileSize(3));
+                testCase.verifyEqual(out, tile, outs{i});
+                mip = readtiff(sprintf('%sMIPs/%s_MIP_z.tif', resultPath, outs{i}(1 : end - 5)));
+                testCase.verifyEqual(mip, max(out, [], 3), outs{i});
+            end
+            testCase.verifyEqual(sortrows(placed), sortrows(starts), 'The tiles are not at their positions.');
+        end
+
         function tiles2D(testCase)
             % single page tiles, as for the 2D phase data in
             % demo_phase_and_2photon_stitching.m

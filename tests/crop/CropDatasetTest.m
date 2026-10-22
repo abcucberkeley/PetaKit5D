@@ -62,6 +62,40 @@ classdef CropDatasetTest < pktest.TestCase
             end
         end
 
+        function largeZarrMakesMIPsBeforePublishing(testCase)
+            % the job framework counts a crop as done, and may cancel its
+            % job, once the result exists; the large file path moved the
+            % result into place and then made its MIPs
+            testCase.writeDataset('zarr');
+            moves = testCase.applyFixture(pktest.MovefileSpyFixture);
+            XR_crop_dataset(testCase.DataPath, testCase.Bbox, 'channelPatterns', testCase.Channels, ...
+                'zarrFile', true, 'largeFile', true, 'batchSize', [16, 16, 4], 'blockSize', [8, 8, 4], ...
+                'parseCluster', false, 'masterCompute', true);
+            for i = 1 : 2
+                cropFn = [testCase.DataPath, 'Cropped/', testCase.Names{i}, '.zarr'];
+                testCase.assertTrue(moves.wasMoved(cropFn), sprintf('%s was not moved into place.', testCase.Names{i}));
+                mips = strcat('MIPs/', testCase.Names{i}, {'_MIP_y.tif'; '_MIP_x.tif'; '_MIP_z.tif'});
+                testCase.verifyEqual(ismember(mips, moves.filesWhenMoved(cropFn)), true(3, 1), ...
+                    sprintf('MIPs of %s were made after it was moved into place.', testCase.Names{i}));
+                mip = readtiff([testCase.DataPath, 'Cropped/MIPs/', testCase.Names{i}, '_MIP_z.tif']);
+                testCase.verifyEqual(mip, max(testCase.crop(testCase.Images{i}, testCase.Bbox), [], 3), testCase.Names{i});
+            end
+        end
+
+        function largeZarrPassesJobSettingsToMIPs(testCase)
+            % XR_crop_zarr passed parseCluster to XR_MIP_zarr, but not
+            % masterCompute or jobLogDir
+            testCase.writeDataset('zarr');
+            spy = testCase.applyFixture(pktest.FunctionSpyFixture('XR_MIP_zarr'));
+            XR_crop_zarr([testCase.DataPath, testCase.Names{1}, '.zarr'], [testCase.DataPath, 'crop.zarr'], ...
+                testCase.Bbox, 'batchSize', [16, 16, 4], 'blockSize', [8, 8, 4], 'parseCluster', false, ...
+                'masterCompute', false, 'jobLogDir', [testCase.DataPath, 'logs']);
+            testCase.assertNotEmpty(spy.getCalls(), 'XR_MIP_zarr was not called.');
+            testCase.verifyEqual(spy.getOption(1, 'parseCluster'), false);
+            testCase.verifyEqual(spy.getOption(1, 'masterCompute'), false);
+            testCase.verifyEqual(spy.getOption(1, 'jobLogDir'), [testCase.DataPath, 'logs']);
+        end
+
         function padPastImageEdge(testCase)
             % bbox starts before and ends after the image in every axis
             testCase.writeDataset('tif');

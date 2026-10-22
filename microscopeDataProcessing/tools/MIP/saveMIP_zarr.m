@@ -27,6 +27,7 @@ if isempty(dtype)
 end
 
 axis_strs = {'y', 'x', 'z'};
+uuid = get_uuid();
 
 im = [];
 if sum(axis > 0) > 1
@@ -43,10 +44,14 @@ for i = 1 : 3
     
     MIP = cast(MIP, dtype);
     MIP = squeeze(MIP);
-    writetiff(MIP, MIPFullname);
-    if ~exist(MIPFullname, 'file')
-        imwrite(MIP, MIPFullname);
+    % write to a temporary file and rename it: the job framework counts a MIP
+    % task as done once its MIP exists
+    MIPTmpname = sprintf('%s_%s.tif', MIPFullname(1 : end - 4), uuid);
+    writetiff(MIP, MIPTmpname);
+    if ~exist(MIPTmpname, 'file')
+        imwrite(MIP, MIPTmpname);
     end
+    movefile(MIPTmpname, MIPFullname);
 end
 
 end

@@ -83,6 +83,19 @@ classdef TiffZarrConversionTest < pktest.TestCase
             end
         end
 
+        function resaveKeepsResultOfAnotherCopy(testCase)
+            % two copies of a task (e.g. a retry next to a slow first try)
+            % share the temporary result; the copy that finished second
+            % deleted the result the first one had moved into place
+            [dataPath, ~, names] = testCase.writeDataset('zarr');
+            outFn = [dataPath, 'resaved.zarr'];
+            % the other copy moves the result into place while this one runs
+            testCase.applyFixture(pktest.FrameworkSpyFixture(@() movefile([outFn, '_test'], outFn)));
+            XR_resaveSingleZarr([dataPath, names{1}, '.zarr'], outFn, 'blockSize', [8, 8, 4], ...
+                'parseCluster', false, 'uuid', 'test');
+            testCase.verifyTrue(isfolder(outFn), 'The result of the other copy was deleted.');
+        end
+
         function resaveLargeZarrInBatches(testCase)
             [dataPath, ims, names] = testCase.writeDataset('zarr');
             b = [5, 7, 3, 30, 33, 10];

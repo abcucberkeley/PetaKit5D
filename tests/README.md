@@ -246,6 +246,16 @@ update_golden_data('decon_omw')   % or update_golden_data() for all
   the test sets (pending, running, done). To test what a wrapper passes on,
   replace the callee with `pktest.FrameworkSpyFixture` (the job framework) or
   `pktest.FunctionSpyFixture('name')` (any function without outputs).
+- To test the order in which a task writes its files, apply
+  `pktest.MovefileSpyFixture`: it records every `movefile` with the files
+  next to its destination at that moment. A task must write everything else
+  before it moves its result into place, because the job framework counts it
+  as done (and may cancel its job) once the result exists.
+  `pktest.FrameworkSpyFixture(onCall, done)` can also run a function inside
+  each framework call (e.g., another copy of a task publishing its result) and
+  report the tasks as failed, and `pktest.FunctionStubFixture('name', out1, ...)`
+  replaces a function with one that returns fixed values (e.g.,
+  `getSystemMemory` to reach the large-data branches with small data).
 - Prefer exact or analytic checks (round trips, comparison with plain
   MATLAB code, known geometry) over stored numbers. Use
   `verifyImagesClose` with a justified tolerance where results are not exact.

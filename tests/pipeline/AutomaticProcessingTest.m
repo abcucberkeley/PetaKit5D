@@ -139,6 +139,28 @@ classdef AutomaticProcessingTest < pktest.TestCase
             waits = cellfun(@(x) x{1}, pauses.getCalls());
             testCase.verifyFalse(any(waits >= 30), sprintf('The pipeline waited %s s.', mat2str(waits)));
         end
+
+        function localRunSubmitsNoStitchingJobs(testCase)
+            % the stitching task didn't get parseCluster, so a local run on a
+            % machine with Slurm stitched in Slurm jobs
+            testCase.assumeFalse(ispc, 'The fake Slurm needs a POSIX shell.');
+            px = testCase.XYPixelSize;
+            dataPath = testCase.createTempFolder();
+            raw = uint16(pktest.beads([80, 64, 40], [20, 30, 15; 64, 28, 20], 2, 3000, 200));
+            tiles = struct('im', {raw(1 : 48, :, :), raw(33 : 80, :, :)}, 'idx', {[0, 0, 0], [0, 1, 0]}, ...
+                'xyz', {[0, 0, 0], [0, 32 * px, 0]});
+            [~, csvFn] = pktest.writeStitchTiles(dataPath, tiles);
+            slurm = testCase.applyFixture(pktest.FakeSlurmFixture);
+
+            XR_microscopeAutomaticProcessing(dataPath, 'xyPixelSize', px, 'dz', testCase.Dz, 'reverse', true, ...
+                'channelPatterns', {'CamA_ch0'}, 'save16bit', [true, true], 'streaming', false, 'deskew', true, ...
+                'rotate', true, 'stitch', true, 'DSRCombined', true, 'imageListFullpaths', {csvFn}, ...
+                'axisOrder', '-x,y,z', 'parseCluster', false, 'cpusPerTask', 4);
+
+            testCase.verifyEqual(slurm.callCount('sbatch'), 0, 'The local run submitted Slurm jobs.');
+            stitchFn = [dataPath, 'matlab_stitch/Scan_Iter_0000_0000_CamA_ch0_CAM1_stack0000_488nm_0000000msec_0000000000msecAbs.zarr'];
+            testCase.verifyTrue(exist(stitchFn, 'dir') == 7, 'The stitched result is missing.');
+        end
     end
 
     methods (Access = private)

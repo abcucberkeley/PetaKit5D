@@ -288,6 +288,14 @@ else
     im = single(im);
 end
 
+% the MIP comes first: the caller counts the file as done once deconFullpath
+% exists
+tmp_xy = max(im,[],3);
+deconMIPPath = sprintf('%s/MIPs/', deconPath);
+mkdir(deconMIPPath);
+deconMIPFullPath = sprintf('%s%s_MIP_z.tif', deconMIPPath, fsname);
+writetiff(tmp_xy, deconMIPFullPath);
+
 if saveZarr
     deconTmpPath = sprintf('%s_%s.zarr', deconFullpath(1 : end - 5), uuid);
     writezarr(im, deconTmpPath);
@@ -296,12 +304,6 @@ else
     writetiff(im, deconTmpPath);
 end
 movefile(deconTmpPath, deconFullpath);
-
-tmp_xy = max(im,[],3);
-deconMIPPath = sprintf('%s/MIPs/', deconPath);
-mkdir(deconMIPPath);
-deconMIPFullPath = sprintf('%s%s_MIP_z.tif', deconMIPPath, fsname);
-writetiff(tmp_xy, deconMIPFullPath);
 toc(t0);
 
 end

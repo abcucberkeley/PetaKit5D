@@ -276,6 +276,20 @@ if ~all(is_done_flag, 'all')
     error('The decon of some chunks are missing!');
 end
 
+% generate MIPs from the temporary result: the caller counts the file as
+% done once deconFullpath exists. The MIPs are named after the final result,
+% as XR_MIP_zarr takes '.zarr_<uuid>' as the extension. masterCompute is the
+% caller's (it is turned off above for GPU jobs only).
+if exist(deconTmppath, 'dir')
+    deconMIPPath = sprintf('%s/MIPs/', deconPath);
+    if ~exist(deconMIPPath, 'dir')
+        mkdir(deconMIPPath);
+        fileattrib(deconMIPPath, '+w', 'g');
+    end
+    XR_MIP_zarr(deconTmppath, axis=[1, 1, 1], parseCluster=parseCluster, masterCompute=pr.masterCompute, ...
+        jobLogDir=jobLogDir, mccMode=mccMode, configFile=configFile);
+end
+
 if exist(deconFullpath, 'dir') && exist(deconTmppath, 'dir')
     rmdir(deconFullpath, 's');
 end
@@ -285,14 +299,6 @@ end
 if exist(zarrFlagPath, 'dir')
     rmdir(zarrFlagPath, 's');
 end
-
-% generate MIP z file
-deconMIPPath = sprintf('%s/MIPs/', deconPath);
-if ~exist(deconMIPPath, 'dir')
-    mkdir(deconMIPPath);
-    fileattrib(deconMIPPath, '+w', 'g');
-end
-XR_MIP_zarr(deconFullpath, axis=[1, 1, 1], mccMode=mccMode, configFile=configFile);
 toc
 
 end

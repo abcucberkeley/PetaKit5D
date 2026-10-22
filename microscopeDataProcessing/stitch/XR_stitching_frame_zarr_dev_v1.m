@@ -672,12 +672,14 @@ end
 	stitchInfoFullpath=stitchInfoFullpath, stitch2D=stitch2D, uuid=uuid, taskSize=taskSize, ...
 	maxFileNumPerFolder=maxFileNumPerFolder, parseCluster=parseCluster, mccMode=mccMode, configFile=configFile);
 
-% initial stitched block image and save header in the disk
+% initial stitched block image and save header in the disk. The temporary
+% result sits next to the final one and is named after it, so that it is
+% published by a rename and XR_MIP_zarr names its MIPs after the final one.
 if ispc && numel(uuid) > 4
 	% for PC, the path length limit is 260, so make it shorter in case of beyond the limit
-	nv_tmp_fullname = sprintf('%s/%s/%s_nv_%s', dataPath, ResultDir, nv_fsname, uuid(1:4));        
+	nv_tmp_fullname = sprintf('%s_%s', nv_fullname, uuid(1:4));
 else
-	nv_tmp_fullname = sprintf('%s/%s/%s_nv_%s', dataPath, ResultDir, nv_fsname, uuid);    
+	nv_tmp_fullname = sprintf('%s_%s', nv_fullname, uuid);
 end
 if saveMultires
 	mkdir(nv_tmp_fullname);
@@ -909,6 +911,27 @@ if saveMultires
 	XR_multiresZarrGeneration(zarrFullpath, outputFullpath, varargin)    
 end
 
+% save MIP from the temporary result: the caller counts the stitching as done
+% once nv_fullname exists
+if saveMIP && exist(nv_tmp_fullname, 'dir')
+	t0 = tic;    
+	stcMIPPath = sprintf('%s/%s/MIPs/', dataPath, ResultDir);
+	if ~exist(stcMIPPath, 'dir')
+		mkdir(stcMIPPath);
+		fileattrib(stcMIPPath, '+w', 'g');
+	end
+	stcMIPname = sprintf('%s%s_MIP_z.tif', stcMIPPath, nv_fsname);
+	% for data greater than half of the system memory, use the cluster based MIP.
+	totalMem = getSystemMemory();
+    if prod(nvSize) * byte_num / 2^30 < totalMem / 2
+		saveMIP_zarr(nv_tmp_raw_fullname, stcMIPname, dtype=dtype, axis=[0, 0, 1]);
+    else
+        XR_MIP_zarr(nv_tmp_fullname, axis=[1, 1, 1], parseCluster=parseCluster, ...
+            masterCompute=masterCompute, jobLogDir=jobLogDir, mccMode=mccMode, configFile=configFile);
+    end
+    toc(t0);
+end
+
 % nv_fullname = sprintf('%s/%s/%s.zarr', dataPath, ResultDir, fsname_first(1:end-21));
 if exist(nv_tmp_fullname, 'dir')
 	if ~exist(nv_fullname, 'dir')
@@ -921,26 +944,6 @@ if exist(nv_tmp_fullname, 'dir')
 			rmdir(nv_tmp_fullname, 's');
 		end
 	end
-end
-
-% save MIP
-if saveMIP
-	t0 = tic;    
-	stcMIPPath = sprintf('%s/%s/MIPs/', dataPath, ResultDir);
-	if ~exist(stcMIPPath, 'dir')
-		mkdir(stcMIPPath);
-		fileattrib(stcMIPPath, '+w', 'g');
-	end
-	stcMIPname = sprintf('%s%s_MIP_z.tif', stcMIPPath, nv_fsname);
-	% for data greater than half of the system memory, use the cluster based MIP.
-	totalMem = getSystemMemory();
-    if prod(nvSize) * byte_num / 2^30 < totalMem / 2
-		saveMIP_zarr(nv_fullname, stcMIPname, dtype=dtype, axis=[0, 0, 1]);
-    else
-        XR_MIP_zarr(nv_fullname, axis=[1, 1, 1], parseCluster=parseCluster, ...
-            mccMode=mccMode, configFile=configFile);
-    end
-    toc(t0);
 end
 
 if exist(nv_tmp_fullname, 'dir')  

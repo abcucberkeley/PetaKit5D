@@ -77,6 +77,27 @@ classdef MIPTest < pktest.TestCase
             testCase.verifyFalse(exist([dataPath, 'out_MIP_x.tif'], 'file') > 0);
         end
 
+        function mipsAreMovedIntoPlace(testCase)
+            % XR_MIP_wrapper's tasks count as done once their MIPs exist, so a
+            % MIP written in place could be seen, and its job cancelled,
+            % while half written
+            dataPath = testCase.createTempFolder();
+            im = uint16(randi(60000, testCase.ImSize));
+            writetiff(im, [dataPath, 'im.tif']);
+            writezarr(im, [dataPath, 'im.zarr']);
+            moves = testCase.applyFixture(pktest.MovefileSpyFixture);
+            saveMIP_tiff([dataPath, 'im.tif'], [dataPath, 'tif_MIP_z.tif'], 'axis', [1, 1, 1]);
+            saveMIP_zarr([dataPath, 'im.zarr'], [dataPath, 'zarr_MIP_z.tif'], 'axis', [1, 1, 1]);
+            for f = {'tif', 'zarr'}
+                testCase.verifyMIPs([dataPath, f{1}], im, 'uint16');
+                for a = {'y', 'x', 'z'}
+                    fn = sprintf('%s%s_MIP_%s.tif', dataPath, f{1}, a{1});
+                    testCase.verifyTrue(moves.wasMoved(fn), sprintf('%s was written in place.', fn));
+                end
+            end
+            testCase.verifyEqual(numel(dir([dataPath, '*.tif'])), 7, 'Temporary files were left behind.');
+        end
+
         function maxPoolingMatchesBlockwiseMax(testCase, poolSize, poolType)
             im = cast(rand([23, 19, 11]) * 1000, poolType);
             expected = testCase.blockMax(im, poolSize);

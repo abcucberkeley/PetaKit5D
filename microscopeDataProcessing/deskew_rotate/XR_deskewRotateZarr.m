@@ -283,6 +283,24 @@ elseif parseParfor
         'GPUJob', GPUJob, 'uuid', uuid);
 end
 
+if ~all(is_done_flag)
+    error('Some blocks are not finished!');
+end
+
+% generate MIPs from the temporary result: the job framework counts the task
+% as done (and may cancel its job) once dsrFullpath exists. The MIPs are
+% named after the final result, as XR_MIP_zarr takes '.zarr_<uuid>' as the
+% extension.
+if saveMIP && exist(dsrTmppath, 'dir')
+    dsrMIPPath = sprintf('%s/MIPs/', dsrPath);
+    if ~exist(dsrMIPPath, 'dir')
+        mkdir(dsrMIPPath);
+        fileattrib(dsrMIPPath, '+w', 'g');
+    end
+    XR_MIP_zarr(dsrTmppath, parseCluster=parseCluster, masterCompute=masterCompute, ...
+        jobLogDir=jobLogDir, mccMode=mccMode, configFile=configFile);
+end
+
 if exist(dsrFullpath, 'dir') && exist(dsrTmppath, 'dir')
     rmdir(dsrFullpath, 's');
 end
@@ -290,17 +308,6 @@ if exist(dsrTmppath, 'dir')
     movefile(dsrTmppath, dsrFullpath);
 end
 rmdir(zarrFlagPath, 's');
-
-% generate MIP z file
-if saveMIP
-    dsrMIPPath = sprintf('%s/MIPs/', dsrPath);
-    if ~exist(dsrMIPPath, 'dir')
-        mkdir(dsrMIPPath);
-        fileattrib(dsrMIPPath, '+w', 'g');
-    end
-    XR_MIP_zarr(dsrFullpath, parseCluster=parseCluster, masterCompute=masterCompute, ...
-        jobLogDir=jobLogDir, mccMode=mccMode, configFile=configFile);
-end
 toc
 
 end

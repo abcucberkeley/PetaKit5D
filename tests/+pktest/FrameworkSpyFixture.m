@@ -3,12 +3,26 @@ classdef FrameworkSpyFixture < matlab.unittest.fixtures.Fixture
     % its arguments, runs nothing, and reports every task as done. Used to
     % test what the data wrappers pass to the job framework (e.g.,
     % memAllocate). The spy is first on the path while the fixture is set up.
+    % Optional constructor arguments: a function that runs inside each call,
+    % e.g. to change files as other jobs would while the framework runs, and
+    % whether the calls report their tasks as done (default true).
 
     properties (SetAccess = private)
         Folder
+        OnCall
+        Done = true
     end
 
     methods
+        function fixture = FrameworkSpyFixture(onCall, done)
+            if nargin > 0
+                fixture.OnCall = onCall;
+            end
+            if nargin > 1
+                fixture.Done = done;
+            end
+        end
+
         function setup(fixture)
             fixture.Folder = strrep(tempname, '\', '/');
             mkdir(fixture.Folder);
@@ -24,11 +38,23 @@ classdef FrameworkSpyFixture < matlab.unittest.fixtures.Fixture
                 'calls{end + 1} = struct(''inputFullpaths'', {inputFullpaths}, ''outputFullpaths'', {outputFullpaths}, ...'
                 '    ''funcStrs'', {funcStrs}, ''options'', {varargin});'
                 'save(spyFn, ''calls'');'
-                'is_done_flag = true(numel(inputFullpaths), 1);'
+                'onCallFn = [fileparts(mfilename(''fullpath'')), ''/onCall.mat''];'
+                'if exist(onCallFn, ''file'')'
+                '    a = load(onCallFn);'
+                '    a.onCall();'
+                'end'
+                'a = load([fileparts(mfilename(''fullpath'')), ''/done.mat'']);'
+                'is_done_flag = repmat(a.done, numel(inputFullpaths), 1);'
                 'end'};
             fid = fopen([fixture.Folder, '/generic_computing_frameworks_wrapper.m'], 'w');
             fprintf(fid, '%s\n', lines{:});
             fclose(fid);
+            if ~isempty(fixture.OnCall)
+                onCall = fixture.OnCall;
+                save([fixture.Folder, '/onCall.mat'], 'onCall');
+            end
+            done = fixture.Done;
+            save([fixture.Folder, '/done.mat'], 'done');
             addpath(fixture.Folder, '-begin');
             fixture.SetupDescription = 'Replaced generic_computing_frameworks_wrapper with a spy';
         end
@@ -62,6 +88,12 @@ classdef FrameworkSpyFixture < matlab.unittest.fixtures.Fixture
                     value = options{i + 1};
                 end
             end
+        end
+    end
+
+    methods (Access = protected)
+        function [tf] = isCompatible(fixture, other)
+            tf = isempty(fixture.OnCall) && isempty(other.OnCall) && isequal(fixture.Done, other.Done);
         end
     end
 end

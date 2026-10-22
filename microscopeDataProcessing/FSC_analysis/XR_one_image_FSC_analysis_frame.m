@@ -84,7 +84,11 @@ if n == 1
     res_cell = res_cell{1};
 end
 
-save('-v7.3', fnout, 'fsc_mu', 'res_mu', 'fsc_cell', 'res_cell', 'centers', 'bbox');
+% save to a temporary file and rename it: the job framework counts the task
+% as done once fnout exists
+fnoutTmp = sprintf('%s_%s.mat', fnout(1 : end - 4), get_uuid());
+save('-v7.3', fnoutTmp, 'fsc_mu', 'res_mu', 'fsc_cell', 'res_cell', 'centers', 'bbox');
+movefile(fnoutTmp, fnout);
 
 end
             

@@ -183,7 +183,11 @@ end
 
 pcoords = pcoords(include_flag, :);
 
-save('-v7.3', info_fn, 'pcoords', 'pr');
+% save to a temporary file and rename it: the job framework counts the task
+% as done once info_fn exists
+info_tmp_fn = sprintf('%s_%s.mat', info_fn(1 : end - 4), get_uuid());
+save('-v7.3', info_tmp_fn, 'pcoords', 'pr');
+movefile(info_tmp_fn, info_fn);
 
 fprintf('Done!\n');
 toc

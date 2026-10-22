@@ -136,6 +136,40 @@ classdef DeskewRotateDataWrapperTest < pktest.TestCase
             testCase.verifyEqual(spy.getOption(1, 'jobLogDir'), [dataPath, 'logs']);
         end
 
+        function largeFileMakesMIPsBeforePublishing(testCase)
+            % the job framework counts a task as done, and may cancel its
+            % job, once the result exists; the large file path moved the
+            % result into place and then made its MIPs
+            dataPath = testCase.createTempFolder();
+            writezarr(testCase.makeFrame(1), [dataPath, testCase.FsnA0, '.zarr']);
+            moves = testCase.applyFixture(pktest.MovefileSpyFixture);
+            testCase.runWrapper(dataPath, 'zarrFile', true, 'largeFile', true, 'batchSize', [16, 1024, 1024], ...
+                'blockSize', [16, 64, 64]);
+            dsrFn = [dataPath, 'DSR/', testCase.FsnA0, '.zarr'];
+            testCase.assertTrue(moves.wasMoved(dsrFn), 'The result was not moved into place.');
+            published = moves.filesWhenMoved(dsrFn);
+            mips = strcat('MIPs/', testCase.FsnA0, {'_MIP_y.tif'; '_MIP_x.tif'; '_MIP_z.tif'});
+            testCase.verifyEqual(ismember(mips, published), true(3, 1), 'MIPs were made after the result was moved into place.');
+            added = setdiff(pktest.MovefileSpyFixture.listFiles([dataPath, 'DSR']), [published; {[testCase.FsnA0, '.zarr']}]);
+            testCase.verifyEmpty(added, 'Files were written after the result was moved into place.');
+        end
+
+        function largeFileWithFailedBlocksIsNotPublished(testCase)
+            % when blocks still failed after the retries, the large file path
+            % moved the incomplete result into place, so it counted as done
+            dataPath = testCase.createTempFolder();
+            frameFn = [dataPath, testCase.FsnA0, '.zarr'];
+            writezarr(testCase.makeFrame(1), frameFn);
+            % a block framework that reports every block as failed; without
+            % MIPs, which would fail on the missing blocks too
+            testCase.applyFixture(pktest.FrameworkSpyFixture([], false));
+            testCase.verifyError(@() XR_deskewRotateZarr(frameFn, testCase.XYPixelSize, testCase.Dz, ...
+                'skewAngle', testCase.SkewAngle, 'reverse', true, 'batchSize', [16, 1024, 1024], ...
+                'blockSize', [16, 64, 64], 'saveMIP', false, 'parseCluster', false), ?MException);
+            testCase.verifyFalse(isfolder([dataPath, 'DSR/', testCase.FsnA0, '.zarr']), ...
+                'An incomplete result was moved into place.');
+        end
+
         function flatFieldUsesEachChannelsImages(testCase)
             [dataPath, frames] = testCase.writeDataset();
             bg = zeros(testCase.RawSize(1 : 2), 'single') + 100;

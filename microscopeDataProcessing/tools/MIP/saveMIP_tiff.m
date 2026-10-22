@@ -24,6 +24,7 @@ pr = ip.Results;
 dtype = pr.dtype;
 axis = pr.axis;
 inputBbox = pr.inputBbox;
+uuid = get_uuid();
 
 if isempty(inputBbox)
     im = readtiff(frameFullname);
@@ -51,7 +52,11 @@ for i = 1 : 3
             MIPFullname = sprintf('%s_MIP_z.tif', MIPFullname(1 : end - 10));
     end
     MIP = cast(MIP, dtype);
-    writetiff(MIP, MIPFullname);
+    % write to a temporary file and rename it: the job framework counts a MIP
+    % task as done once its MIP exists
+    MIPTmpname = sprintf('%s_%s.tif', MIPFullname(1 : end - 4), uuid);
+    writetiff(MIP, MIPTmpname);
+    movefile(MIPTmpname, MIPFullname);
 end
 
 % if ~exist(MIPFullname, 'file')

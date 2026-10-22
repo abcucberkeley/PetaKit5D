@@ -115,8 +115,12 @@ title( ['Overall OTF linecuts From ', source_descrip], 'FontSize', 14);
 legend([{'OTF along kz','OTF along kx','Bowtie OTF along kx', 'RW OTF along kz',  'RW OTF along kx', 'RW Bowtie OTF along kz'}]);
 
 f0 = gcf();
-print(f0, '-painters','-dpng', '-loose', figureFullname);
 print(f0, '-painters','-dpdf', '-loose', [figureFullname(1:end-4) '.pdf']);
+% the PNG is the result the job framework checks: write it last, under a
+% temporary name first
+figureTmpname = sprintf('%s_%s.png', figureFullname(1:end-4), uuid);
+print(f0, '-painters','-dpng', '-loose', figureTmpname);
+movefile(figureTmpname, figureFullname);
 
 if ~visible
     close all;

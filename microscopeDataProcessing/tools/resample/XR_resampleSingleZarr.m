@@ -151,11 +151,17 @@ if ~all(is_done_flag)
     error('%d / %d tasks failed!', sum(~is_done_flag), numel(is_done_flag));
 end
 
-if exist(rsFullpath, 'dir')
+% another copy of this task (e.g., a retry) may have published the result
+% from the same temporary result already
+if exist(rsFullpath, 'dir') && exist(rsTmpPath, 'dir')
     rmdir(rsFullpath, 's');
 end
-movefile(rsTmpPath, rsFullpath);
-rmdir(zarrFlagPath, 's');
+if exist(rsTmpPath, 'dir')
+    movefile(rsTmpPath, rsFullpath);
+end
+if exist(zarrFlagPath, 'dir')
+    rmdir(zarrFlagPath, 's');
+end
 % fprintf('Done!\n')
 
 end

@@ -15,6 +15,7 @@ classdef PSFAnalysisTest < pktest.TestCase
             writetiff(uint16(pktest.beads([64, 64, 101], [32, 32, 51], [1.6, 3], 2000, 100)), [psfPath, fsn, '.tif']);
             rwFn = [psfPath, 'RW_PSFs/rw.tif'];
             writetiff(single(pktest.beads([128, 128, 101], [64, 64, 51], [2, 6], 1, 0)), rwFn);
+            moves = testCase.applyFixture(pktest.MovefileSpyFixture);
 
             XR_psf_analysis_wrapper({psfPath}, 'xyPixelSize', 0.108, 'dz', 0.3, 'skewAngle', 32.45, ...
                 'channelPatterns', {'CamA_ch0'}, 'channels', 488, 'deskew', true, 'RWFn', {rwFn}, ...
@@ -25,9 +26,31 @@ classdef PSFAnalysisTest < pktest.TestCase
             ds = readtiff([psfPath, 'DS/', fsn, '.tif']);
             testCase.verifyEqual(size(ds, [1, 3]), [64, 101]);
             testCase.verifyGreaterThan(size(ds, 2), 64);
-            for f = {['wT_', fsn, '.png'], ['comp_', fsn, '.png'], [fsn, '_infos.mat'], 'RW_info.mat'}
+            for f = {['wT_', fsn, '.png'], ['wT_', fsn, '.pdf'], ['comp_', fsn, '.png'], ['comp_', fsn, '.pdf'], ...
+                    [fsn, '_infos.mat'], 'RW_info.mat'}
                 testCase.verifyTrue(exist([resultPath, f{1}], 'file') == 2, sprintf('Missing %s.', f{1}));
             end
+
+            % the job framework counts the task as done, and may cancel its
+            % job, once the wT_ PNG exists; the PDF was printed after it
+            pngFn = [resultPath, 'wT_', fsn, '.png'];
+            testCase.verifyTrue(moves.wasMoved(pngFn), 'The PNG was not moved into place.');
+            testCase.verifyTrue(ismember(['wT_', fsn, '.pdf'], moves.filesWhenMoved(pngFn)), 'The PDF was printed after the PNG.');
+        end
+
+        function detectionInfoIsMovedIntoPlace(testCase)
+            % XR_psf_detection_and_analysis_wrapper's tasks count as done
+            % once their info file exists, so it must not be saved in place
+            dataPath = testCase.createTempFolder();
+            fn = [dataPath, 'beads.tif'];
+            writetiff(uint16(pktest.beads([128, 128, 101], [40, 40, 30; 90, 80, 70], [1.6, 3], 2000, 100)), fn);
+            resultDir = [dataPath, 'Cropped/'];
+            moves = testCase.applyFixture(pktest.MovefileSpyFixture);
+            XR_psf_detection_and_cropping(fn, resultDir, 'cropSize', [32, 32, 21], 'distThresh', [32, 32, 21], ...
+                'prefix', 'beads');
+            testCase.verifyTrue(moves.wasMoved([resultDir, 'beads.mat']), 'The detection info was saved in place.');
+            a = load([resultDir, 'beads.mat']);
+            testCase.verifyTrue(isfield(a, 'pcoords'));
         end
     end
 

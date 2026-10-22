@@ -67,5 +67,18 @@ classdef FSCAnalysisTest < pktest.TestCase
             second = dir(resultFn);
             testCase.verifyEqual(second.datenum, first.datenum);
         end
+
+        function resultIsMovedIntoPlace(testCase)
+            % the job framework counts a task as done once its result
+            % exists, and the wrapper loads each result right after it
+            % returns; a result saved in place could be read half written
+            dataPath = testCase.createTempFolder();
+            writetiff(1000 + 300 * imgaussfilt3(randn(48, 48, 48, 'single'), 1), [dataPath, 'Iter_0002.tif']);
+            moves = testCase.applyFixture(pktest.MovefileSpyFixture);
+            XR_FSC_analysis_wrapper({dataPath}, 'xyPixelSize', 0.1, 'dz', 0.1, 'dr', 2, 'halfSize', [24, 24, 24], ...
+                'channelPatterns', {'Iter'}, 'channels', 488, 'parseCluster', false, 'masterCompute', true);
+            testCase.verifyTrue(moves.wasMoved([dataPath, 'FSCs/Iter_0002.mat']), 'The result was saved in place.');
+            testCase.verifyEmpty(dir([dataPath, 'FSCs/Iter_0002_*.mat']), 'A temporary file was left behind.');
+        end
     end
 end

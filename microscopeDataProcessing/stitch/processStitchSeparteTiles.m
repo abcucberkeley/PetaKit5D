@@ -53,8 +53,10 @@ for f = 1 : nF
     outputFullpath = [stitchPath, '/', fsname, ext];
     outputFullpaths{f} = outputFullpath;
     
+    % stIndices are 0-based offsets in the stitched image (in xyz order), as
+    % in stitch_process_block_info
     st_idx = stIndices(f, :);
-    bbox = [2 - st_idx([2, 1, 3]), 2 - st_idx([2, 1, 3]) + pImSz - 1];
+    bbox = [1 - st_idx([2, 1, 3]), 1 - st_idx([2, 1, 3]) + pImSz - 1];
     pad = true;
     parseParfor = false;
 

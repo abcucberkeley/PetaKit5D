@@ -164,6 +164,69 @@ classdef DeconWrapperTest < pktest.TestCase
             testCase.verifyEqual(readtiff([d.dataPath, 'large/MIPs/', d.fsns{1}, '_MIP_z.tif']), max(large, [], 3));
         end
 
+        function largeFileMakesMIPBeforePublishing(testCase)
+            % the wrapper counts a file as done once its result exists; the
+            % in-memory large-file path moved the result into place and then
+            % wrote its MIP
+            d = testCase.createDataset({'A'}, 1);
+            moves = testCase.applyFixture(pktest.MovefileSpyFixture);
+            testCase.runWrapper(d, 'RLMethod', 'simplified', 'deconIter', 2, 'resultDirName', 'large', ...
+                'largeFile', true, 'batchSize', [64, 64, 64]);
+            deconFn = [d.dataPath, 'large/', d.fsns{1}, '.tif'];
+            testCase.assertTrue(moves.wasMoved(deconFn), 'The result was not moved into place.');
+            published = moves.filesWhenMoved(deconFn);
+            testCase.verifyTrue(ismember(['MIPs/', d.fsns{1}, '_MIP_z.tif'], published), ...
+                'The MIP was written after the result was moved into place.');
+            added = setdiff(pktest.MovefileSpyFixture.listFiles([d.dataPath, 'large']), [published; {[d.fsns{1}, '.tif']}]);
+            testCase.verifyEmpty(added, 'Files were written after the result was moved into place.');
+        end
+
+        function largeFileInPlaceMakesMIPsBeforePublishing(testCase)
+            % as above for the in-place large-file path, which made its MIPs
+            % with XR_MIP_zarr after moving the result into place
+            d = testCase.createDataset({'A'}, 1, {}, true);
+            moves = testCase.applyFixture(pktest.MovefileSpyFixture);
+            testCase.runWrapper(d, 'RLMethod', 'simplified', 'deconIter', 2, 'zarrFile', true, 'saveZarr', true, ...
+                'resultDirName', 'large', 'largeFile', true, 'largeMethod', 'inplace', 'batchSize', [64, 64, 64], ...
+                'blockSize', [16, 16, 16]);
+            deconFn = [d.dataPath, 'large/', d.fsns{1}, '.zarr'];
+            testCase.assertTrue(moves.wasMoved(deconFn), 'The result was not moved into place.');
+            published = moves.filesWhenMoved(deconFn);
+            mips = strcat('MIPs/', d.fsns{1}, {'_MIP_y.tif'; '_MIP_x.tif'; '_MIP_z.tif'});
+            testCase.verifyEqual(ismember(mips, published), true(3, 1), 'MIPs were made after the result was moved into place.');
+            added = setdiff(pktest.MovefileSpyFixture.listFiles([d.dataPath, 'large']), [published; {[d.fsns{1}, '.zarr']}]);
+            testCase.verifyEmpty(added, 'Files were written after the result was moved into place.');
+        end
+
+        function largeFileInPlacePassesJobSettingsToMIPs(testCase)
+            % RLdecon_large_in_place didn't pass parseCluster, masterCompute
+            % or jobLogDir to XR_MIP_zarr, so on a machine with Slurm the
+            % MIPs of a local run were made in Slurm jobs
+            d = testCase.createDataset({'A'}, 1, {}, true);
+            spy = testCase.applyFixture(pktest.FunctionSpyFixture('XR_MIP_zarr'));
+            testCase.runWrapper(d, 'RLMethod', 'simplified', 'deconIter', 2, 'zarrFile', true, 'saveZarr', true, ...
+                'resultDirName', 'large', 'largeFile', true, 'largeMethod', 'inplace', 'batchSize', [64, 64, 64], ...
+                'blockSize', [16, 16, 16]);
+            testCase.assertNotEmpty(spy.getCalls(), 'XR_MIP_zarr was not called.');
+            testCase.verifyEqual(spy.getOption(1, 'parseCluster'), false);
+            testCase.verifyEqual(spy.getOption(1, 'masterCompute'), true);
+            testCase.verifyNotEmpty(spy.getOption(1, 'jobLogDir'));
+        end
+
+        function largeFileInPlaceGPUJobMIPsKeepMasterCompute(testCase)
+            % GPU jobs turn masterCompute off for the decon blocks only; the
+            % MIPs, made on CPUs, keep the caller's setting
+            d = testCase.createDataset({'A'}, 1, {}, true);
+            % the (GPU) decon blocks don't run
+            testCase.applyFixture(pktest.FrameworkSpyFixture);
+            spy = testCase.applyFixture(pktest.FunctionSpyFixture('XR_MIP_zarr'));
+            testCase.runWrapper(d, 'RLMethod', 'simplified', 'deconIter', 2, 'zarrFile', true, 'saveZarr', true, ...
+                'resultDirName', 'large', 'largeFile', true, 'largeMethod', 'inplace', 'batchSize', [64, 64, 64], ...
+                'blockSize', [16, 16, 16], 'GPUJob', true);
+            testCase.assertNotEmpty(spy.getCalls(), 'XR_MIP_zarr was not called.');
+            testCase.verifyEqual(spy.getOption(1, 'masterCompute'), true);
+        end
+
         function largeFileInPlaceMultipleBatchesMatchRegular(testCase)
             % the demo_large_scale_processing setup: zarr chunks deconvolved
             % batch by batch into a zarr, with edge erosion

@@ -137,8 +137,12 @@ for n = 1 : 5
             '''''%s'''' ''''%s'''' '], codePath, inputFullpath_str, outPath_str);
     end
 
-    inputFlagpaths = inputFullpaths(max(1, batchSize - 1) : batchSize : end);
-    outputFlagpaths = flagFullpaths(max(1, batchSize - 1) : batchSize : end);
+    % check the last file of each batch, which rsync_batch_files.sh copies
+    % last: the job framework counts a batch as done once its checked file
+    % exists
+    flagInds = min((1 : numBatch) * batchSize, nF);
+    inputFlagpaths = inputFullpaths(flagInds);
+    outputFlagpaths = flagFullpaths(flagInds);
     maxJobNum = numStream;
 
     is_done_flag = generic_computing_frameworks_wrapper(inputFlagpaths, ...

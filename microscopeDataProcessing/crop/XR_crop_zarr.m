@@ -86,8 +86,9 @@ BorderSize = 0;
 % bbox for the actual input data
 batchBBoxes = batchBBoxes + [bbox(1 : 3), bbox(1 : 3)] - 1;
 
-% initialize zarr file
-cropTempPath = sprintf('%s/%s_%s.zarr', cropPath, fsname, uuid);
+% initialize zarr file (named after the result, so that XR_MIP_zarr names
+% the MIPs of the temporary result after it)
+cropTempPath = [cropFullpath, '_', uuid];
 if ~exist(cropTempPath, 'dir')
     dimSeparator = '.';
     if prod(ceil(outSize ./ blockSize)) > 10000
@@ -147,6 +148,13 @@ if ~all(is_done_flag)
     error('Some blocks are not finished!')
 end
 
+% generate MIPs from the temporary result: the job framework counts the task
+% as done (and may cancel its job) once cropFullpath exists
+if saveMIP && exist(cropTempPath, 'dir')
+    XR_MIP_zarr(cropTempPath, 'axis', [1, 1, 1], parseCluster=parseCluster, masterCompute=masterCompute, ...
+        jobLogDir=jobLogDir, mccMode=mccMode, configFile=configFile);
+end
+
 if exist(cropFullpath, 'dir') && exist(cropTempPath, 'dir')
     rmdir(cropFullpath, 's');
 end
@@ -155,11 +163,6 @@ if exist(cropTempPath, 'dir')
 end
 if exist(zarrFlagPath, 'dir')
     rmdir(zarrFlagPath, 's');
-end
-
-% generate MIPs
-if saveMIP
-    XR_MIP_zarr(cropFullpath, 'axis', [1, 1, 1], parseCluster=parseCluster, mccMode=mccMode, configFile=configFile);
 end
 
 end
