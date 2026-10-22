@@ -51,6 +51,18 @@ classdef ImageInfoTest < pktest.TestCase
             testCase.verifyEqual(getImageSizeBatch(fns, false), [10, 20, 3; 11, 21, 4; 12, 22, 5]);
         end
 
+        function batchSizesOfManyTiffs(testCase)
+            % more than 100 files were read on background pool workers, which
+            % can't read tiff headers (thread-based workers run no mex files)
+            dataPath = testCase.createTempFolder();
+            fns = arrayfun(@(x) sprintf('%sim_%03d.tif', dataPath, x), 1 : 101, 'unif', 0);
+            sz = [repmat([8, 9], 101, 1), 2 + mod((1 : 101)', 3)];
+            for i = 1 : 101
+                writetiff(zeros(sz(i, :), 'uint16'), fns{i});
+            end
+            testCase.verifyEqual(getImageSizeBatch(fns), sz);
+        end
+
         function getZarrInfoOfMissingFileErrors(testCase)
             testCase.verifyError(@() getZarrInfo([testCase.createTempFolder(), 'missing.zarr']), ?MException);
         end

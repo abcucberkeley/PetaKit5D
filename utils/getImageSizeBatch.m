@@ -11,8 +11,10 @@ end
 
 nF = numel(filePaths);
 
-% when there are more than 100 files, use background pool
-if ~ispc && useParpool && nF > 100
+% for many zarr files, use the background pool: starting its workers takes
+% seconds (reading a zarr header ~0.2 ms), and they can't read tiff headers
+isTiff = any(endsWith(filePaths, {'tif', 'tiff'}));
+if ~ispc && useParpool && nF > 10000 && ~isTiff
     p = backgroundPool;
     nworker = p.NumWorkers;
 
