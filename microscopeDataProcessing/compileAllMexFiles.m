@@ -3,9 +3,10 @@ function [] = compileAllMexFiles(varargin)
 %
 % Intended to be run from PetaKit5D/microscopeDataProcessing or pass the
 % path to the PetaKit5D base dir. Linux and Windows use the configured mex
-% compilers (GCC, MinGW-w64 on Windows). ARM macOS uses Homebrew gcc@13
-% (brew install gcc@13); the mex files there load the libgomp copied next
-% to them (@loader_path), so that they don't need Homebrew to run.
+% compilers (GCC, MinGW-w64 on Windows, e.g., with MW_MINGW64_LOC set to
+% the MinGW folder). ARM macOS uses Homebrew gcc@13 (brew install gcc@13)
+% with the GCC runtime libraries linked statically, so that the mex files
+% don't need Homebrew to run.
 
 ip = inputParser;
 ip.CaseSensitive = false;
@@ -73,7 +74,7 @@ end
 function [] = buildMex(srcFn, useAVX)
 % build one mex file in the current folder
 
-[~, fsn, ext] = fileparts(srcFn);
+[~, ~, ext] = fileparts(srcFn);
 isCpp = strcmp(ext, '.cpp');
 if ~ismac
     avxFlag = '';
@@ -90,8 +91,8 @@ if ~ismac
     return;
 end
 
-% ARM macOS with Homebrew gcc@13; libstdc++ and libgcc are linked
-% statically, and libgomp is loaded from the mex folder
+% ARM macOS with Homebrew gcc@13; libstdc++ is linked statically, and with
+% -static-libgcc GCC on macOS also links libgcc and libgomp statically
 gccDir = '/opt/homebrew/opt/gcc@13/lib/gcc/13';
 macFlags = ['-fno-common -arch arm64 -mmacosx-version-min=11.0 -fexceptions ', ...
     '-isysroot /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk -O3 -fopenmp ', ...
@@ -102,12 +103,6 @@ if isCpp
 else
     mex('-v', 'CC=/opt/homebrew/bin/gcc-13', 'COPTIMFLAGS=-O3 -DNDEBUG', ['CFLAGS=', macFlags], ...
         'LDFLAGS=$LDFLAGS -O3 -fopenmp -static-libgcc', srcFn);
-end
-mexFn = [fsn, '.', mexext];
-system(sprintf('install_name_tool -change %s/libgomp.1.dylib @loader_path/libgomp.1.dylib %s', gccDir, mexFn));
-system(sprintf('codesign --force --sign - %s', mexFn));
-if ~exist('libgomp.1.dylib', 'file')
-    copyfile([gccDir, '/libgomp.1.dylib'], 'libgomp.1.dylib');
 end
 
 end

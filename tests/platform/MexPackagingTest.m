@@ -7,18 +7,13 @@ classdef MexPackagingTest < pktest.TestCase
         AllowedPrefixes = {'@rpath/', '@loader_path/', '@executable_path/', '/usr/lib/', '/System/Library/'}
     end
 
-    methods (Test, TestTags = {'Unit', 'KnownIssue'})
+    methods (Test, TestTags = {'Unit'})
         function macArmBinariesOnlyLoadBundledOrSystemLibraries(testCase)
-            % KNOWN ISSUE: the 15 crop, deskew/rotate, flat-field, stitch
-            % and MIP .mexmaca64 files load
-            % /opt/homebrew/opt/gcc@13/lib/gcc/13/libgomp.1.dylib by
-            % absolute path. On a Mac without Homebrew gcc@13 they only
-            % load if a cpp-tiff/cpp-zarr call happened to load the bundled
-            % libgomp (which has that install name) first; otherwise the
-            % code silently falls back to slower MATLAB code, or errors
-            % where there is no fallback. Fix: point the dependency at the
-            % bundled copy, e.g. install_name_tool -change <path>
-            % @loader_path/libgomp.1.dylib, and ship libgomp next to them.
+            % the PetaKit5D .mexmaca64 files used to load Homebrew's libgomp
+            % by absolute path, so on a Mac without Homebrew gcc@13 they only
+            % loaded if cpp-tiff/cpp-zarr had loaded the bundled libgomp
+            % first. compileAllMexFiles now links the GCC runtime statically;
+            % cpp-tiff/cpp-zarr load theirs from next to them (@loader_path).
             files = [testCase.findFiles('*.mexmaca64'), testCase.findFiles('*.dylib')];
             files = files(contains(files, {'.mexmaca64', [filesep, 'macArm', filesep]}));
             testCase.assertNotEmpty(files);
@@ -33,22 +28,6 @@ classdef MexPackagingTest < pktest.TestCase
                 end
             end
             testCase.verifyEmpty(bad, sprintf('ARM macOS binaries with absolute library paths:\n  %s', strjoin(bad, '\n  ')));
-        end
-    end
-
-    methods (Test, TestTags = {'Unit'})
-        function cppTiffAndZarrLoadBundledLibraries(testCase)
-            % the cpp-tiff/cpp-zarr mex files and libraries are packaged
-            % correctly; keep them that way
-            files = [testCase.findFiles('getImageSizeMex.mexmaca64'), testCase.findFiles('parallel*Tiff.mexmaca64'), ...
-                testCase.findFiles('*Zarr*.mexmaca64'), testCase.findFiles('libcppTiff.dylib'), ...
-                testCase.findFiles('libcppZarr.dylib')];
-            testCase.assertNotEmpty(files);
-            for i = 1 : numel(files)
-                deps = pktest.machoDylibs(files{i});
-                testCase.verifyTrue(all(startsWith(deps, testCase.AllowedPrefixes)), ...
-                    sprintf('%s loads %s', files{i}, strjoin(deps, ', ')));
-            end
         end
     end
 

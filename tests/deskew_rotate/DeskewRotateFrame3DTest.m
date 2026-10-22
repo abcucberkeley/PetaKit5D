@@ -84,8 +84,9 @@ classdef DeskewRotateFrame3DTest < pktest.TestCase
         function bboxCropsTheFullOutput(testCase)
             [~, vol] = testCase.beadGrid();
             full = deskewRotateFrame3D(vol, testCase.SkewAngle, 0.2, testCase.XYPixelSize, 'reverse', true);
-            % keep the y extent a multiple of 8, see DeskewMexSourceTest
-            bbox = [9, 21, 5, 56, 150, 40];
+            % a y extent that isn't a multiple of 8 also runs the scalar tail
+            % of the SIMD loops (see DeskewMexSourceTest)
+            bbox = [9, 21, 5, 53, 150, 40];
             out = deskewRotateFrame3D(vol, testCase.SkewAngle, 0.2, testCase.XYPixelSize, 'reverse', true, 'bbox', bbox);
             testCase.verifyImagesClose(out, full(bbox(1) : bbox(4), bbox(2) : bbox(5), bbox(3) : bbox(6)), 'relTol', 1e-6);
         end
@@ -147,8 +148,6 @@ classdef DeskewRotateFrame3DTest < pktest.TestCase
 
         function save16bitRoundsToNearest(testCase)
             % the AVX uint16 kernels used to add 0.5 and then round, which is ceil
-            testCase.assumeNoKnownIssueOn('mexw64', ['the Windows deskew/rotation mex files predate the ', ...
-                'rounding fix; rebuild them with compileAllMexFiles']);
             [~, vol] = testCase.beadGrid();
             vol = uint16(vol + 100);
             out = deskewRotateFrame3D(vol, testCase.SkewAngle, 0.2, testCase.XYPixelSize, 'reverse', true, 'save16bit', true);

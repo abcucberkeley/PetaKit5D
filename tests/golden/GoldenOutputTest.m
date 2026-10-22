@@ -104,8 +104,7 @@ classdef GoldenOutputTest < pktest.TestCase
 
     methods (Static, Access = private)
         function [vol] = skewedVolume()
-            % beads plus smooth texture in skewed space, first dimension a
-            % multiple of 8 (see DeskewMexSourceTest)
+            % beads plus smooth texture in skewed space
             [xr, zr] = ndgrid([12, 24, 36], [8, 20, 32]);
             raw = [4 + 2.6 * mod((0 : 8)' * 4, 9), xr(:), zr(:)];
             vol = pktest.beads([32, 48, 40], raw, [1.5, 2], 1000, 100) + pktest.texture([32, 48, 40], 3, [0, 200]);

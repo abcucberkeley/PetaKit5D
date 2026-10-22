@@ -99,8 +99,6 @@ classdef CropMexTest < pktest.TestCase
 
         function indexing4dMexSupportsLogical(testCase)
             % logical input used to fall through to the uint8 branch and be rejected
-            testCase.assumeNoKnownIssueOn({'mexw64', 'mexmaca64'}, ['the Windows and ARM macOS ', ...
-                'indexing4d_mex files predate the fix; rebuild them with compileAllMexFiles']);
             [A, expected, b, R] = testCase.indexing4dInputs('logical');
             expected(b(1) : b(5), b(2) : b(6), b(3) : b(7), b(4) : b(8)) = R;
             try

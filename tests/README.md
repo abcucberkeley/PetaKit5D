@@ -156,14 +156,8 @@ against the bug coming back.
 Current known issues (found while writing these tests; each was confirmed by
 running the test, and re-checked against the code's history, documentation
 and callers for signs that the behavior is intended). The test name is the
-place to start; its `KNOWN ISSUE:` comment has the details. The last table
-lists the ones that may be intended.
-
-**High impact**
-
-| Test | Problem |
-|---|---|
-| `MexPackagingTest` | 15 ARM macOS mex files (crop, deskew/rotate, flat field, stitch, MIP) load Homebrew's `libgomp` by absolute path; without Homebrew gcc@13 they only load if cpp-tiff/cpp-zarr was used first in the session. |
+place to start; its `KNOWN ISSUE:` comment has the details. The ones that
+may be intended are listed separately.
 
 **Wrong or silently ignored results**
 
@@ -200,27 +194,18 @@ these were picked; confirm them with the author.
 | `XR_runDetTrack3d` | `DetectionMethod` defaults to `'lowSNR'` (the old default `'update_3'` matched no method; the demos pair `'lowSNR'` with `Analysis_update_3`). |
 | `XR_deskew_rotate_data_wrapper` | Deskew only (`rotate=false`) uses the separate path even with `DSRCombined=true`, as `XR_microscopeAutomaticProcessing` does, instead of rejecting the combination. |
 
-**Platform-specific.** Tests for bugs that affect only some platforms skip
-themselves there with a `KNOWN ISSUE` message (`assumeNoKnownIssueOn`);
-remove the platform from the call when the bug is fixed. These are mex
-fixes whose Linux binaries are rebuilt, but not yet the others (rebuild them
-with `compileAllMexFiles`, e.g., with the Jenkins mex stage).
-
-| Test | Platform | Problem |
-|---|---|---|
-| `DeskewRotateFrame3DTest/save16bitRoundsToNearest` | Windows | The deskew/rotation mex files round uint16 output up (`ceil`) and their AVX loops run up to 7 floats past each row, which corrupts memory for single-precision input whose first dimension is not a multiple of 8. |
-| `CropMexTest/indexing4dMexSupportsLogical` | Windows, ARM macOS | `indexing4d_mex` rejects logical input. |
-
 Not covered by a test:
 
-- On Windows and macOS, MATLAB hangs (Windows) or crashes in a thread
-  cleanup handler (macOS) while shutting down after the PetaKit5D mex files
-  have been used, most likely because an OpenMP runtime is unloaded while
-  its worker threads are alive. CI works around it (see below).
+- On Windows and macOS, MATLAB hangs (Windows) or crashes (macOS) while
+  shutting down after the PetaKit5D mex files have been used, most likely
+  because an OpenMP runtime is unloaded while its worker threads are alive.
+  CI works around it (see below).
 
 - Point detection isn't available on ARM macOS: its mex files were never
-  built for it (see `MexInventoryTest`). A platform gap rather than a code bug,
-  but README.md doesn't say so.
+  built for it (see `MexInventoryTest`), and six of them (`fitGaussian2D`,
+  `fitGaussian3D`, `fitGaussianMixture2D`, `KDTreeBallQuery`, `mexLap`,
+  `vectorialPSF`) have no source in the repository, only prebuilt binaries.
+  A platform gap rather than a code bug, but README.md doesn't say so.
 - For objective scan, `XR_deskew_rotate_data_wrapper.m:200` compares
   `DSRDirName` with `'DSR/'`, but the default is `'DSR'`, so the intended
   rename of the output folder to `rotated/` never happens.
@@ -261,9 +246,6 @@ update_golden_data('decon_omw')   % or update_golden_data() for all
 - Keep tests portable: no shell commands, forward slashes in paths,
   `assumeMexAvailable` for mex files that are missing on some platforms, and
   `assumeNoKnownIssueOn` for bugs that only affect some platforms.
-- Single-precision inputs to the deskew/rotation mex functions must have a
-  first dimension that is a multiple of 8 until the Windows binaries with the
-  SIMD overflow fix are built (see the platform-specific known issues).
 
 ## Demo coverage
 
