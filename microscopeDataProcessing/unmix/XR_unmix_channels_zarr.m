@@ -189,11 +189,14 @@ if ~all(is_done_flag)
     error('Some blocks are not finished!')
 end
 
-if exist(unmixFullpath, 'dir') && exist(unmixTmppath, 'dir')
-    rmdir(unmixFullpath, 's');
-end
-
-if exist(unmixTmppath, 'dir')
+% another copy of this task may have published the result: keep it. The
+% job framework then reports all blocks as done, so this copy's temporary
+% result can be incomplete (a copy from another run has its own uuid)
+if exist(unmixFullpath, 'dir')
+    if exist(unmixTmppath, 'dir')
+        rmdir(unmixTmppath, 's');
+    end
+elseif exist(unmixTmppath, 'dir')
     movefile(unmixTmppath, unmixFullpath);
 end
 

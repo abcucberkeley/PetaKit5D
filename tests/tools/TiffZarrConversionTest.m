@@ -96,6 +96,20 @@ classdef TiffZarrConversionTest < pktest.TestCase
             testCase.verifyTrue(isfolder(outFn), 'The result of the other copy was deleted.');
         end
 
+        function resaveKeepsResultOfAnotherRun(testCase)
+            % a copy from another run (its own uuid) that finds the result
+            % published replaced it with its own, incomplete result
+            [dataPath, ims, names] = testCase.writeDataset('zarr');
+            outFn = [dataPath, 'resaved.zarr'];
+            % the other run publishes a complete result; this copy's blocks
+            % never run (the framework reports them done once the result exists)
+            testCase.applyFixture(pktest.FrameworkSpyFixture(@() writezarr(ims{1}, outFn, 'blockSize', [8, 8, 4])));
+            XR_resaveSingleZarr([dataPath, names{1}, '.zarr'], outFn, 'blockSize', [8, 8, 4], ...
+                'parseCluster', false, 'uuid', 'test');
+            testCase.verifyEqual(readzarr(outFn), ims{1}, 'The published result was replaced.');
+            testCase.verifyFalse(isfolder([outFn, '_test']), 'The temporary result was left behind.');
+        end
+
         function resaveLargeZarrInBatches(testCase)
             [dataPath, ims, names] = testCase.writeDataset('zarr');
             b = [5, 7, 3, 30, 33, 10];

@@ -144,12 +144,14 @@ if ~all(is_done_flag)
     error('%d / %d tasks failed!', sum(~is_done_flag), numel(is_done_flag));
 end
 
-% another copy of this task (e.g., a retry) may have published the result
-% from the same temporary result already
-if exist(resultFullpath, 'dir') && exist(resultTmpPath, 'dir')
-    rmdir(resultFullpath, 's');
-end
-if exist(resultTmpPath, 'dir')
+% another copy of this task may have published the result: keep it. The
+% job framework then reports all blocks as done, so this copy's temporary
+% result can be incomplete (a copy from another run has its own uuid)
+if exist(resultFullpath, 'dir')
+    if exist(resultTmpPath, 'dir')
+        rmdir(resultTmpPath, 's');
+    end
+elseif exist(resultTmpPath, 'dir')
     movefile(resultTmpPath, resultFullpath);
 end
 if exist(zarrFlagPath, 'dir')

@@ -107,6 +107,20 @@ classdef UnmixChannelsTest < pktest.TestCase
             testCase.verifyImagesClose(single(out), expected, 'absTol', 1, 'relTol', 1e-3);
         end
 
+        function zarrFunctionKeepsResultOfAnotherRun(testCase)
+            % a copy from another run (its own uuid) that finds the result
+            % published replaced it with its own, incomplete result
+            [dataPath, chA] = testCase.twoChannelData(true);
+            zarrFns = cellfun(@(x) [dataPath, sprintf(testCase.Fsn, x), '.zarr'], {'CamA', 'CamB'}, 'unif', 0);
+            outFn = [dataPath, 'Unmixed/', sprintf(testCase.Fsn, 'CamA'), '.zarr'];
+            testCase.applyFixture(pktest.FrameworkSpyFixture(@() writezarr(chA, outFn)));
+            XR_unmix_channels_zarr(zarrFns, [1, -0.1], 'resultDirName', 'Unmixed', 'mode', 'linear', ...
+                'channelInd', 1, 'batchSize', [32, 32, 16], 'blockSize', [16, 16, 16], ...
+                'parseCluster', false, 'uuid', 'test');
+            testCase.verifyEqual(readzarr(outFn), chA, 'The published result was replaced.');
+            testCase.verifyEmpty(dir([dataPath, 'Unmixed/*_test.zarr']), 'The temporary result was left behind.');
+        end
+
         function gaussianUnmixingBlursTheOtherChannel(testCase)
             % 'gaussian' mode filters each channel with its sigma (one row
             % per channel, [sy, sx, sz]) before the weighted sum

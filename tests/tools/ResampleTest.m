@@ -148,6 +148,19 @@ classdef ResampleTest < pktest.TestCase
             testCase.verifyTrue(isfolder(outFn), 'The result of the other copy was deleted.');
         end
 
+        function largeZarrKeepsResultOfAnotherRun(testCase)
+            % a copy from another run (its own uuid) that finds the result
+            % published replaced it with its own, incomplete result
+            [im, fn, dataPath] = testCase.writeImage('zarr');
+            outFn = [dataPath, 'resampled.zarr'];
+            published = im(1 : 2 : end, 1 : 2 : end, 1 : 2 : end);
+            testCase.applyFixture(pktest.FrameworkSpyFixture(@() writezarr(published, outFn)));
+            XR_resampleSingleZarr(fn, outFn, [2, 2, 2], 'batchSize', [16, 16, 4], 'blockSize', [8, 8, 2], ...
+                'parseCluster', false, 'uuid', 'test');
+            testCase.verifyEqual(readzarr(outFn), published, 'The published result was replaced.');
+            testCase.verifyFalse(isfolder([outFn, '_test']), 'The temporary result was left behind.');
+        end
+
         function largeZarrWithDefaultBorderSize(testCase)
             % batches used to be shifted by half an output voxel when the border
             % (default [5, 5, 5]) is not a multiple of the factor
