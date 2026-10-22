@@ -5,6 +5,15 @@ function [d_shift] = stitch_global_grid_assignment(nF, max_xcorr_mat, absolute_s
 % overlap between tiles.
 % 02/03/2022: add threshold for objective to remove the samples with small xcorr
 
+% above this number of tiles, solve with sparse matrices (seconds instead of
+% minutes at 900-1600 tiles)
+sparseTileNum = 400;
+if nF > sparseTileNum
+    d_shift = stitch_global_grid_assignment_sparse(nF, max_xcorr_mat, absolute_shift_mat, overlap_matrix, ...
+        max_allow_shift, xcorr_thresh, tileIdx, axisWeight);
+    return;
+end
+
 neq = sum(overlap_matrix(:));
 
 R = zeros(neq, nF);
@@ -73,6 +82,55 @@ for i = 1 : 3
 
     [x,resnorm,residual,exitflag,output,lambda] = lsqlin(C,d,A,b);
     d_shift(:, i) = x;
+end
+
+% round to integers and normalize for the first tile.
+d_shift = round(d_shift);
+d_shift = d_shift - d_shift(1, :);
+
+end
+
+
+function [d_shift] = stitch_global_grid_assignment_sparse(nF, max_xcorr_mat, absolute_shift_mat, overlap_matrix, max_allow_shift, xcorr_thresh, tileIdx, axisWeight)
+% the same problem with sparse matrices. The solution is only defined up to
+% a constant (only differences between tiles are constrained), and the
+% shifts are rounded before they are made relative to the first tile, so the
+% constant matters: the dense solver keeps the mean of the solution near
+% zero, the sparse one doesn't, so the solution is moved to mean zero. A
+% shift can still differ by 1 from the dense solver's when it is within
+% about 0.005 of a half integer.
+
+[n_i, n_j] = find(overlap_matrix);
+neq = numel(n_i);
+R = sparse([1 : neq, 1 : neq], [n_i', n_j'], [-ones(1, neq), ones(1, neq)], neq, nF);
+
+filt_inds = max_xcorr_mat(:, 3) < xcorr_thresh;
+max_xcorr_mat_filt = max_xcorr_mat(~filt_inds, :);
+nP = size(max_xcorr_mat_filt, 1);
+np_i = max_xcorr_mat_filt(:, 1);
+np_j = max_xcorr_mat_filt(:, 2);
+
+% weights by the axis of neighboring tiles (x, y, z), 0 for other pairs
+tdiff = abs(tileIdx(np_i, 1 : 3) - tileIdx(np_j, 1 : 3));
+w = zeros(nP, 1);
+neighbor = sum(tdiff, 2) == 1;
+[~, aind] = max(tdiff, [], 2);
+axisWeight_xyz = axisWeight([2, 1, 3]);
+w(neighbor) = axisWeight_xyz(aind(neighbor));
+
+W_sqrt = sparse(1 : nP, 1 : nP, w .^ 0.5, nP, nP);
+R_w = W_sqrt * sparse([1 : nP, 1 : nP], [np_i', np_j'], [-ones(1, nP), ones(1, nP)], nP, nF);
+d_w = W_sqrt * absolute_shift_mat(~filt_inds, 3 : 5);
+A = [R; -R];
+
+d_shift = zeros(nF, 3);
+for i = 1 : 3
+    l = max_allow_shift(:, i);
+    u = max_allow_shift(:, 3 + i);
+    b = [u; -l];
+
+    x = lsqlin(R_w, full(d_w(:, i)), A, b);
+    d_shift(:, i) = x - mean(x);
 end
 
 % round to integers and normalize for the first tile.
