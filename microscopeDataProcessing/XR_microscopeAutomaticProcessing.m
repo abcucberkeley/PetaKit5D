@@ -407,6 +407,9 @@ if ~streaming
     end
 end
 
+% whether the job of a step is pending or running: after the last try, the
+% pipeline waits for its job before it returns
+job_active = false(nF, 2);
 if parseCluster
     job_ids = -ones(nF, 2);
     imSize_mat = zeros(nF, 3, 2);
@@ -416,7 +419,7 @@ end
 
 % use while loop to perform computing for all images
 ts = tic;
-while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all') || ...
+while ~all(is_done_flag | (trial_counter >= maxTrialNum & ~job_active), 'all') || ...
         (streaming && (nF == 0 || any(latest_modify_times < maxModifyTime) || waitLoopCounter < maxWaitLoopNum))
     for f = 1 : nF
         tic
@@ -509,13 +512,20 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all') || ...
                     memAllocate = estRequiredMemory;
 
                     job_id = job_ids(f, 1);
-                    [job_id, ~, submit_status] = generic_single_job_submit_wrapper(func_str, job_id, task_id, ...
-                        'jobLogFname', job_log_fname, 'jobErrorFname', job_log_error_fname, ...
-                        masterCompute=masterCompute, cpusPerTask=cpusPerTask, memAllocate=memAllocate, ...
-                        mccMode=mccMode, configFile=configFile);
+                    if trial_counter(f, 1) < maxTrialNum
+                        [job_id, job_status, submit_status] = generic_single_job_submit_wrapper(func_str, job_id, task_id, ...
+                            'jobLogFname', job_log_fname, 'jobErrorFname', job_log_error_fname, ...
+                            masterCompute=masterCompute, cpusPerTask=cpusPerTask, memAllocate=memAllocate, ...
+                            mccMode=mccMode, configFile=configFile);
+                    else
+                        % the last try: only check whether its job is still there
+                        job_status = check_slurm_job_status(job_id, task_id);
+                        submit_status = 0;
+                    end
 
                     job_ids(f, 1) = job_id;
                     trial_counter(f, 1) = trial_counter(f, 1) + submit_status;
+                    job_active(f, 1) = submit_status > 0 || job_status >= 0;
                 else
                     temp_file_info = dir(tmpFullpath);
                     if minutes(datetime('now') - temp_file_info.date) < unitWaitTime
@@ -624,15 +634,23 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all') || ...
                 estRequiredMemory = dataSize_mat(f, 1) / 2^30 * 2 * memFactor;
                 memAllocate = estRequiredMemory;
 
-                [job_id, ~, submit_status] = generic_single_job_submit_wrapper(func_str, job_id, task_id, ...
-                    'jobLogFname', job_log_fname, 'jobErrorFname', job_log_error_fname, ...
-                    masterCompute=masterCompute, cpusPerTask=cpusPerTask, memAllocate=memAllocate, ...
-                    mccMode=mccMode, configFile=configFile);
+                if trial_counter(dfirst_ind, 2) < maxTrialNum
+                    [job_id, job_status, submit_status] = generic_single_job_submit_wrapper(func_str, job_id, task_id, ...
+                        'jobLogFname', job_log_fname, 'jobErrorFname', job_log_error_fname, ...
+                        masterCompute=masterCompute, cpusPerTask=cpusPerTask, memAllocate=memAllocate, ...
+                        mccMode=mccMode, configFile=configFile);
+                else
+                    % the last try: only check whether its job is still there
+                    job_status = check_slurm_job_status(job_id, task_id);
+                    submit_status = 0;
+                end
 
-                job_ids(dfirst_ind, 2) = job_id;
-                job_ids(f, 2) = job_id;
-                trial_counter(dfirst_ind, 2) = trial_counter(dfirst_ind, 2) + submit_status;
-                trial_counter(f, 2) = trial_counter(f, 2) + submit_status;
+                % one stitching job per dataset: its tries and state are those
+                % of all the dataset's files
+                ds_inds = fdinds == fdind;
+                job_ids(ds_inds, 2) = job_id;
+                trial_counter(ds_inds, 2) = trial_counter(dfirst_ind, 2) + submit_status;
+                job_active(ds_inds, 2) = submit_status > 0 || job_status >= 0;
             else
                 tic; feval(str2func(['@()', func_str])); toc;
                 fprintf('\n');                
@@ -662,7 +680,7 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all') || ...
     nF_done = sum(all(is_done_flag, 2));
     sprintf('Time %d s: %d / %d (%0.3f) are finished!\n', toc(ts), nF_done, nF, nF_done / nF);
     
-    if ~all(is_done_flag | trial_counter >= maxTrialNum, 'all') 
+    if ~all(is_done_flag | (trial_counter >= maxTrialNum & ~job_active), 'all') 
         waitLoopCounter = 0;
         % with jobs on the cluster, check again soon when few files are left;
         % each check runs squeue per job, so wait longer for many files
@@ -718,11 +736,12 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all') || ...
     latest_modify_times = max(latest_modify_times, latest_modify_times_new);
     
     nF = numel(fnames);
-    is_done_flag = cat(1, is_done_flag, false(nFnew, 4));
-    trial_counter = cat(1, trial_counter, zeros(nFnew, 4));
+    is_done_flag = cat(1, is_done_flag, false(nFnew, 2));
+    trial_counter = cat(1, trial_counter, zeros(nFnew, 2));
+    job_active = cat(1, job_active, false(nFnew, 2));
     
     if parseCluster
-        job_ids = cat(1, job_ids, -ones(nFnew, 4));
+        job_ids = cat(1, job_ids, -ones(nFnew, 2));
         dataSize_mat = cat(1, dataSize_mat, [cur_dataSizes, zeros(nFnew, 1)]);
     end
 end

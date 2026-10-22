@@ -166,6 +166,24 @@ classdef StitchingTest < pktest.TestCase
             testCase.verifyEqual(sortrows(placed), sortrows(starts), 'The tiles are not at their positions.');
         end
 
+        function clusterModeWaitsForTheLastTry(testCase)
+            % after submitting the last try, the wrapper returned without
+            % waiting for its job; it now checks the job until it ends,
+            % without submitting again
+            testCase.assumeFalse(ispc, 'The fake Slurm needs a POSIX shell.');
+            dataPath = testCase.createTempFolder();
+            gt = testCase.randomVolume([100, 120, 32]);
+            csvFn = testCase.writeTiles(dataPath, gt, [0, 0, 0; 36, 0, 0; 0, 48, 0; 36, 48, 0], [64, 72, 32]);
+            slurm = testCase.applyFixture(pktest.FakeSlurmFixture);
+            slurm.setJobStates('1000_1', {'PD', 'R', 'done'});
+            testCase.applyFixture(pktest.FunctionSpyFixture('pause'));
+            testCase.stitch(dataPath, csvFn, 'parseCluster', true, 'masterCompute', false, 'maxTrialNum', 1, ...
+                'jobLogDir', [dataPath, 'logs']);
+            testCase.verifyEqual(slurm.callCount('sbatch'), 1, 'The last try was submitted again.');
+            % a check before submitting, then one per round until the job is gone
+            testCase.verifyEqual(slurm.callCount('squeue'), 4);
+        end
+
         function tiles2D(testCase)
             % single page tiles, as for the 2D phase data in
             % demo_phase_and_2photon_stitching.m

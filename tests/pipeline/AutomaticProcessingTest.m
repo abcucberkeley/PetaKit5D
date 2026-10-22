@@ -105,7 +105,8 @@ classdef AutomaticProcessingTest < pktest.TestCase
 
             testCase.verifyEqual(slurm.callCount('sbatch'), 40);
             waits = cellfun(@(x) x{1}, pauses.getCalls());
-            testCase.verifyEqual(waits, 6, 'AbsTol', 1e-9, 'The wait for 20 unfinished files should be 6 s.');
+            % the second round also waits for the last tries' jobs to end
+            testCase.verifyEqual(waits, [6, 6], 'AbsTol', 1e-9, 'The wait for 20 unfinished files should be 6 s.');
         end
     end
 
@@ -163,6 +164,57 @@ classdef AutomaticProcessingTest < pktest.TestCase
             testCase.verifyTrue(exist(stitchFn, 'dir') == 7, 'The stitched result is missing.');
             waits = cellfun(@(x) x{1}, pauses.getCalls());
             testCase.verifyFalse(any(waits >= 30), sprintf('The pipeline waited %s s.', mat2str(waits)));
+        end
+
+        function clusterModeWaitsForTheLastStitchingTry(testCase)
+            % after submitting the last try of a dataset's stitching job, the
+            % pipeline returned without waiting for it; it now checks the job
+            % until it ends, without submitting again
+            testCase.assumeFalse(ispc, 'The fake Slurm needs a POSIX shell.');
+            px = testCase.XYPixelSize;
+            dataPath = testCase.createTempFolder();
+            raw = uint16(pktest.beads([80, 64, 40], [20, 30, 15; 64, 28, 20], 2, 3000, 200));
+            tiles = struct('im', {raw(1 : 48, :, :), raw(33 : 80, :, :)}, 'idx', {[0, 0, 0], [0, 1, 0]}, ...
+                'xyz', {[0, 0, 0], [0, 32 * px, 0]});
+            [~, csvFn] = pktest.writeStitchTiles(dataPath, tiles);
+            slurm = testCase.applyFixture(pktest.FakeSlurmFixture);
+            % jobs in submission order: deskew of tile 1 (1000), stitching of
+            % the dataset (1001), deskew of tile 2 (1002); the deskew jobs end
+            % at once without results
+            slurm.setJobStates('1001_1', {'PD', 'R', 'done'});
+            testCase.applyFixture(pktest.FunctionSpyFixture('pause'));
+            evalc(['XR_microscopeAutomaticProcessing(dataPath, ''xyPixelSize'', px, ''dz'', testCase.Dz, ', ...
+                '''reverse'', true, ''channelPatterns'', {''CamA_ch0''}, ''streaming'', false, ', ...
+                '''stitch'', true, ''imageListFullpaths'', {csvFn}, ''parseCluster'', true, ', ...
+                '''maxTrialNum'', 1, ''jobLogDir'', [dataPath, ''logs/''])']);
+            testCase.verifyEqual(slurm.callCount('sbatch'), 3, 'A last try was submitted again.');
+            checks = slurm.history();
+            checks = checks(startsWith(checks, 'squeue') & contains(checks, '1001_1'));
+            testCase.verifyGreaterThanOrEqual(numel(checks), 3, 'The stitching job was not checked until it ended.');
+        end
+
+        function streamingProcessesNewFiles(testCase)
+            % with streaming on, files that arrive during the run used to
+            % make the pipeline fail (it added 4 flag columns to 2)
+            px = testCase.XYPixelSize;
+            dataPath = testCase.createTempFolder();
+            stagePath = testCase.createTempFolder();
+            raw = uint16(pktest.beads([48, 64, 40], [20, 30, 15], 2, 3000, 200));
+            writetiff(raw, testCase.tileFilename(dataPath, 'CamA_ch0', 0));
+            newFn = testCase.tileFilename(dataPath, 'CamA_ch0', 1);
+            stagedFn = testCase.tileFilename(stagePath, 'CamA_ch0', 1);
+            writetiff(raw, stagedFn);
+            % files changed in the last minute count as still being written
+            system(sprintf('touch -d "-5 min" %s %s', testCase.tileFilename(dataPath, 'CamA_ch0', 0), stagedFn));
+            % the second file arrives (with its old time) at the first wait
+            testCase.applyFixture(pktest.FunctionSpyFixture('pause', ...
+                @() system(sprintf('mv -n %s %s 2>/dev/null; true', stagedFn, newFn))));
+            evalc(['XR_microscopeAutomaticProcessing(dataPath, ''xyPixelSize'', px, ''dz'', testCase.Dz, ', ...
+                '''reverse'', true, ''channelPatterns'', {''CamA_ch0''}, ''streaming'', true, ''deskew'', true, ', ...
+                '''rotate'', true, ''DSRCombined'', true, ''stitch'', false, ''parseCluster'', false, ', ...
+                '''maxModifyTime'', 1, ''maxWaitLoopNum'', 2, ''cpusPerTask'', 4)']);
+            testCase.verifyTrue(isfile(strrep(newFn, dataPath, [dataPath, 'DSR/'])), 'The new file was not processed.');
+            testCase.verifyTrue(isfile(strrep(testCase.tileFilename(dataPath, 'CamA_ch0', 0), dataPath, [dataPath, 'DSR/'])));
         end
 
         function localRunSubmitsNoStitchingJobs(testCase)

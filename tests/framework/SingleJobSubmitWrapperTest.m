@@ -72,6 +72,38 @@ classdef SingleJobSubmitWrapperTest < pktest.TestCase
             testCase.verifyEqual(slurm.callCount('sbatch'), 1);
         end
 
+        function compiledJobsUseOwnRuntimeCache(testCase)
+            % single compiled jobs shared one MATLAB Runtime cache, so jobs
+            % starting at the same time on a node sometimes failed to start
+            testCase.assumeFalse(ispc, 'The fake Slurm needs a POSIX shell.');
+            slurm = testCase.applyFixture(pktest.FakeSlurmFixture);
+            dataPath = testCase.createTempFolder();
+            mkdir([dataPath, 'mcr/bin']);
+            logFn = [dataPath, 'cache.log'];
+            masterFn = [dataPath, 'run_mccMaster.sh'];
+            fid = fopen(masterFn, 'w');
+            fprintf(fid, '#!/bin/bash\necho "$MCR_CACHE_ROOT" > "%s"\n', logFn);
+            fclose(fid);
+            fileattrib(masterFn, '+x');
+            configFn = [dataPath, 'config.json'];
+            fid = fopen(configFn, 'w');
+            fprintf(fid, '%s', jsonencode(struct('MCRParam', [dataPath, 'mcr/'], 'MCCMasterStr', masterFn, ...
+                'MCRCacheRoot', [dataPath, 'cache'])));
+            fclose(fid);
+            evalc(['generic_single_job_submit_wrapper(''XR_crop_frame(''''in'''',''''out'''',[1,1,1,2,2,2],''''pad'''',false)'', ', ...
+                '-1, 7, ''maxTrialNum'', 1, ''mccMode'', true, ''ConfigFile'', configFn)']);
+            calls = slurm.calls('sbatch');
+            testCase.assertNumElements(calls, 1);
+            % run the job's command as Slurm would, in the job's shell
+            jobFn = [dataPath, 'job.sh'];
+            fid = fopen(jobFn, 'w');
+            fprintf(fid, '%s\n', extractAfter(calls{1}, '--wrap='));
+            fclose(fid);
+            [status, out] = system(sprintf('env SLURM_JOB_ID=42 bash %s', jobFn));
+            testCase.assertEqual(status, 0, out);
+            testCase.verifyEqual(strip(fileread(logFn)), [dataPath, 'cache/mcr_cache_42']);
+        end
+
         function pendingLastJobGoesToTheMaster(testCase)
             % with masterCompute the master cancels the last file's pending
             % job and computes it itself

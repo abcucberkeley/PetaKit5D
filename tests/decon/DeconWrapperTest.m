@@ -370,11 +370,28 @@ classdef DeconWrapperTest < pktest.TestCase
             d = testCase.createDataset({'A'}, 1);
             slurm = testCase.applyFixture(pktest.FakeSlurmFixture);
             pauses = testCase.applyFixture(pktest.FunctionSpyFixture('pause'));
-            % the fake jobs never run: one round submits, the next resubmits
+            % the fake jobs never run: one round submits, the next resubmits,
+            % the last checks that the second job is gone
             testCase.runWrapper(d, 'parseCluster', true, 'maxTrialNum', 2, 'jobLogDir', [d.root, 'logs']);
             testCase.verifyEqual(slurm.callCount('sbatch'), 2);
             waits = cellfun(@(x) x{1}, pauses.getCalls());
-            testCase.verifyEqual(waits, 3);
+            testCase.verifyEqual(waits, [3, 3]);
+        end
+
+        function clusterModeWaitsForTheLastTry(testCase)
+            % after submitting the last try, the wrapper returned without
+            % waiting for its job; it now checks the job until it ends,
+            % without submitting again
+            testCase.assumeFalse(ispc, 'The fake Slurm needs a POSIX shell.');
+            d = testCase.createDataset({'A'}, 1);
+            slurm = testCase.applyFixture(pktest.FakeSlurmFixture);
+            slurm.setJobStates('1000_1', {'PD', 'R', 'R', 'done'});
+            pauses = testCase.applyFixture(pktest.FunctionSpyFixture('pause'));
+            testCase.runWrapper(d, 'parseCluster', true, 'maxTrialNum', 1, 'jobLogDir', [d.root, 'logs']);
+            testCase.verifyEqual(slurm.callCount('sbatch'), 1, 'The last try was submitted again.');
+            % a check before submitting, then one per round until the job is gone
+            testCase.verifyEqual(slurm.callCount('squeue'), 5);
+            testCase.verifyNumElements(pauses.getCalls(), 4);
         end
 
         function clusterModeWaitGrowsWithUnfinishedFiles(testCase)
@@ -388,7 +405,8 @@ classdef DeconWrapperTest < pktest.TestCase
             testCase.runWrapper(d, 'parseCluster', true, 'maxTrialNum', 2, 'jobLogDir', [d.root, 'logs']);
             testCase.verifyEqual(slurm.callCount('sbatch'), 40);
             waits = cellfun(@(x) x{1}, pauses.getCalls());
-            testCase.verifyEqual(waits, 6, 'AbsTol', 1e-9, 'The wait for 20 unfinished files should be 6 s.');
+            % the second round also waits for the last tries' jobs to end
+            testCase.verifyEqual(waits, [6, 6], 'AbsTol', 1e-9, 'The wait for 20 unfinished files should be 6 s.');
         end
     end
 

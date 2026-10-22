@@ -325,11 +325,14 @@ end
 if parseCluster
     job_ids = -ones(nF, 1);
 end
+% files whose job is pending or running: after the last try, the wrapper
+% waits for its job before it returns
+job_active = false(nF, 1);
 
 nF_done = 0;
 ts = tic;
 % use while loop to perform computing for all images
-while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
+while ~all(is_done_flag | (trial_counter >= maxTrialNum & ~job_active), 'all')
     for f = 1 : nF
         if all(is_done_flag(f, :))
             continue;
@@ -469,13 +472,20 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
                     end
 
                     job_id = job_ids(f, 1);
-                    [job_id, ~, submit_status] = generic_single_job_submit_wrapper(func_str, ...
-                        job_id, task_id, jobLogFname=job_log_fname, jobErrorFname=job_log_error_fname, ...
-                        lastFile=false, cpusPerTask=cpusPerTask, memAllocate=memAllocate, ...
-                        mccMode=mccMode, configFile=cur_configFile);
+                    if trial_counter(f, 1) < maxTrialNum
+                        [job_id, job_status, submit_status] = generic_single_job_submit_wrapper(func_str, ...
+                            job_id, task_id, jobLogFname=job_log_fname, jobErrorFname=job_log_error_fname, ...
+                            lastFile=false, cpusPerTask=cpusPerTask, memAllocate=memAllocate, ...
+                            mccMode=mccMode, configFile=cur_configFile);
+                    else
+                        % the last try: only check whether its job is still there
+                        job_status = check_slurm_job_status(job_id, rem(task_id, 5000));
+                        submit_status = 0;
+                    end
 
                     job_ids(f, 1) = job_id;
                     trial_counter(f, 1) = trial_counter(f, 1) + submit_status;
+                    job_active(f) = submit_status > 0 || job_status >= 0;
                 else
                     temp_file_info = dir(dctmpFullpath);
                     if minutes(datetime('now') - [temp_file_info.date]) < unitWaitTime
@@ -506,7 +516,7 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
     end
 
     % wait for running jobs finishing and checking for new coming images
-    if ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
+    if ~all(is_done_flag | (trial_counter >= maxTrialNum & ~job_active), 'all')
         % with jobs on the cluster, check again soon when few files are left;
         % each check runs squeue per job, so wait longer for many files
         waitTime = 30;

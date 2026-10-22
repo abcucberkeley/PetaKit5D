@@ -191,7 +191,11 @@ while submit_status == 0 && trial_counter < maxTrialNum
                     [func_name, var_str] = convert_function_string_to_mcc_string(funcStr);
                     % handle for nested "
                     var_str = strrep(var_str, '"', '\"');                
-                    process_cmd = sprintf('MCR_CACHE_ROOT=%s %s %s %s %s \n', MCRCacheRoot, MCCMasterStr, MCRParam, func_name, var_str);
+                    % a MATLAB Runtime cache per job (jobs starting at the same
+                    % time with a shared cache sometimes fail to start); the $ is
+                    % escaped for the job's shell, as the command is in --wrap="..."
+                    mcrCacheStr = sprintf('%s/mcr_cache_\\${SLURM_JOB_ID:-0}', MCRCacheRoot);
+                    process_cmd = sprintf('MCR_CACHE_ROOT=%s %s %s %s %s \n', mcrCacheStr, MCCMasterStr, MCRParam, func_name, var_str);
                 else
                     matlab_setup_str = 'setup([])';
                     matlab_cmd = sprintf('%s;t0_=tic;%s;toc(t0_)', matlab_setup_str, funcStr);

@@ -294,8 +294,10 @@ max_trial_num = maxTrialNum;
 
 if parseCluster
     job_ids = -ones(numel(fullIter), numel(Cam), numel(stackn), numel(Ch), numel(nz));
-    job_status_flag = false(numel(fullIter), numel(Cam), numel(stackn), numel(Ch), numel(nz));
 end
+% whether a stitching job is pending or running: after the last try, the
+% wrapper waits for its job before it returns
+job_status_flag = false(numel(fullIter), numel(Cam), numel(stackn), numel(Ch), numel(nz));
 
 % set wait counter for streaming option
 if streaming
@@ -333,7 +335,7 @@ if ~onlineStitch && ~any(stitchMIP) && ~streaming && size(tab, 1) > 20
     end
 end
 
-while ~all(is_done_flag | trial_counter >= max_trial_num, 'all')
+while ~all(is_done_flag | (trial_counter >= max_trial_num & ~job_status_flag), 'all')
     % exit the job if no new images are transferred.
     if streaming && stream_counter > stream_max_counter
         break;
@@ -345,7 +347,8 @@ while ~all(is_done_flag | trial_counter >= max_trial_num, 'all')
             for s = 1:numel(stackn)
                 for c = 1:numel(Ch)
                     for z = 1:numel(nz)
-                        if is_done_flag(n, ncam, s, c, z) || trial_counter(n, ncam, s, c, z) >= max_trial_num
+                        if is_done_flag(n, ncam, s, c, z) || (trial_counter(n, ncam, s, c, z) >= max_trial_num ...
+                                && ~job_status_flag(n, ncam, s, c, z))
                             continue;
                         end
                         if ~row_exist_flag(n, ncam, s, c, z)
@@ -652,13 +655,20 @@ while ~all(is_done_flag | trial_counter >= max_trial_num, 'all')
                                     job_id = job_ids(n, ncam, s, c, z);
                                     task_id = rem(f, 5000);
                                     
-                                    [job_id, ~, submit_status] = generic_single_job_submit_wrapper(func_str, job_id, task_id, ...
-                                        'jobLogFname', job_log_fname, 'jobErrorFname', job_log_error_fname, ...
-                                        masterCompute=masterCompute, cpusPerTask=cpusPerTask, lastFile=lastFile, ...
-                                        memAllocate=memAllocate, mccMode=mccMode, configFile=configFile);
+                                    if trial_counter(n, ncam, s, c, z) < max_trial_num
+                                        [job_id, job_status, submit_status] = generic_single_job_submit_wrapper(func_str, job_id, task_id, ...
+                                            'jobLogFname', job_log_fname, 'jobErrorFname', job_log_error_fname, ...
+                                            masterCompute=masterCompute, cpusPerTask=cpusPerTask, lastFile=lastFile, ...
+                                            memAllocate=memAllocate, mccMode=mccMode, configFile=configFile);
+                                    else
+                                        % the last try: only check whether its job is still there
+                                        job_status = check_slurm_job_status(job_id, task_id);
+                                        submit_status = 0;
+                                    end
     
                                     job_ids(n, ncam, s, c, z) = job_id;
                                     trial_counter(n, ncam, s, c, z) = trial_counter(n, ncam, s, c, z) + submit_status;
+                                    job_status_flag(n, ncam, s, c, z) = submit_status > 0 || job_status >= 0;
                                 end
                             else
                                 per_file_wait_time = unitWaitTime; % minite
