@@ -485,7 +485,10 @@ while (~parseCluster && ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
         % number and masterCompute is true
         skip_job_submission = false;
         if parseCluster && nB > maxJobNum
-            job_done_flag = arrayfun(@(x) all(is_done_flag((x-1)*taskBatchNum+1 : min(x*taskBatchNum, nF))), 1 : nB)';
+            % batch b is done when all its tasks are; the last batch is padded
+            done_pad = true(taskBatchNum * nB, 1);
+            done_pad(1 : nF) = is_done_flag;
+            job_done_flag = all(reshape(done_pad, taskBatchNum, nB), 1)';
             skip_job_submission = sum(job_status_mat(1 : taskBatchNum : nF, 1) >= 0 & ~job_done_flag) >= maxJobNum;
         end
         

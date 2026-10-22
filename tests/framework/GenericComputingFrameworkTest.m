@@ -175,6 +175,22 @@ classdef GenericComputingFrameworkTest < pktest.TestCase
             testCase.verifySubstring(sbatch{1}, '--cpus-per-task=12');
         end
 
+        function clusterModeSubmitsEachTaskOnceWithMaxJobNum(testCase)
+            % with more jobs than maxJobNum the framework holds tasks back
+            % until earlier jobs end (it counts its active jobs for every
+            % batch); the fake jobs end at once without results
+            testCase.assumeFalse(ispc, 'The fake Slurm needs a POSIX shell.');
+            slurm = testCase.applyFixture(pktest.FakeSlurmFixture);
+            [inFns, outFns, logFn, dataPath] = testCase.makeTasks(3);
+            funcStrs = testCase.taskStrings(inFns, outFns, logFn, 'noop');
+
+            evalc(['generic_computing_frameworks_wrapper(inFns, outFns, funcStrs, ''parseCluster'', true, ', ...
+                '''masterCompute'', false, ''maxTrialNum'', 1, ''maxJobNum'', 1, ''jobLogDir'', dataPath)']);
+
+            arrays = cellfun(@(x) str2double(regexp(x, '--array=(\d+)', 'tokens', 'once')), slurm.calls('sbatch'));
+            testCase.verifyEqual(sort(arrays(:))', 1 : 3, 'Each task should be submitted once.');
+        end
+
         function missingConfigFileErrors(testCase)
             [inFns, outFns, logFn, dataPath] = testCase.makeTasks(2);
             funcStrs = testCase.taskStrings(inFns, outFns, logFn, 'copy');

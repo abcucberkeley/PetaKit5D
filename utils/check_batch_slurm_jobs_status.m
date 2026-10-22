@@ -81,17 +81,12 @@ job_id_s_m = cellfun(@(x) x{1}{1}, tmp, 'unif', 0);
 status_s_m = cellfun(@(x) x{1}{2}, tmp, 'unif', 0);
 
 valid_job_status = -ones(sum(valid_inds), 1);
-for i = 1 : numel(job_id_s_m)
-    ind = strcmp(job_ids_s, job_id_s_m{i});
-    if any(ind)
-        switch status_s_m{i}
-            case 'R'
-                valid_job_status(ind) = 1;
-            case 'PD'
-                valid_job_status(ind) = 0;
-        end
-    end
-end
+% running is 1, pending 0, other states and jobs not in the queue -1; a job
+% listed more than once takes its last running or pending line
+[found, loc] = ismember(job_id_s_m(:), job_ids_s(:));
+is_running = strcmp(status_s_m(:), 'R');
+is_set = found & (is_running | strcmp(status_s_m(:), 'PD'));
+valid_job_status(loc(is_set)) = double(is_running(is_set));
 
 if numel(job_array_ids) > numel(ia)
     valid_job_status = valid_job_status(ic);
