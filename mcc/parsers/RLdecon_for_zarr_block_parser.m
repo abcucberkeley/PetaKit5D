@@ -32,6 +32,7 @@ ip.addParameter('hannWinBounds', [0.8, 1.0], @(x) isnumeric(x) || ischar(x)); % 
 ip.addParameter('skewed', [], @(x) isempty(x) || islogical(x) || ischar(x)); % decon in skewed space
 ip.addParameter('fixIter', false, @(x) islogical(x) || ischar(x)); % CPU Memory in Gb
 ip.addParameter('useGPU', false, @(x) islogical(x) || ischar(x)); % use gpu for chuck deconvolution. 
+ip.addParameter('mipBatchSize', [], @(x) isnumeric(x) || ischar(x)); % save the MIPs of the blocks for MIP slabs with this batch size in the flag
 ip.addParameter('uuid', '', @ischar);
 ip.addParameter('debug', false, @(x) islogical(x) || ischar(x));
 ip.addParameter('psfGen', true, @(x) islogical(x) || ischar(x)); % psf generation
@@ -59,6 +60,7 @@ hannWinBounds = pr.hannWinBounds;
 skewed = pr.skewed;
 fixIter = pr.fixIter;
 useGPU = pr.useGPU;
+mipBatchSize = pr.mipBatchSize;
 uuid = pr.uuid;
 debug = pr.debug;
 psfGen = pr.psfGen;
@@ -132,6 +134,9 @@ end
 if ischar(useGPU)
     useGPU = str2num(useGPU);
 end
+if ischar(mipBatchSize)
+    mipBatchSize = str2num(mipBatchSize);
+end
 if ischar(debug)
     debug = str2num(debug);
 end
@@ -146,7 +151,7 @@ RLdecon_for_zarr_block(batchInds, zarrFullpath, psfFullpath, deconFullpath, ...
     deconOffset=deconOffset, EdgeErosion=EdgeErosion, maskFullpaths=maskFullpaths, ...
     RLMethod=RLMethod, wienerAlpha=wienerAlpha, OTFCumThresh=OTFCumThresh, ...
     hannWinBounds=hannWinBounds, skewed=skewed, fixIter=fixIter, useGPU=useGPU, ...
-    uuid=uuid, debug=debug, psfGen=psfGen);
+    mipBatchSize=mipBatchSize, uuid=uuid, debug=debug, psfGen=psfGen);
 
 end
 

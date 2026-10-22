@@ -21,6 +21,7 @@ ip.addParameter('flipZstack', false, @(x) islogical(x) || ischar(x));
 ip.addParameter('save16bit', true, @(x) islogical(x) || ischar(x));
 ip.addParameter('interpMethod', 'linear', @(x) any(strcmpi(x, {'cubic', 'linear'})) || ischar(x));
 ip.addParameter('resampleFactor', [], @(x) isempty(x) || isnumeric(x) || ischar(x)); % resampling after rotation 
+ip.addParameter('mipBatchSize', [], @(x) isnumeric(x) || ischar(x)); % save the MIPs of the blocks for MIP slabs with this batch size in the flag
 ip.addParameter('uuid', '', @ischar);
 ip.addParameter('debug', false, @(x) islogical(x) || ischar(x));
 
@@ -35,6 +36,7 @@ flipZstack = pr.flipZstack;
 save16bit = pr.save16bit;
 interpMethod = pr.interpMethod;
 resampleFactor = pr.resampleFactor;
+mipBatchSize = pr.mipBatchSize;
 uuid = pr.uuid;
 debug = pr.debug;
 
@@ -77,6 +79,9 @@ end
 if ischar(resampleFactor)
     resampleFactor = str2num(resampleFactor);
 end
+if ischar(mipBatchSize)
+    mipBatchSize = str2num(mipBatchSize);
+end
 if ischar(debug)
     debug = str2num(debug);
 end
@@ -84,7 +89,8 @@ end
 XR_deskewRotateBlock(batchInds, zarrFullpath, dsrFullpath, flagFullname, inBatchBBoxes, ...
     outBatchBBoxes, outRegionBBoxes, outLocalBboxes, xyPixelSize, dz, Overwrite=Overwrite, ...
     SkewAngle=SkewAngle, Reverse=Reverse, flipZstack=flipZstack, save16bit=save16bit, ...
-    interpMethod=interpMethod, resampleFactor=resampleFactor, uuid=uuid, debug=debug);
+    interpMethod=interpMethod, resampleFactor=resampleFactor, mipBatchSize=mipBatchSize, ...
+    uuid=uuid, debug=debug);
 
 end
 

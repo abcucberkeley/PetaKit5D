@@ -10,6 +10,7 @@ classdef MIPTest < pktest.TestCase
     properties (TestParameter)
         poolSize = struct('cube', [2, 2, 2], 'anisotropic', [3, 2, 1], 'nonDivisible', [4, 5, 5])
         poolType = {'uint16', 'single'}
+        zarrType = {'uint16', 'single'}
     end
 
     methods (Test, TestTags = {'Integration'})
@@ -98,6 +99,38 @@ classdef MIPTest < pktest.TestCase
             testCase.verifyEqual(numel(dir([dataPath, '*.tif'])), 7, 'Temporary files were left behind.');
         end
 
+        function zarrIsReadInSlabsOfWholeChunks(testCase, zarrType)
+            % saveMIP_zarr reads zarr files in z slabs of whole chunk layers
+            % with at least 64 chunks (3 slabs of one layer here, 2 slabs of
+            % two layers in the box) and keeps a running max along z. For
+            % single, lines of NaN and of -0 and 0, where max takes the first
+            % (0 first in the second and third slab here).
+            dataPath = testCase.createTempFolder();
+            im = cast(randi(60000, [128, 128, 12]), zarrType);
+            if strcmp(zarrType, 'single')
+                im(rand(size(im)) < 0.05) = NaN;
+                im(3, :, :) = NaN;
+                im(:, 5, :) = -0;
+                im(:, 5, [2, 9]) = 0;
+                im(7, 9, :) = -0;
+                im(7, 9, [5, end]) = 0;
+            end
+            writezarr(im, [dataPath, 'im.zarr'], 'blockSize', [16, 16, 4]);
+            saveMIP_zarr([dataPath, 'im.zarr'], [dataPath, 'all_MIP_z.tif'], 'axis', [1, 1, 1]);
+            saveMIP_zarr([dataPath, 'im.zarr'], [dataPath, 'z_MIP_z.tif']);
+            b = [5, 7, 3, 120, 110, 10];
+            saveMIP_zarr([dataPath, 'im.zarr'], [dataPath, 'bbox_MIP_z.tif'], 'axis', [1, 1, 1], 'inputBbox', b);
+            names = {'y', 'x', 'z'};
+            for i = 1 : 3
+                testCase.verifySameBits(readtiff(sprintf('%sall_MIP_%s.tif', dataPath, names{i})), squeeze(max(im, [], i)), ...
+                    sprintf('MIP along %s', names{i}));
+                testCase.verifySameBits(readtiff(sprintf('%sbbox_MIP_%s.tif', dataPath, names{i})), ...
+                    squeeze(max(im(b(1) : b(4), b(2) : b(5), b(3) : b(6)), [], i)), sprintf('MIP along %s in the box', names{i}));
+            end
+            testCase.verifySameBits(readtiff([dataPath, 'z_MIP_z.tif']), max(im, [], 3), 'MIP along z alone');
+            testCase.verifyFalse(exist([dataPath, 'z_MIP_y.tif'], 'file') > 0);
+        end
+
         function maxPoolingMatchesBlockwiseMax(testCase, poolSize, poolType)
             im = cast(rand([23, 19, 11]) * 1000, poolType);
             expected = testCase.blockMax(im, poolSize);
@@ -135,6 +168,19 @@ classdef MIPTest < pktest.TestCase
                     writezarr(ims{i}, [dataPath, names{i}, '.zarr'], 'blockSize', [16, 16, 4]);
                 else
                     writetiff(ims{i}, [dataPath, names{i}, '.tif']);
+                end
+            end
+        end
+
+        function [] = verifySameBits(testCase, actual, expected, name)
+            % equal values, and for floats equal bits (NaN payloads, -0)
+            testCase.verifyClass(actual, class(expected), name);
+            testCase.verifySize(actual, size(expected), name);
+            if isa(actual, class(expected)) && isequal(size(actual), size(expected))
+                if isfloat(expected)
+                    testCase.verifyEqual(typecast(actual(:), 'uint8'), typecast(expected(:), 'uint8'), name);
+                else
+                    testCase.verifyEqual(actual, expected, name);
                 end
             end
         end

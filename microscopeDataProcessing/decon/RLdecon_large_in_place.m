@@ -194,6 +194,11 @@ if ~exist(deconTmppath, 'dir')
     createzarr(deconTmppath, dataSize=imSize, blockSize=blockSize, dtype=dtype, dimSeparator=dimSeparator);
 end
 
+% the tasks save the MIPs of their blocks for the MIP slabs (XR_MIP_zarr
+% merges them instead of reading the result again)
+zInfo = getZarrInfo(deconTmppath);
+mipBatchSize = MIP_zarr_batch_size(zInfo.size, zInfo.blockSize, zInfo.dtype);
+
 if GPUJob
     taskSize = 20; % the number of batches a job should process
 else
@@ -238,14 +243,14 @@ for i = 1 : numTasks
         '''RLMethod'',''%s'',''wienerAlpha'',%0.20f,''OTFCumThresh'',%0.20f,', ...
         '''hannWinBounds'',%s,''skewed'',[%s],''fixIter'',%s,''dampFactor'',%d,', ...
         '''scaleFactor'',[%d],''deconOffset'',%d,''EdgeErosion'',%d,''useGPU'',%s,', ...
-        '''maskFullpaths'',%s,''uuid'',''%s'',''debug'',%s,''psfGen'',%s)'], ...
+        '''maskFullpaths'',%s,''uuid'',''%s'',''debug'',%s,''psfGen'',%s,''mipBatchSize'',%s)'], ...
         strrep(num2str(batchInds, '%d,'), ' ', ''), frameFullpath, PSF, deconTmppath, ...
         zarrFlagFullpath, strrep(mat2str(batchBBoxes_i), ' ', ','), strrep(mat2str(regionBBoxes_i), ' ', ','), ...
         xyPixelSize, dz, string(save16bit), string(Overwrite), SkewAngle, string(flipZstack), ...
         Background, dzPSF, DeconIter, RLMethod, wienerAlpha, OTFCumThresh, mat2str_comma(hannWinBounds), ...
         string(skewed), string(fixIter), dampFactor, scaleFactor, deconOffset, ...
         EdgeErosion, string(useGPU), maskFullpaths_str, uuid, string(debug), ...
-        string(psfGen));
+        string(psfGen), mat2str_comma(mipBatchSize));
 end
 
 inputFullpaths = repmat({frameFullpath}, numTasks, 1);
@@ -279,7 +284,8 @@ end
 % generate MIPs from the temporary result: the caller counts the file as
 % done once deconFullpath exists. The MIPs are named after the final result,
 % as XR_MIP_zarr takes '.zarr_<uuid>' as the extension. masterCompute is the
-% caller's (it is turned off above for GPU jobs only).
+% caller's (it is turned off above for GPU jobs only). The slabs are merged
+% from the MIPs of the blocks in the flags.
 if exist(deconTmppath, 'dir')
     deconMIPPath = sprintf('%s/MIPs/', deconPath);
     if ~exist(deconMIPPath, 'dir')
@@ -287,7 +293,7 @@ if exist(deconTmppath, 'dir')
         fileattrib(deconMIPPath, '+w', 'g');
     end
     XR_MIP_zarr(deconTmppath, axis=[1, 1, 1], parseCluster=parseCluster, masterCompute=pr.masterCompute, ...
-        jobLogDir=jobLogDir, mccMode=mccMode, configFile=configFile);
+        jobLogDir=jobLogDir, mccMode=mccMode, configFile=configFile, blockFlagFullpaths=outputFullpaths);
 end
 
 if exist(deconFullpath, 'dir') && exist(deconTmppath, 'dir')

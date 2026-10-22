@@ -27,6 +27,7 @@ ip.addParameter('flipZstack', false, @islogical);
 ip.addParameter('save16bit', true, @islogical);
 ip.addParameter('interpMethod', 'linear', @(x) any(strcmpi(x, {'cubic', 'linear'})));
 ip.addParameter('resampleFactor', [], @(x) isempty(x) || isnumeric(x)); % resampling after rotation 
+ip.addParameter('mipBatchSize', [], @isnumeric); % save the MIPs of the blocks for MIP slabs with this batch size in the flag
 ip.addParameter('uuid', '', @ischar);
 ip.addParameter('debug', false, @islogical);
 
@@ -41,6 +42,7 @@ flipZstack = pr.flipZstack;
 save16bit = pr.save16bit;
 interpMethod = pr.interpMethod;
 resampleFactor = pr.resampleFactor;
+mipBatchSize = pr.mipBatchSize;
 uuid = pr.uuid;
 
 % we assume the path exists, otherwise return error (in case of completion 
@@ -68,6 +70,10 @@ if ~exist(dsrFullpath, 'dir')
 end
 
 dtype = getImageDataType(zarrFullpath);
+if ~isempty(mipBatchSize)
+    outDtype = getImageDataType(dsrFullpath, true);
+    mips = cell(numel(batchInds), 3);
+end
 
 done_flag = false(numel(batchInds), 1);
 for i = 1 : numel(batchInds)
@@ -98,6 +104,9 @@ for i = 1 : numel(batchInds)
         out_batch = uint16(out_batch);
     end
     writezarr(out_batch, dsrFullpath, 'bbox', outBbox, create=false);
+    if ~isempty(mipBatchSize)
+        mips(i, :) = MIP_zarr_block_mips(out_batch, outBbox, mipBatchSize, outDtype);
+    end
     clear out_batch;
     done_flag(i) = true;
 
@@ -107,7 +116,11 @@ end
 if all(done_flag)
     % fclose(fopen(flagFullname, 'w'));
     t = toc(t0);
-    save(flagFullname, 't')
+    if isempty(mipBatchSize)
+        save(flagFullname, 't')
+    else
+        MIP_zarr_save_block_mips(flagFullname, outRegionBBoxes, mips, mipBatchSize, t);
+    end
 end
 
 end

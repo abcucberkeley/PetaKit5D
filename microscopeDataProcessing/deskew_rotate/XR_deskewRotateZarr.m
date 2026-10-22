@@ -222,6 +222,16 @@ if ~exist(dsrTmppath, 'dir')
     createzarr(dsrTmppath, dataSize=outSize, blockSize=outBlockSize, dtype=dtype, dimSeparator=dimSeparator);                
 end
 
+% the tasks save the MIPs of their blocks for the MIP slabs (XR_MIP_zarr
+% merges them instead of reading the result again); the option is passed
+% only then, so that compiled masters built before it still run the tasks
+mip_str = '';
+if saveMIP
+    zInfo = getZarrInfo(dsrTmppath);
+    mipBatchSize = MIP_zarr_batch_size(zInfo.size, zInfo.blockSize, zInfo.dtype);
+    mip_str = sprintf(',''mipBatchSize'',%s', strrep(mat2str(mipBatchSize), ' ', ','));
+end
+
 % set up parallel computing 
 numBatch = size(inBatchBboxes, 1);
 if isempty(taskSize)
@@ -249,12 +259,12 @@ for i = 1 : numTasks
     funcStrs{i} = sprintf(['XR_deskewRotateBlock([%s],''%s'',''%s'',''%s'',%s,%s,%s,%s,', ...
         '%0.20d,%0.20d,''Overwrite'',%s,''SkewAngle'',%0.20d,''Reverse'',%s,', ...
         '''flipZstack'',%s,''save16bit'',%s,''interpMethod'',''%s'',''resampleFactor'',%s,', ...
-        '''uuid'',''%s'',''debug'',%s)'], strrep(num2str(batchInds, '%d,'), ' ', ''), ...
+        '''uuid'',''%s'',''debug'',%s%s)'], strrep(num2str(batchInds, '%d,'), ' ', ''), ...
         frameFullpath, dsrTmppath, zarrFlagFullpath, strrep(mat2str(inBatchBBoxes_i), ' ', ','), ...
         strrep(mat2str(outBatchBBoxes_i), ' ', ','), strrep(mat2str(outRegionBBoxes_i), ' ', ','), ...
         strrep(mat2str(outLocalBBoxes_i), ' ', ','), xyPixelSize, dz, string(Overwrite), ...
         skewAngle, string(reverse), string(flipZstack), string(save16bit), interpMethod, ...
-        strrep(mat2str(resampleFactor), ' ', ','), uuid, string(debug));
+        strrep(mat2str(resampleFactor), ' ', ','), uuid, string(debug), mip_str);
 end
 
 inputFullpaths = repmat({frameFullpath}, numTasks, 1);
@@ -295,7 +305,7 @@ end
 % generate MIPs from the temporary result: the job framework counts the task
 % as done (and may cancel its job) once dsrFullpath exists. The MIPs are
 % named after the final result, as XR_MIP_zarr takes '.zarr_<uuid>' as the
-% extension.
+% extension. The slabs are merged from the MIPs of the blocks in the flags.
 if saveMIP && exist(dsrTmppath, 'dir')
     dsrMIPPath = sprintf('%s/MIPs/', dsrPath);
     if ~exist(dsrMIPPath, 'dir')
@@ -303,7 +313,7 @@ if saveMIP && exist(dsrTmppath, 'dir')
         fileattrib(dsrMIPPath, '+w', 'g');
     end
     XR_MIP_zarr(dsrTmppath, parseCluster=parseCluster, masterCompute=masterCompute, ...
-        jobLogDir=jobLogDir, mccMode=mccMode, configFile=configFile);
+        jobLogDir=jobLogDir, mccMode=mccMode, configFile=configFile, blockFlagFullpaths=outputFullpaths);
 end
 
 if exist(dsrFullpath, 'dir') && exist(dsrTmppath, 'dir')

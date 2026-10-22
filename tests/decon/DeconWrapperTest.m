@@ -229,6 +229,49 @@ classdef DeconWrapperTest < pktest.TestCase
             testCase.verifyEmpty(added, 'Files were written after the result was moved into place.');
         end
 
+        function largeFileInPlaceMIPsAreMergedFromTheBlocks(testCase)
+            % the decon tasks save the MIPs of their blocks in their flags,
+            % and XR_MIP_zarr merges them into the MIP slabs instead of
+            % reading the result again in MIP_block tasks. The blocks are
+            % single and the result uint16: the MIPs are rounded as written.
+            d = testCase.createDataset({'A'}, 1, {}, true);
+            moves = testCase.applyFixture(pktest.MovefileSpyFixture);
+            % MIP_block tasks would read the result; the spy errors at once, as the
+            % framework would retry a task without output for minutes
+            mipTasks = testCase.applyFixture(pktest.FunctionSpyFixture('MIP_block', [], 0));
+            testCase.runWrapper(d, 'RLMethod', 'simplified', 'deconIter', 2, 'zarrFile', true, 'saveZarr', true, ...
+                'resultDirName', 'large', 'largeFile', true, 'largeMethod', 'inplace', 'batchSize', [32, 32, 16], ...
+                'blockSize', [16, 16, 16]);
+            testCase.verifyEmpty(mipTasks.getCalls(), 'The MIPs were computed from the result.');
+            calls = moves.getCalls();
+            testCase.verifyTrue(any(contains({calls.dst}, '/zarr_flag/') & endsWith({calls.dst}, '.mat')), ...
+                'The block flags were not moved into place.');
+            pktest.verifyLargeFileMIPs(testCase, [d.dataPath, 'large/', d.fsns{1}, '.zarr']);
+        end
+
+        function largeFileInPlaceMIPsIncludeMaskedBlocks(testCase)
+            % blocks outside the 2D masks are written as zeros without decon,
+            % and their MIPs are saved too (here the blocks below row 32)
+            d = testCase.createDataset({'A'}, 1, {}, true);
+            sz = testCase.ImSize;
+            maskFns = strcat(d.root, {'mask_xy.zarr', 'mask_xz.zarr', 'mask_yz.zarr'});
+            xy = ones(sz(1 : 2), 'uint8');
+            xy(33 : end, :) = 0;
+            writezarr(xy, maskFns{1});
+            writezarr(ones(sz(2 : 3), 'uint8'), maskFns{2});
+            writezarr(ones(sz([1, 3]), 'uint8'), maskFns{3});
+            mipTasks = testCase.applyFixture(pktest.FunctionSpyFixture('MIP_block', [], 0));
+            testCase.runWrapper(d, 'RLMethod', 'simplified', 'deconIter', 2, 'zarrFile', true, 'saveZarr', true, ...
+                'resultDirName', 'large', 'largeFile', true, 'largeMethod', 'inplace', 'batchSize', [32, 32, 16], ...
+                'blockSize', [16, 16, 16], 'maskFullpaths', maskFns);
+            testCase.verifyEmpty(mipTasks.getCalls(), 'The MIPs were computed from the result.');
+            resultFn = [d.dataPath, 'large/', d.fsns{1}, '.zarr'];
+            out = readzarr(resultFn);
+            testCase.assertEqual(nnz(out(33 : end, :, :)), 0, 'The blocks outside the masks were deconvolved.');
+            testCase.assertGreaterThan(nnz(out(1 : 32, :, :)), 0);
+            pktest.verifyLargeFileMIPs(testCase, resultFn);
+        end
+
         function largeFileInPlacePassesJobSettingsToMIPs(testCase)
             % RLdecon_large_in_place didn't pass parseCluster, masterCompute
             % or jobLogDir to XR_MIP_zarr, so on a machine with Slurm the

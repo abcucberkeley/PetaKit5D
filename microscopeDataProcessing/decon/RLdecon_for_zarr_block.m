@@ -40,6 +40,7 @@ ip.addParameter('hannWinBounds', [0.8, 1.0], @isnumeric); % apodization range fo
 ip.addParameter('skewed', [], @(x) isempty(x) || islogical(x)); % decon in skewed space
 ip.addParameter('fixIter', false, @islogical); % CPU Memory in Gb
 ip.addParameter('useGPU', false, @islogical); % use gpu for chuck deconvolution. 
+ip.addParameter('mipBatchSize', [], @isnumeric); % save the MIPs of the blocks for MIP slabs with this batch size in the flag
 ip.addParameter('uuid', '', @ischar);
 ip.addParameter('debug', false, @islogical);
 ip.addParameter('psfGen', true, @islogical); % psf generation
@@ -66,6 +67,7 @@ wienerAlpha = pr.wienerAlpha;
 OTFCumThresh = pr.OTFCumThresh;
 hannWinBounds = pr.hannWinBounds;
 useGPU = pr.useGPU;
+mipBatchSize = pr.mipBatchSize;
 uuid = pr.uuid;
 psfGen = pr.psfGen;
 
@@ -96,6 +98,9 @@ end
 zarrFile = true;
 dtype = getImageDataType(deconFullpath, zarrFile);
 finds = [1, 2; 2, 3; 1, 3];
+if ~isempty(mipBatchSize)
+    mips = cell(numel(batchInds), 3);
+end
 
 done_flag = false(numel(batchInds), 1);
 for i = 1 : numel(batchInds)
@@ -121,7 +126,12 @@ for i = 1 : numel(batchInds)
         
         if skipDecon
             % nv_bim.Adapter.setRegion(obStart, obEnd, zeros(obEnd - obStart + 1, dtype));
-            writezarr(zeros(obEnd - obStart + 1, dtype), deconFullpath, 'bbox', [obStart, obEnd], create=false);
+            out_batch = zeros(obEnd - obStart + 1, dtype);
+            writezarr(out_batch, deconFullpath, 'bbox', [obStart, obEnd], create=false);
+            if ~isempty(mipBatchSize)
+                mips(i, :) = MIP_zarr_block_mips(out_batch, [obStart, obEnd], mipBatchSize, dtype);
+            end
+            clear out_batch;
             done_flag(i) = true;
             toc;
             continue;
@@ -160,6 +170,9 @@ for i = 1 : numel(batchInds)
     clear in_batch;
 
     writezarr(out_batch, deconFullpath, 'bbox', [obStart, obEnd], create=false);
+    if ~isempty(mipBatchSize)
+        mips(i, :) = MIP_zarr_block_mips(out_batch, [obStart, obEnd], mipBatchSize, dtype);
+    end
     done_flag(i) = true;
     toc;
 
@@ -173,7 +186,11 @@ end
 if all(done_flag)
     % fclose(fopen(flagFullname, 'w'));
     t = toc(t0);
-    save(flagFullname, 't')    
+    if isempty(mipBatchSize)
+        save(flagFullname, 't')    
+    else
+        MIP_zarr_save_block_mips(flagFullname, RegionBBoxes, mips, mipBatchSize, t);
+    end
 end
 
 end

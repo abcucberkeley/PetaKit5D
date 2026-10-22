@@ -82,6 +82,40 @@ classdef CropDatasetTest < pktest.TestCase
             end
         end
 
+        function largeZarrMIPsAreMergedFromTheBlocks(testCase)
+            % the crop tasks save the MIPs of their blocks in their flags, and
+            % XR_MIP_zarr merges them into the MIP slabs instead of reading
+            % the result again in MIP_block tasks
+            testCase.writeDataset('zarr');
+            moves = testCase.applyFixture(pktest.MovefileSpyFixture);
+            % MIP_block tasks would read the result; the spy errors at once, as the
+            % framework would retry a task without output for minutes
+            mipTasks = testCase.applyFixture(pktest.FunctionSpyFixture('MIP_block', [], 0));
+            XR_crop_dataset(testCase.DataPath, testCase.Bbox, 'channelPatterns', testCase.Channels(1), ...
+                'zarrFile', true, 'largeFile', true, 'batchSize', [16, 16, 4], 'blockSize', [8, 8, 4], ...
+                'parseCluster', false, 'masterCompute', true);
+            testCase.verifyEmpty(mipTasks.getCalls(), 'The MIPs were computed from the result.');
+            calls = moves.getCalls();
+            testCase.verifyTrue(any(contains({calls.dst}, '/zarr_flag/') & endsWith({calls.dst}, '.mat')), ...
+                'The block flags were not moved into place.');
+            pktest.verifyLargeFileMIPs(testCase, [testCase.DataPath, 'Cropped/', testCase.Names{1}, '.zarr']);
+        end
+
+        function largeZarrBlocksGetTheMIPOptionOnlyForMIPs(testCase)
+            % compiled masters built before the block tasks' mipBatchSize
+            % option still run the tasks of crops without MIPs
+            testCase.writeDataset('zarr');
+            spy = testCase.applyFixture(pktest.FrameworkSpyFixture());
+            zarrFn = [testCase.DataPath, testCase.Names{1}, '.zarr'];
+            for saveMIP = [false, true]
+                evalc(['XR_crop_zarr(zarrFn, sprintf(''%scrop_%d.zarr'', testCase.DataPath, saveMIP), testCase.Bbox, ', ...
+                    '''batchSize'', [16, 16, 4], ''blockSize'', [8, 8, 4], ''saveMIP'', saveMIP, ''parseCluster'', false)']);
+            end
+            calls = spy.getCalls();
+            testCase.verifyFalse(any(contains(calls{1}.funcStrs, 'mipBatchSize')), 'Tasks without MIPs got mipBatchSize.');
+            testCase.verifyTrue(all(contains(calls{2}.funcStrs, '''mipBatchSize'',[')), 'Tasks with MIPs got no mipBatchSize.');
+        end
+
         function largeZarrPassesJobSettingsToMIPs(testCase)
             % XR_crop_zarr passed parseCluster to XR_MIP_zarr, but not
             % masterCompute or jobLogDir

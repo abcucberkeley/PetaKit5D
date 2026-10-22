@@ -97,6 +97,16 @@ if ~exist(cropTempPath, 'dir')
     createzarr(cropTempPath, dataSize=outSize, blockSize=blockSize, dtype=dtype, dimSeparator=dimSeparator);
 end
 
+% the tasks save the MIPs of their blocks for the MIP slabs (XR_MIP_zarr
+% merges them instead of reading the result again); the option is passed
+% only then, so that compiled masters built before it still run the tasks
+mip_str = '';
+if saveMIP
+    zInfo = getZarrInfo(cropTempPath);
+    mipBatchSize = MIP_zarr_batch_size(zInfo.size, zInfo.blockSize, zInfo.dtype);
+    mip_str = sprintf(',''mipBatchSize'',%s', strrep(mat2str(mipBatchSize), ' ', ','));
+end
+
 % set up parallel computing 
 numBatch = size(batchBBoxes, 1);
 taskSize = max(5, round(numBatch / 5000)); % the number of batches a job should process
@@ -117,9 +127,9 @@ for i = 1 : numTasks
     outputFullpaths{i} = zarrFlagFullpath;
         
     funcStrs{i} = sprintf(['XR_crop_block([%s],''%s'',''%s'',''%s'',%s,%s,''uuid'',''%s'',', ...
-        '''debug'',%s)'], strrep(num2str(batchInds, '%d,'), ' ', ''), zarrFullpath, ...
+        '''debug'',%s%s)'], strrep(num2str(batchInds, '%d,'), ' ', ''), zarrFullpath, ...
         cropTempPath, zarrFlagFullpath, strrep(mat2str(batchBBoxes_i), ' ', ','), ...
-        strrep(mat2str(regionBBoxes_i), ' ', ','), uuid, string(debug));
+        strrep(mat2str(regionBBoxes_i), ' ', ','), uuid, string(debug), mip_str);
 end
 
 % submit jobs 
@@ -149,10 +159,11 @@ if ~all(is_done_flag)
 end
 
 % generate MIPs from the temporary result: the job framework counts the task
-% as done (and may cancel its job) once cropFullpath exists
+% as done (and may cancel its job) once cropFullpath exists. The slabs are
+% merged from the MIPs of the blocks in the flags.
 if saveMIP && exist(cropTempPath, 'dir')
     XR_MIP_zarr(cropTempPath, 'axis', [1, 1, 1], parseCluster=parseCluster, masterCompute=masterCompute, ...
-        jobLogDir=jobLogDir, mccMode=mccMode, configFile=configFile);
+        jobLogDir=jobLogDir, mccMode=mccMode, configFile=configFile, blockFlagFullpaths=outputFullpaths);
 end
 
 if exist(cropFullpath, 'dir') && exist(cropTempPath, 'dir')

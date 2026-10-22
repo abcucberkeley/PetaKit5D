@@ -42,6 +42,7 @@ mexFiles = {'deskew_rotate/mex', 'skewed_space_interp_defined_stepsize_mex.c', t
     'stitch/mex', 'integral_image_3d_mex.cpp', false;
     'stitch/mex', 'any_4th_dim_mex.cpp', false;
     'tools/MIP/mex', 'max_pooling_3d_mex.cpp', false;
+    'tools/MIP/mex', 'range_max_3d_mex.cpp', false;
     'crop/mex', 'crop3d_mex.c', false;
     'crop/mex', 'crop4d_mex.cpp', false;
     'crop/mex', 'indexing3d_mex.c', false;

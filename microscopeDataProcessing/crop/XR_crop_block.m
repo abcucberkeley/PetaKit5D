@@ -13,6 +13,7 @@ ip.addRequired('flagFullname', @(x) ischar(x));
 ip.addRequired('BatchBBoxes', @isnumeric);
 ip.addRequired('RegionBBoxes', @isnumeric);
 ip.addParameter('Overwrite', false, @islogical);
+ip.addParameter('mipBatchSize', [], @isnumeric); % save the MIPs of the blocks for MIP slabs with this batch size in the flag
 ip.addParameter('uuid', '', @ischar);
 ip.addParameter('debug', false, @islogical);
 
@@ -20,6 +21,7 @@ ip.parse(batchInds, zarrFullpath, cropFullpath, flagFullname, BatchBBoxes, Regio
 
 pr = ip.Results;
 Overwrite = pr.Overwrite;
+mipBatchSize = pr.mipBatchSize;
 uuid = pr.uuid;
 
 % we assume the path exists, otherwise return error (in case of completion 
@@ -50,6 +52,9 @@ catch ME
     nv_bim = blockedImage(cropFullpath, 'Adapter', ZarrAdapter);
 end    
 dtype = nv_bim.ClassUnderlying;
+if ~isempty(mipBatchSize)
+    mips = cell(numel(batchInds), 3);
+end
 
 done_flag = false(numel(batchInds), 1);
 for i = 1 : numel(batchInds)
@@ -79,13 +84,20 @@ for i = 1 : numel(batchInds)
     end
 
     writezarr(out_batch, cropFullpath, 'bbox', [obStart, obEnd], create=false)
+    if ~isempty(mipBatchSize)
+        mips(i, :) = MIP_zarr_block_mips(out_batch, [obStart, obEnd], mipBatchSize, dtype);
+    end
 
     done_flag(i) = true;
     toc;
 end
 
 if all(done_flag)
-    fclose(fopen(flagFullname, 'w'));
+    if isempty(mipBatchSize)
+        fclose(fopen(flagFullname, 'w'));
+    else
+        MIP_zarr_save_block_mips(flagFullname, RegionBBoxes, mips, mipBatchSize);
+    end
 end
 
 end

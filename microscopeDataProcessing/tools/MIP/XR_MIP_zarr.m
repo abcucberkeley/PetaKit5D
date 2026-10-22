@@ -26,6 +26,7 @@ ip.addParameter('mccMode', false, @islogical);
 ip.addParameter('configFile', '', @ischar);
 ip.addParameter('uuid', '', @ischar);
 ip.addParameter('debug', false, @islogical);
+ip.addParameter('blockFlagFullpaths', {}, @iscell); % flags of the block tasks that wrote the zarr, with the MIPs of their blocks (see MIP_zarr_save_block_mips)
 
 ip.parse(zarrFullpath, varargin{:});
 
@@ -49,6 +50,7 @@ if isempty(uuid)
     uuid = get_uuid();
 end
 debug = pr.debug;
+blockFlagFullpaths = pr.blockFlagFullpaths;
 
 zarrFullpath = strip(zarrFullpath, 'right', filesep);
 [dataPath, fsname, ext] = fileparts(zarrFullpath);
@@ -113,31 +115,9 @@ else
 end
 
 % MIPs for each batch
-batchSize = min(inSize, max(batchSize, ceil(batchSize ./ inblockSize) .* inblockSize));
+batchSize = MIP_zarr_batch_size(inSize, inblockSize, dtype, 'batchSize', batchSize, 'mipSlab', mipSlab);
 bSubSz = ceil(inSize ./ batchSize);
 numBatch = prod(bSubSz);
-
-% in case of out size too large for very large data that causes oom for the main 
-% job, increase batch size if necessary.
-if ~mipSlab
-    outVolSizes = zeros(3, 1);
-    for i = 1 : 3
-        outVolSizes(i) = prod([inSize(setdiff(1 : 3, i)), bSubSz(i)]) * byteNum / 1024^3;
-    end
-    
-    % if the max intermediate MIP files is greater than 100 GB, increase the batchSize
-    % by the blockSize in the axis with largest outVolSizes
-    while any(outVolSizes > 100) && prod(batchSize) * byteNum / 1024^3 < 100
-        [~, ind] = max(outVolSizes);
-        batchSize = min(inSize, batchSize + inblockSize .* ((1 : 3) == ind));
-        bSubSz = ceil(inSize ./ batchSize);
-        numBatch = prod(bSubSz);
-    
-        for i = 1 : 3
-            outVolSizes(i) = prod([inSize(setdiff(1 : 3, i)), bSubSz(i)]) * byteNum / 1024^3;
-        end
-    end
-end
 
 [Y, X, Z] = ndgrid(1 : bSubSz(1), 1 : bSubSz(2), 1 : bSubSz(3));
 bSubs = [Y(:), X(:), Z(:)];
@@ -166,15 +146,19 @@ if all(zarr_done_flag) && ~mipSlab
     return;
 end
 
+% merge the slabs from the MIPs the block tasks that wrote the zarr saved in
+% their flags, if they all have them, instead of reading the zarr
+fuseMIP = false;
 if isempty(poolSize)
     poolSize = batchSize;
+    fuseMIP = ~isempty(blockFlagFullpaths) && isempty(inputBbox);
 end
 
-% initialize zarr files
+% size, block size and dimension separator of the zarr files
+outSizes = zeros(3, 3);
+blockSizes = zeros(3, 3);
+dimSeparators = cell(3, 1);
 for i = 1 : 3
-    if exist(MIPZarrTmppaths{i}, 'dir')
-        continue;
-    end
     axis_flag = false(3, 1);
     axis_flag(i) = true;
     
@@ -188,62 +172,94 @@ for i = 1 : 3
     if prod(ceil(outSize ./ blockSize_i)) > 10000
         dimSeparator = '/';
     end
-    createzarr(MIPZarrTmppaths{i}, dataSize=outSize, blockSize=blockSize_i, dtype=dtype, dimSeparator=dimSeparator);
+    outSizes(i, :) = outSize;
+    blockSizes(i, :) = blockSize_i;
+    dimSeparators{i} = dimSeparator;
 end
 
-% set up parallel computing 
-numBatch = size(batchBBoxes, 1);
-taskSize = max(5, min(10, round(numBatch / 5000))); % the number of batches a job should process
-numTasks = ceil(numBatch / taskSize);
-
-maxJobNum = inf;
-taskBatchNum = 1;
-
-% get the function string for each batch
-funcStrs = cell(numTasks, 1);
-outputFullpaths = cell(numTasks, 1);
-for i = 1 : numTasks
-    batchInds = (i - 1) * taskSize + 1 : min(i * taskSize, numBatch);
-    batchBBoxes_i = batchBBoxes(batchInds, :);
-    
-    zarrFlagFullpath = sprintf('%s/blocks_%d_%d.mat', zarrFlagPath, batchInds(1), batchInds(end));
-    outputFullpaths{i} = zarrFlagFullpath;
-    MIPZarrTmppaths_str = sprintf('{''%s''}', strjoin(MIPZarrTmppaths, ''','''));
-    
-    funcStrs{i} = sprintf(['MIP_block([%s],''%s'',%s,''%s'',%s,%s,%s,''uuid'',''%s'',', ...
-        '''debug'',%s)'], strrep(num2str(batchInds, '%d,'), ' ', ''), zarrFullpath, ...
-        MIPZarrTmppaths_str, zarrFlagFullpath, strrep(mat2str(batchBBoxes_i), ' ', ','), ...
-        strrep(mat2str(startCoord), ' ', ','), strrep(mat2str([poolSize, poolSize_1, dsfactor]), ' ', ','), ...
-        uuid, string(debug));
-end
-
-% submit jobs 
-inputFullpaths = repmat({zarrFullpath}, numTasks, 1);
-if parseCluster || ~parseParfor
-    memAllocate = prod(batchSize) * byteNum / 2^30 * (2.5 + (1.5 * (~mccMode)));
-    minTaskJobNum = 1;
-    if ~mccMode
-        minTaskJobNum = max(min(numTasks, 5), round(numTasks / 50));
-    end
-    is_done_flag = false;
+if fuseMIP
+    % up to half of the memory (no limit if it is unknown)
+    maxMem = getSystemMemory() / 2;
     for i = 1 : 3
-        if all(is_done_flag)
+        slab = MIP_zarr_merge_block_mips(blockFlagFullpaths, i, inSize, batchSize, dtype, maxMem);
+        if isempty(slab)
+            fuseMIP = false;
             break;
         end
-        is_done_flag = generic_computing_frameworks_wrapper(inputFullpaths, outputFullpaths, ...
-            funcStrs, 'memAllocate', memAllocate * 2^(i-1), 'maxJobNum', maxJobNum, ...
-            'taskBatchNum', taskBatchNum, 'minTaskJobNum', minTaskJobNum, 'masterCompute', masterCompute, ...
-            'parseCluster', parseCluster, 'jobLogDir', jobLogDir, 'mccMode', mccMode, 'configFile', configFile);
+        createzarr(MIPZarrTmppaths{i}, dataSize=outSizes(i, :), blockSize=blockSizes(i, :), dtype=dtype, dimSeparator=dimSeparators{i});
+        writezarr(slab, MIPZarrTmppaths{i}, bbox=[1, 1, 1, outSizes(i, :)], create=false);
+        clear slab;
     end
-elseif parseParfor
-    GPUJob = false;
-    nworker = 12;
-    is_done_flag= matlab_parfor_generic_computing_wrapper(inputFullpaths, outputFullpaths, ...
-        funcStrs, 'taskBatchNum', taskBatchNum, 'GPUJob', GPUJob, 'nworker', nworker, 'uuid', uuid);
+    if fuseMIP
+        fprintf('Merged the MIP slabs from the MIPs of the blocks.\n');
+    else
+        fprintf('The MIPs of the blocks can''t be merged, compute the MIPs from the zarr file.\n');
+    end
 end
 
-if ~all(is_done_flag)
-    error('Some blocks are not finished!')
+if ~fuseMIP
+    % initialize zarr files
+    for i = 1 : 3
+        if exist(MIPZarrTmppaths{i}, 'dir')
+            continue;
+        end
+        createzarr(MIPZarrTmppaths{i}, dataSize=outSizes(i, :), blockSize=blockSizes(i, :), dtype=dtype, dimSeparator=dimSeparators{i});
+    end
+
+    % set up parallel computing 
+    numBatch = size(batchBBoxes, 1);
+    taskSize = max(5, min(10, round(numBatch / 5000))); % the number of batches a job should process
+    numTasks = ceil(numBatch / taskSize);
+
+    maxJobNum = inf;
+    taskBatchNum = 1;
+
+    % get the function string for each batch
+    funcStrs = cell(numTasks, 1);
+    outputFullpaths = cell(numTasks, 1);
+    for i = 1 : numTasks
+        batchInds = (i - 1) * taskSize + 1 : min(i * taskSize, numBatch);
+        batchBBoxes_i = batchBBoxes(batchInds, :);
+        
+        zarrFlagFullpath = sprintf('%s/blocks_%d_%d.mat', zarrFlagPath, batchInds(1), batchInds(end));
+        outputFullpaths{i} = zarrFlagFullpath;
+        MIPZarrTmppaths_str = sprintf('{''%s''}', strjoin(MIPZarrTmppaths, ''','''));
+        
+        funcStrs{i} = sprintf(['MIP_block([%s],''%s'',%s,''%s'',%s,%s,%s,''uuid'',''%s'',', ...
+            '''debug'',%s)'], strrep(num2str(batchInds, '%d,'), ' ', ''), zarrFullpath, ...
+            MIPZarrTmppaths_str, zarrFlagFullpath, strrep(mat2str(batchBBoxes_i), ' ', ','), ...
+            strrep(mat2str(startCoord), ' ', ','), strrep(mat2str([poolSize, poolSize_1, dsfactor]), ' ', ','), ...
+            uuid, string(debug));
+    end
+
+    % submit jobs 
+    inputFullpaths = repmat({zarrFullpath}, numTasks, 1);
+    if parseCluster || ~parseParfor
+        memAllocate = prod(batchSize) * byteNum / 2^30 * (2.5 + (1.5 * (~mccMode)));
+        minTaskJobNum = 1;
+        if ~mccMode
+            minTaskJobNum = max(min(numTasks, 5), round(numTasks / 50));
+        end
+        is_done_flag = false;
+        for i = 1 : 3
+            if all(is_done_flag)
+                break;
+            end
+            is_done_flag = generic_computing_frameworks_wrapper(inputFullpaths, outputFullpaths, ...
+                funcStrs, 'memAllocate', memAllocate * 2^(i-1), 'maxJobNum', maxJobNum, ...
+                'taskBatchNum', taskBatchNum, 'minTaskJobNum', minTaskJobNum, 'masterCompute', masterCompute, ...
+                'parseCluster', parseCluster, 'jobLogDir', jobLogDir, 'mccMode', mccMode, 'configFile', configFile);
+        end
+    elseif parseParfor
+        GPUJob = false;
+        nworker = 12;
+        is_done_flag= matlab_parfor_generic_computing_wrapper(inputFullpaths, outputFullpaths, ...
+            funcStrs, 'taskBatchNum', taskBatchNum, 'GPUJob', GPUJob, 'nworker', nworker, 'uuid', uuid);
+    end
+
+    if ~all(is_done_flag)
+        error('Some blocks are not finished!')
+    end
 end
 
 for i = 1 : 3

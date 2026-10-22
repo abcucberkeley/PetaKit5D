@@ -18,6 +18,7 @@ ip.addParameter('mccMode', false, @(x) islogical(x) || ischar(x));
 ip.addParameter('configFile', '', @ischar);
 ip.addParameter('uuid', '', @ischar);
 ip.addParameter('debug', false, @(x) islogical(x) || ischar(x));
+ip.addParameter('blockFlagFullpaths', {}, @(x) iscell(x) || ischar(x)); % flags of the block tasks that wrote the zarr, with the MIPs of their blocks (see MIP_zarr_save_block_mips)
 
 ip.parse(zarrFullpath, varargin{:});
 
@@ -36,6 +37,7 @@ mccMode = pr.mccMode;
 configFile = pr.configFile;
 uuid = pr.uuid;
 debug = pr.debug;
+blockFlagFullpaths = pr.blockFlagFullpaths;
 
 if ischar(axis)
     axis = str2num(axis);
@@ -67,11 +69,14 @@ end
 if ischar(debug)
     debug = str2num(debug);
 end
+if ischar(blockFlagFullpaths) && ~isempty(blockFlagFullpaths) && strcmp(blockFlagFullpaths(1), '{')
+    blockFlagFullpaths = eval(blockFlagFullpaths);
+end
 
 XR_MIP_zarr(zarrFullpath, resultDirName=resultDirName, axis=axis, inputBbox=inputBbox, ...
     batchSize=batchSize, poolSize=poolSize, mipSlab=mipSlab, parseCluster=parseCluster, ...
     parseParfor=parseParfor, jobLogDir=jobLogDir, masterCompute=masterCompute, ...
-    mccMode=mccMode, configFile=configFile, uuid=uuid, debug=debug);
+    mccMode=mccMode, configFile=configFile, uuid=uuid, debug=debug, blockFlagFullpaths=blockFlagFullpaths);
 
 end
 

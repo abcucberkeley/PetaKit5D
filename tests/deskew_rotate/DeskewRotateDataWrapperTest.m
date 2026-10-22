@@ -154,6 +154,44 @@ classdef DeskewRotateDataWrapperTest < pktest.TestCase
             testCase.verifyEmpty(added, 'Files were written after the result was moved into place.');
         end
 
+        function largeFileMIPsAreMergedFromTheBlocks(testCase)
+            % the block tasks save the MIPs of their blocks in their flags,
+            % and XR_MIP_zarr merges them into the MIP slabs instead of
+            % reading the result again in MIP_block tasks
+            dataPath = testCase.createTempFolder();
+            writezarr(testCase.makeFrame(1), [dataPath, testCase.FsnA0, '.zarr']);
+            moves = testCase.applyFixture(pktest.MovefileSpyFixture);
+            % MIP_block tasks would read the result; the spy errors at once, as the
+            % framework would retry a task without output for minutes
+            mipTasks = testCase.applyFixture(pktest.FunctionSpyFixture('MIP_block', [], 0));
+            testCase.runWrapper(dataPath, 'zarrFile', true, 'largeFile', true, 'batchSize', [16, 1024, 1024], ...
+                'blockSize', [16, 64, 64]);
+            testCase.verifyEmpty(mipTasks.getCalls(), 'The MIPs were computed from the result.');
+            % a task's flag holds its MIPs and marks it done: it is written
+            % under a temporary name first
+            calls = moves.getCalls();
+            testCase.verifyTrue(any(contains({calls.dst}, '/zarr_flag/') & endsWith({calls.dst}, '.mat')), ...
+                'The block flags were not moved into place.');
+            pktest.verifyLargeFileMIPs(testCase, [dataPath, 'DSR/', testCase.FsnA0, '.zarr']);
+        end
+
+        function largeFileBlocksGetTheMIPOptionOnlyForMIPs(testCase)
+            % compiled masters built before the block tasks' mipBatchSize
+            % option still run the tasks of results without MIPs
+            dataPath = testCase.createTempFolder();
+            frameFn = [dataPath, testCase.FsnA0, '.zarr'];
+            writezarr(testCase.makeFrame(1), frameFn);
+            spy = testCase.applyFixture(pktest.FrameworkSpyFixture());
+            for saveMIP = [false, true]
+                evalc(['XR_deskewRotateZarr(frameFn, testCase.XYPixelSize, testCase.Dz, ''skewAngle'', testCase.SkewAngle, ', ...
+                    '''reverse'', true, ''batchSize'', [16, 1024, 1024], ''blockSize'', [16, 64, 64], ''saveMIP'', saveMIP, ', ...
+                    '''resultDirStr'', sprintf(''DSR_%d/'', saveMIP), ''parseCluster'', false)']);
+            end
+            calls = spy.getCalls();
+            testCase.verifyFalse(any(contains(calls{1}.funcStrs, 'mipBatchSize')), 'Tasks without MIPs got mipBatchSize.');
+            testCase.verifyTrue(all(contains(calls{2}.funcStrs, '''mipBatchSize'',[')), 'Tasks with MIPs got no mipBatchSize.');
+        end
+
         function largeFileWithFailedBlocksIsNotPublished(testCase)
             % when blocks still failed after the retries, the large file path
             % moved the incomplete result into place, so it counted as done

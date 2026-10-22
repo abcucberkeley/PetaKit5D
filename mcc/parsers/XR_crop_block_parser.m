@@ -10,6 +10,7 @@ ip.addRequired('flagFullname', @(x) ischar(x));
 ip.addRequired('BatchBBoxes', @(x) isnumeric(x) || ischar(x));
 ip.addRequired('RegionBBoxes', @(x) isnumeric(x) || ischar(x));
 ip.addParameter('Overwrite', false, @(x) islogical(x) || ischar(x));
+ip.addParameter('mipBatchSize', [], @(x) isnumeric(x) || ischar(x)); % save the MIPs of the blocks for MIP slabs with this batch size in the flag
 ip.addParameter('uuid', '', @ischar);
 ip.addParameter('debug', false, @(x) islogical(x) || ischar(x));
 
@@ -17,6 +18,7 @@ ip.parse(batchInds, zarrFullpath, cropFullpath, flagFullname, BatchBBoxes, Regio
 
 pr = ip.Results;
 Overwrite = pr.Overwrite;
+mipBatchSize = pr.mipBatchSize;
 uuid = pr.uuid;
 debug = pr.debug;
 
@@ -32,12 +34,16 @@ end
 if ischar(Overwrite)
     Overwrite = str2num(Overwrite);
 end
+if ischar(mipBatchSize)
+    mipBatchSize = str2num(mipBatchSize);
+end
 if ischar(debug)
     debug = str2num(debug);
 end
 
 XR_crop_block(batchInds, zarrFullpath, cropFullpath, flagFullname, BatchBBoxes, ...
-    RegionBBoxes, Overwrite=Overwrite, uuid=uuid, debug=debug);
+    RegionBBoxes, Overwrite=Overwrite, mipBatchSize=mipBatchSize, uuid=uuid, ...
+    debug=debug);
 
 end
 
