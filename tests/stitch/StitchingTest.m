@@ -60,6 +60,58 @@ classdef StitchingTest < pktest.TestCase
             testCase.verifyEmpty(added, 'Files were written after the result was moved into place.');
         end
 
+        function mipIsMergedFromBlendingTasks(testCase)
+            % the blending tasks save the z MIPs of their batches, so the
+            % result isn't read again for its MIP. With mean blending of
+            % tiles that differ by 1 the overlap ends in .5, which the uint16
+            % result rounds as the MIP must. Small batches, so that a task
+            % merges the MIPs of batches at the same y and x.
+            dataPath = testCase.createTempFolder();
+            gt = testCase.randomVolume([100, 72, 32]);
+            tiles = struct('im', {gt(1 : 64, :, :), gt(37 : 100, :, :) + 1}, 'idx', {[0, 0, 0], [0, 1, 0]}, ...
+                'xyz', {[0, 0, 0], [0, 36 * testCase.XYPixelSize, 0]});
+            [~, csvFn] = pktest.writeStitchTiles(dataPath, tiles);
+            % memory for an in-memory MIP whatever the job's limit
+            testCase.applyFixture(pktest.FunctionStubFixture('getSystemMemory', 1024));
+            spy = testCase.applyFixture(pktest.FunctionSpyFixture('saveMIP_zarr'));
+            moves = testCase.applyFixture(pktest.MovefileSpyFixture);
+            testCase.stitch(dataPath, csvFn, 'blendMethod', 'mean', 'batchSize', [64, 64, 16], 'blockSize', [16, 16, 16]);
+            % a task's flag, which holds its MIPs, marks it done: it is
+            % written under a temporary name first
+            calls = moves.getCalls();
+            testCase.verifyTrue(any(contains({calls.dst}, '/zarr_flags/') & endsWith({calls.dst}, '.mat')), ...
+                'The blending flags were not moved into place.');
+            out = testCase.readResult(dataPath);
+            testCase.assertEqual(out(40, 10, 5), uint16(single(gt(40, 10, 5)) + 0.5), ...
+                'The overlap should be the rounded mean of the tiles.');
+            mip = readtiff(sprintf('%smatlab_stitch/MIPs/%s_MIP_z.tif', dataPath, testCase.StitchName));
+            testCase.verifyEqual(mip, max(out, [], 3), 'The z MIP does not match the stitched volume.');
+            testCase.verifyEmpty(spy.getCalls(), 'The MIP was computed from the stitched volume.');
+        end
+
+        function resultOfAnotherRunIsKept(testCase)
+            % a run that lost the race to another run of the same volume (a
+            % rerun while the earlier jobs still run) wrote the MIP of its
+            % own unfinished result over the published one
+            dataPath = testCase.createTempFolder();
+            gt = testCase.randomVolume([100, 120, 32]);
+            csvFn = testCase.writeTiles(dataPath, gt, [0, 0, 0; 36, 0, 0; 0, 48, 0; 36, 48, 0], [64, 72, 32]);
+            testCase.stitch(dataPath, csvFn);
+            resultFn = sprintf('%smatlab_stitch/%s.zarr', dataPath, testCase.StitchName);
+            mipFn = sprintf('%smatlab_stitch/MIPs/%s_MIP_z.tif', dataPath, testCase.StitchName);
+            otherPath = testCase.createTempFolder();
+            movefile(resultFn, [otherPath, 'result.zarr']);
+            movefile(mipFn, [otherPath, 'mip.tif']);
+            % the other run publishes its result and MIP while this run blends
+            testCase.applyFixture(pktest.FunctionSpyFixture('processStitchBlock', ...
+                @() cellfun(@copyfile, {[otherPath, 'result.zarr'], [otherPath, 'mip.tif']}, {resultFn, mipFn})));
+            testCase.stitch(dataPath, csvFn);
+            testCase.verifyEqual(readtiff(mipFn), readtiff([otherPath, 'mip.tif']), 'The published MIP was overwritten.');
+            testCase.verifyEqual(readzarr(resultFn), readzarr([otherPath, 'result.zarr']));
+            testCase.verifyEmpty(dir(sprintf('%smatlab_stitch/%s.zarr_*', dataPath, testCase.StitchName)), ...
+                'The temporary result was left behind.');
+        end
+
         function largeVolumeMIPsAreMadeBeforePublishing(testCase)
             % volumes over half the memory get their MIPs from XR_MIP_zarr,
             % which names them after its input: the temporary result must

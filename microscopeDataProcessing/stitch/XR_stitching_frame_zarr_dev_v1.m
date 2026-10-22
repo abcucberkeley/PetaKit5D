@@ -817,6 +817,16 @@ funcStrs = cell(numTasks, 1);
 
 imdistFullpaths_str = sprintf("{'%s'}", strjoin(imdistFullpaths, ''','''));
 
+% for data up to half of the system memory, the blending tasks save the z MIP
+% of their batches, merged into the MIP of the result below, instead of
+% reading the whole result again (for one slice, the MIP is the result); for
+% larger data, the cluster based MIP
+fuseMIP = false;
+if saveMIP
+	totalMem = getSystemMemory();
+	fuseMIP = numel(nvSize) == 3 && nvSize(3) > 1 && prod(nvSize) * dataTypeToByteNumber(dtype) / 2^30 < totalMem / 2;
+end
+
 param_str = sprintf(['''%s'',[],[],''imSize'',[%s],''batchSize'',[%s],''dtype'',', ...
 	'''%s'',''BlendMethod'',''%s'',''BorderSize'',[%s],''imdistFullpaths'',%s,', ...
 	'''imdistFileIdx'',%s,''poolSize'',%s,''weightDegree'',%d'], nv_tmp_fullname, ...
@@ -824,6 +834,11 @@ strrep(mat2str(nvSize), ' ', ','), strrep(mat2str(batchSize), ' ', ','), ...
 dtype, BlendMethod, strrep(mat2str(BorderSize), ' ', ','), imdistFullpaths_str, ...
 strrep(mat2str(imdistFileIdx), ' ', ','), strrep(mat2str(poolSize), ' ', ','), ...
 blendWeightDegree);
+if fuseMIP
+	% only then, so that compiled masters built before the option still run
+	% the other stitching tasks
+	param_str = [param_str, ',''saveMIP'',true'];
+end
 funcStrs_func = @(batchInds, PerBlockInfoFullpath, zarrFlagFullpath) sprintf( ...
 	'processStitchBlock([%s],''%s'',''%s'',''%s'',%s)', strrep(mat2str(batchInds), ' ', ','), ...
 	block_info_fullname, PerBlockInfoFullpath, zarrFlagFullpath, param_str);
@@ -900,6 +915,28 @@ if ~exist(nv_fullname, 'dir') && ~all(is_done_flag)
 	end
 end
 
+% another run may have published the result while this one ran (the job
+% framework then reports all tasks as done): keep that result and its MIP,
+% unless this run finished too and replaces it (stitchMIP)
+if exist(nv_fullname, 'dir') && (~any(stitchMIP) || ~all(batch_file_exist(zarrFlagFullpaths, [], true)))
+	if ~debug
+		if exist(nv_tmp_fullname, 'dir')
+			rmdir(nv_tmp_fullname, 's');
+		end
+		if exist(zarrFlagPath, 'dir')
+			rmdir(zarrFlagPath, 's');
+		end
+	end
+	fprintf('Stitched result %s is finished by another job, skip it!\n', nv_fullname);
+	return;
+end
+
+% the z MIP from the blending tasks' flags ([] if a flag has none)
+fusedMIP = [];
+if fuseMIP && exist(nv_tmp_fullname, 'dir')
+	fusedMIP = stitch_merge_block_mips(zarrFlagFullpaths, nvSize, dtype);
+end
+
 if ~debug && exist(zarrFlagPath, 'dir')
 	rmdir(zarrFlagPath, 's');
 end
@@ -921,11 +958,14 @@ if saveMIP && exist(nv_tmp_fullname, 'dir')
 		fileattrib(stcMIPPath, '+w', 'g');
 	end
 	stcMIPname = sprintf('%s%s_MIP_z.tif', stcMIPPath, nv_fsname);
-	% for data greater than half of the system memory, use the cluster based MIP.
-	totalMem = getSystemMemory();
-    if prod(nvSize) * byte_num / 2^30 < totalMem / 2
+    if ~isempty(fusedMIP)
+		stcMIPTmpname = sprintf('%s_%s.tif', stcMIPname(1 : end - 4), get_uuid());
+		writetiff(fusedMIP, stcMIPTmpname);
+		movefile(stcMIPTmpname, stcMIPname);
+    elseif prod(nvSize) * byte_num / 2^30 < totalMem / 2
 		saveMIP_zarr(nv_tmp_raw_fullname, stcMIPname, dtype=dtype, axis=[0, 0, 1]);
     else
+		% for data greater than half of the system memory, use the cluster based MIP.
         XR_MIP_zarr(nv_tmp_fullname, axis=[1, 1, 1], parseCluster=parseCluster, ...
             masterCompute=masterCompute, jobLogDir=jobLogDir, mccMode=mccMode, configFile=configFile);
     end

@@ -20,6 +20,7 @@ ip.addParameter('imdistFullpaths', {}, @(x) iscell(x) || ischar(x)); % image dis
 ip.addParameter('imdistFileIdx', [], @(x) isnumeric(x) || ischar(x)); % image distance paths indices
 ip.addParameter('poolSize', [], @(x) isnumeric(x) || ischar(x)); % distance matrix with max pooling factors
 ip.addParameter('weightDegree', 10, @(x) isnumeric(x) || ischar(x)); % weight degree for image distances
+ip.addParameter('saveMIP', false, @(x) islogical(x) || ischar(x)); % save the z MIP of each batch in the flag file
 
 ip.parse(batchInds, BlockInfoFullname, PerBlockInfoFullname, flagFullname, stitchFullname, stitchBlockInfo, tileFns, varargin{:});
 
@@ -34,6 +35,7 @@ imdistFullpaths = pr.imdistFullpaths;
 imdistFileIdx = pr.imdistFileIdx;
 poolSize = pr.poolSize;
 weightDegree = pr.weightDegree;
+saveMIP = pr.saveMIP;
 
 if ischar(batchInds)
     batchInds = str2num(batchInds);
@@ -68,12 +70,15 @@ end
 if ischar(weightDegree)
     weightDegree = str2num(weightDegree);
 end
+if ischar(saveMIP)
+    saveMIP = str2num(saveMIP);
+end
 
 processStitchBlock(batchInds, BlockInfoFullname, PerBlockInfoFullname, flagFullname, ...
     stitchFullname, stitchBlockInfo, tileFns, Overwrite=Overwrite, imSize=imSize, ...
     batchSize=batchSize, dtype=dtype, BlendMethod=BlendMethod, BorderSize=BorderSize, ...
     imdistFullpaths=imdistFullpaths, imdistFileIdx=imdistFileIdx, poolSize=poolSize, ...
-    weightDegree=weightDegree);
+    weightDegree=weightDegree, saveMIP=saveMIP);
 
 end
 

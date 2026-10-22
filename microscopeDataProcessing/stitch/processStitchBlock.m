@@ -30,6 +30,7 @@ ip.addParameter('imdistFullpaths', {}, @iscell); % image distance paths
 ip.addParameter('imdistFileIdx', [], @isnumeric); % image distance paths indices
 ip.addParameter('poolSize', [], @isnumeric); % distance matrix with max pooling factors
 ip.addParameter('weightDegree', 10, @isnumeric); % weight degree for image distances
+ip.addParameter('saveMIP', false, @islogical); % save the z MIP of each batch in the flag file
 
 ip.parse(batchInds, BlockInfoFullname, PerBlockInfoFullname, flagFullname, stitchFullname, stitchBlockInfo, tileFns, varargin{:});
 
@@ -44,6 +45,7 @@ imdistFullpaths = pr.imdistFullpaths;
 imdistFileIdx = pr.imdistFileIdx;
 poolSize = pr.poolSize;
 wd = pr.weightDegree;
+saveMIP = pr.saveMIP;
 
 % we assume the path exists, otherwise return error (in case of completion 
 % of processing for all blocks).
@@ -106,6 +108,11 @@ bSubSz = ceil(imSize ./ batchSize);
 dmtFactor = 1000;
 
 done_flag = false(numel(batchInds), 1);
+% z MIPs of the batches as written: writezarr casts to dtype as MATLAB does
+% (rounded and saturated), which keeps the order of values, so casting the
+% MIP of a block gives the MIP of the written block
+mips = cell(numel(batchInds), 1);
+mipBboxes = zeros(numel(batchInds), 4);
 for i = 1 : numel(batchInds)
     bi = batchInds(i);
     fprintf('Process batch %d... ', bi);
@@ -123,6 +130,10 @@ for i = 1 : numel(batchInds)
     if numTiles == 0
         nv_block = zeros(nbsz, dtype);
         writezarr(nv_block, stitchFullname, bbox=[obStart, obEnd], create=false);
+        if saveMIP
+            mips{i} = zeros(nbsz(1 : 2), dtype);
+            mipBboxes(i, :) = [obStart(1 : 2), obEnd(1 : 2)];
+        end
         done_flag(i) = true;
         toc;
         continue;
@@ -422,6 +433,10 @@ for i = 1 : numel(batchInds)
             tim_f_block = crop3d(tim_f_block, [1, 1, 1, nbsz]);            
         end
         writezarr(tim_f_block, stitchFullname, bbox=[obStart, obEnd], create=false);
+        if saveMIP
+            mips{i} = max(tim_f_block, [], 3);
+            mipBboxes(i, :) = [obStart(1 : 2), obEnd(1 : 2)];
+        end
         done_flag(i) = true;
         toc;
         continue;
@@ -501,6 +516,10 @@ for i = 1 : numel(batchInds)
         nv_block = crop3d(nv_block, [1, 1, 1, nbsz]);        
     end    
     writezarr(nv_block, stitchFullname, bbox=[obStart, obEnd], create=false);    
+    if saveMIP
+        mips{i} = cast(max(nv_block, [], 3), dtype);
+        mipBboxes(i, :) = [obStart(1 : 2), obEnd(1 : 2)];
+    end
     done_flag(i) = true;
 
     toc;
@@ -508,7 +527,24 @@ end
 
 if all(done_flag)
     fprintf('Processing of batches %d - %d are done!\n', batchInds(1), batchInds(end));
-    fclose(fopen(flagFullname, 'w'));
+    if saveMIP
+        % the flag holds the MIPs (stitch_merge_block_mips merges them), one
+        % per batch position in y and x; it is written under a temporary name
+        % first, as it marks the task done. Uncompressed, which is much faster
+        % (-v6 holds up to 2 GB).
+        [mipBboxes, ~, ic] = unique(mipBboxes, 'rows');
+        mips = arrayfun(@(x) max(cat(3, mips{ic == x}), [], 3), (1 : size(mipBboxes, 1))', 'unif', 0);
+        flagTmpname = sprintf('%s_%s.mat', flagFullname(1 : end - 4), get_uuid());
+        mipInfo = whos('mips');
+        if mipInfo.bytes < 2^31
+            save(flagTmpname, 'batchInds', 'mipBboxes', 'mips', '-v6');
+        else
+            save(flagTmpname, 'batchInds', 'mipBboxes', 'mips', '-v7.3', '-nocompression');
+        end
+        movefile(flagTmpname, flagFullname);
+    else
+        fclose(fopen(flagFullname, 'w'));
+    end
 end
 
 end

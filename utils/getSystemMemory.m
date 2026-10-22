@@ -5,6 +5,8 @@ function [totalMem] = getSystemMemory()
 % Author: Xiongtao Ruan (08/06/2024)
 
 
+% NaN if it can't be found, so that callers take the low memory path
+totalMem = NaN;
 if ismac
     [status, output] = system('sysctl -n hw.memsize');
     totalMem = str2double(strip(output)) / 1024^3;
@@ -13,8 +15,9 @@ elseif isunix
     slurmJob = ~isempty(job_id);
 
     if slurmJob
-        totalMem = getenv("SLURM_MEM_PER_NODE");
-        if isempty(totalMem)
+        % the job's memory per node in MB (unset with --mem-per-cpu)
+        totalMem = str2double(getenv("SLURM_MEM_PER_NODE")) / 1024;
+        if isnan(totalMem)
             array_id = getenv('SLURM_ARRAY_TASK_ID');
             if isempty(array_id)
                 job_array_id = sprintf('%s', job_id);
@@ -22,7 +25,7 @@ elseif isunix
                 job_array_id = sprintf('%s_%s', job_id, array_id);
             end
             [status, output] = system(sprintf('scontrol show job %s', job_array_id));
-            pattern = 'mem=(\d+[GMK]),';
+            pattern = 'mem=([\d.]+[TGMK])';
             matches = regexp(output, pattern, 'tokens');
             if ~isempty(matches)
                 totalMem = matches{1}{1};
