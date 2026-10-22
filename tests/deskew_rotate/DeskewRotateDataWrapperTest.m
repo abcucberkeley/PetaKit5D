@@ -120,6 +120,22 @@ classdef DeskewRotateDataWrapperTest < pktest.TestCase
             testCase.verifyEqual(readtiff([dataPath, 'DSR/MIPs/', testCase.FsnA0, '_MIP_z.tif']), max(dsr, [], 3));
         end
 
+        function largeFilePassesJobSettingsToMIPs(testCase)
+            % XR_deskewRotateZarr didn't pass parseCluster, masterCompute or
+            % jobLogDir to XR_MIP_zarr, so on a machine with Slurm the MIPs
+            % of a local run were made in Slurm jobs
+            dataPath = testCase.createTempFolder();
+            frame = testCase.makeFrame(1);
+            writezarr(frame, [dataPath, testCase.FsnA0, '.zarr']);
+            spy = testCase.applyFixture(pktest.FunctionSpyFixture('XR_MIP_zarr'));
+            testCase.runWrapper(dataPath, 'zarrFile', true, 'largeFile', true, 'batchSize', [16, 1024, 1024], ...
+                'blockSize', [16, 64, 64], 'jobLogDir', [dataPath, 'logs']);
+            testCase.assertNotEmpty(spy.getCalls(), 'XR_MIP_zarr was not called.');
+            testCase.verifyEqual(spy.getOption(1, 'parseCluster'), false);
+            testCase.verifyEqual(spy.getOption(1, 'masterCompute'), true);
+            testCase.verifyEqual(spy.getOption(1, 'jobLogDir'), [dataPath, 'logs']);
+        end
+
         function flatFieldUsesEachChannelsImages(testCase)
             [dataPath, frames] = testCase.writeDataset();
             bg = zeros(testCase.RawSize(1 : 2), 'single') + 100;

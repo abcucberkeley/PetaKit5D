@@ -57,6 +57,21 @@ classdef TiffZarrConversionTest < pktest.TestCase
                 'A file that matches no channel pattern was converted.');
         end
 
+        function zarrToTiffWrapperPassesJobSettings(testCase)
+            % each task converts one file, so the memory per task is for one
+            % file (it was the sum over all files), and parseCluster,
+            % masterCompute and cpusPerTask were not passed on
+            dataPath = testCase.writeDataset('zarr');
+            spy = testCase.applyFixture(pktest.FrameworkSpyFixture);
+            XR_zarrToTiff_wrapper(dataPath, 'channelPatterns', testCase.Channels, ...
+                'parseCluster', false, 'masterCompute', false, 'cpusPerTask', 3);
+            testCase.verifyEqual(spy.getOption(1, 'parseCluster'), false);
+            testCase.verifyEqual(spy.getOption(1, 'masterCompute'), false);
+            testCase.verifyEqual(spy.getOption(1, 'cpusPerTask'), 3);
+            testCase.verifyEqual(spy.getOption(1, 'memAllocate'), prod(testCase.ImSize) * 4 / 1024 ^ 3 * 2.5, ...
+                'RelTol', 1e-12);
+        end
+
         function resaveZarrChangesChunks(testCase)
             [dataPath, ims, names] = testCase.writeDataset('zarr');
             XR_resave_zarr_wrapper(dataPath, 'blockSize', [8, 8, 4], 'channelPatterns', {'.zarr'}, ...

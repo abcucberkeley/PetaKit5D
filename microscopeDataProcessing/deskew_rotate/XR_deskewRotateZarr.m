@@ -298,7 +298,8 @@ if saveMIP
         mkdir(dsrMIPPath);
         fileattrib(dsrMIPPath, '+w', 'g');
     end
-    XR_MIP_zarr(dsrFullpath, mccMode=mccMode, configFile=configFile);
+    XR_MIP_zarr(dsrFullpath, parseCluster=parseCluster, masterCompute=masterCompute, ...
+        jobLogDir=jobLogDir, mccMode=mccMode, configFile=configFile);
 end
 toc
 

@@ -1,8 +1,8 @@
 classdef NoSlurmFixture < matlab.unittest.fixtures.Fixture
     % hide Slurm from the code under test by putting failing sinfo, sbatch,
-    % squeue and scancel stubs first on the PATH. Some wrappers don't
-    % forward parseCluster to the job framework (e.g., XR_zarrToTiff_wrapper),
-    % so on a machine with Slurm they would submit real jobs. With the
+    % squeue and scancel stubs first on the PATH. A wrapper that doesn't
+    % forward parseCluster to the job framework (XR_zarrToTiff_wrapper
+    % didn't) would submit real jobs on a machine with Slurm. With the
     % stubs, checkSlurmCluster sees no cluster and everything runs locally.
     % Windows has no Slurm, so nothing is changed there. The stub folder is
     % in PETAKIT5D_TEST_SLURM_STUBS so pktest.RealSlurmFixture can lift it

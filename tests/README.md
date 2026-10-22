@@ -241,6 +241,11 @@ update_golden_data('decon_omw')   % or update_golden_data() for all
 - Write files only under `testCase.createTempFolder()`; it returns a
   forward-slash path with a trailing slash, as the demos use.
 - Always pass `parseCluster=false` to wrappers.
+- To test how code talks to Slurm, apply `pktest.FakeSlurmFixture`: fake
+  `sbatch`/`squeue`/`scancel`/`sinfo` that log their calls, with job states
+  the test sets (pending, running, done). To test what a wrapper passes on,
+  replace the callee with `pktest.FrameworkSpyFixture` (the job framework) or
+  `pktest.FunctionSpyFixture('name')` (any function without outputs).
 - Prefer exact or analytic checks (round trips, comparison with plain
   MATLAB code, known geometry) over stored numbers. Use
   `verifyImagesClose` with a justified tolerance where results are not exact.

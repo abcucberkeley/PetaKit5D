@@ -89,8 +89,15 @@ if ~isempty(ConfigFile) && ConfigFile ~= ""
     end
 
     conf_keys = fields(confData);
+    pr_keys = fields(pr);
     for i = 1 : numel(conf_keys)
-        pr.(conf_keys{i}) = confData.(conf_keys{i});
+        % keys match the parameter names regardless of case, as name-value
+        % arguments do (e.g., MemPerCPU sets memPerCPU)
+        key = pr_keys(strcmpi(pr_keys, conf_keys{i}));
+        if isempty(key)
+            key = conf_keys(i);
+        end
+        pr.(key{1}) = confData.(conf_keys{i});
     end
 end
 

@@ -152,6 +152,29 @@ classdef GenericComputingFrameworkTest < pktest.TestCase
                 'With maxTrialNum = 1 from the config file, each task should run once.');
         end
 
+        function configFileKeysIgnoreCase(testCase)
+            % the cluster configs in use spell MemPerCPU; config keys used to
+            % be matched case-sensitively, so it was silently ignored
+            testCase.assumeFalse(ispc, 'The fake Slurm needs a POSIX shell.');
+            slurm = testCase.applyFixture(pktest.FakeSlurmFixture);
+            [inFns, outFns, logFn, dataPath] = testCase.makeTasks(1);
+            funcStrs = testCase.taskStrings(inFns, outFns, logFn, 'noop');
+            configFn = [dataPath, 'config.json'];
+            fid = fopen(configFn, 'w');
+            fprintf(fid, '%s', jsonencode(struct('MemPerCPU', 5)));
+            fclose(fid);
+
+            % 50 GB at 5 GB per CPU is 10 CPUs, rounded up to 12 to fit
+            % 24-CPU nodes (the default 20.9 GB per CPU would give 3)
+            evalc(['generic_computing_frameworks_wrapper(inFns, outFns, funcStrs, ''parseCluster'', true, ', ...
+                '''masterCompute'', false, ''maxTrialNum'', 1, ''memAllocate'', 50, ''jobLogDir'', dataPath, ', ...
+                '''ConfigFile'', configFn)']);
+
+            sbatch = slurm.calls('sbatch');
+            testCase.assertNotEmpty(sbatch, 'No job was submitted.');
+            testCase.verifySubstring(sbatch{1}, '--cpus-per-task=12');
+        end
+
         function missingConfigFileErrors(testCase)
             [inFns, outFns, logFn, dataPath] = testCase.makeTasks(2);
             funcStrs = testCase.taskStrings(inFns, outFns, logFn, 'copy');

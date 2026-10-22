@@ -45,7 +45,10 @@ pr = ip.Results;
 resultDirName = pr.resultDirName;
 channelPatterns = pr.channelPatterns;
 usrFcn = pr.usrFcn;
+parseCluster = pr.parseCluster;
+masterCompute = pr.masterCompute;
 jobLogDir = pr.jobLogDir;
+cpusPerTask = pr.cpusPerTask;
 mccMode = pr.mccMode;
 configFile = pr.configFile;
 
@@ -91,14 +94,17 @@ imSizes = zeros(numel(allZarrFullpaths), 3);
 for i = 1 : numel(allZarrFullpaths)
     imSizes(i, :) = getImageSize(allZarrFullpaths{i});
 end
-imSize = [imSizes(1, 1 : 2), sum(imSizes(:, 3))];
-memAllocate = prod(imSize) * 4 / 1024^3 * 2.5;
+% each task converts one file
+memAllocate = max(prod(imSizes, 2)) * 4 / 1024^3 * 2.5;
 
 is_done_flag = generic_computing_frameworks_wrapper(allZarrFullpaths, allTiffFullpaths, ...
-    func_strs, 'maxTrialNum', 2, 'memAllocate', memAllocate, 'jobLogDir', jobLogDir, 'mccMode', mccMode, 'configFile', configFile);
+    func_strs, 'maxTrialNum', 2, 'parseCluster', parseCluster, 'masterCompute', masterCompute, ...
+    'cpusPerTask', cpusPerTask, 'memAllocate', memAllocate, 'jobLogDir', jobLogDir, ...
+    'mccMode', mccMode, 'configFile', configFile);
 if ~all(is_done_flag)
     is_done_flag = generic_computing_frameworks_wrapper(allZarrFullpaths, ...
-        allTiffFullpaths, func_strs, 'maxTrialNum', 1, 'memAllocate', memAllocate, ...
+        allTiffFullpaths, func_strs, 'maxTrialNum', 1, 'parseCluster', parseCluster, ...
+        'masterCompute', masterCompute, 'cpusPerTask', cpusPerTask, 'memAllocate', memAllocate, ...
         'jobLogDir', jobLogDir, 'mccMode', mccMode, 'configFile', configFile);
 end
 

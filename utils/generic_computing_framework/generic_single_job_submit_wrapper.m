@@ -101,8 +101,15 @@ if ~isempty(ConfigFile)
     end
 
     conf_keys = fields(confData);
+    pr_keys = fields(pr);
     for i = 1 : numel(conf_keys)
-        pr.(conf_keys{i}) = confData.(conf_keys{i});
+        % keys match the parameter names regardless of case, as name-value
+        % arguments do (e.g., MemPerCPU sets memPerCPU)
+        key = pr_keys(strcmpi(pr_keys, conf_keys{i}));
+        if isempty(key)
+            key = conf_keys(i);
+        end
+        pr.(key{1}) = confData.(conf_keys{i});
     end
 end
 
@@ -158,8 +165,10 @@ while submit_status == 0 && trial_counter < maxTrialNum
                 system(sprintf('scancel %d_%d', job_id, array_id), '-echo');
             end
     
-            % if the job is still running, skip it. 
-            if job_status == 1 || (masterCompute && lastFile)
+            % if the job is pending or running, skip it; the caller checks
+            % it again in its next round (waiting here polled squeue
+            % continuously while the job was pending)
+            if job_status >= 0 || (masterCompute && lastFile)
                 return;
             end
     
