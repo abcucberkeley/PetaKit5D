@@ -11,7 +11,11 @@ function writetiff(img, filepath, options)
 arguments
     img {mustBeNumeric}
     filepath char
-    options.Compression (1, :) char {mustBeMember(options.Compression, {'none', 'lzw'})} = 'lzw'
+    % zstd writes ~2.5x faster than lzw; readtiff, tifffile and Bio-Formats
+    % >= 6.11 read it, MATLAB's Tiff and imread don't, and on Linux neither
+    % does readtiff once MATLAB's libtiff is loaded first (by Tiff, imread
+    % or getImageDataType) in a session
+    options.Compression (1, :) char {mustBeMember(options.Compression, {'none', 'lzw', 'zstd'})} = 'lzw'
     options.Mode (1, :) char {mustBeMember(options.Mode, {'parallel', 'libtiff', 'imwrite'})} = 'parallel'
     options.groupWrite (1, 1) logical = true
 end
@@ -24,7 +28,8 @@ options = struct();
 switch lower(Compression)
     case 'none'
         options.compress = 'no';
-    case 'lzw'
+    case {'lzw', 'zstd'}
+        % saveastiff (MATLAB's libtiff) cannot write zstd, it writes lzw
         options.compress = 'lzw';
 end
 
@@ -37,7 +42,7 @@ switch lower(Mode)
                 if ~exist(pstr, 'dir')
                     mkdir_recursive(pstr);
                 end
-                parallelWriteTiff(filepath, img, 'w');
+                parallelWriteTiff(filepath, img, 'w', Compression);
             catch ME
                 disp(ME)
                 use_alternative_writer = true;

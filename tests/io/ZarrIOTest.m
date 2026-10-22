@@ -171,9 +171,37 @@ classdef ZarrIOTest < pktest.TestCase
             fn = [testCase.createTempFolder(), 'im.zarr'];
             testCase.verifyError(@() createzarr(fn, 'dataSize', [4, 4, 4], 'dtype', 'int16'), ?MException);
         end
+
+        function uuidFalseWritesChunksInPlace(testCase)
+            % by default (and with uuid true) each chunk is written to a
+            % temporary file that replaces the chunk file; with uuid false the
+            % chunk file is written in place, so a hard link to it sees the
+            % new data
+            testCase.assumeTrue(usejava('jvm'), 'Making a hard link needs Java.');
+            dataPath = testCase.createTempFolder();
+            data = uint16(reshape(1 : 32 * 32 * 8, 32, 32, 8));
+            options = {{}, {'uuid', true}, {'uuid', false}};
+            inPlace = [false, false, true];
+            for i = 1 : numel(options)
+                fn = sprintf('%sim%d.zarr', dataPath, i);
+                writezarr(zeros(32, 32, 8, 'uint16'), fn, 'blockSize', [16, 16, 8]);
+                link = sprintf('%slink%d', dataPath, i);
+                java.nio.file.Files.createLink(java.io.File(link).toPath(), java.io.File([fn, '/0.0.0']).toPath());
+                writezarr(data, fn, options{i}{:});
+                testCase.verifyEqual(readzarr(fn), data);
+                testCase.verifyEqual(isequal(testCase.fileBytes(link), testCase.fileBytes([fn, '/0.0.0'])), ...
+                    inPlace(i), sprintf('options %d', i));
+            end
+        end
     end
 
     methods (Static, Access = private)
+        function [b] = fileBytes(fn)
+            fid = fopen(fn, 'r');
+            b = fread(fid, Inf, 'uint8=>uint8');
+            fclose(fid);
+        end
+
         function [names] = chunkFiles(fn)
             dir_info = dir(fn);
             names = {dir_info(~[dir_info.isdir]).name};

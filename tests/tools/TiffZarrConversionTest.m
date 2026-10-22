@@ -194,6 +194,34 @@ classdef TiffZarrConversionTest < pktest.TestCase
             testCase.verifyEqual(readzarr([dataPath, 'im2d.zarr']), im(:, :, 1));
             testCase.verifyEqual(getZarrInfo([dataPath, 'im2d.zarr']).size, [testCase.ImSize(1 : 2), 1]);
         end
+
+        function tiffToZarrWritesPrivateResultInPlace(testCase)
+            % with a full uuid made by the call (not on Windows, where
+            % get_uuid shortens it) no other process writes the temporary
+            % result, so its chunks are written without cpp-zarr's temporary
+            % files ('uuid' false); a given uuid can be shared by copies of a
+            % task, which keep them
+            dataPath = testCase.createTempFolder();
+            writetiff(uint16(randi(60000, testCase.ImSize)), [dataPath, 'im.tif']);
+            givenUuid = '01234567-89ab-cdef-0123-456789abcdef';
+            spy = testCase.applyFixture(pktest.FunctionSpyFixture('parallelWriteZarr'));
+            tiffToZarr([dataPath, 'im.tif'], [dataPath, 'whole.zarr'], [], 'blockSize', [16, 16, 4]);
+            tiffToZarr([dataPath, 'im.tif'], [dataPath, 'regions.zarr'], [], 'blockSize', [16, 16, 4], ...
+                'readWholeTiff', false);
+            tiffToZarr([dataPath, 'im.tif'], [dataPath, 'given.zarr'], [], 'blockSize', [16, 16, 4], 'uuid', givenUuid);
+            calls = spy.getCalls();
+            % one write of the whole image, one per z block of 4 slices, one with the given uuid
+            testCase.assertNumElements(calls, 5);
+            for i = 1 : 4
+                if numel(get_uuid()) >= 32
+                    testCase.verifyEqual(spy.getOption(i, 'uuid'), false, sprintf('call %d (%s)', i, calls{i}{1}));
+                else
+                    testCase.verifyEmpty(spy.getOption(i, 'uuid'), sprintf('call %d (%s)', i, calls{i}{1}));
+                end
+            end
+            testCase.verifyEqual(calls{5}{1}, [dataPath, 'given.zarr_', givenUuid]);
+            testCase.verifyEmpty(spy.getOption(5, 'uuid'), 'A temporary result named with a given uuid was written in place.');
+        end
     end
 
     methods (Access = private)

@@ -114,7 +114,7 @@ for i = 1 : numel(batchInds)
     else
         switch interpMethod
             case {'nearest', 'linear', 'cubic'}
-                out_batch = imresize3(in_batch, outSize, interpMethod);
+                out_batch = imresize3_fast(in_batch, outSize, interpMethod);
             case 'max'
                 out_batch = max_pooling_3d(in_batch, resampleFactor);
             case 'mean'

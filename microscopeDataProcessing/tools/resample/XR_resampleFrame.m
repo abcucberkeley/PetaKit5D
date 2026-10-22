@@ -80,7 +80,7 @@ switch interpMethod
             end
             im = imresize(im, outSize, 'Method', interpMethod);
         else
-            im = imresize3(im, outSize, 'Method', interpMethod);
+            im = imresize3_fast(im, outSize, interpMethod);
         end
     case 'max'
         im = max_pooling_3d(im, rs);

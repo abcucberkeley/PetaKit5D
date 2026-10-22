@@ -20,6 +20,11 @@ arguments
     options.sparseData (1, :) logical = false
     options.dimSeparator char = '.'
     options.create logical = true
+    % write each chunk to a temporary file and rename it; false is faster
+    % on network storage, but only for an array no other process writes
+    % or reads while it is written (e.g., a new array under a name with a
+    % uuid made by the caller)
+    options.uuid (1, 1) logical = true
 end
 
 overwrite = options.overwrite;
@@ -32,6 +37,7 @@ bbox = options.bbox;
 sparseData = options.sparseData;
 dimSeparator = options.dimSeparator;
 create = options.create;
+uuid = options.uuid;
 
 dtype = class(data);
 sz = size(data);
@@ -74,7 +80,11 @@ try
         end
     end
 
-    parallelWriteZarr(filepath, data, 'bbox', bbox, 'sparse', sparseData);
+    if uuid
+        parallelWriteZarr(filepath, data, 'bbox', bbox, 'sparse', sparseData);
+    else
+        parallelWriteZarr(filepath, data, 'bbox', bbox, 'sparse', sparseData, 'uuid', false);
+    end
 catch ME
     pe = pyenv;    
     if pe.Status ~= "Loaded"

@@ -150,9 +150,80 @@ classdef TiffIOTest < pktest.TestCase
                 testCase.verifyTrue(written, sprintf('writetiff of %s data neither wrote a file nor raised an error.', names{i}));
             end
         end
+
+        function zstdRoundTrip(testCase, dtype)
+            % opt-in zstd compression (Cpp-Tiff): same values and type, also
+            % for slice ranges
+            im = testCase.randomImage([37, 53, 11], dtype);
+            fn = [testCase.createTempFolder(), 'im.tif'];
+            writetiff(im, fn, 'Compression', 'zstd');
+            testCase.verifyEqual(testCase.compressionTag(fn), 50000, 'The file is not zstd compressed.');
+            out = readtiff(fn);
+            testCase.verifyClass(out, dtype);
+            testCase.verifyEqual(out, im);
+            testCase.verifyEqual(readtiff(fn, 'range', [3, 7]), im(:, :, 3 : 7));
+        end
+
+        function zstdIsReadByProcessingReaders(testCase)
+            % the readers processing uses for tiff inputs: readtiff, image
+            % size and type, and regions of a blockedImage (MPageTiffAdapter).
+            % MATLAB's Tiff and imread cannot read zstd.
+            im = testCase.randomImage([37, 53, 11], 'uint16');
+            fn = [testCase.createTempFolder(), 'im.tif'];
+            writetiff(im, fn, 'Compression', 'zstd');
+            testCase.verifyEqual(getImageSize(fn), [37, 53, 11]);
+            testCase.verifyEqual(char(getImageDataType(fn)), 'uint16');
+            bim = blockedImage(fn, 'Adapter', MPageTiffAdapter);
+            testCase.verifyEqual(bim.Adapter.getIORegion([3, 4, 2], [30, 40, 9]), im(3 : 30, 4 : 40, 2 : 9));
+        end
+
+        function compressionOfWriteModes(testCase)
+            % lzw stays the default; MATLAB's writer (libtiff mode, also the
+            % fallback) cannot write zstd and writes lzw instead
+            im = testCase.randomImage([37, 53, 4], 'uint16');
+            dataPath = testCase.createTempFolder();
+            writetiff(im, [dataPath, 'default.tif']);
+            writetiff(im, [dataPath, 'libtiff.tif'], 'Compression', 'zstd', 'Mode', 'libtiff');
+            testCase.verifyEqual(testCase.compressionTag([dataPath, 'default.tif']), 5, 'The default is not lzw.');
+            testCase.verifyEqual(testCase.compressionTag([dataPath, 'libtiff.tif']), 5);
+            testCase.verifyEqual(readtiff([dataPath, 'libtiff.tif']), im);
+        end
     end
 
     methods (Static, Access = private)
+        function [tag] = compressionTag(fn)
+            % compression (tag 259) of the first image of a little-endian
+            % tiff or BigTIFF: 1 none, 5 lzw, 50000 zstd
+            fid = fopen(fn, 'r', 'ieee-le');
+            cleanupObj = onCleanup(@() fclose(fid));
+            assert(strcmp(fread(fid, [1, 2], 'char=>char'), 'II'));
+            bigTiff = fread(fid, 1, 'uint16') == 43;
+            if bigTiff
+                fread(fid, 2, 'uint16');
+                fseek(fid, fread(fid, 1, 'uint64'), 'bof');
+                n = fread(fid, 1, 'uint64');
+                countBytes = 8;
+            else
+                fseek(fid, fread(fid, 1, 'uint32'), 'bof');
+                n = fread(fid, 1, 'uint16');
+                countBytes = 4;
+            end
+            % an entry is tag, type, count and value (count and value have
+            % the same size)
+            entryBytes = 4 + 2 * countBytes;
+            ifdStart = ftell(fid);
+            tag = [];
+            for i = 1 : n
+                fseek(fid, ifdStart + (i - 1) * entryBytes, 'bof');
+                if fread(fid, 1, 'uint16') == 259
+                    % skip the type and the count; the value is a short
+                    fseek(fid, 2 + countBytes, 'cof');
+                    tag = fread(fid, 1, 'uint16');
+                    break;
+                end
+            end
+        end
+
         function [im] = randomImage(sz, dtype)
             if any(strcmp(dtype, {'single', 'double'}))
                 im = cast(randn(sz) * 1000, dtype);

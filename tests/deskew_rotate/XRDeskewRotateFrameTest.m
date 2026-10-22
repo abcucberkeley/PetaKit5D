@@ -183,6 +183,35 @@ classdef XRDeskewRotateFrameTest < pktest.TestCase
                 'reverse', true, 'save16bit', true);
             testCase.verifyEqual(readtiff([dataPath, 'zyx/DSR/', testCase.Fsn, '.tif']), expected);
         end
+
+        function privateZarrResultsAreWrittenInPlace(testCase)
+            % without a given uuid (the data wrapper) the temporary DS and DSR
+            % results are private to the call and their chunks are written
+            % without cpp-zarr's temporary files ('uuid' false), except with
+            % the short uuids of Windows; with the pipeline's uuid, which
+            % copies of a task share, they are kept
+            spy = testCase.applyFixture(pktest.FunctionSpyFixture('parallelWriteZarr'));
+            runs = {{}, {'DSRCombined', false, 'rotate', false}, ...
+                {'DSRCombined', false, 'rotate', false, 'save16bit', false}, ...
+                {'uuid', '01234567-89ab-cdef-0123-456789abcdef'}};
+            inPlace = [true, true, true, false] & numel(get_uuid()) >= 32;
+            for r = 1 : numel(runs)
+                [dataPath, fn] = testCase.writeFrame();
+                nCalls = numel(spy.getCalls());
+                XR_deskewRotateFrame(fn, testCase.XYPixelSize, testCase.Dz, 'reverse', true, 'saveZarr', true, runs{r}{:});
+                calls = spy.getCalls();
+                % the result is the write into DS/ or DSR/ (not MIPs/)
+                isResult = cellfun(@(c) startsWith(c{1}, {[dataPath, 'DS/'], [dataPath, 'DSR/']}) ...
+                    && ~contains(c{1}, 'MIPs'), calls(nCalls + 1 : end));
+                testCase.assertEqual(nnz(isResult), 1, sprintf('run %d', r));
+                uuidOption = spy.getOption(nCalls + find(isResult), 'uuid');
+                if inPlace(r)
+                    testCase.verifyEqual(uuidOption, false, sprintf('run %d', r));
+                else
+                    testCase.verifyEmpty(uuidOption, sprintf('run %d', r));
+                end
+            end
+        end
     end
 
     methods (Test, TestTags = {'Integration', 'KnownIssue'})

@@ -67,6 +67,10 @@ end
 if isempty(uuid)
     uuid = get_uuid();
 end
+% with a full random uuid made here (get_uuid makes shorter ones on Windows
+% and as a fallback) no other process writes the temporary result, so its
+% chunks are written without cpp-zarr's per-chunk temporary files
+privateTmp = isempty(pr.uuid) && numel(uuid) >= 32;
 
 if isempty(tifFilename)
     fprintf('Convert frame to Zarr for %s ...\n', zarrFilename);    
@@ -190,7 +194,7 @@ if ~isempty(resampleFactor) && ~all(resampleFactor == 1)
     % complete rs to 3d in case it is not
     rs = [ones(1, 4 - numel(rs)) * rs(1), rs(2:end)];    
     outSize = round(size(I) ./ rs);
-    I = imresize3(I, outSize);
+    I = imresize3_fast(I, outSize);
 end
 if isempty(bim)
     sz = size(I);
@@ -231,7 +235,7 @@ end
 
 % write zarr
 if isempty(bim)
-    writezarr(cast(I, dtype), tmpFilename, 'blockSize', blockSize);
+    writezarr(cast(I, dtype), tmpFilename, 'blockSize', blockSize, 'uuid', ~privateTmp);
 else
     for i = 1 : ceil(sz(3) / blockSize(3))
         zs = (i - 1) * blockSize(3) + 1;
@@ -243,7 +247,7 @@ else
             bbox_in = bbox;
         end
         im_i = bim.Adapter.getIORegion(bbox_in(1 : 3), bbox_in(4 : 6));
-        writezarr(im_i, tmpFilename, bbox=bbox);
+        writezarr(im_i, tmpFilename, bbox=bbox, uuid=~privateTmp);
     end
 end
 

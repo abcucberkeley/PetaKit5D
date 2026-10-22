@@ -101,6 +101,10 @@ uuid = pr.uuid;
 if isempty(uuid)
     uuid = get_uuid();
 end
+% with a full random uuid made here (get_uuid makes shorter ones on Windows
+% and as a fallback) no other process writes the temporary results, so zarr
+% chunks are written without cpp-zarr's per-chunk temporary files
+privateTmp = isempty(pr.uuid) && numel(uuid) >= 32;
 
 % not convert to negative it for the wrapper
 % if reverse
@@ -317,13 +321,13 @@ if (~DSRCombined && (~exist(dsFullname, 'file') || ip.Results.overwrite)) || DSR
             else                
                 if save16bit
                     if saveZarr
-                        writezarr(uint16(ds), dsTempname, 'blockSize', blockSize);
+                        writezarr(uint16(ds), dsTempname, 'blockSize', blockSize, 'uuid', ~privateTmp);
                     else
                         writetiff(uint16(ds), dsTempname);
                     end
                 else
                     if saveZarr
-                        writezarr(single(ds), dsTempname, 'blockSize', blockSize);
+                        writezarr(single(ds), dsTempname, 'blockSize', blockSize, 'uuid', ~privateTmp);
                     else
                         writetiff(single(ds), dsTempname);
                     end
@@ -488,7 +492,7 @@ if ip.Results.rotate || DSRCombined
         
         if save3DStack
             if saveZarr
-                writezarr(dsr, dsrTempName, 'blockSize', blockSize);
+                writezarr(dsr, dsrTempName, 'blockSize', blockSize, 'uuid', ~privateTmp);
             else
                 writetiff(dsr, dsrTempName);
             end

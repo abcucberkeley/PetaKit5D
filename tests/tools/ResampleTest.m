@@ -13,6 +13,13 @@ classdef ResampleTest < pktest.TestCase
         resampleFactor = struct('down2', [2, 2, 2], 'zOnly', [1, 1, 2], 'up2xy', [0.5, 0.5, 1], ...
             'nonInteger', [1.5, 1.5, 1.5], 'down3', [3, 3, 3])
         interpMethod = {'linear', 'cubic', 'nearest', 'max', 'mean'}
+        % imresize3_fast: dimensions that keep their size, up and down,
+        % non-integer, and all orders of the passes
+        fastFactor = struct('zOnly', [1, 1, 2], 'xyOnly', [2, 2, 1], 'yOnly', [3, 1, 1], 'zUp', [1, 1, 0.5], ...
+            'all', [2, 2, 2], 'nonInteger', [1.5, 1.3, 2.5], 'zBetween', [2, 4, 3], 'xzDownYUp', [0.7, 1.6, 3], ...
+            'none', [1, 1, 1])
+        fastMethod = {'linear', 'cubic'}
+        fastType = {'single', 'uint16'}
     end
 
     methods (Test, TestTags = {'Unit'})
@@ -83,6 +90,17 @@ classdef ResampleTest < pktest.TestCase
             XR_resampleFrame(fn, [dataPath, 'out.zarr'], [2, 2, 2], 'zarrFile', true, 'saveZarr', true);
             expected = uint16(imresize3(single(im), round(testCase.ImSize / 2), 'Method', 'linear'));
             testCase.verifyEqual(readzarr([dataPath, 'out.zarr']), expected);
+        end
+
+        function imresize3FastMatchesImresize3(testCase, fastFactor, fastMethod, fastType)
+            % imresize3_fast replaces imresize3 in the resampling; imresize3
+            % is replaced by a spy that errors when called with an output, so
+            % the result comes from the fast path, not from the fallback
+            im = cast(rand(41, 37, 23) * 60000, fastType);
+            outSize = round(size(im) ./ fastFactor);
+            expected = imresize3(im, outSize, fastMethod);
+            testCase.applyFixture(pktest.FunctionSpyFixture('imresize3'));
+            testCase.verifyEqual(imresize3_fast(im, outSize, fastMethod), expected);
         end
 
         function image2dWithYxzFactor(testCase)
