@@ -385,9 +385,10 @@ if isempty(processFunPath) || all(cellfun(@isempty, processFunPath))
 				usrFun = sprintf('@(x)erodeVolumeBy2DProjection(x,%d)', EdgeArtifacts);
 			end
 		end
-		dt = char(datetime('now', 'Format', 'yyyyMMddHHmmSS'));
+		% a name of its own: the jobs of other volumes write to the same
+		% folder at the same time (the run's uuid is shared by them)
 		tmpDir = sprintf('%s/tmp/', pstr);
-		fn = sprintf('%s/processFunction_%s.mat', tmpDir, dt);
+		fn = sprintf('%s/processFunction_%s.mat', tmpDir, get_uuid());
 		if ~exist(tmpDir, 'dir')
 			mkdir(tmpDir);
 		end

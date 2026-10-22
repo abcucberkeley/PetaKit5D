@@ -166,6 +166,21 @@ classdef StitchingTest < pktest.TestCase
             testCase.verifyEqual(sortrows(placed), sortrows(starts), 'The tiles are not at their positions.');
         end
 
+        function processFunctionFileHasANameOfItsOwn(testCase)
+            % with EdgeArtifacts, a stitching run saves its tile processing
+            % function to tmp/. The file was named by the minute and the
+            % hundredths of a second ('yyyyMMddHHmmSS'), so jobs of other
+            % volumes starting in the same minute could write the same file;
+            % it now gets a uuid of its own.
+            dataPath = testCase.createTempFolder();
+            gt = testCase.randomVolume([100, 120, 32]);
+            csvFn = testCase.writeTiles(dataPath, gt, [0, 0, 0; 36, 0, 0; 0, 48, 0; 36, 48, 0], [64, 72, 32]);
+            testCase.applyFixture(pktest.FunctionStubFixture('get_uuid', 'a1b2c3d4'));
+            testCase.stitch(dataPath, csvFn, 'EdgeArtifacts', 2);
+            fns = dir(fullfile(dataPath, '**', 'processFunction_*.mat'));
+            testCase.verifyEqual({fns.name}, {'processFunction_a1b2c3d4.mat'});
+        end
+
         function clusterModeSeesResultsOtherNodesJustMade(testCase)
             % on NFS, exist() can miss a result another node just made for 30
             % s or more, so the wrapper saw finished volumes (and secondary
