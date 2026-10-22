@@ -374,8 +374,32 @@ dsz = getImageSize(inputFullpaths{1});
 if largeFile && ~masterCompute
     memAllocate = prod([min(batchSize(1), dsz(1)), dsz(2), dsz(3)]) * 4 / 2^30 * 10;
     cpusPerTask = 1;
+elseif largeFile
+    memAllocate = prod(dsz) * 4 / 2^30 * 10;
 else
-    memAllocate = prod(dsz) * 4 / 2^30 * 10;                        
+    % memory of the arrays the deskew/rotate code path holds at once plus
+    % MATLAB itself, for the largest input (with all its partial files)
+    [~, fmax] = max(dataSizes);
+    fns = inputFullpaths(fmax);
+    if partialvols(fmax)
+        fns = cellfun(@(x) [dataPaths{fdinds(fmax)}, x], gfnames{fmax}, 'unif', 0);
+    end
+    readSize = getImageSize(fns{1});
+    for i = 2 : numel(fns)
+        sz_i = getImageSize(fns{i});
+        readSize(3) = readSize(3) + sz_i(3);
+    end
+    dsz = readSize;
+    if ~isempty(inputBbox)
+        dsz = inputBbox(4 : 6) - inputBbox(1 : 3) + 1;
+    end
+    preprocess = FFCorrection || BKRemoval || any(flipZstack_mat) || ~strcmp(inputAxisOrder, 'yxz');
+    memAllocate = XR_estimateDeskewRotateMemory(dsz, xyPixelSize(1), dz, 'skewAngle', skewAngle, ...
+        'objectiveScan', objectiveScan, 'zStageScan', zStageScan, 'DSRCombined', DSRCombined, ...
+        'rotate', rotate, 'save16bit', save16bit(1), 'interpMethod', interpMethod, ...
+        'resampleFactor', resampleFactor, 'readSize', readSize, 'partialFile', numel(fns) > 1, ...
+        'preprocess', preprocess, 'outputAxisOrder', outputAxisOrder, 'saveZarr', saveZarr, ...
+        'blockSize', blockSize, 'dataType', getImageDataType(fns{1}));
 end
 
 % cluster setting

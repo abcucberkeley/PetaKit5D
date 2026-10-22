@@ -261,10 +261,15 @@ inputFullpaths = repmat({frameFullpath}, numTasks, 1);
 
 % submit jobs
 if parseCluster || ~parseParfor
-    inSize = inBatchBboxes(1, 4 : 6) - inBatchBboxes(1, 1 : 3) + 1;
-    outSize = outBatchBBoxes(1, 4 : 6) - outBatchBBoxes(1, 1 : 3) + 1;
-    outSize(2 : 3) = max(outSize(2 : 3), dsrOutSize(2 : 3));
-    memAllocate = prod(inSize) * 4 / 1024^3 * 2 + prod(outSize) * 4 / 1024^3 .* (prod(resampleFactor) * 0.6 + 1.5);
+    % memory of the largest batch: its input with border rows, the
+    % interpolated slices and its output region, plus MATLAB itself
+    inSizes = inBatchBboxes(:, 4 : 6) - inBatchBboxes(:, 1 : 3) + 1;
+    outSizes = outRegionBBoxes(:, 4 : 6) - outRegionBBoxes(:, 1 : 3) + 1;
+    [~, ind] = max(prod(inSizes, 2) + prod(outSizes, 2));
+    memAllocate = XR_estimateDeskewRotateMemory(inSizes(ind, :), xyPixelSize, dz, 'skewAngle', skewAngle, ...
+        'save16bit', save16bit, 'interpMethod', interpMethod, 'resampleFactor', resampleFactor, ...
+        'outSize', outSizes(ind, :), 'largeFile', true, 'blockSize', outBlockSize, ...
+        'dataType', getImageDataType(frameFullpath));
 
     is_done_flag = generic_computing_frameworks_wrapper(inputFullpaths, outputFullpaths, ...
         funcStrs, 'cpusPerTask', cpusPerTask, 'maxJobNum', maxJobNum, 'taskBatchNum', taskBatchNum, ...
