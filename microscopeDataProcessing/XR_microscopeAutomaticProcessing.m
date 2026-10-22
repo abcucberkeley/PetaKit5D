@@ -648,12 +648,29 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all') || ...
     end
     
     %% wait for running jobs finishing and checking for new coming images
+    % locally, stitching run for a later file can finish the dataset of
+    % files checked before it in this round; look again before waiting
+    if ~parseCluster && stitch
+        for f = find(~is_done_flag(:, 2))'
+            [~, fsname] = fileparts(fnames{f});
+            stchPath = stchPaths{fdinds(f)};
+            if ~isempty(dir(sprintf('%s/%s*Abs.zarr', stchPath, fsname(1 : end - 39))))
+                is_done_flag(f, 2) = true;
+            end
+        end
+    end
     nF_done = sum(all(is_done_flag, 2));
     sprintf('Time %d s: %d / %d (%0.3f) are finished!\n', toc(ts), nF_done, nF, nF_done / nF);
     
     if ~all(is_done_flag | trial_counter >= maxTrialNum, 'all') 
         waitLoopCounter = 0;
-        pause(30);
+        % with jobs on the cluster, check again soon when few files are left;
+        % each check runs squeue per job, so wait longer for many files
+        waitTime = 30;
+        if parseCluster
+            waitTime = min(30, max(3, 0.3 * sum(~all(is_done_flag, 2))));
+        end
+        pause(waitTime);
         % if not streaming, do not check for new files. 
         if ~streaming
             continue;

@@ -506,8 +506,14 @@ while ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
     end
 
     % wait for running jobs finishing and checking for new coming images
-    if ~all(is_done_flag | trial_counter >= maxTrialNum, 'all') 
-        pause(30);
+    if ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
+        % with jobs on the cluster, check again soon when few files are left;
+        % each check runs squeue per job, so wait longer for many files
+        waitTime = 30;
+        if parseCluster
+            waitTime = min(30, max(3, 0.3 * sum(~all(is_done_flag, 2))));
+        end
+        pause(waitTime);
     end
     if nF_done < sum(is_done_flag)
         nF_done = sum(is_done_flag);

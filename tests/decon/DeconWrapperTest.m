@@ -267,6 +267,21 @@ classdef DeconWrapperTest < pktest.TestCase
             testCase.verifyTrue(exist([d.dataPath, 'matlab_decon/', d.fsns{1}, '.tif'], 'file') == 2, ...
                 'Multi-batch large-file decon with RLMethod=original did not produce a result.');
         end
+
+        function clusterModeChecksFewJobsSoon(testCase)
+            % with jobs on the cluster the wrapper always waited 30 s between
+            % rounds, so the last results were seen up to 30 s late; it now
+            % waits 0.3 s per unfinished file, at least 3 s and at most 30 s
+            testCase.assumeFalse(ispc, 'The fake Slurm needs a POSIX shell.');
+            d = testCase.createDataset({'A'}, 1);
+            slurm = testCase.applyFixture(pktest.FakeSlurmFixture);
+            pauses = testCase.applyFixture(pktest.FunctionSpyFixture('pause'));
+            % the fake jobs never run: one round submits, the next resubmits
+            testCase.runWrapper(d, 'parseCluster', true, 'maxTrialNum', 2, 'jobLogDir', [d.root, 'logs']);
+            testCase.verifyEqual(slurm.callCount('sbatch'), 2);
+            waits = cellfun(@(x) x{1}, pauses.getCalls());
+            testCase.verifyEqual(waits, 3);
+        end
     end
 
     methods (Access = private)
