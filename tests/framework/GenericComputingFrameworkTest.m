@@ -126,6 +126,23 @@ classdef GenericComputingFrameworkTest < pktest.TestCase
             testCase.verifyEmpty(testCase.readLog(logFn));
         end
 
+        function finalOutputMadeByATaskEndsTheRun(testCase)
+            % the first task writes the final output; the second never
+            % writes its own and would be retried up to maxTrialNum times,
+            % but the run ends once the final output exists (in local mode
+            % after the first pass over the tasks)
+            [inFns, outFns, logFn, dataPath] = testCase.makeTasks(2);
+            outFns{1} = [dataPath, 'final.txt'];
+            funcStrs = [testCase.taskStrings(inFns(1), outFns(1), logFn, 'copy'), ...
+                testCase.taskStrings(inFns(2), outFns(2), logFn, 'noop')];
+
+            flags = generic_computing_frameworks_wrapper(inFns, outFns, funcStrs, 'parseCluster', false, ...
+                'masterCompute', true, 'unitWaitTime', 0, 'finalOutFullpath', outFns{1});
+
+            testCase.verifyEqual(flags, true(2, 1));
+            testCase.verifyEqual(testCase.readLog(logFn), outFns(:), 'Each task should run once.');
+        end
+
         function taskBatchesRunEachTaskOnce(testCase)
             [inFns, outFns, logFn] = testCase.makeTasks(4);
             funcStrs = testCase.taskStrings(inFns, outFns, logFn, 'copy');

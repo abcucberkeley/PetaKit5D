@@ -118,7 +118,7 @@ if isempty(BashLaunchStr)
     BashLaunchStr = 'echo ';
 end
 
-if ~isempty(finalOutFullpath) && (exist(finalOutFullpath, 'dir') || exist(finalOutFullpath, 'file'))
+if ~isempty(finalOutFullpath) && batch_file_exist({finalOutFullpath})
     is_done_flag = true(numel(inputFullpaths), 1);
     fprintf('The final output file %s already exists!\n\n', finalOutFullpath);
     return;
@@ -679,7 +679,9 @@ while (~parseCluster && ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
         fprintf('Time %0.2f s: %d / %d (%0.2f%%) are finished!\n', toc(ts), nF_done, nF, nF_done / nF * 100);
     end
 
-    if ~isempty(finalOutFullpath) && (exist(finalOutFullpath, 'dir') || exist(finalOutFullpath, 'file'))
+    % batch_file_exist sees a final output another node just made, which
+    % exist() can miss for 30 s or more
+    if ~isempty(finalOutFullpath) && batch_file_exist({finalOutFullpath})
         is_done_flag = true(nF, 1);
         fprintf('Time %0.2f s: The final output file %s already exists!\n', toc(ts), finalOutFullpath);
         break;
