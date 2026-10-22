@@ -194,7 +194,7 @@ if ~isempty(resampleFactor) && ~all(resampleFactor == 1)
     % complete rs to 3d in case it is not
     rs = [ones(1, 4 - numel(rs)) * rs(1), rs(2:end)];    
     outSize = round(size(I) ./ rs);
-    I = imresize3(I, outSize);
+    I = imresize3_fast(I, outSize);
 end
 if isempty(bim)
     sz = size(I);
