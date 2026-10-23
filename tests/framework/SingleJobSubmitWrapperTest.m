@@ -29,6 +29,9 @@ classdef SingleJobSubmitWrapperTest < pktest.TestCase
             testCase.verifySubstring(cmd, '-p test_partition -n1');
             testCase.verifySubstring(cmd, 'disp(12345)');
             testCase.verifySubstring(cmd, 'matlab/r2024b');
+            % MATLAB's non-interactive mode (with -r it starts the MathWorks
+            % Service Host and was very slow to exit on the cluster)
+            testCase.verifySubstring(cmd, '-nojvm -batch ');
         end
 
         function configFileKeysIgnoreCase(testCase)

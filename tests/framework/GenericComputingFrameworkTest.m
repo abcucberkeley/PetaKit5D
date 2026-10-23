@@ -207,6 +207,10 @@ classdef GenericComputingFrameworkTest < pktest.TestCase
 
             arrays = cellfun(@(x) str2double(regexp(x, '--array=(\d+)', 'tokens', 'once')), slurm.calls('sbatch'));
             testCase.verifyEqual(sort(arrays(:))', 1 : 3, 'Each task should be submitted once.');
+            % the jobs start MATLAB in its non-interactive mode (with -r it
+            % starts the MathWorks Service Host and was very slow to exit)
+            testCase.verifyTrue(all(contains(slurm.calls('sbatch'), '-nojvm -batch ')), ...
+                'The jobs do not start MATLAB with -batch.');
         end
 
         function clusterModeCountsJobUntilAllItsTasksAreDone(testCase)
