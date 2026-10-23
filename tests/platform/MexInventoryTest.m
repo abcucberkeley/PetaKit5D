@@ -8,9 +8,12 @@ classdef MexInventoryTest < pktest.TestCase
 
     properties (Constant)
         % not called by any current code path (only in comments, *_bak.m
-        % files, or not at all)
+        % files, or not at all), and the decon mex files, which are built on
+        % Linux only (the CPU one equals MATLAB's FFTs there; mexcuda needs
+        % MSVC on Windows, and macOS has no CUDA), so decon runs the MATLAB
+        % code there
         WindowsGaps = {'min_bbox_3d_mex', 'h_mat_mex', 'h_mat_fast_exp_mex', ...
-            'h_mat_mthreads_mex', 'replace_nan_inf_with_value'}
+            'h_mat_mthreads_mex', 'replace_nan_inf_with_value', 'decon_lucy_rfft_mex', 'decon_lucy_rfft_gpu_mex'}
 
         % unused ones as above, plus the point detection and imageProcessing
         % mex functions, which have never been built for ARM macOS. The .m

@@ -16,6 +16,10 @@ function [J_2, err_mat, k] = decon_lucy_function(I, PSF, NUMIT, varargin)
 % on GPU, also remove err_thrsh and fixIter parameters
 % xruan (08/31/2023): add scaleFactor, deconOffset, damper, and
 %   EdgeErosion, and use input parser for parameters.
+%
+% useMex: run the FFT steps of the iterations in decon_lucy_rfft_mex (CPU,
+%   the same results as the MATLAB code) or decon_lucy_rfft_gpu_mex (GPU);
+%   empty: as decon_use_rfft_mex decides
 
 
 ip = inputParser;
@@ -34,6 +38,7 @@ ip.addParameter('bbox', [], @isnumeric); % bounding box to crop data after decon
 ip.addParameter('debug', false, @islogical);
 ip.addParameter('debug_folder', './debug/', @ischar);
 ip.addParameter('saveStep', 1, @isnumeric); % save intermediate results every given iterations
+ip.addParameter('useMex', [], @(x) isempty(x) || islogical(x)); % FFT steps in a mex
 
 ip.parse(I, PSF, NUMIT, varargin{:});
 
@@ -58,25 +63,35 @@ PSF = single(PSF);
 sizeI = size(I);
 
 % 1. Prepare PSFs
-persistent H psz sq_p gpuNum last_useGPU
-if isempty(psz) || ~(numel(psz) == numel(sizeI) && all(psz == sizeI) && last_useGPU == useGPU ...
-        && sq_p == sum(PSF .^ 2, 'all')) || (useGPU && ~isempty(H) && gpuNum > 0 && ~existsOnGPU(H))
-    psz = sizeI;
-    
+persistent H psz sq_p gpuNum last_useGPU last_useMex
+newOTF = isempty(psz) || ~(numel(psz) == numel(sizeI) && all(psz == sizeI) && last_useGPU == useGPU ...
+        && sq_p == sum(PSF .^ 2, 'all')) || (useGPU && ~isempty(H) && gpuNum > 0 && ~existsOnGPU(H));
+if newOTF
     gpuNum = 0;
-    last_useGPU = useGPU;
     if useGPU
         gpuNum = gpuDeviceCount("available");
         if gpuNum == 0
             warning('No GPU is available, so the deconvolution runs on the CPU.');
         end
     end
+end
+% the mex uses a half OTF, the MATLAB code the full OTF
+useMex = decon_use_rfft_mex(pr.useMex, 'simplified', I, useGPU && gpuNum > 0, debug, Background);
+if newOTF || ~isequal(last_useMex, useMex)
+    psz = sizeI;
+    last_useGPU = useGPU;
+    last_useMex = useMex;
 
     sq_p = sum(PSF .^ 2, 'all');
     if useGPU && gpuNum > 0
         PSF = gpuArray(PSF);
     end
-    H = decon_psf2otf(PSF ./ sum(PSF(:)), double(sizeI));
+    if useMex
+        H = [];
+        H = decon_lucy_rfft(useGPU && gpuNum > 0, 'otf', PSF ./ sum(PSF(:)), double(sizeI));
+    else
+        H = decon_psf2otf(PSF ./ sum(PSF(:)), double(sizeI));
+    end
 end
 clear PSF;
 
@@ -138,20 +153,26 @@ for k = 1 : NUMIT
     Y = max(J_2 + lambda*(J_2 - J_3), 0);% plus positivity constraint
         
     % 3.b  Make core for the LR estimation
-    % directly compute CC within the same function to reduce overhead 
-    ReBlurred = max(real(ifftn(H.*fftn(Y))), eps);
-    % ReBlurred = ReBlurred + (ReBlurred == 0) * eps;
-    ReBlurred = cast(I, 'like', J_2)./ReBlurred;
-    
     % 3.c Determine next iteration image & apply positivity constraint
-    J_3 = J_2;
-    % one FFT step per statement, and ReBlurred freed at the end, so that at
-    % most two complex volumes are on the GPU at a time (the same operations)
-    ReBlurred = fftn(ReBlurred);
-    ReBlurred = conj(H) .* ReBlurred;
-    ReBlurred = ifftn(ReBlurred);
-    J_2 = max(Y .* real(ReBlurred), 0);
-    clear ReBlurred;
+    if useMex
+        % both steps in the mex, with the half OTF
+        J_3 = J_2;
+        J_2 = decon_lucy_rfft(useGPU, 'rlstep', Y, I, H);
+    else
+        % directly compute CC within the same function to reduce overhead 
+        ReBlurred = max(real(ifftn(H.*fftn(Y))), eps);
+        % ReBlurred = ReBlurred + (ReBlurred == 0) * eps;
+        ReBlurred = cast(I, 'like', J_2)./ReBlurred;
+
+        J_3 = J_2;
+        % one FFT step per statement, and ReBlurred freed at the end, so that at
+        % most two complex volumes are on the GPU at a time (the same operations)
+        ReBlurred = fftn(ReBlurred);
+        ReBlurred = conj(H) .* ReBlurred;
+        ReBlurred = ifftn(ReBlurred);
+        J_2 = max(Y .* real(ReBlurred), 0);
+        clear ReBlurred;
+    end
         
     if debug
         err_mat(k, 1:2) = [k, mean((double(J_2) - double(I)) .^ 2, 'all')];

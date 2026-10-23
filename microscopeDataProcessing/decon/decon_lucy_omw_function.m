@@ -2,6 +2,9 @@ function [J, err_mat] = decon_lucy_omw_function(I, PSF_f, PSF_b, NUMIT, varargin
 % RL decon with alternative backprojector OTF masked wiener (OMW) method
 %   save16bit: for GPU compute, convert to 16bit before transfer from GPU to CPU 
 %   bbox: for GPU compute, crop the data first before transfer from GPU to CPU
+%   useMex: run the iterations with half-spectrum FFTs in decon_lucy_rfft_mex
+%       (CPU, the same results as the MATLAB code) or decon_lucy_rfft_gpu_mex
+%       (GPU); empty: as decon_use_rfft_mex decides
 %
 % Author: Xiongtao Ruan (11/10/2022)
 %
@@ -26,6 +29,7 @@ ip.addParameter('bbox', [], @isnumeric); % bounding box to crop data after decon
 ip.addParameter('debug', false, @islogical);
 ip.addParameter('debug_folder', './debug/', @ischar);
 ip.addParameter('saveStep', 1, @isnumeric); % save intermediate results every given iterations
+ip.addParameter('useMex', [], @(x) isempty(x) || islogical(x)); % half-spectrum FFT mex for the iterations
 
 ip.parse(I, PSF_f, PSF_b, NUMIT, varargin{:});
 
@@ -50,19 +54,24 @@ PSF_b = single(PSF_b);
 sizeI = size(I);
 
 % 1. Prepare PSFs
-persistent OTF_f OTF_b psz sq_b gpuNum last_useGPU
-if isempty(psz) || isempty(OTF_f) || ~(numel(psz) == numel(sizeI) && all(psz == sizeI) && last_useGPU == useGPU ...
-        && sq_b == sum(PSF_b .^ 2, 'all')) || (useGPU && ~isempty(OTF_f) && gpuNum > 0 && ~existsOnGPU(OTF_f))
-    psz = sizeI;
-    
+persistent OTF_f OTF_b psz sq_b gpuNum last_useGPU last_useMex
+newOTF = isempty(psz) || isempty(OTF_f) || ~(numel(psz) == numel(sizeI) && all(psz == sizeI) && last_useGPU == useGPU ...
+        && sq_b == sum(PSF_b .^ 2, 'all')) || (useGPU && ~isempty(OTF_f) && gpuNum > 0 && ~existsOnGPU(OTF_f));
+if newOTF
     gpuNum = 0;
-    last_useGPU = useGPU;
     if useGPU
         gpuNum = gpuDeviceCount("available");
         if gpuNum == 0
             warning('No GPU is available, so the deconvolution runs on the CPU.');
         end
     end
+end
+% the mex uses half OTFs, the MATLAB code full OTFs
+useMex = decon_use_rfft_mex(pr.useMex, 'omw', I, useGPU && gpuNum > 0, debug, Background);
+if newOTF || ~isequal(last_useMex, useMex)
+    psz = sizeI;
+    last_useGPU = useGPU;
+    last_useMex = useMex;
 
     PSF_f = single(PSF_f);    
     sq_b = sum(PSF_b .^ 2, 'all');
@@ -70,8 +79,15 @@ if isempty(psz) || isempty(OTF_f) || ~(numel(psz) == numel(sizeI) && all(psz == 
         PSF_f = gpuArray(PSF_f);
         PSF_b = gpuArray(PSF_b);
     end
-    OTF_f = decon_psf2otf(PSF_f ./ sum(PSF_f(:)), double(sizeI));
-    OTF_b = decon_psf2otf(PSF_b ./ sum(PSF_b(:)), double(sizeI));
+    if useMex
+        OTF_f = [];
+        OTF_b = [];
+        OTF_f = decon_lucy_rfft(useGPU && gpuNum > 0, 'otf', PSF_f ./ sum(PSF_f(:)), double(sizeI));
+        OTF_b = decon_lucy_rfft(useGPU && gpuNum > 0, 'otf', PSF_b ./ sum(PSF_b(:)), double(sizeI));
+    else
+        OTF_f = decon_psf2otf(PSF_f ./ sum(PSF_f(:)), double(sizeI));
+        OTF_b = decon_psf2otf(PSF_b ./ sum(PSF_b(:)), double(sizeI));
+    end
 end
 clear PSF_f PSF_b;
 
@@ -79,80 +95,98 @@ if gpuNum == 0
     useGPU = false;
 end
 
-if useGPU
-    I = gpuArray(I);
-    if deconOffset ~= 0 || EdgeErosion > 0
-        I_mask = I ~= 0;
-    end
-    if strcmp(underlyingType(I), 'uint16')
-        % keep uint16 input as uint16 on the GPU (2 instead of 4 bytes per
-        % voxel); it is cast to the class of J where it is used (exact)
-        I = I - uint16(Background);            
-    else
-        I = max(I - Background, 0);    
-    end
-else
-    if ~isa(I, 'double')
+if useMex
+    % iterations in the mex, which also subtracts the background
+    if useGPU
+        I = gpuArray(I);
+    elseif ~any(strcmp(class(I), {'uint16', 'single'}))
         I = single(I);
     end
     if deconOffset ~= 0 || EdgeErosion > 0
         I_mask = I ~= 0;
-    end    
-    I = max(I - Background, 0);
-end
-J = I;
-if strcmp(underlyingType(J), 'uint16')
-    J = single(J);
-end
-
-% 2. L_R Iterations
-estep = saveStep;
-err_mat = zeros(NUMIT, 4);
-
-for k = 1 : NUMIT
-    % valina RL update step
-    CX = real(ifftn(fftn(J) .* OTF_f));
-    % CX = CX + (CX < eps) * eps;
-    CX = max(CX, eps);
-    % one FFT step per statement, and CX freed at the end, so that at most two
-    % complex volumes are on the GPU at a time (the same operations)
-    CX = fftn(cast(I, 'like', J) ./ CX);
-    CX = CX .* OTF_b;
-    CX = ifftn(CX);
-    J = real(CX) .* J;
-    clear CX;
-    % J = J .* (J > 0);
-    J = max(J, 0);
-            
-    if debug
-        err_mat(k, 1:2) = [k, mean((double(J) - double(I)) .^ 2, 'all')];
-        err_mat(k, 3) = err_mat(k, 2) ./ err_mat(1, 2); 
-        if rem(k, estep) == 0 && k > estep * 2
-            istp = k/estep;
-            err_mat(k, 4) = min(abs(err_mat(istp, 3) - err_mat(istp-1, 3)) / 10, abs(err_mat(istp, 3) + err_mat(istp-2, 3) - 2 * err_mat(istp-1, 3)) / 2);
+    end
+    J = decon_lucy_rfft(useGPU, 'omw', I, OTF_f, OTF_b, NUMIT, Background);
+    % with 0 iterations, the background-subtracted input
+    if dampFactor > 1
+        I = decon_lucy_rfft(useGPU, 'omw', I, OTF_f, OTF_b, 0, Background);
+    end
+    err_mat = zeros(NUMIT, 4);
+else
+    if useGPU
+        I = gpuArray(I);
+        if deconOffset ~= 0 || EdgeErosion > 0
+            I_mask = I ~= 0;
+        end
+        if strcmp(underlyingType(I), 'uint16')
+            % keep uint16 input as uint16 on the GPU (2 instead of 4 bytes per
+            % voxel); it is cast to the class of J where it is used (exact)
+            I = I - uint16(Background);            
         else
-            if k < 3 * estep
-                err_mat(k, 4) = 1;
+            I = max(I - Background, 0);    
+        end
+    else
+        if ~isa(I, 'double')
+            I = single(I);
+        end
+        if deconOffset ~= 0 || EdgeErosion > 0
+            I_mask = I ~= 0;
+        end    
+        I = max(I - Background, 0);
+    end
+    J = I;
+    if strcmp(underlyingType(J), 'uint16')
+        J = single(J);
+    end
+
+    % 2. L_R Iterations
+    estep = saveStep;
+    err_mat = zeros(NUMIT, 4);
+
+    for k = 1 : NUMIT
+        % valina RL update step
+        CX = real(ifftn(fftn(J) .* OTF_f));
+        % CX = CX + (CX < eps) * eps;
+        CX = max(CX, eps);
+        % one FFT step per statement, and CX freed at the end, so that at most two
+        % complex volumes are on the GPU at a time (the same operations)
+        CX = fftn(cast(I, 'like', J) ./ CX);
+        CX = CX .* OTF_b;
+        CX = ifftn(CX);
+        J = real(CX) .* J;
+        clear CX;
+        % J = J .* (J > 0);
+        J = max(J, 0);
+            
+        if debug
+            err_mat(k, 1:2) = [k, mean((double(J) - double(I)) .^ 2, 'all')];
+            err_mat(k, 3) = err_mat(k, 2) ./ err_mat(1, 2); 
+            if rem(k, estep) == 0 && k > estep * 2
+                istp = k/estep;
+                err_mat(k, 4) = min(abs(err_mat(istp, 3) - err_mat(istp-1, 3)) / 10, abs(err_mat(istp, 3) + err_mat(istp-2, 3) - 2 * err_mat(istp-1, 3)) / 2);
             else
-                err_mat(k, 4) = err_mat(istp * estep, 4);
+                if k < 3 * estep
+                    err_mat(k, 4) = 1;
+                else
+                    err_mat(k, 4) = err_mat(istp * estep, 4);
+                end
             end
-        end
         
-        if k == 1
-            mkdir(debug_folder);
-        end
-        if rem(k, estep) == 0
-            if useGPU 
-                writetiff(uint16(gather(J)), sprintf('%s/Iter_%04d.tif', debug_folder, k));
-            else
-                writetiff(uint16(J), sprintf('%s/Iter_%04d.tif', debug_folder, k));
+            if k == 1
+                mkdir(debug_folder);
+            end
+            if rem(k, estep) == 0
+                if useGPU 
+                    writetiff(uint16(gather(J)), sprintf('%s/Iter_%04d.tif', debug_folder, k));
+                else
+                    writetiff(uint16(J), sprintf('%s/Iter_%04d.tif', debug_folder, k));
+                end
             end
         end
     end
-end
 
-if debug
-    err_mat = err_mat(1 : floor(NUMIT / estep), :);
+    if debug
+        err_mat = err_mat(1 : floor(NUMIT / estep), :);
+    end
 end
 
 % post-processing of deconvolved result
