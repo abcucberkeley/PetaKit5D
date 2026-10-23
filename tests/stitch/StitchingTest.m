@@ -181,6 +181,48 @@ classdef StitchingTest < pktest.TestCase
             testCase.verifyEqual({fns.name}, {'processFunction_a1b2c3d4.mat'});
         end
 
+        function masterDoesNotStitchAVolumeWhoseJobRuns(testCase)
+            % with masterCompute, the master stitches the last unfinished
+            % volume itself. Once that one was done, the last unfinished
+            % volume could be one whose job already ran, which the master
+            % then stitched a second time with the same temporary files (a
+            % corrupt stitch info file in a real run); it now waits for the
+            % job. The stitching function is a spy that makes the result of
+            % the second volume, so each call is one the master made.
+            testCase.assumeFalse(ispc, 'The fake Slurm needs a POSIX shell.');
+            [dataPath, csvFn, resultFns] = testCase.writeTwoVolumes();
+            slurm = testCase.applyFixture(pktest.FakeSlurmFixture);
+            % the job of the first volume runs and makes its result when first checked
+            slurm.setJobStates('1000_1', {'R', 'done'}, resultFns(1));
+            testCase.applyFixture(pktest.FunctionSpyFixture('pause', [], 20));
+            frames = testCase.applyFixture(pktest.FunctionSpyFixture('XR_stitching_frame_zarr_dev_v1', ...
+                @() fclose(fopen(resultFns{2}, 'w'))));
+            testCase.stitch(dataPath, csvFn, 'parseCluster', true, 'masterCompute', true, 'xcorrMode', 'all', ...
+                'jobLogDir', [dataPath, 'logs']);
+            testCase.verifyNumElements(frames.getCalls(), 1, 'The master stitched a volume whose job was running.');
+            testCase.verifySubstring(frames.getOption(1, 'resultPath'), 'Scan_Iter_0001', ...
+                'The master did not stitch the second volume.');
+        end
+
+        function masterWaitsForTheLastTryOfAJob(testCase)
+            % with masterCompute, once the last try of every unfinished
+            % volume was submitted, the wrapper errored while waiting for
+            % those jobs (no last volume for the master to take over)
+            testCase.assumeFalse(ispc, 'The fake Slurm needs a POSIX shell.');
+            [dataPath, csvFn, resultFns] = testCase.writeTwoVolumes();
+            slurm = testCase.applyFixture(pktest.FakeSlurmFixture);
+            slurm.setJobStates('1000_1', {'PD', 'R', 'done'});
+            testCase.applyFixture(pktest.FunctionSpyFixture('pause', [], 20));
+            testCase.applyFixture(pktest.FunctionSpyFixture('XR_stitching_frame_zarr_dev_v1', ...
+                @() fclose(fopen(resultFns{2}, 'w'))));
+            testCase.stitch(dataPath, csvFn, 'parseCluster', true, 'masterCompute', true, 'xcorrMode', 'all', ...
+                'maxTrialNum', 1, 'jobLogDir', [dataPath, 'logs']);
+            testCase.verifyEqual(slurm.callCount('sbatch'), 1, 'The last try was submitted again.');
+            checks = slurm.history();
+            checks = checks(startsWith(checks, 'squeue') & contains(checks, '1000_1'));
+            testCase.verifyNumElements(checks, 3, 'The job was not checked until it ended.');
+        end
+
         function clusterModeSeesResultsOtherNodesJustMade(testCase)
             % on NFS, exist() can miss a result another node just made for 30
             % s or more, so the wrapper saw finished volumes (and secondary
@@ -642,6 +684,19 @@ classdef StitchingTest < pktest.TestCase
                 intRange = [1000, 60000];
             end
             gt = uint16(randi(intRange, sz));
+        end
+
+        function [dataPath, csvFn, resultFns] = writeTwoVolumes(testCase)
+            % two time points of the 2 x 2 tile layout, and the paths of
+            % their stitched results
+            dataPath = testCase.createTempFolder();
+            gt = testCase.randomVolume([100, 120, 32]);
+            for iter = 0 : 1
+                csvFn = testCase.writeTiles(dataPath, gt, [0, 0, 0; 36, 0, 0; 0, 48, 0; 36, 48, 0], [64, 72, 32], ...
+                    [], [], [], 'iter', iter);
+            end
+            resultFns = arrayfun(@(x) sprintf('%smatlab_stitch/%s.zarr', dataPath, ...
+                strrep(testCase.StitchName, 'Iter_0000', sprintf('Iter_%04d', x))), 0 : 1, 'unif', 0);
         end
 
         function [csvFn] = writeTiles(testCase, dataPath, gt, starts, tileSize, pixelSizes, stageXYZ, tileIdx, varargin)

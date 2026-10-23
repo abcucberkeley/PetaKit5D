@@ -10,6 +10,7 @@ function [fsns, imageListFullpath] = writeStitchTiles(dataPath, tiles, varargin)
 %
 % Parameters (as 'specifier'-value pairs):
 %                cam : char (default: 'A'). Camera letter in the filenames, '' for no camera.
+%               iter : a number (default: 0). Scan iteration in the filenames (a separate volume per iteration).
 %                 ch : a number (default: 0). Channel number in the filenames.
 %              laser : a number (default: 488). Laser wavelength in the filenames.
 %          imageList : char (default: 'ImageList.csv'). Image list filename in dataPath. Rows are appended if it exists.
@@ -21,6 +22,7 @@ ip.CaseSensitive = false;
 ip.addRequired('dataPath', @ischar);
 ip.addRequired('tiles', @isstruct);
 ip.addParameter('cam', 'A', @ischar);
+ip.addParameter('iter', 0, @isnumeric);
 ip.addParameter('ch', 0, @isnumeric);
 ip.addParameter('laser', 488, @isnumeric);
 ip.addParameter('imageList', 'ImageList.csv', @ischar);
@@ -30,6 +32,7 @@ ip.parse(dataPath, tiles, varargin{:});
 
 pr = ip.Results;
 cam = pr.cam;
+iter = pr.iter;
 ch = pr.ch;
 laser = pr.laser;
 tileDir = pr.tileDir;
@@ -53,8 +56,8 @@ nT = numel(tiles);
 fsns = cell(nT, 1);
 xyz = zeros(nT, 3);
 for i = 1 : nT
-    fsns{i} = sprintf('Scan_Iter_0000_0000%s_ch%d_CAM1_stack0000_%dnm_0000000msec_0000000000msecAbs_%03dx_%03dy_%03dz_0000t', ...
-        camStr, ch, laser, tiles(i).idx);
+    fsns{i} = sprintf('Scan_Iter_%04d_0000%s_ch%d_CAM1_stack0000_%dnm_0000000msec_0000000000msecAbs_%03dx_%03dy_%03dz_0000t', ...
+        iter, camStr, ch, laser, tiles(i).idx);
     switch saveFormat
         case 'tif'
             writetiff(tiles(i).im, [outPath, fsns{i}, '.tif']);

@@ -369,6 +369,10 @@ while ~all(is_done_flag | (trial_counter >= max_trial_num & ~job_status_flag), '
     end
     
     lastF = find(~is_done_flag & trial_counter < maxTrialNum, 1, 'last');
+    % none when the last tries were all submitted (their jobs may still run)
+    if isempty(lastF)
+        lastF = 0;
+    end
     for n = 1:numel(fullIter)
         for ncam = 1:numel(Cam)
             for s = 1:numel(stackn)
@@ -664,6 +668,7 @@ while ~all(is_done_flag | (trial_counter >= max_trial_num & ~job_status_flag), '
                             func_str = sprintf('%s,''localWorkerNum'',%d)', func_str(1 : end - 1), localWorkerNum);
                         end
 
+                        job_running = false;
                         if exist(cur_tmp_fname, 'file') || (parseCluster && ~(masterCompute && xcorrShift && strcmpi(xcorrMode, 'primaryFirst') && isPrimaryCh))
                             % for cluster computing with master, check whether the job still alive. Otherwise, use waiting time
                             % for the check
@@ -703,6 +708,7 @@ while ~all(is_done_flag | (trial_counter >= max_trial_num & ~job_status_flag), '
                                     job_ids(n, ncam, s, c, z) = job_id;
                                     trial_counter(n, ncam, s, c, z) = trial_counter(n, ncam, s, c, z) + submit_status;
                                     job_status_flag(n, ncam, s, c, z) = submit_status > 0 || job_status >= 0;
+                                    job_running = job_status > 0;
                                 end
                             else
                                 per_file_wait_time = unitWaitTime; % minite
@@ -717,7 +723,10 @@ while ~all(is_done_flag | (trial_counter >= max_trial_num & ~job_status_flag), '
                             fclose(fopen(cur_tmp_fname, 'w'));
                         end
 
-                        if ~parseCluster || (parseCluster && masterCompute && (f == lastF || ...
+                        % the master takes over the last unfinished file, unless its
+                        % job runs (it would write the same files at the same time;
+                        % a pending job of it was cancelled)
+                        if ~parseCluster || (parseCluster && masterCompute && ((f == lastF && ~job_running) || ...
                                 (xcorrShift && strcmpi(xcorrMode, 'primaryFirst') && isPrimaryCh ...
                                 && job_ids(n, ncam, s, c, z) == -1)))
                             trial_counter(n, ncam, s, c, z) = trial_counter(n, ncam, s, c, z) + 1;
