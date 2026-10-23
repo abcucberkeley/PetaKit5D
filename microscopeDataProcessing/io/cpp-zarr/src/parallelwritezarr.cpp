@@ -12,6 +12,13 @@
 #include <sys/time.h>
 #endif
 #include <fstream>
+#ifndef _WIN32
+#include <cerrno>
+#include <climits>
+#include <fcntl.h>
+#include <sys/uio.h>
+#include <unistd.h>
+#endif
 #include "blosc.h"
 #include "parallelreadzarr.h"
 #include "parallelwritezarr.h"
@@ -58,6 +65,8 @@ struct StoredChunk {
     uint64_t n = 0;
     bool hasCrc = false;
     uint32_t crc = 0;
+    // (or, for a chunk file, its n bytes in pieces of memory, in order)
+    const std::vector<std::pair<const uint8_t*, uint64_t>>* pieces = nullptr;
 };
 
 // A shard being written. Its inner chunks are prepared by any of the threads, in any
@@ -132,6 +141,102 @@ struct WriteScratch {
     }
 };
 ScratchPool<WriteScratch> writeScratchPool;
+
+// blosc's threads store a chunk's compressed blocks one after another in the order they
+// finish, so writing the same data twice gave different bytes (that decode the same). The
+// blocks are stored in block order instead, as one thread stores them. For the blosc
+// chunk c (n bytes), this finds each block's place (start) and size (len), and its place
+// in block order (at; with at[nblocks] = n), and returns true if they are out of order
+// (false when they already are in order, or the chunk is stored uncompressed).
+bool bloscBlockOrder(const uint8_t* c, const uint64_t n, std::vector<uint32_t> &start, std::vector<uint32_t> &len,
+                     std::vector<uint64_t> &at){
+    auto get32 = [](const uint8_t* p) -> uint32_t {
+        return (uint32_t)p[0] | ((uint32_t)p[1] << 8) | ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24);
+    };
+    const uint64_t header = BLOSC_MIN_HEADER_LENGTH;
+    if(n < header || (c[2] & BLOSC_MEMCPYED)) return false;
+    const uint64_t nbytes = get32(c+4), blocksize = get32(c+8);
+    if(!blocksize) return false;
+    const uint64_t nblocks = (nbytes+blocksize-1)/blocksize, first = header+4*nblocks;
+    if(nblocks < 2 || first > n) return false;
+    // (and the blocks in the order they are stored)
+    start.resize(nblocks);
+    len.resize(nblocks);
+    std::vector<uint32_t> order(nblocks);
+    bool inOrder = true;
+    for(uint64_t b = 0; b < nblocks; b++){
+        start[b] = get32(c+header+4*b);
+        order[b] = (uint32_t)b;
+        inOrder = inOrder && (b == 0 || start[b] > start[b-1]);
+    }
+    if(inOrder) return false;
+    std::sort(order.begin(), order.end(), [&](const uint32_t x, const uint32_t y){ return start[x] < start[y]; });
+    if(start[order[0]] != first) return false;
+    for(uint64_t i = 0; i < nblocks; i++){
+        const uint64_t end = i+1 < nblocks ? start[order[i+1]] : n;
+        if(end <= start[order[i]]) return false;
+        len[order[i]] = (uint32_t)(end-start[order[i]]);
+    }
+    at.resize(nblocks+1);
+    at[0] = first;
+    for(uint64_t b = 0; b < nblocks; b++) at[b+1] = at[b]+len[b];
+    return true;
+}
+
+// The header of a blosc chunk c whose blocks go in block order: its header and the table
+// of where the blocks start, into out (16 bytes and 4 per block)
+void bloscOrderedHeader(const uint8_t* c, const std::vector<uint64_t> &at, uint8_t* out){
+    const uint64_t header = BLOSC_MIN_HEADER_LENGTH;
+    memcpy(out, c, header);
+    for(uint64_t b = 0; b+1 < at.size(); b++){
+        for(uint64_t k = 0; k < 4; k++) out[header+4*b+k] = (uint8_t)(at[b] >> (8*k));
+    }
+}
+
+#ifndef _WIN32
+// Write a file from pieces of memory, in order, with writev (no copy of them is made),
+// making its folder first if it is missing. Returns 0, 1 if it cannot be opened, or 2 if
+// it could not be written whole.
+int writePieces(const std::string &path, const std::vector<std::pair<const uint8_t*, uint64_t>> &pieces){
+    int fd = open(path.c_str(), O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0666);
+    if(fd < 0 && errno == ENOENT){
+        const size_t slash = path.find_last_of('/');
+        if(slash != std::string::npos){
+            mkdirRecursive(path.substr(0, slash).c_str());
+            fd = open(path.c_str(), O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0666);
+        }
+    }
+    if(fd < 0) return 1;
+    std::vector<iovec> iov(pieces.size());
+    for(size_t i = 0; i < pieces.size(); i++){
+        iov[i].iov_base = const_cast<uint8_t*>(pieces[i].first);
+        iov[i].iov_len = (size_t)pieces[i].second;
+    }
+    bool ok = true;
+    size_t i = 0;
+    while(ok && i < iov.size()){
+        if(!iov[i].iov_len){
+            i++;
+            continue;
+        }
+        const ssize_t w = writev(fd, iov.data()+i, (int)std::min<size_t>(iov.size()-i, IOV_MAX));
+        if(w < 0){
+            ok = errno == EINTR;
+            continue;
+        }
+        // (past what was written: whole pieces, and the start of the next)
+        for(size_t left = (size_t)w; left && i < iov.size(); ){
+            const size_t m = std::min(left, iov[i].iov_len);
+            iov[i].iov_base = static_cast<uint8_t*>(iov[i].iov_base)+m;
+            iov[i].iov_len -= m;
+            left -= m;
+            if(!iov[i].iov_len) i++;
+        }
+    }
+    if(close(fd) != 0) ok = false;
+    return ok ? 0 : 2;
+}
+#endif
 }
 
 uint8_t parallelWriteZarr(zarr &Zarr, void* zarrArr,
@@ -331,8 +436,7 @@ uint8_t parallelWriteZarr(zarr &Zarr, void* zarrArr,
 
     // No more threads than chunks to prepare. With fewer chunks than threads, blosc
     // compresses each chunk's blocks with the threads left over (for a sharded array,
-    // counting every inner chunk of its shards, as before: blosc's threads store the
-    // blocks in the order they finish, so this keeps the bytes the same)
+    // counting every inner chunk of its shards, as earlier versions did)
     const int32_t team = (int32_t)std::max<int64_t>(1, std::min<int64_t>(numWorkers, numWork));
     int32_t nBloscThreads = 1;
     if(numChunks > 0 && numWorkers > numChunks) nBloscThreads = (int32_t)((numWorkers+numChunks-1)/numChunks);
@@ -650,6 +754,11 @@ uint8_t parallelWriteZarr(zarr &Zarr, void* zarrArr,
         uint8_t* chunkC = nullptr;
         ZSTD_CCtx* zctx = nullptr;
         std::vector<uint8_t> stored, copyBuf;
+        // (a blosc chunk's blocks put in order: their places, its header, and its pieces)
+        std::vector<uint32_t> blockStart, blockLen;
+        std::vector<uint64_t> blockAt;
+        std::vector<uint8_t> orderedHeader;
+        std::vector<std::pair<const uint8_t*, uint64_t>> pieces;
         try{
             scratch = writeScratchPool.take(w);
             scratch->buffers(sB, chunkCCap);
@@ -771,6 +880,39 @@ uint8_t parallelWriteZarr(zarr &Zarr, void* zarrArr,
                         "). ChunkName: "+Zarr.get_fileName()+"/"+subfolderName+"/"+name+"\n");
                     return false;
                 }
+                // With blosc's threads, the blocks are stored in block order, so the same
+                // data always gives the same bytes: a chunk file is written from the blocks
+                // where they are, in order (copied to put them in order, a chunk written
+                // on 48 threads took up to 1.2 times as long); others are copied in
+                // order, into chunkUnC, which is free now (stored for a chunk that barely
+                // compressed, bigger than chunkUnC)
+                if(nBloscThreads > 1 && bloscBlockOrder(chunkC, (uint64_t)csize, blockStart, blockLen, blockAt)){
+                    const uint64_t nblocks = blockStart.size();
+#ifndef _WIN32
+                    if(!sh && !chunkChecksum){
+                        orderedHeader.resize(BLOSC_MIN_HEADER_LENGTH+4*nblocks);
+                        bloscOrderedHeader(chunkC, blockAt, orderedHeader.data());
+                        pieces.assign(1, {orderedHeader.data(), (uint64_t)orderedHeader.size()});
+                        for(uint64_t b = 0; b < nblocks; b++){
+                            // (blocks stored one after another make one piece)
+                            if(b > 0 && blockStart[b] == blockStart[b-1]+blockLen[b-1]) pieces.back().second += blockLen[b];
+                            else pieces.push_back({chunkC+blockStart[b], (uint64_t)blockLen[b]});
+                        }
+                        out.pieces = &pieces;
+                    }
+                    else
+#endif
+                    {
+                        uint8_t* ordered = chunkUnC;
+                        if((uint64_t)csize > sB){
+                            stored.resize((size_t)csize);
+                            ordered = stored.data();
+                        }
+                        bloscOrderedHeader(chunkC, blockAt, ordered);
+                        for(uint64_t b = 0; b < nblocks; b++) memcpy(ordered+blockAt[b], chunkC+blockStart[b], blockLen[b]);
+                        chunkOut = ordered;
+                    }
+                }
             }
             else if(compressor == "zstd"){
                 const size_t n = ZSTD_compressCCtx(zctx, chunkC, chunkCCap, chunkUnC, sB, (int)Zarr.get_clevel());
@@ -832,18 +974,32 @@ uint8_t parallelWriteZarr(zarr &Zarr, void* zarrArr,
                         continue;
                     }
                     const std::string tmpName = useUuid ? fileName+uuid : fileName;
-                    std::ofstream file;
-                    if(!openForWrite(file, tmpName, std::ios::trunc)){
-                        reportError("Check permissions or filepath. Cannot write to path: "+tmpName+"\n");
-                        break;
+#ifndef _WIN32
+                    if(c.pieces){
+                        const int wErr = writePieces(tmpName, *c.pieces);
+                        if(wErr){
+                            if(wErr == 2 && useUuid) remove(tmpName.c_str());
+                            reportError(wErr == 1 ? "Check permissions or filepath. Cannot write to path: "+tmpName+"\n" :
+                                                    "Could not write all of "+tmpName+" (is the disk full?)\n");
+                            break;
+                        }
                     }
-                    file.write(reinterpret_cast<const char*>(c.data), c.n);
-                    if(c.hasCrc) file.write(reinterpret_cast<const char*>(&c.crc), sizeof(c.crc));
-                    file.close();
-                    if(!file){
-                        if(useUuid) remove(tmpName.c_str());
-                        reportError("Could not write all of "+tmpName+" (is the disk full?)\n");
-                        break;
+                    else
+#endif
+                    {
+                        std::ofstream file;
+                        if(!openForWrite(file, tmpName, std::ios::trunc)){
+                            reportError("Check permissions or filepath. Cannot write to path: "+tmpName+"\n");
+                            break;
+                        }
+                        file.write(reinterpret_cast<const char*>(c.data), c.n);
+                        if(c.hasCrc) file.write(reinterpret_cast<const char*>(&c.crc), sizeof(c.crc));
+                        file.close();
+                        if(!file){
+                            if(useUuid) remove(tmpName.c_str());
+                            reportError("Could not write all of "+tmpName+" (is the disk full?)\n");
+                            break;
+                        }
                     }
                     if(useUuid && !renameReplace(tmpName, fileName)){
                         remove(tmpName.c_str());

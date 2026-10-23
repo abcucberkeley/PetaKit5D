@@ -85,6 +85,34 @@ static uint64_t mexClevel(const mxArray* a){
     return (uint64_t)v;
 }
 
+// The threads option: how many threads a call uses, a whole number (0 or [] for the
+// default: OpenMP's setting for MATLAB's thread, which on Linux is maxNumCompThreads)
+static int mexThreads(const mxArray* a){
+    if(mxIsEmpty(a)) return 0;
+    if(!mxIsNumeric(a) || mxGetNumberOfElements(a) != 1) mexErrMsgIdAndTxt("zarr:inputError","threads must be a whole number (0 for the default)\n");
+    const double v = mxGetScalar(a);
+    if(!(v >= 0 && v <= 65536) || v != (double)(uint64_t)v) mexErrMsgIdAndTxt("zarr:inputError","threads must be a whole number (0 for the default)\n");
+    return (int)v;
+}
+
+// A call's threads (none for 0), set for MATLAB's thread for the whole call and then
+// restored, also when the call ends in an error (MATLAB runs destructors then), so
+// MATLAB's own setting is left as it was
+struct MexCallThreads {
+    int prev = 0;
+    explicit MexCallThreads(const int threads){
+        if(threads > 0){
+            prev = callThreads();
+            setCallThreads(threads);
+        }
+    }
+    ~MexCallThreads(){
+        if(prev > 0) setCallThreads(prev);
+    }
+    MexCallThreads(const MexCallThreads&) = delete;
+    MexCallThreads& operator=(const MexCallThreads&) = delete;
+};
+
 // The dtype option: a NumPy typestr ("<u2", "f4", "|b1", ...; little-endian when
 // it has no byte order mark), a type name ("uint16", "single", "float16", "half",
 // "complex64", "logical", ...), or "bfloat16"

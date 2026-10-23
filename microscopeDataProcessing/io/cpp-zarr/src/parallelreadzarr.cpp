@@ -491,8 +491,10 @@ uint8_t parallelReadZarr(zarr &Zarr, void* zarrArr,
     // local disk (a file system on a block device, whose device number has a major number;
     // NFS, tmpfs and FUSE have 0) a shard's parts are; and on NVMe drives also each thread's
     // next chunk file (on a SATA SSD that made cold reads up to 2.5% slower). NFS clients
-    // read ahead well themselves: reading ahead whole chunk files or big parts of shards
-    // there made cold reads up to 1.5 times as long. (Found out when a read first needs to
+    // read ahead well themselves while a call's threads keep enough reads going: reading
+    // ahead whole chunk files or big parts of shards there made cold reads with 6 threads or
+    // more up to 3.3 times as long. Calls of up to 5 threads read ahead the parts of shards
+    // they need there too (see readAheadShard). (Found out when a read first needs to
     // know: stat can ask an NFS server, and statfs always does, which made small reads up
     // to 65% slower.) 0: not a local disk, 1: a local disk, 2: an NVMe drive
     // (Reading ahead is asked for in steps of the most a call reads, the larger of the
@@ -583,13 +585,21 @@ uint8_t parallelReadZarr(zarr &Zarr, void* zarrArr,
         for(uint64_t o = 0; o < nOuter; o++) shardOpened[o].store(0, std::memory_order_relaxed);
     }
 
-    // A thread's shard being read: kept open, with its index loaded
+    // A thread's shard being read: kept open, with its index loaded (firstReadTimed: whether
+    // the thread's first read of its chunks' bytes was timed, see readChunk)
     struct ShardState {
         ShardFile file;
         std::string path;
-        bool open = false, indexRead = false;
+        bool open = false, indexRead = false, firstReadTimed = false;
         uint64_t* index = nullptr;
     };
+    // Calls of up to 5 threads on network storage read ahead a shard's parts whatever their size
+    // (see readAheadShard), also once a thread's first read of its chunks' bytes is slow
+    #ifdef __linux__
+    const bool fewThreads = numWorkers <= 5 && shardOpened;
+    #else
+    const bool fewThreads = false;
+    #endif
     // A thread that opens the shard asks to read ahead the inner chunks of it the
     // region needs (once for each shard), neighbors (less than 256 KB apart)
     // together: each read their own as threads came to them, the inner chunks of a
@@ -601,7 +611,14 @@ uint8_t parallelReadZarr(zarr &Zarr, void* zarrArr,
     // asked for data already in the page cache, NFS made such reads up to 19%
     // slower. (A thread whose index came from the page cache, which another thread
     // may just have read it into, leaves them to one whose index did not.) Bigger
-    // ones only on local disks (see above).
+    // ones only on local disks (see above), and on network storage in calls of up to 5
+    // threads, which keep too few reads going to hide the server's delay: there they
+    // are read ahead whatever their size when the index read took long, or when a
+    // thread's first read of the shard's chunks did (its index may have been cached
+    // while its chunks were not). That read 128^3 x 2 hypercubes of 16 time points or one
+    // cold from VAST through a training loader 1.5-1.8 times as fast (1 or 2 loader processes
+    // a GPU, at 5 or 3 threads), and big shard regions with 1-4 threads up to 1.6 times as
+    // fast; with 6 or more, regions over big shards were up to 3.3 times as slow.
     // (Not inlined: inlined in readChunk, it made one-chunk reads at 8 threads 6% slower, though
     // they never came here.)
     auto readAheadShard = [&](const ShardFile &file, const uint64_t* index, const std::vector<uint64_t> &cAV,
@@ -638,7 +655,8 @@ uint8_t parallelReadZarr(zarr &Zarr, void* zarrArr,
                 any = d >= 0;
             }
             uint8_t opened = 0;
-            if(ranges.size() > 1 && (total <= (8 << 20) ? slow : kind > 0) && shardOpened[o].compare_exchange_strong(opened, 1)){
+            if(ranges.size() > 1 && (total <= (8 << 20) || (fewThreads && kind == 0) ? slow : kind > 0) &&
+               shardOpened[o].compare_exchange_strong(opened, 1)){
                 std::sort(ranges.begin(), ranges.end());
                 std::vector<std::pair<uint64_t, uint64_t>> runs;
                 for(const auto &r : ranges){
@@ -674,6 +692,7 @@ uint8_t parallelReadZarr(zarr &Zarr, void* zarrArr,
                 ss.open = ss.file.open(fileName);
                 ss.path = fileName;
                 ss.indexRead = false;
+                ss.firstReadTimed = false;
             }
             // A shard that was never written reads as the fill value
             if(!ss.open) return -1;
@@ -721,10 +740,19 @@ uint8_t parallelReadZarr(zarr &Zarr, void* zarrArr,
             if(offset == emptyEntry && nbytes == emptyEntry) return -1;
             fileLen = (int64_t)nbytes;
             data = alloc(nbytes);
+            // (in calls of few threads, a thread's first read of the shard's chunks is timed: if
+            // it came from the server, the shard is read ahead as after a slow index read)
+            const bool timeIt = fewThreads && !ss.firstReadTimed;
+            const auto readStart = timeIt ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point();
             if(!ss.file.readAt(offset, data, nbytes)){
                 ss.path.clear();
                 fail("The shard "+fileName+" could not be read (it may be damaged, or not match the array's metadata)\n");
                 return -2;
+            }
+            if(timeIt){
+                ss.firstReadTimed = true;
+                const double took = std::chrono::duration<double>(std::chrono::steady_clock::now()-readStart).count();
+                if(took > 300e-6+nbytes/2e9 && disk() == 0) readAheadShard(ss.file, ss.index, cAV, 1.0, 0);
             }
         }
         // A crc32c codec's checksum follows the chunk's bytes
@@ -1121,15 +1149,68 @@ uint8_t parallelReadZarr(zarr &Zarr, void* zarrArr,
             fail(std::string("Read error: ")+e.what()+"\n");
         }
         auto failed = [&]{ return err != 0; };
+        // A chunk's pieces, as the chunk's read finds them: its bytes in the region, in runs
+        // of whole blocks of a blosc chunk (as decodeChunkRange decodes them)
+        auto setPieces = [&](const int64_t g, const int64_t i, const uint8_t* data, const int64_t len){
+            uint64_t from = 0, to = sB;
+            bytesInRegion(chunkAV[i], from, to);
+            pieceFrom[i] = from;
+            pieceTo[i] = to;
+            int32_t nbytes = 0, blocksize = 0;
+            if(compressor == "blosc" && len >= BLOSC_MIN_HEADER_LENGTH &&
+               blosc2_cbuffer_sizes(data, &nbytes, nullptr, &blocksize) >= 0 && (uint64_t)nbytes == sB && blocksize > 0){
+                const uint64_t bs = (uint64_t)blocksize;
+                const uint64_t blocks = (to+bs-1)/bs-from/bs;
+                pieceBase[i] = (from/bs)*bs;
+                pieceStep[i] = std::max<uint64_t>(1, (blocks+perChunk[g]-1)/perChunk[g])*bs;
+            }
+        };
+        // Decode piece p of group g's chunks once its chunk is read (a chunk with no pieces
+        // set has nothing to decode), and count it done. Returns false after an error.
+        auto decodePiece = [&](ReadScratch &sc, const int64_t g, const int64_t p) -> bool {
+            const int64_t i = g*group+p/perChunk[g], j = p%perChunk[g];
+            if(!waitFor([&]{ return readDone[i].load(std::memory_order_acquire) != 0; }, failed)) return false;
+            uint64_t a = 0, e = 0;
+            if(storedLen[i] >= 0){
+                if(pieceStep[i]){
+                    a = std::max(pieceFrom[i], pieceBase[i]+j*pieceStep[i]);
+                    e = std::min(pieceTo[i], pieceBase[i]+(j+1)*pieceStep[i]);
+                }
+                else if(j == 0){
+                    a = pieceFrom[i];
+                    e = pieceTo[i];
+                }
+            }
+            if(e > a){
+                const uint8_t* chunkData = storedOf[i];
+                if(compressor != "none"){
+                    if(!decodeChunkRange(sc, sc.dctx, storedOf[i], storedLen[i], decodedOf[i], a, e,
+                                         Zarr.get_subfoldersString(chunkAV[i]), Zarr.get_chunkNames(chunkF[i]))) return false;
+                    chunkData = decodedOf[i];
+                }
+                if(zeroChunkUnc && memcmp(zeroChunkUnc, chunkData+a, e-a)) nonZero[i].fetch_add(1, std::memory_order_relaxed);
+            }
+            piecesLeft[i].fetch_sub(1, std::memory_order_acq_rel);
+            return true;
+        };
         // Fusable chunks: each copy decodes the parts of its chunk that hold its slab (and
         // waits only for the chunk to be read). A chunk that cannot be decoded in parts
-        // (unusual blocks) is decoded whole, once, by the first copy that needs it.
+        // (blocks that do not hold whole slices, as with slices of 500x500 elements) is
+        // decoded in pieces by the copies that need it, which until it is decoded take the
+        // group's next pieces, its own or other such chunks'. (Decoded whole by the first
+        // copy that needed it, while the others waited, reads of a few such chunks took up
+        // to 9 times as long as of chunks that decode in parts.)
         if(fusable){
             std::vector<uint64_t> fUnit(nItems, 0), fType(nItems, 0);
-            std::vector<uint8_t> wholeZero(nItems, 0);
-            // (0: not decoded, 1: being decoded, 2: decoded, 3: failed)
-            std::unique_ptr<std::atomic<int>[]> wholeState(new std::atomic<int>[nItems]);
-            for(int64_t i = 0; i < nItems; i++) wholeState[i].store(0);
+            auto decodeFor = [&](ReadScratch &sc, const int64_t g, const int64_t i) -> bool {
+                const int64_t nPieces = std::min(group, nItems-g*group)*perChunk[g];
+                while(piecesLeft[i].load(std::memory_order_acquire) != 0){
+                    const int64_t p = nextPiece[g].fetch_add(1);
+                    if(p >= nPieces) return waitFor([&]{ return piecesLeft[i].load(std::memory_order_acquire) == 0; }, failed);
+                    if(!decodePiece(sc, g, p)) return false;
+                }
+                return true;
+            };
             #pragma omp parallel num_threads(numWorkers)
             {
                 const LocalMemoryPolicy memoryPolicy;
@@ -1163,7 +1244,10 @@ uint8_t parallelReadZarr(zarr &Zarr, void* zarrArr,
                             storedOf[i] = data;
                             storedLen[i] = len;
                             fUnit[i] = len >= 0 ? fusedUnit(data, len, fType[i]) : 0;
-                            if(len >= 0 && !fUnit[i]) decodedOf[i] = slots[k]->decodedBuffer(sB);
+                            if(len >= 0 && !fUnit[i]){
+                                decodedOf[i] = slots[k]->decodedBuffer(sB);
+                                setPieces(g, i, data, len);
+                            }
                             readDone[i].store(1, std::memory_order_release);
                         }
                         catch(const std::exception &e){
@@ -1186,18 +1270,11 @@ uint8_t parallelReadZarr(zarr &Zarr, void* zarrArr,
                                                          Zarr.get_subfoldersString(chunkAV[i]), Zarr.get_chunkNames(chunkF[i]))) break;
                             }
                             else if(storedLen[i] >= 0){
-                                int whole = 0;
-                                if(wholeState[i].compare_exchange_strong(whole, 1)){
-                                    uint64_t from = 0, to = sB;
-                                    bytesInRegion(chunkAV[i], from, to);
-                                    const bool ok = decodeChunkRange(*scratch, scratch->dctx, storedOf[i], storedLen[i], decodedOf[i], from, to,
-                                                                     Zarr.get_subfoldersString(chunkAV[i]), Zarr.get_chunkNames(chunkF[i]));
-                                    wholeZero[i] = ok && zeroChunkUnc && !memcmp(zeroChunkUnc, decodedOf[i]+from, to-from);
-                                    wholeState[i].store(ok ? 2 : 3, std::memory_order_release);
+                                if(!decodeFor(*scratch, g, i)) break;
+                                // (a sparse read leaves out chunks that are all zeros)
+                                if(!(zeroChunkUnc && nonZero[i].load(std::memory_order_relaxed) == 0)){
+                                    copyChunk(decodedOf[i], chunkAV[i], boxExt, sAxis, sl*slab, std::min(extent, (sl+1)*slab));
                                 }
-                                else if(!waitFor([&]{ return wholeState[i].load(std::memory_order_acquire) >= 2; }, failed)) break;
-                                if(wholeState[i].load(std::memory_order_acquire) != 2) break;
-                                if(!wholeZero[i]) copyChunk(decodedOf[i], chunkAV[i], boxExt, sAxis, sl*slab, std::min(extent, (sl+1)*slab));
                             }
                             copiesLeft[i].fetch_sub(1, std::memory_order_release);
                         }

@@ -100,7 +100,6 @@ void mexFunction(int nlhs, mxArray *plhs[],
     }
     free(folderName);
 
-    TIFFSetWarningHandler(DummyHandler);
     const char* mode;
     if(nrhs > 2){
          mode = mxArrayToString(prhs[2]);

@@ -37,6 +37,7 @@ void mexFunction(int nlhs, mxArray *plhs[],
     bool crop = false;
     bool useUuid = true;
     bool sparse = true;
+    int threads = 0;
     // Per-axis options are collected first and fit to the array's number of
     // dimensions once it is known
     std::vector<uint64_t> bboxVals, chunksVals, subfoldersVals, chunkShapeVals;
@@ -131,11 +132,15 @@ void mexFunction(int nlhs, mxArray *plhs[],
         else if(currInput == "dtype"){
             dtypeOption = mexDtype(prhs[i+1]);
         }
+        else if(currInput == "threads"){
+            threads = mexThreads(prhs[i+1]);
+        }
         else{
             mexErrMsgIdAndTxt("zarr:inputError","The argument \"%s\" does not match the name of any supported input name.\n \
-            Currently Supported Names: uuid, bbox, cname, clevel, subfolders, chunks, chunk_shape, sparse, dimension_separator, order, zarr_format, dtype\n",currInput.c_str());
+            Currently Supported Names: uuid, bbox, cname, clevel, subfolders, chunks, chunk_shape, sparse, dimension_separator, order, zarr_format, dtype, threads\n",currInput.c_str());
         }
     }
+    const MexCallThreads callThreadsSet(threads);
 
     // The Zarr format: as given, or the existing array's (2 for a new array). A new
     // format (a new array, or an existing one rewritten in the other format) starts

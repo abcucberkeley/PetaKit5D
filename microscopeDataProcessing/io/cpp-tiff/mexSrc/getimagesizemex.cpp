@@ -37,29 +37,19 @@ void mexFunction(int nlhs, mxArray *plhs[],
     if(strchr(fileName,'~')) fileName = expandTilde(fileName);
     #endif
     
-    TIFFSetWarningHandler(DummyHandler);
-    TIFF* tif = TIFFOpen(fileName, "r");
-    if(!tif) mexErrMsgIdAndTxt("tiff:inputError","File \"%s\" cannot be opened",fileName);
-    
-    uint64_t x = 1,y = 1,z = 1;    
-    if(nrhs == 1){
-        TIFFGetField(tif, TIFFTAG_IMAGEWIDTH, &x);
-        TIFFGetField(tif, TIFFTAG_IMAGELENGTH, &y);
-        z = getImageSizeZ(fileName);
-    }
-    else{
-        mexErrMsgIdAndTxt("tiff:inputError","Function only accepts one input argument");       
-    }
-  
-    TIFFClose(tif);
-	if(isImageJIm(fileName)){
-		uint64_t tempZ = imageJImGetZ(fileName);
-		if(tempZ) z = tempZ;
-	}
+    // Read the size through the library rather than calling libtiff here: a
+    // direct call binds to MATLAB's own libtiff once Tiff or imread has loaded it
+    TiffInfo info;
+    if(getTiffInfo(fileName, info)) mexErrMsgIdAndTxt("tiff:inputError","File \"%s\" cannot be opened",fileName);
+
+    const uint64_t x = info.x, y = info.y;
+    uint64_t z = info.directories;
+    // An ImageJ stack: one uncompressed directory followed by every slice
+    if(info.directories == 1 && info.compression == COMPRESSION_NONE && info.imageJImages) z = info.imageJImages;
 
     // Report channels as a 4th element only for RGB/RGBA, so grayscale callers
     // that expect [y x z] are unaffected.
-    uint64_t samples = getSamplesPerPixel(fileName);
+    const uint64_t samples = info.samples;
     if(samples > 1){
         plhs[0] = mxCreateNumericMatrix(1,4,mxDOUBLE_CLASS, mxREAL);
         double* dims = (double*)mxGetPr(plhs[0]);

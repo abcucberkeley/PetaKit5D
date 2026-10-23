@@ -10,6 +10,7 @@
 #include <memory>
 #include <mutex>
 #include <new>
+#include <utility>
 #include <vector>
 #include <thread>
 #include <omp.h>
@@ -23,6 +24,7 @@
 #ifdef __linux__
 #include <sched.h>
 #include <sys/syscall.h>
+#include <sys/sysmacros.h>
 #endif
 #include "tiffio.h"
 #include "lzwencode.h"
@@ -275,15 +277,64 @@ bool produceChunk(const WriteJob& j, uint64_t s, uint64_t c, Chunk* chunks, uint
 // are sent at once together with the queue. Seeks, and reads of queued data or
 // of the small writes sent last, are answered from memory. Uncompressed writes of 500-slice stacks became
 // 1-4% faster to RAM and local disk, with identical files.
+#ifdef __linux__
+// Whether the filesystem holding device dev is NFS, from /proc/self/mountinfo
+// (read once per filesystem) rather than fstatfs: on NFS fstatfs asks the
+// server (0.07-0.4 ms on the cluster's NFS, 1.3 ms over SSHFS), which every
+// compressed file written would pay.
+static bool onNfs(dev_t dev){
+    // A filesystem on a disk (a block device) is not NFS, and needs no lookup:
+    // NFS, like tmpfs and FUSE, has an anonymous device number (major 0).
+    if(major(dev) != 0) return false;
+    static std::mutex m;
+    static std::vector<std::pair<dev_t, bool> > known;
+    std::lock_guard<std::mutex> g(m);
+    for(const auto& k : known) if(k.first == dev) return k.second;
+    bool nfs = false;
+    if(FILE* f = fopen("/proc/self/mountinfo", "r")){
+        char line[4096], type[64];
+        unsigned maj, mnr;
+        while(fgets(line, sizeof line, f)){
+            // "id parent major:minor root mountpoint options [optional...] - fstype source ..."
+            const char* sep = strstr(line, " - ");
+            if(!sep || sscanf(line, "%*s %*s %u:%u", &maj, &mnr) != 2 || sscanf(sep + 3, "%63s", type) != 1) continue;
+            if(makedev(maj, mnr) == dev){
+                nfs = !strcmp(type, "nfs") || !strcmp(type, "nfs4");
+                break;
+            }
+        }
+        fclose(f);
+    }
+    known.push_back(std::make_pair(dev, nfs));
+    return nfs;
+}
+#endif
+
 class BatchedFile {
 public:
-    explicit BatchedFile(bool stable) : stable_(stable) {}
+    // compressed: the data comes from compressing, so on NFS its sending is
+    // started early (see open).
+    BatchedFile(bool stable, bool compressed) : stable_(stable), compressed_(compressed) {}
     ~BatchedFile(){ if(fd_ >= 0) ::close(fd_); }
     bool open(const char* fileName, bool append){
         fd_ = ::open(fileName, O_RDWR | O_CREAT | (append ? 0 : O_TRUNC), 0666);
         struct stat st;
         if(fd_ < 0 || fstat(fd_, &st) != 0) return false;
         base_ = end_ = (uint64_t)st.st_size;
+#ifdef __linux__
+        // NFS sends what was written to the server at close, so a write would
+        // compress everything first and then wait for the whole transfer.
+        // Starting to send each part once it is written overlaps the two. Not
+        // on local disks: nothing waits for them at close, and starting their
+        // writeback early could make the write wait for the disk instead. Not
+        // for uncompressed data either: it is written as fast as it is copied,
+        // so there is nothing to overlap, and on VAST it was 5% slower.
+        // Whether the file is on NFS is looked up only once a file gets that far
+        // (see send), so small files never pay for the lookup.
+        writebackStep_ = compressed_ ? kWritebackStep : 0;
+        writebackFrom_ = base_;
+        dev_ = st.st_dev;
+#endif
         return true;
     }
     bool failed() const { return failed_; }
@@ -380,6 +431,8 @@ private:
     // copied into small_ (or, once sent, sent_) at offset at.
     struct Seg { uint64_t off, len; const uint8_t* ext; uint64_t at; };
     static const uint64_t kLarge = (uint64_t)64 << 10, kBatchBytes = (uint64_t)64 << 20;
+    // How much is written before its sending is started, on NFS
+    static const uint64_t kWritebackStep = (uint64_t)16 << 20;
     static const size_t kMaxSegs = 512;
 
     const Seg& segFor(uint64_t p) const {
@@ -456,6 +509,14 @@ private:
         if(extra) end_ += extra->len;
         base_ = end_;
         queued_ = 0;
+#ifdef __linux__
+        if(writebackStep_ && base_ - writebackFrom_ >= writebackStep_ && !onNfs(dev_)) writebackStep_ = 0;
+        if(writebackStep_ && base_ - writebackFrom_ >= writebackStep_){
+            // Only starts sending; a failure is still reported at close.
+            sync_file_range(fd_, (off64_t)writebackFrom_, (off64_t)(base_ - writebackFrom_), SYNC_FILE_RANGE_WRITE);
+            writebackFrom_ = base_;
+        }
+#endif
         return true;
     }
 
@@ -466,8 +527,10 @@ private:
         16;
 #endif
     int fd_ = -1;
-    bool stable_, failed_ = false;
+    bool stable_, compressed_, failed_ = false;
     uint64_t pos_ = 0, base_ = 0, end_ = 0, queued_ = 0;   // file [base_, end_) is queued
+    uint64_t writebackStep_ = 0, writebackFrom_ = 0;   // sending was started for the file before writebackFrom_
+    dev_t dev_ = 0;
     std::vector<Seg> segs_, sentSegs_;
     std::vector<uint8_t> small_, sent_;
 };
@@ -519,7 +582,7 @@ uint8_t writeSlices(const WriteJob& j, const char* fileName, const char* mode, C
 #ifndef _WIN32
     // Uncompressed row-major strips come straight from the caller's array,
     // which outlives the write, so they can wait in the queue.
-    BatchedFile io(j.direct());
+    BatchedFile io(j.direct(), j.compression != COMPRESSION_NONE);
     if(io.open(fileName, append))
         tif = TIFFClientOpen(fileName, append ? "a8" : "w8", (thandle_t)&io, bfRead, bfWrite, bfSeek, bfClose, bfSize, bfMap, bfUnmap);
 #else

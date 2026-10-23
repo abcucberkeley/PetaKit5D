@@ -9,6 +9,7 @@
 #include <omp.h>
 #include "tiffio.h"
 #include "../src/helperfunctions.h"
+#include "lzwdecode.h"
 
 // RAII for libtiff handles: TIFFClose runs on every exit path, so the worker
 // functions don't carry a naked TIFF* with a manual close. (C++11: no make_unique.)
@@ -161,6 +162,68 @@ static bool readRawStrips(TIFF* tif, int64_t first, int64_t last, int64_t base, 
         }
     }
     return true;
+}
+
+// LZW strips and tiles are decoded by lzwDecode rather than libtiff when the
+// directory needs nothing else from libtiff (no predictor, the usual bit order,
+// the machine's byte order, no subsampling): about 2x faster on microscope
+// data, and the same bytes. Anything else, and any strip lzwDecode cannot
+// decode, goes to libtiff, so errors and partial data are exactly libtiff's.
+static bool lzwFastPath(TIFF* tif){
+    uint16_t compression = COMPRESSION_NONE, predictor = PREDICTOR_NONE, fillOrder = FILLORDER_MSB2LSB, photometric = PHOTOMETRIC_MINISBLACK;
+    TIFFGetFieldDefaulted(tif, TIFFTAG_COMPRESSION, &compression);
+    if(compression != COMPRESSION_LZW || TIFFIsByteSwapped(tif)) return false;
+    TIFFGetFieldDefaulted(tif, TIFFTAG_PREDICTOR, &predictor);
+    TIFFGetFieldDefaulted(tif, TIFFTAG_FILLORDER, &fillOrder);
+    TIFFGetField(tif, TIFFTAG_PHOTOMETRIC, &photometric);
+    return predictor == PREDICTOR_NONE && fillOrder == FILLORDER_MSB2LSB && photometric != PHOTOMETRIC_YCBCR;
+}
+
+// The stored bytes of a strip or tile, read with the handle's own I/O; returns
+// how many, or 0. Like readRawStrips, a failure reports nothing: libtiff reads
+// it again and does.
+static uint64_t readStrile(TIFF* tif, uint32_t strile, std::vector<uint8_t>& raw, uint64_t maxBytes){
+    const uint64_t offset = TIFFGetStrileOffset(tif, strile), bytes = TIFFGetStrileByteCount(tif, strile);
+    if(!bytes || bytes > maxBytes) return 0;
+    if(raw.size() < bytes) raw.resize(bytes);
+    thandle_t h = TIFFClientdata(tif);
+    const bool ok = TIFFGetSeekProc(tif)(h, (toff_t)offset, SEEK_SET) == (toff_t)offset
+                    && (uint64_t)TIFFGetReadProc(tif)(h, raw.data(), (tmsize_t)bytes) == bytes;
+    return ok ? bytes : 0;
+}
+
+// TIFFReadEncodedStrip, decoding LZW with lzwDecode when it can. raw is the
+// caller's buffer for the stored bytes, reused from strip to strip.
+static tmsize_t readEncodedStrip(TIFF* tif, uint32_t strip, void* buf, tmsize_t size, std::vector<uint8_t>& raw){
+    if(lzwFastPath(tif) && !TIFFIsTiled(tif) && strip < TIFFNumberOfStrips(tif)){
+        // The bytes libtiff decodes: the strip's rows (fewer in the last strip
+        // of each plane), and at most size
+        uint32_t length = 0, rowsPerStrip = 0;
+        TIFFGetField(tif, TIFFTAG_IMAGELENGTH, &length);
+        TIFFGetFieldDefaulted(tif, TIFFTAG_ROWSPERSTRIP, &rowsPerStrip);
+        if(rowsPerStrip > length) rowsPerStrip = length;
+        if(rowsPerStrip){
+            const uint32_t stripsPerPlane = length/rowsPerStrip + (length % rowsPerStrip != 0);
+            uint32_t rows = length - (strip % stripsPerPlane)*rowsPerStrip;
+            if(rows > rowsPerStrip) rows = rowsPerStrip;
+            tmsize_t want = TIFFVStripSize(tif, rows);
+            if(size >= 0 && size < want) want = size;
+            const uint64_t n = want > 0 ? readStrile(tif, strip, raw, 2*(uint64_t)want + 1024) : 0;
+            if(n && lzwDecode(raw.data(), n, static_cast<uint8_t*>(buf), (uint64_t)want)) return want;
+        }
+    }
+    return TIFFReadEncodedStrip(tif, strip, buf, size);
+}
+
+// TIFFReadEncodedTile, decoding LZW with lzwDecode when it can.
+static tmsize_t readEncodedTile(TIFF* tif, uint32_t tile, void* buf, tmsize_t size, std::vector<uint8_t>& raw){
+    if(lzwFastPath(tif) && TIFFIsTiled(tif) && tile < TIFFNumberOfTiles(tif)){
+        tmsize_t want = TIFFTileSize(tif);
+        if(size >= 0 && size < want) want = size;
+        const uint64_t n = want > 0 ? readStrile(tif, tile, raw, 2*(uint64_t)want + 1024) : 0;
+        if(n && lzwDecode(raw.data(), n, static_cast<uint8_t*>(buf), (uint64_t)want)) return want;
+    }
+    return TIFFReadEncodedTile(tif, tile, buf, size);
 }
 
 // ---- Tiled TIFF support -------------------------------------------------
@@ -327,7 +390,8 @@ static void interleavePlanarRows(void* out, const uint8_t* buf, uint64_t x, uint
 // the strip that could not be read, or -1.
 static int64_t readPlanarStrips(TIFF* tif, uint8_t* buffer, uint64_t blockBytes, void* out,
                                 uint64_t x, uint64_t y, uint64_t bits, uint64_t samples, uint64_t stripSize,
-                                int64_t sBegin, int64_t sEnd, int64_t step, bool raw, int64_t sliceIdx, uint8_t flipXY){
+                                int64_t sBegin, int64_t sEnd, int64_t step, bool raw, int64_t sliceIdx, uint8_t flipXY,
+                                std::vector<uint8_t>& lzwRaw){
     const uint64_t rowBytes = x*(bits/8);
     const int64_t stripsPerPlane = (int64_t)((y + stripSize - 1)/stripSize);
     for(int64_t first = sBegin; first < sEnd; first += step){
@@ -339,7 +403,7 @@ static int64_t readPlanarStrips(TIFF* tif, uint8_t* buffer, uint64_t blockBytes,
             uint8_t* dst = buffer + (flipXY ? 0 : p*blockBytes);
             if(!(raw && readRawStrips(tif, base + first, base + last, base, stripSize, y, rowBytes, bits, dst)))
                 for(int64_t i = first; i < last; i++)
-                    if(TIFFReadEncodedStrip(tif, (uint32_t)(base + i), dst + (i - first)*stripSize*rowBytes, stripSize*rowBytes) < 0)
+                    if(readEncodedStrip(tif, (uint32_t)(base + i), dst + (i - first)*stripSize*rowBytes, stripSize*rowBytes, lzwRaw) < 0)
                         return base + i;
             if(flipXY) flipPlanarRows(out, dst, (int64_t)x, (int64_t)y, (int64_t)bits, (int64_t)samples, rowOff, rows, sliceIdx, (int64_t)p);
         }
@@ -383,7 +447,8 @@ static uint8_t readTilesInto(TIFF* tif, uint8_t* buffer, int64_t tileBufBytes,
                              void* out, int64_t x, int64_t y, int64_t bits,
                              int64_t samples, bool planar, int64_t tw, int64_t tl,
                              int64_t tilesAcross, int64_t tileStart, int64_t tileEnd,
-                             int64_t sliceIdx, uint8_t flipXY, int64_t* failedTile) {
+                             int64_t sliceIdx, uint8_t flipXY, int64_t* failedTile,
+                             std::vector<uint8_t>& lzwRaw) {
     const int64_t bytes = bits / 8;
     const int64_t tilesPerPlane = tilesAcross * ((y + tl - 1) / tl);
     for (int64_t t = tileStart; t < tileEnd; t++) {
@@ -396,7 +461,7 @@ static uint8_t readTilesInto(TIFF* tif, uint8_t* buffer, int64_t tileBufBytes,
         if (planar) {
             for (int64_t p = 0; p < samples; p++) {
                 const int64_t tile = p * tilesPerPlane + t;
-                if (TIFFReadEncodedTile(tif, (uint32_t)tile, buffer, tileBufBytes) < 0) {
+                if (readEncodedTile(tif, (uint32_t)tile, buffer, tileBufBytes, lzwRaw) < 0) {
                     *failedTile = tile;
                     return 1;
                 }
@@ -405,7 +470,7 @@ static uint8_t readTilesInto(TIFF* tif, uint8_t* buffer, int64_t tileBufBytes,
             continue;
         }
 
-        if (TIFFReadEncodedTile(tif, (uint32_t)t, buffer, tileBufBytes) < 0) {
+        if (readEncodedTile(tif, (uint32_t)t, buffer, tileBufBytes, lzwRaw) < 0) {
             *failedTile = t;
             return 1;
         }
@@ -752,6 +817,7 @@ uint8_t readTiffParallel(uint64_t x, uint64_t y, uint64_t z, const char* fileNam
                                         : nStrips;
         const uint64_t blockBytes = (uint64_t)(rawCandidate ? rawRun : run)*stripSize*stripRowBytes;
         std::unique_ptr<uint8_t[]> buffer;
+        std::vector<uint8_t> lzwRaw;   // stored bytes of an LZW strip or tile (readEncodedStrip)
         if(reader && tiled && tileBufBytes) buffer.reset(new uint8_t[tileBufBytes]);
         else if(reader && !tiled && buffered) buffer.reset(new uint8_t[bufferPlanes*blockBytes]);
 
@@ -793,7 +859,7 @@ uint8_t readTiffParallel(uint64_t x, uint64_t y, uint64_t z, const char* fileNam
                                  (int64_t)x, (int64_t)y, (int64_t)bits, (int64_t)samples, planar,
                                  (int64_t)tw, (int64_t)tl, (int64_t)tilesAcross,
                                  uBegin, uEnd,
-                                 dir - (int64_t)startSlice, flipXY, &failedTile)){
+                                 dir - (int64_t)startSlice, flipXY, &failedTile, lzwRaw)){
                     #pragma omp critical
                     {
                         // No errBak: the scanline fallback cannot read tiled images.
@@ -808,7 +874,7 @@ uint8_t readTiffParallel(uint64_t x, uint64_t y, uint64_t z, const char* fileNam
             const int64_t step = raw ? rawRun : run;
             if(planar){
                 const int64_t failedStrip = readPlanarStrips(tif.get(), buffer.get(), blockBytes, tiff, x, y, bits, samples, stripSize,
-                                                             uBegin, uEnd, step, raw, dir - (int64_t)startSlice, flipXY);
+                                                             uBegin, uEnd, step, raw, dir - (int64_t)startSlice, flipXY, lzwRaw);
                 if(failedStrip >= 0){
                     #pragma omp critical
                     {
@@ -832,7 +898,7 @@ uint8_t readTiffParallel(uint64_t x, uint64_t y, uint64_t z, const char* fileNam
                     void* stripDst = flipXY
                         ? static_cast<void*>(buffer.get() + (i - first)*stripSize*xs*bytes)
                         : static_cast<void*>(static_cast<uint8_t*>(tiff) + (((i*stripSize*xs)+((dir-startSlice)*(y*xs)))*bytes));
-                    int64_t cBytes = TIFFReadEncodedStrip(tif.get(), i, stripDst, stripSize*xs*bytes);
+                    int64_t cBytes = readEncodedStrip(tif.get(), (uint32_t)i, stripDst, stripSize*xs*bytes, lzwRaw);
                     if(cBytes < 0){
                         #pragma omp critical
                         {
@@ -1171,6 +1237,7 @@ uint8_t readTiffParallel2D(uint64_t x, uint64_t y, uint64_t z, const char* fileN
         // output. A planar no-flip read keeps a block of every color.
         const uint64_t blockBytes = (uint64_t)step*stripSize*stripRowBytes;
         void* buffer = (tiled || buffered) ? malloc(tiled ? tileBufBytes : bufferPlanes*blockBytes) : NULL;
+        std::vector<uint8_t> lzwRaw;
         if(tiled){
             int64_t tStart = (int64_t)w*tileBatch;
             int64_t tEnd = tStart + tileBatch;
@@ -1180,7 +1247,7 @@ uint8_t readTiffParallel2D(uint64_t x, uint64_t y, uint64_t z, const char* fileN
                readTilesInto(tif, (uint8_t*)buffer, (int64_t)tileBufBytes, tiff,
                              (int64_t)x, (int64_t)y, (int64_t)bits, (int64_t)samples, planar,
                              (int64_t)tw, (int64_t)tl, (int64_t)tilesAcross,
-                             tStart, tEnd, 0, flipXY, &failedTile)){
+                             tStart, tEnd, 0, flipXY, &failedTile, lzwRaw)){
                 #pragma omp critical
                 {
                     // No errBak: the scanline fallback cannot read tiled images.
@@ -1191,7 +1258,7 @@ uint8_t readTiffParallel2D(uint64_t x, uint64_t y, uint64_t z, const char* fileN
         }
         else if(planar){
             const int64_t failedStrip = (!err && sBegin < sEnd)
-                ? readPlanarStrips(tif, static_cast<uint8_t*>(buffer), blockBytes, tiff, x, y, bits, samples, stripSize, sBegin, sEnd, step, raw, 0, flipXY)
+                ? readPlanarStrips(tif, static_cast<uint8_t*>(buffer), blockBytes, tiff, x, y, bits, samples, stripSize, sBegin, sEnd, step, raw, 0, flipXY, lzwRaw)
                 : -1;
             if(failedStrip >= 0){
                 #pragma omp critical
@@ -1212,7 +1279,7 @@ uint8_t readTiffParallel2D(uint64_t x, uint64_t y, uint64_t z, const char* fileN
                 void* stripDst = flipXY
                     ? static_cast<void*>(static_cast<uint8_t*>(buffer) + (i - first)*stripSize*xs*bytes)
                     : static_cast<void*>(static_cast<uint8_t*>(tiff) + i*stripSize*xs*bytes);
-                int64_t cBytes = TIFFReadEncodedStrip(tif, i, stripDst, stripSize*xs*bytes);
+                int64_t cBytes = readEncodedStrip(tif, (uint32_t)i, stripDst, stripSize*xs*bytes, lzwRaw);
                 if(cBytes < 0){
                     #pragma omp critical
                     {
