@@ -39,6 +39,7 @@ ip.addParameter('skewed', [], @(x) isempty(x) || islogical(x)); % decon in skewe
 ip.addParameter('fixIter', true, @islogical); % 
 ip.addParameter('errThresh', [], @isnumeric); % error threshold for simplified code
 ip.addParameter('batchSize', [1024, 1024, 1024] , @isnumeric); % in y, x, z
+ip.addParameter('blockSize', [], @isnumeric); % zarr chunk size of the result, empty: writezarr's default
 ip.addParameter('Overlap', 200, @isnumeric); % block overlap
 ip.addParameter('CPUMaxMem', 500, @isnumeric); % CPU Memory in Gb
 ip.addParameter('parseCluster', true, @islogical);
@@ -305,7 +306,11 @@ writetiff(tmp_xy, deconMIPFullPath);
 
 if saveZarr
     deconTmpPath = sprintf('%s_%s.zarr', deconFullpath(1 : end - 5), uuid);
-    writezarr(im, deconTmpPath);
+    if isempty(pr.blockSize)
+        writezarr(im, deconTmpPath);
+    else
+        writezarr(im, deconTmpPath, 'blockSize', pr.blockSize);
+    end
 else
     deconTmpPath = sprintf('%s_%s.tif', deconFullpath(1 : end - 4), uuid);
     writetiff(im, deconTmpPath);

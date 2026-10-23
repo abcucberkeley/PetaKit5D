@@ -212,6 +212,17 @@ classdef DeconWrapperTest < pktest.TestCase
             end
         end
 
+        function largeFileInMemoryUsesBlockSize(testCase)
+            % the in-memory large-file path wrote its zarr result with
+            % writezarr's default chunks (500^3) instead of blockSize
+            d = testCase.createDataset({'A'}, 1, {}, true);
+            testCase.runWrapper(d, 'RLMethod', 'simplified', 'deconIter', 1, 'zarrFile', true, 'saveZarr', true, ...
+                'resultDirName', 'large', 'largeFile', true, 'largeMethod', 'inmemory', 'batchSize', [64, 64, 64], ...
+                'blockSize', [16, 16, 16]);
+            info = getZarrInfo([d.dataPath, 'large/', d.fsns{1}, '.zarr']);
+            testCase.verifyEqual(info.blockSize, [16, 16, 16]);
+        end
+
         function largeFileInPlaceMakesMIPsBeforePublishing(testCase)
             % as above for the in-place large-file path, which made its MIPs
             % with XR_MIP_zarr after moving the result into place
