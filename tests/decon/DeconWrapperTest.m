@@ -627,8 +627,14 @@ classdef DeconWrapperTest < pktest.TestCase
             log = fileread([slurm.Folder, '/sbatch.log']);
             argStr = regexp(log, 'XR_RLdeconFrame3D ([^\n]*)', 'tokens', 'once');
             testCase.assertNotEmpty(argStr, 'No compiled XR_RLdeconFrame3D command was submitted.');
-            % split the arguments as the job's shell does
-            [status, out] = system(sprintf('printf ''[%%s]\\n'' %s', argStr{1}));
+            % split the arguments as the job's shell does, in a script run
+            % with bash: system() uses the login shell, and zsh (the macOS
+            % default) rejects unquoted [...] that match no file
+            splitFn = [d.root, 'split_args.sh'];
+            fid = fopen(splitFn, 'w');
+            fprintf(fid, 'printf ''[%%s]\\n'' %s\n', argStr{1});
+            fclose(fid);
+            [status, out] = system(sprintf('bash %s', splitFn));
             testCase.assertEqual(status, 0);
             mccArgs = regexp(strip(out), '^\[(.*)\]$', 'tokens', 'lineanchors', 'dotexceptnewline');
             mccArgs = cellfun(@(x) x{1}, mccArgs, 'unif', 0);
