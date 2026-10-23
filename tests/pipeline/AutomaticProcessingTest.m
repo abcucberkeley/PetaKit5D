@@ -218,6 +218,7 @@ classdef AutomaticProcessingTest < pktest.TestCase
         function streamingProcessesNewFiles(testCase)
             % with streaming on, files that arrive during the run used to
             % make the pipeline fail (it added 4 flag columns to 2)
+            testCase.assumeTrue(usejava('jvm'), 'Setting file times needs Java.');
             px = testCase.XYPixelSize;
             dataPath = testCase.createTempFolder();
             stagePath = testCase.createTempFolder();
@@ -227,10 +228,11 @@ classdef AutomaticProcessingTest < pktest.TestCase
             stagedFn = testCase.tileFilename(stagePath, 'CamA_ch0', 1);
             writetiff(raw, stagedFn);
             % files changed in the last minute count as still being written
-            system(sprintf('touch -d "-5 min" %s %s', testCase.tileFilename(dataPath, 'CamA_ch0', 0), stagedFn));
+            oldTime = java.lang.System.currentTimeMillis() - 5 * 60 * 1000;
+            java.io.File(testCase.tileFilename(dataPath, 'CamA_ch0', 0)).setLastModified(oldTime);
+            java.io.File(stagedFn).setLastModified(oldTime);
             % the second file arrives (with its old time) at the first wait
-            testCase.applyFixture(pktest.FunctionSpyFixture('pause', ...
-                @() system(sprintf('mv -n %s %s 2>/dev/null; true', stagedFn, newFn))));
+            testCase.applyFixture(pktest.FunctionSpyFixture('pause', @() testCase.moveIfPresent(stagedFn, newFn)));
             evalc(['XR_microscopeAutomaticProcessing(dataPath, ''xyPixelSize'', px, ''dz'', testCase.Dz, ', ...
                 '''reverse'', true, ''channelPatterns'', {''CamA_ch0''}, ''streaming'', true, ''deskew'', true, ', ...
                 '''rotate'', true, ''DSRCombined'', true, ''stitch'', false, ''parseCluster'', false, ', ...
@@ -266,6 +268,13 @@ classdef AutomaticProcessingTest < pktest.TestCase
         function [fn] = tileFilename(~, dataPath, ch, yi)
             fn = sprintf(['%sScan_Iter_0000_0000_%s_CAM1_stack0000_488nm_0000000msec_0000000000msecAbs_', ...
                 '000x_%03dy_000z_0000t.tif'], dataPath, ch, yi);
+        end
+
+        function [] = moveIfPresent(~, src, dst)
+            % move a file (keeping its time) unless it was moved already
+            if isfile(src)
+                movefile(src, dst);
+            end
         end
     end
 end

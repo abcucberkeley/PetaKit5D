@@ -219,9 +219,10 @@ if (nd < 3) && (nF / nd > 100)
         end
         
         dir_info = dir(pstr_d);
-        dir_info(1 : 2) = [];
         fns_d = {dir_info.name};
-        
+        % without . and .. (a folder that can't be listed has neither)
+        fns_d(strcmp(fns_d, '.') | strcmp(fns_d, '..')) = [];
+
         inds_d = find(strcmp(pstrs, pstr_d));
 
         for f = 1 : numel(inds_d)
