@@ -27,7 +27,9 @@ if isempty(psf) || all(psf == 0, 'all')
 end
 
 psf = single(psf);
-psf = psf ./ sum(psf, 'all');
+% summed in double, so that the back projector doesn't depend on the number
+% of threads (a single precision sum is split among them)
+psf = psf ./ sum(psf, 'all', 'double');
 
 OTF = decon_psf2otf(psf);
 abs_OTF = abs(OTF);

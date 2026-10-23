@@ -268,8 +268,8 @@ classdef DeconFunctionTest < pktest.TestCase
             [~, out] = evalc(['RLdecon('''', '''', psfFn, 0.108, 0.2, 0.2, ''rawdata'', im, ''RLMethod'', ''simplified'', ', ...
                 '''psfGen'', false, ''useGPU'', false, ''Background'', 100, ''DeconIter'', 5, ''save16bit'', false)']);
             clear decon_lucy_function
-            % RLdecon normalizes the PSF before passing it on
-            psf = testCase.PSF ./ sum(testCase.PSF(:));
+            % RLdecon normalizes the PSF (summed in double) before passing it on
+            psf = testCase.PSF ./ sum(testCase.PSF(:), 'double');
             expected = decon_lucy_function(im, psf, 5, 'Background', 100, 'useGPU', false, 'save16bit', false);
             testCase.verifyEqual(out, expected);
         end

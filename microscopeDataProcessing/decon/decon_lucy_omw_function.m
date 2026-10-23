@@ -82,11 +82,11 @@ if newOTF || ~isequal(last_useMex, useMex)
     if useMex
         OTF_f = [];
         OTF_b = [];
-        OTF_f = decon_lucy_rfft(useGPU && gpuNum > 0, 'otf', PSF_f ./ sum(PSF_f(:)), double(sizeI));
-        OTF_b = decon_lucy_rfft(useGPU && gpuNum > 0, 'otf', PSF_b ./ sum(PSF_b(:)), double(sizeI));
+        OTF_f = decon_lucy_rfft(useGPU && gpuNum > 0, 'otf', PSF_f ./ sum(PSF_f(:), 'double'), double(sizeI));
+        OTF_b = decon_lucy_rfft(useGPU && gpuNum > 0, 'otf', PSF_b ./ sum(PSF_b(:), 'double'), double(sizeI));
     else
-        OTF_f = decon_psf2otf(PSF_f ./ sum(PSF_f(:)), double(sizeI));
-        OTF_b = decon_psf2otf(PSF_b ./ sum(PSF_b(:)), double(sizeI));
+        OTF_f = decon_psf2otf(PSF_f ./ sum(PSF_f(:), 'double'), double(sizeI));
+        OTF_b = decon_psf2otf(PSF_b ./ sum(PSF_b(:), 'double'), double(sizeI));
     end
 end
 clear PSF_f PSF_b;

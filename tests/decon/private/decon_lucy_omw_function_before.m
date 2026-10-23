@@ -72,8 +72,8 @@ if isempty(psz) || isempty(OTF_f) || ~(numel(psz) == numel(sizeI) && all(psz == 
         PSF_f = gpuArray(PSF_f);
         PSF_b = gpuArray(PSF_b);
     end
-    OTF_f = decon_psf2otf(PSF_f ./ sum(PSF_f(:)), double(sizeI));
-    OTF_b = decon_psf2otf(PSF_b ./ sum(PSF_b(:)), double(sizeI));
+    OTF_f = decon_psf2otf(PSF_f ./ sum(PSF_f(:), 'double'), double(sizeI));
+    OTF_b = decon_psf2otf(PSF_b ./ sum(PSF_b(:), 'double'), double(sizeI));
 end
 clear PSF_f PSF_b;
 

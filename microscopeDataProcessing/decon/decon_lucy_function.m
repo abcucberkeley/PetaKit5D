@@ -88,9 +88,9 @@ if newOTF || ~isequal(last_useMex, useMex)
     end
     if useMex
         H = [];
-        H = decon_lucy_rfft(useGPU && gpuNum > 0, 'otf', PSF ./ sum(PSF(:)), double(sizeI));
+        H = decon_lucy_rfft(useGPU && gpuNum > 0, 'otf', PSF ./ sum(PSF(:), 'double'), double(sizeI));
     else
-        H = decon_psf2otf(PSF ./ sum(PSF(:)), double(sizeI));
+        H = decon_psf2otf(PSF ./ sum(PSF(:), 'double'), double(sizeI));
     end
 end
 clear PSF;
@@ -144,7 +144,13 @@ for k = 1 : NUMIT
     % 3.a Make an image predictions for the next iteration
     if k > 2
         % lambda = (J_4(:,1).'*J_4(:,2))/(J_4(:,2).'*J_4(:,2) +eps);        
-        lambda = sum((J_2(:) - Y(:)) .* J_4) / (sum(J_4 .* J_4) + eps);
+        if useGPU
+            lambda = sum((J_2(:) - Y(:)) .* J_4) / (sum(J_4 .* J_4) + eps);
+        else
+            % in double, so that it doesn't depend on the number of threads
+            % (a single precision sum is split among them)
+            lambda = sum((J_2(:) - Y(:)) .* J_4, 'double') / (sum(J_4 .* J_4, 'double') + eps);
+        end
         lambda = max(min(lambda,1),0);% stability enforcement
         J_4 = J_2(:) - Y(:);
     elseif k == 2

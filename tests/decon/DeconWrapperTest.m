@@ -32,7 +32,7 @@ classdef DeconWrapperTest < pktest.TestCase
             testCase.verifyEqual(params.RLMethod, 'simplified');
 
             psf = single(readtiff(psfgenFn));
-            expected = decon_lucy_function(readtiff(d.rawFns{1}), psf ./ sum(psf(:)), 5, ...
+            expected = decon_lucy_function(readtiff(d.rawFns{1}), psf ./ sum(psf(:), 'double'), 5, ...
                 'Background', testCase.Background, 'useGPU', false, 'save16bit', true);
             testCase.verifyEqual(out, expected);
         end
@@ -51,7 +51,7 @@ classdef DeconWrapperTest < pktest.TestCase
             end
 
             psf = single(readtiff([psfgenPath, '_omw.tif']));
-            expected = decon_lucy_omw_function(readtiff(d.rawFns{1}), psf ./ sum(psf(:)), readtiff(bpFn), 2, ...
+            expected = decon_lucy_omw_function(readtiff(d.rawFns{1}), psf ./ sum(psf(:), 'double'), readtiff(bpFn), 2, ...
                 'Background', testCase.Background, 'useGPU', false, 'save16bit', true);
             testCase.verifyEqual(readtiff([d.dataPath, 'matlab_decon/', d.fsns{1}, '.tif']), expected);
         end
@@ -63,7 +63,7 @@ classdef DeconWrapperTest < pktest.TestCase
             testCase.verifyClass(out, 'single');
 
             psf = single(readtiff([d.dataPath, 'matlab_decon/psfgen/', d.psfFsns{1}, '_simplified.tif']));
-            expected = decon_lucy_function(readtiff(d.rawFns{1}), psf ./ sum(psf(:)), 3, ...
+            expected = decon_lucy_function(readtiff(d.rawFns{1}), psf ./ sum(psf(:), 'double'), 3, ...
                 'Background', testCase.Background, 'useGPU', false, 'save16bit', false);
             testCase.verifyEqual(out, expected);
         end
@@ -85,7 +85,7 @@ classdef DeconWrapperTest < pktest.TestCase
 
             for c = 1 : 2
                 psf = single(readtiff(sprintf('%smatlab_decon/psfgen/%s_simplified.tif', d.dataPath, d.psfFsns{c})));
-                expected = decon_lucy_function(readtiff(d.rawFns{c}), psf ./ sum(psf(:)), 3, ...
+                expected = decon_lucy_function(readtiff(d.rawFns{c}), psf ./ sum(psf(:), 'double'), 3, ...
                     'Background', bg(c), 'useGPU', false, 'save16bit', true);
                 testCase.verifyEqual(readtiff([d.dataPath, 'matlab_decon/', d.fsns{c}, '.tif']), expected, ...
                     sprintf('Channel %d was not deconvolved with its own PSF and background.', c));

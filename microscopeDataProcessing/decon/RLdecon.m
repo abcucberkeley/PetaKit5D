@@ -337,7 +337,9 @@ if ~file_exist_mat(1)
         if isempty(scaleFactor)
             scaleFactor = 1;
         end
-        psf = psf ./ sum(psf(:));
+        % summed in double, so that the result doesn't depend on the number
+        % of threads (a single precision sum is split among them)
+        psf = psf ./ sum(psf(:), 'double');
         if debug
             debug_folder = sprintf('%s/%s_debug/', deconPath, fsname);
             mkdir(debug_folder)

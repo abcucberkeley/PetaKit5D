@@ -69,6 +69,34 @@ classdef DeconRFFTTest < pktest.TestCase
             testCase.verifyFalse(decon_use_rfft_mex(false, method, im, false, false, 100));
         end
 
+        function resultDoesNotDependOnTheThreadCount(testCase, method)
+            % single precision sums over whole arrays (PSF normalization,
+            % RL's acceleration factor, the back projector) are split among
+            % the threads, so results changed in the last bits with the
+            % number of threads (and with where the back projector was
+            % made); they are summed in double now. The default path, with
+            % the mex on Linux and the MATLAB loop elsewhere.
+            testCase.assumeGreaterThanOrEqual(feature('numcores'), 2, 'Needs at least 2 cores.');
+            nt = maxNumCompThreads;
+            testCase.addTeardown(@() maxNumCompThreads(nt));
+            im = testCase.blurredBeads([128, 128, 64]);
+            psf = pktest.deconPSF([63, 63, 63], testCase.PSFSigma);
+            threads = [1, min(4, feature('numcores'))];
+            outs = cell(2, 1);
+            for k = 1 : 2
+                maxNumCompThreads(threads(k));
+                args = {'Background', testCase.Background, 'save16bit', false, 'useGPU', false};
+                if strcmp(method, 'omw')
+                    [~, b] = evalc('omw_backprojector_generation(psf, 0.005, false)');
+                    b = testCase.cropToSize(b, size(im));
+                    outs{k} = decon_lucy_omw_function(im, psf, b, 2, args{:});
+                else
+                    outs{k} = decon_lucy_function(im, psf, 10, args{:});
+                end
+            end
+            testCase.verifyEqual(outs{2}, outs{1}, sprintf('%d and %d threads differ.', threads));
+        end
+
         function mexEqualsMatlabLoopForOtherSizes(testCase, method, dataSize)
             testCase.assumeCpuMex();
             im = testCase.blurredBeads([dataSize, ones(1, 3 - numel(dataSize))]);

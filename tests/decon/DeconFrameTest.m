@@ -23,7 +23,7 @@ classdef DeconFrameTest < pktest.TestCase
             testCase.verifyEqual(readtiff([deconPath, 'MIPs/', fsn, '_MIP_z.tif']), max(out, [], 3));
             [~, psfFsn] = fileparts(psfFn);
             psf = single(readtiff([deconPath, 'psfgen/', psfFsn, '_simplified.tif']));
-            expected = decon_lucy_function(readtiff(fn), psf ./ sum(psf(:)), 3, 'Background', testCase.Background, ...
+            expected = decon_lucy_function(readtiff(fn), psf ./ sum(psf(:), 'double'), 3, 'Background', testCase.Background, ...
                 'useGPU', false, 'save16bit', true);
             testCase.verifyEqual(out, expected);
         end
@@ -56,7 +56,7 @@ classdef DeconFrameTest < pktest.TestCase
             testCase.runFrame(fn2, deconPath, psfFn, 'DeconIter', 3, 'psfGen', false);
 
             psf = single(psfRaw);
-            expected = decon_lucy_function(readtiff(fn2), psf ./ sum(psf(:)), 3, 'Background', testCase.Background, ...
+            expected = decon_lucy_function(readtiff(fn2), psf ./ sum(psf(:), 'double'), 3, 'Background', testCase.Background, ...
                 'useGPU', false, 'save16bit', true);
             out2 = readtiff([deconPath, 'second_', fsn1, '.tif']);
             testCase.verifyEqual(out2, expected);
@@ -102,7 +102,7 @@ classdef DeconFrameTest < pktest.TestCase
             [~, fsn] = fileparts(fn);
             [~, psfFsn] = fileparts(psfFn);
             psf = single(readtiff([deconPath, 'psfgen/', psfFsn, '_simplified.tif']));
-            expected = decon_lucy_function(readtiff(fn), psf ./ sum(psf(:)), 3, 'Background', testCase.Background, ...
+            expected = decon_lucy_function(readtiff(fn), psf ./ sum(psf(:), 'double'), 3, 'Background', testCase.Background, ...
                 'useGPU', false, 'save16bit', true);
             testCase.verifyEqual(readtiff([deconPath, fsn, '.tif']), expected, 'Overwrite=true kept the old result.');
         end
