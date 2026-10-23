@@ -701,14 +701,20 @@ end
 
 if all(is_done_flag)
     fprintf('Time %0.2f s: All output files (%d / %d) are finished!\n\n', toc(ts), nF, nF);
-    if exist(funcInputDir, 'dir')
-        rmdir(funcInputDir, 's');
-    end
-    if isempty(tmpDir)
-        rtTmpDir = sprintf('%s/tmp_%s/', dataPath, uuid(1 : 6));
-        if exist(rtTmpDir, 'dir')
-            rmdir(rtTmpDir, 's');
+    % removing the task files is best effort: on NFS, a job that still has
+    % its task script open keeps a .nfs file in the folder
+    try
+        if exist(funcInputDir, 'dir')
+            rmdir(funcInputDir, 's');
         end
+        if isempty(tmpDir)
+            rtTmpDir = sprintf('%s/tmp_%s/', dataPath, uuid(1 : 6));
+            if exist(rtTmpDir, 'dir')
+                rmdir(rtTmpDir, 's');
+            end
+        end
+    catch ME
+        warning('The task files in %s could not be removed: %s', funcInputDir, ME.message);
     end
 end
 

@@ -39,6 +39,23 @@ classdef MccClusterWrapperTest < pktest.TestCase
             testCase.verifyEqual(sort(arrays(:))', 1 : 3, 'Each task should be submitted once.');
         end
 
+        function taskFilesThatCannotBeRemovedDoNotFailTheRun(testCase)
+            % on NFS, a job that still has its task script open keeps a .nfs
+            % file in the task folder, so removing the folder at the end
+            % failed and the run errored although its outputs were complete
+            testCase.assumeFalse(ispc, 'The fake Slurm needs a POSIX shell.');
+            slurm = testCase.applyFixture(pktest.FakeSlurmFixture);
+            dataPath = testCase.createTempFolder();
+            slurm.setJobStates('1000_1', {'R', 'done'}, {[dataPath, 'out_1.txt']});
+            rmdirs = testCase.applyFixture(pktest.FunctionSpyFixture('rmdir', ...
+                @() error('pktest:rmdir', 'Directory not empty (a .nfs file)')));
+
+            testCase.runFrameworkIn(dataPath, 1, 'queryInterval', 0);
+
+            testCase.verifyNotEmpty(rmdirs.getCalls(), 'The task files were not removed.');
+            testCase.verifyTrue(isfile([dataPath, 'out_1.txt']));
+        end
+
         function countsJobUntilAllItsTasksAreDone(testCase)
             % with taskBatchNum > 1 a job runs several tasks; it counts
             % against maxJobNum until all of them are done, not just one
