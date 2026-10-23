@@ -188,6 +188,8 @@ while submit_status == 0 && trial_counter < maxTrialNum
                 end
                 
                 if ismcc || isdeployed || mccMode
+                    % the compiled master must accept the options of the task
+                    check_mcc_master_build(MCCMasterStr);
                     [func_name, var_str] = convert_function_string_to_mcc_string(funcStr);
                     % handle for nested "
                     var_str = strrep(var_str, '"', '\"');                

@@ -56,6 +56,24 @@ classdef MccClusterWrapperTest < pktest.TestCase
             testCase.verifyTrue(isfile([dataPath, 'out_1.txt']));
         end
 
+        function outdatedBuildStopsBeforeSubmitting(testCase)
+            % a compiled master built from code with other task interfaces
+            % rejects the tasks' options; the run stops at once with a clear
+            % error instead of every task failing (here a build from before
+            % XR_crop_block, the tasks' function, got mipBatchSize)
+            testCase.assumeFalse(ispc, 'The fake Slurm needs a POSIX shell.');
+            slurm = testCase.applyFixture(pktest.FakeSlurmFixture);
+            dataPath = testCase.createTempFolder();
+            manifest = strrep(mcc_parser_manifest(fileparts(which('mccMaster'))), ...
+                'Overwrite,mipBatchSize,uuid', 'Overwrite,uuid');
+            fid = fopen([dataPath, 'parsers_manifest.txt'], 'w');
+            fprintf(fid, '%s', manifest);
+            fclose(fid);
+
+            testCase.verifyError(@() testCase.runFrameworkIn(dataPath, 2), 'mcc:outdatedBuild');
+            testCase.verifyEqual(slurm.callCount('sbatch'), 0, 'Tasks were submitted to the outdated build.');
+        end
+
         function countsJobUntilAllItsTasksAreDone(testCase)
             % with taskBatchNum > 1 a job runs several tasks; it counts
             % against maxJobNum until all of them are done, not just one

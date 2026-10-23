@@ -51,6 +51,7 @@ if ismac
     system('sed -i '''' ''14s/^/#/'' run_mccMaster.sh');
     system('sed -i '''' ''16s/^/#/'' run_mccMaster.sh');
     system('sed -i '''' ''23s/^/#/'' run_mccMaster.sh');
+    save_parsers_manifest(mccPath, fpath);
     % create a zip file in the repo folder
     cd(fpath);
     if ~exist('mac', 'dir')
@@ -84,6 +85,7 @@ elseif isunix
     system('sed -i ''14s/^/#/'' run_mccMaster.sh');
     system('sed -i ''16s/^/#/'' run_mccMaster.sh');
     system('sed -i ''25s/^/#/'' run_mccMaster.sh');
+    save_parsers_manifest([fpath, '/', mdir], fpath);
 elseif ispc
     if nojvm
         mdir = 'windows';
@@ -101,6 +103,7 @@ elseif ispc
     cd(mdir);
     copyfile('../../microscopeDataProcessing/io/cpp-tiff/windows/*dll', './');
     copyfile('../../microscopeDataProcessing/io/cpp-zarr/windows/*dll', './');
+    save_parsers_manifest([fpath, '/', mdir], fpath);
 end
 
 if createMCRInstaller
@@ -112,5 +115,16 @@ if createMCRInstaller
 end
 
 cd(cpath);
+
+end
+
+
+function [] = save_parsers_manifest(buildDir, mccDir)
+% the task interfaces of the build, which check_mcc_master_build compares
+% with the code before the job framework submits compiled tasks
+
+fid = fopen([buildDir, '/parsers_manifest.txt'], 'w');
+fprintf(fid, '%s', mcc_parser_manifest([mccDir, '/parsers']));
+fclose(fid);
 
 end

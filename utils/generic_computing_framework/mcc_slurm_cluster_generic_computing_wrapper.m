@@ -124,6 +124,9 @@ if ~isempty(finalOutFullpath) && batch_file_exist({finalOutFullpath})
     return;
 end
 
+% the compiled master must accept the options this code gives the tasks
+check_mcc_master_build(MCCMasterStr);
+
 [dataPath, ~] = fileparts(inputFullpaths{1});
 [outPath, ~] = fileparts(outputFullpaths{1});
 
