@@ -10,6 +10,10 @@ classdef FunctionStubFixture < matlab.unittest.fixtures.Fixture
         Folder
     end
 
+    properties (Access = private)
+        WarningState
+    end
+
     methods
         function fixture = FunctionStubFixture(functionName, varargin)
             % varargin: the stub's outputs, in order
@@ -31,6 +35,8 @@ classdef FunctionStubFixture < matlab.unittest.fixtures.Fixture
             fid = fopen(sprintf('%s/%s.m', fixture.Folder, fixture.FunctionName), 'w');
             fprintf(fid, '%s\n', lines{:});
             fclose(fid);
+            % a stub of a built-in (e.g., pause) would warn at each use
+            fixture.WarningState = warning('off', 'MATLAB:dispatcher:nameConflict');
             addpath(fixture.Folder, '-begin');
             fixture.SetupDescription = sprintf('Replaced %s with a stub', fixture.FunctionName);
         end
@@ -38,6 +44,7 @@ classdef FunctionStubFixture < matlab.unittest.fixtures.Fixture
         function teardown(fixture)
             rmpath(fixture.Folder);
             clear(fixture.FunctionName);
+            warning(fixture.WarningState);
             if exist(fixture.Folder, 'dir')
                 rmdir(fixture.Folder, 's');
             end

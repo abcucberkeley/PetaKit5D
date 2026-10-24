@@ -365,7 +365,7 @@ TileOffset = 1;
 % erode given number of pixels in the edge
 EdgeArtifacts = 1;
 
-dt = datetime('now', 'format', 'yyyymmddHHMMSS');
+dt = datetime('now', 'format', 'yyyyMMddHHmmss');
 % number of channels
 c = 1;
 % define user-defined function

@@ -62,7 +62,9 @@ if newOTF
     if useGPU
         gpuNum = gpuDeviceCount("available");
         if gpuNum == 0
-            warning('No GPU is available, so the deconvolution runs on the CPU.');
+            % a GPU that is found but not available may be broken or in use
+            warning('No GPU is available (%d found, CUDA_VISIBLE_DEVICES=''%s''), so the deconvolution runs on the CPU.', ...
+                gpuDeviceCount("all"), getenv('CUDA_VISIBLE_DEVICES'));
         end
     end
 end

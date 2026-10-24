@@ -15,6 +15,10 @@ classdef FunctionSpyFixture < matlab.unittest.fixtures.Fixture
         MaxCalls = Inf
     end
 
+    properties (Access = private)
+        WarningState
+    end
+
     methods
         function fixture = FunctionSpyFixture(functionName, onCall, maxCalls)
             fixture.FunctionName = functionName;
@@ -61,6 +65,8 @@ classdef FunctionSpyFixture < matlab.unittest.fixtures.Fixture
                 onCall = fixture.OnCall;
                 save([fixture.Folder, '/onCall.mat'], 'onCall');
             end
+            % a spy of a built-in (e.g., pause) would warn at each use
+            fixture.WarningState = warning('off', 'MATLAB:dispatcher:nameConflict');
             addpath(fixture.Folder, '-begin');
             fixture.SetupDescription = sprintf('Replaced %s with a spy', fixture.FunctionName);
         end
@@ -68,6 +74,7 @@ classdef FunctionSpyFixture < matlab.unittest.fixtures.Fixture
         function teardown(fixture)
             rmpath(fixture.Folder);
             clear(fixture.FunctionName);
+            warning(fixture.WarningState);
             if exist(fixture.Folder, 'dir')
                 rmdir(fixture.Folder, 's');
             end
