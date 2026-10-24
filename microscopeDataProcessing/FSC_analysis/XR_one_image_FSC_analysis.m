@@ -51,15 +51,16 @@ if ischar(fn)
 else
     im = fn;
 end
-im = double(im);
 
 % add noise to empty space
 if false
+    im = double(im);
     im_rand = randn(size(im)) * 4 + 100;
     im = im + im_rand .* (im == 0);
 end
 
 if ~isempty(clipPer)
+    im = double(im);
     clip_val = prctile(im(im > 0), clipPer);
     im = im .* (im <= clip_val) + clip_val .* (im > clip_val);
 end
@@ -77,21 +78,29 @@ switch resAxis
         im = permute(im, [3, 2, 1]);
 end
 
+% resize to isotropic voxels and crop to 2 * halfSize if any size is greater:
+% only the kept region is resized (from the input region it depends on), in
+% double
+sz = size(im, 1 : 3);
 psz = min(xyPixelSize, dz);
 if dz ~= xyPixelSize
-    im = imresize3(im, round(size(im) .* [xyPixelSize, xyPixelSize, dz] / psz), 'linear');
+    rsz = round(sz .* [xyPixelSize, xyPixelSize, dz] / psz);
+else
+    rsz = sz;
 end
-
-% crop image if any size is greater than the 2 folder of split images
-sz = size(im);
-if any(sz > halfSize * 2)
-    hsz = floor((sz - halfSize * 2) / 2);
+s = ones(1, 3);
+t = rsz;
+if any(rsz > halfSize * 2)
+    hsz = floor((rsz - halfSize * 2) / 2);
     s = max(1, hsz);
-    t = min(sz, s + halfSize * 2 - 1);
-    
-    im = im(s(1) : t(1), s(2) : t(2), s(3) : t(3));
-    sz = size(im);    
+    t = min(rsz, s + halfSize * 2 - 1);
 end
+if dz ~= xyPixelSize
+    im = imresize3_fast(im, rsz, 'linear', [s, t], 'double');
+else
+    im = double(im(s(1) : t(1), s(2) : t(2), s(3) : t(3)));
+end
+sz = size(im, 1 : 3);
 
 if any(sz < halfSize * 2)
     lsz = floor((halfSize * 2 - sz) / 2);

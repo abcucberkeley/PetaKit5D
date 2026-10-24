@@ -103,6 +103,39 @@ classdef ResampleTest < pktest.TestCase
             testCase.verifyEqual(imresize3_fast(im, outSize, fastMethod), expected);
         end
 
+        function imresize3FastRegionMatchesCroppedImresize3(testCase, fastFactor, fastMethod, fastType)
+            % with an output region, imresize3_fast resizes only the input
+            % region it depends on (in outClass if given): the same values
+            % as the region of imresize3's result (the whole output, a
+            % corner, the far end, the middle voxel)
+            im = cast(rand(41, 37, 23) * 60000, fastType);
+            outSize = round(size(im) ./ fastFactor);
+            expected = imresize3(im, outSize, fastMethod);
+            expectedDouble = imresize3(double(im), outSize, fastMethod);
+            bboxes = {[1, 1, 1, outSize], [1, 2, 1, ceil(outSize / 2)], [floor(outSize / 3) + 1, outSize], ...
+                [ceil(outSize / 2), ceil(outSize / 2)]};
+            testCase.applyFixture(pktest.FunctionSpyFixture('imresize3'));
+            for i = 1 : numel(bboxes)
+                b = bboxes{i};
+                testCase.verifyEqual(imresize3_fast(im, outSize, fastMethod, b), ...
+                    expected(b(1) : b(4), b(2) : b(5), b(3) : b(6)), mat2str(b));
+                testCase.verifyEqual(imresize3_fast(im, outSize, fastMethod, b, 'double'), ...
+                    expectedDouble(b(1) : b(4), b(2) : b(5), b(3) : b(6)), mat2str(b));
+            end
+        end
+
+        function imresize3FastRegionWithOtherMethods(testCase)
+            % methods other than linear and cubic crop imresize3's result
+            im = single(rand(30, 26, 14));
+            outSize = [45, 20, 30];
+            b = [3, 2, 5, 40, 18, 22];
+            for method = {'lanczos3', 'nearest', 'box'}
+                expected = imresize3(double(im), outSize, method{1});
+                testCase.verifyEqual(imresize3_fast(im, outSize, method{1}, b, 'double'), ...
+                    expected(b(1) : b(4), b(2) : b(5), b(3) : b(6)), method{1});
+            end
+        end
+
         function image2dWithYxzFactor(testCase)
             % 2D images used to be resampled with the x and z factors of a yxz factor
             dataPath = testCase.createTempFolder();

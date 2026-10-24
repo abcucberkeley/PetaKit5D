@@ -69,29 +69,42 @@ if background ~= 0
     im = im .* (im > 0);
 end
 
-im = imresize3(single(im), round(size(im) .* [xyPixelSize, xyPixelSize, dz] ./ px), 'method', interpMethod);
-sz = size(im);
+% resize to the output pixel size, and pad the dimensions smaller than N and
+% crop the center N voxels: only that region is resized (from the input
+% region it depends on)
+rsz = round(size(im) .* [xyPixelSize, xyPixelSize, dz] ./ px);
 
 hfN = (N - 1) / 2;
 
-if any(size(im) ~= N)
-    if any(sz < N)
-        im = padarray(im, max(0, floor((N - sz) / 2)), 0, 'pre');
-        im = padarray(im, max(0, ceil((N - sz) / 2)), 0, 'post');
+if any(rsz ~= N)
+    if numel(N) ~= 3 || any(mod(N, 2) == 0)
+        error('The output size %s must be three odd numbers to crop or pad the resized image (size %s) to it.', ...
+            mat2str(N), mat2str(rsz));
     end
-    
-    c = round((size(im) + 1) / 2);
-    im = im(c(1) - hfN(1) : c(1) + hfN(1), c(2) - hfN(2) : c(2) + hfN(2), c(3) - hfN(3) : c(3) + hfN(3));
+    % the center N voxels, or all voxels of a dimension smaller than N
+    c = round((rsz + 1) / 2);
+    s = max(1, c - hfN);
+    t = min(rsz, c + hfN);
+    im = imresize3_fast(single(im), rsz, interpMethod, [s, t]);
+    if any(rsz < N)
+        im = padarray(im, max(0, floor((N - rsz) / 2)), 0, 'pre');
+        im = padarray(im, max(0, ceil((N - rsz) / 2)), 0, 'post');
+    end
+else
+    im = imresize3_fast(single(im), rsz, interpMethod);
 end
 
-im = abs(fftshift(fftn(im)));
-im = im ./ max(im(:));
+% |FFT| without fftshift: the MIPs and central slices (the DC planes) are
+% taken from it and then shifted, and the normalization and gamma (monotonic)
+% are applied to them, which gives the same values as on the whole spectrum
+im = abs(fftn(im));
+imMax = max(im(:));
 
 [FFTPath, fsname] = fileparts(spectrumFullname);
 
 spectrumTmpname = [FFTPath, filesep, fsname, '_', uuid, '.tif'];
 if save3DStack
-    writetiff(log10(single(im)), spectrumTmpname);
+    writetiff(log10(single(fftshift(im) ./ imMax)), spectrumTmpname);
 else
     fclose(fopen(spectrumTmpname, 'w'));
 end
@@ -100,16 +113,15 @@ FFTMIPPath = [FFTPath, '/MIPs/'];
 % mkdir(rotMIPPath);
 
 % apply gamma
-im = single(im .^ 0.5);
-MIP = max(im, [], 1);
+MIP = normalize_gamma(max(im, [], 1), imMax);
 FFTMIPFullpath = [FFTMIPPath, fsname, '_MIP_y.tif'];
 writetiff(squeeze(MIP), FFTMIPFullpath);    
 
-MIP = max(im, [], 2);
+MIP = normalize_gamma(max(im, [], 2), imMax);
 FFTMIPFullpath = [FFTMIPPath, fsname, '_MIP_x.tif'];
 writetiff(squeeze(MIP), FFTMIPFullpath);
 
-MIP = max(im, [], 3);
+MIP = normalize_gamma(max(im, [], 3), imMax);
 FFTMIPFullpath = [FFTMIPPath, fsname, '_MIP_z.tif'];
 writetiff(squeeze(MIP), FFTMIPFullpath);
 
@@ -120,16 +132,15 @@ if ~exist(FFTCSPath, 'dir')
     mkdir(FFTCSPath);
 end
 
-[ny, nx, nz] = size(im);
-MIP = im(:, :, round((nz + 1) / 2));
+MIP = normalize_gamma(im(:, :, 1), imMax);
 FFTMIPFullpath = [FFTCSPath, fsname, '_center_xy.tif'];
 writetiff(squeeze(MIP), FFTMIPFullpath);    
 
-MIP = im(:, round((nx + 1) / 2), :);
+MIP = normalize_gamma(im(:, 1, :), imMax);
 FFTMIPFullpath = [FFTCSPath, fsname, '_center_yz.tif'];
 writetiff(squeeze(MIP), FFTMIPFullpath);
 
-MIP = im(round((ny + 1) / 2), :, :);
+MIP = normalize_gamma(im(1, :, :), imMax);
 FFTMIPFullpath = [FFTCSPath, fsname, '_center_xz.tif'];
 writetiff(squeeze(MIP), FFTMIPFullpath);
 
@@ -140,3 +151,9 @@ movefile(spectrumTmpname, spectrumFullname);
 end
 
 
+function [im] = normalize_gamma(im, imMax)
+% normalize to the maximum of the spectrum, apply gamma 0.5, and fftshift
+
+im = fftshift(single((im ./ imMax) .^ 0.5));
+
+end

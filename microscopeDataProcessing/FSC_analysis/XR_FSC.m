@@ -56,17 +56,20 @@ if any(size(im2) ~= halfSize)
     im2 = im2(c_2(1) - hfN(1) : c_2(1) + hfN(1), c_2(2) - hfN(2) : c_2(2) + hfN(2), c_2(3) - hfN(3) : c_2(3) + hfN(3));
 end
 
+% don't calculate the window and shells every time
+persistent azimuth r N_orig window N_window shells max_r max_e shells_npoints shells_key
+
 % apply hamming windowing
 if ~false 
-    hwd = hamming(halfSize(1));
-    window = (hwd .* reshape(hwd, 1, numel(hwd)) .* reshape(hwd, 1, 1, numel(hwd))) .^ (1 / 3);
+    if isempty(N_window) || N_window ~= halfSize(1)
+        hwd = hamming(halfSize(1));
+        window = (hwd .* reshape(hwd, 1, numel(hwd)) .* reshape(hwd, 1, 1, numel(hwd))) .^ (1 / 3);
+        N_window = halfSize(1);
+    end
     
     im1 = im1 .* window;
     im2 = im2 .* window;
 end
-
-% don't caclculate shells every time
-persistent azimuth r N_orig
 
 if isempty(N_orig) || N_orig ~= halfSize(1)
     N_orig = halfSize(1);
@@ -76,38 +79,44 @@ if isempty(N_orig) || N_orig ~= halfSize(1)
     % use y axis as the rotation axis
     azimuth = permute(azimuth, [3, 1, 2]);
     azimuth = pi * (azimuth < 0) + azimuth;
+    shells_key = [];
 end
 
-% generate shells for 
-shells_r = round((r + dr / 2) / dr);
-% shells_e = round((elevation + pi / 2 + pi / 24) / (pi / 12));
-shells_a = round((azimuth) / dtheta) + 1;
-% merge disconnected regions
-shells_a(shells_a == max(shells_a(:))) = min(shells_a(:));
-% uniq_re = unique([shells_r(:), shells_e(:)], 'row');
-% uniq_re(uniq_re(:, 1) > (N(1) - 1) / 2 + 1, :) = []; 
+if ~isequal(shells_key, [N_orig, dr, dtheta, skipConeRegion])
+    % generate shells for
+    shells_r = round((r + dr / 2) / dr);
+    % shells_e = round((elevation + pi / 2 + pi / 24) / (pi / 12));
+    shells_a = round((azimuth) / dtheta) + 1;
+    % merge disconnected regions
+    shells_a(shells_a == max(shells_a(:))) = min(shells_a(:));
+    % uniq_re = unique([shells_r(:), shells_e(:)], 'row');
+    % uniq_re(uniq_re(:, 1) > (N(1) - 1) / 2 + 1, :) = [];
 
-shells_r((shells_r - 1) * dr > (halfSize(1) - 1) / 2 + 1) = round(((halfSize(1) - 1) / 2 + 1) / dr) + 1;
-shells_a(shells_r == max(shells_r(:))) = max(shells_a(:)) + 1;
+    shells_r((shells_r - 1) * dr > (halfSize(1) - 1) / 2 + 1) = round(((halfSize(1) - 1) / 2 + 1) / dr) + 1;
+    shells_a(shells_r == max(shells_r(:))) = max(shells_a(:)) + 1;
 
-max_r = max(shells_r(:));
-max_e = max(shells_a(:));
-shells = sub2ind([max_r, max_e], shells_r, shells_a);
+    max_r = max(shells_r(:));
+    max_e = max(shells_a(:));
+    shells = sub2ind([max_r, max_e], shells_r, shells_a);
 
-% remove a section along z-axis
-if ~false && skipConeRegion
-    shells(azimuth < (pi / 36) | azimuth > pi - (pi / 36) ) = max_r * max_e;
-    % shells(abs(azimuth - pi / 2) < pi / 96)  = max_r * max_e;
+    % remove a section along z-axis
+    if ~false && skipConeRegion
+        shells(azimuth < (pi / 36) | azimuth > pi - (pi / 36) ) = max_r * max_e;
+        % shells(abs(azimuth - pi / 2) < pi / 96)  = max_r * max_e;
+    end
+
+    % remove a section along x-axis
+    if ~false && skipConeRegion
+        % shells(azimuth < (pi / 36) | azimuth > pi - (pi / 36) ) = max_r * max_e;
+        shells(abs(azimuth - pi / 2) < pi / 48)  = max_r * max_e;
+    end
+
+    shells_npoints = accumarray(shells(:), ones(numel(shells), 1), [max_r * max_e, 1]);
+    shells_key = [N_orig, dr, dtheta, skipConeRegion];
 end
-
-% remove a section along x-axis
-if ~false && skipConeRegion
-    % shells(azimuth < (pi / 36) | azimuth > pi - (pi / 36) ) = max_r * max_e;
-    shells(abs(azimuth - pi / 2) < pi / 48)  = max_r * max_e;
-end
-
 
 num_xi = max_r * max_e;
+N_points = shells_npoints;
 
 % Compute Fourier transforms
 im1_fft = fftshift(fftn(im1));
@@ -118,8 +127,6 @@ im2_fft = fftshift(fftn(im2));
 % c = abs(im2_fft) .^ 2;
 frc = real(accumarray(shells(:), im1_fft(:) .* conj(im2_fft(:)), [num_xi, 1]) ) ...
         ./ sqrt(accumarray(shells(:), abs(im1_fft(:)).^2, [num_xi, 1]) .* accumarray(shells(:), abs(im2_fft(:)).^2, [num_xi, 1]));
-
-N_points = accumarray(shells(:), ones(numel(shells), 1), [num_xi, 1]);
 
 xi = [1 : max_r * max_e]';
 xi(isnan(frc)) = [];

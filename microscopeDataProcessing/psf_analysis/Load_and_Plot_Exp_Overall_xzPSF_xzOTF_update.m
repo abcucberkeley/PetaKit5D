@@ -120,14 +120,12 @@ B(3) = round(magz.*A(3));
 % [xq,yq,zq] = ndgrid(1:(A(1)./B(1)):A(1),1:(A(2)./B(2)):A(2),1:(A(3)./B(3)):A(3));
 % PSF3D = interpn(x,y,z, PSF3Dexp, xq,yq,zq);
 % PSF3D = PSF3D./max(max(max(PSF3D)));
-PSF3D = imresize3(PSF3Dexp, B, 'linear');
-PSF3D = PSF3D./max(PSF3D(:));
-B = size(PSF3D);
+% PSF3D = imresize3(PSF3Dexp, B, 'linear');
+% PSF3D = PSF3D./max(PSF3D(:));
 %
 %put this data into an array of size equal to that used for the simulations,
 %padding with zeros as necessary:
 array_size = 2.*sim_half_FOV./sim_pixsize + 1;
-PSF_array = zeros(array_size, array_size, array_size);
 xyi = max(round(sim_half_FOV./sim_pixsize-B(1)./2),1);
 xyf = xyi+min(B(1), array_size)-1;
 % xyf = xyi+array_size-1;
@@ -138,15 +136,21 @@ Bc = round((B + 1) / 2);
 lhsz = ceil((min(B, array_size) - 1) / 2);
 rhsz = min(B, array_size) - lhsz - 1;
 
-PSF_array(xyi:xyf,xyi:xyf,zi:zf) = PSF3D(Bc(1) - lhsz(1) : Bc(1) + rhsz(1), Bc(2) - lhsz(2) : Bc(2) + rhsz(2), Bc(3) - lhsz(3) : Bc(3) + rhsz(3));
+% the array is zero outside the data: only keep the data (PSF_box at offset
+% PSF_offset), and take the peaks and slices below from it. Only the part of
+% the resized PSF that is on the array is resized (normalized by the maximum
+% of the whole resized PSF)
+[PSF_box, PSF_max] = resize_array_part(PSF3Dexp, B, [Bc - lhsz, Bc + rhsz]);
+PSF_box = PSF_box ./ PSF_max;
+PSF_offset = [xyi, xyi, zi] - 1;
 % PSF_array(xyi:xyf,xyi:xyf,zi:zf) = PSF3D;
-PSF3D = PSF_array;
+grid_size = [array_size, array_size, array_size];
 
-A = size(PSF3D);
+A = grid_size;
 
 % xruan: fine adjust the center by the centroid
 % BW = PSF3D > prctile(PSF3D(:), 99.99);
-BW = PSF3D > multithresh(PSF3D(PSF3D > 0), 1);
+% BW = PSF3D > multithresh(PSF3D(PSF3D > 0), 1);
 % BW = imclose(BW, strel('sphere', 1));
 % L = bwlabeln(BW);
 py = (A(1) + 1) / 2;
@@ -171,17 +175,16 @@ pz = (A(3) + 1) / 2;
 % cy = pstruct.y(idx);
 % cz = pstruct.z(idx);
 % change to use peak
-PSF3D_1 = imgaussfilt3(PSF3D, 2);
-[peak, peakInd] = max(PSF3D_1(:));
-clear PSF3D_1;
+% PSF3D_1 = imgaussfilt3(PSF3D, 2);
+peakInd = box_gaussian_peak(PSF_box, PSF_offset, grid_size, 2);
 [interp_peaky,interp_peakx,interp_peakz] = ind2sub(A, peakInd);
 cx = interp_peakx;
 cy = interp_peaky;
 cz = interp_peakz;
 % make centroid within [-0.5, 0.5] to the center
 if abs(py - cy) > 0.5 || abs(px - cx) > 0.5 || abs(pz - cz) > 0.5
-    PSF3D=circshift(PSF3D, round((A + 1) / 2 - [cy,cx,cz]));
-    [peak, peakInd] = max(PSF3D(:));
+    [PSF_box, PSF_offset] = box_circshift(PSF_box, PSF_offset, grid_size, round((A + 1) / 2 - [cy,cx,cz]));
+    [peak, peakInd] = box_max(PSF_box, PSF_offset, grid_size);
     [interp_peaky,interp_peakx,interp_peakz] = ind2sub(A, peakInd);
 end
 
@@ -189,7 +192,7 @@ end
 %find the location of the maximum of the PSF:
 %assume the maximum occurs at the center z plane:
 midpix = (A(3)+1)./2;
-PSFxy = squeeze(PSF3D(:,:,midpix));
+PSFxy = squeeze(box_slice(PSF_box, PSF_offset, grid_size, 3, midpix));
 PSFxy = PSFxy./max(max(PSFxy));
 PSFy = sum(PSFxy,1);
 [maxy, peakypix] = max(PSFy);  %peakypix is the y pixel value at whic hte PSF is maximum
@@ -227,7 +230,6 @@ D = size(OTF3D);
 %
 %put this data into an array of size equal to that used for the simulations,
 %padding with zeros as necessary:
-OTF_array = zeros(array_size, array_size, array_size);
 xyi = max(round(sim_half_FOV./sim_pixsize-D(1)./2),1);
 % xyf = xyi+D(1)-1;
 xyf = xyi+min(D(1), array_size)-1;
@@ -238,9 +240,11 @@ Dc = round((D + 1) / 2);
 lhsz = ceil((min(D, array_size) - 1) / 2);
 rhsz = min(D, array_size) - lhsz - 1;
 % OTF_array(xyi:xyf,xyi:xyf,zi:zf) = OTF3D;
-OTF_array(xyi:xyf,xyi:xyf,zi:zf) = OTF3D(Dc(1) - lhsz(1) : Dc(1) + rhsz(1), Dc(2) - lhsz(2) : Dc(2) + rhsz(2), Dc(3) - lhsz(3) : Dc(3) + rhsz(3));
-OTF3D = OTF_array;
-B = size(OTF3D);
+% only keep the data, as for the PSF
+OTF_box = OTF3D(Dc(1) - lhsz(1) : Dc(1) + rhsz(1), Dc(2) - lhsz(2) : Dc(2) + rhsz(2), Dc(3) - lhsz(3) : Dc(3) + rhsz(3));
+OTF_offset = [xyi, xyi, zi] - 1;
+clear OTF3D;
+B = grid_size;
 %
 %loop through the various y slices of the 3D PSF to find the brightest one
 % that will be deemed the central y slice form which to extract the xz overall PSF:
@@ -249,12 +253,12 @@ maxval = zeros(1,11);
 for yoffset = -5:1:5
     yplane = peakypix + yoffset;
     %extract the xz PSF at the current y plane:
-    yz_exp_PSF = squeeze(PSF3D(:,yplane,:))';
+    yz_exp_PSF = squeeze(box_slice(PSF_box, PSF_offset, grid_size, 2, yplane))';
     maxval(yoffset+6) = max(max(yz_exp_PSF));
 end
 [totmax,maxplane] = max(maxval);
 maxyplane = peakypix + maxplane - 6;
-yz_exp_PSF = squeeze(PSF3D(:,maxyplane,:))'; 
+yz_exp_PSF = squeeze(box_slice(PSF_box, PSF_offset, grid_size, 2, maxyplane))'; 
 hsz = round((size(yz_exp_PSF) + 1) / 2);
 % xruan: narrow down the range to [-50, 50]
 yz_exp_PSF = yz_exp_PSF(hsz(1) - 50 : hsz(1) + 50, hsz(2) - 50 : hsz(2) + 50);
@@ -317,7 +321,7 @@ text(-0.05.*A(1), -0.03.*A(2), ['Overall PSF From ', source_descrip, ', gamma = 
 %extract the xz plane at the center of the OTF:
 midpt = (B(2)+1)./2;
 %extract the xz PSF at the current y plane:
-yz_exp_OTF = squeeze(OTF3D(:,midpt,:))';
+yz_exp_OTF = squeeze(box_slice(OTF_box, OTF_offset, grid_size, 2, midpt))';
 A = size(yz_exp_OTF);
 %
 %truncate the OTF data to the phyiscally possible range of kmax = +/-4*pi*n/lambda_exc
@@ -412,7 +416,7 @@ text(0.6.*A(2), -0.45, 'Bowtie OTF along kz', 'Color', [0 0.75 0], 'FontSize', 1
 %extract the xy plane at the center of the OTF:
 midpt = (B(2)+1)./2;
 %extract the xz PSF at the current y plane:
-xy_exp_OTF = squeeze(OTF3D(:,:,midpt));
+xy_exp_OTF = squeeze(box_slice(OTF_box, OTF_offset, grid_size, 3, midpt));
 A = size(xy_exp_OTF);
 %
 %truncate the OTF data to the phyiscally possible range of kmax = +/-4*pi*n/lambda_exc
@@ -446,10 +450,10 @@ text(-0.05 .*A(1), -0.03 .* A(2), ['Overall OTF From ', source_descrip, ', gamma
 % xruan: add new pannels
 % plot xy PSF max plane slice with gamma
 % find the brightest one slice
-[~, peakInd] = max(PSF3D(:));
-[maxyplane, maxxplane, maxzplane] = ind2sub(size(PSF3D), peakInd);
+[~, peakInd] = box_max(PSF_box, PSF_offset, grid_size);
+[maxyplane, maxxplane, maxzplane] = ind2sub(grid_size, peakInd);
 % maxzplane = peakypix + maxplane - 6;
-xy_exp_PSF = squeeze(PSF3D(:,:,maxzplane)); 
+xy_exp_PSF = squeeze(box_slice(PSF_box, PSF_offset, grid_size, 3, maxzplane)); 
 hsz = round((size(xy_exp_PSF) + 1) / 2);
 % xruan: narrow down the range to [-50, 50]
 xy_exp_PSF = xy_exp_PSF(hsz(1) - 50 : hsz(1) + 50, hsz(2) - 50 : hsz(2) + 50);
@@ -480,7 +484,7 @@ end
 
 
 % plot xz PSF max plane slice withpout gamma
-xz_exp_PSF = squeeze(PSF3D(maxyplane,:,:))'; 
+xz_exp_PSF = squeeze(box_slice(PSF_box, PSF_offset, grid_size, 1, maxyplane))'; 
 hsz = round((size(xz_exp_PSF) + 1) / 2);
 % xruan: narrow down the range to [-50, 50]
 xz_exp_PSF = xz_exp_PSF(hsz(1) - 50 : hsz(1) + 50, hsz(2) - 50 : hsz(2) + 50);
@@ -534,7 +538,7 @@ text(-0.05.*A(1), -0.03.*A(2), ['Overall PSF From ', source_descrip, ', gamma = 
 %extract the xz plane at the center of the OTF:
 midpt = (B(1)+1)./2;
 %extract the xz PSF at the current y plane:
-xz_exp_OTF = squeeze(OTF3D(midpt,:,:))';
+xz_exp_OTF = squeeze(box_slice(OTF_box, OTF_offset, grid_size, 1, midpt))';
 A = size(xz_exp_OTF);
 %
 %truncate the OTF data to the phyiscally possible range of kmax = +/-4*pi*n/lambda_exc
@@ -618,6 +622,180 @@ text(-A(1) * 0.1, -4.3, sprintf('Peak coordinate (xyz): (%d, %d, %d)', peakx, pe
 end
 
 
+function [sl] = box_slice(V, o, A, dim, k)
+% slice k along dimension dim of an array of size A that is zero except for
+% the box V at offset o
+
+if k < 1 || k > A(dim) || k ~= round(k)
+    error('Slice %d along dimension %d is outside the %d planes.', k, dim, A(dim));
+end
+ssz = A;
+ssz(dim) = 1;
+sl = zeros(ssz, 'like', V);
+k = k - o(dim);
+if k >= 1 && k <= size(V, dim)
+    rs = cell(1, 3);
+    vs = {':', ':', ':'};
+    for d = 1 : 3
+        rs{d} = o(d) + 1 : o(d) + size(V, d);
+    end
+    rs{dim} = 1;
+    vs{dim} = k;
+    sl(rs{:}) = V(vs{:});
+end
+
+end
 
 
+function [F] = box_full(V, o, A)
+% array of size A that is zero except for the box V at offset o
 
+F = zeros(A, 'like', V);
+F(o(1) + 1 : o(1) + size(V, 1), o(2) + 1 : o(2) + size(V, 2), o(3) + 1 : o(3) + size(V, 3)) = V;
+
+end
+
+
+function [m, ind] = box_max(V, o, A)
+% max and its linear index in the array of size A that is zero except for the
+% box V at offset o (the first maximum, as max(F(:)))
+
+[m, ind] = max(V(:));
+if m > 0
+    [y, x, z] = ind2sub(size(V), ind);
+    ind = sub2ind(A, y + o(1), x + o(2), z + o(3));
+else
+    F = box_full(V, o, A);
+    [m, ind] = max(F(:));
+end
+
+end
+
+
+function [V, o] = box_circshift(V, o, A, sh)
+% circshift by sh of the array of size A that is zero except for the box V at
+% offset o: the box moves, or turns around within itself along the
+% dimensions it spans (it is extended over a dimension it would wrap around)
+
+rot = zeros(1, 3);
+for d = 1 : 3
+    n = size(V, d);
+    if sh(d) == 0
+        continue;
+    end
+    if o(d) + sh(d) >= 0 && o(d) + sh(d) + n <= A(d)
+        o(d) = o(d) + sh(d);
+        continue;
+    end
+    if n < A(d)
+        pre = zeros(1, 3);
+        post = zeros(1, 3);
+        pre(d) = o(d);
+        post(d) = A(d) - o(d) - n;
+        V = padarray(padarray(V, pre, 0, 'pre'), post, 0, 'post');
+        o(d) = 0;
+    end
+    rot(d) = sh(d);
+end
+if any(rot ~= 0)
+    V = circshift(V, rot);
+end
+
+end
+
+
+function [ind] = box_gaussian_peak(V, o, A, sigma)
+% linear index of the maximum of imgaussfilt3(F, sigma) for the array F of size
+% A that is zero except for the box V >= 0 at offset o. A filtered value is a
+% weighted mean of F within the filter radius r = ceil(2 * sigma), so the
+% maximum is within r of the voxels of V that reach the filtered value at the
+% maximum of V; only those voxels are filtered, which gives the same values as
+% filtering F in the spatial domain (imgaussfilt3 filters large arrays in the
+% frequency domain without the Intel IPP library)
+
+try
+    useIPPL = images.internal.useIPPLibrary();
+catch
+    useIPPL = false;
+end
+r = ceil(2 * sigma);
+[vmax, ind] = max(V(:));
+if useIPPL && vmax > 0
+    [y, x, z] = ind2sub(size(V), ind);
+    p = [y, x, z] + o;
+    m0 = filtered_max(V, o, A, sigma, r, p, p);
+    [y, x, z] = ind2sub(size(V), find(V >= m0 / (1 + 1e-12)));
+    [m, ind] = filtered_max(V, o, A, sigma, r, [min(y), min(x), min(z)] + o - r, [max(y), max(x), max(z)] + o + r);
+    if m > 0
+        return;
+    end
+end
+F = imgaussfilt3(box_full(V, o, A), sigma);
+[~, ind] = max(F(:));
+
+end
+
+
+function [m, ind] = filtered_max(V, o, A, sigma, r, lo, hi)
+% maximum of imgaussfilt3(F, sigma, 'FilterDomain', 'spatial') over the voxels
+% lo .. hi, and its first linear index in F, for the array F of size A that is
+% zero except for the box V at offset o. The voxels are filtered with a margin
+% of r in y and z and whole columns (imfilter's result for a voxel depends on
+% its position in its column), which gives the same values as filtering F
+
+lo = max(lo, 1);
+hi = min(hi, A);
+s = [1, max(lo(2 : 3) - r, 1)];
+t = [A(1), min(hi(2 : 3) + r, A(2 : 3))];
+R = zeros(t - s + 1, 'like', V);
+bs = max(s, o + 1);
+bt = min(t, o + size(V, 1 : 3));
+if all(bt >= bs)
+    R(bs(1) - s(1) + 1 : bt(1) - s(1) + 1, bs(2) - s(2) + 1 : bt(2) - s(2) + 1, bs(3) - s(3) + 1 : bt(3) - s(3) + 1) = ...
+        V(bs(1) - o(1) : bt(1) - o(1), bs(2) - o(2) : bt(2) - o(2), bs(3) - o(3) : bt(3) - o(3));
+end
+R = imgaussfilt3(R, sigma, 'FilterDomain', 'spatial');
+R = R(lo(1) - s(1) + 1 : hi(1) - s(1) + 1, lo(2) - s(2) + 1 : hi(2) - s(2) + 1, lo(3) - s(3) + 1 : hi(3) - s(3) + 1);
+[m, ind] = max(R(:));
+[y, x, z] = ind2sub(size(R), ind);
+ind = sub2ind(A, y + lo(1) - 1, x + lo(2) - 1, z + lo(3) - 1);
+
+end
+
+
+function [V, m] = resize_array_part(P, B, bbox)
+% region bbox of imresize3(P, B, 'linear') for P >= 0, and the maximum m of the
+% whole resized P. The resized values outside bbox are weighted means
+% (non-negative weights) of the input voxels used by their rows and columns, so
+% if those are smaller than the maximum of the region, only the region is
+% resized
+
+V = [];
+if ~isequal(bbox, [1, 1, 1, B])
+    try
+        sz = size(P, 1 : 3);
+        outer = false(sz);
+        for d = 1 : 3
+            [~, ind] = matlab.images.internal.resize.contributions(sz(d), B(d), B(d) / sz(d), ...
+                @matlab.images.internal.resize.triangle, 2, true);
+            sl = {':', ':', ':'};
+            sl{d} = unique(ind([1 : bbox(d) - 1, bbox(d + 3) + 1 : B(d)], :));
+            outer(sl{:}) = true;
+        end
+        V = imresize3_fast(P, B, 'linear', bbox);
+        m = max(V(:));
+        if ~(m > max(P(outer)) * (1 + 1e-12))
+            V = [];
+        end
+    catch ME
+        disp(ME);
+        V = [];
+    end
+end
+if isempty(V)
+    V = imresize3_fast(P, B, 'linear');
+    m = max(V(:));
+    V = V(bbox(1) : bbox(4), bbox(2) : bbox(5), bbox(3) : bbox(6));
+end
+
+end
