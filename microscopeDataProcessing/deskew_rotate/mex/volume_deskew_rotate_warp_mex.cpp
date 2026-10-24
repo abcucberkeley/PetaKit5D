@@ -22,7 +22,6 @@
 void compute_weighted_sum_sequential(const float* a, const float* b, const float* c, const float* d, 
                           float* result, float wa, float wb, float wc, float wd, size_t len) {
 
-    #pragma omp parallel for
     for (size_t i = 0; i < len; ++i) {
         float res = wa * a[i] + wb * b[i] + wc * c[i] + wd * d[i];
         result[i] = res;
@@ -64,7 +63,6 @@ void compute_weighted_sum(const float* a, const float* b, const float* c, const 
 
     // full blocks of 8 floats; the loop after this one handles the rest
     const size_t len8 = len - (len % 8);
-    #pragma omp parallel for
     for (size_t i = 0; i < len8; i += 8) {
         // Load 8 floats from each vector
         __m256 va = _mm256_loadu_ps(&a[i]);
@@ -227,7 +225,7 @@ void transformVolume(const float* const &dmat, const double (&tmat)[4][4], float
 
     int64_t x0 = floor(startX);
 
-    #pragma omp parallel for
+    #pragma omp parallel for schedule(dynamic, 1)
     for (uint64_t z = 0; z < outShapeZ; ++z){
         double ty;
         ty = tmat[1][2] * (z + startZ) + tmat[1][3];
@@ -291,7 +289,7 @@ void transformVolume_16bit_to_float(const uint16_t* const &dmat, const double (&
     uint64_t outShapeXY = outShapeX * outShapeY;
     uint64_t x0 = floor(startX);
 
-    #pragma omp parallel for
+    #pragma omp parallel for schedule(dynamic, 1)
     for (uint64_t z = 0; z < outShapeZ; ++z){
         double ty;
         ty = tmat[1][2] * (z + startZ) + tmat[1][3];
@@ -354,7 +352,7 @@ void transformVolume_16bit(const uint16_t* const &dmat, const double (&tmat)[4][
     uint64_t outShapeXY = outShapeX * outShapeY;
     uint64_t x0 = floor(startX);
 
-    #pragma omp parallel for
+    #pragma omp parallel for schedule(dynamic, 1)
     for (uint64_t z = 0; z < outShapeZ; ++z){
         double ty;
         ty = tmat[1][2] * (z + startZ) + tmat[1][3];
