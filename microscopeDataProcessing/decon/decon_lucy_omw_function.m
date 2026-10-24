@@ -3,8 +3,8 @@ function [J, err_mat] = decon_lucy_omw_function(I, PSF_f, PSF_b, NUMIT, varargin
 %   save16bit: for GPU compute, convert to 16bit before transfer from GPU to CPU 
 %   bbox: for GPU compute, crop the data first before transfer from GPU to CPU
 %   useMex: run the iterations with half-spectrum FFTs in decon_lucy_rfft_mex
-%       (CPU, the same results as the MATLAB code) or decon_lucy_rfft_gpu_mex
-%       (GPU); empty: as decon_use_rfft_mex decides
+%       (CPU, the same results as the MATLAB code, also the debug outputs) or
+%       decon_lucy_rfft_gpu_mex (GPU); empty: as decon_use_rfft_mex decides
 %
 % Author: Xiongtao Ruan (11/10/2022)
 %
@@ -107,12 +107,17 @@ if useMex
     if deconOffset ~= 0 || EdgeErosion > 0
         I_mask = I ~= 0;
     end
-    J = decon_lucy_rfft(useGPU, 'omw', I, OTF_f, OTF_b, NUMIT, Background);
+    if debug
+        % (CPU only) the iterations in pieces up to the debug outputs
+        [J, err_mat] = omw_mex_debug(I, OTF_f, OTF_b, NUMIT, Background, saveStep, debug_folder);
+    else
+        J = decon_lucy_rfft(useGPU, 'omw', I, OTF_f, OTF_b, NUMIT, Background);
+        err_mat = zeros(NUMIT, 4);
+    end
     % with 0 iterations, the background-subtracted input
     if dampFactor > 1
         I = decon_lucy_rfft(useGPU, 'omw', I, OTF_f, OTF_b, 0, Background);
     end
-    err_mat = zeros(NUMIT, 4);
 else
     if useGPU
         I = gpuArray(I);
@@ -227,3 +232,58 @@ end
 
 end
 
+
+function [J, err_mat] = omw_mex_debug(I, OTF_f, OTF_b, NUMIT, Background, estep, debug_folder)
+% the debug outputs of the MATLAB loop (err_mat, the result every estep
+% iterations) with the iterations in the CPU mex, run in pieces from the last
+% result to the iterations the outputs need: the error metric of the rows of
+% err_mat that are kept (the first floor(NUMIT / estep) iterations) and the
+% saved results. The rest of err_mat is computed for every iteration as in the
+% loop (it is cheap and errors in the same cases).
+
+% the background-subtracted input of the MATLAB loop
+Is = max(single(I) - Background, 0);
+nErr = floor(NUMIT / estep);
+kLast = floor(NUMIT);
+err_mat = zeros(NUMIT, 4);
+J = [];
+kd = 0;
+for k = 1 : NUMIT
+    if k <= nErr || rem(k, estep) == 0 || k == kLast
+        if isempty(J)
+            J = decon_lucy_rfft(false, 'omw', I, OTF_f, OTF_b, k, Background);
+        else
+            J = decon_lucy_rfft(false, 'omw', I, OTF_f, OTF_b, k - kd, Background, J);
+        end
+        kd = k;
+    end
+
+    err_mat(k, 1) = k;
+    if k <= nErr
+        err_mat(k, 2) = mean((double(J) - double(Is)) .^ 2, 'all');
+    end
+    err_mat(k, 3) = err_mat(k, 2) ./ err_mat(1, 2); 
+    if rem(k, estep) == 0 && k > estep * 2
+        istp = k/estep;
+        err_mat(k, 4) = min(abs(err_mat(istp, 3) - err_mat(istp-1, 3)) / 10, abs(err_mat(istp, 3) + err_mat(istp-2, 3) - 2 * err_mat(istp-1, 3)) / 2);
+    else
+        if k < 3 * estep
+            err_mat(k, 4) = 1;
+        else
+            err_mat(k, 4) = err_mat(istp * estep, 4);
+        end
+    end
+
+    if k == 1
+        mkdir(debug_folder);
+    end
+    if rem(k, estep) == 0
+        writetiff(uint16(J), sprintf('%s/Iter_%04d.tif', debug_folder, k));
+    end
+end
+if isempty(J)
+    J = decon_lucy_rfft(false, 'omw', I, OTF_f, OTF_b, 0, Background);
+end
+err_mat = err_mat(1 : floor(NUMIT / estep), :);
+
+end

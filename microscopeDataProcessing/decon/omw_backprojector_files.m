@@ -27,7 +27,8 @@ end
 bpFn = sprintf('%s/%s_back_projector_alpha_%0.6f_otf_cum_thresh_%0.6f.tif', psfgenPath, psfFsn, wienerAlpha, OTFCumThresh);
 if exist(bpFn, 'file')
     fprintf('Load existing OMW back projector %s for %s ...\n', bpFn, PSFfn);
-    psf_b = readtiff(bpFn);
+    % kept in memory for the next batches or files of the session
+    psf_b = decon_readtiff_cached(bpFn);
     return;
 end
 

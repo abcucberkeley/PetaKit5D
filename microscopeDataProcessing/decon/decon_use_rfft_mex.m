@@ -8,7 +8,7 @@ function [useMex, canUseMex] = decon_use_rfft_mex(useMex, method, I, useGPU, deb
 % defaultMethodsGPU if it can: canUseMex is true if the mex exists for the
 % platform and supports the call (real 2D or 3D data with at least 2 elements
 % along y and x on the CPU, any class but double on the CPU, uint16 or single
-% on the GPU, a scalar background, no debug output).
+% on the GPU, a scalar background, debug output only on the CPU).
 %
 % The CPU mex gives the same results as the MATLAB code on Linux, bit for bit
 % (it runs the same FFTW transforms as MATLAB's fftn and ifftn there, only on
@@ -37,7 +37,7 @@ else
     defaultMethods = defaultMethodsCPU;
 end
 supported = supported && isreal(I) && ~isempty(I) && ndims(I) <= 3 && isscalar(Background) ...
-    && isreal(Background) && ~debug;
+    && isreal(Background) && ~(debug && useGPU);
 available = exist(mexName, 'file') == 3;
 canUseMex = supported && available;
 
@@ -49,7 +49,7 @@ if useMex && ~canUseMex
     if ~available
         error('%s is not available for this platform.', mexName);
     end
-    error('%s does not support the data (class %s, size %s) or the options (debug or a non-scalar background).', ...
+    error('%s does not support the data (class %s, size %s) or the options (debug on the GPU or a non-scalar background).', ...
         mexName, underlyingType(I), mat2str(size(I)));
 end
 

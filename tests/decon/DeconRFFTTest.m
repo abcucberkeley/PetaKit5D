@@ -23,6 +23,11 @@ classdef DeconRFFTTest < pktest.TestCase
         % doesn't (64 x 210), and two rows along y
         dataSize = {[48, 46, 36], [47, 45, 33], [66, 64, 33], [64, 50, 40], [10, 23, 64], [64, 50], [30, 64], ...
             [64, 230], [64, 210], [10, 64, 23], [2, 64, 33]}
+        % iterations and saveStep of the debug output: every iteration, every
+        % second, a step past the last iteration, and a step that isn't an
+        % integer (the loops' err_mat bookkeeping then errors)
+        debugCase = struct('everyIteration', [6, 1], 'everySecond', [7, 2], 'stepPastTheEnd', [2, 5], ...
+            'nonIntegerStep', [9, 2.5])
         options = {{'dampFactor', 1.2}, {'EdgeErosion', 3}, {'deconOffset', 5}, {'scaleFactor', 2}, ...
             {'bbox', [3, 4, 5, 40, 41, 30]}, {'save16bit', true}, {'Background', 100.3}, ...
             {'EdgeErosion', 2, 'scaleFactor', 1.5, 'deconOffset', 2, 'bbox', [2, 2, 2, 44, 40, 33], 'save16bit', true, 'dampFactor', 1.3}}
@@ -67,6 +72,54 @@ classdef DeconRFFTTest < pktest.TestCase
             testCase.verifyTrue(canUseMex);
             testCase.verifyTrue(decon_use_rfft_mex(true, method, im, false, false, 100));
             testCase.verifyFalse(decon_use_rfft_mex(false, method, im, false, false, 100));
+            % also with debug output
+            testCase.verifyTrue(decon_use_rfft_mex([], method, im, false, true, 100));
+        end
+
+        function debugOutputsEqualTheMatlabLoop(testCase, method, debugCase)
+            % with debug output the mex runs the iterations (OMW: in pieces from
+            % the last result to the iterations the outputs need); the result,
+            % err_mat and the saved iterations equal the MATLAB loop's, also
+            % where the loop errors
+            testCase.assumeCpuMex();
+            im = testCase.blurredBeads(testCase.ImSize);
+            nIter = debugCase(1);
+            out = cell(1, 2);
+            for useMex = [false, true]
+                folder = sprintf('%sdebug_%d/', testCase.createTempFolder(), useMex);
+                args = {'Background', testCase.Background, 'save16bit', false, 'debug', true, ...
+                    'debug_folder', folder, 'saveStep', debugCase(2), 'useMex', useMex, 'NUMIT', nIter};
+                r = struct('J', [], 'errMat', [], 'errorId', '', 'files', {{}}, 'images', {{}});
+                try
+                    [~, r.J, r.errMat] = evalc('testCase.runDecon(method, im, testCase.PSF, args{:})');
+                catch ME
+                    r.errorId = ME.identifier;
+                end
+                dir_info = dir([folder, '*.tif']);
+                r.files = sort({dir_info.name});
+                r.images = cellfun(@(f) readtiff([folder, f]), r.files, 'unif', 0);
+                out{useMex + 1} = r;
+            end
+            testCase.verifyEqual(out{2}, out{1});
+            if isempty(out{1}.errorId) && nIter >= debugCase(2)
+                testCase.verifyNotEmpty(out{1}.files);
+            end
+        end
+
+        function omwContinuesFromAnEstimate(testCase)
+            % J0 continues the iterations as one call runs them
+            testCase.assumeCpuMex();
+            im = testCase.blurredBeads(testCase.ImSize);
+            b = testCase.cropToSize(testCase.BackProjector, size(im));
+            H = decon_lucy_rfft(false, 'otf', testCase.PSF ./ sum(testCase.PSF(:), 'double'), size(im));
+            Hb = decon_lucy_rfft(false, 'otf', b ./ sum(b(:), 'double'), size(im));
+            J5 = decon_lucy_rfft(false, 'omw', im, H, Hb, 5, testCase.Background);
+            J2 = decon_lucy_rfft(false, 'omw', im, H, Hb, 2, testCase.Background);
+            testCase.verifyEqual(decon_lucy_rfft(false, 'omw', im, H, Hb, 3, testCase.Background, J2), J5);
+            J1 = decon_lucy_rfft(false, 'omw', im, H, Hb, 1, testCase.Background);
+            J11 = decon_lucy_rfft(false, 'omw', im, H, Hb, 1, testCase.Background, J1);
+            testCase.verifyEqual(decon_lucy_rfft(false, 'omw', im, H, Hb, 3, testCase.Background, J11), J5);
+            testCase.verifyEqual(decon_lucy_rfft(false, 'omw', im, H, Hb, 0, testCase.Background, J2), J2);
         end
 
         function resultDoesNotDependOnTheThreadCount(testCase, method)
@@ -263,18 +316,19 @@ classdef DeconRFFTTest < pktest.TestCase
         end
 
         function unsupportedCallsRunTheMatlabLoop(testCase, method)
-            % double data, debug output, a non-scalar background, a single
-            % row along y or x
+            % double data, debug output on the GPU, a non-scalar background, a
+            % single row along y or x
             testCase.assumeCpuMex();
             im = testCase.blurredBeads(testCase.ImSize);
             [~, canDouble] = decon_use_rfft_mex([], method, double(im), false, false, 100);
             [~, canDebug] = decon_use_rfft_mex([], method, im, false, true, 100);
+            [~, canDebugGPU] = decon_use_rfft_mex([], method, im, true, true, 100);
             [~, canVoxelBackground] = decon_use_rfft_mex([], method, im, false, false, [100, 100]);
             [~, canRow] = decon_use_rfft_mex([], method, im(1, :, :), false, false, 100);
             [~, canColumn] = decon_use_rfft_mex([], method, im(:, 1, :), false, false, 100);
             [~, canUint16] = decon_use_rfft_mex([], method, im, false, false, 100);
-            testCase.verifyEqual([canDouble, canDebug, canVoxelBackground, canRow, canColumn, canUint16], ...
-                [false, false, false, false, false, true]);
+            testCase.verifyEqual([canDouble, canDebug, canDebugGPU, canVoxelBackground, canRow, canColumn, canUint16], ...
+                [false, true, false, false, false, false, true]);
 
             args = {'Background', testCase.Background, 'save16bit', false};
             out = testCase.runDecon(method, double(im), testCase.PSF, args{:});
@@ -329,6 +383,10 @@ classdef DeconRFFTTest < pktest.TestCase
             testCase.verifyError(@() decon_lucy_rfft_mex('fft1', Y, 1, 32), id);
             testCase.verifyError(@() decon_lucy_rfft_mex('unknown', im, H, 2, 100, 1, 32), id);
             testCase.verifyError(@() decon_lucy_rfft_mex('omw', zeros(4, 4, 4, 2, 'uint16'), H, H, 2, 100, 1, 32), id);
+            % the estimate to start from
+            testCase.verifyError(@() decon_lucy_rfft_mex('omw', im, H, H, 2, 100, Y(:, :, 1 : end - 1), 1, 32), id);
+            testCase.verifyError(@() decon_lucy_rfft_mex('omw', im, H, H, 2, 100, double(Y), 1, 32), id);
+            testCase.verifyError(@() decon_lucy_rfft_mex('omw', im, H, H, 2, 100, reshape(Y, 12, 16, 10), 1, 32), id);
         end
     end
 

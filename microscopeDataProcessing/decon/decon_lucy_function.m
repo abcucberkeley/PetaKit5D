@@ -18,8 +18,8 @@ function [J_2, err_mat, k] = decon_lucy_function(I, PSF, NUMIT, varargin)
 %   EdgeErosion, and use input parser for parameters.
 %
 % useMex: run the FFT steps of the iterations in decon_lucy_rfft_mex (CPU,
-%   the same results as the MATLAB code) or decon_lucy_rfft_gpu_mex (GPU);
-%   empty: as decon_use_rfft_mex decides
+%   the same results as the MATLAB code, also the debug outputs) or
+%   decon_lucy_rfft_gpu_mex (GPU); empty: as decon_use_rfft_mex decides
 
 
 ip = inputParser;

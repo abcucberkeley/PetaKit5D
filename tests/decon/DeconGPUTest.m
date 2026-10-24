@@ -43,6 +43,31 @@ classdef DeconGPUTest < pktest.TestCase
             % different FFT libraries, single precision
             testCase.verifyImagesClose(gpu, cpu, 'relTol', 1e-4);
         end
+
+        function gpuEdgeErosionUsesTheCPUMask(testCase, method)
+            % data with zero borders, as skewed data has: the GPU path erodes
+            % the mask on the GPU (decon_mask_edge_erosion_gpu_mex); the result
+            % is the result without erosion times the mask eroded on the CPU
+            psf = pktest.deconPSF([31, 31, 31], testCase.PSFSigma);
+            sz = testCase.ImSize;
+            [~, x, z] = ndgrid(1 : sz(1), 1 : sz(2), 1 : sz(3));
+            inside = (x > 0.5 * z + 2) & (x < 0.5 * z + 30);
+            pos = [12, 14, 10; 24.3, 23.6, 20.2; 36, 30, 28; 15, 35, 25; 33, 12, 15];
+            im = uint16(pktest.beads(sz, pos, testCase.BlurSigma, 1000, testCase.Background)) .* uint16(inside);
+            mask = decon_mask_edge_erosion(im > 0, 4);
+            testCase.assertTrue(any(mask(:)) && ~all(mask(:) == (im(:) > 0)));
+            args = {'Background', testCase.Background, 'save16bit', false, 'useGPU', true};
+            switch method
+                case 'simplified'
+                    plain = decon_lucy_function(im, psf, 5, args{:});
+                    eroded = decon_lucy_function(im, psf, 5, args{:}, 'EdgeErosion', 4);
+                case 'omw'
+                    [~, b] = evalc('omw_backprojector_generation(psf, 0.005, false)');
+                    plain = decon_lucy_omw_function(im, psf, b, 2, args{:});
+                    eroded = decon_lucy_omw_function(im, psf, b, 2, args{:}, 'EdgeErosion', 4);
+            end
+            testCase.verifyEqual(eroded, plain .* single(mask));
+        end
     end
 
     methods (Test, TestTags = {'Unit', 'GPU'})

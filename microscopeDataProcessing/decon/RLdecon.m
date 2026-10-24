@@ -224,7 +224,8 @@ if ischar(PSFfn)
         if psfGen && exist(psfgen_filename, 'file')
             fprintf('Load existing generated PSF %s for %s ...\n', psfgen_filename, PSFfn);   
             try 
-                psf = single(readtiff(psfgen_filename));
+                % kept in memory for the next batches or files of the session
+                psf = single(decon_readtiff_cached(psfgen_filename));
                 psfGen = false;
             catch ME
                 disp(ME);

@@ -49,22 +49,24 @@ mexFiles = {'deskew_rotate/mex', 'skewed_space_interp_defined_stepsize_mex.c', t
     'crop/mex', 'indexing3d_mex.c', false, {}, '';
     'crop/mex', 'indexing4d_mex.c', false, {}, '';
     'crop/mex', 'indexing4d_crop_mex.cpp', false, {}, '';
-    'flatfield_correction/mex', 'flat_field_correction_3d_mex.cpp', false, {}, ''};
+    'flatfield_correction/mex', 'flat_field_correction_3d_mex.cpp', false, {}, '';
+    'decon/mex', 'decon_mask_edge_erosion_mex.cpp', false, {}, ''};
 
 for i = 1 : size(mexFiles, 1)
     cd([srcDir, '/', mexFiles{i, 1}]);
     buildMex(mexFiles{i, 2}, mexFiles{i, 3}, mexFiles{i, 4}, mexFiles{i, 5});
 end
 
-% the decon mex files, on Linux only. The CPU mex uses interleaved complex
+% the other decon mex files, on Linux only. The CPU mex uses interleaved complex
 % arrays, MATLAB's single precision FFTW and no fused multiply-adds, so that
 % it computes as MATLAB does; on macOS MATLAB's FFTs differ from it in the
-% last bits, and Windows isn't checked. The GPU mex: mexcuda needs MSVC on
+% last bits, and Windows isn't checked. The CUDA mex files: mexcuda needs MSVC on
 % Windows, and macOS has no CUDA.
 if isunix && ~ismac
     cd([srcDir, '/decon/mex']);
     buildMex('decon_lucy_rfft_mex.cpp', false, [{'-R2018a'}, matlabFFTWArgs()], ' -ffp-contract=off');
     buildCudaMex('decon_lucy_rfft_gpu_mex.cu');
+    buildCudaMex('decon_mask_edge_erosion_gpu_mex.cu');
 end
 
 if ismac

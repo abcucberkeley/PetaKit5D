@@ -22,9 +22,11 @@
 //   H        : complex single half OTF, the first floor(n / 2) + 1 elements
 //              along the last dimension of decon_psf2otf(psf, outSize)
 //
-// [J, t] = decon_lucy_rfft_mex('omw', I, H_f, H_b, nIter, background, nThreads, grain)
+// [J, t] = decon_lucy_rfft_mex('omw', I, H_f, H_b, nIter, background, [J0,] nThreads, grain)
 //   I          : uint16 or single raw data; the iterations use max(I - background, 0)
 //   H_f, H_b   : half OTFs from 'otf'
+//   J0         : single estimate to start from (default: max(I - background, 0)), e.g., the result of
+//                earlier iterations, which then continue as one call would run them
 //   J          : single result after nIter iterations
 //
 // [J, t] = decon_lucy_rfft_mex('rlstep', Y, I, H, nThreads, grain)
@@ -730,12 +732,12 @@ static mxArray* result_array(float* r, const idx_t n, const mwSize nd, const mwS
 // result in a ratio buffer
 template <typename T>
 static float* omw_iterations(const T* raw, const double bg, const mxComplexSingle* hf, const mxComplexSingle* hb,
-        const int nIter, Ctx& c, Timer& tm) {
+        const int nIter, const float* j0, Ctx& c, Timer& tm) {
     const idx_t n = (idx_t)c.ny * c.nx * c.nz;
     float* r = ratio_buffer(c);
     if (nIter == 0) {
         #pragma omp parallel for num_threads(c.nt) schedule(static)
-        for (idx_t i = 0; i < n; i++) r[i] = input_value(raw, i, bg);
+        for (idx_t i = 0; i < n; i++) r[i] = j0 != NULL ? j0[i] : input_value(raw, i, bg);
         return r;
     }
     Buffers buf;
@@ -743,7 +745,7 @@ static float* omw_iterations(const T* raw, const double bg, const mxComplexSingl
     fftwf_complex* p = (fftwf_complex*)buf.get(2, sizeof(fftwf_complex) * (size_t)c.nP);
     tm.start();
     #pragma omp parallel for num_threads(c.nt) schedule(static)
-    for (idx_t i = 0; i < n; i++) j[i] = input_value(raw, i, bg);
+    for (idx_t i = 0; i < n; i++) j[i] = j0 != NULL ? j0[i] : input_value(raw, i, bg);
     tm.stop(3);
     Ratio<T> ratio = {r, c.ldr, raw, bg, c.ny};
     for (int k = 1; k <= nIter; k++) {
@@ -928,8 +930,8 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
         plhs[0] = mxCreateUninitNumericArray(ndh, dh, mxSINGLE_CLASS, mxCOMPLEX);
         otf_half(mxGetComplexSingles(plhs[0]), mxGetSingles(psf), ps, c, tm);
     } else if (strcmp(method, "omw") == 0) {
-        if (nrhs != 8) {
-            mexErrMsgIdAndTxt("decon_lucy_rfft_mex:inputError", "Usage: J = decon_lucy_rfft_mex('omw', I, H_f, H_b, nIter, background, nThreads, grain)");
+        if (nrhs != 8 && nrhs != 9) {
+            mexErrMsgIdAndTxt("decon_lucy_rfft_mex:inputError", "Usage: J = decon_lucy_rfft_mex('omw', I, H_f, H_b, nIter, background, [J0,] nThreads, grain)");
         }
         const mxArray* im = prhs[1];
         if (!(mxIsUint16(im) || mxIsSingle(im)) || mxIsComplex(im) || mxIsEmpty(im)) {
@@ -946,17 +948,30 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
             mexErrMsgIdAndTxt("decon_lucy_rfft_mex:inputError", "background must be a real numeric scalar.");
         }
         const double bg = mxGetScalar(bga);
+        const float* j0 = NULL;
+        if (nrhs == 9) {
+            const mxArray* ja = prhs[6];
+            int dj[3];
+            if (!mxIsSingle(ja) || mxIsComplex(ja) || mxGetNumberOfElements(ja) != mxGetNumberOfElements(im)) {
+                mexErrMsgIdAndTxt("decon_lucy_rfft_mex:inputError", "J0 must be a real single array of the data size.");
+            }
+            get_size(ja, dj);
+            if (dj[0] != d[0] || dj[1] != d[1] || dj[2] != d[2]) {
+                mexErrMsgIdAndTxt("decon_lucy_rfft_mex:inputError", "J0 must be a real single array of the data size.");
+            }
+            j0 = mxGetSingles(ja);
+        }
         Ctx c;
         tm.start();
-        setup(c, d, threads_arg(prhs[6]), grain_arg(prhs[7]));
+        setup(c, d, threads_arg(prhs[nrhs - 2]), grain_arg(prhs[nrhs - 1]));
         tm.stop(0);
         const mxComplexSingle* h1 = mxGetComplexSingles(prhs[2]);
         const mxComplexSingle* h2 = mxGetComplexSingles(prhs[3]);
         float* r;
         if (mxIsUint16(im)) {
-            r = omw_iterations(mxGetUint16s(im), bg, h1, h2, nIter, c, tm);
+            r = omw_iterations(mxGetUint16s(im), bg, h1, h2, nIter, j0, c, tm);
         } else {
-            r = omw_iterations(mxGetSingles(im), bg, h1, h2, nIter, c, tm);
+            r = omw_iterations(mxGetSingles(im), bg, h1, h2, nIter, j0, c, tm);
         }
         plhs[0] = result_array(r, (idx_t)d[0] * d[1] * d[2], mxGetNumberOfDimensions(im), mxGetDimensions(im));
     } else if (strcmp(method, "rlstep") == 0) {
