@@ -163,6 +163,10 @@ for i = 1 : numel(batchInds)
         bboxCoords = bboxCoords(:)';
         bboxCoords_mat(j, :) = bboxCoords;
     end
+    % a single tile that covers the batch is used as it is
+    full_tile = numTiles == 1 && all(bCoords_mat(1, 4 : 6) - bCoords_mat(1, 1 : 3) + 1 == bsz);
+    % regions where tiles count as 0 in the blending, [tile, bbox] per row
+    mboxes = zeros(0, 7);
 
     if strcmpi(BlendMethod, 'feather')
         dbsz = bsz;
@@ -276,12 +280,13 @@ for i = 1 : numel(batchInds)
             end
         end
 
-        tim_f_block = zeros([dbsz, numTiles], dtype);
+        if ~full_tile
+            tim_f_block = zeros([dbsz, numTiles], dtype);
+        end
         if numTiles > 1 && ~is_full_batch
             tim_block = zeros([bsz, 1], dtype);
         end
-    else
-        tim_block = zeros([bsz, numTiles], dtype);
+    elseif ~full_tile
         tim_f_block = zeros([bsz, numTiles], dtype);
     end
 
@@ -311,20 +316,23 @@ for i = 1 : numel(batchInds)
                 continue;
             end
         else
-            block_j_mregion = block_j;
-            
-            % remove overlap regions
+            % overlap regions that other tiles fill, in batch coordinates
             m_blockInfo = stchBlockInfo_i(j).mblockInfo;
             for k = 1 : numel(m_blockInfo)
                 m_bboxCoords = m_blockInfo(k).bboxCoords;
                 m_bboxCoords = m_bboxCoords(:)';
                 m_bbox = m_bboxCoords - repmat(bboxCoords(1 : 3), 1, 2) + 1;
-                block_j_mregion(m_bbox(1) : m_bbox(4), m_bbox(2) : m_bbox(5), m_bbox(3) : m_bbox(6)) = 0;
+                if any(m_bbox(4 : 6) >= m_bbox(1 : 3) & (m_bbox(1 : 3) < 1 | m_bbox(4 : 6) > size(block_j, 1 : 3)))
+                    error('The overlap region %s is outside the region %s of tile %d.', mat2str(m_bbox), ...
+                        mat2str(size(block_j, 1 : 3)), tileInd);
+                end
+                if all(m_bbox(4 : 6) >= m_bbox(1 : 3))
+                    mboxes(end + 1, :) = [j, m_bbox + repmat(bCoords(1 : 3) - 1, 1, 2)];
+                end
             end
-            tim_block = indexing4d(tim_block, block_j_mregion, [bCoords(1 : 3), j, bCoords(4 : 6), j]);
         end
         
-        if numTiles == 1 && all(bCoords(4 : 6) - bCoords(1 : 3) + 1 == bsz)
+        if full_tile
             tim_f_block = block_j;
         else
             tim_f_block = indexing4d(tim_f_block, block_j, [bCoords(1 : 3), j, bCoords(4 : 6), j]);
@@ -454,70 +462,25 @@ for i = 1 : numel(batchInds)
         continue;
     end
     
-    % convert to single for processing
-    if ~strcmp(BlendMethod, 'feather')
-        tim_block = single(tim_block);
-        tim_f_block = single(tim_f_block);        
+    % merge voxel info for the tiles
+    if strcmp(BlendMethod, 'feather')
+        if is_full_batch
+            [nv_block, mex_compute] = feather_blending_3d(tim_f_block, tim_d_block);
+        else
+            [nv_block, mex_compute] = feather_blending_3d(tim_f_block, tim_d_block, tim_block, bCoords_c);
+        end
+        if ~mex_compute
+            try
+                nv_block = replace_nan_with_value(nv_block, 0);
+            catch ME
+                disp(ME);
+                nv_block(isnan(nv_block)) = 0;
+            end
+        end
+    else
+        nv_block = tile_blending_3d(tim_f_block, mboxes, BlendMethod);
     end
 
-    if ~strcmp(BlendMethod, 'none') && ~strcmp(BlendMethod, 'feather')
-        tim_block(tim_block == 0) = nan; 
-        tim_f_block(tim_f_block == 0) = nan;
-    end
-    
-    % merge voxel info for the tiles
-    switch BlendMethod
-        case 'none'
-            nv_block = zeros(bsz, 'single');
-            nv_f_block = zeros(bsz, 'single');
-            for j = 1 : numTiles
-                if j == 1
-                    nv_block = tim_block(:, :, :, j);
-                    nv_f_block = tim_f_block(:, :, :, j);
-                else
-                    nv_block = nv_block + tim_block(:, :, :, j) .* (nv_block == 0);
-                    nv_f_block = nv_f_block + tim_f_block(:, :, :, j) .* (nv_f_block == 0);
-                end
-            end
-        case 'mean'
-            nv_block = nanmean(tim_block, 4);
-            nv_f_block = nanmean(tim_f_block, 4);
-        case 'max'
-            nv_block = max(tim_block, [], 4);
-            nv_f_block = max(tim_f_block, [], 4);
-        case 'median'
-            nv_block = nanmedian(tim_block, 4);
-            nv_f_block = nanmedian(tim_f_block, 4);
-        case 'feather'
-            if is_full_batch
-                [nv_block, mex_compute] = feather_blending_3d(tim_f_block, tim_d_block);
-            else
-                [nv_block, mex_compute] = feather_blending_3d(tim_f_block, tim_d_block, tim_block, bCoords_c);
-            end
-        otherwise
-            error('Unsupported blending method: %s.', BlendMethod);
-    end
-    
-    if ~strcmp(BlendMethod, 'none') && ~(strcmp(BlendMethod, 'feather') && mex_compute)
-        try 
-            nv_block = replace_nan_with_value(nv_block, 0);
-        catch ME
-            disp(ME);
-            nv_block(isnan(nv_block)) = 0;
-        end
-    end
-    if ~strcmp(BlendMethod, 'feather') 
-        try 
-            nv_f_block = replace_nan_with_value(nv_f_block, 0);
-        catch ME
-            disp(ME);
-            nv_f_block(isnan(nv_f_block)) = 0;
-        end        
-        % fill the voxels the block doesn't cover yet
-        nv_zero_inds = nv_block == 0 & nv_f_block ~= 0;
-        nv_block = nv_block .* (1 - nv_zero_inds) + nv_f_block .* nv_zero_inds;
-    end
-            
     if any(BorderSize > 0)
         s = (batchSub ~= 1) .* BorderSize;
         nv_block = crop3d(nv_block, [s + 1, s + batchSize]);

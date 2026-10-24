@@ -15,6 +15,7 @@ classdef StitchingTest < pktest.TestCase
 
     properties (TestParameter)
         blendMethod = {'none', 'feather', 'max', 'mean', 'median'}
+        tileBlendMethod = {'none', 'max', 'mean', 'median'}
         axisOrder = struct('x', 'x,y,z', 'minusX', '-x,y,z')
         thinTileDepth = struct('nz8', 8, 'nz20', 20)
     end
@@ -574,6 +575,70 @@ classdef StitchingTest < pktest.TestCase
             testCase.verifyTrue(all(fromTile1 | fromTile2, 'all'), 'The overlap has voxels from neither tile.');
             testCase.verifyEqual(nnz(fromTile1) / numel(overlap), 0.5, 'AbsTol', 0.1, ...
                 'The overlap is not split between the two tiles.');
+        end
+
+        function blendingSplitsTheOverlapInQuarters(testCase)
+            % 'max', 'mean' and 'median' blend the middle half of an overlap
+            % and take one tile in each outer quarter (overlap type 'half';
+            % 'none' takes half from each tile). The split axis is z for these
+            % tiles (see noneBlendTakesHalfOverlapFromEachTile). Tile 2 is
+            % offset by 5000, so each voxel shows which tiles it came from.
+            gt = testCase.randomVolume([64, 104, 32], [1000, 50000]);
+            tiles = struct('im', {gt(:, 1 : 64, :), gt(:, 41 : 104, :) + 5000}, 'idx', {[0, 0, 0], [1, 0, 0]}, ...
+                'xyz', {[0, 0, 0], [40 * testCase.XYPixelSize, 0, 0]});
+            for method = {'max', 'mean', 'median'}
+                dataPath = testCase.createTempFolder();
+                [~, csvFn] = pktest.writeStitchTiles(dataPath, tiles);
+                testCase.stitch(dataPath, csvFn, 'blendMethod', method{1});
+                out = testCase.readResult(dataPath);
+                overlap = out(1 : 64, 41 : 64, 1 : 32);
+                tile1 = gt(:, 41 : 64, :);
+                fractions = [nnz(overlap == tile1), nnz(overlap == tile1 + 2500), nnz(overlap == tile1 + 5000)] / numel(overlap);
+                if strcmp(method{1}, 'max')
+                    expected = [0.25, 0, 0.75];
+                else
+                    expected = [0.25, 0.5, 0.25];
+                end
+                testCase.verifyEqual(fractions, expected, 'AbsTol', 0.01, sprintf(['%s: the fractions of the overlap ', ...
+                    'from tile 1, both and tile 2 are wrong.'], method{1}));
+            end
+        end
+
+        function blendingWithoutTheMexGivesTheSameResult(testCase, tileBlendMethod)
+            % tile_blending_3d_mex blends the batches of 'none', 'max', 'mean'
+            % and 'median' in one pass; without it (a stub that errors) the
+            % MATLAB code must give the same volume and MIP. The tiles differ
+            % in the overlaps (tile k is offset by 1000 * k) and have zero
+            % regions, and the batches hold 1 to 4 tiles.
+            testCase.assumeMexAvailable('tile_blending_3d_mex');
+            gt = testCase.randomVolume([100, 120, 32], [1000, 50000]);
+            starts = [0, 0, 0; 36, 0, 0; 0, 48, 0; 36, 48, 0];
+            tiles = struct('im', cell(4, 1), 'idx', [], 'xyz', []);
+            for i = 1 : 4
+                s = starts(i, :);
+                im = gt(s(1) + 1 : s(1) + 64, s(2) + 1 : s(2) + 72, :) + 1000 * i;
+                im(1 : 16, 1 : 24, :) = 0;
+                im(randperm(numel(im), 3000)) = 0;
+                tiles(i).im = im;
+                tiles(i).idx = [s(2) > 0, s(1) > 0, 0];
+                tiles(i).xyz = s([2, 1, 3]) * testCase.XYPixelSize;
+            end
+            opts = {'blendMethod', tileBlendMethod, 'batchSize', [32, 32, 16], 'blockSize', [16, 16, 16]};
+            outs = cell(2, 1);
+            mips = cell(2, 1);
+            for k = 1 : 2
+                dataPath = testCase.createTempFolder();
+                [~, csvFn] = pktest.writeStitchTiles(dataPath, tiles);
+                if k == 2
+                    testCase.applyFixture(pktest.FunctionStubFixture('tile_blending_3d_mex'));
+                end
+                evalc('testCase.stitch(dataPath, csvFn, opts{:})');
+                outs{k} = testCase.readResult(dataPath);
+                mips{k} = readtiff(sprintf('%smatlab_stitch/MIPs/%s_MIP_z.tif', dataPath, testCase.StitchName));
+            end
+            testCase.verifyEqual(outs{1}, outs{2}, 'The volume differs from that of the MATLAB code.');
+            testCase.verifyEqual(mips{1}, mips{2}, 'The MIP differs from that of the MATLAB code.');
+            testCase.verifyEqual(mips{1}, max(outs{1}, [], 3), 'The z MIP does not match the stitched volume.');
         end
 
         function featherBlendingWithThinTiles(testCase, thinTileDepth)

@@ -32,7 +32,8 @@ end
 srcDir = pwd;
 
 % folder, source file, whether it uses AVX2 on x86, extra mex arguments and
-% extra compiler flags
+% extra compiler flags (no fused multiply-adds in tile_blending_3d_mex, so
+% that it computes as MATLAB does)
 mexFiles = {'deskew_rotate/mex', 'skewed_space_interp_defined_stepsize_mex.c', true, {}, '';
     'deskew_rotate/mex', 'skewed_space_interp_mex.c', false, {}, '';
     'deskew_rotate/mex', 'volume_deskew_rotate_warp_mex.cpp', true, {}, '';
@@ -42,6 +43,7 @@ mexFiles = {'deskew_rotate/mex', 'skewed_space_interp_defined_stepsize_mex.c', t
     'stitch/mex', 'feather_distance_map_resize_3d_mex.c', false, {}, '';
     'stitch/mex', 'integral_image_3d_mex.cpp', false, {}, '';
     'stitch/mex', 'any_4th_dim_mex.cpp', false, {}, '';
+    'stitch/mex', 'tile_blending_3d_mex.cpp', false, {}, ' -ffp-contract=off';
     'tools/MIP/mex', 'max_pooling_3d_mex.cpp', false, {}, '';
     'tools/MIP/mex', 'range_max_3d_mex.cpp', false, {}, '';
     'crop/mex', 'crop3d_mex.c', false, {}, '';
