@@ -46,6 +46,7 @@ ip.addParameter('language', 'matlab', @ischar); % support matlab, bash
 ip.addParameter('GNUparallel', false, @islogical); % support matlab, bash
 ip.addParameter('paraJobNum', 1, @isnumeric); % support matlab, bash
 ip.addParameter('ConfigFile', '', @ischar); % cluster configuration file that override the default parameters
+ip.addParameter('taskMetrics', false, @islogical); % record the resources of the task in <job log folder>/task_metrics/ (see task_metrics)
 
 ip.parse(funcStr, job_id, task_id, varargin{:});
 
@@ -146,6 +147,7 @@ jobTimeLimit = pr.jobTimeLimit;
 language = pr.language;
 GNUparallel = pr.GNUparallel;
 paraJobNum = pr.paraJobNum;
+taskMetrics = pr.taskMetrics;
 
 if exist(jobLogDir, 'dir')
     dataPath = tempdir();
@@ -190,6 +192,12 @@ while submit_status == 0 && trial_counter < maxTrialNum
                     time_str = sprintf(' -t %d:%d:00 ', h, m);
                 end
                 
+                % the metrics folder of this MATLAB's single jobs ('' without
+                % metrics; then a task's own metrics settings don't reach its jobs)
+                runDir = '';
+                if taskMetrics || ~isempty(getenv('PETAKIT5D_TASK_METRICS'))
+                    runDir = task_metrics_run('session_dir', fileparts(jobLogFname), taskMetrics);
+                end
                 if ismcc || isdeployed || mccMode
                     % the compiled master must accept the options of the task
                     check_mcc_master_build(MCCMasterStr);
@@ -200,10 +208,20 @@ while submit_status == 0 && trial_counter < maxTrialNum
                     % time with a shared cache sometimes fail to start); the $ is
                     % escaped for the job's shell, as the command is in --wrap="..."
                     mcrCacheStr = sprintf('%s/mcr_cache_\\${SLURM_JOB_ID:-0}', MCRCacheRoot);
-                    process_cmd = sprintf('MCR_CACHE_ROOT=%s %s %s %s %s \n', mcrCacheStr, MCCMasterStr, MCRParam, func_name, var_str);
+                    % the task's metrics environment
+                    envStr = '';
+                    if ~isempty(runDir)
+                        envStr = strrep(task_metrics_run('env', runDir, task_id, false), '"', '\"');
+                    end
+                    process_cmd = sprintf('%sMCR_CACHE_ROOT=%s %s %s %s %s \n', envStr, mcrCacheStr, MCCMasterStr, MCRParam, func_name, var_str);
                 else
                     matlab_setup_str = 'setup([])';
-                    matlab_cmd = sprintf('%s;t0_=tic;%s;toc(t0_)', matlab_setup_str, funcStr);
+                    % the task between its metrics calls
+                    task_str = funcStr;
+                    if ~isempty(runDir)
+                        task_str = task_metrics_run('matlab_task', runDir, task_id, funcStr, false);
+                    end
+                    matlab_cmd = sprintf('%s;t0_=tic;%s;toc(t0_)', matlab_setup_str, task_str);
                     process_cmd = sprintf('%s \\"%s\\"', MatlabLaunchStr, matlab_cmd);
                 end
         
@@ -218,6 +236,11 @@ while submit_status == 0 && trial_counter < maxTrialNum
                 if ~isempty(job_out_info) && ~isempty(job_out_info{1})
                     job_id = str2double(job_out_info{1}{1});
                     submit_status = 1;
+                    if ~isempty(runDir)
+                        task_metrics_run('record', runDir, 'submit', struct('task', task_id, 'jobId', job_id, ...
+                            'functionStr', funcStr, 'cpusPerTask', cpusPerTask, 'memAllocate', memAllocate, ...
+                            'memPerCPU', memPerCPU, 'mccMode', ismcc || isdeployed || mccMode, 'SlurmParam', SlurmParam));
+                    end
                 else
                     fprintf('Job submission failed, try again!\n')
                 end

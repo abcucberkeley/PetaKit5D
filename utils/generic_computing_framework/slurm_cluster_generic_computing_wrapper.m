@@ -50,6 +50,7 @@ ip.addParameter('SlurmConstraint', '', @ischar);
 ip.addParameter('jobTimeLimit', 24, @isnumeric); % in hour, [] means no limit
 ip.addParameter('queryInterval', 3, @isnumeric); % in second, by default 3 s. 
 ip.addParameter('language', 'matlab', @ischar); % support matlab, bash
+ip.addParameter('taskMetrics', false, @(x) islogical(x) || ischar(x)); % record task resources: true, or the run's metrics folder (see task_metrics)
 
 ip.parse(inputFullpaths, outputFullpaths, funcStrs, varargin{:});
 
@@ -91,6 +92,7 @@ queryInterval = pr.queryInterval;
 MatlabLaunchStr = pr.MatlabLaunchStr;
 BashLaunchStr = pr.BashLaunchStr;
 language = pr.language;
+taskMetrics = pr.taskMetrics;
 
 if isempty(uuid)
     uuid = get_uuid();
@@ -135,6 +137,14 @@ else
 end
 input_exist_mat = output_exist_mat;
 input_exist_mat(~output_exist_mat) = batch_file_exist(inputFullpaths(~output_exist_mat), [], true);
+
+% the metrics folder of the run ('' without metrics); tasks the master runs
+% are 'local' or 'master' tasks
+runDir = task_metrics_run('backend_dir', taskMetrics, jobLogDir, inputFullpaths, outputFullpaths, funcStrs, 'matlab');
+taskMode = 'local';
+if parseCluster
+    taskMode = 'master';
+end
 
 trial_counter = zeros(nF, 1);
 if parseCluster
@@ -344,10 +354,17 @@ while (~parseCluster && ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
                     end
                     date_cmd_str = 'date \"+%Y-%m-%d %H:%M:%S.%6N\"';
                     if strcmpi(language, 'matlab')
+                        % the job runs each task between its metrics calls
+                        job_func_str = func_str;
+                        if ~isempty(runDir)
+                            job_func_str = strjoin(arrayfun(@(x) task_metrics_run('matlab_task', runDir, x, ...
+                                funcStrs{x}, GPUJob), fs, 'unif', 0), ';');
+                        end
                         func_str = strrep(func_str, '"', '\\\"');
+                        job_func_str = strrep(job_func_str, '"', '\\\"');
                         matlab_setup_str = 'setup([])';
 
-                        matlab_cmd = sprintf('%s;t0_=tic;%s;toc(t0_)', matlab_setup_str, func_str);
+                        matlab_cmd = sprintf('%s;t0_=tic;%s;toc(t0_)', matlab_setup_str, job_func_str);
                         process_cmd = sprintf('%s \\"%s\\"', MatlabLaunchStr, matlab_cmd);
                         cmd = sprintf(['sbatch --array=%d -o %s -e %s --cpus-per-task=%d %s %s %s ', ...
                             '--wrap="printf \\\"Start time: \\\"; %s; echo Matlab command:  \\\"%s\\\"; %s; echo; printf \\\"End time: \\\"; %s"'], ...
@@ -436,6 +453,7 @@ while (~parseCluster && ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
                 end
             end
             fprintf('\nProcess %s with function %s... \n', strjoin(fsnames(fs), ', '), func_str);
+            tm = task_metrics('start', func_str, runDir, fs, taskMode, GPUJob);
             if strcmpi(language, 'matlab')
                 try 
                     if numel(fs) == 1
@@ -445,10 +463,17 @@ while (~parseCluster && ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
                     end
                 catch ME
                     disp(ME)
-                    t0=tic; eval(func_str); t1=toc(t0);
+                    try
+                        t0=tic; eval(func_str); t1=toc(t0);
+                    catch ME
+                        task_metrics('stop', tm, ME);
+                        rethrow(ME);
+                    end
                 end
+                task_metrics('stop', tm);
             elseif strcmpi(language, 'bash')
                 t0=tic; [status, cmdout] = system(func_str, '-echo'); t1=toc(t0);
+                task_metrics('stop', tm, status);
             end
             trial_counter(fs) = trial_counter(fs) + 1;
             if ~parseCluster && exist(outputFullpath, 'file') && exist(tmpFullpath, 'file')

@@ -58,9 +58,11 @@ ip.addParameter('paraJobNum', 1, @isnumeric); % support matlab, bash
 ip.addParameter('masterParaFactor', 1, @isnumeric); % master job parallel job percentage for mcc mode. 
 ip.addParameter('ConfigFile', '', @ischar); % cluster configuration file that override the default parameters
 ip.addParameter('localWorkerNum', 1, @isnumeric); % without cluster, run up to this many tasks at once on a local MATLAB process pool
+ip.addParameter('taskMetrics', false, @islogical); % record the resources of each task in <jobLogDir>/task_metrics/ (see task_metrics)
 
 ip.parse(inputFullpaths, outputFullpaths, funcStrs, varargin{:});
 
+startTic = tic;
 pr = ip.Results;
 ConfigFile = pr.ConfigFile;
 
@@ -143,6 +145,7 @@ GNUparallel = pr.GNUparallel;
 paraJobNum = pr.paraJobNum;
 masterParaFactor = pr.masterParaFactor;
 localWorkerNum = pr.localWorkerNum;
+taskMetrics = pr.taskMetrics;
 
 if numel(funcStrs) == 1
     if masterCompute
@@ -184,10 +187,17 @@ switch clusterType
             end
         end
 
+        % the metrics folder of this call ('' without metrics)
+        runDir = '';
+        if taskMetrics
+            runDir = task_metrics_run('run_dir', jobLogDir, inputFullpaths, funcStrs);
+        end
+
         % without cluster, run the tasks on a local process pool first, as
         % many at once as half of the memory holds (a worker takes about 2 GB
         % besides its task); the framework below retries any unfinished task
         % in this MATLAB
+        poolWorkerNum = 0;
         if ~parseCluster && localWorkerNum > 1 && iscell(funcStrs) && numel(funcStrs) > 1 ...
                 && strcmp(language, 'matlab') && ~(ismcc || isdeployed)
             workerNum = localWorkerNum;
@@ -195,8 +205,9 @@ switch clusterType
                 workerNum = min(workerNum, floor(getSystemMemory() / 2 / (memAllocate + 2)));
             end
             if workerNum > 1
+                poolWorkerNum = workerNum;
                 matlab_pool_generic_computing_wrapper(inputFullpaths, outputFullpaths, funcStrs, ...
-                    finalOutFullpath=finalOutFullpath, workerNum=workerNum);
+                    finalOutFullpath=finalOutFullpath, workerNum=workerNum, taskMetrics=runDir);
             end
         end
 
@@ -236,6 +247,9 @@ switch clusterType
                 end
             end
 
+            record_run(runDir, 'run_start', pr, startTic, 'backend', 'mcc', 'parseCluster', parseCluster, ...
+                'masterCompute', masterCompute, 'cpusPerTask', cpusPerTask, 'mccMode', true, ...
+                'taskBatchNum', taskBatchNum, 'paraJobNum', paraJobNum, 'poolWorkerNum', poolWorkerNum);
             is_done_flag = mcc_slurm_cluster_generic_computing_wrapper(inputFullpaths, ...
                 outputFullpaths, funcStrs, finalOutFullpath=finalOutFullpath, ...
                 parseCluster=parseCluster, masterCompute=masterCompute, jobLogDir=jobLogDir, ...
@@ -246,8 +260,11 @@ switch clusterType
                 MCRCacheRoot=MCRCacheRoot, MCRParam=MCRParam, MCCMasterStr=MCCMasterStr, ...
                 jobTimeLimit=jobTimeLimit, queryInterval=queryInterval, language=language, ...
                 GNUparallel=GNUparallel, paraJobNum=paraJobNum, masterParaFactor=masterParaFactor, ...
-                GPUJob=GPUJob);
+                GPUJob=GPUJob, taskMetrics=runDir);
         else
+            record_run(runDir, 'run_start', pr, startTic, 'backend', 'matlab', 'parseCluster', parseCluster, ...
+                'masterCompute', masterCompute, 'cpusPerTask', cpusPerTask, 'mccMode', false, ...
+                'poolWorkerNum', poolWorkerNum);
             is_done_flag = slurm_cluster_generic_computing_wrapper(inputFullpaths, ...
                 outputFullpaths, funcStrs, finalOutFullpath=finalOutFullpath, ...
                 parseCluster=parseCluster, masterCompute=masterCompute, jobLogDir=jobLogDir, ...
@@ -256,12 +273,34 @@ switch clusterType
                 maxJobNum=maxJobNum, taskBatchNum=taskBatchNum, MatlabLaunchStr=MatlabLaunchStr, ...
                 BashLaunchStr=BashLaunchStr, SlurmParam=SlurmParam, SlurmConstraint=SlurmConstraint, ...
                 jobTimeLimit=jobTimeLimit, queryInterval=queryInterval, language=language, ...
-                GPUJob=GPUJob);
+                GPUJob=GPUJob, taskMetrics=runDir);
         end
+        record_run(runDir, 'run_end', [], startTic, 'nTasks', numel(is_done_flag), 'nDone', sum(is_done_flag));
     case 'parfor'
         is_done_flag= matlab_parfor_generic_computing_wrapper(inputFullpaths, outputFullpaths, ...
             funcStrs, 'maxJobNum', maxJobNum, 'taskBatchNum', taskBatchNum, 'GPUJob', GPUJob, 'uuid', uuid);
 end
+
+end
+
+
+function [] = record_run(runDir, kind, pr, startTic, varargin)
+% a record of this call in its metrics folder: the requested settings and
+% tasks (pr), the effective settings (name-value pairs) and the time since
+% the call started
+
+if isempty(runDir)
+    return;
+end
+info = struct();
+if ~isempty(pr)
+    info = pr;
+end
+for i = 1 : 2 : numel(varargin)
+    info.(varargin{i}) = varargin{i + 1};
+end
+info.elapsedSec = toc(startTic);
+task_metrics_run('record', runDir, kind, info);
 
 end
 

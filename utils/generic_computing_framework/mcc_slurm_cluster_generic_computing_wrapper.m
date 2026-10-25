@@ -53,6 +53,7 @@ ip.addParameter('language', 'bash', @ischar); % support matlab, bash
 ip.addParameter('GNUparallel', false, @islogical); % support matlab, bash
 ip.addParameter('paraJobNum', 1, @isnumeric); % support matlab, bash
 ip.addParameter('masterParaFactor', 1, @isnumeric); % master job parallel job percentage
+ip.addParameter('taskMetrics', false, @(x) islogical(x) || ischar(x)); % record task resources: true, or the run's metrics folder (see task_metrics)
 
 ip.parse(inputFullpaths, outputFullpaths, funcStrs, varargin{:});
 
@@ -110,6 +111,7 @@ BashLaunchStr = pr.BashLaunchStr;
 GNUparallel = pr.GNUparallel;
 paraJobNum = pr.paraJobNum;
 masterParaFactor = pr.masterParaFactor;
+taskMetrics = pr.taskMetrics;
 
 if isempty(uuid)
     uuid = get_uuid();
@@ -158,6 +160,17 @@ end
 input_exist_mat = output_exist_mat;
 input_exist_mat(~output_exist_mat) = batch_file_exist(inputFullpaths(~output_exist_mat), [], true);
 
+% the metrics folder of the run ('' without metrics): the task lines give it
+% to the compiled tasks in their environment, and GNU parallel keeps a joblog
+% there (each line's start, run time and exit status)
+runDir = task_metrics_run('backend_dir', taskMetrics, jobLogDir, inputFullpaths, outputFullpaths, funcStrs, 'mcc');
+jobJoblogStr = '';
+masterJoblogStr = '';
+if ~isempty(runDir) && isunix
+    jobJoblogStr = sprintf('--joblog \\"%sparallel_\\${SLURM_JOB_ID}_\\${SLURM_ARRAY_TASK_ID}.joblog\\" ', runDir);
+    masterJoblogStr = sprintf('--joblog "+%sparallel_master.joblog" ', runDir);
+end
+
 % write mcc strings to disk
 dt = char(datetime('now', 'Format', 'yyyyMMdd_HHmmss_SSSSSSSSS'));
 
@@ -196,29 +209,34 @@ for f = 1 : nF
     end
     func_str = funcStrs{f};
     [func_name, var_str] = convert_function_string_to_mcc_string(func_str);
+    % the task's metrics environment
+    envStr = '';
+    if ~isempty(runDir)
+        envStr = task_metrics_run('env', runDir, f, GPUJob);
+    end
     % tline = sprintf('%s %s %s %s \n', MCCMasterStr, MCRParam, func_name, var_str);
     % check output file in bash to avoid waste of time in loading mcc program if the output file exists.
     if isempty(finalOutFullpath)
         if isunix
             tlineStrs{f} = sprintf(['OUT="%s"; if [ ! -f "$OUT" ] && [ ! -d "$OUT" ]; ', ...
-                'then MCR_CACHE_ROOT=%s %s "%s" %s %s ; else echo output "$OUT" already exists; fi'], ...
-                outputFullpaths{f}, mcrCacheStr, MCCMasterStr, MCRParam, func_name, ...
+                'then %sMCR_CACHE_ROOT=%s %s "%s" %s %s ; else echo output "$OUT" already exists; fi'], ...
+                outputFullpaths{f}, envStr, mcrCacheStr, MCCMasterStr, MCRParam, func_name, ...
                 var_str);
         else
-            tlineStrs{f} = sprintf(['if not exist "%s" ( "%s" %s %s ) else ', ...
-                '( echo output "%s" already exists )'], outputFullpaths{f}, ...
+            tlineStrs{f} = sprintf(['%sif not exist "%s" ( "%s" %s %s ) else ', ...
+                '( echo output "%s" already exists )'], envStr, outputFullpaths{f}, ...
                 MCCMasterStr, func_name, var_str, outputFullpaths{f});            
         end
     else
         if isunix
             tlineStrs{f} = sprintf(['OUT="%s"; FINALOUT="%s"; if [ ! -f "$OUT" ] && [ ! -d "$OUT" ] ', ...
-                '&& [ ! -f "$FINALOUT" ] && [ ! -d "$FINALOUT" ]; then MCR_CACHE_ROOT=%s %s "%s" %s %s ; ', ...
+                '&& [ ! -f "$FINALOUT" ] && [ ! -d "$FINALOUT" ]; then %sMCR_CACHE_ROOT=%s %s "%s" %s %s ; ', ...
                 'else echo output "$OUT" already exists; fi'], outputFullpaths{f}, ...
-                finalOutFullpath, mcrCacheStr, MCCMasterStr, MCRParam, func_name, ...
+                finalOutFullpath, envStr, mcrCacheStr, MCCMasterStr, MCRParam, func_name, ...
                 var_str);
         else
-            tlineStrs{f} = sprintf(['if not exist "%s" if not exist "%s" ( "%s" %s %s ) ', ...
-                'else ( echo output "%s" already exists )'], outputFullpaths{f}, ...
+            tlineStrs{f} = sprintf(['%sif not exist "%s" if not exist "%s" ( "%s" %s %s ) ', ...
+                'else ( echo output "%s" already exists )'], envStr, outputFullpaths{f}, ...
                 finalOutFullpath, MCCMasterStr, func_name, var_str, outputFullpaths{f});
         end
     end
@@ -548,15 +566,15 @@ while (~parseCluster && ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
                             paraJobNum_f = max(1, round(paraJobNum / (trial_counter(f) + 1)));
                             cmd = sprintf(['sbatch --array=%d -o %s -e %s --cpus-per-task=%d ', ...
                                 '--ntasks=1 %s %s %s --wrap="printf \\\"Start time: \\\"; %s; echo $PWD; echo bash command: \\\"%s\\\"; ', ...
-                                '%s; parallel --ungroup --retries 2 --jobs %d --delay 0.2 < %s; echo; printf \\\"End time: \\\"; %s"'], ...
+                                '%s; parallel %s--ungroup --retries 2 --jobs %d --delay 0.2 < %s; echo; printf \\\"End time: \\\"; %s"'], ...
                                 task_id, job_log_fname, job_log_error_fname, cpusPerTask_f, SlurmParam, ...
-                                SlurmConstraint, time_str, date_cmd_str, inputFn, BashLaunchStr, paraJobNum_f, inputFn, date_cmd_str);
+                                SlurmConstraint, time_str, date_cmd_str, inputFn, BashLaunchStr, jobJoblogStr, paraJobNum_f, inputFn, date_cmd_str);
                             if GPUJob
                                 cmd = sprintf(['sbatch --array=%d -o %s -e %s --cpus-per-task=%d ', ...
                                     '--ntasks=1 %s %s %s --wrap="printf \\\"Start time: \\\"; %s; echo $PWD; echo bash command: \\\"%s\\\"; ', ...
-                                    '%s; parallel --ungroup --retries 2 --jobs %d --delay 0.2 CUDA_VISIBLE_DEVICES=''\\$(({%%} - 1))'' eval {} < %s; echo; printf \\\"End time: \\\"; %s"'], ...
+                                    '%s; parallel %s--ungroup --retries 2 --jobs %d --delay 0.2 CUDA_VISIBLE_DEVICES=''\\$(({%%} - 1))'' eval {} < %s; echo; printf \\\"End time: \\\"; %s"'], ...
                                     task_id, job_log_fname, job_log_error_fname, cpusPerTask_f, SlurmParam, ...
-                                    SlurmConstraint, time_str, date_cmd_str, inputFn, BashLaunchStr, paraJobNum, inputFn, date_cmd_str);
+                                    SlurmConstraint, time_str, date_cmd_str, inputFn, BashLaunchStr, jobJoblogStr, paraJobNum, inputFn, date_cmd_str);
                             end
                         end
                     end
@@ -615,10 +633,10 @@ while (~parseCluster && ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
                 else
                     paraJobNum_f = max(1, min(paraJobNum - 1, round(paraJobNum * masterParaFactor / (trial_counter(f) + 1))));
                 end
-                cmd = sprintf(['%s; parallel --retries 2 --jobs %d --delay 0.2 < %s'], BashLaunchStr, paraJobNum_f, inputFn);
+                cmd = sprintf(['%s; parallel %s--retries 2 --jobs %d --delay 0.2 < %s'], BashLaunchStr, masterJoblogStr, paraJobNum_f, inputFn);
                 if ismcc || isdeployed
                     % reduce the load of master job in case of crash due to oom
-                    cmd = sprintf(['%s; parallel --ungroup --retries 2 --jobs %d --delay 0.2 < %s'], BashLaunchStr, paraJobNum_f, inputFn);
+                    cmd = sprintf(['%s; parallel %s--ungroup --retries 2 --jobs %d --delay 0.2 < %s'], BashLaunchStr, masterJoblogStr, paraJobNum_f, inputFn);
                 end
             end
             t0=tic; [status, cmdout] = system(cmd, '-echo'); t1=toc(t0);
@@ -658,10 +676,10 @@ while (~parseCluster && ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
             else
                 paraJobNum_f = max(1, min(paraJobNum, round(paraJobNum * masterParaFactor)));
             end
-            cmd = sprintf(['%s; parallel --retries 2 --jobs %d --delay 0.2 < %s'], BashLaunchStr, paraJobNum_f, inputFn);
+            cmd = sprintf(['%s; parallel %s--retries 2 --jobs %d --delay 0.2 < %s'], BashLaunchStr, masterJoblogStr, paraJobNum_f, inputFn);
             if ismcc || isdeployed
                 % reduce the load of master job in case of crash due to oom
-                cmd = sprintf(['%s; parallel --ungroup --retries 2 --jobs %d --delay 0.2 < %s'], BashLaunchStr, paraJobNum_f, inputFn);
+                cmd = sprintf(['%s; parallel %s--ungroup --retries 2 --jobs %d --delay 0.2 < %s'], BashLaunchStr, masterJoblogStr, paraJobNum_f, inputFn);
             end
         end
         t0=tic; [status, cmdout] = system(cmd, '-echo'); t1=toc(t0);

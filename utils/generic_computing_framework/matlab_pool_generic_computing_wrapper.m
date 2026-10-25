@@ -12,6 +12,7 @@ function [is_done_flag] = matlab_pool_generic_computing_wrapper(inputFullpaths, 
 % Parameters (as 'specifier'-value pairs):
 %   finalOutFullpath : char (default: ''). Stop once this path exists (another run finished the work).
 %          workerNum : a number (default: 2). Maximum number of tasks running at once.
+%        taskMetrics : true|false or char (default: false). Record the resources of each task (see task_metrics): true, or the run's metrics folder.
 
 
 ip = inputParser;
@@ -21,12 +22,14 @@ ip.addRequired('outputFullpaths', @(x) iscell(x) || ischar(x));
 ip.addRequired('functionStrs', @(x) iscell(x) || ischar(x));
 ip.addParameter('finalOutFullpath', '', @ischar);
 ip.addParameter('workerNum', 2, @isnumeric);
+ip.addParameter('taskMetrics', false, @(x) islogical(x) || ischar(x));
 
 ip.parse(inputFullpaths, outputFullpaths, funcStrs, varargin{:});
 
 pr = ip.Results;
 finalOutFullpath = pr.finalOutFullpath;
 workerNum = max(1, round(pr.workerNum));
+taskMetrics = pr.taskMetrics;
 
 if ischar(outputFullpaths)
     inputFullpaths = {inputFullpaths};
@@ -59,6 +62,7 @@ p = get_local_process_pool(workerNum, max(1, floor(maxNumCompThreads / workerNum
 if isempty(p)
     return;
 end
+runDir = task_metrics_run('backend_dir', taskMetrics, '', inputFullpaths, outputFullpaths, funcStrs, 'pool');
 workerNum = min([workerNum, p.NumWorkers, nT]);
 threadNum = max(1, floor(maxNumCompThreads / workerNum));
 fprintf('Run %d tasks on the local pool (%d at a time)...\n', nT, workerNum);
@@ -71,7 +75,7 @@ while next <= nT || ~isempty(fs)
     % keep up to workerNum tasks running, in task order
     while numel(fs) < workerNum && next <= nT
         f = task_inds(next);
-        fs(end + 1) = parfeval(p, @run_task_str, 2, funcStrs{f}, threadNum);
+        fs(end + 1) = parfeval(p, @run_task_str, 2, funcStrs{f}, threadNum, runDir, f);
         run_inds(end + 1, 1) = f;
         next = next + 1;
     end
@@ -158,18 +162,22 @@ end
 end
 
 
-function [t, msg] = run_task_str(func_str, threadNum)
-% run a task string on a worker with threadNum computational threads; errors
-% are returned as text
+function [t, msg] = run_task_str(func_str, threadNum, runDir, taskInd)
+% run a task string on a worker with threadNum computational threads, with
+% its metrics in runDir (none if empty); errors are returned as text
 
 msg = '';
 t0 = tic;
 nt = maxNumCompThreads(threadNum);
+tm = task_metrics('start', func_str, runDir, taskInd, 'pool', false);
+err = [];
 try
     feval(str2func(['@()', func_str]));
 catch ME
     msg = getReport(ME, 'extended', 'hyperlinks', 'off');
+    err = ME;
 end
+task_metrics('stop', tm, err);
 maxNumCompThreads(nt);
 t = toc(t0);
 
