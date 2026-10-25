@@ -1,7 +1,11 @@
-function [deconvolved, ds, dsr] = RLdecon(inputFn, outputFn, PSFfn, xyPixelSize, dz, dzPSF, varargin)
+function [deconvolved, ds, dsr, overlapOut] = RLdecon(inputFn, outputFn, PSFfn, xyPixelSize, dz, dzPSF, varargin)
 % new RL decon framework for multiple decon methods, and includes deskew/rotate after decon
 % 
 % Author: Xiongtao Ruan (11/12/2022)
+%
+% overlapFcn: function the CPU runs while the GPU deconvolves ('simplified' and
+%   'omw'; e.g., reading the next file of a job); its output is overlapOut
+%   (empty if it didn't run)
 
 
 ip = inputParser;
@@ -52,6 +56,7 @@ ip.addParameter('save3Dstack', [true, true, true], @(x) islogical(x) && (numel(x
 ip.addParameter('mipAxis', [0,0,1] , @(x) isnumeric(x) && numel(x) == 3);
 ip.addParameter('psfGen', true, @islogical); % psf generation
 ip.addParameter('uuid', '', @ischar);
+ip.addParameter('overlapFcn', [], @(x) isempty(x) || isa(x, 'function_handle')); % CPU work during the GPU decon
 
 ip.parse(inputFn, outputFn, PSFfn, xyPixelSize, dz, dzPSF, varargin{:});
 
@@ -97,6 +102,8 @@ useGPU = pr.useGPU;
 save3Dstack = pr.save3Dstack;
 psfGen = pr.psfGen;
 uuid = pr.uuid;
+overlapFcn = pr.overlapFcn;
+overlapOut = [];
 
 SkewAngle = abs(SkewAngle);
 if ~objectiveScan
@@ -361,17 +368,17 @@ if ~file_exist_mat(1)
                     deconvolved = crop3d(deconvolved, deconBbox);
                 end
             case 'simplified'
-                [deconvolved, err_mat, iter_run] = decon_lucy_function(rawdata, ...
+                [deconvolved, err_mat, iter_run, overlapOut] = decon_lucy_function(rawdata, ...
                     psf, nIter, Background=Background, useGPU=useGPU, save16bit=save16bit, ...
                     dampFactor=dampFactor, scaleFactor=scaleFactor, deconOffset=deconOffset, ...
                     bbox=deconBbox, EdgeErosion=EdgeErosion_in, debug=debug, debug_folder=debug_folder, ...
-                    saveStep=saveStep);
+                    saveStep=saveStep, overlapFcn=overlapFcn);
             case 'omw'
-                [deconvolved, err_mat] = decon_lucy_omw_function(rawdata, psf, ...
+                [deconvolved, err_mat, overlapOut] = decon_lucy_omw_function(rawdata, psf, ...
                     psf_b, nIter, Background=Background, useGPU=useGPU, save16bit=save16bit, ...
                     dampFactor=dampFactor, scaleFactor=scaleFactor, deconOffset=deconOffset, ...
                     bbox=deconBbox, EdgeErosion=EdgeErosion_in, debug=debug, debug_folder=debug_folder, ...
-                    saveStep=saveStep);          
+                    saveStep=saveStep, overlapFcn=overlapFcn);          
             case 'cudagen'
                 deconvolved = decon_lucy_cuda_function(single(rawdata), single(psf), nIter);            
         end

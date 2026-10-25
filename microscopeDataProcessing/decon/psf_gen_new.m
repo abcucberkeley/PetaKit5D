@@ -45,7 +45,7 @@ if nz > 1
             %     psf_raw = psf_raw - a';
             %     psf_raw(psf_raw<0) = 0.0;
         
-                psf_med = medfilt3(psf, [3, 3, 3]);
+                psf_med = psf_medfilt3(psf);
                 % a = max(sqrt(abs(psf_med([1:10, end-9:end], :, :) - 100)), [], [1, 3]) * 3  + mean(psf_med([1:10, end-9:end], :, :), [1, 3]);
                 a = max(sqrt(abs(psf_med([1:10, end-9:end], :, :) - 100)), [], [1]) * 3  + mean(psf_med([1:10, end-9:end], :, :), [1]);
                 psf_med_1 = psf_med - a;
@@ -136,6 +136,21 @@ else
 end
 
 psf = max(psf, 0);
+
+end
+
+
+function [B] = psf_medfilt3(A)
+% medfilt3(A, [3, 3, 3]), in omw_backprojector_mex for single 3D arrays
+% without NaN or -0 values
+
+B = [];
+if exist('omw_backprojector_mex', 'file') == 3 && isa(A, 'single') && isreal(A) && ndims(A) == 3
+    B = omw_backprojector_mex('medfilt3', A, maxNumCompThreads);
+end
+if isempty(B)
+    B = medfilt3(A, [3, 3, 3]);
+end
 
 end
 

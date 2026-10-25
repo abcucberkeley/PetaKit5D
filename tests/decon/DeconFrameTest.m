@@ -162,6 +162,71 @@ classdef DeconFrameTest < pktest.TestCase
             testCase.verifyTrue(exist([deconPath, fsn, '.tif'], 'file') == 2);
         end
 
+        function gpuJobReadsTheNextFileDuringTheDecon(testCase)
+            % a GPU job with several files reads the next file while the GPU
+            % deconvolves the current one (before the current result is
+            % moved into place), each file once, with the same results as
+            % one file per job (a gpuDevice stub reports room on the GPU;
+            % without a GPU the decon runs on the CPU)
+            testCase.applyFixture(pktest.FunctionStubFixture('gpuDevice', struct('AvailableMemory', 1e15)));
+            [fn1, psfFn] = testCase.writeFrame();
+            fns = {fn1, strrep(fn1, '_000x_', '_001x_'), strrep(fn1, '_000x_', '_002x_')};
+            testCase.writeFrame(fns{2});
+            testCase.writeFrame(fns{3});
+            dataPath = fileparts(fn1);
+            args = {'DeconIter', 2, 'RLMethod', 'omw', 'skewed', false, 'GPUJob', true};
+            for i = 1 : 3
+                testCase.runFrame(fns{i}, [dataPath, '/single/'], psfFn, args{:});
+            end
+            logFn = testCase.logReadsAndMoves();
+            testCase.runFrame(fns, [dataPath, '/multi/'], psfFn, args{:});
+            events = strrep(readlines(logFn), '//', '/');
+            for i = 1 : 3
+                [~, fsn] = fileparts(fns{i});
+                testCase.verifyEqual(readtiff([dataPath, '/multi/', fsn, '.tif']), readtiff([dataPath, '/single/', fsn, '.tif']));
+                testCase.verifyEqual(nnz(events == "read " + fns{i}), 1, sprintf('reads of file %d', i));
+            end
+            for i = 1 : 2
+                [~, fsn] = fileparts(fns{i});
+                readNext = find(events == "read " + fns{i + 1}, 1);
+                moveCurrent = find(events == "move " + [dataPath, '/multi/', fsn, '.tif'], 1);
+                testCase.assertNotEmpty(moveCurrent);
+                testCase.verifyLessThan(readNext, moveCurrent, sprintf('file %d was read after the result of file %d was published', i + 1, i));
+            end
+        end
+
+        function gpuJobWithoutRoomOnTheGPUReadsTheFilesInTurn(testCase)
+            % with too little free GPU memory the iterations aren't queued
+            % ahead, so the next file is read by its own RLdecon
+            testCase.applyFixture(pktest.FunctionStubFixture('gpuDevice', struct('AvailableMemory', 0)));
+            [fn1, psfFn] = testCase.writeFrame();
+            fn2 = strrep(fn1, '_000x_', '_001x_');
+            testCase.writeFrame(fn2);
+            deconPath = [fileparts(fn1), '/decon/'];
+            logFn = testCase.logReadsAndMoves();
+            testCase.runFrame({fn1, fn2}, deconPath, psfFn, 'DeconIter', 2, 'RLMethod', 'omw', 'skewed', false, 'GPUJob', true);
+            events = strrep(readlines(logFn), '//', '/');
+            [~, fsn1] = fileparts(fn1);
+            testCase.verifyEqual(nnz(events == "read " + fn2), 1);
+            testCase.verifyGreaterThan(find(events == "read " + fn2, 1), find(events == "move " + [deconPath, fsn1, '.tif'], 1));
+        end
+
+        function gpuJobDoesNotReadAFinishedNextFile(testCase)
+            testCase.applyFixture(pktest.FunctionStubFixture('gpuDevice', struct('AvailableMemory', 1e15)));
+            [fn1, psfFn] = testCase.writeFrame();
+            fn2 = strrep(fn1, '_000x_', '_001x_');
+            testCase.writeFrame(fn2);
+            deconPath = [fileparts(fn1), '/decon/'];
+            args = {'DeconIter', 2, 'RLMethod', 'omw', 'skewed', false, 'GPUJob', true};
+            testCase.runFrame(fn2, deconPath, psfFn, args{:});
+            logFn = testCase.logReadsAndMoves();
+            testCase.runFrame({fn1, fn2}, deconPath, psfFn, args{:});
+            events = readlines(logFn);
+            testCase.verifyEqual(nnz(events == "read " + fn2), 0);
+            [~, fsn1] = fileparts(fn1);
+            testCase.verifyTrue(exist([deconPath, fsn1, '.tif'], 'file') == 2);
+        end
+
         function otherGPUJobErrorsAreNotRetriedOnTheCPU(testCase)
             [fn, psfFn] = testCase.writeFrame();
             fake = testCase.writeFakeRLdecon('MATLAB:test:otherError');
@@ -228,6 +293,44 @@ classdef DeconFrameTest < pktest.TestCase
             testCase.applyFixture(matlab.unittest.fixtures.PathFixture(folder, 'Position', 'begin'));
             testCase.addTeardown(@() clear('RLdecon'));
             clear('RLdecon');
+        end
+
+        function [logFn] = logReadsAndMoves(testCase)
+            % readtiff and movefile first on the path that log each call
+            % ('read <file>', 'move <destination>') and then read or move
+            folder = [testCase.createTempFolder(), 'spies/'];
+            mkdir(folder);
+            logFn = [folder, 'events.txt'];
+            fclose(fopen(logFn, 'w'));
+            lines = {
+                'function [data] = readtiff(filepath, varargin)'
+                '% test spy written by DeconFrameTest'
+                sprintf('fid = fopen(''%s'', ''a'');', logFn)
+                'fprintf(fid, ''read %s\n'', filepath);'
+                'fclose(fid);'
+                'data = parallelReadTiff(filepath);'
+                'end'};
+            fid = fopen([folder, 'readtiff.m'], 'w');
+            fprintf(fid, '%s\n', lines{:});
+            fclose(fid);
+            lines = {
+                'function varargout = movefile(varargin)'
+                '% test spy written by DeconFrameTest'
+                'if nargin >= 2'
+                sprintf('    fid = fopen(''%s'', ''a'');', logFn)
+                '    fprintf(fid, ''move %s\n'', varargin{2});'
+                '    fclose(fid);'
+                'end'
+                '[varargout{1 : nargout}] = builtin(''movefile'', varargin{:});'
+                'end'};
+            fid = fopen([folder, 'movefile.m'], 'w');
+            fprintf(fid, '%s\n', lines{:});
+            fclose(fid);
+            warningState = warning('off', 'MATLAB:dispatcher:nameConflict');
+            testCase.addTeardown(@warning, warningState);
+            testCase.applyFixture(matlab.unittest.fixtures.PathFixture(folder, 'Position', 'begin'));
+            testCase.addTeardown(@() clear('readtiff', 'movefile'));
+            clear('readtiff', 'movefile');
         end
 
         function [useGPU] = fakeUseGPU(~, folder)

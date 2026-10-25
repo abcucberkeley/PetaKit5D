@@ -1,4 +1,4 @@
-function [J_2, err_mat, k] = decon_lucy_function(I, PSF, NUMIT, varargin)
+function [J_2, err_mat, k, overlapOut] = decon_lucy_function(I, PSF, NUMIT, varargin)
 % adapted from matlab deconvlucy.m
 % 
 % xruan (05/18/2021): add support for early stop with stop criteria
@@ -20,6 +20,9 @@ function [J_2, err_mat, k] = decon_lucy_function(I, PSF, NUMIT, varargin)
 % useMex: run the FFT steps of the iterations in decon_lucy_rfft_mex (CPU,
 %   the same results as the MATLAB code, also the debug outputs) or
 %   decon_lucy_rfft_gpu_mex (GPU); empty: as decon_use_rfft_mex decides
+% overlapFcn: function the CPU runs while the GPU computes (after the
+%   iterations are queued, before the result is copied back; on the CPU after
+%   the iterations); its output is overlapOut
 
 
 ip = inputParser;
@@ -39,6 +42,7 @@ ip.addParameter('debug', false, @islogical);
 ip.addParameter('debug_folder', './debug/', @ischar);
 ip.addParameter('saveStep', 1, @isnumeric); % save intermediate results every given iterations
 ip.addParameter('useMex', [], @(x) isempty(x) || islogical(x)); % FFT steps in a mex
+ip.addParameter('overlapFcn', [], @(x) isempty(x) || isa(x, 'function_handle')); % CPU work during the GPU iterations
 
 ip.parse(I, PSF, NUMIT, varargin{:});
 
@@ -214,6 +218,12 @@ if debug
 end
 
 clear J_3 J_4 Y;
+
+% the caller's CPU work while the GPU runs the queued iterations
+overlapOut = [];
+if ~isempty(pr.overlapFcn)
+    overlapOut = pr.overlapFcn();
+end
 
 % post-processing of deconvolved result
 if dampFactor > 1

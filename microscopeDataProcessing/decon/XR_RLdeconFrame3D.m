@@ -171,6 +171,9 @@ if ~largeFile && ~any(save3Dstack) && ~any(mipAxis > 0)
 end
 
 nF = numel(frameFullpaths);
+% the raw data of the next file of a GPU job, read while the GPU deconvolves
+% the current one: {path, data}
+prefetched = {};
 for f = 1 : nF
     frameFullpath = frameFullpaths{f};
     if ~exist(frameFullpath, 'file')
@@ -271,7 +274,23 @@ for f = 1 : nF
         % mipAxis = [0, 0, 0];
 
         t0 = tic;
-        decon_args = {'rawdata', [], ...
+        rawdata = [];
+        if ~isempty(prefetched) && strcmp(prefetched{1}, frameFullpath)
+            rawdata = prefetched{2};
+        end
+        prefetched = {};
+        % with several files on the GPU, the next file is read during the
+        % decon, if the GPU has room for the decon twice over (with less,
+        % MATLAB's GPU allocations wait for the GPU, so the iterations are
+        % done before the read starts)
+        overlapFcn = [];
+        if GPUJob && f < nF && gpu_has_room(imSize, RLMethod)
+            nextFn = frameFullpaths{f + 1};
+            if next_frame_needs_decon(nextFn, pr.deconPath, saveZarr, pr.Overwrite, CPUMaxMem)
+                overlapFcn = @() read_frame(nextFn);
+            end
+        end
+        decon_args = {'rawdata', rawdata, ...
             'save16bit', save16bit, 'SkewAngle', SkewAngle, 'Deskew', Deskew, ...
             'Rotate', Rotate, 'DSRCombined', DSRCombined, 'Reverse', Reverse, ...
             'Background', Background, 'DeconIter', DeconIter, 'RLMethod', RLMethod, ...
@@ -282,8 +301,15 @@ for f = 1 : nF
             'errThresh', errThresh, 'saveStep', saveStep, ...
             'psfGen', psfGen, 'debug', debug, 'save3Dstack', save3Dstack, 'mipAxis', mipAxis, ...
             'flipZstack', flipZstack};
+        clear rawdata;
+        nextData = [];
         try
-            RLdecon(inputFn, outputFn, PSFfile, xyPixelSize, dz, dzPSF, decon_args{:}, 'useGPU', GPUJob);
+            if isempty(overlapFcn)
+                RLdecon(inputFn, outputFn, PSFfile, xyPixelSize, dz, dzPSF, decon_args{:}, 'useGPU', GPUJob);
+            else
+                [~, ~, ~, nextData] = RLdecon(inputFn, outputFn, PSFfile, xyPixelSize, dz, dzPSF, decon_args{:}, ...
+                    'useGPU', GPUJob, 'overlapFcn', overlapFcn);
+            end
         catch ME
             % a file that doesn't fit on the GPU (memory or the gpuArray
             % size limit) is deconvolved on the CPU instead of failing
@@ -293,6 +319,11 @@ for f = 1 : nF
             warning('%s does not fit on the GPU (%s), deconvolve it on the CPU instead...', inputFn, ME.message);
             RLdecon(inputFn, outputFn, PSFfile, xyPixelSize, dz, dzPSF, decon_args{:}, 'useGPU', false);
         end
+        clear decon_args;
+        if ~isempty(nextData)
+            prefetched = {nextFn, nextData};
+        end
+        clear nextData;
 
         if (save3Dstack(1) && (exist(deconFullPath, 'file') || exist(deconFullPath, 'dir'))) ...
                 || (save3Dstack(3) && (exist(dsrFullPath, 'file') || exist(dsrFullPath, 'dir')))
@@ -338,6 +369,69 @@ for f = 1 : nF
 end
 
 % toc
+
+end
+
+
+function [tf] = next_frame_needs_decon(fn, deconPath, saveZarr, Overwrite, CPUMaxMem)
+% whether the next file of the job will be deconvolved in one piece, as the
+% loop above decides (it exists, has no result or Overwrite, and isn't large)
+
+tf = false;
+if ~exist(fn, 'file')
+    return;
+end
+[pathstr, fsname] = fileparts(fn);
+if isempty(deconPath)
+    deconPath = [pathstr, '/', 'matlab_decon'];
+end
+if saveZarr
+    deconFullPath = [deconPath '/' fsname '.zarr'];
+else
+    deconFullPath = [deconPath '/' fsname '.tif'];
+end
+if ~Overwrite && (exist(deconFullPath, 'file') || (saveZarr && exist(deconFullPath, 'dir')))
+    return;
+end
+tf = prod(getImageSize(fn)) * 4 / 2^30 * 10 <= CPUMaxMem;
+
+end
+
+
+function [tf] = gpu_has_room(imSize, RLMethod)
+% whether the GPU has the memory of a decon of imSize free twice over (the
+% MATLAB loops on the GPU take about 38 (OMW) or 42 bytes per voxel)
+
+tf = false;
+bytesPerVoxel = 42;
+if strcmp(RLMethod, 'omw')
+    bytesPerVoxel = 38;
+end
+try
+    gd = gpuDevice;
+    tf = gd.AvailableMemory >= 2 * bytesPerVoxel * prod(imSize);
+catch
+end
+
+end
+
+
+function [im] = read_frame(fn)
+% the raw data of a file as RLdecon reads it (empty if it can't be read, then
+% RLdecon reads it itself)
+
+im = [];
+try
+    [~, ~, ext] = fileparts(fn);
+    switch ext
+        case {'.tif', '.tiff'}
+            im = readtiff(fn);
+        case '.zarr'
+            im = readzarr(fn);
+    end
+catch ME
+    disp(ME);
+end
 
 end
 

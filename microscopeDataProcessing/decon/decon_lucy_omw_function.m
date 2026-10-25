@@ -1,10 +1,13 @@
-function [J, err_mat] = decon_lucy_omw_function(I, PSF_f, PSF_b, NUMIT, varargin)
+function [J, err_mat, overlapOut] = decon_lucy_omw_function(I, PSF_f, PSF_b, NUMIT, varargin)
 % RL decon with alternative backprojector OTF masked wiener (OMW) method
 %   save16bit: for GPU compute, convert to 16bit before transfer from GPU to CPU 
 %   bbox: for GPU compute, crop the data first before transfer from GPU to CPU
 %   useMex: run the iterations with half-spectrum FFTs in decon_lucy_rfft_mex
 %       (CPU, the same results as the MATLAB code, also the debug outputs) or
 %       decon_lucy_rfft_gpu_mex (GPU); empty: as decon_use_rfft_mex decides
+%   overlapFcn: function the CPU runs while the GPU computes (after the
+%       iterations are queued, before the result is copied back; on the CPU
+%       after the iterations); its output is overlapOut
 %
 % Author: Xiongtao Ruan (11/10/2022)
 %
@@ -30,6 +33,7 @@ ip.addParameter('debug', false, @islogical);
 ip.addParameter('debug_folder', './debug/', @ischar);
 ip.addParameter('saveStep', 1, @isnumeric); % save intermediate results every given iterations
 ip.addParameter('useMex', [], @(x) isempty(x) || islogical(x)); % half-spectrum FFT mex for the iterations
+ip.addParameter('overlapFcn', [], @(x) isempty(x) || isa(x, 'function_handle')); % CPU work during the GPU iterations
 
 ip.parse(I, PSF_f, PSF_b, NUMIT, varargin{:});
 
@@ -194,6 +198,12 @@ else
     if debug
         err_mat = err_mat(1 : floor(NUMIT / estep), :);
     end
+end
+
+% the caller's CPU work while the GPU runs the queued iterations
+overlapOut = [];
+if ~isempty(pr.overlapFcn)
+    overlapOut = pr.overlapFcn();
 end
 
 % post-processing of deconvolved result
