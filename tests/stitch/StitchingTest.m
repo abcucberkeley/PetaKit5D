@@ -242,6 +242,25 @@ classdef StitchingTest < pktest.TestCase
             testCase.verifyEqual(slurm.callCount('sbatch'), 0, 'A stitching job was submitted for a finished result.');
         end
 
+        function processedTilesOtherNodesJustMadeAreSeen(testCase)
+            % on NFS, exist() can miss tiles another node just made for 30 s
+            % or more, so the wrapper ran out of tries for a time point whose
+            % deskewed tiles were done and left it to a second stitching job
+            % (the pipeline demo then took 110-140 s instead of 65 s); it now
+            % checks them with batch_file_exist. The stub reports the tiles
+            % missing although they are on disk, so the wrapper must wait for
+            % them instead of stitching.
+            dataPath = testCase.createTempFolder();
+            gt = testCase.randomVolume([100, 120, 32]);
+            csvFn = testCase.writeTiles(dataPath, gt, [0, 0, 0; 36, 0, 0; 0, 48, 0; 36, 48, 0], [64, 72, 32], ...
+                [], [], [], 'tileDir', 'DSR', 'saveFormat', 'zarr');
+            testCase.applyFixture(pktest.FunctionStubFixture('batch_file_exist', false));
+            testCase.applyFixture(pktest.FunctionSpyFixture('pause', [], 20));
+            frames = testCase.applyFixture(pktest.FunctionSpyFixture('XR_stitching_frame_zarr_dev_v1'));
+            testCase.stitch(dataPath, csvFn, 'zarrFile', true, 'processedDirStr', 'DSR', 'maxTrialNum', 1);
+            testCase.verifyEmpty(frames.getCalls(), 'The wrapper stitched tiles that batch_file_exist did not see.');
+        end
+
         function clusterModeWaitsForTheLastTry(testCase)
             % after submitting the last try, the wrapper returned without
             % waiting for its job; it now checks the job until it ends,

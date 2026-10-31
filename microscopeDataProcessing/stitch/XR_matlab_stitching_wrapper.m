@@ -468,7 +468,9 @@ while ~all(is_done_flag | (trial_counter >= max_trial_num & ~job_status_flag), '
                             else
                                 tile_processed_fullpaths = cellfun(@(x) [dataPaths, '/', processedDirStr, '/', x], tile_fnames, 'unif', 0);
                             end
-                            is_processed_tile_exist = cellfun(@(x) exist(x, 'file'), tile_processed_fullpaths);
+                            % (batch_file_exist sees tiles another node just
+                            % made, which exist() can miss for 30 s or more)
+                            is_processed_tile_exist = batch_file_exist(tile_processed_fullpaths);
                             if streaming
                                 if ~all(is_processed_tile_exist)
                                     stream_counter = stream_counter + 1;
