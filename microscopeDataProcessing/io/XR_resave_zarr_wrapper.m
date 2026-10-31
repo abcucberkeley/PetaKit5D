@@ -62,8 +62,9 @@ mccMode = pr.mccMode;
 configFile = pr.configFile;
 
 
-% suppress directory exists warning
-warning('off', 'MATLAB:MKDIR:DirectoryExists');
+% suppress directory exists warning (restored on return)
+warnState = warning('off', 'MATLAB:MKDIR:DirectoryExists');
+restoreWarnings = onCleanup(@() warning(warnState));
 
 if ischar(dataPaths)
     dataPaths = {dataPaths};

@@ -10,14 +10,15 @@ if usejava('jvm')
     uuid = char(java.util.UUID.randomUUID.toString);
 else
     if ispc
-        rng('shuffle');
-        uuid = num2str(randi(2^53-1));
+        % own random numbers seeded by the time, so that the global ones stay
+        % as they are
+        uuid = num2str(randi(RandStream('twister', 'Seed', 'shuffle'), 2^53-1));
     else
         [status, cmdout] = system('uuidgen');
         if status == 0
             uuid = strip(cmdout);
         else
-            uuid = num2str(randi(2^53-1));
+            uuid = num2str(randi(RandStream('twister', 'Seed', 'shuffle'), 2^53-1));
         end
     end
 end

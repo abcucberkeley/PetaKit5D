@@ -55,7 +55,9 @@ ip.addParameter('configFile', '', @ischar);
 
 ip.parse(dataPaths, inputBbox, varargin{:});
 
-warning('off', 'MATLAB:MKDIR:DirectoryExists');
+% suppress directory exists warning (restored on return)
+warnState = warning('off', 'MATLAB:MKDIR:DirectoryExists');
+restoreWarnings = onCleanup(@() warning(warnState));
 
 pr = ip.Results;
 % Overwrite = pr.Overwrite;

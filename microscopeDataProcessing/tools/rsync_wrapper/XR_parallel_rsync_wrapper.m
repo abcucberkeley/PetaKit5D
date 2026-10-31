@@ -90,9 +90,9 @@ tmpDir = sprintf('%s/tmp/%s/', dest, uuid);
 mkdir(tmpDir);
 
 % random shuffling of the files so that large files are distributed to
-% different workers evenly.
-rng(1);
-rand_inds = randperm(nF);
+% different workers evenly (with its own random numbers, those of rng(1),
+% so that the global ones stay as they are).
+rand_inds = randperm(RandStream('twister', 'Seed', 1), nF);
 inputFullpaths = inputFullpaths(rand_inds);
 outputFullpaths = outputFullpaths(rand_inds);
 outputPaths = outputPaths(rand_inds);

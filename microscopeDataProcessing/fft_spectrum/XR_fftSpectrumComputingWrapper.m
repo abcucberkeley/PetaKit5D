@@ -79,8 +79,9 @@ if ischar(channelPatterns)
     channelPatterns = {channelPatterns};
 end
 
-% suppress directory exists warning
-warning('off', 'MATLAB:MKDIR:DirectoryExists');
+% suppress directory exists warning (restored on return)
+warnState = warning('off', 'MATLAB:MKDIR:DirectoryExists');
+restoreWarnings = onCleanup(@() warning(warnState));
 
 if isempty(outPixelSize)
     outPixelSize = min(xyPixelSize, dz);

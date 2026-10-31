@@ -230,6 +230,35 @@ addpath tests tests/golden
 update_golden_data('decon_omw')   % or update_golden_data() for all
 ```
 
+## Tasks in one process (isolation harness)
+
+The job framework can run several tasks in one process. `tests/isolation`
+checks that a task's outputs don't depend on what ran before it in its
+process. `isolation_prepare` builds small datasets for the task functions of
+the compiled program (deskew/rotation, decon on the CPU and GPU, large-file
+blocks, conversion, stitching steps, resampling, cropping, MIPs, unmixing,
+FSC, FFT, zarr resaving, chromatic shift correction; optionally two tiles of
+the demo dataset) and records the tasks each data wrapper hands to the
+framework, leaving every folder as it is just before its tasks run.
+`isolation_run_tasks` runs task strings in one MATLAB process in any order,
+with a reset between tasks (`isolation_reset`: none, the 2026-10-22
+prototype's, or a full one; or your own function) and records what each task
+changed in the process (`isolation_state`); `isolation_run_framework` runs
+them through the job framework instead; `isolation_compare` compares two
+output folders bit for bit. On the cluster,
+`tests/isolation/run_isolation_harness.sh` runs each task in a fresh MATLAB
+process and then all tasks in single processes in several orders, and
+compares every output with the fresh ones (see its header for the options),
+e.g.
+
+```bash
+srun -c8 --mem=64G --gres=gpu:1 -p abc --qos abc_high -A co_abc --time=03:00:00 \
+    bash tests/isolation/run_isolation_harness.sh -c $PWD -o <output folder> -j 4
+```
+
+The fast tests (`IsolationHarnessTest`, `TaskStateLeakTest`) check the
+harness itself and that task functions restore what they change.
+
 ## Writing tests
 
 - Put tests under `tests/<area>/`, in a class that subclasses

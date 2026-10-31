@@ -37,15 +37,22 @@ skipConeRegion = pr.skipConeRegion;
 clipPer = pr.clipPer;
 debug = pr.debug;
 
-persistent im_orig fn_orig;
+% the image of the last file read is kept while the file is unchanged (name,
+% modification time and size)
+persistent im_orig fn_orig info_orig;
 if ischar(fn)
-    if isempty(fn_orig) || ~strcmp(fn, fn_orig)
-        fn_orig = fn;
+    dir_info = dir(fn);
+    info = [dir_info.datenum, dir_info.bytes];
+    if isempty(fn_orig) || ~strcmp(fn, fn_orig) || ~isequal(info, info_orig)
+        fn_orig = '';
+        im_orig = [];
         try
             im_orig = parallelReadTiff(fn);
         catch
             im_orig = readtiff(fn);
         end
+        fn_orig = fn;
+        info_orig = info;
     end
     im = im_orig; 
 else

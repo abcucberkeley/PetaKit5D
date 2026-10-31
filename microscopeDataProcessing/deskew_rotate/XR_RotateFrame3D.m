@@ -25,7 +25,9 @@ ip.addParameter('uuid', '', @ischar);
 
 ip.parse(framePaths, xyPixelSize, dz, varargin{:});
 
-warning('off', 'MATLAB:MKDIR:DirectoryExists');
+% suppress directory exists warning (restored on return)
+warnState = warning('off', 'MATLAB:MKDIR:DirectoryExists');
+restoreWarnings = onCleanup(@() warning(warnState));
 
 if ischar(framePaths)
     framePaths = {framePaths};

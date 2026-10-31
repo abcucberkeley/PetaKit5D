@@ -59,6 +59,17 @@ res_mu = cell(n, 1);
 fsc_cell = cell(n, 1);
 res_cell = cell(n, 1);
 
+% read the image once for all boxes, here, so that the analysis keeps no copy
+% of it after the task
+im = fn;
+if ischar(fn)
+    try
+        im = parallelReadTiff(fn);
+    catch
+        im = readtiff(fn);
+    end
+end
+
 for i = 1 : n
     if isempty(bbox)
         bbox_i = bbox;
@@ -66,7 +77,7 @@ for i = 1 : n
         bbox_i = bbox(i, :);
     end
     
-    [fsc_mu_i, res_mu_i, fsc_cell_i, res_cell_i] = XR_one_image_FSC_analysis(fn, ...
+    [fsc_mu_i, res_mu_i, fsc_cell_i, res_cell_i] = XR_one_image_FSC_analysis(im, ...
         'xyPixelSize', xyPixelSize, 'dz', dz, 'dr', dr, 'dtheta', dtheta, 'halfSize', halfSize, ...
         'resThreshMethod', resThreshMethod, 'resThresh', resThresh, 'resAxis', resAxis, ...
         'skipConeRegion', skipConeRegion, 'bbox', bbox_i, 'clipPer', clipPer);
