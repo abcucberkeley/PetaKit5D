@@ -54,6 +54,7 @@ ip.addParameter('GNUparallel', false, @islogical); % support matlab, bash
 ip.addParameter('paraJobNum', 1, @isnumeric); % support matlab, bash
 ip.addParameter('masterParaFactor', 1, @isnumeric); % master job parallel job percentage
 ip.addParameter('taskMetrics', false, @(x) islogical(x) || ischar(x)); % record task resources: true, or the run's metrics folder (see task_metrics)
+ip.addParameter('taskRunner', true, @islogical); % run several tasks per MATLAB Runtime process (see task_runner), if the compiled master has task runners
 
 ip.parse(inputFullpaths, outputFullpaths, funcStrs, varargin{:});
 
@@ -112,6 +113,7 @@ GNUparallel = pr.GNUparallel;
 paraJobNum = pr.paraJobNum;
 masterParaFactor = pr.masterParaFactor;
 taskMetrics = pr.taskMetrics;
+taskRunner = pr.taskRunner;
 
 if isempty(uuid)
     uuid = get_uuid();
@@ -337,6 +339,41 @@ if masterCompute && batchSize > 1 && nB > 1
     end
 end
 
+% task runners, if the compiled master has them: a MATLAB Runtime process runs
+% one task after another (its batch, then unstarted tasks of other batches);
+% see task_runner
+rc = struct('on', false);
+if taskRunner && task_runner_run('supported', MCCMasterStr)
+    tmpInfo = [];
+    if ~parseCluster
+        % local runs: the .tmp files that tell other framework calls that a
+        % task is being processed
+        [outDirs, fsns, exts] = fileparts(outputFullpaths(:));
+        noName = cellfun(@isempty, fsns) & ~cellfun(@isempty, exts);
+        fsns(noName) = exts(noName);
+        tmpDirs = outDirs;
+        if ~isempty(tmpDir)
+            tmpDirs = repmat({tmpDir}, nF, 1);
+        end
+        tmpInfo.tmpFns = cellfun(@(x, y) sprintf('%s/%s.tmp', x, y), tmpDirs, fsns, 'unif', 0);
+        tmpInfo.outFns = outputFullpaths(:);
+        tmpInfo.unitWaitTime = unitWaitTime;
+    end
+    % a runner takes only tasks whose own process would have had its
+    % threads and GPU: those of the jobs' batches, not of the batch the
+    % master runs itself (the last one with tasks to do; it gets no job)
+    masterBatch = 0;
+    if parseCluster && masterCompute && any(~is_done_flag)
+        masterBatch = ceil(find(~is_done_flag, 1, 'last') / taskBatchNum);
+        if runExtraTasks && nB > 1 && masterBatch == 1
+            masterBatch = 0;
+        end
+    end
+    keys = task_runner_run('keys', nB, min(maxCPUNum, cpusPerTask), GPUJob, masterBatch);
+    rc = task_runner_run('setup', funcInputDir, tlineStrs, MCCMasterStr, taskBatchNum, tmpInfo, ~input_exist_mat, keys);
+end
+runnerPassDone = false;
+
 clear tlineStrs;
 
 % setup jobs
@@ -374,6 +411,11 @@ while (~parseCluster && ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
         job_timestamp_mat(job_status_mat(:, 1) >= 0) = timestamp;
         pending_flag = any(job_status_mat(~is_done_flag, 1) == 0);        
         qts = tic;        
+        % for the task runners: batches whose jobs wait in the queue
+        if rc.on
+            rc = task_runner_run('waiting', rc, ~is_done_flag & (job_status_mat(:, 1) == 0 | job_ids < 0), ...
+                timestamp, taskBatchNum);
+        end
     end
         
     if loop_counter > 0 && querySystem
@@ -396,6 +438,8 @@ while (~parseCluster && ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
     end
 
     fsnames = cell(1, nF);
+    % the claims of task runners, read once per loop when needed
+    claimCache = [];
     for b = 1 : nB
         fs = (b - 1) * taskBatchNum + 1 : min(b * taskBatchNum, nF);
         task_id = rem(b, 5000);
@@ -543,6 +587,21 @@ while (~parseCluster && ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
 
                 % If there is no job, submit a job
                 if job_status_mat(f, 1) == -1 && job_status_mat(f, 2) == -1 && ~(masterCompute && b == lastP)
+                    % task runners of other jobs keep the tasks they took
+                    % while they run; a batch is resubmitted once none has
+                    % its tasks, and other jobs then leave them to its job
+                    if rc.on && loop_counter > 0
+                        fs_u = fs(~is_done_flag(fs));
+                        [claimed, live, claimCache] = task_runner_run('claims', rc, fs_u, claimCache);
+                        if any(live) && (trial_counter(f) > 0 || all(live))
+                            continue;
+                        end
+                        retryB = [];
+                        if trial_counter(f) > 0
+                            retryB = b;
+                        end
+                        task_runner_run('release', rc, fs_u(claimed & ~live), retryB);
+                    end
                     if rem(b, 50) == 0 || b == 1
                         fprintf('Task % 4d:    Process %s with function %s... \n', b, strjoin(fsnames(fs), ', '), func_str); 
                     else
@@ -576,6 +635,24 @@ while (~parseCluster && ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
                                     task_id, job_log_fname, job_log_error_fname, cpusPerTask_f, SlurmParam, ...
                                     SlurmConstraint, time_str, date_cmd_str, inputFn, BashLaunchStr, jobJoblogStr, paraJobNum, inputFn, date_cmd_str);
                             end
+                        end
+                    end
+                    % task runners (first submission): a runner per slot runs
+                    % the batch, then unstarted tasks of other batches
+                    if rc.on && trial_counter(f) == 0
+                        if ~GNUparallel
+                            cmd = sprintf(['sbatch --array=%d -o %s -e %s --cpus-per-task=%d %s %s %s ', ...
+                                '--wrap="printf \\\"Start time: \\\"; %s; echo $PWD; echo bash command:  \\\"%s\\\";  %s; %s; echo; printf \\\"End time: \\\"; %s"'], ...
+                                task_id, job_log_fname, job_log_error_fname, cpusPerTask_f, SlurmParam, ...
+                                SlurmConstraint, time_str, date_cmd_str, inputFn, BashLaunchStr, ...
+                                task_runner_run('job', rc, b, 1, 0, 1, 1), date_cmd_str);
+                        else
+                            cmd = sprintf(['sbatch --array=%d -o %s -e %s --cpus-per-task=%d ', ...
+                                '--ntasks=1 %s %s %s --wrap="printf \\\"Start time: \\\"; %s; echo $PWD; echo bash command: \\\"%s\\\"; ', ...
+                                '%s; %s; echo; printf \\\"End time: \\\"; %s"'], ...
+                                task_id, job_log_fname, job_log_error_fname, cpusPerTask_f, SlurmParam, ...
+                                SlurmConstraint, time_str, date_cmd_str, inputFn, BashLaunchStr, ...
+                                task_runner_run('job', rc, b, paraJobNum, double(GPUJob), 1, 2), date_cmd_str);
                         end
                     end
                     [status, cmdout] = system(cmd, '-echo');
@@ -639,8 +716,41 @@ while (~parseCluster && ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
                     cmd = sprintf(['%s; parallel %s--ungroup --retries 2 --jobs %d --delay 0.2 < %s'], BashLaunchStr, masterJoblogStr, paraJobNum_f, inputFn);
                 end
             end
+            % task runners: in a local run with more tasks than slots, all
+            % tasks in one pass; in the master's job, the batch's tasks that
+            % no job's runner has (claims of runners that ended are removed)
+            localPass = false;
+            if rc.on && trial_counter(f) == 0
+                runnerNum = 1;
+                retries = 1;
+                if GNUparallel
+                    runnerNum = paraJobNum_f;
+                    retries = 2;
+                end
+                if ~parseCluster && ~runnerPassDone && sum(~is_done_flag) > runnerNum
+                    cmd = sprintf('%s; %s', BashLaunchStr, task_runner_run('job', rc, b, runnerNum, 0, 2, retries));
+                    localPass = true;
+                    % the runners mark the tasks they take (this batch's too)
+                    if exist(tmpFullpath, 'file')
+                        delete(tmpFullpath);
+                    end
+                elseif parseCluster
+                    fs_u = fs(~is_done_flag(fs));
+                    [claimed, live, claimCache] = task_runner_run('claims', rc, fs_u, claimCache);
+                    task_runner_run('release', rc, fs_u(claimed & ~live));
+                    cmd = sprintf('%s; %s', BashLaunchStr, task_runner_run('job', rc, b, runnerNum, 0, 0, retries));
+                end
+            end
             t0=tic; [status, cmdout] = system(cmd, '-echo'); t1=toc(t0);
             trial_counter(fs) = trial_counter(fs) + 1;
+            if localPass
+                % the other tasks the runners took count as tried once (their
+                % next tries run as before)
+                runnerPassDone = true;
+                others = setdiff(find(~is_done_flag), fs);
+                claimed = task_runner_run('claims', rc, others);
+                trial_counter(others(claimed)) = trial_counter(others(claimed)) + 1;
+            end
             if ~parseCluster && exist(outputFullpath, 'file') && exist(tmpFullpath, 'file')
                 delete(tmpFullpath);
             end
@@ -681,6 +791,17 @@ while (~parseCluster && ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
                 % reduce the load of master job in case of crash due to oom
                 cmd = sprintf(['%s; parallel %s--ungroup --retries 2 --jobs %d --delay 0.2 < %s'], BashLaunchStr, masterJoblogStr, paraJobNum_f, inputFn);
             end
+        end
+        if rc.on
+            % task runners: the tasks that no job's runner took
+            runnerNum = 1;
+            retries = 1;
+            if GNUparallel
+                runnerNum = paraJobNum_f;
+                retries = 2;
+            end
+            cmd = sprintf('%s; %s', BashLaunchStr, task_runner_run('job', rc, main_extra_task_inds_cell(main_extra_ind), ...
+                runnerNum, 0, 0, retries));
         end
         t0=tic; [status, cmdout] = system(cmd, '-echo'); t1=toc(t0);
         main_extra_ind = main_extra_ind + 1;

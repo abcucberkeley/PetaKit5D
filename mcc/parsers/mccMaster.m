@@ -2,6 +2,11 @@ function mccMaster(functionName, varargin)
 
 %#function setup
 
+% a task runner of the job framework runs more tasks after this one (task_runner)
+runner = [];
+if ~isempty(getenv('PETAKIT5D_RUNNER'))
+    runner = task_runner('start');
+end
 get_hostname();
 fprintf('Function name: %s\nVariables: %s \n', functionName, strjoin(varargin, ' '));
 t0 = tic;
@@ -148,6 +153,10 @@ end
 
 toc(t0);
 fprintf('\n');
+
+if ~isempty(runner)
+    task_runner('continue', runner, toc(t0));
+end
 
 if ismcc
     exit;

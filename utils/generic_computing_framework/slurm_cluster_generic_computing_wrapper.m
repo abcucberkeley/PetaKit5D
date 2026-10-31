@@ -51,6 +51,7 @@ ip.addParameter('jobTimeLimit', 24, @isnumeric); % in hour, [] means no limit
 ip.addParameter('queryInterval', 3, @isnumeric); % in second, by default 3 s. 
 ip.addParameter('language', 'matlab', @ischar); % support matlab, bash
 ip.addParameter('taskMetrics', false, @(x) islogical(x) || ischar(x)); % record task resources: true, or the run's metrics folder (see task_metrics)
+ip.addParameter('taskRunner', true, @islogical); % MATLAB jobs run several tasks per MATLAB process (see task_runner)
 
 ip.parse(inputFullpaths, outputFullpaths, funcStrs, varargin{:});
 
@@ -93,6 +94,7 @@ MatlabLaunchStr = pr.MatlabLaunchStr;
 BashLaunchStr = pr.BashLaunchStr;
 language = pr.language;
 taskMetrics = pr.taskMetrics;
+taskRunner = pr.taskRunner;
 
 if isempty(uuid)
     uuid = get_uuid();
@@ -146,6 +148,29 @@ if parseCluster
     taskMode = 'master';
 end
 
+% task runners: a MATLAB job runs its batch, then unstarted tasks of other
+% batches, in one MATLAB process (see task_runner); the runner files are in
+% a folder of their own in tmpDir or the job log folder
+rc = struct('on', false);
+if taskRunner && parseCluster && strcmpi(language, 'matlab') && isunix && ~ismac && iscell(funcStrs)
+    callDir = tmpDir;
+    if isempty(callDir)
+        callDir = fileparts(job_log_fname);
+    end
+    callDir = sprintf('%s/task_runner_%s_%s', callDir, char(datetime('now', 'Format', 'yyyyMMdd_HHmmss_SSS')), ...
+        uuid(1 : min(6, end)));
+    % a runner takes only tasks whose own process would have had its
+    % threads and GPU: those of the jobs' batches, not of the batch the
+    % master runs itself (the last one with tasks to do; it gets no job)
+    masterBatch = 0;
+    if masterCompute && any(~is_done_flag)
+        masterBatch = ceil(find(~is_done_flag, 1, 'last') / taskBatchNum);
+    end
+    keys = task_runner_run('keys', ceil(nF / taskBatchNum), min(maxCPUNum, cpusPerTask), GPUJob, masterBatch);
+    rc = task_runner_run('setup_matlab', callDir, funcStrs, outputFullpaths, finalOutFullpath, ...
+        output_exist_mat | ~input_exist_mat, taskBatchNum, MatlabLaunchStr, runDir, GPUJob, keys);
+end
+
 trial_counter = zeros(nF, 1);
 if parseCluster
     job_ids = -ones(nF, 1);
@@ -179,6 +204,11 @@ while (~parseCluster && ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
         job_timestamp_mat(job_status_mat(:, 1) >= 0) = timestamp;
         pending_flag = any(job_status_mat(~is_done_flag, 1) == 0);
         qts = tic;
+        % for the task runners: batches whose jobs wait in the queue
+        if rc.on
+            rc = task_runner_run('waiting', rc, ~is_done_flag & (job_status_mat(:, 1) == 0 | job_ids < 0), ...
+                timestamp, taskBatchNum);
+        end
     end
         
     if loop_counter > 0 && querySystem
@@ -200,6 +230,8 @@ while (~parseCluster && ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
         nB = nF;
     end    
     fsnames = cell(1, nF);
+    % the claims of task runners, read once per loop when needed
+    claimCache = [];
     for b = 1 : nB
         fs = (b - 1) * taskBatchNum + 1 : min(b * taskBatchNum, nF);
         task_id = rem(b, 5000);
@@ -347,6 +379,21 @@ while (~parseCluster && ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
 
                 % If there is no job, submit a job
                 if job_status_mat(f, 1) == -1 && job_status_mat(f, 2) == -1 && ~(masterCompute && b == lastP)
+                    % task runners of other jobs keep the tasks they took
+                    % while they run; a batch is resubmitted once none has
+                    % its tasks, and other jobs then leave them to its job
+                    if rc.on && loop_counter > 0
+                        fs_u = fs(~is_done_flag(fs));
+                        [claimed, live, claimCache] = task_runner_run('claims', rc, fs_u, claimCache);
+                        if any(live) && (trial_counter(f) > 0 || all(live))
+                            continue;
+                        end
+                        retryB = [];
+                        if trial_counter(f) > 0
+                            retryB = b;
+                        end
+                        task_runner_run('release', rc, fs_u(claimed & ~live), retryB);
+                    end
                     if rem(b, 50) == 0 || b == 1
                         fprintf('Task % 4d:    Process %s with function %s... \n', b, strjoin(fsnames(fs), ', '), func_str); 
                     else
@@ -370,6 +417,15 @@ while (~parseCluster && ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
                             '--wrap="printf \\\"Start time: \\\"; %s; echo Matlab command:  \\\"%s\\\"; %s; echo; printf \\\"End time: \\\"; %s"'], ...
                             task_id, job_log_fname, job_log_error_fname, cpusPerTask_f, SlurmParam, ...
                             SlurmConstraint, time_str, date_cmd_str, matlab_cmd, process_cmd, date_cmd_str);
+                        if rc.on && trial_counter(f) == 0
+                            % task runners (first submission): the job script
+                            % starts MATLAB if there are tasks left, and MATLAB
+                            % runs the batch, then unstarted tasks of others
+                            cmd = sprintf(['sbatch --array=%d -o %s -e %s --cpus-per-task=%d %s %s %s ', ...
+                                '--wrap="printf \\\"Start time: \\\"; %s; echo Matlab command:  \\\"%s\\\"; %s; echo; printf \\\"End time: \\\"; %s"'], ...
+                                task_id, job_log_fname, job_log_error_fname, cpusPerTask_f, SlurmParam, ...
+                                SlurmConstraint, time_str, date_cmd_str, matlab_cmd, task_runner_run('matlab', rc, b, 1), date_cmd_str);
+                        end
                     elseif strcmpi(language, 'bash')
                         % process_cmd = func_str;
                         cmd = sprintf(['sbatch --array=%d -o %s -e %s --cpus-per-task=%d %s %s %s ', ...
@@ -452,11 +508,24 @@ while (~parseCluster && ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
                     end
                 end
             end
+            % task runners: the master runs the batch's tasks that no job's
+            % runner has (claims of runners that ended are removed)
+            fs_run = fs;
+            if rc.on
+                fs_u = fs(~is_done_flag(fs));
+                [claimed, live, claimCache] = task_runner_run('claims', rc, fs_u, claimCache);
+                task_runner_run('release', rc, fs_u(claimed & ~live));
+                fs_run = fs_u(task_runner_run('claim', rc, fs_u));
+                if isempty(fs_run)
+                    continue;
+                end
+                func_str = strjoin(funcStrs(fs_run), ';');
+            end
             fprintf('\nProcess %s with function %s... \n', strjoin(fsnames(fs), ', '), func_str);
-            tm = task_metrics('start', func_str, runDir, fs, taskMode, GPUJob);
+            tm = task_metrics('start', func_str, runDir, fs_run, taskMode, GPUJob);
             if strcmpi(language, 'matlab')
                 try 
-                    if numel(fs) == 1
+                    if numel(fs_run) == 1
                         t0=tic; feval(str2func(['@()', func_str])); t1=toc(t0);
                     else
                         t0=tic; eval(func_str); t1=toc(t0);
@@ -521,6 +590,15 @@ end
 
 if all(is_done_flag)
     fprintf('Time %0.2f s: All output files (%d / %d) are finished!\n\n', toc(ts), nF, nF);
+end
+
+% the task runners' files (best effort, as the jobs may still have them open)
+if rc.on
+    try
+        rmdir(rc.D, 's');
+    catch ME
+        warning('The task runner files in %s could not be removed: %s', rc.D, ME.message);
+    end
 end
 
 end

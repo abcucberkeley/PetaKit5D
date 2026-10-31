@@ -70,10 +70,11 @@ elseif isunix
         mkdir(mdir);
     end
     % mcc -v -R -nodisplay -R -singleCompThread -d linux -m mccMaster.m
+    % the task runners' job script (task_runner.sh) is in the archive
     if nojvm
-        mcc -v -R -nodisplay -R -nojvm -d linux -m mccMaster.m
+        mcc -v -R -nodisplay -R -nojvm -d linux -a ../utils/generic_computing_framework/task_runner.sh -m mccMaster.m
     else
-        mcc -v -d linux_with_jvm -m mccMaster.m
+        mcc -v -d linux_with_jvm -a ../utils/generic_computing_framework/task_runner.sh -m mccMaster.m
     end
     
     cd(mdir);
@@ -121,10 +122,14 @@ end
 
 function [] = save_parsers_manifest(buildDir, mccDir)
 % the task interfaces of the build, which check_mcc_master_build compares
-% with the code before the job framework submits compiled tasks
+% with the code before the job framework submits compiled tasks, and the
+% version of its task runners (task_runner_run checks it before it uses them)
 
 fid = fopen([buildDir, '/parsers_manifest.txt'], 'w');
 fprintf(fid, '%s', mcc_parser_manifest([mccDir, '/parsers']));
+fclose(fid);
+fid = fopen([buildDir, '/task_runner.txt'], 'w');
+fprintf(fid, '%d\n', task_runner('version'));
 fclose(fid);
 
 end

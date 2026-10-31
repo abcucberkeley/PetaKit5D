@@ -173,6 +173,8 @@ classdef TaskMetricsTest < pktest.TestCase
         end
 
         function matlabJobsRunEachTaskWithMetrics(testCase)
+            % (the MATLAB command of jobs without task runners; TaskRunnerTest
+            % has the runners' records)
             testCase.assumeFalse(ispc, 'The fake Slurm needs a POSIX shell.');
             slurm = testCase.applyFixture(pktest.FakeSlurmFixture);
             [inFns, outFns, logFn, dataPath] = testCase.makeTasks(2);
@@ -180,7 +182,7 @@ classdef TaskMetricsTest < pktest.TestCase
 
             evalc(['generic_computing_frameworks_wrapper(inFns, outFns, funcStrs, ''parseCluster'', true, ', ...
                 '''masterCompute'', false, ''maxTrialNum'', 1, ''taskBatchNum'', 2, ''jobLogDir'', dataPath, ', ...
-                '''taskMetrics'', true)']);
+                '''taskMetrics'', true, ''taskRunner'', false)']);
 
             sbatch = slurm.calls('sbatch');
             testCase.assertNumElements(sbatch, 1);
@@ -252,7 +254,8 @@ classdef TaskMetricsTest < pktest.TestCase
             funcStrs = testCase.taskStrings(inFns, outFns, logFn, 'copy');
 
             evalc(['generic_computing_frameworks_wrapper(inFns, outFns, funcStrs, ''parseCluster'', true, ', ...
-                '''masterCompute'', false, ''maxTrialNum'', 1, ''taskBatchNum'', 2, ''jobLogDir'', dataPath)']);
+                '''masterCompute'', false, ''maxTrialNum'', 1, ''taskBatchNum'', 2, ''jobLogDir'', dataPath, ', ...
+                '''taskRunner'', false)']);
 
             sbatch = slurm.calls('sbatch');
             testCase.assertNumElements(sbatch, 1);

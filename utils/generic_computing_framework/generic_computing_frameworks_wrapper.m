@@ -59,6 +59,7 @@ ip.addParameter('masterParaFactor', 1, @isnumeric); % master job parallel job pe
 ip.addParameter('ConfigFile', '', @ischar); % cluster configuration file that override the default parameters
 ip.addParameter('localWorkerNum', 1, @isnumeric); % without cluster, run up to this many tasks at once on a local MATLAB process pool
 ip.addParameter('taskMetrics', false, @islogical); % record the resources of each task in <jobLogDir>/task_metrics/ (see task_metrics)
+ip.addParameter('taskRunner', true, @islogical); % cluster jobs (and compiled local runs) run several tasks per process (see task_runner)
 
 ip.parse(inputFullpaths, outputFullpaths, funcStrs, varargin{:});
 
@@ -146,6 +147,7 @@ paraJobNum = pr.paraJobNum;
 masterParaFactor = pr.masterParaFactor;
 localWorkerNum = pr.localWorkerNum;
 taskMetrics = pr.taskMetrics;
+taskRunner = pr.taskRunner;
 
 if numel(funcStrs) == 1
     if masterCompute
@@ -260,7 +262,7 @@ switch clusterType
                 MCRCacheRoot=MCRCacheRoot, MCRParam=MCRParam, MCCMasterStr=MCCMasterStr, ...
                 jobTimeLimit=jobTimeLimit, queryInterval=queryInterval, language=language, ...
                 GNUparallel=GNUparallel, paraJobNum=paraJobNum, masterParaFactor=masterParaFactor, ...
-                GPUJob=GPUJob, taskMetrics=runDir);
+                GPUJob=GPUJob, taskMetrics=runDir, taskRunner=taskRunner);
         else
             record_run(runDir, 'run_start', pr, startTic, 'backend', 'matlab', 'parseCluster', parseCluster, ...
                 'masterCompute', masterCompute, 'cpusPerTask', cpusPerTask, 'mccMode', false, ...
@@ -273,7 +275,7 @@ switch clusterType
                 maxJobNum=maxJobNum, taskBatchNum=taskBatchNum, MatlabLaunchStr=MatlabLaunchStr, ...
                 BashLaunchStr=BashLaunchStr, SlurmParam=SlurmParam, SlurmConstraint=SlurmConstraint, ...
                 jobTimeLimit=jobTimeLimit, queryInterval=queryInterval, language=language, ...
-                GPUJob=GPUJob, taskMetrics=runDir);
+                GPUJob=GPUJob, taskMetrics=runDir, taskRunner=taskRunner);
         end
         record_run(runDir, 'run_end', [], startTic, 'nTasks', numel(is_done_flag), 'nDone', sum(is_done_flag));
     case 'parfor'

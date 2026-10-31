@@ -203,12 +203,14 @@ classdef GenericComputingFrameworkTest < pktest.TestCase
             funcStrs = testCase.taskStrings(inFns, outFns, logFn, 'noop');
 
             evalc(['generic_computing_frameworks_wrapper(inFns, outFns, funcStrs, ''parseCluster'', true, ', ...
-                '''masterCompute'', false, ''maxTrialNum'', 1, ''maxJobNum'', 1, ''jobLogDir'', dataPath)']);
+                '''masterCompute'', false, ''maxTrialNum'', 1, ''maxJobNum'', 1, ''jobLogDir'', dataPath, ', ...
+                '''taskRunner'', false)']);
 
             arrays = cellfun(@(x) str2double(regexp(x, '--array=(\d+)', 'tokens', 'once')), slurm.calls('sbatch'));
             testCase.verifyEqual(sort(arrays(:))', 1 : 3, 'Each task should be submitted once.');
             % the jobs start MATLAB in its non-interactive mode (with -r it
-            % starts the MathWorks Service Host and was very slow to exit)
+            % starts the MathWorks Service Host and was very slow to exit;
+            % TaskRunnerTest checks the task runners' job script)
             testCase.verifyTrue(all(contains(slurm.calls('sbatch'), '-nojvm -batch ')), ...
                 'The jobs do not start MATLAB with -batch.');
         end

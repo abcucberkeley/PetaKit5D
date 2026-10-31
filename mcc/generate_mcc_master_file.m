@@ -13,19 +13,24 @@ parser_cell{1} = sprintf('function %s(functionName, varargin)', outFuncName);
 parser_cell{2} = sprintf('');
 parser_cell{3} = sprintf('%%#function setup');
 parser_cell{4} = sprintf('');
-parser_cell{5} = sprintf('get_hostname();');
-parser_cell{6} = sprintf('fprintf(''Function name: %%s\\nVariables: %%s \\n'', functionName, strjoin(varargin, '' ''));');
-parser_cell{7} = sprintf('t0 = tic;');
+% a task runner when the job framework's job script asks for it (in the
+% environment, so builds without it run the same task lines)
+parser_cell{5} = sprintf('%% a task runner of the job framework runs more tasks after this one (task_runner)');
+parser_cell{6} = sprintf('runner = [];');
+parser_cell{7} = sprintf('if ~isempty(getenv(''PETAKIT5D_RUNNER''))\n    runner = task_runner(''start'');\nend');
+parser_cell{8} = sprintf('get_hostname();');
+parser_cell{9} = sprintf('fprintf(''Function name: %%s\\nVariables: %%s \\n'', functionName, strjoin(varargin, '' ''));');
+parser_cell{10} = sprintf('t0 = tic;');
 % the task's resources when the job framework asks for them (in the
 % environment of the task line, so builds without it run the same lines)
-parser_cell{8} = sprintf('%% the task''s resources, when the job framework asks for them (task_metrics)');
-parser_cell{9} = sprintf('tm = [];');
-parser_cell{10} = sprintf('if ~isempty(getenv(''PETAKIT5D_TASK_METRICS''))\n    tm = task_metrics(''start'', functionName);\nend');
-parser_cell{11} = sprintf('');
-parser_cell{12} = sprintf('try');
-parser_cell{13} = sprintf('    switch functionName');
+parser_cell{11} = sprintf('%% the task''s resources, when the job framework asks for them (task_metrics)');
+parser_cell{12} = sprintf('tm = [];');
+parser_cell{13} = sprintf('if ~isempty(getenv(''PETAKIT5D_TASK_METRICS''))\n    tm = task_metrics(''start'', functionName);\nend');
+parser_cell{14} = sprintf('');
+parser_cell{15} = sprintf('try');
+parser_cell{16} = sprintf('    switch functionName');
 
-t = 13;
+t = 16;
 for i = 1 : numel(funcNames)
     func_name_i = funcNames{i};
     pos_arg_num = posArgNums(i);
@@ -67,11 +72,13 @@ parser_cell{t + 8} = sprintf('');
 parser_cell{t + 9} = sprintf('toc(t0);');
 parser_cell{t + 10} = sprintf('fprintf(''\\n'');');
 parser_cell{t + 11} = sprintf('');
-parser_cell{t + 12} = sprintf('if ismcc\n    exit;\nend');
+parser_cell{t + 12} = sprintf('if ~isempty(runner)\n    task_runner(''continue'', runner, toc(t0));\nend');
 parser_cell{t + 13} = sprintf('');
-parser_cell{t + 14} = sprintf('end');
+parser_cell{t + 14} = sprintf('if ismcc\n    exit;\nend');
 parser_cell{t + 15} = sprintf('');
-parser_cell(t + 16 : end) = [];
+parser_cell{t + 16} = sprintf('end');
+parser_cell{t + 17} = sprintf('');
+parser_cell(t + 18 : end) = [];
 
 % write out to a file
 % if the parser function exist, check if the content is the same
