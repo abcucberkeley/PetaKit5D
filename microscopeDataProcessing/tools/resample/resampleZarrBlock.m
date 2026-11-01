@@ -126,7 +126,7 @@ for i = 1 : numel(batchInds)
     try
         out_batch = crop3d_mex(out_batch, [baStart, baEnd]);
     catch ME
-        disp(ME);
+        mex_fallback('crop3d_mex', ME, {'crop:dataTypeError'});
         out_batch = out_batch(baStart(1) : baEnd(1), baStart(2) : baEnd(2), baStart(3) : baEnd(3));
     end
 

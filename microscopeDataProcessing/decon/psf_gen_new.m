@@ -145,8 +145,12 @@ function [B] = psf_medfilt3(A)
 % without NaN or -0 values
 
 B = [];
-if exist('omw_backprojector_mex', 'file') == 3 && isa(A, 'single') && isreal(A) && ndims(A) == 3
-    B = omw_backprojector_mex('medfilt3', A, maxNumCompThreads);
+if isa(A, 'single') && isreal(A) && ndims(A) == 3
+    if exist('omw_backprojector_mex', 'file') == 3
+        B = omw_backprojector_mex('medfilt3', A, maxNumCompThreads);
+    else
+        mex_fallback('omw_backprojector_mex');
+    end
 end
 if isempty(B)
     B = medfilt3(A, [3, 3, 3]);

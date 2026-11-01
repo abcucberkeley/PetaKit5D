@@ -48,7 +48,8 @@ if ischar(fn)
         im_orig = [];
         try
             im_orig = parallelReadTiff(fn);
-        catch
+        catch ME
+            mex_fallback('parallelReadTiff', ME, {'tiff:dataTypeError'});
             im_orig = readtiff(fn);
         end
         fn_orig = fn;

@@ -5,7 +5,7 @@ function [dmat] = feather_distance_map_resize_3d(dmat, bbox, wd)
 try
     dmat = feather_distance_map_resize_3d_mex(dmat, bbox(4 : 6) - bbox(1 : 3) + 1, wd);
 catch ME
-    disp(ME);
+    mex_fallback('feather_distance_map_resize_3d_mex', ME, {'feather_blending:dataTypeError'});
     % im_d_j =  im_d_j .^ (1 / wd);
     if bbox(3) == bbox(6)
         dmat = imresize(dmat, bbox(4 : 5) - bbox(1 : 2) + 1, 'bilinear');

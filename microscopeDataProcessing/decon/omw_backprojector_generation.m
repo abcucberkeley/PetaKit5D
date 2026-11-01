@@ -102,7 +102,7 @@ psz = size(OTF_mask, 1 : 3);
 [zinds] = find(sum(OTF_mask, [1, 2]))';
 [xinds] = find(sum(OTF_mask, [1, 3]));
 [yinds] = find(sum(OTF_mask, [2, 3]))';
-if exist('omw_backprojector_mex', 'file') == 3 && all(psz > 1)
+if use_omw_mex(all(psz > 1))
     % the same hulls as bwconvhull, the slices of each loop in parallel
     OTF_mask = omw_backprojector_mex('convhull', OTF_mask, zinds, yinds, xinds, maxNumCompThreads);
 else
@@ -187,7 +187,7 @@ function [vals] = sort_descend(a)
 % or negative
 
 vals = [];
-if exist('omw_backprojector_mex', 'file') == 3 && isa(a, 'single') && isreal(a)
+if use_omw_mex(isa(a, 'single') && isreal(a))
     vals = omw_backprojector_mex('sortdesc', a, maxNumCompThreads);
 end
 if isempty(vals)
@@ -200,8 +200,8 @@ end
 function [bw] = area_open(bw, p)
 % bwareaopen(bw, p), in the mex for 3D masks
 
-if exist('omw_backprojector_mex', 'file') == 3 && islogical(bw) && ndims(bw) == 3 && isa(p, 'double') ...
-        && isscalar(p) && isreal(p) && p >= 0 && p == round(p) && p <= 9e15
+if use_omw_mex(islogical(bw) && ndims(bw) == 3 && isa(p, 'double') && isscalar(p) && isreal(p) && p >= 0 ...
+        && p == round(p) && p <= 9e15)
     bw = omw_backprojector_mex('components', bw, 'minsize', p, maxNumCompThreads);
 else
     bw = bwareaopen(bw, p);
@@ -214,7 +214,7 @@ function [bw] = largest_components(bw, k)
 % the k largest 26-connected components (ties to the first one in
 % bwconncomp's order, as max and maxk choose), in the mex for 3D masks
 
-if exist('omw_backprojector_mex', 'file') == 3 && islogical(bw) && ndims(bw) == 3
+if use_omw_mex(islogical(bw) && ndims(bw) == 3)
     bw = omw_backprojector_mex('components', bw, 'largest', k, maxNumCompThreads);
     return;
 end
@@ -239,8 +239,8 @@ function [mask] = omw_window_with_mex(OTF_mask_edge, psz, han_bounds, win_func)
 % be used, or the edge points or distances could make the window NaN.
 
 mask = [];
-if exist('omw_backprojector_mex', 'file') ~= 3 || ~isa(han_bounds, 'double') || ~isreal(han_bounds) ...
-        || ~(han_bounds(1) > 0 && han_bounds(1) < han_bounds(2) && han_bounds(2) < Inf)
+if ~use_omw_mex(isa(han_bounds, 'double') && isreal(han_bounds) && han_bounds(1) > 0 ...
+        && han_bounds(1) < han_bounds(2) && han_bounds(2) < Inf)
     return;
 end
 c = (psz + 1) / 2;
@@ -272,6 +272,18 @@ d_1 = d_mat(inds(:, 1), 1);
 d_2 = d_mat(inds(:, 2), 2);
 rn = (Rn(inds(:, 1)) .* d_2 + Rn(inds(:, 2)) .* d_1) ./ (d_1 + d_2);
 mask(uInds) = win_func(rs(nE + 1 : end) ./ rn);
+
+end
+
+
+function [tf] = use_omw_mex(supported)
+% whether a call the mex supports runs in omw_backprojector_mex; where the mex
+% isn't available, the MATLAB code runs instead (recorded with mex_fallback)
+
+tf = supported && exist('omw_backprojector_mex', 'file') == 3;
+if supported && ~tf
+    mex_fallback('omw_backprojector_mex');
+end
 
 end
 

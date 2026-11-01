@@ -103,7 +103,7 @@ for i = 1 : numel(batchInds)
             try 
                 out_batch = max_pooling_3d_mex(in_batch, poolSize_j);
             catch ME
-                disp(ME)
+                mex_fallback('max_pooling_3d_mex', ME, {'mat:dataTypeError'});
                 out_batch = max_pooling_3d(in_batch, poolSize_j);
             end
         else

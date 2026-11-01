@@ -31,7 +31,10 @@ if strcmp(filePath(end - 2 : end), 'tif') || strcmp(filePath(end - 3 : end), 'ti
         imSize = getImageSizeMex(filePath);
         % imSize = getImageSize_mex_c(filePath);
     catch ME
-        disp(ME);
+        % with the caller's warning state, so that the fallback can warn
+        warning(warnState);
+        mex_fallback('getImageSizeMex', ME);
+        warning('off', 'all');
         if ~usejava('jvm')
             % use binary search 
             tobj = Tiff(filePath, 'r');     

@@ -265,7 +265,8 @@ harness itself and that task functions restore what they change.
   `pktest.TestCase` and whose name ends in `Test`. The base class puts
   PetaKit5D on the path, hides Slurm, seeds the random number generator,
   restores the current folder and warning state (some PetaKit5D functions
-  change them), clears persistent caches, and closes figures the test opens.
+  change them), clears persistent caches, closes figures the test opens, and
+  fails the test if the MATLAB code ran instead of a mex (see below).
 - Generate inputs in the test (`pktest.beads`, `pktest.texture`,
   `pktest.writeStitchTiles`, ...) and keep them small (a few MB).
 - Write files only under `testCase.createTempFolder()`; it returns a
@@ -294,6 +295,25 @@ harness itself and that task functions restore what they change.
 - Keep tests portable: no shell commands, forward slashes in paths,
   `assumeMexAvailable` for mex files that are missing on some platforms, and
   `assumeNoKnownIssueOn` for bugs that only affect some platforms.
+- Many functions call a mex and run MATLAB code instead when the mex fails
+  or is missing. The MATLAB code gives the same results, so a test that only
+  compares outputs passes even if the mex call is broken (wrong arguments, a
+  library that doesn't load, a missing binary). These places call
+  `mex_fallback(mexName, ME)` when they fall back, which records it (and
+  warns once per mex, error and session), and `pktest.TestCase` fails a test that
+  recorded a fallback (in the test, or in a class setup before it) of a mex
+  this platform has, or should have: a mex missing from Linux, or from
+  Windows or ARM macOS outside the known gaps in `pktest.mexPlatformGaps`.
+  Rejections by design (e.g., a data type the mex doesn't support: the code
+  checks the supported cases first, or passes the error identifiers of such
+  rejections to `mex_fallback`) don't count. A test that runs the MATLAB
+  code on purpose (e.g., it hides the mex with `pktest.FunctionStubFixture`,
+  or expects an error after the fallback) declares it with
+  `testCase.expectMexFallback('crop3d_mex')`. To check the path yourself,
+  read the records with `mex_fallback('-log')`. `run_tests` lists the
+  recorded fallbacks after its summary. Fallbacks in other processes (local
+  parallel pools, job processes) are not checked. New code that falls back
+  from a mex should call `mex_fallback` the same way.
 
 ## Demo coverage
 
@@ -305,7 +325,7 @@ Every workflow in `demos/` is covered by tests on synthetic data:
 | `demo_generic_computing_framework` | `framework/GenericComputingFrameworkDemoTest` (config file, the demo's crop + deskew/rotate function through the framework), `framework/GenericComputingFrameworkTest`, `framework/LocalPoolFrameworkTest` (tasks on a local process pool), `framework/TaskMetricsTest` (per-task resource records with `taskMetrics`, in every mode, and `read_task_metrics`), `framework/TaskRunnerTest` (task runners: several tasks per process with claims and stealing; the job script with a stand-in compiled master, the runner's reset between tasks, the master's claim handling), `cluster/SlurmClusterTest` (Slurm cluster mode, opt-in). Compiled (mcc) mode isn't run; `framework/McCParserConsistencyTest` checks that the mcc parsers match the functions. |
 | `demo_geometric_transformation` | `deskew_rotate/DeskewRotateDataWrapperTest` (data wrapper, zarr output, flat field, large file), `deskew_rotate/DeskewRotateFrame3DTest` and `XRDeskewRotateFrameTest` (combined vs separate, geometry), `demo_data/DemoDatasetTest` (combined vs separate on real data). |
 | `demo_RL_deconvolution` | `decon/DeconFrameTest` (OTF mask visualization), `decon/DeconWrapperTest` (OMW and traditional RL through the wrapper, deskew/rotation of the results), `decon/DeconFunctionTest` (`psf_gen_new`, `decon_lucy_function`, WB back projector, OMW back projector), `decon/DeconGPUTest` (GPU), `decon/DeconRFFTTest` and `decon/DeconRFFTGPUTest` (the half-spectrum FFT mex against the MATLAB loops), `decon/DeconBackProjectorTest` (the OMW back projector mex against the previous MATLAB code, its steps against `bwconvhull`, `bwareaopen`, `bwconncomp`, `sort` and `medfilt3`), `decon/DeconMaskErosionTest` (the edge erosion mex against `imerode`), `decon/DeconReadCacheTest` (cached back projector and PSF reads), `decon/DeconOverlapTest` (CPU work during the GPU iterations, e.g., reading the next file of a GPU job), `demo_data/DemoDatasetTest` (OMW on real data). |
-| `demo_zarr_stitching` | `stitch/StitchingTest` (DSR-space stitching of processed zarr tiles, feather blending, cross-correlation registration, primary channel). The BigStitcher and Stitching-Spark sections use external tools and aren't tested. |
+| `demo_zarr_stitching` | `stitch/StitchingTest` (DSR-space stitching of processed zarr tiles, feather blending, cross-correlation registration, primary channel), `stitch/StitchHelperMexTest` (registration region crop, major tile check). The BigStitcher and Stitching-Spark sections use external tools and aren't tested. |
 | `demo_skewed_space_stitching` | `stitch/StitchingTest/skewedSpacePlacement`, `skewedSpaceRegistration`. |
 | `demo_large_scale_processing` | `stitch/StitchingTest/largeFile*`, `decon/DeconWrapperTest/largeFile*`, `deskew_rotate/DeskewRotateDataWrapperTest/largeFileMatchesRegular`. |
 | `demo_useful_tools` | `tools/ResampleTest`, `crop/CropDatasetTest`, `tools/MIPTest`, `tools/TiffZarrConversionTest`, `deskew_rotate/DeskewRotateDataWrapperTest/deskewOnlyWritesDS`, `analysis/FFTSpectrumTest`, `analysis/PSFAnalysisTest`, `analysis/FSCAnalysisTest`, `analysis/ImarisConversionTest`, `analysis/ChromaticShiftCorrectionTest`, `analysis/UnmixChannelsTest`. |
@@ -313,4 +333,4 @@ Every workflow in `demos/` is covered by tests on synthetic data:
 | `demo_widefield_and_confocal_deconvolution` | `decon/DeconWrapperTest/widefieldDemoSettingsWithPlainFilenames`. |
 | `demo_microscope_pipeline_*` | `pipeline/AutomaticProcessingTest` (flat field + deskew/rotation, deskew/rotation + stitching of several datasets, the demos' parameter set), `stitch/TileBlendingTest` (the blending mex of 'none', 'max', 'mean' and 'median' against the MATLAB code). |
 | `demo_point_detection_3d_*` | `point_detection/PointDetectionTest` (sigma estimation, detection including `'lowSNR'`, tracking). Condition loading, track processing and lifetime analysis aren't tested. |
-| Not in the demos | `flatfield/FlatFieldCorrectionTest`, `analysis/FlatfieldBackgroundEstimationTest`, `analysis/PunctaRemovalTest`, `golden/GoldenOutputTest`, `platform/*` (mex inventory and packaging, path shadowing). |
+| Not in the demos | `flatfield/FlatFieldCorrectionTest`, `analysis/FlatfieldBackgroundEstimationTest`, `analysis/PunctaRemovalTest`, `golden/GoldenOutputTest`, `platform/*` (mex inventory and packaging, path shadowing, mex fallbacks). |

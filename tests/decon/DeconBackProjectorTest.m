@@ -69,6 +69,7 @@ classdef DeconBackProjectorTest < pktest.TestCase
             [~, expected{1 : 4}] = evalc('omw_backprojector_generation_before(psf, 0.005, [], ''OTFCumThresh'', 0.8)');
             % a function of that name makes exist() return 2, not 3
             testCase.applyFixture(pktest.FunctionStubFixture('omw_backprojector_mex', []));
+            testCase.expectMexFallback('omw_backprojector_mex');
             [~, actual{1 : 4}] = evalc('omw_backprojector_generation(psf, 0.005, [], ''OTFCumThresh'', 0.8)');
             testCase.verifyOutputsEqual(actual, expected);
         end
@@ -288,6 +289,7 @@ classdef DeconBackProjectorTest < pktest.TestCase
             raws = cellfun(@(p) p * 10000 + 100 + single(randi([0, 20], size(p))), psfs, 'unif', 0);
             withMex = cellfun(@(r) psf_gen_new(r, 0.3, 0.3 * sind(32.45), 1.5, 'masked'), raws, 'unif', 0);
             testCase.applyFixture(pktest.FunctionStubFixture('omw_backprojector_mex', []));
+            testCase.expectMexFallback('omw_backprojector_mex');
             for i = 1 : numel(raws)
                 testCase.verifyEqual(withMex{i}, psf_gen_new(raws{i}, 0.3, 0.3 * sind(32.45), 1.5, 'masked'));
             end

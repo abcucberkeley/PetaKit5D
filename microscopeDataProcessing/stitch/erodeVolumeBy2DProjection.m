@@ -43,7 +43,7 @@ try
     indexing3d_mex(vol, [1, 1, 1, esize, sz(2), sz(3)], zeros(esize, sz(2), sz(3), class(vol)));
     indexing3d_mex(vol, [sz(1) - esize + 1, 1, 1, sz(1), sz(2), sz(3)], zeros(esize, sz(2), sz(3), class(vol)));
 catch ME
-    disp(ME);
+    mex_fallback('indexing3d_mex', ME, {'tiff:dataTypeError'});
     vol([1 : esize, sz(1) - esize : sz(1)], :, :) = 0;
 end
 

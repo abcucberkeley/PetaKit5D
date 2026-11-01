@@ -13,7 +13,11 @@ try
         feather_blending_3d_with_indexing_mex(tim_f_block, tim_d_block, tim_block, bbox);
     end
 catch ME
-    disp(ME);
+    mexName = 'feather_blending_3d_mex';
+    if nargin > 2
+        mexName = 'feather_blending_3d_with_indexing_mex';
+    end
+    mex_fallback(mexName, ME, {'feather_blending:dataTypeError'});
     mex_compute = false;
     tim_w_block = tim_d_block .* (tim_f_block ~= 0); 
     if nargin == 2

@@ -98,8 +98,7 @@ catch ME
         throw(ME);
     end
     
-    disp(ME);
-    disp('Use the alternative zarr initializer (ZarrAdapter)...');    
+    mex_fallback('createZarrFile', ME);
     init_val = zeros(1, dtype);
     bim = blockedImage(filepath, dataSize, blockSize, init_val, "Adapter", ZarrAdapter, 'Mode', 'w');             
     bim.Adapter.close();

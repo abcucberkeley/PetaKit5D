@@ -43,14 +43,13 @@ switch lower(Mode)
                 end
                 parallelWriteTiff(filepath, img, 'w', Compression);
             catch ME
-                disp(ME)
+                mex_fallback('parallelWriteTiff', ME, {'tiff:dataTypeError'});
                 use_alternative_writer = true;
             end
         else
             use_alternative_writer = true;
         end
         if use_alternative_writer
-            disp('Use the alternative tiff writer (saveastiff)...');
             options.message = false;
             options.overwrite = true;
             % saveastiff returns an error code instead of raising errors

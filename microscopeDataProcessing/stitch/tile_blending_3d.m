@@ -16,13 +16,16 @@ if ~any(strcmp(BlendMethod, {'none', 'mean', 'max', 'median'}))
     error('Unsupported blending method: %s.', BlendMethod);
 end
 
-if (isa(tim_f_block, 'uint16') || isa(tim_f_block, 'uint8') || isa(tim_f_block, 'single')) ...
-        && exist('tile_blending_3d_mex', 'file') == 3
-    try
-        nv_block = tile_blending_3d_mex(tim_f_block, mboxes, BlendMethod);
-        return;
-    catch ME
-        disp(ME);
+if isa(tim_f_block, 'uint16') || isa(tim_f_block, 'uint8') || isa(tim_f_block, 'single')
+    if exist('tile_blending_3d_mex', 'file') == 3
+        try
+            nv_block = tile_blending_3d_mex(tim_f_block, mboxes, BlendMethod);
+            return;
+        catch ME
+            mex_fallback('tile_blending_3d_mex', ME);
+        end
+    else
+        mex_fallback('tile_blending_3d_mex');
     end
 end
 
@@ -82,8 +85,10 @@ if exist('replace_nan_with_value', 'file') == 3
         x = replace_nan_with_value(x, 0);
         return;
     catch ME
-        disp(ME);
+        mex_fallback('replace_nan_with_value', ME, {'data:TypeError'});
     end
+else
+    mex_fallback('replace_nan_with_value');
 end
 x(isnan(x)) = 0;
 

@@ -258,7 +258,7 @@ else
         try 
             J_2 = crop3d_mex(J_2, bbox);
         catch ME
-            disp(ME);
+            mex_fallback('crop3d_mex', ME, {'crop:dataTypeError'});
             J_2 = J_2(bbox(1) : bbox(4), bbox(2) : bbox(5), bbox(3) : bbox(6));
         end
     end

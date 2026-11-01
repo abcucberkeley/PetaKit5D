@@ -64,7 +64,7 @@ try
         Temp = flat_field_correction_3d_mex(Rawdata, LSImage, background, castDataType);        
     end
 catch ME
-    disp(ME)
+    mex_fallback('flat_field_correction_3d_mex', ME, {'flat_field_correction_3d_mex:dataTypeError'});
     % Temp = double(Rawdata);
     Temp = single(Rawdata);
     dtype = class(Rawdata);

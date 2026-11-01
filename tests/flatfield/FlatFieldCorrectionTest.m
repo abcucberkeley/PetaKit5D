@@ -73,8 +73,7 @@ classdef FlatFieldCorrectionTest < pktest.TestCase
             ff(:, 13 : end) = 2;
             log = evalc(['out = XR_LSFlatFieldCorrection(raw, ff, uint16(bg), ''LowerLimit'', 0.4, ', ...
                 '''removeFFImBackground'', false, ''LSRescale'', false);']);
-            testCase.verifyFalse(contains(log, 'MException'), ...
-                sprintf('Fell back to the MATLAB implementation:\n%s', log));
+            testCase.verifyEmpty(mex_fallback('-log'), sprintf('Fell back to the MATLAB implementation:\n%s', log));
             expected = uint16(max(double(raw) - 100, 0) ./ double(ff) + 100);
             testCase.verifyEqual(out, expected);
         end

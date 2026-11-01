@@ -232,7 +232,7 @@ for i = 1 : numel(batchInds)
     try
         in_batch = crop3d_mex(im, [ibStart, ibEnd]);
     catch ME
-        disp(ME);
+        mex_fallback('crop3d_mex', ME, {'crop:dataTypeError'});
         in_batch = im(ibStart(1) : ibEnd(1), ibStart(2) : ibEnd(2), ibStart(3) : ibEnd(3));
     end
 
@@ -258,10 +258,18 @@ for i = 1 : numel(batchInds)
         'useGPU', useGPU, 'psfGen', psfGen, 'debug', debug, 'save3Dstack', save3Dstack, ...
         'EdgeErosion', EdgeErosion, 'mipAxis', mipAxis);
     
-    try 
-        indexing3d_mex(imout, [obStart, obEnd], out_batch);
-    catch ME
-        disp(ME);
+    % the mex takes a batch of the class of imout (RLMethod 'original' gives
+    % others, which the assignment converts)
+    useMex = isa(out_batch, dtype);
+    if useMex
+        try
+            indexing3d_mex(imout, [obStart, obEnd], out_batch);
+        catch ME
+            mex_fallback('indexing3d_mex', ME, {'tiff:dataTypeError'});
+            useMex = false;
+        end
+    end
+    if ~useMex
         imout(obStart(1) : obEnd(1), obStart(2) : obEnd(2), obStart(3) : obEnd(3)) = out_batch;
     end
 

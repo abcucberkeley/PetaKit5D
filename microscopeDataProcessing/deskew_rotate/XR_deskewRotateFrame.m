@@ -192,7 +192,7 @@ if (~DSRCombined && (~exist(dsFullname, 'file') || ip.Results.overwrite)) || DSR
         try 
             frame = crop3d_mex(frame, inputBbox);
         catch ME
-            disp(ME);
+            mex_fallback('crop3d_mex', ME, {'crop:dataTypeError'});
             frame = frame(inputBbox(1) : inputBbox(4), inputBbox(2) : inputBbox(5), inputBbox(3) : inputBbox(6));
         end
     end

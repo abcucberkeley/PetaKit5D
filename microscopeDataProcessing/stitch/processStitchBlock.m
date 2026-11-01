@@ -473,7 +473,7 @@ for i = 1 : numel(batchInds)
             try
                 nv_block = replace_nan_with_value(nv_block, 0);
             catch ME
-                disp(ME);
+                mex_fallback('replace_nan_with_value', ME, {'data:TypeError'});
                 nv_block(isnan(nv_block)) = 0;
             end
         end

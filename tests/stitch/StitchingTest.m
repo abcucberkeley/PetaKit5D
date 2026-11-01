@@ -42,6 +42,23 @@ classdef StitchingTest < pktest.TestCase
             testCase.verifyEqual(size(info.pTileSizes, 1), 4);
         end
 
+        function featherBlendingOfUint8Tiles(testCase)
+            % the feather blending mex takes uint16 and single tiles; uint8
+            % tiles (kept as uint8 without save16bit) are blended by the
+            % MATLAB code, and its NaNs replaced in replace_nan_with_value
+            % (the MATLAB code where it isn't built)
+            dataPath = testCase.createTempFolder();
+            gt = uint8(testCase.randomVolume([100, 120, 32], [1, 255]));
+            csvFn = testCase.writeTiles(dataPath, gt, [0, 0, 0; 36, 0, 0; 0, 48, 0; 36, 48, 0], [64, 72, 32]);
+
+            testCase.stitch(dataPath, csvFn, 'blendMethod', 'feather', 'save16bit', false);
+
+            out = testCase.readResult(dataPath);
+            testCase.verifyClass(out, 'uint8');
+            testCase.verifyEqual(out(1 : 100, 1 : 120, 1 : 32), gt, 'The stitched volume differs from the ground truth.');
+            testCase.verifyEqual(nnz(out) - nnz(out(1 : 100, 1 : 120, 1 : 32)), 0, 'Voxels outside the tiles are nonzero.');
+        end
+
         function mipIsMadeBeforePublishing(testCase)
             % the stitching wrapper and the pipeline count a volume as
             % stitched once its result exists; the stitched MIP was written
@@ -650,6 +667,7 @@ classdef StitchingTest < pktest.TestCase
                 [~, csvFn] = pktest.writeStitchTiles(dataPath, tiles);
                 if k == 2
                     testCase.applyFixture(pktest.FunctionStubFixture('tile_blending_3d_mex'));
+                    testCase.expectMexFallback('tile_blending_3d_mex');
                 end
                 evalc('testCase.stitch(dataPath, csvFn, opts{:})');
                 outs{k} = testCase.readResult(dataPath);

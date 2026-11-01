@@ -36,8 +36,7 @@ catch ME
         throw(ME);
     end
 
-    disp(ME);
-    disp('Use the alternative zarr reader (ZarrAdapter)...');   
+    mex_fallback('parallelReadZarr', ME);
     
     bim = blockedImage(filepath, "Adapter", ZarrAdapter);    
     if isempty(inputBbox)

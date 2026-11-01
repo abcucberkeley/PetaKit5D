@@ -74,6 +74,9 @@ end
 fprintf('Running %d tests from %s on %s (MATLAB %s)\n', numel(suite), searchDir, computer, version);
 
 runner = matlab.unittest.TestRunner.withTextOutput('OutputDetail', verbosity, 'LoggingLevel', verbosity);
+% the fallbacks from mex functions to MATLAB code the tests recorded
+fallbackPlugin = pktest.MexFallbackPlugin;
+runner.addPlugin(fallbackPlugin);
 
 if ~isempty(outputDir)
     if ~exist(outputDir, 'dir')
@@ -103,13 +106,20 @@ if ~isempty(failed)
     fprintf('Failed:\n');
     fprintf('  %s\n', failed.Name);
 end
+% all of them: expected ones, rejections by design and mex functions this
+% platform lacks (the tests with any other failed)
+fallbackLines = fallbackPlugin.summary();
+if ~isempty(fallbackLines)
+    fprintf('Mex fallbacks (the MATLAB code ran instead of a mex, see mex_fallback):\n');
+    fprintf('  %s\n', fallbackLines{:});
+end
 
-write_github_step_summary(results, summary, char(pr.summaryTitle));
+write_github_step_summary(results, summary, char(pr.summaryTitle), fallbackLines);
 
 end
 
 
-function [] = write_github_step_summary(results, summary, title)
+function [] = write_github_step_summary(results, summary, title, fallbackLines)
 % on GitHub Actions, list the results on the job summary page
 
 summaryFn = getenv('GITHUB_STEP_SUMMARY');
@@ -136,6 +146,11 @@ skipped = results([results.Incomplete] & ~[results.Failed]);
 if ~isempty(skipped)
     fprintf(fid, '<details><summary>Skipped (%d)</summary>\n\n', numel(skipped));
     fprintf(fid, '- `%s`\n', skipped.Name);
+    fprintf(fid, '\n</details>\n\n');
+end
+if ~isempty(fallbackLines)
+    fprintf(fid, '<details><summary>Mex fallbacks (%d)</summary>\n\n', numel(fallbackLines));
+    fprintf(fid, '- %s\n', fallbackLines{:});
     fprintf(fid, '\n</details>\n\n');
 end
 

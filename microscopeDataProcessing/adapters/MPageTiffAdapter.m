@@ -105,7 +105,7 @@ classdef MPageTiffAdapter < images.blocked.Adapter
             try
                 data = crop3d_mex(data, [regionStart(1 : 2), 1, regionEnd(1 : 2), size(data, 3)]);
             catch ME
-                disp(ME);
+                mex_fallback('crop3d_mex', ME, {'crop:dataTypeError'});
                 data = data(regionStart(1) : regionEnd(1), regionStart(2) : regionEnd(2), :);
             end
         end        

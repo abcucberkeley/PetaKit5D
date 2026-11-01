@@ -4,7 +4,7 @@ function [out] = max_pooling_3d(orig, poolsize)
 try
     out = max_pooling_3d_mex(orig, poolsize);
 catch ME
-    disp(ME);
+    mex_fallback('max_pooling_3d_mex', ME, {'mat:dataTypeError'});
 
     sz = size(orig);
     orig = padarray(orig, ceil(sz ./ poolsize) .* poolsize - sz, 0, 'post');

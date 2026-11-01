@@ -62,6 +62,8 @@ classdef DeconReadCacheTest < pktest.TestCase
         end
 
         function missingFilesError(testCase)
+            % (Cpp-Tiff can't open it, nor can the MATLAB reader readtiff tries next)
+            testCase.expectMexFallback('parallelReadTiff');
             folder = testCase.createTempFolder();
             testCase.verifyError(@() decon_readtiff_cached([folder, 'missing.tif']), ?MException);
         end

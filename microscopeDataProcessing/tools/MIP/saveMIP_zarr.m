@@ -142,7 +142,7 @@ if useMex
         mip = range_max_3d_mex(im, axis_ind, 1);
         return;
     catch ME
-        disp(ME);
+        mex_fallback('range_max_3d_mex', ME);
         useMex = false;
     end
 end

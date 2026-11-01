@@ -7,8 +7,7 @@ function [A] = crop3d(A, bbox)
 try
     A = crop3d_mex(A, bbox);
 catch ME
-    disp(ME)
-    disp(ME.stack);
+    mex_fallback('crop3d_mex', ME, {'crop:dataTypeError'});
     A = A(bbox(1) : bbox(4), bbox(2) : bbox(5), bbox(3) : bbox(6));            
 end
 

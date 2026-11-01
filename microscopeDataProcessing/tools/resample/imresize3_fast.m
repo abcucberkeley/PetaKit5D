@@ -81,7 +81,7 @@ try
         end
     end
 catch ME
-    disp(ME);
+    mex_fallback('matlab.images.internal.resize.imresizemex', ME);
     out = resize_with_imresize3(im, outSize, method, outBbox, outClass);
 end
 

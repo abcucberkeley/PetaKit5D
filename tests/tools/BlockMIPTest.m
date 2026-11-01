@@ -61,6 +61,7 @@ classdef BlockMIPTest < pktest.TestCase
             bbox = [3, 2, 4, 22, 16, 16];
             expected = MIP_zarr_block_mips(im, bbox, [8, 6, 5], dtype);
             testCase.applyFixture(pktest.FunctionStubFixture('range_max_3d_mex'));
+            testCase.expectMexFallback('range_max_3d_mex');
             evalc('mips = MIP_zarr_block_mips(im, bbox, [8, 6, 5], dtype)');
             for j = 1 : 3
                 testCase.verifySameBits(mips{j}, expected{j}, sprintf('axis %d', j));

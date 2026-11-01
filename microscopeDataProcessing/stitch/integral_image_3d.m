@@ -10,12 +10,16 @@ if any(szA < szT)
     error('The size of A must be not smaller than size T!')
 end
 
-try
-    IntA = integral_image_3d_mex(A, szT);
-catch ME
-    disp(ME)
-    IntA = integralImage(A, szT);
+% the mex takes uint16 and single images
+if isa(A, 'uint16') || isa(A, 'single')
+    try
+        IntA = integral_image_3d_mex(A, szT);
+        return;
+    catch ME
+        mex_fallback('integral_image_3d_mex', ME);
+    end
 end
+IntA = integralImage(A, szT);
 
 end
 

@@ -10,6 +10,7 @@ classdef NoSlurmFixture < matlab.unittest.fixtures.Fixture
 
     properties (Access = private)
         OriginalPath
+        OriginalStubs
         StubFolder
     end
 
@@ -30,6 +31,8 @@ classdef NoSlurmFixture < matlab.unittest.fixtures.Fixture
                 fileattrib(fn, '+x');
             end
             fixture.OriginalPath = getenv('PATH');
+            % (a test that runs tests of its own sets the fixture up again)
+            fixture.OriginalStubs = getenv('PETAKIT5D_TEST_SLURM_STUBS');
             setenv('PATH', [fixture.StubFolder, pathsep, fixture.OriginalPath]);
             setenv('PETAKIT5D_TEST_SLURM_STUBS', fixture.StubFolder);
             fixture.SetupDescription = 'Hid Slurm commands behind failing stubs';
@@ -40,7 +43,7 @@ classdef NoSlurmFixture < matlab.unittest.fixtures.Fixture
                 return;
             end
             setenv('PATH', fixture.OriginalPath);
-            setenv('PETAKIT5D_TEST_SLURM_STUBS', '');
+            setenv('PETAKIT5D_TEST_SLURM_STUBS', fixture.OriginalStubs);
             if exist(fixture.StubFolder, 'dir')
                 rmdir(fixture.StubFolder, 's');
             end

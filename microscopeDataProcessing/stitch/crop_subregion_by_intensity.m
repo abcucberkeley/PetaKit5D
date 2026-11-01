@@ -77,7 +77,7 @@ end
 try 
     region_2 = crop3d_mex(region_2, crop_bbox);
 catch ME
-    disp(ME);
+    mex_fallback('crop3d_mex', ME, {'crop:dataTypeError'});
     region_2 = region_2(crop_bbox(1) : crop_bbox(4), crop_bbox(2) : crop_bbox(5), crop_bbox(3) : crop_bbox(6));
 end
 

@@ -105,7 +105,7 @@ if do_interp
         try
             vol_1 = skewed_space_interp_defined_stepsize_mex(vol, abs(dx), int_stepsize, Reverse, save16bit);
         catch ME
-            disp(ME);
+            mex_fallback('skewed_space_interp_defined_stepsize_mex', ME, {'feather_blending:dataTypeError'});
             vol_1 = skewed_space_interp_defined_stepsize(vol, abs(dx), int_stepsize, 'Reverse', Reverse);
         end
         fprintf('Skewed space interpolation time: %f s\n', toc(t0));
@@ -229,17 +229,17 @@ else
         try
             volout = skewed_space_interp_volume_deskew_rotate_warp_mex(vol, abs(dx_orig), int_stepsize, Reverse, tmat, bbox_in, save16bit);
         catch ME
-            disp(ME);
+            mex_fallback('skewed_space_interp_volume_deskew_rotate_warp_mex', ME, {'feather_blending:dataTypeError'});
             try
                 vol_1 = skewed_space_interp_defined_stepsize_mex(vol, abs(dx_orig), int_stepsize, Reverse, save16bit);
             catch ME
-                disp(ME);
+                mex_fallback('skewed_space_interp_defined_stepsize_mex', ME, {'feather_blending:dataTypeError'});
                 vol_1 = skewed_space_interp_defined_stepsize(vol, abs(dx_orig), int_stepsize, 'Reverse', Reverse);
             end
             try
                 volout = volume_deskew_rotate_warp_mex(vol_1, tmat, bbox_in, save16bit);
             catch ME
-                disp(ME);
+                mex_fallback('volume_deskew_rotate_warp_mex', ME, {'feather_blending:dataTypeError'});
                 [volout] = imwarp(vol_1, affine3d(ds_S*(T1*S*R*T2)*(RT1*RS*RT2)), interpMethod, 'FillValues', 0, 'OutputView', RA);
             end
         end
@@ -247,7 +247,7 @@ else
         try
             volout = volume_deskew_rotate_warp_mex(vol_1, tmat, bbox_in, save16bit);
         catch ME
-            disp(ME);
+            mex_fallback('volume_deskew_rotate_warp_mex', ME, {'feather_blending:dataTypeError'});
             [volout] = imwarp(vol_1, affine3d(ds_S*(T1*S*R*T2)*(RT1*RS*RT2)), interpMethod, 'FillValues', 0, 'OutputView', RA);
         end
     end

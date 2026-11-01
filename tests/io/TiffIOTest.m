@@ -134,6 +134,8 @@ classdef TiffIOTest < pktest.TestCase
 
         function unsupportedInputIsNotSilentlyDropped(testCase)
             % writetiff used to ignore the error code of its fallback writer
+            % (Cpp-Tiff rejects the data, saveastiff runs instead)
+            testCase.expectMexFallback('parallelWriteTiff');
             dataPath = testCase.createTempFolder();
             inputs = {zeros(4, 4, 2, 2, 'uint16'), zeros(0, 0, 'uint16')};
             names = {'4-D', 'empty'};

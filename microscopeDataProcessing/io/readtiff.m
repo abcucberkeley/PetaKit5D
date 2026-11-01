@@ -20,8 +20,7 @@ try
         data = parallelReadTiff(filepath, range);
     end
 catch ME
-    disp(ME);
-    disp('Use the alternative tiff reader (matlab libtiff)...');
+    mex_fallback('parallelReadTiff', ME, {'tiff:dataTypeError'});
     if isempty(range)
         data = readtiff_matlab(filepath);
     else

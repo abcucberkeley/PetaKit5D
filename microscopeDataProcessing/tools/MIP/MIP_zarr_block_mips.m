@@ -27,7 +27,7 @@ for j = 1 : 3
         try
             mips{j} = range_max_3d_mex(block, j, starts);
         catch ME
-            disp(ME);
+            mex_fallback('range_max_3d_mex', ME);
             useMex = false;
         end
     end

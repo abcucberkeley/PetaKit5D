@@ -25,18 +25,21 @@ end
 isGPU = isa(mask, 'gpuArray');
 mexNames = {'decon_mask_edge_erosion_mex', 'decon_mask_edge_erosion_gpu_mex'};
 if ndims(mask) <= 3 && ~issparse(mask) && isa(EdgeErosion, 'double') && isscalar(EdgeErosion) && EdgeErosion >= 1 ...
-        && EdgeErosion == round(EdgeErosion) && exist(mexNames{isGPU + 1}, 'file') == 3
-    [nhoods, padUL, padLR] = disk_decomposition(EdgeErosion - 1);
-    rz = 0;
-    if ndims(mask) == 3
-        rz = EdgeErosion - 1;
+        && EdgeErosion == round(EdgeErosion)
+    if exist(mexNames{isGPU + 1}, 'file') == 3
+        [nhoods, padUL, padLR] = disk_decomposition(EdgeErosion - 1);
+        rz = 0;
+        if ndims(mask) == 3
+            rz = EdgeErosion - 1;
+        end
+        if isGPU
+            mask = decon_mask_edge_erosion_gpu_mex(mask, nhoods, padUL, padLR, rz, true);
+        else
+            mask = decon_mask_edge_erosion_mex(mask, nhoods, padUL, padLR, rz, true, maxNumCompThreads);
+        end
+        return;
     end
-    if isGPU
-        mask = decon_mask_edge_erosion_gpu_mex(mask, nhoods, padUL, padLR, rz, true);
-    else
-        mask = decon_mask_edge_erosion_mex(mask, nhoods, padUL, padLR, rz, true, maxNumCompThreads);
-    end
-    return;
+    mex_fallback(mexNames{isGPU + 1});
 end
 
 % for irregular shape image, use imerode to erode edges. 

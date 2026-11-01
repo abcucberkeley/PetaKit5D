@@ -91,6 +91,20 @@ classdef DeskewRotateFrame3DTest < pktest.TestCase
             testCase.verifyImagesClose(out, full(bbox(1) : bbox(4), bbox(2) : bbox(5), bbox(3) : bbox(6)), 'relTol', 1e-6);
         end
 
+        function separateMexStepsReplaceTheCombinedMex(testCase)
+            % with skewed space interpolation (dz 0.3), where the combined mex
+            % fails (here hidden by a stub that errors), its two steps run in
+            % their own mex functions (the test fails if they fall back too)
+            [~, vol] = testCase.beadGrid();
+            bbox = [9, 21, 5, 53, 150, 40];
+            combined = deskewRotateFrame3D(vol, testCase.SkewAngle, 0.3, testCase.XYPixelSize, 'reverse', true, 'bbox', bbox);
+            testCase.applyFixture(pktest.FunctionStubFixture('skewed_space_interp_volume_deskew_rotate_warp_mex'));
+            testCase.expectMexFallback('skewed_space_interp_volume_deskew_rotate_warp_mex');
+            separate = deskewRotateFrame3D(vol, testCase.SkewAngle, 0.3, testCase.XYPixelSize, 'reverse', true, 'bbox', bbox);
+            testCase.verifyEqual({mex_fallback('-log').mex}, {'skewed_space_interp_volume_deskew_rotate_warp_mex'});
+            testCase.verifyImagesClose(separate, combined, 'relTol', 1e-6);
+        end
+
         function combinedMatchesSeparateDeskewThenRotate(testCase)
             % the combined transform must equal deskew followed by rotation
             % (up to the extra interpolation of the separate path)

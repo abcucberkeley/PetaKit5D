@@ -90,7 +90,7 @@ else
     try
         im = crop3d_mex(im, [bbox_1(1 : 2), 1, bbox_1(4 : 5), size(im, 3)]);
     catch ME
-        disp(ME)
+        mex_fallback('crop3d_mex', ME, {'crop:dataTypeError'});
         im = im(bbox_1(1) : bbox_1(4), bbox_1(2) : bbox_1(5), :);
     end
 end

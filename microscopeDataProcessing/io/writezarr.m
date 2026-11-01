@@ -91,8 +91,7 @@ catch ME
         throw(ME);
     end
 
-    disp(ME);
-    disp('Use the alternative zarr writer (ZarrAdapter)...');    
+    mex_fallback('parallelWriteZarr', ME);
     if ~exist(filepath, 'dir') || (exist(filepath, 'dir') && isempty(bbox))
         if create
             if exist(filepath, 'dir')

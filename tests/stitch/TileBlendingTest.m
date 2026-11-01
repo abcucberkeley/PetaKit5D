@@ -27,6 +27,7 @@ classdef TileBlendingTest < pktest.TestCase
             end
             % the MATLAB code: the mex hidden by a stub that errors
             testCase.applyFixture(pktest.FunctionStubFixture('tile_blending_3d_mex'));
+            testCase.expectMexFallback('tile_blending_3d_mex');
             for i = 1 : numel(sizes)
                 evalc('expected = tile_blending_3d(tims{i}, mboxes{i}, blendMethod);');
                 testCase.verifySameResult(outs{i}, expected, dtype, blendMethod, ...

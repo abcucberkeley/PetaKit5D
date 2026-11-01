@@ -50,8 +50,7 @@ else
         try
             im = crop3d_mex(im, bbox_1);
         catch ME
-            disp(ME)
-            fprintf('Use alternative crop method...\n');
+            mex_fallback('crop3d_mex', ME, {'crop:dataTypeError'});
             im = im(bbox_1(1) : bbox_1(4), bbox_1(2) : bbox_1(5), :);
         end
     end

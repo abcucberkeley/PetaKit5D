@@ -65,7 +65,8 @@ im = fn;
 if ischar(fn)
     try
         im = parallelReadTiff(fn);
-    catch
+    catch ME
+        mex_fallback('parallelReadTiff', ME, {'tiff:dataTypeError'});
         im = readtiff(fn);
     end
 end

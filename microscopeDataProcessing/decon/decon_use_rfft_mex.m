@@ -43,6 +43,10 @@ canUseMex = supported && available;
 
 if isempty(useMex)
     useMex = canUseMex && any(strcmp(method, defaultMethods));
+    % the MATLAB code runs instead where the mex for a default method is missing
+    if supported && ~available && any(strcmp(method, defaultMethods))
+        mex_fallback(mexName);
+    end
     return;
 end
 if useMex && ~canUseMex

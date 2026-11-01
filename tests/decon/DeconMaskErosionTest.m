@@ -106,6 +106,7 @@ classdef DeconMaskErosionTest < pktest.TestCase
             A = testCase.makeMask('skewed', [40, 50, 30]);
             expected = decon_mask_edge_erosion_before(A, 7);
             testCase.applyFixture(pktest.FunctionStubFixture('decon_mask_edge_erosion_mex'));
+            testCase.expectMexFallback('decon_mask_edge_erosion_mex');
             testCase.verifyEqual(exist('decon_mask_edge_erosion_mex', 'file'), 2);
             testCase.verifyEqual(decon_mask_edge_erosion(A, 7), expected);
         end

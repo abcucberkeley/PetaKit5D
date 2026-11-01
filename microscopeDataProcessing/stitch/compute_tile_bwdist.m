@@ -109,7 +109,7 @@ else
         try 
             im_ij = crop3d_mex(im_i, mbbox_pad);
         catch ME
-            disp(ME)
+            mex_fallback('crop3d_mex', ME, {'crop:dataTypeError'});
             im_ij = im_i(mbbox_pad(1) : mbbox_pad(4), mbbox_pad(2) : mbbox_pad(5), mbbox_pad(3) : mbbox_pad(6));
         end
         % skip it when im_ij contains no object
@@ -127,10 +127,13 @@ else
 
         s = mbbox(1 : 3) - mbbox_pad(1 : 3) + 1;
         t = mbbox(4 : 6) - mbbox_pad(1 : 3) + 1;
+        mexName = 'crop3d_mex';
         try 
-            indexing3d_mex(im_dist, mbbox, crop3d_mex(im_dist_ij, [s, t]));
+            im_dist_ij_c = crop3d_mex(im_dist_ij, [s, t]);
+            mexName = 'indexing3d_mex';
+            indexing3d_mex(im_dist, mbbox, im_dist_ij_c);
         catch ME
-            disp(ME)
+            mex_fallback(mexName, ME, {'crop:dataTypeError', 'tiff:dataTypeError'});
             im_dist(mbbox(1) : mbbox(4), mbbox(2) : mbbox(5), mbbox(3) : mbbox(6)) = im_dist_ij(s(1) : t(1), s(2) : t(2), s(3) : t(3));
         end
     end

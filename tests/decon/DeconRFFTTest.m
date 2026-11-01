@@ -303,6 +303,7 @@ classdef DeconRFFTTest < pktest.TestCase
             % a .m file of the same name first on the path hides the mex
             % (exist(..., 'file') is 2), as on a platform without the mex
             testCase.applyFixture(pktest.FunctionStubFixture('decon_lucy_rfft_mex'));
+            testCase.expectMexFallback('decon_lucy_rfft_mex');
             testCase.verifyEqual(exist('decon_lucy_rfft_mex', 'file'), 2);
             im = testCase.blurredBeads(testCase.ImSize);
             args = {'Background', testCase.Background, 'save16bit', false};
