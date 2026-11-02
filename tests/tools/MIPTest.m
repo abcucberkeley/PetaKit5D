@@ -1,6 +1,6 @@
 classdef MIPTest < pktest.TestCase
     % maximum intensity projections: XR_MIP_wrapper (tiff, zarr and large
-    % zarr paths), saveMIP_tiff, and max_pooling_3d
+    % zarr paths), saveMIP_tiff, and max_pooling_3d; and min_bbox_3d
 
     properties (Constant)
         ImSize = [40, 36, 12]
@@ -11,6 +11,8 @@ classdef MIPTest < pktest.TestCase
         poolSize = struct('cube', [2, 2, 2], 'anisotropic', [3, 2, 1], 'nonDivisible', [4, 5, 5])
         poolType = {'uint16', 'single'}
         zarrType = {'uint16', 'single'}
+        % min_bbox_3d_mex takes these but int16
+        minType = {'logical', 'uint8', 'uint16', 'single', 'double', 'int16'}
     end
 
     methods (Test, TestTags = {'Integration'})
@@ -136,6 +138,53 @@ classdef MIPTest < pktest.TestCase
             expected = testCase.blockMax(im, poolSize);
             testCase.verifyEqual(max_pooling_3d_mex(im, poolSize), expected, 'max_pooling_3d_mex');
             testCase.verifyEqual(max_pooling_3d(im, poolSize), expected, 'max_pooling_3d');
+        end
+
+        function minimumOfARegion(testCase, minType)
+            % min_bbox_3d: the minimum of a region, by min_bbox_3d_mex (Linux
+            % only) or by the MATLAB code (elsewhere, for int16, or where the
+            % mex fails), which returned the minimum along y instead
+            if strcmp(minType, 'logical')
+                im = rand([20, 30, 10]) > 0.05;
+            else
+                im = cast(rand([20, 30, 10]) * 200 + 1, minType);
+            end
+            bbox = [3, 4, 2, 15, 25, 9];
+            expected = min(im(3 : 15, 4 : 25, 2 : 9), [], 'all');
+            % a region without voxels: the largest value of the class
+            emptyBbox = [5, 1, 1, 4, 30, 10];
+            if strcmp(minType, 'logical')
+                largest = true;
+            elseif any(strcmp(minType, {'single', 'double'}))
+                largest = realmax(minType);
+            else
+                largest = intmax(minType);
+            end
+            testCase.verifyEqual(min_bbox_3d(im, bbox), expected);
+            testCase.verifyEqual(min_bbox_3d(im, emptyBbox), largest);
+            testCase.applyFixture(pktest.FunctionStubFixture('min_bbox_3d_mex'));
+            testCase.expectMexFallback('min_bbox_3d_mex');
+            testCase.verifyEqual(min_bbox_3d(im, bbox), expected, 'without the mex');
+            testCase.verifyEqual(min_bbox_3d(im, emptyBbox), largest, 'without the mex');
+        end
+
+        function minimumOfARegionSkipsNaN(testCase)
+            % as the mex: NaN is skipped, and a region of NaN only or without
+            % voxels gives the largest value of the class
+            im = single(rand([20, 30, 10]) + 1);
+            im(2 : 9, :, :) = NaN;
+            im(12, 7, 3) = 0.5;
+            boxes = {[1, 1, 1, 20, 30, 10], [2, 1, 1, 9, 30, 10], [5, 1, 1, 4, 30, 10]};
+            expected = {single(0.5), realmax('single'), realmax('single')};
+            for useMex = [true, false]
+                if ~useMex
+                    testCase.applyFixture(pktest.FunctionStubFixture('min_bbox_3d_mex'));
+                    testCase.expectMexFallback('min_bbox_3d_mex');
+                end
+                for i = 1 : numel(boxes)
+                    testCase.verifyEqual(min_bbox_3d(im, boxes{i}), expected{i}, sprintf('bbox %s, mex %d', mat2str(boxes{i}), useMex));
+                end
+            end
         end
     end
 

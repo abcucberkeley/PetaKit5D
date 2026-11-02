@@ -416,6 +416,39 @@ classdef DeconWrapperTest < pktest.TestCase
                 'Multi-batch large-file decon with RLMethod=original did not produce a result.');
         end
 
+        function originalMethodBatchesAreCopiedByTheMex(testCase)
+            % RLMethod 'original' returns single batches, which the in-memory
+            % large-file path placed by assignment (converting them to uint16)
+            % instead of with indexing3d_mex, which takes the class of the
+            % result: they are converted first now, with the same result
+            d = testCase.createDataset({'A'}, 1);
+            deconPath = [d.root, 'large/'];
+            outFn = [deconPath, d.fsns{1}, '.tif'];
+            % batches of 24 x 24 x 16 of the 48 x 48 x 32 image: 8
+            args = {d.rawFns{1}, d.psfFns{1}, outFn, testCase.XYPixelSize, testCase.Dz, 'Background', testCase.Background, ...
+                'dzPSF', testCase.Dz, 'DeconIter', 3, 'EdgeErosion', 0, 'RLMethod', 'original', 'batchSize', [24, 24, 16], ...
+                'useGPU', false, 'parseCluster', false};
+            evalc('RLdecon_large_in_memory(args{:})');
+            out = readtiff(outFn);
+            delete(outFn);
+            testCase.verifyClass(out, 'uint16');
+            testCase.verifyGreaterThan(max(out(:)), 0);
+
+            % the same image as the assignment (the mex hidden by a stub that errors)
+            testCase.applyFixture(pktest.FunctionStubFixture('indexing3d_mex'));
+            testCase.expectMexFallback('indexing3d_mex');
+            evalc('RLdecon_large_in_memory(args{:})');
+            testCase.verifyEqual(readtiff(outFn), out);
+            delete(outFn);
+
+            % one copy per batch, of the output class (a spy, first on the path)
+            spy = testCase.applyFixture(pktest.FunctionSpyFixture('indexing3d_mex'));
+            evalc('RLdecon_large_in_memory(args{:})');
+            calls = spy.getCalls();
+            testCase.verifyNumElements(calls, 8);
+            testCase.verifyTrue(all(cellfun(@(c) isa(c{3}, 'uint16'), calls)), 'A batch was not converted to uint16.');
+        end
+
         function clusterModeChecksFewJobsSoon(testCase)
             % with jobs on the cluster the wrapper always waited 30 s between
             % rounds, so the last results were seen up to 30 s late; it now

@@ -218,7 +218,11 @@ void compute_weighted_sum_16bit(const uint16_t* a, const uint16_t* b, const uint
 void transformVolume(const float* const &dmat, const double (&tmat)[4][4], float* &nmat, 
                      const uint64_t &shapeX, const uint64_t &shapeY, const uint64_t &shapeZ, 
                      const float &startX, const float &startY, const float &startZ, 
-                     const uint64_t &outShapeX, const uint64_t &outShapeY, const uint64_t &outShapeZ){
+                     const uint64_t &outShapeX, const uint64_t &outShapeY, const uint64_t &outShapeZ,
+                     const uint64_t &lineLen){
+
+    // a bbox past the input's rows: nothing to compute
+    if (lineLen == 0) return;
 
     uint64_t shapeXY = shapeX * shapeY;
     uint64_t outShapeXY = outShapeX * outShapeY;
@@ -230,7 +234,7 @@ void transformVolume(const float* const &dmat, const double (&tmat)[4][4], float
         double ty;
         ty = tmat[1][2] * (z + startZ) + tmat[1][3];
         if (ty < 0 || ty + 1 >= shapeY){
-            if (ty + 1 == shapeY) {
+            if (ty + 1 == shapeY && shapeY > 1) {  // on the last row (a single row: outside)
                 uint64_t counter = 1;
                 while (floor(ty) + 1 == shapeY){
                     ty -= 1e-9 * counter;
@@ -247,7 +251,7 @@ void transformVolume(const float* const &dmat, const double (&tmat)[4][4], float
 	        tz = tmat[2][1] * (y + startY) + tmat[2][2] * (z + startZ) + tmat[2][3];
             if (tz < 0 || tz + 1 >= shapeZ){
                 // handling of edge cases
-                if (tz + 1 == shapeZ) {
+                if (tz + 1 == shapeZ && shapeZ > 1) {  // on the last slice (a single slice: outside)
                     uint64_t counter = 1;
                     while (floor(tz) + 1 == shapeZ){
                         tz -= 1e-9 * counter;
@@ -270,10 +274,10 @@ void transformVolume(const float* const &dmat, const double (&tmat)[4][4], float
             #ifndef __APPLE__
             // interpolation with simd vectorization
             compute_weighted_sum(dmat + ind, dmat + ind + shapeXY, dmat + ind + shapeX, dmat + ind + shapeX + shapeXY, 
-                                nmat + y * outShapeX + z * outShapeXY, w00, w01, w10, w11, outShapeX);
+                                nmat + y * outShapeX + z * outShapeXY, w00, w01, w10, w11, lineLen);
             #else
             compute_weighted_sum_sequential(dmat + ind, dmat + ind + shapeXY, dmat + ind + shapeX, dmat + ind + shapeX + shapeXY, 
-                                nmat + y * outShapeX + z * outShapeXY, w00, w01, w10, w11, outShapeX);
+                                nmat + y * outShapeX + z * outShapeXY, w00, w01, w10, w11, lineLen);
             #endif
         }
     }
@@ -283,7 +287,11 @@ void transformVolume(const float* const &dmat, const double (&tmat)[4][4], float
 void transformVolume_16bit_to_float(const uint16_t* const &dmat, const double (&tmat)[4][4], float* &nmat, 
                      const uint64_t &shapeX, const uint64_t &shapeY, const uint64_t &shapeZ, 
                      const float &startX, const float &startY, const float &startZ, 
-                     const uint64_t &outShapeX, const uint64_t &outShapeY, const uint64_t &outShapeZ){
+                     const uint64_t &outShapeX, const uint64_t &outShapeY, const uint64_t &outShapeZ,
+                     const uint64_t &lineLen){
+
+    // a bbox past the input's rows: nothing to compute
+    if (lineLen == 0) return;
 
     uint64_t shapeXY = shapeX * shapeY;
     uint64_t outShapeXY = outShapeX * outShapeY;
@@ -294,7 +302,7 @@ void transformVolume_16bit_to_float(const uint16_t* const &dmat, const double (&
         double ty;
         ty = tmat[1][2] * (z + startZ) + tmat[1][3];
         if (ty < 0 || ty + 1 >= shapeY){
-            if (ty + 1 == shapeY) {
+            if (ty + 1 == shapeY && shapeY > 1) {  // on the last row (a single row: outside)
                 uint64_t counter = 1;
                 while (floor(ty) + 1 == shapeY){
                     ty -= 1e-9 * counter;
@@ -311,7 +319,7 @@ void transformVolume_16bit_to_float(const uint16_t* const &dmat, const double (&
 	        tz = tmat[2][1] * (y + startY) + tmat[2][2] * (z + startZ) + tmat[2][3];
             if (tz < 0 || tz + 1 >= shapeZ){
                 // handling of edge cases
-                if (tz + 1 == shapeZ) {
+                if (tz + 1 == shapeZ && shapeZ > 1) {  // on the last slice (a single slice: outside)
                     uint64_t counter = 1;
                     while (floor(tz) + 1 == shapeZ){
                         tz -= 1e-9 * counter;
@@ -333,10 +341,10 @@ void transformVolume_16bit_to_float(const uint16_t* const &dmat, const double (&
             #ifndef __APPLE__
                 // interpolation with simd vectorization
                 compute_weighted_sum_16bit_to_float(dmat + ind, dmat + ind + shapeXY, dmat + ind + shapeX, dmat + ind + shapeX + shapeXY, 
-                                    nmat + y * outShapeX + z * outShapeXY, w00, w01, w10, w11, outShapeX);
+                                    nmat + y * outShapeX + z * outShapeXY, w00, w01, w10, w11, lineLen);
             #else
                 compute_weighted_sum_sequential_16bit_to_float(dmat + ind, dmat + ind + shapeXY, dmat + ind + shapeX, dmat + ind + shapeX + shapeXY, 
-                                    nmat + y * outShapeX + z * outShapeXY, w00, w01, w10, w11, outShapeX);
+                                    nmat + y * outShapeX + z * outShapeXY, w00, w01, w10, w11, lineLen);
             #endif
         }
     }
@@ -346,7 +354,11 @@ void transformVolume_16bit_to_float(const uint16_t* const &dmat, const double (&
 void transformVolume_16bit(const uint16_t* const &dmat, const double (&tmat)[4][4], uint16_t* &nmat, 
                      const uint64_t &shapeX, const uint64_t &shapeY, const uint64_t &shapeZ, 
                      const float &startX, const float &startY, const float &startZ, 
-                     const uint64_t &outShapeX, const uint64_t &outShapeY, const uint64_t &outShapeZ){
+                     const uint64_t &outShapeX, const uint64_t &outShapeY, const uint64_t &outShapeZ,
+                     const uint64_t &lineLen){
+
+    // a bbox past the input's rows: nothing to compute
+    if (lineLen == 0) return;
 
     uint64_t shapeXY = shapeX * shapeY;
     uint64_t outShapeXY = outShapeX * outShapeY;
@@ -357,7 +369,7 @@ void transformVolume_16bit(const uint16_t* const &dmat, const double (&tmat)[4][
         double ty;
         ty = tmat[1][2] * (z + startZ) + tmat[1][3];
         if (ty < 0 || ty + 1 >= shapeY){
-            if (ty + 1 == shapeY) {
+            if (ty + 1 == shapeY && shapeY > 1) {  // on the last row (a single row: outside)
                 uint64_t counter = 1;
                 while (floor(ty) + 1 == shapeY){
                     ty -= 1e-9 * counter;
@@ -374,7 +386,7 @@ void transformVolume_16bit(const uint16_t* const &dmat, const double (&tmat)[4][
 	        tz = tmat[2][1] * (y + startY) + tmat[2][2] * (z + startZ) + tmat[2][3];
             if (tz < 0 || tz + 1 >= shapeZ){
                 // handling of edge cases
-                if (tz + 1 == shapeZ) {
+                if (tz + 1 == shapeZ && shapeZ > 1) {  // on the last slice (a single slice: outside)
                     uint64_t counter = 1;
                     while (floor(tz) + 1 == shapeZ){
                         tz -= 1e-9 * counter;
@@ -397,10 +409,10 @@ void transformVolume_16bit(const uint16_t* const &dmat, const double (&tmat)[4][
             #ifndef __APPLE__
                 // interpolation with simd vectorization
                 compute_weighted_sum_16bit(dmat + ind, dmat + ind + shapeXY, dmat + ind + shapeX, dmat + ind + shapeX + shapeXY, 
-                                     nmat + y * outShapeX + z * outShapeXY, w00, w01, w10, w11, outShapeX);
+                                     nmat + y * outShapeX + z * outShapeXY, w00, w01, w10, w11, lineLen);
             #else
                 compute_weighted_sum_sequential_16bit(dmat + ind, dmat + ind + shapeXY, dmat + ind + shapeX, dmat + ind + shapeX + shapeXY, 
-                                    nmat + y * outShapeX + z * outShapeXY, w00, w01, w10, w11, outShapeX);
+                                    nmat + y * outShapeX + z * outShapeXY, w00, w01, w10, w11, lineLen);
             #endif
         }
     }
@@ -455,6 +467,11 @@ void mexFunction(int nlhs, mxArray *plhs[],
     uint64_t outShapeY = (uint64_t) (endY - startY);
     uint64_t outShapeZ = (uint64_t) (endZ - startZ);
 
+    // output line x reads input row x0 + x (x0 = startX): the values past the
+    // input's rows (a bbox beyond the input) are outside and stay 0
+    const uint64_t x0 = (uint64_t)floor(startX);
+    const uint64_t lineLen = x0 < shapeX ? (outShapeX < shapeX - x0 ? outShapeX : shapeX - x0) : 0;
+
     uint64_t outDim[3];
     outDim[0] = outShapeX;
     outDim[1] = outShapeY;
@@ -471,7 +488,7 @@ void mexFunction(int nlhs, mxArray *plhs[],
         plhs[0] = mxCreateNumericArray(3, (mwSize*)outDim, mxSINGLE_CLASS, mxREAL);
         float* nmat = (float*)mxGetPr(plhs[0]);
 
-        transformVolume(dmat, tmat, nmat, shapeX, shapeY, shapeZ, startX, startY, startZ, outShapeX, outShapeY, outShapeZ);
+        transformVolume(dmat, tmat, nmat, shapeX, shapeY, shapeZ, startX, startY, startZ, outShapeX, outShapeY, outShapeZ, lineLen);
     }
     else if(mDType == mxUINT16_CLASS){
         uint16_t* dmat = (uint16_t*)mxGetPr(prhs[0]);
@@ -480,12 +497,12 @@ void mexFunction(int nlhs, mxArray *plhs[],
             plhs[0] = mxCreateNumericArray(3, (mwSize*)outDim, mxUINT16_CLASS, mxREAL);
             uint16_t* nmat = (uint16_t*)mxGetPr(plhs[0]);
 
-            transformVolume_16bit(dmat, tmat, nmat, shapeX, shapeY, shapeZ, startX, startY, startZ, outShapeX, outShapeY, outShapeZ);
+            transformVolume_16bit(dmat, tmat, nmat, shapeX, shapeY, shapeZ, startX, startY, startZ, outShapeX, outShapeY, outShapeZ, lineLen);
         } else {
             plhs[0] = mxCreateNumericArray(3, (mwSize*)outDim, mxSINGLE_CLASS, mxREAL);
             float* nmat = (float*)mxGetPr(plhs[0]);
 
-            transformVolume_16bit_to_float(dmat, tmat, nmat, shapeX, shapeY, shapeZ, startX, startY, startZ, outShapeX, outShapeY, outShapeZ);
+            transformVolume_16bit_to_float(dmat, tmat, nmat, shapeX, shapeY, shapeZ, startX, startY, startZ, outShapeX, outShapeY, outShapeZ, lineLen);
         }
     }
     else{

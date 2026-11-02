@@ -11,12 +11,14 @@ if ~islogical(mask)
     mask = mask > 0;
 end
 
-% for regular rectangler full image, directly set edges as false
+% for regular rectangler full image, directly set edges as false (unique
+% indices: gpuArray assignments take no repeated subscripts, which the two
+% ranges have for masks thinner than 2 * EdgeErosion)
 if all(mask, 'all')
-    mask([1 : EdgeErosion, end - EdgeErosion + 1 : end], :, :) = false;
-    mask(:, [1 : EdgeErosion, end - EdgeErosion + 1 : end], :) = false;
+    mask(unique([1 : EdgeErosion, end - EdgeErosion + 1 : end]), :, :) = false;
+    mask(:, unique([1 : EdgeErosion, end - EdgeErosion + 1 : end]), :) = false;
     if ndims(mask) == 3
-        mask(:, :, [1 : EdgeErosion, end - EdgeErosion + 1 : end]) = false;
+        mask(:, :, unique([1 : EdgeErosion, end - EdgeErosion + 1 : end])) = false;
     end
     return;
 end
@@ -42,14 +44,19 @@ if ndims(mask) <= 3 && ~issparse(mask) && isa(EdgeErosion, 'double') && isscalar
     mex_fallback(mexNames{isGPU + 1});
 end
 
-% for irregular shape image, use imerode to erode edges. 
-mask([1, end], :, :) = false;
-mask(:, [1, end], :) = false;
+% for irregular shape image, use imerode to erode edges. First and last
+% indices in separate assignments: gpuArray assignments take no repeated
+% subscripts ([1, end] of a mask with one row or column)
+mask(1, :, :) = false;
+mask(end, :, :) = false;
+mask(:, 1, :) = false;
+mask(:, end, :) = false;
 switch ndims(mask)
     case 2
         mask = imerode(mask, strel('disk', EdgeErosion - 1));
     case 3
-        mask(:, :, [1, end]) = false;
+        mask(:, :, 1) = false;
+        mask(:, :, end) = false;
         mask = imerode(mask, strel('disk', EdgeErosion - 1));
         mask = permute(mask, [3, 1, 2]);
         mask = imerode(mask, true(EdgeErosion * 2 - 1, 1));

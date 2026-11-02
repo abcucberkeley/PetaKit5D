@@ -448,7 +448,9 @@ void skewed_space_interp_defined_stepsize(const float* im, float* im_int, const 
         double tw = t - floor(t);
         t = floor(t);
 
-        if((Reverse && (sw < 1e-3 || (1.0 - sw) < 1e-3 || zw < 1e-3)) || (!Reverse && !tw)){
+        // the last raw slice has no next one to interpolate with (zout can pass it by a rounding
+        // error of the single precision step size): copy it, as the MATLAB code does
+        if((Reverse && (sw < 1e-3 || (1.0 - sw) < 1e-3 || zw < 1e-3)) || (!Reverse && !tw) || (uint64_t)floor(zout) + 1 >= sz[2]){
             z_copy_mat[i] = true;
         } else {
             z_copy_mat[i] = false;
@@ -609,7 +611,9 @@ void skewed_space_interp_defined_stepsize_16bit_to_float(const uint16_t* im, flo
         double tw = t - floor(t);
         t = floor(t);
 
-        if((Reverse && (sw < 1e-3 || (1.0 - sw) < 1e-3 || zw < 1e-3)) || (!Reverse && !tw)){
+        // the last raw slice has no next one to interpolate with (zout can pass it by a rounding
+        // error of the single precision step size): copy it, as the MATLAB code does
+        if((Reverse && (sw < 1e-3 || (1.0 - sw) < 1e-3 || zw < 1e-3)) || (!Reverse && !tw) || (uint64_t)floor(zout) + 1 >= sz[2]){
             z_copy_mat[i] = true;
         } else {
             z_copy_mat[i] = false;
@@ -774,7 +778,9 @@ void skewed_space_interp_defined_stepsize_16bit(const uint16_t* im, uint16_t* im
         double tw = t - floor(t);
         t = floor(t);
 
-        if((Reverse && (sw < 1e-3 || (1.0 - sw) < 1e-3 || zw < 1e-3)) || (!Reverse && !tw)){
+        // the last raw slice has no next one to interpolate with (zout can pass it by a rounding
+        // error of the single precision step size): copy it, as the MATLAB code does
+        if((Reverse && (sw < 1e-3 || (1.0 - sw) < 1e-3 || zw < 1e-3)) || (!Reverse && !tw) || (uint64_t)floor(zout) + 1 >= sz[2]){
             z_copy_mat[i] = true;
         } else {
             z_copy_mat[i] = false;
@@ -916,6 +922,9 @@ void mexFunction(int nlhs, mxArray *plhs[],
     for(uint64_t t=0; t < ndim; t++){
         sz[t] = dimsA[t];
     }
+
+    // the rows of an interpolated slice come from rows up to ceil(xstep) + 1 apart
+    if (sz[1] < (uint64_t)ceil(xstep) + 2) mexErrMsgIdAndTxt("volume_warp:inputError","The second dimension of the input must be at least ceil(xstep) + 2");
 
     uint64_t nint = (uint64_t) (floor(round((float)(sz[2] - 1) / stepsize * 100000) / 100000) + 1);
     uint64_t outDim[3];

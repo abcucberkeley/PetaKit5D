@@ -52,6 +52,30 @@ classdef DeskewRotateKernelExactTest < pktest.TestCase
             expected = testCase.referenceKernel(vol, g, bbox, save16bit);
             testCase.verifyKernelOutput(out, expected);
         end
+
+        function boundingBoxPastTheInputRows(testCase, dz, reverse, dataType)
+            % an output region whose y range goes past the input's rows: the
+            % rows inside are those of the region inside, the others 0, as
+            % imwarp gives (the warp mex read past the rows: the next
+            % column's values; the combined mex rejected the region, so its
+            % two steps ran instead)
+            rawSize = [61, 40, 30];
+            [vol, save16bit] = testCase.makeVolume(rawSize, dataType);
+            g = testCase.geometry(rawSize, dz, reverse);
+            bbox = [5, 7, 3, rawSize(1) + 9, g.outSize(2) - 9, g.outSize(3) - 2];
+            out = deskewRotateFrame3D(vol, testCase.SkewAngle, dz, testCase.XYPixelSize, 'reverse', reverse, ...
+                'save16bit', save16bit, 'bbox', bbox);
+
+            expected = testCase.referenceKernel(vol, g, [bbox(1 : 3), rawSize(1), bbox(5 : 6)], save16bit);
+            expected(end + 1 : bbox(4) - bbox(1) + 1, :, :) = 0;
+            testCase.verifyKernelOutput(out, expected);
+
+            % a region entirely past the rows
+            bbox(1) = rawSize(1) + 2;
+            out = deskewRotateFrame3D(vol, testCase.SkewAngle, dz, testCase.XYPixelSize, 'reverse', reverse, ...
+                'save16bit', save16bit, 'bbox', bbox);
+            testCase.verifyEqual(out, zeros(bbox(4 : 6) - bbox(1 : 3) + 1, class(expected)));
+        end
     end
 
     methods (Access = private)

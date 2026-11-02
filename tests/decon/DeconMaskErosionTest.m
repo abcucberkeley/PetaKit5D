@@ -169,6 +169,54 @@ classdef DeconMaskErosionTest < pktest.TestCase
                     sprintf('size %s', mat2str(sz{1})));
             end
         end
+
+        function gpuArrayMasksWithoutTheGPUMex(testCase)
+            % where decon_mask_edge_erosion_gpu_mex is missing (e.g., Windows
+            % with a CUDA GPU), the MATLAB code erodes gpuArray masks on the
+            % GPU, with the CPU's result; it errored for masks with one row or
+            % column (mask([1, end], :, :): gpuArray assignments take no
+            % repeated subscripts)
+            testCase.assumeGPUAvailable();
+            testCase.applyFixture(pktest.FunctionStubFixture('decon_mask_edge_erosion_gpu_mex'));
+            testCase.expectMexFallback('decon_mask_edge_erosion_gpu_mex');
+            for sz = {[1, 30, 20], [30, 1, 20], [30, 20, 1], [1, 30], [30, 1], [17, 19, 2], [37, 41, 23]}
+                for shape = {'random', 'skewed'}
+                    A = testCase.makeMask(shape{1}, sz{1});
+                    for E = [1, 3]
+                        testCase.verifyGPUOutcome(A, E, sprintf('%s mask of size %s, EdgeErosion %d', shape{1}, mat2str(sz{1}), E));
+                    end
+                end
+            end
+        end
+
+        function fullGpuArrayMasksThinnerThanTheErosion(testCase)
+            % full masks get their edges set directly, also on the GPU and
+            % with the GPU mex: the first and last EdgeErosion indices overlap
+            % for masks thinner than 2 * EdgeErosion (gpuArray assignments
+            % take no repeated subscripts)
+            testCase.assumeGPUAvailable();
+            for sz = {[3, 20, 20], [20, 3, 20], [20, 20, 3], [1, 30, 20], [3, 20], [30, 1]}
+                A = true(sz{1});
+                for E = [1, 2, 3]
+                    testCase.verifyGPUOutcome(A, E, sprintf('full mask of size %s, EdgeErosion %d', mat2str(sz{1}), E));
+                end
+            end
+        end
+    end
+
+    methods (Access = private)
+        function [] = verifyGPUOutcome(testCase, A, E, name)
+            % the gpuArray mask's erosion equals the CPU's; where the CPU code
+            % errors (EdgeErosion beyond the size of a full mask), so does
+            % the GPU code (with an identifier of its own)
+            cpu = testCase.outcome(@() decon_mask_edge_erosion(A, E));
+            gpu = testCase.outcome(@() gather(decon_mask_edge_erosion(gpuArray(A), E)));
+            if ischar(cpu)
+                testCase.verifyClass(gpu, 'char', sprintf('%s: the CPU code errors (%s), the GPU code doesn''t.', name, cpu));
+            else
+                testCase.verifyEqual(gpu, cpu, name);
+            end
+        end
     end
 
     methods (Static, Access = private)

@@ -258,18 +258,15 @@ for i = 1 : numel(batchInds)
         'useGPU', useGPU, 'psfGen', psfGen, 'debug', debug, 'save3Dstack', save3Dstack, ...
         'EdgeErosion', EdgeErosion, 'mipAxis', mipAxis);
     
-    % the mex takes a batch of the class of imout (RLMethod 'original' gives
-    % others, which the assignment converts)
-    useMex = isa(out_batch, dtype);
-    if useMex
-        try
-            indexing3d_mex(imout, [obStart, obEnd], out_batch);
-        catch ME
-            mex_fallback('indexing3d_mex', ME, {'tiff:dataTypeError'});
-            useMex = false;
-        end
+    % the mex takes a batch of the class of imout: others (e.g., RLMethod
+    % 'original' gives single) are converted first, as the assignment would
+    if ~isa(out_batch, dtype)
+        out_batch = cast(out_batch, dtype);
     end
-    if ~useMex
+    try
+        indexing3d_mex(imout, [obStart, obEnd], out_batch);
+    catch ME
+        mex_fallback('indexing3d_mex', ME, {'tiff:dataTypeError'});
         imout(obStart(1) : obEnd(1), obStart(2) : obEnd(2), obStart(3) : obEnd(3)) = out_batch;
     end
 

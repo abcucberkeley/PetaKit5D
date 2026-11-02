@@ -641,7 +641,11 @@ template <typename T, typename TI, typename TO>
 void transformVolume(const T* const &im, const double (&tmat)[4][4], TO* const &nmat, const InterpSlice* const &slices,
                      const uint64_t* const &interp_index, const bool* const &is_original, const uint64_t xa, const uint8_t Reverse,
                      const uint64_t sz[3], const uint64_t &shapeZ, const float &startX, const float &startY, const float &startZ,
-                     const uint64_t &outShapeX, const uint64_t &outShapeY, const uint64_t &outShapeZ, TI* const &cacheAll){
+                     const uint64_t &outShapeX, const uint64_t &outShapeY, const uint64_t &outShapeZ, const uint64_t &lineLen,
+                     TI* const &cacheAll){
+
+    // a bbox past the input's rows: nothing to compute
+    if (lineLen == 0) return;
 
     const uint64_t shapeX = sz[0];
     const uint64_t shapeY = sz[1];
@@ -659,7 +663,7 @@ void transformVolume(const T* const &im, const double (&tmat)[4][4], TO* const &
             double ty;
             ty = tmat[1][2] * (z + startZ) + tmat[1][3];
             if (ty < 0 || ty + 1 >= shapeY){
-                if (ty + 1 == shapeY) {
+                if (ty + 1 == shapeY && shapeY > 1) {  // on the last row (a single row: outside)
                     uint64_t counter = 1;
                     while (floor(ty) + 1 == shapeY){
                         ty -= 1e-9 * counter;
@@ -678,7 +682,7 @@ void transformVolume(const T* const &im, const double (&tmat)[4][4], TO* const &
                 tz = tmat[2][1] * (y + startY) + tmat[2][2] * (z + startZ) + tmat[2][3];
                 if (tz < 0 || tz + 1 >= shapeZ){
                     // handling of edge cases
-                    if (tz + 1 == shapeZ) {
+                    if (tz + 1 == shapeZ && shapeZ > 1) {  // on the last slice (a single slice: outside)
                         uint64_t counter = 1;
                         while (floor(tz) + 1 == shapeZ){
                             tz -= 1e-9 * counter;
@@ -716,7 +720,7 @@ void transformVolume(const T* const &im, const double (&tmat)[4][4], TO* const &
                 }
 
                 transform_line(rows[0], cached[0], rows[1], cached[1], nmat + y * outShapeX + z * outShapeXY,
-                               w00, w01, w10, w11, shapeX, outShapeX);
+                               w00, w01, w10, w11, shapeX, lineLen);
             }
         }
     }
@@ -771,6 +775,9 @@ void mexFunction(int nlhs, mxArray *plhs[],
 
     uint64_t shapeX = sz[0];
 
+    // the rows of an interpolated slice come from rows up to ceil(xstep) + 1 apart
+    if (sz[1] < (uint64_t)ceil(xstep) + 2) mexErrMsgIdAndTxt("volume_warp:inputError","The second dimension of the input must be at least ceil(xstep) + 2");
+
     uint64_t ntotal = (uint64_t) (floor(round((double)(sz[2] - 1) / stepsize * 100000) / 100000) + 1);
 
     // parameters for deskew/rotation
@@ -798,9 +805,10 @@ void mexFunction(int nlhs, mxArray *plhs[],
     uint64_t outShapeY = (uint64_t) (endY - startY);
     uint64_t outShapeZ = (uint64_t) (endZ - startZ);
 
-    // output lines are read from x0 on in rows of the input (and of the cached interpolated rows)
-    if ((uint64_t)floor(startX) + outShapeX > shapeX)
-        mexErrMsgIdAndTxt("volume_warp:inputError","Input bbox is invalid, its first range is outside the input.");
+    // output line x reads row x0 + x (x0 = startX) of the input and of the cached interpolated
+    // rows: the values past the input's rows (a bbox beyond the input) are outside and stay 0
+    const uint64_t x0 = (uint64_t)floor(startX);
+    const uint64_t lineLen = x0 < shapeX ? (outShapeX < shapeX - x0 ? outShapeX : shapeX - x0) : 0;
 
     uint64_t outDim[3];
     outDim[0] = outShapeX;
@@ -834,7 +842,7 @@ void mexFunction(int nlhs, mxArray *plhs[],
         plhs[0] = mxCreateNumericArray(3, (mwSize*)outDim, mxSINGLE_CLASS, mxREAL);
         float* nmat = (float*)mxGetPr(plhs[0]);
 
-        transformVolume(im, tmat, nmat, slices, interp_index, is_original, xa, Reverse, sz, ntotal, startX, startY, startZ, outShapeX, outShapeY, outShapeZ, cache);
+        transformVolume(im, tmat, nmat, slices, interp_index, is_original, xa, Reverse, sz, ntotal, startX, startY, startZ, outShapeX, outShapeY, outShapeZ, lineLen, cache);
 
         mxFree(cache);
     }
@@ -847,7 +855,7 @@ void mexFunction(int nlhs, mxArray *plhs[],
             plhs[0] = mxCreateNumericArray(3, (mwSize*)outDim, mxUINT16_CLASS, mxREAL);
             uint16_t* nmat = (uint16_t*)mxGetPr(plhs[0]);
 
-            transformVolume(im, tmat, nmat, slices, interp_index, is_original, xa, Reverse, sz, ntotal, startX, startY, startZ, outShapeX, outShapeY, outShapeZ, cache);
+            transformVolume(im, tmat, nmat, slices, interp_index, is_original, xa, Reverse, sz, ntotal, startX, startY, startZ, outShapeX, outShapeY, outShapeZ, lineLen, cache);
 
             mxFree(cache);
         } else {
@@ -856,7 +864,7 @@ void mexFunction(int nlhs, mxArray *plhs[],
             plhs[0] = mxCreateNumericArray(3, (mwSize*)outDim, mxSINGLE_CLASS, mxREAL);
             float* nmat = (float*)mxGetPr(plhs[0]);
 
-            transformVolume(im, tmat, nmat, slices, interp_index, is_original, xa, Reverse, sz, ntotal, startX, startY, startZ, outShapeX, outShapeY, outShapeZ, cache);
+            transformVolume(im, tmat, nmat, slices, interp_index, is_original, xa, Reverse, sz, ntotal, startX, startY, startZ, outShapeX, outShapeY, outShapeZ, lineLen, cache);
 
             mxFree(cache);
         }

@@ -78,8 +78,9 @@ void integral_image_y(float* &nmat, const uint64_t* const &dims, const uint64_t*
         for (uint64_t z = 0; z < AShapeZ; z++) {
             for (uint64_t x = 0; x < shapeX; x++) {
                 float* n_ptr = nmat + x + z * shapeXY;
+                // value of row y + 1 before it was overwritten (set at the end of each step)
+                float tmp_post = 0;
                 for (uint64_t y = shapeY - 1; y > 0; y--) {
-                    float tmp_post;
                     float tmp = *(n_ptr + y * shapeX);
                     // printf("%llu %llu %llu %llu\n", y, y+1, y-shapeT, y-shapeT);
                     // printf("%f %f\n", *(n_ptr + y * shapeX), tmp);
@@ -99,8 +100,9 @@ void integral_image_y(float* &nmat, const uint64_t* const &dims, const uint64_t*
         for (uint64_t z = 0; z < AShapeZ; z++) {
             for (uint64_t x = 0; x < shapeX; x++) {
                 float* n_ptr = nmat + x + z * shapeXY;
+                // value of row y + 1 before it was overwritten (set at the end of each step)
+                float tmp_post = 0;
                 for (uint64_t y = shapeY - 1; y > 0; y--) {
-                    float tmp_post;
                     float tmp = *(n_ptr + y * shapeX);
                     // printf("%llu %llu %llu %llu\n", y, y+1, y-shapeT, y-shapeT);
                     // printf("%f %f\n", *(n_ptr + y * shapeX), tmp);
@@ -142,8 +144,9 @@ void integral_image_z(float* &nmat, const uint64_t* const &dims, const uint64_t*
         for (uint64_t y = 0; y < shapeY; y++) {
             for (uint64_t x = 0; x < shapeX; x++) {
                 float* n_ptr = nmat + x + y * shapeX;
+                // value of slice z + 1 before it was overwritten (set at the end of each step)
+                float tmp_post = 0;
                 for (uint64_t z = shapeZ-1; z > 0; z--) {
-                    float tmp_post;
                     float tmp = *(n_ptr + z * shapeXY);
                     
                     if (z == shapeZ - 1) *(n_ptr + z * shapeXY) = *(n_ptr + (shapeZ - shapeT) * shapeXY);
@@ -159,8 +162,9 @@ void integral_image_z(float* &nmat, const uint64_t* const &dims, const uint64_t*
         for (uint64_t y = 0; y < shapeY; y++) {
             for (uint64_t x = 0; x < shapeX; x++) {
                 float* n_ptr = nmat + x + y * shapeX;
+                // value of slice z + 1 before it was overwritten (set at the end of each step)
+                float tmp_post = 0;
                 for (uint64_t z = shapeZ-1; z > 0; z--) {
-                    float tmp_post;
                     float tmp = *(n_ptr + z * shapeXY);
                     
                     if (z == shapeZ - 1) *(n_ptr + z * shapeXY) = *(n_ptr + (shapeZ - shapeT) * shapeXY);
@@ -196,22 +200,23 @@ void mexFunction(int nlhs, mxArray *plhs[],
         mexLock();
     }
 #endif
-    if (nrhs != 2) mexErrMsgIdAndTxt("integral image 3d:inputError", "Number of input arguments must be 2");
-    if (nlhs != 1) mexErrMsgIdAndTxt("integral image 3d:outputError", "Number of output arguments must be 1");
+    if (nrhs != 2) mexErrMsgIdAndTxt("integral_image_3d:inputError", "Number of input arguments must be 2");
+    if (nlhs != 1) mexErrMsgIdAndTxt("integral_image_3d:outputError", "Number of output arguments must be 1");
 
     uint64_t* dimsA = (uint64_t*) mxGetDimensions(prhs[0]);
     uint64_t dims[3] = {1, 1, 1};
     uint64_t ndim = (uint64_t) mxGetNumberOfDimensions(prhs[0]);
+    if(ndim > 3) mexErrMsgIdAndTxt("integral_image_3d:inputError", "The input must have at most 3 dimensions");
     for(uint64_t t=0; t < ndim; t++){
         dims[t] = dimsA[t];
     }
 
     uint64_t nT = (uint64_t) mxGetNumberOfElements(prhs[1]);
-    if(nT != 3) mexErrMsgIdAndTxt("integral image 3d:inputError", "The number of elements of size T must be 3");
+    if(nT != 3) mexErrMsgIdAndTxt("integral_image_3d:inputError", "The number of elements of size T must be 3");
     uint64_t dimsT[3];
     for (uint16_t t=0; t<3; t++) dimsT[t] = (uint64_t)*(mxGetPr(prhs[1]) + t);
     // printf("%d %d %d\n", dimsT[0], dimsT[1], dimsT[2]);
-    for (uint16_t t=0; t<3; t++) if(!dimsT[t]) mexErrMsgIdAndTxt("integral image 3d:inputError", "The elements of size T must be greater than zeros");
+    for (uint16_t t=0; t<3; t++) if(!dimsT[t]) mexErrMsgIdAndTxt("integral_image_3d:inputError", "The elements of size T must be greater than zeros");
 
     uint64_t dimsI[3];
     dimsI[0] = dims[0] + dimsT[0] - 1;
@@ -236,7 +241,7 @@ void mexFunction(int nlhs, mxArray *plhs[],
         integral_image_3d_mex<float>(fmat, nmat, dims, dimsT, dimsI);
     }
     else{
-        mexErrMsgIdAndTxt("integral image 3d:dataTypeError", "Data type not suppported");
+        mexErrMsgIdAndTxt("integral_image_3d:dataTypeError", "Data type not suppported");
     }
 }
 

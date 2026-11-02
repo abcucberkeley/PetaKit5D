@@ -110,53 +110,42 @@ template <typename T>
 void get_4th_dim_unvalid_bbox(const T* const &fmat, const bool* const &amat, uint64_t* &ubbox, const uint64_t &shapeX, const uint64_t &shapeY, const uint64_t &shapeZ, const uint64_t &shapeT, const uint64_t &numA) {
     const uint64_t shapeXY = shapeX * shapeY;
     const uint64_t shapeXYZ = shapeX * shapeY * shapeZ;
-    ubbox[0] = shapeX;
-    ubbox[1] = shapeY;
-    ubbox[2] = shapeZ;
-    
-    const int nthread = omp_get_max_threads();
-    
-    if (nthread > 0) {
-        #pragma omp parallel for collapse(3) shared(ubbox)
-        for (uint64_t z = 0; z < shapeZ; z++) {
-            for (uint64_t y = 0; y < shapeY; y++) {
-                for (uint64_t x = 0; x < shapeX; x++) {
-                    uint64_t counter = 0;
-                    for (uint64_t t = 0; t < shapeT; t++){
-                        if (amat[t] && ! *(fmat + x + y * shapeX + z * shapeXY + t * shapeXYZ)) counter ++;
-                    }
-                    if (counter == numA){
-                        ubbox[0] = std::min(ubbox[0], x+1);
-                        ubbox[1] = std::min(ubbox[1], y+1);
-                        ubbox[2] = std::min(ubbox[2], z+1);
-                        ubbox[3] = std::max(ubbox[3], x+1);
-                        ubbox[4] = std::max(ubbox[4], y+1);
-                        ubbox[5] = std::max(ubbox[5], z+1);
-                    }
+
+    // 1-based bounds of the voxels without data in all major tiles: each
+    // thread keeps its own, and the reduction combines them at the end
+    uint64_t minX = shapeX;
+    uint64_t minY = shapeY;
+    uint64_t minZ = shapeZ;
+    uint64_t maxX = 0;
+    uint64_t maxY = 0;
+    uint64_t maxZ = 0;
+
+    #pragma omp parallel for collapse(3) reduction(min: minX, minY, minZ) reduction(max: maxX, maxY, maxZ)
+    for (uint64_t z = 0; z < shapeZ; z++) {
+        for (uint64_t y = 0; y < shapeY; y++) {
+            for (uint64_t x = 0; x < shapeX; x++) {
+                uint64_t counter = 0;
+                for (uint64_t t = 0; t < shapeT; t++){
+                    if (amat[t] && ! *(fmat + x + y * shapeX + z * shapeXY + t * shapeXYZ)) counter ++;
+                }
+                if (counter == numA){
+                    minX = std::min(minX, x+1);
+                    minY = std::min(minY, y+1);
+                    minZ = std::min(minZ, z+1);
+                    maxX = std::max(maxX, x+1);
+                    maxY = std::max(maxY, y+1);
+                    maxZ = std::max(maxZ, z+1);
                 }
             }
         }
     }
-    else {
-        for (uint64_t z = 0; z < shapeZ; z++) {
-            for (uint64_t y = 0; y < shapeY; y++) {
-                for (uint64_t x = 0; x < shapeX; x++) {
-                    uint64_t counter = 0;
-                    for (uint64_t t = 0; t < shapeT; t++){
-                        if (amat[t] && ! *(fmat + x + y * shapeX + z * shapeXY + t * shapeXYZ)) counter ++;
-                    }
-                    if (counter == numA){
-                        ubbox[0] = std::min(ubbox[0], x);
-                        ubbox[1] = std::min(ubbox[1], y);
-                        ubbox[2] = std::min(ubbox[2], z);
-                        ubbox[3] = std::max(ubbox[3], x);
-                        ubbox[4] = std::max(ubbox[4], y);
-                        ubbox[5] = std::max(ubbox[5], z);
-                    }
-                }
-            }
-        }
-    }
+
+    ubbox[0] = minX;
+    ubbox[1] = minY;
+    ubbox[2] = minZ;
+    ubbox[3] = maxX;
+    ubbox[4] = maxY;
+    ubbox[5] = maxZ;
 }
 
 

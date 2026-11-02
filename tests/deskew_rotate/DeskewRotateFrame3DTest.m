@@ -105,6 +105,84 @@ classdef DeskewRotateFrame3DTest < pktest.TestCase
             testCase.verifyImagesClose(separate, combined, 'relTol', 1e-6);
         end
 
+        function bboxPastTheInputRowsMatchesImwarp(testCase, dz)
+            % an output region whose y range goes past the input's rows is 0
+            % there, as imwarp gives (the mex functions hidden by stubs that
+            % error); the warp mex used to read past the rows
+            [~, vol] = testCase.beadGrid();
+            bbox = [9, 21, 5, testCase.RawSize(1) + 12, 150, 40];
+            out = deskewRotateFrame3D(vol, testCase.SkewAngle, dz, testCase.XYPixelSize, 'reverse', true, 'bbox', bbox);
+            testCase.applyFixture(pktest.FunctionStubFixture('volume_deskew_rotate_warp_mex'));
+            testCase.applyFixture(pktest.FunctionStubFixture('skewed_space_interp_volume_deskew_rotate_warp_mex'));
+            testCase.expectMexFallback('volume_deskew_rotate_warp_mex', 'skewed_space_interp_volume_deskew_rotate_warp_mex');
+            ref = deskewRotateFrame3D(vol, testCase.SkewAngle, dz, testCase.XYPixelSize, 'reverse', true, 'bbox', bbox);
+
+            nIn = testCase.RawSize(1) - bbox(1) + 1;
+            testCase.verifyEqual(size(out), bbox(4 : 6) - bbox(1 : 3) + 1);
+            testCase.verifyEqual(nnz(ref(nIn + 1 : end, :, :)), 0);
+            testCase.verifyEqual(nnz(out(nIn + 1 : end, :, :)), 0, 'Values past the input''s rows.');
+            testCase.verifyImagesClose(out, ref, 'relTol', 1e-6);
+        end
+
+        function forwardInterpolationEndsAtTheLastRawSlice(testCase)
+            % the separate skewed space interpolation (with resampling, on the
+            % GPU, or where the combined mex fails) at dz 0.6 (step 1/3,
+            % 0.33333334 in single precision): the last interpolated slice
+            % passes the last raw slice by a rounding error, and forward scans
+            % interpolated it with a slice past the input instead of copying it
+            testCase.assumeMexAvailable('skewed_space_interp_defined_stepsize_mex');
+            xstep = cosd(testCase.SkewAngle) * 0.6 / testCase.XYPixelSize;
+            v = single(rand(16, 40, 30) * 1000);
+            for save16bit = [true, false]
+                for input = {v, uint16(v)}
+                    out = skewed_space_interp_defined_stepsize_mex(input{1}, xstep, 1 / 3, false, save16bit);
+                    testCase.verifyEqual(size(out, 3), 88);
+                    testCase.verifyEqual(out(:, :, end), cast(input{1}(:, :, end), class(out)), ...
+                        sprintf('%s input, save16bit %d', class(input{1}), save16bit));
+                end
+            end
+        end
+
+        function inputsNarrowerThanTheShiftRunTheMatlabCode(testCase)
+            % the rows of an interpolated slice come from rows up to the x step
+            % apart: the mex functions that interpolate read past narrower
+            % inputs; they reject them, so the MATLAB interpolation runs
+            testCase.assumeMexAvailable('skewed_space_interp_volume_deskew_rotate_warp_mex', ...
+                'skewed_space_interp_defined_stepsize_mex');
+            rejected = matlab.unittest.constraints.Throws('volume_warp:inputError', 'WhenNargoutIs', 1);
+            v = single(rand(8, 6, 12));
+            testCase.verifyThat(@() skewed_space_interp_volume_deskew_rotate_warp_mex(v, 4.69, 1 / 3, true, eye(4), ...
+                [1, 1, 1, 8, 5, 5], false), rejected);
+            testCase.verifyThat(@() skewed_space_interp_defined_stepsize_mex(v, 4.69, 1 / 3, true, false), rejected);
+
+            % dz 1.5 (x step 11.7), 13 columns
+            v = single(rand(8, 13, 12) * 1000);
+            testCase.expectMexFallback('skewed_space_interp_volume_deskew_rotate_warp_mex', 'skewed_space_interp_defined_stepsize_mex');
+            out = deskewRotateFrame3D(v, testCase.SkewAngle, 1.5, testCase.XYPixelSize, 'reverse', true);
+            testCase.applyFixture(pktest.FunctionStubFixture('skewed_space_interp_volume_deskew_rotate_warp_mex'));
+            testCase.applyFixture(pktest.FunctionStubFixture('skewed_space_interp_defined_stepsize_mex'));
+            ref = deskewRotateFrame3D(v, testCase.SkewAngle, 1.5, testCase.XYPixelSize, 'reverse', true);
+            testCase.verifyGreaterThan(nnz(ref), 0);
+            testCase.verifyEqual(out, ref);
+        end
+
+        function singleSliceOrColumnReadsNothingOutside(testCase)
+            % output points interpolate from two slices (columns); for a point
+            % exactly on the only slice (column) the warp mex stepped to the one
+            % before the array. They are outside now, as all points are there.
+            testCase.assumeMexAvailable('volume_deskew_rotate_warp_mex', 'skewed_space_interp_volume_deskew_rotate_warp_mex');
+            v = single(rand(8, 40, 6) * 1000 + 1);
+            % (the identity puts the first output slice on the first input slice)
+            bbox = [1, 1, 1, 8, 5, 5];
+            testCase.verifyEqual(volume_deskew_rotate_warp_mex(v(:, :, 1), eye(4), bbox, false), zeros(8, 5, 5, 'single'));
+            testCase.verifyEqual(volume_deskew_rotate_warp_mex(v(:, 1, :), eye(4), bbox, false), zeros(8, 5, 5, 'single'));
+            testCase.verifyEqual(volume_deskew_rotate_warp_mex(uint16(v(:, :, 1)), eye(4), bbox, true), zeros(8, 5, 5, 'uint16'));
+            testCase.verifyEqual(skewed_space_interp_volume_deskew_rotate_warp_mex(v(:, :, 1), 4.69, 1 / 3, true, eye(4), bbox, false), ...
+                zeros(8, 5, 5, 'single'));
+            % with two slices the points on them have values
+            testCase.verifyGreaterThan(nnz(volume_deskew_rotate_warp_mex(v(:, :, 1 : 2), eye(4), bbox, false)), 0);
+        end
+
         function combinedMatchesSeparateDeskewThenRotate(testCase)
             % the combined transform must equal deskew followed by rotation
             % (up to the extra interpolation of the separate path)
