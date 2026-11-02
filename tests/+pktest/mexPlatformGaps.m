@@ -15,10 +15,11 @@ end
 % not at all), and the decon mex files, which are built on Linux only (the
 % CPU one equals MATLAB's FFTs there; mexcuda needs MSVC on Windows, and
 % macOS has no CUDA), so decon runs the MATLAB code there (the CPU erosion
-% mex is built on all platforms)
+% mex is built on all platforms); the same for the registration's
+% normxcorr3_window_mex (MATLAB's FFTs)
 windowsGaps = {'min_bbox_3d_mex', 'h_mat_mex', 'h_mat_fast_exp_mex', ...
     'h_mat_mthreads_mex', 'replace_nan_inf_with_value', 'decon_lucy_rfft_mex', 'decon_lucy_rfft_gpu_mex', ...
-    'decon_mask_edge_erosion_gpu_mex'};
+    'decon_mask_edge_erosion_gpu_mex', 'normxcorr3_window_mex'};
 
 % unused ones as above, plus the point detection and imageProcessing mex
 % functions, which have never been built for ARM macOS. The .m files with

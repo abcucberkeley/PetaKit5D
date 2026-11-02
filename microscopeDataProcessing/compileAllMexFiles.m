@@ -69,6 +69,10 @@ if isunix && ~ismac
     buildMex('decon_lucy_rfft_mex.cpp', false, [{'-R2018a'}, matlabFFTWArgs()], ' -ffp-contract=off');
     buildCudaMex('decon_lucy_rfft_gpu_mex.cu');
     buildCudaMex('decon_mask_edge_erosion_gpu_mex.cu');
+    % the registration's windowed normalized cross-correlation, with the
+    % same FFTs as MATLAB's as the CPU decon mex
+    cd([srcDir, '/stitch/mex']);
+    buildMex('normxcorr3_window_mex.cpp', false, [{'-R2018a'}, matlabFFTWArgs()], ' -ffp-contract=off');
 end
 
 if ismac
