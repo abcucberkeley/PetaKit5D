@@ -527,13 +527,17 @@ void skewed_space_interp_slices(const double xstep, const double stepsize, const
         zout = stepsize * (double)i;
         zw = zout - floor(zout);
 
+        // slice zorg is read at x - xstep * zw (reverse) or x + xstep * zw (forward), slice zorg + 1
+        // at x + xstep * (1 - zw) or x - xstep * (1 - zw), as in skewed_space_interp_defined_stepsize.m
+        // (s and t are ceil(xstep) - xstep < 1 apart before flooring either way, which the row ranges
+        // of skewed_space_interp_row rely on)
         if(Reverse){
             s = ceil(xstep) - xstep * zw;
             t = xstep * (1 - zw);
         }
         else{
-            s = xstep * (1 - zw);
-            t = ceil(xstep) - xstep * zw;
+            s = xstep * zw;
+            t = ceil(xstep) - xstep * (1 - zw);
         }
 
         //distance to start

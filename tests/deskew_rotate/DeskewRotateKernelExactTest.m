@@ -26,6 +26,10 @@ classdef DeskewRotateKernelExactTest < pktest.TestCase
         dataType = {'uint16', 'uint16ToSingle', 'single'}
         % y (the line length) with and without a remainder of 16
         rawSize = struct('y61', [61, 40, 30], 'y48', [48, 37, 26])
+        % interpolation steps 1/3, 1/4 and 1/5 (dz 1.026 gives a step just
+        % below 0.2, so the positions of most raw slices in the grid come out
+        % just below them: their slices must be those raw slices)
+        interpDz = struct('dz06', 0.6, 'dz08', 0.8, 'dz1026', 1.026)
     end
 
     methods (Test, TestTags = {'Unit'})
@@ -75,6 +79,54 @@ classdef DeskewRotateKernelExactTest < pktest.TestCase
             out = deskewRotateFrame3D(vol, testCase.SkewAngle, dz, testCase.XYPixelSize, 'reverse', reverse, ...
                 'save16bit', save16bit, 'bbox', bbox);
             testCase.verifyEqual(out, zeros(bbox(4 : 6) - bbox(1 : 3) + 1, class(expected)));
+        end
+    end
+
+    methods (Test, TestTags = {'Unit'})
+        function interpolationMatchesTheMatlabFunction(testCase, interpDz, reverse, dataType)
+            % the skewed space interpolation of both mex against
+            % skewed_space_interp_defined_stepsize.m, up to rounding (the
+            % combined mex's grid read out with a transform that maps output
+            % y and z to grid slice and row). Not compared in interpolated
+            % slices: the columns next to the edges, where the mex leave out
+            % a pair of rows with one row outside and the MATLAB code pads
+            % with zeros. Forward scans used to shift the slices as for
+            % position 1 - zw, and the separate mex's single precision step
+            % (steps 1/3 and 0.2 are not exact in single) moved the slices
+            % by up to 1.5e-5 of a raw slice by the end of 500.
+            rawSize = [8, 48, 500];
+            [vol, save16bit] = testCase.makeVolume(rawSize, dataType);
+            g = testCase.geometry(rawSize, interpDz, reverse);
+            ref = double(skewed_space_interp_defined_stepsize(vol, g.xstep, g.stepsize, 'Reverse', reverse));
+            nz = size(ref, 3);
+            separate = skewed_space_interp_defined_stepsize_mex(vol, g.xstep, g.stepsize, reverse, save16bit);
+            tmat = [1, 0, 0, 0; 0, 0, 1, 0; 0, 1, 0, 0; 0, 0, 0, 1];
+            combined = skewed_space_interp_volume_deskew_rotate_warp_mex(vol, g.xstep, g.stepsize, reverse, tmat, ...
+                [1, 1, 1, rawSize(1), nz, rawSize(2)], save16bit);
+            combined = permute(combined, [1, 3, 2]);
+
+            % uint16 rows are rounded
+            tol = 1e-5 * max(ref(:));
+            if isa(separate, 'uint16')
+                tol = 0.51;
+            end
+            cols = ceil(g.xstep) + 3 : rawSize(2) - ceil(g.xstep) - 2;
+            % slices within 1e-3 of a raw slice are that raw slice, edge
+            % columns included
+            zout = (0 : nz - 1) * g.stepsize;
+            copied = abs(zout - round(zout)) < 1e-3;
+            raw = double(vol(:, :, round(zout(copied)) + 1));
+            for out = {separate, combined; 'separate', 'combined'}
+                testCase.verifySize(out{1}, size(ref), out{2});
+                if isequal(size(out{1}), size(ref))
+                    d = abs(double(out{1}(:, cols, :)) - ref(:, cols, :));
+                    [maxDiff, ind] = max(d(:));
+                    [~, ~, slice] = ind2sub(size(d), ind);
+                    testCase.verifyLessThanOrEqual(maxDiff, tol, sprintf('%s mex: largest difference %.4g in slice %d of %d.', ...
+                        out{2}, maxDiff, slice, nz));
+                    testCase.verifyEqual(double(out{1}(:, :, copied)), raw, sprintf('%s mex: slices at raw slice positions.', out{2}));
+                end
+            end
         end
     end
 
@@ -220,12 +272,15 @@ classdef DeskewRotateKernelExactTest < pktest.TestCase
                 end
                 zout = stepsize * i;
                 zw = zout - floor(zout);
+                % slice zorg read at x - xstep * zw (reverse) or x + xstep * zw
+                % (forward), slice zorg + 1 at x + xstep * (1 - zw) or
+                % x - xstep * (1 - zw)
                 if g.reverse
                     s = ceil(xstep) - xstep * zw;
                     t = xstep * (1 - zw);
                 else
-                    s = xstep * (1 - zw);
-                    t = ceil(xstep) - xstep * zw;
+                    s = xstep * zw;
+                    t = ceil(xstep) - xstep * (1 - zw);
                 end
                 sw = s - floor(s);
                 s = floor(s);

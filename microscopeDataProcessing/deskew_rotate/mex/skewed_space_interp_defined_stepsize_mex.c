@@ -405,7 +405,56 @@ void compute_weighted_sum_16bit(const uint16_t* a, const uint16_t* b, const uint
 #endif
 
 
-void skewed_space_interp_defined_stepsize(const float* im, float* im_int, const float xstep, const float stepsize, const uint8_t Reverse,
+// parameters of the slices of the interpolation grid at zout = stepsize * i, as in the combined mex
+// (double precision step): a slice within 1e-3 of a raw slice is a copy of it; the others interpolate
+// raw slices zorg and zorg + 1, read at x - xstep * zw (reverse) or x + xstep * zw (forward) and at
+// x + xstep * (1 - zw) or x - xstep * (1 - zw), as in skewed_space_interp_defined_stepsize.m (s and t
+// are ceil(xstep) - xstep < 1 apart before flooring either way, which the row ranges rely on)
+static void interp_slice_parameters(const float xstep, const double stepsize, const uint8_t Reverse, const uint64_t nint,
+                                    double* s_mat, double* t_mat, double* sw_mat, double* tw_mat, double* zw_mat,
+                                    bool* z_copy_mat, uint64_t* z_ind_mat){
+
+    for(uint64_t i = 0; i < nint; i++){
+        double s;
+        double t;
+        double zout;
+        double zw;
+        zout = stepsize * (double)i;
+        zw = zout - floor(zout);
+
+        if(fabs(zout - round(zout)) < 1e-3){
+            z_copy_mat[i] = true;
+            z_ind_mat[i] = (uint64_t)round(zout);
+            continue;
+        }
+
+        if(Reverse){
+            s = ceil(xstep) - xstep * zw;
+            t = xstep * (1 - zw);
+        }
+        else{
+            s = xstep * zw;
+            t = ceil(xstep) - xstep * (1 - zw);
+        }
+
+        //distance to start
+        double sw = s - floor(s);
+        s = floor(s);
+        double tw = t - floor(t);
+        t = floor(t);
+
+        z_copy_mat[i] = false;
+        s_mat[i] = s;
+        t_mat[i] = t;
+        sw_mat[i] = sw;
+        tw_mat[i] = tw;
+        zw_mat[i] = zw;
+        z_ind_mat[i] = floor(zout);
+    }
+}
+
+
+void skewed_space_interp_defined_stepsize(const float* im, float* im_int, const float xstep, const double stepsize, const uint8_t Reverse,
                                           const uint64_t sz[3], const uint64_t outDim[3]){
 
     const uint64_t nint = outDim[2];
@@ -424,47 +473,7 @@ void skewed_space_interp_defined_stepsize(const float* im, float* im_int, const 
     uint64_t n_copy = 0;
     uint64_t n_interp = 0;
 
-    for(uint64_t i = 0; i < nint; i++){
-        double s;
-        double t;
-        double zout;
-        double zw;
-        // zout = ((double)(sz[2] - 1)) / ((double)(nint - 1)) * ((double)i);
-        zout = stepsize * (double)i;
-        zw = zout - floor(zout);
-
-        if(Reverse){
-            s = ceil(xstep) - xstep * zw;
-            t = xstep * (1 - zw);
-        }
-        else{
-            s = xstep * (1 - zw);
-            t = ceil(xstep) - xstep * zw;
-        }
-
-        //distance to start
-        double sw = s - floor(s);
-        s = floor(s);
-        double tw = t - floor(t);
-        t = floor(t);
-
-        // the last raw slice has no next one to interpolate with (zout can pass it by a rounding
-        // error of the single precision step size): copy it, as the MATLAB code does
-        if((Reverse && (sw < 1e-3 || (1.0 - sw) < 1e-3 || zw < 1e-3)) || (!Reverse && !tw) || (uint64_t)floor(zout) + 1 >= sz[2]){
-            z_copy_mat[i] = true;
-        } else {
-            z_copy_mat[i] = false;
-        }
-
-        s_mat[i] = s;
-        t_mat[i] = t;
-        sw_mat[i] = sw;
-        tw_mat[i] = tw;
-        zw_mat[i] = zw;
-
-        z_ind_mat[i] = floor(zout);
-        // printf("%llu %f %llu %f %f %f %f %f %llu\n", i, zout, z_ind_mat[i], s, t, sw, tw, zw, z_copy_mat[i]);
-    }
+    interp_slice_parameters(xstep, stepsize, Reverse, nint, s_mat, t_mat, sw_mat, tw_mat, zw_mat, z_copy_mat, z_ind_mat);
 
     #pragma omp parallel for
     for(uint64_t z = 0; z < nint; z++){
@@ -568,7 +577,7 @@ void skewed_space_interp_defined_stepsize(const float* im, float* im_int, const 
 }
 
 
-void skewed_space_interp_defined_stepsize_16bit_to_float(const uint16_t* im, float* im_int, const float xstep, const float stepsize, const uint8_t Reverse,
+void skewed_space_interp_defined_stepsize_16bit_to_float(const uint16_t* im, float* im_int, const float xstep, const double stepsize, const uint8_t Reverse,
                                                          const uint64_t sz[3], const uint64_t outDim[3]){
 
     const uint64_t nint = outDim[2];
@@ -587,47 +596,7 @@ void skewed_space_interp_defined_stepsize_16bit_to_float(const uint16_t* im, flo
     uint64_t n_copy = 0;
     uint64_t n_interp = 0;
 
-    for(uint64_t i = 0; i < nint; i++){
-        double s;
-        double t;
-        double zout;
-        double zw;
-        // zout = ((double)(sz[2] - 1)) / ((double)(nint - 1)) * ((double)i);
-        zout = stepsize * (double)i;
-        zw = zout - floor(zout);
-
-        if(Reverse){
-            s = ceil(xstep) - xstep * zw;
-            t = xstep * (1 - zw);
-        }
-        else{
-            s = xstep * (1 - zw);
-            t = ceil(xstep) - xstep * zw;
-        }
-
-        //distance to start
-        double sw = s - floor(s);
-        s = floor(s);
-        double tw = t - floor(t);
-        t = floor(t);
-
-        // the last raw slice has no next one to interpolate with (zout can pass it by a rounding
-        // error of the single precision step size): copy it, as the MATLAB code does
-        if((Reverse && (sw < 1e-3 || (1.0 - sw) < 1e-3 || zw < 1e-3)) || (!Reverse && !tw) || (uint64_t)floor(zout) + 1 >= sz[2]){
-            z_copy_mat[i] = true;
-        } else {
-            z_copy_mat[i] = false;
-        }
-
-        s_mat[i] = s;
-        t_mat[i] = t;
-        sw_mat[i] = sw;
-        tw_mat[i] = tw;
-        zw_mat[i] = zw;
-
-        z_ind_mat[i] = floor(zout);
-        // printf("%llu %f %llu %f %f %f %f %f %llu\n", i, zout, z_ind_mat[i], s, t, sw, tw, zw, z_copy_mat[i]);
-    }
+    interp_slice_parameters(xstep, stepsize, Reverse, nint, s_mat, t_mat, sw_mat, tw_mat, zw_mat, z_copy_mat, z_ind_mat);
 
     #pragma omp parallel for
     for(uint64_t z = 0; z < nint; z++){
@@ -735,7 +704,7 @@ void skewed_space_interp_defined_stepsize_16bit_to_float(const uint16_t* im, flo
 }
 
 
-void skewed_space_interp_defined_stepsize_16bit(const uint16_t* im, uint16_t* im_int, const float xstep, const float stepsize, const uint8_t Reverse,
+void skewed_space_interp_defined_stepsize_16bit(const uint16_t* im, uint16_t* im_int, const float xstep, const double stepsize, const uint8_t Reverse,
                                           const uint64_t sz[3], const uint64_t outDim[3]){
 
     const uint64_t nint = outDim[2];
@@ -754,47 +723,7 @@ void skewed_space_interp_defined_stepsize_16bit(const uint16_t* im, uint16_t* im
     uint64_t n_copy = 0;
     uint64_t n_interp = 0;
 
-    for(uint64_t i = 0; i < nint; i++){
-        double s;
-        double t;
-        double zout;
-        double zw;
-        // zout = ((double)(sz[2] - 1)) / ((double)(nint - 1)) * ((double)i);
-        zout = stepsize * (double)i;
-        zw = zout - floor(zout);
-
-        if(Reverse){
-            s = ceil(xstep) - xstep * zw;
-            t = xstep * (1 - zw);
-        }
-        else{
-            s = xstep * (1 - zw);
-            t = ceil(xstep) - xstep * zw;
-        }
-
-        //distance to start
-        double sw = s - floor(s);
-        s = floor(s);
-        double tw = t - floor(t);
-        t = floor(t);
-
-        // the last raw slice has no next one to interpolate with (zout can pass it by a rounding
-        // error of the single precision step size): copy it, as the MATLAB code does
-        if((Reverse && (sw < 1e-3 || (1.0 - sw) < 1e-3 || zw < 1e-3)) || (!Reverse && !tw) || (uint64_t)floor(zout) + 1 >= sz[2]){
-            z_copy_mat[i] = true;
-        } else {
-            z_copy_mat[i] = false;
-        }
-
-        s_mat[i] = s;
-        t_mat[i] = t;
-        sw_mat[i] = sw;
-        tw_mat[i] = tw;
-        zw_mat[i] = zw;
-
-        z_ind_mat[i] = floor(zout);
-        // printf("%llu %f %llu %f %f %f %f %f %llu\n", i, zout, z_ind_mat[i], s, t, sw, tw, zw, z_copy_mat[i]);
-    }
+    interp_slice_parameters(xstep, stepsize, Reverse, nint, s_mat, t_mat, sw_mat, tw_mat, zw_mat, z_copy_mat, z_ind_mat);
 
     #pragma omp parallel for
     for(uint64_t z = 0; z < nint; z++){
@@ -912,7 +841,7 @@ void mexFunction(int nlhs, mxArray *plhs[],
     if (nlhs != 1) mexErrMsgIdAndTxt("volume_warp:outputError","Number of output arguments must be 1");
 
     const float xstep = (float)*mxGetPr(prhs[1]);
-    const float stepsize = (float)*mxGetPr(prhs[2]);
+    const double stepsize = (double)*mxGetPr(prhs[2]);
     const uint8_t Reverse = (uint8_t)mxIsLogicalScalarTrue(prhs[3]);
     const uint8_t save16bit = (uint8_t)mxIsLogicalScalarTrue(prhs[4]);
 
@@ -926,7 +855,7 @@ void mexFunction(int nlhs, mxArray *plhs[],
     // the rows of an interpolated slice come from rows up to ceil(xstep) + 1 apart
     if (sz[1] < (uint64_t)ceil(xstep) + 2) mexErrMsgIdAndTxt("volume_warp:inputError","The second dimension of the input must be at least ceil(xstep) + 2");
 
-    uint64_t nint = (uint64_t) (floor(round((float)(sz[2] - 1) / stepsize * 100000) / 100000) + 1);
+    uint64_t nint = (uint64_t) (floor(round((double)(sz[2] - 1) / stepsize * 100000) / 100000) + 1);
     uint64_t outDim[3];
     outDim[0] = sz[0];
     outDim[1] = sz[1];
