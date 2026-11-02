@@ -54,13 +54,18 @@ if isempty(Background)
     Background = 0;
 end
 
+PSF_f = single(PSF_f);
 PSF_b = single(PSF_b);
 sizeI = size(I);
 
-% 1. Prepare PSFs
-persistent OTF_f OTF_b psz sq_b gpuNum last_useGPU last_useMex
+% 1. Prepare PSFs: the cached OTFs are used for the same PSFs (bit for bit),
+% image size, GPU and mex use, and number of threads (the PSF normalization
+% depends on it)
+persistent OTF_f OTF_b psz last_PSF_f last_PSF_b last_nThreads gpuNum last_useGPU last_useMex
+nThreads = maxNumCompThreads;
 newOTF = isempty(psz) || isempty(OTF_f) || ~(numel(psz) == numel(sizeI) && all(psz == sizeI) && last_useGPU == useGPU ...
-        && sq_b == sum(PSF_b .^ 2, 'all')) || (useGPU && ~isempty(OTF_f) && gpuNum > 0 && ~existsOnGPU(OTF_f));
+        && last_nThreads == nThreads && same_psf(PSF_f, last_PSF_f) && same_psf(PSF_b, last_PSF_b)) ...
+        || (useGPU && ~isempty(OTF_f) && gpuNum > 0 && ~existsOnGPU(OTF_f));
 if newOTF
     gpuNum = 0;
     if useGPU
@@ -78,9 +83,10 @@ if newOTF || ~isequal(last_useMex, useMex)
     psz = sizeI;
     last_useGPU = useGPU;
     last_useMex = useMex;
+    last_nThreads = nThreads;
+    last_PSF_f = gather(PSF_f);
+    last_PSF_b = gather(PSF_b);
 
-    PSF_f = single(PSF_f);    
-    sq_b = sum(PSF_b .^ 2, 'all');
     if useGPU && gpuNum > 0
         PSF_f = gpuArray(PSF_f);
         PSF_b = gpuArray(PSF_b);
@@ -295,5 +301,14 @@ if isempty(J)
     J = decon_lucy_rfft(false, 'omw', I, OTF_f, OTF_b, 0, Background);
 end
 err_mat = err_mat(1 : floor(NUMIT / estep), :);
+
+end
+
+
+function [tf] = same_psf(a, b)
+% whether single arrays a and b have the same size and bits (unlike isequal,
+% -0 differs from 0 and a NaN equals itself); b on the CPU
+
+tf = isequal(size(a), size(b)) && isequal(typecast(gather(a(:)), 'uint32'), typecast(b(:), 'uint32'));
 
 end

@@ -1,6 +1,7 @@
 #include <stdint.h>
 #include <string.h>
 #include <stdio.h>
+#include <math.h>
 #include <omp.h>
 #include "mex.h"
 
@@ -49,6 +50,9 @@ void mexFunction(int nlhs, mxArray *plhs[],
 #endif
     if (nrhs != 3) mexErrMsgIdAndTxt("indexing:inputError","Number of input arguments must be 3");
     if (nlhs != 0) mexErrMsgIdAndTxt("indexing:outputError","Number of output arguments must be 0");
+    // a sparse array has only its nonzero values in memory
+    if (mxIsSparse(prhs[0]) || mxIsSparse(prhs[2])) mexErrMsgIdAndTxt("indexing:inputError","The data and the region must be full arrays");
+    if (mxGetNumberOfDimensions(prhs[0]) > 4 || mxGetNumberOfDimensions(prhs[2]) > 4) mexErrMsgIdAndTxt("indexing:inputError","The data and the region must have at most 4 dimensions");
 
     uint64_t startX = 0;
     uint64_t startY = 0;
@@ -73,6 +77,17 @@ void mexFunction(int nlhs, mxArray *plhs[],
     uint64_t origShapeT = dims[3];
 
     if(mxGetN(prhs[1]) != 8) mexErrMsgIdAndTxt("indexing:inputError","Input range for bbox is not 8");
+    if(!mxIsDouble(prhs[1]) || mxIsSparse(prhs[1]) || mxGetNumberOfElements(prhs[1]) < 8) mexErrMsgIdAndTxt("indexing:inputError","The bbox must be a full double array");
+
+    // bounds as the conversions below truncate them (NaN fails every check):
+    // 1 <= start, end <= size and end >= start - 1
+    const double* bbox = mxGetPr(prhs[1]);
+    for(int i = 0; i < 4; i++){
+        if(!(bbox[i] >= 1)) mexErrMsgIdAndTxt("indexing:inputError","Lower bounds must be at least 1");
+        if(!(floor(bbox[i + 4]) <= (double)dims[i])) mexErrMsgIdAndTxt("indexing:inputError","Upper bound is invalid");
+        if(!(floor(bbox[i + 4]) >= floor(bbox[i]) - 1)) mexErrMsgIdAndTxt("indexing:inputError","Upper bound is smaller than the lower bound minus 1");
+    }
+
     startX = (uint64_t)*(mxGetPr(prhs[1]))-1;
     startY = (uint64_t)*((mxGetPr(prhs[1])+1))-1;
     startZ = (uint64_t)*((mxGetPr(prhs[1])+2))-1;
@@ -86,10 +101,6 @@ void mexFunction(int nlhs, mxArray *plhs[],
     uint64_t rdims[4] = {1, 1, 1, 1};
     uint64_t nrdim = (uint64_t) mxGetNumberOfDimensions(prhs[2]);
     for(uint64_t t=0; t < nrdim; t++) rdims[t] = rdimsT[t];
-
-    if(startX+1 < 1 || startY+1 < 1 || startZ+1 < 1 || startT+1 < 1) mexErrMsgIdAndTxt("indexing:inputError","Lower bounds must be at least 1");
-
-    if(endX > origShapeX || endY > origShapeY || endZ > origShapeZ || endT > origShapeT) mexErrMsgIdAndTxt("indexing:inputError","Upper bound is invalid");
 
     uint64_t dim[4];
     shapeX = endX-startX;

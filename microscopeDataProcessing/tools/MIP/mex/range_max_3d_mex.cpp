@@ -120,6 +120,8 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
        && classID != mxSINGLE_CLASS && classID != mxDOUBLE_CLASS)){
         mexErrMsgIdAndTxt("range_max_3d:inputError", "im must be a real uint8, uint16, single or double array.");
     }
+    // a sparse array has only its nonzero values in memory
+    if(mxIsSparse(prhs[0])) mexErrMsgIdAndTxt("range_max_3d:inputError", "im must be a full array.");
     const uint64_t numDim = (uint64_t)mxGetNumberOfDimensions(prhs[0]);
     if(numDim > 3) mexErrMsgIdAndTxt("range_max_3d:inputError", "im must have at most 3 dimensions.");
     const mwSize* dims = mxGetDimensions(prhs[0]);
@@ -132,8 +134,8 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
     const int dim = (int)dimVal;
     const uint64_t n = sz[dim - 1];
 
-    if(!mxIsDouble(prhs[2]) || mxIsComplex(prhs[2]) || mxGetNumberOfElements(prhs[2]) == 0){
-        mexErrMsgIdAndTxt("range_max_3d:inputError", "starts must be a nonempty double vector.");
+    if(!mxIsDouble(prhs[2]) || mxIsComplex(prhs[2]) || mxIsSparse(prhs[2]) || mxGetNumberOfElements(prhs[2]) == 0){
+        mexErrMsgIdAndTxt("range_max_3d:inputError", "starts must be a nonempty full double vector.");
     }
     const uint64_t nr = (uint64_t)mxGetNumberOfElements(prhs[2]);
     const double* s = mxGetPr(prhs[2]);

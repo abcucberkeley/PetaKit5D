@@ -116,6 +116,9 @@ void mexFunction(int nlhs, mxArray *plhs[],
 #endif
     if (nrhs != 4) mexErrMsgIdAndTxt("feather_blending:inputError","Number of input arguments must be 4");
     if (nlhs != 0) mexErrMsgIdAndTxt("feather_blending:outputError","Number of output arguments must be 0");
+    if (mxGetNumberOfDimensions(prhs[0]) > 4) mexErrMsgIdAndTxt("feather_blending:inputError","The data must have at most 4 dimensions");
+    if (mxGetNumberOfDimensions(prhs[1]) != mxGetNumberOfDimensions(prhs[0])) mexErrMsgIdAndTxt("feather_blending:inputError","The size of distance map does not matach that of the data");
+    if (mxGetNumberOfDimensions(prhs[2]) > 3) mexErrMsgIdAndTxt("feather_blending:inputError","The output must have at most 3 dimensions");
 
     uint64_t* dimsA = (uint64_t*)mxGetDimensions(prhs[0]);
     uint64_t* dimsB = (uint64_t*)mxGetDimensions(prhs[1]);
@@ -138,12 +141,17 @@ void mexFunction(int nlhs, mxArray *plhs[],
     uint64_t bbox[6];
     uint64_t nbbox = (uint64_t) mxGetNumberOfElements(prhs[3]);
     if(nbbox != 6) mexErrMsgIdAndTxt("feather_blending:inputError","The size of bounding box must be 1x6.");
+    if(!mxIsDouble(prhs[3]) || mxIsSparse(prhs[3])) mexErrMsgIdAndTxt("feather_blending:inputError","The bounding box must be a full double array.");
+    // bounds as the conversions below truncate them (NaN fails both checks)
+    for(uint64_t t=0; t<3; t++){
+        if(!(*(mxGetPr(prhs[3])+t) >= 1) || !(floor(*(mxGetPr(prhs[3])+t+3)) <= (double)odims[t])) mexErrMsgIdAndTxt("feather_blending:inputError","The bounding box is out of bound.");
+    }
     for(uint64_t t=0; t<6; t++){
         if(t < 3) bbox[t] = (uint64_t)*(mxGetPr(prhs[3])+t)-1;
         else  bbox[t] = (uint64_t)*(mxGetPr(prhs[3])+t);
     }
 
-    // check odims and bbox
+    // check odims and bbox (the region written ends at bbox[t+3] <= odims[t], checked above)
     for(uint64_t t=0; t < 3; t++){
         if(odims[t] < bbox[t] || dims[t] != bbox[t+3]-bbox[t]) mexErrMsgIdAndTxt("feather_blending:inputError","The bounding box is out of bound.");
     }

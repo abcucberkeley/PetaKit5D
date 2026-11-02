@@ -27,11 +27,17 @@ void mexFunction( int nlhs, mxArray *plhs[],
      within an if statement, because it will never get to the else
      statement if mexErrMsgTxt is executed. (mexErrMsgTxt breaks you out of
      the MEX-file) */
-  if(nrhs!=7) 
-    mexErrMsgTxt("Seven input required.");
-  if(nlhs!=2) 
-    mexErrMsgTxt("Two output required.");
-  
+  if(nrhs!=7)
+    mexErrMsgIdAndTxt("compute_gradient_hessian_mex:inputError", "Seven input required.");
+  if(nlhs!=2)
+    mexErrMsgIdAndTxt("compute_gradient_hessian_mex:outputError", "Two output required.");
+  /* the inputs are read as doubles, mxGetM(x) values of the first five and one of the sigmas
+     (a sparse array has only its nonzero values in memory) */
+  for (row=0;row<7;row++) {
+    if (!mxIsDouble(prhs[row]) || mxIsSparse(prhs[row]) || mxGetNumberOfElements(prhs[row]) < (row < 5 ? mxGetM(prhs[0]) : 1))
+      mexErrMsgIdAndTxt("compute_gradient_hessian_mex:inputError", "The inputs must be full double arrays: five with as many elements as rows of the first and two scalars.");
+  }
+
   /*  create a pointer to the input matrix x */
   x_c_mat = mxGetPr(prhs[0]);
   y_c_mat = mxGetPr(prhs[1]);

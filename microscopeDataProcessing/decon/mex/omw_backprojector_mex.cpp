@@ -372,7 +372,7 @@ static void convhull_slices(uint8_t* B, const idx_t n1, const idx_t n2, const id
 }
 
 static std::vector<idx_t> slice_indices(const mxArray* a, const idx_t n, const char* name) {
-    if (!mxIsDouble(a) || mxIsComplex(a)) {
+    if (!mxIsDouble(a) || mxIsComplex(a) || mxIsSparse(a)) {
         mexErrMsgIdAndTxt("omw_backprojector_mex:invalidInput", "%s must be real double indices.", name);
     }
     const double* v = mxGetPr(a);
@@ -940,8 +940,13 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
     }
 
     if (strcmp(mode, "window") == 0) {
-        if (nrhs != 6) {
+        // both outputs are set (plhs has room for nlhs of them, at least one)
+        if (nrhs != 6 || nlhs != 2) {
             mexErrMsgIdAndTxt("omw_backprojector_mex:invalidInput", "Usage: [mask, inds] = omw_backprojector_mex('window', psz, E, R, bounds, nThreads)");
+        }
+        // a sparse array has only its nonzero values in memory
+        if (mxIsSparse(prhs[1]) || mxIsSparse(prhs[2]) || mxIsSparse(prhs[3]) || mxIsSparse(prhs[4])) {
+            mexErrMsgIdAndTxt("omw_backprojector_mex:invalidInput", "psz, E, R and bounds must be full arrays.");
         }
         if (!mxIsDouble(prhs[1]) || mxGetNumberOfElements(prhs[1]) != 3) {
             mexErrMsgIdAndTxt("omw_backprojector_mex:invalidInput", "psz must be 3 numbers.");

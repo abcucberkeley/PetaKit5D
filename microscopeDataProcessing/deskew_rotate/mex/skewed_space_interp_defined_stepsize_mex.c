@@ -454,6 +454,21 @@ static void interp_slice_parameters(const float xstep, const double stepsize, co
 }
 
 
+// error (after freeing them) if the parameter arrays of the nint slices couldn't be allocated
+static void check_slice_arrays(const uint64_t nint, double* s_mat, double* t_mat, double* sw_mat, double* tw_mat,
+                               double* zw_mat, bool* z_copy_mat, uint64_t* z_ind_mat){
+    if (nint == 0 || (s_mat && t_mat && sw_mat && tw_mat && zw_mat && z_copy_mat && z_ind_mat)) return;
+    free(s_mat);
+    free(t_mat);
+    free(sw_mat);
+    free(tw_mat);
+    free(zw_mat);
+    free(z_copy_mat);
+    free(z_ind_mat);
+    mexErrMsgIdAndTxt("volume_warp:outOfMemory","Out of memory for the slice parameters of the interpolation (step size too small?)");
+}
+
+
 void skewed_space_interp_defined_stepsize(const float* im, float* im_int, const float xstep, const double stepsize, const uint8_t Reverse,
                                           const uint64_t sz[3], const uint64_t outDim[3]){
 
@@ -470,6 +485,7 @@ void skewed_space_interp_defined_stepsize(const float* im, float* im_int, const 
     // copy or interp z indices
     bool* z_copy_mat = (bool*)malloc(nint*sizeof(bool));
     uint64_t* z_ind_mat = (uint64_t*)malloc(nint*sizeof(uint64_t));
+    check_slice_arrays(nint, s_mat, t_mat, sw_mat, tw_mat, zw_mat, z_copy_mat, z_ind_mat);
     uint64_t n_copy = 0;
     uint64_t n_interp = 0;
 
@@ -593,6 +609,7 @@ void skewed_space_interp_defined_stepsize_16bit_to_float(const uint16_t* im, flo
     // copy or interp z indices
     bool* z_copy_mat = (bool*)malloc(nint*sizeof(bool));
     uint64_t* z_ind_mat = (uint64_t*)malloc(nint*sizeof(uint64_t));
+    check_slice_arrays(nint, s_mat, t_mat, sw_mat, tw_mat, zw_mat, z_copy_mat, z_ind_mat);
     uint64_t n_copy = 0;
     uint64_t n_interp = 0;
 
@@ -720,6 +737,7 @@ void skewed_space_interp_defined_stepsize_16bit(const uint16_t* im, uint16_t* im
     // copy or interp z indices
     bool* z_copy_mat = (bool*)malloc(nint*sizeof(bool));
     uint64_t* z_ind_mat = (uint64_t*)malloc(nint*sizeof(uint64_t));
+    check_slice_arrays(nint, s_mat, t_mat, sw_mat, tw_mat, zw_mat, z_copy_mat, z_ind_mat);
     uint64_t n_copy = 0;
     uint64_t n_interp = 0;
 
@@ -839,11 +857,17 @@ void mexFunction(int nlhs, mxArray *plhs[],
 
     if (nrhs != 5) mexErrMsgIdAndTxt("volume_warp:inputError","Number of input arguments must be 5");
     if (nlhs != 1) mexErrMsgIdAndTxt("volume_warp:outputError","Number of output arguments must be 1");
+    if (mxGetNumberOfDimensions(prhs[0]) > 3) mexErrMsgIdAndTxt("volume_warp:inputError","The input must have at most 3 dimensions");
+    for (int i = 1; i <= 2; i++) {
+        if (!mxIsDouble(prhs[i]) || mxIsSparse(prhs[i]) || mxGetNumberOfElements(prhs[i]) != 1) mexErrMsgIdAndTxt("volume_warp:inputError","xstep and the step size must be double scalars");
+    }
 
     const float xstep = (float)*mxGetPr(prhs[1]);
     const double stepsize = (double)*mxGetPr(prhs[2]);
     const uint8_t Reverse = (uint8_t)mxIsLogicalScalarTrue(prhs[3]);
     const uint8_t save16bit = (uint8_t)mxIsLogicalScalarTrue(prhs[4]);
+    // the row ranges of the interpolated slices need xstep > 0
+    if (!(xstep > 0 && xstep < 9.0e15) || !(stepsize > 0 && stepsize < 9.0e15)) mexErrMsgIdAndTxt("volume_warp:inputError","xstep and the step size must be positive and finite");
 
     uint64_t* dimsA = (uint64_t*)mxGetDimensions(prhs[0]);
     uint64_t sz[3] = {1, 1, 1};
@@ -855,7 +879,10 @@ void mexFunction(int nlhs, mxArray *plhs[],
     // the rows of an interpolated slice come from rows up to ceil(xstep) + 1 apart
     if (sz[1] < (uint64_t)ceil(xstep) + 2) mexErrMsgIdAndTxt("volume_warp:inputError","The second dimension of the input must be at least ceil(xstep) + 2");
 
-    uint64_t nint = (uint64_t) (floor(round((double)(sz[2] - 1) / stepsize * 100000) / 100000) + 1);
+    // number of output slices (none for an empty input)
+    const double nintD = sz[2] == 0 ? 0 : floor(round((double)(sz[2] - 1) / stepsize * 100000) / 100000) + 1;
+    if (!(nintD < 9.0e15)) mexErrMsgIdAndTxt("volume_warp:inputError","The step size is too small");
+    uint64_t nint = (uint64_t) nintD;
     uint64_t outDim[3];
     outDim[0] = sz[0];
     outDim[1] = sz[1];

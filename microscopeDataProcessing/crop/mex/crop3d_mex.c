@@ -1,5 +1,6 @@
 #include <stdint.h>
 #include <string.h>
+#include <math.h>
 #include <omp.h>
 #include "mex.h"
 
@@ -41,6 +42,8 @@ void mexFunction(int nlhs, mxArray *plhs[],
     }
 #endif
     if (nrhs != 2) mexErrMsgIdAndTxt("crop:inputError","Number of input arguments must be 2");
+    // a sparse array has only its nonzero values in memory
+    if (mxIsSparse(prhs[0])) mexErrMsgIdAndTxt("crop:inputError","The input must be a full array");
 
     uint64_t startX = 0;
     uint64_t startY = 0;
@@ -58,16 +61,24 @@ void mexFunction(int nlhs, mxArray *plhs[],
     uint64_t origShapeZ = (numDim <= 2) ? 1 : dims[2];
 
     if(mxGetN(prhs[1]) != 6) mexErrMsgIdAndTxt("crop:inputError","Input range for bbox is not 6");
+    if(!mxIsDouble(prhs[1]) || mxIsSparse(prhs[1]) || mxGetNumberOfElements(prhs[1]) < 6) mexErrMsgIdAndTxt("crop:inputError","The bbox must be a full double array");
+
+    // bounds as the conversions below truncate them (NaN fails every check):
+    // 1 <= start, end <= size and end >= start - 1
+    const double* bbox = mxGetPr(prhs[1]);
+    const uint64_t origShape[3] = {origShapeX, origShapeY, origShapeZ};
+    for(int i = 0; i < 3; i++){
+        if(!(bbox[i] >= 1)) mexErrMsgIdAndTxt("crop:inputError","Lower bounds must be at least 1");
+        if(!(floor(bbox[i + 3]) <= (double)origShape[i])) mexErrMsgIdAndTxt("crop:inputError","Upper bound is invalid");
+        if(!(floor(bbox[i + 3]) >= floor(bbox[i]) - 1)) mexErrMsgIdAndTxt("crop:inputError","Upper bound is smaller than the lower bound minus 1");
+    }
+
     startX = (uint64_t)*(mxGetPr(prhs[1]))-1;
     startY = (uint64_t)*((mxGetPr(prhs[1])+1))-1;
     startZ = (uint64_t)*((mxGetPr(prhs[1])+2))-1;
     endX = (uint64_t)*((mxGetPr(prhs[1])+3));
     endY = (uint64_t)*((mxGetPr(prhs[1])+4));
     endZ = (uint64_t)*((mxGetPr(prhs[1])+5));
-        
-    if(startX+1 < 1 || startY+1 < 1 || startZ+1 < 1) mexErrMsgIdAndTxt("crop:inputError","Lower bounds must be at least 1");
-
-    if(endX > origShapeX || endY > origShapeY || endZ > origShapeZ) mexErrMsgIdAndTxt("crop:inputError","Upper bound is invalid");
 
     uint64_t dim[3];
     shapeX = endX-startX;

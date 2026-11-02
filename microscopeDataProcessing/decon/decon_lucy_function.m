@@ -66,10 +66,13 @@ end
 PSF = single(PSF);
 sizeI = size(I);
 
-% 1. Prepare PSFs
-persistent H psz sq_p gpuNum last_useGPU last_useMex
+% 1. Prepare PSFs: the cached OTF is used for the same PSF (bit for bit),
+% image size, GPU and mex use, and number of threads (the PSF normalization
+% depends on it)
+persistent H psz last_PSF last_nThreads gpuNum last_useGPU last_useMex
+nThreads = maxNumCompThreads;
 newOTF = isempty(psz) || ~(numel(psz) == numel(sizeI) && all(psz == sizeI) && last_useGPU == useGPU ...
-        && sq_p == sum(PSF .^ 2, 'all')) || (useGPU && ~isempty(H) && gpuNum > 0 && ~existsOnGPU(H));
+        && last_nThreads == nThreads && same_psf(PSF, last_PSF)) || (useGPU && ~isempty(H) && gpuNum > 0 && ~existsOnGPU(H));
 if newOTF
     gpuNum = 0;
     if useGPU
@@ -87,8 +90,9 @@ if newOTF || ~isequal(last_useMex, useMex)
     psz = sizeI;
     last_useGPU = useGPU;
     last_useMex = useMex;
+    last_nThreads = nThreads;
+    last_PSF = gather(PSF);
 
-    sq_p = sum(PSF .^ 2, 'all');
     if useGPU && gpuNum > 0
         PSF = gpuArray(PSF);
     end
@@ -266,3 +270,11 @@ end
 
 end
 
+
+function [tf] = same_psf(a, b)
+% whether single arrays a and b have the same size and bits (unlike isequal,
+% -0 differs from 0 and a NaN equals itself); b on the CPU
+
+tf = isequal(size(a), size(b)) && isequal(typecast(gather(a(:)), 'uint32'), typecast(b(:), 'uint32'));
+
+end

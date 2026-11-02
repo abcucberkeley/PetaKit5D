@@ -1,6 +1,7 @@
 #include <stdint.h>
 #include <string.h>
 #include <stdio.h>
+#include <math.h>
 #include <omp.h>
 #include "mex.h"
 
@@ -115,6 +116,9 @@ void mexFunction(int nlhs, mxArray *plhs[],
     if (nrhs != 2) mexErrMsgIdAndTxt("crop:inputError","Number of input arguments must be 2");
     
     if (nlhs != 1) mexErrMsgIdAndTxt("crop:outputError","Number of output arguments must be 1");
+    // a sparse array has only its nonzero values in memory
+    if (mxIsSparse(prhs[0])) mexErrMsgIdAndTxt("crop:inputError","The input must be a full array");
+    if (mxGetNumberOfDimensions(prhs[0]) > 4) mexErrMsgIdAndTxt("crop:inputError","The input must have at most 4 dimensions");
 
     uint64_t* dimsA = (uint64_t*)mxGetDimensions(prhs[0]);
     uint64_t dims[4] = {1, 1, 1, 1};
@@ -122,6 +126,14 @@ void mexFunction(int nlhs, mxArray *plhs[],
     for(uint64_t t=0; t < ndim; t++) dims[t] = dimsA[t];
 
     if(mxGetN(prhs[1]) != 8) mexErrMsgIdAndTxt("crop:inputError","Input range for bbox is not 8");
+    if(!mxIsDouble(prhs[1]) || mxIsSparse(prhs[1]) || mxGetNumberOfElements(prhs[1]) < 8) mexErrMsgIdAndTxt("crop:inputError","The bbox must be a full double array");
+
+    // bounds as the conversions below truncate them (NaN fails both checks)
+    const double* bboxIn = mxGetPr(prhs[1]);
+    for(int i = 0; i < 4; i++){
+        if(!(bboxIn[i] >= 1)) mexErrMsgIdAndTxt("crop:inputError","Lower bounds must be at least 1");
+        if(!(floor(bboxIn[i + 4]) <= (double)dims[i])) mexErrMsgIdAndTxt("crop:inputError","Upper bound for bbox is invalid");
+    }
 
     uint64_t bbox[8];
     for(uint64_t t=0; t<8; t++){

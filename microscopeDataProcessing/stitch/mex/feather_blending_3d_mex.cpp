@@ -107,6 +107,10 @@ void mexFunction(int nlhs, mxArray *plhs[],
 #endif
     if (nrhs != 2) mexErrMsgIdAndTxt("feather_blending:inputError","Number of input arguments must be 2");
     if (nlhs != 1) mexErrMsgIdAndTxt("feather_blending:outputError","Number of output arguments must be 1");
+    if (mxGetNumberOfDimensions(prhs[0]) > 4) mexErrMsgIdAndTxt("feather_blending:inputError","The data must have at most 4 dimensions");
+    if (mxGetNumberOfDimensions(prhs[1]) != mxGetNumberOfDimensions(prhs[0])) mexErrMsgIdAndTxt("feather_blending:inputError","The size of distance map does not matach that of the data");
+    // the distance map is read as single
+    if (mxGetClassID(prhs[1]) != mxSINGLE_CLASS) mexErrMsgIdAndTxt("feather_blending:inputError","The data type of the distance map must be single!");
 
     uint64_t* dimsA = (uint64_t*)mxGetDimensions(prhs[0]);
     uint64_t* dimsB = (uint64_t*)mxGetDimensions(prhs[1]);

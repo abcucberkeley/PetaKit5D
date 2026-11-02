@@ -1,6 +1,7 @@
 #include <stdint.h>
 #include <string.h>
 #include <stdio.h>
+#include <math.h>
 #include <omp.h>
 #include "mex.h"
 
@@ -115,6 +116,9 @@ void mexFunction(int nlhs, mxArray *plhs[],
     if (nrhs != 3 && nrhs !=4) mexErrMsgIdAndTxt("indexing:inputError","Number of input arguments must be 3 or 4");
     
     if (nlhs != 0) mexErrMsgIdAndTxt("indexing:outputError","Number of output arguments must be 0");
+    // a sparse array has only its nonzero values in memory
+    if (mxIsSparse(prhs[0]) || mxIsSparse(prhs[2])) mexErrMsgIdAndTxt("indexing:inputError","The data and the region must be full arrays");
+    if (mxGetNumberOfDimensions(prhs[0]) > 4 || mxGetNumberOfDimensions(prhs[2]) > 4) mexErrMsgIdAndTxt("indexing:inputError","The data and the region must have at most 4 dimensions");
 
     uint64_t* dimsA = (uint64_t*)mxGetDimensions(prhs[0]);
     uint64_t dims[4] = {1, 1, 1, 1};
@@ -122,6 +126,14 @@ void mexFunction(int nlhs, mxArray *plhs[],
     for(uint64_t t=0; t < ndim; t++) dims[t] = dimsA[t];
 
     if(mxGetN(prhs[1]) != 8) mexErrMsgIdAndTxt("indexing:inputError","Input range for bbox is not 8");
+    if(!mxIsDouble(prhs[1]) || mxIsSparse(prhs[1]) || mxGetNumberOfElements(prhs[1]) < 8) mexErrMsgIdAndTxt("indexing:inputError","The bbox must be a full double array");
+
+    // bounds as the conversions below truncate them (NaN fails both checks)
+    const double* bboxIn = mxGetPr(prhs[1]);
+    for(int i = 0; i < 4; i++){
+        if(!(bboxIn[i] >= 1)) mexErrMsgIdAndTxt("indexing:inputError","Lower bounds must be at least 1");
+        if(!(floor(bboxIn[i + 4]) <= (double)dims[i])) mexErrMsgIdAndTxt("indexing:inputError","Upper bound for bbox is invalid");
+    }
 
     uint64_t bbox[8];
     for(uint64_t t=0; t<8; t++){
@@ -145,6 +157,12 @@ void mexFunction(int nlhs, mxArray *plhs[],
         for(uint64_t t=0; t < 4; t++) rbbox[t+4]= rdims[t];
     }else if (nrhs==4){
         if(mxGetN(prhs[3]) != 8) mexErrMsgIdAndTxt("indexing:inputError","Input range for region bbox is not 8");
+        if(!mxIsDouble(prhs[3]) || mxIsSparse(prhs[3]) || mxGetNumberOfElements(prhs[3]) < 8) mexErrMsgIdAndTxt("indexing:inputError","The region bbox must be a full double array");
+        const double* rbboxIn = mxGetPr(prhs[3]);
+        for(int i = 0; i < 4; i++){
+            if(!(rbboxIn[i] >= 1)) mexErrMsgIdAndTxt("indexing:inputError","Lower bounds of the region bbox must be at least 1");
+            if(!(floor(rbboxIn[i + 4]) <= (double)rdims[i])) mexErrMsgIdAndTxt("indexing:inputError","Upper bound for region bbox is invalid");
+        }
         for(uint64_t t=0; t<8; t++){
             if(t < 4) rbbox[t] = (uint64_t)*(mxGetPr(prhs[3])+t)-1;
             else rbbox[t] = (uint64_t)*(mxGetPr(prhs[3])+t);

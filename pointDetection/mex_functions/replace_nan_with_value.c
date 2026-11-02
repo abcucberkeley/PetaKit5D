@@ -32,10 +32,10 @@ void mexFunction( int nlhs, mxArray *plhs[],
      within an if statement, because it will never get to the else
      statement if mexErrMsgTxt is executed. (mexErrMsgTxt breaks you out of
      the MEX-file) */
-    if(nrhs!=2) 
-        mexErrMsgTxt("Two input required.");
-    if(nlhs!=1) 
-        mexErrMsgTxt("One output required.");
+    if(nrhs!=2)
+        mexErrMsgIdAndTxt("data:inputError", "Two input required.");
+    if(nlhs!=1)
+        mexErrMsgIdAndTxt("data:outputError", "One output required.");
 
     /*  create a pointer to the input matrix x */
     nan_mat = mxGetPr(prhs[0]);
@@ -56,7 +56,14 @@ void mexFunction( int nlhs, mxArray *plhs[],
 		    mexErrMsgIdAndTxt("data:TypeError", "Only single and double types are supported!\n");
 		    return;
 	}
-    
+    /* a sparse array has only its nonzero values in memory; the value is read as an
+       element of the input's class, so it needs at least that many bytes */
+    if(mxIsSparse(prhs[0]))
+        mexErrMsgIdAndTxt("data:inputError", "The input must be a full array.");
+    if(!(mxIsNumeric(prhs[1]) || mxIsLogical(prhs[1])) || mxIsSparse(prhs[1])
+       || mxGetNumberOfElements(prhs[1]) * mxGetElementSize(prhs[1]) < mxGetElementSize(prhs[0]))
+        mexErrMsgIdAndTxt("data:inputError", "The value must be a full numeric scalar of the class of the input or double.");
+
     /*  set the output pointer to the output matrix */
     plhs[0] = mxCreateUninitNumericArray(nDims, pDims, mDType, mxREAL);
     nonnan_mat = mxGetPr(plhs[0]);

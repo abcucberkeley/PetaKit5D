@@ -367,15 +367,16 @@ end
 
 function [] = build_decon_psf_pair(dataDir, rs, mirrored)
 % the same frames deconvolved with PSF A or B (A mirrored in z); in one
-% process, the second one reuses the first one's OTF (same size and sum of
-% squares; tests/README.md, DeconFunctionTest/changedPSFWithSameEnergyIsNotIgnored)
+% process, the second one reused the first one's OTF while the cache was keyed
+% on the size and sum of squares of the PSF (the same for both;
+% DeconFunctionTest/changedPSFWithSameEnergyIsNotIgnored)
 
 % the same frames for A and B
 rs = RandStream('twister', 'Seed', 100);
 write_decon_data(dataDir, rs, 2, mirrored);
 % integer values that sum to 2^16 and whose squares sum to less than 2^24,
 % so that the normalized PSF and its sum of squares are exact in single
-% precision in any summation order (the keys of A and B are equal)
+% precision in any summation order (the old keys of A and B are equal)
 sz = [31, 31, 31];
 c = floor(sz / 2) + 1;
 psf = round(pktest.beads(sz, [c; c + [0, 0, 3]], [2.2, 2.87], [240; 60], 0));

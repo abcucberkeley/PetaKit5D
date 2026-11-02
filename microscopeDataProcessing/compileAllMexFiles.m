@@ -35,7 +35,6 @@ srcDir = pwd;
 % extra compiler flags (no fused multiply-adds in tile_blending_3d_mex and
 % omw_backprojector_mex, so that they compute as MATLAB does)
 mexFiles = {'deskew_rotate/mex', 'skewed_space_interp_defined_stepsize_mex.c', true, {}, '';
-    'deskew_rotate/mex', 'skewed_space_interp_mex.c', false, {}, '';
     'deskew_rotate/mex', 'volume_deskew_rotate_warp_mex.cpp', true, {}, '';
     'deskew_rotate/mex', 'skewed_space_interp_volume_deskew_rotate_warp_mex.cpp', true, {}, '';
     'stitch/mex', 'feather_blending_3d_mex.cpp', false, {}, '';

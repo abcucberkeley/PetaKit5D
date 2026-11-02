@@ -94,8 +94,9 @@ void mexFunction(int nlhs, mxArray *plhs[],
         mexLock();
     }
 #endif
-    if (nrhs != 4 && nrhs != 5) mexErrMsgIdAndTxt("flat_field_correction_3d_mex:inputError","Number of input arguments must be 3 or 4");
+    if (nrhs != 4 && nrhs != 5) mexErrMsgIdAndTxt("flat_field_correction_3d_mex:inputError","Number of input arguments must be 4 or 5");
     if (nlhs != 1) mexErrMsgIdAndTxt("flat_field_correction_3d_mex:outputError","Number of output arguments must be 1");
+    if (mxGetNumberOfDimensions(prhs[0]) > 3) mexErrMsgIdAndTxt("flat_field_correction_3d_mex:inputError","The data must have at most 3 dimensions");
 
     uint64_t* dimsI = (uint64_t*)mxGetDimensions(prhs[0]);
     uint64_t* dimsF = (uint64_t*)mxGetDimensions(prhs[1]);
@@ -115,7 +116,7 @@ void mexFunction(int nlhs, mxArray *plhs[],
     }
 
     uint64_t ndimB = (uint64_t) mxGetNumberOfDimensions(prhs[2]);
-    if (ndimB != 1 && ndimB != 2) mexErrMsgIdAndTxt("flat field correction:inputError","The background image must be 1d or 2d");
+    if (ndimB != 1 && ndimB != 2) mexErrMsgIdAndTxt("flat_field_correction_3d_mex:inputError","The background image must be 1d or 2d");
     for(uint64_t t=0; t < ndimB; t++){
         if(dimsI[t] != dimsB[t]){
             mexErrMsgIdAndTxt("flat_field_correction_3d_mex:inputError","The size of background image does not matach that of the data");

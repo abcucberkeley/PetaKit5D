@@ -35,8 +35,8 @@ classdef (SharedTestFixtures = {pktest.PathFixture, pktest.NoSlurmFixture}) Test
         end
 
         function clearPersistentCaches(testCase)
-            % the decon functions cache the OTF in persistent variables
-            % keyed only on size and sum of squares of the PSF
+            % the decon functions cache the OTF in persistent variables;
+            % each test computes its own (and the memory is freed)
             clear decon_lucy_function decon_lucy_omw_function
         end
 

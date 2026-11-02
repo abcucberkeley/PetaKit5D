@@ -342,8 +342,11 @@ classdef DeconBackProjectorTest < pktest.TestCase
             testCase.verifyError(@() omw_backprojector_mex('convhull', B, [2, 2], 1, 1, 1), 'omw_backprojector_mex:invalidInput');
             testCase.verifyError(@() omw_backprojector_mex('components', B, 'other', 1, 1), 'omw_backprojector_mex:invalidInput');
             testCase.verifyError(@() omw_backprojector_mex('components', B, 'minsize', 1.5, 1), 'omw_backprojector_mex:invalidInput');
-            testCase.verifyError(@() omw_backprojector_mex('window', [8, 8, 8], [1, 0, 0], 1, [0.8, 1], 1), 'omw_backprojector_mex:invalidInput');
-            testCase.verifyError(@() omw_backprojector_mex('window', [8, 8, 8], [1, 0, 0; 0, 1, 0], [1; 2], [1, 0.8], 1), 'omw_backprojector_mex:invalidInput');
+            % 'window' sets two outputs (with fewer it errors anyway)
+            testCase.verifyThat(@() omw_backprojector_mex('window', [8, 8, 8], [1, 0, 0], 1, [0.8, 1], 1), ...
+                matlab.unittest.constraints.Throws('omw_backprojector_mex:invalidInput', 'WhenNargoutIs', 2));
+            testCase.verifyThat(@() omw_backprojector_mex('window', [8, 8, 8], [1, 0, 0; 0, 1, 0], [1; 2], [1, 0.8], 1), ...
+                matlab.unittest.constraints.Throws('omw_backprojector_mex:invalidInput', 'WhenNargoutIs', 2));
             testCase.verifyError(@() omw_backprojector_mex('sortdesc', double([1, 2]), 1), 'omw_backprojector_mex:invalidInput');
             testCase.verifyError(@() omw_backprojector_mex('medfilt3', rand(4, 4, 4), 1), 'omw_backprojector_mex:invalidInput');
             testCase.verifyError(@() omw_backprojector_mex('other'), 'omw_backprojector_mex:invalidInput');

@@ -213,6 +213,13 @@ void mexFunction(int nlhs, mxArray *plhs[],
 
     uint64_t nT = (uint64_t) mxGetNumberOfElements(prhs[1]);
     if(nT != 3) mexErrMsgIdAndTxt("integral_image_3d:inputError", "The number of elements of size T must be 3");
+    if(!mxIsDouble(prhs[1]) || mxIsSparse(prhs[1])) mexErrMsgIdAndTxt("integral_image_3d:inputError", "Size T must be a full double array");
+    // sizes as the conversions below truncate them (NaN fails the checks); the sums read the
+    // input up to T - 1 voxels back, so it can't be smaller than T (as integral_image_3d.m checks)
+    for (uint16_t t=0; t<3; t++){
+        if(!(floor(*(mxGetPr(prhs[1]) + t)) >= 1)) mexErrMsgIdAndTxt("integral_image_3d:inputError", "The elements of size T must be greater than zeros");
+        if(!(floor(*(mxGetPr(prhs[1]) + t)) <= (double)dims[t])) mexErrMsgIdAndTxt("integral_image_3d:inputError", "The size of the input must not be smaller than size T");
+    }
     uint64_t dimsT[3];
     for (uint16_t t=0; t<3; t++) dimsT[t] = (uint64_t)*(mxGetPr(prhs[1]) + t);
     // printf("%d %d %d\n", dimsT[0], dimsT[1], dimsT[2]);

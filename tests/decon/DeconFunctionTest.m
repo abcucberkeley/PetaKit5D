@@ -319,18 +319,17 @@ classdef DeconFunctionTest < pktest.TestCase
         end
     end
 
-    methods (Test, TestTags = {'Unit', 'KnownIssue'})
+    methods (Test, TestTags = {'Unit'})
         function changedPSFWithSameEnergyIsNotIgnored(testCase, method)
-            % KNOWN ISSUE (may be intended): decon_lucy_function.m:61-63 and
-            % decon_lucy_omw_function.m:54-56 cache the OTF in persistent
-            % variables keyed on the image size and sum(PSF .^ 2) (only of
-            % PSF_b for OMW). A shifted or mirrored PSF (e.g., a second
-            % channel) has the same key, so the stale OTF is reused within
-            % the MATLAB session. Fix: key on the PSF contents (e.g., a hash
-            % or isequal against a cached copy).
+            % the decon functions cache the OTF in persistent variables; a
+            % shifted or mirrored PSF (e.g., a second channel) gets its own
+            % OTF, also when its sum of squares (the cache's key before) is
+            % the same. For OMW the back projector is the same, so this also
+            % checks that a new forward PSF isn't ignored.
             im = testCase.blurredBeads();
             % integer values make sum(psf .^ 2) exact regardless of the
-            % summation order, so the two keys are identical on every platform
+            % summation order, so that the two old keys are identical on
+            % every platform
             psf1 = round(testCase.PSF / 1000);
             psf2 = circshift(psf1, [0, 0, 2]);
             testCase.runDecon(method, im, psf1, testCase.BackProjector, 3, 'Background', testCase.Background, 'save16bit', false);
@@ -338,6 +337,50 @@ classdef DeconFunctionTest < pktest.TestCase
             clear decon_lucy_function decon_lucy_omw_function
             fresh = testCase.runDecon(method, im, psf2, testCase.BackProjector, 3, 'Background', testCase.Background, 'save16bit', false);
             testCase.verifyEqual(out, fresh, 'The OTF of the previous PSF was reused.');
+        end
+
+        function changedBackProjectorWithSameEnergyIsNotIgnored(testCase)
+            % OMW with the same forward PSF and a shifted back projector of
+            % the same sum of squares (exact for integer values) gets its own
+            % back projector OTF
+            im = testCase.blurredBeads();
+            psf = round(testCase.PSF / 1000);
+            psfB2 = circshift(psf, [0, 0, 2]);
+            testCase.runDecon('omw', im, psf, psf, 3, 'Background', testCase.Background, 'save16bit', false);
+            out = testCase.runDecon('omw', im, psf, psfB2, 3, 'Background', testCase.Background, 'save16bit', false);
+            clear decon_lucy_omw_function
+            fresh = testCase.runDecon('omw', im, psf, psfB2, 3, 'Background', testCase.Background, 'save16bit', false);
+            testCase.verifyEqual(out, fresh, 'The OTF of the previous back projector was reused.');
+        end
+
+        function otfIsCachedForTheSamePSFBitsAndThreads(testCase, method)
+            % the cached OTF is used for a PSF with the same values (another
+            % array), but computed again for one that only differs in the
+            % sign of a zero (the key is bit for bit) or with another number
+            % of threads (the PSF normalization depends on it); counted
+            % with a copy of decon_psf2otf that logs its calls (MATLAB code)
+            countFn = testCase.countOTFs();
+            nOTF = 1 + strcmp(method, 'omw');
+            im = testCase.blurredBeads();
+            % a zero whose sign changes below
+            psf = testCase.PSF;
+            psf(1) = 0;
+            args = {3, 'Background', testCase.Background, 'save16bit', false, 'useMex', false};
+            expected = testCase.runDecon(method, im, psf, testCase.BackProjector, args{:});
+            out = testCase.runDecon(method, im, psf + 0, testCase.BackProjector, args{:});
+            testCase.verifyEqual(out, expected);
+            testCase.verifyEqual(countFn(), nOTF, 'The OTF of the same PSF was computed again.');
+
+            psfNegZero = psf;
+            psfNegZero(1) = -0;
+            testCase.runDecon(method, im, psfNegZero, testCase.BackProjector, args{:});
+            testCase.verifyEqual(countFn(), 2 * nOTF, 'The OTF of a PSF with another sign of a zero was not computed.');
+
+            nt = maxNumCompThreads;
+            testCase.addTeardown(@maxNumCompThreads, nt);
+            maxNumCompThreads(1 + (nt == 1));
+            testCase.runDecon(method, im, psfNegZero, testCase.BackProjector, args{:});
+            testCase.verifyEqual(countFn(), 3 * nOTF, 'The OTF was not computed again with another number of threads.');
         end
     end
 
@@ -358,6 +401,24 @@ classdef DeconFunctionTest < pktest.TestCase
             end
             sigma = sqrt(testCase.ObjectSigma ^ 2 + testCase.PSFSigma .^ 2);
             im = uint16(pktest.beads(testCase.ImSize, positions, sigma, amplitude, background));
+        end
+
+        function [countFn] = countOTFs(testCase)
+            % a copy of decon_psf2otf, first on the path while the test
+            % runs, that logs its calls; countFn() returns their number
+            folder = testCase.createTempFolder();
+            logFn = [folder, 'calls.txt'];
+            lines = splitlines(fileread(which('decon_psf2otf')));
+            lines = [lines(1); {sprintf('fid = fopen(''%s'', ''a''); fprintf(fid, ''1\\n''); fclose(fid);', logFn)}; lines(2 : end)];
+            fid = fopen([folder, 'decon_psf2otf.m'], 'w');
+            fprintf(fid, '%s\n', lines{:});
+            fclose(fid);
+            fclose(fopen(logFn, 'w'));
+            addpath(folder, '-begin');
+            testCase.addTeardown(@() clear('decon_psf2otf'));
+            testCase.addTeardown(@rmpath, folder);
+            clear decon_psf2otf decon_lucy_function decon_lucy_omw_function
+            countFn = @() numel(strfind(fileread(logFn), '1'));
         end
 
         function [out] = runDecon(~, method, im, psf, psfB, nIter, varargin)

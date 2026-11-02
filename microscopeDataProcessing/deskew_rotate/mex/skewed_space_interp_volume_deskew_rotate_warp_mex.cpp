@@ -764,11 +764,17 @@ void mexFunction(int nlhs, mxArray *plhs[],
 
     if (nrhs != 7) mexErrMsgIdAndTxt("volume_warp:inputError","Number of input arguments must be 7");
     if (nlhs != 1) mexErrMsgIdAndTxt("volume_warp:outputError","Number of output arguments must be 1");
+    if (mxGetNumberOfDimensions(prhs[0]) > 3) mexErrMsgIdAndTxt("volume_warp:inputError","The input must have at most 3 dimensions");
+    for (int i = 1; i <= 2; i++) {
+        if (!mxIsDouble(prhs[i]) || mxIsSparse(prhs[i]) || mxGetNumberOfElements(prhs[i]) != 1) mexErrMsgIdAndTxt("volume_warp:inputError","xstep and the step size must be double scalars");
+    }
 
     const double xstep = (double)*mxGetPr(prhs[1]);
     const double stepsize = (double)*mxGetPr(prhs[2]);
     const uint8_t Reverse = (uint8_t)mxIsLogicalScalarTrue(prhs[3]);
     const uint8_t save16bit = (uint8_t)mxIsLogicalScalarTrue(prhs[6]);
+    // the row ranges of the interpolated slices need xstep > 0
+    if (!(xstep > 0 && xstep < 9.0e15) || !(stepsize > 0 && stepsize < 9.0e15)) mexErrMsgIdAndTxt("volume_warp:inputError","xstep and the step size must be positive and finite");
 
     uint64_t* dimsA = (uint64_t*)mxGetDimensions(prhs[0]);
     uint64_t sz[3] = {1, 1, 1};
@@ -782,18 +788,29 @@ void mexFunction(int nlhs, mxArray *plhs[],
     // the rows of an interpolated slice come from rows up to ceil(xstep) + 1 apart
     if (sz[1] < (uint64_t)ceil(xstep) + 2) mexErrMsgIdAndTxt("volume_warp:inputError","The second dimension of the input must be at least ceil(xstep) + 2");
 
-    uint64_t ntotal = (uint64_t) (floor(round((double)(sz[2] - 1) / stepsize * 100000) / 100000) + 1);
+    // number of slices of the interpolation grid (none for an empty input)
+    const double ntotalD = sz[2] == 0 ? 0 : floor(round((double)(sz[2] - 1) / stepsize * 100000) / 100000) + 1;
+    if (!(ntotalD < 9.0e15)) mexErrMsgIdAndTxt("volume_warp:inputError","The step size is too small");
+    uint64_t ntotal = (uint64_t) ntotalD;
 
     // parameters for deskew/rotation
     if(mxGetNumberOfDimensions(prhs[4]) != 2 || mxGetM(prhs[4]) != 4 || mxGetN(prhs[4]) != 4) mexErrMsgIdAndTxt("volume_warp:inputError","Input transformation matrix must be 4x4!");
+    if(!mxIsDouble(prhs[4]) || mxIsSparse(prhs[4])) mexErrMsgIdAndTxt("volume_warp:inputError","Input transformation matrix must be a full double array");
     double tmat[4][4];
     for(int i=0; i<4; i++){
         for(int j=0; j<4; j++){
             tmat[i][j] = (double)*(mxGetPr(prhs[4])+i+j*4);
+            // NaN coordinates would pass the range checks of the kernel (finite and bounded,
+            // so that the coordinates can't overflow to Inf - Inf)
+            if (!(fabs(tmat[i][j]) < 9.0e15)) mexErrMsgIdAndTxt("volume_warp:inputError","Input transformation matrix must be finite");
         }
     }
 
     if(mxGetN(prhs[5]) != 6) mexErrMsgIdAndTxt("volume_warp:inputError","Input range for bbox is not 6");
+    if(!mxIsDouble(prhs[5]) || mxIsSparse(prhs[5]) || mxGetNumberOfElements(prhs[5]) < 6) mexErrMsgIdAndTxt("volume_warp:inputError","Input bbox must be a full double array");
+    for(int i=0; i<6; i++){
+        if (!(fabs(*(mxGetPr(prhs[5]) + i)) < 9.0e15)) mexErrMsgIdAndTxt("volume_warp:inputError","Input bbox must be finite");
+    }
 
     float startX = (float)(*mxGetPr(prhs[5]))-1;
     float startY = (float)(*(mxGetPr(prhs[5]) + 1))-1;
@@ -827,6 +844,11 @@ void mexFunction(int nlhs, mxArray *plhs[],
     // determine which slices come from original and which come from interpolated
     uint64_t* interp_index = (uint64_t*)malloc((ntotal)*sizeof(uint64_t));
     bool* is_original = (bool*)malloc((ntotal)*sizeof(bool));
+    if (ntotal > 0 && (interp_index == NULL || is_original == NULL)) {
+        free(interp_index);
+        free(is_original);
+        mexErrMsgIdAndTxt("volume_warp:outOfMemory","Out of memory for the slice indices of the interpolation (step size too small?)");
+    }
     uint64_t nint = 0;
 
     determine_interpolation_indexing(ntotal, stepsize, interp_index, is_original, nint);

@@ -147,7 +147,7 @@ void mexFunction( int nlhs, mxArray *plhs[],
                   int nrhs, const mxArray *prhs[])
 {
   double *x_mat, *mu, *sigma, *alpha, *mode, *h;
-  int N;
+  int N, i;
   
   
   /*  check for proper number of arguments */
@@ -155,11 +155,16 @@ void mexFunction( int nlhs, mxArray *plhs[],
      within an if statement, because it will never get to the else
      statement if mexErrMsgTxt is executed. (mexErrMsgTxt breaks you out of
      the MEX-file) */
-  if(nrhs!=5) 
-    mexErrMsgTxt("Five input required.");
-  if(nlhs!=1) 
-    mexErrMsgTxt("One output required.");
-  
+  if(nrhs!=5)
+    mexErrMsgIdAndTxt("adtest_mex:inputError", "Five input required.");
+  if(nlhs!=1)
+    mexErrMsgIdAndTxt("adtest_mex:outputError", "One output required.");
+  /* the inputs are read as doubles (a sparse array has only its nonzero values in memory) */
+  for (i=0;i<5;i++) {
+    if (!mxIsDouble(prhs[i]) || mxIsSparse(prhs[i]) || (i > 0 && mxIsEmpty(prhs[i])))
+      mexErrMsgIdAndTxt("adtest_mex:inputError", "The inputs must be a full double array and four double scalars.");
+  }
+
   /*  create a pointer to the input matrix x */
   x_mat = mxGetPr(prhs[0]);
   mu = mxGetPr(prhs[1]);

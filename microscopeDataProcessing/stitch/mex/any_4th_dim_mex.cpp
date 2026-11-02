@@ -161,6 +161,9 @@ void mexFunction(int nlhs, mxArray *plhs[],
 #endif
     if (nrhs != 2) mexErrMsgIdAndTxt("any_4th_dim_mex:inputError","Number of input arguments must be 2");
     if (nlhs != 2) mexErrMsgIdAndTxt("any_4th_dim_mex:outputError","Number of output arguments must be 2");
+    if (mxGetNumberOfDimensions(prhs[0]) > 4) mexErrMsgIdAndTxt("any_4th_dim_mex:inputError","The first input must have at most 4 dimensions");
+    // a sparse array has only its nonzero values in memory
+    if (mxIsSparse(prhs[1])) mexErrMsgIdAndTxt("any_4th_dim_mex:inputError","The second input must be a full array");
 
     uint64_t* dimsF = (uint64_t*)mxGetDimensions(prhs[0]);
     uint64_t* dimsA = (uint64_t*)mxGetDimensions(prhs[1]);

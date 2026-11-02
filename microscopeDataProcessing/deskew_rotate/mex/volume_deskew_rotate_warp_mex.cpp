@@ -431,6 +431,7 @@ void mexFunction(int nlhs, mxArray *plhs[],
 #endif
     if (nrhs != 4) mexErrMsgIdAndTxt("volume_warp:inputError","Number of input arguments must be 4");
     if (nlhs != 1) mexErrMsgIdAndTxt("volume_warp:outputError","Number of output arguments must be 1");
+    if (mxGetNumberOfDimensions(prhs[0]) > 3) mexErrMsgIdAndTxt("volume_warp:inputError","The input must have at most 3 dimensions");
     
     uint64_t* dimsA = (uint64_t*)mxGetDimensions(prhs[0]);
     uint64_t dims[3] = {1, 1, 1};
@@ -444,14 +445,22 @@ void mexFunction(int nlhs, mxArray *plhs[],
     uint64_t shapeZ = dims[2];
     
     if(mxGetNumberOfDimensions(prhs[1]) != 2 || mxGetM(prhs[1]) != 4 || mxGetN(prhs[1]) != 4) mexErrMsgIdAndTxt("volume_warp:inputError","Input transformation matrix must be 4x4!");
+    if(!mxIsDouble(prhs[1]) || mxIsSparse(prhs[1])) mexErrMsgIdAndTxt("volume_warp:inputError","Input transformation matrix must be a full double array");
     double tmat[4][4];
     for(int i=0; i<4; i++){
         for(int j=0; j<4; j++){
             tmat[i][j] = (double)*(mxGetPr(prhs[1])+i+j*4);
+            // NaN coordinates would pass the range checks of the kernels (finite and bounded,
+            // so that the coordinates can't overflow to Inf - Inf)
+            if (!(fabs(tmat[i][j]) < 9.0e15)) mexErrMsgIdAndTxt("volume_warp:inputError","Input transformation matrix must be finite");
         }
     }
 
     if(mxGetN(prhs[2]) != 6) mexErrMsgIdAndTxt("volume_warp:inputError","Input range for bbox is not 6");
+    if(!mxIsDouble(prhs[2]) || mxIsSparse(prhs[2]) || mxGetNumberOfElements(prhs[2]) < 6) mexErrMsgIdAndTxt("volume_warp:inputError","Input bbox must be a full double array");
+    for(int i=0; i<6; i++){
+        if (!(fabs(*(mxGetPr(prhs[2]) + i)) < 9.0e15)) mexErrMsgIdAndTxt("volume_warp:inputError","Input bbox must be finite");
+    }
     
     float startX = (float)(*mxGetPr(prhs[2]))-1;
     float startY = (float)(*(mxGetPr(prhs[2]) + 1))-1;

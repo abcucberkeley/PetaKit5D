@@ -181,7 +181,6 @@ document the limitation).
 | Test | Question |
 |---|---|
 | `MIPTest/maxPoolingOfNegativeValues` | `max_pooling_3d_mex` returns 0 for all-negative blocks (the MATLAB fallback does too, at edge blocks). Is non-negative input a precondition? |
-| `DeconFunctionTest/changedPSFWithSameEnergyIsNotIgnored` | The OTF cache in `decon_lucy_function`/`decon_lucy_omw_function` keys on the image size and the PSF's sum of squares, so a shifted or mirrored PSF (or a new forward PSF in OMW) reuses a stale OTF. The pipeline never does that; should direct calls with arbitrary PSFs in one session be correct? |
 | `BatchFileExistTest/existingOutputFileReturnsCachedResult` | `batch_file_exist` returns without assigning its output when the cached result file exists. Its only caller runs it as a cluster task and reads that file itself; should a direct call return the cached result? |
 | `FunctionStringParsingTest` (3 tests) | mcc mode task string parsing: `f(1,2,'a')` isn't split, `f(1,2)` loses its arguments, `f('','a')` errors. PetaKit5D never generates these forms; should mcc mode accept any call string (e.g., users' own functions, as `demo_generic_computing_framework` invites)? |
 | `XRDeskewRotateFrameTest/objectiveScanSeparatePathIsNotDeskewed` | With `DSRCombined=false`, objective scan data is deskewed before it is rotated, unlike the combined path and the rest of the code, which treat raw objective scan data as already unskewed. Should the separate path only rotate? |

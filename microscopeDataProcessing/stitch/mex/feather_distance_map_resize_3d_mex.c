@@ -124,6 +124,7 @@ void mexFunction(int nlhs, mxArray *plhs[],
 #endif
     if (nrhs != 3) mexErrMsgIdAndTxt("feather_blending:inputError","Number of input arguments must be 3");
     if (nlhs != 1) mexErrMsgIdAndTxt("feather_blending:outputError","Number of output arguments must be 1");
+    if (mxGetNumberOfDimensions(prhs[0]) > 3) mexErrMsgIdAndTxt("feather_blending:inputError","The distance map must have at most 3 dimensions");
 
     uint64_t* dimsA = (uint64_t*)mxGetDimensions(prhs[0]);
     uint64_t dims[3] = {1, 1, 1};
@@ -137,6 +138,13 @@ void mexFunction(int nlhs, mxArray *plhs[],
     uint64_t shapeZ = dims[2];
 
     if(mxGetN(prhs[1]) != 3) mexErrMsgIdAndTxt("crop:inputError","Input range for bbox is not 3");
+    if(!mxIsDouble(prhs[1]) || mxIsSparse(prhs[1]) || mxGetNumberOfElements(prhs[1]) < 3) mexErrMsgIdAndTxt("distmap_resize:inputError","The resized dimensions must be a full double array");
+    // sizes as the conversions below truncate them (NaN fails the check)
+    for(int i = 0; i < 3; i++){
+        if(!(floor(*(mxGetPr(prhs[1]) + i)) >= (double)dims[i] && *(mxGetPr(prhs[1]) + i) < 9.0e15)) mexErrMsgIdAndTxt("distmap_resize:inputError","The resized dimensions must not be smaller than those of the input distance map!");
+    }
+    // the interpolation reads the input
+    if((dims[0] == 0 || dims[1] == 0 || dims[2] == 0) && floor(*(mxGetPr(prhs[1]))) * floor(*(mxGetPr(prhs[1]) + 1)) * floor(*(mxGetPr(prhs[1]) + 2)) > 0) mexErrMsgIdAndTxt("distmap_resize:inputError","The distance map is empty");
 
     uint64_t rShapeX = (uint64_t)*(mxGetPr(prhs[1]));
     uint64_t rShapeY = (uint64_t)*(mxGetPr(prhs[1]) + 1);

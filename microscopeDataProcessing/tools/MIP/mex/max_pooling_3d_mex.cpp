@@ -1,5 +1,6 @@
 #include <stdint.h>
 #include <string.h>
+#include <math.h>
 #include <omp.h>
 #include "mex.h"
 
@@ -88,11 +89,18 @@ void mexFunction( int nlhs, mxArray *plhs[],
 #endif
     /*  check for proper number of arguments */
     if(nrhs!=2) 
-        mexErrMsgTxt("Two input required.");
-    if(nlhs!=1) 
-        mexErrMsgTxt("One output required.");
+        mexErrMsgIdAndTxt("pooling:inputError","Two input required.");
+    if(nlhs!=1)
+        mexErrMsgIdAndTxt("pooling:outputError","One output required.");
+    // a sparse array has only its nonzero values in memory
+    if(mxIsSparse(prhs[0])) mexErrMsgIdAndTxt("pooling:inputError","The input must be a full array");
 
     if(mxGetN(prhs[1]) != 3) mexErrMsgIdAndTxt("pooling:inputError","Input range for pooling size is not 3");
+    if(!mxIsDouble(prhs[1]) || mxIsSparse(prhs[1]) || mxGetNumberOfElements(prhs[1]) < 3) mexErrMsgIdAndTxt("pooling:inputError","The pooling size must be a full double array");
+    // sizes as the conversions below truncate them (NaN fails the check)
+    for(int i = 0; i < 3; i++){
+        if(!(floor(*(mxGetPr(prhs[1]) + i)) >= 1 && *(mxGetPr(prhs[1]) + i) < 9.0e15)) mexErrMsgIdAndTxt("pooling:inputError","Pooling size must be at least 1");
+    }
 
     /*  get the dimensions of the matrix input x */
     const uint64_t* dims = (uint64_t*)mxGetDimensions(prhs[0]);
