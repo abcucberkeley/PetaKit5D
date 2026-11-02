@@ -118,6 +118,160 @@ classdef TiffZarrConversionTest < pktest.TestCase
             out = readzarr([dataPath, 'resaved_zarr/', names{1}, '.zarr']);
             testCase.verifyEqual(out, ims{1}(b(1) : b(4), b(2) : b(5), b(3) : b(6)));
         end
+
+        function resaveGroupsBatchesWithoutCluster(testCase)
+            % without a cluster, neighboring batches are read and written
+            % together (along y, then x and z, up to one chunk per thread),
+            % so that cpp-zarr compresses their chunks in parallel (writes of
+            % one chunk at a time kept a few cores busy); cluster tasks, and
+            % too little or unknown memory, keep one batch per read and write
+            [dataPath, ~, names] = testCase.writeDataset('zarr');
+            src = [dataPath, names{1}, '.zarr'];
+
+            % 12 threads, 3 x 5 x 3 batches of two chunks ([16, 8, 4]): up
+            % to 6 batches, 3 along y and 2 along x
+            testCase.applyFixture(pktest.FunctionStubFixture('maxNumCompThreads', 12));
+            regions = testCase.resaveRegions(src, [dataPath, 'local2.zarr'], [16, 8, 4], false);
+            testCase.verifySize(regions, [9, 6]);
+            testCase.verifyEqual(unique(regions(:, 4 : 6) - regions(:, 1 : 3) + 1, 'rows'), [40, 4, 4; 40, 16, 4]);
+            testCase.verifyRegionsTile(regions, [16, 8, 4]);
+
+            % 6 threads, 5 x 5 x 3 batches of [8, 8, 4]: 15 groups of the 5
+            % batches along y
+            testCase.applyFixture(pktest.FunctionStubFixture('maxNumCompThreads', 6));
+            regions = testCase.resaveRegions(src, [dataPath, 'local.zarr'], [8, 8, 4], false);
+            testCase.verifySize(regions, [15, 6]);
+            testCase.verifyEqual(unique(regions(:, 4 : 6) - regions(:, 1 : 3) + 1, 'rows'), [40, 4, 4; 40, 8, 4]);
+            testCase.verifyRegionsTile(regions, [8, 8, 4]);
+
+            regions = testCase.resaveRegions(src, [dataPath, 'cluster.zarr'], [8, 8, 4], true);
+            testCase.verifySize(regions, [75, 6]);
+            testCase.verifyRegionsTile(regions, [8, 8, 4]);
+
+            for mem = [NaN, 1e-6]
+                testCase.applyFixture(pktest.FunctionStubFixture('getSystemMemory', mem));
+                regions = testCase.resaveRegions(src, sprintf('%slow_memory_%g.zarr', dataPath, mem), [8, 8, 4], false);
+                testCase.verifySize(regions, [75, 6], sprintf('memory %g GB', mem));
+            end
+        end
+
+        function resaveGroupsWithinTheShareOfTheMemory(testCase)
+            % the batches read and written together take at most 1/16 of this
+            % process's share of the memory: the memory times its share of
+            % the CPUs (a local process pool divides the threads among its
+            % workers), so that processes that resave at once stay within it
+            [dataPath, ~, names] = testCase.writeDataset('zarr');
+            src = [dataPath, names{1}, '.zarr'];
+            cores = getenv('SLURM_CPUS_ON_NODE');
+            if isempty(cores)
+                testCase.addTeardown(@unsetenv, 'SLURM_CPUS_ON_NODE');
+            else
+                testCase.addTeardown(@setenv, 'SLURM_CPUS_ON_NODE', cores);
+            end
+            setenv('SLURM_CPUS_ON_NODE', '24');
+            % 64 kB of memory: 1/16 is 8 batches of [8, 8, 4] uint16
+            testCase.applyFixture(pktest.FunctionStubFixture('getSystemMemory', 2^16 / 2^30));
+
+            % all 24 CPUs: 8 batches, i.e. the 5 along y
+            testCase.applyFixture(pktest.FunctionStubFixture('maxNumCompThreads', 24));
+            regions = testCase.resaveRegions(src, [dataPath, 'all.zarr'], [8, 8, 4], false);
+            testCase.verifySize(regions, [15, 6]);
+
+            % 6 of 24 CPUs: a quarter of the memory, 2 batches
+            testCase.applyFixture(pktest.FunctionStubFixture('maxNumCompThreads', 6));
+            regions = testCase.resaveRegions(src, [dataPath, 'quarter.zarr'], [8, 8, 4], false);
+            testCase.verifySize(regions, [45, 6]);
+            testCase.verifyEqual(unique(regions(:, 4 : 6) - regions(:, 1 : 3) + 1, 'rows'), ...
+                [8, 4, 4; 8, 8, 4; 16, 4, 4; 16, 8, 4]);
+            testCase.verifyRegionsTile(regions, [8, 8, 4]);
+        end
+
+        function resaveGroupedBatchesDoNotTakeOtherFlags(testCase)
+            % a run that groups batches, with the uuid of an interrupted run
+            % that wrote one batch at a time (and finished its first task,
+            % batches 1-5), must not take that task's flag for its own first
+            % task (groups 1-5)
+            [dataPath, ims, names] = testCase.writeDataset('zarr');
+            out = [dataPath, 'resumed.zarr'];
+            createzarr([out, '_u'], dataSize=testCase.ImSize, blockSize=[8, 8, 4], dtype='uint16');
+            writezarr(ims{1}(:, 1 : 8, 1 : 4), [out, '_u'], bbox=[1, 1, 1, 40, 8, 4], create=false);
+            flagPath = [dataPath, 'zarr_flag/resumed_u/'];
+            mkdir(flagPath);
+            fclose(fopen([flagPath, 'batches_1_5.mat'], 'w'));
+
+            testCase.applyFixture(pktest.FunctionStubFixture('maxNumCompThreads', 6));
+            XR_resaveSingleZarr([dataPath, names{1}, '.zarr'], out, 'blockSize', [8, 8, 4], 'batchSize', [8, 8, 4], ...
+                'parseCluster', false, 'uuid', 'u');
+            testCase.verifyEqual(readzarr(out), ims{1});
+        end
+
+        function resaveGroupedBatchesWriteTheSameChunks(testCase)
+            % batches read and written together give the same chunk files
+            % as one batch at a time (cpp-zarr writes deterministic chunks),
+            % also with a crop and batches of two chunks that don't divide
+            % the image
+            [dataPath, ims, names] = testCase.writeDataset('zarr');
+            b = [5, 7, 3, 30, 33, 10];
+            threads = [1, 6];
+            for k = 1 : 2
+                testCase.applyFixture(pktest.FunctionStubFixture('maxNumCompThreads', threads(k)));
+                XR_resave_zarr_wrapper(dataPath, 'resultDirName', sprintf('resaved_%d', k), 'batchSize', [16, 8, 4], ...
+                    'blockSize', [8, 8, 4], 'inputBbox', b, 'channelPatterns', testCase.Channels(1), ...
+                    'largeFile', true, 'parseCluster', false, 'masterCompute', true);
+            end
+            fns = {[dataPath, 'resaved_1/', names{1}, '.zarr'], [dataPath, 'resaved_2/', names{1}, '.zarr']};
+            testCase.verifyEqual(readzarr(fns{2}), ims{1}(b(1) : b(4), b(2) : b(5), b(3) : b(6)));
+            files = {dir(fns{1}), dir(fns{2})};
+            files = cellfun(@(x) sort({x(~[x.isdir]).name}), files, 'unif', 0);
+            testCase.verifyEqual(files{2}, files{1});
+            % 4 x 4 x 2 chunks and the metadata
+            testCase.verifyNumElements(files{1}, 33);
+            for i = 1 : numel(files{1})
+                bytes = cell(1, 2);
+                for k = 1 : 2
+                    fid = fopen([fns{k}, '/', files{1}{i}]);
+                    bytes{k} = fread(fid, inf, '*uint8');
+                    fclose(fid);
+                end
+                testCase.verifyEqual(bytes{2}, bytes{1}, files{1}{i});
+            end
+        end
+    end
+
+    methods (Test, TestTags = {'Integration', 'Slow'})
+        function resaveOnLocalPoolGroupsWithinTheWorkersThreads(testCase)
+            % files resaved on a local process pool (localWorkerNum in the
+            % configuration file): each worker has its share of the threads,
+            % and groups no more batches than that
+            testCase.assumeTrue(license('test', 'Distrib_Computing_Toolbox') && ~isempty(which('gcp')), ...
+                'Needs the Parallel Computing Toolbox.');
+            if isempty(gcp('nocreate'))
+                testCase.addTeardown(@() delete(gcp('nocreate')));
+            end
+            [dataPath, ims, names] = testCase.writeDataset('zarr');
+            cfg = [dataPath, 'config.json'];
+            fid = fopen(cfg, 'w');
+            fprintf(fid, '{"localWorkerNum": 2}');
+            fclose(fid);
+            threadNum = max(1, floor(maxNumCompThreads / 2));
+
+            out = evalc(['XR_resave_zarr_wrapper(dataPath, ''batchSize'', [8, 8, 4], ''blockSize'', [8, 8, 4], ', ...
+                '''largeFile'', true, ''parseCluster'', false, ''masterCompute'', true, ''configFile'', cfg)']);
+
+            testCase.verifySubstring(out, 'Run 3 tasks on the local pool');
+            for i = 1 : 3
+                testCase.verifyEqual(readzarr([dataPath, 'resaved_zarr/', names{i}, '.zarr']), ims{i}, names{i});
+            end
+            % the flags of grouped batches name the group size
+            groups = regexp(out, 'batches_(\d+)_(\d+)_(\d+)_\d+_\d+', 'tokens');
+            if threadNum > 1
+                testCase.verifyNotEmpty(groups, 'The workers did not group batches.');
+            end
+            for i = 1 : numel(groups)
+                batchNum = prod(str2double(groups{i}) ./ [8, 8, 4]);
+                testCase.verifyLessThanOrEqual(batchNum, threadNum, sprintf('A worker grouped %d batches.', batchNum));
+            end
+        end
     end
 
     methods (Test, TestTags = {'Unit'})
@@ -225,6 +379,34 @@ classdef TiffZarrConversionTest < pktest.TestCase
     end
 
     methods (Access = private)
+        function [regions] = resaveRegions(testCase, src, out, batchSize, parseCluster)
+            % the output regions of the tasks XR_resaveSingleZarr hands to the
+            % framework (with chunks of [8, 8, 4]), one row per read and write
+            frameworkSpy = testCase.applyFixture(pktest.FrameworkSpyFixture);
+            XR_resaveSingleZarr(src, out, 'blockSize', [8, 8, 4], 'batchSize', batchSize, ...
+                'parseCluster', parseCluster);
+            calls = frameworkSpy.getCalls();
+            blockSpy = testCase.applyFixture(pktest.FunctionSpyFixture('resaveZarrBlock'));
+            for i = 1 : numel(calls{1}.funcStrs)
+                eval(calls{1}.funcStrs{i});
+            end
+            tasks = blockSpy.getCalls();
+            regions = cell2mat(cellfun(@(x) x{6}, tasks(:), 'unif', 0));
+        end
+
+        function [] = verifyRegionsTile(testCase, regions, batchSize)
+            % the regions are whole batches that cover the image once
+            counts = zeros(testCase.ImSize);
+            for i = 1 : size(regions, 1)
+                r = regions(i, :);
+                counts(r(1) : r(4), r(2) : r(5), r(3) : r(6)) = counts(r(1) : r(4), r(2) : r(5), r(3) : r(6)) + 1;
+            end
+            testCase.verifyTrue(all(counts(:) == 1), 'The regions do not cover the image once.');
+            testCase.verifyTrue(all(mod(regions(:, 1 : 3) - 1, batchSize) == 0, 'all'), 'A region starts inside a batch.');
+            testCase.verifyTrue(all(mod(regions(:, 4 : 6), batchSize) == 0 | regions(:, 4 : 6) == testCase.ImSize, 'all'), ...
+                'A region ends inside a batch.');
+        end
+
         function [dataPath, ims, names] = writeDataset(testCase, format)
             dataPath = testCase.createTempFolder();
             names = {'scan_CamA_ch0_t0000', 'scan_CamB_ch0_t0000', 'scan_CamA_ch1_t0000'};

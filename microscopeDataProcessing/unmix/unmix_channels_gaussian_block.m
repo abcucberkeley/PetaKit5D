@@ -53,6 +53,16 @@ if ~exist(unmixFullpath, 'dir')
 end
 dtype = getImageDataType(unmixFullpath);
 
+% the mex sums the channels as read in one pass when none is filtered and
+% they and the result take at most 8 bytes per voxel (the original code held
+% at least a single sum and a single channel); otherwise the channels are
+% added one at a time to the sum, which holds no more than the original code
+filtered = arrayfun(@(c) ~all(unmixSigmas(c, :) == 0), 1 : nC);
+dtypes = cellfun(@(x) char(getImageDataType(x)), zarrFullpaths(:)', 'unif', 0);
+atOnce = ~any(filtered) && exist('unmix_channels_sum_mex', 'file') == 3 ...
+    && all(ismember([dtypes, {dtype}], {'uint8', 'uint16', 'single', 'double'})) ...
+    && sum(cellfun(@dataTypeToByteNumber, dtypes)) + dataTypeToByteNumber(dtype) <= 8;
+
 done_flag = false(numel(batchInds), 1);
 for i = 1 : numel(batchInds)
     bi = batchInds(i);
@@ -63,16 +73,28 @@ for i = 1 : numel(batchInds)
     ibEnd = BatchBBoxes(i, 4 : 6);
     
     % load the region in input 
-    in_batch = zeros(ibEnd - ibStart + 1, 'single');
-    for c = 1 : nC
-        im_c = single(readzarr(zarrFullpaths{c}, 'inputBbox', [ibStart, ibEnd]));
-        if ~all(unmixSigmas(c, :) == 0)
-            im_c = imgaussfilt3(im_c, unmixSigmas(c, :));
+    if atOnce
+        in_batch = [];
+        ims = cell(1, nC);
+        for c = 1 : nC
+            ims{c} = readzarr(zarrFullpaths{c}, 'inputBbox', [ibStart, ibEnd]);
         end
-        in_batch = in_batch + im_c * unmixFactors(c);
+        in_batch = unmix_channels_sum(ims, unmixFactors, [], [], dtype);
+        clear ims;
+    else
+        in_batch = [];
+        for c = 1 : nC
+            if filtered(c)
+                im_c = single(readzarr(zarrFullpaths{c}, 'inputBbox', [ibStart, ibEnd]));
+                im_c = imgaussfilt3(im_c, unmixSigmas(c, :));
+            else
+                im_c = readzarr(zarrFullpaths{c}, 'inputBbox', [ibStart, ibEnd]);
+            end
+            in_batch = unmix_channels_sum({im_c}, unmixFactors(c), [], [], '', in_batch);
+        end
+        clear im_c;
+        in_batch = unmix_channels_sum({}, [], [], [], dtype, in_batch);
     end
-    in_batch = max(0, in_batch);
-    in_batch = cast(in_batch, dtype);
     
     out_batch = crop3d(in_batch, localBBoxes(i, :));
     % write the block

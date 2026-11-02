@@ -84,55 +84,93 @@ imSize = getImageSize(frameFullpaths{channelInd});
 
 nc = numel(frameFullpaths);
 
-im = zeros(imSize, 'single');
+% the channels that contribute, and those flat-field corrected or filtered
+% (in single) before the sum
+used = false(1, nc);
+filtered = false(1, nc);
 for c = 1 : nc
     if unmixFactors(c) == 0
         continue;
     end
+    used(c) = true;
+    filtered(c) = strcmp(mode, 'gaussian') && ~all(unmixSigmas(c, :) == 0);
+end
+processed = used & (FFCorrection | filtered);
 
+dtype = 'single';
+if save16bit
+    dtype = 'uint16';
+end
+
+% the mex sums the channels as read in one pass when they and the result
+% take at most 8 bytes per voxel (the original code held at least a single
+% sum and a single channel); otherwise the channels are added one at a time
+% to the sum, which holds no more than the original code
+atOnce = any(used) && ~any(processed) && sum(used) + dataTypeToByteNumber(dtype) <= 8 ...
+    && exist('unmix_channels_sum_mex', 'file') == 3;
+if atOnce
+    dtypes = cellfun(@(x) frame_data_type(x, zarrFile), frameFullpaths(used), 'unif', 0);
+    atOnce = all(ismember(dtypes, {'uint8', 'uint16', 'single', 'double'})) ...
+        && sum(cellfun(@dataTypeToByteNumber, dtypes)) + dataTypeToByteNumber(dtype) <= 8;
+end
+
+ims = cell(1, nc);
+bgs = zeros(1, nc);
+im = [];
+for c = find(used)
     if zarrFile
         im_c = readzarr(frameFullpaths{c});
     else
         im_c = readtiff(frameFullpaths{c});
     end
-    im_c = single(im_c);
 
-    % flat field correction
-    if FFCorrection
-        FFImage = FFImagePaths{c};
-        backgroundImage = backgroundPaths{c};
-        fprintf(['Flat-field correction for frame %s...\n', ...
-            '  Flat-field image: %s\n  Background image: %s\n'], ...
-            frameFullpaths{c}, FFImage, backgroundImage);
-        LSIm = readtiff(FFImage);
-        BKIm = readtiff(backgroundImage);
-        % do not add background offset after ff correction.
-        im_c = XR_LSFlatFieldCorrection(im_c,LSIm,BKIm,'lowerLimit', lowerLimit, ...
-            'constOffset', 0);
+    % flat field correction, background and gaussian filtering in single
+    % (the background of single channels in place); the background of the
+    % other channels is subtracted in the sum
+    bg_c = [];
+    if processed(c) || isa(im_c, 'single')
+        im_c = single(im_c);
+        if FFCorrection
+            FFImage = FFImagePaths{c};
+            backgroundImage = backgroundPaths{c};
+            fprintf(['Flat-field correction for frame %s...\n', ...
+                '  Flat-field image: %s\n  Background image: %s\n'], ...
+                frameFullpaths{c}, FFImage, backgroundImage);
+            LSIm = readtiff(FFImage);
+            BKIm = readtiff(backgroundImage);
+            % do not add background offset after ff correction.
+            im_c = XR_LSFlatFieldCorrection(im_c,LSIm,BKIm,'lowerLimit', lowerLimit, ...
+                'constOffset', 0);
+        end
+        if ~isempty(constBackground)
+            im_c = im_c - constBackground(c);
+        end
+        if filtered(c)
+            im_c = imgaussfilt3(im_c, unmixSigmas(c, :));
+        end
+    elseif ~isempty(constBackground)
+        bg_c = constBackground(c);
     end
-    if ~isempty(constBackground)
-        im_c = im_c - constBackground(c);
+    if atOnce
+        ims{c} = im_c;
+        if ~isempty(bg_c)
+            bgs(c) = bg_c;
+        end
+    else
+        im = unmix_channels_sum({im_c}, unmixFactors(c), bg_c, [], '', im);
     end
-
-    switch mode
-        case 'linear'
-        case 'gaussian'
-            if ~all(unmixSigmas(c, :) == 0)
-                im_c = imgaussfilt3(im_c, unmixSigmas(c, :));
-            end
-    end
-    im = im + im_c * unmixFactors(c);
 end
+clear im_c;
 
-im = max(0, im);
-
-% add background offset after unmixing if it is nozero.
-if ~isempty(constOffset) && constOffset ~= 0
-    im = im + constOffset;
-end
-
-if save16bit
-    im = cast(im, 'uint16');
+if atOnce
+    im = unmix_channels_sum(ims(used), unmixFactors(used), bgs(used), constOffset, dtype);
+    clear ims;
+else
+    if isempty(im)
+        % no channel contributes
+        im = zeros(imSize, 'single');
+    end
+    im = unmix_channels_sum({}, [], [], constOffset, dtype, im);
 end
 
 % write the result
@@ -144,6 +182,24 @@ end
 
 if exist(unmixTmppath, 'file') || exist(unmixTmppath, 'dir')
     movefile(unmixTmppath, unmixFullpath);
+end
+
+end
+
+
+function [dtype] = frame_data_type(frameFullpath, zarrFile)
+% data type of a frame: from the zarr metadata, or from the first slice of a
+% tiff with several (faster than reading the tiff's metadata)
+
+if zarrFile
+    dtype = char(getImageDataType(frameFullpath, true));
+    return;
+end
+imSize = getImageSize(frameFullpath);
+if numel(imSize) > 2 && imSize(3) > 1
+    dtype = class(readtiff(frameFullpath, 'range', [1, 1]));
+else
+    dtype = char(getImageDataType(frameFullpath));
 end
 
 end

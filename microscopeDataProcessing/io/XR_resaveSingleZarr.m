@@ -65,6 +65,18 @@ end
 blockSize = min(outSize, blockSize);
 batchSize = min(outSize, batchSize);
 batchSize = ceil(batchSize ./ blockSize) .* blockSize;
+% without a cluster, neighboring batches are read and written together, so
+% that their chunks are compressed in parallel (a batch of one chunk kept a
+% few cores busy). Their flags name their size, so that the flags of a run
+% with other batches and the same uuid are not taken for them.
+flagName = 'batches';
+if ~parseCluster
+    localBatchSize = local_batch_size(outSize, batchSize, blockSize, dataTypeToByteNumber(dtype));
+    if any(localBatchSize ~= batchSize)
+        flagName = sprintf('batches_%d_%d_%d', localBatchSize);
+    end
+    batchSize = localBatchSize;
+end
 bSubSz = ceil(outSize ./ batchSize);
 numBatch = prod(bSubSz);
 
@@ -117,7 +129,7 @@ for i = 1 : numTasks
     batchBBoxes_i = batchBBoxes(batchInds, :);
     regionBBoxes_i = regionBBoxes(batchInds, :);
 
-    zarrFlagFullpath = sprintf('%s/batches_%d_%d.mat', zarrFlagPath, batchInds(1), batchInds(end));
+    zarrFlagFullpath = sprintf('%s/%s_%d_%d.mat', zarrFlagPath, flagName, batchInds(1), batchInds(end));
     outputFullpaths{i} = zarrFlagFullpath;
 
     funcStrs{i} = sprintf(['resaveZarrBlock([%s],''%s'',''%s'',''%s'',%s,%s)'], ...
@@ -157,5 +169,43 @@ end
 if exist(zarrFlagPath, 'dir')
     rmdir(zarrFlagPath, 's');
 end
+
+end
+
+
+function [batchSize] = local_batch_size(outSize, batchSize, blockSize, byteNum)
+% batch size for processing in this MATLAB: neighboring batches together
+% (along y, then x, then z), up to one chunk per computational thread, with
+% their data within 1/16 of this process's share of the memory: the memory
+% (the job's in a Slurm job, at most what is available now) times its share
+% of the CPUs (a local process pool divides the threads among its workers),
+% so that processes that resave at once stay within it together. With the
+% group, cpp-zarr's chunk buffers take about twice its data.
+
+mem = getSystemMemory();
+if isunix && ~ismac
+    % free and reclaimable memory now
+    tok = regexp(fileread('/proc/meminfo'), 'MemAvailable:\s+(\d+) kB', 'tokens', 'once');
+    if ~isempty(tok)
+        mem = min(mem, str2double(tok{1}) / 2^20, 'includenan');
+    end
+end
+nCores = str2double(getenv('SLURM_CPUS_ON_NODE'));
+if isnan(nCores)
+    nCores = feature('numcores');
+end
+share = min(1, maxNumCompThreads / nCores);
+maxBatchNum = min(floor(maxNumCompThreads / prod(batchSize ./ blockSize)), ...
+    floor(mem * share * 2^30 / 16 / (prod(batchSize) * byteNum)), 'includenan');
+if ~(maxBatchNum > 1)
+    return;
+end
+
+bSubSz = ceil(outSize ./ batchSize);
+n = ones(1, 3);
+for d = 1 : 3
+    n(d) = min(bSubSz(d), floor(maxBatchNum / prod(n)));
+end
+batchSize = batchSize .* n;
 
 end

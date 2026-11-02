@@ -49,6 +49,18 @@ if ~exist(unmixFullpath, 'dir')
 end
 dtype = getImageDataType(unmixFullpath);
 
+% the mex sums the channels as read in one pass when they and the result
+% take no more memory than the single sum and the largest channel or result
+% the original code held; otherwise the channels are added to the sum in
+% place one at a time, as in the original code
+dtypes = cellfun(@(x) char(getImageDataType(x)), zarrFullpaths(:)', 'unif', 0);
+atOnce = exist('unmix_channels_sum_mex', 'file') == 3 ...
+    && all(ismember([dtypes, {dtype}], {'uint8', 'uint16', 'single', 'double'}));
+if atOnce
+    bytes = cellfun(@dataTypeToByteNumber, [dtypes, {dtype}]);
+    atOnce = sum(bytes) <= 4 + max(bytes);
+end
+
 done_flag = false(numel(batchInds), 1);
 for i = 1 : numel(batchInds)
     bi = batchInds(i);
@@ -59,12 +71,21 @@ for i = 1 : numel(batchInds)
     ibEnd = BatchBBoxes(i, 4 : 6);
     
     % load the region in input 
-    in_batch = zeros(ibEnd - ibStart + 1, 'single');
-    for c = 1 : nC
-        in_batch = in_batch + single(readzarr(zarrFullpaths{c}, 'inputBbox', [ibStart, ibEnd])) * unmixFactors(c);
+    if atOnce
+        in_batch = [];
+        ims = cell(1, nC);
+        for c = 1 : nC
+            ims{c} = readzarr(zarrFullpaths{c}, 'inputBbox', [ibStart, ibEnd]);
+        end
+        in_batch = unmix_channels_sum(ims, unmixFactors, [], [], dtype);
+        clear ims;
+    else
+        in_batch = zeros(ibEnd - ibStart + 1, 'single');
+        for c = 1 : nC
+            in_batch = in_batch + single(readzarr(zarrFullpaths{c}, 'inputBbox', [ibStart, ibEnd])) * unmixFactors(c);
+        end
+        in_batch = unmix_channels_sum({}, [], [], [], dtype, in_batch);
     end
-    in_batch = max(0, in_batch);
-    in_batch = cast(in_batch, dtype);
     
     % write the block
     obStart = BatchBBoxes(i, 1 : 3);
