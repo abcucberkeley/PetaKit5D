@@ -291,6 +291,31 @@ classdef GenericComputingFrameworkTest < pktest.TestCase
 
             testCase.verifyEqual(flags, true(2, 1));
         end
+
+        function callLogWaitsOutRefusedFileOperations(testCase)
+            % Windows refuses for a moment to make the call log's lock folder
+            % (while another task removes it), to open the log and to remove
+            % the lock; pktest.frameworkTask tries again (it took the lock
+            % without making it and then failed to remove it, which failed
+            % tasks on GitHub's Windows runners)
+            [inFns, outFns, logFn] = testCase.makeTasks(1);
+            stubPath = testCase.createTempFolder();
+            testCase.writeRefusingStub(stubPath, 'mkdir', '.lock', ...
+                '{false, ''Access is denied.'', ''MATLAB:MKDIR:OSError''}');
+            testCase.writeRefusingStub(stubPath, 'fopen', '.log', '{-1, ''Permission denied''}');
+            testCase.writeRefusingStub(stubPath, 'rmdir', '.lock', ...
+                '{false, ''Access is denied.'', ''MATLAB:RMDIR:OSError''}');
+            testCase.applyFixture(matlab.unittest.fixtures.SuppressedWarningsFixture('MATLAB:dispatcher:nameConflict'));
+            testCase.applyFixture(matlab.unittest.fixtures.PathFixture(stubPath));
+
+            pktest.frameworkTask(inFns{1}, outFns{1}, logFn, 'noop');
+
+            testCase.verifyEqual(testCase.readLog(logFn), outFns(1));
+            testCase.verifyFalse(isfolder([logFn, '.lock']), 'The lock folder was left behind.');
+            for name = {'mkdir', 'fopen', 'rmdir'}
+                testCase.verifyTrue(isfile([stubPath, name{1}, '_refused']), [name{1}, ' was not refused.']);
+            end
+        end
     end
 
     methods (Test, TestTags = {'Integration', 'Slow'})
@@ -329,6 +354,29 @@ classdef GenericComputingFrameworkTest < pktest.TestCase
         function [funcStrs] = taskStrings(~, inFns, outFns, logFn, mode)
             funcStrs = cellfun(@(x, y) sprintf('pktest.frameworkTask(''%s'',''%s'',''%s'',''%s'')', ...
                 x, y, logFn, mode), inFns, outFns, 'unif', 0);
+        end
+
+        function [] = writeRefusingStub(~, stubPath, name, suffix, refusal)
+            % a stub of the built-in name that refuses its first call for a
+            % path ending in suffix (returns refusal, or errors without
+            % outputs, and leaves a file name_refused) and runs it otherwise
+            lines = {
+                sprintf('function varargout = %s(varargin)', name)
+                'persistent refused'
+                sprintf('if isempty(refused) && nargin > 0 && (ischar(varargin{1}) || isstring(varargin{1})) && endsWith(varargin{1}, ''%s'')', suffix)
+                '    refused = true;'
+                sprintf('    fclose(builtin(''fopen'', [fileparts(mfilename(''fullpath'')), ''/%s_refused''], ''w''));', name)
+                '    if nargout == 0'
+                sprintf('        error(''pktest:refused'', ''%s refused'');', name)
+                '    end'
+                sprintf('    varargout = %s;', refusal)
+                '    return;'
+                'end'
+                sprintf('[varargout{1 : nargout}] = builtin(''%s'', varargin{:});', name)
+                'end'};
+            fid = fopen([stubPath, name, '.m'], 'w');
+            fprintf(fid, '%s\n', lines{:});
+            fclose(fid);
         end
 
         function [lines] = readLog(~, logFn)

@@ -52,7 +52,9 @@ classdef LocalPoolFrameworkTest < pktest.TestCase
                 fs(f) = parfeval(p, @pktest.frameworkTask, 0, inFns{f}, outFns{f}, logFn, 'noop');
             end
             wait(fs);
-            testCase.verifyEmpty([fs.Error], 'A task failed.');
+            errs = {fs.Error};
+            errs = errs(~cellfun(@isempty, errs));
+            testCase.verifyEmpty(errs, ['Tasks failed: ', strjoin(cellfun(@(x) x.message, errs, 'unif', 0), ' | ')]);
             testCase.verifyEqual(sort(testCase.readLog(logFn)), sort(outFns(:)), 'The log lost calls.');
             testCase.verifyFalse(isfolder([logFn, '.lock']), 'The lock folder was left behind.');
         end

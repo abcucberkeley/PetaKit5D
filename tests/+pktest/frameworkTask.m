@@ -47,20 +47,38 @@ lockDir = [logFn, '.lock'];
 t0 = tic;
 locked = false;
 while toc(t0) < 30
-    [~, ~, msgID] = mkdir(lockDir);
-    if ~strcmp(msgID, 'MATLAB:MKDIR:DirectoryExists')
+    % made by this task: the lock; already there, or (Windows) not made while
+    % another task removes it: try again
+    [status, ~, msgID] = mkdir(lockDir);
+    if status && isempty(msgID)
         locked = true;
         break;
     end
-    t1 = tic;
-    while toc(t1) < 0.002
-    end
+    wait_briefly();
 end
+% (Windows can refuse an open for a moment after another process's close)
 fid = fopen(logFn, 'a');
+while fid < 0 && toc(t0) < 60
+    wait_briefly();
+    fid = fopen(logFn, 'a');
+end
 fprintf(fid, '%s\n', line);
 fclose(fid);
 if locked
-    rmdir(lockDir);
+    t1 = tic;
+    while ~rmdir(lockDir) && toc(t1) < 10
+        wait_briefly();
+    end
+end
+
+end
+
+
+function [] = wait_briefly()
+% about 2 ms
+
+t = tic;
+while toc(t) < 0.002
 end
 
 end

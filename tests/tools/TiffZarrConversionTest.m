@@ -245,6 +245,11 @@ classdef TiffZarrConversionTest < pktest.TestCase
             % and groups no more batches than that
             testCase.assumeTrue(license('test', 'Distrib_Computing_Toolbox') && ~isempty(which('gcp')), ...
                 'Needs the Parallel Computing Toolbox.');
+            % the framework starts a pool only if half of the memory holds the
+            % workers (2 GB each besides the task's; GitHub's macOS runners
+            % have 7 GB)
+            testCase.assumeEqual(min(2, floor(getSystemMemory() / 2 / 2.1)), 2, ...
+                'Too little memory for the framework to start a local pool of 2 workers.');
             if isempty(gcp('nocreate'))
                 testCase.addTeardown(@() delete(gcp('nocreate')));
             end
