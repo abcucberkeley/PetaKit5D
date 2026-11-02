@@ -40,6 +40,23 @@ classdef LocalPoolFrameworkTest < pktest.TestCase
             testCase.verifyEqual(sort(testCase.readLog(logFn)), sort(outFns(:)), 'Each task should run once.');
         end
 
+        function callLogKeepsTasksThatRunAtOnce(testCase)
+            % the call log the framework tests count runs with: tasks on two
+            % workers append to it at the same time, which lost a line on
+            % Windows (GitHub CI); pktest.frameworkTask now appends under a lock
+            n = 200;
+            [inFns, outFns, logFn] = testCase.makeTasks(n);
+            p = gcp('nocreate');
+            fs = parallel.FevalFuture.empty();
+            for f = 1 : n
+                fs(f) = parfeval(p, @pktest.frameworkTask, 0, inFns{f}, outFns{f}, logFn, 'noop');
+            end
+            wait(fs);
+            testCase.verifyEmpty([fs.Error], 'A task failed.');
+            testCase.verifyEqual(sort(testCase.readLog(logFn)), sort(outFns(:)), 'The log lost calls.');
+            testCase.verifyFalse(isfolder([logFn, '.lock']), 'The lock folder was left behind.');
+        end
+
         function failedTasksAreRetriedInThisMatlab(testCase)
             % the tasks fail on the workers; the framework runs them again
             [inFns, outFns, logFn] = testCase.makeTasks(3);

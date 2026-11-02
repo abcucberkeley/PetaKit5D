@@ -12,9 +12,7 @@ if nargin < 4
     mode = 'copy';
 end
 
-fid = fopen(logFn, 'a');
-fprintf(fid, '%s\n', outputFn);
-fclose(fid);
+append_line(logFn, outputFn);
 
 switch mode
     case 'copy'
@@ -34,6 +32,35 @@ switch mode
         fid = fopen(outputFn, 'w');
         fprintf(fid, '%s', where);
         fclose(fid);
+end
+
+end
+
+
+function [] = append_line(logFn, line)
+% appends a line to the log while holding a lock folder: tasks that run at
+% once in other processes (pool workers, jobs) append to the same log, and on
+% Windows two appends at the same time can overwrite each other. A lock left
+% by a killed task is ignored after 30 s. (No pause: tests replace it.)
+
+lockDir = [logFn, '.lock'];
+t0 = tic;
+locked = false;
+while toc(t0) < 30
+    [~, ~, msgID] = mkdir(lockDir);
+    if ~strcmp(msgID, 'MATLAB:MKDIR:DirectoryExists')
+        locked = true;
+        break;
+    end
+    t1 = tic;
+    while toc(t1) < 0.002
+    end
+end
+fid = fopen(logFn, 'a');
+fprintf(fid, '%s\n', line);
+fclose(fid);
+if locked
+    rmdir(lockDir);
 end
 
 end
