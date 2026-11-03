@@ -198,12 +198,12 @@ classdef AutomaticProcessingTest < pktest.TestCase
                 'xyz', {[0, 0, 0], [0, 32 * px, 0]});
             [~, csvFn] = pktest.writeStitchTiles(dataPath, tiles);
             slurm = testCase.applyFixture(pktest.FakeSlurmFixture);
-            % jobs in submission order: deskew of tile 1 (1000), stitching of
-            % the dataset (1001), deskew of tile 2 (1002); the deskew jobs end
-            % at once without results, the stitching job runs for longer, so
+            % jobs in submission order: deskew of tile 1 (1000) and tile 2
+            % (1001), stitching of the dataset (1002); the deskew jobs end at
+            % once without results, the stitching job runs for longer, so
             % that only it keeps the run going. Each file of the dataset
             % checks it once per round.
-            slurm.setJobStates('1001_1', {'PD', 'R', 'R', 'R', 'done'});
+            slurm.setJobStates('1002_1', {'PD', 'R', 'R', 'R', 'done'});
             testCase.applyFixture(pktest.FunctionSpyFixture('pause', [], 20));
             evalc(['XR_microscopeAutomaticProcessing(dataPath, ''xyPixelSize'', px, ''dz'', testCase.Dz, ', ...
                 '''reverse'', true, ''channelPatterns'', {''CamA_ch0''}, ''streaming'', false, ', ...
@@ -211,8 +211,135 @@ classdef AutomaticProcessingTest < pktest.TestCase
                 '''maxTrialNum'', 1, ''jobLogDir'', [dataPath, ''logs/''])']);
             testCase.verifyEqual(slurm.callCount('sbatch'), 3, 'A last try was submitted again.');
             checks = slurm.history();
-            checks = checks(startsWith(checks, 'squeue') & contains(checks, '1001_1'));
+            checks = checks(startsWith(checks, 'squeue') & contains(checks, '1002_1'));
             testCase.verifyGreaterThanOrEqual(numel(checks), 5, 'The stitching job was not checked until it ended.');
+        end
+
+        function clusterModeSubmitsStitchingAfterTheDeskewJobs(testCase)
+            % a dataset's stitching job was submitted right after the deskew
+            % job of its first file, so on a busy cluster it took a slot
+            % ahead of the dataset's other deskew jobs, only to wait for
+            % their results; it is now submitted after them
+            testCase.assumeFalse(ispc, 'The fake Slurm needs a POSIX shell.');
+            [dataPath, csvFn] = testCase.writeTwoTiles();
+            slurm = testCase.applyFixture(pktest.FakeSlurmFixture);
+            testCase.applyFixture(pktest.FunctionSpyFixture('pause', [], 20));
+            args = testCase.clusterStitchArgs(dataPath, csvFn, 1);
+            evalc('XR_microscopeAutomaticProcessing(dataPath, args{:})');
+            jobs = slurm.calls('sbatch');
+            testCase.assertNumElements(jobs, 3);
+            testCase.verifyEqual(find(contains(jobs, 'XR_matlab_stitching_wrapper')), 3, ...
+                'The stitching job was not submitted after the deskew jobs.');
+        end
+
+        function clusterModeSubmitsStitchingWhenTilesWereDeskewedBefore(testCase)
+            % (with the stitching job after the deskew jobs) the deskewed
+            % tile of a file done before needs no job: the stitching job
+            % follows the deskew job of the other file
+            testCase.assumeFalse(ispc, 'The fake Slurm needs a POSIX shell.');
+            [dataPath, csvFn] = testCase.writeTwoTiles();
+            [~, fsn] = fileparts(testCase.tileFilename(dataPath, 'CamA_ch0', 0));
+            mkdir([dataPath, 'DSR']);
+            fclose(fopen(sprintf('%sDSR/%s.tif', dataPath, fsn), 'w'));
+            slurm = testCase.applyFixture(pktest.FakeSlurmFixture);
+            testCase.applyFixture(pktest.FunctionSpyFixture('pause', [], 20));
+            args = testCase.clusterStitchArgs(dataPath, csvFn, 1);
+            evalc('XR_microscopeAutomaticProcessing(dataPath, args{:})');
+            jobs = slurm.calls('sbatch');
+            testCase.assertNumElements(jobs, 2);
+            testCase.verifyTrue(contains(jobs{2}, 'XR_matlab_stitching_wrapper'), ...
+                'The stitching job was not submitted after the deskew job.');
+        end
+
+        function clusterModeTellsStitchingThatTilesAreComing(testCase)
+            % the stitching job gave up a time point whose deskewed tiles
+            % were not all there after 3 checks 5 s apart, and the pipeline
+            % then needed another stitching job for it (or lost it, after
+            % the tries of its stitching, while deskewing took long). While
+            % deskew jobs of a dataset are pending or running, a marker in
+            % its DSR folder now tells the stitching job that the tiles are
+            % coming; it is written again once it is a minute old, so that
+            % it stays recent, and removed when they are done (at the start
+            % of a round). The fake deskew jobs never run: their two tries
+            % end in the third round, while the stitching job (1002) runs
+            % for a round more (each file checks it once per round).
+            testCase.assumeFalse(ispc, 'The fake Slurm needs a POSIX shell.');
+            testCase.assumeTrue(usejava('jvm'), 'Setting file times needs Java.');
+            [dataPath, csvFn] = testCase.writeTwoTiles();
+            markerFn = [dataPath, 'DSR/deskew_in_progress.tmp'];
+            logFn = [dataPath, 'marker_ages.txt'];
+            slurm = testCase.applyFixture(pktest.FakeSlurmFixture);
+            slurm.setJobStates('1002_1', {'R', 'R', 'R', 'R', 'R', 'R', 'done'});
+            % at each wait: the marker's age, then 5 minutes added to it
+            testCase.applyFixture(pktest.FunctionSpyFixture('pause', ...
+                @() testCase.recordAndAgeFile(markerFn, logFn, false), 20));
+            args = testCase.clusterStitchArgs(dataPath, csvFn, 2);
+            evalc('XR_microscopeAutomaticProcessing(dataPath, args{:})');
+            ages = str2double(splitlines(strip(fileread(logFn))));
+            testCase.assertGreaterThanOrEqual(numel(ages), 4);
+            testCase.verifyTrue(all(ages(1 : 3) < 60), sprintf(['The marker was missing (NaN) or ', ...
+                'not written again (age in s): %s.'], mat2str(ages')));
+            testCase.verifyTrue(all(isnan(ages(4 : end))), sprintf(['The marker was kept after the deskew ', ...
+                'tries (age in s): %s.'], mat2str(ages')));
+            testCase.verifyFalse(isfile(markerFn), 'The marker was left after the run.');
+        end
+
+        function deskewMarkerIsRemovedWhenThePipelineStops(testCase)
+            % an error (or Ctrl-C) in the pipeline must not leave its marker
+            % for a stitching job to wait for
+            testCase.assumeFalse(ispc, 'The fake Slurm needs a POSIX shell.');
+            testCase.assumeTrue(usejava('jvm'), 'Setting file times needs Java.');
+            [dataPath, csvFn] = testCase.writeTwoTiles();
+            markerFn = [dataPath, 'DSR/deskew_in_progress.tmp'];
+            logFn = [dataPath, 'marker_ages.txt'];
+            testCase.applyFixture(pktest.FakeSlurmFixture);
+            % the first wait stops the run
+            testCase.applyFixture(pktest.FunctionSpyFixture('pause', ...
+                @() testCase.recordAndAgeFile(markerFn, logFn, true), 20));
+            args = testCase.clusterStitchArgs(dataPath, csvFn, 2);
+            stopped = false;
+            try
+                evalc('XR_microscopeAutomaticProcessing(dataPath, args{:})');
+            catch ME
+                stopped = strcmp(ME.identifier, 'pktest:stop');
+            end
+            testCase.assertTrue(stopped, 'The pipeline did not stop at its first wait.');
+            testCase.verifyLessThan(str2double(strip(fileread(logFn))), 60, ...
+                'There was no marker while the deskew jobs were pending.');
+            testCase.verifyFalse(isfile(markerFn), 'The marker was left after the pipeline stopped.');
+        end
+
+        function streamingLeavesOutRecentFilesWithTheirSizes(testCase)
+            % in streaming mode, files changed in the last minModifyTime
+            % minutes (still being written) are left for later, but their
+            % sizes stayed in the list: a cluster run that started with
+            % only such files failed (3 sizes for no file), and the files
+            % after such a file got the sizes of the files before them
+            testCase.assumeTrue(usejava('jvm'), 'Setting file times needs Java.');
+            dataPath = testCase.createTempFolder();
+            fns = arrayfun(@(y) testCase.tileFilename(dataPath, 'CamA_ch0', y), 0 : 2, 'unif', 0);
+            depths = [16, 20, 24];
+            for i = 1 : 3
+                writetiff(zeros(16, 16, depths(i), 'uint16'), fns{i});
+            end
+            args = {{dataPath}, {'CamA_ch0'}, false, false, false, {}};
+            [~, ~, ~, ~, allSizes] = XR_parseImageFilenames(args{:}, false, 1, false);
+
+            % all files new: none of them
+            [fnames, ~, gfnames, partialvols, dataSizes] = XR_parseImageFilenames(args{:}, true, 1, false);
+            testCase.verifyEmpty(fnames);
+            testCase.verifyEmpty(gfnames);
+            testCase.verifyEmpty(partialvols);
+            testCase.verifyEmpty(dataSizes, 'The sizes of the files left out stayed in the list.');
+
+            % the last file 5 minutes old, the others new: only it, with its size
+            java.io.File(fns{3}).setLastModified(java.lang.System.currentTimeMillis() - 5 * 60 * 1000);
+            [fnames, ~, gfnames, partialvols, dataSizes] = XR_parseImageFilenames(args{:}, true, 1, false);
+            [~, fsn, ext] = fileparts(fns{3});
+            testCase.verifyEqual(fnames, {[fsn, ext]});
+            testCase.verifyEqual(gfnames, {{[fsn, ext]}}, 'The file got the group of another file.');
+            testCase.verifyNumElements(partialvols, 1);
+            testCase.verifyEqual(dataSizes, allSizes(3), 'The file got the size of another file.');
         end
 
         function streamingProcessesNewFiles(testCase)
@@ -274,6 +401,41 @@ classdef AutomaticProcessingTest < pktest.TestCase
             % move a file (keeping its time) unless it was moved already
             if isfile(src)
                 movefile(src, dst);
+            end
+        end
+
+        function [dataPath, csvFn] = writeTwoTiles(testCase)
+            % two tiles of one volume, overlapping in y, and their image list
+            px = testCase.XYPixelSize;
+            dataPath = testCase.createTempFolder();
+            raw = uint16(pktest.beads([80, 64, 40], [20, 30, 15; 64, 28, 20], 2, 3000, 200));
+            tiles = struct('im', {raw(1 : 48, :, :), raw(33 : 80, :, :)}, 'idx', {[0, 0, 0], [0, 1, 0]}, ...
+                'xyz', {[0, 0, 0], [0, 32 * px, 0]});
+            [~, csvFn] = pktest.writeStitchTiles(dataPath, tiles);
+        end
+
+        function [args] = clusterStitchArgs(testCase, dataPath, csvFn, maxTrialNum)
+            % deskew/rotation and stitching with (fake) Slurm jobs
+            args = {'xyPixelSize', testCase.XYPixelSize, 'dz', testCase.Dz, 'reverse', true, ...
+                'channelPatterns', {'CamA_ch0'}, 'streaming', false, 'stitch', true, ...
+                'imageListFullpaths', {csvFn}, 'parseCluster', true, 'maxTrialNum', maxTrialNum, ...
+                'jobLogDir', [dataPath, 'logs/']};
+        end
+
+        function [] = recordAndAgeFile(~, fn, logFn, stop)
+            % append the file's age in s (NaN: no file) to logFn, then set
+            % its time 5 minutes back; stop: then error
+            age = NaN;
+            dir_info = dir(fn);
+            if ~isempty(dir_info)
+                age = (now - dir_info(1).datenum) * 24 * 3600;
+                java.io.File(fn).setLastModified(java.lang.System.currentTimeMillis() - 5 * 60 * 1000);
+            end
+            fid = fopen(logFn, 'a');
+            fprintf(fid, '%.3f\n', age);
+            fclose(fid);
+            if stop
+                error('pktest:stop', 'Stopped by the test.');
             end
         end
     end

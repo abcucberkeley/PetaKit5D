@@ -14,6 +14,8 @@ classdef StitchingTest < pktest.TestCase
     end
 
     properties (TestParameter)
+        % minutes, -1 for no marker
+        markerAge = struct('none', -1, 'old', 11)
         blendMethod = {'none', 'feather', 'max', 'mean', 'median'}
         tileBlendMethod = {'none', 'max', 'mean', 'median'}
         axisOrder = struct('x', 'x,y,z', 'minusX', '-x,y,z')
@@ -294,6 +296,113 @@ classdef StitchingTest < pktest.TestCase
             testCase.verifyEqual(slurm.callCount('sbatch'), 1, 'The last try was submitted again.');
             % a check before submitting, then one per round until the job is gone
             testCase.verifyEqual(slurm.callCount('squeue'), 4);
+        end
+
+        function clusterModeWaitsForTilesJobsStillMake(testCase)
+            % in cluster mode the wrapper gave up a volume whose processed
+            % tiles were missing after maxTrialNum checks 5 s apart, also
+            % while the pipeline's deskew jobs were still making them (the
+            % pipeline then needed another stitching job for it, or lost
+            % it). While the pipeline's marker in their folder is recent,
+            % it now waits for them without counting tries. The tiles come
+            % at the third wait; the master stitches the volume (the spy
+            % makes its result).
+            testCase.assumeFalse(ispc, 'The fake Slurm needs a POSIX shell.');
+            [dataPath, csvFn, stagePath] = testCase.writeTilesToCome();
+            fclose(fopen([dataPath, 'DSR/deskew_in_progress.tmp'], 'w'));
+            resultFn = sprintf('%smatlab_stitch/%s.zarr', dataPath, testCase.StitchName);
+            testCase.applyFixture(pktest.FakeSlurmFixture);
+            pauses = testCase.applyFixture(pktest.FunctionSpyFixture('pause', ...
+                @() testCase.atCall([stagePath, 'calls.txt'], 3, @() movefile([stagePath, 'DSR/*'], [dataPath, 'DSR/'])), 20));
+            frames = testCase.applyFixture(pktest.FunctionSpyFixture('XR_stitching_frame_zarr_dev_v1', ...
+                @() fclose(fopen(resultFn, 'w'))));
+            testCase.stitch(dataPath, csvFn, 'processedDirStr', 'DSR', 'parseCluster', true, 'masterCompute', true, ...
+                'maxTrialNum', 1, 'jobLogDir', [dataPath, 'logs']);
+            testCase.verifyNumElements(frames.getCalls(), 1, 'The wrapper gave up tiles that jobs still made.');
+            % it looks for them each second (and not after 5 s rounds), so
+            % that it stitches soon after they come
+            testCase.verifyEqual(cellfun(@(x) x{1}, pauses.getCalls()), [1, 1, 1]);
+        end
+
+        function clusterModeLooksForThePrimaryStitchInfoEachSecond(testCase)
+            % a secondary channel waits for the stitch info of the primary
+            % channel, which the wrapper looked for in rounds 5 s apart; in
+            % cluster mode it now looks for it each second, so that the
+            % secondary channel is submitted soon after it comes, also
+            % while another volume waits for tiles that jobs still make.
+            % Time point 0: the primary channel is done, its stitch info
+            % comes at the second wait, and the job of the secondary
+            % channel makes its result; time point 1 (primary channel)
+            % waits for its tiles until the marker goes (third wait).
+            testCase.assumeFalse(ispc, 'The fake Slurm needs a POSIX shell.');
+            dataPath = testCase.createTempFolder();
+            gt = testCase.randomVolume([64, 104, 32]);
+            stageXYZ = [0, 0, 0; 40 * testCase.XYPixelSize, 0, 0];
+            tileIdx = [0, 0, 0; 1, 0, 0];
+            tiles = {[0, 0, 0; 0, 40, 0], [64, 64, 32], [], stageXYZ, tileIdx};
+            testCase.writeTiles(dataPath, gt, tiles{:}, 'cam', 'A');
+            testCase.writeTiles(dataPath, gt, tiles{:}, 'cam', 'B');
+            csvFn = testCase.writeTiles(dataPath, gt, tiles{:}, 'cam', 'A', 'iter', 1);
+            for cam = 'AB'
+                testCase.writeTiles(dataPath, gt, tiles{:}, 'cam', cam, 'tileDir', 'DSR', 'imageList', 'ImageList_DSR.csv');
+            end
+            markerFn = [dataPath, 'DSR/deskew_in_progress.tmp'];
+            fclose(fopen(markerFn, 'w'));
+            stitchPath = [dataPath, 'matlab_stitch/'];
+            mkdir([stitchPath, 'stitchInfo']);
+            fclose(fopen([stitchPath, testCase.StitchName, '.zarr'], 'w'));
+            infoFn = [stitchPath, 'stitchInfo/', testCase.StitchName, '.mat'];
+            resultFn = [stitchPath, strrep(testCase.StitchName, 'CamA', 'CamB'), '.zarr'];
+            slurm = testCase.applyFixture(pktest.FakeSlurmFixture);
+            % the secondary channel of time point 0 is the third volume
+            slurm.setJobStates('1000_3', {'R', 'done'}, {resultFn});
+            pauses = testCase.applyFixture(pktest.FunctionSpyFixture('pause', @() testCase.atCall( ...
+                [dataPath, 'calls.txt'], [2, 3], {@() fclose(fopen(infoFn, 'w')), @() delete(markerFn)}), 20));
+            testCase.stitch(dataPath, csvFn, 'channelPatterns', {'CamA_ch0', 'CamB_ch0'}, 'processedDirStr', 'DSR', ...
+                'parseCluster', true, 'masterCompute', false, 'maxTrialNum', 1, 'jobLogDir', [dataPath, 'logs']);
+            testCase.verifyEqual(slurm.callCount('sbatch'), 1);
+            % waits of a second: two for the stitch info, five (a round) for
+            % the tiles, which no longer come
+            testCase.verifyEqual(cellfun(@(x) x{1}, pauses.getCalls()), ones(1, 7), ...
+                'The wrapper did not look for the stitch info and tiles each second.');
+        end
+
+        function clusterModeGivesUpTilesWithoutARecentMarker(testCase, markerAge)
+            % without a pipeline that keeps its marker recent (none, or a
+            % marker left from one that ended), missing processed tiles
+            % count as tries, as before
+            testCase.assumeFalse(ispc, 'The fake Slurm needs a POSIX shell.');
+            [dataPath, csvFn] = testCase.writeTilesToCome();
+            if markerAge >= 0
+                markerFn = [dataPath, 'DSR/deskew_in_progress.tmp'];
+                fclose(fopen(markerFn, 'w'));
+                testCase.assumeTrue(usejava('jvm'), 'Setting file times needs Java.');
+                java.io.File(markerFn).setLastModified(java.lang.System.currentTimeMillis() - markerAge * 60 * 1000);
+            end
+            testCase.applyFixture(pktest.FakeSlurmFixture);
+            pauses = testCase.applyFixture(pktest.FunctionSpyFixture('pause', [], 20));
+            frames = testCase.applyFixture(pktest.FunctionSpyFixture('XR_stitching_frame_zarr_dev_v1'));
+            testCase.stitch(dataPath, csvFn, 'processedDirStr', 'DSR', 'parseCluster', true, 'masterCompute', true, ...
+                'maxTrialNum', 2, 'jobLogDir', [dataPath, 'logs']);
+            testCase.verifyEmpty(frames.getCalls(), 'The wrapper stitched missing tiles.');
+            testCase.verifyNumElements(pauses.getCalls(), 1, 'The tiles did not count as tries.');
+        end
+
+        function streamingSeesTilesOtherMachinesJustMade(testCase)
+            % in streaming mode the tiles were checked with exist(), which
+            % on NFS can miss files another machine just made for 30 s or
+            % more; they are now checked with batch_file_exist. The stub
+            % reports all files made (the result too, so nothing is
+            % stitched), while there are no raw tiles on disk: the wrapper
+            % must not wait for them.
+            dataPath = testCase.createTempFolder();
+            gt = testCase.randomVolume([100, 120, 32]);
+            csvFn = testCase.writeTiles(dataPath, gt, [0, 0, 0; 36, 0, 0; 0, 48, 0; 36, 48, 0], [64, 72, 32], ...
+                [], [], [], 'tileDir', 'DSR');
+            testCase.applyFixture(pktest.FunctionStubFixture('batch_file_exist', true));
+            pauses = testCase.applyFixture(pktest.FunctionSpyFixture('pause', [], 20));
+            testCase.stitch(dataPath, csvFn, 'processedDirStr', 'DSR', 'streaming', true);
+            testCase.verifyEmpty(pauses.getCalls(), 'The wrapper waited for tiles batch_file_exist reported made.');
         end
 
         function secondaryChannelUsesTheTaskSizeOfThePrimary(testCase)
@@ -799,6 +908,36 @@ classdef StitchingTest < pktest.TestCase
             end
             resultFns = arrayfun(@(x) sprintf('%smatlab_stitch/%s.zarr', dataPath, ...
                 strrep(testCase.StitchName, 'Iter_0000', sprintf('Iter_%04d', x))), 0 : 1, 'unif', 0);
+        end
+
+        function [dataPath, csvFn, stagePath] = writeTilesToCome(testCase)
+            % the raw tiles of the 2 x 2 tile layout, and their processed
+            % (DSR) tiles in stagePath/DSR/, to be moved to dataPath/DSR/
+            dataPath = testCase.createTempFolder();
+            stagePath = testCase.createTempFolder();
+            gt = testCase.randomVolume([100, 120, 32]);
+            starts = [0, 0, 0; 36, 0, 0; 0, 48, 0; 36, 48, 0];
+            csvFn = testCase.writeTiles(dataPath, gt, starts, [64, 72, 32]);
+            testCase.writeTiles(stagePath, gt, starts, [64, 72, 32], [], [], [], 'tileDir', 'DSR');
+            mkdir([dataPath, 'DSR']);
+        end
+
+        function [] = atCall(~, counterFn, n, fcn)
+            % count the calls in counterFn; at the n-th, run fcn (n a
+            % vector: at the n(i)-th, run fcn{i})
+            k = 1;
+            if isfile(counterFn)
+                k = str2double(fileread(counterFn)) + 1;
+            end
+            fid = fopen(counterFn, 'w');
+            fprintf(fid, '%d', k);
+            fclose(fid);
+            if ~iscell(fcn)
+                fcn = {fcn};
+            end
+            if any(k == n)
+                fcn{k == n}();
+            end
         end
 
         function [csvFn] = writeTiles(testCase, dataPath, gt, starts, tileSize, pixelSizes, stageXYZ, tileIdx, varargin)

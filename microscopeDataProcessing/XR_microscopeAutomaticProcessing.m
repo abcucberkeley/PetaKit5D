@@ -418,12 +418,33 @@ if parseCluster
     dataSize_mat(:, 1) = dataSizes;
 end
 
+% with jobs on the cluster, a dataset's stitching job waits for deskewed
+% tiles while a marker in the DSR folder says that jobs still make them
+% (see XR_matlab_stitching_wrapper): kept while deskew jobs of the dataset
+% are pending or running (updated at the start of each round, and each
+% minute in long rounds), removed after
+markerFullpaths = {};
+if parseCluster && stitch
+    markerFullpaths = cellfun(@(x) [x, 'deskew_in_progress.tmp'], dsrPaths, 'unif', 0);
+    markerCleanup = onCleanup(@() update_deskew_markers(markerFullpaths, [], []));
+end
+
 % use while loop to perform computing for all images
 ts = tic;
 while ~all(is_done_flag | (trial_counter >= maxTrialNum & ~job_active), 'all') || ...
         (streaming && (nF == 0 || any(latest_modify_times < maxModifyTime) || waitLoopCounter < maxWaitLoopNum))
+    if ~isempty(markerFullpaths)
+        update_deskew_markers(markerFullpaths, fdinds, ~is_done_flag(:, 1) & ...
+            (trial_counter(:, 1) < maxTrialNum | job_active(:, 1)));
+        markerTime = toc(ts);
+    end
     for f = 1 : nF
         tic
+        if ~isempty(markerFullpaths) && toc(ts) - markerTime >= 60
+            update_deskew_markers(markerFullpaths, fdinds, ~is_done_flag(:, 1) & ...
+                (trial_counter(:, 1) < maxTrialNum | job_active(:, 1)));
+            markerTime = toc(ts);
+        end
         if all(is_done_flag(f, :))
             continue;
         end
@@ -627,7 +648,13 @@ while ~all(is_done_flag | (trial_counter >= maxTrialNum & ~job_active), 'all') |
                 string(stitchZarrFile), maxTrialNum, string(parseCluster), string(mccMode), configFile, uuid);
 
             if parseCluster
-                dfirst_ind = find(fdinds == fdind, 1, 'first');
+                % submitted after the dataset's deskew jobs, so that it
+                % doesn't take a slot one of them would get while it waits
+                ds_inds = fdinds == fdind;
+                if any(~is_done_flag(ds_inds, 1) & trial_counter(ds_inds, 1) == 0)
+                    continue;
+                end
+                dfirst_ind = find(ds_inds, 1, 'first');
                 job_id = job_ids(dfirst_ind, 2);
                 task_id = rem(dfirst_ind, 5000);
                 memFactor = 20;
@@ -650,7 +677,6 @@ while ~all(is_done_flag | (trial_counter >= maxTrialNum & ~job_active), 'all') |
 
                 % one stitching job per dataset: its tries and state are those
                 % of all the dataset's files
-                ds_inds = fdinds == fdind;
                 job_ids(ds_inds, 2) = job_id;
                 trial_counter(ds_inds, 2) = trial_counter(dfirst_ind, 2) + submit_status;
                 job_active(ds_inds, 2) = submit_status > 0 || job_status >= 0;
@@ -746,6 +772,30 @@ while ~all(is_done_flag | (trial_counter >= maxTrialNum & ~job_active), 'all') |
     if parseCluster
         job_ids = cat(1, job_ids, -ones(nFnew, 2));
         dataSize_mat = cat(1, dataSize_mat, [cur_dataSizes, zeros(nFnew, 1)]);
+    end
+end
+
+end
+
+
+function [] = update_deskew_markers(markerFullpaths, fdinds, deskewing)
+% write the marker of each dataset with a file whose deskewing is pending
+% (again once it is a minute old, so that it stays recent while the jobs
+% wait in the queue) and remove the others'
+
+ds_deskewing = false(numel(markerFullpaths), 1);
+ds_deskewing(fdinds(deskewing)) = true;
+for d = 1 : numel(markerFullpaths)
+    dir_info = dir(markerFullpaths{d});
+    if ds_deskewing(d)
+        if isempty(dir_info) || (now - dir_info(1).datenum) * 24 * 60 >= 1
+            fid = fopen(markerFullpaths{d}, 'w');
+            if fid >= 0
+                fclose(fid);
+            end
+        end
+    elseif ~isempty(dir_info)
+        delete(markerFullpaths{d});
     end
 end
 

@@ -64,13 +64,15 @@ for d = 1 : nd
         % medium of number of partial files in group files
         ngf = median(cellfun(@numel, groupedFnames_d));
 
-        % not include the lastest file if it is very recent
+        % not include the lastest file if it is very recent (nor its group
+        % and size, which were left, so that a run that started with such a
+        % file failed and other files got the sizes of others)
         if latest_modify_time < minModifyTime * ngf
             latest_modify_time = max(latest_modify_time, minModifyTime);
-            fnames_d(last_modify_time <= latest_modify_time) = [];
-            if any(containPartialVolume)
-                groupedFnames_d(last_modify_time <= latest_modify_time) = [];
-            end
+            recent = last_modify_time <= latest_modify_time;
+            fnames_d(recent) = [];
+            groupedFnames_d(recent) = [];
+            datesize_d(recent) = [];
         end
     end
     fnames_cell{d} = fnames_d;

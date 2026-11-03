@@ -373,6 +373,9 @@ while ~all(is_done_flag | (trial_counter >= max_trial_num & ~job_status_flag), '
     if isempty(lastF)
         lastF = 0;
     end
+    % (cluster) the files volumes wait for that jobs still make: tiles, or
+    % the stitch info of the primary channel (a cell per volume)
+    awaited = {};
     for n = 1:numel(fullIter)
         for ncam = 1:numel(Cam)
             for s = 1:numel(stackn)
@@ -450,7 +453,10 @@ while ~all(is_done_flag | (trial_counter >= max_trial_num & ~job_status_flag), '
                         % check if files exist for streaming option, and also
                         % if useProcessedData is true, check the processed files exist.
                         if streaming
-                            is_tile_exist = cellfun(@(x) exist(x, 'file'), tile_fullpaths);
+                            % (batch_file_exist sees tiles that arrived from
+                            % another machine, which exist() can miss for 30
+                            % s or more)
+                            is_tile_exist = batch_file_exist(tile_fullpaths);
                             if ~all(is_tile_exist)
                                 stream_counter = stream_counter + 1;
                                 continue;
@@ -481,7 +487,14 @@ while ~all(is_done_flag | (trial_counter >= max_trial_num & ~job_status_flag), '
                             else
                                 if ~all(is_processed_tile_exist) 
                                     % is_done_flag(n, ncam, s, c) = true;
-                                    trial_counter(n, ncam, s, c, z) = trial_counter(n, ncam, s, c, z) + 1;
+                                    % (cluster) not a try while jobs of the
+                                    % pipeline still make the tiles
+                                    missing_fullpaths = tile_processed_fullpaths(~is_processed_tile_exist);
+                                    if parseCluster && processed_tiles_coming(missing_fullpaths)
+                                        awaited{end + 1} = missing_fullpaths;
+                                    else
+                                        trial_counter(n, ncam, s, c, z) = trial_counter(n, ncam, s, c, z) + 1;
+                                    end
                                     continue; 
                                 end
                             end
@@ -551,6 +564,7 @@ while ~all(is_done_flag | (trial_counter >= max_trial_num & ~job_status_flag), '
                             % (batch_file_exist sees a file another node just
                             % made, which exist() can miss for 30 s or more)
                             if ~isPrimaryCh && ~batch_file_exist({stitchInfoFullpath})
+                                awaited{end + 1} = {stitchInfoFullpath};
                                 continue;
                             end
                         end
@@ -759,7 +773,42 @@ while ~all(is_done_flag | (trial_counter >= max_trial_num & ~job_status_flag), '
     % wait 30 seconds if some tasks are still computing
     if ~all(is_done_flag | trial_counter >= max_trial_num, 'all') || ...
             (parseCluster && any(job_status_flag & ~is_done_flag, 'all'))
-        pause(5);
+        % (cluster) while volumes wait for files that jobs still make (up to
+        % 100), look for them each second, and go on once a volume has its
+        % files, so that it is stitched soon after they come
+        if parseCluster && ~streaming && ~isempty(awaited) && sum(cellfun(@numel, awaited)) <= 100
+            for i = 1 : 5
+                if any(cellfun(@(x) all(batch_file_exist(x)), awaited))
+                    break;
+                end
+                pause(1);
+            end
+        else
+            pause(5);
+        end
+    end
+end
+
+end
+
+
+function [coming] = processed_tiles_coming(tileFullpaths)
+% whether jobs still make these processed tiles: the pipeline
+% (XR_microscopeAutomaticProcessing) keeps a marker in their folder,
+% written again each minute, while deskew jobs of the dataset are pending
+% or running. A marker 10 minutes old is left from a pipeline that ended.
+
+coming = false;
+folders = unique(cellfun(@fileparts, tileFullpaths, 'unif', 0));
+for i = 1 : numel(folders)
+    markerFullpath = [folders{i}, '/deskew_in_progress.tmp'];
+    % (batch_file_exist sees a marker another node just made)
+    if batch_file_exist({markerFullpath})
+        dir_info = dir(markerFullpath);
+        if ~isempty(dir_info) && (now - dir_info(1).datenum) * 24 * 60 < 10
+            coming = true;
+            return;
+        end
     end
 end
 
