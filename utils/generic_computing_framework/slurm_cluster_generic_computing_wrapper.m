@@ -579,6 +579,14 @@ while (~parseCluster && ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
     loop_counter = loop_counter + 1;
 end
 
+% a batch run here in its last try (local runs, the master's own batch) ran
+% after this round looked at its outputs: look once more, so that it counts
+% (else the call returned it unfinished and callers ran it again)
+if ~all(is_done_flag)
+    output_exist_mat(~is_done_flag) = batch_file_exist(outputFullpaths(~is_done_flag), [], true);
+    is_done_flag(~is_done_flag) = output_exist_mat(~is_done_flag);
+end
+
 % cancel unfinished jobs 
 if parseCluster
     unfinished_job_ids = unique(job_ids);

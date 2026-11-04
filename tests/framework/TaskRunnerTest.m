@@ -801,6 +801,34 @@ classdef TaskRunnerTest < pktest.TestCase
             testCase.verifyNotEmpty(regexp([cmds{:}], '--cpus-per-task=3 ', 'once'));
         end
 
+        function compiledLocalCallDoneInItsLastTryRemovesItsTaskFolder(testCase)
+            % compiled mode, a local run (as a compiled stitching job runs
+            % its cross-correlations): the batch run in its last try ran
+            % after its round looked at the outputs, so the call returned it
+            % unfinished, kept its task folder in tmp/ (the task lines and the
+            % runners' files) and its caller ran it again; the call now looks
+            % once more at its end. With task runners (their pass runs every
+            % task once) and without
+            testCase.assumeLinux();
+            for runner = [true, false]
+                dataPath = testCase.createTempFolder();
+                b = testCase.fakeBuild([dataPath, 'build/']);
+                inFns = arrayfun(@(x) sprintf('%sin_%d.txt', dataPath, x), 1 : 4, 'unif', 0);
+                outFns = arrayfun(@(x) sprintf('%sout_%d.txt', dataPath, x), 1 : 4, 'unif', 0);
+                cellfun(@(x) fclose(fopen(x, 'w')), inFns);
+                funcStrs = cellfun(@(x) sprintf('pk_task(''%s'',''second'')', x), outFns, 'unif', 0); %#ok<NASGU>
+                flags = []; %#ok<NASGU>
+                evalc(['flags = mcc_slurm_cluster_generic_computing_wrapper(inFns, outFns, funcStrs, ''parseCluster'', false, ', ...
+                    '''masterCompute'', true, ''taskBatchNum'', 2, ''maxTrialNum'', 2, ''unitWaitTime'', 0, ', ...
+                    '''taskRunner'', runner, ''MCCMasterStr'', b.master, ''MCRParam'', b.mcr, ', ...
+                    '''MCRCacheRoot'', [dataPath, ''cache''], ''BashLaunchStr'', ''echo'', ''jobLogDir'', dataPath)']);
+                testCase.verifyEqual(flags(:), true(4, 1), sprintf('runners %d: a batch done in its last try counts as unfinished.', runner));
+                testCase.verifyTrue(all(cellfun(@isfile, outFns)));
+                left = dir([dataPath, 'tmp/2*']);
+                testCase.verifyEmpty(left, sprintf('runners %d: the task folder %s is left.', runner, strjoin({left.name}, ', ')));
+            end
+        end
+
         function matlabMasterKeepsItsBatch(testCase)
             % MATLAB jobs: the same
             testCase.assumeLinux();
@@ -877,6 +905,7 @@ classdef TaskRunnerTest < pktest.TestCase
             % a stand-in compiled master: run_mccMaster.sh as the compiler
             % makes it (its argument handling) and a bash mccMaster that runs
             % 'pk_task <output> <mode>' and, as a runner, the next tasks
+            % (mode 'second': the output only in the task's second run)
             mkdir(folder);
             b.master = [folder, 'run_mccMaster.sh'];
             b.mcr = [folder, 'mcr'];
@@ -894,6 +923,7 @@ classdef TaskRunnerTest < pktest.TestCase
                 '        error) return 1 ;;'
                 '        crash) kill -9 $$ ;;'
                 '        slow) sleep 1; echo x > "$2" ;;'
+                '        second) if [ -f "$2.tried" ]; then echo x > "$2"; else : > "$2.tried"; fi ;;'
                 '        *) echo x > "$2" ;;'
                 '    esac'
                 '}'

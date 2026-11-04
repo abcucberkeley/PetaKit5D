@@ -80,6 +80,22 @@ classdef GenericComputingFrameworkTest < pktest.TestCase
             testCase.verifyNumElements(dir([dataPath, 'out/*.tmp']), 2);
         end
 
+        function taskDoneInItsLastTryCountsAsDone(testCase)
+            % a task that makes its output in its last try ran after its
+            % round looked at the outputs; the framework looked no more, so
+            % the last task run returned unfinished (and callers ran the
+            % call again); it now looks once more at the end
+            [inFns, outFns, logFn] = testCase.makeTasks(2);
+            funcStrs = testCase.taskStrings(inFns, outFns, logFn, 'secondRun');
+
+            flags = generic_computing_frameworks_wrapper(inFns, outFns, funcStrs, ...
+                'parseCluster', false, 'masterCompute', true, 'maxTrialNum', 2, 'unitWaitTime', 0);
+
+            testCase.verifyEqual(flags, true(2, 1), 'A task done in its last try counts as unfinished.');
+            testCase.verifyTrue(all(cellfun(@isfile, outFns)));
+            testCase.verifyEqual(sort(testCase.readLog(logFn)), sort([outFns(:); outFns(:)]));
+        end
+
         function staleTaskFlagFromCrashedRunIsIgnored(testCase)
             testCase.assumeTrue(usejava('jvm'), 'Needs Java to set the file modification time.');
             [inFns, outFns, logFn, dataPath] = testCase.makeTasks(2);

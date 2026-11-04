@@ -4,6 +4,8 @@ function [] = frameworkTask(inputFn, outputFn, logFn, mode)
 %   'copy'       : copy the input file to the output file
 %   'error'      : throw pktest:frameworkTask:failed
 %   'noop'       : do nothing (task "finishes" without writing its output)
+%   'secondRun'  : as 'noop' in its first run, as 'copy' from its second on
+%                  (a task done in its last try)
 %   'where'      : write 'worker' or 'client' to the output file, whether it
 %                  runs on a parallel pool worker or not
 %   'clientonly' : as 'where', but throw on a parallel pool worker
@@ -20,6 +22,11 @@ switch mode
     case 'error'
         error('pktest:frameworkTask:failed', 'Task failed on purpose for %s', inputFn);
     case 'noop'
+    case 'secondRun'
+        lines = splitlines(fileread(logFn));
+        if nnz(strcmp(lines, outputFn)) >= 2
+            copyfile(inputFn, outputFn);
+        end
     case {'where', 'clientonly'}
         onWorker = ~isempty(which('getCurrentTask')) && ~isempty(getCurrentTask());
         if onWorker && strcmp(mode, 'clientonly')
