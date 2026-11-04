@@ -177,16 +177,25 @@ function [rc] = new_rc(D)
 % the call's runner settings; D without the trailing slash. The job script
 % and its commands take paths without quoting
 
-% a leading ~ is the home folder, as for MATLAB's file functions (the job
-% script has D in quotes, where bash doesn't expand it)
-if strcmp(D, '~') || startsWith(D, '~/')
-    D = [getenv('HOME'), D(2 : end)];
-end
+% (the job script has D in quotes, where bash doesn't expand ~)
+D = home_path(D);
 D = regexprep(strrep(D, '\', '/'), '/+', '/');
 D = regexprep(D, '/$', '');
 rc = struct('on', false, 'D', D, 'claimsDir', [D, '/claims'], 'script', [D, '/run_tasks.sh']);
 if any(ismember(D, ['''"$`\| ', newline, char(9)]))
     error('task_runner_run:path', 'The call folder %s has characters the job script does not take.', D);
+end
+
+end
+
+
+function [p] = home_path(p)
+% a leading ~ of path p is the home folder, as for MATLAB's file functions
+% (bash doesn't expand it in the quoted paths of the job script and the
+% files it reads)
+
+if strcmp(p, '~') || startsWith(p, '~/')
+    p = [getenv('HOME'), p(2 : end)];
 end
 
 end
@@ -222,7 +231,9 @@ try
     localRun = ~isempty(tmpInfo);
     uwt = 0;
     if localRun
-        write_lines([D, '/tmps.txt'], cellfun(@(x, y) sprintf('%s\t%s', x, y), tmpInfo.tmpFns(:), tmpInfo.outFns(:), 'unif', 0));
+        % (the job script looks for these files in bash: ~ expanded)
+        write_lines([D, '/tmps.txt'], cellfun(@(x, y) sprintf('%s\t%s', home_path(x), home_path(y)), ...
+            tmpInfo.tmpFns(:), tmpInfo.outFns(:), 'unif', 0));
         uwt = tmpInfo.unitWaitTime;
     end
     write_script(rc, tmpl, nF, taskBatchNum, MCCMasterStr, '', localRun, uwt);
@@ -262,14 +273,15 @@ try
     save([D, '/tasks.mat'], 'funcStrs', 'runDir', 'GPUJob');
     nF = numel(funcStrs);
     lines = repmat({''}, nF, 1);
+    % (the lines check the outputs in bash: ~ expanded)
     for f = reshape(find(~isDone), 1, [])
         if isempty(finalOutFullpath)
             lines{f} = sprintf(['OUT="%s"; if [ ! -f "$OUT" ] && [ ! -d "$OUT" ]; then "%s/argdump/run_mccMaster.sh" x %d ; ', ...
-                'else echo output "$OUT" already exists; fi'], outputFullpaths{f}, D, f);
+                'else echo output "$OUT" already exists; fi'], home_path(outputFullpaths{f}), D, f);
         else
             lines{f} = sprintf(['OUT="%s"; FINALOUT="%s"; if [ ! -f "$OUT" ] && [ ! -d "$OUT" ] && [ ! -f "$FINALOUT" ] ', ...
                 '&& [ ! -d "$FINALOUT" ]; then "%s/argdump/run_mccMaster.sh" x %d ; else echo output "$OUT" already exists; fi'], ...
-                outputFullpaths{f}, finalOutFullpath, D, f);
+                home_path(outputFullpaths{f}), home_path(finalOutFullpath), D, f);
         end
     end
     write_task_lines(D, lines);

@@ -182,6 +182,77 @@ classdef TaskRunnerTest < pktest.TestCase
             testCase.verifyEqual(sort(testCase.claimNames(c)), sort(arrayfun(@(x) sprintf('t%d', x), 1 : 4, 'unif', 0)));
         end
 
+        function localRunsFindTheTmpFilesOfTildePaths(testCase)
+            % a local run whose .tmp files and outputs are given as ~/... (the
+            % demos' data paths): the job script finds the .tmp files (bash
+            % doesn't expand ~ in the paths it reads from tmps.txt), so a task
+            % that another call processes is left to it, as with full paths
+            testCase.assumeLinux();
+            [c, b] = testCase.makeCall(4, 4, {}, 'local', false(4, 1), '', true);
+            testCase.verifySubstring(fileread([c.rc.D, '/tmps.txt']), sprintf('%s\t%s', c.tmpFns{1}, c.outFns{1}));
+            testCase.writeLines(c.tmpFns{2}, {});
+            testCase.writeLines(c.tmpFns{3}, {});
+            system(sprintf('touch -d "-10 minutes" "%s"', c.tmpFns{3}));
+            testCase.runJob(c, 'job 1 1 0 2 1');
+            testCase.verifyEqual(sort([testCase.taskRuns(b).task]), [1, 3, 4]);
+            testCase.verifyEqual(cellfun(@isfile, c.tmpFns(:))', [false, true, false, false]);
+        end
+
+        function matlabJobSeesTildeOutputsThatExist(testCase)
+            % MATLAB mode with outputs given as ~/...: the job script's output
+            % checks find outputs that exist (bash doesn't expand ~ in their
+            % quoted paths), so it starts no MATLAB for them
+            testCase.assumeLinux();
+            home = testCase.createTempFolder();
+            testCase.addTeardown(@setenv, 'HOME', getenv('HOME'));
+            setenv('HOME', regexprep(home, '/$', ''));
+            outFns = {'~/o_1.txt'; '~/o_2.txt'};
+            testCase.writeLines([home, 'o_1.txt'], {'x'});
+            testCase.writeLines([home, 'o_2.txt'], {'x'});
+            evalc(['rc = task_runner_run(''setup_matlab'', [home, ''call''], outFns, ', ...
+                'outFns, '''', false(2, 1), 2, ''echo STARTED'', '''', false);']);
+            [status, out] = system(sprintf('bash "%s" matlab 1 1', rc.script));
+            testCase.assertEqual(status, 0, out);
+            testCase.verifyFalse(contains(out, 'STARTED'), out);
+            testCase.verifySubstring(out, sprintf('output %so_1.txt already exists', home));
+            % and a final output given as ~/... that exists
+            outFns = {'~/p_1.txt'; '~/p_2.txt'};
+            testCase.writeLines([home, 'final.txt'], {'x'});
+            evalc(['rc = task_runner_run(''setup_matlab'', [home, ''call2''], outFns, ', ...
+                'outFns, ''~/final.txt'', false(2, 1), 2, ''echo STARTED'', '''', false);']);
+            [status, out] = system(sprintf('bash "%s" matlab 1 1', rc.script));
+            testCase.assertEqual(status, 0, out);
+            testCase.verifyFalse(contains(out, 'STARTED'), out);
+        end
+
+        function matlabRunnerRunsCompoundTaskStrings(testCase)
+            % a task string of several statements (callers with functions of
+            % their own pass e.g. "addpath(dir); f(...)") runs whole in a
+            % MATLAB job's runner, also the tasks of other batches it takes:
+            % str2func takes only a single call, so it runs with eval
+            testCase.assumeLinux();
+            [inFns, outFns, logFn, dataPath] = testCase.makeTasks(4);
+            fnDir = [testCase.createTempFolder(), 'fns'];
+            mkdir(fnDir);
+            testCase.writeLines([fnDir, '/pk_compound_task.m'], {'function pk_compound_task(varargin)', ...
+                'pktest.frameworkTask(varargin{:});', 'end'});
+            testCase.addTeardown(@path, path);
+            funcStrs = cellfun(@(x, y) sprintf('addpath(''%s''); pk_compound_task(''%s'',''%s'',''%s'',''copy'')', ...
+                fnDir, x, y, logFn), inFns, outFns, 'unif', 0);
+            evalc(['rc = task_runner_run(''setup_matlab'', [dataPath, ''call''], funcStrs, outFns, '''', ', ...
+                'false(4, 1), 2, ''matlab -batch'', '''', false);']);
+            testCase.assertTrue(rc.on);
+            L = [testCase.createTempFolder(), 'local'];
+            mkdir(L);
+            st = [L, '/s1_1'];
+            system(sprintf('ln -s "0_0:test:1:1" "%s/t1"', rc.claimsDir));
+            testCase.writeLines(st, {'c 1'});
+            setenv('PETAKIT5D_RUNNER_MEM_GB', '100');
+            evalc('task_runner(''matlab'', rc.D, ''1'', 1, st, L, 1)');
+            testCase.verifyEqual(sort(testCase.readLog(logFn)), sort(outFns(:)));
+            testCase.verifyEqual(cellfun(@fileread, outFns, 'unif', 0), cellfun(@fileread, inFns, 'unif', 0));
+        end
+
         function matlabJobWithNoTaskLeftStartsNoMatlab(testCase)
             % a MATLAB job starts MATLAB only for a task it claimed
             testCase.assumeLinux();
@@ -543,6 +614,29 @@ classdef TaskRunnerTest < pktest.TestCase
             testCase.verifyNotEmpty(regexp(cmds{1}, 'run_tasks\.sh job 1 2 1 1 2;', 'once'), cmds{1});
         end
 
+        function compiledTaskLinesCheckTildeOutputs(testCase)
+            % compiled mode with outputs given as ~/...: the task lines check
+            % the outputs in bash, which doesn't expand ~ in their quoted
+            % paths, so they have the home folder in its place (with the job
+            % script's task lines and with GNU parallel's)
+            testCase.assumeLinux();
+            for runner = [true, false]
+                for finalOut = {'', '~/final.zarr'}
+                    slurm = testCase.applyFixture(pktest.FakeSlurmFixture);
+                    dataPath = testCase.compiledCall(slurm, 2, {}, 'taskRunner', runner, 'tildeOutputs', true, ...
+                        'finalOut', finalOut{1});
+                    files = dir([dataPath, '**/*.txt']);
+                    txt = strjoin(arrayfun(@(x) fileread(fullfile(x.folder, x.name)), files, 'unif', 0), newline);
+                    msg = sprintf('runners %d, final output ''%s''', runner, finalOut{1});
+                    testCase.verifySubstring(txt, sprintf('OUT="%sout_1.txt"', dataPath), msg);
+                    if ~isempty(finalOut{1})
+                        testCase.verifySubstring(txt, sprintf('FINALOUT="%sfinal.zarr"', dataPath), msg);
+                    end
+                    testCase.verifyFalse(contains(txt, 'OUT="~'), [msg, ': a task line checks a path with ~.']);
+                end
+            end
+        end
+
         function taskRunnerOffOrOldBuildsRunAsBefore(testCase)
             % taskRunner false (option or config key), or a build without
             % task runners: the job commands of before and no runner files
@@ -894,20 +988,25 @@ classdef TaskRunnerTest < pktest.TestCase
             testCase.assumeTrue(isunix && ~ismac, 'Task runners run on Linux only.');
         end
 
-        function [c, b] = makeCall(testCase, nT, BS, modes, kind, excluded, callDir)
+        function [c, b] = makeCall(testCase, nT, BS, modes, kind, excluded, callDir, tildeTmps)
             % a call folder (task_runner_run setup) for nT fake tasks in
             % batches of BS; modes: {task, mode; ...} ('error', 'crash',
             % 'slow', 'giveback': a runner gives it back once; else 'ok');
             % kind 'local' for a local run; excluded: tasks without inputs;
-            % callDir: the call folder (default: call/ in a new folder)
+            % callDir: the call folder (default: call/ in a new folder);
+            % tildeTmps: a local run gets its .tmp files and outputs as ~/...
+            % (HOME is then the new folder)
             if nargin < 5
                 kind = '';
             end
             if nargin < 6
                 excluded = false(nT, 1);
             end
+            if nargin < 8
+                tildeTmps = false;
+            end
             dataPath = testCase.createTempFolder();
-            if nargin < 7
+            if nargin < 7 || isempty(callDir)
                 callDir = [dataPath, 'call/'];
             end
             b = testCase.fakeBuild([dataPath, 'build/']);
@@ -930,6 +1029,12 @@ classdef TaskRunnerTest < pktest.TestCase
             c.tmpFns = strrep(c.outFns, '.txt', '.tmp');
             if strcmp(kind, 'local')
                 tmpInfo = struct('tmpFns', {c.tmpFns}, 'outFns', {c.outFns}, 'unitWaitTime', 3);
+                if tildeTmps
+                    testCase.addTeardown(@setenv, 'HOME', getenv('HOME'));
+                    setenv('HOME', regexprep(dataPath, '/$', ''));
+                    tmpInfo.tmpFns = strrep(c.tmpFns, dataPath, '~/');
+                    tmpInfo.outFns = strrep(c.outFns, dataPath, '~/');
+                end
             end
             evalc('c.rc = task_runner_run(''setup'', callDir, lines, b.master, BS, tmpInfo, excluded);');
             testCase.assertTrue(c.rc.on, 'The runner files could not be written.');
@@ -1185,10 +1290,13 @@ classdef TaskRunnerTest < pktest.TestCase
             % the framework in compiled mode (whole-node jobs of 4 slots, GNU
             % parallel) on nT fake tasks with a build that has task runners
             % ('oldBuild' true: without); the jobs never run. Returns the
-            % sbatch commands
+            % sbatch commands. 'tildeOutputs' true: the outputs are given as
+            % ~/... (HOME is then the new folder)
             ip = inputParser;
             ip.addParameter('taskRunner', true);
             ip.addParameter('oldBuild', false);
+            ip.addParameter('tildeOutputs', false);
+            ip.addParameter('finalOut', '');
             ip.parse(varargin{:});
             dataPath = testCase.createTempFolder();
             b = testCase.recordingBuild([dataPath, 'build/']);
@@ -1205,11 +1313,19 @@ classdef TaskRunnerTest < pktest.TestCase
             inFns = arrayfun(@(x) sprintf('%sin_%d.txt', dataPath, x), 1 : nT, 'unif', 0);
             outFns = arrayfun(@(x) sprintf('%sout_%d.txt', dataPath, x), 1 : nT, 'unif', 0);
             cellfun(@(x) fclose(fopen(x, 'w')), inFns);
+            if ip.Results.tildeOutputs
+                testCase.addTeardown(@setenv, 'HOME', getenv('HOME'));
+                setenv('HOME', regexprep(dataPath, '/$', ''));
+                outFns = strrep(outFns, dataPath, '~/');
+            end
             funcStrs = cellfun(@(x, y) sprintf('XR_crop_frame(''%s'',''%s'',[1,1,1,2,2,2])', x, y), inFns, outFns, 'unif', 0);
             args = {'parseCluster', true, 'masterCompute', false, 'mccMode', true, 'maxTrialNum', 1, ...
                 'jobLogDir', dataPath, 'ConfigFile', configFn};
             if ~ip.Results.taskRunner
                 args = [args, {'taskRunner', false}];
+            end
+            if ~isempty(ip.Results.finalOut)
+                args = [args, {'finalOutFullpath', ip.Results.finalOut}];
             end
             evalc('generic_computing_frameworks_wrapper(inFns, outFns, funcStrs, args{:})');
             cmds = slurm.calls('sbatch');
