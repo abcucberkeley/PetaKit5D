@@ -12,6 +12,9 @@ classdef SingleJobRunnerTest < pktest.TestCase
     % the pool before it submits it again (as before) or runs it. The tests
     % start a kind with a first task (startKind), so that tasks 1, 2, ...
     % are the pool's tasks 1, 2, ... with jobs 1000, 1001, ...
+    % The tests give the wrapper their job log folder (jobLogDir, as the
+    % callers do), so that pools and logs go there and never to the default
+    % one, ../job_logs beside the PetaKit5D folder, where it is there.
     % Compiled jobs use a stand-in build (pktest.fakeRunnerBuild); the jobs'
     % commands from a fake Slurm (pktest.FakeSlurmFixture) run in bash as
     % Slurm would run them, with Slurm's job variables.
@@ -192,9 +195,8 @@ classdef SingleJobRunnerTest < pktest.TestCase
                 testCase.submitMatlab(funcStrs{k}, logDir, k, 'MatlabLaunchStr', sprintf('bash %s', fakeFn));
                 slurm.setJobStates(sprintf('%d_%d', 999 + k, k), {'PD'});
             end
-            pool = dir([logDir, 'task_runner_single_*']);
-            [status, out] = system(sprintf('env -u PETAKIT5D_RUNNER TMPDIR="%s" bash "%s/%s/run_tasks.sh" matlab 1 3 2>&1', ...
-                tempdir, logDir, pool.name));
+            [status, out] = system(sprintf('env -u PETAKIT5D_RUNNER TMPDIR="%s" bash "%s/run_tasks.sh" matlab 1 3 2>&1', ...
+                tempdir, testCase.poolDir(logDir)));
             testCase.assertEqual(status, 0, out);
             testCase.verifyEqual(sscanf(fileread(recFn), '%d')', [1, 2, 3], out);
         end
@@ -267,10 +269,12 @@ classdef SingleJobRunnerTest < pktest.TestCase
             testCase.assumeLinux();
             % setup arguments, a build with runners, submission arguments
             % (the caller's false wins over the config's true; a first
-            % submission of a task with a job of before is submitted again)
+            % submission of a task with a job of before is submitted again;
+            % relative log names stay so with a job log folder that isn't
+            % there, as with the default ../job_logs where it isn't there)
             cases = {{}, true, {'taskRunner', false}; {}, false, {}; {'configTaskRunner', false}, true, {}; ...
-                {}, true, {'jobLogFname', 'job_%A_%a.out'}; {'configTaskRunner', true}, true, {'taskRunner', false}; ...
-                {}, true, {'jobId', 555}};
+                {}, true, {'jobLogFname', 'job_%A_%a.out', 'jobLogDir', 'no_job_log_folder'}; ...
+                {'configTaskRunner', true}, true, {'taskRunner', false}; {}, true, {'jobId', 555}};
             for i = 1 : size(cases, 1)
                 slurm = testCase.applyFixture(pktest.FakeSlurmFixture);
                 c = testCase.compiledSetup(cases{i, 2}, cases{i, 1}{:});
@@ -661,12 +665,14 @@ classdef SingleJobRunnerTest < pktest.TestCase
             ip.KeepUnmatched = true;
             ip.addParameter('funcName', 'pk_task');
             ip.addParameter('maxTrialNum', 1);
+            ip.addParameter('jobLogDir', c.logDir);
             ip.addParameter('jobLogFname', [c.logDir, 'job_%A_%a.out']);
             ip.parse(varargin{:});
             args = [fieldnames(ip.Unmatched), struct2cell(ip.Unmatched)]';
             funcStr = sprintf('%s(''%s'',''%s'')', ip.Results.funcName, c.outFns{k}, mode); %#ok<NASGU>
             [~, jobId, status, submitted] = evalc(['generic_single_job_submit_wrapper(funcStr, jobId, k, ', ...
-                '''jobLogFname'', ip.Results.jobLogFname, ''jobErrorFname'', [c.logDir, ''job_%A_%a.err''], ', ...
+                '''jobLogDir'', ip.Results.jobLogDir, ''jobLogFname'', ip.Results.jobLogFname, ', ...
+                '''jobErrorFname'', [c.logDir, ''job_%A_%a.err''], ', ...
                 '''maxTrialNum'', ip.Results.maxTrialNum, ''mccMode'', true, ''ConfigFile'', c.config, args{:})']);
         end
 
@@ -693,8 +699,9 @@ classdef SingleJobRunnerTest < pktest.TestCase
 
         function [] = submitMatlab(~, funcStr, logDir, k, varargin) %#ok<INUSL>
             % generic_single_job_submit_wrapper for MATLAB task string funcStr
-            evalc(['generic_single_job_submit_wrapper(funcStr, -1, k, ''jobLogFname'', [logDir, ''job_%A_%a.out''], ', ...
-                '''jobErrorFname'', [logDir, ''job_%A_%a.err''], ''maxTrialNum'', 1, varargin{:})']);
+            evalc(['generic_single_job_submit_wrapper(funcStr, -1, k, ''jobLogDir'', logDir, ', ...
+                '''jobLogFname'', [logDir, ''job_%A_%a.out''], ''jobErrorFname'', [logDir, ''job_%A_%a.err''], ', ...
+                '''maxTrialNum'', 1, varargin{:})']);
         end
 
         function [out] = runJob(testCase, c, slurm, k, doneFn, mayFail)
@@ -776,7 +783,12 @@ classdef SingleJobRunnerTest < pktest.TestCase
         end
 
         function [D] = poolDir(testCase, c)
-            pool = dir([c.logDir, 'task_runner_single_*']);
+            % the (only) pool in the job log folder of setup c (or folder c)
+            logDir = c;
+            if isstruct(c)
+                logDir = c.logDir;
+            end
+            pool = dir([logDir, 'task_runner_single_*']);
             testCase.assertNumElements(pool, 1);
             D = fullfile(pool.folder, pool.name);
         end

@@ -214,13 +214,11 @@ classdef GenericComputingFrameworkTest < pktest.TestCase
             % configs have it) gave checkSlurmCluster no folder, so the jobs
             % got "-o  -e" and each one's log went to a file named -e in the
             % folder the framework submits from (the code folder); it is now
-            % the default folder (../job_logs, absent here, so <data
-            % folder>/job_logs). The fake jobs make their log files as Slurm
-            % does when they start
+            % the default folder (../job_logs beside the code folder if it
+            % is there, else <data folder>/job_logs). The fake jobs make
+            % their log files as Slurm does when they start (only in the
+            % test's folders)
             testCase.assumeFalse(ispc, 'The fake Slurm needs a POSIX shell.');
-            root = fileparts(fileparts(fileparts(which('slurm_cluster_generic_computing_wrapper'))));
-            testCase.assumeFalse(isfolder(fullfile(root, '..', 'job_logs')), 'The default job log folder ../job_logs is there.');
-            testCase.assumeFalse(isfile(fullfile(root, '-e')), 'A file named -e is in the code folder.');
             slurm = testCase.applyFixture(pktest.FakeSlurmFixture);
             slurm.makeLogFiles();
             [inFns, outFns, logFn, dataPath] = testCase.makeTasks(2);
@@ -234,18 +232,17 @@ classdef GenericComputingFrameworkTest < pktest.TestCase
             evalc(['generic_computing_frameworks_wrapper(inFns, outFns, funcStrs, ''parseCluster'', true, ', ...
                 '''masterCompute'', false, ''maxTrialNum'', 1, ''taskRunner'', false, ''ConfigFile'', configFn)']);
 
-            leftover = isfile(fullfile(root, '-e'));
-            if leftover
-                delete(fullfile(root, '-e'));
-            end
-            testCase.verifyFalse(leftover, 'The job logs went to a file named -e.');
+            [logDir, inData] = pktest.defaultJobLogDir(dataPath);
             sbatch = slurm.calls('sbatch');
             testCase.assertNotEmpty(sbatch, 'No job was submitted.');
             logs = regexp(sbatch, ' -o (\S+) -e (\S+) ', 'tokens', 'once');
-            testCase.verifyTrue(all(cellfun(@(x) numel(x) == 2 && endsWith(x{1}, '/job_logs/job_%A_%a.out') ...
-                && endsWith(x{2}, '/job_logs/job_%A_%a.err'), logs)), strjoin(sbatch, newline));
-            testCase.verifyNumElements(dir([dataPath, 'job_logs/job_*.out']), numel(sbatch), ...
-                'The job logs are not in the default folder.');
+            testCase.verifyTrue(all(cellfun(@(x) numel(x) == 2 && strcmp(pktest.fullPath(fileparts(x{1})), logDir) ...
+                && endsWith(x{1}, '/job_%A_%a.out') && strcmp(x{2}, strrep(x{1}, '.out', '.err')), logs)), ...
+                sprintf('Not in %s:\n%s', logDir, strjoin(sbatch, newline)));
+            if inData
+                testCase.verifyNumElements(dir([dataPath, 'job_logs/job_*.out']), numel(sbatch), ...
+                    'The job logs are not in the default folder.');
+            end
         end
 
         function clusterModeSubmitsEachTaskOnceWithMaxJobNum(testCase)

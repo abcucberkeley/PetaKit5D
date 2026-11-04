@@ -176,8 +176,13 @@ if exist(jobLogDir, 'dir')
         jobLogFname = logDirCheck.jobLogFname;
         jobErrorFname = logDirCheck.jobErrorFname;
     else
-        [parseCluster, jobLogFname, jobErrorFname] = checkSlurmCluster(dataPath, jobLogDir);
+        % (if sinfo fails, checkSlurmCluster gives no log paths: the job
+        % keeps its own, else it got "-o  -e" and its log went to a file
+        % named -e)
+        [parseCluster, logFname, errorFname] = checkSlurmCluster(dataPath, jobLogDir);
         if parseCluster
+            jobLogFname = logFname;
+            jobErrorFname = errorFname;
             logDirCheck = struct('key', logDirKey, 'jobLogFname', jobLogFname, 'jobErrorFname', jobErrorFname);
         end
     end

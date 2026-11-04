@@ -3,6 +3,19 @@ classdef SingleJobSubmitWrapperTest < pktest.TestCase
     % task. pktest.NoSlurmFixture (shared by all tests) makes squeue and
     % sbatch fail, so nothing is submitted; the command is read from the
     % console output. The job-state tests use pktest.FakeSlurmFixture.
+    % The calls get a job log folder of the test's (jobLogDir), unless a
+    % test gives one, so that nothing goes to the default one, ../job_logs
+    % beside the PetaKit5D folder, where it is there.
+
+    methods (TestMethodSetup)
+        function clearSession(testCase)
+            % the kinds of single jobs a session submitted (its second
+            % task of a kind joins a pool), its pools, the Slurm check and
+            % the config file are kept in persistent variables
+            clear generic_single_job_submit_wrapper task_runner_run single_job_pools
+            testCase.addTeardown(@clear, 'generic_single_job_submit_wrapper', 'task_runner_run', 'single_job_pools');
+        end
+    end
 
     properties (TestParameter)
         % name-value arguments and the expected --cpus-per-task
@@ -48,7 +61,8 @@ classdef SingleJobSubmitWrapperTest < pktest.TestCase
         function emptyJobLogPathsInAConfigFileAreTheDefaults(testCase)
             % empty job log paths in a cluster config ("jobLogDir": "",
             % "jobLogFname": "") gave the job "-o  -e", so its log went to a
-            % file named -e; they are now the default ones
+            % file named -e; they are now the default ones (as given: Slurm
+            % is hidden here, see logPathsStayWhenSinfoFails)
             configFn = [testCase.createTempFolder(), 'config.json'];
             fid = fopen(configFn, 'w');
             fprintf(fid, '%s', jsonencode(struct('jobLogDir', '', 'jobLogFname', '', 'jobErrorFname', '')));
@@ -58,6 +72,29 @@ classdef SingleJobSubmitWrapperTest < pktest.TestCase
             paths = regexp(cmd, ' -o (\S+) -e (\S+) ', 'tokens', 'once');
             testCase.assertNotEmpty(paths, cmd);
             testCase.verifyEqual(paths, {'../job_logs/job_%A_%a.out', '../job_logs/job_%A_%a.err'});
+        end
+
+        function logPathsStayWhenSinfoFails(testCase)
+            % a job log folder that is there (jobLogDir, by default
+            % ../job_logs beside the PetaKit5D folder) gives the job its log
+            % paths from checkSlurmCluster, which gives none if sinfo fails
+            % (as at times on a busy cluster): the job got "-o  -e" and its
+            % log went to a file named -e; it now keeps the paths it has
+            testCase.assumeFalse(ispc, 'The fake Slurm needs a POSIX shell.');
+            slurm = testCase.applyFixture(pktest.FakeSlurmFixture);
+            stubDir = testCase.createTempFolder();
+            fid = fopen([stubDir, 'sinfo'], 'w');
+            fprintf(fid, '#!/bin/sh\nexit 1\n');
+            fclose(fid);
+            fileattrib([stubDir, 'sinfo'], '+x');
+            testCase.applyFixture(matlab.unittest.fixtures.EnvironmentVariableFixture('PATH', ...
+                [stubDir, pathsep, getenv('PATH')]));
+            logDir = testCase.createTempFolder();
+            testCase.callWrapper(-1, 7, 'jobLogDir', logDir, 'jobLogFname', [logDir, 'own_%A_%a.out'], ...
+                'jobErrorFname', [logDir, 'own_%A_%a.err']);
+            logs = regexp(slurm.calls('sbatch'), ' -o (\S+) -e (\S+) ', 'tokens', 'once');
+            testCase.assertNumElements(logs, 1);
+            testCase.verifyEqual(logs{1}, {[logDir, 'own_%A_%a.out'], [logDir, 'own_%A_%a.err']});
         end
 
         function pendingJobReturnsWithoutWaiting(testCase)
@@ -111,7 +148,6 @@ classdef SingleJobSubmitWrapperTest < pktest.TestCase
             % both are kept for the folder while Slurm is there, with the
             % same job log paths
             testCase.assumeFalse(ispc, 'The fake Slurm needs a POSIX shell.');
-            clear generic_single_job_submit_wrapper task_runner_run single_job_pools
             slurm = testCase.applyFixture(pktest.FakeSlurmFixture);
             logDir = testCase.createTempFolder();
             otherLogDir = testCase.createTempFolder();
@@ -132,7 +168,6 @@ classdef SingleJobSubmitWrapperTest < pktest.TestCase
             % before a task of the session joined a pool (the runner code's
             % first call took 60-80 ms)
             testCase.assumeFalse(ispc, 'The fake Slurm needs a POSIX shell.');
-            clear generic_single_job_submit_wrapper task_runner_run single_job_pools
             slurm = testCase.applyFixture(pktest.FakeSlurmFixture);
             logDir = testCase.createTempFolder();
             testCase.callWrapper(-1, 7, 'jobLogDir', logDir, 'taskRunner', false);
@@ -145,7 +180,6 @@ classdef SingleJobSubmitWrapperTest < pktest.TestCase
             % without Slurm (sinfo fails) nothing is kept: each call checks
             % again, as before
             testCase.assumeFalse(ispc, 'The sinfo stub needs a POSIX shell.');
-            clear generic_single_job_submit_wrapper task_runner_run single_job_pools
             stubDir = testCase.createTempFolder();
             logFn = [stubDir, 'sinfo.log'];
             fid = fopen([stubDir, 'sinfo'], 'w');
@@ -179,7 +213,7 @@ classdef SingleJobSubmitWrapperTest < pktest.TestCase
                 'MCRCacheRoot', [dataPath, 'cache'])));
             fclose(fid);
             evalc(['generic_single_job_submit_wrapper(''XR_crop_frame(''''in'''',''''out'''',[1,1,1,2,2,2],''''pad'''',false)'', ', ...
-                '-1, 7, ''maxTrialNum'', 1, ''mccMode'', true, ''ConfigFile'', configFn)']);
+                '-1, 7, ''maxTrialNum'', 1, ''mccMode'', true, ''jobLogDir'', dataPath, ''ConfigFile'', configFn)']);
             calls = slurm.calls('sbatch');
             testCase.assertNumElements(calls, 1);
             % run the job's command as Slurm would, in the job's shell
@@ -205,15 +239,25 @@ classdef SingleJobSubmitWrapperTest < pktest.TestCase
     end
 
     methods (Access = private)
-        function [cmd] = submitCommand(~, varargin)
-            out = evalc('generic_single_job_submit_wrapper(''disp(12345)'', 1, 7, ''maxTrialNum'', 1, varargin{:})');
+        function [cmd] = submitCommand(testCase, varargin)
+            args = testCase.withLogDir(varargin); %#ok<NASGU>
+            out = evalc('generic_single_job_submit_wrapper(''disp(12345)'', 1, 7, ''maxTrialNum'', 1, args{:})');
             cmd = regexp(out, 'sbatch [^\n]*', 'match', 'once');
         end
 
-        function [jobId, jobStatus, submitStatus] = callWrapper(~, jobId, taskId, varargin)
+        function [jobId, jobStatus, submitStatus] = callWrapper(testCase, jobId, taskId, varargin)
             % the sbatch command is printed; keep it out of the test log
+            args = testCase.withLogDir(varargin); %#ok<NASGU>
             [~, jobId, jobStatus, submitStatus] = evalc(['generic_single_job_submit_wrapper(''disp(1)'', jobId, ', ...
-                'taskId, ''maxTrialNum'', 1, varargin{:})']);
+                'taskId, ''maxTrialNum'', 1, args{:})']);
+        end
+
+        function [args] = withLogDir(testCase, args)
+            % the arguments with a job log folder of the test's, unless
+            % they give one
+            if ~any(strcmpi(args(1 : 2 : end), 'jobLogDir'))
+                args = [args, {'jobLogDir', testCase.createTempFolder()}];
+            end
         end
     end
 end
