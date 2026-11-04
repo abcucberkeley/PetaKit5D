@@ -57,6 +57,9 @@
 #                 (WAITALL=1: all, as in pools, whose tasks are added as
 #                 their jobs are submitted)
 #   jobs.txt      (pools) the Slurm job of each task: '<task> <job>_<array task>'
+#   live/         (pools) a mark of the master (m) and of each task (t<task>)
+#                 whose job may still use the pool; the last to leave
+#                 removes the pool (see leave_pool)
 #   tmps.txt      (local runs) the .tmp file and the output of each task
 #   argdump/      a copy of the compiled master's run_mccMaster.sh with a
 #                 stand-in master that writes the arguments it gets
@@ -423,15 +426,37 @@ matlab_job() {
     rm -rf "$L"
 }
 
+leave_pool() {
+    # (pools) a single job that ends removes the mark of its task $1 in
+    # live/; the last to leave of the pool's jobs and its master (which
+    # leaves at the end of its call) removes the pool: rmdir of live/
+    # succeeds only if it is empty, which the file server decides. The job
+    # ends with status $2
+    [ -d "$D/live" ] || return 0
+    rm -f "$D/live/t$1"
+    case "$D" in */task_runner_single_*) ;; *) return 0 ;; esac
+    if rmdir "$D/live" 2> /dev/null; then
+        # (exec: no shell has the script open then, so all of it goes)
+        exec sh -c 'cd / && rm -rf "$1"; exit "$2"' sh "$D" "$2"
+    fi
+    return 0
+}
+
 case "$1" in
     job)
         job "$2" "$3" "$4" "$5" "$6"
+        rc=$?
+        [ "$5" = 3 ] && leave_pool "$2" "$rc"
+        exit "$rc"
         ;;
     slot)
         slot "$2" "$3" "$4" "$5" "$6" "$7" "$8"
         ;;
     matlab)
         matlab_job "$2" "$3"
+        rc=$?
+        [ "$3" = 3 ] && leave_pool "$2" "$rc"
+        exit "$rc"
         ;;
     claim)
         why=$(recycle_reason "$PK_PID" "$7")

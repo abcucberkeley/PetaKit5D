@@ -268,6 +268,8 @@ classdef StitchingTest < pktest.TestCase
             checks = slurm.history();
             checks = checks(startsWith(checks, 'squeue') & contains(checks, '1001_2'));
             testCase.verifyGreaterThanOrEqual(numel(checks), 5, 'The wrapper did not wait for the job that had the third volume.');
+            % (its jobs gone, the master removed the pool at the end)
+            testCase.verifyEmpty(dir([logPath, 'task_runner_single_*']), 'The pool is still there.');
         end
 
         function clusterModeSeesResultsOtherNodesJustMade(testCase)

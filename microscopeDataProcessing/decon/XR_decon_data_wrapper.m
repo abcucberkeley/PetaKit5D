@@ -381,6 +381,11 @@ if parseCluster
     % array task id of each file's job (a job with several files has the
     % task id of its first file)
     job_task_ids = zeros(nF, 1);
+    % the pools of task runners that the call's single jobs make (see
+    % generic_single_job_submit_wrapper) end with the call: the last of
+    % their jobs (or this master) removes them
+    poolMark = single_job_pools('mark');
+    endPools = onCleanup(@() single_job_pools('end', poolMark));
 end
 % files whose job is pending or running: after the last try, the wrapper
 % waits for its job before it returns

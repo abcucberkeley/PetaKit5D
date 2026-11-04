@@ -629,6 +629,120 @@ classdef SingleJobRunnerTest < pktest.TestCase
             cmds = slurm.calls('sbatch');
             testCase.verifyEmpty(strfind(cmds{end}, 'run_tasks.sh'), cmds{end});
         end
+
+        function endedPoolGoesWithItsLastJob(testCase)
+            % at the end of a call (single_job_pools('end', mark)) the
+            % master leaves the pools the call made, which take no more
+            % tasks: a job of a pool still in the queue keeps it, and the
+            % last of its jobs to end removes it; a later task of the kind
+            % makes a new pool
+            testCase.assumeLinux();
+            slurm = testCase.applyFixture(pktest.FakeSlurmFixture);
+            c = testCase.compiledSetup(true);
+            mark = single_job_pools('mark');
+            testCase.startKind(c, slurm);
+            for k = 1 : 2
+                testCase.submit(c, k, 'ok', -1);
+            end
+            D = testCase.poolDir(c);
+            slurm.setJobStates('1001_2', {'R'});
+            out = testCase.runJob(c, slurm, 1);
+            single_job_pools('end', mark);
+            testCase.verifyTrue(isfolder(D), 'The pool went while a job of it ran.');
+            out = [out, testCase.runJob(c, slurm, 2)];
+            testCase.verifyFalse(isfolder(D), out);
+            testCase.verifyEqual([testCase.taskRuns(c).task], [1, 2], out);
+            testCase.submit(c, 3, 'ok', -1);
+            testCase.verifyNotEqual(testCase.poolDir(c), D, 'The ended pool took a task.');
+        end
+
+        function endedPoolWithoutJobsGoesAtOnce(testCase)
+            % a pool whose jobs are no longer in the queue goes when the
+            % master leaves it, also with the marks of jobs that never ran
+            % (a runner took their tasks and cancelled them)
+            testCase.assumeLinux();
+            slurm = testCase.applyFixture(pktest.FakeSlurmFixture);
+            c = testCase.compiledSetup(true);
+            mark = single_job_pools('mark');
+            testCase.startKind(c, slurm);
+            for k = 1 : 3
+                testCase.submit(c, k, 'ok', -1);
+            end
+            for k = 2 : 3
+                slurm.setJobStates(sprintf('%d_%d', 999 + k, k), {'PD'});
+            end
+            D = testCase.poolDir(c);
+            out = testCase.runJob(c, slurm, 1);
+            testCase.verifyEqual([testCase.taskRuns(c).task], [1, 2, 3], out);
+            % (cancelled)
+            for k = 2 : 3
+                slurm.setJobStates(sprintf('%d_%d', 999 + k, k), {'done'});
+            end
+            testCase.verifyTrue(isfolder(D), 'The pool went before the master left it.');
+            single_job_pools('end', mark);
+            testCase.verifyFalse(isfolder(D), 'The pool is still there.');
+        end
+
+        function pendingJobKeepsAnEndedPool(testCase)
+            % a job whose task a runner took, but whose cancel was missed,
+            % is still pending when the master leaves the pool: the pool
+            % stays until the job starts, ends at once (its task is taken)
+            % and removes it
+            testCase.assumeLinux();
+            slurm = testCase.applyFixture(pktest.FakeSlurmFixture);
+            c = testCase.compiledSetup(true);
+            mark = single_job_pools('mark');
+            testCase.startKind(c, slurm);
+            for k = 1 : 2
+                testCase.submit(c, k, 'ok', -1);
+            end
+            slurm.setJobStates('1001_2', {'PD'});
+            D = testCase.poolDir(c);
+            out = testCase.runJob(c, slurm, 1);
+            testCase.verifyEqual([testCase.taskRuns(c).task], [1, 2], out);
+            single_job_pools('end', mark);
+            testCase.verifyTrue(isfolder(D), 'The pool went while a job of it was pending.');
+            out = testCase.runJob(c, slurm, 2);
+            testCase.verifySubstring(out, 'no task left');
+            testCase.verifyFalse(isfolder(D), out);
+            testCase.verifyNumElements(testCase.taskRuns(c), 2, 'A task ran more than once.');
+        end
+
+        function matlabPoolGoesWithItsLastJob(testCase)
+            % the same for a pool of MATLAB jobs
+            testCase.assumeLinux();
+            slurm = testCase.applyFixture(pktest.FakeSlurmFixture);
+            [funcStrs, ~, logDir] = testCase.matlabTasks(2);
+            mark = single_job_pools('mark');
+            testCase.startMatlabKind(logDir, slurm, 'MatlabLaunchStr', 'echo STARTED');
+            for k = 1 : 2
+                testCase.submitMatlab(funcStrs{k}, logDir, k, 'MatlabLaunchStr', 'echo STARTED');
+            end
+            D = testCase.poolDir(logDir);
+            slurm.setJobStates('1000_1', {'R'});
+            single_job_pools('end', mark);
+            testCase.verifyTrue(isfolder(D), 'The pool went while a job of it ran.');
+            cmds = slurm.calls('sbatch');
+            out = testCase.runWrap(cmds{1}, 1000, 1, logDir);
+            testCase.verifySubstring(out, 'STARTED');
+            testCase.verifyFalse(isfolder(D), out);
+        end
+
+        function poolOfAnEnclosingCallStays(testCase)
+            % a call that ends (an inner one, as a stitching wrapper the
+            % pipeline's master runs itself) leaves only the pools it made
+            testCase.assumeLinux();
+            slurm = testCase.applyFixture(pktest.FakeSlurmFixture);
+            c = testCase.compiledSetup(true);
+            testCase.startKind(c, slurm);
+            testCase.submit(c, 1, 'ok', -1);
+            D = testCase.poolDir(c);
+            mark = single_job_pools('mark');
+            single_job_pools('end', mark);
+            testCase.verifyTrue(isfolder([D, '/live']));
+            testCase.submit(c, 2, 'ok', -1);
+            testCase.verifyEqual(strip(fileread([D, '/runnable.txt'])), sprintf('1\n2'), 'The pool took no more tasks.');
+        end
     end
 
     methods (Access = private)

@@ -421,6 +421,11 @@ if parseCluster
     imSize_mat = zeros(nF, 3, 2);
     dataSize_mat = zeros(nF, 2);
     dataSize_mat(:, 1) = dataSizes;
+    % the pools of task runners that the call's single jobs make (see
+    % generic_single_job_submit_wrapper) end with the call: the last of
+    % their jobs (or this master) removes them
+    poolMark = single_job_pools('mark');
+    endPools = onCleanup(@() single_job_pools('end', poolMark));
 end
 
 % with jobs on the cluster, a dataset's stitching job waits for deskewed

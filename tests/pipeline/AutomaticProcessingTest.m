@@ -204,6 +204,8 @@ classdef AutomaticProcessingTest < pktest.TestCase
             checks = slurm.history();
             checks = checks(startsWith(checks, 'squeue') & contains(checks, '1001_2'));
             testCase.verifyGreaterThanOrEqual(numel(checks), 6, 'The pipeline did not wait for the job that had tile 3.');
+            % (its jobs gone, the master removed the pool at the end)
+            testCase.verifyEmpty(dir([logPath, 'task_runner_single_*']), 'The pool is still there.');
         end
 
         function stitchingLastTryWaitsForATaskRunnerThatHasTheTask(testCase)

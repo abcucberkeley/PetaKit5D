@@ -88,11 +88,23 @@ function [varargout] = task_runner_run(action, varargin)
 %       none has; while it is pending, -1 if a runner of another job failed
 %       the task (the master took it back and cancelled the job), and a
 %       runner that ended without finishing it leaves it to the job
+%   n = task_runner_run('single_mark')
+%       the number of pools this session made so far (see single_job_pools)
+%   task_runner_run('single_end', mark)
+%       the end of a call whose tasks are done or given up: the pools made
+%       after mark take no more tasks (a later task of their kind makes a
+%       new pool) and the master leaves them. A pool's live/ folder has a
+%       mark of the master (m) and of each task (t<task>), which the task's
+%       job removes when it ends; the master removes its own and those of
+%       tasks whose jobs are not in the queue, and the last to leave (rmdir
+%       of the empty live/ folder, which the file server decides) removes
+%       the pool. A job still in the queue (also one whose task a runner took
+%       but whose cancel was missed) keeps the pool until it ends
 
 
 persistent S
 if isempty(S) && startsWith(action, 'single')
-    S = struct('session', '', 'pools', containers.Map('KeyType', 'char', 'ValueType', 'any'), ...
+    S = struct('session', '', 'nPools', 0, 'pools', containers.Map('KeyType', 'char', 'ValueType', 'any'), ...
         'tasks', containers.Map('KeyType', 'char', 'ValueType', 'any'), ...
         'jobs', containers.Map('KeyType', 'char', 'ValueType', 'any'));
 end
@@ -133,6 +145,10 @@ switch action
         [varargout{1}, S] = single_take(S, varargin{:});
     case 'single_status'
         [varargout{1}, S] = single_status(S, varargin{:});
+    case 'single_mark'
+        varargout{1} = S.nPools;
+    case 'single_end'
+        S = single_end(S, varargin{:});
     otherwise
         error('task_runner_run:unknownAction', 'Unknown action %s.', action);
 end
@@ -581,15 +597,19 @@ try
             % before the first job's submission)
             S.session = sprintf('%04d%02d%02d_%02d%02d%02d_%d_%06d', fix(clock), feature('getpid'), mod(tic, 1e6));
         end
-        p = single_pool(sprintf('%s/task_runner_single_%s_%d', parentDir, S.session, S.pools.Count + 1), ...
+        S.nPools = S.nPools + 1;
+        p = single_pool(sprintf('%s/task_runner_single_%s_%d', parentDir, S.session, S.nPools), ...
             MCCMasterStr, MatlabLaunchStr);
+        p.index = S.nPools;
     end
-    % the line, its byte offset, then the task's index: the job script takes
-    % only indices in runnable.txt, so it never reads a line being written
+    % the line, its byte offset, the task's mark in live/ (its job removes
+    % it when it ends), then the task's index: the job script takes only
+    % indices in runnable.txt, so it never reads a line being written
     i = p.n + 1;
     bytes = unicode2native([line, newline], 'UTF-8');
     append_text([p.rc.D, '/tasks.txt'], bytes);
     append_text([p.rc.D, '/tasks.idx'], sprintf('%012d\n', p.bytes));
+    append_text(sprintf('%s/live/t%d', p.rc.D, i), '');
     append_text([p.rc.D, '/runnable.txt'], sprintf('%d\n', i));
     p.n = i;
     p.bytes = p.bytes + numel(bytes);
@@ -624,12 +644,14 @@ if any(contains(MCCMasterStr, {'''', '|', newline}))
 end
 tmpl = script_template();
 % the folders, a probe that the claims folder takes symbolic links (claims
-% are symbolic links), the empty task files and the compiled master's
-% run_mccMaster.sh, in one shell (MATLAB's mkdir and copyfile took 70 ms
-% more at their first use, before the pool's first job was submitted)
+% are symbolic links), the empty task files, the master's mark in live/
+% (see single_end) and the compiled master's run_mccMaster.sh, in one shell
+% (MATLAB's mkdir and copyfile took 70 ms more at their first use, before
+% the pool's first job was submitted)
 probe = sprintf('%s/claims/.probe_%d', D, feature('getpid'));
-cmd = sprintf(['mkdir -p "%s/claims" "%s/argdump" && ln -s probe "%s" && rm -f "%s" ', ...
-    '&& : > "%s/tasks.txt" && : > "%s/tasks.idx" && : > "%s/runnable.txt"'], D, D, probe, probe, D, D, D);
+cmd = sprintf(['mkdir -p "%s/claims" "%s/argdump" "%s/live" && ln -s probe "%s" && rm -f "%s" ', ...
+    '&& : > "%s/tasks.txt" && : > "%s/tasks.idx" && : > "%s/runnable.txt" && : > "%s/live/m"'], ...
+    D, D, D, probe, probe, D, D, D, D);
 if ~isempty(MCCMasterStr)
     cmd = sprintf('%s && cp ''%s'' "%s/argdump/run_mccMaster.sh" && chmod +x "%s/argdump/run_mccMaster.sh"', ...
         cmd, MCCMasterStr, D, D);
@@ -826,6 +848,79 @@ else
     p.claimCache.names(strcmp(p.claimCache.names, sprintf('t%d', t.i))) = {''};
 end
 S.pools(t.key) = p;
+
+end
+
+
+function [S] = single_end(S, mark)
+% the end of a call: the master leaves the pools made after mark (see
+% 'single_end' above) and forgets them, so that no more tasks join them
+
+keys = S.pools.keys();
+ended = {};
+for k = 1 : numel(keys)
+    p = S.pools(keys{k});
+    if isfield(p, 'index') && p.index > mark
+        ended{end + 1} = keys{k}; %#ok<AGROW>
+    end
+end
+if isempty(ended)
+    return;
+end
+% the ended pools' tasks and their jobs
+funcStrs = S.tasks.keys();
+tasks = struct('key', {}, 'i', {}, 'state', {}, 'jobKey', {});
+if ~isempty(funcStrs)
+    tasks = cellfun(@(x) S.tasks(x), funcStrs, 'unif', 0);
+    tasks = [tasks{:}];
+end
+[~, poolOf] = ismember({tasks.key}, ended);
+jobKeys = {tasks(poolOf > 0).jobKey};
+jobKeys = unique(jobKeys(~cellfun(@isempty, jobKeys)));
+[left, known] = jobs_in_queue(jobKeys);
+for k = 1 : numel(ended)
+    p = S.pools(ended{k});
+    S.pools.remove(ended{k});
+    inPool = poolOf == k;
+    for j = find(inPool)
+        S.tasks.remove(funcStrs{j});
+        if ~isempty(tasks(j).jobKey) && isKey(S.jobs, tasks(j).jobKey)
+            S.jobs.remove(tasks(j).jobKey);
+        end
+    end
+    if ~isfield(p, 'rc') || ~contains(p.rc.D, '/task_runner_single_')
+        continue;
+    end
+    % the marks of tasks without a job in the queue (no job, or it ended,
+    % also one cancelled while pending, which never ran); if Slurm didn't
+    % answer, only the master's
+    gone = inPool & known & ~ismember({tasks.jobKey}, jobKeys(left));
+    marks = [{'m'}, arrayfun(@(x) sprintf('t%d', x), [tasks(gone).i], 'unif', 0)];
+    [~, ~] = system(sprintf('cd "%s/live" 2> /dev/null && rm -f %s; cd / && rmdir "%s/live" 2> /dev/null && rm -rf "%s"', ...
+        p.rc.D, strjoin(marks, ' '), p.rc.D, p.rc.D));
+end
+
+end
+
+
+function [left, known] = jobs_in_queue(jobKeys)
+% which of the jobs jobKeys ('<job>_<array task>') Slurm still has (any
+% state: pending, running, completing); known false if squeue failed (then
+% all count as there)
+
+left = true(size(jobKeys));
+known = true;
+for b = 1 : 1000 : numel(jobKeys)
+    bk = b : min(b + 999, numel(jobKeys));
+    [status, out] = system(sprintf('timeout 30 squeue -h -r -o %%i -j %s 2>&1', strjoin(jobKeys(bk), ',')));
+    % (squeue fails with 'Invalid job id' if it has none of them)
+    if status ~= 0 && ~contains(out, 'Invalid job id')
+        known = false;
+        left(:) = true;
+        return;
+    end
+    left(bk) = ismember(jobKeys(bk), strtrim(splitlines(out)));
+end
 
 end
 

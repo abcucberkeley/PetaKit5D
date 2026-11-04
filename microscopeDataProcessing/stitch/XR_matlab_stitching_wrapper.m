@@ -321,6 +321,11 @@ max_trial_num = maxTrialNum;
 
 if parseCluster
     job_ids = -ones(numel(fullIter), numel(Cam), numel(stackn), numel(Ch), numel(nz));
+    % the pools of task runners that the call's single jobs make (see
+    % generic_single_job_submit_wrapper) end with the call: the last of
+    % their jobs (or this master) removes them
+    poolMark = single_job_pools('mark');
+    endPools = onCleanup(@() single_job_pools('end', poolMark));
 end
 % whether a stitching job is pending or running: after the last try, the
 % wrapper waits for its job before it returns
