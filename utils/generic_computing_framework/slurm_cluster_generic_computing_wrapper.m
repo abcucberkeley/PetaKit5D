@@ -75,6 +75,12 @@ end
 pr = ip.Results;
 finalOutFullpath = pr.finalOutFullpath;
 jobLogDir = pr.jobLogDir;
+% an empty job log folder (as "jobLogDir": "" in a config file) is the
+% default one: checkSlurmCluster gives no log paths for it, so the jobs got
+% "-o  -e" and their logs went to a file named -e in the current folder
+if isempty(jobLogDir)
+    jobLogDir = '../job_logs';
+end
 tmpDir = pr.tmpDir;
 maxCPUNum = pr.maxCPUNum;
 parseCluster = pr.parseCluster;

@@ -45,6 +45,21 @@ classdef SingleJobSubmitWrapperTest < pktest.TestCase
             testCase.verifySubstring(cmd, '--cpus-per-task=10');
         end
 
+        function emptyJobLogPathsInAConfigFileAreTheDefaults(testCase)
+            % empty job log paths in a cluster config ("jobLogDir": "",
+            % "jobLogFname": "") gave the job "-o  -e", so its log went to a
+            % file named -e; they are now the default ones
+            configFn = [testCase.createTempFolder(), 'config.json'];
+            fid = fopen(configFn, 'w');
+            fprintf(fid, '%s', jsonencode(struct('jobLogDir', '', 'jobLogFname', '', 'jobErrorFname', '')));
+            fclose(fid);
+            cmd = testCase.submitCommand('ConfigFile', configFn);
+            testCase.assertNotEmpty(cmd, 'No sbatch command was printed.');
+            paths = regexp(cmd, ' -o (\S+) -e (\S+) ', 'tokens', 'once');
+            testCase.assertNotEmpty(paths, cmd);
+            testCase.verifyEqual(paths, {'../job_logs/job_%A_%a.out', '../job_logs/job_%A_%a.err'});
+        end
+
         function pendingJobReturnsWithoutWaiting(testCase)
             % the wrapper used to call squeue in a loop until a pending job
             % started (74-94 times a second on the cluster); callers check

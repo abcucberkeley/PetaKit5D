@@ -126,6 +126,17 @@ lastFile = pr.lastFile;
 jobLogDir = pr.jobLogDir;
 jobLogFname = pr.jobLogFname;
 jobErrorFname = pr.jobErrorFname;
+% empty job log paths (as "jobLogDir": "" in a config file) are the default
+% ones, so that no job gets "-o  -e" (its log went to a file named -e)
+if isempty(jobLogDir)
+    jobLogDir = '../job_logs';
+end
+if isempty(jobLogFname)
+    jobLogFname = '../job_logs/job_%A_%a.out';
+end
+if isempty(jobErrorFname)
+    jobErrorFname = '../job_logs/job_%A_%a.err';
+end
 tmpDir = pr.tmpDir;
 maxCPUNum = pr.maxCPUNum;
 minCPUNum = pr.minCPUNum;

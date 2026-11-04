@@ -562,6 +562,43 @@ classdef TaskRunnerTest < pktest.TestCase
             testCase.verifyEmpty(dir([dataPath, 'tmp/*/run_tasks.sh']));
         end
 
+        function compiledEmptyJobLogDirIsTheDefaultFolder(testCase)
+            % compiled mode: an empty jobLogDir (as from a config file) gave
+            % the jobs "-o  -e", so their logs went to a file named -e in the
+            % folder the framework submits from (the code folder); it is now
+            % the default folder (../job_logs, absent here, so <data
+            % folder>/job_logs)
+            testCase.assumeLinux();
+            root = fileparts(fileparts(fileparts(which('mcc_slurm_cluster_generic_computing_wrapper'))));
+            testCase.assumeFalse(isfolder(fullfile(root, '..', 'job_logs')), 'The default job log folder ../job_logs is there.');
+            testCase.assumeFalse(isfile(fullfile(root, '-e')), 'A file named -e is in the code folder.');
+            slurm = testCase.applyFixture(pktest.FakeSlurmFixture);
+            slurm.makeLogFiles();
+            dataPath = testCase.createTempFolder();
+            b = testCase.recordingBuild([dataPath, 'build/']); %#ok<NASGU>
+            inFns = arrayfun(@(x) sprintf('%sin_%d.txt', dataPath, x), 1 : 2, 'unif', 0);
+            outFns = arrayfun(@(x) sprintf('%sout_%d.txt', dataPath, x), 1 : 2, 'unif', 0);
+            cellfun(@(x) fclose(fopen(x, 'w')), inFns);
+            funcStrs = cellfun(@(x, y) sprintf('XR_crop_frame(''%s'',''%s'',[1,1,1,2,2,2])', x, y), inFns, outFns, 'unif', 0); %#ok<NASGU>
+            testCase.applyFixture(matlab.unittest.fixtures.CurrentFolderFixture(dataPath));
+            evalc(['mcc_slurm_cluster_generic_computing_wrapper(inFns, outFns, funcStrs, ''parseCluster'', true, ', ...
+                '''masterCompute'', false, ''taskBatchNum'', 1, ''maxTrialNum'', 1, ''taskRunner'', false, ', ...
+                '''MCCMasterStr'', b.master, ''MCRParam'', b.mcr, ''MCRCacheRoot'', [dataPath, ''cache''], ', ...
+                '''BashLaunchStr'', ''echo'', ''jobLogDir'', '''')']);
+            leftover = isfile(fullfile(root, '-e'));
+            if leftover
+                delete(fullfile(root, '-e'));
+            end
+            testCase.verifyFalse(leftover, 'The job logs went to a file named -e.');
+            sbatch = slurm.calls('sbatch');
+            testCase.assertNotEmpty(sbatch, 'No job was submitted.');
+            logs = regexp(sbatch, ' -o (\S+) -e (\S+) ', 'tokens', 'once');
+            testCase.verifyTrue(all(cellfun(@(x) numel(x) == 2 && endsWith(x{1}, '/job_logs/job_%A_%a.out') ...
+                && endsWith(x{2}, '/job_logs/job_%A_%a.err'), logs)), strjoin(sbatch, newline));
+            testCase.verifyNumElements(dir([dataPath, 'job_logs/job_*.out']), numel(sbatch), ...
+                'The job logs are not in the default folder.');
+        end
+
         function matlabJobsRunTheJobScript(testCase)
             % MATLAB jobs: the job script starts MATLAB (with the launch string
             % of before) if tasks are left; off: the command of before

@@ -209,6 +209,45 @@ classdef GenericComputingFrameworkTest < pktest.TestCase
             testCase.verifySubstring(sbatch{1}, '--cpus-per-task=12');
         end
 
+        function emptyJobLogDirInAConfigFileIsTheDefaultFolder(testCase)
+            % a cluster config with "jobLogDir": "" (the user's data-processing
+            % configs have it) gave checkSlurmCluster no folder, so the jobs
+            % got "-o  -e" and each one's log went to a file named -e in the
+            % folder the framework submits from (the code folder); it is now
+            % the default folder (../job_logs, absent here, so <data
+            % folder>/job_logs). The fake jobs make their log files as Slurm
+            % does when they start
+            testCase.assumeFalse(ispc, 'The fake Slurm needs a POSIX shell.');
+            root = fileparts(fileparts(fileparts(which('slurm_cluster_generic_computing_wrapper'))));
+            testCase.assumeFalse(isfolder(fullfile(root, '..', 'job_logs')), 'The default job log folder ../job_logs is there.');
+            testCase.assumeFalse(isfile(fullfile(root, '-e')), 'A file named -e is in the code folder.');
+            slurm = testCase.applyFixture(pktest.FakeSlurmFixture);
+            slurm.makeLogFiles();
+            [inFns, outFns, logFn, dataPath] = testCase.makeTasks(2);
+            funcStrs = testCase.taskStrings(inFns, outFns, logFn, 'noop'); %#ok<NASGU>
+            configFn = [dataPath, 'config.json'];
+            fid = fopen(configFn, 'w');
+            fprintf(fid, '%s', jsonencode(struct('jobLogDir', '')));
+            fclose(fid);
+            testCase.applyFixture(matlab.unittest.fixtures.CurrentFolderFixture(dataPath));
+
+            evalc(['generic_computing_frameworks_wrapper(inFns, outFns, funcStrs, ''parseCluster'', true, ', ...
+                '''masterCompute'', false, ''maxTrialNum'', 1, ''taskRunner'', false, ''ConfigFile'', configFn)']);
+
+            leftover = isfile(fullfile(root, '-e'));
+            if leftover
+                delete(fullfile(root, '-e'));
+            end
+            testCase.verifyFalse(leftover, 'The job logs went to a file named -e.');
+            sbatch = slurm.calls('sbatch');
+            testCase.assertNotEmpty(sbatch, 'No job was submitted.');
+            logs = regexp(sbatch, ' -o (\S+) -e (\S+) ', 'tokens', 'once');
+            testCase.verifyTrue(all(cellfun(@(x) numel(x) == 2 && endsWith(x{1}, '/job_logs/job_%A_%a.out') ...
+                && endsWith(x{2}, '/job_logs/job_%A_%a.err'), logs)), strjoin(sbatch, newline));
+            testCase.verifyNumElements(dir([dataPath, 'job_logs/job_*.out']), numel(sbatch), ...
+                'The job logs are not in the default folder.');
+        end
+
         function clusterModeSubmitsEachTaskOnceWithMaxJobNum(testCase)
             % with more jobs than maxJobNum the framework holds tasks back
             % until earlier jobs end (it counts its active jobs for every
