@@ -17,7 +17,11 @@ classdef WaitForFilesTest < pktest.TestCase
             folder = testCase.createTempFolder();
             pauses = testCase.applyFixture(pktest.FunctionSpyFixture('pause'));
             testCase.verifyFalse(wait_for_files({{[folder, 'a.tif']}}, 3.5));
-            testCase.verifyEqual(testCase.waits(pauses), [1, 1, 1, 0.5], 'AbsTol', 1e-12);
+            % (1, 1, 1, 0.5 s; a look over 0.1 s, as on a slow machine,
+            % stretches the next interval)
+            waits = testCase.waits(pauses);
+            testCase.verifyLooksAtLeastASecondApart(waits);
+            testCase.verifyEqual(sum(waits), 3.5, 'AbsTol', 1e-9);
         end
 
         function waitEndsOnceTheFilesOfAGroupExist(testCase)
@@ -28,7 +32,7 @@ classdef WaitForFilesTest < pktest.TestCase
             pauses = testCase.applyFixture(pktest.FunctionSpyFixture('pause', @() pktest.atCall( ...
                 [folder, 'calls.txt'], [2, 3], {@() fclose(fopen(fns{2}, 'w')), @() fclose(fopen(fns{1}, 'w'))})));
             testCase.verifyTrue(wait_for_files({fns(1 : 2), fns(3)}, 30));
-            testCase.verifyEqual(testCase.waits(pauses), [1, 1, 1]);
+            testCase.verifyLooksAtLeastASecondApart(testCase.waits(pauses), 3);
         end
 
         function waitEndsOnceAllFilesOfOneGroupExist(testCase)
@@ -39,7 +43,7 @@ classdef WaitForFilesTest < pktest.TestCase
             pauses = testCase.applyFixture(pktest.FunctionSpyFixture('pause', @() pktest.atCall( ...
                 [folder, 'calls.txt'], [2, 3], {@() fclose(fopen(fns{1}, 'w')), @() fclose(fopen(fns{2}, 'w'))})));
             testCase.verifyTrue(wait_for_files({fns}, 30));
-            testCase.verifyEqual(testCase.waits(pauses), [1, 1, 1]);
+            testCase.verifyLooksAtLeastASecondApart(testCase.waits(pauses), 3);
         end
 
         function resultsCanBeFolders(testCase)
@@ -49,7 +53,7 @@ classdef WaitForFilesTest < pktest.TestCase
             pauses = testCase.applyFixture(pktest.FunctionSpyFixture('pause', @() pktest.atCall( ...
                 [folder, 'calls.txt'], 2, @() mkdir(resultFn))));
             testCase.verifyTrue(wait_for_files({{resultFn}}, 30));
-            testCase.verifyEqual(testCase.waits(pauses), [1, 1]);
+            testCase.verifyLooksAtLeastASecondApart(testCase.waits(pauses), 2);
         end
 
         function patternsCountOnlyFinishedNames(testCase)
@@ -61,7 +65,7 @@ classdef WaitForFilesTest < pktest.TestCase
             pauses = testCase.applyFixture(pktest.FunctionSpyFixture('pause', @() pktest.atCall( ...
                 [folder, 'calls.txt'], [2, 3], {@() mkdir([resultFn, '_1234']), @() mkdir(resultFn)})));
             testCase.verifyTrue(wait_for_files({{[folder, 'Scan_Iter_0000_msec*Abs.zarr']}}, 30));
-            testCase.verifyEqual(testCase.waits(pauses), [1, 1, 1]);
+            testCase.verifyLooksAtLeastASecondApart(testCase.waits(pauses), 3);
         end
 
         function slowLooksAreFewer(testCase)
@@ -87,6 +91,18 @@ classdef WaitForFilesTest < pktest.TestCase
         function [w] = waits(~, pauses)
             % the duration of each pause call
             w = cellfun(@(x) x{1}, pauses.getCalls());
+        end
+
+        function verifyLooksAtLeastASecondApart(testCase, waits, n)
+            % a look after each second or more (more after a look that took
+            % over 0.1 s, as on a slow machine): the first pause is a second,
+            % none but the last is shorter; n: the number of pauses (the
+            % files come at the pause calls of the test, whatever their length)
+            if nargin > 2
+                testCase.verifyNumElements(waits, n);
+            end
+            testCase.verifyEqual(waits(1), 1);
+            testCase.verifyGreaterThanOrEqual(waits(1 : end - 1), 1 - 1e-12);
         end
     end
 end
