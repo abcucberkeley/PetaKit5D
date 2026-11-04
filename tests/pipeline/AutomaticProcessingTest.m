@@ -171,6 +171,87 @@ classdef AutomaticProcessingTest < pktest.TestCase
                 'The pipeline waited for the result of a step it gave up.');
         end
 
+        function lastTryWaitsForATaskRunnerThatHasTheTask(testCase)
+            % (task runners) tile 2's job makes its result and then runs
+            % tile 3's task (a task runner; tile 1, the first of its kind,
+            % runs as before), so tile 3's own job ends at once: the
+            % pipeline counts tile 3 as running while tile 2's job runs,
+            % instead of as finished (it returned before tile 3 was done),
+            % and does not submit it again
+            testCase.assumeTrue(isunix && ~ismac, 'Task runners run on Linux only.');
+            dataPath = testCase.createTempFolder();
+            fns = arrayfun(@(y) testCase.tileFilename(dataPath, 'CamA_ch0', y), 0 : 2, 'unif', 0);
+            for i = 1 : 3
+                writetiff(zeros(16, 16, 8, 'uint16'), fns{i});
+            end
+            logPath = [dataPath, 'logs/'];
+            mkdir(logPath);
+            dsrFns = strrep(fns, dataPath, [dataPath, 'DSR/']);
+            slurm = testCase.applyFixture(pktest.FakeSlurmFixture);
+            slurm.setJobStates('1000_1', {'R', 'done'}, dsrFns(1));
+            slurm.setJobStates('1001_2', {'R', 'R', 'R', 'R', 'R', 'done'}, dsrFns(2));
+            % after the first round, tile 2's job (1001, array task 2) has
+            % tile 3's task (the second of the pool)
+            claim = sprintf(['for d in "%s"task_runner_single_*/claims; do [ -d "$d" ] && ', ...
+                'ln -s "1001_2:othernode:5:1" "$d/t2" 2> /dev/null; done; true'], logPath);
+            testCase.applyFixture(pktest.FunctionSpyFixture('pause', @() system(claim), 40));
+            args = {'xyPixelSize', testCase.XYPixelSize, 'dz', testCase.Dz, 'reverse', true, ...
+                'channelPatterns', {'CamA_ch0'}, 'streaming', false, 'deskew', true, 'rotate', true, ...
+                'stitch', false, 'DSRCombined', true, 'parseCluster', true, 'maxTrialNum', 1, 'jobLogDir', logPath};
+            evalc('XR_microscopeAutomaticProcessing(dataPath, args{:})');
+
+            testCase.verifyEqual(slurm.callCount('sbatch'), 3, 'Tile 3 was submitted again.');
+            checks = slurm.history();
+            checks = checks(startsWith(checks, 'squeue') & contains(checks, '1001_2'));
+            testCase.verifyGreaterThanOrEqual(numel(checks), 6, 'The pipeline did not wait for the job that had tile 3.');
+        end
+
+        function stitchingLastTryWaitsForATaskRunnerThatHasTheTask(testCase)
+            % (task runners) three datasets: the second dataset's stitching
+            % job makes its result and then runs the third dataset's
+            % stitching task (a task runner; the first stitching job, the
+            % first of its kind, runs as before), so the third one's own job
+            % ends at once: the pipeline counts it as running while the
+            % second job runs, and does not submit it again
+            testCase.assumeTrue(isunix && ~ismac, 'Task runners run on Linux only.');
+            % (in the order the pipeline takes them)
+            dataPaths = sort({testCase.createTempFolder(), testCase.createTempFolder(), testCase.createTempFolder()});
+            csvFns = cell(1, 3);
+            for d = 1 : 3
+                tiles = struct('im', {zeros(16, 16, 8, 'uint16')}, 'idx', {[0, 0, 0]}, 'xyz', {[0, 0, 0]});
+                [~, csvFns{d}] = pktest.writeStitchTiles(dataPaths{d}, tiles);
+            end
+            logPath = [dataPaths{1}, 'logs/'];
+            mkdir(logPath);
+            fsn = 'Scan_Iter_0000_0000_CamA_ch0_CAM1_stack0000_488nm_0000000msec_0000000000msecAbs';
+            slurm = testCase.applyFixture(pktest.FakeSlurmFixture);
+            % the jobs in submission order: deskew (1000) and stitching (1001)
+            % of the first dataset, deskew (1002) and stitching (1003) of the
+            % second, deskew (1004) and stitching (1005) of the third; the
+            % deskew jobs and the first two stitching jobs make their
+            % results when first checked, and the second one runs for longer
+            for d = 1 : 3
+                slurm.setJobStates(sprintf('%d_%d', 998 + 2 * d, d), {'R', 'done'}, ...
+                    {[dataPaths{d}, 'DSR/', fsn, '_000x_000y_000z_0000t.tif']});
+            end
+            slurm.setJobStates('1001_1', {'R', 'done'}, {[dataPaths{1}, 'matlab_stitch/', fsn, '.zarr']});
+            slurm.setJobStates('1003_2', {'R', 'R', 'R', 'R', 'R', 'done'}, {[dataPaths{2}, 'matlab_stitch/', fsn, '.zarr']});
+            % after the first round, the second stitching job has the third
+            % dataset's task (the second of the stitching jobs' pool)
+            claim = sprintf(['for d in "%s"task_runner_single_*; do grep -q XR_matlab_stitching_wrapper "$d/tasks.txt" && ', ...
+                'ln -s "1003_2:othernode:5:1" "$d/claims/t2" 2> /dev/null; done; true'], logPath);
+            testCase.applyFixture(pktest.FunctionSpyFixture('pause', @() system(claim), 40));
+            args = {'xyPixelSize', testCase.XYPixelSize, 'dz', testCase.Dz, 'reverse', true, ...
+                'channelPatterns', {'CamA_ch0'}, 'streaming', false, 'stitch', true, 'imageListFullpaths', csvFns, ...
+                'parseCluster', true, 'maxTrialNum', 1, 'jobLogDir', logPath};
+            evalc('XR_microscopeAutomaticProcessing(dataPaths, args{:})');
+
+            testCase.verifyEqual(slurm.callCount('sbatch'), 6, 'A job was submitted again.');
+            checks = slurm.history();
+            checks = checks(startsWith(checks, 'squeue') & contains(checks, '1003_2'));
+            testCase.verifyGreaterThanOrEqual(numel(checks), 6, 'The pipeline did not wait for the job that had the third stitching.');
+        end
+
         function clusterModeSeesResultsOtherNodesJustMade(testCase)
             % on NFS, exist() can miss a file another node just made for 30
             % s or more, so the pipeline saw finished deskew results a round

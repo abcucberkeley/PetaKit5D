@@ -589,8 +589,9 @@ while ~all(is_done_flag | (trial_counter >= maxTrialNum & ~job_active), 'all')
                                 lastFile=false, cpusPerTask=cpusPerTask_f, memAllocate=memAllocate, ...
                                 mccMode=mccMode, configFile=cur_configFile);
                         else
-                            % the last try: only check whether its job is still there
-                            job_status = check_slurm_job_status(job_id, rem(task_id, 5000));
+                            % the last try: only check whether its job (or a task
+                            % runner of another job that took its task) is still there
+                            job_status = check_single_job_status(job_id, task_id);
                             submit_status = 0;
                         end
 
@@ -637,7 +638,8 @@ while ~all(is_done_flag | (trial_counter >= maxTrialNum & ~job_active), 'all')
         job_live = false(size(jobs, 1), 1);
         for j = 1 : size(jobs, 1)
             if jobs(j, 1) > 0
-                job_live(j) = check_slurm_job_status(jobs(j, 1), jobs(j, 2)) >= 0;
+                % (a task runner of another job that took its task counts)
+                job_live(j) = check_single_job_status(jobs(j, 1), jobs(j, 2)) >= 0;
             end
         end
         % a file waits for its job while it is pending or running
@@ -678,10 +680,11 @@ while ~all(is_done_flag | (trial_counter >= maxTrialNum & ~job_active), 'all')
                     func_str = sprintf('XR_RLdeconFrame3D({%s}%s', strjoin(frame_strs(:)', ','), param_strs{b_pos(1)});
                 end
                 task_id = rem(bfs(1), 5000);
+                % (a file submitted again runs as before, without task runners)
                 [job_id, ~, submit_status] = generic_single_job_submit_wrapper(func_str, ...
                     -1, task_id, jobLogFname=job_log_fname, jobErrorFname=job_log_error_fname, ...
                     lastFile=false, cpusPerTask=sub_cpus(bfs(1)), memAllocate=max(sub_mems(bfs)), ...
-                    mccMode=mccMode, configFile=sub_configFiles{bfs(1)});
+                    mccMode=mccMode, configFile=sub_configFiles{bfs(1)}, taskRunner=~retry(b_pos(1)));
 
                 job_ids(bfs) = job_id;
                 job_task_ids(bfs) = task_id;

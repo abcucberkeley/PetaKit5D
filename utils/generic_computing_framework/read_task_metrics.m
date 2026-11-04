@@ -316,13 +316,13 @@ for i = 1 : nr
                 rt.nTasks(i) = get_num(r, 'nTasks');
                 rt.nDone(i) = get_num(r, 'nDone');
             case 'submit'
-                % a single job: its task by the job and array task
+                % a single job: the tasks that ran in it (its own and those
+                % its task runner took from other jobs of its kind) by the job
                 rt.kind(i) = "single";
                 rt.node(i) = get_str(r, 'node');
                 rt.start(i) = min(rt.start(i), get_num(r, 'time'), 'omitnan');
                 rt.nTasks(i) = sum([rt.nTasks(i), 1], 'omitnan');
-                rows = inRun & t.arrayJobId == string(sprintf('%d', get_num(r, 'jobId'))) ...
-                    & t.task == get_num(r, 'task');
+                rows = inRun & t.arrayJobId == string(sprintf('%d', get_num(r, 'jobId')));
                 t.cpusPerTask(rows) = get_num(r, 'cpusPerTask');
                 t.memAllocate(rows) = get_num(r, 'memAllocate');
                 if ~any(rows)

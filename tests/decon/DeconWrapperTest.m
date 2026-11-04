@@ -547,8 +547,9 @@ classdef DeconWrapperTest < pktest.TestCase
             waitSpy = testCase.applyFixture(pktest.FunctionSpyFixture('wait_for_files', [], 20));
             testCase.runWrapper(d, 'parseCluster', true, 'maxTrialNum', 1, 'jobLogDir', [d.root, 'logs']);
             testCase.verifyEqual(slurm.callCount('sbatch'), 1, 'The last try was submitted again.');
-            % a check before submitting, then one per round until the job is gone
-            testCase.verifyEqual(slurm.callCount('squeue'), 5);
+            % one check per round until the job is gone (none before
+            % submitting: the task had no job)
+            testCase.verifyEqual(slurm.callCount('squeue'), 4);
             testCase.verifyNumElements(waitSpy.getCalls(), 4);
         end
 
@@ -582,6 +583,61 @@ classdef DeconWrapperTest < pktest.TestCase
             waits = cellfun(@(x) x{2}, waitSpy.getCalls());
             % the second round also waits for the last tries' jobs to end
             testCase.verifyEqual(waits, [6, 6], 'AbsTol', 1e-9, 'The wait for 20 unfinished files should be 6 s.');
+        end
+
+        function lastTryWaitsForATaskRunnerThatHasTheTask(testCase)
+            % (task runners) file 2's job makes its result and then runs
+            % file 3's task (a task runner; file 1, the first of its kind,
+            % runs as before), so file 3's own job ends at once: the
+            % wrapper counts file 3 as running while file 2's job runs,
+            % instead of as finished, and does not submit it again
+            testCase.assumeTrue(isunix && ~ismac, 'Task runners run on Linux only.');
+            d = testCase.createDataset({'A'}, 3);
+            logPath = [d.root, 'logs/'];
+            mkdir(logPath);
+            outFns = strcat(d.dataPath, 'matlab_decon/', d.fsns, '.tif');
+            slurm = testCase.applyFixture(pktest.FakeSlurmFixture);
+            slurm.setJobStates('1000_1', {'R', 'done'}, outFns(1));
+            slurm.setJobStates('1001_2', {'R', 'R', 'R', 'R', 'done'}, outFns(2));
+            % file 3's task is the second of the pool
+            claim = testCase.claimCommand(logPath, 2, '1001_2');
+            testCase.applyFixture(pktest.FunctionSpyFixture('pause', @() system(claim), 40));
+            testCase.runWrapper(d, 'parseCluster', true, 'maxTrialNum', 1, 'jobLogDir', logPath);
+            testCase.verifyEqual(slurm.callCount('sbatch'), 3, 'File 3 was submitted again.');
+            checks = slurm.history();
+            checks = checks(startsWith(checks, 'squeue') & contains(checks, '1001_2'));
+            testCase.verifyGreaterThanOrEqual(numel(checks), 5, 'The wrapper did not wait for the job that had file 3.');
+        end
+
+        function filesOfAJobWaitForATaskRunnerThatHasThem(testCase)
+            % (task runners) GPU jobs of two files each: the third job's
+            % task is run by a task runner of the second job (the first
+            % job, the first of its kind, runs as before), so the third job
+            % ends at once; its files are submitted again (one job each, as
+            % before, without task runners) only once the second job ended
+            % without their results, not while it may still make them
+            testCase.assumeTrue(isunix && ~ismac, 'Task runners run on Linux only.');
+            d = testCase.createDataset({'A'}, 6);
+            logPath = [d.root, 'logs/'];
+            mkdir(logPath);
+            outFns = strcat(d.dataPath, 'matlab_decon/', d.fsns, '.tif');
+            slurm = testCase.applyFixture(pktest.FakeSlurmFixture);
+            % the jobs have the task ids of their first files: 1, 3, 5
+            slurm.setJobStates('1000_1', {'R', 'done'}, outFns(1 : 2));
+            slurm.setJobStates('1001_3', {'R', 'R', 'R', 'R', 'done'}, outFns(3 : 4));
+            claim = testCase.claimCommand(logPath, 2, '1001_3');
+            testCase.applyFixture(pktest.FunctionSpyFixture('pause', @() system(claim), 40));
+            testCase.runWrapper(d, 'parseCluster', true, 'GPUJob', true, 'taskBatchNum', 2, 'maxTrialNum', 2, ...
+                'GPUConfigFile', testCase.writeGPUConfig(d.root, struct()), 'jobLogDir', logPath);
+            cmds = slurm.history();
+            submits = find(startsWith(cmds, 'sbatch'));
+            testCase.assertNumElements(submits, 5);
+            running = find(startsWith(cmds, 'squeue') & contains(cmds, '1001_3'));
+            testCase.assertGreaterThanOrEqual(numel(running), 5);
+            testCase.verifyGreaterThan(submits(4), running(5), 'Files were submitted again while the job that had them ran.');
+            testCase.verifyFalse(contains(cmds{submits(1)}, 'run_tasks.sh'), 'The first job of its kind has task runners.');
+            testCase.verifyTrue(all(contains(cmds(submits(2 : 3)), 'run_tasks.sh matlab')), 'The pool jobs have no task runners.');
+            testCase.verifyFalse(any(contains(cmds(submits(4 : 5)), 'run_tasks.sh')), 'Files were submitted again with task runners.');
         end
 
         function gpuJobsTakeAtMostFourCPUs(testCase)
@@ -825,6 +881,13 @@ classdef DeconWrapperTest < pktest.TestCase
             fid = fopen(fn, 'w');
             fprintf(fid, '%s', jsonencode(config));
             fclose(fid);
+        end
+
+        function [cmd] = claimCommand(~, logPath, i, job)
+            % a shell command that has job's task runner claim task i of the
+            % single jobs' pool in logPath, once the pool exists
+            cmd = sprintf(['for d in "%s"task_runner_single_*/claims; do [ -d "$d" ] && ', ...
+                'ln -s "%s:othernode:5:1" "$d/t%d" 2> /dev/null; done; true'], logPath, job, i);
         end
 
         function [lines] = sbatchLines(~, slurm)

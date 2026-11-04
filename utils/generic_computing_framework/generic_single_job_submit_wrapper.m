@@ -47,6 +47,7 @@ ip.addParameter('GNUparallel', false, @islogical); % support matlab, bash
 ip.addParameter('paraJobNum', 1, @isnumeric); % support matlab, bash
 ip.addParameter('ConfigFile', '', @ischar); % cluster configuration file that override the default parameters
 ip.addParameter('taskMetrics', false, @islogical); % record the resources of the task in <job log folder>/task_metrics/ (see task_metrics)
+ip.addParameter('taskRunner', true, @islogical); % after its task, a job's process runs unstarted tasks of other single jobs of the same kind (see task_runner_run); off if the caller or the config says so
 
 ip.parse(funcStr, job_id, task_id, varargin{:});
 
@@ -148,23 +149,82 @@ language = pr.language;
 GNUparallel = pr.GNUparallel;
 paraJobNum = pr.paraJobNum;
 taskMetrics = pr.taskMetrics;
+taskRunner = ip.Results.taskRunner && pr.taskRunner;
 
+% the Slurm check and the job log paths, kept for the job log folder while
+% Slurm is there (callers call this for each job in each round; sinfo and
+% the folder's listing took 10 ms or more per call)
+persistent logDirCheck;
 if exist(jobLogDir, 'dir')
     dataPath = tempdir();
     if ispc
         dataPath = strrep(dataPath, '\', '/');
     end
-    [parseCluster, jobLogFname, jobErrorFname] = checkSlurmCluster(dataPath, jobLogDir);
+    logDirKey = [pwd, '|', jobLogDir];
+    if isstruct(logDirCheck) && strcmp(logDirCheck.key, logDirKey)
+        jobLogFname = logDirCheck.jobLogFname;
+        jobErrorFname = logDirCheck.jobErrorFname;
+    else
+        [parseCluster, jobLogFname, jobErrorFname] = checkSlurmCluster(dataPath, jobLogDir);
+        if parseCluster
+            logDirCheck = struct('key', logDirKey, 'jobLogFname', jobLogFname, 'jobErrorFname', jobErrorFname);
+        end
+    end
 end
 
+% the kinds of single jobs (see below) this session submitted a task of
+persistent kindsSeen;
 submit_status = 0;
 trial_counter = 0;
+poolTask = [];
 while submit_status == 0 && trial_counter < maxTrialNum
     switch clusterType
         case 'slurm'
             array_id = rem(task_id, 5000);
-            job_status = check_slurm_job_status(job_id, array_id);
-        
+            % (a task without a job yet: squeue could only say so)
+            job_status = -1;
+            if job_id > 0
+                job_status = check_slurm_job_status(job_id, array_id);
+            end
+
+            % task runners: after the job of a task submitted to a pool (see
+            % below) ended, a runner of another job may still run the task
+            % (then it counts as running); before the master submits it
+            % again (as before) or runs it itself (last file), it takes the
+            % task back from the pool, so that no runner takes it. While the
+            % job is pending, a task that a runner failed is taken back (the
+            % job is cancelled) and submitted again, and one whose runner
+            % ended without finishing it is left to the job
+            % (none before this session's first pool task: a session
+            % without runners doesn't load task_runner_run)
+            poolTask = [];
+            if job_status < 1 && single_job_pools()
+                poolTask = task_runner_run('single_task', funcStr);
+            end
+            if ~isempty(poolTask) && job_status == 0 && ~(masterCompute && lastFile)
+                if strcmp(poolTask.jobKey, sprintf('%d_%d', job_id, array_id)) ...
+                        && task_runner_run('single_status', job_id, array_id, 0) == -1
+                    job_status = -1;
+                end
+                poolTask = [];
+            end
+            if ~isempty(poolTask)
+                [live, claimed] = task_runner_run('single_live', funcStr);
+                if live
+                    job_status = 1;
+                    return;
+                end
+                % (a task added in this call is submitted again after a
+                % failed submission)
+                if ~strcmp(poolTask.state, 'new') || claimed || (masterCompute && lastFile)
+                    if ~task_runner_run('single_take', funcStr)
+                        job_status = 1;
+                        return;
+                    end
+                    poolTask = [];
+                end
+            end
+
             % kill the last pending job and use master node do the computing.
             if job_status == 0 && (masterCompute && lastFile)
                 system(sprintf('scancel %d_%d', job_id, array_id), '-echo');
@@ -198,21 +258,23 @@ while submit_status == 0 && trial_counter < maxTrialNum
                 if taskMetrics || ~isempty(getenv('PETAKIT5D_TASK_METRICS'))
                     runDir = task_metrics_run('session_dir', fileparts(jobLogFname), taskMetrics);
                 end
-                if ismcc || isdeployed || mccMode
+                isMcc = ismcc || isdeployed || mccMode;
+                if isMcc
                     % the compiled master must accept the options of the task
                     check_mcc_master_build(MCCMasterStr);
-                    [func_name, var_str] = convert_function_string_to_mcc_string(funcStr);
+                    [func_name, task_var_str] = convert_function_string_to_mcc_string(funcStr);
                     % handle for nested "
-                    var_str = strrep(var_str, '"', '\"');                
+                    var_str = strrep(task_var_str, '"', '\"');
                     % a MATLAB Runtime cache per job (jobs starting at the same
                     % time with a shared cache sometimes fail to start); the $ is
                     % escaped for the job's shell, as the command is in --wrap="..."
                     mcrCacheStr = sprintf('%s/mcr_cache_\\${SLURM_JOB_ID:-0}', MCRCacheRoot);
                     % the task's metrics environment
-                    envStr = '';
+                    task_envStr = '';
                     if ~isempty(runDir)
-                        envStr = strrep(task_metrics_run('env', runDir, task_id, false), '"', '\"');
+                        task_envStr = task_metrics_run('env', runDir, task_id, false);
                     end
+                    envStr = strrep(task_envStr, '"', '\"');
                     process_cmd = sprintf('%sMCR_CACHE_ROOT=%s %s %s %s %s \n', envStr, mcrCacheStr, MCCMasterStr, MCRParam, func_name, var_str);
                 else
                     matlab_setup_str = 'setup([])';
@@ -223,6 +285,50 @@ while submit_status == 0 && trial_counter < maxTrialNum
                     end
                     matlab_cmd = sprintf('%s;t0_=tic;%s;toc(t0_)', matlab_setup_str, task_str);
                     process_cmd = sprintf('%s \\"%s\\"', MatlabLaunchStr, matlab_cmd);
+                end
+
+                % task runners (Linux, MATLAB jobs or a compiled master built
+                % with them): a first submission of a task joins the pool of
+                % this MATLAB's single jobs of the same kind (function,
+                % resources, master or MATLAB launch, job log folder; see
+                % task_runner_run), made with the second task of the kind;
+                % its job runs the task with its process of before, and after
+                % it unstarted tasks of the pool's other jobs, or it ends if
+                % another job's runner has its task. The first task of a kind
+                % (a session with one pays nothing) and resubmissions run as
+                % before
+                poolDir = fileparts(jobLogFname);
+                if isempty(poolTask) && taskRunner && job_id <= 0 && isunix && ~ismac && strcmpi(language, 'matlab') ...
+                        && startsWith(poolDir, '/') && isfolder(poolDir)
+                    k = find(funcStr == '(', 1);
+                    if isempty(k)
+                        k = numel(funcStr) + 1;
+                    end
+                    if isMcc
+                        launch = sprintf('mcc|%s|%s|%s', MCCMasterStr, MCRParam, MCRCacheRoot);
+                    else
+                        launch = sprintf('matlab|%s', MatlabLaunchStr);
+                    end
+                    poolKey = sprintf('%s|%s|%d|%s|%s|%s|%s', strtrim(funcStr(1 : k - 1)), launch, cpusPerTask, ...
+                        SlurmParam, SlurmConstraint, time_str, poolDir);
+                    if ~any(strcmp(kindsSeen, poolKey))
+                        kindsSeen{end + 1} = poolKey;
+                    elseif ~isMcc || task_runner_run('supported', MCCMasterStr)
+                        single_job_pools(true);
+                        if isMcc
+                            % the command of before, with the job's shell's view of $
+                            task_line = char(sprintf('%sMCR_CACHE_ROOT=%s/mcr_cache_${SLURM_JOB_ID:-0} %s %s %s %s', task_envStr, ...
+                                MCRCacheRoot, MCCMasterStr, MCRParam, func_name, task_var_str));
+                            poolTask = task_runner_run('single_add', funcStr, poolKey, poolDir, task_line, MCCMasterStr, '');
+                        else
+                            % the stand-in master gets the task string (single-quoted)
+                            task_line = sprintf('"$D/argdump/run_mccMaster.sh" x ''%s''', strrep(task_str, '''', '''\'''''));
+                            poolTask = task_runner_run('single_add', funcStr, poolKey, poolDir, task_line, '', MatlabLaunchStr);
+                        end
+                    end
+                end
+                if ~isempty(poolTask)
+                    process_cmd = task_runner_run('single_cmd', funcStr);
                 end
         
                 cmd = sprintf('sbatch --array=%d -o %s -e %s --cpus-per-task=%d %s %s %s --wrap="date; echo Matlab command:  \\\"%s\\\"; %s"', ...
@@ -236,10 +342,13 @@ while submit_status == 0 && trial_counter < maxTrialNum
                 if ~isempty(job_out_info) && ~isempty(job_out_info{1})
                     job_id = str2double(job_out_info{1}{1});
                     submit_status = 1;
+                    if ~isempty(poolTask)
+                        task_runner_run('single_job', funcStr, job_id, array_id);
+                    end
                     if ~isempty(runDir)
                         task_metrics_run('record', runDir, 'submit', struct('task', task_id, 'jobId', job_id, ...
                             'functionStr', funcStr, 'cpusPerTask', cpusPerTask, 'memAllocate', memAllocate, ...
-                            'memPerCPU', memPerCPU, 'mccMode', ismcc || isdeployed || mccMode, 'SlurmParam', SlurmParam));
+                            'memPerCPU', memPerCPU, 'mccMode', isMcc, 'SlurmParam', SlurmParam));
                     end
                 else
                     fprintf('Job submission failed, try again!\n')
@@ -247,6 +356,12 @@ while submit_status == 0 && trial_counter < maxTrialNum
                 trial_counter = trial_counter + 1;
             end
     end
+end
+
+% a pool task whose job couldn't be submitted: the master takes it back (the
+% caller submits it again)
+if submit_status == 0 && ~isempty(poolTask)
+    task_runner_run('single_job', funcStr, [], []);
 end
 
 end

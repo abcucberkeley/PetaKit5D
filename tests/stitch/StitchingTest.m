@@ -243,6 +243,33 @@ classdef StitchingTest < pktest.TestCase
             testCase.verifyNumElements(checks, 3, 'The job was not checked until it ended.');
         end
 
+        function lastTryWaitsForATaskRunnerThatHasTheTask(testCase)
+            % (task runners) the second volume's job makes its result and
+            % then runs the third volume's task (a task runner; the first
+            % volume, the first of its kind, runs as before), so the third
+            % volume's own job ends at once: the wrapper counts it as
+            % running while the second volume's job runs, instead of as
+            % finished, and does not submit it again
+            testCase.assumeTrue(isunix && ~ismac, 'Task runners run on Linux only.');
+            [dataPath, csvFn, resultFns] = testCase.writeTwoVolumes(3);
+            logPath = [dataPath, 'logs/'];
+            mkdir(logPath);
+            slurm = testCase.applyFixture(pktest.FakeSlurmFixture);
+            slurm.setJobStates('1000_1', {'R', 'done'}, resultFns(1));
+            slurm.setJobStates('1001_2', {'R', 'R', 'R', 'R', 'done'}, resultFns(2));
+            % after the first round, the second volume's job (1001, array
+            % task 2) has the third volume's task (the second of the pool)
+            claim = sprintf(['for d in "%s"task_runner_single_*/claims; do [ -d "$d" ] && ', ...
+                'ln -s "1001_2:othernode:5:1" "$d/t2" 2> /dev/null; done; true'], logPath);
+            testCase.applyFixture(pktest.FunctionSpyFixture('pause', @() system(claim), 40));
+            testCase.stitch(dataPath, csvFn, 'parseCluster', true, 'masterCompute', false, 'xcorrMode', 'all', ...
+                'maxTrialNum', 1, 'jobLogDir', logPath);
+            testCase.verifyEqual(slurm.callCount('sbatch'), 3, 'The third volume was submitted again.');
+            checks = slurm.history();
+            checks = checks(startsWith(checks, 'squeue') & contains(checks, '1001_2'));
+            testCase.verifyGreaterThanOrEqual(numel(checks), 5, 'The wrapper did not wait for the job that had the third volume.');
+        end
+
         function clusterModeSeesResultsOtherNodesJustMade(testCase)
             % on NFS, exist() can miss a result another node just made for 30
             % s or more, so the wrapper saw finished volumes (and secondary
@@ -294,8 +321,9 @@ classdef StitchingTest < pktest.TestCase
             testCase.stitch(dataPath, csvFn, 'parseCluster', true, 'masterCompute', false, 'maxTrialNum', 1, ...
                 'jobLogDir', [dataPath, 'logs']);
             testCase.verifyEqual(slurm.callCount('sbatch'), 1, 'The last try was submitted again.');
-            % a check before submitting, then one per round until the job is gone
-            testCase.verifyEqual(slurm.callCount('squeue'), 4);
+            % one check per round until the job is gone (none before
+            % submitting: the task had no job)
+            testCase.verifyEqual(slurm.callCount('squeue'), 3);
         end
 
         function clusterModeEndsSoonAfterTheLastResult(testCase)
@@ -919,17 +947,20 @@ classdef StitchingTest < pktest.TestCase
             gt = uint16(randi(intRange, sz));
         end
 
-        function [dataPath, csvFn, resultFns] = writeTwoVolumes(testCase)
-            % two time points of the 2 x 2 tile layout, and the paths of
-            % their stitched results
+        function [dataPath, csvFn, resultFns] = writeTwoVolumes(testCase, n)
+            % two (or n) time points of the 2 x 2 tile layout, and the paths
+            % of their stitched results
+            if nargin < 2
+                n = 2;
+            end
             dataPath = testCase.createTempFolder();
             gt = testCase.randomVolume([100, 120, 32]);
-            for iter = 0 : 1
+            for iter = 0 : n - 1
                 csvFn = testCase.writeTiles(dataPath, gt, [0, 0, 0; 36, 0, 0; 0, 48, 0; 36, 48, 0], [64, 72, 32], ...
                     [], [], [], 'iter', iter);
             end
             resultFns = arrayfun(@(x) sprintf('%smatlab_stitch/%s.zarr', dataPath, ...
-                strrep(testCase.StitchName, 'Iter_0000', sprintf('Iter_%04d', x))), 0 : 1, 'unif', 0);
+                strrep(testCase.StitchName, 'Iter_0000', sprintf('Iter_%04d', x))), 0 : n - 1, 'unif', 0);
         end
 
         function [dataPath, csvFn, stagePath] = writeTilesToCome(testCase)

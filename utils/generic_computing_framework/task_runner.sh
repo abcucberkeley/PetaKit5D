@@ -1,13 +1,17 @@
 # Job script of the job framework's task runners (see task_runner.m). The
 # framework writes it for each call as <call folder>/run_tasks.sh, with the
-# call's settings above this text (D, NT, BS, MASTER, MLAUNCH, LOCALRUN, UWTSEC).
+# call's settings above this text (D, NT, BS, MASTER, MLAUNCH, LOCALRUN, UWTSEC,
+# and WAITALL for the single jobs of generic_single_job_submit_wrapper).
 #
 # A runner is a MATLAB Runtime process (compiled jobs) or a MATLAB process
 # (MATLAB jobs) that runs one task after another: the job script claims a
 # task and starts a process for it with its task line (compiled) or the
 # MATLAB command, and the process, after the task, resets itself to the state
 # of a new process and claims the next task, first of its own batch, then
-# (stealing) unstarted tasks of the call's other batches.
+# (stealing) unstarted tasks of the call's other batches. The single jobs a
+# MATLAB session submits with the same function and resources share a call
+# folder (a pool, see task_runner_run): each job is a batch of one task, and
+# tasks are added while jobs run.
 #
 # Claims are in $D/claims (shared by all jobs of the call): t<task> is a
 # symbolic link that the claimer creates (atomic, also on NFS; it fails if
@@ -18,11 +22,16 @@
 # and skipped.
 #
 # Usage:
-#   bash run_tasks.sh job <own> <slots> <gpu 0|1> <steal 0|1|2> <retries>
+#   bash run_tasks.sh job <own> <slots> <gpu 0|1> <steal 0|1|2|3> <retries>
 #       a compiled job (or the compiled master): runs the tasks of <own>
 #       with up to <slots> runners at once (GNU parallel), then steals (1:
-#       from the last batch, 2: from the first one; only batches with the
-#       key of <own>, see keys.txt); a task a runner doesn't finish runs
+#       from the last batch, 2: from the first one; 3 (a single job, one
+#       slot): as 2, but first the job's own task runs by its task line in
+#       a process of its own, as without runners, and a job whose task
+#       another process has ends at once; it takes another batch's task
+#       only while Slurm keeps that task's job pending (see waiting_tasks)
+#       and cancels the job; only batches with the key of <own>, see
+#       keys.txt); a task a runner doesn't finish runs
 #       once more in a process of its own if retries > 1 (as GNU parallel
 #       --retries 2 did), else it is marked failed. A slot with a failed
 #       task stops stealing.
@@ -44,6 +53,10 @@
 #                 master runs); a runner takes only tasks of batches with the
 #                 key of its own (MATLAB fixes how its FFTs use threads at a
 #                 process's first FFT, and results depend on the thread count)
+#   waiting.txt   the batches whose jobs have waited in the queue for 30 s
+#                 (WAITALL=1: all, as in pools, whose tasks are added as
+#                 their jobs are submitted)
+#   jobs.txt      (pools) the Slurm job of each task: '<task> <job>_<array task>'
 #   tmps.txt      (local runs) the .tmp file and the output of each task
 #   argdump/      a copy of the compiled master's run_mccMaster.sh with a
 #                 stand-in master that writes the arguments it gets
@@ -63,10 +76,10 @@ candidates() {
     # for the runnable tasks of the batches not resubmitted whose processes
     # get the same threads and GPU as those of <own> (the same key in
     # keys.txt); <waiting> counts those of batches whose jobs wait in the
-    # queue (waiting.txt, from the master)
+    # queue (waiting.txt, from the master; all with WAITALL=1)
     [ -d "$C" ] || return
     ls -f "$C" 2> /dev/null | awk -v bs="$BS" -v nt="$NT" -v own="$1" -v steal="$2" -v rf="$D/runnable.txt" \
-        -v wf="$D/waiting.txt" -v kf="$D/keys.txt" '
+        -v wf="$D/waiting.txt" -v kf="$D/keys.txt" -v allwait="${WAITALL:-0}" '
         { c[$0] = 1 }
         END {
             if (own ~ /^\//) {
@@ -85,7 +98,7 @@ candidates() {
                     b = int((x - 1) / bs) + 1
                     if ((x in ow) || (("t" x) in c) || (("r" b) in c) || key[b] != mykey) continue
                     n++; o[n] = x
-                    if (b in w) nw++
+                    if (allwait == 1 || (b in w)) nw++
                 }
             }
             print "n", m + 0, nw + 0, n + 0
@@ -170,13 +183,14 @@ local_tmp_release() {
 
 claim_next() {
     # claims the next task: <own> <steal> <slot> <seconds> <status> <dump>
-    # <out>; writes its index to <out> (empty if none), and to <out>.more
-    # 'o' or 'a' (own or another batch's) and the numbers of unclaimed own
-    # tasks, waiting batches' tasks and other batches' tasks before it. With
-    # a dump file, tasks whose outputs exist are claimed and skipped, and the
-    # arguments of the task go to the dump file; with '-' the task's line
-    # checks its output itself
-    local own=$1 steal=$2 s=$3 est=$4 st=$5 dump=$6 out=$7 kind f counts="0 0 0"
+    # <out> [<own only>]; writes its index to <out> (empty if none), and to
+    # <out>.more 'o' or 'a' (own or another batch's) and the numbers of
+    # unclaimed own tasks, waiting batches' tasks and other batches' tasks
+    # before it. With a dump file, tasks whose outputs exist are claimed and
+    # skipped, and the arguments of the task go to the dump file; with '-'
+    # the task's line checks its output itself. <own only> 1: a task of
+    # <own> or none (the first task of a MATLAB single job)
+    local own=$1 steal=$2 s=$3 est=$4 st=$5 dump=$6 out=$7 ownonly=${8:-0} kind f counts="0 0 0" wt=""
     local me="${SLURM_ARRAY_JOB_ID:-${SLURM_JOB_ID:-0}}_${SLURM_ARRAY_TASK_ID:-0}:${SLURMD_NODENAME:-$HOSTNAME}:${PK_PID:-$$}:$s"
     : > "$out"
     echo "o $counts" > "$out.more"
@@ -187,10 +201,16 @@ claim_next() {
         fi
         [ -z "$f" ] && continue
         # tasks of other batches only if the job has the time for them
-        if [ "$kind" = a ] && ! time_left "$est"; then
+        if [ "$kind" = a ] && { [ "$ownonly" = 1 ] || ! time_left "$est"; }; then
             return 0
         fi
+        # (pools) and while Slurm keeps their jobs in the queue
+        if [ "$kind" = a ] && [ "$steal" = 3 ]; then
+            [ -z "$wt" ] && wt=" $(waiting_tasks | tr '\n' ' ') "
+            [[ "$wt" == *" $f "* ]] || continue
+        fi
         ln -s "$me" "$C/t$f" 2> /dev/null || continue
+        [ "$kind" = a ] && [ "$steal" = 3 ] && cancel_job_of "$f"
         if [ "$LOCALRUN" = 1 ] && ! local_tmp "$f"; then
             rm -f "$C/t$f"
             continue
@@ -203,6 +223,28 @@ claim_next() {
         echo "s $f" >> "$st"
         [ "$LOCALRUN" = 1 ] && local_tmp_done "$f"
     done < <(candidates "$own" "$steal")
+    return 0
+}
+
+waiting_tasks() {
+    # (steal 3, pools) the tasks whose jobs Slurm keeps in the queue: its
+    # scheduler looked at them and could not start them (pending with a
+    # reason: resources, priority, a limit), not jobs it has not looked at
+    # yet (reason None), which may start at once, nor tasks whose jobs are
+    # not recorded yet (being submitted)
+    [ -s "$D/jobs.txt" ] || return 0
+    timeout 10 squeue -r -h -u "${USER:-$(id -un)}" -t PENDING -o '%i %r' 2> /dev/null \
+        | awk 'NR == FNR {if ($2 != "None") p[$1] = 1; next} ($2 in p) {print $1}' - "$D/jobs.txt"
+}
+
+cancel_job_of() {
+    # (single jobs) the job of task $1, which this job took: cancelled while
+    # it is pending (it would only start to end at once, at the front of the
+    # queue); if it just started, its own claim failed and it ends anyway
+    local job
+    [ -f "$D/jobs.txt" ] || return 0
+    job=$(awk -v k="$1" '$1 == k {j = $2} END {print j}' "$D/jobs.txt")
+    [ -n "$job" ] && timeout 10 scancel --state=PENDING "$job" > /dev/null 2>&1
     return 0
 }
 
@@ -248,18 +290,33 @@ slot() {
         k=$((k + 1))
         st="$L/s${s}_$k"
         : > "$st"
-        claim_next "$own" "$steal" "$s" "$est" "$st" - "$L/next_$s"
-        f=$(cat "$L/next_$s")
-        [ -z "$f" ] && break
+        if [ "$steal" = 3 ] && [ "$k" = 1 ]; then
+            # (steal 3, a single job) its own task first, as before: claimed
+            # without listing the pool and run by its task line in a process
+            # of its own; a job whose task another process has ends at once.
+            # Then the pool's unstarted tasks
+            if ! ln -s "$(owner "$s")" "$C/t$own" 2> /dev/null; then
+                echo "Task runner: no task left to run for $own"
+                break
+            fi
+            f=$own
+            nown=0
+            nwait=0
+            nsteal=1
+        else
+            claim_next "$own" "$steal" "$s" "$est" "$st" - "$L/next_$s"
+            f=$(cat "$L/next_$s")
+            [ -z "$f" ] && break
+            read -r kind nown nwait nsteal < "$L/next_$s.more"
+            [ "$kind" = o ] && nown=$(( nown - 1 ))
+            [ "$kind" = a ] && nsteal=$(( nsteal - 1 ))
+        fi
         echo "c $f" >> "$st"
         line=$(task_line "$f")
         # the process runs more tasks (a runner) only if the slot has more
         # to do: own tasks beyond one per slot that hasn't started, tasks of
         # batches that wait in the queue, or (local runs) any; else the task
         # line runs as before
-        read -r kind nown nwait nsteal < "$L/next_$s.more"
-        [ "$kind" = o ] && nown=$(( nown - 1 ))
-        [ "$kind" = a ] && nsteal=$(( nsteal - 1 ))
         later=0
         [ "$k" = 1 ] && later=$(( P - s ))
         more=0
@@ -313,7 +370,12 @@ job() {
     local own=$1 P=$2 gpu=$3 steal=$4 retries=$5 L n
     # no more slots than tasks to take (GNU parallel started one process
     # per task line): the batch's unclaimed tasks and (steal) the others'
-    n=$(candidates "$own" "$steal" | awk '$1 == "n" {print $2 + $4; exit}')
+    # (steal 3: one, the single job's own task, which the slot claims first)
+    if [ "$steal" = 3 ]; then
+        n=1
+    else
+        n=$(candidates "$own" "$steal" | awk '$1 == "n" {print $2 + $4; exit}')
+    fi
     if [ -z "$n" ] || [ "$n" -eq 0 ]; then
         echo "Task runner: no task left to run for $own"
         return 0
@@ -330,8 +392,10 @@ job() {
 
 matlab_job() {
     # a MATLAB job: <own> <steal>
-    local own=$1 steal=$2 L k=0 est=0 f u st
-    if ! has_work "$own" "$steal"; then
+    local own=$1 steal=$2 L k=0 est=0 f u st first
+    first=0
+    [ "$steal" = 3 ] && first=1
+    if ! has_work "$own" "$(( first ? 0 : steal ))"; then
         echo "Task runner: no task left to run for $own"
         return 0
     fi
@@ -340,7 +404,9 @@ matlab_job() {
         k=$((k + 1))
         st="$L/s1_$k"
         : > "$st"
-        claim_next "$own" "$steal" 1 "$est" "$st" "$L/dump_1" "$L/next_1"
+        # (steal 3) the job's first task is one of its own
+        [ "$k" -gt 1 ] && first=0
+        claim_next "$own" "$steal" 1 "$est" "$st" "$L/dump_1" "$L/next_1" "$first"
         f=$(cat "$L/next_1")
         [ -z "$f" ] && break
         echo "c $f" >> "$st"

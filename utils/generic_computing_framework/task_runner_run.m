@@ -48,7 +48,54 @@ function [varargout] = task_runner_run(action, varargin)
 %       (waiting: logical per task) have waited in the queue or for their
 %       submission since 30 s or more at time t (s); runners start where
 %       their jobs can take such tasks
+%
+% Single jobs (generic_single_job_submit_wrapper): the single jobs this
+% MATLAB session submits with the same function, resources and compiled
+% master (or MATLAB launch) share a call folder, a pool, in the job log
+% folder (from the second of them on; the first runs as before): each job is
+% a batch of one task (its own), and tasks are added as their jobs are
+% submitted. A job runs its own task (compiled jobs: in a process of its
+% own, as before; MATLAB jobs: in a runner), then unstarted tasks of the
+% pool's other jobs in the order of their submission (in a task runner)
+% while Slurm keeps those jobs in the queue (pending, not just submitted),
+% and cancels them; a job whose task another job's runner has ends at once.
+% The master takes a task back from the pool before it runs or submits it
+% again (as before, without runners).
+%   t = task_runner_run('single_task', funcStr)
+%       the pool task of funcStr ([] if it has none, or the master took it
+%       back): pool key, index i and whether it has a job (submitted)
+%   t = task_runner_run('single_add', funcStr, key, parentDir, line, MCCMasterStr, MatlabLaunchStr)
+%       adds the task to the pool of key, which its first task makes in
+%       parentDir for the compiled master MCCMasterStr, or ('' and the MATLAB
+%       launch string) for MATLAB jobs; line is the task line (compiled) or
+%       task string (MATLAB); [] if the task can't be added (it then runs
+%       as before)
+%   cmd = task_runner_run('single_cmd', funcStr)
+%       the job script command of the task's job
+%   task_runner_run('single_job', funcStr, jobId, arrayId)
+%       records the job of the task; jobId [] if it couldn't be submitted
+%       (then the master takes the task back)
+%   [live, claimed] = task_runner_run('single_live', funcStr)
+%       whether a process other than the task's own job has it and may
+%       still run it, and whether it is claimed
+%   ok = task_runner_run('single_take', funcStr)
+%       the master takes the task back (no runner takes it then); false if
+%       another process has it
+%   status = task_runner_run('single_status', jobId, arrayId, status)
+%       the status of a single job whose Slurm job has status (see
+%       check_single_job_status): after the job ended, 1 while another
+%       process has its task, -1 (after the master took the task back) if
+%       none has; while it is pending, -1 if a runner of another job failed
+%       the task (the master took it back and cancelled the job), and a
+%       runner that ended without finishing it leaves it to the job
 
+
+persistent S
+if isempty(S) && startsWith(action, 'single')
+    S = struct('session', '', 'pools', containers.Map('KeyType', 'char', 'ValueType', 'any'), ...
+        'tasks', containers.Map('KeyType', 'char', 'ValueType', 'any'), ...
+        'jobs', containers.Map('KeyType', 'char', 'ValueType', 'any'));
+end
 
 varargout = cell(1, max(1, nargout));
 switch action
@@ -72,6 +119,20 @@ switch action
         release_claims(varargin{:});
     case 'claim'
         varargout{1} = claim_tasks(varargin{:});
+    case 'single_task'
+        varargout{1} = single_task(S, varargin{:});
+    case 'single_add'
+        [varargout{1}, S] = single_add(S, varargin{:});
+    case 'single_cmd'
+        varargout{1} = single_cmd(S, varargin{:});
+    case 'single_job'
+        S = single_job(S, varargin{:});
+    case 'single_live'
+        [varargout{1 : max(1, nargout)}] = single_live(S, varargin{:});
+    case 'single_take'
+        [varargout{1}, S] = single_take(S, varargin{:});
+    case 'single_status'
+        [varargout{1}, S] = single_status(S, varargin{:});
     otherwise
         error('task_runner_run:unknownAction', 'Unknown action %s.', action);
 end
@@ -91,7 +152,7 @@ if ~isfile(fn)
     return;
 end
 v = sscanf(fileread(fn), '%d', 1);
-tf = ~isempty(v) && v == task_runner('version');
+tf = ~isempty(v) && v == task_runner_version();
 
 end
 
@@ -252,9 +313,12 @@ lines = {'#!/bin/bash'
 end
 
 
-function [] = write_script(rc, tmpl, nF, taskBatchNum, MCCMasterStr, MatlabLaunchStr, localRun, uwt)
+function [] = write_script(rc, tmpl, nF, taskBatchNum, MCCMasterStr, MatlabLaunchStr, localRun, uwt, waitAll)
 % the job script: the call's settings, then the template
 
+if nargin < 9
+    waitAll = false;
+end
 q = @(x) strrep(x, '''', '''\''''');
 header = {'#!/bin/bash'
     sprintf('D=''%s''', q(rc.D))
@@ -264,6 +328,9 @@ header = {'#!/bin/bash'
     sprintf('MLAUNCH=''%s''', q(MatlabLaunchStr))
     sprintf('LOCALRUN=%d', localRun)
     sprintf('UWTSEC=%d', round(uwt * 60))};
+if waitAll
+    header{end + 1} = 'WAITALL=1';
+end
 fid = fopen(rc.script, 'w');
 fprintf(fid, '%s\n', header{:});
 fwrite(fid, tmpl);
@@ -470,6 +537,359 @@ if status ~= 0
     return;
 end
 ok = ismember(fs, sscanf(txt, '%d'));
+
+end
+
+
+function [t] = single_task(S, funcStr)
+% the pool task of funcStr, [] if it has none or the master took it back
+
+t = [];
+if isKey(S.tasks, funcStr)
+    t = S.tasks(funcStr);
+    if strcmp(t.state, 'taken')
+        t = [];
+    end
+end
+
+end
+
+
+function [t, S] = single_add(S, funcStr, key, parentDir, line, MCCMasterStr, MatlabLaunchStr)
+% adds the task (its task line or task string) to the pool of key, made
+% with its first task
+
+t = [];
+if isKey(S.tasks, funcStr)
+    t = single_task(S, funcStr);
+    return;
+end
+% (one line per task in tasks.txt; the job script reads them by offset)
+if any(line == newline | line == char(13))
+    return;
+end
+try
+    if isKey(S.pools, key)
+        p = S.pools(key);
+        if ~p.on
+            return;
+        end
+    else
+        if isempty(S.session)
+            % the time (also its microseconds) and this MATLAB's process id
+            % (a first datetime, uuid or RandStream call took 70-250 ms,
+            % before the first job's submission)
+            S.session = sprintf('%04d%02d%02d_%02d%02d%02d_%d_%06d', fix(clock), feature('getpid'), mod(tic, 1e6));
+        end
+        p = single_pool(sprintf('%s/task_runner_single_%s_%d', parentDir, S.session, S.pools.Count + 1), ...
+            MCCMasterStr, MatlabLaunchStr);
+    end
+    % the line, its byte offset, then the task's index: the job script takes
+    % only indices in runnable.txt, so it never reads a line being written
+    i = p.n + 1;
+    bytes = unicode2native([line, newline], 'UTF-8');
+    append_text([p.rc.D, '/tasks.txt'], bytes);
+    append_text([p.rc.D, '/tasks.idx'], sprintf('%012d\n', p.bytes));
+    append_text([p.rc.D, '/runnable.txt'], sprintf('%d\n', i));
+    p.n = i;
+    p.bytes = p.bytes + numel(bytes);
+    S.pools(key) = p;
+    t = struct('key', key, 'i', i, 'state', 'new', 'jobKey', '');
+    S.tasks(funcStr) = t;
+catch ME
+    warning('task_runner_run:single', 'The single job runs without task runners: %s', ME.message);
+    % (the pool's files may be incomplete: its later tasks run as before)
+    if exist('p', 'var') && isstruct(p)
+        p.on = false;
+    else
+        p = struct('on', false);
+    end
+    S.pools(key) = p;
+    t = [];
+end
+
+end
+
+
+function [p] = single_pool(D, MCCMasterStr, MatlabLaunchStr)
+% the call folder of a pool: the job script for batches of one task, whose
+% count grows (NT), with all of a pool's tasks counted as waiting (their
+% jobs are submitted one by one, so tasks a job can take have jobs that
+% have not started), the stand-in master and the (empty) task files
+
+rc = new_rc(D);
+D = rc.D;
+if any(contains(MCCMasterStr, {'''', '|', newline}))
+    error('task_runner_run:path', 'The compiled master %s has characters the job script does not take.', MCCMasterStr);
+end
+tmpl = script_template();
+% the folders, a probe that the claims folder takes symbolic links (claims
+% are symbolic links), the empty task files and the compiled master's
+% run_mccMaster.sh, in one shell (MATLAB's mkdir and copyfile took 70 ms
+% more at their first use, before the pool's first job was submitted)
+probe = sprintf('%s/claims/.probe_%d', D, feature('getpid'));
+cmd = sprintf(['mkdir -p "%s/claims" "%s/argdump" && ln -s probe "%s" && rm -f "%s" ', ...
+    '&& : > "%s/tasks.txt" && : > "%s/tasks.idx" && : > "%s/runnable.txt"'], D, D, probe, probe, D, D, D);
+if ~isempty(MCCMasterStr)
+    cmd = sprintf('%s && cp ''%s'' "%s/argdump/run_mccMaster.sh" && chmod +x "%s/argdump/run_mccMaster.sh"', ...
+        cmd, MCCMasterStr, D, D);
+end
+[status, out] = system(cmd);
+if status ~= 0
+    error('task_runner_run:claims', 'The pool folder %s can''t be made, or its claims folder takes no symbolic links: %s', ...
+        D, strtrim(out));
+end
+if isempty(MCCMasterStr)
+    write_lines([D, '/argdump/run_mccMaster.sh'], {'#!/bin/sh'; 'shift 1'; 'exec "$(dirname "$0")/mccMaster" "$@"'});
+    fileattrib([D, '/argdump/run_mccMaster.sh'], '+x');
+    % the MATLAB runner takes each task string from the arguments its line
+    % gives the stand-in master
+    funcStrs = {};
+    runDir = '';
+    GPUJob = false;
+    fromDump = true;
+    save([D, '/tasks.mat'], 'funcStrs', 'runDir', 'GPUJob', 'fromDump');
+end
+write_lines([D, '/argdump/mccMaster'], arg_writer());
+fileattrib([D, '/argdump/mccMaster'], '+x');
+write_script(rc, tmpl, 999999999, 1, MCCMasterStr, MatlabLaunchStr, false, 0, true);
+rc.on = true;
+p = struct('rc', rc, 'mcc', ~isempty(MCCMasterStr), 'n', 0, 'bytes', 0, 'on', true);
+
+end
+
+
+function [cmd] = single_cmd(S, funcStr)
+% the job script command of a single job: its own task first (the job ends
+% if another process has it), then other tasks of the pool whose jobs wait
+% in the queue, in the order of their submission (as the queue would start
+% their jobs, so that results come in about the order of before); one try
+% per task (the caller submits a failed task again)
+
+t = S.tasks(funcStr);
+p = S.pools(t.key);
+if p.mcc
+    cmd = job_cmd(p.rc, t.i, 1, 0, 3, 1);
+else
+    cmd = matlab_cmd(p.rc, t.i, 3);
+end
+
+end
+
+
+function [S] = single_job(S, funcStr, jobId, arrayId)
+% records the job of the task, also for the runner that takes the task
+% (jobs.txt: it cancels the job if it is pending); without one, the master
+% takes the task back
+
+if isempty(jobId)
+    [~, S] = single_take(S, funcStr);
+    return;
+end
+t = S.tasks(funcStr);
+t.state = 'submitted';
+t.jobKey = sprintf('%d_%d', jobId, arrayId);
+S.tasks(funcStr) = t;
+S.jobs(t.jobKey) = funcStr;
+p = S.pools(t.key);
+try
+    append_text([p.rc.D, '/jobs.txt'], sprintf('%d %s\n', t.i, t.jobKey));
+catch ME
+    % (the job then starts and ends at once if a runner took its task)
+    warning('task_runner_run:single', 'The job of a single job''s task is not recorded: %s', ME.message);
+end
+
+end
+
+
+function [live, claimed] = single_live(S, funcStr)
+% whether a process other than the task's own job has its claim and may
+% still run it, and whether the task is claimed
+
+t = S.tasks(funcStr);
+p = S.pools(t.key);
+[owner, failed] = read_claim(p.rc, t.i);
+live = owner_live(owner, failed, t.jobKey);
+claimed = ~isempty(owner);
+
+end
+
+
+function [ok, S] = single_take(S, funcStr)
+% the master takes the task back: it removes a claim whose owner ended (and
+% the failed mark), claims the task and marks it resubmitted, so that no
+% runner takes it; false if another process has it
+
+t = S.tasks(funcStr);
+ok = strcmp(t.state, 'taken');
+if ok
+    return;
+end
+p = S.pools(t.key);
+[owner, failed] = read_claim(p.rc, t.i);
+if owner_live(owner, failed, t.jobKey)
+    return;
+end
+% a claim whose owner ended is replaced at once (rename), so that no runner
+% claims the task in between (it stays as it is until then: only its owner,
+% which ended, and this master remove claims); without a claim, the master's
+% fails if a runner just claimed the task
+[job, arr] = own_job();
+me = sprintf('%d_%d:%s:%d:0', job, arr, node_name(), feature('getpid'));
+if isempty(owner)
+    claimCmd = sprintf('ln -s "%s" t%d 2> /dev/null', me, t.i);
+else
+    tmpName = sprintf('.take_t%d_%d', t.i, feature('getpid'));
+    claimCmd = sprintf('rm -f %s && ln -s "%s" %s && mv -fT %s t%d', tmpName, me, tmpName, tmpName, t.i);
+end
+[status, txt] = system(sprintf('cd "%s" && rm -f f%d && %s && : > r%d && echo taken', p.rc.claimsDir, t.i, claimCmd, t.i));
+ok = status == 0 && contains(txt, 'taken');
+if ~ok
+    % another process just claimed it, or (if no live process has it now)
+    % the claims folder failed us, and then no runner can claim it either
+    [owner, failed] = read_claim(p.rc, t.i);
+    ok = ~owner_live(owner, failed, t.jobKey);
+end
+if ok
+    t.state = 'taken';
+    S.tasks(funcStr) = t;
+end
+
+end
+
+
+function [status, S] = single_status(S, jobId, arrayId, status)
+% the status of a pool task's own job (status from Slurm): after the job
+% ended, 1 while another process has the task, else the master takes it
+% back (-1); while the job is pending, see single_pending (-1 after a
+% runner failed the task: the master took it back and cancelled the job)
+
+if status == 1
+    return;
+end
+jobKey = sprintf('%d_%d', jobId, arrayId);
+if ~isKey(S.jobs, jobKey)
+    return;
+end
+funcStr = S.jobs(jobKey);
+t = S.tasks(funcStr);
+if strcmp(t.state, 'taken') || ~strcmp(t.jobKey, jobKey)
+    return;
+end
+if status == 0
+    [state, S] = single_pending(S, funcStr);
+    if strcmp(state, 'failed')
+        [ok, S] = single_take(S, funcStr);
+        if ok
+            system(sprintf('scancel %s', jobKey));
+            status = -1;
+        end
+    end
+    return;
+end
+[ok, S] = single_take(S, funcStr);
+if ~ok
+    status = 1;
+end
+
+end
+
+
+function [state, S] = single_pending(S, funcStr)
+% while the task's own job is pending: 'live' if a runner of another job
+% has the task, 'failed' if one failed it, 'released' if one had it and
+% ended without finishing it (killed): its claim is removed, so that the own
+% job runs the task when it starts (or another runner takes it), as without
+% runners; else 'none'. The pool's claims and their owners' jobs are read
+% at most every 10 s (only this master removes claims of processes that
+% ended, so such a claim is still there)
+
+state = 'none';
+t = S.tasks(funcStr);
+p = S.pools(t.key);
+if ~isfield(p, 'claimCache') || isempty(p.claimCache) || toc(p.claimTime) > 10
+    p.claimCache = [];
+    p.claimTime = tic;
+end
+[claimed, live, p.claimCache] = claim_states(p.rc, t.i, p.claimCache);
+if ~claimed
+    S.pools(t.key) = p;
+    return;
+end
+if live
+    state = 'live';
+elseif ismember(sprintf('f%d', t.i), p.claimCache.names)
+    state = 'failed';
+else
+    state = 'released';
+    system(sprintf('rm -f "%s/t%d"', p.rc.claimsDir, t.i));
+    p.claimCache.names(strcmp(p.claimCache.names, sprintf('t%d', t.i))) = {''};
+end
+S.pools(t.key) = p;
+
+end
+
+
+function [owner, failed] = read_claim(rc, i)
+% the owner of task i's claim ('' if none) and whether it is marked failed;
+% opening the claims folder first revalidates it on NFS, so that claims
+% other nodes just made are seen
+
+[~, txt] = system(sprintf('C="%s"; : < "$C"; printf ''t %%s\\n'' "$(readlink "$C/t%d" 2> /dev/null)"; [ -L "$C/f%d" ] && echo f', ...
+    rc.claimsDir, i, i));
+lines = splitlines(txt);
+k = find(startsWith(lines, 't '), 1);
+owner = '';
+if ~isempty(k)
+    owner = strtrim(lines{k}(3 : end));
+end
+failed = any(strcmp(strtrim(lines), 'f'));
+
+end
+
+
+function [live] = owner_live(owner, failed, ownJobKey)
+% whether the owner of a claim may still run its task: its Slurm job is in
+% the queue or (no job, or this process's job) its process runs on this
+% node; not a claim marked failed, of the task's own job (the caller has
+% its status) or of this process
+
+live = false;
+if isempty(owner) || failed
+    return;
+end
+tok = regexp(owner, '^(\d+)_(\d+):([^:]*):(\d+):', 'tokens', 'once');
+if isempty(tok)
+    % an owner the job script didn't write: taken as live
+    live = true;
+    return;
+end
+if strcmp(sprintf('%s_%s', tok{1}, tok{2}), ownJobKey)
+    return;
+end
+job = str2double(tok{1});
+arr = str2double(tok{2});
+[myJob, myArray] = own_job();
+if job > 0 && ~(job == myJob && arr == myArray)
+    live = check_batch_slurm_jobs_status(job, arr) >= 0;
+else
+    live = strcmp(tok{3}, node_name()) && str2double(tok{4}) ~= feature('getpid') && isfolder(['/proc/', tok{4}]);
+end
+
+end
+
+
+function [] = append_text(fn, x)
+% appends text or bytes to a file
+
+fid = fopen(fn, 'a');
+if fid < 0
+    error('task_runner_run:write', 'Cannot write %s.', fn);
+end
+fwrite(fid, x);
+if fclose(fid) ~= 0
+    error('task_runner_run:write', 'Cannot write %s.', fn);
+end
 
 end
 

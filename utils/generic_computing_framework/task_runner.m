@@ -59,7 +59,7 @@ switch action
     case 'matlab'
         run_matlab(varargin{:});
     case 'version'
-        out = 1;
+        out = task_runner_version();
     otherwise
         error('task_runner:unknownAction', 'Unknown action %s.', action);
 end
@@ -121,7 +121,9 @@ s.base = {};
 if keepBase
     s.base = evalin('base', 'who');
 end
-s.figs = figures();
+% a new process has no figures (listing them would start the graphics
+% system, 0.7 s with Java); the reset closes those the tasks leave
+s.figs = [];
 s.rssKB = rss_kb();
 
 end
@@ -190,7 +192,8 @@ end
 
 function [] = run_matlab(D, own, steal, st, L, f)
 % MATLAB job runner: runs task f (claimed by the job script) and the next
-% tasks of the call (task strings in D/tasks.mat)
+% tasks of the call (task strings in D/tasks.mat, or for single jobs' pools
+% in the dump of each task's line)
 
 r.D = D;
 r.own = own;
@@ -206,10 +209,23 @@ catch ME
     % (see start_runner) only this task
     fprintf('Task runner %s: this process runs only task %d (%s)\n', runner_name(r), f, ME.message);
 end
-a = load([D, '/tasks.mat'], 'funcStrs', 'runDir', 'GPUJob');
+a = load([D, '/tasks.mat']);
 est = 0;
 while true
-    funcStr = a.funcStrs{f};
+    if isfield(a, 'fromDump') && a.fromDump
+        % (single jobs' pools, whose tasks are added while jobs run) the
+        % task string is the argument its line gave the stand-in master
+        [~, args] = read_dump(sprintf('%s/dump_%d', L, r.slot));
+        if isempty(args)
+            % (as a failed task: the master submits it again, as before)
+            fprintf('Task runner %s: no task string for task %d\n', runner_name(r), f);
+            append_status(st, sprintf('e %d\nx failed', f));
+            return;
+        end
+        funcStr = args{1};
+    else
+        funcStr = a.funcStrs{f};
+    end
     fprintf('Task runner %s: task %d: %s\n', runner_name(r), f, funcStr);
     tm = task_metrics('start', funcStr, a.runDir, f, 'slurm_matlab', a.GPUJob);
     t1 = tic;

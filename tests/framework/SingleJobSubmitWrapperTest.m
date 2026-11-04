@@ -75,6 +75,76 @@ classdef SingleJobSubmitWrapperTest < pktest.TestCase
             testCase.verifyEqual(slurm.callCount('sbatch'), 1);
         end
 
+        function taskWithoutAJobIsSubmittedWithoutAQueueCheck(testCase)
+            % squeue (8-10 ms a call on the cluster) ran also for a task
+            % without a job (job id -1), where it could only say so; a job
+            % is still checked
+            testCase.assumeFalse(ispc, 'The fake Slurm needs a POSIX shell.');
+            slurm = testCase.applyFixture(pktest.FakeSlurmFixture);
+            [jobId, ~, submitStatus] = testCase.callWrapper(-1, 7);
+            testCase.verifyEqual([jobId, submitStatus], [1000, 1]);
+            testCase.verifyEqual(slurm.callCount('squeue'), 0);
+            slurm.setJobStates('1000_7', {'R'});
+            [~, jobStatus] = testCase.callWrapper(1000, 7);
+            testCase.verifyEqual(jobStatus, 1);
+            testCase.verifyEqual(slurm.calls('squeue'), {'-j 1000_7'});
+        end
+
+        function slurmIsCheckedOncePerJobLogFolder(testCase)
+            % callers call the wrapper for each job in each round, and each
+            % call ran sinfo and listed the job log folder (10 ms or more);
+            % both are kept for the folder while Slurm is there, with the
+            % same job log paths
+            testCase.assumeFalse(ispc, 'The fake Slurm needs a POSIX shell.');
+            clear generic_single_job_submit_wrapper task_runner_run single_job_pools
+            slurm = testCase.applyFixture(pktest.FakeSlurmFixture);
+            logDir = testCase.createTempFolder();
+            otherLogDir = testCase.createTempFolder();
+            testCase.callWrapper(-1, 7, 'jobLogDir', logDir);
+            testCase.callWrapper(-1, 8, 'jobLogDir', logDir);
+            testCase.verifyEqual(nnz(startsWith(slurm.history(), 'sinfo')), 1);
+            testCase.callWrapper(-1, 9, 'jobLogDir', otherLogDir);
+            testCase.verifyEqual(nnz(startsWith(slurm.history(), 'sinfo')), 2);
+            logs = regexp(slurm.calls('sbatch'), '-o (\S+) -e (\S+)', 'tokens', 'once');
+            testCase.assertNumElements(logs, 3);
+            testCase.verifyEqual(logs{2}, logs{1});
+            testCase.verifyEqual(logs{1}, {[logDir, 'job_%A_%a.out'], [logDir, 'job_%A_%a.err']});
+            testCase.verifyEqual(logs{3}, {[otherLogDir, 'job_%A_%a.out'], [otherLogDir, 'job_%A_%a.err']});
+        end
+
+        function sessionWithoutRunnersDoesNotLoadThem(testCase)
+            % with runners off, the wrapper doesn't look for pool tasks
+            % before a task of the session joined a pool (the runner code's
+            % first call took 60-80 ms)
+            testCase.assumeFalse(ispc, 'The fake Slurm needs a POSIX shell.');
+            clear generic_single_job_submit_wrapper task_runner_run single_job_pools
+            slurm = testCase.applyFixture(pktest.FakeSlurmFixture);
+            logDir = testCase.createTempFolder();
+            testCase.callWrapper(-1, 7, 'jobLogDir', logDir, 'taskRunner', false);
+            testCase.callWrapper(-1, 8, 'jobLogDir', logDir, 'taskRunner', false);
+            testCase.verifyEqual(slurm.callCount('sbatch'), 2);
+            testCase.verifyFalse(ismember('task_runner_run', inmem), 'The runner code was loaded.');
+        end
+
+        function slurmIsCheckedInEachCallWithoutSlurm(testCase)
+            % without Slurm (sinfo fails) nothing is kept: each call checks
+            % again, as before
+            testCase.assumeFalse(ispc, 'The sinfo stub needs a POSIX shell.');
+            clear generic_single_job_submit_wrapper task_runner_run single_job_pools
+            stubDir = testCase.createTempFolder();
+            logFn = [stubDir, 'sinfo.log'];
+            fid = fopen([stubDir, 'sinfo'], 'w');
+            fprintf(fid, '#!/bin/sh\necho x >> "%s"\nexit 1\n', logFn);
+            fclose(fid);
+            fileattrib([stubDir, 'sinfo'], '+x');
+            testCase.applyFixture(matlab.unittest.fixtures.EnvironmentVariableFixture('PATH', ...
+                [stubDir, pathsep, getenv('PATH')]));
+            logDir = testCase.createTempFolder();
+            testCase.callWrapper(-1, 7, 'jobLogDir', logDir);
+            testCase.callWrapper(-1, 8, 'jobLogDir', logDir);
+            testCase.verifyNumElements(splitlines(strip(fileread(logFn))), 2);
+        end
+
         function compiledJobsUseOwnRuntimeCache(testCase)
             % single compiled jobs shared one MATLAB Runtime cache, so jobs
             % starting at the same time on a node sometimes failed to start

@@ -718,8 +718,9 @@ while ~all(is_done_flag | (trial_counter >= max_trial_num & ~job_status_flag), '
                                             masterCompute=masterCompute, cpusPerTask=cpusPerTask, lastFile=lastFile, ...
                                             memAllocate=memAllocate, mccMode=mccMode, configFile=configFile);
                                     else
-                                        % the last try: only check whether its job is still there
-                                        job_status = check_slurm_job_status(job_id, task_id);
+                                        % the last try: only check whether its job (or a task
+                                        % runner of another job that took its task) is still there
+                                        job_status = check_single_job_status(job_id, task_id);
                                         submit_status = 0;
                                     end
     

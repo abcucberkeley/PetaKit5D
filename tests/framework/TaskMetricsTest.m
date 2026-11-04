@@ -438,8 +438,10 @@ classdef TaskMetricsTest < pktest.TestCase
             [inFns, outFns, logFn, dataPath] = testCase.makeTasks(1);
             funcStr = testCase.taskStrings(inFns, outFns, logFn, 'copy');
 
+            % (the job command of before; SingleJobRunnerTest has the
+            % metrics of single jobs with task runners)
             evalc(['generic_single_job_submit_wrapper(funcStr{1}, -1, 7, ''maxTrialNum'', 1, ''jobLogDir'', dataPath, ', ...
-                '''cpusPerTask'', 2, ''memAllocate'', 30, ''taskMetrics'', true)']);
+                '''cpusPerTask'', 2, ''memAllocate'', 30, ''taskMetrics'', true, ''taskRunner'', false)']);
 
             sbatch = slurm.calls('sbatch');
             testCase.assertNumElements(sbatch, 1);
