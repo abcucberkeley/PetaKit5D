@@ -100,6 +100,11 @@ function [rc] = new_rc(D)
 % the call's runner settings; D without the trailing slash. The job script
 % and its commands take paths without quoting
 
+% a leading ~ is the home folder, as for MATLAB's file functions (the job
+% script has D in quotes, where bash doesn't expand it)
+if strcmp(D, '~') || startsWith(D, '~/')
+    D = [getenv('HOME'), D(2 : end)];
+end
 D = regexprep(strrep(D, '\', '/'), '/+', '/');
 D = regexprep(D, '/$', '');
 rc = struct('on', false, 'D', D, 'claimsDir', [D, '/claims'], 'script', [D, '/run_tasks.sh']);

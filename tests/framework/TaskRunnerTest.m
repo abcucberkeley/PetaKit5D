@@ -166,6 +166,22 @@ classdef TaskRunnerTest < pktest.TestCase
             testCase.verifySubstring(out, 'no task left');
         end
 
+        function callFolderInTheHomeFolderAsTildeRunsItsTasks(testCase)
+            % a call folder given as ~/... (data paths such as the demos'
+            % ~/Downloads/...): the job script finds the claims and tasks
+            % (bash doesn't expand ~ in the script's quoted paths)
+            testCase.assumeLinux();
+            home = testCase.createTempFolder();
+            testCase.addTeardown(@setenv, 'HOME', getenv('HOME'));
+            setenv('HOME', regexprep(home, '/$', ''));
+            [c, b] = testCase.makeCall(4, 4, {}, '', false(4, 1), '~/data/tmp/call/');
+            testCase.verifyEqual(c.rc.D, [home, 'data/tmp/call']);
+            out = testCase.runJob(c, 'job 1 2 0 1 2');
+            testCase.verifyEqual(sort([testCase.taskRuns(b).task]), 1 : 4, out);
+            testCase.verifyTrue(all(cellfun(@isfile, c.outFns)));
+            testCase.verifyEqual(sort(testCase.claimNames(c)), sort(arrayfun(@(x) sprintf('t%d', x), 1 : 4, 'unif', 0)));
+        end
+
         function matlabJobWithNoTaskLeftStartsNoMatlab(testCase)
             % a MATLAB job starts MATLAB only for a task it claimed
             testCase.assumeLinux();
@@ -816,11 +832,12 @@ classdef TaskRunnerTest < pktest.TestCase
             testCase.assumeTrue(isunix && ~ismac, 'Task runners run on Linux only.');
         end
 
-        function [c, b] = makeCall(testCase, nT, BS, modes, kind, excluded)
+        function [c, b] = makeCall(testCase, nT, BS, modes, kind, excluded, callDir)
             % a call folder (task_runner_run setup) for nT fake tasks in
             % batches of BS; modes: {task, mode; ...} ('error', 'crash',
             % 'slow', 'giveback': a runner gives it back once; else 'ok');
-            % kind 'local' for a local run; excluded: tasks without inputs
+            % kind 'local' for a local run; excluded: tasks without inputs;
+            % callDir: the call folder (default: call/ in a new folder)
             if nargin < 5
                 kind = '';
             end
@@ -828,6 +845,9 @@ classdef TaskRunnerTest < pktest.TestCase
                 excluded = false(nT, 1);
             end
             dataPath = testCase.createTempFolder();
+            if nargin < 7
+                callDir = [dataPath, 'call/'];
+            end
             b = testCase.fakeBuild([dataPath, 'build/']);
             mkdir([dataPath, 'out']);
             c.outFns = arrayfun(@(x) sprintf('%sout/o_%d.txt', dataPath, x), 1 : nT, 'unif', 0);
@@ -849,7 +869,7 @@ classdef TaskRunnerTest < pktest.TestCase
             if strcmp(kind, 'local')
                 tmpInfo = struct('tmpFns', {c.tmpFns}, 'outFns', {c.outFns}, 'unitWaitTime', 3);
             end
-            evalc('c.rc = task_runner_run(''setup'', [dataPath, ''call/''], lines, b.master, BS, tmpInfo, excluded);');
+            evalc('c.rc = task_runner_run(''setup'', callDir, lines, b.master, BS, tmpInfo, excluded);');
             testCase.assertTrue(c.rc.on, 'The runner files could not be written.');
         end
 
