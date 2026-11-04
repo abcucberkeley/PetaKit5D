@@ -373,9 +373,11 @@ while ~all(is_done_flag | (trial_counter >= max_trial_num & ~job_status_flag), '
     if isempty(lastF)
         lastF = 0;
     end
-    % (cluster) the files volumes wait for that jobs still make: tiles, or
-    % the stitch info of the primary channel (a cell per volume)
+    % the files volumes wait for: tiles that jobs still make (cluster), the
+    % stitch info of the primary channel (a cell per volume); and the
+    % results that jobs or other processes still make
     awaited = {};
+    results = {};
     for n = 1:numel(fullIter)
         for ncam = 1:numel(Cam)
             for s = 1:numel(stackn)
@@ -730,6 +732,8 @@ while ~all(is_done_flag | (trial_counter >= max_trial_num & ~job_status_flag), '
                                 per_file_wait_time = unitWaitTime; % minite
                                 temp_file_info = dir(cur_tmp_fname);
                                 if minutes(datetime('now') - temp_file_info.date) < size(cur_tab, 1) * per_file_wait_time
+                                    % (another process stitches it)
+                                    results{end + 1} = stitch_save_fname;
                                     continue; 
                                 else
                                     fclose(fopen(cur_tmp_fname, 'w'));
@@ -759,6 +763,9 @@ while ~all(is_done_flag | (trial_counter >= max_trial_num & ~job_status_flag), '
                             if exist(cur_tmp_fname, 'file')
                                 delete(cur_tmp_fname);
                             end
+                        elseif parseCluster && job_status_flag(n, ncam, s, c, z)
+                            % (its job still makes it)
+                            results{end + 1} = stitch_save_fname;
                         end
                     end
                 end
@@ -773,16 +780,10 @@ while ~all(is_done_flag | (trial_counter >= max_trial_num & ~job_status_flag), '
     % wait 30 seconds if some tasks are still computing
     if ~all(is_done_flag | trial_counter >= max_trial_num, 'all') || ...
             (parseCluster && any(job_status_flag & ~is_done_flag, 'all'))
-        % (cluster) while volumes wait for files that jobs still make (up to
-        % 100), look for them each second, and go on once a volume has its
-        % files, so that it is stitched soon after they come
-        if parseCluster && ~streaming && ~isempty(awaited) && sum(cellfun(@numel, awaited)) <= 100
-            for i = 1 : 5
-                if any(cellfun(@(x) all(batch_file_exist(x)), awaited))
-                    break;
-                end
-                pause(1);
-            end
+        % (not streaming) the next round comes within about a second of the
+        % files a volume waits for, or of the last results still to come
+        if ~streaming
+            wait_for_files([{results}, awaited], 5);
         else
             pause(5);
         end

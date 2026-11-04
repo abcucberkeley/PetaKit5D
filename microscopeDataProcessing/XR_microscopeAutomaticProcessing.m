@@ -253,6 +253,11 @@ if saveZarr
     ext = '.zarr';
 end
 
+% the result folders of the steps ({} for steps that are off)
+dsPaths = {};
+dsrPaths = {};
+stchPaths = {};
+
 % for stitching, enable DS and DSR
 % For multiple datasets, if the image list is not provide for any dataset,
 % set stitch as false. 
@@ -717,7 +722,11 @@ while ~all(is_done_flag | (trial_counter >= maxTrialNum & ~job_active), 'all') |
         if parseCluster
             waitTime = min(30, max(3, 0.3 * sum(~all(is_done_flag, 2))));
         end
-        pause(waitTime);
+        % the next round comes within about a second of the last results
+        % that are still to come (those of steps not done or given up)
+        coming = ~is_done_flag & ~(trial_counter >= maxTrialNum & ~job_active);
+        wait_for_files({awaited_results(fnames, fdinds, coming, DSRCombined, rotate, ...
+            dsPaths, dsrPaths, stchPaths, ext)}, waitTime);
         % if not streaming, do not check for new files. 
         if ~streaming
             continue;
@@ -772,6 +781,29 @@ while ~all(is_done_flag | (trial_counter >= maxTrialNum & ~job_active), 'all') |
     if parseCluster
         job_ids = cat(1, job_ids, -ones(nFnew, 2));
         dataSize_mat = cat(1, dataSize_mat, [cur_dataSizes, zeros(nFnew, 1)]);
+    end
+end
+
+end
+
+
+function [paths] = awaited_results(fnames, fdinds, coming, DSRCombined, rotate, dsPaths, dsrPaths, stchPaths, ext)
+% the results of the steps still to come (coming: per file, deskew and
+% stitching) as a round looks for them: the deskewed (and rotated) file,
+% the stitched result (a pattern)
+
+paths = {};
+for f = reshape(find(any(coming, 2)), 1, [])
+    [~, fsname] = fileparts(fnames{f});
+    fdind = fdinds(f);
+    if coming(f, 1) && ~DSRCombined && ~isempty(dsPaths)
+        paths{end + 1} = [dsPaths{fdind}, fsname, ext];
+    end
+    if coming(f, 1) && rotate && ~isempty(dsrPaths)
+        paths{end + 1} = [dsrPaths{fdind}, fsname, ext];
+    end
+    if coming(f, 2) && ~isempty(stchPaths)
+        paths{end + 1} = sprintf('%s/%s*Abs.zarr', stchPaths{fdind}, fsname(1 : end - 39));
     end
 end
 

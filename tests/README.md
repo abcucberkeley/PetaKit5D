@@ -277,7 +277,9 @@ harness itself and that task functions restore what they change.
   job writes when it starts running, and rejected submissions. To test what
   a wrapper passes on, replace the callee with `pktest.FrameworkSpyFixture`
   (the job framework) or `pktest.FunctionSpyFixture('name')` (any function
-  without outputs).
+  without outputs); `pktest.atCall` as a spy's call runs a function at the
+  spy's n-th call, e.g., to have the files a job would make appear during a
+  wait (a spy of `pause`).
 - To test the order in which a task writes its files, apply
   `pktest.MovefileSpyFixture`: it records every `movefile` with the files
   next to its destination at that moment. A task must write everything else

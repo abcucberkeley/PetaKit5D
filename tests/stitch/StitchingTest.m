@@ -298,6 +298,28 @@ classdef StitchingTest < pktest.TestCase
             testCase.verifyEqual(slurm.callCount('squeue'), 4);
         end
 
+        function clusterModeEndsSoonAfterTheLastResult(testCase)
+            % the wrapper looked for its jobs' results in rounds 5 s apart,
+            % so it ended up to 5 s after the last one; it now looks for the
+            % results still to come each second and goes on once they are
+            % all there. The job runs; its result comes during the second
+            % second.
+            testCase.assumeFalse(ispc, 'The fake Slurm needs a POSIX shell.');
+            dataPath = testCase.createTempFolder();
+            gt = testCase.randomVolume([100, 120, 32]);
+            csvFn = testCase.writeTiles(dataPath, gt, [0, 0, 0; 36, 0, 0; 0, 48, 0; 36, 48, 0], [64, 72, 32]);
+            resultFn = sprintf('%smatlab_stitch/%s.zarr', dataPath, testCase.StitchName);
+            slurm = testCase.applyFixture(pktest.FakeSlurmFixture);
+            slurm.setJobStates('1000_1', {'R'});
+            pauses = testCase.applyFixture(pktest.FunctionSpyFixture('pause', @() pktest.atCall( ...
+                [dataPath, 'calls.txt'], 2, @() mkdir(resultFn)), 20));
+            testCase.stitch(dataPath, csvFn, 'parseCluster', true, 'masterCompute', false, 'maxTrialNum', 1, ...
+                'jobLogDir', [dataPath, 'logs']);
+            testCase.verifyEqual(slurm.callCount('sbatch'), 1);
+            testCase.verifyEqual(cellfun(@(x) x{1}, pauses.getCalls()), [1, 1], ...
+                'The wrapper did not end within a second of the result.');
+        end
+
         function clusterModeWaitsForTilesJobsStillMake(testCase)
             % in cluster mode the wrapper gave up a volume whose processed
             % tiles were missing after maxTrialNum checks 5 s apart, also

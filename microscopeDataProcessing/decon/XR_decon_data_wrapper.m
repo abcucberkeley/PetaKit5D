@@ -415,6 +415,8 @@ while ~all(is_done_flag | (trial_counter >= maxTrialNum & ~job_active), 'all')
     if parseCluster
         deconListings = list_folders(deconPaths);
     end
+    % the erosion masks that files wait for before they are submitted
+    awaitedMasks = {};
     for f = 1 : nF
         if all(is_done_flag(f, :))
             continue;
@@ -485,7 +487,10 @@ while ~all(is_done_flag | (trial_counter >= maxTrialNum & ~job_active), 'all')
                 % only check for the ones not finished. 
                 if ~is_done_flag(f, 1)
                     erodeMaskFullpath = erodeMaskFullpaths{fdind};
-                    if ~exist(erodeMaskFullpath, 'dir')
+                    % (batch_file_exist sees a mask another node just made,
+                    % which exist() can miss for 30 s or more)
+                    if ~batch_file_exist({erodeMaskFullpath})
+                        awaitedMasks{end + 1} = erodeMaskFullpath;
                         continue;
                     end
 
@@ -694,7 +699,21 @@ while ~all(is_done_flag | (trial_counter >= maxTrialNum & ~job_active), 'all')
         if parseCluster
             waitTime = min(30, max(3, 0.3 * sum(~all(is_done_flag, 2))));
         end
-        pause(waitTime);
+        % the next round comes within about a second of the last results
+        % still to come (of files not done or given up), or of a mask that
+        % files wait for
+        coming = find(~is_done_flag & ~(trial_counter >= maxTrialNum & ~job_active));
+        outExt = '.tif';
+        if saveZarr
+            outExt = '.zarr';
+        end
+        results = cell(numel(coming), 1);
+        for i = 1 : numel(coming)
+            [~, fsname] = fileparts(fnames{coming(i)});
+            results{i} = sprintf('%s/%s%s', deconPaths{fdinds(coming(i))}, fsname, outExt);
+        end
+        maskGroups = cellfun(@(x) {x}, unique(awaitedMasks), 'unif', 0);
+        wait_for_files([{results}, maskGroups(:)'], waitTime);
     end
     if nF_done < sum(is_done_flag)
         nF_done = sum(is_done_flag);

@@ -456,13 +456,84 @@ classdef DeconWrapperTest < pktest.TestCase
             testCase.assumeFalse(ispc, 'The fake Slurm needs a POSIX shell.');
             d = testCase.createDataset({'A'}, 1);
             slurm = testCase.applyFixture(pktest.FakeSlurmFixture);
-            pauses = testCase.applyFixture(pktest.FunctionSpyFixture('pause', [], 20));
+            waitSpy = testCase.applyFixture(pktest.FunctionSpyFixture('wait_for_files', [], 20));
             % the fake jobs never run: one round submits, the next resubmits,
             % the last checks that the second job is gone
             testCase.runWrapper(d, 'parseCluster', true, 'maxTrialNum', 2, 'jobLogDir', [d.root, 'logs']);
             testCase.verifyEqual(slurm.callCount('sbatch'), 2);
-            waits = cellfun(@(x) x{1}, pauses.getCalls());
+            waits = cellfun(@(x) x{2}, waitSpy.getCalls());
             testCase.verifyEqual(waits, [3, 3]);
+        end
+
+        function clusterModeEndsSoonAfterTheLastResult(testCase)
+            % the wrapper waited the whole wait between its rounds (0.3 s per
+            % unfinished file, at least 3 s), so it saw the last result up
+            % to that late; it now looks for the results still to come
+            % each second and goes on once they are all there. The fake
+            % job doesn't run; its result comes during the second second.
+            testCase.assumeFalse(ispc, 'The fake Slurm needs a POSIX shell.');
+            d = testCase.createDataset({'A'}, 1);
+            outFn = [d.dataPath, 'matlab_decon/', d.fsns{1}, '.tif'];
+            slurm = testCase.applyFixture(pktest.FakeSlurmFixture);
+            pauses = testCase.applyFixture(pktest.FunctionSpyFixture('pause', @() pktest.atCall( ...
+                [d.root, 'calls.txt'], 2, @() fclose(fopen(outFn, 'w'))), 20));
+            testCase.runWrapper(d, 'parseCluster', true, 'maxTrialNum', 2, 'jobLogDir', [d.root, 'logs']);
+            testCase.verifyEqual(slurm.callCount('sbatch'), 1, 'The job was submitted again.');
+            testCase.verifyEqual(cellfun(@(x) x{1}, pauses.getCalls()), [1, 1], ...
+                'The wrapper did not go on within a second of the result.');
+        end
+
+        function clusterModeSubmitsFilesSoonAfterTheirMask(testCase)
+            % (erodeByFTP) the other files of a dataset wait for the erosion
+            % mask of its first time point; the wrapper now looks for it
+            % each second and submits them once it is there. The first
+            % file's job makes its result when first checked (its mask
+            % comes during the second second); the second file's job
+            % doesn't run.
+            testCase.assumeFalse(ispc, 'The fake Slurm needs a POSIX shell.');
+            d = testCase.createDataset({'A'}, 2);
+            maskFn = sprintf('%smatlab_decon/Masks/%s_eroded.zarr', d.dataPath, d.fsns{1});
+            mkdir(fileparts(maskFn));
+            slurm = testCase.applyFixture(pktest.FakeSlurmFixture);
+            slurm.setJobStates('1000_1', {'R', 'done'}, {[d.dataPath, 'matlab_decon/', d.fsns{1}, '.tif']});
+            sz = testCase.ImSize;
+            pauses = testCase.applyFixture(pktest.FunctionSpyFixture('pause', @() pktest.atCall( ...
+                [d.root, 'calls.txt'], 2, @() writezarr(uint8(ones(sz)), maskFn)), 20));
+            testCase.runWrapper(d, 'edgeErosion', 2, 'parseCluster', true, 'maxTrialNum', 1, ...
+                'jobLogDir', [d.root, 'logs']);
+            testCase.verifyEqual(slurm.callCount('sbatch'), 2);
+            % two seconds until the mask, then a whole wait for the second
+            % file's job
+            testCase.verifyEqual(cellfun(@(x) x{1}, pauses.getCalls()), ones(1, 5), ...
+                'The wrapper did not submit the second file within a second of the mask.');
+        end
+
+        function clusterModeSeesMasksOtherNodesJustMade(testCase)
+            % (erodeByFTP) on NFS, exist() can miss a mask another node just
+            % made for 30 s or more, while the wait sees it at once
+            % (batch_file_exist), so the wrapper checks masks as the wait
+            % does: a wait that ends at a mask is followed by the
+            % submission of the files that waited for it, not by rounds a
+            % second apart. The stub reports the first file's mask made
+            % (only batch_file_exist sees it): the second file is submitted
+            % in the first round, and the wrapper waits once.
+            testCase.assumeFalse(ispc, 'The fake Slurm needs a POSIX shell.');
+            d = testCase.createDataset({'A'}, 2);
+            stubFolder = testCase.createTempFolder();
+            fid = fopen([stubFolder, 'batch_file_exist.m'], 'w');
+            fprintf(fid, ['function [tf] = batch_file_exist(paths, varargin)\n', ...
+                'tf = endsWith(paths(:), ''_eroded.zarr'') | cellfun(@(x) isfile(x) || isfolder(x), paths(:));\n', ...
+                'end\n']);
+            fclose(fid);
+            testCase.applyFixture(matlab.unittest.fixtures.PathFixture(stubFolder));
+            testCase.applyFixture(pktest.FunctionStubFixture('getImageSize', testCase.ImSize));
+            slurm = testCase.applyFixture(pktest.FakeSlurmFixture);
+            pauses = testCase.applyFixture(pktest.FunctionSpyFixture('pause', [], 10));
+            testCase.runWrapper(d, 'edgeErosion', 2, 'parseCluster', true, 'maxTrialNum', 1, ...
+                'jobLogDir', [d.root, 'logs']);
+            testCase.verifyEqual(slurm.callCount('sbatch'), 2);
+            testCase.verifyEqual(cellfun(@(x) x{1}, pauses.getCalls()), ones(1, 3), ...
+                'The second file was not submitted in the first round.');
         end
 
         function clusterModeWaitsForTheLastTry(testCase)
@@ -473,12 +544,12 @@ classdef DeconWrapperTest < pktest.TestCase
             d = testCase.createDataset({'A'}, 1);
             slurm = testCase.applyFixture(pktest.FakeSlurmFixture);
             slurm.setJobStates('1000_1', {'PD', 'R', 'R', 'done'});
-            pauses = testCase.applyFixture(pktest.FunctionSpyFixture('pause', [], 20));
+            waitSpy = testCase.applyFixture(pktest.FunctionSpyFixture('wait_for_files', [], 20));
             testCase.runWrapper(d, 'parseCluster', true, 'maxTrialNum', 1, 'jobLogDir', [d.root, 'logs']);
             testCase.verifyEqual(slurm.callCount('sbatch'), 1, 'The last try was submitted again.');
             % a check before submitting, then one per round until the job is gone
             testCase.verifyEqual(slurm.callCount('squeue'), 5);
-            testCase.verifyNumElements(pauses.getCalls(), 4);
+            testCase.verifyNumElements(waitSpy.getCalls(), 4);
         end
 
         function clusterModeWaitsForTheLastTryOfAJobOfSeveralFiles(testCase)
@@ -504,11 +575,11 @@ classdef DeconWrapperTest < pktest.TestCase
             testCase.assumeFalse(ispc, 'The fake Slurm needs a POSIX shell.');
             d = testCase.createDataset({'A'}, 20);
             slurm = testCase.applyFixture(pktest.FakeSlurmFixture);
-            pauses = testCase.applyFixture(pktest.FunctionSpyFixture('pause', [], 20));
+            waitSpy = testCase.applyFixture(pktest.FunctionSpyFixture('wait_for_files', [], 20));
             % the fake jobs never run: one round submits, the next resubmits
             testCase.runWrapper(d, 'parseCluster', true, 'maxTrialNum', 2, 'jobLogDir', [d.root, 'logs']);
             testCase.verifyEqual(slurm.callCount('sbatch'), 40);
-            waits = cellfun(@(x) x{1}, pauses.getCalls());
+            waits = cellfun(@(x) x{2}, waitSpy.getCalls());
             % the second round also waits for the last tries' jobs to end
             testCase.verifyEqual(waits, [6, 6], 'AbsTol', 1e-9, 'The wait for 20 unfinished files should be 6 s.');
         end

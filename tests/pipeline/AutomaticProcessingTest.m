@@ -87,15 +87,17 @@ classdef AutomaticProcessingTest < pktest.TestCase
             % with jobs on the cluster the pipeline always waited 30 s between
             % rounds, so the last results were seen up to 30 s late; it now
             % waits 0.3 s per unfinished file, at least 3 s and at most 30 s
+            % (or until the results come, see clusterModeEndsSoonAfterTheLastResults)
             testCase.assumeFalse(ispc, 'The fake Slurm needs a POSIX shell.');
             dataPath = testCase.createTempFolder();
-            for y = 0 : 19
-                writetiff(zeros(16, 16, 8, 'uint16'), testCase.tileFilename(dataPath, 'CamA_ch0', y));
+            fns = arrayfun(@(y) testCase.tileFilename(dataPath, 'CamA_ch0', y), 0 : 19, 'unif', 0);
+            for i = 1 : 20
+                writetiff(zeros(16, 16, 8, 'uint16'), fns{i});
             end
             logPath = [dataPath, 'logs/'];
             mkdir(logPath);
             slurm = testCase.applyFixture(pktest.FakeSlurmFixture);
-            pauses = testCase.applyFixture(pktest.FunctionSpyFixture('pause', [], 20));
+            waitSpy = testCase.applyFixture(pktest.FunctionSpyFixture('wait_for_files', [], 20));
 
             % the fake jobs never run: one round submits, the next resubmits
             args = {'xyPixelSize', testCase.XYPixelSize, 'dz', testCase.Dz, 'reverse', true, ...
@@ -104,9 +106,69 @@ classdef AutomaticProcessingTest < pktest.TestCase
             evalc('XR_microscopeAutomaticProcessing(dataPath, args{:})');
 
             testCase.verifyEqual(slurm.callCount('sbatch'), 40);
-            waits = cellfun(@(x) x{1}, pauses.getCalls());
+            calls = waitSpy.getCalls();
+            waits = cellfun(@(x) x{2}, calls);
             % the second round also waits for the last tries' jobs to end
             testCase.verifyEqual(waits, [6, 6], 'AbsTol', 1e-9, 'The wait for 20 unfinished files should be 6 s.');
+            % for their results
+            awaited = regexprep(calls{1}{1}{1}(:), '/+', '/');
+            testCase.verifyEqual(sort(awaited), sort(strrep(fns(:), dataPath, [dataPath, 'DSR/'])));
+        end
+
+        function clusterModeEndsSoonAfterTheLastResults(testCase)
+            % the pipeline waited the whole wait between its rounds (0.3 s
+            % per unfinished file, at least 3 s), so it saw the last
+            % results up to that late; it now looks for the results still
+            % to come each second and goes on once they are all there. The
+            % fake jobs don't run; their results come during the second
+            % second.
+            testCase.assumeFalse(ispc, 'The fake Slurm needs a POSIX shell.');
+            dataPath = testCase.createTempFolder();
+            fns = arrayfun(@(y) testCase.tileFilename(dataPath, 'CamA_ch0', y), 0 : 1, 'unif', 0);
+            for i = 1 : 2
+                writetiff(zeros(16, 16, 8, 'uint16'), fns{i});
+            end
+            logPath = [dataPath, 'logs/'];
+            mkdir(logPath);
+            dsrFns = strrep(fns, dataPath, [dataPath, 'DSR/']);
+            slurm = testCase.applyFixture(pktest.FakeSlurmFixture);
+            pauses = testCase.applyFixture(pktest.FunctionSpyFixture('pause', @() pktest.atCall( ...
+                [dataPath, 'calls.txt'], 2, @() cellfun(@(x) fclose(fopen(x, 'w')), dsrFns)), 20));
+            args = {'xyPixelSize', testCase.XYPixelSize, 'dz', testCase.Dz, 'reverse', true, ...
+                'channelPatterns', {'CamA_ch0'}, 'streaming', false, 'deskew', true, 'rotate', true, ...
+                'stitch', false, 'DSRCombined', true, 'parseCluster', true, 'maxTrialNum', 2, 'jobLogDir', logPath};
+            evalc('XR_microscopeAutomaticProcessing(dataPath, args{:})');
+            testCase.verifyEqual(slurm.callCount('sbatch'), 2, 'A job was submitted again.');
+            testCase.verifyEqual(cellfun(@(x) x{1}, pauses.getCalls()), [1, 1], ...
+                'The pipeline did not go on within a second of the results.');
+        end
+
+        function clusterModeDoesNotWaitForStepsGivenUp(testCase)
+            % a step given up (the job of its last try ended without its
+            % result) doesn't hold the wait for the results still to come:
+            % tile 1's job is gone at the second round, tile 2's runs, and
+            % tile 2's result comes during the first second of the second
+            % wait, after which the pipeline goes on (and ends)
+            testCase.assumeFalse(ispc, 'The fake Slurm needs a POSIX shell.');
+            dataPath = testCase.createTempFolder();
+            fns = arrayfun(@(y) testCase.tileFilename(dataPath, 'CamA_ch0', y), 0 : 1, 'unif', 0);
+            for i = 1 : 2
+                writetiff(zeros(16, 16, 8, 'uint16'), fns{i});
+            end
+            logPath = [dataPath, 'logs/'];
+            mkdir(logPath);
+            dsrFns = strrep(fns, dataPath, [dataPath, 'DSR/']);
+            slurm = testCase.applyFixture(pktest.FakeSlurmFixture);
+            slurm.setJobStates('1001_2', {'R'});
+            pauses = testCase.applyFixture(pktest.FunctionSpyFixture('pause', @() pktest.atCall( ...
+                [dataPath, 'calls.txt'], 4, @() fclose(fopen(dsrFns{2}, 'w'))), 20));
+            args = {'xyPixelSize', testCase.XYPixelSize, 'dz', testCase.Dz, 'reverse', true, ...
+                'channelPatterns', {'CamA_ch0'}, 'streaming', false, 'deskew', true, 'rotate', true, ...
+                'stitch', false, 'DSRCombined', true, 'parseCluster', true, 'maxTrialNum', 1, 'jobLogDir', logPath};
+            evalc('XR_microscopeAutomaticProcessing(dataPath, args{:})');
+            testCase.verifyEqual(slurm.callCount('sbatch'), 2);
+            testCase.verifyEqual(cellfun(@(x) x{1}, pauses.getCalls()), [1, 1, 1, 1], ...
+                'The pipeline waited for the result of a step it gave up.');
         end
 
         function clusterModeSeesResultsOtherNodesJustMade(testCase)
@@ -251,6 +313,30 @@ classdef AutomaticProcessingTest < pktest.TestCase
                 'The stitching job was not submitted after the deskew job.');
         end
 
+        function clusterModeLooksForTheStitchedResultEachSecond(testCase)
+            % (as clusterModeEndsSoonAfterTheLastResults, for the stitched
+            % result, which the pipeline finds by a pattern) the tiles were
+            % deskewed before; the stitching job doesn't run, its result
+            % comes during the third second, after its temporary folder
+            % (which doesn't count) during the second
+            testCase.assumeFalse(ispc, 'The fake Slurm needs a POSIX shell.');
+            [dataPath, csvFn] = testCase.writeTwoTiles();
+            mkdir([dataPath, 'DSR']);
+            for y = 0 : 1
+                [~, fsn] = fileparts(testCase.tileFilename(dataPath, 'CamA_ch0', y));
+                fclose(fopen(sprintf('%sDSR/%s.tif', dataPath, fsn), 'w'));
+            end
+            stitchFn = [dataPath, 'matlab_stitch/Scan_Iter_0000_0000_CamA_ch0_CAM1_stack0000_488nm_0000000msec_0000000000msecAbs.zarr'];
+            slurm = testCase.applyFixture(pktest.FakeSlurmFixture);
+            pauses = testCase.applyFixture(pktest.FunctionSpyFixture('pause', @() pktest.atCall( ...
+                [dataPath, 'calls.txt'], [2, 3], {@() mkdir([stitchFn, '_1234']), @() mkdir(stitchFn)}), 20));
+            args = testCase.clusterStitchArgs(dataPath, csvFn, 1);
+            evalc('XR_microscopeAutomaticProcessing(dataPath, args{:})');
+            testCase.verifyEqual(slurm.callCount('sbatch'), 1);
+            testCase.verifyEqual(cellfun(@(x) x{1}, pauses.getCalls()), [1, 1, 1], ...
+                'The pipeline did not go on within a second of the stitched result.');
+        end
+
         function clusterModeTellsStitchingThatTilesAreComing(testCase)
             % the stitching job gave up a time point whose deskewed tiles
             % were not all there after 3 checks 5 s apart, and the pipeline
@@ -271,7 +357,7 @@ classdef AutomaticProcessingTest < pktest.TestCase
             slurm = testCase.applyFixture(pktest.FakeSlurmFixture);
             slurm.setJobStates('1002_1', {'R', 'R', 'R', 'R', 'R', 'R', 'done'});
             % at each wait: the marker's age, then 5 minutes added to it
-            testCase.applyFixture(pktest.FunctionSpyFixture('pause', ...
+            testCase.applyFixture(pktest.FunctionSpyFixture('wait_for_files', ...
                 @() testCase.recordAndAgeFile(markerFn, logFn, false), 20));
             args = testCase.clusterStitchArgs(dataPath, csvFn, 2);
             evalc('XR_microscopeAutomaticProcessing(dataPath, args{:})');
