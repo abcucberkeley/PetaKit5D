@@ -139,7 +139,10 @@ on the lab cluster.
 
 MATLAB is licensed automatically for public repositories by the
 `matlab-actions` steps, and only inside them. The runners have no GPU, so `GPU` tests are skipped
-there; run them on a GPU node (`srun --gres=gpu:1 ...`).
+there; run them on a GPU node (`srun --gres=gpu:1 ...`). GPUs newer than the MATLAB release
+(e.g., B200 GPUs, compute capability 10.0, in R2024b) count as available: the
+`GPU` tests, like PetaKit5D (`usable_gpu_num`), turn on forward compatibility for
+them.
 
 ## Known issues
 

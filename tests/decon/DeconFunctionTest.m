@@ -133,7 +133,7 @@ classdef DeconFunctionTest < pktest.TestCase
         function gpuRequestWithoutGPUFallsBackToCPU(testCase, method)
             hasGPU = false;
             try
-                hasGPU = gpuDeviceCount('available') > 0;
+                hasGPU = usable_gpu_num() > 0;
             catch
             end
             testCase.assumeFalse(hasGPU, 'Checks the fallback on machines without a GPU.');
@@ -146,6 +146,23 @@ classdef DeconFunctionTest < pktest.TestCase
                 'save16bit', false, 'useGPU', true);
             testCase.verifyEqual(outGPU, outCPU);
             testCase.verifySubstring(lastwarn, 'No GPU is available');
+        end
+
+        function noUsableGPUWarningGivesMATLABsReason(testCase, method)
+            % the GPUs are counted with usable_gpu_num (GPUs newer than this
+            % MATLAB supports get forward compatibility), and the warning of
+            % a GPU job that runs on the CPU gives MATLAB's reason (a stub
+            % here: 1 GPU found, none usable)
+            im = testCase.blurredBeads();
+            outCPU = testCase.runDecon(method, im, testCase.PSF, testCase.BackProjector, 3, 'Background', testCase.Background, 'save16bit', false);
+            testCase.applyFixture(pktest.FunctionStubFixture('usable_gpu_num', 0, 'Selecting GPU 1 failed: stub reason.', 1));
+            clear decon_lucy_function decon_lucy_omw_function
+            lastwarn('');
+            outGPU = testCase.runDecon(method, im, testCase.PSF, testCase.BackProjector, 3, 'Background', testCase.Background, ...
+                'save16bit', false, 'useGPU', true);
+            testCase.verifyEqual(outGPU, outCPU);
+            testCase.verifySubstring(lastwarn, 'No GPU is available (1 found, CUDA_VISIBLE_DEVICES=');
+            testCase.verifySubstring(lastwarn, 'so the deconvolution runs on the CPU. Selecting GPU 1 failed: stub reason.');
         end
 
         function wienerButterworthBackProjectorWorksWithOMWDecon(testCase)

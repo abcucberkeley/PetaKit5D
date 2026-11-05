@@ -56,9 +56,10 @@ end
 [dataPath, ~] = fileparts(inputFullpaths{1});
 
 % if the job is on GPU, count ther number of GPU available and override
-% number of batches to the number of GPUs
+% number of batches to the number of GPUs (GPUs newer than this MATLAB
+% supports get forward compatibility, in the client and each worker)
 if GPUJob
-    nGPU = gpuDeviceCount("available");
+    nGPU = usable_gpu_num();
 else 
     nGPU = 0;
 end
@@ -75,7 +76,7 @@ if isempty(gcp('nocreate'))
     parpool(c, nworker);
     if GPUJob 
         spmd
-            if gpuDeviceCount("available") > 0
+            if usable_gpu_num() > 0
                 gd = gpuDevice(rem(labindex - 1, nGPU) + 1);                
                 idx = gd.Index;
                 disp(['Using GPU ',num2str(idx)]);                

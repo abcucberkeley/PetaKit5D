@@ -90,9 +90,11 @@ classdef (SharedTestFixtures = {pktest.PathFixture, pktest.NoSlurmFixture}) Test
         end
 
         function [] = assumeGPUAvailable(testCase)
+            % as PetaKit5D counts them: GPUs newer than this MATLAB supports
+            % get forward compatibility
             hasGPU = false;
             try
-                hasGPU = gpuDeviceCount('available') > 0;
+                hasGPU = usable_gpu_num() > 0;
             catch
             end
             testCase.assumeTrue(hasGPU, 'No CUDA GPU available.');

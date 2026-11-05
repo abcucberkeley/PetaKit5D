@@ -204,6 +204,8 @@ if ~isempty(bbox)
     RA = imref3d(bbox(4 : 6) - bbox(1 : 3) + 1, [bbox(2) - 0.5, bbox(5) + 0.5], [bbox(1) - 0.5, bbox(4) + 0.5], [bbox(3) - 0.5, bbox(6) + 0.5]);
 end
 if gpuProcess
+    % GPUs newer than this MATLAB supports get forward compatibility
+    usable_gpu_num();
     vol_1 = gpuArray(vol_1);
 end
 

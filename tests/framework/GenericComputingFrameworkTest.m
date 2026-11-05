@@ -386,6 +386,31 @@ classdef GenericComputingFrameworkTest < pktest.TestCase
                 testCase.verifyEqual(fileread(outFns{i}), fileread(inFns{i}));
             end
         end
+
+        function parforGPUJobHasAWorkerPerUsableGPU(testCase)
+            % GPUs newer than this MATLAB supports (e.g., B200 GPUs in
+            % R2024b) weren't counted without forward compatibility, so a
+            % GPU job asked for a pool of 0 workers. usable_gpu_num and
+            % gpuDevice are stubs (2 GPUs; the workers select them too).
+            testCase.applyFixture(pktest.FunctionStubFixture('usable_gpu_num', 2));
+            testCase.applyFixture(pktest.FunctionStubFixture('gpuDevice', struct('Index', 1)));
+            [inFns, outFns, logFn] = testCase.makeTasks(2);
+            funcStrs = testCase.taskStrings(inFns, outFns, logFn, 'copy');
+            delete(gcp('nocreate'));
+            testCase.addTeardown(@() delete(gcp('nocreate')));
+
+            out = evalc('flags = matlab_parfor_generic_computing_wrapper(inFns, outFns, funcStrs, ''GPUJob'', true);');
+
+            testCase.verifyTrue(all(flags));
+            pool = gcp('nocreate');
+            testCase.assertNotEmpty(pool, 'No pool was started.');
+            testCase.verifyEqual(pool.NumWorkers, 2);
+            % each worker selected a GPU
+            testCase.verifyEqual(numel(strfind(out, 'Using GPU')), 2, out);
+            for i = 1 : 2
+                testCase.verifyEqual(fileread(outFns{i}), fileread(inFns{i}));
+            end
+        end
     end
 
     methods (Access = private)

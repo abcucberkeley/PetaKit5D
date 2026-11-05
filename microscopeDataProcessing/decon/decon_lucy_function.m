@@ -76,12 +76,9 @@ newOTF = isempty(psz) || ~(numel(psz) == numel(sizeI) && all(psz == sizeI) && la
 if newOTF
     gpuNum = 0;
     if useGPU
-        gpuNum = gpuDeviceCount("available");
-        if gpuNum == 0
-            % a GPU that is found but not available may be broken or in use
-            warning('No GPU is available (%d found, CUDA_VISIBLE_DEVICES=''%s''), so the deconvolution runs on the CPU.', ...
-                gpuDeviceCount("all"), getenv('CUDA_VISIBLE_DEVICES'));
-        end
+        % with forward compatibility for GPUs newer than this MATLAB, and a
+        % warning with MATLAB's reason if no GPU is usable
+        gpuNum = decon_gpu_num();
     end
 end
 % the mex uses a half OTF, the MATLAB code the full OTF

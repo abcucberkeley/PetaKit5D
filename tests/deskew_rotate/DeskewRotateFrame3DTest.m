@@ -23,6 +23,22 @@ classdef DeskewRotateFrame3DTest < pktest.TestCase
     end
 
     methods (Test, TestTags = {'Unit'})
+        function gpuProcessCountsUsableGPUsFirst(testCase)
+            % so that GPUs newer than this MATLAB supports get forward
+            % compatibility before the volume goes to the GPU (usable_gpu_num
+            % is a stub that stops the call there)
+            folder = testCase.createTempFolder();
+            fid = fopen([folder, 'usable_gpu_num.m'], 'w');
+            fprintf(fid, '%s\n', 'function [varargout] = usable_gpu_num(varargin)', ...
+                '% test stub written by DeskewRotateFrame3DTest', ...
+                'error(''pktest:usableGPUNum'', ''usable_gpu_num was called.'');', 'end');
+            fclose(fid);
+            testCase.applyFixture(matlab.unittest.fixtures.PathFixture(folder));
+            vol = zeros(testCase.RawSize, 'single');
+            testCase.verifyError(@() deskewRotateFrame3D(vol, testCase.SkewAngle, 0.3, testCase.XYPixelSize, ...
+                'gpuProcess', true), 'pktest:usableGPUNum');
+        end
+
         function outputSizeMatchesGeometry(testCase, dz, reverse)
             vol = zeros(testCase.RawSize, 'single');
             out = deskewRotateFrame3D(vol, testCase.SkewAngle, dz, testCase.XYPixelSize, 'reverse', reverse);

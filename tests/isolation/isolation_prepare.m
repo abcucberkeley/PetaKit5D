@@ -47,7 +47,7 @@ useGPU = pr.gpu;
 if isempty(useGPU)
     useGPU = false;
     try
-        useGPU = gpuDeviceCount('available') > 0;
+        useGPU = usable_gpu_num() > 0;
     catch
     end
 end
