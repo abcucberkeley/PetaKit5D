@@ -48,6 +48,8 @@ ip.addParameter('paraJobNum', 1, @isnumeric); % support matlab, bash
 ip.addParameter('ConfigFile', '', @ischar); % cluster configuration file that override the default parameters
 ip.addParameter('taskMetrics', false, @islogical); % record the resources of the task in <job log folder>/task_metrics/ (see task_metrics)
 ip.addParameter('taskRunner', true, @islogical); % after its task, a job's process runs unstarted tasks of other single jobs of the same kind (see task_runner_run); off if the caller or the config says so
+ip.addParameter('SlurmAlternatives', [], @(x) isempty(x) || isstruct(x) || iscell(x)); % other places for the job (entries with SlurmParam, memPerCPU, maxCPUNum, minCPUNum, gpuHeadroom; see slurm_alternatives)
+ip.addParameter('gpuHeadroom', [], @isnumeric); % with SlurmAlternatives: CPUs and GB per idle GPU that CPU-only jobs leave free at the main place ([]: the node's share per GPU)
 
 ip.parse(funcStr, job_id, task_id, varargin{:});
 
@@ -161,6 +163,8 @@ GNUparallel = pr.GNUparallel;
 paraJobNum = pr.paraJobNum;
 taskMetrics = pr.taskMetrics;
 taskRunner = ip.Results.taskRunner && pr.taskRunner;
+SlurmAlternatives = pr.SlurmAlternatives;
+gpuHeadroom = pr.gpuHeadroom;
 
 % the Slurm check and the job log paths, kept for the job log folder while
 % Slurm is there (callers call this for each job in each round; sinfo and
@@ -190,6 +194,8 @@ end
 
 % the kinds of single jobs (see below) this session submitted a task of
 persistent kindsSeen;
+% the places for the job (with SlurmAlternatives, made when it is submitted)
+places = [];
 submit_status = 0;
 trial_counter = 0;
 poolTask = [];
@@ -201,6 +207,13 @@ while submit_status == 0 && trial_counter < maxTrialNum
             job_status = -1;
             if job_id > 0
                 job_status = check_slurm_job_status(job_id, array_id);
+                % a job submitted to one of several places moves to another
+                % one where it can start now (see slurm_alternatives)
+                if job_status == 0 && ~(masterCompute && lastFile)
+                    slurm_alternatives('move', job_id, array_id);
+                elseif job_status < 0
+                    slurm_alternatives('forget', job_id, array_id);
+                end
             end
 
             % task runners: after the job of a task submitted to a pool (see
@@ -266,6 +279,24 @@ while submit_status == 0 && trial_counter < maxTrialNum
                     h = floor(jobTimeLimit);
                     m = round((jobTimeLimit - h) * 60);
                     time_str = sprintf(' -t %d:%d:00 ', h, m);
+                end
+                % with other places (SlurmAlternatives): the first with room
+                % for the job now, with its shape there (cpus_k: the CPUs a
+                % config with only that place gives it; see slurm_alternatives)
+                if isempty(places) && ~isempty(SlurmAlternatives)
+                    places = slurm_alternatives('places', struct('SlurmParam', pr.SlurmParam, 'SlurmConstraint', ...
+                        pr.SlurmConstraint, 'memPerCPU', memPerCPU, 'maxCPUNum', maxCPUNum, 'minCPUNum', minCPUNum, ...
+                        'gpuHeadroom', gpuHeadroom), SlurmAlternatives);
+                    cpus_k = arrayfun(@(p) min(p.maxCPUNum, max(p.minCPUNum, max(pr.cpusPerTask, ...
+                        ceil(max([memAllocate, 0]) / p.memPerCPU)))), places);
+                    cpus_k(1) = cpusPerTask;
+                    timeStrs = slurm_alternatives('time_strs', places, pr.jobTimeLimit, ' -t %d:%d:00 ', time_str);
+                end
+                k = 1;
+                if numel(places) > 1
+                    [k, cpusPerTask, SlurmParam] = slurm_alternatives('choose', places, cpus_k, timeStrs);
+                    SlurmConstraint = places(k).SlurmConstraint;
+                    time_str = timeStrs{k};
                 end
                 
                 % the metrics folder of this MATLAB's single jobs ('' without
@@ -358,6 +389,9 @@ while submit_status == 0 && trial_counter < maxTrialNum
                 if ~isempty(job_out_info) && ~isempty(job_out_info{1})
                     job_id = str2double(job_out_info{1}{1});
                     submit_status = 1;
+                    if numel(places) > 1
+                        slurm_alternatives('submitted', job_id, array_id, places, cpus_k, k, timeStrs);
+                    end
                     if ~isempty(poolTask)
                         task_runner_run('single_job', funcStr, job_id, array_id);
                     end

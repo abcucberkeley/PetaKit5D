@@ -52,6 +52,7 @@ ip.addParameter('queryInterval', 3, @isnumeric); % in second, by default 3 s.
 ip.addParameter('language', 'matlab', @ischar); % support matlab, bash
 ip.addParameter('taskMetrics', false, @(x) islogical(x) || ischar(x)); % record task resources: true, or the run's metrics folder (see task_metrics)
 ip.addParameter('taskRunner', true, @islogical); % MATLAB jobs run several tasks per MATLAB process (see task_runner)
+ip.addParameter('slurmPlaces', [], @(x) isempty(x) || isstruct(x)); % places for the jobs, the main one first, with their cpusPerTask (see slurm_alternatives)
 
 ip.parse(inputFullpaths, outputFullpaths, funcStrs, varargin{:});
 
@@ -101,6 +102,7 @@ BashLaunchStr = pr.BashLaunchStr;
 language = pr.language;
 taskMetrics = pr.taskMetrics;
 taskRunner = pr.taskRunner;
+places = pr.slurmPlaces;
 
 if isempty(uuid)
     uuid = get_uuid();
@@ -129,6 +131,12 @@ if parseCluster
         m = round((jobTimeLimit - h) * 60);
         time_str = sprintf(' -t %d:%02d:00 ', h, m);
     end
+end
+% jobs go to the first of several places with room for them now, and
+% pending ones move to such a place (see slurm_alternatives)
+multiPlace = parseCluster && numel(places) > 1;
+if multiPlace
+    timeStrs = slurm_alternatives('time_strs', places, pr.jobTimeLimit, ' -t %d:%02d:00 ', time_str);
 end
 
 nF = numel(inputFullpaths);
@@ -210,6 +218,12 @@ while (~parseCluster && ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
         job_timestamp_mat(job_status_mat(:, 1) >= 0) = timestamp;
         pending_flag = any(job_status_mat(~is_done_flag, 1) == 0);
         qts = tic;
+        % pending jobs that can start now at another place move there
+        if multiPlace && pending_flag
+            pend = find(~is_done_flag & job_status_mat(:, 1) == 0 & job_ids > 0);
+            [~, ia] = unique(job_ids(pend), 'stable');
+            slurm_alternatives('move', job_ids(pend(ia)), task_ids(pend(ia)));
+        end
         % for the task runners: batches whose jobs wait in the queue
         if rc.on
             rc = task_runner_run('waiting', rc, ~is_done_flag & (job_status_mat(:, 1) == 0 | job_ids < 0), ...
@@ -405,6 +419,16 @@ while (~parseCluster && ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
                     else
                         fprintf('Task % 4d:    Process %s ... \n', b, strjoin(fsnames(fs), ', '));    
                     end
+                    % the job's place: the first with room for it now
+                    SlurmParam_f = SlurmParam;
+                    SlurmConstraint_f = SlurmConstraint;
+                    time_str_f = time_str;
+                    if multiPlace
+                        cpus_k = min([places.maxCPUNum], [places.cpusPerTask] * (1 + ~GPUJob * trial_counter(f)));
+                        [k, cpusPerTask_f, SlurmParam_f] = slurm_alternatives('choose', places, cpus_k, timeStrs);
+                        SlurmConstraint_f = places(k).SlurmConstraint;
+                        time_str_f = timeStrs{k};
+                    end
                     date_cmd_str = 'date \"+%Y-%m-%d %H:%M:%S.%6N\"';
                     if strcmpi(language, 'matlab')
                         % the job runs each task between its metrics calls
@@ -421,23 +445,23 @@ while (~parseCluster && ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
                         process_cmd = sprintf('%s \\"%s\\"', MatlabLaunchStr, matlab_cmd);
                         cmd = sprintf(['sbatch --array=%d -o %s -e %s --cpus-per-task=%d %s %s %s ', ...
                             '--wrap="printf \\\"Start time: \\\"; %s; echo Matlab command:  \\\"%s\\\"; %s; echo; printf \\\"End time: \\\"; %s"'], ...
-                            task_id, job_log_fname, job_log_error_fname, cpusPerTask_f, SlurmParam, ...
-                            SlurmConstraint, time_str, date_cmd_str, matlab_cmd, process_cmd, date_cmd_str);
+                            task_id, job_log_fname, job_log_error_fname, cpusPerTask_f, SlurmParam_f, ...
+                            SlurmConstraint_f, time_str_f, date_cmd_str, matlab_cmd, process_cmd, date_cmd_str);
                         if rc.on && trial_counter(f) == 0
                             % task runners (first submission): the job script
                             % starts MATLAB if there are tasks left, and MATLAB
                             % runs the batch, then unstarted tasks of others
                             cmd = sprintf(['sbatch --array=%d -o %s -e %s --cpus-per-task=%d %s %s %s ', ...
                                 '--wrap="printf \\\"Start time: \\\"; %s; echo Matlab command:  \\\"%s\\\"; %s; echo; printf \\\"End time: \\\"; %s"'], ...
-                                task_id, job_log_fname, job_log_error_fname, cpusPerTask_f, SlurmParam, ...
-                                SlurmConstraint, time_str, date_cmd_str, matlab_cmd, task_runner_run('matlab', rc, b, 1), date_cmd_str);
+                                task_id, job_log_fname, job_log_error_fname, cpusPerTask_f, SlurmParam_f, ...
+                                SlurmConstraint_f, time_str_f, date_cmd_str, matlab_cmd, task_runner_run('matlab', rc, b, 1), date_cmd_str);
                         end
                     elseif strcmpi(language, 'bash')
                         % process_cmd = func_str;
                         cmd = sprintf(['sbatch --array=%d -o %s -e %s --cpus-per-task=%d %s %s %s ', ...
                             '--wrap="printf \\\"Start time: \\\"; %s; echo $PWD; echo bash command:  \\\"%s\\\";  %s; %s; echo; printf \\\"End time: \\\"; %s"'], ...
-                            task_id, job_log_fname, job_log_error_fname, cpusPerTask_f, SlurmParam, ...
-                            SlurmConstraint, time_str, date_cmd_str, func_str, BashLaunchStr, func_str, date_cmd_str);
+                            task_id, job_log_fname, job_log_error_fname, cpusPerTask_f, SlurmParam_f, ...
+                            SlurmConstraint_f, time_str_f, date_cmd_str, func_str, BashLaunchStr, func_str, date_cmd_str);
                     end
                     [status, cmdout] = system(cmd, '-echo');
                     if isempty(cmdout) || isempty(regexp(cmdout, 'Submitted batch job (\d+)\n', 'match'))
@@ -460,8 +484,8 @@ while (~parseCluster && ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
                             process_cmd = sprintf('%s \\"%s\\"', MatlabLaunchStr, matlab_cmd);
                             cmd = sprintf(['sbatch --array=%d -o %s -e %s --cpus-per-task=%d %s %s %s ', ...
                                 '--wrap="printf \\\"Start time: \\\"; %s; echo Matlab command:  \\\"%s\\\"; %s; echo; printf \\\"End time: \\\"; %s"'], ...
-                                task_id, job_log_fname, job_log_error_fname, cpusPerTask_f, SlurmParam, ...
-                                SlurmConstraint, time_str, date_cmd_str, matlab_cmd, process_cmd, date_cmd_str);
+                                task_id, job_log_fname, job_log_error_fname, cpusPerTask_f, SlurmParam_f, ...
+                                SlurmConstraint_f, time_str_f, date_cmd_str, matlab_cmd, process_cmd, date_cmd_str);
                         elseif strcmpi(language, 'bash')
                             func_str_fn = sprintf('%s/func_str_f%04d_%s_%s.sh', func_str_dir, f, fsnames{f}, uuid);     
                             fid = fopen(func_str_fn, 'w');
@@ -472,8 +496,8 @@ while (~parseCluster && ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
                             
                             cmd = sprintf(['sbatch --array=%d -o %s -e %s --cpus-per-task=%d %s %s %s ', ...
                                 '--wrap="printf \\\"Start time: \\\"; %s; echo $PWD; echo bash command:  \\\"%s\\\"; %s; bash %s; echo; printf \\\"End time: \\\"; %s"'], ...
-                                task_id, job_log_fname, job_log_error_fname, cpusPerTask_f, SlurmParam, ...
-                                SlurmConstraint, time_str, date_cmd_str, func_str_fn, BashLaunchStr, func_str_fn, date_cmd_str);
+                                task_id, job_log_fname, job_log_error_fname, cpusPerTask_f, SlurmParam_f, ...
+                                SlurmConstraint_f, time_str_f, date_cmd_str, func_str_fn, BashLaunchStr, func_str_fn, date_cmd_str);
                         end
                         [status, cmdout] = system(cmd, '-echo');
                     end
@@ -486,6 +510,9 @@ while (~parseCluster && ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
                     job_ids(fs) = job_id;
                     job_status_mat(fs, 1) = 0;
                     trial_counter(fs) = trial_counter(fs) + 1;                                
+                    if multiPlace
+                        slurm_alternatives('submitted', job_id, task_id, places, cpus_k, k, timeStrs);
+                    end
                 end
             else
                 temp_file_info = dir(tmpFullpath);
@@ -599,6 +626,10 @@ if parseCluster
     unfinished_job_ids(unfinished_job_ids <= 0) = [];
     if any(unfinished_job_ids)
         system(sprintf('scancel %s &', num2str(unfinished_job_ids(:)')), '-echo');
+    end
+    if multiPlace
+        [~, ia] = unique(job_ids);
+        slurm_alternatives('forget', job_ids(ia), task_ids(ia));
     end
 end
 

@@ -60,6 +60,8 @@ ip.addParameter('ConfigFile', '', @ischar); % cluster configuration file that ov
 ip.addParameter('localWorkerNum', 1, @isnumeric); % without cluster, run up to this many tasks at once on a local MATLAB process pool
 ip.addParameter('taskMetrics', false, @islogical); % record the resources of each task in <jobLogDir>/task_metrics/ (see task_metrics)
 ip.addParameter('taskRunner', true, @islogical); % cluster jobs (and compiled local runs) run several tasks per process (see task_runner)
+ip.addParameter('SlurmAlternatives', [], @(x) isempty(x) || isstruct(x) || iscell(x)); % other places for the jobs (entries with SlurmParam, memPerCPU, maxCPUNum, minCPUNum, gpuHeadroom; see slurm_alternatives)
+ip.addParameter('gpuHeadroom', [], @isnumeric); % with SlurmAlternatives: CPUs and GB per idle GPU that CPU-only jobs leave free at the main place ([]: the node's share per GPU)
 
 ip.parse(inputFullpaths, outputFullpaths, funcStrs, varargin{:});
 
@@ -154,6 +156,8 @@ masterParaFactor = pr.masterParaFactor;
 localWorkerNum = pr.localWorkerNum;
 taskMetrics = pr.taskMetrics;
 taskRunner = pr.taskRunner;
+SlurmAlternatives = pr.SlurmAlternatives;
+gpuHeadroom = pr.gpuHeadroom;
 
 % in cluster mode, a master in a Slurm job (one that coordinates jobs, or a
 % pipeline's job) runs tasks itself only if they fit its memory; else they
@@ -185,27 +189,24 @@ end
 
 switch clusterType
     case 'slurm'
-        if ~isempty(memAllocate) && cpusPerTask * memPerCPU < memAllocate
-            cpusPerTask = ceil(memAllocate / memPerCPU);
-        end
-        cpusPerTask = min(maxCPUNum, max(minCPUNum, cpusPerTask));
-        % if cpu per task is less than half of max cpu num, round to a factor of the max cpu num
-        % if cpu per task is 75% of max cpu num, just assign to max CPU num
-        if parseCluster && ~wholeNodeJob && rem(maxCPUNum, cpusPerTask) ~= 0 && numel(factor(maxCPUNum)) > 1
-            cpusPerTask_orig = cpusPerTask;
-            if maxCPUNum / cpusPerTask > 2
-                while rem(maxCPUNum, cpusPerTask) > 1
-                    if cpusPerTask / cpusPerTask_orig >= 2
-                        break;
-                    end
-                    cpusPerTask = cpusPerTask + 1;
-                end
-            else
-                if cpusPerTask / maxCPUNum > 0.75
-                    cpusPerTask = maxCPUNum;
-                end
+        roundCPUs = parseCluster && ~wholeNodeJob;
+        % the other places for the jobs (SlurmAlternatives; not for jobs of
+        % whole nodes), with the CPUs a config with only that place gives a
+        % job (its shape at a place: see slurm_alternatives)
+        placeArgs = {};
+        if parseCluster && ~wholeNodeJob && ~isempty(SlurmAlternatives)
+            places = slurm_alternatives('places', struct('SlurmParam', SlurmParam, 'SlurmConstraint', ...
+                SlurmConstraint, 'memPerCPU', memPerCPU, 'maxCPUNum', maxCPUNum, 'minCPUNum', minCPUNum, ...
+                'gpuHeadroom', gpuHeadroom), SlurmAlternatives);
+            for k = 1 : numel(places)
+                places(k).cpusPerTask = job_cpus(cpusPerTask, memAllocate, places(k).memPerCPU, ...
+                    places(k).minCPUNum, places(k).maxCPUNum, roundCPUs);
+            end
+            if numel(places) > 1
+                placeArgs = {'slurmPlaces', places};
             end
         end
+        cpusPerTask = job_cpus(cpusPerTask, memAllocate, memPerCPU, minCPUNum, maxCPUNum, roundCPUs);
 
         % the metrics folder of this call ('' without metrics)
         runDir = '';
@@ -271,7 +272,7 @@ switch clusterType
                 'masterCompute', masterCompute, 'cpusPerTask', cpusPerTask, 'mccMode', true, ...
                 'taskBatchNum', taskBatchNum, 'paraJobNum', paraJobNum, 'poolWorkerNum', poolWorkerNum);
             is_done_flag = mcc_slurm_cluster_generic_computing_wrapper(inputFullpaths, ...
-                outputFullpaths, funcStrs, finalOutFullpath=finalOutFullpath, ...
+                outputFullpaths, funcStrs, placeArgs{:}, finalOutFullpath=finalOutFullpath, ...
                 parseCluster=parseCluster, masterCompute=masterCompute, jobLogDir=jobLogDir, ...
                 tmpDir=tmpDir, maxCPUNum=maxCPUNum, cpusPerTask=cpusPerTask, ...
                 uuid=uuid, maxTrialNum=maxTrialNum, unitWaitTime=unitWaitTime, ...
@@ -286,7 +287,7 @@ switch clusterType
                 'masterCompute', masterCompute, 'cpusPerTask', cpusPerTask, 'mccMode', false, ...
                 'poolWorkerNum', poolWorkerNum);
             is_done_flag = slurm_cluster_generic_computing_wrapper(inputFullpaths, ...
-                outputFullpaths, funcStrs, finalOutFullpath=finalOutFullpath, ...
+                outputFullpaths, funcStrs, placeArgs{:}, finalOutFullpath=finalOutFullpath, ...
                 parseCluster=parseCluster, masterCompute=masterCompute, jobLogDir=jobLogDir, ...
                 tmpDir=tmpDir, maxCPUNum=maxCPUNum, cpusPerTask=cpusPerTask, ...
                 uuid=uuid, maxTrialNum=maxTrialNum, unitWaitTime=unitWaitTime, ...
@@ -299,6 +300,36 @@ switch clusterType
     case 'parfor'
         is_done_flag= matlab_parfor_generic_computing_wrapper(inputFullpaths, outputFullpaths, ...
             funcStrs, 'maxJobNum', maxJobNum, 'taskBatchNum', taskBatchNum, 'GPUJob', GPUJob, 'uuid', uuid);
+end
+
+end
+
+
+function [cpusPerTask] = job_cpus(cpusPerTask, memAllocate, memPerCPU, minCPUNum, maxCPUNum, roundCPUs)
+% the CPUs of a job: enough for memAllocate GB at memPerCPU GB per CPU,
+% within minCPUNum and maxCPUNum, and (roundCPUs: cluster jobs, not of whole
+% nodes) rounded to a factor of maxCPUNum
+
+if ~isempty(memAllocate) && cpusPerTask * memPerCPU < memAllocate
+    cpusPerTask = ceil(memAllocate / memPerCPU);
+end
+cpusPerTask = min(maxCPUNum, max(minCPUNum, cpusPerTask));
+% if cpu per task is less than half of max cpu num, round to a factor of the max cpu num
+% if cpu per task is 75% of max cpu num, just assign to max CPU num
+if roundCPUs && rem(maxCPUNum, cpusPerTask) ~= 0 && numel(factor(maxCPUNum)) > 1
+    cpusPerTask_orig = cpusPerTask;
+    if maxCPUNum / cpusPerTask > 2
+        while rem(maxCPUNum, cpusPerTask) > 1
+            if cpusPerTask / cpusPerTask_orig >= 2
+                break;
+            end
+            cpusPerTask = cpusPerTask + 1;
+        end
+    else
+        if cpusPerTask / maxCPUNum > 0.75
+            cpusPerTask = maxCPUNum;
+        end
+    end
 end
 
 end

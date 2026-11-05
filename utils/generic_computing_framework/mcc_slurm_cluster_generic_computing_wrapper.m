@@ -55,6 +55,7 @@ ip.addParameter('paraJobNum', 1, @isnumeric); % support matlab, bash
 ip.addParameter('masterParaFactor', 1, @isnumeric); % master job parallel job percentage
 ip.addParameter('taskMetrics', false, @(x) islogical(x) || ischar(x)); % record task resources: true, or the run's metrics folder (see task_metrics)
 ip.addParameter('taskRunner', true, @islogical); % run several tasks per MATLAB Runtime process (see task_runner), if the compiled master has task runners
+ip.addParameter('slurmPlaces', [], @(x) isempty(x) || isstruct(x)); % places for the jobs, the main one first, with their cpusPerTask (see slurm_alternatives)
 
 ip.parse(inputFullpaths, outputFullpaths, funcStrs, varargin{:});
 
@@ -120,6 +121,7 @@ paraJobNum = pr.paraJobNum;
 masterParaFactor = pr.masterParaFactor;
 taskMetrics = pr.taskMetrics;
 taskRunner = pr.taskRunner;
+places = pr.slurmPlaces;
 
 if isempty(uuid)
     uuid = get_uuid();
@@ -151,6 +153,12 @@ if parseCluster
         m = round((jobTimeLimit - h) * 60);
         time_str = sprintf(' -t %02d:%02d:00 ', h, m);
     end
+end
+% jobs go to the first of several places with room for them now, and
+% pending ones move to such a place (see slurm_alternatives)
+multiPlace = parseCluster && numel(places) > 1;
+if multiPlace
+    timeStrs = slurm_alternatives('time_strs', places, pr.jobTimeLimit, ' -t %02d:%02d:00 ', time_str);
 end
 
 nF = numel(inputFullpaths);
@@ -418,6 +426,12 @@ while (~parseCluster && ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
         job_timestamp_mat(job_status_mat(:, 1) >= 0) = timestamp;
         pending_flag = any(job_status_mat(~is_done_flag, 1) == 0);        
         qts = tic;        
+        % pending jobs that can start now at another place move there
+        if multiPlace && pending_flag
+            pend = find(~is_done_flag & job_status_mat(:, 1) == 0 & job_ids > 0);
+            [~, ia] = unique(job_ids(pend), 'stable');
+            slurm_alternatives('move', job_ids(pend(ia)), task_ids(pend(ia)));
+        end
         % for the task runners: batches whose jobs wait in the queue
         if rc.on
             rc = task_runner_run('waiting', rc, ~is_done_flag & (job_status_mat(:, 1) == 0 | job_ids < 0), ...
@@ -614,33 +628,43 @@ while (~parseCluster && ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
                     else
                         fprintf('Task % 4d:    Process %s ... \n', b, strjoin(fsnames(fs), ', '));    
                     end
+                    % the job's place: the first with room for it now
+                    SlurmParam_f = SlurmParam;
+                    SlurmConstraint_f = SlurmConstraint;
+                    time_str_f = time_str;
+                    if multiPlace
+                        cpus_k = min([places.maxCPUNum], [places.cpusPerTask] * (1 + GPUJob * trial_counter(f)));
+                        [k, cpusPerTask_f, SlurmParam_f] = slurm_alternatives('choose', places, cpus_k, timeStrs);
+                        SlurmConstraint_f = places(k).SlurmConstraint;
+                        time_str_f = timeStrs{k};
+                    end
                     date_cmd_str = 'date \"+%Y-%m-%d %H:%M:%S.%6N\"';
                     % if tried twice, still fail, not use parallel computing
                     if ~GNUparallel || trial_counter(f) > 1
                         cmd = sprintf(['sbatch --array=%d -o %s -e %s --cpus-per-task=%d %s %s %s ', ...
                             '--wrap="printf \\\"Start time: \\\"; %s; echo $PWD; echo bash command:  \\\"%s\\\";  %s; bash %s; echo; printf \\\"End time: \\\"; %s"'], ...
-                            task_id, job_log_fname, job_log_error_fname, cpusPerTask_f, SlurmParam, ...
-                            SlurmConstraint, time_str, date_cmd_str, inputFn, BashLaunchStr, inputFn, date_cmd_str);
+                            task_id, job_log_fname, job_log_error_fname, cpusPerTask_f, SlurmParam_f, ...
+                            SlurmConstraint_f, time_str_f, date_cmd_str, inputFn, BashLaunchStr, inputFn, date_cmd_str);
                     else
                         cmd = sprintf(['sbatch --array=%d -o %s -e %s --cpus-per-task=%d ', ...
                             '--ntasks=1 %s %s %s --wrap="printf \\\"Start time: \\\"; %s; echo $PWD; echo bash command: \\\"%s\\\"; ', ...
                             '%s; parallel --ungroup --retries 2 --delay 0.2 \\\"srun --exclusive -c %d bash -c {}\\\" < %s; echo; printf \\\"End time: \\\"; %s"'], ...
-                            task_id, job_log_fname, job_log_error_fname, cpusPerTask_f, SlurmParam, ...
-                            SlurmConstraint, time_str, date_cmd_str, inputFn, BashLaunchStr, floor(cpusPerTask_f / paraJobNum), inputFn, date_cmd_str);
+                            task_id, job_log_fname, job_log_error_fname, cpusPerTask_f, SlurmParam_f, ...
+                            SlurmConstraint_f, time_str_f, date_cmd_str, inputFn, BashLaunchStr, floor(cpusPerTask_f / paraJobNum), inputFn, date_cmd_str);
                         % in case of some jobs fail because of memory issue, directly use parallel for computing
                         if trial_counter(f) <= 1
                             paraJobNum_f = max(1, round(paraJobNum / (trial_counter(f) + 1)));
                             cmd = sprintf(['sbatch --array=%d -o %s -e %s --cpus-per-task=%d ', ...
                                 '--ntasks=1 %s %s %s --wrap="printf \\\"Start time: \\\"; %s; echo $PWD; echo bash command: \\\"%s\\\"; ', ...
                                 '%s; parallel %s--ungroup --retries 2 --jobs %d --delay 0.2 < %s; echo; printf \\\"End time: \\\"; %s"'], ...
-                                task_id, job_log_fname, job_log_error_fname, cpusPerTask_f, SlurmParam, ...
-                                SlurmConstraint, time_str, date_cmd_str, inputFn, BashLaunchStr, jobJoblogStr, paraJobNum_f, inputFn, date_cmd_str);
+                                task_id, job_log_fname, job_log_error_fname, cpusPerTask_f, SlurmParam_f, ...
+                                SlurmConstraint_f, time_str_f, date_cmd_str, inputFn, BashLaunchStr, jobJoblogStr, paraJobNum_f, inputFn, date_cmd_str);
                             if GPUJob
                                 cmd = sprintf(['sbatch --array=%d -o %s -e %s --cpus-per-task=%d ', ...
                                     '--ntasks=1 %s %s %s --wrap="printf \\\"Start time: \\\"; %s; echo $PWD; echo bash command: \\\"%s\\\"; ', ...
                                     '%s; parallel %s--ungroup --retries 2 --jobs %d --delay 0.2 CUDA_VISIBLE_DEVICES=''\\$(({%%} - 1))'' eval {} < %s; echo; printf \\\"End time: \\\"; %s"'], ...
-                                    task_id, job_log_fname, job_log_error_fname, cpusPerTask_f, SlurmParam, ...
-                                    SlurmConstraint, time_str, date_cmd_str, inputFn, BashLaunchStr, jobJoblogStr, paraJobNum, inputFn, date_cmd_str);
+                                    task_id, job_log_fname, job_log_error_fname, cpusPerTask_f, SlurmParam_f, ...
+                                    SlurmConstraint_f, time_str_f, date_cmd_str, inputFn, BashLaunchStr, jobJoblogStr, paraJobNum, inputFn, date_cmd_str);
                             end
                         end
                     end
@@ -650,15 +674,15 @@ while (~parseCluster && ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
                         if ~GNUparallel
                             cmd = sprintf(['sbatch --array=%d -o %s -e %s --cpus-per-task=%d %s %s %s ', ...
                                 '--wrap="printf \\\"Start time: \\\"; %s; echo $PWD; echo bash command:  \\\"%s\\\";  %s; %s; echo; printf \\\"End time: \\\"; %s"'], ...
-                                task_id, job_log_fname, job_log_error_fname, cpusPerTask_f, SlurmParam, ...
-                                SlurmConstraint, time_str, date_cmd_str, inputFn, BashLaunchStr, ...
+                                task_id, job_log_fname, job_log_error_fname, cpusPerTask_f, SlurmParam_f, ...
+                                SlurmConstraint_f, time_str_f, date_cmd_str, inputFn, BashLaunchStr, ...
                                 task_runner_run('job', rc, b, 1, 0, 1, 1), date_cmd_str);
                         else
                             cmd = sprintf(['sbatch --array=%d -o %s -e %s --cpus-per-task=%d ', ...
                                 '--ntasks=1 %s %s %s --wrap="printf \\\"Start time: \\\"; %s; echo $PWD; echo bash command: \\\"%s\\\"; ', ...
                                 '%s; %s; echo; printf \\\"End time: \\\"; %s"'], ...
-                                task_id, job_log_fname, job_log_error_fname, cpusPerTask_f, SlurmParam, ...
-                                SlurmConstraint, time_str, date_cmd_str, inputFn, BashLaunchStr, ...
+                                task_id, job_log_fname, job_log_error_fname, cpusPerTask_f, SlurmParam_f, ...
+                                SlurmConstraint_f, time_str_f, date_cmd_str, inputFn, BashLaunchStr, ...
                                 task_runner_run('job', rc, b, paraJobNum, double(GPUJob), 1, 2), date_cmd_str);
                         end
                     end
@@ -675,6 +699,9 @@ while (~parseCluster && ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
                     job_ids(fs) = job_id;
                     job_status_mat(fs, 1) = 0;
                     trial_counter(fs) = trial_counter(fs) + 1;                                
+                    if multiPlace
+                        slurm_alternatives('submitted', job_id, task_id, places, cpus_k, k, timeStrs);
+                    end
                 end
             else
                 temp_file_info = dir(tmpFullpath);
@@ -854,6 +881,10 @@ if parseCluster
     unfinished_job_ids(unfinished_job_ids <= 0) = [];
     if any(unfinished_job_ids)
         system(sprintf('scancel %s &', num2str(unfinished_job_ids(:)')), '-echo');
+    end
+    if multiPlace
+        [~, ia] = unique(job_ids);
+        slurm_alternatives('forget', job_ids(ia), task_ids(ia));
     end
 end
 
