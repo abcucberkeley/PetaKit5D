@@ -293,6 +293,7 @@ if ~isPrimaryCh
 	end
 end
 
+sinds = (1 : nF)';
 if ~isempty(tileIdx)
 	% sort tiles based on tileIdx (handle zigzag orders)
 	[tileIdx, sinds] = sortrows(tileIdx, [4, 3, 2, 1]);
@@ -480,8 +481,48 @@ if save16bit
 	dtype = 'uint16';
 end 
 
+% a secondary channel or time point stitches with the primary's per-block
+% information, which is made for the primary's tile sizes and stitched
+% size. If its tiles (e.g., a tile whose acquisition stopped early) or its
+% stitched size differ, it makes its own, with the primary's tile
+% positions (its coordinates, here, and its shifts) and task size
+ownBlockInfo = false;
+coordSizes = imSizes;
+if ~isPrimaryCh
+	pInfo = load(stitchInfoFullpath, 'pImSz', 'pTileSizes');
+	svSize = pInfo.pImSz;
+	if ~isempty(outBbox)
+		bbox_end = outBbox(4 : 6);
+		bbox_end(isinf(bbox_end)) = svSize(isinf(bbox_end));
+		svSize = bbox_end - outBbox(1 : 3) + 1;
+	end
+	szStr = @(sz) strjoin(arrayfun(@num2str, sz, 'unif', 0), 'x');
+	diffTiles = [];
+	if isequal(size(imSizes), size(pInfo.pTileSizes))
+		diffTiles = find(any(imSizes ~= pInfo.pTileSizes, 2));
+	end
+	if ~isempty(diffTiles)
+		[~, tileNames] = cellfun(@fileparts, tileFullpaths(diffTiles), 'unif', 0);
+		tileStrs = arrayfun(@(k) sprintf('Tile %d (%s) is %s, the primary''s %s', diffTiles(k), tileNames{k}, ...
+			szStr(imSizes(diffTiles(k), :)), szStr(pInfo.pTileSizes(diffTiles(k), :))), 1 : numel(diffTiles), 'unif', 0);
+		warning('XR_stitching_frame_zarr_dev_v1:tileSizes', ['%s: so this volume gets its own block ', ...
+			'information, with the primary''s tile positions.'], strjoin(tileStrs, '; '));
+	end
+	if ~isequal(svSize, pInfo.pImSz)
+		warning('XR_stitching_frame_zarr_dev_v1:stitchedSize', ['The stitched size %s differs from the ', ...
+			'primary''s %s, so this volume gets its own block information, with the primary''s tile positions.'], ...
+			szStr(svSize), szStr(pInfo.pImSz));
+	end
+	ownBlockInfo = ~isempty(diffTiles) || ~isequal(svSize, pInfo.pImSz);
+	if ownBlockInfo && any(strcmp(who('-file', stitchInfoFullpath), 'xyz_orig'))
+		pCoords = load(stitchInfoFullpath, 'xyz_orig');
+		xyz = pCoords.xyz_orig(sinds, :);
+		coordSizes = pInfo.pTileSizes;
+	end
+end
+
 % process coordinates based on the space of the data
-xyz = stitch_process_coordinates(xyz, imSizes, flippedTile, order_sign_mat, data_order_mat, xp, yp, zp, theta, IOScan, objectiveScan, DS, DSR);
+xyz = stitch_process_coordinates(xyz, coordSizes, flippedTile, order_sign_mat, data_order_mat, xp, yp, zp, theta, IOScan, objectiveScan, DS, DSR);
 [~, data_order_reverse_mat] = sort(data_order_mat);
 
 % identify pairs between pairs
@@ -686,9 +727,10 @@ if ~isPrimaryCh && any(strcmp(who('-file', stitchInfoFullpath), 'PerBlockInfoFul
 	end
 end
 
+% (a secondary of other sizes makes its own, as the primary does)
 [block_info_fullname, PerBlockInfoFullpaths, block_info_bytes] = stitch_process_block_info(int_xyz_shift, ...
 	imSizes, nvSize, batchSize, data_order_mat, overlap_matrix, ol_region_cell, half_ol_region_cell, ...
-	overlap_map_mat, BorderSize, zarrFullpaths, stichInfoPath, nv_fsname, isPrimaryCh, ...
+	overlap_map_mat, BorderSize, zarrFullpaths, stichInfoPath, nv_fsname, isPrimaryCh || ownBlockInfo, ...
 	stitchInfoFullpath=stitchInfoFullpath, stitch2D=stitch2D, uuid=uuid, taskSize=taskSize, ...
 	maxFileNumPerFolder=maxFileNumPerFolder, parseCluster=parseCluster, mccMode=mccMode, configFile=configFile);
 

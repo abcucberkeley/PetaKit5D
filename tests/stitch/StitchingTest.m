@@ -621,6 +621,73 @@ classdef StitchingTest < pktest.TestCase
             testCase.verifyEqual(outB(1 : 64, 1 : 104, 1 : 32), gtB);
         end
 
+        function secondaryWithAShortTileStitchesWhatItHas(testCase)
+            % a secondary (here time point 1) whose tile 4 is shorter in z
+            % than the primary's (its acquisition stopped early) used the
+            % primary's per-block info, made for the primary's tile sizes,
+            % so its blocks read past the end of that tile (readzarr: "Upper
+            % bound is invalid"). Now it makes its own, with the primary's
+            % tile positions (its own tile 2 is one voxel off them) and
+            % shifts: its result is that of its tiles stitched on their own
+            % at those positions
+            px = testCase.XYPixelSize;
+            starts = [0, 0, 0; 36, 0, 0; 0, 48, 0; 36, 48, 0];
+            dataPath = testCase.createTempFolder();
+            alonePath = testCase.createTempFolder();
+            testCase.writeTiles(dataPath, testCase.randomVolume([100, 120, 32]), starts, [64, 72, 32]);
+            tiles = testCase.cutTiles(testCase.randomVolume([100, 120, 32]), starts, [64, 72, 32]);
+            tiles(4).im = tiles(4).im(:, :, 1 : 20);
+            pktest.writeStitchTiles(alonePath, tiles, 'iter', 1);
+            tiles(2).xyz = tiles(2).xyz + [px, 0, 0];
+            [~, csvFn] = pktest.writeStitchTiles(dataPath, tiles, 'iter', 1);
+
+            testCase.verifyWarning(@() testCase.stitch(dataPath, csvFn), 'XR_stitching_frame_zarr_dev_v1:tileSizes');
+            testCase.stitch(alonePath, [alonePath, 'ImageList.csv']);
+
+            name = strrep(testCase.StitchName, 'Iter_0000', 'Iter_0001');
+            testCase.verifyEqual(testCase.readResult(dataPath, 'matlab_stitch', name), ...
+                testCase.readResult(alonePath, 'matlab_stitch', name), ...
+                'The time point with a short tile is not its tiles stitched on their own.');
+            infoPath = [dataPath, 'matlab_stitch/stitchInfo/'];
+            testCase.verifyNotEmpty(dir([infoPath, name, '_task_size_*']), 'The secondary has no block info of its own.');
+            testCase.verifyNotEmpty(dir([infoPath, testCase.StitchName, '_task_size_*']));
+        end
+
+        function secondaryOfThePrimarySizesUsesItsBlockInfo(testCase)
+            % a secondary whose tiles and stitched size are the primary's
+            % still stitches with the primary's per-block info (none of its
+            % own), as before: the same data, the same result
+            [dataPath, csvFn] = testCase.writeTwoVolumes();
+            testCase.stitch(dataPath, csvFn);
+
+            name = strrep(testCase.StitchName, 'Iter_0000', 'Iter_0001');
+            infoPath = [dataPath, 'matlab_stitch/stitchInfo/'];
+            testCase.verifyNotEmpty(dir([infoPath, testCase.StitchName, '_task_size_*']));
+            testCase.verifyEmpty(dir([infoPath, name, '_task_size_*']), 'The secondary made block info of its own.');
+            testCase.verifyEqual(testCase.readResult(dataPath, 'matlab_stitch', name), testCase.readResult(dataPath));
+        end
+
+        function secondaryOfAnotherStitchedSizeGetsItsOwnBlockInfo(testCase)
+            % a secondary stitched later with another outBbox than the
+            % primary's (so of another stitched size) used the primary's
+            % per-block info, made for the primary's volume. Now it makes its
+            % own: its result is its box of the volume
+            gt = testCase.randomVolume([100, 120, 32]);
+            starts = [0, 0, 0; 36, 0, 0; 0, 48, 0; 36, 48, 0];
+            dataPath = testCase.createTempFolder();
+            csvFn = testCase.writeTiles(dataPath, gt, starts, [64, 72, 32]);
+            testCase.stitch(dataPath, csvFn, 'outBbox', [1, 1, 1, 100, 120, 32]);
+            testCase.writeTiles(dataPath, gt, starts, [64, 72, 32], [], [], [], 'iter', 1);
+
+            testCase.verifyWarning(@() testCase.stitch(dataPath, csvFn, 'outBbox', [11, 21, 1, 90, 100, 32]), ...
+                'XR_stitching_frame_zarr_dev_v1:stitchedSize');
+
+            name = strrep(testCase.StitchName, 'Iter_0000', 'Iter_0001');
+            testCase.verifyEqual(testCase.readResult(dataPath, 'matlab_stitch', name), gt(11 : 90, 21 : 100, :));
+            testCase.verifyNotEmpty(dir([dataPath, 'matlab_stitch/stitchInfo/', name, '_task_size_*']), ...
+                'The secondary has no block info of its own.');
+        end
+
         function largeDatasetsUseLocalWorkers(testCase)
             % without localWorkerNum, the volumes of datasets with 32 or more
             % tiles per volume to register are stitched with local workers,
@@ -1137,18 +1204,33 @@ classdef StitchingTest < pktest.TestCase
         end
 
         function [csvFn] = writeTiles(testCase, dataPath, gt, starts, tileSize, pixelSizes, stageXYZ, tileIdx, varargin)
+            % write the tiles of cutTiles
+            if nargin < 6
+                pixelSizes = [];
+            end
+            if nargin < 7
+                stageXYZ = [];
+            end
+            if nargin < 8
+                tileIdx = [];
+            end
+            tiles = testCase.cutTiles(gt, starts, tileSize, pixelSizes, stageXYZ, tileIdx);
+            [~, csvFn] = pktest.writeStitchTiles(dataPath, tiles, varargin{:});
+        end
+
+        function [tiles] = cutTiles(testCase, gt, starts, tileSize, pixelSizes, stageXYZ, tileIdx)
             % cut tiles of tileSize ([y, x, z]) at 0-based voxel offsets
             % starts ([y0, x0, z0] per row) from the ground truth. By default
             % the stage coordinates are the offsets times the voxel size
             % and the tile indices follow the positions.
-            if nargin < 6 || isempty(pixelSizes)
+            if nargin < 5 || isempty(pixelSizes)
                 pixelSizes = testCase.XYPixelSize * [1, 1, 1];
             end
             nT = size(starts, 1);
-            if nargin < 7 || isempty(stageXYZ)
+            if nargin < 6 || isempty(stageXYZ)
                 stageXYZ = starts(:, [2, 1, 3]) .* pixelSizes([2, 1, 3]);
             end
-            if nargin < 8 || isempty(tileIdx)
+            if nargin < 7 || isempty(tileIdx)
                 xyzStarts = starts(:, [2, 1, 3]);
                 tileIdx = zeros(nT, 3);
                 for i = 1 : 3
@@ -1167,7 +1249,6 @@ classdef StitchingTest < pktest.TestCase
                 tiles(i).idx = tileIdx(i, :);
                 tiles(i).xyz = stageXYZ(i, :);
             end
-            [~, csvFn] = pktest.writeStitchTiles(dataPath, tiles, varargin{:});
         end
 
         function [] = stitch(testCase, dataPath, csvFn, varargin)
