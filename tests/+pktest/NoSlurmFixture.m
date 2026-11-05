@@ -7,10 +7,24 @@ classdef NoSlurmFixture < matlab.unittest.fixtures.Fixture
     % Windows has no Slurm, so nothing is changed there. The stub folder is
     % in PETAKIT5D_TEST_SLURM_STUBS so pktest.RealSlurmFixture can lift it
     % for the opt-in cluster tests.
+    %
+    % The Slurm job of the tests (when they run in one, e.g. with srun or
+    % sbatch) is hidden too: its environment variables are unset while the
+    % fixture is set up, so the code under test acts as outside a job
+    % wherever the tests run (a master in a Slurm job computes only the tasks
+    % that fit the job's memory, so in a job of 16 GB the tests of tasks the
+    % master computes failed). Tests that need a job set these themselves.
 
+    properties (Constant, Access = private)
+        % the variables of a job that PetaKit5D and its scripts read
+        JobVariables = {'SLURM_JOB_ID', 'SLURM_JOBID', 'SLURM_ARRAY_JOB_ID', 'SLURM_ARRAY_TASK_ID', ...
+            'SLURMD_NODENAME', 'SLURM_MEM_PER_NODE', 'SLURM_MEM_PER_CPU', 'SLURM_CPUS_ON_NODE', ...
+            'SLURM_JOB_START_TIME', 'SLURM_JOB_END_TIME'}
+    end
     properties (Access = private)
         OriginalPath
         OriginalStubs
+        OriginalJobValues
         StubFolder
     end
 
@@ -35,7 +49,9 @@ classdef NoSlurmFixture < matlab.unittest.fixtures.Fixture
             fixture.OriginalStubs = getenv('PETAKIT5D_TEST_SLURM_STUBS');
             setenv('PATH', [fixture.StubFolder, pathsep, fixture.OriginalPath]);
             setenv('PETAKIT5D_TEST_SLURM_STUBS', fixture.StubFolder);
-            fixture.SetupDescription = 'Hid Slurm commands behind failing stubs';
+            fixture.OriginalJobValues = cellfun(@getenv, fixture.JobVariables, 'unif', 0);
+            cellfun(@unsetenv, fixture.JobVariables);
+            fixture.SetupDescription = 'Hid Slurm commands behind failing stubs, and the Slurm job of the tests';
         end
 
         function teardown(fixture)
@@ -44,6 +60,13 @@ classdef NoSlurmFixture < matlab.unittest.fixtures.Fixture
             end
             setenv('PATH', fixture.OriginalPath);
             setenv('PETAKIT5D_TEST_SLURM_STUBS', fixture.OriginalStubs);
+            for i = 1 : numel(fixture.JobVariables)
+                if isempty(fixture.OriginalJobValues{i})
+                    unsetenv(fixture.JobVariables{i});
+                else
+                    setenv(fixture.JobVariables{i}, fixture.OriginalJobValues{i});
+                end
+            end
             if exist(fixture.StubFolder, 'dir')
                 rmdir(fixture.StubFolder, 's');
             end

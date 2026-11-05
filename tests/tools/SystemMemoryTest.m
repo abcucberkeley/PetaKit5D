@@ -22,11 +22,13 @@ classdef SystemMemoryTest < pktest.TestCase
             % a job submitted from another job (as the jobs of a job that
             % coordinates jobs are) inherits the other's SLURM_MEM_PER_NODE
             % (a 32-CPU controller got 16 GB, its master's): the memory is
-            % the limit of the job's own cgroup. In a Slurm job only.
-            testCase.assumeTrue(isunix && ~ismac && ~isempty(getenv('SLURM_JOB_ID')), 'Not in a Slurm job.');
-            txt = fileread('/proc/self/cgroup');
-            testCase.assumeNotEmpty(regexp(txt, ['/job_', getenv('SLURM_JOB_ID'), '(/|\s)'], 'once'), ...
-                'The job has no cgroup of its own.');
+            % the limit of the job's own cgroup. In a Slurm job only: the job
+            % of the tests, from its cgroup (pktest.NoSlurmFixture hides its
+            % variables)
+            testCase.assumeTrue(isunix && ~ismac, 'Slurm memory is only read on Linux.');
+            job = regexp(fileread('/proc/self/cgroup'), '/job_(\d+)(/|\s)', 'tokens', 'once');
+            testCase.assumeNotEmpty(job, 'Not in a Slurm job with a cgroup of its own.');
+            testCase.applyFixture(matlab.unittest.fixtures.EnvironmentVariableFixture('SLURM_JOB_ID', job{1}));
             testCase.applyFixture(matlab.unittest.fixtures.EnvironmentVariableFixture('SLURM_MEM_PER_NODE', '1'));
             testCase.verifyGreaterThan(getSystemMemory(), 0.5);
         end
