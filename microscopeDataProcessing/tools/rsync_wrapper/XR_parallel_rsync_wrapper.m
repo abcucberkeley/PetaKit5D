@@ -35,13 +35,10 @@ configFile = pr.configFile;
 SlurmParam = sprintf('%s --nice=%d', SlurmParam, niceFactor);
 
 tic
-% go to the repo root folder
-setupFn = which('setup.m');
-[codePath, ~, ~] = fileparts(setupFn);
+% go to the repo root folder, four levels above this file (the first setup.m
+% on the path can be another one, and the folder can have any name)
+codePath = fileparts(fileparts(fileparts(fileparts(mfilename('fullpath')))));
 cd(codePath);
-if ~contains(codePath, 'PetaKit5D')
-    cd('PetaKit5D');
-end
 codePath = pwd;
 
 uuid = get_uuid();
