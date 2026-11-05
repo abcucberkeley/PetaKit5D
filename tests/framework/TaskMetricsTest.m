@@ -129,11 +129,12 @@ classdef TaskMetricsTest < pktest.TestCase
             % the peak resident memory is the task's own: it is reset at the
             % start of each task (a task that allocates 512 MB, then one that
             % doesn't); user and system CPU add up to the CPU time (a task
-            % that computes, mostly user time)
+            % that computes, mostly user time: in small arrays, as faulting in
+            % large ones is system time, which on a busy machine was half)
             testCase.assumeTrue(isunix && ~ismac, 'Resource use beyond time is recorded on Linux only.');
             [inFns, outFns, logFn, dataPath] = testCase.makeTasks(3);
             funcStrs = [{'ones(2^26,1)'}, testCase.taskStrings(inFns(2), outFns(2), logFn, 'copy'), ...
-                {'sum(sqrt(rand(1,4e7)))'}];
+                {'sum(arrayfun(@(k) sum(sqrt(rand(1, 1e5))), 1 : 400))'}];
 
             evalc(['generic_computing_frameworks_wrapper(inFns, outFns, funcStrs, ''parseCluster'', false, ', ...
                 '''masterCompute'', true, ''maxTrialNum'', 1, ''unitWaitTime'', 0, ''taskMetrics'', true)']);
