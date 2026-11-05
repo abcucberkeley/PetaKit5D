@@ -59,6 +59,7 @@ blockSize = pr.blockSize;
 inputBbox = pr.inputBbox;
 converterPath = pr.converterPath;
 parseCluster = pr.parseCluster;
+masterCompute = pr.masterCompute;
 jobLogDir = pr.jobLogDir;
 cpusPerTask = pr.cpusPerTask;
 uuid = pr.uuid;
@@ -152,6 +153,9 @@ for d = 1 : nd
         warning('Folder %s does not contain any file that contains the given channel patterns!', dataPath);
         continue;
     end
+    % the converter takes the size of the first file for every time point
+    % and channel, so files of other sizes would be written wrong
+    check_image_sizes(dataPath, zarrFile, channelPatterns, inputBbox);
     [~, ffsn] = fileparts(fsn{1});
 
     imsPath = [dataPath_fst, imsName, '/'];
@@ -216,8 +220,58 @@ end
 
 % use slurm job wrapper for computing
 generic_computing_frameworks_wrapper(inputFullpaths, outputFullpaths, func_strs, ...
-    'cpusPerTask', cpusPerTask, 'parseCluster', parseCluster, 'language', 'bash', ...
-    jobLogDir=jobLogDir, mccMode=mccMode, configFile=configFile);
+    'cpusPerTask', cpusPerTask, 'parseCluster', parseCluster, 'masterCompute', masterCompute, ...
+    'language', 'bash', jobLogDir=jobLogDir, mccMode=mccMode, configFile=configFile);
 
 end
 
+
+function [] = check_image_sizes(folders, zarrFile, channelPatterns, inputBbox)
+% the files of a dataset (those of its folders with the channel patterns)
+% have one size, or all contain inputBbox (the converter crops each to it):
+% the converter takes the size of the first file for every time point and
+% channel, and would write the others wrong
+
+if ischar(folders)
+    folders = {folders};
+end
+fns = {};
+for i = 1 : numel(folders)
+    folder = folders{i};
+    if ~endsWith(folder, '/')
+        folder = [folder, '/'];
+    end
+    if zarrFile
+        dir_info = dir([folder, '*zarr']);
+    else
+        dir_info = dir([folder, '*tif']);
+    end
+    names = {dir_info.name}';
+    fns = [fns; strcat(folder, names(contains(names, channelPatterns)))]; %#ok<AGROW>
+end
+if numel(fns) < 2
+    return;
+end
+sz = ones(numel(fns), 3);
+for i = 1 : numel(fns)
+    s = getImageSize(fns{i});
+    sz(i, 1 : numel(s)) = s;
+end
+if isempty(inputBbox)
+    k = find(any(sz ~= sz(1, :), 2), 1);
+    if ~isempty(k)
+        error('XR_imaris_conversion_data_wrapper:sizeMismatch', ['The files to convert differ in size ' ...
+            '(%s: %s, %s: %s); the converter takes the size of the first file for every time point and ' ...
+            'channel. Crop them to one size with inputBbox, or convert them apart.'], fns{1}, ...
+            mat2str(sz(1, :)), fns{k}, mat2str(sz(k, :)));
+    end
+else
+    k = find(any(sz < inputBbox(4 : 6), 2), 1);
+    if ~isempty(k)
+        error('XR_imaris_conversion_data_wrapper:sizeMismatch', ['%s (%s) does not contain inputBbox %s, ' ...
+            'to which the converter crops every time point and channel.'], fns{k}, mat2str(sz(k, :)), ...
+            mat2str(inputBbox));
+    end
+end
+
+end

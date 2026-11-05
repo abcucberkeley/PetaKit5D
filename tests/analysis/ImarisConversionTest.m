@@ -79,6 +79,43 @@ classdef ImarisConversionTest < pktest.TestCase
         end
     end
 
+    methods (Test, TestTags = {'Unit'})
+        function masterComputeIsPassedToTheFramework(testCase)
+            % the wrapper took masterCompute but didn't pass it on, so with
+            % false the master still converted (and a master job sized for
+            % waiting ran out of memory)
+            dataPath = testCase.writeTimeSeries();
+            for mc = [false, true]
+                spy = testCase.applyFixture(pktest.FrameworkSpyFixture);
+                XR_imaris_conversion_data_wrapper({dataPath}, 'channelPatterns', {'CamA', 'CamB'}, ...
+                    'parseCluster', false, 'masterCompute', mc, 'cpusPerTask', 2, 'overwrite', true);
+                testCase.verifyEqual(spy.getOption(1, 'masterCompute'), mc);
+            end
+        end
+
+        function filesOfDifferentSizesAreRejected(testCase)
+            % the converter takes the size of the first file for every time
+            % point and channel: a time point of another size is an error
+            % (before any output), unless inputBbox crops all to one size
+            dataPath = testCase.writeTimeSeries();
+            writetiff(uint16(randi(100, testCase.ImSize + [0, 0, 4])), ...
+                [dataPath, sprintf(testCase.Fsn, 2, 'CamA'), '.tif']);
+            spy = testCase.applyFixture(pktest.FrameworkSpyFixture);
+            testCase.verifyError(@() XR_imaris_conversion_data_wrapper({dataPath}, 'channelPatterns', {'CamA', 'CamB'}, ...
+                'parseCluster', false, 'cpusPerTask', 2), 'XR_imaris_conversion_data_wrapper:sizeMismatch');
+            testCase.verifyEmpty(spy.getCalls(), 'The converter ran.');
+            testCase.verifyFalse(isfolder([dataPath, 'imaris']), 'An output folder was made.');
+            % a bbox inside all of them
+            XR_imaris_conversion_data_wrapper({dataPath}, 'channelPatterns', {'CamA', 'CamB'}, ...
+                'parseCluster', false, 'cpusPerTask', 2, 'inputBbox', [1, 1, 1, 10, 10, 10]);
+            testCase.verifyNumElements(spy.getCalls(), 1);
+            % a bbox past the size of the smaller files
+            testCase.verifyError(@() XR_imaris_conversion_data_wrapper({dataPath}, 'channelPatterns', {'CamA', 'CamB'}, ...
+                'parseCluster', false, 'cpusPerTask', 2, 'inputBbox', [1, 1, 1, 10, 10, testCase.ImSize(3) + 1]), ...
+                'XR_imaris_conversion_data_wrapper:sizeMismatch');
+        end
+    end
+
     methods (Test, TestTags = {'Integration', 'KnownIssue'})
         function imageSizeIsNotPaddedToBlocks(testCase)
             % KNOWN ISSUE: Parallel_Imaris_Writer records the image size
