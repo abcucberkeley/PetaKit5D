@@ -333,8 +333,9 @@ classdef DeconWrapperTest < pktest.TestCase
             testCase.verifyEmpty(dir([d.dataPath, 'large/zarr_flag/', d.fsns{1}, '_*']), 'The flags were not removed.');
             % (no MIPs of this one's incomplete result, named after the result)
             testCase.verifyEmpty(dir([d.dataPath, 'large/MIPs/*.tif']), 'MIPs were made from the incomplete result.');
-            % (and the blocks stop once the result is there)
-            testCase.verifyEqual(regexprep(spy.getOption(1, 'finalOutFullpath'), '/+', '/'), resultFn);
+            % (and the blocks stop once the result is there; on Windows the
+            % decon folder ends with filesep)
+            testCase.verifyEqual(regexprep(strrep(spy.getOption(1, 'finalOutFullpath'), '\', '/'), '/+', '/'), resultFn);
         end
 
         function largeFileInPlaceBlocksOfAnEndedControllerAreSkipped(testCase)
