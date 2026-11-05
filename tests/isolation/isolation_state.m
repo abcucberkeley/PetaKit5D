@@ -33,7 +33,7 @@ st.rssGB = NaN;
 st.peakGB = NaN;
 st.osThreads = NaN;
 if isunix && ~ismac
-    st.fds = numel(dir('/proc/self/fd')) - 2;
+    st.fds = file_descriptors();
     [st.rssGB, st.peakGB, st.osThreads] = proc_status();
 end
 st.timers = NaN;
@@ -136,5 +136,24 @@ for i = 1 : numel(lines)
         memMB = memMB + v(2);
     end
 end
+
+end
+
+
+function [n] = file_descriptors()
+% the open file descriptors of this process that point to files outside
+% MATLAB, as a task can leave them open (a deleted file too). MATLAB's own
+% descriptors (sockets, pipes, event and device descriptors, its files in
+% matlabroot and prefdir) come and go in the background: their count changed
+% by one between two looks on R2026b (IsolationHarnessTest on GitHub)
+
+n = NaN;
+[status, out] = system(sprintf('ls -l /proc/%d/fd 2>/dev/null', feature('getpid')));
+if status ~= 0
+    return;
+end
+targets = regexp(out, '-> ([^\n]+)', 'tokens');
+targets = cellfun(@(x) strtrim(x{1}), targets, 'unif', 0);
+n = nnz(startsWith(targets, '/') & ~startsWith(targets, {'/dev/', '/proc/', '/sys/', matlabroot, prefdir}));
 
 end

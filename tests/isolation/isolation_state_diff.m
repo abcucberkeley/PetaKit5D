@@ -43,7 +43,7 @@ if ~isequal(a.files, b.files)
     changes{end + 1} = sprintf('open files %d -> %d', size(a.files, 1), size(b.files, 1));
 end
 if ~isequaln(a.fds, b.fds)
-    changes{end + 1} = sprintf('file descriptors %d -> %d', a.fds, b.fds);
+    changes{end + 1} = sprintf('file descriptors (of files outside MATLAB) %d -> %d', a.fds, b.fds);
 end
 if ~isequaln(a.figures, b.figures)
     changes{end + 1} = sprintf('figures %d -> %d', a.figures, b.figures);

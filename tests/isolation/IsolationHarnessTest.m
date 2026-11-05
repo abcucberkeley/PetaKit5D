@@ -22,6 +22,26 @@ classdef IsolationHarnessTest < pktest.TestCase
             end
         end
 
+        function fileDescriptorsAreThoseOfFilesOutsideMATLAB(testCase)
+            % only descriptors of files outside MATLAB count, as a task can
+            % leave them open: MATLAB's own (sockets, pipes, event and device
+            % descriptors) come and go in the background, and their count
+            % changed by one between two looks (fullResetRestoresTheProcess
+            % on GitHub's R2026b Linux runner). A device descriptor (here
+            % /dev/null) doesn't count, a file left open does.
+            testCase.assumeTrue(isunix && ~ismac, 'File descriptors are counted on Linux only.');
+            st0 = isolation_state();
+            fidDev = fopen('/dev/null', 'r');
+            testCase.addTeardown(@() fclose(fidDev));
+            st1 = isolation_state();
+            testCase.verifyEqual(st1.fds, st0.fds, 'A device descriptor was counted.');
+            fid = fopen([testCase.createTempFolder(), 'left_open.txt'], 'w');
+            testCase.addTeardown(@() fclose(fid));
+            st2 = isolation_state();
+            testCase.verifyEqual(st2.fds - st1.fds, 1, 'A file left open was not counted.');
+            testCase.verifySubstring(strjoin(isolation_state_diff(st1, st2), newline), 'file descriptors (of files outside MATLAB)');
+        end
+
         function fullResetRestoresTheProcess(testCase)
             % (a new process has no last warning)
             lastwarn('', '');
