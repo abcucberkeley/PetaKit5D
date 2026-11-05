@@ -262,12 +262,10 @@ if ~fuseMIP
     end
 end
 
+% a slab another writer put in place (of the same result) is kept
 for i = 1 : 3
-    if exist(MIPZarrpaths{i}, 'dir') && exist(MIPZarrTmppaths{i}, 'dir')
-        rmdir(MIPZarrpaths{i}, 's');
-    end
     if exist(MIPZarrTmppaths{i}, 'dir')
-        movefile(MIPZarrTmppaths{i}, MIPZarrpaths{i});
+        publish_result(MIPZarrTmppaths{i}, MIPZarrpaths{i});
     end
 end
 

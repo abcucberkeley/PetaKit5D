@@ -208,6 +208,103 @@ classdef DeskewRotateDataWrapperTest < pktest.TestCase
                 'An incomplete result was moved into place.');
         end
 
+        function largeFileKeepsAResultAnotherWriterPublished(testCase)
+            % two job sets on the same data: the one that finished last
+            % deleted the result the other had published (which a reader
+            % may use) and moved its own into place. Now it keeps the
+            % other's and removes its own (incomplete here: the framework
+            % is a spy that reports the blocks done while the other result
+            % comes)
+            dataPath = testCase.createTempFolder();
+            frameFn = [dataPath, testCase.FsnA0, '.zarr'];
+            writezarr(testCase.makeFrame(1), frameFn);
+            dsrFn = [dataPath, 'DSR/', testCase.FsnA0, '.zarr'];
+            other = uint16(7 * ones(10, 10, 10));
+            spy = testCase.applyFixture(pktest.FrameworkSpyFixture(@() pktest.atCall([dataPath, 'calls.txt'], 1, ...
+                @() writezarr(other, dsrFn))));
+            evalc(['XR_deskewRotateZarr(frameFn, testCase.XYPixelSize, testCase.Dz, ''skewAngle'', testCase.SkewAngle, ', ...
+                '''reverse'', true, ''batchSize'', [16, 1024, 1024], ''blockSize'', [16, 64, 64], ''parseCluster'', false)']);
+            testCase.verifyEqual(readzarr(dsrFn), other, 'The other writer''s result was replaced.');
+            testCase.verifyEmpty(dir([dsrFn, '_*']), 'The temporary result was not removed.');
+            testCase.verifyEmpty(dir([dataPath, 'DSR/zarr_flag/', testCase.FsnA0, '_*']), 'The flags were not removed.');
+            % (no MIPs of this one's incomplete result, named after the result)
+            testCase.verifyEmpty(dir([dataPath, 'DSR/MIPs/*.tif']), 'MIPs were made from the incomplete result.');
+            % (and the blocks stop once the result is there)
+            testCase.verifyEqual(regexprep(spy.getOption(1, 'finalOutFullpath'), '/+', '/'), dsrFn);
+        end
+
+        function largeFileKeepsAResultPublishedDuringItsMIPs(testCase)
+            % as above, with the other result coming while the MIPs are made
+            % (a spy of XR_MIP_zarr makes it)
+            dataPath = testCase.createTempFolder();
+            frameFn = [dataPath, testCase.FsnA0, '.zarr'];
+            writezarr(testCase.makeFrame(1), frameFn);
+            dsrFn = [dataPath, 'DSR/', testCase.FsnA0, '.zarr'];
+            other = uint16(7 * ones(10, 10, 10));
+            testCase.applyFixture(pktest.FunctionSpyFixture('XR_MIP_zarr', @() writezarr(other, dsrFn)));
+            evalc(['XR_deskewRotateZarr(frameFn, testCase.XYPixelSize, testCase.Dz, ''skewAngle'', testCase.SkewAngle, ', ...
+                '''reverse'', true, ''batchSize'', [16, 1024, 1024], ''blockSize'', [16, 64, 64], ''parseCluster'', false)']);
+            testCase.verifyEqual(readzarr(dsrFn), other, 'The other writer''s result was replaced.');
+            testCase.verifyEmpty(dir([dsrFn, '_*']), 'The temporary result was not removed.');
+            testCase.verifyEmpty(dir([dsrFn, '/*.zarr_*']), 'The result was moved into the other''s.');
+        end
+
+        function largeFileBlocksOfAnEndedTaskAreSkipped(testCase)
+            % the block jobs of a large file whose job was cancelled ran on,
+            % for a result nothing would publish; a block now skips its work
+            % when its task's job has ended (its writer record; a fake Slurm
+            % that no longer lists the job). The block task is the one the
+            % task made (a framework spy that reports it failed).
+            testCase.assumeFalse(ispc, 'The fake Slurm needs a POSIX shell.');
+            dataPath = testCase.createTempFolder();
+            frameFn = [dataPath, testCase.FsnA0, '.zarr'];
+            writezarr(testCase.makeFrame(1), frameFn);
+            spy = testCase.applyFixture(pktest.FrameworkSpyFixture([], false));
+            testCase.verifyError(@() XR_deskewRotateZarr(frameFn, testCase.XYPixelSize, testCase.Dz, ...
+                'skewAngle', testCase.SkewAngle, 'reverse', true, 'batchSize', [16, 1024, 1024], ...
+                'blockSize', [16, 64, 64], 'saveMIP', false, 'parseCluster', false), ?MException);
+            calls = spy.getCalls();
+            flagFn = calls{1}.outputFullpaths{1};
+            recordFn = [fileparts(flagFn), '/writer.txt'];
+            testCase.assertTrue(isfile(recordFn), 'The task did not record itself.');
+            % (it ended by an error, and says so: its process may stay, e.g.
+            % an interactive session, and no one may wait for it)
+            testCase.verifySubstring(fileread(recordFn), sprintf('\nended=1'), ...
+                'The task that failed did not mark its record ended.');
+            % a task whose job was cancelled can't say so: its job is gone
+            txt = regexprep(fileread(recordFn), {'owner=[^\n]*', 'ended=[^\n]*\n'}, {'owner=777_3:othernode:5', ''});
+            fid = fopen(recordFn, 'w');
+            fprintf(fid, '%s', txt);
+            fclose(fid);
+            testCase.applyFixture(pktest.FakeSlurmFixture);
+            % (squeue's answers are kept per job for a minute; fake job ids repeat)
+            clear('result_writers');
+            funcStr = calls{1}.funcStrs{1};
+            evalc('feval(str2func([''@()'', funcStr]))');
+            testCase.verifyFalse(isfile(flagFn), 'The block of an ended task was deskewed.');
+        end
+
+        function largeFileWaitsForAWriterOfAnotherCall(testCase)
+            % a task of another call (another uuid) that may still make the
+            % result: the second one made it as well; now it waits for it.
+            % The other is a process on this node, whose result comes during
+            % the wait (a spy of wait_for_files); no block may run.
+            testCase.assumeTrue(isunix && ~ismac, 'Writers outside Slurm are checked on Linux only.');
+            dataPath = testCase.createTempFolder();
+            frameFn = [dataPath, testCase.FsnA0, '.zarr'];
+            writezarr(testCase.makeFrame(1), frameFn);
+            dsrFn = [dataPath, 'DSR/', testCase.FsnA0, '.zarr'];
+            pktest.writeWriterRecord(testCase, dsrFn, 'otheruuid');
+            other = uint16(7 * ones(10, 10, 10));
+            testCase.applyFixture(pktest.FunctionSpyFixture('wait_for_files', @() pktest.atCall([dataPath, 'calls.txt'], 1, ...
+                @() writezarr(other, dsrFn)), 10));
+            spy = testCase.applyFixture(pktest.FrameworkSpyFixture());
+            evalc(['XR_deskewRotateZarr(frameFn, testCase.XYPixelSize, testCase.Dz, ''skewAngle'', testCase.SkewAngle, ', ...
+                '''reverse'', true, ''batchSize'', [16, 1024, 1024], ''blockSize'', [16, 64, 64], ''parseCluster'', false)']);
+            testCase.verifyEmpty(spy.getCalls(), 'The result was made a second time.');
+            testCase.verifyEqual(readzarr(dsrFn), other);
+        end
+
         function largeFileJobsAskForWhatTheyHold(testCase)
             % the job of a large file (XR_deskewRotateZarr) runs its y
             % batches as jobs. It asked for 40 B per voxel of the whole

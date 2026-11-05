@@ -40,6 +40,12 @@ if exist(flagFullname, 'file')
     end
 end
 
+% a block of a task whose job ended (e.g., was cancelled): nothing would use
+% it (see result_writers)
+if result_writers('orphaned', flagFullname)
+    return;
+end
+
 if ~exist(zarrFullpath, 'dir')
     error('The input zarr file %s doesnot exist!', zarrFullpath);
 end

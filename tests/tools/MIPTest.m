@@ -80,6 +80,23 @@ classdef MIPTest < pktest.TestCase
             testCase.verifyFalse(exist([dataPath, 'out_MIP_x.tif'], 'file') > 0);
         end
 
+        function slabAnotherWriterMadeIsKept(testCase)
+            % a MIP slab that another writer (of the same result) had put in
+            % place was deleted and replaced; it is kept, and the MIP of its
+            % axis is made from it
+            [dataPath, ims, names] = testCase.writeDataset('zarr');
+            mkdir([dataPath, 'MIPs']);
+            slabFn = [dataPath, 'MIPs/', names{1}, '_y.zarr'];
+            other = uint16(7 * ones(1, testCase.ImSize(2), testCase.ImSize(3)));
+            writezarr(other, slabFn);
+            evalc('XR_MIP_zarr([dataPath, names{1}, ''.zarr''], ''axis'', [1, 1, 1], ''parseCluster'', false)');
+            testCase.verifyEqual(readzarr(slabFn), other, 'The other writer''s slab was replaced.');
+            testCase.verifyEqual(readtiff([dataPath, 'MIPs/', names{1}, '_MIP_y.tif']), squeeze(other));
+            testCase.verifyEqual(readtiff([dataPath, 'MIPs/', names{1}, '_MIP_z.tif']), max(ims{1}, [], 3));
+            testCase.verifyEmpty(dir([dataPath, 'MIPs/', names{1}, '_y_*']), 'The temporary slab was not removed.');
+            testCase.verifyEmpty(dir([slabFn, '/*.zarr']), 'The temporary slab was moved into the other''s.');
+        end
+
         function largeZarrJobsAskForWhatTheyHold(testCase)
             % the job of a large file (XR_MIP_zarr) runs its MIP batches as
             % jobs (1 CPU each). It asked for 16 B per voxel of the whole

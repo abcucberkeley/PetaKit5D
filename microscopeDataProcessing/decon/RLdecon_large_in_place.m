@@ -165,6 +165,17 @@ zarrFlagPath = sprintf('%s/zarr_flag/%s_%s/', deconPath, fsname, uuid);
 if ~exist(zarrFlagPath, 'dir')
     mkdir_recursive(zarrFlagPath);
 end
+% a job of another call that may still make the result (e.g., the job of a
+% call that was cancelled and run again): wait for it instead of making the
+% result a second time (see result_writers)
+result_writers('register', deconFullpath, uuid, zarrFlagPath);
+% (marked ended when this function ends but by publishing, e.g. by an
+% error, so that no one waits for it and its blocks are skipped)
+writerRecord = onCleanup(@() result_writers('release', deconFullpath, uuid, zarrFlagPath));
+if result_writers('wait', deconFullpath, uuid)
+    keep_other_result(deconFullpath, deconTmppath, zarrFlagPath);
+    return;
+end
 
 imSize = getImageSize(frameFullpath);
 toc
@@ -261,16 +272,19 @@ if ~parseParfor
     else
         cur_configFile = configFile;
     end
+    % (the blocks stop once the result exists: another writer made it)
     is_done_flag= generic_computing_frameworks_wrapper(inputFullpaths, outputFullpaths, ...
         funcStrs, 'cpusPerTask', cpusPerTask, 'maxJobNum', maxJobNum, 'taskBatchNum', taskBatchNum, ...
         'masterCompute', masterCompute, 'parseCluster', parseCluster, 'GPUJob', GPUJob, ...
-        'jobLogDir', jobLogDir, 'mccMode', mccMode, 'configFile', cur_configFile);
+        'jobLogDir', jobLogDir, 'mccMode', mccMode, 'configFile', cur_configFile, ...
+        'finalOutFullpath', deconFullpath);
 
     if ~all(is_done_flag)
         is_done_flag = generic_computing_frameworks_wrapper(inputFullpaths, outputFullpaths, ...
             funcStrs, 'cpusPerTask', cpusPerTask, 'maxJobNum', maxJobNum, 'taskBatchNum', taskBatchNum, ...
             'masterCompute', masterCompute, 'parseCluster', parseCluster, 'GPUJob', GPUJob, ...
-            'jobLogDir', jobLogDir, 'mccMode', mccMode, 'configFile', cur_configFile);
+            'jobLogDir', jobLogDir, 'mccMode', mccMode, 'configFile', cur_configFile, ...
+            'finalOutFullpath', deconFullpath);
     end
 elseif parseParfor
     is_done_flag= matlab_parfor_generic_computing_wrapper(inputFullpaths, outputFullpaths, ...
@@ -279,6 +293,15 @@ end
 
 if ~all(is_done_flag, 'all')
     error('The decon of some chunks are missing!');
+end
+
+% another writer (a job of another call on the same file, or a controller
+% started again) may have published the result: keep it and its MIPs (the
+% same result) and remove this one's temporary result, which can be
+% incomplete (the framework reports the blocks as done once the result
+% exists), instead of replacing a result that readers may use
+if keep_other_result(deconFullpath, deconTmppath, zarrFlagPath)
+    return;
 end
 
 % generate MIPs from the temporary result: the caller counts the file as
@@ -296,15 +319,8 @@ if exist(deconTmppath, 'dir')
         jobLogDir=jobLogDir, mccMode=mccMode, configFile=configFile, blockFlagFullpaths=outputFullpaths);
 end
 
-if exist(deconFullpath, 'dir') && exist(deconTmppath, 'dir')
-    rmdir(deconFullpath, 's');
-end
-if exist(deconTmppath, 'dir')
-    movefile(deconTmppath, deconFullpath);
-end
-if exist(zarrFlagPath, 'dir')
-    rmdir(zarrFlagPath, 's');
-end
+% (one may also have published it during the MIPs)
+publish_result(deconTmppath, deconFullpath, zarrFlagPath);
 toc
 
 end

@@ -312,6 +312,123 @@ classdef DeconWrapperTest < pktest.TestCase
             testCase.verifyEqual(spy.getOption(1, 'masterCompute'), true);
         end
 
+        function largeFileInPlaceKeepsAResultAnotherWriterPublished(testCase)
+            % two job sets on the same data (a controller started again, or
+            % another call): the one that finished last deleted the result
+            % the other had published, which the next step (deskew/rotate)
+            % was reading, and moved its own into place. Now it keeps the
+            % other's result and removes its own. Here the other result
+            % comes while the blocks run (the framework is a spy that
+            % reports them done), so this one's result is incomplete.
+            d = testCase.createDataset({'A'}, 1, {}, true);
+            resultFn = [d.dataPath, 'large/', d.fsns{1}, '.zarr'];
+            other = uint16(7 * ones(testCase.ImSize));
+            spy = testCase.applyFixture(pktest.FrameworkSpyFixture(@() pktest.atCall([d.root, 'calls.txt'], 1, ...
+                @() writezarr(other, resultFn, 'blockSize', [16, 16, 16]))));
+            testCase.runWrapper(d, 'RLMethod', 'simplified', 'deconIter', 2, 'zarrFile', true, 'saveZarr', true, ...
+                'resultDirName', 'large', 'largeFile', true, 'largeMethod', 'inplace', 'batchSize', [64, 64, 64], ...
+                'blockSize', [16, 16, 16]);
+            testCase.verifyEqual(readzarr(resultFn), other, 'The other writer''s result was replaced.');
+            testCase.verifyEmpty(dir([resultFn, '_*']), 'The temporary result was not removed.');
+            testCase.verifyEmpty(dir([d.dataPath, 'large/zarr_flag/', d.fsns{1}, '_*']), 'The flags were not removed.');
+            % (no MIPs of this one's incomplete result, named after the result)
+            testCase.verifyEmpty(dir([d.dataPath, 'large/MIPs/*.tif']), 'MIPs were made from the incomplete result.');
+            % (and the blocks stop once the result is there)
+            testCase.verifyEqual(regexprep(spy.getOption(1, 'finalOutFullpath'), '/+', '/'), resultFn);
+        end
+
+        function largeFileInPlaceBlocksOfAnEndedControllerAreSkipped(testCase)
+            % the block jobs of a controller whose job was cancelled ran on
+            % (the queued ones when they started), for a result nothing
+            % would publish; a block now skips its work when its
+            % controller's job has ended (its writer record; a fake Slurm
+            % that no longer lists the job). The block task is the one the
+            % controller made (a framework spy that reports it failed).
+            testCase.assumeFalse(ispc, 'The fake Slurm needs a POSIX shell.');
+            d = testCase.createDataset({'A'}, 1, {}, true);
+            spy = testCase.applyFixture(pktest.FrameworkSpyFixture([], false));
+            testCase.verifyError(@() testCase.runWrapper(d, 'RLMethod', 'simplified', 'deconIter', 2, 'zarrFile', true, ...
+                'saveZarr', true, 'resultDirName', 'large', 'largeFile', true, 'largeMethod', 'inplace', ...
+                'batchSize', [64, 64, 64], 'blockSize', [16, 16, 16]), ?MException);
+            calls = spy.getCalls();
+            flagFn = calls{1}.outputFullpaths{1};
+            recordFn = [fileparts(flagFn), '/writer.txt'];
+            testCase.assertTrue(isfile(recordFn), 'The controller did not record itself.');
+            % (it ended by an error, and says so: its process may stay, e.g.
+            % an interactive session, and no one may wait for it)
+            testCase.verifySubstring(fileread(recordFn), sprintf('\nended=1'), ...
+                'The controller that failed did not mark its record ended.');
+            % a controller whose job was cancelled can't say so: its job is gone
+            txt = regexprep(fileread(recordFn), {'owner=[^\n]*', 'ended=[^\n]*\n'}, {'owner=777_3:othernode:5', ''});
+            fid = fopen(recordFn, 'w');
+            fprintf(fid, '%s', txt);
+            fclose(fid);
+            testCase.applyFixture(pktest.FakeSlurmFixture);
+            % (squeue's answers are kept per job for a minute; fake job ids repeat)
+            clear('result_writers');
+            funcStr = calls{1}.funcStrs{1};
+            evalc('feval(str2func([''@()'', funcStr]))');
+            testCase.verifyFalse(isfile(flagFn), 'The block of an ended controller was deconvolved.');
+        end
+
+        function largeFileInPlaceKeepsAResultPublishedDuringItsMIPs(testCase)
+            % as above, with the other result coming while the MIPs are made
+            % (a spy of XR_MIP_zarr makes it)
+            d = testCase.createDataset({'A'}, 1, {}, true);
+            resultFn = [d.dataPath, 'large/', d.fsns{1}, '.zarr'];
+            other = uint16(7 * ones(testCase.ImSize));
+            testCase.applyFixture(pktest.FunctionSpyFixture('XR_MIP_zarr', @() writezarr(other, resultFn, ...
+                'blockSize', [16, 16, 16])));
+            testCase.runWrapper(d, 'RLMethod', 'simplified', 'deconIter', 2, 'zarrFile', true, 'saveZarr', true, ...
+                'resultDirName', 'large', 'largeFile', true, 'largeMethod', 'inplace', 'batchSize', [32, 32, 16], ...
+                'blockSize', [16, 16, 16]);
+            testCase.verifyEqual(readzarr(resultFn), other, 'The other writer''s result was replaced.');
+            testCase.verifyEmpty(dir([resultFn, '_*']), 'The temporary result was not removed.');
+            testCase.verifyEmpty(dir([resultFn, '/', d.fsns{1}, '.zarr_*']), 'The result was moved into the other''s.');
+        end
+
+        function largeFileInPlaceWaitsForAControllerOfAnotherCall(testCase)
+            % a controller of another call (another uuid) that may still
+            % make the volume, e.g. of a call cancelled and run again: the
+            % second controller made it as well (and replaced the first
+            % one's). Now it waits for it. Here the other controller is a
+            % process on this node, and its result comes during the wait (a
+            % spy of wait_for_files); the blocks must not run.
+            testCase.assumeTrue(isunix && ~ismac, 'Writers outside Slurm are checked on Linux only.');
+            d = testCase.createDataset({'A'}, 1, {}, true);
+            resultFn = [d.dataPath, 'large/', d.fsns{1}, '.zarr'];
+            pktest.writeWriterRecord(testCase, resultFn, 'otheruuid');
+            other = uint16(7 * ones(testCase.ImSize));
+            testCase.applyFixture(pktest.FunctionSpyFixture('wait_for_files', @() pktest.atCall([d.root, 'calls.txt'], 1, ...
+                @() writezarr(other, resultFn, 'blockSize', [16, 16, 16])), 10));
+            blocks = testCase.applyFixture(pktest.FunctionSpyFixture('RLdecon_for_zarr_block', [], 0));
+            testCase.runWrapper(d, 'RLMethod', 'simplified', 'deconIter', 2, 'zarrFile', true, 'saveZarr', true, ...
+                'resultDirName', 'large', 'largeFile', true, 'largeMethod', 'inplace', 'batchSize', [64, 64, 64], ...
+                'blockSize', [16, 16, 16]);
+            testCase.verifyEmpty(blocks.getCalls(), 'The volume was deconvolved a second time.');
+            testCase.verifyEqual(readzarr(resultFn), other, 'The other controller''s result was replaced.');
+            testCase.verifyEmpty(dir([resultFn, '_*']), 'A temporary result was left.');
+        end
+
+        function clusterModeWaitsForAControllerOfAnotherCall(testCase)
+            % the wrapper submitted a controller for a volume that a
+            % controller of another call (a job in the queue) still made;
+            % it now waits for that job, without a try. Here the other job's
+            % result comes at the second wait.
+            testCase.assumeFalse(ispc, 'The fake Slurm needs a POSIX shell.');
+            d = testCase.createDataset({'A'}, 1, {}, true);
+            resultFn = [d.dataPath, 'large/', d.fsns{1}, '.zarr'];
+            slurm = testCase.applyFixture(pktest.FakeSlurmFixture);
+            slurm.setJobStates('777_1', {'R'});
+            pktest.writeWriterRecord(testCase, resultFn, 'otheruuid', '777_1:othernode:5');
+            testCase.applyFixture(pktest.FunctionSpyFixture('wait_for_files', @() pktest.atCall([d.root, 'calls.txt'], 2, ...
+                @() mkdir(resultFn)), 20));
+            testCase.runWrapper(d, 'RLMethod', 'simplified', 'zarrFile', true, 'saveZarr', true, 'resultDirName', 'large', ...
+                'largeFile', true, 'largeMethod', 'inplace', 'batchSize', [64, 64, 64], 'blockSize', [16, 16, 16], ...
+                'parseCluster', true, 'maxTrialNum', 1, 'jobLogDir', [d.root, 'logs']);
+            testCase.verifyEqual(slurm.callCount('sbatch'), 0, 'A controller was submitted while another call''s made the volume.');
+        end
+
         function largeFileInPlaceControllersAskForWhatTheyHold(testCase)
             % the job of a volume (RLdecon_large_in_place) runs its block
             % jobs. It asked for a block-based estimate it never holds:

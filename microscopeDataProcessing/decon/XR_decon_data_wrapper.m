@@ -406,6 +406,8 @@ batchFiles = parseCluster && ~largeFile && ((autoBatch && GPUJob) || (~autoBatch
 % config's, if it sets it), else it only coordinates them and merges the MIPs
 inPlace = largeFile && strcmp(largeMethod, 'inplace');
 if parseCluster && inPlace
+    % files a job of another call makes (said once)
+    other_writer = false(nF, 1);
     controllerCompute = ~GPUJob && cluster_config_value(configFile, 'masterCompute', masterCompute);
     outDtype = 'single';
     if save16bit
@@ -564,6 +566,20 @@ while ~all(is_done_flag | (trial_counter >= maxTrialNum & ~job_active), 'all')
             end
 
             if exist(dctmpFullpath, 'file') || parseCluster
+                % the volume's controller of another call that may still
+                % make it (e.g., of a call that was cancelled and run
+                % again): wait for it, without a try (see result_writers)
+                if parseCluster && inPlace
+                    writers = result_writers('live', deconFullpath, uuid);
+                    if ~isempty(writers)
+                        if ~other_writer(f)
+                            fprintf('%s is made by a job of another call (%s), wait for it...\n', deconFullpath, writers{1});
+                            other_writer(f) = true;
+                        end
+                        job_active(f) = true;
+                        continue;
+                    end
+                end
                 if parseCluster
                     dsz = getImageSize(dcframeFullpath);
                     estMem = prod(dsz) * 4 / 2^30;

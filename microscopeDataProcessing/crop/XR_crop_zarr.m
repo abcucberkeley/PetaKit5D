@@ -64,6 +64,17 @@ zarrFlagPath = sprintf('%s/zarr_flag/%s_%s/', cropPath, fsname, uuid);
 if ~exist(zarrFlagPath, 'dir')
     mkdir_recursive(zarrFlagPath);
 end 
+% a job of another call that may still make the crop (e.g., the job of a
+% call that was cancelled and run again): wait for it instead of making it
+% a second time (see result_writers)
+result_writers('register', cropFullpath, uuid, zarrFlagPath);
+% (marked ended when this function ends but by publishing, e.g. by an
+% error, so that no one waits for it and its blocks are skipped)
+writerRecord = onCleanup(@() result_writers('release', cropFullpath, uuid, zarrFlagPath));
+if result_writers('wait', cropFullpath, uuid)
+    keep_other_result(cropFullpath, [cropFullpath, '_', uuid], zarrFlagPath);
+    return;
+end
 
 bim = blockedImage(zarrFullpath, 'Adapter', CZarrAdapter);
 imSize = bim.Size;
@@ -135,17 +146,20 @@ end
 % submit jobs 
 inputFullpaths = repmat({zarrFullpath}, numTasks, 1);
 if parseCluster || ~parseParfor
+    % (the blocks stop once the result exists: another writer made it)
     memAllocate = prod(batchSize) * 4 * 2 / 1024^3;
     is_done_flag= generic_computing_frameworks_wrapper(inputFullpaths, ...
         outputFullpaths, funcStrs, 'cpusPerTask', cpusPerTask, 'maxJobNum', maxJobNum, ...
         'memAllocate', memAllocate, 'taskBatchNum', taskBatchNum, 'masterCompute', masterCompute, ...
-        'parseCluster', parseCluster, jobLogDir=jobLogDir, mccMode=mccMode, configFile=configFile);
+        'parseCluster', parseCluster, jobLogDir=jobLogDir, mccMode=mccMode, configFile=configFile, ...
+        finalOutFullpath=cropFullpath);
 
     if ~all(is_done_flag)
         is_done_flag= generic_computing_frameworks_wrapper(inputFullpaths, ...
             outputFullpaths, funcStrs, 'cpusPerTask', cpusPerTask, 'maxJobNum', maxJobNum, ...
             'memAllocate', memAllocate * 2, 'taskBatchNum', taskBatchNum, 'masterCompute', masterCompute, ...
-            'parseCluster', parseCluster, jobLogDir=jobLogDir, mccMode=mccMode, configFile=configFile);
+            'parseCluster', parseCluster, jobLogDir=jobLogDir, mccMode=mccMode, configFile=configFile, ...
+            finalOutFullpath=cropFullpath);
     end
 elseif parseParfor
     GPUJob = false;
@@ -158,6 +172,15 @@ if ~all(is_done_flag)
     error('Some blocks are not finished!')
 end
 
+% another writer (a job of another call on the same file, or a task started
+% again) may have published the result: keep it and its MIPs (the same
+% result) and remove this one's temporary result, which can be incomplete
+% (the framework reports the blocks as done once the result exists),
+% instead of replacing a result that readers may use
+if keep_other_result(cropFullpath, cropTempPath, zarrFlagPath)
+    return;
+end
+
 % generate MIPs from the temporary result: the job framework counts the task
 % as done (and may cancel its job) once cropFullpath exists. The slabs are
 % merged from the MIPs of the blocks in the flags.
@@ -166,15 +189,8 @@ if saveMIP && exist(cropTempPath, 'dir')
         jobLogDir=jobLogDir, mccMode=mccMode, configFile=configFile, blockFlagFullpaths=outputFullpaths);
 end
 
-if exist(cropFullpath, 'dir') && exist(cropTempPath, 'dir')
-    rmdir(cropFullpath, 's');
-end
-if exist(cropTempPath, 'dir')
-    movefile(cropTempPath, cropFullpath);
-end
-if exist(zarrFlagPath, 'dir')
-    rmdir(zarrFlagPath, 's');
-end
+% (one may also have published it during the MIPs)
+publish_result(cropTempPath, cropFullpath, zarrFlagPath);
 
 end
 

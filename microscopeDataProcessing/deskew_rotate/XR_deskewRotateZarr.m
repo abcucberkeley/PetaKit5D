@@ -129,6 +129,17 @@ zarrFlagPath = sprintf('%s/zarr_flag/%s_%s/', dsrPath, fsname, uuid);
 if ~exist(zarrFlagPath, 'dir')
     mkdir_recursive(zarrFlagPath);
 end
+% a job of another call that may still make the result (e.g., the job of a
+% call that was cancelled and run again): wait for it instead of making the
+% result a second time (see result_writers)
+result_writers('register', dsrFullpath, uuid, zarrFlagPath);
+% (marked ended when this function ends but by publishing, e.g. by an
+% error, so that no one waits for it and its blocks are skipped)
+writerRecord = onCleanup(@() result_writers('release', dsrFullpath, uuid, zarrFlagPath));
+if result_writers('wait', dsrFullpath, uuid)
+    keep_other_result(dsrFullpath, dsrTmppath, zarrFlagPath);
+    return;
+end
 
 rs = [1, 1, 1];
 if ~isempty(resampleFactor)
@@ -281,16 +292,17 @@ if parseCluster || ~parseParfor
         'outSize', outSizes(ind, :), 'largeFile', true, 'blockSize', outBlockSize, ...
         'dataType', getImageDataType(frameFullpath));
 
+    % (the blocks stop once the result exists: another writer made it)
     is_done_flag = generic_computing_frameworks_wrapper(inputFullpaths, outputFullpaths, ...
         funcStrs, 'cpusPerTask', cpusPerTask, 'maxJobNum', maxJobNum, 'taskBatchNum', taskBatchNum, ...
         'masterCompute', masterCompute, 'parseCluster', parseCluster, 'memAllocate', memAllocate, ...
-        'jobLogDir', jobLogDir, 'mccMode', mccMode, 'configFile', configFile);
+        'jobLogDir', jobLogDir, 'mccMode', mccMode, 'configFile', configFile, 'finalOutFullpath', dsrFullpath);
 
     if ~all(is_done_flag)
         is_done_flag = generic_computing_frameworks_wrapper(inputFullpaths, outputFullpaths, ...
             funcStrs, 'cpusPerTask', cpusPerTask, 'maxJobNum', maxJobNum, 'taskBatchNum', taskBatchNum, ...
             'masterCompute', masterCompute, 'parseCluster', parseCluster, 'memAllocate', memAllocate, ...
-            'jobLogDir', jobLogDir, 'mccMode', mccMode, 'configFile', configFile);
+            'jobLogDir', jobLogDir, 'mccMode', mccMode, 'configFile', configFile, 'finalOutFullpath', dsrFullpath);
     end
 elseif parseParfor
     is_done_flag= generic_computing_frameworks_wrapper(inputFullpaths, outputFullpaths, ...
@@ -300,6 +312,15 @@ end
 
 if ~all(is_done_flag)
     error('Some blocks are not finished!');
+end
+
+% another writer (a job of another call on the same file, or a task started
+% again) may have published the result: keep it and its MIPs (the same
+% result) and remove this one's temporary result, which can be incomplete
+% (the framework reports the blocks as done once the result exists),
+% instead of replacing a result that readers may use
+if keep_other_result(dsrFullpath, dsrTmppath, zarrFlagPath)
+    return;
 end
 
 % generate MIPs from the temporary result: the job framework counts the task
@@ -316,13 +337,8 @@ if saveMIP && exist(dsrTmppath, 'dir')
         jobLogDir=jobLogDir, mccMode=mccMode, configFile=configFile, blockFlagFullpaths=outputFullpaths);
 end
 
-if exist(dsrFullpath, 'dir') && exist(dsrTmppath, 'dir')
-    rmdir(dsrFullpath, 's');
-end
-if exist(dsrTmppath, 'dir')
-    movefile(dsrTmppath, dsrFullpath);
-end
-rmdir(zarrFlagPath, 's');
+% (one may also have published it during the MIPs)
+publish_result(dsrTmppath, dsrFullpath, zarrFlagPath);
 toc
 
 end

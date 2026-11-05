@@ -116,6 +116,107 @@ classdef CropDatasetTest < pktest.TestCase
             testCase.verifyTrue(all(contains(calls{2}.funcStrs, '''mipBatchSize'',[')), 'Tasks with MIPs got no mipBatchSize.');
         end
 
+        function largeZarrKeepsAResultAnotherWriterPublished(testCase)
+            % two job sets on the same data: the one that finished last
+            % deleted the crop the other had published and moved its own
+            % into place; now it keeps the other's and removes its own
+            % (incomplete here: the framework is a spy that reports the
+            % blocks done while the other crop comes)
+            testCase.writeDataset('zarr');
+            cropFn = [testCase.DataPath, 'crop.zarr'];
+            other = uint16(7 * ones(5, 5, 5));
+            spy = testCase.applyFixture(pktest.FrameworkSpyFixture(@() pktest.atCall([testCase.DataPath, 'calls.txt'], 1, ...
+                @() writezarr(other, cropFn))));
+            evalc(['XR_crop_zarr([testCase.DataPath, testCase.Names{1}, ''.zarr''], cropFn, testCase.Bbox, ', ...
+                '''batchSize'', [16, 16, 4], ''blockSize'', [8, 8, 4], ''parseCluster'', false)']);
+            testCase.verifyEqual(readzarr(cropFn), other, 'The other writer''s crop was replaced.');
+            testCase.verifyEmpty(dir([cropFn, '_*']), 'The temporary crop was not removed.');
+            testCase.verifyEmpty(dir([testCase.DataPath, 'zarr_flag/crop_*']), 'The flags were not removed.');
+            % (no MIPs of this one's incomplete crop, named after the crop)
+            testCase.verifyEmpty(dir([testCase.DataPath, 'MIPs/*.tif']), 'MIPs were made from the incomplete crop.');
+            % (and the blocks stop once the crop is there)
+            testCase.verifyEqual(spy.getOption(1, 'finalOutFullpath'), cropFn);
+        end
+
+        function largeZarrKeepsAResultPublishedDuringItsMIPs(testCase)
+            % as above, with the other crop coming while the MIPs are made (a
+            % spy of XR_MIP_zarr makes it)
+            testCase.writeDataset('zarr');
+            cropFn = [testCase.DataPath, 'crop.zarr'];
+            other = uint16(7 * ones(5, 5, 5));
+            testCase.applyFixture(pktest.FunctionSpyFixture('XR_MIP_zarr', @() writezarr(other, cropFn)));
+            evalc(['XR_crop_zarr([testCase.DataPath, testCase.Names{1}, ''.zarr''], cropFn, testCase.Bbox, ', ...
+                '''batchSize'', [16, 16, 4], ''blockSize'', [8, 8, 4], ''parseCluster'', false)']);
+            testCase.verifyEqual(readzarr(cropFn), other, 'The other writer''s crop was replaced.');
+            testCase.verifyEmpty(dir([cropFn, '_*']), 'The temporary crop was not removed.');
+            testCase.verifyEmpty(dir([cropFn, '/*.zarr_*']), 'The crop was moved into the other''s.');
+        end
+
+        function largeZarrWaitsForAWriterOfAnotherCall(testCase)
+            % a crop of another call (another uuid) that may still make the
+            % result: the second one made it as well; now it waits for it.
+            % The other is a process on this node, whose crop comes during
+            % the wait (a spy of wait_for_files); no block may run.
+            testCase.assumeTrue(isunix && ~ismac, 'Writers outside Slurm are checked on Linux only.');
+            testCase.writeDataset('zarr');
+            cropFn = [testCase.DataPath, 'crop.zarr'];
+            pktest.writeWriterRecord(testCase, cropFn, 'otheruuid');
+            other = uint16(7 * ones(5, 5, 5));
+            testCase.applyFixture(pktest.FunctionSpyFixture('wait_for_files', @() pktest.atCall( ...
+                [testCase.DataPath, 'calls.txt'], 1, @() writezarr(other, cropFn)), 10));
+            spy = testCase.applyFixture(pktest.FrameworkSpyFixture());
+            evalc(['XR_crop_zarr([testCase.DataPath, testCase.Names{1}, ''.zarr''], cropFn, testCase.Bbox, ', ...
+                '''batchSize'', [16, 16, 4], ''blockSize'', [8, 8, 4], ''parseCluster'', false)']);
+            testCase.verifyEmpty(spy.getCalls(), 'The crop was made a second time.');
+            testCase.verifyEqual(readzarr(cropFn), other);
+        end
+
+        function largeZarrBlocksOfAnEndedTaskAreSkipped(testCase)
+            % the block jobs of a large crop whose job was cancelled ran on
+            % (the queued ones when they started), for a result nothing
+            % would publish; a block now skips its work when its task's job
+            % has ended (its writer record; a fake Slurm that no longer
+            % lists the job)
+            testCase.assumeFalse(ispc, 'The fake Slurm needs a POSIX shell.');
+            testCase.writeDataset('zarr');
+            cropFn = [testCase.DataPath, 'crop.zarr'];
+            tmpFn = [cropFn, '_u1'];
+            outSize = testCase.Bbox(4 : 6) - testCase.Bbox(1 : 3) + 1;
+            createzarr(tmpFn, dataSize=outSize, blockSize=[8, 8, 4], dtype='uint16');
+            pktest.writeWriterRecord(testCase, cropFn, 'u1', '777_3:othernode:5');
+            flagFn = [testCase.DataPath, 'zarr_flag/crop_u1/blocks_1_1.mat'];
+            testCase.applyFixture(pktest.FakeSlurmFixture);
+            % (squeue's answers are kept per job for a minute; fake job ids repeat)
+            clear('result_writers');
+            box = [testCase.Bbox(1 : 3), testCase.Bbox(1 : 3) + [7, 7, 3]];
+            evalc(['XR_crop_block(1, [testCase.DataPath, testCase.Names{1}, ''.zarr''], tmpFn, flagFn, box, ', ...
+                '[1, 1, 1, 8, 8, 4], ''uuid'', ''u1'')']);
+            testCase.verifyFalse(isfile(flagFn), 'The block of an ended task was cropped.');
+            testCase.verifyEqual(nnz(readzarr(tmpFn)), 0);
+        end
+
+        function largeZarrTaskThatFailsMarksItsRecordEnded(testCase)
+            % a crop that ends by an error (its blocks failed: a framework
+            % spy) leaves its writer record, and its process may stay (an
+            % interactive session): the record says it has ended, so that
+            % no crop of another call waits for it and its blocks are skipped
+            testCase.writeDataset('zarr');
+            cropFn = [testCase.DataPath, 'crop.zarr'];
+            testCase.applyFixture(pktest.FrameworkSpyFixture([], false));
+            err = [];
+            try
+                evalc(['XR_crop_zarr([testCase.DataPath, testCase.Names{1}, ''.zarr''], cropFn, testCase.Bbox, ', ...
+                    '''batchSize'', [16, 16, 4], ''blockSize'', [8, 8, 4], ''parseCluster'', false)']);
+            catch err
+            end
+            testCase.assertNotEmpty(err, 'The crop did not fail.');
+            testCase.assertSubstring(err.message, 'not finished');
+            records = dir([testCase.DataPath, 'zarr_flag/crop_*/writer.txt']);
+            testCase.assertNumElements(records, 1, 'The crop did not record itself.');
+            testCase.verifySubstring(fileread([records.folder, '/', records.name]), sprintf('\nended=1'), ...
+                'The crop that failed did not mark its record ended.');
+        end
+
         function largeZarrJobsAskForWhatTheyHold(testCase)
             % the job of a large crop (XR_crop_zarr) runs its blocks as jobs
             % (1 CPU each). It asked for 32 B per voxel of the whole input:
