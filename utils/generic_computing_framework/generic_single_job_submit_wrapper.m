@@ -48,7 +48,7 @@ ip.addParameter('paraJobNum', 1, @isnumeric); % support matlab, bash
 ip.addParameter('ConfigFile', '', @ischar); % cluster configuration file that override the default parameters
 ip.addParameter('taskMetrics', false, @islogical); % record the resources of the task in <job log folder>/task_metrics/ (see task_metrics)
 ip.addParameter('taskRunner', true, @islogical); % after its task, a job's process runs unstarted tasks of other single jobs of the same kind (see task_runner_run); off if the caller or the config says so
-ip.addParameter('SlurmAlternatives', [], @(x) isempty(x) || isstruct(x) || iscell(x)); % other places for the job (entries with SlurmParam, memPerCPU, maxCPUNum, minCPUNum, gpuHeadroom; see slurm_alternatives)
+ip.addParameter('SlurmAlternatives', [], @(x) isempty(x) || isstruct(x) || iscell(x)); % other places for the job (entries with SlurmParam, memPerCPU, maxCPUNum, minCPUNum, gpuHeadroom, cpuJobs; see slurm_alternatives)
 ip.addParameter('gpuHeadroom', [], @isnumeric); % with SlurmAlternatives: CPUs and GB per idle GPU that CPU-only jobs leave free at the main place ([]: the node's share per GPU)
 ip.addParameter('nice', 0, @isnumeric); % lower the job's priority by this (sbatch --nice), e.g. for a job that waits for jobs it submits (see coordinator_nice)
 

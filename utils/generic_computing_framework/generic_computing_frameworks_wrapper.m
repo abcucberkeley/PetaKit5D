@@ -60,7 +60,7 @@ ip.addParameter('ConfigFile', '', @ischar); % cluster configuration file that ov
 ip.addParameter('localWorkerNum', 1, @isnumeric); % without cluster, run up to this many tasks at once on a local MATLAB process pool
 ip.addParameter('taskMetrics', false, @islogical); % record the resources of each task in <jobLogDir>/task_metrics/ (see task_metrics)
 ip.addParameter('taskRunner', true, @islogical); % cluster jobs (and compiled local runs) run several tasks per process (see task_runner)
-ip.addParameter('SlurmAlternatives', [], @(x) isempty(x) || isstruct(x) || iscell(x)); % other places for the jobs (entries with SlurmParam, memPerCPU, maxCPUNum, minCPUNum, gpuHeadroom; see slurm_alternatives)
+ip.addParameter('SlurmAlternatives', [], @(x) isempty(x) || isstruct(x) || iscell(x)); % other places for the jobs (entries with SlurmParam, memPerCPU, maxCPUNum, minCPUNum, gpuHeadroom, cpuJobs; see slurm_alternatives)
 ip.addParameter('gpuHeadroom', [], @isnumeric); % with SlurmAlternatives: CPUs and GB per idle GPU that CPU-only jobs leave free at the main place ([]: the node's share per GPU)
 ip.addParameter('nice', 0, @isnumeric); % lower the jobs' priority by this (sbatch --nice), e.g. for jobs that wait for jobs they submit (see coordinator_nice)
 

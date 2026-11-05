@@ -1,12 +1,16 @@
 function [varargout] = slurm_alternatives(action, varargin)
 % places on a Slurm cluster for the jobs of a job framework call besides its
 % main settings (the SlurmAlternatives of a cluster config: entries with
-% their own SlurmParam, memPerCPU, maxCPUNum, minCPUNum and gpuHeadroom; keys
-% an entry leaves out are the main settings', except memPerCPU: without it,
-% the entry's --mem-per-cpu, else the memory per CPU of its nodes, the
-% smallest RealMemory / CPUs of them). Each job is submitted to the first
-% place (the main one first) where Slurm can start it now, and a job that
-% waits in its place moves to another place where it can start now.
+% their own SlurmParam, memPerCPU, maxCPUNum, minCPUNum, gpuHeadroom and
+% cpuJobs; keys an entry leaves out are the main settings', except memPerCPU:
+% without it, the entry's --mem-per-cpu, else the memory per CPU of its
+% nodes, the smallest RealMemory / CPUs of them, and cpuJobs: false). Each job
+% is submitted to the first place (the main one first) where Slurm can start
+% it now, and a job that waits in its place moves to another place where it
+% can start now. GPU nodes are for jobs that need a GPU: a CPU-only job (one
+% whose request has no GPUs) never goes to an alternative of GPU nodes only,
+% unless the entry says cpuJobs: true (the main place is the user's choice,
+% and used as before).
 %
 % A job's shape (CPUs and memory) at a place: a place with as much memory
 % per CPU (memPerCPU) as the job's shape has gets the job a config with only
@@ -24,9 +28,12 @@ function [varargout] = slurm_alternatives(action, varargin)
 % view; the jobs placed since are taken from it, so a burst of jobs doesn't
 % go to the same free nodes). A CPU-only job on a node with idle GPUs leaves
 % each of them its share of the node (gpuHeadroom: [CPUs, GB] per idle GPU,
-% by default the node's CPUs and memory divided by its GPUs; 0 for none), and
-% doesn't wait in the queue of a place of GPU nodes only: if no place has
-% room, it goes to (or moves to) the first place that isn't one.
+% by default the node's CPUs and memory divided by its GPUs; 0 for none),
+% doesn't go to a partition where GPU jobs of the user are pending (also held
+% ones, or ones that wait for a dependency or a start time), and doesn't wait
+% in the queue of a place of GPU nodes only: if no place has room, it goes to
+% (or moves to) the first place that isn't one, and one waiting at a place of
+% GPU nodes where GPU jobs of the user are pending moves to such a place.
 %
 % Usage:
 %   places = slurm_alternatives('places', main, alternatives)
@@ -117,7 +124,7 @@ function [places, view] = make_places(view, S, main, alts)
 % the main place and the alternatives, with the main settings for the keys
 % an alternative leaves out (memPerCPU: its --mem-per-cpu, else its nodes')
 
-names = {'SlurmParam', 'SlurmConstraint', 'memPerCPU', 'maxCPUNum', 'minCPUNum', 'gpuHeadroom'};
+names = {'SlurmParam', 'SlurmConstraint', 'memPerCPU', 'maxCPUNum', 'minCPUNum', 'gpuHeadroom', 'cpuJobs'};
 place = struct();
 for i = 1 : numel(names)
     place.(names{i}) = [];
@@ -128,6 +135,8 @@ end
 if isempty(place.SlurmConstraint)
     place.SlurmConstraint = '';
 end
+% (the main place takes any job, as without alternatives)
+place.cpuJobs = true;
 place.opts = parse_options([place.SlurmParam, ' ', place.SlurmConstraint]);
 places = place;
 if nargin < 4 || isempty(alts)
@@ -143,6 +152,7 @@ for a = 1 : numel(alts)
     end
     p = place;
     p.memPerCPU = [];
+    p.cpuJobs = false;
     keys = fieldnames(alt);
     for i = 1 : numel(keys)
         name = names(strcmpi(names, keys{i}));
@@ -158,6 +168,7 @@ for a = 1 : numel(alts)
     end
     p.SlurmParam = char(p.SlurmParam);
     p.SlurmConstraint = char(p.SlurmConstraint);
+    p.cpuJobs = isequal(p.cpuJobs, true) || isequal(p.cpuJobs, 1);
     p.opts = parse_options([p.SlurmParam, ' ', p.SlurmConstraint]);
     if isempty(p.memPerCPU) && ~isempty(p.opts.memPerCPU)
         p.memPerCPU = p.opts.memPerCPU / 1024;
@@ -531,6 +542,9 @@ view.limitQos = {view.pend(limited).qos};
 % starts jobs by priority, and its backfill tests only so many of them)
 waiting = ismember({view.pend.reason}, {'Resources', 'Priority', 'None'}) & [view.pend.node] == 0;
 view.waitParts = unique({view.pend(waiting).partition});
+% the partitions where GPU jobs of the user are pending, for any reason (held
+% ones too): CPU-only jobs keep out of them
+view.gpuParts = unique({view.pend([view.pend.gpus] > 0).partition});
 
 end
 
@@ -714,6 +728,11 @@ if slots > 0 && (any(strcmp(view.limitParts, o.partition) & (isempty(o.qos) | st
     slots = 0;
     j = [];
 end
+% CPU-only jobs keep out of partitions where GPU jobs of the user are pending
+if slots > 0 && o.gpus == 0 && any(strcmp(view.gpuParts, o.partition))
+    slots = 0;
+    j = [];
+end
 
 end
 
@@ -800,6 +819,9 @@ function [k, shape, view, disabled] = choose_place(view, places, ownCpus, timeSt
 
 current = main_shape(places, ownCpus);
 for k = 1 : numel(places)
+    if ~takes_job(view, places(k))
+        continue;
+    end
     shape = place_shape(places, ownCpus, k, current);
     [ok, j, view, disabled] = has_room(view, places(k), shape, timeStrs{k}, S, disabled, k == 1);
     if ok
@@ -809,6 +831,15 @@ for k = 1 : numel(places)
 end
 k = wait_place(view, places, disabled);
 shape = place_shape(places, ownCpus, k, current);
+
+end
+
+
+function [tf] = takes_job(view, place)
+% whether a place takes the job: alternatives of GPU nodes only take CPU-only
+% jobs only if they say so (cpuJobs)
+
+tf = place.cpuJobs || place.opts.gpus > 0 || ~gpu_nodes_only(view, place);
 
 end
 
@@ -930,9 +961,12 @@ for c = 1 : numel(cands)
     % only jobs that wait for resources or a QOS or association limit
     % (not held, waiting for a dependency or start time, or not yet seen by
     % the scheduler), and that don't fit where they are (on a node of their
-    % place)
-    [mask, view] = place_nodes(view, e.places(e.k));
-    if view.pend(p).node > 0 && (mask(view.pend(p).node) || isempty(e.places(e.k).opts.partition))
+    % place; a CPU-only job at GPU nodes where GPU jobs of the user are
+    % pending doesn't stay there)
+    here = e.places(e.k);
+    [mask, view] = place_nodes(view, here);
+    gpuWork = here.opts.gpus == 0 && any(strcmp(view.gpuParts, here.opts.partition)) && gpu_nodes_only(view, here);
+    if ~gpuWork && view.pend(p).node > 0 && (mask(view.pend(p).node) || isempty(here.opts.partition))
         nFit = nFit + 1;
         continue;
     end
@@ -949,7 +983,7 @@ for c = 1 : numel(cands)
     end
     target = 0;
     for k = 1 : numel(places)
-        if k == j
+        if k == j || ~takes_job(view, places(k))
             continue;
         end
         shape = place_shape(places, e.cpus, k, e.shape);

@@ -8,7 +8,8 @@ classdef SlurmAlternativesTest < pktest.TestCase
     % The cluster is pktest.FakeSlurmFixture's: nodes as scontrol show node
     % gives them, the user's pending jobs (squeue -O) and sbatch
     % --test-only answers. Places: abc (24-CPU nodes, 20.9 GB per CPU) and
-    % gpu8 (128-CPU nodes with 8 GPUs, 7.6 GB per CPU). A job of 70 GB is 4
+    % gpu8 (128-CPU nodes with 8 GPUs, 7.6 GB per CPU; as an alternative it
+    % takes CPU-only jobs only with cpuJobs, which most tests set). A job of 70 GB is 4
     % CPUs at abc and 10 at gpu8 (16 in the batch framework, rounded to a
     % factor of 32).
 
@@ -52,6 +53,8 @@ classdef SlurmAlternativesTest < pktest.TestCase
             testCase.verifyEqual(places(2).opts.partition, 'gpu8');
             testCase.verifyEqual(places(2).opts.qos, 'abc_normal');
             testCase.verifyEqual(places(2).opts.memPerCPU, 7800);
+            % (alternatives take CPU-only jobs at GPU nodes only if they say so)
+            testCase.verifyEqual([places.cpuJobs], [true, false, false]);
             % a struct array (same keys) is the same; an unknown key is ignored with a warning
             places = testCase.verifyWarning(@() slurm_alternatives('places', main, ...
                 struct('SlurmParam', testCase.GpuParam, 'maxCPU', 32)), 'slurm_alternatives:key');
@@ -109,6 +112,57 @@ classdef SlurmAlternativesTest < pktest.TestCase
             slurm.setNodes({testCase.abcNode('n1', 0), testCase.gpuNode('g1', 128, 0)});
             [k, cpus, param] = slurm_alternatives('choose', testCase.gpuFirst(), [10, 4], {'', ''});
             testCase.verifyEqual({k, cpus, param}, {2, 4, testCase.AbcParam});
+        end
+
+        function cpuJobsDoNotGoToGPUNodesOfAnAlternativeWithoutCpuJobs(testCase)
+            % GPU nodes are for jobs that need a GPU: abc full, gpu8 idle
+            % (no headroom), but the entry doesn't say cpuJobs: the job
+            % waits at abc, and a job waiting there doesn't move to gpu8
+            slurm = testCase.applyFixture(pktest.FakeSlurmFixture);
+            slurm.setNodes({testCase.abcNode('n1', 24), testCase.gpuNode('g1', 0, 0)});
+            places = testCase.abcFirst(0, false);
+            testCase.verifyEqual(testCase.choose(places), 1);
+            testCase.submitPending(slurm, places, 1000, 1, 1);
+            slurm_alternatives('set', 'minWait', 0, 'lookInterval', 0);
+            evalc('slurm_alternatives(''move'', 1000, 1)');
+            testCase.verifyEmpty(testCase.updates(slurm));
+            % (an alternative of CPU and GPU nodes is not one of GPU nodes:
+            % with a GPU-node main place, a CPU job goes there)
+            slurm.setNodes({pktest.FakeSlurmFixture.nodeLine('n1', 'abc', 24, 0, 514048, 0), ...
+                pktest.FakeSlurmFixture.nodeLine('t1', 'abc', 20, 20, 515638, 0, 4, 4), testCase.gpuNode('g1', 128, 0)});
+            [~, k] = evalc('slurm_alternatives(''choose'', testCase.gpuFirst(), [10, 4], {'''', ''''})');
+            testCase.verifyEqual(k, 2);
+        end
+
+        function cpuJobsKeepOutOfGPUNodesWhereGPUJobsOfTheUserWait(testCase)
+            % (gpu8 takes CPU jobs and has room, but a GPU job of the user is
+            % pending there, held): new CPU jobs wait at abc, and one waiting
+            % at gpu8 moves to abc, also where it would fit
+            slurm = testCase.applyFixture(pktest.FakeSlurmFixture);
+            slurm.setNodes({testCase.abcNode('n1', 24), testCase.gpuNode('g1', 0, 0)});
+            slurm.setJobStates('900_1', {'PD:JobHeldUser'});
+            slurm.setJobAttributes('900_1', 'gpu8', 4, 32000, 1, 'abc_normal');
+            places = testCase.abcFirst(0);
+            testCase.verifyEqual(testCase.choose(places), 1);
+            testCase.submitPending(slurm, places, 1000, 1, 2);
+            slurm_alternatives('set', 'minWait', 0, 'lookInterval', 0);
+            evalc('slurm_alternatives(''move'', 1000, 1)');
+            testCase.verifyEqual(testCase.updates(slurm), {['update JobId=1000_1 Partition=abc QOS=abc_normal ', ...
+                'NumCPUs=4 CPUsPerTask=4 MinMemoryCPU=21418']});
+            % (without GPU jobs pending there it goes to gpu8, as before)
+            slurm.setJobStates('900_1', {'done'});
+            testCase.verifyEqual(testCase.choose(places), 2);
+        end
+
+        function mainPlaceOfGPUNodesTakesCPUJobs(testCase)
+            % (the main place is the user's choice: used as before)
+            slurm = testCase.applyFixture(pktest.FakeSlurmFixture);
+            slurm.setNodes({testCase.abcNode('n1', 24), testCase.gpuNode('g1', 0, 0)});
+            main = struct('SlurmParam', testCase.GpuParam, 'SlurmConstraint', '', 'memPerCPU', 7.6, ...
+                'maxCPUNum', 32, 'minCPUNum', 1, 'gpuHeadroom', 0);
+            places = slurm_alternatives('places', main, struct('SlurmParam', testCase.AbcParam, 'memPerCPU', 20.9));
+            [~, k] = evalc('slurm_alternatives(''choose'', places, [10, 4], {'''', ''''})');
+            testCase.verifyEqual(k, 1);
         end
 
         function plannedNodesHaveNoRoom(testCase)
@@ -211,11 +265,11 @@ classdef SlurmAlternativesTest < pktest.TestCase
             for alt = {[testCase.GpuParam, ' -C gpu1'], [testCase.GpuParam, ' -x g[1-2]'], ...
                     [testCase.GpuParam, ' -x g1,g2.cluster']}
                 places = slurm_alternatives('places', testCase.mainSettings(), struct('SlurmParam', alt{1}, ...
-                    'memPerCPU', 7.6, 'gpuHeadroom', 0));
+                    'memPerCPU', 7.6, 'gpuHeadroom', 0, 'cpuJobs', true));
                 testCase.verifyEqual(testCase.choose(places), 1, alt{1});
             end
             places = slurm_alternatives('places', testCase.mainSettings(), struct('SlurmParam', ...
-                [testCase.GpuParam, ' -C gpu8 -x g1'], 'memPerCPU', 7.6, 'gpuHeadroom', 0));
+                [testCase.GpuParam, ' -C gpu8 -x g1'], 'memPerCPU', 7.6, 'gpuHeadroom', 0, 'cpuJobs', true));
             testCase.verifyEqual(testCase.choose(places), 2);
         end
 
@@ -306,7 +360,7 @@ classdef SlurmAlternativesTest < pktest.TestCase
             main = testCase.mainSettings();
             main.SlurmParam = [testCase.AbcParam, ' -x n1'];
             places = slurm_alternatives('places', main, struct('SlurmParam', [testCase.GpuParam, ' -x n1'], ...
-                'memPerCPU', 7.6, 'maxCPUNum', 32, 'gpuHeadroom', 0));
+                'memPerCPU', 7.6, 'maxCPUNum', 32, 'gpuHeadroom', 0, 'cpuJobs', true));
             testCase.submitPending(slurm, places, 1000, 1, 1);
             slurm_alternatives('set', 'minWait', 0, 'lookInterval', 0);
             evalc('slurm_alternatives(''move'', 1000, 1)');
@@ -364,7 +418,7 @@ classdef SlurmAlternativesTest < pktest.TestCase
             slurm.setNodes({testCase.abcNode('n1', 24), testCase.gpuNode('g1', 0, 0)});
             for alt = {[testCase.GpuParam, ' --exclusive'], '-p gpu8 -n1 --mem-per-cpu=7800M'}
                 places = slurm_alternatives('places', testCase.mainSettings(), struct('SlurmParam', alt{1}, ...
-                    'memPerCPU', 7.6, 'maxCPUNum', 32, 'gpuHeadroom', 0));
+                    'memPerCPU', 7.6, 'maxCPUNum', 32, 'gpuHeadroom', 0, 'cpuJobs', true));
                 testCase.submitPending(slurm, places, 1000, 1, 1);
                 slurm_alternatives('set', 'minWait', 0, 'lookInterval', 0);
                 evalc('slurm_alternatives(''move'', 1000, 1)');
@@ -379,7 +433,8 @@ classdef SlurmAlternativesTest < pktest.TestCase
             slurm.setNodes({testCase.abcNode('n1', 24), testCase.gpuNode('g1', 128, 0), ...
                 testCase.gpuNode('g2', 0, 0, 'MIXED', 'gpu9')});
             places = slurm_alternatives('places', testCase.mainSettings(), struct('SlurmParam', ...
-                {testCase.GpuParam, strrep(testCase.GpuParam, 'gpu8', 'gpu9')}, 'memPerCPU', 7.6, 'gpuHeadroom', 0));
+                {testCase.GpuParam, strrep(testCase.GpuParam, 'gpu8', 'gpu9')}, 'memPerCPU', 7.6, 'gpuHeadroom', 0, ...
+                'cpuJobs', true));
             testCase.submitPending(slurm, places, 1000, 1, 1);
             slurm.setJobAttributes('1000_1', 'gpu8', 6, 6 * 21418, 0, 'abc_normal');
             slurm_alternatives('set', 'minWait', 0, 'lookInterval', 0);
@@ -540,10 +595,14 @@ classdef SlurmAlternativesTest < pktest.TestCase
                 'maxCPUNum', 24, 'minCPUNum', 1, 'gpuHeadroom', []);
         end
 
-        function [places] = abcFirst(testCase, headroom)
-            % abc first, then gpu8 with the given GPU headroom
+        function [places] = abcFirst(testCase, headroom, cpuJobs)
+            % abc first, then gpu8 with the given GPU headroom, taking CPU
+            % jobs (unless cpuJobs is false)
+            if nargin < 3
+                cpuJobs = true;
+            end
             places = slurm_alternatives('places', testCase.mainSettings(), struct('SlurmParam', ...
-                testCase.GpuParam, 'memPerCPU', 7.6, 'maxCPUNum', 32, 'gpuHeadroom', headroom));
+                testCase.GpuParam, 'memPerCPU', 7.6, 'maxCPUNum', 32, 'gpuHeadroom', headroom, 'cpuJobs', cpuJobs));
         end
 
         function [places] = gpuFirst(testCase)
@@ -599,7 +658,7 @@ classdef SlurmAlternativesTest < pktest.TestCase
         function [conf] = abcFirstConfig(testCase, headroom)
             conf = struct('SlurmParam', testCase.AbcParam, 'memPerCPU', 20.9, 'maxCPUNum', 24, ...
                 'SlurmAlternatives', {{struct('SlurmParam', testCase.GpuParam, 'memPerCPU', 7.6, ...
-                'maxCPUNum', 32, 'gpuHeadroom', headroom)}});
+                'maxCPUNum', 32, 'gpuHeadroom', headroom, 'cpuJobs', true)}});
         end
 
         function [conf] = gpuFirstConfig(testCase)
