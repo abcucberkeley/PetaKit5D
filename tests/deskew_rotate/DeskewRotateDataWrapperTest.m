@@ -208,6 +208,39 @@ classdef DeskewRotateDataWrapperTest < pktest.TestCase
                 'An incomplete result was moved into place.');
         end
 
+        function largeFileJobsAskForWhatTheyHold(testCase)
+            % the job of a large file (XR_deskewRotateZarr) runs its y
+            % batches as jobs. It asked for 40 B per voxel of the whole
+            % input (masterCompute) or of a y slab (without, on one CPU):
+            % whole nodes for large data. Now it asks for MATLAB and the
+            % merge of the MIP slabs on one CPU, and if it computes batches
+            % itself (masterCompute, the config's if it sets it), for a
+            % batch's estimate on the CPUs of a batch's job. The input is an
+            % 8 G-voxel header (the framework is a spy).
+            dataPath = testCase.createTempFolder();
+            createzarr([dataPath, testCase.FsnA0, '.zarr'], dataSize=[8192, 2048, 512], blockSize=[256, 256, 256], ...
+                dtype='uint16');
+            offConfig = [dataPath, 'cpu_config.json'];
+            fid = fopen(offConfig, 'w');
+            fprintf(fid, '{"masterCompute": false}');
+            fclose(fid);
+            spy = testCase.applyFixture(pktest.FrameworkSpyFixture());
+            cases = {true, ''; false, ''; true, offConfig};
+            for i = 1 : size(cases, 1)
+                testCase.runWrapper(dataPath, 'zarrFile', true, 'largeFile', true, 'masterCompute', cases{i, 1}, ...
+                    'configFile', cases{i, 2}, 'cpusPerTask', 8, 'DSRDirName', sprintf('DSR_%d', i));
+            end
+            % a batch of 1024 rows across x and z, less than half of the
+            % input in single (32 GB)
+            testCase.verifyEqual(spy.getOption(1, 'cpusPerTask'), 8);
+            testCase.verifyGreaterThan(spy.getOption(1, 'memAllocate'), 2);
+            testCase.verifyLessThan(spy.getOption(1, 'memAllocate'), 16);
+            for i = 2 : 3
+                testCase.verifyEqual(spy.getOption(i, 'cpusPerTask'), 1, sprintf('Case %d.', i));
+                testCase.verifyLessThan(spy.getOption(i, 'memAllocate'), 4, sprintf('Case %d.', i));
+            end
+        end
+
         function flatFieldUsesEachChannelsImages(testCase)
             [dataPath, frames] = testCase.writeDataset();
             bg = zeros(testCase.RawSize(1 : 2), 'single') + 100;

@@ -80,6 +80,39 @@ classdef MIPTest < pktest.TestCase
             testCase.verifyFalse(exist([dataPath, 'out_MIP_x.tif'], 'file') > 0);
         end
 
+        function largeZarrJobsAskForWhatTheyHold(testCase)
+            % the job of a large file (XR_MIP_zarr) runs its MIP batches as
+            % jobs (1 CPU each). It asked for 16 B per voxel of the whole
+            % input: whole nodes for large data. Now it asks for MATLAB with
+            % one CPU, and if it computes batches itself (masterCompute, the
+            % config's if it sets it), for cpusPerTask (default 3) and a
+            % batch's estimate (2048^3 uint16, 64 GB in MATLAB jobs). The
+            % input is a 34 G-voxel header (the framework is a spy).
+            dataPath = testCase.createTempFolder();
+            createzarr([dataPath, 'scan_CamA_ch0_t0000.zarr'], dataSize=[4096, 4096, 2048], blockSize=[256, 256, 256], ...
+                dtype='uint16');
+            offConfig = [dataPath, 'cpu_config.json'];
+            fid = fopen(offConfig, 'w');
+            fprintf(fid, '{"masterCompute": false}');
+            fclose(fid);
+            spy = testCase.applyFixture(pktest.FrameworkSpyFixture());
+            cases = {true, ''; false, ''; true, offConfig};
+            for i = 1 : size(cases, 1)
+                XR_MIP_wrapper(dataPath, 'axis', [1, 1, 1], 'channelPatterns', {'CamA_ch0'}, 'zarrFile', true, ...
+                    'largeFile', true, 'parseCluster', false, 'masterCompute', cases{i, 1}, 'configFile', cases{i, 2}, ...
+                    'resultDirName', sprintf('MIPs_%d', i));
+            end
+            testCase.verifyEqual(spy.getOption(1, 'cpusPerTask'), 3);
+            testCase.verifyEqual(spy.getOption(1, 'memAllocate'), 64, 'AbsTol', 1e-9);
+            for i = 2 : 3
+                testCase.verifyEqual(spy.getOption(i, 'cpusPerTask'), 1, sprintf('Case %d.', i));
+                testCase.verifyEqual(spy.getOption(i, 'memAllocate'), 2, sprintf('Case %d.', i));
+            end
+            calls = spy.getCalls();
+            testCase.verifyFalse(any(contains(calls{1}.funcStrs, '''masterCompute'',false')));
+            testCase.verifyTrue(all(contains(calls{2}.funcStrs, '''masterCompute'',false')));
+        end
+
         function mipsAreMovedIntoPlace(testCase)
             % XR_MIP_wrapper's tasks count as done once their MIPs exist, so a
             % MIP written in place could be seen, and its job cancelled,

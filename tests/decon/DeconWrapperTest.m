@@ -312,6 +312,45 @@ classdef DeconWrapperTest < pktest.TestCase
             testCase.verifyEqual(spy.getOption(1, 'masterCompute'), true);
         end
 
+        function largeFileInPlaceControllersAskForWhatTheyHold(testCase)
+            % the job of a volume (RLdecon_large_in_place) runs its block
+            % jobs. It asked for a block-based estimate it never holds:
+            % prod(batchSize * 2) x 40 B on the CPU (16 CPUs here) and
+            % prod(batchSize) x 80 B with GPUs (4), though GPU controllers
+            % compute no block (1.5-1.7 GB of 86 GB were used), and
+            % with masterCompute off (the config's, as in a user's, or the
+            % wrapper's) no CPU controller does: 4 of them held 4 nodes
+            % while their blocks pended. Now a controller asks for MATLAB
+            % and its MIP merge with one CPU, and for the CPUs of a block's
+            % job if it deconvolves blocks itself. The volume is a 34
+            % G-voxel header (the jobs don't run).
+            testCase.assumeFalse(ispc, 'The fake Slurm needs a POSIX shell.');
+            d = testCase.createDataset({'A'}, 1, {}, true);
+            rmdir(d.rawFns{1}, 's');
+            createzarr(d.rawFns{1}, dataSize=[4096, 4096, 2048], blockSize=[256, 256, 256], dtype='uint16');
+            offConfig = [d.root, 'cpu_config.json'];
+            fid = fopen(offConfig, 'w');
+            fprintf(fid, '{"masterCompute": false}');
+            fclose(fid);
+            % GPUJob, masterCompute, configFile, cpusPerTask, controller CPUs
+            cases = {false, true, '', 4, 4; false, true, offConfig, 4, 1; false, false, '', 4, 1; true, true, '', 2, 1};
+            testCase.applyFixture(pktest.FunctionSpyFixture('wait_for_files', [], 40));
+            for i = 1 : size(cases, 1)
+                slurm = testCase.applyFixture(pktest.FakeSlurmFixture);
+                testCase.runWrapper(d, 'RLMethod', 'simplified', 'zarrFile', true, 'saveZarr', true, ...
+                    'resultDirName', sprintf('decon_%d', i), 'largeFile', true, 'largeMethod', 'inplace', ...
+                    'batchSize', [1024, 1024, 1024], 'blockSize', [256, 256, 256], 'GPUJob', cases{i, 1}, ...
+                    'masterCompute', cases{i, 2}, 'configFile', cases{i, 3}, 'cpusPerTask', cases{i, 4}, ...
+                    'parseCluster', true, 'maxTrialNum', 1, 'jobLogDir', [d.root, 'logs']);
+                lines = testCase.sbatchLines(slurm);
+                testCase.assertNumElements(lines, 1, sprintf('Case %d.', i));
+                cpus = str2double(regexp(lines{1}, '--cpus-per-task=(\d+)', 'tokens', 'once'));
+                testCase.verifyEqual(cpus, cases{i, 5}, sprintf('Case %d: the controller''s CPUs.', i));
+                % (the wrapper's masterCompute reaches the controller)
+                testCase.verifyEqual(contains(lines{1}, '''masterCompute'',false'), ~cases{i, 2}, sprintf('Case %d.', i));
+            end
+        end
+
         function largeFileInPlaceMultipleBatchesMatchRegular(testCase)
             % the demo_large_scale_processing setup: zarr chunks deconvolved
             % batch by batch into a zarr, with edge erosion

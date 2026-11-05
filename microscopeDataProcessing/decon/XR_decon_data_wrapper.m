@@ -401,6 +401,18 @@ if ~autoBatch
 end
 batchFiles = parseCluster && ~largeFile && ((autoBatch && GPUJob) || (~autoBatch && taskBatchNum > 1));
 
+% in-place large-file decon: a job per volume runs its block jobs (with the
+% CPU config); it deconvolves CPU blocks itself with masterCompute (the
+% config's, if it sets it), else it only coordinates them and merges the MIPs
+inPlace = largeFile && strcmp(largeMethod, 'inplace');
+if parseCluster && inPlace
+    controllerCompute = ~GPUJob && cluster_config_value(configFile, 'masterCompute', masterCompute);
+    outDtype = 'single';
+    if save16bit
+        outDtype = 'uint16';
+    end
+end
+
 nF_done = 0;
 ts = tic;
 % use while loop to perform computing for all images
@@ -546,6 +558,10 @@ while ~all(is_done_flag | (trial_counter >= maxTrialNum & ~job_active), 'all')
                 strrep(mat2str(blockSize), ' ', ','), dampFactor, scaleFactor_f, ...
                 deconOffset, maskFullpaths_str, uuid, cpusPerTask, string(mccMode), ...
                 configFile, GPUConfigFile);
+            % (only then, as the controller's default is true)
+            if inPlace && ~masterCompute
+                func_str = sprintf('%s,''masterCompute'',false)', func_str(1 : end - 1));
+            end
 
             if exist(dctmpFullpath, 'file') || parseCluster
                 if parseCluster
@@ -555,13 +571,10 @@ while ~all(is_done_flag | (trial_counter >= maxTrialNum & ~job_active), 'all')
                     cpusPerTask_f = cpusPerTask;
                     if ~GPUJob
                         memAllocate = estMem * 10;
-                        if largeFile && strcmp(largeMethod, 'inplace')
-                            memAllocate = prod(batchSize * 2) * 4 / 2^30 * 10;
-                        end
                     else
                         memAllocate = estMem * 10;
-                        if largeFile && strcmp(largeMethod, 'inplace')
-                            memAllocate = prod(batchSize) * 4 / 2^30 * 20;
+                        if inPlace
+                            % (the controller is a CPU job, see below)
                         else
                             cur_configFile = GPUConfigFile;
                             % the GPU deconvolves and the CPUs only read and write
@@ -572,6 +585,14 @@ while ~all(is_done_flag | (trial_counter >= maxTrialNum & ~job_active), 'all')
                                 cpusPerTask_f = min(cpusPerTask, 4);
                             end
                         end
+                    end
+                    if inPlace
+                        % the volume's controller: MATLAB and the merge of
+                        % the MIP slabs from the blocks' MIPs, and the CPUs
+                        % of a block's job if it deconvolves blocks itself
+                        % (block-based estimates held whole nodes idle)
+                        [cpusPerTask_f, memAllocate] = coordinator_resources(MIP_zarr_merge_memory(dsz, ...
+                            batchSize, blockSize, outDtype), controllerCompute, cpusPerTask, []);
                     end
 
                     if batchFiles

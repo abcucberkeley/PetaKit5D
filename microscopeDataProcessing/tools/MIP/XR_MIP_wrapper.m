@@ -140,6 +140,10 @@ for f = 1 : nF
                 frameFullpath, resultDirName, mat2str_comma(axis), mat2str_comma(inputBbox), ...
                 mat2str_comma(batchSize), string(parseCluster), string(parseParfor), ...
                 jobLogDir, string(mccMode), configFile, uuid);
+            % (only then, as the default of XR_MIP_zarr is true)
+            if ~masterCompute
+                func_strs{f} = sprintf('%s,''masterCompute'',false)', func_strs{f}(1 : end - 1));
+            end
         else
             func_strs{f} = sprintf(['saveMIP_zarr(''%s'',''%s'',''dtype'',''%s'',''axis'',%s,''inputBbox'',%s)'], ...
                 frameFullpath, MIPFullpath, dtype, mat2str_comma(axis), mat2str_comma(inputBbox));
@@ -154,7 +158,23 @@ if parseParfor && ~largeFile
     matlab_parfor_generic_computing_wrapper(frameFullpaths, MIPFullpaths, func_strs, 'GPUJob', false, 'nworker', 12)
 end
 taskBatchNum = max(1, round(nF /1000));
-memAllocate = prod(sz) * 4 / 1024^3 * 4;
+if zarrFile && largeFile
+    % each file's job (XR_MIP_zarr) runs its MIP batches as jobs: it holds
+    % MATLAB, and if it computes batches itself (masterCompute, the config's
+    % if it sets it), cpusPerTask and a batch's estimate; the estimate of the
+    % whole input held whole nodes
+    zInfo = getZarrInfo(filepaths{1});
+    inSize = zInfo.size;
+    if ~isempty(inputBbox)
+        inSize = inputBbox(4 : 6) - inputBbox(1 : 3) + 1;
+    end
+    mipBatchSize = MIP_zarr_batch_size(inSize, zInfo.blockSize, zInfo.dtype, 'batchSize', batchSize);
+    batchMem = prod(mipBatchSize) * dataTypeToByteNumber(zInfo.dtype) / 2^30 * (2.5 + 1.5 * (~mccMode));
+    [cpusPerTask, memAllocate] = coordinator_resources(0, cluster_config_value(configFile, 'masterCompute', ...
+        masterCompute), cpusPerTask, batchMem);
+else
+    memAllocate = prod(sz) * 4 / 1024^3 * 4;
+end
 generic_computing_frameworks_wrapper(frameFullpaths, MIPFullpaths, func_strs, ...
     parseCluster=parseCluster, jobLogDir=jobLogDir, masterCompute=masterCompute, ...
     taskBatchNum=taskBatchNum, cpusPerTask=cpusPerTask, memAllocate=memAllocate, ...

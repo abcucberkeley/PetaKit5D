@@ -200,9 +200,26 @@ for f = 1 : nF
         strrep(num2str(bbox_f, '%.10f,'), ' ', ''), string(pad), string(zarrFile), ...
         string(largeFile), string(saveZarr), mat2str_comma(batchSize), strrep(mat2str(blockSize), ' ', ','), ...
         uuid, string(parseCluster), string(mccMode), configFile);
+    % (only then, as the default of XR_crop_frame is true)
+    if zarrFile && largeFile && ~masterCompute
+        func_strs{f} = sprintf('%s,''masterCompute'',false)', func_strs{f}(1 : end - 1));
+    end
 end
 
-memAllocate = prod(sz) * 4 / 1024^3 * 8;
+if zarrFile && largeFile
+    % each file's job (XR_crop_zarr) runs its blocks as jobs: it holds MATLAB
+    % and the merge of the MIP slabs, and if it crops blocks itself
+    % (masterCompute, the config's if it sets it), cpusPerTask and a block's
+    % estimate; the estimate of the whole input held whole nodes
+    outSize = inputBbox(4 : 6) - inputBbox(1 : 3) + 1;
+    batchSize_b = min(outSize, batchSize);
+    dtype = getImageDataType(frameFullpaths{1});
+    mergeMem = MIP_zarr_merge_memory(outSize, batchSize_b, min(outSize, blockSize), dtype);
+    [cpusPerTask, memAllocate] = coordinator_resources(mergeMem, ...
+        cluster_config_value(configFile, 'masterCompute', masterCompute), cpusPerTask, prod(batchSize_b) * 4 * 2 / 1024^3);
+else
+    memAllocate = prod(sz) * 4 / 1024^3 * 8;
+end
 generic_computing_frameworks_wrapper(frameFullpaths, cropFullpaths, func_strs, ...
     parseCluster=parseCluster, jobLogDir=jobLogDir, masterCompute=masterCompute, ...
     cpusPerTask=cpusPerTask, memAllocate=memAllocate, mccMode=mccMode, configFile=configFile);

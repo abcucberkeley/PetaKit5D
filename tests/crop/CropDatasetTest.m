@@ -116,6 +116,41 @@ classdef CropDatasetTest < pktest.TestCase
             testCase.verifyTrue(all(contains(calls{2}.funcStrs, '''mipBatchSize'',[')), 'Tasks with MIPs got no mipBatchSize.');
         end
 
+        function largeZarrJobsAskForWhatTheyHold(testCase)
+            % the job of a large crop (XR_crop_zarr) runs its blocks as jobs
+            % (1 CPU each). It asked for 32 B per voxel of the whole input:
+            % whole nodes for large data. Now it asks for MATLAB and the
+            % merge of the MIP slabs with one CPU, and if it crops blocks
+            % itself (masterCompute, the config's if it sets it), for
+            % cpusPerTask (default 2) and a block's estimate (8 B per voxel
+            % of a batch, 1024 x 1024 x 512 here: 4 GB). The input is an 8
+            % G-voxel header (the framework is a spy).
+            dataPath = testCase.createTempFolder();
+            createzarr([dataPath, 'scan_CamA_ch0_t0000.zarr'], dataSize=[4096, 4096, 512], blockSize=[256, 256, 256], ...
+                dtype='uint16');
+            offConfig = [dataPath, 'cpu_config.json'];
+            fid = fopen(offConfig, 'w');
+            fprintf(fid, '{"masterCompute": false}');
+            fclose(fid);
+            spy = testCase.applyFixture(pktest.FrameworkSpyFixture());
+            cases = {true, ''; false, ''; true, offConfig};
+            for i = 1 : size(cases, 1)
+                XR_crop_dataset(dataPath, [1, 1, 1, 4096, 4096, 512], 'channelPatterns', {'CamA_ch0'}, 'zarrFile', true, ...
+                    'largeFile', true, 'parseCluster', false, 'masterCompute', cases{i, 1}, 'configFile', cases{i, 2}, ...
+                    'resultDirName', sprintf('Cropped_%d', i));
+            end
+            testCase.verifyEqual(spy.getOption(1, 'cpusPerTask'), 2);
+            testCase.verifyEqual(spy.getOption(1, 'memAllocate'), 4, 'AbsTol', 1e-9);
+            for i = 2 : 3
+                testCase.verifyEqual(spy.getOption(i, 'cpusPerTask'), 1, sprintf('Case %d.', i));
+                testCase.verifyLessThan(spy.getOption(i, 'memAllocate'), 4, sprintf('Case %d.', i));
+            end
+            % (the wrapper's masterCompute reaches the crops)
+            calls = spy.getCalls();
+            testCase.verifyFalse(any(contains(calls{1}.funcStrs, '''masterCompute'',false')));
+            testCase.verifyTrue(all(contains(calls{2}.funcStrs, '''masterCompute'',false')));
+        end
+
         function largeZarrPassesJobSettingsToMIPs(testCase)
             % XR_crop_zarr passed parseCluster to XR_MIP_zarr, but not
             % masterCompute or jobLogDir

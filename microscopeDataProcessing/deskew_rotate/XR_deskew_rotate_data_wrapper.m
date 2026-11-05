@@ -372,11 +372,15 @@ end
 
 % estimate memory usuage
 dsz = getImageSize(inputFullpaths{1});
-if largeFile && ~masterCompute
-    memAllocate = prod([min(batchSize(1), dsz(1)), dsz(2), dsz(3)]) * 4 / 2^30 * 10;
-    cpusPerTask = 1;
-elseif largeFile
-    memAllocate = prod(dsz) * 4 / 2^30 * 10;
+if largeFile
+    % each file's job runs its blocks as jobs: it holds MATLAB and the merge
+    % of the MIP slabs, and the resources of a block's job if it computes
+    % blocks itself (masterCompute, the config's if it sets it); estimates of
+    % the whole input or of a y slab held whole nodes idle
+    [cpusPerTask, memAllocate] = dsr_controller_resources(dsz, xyPixelSize(1), dz, skewAngle, ...
+        save16bit(1), interpMethod, resampleFactor, inputBbox, batchSize, blockSize, saveMIP, ...
+        getImageDataType(inputFullpaths{1}), cluster_config_value(configFile, 'masterCompute', masterCompute), ...
+        cpusPerTask);
 else
     % memory of the arrays the deskew/rotate code path holds at once plus
     % MATLAB itself, for the largest input (with all its partial files)
@@ -423,3 +427,48 @@ end
 
 end
 
+
+
+function [cpusPerTask, memAllocate] = dsr_controller_resources(inSize, xyPixelSize, dz, skewAngle, ...
+    save16bit, interpMethod, resampleFactor, inputBbox, batchSize, blockSize, saveMIP, dataType, ...
+    computes, cpusPerTask)
+% the request of the job of a large file (XR_deskewRotateZarr), which runs
+% its y batches as jobs (see coordinator_resources), with the geometry and
+% the estimate of its largest batch as XR_deskewRotateZarr has them (without
+% MIP masks, which only make the result smaller)
+
+if ~isempty(inputBbox)
+    inSize = inputBbox(4 : 6) - inputBbox(1 : 3) + 1;
+end
+rs = [1, 1, 1];
+if numel(resampleFactor) == 3
+    rs = resampleFactor(:)';
+end
+theta = skewAngle * pi / 180;
+zAniso = sin(abs(theta)) * dz / xyPixelSize;
+ny = inSize(1);
+nx = inSize(2);
+nz = inSize(3);
+outSize = round([ny, (nx - 1) * cos(theta) + (nz - 1) * zAniso / sin(abs(theta)), (nx - 1) * sin(abs(theta)) - 4]);
+outSize = max(1, round(outSize ./ rs));
+
+% a batch: rows of the result along y (and one border row on each side of
+% its input) across the whole x and z
+batchOutSize = [min(batchSize(1), outSize(1)), outSize(2 : 3)];
+outBlockSize = min([blockSize(:)'; inSize(:)'; batchOutSize]);
+batchInSize = [min(round((batchOutSize(1) + 2) * rs(1)), inSize(1)), nx, nz];
+blockMem = XR_estimateDeskewRotateMemory(batchInSize, xyPixelSize, dz, 'skewAngle', skewAngle, ...
+    'save16bit', save16bit, 'interpMethod', interpMethod, 'resampleFactor', resampleFactor, ...
+    'outSize', batchOutSize, 'largeFile', true, 'blockSize', outBlockSize, 'dataType', dataType);
+
+mergeMem = 0;
+if saveMIP
+    dtype = 'single';
+    if save16bit
+        dtype = 'uint16';
+    end
+    mergeMem = MIP_zarr_merge_memory(outSize, batchOutSize, outBlockSize, dtype);
+end
+[cpusPerTask, memAllocate] = coordinator_resources(mergeMem, computes, cpusPerTask, blockMem);
+
+end

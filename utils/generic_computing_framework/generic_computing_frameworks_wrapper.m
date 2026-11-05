@@ -155,6 +155,18 @@ localWorkerNum = pr.localWorkerNum;
 taskMetrics = pr.taskMetrics;
 taskRunner = pr.taskRunner;
 
+% in cluster mode, a master in a Slurm job (one that coordinates jobs, or a
+% pipeline's job) runs tasks itself only if they fit its memory; else they
+% all run as jobs
+if parseCluster && masterCompute
+    [fits, taskMem, masterMem] = master_task_fits(memAllocate, cpusPerTask, memPerCPU, maxCPUNum, minCPUNum);
+    if ~fits
+        fprintf('The tasks (%0.1f GB) do not fit this job (%0.1f GB), so the master computes none of them.\n', ...
+            taskMem, masterMem);
+        masterCompute = false;
+    end
+end
+
 if numel(funcStrs) == 1
     if masterCompute
         parseCluster = false;

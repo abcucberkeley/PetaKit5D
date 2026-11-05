@@ -224,6 +224,33 @@ classdef StitchingTest < pktest.TestCase
                 'The master did not stitch the second volume.');
         end
 
+        function masterInAJobStitchesNoVolumeThatDoesNotFitIt(testCase)
+            % with masterCompute the master stitches the last unfinished
+            % volume itself, also in a Slurm job without the memory for it
+            % (the pipeline's stitching job, sized for one tile); now it
+            % submits it then. The stitching function is a spy, so each
+            % call is one the master made.
+            testCase.assumeFalse(ispc, 'The fake Slurm needs a POSIX shell.');
+            [dataPath, csvFn, resultFns] = testCase.writeTwoVolumes();
+            orig = getenv('SLURM_JOB_ID');
+            if isempty(orig)
+                testCase.addTeardown(@unsetenv, 'SLURM_JOB_ID');
+            else
+                testCase.addTeardown(@setenv, 'SLURM_JOB_ID', orig);
+            end
+            setenv('SLURM_JOB_ID', '4242');
+            testCase.applyFixture(pktest.FunctionStubFixture('getSystemMemory', 1e-6));
+            slurm = testCase.applyFixture(pktest.FakeSlurmFixture);
+            slurm.setJobStates('1000_1', {'R', 'done'}, resultFns(1));
+            slurm.setJobStates('1001_2', {'R', 'done'}, resultFns(2));
+            testCase.applyFixture(pktest.FunctionSpyFixture('pause', [], 20));
+            frames = testCase.applyFixture(pktest.FunctionSpyFixture('XR_stitching_frame_zarr_dev_v1'));
+            testCase.stitch(dataPath, csvFn, 'parseCluster', true, 'masterCompute', true, 'xcorrMode', 'all', ...
+                'jobLogDir', [dataPath, 'logs']);
+            testCase.verifyEmpty(frames.getCalls(), 'The master stitched a volume that does not fit its job.');
+            testCase.verifyEqual(slurm.callCount('sbatch'), 2);
+        end
+
         function masterWaitsForTheLastTryOfAJob(testCase)
             % with masterCompute, once the last try of every unfinished
             % volume was submitted, the wrapper errored while waiting for

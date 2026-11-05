@@ -261,6 +261,18 @@ if any(stitchMIP)
     cpusPerTask = 1;
 end
 
+% the jobs' memory per CPU and most CPUs (the config's, else the job
+% framework's defaults) and the memory of this job (read once), for whether
+% the master may stitch a file itself
+if parseCluster
+    jobMemPerCPU = cluster_config_value(configFile, 'memPerCPU', 20.9);
+    jobMaxCPUNum = cluster_config_value(configFile, 'maxCPUNum', 24);
+    masterMem = [];
+    if masterCompute && ~isempty(getenv('SLURM_JOB_ID'))
+        masterMem = getSystemMemory();
+    end
+end
+
 %% parse image list information
 
 useProcessedData = ~isempty(processedDirStr);
@@ -692,25 +704,31 @@ while ~all(is_done_flag | (trial_counter >= max_trial_num & ~job_status_flag), '
                         end
 
                         job_running = false;
-                        if exist(cur_tmp_fname, 'file') || (parseCluster && ~(masterCompute && xcorrShift && strcmpi(xcorrMode, 'primaryFirst') && isPrimaryCh))
+                        % the master stitches a file itself only if the file
+                        % fits its job (in a Slurm job, see master_task_fits)
+                        masterCompute_f = masterCompute;
+                        if parseCluster
+                            if ~exist('imSize', 'var')
+                                if useProcessedData
+                                    imSize = getImageSize(tile_processed_fullpaths{1});
+                                else
+                                    imSize = getImageSize(tile_fullpaths{1});
+                                end
+                            end
+                            datasize = prod(imSize);
+                            totalSize = datasize * numel(tile_fullpaths);
+                            % assume for double
+                            totalDsize = totalSize * 4 / 1024^3;
+                            mem_factor = 2;
+                            masterCompute_f = masterCompute && master_task_fits(totalDsize * mem_factor, cpusPerTask, ...
+                                jobMemPerCPU, jobMaxCPUNum, [], masterMem);
+                        end
+                        if exist(cur_tmp_fname, 'file') || (parseCluster && ~(masterCompute_f && xcorrShift && strcmpi(xcorrMode, 'primaryFirst') && isPrimaryCh))
                             % for cluster computing with master, check whether the job still alive. Otherwise, use waiting time
                             % for the check
                             if parseCluster
-                                if ~(masterCompute && f == lastF && job_ids(f) == 0)
-                                    if ~exist('imSize', 'var')
-                                        if useProcessedData
-                                            imSize = getImageSize(tile_processed_fullpaths{1});
-                                        else
-                                            imSize = getImageSize(tile_fullpaths{1});
-                                        end
-                                    end
-                                    datasize = prod(imSize);
-                                    totalSize = datasize * numel(tile_fullpaths);
-                                    % assume for double
-                                    totalDsize = totalSize * 4 / 1024^3;
-                                    mem_factor = 2;
-
-                                    lastFile = masterCompute && f==lastF;
+                                if ~(masterCompute_f && f == lastF && job_ids(f) == 0)
+                                    lastFile = masterCompute_f && f==lastF;
     
                                     % allocate 5 time of the size
                                     memAllocate = totalDsize * mem_factor;
@@ -723,7 +741,7 @@ while ~all(is_done_flag | (trial_counter >= max_trial_num & ~job_status_flag), '
                                         % the default one is there)
                                         [job_id, job_status, submit_status] = generic_single_job_submit_wrapper(func_str, job_id, task_id, ...
                                             'jobLogDir', jobLogDir, 'jobLogFname', job_log_fname, 'jobErrorFname', job_log_error_fname, ...
-                                            masterCompute=masterCompute, cpusPerTask=cpusPerTask, lastFile=lastFile, ...
+                                            masterCompute=masterCompute_f, cpusPerTask=cpusPerTask, lastFile=lastFile, ...
                                             memAllocate=memAllocate, mccMode=mccMode, configFile=configFile);
                                     else
                                         % the last try: only check whether its job (or a task
@@ -755,7 +773,7 @@ while ~all(is_done_flag | (trial_counter >= max_trial_num & ~job_status_flag), '
                         % the master takes over the last unfinished file, unless its
                         % job runs (it would write the same files at the same time;
                         % a pending job of it was cancelled)
-                        if ~parseCluster || (parseCluster && masterCompute && ((f == lastF && ~job_running) || ...
+                        if ~parseCluster || (parseCluster && masterCompute_f && ((f == lastF && ~job_running) || ...
                                 (xcorrShift && strcmpi(xcorrMode, 'primaryFirst') && isPrimaryCh ...
                                 && job_ids(n, ncam, s, c, z) == -1)))
                             trial_counter(n, ncam, s, c, z) = trial_counter(n, ncam, s, c, z) + 1;
