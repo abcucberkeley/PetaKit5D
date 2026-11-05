@@ -62,6 +62,7 @@ ip.addParameter('taskMetrics', false, @islogical); % record the resources of eac
 ip.addParameter('taskRunner', true, @islogical); % cluster jobs (and compiled local runs) run several tasks per process (see task_runner)
 ip.addParameter('SlurmAlternatives', [], @(x) isempty(x) || isstruct(x) || iscell(x)); % other places for the jobs (entries with SlurmParam, memPerCPU, maxCPUNum, minCPUNum, gpuHeadroom; see slurm_alternatives)
 ip.addParameter('gpuHeadroom', [], @isnumeric); % with SlurmAlternatives: CPUs and GB per idle GPU that CPU-only jobs leave free at the main place ([]: the node's share per GPU)
+ip.addParameter('nice', 0, @isnumeric); % lower the jobs' priority by this (sbatch --nice), e.g. for jobs that wait for jobs they submit (see coordinator_nice)
 
 ip.parse(inputFullpaths, outputFullpaths, funcStrs, varargin{:});
 
@@ -143,6 +144,9 @@ runExtraTasks = pr.runExtraTasks;
 MatlabLaunchStr = pr.MatlabLaunchStr;
 BashLaunchStr = pr.BashLaunchStr;
 SlurmParam = pr.SlurmParam;
+if pr.nice > 0
+    SlurmParam = sprintf('%s --nice=%d', SlurmParam, round(pr.nice));
+end
 SlurmConstraint = pr.SlurmConstraint;
 MCRCacheRoot = pr.MCRCacheRoot;
 MCRParam = pr.MCRParam;
@@ -201,6 +205,10 @@ switch clusterType
             for k = 1 : numel(places)
                 places(k).cpusPerTask = job_cpus(cpusPerTask, memAllocate, places(k).memPerCPU, ...
                     places(k).minCPUNum, places(k).maxCPUNum, roundCPUs);
+                % (the nice too, at every place)
+                if pr.nice > 0 && ~contains(places(k).SlurmParam, '--nice=')
+                    places(k).SlurmParam = sprintf('%s --nice=%d', places(k).SlurmParam, round(pr.nice));
+                end
             end
             if numel(places) > 1
                 placeArgs = {'slurmPlaces', places};

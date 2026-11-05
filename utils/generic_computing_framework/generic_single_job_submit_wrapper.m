@@ -50,6 +50,7 @@ ip.addParameter('taskMetrics', false, @islogical); % record the resources of the
 ip.addParameter('taskRunner', true, @islogical); % after its task, a job's process runs unstarted tasks of other single jobs of the same kind (see task_runner_run); off if the caller or the config says so
 ip.addParameter('SlurmAlternatives', [], @(x) isempty(x) || isstruct(x) || iscell(x)); % other places for the job (entries with SlurmParam, memPerCPU, maxCPUNum, minCPUNum, gpuHeadroom; see slurm_alternatives)
 ip.addParameter('gpuHeadroom', [], @isnumeric); % with SlurmAlternatives: CPUs and GB per idle GPU that CPU-only jobs leave free at the main place ([]: the node's share per GPU)
+ip.addParameter('nice', 0, @isnumeric); % lower the job's priority by this (sbatch --nice), e.g. for a job that waits for jobs it submits (see coordinator_nice)
 
 ip.parse(funcStr, job_id, task_id, varargin{:});
 
@@ -153,6 +154,9 @@ taskBatchNum = pr.taskBatchNum;
 MatlabLaunchStr = pr.MatlabLaunchStr;
 BashLaunchStr = pr.BashLaunchStr;
 SlurmParam = pr.SlurmParam;
+if pr.nice > 0
+    SlurmParam = sprintf('%s --nice=%d', SlurmParam, round(pr.nice));
+end
 SlurmConstraint = pr.SlurmConstraint;
 MCRCacheRoot = pr.MCRCacheRoot;
 MCRParam = pr.MCRParam;
@@ -295,6 +299,10 @@ while submit_status == 0 && trial_counter < maxTrialNum
                 k = 1;
                 if numel(places) > 1
                     [k, cpusPerTask, SlurmParam] = slurm_alternatives('choose', places, cpus_k, timeStrs);
+                    % (the nice too, at whichever place)
+                    if pr.nice > 0 && ~contains(SlurmParam, '--nice=')
+                        SlurmParam = sprintf('%s --nice=%d', SlurmParam, round(pr.nice));
+                    end
                     SlurmConstraint = places(k).SlurmConstraint;
                     time_str = timeStrs{k};
                 end

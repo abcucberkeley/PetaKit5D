@@ -271,6 +271,8 @@ if parseCluster
     if masterCompute && ~isempty(getenv('SLURM_JOB_ID'))
         masterMem = getSystemMemory();
     end
+    % the stitching jobs wait for jobs they submit: these go first
+    stitchNice = coordinator_nice();
 end
 
 %% parse image list information
@@ -702,6 +704,11 @@ while ~all(is_done_flag | (trial_counter >= max_trial_num & ~job_status_flag), '
                         if ~parseCluster && localWorkerNum > 1
                             func_str = sprintf('%s,''localWorkerNum'',%d)', func_str(1 : end - 1), localWorkerNum);
                         end
+                        % (and masterCompute only when off, as the stitching
+                        % function's default is true)
+                        if parseCluster && ~masterCompute
+                            func_str = sprintf('%s,''masterCompute'',false)', func_str(1 : end - 1));
+                        end
 
                         job_running = false;
                         % the master stitches a file itself only if the file
@@ -722,6 +729,50 @@ while ~all(is_done_flag | (trial_counter >= max_trial_num & ~job_status_flag), '
                             mem_factor = 2;
                             masterCompute_f = masterCompute && master_task_fits(totalDsize * mem_factor, cpusPerTask, ...
                                 jobMemPerCPU, jobMaxCPUNum, [], masterMem);
+
+                            % the request of the volume's job: unless it stitches
+                            % the volume in its own process (fewer than 30 batches,
+                            % or 2D with fewer than 50 tiles; then as before), its
+                            % tiles, registration, distance maps and blocks run as
+                            % jobs it waits for, and it holds MATLAB, the tile and
+                            % block information and the MIP of the volume (z from
+                            % its blocks' MIPs, or x, y and z from cluster jobs for
+                            % volumes over half of the largest job): one CPU, and
+                            % with masterCompute (the config's, if it sets it) one
+                            % more block worker (see coordinator_resources). The
+                            % memory of all tiles (8 B per voxel, at least
+                            % cpusPerTask CPUs) held what its blocks waited for
+                            stitchCPUs_f = cpusPerTask;
+                            stitchMem_f = totalDsize * mem_factor;
+                            % (the registration can make the volume smaller or larger
+                            % by up to its max offsets: the job is sized so only if
+                            % the volume has 30 batches even at its smallest, and
+                            % for the MIP and blocks of its largest)
+                            [~, ~, nvSizeRange_f, numBatchesRange_f] = stitch_volume_size_estimate(xyz, imSize, tileIdx=tileIdx, ...
+                                flippedTile=flippedTile, axisOrder=axisOrder, dataOrder=dataOrder, ...
+                                xyPixelSize=xyPixelSize, dz=dz, SkewAngle=skewAngle, objectiveScan=objectiveScan, ...
+                                IOScan=IOScan, DS=DS, DSR=DSR, resampleType=resampleType, resampleFactor=resampleFactor, ...
+                                InputBbox=inputBbox, tileOutBbox=tileOutBbox, xcorrShift=xcorrShift, xyMaxOffset=xyMaxOffset, ...
+                                zMaxOffset=zMaxOffset, outBbox=outBbox, stitchMIP=stitchMIP, batchSize=batchSize, blockSize=blockSize);
+                            nvSize_f = nvSizeRange_f(2, :);
+                            if numBatchesRange_f(1) >= 30 && ~((any(stitchMIP) || any(nvSize_f == 1)) && numel(tile_fullpaths) < 50)
+                                dtype_f = 'uint16';
+                                if ~save16bit
+                                    dtype_f = getImageDataType(tile_fullpaths{1});
+                                end
+                                byteNum_f = dataTypeToByteNumber(dtype_f);
+                                mipMem_f = prod(nvSize_f(1 : 2)) * byteNum_f / 2^30;
+                                if prod(nvSize_f) * byteNum_f / 2^30 >= jobMaxCPUNum * jobMemPerCPU / 2
+                                    mipMem_f = (prod(nvSize_f([1, 2])) + prod(nvSize_f([1, 3])) + prod(nvSize_f([2, 3]))) ...
+                                        * byteNum_f / 2^30;
+                                end
+                                % (a block's job: 2 CPUs, 1 for big data)
+                                bigStitch_f = bigStitchData || largeFile || (numel(tile_fullpaths) > 4 ...
+                                    && prod(imSize) * numel(tile_fullpaths) * 4 > 100 * 2^30);
+                                blockMem_f = prod(min(batchSize, nvSize_f)) * byteNum_f / 2^30 * 20;
+                                [stitchCPUs_f, stitchMem_f] = coordinator_resources(mipMem_f, ...
+                                    cluster_config_value(configFile, 'masterCompute', masterCompute), 2 - bigStitch_f, blockMem_f);
+                            end
                         end
                         if exist(cur_tmp_fname, 'file') || (parseCluster && ~(masterCompute_f && xcorrShift && strcmpi(xcorrMode, 'primaryFirst') && isPrimaryCh))
                             % for cluster computing with master, check whether the job still alive. Otherwise, use waiting time
@@ -730,8 +781,7 @@ while ~all(is_done_flag | (trial_counter >= max_trial_num & ~job_status_flag), '
                                 if ~(masterCompute_f && f == lastF && job_ids(f) == 0)
                                     lastFile = masterCompute_f && f==lastF;
     
-                                    % allocate 5 time of the size
-                                    memAllocate = totalDsize * mem_factor;
+                                    memAllocate = stitchMem_f;
                                     job_id = job_ids(n, ncam, s, c, z);
                                     task_id = rem(f, 5000);
                                     
@@ -741,8 +791,8 @@ while ~all(is_done_flag | (trial_counter >= max_trial_num & ~job_status_flag), '
                                         % the default one is there)
                                         [job_id, job_status, submit_status] = generic_single_job_submit_wrapper(func_str, job_id, task_id, ...
                                             'jobLogDir', jobLogDir, 'jobLogFname', job_log_fname, 'jobErrorFname', job_log_error_fname, ...
-                                            masterCompute=masterCompute_f, cpusPerTask=cpusPerTask, lastFile=lastFile, ...
-                                            memAllocate=memAllocate, mccMode=mccMode, configFile=configFile);
+                                            masterCompute=masterCompute_f, cpusPerTask=stitchCPUs_f, lastFile=lastFile, ...
+                                            memAllocate=memAllocate, mccMode=mccMode, configFile=configFile, nice=stitchNice);
                                     else
                                         % the last try: only check whether its job (or a task
                                         % runner of another job that took its task) is still there

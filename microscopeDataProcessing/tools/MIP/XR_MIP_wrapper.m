@@ -158,6 +158,7 @@ if parseParfor && ~largeFile
     matlab_parfor_generic_computing_wrapper(frameFullpaths, MIPFullpaths, func_strs, 'GPUJob', false, 'nworker', 12)
 end
 taskBatchNum = max(1, round(nF /1000));
+coordNice = 0;
 if zarrFile && largeFile
     % each file's job (XR_MIP_zarr) runs its MIP batches as jobs: it holds
     % MATLAB, and if it computes batches itself (masterCompute, the config's
@@ -172,13 +173,17 @@ if zarrFile && largeFile
     batchMem = prod(mipBatchSize) * dataTypeToByteNumber(zInfo.dtype) / 2^30 * (2.5 + 1.5 * (~mccMode));
     [cpusPerTask, memAllocate] = coordinator_resources(0, cluster_config_value(configFile, 'masterCompute', ...
         masterCompute), cpusPerTask, batchMem);
+    % (and they wait for their batch jobs: these go first)
+    if parseCluster
+        coordNice = coordinator_nice();
+    end
 else
     memAllocate = prod(sz) * 4 / 1024^3 * 4;
 end
 generic_computing_frameworks_wrapper(frameFullpaths, MIPFullpaths, func_strs, ...
     parseCluster=parseCluster, jobLogDir=jobLogDir, masterCompute=masterCompute, ...
     taskBatchNum=taskBatchNum, cpusPerTask=cpusPerTask, memAllocate=memAllocate, ...
-    mccMode=mccMode, configFile=configFile);
+    mccMode=mccMode, configFile=configFile, nice=coordNice);
 
 end
 

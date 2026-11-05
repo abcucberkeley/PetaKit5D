@@ -372,7 +372,12 @@ end
 
 % estimate memory usuage
 dsz = getImageSize(inputFullpaths{1});
+coordNice = 0;
 if largeFile
+    % (the files' jobs wait for their block jobs: these go first)
+    if parseCluster
+        coordNice = coordinator_nice();
+    end
     % each file's job runs its blocks as jobs: it holds MATLAB and the merge
     % of the MIP slabs, and the resources of a block's job if it computes
     % blocks itself (masterCompute, the config's if it sets it); estimates of
@@ -417,7 +422,7 @@ for i = 1 : 3
         is_done_flag = generic_computing_frameworks_wrapper(inputFullpaths, outputFullpaths, ...
             funcStrs, 'cpusPerTask', cpusPerTask * 2^(i - 1),  'memAllocate', memAllocate * 2^(i - 1), ...
             'maxTrialNum', maxTrialNum, 'masterCompute', masterCompute, 'parseCluster', parseCluster, ...
-            'jobLogDir', jobLogDir, 'mccMode', mccMode, 'configFile', configFile);
+            'jobLogDir', jobLogDir, 'mccMode', mccMode, 'configFile', configFile, 'nice', coordNice);
     end
 end
 

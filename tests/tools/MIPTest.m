@@ -97,6 +97,26 @@ classdef MIPTest < pktest.TestCase
             testCase.verifyEmpty(dir([slabFn, '/*.zarr']), 'The temporary slab was moved into the other''s.');
         end
 
+        function largeZarrJobsGoAfterTheirBatches(testCase)
+            % the job of a large file waits for its MIP batch jobs: it asks
+            % to go after them (nice, coordinator_nice); the jobs of other
+            % files don't (the framework is a spy)
+            testCase.assumeFalse(ispc, 'The fake Slurm needs a POSIX shell.');
+            dataPath = testCase.createTempFolder();
+            createzarr([dataPath, 'scan_CamA_ch0_t0000.zarr'], dataSize=[512, 512, 64], blockSize=[64, 64, 64], ...
+                dtype='uint16');
+            testCase.applyFixture(pktest.FakeSlurmFixture);
+            testCase.applyFixture(pktest.FunctionStubFixture('coordinator_nice', 1000));
+            spy = testCase.applyFixture(pktest.FrameworkSpyFixture());
+            for largeFile = [true, false]
+                XR_MIP_wrapper(dataPath, 'axis', [1, 1, 1], 'channelPatterns', {'CamA_ch0'}, 'zarrFile', true, ...
+                    'largeFile', largeFile, 'parseCluster', true, 'resultDirName', sprintf('MIPs_%d', largeFile), ...
+                    'jobLogDir', [dataPath, 'logs']);
+            end
+            testCase.verifyEqual(spy.getOption(1, 'nice'), 1000);
+            testCase.verifyEqual(spy.getOption(2, 'nice'), 0);
+        end
+
         function largeZarrJobsAskForWhatTheyHold(testCase)
             % the job of a large file (XR_MIP_zarr) runs its MIP batches as
             % jobs (1 CPU each). It asked for 16 B per voxel of the whole

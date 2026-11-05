@@ -20,6 +20,23 @@ classdef StitchingTest < pktest.TestCase
         tileBlendMethod = {'none', 'max', 'mean', 'median'}
         axisOrder = struct('x', 'x,y,z', 'minusX', '-x,y,z')
         thinTileDepth = struct('nz8', 8, 'nz20', 20)
+        % volumes the wrapper sizes jobs for (see the tests of the same layouts)
+        sizeSetup = struct( ...
+            'grid', struct('gtSize', [100, 120, 32], 'starts', [0, 0, 0; 36, 0, 0; 0, 48, 0; 36, 48, 0], ...
+                'tileSize', [64, 72, 32], 'params', {{}}), ...
+            'gridPadded', struct('gtSize', [100, 120, 32], 'starts', [0, 0, 0; 36, 0, 0; 0, 48, 0; 36, 48, 0], ...
+                'tileSize', [64, 72, 32], 'params', {{'xcorrShift', true}}), ...
+            'gridOutBbox', struct('gtSize', [100, 120, 32], 'starts', [0, 0, 0; 36, 0, 0; 0, 48, 0; 36, 48, 0], ...
+                'tileSize', [64, 72, 32], 'params', {{'outBbox', [3, 5, 2, 90, 100, 30]}}), ...
+            'tiles2D', struct('gtSize', [100, 120], 'starts', [0, 0, 0; 36, 0, 0; 0, 48, 0; 36, 48, 0], ...
+                'tileSize', [64, 72, 1], 'params', {{'blendMethod', 'feather'}}), ...
+            'ioScan', struct('gtSize', [64, 104, 40], 'starts', [0, 0, 0; 0, 40, 0; 0, 0, 16; 0, 40, 16], ...
+                'tileSize', [64, 64, 24], 'pixelSizes', [0.108, 0.108, 0.5], ...
+                'params', {{'DSR', false, 'IOScan', true, 'dz', 0.5}}), ...
+            'skewedSpace', struct('gtSize', [100, 64, 50], 'starts', [0, 0, 0; 36, 0, 0; 0, 0, 10; 36, 0, 10], ...
+                'tileSize', [64, 64, 40], 'stageXYZ', [0, 0, 0; 0, 36 * 0.108, 0; 3, 0, 0; 3, 36 * 0.108, 0], ...
+                'tileIdx', [0, 0, 0; 0, 1, 0; 1, 0, 0; 1, 1, 0], ...
+                'params', {{'DSR', false, 'dz', 0.3, 'skewAngle', 32.45, 'reverse', true, 'axisOrder', '-x,y,z'}}))
     end
 
     methods (Test, TestTags = {'Integration'})
@@ -249,6 +266,103 @@ classdef StitchingTest < pktest.TestCase
                 'jobLogDir', [dataPath, 'logs']);
             testCase.verifyEmpty(frames.getCalls(), 'The master stitched a volume that does not fit its job.');
             testCase.verifyEqual(slurm.callCount('sbatch'), 2);
+        end
+
+        function clusterJobsAskForWhatTheyHold(testCase)
+            % the stitching job of a volume asked for the memory of all its
+            % tiles (8 B per voxel) on at least cpusPerTask (8) CPUs, which
+            % it held while it waited for its block jobs (80 such jobs held
+            % 840 CPUs, and none of their 624 block jobs could start). Now
+            % it asks for what it holds, on one CPU, or with masterCompute
+            % (here the config's) for a block's job (2 CPUs), unless it
+            % stitches the volume itself (fewer than 30 batches: as
+            % before); the wrapper's masterCompute reaches it, and its jobs
+            % go first (nice). The stitching function is a spy; the fake
+            % jobs make the results.
+            testCase.assumeFalse(ispc, 'The fake Slurm needs a POSIX shell.');
+            testCase.applyFixture(pktest.FunctionStubFixture('coordinator_nice', 1000));
+            testCase.applyFixture(pktest.FunctionSpyFixture('pause', [], 60));
+            testCase.applyFixture(pktest.FunctionSpyFixture('XR_stitching_frame_zarr_dev_v1'));
+            configFolder = testCase.createTempFolder();
+            onConfig = [configFolder, 'cpu_config.json'];
+            fid = fopen(onConfig, 'w');
+            fprintf(fid, '{"masterCompute": true}');
+            fclose(fid);
+            % batch size, config, CPUs of the jobs, more parameters (168
+            % batches; 1 batch; with registration, whose max offsets could
+            % make it 1 batch: stitched in its job as before, or small
+            % offsets: still 168)
+            cases = {[16, 16, 16], '', 1, {}; [16, 16, 16], onConfig, 2, {}; [512, 512, 512], '', 8, {}; ...
+                [16, 16, 16], '', 8, {'xcorrShift', true}; ...
+                [16, 16, 16], '', 1, {'xcorrShift', true, 'xyMaxOffset', 2, 'zMaxOffset', 1}};
+            for i = 1 : size(cases, 1)
+                [dataPath, csvFn, resultFns] = testCase.writeTwoVolumes();
+                slurm = testCase.applyFixture(pktest.FakeSlurmFixture);
+                slurm.setJobStates('1000_1', {'R', 'done'}, resultFns(1));
+                slurm.setJobStates('1001_2', {'R', 'done'}, resultFns(2));
+                testCase.stitch(dataPath, csvFn, 'parseCluster', true, 'masterCompute', false, 'xcorrMode', 'all', ...
+                    'batchSize', cases{i, 1}, 'blockSize', [16, 16, 16], 'configFile', cases{i, 2}, ...
+                    'jobLogDir', [dataPath, 'logs'], cases{i, 4}{:});
+                lines = slurm.calls('sbatch');
+                testCase.assertNumElements(lines, 2, sprintf('Case %d.', i));
+                cpus = cellfun(@(x) str2double(regexp(x, '--cpus-per-task=(\d+)', 'tokens', 'once')), lines);
+                testCase.verifyEqual(cpus(:)', [1, 1] * cases{i, 3}, sprintf('Case %d: the jobs'' CPUs.', i));
+                testCase.verifyTrue(all(contains(lines, '--nice=1000')), sprintf('Case %d: no nice.', i));
+                testCase.verifyTrue(all(contains(lines, '''masterCompute'',false')), ...
+                    sprintf('Case %d: the wrapper''s masterCompute did not reach the jobs.', i));
+            end
+        end
+
+        function volumeSizeEstimateMatchesTheStitchedVolume(testCase, sizeSetup)
+            % the stitching wrapper sizes a volume's job by the size of the
+            % volume (stitch_volume_size_estimate, which mirrors the
+            % stitching function's geometry): it is the size of the
+            % stitched volume (exact tiles: no registration shifts)
+            dataPath = testCase.createTempFolder();
+            gt = testCase.randomVolume(sizeSetup.gtSize);
+            pixelSizes = testCase.XYPixelSize * [1, 1, 1];
+            if isfield(sizeSetup, 'pixelSizes')
+                pixelSizes = sizeSetup.pixelSizes;
+            end
+            nT = size(sizeSetup.starts, 1);
+            stageXYZ = sizeSetup.starts(:, [2, 1, 3]) .* pixelSizes([2, 1, 3]);
+            if isfield(sizeSetup, 'stageXYZ')
+                stageXYZ = sizeSetup.stageXYZ;
+            end
+            tileIdx = [];
+            if isfield(sizeSetup, 'tileIdx')
+                tileIdx = sizeSetup.tileIdx;
+            end
+            csvFn = testCase.writeTiles(dataPath, gt, sizeSetup.starts, sizeSetup.tileSize, pixelSizes, stageXYZ, tileIdx);
+            testCase.stitch(dataPath, csvFn, sizeSetup.params{:});
+            out = testCase.readResult(dataPath);
+            actual = [size(out), ones(1, 3 - ndims(out))];
+
+            % the stitching defaults of the test, then the setup's
+            params = [{'DSR', true, 'resampleType', 'isotropic', 'xyPixelSize', testCase.XYPixelSize, ...
+                'axisOrder', 'x,y,z', 'xcorrShift', false}, sizeSetup.params];
+            known = {'DSR', 'resampleType', 'resampleFactor', 'xyPixelSize', 'axisOrder', 'dataOrder', 'xcorrShift', ...
+                'dz', 'skewAngle', 'IOScan', 'objectiveScan', 'outBbox', 'batchSize', 'blockSize'};
+            keep = ismember(lower(params(1 : 2 : end)), lower(known));
+            params = reshape(params, 2, []);
+            params = params(:, keep);
+            if isempty(tileIdx)
+                xyzStarts = sizeSetup.starts(:, [2, 1, 3]);
+                tileIdx = zeros(nT, 3);
+                for d = 1 : 3
+                    [~, ~, tileIdx(:, d)] = unique(xyzStarts(:, d));
+                end
+                tileIdx = tileIdx - 1;
+            end
+            [estimate, ~, range] = stitch_volume_size_estimate(stageXYZ, sizeSetup.tileSize, ...
+                'tileIdx', [tileIdx, zeros(nT, 1)], params{:});
+            testCase.verifyEqual(estimate, actual);
+            % (with registration, smaller or larger by up to its max
+            % offsets, 300 in x and y and 50 in z by default, at both ends)
+            k = find(strcmpi(params(1, :), 'xcorrShift'), 1, 'last');
+            margin = 2 * [300, 300, 50] * (params{2, k} && nT > 1 && ~any(strcmpi(params(1, :), 'outBbox')));
+            margin(estimate == 1) = 0;
+            testCase.verifyEqual(range, [max(estimate - margin, 1); estimate + margin]);
         end
 
         function masterWaitsForTheLastTryOfAJob(testCase)

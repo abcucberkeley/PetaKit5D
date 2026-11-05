@@ -217,6 +217,8 @@ end
 if parseCluster 
 	[parseCluster] = checkSlurmCluster(dataPath);
 end
+% (a stitching job of the cluster, sized for what it holds; see below)
+clusterMode = parseCluster;
 
 if isempty(uuid)
 	uuid = get_uuid();
@@ -655,7 +657,9 @@ if ~exist(stichInfoPath, 'dir')
 	fileattrib(stichInfoPath, '+w', 'g');
 end
 
-if numBatches < 30
+% a small volume is stitched in this process, if its blocks and distance
+% maps fit it (else they run as jobs)
+if stitch_in_process(numBatches, batchSize, dtype, BlendMethod, imSizes, parseCluster, configFile)
 	parseCluster = false;
 end
 
@@ -839,8 +843,9 @@ imdistFullpaths_str = sprintf("{'%s'}", strjoin(imdistFullpaths, ''','''));
 % larger data, the cluster based MIP
 fuseMIP = false;
 if saveMIP
-	totalMem = getSystemMemory();
-	fuseMIP = numel(nvSize) == 3 && nvSize(3) > 1 && prod(nvSize) * dataTypeToByteNumber(dtype) / 2^30 < totalMem / 2;
+	% (in a stitching job of the cluster, at least the largest job)
+	mipMem = stitch_mip_memory(clusterMode, configFile);
+	fuseMIP = numel(nvSize) == 3 && nvSize(3) > 1 && prod(nvSize) * dataTypeToByteNumber(dtype) / 2^30 < mipMem / 2;
 end
 
 param_str = sprintf(['''%s'',[],[],''imSize'',[%s],''batchSize'',[%s],''dtype'',', ...
@@ -978,7 +983,7 @@ if saveMIP && exist(nv_tmp_fullname, 'dir')
 		stcMIPTmpname = sprintf('%s_%s.tif', stcMIPname(1 : end - 4), get_uuid());
 		writetiff(fusedMIP, stcMIPTmpname);
 		movefile(stcMIPTmpname, stcMIPname);
-    elseif prod(nvSize) * byte_num / 2^30 < totalMem / 2
+    elseif prod(nvSize) * byte_num / 2^30 < mipMem / 2
 		saveMIP_zarr(nv_tmp_raw_fullname, stcMIPname, dtype=dtype, axis=[0, 0, 1]);
     else
 		% for data greater than half of the system memory, use the cluster based MIP.

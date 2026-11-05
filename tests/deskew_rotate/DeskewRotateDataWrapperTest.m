@@ -305,6 +305,25 @@ classdef DeskewRotateDataWrapperTest < pktest.TestCase
             testCase.verifyEqual(readzarr(dsrFn), other);
         end
 
+        function largeFileJobsGoAfterTheirBlocks(testCase)
+            % the job of a large file waits for its block jobs: it asks to
+            % go after them (nice, coordinator_nice); the jobs of other
+            % files don't (the framework is a spy)
+            testCase.assumeFalse(ispc, 'The fake Slurm needs a POSIX shell.');
+            dataPath = testCase.createTempFolder();
+            createzarr([dataPath, testCase.FsnA0, '.zarr'], dataSize=[512, 256, 64], blockSize=[64, 64, 64], ...
+                dtype='uint16');
+            testCase.applyFixture(pktest.FakeSlurmFixture);
+            testCase.applyFixture(pktest.FunctionStubFixture('coordinator_nice', 1000));
+            spy = testCase.applyFixture(pktest.FrameworkSpyFixture());
+            for largeFile = [true, false]
+                testCase.runWrapper(dataPath, 'zarrFile', true, 'largeFile', largeFile, 'parseCluster', true, ...
+                    'DSRDirName', sprintf('DSR_%d', largeFile), 'jobLogDir', [dataPath, 'logs']);
+            end
+            testCase.verifyEqual(spy.getOption(1, 'nice'), 1000);
+            testCase.verifyEqual(spy.getOption(2, 'nice'), 0);
+        end
+
         function largeFileJobsAskForWhatTheyHold(testCase)
             % the job of a large file (XR_deskewRotateZarr) runs its y
             % batches as jobs. It asked for 40 B per voxel of the whole

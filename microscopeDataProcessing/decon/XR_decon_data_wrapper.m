@@ -405,7 +405,10 @@ batchFiles = parseCluster && ~largeFile && ((autoBatch && GPUJob) || (~autoBatch
 % CPU config); it deconvolves CPU blocks itself with masterCompute (the
 % config's, if it sets it), else it only coordinates them and merges the MIPs
 inPlace = largeFile && strcmp(largeMethod, 'inplace');
+controllerNice = 0;
 if parseCluster && inPlace
+    % (the controllers wait for their block jobs: these go first)
+    controllerNice = coordinator_nice();
     % files a job of another call makes (said once)
     other_writer = false(nF, 1);
     controllerCompute = ~GPUJob && cluster_config_value(configFile, 'masterCompute', masterCompute);
@@ -637,7 +640,7 @@ while ~all(is_done_flag | (trial_counter >= maxTrialNum & ~job_active), 'all')
                             [job_id, job_status, submit_status] = generic_single_job_submit_wrapper(func_str, ...
                                 job_id, task_id, jobLogDir=jobLogDir, jobLogFname=job_log_fname, jobErrorFname=job_log_error_fname, ...
                                 lastFile=false, cpusPerTask=cpusPerTask_f, memAllocate=memAllocate, ...
-                                mccMode=mccMode, configFile=cur_configFile);
+                                mccMode=mccMode, configFile=cur_configFile, nice=controllerNice);
                         else
                             % the last try: only check whether its job (or a task
                             % runner of another job that took its task) is still there

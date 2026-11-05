@@ -206,6 +206,7 @@ for f = 1 : nF
     end
 end
 
+coordNice = 0;
 if zarrFile && largeFile
     % each file's job (XR_crop_zarr) runs its blocks as jobs: it holds MATLAB
     % and the merge of the MIP slabs, and if it crops blocks itself
@@ -217,11 +218,15 @@ if zarrFile && largeFile
     mergeMem = MIP_zarr_merge_memory(outSize, batchSize_b, min(outSize, blockSize), dtype);
     [cpusPerTask, memAllocate] = coordinator_resources(mergeMem, ...
         cluster_config_value(configFile, 'masterCompute', masterCompute), cpusPerTask, prod(batchSize_b) * 4 * 2 / 1024^3);
+    % (and they wait for their block jobs: these go first)
+    if parseCluster
+        coordNice = coordinator_nice();
+    end
 else
     memAllocate = prod(sz) * 4 / 1024^3 * 8;
 end
 generic_computing_frameworks_wrapper(frameFullpaths, cropFullpaths, func_strs, ...
     parseCluster=parseCluster, jobLogDir=jobLogDir, masterCompute=masterCompute, ...
-    cpusPerTask=cpusPerTask, memAllocate=memAllocate, mccMode=mccMode, configFile=configFile);
+    cpusPerTask=cpusPerTask, memAllocate=memAllocate, mccMode=mccMode, configFile=configFile, nice=coordNice);
 
 end

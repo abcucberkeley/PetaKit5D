@@ -217,6 +217,26 @@ classdef CropDatasetTest < pktest.TestCase
                 'The crop that failed did not mark its record ended.');
         end
 
+        function largeZarrJobsGoAfterTheirBlocks(testCase)
+            % the job of a large crop waits for its block jobs: it asks to
+            % go after them (nice, coordinator_nice); the jobs of other crops
+            % don't (the framework is a spy)
+            testCase.assumeFalse(ispc, 'The fake Slurm needs a POSIX shell.');
+            dataPath = testCase.createTempFolder();
+            createzarr([dataPath, 'scan_CamA_ch0_t0000.zarr'], dataSize=[512, 512, 64], blockSize=[64, 64, 64], ...
+                dtype='uint16');
+            testCase.applyFixture(pktest.FakeSlurmFixture);
+            testCase.applyFixture(pktest.FunctionStubFixture('coordinator_nice', 1000));
+            spy = testCase.applyFixture(pktest.FrameworkSpyFixture());
+            for largeFile = [true, false]
+                XR_crop_dataset(dataPath, [1, 1, 1, 512, 512, 64], 'channelPatterns', {'CamA_ch0'}, 'zarrFile', true, ...
+                    'largeFile', largeFile, 'parseCluster', true, 'resultDirName', sprintf('Cropped_%d', largeFile), ...
+                    'jobLogDir', [dataPath, 'logs']);
+            end
+            testCase.verifyEqual(spy.getOption(1, 'nice'), 1000);
+            testCase.verifyEqual(spy.getOption(2, 'nice'), 0);
+        end
+
         function largeZarrJobsAskForWhatTheyHold(testCase)
             % the job of a large crop (XR_crop_zarr) runs its blocks as jobs
             % (1 CPU each). It asked for 32 B per voxel of the whole input:

@@ -453,6 +453,8 @@ classdef DeconWrapperTest < pktest.TestCase
             % GPUJob, masterCompute, configFile, cpusPerTask, controller CPUs
             cases = {false, true, '', 4, 4; false, true, offConfig, 4, 1; false, false, '', 4, 1; true, true, '', 2, 1};
             testCase.applyFixture(pktest.FunctionSpyFixture('wait_for_files', [], 40));
+            % (the controllers wait for their block jobs: these go first)
+            testCase.applyFixture(pktest.FunctionStubFixture('coordinator_nice', 1000));
             for i = 1 : size(cases, 1)
                 slurm = testCase.applyFixture(pktest.FakeSlurmFixture);
                 testCase.runWrapper(d, 'RLMethod', 'simplified', 'zarrFile', true, 'saveZarr', true, ...
@@ -466,6 +468,7 @@ classdef DeconWrapperTest < pktest.TestCase
                 testCase.verifyEqual(cpus, cases{i, 5}, sprintf('Case %d: the controller''s CPUs.', i));
                 % (the wrapper's masterCompute reaches the controller)
                 testCase.verifyEqual(contains(lines{1}, '''masterCompute'',false'), ~cases{i, 2}, sprintf('Case %d.', i));
+                testCase.verifySubstring(lines{1}, ' --nice=1000', sprintf('Case %d: the controller went before its blocks.', i));
             end
         end
 
