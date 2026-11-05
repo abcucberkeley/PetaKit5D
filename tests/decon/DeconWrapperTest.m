@@ -468,6 +468,23 @@ classdef DeconWrapperTest < pktest.TestCase
             end
         end
 
+        function largeFileInPlaceBlocksLogToTheCallersJobLogDir(testCase)
+            % the controller of a volume got no job log folder, so its block
+            % jobs logged to its default (../job_logs, or the data folder's
+            % job_logs where that doesn't exist) instead of the caller's
+            % jobLogDir, where the wrapper's own jobs log. Here the
+            % controller runs here and its block framework is a spy.
+            d = testCase.createDataset({'A'}, 1, {}, true);
+            logDir = [d.root, 'caller_logs'];
+            mkdir(logDir);
+            spy = testCase.applyFixture(pktest.FrameworkSpyFixture([], false));
+            testCase.verifyError(@() testCase.runWrapper(d, 'RLMethod', 'simplified', 'deconIter', 2, 'zarrFile', true, ...
+                'saveZarr', true, 'resultDirName', 'large', 'largeFile', true, 'largeMethod', 'inplace', ...
+                'batchSize', [64, 64, 64], 'blockSize', [16, 16, 16], 'jobLogDir', logDir), ?MException);
+            testCase.assertNotEmpty(spy.getCalls(), 'The controller ran no block framework.');
+            testCase.verifyEqual(spy.getOption(1, 'jobLogDir'), logDir);
+        end
+
         function largeFileInPlaceMultipleBatchesMatchRegular(testCase)
             % the demo_large_scale_processing setup: zarr chunks deconvolved
             % batch by batch into a zarr, with edge erosion

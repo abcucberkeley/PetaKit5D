@@ -564,6 +564,11 @@ while ~all(is_done_flag | (trial_counter >= maxTrialNum & ~job_active), 'all')
             if inPlace && ~masterCompute
                 func_str = sprintf('%s,''masterCompute'',false)', func_str(1 : end - 1));
             end
+            % (and the job log folder, so that the controller's block jobs log
+            % where the caller's jobs do; its default is ../job_logs)
+            if inPlace
+                func_str = sprintf('%s,''jobLogDir'',''%s'')', func_str(1 : end - 1), jobLogDir);
+            end
 
             if exist(dctmpFullpath, 'file') || parseCluster
                 % the volume's controller of another call that may still
