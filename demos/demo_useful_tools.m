@@ -590,6 +590,11 @@ end
 % multiple folders. Here we run FSC analysis for the deconvolution with different 
 % iterations to demonstrate how to use FSC to determine the optimal number
 % of iterations.  
+% Note: this FSC is between interleaved sub-lattices of one image, whose
+% noise must be independent. Deconvolution and deskew/rotation correlate the
+% noise of neighboring voxels, so on low-SNR data the FSC can keep improving
+% with more iterations or a lower Wiener alpha, with no optimum. There, use
+% two independent images (XR_two_image_FSC_analysis) or cross-validation.
 
 % result folder:
 % {destPath}/PetaKit5D_demo_cell_image_dataset/matlab_decon_omw_debug/Scan_Iter_0000_0000_CamB_ch0_CAM1_stack0000_488nm_0000000msec_0106060251msecAbs_000x_003y_000z_0000t_debug/FSCs

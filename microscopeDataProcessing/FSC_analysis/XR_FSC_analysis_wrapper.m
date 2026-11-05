@@ -1,6 +1,11 @@
 function XR_FSC_analysis_wrapper(dataPaths, varargin)
 % Wrapper for datasets level FSC analysis, visualization of mean resolution (0 for x (or y), pi/2 for z).
 %
+% The FSC of each image is between interleaved sub-lattices of it
+% (XR_one_image_FSC_analysis): on low-SNR data, deconvolution and
+% deskew/rotation correlate their noise, and the FSC can keep improving with
+% more iterations or a lower Wiener alpha, with no optimum (see
+% XR_one_image_FSC_analysis).
 %
 % Required inputs:
 %           dataPaths : char or cell array. Directory paths for the datasets. Either a string for a single dataset or a cell array of paths for several datasets with same experimental settings.

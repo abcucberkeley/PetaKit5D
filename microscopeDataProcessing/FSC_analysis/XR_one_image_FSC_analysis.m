@@ -1,5 +1,15 @@
 function [fsc_mu, res_mu, fsc_cell, res_cell] = XR_one_image_FSC_analysis(fn, varargin)
 % perform FSC analysis for a single image
+%
+% The FSC is between interleaved sub-lattices of the one image (every other
+% voxel along each axis, averaged over the four pairs of opposite ones),
+% whose noise must be independent. Deconvolution and deskew/rotation (its
+% interpolation) correlate the noise of neighboring voxels, so on low-SNR
+% data processed that way the sub-lattices share noise and the FSC can keep
+% improving with more iterations or a lower Wiener alpha, with no optimum.
+% There, compare two independent images instead (XR_two_image_FSC_analysis,
+% e.g., two acquisitions), or choose the parameters by cross-validation
+% (e.g., with two recorrupted copies of one image).
 % 
 % xruan (10/19/2021): add support for bounding box for the region to calculate FSC
 % xruan (06/09/2022): add support for clipping very bright spots
