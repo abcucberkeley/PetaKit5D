@@ -69,3 +69,37 @@ def test_no_global_thread_state(monkeypatch):
     # the environment is not a source of thread counts
     assert threads.available_cpus() == threads.resolve_threads(None)
     assert os.environ["OMP_NUM_THREADS"] == "1"
+
+
+_BOUND_CHILD = """
+import os, petakit5d.core.threads as t
+from petakit5d import _ext
+pre = t.available_cpus()
+mask = len(os.sched_getaffinity(0))
+_ext.load("core").parallel_threads(max(2, mask))  # libgomp binds the main thread here
+print(pre, mask, len(os.sched_getaffinity(0)), t.available_cpus(), t.resolve_threads())
+"""
+
+
+def test_omp_proc_bind_does_not_shrink_the_cpus():
+    # K03: with OMP_PROC_BIND set, libgomp binds the main thread to one CPU at its first parallel
+    # region; the affinity read after that is 1 CPU, and every kernel ran single-threaded
+    import subprocess
+    import sys
+
+    from petakit5d import _ext
+
+    if not hasattr(os, "sched_getaffinity") or not _ext.available("core"):
+        pytest.skip("needs Linux affinity masks and the core extension")
+    if len(os.sched_getaffinity(0)) < 2:
+        pytest.skip("needs 2 or more CPUs")
+    env = dict(os.environ, OMP_PROC_BIND="true")
+    env.pop("OMP_NUM_THREADS", None)
+    out = subprocess.run(
+        [sys.executable, "-c", _BOUND_CHILD], env=env, capture_output=True, text=True, check=True
+    ).stdout
+    pre, mask, bound, after, resolved = (int(v) for v in out.split())
+    if bound == mask:
+        pytest.skip("this OpenMP runtime did not bind the main thread")
+    assert bound == 1  # what the old code took as the process's CPUs
+    assert after == pre == resolved and pre > 1

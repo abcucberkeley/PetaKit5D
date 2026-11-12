@@ -5,6 +5,11 @@ cgroup CPU quota (``cpu.max`` in v2, ``cpu.cfs_quota_us / cpu.cfs_period_us`` in
 up), never an environment variable. Kernels take their thread count as an argument:
 ``resolve_threads(n)`` turns a user's ``n`` (None or 0 for all) into that count. Nothing here
 sets global state (no ``OMP_NUM_THREADS``).
+
+The affinity is read once, when this module is first imported (importing any part of
+``petakit5d.core`` imports it), before any kernel has run: with ``OMP_PROC_BIND`` set, libgomp
+binds the main thread to one CPU at its first parallel region, and the process's affinity read
+after that is that one CPU.
 """
 
 from __future__ import annotations
@@ -17,7 +22,7 @@ import sys
 __all__ = ["available_cpus", "cgroup_cpu_limit", "resolve_threads"]
 
 
-def _affinity_count() -> int:
+def _affinity_now() -> int:
     if hasattr(os, "sched_getaffinity"):
         try:
             return max(1, len(os.sched_getaffinity(0)))
@@ -28,6 +33,15 @@ def _affinity_count() -> int:
         if n:
             return n
     return os.cpu_count() or 1
+
+
+# taken before any OpenMP region can bind the main thread (see the module's docstring)
+_AFFINITY_AT_IMPORT = _affinity_now()
+
+
+def _affinity_count() -> int:
+    """CPUs in this process's affinity when petakit5d.core was first imported."""
+    return _AFFINITY_AT_IMPORT
 
 
 def _read(path: str) -> str | None:

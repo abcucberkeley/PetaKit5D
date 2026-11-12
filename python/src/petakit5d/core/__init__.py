@@ -119,6 +119,11 @@ _SUBMODULES = (
 __all__ = sorted(_EXPORTS) + list(_SUBMODULES)
 
 
+# the CPU affinity is taken now, before a kernel's OpenMP region can bind the main thread to one
+# CPU (OMP_PROC_BIND); core.threads is light (no NumPy)
+from petakit5d.core import threads as _threads  # noqa: E402,F401
+
+
 def __getattr__(name: str):
     import importlib
 
