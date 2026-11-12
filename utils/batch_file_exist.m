@@ -37,6 +37,10 @@ if numel(fileFullpaths) == 1
     else
         file_exist_mat = exist(fileFullpaths{1}, 'file') || exist(fileFullpaths{1}, 'dir');
     end
+    % (the last batch of a cluster check can have one path)
+    if ~isempty(outFullpath) && ~exist(outFullpath, 'file')
+        save_result(outFullpath, file_exist_mat, fileFullpaths);
+    end
     return;
 end
 
@@ -55,11 +59,19 @@ else
 end
 
 if ~isempty(outFullpath) && ~exist(outFullpath, 'file')
-    uuid = get_uuid();
-    tmpFullpath = sprintf('%s_uuid_%s.mat', outFullpath(1 : end - 4), uuid);
-    save('-v7.3', tmpFullpath, 'file_exist_mat', 'fileFullpaths');
-    movefile(tmpFullpath, outFullpath);
+    save_result(outFullpath, file_exist_mat, fileFullpaths);
 end
+
+end
+
+
+function [] = save_result(outFullpath, file_exist_mat, fileFullpaths) %#ok<INUSD>
+% save the result under a temporary name and move it into place
+
+uuid = get_uuid();
+tmpFullpath = sprintf('%s_uuid_%s.mat', outFullpath(1 : end - 4), uuid);
+save('-v7.3', tmpFullpath, 'file_exist_mat', 'fileFullpaths');
+movefile(tmpFullpath, outFullpath);
 
 end
 

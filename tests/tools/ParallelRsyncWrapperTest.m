@@ -161,6 +161,38 @@ classdef ParallelRsyncWrapperTest < pktest.TestCase
             evalc('tf = batch_file_exist_cluster(paths, [root, ''check2''], ''parseCluster'', false);');
             testCase.verifyEqual(tf, [true; true; true; true; false]);
         end
+
+        function clusterFileCheckOfABatchOfOnePath(testCase)
+            % the task of a batch of one path (e.g., the last batch of
+            % 50001 files) wrote no result, so its check never finished
+            root = testCase.createTempFolder();
+            fclose(fopen([root, 'a.txt'], 'w'));
+            mkdir([root, 'cwd']);
+            testCase.applyFixture(matlab.unittest.fixtures.CurrentFolderFixture([root, 'cwd']));
+            % (no Slurm here: the framework runs the check in this MATLAB)
+            tf = [];
+            evalc('tf = batch_file_exist_cluster({[root, ''a.txt'']}, [root, ''check'']);');
+            testCase.verifyEqual(tf, true);
+            testCase.verifyNumElements(dir([root, 'check/file_exist_flags/file_exist_1_1.mat']), 1, ...
+                'The task wrote no result.');
+        end
+
+        function failedClusterFileChecksAreCheckedHere(testCase)
+            % a batch whose check failed in its jobs (here every batch: a
+            % framework spy that runs nothing) made the result a cell of
+            % empties, on which the rsync wrapper failed; such batches are
+            % checked in this MATLAB, with a warning
+            root = testCase.createTempFolder();
+            names = {'a b.txt', 'it''s.txt', 'missing.txt'};
+            for i = 1 : 2
+                fclose(fopen([root, names{i}], 'w'));
+            end
+            paths = strcat(root, names(:));
+            testCase.applyFixture(pktest.FrameworkSpyFixture([], false));
+            tf = testCase.verifyWarning(@() batch_file_exist_cluster(paths, [root, 'check']), ...
+                'batch_file_exist_cluster:checkFailed');
+            testCase.verifyEqual(tf, [true; true; false]);
+        end
     end
 
     methods (Test, TestTags = {'Unit'})

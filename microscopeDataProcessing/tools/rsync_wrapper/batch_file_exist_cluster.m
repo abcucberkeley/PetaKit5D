@@ -55,14 +55,24 @@ is_done_flag = generic_computing_frameworks_wrapper(inputFlagpaths, flagFullpath
     'memAllocate', memAllocate, 'maxJobNum', maxJobNum, 'masterCompute', ~false, ...
     'parseCluster', parseCluster, 'mccMode', mccMode, 'configFile', configFile);
 
-% collect results
+% collect results; the batches whose check failed (no result after the
+% framework's tries) are checked here
 file_exist_mat = cell(numBatch, 1);
-if all(is_done_flag)
-    for i = 1 : numBatch
+for i = 1 : numBatch
+    if is_done_flag(i)
         a = load(flagFullpaths{i}, 'file_exist_mat');
         file_exist_mat{i} = a.file_exist_mat;
     end
-    file_exist_mat = cat(1, file_exist_mat{:});
 end
+if ~all(is_done_flag)
+    warning('batch_file_exist_cluster:checkFailed', ['The file checks of %d of %d batches failed in their jobs ', ...
+        '(no result in %s); checking them here.'], sum(~is_done_flag), numBatch, flag_dir);
+    for i = reshape(find(~is_done_flag), 1, [])
+        s = (i - 1) * batchSize + 1;
+        t = min(i * batchSize, nF);
+        file_exist_mat{i} = batch_file_exist(fileFullpaths(s : t), [], true);
+    end
+end
+file_exist_mat = cat(1, file_exist_mat{:});
 
 end

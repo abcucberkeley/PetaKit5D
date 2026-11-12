@@ -68,6 +68,24 @@ classdef BatchFileExistTest < pktest.TestCase
             testCase.verifyEqual(a.fileFullpaths, queries);
         end
 
+        function singlePathSavesResultToOutputFile(testCase)
+            % a single path had no result file, so the task of a cluster
+            % check whose last batch has one path (a number of files 1 more
+            % than a multiple of 50000) never finished
+            dataPath = testCase.createTempFolder();
+            fns = testCase.makeFiles(dataPath, 1);
+            queries = {fns{1}, [dataPath, 'missing.tif']};
+            for i = 1 : 2
+                outFn = sprintf('%sexist_%d.mat', dataPath, i);
+                flag = batch_file_exist(queries(i), outFn);
+                testCase.verifyEqual(logical(flag), i == 1);
+                testCase.assertTrue(isfile(outFn), 'No result file for a single path.');
+                a = load(outFn);
+                testCase.verifyEqual(logical(a.file_exist_mat), i == 1);
+                testCase.verifyEqual(a.fileFullpaths, queries(i));
+            end
+        end
+
         function matchesExistOnEdgeCases(testCase)
             % few paths per folder (each folder is opened, then the paths
             % checked by name), all at once and one by one
