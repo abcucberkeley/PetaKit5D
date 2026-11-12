@@ -8,6 +8,9 @@ function [J, err_mat, overlapOut] = decon_lucy_omw_function(I, PSF_f, PSF_b, NUM
 %   overlapFcn: function the CPU runs while the GPU computes (after the
 %       iterations are queued, before the result is copied back; on the CPU
 %       after the iterations); its output is overlapOut
+%   useGPU: true runs on a GPU and errors (decon:noUsableGPU) if none is
+%       usable, false on the CPU, [] (the default) on a GPU if one is usable,
+%       else on the CPU with a warning
 %
 % Author: Xiongtao Ruan (11/10/2022)
 %
@@ -22,7 +25,7 @@ ip.addRequired('PSF_f', @isnumeric);
 ip.addRequired('PSF_b', @isnumeric);
 ip.addRequired('NUMIT', @isnumeric);
 ip.addParameter('Background', [], @isnumeric);
-ip.addParameter('useGPU', true, @islogical); % use GPU processing
+ip.addParameter('useGPU', [], @(x) isempty(x) || islogical(x)); % GPU processing: [] if one is usable, true requires one
 ip.addParameter('save16bit', true, @islogical);
 ip.addParameter('dampFactor', 1, @isnumeric); % damp factor for decon result
 ip.addParameter('scaleFactor', 1, @isnumeric); % scale factor for result
@@ -40,6 +43,9 @@ ip.parse(I, PSF_f, PSF_b, NUMIT, varargin{:});
 pr = ip.Results;
 Background = pr.Background;
 useGPU = pr.useGPU;
+% [] (auto): on a GPU if one is usable; true: a usable GPU is required
+requireGPU = isequal(useGPU, true);
+useGPU = isempty(useGPU) || useGPU;
 save16bit = pr.save16bit;
 dampFactor = pr.dampFactor;
 scaleFactor = pr.scaleFactor;
@@ -59,19 +65,21 @@ PSF_b = single(PSF_b);
 sizeI = size(I);
 
 % 1. Prepare PSFs: the cached OTFs are used for the same PSFs (bit for bit),
-% image size, GPU and mex use, and number of threads (the PSF normalization
-% depends on it)
+% image size, GPU and mex use, and number of threads; cached CPU OTFs of a
+% call without a GPU are computed again when a GPU is required
 persistent OTF_f OTF_b psz last_PSF_f last_PSF_b last_nThreads gpuNum last_useGPU last_useMex
 nThreads = maxNumCompThreads;
 newOTF = isempty(psz) || isempty(OTF_f) || ~(numel(psz) == numel(sizeI) && all(psz == sizeI) && last_useGPU == useGPU ...
         && last_nThreads == nThreads && same_psf(PSF_f, last_PSF_f) && same_psf(PSF_b, last_PSF_b)) ...
-        || (useGPU && ~isempty(OTF_f) && gpuNum > 0 && ~existsOnGPU(OTF_f));
+        || (useGPU && ~isempty(OTF_f) && gpuNum > 0 && ~existsOnGPU(OTF_f)) || (requireGPU && isequal(gpuNum, 0));
 if newOTF
+    % (no cached OTF if the check errors)
     gpuNum = 0;
+    psz = [];
     if useGPU
-        % with forward compatibility for GPUs newer than this MATLAB, and a
-        % warning with MATLAB's reason if no GPU is usable
-        gpuNum = decon_gpu_num();
+        % (GPUs newer than this MATLAB get forward compatibility; errors if
+        % a GPU is required and none is usable, else warns with MATLAB's reason)
+        gpuNum = decon_gpu_num(requireGPU);
     end
 end
 % the mex uses half OTFs, the MATLAB code full OTFs
@@ -87,15 +95,21 @@ if newOTF || ~isequal(last_useMex, useMex)
     if useGPU && gpuNum > 0
         PSF_f = gpuArray(PSF_f);
         PSF_b = gpuArray(PSF_b);
+        PSF_f = PSF_f ./ sum(PSF_f(:), 'double');
+        PSF_b = PSF_b ./ sum(PSF_b(:), 'double');
+    else
+        % summed in an order that doesn't depend on the number of threads
+        PSF_f = PSF_f ./ decon_sum_double(PSF_f);
+        PSF_b = PSF_b ./ decon_sum_double(PSF_b);
     end
     if useMex
         OTF_f = [];
         OTF_b = [];
-        OTF_f = decon_lucy_rfft(useGPU && gpuNum > 0, 'otf', PSF_f ./ sum(PSF_f(:), 'double'), double(sizeI));
-        OTF_b = decon_lucy_rfft(useGPU && gpuNum > 0, 'otf', PSF_b ./ sum(PSF_b(:), 'double'), double(sizeI));
+        OTF_f = decon_lucy_rfft(useGPU && gpuNum > 0, 'otf', PSF_f, double(sizeI));
+        OTF_b = decon_lucy_rfft(useGPU && gpuNum > 0, 'otf', PSF_b, double(sizeI));
     else
-        OTF_f = decon_psf2otf(PSF_f ./ sum(PSF_f(:), 'double'), double(sizeI));
-        OTF_b = decon_psf2otf(PSF_b ./ sum(PSF_b(:), 'double'), double(sizeI));
+        OTF_f = decon_psf2otf(PSF_f, double(sizeI));
+        OTF_b = decon_psf2otf(PSF_b, double(sizeI));
     end
 end
 clear PSF_f PSF_b;

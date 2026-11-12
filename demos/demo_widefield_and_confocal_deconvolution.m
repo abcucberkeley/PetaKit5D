@@ -133,8 +133,10 @@ parseCluster = false;
 % set it to true for large files that cannot be fitted to RAM/GPU, it will
 % split the data to chunks for deconvolution
 largeFile = false;
-% use GPU for deconvolution
-GPUJob = true;
+% use GPU for deconvolution if MATLAB can use one here (local runs; for
+% cluster jobs on GPU nodes set it to true). A GPU job errors where no GPU is
+% usable.
+GPUJob = canUseGPU;
 % if true, save intermediate results every 5 iterations.
 debug = false;
 % config file for the master jobs that runs on CPU node
@@ -164,7 +166,7 @@ XR_decon_data_wrapper(dataPaths, 'resultDirName', resultDirName, 'xyPixelSize', 
     'ConfigFile', ConfigFile, 'GPUConfigFile', GPUConfigFile, 'mccMode', mccMode);
 
 % release GPU if using GPU computing
-if GPUJob && gpuDeviceCount('available') > 0
+if GPUJob
     reset(gpuDevice);
 end
 
@@ -283,7 +285,7 @@ XR_decon_data_wrapper(dataPaths, 'resultDirName', resultDirName, 'xyPixelSize', 
     'ConfigFile', ConfigFile, 'GPUConfigFile', GPUConfigFile, 'mccMode', mccMode);
 
 % release GPU if using GPU computing
-if GPUJob && gpuDeviceCount('available') > 0
+if GPUJob
     reset(gpuDevice);
 end
 

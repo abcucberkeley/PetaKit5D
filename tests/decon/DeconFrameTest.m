@@ -166,9 +166,10 @@ classdef DeconFrameTest < pktest.TestCase
             % a GPU job with several files reads the next file while the GPU
             % deconvolves the current one (before the current result is
             % moved into place), each file once, with the same results as
-            % one file per job (a gpuDevice stub reports room on the GPU;
-            % without a GPU the decon runs on the CPU)
+            % one file per job (a gpuDevice stub reports room on the GPU, and
+            % RLdecon runs on the CPU: GPU jobs need a usable GPU)
             testCase.applyFixture(pktest.FunctionStubFixture('gpuDevice', struct('AvailableMemory', 1e15)));
+            cpu = testCase.writeCPURLdecon();
             [fn1, psfFn] = testCase.writeFrame();
             fns = {fn1, strrep(fn1, '_000x_', '_001x_'), strrep(fn1, '_000x_', '_002x_')};
             testCase.writeFrame(fns{2});
@@ -193,12 +194,14 @@ classdef DeconFrameTest < pktest.TestCase
                 testCase.assertNotEmpty(moveCurrent);
                 testCase.verifyLessThan(readNext, moveCurrent, sprintf('file %d was read after the result of file %d was published', i + 1, i));
             end
+            testCase.verifyTrue(all(testCase.fakeUseGPU(cpu)), 'The GPU job did not ask RLdecon for the GPU.');
         end
 
         function gpuJobWithoutRoomOnTheGPUReadsTheFilesInTurn(testCase)
             % with too little free GPU memory the iterations aren't queued
             % ahead, so the next file is read by its own RLdecon
             testCase.applyFixture(pktest.FunctionStubFixture('gpuDevice', struct('AvailableMemory', 0)));
+            testCase.writeCPURLdecon();
             [fn1, psfFn] = testCase.writeFrame();
             fn2 = strrep(fn1, '_000x_', '_001x_');
             testCase.writeFrame(fn2);
@@ -213,6 +216,7 @@ classdef DeconFrameTest < pktest.TestCase
 
         function gpuJobDoesNotReadAFinishedNextFile(testCase)
             testCase.applyFixture(pktest.FunctionStubFixture('gpuDevice', struct('AvailableMemory', 1e15)));
+            testCase.writeCPURLdecon();
             [fn1, psfFn] = testCase.writeFrame();
             fn2 = strrep(fn1, '_000x_', '_001x_');
             testCase.writeFrame(fn2);
@@ -263,6 +267,40 @@ classdef DeconFrameTest < pktest.TestCase
             args = [{'PSFfile', psfFn, 'dzPSF', testCase.Dz, 'Background', testCase.Background, ...
                 'RLMethod', 'simplified', 'EdgeErosion', 0, 'parseCluster', false, 'GPUJob', false}, varargin];
             evalc('XR_RLdeconFrame3D(fn, testCase.XYPixelSize, testCase.Dz, deconPath, args{:})');
+        end
+
+        function [folder] = writeCPURLdecon(testCase)
+            % an RLdecon first on the path that records its arguments (as
+            % writeFakeRLdecon) and runs a copy of the real one on the CPU:
+            % GPU jobs need a usable GPU, which test machines may not have
+            src = fileread(which('RLdecon'));
+            src = regexprep(src, '^(function [^=]*= *)RLdecon\(', '$1RLdecon_real(', 'once', 'lineanchors');
+            folder = [testCase.createTempFolder(), 'cpu/'];
+            mkdir(folder);
+            fid = fopen([folder, 'RLdecon_real.m'], 'w');
+            fwrite(fid, src);
+            fclose(fid);
+            lines = {
+                'function [varargout] = RLdecon(varargin)'
+                '% test stand-in written by DeconFrameTest: the real RLdecon (RLdecon_real) on the CPU'
+                'callFn = [fileparts(mfilename(''fullpath'')), ''/calls.mat''];'
+                'calls = {};'
+                'if exist(callFn, ''file'')'
+                '    a = load(callFn);'
+                '    calls = a.calls;'
+                'end'
+                'calls{end + 1} = varargin;'
+                'save(callFn, ''calls'');'
+                'ind = find(cellfun(@(x) ischar(x) && strcmp(x, ''useGPU''), varargin), 1, ''last'');'
+                'varargin{ind + 1} = false;'
+                '[varargout{1 : nargout}] = RLdecon_real(varargin{:});'
+                'end'};
+            fid = fopen([folder, 'RLdecon.m'], 'w');
+            fprintf(fid, '%s\n', lines{:});
+            fclose(fid);
+            testCase.applyFixture(matlab.unittest.fixtures.PathFixture(folder, 'Position', 'begin'));
+            testCase.addTeardown(@() clear('RLdecon', 'RLdecon_real'));
+            clear('RLdecon');
         end
 
         function [folder] = writeFakeRLdecon(testCase, errId)

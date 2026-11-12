@@ -858,7 +858,18 @@ classdef DeconWrapperTest < pktest.TestCase
             jobFiles = cellfun(@(x) [x{:}], jobFiles, 'unif', 0);
             testCase.verifyEqual(jobFiles, {d.fsns(1 : 2); d.fsns(3); d.fsns(4 : 5); d.fsns(6)});
 
-            % run the jobs here and compare with one file at a time
+            % run the jobs here and compare with one file at a time (on the
+            % CPU where no GPU is usable: a GPU job requires one)
+            hasGPU = false;
+            try
+                hasGPU = gpuDeviceCount('available') > 0;
+            catch
+            end
+            if ~hasGPU
+                testCase.assertTrue(all(contains(funcStrs, '''GPUJob'',true')));
+                funcStrs = strrep(funcStrs, '''GPUJob'',true', '''GPUJob'',false');
+                args{end} = false;
+            end
             for i = 1 : numel(funcStrs)
                 evalc('feval(str2func([''@()'', funcStrs{i}]))');
             end

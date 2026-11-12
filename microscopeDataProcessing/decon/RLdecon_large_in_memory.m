@@ -46,7 +46,7 @@ ip.addParameter('parseCluster', true, @islogical);
 ip.addParameter('uuid', '', @ischar);
 ip.addParameter('debug', false, @islogical);
 ip.addParameter('psfGen', true, @islogical); % psf generation
-ip.addParameter('useGPU', true, @islogical); % use gpu if it is available
+ip.addParameter('useGPU', [], @(x) isempty(x) || islogical(x)); % use gpu if it is available ([]), true requires one
 
 ip.parse(frameFullpath, psfFullpath, deconFullpath, xyPixelSize, dz, varargin{:});
 

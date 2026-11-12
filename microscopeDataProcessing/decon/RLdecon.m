@@ -6,6 +6,9 @@ function [deconvolved, ds, dsr, overlapOut] = RLdecon(inputFn, outputFn, PSFfn, 
 % overlapFcn: function the CPU runs while the GPU deconvolves ('simplified' and
 %   'omw'; e.g., reading the next file of a job); its output is overlapOut
 %   (empty if it didn't run)
+% useGPU ('simplified' and 'omw'): true runs on a GPU and errors
+%   (decon:noUsableGPU) if none is usable, false on the CPU, [] (the default)
+%   on a GPU if one is usable, else on the CPU with a warning
 
 
 ip = inputParser;
@@ -51,7 +54,7 @@ ip.addParameter('ErodeMaskfile', '', @ischar); % erode mask file
 ip.addParameter('deconBbox', [], @isnumeric); % bounding box to crop data after decon
 ip.addParameter('debug', false, @islogical);
 ip.addParameter('saveStep', 5, @isnumeric); % save intermediate results every given iterations
-ip.addParameter('useGPU', true, @islogical); % use GPU processing
+ip.addParameter('useGPU', [], @(x) isempty(x) || islogical(x)); % GPU processing: [] if one is usable, true requires one
 ip.addParameter('save3Dstack', [true, true, true], @(x) islogical(x) && (numel(x) == 1 || numel(x) == 3)); % save 3d stack to disk
 ip.addParameter('mipAxis', [0,0,1] , @(x) isnumeric(x) && numel(x) == 3);
 ip.addParameter('psfGen', true, @islogical); % psf generation
@@ -345,9 +348,9 @@ if ~file_exist_mat(1)
         if isempty(scaleFactor)
             scaleFactor = 1;
         end
-        % summed in double, so that the result doesn't depend on the number
-        % of threads (a single precision sum is split among them)
-        psf = psf ./ sum(psf(:), 'double');
+        % summed in double in an order that doesn't depend on the number of
+        % threads
+        psf = psf ./ decon_sum_double(psf);
         if debug
             debug_folder = sprintf('%s/%s_debug/', deconPath, fsname);
             mkdir(debug_folder)

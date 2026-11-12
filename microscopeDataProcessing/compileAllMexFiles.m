@@ -33,8 +33,8 @@ srcDir = pwd;
 
 % folder, source file, whether it uses AVX2 on x86, extra mex arguments and
 % extra compiler flags (no fused multiply-adds in tile_blending_3d_mex,
-% omw_backprojector_mex and unmix_channels_sum_mex, so that they compute as
-% MATLAB does)
+% omw_backprojector_mex, decon_lucy_accel_mex and unmix_channels_sum_mex, so
+% that they compute as MATLAB does)
 mexFiles = {'deskew_rotate/mex', 'skewed_space_interp_defined_stepsize_mex.c', true, {}, '';
     'deskew_rotate/mex', 'volume_deskew_rotate_warp_mex.cpp', true, {}, '';
     'deskew_rotate/mex', 'skewed_space_interp_volume_deskew_rotate_warp_mex.cpp', true, {}, '';
@@ -54,6 +54,7 @@ mexFiles = {'deskew_rotate/mex', 'skewed_space_interp_defined_stepsize_mex.c', t
     'flatfield_correction/mex', 'flat_field_correction_3d_mex.cpp', false, {}, '';
     'decon/mex', 'decon_mask_edge_erosion_mex.cpp', false, {}, '';
     'decon/mex', 'omw_backprojector_mex.cpp', false, {}, ' -ffp-contract=off';
+    'decon/mex', 'decon_lucy_accel_mex.cpp', false, {}, ' -ffp-contract=off';
     'unmix/mex', 'unmix_channels_sum_mex.cpp', false, {}, ' -ffp-contract=off'};
 
 for i = 1 : size(mexFiles, 1)

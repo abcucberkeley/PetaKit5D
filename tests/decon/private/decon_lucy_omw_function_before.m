@@ -71,9 +71,14 @@ if isempty(psz) || isempty(OTF_f) || ~(numel(psz) == numel(sizeI) && all(psz == 
     if useGPU && gpuNum > 0
         PSF_f = gpuArray(PSF_f);
         PSF_b = gpuArray(PSF_b);
+        OTF_f = decon_psf2otf(PSF_f ./ sum(PSF_f(:), 'double'), double(sizeI));
+        OTF_b = decon_psf2otf(PSF_b ./ sum(PSF_b(:), 'double'), double(sizeI));
+    else
+        % summed in an order that doesn't depend on the number of threads
+        % (as decon_lucy_omw_function)
+        OTF_f = decon_psf2otf(PSF_f ./ decon_sum_double(PSF_f), double(sizeI));
+        OTF_b = decon_psf2otf(PSF_b ./ decon_sum_double(PSF_b), double(sizeI));
     end
-    OTF_f = decon_psf2otf(PSF_f ./ sum(PSF_f(:), 'double'), double(sizeI));
-    OTF_b = decon_psf2otf(PSF_b ./ sum(PSF_b(:), 'double'), double(sizeI));
 end
 clear PSF_f PSF_b;
 

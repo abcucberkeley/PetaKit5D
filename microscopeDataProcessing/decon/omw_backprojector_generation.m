@@ -34,9 +34,8 @@ if isempty(psf) || all(psf == 0, 'all')
 end
 
 psf = single(psf);
-% summed in double, so that the back projector doesn't depend on the number
-% of threads (a single precision sum is split among them)
-psf = psf ./ sum(psf, 'all', 'double');
+% summed in double in an order that doesn't depend on the number of threads
+psf = psf ./ decon_sum_double(psf);
 
 OTF = decon_psf2otf(psf);
 abs_OTF = abs(OTF);
@@ -44,7 +43,7 @@ abs_OTF_c = fftshift(abs_OTF);
 OTF_vals = sort_descend(abs_OTF);
 
 % segment out OTF support based on the accumulate OTF intensity
-tind = find(cumsum(OTF_vals) > sum(OTF_vals) * otf_thresh, 1, 'first');
+tind = find(cumsum(OTF_vals) > decon_sum_double(OTF_vals) * otf_thresh, 1, 'first');
 dc_thresh = OTF_vals(tind) / abs_OTF(1, 1, 1);
 % (11/12/2022): add a lower bound 2.5e-3 in case of too noisy
 dc_thresh = max(dc_thresh, minIntThrsh);

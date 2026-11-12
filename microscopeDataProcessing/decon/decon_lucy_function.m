@@ -23,6 +23,14 @@ function [J_2, err_mat, k, overlapOut] = decon_lucy_function(I, PSF, NUMIT, vara
 % overlapFcn: function the CPU runs while the GPU computes (after the
 %   iterations are queued, before the result is copied back; on the CPU after
 %   the iterations); its output is overlapOut
+% useGPU: true runs on a GPU and errors (decon:noUsableGPU) if none is
+%   usable, false on the CPU, [] (the default) on a GPU if one is usable, else
+%   on the CPU with a warning
+%
+% On the CPU, the PSF normalization and the acceleration factor are summed in
+% an order that doesn't depend on the number of threads (decon_sum_double,
+% decon_lucy_accel), and the acceleration step runs in decon_lucy_accel_mex
+% for arrays of 89000 or more elements, with the results of the MATLAB code.
 
 
 ip = inputParser;
@@ -31,7 +39,7 @@ ip.addRequired('I', @isnumeric);
 ip.addRequired('PSF', @isnumeric);
 ip.addRequired('NUMIT', @isnumeric);
 ip.addParameter('Background', [], @isnumeric);
-ip.addParameter('useGPU', true, @islogical); % use GPU processing
+ip.addParameter('useGPU', [], @(x) isempty(x) || islogical(x)); % GPU processing: [] if one is usable, true requires one
 ip.addParameter('save16bit', true, @islogical);
 ip.addParameter('dampFactor', 1, @isnumeric); % damp factor for decon result
 ip.addParameter('scaleFactor', 1, @isnumeric); % scale factor for result
@@ -49,6 +57,9 @@ ip.parse(I, PSF, NUMIT, varargin{:});
 pr = ip.Results;
 Background = pr.Background;
 useGPU = pr.useGPU;
+% [] (auto): on a GPU if one is usable; true: a usable GPU is required
+requireGPU = isequal(useGPU, true);
+useGPU = isempty(useGPU) || useGPU;
 save16bit = pr.save16bit;
 dampFactor = pr.dampFactor;
 scaleFactor = pr.scaleFactor;
@@ -67,18 +78,21 @@ PSF = single(PSF);
 sizeI = size(I);
 
 % 1. Prepare PSFs: the cached OTF is used for the same PSF (bit for bit),
-% image size, GPU and mex use, and number of threads (the PSF normalization
-% depends on it)
+% image size, GPU and mex use, and number of threads; a cached CPU OTF of a
+% call without a GPU is computed again when a GPU is required
 persistent H psz last_PSF last_nThreads gpuNum last_useGPU last_useMex
 nThreads = maxNumCompThreads;
 newOTF = isempty(psz) || ~(numel(psz) == numel(sizeI) && all(psz == sizeI) && last_useGPU == useGPU ...
-        && last_nThreads == nThreads && same_psf(PSF, last_PSF)) || (useGPU && ~isempty(H) && gpuNum > 0 && ~existsOnGPU(H));
+        && last_nThreads == nThreads && same_psf(PSF, last_PSF)) || (useGPU && ~isempty(H) && gpuNum > 0 && ~existsOnGPU(H)) ...
+        || (requireGPU && isequal(gpuNum, 0));
 if newOTF
+    % (no cached OTF if the check errors)
     gpuNum = 0;
+    psz = [];
     if useGPU
-        % with forward compatibility for GPUs newer than this MATLAB, and a
-        % warning with MATLAB's reason if no GPU is usable
-        gpuNum = decon_gpu_num();
+        % (GPUs newer than this MATLAB get forward compatibility; errors if
+        % a GPU is required and none is usable, else warns with MATLAB's reason)
+        gpuNum = decon_gpu_num(requireGPU);
     end
 end
 % the mex uses a half OTF, the MATLAB code the full OTF
@@ -92,12 +106,16 @@ if newOTF || ~isequal(last_useMex, useMex)
 
     if useGPU && gpuNum > 0
         PSF = gpuArray(PSF);
+        PSF = PSF ./ sum(PSF(:), 'double');
+    else
+        % summed in an order that doesn't depend on the number of threads
+        PSF = PSF ./ decon_sum_double(PSF);
     end
     if useMex
         H = [];
-        H = decon_lucy_rfft(useGPU && gpuNum > 0, 'otf', PSF ./ sum(PSF(:), 'double'), double(sizeI));
+        H = decon_lucy_rfft(useGPU && gpuNum > 0, 'otf', PSF, double(sizeI));
     else
-        H = decon_psf2otf(PSF ./ sum(PSF(:), 'double'), double(sizeI));
+        H = decon_psf2otf(PSF, double(sizeI));
     end
 end
 clear PSF;
@@ -153,17 +171,21 @@ for k = 1 : NUMIT
         % lambda = (J_4(:,1).'*J_4(:,2))/(J_4(:,2).'*J_4(:,2) +eps);        
         if useGPU
             lambda = sum((J_2(:) - Y(:)) .* J_4) / (sum(J_4 .* J_4) + eps);
+            lambda = max(min(lambda,1),0);% stability enforcement
+            J_4 = J_2(:) - Y(:);
         else
-            % in double, so that it doesn't depend on the number of threads
-            % (a single precision sum is split among them)
-            lambda = sum((J_2(:) - Y(:)) .* J_4, 'double') / (sum(J_4 .* J_4, 'double') + eps);
+            % the same, summed in double in an order that doesn't depend on
+            % the number of threads
+            [lambda, J_4] = decon_lucy_accel('lambda', J_2, Y, J_4);
         end
-        lambda = max(min(lambda,1),0);% stability enforcement
-        J_4 = J_2(:) - Y(:);
     elseif k == 2
         J_4 = J_2(:) - Y(:);
     end
-    Y = max(J_2 + lambda*(J_2 - J_3), 0);% plus positivity constraint
+    if useGPU
+        Y = max(J_2 + lambda*(J_2 - J_3), 0);% plus positivity constraint
+    else
+        Y = decon_lucy_accel('predict', J_2, J_3, lambda);
+    end
         
     % 3.b  Make core for the LR estimation
     % 3.c Determine next iteration image & apply positivity constraint

@@ -130,39 +130,141 @@ classdef DeconFunctionTest < pktest.TestCase
             testCase.verifyEqual(out, full(bbox(1) : bbox(4), bbox(2) : bbox(5), bbox(3) : bbox(6)));
         end
 
-        function gpuRequestWithoutGPUFallsBackToCPU(testCase, method)
-            hasGPU = false;
-            try
-                hasGPU = usable_gpu_num() > 0;
-            catch
-            end
-            testCase.assumeFalse(hasGPU, 'Checks the fallback on machines without a GPU.');
+        function gpuRequestWithoutUsableGPUErrors(testCase, method)
+            % useGPU true requires a GPU: with GPUs found but none usable
+            % (e.g., a B200 in R2024b without forward compatibility, compute
+            % capability 10.0) or none found, the decon errors with the
+            % counts, CUDA_VISIBLE_DEVICES and MATLAB's reason, the error of
+            % selecting GPU 1 (not tried with none found); GPU jobs used to
+            % run on the CPU instead, about 60x slower. Also after a call
+            % without useGPU cached a CPU OTF. Stubs of gpuDeviceCount and
+            % gpuDevice.
             im = testCase.blurredBeads();
-            outCPU = testCase.runDecon(method, im, testCase.PSF, testCase.BackProjector, 3, 'Background', testCase.Background, 'save16bit', false);
-            % it says so: a GPU job on a GPU that can't be used (e.g. one that
-            % needs a reset) used to run on the CPU without a word
-            lastwarn('');
-            outGPU = testCase.runDecon(method, im, testCase.PSF, testCase.BackProjector, 3, 'Background', testCase.Background, ...
-                'save16bit', false, 'useGPU', true);
-            testCase.verifyEqual(outGPU, outCPU);
-            testCase.verifySubstring(lastwarn, 'No GPU is available');
+            for found = [1, 0]
+                folder = testCase.stubGPUs(found);
+                clear decon_lucy_function decon_lucy_omw_function
+                evalc('testCase.runDecon(method, im, testCase.PSF, testCase.BackProjector, 1, ''Background'', testCase.Background, ''useGPU'', [])');
+                ME = [];
+                try
+                    testCase.runDecon(method, im, testCase.PSF, testCase.BackProjector, 3, 'Background', testCase.Background, ...
+                        'useGPU', true);
+                catch ME
+                end
+                DeconFunctionTest.removeStubs(folder);
+                testCase.assertNotEmpty(ME, sprintf('No error with %d GPUs found and none usable.', found));
+                testCase.verifyEqual(ME.identifier, 'decon:noUsableGPU');
+                testCase.verifySubstring(ME.message, sprintf('No GPU is available (%d found, CUDA_VISIBLE_DEVICES=', found));
+                if found
+                    testCase.verifySubstring(ME.message, ['Selecting GPU 1 failed: ', ...
+                        'The GPU has compute capability 10.0 (test stub), not supported by this MATLAB.']);
+                else
+                    testCase.verifyFalse(contains(ME.message, 'Selecting GPU'), ME.message);
+                end
+            end
         end
 
-        function noUsableGPUWarningGivesMATLABsReason(testCase, method)
+        function defaultFallsBackToTheCPUWithAWarning(testCase, method)
+            % without useGPU (or with []), a GPU if one is usable, else the
+            % CPU with a warning with the same reason (stubs as above)
+            im = testCase.blurredBeads();
+            args = {'Background', testCase.Background, 'save16bit', false};
+            outCPU = testCase.runDecon(method, im, testCase.PSF, testCase.BackProjector, 3, args{:});
+            for found = [1, 0]
+                folder = testCase.stubGPUs(found);
+                for gpuArg = {{}, {'useGPU', []}}
+                    clear decon_lucy_function decon_lucy_omw_function
+                    lastwarn('');
+                    switch method
+                        case 'simplified'
+                            out = decon_lucy_function(im, testCase.PSF, 3, args{:}, gpuArg{1}{:});
+                        case 'omw'
+                            out = decon_lucy_omw_function(im, testCase.PSF, testCase.BackProjector, 3, args{:}, gpuArg{1}{:});
+                    end
+                    msg = lastwarn;
+                    testCase.verifyEqual(out, outCPU);
+                    testCase.verifySubstring(msg, sprintf('No GPU is available (%d found', found));
+                    testCase.verifySubstring(msg, 'so the deconvolution runs on the CPU.');
+                    testCase.verifyEqual(contains(msg, 'Selecting GPU 1 failed: The GPU has compute capability 10.0'), found == 1, msg);
+                end
+                DeconFunctionTest.removeStubs(folder);
+            end
+            % the defaults of RLdecon and the in-memory large-file decon too
+            if ~strcmp(method, 'simplified')
+                return;
+            end
+            root = testCase.createTempFolder();
+            psfFn = [root, 'psf.tif'];
+            writetiff(testCase.PSF, psfFn);
+            inFn = [root, 'in.tif'];
+            writetiff(im, inFn);
+            folder = testCase.stubGPUs(0);
+            clear decon_lucy_function decon_lucy_omw_function
+            lastwarn('');
+            [~, out] = evalc(['RLdecon('''', '''', psfFn, 0.108, 0.2, 0.2, ''rawdata'', im, ''RLMethod'', ''simplified'', ', ...
+                '''psfGen'', false, ''Background'', 100, ''DeconIter'', 1, ''save16bit'', false)']);
+            testCase.verifySubstring(lastwarn, 'so the deconvolution runs on the CPU.', 'RLdecon');
+            testCase.verifyNotEmpty(out);
+            clear decon_lucy_function decon_lucy_omw_function
+            lastwarn('');
+            evalc(['RLdecon_large_in_memory(inFn, psfFn, [root, ''out.tif''], 0.108, 0.2, ''Background'', 100, ', ...
+                '''dzPSF'', 0.2, ''DeconIter'', 1, ''RLMethod'', ''simplified'', ''psfGen'', false, ', ...
+                '''batchSize'', [64, 64, 64], ''parseCluster'', false)']);
+            testCase.verifySubstring(lastwarn, 'so the deconvolution runs on the CPU.', 'RLdecon_large_in_memory');
+            testCase.verifyTrue(exist([root, 'out.tif'], 'file') == 2);
+            DeconFunctionTest.removeStubs(folder);
+        end
+
+        function gpuBlockTaskWithoutUsableGPUErrors(testCase)
+            % a large-file GPU job's block task (useGPU = GPUJob) fails, so
+            % that the framework retries it and the call reports it, instead
+            % of running on the CPU; with useGPU false it runs
+            root = testCase.createTempFolder();
+            im = testCase.blurredBeads();
+            inFn = [root, 'in.zarr'];
+            outFn = [root, 'out.zarr'];
+            writezarr(im, inFn, 'blockSize', [16, 16, 16]);
+            createzarr(outFn, dataSize=size(im), blockSize=[16, 16, 16], dtype='uint16');
+            psfFn = [root, 'psf.tif'];
+            writetiff(testCase.PSF, psfFn);
+            mkdir([root, 'flags']);
+            flagFn = [root, 'flags/blocks_1_1.mat'];
+            bbox = [1, 1, 1, size(im)];
+            args = {1, inFn, psfFn, outFn, flagFn, bbox, bbox, 0.108, 0.2, 'Background', testCase.Background, ...
+                'DeconIter', 2, 'psfGen', false, 'RLMethod', 'simplified'};
+            folder = testCase.stubGPUs(0);
+            clear decon_lucy_function
+            testCase.verifyError(@() RLdecon_for_zarr_block(args{:}, 'useGPU', true), 'decon:noUsableGPU');
+            testCase.verifyFalse(exist(flagFn, 'file') == 2);
+            evalc('RLdecon_for_zarr_block(args{:}, ''useGPU'', false)');
+            DeconFunctionTest.removeStubs(folder);
+            testCase.verifyTrue(exist(flagFn, 'file') == 2);
+        end
+
+        function noUsableGPUMessagesGiveMATLABsReason(testCase, method)
             % the GPUs are counted with usable_gpu_num (GPUs newer than this
-            % MATLAB supports get forward compatibility), and the warning of
-            % a GPU job that runs on the CPU gives MATLAB's reason (a stub
-            % here: 1 GPU found, none usable)
+            % MATLAB supports get forward compatibility), and MATLAB's reason
+            % is in the warning of the default (auto: the CPU) and in the
+            % error of useGPU true (a stub here: 1 GPU found, none usable)
             im = testCase.blurredBeads();
             outCPU = testCase.runDecon(method, im, testCase.PSF, testCase.BackProjector, 3, 'Background', testCase.Background, 'save16bit', false);
             testCase.applyFixture(pktest.FunctionStubFixture('usable_gpu_num', 0, 'Selecting GPU 1 failed: stub reason.', 1));
             clear decon_lucy_function decon_lucy_omw_function
             lastwarn('');
-            outGPU = testCase.runDecon(method, im, testCase.PSF, testCase.BackProjector, 3, 'Background', testCase.Background, ...
-                'save16bit', false, 'useGPU', true);
-            testCase.verifyEqual(outGPU, outCPU);
+            outAuto = testCase.runDecon(method, im, testCase.PSF, testCase.BackProjector, 3, 'Background', testCase.Background, ...
+                'save16bit', false, 'useGPU', []);
+            testCase.verifyEqual(outAuto, outCPU);
             testCase.verifySubstring(lastwarn, 'No GPU is available (1 found, CUDA_VISIBLE_DEVICES=');
             testCase.verifySubstring(lastwarn, 'so the deconvolution runs on the CPU. Selecting GPU 1 failed: stub reason.');
+            clear decon_lucy_function decon_lucy_omw_function
+            ME = [];
+            try
+                testCase.runDecon(method, im, testCase.PSF, testCase.BackProjector, 3, 'Background', testCase.Background, ...
+                    'save16bit', false, 'useGPU', true);
+            catch ME
+            end
+            testCase.assertNotEmpty(ME, 'useGPU true ran without a usable GPU.');
+            testCase.verifyEqual(ME.identifier, 'decon:noUsableGPU');
+            testCase.verifySubstring(ME.message, 'Selecting GPU 1 failed: stub reason.');
         end
 
         function wienerButterworthBackProjectorWorksWithOMWDecon(testCase)
@@ -402,6 +504,28 @@ classdef DeconFunctionTest < pktest.TestCase
     end
 
     methods (Access = private)
+        function [folder] = stubGPUs(testCase, found)
+            % gpuDeviceCount and gpuDevice first on the path: found GPUs
+            % ("all"), none available, and selecting one fails as for an
+            % unsupported GPU (pktest.FunctionStubFixture returns the same
+            % values for every call); a teardown takes them off the path
+            folder = testCase.createTempFolder();
+            fid = fopen([folder, 'gpuDeviceCount.m'], 'w');
+            fprintf(fid, '%s\n', 'function [n] = gpuDeviceCount(varargin)', ...
+                '% test stub written by DeconFunctionTest: GPUs found, none available', 'n = 0;', ...
+                'if nargin > 0 && strcmp(varargin{1}, ''all'')', sprintf('    n = %d;', found), 'end', 'end');
+            fclose(fid);
+            fid = fopen([folder, 'gpuDevice.m'], 'w');
+            fprintf(fid, '%s\n', 'function [varargout] = gpuDevice(varargin)', ...
+                '% test stub written by DeconFunctionTest: selecting a GPU fails as for an unsupported one', ...
+                'error(''pktest:gpuDevice'', ''The GPU has compute capability 10.0 (test stub),\nnot supported by this MATLAB.'');', 'end');
+            fclose(fid);
+            warning('off', 'MATLAB:dispatcher:nameConflict');
+            addpath(folder, '-begin');
+            testCase.addTeardown(@() DeconFunctionTest.removeStubs(folder));
+            clear gpuDeviceCount gpuDevice
+        end
+
         function [im] = blurredBeads(testCase, positions, amplitude, background)
             % beads blurred by the test PSF (Gaussian object of sigma
             % ObjectSigma convolved with the Gaussian PSF), as uint16 camera
@@ -457,6 +581,19 @@ classdef DeconFunctionTest < pktest.TestCase
             s = sum(win(:));
             c = [sum(y(:) .* win(:)), sum(x(:) .* win(:)), sum(z(:) .* win(:))] / s;
             v = [sum((y(:) - c(1)) .^ 2 .* win(:)), sum((x(:) - c(2)) .^ 2 .* win(:)), sum((z(:) - c(3)) .^ 2 .* win(:))] / s;
+        end
+    end
+
+    methods (Static, Access = private)
+        function [] = removeStubs(folder)
+            % take the stub folder off the path (if still on it; path entries
+            % have backslashes on Windows) and the stubs out of memory
+            entries = strsplit(path, pathsep);
+            ind = find(strcmp(strrep(entries, '\', '/'), regexprep(strrep(folder, '\', '/'), '/$', '')), 1);
+            if ~isempty(ind)
+                rmpath(entries{ind});
+            end
+            clear gpuDeviceCount gpuDevice
         end
     end
 end

@@ -132,8 +132,10 @@ parseCluster = false;
 % set it to true for large files that cannot be fitted to RAM/GPU, it will
 % split the data to chunks for deconvolution
 largeFile = false;
-% use GPU for deconvolution
-GPUJob = true;
+% use GPU for deconvolution if MATLAB can use one here (local runs; for
+% cluster jobs on GPU nodes set it to true). A GPU job errors where no GPU is
+% usable.
+GPUJob = canUseGPU;
 % if true, save intermediate results every 5 iterations.
 debug = false;
 % config file for the master jobs that runs on CPU node
@@ -162,7 +164,7 @@ XR_decon_data_wrapper(dataPaths, 'resultDirName', resultDirName, 'xyPixelSize', 
     'ConfigFile', ConfigFile, 'GPUConfigFile', GPUConfigFile, 'mccMode', mccMode);
 
 % release GPU if using GPU computing
-if GPUJob && gpuDeviceCount('available') > 0
+if GPUJob
     reset(gpuDevice);
 end
 
@@ -224,8 +226,10 @@ parseCluster = false;
 % set it to true for large files that cannot be fitted to RAM/GPU, it will
 % split the data to chunks for deconvolution
 largeFile = false;
-% use GPU for deconvolution
-GPUJob = true;
+% use GPU for deconvolution if MATLAB can use one here (local runs; for
+% cluster jobs on GPU nodes set it to true). A GPU job errors where no GPU is
+% usable.
+GPUJob = canUseGPU;
 % if true, save intermediate results every 5 iterations.
 debug = false;
 % config file for the master jobs that runs on CPU node
@@ -252,7 +256,7 @@ XR_decon_data_wrapper(dataPaths, 'resultDirName', resultDirName, 'xyPixelSize', 
     'ConfigFile', ConfigFile, 'GPUConfigFile', GPUConfigFile, 'mccMode', mccMode);
 
 % release GPU if using GPU computing
-if GPUJob && gpuDeviceCount('available') > 0
+if GPUJob
     reset(gpuDevice);
 end
 
@@ -390,8 +394,9 @@ fprintf('Done!\n');
 % 30 iterations
 
 fprintf('Traditional (Biggs) RL deconvolution with 30 iterations... ');
-% use GPU by default, set to false if there is no GPU or run out of GPU VRAM
-useGPU = true;
+% use a GPU if one is usable ([], the default), true requires one, false runs
+% on the CPU (e.g., if the GPU runs out of memory)
+useGPU = [];
 % number of iterations
 nIter = 30;
 tic
@@ -399,7 +404,7 @@ rl_decon = decon_lucy_function(im, psf, nIter, useGPU=useGPU);
 toc
 
 % release GPU if using GPU computing
-if useGPU && gpuDeviceCount('available') > 0
+if canUseGPU && ~isequal(useGPU, false)
     reset(gpuDevice);
 end
 
@@ -428,8 +433,9 @@ verboseFlag = 1;
 fprintf('WB RL deconvolution with 2 iterations... ');
 
 % decon
-% use GPU by default, set to false if there is no GPU or run out of GPU VRAM
-useGPU = true;
+% use a GPU if one is usable ([], the default), true requires one, false runs
+% on the CPU (e.g., if the GPU runs out of memory)
+useGPU = [];
 % number of iterations
 nIter = 2;
 tic
@@ -437,7 +443,7 @@ wb_decon = decon_lucy_omw_function(im, psf, psf_wb_b, nIter, useGPU=useGPU);
 toc
 
 % release GPU if using GPU computing
-if useGPU && gpuDeviceCount('available') > 0
+if canUseGPU && ~isequal(useGPU, false)
     reset(gpuDevice);
 end
 
@@ -467,8 +473,9 @@ hannWinBounds = [0.8, 1.0];
 fprintf('OMW RL deconvolution with 2 iterations... ');
 
 % decon
-% use GPU by default, set to false if there is no GPU or run out of GPU VRAM
-useGPU = true;
+% use a GPU if one is usable ([], the default), true requires one, false runs
+% on the CPU (e.g., if the GPU runs out of memory)
+useGPU = [];
 % number of iterations
 nIter = 2;
 tic
@@ -476,7 +483,7 @@ omw_decon = decon_lucy_omw_function(im, psf, b_omw, nIter, useGPU=useGPU);
 toc
 
 % release GPU if using GPU computing
-if useGPU && gpuDeviceCount('available') > 0
+if canUseGPU && ~isequal(useGPU, false)
     reset(gpuDevice);
 end
 

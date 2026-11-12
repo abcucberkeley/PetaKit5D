@@ -77,8 +77,10 @@ if isempty(psz) || ~(numel(psz) == numel(sizeI) && all(psz == sizeI) && last_use
     sq_p = sum(PSF .^ 2, 'all');
     if useGPU && gpuNum > 0
         PSF = gpuArray(PSF);
+        H = decon_psf2otf(PSF ./ sum(PSF(:), 'double'), double(sizeI));
+    else
+        H = decon_psf2otf(PSF ./ decon_sum_double(PSF), double(sizeI));
     end
-    H = decon_psf2otf(PSF ./ sum(PSF(:), 'double'), double(sizeI));
 end
 clear PSF;
 
@@ -131,9 +133,9 @@ for k = 1 : NUMIT
         if useGPU
             lambda = sum((J_2(:) - Y(:)) .* J_4) / (sum(J_4 .* J_4) + eps);
         else
-            % in double, so that it doesn't depend on the number of threads
-            % (a single precision sum is split among them)
-            lambda = sum((J_2(:) - Y(:)) .* J_4, 'double') / (sum(J_4 .* J_4, 'double') + eps);
+            % in double, in an order that doesn't depend on the number of
+            % threads (as decon_lucy_function)
+            lambda = decon_sum_double((J_2(:) - Y(:)) .* J_4) / (decon_sum_double(J_4 .* J_4) + eps);
         end
         lambda = max(min(lambda,1),0);% stability enforcement
         J_4 = J_2(:) - Y(:);
