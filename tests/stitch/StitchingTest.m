@@ -487,7 +487,7 @@ classdef StitchingTest < pktest.TestCase
             testCase.stitch(dataPath, csvFn, 'parseCluster', true, 'masterCompute', false, 'maxTrialNum', 1, ...
                 'jobLogDir', [dataPath, 'logs']);
             testCase.verifyEqual(slurm.callCount('sbatch'), 1);
-            testCase.verifyEqual(cellfun(@(x) x{1}, pauses.getCalls()), [1, 1], ...
+            pktest.verifyWaitsOfASecond(testCase, pauses, 2, ...
                 'The wrapper did not end within a second of the result.');
         end
 
@@ -514,7 +514,7 @@ classdef StitchingTest < pktest.TestCase
             testCase.verifyNumElements(frames.getCalls(), 1, 'The wrapper gave up tiles that jobs still made.');
             % it looks for them each second (and not after 5 s rounds), so
             % that it stitches soon after they come
-            testCase.verifyEqual(cellfun(@(x) x{1}, pauses.getCalls()), [1, 1, 1]);
+            pktest.verifyWaitsOfASecond(testCase, pauses, 3, 'The wrapper did not look for the tiles each second.');
         end
 
         function clusterModeLooksForThePrimaryStitchInfoEachSecond(testCase)
@@ -556,7 +556,7 @@ classdef StitchingTest < pktest.TestCase
             testCase.verifyEqual(slurm.callCount('sbatch'), 1);
             % waits of a second: two for the stitch info, five (a round) for
             % the tiles, which no longer come
-            testCase.verifyEqual(cellfun(@(x) x{1}, pauses.getCalls()), ones(1, 7), ...
+            pktest.verifyWaitsOfASecond(testCase, pauses, 7, ...
                 'The wrapper did not look for the stitch info and tiles each second.');
         end
 

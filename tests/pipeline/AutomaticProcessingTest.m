@@ -139,7 +139,7 @@ classdef AutomaticProcessingTest < pktest.TestCase
                 'stitch', false, 'DSRCombined', true, 'parseCluster', true, 'maxTrialNum', 2, 'jobLogDir', logPath};
             evalc('XR_microscopeAutomaticProcessing(dataPath, args{:})');
             testCase.verifyEqual(slurm.callCount('sbatch'), 2, 'A job was submitted again.');
-            testCase.verifyEqual(cellfun(@(x) x{1}, pauses.getCalls()), [1, 1], ...
+            pktest.verifyWaitsOfASecond(testCase, pauses, 2, ...
                 'The pipeline did not go on within a second of the results.');
         end
 
@@ -167,7 +167,7 @@ classdef AutomaticProcessingTest < pktest.TestCase
                 'stitch', false, 'DSRCombined', true, 'parseCluster', true, 'maxTrialNum', 1, 'jobLogDir', logPath};
             evalc('XR_microscopeAutomaticProcessing(dataPath, args{:})');
             testCase.verifyEqual(slurm.callCount('sbatch'), 2);
-            testCase.verifyEqual(cellfun(@(x) x{1}, pauses.getCalls()), [1, 1, 1, 1], ...
+            pktest.verifyWaitsOfASecond(testCase, pauses, 4, ...
                 'The pipeline waited for the result of a step it gave up.');
         end
 
@@ -416,7 +416,7 @@ classdef AutomaticProcessingTest < pktest.TestCase
             args = testCase.clusterStitchArgs(dataPath, csvFn, 1);
             evalc('XR_microscopeAutomaticProcessing(dataPath, args{:})');
             testCase.verifyEqual(slurm.callCount('sbatch'), 1);
-            testCase.verifyEqual(cellfun(@(x) x{1}, pauses.getCalls()), [1, 1, 1], ...
+            pktest.verifyWaitsOfASecond(testCase, pauses, 3, ...
                 'The pipeline did not go on within a second of the stitched result.');
         end
 

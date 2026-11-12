@@ -656,7 +656,7 @@ classdef DeconWrapperTest < pktest.TestCase
                 [d.root, 'calls.txt'], 2, @() fclose(fopen(outFn, 'w'))), 20));
             testCase.runWrapper(d, 'parseCluster', true, 'maxTrialNum', 2, 'jobLogDir', [d.root, 'logs']);
             testCase.verifyEqual(slurm.callCount('sbatch'), 1, 'The job was submitted again.');
-            testCase.verifyEqual(cellfun(@(x) x{1}, pauses.getCalls()), [1, 1], ...
+            pktest.verifyWaitsOfASecond(testCase, pauses, 2, ...
                 'The wrapper did not go on within a second of the result.');
         end
 
@@ -681,7 +681,7 @@ classdef DeconWrapperTest < pktest.TestCase
             testCase.verifyEqual(slurm.callCount('sbatch'), 2);
             % two seconds until the mask, then a whole wait for the second
             % file's job
-            testCase.verifyEqual(cellfun(@(x) x{1}, pauses.getCalls()), ones(1, 5), ...
+            pktest.verifyWaitsOfASecond(testCase, pauses, 5, ...
                 'The wrapper did not submit the second file within a second of the mask.');
         end
 
@@ -709,7 +709,7 @@ classdef DeconWrapperTest < pktest.TestCase
             testCase.runWrapper(d, 'edgeErosion', 2, 'parseCluster', true, 'maxTrialNum', 1, ...
                 'jobLogDir', [d.root, 'logs']);
             testCase.verifyEqual(slurm.callCount('sbatch'), 2);
-            testCase.verifyEqual(cellfun(@(x) x{1}, pauses.getCalls()), ones(1, 3), ...
+            pktest.verifyWaitsOfASecond(testCase, pauses, 3, ...
                 'The second file was not submitted in the first round.');
         end
 
