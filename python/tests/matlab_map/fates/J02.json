@@ -1,0 +1,151 @@
+{
+ "task": "J02",
+ "classes": {
+  "GenericComputingFrameworkTest": {
+   "finished": true,
+   "methods": {
+    "callLogWaitsOutRefusedFileOperations": [
+     "na:tests the MATLAB test helper's lock retries on Windows through stubs that shadow MATLAB built-ins (mkdir, fopen, rmdir); the Python test helper appends each line with one O_APPEND write"
+    ],
+    "configFileKeysIgnoreCase": [
+     "pytest:tests/jobs/test_config.py::test_config_file_keys_ignore_case_batch_jobs",
+     "pytest:tests/jobs/test_framework_local.py::test_config_file_keys_ignore_case",
+     "pytest:tests/jobs/test_cluster_fake_slurm.py::test_config_file_keys_ignore_case"
+    ],
+    "configFileOverridesParameters": [
+     "pytest:tests/jobs/test_framework_local.py::test_config_file_overrides_parameters",
+     "pytest:tests/jobs/test_config.py::test_config_file_overrides_parameters"
+    ],
+    "existingFinalOutputSkipsAllTasks": [
+     "pytest:tests/jobs/test_framework_local.py::test_existing_final_output_skips_all_tasks"
+    ],
+    "failingTaskIsRetriedOnceThenRethrown": [
+     "pytest:tests/jobs/test_framework_local.py::test_failing_task_is_retried_once_then_rethrown"
+    ],
+    "finalOutputMadeByATaskEndsTheRun": [
+     "pytest:tests/jobs/test_framework_local.py::test_final_output_made_by_a_task_ends_the_run"
+    ],
+    "masterParaFactorAcceptsFractions": [
+     "pytest:tests/jobs/test_framework_local.py::test_master_para_factor_accepts_fractions"
+    ],
+    "missingConfigFileErrors": [
+     "pytest:tests/jobs/test_framework_local.py::test_missing_config_file_errors"
+    ],
+    "missingInputIsSkippedAndReportedDone": [
+     "pytest:tests/jobs/test_framework_local.py::test_missing_input_is_skipped_and_reported_done"
+    ],
+    "runsEveryTaskOnceAndWritesOutputs": [
+     "pytest:tests/jobs/test_framework_local.py::test_runs_every_task_once_and_writes_outputs"
+    ],
+    "runsOnlyTasksWithMissingOutputs": [
+     "pytest:tests/jobs/test_framework_local.py::test_runs_only_tasks_with_missing_outputs"
+    ],
+    "skipsTasksWhoseOutputsExist": [
+     "pytest:tests/jobs/test_framework_local.py::test_skips_tasks_whose_outputs_exist"
+    ],
+    "staleTaskFlagFromCrashedRunIsIgnored": [
+     "pytest:tests/jobs/test_framework_local.py::test_stale_task_flag_from_crashed_run_is_ignored"
+    ],
+    "taskBatchesRunEachTaskOnce": [
+     "pytest:tests/jobs/test_framework_local.py::test_task_batches_run_each_task_once"
+    ],
+    "taskDoneInItsLastTryCountsAsDone": [
+     "pytest:tests/jobs/test_framework_local.py::test_task_done_in_its_last_try_counts_as_done"
+    ],
+    "taskWithoutOutputIsRetriedUpToMaxTrialNum": [
+     "pytest:tests/jobs/test_framework_local.py::test_task_without_output_is_retried_up_to_max_trial_num"
+    ]
+   }
+  },
+  "BatchFileExistTest": {
+   "finished": true,
+   "methods": {
+    "backgroundPoolForManyFilesInManyFolders": [
+     "pytest:tests/jobs/test_files.py::test_background_pool_for_many_files_in_many_folders"
+    ],
+    "checksFilesAndFoldersIndividually": [
+     "pytest:tests/jobs/test_files.py::test_checks_files_and_folders_individually"
+    ],
+    "duplicatePaths": [
+     "pytest:tests/jobs/test_files.py::test_duplicate_paths"
+    ],
+    "emptyAndSingleInputs": [
+     "pytest:tests/jobs/test_files.py::test_empty_and_single_inputs"
+    ],
+    "existingOutputFileReturnsCachedResult": [
+     "pytest:tests/jobs/test_files.py::test_existing_output_file_returns_cached_result"
+    ],
+    "findsFilesMadeBetweenCalls": [
+     "pytest:tests/jobs/test_files.py::test_finds_files_made_between_calls"
+    ],
+    "foldersAndTrailingSeparators": [
+     "pytest:tests/jobs/test_files.py::test_folders_and_trailing_separators"
+    ],
+    "largeFolder": [
+     "pytest:tests/jobs/test_files.py::test_large_folder"
+    ],
+    "listsTheFolderForManyFiles": [
+     "pytest:tests/jobs/test_files.py::test_lists_the_folder_for_many_files"
+    ],
+    "matchesExistOnEdgeCases": [
+     "pytest:tests/jobs/test_files.py::test_matches_exist_on_edge_cases"
+    ],
+    "matchesExistOnEdgeCasesInListedFolders": [
+     "pytest:tests/jobs/test_files.py::test_matches_exist_on_edge_cases_in_listed_folders"
+    ],
+    "missingFolderWithManyFiles": [
+     "pytest:tests/jobs/test_files.py::test_missing_folder_with_many_files"
+    ],
+    "missingParentFolders": [
+     "pytest:tests/jobs/test_files.py::test_missing_parent_folders"
+    ],
+    "mixedFoundAndMissingInManyFolders": [
+     "pytest:tests/jobs/test_files.py::test_mixed_found_and_missing_in_many_folders"
+    ],
+    "savesResultToOutputFile": [
+     "pytest:tests/jobs/test_files.py::test_saves_result_to_output_file"
+    ],
+    "unreadableFolder": [
+     "pytest:tests/jobs/test_files.py::test_unreadable_folder"
+    ]
+   }
+  },
+  "GenericComputingFrameworkDemoTest": {
+   "finished": true,
+   "methods": {
+    "userFunctionRunsThroughFramework": [
+     "pytest:tests/jobs/test_framework_local.py::test_user_function_runs_through_framework"
+    ],
+    "demoConfigFileRoundTripsAndRunsLocally": [
+     "pytest:tests/jobs/test_framework_local.py::test_demo_config_file_round_trips_and_runs_locally"
+    ]
+   }
+  },
+  "WaitForFilesTest": {
+   "finished": true,
+   "methods": {
+    "filesThatDoNotComeTakeTheWholeWait": [
+     "pytest:tests/jobs/test_files.py::test_files_that_do_not_come_take_the_whole_wait"
+    ],
+    "patternsCountOnlyFinishedNames": [
+     "pytest:tests/jobs/test_files.py::test_patterns_count_only_finished_names"
+    ],
+    "resultsCanBeFolders": [
+     "pytest:tests/jobs/test_files.py::test_results_can_be_folders"
+    ],
+    "slowLooksAreFewer": [
+     "pytest:tests/jobs/test_files.py::test_slow_looks_are_fewer"
+    ],
+    "waitEndsOnceAllFilesOfOneGroupExist": [
+     "pytest:tests/jobs/test_files.py::test_wait_ends_once_all_files_of_one_group_exist"
+    ],
+    "waitEndsOnceTheFilesOfAGroupExist": [
+     "pytest:tests/jobs/test_files.py::test_wait_ends_once_the_files_of_a_group_exist"
+    ],
+    "withoutFilesItIsOnePause": [
+     "pytest:tests/jobs/test_files.py::test_without_files_it_is_one_pause"
+    ]
+   }
+  }
+ }
+}

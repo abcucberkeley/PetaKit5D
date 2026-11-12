@@ -177,7 +177,7 @@ def _list_folder(folder: str) -> list[str] | None:
 
 def _save_exist_mat(out_fullpath: str, flags: list[bool], paths: list) -> None:
     # as MATLAB: -v7.3 to <out without its 4-character extension>_uuid_<uuid>.mat, then a
-    # rename. STAND-IN until F07: petakit5d.io.matfile.write_mat(path, dict, version=)
+    # rename
     import uuid
 
     from petakit5d.io import matfile  # F07

@@ -203,9 +203,6 @@ def test_local_tasks_are_recorded(tmp_path):
         json.loads(line, parse_constant=metrics._no_constant)
 
 
-@pytest.mark.xfail(
-    strict=True, reason="run_tasks does not call metrics.run_start/run_end yet (J02)"
-)
 def test_local_run_records_its_end(tmp_path):
     in_fns, out_fns, log_fn = make_tasks(tmp_path, 3)
     run_tasks(in_fns, out_fns, task_list(in_fns, out_fns, log_fn), task_metrics=True, **LOCAL)
@@ -389,9 +386,6 @@ def test_job_tasks_are_recorded(tmp_path):
     assert t[0]["startupSec"] > 0 or math.isnan(t[0]["processStart"])
 
 
-@pytest.mark.xfail(
-    strict=True, reason="petakit5d.jobs.exec does not call the metrics hooks yet (J02)"
-)
 def test_job_entry_point_records_tasks(tmp_path):
     in_fns, out_fns, _ = make_tasks(tmp_path, 1)
     call = Call(

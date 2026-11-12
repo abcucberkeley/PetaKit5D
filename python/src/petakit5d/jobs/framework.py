@@ -24,6 +24,7 @@ import traceback
 from collections.abc import Mapping, Sequence
 from typing import Any, NamedTuple
 
+from petakit5d.jobs.coordinator import settings_master_fit as _master_task_fits
 from petakit5d.jobs.files import batch_file_exist, exist, fileparts
 from petakit5d.jobs.tasks import Call, Task, describe, run_record, task_record
 
@@ -242,7 +243,6 @@ MATLAB_ONLY_PARAMS: tuple[Param, ...] = (
 )
 
 _BY_PYTHON = {p.python: p for p in RUN_TASKS_PARAMS + MATLAB_ONLY_PARAMS}
-_BY_MATLAB_LOWER = {p.matlab.lower(): p for p in RUN_TASKS_PARAMS + MATLAB_ONLY_PARAMS}
 
 
 def run_tasks(
@@ -339,7 +339,7 @@ def run_tasks(
         fits, task_mem, master_mem = _master_task_fits(settings)
         if not fits:
             print(
-                f"The tasks ({task_mem:0.1f} GB) do not fit this job ({master_mem:0.1f} GB), "
+                f"The tasks ({_f1(task_mem)} GB) do not fit this job ({_f1(master_mem)} GB), "
                 "so the master computes none of them."
             )
             settings["master_compute"] = False
@@ -350,44 +350,57 @@ def run_tasks(
 
     cluster_type = settings["cluster_type"]
     if cluster_type == "parfor":
-        from petakit5d.jobs import local  # J04
+        from petakit5d.jobs import local
 
         return local.run_parfor(call)
     if cluster_type != "slurm":
         raise ValueError(f"cluster_type must be 'slurm' or 'parfor', not {cluster_type!r}")
 
+    # without cluster, a local process pool first (it leaves what it didn't finish here),
+    # as many workers at once as half of the memory holds
+    pool_workers = 0
+    if not settings["parse_cluster"] and settings["local_worker_num"] > 1 and call.n > 1:
+        from petakit5d.jobs import local
+
+        workers = local.pool_worker_num(settings["local_worker_num"], settings["mem_allocate"])
+        pool_workers = workers if workers > 1 else 0
+
+    metrics = _metrics_module() if settings["task_metrics"] else None
+    if metrics is not None:
+        metrics.run_start(call, "python", poolWorkerNum=pool_workers)
     if settings["parse_cluster"]:
-        if _slurm_available():
-            from petakit5d.jobs import cluster  # J03
+        # (without Slurm, sinfo fails and the cluster loop runs the tasks here)
+        from petakit5d.jobs import cluster
 
-            return cluster.run_cluster(call)
-        print(
-            "Warning: A slurm-based computing cluster is not exist. Set parseCluster as false.",
-            file=sys.stderr,
-        )
-        settings["parse_cluster"] = False
-
-    # without cluster, a local process pool first (it leaves what it didn't finish here)
-    if settings["local_worker_num"] > 1 and call.n > 1 and language == "python":
-        try:
-            from petakit5d.jobs import local  # J04
-        except ImportError:
-            local = None
-        if local is not None:
+        done = cluster.run_cluster(call)
+    else:
+        if pool_workers:
             local.run_pool(call, worker_num=settings["local_worker_num"])
-    return run_local(call)
+        done = run_local(call)
+    if metrics is not None:
+        metrics.run_end(call, done)
+    return done
 
 
 def apply_config(settings: dict[str, Any], config_file: str) -> dict[str, Any]:
     """The settings with the values of a cluster config file: its keys match the MATLAB
     parameter names regardless of case (MemPerCPU sets mem_per_cpu); MATLAB-only and
     unknown keys are ignored."""
-    conf = _read_config(config_file)
+    from petakit5d.jobs import config
+
+    # the file is read again only when it changed (MATLAB's persistent variables; J01's
+    # cache, which config.clear_cache() empties as MATLAB's clear of the wrapper does)
+    cfg, read_now = config._CACHE.load(config_file)
+    if read_now:
+        print(f"Set up cluster configuration according to {config_file}...")
+        print("Cluster configuration:")
+        for key, value in cfg.entries:
+            print(f"    {key}: {value}")
+        print()
+    by_matlab = {p.matlab: p for p in RUN_TASKS_PARAMS}
     out = dict(settings)
-    for key, value in conf.items():
-        param = _BY_MATLAB_LOWER.get(key.lower()) or _BY_PYTHON.get(key)
-        if param is None or param in MATLAB_ONLY_PARAMS:
-            continue
+    for name, value in cfg.overrides(by_matlab).items():
+        param = by_matlab[name]
         # MATLAB's jsonencode writes an empty value as [] (jsondecode reads it back as [])
         if isinstance(value, list) and not value and param.kind in ("num_or_none", "any"):
             value = None
@@ -546,12 +559,10 @@ def run_batch_in_process(
 _metrics_warned = False
 
 
-def _metrics_start(call: Call, indices: Sequence[int], mode: str) -> Any:
-    # task metrics (J10): metrics.task_start(call, indices, mode) -> record, and
-    # metrics.task_stop(record, outcome) with None, the exception or the shell's status
+def _metrics_module() -> Any:
+    # petakit5d.jobs.metrics, or None (one warning) if it can't be imported: the tasks run
+    # without their records
     global _metrics_warned
-    if not call.settings.get("task_metrics"):
-        return None
     try:
         from petakit5d.jobs import metrics
     except ImportError:
@@ -560,6 +571,17 @@ def _metrics_start(call: Call, indices: Sequence[int], mode: str) -> Any:
                 "Warning: task metrics are not available (petakit5d.jobs.metrics)", file=sys.stderr
             )
             _metrics_warned = True
+        return None
+    return metrics
+
+
+def _metrics_start(call: Call, indices: Sequence[int], mode: str) -> Any:
+    # task metrics: metrics.task_start(call, indices, mode) -> record, and
+    # metrics.task_stop(record, outcome) with None, the exception or the shell's status
+    if not call.settings.get("task_metrics"):
+        return None
+    metrics = _metrics_module()
+    if metrics is None:
         return None
     return (metrics, metrics.task_start(call, list(indices), mode))
 
@@ -690,73 +712,21 @@ def _marker_age(path: str) -> float | None:
     return time.time() - math.floor(mtime)
 
 
-# --- STAND-INS (replaced when their owners' modules land) --------------------------------
-
-
-def _read_config(config_file: str) -> dict[str, Any]:
-    """STAND-IN for J01's cluster config reader (jobs.config): JSON, or .mat through F07."""
-    if not os.path.isfile(config_file):
-        raise FileNotFoundError(
-            f"The cluster configuration file {config_file} does not exist, please check and "
-            "provide the right one!"
-        )
-    print(f"Set up cluster configuration according to {config_file}...")
-    if config_file.lower().endswith(".mat"):
-        from petakit5d.io import matfile  # F07
-
-        conf = dict(matfile.read_mat(config_file))
-    else:
-        import json
-
-        with open(config_file, encoding="utf-8") as fh:
-            conf = json.load(fh)
-    if not isinstance(conf, dict):
-        raise ValueError(f"The cluster configuration file {config_file} is not a JSON object")
-    return conf
-
-
-def _master_task_fits(settings: dict[str, Any]) -> tuple[bool, float, float]:
-    """STAND-IN for J08's master_task_fits: outside a Slurm job always; in one, the task's
-    memory against 1.05 x the job's memory from Slurm's variables."""
-    mem_allocate = settings["mem_allocate"]
-    max_cpu, min_cpu = settings["max_cpu_num"], settings["min_cpu_num"]
-    mem_per_cpu = settings["mem_per_cpu"]
-    if mem_allocate is None:
-        task_mem = min(max_cpu, max(min_cpu, settings["cpus_per_task"])) * mem_per_cpu
-    else:
-        task_mem = min(mem_allocate, max_cpu * mem_per_cpu)
-    if not os.environ.get("SLURM_JOB_ID"):
-        return True, task_mem, math.inf
-    env = os.environ
-    if env.get("SLURM_MEM_PER_NODE"):
-        master_mem = float(env["SLURM_MEM_PER_NODE"]) / 1024
-    elif env.get("SLURM_MEM_PER_CPU") and env.get("SLURM_CPUS_ON_NODE"):
-        master_mem = float(env["SLURM_MEM_PER_CPU"]) * float(env["SLURM_CPUS_ON_NODE"]) / 1024
-    else:
-        return False, task_mem, math.nan
-    return task_mem <= master_mem * 1.05, task_mem, master_mem
-
-
-def _slurm_available() -> bool:
-    """STAND-IN for J01's cluster check (checkSlurmCluster): sinfo runs and exits with 0."""
-    import shutil
-
-    sinfo = shutil.which("sinfo")
-    if not sinfo:
-        return False
-    try:
-        return subprocess.run([sinfo], capture_output=True, timeout=60).returncode == 0
-    except (OSError, subprocess.TimeoutExpired):
-        return False
+def _f1(x: float) -> str:
+    # %0.1f as MATLAB prints it (NaN, Inf)
+    if math.isnan(x):
+        return "NaN"
+    if math.isinf(x):
+        return "Inf" if x > 0 else "-Inf"
+    return f"{x:0.1f}"
 
 
 def _round_half_away(x: float) -> int:
-    """STAND-IN for F02's MATLAB round."""
+    """MATLAB's round of a scalar (core.dtypes.mround takes arrays and loads NumPy)."""
     return int(math.copysign(math.floor(abs(x) + 0.5), x))
 
 
 def _get_uuid() -> str:
-    """STAND-IN for F02's get_uuid."""
-    import uuid
+    from petakit5d.core.ids import get_uuid
 
-    return str(uuid.uuid4())
+    return get_uuid()

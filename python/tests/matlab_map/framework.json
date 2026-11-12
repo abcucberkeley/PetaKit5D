@@ -2290,7 +2290,7 @@
    "file": "tests/framework/WaitForFilesTest.m",
    "pins": "wait_for_files, the wait of the callers of single jobs between their rounds: at most waitTime, until all files of one group exist. pause is a spy (it doesn't wait); files appear at its calls (pktest.atCall).",
    "category": "framework_fake_slurm",
-   "owner": "J07",
+   "owner": "J02",
    "phase": 1,
    "finished": false,
    "fate": [],

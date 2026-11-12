@@ -1,4 +1,4 @@
-# The job framework: run_tasks, task records, the job entry point, local mode
+# The job framework: run_tasks, task records, the job entry point, local, pool and cluster modes
 
 `petakit5d.jobs` runs a list of tasks until their outputs exist: in this process (local
 mode), on a local process pool, or as Slurm jobs. It is the port of MATLAB's
@@ -73,9 +73,11 @@ match the MATLAB names without regard to case (`MemPerCPU` sets `mem_per_cpu`), 
 Order of decisions, as in MATLAB: config file; `jobLogDir` empty is the default; `nice > 0`
 adds `--nice=<round(nice)>` to `slurm_param`; in cluster mode a master in a Slurm job runs
 tasks only if they fit its memory; one task with `master_compute` runs here; `cluster_type
-'parfor'` goes to the process pool; cluster mode without Slurm (sinfo fails) prints a warning
-and runs locally; without cluster and with `local_worker_num > 1` the process pool runs
-first and the local loop finishes what it left.
+'parfor'` goes to the process pool; with `task_metrics`, the run's metrics folder and its
+run_start record; cluster mode goes to the cluster loop, which runs the tasks locally (with
+MATLAB's warning) when sinfo fails; without cluster and with `local_worker_num > 1` the
+process pool runs first and the local loop finishes what it left; with `task_metrics`, the
+run_end record after the backend returns (not after an exception, as in MATLAB).
 
 ## Local mode, as MATLAB runs it
 
@@ -108,6 +110,62 @@ atomic (as in MATLAB): two callers that start the same task within milliseconds 
 
 The one change in timing: a round that ran nothing (it waits for another caller's marker)
 sleeps `LOCAL_IDLE_WAIT` (0.2 s); MATLAB loops without a pause.
+
+## Local process pool
+
+Without cluster and with `local_worker_num > 1`, `jobs.local.run_pool` runs the tasks on a pool
+of worker processes before the sequential loop, as MATLAB's matlab_pool_generic_computing_wrapper
+does; the loop then retries what the pool left (a task that failed there runs once more here).
+Workers: `min(local_worker_num, floor(memory / 2 / (mem_allocate + 2)))` (the memory cap only
+when mem_allocate is given; one or fewer: no pool), at most one per task to run. Each worker is
+a fresh interpreter with this process's environment, current folder and sys.path; it gets
+`floor(CPUs / workers)` threads (thread variables of OpenMP and BLAS; on Linux its own block of
+CPUs) and runs one task at a time, in task order. A task's output is printed when it ends.
+`jobs.local.worker_info()` tells a task which worker it runs on. `cluster_type='parfor'` runs the
+tasks on the pool only (`max_trial_num` rounds); a GPU job gets one worker per usable GPU, each
+with its own CUDA_VISIBLE_DEVICES. The pool runs Python and bash tasks.
+
+## Cluster mode
+
+`jobs.cluster.run_cluster(call)` is the parseCluster branch of
+slurm_cluster_generic_computing_wrapper, a state machine with MATLAB's decisions and timings
+(named constants in `jobs.cluster`). It checks Slurm once (sinfo, J01's `check_slurm_cluster`;
+without it the tasks run here through `run_local`), shapes the jobs (`job_shape`: job_cpus,
+whole-node slots, minBatchNum, paraBatchNum, minTaskJobNum, runExtraTasks, GPUNum), writes the
+call folder in `tmp_dir` or the job log folder, and then goes round by round, in MATLAB's order:
+
+- a query when `query_interval` has passed (one batched `squeue -j`); a failed or timed-out
+  query is "unknown", never "gone", so nothing is submitted again on it;
+- the outputs looked at with `batch_file_exist`;
+- the batches in order: missing inputs done; `max_job_num` (a batch counts while its job is
+  listed and not all its tasks are done); with `master_compute` the master takes the last
+  waiting batch (scancel of its pending job; that try is not counted); running jobs left
+  alone; a grace of 45 s (30 s with master compute) after a job left the queue; then one
+  `sbatch --array=<b mod 5000> -o <logs>/job_%A_%a.out -e <logs>/job_%A_%a.err
+  --cpus-per-task=N <SlurmParam> <SlurmConstraint> -t H:MM:00 --comment=<call>:<b> --wrap=...`
+  per batch. CPU jobs get CPUs x (try + 1) on a retry, GPU jobs keep theirs;
+- the master runs its batch with `run_batch_in_process(..., mode="master")` (or in slots in
+  slot mode), after `min(max(30, t1 / 2), 180)` s when no job pends;
+- a pause of `query_interval` minus the round's time (doubled when all jobs pend and the
+  master doesn't compute); progress; the final output.
+
+After the loop: a last look at the outputs, `scancel` of all the call's jobs (also after an
+exception and on SIGTERM, which MATLAB leaves to orphans), and the call folder removed when all
+tasks are done.
+
+The wrap is MATLAB's job log layout: `printf "Start time: "; date ...; echo Python command:
+'<cmd>'; <cmd>; echo; printf "End time: "; date ...`, with `<cmd>` =
+`<PythonLaunchStr> -u -m petakit5d.jobs.exec <call folder> <b>`. No task text is in the
+command line.
+
+Slot mode (MATLAB's compiled mode: `whole_node_job`, or `gnu_parallel` with `para_job_num > 1`)
+runs `python -m petakit5d.jobs.slots <call folder> <b> --slots P --tries T [--gpu]` in place of
+GNU parallel: one process per task, up to P at once, starts 0.2 s apart, a failing task run
+twice, tasks whose output (or the final output) exists skipped, `PARALLEL_JOBSLOT` and
+`PARALLEL_SEQ` set, and in GPU jobs a GPU per slot (`CUDA_VISIBLE_DEVICES`). Tries 1 and 2 of a
+CPU job keep its CPUs with P and then round(P / 2) slots, try 3 runs one task at a time; GPU
+jobs keep P slots and get CPUs x (try + 1). The master runs its batch with P - 1 slots
+(`master_para_factor`).
 
 ## Task records
 
@@ -163,6 +221,13 @@ stderr, exit status 1), as a MATLAB job stops at an error; a bash batch is one s
 `runner(call_folder, batch)` instead (the task runners plug in there). The entry point
 imports only the standard library and the task's own module before the task.
 
+Before any task, the entry point sets `OPENBLAS_NUM_THREADS`, `OMP_NUM_THREADS`,
+`MKL_NUM_THREADS` and `NUMEXPR_NUM_THREADS` to the CPUs the process may use (affinity and
+cgroup quota), each only if it isn't set already: importing NumPy with 24 CPUs otherwise
+spends 1.4 to 2.0 CPU-s on OpenBLAS's thread pool, which task processes packed on a node take
+from each other. A slot manager that gives a process fewer CPUs than it may use sets them
+itself.
+
 ## For the backends
 
 - `tasks.Call(inputs, outputs, records, settings)`: what every backend gets; `settings` are the
@@ -176,6 +241,45 @@ imports only the standard library and the task's own module before the task.
 - Cluster mode calls `petakit5d.jobs.cluster.run_cluster(call) -> list[bool]`; the local pool
   `petakit5d.jobs.local.run_pool(call, worker_num=...)` and, for `cluster_type='parfor'`,
   `local.run_parfor(call) -> list[bool]`.
+
+## Task metrics
+
+With `task_metrics=True` every task run leaves a record of what it used, in MATLAB's folders
+and format, which MATLAB's read_task_metrics reads (`jobs.metrics`; the full record format is
+in its docstring). Off by default, and then the metrics module isn't imported. A metrics error
+never fails a task: it is one warning per process, and the task has no record.
+
+- The run folder is `<jobLogDir>/task_metrics/<yyyyMMdd_HHmmss>_<function>_<id8>/` when
+  jobLogDir is an existing absolute folder, else `<first input folder>/job_logs/task_metrics/...`.
+  run_tasks makes it before any backend (`metrics.run_start(call, "python",
+  poolWorkerNum=...)`, which sets `call.settings["task_metrics"]` to the folder, so call.json
+  carries it into the jobs) and writes the run_end record after the backend returns
+  (`metrics.run_end(call, done)`).
+- Records: `task_<node>_<pid>_<process start ticks>.ndjson`, one JSON line per task (per batch
+  for batches run in this process), one file per process; `run.ndjson` (the master's run_start,
+  run_end and submit lines).
+- Modes: `local` and `master` (`run_batch_in_process`), `pool` (pool workers), `slurm_python`
+  (the job entry point: one record per Python task, one per bash batch with the shell's
+  status). The hooks are `metrics.task_start(call, indices, mode) -> record` and
+  `metrics.task_stop(record, outcome)`, outcome None, the exception or an exit status.
+- Reading: `metrics.read_task_metrics(path, slurm_accounting=False) -> (tasks, runs)`, lists of
+  dicts with MATLAB's columns.
+
+## Publishing results and duplicate writers
+
+A task is done when its output exists, so a task makes its secondary outputs first (MIPs,
+flags, info files) and publishes its main result last, by one rename from a temporary name
+(`<final>_<uuid>`). `petakit5d.jobs.publish` does that as MATLAB's publish_result and
+keep_other_result do: `publish_result` moves the temporary result into place without ever
+replacing or deleting a published one (`rename_no_replace`: a hard link for files, a rename
+for folders, so that of two writers the first wins and the second keeps the other result),
+`keep_other_result` removes a writer's own temporary result when another was published.
+`petakit5d.jobs.writers` keeps records of who writes a result
+(`zarr_flag/<name>_<uuid>/writer.txt`): `recorded_writer` (a context manager: registered,
+released in `finally`), `wait` (a second writer waits while the first is alive, from squeue
+and the process), and `orphaned` (block jobs of a writer that is gone skip their work). The
+job entry point turns SIGTERM into an exception, so that the record of a cancelled job is
+released at once. The module docstrings hold the rules.
 
 ## File checks
 

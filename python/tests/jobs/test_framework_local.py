@@ -24,6 +24,7 @@ import petakit5d
 from petakit5d.jobs import framework, tasks
 from petakit5d.jobs.framework import RUN_TASKS_PARAMS, run_tasks
 from petakit5d.jobs.tasks import Call, CallFolder, Task, read_call, task_record, write_call
+from petakit5d.testing.slurm_fake import no_slurm  # noqa: F401  (fixture)
 
 SRC_ROOT = str(Path(petakit5d.__file__).resolve().parents[1])
 
@@ -475,12 +476,14 @@ def test_language_matlab_means_python_tasks(tmp_path):
     assert flags == [True]
 
 
-def test_single_task_with_master_compute_runs_here(tmp_path, monkeypatch):
+def test_single_task_with_master_compute_runs_here(tmp_path, monkeypatch, no_slurm):  # noqa: F811
     # one task with masterCompute never goes to the cluster (no Slurm check)
-    def no_slurm_check():
-        raise AssertionError("Slurm was checked")
+    from petakit5d.jobs import cluster
 
-    monkeypatch.setattr(framework, "_slurm_available", no_slurm_check)
+    def no_cluster(call):
+        raise AssertionError("went to the cluster loop")
+
+    monkeypatch.setattr(cluster, "run_cluster", no_cluster)
     # (outside a Slurm job: in one, the task must also fit the job's memory)
     monkeypatch.delenv("SLURM_JOB_ID", raising=False)
     in_fns, out_fns, log_fn = make_tasks(tmp_path, 1)
@@ -488,14 +491,18 @@ def test_single_task_with_master_compute_runs_here(tmp_path, monkeypatch):
     assert flags == [True]
 
 
-def test_without_a_cluster_tasks_run_here(tmp_path, monkeypatch, capsys):
-    monkeypatch.setattr(framework, "_slurm_available", lambda: False)
+def test_without_a_cluster_tasks_run_here(tmp_path, no_slurm):  # noqa: F811
     in_fns, out_fns, log_fn = make_tasks(tmp_path, 2)
-    flags = run_tasks(
-        in_fns, out_fns, task_list(in_fns, out_fns, log_fn, "copy"), master_compute=False
-    )
+    with pytest.warns(UserWarning, match="Set parseCluster as false"):
+        flags = run_tasks(
+            in_fns,
+            out_fns,
+            task_list(in_fns, out_fns, log_fn, "copy"),
+            master_compute=False,
+            job_log_dir=str(tmp_path),
+        )
     assert flags == [True, True]
-    assert "Set parseCluster as false" in capsys.readouterr().err
+    assert sorted(read_log(log_fn)) == sorted(out_fns)
 
 
 def test_matlab_only_parameters_are_accepted(tmp_path):
@@ -769,6 +776,118 @@ def test_job_entry_point_errors(tmp_path, user_module):
     assert r.returncode == 7 and r.stdout.strip() == "runner 1"
 
 
+LIB_THREADS = """
+import os, sys
+SEEN = {k: os.environ.get(k) for k in ("OPENBLAS_NUM_THREADS", "OMP_NUM_THREADS",
+                                       "MKL_NUM_THREADS", "NUMEXPR_NUM_THREADS")}
+NUMPY_BEFORE = "numpy" in sys.modules
+
+def report(out):
+    import json
+    import numpy
+    with open(out, "w") as fh:
+        json.dump({"seen": SEEN, "numpy_before": NUMPY_BEFORE}, fh)
+"""
+
+
+def test_job_entry_point_limits_library_threads_before_numpy(tmp_path):
+    # (F05: importing NumPy with 24 CPUs costs 1.4-2.0 CPU-s of OpenBLAS threads)
+    from petakit5d.core.threads import available_cpus
+
+    (tmp_path / "libthreads.py").write_text(LIB_THREADS)
+    out = tmp_path / "seen.json"
+    rec = task_record(Task("libthreads:report", [str(out)], path=[str(tmp_path)]), "python")
+    folder = write_call(Call(["a"], [str(out)], [rec], {}), tmp_path / "c")
+    env = {k: v for k, v in os.environ.items() if not k.endswith("_NUM_THREADS")}
+    env.update(PYTHONPATH=SRC_ROOT, MKL_NUM_THREADS="3")
+    r = subprocess.run(
+        [sys.executable, "-m", "petakit5d.jobs.exec", folder, "1"],
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+    assert r.returncode == 0, r.stderr
+    got = json.loads(out.read_text())
+    cpus = str(available_cpus())
+    assert got["numpy_before"] is False
+    assert got["seen"] == {
+        "OPENBLAS_NUM_THREADS": cpus,
+        "OMP_NUM_THREADS": cpus,
+        "MKL_NUM_THREADS": "3",
+        "NUMEXPR_NUM_THREADS": cpus,
+    }
+
+
+SLOW_TASK = """
+import os, time
+
+def slow(started, cleaned):
+    open(started, "w").close()
+    try:
+        time.sleep(60)
+    finally:
+        open(cleaned, "w").close()
+
+def second(fn):
+    open(fn, "w").close()
+"""
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX signals")
+def test_job_entry_point_runs_finally_blocks_on_sigterm(tmp_path):
+    # (J05: a writer record is marked ended at once when its job is cancelled)
+    import signal
+
+    (tmp_path / "slowtask.py").write_text(SLOW_TASK)
+    started, cleaned, second = (str(tmp_path / n) for n in ("started", "cleaned", "second"))
+    recs = [
+        task_record(Task("slowtask:slow", [started, cleaned], path=[str(tmp_path)]), "python"),
+        task_record(Task("slowtask:second", [second], path=[str(tmp_path)]), "python"),
+    ]
+    folder = write_call(Call(["a", "b"], ["c", "d"], recs, {"task_batch_num": 2}), tmp_path / "c")
+    p = subprocess.Popen(
+        [sys.executable, "-m", "petakit5d.jobs.exec", folder, "1"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        env=dict(os.environ, PYTHONPATH=SRC_ROOT),
+    )
+    t0 = time.monotonic()
+    while not os.path.exists(started) and time.monotonic() - t0 < 60:
+        time.sleep(0.05)
+    p.send_signal(signal.SIGTERM)
+    out, err = p.communicate(timeout=30)
+    assert p.returncode == 143, err
+    assert os.path.exists(cleaned), "the task's finally block didn't run"
+    assert not os.path.exists(second), "the batch went on after SIGTERM"
+    assert "terminated by signal" in err
+
+
+def test_config_file_is_read_again_only_when_it_changes(tmp_path, capsys):
+    from petakit5d.jobs import config
+
+    config.clear_cache()
+    config_fn = tmp_path / "config.json"
+    config_fn.write_text(json.dumps({"maxTrialNum": 2}))
+    settings = {p.python: p.default for p in RUN_TASKS_PARAMS}
+    assert framework.apply_config(settings, str(config_fn))["max_trial_num"] == 2
+    assert "Set up cluster configuration according to" in capsys.readouterr().out
+    assert framework.apply_config(settings, str(config_fn))["max_trial_num"] == 2
+    assert capsys.readouterr().out == ""
+    config_fn.write_text(json.dumps({"maxTrialNum": 1, "x": 0}))
+    assert framework.apply_config(settings, str(config_fn))["max_trial_num"] == 1
+    assert "Set up cluster configuration" in capsys.readouterr().out
+
+
+def test_master_fit_message_prints_as_matlab():
+    assert [framework._f1(x) for x in (math.nan, math.inf, -math.inf, 20.94)] == [
+        "NaN",
+        "Inf",
+        "-Inf",
+        "20.9",
+    ]
+
+
 def test_job_entry_point_imports_little(tmp_path):
     # start-up: neither NumPy nor the framework's local loop for a Python batch
     folder = write_call(
@@ -961,17 +1080,34 @@ def test_task_metrics_hooks(tmp_path, monkeypatch):
     fake = types.ModuleType("petakit5d.jobs.metrics")
     fake.task_start = lambda call, indices, mode: events.append(("start", indices, mode)) or 7
     fake.task_stop = lambda rec, outcome: events.append(("stop", rec, type(outcome).__name__))
+    fake.run_start = lambda call, backend, **kw: events.append(("run_start", backend, kw))
+    fake.run_end = lambda call, done: events.append(("run_end", list(done)))
+    monkeypatch.delattr(sys.modules["petakit5d.jobs"], "metrics", raising=False)
     monkeypatch.setitem(sys.modules, "petakit5d.jobs.metrics", fake)
     in_fns, out_fns, log_fn = make_tasks(tmp_path, 2)
     t = task_list(in_fns[:1], out_fns[:1], log_fn, "copy")
     t += task_list(in_fns[1:], out_fns[1:], log_fn, "error")
     with pytest.raises(TaskFailed):
         run_tasks(in_fns, out_fns, t, **LOCAL, task_metrics=True)
+    # (no run_end after an exception, as in MATLAB)
     assert events == [
+        ("run_start", "python", {"poolWorkerNum": 0}),
         ("start", [0], "local"),
         ("stop", 7, "NoneType"),
         ("start", [1], "local"),
         ("stop", 7, "TaskFailed"),
+    ]
+    events.clear()
+    y = [str(tmp_path / "y.txt")]
+    flags = run_tasks(
+        in_fns[:1], y, task_list(in_fns[:1], y, log_fn, "copy"), **LOCAL, task_metrics=True
+    )
+    assert flags == [True]
+    assert events == [
+        ("run_start", "python", {"poolWorkerNum": 0}),
+        ("start", [0], "local"),
+        ("stop", 7, "NoneType"),
+        ("run_end", [True]),
     ]
     events.clear()
     x = [str(tmp_path / "x.txt")]
@@ -994,7 +1130,6 @@ def test_call_settings_reach_the_backend(tmp_path, monkeypatch):
     monkeypatch.setitem(sys.modules, "petakit5d.jobs.cluster", fake)
     # also the attribute, which the real module sets once it has been imported (J03)
     monkeypatch.setattr(petakit5d.jobs, "cluster", fake, raising=False)
-    monkeypatch.setattr(framework, "_slurm_available", lambda: True)
     config_fn = tmp_path / "c.json"
     config_fn.write_text(json.dumps({"SlurmParam": "-p compute", "jobLogDir": ""}))
     in_fns, out_fns, log_fn = make_tasks(tmp_path, 3)
