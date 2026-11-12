@@ -30,8 +30,6 @@ KNOWN = {
         1,
         "F18: the exact FFT backend works in MATLAB's layout behind the interface",
     ),
-    "src/petakit5d/gpu/fft.py": (3, "F18/R04: GPU FFT plans in MATLAB's layout"),
-    "src/petakit5d/gpu/selftest.py": (3, "F18/R04: the GPU FFT self-test"),
 }
 KNOWN_CPP = {"cpp/fft/module.cpp": (1, "F18: the exact FFT backend")}
 ALLOWED_CPP = ("common", "io")

@@ -238,17 +238,36 @@ def test_target_from_the_environment(monkeypatch):
 @pytest.mark.parametrize(
     ("shape", "dims"),
     [
-        ((40, 30, 20), (20, 30, 40)),  # MATLAB's (y, x, z) is cuFFT's row-major (z, x, y)
-        ((40, 30, 1), (30, 40)),  # size-1 dimensions other than y left out, as in the mex
-        ((40, 1, 20), (20, 40)),
-        ((40, 1, 1), (40,)),
-        ((1, 30, 20), (20, 30, 1)),
-        ((40, 30), (30, 40)),
+        ((20, 40, 30), (20, 40, 30)),  # a C array is cuFFT's row-major order
+        ((1, 40, 30), (40, 30)),  # size-1 axes other than the last left out, as in the mex
+        ((20, 1, 30), (20, 30)),
+        ((1, 1, 30), (30,)),
+        ((20, 40, 1), (20, 40, 1)),
+        ((40, 30), (40, 30)),
         ((7,), (7,)),
     ],
 )
 def test_plan_dims_as_the_mex(shape, dims):
     assert fft.plan_dims(shape) == dims
+
+
+@pytest.mark.parametrize(
+    ("native", "matlab", "mex_dims"),
+    [
+        # MATLAB's (y, x, z) Fortran volume is the C array (z, x, y); the mex's plan is cuFFT's
+        # row-major (nz, nx, ny) with size-1 dimensions other than y left out
+        ((20, 40, 30), (20, 30, 40), (20, 30, 40)),
+        ((1, 40, 30), (1, 30, 40), (30, 40)),
+        ((20, 40, 1), (20, 1, 40), (20, 40)),
+        ((20, 1, 30), (20, 30, 1), (20, 30, 1)),
+        ((40, 30), (30, 40), (30, 40)),
+    ],
+)
+def test_matlab_shape_gives_the_mex_plan(native, matlab, mex_dims):
+    assert fft.matlab_shape(native) == matlab
+    assert fft.plan_dims(fft.matlab_shape(native)) == mex_dims
+    with pytest.raises(ValueError):
+        fft.matlab_shape((7,))
 
 
 @pytest.mark.parametrize("shape", [(), (4, 0, 2), (1, 2, 3, 4), (-1,)])
@@ -525,16 +544,16 @@ def test_our_kernels_keep_subnormals_unlike_cupy_elementwise(gpu):
     assert (cp.full(4, tiny, dtype=cp.float32) * cp.float32(1)).get().max() == 0
 
 
-SIZES = [
-    (64, 64, 64),
-    (63, 50, 17),
-    (1, 40, 30),
-    (40, 1, 30),
-    (40, 30, 1),
-    (40, 30),
+SIZES = [  # (nz, ny, nx), never cubic
+    (40, 48, 64),
+    (17, 50, 63),
+    (30, 40, 1),
+    (30, 1, 40),
+    (1, 30, 40),
+    (30, 40),
     (33,),
-    (7, 5, 3),
-    (128, 96, 2),
+    (3, 5, 7),
+    (2, 96, 128),
 ]
 
 
@@ -545,17 +564,18 @@ def test_fft_round_trip_against_numpy(gpu, shape):
 
     cp, _ = gpu
     rng = np.random.default_rng(1)
-    a = np.asfortranarray(rng.random(shape, dtype=np.float32) - 0.5)
+    a = rng.random(shape, dtype=np.float32) - np.float32(0.5)
     plan = fft.RealFFTPlan(shape)
-    assert plan.half_shape == (shape[0] // 2 + 1, *shape[1:]) and plan.dims == fft.plan_dims(shape)
-    g = cp.asarray(a, order="F")
+    assert plan.half_shape == (*shape[:-1], shape[-1] // 2 + 1)  # halved along x
+    assert plan.dims == fft.plan_dims(shape)
+    g = cp.asarray(a)
     s = plan.forward(g)
-    assert s.dtype == cp.complex64 and s.shape == plan.half_shape and s.flags.f_contiguous
+    assert s.dtype == cp.complex64 and s.shape == plan.half_shape and s.flags.c_contiguous
     assert np.array_equal(g.get(), a)  # the input stays as it is
-    ref = np.fft.rfftn(a.astype(np.float64), axes=tuple(range(a.ndim - 1, -1, -1)))
+    ref = np.fft.rfftn(a.astype(np.float64))
     assert np.abs(s.get() - ref).max() <= 1e-5 * max(np.abs(ref).max(), 1)
     back = plan.inverse(s)
-    assert back.shape == shape and back.dtype == cp.float32 and back.flags.f_contiguous
+    assert back.shape == shape and back.dtype == cp.float32 and back.flags.c_contiguous
     assert np.abs(back.get() / a.size - a).max() <= 1e-5
     plan.close()
     assert plan.closed
@@ -564,37 +584,145 @@ def test_fft_round_trip_against_numpy(gpu, shape):
 
 
 @pytest.mark.gpu
-@pytest.mark.parametrize("shape", [(64, 64, 64), (63, 50, 17), (40, 30, 1), (40, 30), (33,)])
+@pytest.mark.parametrize(
+    "shape", [(40, 48, 64), (17, 50, 63), (1, 30, 40), (20, 30, 1), (30, 40), (33,)]
+)
 def test_complex_fft_round_trip_against_numpy(gpu, shape):
     import numpy as np
 
     cp, _ = gpu
     rng = np.random.default_rng(4)
-    a = np.asfortranarray(
-        rng.random(shape, dtype=np.float32) + 1j * rng.random(shape, dtype=np.float32)
-    ).astype(np.complex64)
+    a = (rng.random(shape, dtype=np.float32) + 1j * rng.random(shape, dtype=np.float32)).astype(
+        np.complex64
+    )
     plan = fft.ComplexFFTPlan(shape)
-    z = cp.asarray(a, order="F")
+    z = cp.asarray(a)
     s = plan.forward(z)
-    assert np.array_equal(z.get(), a) and s.flags.f_contiguous and s.dtype == cp.complex64
+    assert np.array_equal(z.get(), a) and s.flags.c_contiguous and s.dtype == cp.complex64
     ref = np.fft.fftn(a.astype(np.complex128))
     assert np.abs(s.get() - ref).max() <= 1e-5 * np.abs(ref).max()
     back = plan.inverse(s, out=s)  # in place
     assert back is s
     assert np.abs(back.get() / a.size - a).max() <= 1e-5
     # fftn of real data: the forward transform of complex(x), its first half the R2C half spectrum
-    x = cp.asarray(a.real.copy(order="F"), order="F")
-    full = plan.forward(x.astype(cp.complex64, order="F")).get()
+    x = cp.asarray(np.ascontiguousarray(a.real))
+    full = plan.forward(x.astype(cp.complex64)).get()
     half = fft.RealFFTPlan(shape).forward(x).get()
-    assert np.abs(full[: shape[0] // 2 + 1] - half).max() <= 1e-5 * np.abs(half).max()
+    assert np.abs(full[..., : shape[-1] // 2 + 1] - half).max() <= 1e-5 * np.abs(half).max()
     assert fft.get_complex_plan(shape) is fft.get_complex_plan(shape) is not fft.get_plan(shape)
+
+
+MATLAB_SIZES = [
+    (40, 48, 64),
+    (17, 50, 63),
+    (9, 101, 181),
+    (1, 30, 40),
+    (20, 1, 30),
+    (20, 30, 1),
+    (30, 40),
+]
+
+
+@pytest.mark.gpu
+@pytest.mark.parametrize("shape", MATLAB_SIZES)
+def test_matlab_plan_gives_the_bits_of_matlabs_plan_on_matlabs_layout(gpu, shape):
+    # MatlabFFTPlan on (z, y, x) volumes against MATLAB's plan (ComplexFFTPlan of matlab_shape) on
+    # MATLAB's layout (the C array (z, x, y)), with ifftn's division by N of each part (in double,
+    # rounded to single): bit for bit (the plan whose results equal MATLAB's gpuArray fftn, ifftn)
+    import numpy as np
+
+    from petakit5d.core.arrays import matlab_order
+
+    cp, _ = gpu
+    rng = np.random.default_rng(7)
+    a = rng.random(shape, dtype=np.float32)
+    m = fft.MatlabFFTPlan(shape)
+    assert m.spectrum_shape == fft.matlab_shape(shape)
+    ref_plan = fft.ComplexFFTPlan(fft.matlab_shape(shape))
+    assert m.dims == ref_plan.dims and m.work_bytes == ref_plan.work_bytes
+    g = cp.asarray(a)
+    s = m.forward(g)
+    assert np.array_equal(g.get(), a)
+    ma = cp.asarray(np.ascontiguousarray(matlab_order(a)).astype(np.complex64))
+    ref = ref_plan.forward(ma)
+    assert s.shape == ref.shape and s.flags.c_contiguous
+    assert np.array_equal(s.get().view(np.uint32), ref.get().view(np.uint32))
+    # complex input: the same bits as real input with a zero imaginary part
+    assert np.array_equal(
+        m.forward(g.astype(cp.complex64)).get().view(np.uint32), s.get().view(np.uint32)
+    )
+    # the spectrum is fftn's, in MATLAB's layout
+    full = m.to_native(s).get()
+    np_ref = np.fft.fftn(a.astype(np.float64))
+    assert np.abs(full - np_ref).max() <= 1e-5 * np.abs(np_ref).max()
+    assert np.array_equal(
+        m.from_native(cp.asarray(full)).get().view(np.uint32), s.get().view(np.uint32)
+    )
+    # ifftn: C2C inverse, then each part divided by N
+    inv_ref = ref_plan.inverse(ref.copy()).get()
+    parts = (inv_ref.view(np.float32).astype(np.float64) / a.size).astype(np.float32)
+    parts = parts.view(np.complex64)
+    want = np.ascontiguousarray(np.swapaxes(parts, -1, -2))  # back to (z, y, x)
+    got = m.inverse(s.copy())
+    assert got.shape == shape and got.dtype == cp.complex64 and got.flags.c_contiguous
+    assert np.array_equal(got.get().view(np.uint32), want.view(np.uint32))
+    got_real = m.inverse(s.copy(), real=True).get()
+    assert got_real.dtype == np.float32 and np.array_equal(
+        got_real.view(np.uint32), want.real.view(np.uint32)
+    )
+    assert np.abs(got_real - a).max() <= 1e-5
+    unscaled = m.inverse(s.copy(), scale=False).get()
+    assert np.array_equal(
+        unscaled.view(np.uint32), np.ascontiguousarray(np.swapaxes(inv_ref, -1, -2)).view(np.uint32)
+    )
+    assert fft.get_matlab_plan(shape) is fft.get_matlab_plan(shape)
+
+
+@pytest.mark.gpu
+def test_matlab_ifftn_divides_in_double(gpu):
+    # N = 101 * 181 * 1031 is no single: MATLAB's ifftn divides in double and rounds to single
+    # (dividing by single(N) changes about two thirds of the values, MATLAB R2024b on 3 GPUs)
+    import numpy as np
+
+    cp, _ = gpu
+    shape = (101, 181, 1031)
+    n = 101 * 181 * 1031
+    assert float(np.float32(n)) != n
+    m = fft.MatlabFFTPlan(shape)
+    s = m.forward(cp.random.default_rng(3).random(shape, dtype=cp.float32))
+    unscaled = m.inverse(s.copy(), scale=False).view(cp.float32)
+    got = m.inverse(s).view(cp.float32)
+    assert cp.array_equal(got, (unscaled.astype(cp.float64) / n).astype(cp.float32))
+    assert not cp.array_equal(got, unscaled / cp.float32(n))
+    m.close()
+
+
+@pytest.mark.gpu
+def test_matlab_plan_checks_its_arrays(gpu):
+    cp, _ = gpu
+    m = fft.get_matlab_plan((6, 8, 10))
+    with pytest.raises(ValueError, match="float32 or complex64"):
+        m.forward(cp.zeros((6, 8, 10), dtype=cp.float64))
+    with pytest.raises(ValueError, match="C-contiguous"):
+        m.forward(cp.zeros((6, 10, 8), dtype=cp.float32).transpose(0, 2, 1))
+    with pytest.raises(ValueError, match="shape"):
+        m.inverse(cp.zeros((6, 8, 10), dtype=cp.complex64))  # a spectrum is in MATLAB's layout
+    with pytest.raises(ValueError, match="out must be"):
+        m.inverse(cp.zeros((6, 10, 8), dtype=cp.complex64), out=cp.zeros((6, 8, 10), cp.float32))
+    with pytest.raises(ValueError):
+        fft.MatlabFFTPlan((7,))
+    with fft.MatlabFFTPlan((6, 8, 10)) as closed:
+        pass
+    for call in (closed.forward, closed.to_native, closed.from_native):
+        with pytest.raises(ValueError, match="closed"):
+            call(cp.zeros((6, 8, 10), dtype=cp.complex64))
 
 
 @pytest.mark.gpu
 def test_fft_plans_share_one_work_area_from_the_pool(gpu):
     cp, _ = gpu
     pool = cp.get_default_memory_pool()
-    shape = (900, 256, 100)  # (a work area in cuFFT 11.0 and 11.4)
+    shape = (100, 256, 900)  # (a work area in cuFFT 11.0 and 11.4)
     fwd = fft.RealFFTPlan(shape, inverse=False)
     used = pool.used_bytes()
     both = fft.RealFFTPlan(shape)
@@ -610,24 +738,28 @@ def test_fft_plans_share_one_work_area_from_the_pool(gpu):
     both.close()
     assert used - pool.used_bytes() >= both.work_bytes
     with pytest.raises(ValueError, match="without the inverse"):
-        fwd.inverse(cp.zeros(fwd.half_shape, dtype=cp.complex64, order="F"))
+        fwd.inverse(cp.zeros(fwd.half_shape, dtype=cp.complex64))
+    # MATLAB's plan: one C2C work area, as F09's plan of the same (MATLAB) shape
+    used = pool.used_bytes()
+    m = fft.MatlabFFTPlan(shape)
+    assert m.work_sizes == fft.ComplexFFTPlan(fft.matlab_shape(shape)).work_sizes
+    assert pool.used_bytes() - used >= m.work_bytes
 
 
 @pytest.mark.gpu
 def test_fft_checks_its_arrays(gpu):
     cp, _ = gpu
-    plan = fft.get_plan((8, 6, 4))
+    plan = fft.get_plan((4, 6, 8))
     for bad in (
-        cp.zeros((8, 6, 4), dtype=cp.float64, order="F"),
-        cp.zeros((8, 6, 4), dtype=cp.float32),
-        cp.zeros((8, 6, 5), dtype=cp.float32, order="F"),
+        cp.zeros((4, 6, 8), dtype=cp.float64),
+        cp.zeros((8, 6, 4), dtype=cp.float32).transpose(2, 1, 0),
+        cp.zeros((4, 6, 9), dtype=cp.float32),
     ):
-        with pytest.raises(ValueError, match="Fortran order"):
+        with pytest.raises(ValueError, match="C-contiguous float32 array of shape"):
             plan.forward(bad)
     with pytest.raises(ValueError):
         plan.forward(
-            cp.zeros((8, 6, 4), dtype=cp.float32, order="F"),
-            out=cp.zeros((8, 6, 4), dtype=cp.complex64),
+            cp.zeros((4, 6, 8), dtype=cp.float32), out=cp.zeros((4, 6, 8), dtype=cp.complex64)
         )
 
 
@@ -636,14 +768,18 @@ def test_fft_runs_on_the_current_stream(gpu):
     import numpy as np
 
     cp, _ = gpu
-    a = np.asfortranarray(np.random.default_rng(2).random((60, 40, 20), dtype=np.float32))
+    a = np.random.default_rng(2).random((20, 40, 60), dtype=np.float32)
     plan = fft.get_plan(a.shape)
-    expected = plan.forward(cp.asarray(a, order="F")).get()
+    m = fft.get_matlab_plan(a.shape)
+    expected = plan.forward(cp.asarray(a)).get()
+    mexpected = m.forward(cp.asarray(a)).get()
     s = cp.cuda.Stream(non_blocking=True)
     with s:
-        out = plan.forward(cp.asarray(a, order="F"))
+        out = plan.forward(cp.asarray(a))
+        mout = m.forward(cp.asarray(a))
     s.synchronize()
     assert np.array_equal(out.get(), expected)  # also: the same bits from run to run
+    assert np.array_equal(mout.get(), mexpected)
 
 
 @pytest.mark.gpu
@@ -737,7 +873,7 @@ def test_selftest(gpu, tmp_path):
     r = _python(
         "import sys\nfrom petakit5d.gpu import selftest\n"
         f"sys.exit(selftest.main(['--json', {str(tmp_path / 's.json')!r}, "
-        "'--size', '30', '20', '10']))",
+        "'--size', '10', '20', '30']))",  # (z, y, x)
         PETAKIT5D_CACHE_DIR=str(tmp_path / "c"),
     )
     assert r.returncode == 0, r.stdout + r.stderr
@@ -746,7 +882,8 @@ def test_selftest(gpu, tmp_path):
         out["ok"]
         and out["kernel_ok"]
         and out["fft_ok"]
-        and out["fft"]["half_shape"] == [16, 20, 10]
+        and out["fft"]["half_shape"] == [10, 20, 16]
+        and out["fft"]["matlab_plan_dims"] == [10, 30, 20]
     )
 
 

@@ -1,11 +1,24 @@
 """Single precision cuFFT plans with the work area under our control.
 
-RealFFTPlan, as the GPU decon mex (decon_lucy_rfft_gpu_mex): a (y, x, z) Fortran-ordered volume
-is cuFFT's row-major (z, x, y), so the half spectrum is along y, (ny // 2 + 1, nx, nz)
-Fortran-ordered; size-1 dimensions other than y are left out of the plan; the forward (R2C) and
-inverse (C2R) plans share one work area, allocated from CuPy's memory pool, the larger of the two.
-ComplexFFTPlan: the same for complex-to-complex transforms, which is what MATLAB's gpuArray fftn
-and ifftn use (fftn of real data is the forward transform of complex(x)).
+Plans work on C-contiguous arrays: a volume is (z, y, x) as everywhere in the port.
+
+- RealFFTPlan(shape): R2C and C2R of a C array, the half spectrum along the last axis (x of a
+  volume), (..., nx // 2 + 1); the two plans share one work area, the larger of the two,
+  allocated from CuPy's memory pool. Size-1 axes other than the last are left out of the plan.
+- ComplexFFTPlan(shape): C2C of a C array, the same rules.
+- MatlabFFTPlan(shape): C2C of (z, y, x) volumes with the bits of MATLAB's gpuArray fftn and
+  ifftn. MATLAB's plan follows its (y, x, z) Fortran layout, cuFFT's row-major (z, x, y), which
+  no cuFFT plan over (z, y, x) memory can express (and 1D transforms in MATLAB's order don't give
+  its bits at every size), so the plan keeps MATLAB's layout inside: its spectra are C arrays
+  (z, x, y), the layout of MATLAB's own spectra; the forward transform transposes each z plane
+  of its (real or complex) input into it, and the inverse transposes back and divides by N, as
+  ifftn. The transposes replace the casts a real input needs anyway (real to complex, real part
+  and scaling after the inverse), so they add no pass and no buffer; the work area is that of
+  the same plan.
+
+A plan in MATLAB's layout: ComplexFFTPlan or RealFFTPlan of the shape (nz, nx, ny) applied to
+the C array np.ascontiguousarray(core.arrays.matlab_order(vol)) is the plan of the GPU decon mex
+and of MATLAB's GPU code (cuFFT's row-major (z, x, y)); with cuFFT 11.0.8 it gives MATLAB's bits.
 
 cuFFT is called through ctypes on the library CuPy loads (cuda-pathfinder: the cuFFT wheel),
 since CuPy's own plans each allocate a work area. PETAKIT5D_CUFFT_LIBRARY names another
@@ -29,11 +42,14 @@ __all__ = [
     "ComplexFFTPlan",
     "CuFFTError",
     "CuFFTMemoryError",
+    "MatlabFFTPlan",
     "RealFFTPlan",
     "clear_plan_cache",
     "cufft_info",
     "get_complex_plan",
+    "get_matlab_plan",
     "get_plan",
+    "matlab_shape",
     "plan_dims",
     "set_plan_cache_size",
 ]
@@ -171,19 +187,37 @@ def cufft_info() -> dict[str, Any]:
     }
 
 
-def _yxz(shape: Sequence[int]) -> tuple[int, int, int]:
+def _checked(shape: Sequence[int]) -> tuple[int, ...]:
     s = tuple(int(n) for n in shape)
     if not 1 <= len(s) <= 3 or any(n < 1 for n in s):
-        raise ValueError(
-            f"The FFT size must have 1 to 3 positive dimensions (y, x, z), not {tuple(shape)}"
-        )
-    return s + (1,) * (3 - len(s))
+        raise ValueError(f"The FFT size must have 1 to 3 positive dimensions, not {tuple(shape)}")
+    return s
 
 
 def plan_dims(shape: Sequence[int]) -> tuple[int, ...]:
-    """cuFFT's row-major dimensions of a (y, x, z) Fortran-ordered size, as the mex makes them."""
-    ny, nx, nz = _yxz(shape)
-    return (*(n for n in (nz, nx) if n > 1), ny)
+    """cuFFT's row-major dimensions of a C array of shape: size-1 axes other than the last left
+    out, as the mex makes them (its (y, x, z) Fortran volume is the C array (z, x, y))."""
+    s = _checked(shape)
+    return (*(n for n in s[:-1] if n > 1), s[-1])
+
+
+def matlab_shape(shape: Sequence[int]) -> tuple[int, ...]:
+    """The C shape of MATLAB's layout of a (z, y, x) volume or (y, x) image: (nz, nx, ny), (nx,
+    ny)."""
+    s = _checked(shape)
+    if len(s) < 2:
+        raise ValueError(f"MATLAB's layout is that of a (y, x) image or (z, y, x) volume, not {s}")
+    return (*s[:-2], s[-1], s[-2])
+
+
+def _check_array(a: Any, dtype: Any, shape: tuple[int, ...], what: str) -> None:
+    if a.dtype != dtype or a.shape != shape or not a.flags.c_contiguous:
+        import numpy as np
+
+        raise ValueError(
+            f"{what} must be a C-contiguous {np.dtype(dtype).name} array of shape {shape}, not "
+            f"{a.dtype.name} {a.shape}{'' if a.flags.c_contiguous else ' (not C-contiguous)'}"
+        )
 
 
 def _destroy(lib: Any, handles: list[int], work: list[Any]) -> None:
@@ -264,13 +298,7 @@ class _FFTPlan:
     def _ready(self, a: Any, dtype: Any, shape: tuple[int, ...], what: str) -> None:
         if self.closed:
             raise ValueError("The FFT plan is closed.")
-        if a.dtype != dtype or a.shape != shape or not a.flags.f_contiguous:
-            import numpy as np
-
-            raise ValueError(
-                f"{what} must be a {np.dtype(dtype).name} array of shape {shape} in Fortran order, "
-                f"not {a.dtype.name} {a.shape} ({'F' if a.flags.f_contiguous else 'not F'})"
-            )
+        _check_array(a, dtype, shape, what)
         if a.device.id != self.device:
             raise ValueError(f"{what} is on GPU {a.device.id}, the plan on GPU {self.device}.")
 
@@ -287,15 +315,15 @@ class _FFTPlan:
 class RealFFTPlan(_FFTPlan):
     """R2C and C2R plans for one size on the current GPU, sharing one work area.
 
-    shape: (ny, nx, nz), (ny, nx) or (ny,), the size of the real arrays (float32, Fortran
-    order); their spectra are complex64 of half_shape, Fortran order. inverse: also make the
-    C2R plan. A plan runs on the current CuPy stream and may be used by one thread at a time
-    (calls are serialized). work_sizes: (R2C, C2R).
+    shape: the size of the real arrays (float32, C order; a volume (nz, ny, nx)); their spectra
+    are complex64 of half_shape, C order, halved along the last axis ((nz, ny, nx // 2 + 1)).
+    inverse: also make the C2R plan. A plan runs on the current CuPy stream and may be used by
+    one thread at a time (calls are serialized). work_sizes: (R2C, C2R).
     """
 
     def __init__(self, shape: Sequence[int], *, inverse: bool = True) -> None:
         super().__init__(shape, (_R2C, _C2R)[: 2 if inverse else 1])
-        self.half_shape = (_yxz(self.shape)[0] // 2 + 1, *self.shape[1:])
+        self.half_shape = (*self.shape[:-1], self.shape[-1] // 2 + 1)
         self.inverse_plan = inverse
 
     def forward(self, x: Any, out: Any = None) -> Any:
@@ -303,7 +331,7 @@ class RealFFTPlan(_FFTPlan):
         cp = self._cp
         self._ready(x, cp.float32, self.shape, "x")
         if out is None:
-            out = cp.empty(self.half_shape, dtype=cp.complex64, order="F")
+            out = cp.empty(self.half_shape, dtype=cp.complex64)
         self._ready(out, cp.complex64, self.half_shape, "out")
         with self._lock:
             self._exec(self._lib.cufftExecR2C, self._handles[0], x, out, "cufftExecR2C")
@@ -316,7 +344,7 @@ class RealFFTPlan(_FFTPlan):
             raise ValueError("The plan was made without the inverse (inverse=False).")
         self._ready(s, cp.complex64, self.half_shape, "s")
         if out is None:
-            out = cp.empty(self.shape, dtype=cp.float32, order="F")
+            out = cp.empty(self.shape, dtype=cp.float32)
         self._ready(out, cp.float32, self.shape, "out")
         with self._lock:
             self._exec(self._lib.cufftExecC2R, self._handles[1], s, out, "cufftExecC2R")
@@ -326,9 +354,9 @@ class RealFFTPlan(_FFTPlan):
 class ComplexFFTPlan(_FFTPlan):
     """A C2C plan (forward and inverse) for one size on the current GPU, with its work area.
 
-    Arrays are complex64 of shape (Fortran order), in place allowed (out=z). With the cuFFT
-    version MATLAB bundles, forward(complex(x)) is MATLAB's gpuArray fftn(x) bit for bit (see
-    docs/decisions/0003-gpu.md); inverse is unscaled.
+    Arrays are complex64 of shape, C order, in place allowed (out=z); inverse is unscaled. Of
+    the shape matlab_shape(s) on MATLAB's layout of a volume of shape s it is MATLAB's plan
+    (see the module and MatlabFFTPlan).
     """
 
     def __init__(self, shape: Sequence[int]) -> None:
@@ -338,7 +366,7 @@ class ComplexFFTPlan(_FFTPlan):
         cp = self._cp
         self._ready(z, cp.complex64, self.shape, "z")
         if out is None:
-            out = cp.empty(self.shape, dtype=cp.complex64, order="F")
+            out = cp.empty(self.shape, dtype=cp.complex64)
         self._ready(out, cp.complex64, self.shape, "out")
         with self._lock:
             self._exec(self._lib.cufftExecC2C, self._handles[0], z, out, "cufftExecC2C", direction)
@@ -351,6 +379,174 @@ class ComplexFFTPlan(_FFTPlan):
     def inverse(self, z: Any, out: Any = None) -> Any:
         """The inverse transform of z, unscaled."""
         return self._run(z, out, _INVERSE)
+
+
+# Transposes of each z plane between our (z, y, x) and MATLAB's (z, x, y) C layout, through
+# 32 x 32 tiles in shared memory (reads and writes coalesced), fused with the casts around the FFT.
+# div 1: each part divided by n in double and rounded to single, as MATLAB's ifftn of single data
+# (the same bits as a division in single when n is a single; only this gives MATLAB's at N =
+# 181 * 1031 * 101, which isn't); div 0: no division.
+_LAYOUT_SOURCE = r"""
+#define TILE 32
+#define ROWS 8
+typedef long long idx_t;
+
+__device__ __forceinline__ float scaled(const float v, const double n, const int div) {
+    return div ? (float)((double)v / n) : v;
+}
+
+// out (z, x, y) <- in (z, y, x); real input gets a zero imaginary part
+__device__ __forceinline__ float2 cplx(const float v) { return make_float2(v, 0.0f); }
+__device__ __forceinline__ float2 cplx(const float2 v) { return v; }
+
+template <typename In>
+__global__ void to_matlab(const In* __restrict__ in, float2* __restrict__ out,
+                          const int ny, const int nx) {
+    __shared__ In tile[TILE][TILE + 1];
+    const idx_t plane = (idx_t)blockIdx.z * ny * nx;
+    const int x = blockIdx.x * TILE + threadIdx.x, y = blockIdx.y * TILE + threadIdx.y;
+    for (int j = 0; j < TILE; j += ROWS)
+        if (x < nx && y + j < ny)
+            tile[threadIdx.y + j][threadIdx.x] = in[plane + (idx_t)(y + j) * nx + x];
+    __syncthreads();
+    const int yo = blockIdx.y * TILE + threadIdx.x, xo = blockIdx.x * TILE + threadIdx.y;
+    for (int j = 0; j < TILE; j += ROWS)
+        if (yo < ny && xo + j < nx)
+            out[plane + (idx_t)(xo + j) * ny + yo] = cplx(tile[threadIdx.x][threadIdx.y + j]);
+}
+
+// out (z, y, x) <- in (z, x, y), divided by n (div); a real output keeps the real part
+__device__ __forceinline__ void put(float* o, const float2 v, const double n, const int div) {
+    *o = scaled(v.x, n, div);
+}
+__device__ __forceinline__ void put(float2* o, const float2 v, const double n, const int div) {
+    *o = make_float2(scaled(v.x, n, div), scaled(v.y, n, div));
+}
+
+template <typename Out>
+__global__ void from_matlab(const float2* __restrict__ in, Out* __restrict__ out,
+                            const int ny, const int nx, const double n, const int div) {
+    __shared__ float2 tile[TILE][TILE + 1];
+    const idx_t plane = (idx_t)blockIdx.z * ny * nx;
+    const int y = blockIdx.y * TILE + threadIdx.x, x = blockIdx.x * TILE + threadIdx.y;
+    for (int j = 0; j < TILE; j += ROWS)
+        if (y < ny && x + j < nx)
+            tile[threadIdx.y + j][threadIdx.x] = in[plane + (idx_t)(x + j) * ny + y];
+    __syncthreads();
+    const int xo = blockIdx.x * TILE + threadIdx.x, yo = blockIdx.y * TILE + threadIdx.y;
+    for (int j = 0; j < TILE; j += ROWS)
+        if (xo < nx && yo + j < ny)
+            put(out + plane + (idx_t)(yo + j) * nx + xo, tile[threadIdx.x][threadIdx.y + j],
+                n, div);
+}
+"""
+_LAYOUT_NAMES = (
+    "to_matlab<float>",
+    "to_matlab<float2>",
+    "from_matlab<float>",
+    "from_matlab<float2>",
+)
+
+
+class MatlabFFTPlan:
+    """C2C of (z, y, x) volumes or (y, x) images with the bits of MATLAB's gpuArray fftn, ifftn.
+
+    The plan is MATLAB's (ComplexFFTPlan of matlab_shape(shape)); its spectra are C arrays of
+    spectrum_shape = matlab_shape(shape), (kz, kx, ky), the layout of MATLAB's spectra:
+    element-wise products of spectra (an OTF and a transform) need no transposes. forward takes
+    a float32 or complex64 volume (MATLAB's fftn of real data is the transform of complex(x));
+    inverse is ifftn (divided by N) and overwrites the spectrum. to_native and from_native
+    transpose a spectrum between MATLAB's layout and (kz, ky, kx).
+    """
+
+    def __init__(self, shape: Sequence[int]) -> None:
+        import numpy as np
+
+        from petakit5d.gpu import kernels
+
+        cp = import_cupy()
+        self._cp = cp
+        self.shape = _checked(shape)
+        self.spectrum_shape = matlab_shape(self.shape)
+        nz = 1 if len(self.shape) == 2 else self.shape[0]
+        if nz > 65535:
+            raise ValueError(f"At most 65535 z planes, not {nz}")
+        self._plan = ComplexFFTPlan(self.spectrum_shape)
+        self.dims, self.device = self._plan.dims, self._plan.device
+        self.work_sizes, self.work_bytes = self._plan.work_sizes, self._plan.work_bytes
+        self._k = kernels.load_source(
+            _LAYOUT_SOURCE, name="fft_layout.cu", name_expressions=_LAYOUT_NAMES
+        )
+        ny, nx = self.shape[-2], self.shape[-1]
+        self._grid = ((nx + 31) // 32, (ny + 31) // 32, nz)
+        self._nyx = (np.int32(ny), np.int32(nx))
+        self._n = np.float64(np.prod(self.shape, dtype=np.float64))
+        self._one, self._div = np.float64(1), (np.int32(0), np.int32(1))
+
+    @property
+    def closed(self) -> bool:
+        return self._plan.closed
+
+    def close(self) -> None:
+        """Destroy the plan and return its work area to the pool."""
+        self._plan.close()
+
+    def __enter__(self) -> MatlabFFTPlan:
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        self.close()
+
+    def _check(self, a: Any, dtype: Any, shape: tuple[int, ...], what: str) -> Any:
+        if self.closed:
+            raise ValueError("The FFT plan is closed.")
+        if a is None and what == "out":
+            return self._cp.empty(shape, dtype=dtype)
+        _check_array(a, dtype, shape, what)
+        if a.device.id != self.device:
+            raise ValueError(f"{what} is on GPU {a.device.id}, the plan on GPU {self.device}.")
+        return a
+
+    def from_native(self, s: Any, out: Any = None) -> Any:
+        """A (kz, ky, kx) spectrum in MATLAB's layout (kz, kx, ky)."""
+        cp = self._cp
+        s = self._check(s, cp.complex64, self.shape, "s")
+        out = self._check(out, cp.complex64, self.spectrum_shape, "out")
+        self._k["to_matlab<float2>"](self._grid, (32, 8), (s, out, *self._nyx))
+        return out
+
+    def forward(self, x: Any, out: Any = None) -> Any:
+        """MATLAB's fftn(x) of a float32 or complex64 volume, in MATLAB's layout."""
+        cp = self._cp
+        if x.dtype not in (cp.float32, cp.complex64):
+            raise ValueError(f"x must be float32 or complex64, not {x.dtype.name}")
+        x = self._check(x, x.dtype, self.shape, "x")
+        out = self._check(out, cp.complex64, self.spectrum_shape, "out")
+        name = "to_matlab<float>" if x.dtype == cp.float32 else "to_matlab<float2>"
+        self._k[name](self._grid, (32, 8), (x, out, *self._nyx))
+        return self._plan.forward(out, out)
+
+    def inverse(self, s: Any, out: Any = None, *, real: bool = False, scale: bool = True) -> Any:
+        """MATLAB's ifftn(s) as a (z, y, x) volume (real: its real part, float32), from a spectrum
+        in MATLAB's layout, which is overwritten. scale False: unscaled (no division by N)."""
+        cp = self._cp
+        s = self._check(s, cp.complex64, self.spectrum_shape, "s")
+        out = self._check(out, cp.float32 if real else cp.complex64, self.shape, "out")
+        self._plan.inverse(s, s)
+        name = "from_matlab<float>" if real else "from_matlab<float2>"
+        div = self._div[1 if scale else 0]
+        self._k[name](self._grid, (32, 8), (s, out, *self._nyx, self._n, div))
+        return out
+
+    def to_native(self, s: Any, out: Any = None) -> Any:
+        """A spectrum in MATLAB's layout (kz, kx, ky) as (kz, ky, kx)."""
+        cp = self._cp
+        s = self._check(s, cp.complex64, self.spectrum_shape, "s")
+        out = self._check(out, cp.complex64, self.shape, "out")
+        self._k["from_matlab<float2>"](
+            self._grid, (32, 8), (s, out, *self._nyx, self._one, self._div[0])
+        )
+        return out
 
 
 def _cached(key: tuple[Any, ...], make: Any) -> Any:
@@ -382,6 +578,13 @@ def get_complex_plan(shape: Sequence[int]) -> ComplexFFTPlan:
     cp = import_cupy()
     shape = tuple(int(n) for n in shape)
     return _cached((cp.cuda.Device().id, "complex", shape), lambda: ComplexFFTPlan(shape))
+
+
+def get_matlab_plan(shape: Sequence[int]) -> MatlabFFTPlan:
+    """A cached MatlabFFTPlan for the (z, y, x) size on the current GPU (sharing the cache)."""
+    cp = import_cupy()
+    shape = tuple(int(n) for n in shape)
+    return _cached((cp.cuda.Device().id, "matlab", shape), lambda: MatlabFFTPlan(shape))
 
 
 def clear_plan_cache() -> None:

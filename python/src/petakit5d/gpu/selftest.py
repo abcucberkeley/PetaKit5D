@@ -1,8 +1,9 @@
-"""Check the GPU installation: python -m petakit5d.gpu.selftest [--json FILE] [--size NY NX NZ].
+"""Check the GPU installation: python -m petakit5d.gpu.selftest [--json FILE] [--size NZ NY NX].
 
 Reports the CuPy, CUDA, NVRTC and cuFFT versions and libraries, the GPUs and the one chosen
-(with its free memory), runs a kernel compiled at run time and an FFT round trip against
-NumPy, and times each step. Exit status 0 when all checks pass, 1 when one fails, 2 without a
+(with its free memory), runs a kernel compiled at run time and FFT round trips of a (z, y, x)
+volume against NumPy (the half spectrum along x, and MATLAB's fftn and ifftn), and times each
+step. Exit status 0 when all checks pass, 1 when one fails, 2 without a
 usable GPU.
 """
 
@@ -25,7 +26,7 @@ __global__ void add_scaled(T* x, const T* y, const T a, const long long n) {
 """
 
 
-def run(size: tuple[int, ...] = (96, 80, 72)) -> dict[str, Any]:
+def run(size: tuple[int, ...] = (72, 96, 80)) -> dict[str, Any]:
     """The checks as a dict ('ok': all passed); see the module."""
     t = {}
     r: dict[str, Any] = {
@@ -89,35 +90,46 @@ def run(size: tuple[int, ...] = (96, 80, 72)) -> dict[str, Any]:
     cp.cuda.Device().synchronize()
     t["kernel_run"] = time.perf_counter() - t0 - t["kernel_load"]
     r["kernel_ok"] = ok
-    # FFT round trip against NumPy (the half spectrum along y, as numpy's rfftn over z, x, y)
+    # FFT round trips of a (z, y, x) volume against NumPy: the half spectrum along x, and MATLAB's
+    # fftn / ifftn (its plan, spectra in its layout)
     t0 = time.perf_counter()
     info = fft.cufft_info()
     t["cufft_load"] = time.perf_counter() - t0
     r["cufft"] = info
     rng = np.random.default_rng(0)
-    a = np.asfortranarray(rng.random(size, dtype=np.float32))
+    a = rng.random(size, dtype=np.float32)
     t0 = time.perf_counter()
     plan = fft.get_plan(size)
+    mplan = fft.get_matlab_plan(size)
     t["fft_plan"] = time.perf_counter() - t0
-    g = cp.asarray(a, order="F")
+    g = cp.asarray(a)
     t0 = time.perf_counter()
     s = plan.forward(g)
-    back = plan.inverse(s.copy(order="F"))
+    back = plan.inverse(s.copy())
+    ms = mplan.forward(g)
+    full = mplan.to_native(ms)
+    mback = mplan.inverse(ms, real=True)
     cp.cuda.Device().synchronize()
     t["fft_run"] = time.perf_counter() - t0
-    ref = np.fft.rfftn(a.astype(np.float64), axes=tuple(range(a.ndim - 1, -1, -1)))
-    sg = s.get()
-    fwd_err = float(np.abs(sg - ref).max() / np.abs(ref).max())
-    inv_err = float(np.abs(back.get() / a.size - a).max() / np.abs(a).max())
+    ref = np.fft.fftn(a.astype(np.float64))
+    half = ref[..., : size[-1] // 2 + 1]
+    scale = np.abs(ref).max()
+    errs = {
+        "r2c_rel_err": float(np.abs(s.get() - half).max() / scale),
+        "c2r_roundtrip_rel_err": float(np.abs(back.get() / a.size - a).max() / np.abs(a).max()),
+        "matlab_fftn_rel_err": float(np.abs(full.get() - ref).max() / scale),
+        "matlab_ifftn_roundtrip_rel_err": float(np.abs(mback.get() - a).max() / np.abs(a).max()),
+    }
     r["fft"] = {
         "size": list(size),
         "half_shape": list(plan.half_shape),
         "plan_dims": list(plan.dims),
         "work_bytes": plan.work_bytes,
-        "forward_rel_err": fwd_err,
-        "roundtrip_rel_err": inv_err,
+        "matlab_plan_dims": list(mplan.dims),
+        "matlab_work_bytes": mplan.work_bytes,
+        **errs,
     }
-    r["fft_ok"] = s.shape == ref.shape and fwd_err < 1e-5 and inv_err < 1e-5
+    r["fft_ok"] = s.shape == half.shape and all(v < 1e-5 for v in errs.values())
     free, total = cp.cuda.runtime.memGetInfo()
     r["memory_after"] = {"free": int(free), "total": int(total)}
     r["ok"] = r["kernel_ok"] and r["fft_ok"]
@@ -129,7 +141,7 @@ def main(argv: list[str] | None = None) -> int:
         prog="python -m petakit5d.gpu.selftest", description=__doc__.splitlines()[0]
     )
     ap.add_argument("--json", help="also write the results to this file")
-    ap.add_argument("--size", type=int, nargs="+", default=[96, 80, 72], help="FFT size (y x z)")
+    ap.add_argument("--size", type=int, nargs=3, default=[72, 96, 80], help="FFT size (z y x)")
     args = ap.parse_args(argv)
     t0 = time.perf_counter()
     try:
