@@ -192,7 +192,8 @@
       "Unit"
      ],
      "cases": null,
-     "fate": []
+     "fate": [],
+     "owner": "J09"
     },
     "niceIsTheWeightsOfAgeAndSize": {
      "pins": "nice is the weights of age and size",
@@ -208,7 +209,8 @@
       "Unit"
      ],
      "cases": null,
-     "fate": []
+     "fate": [],
+     "owner": "J07"
     }
    }
   },
@@ -665,7 +667,8 @@
       "Unit"
      ],
      "cases": null,
-     "fate": []
+     "fate": [],
+     "owner": "T02"
     },
     "tasksWithoutAnEstimateNeedTheMemoryOfTheirJobs": {
      "pins": "without memAllocate, a task's job has the memory of its CPUs (4 x 10 GB here), which is what the master needs",

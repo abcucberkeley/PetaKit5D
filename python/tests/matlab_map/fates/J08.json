@@ -1,0 +1,61 @@
+{
+ "task": "J08",
+ "classes": {
+  "MasterComputeFitTest": {
+   "methods": {
+    "masterInAJobRunsNoTaskThatDoesNotFitIt": [
+     "pytest:tests/jobs/test_coordinator.py::test_master_in_a_job_runs_no_task_that_does_not_fit_it",
+     "pytest:tests/jobs/test_coordinator.py::test_master_in_a_job_runs_no_task_that_does_not_fit_it_cluster_loop"
+    ],
+    "masterInAJobRunsTasksThatFitIt": [
+     "pytest:tests/jobs/test_coordinator.py::test_master_in_a_job_runs_tasks_that_fit_it",
+     "pytest:tests/jobs/test_coordinator.py::test_master_in_a_job_runs_a_single_task_that_fits_it",
+     "pytest:tests/jobs/test_coordinator.py::test_master_in_a_job_runs_tasks_that_fit_it_cluster_loop"
+    ],
+    "tasksWithoutAnEstimateNeedTheMemoryOfTheirJobs": [
+     "pytest:tests/jobs/test_coordinator.py::test_tasks_without_an_estimate_need_the_memory_of_their_jobs",
+     "pytest:tests/jobs/test_coordinator.py::test_tasks_without_an_estimate_need_the_memory_of_their_jobs_cluster_loop"
+    ],
+    "masterOutsideAJobRunsTasksAsBefore": [
+     "pytest:tests/jobs/test_coordinator.py::test_master_outside_a_job_runs_tasks_as_before",
+     "pytest:tests/jobs/test_coordinator.py::test_master_outside_a_job_runs_tasks_as_before_cluster_loop"
+    ],
+    "localRunsRunAllTasksAsBefore": [
+     "pytest:tests/jobs/test_coordinator.py::test_local_runs_run_all_tasks_as_before"
+    ],
+    "fitIsTheTasksMemoryAgainstTheJobs": [
+     "pytest:tests/jobs/test_coordinator.py::test_fit_is_the_tasks_memory_against_the_jobs",
+     "oracle:tests/jobs/test_coordinator.py::master_task_fits_in_a_job"
+    ],
+    "unknownMemoryDoesNotFit": [
+     "pytest:tests/jobs/test_coordinator.py::test_unknown_memory_does_not_fit"
+    ],
+    "everyTaskFitsOutsideAJob": [
+     "pytest:tests/jobs/test_coordinator.py::test_every_task_fits_outside_a_job",
+     "oracle:tests/jobs/test_coordinator.py::master_task_fits_outside_a_job"
+    ],
+    "coordinatorAsksForWhatItHolds": [
+     "pytest:tests/jobs/test_coordinator.py::test_coordinator_asks_for_what_it_holds",
+     "pytest:tests/jobs/test_coordinator.py::test_coordinator_asks_for_what_it_holds_with_matlabs_allowance",
+     "oracle:tests/jobs/test_coordinator.py::coordinator_resources_grid"
+    ],
+    "configValuesIgnoreCase": [
+     "pytest:tests/jobs/test_config.py::test_config_values_ignore_case",
+     "pytest:tests/jobs/test_config.py::test_config_values_of_a_mat_file"
+    ]
+   }
+  },
+  "CoordinatorNiceTest": {
+   "methods": {
+    "niceIsTheWeightsOfAgeAndSize": [
+     "pytest:tests/jobs/test_coordinator.py::test_nice_is_the_weights_of_age_and_size",
+     "pytest:tests/jobs/test_coordinator.py::test_nice_is_0_without_slurm"
+    ],
+    "frameworkJobsGetTheirNice": [
+     "pytest:tests/jobs/test_coordinator.py::test_framework_jobs_get_their_nice",
+     "pytest:tests/jobs/test_coordinator.py::test_framework_jobs_get_their_nice_cluster_loop"
+    ]
+   }
+  }
+ }
+}
