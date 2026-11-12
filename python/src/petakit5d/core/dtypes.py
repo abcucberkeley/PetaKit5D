@@ -14,7 +14,9 @@ docs/conventions.md for the measurements behind each rule):
   ``floor(|x| + 0.5)`` in single precision, so ``0.49999997`` (the single below 0.5) gives 1
   (``-1`` for the signed classes) where ``cast`` gives 0. A scalar rounds exactly, unless it is
   the argument of a function file whose size MATLAB doesn't know there (``scalar_fast=True``).
-- ``plus``, ``minus``, ``times``, ``rdivide``, ``ldivide``, ``uminus``: MATLAB's ``+ - .* ./ .\\``.
+- ``plus``, ``minus``, ``times``, ``rdivide``, ``ldivide``, ``uminus``: MATLAB's ``+ - .* ./ .\\``
+  on arrays in our layout, with NumPy's broadcasting (MATLAB's implicit expansion under the
+  mapping of ``core.arrays``).
   Single with double (a scalar or an array) is computed in double and rounded to single;
   integers combine only with the same class or a double scalar (else ``TypeError``, MATLAB's
   ``MATLAB:mixedClasses``, also for logical and single operands); 8 to 32-bit results are
@@ -299,17 +301,11 @@ def result_class(a, b) -> str:
 
 
 def _broadcast_pair(a: np.ndarray, b: np.ndarray):
-    """MATLAB's implicit expansion: missing dimensions are trailing (a 1-D array is a row)."""
-    if a.ndim == 0 or b.ndim == 0 or a.ndim == b.ndim:
-        return a, b
-    nd = max(a.ndim, b.ndim)
-
-    def m(x):
-        if x.ndim == 1:
-            x = x.reshape(1, -1)
-        return x.reshape(x.shape + (1,) * (nd - x.ndim))
-
-    return m(a), m(b)
+    """The operands as they are: NumPy's broadcasting is MATLAB's implicit expansion for arrays in
+    our layout (``(nz, ny, nx)`` with ``(ny, nx)``, ``(ny, 1)``, ``(nx,)`` or ``(nz, 1, 1)`` expands
+    as MATLAB's ``ny x nx x nz`` with ``ny x nx``, ``ny x 1``, ``1 x nx`` or ``1 x 1 x nz``)."""
+    np.broadcast_shapes(a.shape, b.shape)  # MATLAB errors where NumPy can't broadcast
+    return a, b
 
 
 def _exact_int_op(op, a: np.ndarray, b: np.ndarray, cls: str) -> np.ndarray:

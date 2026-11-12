@@ -1,54 +1,111 @@
 # Conventions of the Python port
 
 This is the one place that states the array order, the box conventions and MATLAB's class
-rules. The code in `petakit5d.core` implements them; every area codes against it. Each rule
+rules (sections 1 and 2 follow the user's decisions of 2026-11-11/12: `(z, y, x)` C arrays and
+0-based, end-exclusive boxes). The code in `petakit5d.core` implements them; every area codes against it. Each rule
 below was measured on MATLAB R2024b (Linux x86-64) at the oracle commit; the oracle cases in
 `tests/core/f02_oracle_cases.py` (with references in `tests/core/oracle_f02.json`) keep them
 checked.
 
 ## 1. Arrays
 
-- **Volumes are `(y, x, z)`, Fortran-ordered** (y fastest in memory), as in MATLAB and in the
-  zarr files PetaKit5D writes (`"order": "F"`, shape `[ny, nx, nz]`). A 2D image is `(ny, nx)`
-  and counts as a volume with `nz = 1`.
-- **Linear indices are MATLAB's minus one**, in column-major order: `a.ravel(order="F")[k - 1]`
-  is MATLAB's `a(k)`. `arrays.sub2ind` and `arrays.ind2sub` take and return MATLAB's 1-based
-  values. Ties such as "the first maximum" are first in this order (`matlabcompat` owns them).
-- **A 1-D NumPy array stands for a row vector** (`1 x n`).
-- **MATLAB's size rules** (`arrays.msize`, `mndims`, `msqueeze`): trailing singleton dimensions
-  beyond the second don't exist (`zeros(3, 4, 1)` is `3 x 4`); `size(a, 3)` of an image is 1;
-  `squeeze` leaves 2D arrays alone (`1 x 5` stays) and keeps 2 dimensions (`1 x 1 x 5` gives
-  `5 x 1`).
-- **At a public boundary** check with `arrays.check_volume` (class, dimensions, Fortran order;
-  it never converts) or convert with `arrays.as_volume` (a view when the layout is right).
-  Allocate with `arrays.fzeros`, `fempty`, `fones`, `ffull` (MATLAB class names accepted).
-- **Tiff pages** come from cpp-tiff as C-ordered `(z, y, x)`: `arrays.zyx_to_yxz` and
-  `yxz_to_zyx` are the reference conversions (IO1 owns the fast one).
-- **Implicit expansion** aligns leading dimensions in MATLAB (`3x4x5 .* 3x4` expands along z);
-  NumPy aligns trailing ones. `dtypes.plus`, `times`, ... expand as MATLAB does.
-- `arrays.mpermute(a, order)` is `permute` with a 1-based order (a Fortran-ordered copy);
-  `axis_order_mapping(order, 'yxz')` is the permutation that stores yxz data in `order`.
+- **A volume is a NumPy array `(z, y, x)`, C-contiguous**: x is fastest in memory, as in a tiff
+  page. An image is `(y, x)`. Extra dimensions lead: a stack of tiles is `(tile, z, y, x)`.
+  Allocate with plain `np.zeros` / `np.empty` (C order); check at a public boundary with
+  `arrays.check_volume` (dimensions, class, C order; it never converts and names MATLAB's
+  layout when it sees a Fortran array), convert with `arrays.as_volume` (a view when the layout
+  is right; an image becomes `(1, ny, nx)`).
+- **MATLAB's array of the same data is `(y, x, z)` in Fortran order, and it is not the same
+  bytes**: every z plane is transposed. `arrays.from_matlab` maps MATLAB's `(y, x, z, d4, ...)`
+  to ours, `(..., d4, z, y, x)`:
+  `np.ascontiguousarray(np.transpose(matlab, (n-1, ..., 2, 0, 1)))` (3D: `(2, 0, 1)`; an image
+  keeps its shape; MATLAB's 4th dimension becomes the first axis). `arrays.to_matlab` is the
+  inverse, `np.transpose(python, (n-2, n-1, n-3, ..., 0))`, Fortran-contiguous. Both copy large
+  arrays in several threads. As values, `from_matlab(a)` is MATLAB's `permute(a, [n:-1:3, 1, 2])`.
+- **Only image arrays are mapped.** Matrices and vectors of parameters (coordinate tables,
+  4 x 4 transforms, lists of sizes, boxes in MATLAB files) keep `M(i, j) = P[i - 1, j - 1]`; a
+  1-D array stands for a row (`1 x n`).
+- **MATLAB's linear order** (y fastest, then x, then z) is the C order of
+  `arrays.matlab_order(vol)`, the view `np.swapaxes(vol, -1, -2)` with axes `(z, x, y)`:
+  `matlab_order(vol).ravel()` is MATLAB's `vol(:)`, and "first in MATLAB's order" means first in
+  that view. The voxel `(z, y, x)` has MATLAB's 0-based linear index `y + ny*(x + nx*z)` (C
+  offset `x + nx*(y + ny*z)`); `arrays.zyx_to_matlab_index` and `matlab_index_to_zyx` convert.
+- **Sizes**: our shape `(nz, ny, nx)` is MATLAB's `[ny nx nz]`; `arrays.size_to_matlab` applies
+  MATLAB's size rules on the way (no trailing singletons: a volume with nz = 1 is `[ny nx]`),
+  `size_from_matlab(msize, ndim)` goes back.
+- **Implicit expansion is NumPy's broadcasting** under this mapping: `(nz, ny, nx)` with
+  `(ny, nx)`, `(ny, 1)`, `(nx,)` or `(nz, 1, 1)` expands as MATLAB expands `ny x nx x nz` with
+  `ny x nx`, `ny x 1`, `1 x nx` or `1 x 1 x nz` (checked on 12 shape pairs against MATLAB).
+- **Axes**: MATLAB's dimension 1 (y) is axis -2, dimension 2 (x) axis -1, dimension 3 (z) axis
+  -3, dimension k > 3 axis -k (`axes.dim_to_axis`, `axis_to_dim`): MATLAB's `max(a, [], 3)` is
+  our `vol.max(axis=-3)`.
+- **Order-dependent steps keep MATLAB's order inside**: each output voxel keeps MATLAB's
+  arithmetic, and a kernel may visit voxels in any order, except for sums and other
+  accumulating reductions (MATLAB's linear order), "first" rules and label numbering,
+  recurrences along an axis (same axis, direction and order of passes: y, then x, then z),
+  position-dependent arithmetic (keyed by the MATLAB index, not the memory offset), the exact
+  FFT, and batch numbering. Read strided lines or use one scratch buffer in MATLAB's layout (a C
+  array with axes `(z, x, y)`); the speed gates count these copies.
+- **MATLAB's size rules on MATLAB-form values** stay as functions: `msize`, `mndims`, `mnumel`,
+  `msqueeze`, `sub2ind`, `ind2sub` (1-based, column-major), `mpermute` (MATLAB's `permute`), and
+  `axis_order_mapping` on MATLAB's axis strings. They are for parameters, `.mat` contents and
+  the MATLAB-name layer, not for our arrays.
+- **The layout rule is a test** (`tests/core/test_layout_rules.py`): outside `core`, `io` and
+  `testing`, no `np.asfortranarray` and no `order="F"` in an array creation or copy
+  (`reshape`/`ravel` with `order="F"` remain for MATLAB's element order of values); no
+  `f_contig` arrays in C++ outside `cpp/common` and `cpp/io`. Kernels take
+  `pk5d::cvolume<T>` / `cimage<T>` (C-contiguous `(nz, ny, nx)` / `(ny, nx)`, bound with
+  `.noconvert()`); `fvolume` / `fimage` stay in `common.hpp` until the last module has moved.
 
-## 2. Bounding boxes and batch geometry
+## 2. Boxes, ranges, per-axis values and batch geometry
 
-- **Boxes in parameters keep MATLAB's values**: `[ymin, xmin, zmin, ymax, xmax, zmax]`,
-  1-based, inclusive. Configs, GUI settings and the oracle pass the same numbers to both
-  implementations. Code converts with `bbox.bbox_to_slices` (0-based, half-open slices) and
-  `bbox.crop` (a view), never by hand; `slices_to_bbox`, `bbox_size`, `full_bbox`,
-  `clamp_bbox`, `bbox_intersect` and `pad_widths` (for boxes that reach outside, as the crop
-  wrappers' pad option) cover the rest. A 2D image takes a box with `zmin = zmax = 1`.
-- **Batch and block coordinates** of the large-file paths come from `blocks`, with MATLAB's
-  values and order:
+- **A box is `(z0, y0, x0, z1, y1, x1)`**, 0-based, end-exclusive: it selects
+  `vol[z0:z1, y0:y1, x0:x1]`. A 2D box is `(y0, x0, y1, x1)`. A range is `(start, stop)`. Indices
+  and offsets are 0-based. An open end is `None` (MATLAB's `Inf`).
+- **MATLAB's values convert at the boundary**, with `bbox`: `box_from_matlab` /
+  `box_to_matlab` (`[ymin xmin zmin ymax xmax zmax]`, 1-based, inclusive, is
+  `(zmin-1, ymin-1, xmin-1, zmax, ymax, xmax)`; 2D `[ymin xmin ymax xmax]` is
+  `(ymin-1, xmin-1, ymax, xmax)`), `boxes_from_matlab` / `boxes_to_matlab` for `(n, 6)` tables,
+  `range_from_matlab` / `range_to_matlab` (`[first last]` is `(first-1, last)`). The rest work on
+  our boxes: `box_slices`, `crop` (a view), `box_shape`, `full_box`, `check_box`, `clamp_box`,
+  `intersect_boxes`, `pad_widths` (for boxes that reach outside, as the crop wrappers' pad option).
+- **Per-axis vectors follow `(z, y, x)`**: sizes `(nz, ny, nx)`, block, batch and chunk sizes,
+  pool sizes, borders and paddings, resample factors, voxel sizes given as a vector, shifts and
+  offsets in voxels, per-axis flags (a z MIP is `(1, 0, 0)`). `axes.from_yxz` / `to_yxz` convert
+  MATLAB's `[y x z]` parameters, `from_xyz` / `to_xyz` the `[x y z]` ones; a scalar applies to
+  every axis and passes through; 2 values are 2D (`(y, x)`).
+- **Exceptions, each by name**:
+  1. scalars that name their axes keep their names: `xy_pixel_size`, `dz`, `skew_angle`,
+     `xy_max_offset`, `z_max_offset`;
+  2. stage and physical coordinates stay x, y, z by name, as in the image lists, and the
+     `axis_order` strings (`'x,y,z'`, `'-x,y,z'`) are unchanged;
+  3. axis strings that name an array's axes (`data_order`, `input_axis_order`,
+     `output_axis_order`) name them in our order: the Python defaults are `'z,y,x'` and `'zyx'`
+     where MATLAB's are `'y,x,z'` and `'yxz'` (`axes.axis_string_from_matlab` /
+     `axis_string_to_matlab`; `axes.axis_permutation(src, dst)` gives the `np.transpose` axes);
+  4. transform matrices built for `imwarp` and the deskew kernels (the 4 x 4 `tmat`) keep
+     MATLAB's `(x, y, z)` convention inside the code: their entries are compared with MATLAB's;
+  5. files in MATLAB's formats keep MATLAB's values and orders (`parameters.json`, `.mat` files,
+     stitch and block information, flag files, image lists): convert at the file boundary.
+- **The MATLAB-name layer** (`petakit5d.matlab`, the command line, cluster and dataset configs)
+  keeps MATLAB's values and converts through the parameter registry; code inside the port only
+  sees the Python forms.
+- **Batch and block coordinates** of the large-file paths come from `blocks`, in our forms and
+  in MATLAB's batch order and numbering:
   - `zarr_chunk_coordinates` (`XR_zarrChunkCoordinatesExtraction`): batches of whole blocks
     (the batch size is first limited to the region and rounded up to whole blocks), numbered
-    column-major (y fastest); borders limited to the volume; with `same_batch_size` the last
-    batch on an axis starts earlier so that every batch has the same size before borders.
-  - `sub_volume_coordinates` (`XR_subVolumeCoordinatesExtraction`): x fastest, then y, then
-    z (its `meshgrid` order), sizes made good FFT sizes.
-  - `bbox_to_blocks` (`bboxToBlocks`): the blocks a box touches, column-major.
+    with y fastest, then x, then z; borders limited to the volume; with `same_batch_size` the
+    last batch on an axis starts earlier so that every batch has the same size before borders.
+    Returns `(batch_boxes, region_boxes, local_boxes)` as `(n, 6)` arrays of our boxes.
+  - `sub_volume_coordinates` (`XR_subVolumeCoordinatesExtraction`): an `(n, 6)` array of boxes,
+    x fastest, then y, then z (its `meshgrid` order), sizes made good FFT sizes.
+  - `bbox_to_blocks` (`bboxToBlocks`): the blocks a box touches, in MATLAB's order; block
+    subscripts `(z, y, x)` 0-based and `block_ind` MATLAB's linear block number minus 1.
   - `find_good_factor_number`: sizes with prime factors 2, 3, 5, 7 only, odd multiples of 7
     skipped by default.
-  All return int64 values, 1-based; inputs must be integral.
+  The `*_matlab` forms (`zarr_chunk_coordinates_matlab`, ...) take and return MATLAB's values
+  for files in MATLAB's format; they are the reference the Python forms convert around (the
+  2,100 parameter sets of the oracle cases pass through the conversions).
 
 ## 3. Classes and arithmetic (`petakit5d.core.dtypes`)
 

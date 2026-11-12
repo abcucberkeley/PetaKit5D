@@ -3253,6 +3253,1029 @@
 "<root>/~t"
 ]
 },
+"f12.broadcast.00.numpy_times": {
+"class": "double",
+"kind": "array",
+"numel": 60,
+"oracle": "PetaKit5D_1697257",
+"sha256": "b75198b6edb183b68369640829cc3ca587d975a26c91c6c923ed358b544ad34b",
+"size": [
+4,
+5,
+3
+]
+},
+"f12.broadcast.00.plus": {
+"class": "double",
+"kind": "array",
+"numel": 60,
+"oracle": "PetaKit5D_1697257",
+"sha256": "c111eb779f859a89836890c9efbfabccb5e1cc7805b771de1b9a3d971448f7a2",
+"size": [
+4,
+5,
+3
+]
+},
+"f12.broadcast.00.single_double": {
+"class": "single",
+"kind": "array",
+"numel": 60,
+"oracle": "PetaKit5D_1697257",
+"sha256": "289893c14c89f627262224ff5e8488bd2f57a62c84e078ef3935defe3d165e8d",
+"size": [
+4,
+5,
+3
+]
+},
+"f12.broadcast.01.numpy_times": {
+"class": "double",
+"kind": "array",
+"numel": 60,
+"oracle": "PetaKit5D_1697257",
+"sha256": "8db477b160d2c9cd99eca096d69aab8663cf8f8dde5b896a2d328251e60eca52",
+"size": [
+4,
+5,
+3
+]
+},
+"f12.broadcast.01.plus": {
+"class": "double",
+"kind": "array",
+"numel": 60,
+"oracle": "PetaKit5D_1697257",
+"sha256": "9036c0be07bdad7440b7ad3a5b5185b0bbaf658314e01131aba0522a4ca38e70",
+"size": [
+4,
+5,
+3
+]
+},
+"f12.broadcast.02.numpy_times": {
+"class": "double",
+"kind": "array",
+"numel": 60,
+"oracle": "PetaKit5D_1697257",
+"sha256": "92232b04d40339dfcba6e838da314d490a5a13887a0d3b945d381b63bf2a54ff",
+"size": [
+4,
+5,
+3
+]
+},
+"f12.broadcast.02.plus": {
+"class": "double",
+"kind": "array",
+"numel": 60,
+"oracle": "PetaKit5D_1697257",
+"sha256": "437bf59ebb0eca15dfb314e4cf57a6e2f821dba347c90edd6885d4052300944b",
+"size": [
+4,
+5,
+3
+]
+},
+"f12.broadcast.03.numpy_times": {
+"class": "double",
+"kind": "array",
+"numel": 60,
+"oracle": "PetaKit5D_1697257",
+"sha256": "51427db5bb12bf063fee7adecc9ef51db55110d54281cc41e973a77dd267f48f",
+"size": [
+4,
+5,
+3
+]
+},
+"f12.broadcast.03.plus": {
+"class": "double",
+"kind": "array",
+"numel": 60,
+"oracle": "PetaKit5D_1697257",
+"sha256": "4bb050d7b6863b07839e7c83b61d1030d340133055af2f4a2f783f611b9316b7",
+"size": [
+4,
+5,
+3
+]
+},
+"f12.broadcast.03.single_double": {
+"class": "single",
+"kind": "array",
+"numel": 60,
+"oracle": "PetaKit5D_1697257",
+"sha256": "de56f6a7321d0c96331da429175bfc9f5d1c38b8efb4c9a512c1bb9ac39df1f5",
+"size": [
+4,
+5,
+3
+]
+},
+"f12.broadcast.04.numpy_times": {
+"class": "double",
+"kind": "array",
+"numel": 60,
+"oracle": "PetaKit5D_1697257",
+"sha256": "3d6a008fa793002148a1cca1b8daf1c7eb4368e7fd7a00443e6aa6abccb08d01",
+"size": [
+4,
+5,
+3
+]
+},
+"f12.broadcast.04.plus": {
+"class": "double",
+"kind": "array",
+"numel": 60,
+"oracle": "PetaKit5D_1697257",
+"sha256": "fe4f8f491124bb7e7b2d0d4b302cc1e5b876677041de05529bf6dfe74840d61a",
+"size": [
+4,
+5,
+3
+]
+},
+"f12.broadcast.05.numpy_times": {
+"class": "double",
+"kind": "array",
+"numel": 60,
+"oracle": "PetaKit5D_1697257",
+"sha256": "3198e9bc1000924a10d00cb2cab51811275941ff045d026db5e684d4232b8893",
+"size": [
+4,
+5,
+3
+]
+},
+"f12.broadcast.05.plus": {
+"class": "double",
+"kind": "array",
+"numel": 60,
+"oracle": "PetaKit5D_1697257",
+"sha256": "d9930b6117aa6b00c4225e293e268fc389fe01a0935a449c797d6a3907aafac2",
+"size": [
+4,
+5,
+3
+]
+},
+"f12.broadcast.06.numpy_times": {
+"class": "double",
+"kind": "array",
+"numel": 60,
+"oracle": "PetaKit5D_1697257",
+"sha256": "8ecc8f317c536b8ed1bd37ef8ff19753a24a44578ebd6c569f9579e23645e5f9",
+"size": [
+4,
+5,
+3
+]
+},
+"f12.broadcast.06.plus": {
+"class": "double",
+"kind": "array",
+"numel": 60,
+"oracle": "PetaKit5D_1697257",
+"sha256": "137c78d42990373a33fdccd221af73d4c9ebe1a07e2b6b36f915d70f9514847b",
+"size": [
+4,
+5,
+3
+]
+},
+"f12.broadcast.07.numpy_times": {
+"class": "double",
+"kind": "array",
+"numel": 120,
+"oracle": "PetaKit5D_1697257",
+"sha256": "a52f6743b3f775a3ec0ab26e876afa9ec01f923b19eb91e3ad3c93b605ad8e91",
+"size": [
+4,
+5,
+3,
+2
+]
+},
+"f12.broadcast.07.plus": {
+"class": "double",
+"kind": "array",
+"numel": 120,
+"oracle": "PetaKit5D_1697257",
+"sha256": "d45eef8daf95698c465e037d935d27c113052569452f07c6aefa8ea8a4857b88",
+"size": [
+4,
+5,
+3,
+2
+]
+},
+"f12.broadcast.07.single_double": {
+"class": "single",
+"kind": "array",
+"numel": 120,
+"oracle": "PetaKit5D_1697257",
+"sha256": "99d9736d0e0b699af04a8088d87f5aa2e631d17f9530c72519dc770d12ce51d9",
+"size": [
+4,
+5,
+3,
+2
+]
+},
+"f12.broadcast.08.numpy_times": {
+"class": "double",
+"kind": "array",
+"numel": 120,
+"oracle": "PetaKit5D_1697257",
+"sha256": "3fef7947cabeb4dbefd70d2cc6a05e8ce2e5f2a96b45c3563297246e4f8613f8",
+"size": [
+4,
+5,
+3,
+2
+]
+},
+"f12.broadcast.08.plus": {
+"class": "double",
+"kind": "array",
+"numel": 120,
+"oracle": "PetaKit5D_1697257",
+"sha256": "189a2ae88bd95475873889d0b040d05019156c720fdebd9ead395a3364492f65",
+"size": [
+4,
+5,
+3,
+2
+]
+},
+"f12.broadcast.09.numpy_times": {
+"class": "double",
+"kind": "array",
+"numel": 120,
+"oracle": "PetaKit5D_1697257",
+"sha256": "da7bac181744767010366d8f494cd83e00aa9adac173f9a07001002151b09fef",
+"size": [
+4,
+5,
+3,
+2
+]
+},
+"f12.broadcast.09.plus": {
+"class": "double",
+"kind": "array",
+"numel": 120,
+"oracle": "PetaKit5D_1697257",
+"sha256": "589e7a7fb0aae62f0140d6fc3dc248252bc42341e22a8078429ca3ba143795fd",
+"size": [
+4,
+5,
+3,
+2
+]
+},
+"f12.broadcast.10.numpy_times": {
+"class": "double",
+"kind": "array",
+"numel": 20,
+"oracle": "PetaKit5D_1697257",
+"sha256": "59cfdb3b0a382d3c669551675235230c94d49161c145395d4e557ba74cb25817",
+"size": [
+4,
+5
+]
+},
+"f12.broadcast.10.plus": {
+"class": "double",
+"kind": "array",
+"numel": 20,
+"oracle": "PetaKit5D_1697257",
+"sha256": "6d67612d35a302d59d7f23185a2b284a03acbcf4fed5d95b1bba61caf469bb42",
+"size": [
+4,
+5
+]
+},
+"f12.broadcast.11.numpy_times": {
+"class": "double",
+"kind": "array",
+"numel": 60,
+"oracle": "PetaKit5D_1697257",
+"sha256": "d7d967f23521b4e291fe4d71537285d3dcc9164f690d28553562e2beb9f5985e",
+"size": [
+4,
+5,
+3
+]
+},
+"f12.broadcast.11.plus": {
+"class": "double",
+"kind": "array",
+"numel": 60,
+"oracle": "PetaKit5D_1697257",
+"sha256": "492bcdb2110a7c250b30155221b754278dd4c61d33fb7a0106b6f1221b99654d",
+"size": [
+4,
+5,
+3
+]
+},
+"f12.colon.double": {
+"class": "double",
+"kind": "array",
+"numel": 72,
+"oracle": "PetaKit5D_1697257",
+"sha256": "ef9530ddbd4557ddc1d685a35a923ccb66cee92aacf0036620da22f6db006f3b",
+"size": [
+72,
+1
+]
+},
+"f12.colon.int16": {
+"class": "int16",
+"kind": "array",
+"numel": 72,
+"oracle": "PetaKit5D_1697257",
+"sha256": "83ce9f8a0c6f929fc9d4780fb5e48bc749695615d4dbec1fa446db02752b0ae8",
+"size": [
+72,
+1
+]
+},
+"f12.colon.int32": {
+"class": "int32",
+"kind": "array",
+"numel": 72,
+"oracle": "PetaKit5D_1697257",
+"sha256": "494349cf15d37a787a8eef1bb5b449e96e85ba5d2650239ee3d12671f32e0e79",
+"size": [
+72,
+1
+]
+},
+"f12.colon.int64": {
+"class": "int64",
+"kind": "array",
+"numel": 72,
+"oracle": "PetaKit5D_1697257",
+"sha256": "19ab72749e25707ff3e7cf289917fbc7d022d39f8d5cafaf6a43ae14f542dfdc",
+"size": [
+72,
+1
+]
+},
+"f12.colon.int8": {
+"class": "int8",
+"kind": "array",
+"numel": 72,
+"oracle": "PetaKit5D_1697257",
+"sha256": "d27a1982f9bcf18157b3b6a3e9c5f0bae7a19aa75f6ba1fb77cf2bfc017ccccd",
+"size": [
+72,
+1
+]
+},
+"f12.colon.logical": {
+"class": "logical",
+"kind": "array",
+"numel": 72,
+"oracle": "PetaKit5D_1697257",
+"sha256": "958dc124a3b0912b7755d610491af2512fd190c28a61a003de1168ab446dd97e",
+"size": [
+72,
+1
+]
+},
+"f12.colon.single": {
+"class": "single",
+"kind": "array",
+"numel": 72,
+"oracle": "PetaKit5D_1697257",
+"sha256": "c2e74462bfbdd1ceb70b1dc15f372534e0119c8febd0a1fe0496a679b38fe2e5",
+"size": [
+72,
+1
+]
+},
+"f12.colon.uint16": {
+"class": "uint16",
+"kind": "array",
+"numel": 72,
+"oracle": "PetaKit5D_1697257",
+"sha256": "94214441b5673accd0e5fdd94374e7661a19278693bfaa07b1641a759c25581f",
+"size": [
+72,
+1
+]
+},
+"f12.colon.uint32": {
+"class": "uint32",
+"kind": "array",
+"numel": 72,
+"oracle": "PetaKit5D_1697257",
+"sha256": "a277a00612a4ea71617aac419fc5b151fbd3ed564e20c2c9bb2833b85dad7a2c",
+"size": [
+72,
+1
+]
+},
+"f12.colon.uint64": {
+"class": "uint64",
+"kind": "array",
+"numel": 72,
+"oracle": "PetaKit5D_1697257",
+"sha256": "147f6b683349b51c46243593a2f4f1f5a5d7d4e329876d7279c48922f9150118",
+"size": [
+72,
+1
+]
+},
+"f12.colon.uint8": {
+"class": "uint8",
+"kind": "array",
+"numel": 72,
+"oracle": "PetaKit5D_1697257",
+"sha256": "b5ed19edec9028f1718cb584be4df63b39d3f347405f3e6f0e76c92ce6dfc355",
+"size": [
+72,
+1
+]
+},
+"f12.permute.double.2d": {
+"class": "double",
+"kind": "array",
+"numel": 35,
+"oracle": "PetaKit5D_1697257",
+"sha256": "a011123c509802e3d4f42eaa72a990d2b3d3cd87f65a50f1d4ce2949459fb77d",
+"size": [
+5,
+7
+]
+},
+"f12.permute.double.3d": {
+"class": "double",
+"kind": "array",
+"numel": 60,
+"oracle": "PetaKit5D_1697257",
+"sha256": "082e01fe89f95ac1bedbec58f293c275cbb529fc18b1d9ae92f96f0535dc6d50",
+"size": [
+3,
+4,
+5
+]
+},
+"f12.permute.double.3d_x1": {
+"class": "double",
+"kind": "array",
+"numel": 12,
+"oracle": "PetaKit5D_1697257",
+"sha256": "7e597672fe77db295d3aef9eea698d0713076655d345b494a68616289cfa56af",
+"size": [
+3,
+4
+]
+},
+"f12.permute.double.3d_y1": {
+"class": "double",
+"kind": "array",
+"numel": 15,
+"oracle": "PetaKit5D_1697257",
+"sha256": "39f605c56fd1807ae214c3facc083617be100740f898c633448ef402dc13a007",
+"size": [
+3,
+1,
+5
+]
+},
+"f12.permute.double.4d": {
+"class": "double",
+"kind": "array",
+"numel": 72,
+"oracle": "PetaKit5D_1697257",
+"sha256": "63acfc7096a56710503cf13c502f9d3b21aed76088bf6bee01b67573545edb0e",
+"size": [
+3,
+2,
+3,
+4
+]
+},
+"f12.permute.double.5d": {
+"class": "double",
+"kind": "array",
+"numel": 96,
+"oracle": "PetaKit5D_1697257",
+"sha256": "a5ce51befdd02f84e194ee2c021ce00870521b6b20a55bddf40ee32ac9eb4b81",
+"size": [
+2,
+2,
+4,
+2,
+3
+]
+},
+"f12.permute.int16.2d": {
+"class": "int16",
+"kind": "array",
+"numel": 35,
+"oracle": "PetaKit5D_1697257",
+"sha256": "fae0c0351750159c33fad109d1b9efe6885667c0b310919305c02b25ec8b844f",
+"size": [
+5,
+7
+]
+},
+"f12.permute.int16.3d": {
+"class": "int16",
+"kind": "array",
+"numel": 60,
+"oracle": "PetaKit5D_1697257",
+"sha256": "a6b8d48668d6e7918893c7e644e630221bf99e6ceef21e14d289c7868e1d6402",
+"size": [
+3,
+4,
+5
+]
+},
+"f12.permute.int16.4d": {
+"class": "int16",
+"kind": "array",
+"numel": 72,
+"oracle": "PetaKit5D_1697257",
+"sha256": "0a9a66fae1d8fb08f84126bcc741df337e218c3fc58fe9da4ace7e9ebf571c93",
+"size": [
+3,
+2,
+3,
+4
+]
+},
+"f12.permute.int16.5d": {
+"class": "int16",
+"kind": "array",
+"numel": 96,
+"oracle": "PetaKit5D_1697257",
+"sha256": "4bfdd29e09257a1e9a4206eb85993fec5d2135c6416169f9277fb14b51c2b868",
+"size": [
+2,
+2,
+4,
+2,
+3
+]
+},
+"f12.permute.int32.2d": {
+"class": "int32",
+"kind": "array",
+"numel": 35,
+"oracle": "PetaKit5D_1697257",
+"sha256": "e3c1eee6f2ff7f685a3f012f8183d13dfba3c7a2afc79633787bd79c3bd76bdb",
+"size": [
+5,
+7
+]
+},
+"f12.permute.int32.3d": {
+"class": "int32",
+"kind": "array",
+"numel": 60,
+"oracle": "PetaKit5D_1697257",
+"sha256": "3431131592f21a3066f19c4e955f99ea7702bdd07c95d77f3e3fd75888340c1d",
+"size": [
+3,
+4,
+5
+]
+},
+"f12.permute.int32.4d": {
+"class": "int32",
+"kind": "array",
+"numel": 72,
+"oracle": "PetaKit5D_1697257",
+"sha256": "afb49f8643cef704b7e0128ae13c68a6e062358c6fa2dc73a9152489db6d7fa5",
+"size": [
+3,
+2,
+3,
+4
+]
+},
+"f12.permute.int32.5d": {
+"class": "int32",
+"kind": "array",
+"numel": 96,
+"oracle": "PetaKit5D_1697257",
+"sha256": "749d014e1da75edc0e893b46825f7dfe9a758c7ee295f31e2c9a7c81307bd96f",
+"size": [
+2,
+2,
+4,
+2,
+3
+]
+},
+"f12.permute.int64.2d": {
+"class": "int64",
+"kind": "array",
+"numel": 35,
+"oracle": "PetaKit5D_1697257",
+"sha256": "5401d84eaba156fd8f6647fd035d310e7309c4b886972b87149f8c60b3bebd8b",
+"size": [
+5,
+7
+]
+},
+"f12.permute.int64.3d": {
+"class": "int64",
+"kind": "array",
+"numel": 60,
+"oracle": "PetaKit5D_1697257",
+"sha256": "e8832b5b1eeb9873abe2a6ed6210436f205ead64cd9d68981ce557eacda58bea",
+"size": [
+3,
+4,
+5
+]
+},
+"f12.permute.int64.4d": {
+"class": "int64",
+"kind": "array",
+"numel": 72,
+"oracle": "PetaKit5D_1697257",
+"sha256": "2aede2f2e5aed607114c86e92040b806493ae5512d39a1f46f443908390e703d",
+"size": [
+3,
+2,
+3,
+4
+]
+},
+"f12.permute.int64.5d": {
+"class": "int64",
+"kind": "array",
+"numel": 96,
+"oracle": "PetaKit5D_1697257",
+"sha256": "3401d727aebbdc17c491a24be8e9bc09859b4db3b49afad2b5233fb333f22029",
+"size": [
+2,
+2,
+4,
+2,
+3
+]
+},
+"f12.permute.int8.2d": {
+"class": "int8",
+"kind": "array",
+"numel": 35,
+"oracle": "PetaKit5D_1697257",
+"sha256": "28e8da5eb72ebdb565f8021d85234d78a2546d33d97cce5aaf64ebbfcc4b3e1a",
+"size": [
+5,
+7
+]
+},
+"f12.permute.int8.3d": {
+"class": "int8",
+"kind": "array",
+"numel": 60,
+"oracle": "PetaKit5D_1697257",
+"sha256": "a6430f04e0da6c8762469a53470d2a7baa1d3cbb19f5a46747c92e10b9fba09e",
+"size": [
+3,
+4,
+5
+]
+},
+"f12.permute.int8.4d": {
+"class": "int8",
+"kind": "array",
+"numel": 72,
+"oracle": "PetaKit5D_1697257",
+"sha256": "bf52587d27e2426da661669ae10aff5d4e7cca0c46c6dad81faa2c1a9256f1ad",
+"size": [
+3,
+2,
+3,
+4
+]
+},
+"f12.permute.int8.5d": {
+"class": "int8",
+"kind": "array",
+"numel": 96,
+"oracle": "PetaKit5D_1697257",
+"sha256": "933549b62ccccee8f2dcd3820948e1cc9489b0cc273868d2d68e9cf7af728e92",
+"size": [
+2,
+2,
+4,
+2,
+3
+]
+},
+"f12.permute.logical.2d": {
+"class": "logical",
+"kind": "array",
+"numel": 35,
+"oracle": "PetaKit5D_1697257",
+"sha256": "7106a5920e4fb8f48c46b8888e82b10a8252e9115c85911e55f339835fc7c782",
+"size": [
+5,
+7
+]
+},
+"f12.permute.logical.3d": {
+"class": "logical",
+"kind": "array",
+"numel": 60,
+"oracle": "PetaKit5D_1697257",
+"sha256": "8858e03579d4a2db9f9f8e8f10b672b682211985e19eea58856c9e5abf94d7db",
+"size": [
+3,
+4,
+5
+]
+},
+"f12.permute.logical.4d": {
+"class": "logical",
+"kind": "array",
+"numel": 72,
+"oracle": "PetaKit5D_1697257",
+"sha256": "c73bfe6afbf9cb8c0b10b938b582bee6e8a46463a4df6e74bbec2744908fed31",
+"size": [
+3,
+2,
+3,
+4
+]
+},
+"f12.permute.logical.5d": {
+"class": "logical",
+"kind": "array",
+"numel": 96,
+"oracle": "PetaKit5D_1697257",
+"sha256": "abacec2f46c5fd06d1cbbdc6174178b05fe066291ee2d5efe82d2ed554a80a38",
+"size": [
+2,
+2,
+4,
+2,
+3
+]
+},
+"f12.permute.single.2d": {
+"class": "single",
+"kind": "array",
+"numel": 35,
+"oracle": "PetaKit5D_1697257",
+"sha256": "95ddec8542cca52e9a2038693a33bad6d55d1e92684fb3a6d205abd0d1edce43",
+"size": [
+5,
+7
+]
+},
+"f12.permute.single.3d": {
+"class": "single",
+"kind": "array",
+"numel": 60,
+"oracle": "PetaKit5D_1697257",
+"sha256": "81b8e50ab1c60e02b50b699f83da300fca5e67e970439127c922f187c51f1d9f",
+"size": [
+3,
+4,
+5
+]
+},
+"f12.permute.single.4d": {
+"class": "single",
+"kind": "array",
+"numel": 72,
+"oracle": "PetaKit5D_1697257",
+"sha256": "6d4c58645a8921c5b4c06e3fbf234a515b39eedeaaf99f34d6ddcdbe1bf877bb",
+"size": [
+3,
+2,
+3,
+4
+]
+},
+"f12.permute.single.5d": {
+"class": "single",
+"kind": "array",
+"numel": 96,
+"oracle": "PetaKit5D_1697257",
+"sha256": "0af1fe9616d1f26bcc152bb4b21cf8ea8560c5298a86c0a67114f8f69d8dd561",
+"size": [
+2,
+2,
+4,
+2,
+3
+]
+},
+"f12.permute.uint16.2d": {
+"class": "uint16",
+"kind": "array",
+"numel": 35,
+"oracle": "PetaKit5D_1697257",
+"sha256": "21560176a89d94885418dd9559ab61018c496bd275280e684c1b20c8f24dc7f7",
+"size": [
+5,
+7
+]
+},
+"f12.permute.uint16.3d": {
+"class": "uint16",
+"kind": "array",
+"numel": 60,
+"oracle": "PetaKit5D_1697257",
+"sha256": "92fc0360e96a529e3e6581e3a1ab67078b93bd98f670e7320444de5b4f479647",
+"size": [
+3,
+4,
+5
+]
+},
+"f12.permute.uint16.4d": {
+"class": "uint16",
+"kind": "array",
+"numel": 72,
+"oracle": "PetaKit5D_1697257",
+"sha256": "0edd25537a134bf243ad407dc3535bedfff86804c41943a15c6197a4bd21869e",
+"size": [
+3,
+2,
+3,
+4
+]
+},
+"f12.permute.uint16.5d": {
+"class": "uint16",
+"kind": "array",
+"numel": 96,
+"oracle": "PetaKit5D_1697257",
+"sha256": "e33212d77344232f3ca6cdd1364f958b15425d571b4ecc5a2b31d2588b542904",
+"size": [
+2,
+2,
+4,
+2,
+3
+]
+},
+"f12.permute.uint32.2d": {
+"class": "uint32",
+"kind": "array",
+"numel": 35,
+"oracle": "PetaKit5D_1697257",
+"sha256": "135a799601b42f6d101fd744f2ecaeca2ac10b4ee3a9788d59153841614bca33",
+"size": [
+5,
+7
+]
+},
+"f12.permute.uint32.3d": {
+"class": "uint32",
+"kind": "array",
+"numel": 60,
+"oracle": "PetaKit5D_1697257",
+"sha256": "499504de1f90b13521b7d904b7c952573a0d078aea7c35823928b4e4154e23a4",
+"size": [
+3,
+4,
+5
+]
+},
+"f12.permute.uint32.4d": {
+"class": "uint32",
+"kind": "array",
+"numel": 72,
+"oracle": "PetaKit5D_1697257",
+"sha256": "72477afc7ed0d9e7ea15efe63643a2d523bc197d79a4fab9cd629c9f318b21aa",
+"size": [
+3,
+2,
+3,
+4
+]
+},
+"f12.permute.uint32.5d": {
+"class": "uint32",
+"kind": "array",
+"numel": 96,
+"oracle": "PetaKit5D_1697257",
+"sha256": "c9086b11de71d0bce1fb8d5ab41c34b031cdbe1f1088944a98e7c6ce357e67f8",
+"size": [
+2,
+2,
+4,
+2,
+3
+]
+},
+"f12.permute.uint64.2d": {
+"class": "uint64",
+"kind": "array",
+"numel": 35,
+"oracle": "PetaKit5D_1697257",
+"sha256": "1930f2ada1f0c0a557a85b2926b7c222bc08cce40d1ddc0babf759d2ca22c8f1",
+"size": [
+5,
+7
+]
+},
+"f12.permute.uint64.3d": {
+"class": "uint64",
+"kind": "array",
+"numel": 60,
+"oracle": "PetaKit5D_1697257",
+"sha256": "69ec41fd4043196667dd3a6e17b6e53dcf04b8ba8944c3dfd1631ccf521d2c3e",
+"size": [
+3,
+4,
+5
+]
+},
+"f12.permute.uint64.4d": {
+"class": "uint64",
+"kind": "array",
+"numel": 72,
+"oracle": "PetaKit5D_1697257",
+"sha256": "b041763e2e8cee242438e1e5c3bfec104d028204d866ce93b9eb32c31ef8034e",
+"size": [
+3,
+2,
+3,
+4
+]
+},
+"f12.permute.uint64.5d": {
+"class": "uint64",
+"kind": "array",
+"numel": 96,
+"oracle": "PetaKit5D_1697257",
+"sha256": "e0a5bbb8fed0420dc5ca0367b91e869d18b3b69c9d8e2c9f49d84f89c50aba1a",
+"size": [
+2,
+2,
+4,
+2,
+3
+]
+},
+"f12.permute.uint8.2d": {
+"class": "uint8",
+"kind": "array",
+"numel": 35,
+"oracle": "PetaKit5D_1697257",
+"sha256": "c31421cd516c3bedf2c9426d35716045d17834082b52303b55217b77481fb908",
+"size": [
+5,
+7
+]
+},
+"f12.permute.uint8.3d": {
+"class": "uint8",
+"kind": "array",
+"numel": 60,
+"oracle": "PetaKit5D_1697257",
+"sha256": "8ba0655c7b58c0c0f81b0005c23d68de80bbd7e3d2154b3f6403f82eb2590702",
+"size": [
+3,
+4,
+5
+]
+},
+"f12.permute.uint8.4d": {
+"class": "uint8",
+"kind": "array",
+"numel": 72,
+"oracle": "PetaKit5D_1697257",
+"sha256": "693b67f730e69773335bad3b72e7ee0ee13c0db453ccb4730372ea5e23db73f5",
+"size": [
+3,
+2,
+3,
+4
+]
+},
+"f12.permute.uint8.5d": {
+"class": "uint8",
+"kind": "array",
+"numel": 96,
+"oracle": "PetaKit5D_1697257",
+"sha256": "80fa121a76be5811a6ec4abe06c04f3ad19512b5fad27cd68be87fd240776a99",
+"size": [
+2,
+2,
+4,
+2,
+3
+]
+},
 "fileparts.list": {
 "kind": "list",
 "n": 31,

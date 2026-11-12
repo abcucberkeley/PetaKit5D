@@ -200,13 +200,21 @@ def test_idivide():
         dtypes.idivide(7.0, 2.0)
 
 
-def test_implicit_expansion_is_matlabs():
+def test_implicit_expansion_is_numpy_broadcasting_in_our_layout():
+    # MATLAB's 4 x 5 x 3 .* 4 x 5 is our (3, 4, 5) * (4, 5): the image expands along z
     a = np.ones((3, 4, 5))
-    b = np.arange(12.0).reshape(3, 4)  # MATLAB expands it along the third dimension
+    b = np.arange(20.0).reshape(4, 5)
     r = dtypes.times(a, b)
     assert r.shape == (3, 4, 5)
-    np.testing.assert_array_equal(r[:, :, 2], b)
+    np.testing.assert_array_equal(r[2], b)
+    assert dtypes.plus(np.ones((3, 1, 1)), np.ones((4, 5))).shape == (
+        3,
+        4,
+        5,
+    )  # 1 x 1 x 3 with 4 x 5
     assert dtypes.plus(np.ones(4), np.ones(4)).shape == (4,)
+    with pytest.raises(ValueError):
+        dtypes.plus(np.ones((3, 4)), np.ones((5, 4)))  # MATLAB: incompatible sizes
 
 
 def test_limits():

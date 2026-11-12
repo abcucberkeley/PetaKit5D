@@ -1,14 +1,19 @@
-"""Batch and block coordinates shared by the large-file paths (MATLAB's values, 1-based).
+"""Batch and block coordinates shared by the large-file paths.
 
-- ``zarr_chunk_coordinates``: ``XR_zarrChunkCoordinatesExtraction`` (batches of whole blocks
-  with borders; ``sameBatchSize``; column-major batch order, y fastest)
-- ``sub_volume_coordinates``: ``XR_subVolumeCoordinatesExtraction`` (overlapping sub-volumes,
-  x fastest, as its ``meshgrid`` gives)
+The Python forms take and return ``(z, y, x)`` sizes and our boxes (``(z0, y0, x0, z1, y1, x1)``,
+0-based, end-exclusive), in MATLAB's batch order and numbering:
+
+- ``zarr_chunk_coordinates``: ``XR_zarrChunkCoordinatesExtraction`` (batches of whole blocks with
+  borders; ``same_batch_size``; batches numbered with y fastest, then x, then z, as MATLAB)
+- ``sub_volume_coordinates``: ``XR_subVolumeCoordinatesExtraction`` (overlapping sub-volumes, x
+  fastest, then y, then z, as its ``meshgrid`` gives)
 - ``bbox_to_blocks``: ``bboxToBlocks`` (the blocks of a stitched image a box touches)
 - ``find_good_factor_number``: ``findGoodFactorNumber`` (sizes with prime factors 2, 3, 5, 7)
 
-All boxes are ``[ymin, xmin, zmin, ymax, xmax, zmax]`` rows of int64 arrays. Inputs must be
-integral (MATLAB would compute fractional boxes; no caller passes such sizes).
+The ``*_matlab`` forms take and return MATLAB's values (``[y x z]`` sizes, 1-based inclusive
+``[ymin xmin zmin ymax xmax zmax]`` rows) for files in MATLAB's formats; they are the reference
+implementation (checked on 2,100 parameter sets against MATLAB), and the Python forms convert
+around them. Inputs must be integral.
 """
 
 from __future__ import annotations
@@ -21,11 +26,15 @@ import numpy as np
 
 __all__ = [
     "BlockInfo",
+    "MatlabBlockInfo",
     "bbox_to_blocks",
+    "bbox_to_blocks_matlab",
     "find_good_factor_number",
     "prime_factors",
     "sub_volume_coordinates",
+    "sub_volume_coordinates_matlab",
     "zarr_chunk_coordinates",
+    "zarr_chunk_coordinates_matlab",
 ]
 
 
@@ -48,7 +57,7 @@ def _ceil_div(a: np.ndarray, b: np.ndarray) -> np.ndarray:
     return -(-a // b)
 
 
-def zarr_chunk_coordinates(
+def zarr_chunk_coordinates_matlab(
     vol_size: Sequence[int],
     *,
     batch_size: Sequence[int] = (1024, 1024, 1024),
@@ -57,7 +66,7 @@ def zarr_chunk_coordinates(
     same_batch_size: bool = True,
     border_size: Sequence[int] | int = 50,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """``XR_zarrChunkCoordinatesExtraction``: ``(batch_bboxes, region_bboxes, local_bboxes)``.
+    """``XR_zarrChunkCoordinatesExtraction`` with MATLAB's values: ``(batch, region, local)``.
 
     Batches are whole blocks (``batch_size`` rounded up to a multiple of ``block_size``, both
     first limited to the region), numbered column-major (y fastest). ``batch_bboxes`` are the
@@ -150,7 +159,7 @@ def find_good_factor_number(
     return good
 
 
-def sub_volume_coordinates(
+def sub_volume_coordinates_matlab(
     vol_size: Sequence[int],
     *,
     chunk_size: Sequence[int] = (1024, 1024, 1024),
@@ -159,7 +168,8 @@ def sub_volume_coordinates(
     size_range: Sequence[float] = (0.75, 1.5),
     use_good_num: bool = True,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, int]:
-    """``XR_subVolumeCoordinatesExtraction``: ``(xmin, xmax, ymin, ymax, zmin, zmax, nn)``.
+    """``XR_subVolumeCoordinatesExtraction`` with MATLAB's values: ``(xmin, xmax, ymin, ymax,
+    zmin, zmax, nn)``.
 
     Overlapping sub-volumes of about ``chunk_size`` (within ``size_range`` of it) whose voxel
     count is at most ``max_sub_volume``; sizes made good FFT sizes with ``use_good_num``. The
@@ -272,7 +282,7 @@ def sub_volume_coordinates(
 
 
 @dataclasses.dataclass(frozen=True)
-class BlockInfo:
+class MatlabBlockInfo:
     """``bboxToBlocks``' struct (MATLAB field names in snake_case; all values 1-based).
 
     Rows of ``block_sub``, ``block_ind``, ``b_coords``, ``w_coords`` and ``bbox_coords`` are the
@@ -320,14 +330,15 @@ def _single_axis_split(
     return subs, np.stack([cs.astype(np.int64), ct.astype(np.int64)])
 
 
-def bbox_to_blocks(
+def bbox_to_blocks_matlab(
     bbox: Sequence[int],
     bbox_start: Sequence[int],
     block_size: Sequence[int],
     image_size: Sequence[int],
     border_size: Sequence[int] = (0, 0, 0),
-) -> BlockInfo:
-    """``bboxToBlocks``: the blocks (of ``block_size``, tiling ``image_size``) a box touches."""
+) -> MatlabBlockInfo:
+    """``bboxToBlocks`` with MATLAB's values: the blocks (of ``block_size``, tiling
+    ``image_size``) a box touches."""
     b = _ints(bbox, 6, "bbox", scalar_ok=False)
     st = _ints(bbox_start, 3, "bboxStart", scalar_ok=False)
     bs = _ints(block_size, 3, "blockSize", scalar_ok=False)
@@ -358,7 +369,7 @@ def bbox_to_blocks(
         + 1
     )
     tup = lambda v: tuple(int(x) for x in v)  # noqa: E731
-    return BlockInfo(
+    return MatlabBlockInfo(
         block_sub=block_sub,
         block_ind=block_ind.astype(np.int64),
         b_coords=b_coords,
@@ -370,4 +381,141 @@ def bbox_to_blocks(
         image_size=tup(im),
         b_sub_size=tup(n_sub),
         border_size=tup(bd),
+    )
+
+
+# -- the Python forms -------------------------------------------------------------------------
+
+
+def _zyx3(v, what: str) -> list:
+    """A (z, y, x) value (or a scalar for all axes) as MATLAB's [y x z]."""
+    from petakit5d.core.axes import to_yxz
+
+    a = np.asarray(v, dtype=np.float64).ravel()
+    if a.size == 1:
+        return [float(a[0])] * 3
+    if a.size != 3:
+        raise ValueError(f"{what} must have 3 values (z, y, x) or 1, got {a.size}")
+    return list(to_yxz(a))
+
+
+def zarr_chunk_coordinates(
+    vol_size: Sequence[int],
+    *,
+    batch_size: Sequence[int] = (1024, 1024, 1024),
+    block_size: Sequence[int] | int = (256, 256, 256),
+    bbox=None,
+    same_batch_size: bool = True,
+    border_size: Sequence[int] | int = 50,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """``XR_zarrChunkCoordinatesExtraction``: ``(batch_boxes, region_boxes, local_boxes)``.
+
+    Sizes are ``(nz, ny, nx)``-ordered (``block_size`` and ``border_size`` may be scalars),
+    ``bbox`` is our box (None: the whole volume). Each result is an ``(n, 6)`` int64 array of our
+    boxes, one row per batch in MATLAB's order (y fastest, then x, then z): the input region with
+    borders, the output region relative to ``bbox``'s start, and the output region inside the
+    batch.
+    """
+    from petakit5d.core.bbox import box_to_matlab, boxes_from_matlab, check_box
+
+    vs = _zyx3(vol_size, "vol_size")
+    mb = None
+    if bbox is not None and np.size(bbox) != 0:
+        mb = list(
+            box_to_matlab(
+                check_box(bbox, tuple(np.asarray(vol_size, dtype=np.int64)), allow_outside=True)
+            )
+        )
+        if any(isinstance(v, float) for v in mb):
+            mb = [vs[i % 3] if v == math.inf else v for i, v in enumerate(mb)]
+    b, r, loc = zarr_chunk_coordinates_matlab(
+        vs,
+        batch_size=_zyx3(batch_size, "batch_size"),
+        block_size=_zyx3(block_size, "block_size"),
+        bbox=mb,
+        same_batch_size=same_batch_size,
+        border_size=_zyx3(border_size, "border_size"),
+    )
+    return boxes_from_matlab(b), boxes_from_matlab(r), boxes_from_matlab(loc)
+
+
+def sub_volume_coordinates(
+    vol_size: Sequence[int],
+    *,
+    chunk_size: Sequence[int] = (1024, 1024, 1024),
+    overlap_size: Sequence[int] | int = 50,
+    max_sub_volume: float = 1.2e9,
+    size_range: Sequence[float] = (0.75, 1.5),
+    use_good_num: bool = True,
+) -> np.ndarray:
+    """``XR_subVolumeCoordinatesExtraction``: an ``(n, 6)`` int64 array of our boxes, in MATLAB's
+    order (x fastest, then y, then z). Sizes and ``overlap_size`` are ``(z, y, x)`` (or scalars)."""
+    from petakit5d.core.bbox import boxes_from_matlab
+
+    xmin, xmax, ymin, ymax, zmin, zmax, _ = sub_volume_coordinates_matlab(
+        _zyx3(vol_size, "vol_size"),
+        chunk_size=_zyx3(chunk_size, "chunk_size"),
+        overlap_size=_zyx3(overlap_size, "overlap_size"),
+        max_sub_volume=max_sub_volume,
+        size_range=size_range,
+        use_good_num=use_good_num,
+    )
+    return boxes_from_matlab(np.stack([ymin, xmin, zmin, ymax, xmax, zmax], axis=1))
+
+
+@dataclasses.dataclass(frozen=True)
+class BlockInfo:
+    """``bboxToBlocks``' struct in our forms: block subscripts and boxes ``(z, y, x)``, 0-based,
+    end-exclusive; rows in MATLAB's order (block y fastest, then x, then z).
+    """
+
+    block_sub: np.ndarray  # (n, 3) block subscripts (z, y, x), 0-based
+    block_ind: np.ndarray  # (n,) MATLAB's linear block number minus 1 (y fastest)
+    b_coords: np.ndarray  # (n, 6) region inside each block (with borders)
+    w_coords: np.ndarray  # (n, 6) the same region in the stitched image
+    bbox_coords: np.ndarray  # (n, 6) the same region relative to bbox_start
+    bbox: tuple[int, ...]
+    bbox_start: tuple[int, ...]  # (z, y, x), 0-based
+    block_size: tuple[int, ...]  # (z, y, x)
+    image_size: tuple[int, ...]  # (nz, ny, nx)
+    b_sub_size: tuple[int, ...]  # blocks per axis (z, y, x)
+    border_size: tuple[int, ...]  # (z, y, x)
+
+
+def bbox_to_blocks(
+    bbox,
+    bbox_start: Sequence[int],
+    block_size: Sequence[int],
+    image_size: Sequence[int],
+    border_size: Sequence[int] = (0, 0, 0),
+) -> BlockInfo:
+    """``bboxToBlocks``: the blocks (of ``block_size``, tiling ``image_size``) that our box
+    ``bbox`` touches; ``bbox_start`` is the box's start in the original tile (0-based, z, y, x)."""
+    from petakit5d.core.axes import from_yxz
+    from petakit5d.core.bbox import box_to_matlab, boxes_from_matlab, check_box
+
+    b = check_box(bbox, allow_outside=True)
+    if len(b) != 6 or None in b:
+        raise ValueError("bbox_to_blocks takes a closed 3D box")
+    start = [int(v) + 1 for v in _zyx3(bbox_start, "bbox_start")]
+    m = bbox_to_blocks_matlab(
+        box_to_matlab(b),
+        start,
+        _zyx3(block_size, "block_size"),
+        _zyx3(image_size, "image_size"),
+        _zyx3(border_size, "border_size"),
+    )
+    tup = lambda v: tuple(int(x) for x in from_yxz(np.asarray(v)))  # noqa: E731
+    return BlockInfo(
+        block_sub=m.block_sub[:, [2, 0, 1]] - 1,
+        block_ind=m.block_ind - 1,
+        b_coords=boxes_from_matlab(m.b_coords),
+        w_coords=boxes_from_matlab(m.w_coords),
+        bbox_coords=boxes_from_matlab(m.bbox_coords),
+        bbox=tuple(b),
+        bbox_start=tuple(int(v) - 1 for v in from_yxz(np.asarray(start))),
+        block_size=tup(m.block_size),
+        image_size=tup(m.image_size),
+        b_sub_size=tup(m.b_sub_size),
+        border_size=tup(m.border_size),
     )

@@ -21,7 +21,8 @@ from typing import Any
 import _f02_gen as _gen  # this folder is on sys.path (the test module and the pack runner add it)
 import numpy as np
 
-from petakit5d.core import arrays, blocks, dtypes, jsonenc, paths, text, textfiles
+from petakit5d.core import arrays, axes, blocks, dtypes, jsonenc, paths, text, textfiles
+from petakit5d.core import bbox as bbox_
 
 SEED = 20261111
 
@@ -1090,22 +1091,33 @@ case(
 # -- geometry ----------------------------------------------------------------------------------
 
 
+# The geometry cases run the Python forms (our boxes and (z, y, x) sizes) and convert MATLAB's
+# parameters in and the results back with the core helpers, so they check the conversions and
+# MATLAB's batch order against the stored MATLAB references (the MATLAB calls are unchanged).
+
+
 def _zarr_chunks_py(P: np.ndarray) -> np.ndarray:
     out = []
     for i, p in enumerate(P, start=1):
-        bbox = p[14:20] if p[13] else None
+        bbox = bbox_.box_from_matlab(p[14:20]) if p[13] else None
         try:
-            b, r, l = blocks.zarr_chunk_coordinates(
-                p[0:3],
-                batch_size=p[3:6],
-                block_size=p[6:9],
-                border_size=p[9:12],
+            b, r, loc = blocks.zarr_chunk_coordinates(
+                axes.from_yxz(p[0:3]),
+                batch_size=axes.from_yxz(p[3:6]),
+                block_size=axes.from_yxz(p[6:9]),
+                border_size=axes.from_yxz(p[9:12]),
                 same_batch_size=bool(p[12]),
                 bbox=bbox,
             )
+            mb, mr, ml = (bbox_.boxes_to_matlab(x) for x in (b, r, loc))
             out.append(
                 np.concatenate(
-                    [[i, b.shape[0]], b.ravel(order="F"), r.ravel(order="F"), l.ravel(order="F")]
+                    [
+                        [i, mb.shape[0]],
+                        mb.ravel(order="F"),
+                        mr.ravel(order="F"),
+                        ml.ravel(order="F"),
+                    ]
                 )
             )
         except (ValueError, IndexError):
@@ -1117,14 +1129,19 @@ def _subvol_py(P: np.ndarray) -> np.ndarray:
     out = []
     for i, p in enumerate(P, start=1):
         try:
-            xmin, xmax, ymin, ymax, zmin, zmax, nn = blocks.sub_volume_coordinates(
-                p[0:3],
-                chunk_size=p[3:6],
+            boxes = blocks.sub_volume_coordinates(
+                axes.from_yxz(p[0:3]),
+                chunk_size=axes.from_yxz(p[3:6]),
                 overlap_size=p[6],
                 max_sub_volume=p[7],
                 use_good_num=bool(p[8]),
             )
-            out.append(np.concatenate([[i, nn], xmin, xmax, ymin, ymax, zmin, zmax]))
+            m = bbox_.boxes_to_matlab(boxes)  # [ymin xmin zmin ymax xmax zmax]
+            out.append(
+                np.concatenate(
+                    [[i, m.shape[0]], m[:, 1], m[:, 4], m[:, 0], m[:, 3], m[:, 2], m[:, 5]]
+                )
+            )
         except (ValueError, IndexError):
             out.append(np.array([i, -1]))
     return np.concatenate(out).astype(np.float64)
@@ -1134,17 +1151,23 @@ def _bbox_blocks_py(P: np.ndarray) -> np.ndarray:
     out = []
     for i, p in enumerate(P, start=1):
         try:
-            s = blocks.bbox_to_blocks(p[0:6], p[6:9], p[9:12], p[12:15], p[15:18])
+            s = blocks.bbox_to_blocks(
+                bbox_.box_from_matlab(p[0:6]),
+                np.asarray(axes.from_yxz(p[6:9])) - 1,
+                axes.from_yxz(p[9:12]),
+                axes.from_yxz(p[12:15]),
+                axes.from_yxz(p[15:18]),
+            )
             out.append(
                 np.concatenate(
                     [
                         [i, s.block_sub.shape[0]],
-                        s.block_sub.ravel(order="F"),
-                        s.block_ind,
-                        s.b_coords.ravel(order="F"),
-                        s.w_coords.ravel(order="F"),
-                        s.bbox_coords.ravel(order="F"),
-                        s.b_sub_size,
+                        (s.block_sub[:, [1, 2, 0]] + 1).ravel(order="F"),
+                        s.block_ind + 1,
+                        bbox_.boxes_to_matlab(s.b_coords).ravel(order="F"),
+                        bbox_.boxes_to_matlab(s.w_coords).ravel(order="F"),
+                        bbox_.boxes_to_matlab(s.bbox_coords).ravel(order="F"),
+                        axes.to_yxz(np.asarray(s.b_sub_size)),
                     ]
                 )
             )
@@ -1272,6 +1295,108 @@ case(
         "A2",
     ],
 )
+
+# -- F12: the mapping between MATLAB's arrays and ours ----------------------------------------
+# Inputs are MATLAB-form arrays (NumPy shape = MATLAB size); the Python side maps them with
+# core.arrays and, where the result is one of our arrays, maps it back for the comparison.
+
+F12_CLASSES = (
+    "double",
+    "single",
+    "int8",
+    "uint8",
+    "int16",
+    "uint16",
+    "int32",
+    "uint32",
+    "int64",
+    "uint64",
+    "logical",
+)
+F12_SHAPES = {
+    "2d": (5, 7),
+    "3d": (4, 5, 3),
+    "4d": (3, 4, 2, 3),
+    "5d": (2, 3, 4, 2, 2),
+    "3d_y1": (1, 5, 3),
+    "3d_x1": (4, 1, 3),
+}
+
+
+def f12_array(cls: str, shape, seed: int) -> np.ndarray:
+    """A MATLAB-form array of a class from the bit-stable stream (distinct values)."""
+    n = int(np.prod(shape))
+    r = _gen.raw(seed, n)
+    if cls == "logical":
+        a = (r & np.uint64(1)).astype(bool)
+    elif cls in ("double", "single"):
+        a = ((r >> np.uint64(11)).astype(np.float64) * 2.0**-53 * 200 - 100).astype(cls)
+    else:
+        # the stream's bytes as values of the class (little-endian), the first n of them
+        a = np.frombuffer(r.astype("<u8").tobytes(), dtype=np.dtype(cls).newbyteorder("<"))[
+            :n
+        ].astype(cls)
+    return np.asarray(a).reshape(shape, order="F")
+
+
+for _cls in F12_CLASSES:
+    for _nd, _shape in F12_SHAPES.items():
+        if _nd.startswith("3d_") and _cls != "double":
+            continue
+        _mk = lambda c=_cls, sh=_shape: f12_array(c, sh, SEED + 20)
+        case(
+            f"f12.permute.{_cls}.{_nd}",
+            "out = permute(a, [ndims(a):-1:3, 1, 2]);",
+            lambda a: arrays.from_matlab(a),
+            a=_mk,
+        )
+    case(
+        f"f12.colon.{_cls}",
+        "out = a(:);",
+        lambda a: arrays.matlab_order(arrays.from_matlab(a)).reshape(-1),
+        a=(lambda c=_cls: f12_array(c, F12_SHAPES["4d"], SEED + 21)),
+    )
+
+F12_PAIRS = [
+    ((4, 5, 3), (4, 5)),
+    ((4, 5, 3), (4, 1)),
+    ((4, 5, 3), (1, 5)),
+    ((4, 5, 3), (1, 1, 3)),
+    ((4, 5, 3), (1, 5, 3)),
+    ((4, 5, 3), (4, 1, 3)),
+    ((4, 1, 3), (1, 5)),
+    ((4, 5, 3, 2), (4, 5)),
+    ((4, 5, 3, 2), (1, 1, 3, 2)),
+    ((4, 5, 3, 2), (1, 1, 1, 2)),
+    ((4, 1), (1, 5)),
+    ((1, 1, 3), (4, 5)),
+]
+for _k, (_sa, _sb) in enumerate(F12_PAIRS):
+    _ma = lambda sh=_sa: f12_array("double", sh, SEED + 22)
+    _mb = lambda sh=_sb: f12_array("double", sh, SEED + 23)
+    case(
+        f"f12.broadcast.{_k:02d}.plus",
+        "out = pkpy_f02_arith(a, b, 'plus');",
+        lambda a, b: arrays.to_matlab(dtypes.plus(arrays.from_matlab(a), arrays.from_matlab(b))),
+        a=_ma,
+        b=_mb,
+    )
+    case(
+        f"f12.broadcast.{_k:02d}.numpy_times",
+        "out = a .* b;",
+        lambda a, b: arrays.to_matlab(arrays.from_matlab(a) * arrays.from_matlab(b)),
+        a=_ma,
+        b=_mb,
+    )
+for _k in (0, 3, 7):
+    _sa, _sb = F12_PAIRS[_k]
+    case(
+        f"f12.broadcast.{_k:02d}.single_double",
+        "out = pkpy_f02_arith(a, b, 'times');",
+        lambda a, b: arrays.to_matlab(dtypes.times(arrays.from_matlab(a), arrays.from_matlab(b))),
+        a=(lambda sh=_sa: f12_array("single", sh, SEED + 24)),
+        b=(lambda sh=_sb: f12_array("double", sh, SEED + 25)),
+    )
 
 CASE_IDS = [c.id for c in CASES]
 assert len(set(CASE_IDS)) == len(CASE_IDS), "duplicate case ids"

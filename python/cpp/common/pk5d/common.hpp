@@ -1,6 +1,7 @@
 // Helpers shared by the kernel groups: array types, thread counts, binding registration.
 //
-// Kernels take (y, x, z) Fortran-ordered arrays, check class and layout at the binding,
+// Kernels take (z, y, x) C-contiguous arrays (cvolume, cimage: x fastest, as in a tiff page;
+// see python/docs/conventions.md), check class and layout at the binding,
 // release the interpreter lock around their loops and take the thread count as an argument
 // (never omp_set_num_threads: no global state). Array arguments are bound with
 // nb::arg("name").noconvert(): without it nanobind silently copies an array of another
@@ -37,13 +38,22 @@ namespace pk5d {
 
 namespace nb = nanobind;
 
-// Fortran-ordered CPU arrays: a volume (y, x, z), an image (y, x), a vector
+// C-contiguous CPU arrays, the convention: a volume (nz, ny, nx), an image (ny, nx), a vector.
+// Element (z, y, x) of a cvolume v is v.data()[x + nx * (y + ny * z)] (v.shape(0) is nz);
+// MATLAB's linear index of the same voxel is y + ny * (x + nx * z).
+template <typename T>
+using cvolume = nb::ndarray<T, nb::ndim<3>, nb::c_contig, nb::device::cpu>;
+template <typename T>
+using cimage = nb::ndarray<T, nb::ndim<2>, nb::c_contig, nb::device::cpu>;
+template <typename T>
+using vector1d = nb::ndarray<T, nb::ndim<1>, nb::c_contig, nb::device::cpu>;
+
+// Fortran-ordered arrays in MATLAB's layout (y, x, z): kept only until the last module has moved
+// to cvolume / cimage; new code does not use them.
 template <typename T>
 using fvolume = nb::ndarray<T, nb::ndim<3>, nb::f_contig, nb::device::cpu>;
 template <typename T>
 using fimage = nb::ndarray<T, nb::ndim<2>, nb::f_contig, nb::device::cpu>;
-template <typename T>
-using vector1d = nb::ndarray<T, nb::ndim<1>, nb::c_contig, nb::device::cpu>;
 
 // CPUs this process may run on: the affinity mask (Slurm's -c, taskset, cgroup cpusets).
 // cgroup CPU quotas are applied on the Python side (petakit5d.core).

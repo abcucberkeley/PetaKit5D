@@ -2,9 +2,12 @@
 
 Submodules, each importable on its own (``from petakit5d.core import bbox``):
 
-- ``arrays``: (y, x, z) Fortran-ordered volumes, MATLAB size rules, class names, permutations
+- ``arrays``: ``(z, y, x)`` C-ordered volumes and the mapping to and from MATLAB's arrays,
+  MATLAB's size rules on MATLAB-form values, class names
 - ``dtypes``: MATLAB's class conversions, rounding, integer-class and single/double arithmetic
-- ``bbox``: MATLAB boxes ``[ymin, xmin, zmin, ymax, xmax, zmax]`` (1-based, inclusive) and slices
+- ``bbox``: boxes ``(z0, y0, x0, z1, y1, x1)`` and ranges ``(start, stop)`` (0-based,
+  end-exclusive) and their MATLAB forms
+- ``axes``: per-axis vectors in ``(z, y, x)``, MATLAB dimensions and NumPy axes, axis strings
 - ``blocks``: batch and block coordinates of the large-file paths
 - ``text``: ``sprintf``, ``num2str``, ``mat2str``, ``str2double`` as MATLAB formats and parses
 - ``jsonenc``: ``jsonencode`` as MATLAB writes it
@@ -21,8 +24,13 @@ _EXPORTS = {
     # arrays
     "as_volume": "arrays",
     "check_volume": "arrays",
-    "fzeros": "arrays",
-    "fempty": "arrays",
+    "from_matlab": "arrays",
+    "to_matlab": "arrays",
+    "matlab_order": "arrays",
+    "size_to_matlab": "arrays",
+    "size_from_matlab": "arrays",
+    "matlab_index_to_zyx": "arrays",
+    "zyx_to_matlab_index": "arrays",
     "msize": "arrays",
     "mndims": "arrays",
     "mnumel": "arrays",
@@ -46,13 +54,24 @@ _EXPORTS = {
     "EPS": "dtypes",
     "NAN": "dtypes",
     # boxes and blocks
-    "bbox_to_slices": "bbox",
-    "slices_to_bbox": "bbox",
-    "bbox_size": "bbox",
-    "full_bbox": "bbox",
-    "check_bbox": "bbox",
-    "clamp_bbox": "bbox",
+    "box_from_matlab": "bbox",
+    "box_to_matlab": "bbox",
+    "range_from_matlab": "bbox",
+    "range_to_matlab": "bbox",
+    "box_slices": "bbox",
+    "box_shape": "bbox",
+    "full_box": "bbox",
+    "check_box": "bbox",
+    "clamp_box": "bbox",
+    "intersect_boxes": "bbox",
+    "pad_widths": "bbox",
     "crop": "bbox",
+    "from_yxz": "axes",
+    "to_yxz": "axes",
+    "from_xyz": "axes",
+    "to_xyz": "axes",
+    "dim_to_axis": "axes",
+    "axis_to_dim": "axes",
     "zarr_chunk_coordinates": "blocks",
     "sub_volume_coordinates": "blocks",
     "bbox_to_blocks": "blocks",
@@ -86,6 +105,7 @@ _SUBMODULES = (
     "arrays",
     "dtypes",
     "bbox",
+    "axes",
     "blocks",
     "text",
     "jsonenc",

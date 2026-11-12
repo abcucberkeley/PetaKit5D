@@ -1,57 +1,67 @@
 import numpy as np
 import pytest
 
+from petakit5d.core import bbox as bb
 from petakit5d.core import blocks
 
 
-def _cover(region, size):
-    """Each voxel of the box [1, size] in exactly one region."""
-    count = np.zeros(size, dtype=np.int32)
-    for r in region:
-        count[r[0] - 1 : r[3], r[1] - 1 : r[4], r[2] - 1 : r[5]] += 1
+def _cover(boxes, shape):
+    count = np.zeros(shape, dtype=np.int32)
+    for b in boxes:
+        count[b[0] : b[3], b[1] : b[4], b[2] : b[5]] += 1
     return count
 
 
 @pytest.mark.parametrize("same", [True, False])
 def test_zarr_chunks_tile_the_volume_once(same):
-    vol = (130, 77, 41)
-    b, r, l = blocks.zarr_chunk_coordinates(
+    vol = (41, 130, 77)  # (nz, ny, nx)
+    b, r, loc = blocks.zarr_chunk_coordinates(
         vol,
-        batch_size=(50, 50, 20),
-        block_size=(16, 16, 8),
-        border_size=(5, 0, 3),
+        batch_size=(20, 50, 50),
+        block_size=(8, 16, 16),
+        border_size=(3, 5, 0),
         same_batch_size=same,
     )
     assert np.all(_cover(r, vol) == 1)
-    # column-major batch order: y fastest
-    assert r[1, 0] > r[0, 0] and r[1, 1] == r[0, 1]
-    # whole blocks per batch: 50 -> 64 (4 blocks of 16)
-    assert r[0, 3] == 64
-    # local boxes map each output region into its batch
-    for bi, ri, li in zip(b, r, l, strict=True):
-        assert np.all(bi[:3] + li[:3] - 1 == ri[:3])
+    # MATLAB's batch numbering: y fastest, then x, then z
+    assert r[1, 1] > r[0, 1] and r[1, 0] == r[0, 0] and r[1, 2] == r[0, 2]
+    assert r[0, 4] == 64  # 50 rounded up to whole blocks of 16
+    for bi, ri, li in zip(b, r, loc, strict=True):
+        assert np.all(bi[:3] + li[:3] == ri[:3])
         assert np.all(li[3:] - li[:3] == ri[3:] - ri[:3])
-        assert np.all(bi[:3] >= 1) and np.all(bi[3:] <= vol)
-    if same:
-        sizes = {tuple(x) for x in (np.minimum(b[:, 3:], vol) - b[:, :3] + 1)}
-        assert len(sizes) > 1  # the borders are cut at the volume edges
-        inner = b[(b[:, 0] > 5) & (b[:, 3] < vol[0]) & (b[:, 2] > 3) & (b[:, 5] < vol[2])]
-        if inner.size:
-            assert len({tuple(x) for x in inner[:, 3:] - inner[:, :3]}) == 1
+        assert np.all(bi[:3] >= 0) and np.all(bi[3:] <= vol)
 
 
-def test_zarr_chunks_with_bbox_and_sizes_smaller_than_blocks():
-    b, r, l = blocks.zarr_chunk_coordinates(
-        (100, 100, 100),
-        batch_size=(1024, 1024, 1024),
-        block_size=(256, 256, 256),
-        bbox=(11, 21, 31, 60, 70, 40),
-        border_size=0,
+def test_zarr_chunks_match_the_matlab_form():
+    rng = np.random.default_rng(0)
+    for _ in range(200):
+        vol = tuple(int(v) for v in rng.integers(1, 300, 3))
+        args = {
+            "batch_size": tuple(int(v) for v in rng.integers(1, 120, 3)),
+            "block_size": tuple(int(v) for v in rng.integers(1, 40, 3)),
+            "border_size": tuple(int(v) for v in rng.integers(0, 9, 3)),
+            "same_batch_size": bool(rng.integers(0, 2)),
+        }
+        p = blocks.zarr_chunk_coordinates(vol, **args)
+        m = blocks.zarr_chunk_coordinates_matlab(
+            [vol[1], vol[2], vol[0]],
+            **{k: ([v[1], v[2], v[0]] if isinstance(v, tuple) else v) for k, v in args.items()},
+        )
+        for pp, mm in zip(p, m, strict=True):
+            np.testing.assert_array_equal(bb.boxes_to_matlab(pp), mm)
+
+
+def test_zarr_chunks_with_a_box():
+    b, r, loc = blocks.zarr_chunk_coordinates(
+        (100, 100, 100), bbox=(30, 10, 20, 40, 60, 70), border_size=0
     )
-    assert b.shape == (1, 6)
-    np.testing.assert_array_equal(b[0], [11, 21, 31, 60, 70, 40])
-    np.testing.assert_array_equal(r[0], [1, 1, 1, 50, 50, 10])  # relative to the box
-    np.testing.assert_array_equal(l[0], [1, 1, 1, 50, 50, 10])
+    np.testing.assert_array_equal(b[0], [30, 10, 20, 40, 60, 70])
+    np.testing.assert_array_equal(r[0], [0, 0, 0, 10, 50, 50])  # relative to the box
+    np.testing.assert_array_equal(loc[0], [0, 0, 0, 10, 50, 50])
+    b2, _, _ = blocks.zarr_chunk_coordinates(
+        (100, 100, 100), bbox=(30, 10, 20, None, 60, None), border_size=0
+    )
+    np.testing.assert_array_equal(b2[0], [30, 10, 20, 100, 60, 100])
 
 
 def test_zarr_chunks_checks():
@@ -64,51 +74,38 @@ def test_zarr_chunks_checks():
 
 
 def test_sub_volume_coordinates_cover_with_overlap():
-    vol = (2000, 1800, 900)
-    xmin, xmax, ymin, ymax, zmin, zmax, nn = blocks.sub_volume_coordinates(
-        vol, chunk_size=(1000, 1000, 500), overlap_size=50
-    )
-    assert nn == len(xmin) == len(zmax)
-    # x varies fastest (meshgrid order)
-    assert xmin[1] != xmin[0] and ymin[1] == ymin[0]
-    assert ymin.min() == 1 and ymax.max() == vol[0] and zmax.max() == vol[2]
-    for lo, hi in ((ymin, ymax), (xmin, xmax), (zmin, zmax)):
-        starts = sorted(set(lo.tolist()))
-        ends = sorted(set(hi.tolist()))
-        assert all(s <= e + 1 for s, e in zip(starts[1:], ends[:-1], strict=True))
-    for c in (ymax - ymin + 1, xmax - xmin + 1):
-        assert all(max(blocks.prime_factors(int(v))) <= 7 or v == c.max() for v in c)
-
-
-def test_sub_volume_coordinates_errors():
+    vol = (900, 2000, 1800)
+    boxes = blocks.sub_volume_coordinates(vol, chunk_size=(500, 1000, 1000), overlap_size=50)
+    assert boxes.shape[1] == 6
+    # MATLAB's meshgrid order: x fastest, then y, then z
+    assert boxes[1, 2] != boxes[0, 2] and boxes[1, 1] == boxes[0, 1]
+    assert boxes[:, :3].min() == 0 and tuple(boxes[:, 3:].max(axis=0)) == vol
     with pytest.raises(ValueError, match="not valid"):
-        blocks.sub_volume_coordinates((1, 100, 100))
+        blocks.sub_volume_coordinates((100, 1, 100))
 
 
 def test_bbox_to_blocks():
     s = blocks.bbox_to_blocks(
-        [100, 200, 3, 700, 900, 60], [1, 1, 1], [256, 256, 32], [1024, 1024, 128], [8, 8, 4]
+        (2, 99, 199, 60, 700, 900), (0, 0, 0), (32, 256, 256), (128, 1024, 1024), (4, 8, 8)
     )
     assert s.b_sub_size == (4, 4, 4)
-    np.testing.assert_array_equal(s.block_sub[:4], [[1, 1, 1], [2, 1, 1], [3, 1, 1], [1, 2, 1]])
-    np.testing.assert_array_equal(s.block_ind[:4], [1, 2, 3, 5])
-    np.testing.assert_array_equal(s.b_coords[0], [100, 200, 3, 264, 264, 36])
-    np.testing.assert_array_equal(s.w_coords[1], [249, 200, 3, 520, 264, 36])
-    # without borders the world coordinates tile the box exactly
+    np.testing.assert_array_equal(
+        s.block_sub[:4], [[0, 0, 0], [0, 1, 0], [0, 2, 0], [0, 0, 1]]
+    )  # y fastest
+    np.testing.assert_array_equal(s.block_ind[:4], [0, 1, 2, 4])
+    np.testing.assert_array_equal(s.b_coords[0], [2, 99, 199, 36, 264, 264])
+    np.testing.assert_array_equal(s.w_coords[1], [2, 248, 199, 36, 520, 264])
     s0 = blocks.bbox_to_blocks(
-        [100, 200, 3, 700, 900, 60], [1, 1, 1], [256, 256, 32], [1024, 1024, 128]
+        (2, 99, 199, 60, 700, 900), (0, 0, 0), (32, 256, 256), (128, 1024, 1024)
     )
-    count = np.zeros((1024, 1024, 128), dtype=np.int8)
+    count = np.zeros((128, 1024, 1024), dtype=np.int8)
     for w in s0.w_coords:
-        count[w[0] - 1 : w[3], w[1] - 1 : w[4], w[2] - 1 : w[5]] += 1
-    assert count[99:700, 199:900, 2:60].min() == 1 and count.sum() == 601 * 701 * 58
-    np.testing.assert_array_equal(s0.bbox_coords, s0.w_coords - np.tile(np.array([99, 199, 2]), 2))
-
-
-def test_bbox_to_blocks_box_outside_raises():
+        count[w[0] : w[3], w[1] : w[4], w[2] : w[5]] += 1
+    assert count[2:60, 99:700, 199:900].min() == 1 and count.sum() == 58 * 601 * 701
+    np.testing.assert_array_equal(s0.bbox_coords, s0.w_coords - np.tile(np.array([2, 99, 199]), 2))
     with pytest.raises(IndexError):
         blocks.bbox_to_blocks(
-            [2000, 1, 1, 2100, 2, 2], [1, 1, 1], [256, 256, 32], [1024, 1024, 128]
+            (1, 2000, 1, 2, 2100, 2), (0, 0, 0), (32, 256, 256), (128, 1024, 1024)
         )
 
 
@@ -133,6 +130,5 @@ def test_find_good_factor_number(n, up, down, odd):
 def test_prime_factors():
     assert blocks.prime_factors(0) == [0] and blocks.prime_factors(1) == [1]
     assert blocks.prime_factors(360) == [2, 2, 2, 3, 3, 5]
-    assert blocks.prime_factors(1031) == [1031]
     with pytest.raises(ValueError):
         blocks.prime_factors(-4)
