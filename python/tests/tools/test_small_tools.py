@@ -512,7 +512,7 @@ def test_data_size_with_several_steps():
 
 
 def test_single_steps_as_the_callers_pass_them(tmp_path):
-    from petakit5d.testing.synth import write_tiff
+    from petakit5d.testing.synth import write_tiff_matlab as write_tiff
 
     sz = (301, 64, 48)
     raw = 64 * 48 * 301 * 4 / GB
@@ -552,7 +552,7 @@ def test_estimate_errors_as_matlab():
 
 
 def test_estimate_reads_the_size_of_the_file(tmp_path):
-    from petakit5d.testing.synth import write_tiff
+    from petakit5d.testing.synth import write_tiff_matlab as write_tiff
 
     f = tmp_path / "a.tif"
     write_tiff(f, np.zeros((4, 5, 3), dtype=np.uint16, order="F"))
@@ -676,7 +676,7 @@ def group_matlab(*args):
 
 def tiff_writer(shape, dtype=np.uint16):
     def make(path):
-        from petakit5d.testing.synth import write_tiff
+        from petakit5d.testing.synth import write_tiff_matlab as write_tiff
 
         write_tiff(path, np.zeros(shape, dtype=dtype, order="F"))
 
@@ -705,7 +705,7 @@ def make_zarr(folder: Path, shape, dtype="<u2"):
 
 
 def make_parts_tree(d: Path):
-    from petakit5d.testing.synth import write_tiff
+    from petakit5d.testing.synth import write_tiff_matlab as write_tiff
 
     sizes = {
         "a.tif": (10, 12, 3),
@@ -723,14 +723,14 @@ def make_parts_tree(d: Path):
 
 
 def make_plain_tree(d: Path):
-    from petakit5d.testing.synth import write_tiff
+    from petakit5d.testing.synth import write_tiff_matlab as write_tiff
 
     for n, s in {"x.tif": (6, 6, 2), "y.tif": (6, 6, 3)}.items():
         write_tiff(d / n, np.ones(s, dtype=np.uint8, order="F"))
 
 
 def make_channel_tree(d: Path):
-    from petakit5d.testing.synth import write_tiff
+    from petakit5d.testing.synth import write_tiff_matlab as write_tiff
 
     for n in [
         "s_CamA_ch0_Iter_0000_t.tif",
@@ -766,7 +766,7 @@ SPECIAL_LIST = [Work(f"p/{n}") for n in SPECIAL_NAMES]
 
 
 def make_special_tree(d: Path):
-    from petakit5d.testing.synth import write_tiff
+    from petakit5d.testing.synth import write_tiff_matlab as write_tiff
 
     for i, n in enumerate(SPECIAL_NAMES):
         write_tiff(d / n, np.zeros((4, 5, i + 1), dtype=np.uint16, order="F"))

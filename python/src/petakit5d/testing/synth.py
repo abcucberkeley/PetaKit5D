@@ -11,10 +11,18 @@ writeStitchTiles, centroid(s), the tests' randomImage) with random numbers of ou
   built from them. NumPy's and the C library's exp/log/sin/cos differ between platforms and
   SIMD paths in the last bit; NumPy's sums change order with its version.
 
-Arrays are MATLAB's: volumes ``(y, x, z)``, Fortran order, positions 1-based ``[y, x, z]``;
-random arrays are filled in column-major (MATLAB linear index) order. MATLAB never draws these
-numbers itself: oracle cases hand it the arrays (or the files written here), so both sides
-read the same bytes.
+Arrays are the port's (docs/conventions.md): volumes ``(z, y, x)`` C-ordered, images
+``(y, x)``; sizes, positions, sigmas and offsets in ``(z, y, x)``, positions and offsets
+0-based. Random arrays are filled in MATLAB's linear order (y fastest, then x, then z), so
+``core.arrays.to_matlab`` of any result is, bit for bit, the array these generators gave in
+MATLAB's ``(y, x, z)`` form before the convention change: stored input hashes stay valid.
+MATLAB never draws these numbers itself: oracle cases hand it the arrays (``to_matlab``) or the
+files written here, so both sides read the same data.
+
+Files: tiff as cpp-tiff writes a ``(z, y, x)`` array (unchanged on disk); zarr native
+(``(z, y, x)``, C order) by default, or in MATLAB's layout (``(y, x, z)``, F order) on request,
+for MATLAB and for the tests of MATLAB-layout reading. ``write_paired_inputs`` writes one
+volume for both sides of a benchmark (each reads its own layout).
 """
 
 from __future__ import annotations
@@ -24,7 +32,7 @@ import math
 import os
 from collections.abc import Sequence
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 
 import numpy as np
 
@@ -41,11 +49,15 @@ __all__ = [
     "stable_exp",
     "stable_log",
     "stable_sincos_2pi",
+    "PairedInput",
     "stitch_tile_name",
     "texture",
+    "write_paired_inputs",
     "write_stitch_tiles",
     "write_tiff",
+    "write_tiff_matlab",
     "write_zarr",
+    "write_zarr_matlab",
 ]
 
 # ------------------------------------------------------------------------------------------
@@ -98,7 +110,10 @@ class CounterRNG:
     4 uint32 words: 4 ``uint32``/``uniform(float32)``/``integers`` values, or 2
     ``uniform(float64)``/``normal`` values. A call uses whole blocks from the current position
     (``position``, in blocks) and moves it on; ``at(block)`` returns a copy at another
-    position. Arrays are filled in column-major order (MATLAB's linear index), Fortran-ordered.
+    position. Shapes are the port's (``(z, y, x)``, ``(y, x)``, leading extra axes); arrays are
+    C-ordered and filled in MATLAB's linear order (y fastest, then x, then z, then the leading
+    axes): value k of the call sits at MATLAB linear index k, so ``to_matlab`` of the result is
+    the column-major fill of MATLAB's size.
     """
 
     def __init__(self, seed: int = 0, stream: int | str = 0, position: int = 0):
@@ -139,7 +154,11 @@ class CounterRNG:
 
     @staticmethod
     def _shape(flat: np.ndarray, shape: tuple[int, ...]) -> np.ndarray:
-        return np.asfortranarray(flat.reshape(shape, order="F"))
+        if len(shape) < 2:
+            return np.ascontiguousarray(flat.reshape(shape))
+        # MATLAB's linear order is the C order of the (..., x, y) view
+        swapped = flat.reshape((*shape[:-2], shape[-1], shape[-2]))
+        return np.ascontiguousarray(np.swapaxes(swapped, -1, -2))
 
     def uint32(self, shape: int | Sequence[int]) -> np.ndarray:
         shape, n, nb = self._take(shape, 4)
@@ -293,11 +312,24 @@ def _round_half_away(x: np.ndarray) -> np.ndarray:
 # ------------------------------------------------------------------------------------------
 
 
-def _size3(sz: Sequence[int]) -> tuple[int, ...]:
+def _size(sz: Sequence[int]) -> tuple[int, ...]:
     sz = tuple(int(s) for s in sz)
     if len(sz) not in (2, 3) or any(s < 0 for s in sz):
-        raise ValueError("size: 2 or 3 non-negative values")
+        raise ValueError("size: (nz, ny, nx) or (ny, nx), non-negative")
     return sz
+
+
+def _sigma_z_yx(sigma: float | Sequence[float]) -> tuple[float, float]:
+    sg = np.asarray(sigma, dtype=np.float64).reshape(-1)
+    if sg.size == 1:
+        return float(sg[0]), float(sg[0])
+    if sg.size == 2:
+        return float(sg[0]), float(sg[1])
+    if sg.size == 3 and sg[1] == sg[2]:
+        return float(sg[0]), float(sg[1])
+    raise ValueError(
+        "sigma: a number, (sigma_z, sigma_yx), or (sigma_z, sigma_y, sigma_x) with equal y and x"
+    )
 
 
 def beads(
@@ -309,36 +341,39 @@ def beads(
 ) -> np.ndarray:
     """single precision volume of Gaussian spots (pktest.beads)
 
-    sz: [ny, nx, nz]. positions: #spots x 3, centers [y, x, z], 1-based, can be fractional.
-    sigma: scalar or [sigmaYX, sigmaZ] in voxels. amplitude: scalar or one per spot. Each spot
-    is computed in double and added in single, in the order of the rows, as MATLAB does.
+    sz: (nz, ny, nx), or (ny, nx) for an image. positions: #spots x 3, centers (z, y, x), or
+    #spots x 2 (y, x) for an image; 0-based (voxel i is at coordinate i), can be fractional.
+    sigma: a number or (sigma_z, sigma_yx) in voxels. amplitude: a number or one per spot. Each
+    spot is computed in double and added in single, in the order of the rows, as MATLAB does;
+    the value at a voxel is MATLAB's for the 1-based center position + 1.
     """
-    sz = _size3(sz)
-    if len(sz) == 2:
-        sz = (*sz, 1)
+    sz = _size(sz)
+    image = len(sz) == 2
+    shape = (1, *sz) if image else sz
     pos = np.atleast_2d(np.asarray(positions, dtype=np.float64))
     if pos.size == 0:
-        pos = pos.reshape(0, 3)
+        pos = pos.reshape(0, 2 if image else 3)
+    if image and pos.shape[1] == 2:
+        pos = np.concatenate([np.zeros((pos.shape[0], 1)), pos], axis=1)
     if pos.shape[1] != 3:
-        raise ValueError("positions: #spots x 3")
-    sg = np.asarray(sigma, dtype=np.float64).reshape(-1)
-    if sg.size == 1:
-        sg = np.repeat(sg, 2)
+        raise ValueError("positions: #spots x 3 (z, y, x), or #spots x 2 (y, x) for an image")
+    s_z, s_yx = _sigma_z_yx(sigma)
     amp = np.broadcast_to(np.asarray(amplitude, dtype=np.float64).reshape(-1), (pos.shape[0],))
-    y = np.arange(1, sz[0] + 1, dtype=np.float64)[:, None, None]
-    x = np.arange(1, sz[1] + 1, dtype=np.float64)[None, :, None]
-    z = np.arange(1, sz[2] + 1, dtype=np.float64)[None, None, :]
-    vol = np.asfortranarray(np.zeros(sz, dtype=np.float32) + np.float32(background))
-    d1 = 2.0 * (sg[0] * sg[0])
-    d2 = 2.0 * (sg[1] * sg[1])
+    z = np.arange(shape[0], dtype=np.float64)[:, None, None]
+    y = np.arange(shape[1], dtype=np.float64)[None, :, None]
+    x = np.arange(shape[2], dtype=np.float64)[None, None, :]
+    vol = np.zeros(shape, dtype=np.float32) + np.float32(background)
+    d1 = 2.0 * (s_yx * s_yx)
+    d2 = 2.0 * (s_z * s_z)
     for i in range(pos.shape[0]):
         p = pos[i]
-        dy = y - p[0]
-        dx = x - p[1]
-        dz = z - p[2]
+        # i - p rounds as MATLAB's (i + 1) - (p + 1): the same real number
+        dz = z - p[0]
+        dy = y - p[1]
+        dx = x - p[2]
         arg = (-(dy * dy + dx * dx)) / d1 - (dz * dz) / d2
         vol = vol + (amp[i] * stable_exp(arg)).astype(np.float32)
-    return np.asfortranarray(vol)
+    return np.ascontiguousarray(vol[0] if image else vol)
 
 
 def _gaussian_kernel(sigma: float) -> np.ndarray:
@@ -351,14 +386,22 @@ def _gaussian_kernel(sigma: float) -> np.ndarray:
     return w / total
 
 
+def _matlab_dim_axes(ndim: int) -> list[int]:
+    # MATLAB's dimensions 1, 2, 3, ... (y, x, z, ...) as axes of our array
+    if ndim < 2:
+        return list(range(ndim))
+    return [ndim - 2, ndim - 1, *range(ndim - 3, -1, -1)]
+
+
 def gaussian_filter(vol: np.ndarray, sigma: float) -> np.ndarray:
     """separable Gaussian smoothing in float64 with replicated borders and the kernel size of
-    imgaussfilt/imgaussfilt3 (2 ceil(2 sigma) + 1), taps summed in a fixed order. The same
-    bits everywhere, not MATLAB's bits."""
+    imgaussfilt/imgaussfilt3 (2 ceil(2 sigma) + 1), taps summed in a fixed order, passes along
+    y, then x, then z (MATLAB's dimension order). The same bits everywhere, not MATLAB's bits.
+    """
     a = np.asarray(vol, dtype=np.float64)
     w = _gaussian_kernel(float(sigma))
     half = (w.size - 1) // 2
-    for ax in range(a.ndim):
+    for ax in _matlab_dim_axes(a.ndim):
         n = a.shape[ax]
         if n == 1:
             continue
@@ -370,7 +413,7 @@ def gaussian_filter(vol: np.ndarray, sigma: float) -> np.ndarray:
             sl[ax] = slice(k, k + n)
             out = out + w[k] * p[tuple(sl)]
         a = out
-    return np.asfortranarray(a)
+    return np.ascontiguousarray(a)
 
 
 def texture(
@@ -380,33 +423,30 @@ def texture(
     rng: CounterRNG | None = None,
 ) -> np.ndarray:
     """smooth random texture in single (pktest.texture): normal noise, Gaussian smoothing (2D
-    for a 2-element size or nz == 1), scaled to int_range. rng: default CounterRNG(0) (the
-    MATLAB tests seed rng(0) for every test)."""
-    sz = _size3(sz)
+    for an image size (ny, nx) or nz == 1), scaled to int_range. sz: (nz, ny, nx) or (ny, nx).
+    rng: default CounterRNG(0) (the MATLAB tests seed rng(0) for every test)."""
+    sz = _size(sz)
     rng = CounterRNG(0) if rng is None else rng
-    vol = rng.normal(sz)
-    if len(sz) == 2 or sz[2] == 1:
-        vol = gaussian_filter(vol.reshape(sz[:2], order="F"), sigma).reshape(sz, order="F")
-    else:
-        vol = gaussian_filter(vol, sigma)
+    vol = gaussian_filter(rng.normal(sz), sigma)
     lo, hi = vol.min(), vol.max()
     vol = (vol - lo) / (hi - lo)
     r0, r1 = float(int_range[0]), float(int_range[1])
-    return np.asfortranarray((r0 + vol * (r1 - r0)).astype(np.float32))
+    return np.ascontiguousarray((r0 + vol * (r1 - r0)).astype(np.float32))
 
 
 def decon_psf(
     sz: Sequence[int] = (31, 31, 31),
-    sigma: Sequence[float] = (1.5, 2.0),
+    sigma: Sequence[float] = (2.0, 1.5),
     amplitude: float = 10000.0,
 ) -> np.ndarray:
-    """single Gaussian PSF with its peak at the FFT center floor(sz / 2) + 1 (1-based), the
-    first and last 5 z slices zero (pktest.deconPSF)"""
-    sz = _size3(sz)
-    center = [s // 2 + 1 for s in sz]
-    psf = beads(sz, [center], sigma, amplitude, 0.0)
-    psf[:, :, :5] = 0
-    psf[:, :, max(psf.shape[2] - 5, 0) :] = 0
+    """single Gaussian PSF (z, y, x) with its peak at the FFT center sz // 2 (0-based), the
+    first and last 5 z slices zero (pktest.deconPSF). sigma: (sigma_z, sigma_yx)."""
+    sz = _size(sz)
+    if len(sz) != 3:
+        raise ValueError("decon_psf: size (nz, ny, nx)")
+    psf = beads(sz, [[s // 2 for s in sz]], sigma, amplitude, 0.0)
+    psf[:5] = 0
+    psf[max(psf.shape[0] - 5, 0) :] = 0
     return psf
 
 
@@ -422,7 +462,8 @@ _INT_MAX = {
 
 def random_image(sz: Sequence[int], dtype: Any, rng: CounterRNG | None = None) -> np.ndarray:
     """the MATLAB tests' randomImage: logical rand > 0.5; single/double randn * 1000 (cast);
-    integer classes randi(intmax) (1 .. intmax). MATLAB class names or NumPy dtypes."""
+    integer classes randi(intmax) (1 .. intmax). MATLAB class names or NumPy dtypes. sz in
+    the port's order ((nz, ny, nx), (ny, nx), leading extra axes)."""
     rng = CounterRNG(0) if rng is None else rng
     name = {"logical": "bool", "single": "float32", "double": "float64"}.get(str(dtype), None)
     dt = np.dtype(name if name else dtype)
@@ -430,7 +471,7 @@ def random_image(sz: Sequence[int], dtype: Any, rng: CounterRNG | None = None) -
     if dt == np.bool_:
         return rng.uniform(sz) > 0.5
     if dt.kind == "f":
-        return np.asfortranarray((rng.normal(sz) * 1000.0).astype(dt))
+        return np.ascontiguousarray((rng.normal(sz) * 1000.0).astype(dt))
     key = dt.name
     if key not in _INT_MAX:
         raise TypeError(f"random_image: no {dt}")
@@ -438,28 +479,30 @@ def random_image(sz: Sequence[int], dtype: Any, rng: CounterRNG | None = None) -
 
 
 def centroid(vol: np.ndarray, center: Sequence[float], radius: int) -> np.ndarray:
-    """intensity weighted centroid [y, x, z] (1-based) of the spot near center, from the
-    voxels of a cube of half width radius around round(center), minus the window's minimum
-    (pktest.centroid). Sums in float64 with math.fsum (exact, order-free)."""
-    c = _round_half_away(np.asarray(center, dtype=np.float64)).astype(np.int64)
-    shp = np.asarray(vol.shape[:3] + (1,) * (3 - min(vol.ndim, 3)))[:3]
-    lo = np.maximum(c - radius, 1)
-    hi = np.minimum(c + radius, shp)
+    """intensity weighted centroid (z, y, x), 0-based, of the spot near center (z, y, x), from
+    the voxels of a cube of half width radius around round(center), minus the window's minimum
+    (pktest.centroid). An image (y, x) is a volume with one z plane. Sums in float64 with
+    math.fsum (exact, order-free)."""
     v = np.asarray(vol)
     if v.ndim == 2:
-        v = v[:, :, None]
-    win = v[lo[0] - 1 : hi[0], lo[1] - 1 : hi[1], lo[2] - 1 : hi[2]].astype(np.float64)
+        v = v[None]
+    c = np.asarray(center, dtype=np.float64).reshape(-1)
+    if c.size == 2:
+        c = np.concatenate([[0.0], c])
+    # MATLAB rounds the 1-based center
+    c = (_round_half_away(c + 1.0) - 1.0).astype(np.int64)
+    lo = np.maximum(c - radius, 0)
+    hi = np.minimum(c + radius + 1, v.shape)
+    win = v[lo[0] : hi[0], lo[1] : hi[1], lo[2] : hi[2]].astype(np.float64)
     win = win - win.min()
-    g = np.meshgrid(
-        *(np.arange(lo[i], hi[i] + 1, dtype=np.float64) for i in range(3)), indexing="ij"
-    )
-    w = win.reshape(-1, order="F")
+    g = np.meshgrid(*(np.arange(lo[i], hi[i], dtype=np.float64) for i in range(3)), indexing="ij")
+    w = win.reshape(-1)
     total = math.fsum(w.tolist())
-    return np.array([math.fsum((gi.reshape(-1, order="F") * w).tolist()) / total for gi in g])
+    return np.array([math.fsum((gi.reshape(-1) * w).tolist()) / total for gi in g])
 
 
 def centroids(vol: np.ndarray, positions: Any, radius: int) -> np.ndarray:
-    """centroids (#spots x 3) of the spots near positions (pktest.centroids)"""
+    """centroids (#spots x 3, (z, y, x), 0-based) of the spots near positions (pktest.centroids)"""
     pos = np.atleast_2d(np.asarray(positions, dtype=np.float64))
     return np.array([centroid(vol, p, radius) for p in pos]).reshape(-1, 3)
 
@@ -470,30 +513,100 @@ def centroids(vol: np.ndarray, positions: Any, radius: int) -> np.ndarray:
 
 
 def write_tiff(path: str | os.PathLike, vol: np.ndarray) -> None:
-    """write a (y, x[, z]) array as a tiff, one page per z slice (MATLAB's writetiff layout)"""
+    """write a (z, y, x) volume (one page per z plane) or a (y, x) image as a tiff; the file is
+    the one MATLAB's writetiff makes of the same data"""
     import cpptiff
 
-    a = np.asarray(vol)
-    data = a if a.ndim == 2 else np.transpose(a, (2, 0, 1))
-    cpptiff.write_tiff(os.fspath(path), np.ascontiguousarray(data), num_threads=1)
+    cpptiff.write_tiff(os.fspath(path), np.ascontiguousarray(vol), num_threads=1)
+
+
+def write_tiff_matlab(path: str | os.PathLike, vol_yxz: np.ndarray) -> None:
+    """write_tiff of an array in MATLAB's form ((y, x, z) or (y, x))"""
+    from petakit5d.core.arrays import from_matlab
+
+    write_tiff(path, from_matlab(vol_yxz))
+
+
+ZARR_LAYOUTS = ("native", "matlab")
 
 
 def write_zarr(
-    path: str | os.PathLike, vol: np.ndarray, block_size: Sequence[int] = (32, 32, 32)
+    path: str | os.PathLike,
+    vol: np.ndarray,
+    block_size: Sequence[int] = (32, 32, 32),
+    layout: str = "native",
 ) -> None:
-    """write a (y, x, z) array as a Zarr v2 array in F order (MATLAB's writezarr layout)"""
+    """write a (z, y, x) volume (or a (y, x) image) as a Zarr v2 array.
+
+    layout 'native': the port's layout (shape (nz, ny, nx), order C, chunks block_size).
+    'matlab': MATLAB's writezarr layout of the same data (shape (ny, nx, nz), order F, chunks
+    block_size in (y, x, z)). block_size is (z, y, x) ((y, x) for an image) either way.
+    """
     import cppzarr
 
-    a = np.asfortranarray(vol)
-    cppzarr.write_zarr(
-        os.fspath(path), a, chunks=[int(b) for b in block_size][: a.ndim], order="F", num_threads=1
-    )
+    if layout not in ZARR_LAYOUTS:
+        raise ValueError(f"layout: one of {ZARR_LAYOUTS}")
+    a = np.ascontiguousarray(vol)
+    block = [int(b) for b in block_size][-a.ndim :] if a.ndim else []
+    if layout == "matlab":
+        from petakit5d.core.arrays import to_matlab
+
+        chunks = block[-2:] + block[-3::-1] if a.ndim >= 2 else block
+        cppzarr.write_zarr(os.fspath(path), to_matlab(a), chunks=chunks, order="F", num_threads=1)
+    else:
+        cppzarr.write_zarr(os.fspath(path), a, chunks=block, order="C", num_threads=1)
+
+
+def write_zarr_matlab(
+    path: str | os.PathLike, vol_yxz: np.ndarray, block_size_yxz: Sequence[int] = (32, 32, 32)
+) -> None:
+    """write an array in MATLAB's form ((y, x, z), chunks (y, x, z)) as MATLAB's writezarr does"""
+    import cppzarr
+
+    a = np.asfortranarray(vol_yxz)
+    chunks = [int(b) for b in block_size_yxz][: a.ndim]
+    cppzarr.write_zarr(os.fspath(path), a, chunks=chunks, order="F", num_threads=1)
+
+
+class PairedInput(NamedTuple):
+    """one benchmark or oracle input for both sides: the path MATLAB reads and the path the
+    port reads (the same file for tiff)"""
+
+    matlab: str
+    python: str
+
+
+def write_paired_inputs(
+    folder: str | os.PathLike,
+    name: str,
+    vol: np.ndarray,
+    fmt: str = "zarr",
+    block_size: Sequence[int] = (32, 32, 32),
+) -> PairedInput:
+    """write a (z, y, x) volume once per side, each in its own layout: a tiff is shared
+    (<folder>/<name>.tif); a zarr is MATLAB's layout in <folder>/matlab/<name>.zarr and native
+    in <folder>/python/<name>.zarr (same name, same data, chunks block_size in (z, y, x)).
+    Paths use '/' separators."""
+    base = os.fspath(folder).replace("\\", "/").rstrip("/")
+    if fmt == "tif":
+        p = f"{base}/{name}.tif"
+        write_tiff(p, vol)
+        return PairedInput(p, p)
+    if fmt != "zarr":
+        raise ValueError("fmt: 'tif' or 'zarr'")
+    out = {}
+    for side, layout in (("matlab", "matlab"), ("python", "native")):
+        Path(base, side).mkdir(parents=True, exist_ok=True)
+        out[side] = f"{base}/{side}/{name}.zarr"
+        write_zarr(out[side], vol, block_size, layout)
+    return PairedInput(out["matlab"], out["python"])
 
 
 def stitch_tile_name(
     idx: Sequence[int], cam: str = "A", iter: int = 0, ch: int = 0, laser: int = 488
 ) -> str:
-    """the LLSM style tile name of pktest.writeStitchTiles (without extension); idx is [x, y, z]"""
+    """the LLSM style tile name of pktest.writeStitchTiles (without extension); idx is the tile
+    index (x, y, z), by name as in the file names"""
     cam_str = f"_Cam{cam}" if cam else ""
     x, y, z = (int(v) for v in idx)
     return (
@@ -517,17 +630,21 @@ def write_stitch_tiles(
     image_list: str = "ImageList.csv",
     tile_dir: str = "",
     save_format: str = "tif",
+    zarr_layout: str = "native",
 ) -> tuple[list[str], str]:
     """write tiles and add them to the stitching image list (pktest.writeStitchTiles)
 
-    tiles: dicts with 'im' (the tile), 'idx' ([x, y, z] tile indices for the name) and 'xyz'
-    (stage coordinates in um). Rows are appended to an existing image list. The list always
-    names .tif files. Returns the tile names (no extension) and the image list path (with the
-    data path as given, '/' separated).
+    tiles: dicts with 'im' (the tile, (z, y, x)), 'idx' ((x, y, z) tile indices for the name)
+    and 'xyz' (stage coordinates in um, x, y, z). Rows are appended to an existing image list.
+    The list always names .tif files. zarr tiles are native, or MATLAB's layout with
+    zarr_layout='matlab' (chunks 32 x 32 x 32 either way). Returns the tile names (no
+    extension) and the image list path (with the data path as given, '/' separated).
     """
     fmt = save_format.lower()
     if fmt not in ("tif", "zarr"):
         raise ValueError("save_format: 'tif' or 'zarr'")
+    if zarr_layout not in ZARR_LAYOUTS:
+        raise ValueError(f"zarr_layout: one of {ZARR_LAYOUTS}")
     base = os.fspath(data_path)
     out = Path(base, tile_dir) if tile_dir else Path(base)
     out.mkdir(parents=True, exist_ok=True)
@@ -537,7 +654,7 @@ def write_stitch_tiles(
         if fmt == "tif":
             write_tiff(out / f"{fsn}.tif", t["im"])
         else:
-            write_zarr(out / f"{fsn}.zarr", t["im"])
+            write_zarr(out / f"{fsn}.zarr", t["im"], (32, 32, 32), zarr_layout)
         names.append(fsn)
         rows.append(",".join([f"{fsn}.tif", *(_csv_number(v) for v in t["xyz"])]))
     list_path = base + image_list if base.endswith(("/", "\\")) else os.path.join(base, image_list)
@@ -560,15 +677,20 @@ def cut_tiles(
     stage_xyz: Any = None,
     tile_idx: Any = None,
 ) -> list[dict]:
-    """tiles of tile_size ([y, x, z]) at 0-based voxel offsets starts ([y0, x0, z0] per row) of
-    a ground truth volume (StitchingTest.cutTiles). Stage coordinates default to the offsets
-    times the voxel sizes ([y, x, z] sizes), in [x, y, z] order; tile indices [x, y, z] to the
-    rank of each offset among the distinct offsets of its axis."""
+    """tiles of tile_size (z, y, x) at 0-based voxel offsets starts ((z0, y0, x0) per row) of a
+    ground truth volume (z, y, x) (StitchingTest.cutTiles); for an image (y, x), offsets and
+    sizes (y, x). Stage coordinates default to the offsets times the voxel sizes (pixel_sizes
+    in (z, y, x)), in x, y, z order as in the image list; tile indices (x, y, z) to the rank of
+    each offset among the distinct offsets of its axis."""
     st = np.atleast_2d(np.asarray(starts, dtype=np.int64))
+    if st.shape[1] == 2:
+        st = np.concatenate([np.zeros((st.shape[0], 1), np.int64), st], axis=1)
     ps = np.asarray(pixel_sizes, dtype=np.float64)
-    xyz_starts = st[:, [1, 0, 2]]
+    if ps.size == 2:
+        ps = np.concatenate([[ps[0]], ps])
+    xyz_starts = st[:, [2, 1, 0]]
     if stage_xyz is None:
-        stage = xyz_starts.astype(np.float64) * ps[[1, 0, 2]]
+        stage = xyz_starts.astype(np.float64) * ps[[2, 1, 0]]
     else:
         stage = np.atleast_2d(np.asarray(stage_xyz, dtype=np.float64))
     if tile_idx is None:
@@ -578,16 +700,18 @@ def cut_tiles(
     else:
         tidx = np.atleast_2d(np.asarray(tile_idx, dtype=np.int64))
     ts = [int(v) for v in tile_size]
+    if len(ts) == 2:
+        ts = [1, *ts]
     tiles = []
     for i in range(st.shape[0]):
         s = st[i]
         if gt.ndim == 2:
-            im = gt[s[0] : s[0] + ts[0], s[1] : s[1] + ts[1]]
+            im = gt[s[1] : s[1] + ts[1], s[2] : s[2] + ts[2]]
         else:
             im = gt[s[0] : s[0] + ts[0], s[1] : s[1] + ts[1], s[2] : s[2] + ts[2]]
         tiles.append(
             {
-                "im": np.asfortranarray(im),
+                "im": np.ascontiguousarray(im),
                 "idx": [int(v) for v in tidx[i]],
                 "xyz": [float(v) for v in stage[i]],
             }

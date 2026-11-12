@@ -385,7 +385,7 @@ def _tiffs(folder: Path, names, shape=(4, 6, 3), dtype=np.uint16) -> None:
 
     for i, n in enumerate(names):
         z = shape[2] + (i % 2)
-        synth.write_tiff(folder / n, np.zeros((shape[0], shape[1], z), dtype))
+        synth.write_tiff_matlab(folder / n, np.zeros((shape[0], shape[1], z), dtype))
 
 
 def make_dataset(root: Path) -> None:
@@ -408,7 +408,9 @@ def make_dataset(root: Path) -> None:
     from petakit5d.testing import synth
 
     for i in range(2):
-        synth.write_zarr(zr / (tile("A", 0, y=i) + ".zarr"), np.zeros((5, 4, 3 + i), np.uint16))
+        synth.write_zarr_matlab(
+            zr / (tile("A", 0, y=i) + ".zarr"), np.zeros((5, 4, 3 + i), np.uint16)
+        )
     # setting files next to the images (the stage line only: see test_settings.py)
     s = root / "set"
     s.mkdir()

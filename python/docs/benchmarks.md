@@ -31,6 +31,28 @@ speed gate checked.
   commit and a hash of uncommitted changes, every process's marks, exit status, peak memory
   (max RSS of the process and the processes it waited for), CPU time and log.
 
+## Inputs: each side reads its own layout
+
+The port's arrays are `(z, y, x)` C-ordered and its zarr files native (shape `[nz, ny, nx]`,
+`"order": "C"`); MATLAB's are `(y, x, z)` Fortran-ordered and its zarr files `[ny, nx, nz]`,
+`"order": "F"`. A comparison gives each side the same data in its own layout:
+
+- **Tiff** inputs are shared: the file is the same for both.
+- **Zarr** inputs are written twice from one `(z, y, x)` volume by
+  `petakit5d.testing.synth.write_paired_inputs(folder, name, vol, 'zarr', block_size)` (the
+  `paired_input` fixture in tests): `<folder>/matlab/<name>.zarr` in MATLAB's layout for the
+  MATLAB variant and `<folder>/python/<name>.zarr` native for the Python variant, same name,
+  same data, chunks `block_size` in `(z, y, x)` (MATLAB's file has them in `(y, x, z)`).
+- **Reading MATLAB-layout zarr** in the port (one transposing pass) is a separate case: it is
+  benchmarked and reported apart (its own op names, e.g. `zarr_read_matlab_layout`), never as
+  the Python side of a MATLAB comparison.
+- In-memory inputs of a Python benchmark are `(z, y, x)` C arrays (`np.zeros(shape)`); a
+  MATLAB variant makes or reads its own.
+
+The self-check (`self_check.py`) times an FFT pair and a C-order copy of a `(z, y, x)` volume
+of the same size (it timed a copy into `(y, x, z)` order before the convention change, so its
+history starts again at `copy_c_order`).
+
 ## Process costs: start-up and teardown apart from the work
 
 Each process gets `PK5D_BENCH_FILE`, a JSON-lines file for marks and timings. The harness
@@ -123,7 +145,7 @@ from petakit5d.testing.bench import mark, record, timeit
 import numpy as np
 
 mark("ready")
-x = np.zeros((512, 512, 500), np.float32, order="F")
+x = np.zeros((500, 512, 512), np.float32)  # (z, y, x)
 for t in (1, 4, 24):
     record("sum", timeit(lambda t=t: x.sum(), repeats=3), threads=t)
 ```

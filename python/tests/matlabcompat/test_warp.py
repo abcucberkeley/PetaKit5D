@@ -144,8 +144,9 @@ def _volume(size_yxz, cls, seed, kind="texture"):
 
     def make():
         rng = CounterRNG(seed, f"warp/{cls}/{kind}/{size_yxz}")
+        shape = arrays.size_from_matlab(size_yxz)  # the generators take (z, y, x)
         if kind == "texture":
-            t = texture(size_yxz, 2.0, (100.0, 4000.0), rng).astype(np.float64)
+            t = _to_matlab(texture(shape, 2.0, (100.0, 4000.0), rng)).astype(np.float64)
             if cls == "single":
                 v = t.astype(np.float32)
             elif cls == "double":
@@ -158,10 +159,10 @@ def _volume(size_yxz, cls, seed, kind="texture"):
                 v = (t * 16.0).astype(np.uint16)
         else:
             if cls in ("single", "double"):
-                v = (rng.normal(size_yxz) * 1000.0).astype(_CLS[cls])
+                v = _to_matlab((rng.normal(shape) * 1000.0).astype(_CLS[cls]))
             else:
                 info = np.iinfo(_CLS[cls])
-                v = rng.integers(info.min, info.max, size_yxz, dtype=_CLS[cls])
+                v = _to_matlab(rng.integers(info.min, info.max, shape, dtype=_CLS[cls]))
         return np.asfortranarray(v)
 
     return Value(make)
@@ -514,7 +515,8 @@ def _edges():
 
 
 def _nan_volume():
-    v = np.asfortranarray((CounterRNG(13, "warp/nan").normal((8, 9, 7)) * 100.0).astype(np.float32))
+    shape = arrays.size_from_matlab((8, 9, 7))  # MATLAB's 8 x 9 x 7
+    v = _to_matlab((CounterRNG(13, "warp/nan").normal(shape) * 100.0).astype(np.float32))
     v[3, 4, 2] = np.float32(np.nan)
     v[0, 0, 0] = -np.float32(np.nan)
     return v

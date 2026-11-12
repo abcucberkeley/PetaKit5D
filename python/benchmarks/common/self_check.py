@@ -1,7 +1,7 @@
 """The harness against itself: the same build as two variants (``self_check.json``) must agree
 within 3%. Each process times, after one warm-up call, an FFT pair of the port
-(petakit5d.matlabcompat fftn and ifftn) and a copy of a volume into (y, x, z) order at the
-given thread counts.
+(petakit5d.matlabcompat fftn and ifftn) at the given thread counts and a C-order copy of a
+(z, y, x) volume of the same size.
 
     python self_check.py [--size 256 256 256] [--threads 1 4 24] [--repeats 5]
 """
@@ -30,4 +30,4 @@ for t in a.threads:
         size="x".join(map(str, a.size)),
     )
 c = np.ascontiguousarray(x)
-record("copy_to_fortran", timeit(lambda: np.asfortranarray(c), repeats=a.repeats), threads=1)
+record("copy_c_order", timeit(lambda: c.copy(order="C"), repeats=a.repeats), threads=1)

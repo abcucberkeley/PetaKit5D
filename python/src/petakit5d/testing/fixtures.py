@@ -12,7 +12,10 @@ pk_temp_folder``). Nothing here imports NumPy or the package's areas at import t
     restore_cwd      restores the current folder after the test
     require_gpu      skips the test without a usable GPU (same rule as the `gpu` marker)
     demo_data        the demo data folder (PETAKIT5D_DEMO_DATA), or skips
-    write_volume     writes an array as .tif or .zarr into the test's folder, returns the path
+    write_volume     writes a (z, y, x) array as .tif or .zarr (native or MATLAB's layout) into
+                     the test's folder, returns the path
+    zarr_layout      parametrized over 'native' and 'matlab' (the two zarr layouts)
+    paired_input     writes one volume for both sides: tiff shared, zarr in each side's layout
 """
 
 from __future__ import annotations
@@ -131,18 +134,46 @@ def demo_data() -> Path:
 
 @pytest.fixture
 def write_volume(pk_temp_folder: str) -> Callable[..., str]:
-    """write_volume(name, vol, fmt='tif', block_size=(32, 32, 32)) writes vol into the test's
-    folder (name without extension) and returns the path as a '/' separated str"""
+    """write_volume(name, vol, fmt='tif', block_size=(32, 32, 32), layout='native') writes a
+    (z, y, x) volume into the test's folder (name without extension; a zarr native, or in
+    MATLAB's layout with layout='matlab'; block_size in (z, y, x)) and returns the path as a
+    '/' separated str"""
     from petakit5d.testing import synth
 
-    def write(name: str, vol: Any, fmt: str = "tif", block_size: Any = (32, 32, 32)) -> str:
+    def write(
+        name: str,
+        vol: Any,
+        fmt: str = "tif",
+        block_size: Any = (32, 32, 32),
+        layout: str = "native",
+    ) -> str:
         path = f"{pk_temp_folder}{name}.{fmt}"
         if fmt == "tif":
             synth.write_tiff(path, vol)
         elif fmt == "zarr":
-            synth.write_zarr(path, vol, block_size)
+            synth.write_zarr(path, vol, block_size, layout)
         else:
             raise ValueError("fmt: 'tif' or 'zarr'")
         return path
+
+    return write
+
+
+@pytest.fixture(params=("native", "matlab"), ids=lambda s: f"zarr_{s}")
+def zarr_layout(request: pytest.FixtureRequest) -> str:
+    """each zarr layout in turn, 'native' (the port's) and 'matlab' (MATLAB's writezarr): for
+    the tests that read both"""
+    return request.param
+
+
+@pytest.fixture
+def paired_input(pk_temp_folder: str) -> Callable[..., Any]:
+    """paired_input(name, vol, fmt='zarr', block_size=(32, 32, 32)) writes a (z, y, x) volume
+    for both sides (synth.write_paired_inputs: a tiff shared; a zarr in MATLAB's layout for
+    MATLAB and native for the port) and returns its PairedInput(matlab=..., python=...)"""
+    from petakit5d.testing import synth
+
+    def write(name: str, vol: Any, fmt: str = "zarr", block_size: Any = (32, 32, 32)) -> Any:
+        return synth.write_paired_inputs(pk_temp_folder, name, vol, fmt, block_size)
 
     return write
