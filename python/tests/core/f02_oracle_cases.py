@@ -116,6 +116,63 @@ for _src in _gen.INT_CLASSES:
             a=_vals,
         )
 
+
+def int64_single_ties(cls: str) -> np.ndarray:
+    """64-bit integers at and next to single's rounding ties above 2^53 (K08's case
+    2^53 + 2^29 + 1 among them), where rounding through double and rounding once differ."""
+    top = 64 if cls == "uint64" else 63
+    v = set()
+    for e in range(53, top):
+        ulp = 1 << (e - 23)  # single's spacing in [2^e, 2^(e+1))
+        for m in (0, 1, 2, 5, (1 << 23) - 1):
+            mid = (1 << e) + m * ulp + ulp // 2
+            for d in (-3, -2, -1, 0, 1, 2, 3, 1 << (e - 53), -(1 << (e - 53)), 1 << (e - 52)):
+                x = mid + d
+                if 0 < x < (1 << top):
+                    v.add(x)
+    vals = sorted(v)
+    if cls == "int64":
+        vals = vals + [-x for x in vals]
+    return np.array(vals, dtype=object).astype(cls)
+
+
+for _src in ("int64", "uint64"):
+    _ties = lambda s=_src: int64_single_ties(s)
+    case(
+        f"conv.{_src}.single.ties_direct",
+        "out = pkpy_f02_conv(a, 'single');",
+        lambda a: dtypes.to_class(a, "single"),
+        a=_ties,
+    )
+    case(
+        f"conv.{_src}.single.ties_cast",
+        "out = cast(a, 'single');",
+        lambda a: dtypes.cast(a, "single"),
+        a=_ties,
+    )
+    case(
+        f"conv.{_src}.single.ties_scalars",
+        "out = arrayfun(@(v) pkpy_f02_conv(v, 'single'), a);",
+        lambda a: np.array(
+            [dtypes.to_class(v, "single", scalar_fast=True) for v in a], dtype=np.float32
+        ),
+        a=_ties,
+    )
+    case(
+        f"conv.{_src}.single.ties_eval_anon",
+        "out = arrayfun(@(v) single(v), a);",
+        lambda a: np.array(
+            [dtypes.to_class(v, "single", scalar_fast=True) for v in a], dtype=np.float32
+        ),
+        a=_ties,
+    )
+    case(
+        f"conv.{_src}.double.ties_direct",
+        "out = pkpy_f02_conv(a, 'double');",
+        lambda a: dtypes.to_class(a, "double"),
+        a=_ties,
+    )
+
 # -- integer arithmetic ------------------------------------------------------------------------
 
 OPS = ("plus", "minus", "times", "rdivide")

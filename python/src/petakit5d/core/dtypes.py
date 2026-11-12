@@ -14,6 +14,7 @@ docs/conventions.md for the measurements behind each rule):
   ``floor(|x| + 0.5)`` in single precision, so ``0.49999997`` (the single below 0.5) gives 1
   (``-1`` for the signed classes) where ``cast`` gives 0. A scalar rounds exactly, unless it is
   the argument of a function file whose size MATLAB doesn't know there (``scalar_fast=True``).
+  ``single(x)`` of int64 and uint64 rounds through double (twice), where ``cast`` rounds once.
 - ``plus``, ``minus``, ``times``, ``rdivide``, ``ldivide``, ``uminus``: MATLAB's ``+ - .* ./ .\\``
   on arrays in our layout, with NumPy's broadcasting (MATLAB's implicit expansion under the
   mapping of ``core.arrays``).
@@ -193,6 +194,10 @@ def _convert(x, cls: str, fast_path: bool, scalar_fast: bool = False):
         return (a != 0) if kind != "b" else a.copy()
     if cls in ("double", "single"):
         with np.errstate(over="ignore", invalid="ignore"):
+            if fast_path and cls == "single" and a.dtype in (np.int64, np.uint64):
+                # MATLAB's single() of a 64-bit integer rounds through double (twice); cast()
+                # rounds once: int64(2^53 + 2^29 + 1) is 2^53 here, 2^53 + 2^30 with cast
+                return a.astype(np.float64).astype(np.float32)
             return a.astype(dt)
     # integer target
     if kind == "b":

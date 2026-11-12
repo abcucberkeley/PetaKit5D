@@ -139,7 +139,11 @@ matches the MATLAB code for scalars.
   `uint16(floor(x + 0.5))` everywhere. No other single value and no double value differs (the
   sum `|x| + 0.5` is exact for every other value that does not saturate in these classes).
 - `logical(x)`: nonzero is true; NaN raises (`MATLAB:nologicalnan`). `single(x)` and
-  `double(x)` round to nearest (beyond the single range: Inf).
+  `double(x)` round to nearest (beyond the single range: Inf). **`single(x)` of int64 and uint64
+  rounds twice**, to double and then to single (`dtypes.single`, `to_class`): `single(int64(2^53 +
+  2^29 + 1))` is 2^53, where `cast(x, 'single')` rounds once and gives 2^53 + 2^30. Measured on
+  arrays and on scalars passed to a function file or an `eval`'d anonymous function; `double(x)`
+  rounds once.
 - `dtypes.mround` is `round`: half away from zero, class kept, and `-0` kept (`round(-0.3)` is
   `-0`).
 

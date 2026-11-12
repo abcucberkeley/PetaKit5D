@@ -170,6 +170,21 @@ def test_int64_quirk_with_the_double_below_minus_a_half():
     assert dtypes.minus(np.int64(5), 0.5) == 5 and dtypes.plus(np.int64(5), PRED_HALF_D) == 5
 
 
+def test_single_of_64_bit_integers_rounds_through_double():
+    # K08: MATLAB's single(x) of int64/uint64 rounds twice (to double, then to single); cast once
+    x = np.array([2**53 + 2**29 + 1, 1], dtype=np.int64)
+    assert int(dtypes.single(x)[0]) == 2**53
+    assert int(dtypes.to_class(x, "single")[0]) == 2**53
+    assert int(dtypes.cast(x, "single")[0]) == 2**53 + 2**30
+    assert int(dtypes.to_class(x[:1], "single")[0]) == 2**53  # scalars too (both forms measured)
+    u = np.array([2**63 + 2**39 + 1, 2**64 - 1], dtype=np.uint64)
+    np.testing.assert_array_equal(dtypes.single(u), u.astype(np.float64).astype(np.float32))
+    assert dtypes.cast(u, "single")[0] == np.float32(2**63 + 2**40)
+    assert dtypes.double(x)[0] == float(2**53 + 2**29)  # double rounds once, as MATLAB
+    i32 = np.array([2**31 - 1, -(2**31) + 1], dtype=np.int32)  # exact in double: no difference
+    np.testing.assert_array_equal(dtypes.single(i32), dtypes.cast(i32, "single"))
+
+
 def test_nan_constant_and_payloads():
     assert np.float64(dtypes.NAN).view(np.uint64) == 0xFFF8000000000000
     payload = np.array([0x7F9C5817], dtype=np.uint32).view(np.float32)  # a signalling NaN

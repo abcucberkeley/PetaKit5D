@@ -2058,6 +2058,17 @@
 1
 ]
 },
+"conv.int64.double.ties_direct": {
+"class": "double",
+"kind": "array",
+"numel": 950,
+"oracle": "PetaKit5D_7ed28c0",
+"sha256": "4ace06c3f0e5175853348e71b01fd70d748d91af48291acece6bde0852be35fc",
+"size": [
+950,
+1
+]
+},
 "conv.int64.int16.direct": {
 "class": "int16",
 "kind": "array",
@@ -2115,6 +2126,50 @@
 "sha256": "e3f4a5c23d8b0e925c06f9f291fb645b9cabebf6dfd0da649edc509b65203ae2",
 "size": [
 20025,
+1
+]
+},
+"conv.int64.single.ties_cast": {
+"class": "single",
+"kind": "array",
+"numel": 950,
+"oracle": "PetaKit5D_7ed28c0",
+"sha256": "bccd830414150136a587ae1e583259916b1eb20901dc1959b2df11bf8a6ce5e6",
+"size": [
+950,
+1
+]
+},
+"conv.int64.single.ties_direct": {
+"class": "single",
+"kind": "array",
+"numel": 950,
+"oracle": "PetaKit5D_7ed28c0",
+"sha256": "5f2db7c2bc081efed19a33974e3087d5828bdfaaad9feb694c8b042fb117bd88",
+"size": [
+950,
+1
+]
+},
+"conv.int64.single.ties_eval_anon": {
+"class": "single",
+"kind": "array",
+"numel": 950,
+"oracle": "PetaKit5D_7ed28c0",
+"sha256": "5f2db7c2bc081efed19a33974e3087d5828bdfaaad9feb694c8b042fb117bd88",
+"size": [
+950,
+1
+]
+},
+"conv.int64.single.ties_scalars": {
+"class": "single",
+"kind": "array",
+"numel": 950,
+"oracle": "PetaKit5D_7ed28c0",
+"sha256": "5f2db7c2bc081efed19a33974e3087d5828bdfaaad9feb694c8b042fb117bd88",
+"size": [
+950,
 1
 ]
 },
@@ -2808,6 +2863,17 @@
 1
 ]
 },
+"conv.uint64.double.ties_direct": {
+"class": "double",
+"kind": "array",
+"numel": 525,
+"oracle": "PetaKit5D_7ed28c0",
+"sha256": "c610f58a9fd5537fe4f2e64774735344d400551bcb96e770cfa089d7e8c7dcbd",
+"size": [
+525,
+1
+]
+},
 "conv.uint64.int16.direct": {
 "class": "int16",
 "kind": "array",
@@ -2865,6 +2931,50 @@
 "sha256": "411388b2a31b6f824356d131d32926cf11cd309a42f1b7e123956f3846feb2a9",
 "size": [
 20017,
+1
+]
+},
+"conv.uint64.single.ties_cast": {
+"class": "single",
+"kind": "array",
+"numel": 525,
+"oracle": "PetaKit5D_7ed28c0",
+"sha256": "5239630ba719d4d274156d445f7a1e910199b4505816b61f3e775b49c8629a03",
+"size": [
+525,
+1
+]
+},
+"conv.uint64.single.ties_direct": {
+"class": "single",
+"kind": "array",
+"numel": 525,
+"oracle": "PetaKit5D_7ed28c0",
+"sha256": "99dd1eeecf4badc9a5b85bac04516d9caccd5328991273b50e8d0ddd2cef2235",
+"size": [
+525,
+1
+]
+},
+"conv.uint64.single.ties_eval_anon": {
+"class": "single",
+"kind": "array",
+"numel": 525,
+"oracle": "PetaKit5D_7ed28c0",
+"sha256": "99dd1eeecf4badc9a5b85bac04516d9caccd5328991273b50e8d0ddd2cef2235",
+"size": [
+525,
+1
+]
+},
+"conv.uint64.single.ties_scalars": {
+"class": "single",
+"kind": "array",
+"numel": 525,
+"oracle": "PetaKit5D_7ed28c0",
+"sha256": "99dd1eeecf4badc9a5b85bac04516d9caccd5328991273b50e8d0ddd2cef2235",
+"size": [
+525,
 1
 ]
 },
