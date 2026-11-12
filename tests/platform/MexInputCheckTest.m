@@ -264,17 +264,18 @@ classdef MexInputCheckTest < pktest.TestCase
 
         function pointDetectionMexCheckTheirInputs(testCase)
             testCase.assumeMexAvailable('replace_nan_with_value', 'adtest_mex', 'compute_gradient_hessian_mex');
-            % replace_nan_with_value: the value is read as an element of the input's class
+            % replace_nan_with_value: the value in the input's class
             id = 'data:inputError';
             testCase.verifyRejects(@() replace_nan_with_value(single([1, 2])), 1, id, 'one input');
             testCase.verifyRejects(@() replace_nan_with_value(sparse([1, 0, NaN]), 0), 1, id, 'sparse input');
-            testCase.verifyRejects(@() replace_nan_with_value([1, NaN], single(0)), 1, id, 'single value for double input');
             testCase.verifyRejects(@() replace_nan_with_value([1, 2], []), 1, id, 'empty value');
             testCase.verifyRejects(@() replace_nan_with_value(single([1, NaN]), {0}), 1, id, 'cell value');
+            testCase.verifyRejects(@() replace_nan_with_value(single([1, NaN]), 1i), 1, id, 'complex value');
             testCase.verifyRejects(@() replace_nan_with_value(uint16([1, 2]), []), 1, 'data:TypeError', 'uint16 input');
             testCase.verifyEqual(replace_nan_with_value(single([1, NaN]), 0), single([1, 0]));
             testCase.verifyEqual(replace_nan_with_value([1, NaN], 5), [1, 5]);
             testCase.verifyEqual(replace_nan_with_value(single([1, NaN]), single(5)), single([1, 5]));
+            testCase.verifyEqual(replace_nan_with_value([1, NaN], single(5)), [1, 5]);
             % adtest_mex
             id = 'adtest_mex:inputError';
             x = sort(randn(50, 1));
@@ -298,6 +299,65 @@ classdef MexInputCheckTest < pktest.TestCase
             [g, h] = compute_gradient_hessian_mex(v, v, v, v, v, 1, 1);
             testCase.verifyEqual(size(g), [3, 1]);
             testCase.verifyEqual(size(h), [3, 3]);
+        end
+    end
+
+    methods (Test, TestTags = {'Unit'})
+        function replaceNanTakesADoubleValueForSingleInput(testCase)
+            % replace_nan_with_value read the value's first bytes as an
+            % element of the input's class, so a double value for single
+            % input gave the single of its low 4 bytes (0 for 5), and a
+            % single value for double input was rejected (where the mex isn't
+            % built, its MATLAB code runs)
+            testCase.verifyEqual(replace_nan_with_value(single([1, NaN]), 5), single([1, 5]));
+            testCase.verifyEqual(replace_nan_with_value(single([NaN, 2]), uint8(7)), single([7, 2]));
+            testCase.verifyEqual(replace_nan_with_value([1, NaN], single(5)), [1, 5]);
+        end
+
+        function singleVolumeGetsTheValueXRLocmax3dPasses(testCase)
+            % XR_locmax3d calls replace_nan_with_value(img, -1e8), so that
+            % NaNs are no local maxima; in a single volume they became 0
+            img = single(randn(7, 8, 5));
+            nans = rand(size(img)) < 0.2;
+            img(nans) = NaN;
+            expected = img;
+            expected(nans) = -1e8;
+            testCase.verifyEqual(replace_nan_with_value(img, -1e8), expected);
+        end
+
+        function replaceNanMatlabCodeMatchesTheMex(testCase)
+            % replace_nan_with_value.m, which runs where the mex isn't built
+            % (macOS), gives the results and errors of the mex (it runs here
+            % as a copy under another name, beside the mex where it is built)
+            src = fileread(which('replace_nan_with_value.m'));
+            folder = testCase.createTempFolder();
+            fid = fopen([folder, 'pktest_replace_nan.m'], 'w');
+            fprintf(fid, '%s', strrep(src, 'function [x] = replace_nan_with_value(', 'function [x] = pktest_replace_nan('));
+            fclose(fid);
+            testCase.applyFixture(matlab.unittest.fixtures.PathFixture(folder));
+            hasMex = exist('replace_nan_with_value', 'file') == 3;
+            cases = {single([1, NaN, -0, Inf]), 5; [NaN, 2; 3, NaN], -1e8; single(NaN(2, 2, 2)), uint8(7); ...
+                [1, NaN], single(5); single([1, NaN]), true; zeros(0, 3), 1; single([NaN, 1]), [2, 3]};
+            for i = 1 : size(cases, 1)
+                [x, v] = cases{i, :};
+                expected = x;
+                expected(isnan(x)) = cast(double(v(1)), class(x));
+                out = pktest_replace_nan(x, v);
+                testCase.verifyEqual(out, expected, sprintf('Case %d.', i));
+                if hasMex
+                    testCase.verifyEqual(out, replace_nan_with_value(x, v), sprintf('Case %d differs from the mex.', i));
+                end
+            end
+            rejects = {@() pktest_replace_nan(single([1, 2])), 1, 'data:inputError'
+                @() pktest_replace_nan(single([1, 2]), 0), 0, 'data:outputError'
+                @() pktest_replace_nan(uint16([1, 2]), 0), 1, 'data:TypeError'
+                @() pktest_replace_nan(sparse([1, 0, NaN]), 0), 1, 'data:inputError'
+                @() pktest_replace_nan([1, 2], []), 1, 'data:inputError'
+                @() pktest_replace_nan(single([1, NaN]), {0}), 1, 'data:inputError'
+                @() pktest_replace_nan(single([1, NaN]), 1i), 1, 'data:inputError'};
+            for i = 1 : size(rejects, 1)
+                testCase.verifyRejects(rejects{i, 1}, rejects{i, 2}, rejects{i, 3}, sprintf('Rejection %d.', i));
+            end
         end
     end
 

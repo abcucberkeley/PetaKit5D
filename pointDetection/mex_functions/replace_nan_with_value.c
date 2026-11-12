@@ -23,7 +23,7 @@
 void mexFunction( int nlhs, mxArray *plhs[],
                   int nrhs, const mxArray *prhs[])
 {
-    void *nan_mat, *nonnan_mat, *val;
+    void *nan_mat, *nonnan_mat;
     uint64_t nDims, n_element, i;
     mwSize *pDims;
 
@@ -39,7 +39,6 @@ void mexFunction( int nlhs, mxArray *plhs[],
 
     /*  create a pointer to the input matrix x */
     nan_mat = mxGetPr(prhs[0]);
-    val = mxGetPr(prhs[1]);
 
     /*  get the dimensions of the matrix input x */
     nDims = (uint64_t) mxGetNumberOfDimensions(prhs[0]);
@@ -56,13 +55,15 @@ void mexFunction( int nlhs, mxArray *plhs[],
 		    mexErrMsgIdAndTxt("data:TypeError", "Only single and double types are supported!\n");
 		    return;
 	}
-    /* a sparse array has only its nonzero values in memory; the value is read as an
-       element of the input's class, so it needs at least that many bytes */
+    /* a sparse array has only its nonzero values in memory */
     if(mxIsSparse(prhs[0]))
         mexErrMsgIdAndTxt("data:inputError", "The input must be a full array.");
-    if(!(mxIsNumeric(prhs[1]) || mxIsLogical(prhs[1])) || mxIsSparse(prhs[1])
-       || mxGetNumberOfElements(prhs[1]) * mxGetElementSize(prhs[1]) < mxGetElementSize(prhs[0]))
-        mexErrMsgIdAndTxt("data:inputError", "The value must be a full numeric scalar of the class of the input or double.");
+    if(!(mxIsNumeric(prhs[1]) || mxIsLogical(prhs[1])) || mxIsSparse(prhs[1]) || mxIsComplex(prhs[1])
+       || mxGetNumberOfElements(prhs[1]) < 1)
+        mexErrMsgIdAndTxt("data:inputError", "The value must be a full real numeric scalar.");
+    /* the value in the input's class (mxGetScalar converts any class to double) */
+    const double dval = mxGetScalar(prhs[1]);
+    const float fval = (float) dval;
 
     /*  set the output pointer to the output matrix */
     plhs[0] = mxCreateUninitNumericArray(nDims, pDims, mDType, mxREAL);
@@ -73,13 +74,13 @@ void mexFunction( int nlhs, mxArray *plhs[],
 	    switch (mDType){
 	        case mxSINGLE_CLASS:
 		        if (isnan(*((float*)(nan_mat) + i)))
-		            *((float*)nonnan_mat + i) = *((float*)val);
+		            *((float*)nonnan_mat + i) = fval;
 		        else
 		            *((float*)nonnan_mat + i) = *((float*)(nan_mat) + i);
 		        break;
 	        case mxDOUBLE_CLASS:
 		        if (isnan(*((double*)(nan_mat) + i)))
-		            *((double*)nonnan_mat + i) = *((double*)val);
+		            *((double*)nonnan_mat + i) = dval;
 		        else
 		            *((double*)nonnan_mat + i) = *((double*)(nan_mat) + i);
 		        break;
