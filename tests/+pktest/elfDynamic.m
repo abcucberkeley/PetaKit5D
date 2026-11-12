@@ -1,17 +1,23 @@
-function [symbolic, imports] = elfDynamic(fn)
+function [symbolic, imports, searchPaths, dynStrings] = elfDynamic(fn)
 % dynamic linking information of a 64-bit little-endian ELF file (Linux
 % mex or shared library), read from its section headers, so it works on
 % any OS.
 %
-% symbolic : true|false. It binds its own symbols first, before those of
-%            libraries loaded earlier (linked with -Bsymbolic: DT_SYMBOLIC,
-%            or DF_SYMBOLIC in DT_FLAGS).
-%  imports : cell array. Names of the symbols it takes from other
-%            libraries (undefined in its dynamic symbol table).
+%    symbolic : true|false. It binds its own symbols first, before those
+%               of libraries loaded earlier (linked with -Bsymbolic:
+%               DT_SYMBOLIC, or DF_SYMBOLIC in DT_FLAGS).
+%     imports : cell array. Names of the symbols it takes from other
+%               libraries (undefined in its dynamic symbol table).
+% searchPaths : cell array. The folders of its RPATH and RUNPATH
+%               (DT_RPATH, DT_RUNPATH).
+%  dynStrings : cell array. The strings of its dynamic string table,
+%               including any that nothing refers to.
 
 SHT_DYNAMIC = 6;
 SHT_DYNSYM = 11;
+DT_RPATH = 15;
 DT_SYMBOLIC = 16;
+DT_RUNPATH = 29;
 DT_FLAGS = 30;
 DF_SYMBOLIC = 2;
 
@@ -44,10 +50,21 @@ end
 
 symbolic = false;
 imports = {};
+searchPaths = {};
+dynStrings = {};
 for i = find(sections(:, 1) == SHT_DYNAMIC)'
     % entries of tag and value
     d = reshape(typecast(readSection(i), 'uint64'), 2, []);
     symbolic = symbolic || any(d(1, :) == DT_SYMBOLIC) || any(bitand(d(2, d(1, :) == DT_FLAGS), DF_SYMBOLIC));
+    % the string values of RPATH and RUNPATH are offsets into the string
+    % table the dynamic section links to
+    strs = readSection(sections(i, 4) + 1);
+    nuls = find(strs == 0);
+    for o = double(d(2, d(1, :) == DT_RPATH | d(1, :) == DT_RUNPATH))
+        searchPaths = [searchPaths, strsplit(char(strs(o + 1 : nuls(find(nuls > o, 1)) - 1)), ':')]; %#ok<AGROW>
+    end
+    parts = strsplit(char(strs), char(0));
+    dynStrings = [dynStrings, parts(~cellfun(@isempty, parts))]; %#ok<AGROW>
 end
 for i = find(sections(:, 1) == SHT_DYNSYM)'
     % 24-byte entries: name offset (uint32), info, other, section index
