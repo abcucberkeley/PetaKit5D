@@ -13,6 +13,7 @@ function XR_imaris_conversion_data_wrapper(dataPaths, varargin)
 %            zarrFile : true|false (default: false). Use Zarr file as input.
 %           blockSize : 1x3 vector (default: [64, 64, 64]). Block/chunk size for Imaris output.
 %           inputBbox : empty or 1x6 vector (default: []). Input bounding box for crop. Definiation: [ymin, xmin, zmin, ymax, xmax, zmax].
+%                       Zarr input only: the bundled converter crops tiff input wrong.
 %       converterPath : empty or char (default: ''). Converter binary path. If empty, use the default one within the software.
 %        parseCluster : true|false (default: true). Use slurm cluster for the processing.
 %       masterCompute : true|false (default: true). Master job node is involved in the processing.
@@ -112,6 +113,13 @@ if numel(overwrite) == 1
     overwrite = repmat(overwrite, 1, 2);
 end
 
+% the bundled Parallel_Imaris_Writer crops the output of tiff input but not
+% the tiff it reads, which scrambles the image
+if ~isempty(inputBbox) && ~zarrFile
+    error('XR_imaris_conversion_data_wrapper:bboxNeedsZarr', ['inputBbox works with zarr input only: the ' ...
+        'bundled converter crops tiff input wrong. Convert the tiff files to zarr first, then crop.']);
+end
+
 % check if a slurm-based computing cluster exists
 if parseCluster
     [parseCluster, job_log_fname, job_log_error_fname, slurm_constraint_str] = checkSlurmCluster(dataPath, jobLogDir);
@@ -195,7 +203,10 @@ blockSize_str = strrep(num2str(blockSize, '%d,'), ' ', '');
 
 bbox_str = '';
 if ~isempty(inputBbox)
-    bbox_str = sprintf('-B %s', strrep(num2str(inputBbox, '%d,'), ' ', ''));
+    % the converter's -B is 0-based and end-exclusive along the input's axes
+    % (y, x, z); inputBbox is 1-based and inclusive, so the crop started one
+    % row, column and slice late
+    bbox_str = sprintf('-B %s', strrep(num2str([inputBbox(1 : 3) - 1, inputBbox(4 : 6)], '%d,'), ' ', ''));
 end
 
 func_strs = cell(nd, 1);

@@ -68,6 +68,30 @@ classdef ImarisConversionTest < pktest.TestCase
             testCase.verifyEqual((extMax - extMin) ./ dims, testCase.PixelSizes, 'RelTol', 1e-6);
         end
 
+        function bboxCropsTheBoxOfTheDefinition(testCase)
+            % inputBbox is 1-based and inclusive, the converter's -B 0-based and
+            % end-exclusive: the crop started one row, column and slice late.
+            % The first voxel of the box holds the maximum of the crop; the
+            % voxels just before and just past the box hold larger values.
+            dataPath = testCase.createTempFolder();
+            bbox = [2, 3, 4, 11, 12, 13];
+            for c = {'CamA', 'CamB'}
+                im = uint16(100 + randi(100, testCase.ImSize));
+                im(bbox(1), bbox(2), bbox(3)) = 5000;
+                im(bbox(1) - 1, bbox(2) - 1, bbox(3) - 1) = 6000;
+                im(bbox(4) + 1, bbox(5) + 1, bbox(6) + 1) = 7000;
+                writezarr(im, [dataPath, sprintf(testCase.Fsn, 0, c{1}), '.zarr']);
+            end
+            XR_imaris_conversion_data_wrapper({dataPath}, 'channelPatterns', {'CamA', 'CamB'}, ...
+                'pixelSizes', testCase.PixelSizes, 'zarrFile', true, 'blockSize', [16, 16, 16], ...
+                'inputBbox', bbox, 'parseCluster', false, 'masterCompute', true, 'cpusPerTask', 2);
+            imsFn = [dataPath, 'imaris/', sprintf(testCase.Fsn, 0, 'CamA'), '.ims'];
+            testCase.assertTrue(exist(imsFn, 'file') == 2, 'The Imaris file was not written.');
+            g = '/DataSet/ResolutionLevel 0/TimePoint 0/Channel 0';
+            testCase.verifyEqual(str2double(char(h5readatt(imsFn, g, 'HistogramMax')')), 5000, ...
+                'The crop is not the box of inputBbox (1-based, inclusive).');
+        end
+
         function zarrInput(testCase)
             dataPath = testCase.createTempFolder();
             for c = {'CamA', 'CamB'}
@@ -97,22 +121,35 @@ classdef ImarisConversionTest < pktest.TestCase
             % the converter takes the size of the first file for every time
             % point and channel: a time point of another size is an error
             % (before any output), unless inputBbox crops all to one size
-            dataPath = testCase.writeTimeSeries();
-            writetiff(uint16(randi(100, testCase.ImSize + [0, 0, 4])), ...
-                [dataPath, sprintf(testCase.Fsn, 2, 'CamA'), '.tif']);
+            dataPath = testCase.writeTimeSeries('zarr');
+            writezarr(uint16(randi(100, testCase.ImSize + [0, 0, 4])), ...
+                [dataPath, sprintf(testCase.Fsn, 2, 'CamA'), '.zarr']);
             spy = testCase.applyFixture(pktest.FrameworkSpyFixture);
             testCase.verifyError(@() XR_imaris_conversion_data_wrapper({dataPath}, 'channelPatterns', {'CamA', 'CamB'}, ...
-                'parseCluster', false, 'cpusPerTask', 2), 'XR_imaris_conversion_data_wrapper:sizeMismatch');
+                'zarrFile', true, 'parseCluster', false, 'cpusPerTask', 2), 'XR_imaris_conversion_data_wrapper:sizeMismatch');
             testCase.verifyEmpty(spy.getCalls(), 'The converter ran.');
             testCase.verifyFalse(isfolder([dataPath, 'imaris']), 'An output folder was made.');
             % a bbox inside all of them
             XR_imaris_conversion_data_wrapper({dataPath}, 'channelPatterns', {'CamA', 'CamB'}, ...
-                'parseCluster', false, 'cpusPerTask', 2, 'inputBbox', [1, 1, 1, 10, 10, 10]);
+                'zarrFile', true, 'parseCluster', false, 'cpusPerTask', 2, 'inputBbox', [1, 1, 1, 10, 10, 10]);
             testCase.verifyNumElements(spy.getCalls(), 1);
             % a bbox past the size of the smaller files
             testCase.verifyError(@() XR_imaris_conversion_data_wrapper({dataPath}, 'channelPatterns', {'CamA', 'CamB'}, ...
-                'parseCluster', false, 'cpusPerTask', 2, 'inputBbox', [1, 1, 1, 10, 10, testCase.ImSize(3) + 1]), ...
+                'zarrFile', true, 'parseCluster', false, 'cpusPerTask', 2, 'inputBbox', [1, 1, 1, 10, 10, testCase.ImSize(3) + 1]), ...
                 'XR_imaris_conversion_data_wrapper:sizeMismatch');
+        end
+
+        function bboxOfTiffInputIsRefused(testCase)
+            % the bundled converter crops the output of tiff input but not the
+            % tiff it reads, which scrambled the image; it is now refused
+            % before any output
+            dataPath = testCase.writeTimeSeries();
+            spy = testCase.applyFixture(pktest.FrameworkSpyFixture);
+            testCase.verifyError(@() XR_imaris_conversion_data_wrapper({dataPath}, 'channelPatterns', {'CamA', 'CamB'}, ...
+                'parseCluster', false, 'cpusPerTask', 2, 'inputBbox', [1, 1, 1, 10, 10, 10]), ...
+                'XR_imaris_conversion_data_wrapper:bboxNeedsZarr');
+            testCase.verifyEmpty(spy.getCalls(), 'The converter ran.');
+            testCase.verifyFalse(isfolder([dataPath, 'imaris']), 'An output folder was made.');
         end
     end
 
@@ -136,9 +173,13 @@ classdef ImarisConversionTest < pktest.TestCase
     end
 
     methods (Access = private)
-        function [dataPath, maxVals] = writeTimeSeries(testCase)
+        function [dataPath, maxVals] = writeTimeSeries(testCase, fileType)
             % two time points x two channels, with distinct intensity ranges
-            % (maxima above 255, below which the histogram range is 0-256)
+            % (maxima above 255, below which the histogram range is 0-256), as
+            % tiff (default) or zarr files
+            if nargin < 2
+                fileType = 'tiff';
+            end
             dataPath = testCase.createTempFolder();
             cams = {'CamA', 'CamB'};
             maxVals = zeros(2, 2);
@@ -148,7 +189,11 @@ classdef ImarisConversionTest < pktest.TestCase
                     im = uint16(400 + offset + randi(100, testCase.ImSize));
                     im(1) = 500 + offset;
                     maxVals(t + 1, c) = 500 + offset;
-                    writetiff(im, [dataPath, sprintf(testCase.Fsn, t, cams{c}), '.tif']);
+                    if strcmp(fileType, 'zarr')
+                        writezarr(im, [dataPath, sprintf(testCase.Fsn, t, cams{c}), '.zarr']);
+                    else
+                        writetiff(im, [dataPath, sprintf(testCase.Fsn, t, cams{c}), '.tif']);
+                    end
                 end
             end
         end
