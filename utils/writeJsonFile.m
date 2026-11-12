@@ -6,7 +6,9 @@ function [] = writeJsonFile(pr, filename)
 
 s = jsonencode(pr, PrettyPrint=true);
 fid = fopen(filename, 'w');
-fprintf(fid, s);
+% the text as it is (as the format, a % in a value cut the file off there
+% and the doubled backslashes of Windows paths became single ones)
+fprintf(fid, '%s', s);
 fclose(fid);
 
 end
