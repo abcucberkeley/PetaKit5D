@@ -1,0 +1,846 @@
+{
+ "folder": "tools",
+ "classes": {
+  "BlockMIPTest": {
+   "file": "tests/tools/BlockMIPTest.m",
+   "pins": "MIPs of large-file results from the blocks their tasks write: MIP_zarr_block_mips (with range_max_3d_mex), MIP_zarr_save_block_mips and MIP_zarr_merge_block_mips, which XR_MIP_zarr uses to make the same MIP slabs and MIPs it computes from the zarr, and MIP_zarr_batch_size",
+   "category": "data",
+   "owner": "T02",
+   "phase": 1,
+   "finished": false,
+   "fate": [],
+   "methods": {
+    "batchSizeGrowsForSlabsOver100GB": {
+     "pins": "the batch grows by a block along the axis of the largest slab until no slab is over 100 GiB (3 steps here), or the batch is (21 steps, to a 104 GiB batch); values of XR_MIP_zarr before the batch size moved to MIP_zarr_batch_size",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "batchSizeIsRoundedToBlocksAndCapped": {
+     "pins": "batch size is rounded to blocks and capped",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "blockMIPsAreCastAsTheZarrStoresThem": {
+     "pins": "single blocks written to a uint16 zarr (large-file decon with save16bit) are rounded and saturated as written",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "blockMIPsWithoutTheMexMatch": {
+     "pins": "platforms without range_max_3d_mex take the max of each part",
+     "tags": [
+      "Unit"
+     ],
+     "cases": [
+      "dtype=uint16",
+      "dtype=single"
+     ],
+     "fate": []
+    },
+    "flagIsMovedIntoPlace": {
+     "pins": "the flag marks the task as done, so it must not be seen half written",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "mergeKeepsToTheMemoryLimit": {
+     "pins": "the y slab and its coverage count (5 x 29 x 23 x 3 bytes) and the blocks' MIPs (blocks overlap 10 batches along y in all: 10 x 29 x 23 x 2 bytes) are 23345 bytes, 2.174e-5 GiB",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "mergeNeedsBlocksThatCoverTheImageOnce": {
+     "pins": "two overlapping blocks and a gap of the same size add up to the image size",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "mergeNeedsMIPsOfAllBlocks": {
+     "pins": "flags of tasks without MIPs (older code), MIPs for other batches, or blocks that don't cover the image give no slab, so that the caller reads the image",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "mergedSlabsMatchTheImage": {
+     "pins": "blocks not aligned with the MIP batches, written by tasks in an order that isn't their order in the image; for single, a region of NaN and of -0 and 0, where max takes the first value",
+     "tags": [
+      "Unit"
+     ],
+     "cases": [
+      "dtype=uint16",
+      "dtype=single"
+     ],
+     "fate": []
+    },
+    "rangeMaxMatchesMaxOfEachRange": {
+     "pins": "range max matches max of each range",
+     "tags": [
+      "Unit"
+     ],
+     "cases": [
+      "dtype=uint16",
+      "dtype=single"
+     ],
+     "fate": []
+    },
+    "rangeMaxRejectsInvalidInput": {
+     "pins": "range max rejects invalid input",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "xrMIPZarrMergesTheBlockMIPs": {
+     "pins": "the same slab zarrs (data, chunks, data type) and MIPs as from the zarr, without job framework tasks",
+     "tags": [
+      "Integration"
+     ],
+     "cases": [
+      "dtype=uint16",
+      "dtype=single"
+     ],
+     "fate": []
+    },
+    "xrMIPZarrReadsTheZarrIfAFlagHasNoMIPs": {
+     "pins": "all or nothing: the other flags' MIPs are wrong here, so a partial merge would show",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "xrMIPZarrReadsTheZarrWithoutMemoryForTheMerge": {
+     "pins": "the flags' MIPs are wrong here, so a merge would show",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "xrMIPZarrResumesFromExistingSlabs": {
+     "pins": "slab zarrs from an earlier run are used for missing MIPs, as before (the flags' MIPs are wrong here)",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    }
+   }
+  },
+  "MIPTest": {
+   "file": "tests/tools/MIPTest.m",
+   "pins": "maximum intensity projections: XR_MIP_wrapper (tiff, zarr and large zarr paths), saveMIP_tiff, and max_pooling_3d; and min_bbox_3d",
+   "category": "data",
+   "owner": "T02",
+   "phase": 1,
+   "finished": false,
+   "fate": [],
+   "methods": {
+    "allAxesOfLargeZarr": {
+     "pins": "batch-wise MIPs of a zarr file, merged across batches",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "allAxesOfTiff": {
+     "pins": "all axes of tiff",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "allAxesOfZarr": {
+     "pins": "all axes of zarr",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "defaultIsZOnly": {
+     "pins": "default is zonly",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "inputBboxProjectsTheCroppedRegion": {
+     "pins": "input bbox projects the cropped region",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "largeZarrJobsAskForWhatTheyHold": {
+     "pins": "the job of a large file (XR_MIP_zarr) runs its MIP batches as jobs (1 CPU each). It asked for 16 B per voxel of the whole input: whole nodes for large data. Now it asks for MATLAB with one CPU, and if it computes batches itself (masterCompute, the config's if it sets it), for cpusPerTask (default 3) and a batch's estimate (2048^3 uint16, 64 GB in MATLAB jobs). The input is a 34 G-voxel header (...",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "largeZarrJobsGoAfterTheirBatches": {
+     "pins": "the job of a large file waits for its MIP batch jobs: it asks to go after them (nice, coordinator_nice); the jobs of other files don't (the framework is a spy)",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": [],
+     "category": "framework_fake_slurm"
+    },
+    "maxPoolingMatchesBlockwiseMax": {
+     "pins": "max pooling matches blockwise max",
+     "tags": [
+      "Unit"
+     ],
+     "cases": [
+      "poolSize=cube,poolType=uint16",
+      "poolSize=cube,poolType=single",
+      "poolSize=anisotropic,poolType=uint16",
+      "poolSize=anisotropic,poolType=single",
+      "poolSize=nonDivisible,poolType=uint16",
+      "poolSize=nonDivisible,poolType=single"
+     ],
+     "fate": [],
+     "owner": "K02"
+    },
+    "maxPoolingOfNegativeValues": {
+     "pins": "KNOWN ISSUE (may be intended): max_pooling_3d_mex initializes each block maximum with 0, so blocks with only negative values return 0 instead of their maximum. The MATLAB fallback (max_pooling_3d.m) zero-pads edge blocks, so it does the same there. Non-negative input may be an intended precondition (the mex has no signed integer types, and stitching treats 0 as no data); if not, initialize with...",
+     "tags": [
+      "KnownIssue",
+      "Unit"
+     ],
+     "cases": null,
+     "fate": [],
+     "known_issue": true,
+     "owner": "K02"
+    },
+    "minimumOfARegion": {
+     "pins": "min_bbox_3d: the minimum of a region, by min_bbox_3d_mex (Linux only) or by the MATLAB code (elsewhere, for int16, or where the mex fails), which returned the minimum along y instead",
+     "tags": [
+      "Unit"
+     ],
+     "cases": [
+      "minType=logical",
+      "minType=uint8",
+      "minType=uint16",
+      "minType=single",
+      "minType=double",
+      "minType=int16"
+     ],
+     "fate": []
+    },
+    "minimumOfARegionSkipsNaN": {
+     "pins": "as the mex: NaN is skipped, and a region of NaN only or without voxels gives the largest value of the class",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "mipsAreMovedIntoPlace": {
+     "pins": "XR_MIP_wrapper's tasks count as done once their MIPs exist, so a MIP written in place could be seen, and its job cancelled, while half written",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "saveMIPTiffWritesRequestedAxes": {
+     "pins": "save miptiff writes requested axes",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "singleOutputWithoutSave16bit": {
+     "pins": "single output without save16bit",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "slabAnotherWriterMadeIsKept": {
+     "pins": "a MIP slab that another writer (of the same result) had put in place was deleted and replaced; it is kept, and the MIP of its axis is made from it",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "zarrIsReadInSlabsOfWholeChunks": {
+     "pins": "saveMIP_zarr reads zarr files in z slabs of whole chunk layers with at least 64 chunks (3 slabs of one layer here, 2 slabs of two layers in the box) and keeps a running max along z. For single, lines of NaN and of -0 and 0, where max takes the first (0 first in the second and third slab here).",
+     "tags": [
+      "Unit"
+     ],
+     "cases": [
+      "zarrType=uint16",
+      "zarrType=single"
+     ],
+     "fate": []
+    }
+   }
+  },
+  "ParallelRsyncWrapperTest": {
+   "file": "tests/tools/ParallelRsyncWrapperTest.m",
+   "pins": "XR_parallel_rsync_wrapper, which copies a folder in batches of rsync calls run by the job framework (a spy here), then with one rsync of the whole folder",
+   "category": "data",
+   "owner": "T05",
+   "phase": 1,
+   "finished": false,
+   "fate": [],
+   "methods": {
+    "batchScriptIsFoundWhicheverSetupIsFirst": {
+     "pins": "the wrapper found the code by the first setup.m on the path and a folder named PetaKit5D: with another setup.m first (e.g., of an app that bundles PetaKit5D), or with the code in a folder of another name, it changed to a folder that doesn't exist, or gave the jobs a batch script that doesn't exist",
+     "tags": [
+      "Unit"
+     ],
+     "cases": [
+      "decoyFolder=otherName",
+      "decoyFolder=nameWithPetaKit5D"
+     ],
+     "fate": []
+    },
+    "eachBatchIsCheckedByItsLastFile": {
+     "pins": "the job framework counts a batch as done once its checked file exists, and cancels the remaining jobs when all are; the second to last file of each batch was checked, so the last one could be cut short, and a last batch of fewer files had none",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    }
+   }
+  },
+  "ResampleTest": {
+   "file": "tests/tools/ResampleTest.m",
+   "pins": "XR_resample_dataset / XR_resampleFrame / XR_resampleSingleZarr. resampleFactor is in yxz order; a factor of 2 downsamples 2x.",
+   "category": "data",
+   "owner": "T04",
+   "phase": 1,
+   "finished": false,
+   "fate": [],
+   "methods": {
+    "constantImageStaysConstant": {
+     "pins": "constant image stays constant",
+     "tags": [
+      "Unit"
+     ],
+     "cases": [
+      "interpMethod=linear",
+      "interpMethod=cubic",
+      "interpMethod=nearest",
+      "interpMethod=max",
+      "interpMethod=mean"
+     ],
+     "fate": []
+    },
+    "datasetWrapperTiff": {
+     "pins": "dataset wrapper tiff",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "datasetWrapperZarr": {
+     "pins": "dataset wrapper zarr",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "image2d": {
+     "pins": "image2d",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "image2dWithYxzFactor": {
+     "pins": "2D images used to be resampled with the x and z factors of a yxz factor",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "imresize3FastMatchesImresize3": {
+     "pins": "imresize3_fast replaces imresize3 in the resampling; imresize3 is replaced by a spy that errors when called with an output, so the result comes from the fast path, not from the fallback",
+     "tags": [
+      "Unit"
+     ],
+     "cases": [
+      "fastFactor=zOnly,fastMethod=linear,fastType=single",
+      "fastFactor=zOnly,fastMethod=linear,fastType=uint16",
+      "fastFactor=zOnly,fastMethod=cubic,fastType=single",
+      "fastFactor=zOnly,fastMethod=cubic,fastType=uint16",
+      "fastFactor=xyOnly,fastMethod=linear,fastType=single",
+      "fastFactor=xyOnly,fastMethod=linear,fastType=uint16",
+      "fastFactor=xyOnly,fastMethod=cubic,fastType=single",
+      "fastFactor=xyOnly,fastMethod=cubic,fastType=uint16",
+      "fastFactor=yOnly,fastMethod=linear,fastType=single",
+      "fastFactor=yOnly,fastMethod=linear,fastType=uint16",
+      "fastFactor=yOnly,fastMethod=cubic,fastType=single",
+      "fastFactor=yOnly,fastMethod=cubic,fastType=uint16",
+      "fastFactor=zUp,fastMethod=linear,fastType=single",
+      "fastFactor=zUp,fastMethod=linear,fastType=uint16",
+      "fastFactor=zUp,fastMethod=cubic,fastType=single",
+      "fastFactor=zUp,fastMethod=cubic,fastType=uint16",
+      "fastFactor=all,fastMethod=linear,fastType=single",
+      "fastFactor=all,fastMethod=linear,fastType=uint16",
+      "fastFactor=all,fastMethod=cubic,fastType=single",
+      "fastFactor=all,fastMethod=cubic,fastType=uint16",
+      "fastFactor=nonInteger,fastMethod=linear,fastType=single",
+      "fastFactor=nonInteger,fastMethod=linear,fastType=uint16",
+      "fastFactor=nonInteger,fastMethod=cubic,fastType=single",
+      "fastFactor=nonInteger,fastMethod=cubic,fastType=uint16",
+      "fastFactor=zBetween,fastMethod=linear,fastType=single",
+      "fastFactor=zBetween,fastMethod=linear,fastType=uint16",
+      "fastFactor=zBetween,fastMethod=cubic,fastType=single",
+      "fastFactor=zBetween,fastMethod=cubic,fastType=uint16",
+      "fastFactor=xzDownYUp,fastMethod=linear,fastType=single",
+      "fastFactor=xzDownYUp,fastMethod=linear,fastType=uint16",
+      "fastFactor=xzDownYUp,fastMethod=cubic,fastType=single",
+      "fastFactor=xzDownYUp,fastMethod=cubic,fastType=uint16",
+      "fastFactor=none,fastMethod=linear,fastType=single",
+      "fastFactor=none,fastMethod=linear,fastType=uint16",
+      "fastFactor=none,fastMethod=cubic,fastType=single",
+      "fastFactor=none,fastMethod=cubic,fastType=uint16"
+     ],
+     "fate": []
+    },
+    "imresize3FastRegionMatchesCroppedImresize3": {
+     "pins": "with an output region, imresize3_fast resizes only the input region it depends on (in outClass if given): the same values as the region of imresize3's result (the whole output, a corner, the far end, the middle voxel)",
+     "tags": [
+      "Unit"
+     ],
+     "cases": [
+      "fastFactor=zOnly,fastMethod=linear,fastType=single",
+      "fastFactor=zOnly,fastMethod=linear,fastType=uint16",
+      "fastFactor=zOnly,fastMethod=cubic,fastType=single",
+      "fastFactor=zOnly,fastMethod=cubic,fastType=uint16",
+      "fastFactor=xyOnly,fastMethod=linear,fastType=single",
+      "fastFactor=xyOnly,fastMethod=linear,fastType=uint16",
+      "fastFactor=xyOnly,fastMethod=cubic,fastType=single",
+      "fastFactor=xyOnly,fastMethod=cubic,fastType=uint16",
+      "fastFactor=yOnly,fastMethod=linear,fastType=single",
+      "fastFactor=yOnly,fastMethod=linear,fastType=uint16",
+      "fastFactor=yOnly,fastMethod=cubic,fastType=single",
+      "fastFactor=yOnly,fastMethod=cubic,fastType=uint16",
+      "fastFactor=zUp,fastMethod=linear,fastType=single",
+      "fastFactor=zUp,fastMethod=linear,fastType=uint16",
+      "fastFactor=zUp,fastMethod=cubic,fastType=single",
+      "fastFactor=zUp,fastMethod=cubic,fastType=uint16",
+      "fastFactor=all,fastMethod=linear,fastType=single",
+      "fastFactor=all,fastMethod=linear,fastType=uint16",
+      "fastFactor=all,fastMethod=cubic,fastType=single",
+      "fastFactor=all,fastMethod=cubic,fastType=uint16",
+      "fastFactor=nonInteger,fastMethod=linear,fastType=single",
+      "fastFactor=nonInteger,fastMethod=linear,fastType=uint16",
+      "fastFactor=nonInteger,fastMethod=cubic,fastType=single",
+      "fastFactor=nonInteger,fastMethod=cubic,fastType=uint16",
+      "fastFactor=zBetween,fastMethod=linear,fastType=single",
+      "fastFactor=zBetween,fastMethod=linear,fastType=uint16",
+      "fastFactor=zBetween,fastMethod=cubic,fastType=single",
+      "fastFactor=zBetween,fastMethod=cubic,fastType=uint16",
+      "fastFactor=xzDownYUp,fastMethod=linear,fastType=single",
+      "fastFactor=xzDownYUp,fastMethod=linear,fastType=uint16",
+      "fastFactor=xzDownYUp,fastMethod=cubic,fastType=single",
+      "fastFactor=xzDownYUp,fastMethod=cubic,fastType=uint16",
+      "fastFactor=none,fastMethod=linear,fastType=single",
+      "fastFactor=none,fastMethod=linear,fastType=uint16",
+      "fastFactor=none,fastMethod=cubic,fastType=single",
+      "fastFactor=none,fastMethod=cubic,fastType=uint16"
+     ],
+     "fate": []
+    },
+    "imresize3FastRegionWithOtherMethods": {
+     "pins": "methods other than linear and cubic crop imresize3's result",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "inputBboxResamplesTheCroppedRegion": {
+     "pins": "input bbox resamples the cropped region",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "largeZarrKeepsResultOfAnotherCopy": {
+     "pins": "two copies of a task (e.g. a retry next to a slow first try) share the temporary result; the copy that finished second deleted the result the first one had moved into place",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "largeZarrKeepsResultOfAnotherRun": {
+     "pins": "a copy from another run (its own uuid) that finds the result published replaced it with its own, incomplete result",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "largeZarrMatchesInMemory": {
+     "pins": "batch-wise resampling with border buffers vs the whole image. The border is a multiple of the factor, see the known issue largeZarrWithDefaultBorderSize.",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "largeZarrWithDefaultBorderSize": {
+     "pins": "batches used to be shifted by half an output voxel when the border (default [5, 5, 5]) is not a multiple of the factor",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "linearMatchesImresize3": {
+     "pins": "linear matches imresize3",
+     "tags": [
+      "Unit"
+     ],
+     "cases": [
+      "resampleFactor=down2",
+      "resampleFactor=zOnly",
+      "resampleFactor=up2xy",
+      "resampleFactor=nonInteger",
+      "resampleFactor=down3"
+     ],
+     "fate": []
+    },
+    "maxAndMeanMatchBlockReference": {
+     "pins": "non-divisible size: edge blocks use only the voxels inside",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "singleOutputWithoutSave16bit": {
+     "pins": "single output without save16bit",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "zarrInputAndOutput": {
+     "pins": "zarr input and output",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    }
+   }
+  },
+  "SystemMemoryTest": {
+   "file": "tests/tools/SystemMemoryTest.m",
+   "pins": "getSystemMemory, which stitching uses to choose how to make the MIP of the result",
+   "category": "data",
+   "owner": "F02",
+   "phase": 1,
+   "finished": false,
+   "fate": [],
+   "methods": {
+    "memoryIsANumber": {
+     "pins": "memory is anumber",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "memoryIsNotTheValueOfAParentJob": {
+     "pins": "a job submitted from another job (as the jobs of a job that coordinates jobs are) inherits the other's SLURM_MEM_PER_NODE (a 32-CPU controller got 16 GB, its master's): the memory is the limit of the job's own cgroup. In a Slurm job only: the job of the tests, from its cgroup (pktest.NoSlurmFixture hides its variables)",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "memoryPerNodeNextToMemoryPerCPUIsNotTaken": {
+     "pins": "without the job's cgroup (here a job id that isn't this process's), SLURM_MEM_PER_NODE next to SLURM_MEM_PER_CPU is one job's value in another's environment, so scontrol tells (it knows no job 123: unknown)",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "slurmJobMemoryIsInGB": {
+     "pins": "in a job started with --mem, the memory was returned as the text of SLURM_MEM_PER_NODE (MB)",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    }
+   }
+  },
+  "TiffZarrConversionTest": {
+   "file": "tests/tools/TiffZarrConversionTest.m",
+   "pins": "tiff <-> zarr conversion (XR_tiffToZarr_wrapper, XR_zarrToTiff_wrapper, tiffToZarr, zarrToTiff) and zarr resaving (XR_resave_zarr_wrapper). XR_zarrToTiff_wrapper doesn't forward parseCluster to the job framework, so on a machine with Slurm it submits jobs; the shared pktest.NoSlurmFixture keeps it local.",
+   "category": "data",
+   "owner": "T01",
+   "phase": 1,
+   "finished": false,
+   "fate": [],
+   "methods": {
+    "resaveGroupedBatchesDoNotTakeOtherFlags": {
+     "pins": "a run that groups batches, with the uuid of an interrupted run that wrote one batch at a time (and finished its first task, batches 1-5), must not take that task's flag for its own first task (groups 1-5)",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "resaveGroupedBatchesWriteTheSameChunks": {
+     "pins": "batches read and written together give the same chunk files as one batch at a time (cpp-zarr writes deterministic chunks), also with a crop and batches of two chunks that don't divide the image",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "resaveGroupsBatchesWithoutCluster": {
+     "pins": "without a cluster, neighboring batches are read and written together (along y, then x and z, up to one chunk per thread), so that cpp-zarr compresses their chunks in parallel (writes of one chunk at a time kept a few cores busy); cluster tasks, and too little or unknown memory, keep one batch per read and write",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "resaveGroupsWithinTheShareOfTheMemory": {
+     "pins": "the batches read and written together take at most 1/16 of this process's share of the memory: the memory times its share of the CPUs (a local process pool divides the threads among its workers), so that processes that resave at once stay within it",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "resaveKeepsResultOfAnotherCopy": {
+     "pins": "two copies of a task (e.g. a retry next to a slow first try) share the temporary result; the copy that finished second deleted the result the first one had moved into place",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "resaveKeepsResultOfAnotherRun": {
+     "pins": "a copy from another run (its own uuid) that finds the result published replaced it with its own, incomplete result",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "resaveLargeZarrInBatches": {
+     "pins": "resave large zarr in batches",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "resaveOnLocalPoolGroupsWithinTheWorkersThreads": {
+     "pins": "files resaved on a local process pool (localWorkerNum in the configuration file): each worker has its share of the threads, and groups no more batches than that",
+     "tags": [
+      "Integration",
+      "Slow"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "resaveZarrChangesChunks": {
+     "pins": "resave zarr changes chunks",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "singleFileRoundTrip": {
+     "pins": "single file round trip",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "tiffToZarrFromMemory": {
+     "pins": "the optional third input converts data that is already loaded",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "tiffToZarrPartialFilesAndFrames": {
+     "pins": "partial files are joined along z; an in-memory frame gets the same processing as a file; a 2D image becomes one z slice",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "tiffToZarrProcessingOptions": {
+     "pins": "flip in z, then crop (tileOutBbox), resample, and the user function, in that order; the result has the input's type",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "tiffToZarrReadsRegions": {
+     "pins": "readWholeTiff false reads the tiff by regions; without inputBbox it failed on an undefined variable (outBbox)",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "tiffToZarrWrapper": {
+     "pins": "tiff to zarr wrapper",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "tiffToZarrWrapperWithInputBbox": {
+     "pins": "tiff to zarr wrapper with input bbox",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "tiffToZarrWrapperWithoutReadingWholeTiff": {
+     "pins": "reads the tiff in blocks with blockedImage instead of at once",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "tiffToZarrWritesPrivateResultInPlace": {
+     "pins": "with a full uuid made by the call (not on Windows, where get_uuid shortens it) no other process writes the temporary result, so its chunks are written without cpp-zarr's temporary files ('uuid' false); a given uuid can be shared by copies of a task, which keep them",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "zarrToTiffWrapper": {
+     "pins": "zarr to tiff wrapper",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "zarrToTiffWrapperPassesJobSettings": {
+     "pins": "each task converts one file, so the memory per task is for one file (it was the sum over all files), and parseCluster, masterCompute and cpusPerTask were not passed on",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    }
+   }
+  },
+  "UsableGPUNumTest": {
+   "file": "tests/tools/UsableGPUNumTest.m",
+   "pins": "usable_gpu_num, which counts the GPUs PetaKit5D can use and turns on forward compatibility for GPUs newer than this MATLAB supports (e.g., B200 GPUs, compute capability 10.0, which R2024b doesn't count as available without it, so GPU jobs ran on the CPU). gpuDeviceCount and gpuDevice are stubs that act as such GPUs by the real forward compatibility setting, which the tests turn off and restore,...",
+   "category": "framework_design",
+   "owner": "F09",
+   "phase": 1,
+   "finished": false,
+   "fate": [],
+   "methods": {
+    "availableGPUsAreCountedAsTheyAre": {
+     "pins": "available gpus are counted as they are",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "forwardCompatibilityCanBeTurnedOff": {
+     "pins": "with MATLAB's environment variable at 0",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "forwardCompatibilityThatDoesNotHelpIsTurnedOffAgain": {
+     "pins": "forward compatibility that does not help is turned off again",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "gpusNewerThanMATLABGetForwardCompatibility": {
+     "pins": "gpus newer than matlabget forward compatibility",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "noGPUFound": {
+     "pins": "no gpufound",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "otherFailuresLeaveForwardCompatibilityOff": {
+     "pins": "e.g., a GPU in use or broken: the reason is MATLAB's, and forward compatibility isn't tried (the GPUs are counted once)",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    }
+   }
+  }
+ }
+}

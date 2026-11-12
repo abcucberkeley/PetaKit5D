@@ -1,0 +1,337 @@
+{
+ "folder": "crop",
+ "classes": {
+  "CropDatasetTest": {
+   "file": "tests/crop/CropDatasetTest.m",
+   "pins": "XR_crop_dataset / XR_crop_frame / XR_crop_zarr on small synthetic datasets (two channels plus a channel that must be ignored)",
+   "category": "data",
+   "owner": "T03",
+   "phase": 1,
+   "finished": false,
+   "fate": [],
+   "methods": {
+    "centerCrop": {
+     "pins": "center crop",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "clipPastImageEdgeWithoutPad": {
+     "pins": "clip past image edge without pad",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "existingOutputIsNotOverwritten": {
+     "pins": "existing output is not overwritten",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "largeZarrBlocksGetTheMIPOptionOnlyForMIPs": {
+     "pins": "compiled masters built before the block tasks' mipBatchSize option still run the tasks of crops without MIPs",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "largeZarrBlocksOfAnEndedTaskAreSkipped": {
+     "pins": "the block jobs of a large crop whose job was cancelled ran on (the queued ones when they started), for a result nothing would publish; a block now skips its work when its task's job has ended (its writer record; a fake Slurm that no longer lists the job)",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": [],
+     "category": "framework_fake_slurm"
+    },
+    "largeZarrJobsAskForWhatTheyHold": {
+     "pins": "the job of a large crop (XR_crop_zarr) runs its blocks as jobs (1 CPU each). It asked for 32 B per voxel of the whole input: whole nodes for large data. Now it asks for MATLAB and the merge of the MIP slabs with one CPU, and if it crops blocks itself (masterCompute, the config's if it sets it), for cpusPerTask (default 2) and a block's estimate (8 B per voxel of a batch, 1024 x 1024 x 512 here:...",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "largeZarrJobsGoAfterTheirBlocks": {
+     "pins": "the job of a large crop waits for its block jobs: it asks to go after them (nice, coordinator_nice); the jobs of other crops don't (the framework is a spy)",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": [],
+     "category": "framework_fake_slurm"
+    },
+    "largeZarrKeepsAResultAnotherWriterPublished": {
+     "pins": "two job sets on the same data: the one that finished last deleted the crop the other had published and moved its own into place; now it keeps the other's and removes its own (incomplete here: the framework is a spy that reports the blocks done while the other crop comes)",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "largeZarrKeepsAResultPublishedDuringItsMIPs": {
+     "pins": "as above, with the other crop coming while the MIPs are made (a spy of XR_MIP_zarr makes it)",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "largeZarrMIPsAreMergedFromTheBlocks": {
+     "pins": "the crop tasks save the MIPs of their blocks in their flags, and XR_MIP_zarr merges them into the MIP slabs instead of reading the result again in MIP_block tasks",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "largeZarrMakesMIPsBeforePublishing": {
+     "pins": "the job framework counts a crop as done, and may cancel its job, once the result exists; the large file path moved the result into place and then made its MIPs",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "largeZarrMatchesInMemoryCrop": {
+     "pins": "small batches so the crop is assembled from several blocks",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "largeZarrPassesJobSettingsToMIPs": {
+     "pins": "XR_crop_zarr passed parseCluster to XR_MIP_zarr, but not masterCompute or jobLogDir",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "largeZarrTaskThatFailsMarksItsRecordEnded": {
+     "pins": "a crop that ends by an error (its blocks failed: a framework spy) leaves its writer record, and its process may stay (an interactive session): the record says it has ended, so that no crop of another call waits for it and its blocks are skipped",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "largeZarrWaitsForAWriterOfAnotherCall": {
+     "pins": "a crop of another call (another uuid) that may still make the result: the second one made it as well; now it waits for it. The other is a process on this node, whose crop comes during the wait (a spy of wait_for_files); no block may run.",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "movingCrop": {
+     "pins": "the bbox moves linearly from inputBbox to lastStartCoords over the time points of a channel",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "padPastImageEdge": {
+     "pins": "bbox starts before and ends after the image in every axis",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "padPastImageEdgeLargeZarr": {
+     "pins": "regression test for padding in large zarr cropping (81f3341)",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "singleSliceZarrCrop": {
+     "pins": "regression test for single slice crops of zarr files (d513b73)",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "tiffInputSavedAsZarr": {
+     "pins": "tif input saved as zarr used to get a zarr folder named *.tif",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "tiffToTiff": {
+     "pins": "tiff to tiff",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "zarrToTiff": {
+     "pins": "zarr to tiff",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "zarrToZarr": {
+     "pins": "zarr to zarr",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    }
+   }
+  },
+  "CropMexTest": {
+   "file": "tests/crop/CropMexTest.m",
+   "pins": "crop/indexing mex functions and their .m wrappers against plain MATLAB indexing. bbox convention: [ymin, xmin, zmin, ymax, xmax, zmax] (4-D: [ymin, xmin, zmin, tmin, ymax, xmax, zmax, tmax]), 1-based and inclusive. The indexing*_mex functions write into their first input in place, so expected values are built from independent copies.",
+   "category": "data",
+   "owner": "K01",
+   "phase": 1,
+   "finished": false,
+   "fate": [],
+   "methods": {
+    "crop3dMatchesIndexing": {
+     "pins": "crop3d matches indexing",
+     "tags": [
+      "Unit"
+     ],
+     "cases": [
+      "dtype=logical,bbox3d=interior",
+      "dtype=logical,bbox3d=full",
+      "dtype=logical,bbox3d=singleVoxel",
+      "dtype=logical,bbox3d=singleSlice",
+      "dtype=logical,bbox3d=lastRow",
+      "dtype=uint8,bbox3d=interior",
+      "dtype=uint8,bbox3d=full",
+      "dtype=uint8,bbox3d=singleVoxel",
+      "dtype=uint8,bbox3d=singleSlice",
+      "dtype=uint8,bbox3d=lastRow",
+      "dtype=uint16,bbox3d=interior",
+      "dtype=uint16,bbox3d=full",
+      "dtype=uint16,bbox3d=singleVoxel",
+      "dtype=uint16,bbox3d=singleSlice",
+      "dtype=uint16,bbox3d=lastRow",
+      "dtype=single,bbox3d=interior",
+      "dtype=single,bbox3d=full",
+      "dtype=single,bbox3d=singleVoxel",
+      "dtype=single,bbox3d=singleSlice",
+      "dtype=single,bbox3d=lastRow",
+      "dtype=double,bbox3d=interior",
+      "dtype=double,bbox3d=full",
+      "dtype=double,bbox3d=singleVoxel",
+      "dtype=double,bbox3d=singleSlice",
+      "dtype=double,bbox3d=lastRow"
+     ],
+     "fate": []
+    },
+    "crop3dRejectsInvalidBbox": {
+     "pins": "crop3d rejects invalid bbox",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "crop4dMatchesIndexing": {
+     "pins": "crop4d matches indexing",
+     "tags": [
+      "Unit"
+     ],
+     "cases": [
+      "dtype=logical",
+      "dtype=uint8",
+      "dtype=uint16",
+      "dtype=single",
+      "dtype=double"
+     ],
+     "fate": []
+    },
+    "crop4dRejectsInvalidBbox": {
+     "pins": "crop4d rejects invalid bbox",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "indexing3dAssignsRegionInPlace": {
+     "pins": "indexing3d assigns region in place",
+     "tags": [
+      "Unit"
+     ],
+     "cases": [
+      "dtype=logical",
+      "dtype=uint8",
+      "dtype=uint16",
+      "dtype=single",
+      "dtype=double"
+     ],
+     "fate": []
+    },
+    "indexing3dRejectsMismatchedRegion": {
+     "pins": "indexing3d rejects mismatched region",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "indexing4dCropAssignsSubregion": {
+     "pins": "indexing4d crop assigns subregion",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "indexing4dMexSupportsLogical": {
+     "pins": "logical input used to fall through to the uint8 branch and be rejected",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "indexing4dWrapperMatchesIndexing": {
+     "pins": "the wrapper falls back to MATLAB indexing if the mex fails",
+     "tags": [
+      "Unit"
+     ],
+     "cases": [
+      "dtype=logical",
+      "dtype=uint8",
+      "dtype=uint16",
+      "dtype=single",
+      "dtype=double"
+     ],
+     "fate": []
+    },
+    "trimBorderModes": {
+     "pins": "trim border modes",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    }
+   }
+  }
+ }
+}

@@ -1,0 +1,64 @@
+{
+ "folder": "point_detection",
+ "classes": {
+  "PointDetectionTest": {
+   "file": "tests/point_detection/PointDetectionTest.m",
+   "pins": "3D point source detection (demos/demo_point_detection_3d_*.m) on synthetic Gaussian spots with known positions, amplitude and background. The detection mex functions are not built for ARM macOS, so these tests are skipped there (see MexInventoryTest).",
+   "category": "data",
+   "owner": "C02",
+   "phase": 3,
+   "finished": false,
+   "fate": [],
+   "methods": {
+    "detectsSpotsAtTheirPositions": {
+     "pins": "detects spots at their positions",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "estimateSigmaFromBead": {
+     "pins": "GU_estimateSigma3D (demo step 2) on a single bead",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "lowSNRDetectionRuns": {
+     "pins": "'lowSNR' (used in the detection demos) used to call crop_image_by_bounding_box, which doesn't exist, and to drop all detections without a camera noise threshold. It filters detections by their residual std, which assumes camera noise.",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "noSpotsInPureNoise": {
+     "pins": "no spots in pure noise",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "runDetectionWritesDetectionsAndMask": {
+     "pins": "getShortPath (used for messages) used to fail on Windows for paths with '/' separators, which these tests use",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "trackingLinksSpotsAcrossFrames": {
+     "pins": "detection + tracking (demo step 5.1) on a 3-frame movie with spots moving by a fraction of a voxel per frame",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    }
+   }
+  }
+ }
+}

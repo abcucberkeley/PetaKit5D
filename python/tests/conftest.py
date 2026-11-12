@@ -18,6 +18,9 @@ import sys
 
 import pytest
 
+# the shared fixtures (pk_temp_folder, rng, thread_count, write_volume, ...) for every test
+pytest_plugins = ["petakit5d.testing.fixtures"]
+
 SITE_VARIABLES = (
     "PETAKIT5D_ORACLE_DIR",
     "PETAKIT5D_GOLDEN_DIR",

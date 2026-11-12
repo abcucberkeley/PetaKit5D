@@ -1,0 +1,192 @@
+{
+ "folder": "pipeline",
+ "classes": {
+  "AutomaticProcessingTest": {
+   "file": "tests/pipeline/AutomaticProcessingTest.m",
+   "pins": "XR_microscopeAutomaticProcessing on existing data (streaming false), following demos/demo_microscope_pipeline_single_dataset*.m and demos/demo_microscope_pipeline_multiple_dataset.m: flat field correction, combined deskew/rotation, and stitching in DSR space.",
+   "category": "data",
+   "owner": "P02",
+   "phase": 1,
+   "finished": false,
+   "fate": [],
+   "methods": {
+    "clusterModeDoesNotWaitForStepsGivenUp": {
+     "pins": "a step given up (the job of its last try ended without its result) doesn't hold the wait for the results still to come: tile 1's job is gone at the second round, tile 2's runs, and tile 2's result comes during the first second of the second wait, after which the pipeline goes on (and ends)",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": [],
+     "category": "framework_fake_slurm"
+    },
+    "clusterModeEndsSoonAfterTheLastResults": {
+     "pins": "the pipeline waited the whole wait between its rounds (0.3 s per unfinished file, at least 3 s), so it saw the last results up to that late; it now looks for the results still to come each second and goes on once they are all there. The fake jobs don't run; their results come during the second second.",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": [],
+     "category": "framework_fake_slurm"
+    },
+    "clusterModeLooksForTheStitchedResultEachSecond": {
+     "pins": "(as clusterModeEndsSoonAfterTheLastResults, for the stitched result, which the pipeline finds by a pattern) the tiles were deskewed before; the stitching job doesn't run, its result comes during the third second, after its temporary folder (which doesn't count) during the second",
+     "tags": [
+      "Integration",
+      "Slow"
+     ],
+     "cases": null,
+     "fate": [],
+     "category": "framework_fake_slurm"
+    },
+    "clusterModeSeesResultsOtherNodesJustMade": {
+     "pins": "on NFS, exist() can miss a file another node just made for 30 s or more, so the pipeline saw finished deskew results a round late; it now checks them with batch_file_exist, which sees them at once. The stub reports them made, so no job is submitted.",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": [],
+     "category": "framework_fake_slurm"
+    },
+    "clusterModeSubmitsStitchingAfterTheDeskewJobs": {
+     "pins": "a dataset's stitching job was submitted right after the deskew job of its first file, so on a busy cluster it took a slot ahead of the dataset's other deskew jobs, only to wait for their results; it is now submitted after them",
+     "tags": [
+      "Integration",
+      "Slow"
+     ],
+     "cases": null,
+     "fate": [],
+     "category": "framework_fake_slurm"
+    },
+    "clusterModeSubmitsStitchingWhenTilesWereDeskewedBefore": {
+     "pins": "(with the stitching job after the deskew jobs) the deskewed tile of a file done before needs no job: the stitching job follows the deskew job of the other file",
+     "tags": [
+      "Integration",
+      "Slow"
+     ],
+     "cases": null,
+     "fate": [],
+     "category": "framework_fake_slurm"
+    },
+    "clusterModeTellsStitchingThatTilesAreComing": {
+     "pins": "the stitching job gave up a time point whose deskewed tiles were not all there after 3 checks 5 s apart, and the pipeline then needed another stitching job for it (or lost it, after the tries of its stitching, while deskewing took long). While deskew jobs of a dataset are pending or running, a marker in its DSR folder now tells the stitching job that the tiles are coming; it is written again on...",
+     "tags": [
+      "Integration",
+      "Slow"
+     ],
+     "cases": null,
+     "fate": [],
+     "category": "framework_fake_slurm"
+    },
+    "clusterModeWaitGrowsWithUnfinishedFiles": {
+     "pins": "with jobs on the cluster the pipeline always waited 30 s between rounds, so the last results were seen up to 30 s late; it now waits 0.3 s per unfinished file, at least 3 s and at most 30 s (or until the results come, see clusterModeEndsSoonAfterTheLastResults)",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": [],
+     "category": "framework_fake_slurm"
+    },
+    "clusterModeWaitsForTheLastStitchingTry": {
+     "pins": "after submitting the last try of a dataset's stitching job, the pipeline returned without waiting for it; it now checks the job until it ends, without submitting again",
+     "tags": [
+      "Integration",
+      "Slow"
+     ],
+     "cases": null,
+     "fate": [],
+     "category": "framework_fake_slurm"
+    },
+    "demoParameterSetIsAccepted": {
+     "pins": "the demos used to pass a 4-element Save16bit (for steps that were removed from the pipeline in abd53f9), which the pipeline rejects",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "deskewMarkerIsRemovedWhenThePipelineStops": {
+     "pins": "an error (or Ctrl-C) in the pipeline must not leave its marker for a stitching job to wait for",
+     "tags": [
+      "Integration",
+      "Slow"
+     ],
+     "cases": null,
+     "fate": [],
+     "category": "framework_fake_slurm"
+    },
+    "deskewRotateAndStitchMultipleDatasets": {
+     "pins": "demo_microscope_pipeline_multiple_dataset.m: two datasets, each with its own image list; tiles overlap in y by 16 rows",
+     "tags": [
+      "Integration",
+      "Slow"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "flatFieldAndDeskewRotate": {
+     "pins": "demo_microscope_pipeline_single_dataset_nostitch.m: two channels with per channel flat field and background images",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "lastTryWaitsForATaskRunnerThatHasTheTask": {
+     "pins": "(task runners) tile 2's job makes its result and then runs tile 3's task (a task runner; tile 1, the first of its kind, runs as before), so tile 3's own job ends at once: the pipeline counts tile 3 as running while tile 2's job runs, instead of as finished (it returned before tile 3 was done), and does not submit it again",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": [],
+     "category": "framework_fake_slurm"
+    },
+    "localRunSubmitsNoStitchingJobs": {
+     "pins": "the stitching task didn't get parseCluster, so a local run on a machine with Slurm stitched in Slurm jobs",
+     "tags": [
+      "Integration",
+      "Slow"
+     ],
+     "cases": null,
+     "fate": [],
+     "category": "framework_fake_slurm"
+    },
+    "localStitchingFinishesWithoutWaiting": {
+     "pins": "the stitching step looked for its result before computing it, so a local run always idled 30 s before seeing that it was done",
+     "tags": [
+      "Integration",
+      "Slow"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "stitchingLastTryWaitsForATaskRunnerThatHasTheTask": {
+     "pins": "(task runners) three datasets: the second dataset's stitching job makes its result and then runs the third dataset's stitching task (a task runner; the first stitching job, the first of its kind, runs as before), so the third one's own job ends at once: the pipeline counts it as running while the second job runs, and does not submit it again",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": [],
+     "category": "framework_fake_slurm"
+    },
+    "streamingLeavesOutRecentFilesWithTheirSizes": {
+     "pins": "in streaming mode, files changed in the last minModifyTime minutes (still being written) are left for later, but their sizes stayed in the list: a cluster run that started with only such files failed (3 sizes for no file), and the files after such a file got the sizes of the files before them",
+     "tags": [
+      "Integration",
+      "Slow"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "streamingProcessesNewFiles": {
+     "pins": "with streaming on, files that arrive during the run used to make the pipeline fail (it added 4 flag columns to 2)",
+     "tags": [
+      "Integration",
+      "Slow"
+     ],
+     "cases": null,
+     "fate": []
+    }
+   }
+  }
+ }
+}

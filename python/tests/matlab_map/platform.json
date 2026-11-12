@@ -1,0 +1,363 @@
+{
+ "folder": "platform",
+ "classes": {
+  "MexFallbackTest": {
+   "file": "tests/platform/MexFallbackTest.m",
+   "pins": "mex_fallback, which records where the MATLAB code runs instead of a mex (warning once per mex, error and session if the mex exists), and the check of pktest.TestCase that fails a test in which that happened unless the test expects it (expectMexFallback), a known platform gap or a rejection by design. crop3d is the example: a bbox column makes crop3d_mex fail ('Input range for bbox is not 6', as...",
+   "category": "matlab_only",
+   "owner": "E04",
+   "phase": 1,
+   "finished": true,
+   "fate": [
+    "na:mex_fallback records where MATLAB code ran instead of a mex; the port has one implementation per function, without a fall-back path"
+   ],
+   "methods": {
+    "designedRejectionIsRecordedWithoutWarning": {
+     "pins": "designed rejection is recorded without warning",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "eachErrorOfAMexWarnsOnce": {
+     "pins": "a failure that doesn't matter (e.g., a missing file) doesn't hide a later failure of the same mex with another error",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "eachMexWarnsOnce": {
+     "pins": "each mex warns once",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "failedMexWarnsOnceAndIsRecorded": {
+     "pins": "failed mex warns once and is recorded",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "fallbackInAClassSetupFailsTheFirstTest": {
+     "pins": "fallback in aclass setup fails the first test",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "functionsInPackagesAreFound": {
+     "pins": "(e.g., MATLAB's built-in resize mex of imresize3_fast)",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "missingMexIsRecordedWithoutWarning": {
+     "pins": "e.g. a mex not built for the platform: calling it errors",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "pluginSummarizesTheFallbacksOfARun": {
+     "pins": "plugin summarizes the fallbacks of arun",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "recordsAreCountedPerMexKindAndIdentifier": {
+     "pins": "records are counted per mex kind and identifier",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "resetClearsTheRecordsAndWarnings": {
+     "pins": "reset clears the records and warnings",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "testsFailWithAnUnexpectedFallback": {
+     "pins": "a test class of pktest.TestCase with fallbacks, run here",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "unexpectedFallbacksAreThoseOfExistingAndUntrackedMissingMex": {
+     "pins": "unexpected fallbacks are those of existing and untracked missing mex",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "unusedMexWithoutAnErrorWarns": {
+     "pins": "code that checks that a mex exists and runs the MATLAB code anyway (e.g., a wrong check) calls it without an error",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "warningIsOneLineWithTheMexItsErrorAndTheCaller": {
+     "pins": "warning is one line with the mex its error and the caller",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "warningsTurnedOffDoNotUseUpTheWarning": {
+     "pins": "callers may turn warnings off (getImageSize hides tiff tag warnings), the next fallback with warnings on still warns",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    }
+   }
+  },
+  "MexInputCheckTest": {
+   "file": "tests/platform/MexInputCheckTest.m",
+   "pins": "the input checks of the PetaKit5D mex functions: inputs they used to read or write out of bounds with (more dimensions than they copy into fixed arrays, sparse arrays, whose memory has only the nonzero values, bounding boxes that aren't double, start before 1 or end past the output, NaN coordinates, zero or negative steps, empty inputs, too few outputs) raise an error with the mex's identifier,...",
+   "category": "data",
+   "owner": "E04",
+   "phase": 1,
+   "finished": false,
+   "fate": [],
+   "methods": {
+    "crop3dChecksItsInputs": {
+     "pins": "crop3d checks its inputs",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": [],
+     "owner": "K01"
+    },
+    "crop4dChecksItsInputs": {
+     "pins": "crop4d checks its inputs",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": [],
+     "owner": "K01"
+    },
+    "deskewRotateWarpChecksItsInputs": {
+     "pins": "deskew rotate warp checks its inputs",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": [],
+     "owner": "K03"
+    },
+    "flatFieldCorrectionChecksItsInputs": {
+     "pins": "flat field correction checks its inputs",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": [],
+     "owner": "K07"
+    },
+    "indexing3dChecksItsInputs": {
+     "pins": "indexing3d checks its inputs",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": [],
+     "owner": "K01"
+    },
+    "indexing4dChecksItsInputs": {
+     "pins": "indexing4d checks its inputs",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": [],
+     "owner": "K01"
+    },
+    "mipMexCheckTheirInputs": {
+     "pins": "mip mex check their inputs",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": [],
+     "owner": "K02"
+    },
+    "omwBackProjectorWindowNeedsBothOutputs": {
+     "pins": "omw back projector window needs both outputs",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": [],
+     "owner": "K05"
+    },
+    "pointDetectionMexCheckTheirInputs": {
+     "pins": "point detection mex check their inputs",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": [],
+     "owner": "C02"
+    },
+    "skewedSpaceInterpChecksItsInputs": {
+     "pins": "skewed space interp checks its inputs",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": [],
+     "owner": "K03"
+    },
+    "skewedSpaceInterpWarpChecksItsInputs": {
+     "pins": "skewed space interp warp checks its inputs",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": [],
+     "owner": "K03"
+    },
+    "stitchMexCheckTheirInputs": {
+     "pins": "stitch mex check their inputs",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": [],
+     "owner": "K04"
+    }
+   }
+  },
+  "MexInventoryTest": {
+   "file": "tests/platform/MexInventoryTest.m",
+   "pins": "every mex function built for Linux must also be built for Windows and ARM macOS, except the known gaps (pktest.mexPlatformGaps, which also tells pktest.TestCase which missing mex functions are expected). This catches a mex function that is added or rebuilt for one platform but not committed for the others. Linux binaries are the reference set.",
+   "category": "matlab_only",
+   "owner": "E04",
+   "phase": 1,
+   "finished": true,
+   "fate": [
+    "na:inventory of the prebuilt MATLAB mex binaries per platform; the port builds its extension modules on every platform in CI"
+   ],
+   "methods": {
+    "everyLinuxMexIsBuiltForThisPlatform": {
+     "pins": "every linux mex is built for this platform",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    }
+   }
+  },
+  "MexPackagingTest": {
+   "file": "tests/platform/MexPackagingTest.m",
+   "pins": "the ARM macOS binaries must only load libraries that every Mac has or that ship next to them, and the Linux cpp-tiff/cpp-zarr binaries must use their own codecs. This reads the Mach-O load commands and ELF dynamic sections, so it runs on any OS and doesn't depend on what is installed on the runner.",
+   "category": "matlab_only",
+   "owner": "E04",
+   "phase": 1,
+   "finished": true,
+   "fate": [
+    "na:libraries the prebuilt MATLAB mex binaries load; the libraries of the port's wheels are checked by E07"
+   ],
+   "methods": {
+    "linuxTiffZarrBinariesUseTheirOwnCodecs": {
+     "pins": "on Linux, once Tiff or imread had loaded MATLAB's libtiff, the cpp-tiff mex files called it instead of their own (before cpp-tiff/cpp-zarr v1.7.3), so readtiff couldn't read zstd tiffs in that session. Their libraries must bind their own symbols first (-Bsymbolic), and the mex files must not call a codec themselves (that call would go to MATLAB's).",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "macArmBinariesOnlyLoadBundledOrSystemLibraries": {
+     "pins": "the PetaKit5D .mexmaca64 files used to load Homebrew's libgomp by absolute path, so on a Mac without Homebrew gcc@13 they only loaded if cpp-tiff/cpp-zarr had loaded the bundled libgomp first. compileAllMexFiles now links the GCC runtime statically; cpp-tiff/cpp-zarr load theirs from next to them (@loader_path).",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    }
+   }
+  },
+  "NoSlurmFixtureTest": {
+   "file": "tests/platform/NoSlurmFixtureTest.m",
+   "pins": "pktest.NoSlurmFixture, which all tests share: besides hiding the Slurm commands, it hides the Slurm job the tests run in, so the code under test acts as outside a job wherever the tests run. A master in a Slurm job computes only the tasks that fit the job's memory, so in a job of 16 GB TaskMetricsTest/masterComputedTasksAreRecordedAsMaster failed, while it passed in larger jobs and outside Slurm.",
+   "category": "framework_design",
+   "owner": "J01",
+   "phase": 1,
+   "finished": false,
+   "fate": [],
+   "methods": {
+    "slurmJobOfTheTestsIsHiddenAndRestored": {
+     "pins": "slurm job of the tests is hidden and restored",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    }
+   }
+  },
+  "PathShadowingTest": {
+   "file": "tests/platform/PathShadowingTest.m",
+   "pins": "setup.m puts every folder of the repo on the path, so a function defined in two places silently resolves to whichever folder comes first, and a repo function with the name of a MATLAB function hides it. Both make fixes \"not take effect\" and break with path changes or new MATLAB releases.",
+   "category": "matlab_only",
+   "owner": "E04",
+   "phase": 1,
+   "finished": true,
+   "fate": [
+    "na:shadowing on the MATLAB path that setup.m builds with genpath; Python packages have namespaces"
+   ],
+   "methods": {
+    "noFunctionShadowsMatlab": {
+     "pins": "e.g., a new MATLAB release adding a function with the same name as a repo function",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "noNewDuplicateFunctionNames": {
+     "pins": "no new duplicate function names",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "pipelineUsesExpectedCopies": {
+     "pins": "pipeline uses expected copies",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    }
+   }
+  }
+ }
+}

@@ -1,0 +1,876 @@
+{
+ "folder": "deskew_rotate",
+ "classes": {
+  "AxisOrderMappingTest": {
+   "file": "tests/deskew_rotate/AxisOrderMappingTest.m",
+   "pins": "axis_order_mapping(axisOrder, 'yxz') is the permutation that stores yxz data in axisOrder (dimension i holds axis axisOrder(i)), which is how XR_deskewRotateFrame applies outputAxisOrder. Bringing data stored in axisOrder back to yxz takes the inverse (ipermute), see the known issue XRDeskewRotateFrameTest/inputAxisOrderZYXIsPermutedToYXZ.",
+   "category": "data",
+   "owner": "D03",
+   "phase": 1,
+   "finished": false,
+   "fate": [],
+   "methods": {
+    "storesYXZDataInTheGivenOrder": {
+     "pins": "stores yxzdata in the given order",
+     "tags": [
+      "Unit"
+     ],
+     "cases": [
+      "axisOrder=yxz",
+      "axisOrder=xyz",
+      "axisOrder=zxy",
+      "axisOrder=yzx",
+      "axisOrder=zyx",
+      "axisOrder=xzy"
+     ],
+     "fate": []
+    }
+   }
+  },
+  "DeskewMexSourceTest": {
+   "file": "tests/deskew_rotate/DeskewMexSourceTest.m",
+   "pins": "static checks of the deskew/rotation mex sources for bugs that can't be tested by running the code without crashing MATLAB",
+   "category": "matlab_only",
+   "owner": "K03",
+   "phase": 1,
+   "finished": true,
+   "fate": [
+    "na:static checks of the MATLAB mex C++ sources for crashes; the port's kernels are its own (python/cpp) and their tests run them"
+   ],
+   "methods": {
+    "simdLoopsStayInsideTheRow": {
+     "pins": "the AVX float loops used to run up to 7 floats past each row (heap corruption for single-precision input whose first dimension isn't a multiple of 8)",
+     "tags": [
+      "Unit"
+     ],
+     "cases": [
+      "sourceFile=volume_deskew_rotate_warp_mex.cpp",
+      "sourceFile=skewed_space_interp_volume_deskew_rotate_warp_mex.cpp",
+      "sourceFile=skewed_space_interp_defined_stepsize_mex.c"
+     ],
+     "fate": []
+    }
+   }
+  },
+  "DeskewRotateDataWrapperTest": {
+   "file": "tests/deskew_rotate/DeskewRotateDataWrapperTest.m",
+   "pins": "XR_deskew_rotate_data_wrapper on small synthetic datasets, run locally (parseCluster=false). Outputs must equal the in-memory functions.",
+   "category": "data",
+   "owner": "D04",
+   "phase": 1,
+   "finished": false,
+   "fate": [],
+   "methods": {
+    "blockSizeIsUsedForZarrOutput": {
+     "pins": "block size is used for zarr output",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "channelPatternsSelectFiles": {
+     "pins": "channel patterns select files",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "deskewOnlyWithCombinedDefaultWritesDS": {
+     "pins": "DSRCombined=true (the default) used to send deskew only to the combined path, which writes DSR, and then wait minutes for DS before failing",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "deskewOnlyWritesDS": {
+     "pins": "deskew only writes ds",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "existingOutputsAreSkippedUnlessOverwrite": {
+     "pins": "existing outputs are skipped unless overwrite",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "flatFieldUsesEachChannelsImages": {
+     "pins": "flat field uses each channels images",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "largeFileBlocksGetTheMIPOptionOnlyForMIPs": {
+     "pins": "compiled masters built before the block tasks' mipBatchSize option still run the tasks of results without MIPs",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "largeFileBlocksOfAnEndedTaskAreSkipped": {
+     "pins": "the block jobs of a large file whose job was cancelled ran on, for a result nothing would publish; a block now skips its work when its task's job has ended (its writer record; a fake Slurm that no longer lists the job). The block task is the one the task made (a framework spy that reports it failed).",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": [],
+     "category": "framework_fake_slurm"
+    },
+    "largeFileJobsAskForWhatTheyHold": {
+     "pins": "the job of a large file (XR_deskewRotateZarr) runs its y batches as jobs. It asked for 40 B per voxel of the whole input (masterCompute) or of a y slab (without, on one CPU): whole nodes for large data. Now it asks for MATLAB and the merge of the MIP slabs on one CPU, and if it computes batches itself (masterCompute, the config's if it sets it), for a batch's estimate on the CPUs of a batch's j...",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "largeFileJobsGoAfterTheirBlocks": {
+     "pins": "the job of a large file waits for its block jobs: it asks to go after them (nice, coordinator_nice); the jobs of other files don't (the framework is a spy)",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": [],
+     "category": "framework_fake_slurm"
+    },
+    "largeFileKeepsAResultAnotherWriterPublished": {
+     "pins": "two job sets on the same data: the one that finished last deleted the result the other had published (which a reader may use) and moved its own into place. Now it keeps the other's and removes its own (incomplete here: the framework is a spy that reports the blocks done while the other result comes)",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "largeFileKeepsAResultPublishedDuringItsMIPs": {
+     "pins": "as above, with the other result coming while the MIPs are made (a spy of XR_MIP_zarr makes it)",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "largeFileMIPsAreMergedFromTheBlocks": {
+     "pins": "the block tasks save the MIPs of their blocks in their flags, and XR_MIP_zarr merges them into the MIP slabs instead of reading the result again in MIP_block tasks",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "largeFileMakesMIPsBeforePublishing": {
+     "pins": "the job framework counts a task as done, and may cancel its job, once the result exists; the large file path moved the result into place and then made its MIPs",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "largeFileMatchesRegular": {
+     "pins": "the large file path splits the output along y into batches (4 here) and must reproduce the in-memory result exactly",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "largeFilePassesJobSettingsToMIPs": {
+     "pins": "XR_deskewRotateZarr didn't pass parseCluster, masterCompute or jobLogDir to XR_MIP_zarr, so on a machine with Slurm the MIPs of a local run were made in Slurm jobs",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "largeFileWaitsForAWriterOfAnotherCall": {
+     "pins": "a task of another call (another uuid) that may still make the result: the second one made it as well; now it waits for it. The other is a process on this node, whose result comes during the wait (a spy of wait_for_files); no block may run.",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "largeFileWithFailedBlocksIsNotPublished": {
+     "pins": "when blocks still failed after the retries, the large file path moved the incomplete result into place, so it counted as done",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "multipleDataPathsAreProcessed": {
+     "pins": "multiple data paths are processed",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "objectiveScanLargeFileIsRejected": {
+     "pins": "the large-file block processing only supports sample scan; it used to fail inside the tasks with an undefined variable",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "partialFilesAreJoinedAlongZ": {
+     "pins": "acquisitions split into <name>.tif + <name>_part0001.tif are processed as one volume",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "processesEveryMatchingFile": {
+     "pins": "processes every matching file",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "saveMIPFalseWritesNoMIP": {
+     "pins": "saveMIP and blockSize used to be dropped from the task string of regular (not large) files",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "saveZarrMatchesTiff": {
+     "pins": "save zarr matches tiff",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "separateDeskewRotateWritesBoth": {
+     "pins": "separate deskew rotate writes both",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "zarrInputMatchesTiffInput": {
+     "pins": "zarr input matches tiff input",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    }
+   }
+  },
+  "DeskewRotateFrame3DTest": {
+   "file": "tests/deskew_rotate/DeskewRotateFrame3DTest.m",
+   "pins": "deskewRotateFrame3D (combined deskew/rotation in memory) on a grid of synthetic beads with known raw positions.",
+   "category": "data",
+   "owner": "D02",
+   "phase": 1,
+   "finished": false,
+   "fate": [],
+   "methods": {
+    "bboxCropsTheFullOutput": {
+     "pins": "bbox crops the full output",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "bboxPastTheInputRowsMatchesImwarp": {
+     "pins": "an output region whose y range goes past the input's rows is 0 there, as imwarp gives (the mex functions hidden by stubs that error); the warp mex used to read past the rows",
+     "tags": [
+      "Unit"
+     ],
+     "cases": [
+      "dz=dz02",
+      "dz=dz03"
+     ],
+     "fate": []
+    },
+    "canvasOriginMatchesConvention": {
+     "pins": "the output canvas origin matters downstream (e.g., stitching in DSR space): the fitted map must put the bead grid where the centered deskew/rotation convention puts it. The fast (mex) path used to be one shear step off for reverse=false.",
+     "tags": [
+      "Unit"
+     ],
+     "cases": [
+      "dz=dz02,reverse=reverse",
+      "dz=dz02,reverse=forward",
+      "dz=dz03,reverse=reverse",
+      "dz=dz03,reverse=forward"
+     ],
+     "fate": []
+    },
+    "combinedMatchesSeparateDeskewThenRotate": {
+     "pins": "the combined transform must equal deskew followed by rotation (up to the extra interpolation of the separate path)",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "forwardInterpolationEndsAtTheLastRawSlice": {
+     "pins": "the separate skewed space interpolation (with resampling, on the GPU, or where the combined mex fails) at dz 0.6 (step 1/3, 0.33333334 in single precision): the last interpolated slice passes the last raw slice by a rounding error, and forward scans interpolated it with a slice past the input instead of copying it",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "geometryMatchesAcquisition": {
+     "pins": "geometry matches acquisition",
+     "tags": [
+      "Unit"
+     ],
+     "cases": [
+      "dz=dz02,reverse=reverse",
+      "dz=dz02,reverse=forward",
+      "dz=dz03,reverse=reverse",
+      "dz=dz03,reverse=forward"
+     ],
+     "fate": []
+    },
+    "gpuProcessCountsUsableGPUsFirst": {
+     "pins": "so that GPUs newer than this MATLAB supports get forward compatibility before the volume goes to the GPU (usable_gpu_num is a stub that stops the call there)",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "inputsNarrowerThanTheShiftRunTheMatlabCode": {
+     "pins": "the rows of an interpolated slice come from rows up to the x step apart: the mex functions that interpolate read past narrower inputs; they reject them, so the MATLAB interpolation runs",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "objectiveScanGeometryWithCubicInterpolation": {
+     "pins": "objective scan is a pure rotation (no deskew); the cubic (imwarp) path doesn't have the mex issue below",
+     "tags": [
+      "Unit"
+     ],
+     "cases": [
+      "reverse=reverse",
+      "reverse=forward"
+     ],
+     "fate": []
+    },
+    "objectiveScanPreservesContent": {
+     "pins": "objective scan used to go through volume_deskew_rotate_warp_mex, which assumes a sample scan and kept ~6.5% of the content",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "outputSizeMatchesGeometry": {
+     "pins": "output size matches geometry",
+     "tags": [
+      "Unit"
+     ],
+     "cases": [
+      "dz=dz02,reverse=reverse",
+      "dz=dz02,reverse=forward",
+      "dz=dz03,reverse=reverse",
+      "dz=dz03,reverse=forward"
+     ],
+     "fate": []
+    },
+    "resampleFactorScalesOutputSize": {
+     "pins": "resample factor scales output size",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "save16bitRoundsToNearest": {
+     "pins": "the AVX uint16 kernels used to add 0.5 and then round, which is ceil",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "separateMexStepsReplaceTheCombinedMex": {
+     "pins": "with skewed space interpolation (dz 0.3), where the combined mex fails (here hidden by a stub that errors), its two steps run in their own mex functions (the test fails if they fall back too)",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "singleSliceOrColumnReadsNothingOutside": {
+     "pins": "output points interpolate from two slices (columns); for a point exactly on the only slice (column) the warp mex stepped to the one before the array. They are outside now, as all points are there.",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "totalIntensityScalesWithVoxelVolume": {
+     "pins": "raw voxels are dz * sin(theta) / xyPixelSize times larger than output voxels",
+     "tags": [
+      "Unit"
+     ],
+     "cases": [
+      "dz=dz02,reverse=reverse",
+      "dz=dz02,reverse=forward",
+      "dz=dz03,reverse=reverse",
+      "dz=dz03,reverse=forward"
+     ],
+     "fate": []
+    },
+    "uint16InputWithSave16bitGivesUint16": {
+     "pins": "uint16 input with save16bit gives uint16",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    }
+   }
+  },
+  "DeskewRotateKernelExactTest": {
+   "file": "tests/deskew_rotate/DeskewRotateKernelExactTest.m",
+   "pins": "deskewRotateFrame3D's mex path (sample scan, linear, no resampling) against plain MATLAB code that does the mex's single precision arithmetic in the same order: the skewed space interpolation (dz above the x step threshold; uint16 rows are rounded) and the weighted sums of 4 lines of the warp. On x86 the uint16 line sums add the first floor(n / 16) * 16 values of a line as (a*wa + b*wb) + (c*wc...",
+   "category": "data",
+   "owner": "K03",
+   "phase": 1,
+   "finished": false,
+   "fate": [],
+   "methods": {
+    "boundingBoxMatchesReference": {
+     "pins": "an output region, as large-file batches compute them: the line sums start at the region's first y",
+     "tags": [
+      "Unit"
+     ],
+     "cases": [
+      "dz=dz02,reverse=reverse,dataType=uint16",
+      "dz=dz02,reverse=reverse,dataType=uint16ToSingle",
+      "dz=dz02,reverse=reverse,dataType=single",
+      "dz=dz02,reverse=forward,dataType=uint16",
+      "dz=dz02,reverse=forward,dataType=uint16ToSingle",
+      "dz=dz02,reverse=forward,dataType=single",
+      "dz=dz03,reverse=reverse,dataType=uint16",
+      "dz=dz03,reverse=reverse,dataType=uint16ToSingle",
+      "dz=dz03,reverse=reverse,dataType=single",
+      "dz=dz03,reverse=forward,dataType=uint16",
+      "dz=dz03,reverse=forward,dataType=uint16ToSingle",
+      "dz=dz03,reverse=forward,dataType=single",
+      "dz=dz08,reverse=reverse,dataType=uint16",
+      "dz=dz08,reverse=reverse,dataType=uint16ToSingle",
+      "dz=dz08,reverse=reverse,dataType=single",
+      "dz=dz08,reverse=forward,dataType=uint16",
+      "dz=dz08,reverse=forward,dataType=uint16ToSingle",
+      "dz=dz08,reverse=forward,dataType=single"
+     ],
+     "fate": []
+    },
+    "boundingBoxPastTheInputRows": {
+     "pins": "an output region whose y range goes past the input's rows: the rows inside are those of the region inside, the others 0, as imwarp gives (the warp mex read past the rows: the next column's values; the combined mex rejected the region, so its two steps ran instead)",
+     "tags": [
+      "Unit"
+     ],
+     "cases": [
+      "dz=dz02,reverse=reverse,dataType=uint16",
+      "dz=dz02,reverse=reverse,dataType=uint16ToSingle",
+      "dz=dz02,reverse=reverse,dataType=single",
+      "dz=dz02,reverse=forward,dataType=uint16",
+      "dz=dz02,reverse=forward,dataType=uint16ToSingle",
+      "dz=dz02,reverse=forward,dataType=single",
+      "dz=dz03,reverse=reverse,dataType=uint16",
+      "dz=dz03,reverse=reverse,dataType=uint16ToSingle",
+      "dz=dz03,reverse=reverse,dataType=single",
+      "dz=dz03,reverse=forward,dataType=uint16",
+      "dz=dz03,reverse=forward,dataType=uint16ToSingle",
+      "dz=dz03,reverse=forward,dataType=single",
+      "dz=dz08,reverse=reverse,dataType=uint16",
+      "dz=dz08,reverse=reverse,dataType=uint16ToSingle",
+      "dz=dz08,reverse=reverse,dataType=single",
+      "dz=dz08,reverse=forward,dataType=uint16",
+      "dz=dz08,reverse=forward,dataType=uint16ToSingle",
+      "dz=dz08,reverse=forward,dataType=single"
+     ],
+     "fate": []
+    },
+    "interpolationMatchesTheMatlabFunction": {
+     "pins": "the skewed space interpolation of both mex against skewed_space_interp_defined_stepsize.m, up to rounding (the combined mex's grid read out with a transform that maps output y and z to grid slice and row). Not compared in interpolated slices: the columns next to the edges, where the mex leave out a pair of rows with one row outside and the MATLAB code pads with zeros. Forward scans used to shif...",
+     "tags": [
+      "Unit"
+     ],
+     "cases": [
+      "interpDz=dz06,reverse=reverse,dataType=uint16",
+      "interpDz=dz06,reverse=reverse,dataType=uint16ToSingle",
+      "interpDz=dz06,reverse=reverse,dataType=single",
+      "interpDz=dz06,reverse=forward,dataType=uint16",
+      "interpDz=dz06,reverse=forward,dataType=uint16ToSingle",
+      "interpDz=dz06,reverse=forward,dataType=single",
+      "interpDz=dz08,reverse=reverse,dataType=uint16",
+      "interpDz=dz08,reverse=reverse,dataType=uint16ToSingle",
+      "interpDz=dz08,reverse=reverse,dataType=single",
+      "interpDz=dz08,reverse=forward,dataType=uint16",
+      "interpDz=dz08,reverse=forward,dataType=uint16ToSingle",
+      "interpDz=dz08,reverse=forward,dataType=single",
+      "interpDz=dz1026,reverse=reverse,dataType=uint16",
+      "interpDz=dz1026,reverse=reverse,dataType=uint16ToSingle",
+      "interpDz=dz1026,reverse=reverse,dataType=single",
+      "interpDz=dz1026,reverse=forward,dataType=uint16",
+      "interpDz=dz1026,reverse=forward,dataType=uint16ToSingle",
+      "interpDz=dz1026,reverse=forward,dataType=single"
+     ],
+     "fate": []
+    },
+    "wholeVolumeMatchesReference": {
+     "pins": "whole volume matches reference",
+     "tags": [
+      "Unit"
+     ],
+     "cases": [
+      "dz=dz02,reverse=reverse,dataType=uint16,rawSize=y61",
+      "dz=dz02,reverse=reverse,dataType=uint16,rawSize=y48",
+      "dz=dz02,reverse=reverse,dataType=uint16ToSingle,rawSize=y61",
+      "dz=dz02,reverse=reverse,dataType=uint16ToSingle,rawSize=y48",
+      "dz=dz02,reverse=reverse,dataType=single,rawSize=y61",
+      "dz=dz02,reverse=reverse,dataType=single,rawSize=y48",
+      "dz=dz02,reverse=forward,dataType=uint16,rawSize=y61",
+      "dz=dz02,reverse=forward,dataType=uint16,rawSize=y48",
+      "dz=dz02,reverse=forward,dataType=uint16ToSingle,rawSize=y61",
+      "dz=dz02,reverse=forward,dataType=uint16ToSingle,rawSize=y48",
+      "dz=dz02,reverse=forward,dataType=single,rawSize=y61",
+      "dz=dz02,reverse=forward,dataType=single,rawSize=y48",
+      "dz=dz03,reverse=reverse,dataType=uint16,rawSize=y61",
+      "dz=dz03,reverse=reverse,dataType=uint16,rawSize=y48",
+      "dz=dz03,reverse=reverse,dataType=uint16ToSingle,rawSize=y61",
+      "dz=dz03,reverse=reverse,dataType=uint16ToSingle,rawSize=y48",
+      "dz=dz03,reverse=reverse,dataType=single,rawSize=y61",
+      "dz=dz03,reverse=reverse,dataType=single,rawSize=y48",
+      "dz=dz03,reverse=forward,dataType=uint16,rawSize=y61",
+      "dz=dz03,reverse=forward,dataType=uint16,rawSize=y48",
+      "dz=dz03,reverse=forward,dataType=uint16ToSingle,rawSize=y61",
+      "dz=dz03,reverse=forward,dataType=uint16ToSingle,rawSize=y48",
+      "dz=dz03,reverse=forward,dataType=single,rawSize=y61",
+      "dz=dz03,reverse=forward,dataType=single,rawSize=y48",
+      "dz=dz08,reverse=reverse,dataType=uint16,rawSize=y61",
+      "dz=dz08,reverse=reverse,dataType=uint16,rawSize=y48",
+      "dz=dz08,reverse=reverse,dataType=uint16ToSingle,rawSize=y61",
+      "dz=dz08,reverse=reverse,dataType=uint16ToSingle,rawSize=y48",
+      "dz=dz08,reverse=reverse,dataType=single,rawSize=y61",
+      "dz=dz08,reverse=reverse,dataType=single,rawSize=y48",
+      "dz=dz08,reverse=forward,dataType=uint16,rawSize=y61",
+      "dz=dz08,reverse=forward,dataType=uint16,rawSize=y48",
+      "dz=dz08,reverse=forward,dataType=uint16ToSingle,rawSize=y61",
+      "dz=dz08,reverse=forward,dataType=uint16ToSingle,rawSize=y48",
+      "dz=dz08,reverse=forward,dataType=single,rawSize=y61",
+      "dz=dz08,reverse=forward,dataType=single,rawSize=y48"
+     ],
+     "fate": []
+    }
+   }
+  },
+  "DeskewRotateMemoryTest": {
+   "file": "tests/deskew_rotate/DeskewRotateMemoryTest.m",
+   "pins": "memory requested for deskew/rotate tasks: XR_estimateDeskewRotateMemory (the arrays a code path holds at once plus MATLAB itself) and the memAllocate the wrappers pass to the job framework. The wrappers used to request 40 bytes per input voxel (about 4x the peak of the default path, so large tiles took several CPUs for nothing) and counted only the first of a group of partial files.",
+   "category": "data",
+   "owner": "D03",
+   "phase": 1,
+   "finished": false,
+   "fate": [],
+   "methods": {
+    "estimateCoversMeasuredPeak": {
+     "pins": "estimate covers measured peak",
+     "tags": [
+      "Unit"
+     ],
+     "cases": [
+      "measured=tiny",
+      "measured=default100",
+      "measured=default500",
+      "measured=default2000",
+      "measured=default5000",
+      "measured=wide250",
+      "measured=dz02",
+      "measured=dz05",
+      "measured=dz08",
+      "measured=single",
+      "measured=zarrOutput100",
+      "measured=zarrOutput2000",
+      "measured=zarrOutputSingle",
+      "measured=partialFiles500",
+      "measured=partialFiles2000",
+      "measured=inputBbox",
+      "measured=flatField",
+      "measured=outputAxisOrder",
+      "measured=resample222",
+      "measured=resample1115",
+      "measured=objectiveScan",
+      "measured=cubic100",
+      "measured=cubic500",
+      "measured=separate500",
+      "measured=separate1000",
+      "measured=separate2000",
+      "measured=deskewOnly500",
+      "measured=deskewOnly2000",
+      "measured=largeFileBatch2000",
+      "measured=largeFileBatch5000"
+     ],
+     "fate": []
+    },
+    "largeFileBlocksRequestOneBatch": {
+     "pins": "XR_deskewRotateBlock tasks hold one batch (input rows with a one-row border, interpolated slices, output region)",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "mexPathHoldsInputInterpolatedSlicesAndOutput": {
+     "pins": "uint16, dz 0.3: the x step (2.34 pixels) is above 2, so one slice is interpolated between neighboring slices",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "outputSizeMatchesDeskewRotateFrame3D": {
+     "pins": "output size matches deskew rotate frame3 d",
+     "tags": [
+      "Unit"
+     ],
+     "cases": [
+      "geometry=dz03",
+      "geometry=dz02",
+      "geometry=dz08",
+      "geometry=objectiveScan",
+      "geometry=resample222",
+      "geometry=resample1115",
+      "geometry=cubic"
+     ],
+     "fate": []
+    },
+    "preResamplingOutputSizeMatchesXRDeskewRotateFrame": {
+     "pins": "over 1000 slices, XR_deskewRotateFrame bins and resizes the input before a combined deskew/rotation with resampling",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "wrapperCountsAllPartialFiles": {
+     "pins": "<name>.tif + <name>_part0001.tif are read and concatenated in one task; only the first part used to be counted",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "wrapperCountsTheCroppedInput": {
+     "pins": "wrapper counts the cropped input",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "wrapperRequestsTheEstimate": {
+     "pins": "wrapper requests the estimate",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "wrapperUsesTheLargestFile": {
+     "pins": "one memAllocate for all tasks: it must fit the largest input",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "zStageScanUsesTheComplementaryAngle": {
+     "pins": "XR_deskewRotateFrame passes 90 - skewAngle for z stage scan",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    }
+   }
+  },
+  "XRDeskewRotateFrameTest": {
+   "file": "tests/deskew_rotate/XRDeskewRotateFrameTest.m",
+   "pins": "XR_deskewRotateFrame: single file deskew/rotation with outputs on disk. The in-memory functions are tested in DeskewRotateFrame3DTest; here the files must contain exactly what those functions return.",
+   "category": "data",
+   "owner": "D03",
+   "phase": 1,
+   "finished": false,
+   "fate": [],
+   "methods": {
+    "backgroundRemovalRuns": {
+     "pins": "KNOWN ISSUE: BKRemoval=true calls XR_CameraBackgroundRemoval (XR_deskewRotateFrame.m:213), which does not exist in the repo.",
+     "tags": [
+      "Integration",
+      "KnownIssue"
+     ],
+     "cases": null,
+     "fate": [],
+     "known_issue": true
+    },
+    "combinedWritesDSRAndMIP": {
+     "pins": "combined writes dsrand mip",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "deskewOnlyWritesOnlyDS": {
+     "pins": "deskew only writes only ds",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "existingOutputIsNotRecomputed": {
+     "pins": "existing output is not recomputed",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "flatFieldCorrectionIsAppliedFirst": {
+     "pins": "flat field correction is applied first",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "inputAxisOrderXYZIsPermutedToYXZ": {
+     "pins": "input axis order xyzis permuted to yxz",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "inputAxisOrderZYXIsPermutedToYXZ": {
+     "pins": "a 3-cycle, which used to be permuted the wrong way ('zyx' input ended up as 'xzy'; see AxisOrderMappingTest)",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "inputBboxAndFlipAreAppliedFirst": {
+     "pins": "input bbox and flip are applied first",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "largeZSeparatePathWritesDSMIP": {
+     "pins": "regression for fe83bf6: with more than 1000 slices the separate path deskews in blocks (blockedImage) and the DS MIP code used a misspelled property",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "objectiveScanSeparatePathIsNotDeskewed": {
+     "pins": "KNOWN ISSUE (may be intended): for objective scan the separate path still deskews (deskewFrame3D is called without an objective scan option in XR_deskewRotateFrame.m:235) before rotating, so beads end up sheared relative to a pure rotation.",
+     "tags": [
+      "Integration",
+      "KnownIssue"
+     ],
+     "cases": null,
+     "fate": [],
+     "known_issue": true
+    },
+    "objectiveScanSeparatePathRuns": {
+     "pins": "regression for 49863e2: theta was undefined for objective scan with DSRCombined=false",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "outputAxisOrderZYXPermutesTheResult": {
+     "pins": "a 3-cycle, which a self-inverse order like 'xyz' can't tell apart from its inverse",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "privateZarrResultsAreWrittenInPlace": {
+     "pins": "without a given uuid (the data wrapper) the temporary DS and DSR results are private to the call and their chunks are written without cpp-zarr's temporary files ('uuid' false), except with the short uuids of Windows; with the pipeline's uuid, which copies of a task share, they are kept",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "rotationOfSavedDeskewedVolumeKeepsCropAndAxisOrder": {
+     "pins": "rotating a deskewed volume read back from disk (deskewed in an earlier run) sized its output from the raw files, ignoring inputBbox and the input axis order. single output, so that the saved deskewed volume equals the one in memory.",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "save16bitFalseWritesSingle": {
+     "pins": "save16bit false writes single",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "saveZarrMatchesTiff": {
+     "pins": "save zarr matches tiff",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "separatePathWritesDeskewedAndRotated": {
+     "pins": "separate path writes deskewed and rotated",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "zStageScanSeparateMatchesCombined": {
+     "pins": "the separate path used to size its output with skewAngle instead of the 90 - skewAngle it rotates by",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    }
+   }
+  }
+ }
+}

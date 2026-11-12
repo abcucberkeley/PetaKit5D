@@ -1,0 +1,415 @@
+{
+ "folder": "io",
+ "classes": {
+  "ImageInfoTest": {
+   "file": "tests/io/ImageInfoTest.m",
+   "pins": "image metadata without loading the data: getImageSize, getImageSizeBatch, getImageDataType, getZarrInfo",
+   "category": "data",
+   "owner": "IO2",
+   "phase": 1,
+   "finished": false,
+   "fate": [],
+   "methods": {
+    "batchSizesOfManyTiffs": {
+     "pins": "more than 100 files were read on background pool workers, which can't read tiff headers (thread-based workers run no mex files)",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "batchSizesOfMixedFiles": {
+     "pins": "batch sizes of mixed files",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "getZarrInfoOfMissingFileErrors": {
+     "pins": "get zarr info of missing file errors",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "queryingMetadataKeepsWarningState": {
+     "pins": "getImageSize and getZarrInfo used to turn off all warnings for the rest of the session",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "tiffSizeAndType": {
+     "pins": "tiff size and type",
+     "tags": [
+      "Unit"
+     ],
+     "cases": [
+      "dtype=uint8",
+      "dtype=uint16",
+      "dtype=single",
+      "dtype=double"
+     ],
+     "fate": []
+    },
+    "unknownFormatErrors": {
+     "pins": "unknown format errors",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "zarrFolderWithoutExtension": {
+     "pins": "zarr detection also works by the .zarray file",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "zarrSizeAndType": {
+     "pins": "zarr size and type",
+     "tags": [
+      "Unit"
+     ],
+     "cases": [
+      "dtype=uint8",
+      "dtype=uint16",
+      "dtype=single",
+      "dtype=double"
+     ],
+     "fate": []
+    }
+   }
+  },
+  "TiffIOTest": {
+   "file": "tests/io/TiffIOTest.m",
+   "pins": "readtiff/writetiff (Cpp-Tiff mex with libtiff/saveastiff fallbacks), readtiff_matlab, and interoperability with MATLAB's Tiff reader/writer",
+   "category": "data",
+   "owner": "IO2",
+   "phase": 1,
+   "finished": false,
+   "fate": [],
+   "methods": {
+    "compressionOfWriteModes": {
+     "pins": "lzw stays the default; MATLAB's writer (libtiff mode, also the fallback) cannot write zstd and writes lzw instead",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "createsMissingOutputFolders": {
+     "pins": "creates missing output folders",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "moreThan65535Pages": {
+     "pins": "regression test for the page number limit (d2a8d7d)",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "overwritesExistingFile": {
+     "pins": "overwrites existing file",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "rangeReadOfImageJStack": {
+     "pins": "before Cpp-Tiff 1.6.1, range reads of single-IFD ImageJ stacks ignored the start of the range (slices 1-4 for [3, 6]), so cropping, MIPs and resampling with inputBbox got the wrong slices of large Fiji-saved stacks",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "rangeReadsInclusiveSlices": {
+     "pins": "range reads inclusive slices",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "readsImageJStack": {
+     "pins": "ImageJ/Fiji stacks are big-endian with contiguous pixel data and one IFD per slice; also a regression test for range reads of ImageJ files (f369d36)",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "readsSingleIfdImageJStack": {
+     "pins": "ImageJ saves stacks over 4 GB with only the first IFD; the number of slices is in the 'images=' description entry. The ARM macOS binaries read only the first slice before Cpp-Tiff 1.6.1.",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "readsTiffWrittenByMatlab": {
+     "pins": "multi-page stacks written by imwrite (libtiff), with and without compression",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "roundTripPreservesShape": {
+     "pins": "round trip preserves shape",
+     "tags": [
+      "Unit"
+     ],
+     "cases": [
+      "imSize=image2d",
+      "imSize=stack",
+      "imSize=singleRow"
+     ],
+     "fate": []
+    },
+    "roundTripPreservesTypeAndValues": {
+     "pins": "round trip preserves type and values",
+     "tags": [
+      "Unit"
+     ],
+     "cases": [
+      "dtype=uint8",
+      "dtype=int8",
+      "dtype=uint16",
+      "dtype=int16",
+      "dtype=uint32",
+      "dtype=int32",
+      "dtype=single",
+      "dtype=double",
+      "dtype=uint64",
+      "dtype=int64"
+     ],
+     "fate": []
+    },
+    "unsupportedInputIsNotSilentlyDropped": {
+     "pins": "writetiff used to ignore the error code of its fallback writer (Cpp-Tiff rejects the data, saveastiff runs instead)",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "writeModesAreReadableByAllReaders": {
+     "pins": "write modes are readable by all readers",
+     "tags": [
+      "Unit"
+     ],
+     "cases": [
+      "writeMode=parallelLzw",
+      "writeMode=parallelNone",
+      "writeMode=libtiff"
+     ],
+     "fate": []
+    },
+    "zstdIsReadByProcessingReaders": {
+     "pins": "the readers processing uses for tiff inputs: readtiff, image size and type, and regions of a blockedImage (MPageTiffAdapter). MATLAB's Tiff and imread cannot read zstd.",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "zstdRoundTrip": {
+     "pins": "opt-in zstd compression (Cpp-Tiff): same values and type, also for slice ranges",
+     "tags": [
+      "Unit"
+     ],
+     "cases": [
+      "dtype=uint8",
+      "dtype=int8",
+      "dtype=uint16",
+      "dtype=int16",
+      "dtype=uint32",
+      "dtype=int32",
+      "dtype=single",
+      "dtype=double",
+      "dtype=uint64",
+      "dtype=int64"
+     ],
+     "fate": []
+    }
+   }
+  },
+  "ZarrIOTest": {
+   "file": "tests/io/ZarrIOTest.m",
+   "pins": "readzarr/writezarr/createzarr (Cpp-Zarr mex) round trips, partial reads and writes, compressors, chunk layouts, and .zarray metadata",
+   "category": "data",
+   "owner": "IO2",
+   "phase": 1,
+   "finished": false,
+   "fate": [],
+   "methods": {
+    "blockSizeIsCappedAtImageSize": {
+     "pins": "block size is capped at image size",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "chunkOrderRoundTrip": {
+     "pins": "regression test for the C order chunk size issue (53c4e20)",
+     "tags": [
+      "Unit"
+     ],
+     "cases": [
+      "order=F,chunkShape=zSmaller",
+      "order=F,chunkShape=zLarger",
+      "order=C,chunkShape=zSmaller",
+      "order=C,chunkShape=zLarger"
+     ],
+     "fate": []
+    },
+    "compressorsRoundTrip": {
+     "pins": "compressors round trip",
+     "tags": [
+      "Unit"
+     ],
+     "cases": [
+      "compressor=zstd",
+      "compressor=lz4",
+      "compressor=lz4hc",
+      "compressor=blosclz",
+      "compressor=zlib",
+      "compressor=gzip"
+     ],
+     "fate": []
+    },
+    "createzarrRejectsUnsupportedType": {
+     "pins": "createzarr rejects unsupported type",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "defaultMetadata": {
+     "pins": "default metadata",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "image2dIsStoredWithSingletonZ": {
+     "pins": "image2d is stored with singleton z",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "nestedDimensionSeparator": {
+     "pins": "nested dimension separator",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "overwriteReplacesExistingArray": {
+     "pins": "overwrite replaces existing array",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "partialWritesUpdateOnlyTheRegion": {
+     "pins": "also rewrites existing chunks, which takes a different code path (rename over an existing file) than the first write. On Windows, rewrites kept the old data before Cpp-Zarr 1.6.0.",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "readBoundingBox": {
+     "pins": "read bounding box",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "readBoundingBoxPastTheEndErrors": {
+     "pins": "read bounding box past the end errors",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "readMissingFileErrors": {
+     "pins": "read missing file errors",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "roundTripPreservesTypeAndValues": {
+     "pins": "round trip preserves type and values",
+     "tags": [
+      "Unit"
+     ],
+     "cases": [
+      "dtype=uint8,blockSize=nonDivisible",
+      "dtype=uint8,blockSize=singleChunk",
+      "dtype=uint8,blockSize=larger",
+      "dtype=uint16,blockSize=nonDivisible",
+      "dtype=uint16,blockSize=singleChunk",
+      "dtype=uint16,blockSize=larger",
+      "dtype=single,blockSize=nonDivisible",
+      "dtype=single,blockSize=singleChunk",
+      "dtype=single,blockSize=larger",
+      "dtype=double,blockSize=nonDivisible",
+      "dtype=double,blockSize=singleChunk",
+      "dtype=double,blockSize=larger"
+     ],
+     "fate": []
+    },
+    "shardedRoundTrip": {
+     "pins": "sharded round trip",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "sparseWriteSkipsEmptyChunks": {
+     "pins": "sparse write skips empty chunks",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "uuidFalseWritesChunksInPlace": {
+     "pins": "by default (and with uuid true) each chunk is written to a temporary file that replaces the chunk file; with uuid false the chunk file is written in place, so a hard link to it sees the new data",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    }
+   }
+  }
+ }
+}

@@ -1,0 +1,857 @@
+{
+ "folder": "stitch",
+ "classes": {
+  "ImageListGenerationTest": {
+   "file": "tests/stitch/ImageListGenerationTest.m",
+   "pins": "XR_generate_image_list_wrapper: image list csv files (stage coordinates for stitching) from tile lists, tile positions, and encoder slice lists. The tile_position cases follow demo_phase_and_2photon_stitching.m and check that the generated list stitches synthetic tiles back to the ground truth.",
+   "category": "data",
+   "owner": "S01",
+   "phase": 1,
+   "finished": false,
+   "fate": [],
+   "methods": {
+    "encoderListsForMultipleDatasets": {
+     "pins": "one image list per dataset folder (regression for ef90ba3: a cell of data paths was passed on as is and errored)",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "encoderSliceListCoordinates": {
+     "pins": "stage coordinates come from the first MCS2 position of each tile in the SliceList csv files",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "tileListCoordinates": {
+     "pins": "tile list coordinates",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "tileNamesWithoutStandardChannel": {
+     "pins": "tile names that match neither LLSM pattern (no '_ch[0-9]_'): the list must still be generated (regression for 881d319, 'expression' was undefined), and the stitching channel, which is only in mappedFilename, must select the process function (regression for abff2bc, it was silently skipped)",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "tilePositionStepsForNonSquareTiles": {
+     "pins": "the x and y steps used to be swapped for non-square tiles",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "tilePositions2DPhase": {
+     "pins": "2D tiles with standard names, objective/IO scan and overlap in pixels; the generated list stitches the tiles exactly",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "tilePositions3DNonStandardNames": {
+     "pins": "2-photon style tiles (Tile_ch0_000x_000y_000z_0000t.tif) with overlap in um and flipped x and z axes ('-x,y,-z'), as in demo_phase_and_2photon_stitching.m",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    }
+   }
+  },
+  "PhaseFlatFieldCorrectionTest": {
+   "file": "tests/stitch/PhaseFlatFieldCorrectionTest.m",
+   "pins": "XR_phase_image_flat_field_correction (the preprocessing of 2D phase tiles in demo_phase_and_2photon_stitching.m): subtract a Gaussian blurred image (sigma 100), add a constant, estimate the flat field of all tiles with BaSiC, and divide by it.",
+   "category": "data",
+   "owner": "B07",
+   "phase": 2,
+   "finished": false,
+   "fate": [],
+   "methods": {
+    "correctsTilesWithEstimatedFlatField": {
+     "pins": "corrects tiles with estimated flat field",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    }
+   }
+  },
+  "RegistrationXcorrTest": {
+   "file": "tests/stitch/RegistrationXcorrTest.m",
+   "pins": "the normalized cross-correlation of the registration in the window of the max shifts (normxcorr3_max_shift -> normxcorr3_fast with a bbox -> normxcorr3_window_mex on Linux) against the computation of the whole output: the mex runs the same FFTW transforms as MATLAB's fftn and ifftn and the recurrences of integral_image_3d_mex, only for the window, so every value is the same bit for bit (also si...",
+   "category": "data",
+   "owner": "S04",
+   "phase": 1,
+   "finished": false,
+   "fate": [],
+   "methods": {
+    "fastFFTFindsTheSameShift": {
+     "pins": "fast fftfinds the same shift",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "fastFFTIsCloseInEveryWindow": {
+     "pins": "fastFFT's smaller FFTs (no wrap-around in the window) change the correlation only by rounding; the integral images stay the same",
+     "tags": [
+      "Unit"
+     ],
+     "cases": [
+      "xcorrSize=evenOdd",
+      "xcorrSize=y64",
+      "xcorrSize=x64",
+      "xcorrSize=z64",
+      "xcorrSize=split",
+      "xcorrSize=thinTemplate",
+      "xcorrSize=singleSlice",
+      "xcorrSize=twoD",
+      "xcorrSize=equal"
+     ],
+     "fate": []
+    },
+    "linesAreGroupedAsMatlabDoes": {
+     "pins": "'fft1' transforms the columns as MATLAB's fft(X, [], 1) does: in its parallel mode, MATLAB halves the columns until a piece has at most 32, then runs each piece in groups of four from its start and the rest alone; without it (or when n * N * (bits of n) <= 98304), the whole range so. MATLAB's own fft of a piece of at most 32 columns, or of four or one, runs as one group (or alone), which gives...",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "maxShiftEqualsTheWholeOutputsMax": {
+     "pins": "normxcorr3_max_shift finds the shift of a moved texture and gives the same shift, maximum and window as the whole output did",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "maxShiftOf2DImages": {
+     "pins": "2D images errored: the window's upper bound was capped with size(C), which has 2 elements for a 2D output",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "mexPartsEqualMatlabs": {
+     "pins": "the mex's correlation and integral images equal those of the MATLAB code (fftn/ifftn, integral_image_3d_mex) in the window",
+     "tags": [
+      "Unit"
+     ],
+     "cases": [
+      "xcorrSize=evenOdd",
+      "xcorrSize=y64",
+      "xcorrSize=x64",
+      "xcorrSize=z64",
+      "xcorrSize=split",
+      "xcorrSize=thinTemplate",
+      "xcorrSize=singleSlice",
+      "xcorrSize=twoD",
+      "xcorrSize=equal"
+     ],
+     "fate": []
+    },
+    "mexRejectsInvalidInputs": {
+     "pins": "mex rejects invalid inputs",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "resultsDoNotDependOnTheThreadCount": {
+     "pins": "as MATLAB's FFTs: the groups of lines don't depend on the threads",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "unsupportedCallsRunTheMatlabCode": {
+     "pins": "double data runs the MATLAB code (by design, without a fallback record of the mex)",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "windowEqualsTheWholeOutput": {
+     "pins": "the window of normxcorr3_fast (whole output, corners, single elements, random parts) equals the part of the whole output",
+     "tags": [
+      "Unit"
+     ],
+     "cases": [
+      "xcorrSize=evenOdd",
+      "xcorrSize=y64",
+      "xcorrSize=x64",
+      "xcorrSize=z64",
+      "xcorrSize=split",
+      "xcorrSize=thinTemplate",
+      "xcorrSize=singleSlice",
+      "xcorrSize=twoD",
+      "xcorrSize=equal"
+     ],
+     "fate": []
+    },
+    "withoutTheMexTheMatlabCodeRuns": {
+     "pins": "where the mex is missing (or not used), the whole output is computed and cropped",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    }
+   }
+  },
+  "StitchHelperMexTest": {
+   "file": "tests/stitch/StitchHelperMexTest.m",
+   "pins": "stitching helpers that run a mex with MATLAB code as the fallback and that the stitching tests don't reach: the crop of a long registration region to its brightest part (crop_subregion_by_intensity, crop3d_mex) and the check that the major tiles of a batch have data at every voxel (check_major_tile_valid, any_4th_dim_mex); the edge erosion of tiles (erodeVolumeBy2DProjection, indexing3d_mex) an...",
+   "category": "data",
+   "owner": "S04",
+   "phase": 1,
+   "finished": false,
+   "fate": [],
+   "methods": {
+    "boundsOfVoxelsWithoutDataWithManyThreads": {
+     "pins": "a block without data that all threads find and single voxels at the bounds that one thread each finds: the mex updated the bounds from all threads without synchronization and lost some of them (wrong in most calls with 8 threads); the threads keep their own now, combined at the end, as one thread would find them",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "edgeErosionWithoutTheMexMatches": {
+     "pins": "erodeVolumeBy2DProjection zeroes esize slices at both ends of y with indexing3d_mex; the MATLAB code that runs where the mex fails zeroed one more at the end",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "integralImageMexErrorsHaveIdentifiers": {
+     "pins": "the mex's error identifiers had spaces, which MATLAB rejects (MATLAB:mexapi:invalidErrorIdentifier, without the message)",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "integralImageMexRejectsMoreThan3D": {
+     "pins": "the mex copied the dimensions into an array of 3 (a 4-D input wrote past it)",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "longRegionIsCroppedAroundItsBrightestPart": {
+     "pins": "long region is cropped around its brightest part",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "majorTilesWithDataEverywhereAreValid": {
+     "pins": "tile 1 and 3 are major; tile 2 has no data (0) and tile 4 only some, which doesn't matter",
+     "tags": [
+      "Unit"
+     ],
+     "cases": [
+      "tileClass=uint16",
+      "tileClass=single",
+      "tileClass=uint8",
+      "tileClass=double"
+     ],
+     "fate": []
+    },
+    "voxelWithoutDataInTheMajorTilesIsFound": {
+     "pins": "one voxel (many threads: boundsOfVoxelsWithoutDataWithManyThreads)",
+     "tags": [
+      "Unit"
+     ],
+     "cases": [
+      "tileClass=uint16",
+      "tileClass=single",
+      "tileClass=uint8",
+      "tileClass=double"
+     ],
+     "fate": []
+    }
+   }
+  },
+  "StitchJobResourcesTest": {
+   "file": "tests/stitch/StitchJobResourcesTest.m",
+   "pins": "a stitching job of the cluster is sized for what it holds (see XR_matlab_stitching_wrapper), so the stitching function decides with its job's memory: it stitches a small volume in its own process only if its blocks and distance maps fit the job (stitch_in_process), and it measures the volume for its MIPs against at least the largest job of the config (stitch_mip_memory), as its jobs used to hav...",
+   "category": "data",
+   "owner": "S09",
+   "phase": 1,
+   "finished": false,
+   "fate": [],
+   "methods": {
+    "mipMemoryOfAClusterJobIsAtLeastTheLargestJob": {
+     "pins": "mip memory of acluster job is at least the largest job",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "smallVolumesAreStitchedInTheirJobIfTheyFitIt": {
+     "pins": "small volumes are stitched in their job if they fit it",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    }
+   }
+  },
+  "StitchMergeBlockMipsTest": {
+   "file": "tests/stitch/StitchMergeBlockMipsTest.m",
+   "pins": "stitch_merge_block_mips, which merges the z MIPs the blending tasks save in their flag files into the z MIP of the stitched image",
+   "category": "data",
+   "owner": "S07",
+   "phase": 1,
+   "finished": false,
+   "fate": [],
+   "methods": {
+    "flagWithoutMIPsGivesNoMIP": {
+     "pins": "e.g., flags of a run whose tasks didn't save MIPs: the caller then reads the image",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "mergedMIPEqualsMIPOfTheImage": {
+     "pins": "merged mipequals mipof the image",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "singleKeepsNegativesAndNaN": {
+     "pins": "max ignores NaN, so a column of NaN stays NaN",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    }
+   }
+  },
+  "StitchShiftAssignmentTest": {
+   "file": "tests/stitch/StitchShiftAssignmentTest.m",
+   "pins": "stitch_global_grid_assignment (shiftMethod 'grid', the default): the tile shifts from the pairwise registration shifts, by constrained least squares. Above 400 tiles it uses sparse matrices.",
+   "category": "data",
+   "owner": "S05",
+   "phase": 1,
+   "finished": false,
+   "fate": [],
+   "methods": {
+    "largeGridMatchesDenseSolver": {
+     "pins": "the sparse solution is moved to mean zero, as the dense solver leaves it, so the rounded shifts agree except rarely by 1",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    }
+   }
+  },
+  "StitchingTest": {
+   "file": "tests/stitch/StitchingTest.m",
+   "pins": "XR_matlab_stitching_wrapper on tiles cut from synthetic ground truth volumes at known positions. With exact positions (xcorrShift false) the stitched volume must reproduce the ground truth voxel by voxel.",
+   "category": "data",
+   "owner": "S09",
+   "phase": 1,
+   "finished": false,
+   "fate": [],
+   "methods": {
+    "blendingSplitsTheOverlapInQuarters": {
+     "pins": "'max', 'mean' and 'median' blend the middle half of an overlap and take one tile in each outer quarter (overlap type 'half'; 'none' takes half from each tile). The split axis is z for these tiles (see noneBlendTakesHalfOverlapFromEachTile). Tile 2 is offset by 5000, so each voxel shows which tiles it came from.",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "blendingWithoutTheMexGivesTheSameResult": {
+     "pins": "tile_blending_3d_mex blends the batches of 'none', 'max', 'mean' and 'median' in one pass; without it (a stub that errors) the MATLAB code must give the same volume and MIP. The tiles differ in the overlaps (tile k is offset by 1000 * k) and have zero regions, and the batches hold 1 to 4 tiles.",
+     "tags": [
+      "Integration"
+     ],
+     "cases": [
+      "tileBlendMethod=none",
+      "tileBlendMethod=max",
+      "tileBlendMethod=mean",
+      "tileBlendMethod=median"
+     ],
+     "fate": []
+    },
+    "clusterJobsAskForWhatTheyHold": {
+     "pins": "the stitching job of a volume asked for the memory of all its tiles (8 B per voxel) on at least cpusPerTask (8) CPUs, which it held while it waited for its block jobs (80 such jobs held 840 CPUs, and none of their 624 block jobs could start). Now it asks for what it holds, on one CPU, or with masterCompute (here the config's) for a block's job (2 CPUs), unless it stitches the volume itself (few...",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": [],
+     "category": "framework_fake_slurm"
+    },
+    "clusterModeEndsSoonAfterTheLastResult": {
+     "pins": "the wrapper looked for its jobs' results in rounds 5 s apart, so it ended up to 5 s after the last one; it now looks for the results still to come each second and goes on once they are all there. The job runs; its result comes during the second second.",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": [],
+     "category": "framework_fake_slurm"
+    },
+    "clusterModeGivesUpTilesWithoutARecentMarker": {
+     "pins": "without a pipeline that keeps its marker recent (none, or a marker left from one that ended), missing processed tiles count as tries, as before",
+     "tags": [
+      "Integration"
+     ],
+     "cases": [
+      "markerAge=none",
+      "markerAge=old"
+     ],
+     "fate": [],
+     "category": "framework_fake_slurm"
+    },
+    "clusterModeLooksForThePrimaryStitchInfoEachSecond": {
+     "pins": "a secondary channel waits for the stitch info of the primary channel, which the wrapper looked for in rounds 5 s apart; in cluster mode it now looks for it each second, so that the secondary channel is submitted soon after it comes, also while another volume waits for tiles that jobs still make. Time point 0: the primary channel is done, its stitch info comes at the second wait, and the job of...",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": [],
+     "category": "framework_fake_slurm"
+    },
+    "clusterModeSeesResultsOtherNodesJustMade": {
+     "pins": "on NFS, exist() can miss a result another node just made for 30 s or more, so the wrapper saw finished volumes (and secondary channels the primary's stitch info) a round late; it now checks them with batch_file_exist, which sees them at once. The stub reports the result made, so no job is submitted.",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": [],
+     "category": "framework_fake_slurm"
+    },
+    "clusterModeWaitsForTheLastTry": {
+     "pins": "after submitting the last try, the wrapper returned without waiting for its job; it now checks the job until it ends, without submitting again",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": [],
+     "category": "framework_fake_slurm"
+    },
+    "clusterModeWaitsForTilesJobsStillMake": {
+     "pins": "in cluster mode the wrapper gave up a volume whose processed tiles were missing after maxTrialNum checks 5 s apart, also while the pipeline's deskew jobs were still making them (the pipeline then needed another stitching job for it, or lost it). While the pipeline's marker in their folder is recent, it now waits for them without counting tries. The tiles come at the third wait; the master stitc...",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": [],
+     "category": "framework_fake_slurm"
+    },
+    "exactPositionsReproduceGroundTruth": {
+     "pins": "2 x 2 tiles in DSR space, as in demo_zarr_stitching.m",
+     "tags": [
+      "Integration"
+     ],
+     "cases": [
+      "blendMethod=none",
+      "blendMethod=feather",
+      "blendMethod=max",
+      "blendMethod=mean",
+      "blendMethod=median"
+     ],
+     "fate": []
+    },
+    "featherBlendingOfUint8Tiles": {
+     "pins": "the feather blending mex takes uint16 and single tiles; uint8 tiles (kept as uint8 without save16bit) are blended by the MATLAB code, and its NaNs replaced in replace_nan_with_value (the MATLAB code where it isn't built)",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "featherBlendingWithThinTiles": {
+     "pins": "the feather z window used to give the first slice weight 0 for 10-29 slices and index 0 (error) for fewer than 10",
+     "tags": [
+      "Integration"
+     ],
+     "cases": [
+      "thinTileDepth=nz8",
+      "thinTileDepth=nz20"
+     ],
+     "fate": []
+    },
+    "ioScanUsesStagePositionsAsIs": {
+     "pins": "objective/IO scan tiles in x and z (z offsets in units of dz), as for the 3D 2-photon data in demo_phase_and_2photon_stitching.m",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "largeDatasetsUseLocalWorkers": {
+     "pins": "without localWorkerNum, the volumes of datasets with 32 or more tiles per volume to register are stitched with local workers, smaller ones one task at a time in this MATLAB",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "largeFileRegistrationRecoversPerturbedTilePosition": {
+     "pins": "large-file registration built the task of each tile pair with the tile and box at the pair's index instead of its first tile, so beyond two tiles it registered the wrong tiles. The third tile is listed 2 voxels off in x.",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "largeFileStitching": {
+     "pins": "large-file stitching used to fail making the MIP slabs (bim undefined in XR_MIP_zarr) and registering them (three slips in cross_correlation_registration_3d_mip_slabs from a86c36d)",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "largeFileWithoutRegistration": {
+     "pins": "the distance maps use MIP slabs, which used to be made only by the registration (xcorrShift)",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "largeVolumeMIPsAreMadeBeforePublishing": {
+     "pins": "volumes over half the memory get their MIPs from XR_MIP_zarr, which names them after its input: the temporary result must be named after the final one",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "lastTryWaitsForATaskRunnerThatHasTheTask": {
+     "pins": "(task runners) the second volume's job makes its result and then runs the third volume's task (a task runner; the first volume, the first of its kind, runs as before), so the third volume's own job ends at once: the wrapper counts it as running while the second volume's job runs, instead of as finished, and does not submit it again",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": [],
+     "category": "framework_fake_slurm"
+    },
+    "localShiftMethod": {
+     "pins": "'local' used to read the shift table in its layout before 812679e",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "localWorkersGiveTheSameResult": {
+     "pins": "with local workers, the tiles are registered and blended (in several tasks) on a local process pool; the result is that of one task at a time in this MATLAB",
+     "tags": [
+      "Integration",
+      "Slow"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "masterDoesNotStitchAVolumeWhoseJobRuns": {
+     "pins": "with masterCompute, the master stitches the last unfinished volume itself. Once that one was done, the last unfinished volume could be one whose job already ran, which the master then stitched a second time with the same temporary files (a corrupt stitch info file in a real run); it now waits for the job. The stitching function is a spy that makes the result of the second volume, so each call i...",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": [],
+     "category": "framework_fake_slurm"
+    },
+    "masterInAJobStitchesNoVolumeThatDoesNotFitIt": {
+     "pins": "with masterCompute the master stitches the last unfinished volume itself, also in a Slurm job without the memory for it (the pipeline's stitching job, sized for one tile); now it submits it then. The stitching function is a spy, so each call is one the master made.",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": [],
+     "category": "framework_fake_slurm"
+    },
+    "masterWaitsForTheLastTryOfAJob": {
+     "pins": "with masterCompute, once the last try of every unfinished volume was submitted, the wrapper errored while waiting for those jobs (no last volume for the master to take over)",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": [],
+     "category": "framework_fake_slurm"
+    },
+    "mipIsMadeBeforePublishing": {
+     "pins": "the stitching wrapper and the pipeline count a volume as stitched once its result exists; the stitched MIP was written after the result was moved into place",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "mipIsMergedFromBlendingTasks": {
+     "pins": "the blending tasks save the z MIPs of their batches, so the result isn't read again for its MIP. With mean blending of tiles that differ by 1 the overlap ends in .5, which the uint16 result rounds as the MIP must. Small batches, so that a task merges the MIPs of batches at the same y and x.",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "noneBlendTakesHalfOverlapFromEachTile": {
+     "pins": "'none' blending used to take the whole overlap from the lower index tile (regressions from d9a099b and 4a78ade). The split axis is the first in halfOrder (default [3, 2, 1], xyz) with more than one voxel of overlap, z for these tiles, so this checks only that half of the overlap comes from each tile.",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "primaryChannelRegistrationAppliesToOtherChannels": {
+     "pins": "xcorrMode 'primaryFirst': the shift found in the primary channel (CamA) is used for CamB, whose overlap is featureless so it could not be registered on its own",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "processFunctionFileHasANameOfItsOwn": {
+     "pins": "with EdgeArtifacts, a stitching run saves its tile processing function to tmp/. The file was named by the minute and the hundredths of a second ('yyyyMMddHHmmSS'), so jobs of other volumes starting in the same minute could write the same file; it now gets a uuid of its own.",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "processFunctionIsAppliedToTiles": {
+     "pins": "user process function saved in a .mat file, as the flat field correction in demo_phase_and_2photon_stitching.m. With a flat flat-field image, background 100 and offset 1, x -> x - 99.",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "processedTilesOtherNodesJustMadeAreSeen": {
+     "pins": "on NFS, exist() can miss tiles another node just made for 30 s or more, so the wrapper ran out of tries for a time point whose deskewed tiles were done and left it to a second stitching job (the pipeline demo then took 110-140 s instead of 65 s); it now checks them with batch_file_exist. The stub reports the tiles missing although they are on disk, so the wrapper must wait for them instead of s...",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "processedZarrTiles": {
+     "pins": "DSR tiles saved as zarr in a subfolder with the image list refering to the raw tif names (ProcessedDirStr='DSR', zarrFile=true), as in demo_zarr_stitching.m",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "registration2DTiles": {
+     "pins": "2D registration with xcorrMode 'primary' (all time points of the primary channel), as for the phase data in demo_phase_and_2photon_stitching.m",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "resultOfAnotherRunIsKept": {
+     "pins": "a run that lost the race to another run of the same volume (a rerun while the earlier jobs still run) wrote the MIP of its own unfinished result over the published one",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "secondaryChannelUsesTheTaskSizeOfThePrimary": {
+     "pins": "the secondary channel reads the per-task block info of the primary channel, whose task size depends on the local workers it was stitched with. The stub leaves no memory for the workers, so all tasks run in this MATLAB.",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "secondaryOfAnotherStitchedSizeGetsItsOwnBlockInfo": {
+     "pins": "a secondary stitched later with another outBbox than the primary's (so of another stitched size) used the primary's per-block info, made for the primary's volume. Now it makes its own: its result is its box of the volume",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "secondaryOfThePrimarySizesUsesItsBlockInfo": {
+     "pins": "a secondary whose tiles and stitched size are the primary's still stitches with the primary's per-block info (none of its own), as before: the same data, the same result",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "secondaryWithAShortTileStitchesWhatItHas": {
+     "pins": "a secondary (here time point 1) whose tile 4 is shorter in z than the primary's (its acquisition stopped early) used the primary's per-block info, made for the primary's tile sizes, so its blocks read past the end of that tile (readzarr: \"Upper bound is invalid\"). Now it makes its own, with the primary's tile positions (its own tile 2 is one voxel off them) and shifts: its result is that of its...",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "separateBlendWritesEachTileOnTheCanvas": {
+     "pins": "blendMethod 'separate' writes each tile, padded to the stitched canvas, as its own result (cropped with XR_crop_zarr, with MIPs)",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "skewedSpacePlacement": {
+     "pins": "stitching in skewed space (demo_skewed_space_stitching.m): a stage x step of n * dz is n raw frames in z; stage y is y. With '-x,y,z' the stage x direction is flipped.",
+     "tags": [
+      "Integration"
+     ],
+     "cases": [
+      "axisOrder=x",
+      "axisOrder=minusX"
+     ],
+     "fate": []
+    },
+    "skewedSpaceRegistration": {
+     "pins": "registration in skewed space with the demo settings ('-x,y,z', feather): the y = 1 tiles are listed 4 voxels off in y",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "streamingSeesTilesOtherMachinesJustMade": {
+     "pins": "in streaming mode the tiles were checked with exist(), which on NFS can miss files another machine just made for 30 s or more; they are now checked with batch_file_exist. The stub reports all files made (the result too, so nothing is stitched), while there are no raw tiles on disk: the wrapper must not wait for them.",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "tiles2D": {
+     "pins": "single page tiles, as for the 2D phase data in demo_phase_and_2photon_stitching.m",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "tilesOfDifferentSizesGetTheirOwnDistanceMaps": {
+     "pins": "tiles of one location with different sizes get a distance map each. Their overlap regions were cropped with a 3 x 2 bounding box, which crop3d_mex rejected (the error was printed and a MATLAB copy used instead).",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "volumeSizeEstimateMatchesTheStitchedVolume": {
+     "pins": "the stitching wrapper sizes a volume's job by the size of the volume (stitch_volume_size_estimate, which mirrors the stitching function's geometry): it is the size of the stitched volume (exact tiles: no registration shifts)",
+     "tags": [
+      "Integration"
+     ],
+     "cases": [
+      "sizeSetup=grid",
+      "sizeSetup=gridPadded",
+      "sizeSetup=gridOutBbox",
+      "sizeSetup=tiles2D",
+      "sizeSetup=ioScan",
+      "sizeSetup=skewedSpace"
+     ],
+     "fate": []
+    },
+    "xcorrRecoversPerturbedTilePosition": {
+     "pins": "the second tile is listed 4 voxels off in x; registration must recover the true position. Even shifts avoid the +/-1 rounding of the global position solver for two tiles.",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    }
+   }
+  },
+  "TileBlendingTest": {
+   "file": "tests/stitch/TileBlendingTest.m",
+   "pins": "tile_blending_3d, which blends the tiles of a stitching batch for the blend methods 'none', 'max', 'mean' and 'median' in processStitchBlock: tile_blending_3d_mex in one pass, or the MATLAB code where the mex is missing. A voxel gets the blend of the tiles outside their regions (overlaps other tiles fill), or where that is 0, of all tiles.",
+   "category": "data",
+   "owner": "K04",
+   "phase": 1,
+   "finished": false,
+   "fate": [],
+   "methods": {
+    "mexMatchesTheMatlabCode": {
+     "pins": "tiles covering parts of the batch with zeros, regions (also overlapping and empty ones), for single negative values, NaN, Inf and -0; 3D, 2D and a singleton dimension",
+     "tags": [
+      "Unit"
+     ],
+     "cases": [
+      "blendMethod=none,dtype=uint8",
+      "blendMethod=none,dtype=uint16",
+      "blendMethod=none,dtype=single",
+      "blendMethod=max,dtype=uint8",
+      "blendMethod=max,dtype=uint16",
+      "blendMethod=max,dtype=single",
+      "blendMethod=mean,dtype=uint8",
+      "blendMethod=mean,dtype=uint16",
+      "blendMethod=mean,dtype=single",
+      "blendMethod=median,dtype=uint8",
+      "blendMethod=median,dtype=uint16",
+      "blendMethod=median,dtype=single"
+     ],
+     "fate": []
+    },
+    "mexRejectsInvalidInput": {
+     "pins": "mex rejects invalid input",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "otherClassesUseTheMatlabCode": {
+     "pins": "double tiles are blended in single by the MATLAB code",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "voxelsBlendTheTilesOutsideTheirRegions": {
+     "pins": "3 tiles of 10, 21 and 40 with zeros, tile 2 counts as 0 in columns 1-2 and tile 3 in column 1, rows 1-2",
+     "tags": [
+      "Unit"
+     ],
+     "cases": [
+      "blendMethod=none",
+      "blendMethod=max",
+      "blendMethod=mean",
+      "blendMethod=median"
+     ],
+     "fate": []
+    }
+   }
+  }
+ }
+}

@@ -1,0 +1,162 @@
+{
+ "folder": "isolation",
+ "classes": {
+  "IsolationHarnessTest": {
+   "file": "tests/isolation/IsolationHarnessTest.m",
+   "pins": "the isolation harness of tests/isolation (run_isolation_harness.sh, speed/reports/isolation.md): its snapshot sees what a task changes in the process, its resets undo it, it finds tasks whose outputs depend on what ran before them in the process, and its comparison finds any difference in the outputs",
+   "category": "framework_design",
+   "owner": "E06",
+   "phase": 1,
+   "finished": false,
+   "fate": [],
+   "methods": {
+    "capturedTasksGiveTheSameOutputsInAnyOrder": {
+     "pins": "the crop and MIP scenarios: their folders are left as they are before the tasks, and the tasks give the same outputs one per process (here: after a full reset) and in one process in reverse order",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "compareFindsDifferentOutputs": {
+     "pins": "compare finds different outputs",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "fileDescriptorsAreThoseOfFilesOutsideMATLAB": {
+     "pins": "only descriptors of files outside MATLAB count, as a task can leave them open: MATLAB's own (sockets, pipes, event and device descriptors) come and go in the background, and their count changed by one between two looks (fullResetRestoresTheProcess on GitHub's R2026b Linux runner). A device descriptor (here /dev/null) doesn't count, a file left open does.",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "fullResetClearsPersistentVariables": {
+     "pins": "full reset clears persistent variables",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "fullResetRestoresTheProcess": {
+     "pins": "(a new process has no last warning)",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "prototypeResetRestoresItsPart": {
+     "pins": "prototype reset restores its part",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "runRecordsLeaksAndResetsUndoThem": {
+     "pins": "two runs of a task that saves random numbers of the global stream: in one process without a reset, the second saves other numbers than the first; with the prototype's reset, the same",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "snapshotSeesWhatATaskChanges": {
+     "pins": "snapshot sees what atask changes",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    }
+   }
+  },
+  "TaskStateLeakTest": {
+   "file": "tests/isolation/TaskStateLeakTest.m",
+   "pins": "task functions leave the process as they found it, so that the next task in the same process (the job framework's workers, local runs) sees what a new process would: warning states, the global random numbers, and caches that notice changed files (see tests/isolation and speed/reports/isolation.md)",
+   "category": "framework_design",
+   "owner": "E06",
+   "phase": 1,
+   "finished": false,
+   "fate": [],
+   "methods": {
+    "fscAnalysisReadsAChangedFileAgain": {
+     "pins": "XR_one_image_FSC_analysis kept the image of the last file by its name only, so a file written again under the same name (e.g., a new decon result) was analyzed as the old one",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": [],
+     "owner": "B05"
+    },
+    "fscAnalysisSeesAChangedSizeAtTheSameTime": {
+     "pins": "a file written again within the same second (modification times have a resolution of 1 s) is told apart by its size",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": [],
+     "owner": "B05"
+    },
+    "fscFrameLeavesNoImageInTheCache": {
+     "pins": "the frame task read its image into XR_one_image_FSC_analysis's cache, which kept it (and its memory) after the task: a later call on a file with the same name, size and modification time got it",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": [],
+     "owner": "B05"
+    },
+    "ownRandomStreamGivesThePermutationOfRng1": {
+     "pins": "XR_parallel_rsync_wrapper's shuffle: a stream of its own seeded with 1 gives the permutation of rng(1) and randperm",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "rsyncShufflesWithoutTheGlobalRandomNumbers": {
+     "pins": "the wrapper shuffled its files with rng(1), which reset the global random numbers of the process; the files are shuffled as before",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": [],
+     "owner": "T05"
+    },
+    "uuidWithoutJavaKeepsTheGlobalRandomNumbers": {
+     "pins": "without Java (compiled and MATLAB jobs), get_uuid took random numbers from the global stream (Windows: after rng('shuffle'); elsewhere when uuidgen fails)",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": [],
+     "owner": "J02"
+    },
+    "wrapperRestoresTheDirectoryExistsWarning": {
+     "pins": "wrapper restores the directory exists warning",
+     "tags": [
+      "Unit"
+     ],
+     "cases": [
+      "mkdirWrapper=crop",
+      "mkdirWrapper=resample",
+      "mkdirWrapper=deskewRotate",
+      "mkdirWrapper=decon",
+      "mkdirWrapper=fft",
+      "mkdirWrapper=resaveZarr",
+      "mkdirWrapper=rotate",
+      "mkdirWrapper=imaris",
+      "mkdirWrapper=pipeline"
+     ],
+     "fate": []
+    }
+   }
+  }
+ }
+}

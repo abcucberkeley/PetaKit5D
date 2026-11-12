@@ -1,0 +1,52 @@
+{
+ "folder": "demo_data",
+ "classes": {
+  "DemoDatasetTest": {
+   "file": "tests/demo_data/DemoDatasetTest.m",
+   "pins": "checks on the published demo dataset (light sheet cell images, see demos/demo_light_sheet_cell_data_downloader.m). They are skipped unless the environment variable PETAKIT5D_DEMO_DATA points to the PetaKit5D_demo_cell_image_dataset folder (or its parent), e.g. in Jenkins. The dataset is only read; outputs go to temporary folders. Needs ~16 GB RAM for 100-slice tiles (more for the 500-slice ones).",
+   "category": "data",
+   "owner": "E01",
+   "phase": 1,
+   "finished": false,
+   "fate": [],
+   "methods": {
+    "combinedDeskewRotateMatchesSeparate": {
+     "pins": "the comparison made in demos/demo_geometric_transformation.m",
+     "tags": [
+      "DemoData",
+      "Slow"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "cppTiffReaderMatchesLibtiff": {
+     "pins": "cpp tiff reader matches libtiff",
+     "tags": [
+      "DemoData",
+      "Slow"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "omwDeconvolutionOnCPU": {
+     "pins": "OMW decon as in demos/demo_RL_deconvolution.m, on the CPU",
+     "tags": [
+      "DemoData",
+      "Slow"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "writersRoundTripRealData": {
+     "pins": "writers round trip real data",
+     "tags": [
+      "DemoData",
+      "Slow"
+     ],
+     "cases": null,
+     "fate": []
+    }
+   }
+  }
+ }
+}

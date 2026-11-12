@@ -1,0 +1,2344 @@
+{
+ "folder": "framework",
+ "classes": {
+  "BatchFileExistTest": {
+   "file": "tests/framework/BatchFileExistTest.m",
+   "pins": "batch_file_exist, which the job framework uses to check task inputs and outputs. Its result must equal exist(..., 'file'). On Linux it opens each folder before checking its files by name (up to 100 paths in a folder) or looks the names up in a listing of the folder (more), with Java or, without the JVM, dir(); on NFS this shows files other nodes made at once. Elsewhere it checks the files one b...",
+   "category": "framework_fake_slurm",
+   "owner": "J02",
+   "phase": 1,
+   "finished": false,
+   "fate": [],
+   "methods": {
+    "backgroundPoolForManyFilesInManyFolders": {
+     "pins": "more than 100 files in 3 or more folders with useParpool: parfeval on macOS and Windows",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "checksFilesAndFoldersIndividually": {
+     "pins": "checks files and folders individually",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "duplicatePaths": {
+     "pins": "duplicate paths",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "emptyAndSingleInputs": {
+     "pins": "empty and single inputs",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "existingOutputFileReturnsCachedResult": {
+     "pins": "KNOWN ISSUE (may be intended): batch_file_exist.m:43-45 returns early when the result file outFullpath already exists, before file_exist_mat is assigned, so a second call errors with \"Output argument file_exist_mat not assigned\". Fix: load file_exist_mat from outFullpath before returning.",
+     "tags": [
+      "KnownIssue",
+      "Unit"
+     ],
+     "cases": null,
+     "fate": [],
+     "known_issue": true
+    },
+    "findsFilesMadeBetweenCalls": {
+     "pins": "finds files made between calls",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "foldersAndTrailingSeparators": {
+     "pins": "zarr outputs are folders; a trailing separator doesn't matter",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "largeFolder": {
+     "pins": "20,000 files, 40,000 paths",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "listsTheFolderForManyFiles": {
+     "pins": "more than 100 files in a folder: one listing",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "matchesExistOnEdgeCases": {
+     "pins": "few paths per folder (each folder is opened, then the paths checked by name), all at once and one by one",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "matchesExistOnEdgeCasesInListedFolders": {
+     "pins": "more than 100 paths in each folder: the folders are listed",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "missingFolderWithManyFiles": {
+     "pins": "eb1e3b8 regression: listing a folder that doesn't exist errored",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "missingParentFolders": {
+     "pins": "missing parent folders",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "mixedFoundAndMissingInManyFolders": {
+     "pins": "folders with 1 to 150 paths (opened or listed), some missing",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "savesResultToOutputFile": {
+     "pins": "saves result to output file",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "unreadableFolder": {
+     "pins": "a folder that can be searched but not listed: exist() finds its files, so batch_file_exist must too",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    }
+   }
+  },
+  "CheckBatchSlurmJobsStatusTest": {
+   "file": "tests/framework/CheckBatchSlurmJobsStatusTest.m",
+   "pins": "check_batch_slurm_jobs_status, which the job framework uses to poll its jobs, with pktest.FakeSlurmFixture: 1 running, 0 pending, -1 any other state or not in the queue",
+   "category": "framework_fake_slurm",
+   "owner": "J03",
+   "phase": 1,
+   "finished": false,
+   "fate": [],
+   "methods": {
+    "mapsQueueStatesToJobs": {
+     "pins": "maps queue states to jobs",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "tasksSharingAJobGetItsStatus": {
+     "pins": "tasks batched into one job have the same job and array id",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    }
+   }
+  },
+  "CoordinatorNiceTest": {
+   "file": "tests/framework/CoordinatorNiceTest.m",
+   "pins": "jobs that wait for jobs they submit (coordinating jobs) go after those: coordinator_nice is the part of a job's priority that its age and size can add (Slurm's multifactor priority), and the job framework's nice option lowers the priority of its jobs by it (sbatch --nice). Pending coordinating jobs were older than the jobs of the running ones and outranked them.",
+   "category": "framework_fake_slurm",
+   "owner": "J08",
+   "phase": 1,
+   "finished": false,
+   "fate": [],
+   "methods": {
+    "frameworkJobsGetTheirNice": {
+     "pins": "(the jobs don't run: the framework gives up after its try)",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "jobsAtAnotherPlaceKeepTheirNice": {
+     "pins": "with SlurmAlternatives a job goes to the first place with room (here the alternative abc, as gpu8 is full): it keeps its nice there, as a single job and as a framework job (a moved pending job keeps it, as Slurm keeps its nice)",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "niceIsTheWeightsOfAgeAndSize": {
+     "pins": "nice is the weights of age and size",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "singleJobsGetTheirNice": {
+     "pins": "single jobs get their nice",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    }
+   }
+  },
+  "FunctionStringParsingTest": {
+   "file": "tests/framework/FunctionStringParsingTest.m",
+   "pins": "separate_function_string_variables and convert_function_string_to_mcc_string, which turn the task strings of the job framework into command line arguments for the compiled (mcc) mccMaster in mcc mode",
+   "category": "matlab_only",
+   "owner": "J12",
+   "phase": 1,
+   "finished": true,
+   "fate": [
+    "na:MATLAB call strings turned into mcc command line arguments; port tasks are Task(func, args, kwargs) records (PLAN.md 3.6)"
+   ],
+   "methods": {
+    "acceptsEmptyStringAsFirstArgument": {
+     "pins": "KNOWN ISSUE (may be intended): '''''' (an empty char) is only recognized when it follows a comma or is inside {} (patterns ,'', {''} and ,''$ at separate_function_string_variables.m:31-33), so an empty first argument errors with \"'' are not fully paired\".",
+     "tags": [
+      "KnownIssue",
+      "Unit"
+     ],
+     "cases": null,
+     "fate": [],
+     "known_issue": true
+    },
+    "convertsToMccCommandLineArguments": {
+     "pins": "converts to mcc command line arguments",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "keepsArgumentsWithoutQuotesOrBrackets": {
+     "pins": "KNOWN ISSUE (may be intended): with no quoted/bracketed argument at all (p_pairs is empty), separate_function_string_variables.m:97 takes var_str(s : max(s, min([]) - 2)) and loses the arguments: 'f(1,2)' gives a single empty argument. Fix: handle isempty(p_pairs) by strsplit(var_str, ',').",
+     "tags": [
+      "KnownIssue",
+      "Unit"
+     ],
+     "cases": null,
+     "fate": [],
+     "known_issue": true
+    },
+    "separatesFunctionNameAndArguments": {
+     "pins": "separates function name and arguments",
+     "tags": [
+      "Unit"
+     ],
+     "cases": [
+      "parsedCase=quotedNumberMatrixCell",
+      "parsedCase=unquotedFirstArgument",
+      "parsedCase=emptyStringArgument",
+      "parsedCase=emptyStringInCell",
+      "parsedCase=emptyStringLast",
+      "parsedCase=nestedQuotedFunctionString",
+      "parsedCase=nameValuePairs"
+     ],
+     "fate": []
+    },
+    "splitsLeadingUnquotedArguments": {
+     "pins": "KNOWN ISSUE (may be intended): separate_function_string_variables.m:97-101 takes the whole text before the first quoted/bracketed argument as one argument, so 'f(1,2,''a'')' gives {'1,2', '''a'''}. Fix: strsplit that leading text on ',' as the between-pairs branch does.",
+     "tags": [
+      "KnownIssue",
+      "Unit"
+     ],
+     "cases": null,
+     "fate": [],
+     "known_issue": true
+    },
+    "unmixBlockTaskString": {
+     "pins": "shape of the task strings built by XR_unmix_channels_zarr; the unquoted first argument was duplicated before 5e38703",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    }
+   }
+  },
+  "GenericComputingFrameworkDemoTest": {
+   "file": "tests/framework/GenericComputingFrameworkDemoTest.m",
+   "pins": "the workflow of demos/demo_generic_computing_framework.m on small synthetic data: a user-defined function (crop + deskew/rotation) run through the generic computing framework, and the slurm configuration file written by the demo",
+   "category": "framework_design",
+   "owner": "J02",
+   "phase": 1,
+   "finished": false,
+   "fate": [],
+   "methods": {
+    "demoConfigFileRoundTripsAndRunsLocally": {
+     "pins": "the slurm configuration from the demo, written the same way",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "userFunctionRunsThroughFramework": {
+     "pins": "user function runs through framework",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    }
+   }
+  },
+  "GenericComputingFrameworkTest": {
+   "file": "tests/framework/GenericComputingFrameworkTest.m",
+   "pins": "generic_computing_frameworks_wrapper in local mode (parseCluster = false): tasks run sequentially in this MATLAB session. Tasks call pktest.frameworkTask, which logs every call so runs can be counted. The clusterMode tests submit to a fake Slurm (pktest.FakeSlurmFixture).",
+   "category": "framework_fake_slurm",
+   "owner": "J02",
+   "phase": 1,
+   "finished": false,
+   "fate": [],
+   "methods": {
+    "callLogWaitsOutRefusedFileOperations": {
+     "pins": "Windows refuses for a moment to make the call log's lock folder (while another task removes it), to open the log and to remove the lock; pktest.frameworkTask tries again (it took the lock without making it and then failed to remove it, which failed tasks on GitHub's Windows runners)",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "clusterModeCountsJobUntilAllItsTasksAreDone": {
+     "pins": "with taskBatchNum > 1 a job runs several tasks; it counts against maxJobNum until all of them are done, not just one",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "clusterModeFinishedShortLastBatchFreesItsJobSlot": {
+     "pins": "a batch whose tasks are all done stops counting against maxJobNum even while its job is still listed (e.g., exiting). Here the batch is the last one and shorter than taskBatchNum; the count pads it to taskBatchNum tasks, which must count as done.",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "clusterModeSubmitsEachTaskOnceWithMaxJobNum": {
+     "pins": "with more jobs than maxJobNum the framework holds tasks back until earlier jobs end (it counts its active jobs for every batch); the fake jobs end at once without results",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "configFileKeysIgnoreCase": {
+     "pins": "the cluster configs in use spell MemPerCPU; config keys used to be matched case-sensitively, so it was silently ignored",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "configFileOverridesParameters": {
+     "pins": "config file overrides parameters",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "emptyJobLogDirInAConfigFileIsTheDefaultFolder": {
+     "pins": "a cluster config with \"jobLogDir\": \"\" (the user's data-processing configs have it) gave checkSlurmCluster no folder, so the jobs got \"-o -e\" and each one's log went to a file named -e in the folder the framework submits from (the code folder); it is now the default folder (../job_logs beside the code folder if it is there, else <data folder>/job_logs). The fake jobs make their log files as Slur...",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "existingFinalOutputSkipsAllTasks": {
+     "pins": "existing final output skips all tasks",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "failingTaskIsRetriedOnceThenRethrown": {
+     "pins": "failing task is retried once then rethrown",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "finalOutputMadeByATaskEndsTheRun": {
+     "pins": "the first task writes the final output; the second never writes its own and would be retried up to maxTrialNum times, but the run ends once the final output exists (in local mode after the first pass over the tasks)",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "masterParaFactorAcceptsFractions": {
+     "pins": "masterParaFactor is the fraction of parallel jobs on the master in mcc mode; it used to be validated with @islogical",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "missingConfigFileErrors": {
+     "pins": "missing config file errors",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "missingInputIsSkippedAndReportedDone": {
+     "pins": "characterizes current behavior: tasks whose input is missing are not run, and their done flag is true even though no output exists",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "parforGPUJobHasAWorkerPerUsableGPU": {
+     "pins": "GPUs newer than this MATLAB supports (e.g., B200 GPUs in R2024b) weren't counted without forward compatibility, so a GPU job asked for a pool of 0 workers. usable_gpu_num and gpuDevice are stubs (2 GPUs; the workers select them too).",
+     "tags": [
+      "Integration",
+      "Slow"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "parforWrapperRunsEveryTask": {
+     "pins": "starts a local pool with 2 workers. parseParfor used to fail on the first line, which looked for the root path in 'XiongtaoScripts'.",
+     "tags": [
+      "Integration",
+      "Slow"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "runsEveryTaskOnceAndWritesOutputs": {
+     "pins": "runs every task once and writes outputs",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "runsOnlyTasksWithMissingOutputs": {
+     "pins": "runs only tasks with missing outputs",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "skipsTasksWhoseOutputsExist": {
+     "pins": "skips tasks whose outputs exist",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "staleTaskFlagFromCrashedRunIsIgnored": {
+     "pins": "stale task flag from crashed run is ignored",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "taskBatchesRunEachTaskOnce": {
+     "pins": "task batches run each task once",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "taskDoneInItsLastTryCountsAsDone": {
+     "pins": "a task that makes its output in its last try ran after its round looked at the outputs; the framework looked no more, so the last task run returned unfinished (and callers ran the call again); it now looks once more at the end",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "taskWithoutOutputIsRetriedUpToMaxTrialNum": {
+     "pins": "task without output is retried up to max trial num",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    }
+   }
+  },
+  "LocalPoolFrameworkTest": {
+   "file": "tests/framework/LocalPoolFrameworkTest.m",
+   "pins": "generic_computing_frameworks_wrapper with localWorkerNum in local mode (parseCluster = false): the tasks run on a local MATLAB process pool (matlab_pool_generic_computing_wrapper), and the framework retries the unfinished ones in this MATLAB. Needs the Parallel Computing Toolbox; a pool of 2 workers is started once for the class (~15 s).",
+   "category": "framework_design",
+   "owner": "J04",
+   "phase": 1,
+   "finished": false,
+   "fate": [],
+   "methods": {
+    "callLogKeepsTasksThatRunAtOnce": {
+     "pins": "the call log the framework tests count runs with: tasks on two workers append to it at the same time, which lost a line on Windows (GitHub CI); pktest.frameworkTask now appends under a lock",
+     "tags": [
+      "Integration",
+      "Slow"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "existingFinalOutputSkipsAllTasks": {
+     "pins": "existing final output skips all tasks",
+     "tags": [
+      "Integration",
+      "Slow"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "failedTasksAreReportedUnfinished": {
+     "pins": "failed tasks are reported unfinished",
+     "tags": [
+      "Integration",
+      "Slow"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "failedTasksAreRetriedInThisMatlab": {
+     "pins": "the tasks fail on the workers; the framework runs them again",
+     "tags": [
+      "Integration",
+      "Slow"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "tasksRunOnTheLocalPool": {
+     "pins": "tasks run on the local pool",
+     "tags": [
+      "Integration",
+      "Slow"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "tasksThatDoNotFitInMemoryRunInThisMatlab": {
+     "pins": "8 GB of memory: half of it holds no worker with a 10 GB task",
+     "tags": [
+      "Integration",
+      "Slow"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "tasksWithMissingInputsAreSkipped": {
+     "pins": "as in the framework, which reports them as done",
+     "tags": [
+      "Integration",
+      "Slow"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "threadPoolIsNotUsed": {
+     "pins": "thread-based workers cannot run mex functions: no task is sent to them, the framework runs the tasks in this MATLAB",
+     "tags": [
+      "Integration",
+      "Slow"
+     ],
+     "cases": null,
+     "fate": []
+    }
+   }
+  },
+  "MasterComputeFitTest": {
+   "file": "tests/framework/MasterComputeFitTest.m",
+   "pins": "jobs that coordinate jobs: a master in a Slurm job runs tasks itself (masterCompute) only if they fit its memory (master_task_fits, in the job framework), and the request of a coordinating job is what it holds itself (coordinator_resources, MIP_zarr_merge_memory, cluster_config_value). The framework tests submit to a fake Slurm.",
+   "category": "framework_fake_slurm",
+   "owner": "J08",
+   "phase": 1,
+   "finished": false,
+   "fate": [],
+   "methods": {
+    "configValuesIgnoreCase": {
+     "pins": "config values ignore case",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "coordinatorAsksForWhatItHolds": {
+     "pins": "MATLAB (2 GB) and the merges with one CPU; a merge needs up to half of the job's memory (XR_MIP_zarr)",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "everyTaskFitsOutsideAJob": {
+     "pins": "every task fits outside ajob",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "fitIsTheTasksMemoryAgainstTheJobs": {
+     "pins": "fit is the tasks memory against the jobs",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "localRunsRunAllTasksAsBefore": {
+     "pins": "without a cluster the master runs every task, also in a job",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "masterInAJobRunsNoTaskThatDoesNotFitIt": {
+     "pins": "a master in a Slurm job ran the last task (or a single task) itself whatever its estimate: a user's 4-CPU, 64 GB pipeline job ran an Imaris conversion and was killed for memory. Now tasks that don't fit its memory all run as jobs (the fake jobs end at once without results)",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "masterInAJobRunsTasksThatFitIt": {
+     "pins": "with the memory of a task, the master runs the last one as before, and submits the others",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "masterOutsideAJobRunsTasksAsBefore": {
+     "pins": "the user's MATLAB (no Slurm job) has all of the machine: it runs the last task whatever the estimate, as before",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "mergeMemoryCoversTheMergeOfTheBlocks": {
+     "pins": "the estimate is at least what MIP_zarr_merge_block_mips holds for the blocks (computed here from their boxes as it does), and not much more: decon-like grids (also not aligned with the 2048 MIP batches) and DSR-like y batches across x and z",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "tasksWithoutAnEstimateNeedTheMemoryOfTheirJobs": {
+     "pins": "without memAllocate, a task's job has the memory of its CPUs (4 x 10 GB here), which is what the master needs",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "unknownMemoryDoesNotFit": {
+     "pins": "(getSystemMemory gives NaN when it can't find the memory)",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    }
+   }
+  },
+  "McCParserConsistencyTest": {
+   "file": "tests/framework/McCParserConsistencyTest.m",
+   "pins": "the mcc parsers (mcc/parsers/*_parser.m) and mccMaster.m are generated by mcc_autogen from mcc/mcc_function_list.txt and the input parsers of the listed functions. If a function's parameters change and the parsers are not regenerated, mcc mode (MATLAB Runtime) silently uses stale defaults or rejects new parameters. These tests regenerate the parsers in a temporary folder and compare them with t...",
+   "category": "matlab_only",
+   "owner": "J12",
+   "phase": 1,
+   "finished": true,
+   "fate": [
+    "na:mcc parsers generated for the compiled MATLAB master; the port's command line comes from the parameter registry (F03, J12)"
+   ],
+   "methods": {
+    "everyListedFunctionHasAParser": {
+     "pins": "every listed function has aparser",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "everyListedFunctionHasSource": {
+     "pins": "KNOWN ISSUE (may be intended): image_intensity_correction_block and replicateDataBlock are listed in mcc/mcc_function_list.txt and dispatched by mccMaster.m, but their source is not in this repository, so compile_mccMaster can't include them and mcc_autogen fails on them. Fix: add the sources or remove them from the list and regenerate.",
+     "tags": [
+      "KnownIssue",
+      "Unit"
+     ],
+     "cases": null,
+     "fate": [],
+     "known_issue": true
+    },
+    "functionListMatchesMccMasterCases": {
+     "pins": "function list matches mcc master cases",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "mccMasterMatchesRegenerated": {
+     "pins": "mcc master matches regenerated",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "noOrphanParsers": {
+     "pins": "KNOWN ISSUE (may be intended): mcc/parsers/multiple_region_spectra_encoding_block_parser.m is not in the function list or mccMaster.m and its function does not exist. Fix: delete the stale parser.",
+     "tags": [
+      "KnownIssue",
+      "Unit"
+     ],
+     "cases": null,
+     "fate": [],
+     "known_issue": true
+    },
+    "parsersMatchFunctionInputParsers": {
+     "pins": "parsers match function input parsers",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    }
+   }
+  },
+  "MccBuildCheckTest": {
+   "file": "tests/framework/MccBuildCheckTest.m",
+   "pins": "compile_mccMaster saves the task interfaces of a build (the argument names of mcc/parsers/*_parser.m) in parsers_manifest.txt, and check_mcc_master_build compares them with the code before compiled tasks are submitted: a build made before a task got a new option rejects it, so every task of a run failed (the reason only in the job logs), e.g., after 08e857d or f667138 with an older build.",
+   "category": "matlab_only",
+   "owner": "J12",
+   "phase": 1,
+   "finished": true,
+   "fate": [
+    "na:the build manifest of the compiled MATLAB master (mcc); the port has no compiled master"
+   ],
+   "methods": {
+    "buildOfThisCodePasses": {
+     "pins": "build of this code passes",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "buildWithOtherTaskInterfacesStops": {
+     "pins": "a build from before XR_crop_block got mipBatchSize",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "buildWithoutManifestWarns": {
+     "pins": "builds made before the check still run",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "manifestListsTheArgumentsOfEachTask": {
+     "pins": "manifest lists the arguments of each task",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    }
+   }
+  },
+  "MccClusterWrapperTest": {
+   "file": "tests/framework/MccClusterWrapperTest.m",
+   "pins": "mcc_slurm_cluster_generic_computing_wrapper, the job framework's compiled mode, with a fake Slurm (pktest.FakeSlurmFixture) and a fake compiled master that records its environment. The jobs never run (a fake job can only leave empty outputs); the tests run the task lines the framework writes for them.",
+   "category": "framework_design",
+   "owner": "J12",
+   "phase": 1,
+   "finished": false,
+   "fate": [],
+   "methods": {
+    "countsJobUntilAllItsTasksAreDone": {
+     "pins": "with taskBatchNum > 1 a job runs several tasks; it counts against maxJobNum until all of them are done, not just one",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "finishedShortLastBatchFreesItsJobSlot": {
+     "pins": "a batch whose tasks are all done stops counting against maxJobNum even while its job is still listed (e.g., exiting). Here the batch is the last one and shorter than taskBatchNum; the count pads it to taskBatchNum tasks, which must count as done.",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "outdatedBuildStopsBeforeSubmitting": {
+     "pins": "a compiled master built from code with other task interfaces rejects the tasks' options; the run stops at once with a clear error instead of every task failing (here a build from before XR_crop_block, the tasks' function, got mipBatchSize)",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "submitsEachTaskOnceWithMaxJobNum": {
+     "pins": "with more jobs than maxJobNum the framework holds tasks back until earlier jobs end (it counts its active jobs for every batch); the fake jobs end at once without results",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "taskFilesThatCannotBeRemovedDoNotFailTheRun": {
+     "pins": "on NFS, a job that still has its task script open keeps a .nfs file in the task folder, so removing the folder at the end failed and the run errored although its outputs were complete",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "tasksOutsideGNUParallelUseOwnRuntimeCache": {
+     "pins": "tasks outside gnuparallel use own runtime cache",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "tasksUseOwnRuntimeCachePerSlot": {
+     "pins": "tasks of a job that started at the same time with a shared MATLAB Runtime cache sometimes failed to start",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    }
+   }
+  },
+  "PublishResultTest": {
+   "file": "tests/framework/PublishResultTest.m",
+   "pins": "keep_other_result and publish_result: a task that is about to move its temporary result into place keeps a result another writer of the same result already put there (two job sets on the same data), instead of deleting it while readers may use it",
+   "category": "framework_fake_slurm",
+   "owner": "J05",
+   "phase": 1,
+   "finished": false,
+   "fate": [],
+   "methods": {
+    "keptResultRemovesATemporaryFile": {
+     "pins": "kept result removes atemporary file",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "resultIsMovedIntoPlace": {
+     "pins": "result is moved into place",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "resultOfAWriterJustBeforeIsKept": {
+     "pins": "a result that comes between the check and the move: movefile puts the temporary result into it, and it is removed there. The stub makes the check miss the other result.",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "resultOfAnotherWriterIsKept": {
+     "pins": "result of another writer is kept",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    }
+   }
+  },
+  "ResultWritersTest": {
+   "file": "tests/framework/ResultWritersTest.m",
+   "pins": "result_writers: a task that makes a result in parts with jobs of its own records its process, and another task of the same result (another uuid) waits while the first may still work on it. Owners outside Slurm are live while their process runs on this node (Linux); owners in Slurm while their job is in the queue (a fake Slurm); none once their record says they have ended.",
+   "category": "framework_fake_slurm",
+   "owner": "J05",
+   "phase": 1,
+   "finished": false,
+   "fate": [],
+   "methods": {
+    "blocksOfAWriterWhoseJobEndedAreOrphans": {
+     "pins": "a block's writer whose Slurm job squeue no longer lists (e.g., cancelled), or whose record says it has ended, is gone: nothing will use the block. A writer still in the queue, one outside Slurm, one that is this process's own job, no record, and a failing squeue: not orphans.",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "failedSqueueIsKeptAsRunning": {
+     "pins": "a failed squeue (the test Slurm stubs fail) counts as running, and is kept as that for a minute; then squeue is asked again",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "failingSqueueDoesNotMakeOrphans": {
+     "pins": "(the test Slurm stubs fail, as squeue does when the controller is busy)",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "liveWritersAreThoseOfOtherUuids": {
+     "pins": "live writers are those of other uuids",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "noWaitWithoutAnotherWriter": {
+     "pins": "no wait without another writer",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "ownerJobsAreLiveWhileInTheQueue": {
+     "pins": "owner jobs are live while in the queue",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "releaseMarksOnlyThisProcesssRecordEnded": {
+     "pins": "a writer that ends but by publishing (an error, Ctrl+C) marks its record ended, once; not a record of another process, and no record again once the flags are gone (the result published)",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "squeueAnswersAreKeptForAMinute": {
+     "pins": "a job that runs many blocks of one writer (task runners) asked squeue at each block; squeue's answer about a job is now kept in the process for a minute: 2 checks make 1 call. An older answer (maxAge) is asked again, and a record that says its writer has ended counts at once (the record is read each time).",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "waitEndsWhenTheResultComes": {
+     "pins": "a writer recorded before waits; the wait looks again each time wait_for_files returns (a spy that makes the result at its second call)",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "writerRecordedLaterDoesNotWaitForAnEarlierOne": {
+     "pins": "two writers: the later one waits for the earlier one, not the other way round (else both would wait), and of two recorded at the same time, the one with the larger uuid",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "writersOfThisProcesssJobAreItsProcesses": {
+     "pins": "a record of another uuid owned by this process's own Slurm job (a call this process made before and stopped, or a job started again with the same id): squeue lists the job, so this process waited for itself. Now the process counts, as outside Slurm: this one is not waited for, another of the job on this node is while it runs; squeue is not asked about the job.",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    }
+   }
+  },
+  "SingleJobRunnerTest": {
+   "file": "tests/framework/SingleJobRunnerTest.m",
+   "pins": "task runners for the single jobs of generic_single_job_submit_wrapper: the single jobs a MATLAB session submits with the same function, resources and compiled master (or MATLAB launch) share a pool (see task_runner_run), so a job, after its task (which runs as before), runs unstarted tasks of the pool's other jobs in a task runner, and a job whose task a runner of another job has ends without s...",
+   "category": "framework_design",
+   "owner": "J07",
+   "phase": 1,
+   "finished": false,
+   "fate": [],
+   "methods": {
+    "claimsFolderThatFailsLeavesTasksToTheMaster": {
+     "pins": "a claims folder that takes no new claims (here read-only): the master can't claim the task of an ended job either, but as no process has it, it is submitted again as before",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "compiledJobsRunTheUnstartedTasksOfTheirPool": {
+     "pins": "four single jobs of the same kind: the first one to start runs its task as before (a process of its own), then the tasks of the others in their order in one more process (a task runner), and cancels their jobs while they are pending; if they start, they end without starting a process. The jobs have the resources of before",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "endedPoolGoesWithItsLastJob": {
+     "pins": "at the end of a call (single_job_pools('end', mark)) the master leaves the pools the call made, which take no more tasks: a job of a pool still in the queue keeps it, and the last of its jobs to end removes it; a later task of the kind makes a new pool",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "endedPoolWithoutJobsGoesAtOnce": {
+     "pins": "a pool whose jobs are no longer in the queue goes when the master leaves it, also with the marks of jobs that never ran (a runner took their tasks and cancelled them)",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "failedSubmissionLeavesTheTaskToTheMaster": {
+     "pins": "a task whose job couldn't be submitted (sbatch failed each try) is taken back from the pool; the caller's next try submits it as before",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "failedTaskIsSubmittedAgainAsBefore": {
+     "pins": "a task that failed in its job is submitted again as before",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "firstTaskOfAKindRunsAsBefore": {
+     "pins": "a session's first task of a kind runs as before: a session with one task pays nothing (no pool; neither its submission nor its status checks load the runner code); the second task makes the pool, with itself as the pool's task 1",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "jobWhoseTaskARunnerHasEndsAtOnce": {
+     "pins": "a job whose own task another job's runner took ends without starting a process, and takes no other task (those have jobs of their own)",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "jobWithNothingToTakeRunsItsTaskAsBefore": {
+     "pins": "with no unstarted task in its pool, a job runs its task line as before (a process for the task, no task runner)",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "liveRunnerKeepsTheTaskOfAnEndedJob": {
+     "pins": "after the own job of a task ended, a runner of another job that took the task may still run it: the task counts as running (no new job) until that job ends; then it is submitted again as before (no task runner), and the master has it in the pool (no runner takes it)",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "masterTakesTheLastFileFromThePool": {
+     "pins": "masterCompute with the last file: the master cancels the file's pending job and runs it itself, after it took the task from the pool; a task a runner of another job has stays with it",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "matlabJobGoesOnAfterAProcessEnded": {
+     "pins": "a MATLAB job whose process ended early (its memory, time or open file guard) starts another one for the pool's next tasks",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "matlabJobsRunTheJobScript": {
+     "pins": "MATLAB jobs: the job script starts MATLAB (with the launch string of before) only for a task it claimed; off: the command of before",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "matlabPoolGoesWithItsLastJob": {
+     "pins": "the same for a pool of MATLAB jobs",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "matlabPoolTasksRecordTheirMetrics": {
+     "pins": "with task metrics, a task a MATLAB runner runs records itself as the task of its single job",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "matlabRunnerTakesTaskStringsFromThePool": {
+     "pins": "a MATLAB job's runner runs its task, then the pool's other tasks in their order, each from the string its job got",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "offSwitchOldBuildsAndRelativeLogFoldersSubmitAsBefore": {
+     "pins": "taskRunner false (option or config key), a compiled master built without task runners, or a job log folder that is not an absolute path: the job command of before also for the second task of a kind (which would join a pool), and no pool",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "pendingJobGetsBackTheTaskOfARunnerThatEnded": {
+     "pins": "a runner of another job took the task of a pending job and ended without finishing it (its job was killed): the master removes the claim, so that the pending job runs the task when it starts (as without runners); nothing is submitted",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "pendingJobKeepsAnEndedPool": {
+     "pins": "a job whose task a runner took, but whose cancel was missed, is still pending when the master leaves the pool: the pool stays until the job starts, ends at once (its task is taken) and removes it",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "pendingJobOfATaskARunnerFailedIsReplaced": {
+     "pins": "a runner of another job failed the task of a pending job: the master takes the task back, cancels the pending job and submits the task again as before (as a failed job of its own)",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "poolOfAnEnclosingCallStays": {
+     "pins": "a call that ends (an inner one, as a stitching wrapper the pipeline's master runs itself) leaves only the pools it made",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "poolThatCannotBeMadeLeavesJobsAsBefore": {
+     "pins": "a job log folder where no pool can be made (read-only): a warning, and the jobs are submitted as before",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "poolsKeepKindsApart": {
+     "pins": "a pool has the tasks of one function, resources and master; another CPU count, function or job log folder makes another (each with its second task)",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "runnersTakeOnlyTasksWhoseJobsWaitInTheQueue": {
+     "pins": "a job's runner takes another job's task only while Slurm keeps that job in the queue (pending with a reason: resources, priority, a limit), not a job its scheduler hasn't looked at yet (reason None: it may start at once; in idle streaming, runners took the tasks of tiles submitted a moment before), a job that runs, or a task whose job is not recorded yet",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "singleJobStatusCountsTaskRunners": {
+     "pins": "check_single_job_status: a task that a runner of another job has counts as running; once none has, the master takes it from the pool (-1), so that no job's runner takes it after",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "slotStartsWithItsOwnTask": {
+     "pins": "the first task of a single job's slot is its own: if another process took it in the meantime, the slot takes no other task",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "taskTakenBetweenSubmissionTriesIsSubmittedAsBefore": {
+     "pins": "sbatch fails once, and meanwhile a runner (whose job ended since) claimed the new task: the next try submits it as before (its own job could not run it)",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "taskWithALineBreakIsSubmittedAsBefore": {
+     "pins": "a pool keeps a task's line in a line of its task file, so a task string with a line break is submitted as before",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "tasksSubmittedWhileAJobRunsAreTaken": {
+     "pins": "(streaming) a task added while a job runs is taken by it (by its task runner, after the tasks submitted before it)",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    }
+   }
+  },
+  "SingleJobSubmitWrapperTest": {
+   "file": "tests/framework/SingleJobSubmitWrapperTest.m",
+   "pins": "generic_single_job_submit_wrapper builds the sbatch command for one task. pktest.NoSlurmFixture (shared by all tests) makes squeue and sbatch fail, so nothing is submitted; the command is read from the console output. The job-state tests use pktest.FakeSlurmFixture. The calls get a job log folder of the test's (jobLogDir), unless a test gives one, so that nothing goes to the default one, ../job...",
+   "category": "framework_fake_slurm",
+   "owner": "J07",
+   "phase": 1,
+   "finished": false,
+   "fate": [],
+   "methods": {
+    "commandWrapsTheTaskString": {
+     "pins": "command wraps the task string",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "compiledJobsUseOwnRuntimeCache": {
+     "pins": "single compiled jobs shared one MATLAB Runtime cache, so jobs starting at the same time on a node sometimes failed to start",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "configFileKeysIgnoreCase": {
+     "pins": "the cluster configs in use spell MemPerCPU; config keys used to be matched case-sensitively, so it was silently ignored",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "cpusPerTaskIsClampedToLimits": {
+     "pins": "fb6a98b regression: user-defined cpusPerTask/minCPUNum were only clamped to [minCPUNum, maxCPUNum] when memAllocate was set",
+     "tags": [
+      "Unit"
+     ],
+     "cases": [
+      "cpuCase=cpusAboveMax",
+      "cpuCase=minCPUNum",
+      "cpuCase=memAllocate",
+      "cpuCase=memAllocateAboveMax"
+     ],
+     "fate": []
+    },
+    "emptyJobLogPathsInAConfigFileAreTheDefaults": {
+     "pins": "empty job log paths in a cluster config (\"jobLogDir\": \"\", \"jobLogFname\": \"\") gave the job \"-o -e\", so its log went to a file named -e; they are now the default ones (as given: Slurm is hidden here, see logPathsStayWhenSinfoFails)",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "jobNotInTheQueueIsSubmitted": {
+     "pins": "job not in the queue is submitted",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "logPathsStayWhenSinfoFails": {
+     "pins": "a job log folder that is there (jobLogDir, by default ../job_logs beside the PetaKit5D folder) gives the job its log paths from checkSlurmCluster, which gives none if sinfo fails (as at times on a busy cluster): the job got \"-o -e\" and its log went to a file named -e; it now keeps the paths it has",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "pendingJobReturnsWithoutWaiting": {
+     "pins": "the wrapper used to call squeue in a loop until a pending job started (74-94 times a second on the cluster); callers check the job again in their next sweep, as for running jobs",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "pendingLastJobGoesToTheMaster": {
+     "pins": "with masterCompute the master cancels the last file's pending job and computes it itself",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "runningJobReturnsWithoutWaiting": {
+     "pins": "running job returns without waiting",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "sessionWithoutRunnersDoesNotLoadThem": {
+     "pins": "with runners off, the wrapper doesn't look for pool tasks before a task of the session joined a pool (the runner code's first call took 60-80 ms)",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "slurmIsCheckedInEachCallWithoutSlurm": {
+     "pins": "without Slurm (sinfo fails) nothing is kept: each call checks again, as before",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "slurmIsCheckedOncePerJobLogFolder": {
+     "pins": "callers call the wrapper for each job in each round, and each call ran sinfo and listed the job log folder (10 ms or more); both are kept for the folder while Slurm is there, with the same job log paths",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "taskWithoutAJobIsSubmittedWithoutAQueueCheck": {
+     "pins": "squeue (8-10 ms a call on the cluster) ran also for a task without a job (job id -1), where it could only say so; a job is still checked",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    }
+   }
+  },
+  "SlurmAlternativesTest": {
+   "file": "tests/framework/SlurmAlternativesTest.m",
+   "pins": "jobs of a call on more than one place of a Slurm cluster (the SlurmAlternatives of a cluster config, see slurm_alternatives): each job goes to the first place with room for it now, and pending jobs move to a place where they can start now. A job is shaped for the main place; at a place with more memory per CPU it gets that place's own shape (fewer CPUs), at one with less it keeps its CPUs and m...",
+   "category": "framework_fake_slurm",
+   "owner": "J09",
+   "phase": 1,
+   "finished": false,
+   "fate": [],
+   "methods": {
+    "burstOfJobsFillsTheRoomInOrder": {
+     "pins": "(one view of the cluster for all jobs of a burst) abc has room for 2 jobs (4 CPUs of 21418 MB), gpu8 for 3 of them (its free memory); the others wait at abc (not in the GPU nodes' queue)",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "compiledFrameworkSubmitsToThePlaceWithRoom": {
+     "pins": "(compiled mode: a fake MATLAB Runtime and compiled master)",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "configWithoutAlternativesIsAsBefore": {
+     "pins": "an empty list: the same jobs as without the key, and no Slurm command but sinfo, sbatch and squeue -j",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "cpuJobLeavesTheQueueOfGPUNodes": {
+     "pins": "a CPU-only job waiting at gpu8 (main place) without room there or anywhere: it waits at abc instead, shaped for abc",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "cpuJobsDoNotGoToGPUNodesOfAnAlternativeWithoutCpuJobs": {
+     "pins": "GPU nodes are for jobs that need a GPU: abc full, gpu8 idle (no headroom), but the entry doesn't say cpuJobs: the job waits at abc, and a job waiting there doesn't move to gpu8",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "cpuJobsKeepOutOfGPUNodesWhereGPUJobsOfTheUserWait": {
+     "pins": "(gpu8 takes CPU jobs and has room, but a GPU job of the user is pending there, held): new CPU jobs wait at abc, and one waiting at gpu8 moves to abc, also where it would fit",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "cpuJobsLeaveIdleGPUsTheirShare": {
+     "pins": "a 8-GPU node with 6 idle GPUs keeps 16 CPUs and 1/8 of its memory per idle GPU (the node's share), here all its free CPUs",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "cpuJobsWaitOutsideGPUNodes": {
+     "pins": "main place gpu8 (GPU nodes), nothing has room: the job waits at abc (which has GPU nodes too, not only)",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "failedMoveLeavesTheJob": {
+     "pins": "failed move leaves the job",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "featuresAndNodeListsOfAPlaceCount": {
+     "pins": "a place's -C and -x: here no node of gpu8 is one of its nodes",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "frameworkMovesPendingJobs": {
+     "pins": "the job of batch 1 waits at abc (full, gpu8 too); then gpu8 has room (the second look at the nodes): the wait loop moves it there, with its abc shape, and not again once it fits there",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "frameworkSubmitsToThePlaceWithRoom": {
+     "pins": "a main place of GPU nodes (for CPU jobs), whose idle GPUs keep their share; abc has room: the jobs go to abc with the CPUs of an abc config (4, not gpu8's 16), and the time limit of its SlurmParam (not the framework's)",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "gpuJobsNeedAFreeGPU": {
+     "pins": "gpu jobs need afree gpu",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "jobGoesToTheFirstPlaceWithRoom": {
+     "pins": "job goes to the first place with room",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "jobIsReshapedAtAPlaceWithMoreMemoryPerCPU": {
+     "pins": "(shaped for gpu8: 10 CPUs of 7.8 GB; at abc 4 CPUs of 21418 MB)",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "jobKeepsItsShapeAtAPlaceWithLessMemoryPerCPU": {
+     "pins": "(shaped for abc: 4 CPUs of 21418 MB; at gpu8 it keeps them, not the 10 CPUs of 7.8 GB a gpu8 config gives it)",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "jobMovedBySomethingElseIsLeftToIt": {
+     "pins": "(recorded at abc, found at gpu8: e.g. a user's script moved it; gpu9 has room)",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "jobWithRoomOnlyOutsideItsPlaceMoves": {
+     "pins": "(its place is abc without n1; the room at abc is on n1)",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "jobsThatDoNotWaitForResourcesStay": {
+     "pins": "held, waiting for a start time or dependency, not seen by the scheduler yet, running, or with room where they are (abc has room for 2: the one not seen yet and the last one)",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "limitThatPendingJobsWaitForClosesAPlace": {
+     "pins": "limit that pending jobs wait for closes aplace",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "mainPlaceIsNotLeftOutWhenSlurmRefusesItOnce": {
+     "pins": "(no room there then, but it is the user's place: asked again)",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "mainPlaceOfGPUNodesTakesCPUJobs": {
+     "pins": "(the main place is the user's choice: used as before)",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "memoryPerCPUOfAPlaceWithoutOneComesFromItsNodes": {
+     "pins": "(the smallest RealMemory / CPUs of its nodes: 1031600 / 128 MB)",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "noSlurmCallsBeforeAJobHasWaited": {
+     "pins": "no slurm calls before ajob has waited",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "onlyAsManyJobsMoveAsFit": {
+     "pins": "gpu8 has room for 2 jobs of 4 CPUs of 21418 MB",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "optionsOfASlurmParamAreRead": {
+     "pins": "options of aslurm param are read",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "pendingJobMovesToAPlaceWithRoom": {
+     "pins": "(at gpu8 it keeps its abc shape)",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "pendingJobsAreFoundByTheirIds": {
+     "pins": "(the first pending job in squeue's list is held; the second one waits for resources and moves)",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "pendingJobsOfTheUserStartFirst": {
+     "pins": "abc has 8 free CPUs, which a pending job of the user takes",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "placeSlurmRefusesIsNotUsed": {
+     "pins": "place slurm refuses is not used",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "placesTakeTheMainSettingsForKeysTheyLeaveOut": {
+     "pins": "places take the main settings for keys they leave out",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "placesWithOtherOptionsDoNotTrade": {
+     "pins": "options a pending job can't change (here --exclusive), and a place without a QOS for jobs of another partition (Slurm keeps the job's QOS, also one the new partition doesn't allow)",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "plannedNodesHaveNoRoom": {
+     "pins": "a node the backfill scheduler planned for a pending job keeps its free CPUs for it",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "singleJobGoesToThePlaceWithRoomAndMoves": {
+     "pins": "the pipeline's and decon's single jobs (main place gpu8 without GPU headroom): submitted to abc (gpu8 full) with an abc shape, then moved back to gpu8 once it has room and abc not (keeping the abc shape), by the wrapper's and check_single_job_status's looks at pending jobs",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "slurmsOwnCheckDecides": {
+     "pins": "the nodes have room, Slurm says the job would start later",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    }
+   }
+  },
+  "TaskMetricsTest": {
+   "file": "tests/framework/TaskMetricsTest.m",
+   "pins": "task metrics of the job framework (task_metrics, read_task_metrics): with taskMetrics, every task run leaves a record of its resources in <jobLogDir>/task_metrics/<run>/ (local loop, MATLAB jobs, compiled tasks, local pool, single jobs), and without it nothing changes. Slurm is faked (pktest.FakeSlurmFixture): the MATLAB command of a job is run in this MATLAB, a compiled task line with bash and...",
+   "category": "framework_design",
+   "owner": "J10",
+   "phase": 1,
+   "finished": false,
+   "fate": [],
+   "methods": {
+    "bashTaskExitStatusIsRecorded": {
+     "pins": "bash task exit status is recorded",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "callWithoutMetricsClearsTaskEnvironment": {
+     "pins": "a compiled task with metrics runs a framework call without metrics: the tasks of that call (which get this environment, e.g., through sbatch) must not record into the task's run",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "compiledJobsKeepAJoblog": {
+     "pins": "GNU parallel records each task line's start, run time and exit status in the run's metrics folder",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "compiledLocalRunKeepsAJoblog": {
+     "pins": "without a cluster the master runs the task lines with GNU parallel (here a stand-in that logs its arguments) and keeps a joblog in the metrics folder",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "compiledTaskLinesAreUnchangedWithoutMetrics": {
+     "pins": "compiled task lines are unchanged without metrics",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "compiledTaskLinesCarryMetricsEnvironment": {
+     "pins": "compiled task lines carry metrics environment",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "configFileTurnsMetricsOn": {
+     "pins": "config file turns metrics on",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "failedLocalTaskIsRecordedAndStillFails": {
+     "pins": "failed local task is recorded and still fails",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "failedRecordWriteOnlyWarns": {
+     "pins": "failed record write only warns",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "gpuTaskLinesAskForTheGPU": {
+     "pins": "a GPU task records its GPU (the flag is only in GPU task lines)",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "localTasksAreRecorded": {
+     "pins": "local tasks are recorded",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "masterComputedTasksAreRecordedAsMaster": {
+     "pins": "in cluster mode with masterCompute the master runs the last batch itself (here task 2; the job of task 1 writes its output)",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "matlabJobCommandIsUnchangedWithoutMetrics": {
+     "pins": "matlab job command is unchanged without metrics",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "matlabJobStatementRethrowsTaskErrors": {
+     "pins": "a failed task fails its job as before, after its record",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "matlabJobStatementRunsWithoutTaskMetrics": {
+     "pins": "a job whose MATLAB can't find task_metrics still runs its task",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "matlabJobsRunEachTaskWithMetrics": {
+     "pins": "(the MATLAB command of jobs without task runners; TaskRunnerTest has the runners' records)",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "mccMasterRecordsTaskFromEnvironment": {
+     "pins": "a compiled task gets its metrics settings from its task line's environment",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "memoryAndCpuOnLinux": {
+     "pins": "the peak resident memory is the task's own: it is reset at the start of each task (a task that allocates 512 MB, then one that doesn't); user and system CPU add up to the CPU time (a task that computes, mostly user time: in small arrays, as faulting in large ones is system time, which on a busy machine was half)",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "metricsAreOffByDefault": {
+     "pins": "metrics are off by default",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "nestedRunRecordsItsParent": {
+     "pins": "a task that runs framework calls of its own (large-file tasks do, one after another): the inner calls record the outer task as their parent",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "poolTasksAreRecordedOnTheWorkers": {
+     "pins": "pool tasks are recorded on the workers",
+     "tags": [
+      "Integration",
+      "Slow"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "readerJoinsJoblogAndRunSettings": {
+     "pins": "a compiled run: GNU parallel's joblog gives the time from the end of a task to the end of its process, and lines without a record (the process was killed, or the output existed)",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "readerLabelsTasksTheMasterRan": {
+     "pins": "compiled tasks in the master's own Slurm job ran in the master",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "singleCompiledJobCarriesMetricsEnvironment": {
+     "pins": "single compiled job carries metrics environment",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "singleJobWithoutMetricsClearsTaskEnvironment": {
+     "pins": "single job without metrics clears task environment",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "singleJobsRecordSubmissionAndTask": {
+     "pins": "single jobs record submission and task",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "unwritableMetricsDoNotFailTasks": {
+     "pins": "a file where the metrics folder would be: no metrics, but the tasks run as usual",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    }
+   }
+  },
+  "TaskRunnerTest": {
+   "file": "tests/framework/TaskRunnerTest.m",
+   "pins": "task runners of the job framework (task_runner, task_runner_run, task_runner.sh): a process runs one task after another, its batch's first, then unstarted tasks of the call's other batches, with claims in the call folder. The job script runs with a stand-in compiled master (a bash script that runs a fake task and, as a runner, claims and runs the next tasks as task_runner does); the MATLAB runn...",
+   "category": "framework_design",
+   "owner": "J06",
+   "phase": 1,
+   "finished": false,
+   "fate": [],
+   "methods": {
+    "batchesWaitThirtySecondsBeforeRunnersTakeThem": {
+     "pins": "the master lists a batch for the runners once its tasks have waited 30 s in the queue (or for their submission)",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "callFolderInTheHomeFolderAsTildeRunsItsTasks": {
+     "pins": "a call folder given as ~/... (data paths such as the demos' ~/Downloads/...): the job script finds the claims and tasks (bash doesn't expand ~ in the script's quoted paths)",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "claimStatesFollowTheirOwners": {
+     "pins": "a claim is live while its owner's job is in the queue (running or pending), or (no job) while its process runs on this node; failed claims, the master's own and those of ended jobs are not",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "claimsAreTakenOnceUnderConcurrency": {
+     "pins": "many runners claiming at once: each task once",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "compiledEmptyJobLogDirIsTheDefaultFolder": {
+     "pins": "compiled mode: an empty jobLogDir (as from a config file) gave the jobs \"-o -e\", so their logs went to a file named -e in the folder the framework submits from (the code folder); it is now the default folder (../job_logs beside the code folder if it is there, else <data folder>/job_logs; the fake jobs make their log files only in the test's folders)",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "compiledJobsRunTheJobScript": {
+     "pins": "with a build that has task runners, a first submission runs the batch with the call's job script (one slot per GNU parallel slot, stealing, two tries as --retries 2), with the job's resources as before; a sequential job has one slot and one try; a GPU job gives each slot its GPU",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "compiledLocalCallDoneInItsLastTryRemovesItsTaskFolder": {
+     "pins": "compiled mode, a local run (as a compiled stitching job runs its cross-correlations): the batch run in its last try ran after its round looked at the outputs, so the call returned it unfinished, kept its task folder in tmp/ (the task lines and the runners' files) and its caller ran it again; the call now looks once more at its end. With task runners (their pass runs every task once) and without",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "compiledMasterKeepsItsBatch": {
+     "pins": "compiled mode: the batch the master runs itself (the last one) has its own key, so other jobs' runners leave its tasks to it; the other batches have the CPUs of their jobs (the compiled wrapper directly: the framework lets only a compiled master compute in compiled mode)",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "compiledMasterLeavesTasksToRunningRunners": {
+     "pins": "compiled mode: a task another job's runner took is not submitted while that job runs; then its batch is submitted",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "compiledResubmissionsRunAsBefore": {
+     "pins": "compiled mode: a batch resubmitted after its job ended without its output runs the job command of before",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "compiledRunnerTasksGetTheEnvironmentOfTheirLines": {
+     "pins": "the metrics environment a task line sets (PETAKIT5D_TASK...) is set for the task in the runner too",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "compiledTaskLinesCheckTildeOutputs": {
+     "pins": "compiled mode with outputs given as ~/...: the task lines check the outputs in bash, which doesn't expand ~ in their quoted paths, so they have the home folder in its place (with the job script's task lines and with GNU parallel's)",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "failedTaskRunsAgainInItsOwnProcessAndIsMarked": {
+     "pins": "a task error and a crash: each task runs once more in a process of its own (as GNU parallel --retries 2 did), then it is marked failed; the other tasks run, and the slot takes no more tasks of other batches",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "gpuSlotsGetOneDeviceEach": {
+     "pins": "gpu slots get one device each",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "jobLeavesClaimedTasksResubmittedBatchesAndOutputs": {
+     "pins": "a task another job claimed, a task whose output exists, and a batch the master resubmitted (its job runs it)",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "jobRunsEachTaskOnceInFewerProcesses": {
+     "pins": "job runs each task once in fewer processes",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "jobStartsNoMoreSlotsThanTasks": {
+     "pins": "as GNU parallel started one process per task line, a job starts no more slots than it has tasks to take (each slot starts 0.2 s after the one before, and the job ends after the last one)",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "jobTakesOnlyTasksOfBatchesWithItsKey": {
+     "pins": "a batch's key: the CPUs and GPU of its job's processes, or 'master' for the batch the master runs itself; a runner takes other batches' tasks only if they have the key of its own",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "jobTakesUnstartedTasksOfOtherBatches": {
+     "pins": "job takes unstarted tasks of other batches",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "jobWithNoTaskLeftStartsNoProcess": {
+     "pins": "job with no task left starts no process",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "localRunsFindTheTmpFilesOfTildePaths": {
+     "pins": "a local run whose .tmp files and outputs are given as ~/... (the demos' data paths): the job script finds the .tmp files (bash doesn't expand ~ in the paths it reads from tmps.txt), so a task that another call processes is left to it, as with full paths",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "localRunsRunATaskARunnerGaveBack": {
+     "pins": "local runs: a task a runner gives back (e.g. its memory guard) loses the .tmp of its claim and runs in a new process at once",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "localRunsSkipTasksThatOtherCallsProcess": {
+     "pins": "local runs (no cluster) keep the .tmp files with which framework calls on the same data share their tasks: a task whose .tmp is younger than the wait time is left alone, an older one is taken; .tmp files of finished tasks are removed",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "masterLeavesTasksToRunningRunnersAndResubmitsStaleOnes": {
+     "pins": "a task another job's runner took is not submitted while that job runs; when the job is gone without its output, the claim is removed and the task's batch submitted",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "matlabJobMarksTasksItDidNotFinish": {
+     "pins": "a task a MATLAB job's process didn't finish is marked failed (the master resubmits its batch with more CPUs), and the job then takes no tasks of other batches",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "matlabJobSeesTildeOutputsThatExist": {
+     "pins": "MATLAB mode with outputs given as ~/...: the job script's output checks find outputs that exist (bash doesn't expand ~ in their quoted paths), so it starts no MATLAB for them",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "matlabJobWithNoTaskLeftStartsNoMatlab": {
+     "pins": "a MATLAB job starts MATLAB only for a task it claimed",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "matlabJobsRunTheJobScript": {
+     "pins": "MATLAB jobs: the job script starts MATLAB (with the launch string of before) if tasks are left; off: the command of before",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "matlabMasterKeepsItsBatch": {
+     "pins": "MATLAB jobs: the same",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "matlabResubmissionsRunAsBefore": {
+     "pins": "a batch resubmitted after its job ended without its output runs the MATLAB command of before (no runner, no stealing)",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "matlabRunnerRecordsTaskMetrics": {
+     "pins": "with task metrics, each task a MATLAB runner runs has its record; the job script starts MATLAB with the launch string",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "matlabRunnerRunsCompoundTaskStrings": {
+     "pins": "a task string of several statements (callers with functions of their own pass e.g. \"addpath(dir); f(...)\") runs whole in a MATLAB job's runner, also the tasks of other batches it takes: str2func takes only a single call, so it runs with eval",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "matlabRunnerRunsItsBatchThenOtherBatches": {
+     "pins": "a MATLAB job's runner: its batch, then the other batches' tasks from the last one; the base workspace keeps its variables",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "oneTaskPerSlotRunsTaskLinesAsBefore": {
+     "pins": "with one task per slot and no batch waiting in the queue, the task lines run as before (no runner; a slot that is done takes another batch's task the same way); with a batch that waits, the processes are runners and take its tasks",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "processWithManyMoreOpenFilesIsRecycled": {
+     "pins": "before a runner's next task, the job script compares its open files with those after its first task: 64 more end the process",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "runnerEndsAfterATaskThatChangesTheThreadCount": {
+     "pins": "all tasks of a process run with its thread count (MATLAB fixes at the first FFT how a process's FFTs use threads): a task that changes it ends the process, and a new one runs the next task",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "runnerEndsAfterItsTime": {
+     "pins": "a process runs tasks for PETAKIT5D_RUNNER_MINUTES (10) at most",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "runnerGivesMccMasterTheArgumentsOfTheTaskLine": {
+     "pins": "the runner must give mccMaster what run_mccMaster.sh gives the compiled mccMaster for the same task line: paths with spaces, cell arrays, empty strings, numbers, non-ASCII characters, final outputs",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "runnerRecyclesAProcessThatHoldsMemory": {
+     "pins": "after a task the process holds more memory than at its start (beyond the margin): it ends, and a new process runs the next",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "runnerRecyclesAProcessWhoseLaterTaskHoldsMemory": {
+     "pins": "a later task: compared with the process after its first task and the reset (with the libraries the tasks load)",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "runnerResetsTheProcessBetweenTasks": {
+     "pins": "each task sees the state the process had before its first one",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "runnerStopsAfterAFailedTask": {
+     "pins": "runner stops after afailed task",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "runnersAreOnlyUsedWithBuildsThatHaveThem": {
+     "pins": "a build without task_runner.txt (made before runners) or with another runner version runs as before; runners need Linux",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "stealingStopsNearTheJobsEnd": {
+     "pins": "a job takes tasks of other batches only if it has the time for them (twice the longest task so far and a minute); its own tasks run anyway",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "taskRunnerOffOrOldBuildsRunAsBefore": {
+     "pins": "taskRunner false (option or config key), or a build without task runners: the job commands of before and no runner files",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "tasksWithoutInputsStayInTheirBatch": {
+     "pins": "a task whose input was missing when the call started runs only in its own batch's job (as before), not in another job's runner",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    }
+   }
+  },
+  "WaitForFilesTest": {
+   "file": "tests/framework/WaitForFilesTest.m",
+   "pins": "wait_for_files, the wait of the callers of single jobs between their rounds: at most waitTime, until all files of one group exist. pause is a spy (it doesn't wait); files appear at its calls (pktest.atCall).",
+   "category": "framework_fake_slurm",
+   "owner": "J07",
+   "phase": 1,
+   "finished": false,
+   "fate": [],
+   "methods": {
+    "filesThatDoNotComeTakeTheWholeWait": {
+     "pins": "a look after each second, none at the end (the caller's round looks then)",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "patternsCountOnlyFinishedNames": {
+     "pins": "a pattern, as the pipeline looks for a stitched result: the result's temporary name (with a suffix) doesn't count, its final name does",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "resultsCanBeFolders": {
+     "pins": "(zarr results)",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "slowLooksAreFewer": {
+     "pins": "a look that takes 0.3 s (slow storage, many files): the next ones are 3 s or more apart, so that looking takes at most a tenth of the wait, which stays the same",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "waitEndsOnceAllFilesOfOneGroupExist": {
+     "pins": "one group (the callers' results): a during the second second, b during the third",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "waitEndsOnceTheFilesOfAGroupExist": {
+     "pins": "groups {a, b} and {c}: b comes during the second second, a during the third",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "withoutFilesItIsOnePause": {
+     "pins": "without files it is one pause",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    }
+   }
+  }
+ }
+}

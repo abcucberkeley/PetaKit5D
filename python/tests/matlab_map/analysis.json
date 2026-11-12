@@ -1,0 +1,501 @@
+{
+ "folder": "analysis",
+ "classes": {
+  "ChromaticShiftCorrectionTest": {
+   "file": "tests/analysis/ChromaticShiftCorrectionTest.m",
+   "pins": "chromatic shift correction (demo_useful_tools.m) with integer voxel offsets. Both channels image the same synthetic scene; channel c voxel i shows scene voxel i + offset(c, :), so after correction the channels must be identical where they overlap.",
+   "category": "data",
+   "owner": "B03",
+   "phase": 2,
+   "finished": false,
+   "fate": [],
+   "methods": {
+    "fullModeContainsBothChannels": {
+     "pins": "'full' mode used to size the output from the bounding box starts and flip the offsets",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "memAllocateIsInGigabytes": {
+     "pins": "979fa55 regression: memAllocate (GB) was computed in bytes, so every Slurm job requested the maximum number of CPUs",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "offsetsEstimatedFromPSFs": {
+     "pins": "without chromaticOffset, offsets are measured from bead images (one per channel) of the same beads",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "sameModeKeepsImageSize": {
+     "pins": "'same' mode used to error (neworigin undefined), flip the offsets and shift the output by half the image by default",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "validModeAlignsChannels": {
+     "pins": "valid mode aligns channels",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "zarrOutput": {
+     "pins": "zarr output",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    }
+   }
+  },
+  "FFTSpectrumTest": {
+   "file": "tests/analysis/FFTSpectrumTest.m",
+   "pins": "XR_fftSpectrumComputingWrapper (\"FFT analysis\" in demo_useful_tools.m). A cosine along x with an integer number of periods has a power spectrum with exactly three nonzero peaks, so the outputs can be checked analytically.",
+   "category": "data",
+   "owner": "B04",
+   "phase": 2,
+   "finished": false,
+   "fate": [],
+   "methods": {
+    "evenSizeThatNeedsCropOrPadErrors": {
+     "pins": "the center of an even outSize was never defined: cropping or padding the resized image to it errors",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "matchesWholeSpectrumComputation": {
+     "pins": "only the region of the resized image that is kept is resized, and the MIPs and central slices come from the unshifted |FFT| with the normalization and gamma applied to them: the same values as from the whole resized image and shifted spectrum",
+     "tags": [
+      "Integration"
+     ],
+     "cases": [
+      "spectrumCase=crop",
+      "spectrumCase=padY",
+      "spectrumCase=padAll",
+      "spectrumCase=stack",
+      "spectrumCase=background",
+      "spectrumCase=cubic",
+      "spectrumCase=evenEqual"
+     ],
+     "fate": []
+    },
+    "resamplesAnisotropicVoxels": {
+     "pins": "input with dz = 2 * xyPixelSize is resampled to isotropic voxels of outPixelSize before the FFT, so the output size is outSize regardless of the input size",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "save3DStackWritesLogSpectrum": {
+     "pins": "save3 dstack writes log spectrum",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "spectrumOfCosineHasExpectedPeaks": {
+     "pins": "spectrum of cosine has expected peaks",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    }
+   }
+  },
+  "FSCAnalysisTest": {
+   "file": "tests/analysis/FSCAnalysisTest.m",
+   "pins": "XR_FSC_analysis_wrapper (\"FSC analysis\" in demo_useful_tools.m), which runs Fourier shell correlation on decon iterations (Iter_*.tif) to pick the number of iterations. The single-image FSC correlates interleaved sub-lattices of the image, so it measures the noise-limited resolution: the same structure with more noise (as with too many decon iterations) must get a worse (larger) resolution value.",
+   "category": "data",
+   "owner": "B05",
+   "phase": 2,
+   "finished": false,
+   "fate": [],
+   "methods": {
+    "existingResultsAreNotRecomputed": {
+     "pins": "existing results are not recomputed",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "noisierIterationHasWorseResolution": {
+     "pins": "noisier iteration has worse resolution",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "oneImageMatchesResizingTheWholeImage": {
+     "pins": "only the region kept after the isotropic resize is resized (from the input region it depends on); the FSC must equal that of resizing the whole image and cropping it",
+     "tags": [
+      "Unit"
+     ],
+     "cases": [
+      "fscCase=zUp",
+      "fscCase=xyUp",
+      "fscCase=padZ",
+      "fscCase=padAll",
+      "fscCase=isotropic",
+      "fscCase=evenHalfSize",
+      "fscCase=yzBbox",
+      "fscCase=xyClip"
+     ],
+     "fate": []
+    },
+    "resultIsMovedIntoPlace": {
+     "pins": "the job framework counts a task as done once its result exists, and the wrapper loads each result right after it returns; a result saved in place could be read half written",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "shellCacheFollowsParameters": {
+     "pins": "XR_FSC keeps the window and the frequency shells between calls: the same call twice and calls with another dr, dtheta, skipConeRegion or halfSize must give the results of fresh calls",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    }
+   }
+  },
+  "FlatfieldBackgroundEstimationTest": {
+   "file": "tests/analysis/FlatfieldBackgroundEstimationTest.m",
+   "pins": "XR_flatfield_background_wrapper: estimates the camera background from dark (sample free) stacks. Slices noisier than the median slice and slices with bright structures are excluded, so the estimate is the dark level even with some sample content in the stack.",
+   "category": "data",
+   "owner": "B07",
+   "phase": 2,
+   "finished": false,
+   "fate": [],
+   "methods": {
+    "acceptsMccModeFalse": {
+     "pins": "mccMode used to be validated with @ischar",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "brightSlicesAreExcluded": {
+     "pins": "a bright object in some slices must not raise the estimate",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "estimatesDarkLevelPerCamera": {
+     "pins": "estimates dark level per camera",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    }
+   }
+  },
+  "ImarisConversionTest": {
+   "file": "tests/analysis/ImarisConversionTest.m",
+   "pins": "XR_imaris_conversion_data_wrapper (\"Imaris converter\" in demo_useful_tools.m). It shells out to the bundled Parallel_Imaris_Writer executable for this platform (via system()), so this also checks that the executable and its libraries run.",
+   "category": "data",
+   "owner": "B01",
+   "phase": 2,
+   "finished": false,
+   "fate": [],
+   "methods": {
+    "converterArgumentsHaveNoSpaces": {
+     "pins": "c9f2f9c regression: num2str pads numbers of different widths with spaces ([8, 8, 16] became '8, 8,16,'), which split the converter's -b/-v arguments. The command is captured with a framework spy instead of running the converter.",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "convertsChannelsAndTimePoints": {
+     "pins": "two channels (8c93f1b regression: with several channel patterns no file was selected) and two time points",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "filesOfDifferentSizesAreRejected": {
+     "pins": "the converter takes the size of the first file for every time point and channel: a time point of another size is an error (before any output), unless inputBbox crops all to one size",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "imageSizeIsNotPaddedToBlocks": {
+     "pins": "KNOWN ISSUE: Parallel_Imaris_Writer records the image size padded to multiples of blockSize (48 x 32 x 24 for a 40 x 32 x 20 image with blockSize 16), and its histograms count the padding, so Imaris shows zero borders and a histogram minimum of 0. The ImageSize attributes should be the true size.",
+     "tags": [
+      "Integration",
+      "KnownIssue"
+     ],
+     "cases": null,
+     "fate": [],
+     "known_issue": true
+    },
+    "masterComputeIsPassedToTheFramework": {
+     "pins": "the wrapper took masterCompute but didn't pass it on, so with false the master still converted (and a master job sized for waiting ran out of memory)",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "voxelSizesAreWritten": {
+     "pins": "voxel sizes are written",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "zarrInput": {
+     "pins": "zarr input",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    }
+   }
+  },
+  "PSFAnalysisTest": {
+   "file": "tests/analysis/PSFAnalysisTest.m",
+   "pins": "XR_psf_analysis_wrapper (\"PSF analysis\" in demo_useful_tools.m): deskew the PSF, then plot it and its OTF against a Richards & Wolf widefield PSF. Even for a 64 x 64 x 101 PSF this needs ~22 GB of RAM (the plots are simulated on a 1001^3 double grid) and ~80 s, so it is skipped on machines with less than 32 GB (e.g., GitHub runners).",
+   "category": "data",
+   "owner": "B06",
+   "phase": 2,
+   "finished": false,
+   "fate": [],
+   "methods": {
+    "analysisWritesFiguresAndInfo": {
+     "pins": "analysis writes figures and info",
+     "tags": [
+      "Integration",
+      "Slow"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "detectionInfoIsMovedIntoPlace": {
+     "pins": "XR_psf_detection_and_analysis_wrapper's tasks count as done once their info file exists, so it must not be saved in place",
+     "tags": [
+      "Integration",
+      "Slow"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "plotDataMatchWholeGrid": {
+     "pins": "the PSF and OTF on the 1001^3 simulation grid are kept as their data regions (the grid is zero elsewhere); the slices must equal those of the whole grid (the reference needs it)",
+     "tags": [
+      "Integration",
+      "Slow"
+     ],
+     "cases": [
+      "psfCase=centered",
+      "psfCase=paddedZ",
+      "psfCase=largerThanGrid",
+      "psfCase=maxOutsideGrid"
+     ],
+     "fate": []
+    }
+   }
+  },
+  "PunctaRemovalTest": {
+   "file": "tests/analysis/PunctaRemovalTest.m",
+   "pins": "XR_ExM_PunctaRemoval_zarr (expansion microscopy puncta removal): a large stained structure and a few small, very bright puncta on a dark background. The puncta must be removed, the structure kept, and the output must keep the input size.",
+   "category": "data",
+   "owner": "B08",
+   "phase": 2,
+   "finished": false,
+   "fate": [],
+   "methods": {
+    "removesPunctaWithDefaultThresholds": {
+     "pins": "the task string used to be invalid with the default (empty) thresholds, and the block function couldn't handle them",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "removesPunctaWithScalarThresholds": {
+     "pins": "the task string used to pass parameters the block function doesn't take, and the block called a misspelled function",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    }
+   }
+  },
+  "UnmixChannelsTest": {
+   "file": "tests/analysis/UnmixChannelsTest.m",
+   "pins": "channel unmixing (demo_useful_tools.m, \"Channel Unmixing\" sections): out = max(0, sum_c factor(c) * (ch_c - constBackground(c))) + constOffset, computed by unmix_channels_sum (unmix_channels_sum_mex in one pass, or the MATLAB code where the mex is missing)",
+   "category": "data",
+   "owner": "B02",
+   "phase": 2,
+   "finished": false,
+   "fate": [],
+   "methods": {
+    "flatFieldCorrectionBeforeUnmixing": {
+     "pins": "1f40f4c added flat-field correction to unmixing; 824f476 fixed flat-field/background images that are not single (as read from uint16 tiffs), which made the mex reject them and fall back to the slow MATLAB path",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "frameMatchesTheOriginalCode": {
+     "pins": "the frame function computes the sum in unmix_channels_sum, at once (channels as read that take with the result at most 8 bytes per voxel) or one channel at a time: the same values as the per-channel code it replaced, with flat field correction, gaussian filtering, a channel with factor 0 (not read), backgrounds, offsets, and single channels",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "gaussianUnmixingBlursTheOtherChannel": {
+     "pins": "'gaussian' mode filters each channel with its sigma (one row per channel, [sy, sx, sz]) before the weighted sum",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "gaussianUnmixingThroughDataWrapper": {
+     "pins": "the wrapper used to format the sigma matrix (one row per channel) as a row vector",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "linearUnmixingAsInDemo": {
+     "pins": "linear unmixing as in demo",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "memAllocateIsInGigabytes": {
+     "pins": "979fa55 regression: memAllocate (GB) was computed in bytes, so every Slurm job requested the maximum number of CPUs",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "mexMatchesTheMatlabCode": {
+     "pins": "uint8, uint16, single and double channels (single and double with NaN, Inf, -0, huge values and values that round at .5), mixed, with backgrounds and offsets (also 0, NaN and single), factors and backgrounds that single can't represent, 0 and Inf; 3D, 2D, a vector, sizes around the mex's blocks of 8192, more blocks than threads, and empty",
+     "tags": [
+      "Unit"
+     ],
+     "cases": [
+      "outClass=uint8",
+      "outClass=uint16",
+      "outClass=single",
+      "outClass=double"
+     ],
+     "fate": []
+    },
+    "mexRejectsInvalidInput": {
+     "pins": "mex rejects invalid input",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "otherClassesUseTheMatlabCode": {
+     "pins": "other channel and result classes are computed in MATLAB, without a mex fallback",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "partialSumsGiveTheSameResult": {
+     "pins": "channels added one at a time to a partial sum (dtype empty), then clipped, offset and cast (no channels and the sum), give the result of one call, bit for bit: uint8, uint16, double and single channels (single ones are added in place by MATLAB), with the mex and with the MATLAB code",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "sumRoundsAsMatlab": {
+     "pins": "products with a double factor and a double offset are rounded to single once (not computed in single), sums in single, cast rounds half away from zero (0.49999997 is 0, uint16() gives 1) and saturates, NaN and negative sums are 0",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "unmixSecondChannelAsSingle": {
+     "pins": "unmix second channel as single",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "zarrBlocksMatchTheOriginalCode": {
+     "pins": "the linear and gaussian zarr block functions with batches that don't divide the image, as the per-channel code they replaced: uint16 channels summed at once, filtered and single channels one at a time",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "zarrFunctionKeepsResultOfAnotherRun": {
+     "pins": "a copy from another run (its own uuid) that finds the result published replaced it with its own, incomplete result",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "zarrFunctionMatchesFrameFunction": {
+     "pins": "XR_unmix_channels_zarr (\"Channel Unmixing for Zarr Files\") processes in batches; small batches must give the same result",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "zarrInputAndOutput": {
+     "pins": "zarr input and output",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    }
+   }
+  }
+ }
+}

@@ -1,0 +1,1638 @@
+{
+ "folder": "decon",
+ "classes": {
+  "DeconBackProjectorTest": {
+   "file": "tests/decon/DeconBackProjectorTest.m",
+   "pins": "omw_backprojector_generation with omw_backprojector_mex (sorted OTF values, connected components, convex hulls of the OTF mask slices, bounds of the window) gives the same outputs, bit for bit, as the code before it (private/omw_backprojector_generation_before), psf_gen_new's median filter in the mex the same PSFs as medfilt3, and the mex modes match the MATLAB functions they replace.",
+   "category": "data",
+   "owner": "R02",
+   "phase": 1,
+   "finished": false,
+   "fate": [],
+   "methods": {
+    "areaThresholdOfAComponentSizeMatches": {
+     "pins": "a component of exactly OTFAreaThresh voxels is kept, as bwareaopen keeps it (here the smallest OTF lobe, whose loss changes the labels of the skewed code)",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "backProjectorMatchesThePreviousCode": {
+     "pins": "back projector matches the previous code",
+     "tags": [
+      "Unit"
+     ],
+     "cases": [
+      "psfCase=gaussian",
+      "psfCase=gaussianSkewed",
+      "psfCase=elongatedWideTaper",
+      "psfCase=elongatedNarrowTaper",
+      "psfCase=threeLobes",
+      "psfCase=threeLobesShearedDetected",
+      "psfCase=fiveLobes",
+      "psfCase=degenerateBounds",
+      "psfCase=boundsBeyondTheEdge"
+     ],
+     "fate": []
+    },
+    "backProjectorMatchesWithOneThread": {
+     "pins": "the slices and components are processed in parallel",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "componentsMatchBwareaopenAndBwconncomp": {
+     "pins": "components match bwareaopen and bwconncomp",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "convexHullsMatchBwconvhull": {
+     "pins": "convex hulls match bwconvhull",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "invalidMexInputsError": {
+     "pins": "invalid mex inputs error",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "largestComponentTiesGoToTheFirst": {
+     "pins": "components of equal size: max and maxk pick the first ones in bwconncomp's order",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "medianFilterMatchesMedfilt3": {
+     "pins": "median filter matches medfilt3",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "psfGenerationDoesNotCallMedfilt3": {
+     "pins": "psf generation does not call medfilt3",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "psfGenerationMatchesMedfilt3": {
+     "pins": "psf_gen_new with the mex's median filter and with medfilt3 (the mex replaced by a function of that name)",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "sliceHullsMatchBwconvhull": {
+     "pins": "single slices of many shapes, including lines, points and sloped edges, where the polygon filling rules matter",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "sortMatchesSort": {
+     "pins": "sort matches sort",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "theReplacedFunctionsAreNotCalled": {
+     "pins": "the mex replaces bwconvhull, bwareaopen and bwconncomp (stubs that would change the result if called)",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "windowBoundsHoldForSparseEdgePoints": {
+     "pins": "few edge points with very different radii: a voxel the mex decides is below l times both radii of the 2 edge points nearest to its direction, or at least u times both (then any positive weights give that window value)",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "windowIsDecidedOnlyWhereTheBoundsHold": {
+     "pins": "the voxels the mex decides have the window value the MATLAB code computes from the nearest edge points",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "withoutTheMexTheMatlabCodeRuns": {
+     "pins": "without the mex the matlab code runs",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    }
+   }
+  },
+  "DeconFrameTest": {
+   "file": "tests/decon/DeconFrameTest.m",
+   "pins": "XR_RLdeconFrame3D (single file decon) and XR_visualize_OTF_mask_segmentation on small synthetic data",
+   "category": "data",
+   "owner": "R05",
+   "phase": 1,
+   "finished": false,
+   "fate": [],
+   "methods": {
+    "allZeroFrameIsDeconvolved": {
+     "pins": "an all-zero frame used to error when saving the 'simplified' info (err_mat is only set when the decon runs)",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "existingResultIsSkipped": {
+     "pins": "existing result is skipped",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "fileThatDoesNotFitOnTheGPUIsDeconvolvedOnTheCPU": {
+     "pins": "a file larger than the GPU memory (or the gpuArray size limit) used to fail in every GPU job, until the wrapper gave up; it is now deconvolved on the CPU. A stand-in RLdecon runs out of GPU memory when useGPU is true.",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "flipZstackFlipsTheResult": {
+     "pins": "flipZstack used to be dropped for regular (not large) files",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "gpuJobDoesNotReadAFinishedNextFile": {
+     "pins": "gpu job does not read afinished next file",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "gpuJobReadsTheNextFileDuringTheDecon": {
+     "pins": "a GPU job with several files reads the next file while the GPU deconvolves the current one (before the current result is moved into place), each file once, with the same results as one file per job (a gpuDevice stub reports room on the GPU; without a GPU the decon runs on the CPU)",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "gpuJobWithoutRoomOnTheGPUReadsTheFilesInTurn": {
+     "pins": "with too little free GPU memory the iterations aren't queued ahead, so the next file is read by its own RLdecon",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "otfMaskVisualizationSavesTheFigure": {
+     "pins": "demo step: check the OTF mask threshold before decon",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "otherGPUJobErrorsAreNotRetriedOnTheCPU": {
+     "pins": "other gpujob errors are not retried on the cpu",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "overwriteRecomputesTheResult": {
+     "pins": "RLdecon skips existing results, so Overwrite used to keep the old one",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "psfGenFalseUsesTheRawPSF": {
+     "pins": "with psfGen=false the raw PSF is used even if a generated PSF from an earlier run is cached in psfgen/ (regression test for d280863 and a3eb8bd)",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "savedErosionMaskCanBeReplaced": {
+     "pins": "rerunning the first time point replaces its saved erosion mask (regression test for d654c22, rmdirs -> rmdir)",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "simplifiedInfoFilesGoToTheDeconInfoFolder": {
+     "pins": "the info files used to land in the result folder",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "writesResultsToMatlabDeconByDefault": {
+     "pins": "writes results to matlab decon by default",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    }
+   }
+  },
+  "DeconFunctionTest": {
+   "file": "tests/decon/DeconFunctionTest.m",
+   "pins": "deconvolution building blocks (decon_lucy_function, decon_lucy_omw_function, omw_backprojector_generation, psf_gen_new, decon_psf2otf and RLdecon in memory) on synthetic beads blurred with a known Gaussian PSF.",
+   "category": "data",
+   "owner": "R03",
+   "phase": 1,
+   "finished": false,
+   "fate": [],
+   "methods": {
+    "backProjectorDCGainIsTheWienerFactor": {
+     "pins": "the apodization window is 1 at DC and the normalized OTF is 1 there, so the back projector sums to 1 / (1 + alpha)",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": [],
+     "owner": "R02"
+    },
+    "backProjectorOutputsAreConsistent": {
+     "pins": "back projector outputs are consistent",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": [],
+     "owner": "R02"
+    },
+    "backProjectorRejectsInvalidPSF": {
+     "pins": "back projector rejects invalid psf",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": [],
+     "owner": "R02"
+    },
+    "bboxCropsTheResult": {
+     "pins": "bbox crops the result",
+     "tags": [
+      "Unit"
+     ],
+     "cases": [
+      "method=simplified",
+      "method=omw"
+     ],
+     "fate": []
+    },
+    "changedBackProjectorWithSameEnergyIsNotIgnored": {
+     "pins": "OMW with the same forward PSF and a shifted back projector of the same sum of squares (exact for integer values) gets its own back projector OTF",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "changedPSFWithSameEnergyIsNotIgnored": {
+     "pins": "the decon functions cache the OTF in persistent variables; a shifted or mirrored PSF (e.g., a second channel) gets its own OTF, also when its sum of squares (the cache's key before) is the same. For OMW the back projector is the same, so this also checks that a new forward PSF isn't ignored.",
+     "tags": [
+      "Unit"
+     ],
+     "cases": [
+      "method=simplified",
+      "method=omw"
+     ],
+     "fate": []
+    },
+    "dampFactorBoundsTheResult": {
+     "pins": "damp factor bounds the result",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "deltaPSFReturnsBackgroundSubtractedInput": {
+     "pins": "with a delta PSF the forward model is the identity, so the result is the background subtracted input, also below background",
+     "tags": [
+      "Unit"
+     ],
+     "cases": [
+      "method=simplified",
+      "method=omw"
+     ],
+     "fate": []
+    },
+    "edgeErosionZeroesTheBorderShell": {
+     "pins": "for images without zero voxels the outer EdgeErosion voxels on every side are set to zero, and nothing inside",
+     "tags": [
+      "Unit"
+     ],
+     "cases": [
+      "method=simplified",
+      "method=omw"
+     ],
+     "fate": []
+    },
+    "fluxIsConserved": {
+     "pins": "the RL update J <- J .* H'(I ./ HJ) with a normalized PSF keeps sum(J) == sum(I) (not for OMW, whose back projector is not H')",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "gpuRequestWithoutGPUFallsBackToCPU": {
+     "pins": "gpu request without gpufalls back to cpu",
+     "tags": [
+      "Unit"
+     ],
+     "cases": [
+      "method=simplified",
+      "method=omw"
+     ],
+     "fate": [],
+     "owner": "R04"
+    },
+    "higherOTFThresholdGivesLargerMask": {
+     "pins": "higher otfthreshold gives larger mask",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": [],
+     "owner": "R02"
+    },
+    "loopMatchesThePreviousFormulation": {
+     "pins": "the decon loops run one FFT step per statement (and keep uint16 input as uint16 on the GPU) to save GPU memory; the results are bit-identical to the previous loops (tests/decon/private/*_before.m), here on the CPU and in DeconGPUTest on the GPU",
+     "tags": [
+      "Unit"
+     ],
+     "cases": [
+      "method=simplified,anyInputClass=uint16,deconOptions=uint16Output",
+      "method=simplified,anyInputClass=uint16,deconOptions=singleOutput",
+      "method=simplified,anyInputClass=uint16,deconOptions=dampErosionOffsetScale",
+      "method=simplified,anyInputClass=uint16,deconOptions=bbox",
+      "method=simplified,anyInputClass=single,deconOptions=uint16Output",
+      "method=simplified,anyInputClass=single,deconOptions=singleOutput",
+      "method=simplified,anyInputClass=single,deconOptions=dampErosionOffsetScale",
+      "method=simplified,anyInputClass=single,deconOptions=bbox",
+      "method=simplified,anyInputClass=double,deconOptions=uint16Output",
+      "method=simplified,anyInputClass=double,deconOptions=singleOutput",
+      "method=simplified,anyInputClass=double,deconOptions=dampErosionOffsetScale",
+      "method=simplified,anyInputClass=double,deconOptions=bbox",
+      "method=omw,anyInputClass=uint16,deconOptions=uint16Output",
+      "method=omw,anyInputClass=uint16,deconOptions=singleOutput",
+      "method=omw,anyInputClass=uint16,deconOptions=dampErosionOffsetScale",
+      "method=omw,anyInputClass=uint16,deconOptions=bbox",
+      "method=omw,anyInputClass=single,deconOptions=uint16Output",
+      "method=omw,anyInputClass=single,deconOptions=singleOutput",
+      "method=omw,anyInputClass=single,deconOptions=dampErosionOffsetScale",
+      "method=omw,anyInputClass=single,deconOptions=bbox",
+      "method=omw,anyInputClass=double,deconOptions=uint16Output",
+      "method=omw,anyInputClass=double,deconOptions=singleOutput",
+      "method=omw,anyInputClass=double,deconOptions=dampErosionOffsetScale",
+      "method=omw,anyInputClass=double,deconOptions=bbox"
+     ],
+     "fate": []
+    },
+    "noUsableGPUWarningGivesMATLABsReason": {
+     "pins": "the GPUs are counted with usable_gpu_num (GPUs newer than this MATLAB supports get forward compatibility), and the warning of a GPU job that runs on the CPU gives MATLAB's reason (a stub here: 1 GPU found, none usable)",
+     "tags": [
+      "Unit"
+     ],
+     "cases": [
+      "method=simplified",
+      "method=omw"
+     ],
+     "fate": [],
+     "owner": "R04"
+    },
+    "otfIsCachedForTheSamePSFBitsAndThreads": {
+     "pins": "the cached OTF is used for a PSF with the same values (another array), but computed again for one that only differs in the sign of a zero (the key is bit for bit) or with another number of threads (the PSF normalization depends on it); counted with a copy of decon_psf2otf that logs its calls (MATLAB code)",
+     "tags": [
+      "Unit"
+     ],
+     "cases": [
+      "method=simplified",
+      "method=omw"
+     ],
+     "fate": [],
+     "owner": "R01"
+    },
+    "outputScalesLinearlyWithInput": {
+     "pins": "a floor of 10 keeps every voxel well above the FFT round-off",
+     "tags": [
+      "Unit"
+     ],
+     "cases": [
+      "method=simplified",
+      "method=omw"
+     ],
+     "fate": []
+    },
+    "pointSourceIsSharpened": {
+     "pins": "deconvolving a blurred bead raises its peak and narrows it in every axis without moving it",
+     "tags": [
+      "Unit"
+     ],
+     "cases": [
+      "method=simplified",
+      "method=omw"
+     ],
+     "fate": []
+    },
+    "psf2otfOfCenteredDeltaIsFlat": {
+     "pins": "psf2otf of centered delta is flat",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": [],
+     "owner": "R01"
+    },
+    "psf2otfPadsToTheOutputSize": {
+     "pins": "psf2otf pads to the output size",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": [],
+     "owner": "R01"
+    },
+    "psfGenCentersOddSizePSF": {
+     "pins": "without background (zero edge slices) the PSF is only circularly shifted so its peak is at the center",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": [],
+     "owner": "R01"
+    },
+    "psfGenKeepsEvenSizePSFAtTheFFTCenter": {
+     "pins": "psf_gen_new used to center even-size PSFs one voxel off the FFT center, depending on where the peak started",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": [],
+     "owner": "R01"
+    },
+    "psfGenRemovesBackground": {
+     "pins": "'masked' method: keep the component around the peak and subtract the background estimated from the border rows",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": [],
+     "owner": "R01"
+    },
+    "psfGenResamplesZToTheDataStep": {
+     "pins": "a PSF sampled at half the data z step is resampled to the data step by Fourier truncation: half the slices, half the width",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": [],
+     "owner": "R01"
+    },
+    "regionsAtBackgroundStayZero": {
+     "pins": "RL updates are multiplicative, so voxels at or below the background are exactly zero in the result",
+     "tags": [
+      "Unit"
+     ],
+     "cases": [
+      "method=simplified",
+      "method=omw"
+     ],
+     "fate": []
+    },
+    "rldeconInMemoryMatchesDirectFunction": {
+     "pins": "the background is subtracted once, also for float input (regression test for dda6375, which subtracted it twice)",
+     "tags": [
+      "Unit"
+     ],
+     "cases": [
+      "inputClass=uint16",
+      "inputClass=single"
+     ],
+     "fate": [],
+     "owner": "R05"
+    },
+    "rldeconWithZeroIterationsReturnsTheInput": {
+     "pins": "rldecon with zero iterations returns the input",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": [],
+     "owner": "R05"
+    },
+    "wienerButterworthBackProjectorWorksWithOMWDecon": {
+     "pins": "the WB back projector (Guo et al. 2020) used in the decon demo",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": [],
+     "owner": "R02"
+    }
+   }
+  },
+  "DeconGPUTest": {
+   "file": "tests/decon/DeconGPUTest.m",
+   "pins": "GPU deconvolution must match the CPU result (skipped without a GPU)",
+   "category": "data",
+   "owner": "R04",
+   "phase": 1,
+   "finished": false,
+   "fate": [],
+   "methods": {
+    "gpuEdgeErosionUsesTheCPUMask": {
+     "pins": "data with zero borders, as skewed data has: the GPU path erodes the mask on the GPU (decon_mask_edge_erosion_gpu_mex); the result is the result without erosion times the mask eroded on the CPU",
+     "tags": [
+      "GPU",
+      "Unit"
+     ],
+     "cases": [
+      "method=simplified",
+      "method=omw"
+     ],
+     "fate": []
+    },
+    "gpuLoopMatchesThePreviousFormulation": {
+     "pins": "the decon loops run one FFT step per statement and keep uint16 input as uint16 on the GPU, which saves 6 bytes per voxel of GPU memory; the results are bit-identical to the previous loops (tests/decon/private/*_before.m)",
+     "tags": [
+      "GPU",
+      "Unit"
+     ],
+     "cases": [
+      "method=simplified,anyInputClass=uint16,gpuSize=smooth",
+      "method=simplified,anyInputClass=uint16,gpuSize=oddPrimes",
+      "method=simplified,anyInputClass=single,gpuSize=smooth",
+      "method=simplified,anyInputClass=single,gpuSize=oddPrimes",
+      "method=simplified,anyInputClass=double,gpuSize=smooth",
+      "method=simplified,anyInputClass=double,gpuSize=oddPrimes",
+      "method=omw,anyInputClass=uint16,gpuSize=smooth",
+      "method=omw,anyInputClass=uint16,gpuSize=oddPrimes",
+      "method=omw,anyInputClass=single,gpuSize=smooth",
+      "method=omw,anyInputClass=single,gpuSize=oddPrimes",
+      "method=omw,anyInputClass=double,gpuSize=smooth",
+      "method=omw,anyInputClass=double,gpuSize=oddPrimes"
+     ],
+     "fate": []
+    },
+    "gpuMatchesCPU": {
+     "pins": "gpu matches cpu",
+     "tags": [
+      "GPU",
+      "Unit"
+     ],
+     "cases": [
+      "method=simplified,inputClass=uint16",
+      "method=simplified,inputClass=single",
+      "method=omw,inputClass=uint16",
+      "method=omw,inputClass=single"
+     ],
+     "fate": []
+    },
+    "wrapperGPUJobMatchesCPU": {
+     "pins": "wrapper gpujob matches cpu",
+     "tags": [
+      "GPU",
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    }
+   }
+  },
+  "DeconMaskErosionTest": {
+   "file": "tests/decon/DeconMaskErosionTest.m",
+   "pins": "the edge erosion of the decon masks (decon_mask_edge_erosion). Masks that aren't full (e.g., skewed data with zero borders) are eroded on the CPU by decon_mask_edge_erosion_mex, which applies the decomposition of strel('disk', EdgeErosion - 1) and the line along z as imerode does, with the same masks as the previous imerode code (tests/decon/private/decon_mask_edge_erosion_before.m).",
+   "category": "data",
+   "owner": "K05",
+   "phase": 1,
+   "finished": false,
+   "fate": [],
+   "methods": {
+    "demoSettingOnASkewedVolume": {
+     "pins": "EdgeErosion 20 as in the large-scale demo, zero borders as in skewed data, more slices than threads and a few isolated holes",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "fullGpuArrayMasksThinnerThanTheErosion": {
+     "pins": "full masks get their edges set directly, also on the GPU and with the GPU mex: the first and last EdgeErosion indices overlap for masks thinner than 2 * EdgeErosion (gpuArray assignments take no repeated subscripts)",
+     "tags": [
+      "GPU",
+      "Unit"
+     ],
+     "cases": null,
+     "fate": [],
+     "owner": "K09"
+    },
+    "fullMasksAndOtherErosionValues": {
+     "pins": "full masks get their edges set directly; erosion values the mex doesn't take run the previous code (with its errors)",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "gpuArrayMasksEqualTheCPUMasks": {
+     "pins": "the GPU path erodes gpuArray masks with imerode on the GPU",
+     "tags": [
+      "GPU",
+      "Unit"
+     ],
+     "cases": null,
+     "fate": [],
+     "owner": "K09"
+    },
+    "gpuArrayMasksWithoutTheGPUMex": {
+     "pins": "where decon_mask_edge_erosion_gpu_mex is missing (e.g., Windows with a CUDA GPU), the MATLAB code erodes gpuArray masks on the GPU, with the CPU's result; it errored for masks with one row or column (mask([1, end], :, :): gpuArray assignments take no repeated subscripts)",
+     "tags": [
+      "GPU",
+      "Unit"
+     ],
+     "cases": null,
+     "fate": [],
+     "owner": "K09"
+    },
+    "irregularMasksDoNotUseImerode": {
+     "pins": "(imerode on large masks took a fifth of the large-file decon)",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "masksEqualImerode": {
+     "pins": "disks of radius 0 to 40 (no decomposition up to 2, then periodic lines with morphop's padding, with or without extra lines) (full masks thinner than the erosion error in both)",
+     "tags": [
+      "Unit"
+     ],
+     "cases": [
+      "shape=random,maskSize=odd3D",
+      "shape=random,maskSize=small",
+      "shape=random,maskSize=twoSlices",
+      "shape=random,maskSize=oneRow",
+      "shape=random,maskSize=oneColumn",
+      "shape=random,maskSize=image2D",
+      "shape=skewed,maskSize=odd3D",
+      "shape=skewed,maskSize=small",
+      "shape=skewed,maskSize=twoSlices",
+      "shape=skewed,maskSize=oneRow",
+      "shape=skewed,maskSize=oneColumn",
+      "shape=skewed,maskSize=image2D",
+      "shape=thin,maskSize=odd3D",
+      "shape=thin,maskSize=small",
+      "shape=thin,maskSize=twoSlices",
+      "shape=thin,maskSize=oneRow",
+      "shape=thin,maskSize=oneColumn",
+      "shape=thin,maskSize=image2D",
+      "shape=single,maskSize=odd3D",
+      "shape=single,maskSize=small",
+      "shape=single,maskSize=twoSlices",
+      "shape=single,maskSize=oneRow",
+      "shape=single,maskSize=oneColumn",
+      "shape=single,maskSize=image2D",
+      "shape=singleFalse,maskSize=odd3D",
+      "shape=singleFalse,maskSize=small",
+      "shape=singleFalse,maskSize=twoSlices",
+      "shape=singleFalse,maskSize=oneRow",
+      "shape=singleFalse,maskSize=oneColumn",
+      "shape=singleFalse,maskSize=image2D",
+      "shape=blobs,maskSize=odd3D",
+      "shape=blobs,maskSize=small",
+      "shape=blobs,maskSize=twoSlices",
+      "shape=blobs,maskSize=oneRow",
+      "shape=blobs,maskSize=oneColumn",
+      "shape=blobs,maskSize=image2D"
+     ],
+     "fate": []
+    },
+    "mexEqualsImerodeForOtherNeighborhoods": {
+     "pins": "sequences of random (asymmetric, even-sized) neighborhoods, with the padding morphop uses for them, and single neighborhoods",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "mexRejectsInvalidInputs": {
+     "pins": "mex rejects invalid inputs",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "resultDoesNotDependOnTheThreadCount": {
+     "pins": "whole slices per thread, or the columns of each slice split among the threads when there are few slices",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "withoutTheMexImerodeRuns": {
+     "pins": "a .m file of the same name first on the path hides the mex, as on a platform without it",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    }
+   }
+  },
+  "DeconOverlapTest": {
+   "file": "tests/decon/DeconOverlapTest.m",
+   "pins": "with overlapFcn, decon_lucy_omw_function and decon_lucy_function run a function on the CPU while the GPU computes (XR_RLdeconFrame3D reads the next file of a GPU job then) and return its output, with the same results",
+   "category": "data",
+   "owner": "R04",
+   "phase": 1,
+   "finished": false,
+   "fate": [],
+   "methods": {
+    "gpuOverlapFunctionRunsWhileTheGPUComputes": {
+     "pins": "gpu overlap function runs while the gpucomputes",
+     "tags": [
+      "GPU",
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "overlapFunctionRunsOnceAndReturnsItsOutput": {
+     "pins": "overlap function runs once and returns its output",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "rldeconReturnsTheOverlapOutput": {
+     "pins": "as the large-file batches call RLdecon (data in memory, no result file)",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    }
+   }
+  },
+  "DeconRFFTGPUTest": {
+   "file": "tests/decon/DeconRFFTGPUTest.m",
+   "pins": "the GPU half-spectrum FFT decon (decon_lucy_rfft_gpu_mex) against the MATLAB GPU loops of decon_lucy_function and decon_lucy_omw_function (skipped without a GPU or the mex). Unlike the CPU mex, it uses other cuFFT transforms than MATLAB's gpuArray FFTs, so the paths differ by single-precision rounding: up to 3e-5 relative L2 error on these volumes (OMW, whose back projector amplifies high frequ...",
+   "category": "data",
+   "owner": "K09",
+   "phase": 1,
+   "finished": false,
+   "fate": [],
+   "methods": {
+    "gpuBackgroundIsSubtractedAsInTheGpuLoop": {
+     "pins": "uint16 data: saturating subtraction of uint16(background), as the MATLAB GPU code does (unlike the CPU code for non-integer values)",
+     "tags": [
+      "GPU",
+      "Unit"
+     ],
+     "cases": [
+      "method=simplified",
+      "method=omw"
+     ],
+     "fate": []
+    },
+    "gpuHalfOTFIsTheFirstHalfOfTheOTF": {
+     "pins": "the rows up to the middle of the first dimension",
+     "tags": [
+      "GPU",
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "gpuMexAppliesTheOptions": {
+     "pins": "gpu mex applies the options",
+     "tags": [
+      "GPU",
+      "Unit"
+     ],
+     "cases": [
+      "method=simplified,options=1x2_cell",
+      "method=simplified,options=1x2_cell_1",
+      "method=simplified,options=1x2_cell_2",
+      "method=simplified,options=1x10_cell",
+      "method=omw,options=1x2_cell",
+      "method=omw,options=1x2_cell_1",
+      "method=omw,options=1x2_cell_2",
+      "method=omw,options=1x10_cell"
+     ],
+     "fate": []
+    },
+    "gpuMexMatchesForOddAnd2DSizes": {
+     "pins": "gpu mex matches for odd and2 dsizes",
+     "tags": [
+      "GPU",
+      "Unit"
+     ],
+     "cases": [
+      "method=simplified,dataSize=1x3_double",
+      "method=simplified,dataSize=1x2_double",
+      "method=simplified,dataSize=1x3_double_1",
+      "method=omw,dataSize=1x3_double",
+      "method=omw,dataSize=1x2_double",
+      "method=omw,dataSize=1x3_double_1"
+     ],
+     "fate": []
+    },
+    "gpuMexMatchesGpuMatlabLoop": {
+     "pins": "gpu mex matches gpu matlab loop",
+     "tags": [
+      "GPU",
+      "Unit"
+     ],
+     "cases": [
+      "method=simplified,inputClass=uint16",
+      "method=simplified,inputClass=single",
+      "method=omw,inputClass=uint16",
+      "method=omw,inputClass=single"
+     ],
+     "fate": []
+    },
+    "outOfMemoryLeavesNoGpuArraysBehind": {
+     "pins": "an allocation that fails inside the mex (here its third buffer) frees the buffers it made before, so a CPU fallback or the next file has the memory",
+     "tags": [
+      "GPU",
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "withoutTheGpuMexTheGpuLoopRuns": {
+     "pins": "without the gpu mex the gpu loop runs",
+     "tags": [
+      "GPU",
+      "Unit"
+     ],
+     "cases": [
+      "method=simplified",
+      "method=omw"
+     ],
+     "fate": []
+    }
+   }
+  },
+  "DeconRFFTTest": {
+   "file": "tests/decon/DeconRFFTTest.m",
+   "pins": "the RL and OMW iterations with half-spectrum FFTs (decon_lucy_rfft_mex on the CPU) against the MATLAB loops of decon_lucy_function and decon_lucy_omw_function, the choice of the path (useMex, fallback without the mex), the half OTF, and the groups of lines MATLAB's FFTs transform together. The mex runs the same FFTW transforms as MATLAB's fftn and ifftn (on the half spectrum), so the results ar...",
+   "category": "data",
+   "owner": "K05",
+   "phase": 1,
+   "finished": false,
+   "fate": [],
+   "methods": {
+    "debugOutputsEqualTheMatlabLoop": {
+     "pins": "with debug output the mex runs the iterations (OMW: in pieces from the last result to the iterations the outputs need); the result, err_mat and the saved iterations equal the MATLAB loop's, also where the loop errors",
+     "tags": [
+      "Unit"
+     ],
+     "cases": [
+      "method=simplified,debugCase=everyIteration",
+      "method=simplified,debugCase=everySecond",
+      "method=simplified,debugCase=stepPastTheEnd",
+      "method=simplified,debugCase=nonIntegerStep",
+      "method=omw,debugCase=everyIteration",
+      "method=omw,debugCase=everySecond",
+      "method=omw,debugCase=stepPastTheEnd",
+      "method=omw,debugCase=nonIntegerStep"
+     ],
+     "fate": []
+    },
+    "defaultIsTheMexOnTheCpu": {
+     "pins": "both methods use the CPU mex by default (it gives the same results as the MATLAB loop); true or false forces a path",
+     "tags": [
+      "Unit"
+     ],
+     "cases": [
+      "method=simplified",
+      "method=omw"
+     ],
+     "fate": []
+    },
+    "halfOTFIsTheFirstHalfOfTheOTF": {
+     "pins": "the elements up to the middle of the last dimension",
+     "tags": [
+      "Unit"
+     ],
+     "cases": [
+      "dataSize=1x3_double",
+      "dataSize=1x3_double_1",
+      "dataSize=1x3_double_2",
+      "dataSize=1x3_double_3",
+      "dataSize=1x3_double_4",
+      "dataSize=1x2_double",
+      "dataSize=1x2_double_1",
+      "dataSize=1x2_double_2",
+      "dataSize=1x2_double_3",
+      "dataSize=1x3_double_5",
+      "dataSize=1x3_double_6"
+     ],
+     "fate": []
+    },
+    "iterationOutputsMatchTheMatlabLoop": {
+     "pins": "err_mat and the iteration count of decon_lucy_function",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "linesAreGroupedAsMatlabDoes": {
+     "pins": "'fft1' transforms the columns as MATLAB's fft(X, [], 1) does: in its parallel mode, MATLAB halves the columns until a piece has at most 32, then runs each piece in groups of four from its start and the rest alone; without it (or when n * N * (bits of n) <= 98304), the whole range so. MATLAB's own fft of a piece of at most 32 columns, or of four or one, runs as one group (or alone), which gives...",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "mexEqualsMatlabLoop": {
+     "pins": "mex equals matlab loop",
+     "tags": [
+      "Unit"
+     ],
+     "cases": [
+      "method=simplified,inputClass=uint16",
+      "method=simplified,inputClass=single",
+      "method=simplified,inputClass=uint8",
+      "method=omw,inputClass=uint16",
+      "method=omw,inputClass=single",
+      "method=omw,inputClass=uint8"
+     ],
+     "fate": []
+    },
+    "mexEqualsMatlabLoopForOtherSizes": {
+     "pins": "mex equals matlab loop for other sizes",
+     "tags": [
+      "Unit"
+     ],
+     "cases": [
+      "method=simplified,dataSize=1x3_double",
+      "method=simplified,dataSize=1x3_double_1",
+      "method=simplified,dataSize=1x3_double_2",
+      "method=simplified,dataSize=1x3_double_3",
+      "method=simplified,dataSize=1x3_double_4",
+      "method=simplified,dataSize=1x2_double",
+      "method=simplified,dataSize=1x2_double_1",
+      "method=simplified,dataSize=1x2_double_2",
+      "method=simplified,dataSize=1x2_double_3",
+      "method=simplified,dataSize=1x3_double_5",
+      "method=simplified,dataSize=1x3_double_6",
+      "method=omw,dataSize=1x3_double",
+      "method=omw,dataSize=1x3_double_1",
+      "method=omw,dataSize=1x3_double_2",
+      "method=omw,dataSize=1x3_double_3",
+      "method=omw,dataSize=1x3_double_4",
+      "method=omw,dataSize=1x2_double",
+      "method=omw,dataSize=1x2_double_1",
+      "method=omw,dataSize=1x2_double_2",
+      "method=omw,dataSize=1x2_double_3",
+      "method=omw,dataSize=1x3_double_5",
+      "method=omw,dataSize=1x3_double_6"
+     ],
+     "fate": []
+    },
+    "mexRejectsInvalidInputs": {
+     "pins": "mex rejects invalid inputs",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "omwContinuesFromAnEstimate": {
+     "pins": "J0 continues the iterations as one call runs them",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "optionsAreAppliedAsInTheMatlabLoop": {
+     "pins": "options are applied as in the matlab loop",
+     "tags": [
+      "Unit"
+     ],
+     "cases": [
+      "method=simplified,options=1x2_cell",
+      "method=simplified,options=1x2_cell_1",
+      "method=simplified,options=1x2_cell_2",
+      "method=simplified,options=1x2_cell_3",
+      "method=simplified,options=1x2_cell_4",
+      "method=simplified,options=1x2_cell_5",
+      "method=simplified,options=1x2_cell_6",
+      "method=simplified,options=1x12_cell",
+      "method=omw,options=1x2_cell",
+      "method=omw,options=1x2_cell_1",
+      "method=omw,options=1x2_cell_2",
+      "method=omw,options=1x2_cell_3",
+      "method=omw,options=1x2_cell_4",
+      "method=omw,options=1x2_cell_5",
+      "method=omw,options=1x2_cell_6",
+      "method=omw,options=1x12_cell"
+     ],
+     "fate": []
+    },
+    "resultDoesNotDependOnTheThreadCount": {
+     "pins": "single precision sums over whole arrays (PSF normalization, RL's acceleration factor, the back projector) are split among the threads, so results changed in the last bits with the number of threads (and with where the back projector was made); they are summed in double now. The default path, with the mex on Linux and the MATLAB loop elsewhere.",
+     "tags": [
+      "Unit"
+     ],
+     "cases": [
+      "method=simplified",
+      "method=omw"
+     ],
+     "fate": []
+    },
+    "resultsDoNotDependOnTheThreadCount": {
+     "pins": "as MATLAB's FFTs: the groups of lines don't depend on the threads",
+     "tags": [
+      "Unit"
+     ],
+     "cases": [
+      "method=simplified",
+      "method=omw"
+     ],
+     "fate": []
+    },
+    "rlAccelerationIsClampedAsInTheMatlabLoop": {
+     "pins": "a single noise-free bead drives the acceleration factor of the RL loop above 1 (to about 1.09 in iterations 12 and 14), where it is clamped to 1; realistic data rarely gets there",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "switchingPathsRecomputesTheOTF": {
+     "pins": "the cached OTF is a half OTF for the mex and the full OTF for the MATLAB loop",
+     "tags": [
+      "Unit"
+     ],
+     "cases": [
+      "method=simplified",
+      "method=omw"
+     ],
+     "fate": []
+    },
+    "unsupportedCallsRunTheMatlabLoop": {
+     "pins": "double data, debug output on the GPU, a non-scalar background, a single row along y or x",
+     "tags": [
+      "Unit"
+     ],
+     "cases": [
+      "method=simplified",
+      "method=omw"
+     ],
+     "fate": []
+    },
+    "withoutTheMexTheMatlabLoopRuns": {
+     "pins": "a .m file of the same name first on the path hides the mex (exist(..., 'file') is 2), as on a platform without the mex",
+     "tags": [
+      "Unit"
+     ],
+     "cases": [
+      "method=simplified",
+      "method=omw"
+     ],
+     "fate": []
+    },
+    "zeroIterationsGiveTheBackgroundSubtractedInput": {
+     "pins": "also the semantics of the background subtraction (in double, rounded to single, as MATLAB does for single - double)",
+     "tags": [
+      "Unit"
+     ],
+     "cases": [
+      "method=simplified",
+      "method=omw"
+     ],
+     "fate": []
+    }
+   }
+  },
+  "DeconReadCacheTest": {
+   "file": "tests/decon/DeconReadCacheTest.m",
+   "pins": "decon reads the generated PSF and the OMW back projector for each batch of a large file (and each file of a job); decon_readtiff_cached keeps the last ones read and reads a file again once its modification time or size changes",
+   "category": "data",
+   "owner": "R01",
+   "phase": 1,
+   "finished": false,
+   "fate": [],
+   "methods": {
+    "backProjectorIsReadOnce": {
+     "pins": "the second call doesn't read the file (readtiff stubbed)",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "changedFilesAreReadAgain": {
+     "pins": "changed files are read again",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "missingFilesError": {
+     "pins": "(Cpp-Tiff can't open it, nor can the MATLAB reader readtiff tries next)",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "severalFilesAreKept": {
+     "pins": "several files are kept",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    }
+   }
+  },
+  "DeconWrapperTest": {
+   "file": "tests/decon/DeconWrapperTest.m",
+   "pins": "XR_decon_data_wrapper on small synthetic light-sheet datasets: output files, equality with the decon functions, channel to PSF mapping, erosion by the first time point, large-file paths, and the workflows in demo_RL_deconvolution, demo_widefield_and_confocal_deconvolution and demo_large_scale_processing.",
+   "category": "data",
+   "owner": "R06",
+   "phase": 1,
+   "finished": false,
+   "fate": [],
+   "methods": {
+    "clusterModeChecksFewJobsSoon": {
+     "pins": "with jobs on the cluster the wrapper always waited 30 s between rounds, so the last results were seen up to 30 s late; it now waits 0.3 s per unfinished file, at least 3 s and at most 30 s",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": [],
+     "category": "framework_fake_slurm"
+    },
+    "clusterModeEndsSoonAfterTheLastResult": {
+     "pins": "the wrapper waited the whole wait between its rounds (0.3 s per unfinished file, at least 3 s), so it saw the last result up to that late; it now looks for the results still to come each second and goes on once they are all there. The fake job doesn't run; its result comes during the second second.",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": [],
+     "category": "framework_fake_slurm"
+    },
+    "clusterModeSeesMasksOtherNodesJustMade": {
+     "pins": "(erodeByFTP) on NFS, exist() can miss a mask another node just made for 30 s or more, while the wait sees it at once (batch_file_exist), so the wrapper checks masks as the wait does: a wait that ends at a mask is followed by the submission of the files that waited for it, not by rounds a second apart. The stub reports the first file's mask made (only batch_file_exist sees it): the second file i...",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": [],
+     "category": "framework_fake_slurm"
+    },
+    "clusterModeSubmitsFilesSoonAfterTheirMask": {
+     "pins": "(erodeByFTP) the other files of a dataset wait for the erosion mask of its first time point; the wrapper now looks for it each second and submits them once it is there. The first file's job makes its result when first checked (its mask comes during the second second); the second file's job doesn't run.",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": [],
+     "category": "framework_fake_slurm"
+    },
+    "clusterModeWaitGrowsWithUnfinishedFiles": {
+     "pins": "the wait between rounds is 0.3 s per unfinished file: 6 s for 20 files (between the 3 s minimum and the 30 s maximum)",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": [],
+     "category": "framework_fake_slurm"
+    },
+    "clusterModeWaitsForAControllerOfAnotherCall": {
+     "pins": "the wrapper submitted a controller for a volume that a controller of another call (a job in the queue) still made; it now waits for that job, without a try. Here the other job's result comes at the second wait.",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": [],
+     "category": "framework_fake_slurm"
+    },
+    "clusterModeWaitsForTheLastTry": {
+     "pins": "after submitting the last try, the wrapper returned without waiting for its job; it now checks the job until it ends, without submitting again",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": [],
+     "category": "framework_fake_slurm"
+    },
+    "clusterModeWaitsForTheLastTryOfAJobOfSeveralFiles": {
+     "pins": "files that share a job also wait for it on their last try, without submitting it again",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": [],
+     "category": "framework_fake_slurm"
+    },
+    "compiledJobGetsAllFilesOfItsBatch": {
+     "pins": "in mcc mode the job's command line goes through the MATLAB Runtime parser, which must turn the file list back into a cell",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": [],
+     "category": "framework_fake_slurm"
+    },
+    "deconvolvedDataCanBeDeskewedAndRotated": {
+     "pins": "demo_RL_deconvolution step 5: deskew/rotate raw and decon results",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "eachChannelUsesItsOwnPSFAndBackground": {
+     "pins": "PSFs and per channel parameters map to files in the order of channelPatterns",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "erodeByFirstTimePointAppliesItsMaskToAllFiles": {
+     "pins": "the eroded mask of the first time point is saved and applied to every file of the dataset",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "filesOfAJobWaitForATaskRunnerThatHasThem": {
+     "pins": "(task runners) GPU jobs of two files each: the third job's task is run by a task runner of the second job (the first job, the first of its kind, runs as before), so the third job ends at once; its files are submitted again (one job each, as before, without task runners) only once the second job ended without their results, not while it may still make them",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": [],
+     "category": "framework_fake_slurm"
+    },
+    "filesOfDifferentSizesGoToDifferentJobs": {
+     "pins": "a job keeps the OTFs of its first file on the GPU, so a file of another size would need memory for both",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": [],
+     "category": "framework_fake_slurm"
+    },
+    "gpuJobsTakeAtMostFourCPUs": {
+     "pins": "GPU jobs got the CPU-oriented cpusPerTask (24 in the demos), capped only by the GPU config's maxCPUNum (16), so one GPU job took a whole 16-core 4-GPU node and 3 of its GPUs idled. The GPU config's minCPUNum still raises it (nodes with more cores per GPU), and CPU jobs keep cpusPerTask.",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": [],
+     "category": "framework_fake_slurm"
+    },
+    "gpuJobsTakeSeveralFilesWithTheSameSettings": {
+     "pins": "a job per file starts MATLAB (or the MATLAB Runtime) and the GPU for about as long as a GPU decon of a tile takes; with taskBatchNum, files with the same settings (here the channel) share a job, and the jobs give the same results as one file at a time",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": [],
+     "category": "framework_fake_slurm"
+    },
+    "gpuJobsTakeUpToEightFilesWhileThereAreSixteenJobs": {
+     "pins": "without taskBatchNum, GPU jobs take floor(files / 16) files, at most 8, so small datasets keep one file per job",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": [],
+     "category": "framework_fake_slurm"
+    },
+    "largeFileErosionMaskMatchesDistanceMap": {
+     "pins": "the in-memory large-file path erodes the edges with a distance map of the data; without zeros that is the volume without EdgeErosion voxels at each face, made without bwdist. Data with zeros (e.g., outside a deskewed region) keeps bwdist.",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": [],
+     "owner": "R07"
+    },
+    "largeFileInMemoryUsesBlockSize": {
+     "pins": "the in-memory large-file path wrote its zarr result with writezarr's default chunks (500^3) instead of blockSize",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": [],
+     "owner": "R07"
+    },
+    "largeFileInPlaceBlocksLogToTheCallersJobLogDir": {
+     "pins": "the controller of a volume got no job log folder, so its block jobs logged to its default (../job_logs, or the data folder's job_logs where that doesn't exist) instead of the caller's jobLogDir, where the wrapper's own jobs log. Here the controller runs here and its block framework is a spy.",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": [],
+     "owner": "R07"
+    },
+    "largeFileInPlaceBlocksOfAnEndedControllerAreSkipped": {
+     "pins": "the block jobs of a controller whose job was cancelled ran on (the queued ones when they started), for a result nothing would publish; a block now skips its work when its controller's job has ended (its writer record; a fake Slurm that no longer lists the job). The block task is the one the controller made (a framework spy that reports it failed).",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": [],
+     "owner": "R07",
+     "category": "framework_fake_slurm"
+    },
+    "largeFileInPlaceControllersAskForWhatTheyHold": {
+     "pins": "the job of a volume (RLdecon_large_in_place) runs its block jobs. It asked for a block-based estimate it never holds: prod(batchSize * 2) x 40 B on the CPU (16 CPUs here) and prod(batchSize) x 80 B with GPUs (4), though GPU controllers compute no block (1.5-1.7 GB of 86 GB were used), and with masterCompute off (the config's, as in a user's, or the wrapper's) no CPU controller does: 4 of them h...",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": [],
+     "owner": "R07",
+     "category": "framework_fake_slurm"
+    },
+    "largeFileInPlaceGPUJobMIPsKeepMasterCompute": {
+     "pins": "GPU jobs turn masterCompute off for the decon blocks only; the MIPs, made on CPUs, keep the caller's setting",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": [],
+     "owner": "R07"
+    },
+    "largeFileInPlaceKeepsAResultAnotherWriterPublished": {
+     "pins": "two job sets on the same data (a controller started again, or another call): the one that finished last deleted the result the other had published, which the next step (deskew/rotate) was reading, and moved its own into place. Now it keeps the other's result and removes its own. Here the other result comes while the blocks run (the framework is a spy that reports them done), so this one's resul...",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": [],
+     "owner": "R07"
+    },
+    "largeFileInPlaceKeepsAResultPublishedDuringItsMIPs": {
+     "pins": "as above, with the other result coming while the MIPs are made (a spy of XR_MIP_zarr makes it)",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": [],
+     "owner": "R07"
+    },
+    "largeFileInPlaceMIPsAreMergedFromTheBlocks": {
+     "pins": "the decon tasks save the MIPs of their blocks in their flags, and XR_MIP_zarr merges them into the MIP slabs instead of reading the result again in MIP_block tasks. The blocks are single and the result uint16: the MIPs are rounded as written.",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": [],
+     "owner": "R07"
+    },
+    "largeFileInPlaceMIPsIncludeMaskedBlocks": {
+     "pins": "blocks outside the 2D masks are written as zeros without decon, and their MIPs are saved too (here the blocks below row 32)",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": [],
+     "owner": "R07"
+    },
+    "largeFileInPlaceMakesMIPsBeforePublishing": {
+     "pins": "as above for the in-place large-file path, which made its MIPs with XR_MIP_zarr after moving the result into place",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": [],
+     "owner": "R07"
+    },
+    "largeFileInPlaceMatchesRegular": {
+     "pins": "zarr in, zarr out (demo_large_scale_processing); one batch",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": [],
+     "owner": "R07"
+    },
+    "largeFileInPlaceMultipleBatchesMatchRegular": {
+     "pins": "the demo_large_scale_processing setup: zarr chunks deconvolved batch by batch into a zarr, with edge erosion",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": [],
+     "owner": "R07"
+    },
+    "largeFileInPlacePassesJobSettingsToMIPs": {
+     "pins": "RLdecon_large_in_place didn't pass parseCluster, masterCompute or jobLogDir to XR_MIP_zarr, so on a machine with Slurm the MIPs of a local run were made in Slurm jobs",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": [],
+     "owner": "R07"
+    },
+    "largeFileInPlaceWaitsForAControllerOfAnotherCall": {
+     "pins": "a controller of another call (another uuid) that may still make the volume, e.g. of a call cancelled and run again: the second controller made it as well (and replaced the first one's). Now it waits for it. Here the other controller is a process on this node, and its result comes during the wait (a spy of wait_for_files); the blocks must not run.",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": [],
+     "owner": "R07"
+    },
+    "largeFileMakesMIPBeforePublishing": {
+     "pins": "the wrapper counts a file as done once its result exists; the in-memory large-file path moved the result into place and then wrote its MIP",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": [],
+     "owner": "R07"
+    },
+    "largeFileMultipleBatchesMatchRegular": {
+     "pins": "batches are deconvolved with a border of half the PSF; with 2 iterations (no acceleration) the stitched result matches the whole volume decon away from the image border, where the periodic FFT boxes differ",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": [],
+     "owner": "R07"
+    },
+    "largeFileSingleBatchMatchesRegular": {
+     "pins": "with one batch the in-memory large-file path runs the same decon on the same data, including the edge erosion",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": [],
+     "owner": "R07"
+    },
+    "largeFileWithErodeByFirstTimePointCompletes": {
+     "pins": "regression test for d83468d: with largeFile=true and erodeByFTP=true the first time point's mask was never saved, so the other files waited for it forever. A watchdog writes the mask after 60 s so the old code finishes (and fails here) instead of hanging.",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": [],
+     "owner": "R07"
+    },
+    "lastTryWaitsForATaskRunnerThatHasTheTask": {
+     "pins": "(task runners) file 2's job makes its result and then runs file 3's task (a task runner; file 1, the first of its kind, runs as before), so file 3's own job ends at once: the wrapper counts file 3 as running while file 2's job runs, instead of as finished, and does not submit it again",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": [],
+     "category": "framework_fake_slurm"
+    },
+    "omwBackProjectorIsMadeOnceBeforeTheJobs": {
+     "pins": "on the cluster every first job of a PSF made the back projector (with the job's threads, which change it in the last bits); the wrapper now makes it once, as RLdecon would from the PSF with two datasets, made once and copied to the second one",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": [],
+     "category": "framework_fake_slurm"
+    },
+    "omwParametersArePerChannel": {
+     "pins": "demo_large_scale_processing passes wienerAlpha and OTFCumThresh per channel",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "omwWritesBackProjectorFilesAndMatchesTheFunction": {
+     "pins": "omw writes back projector files and matches the function",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "originalMethodBatchesAreCopiedByTheMex": {
+     "pins": "RLMethod 'original' returns single batches, which the in-memory large-file path placed by assignment (converting them to uint16) instead of with indexing3d_mex, which takes the class of the result: they are converted first now, with the same result",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "originalMethodWorksWithMultipleBatches": {
+     "pins": "'original' used to skip the deconBbox crop, so the batches of the in-memory large-file path couldn't be placed",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "retriedFilesGetAJobEach": {
+     "pins": "a file that fails would make its whole job fail again and use up the trials of the other files, so files are retried alone. The fake jobs never run: the second round retries both files.",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": [],
+     "category": "framework_fake_slurm"
+    },
+    "runningJobIsNotSubmittedAgain": {
+     "pins": "the job of two files runs for two rounds and then ends without results, so its files are submitted again, one per job",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": [],
+     "category": "framework_fake_slurm"
+    },
+    "save16bitFalseWritesSingle": {
+     "pins": "save16bit false writes single",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "simplifiedWritesOutputsThatMatchTheFunction": {
+     "pins": "simplified writes outputs that match the function",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "widefieldDemoSettingsWithPlainFilenames": {
+     "pins": "demo_widefield_and_confocal_deconvolution: plain file names, PSF next to the data, OMW with skewed=true and hannWinBounds [0.8, 1.2]",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "zarrOutputMatchesTiffOutput": {
+     "pins": "zarr output matches tiff output",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    }
+   }
+  }
+ }
+}

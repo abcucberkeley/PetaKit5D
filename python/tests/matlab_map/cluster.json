@@ -1,0 +1,116 @@
+{
+ "folder": "cluster",
+ "classes": {
+  "SlurmClusterTest": {
+   "file": "tests/cluster/SlurmClusterTest.m",
+   "pins": "the job framework in Slurm cluster mode (parseCluster=true): tasks are submitted with sbatch, polled with squeue, retried with more CPUs and cancelled at the end. These tests submit real jobs, so they only run when PETAKIT5D_TEST_SLURM_CONFIG is set (Linux and macOS only):",
+   "category": "framework_design",
+   "owner": "J11",
+   "phase": 1,
+   "finished": false,
+   "fate": [],
+   "methods": {
+    "deskewRotateWrapperRunsAsJobs": {
+     "pins": "a data wrapper end to end on the cluster gives the same result as the in-memory function",
+     "tags": [
+      "Cluster",
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "existingOutputsAreNotSubmitted": {
+     "pins": "existing outputs are not submitted",
+     "tags": [
+      "Cluster",
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "failedTaskIsRetriedWithMoreCPUs": {
+     "pins": "a job that ends without its output is resubmitted (after a grace period) with cpusPerTask * (trial + 1) CPUs, up to maxTrialNum",
+     "tags": [
+      "Cluster",
+      "Integration",
+      "Slow"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "finalOutputCancelsRemainingJobs": {
+     "pins": "once the final output exists, the framework returns and cancels the jobs still running (it used to return before the scancel, leaving them running)",
+     "tags": [
+      "Cluster",
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "finalOutputEndsTheRun": {
+     "pins": "the first task writes the final output; the others would run for minutes, but the framework stops once the final output exists",
+     "tags": [
+      "Cluster",
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "jobStatusFollowsSqueue": {
+     "pins": "check_batch_slurm_jobs_status parses the default squeue output",
+     "tags": [
+      "Cluster",
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "masterComputesPartOfTheTasks": {
+     "pins": "with masterCompute the MATLAB session runs a batch itself instead of waiting for its job",
+     "tags": [
+      "Cluster",
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "matlabTasksRunAsJobs": {
+     "pins": "jobs start MATLAB with MatlabLaunchStr, run setup.m from the repository root and then the task string",
+     "tags": [
+      "Cluster",
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "requestedResourcesReachTheJob": {
+     "pins": "requested resources reach the job",
+     "tags": [
+      "Cluster",
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "tasksInABatchShareAJob": {
+     "pins": "tasks in abatch share ajob",
+     "tags": [
+      "Cluster",
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "tasksRunAsSlurmJobs": {
+     "pins": "tasks run as slurm jobs",
+     "tags": [
+      "Cluster",
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    }
+   }
+  }
+ }
+}

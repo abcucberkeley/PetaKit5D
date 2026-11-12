@@ -1,0 +1,25 @@
+{
+ "oracle_commit": "5df18b2",
+ "matlab": "24.2.0.2863752 (R2024b) Update 5",
+ "computer": "GLNXA64",
+ "n_all": 1463,
+ "n_default": 1453,
+ "folders": {
+  "analysis": 66,
+  "cluster": 11,
+  "crop": 69,
+  "decon": 325,
+  "demo_data": 4,
+  "deskew_rotate": 219,
+  "flatfield": 8,
+  "framework": 270,
+  "golden": 8,
+  "io": 86,
+  "isolation": 23,
+  "pipeline": 19,
+  "platform": 34,
+  "point_detection": 6,
+  "stitch": 141,
+  "tools": 174
+ }
+}
