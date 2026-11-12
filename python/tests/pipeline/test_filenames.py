@@ -252,7 +252,7 @@ def contains_matrix(names, patterns, ignore_case):
 MATLAB_CONTAINS = (
     "n = in{1}; p = in{2}; ic = in{3}; r = cell(size(p)); "
     "for k = 1:numel(p); try; "
-    "r{k} = contains(n, p{k}, 'IgnoreCase', ic) | contains(n, regexpPattern(p{k}), "
+    "r{k} = contains(n, p{k}, 'IgnoreCase', ic) | contains(n, channel_regexp_pattern(p{k}), "
     "'IgnoreCase', ic); "
     "catch ME; r{k} = ['ERR:' ME.identifier]; end; end; out = {r};"
 )
@@ -260,15 +260,16 @@ MATLAB_CONTAINS = (
 # the tile name grammar, as XR_parseSettingFiles_wrapper's lines
 MATLAB_GRAMMAR = (
     "fsnames = in{1}; "
-    "if all(~cellfun(@isempty, regexp(fsnames, '_Cam\\w_ch', 'match'))); "
-    "expression = '(?<prefix>\\w*)Scan_Iter_(?<Iter>(\\d+_)*\\d+?)_Cam(?<Cam>\\w+)_ch(?<ch>\\d+)"
+    "camExpression = '(?<prefix>\\w*)Scan_Iter_(?<Iter>(\\d+_)*\\d+?)_Cam(?<Cam>\\w+)_ch(?<ch>\\d+)"
     "_CAM1_stack(?<stack>\\d+)_(?<laser>\\d+)nm_(?<abstime>\\d+)msec_(?<fpgatime>\\d+)msecAbs_"
     "(?<x>-?\\d+)x_(?<y>-?\\d+)y_(?<z>-?\\d+)z_(?<t>\\d+)t'; "
-    "elseif all(~cellfun(@isempty, regexp(fsnames, '_ch[0-9]_', 'match'))); "
     "expression = '(?<prefix>\\w*)Scan_Iter_(?<Iter>(\\d+_)*\\d+?)_ch(?<ch>\\d+)_CAM1_stack"
     "(?<stack>\\d+)_(?<laser>\\d+)nm_(?<abstime>\\d+)msec_(?<fpgatime>\\d+)msecAbs_(?<x>-?\\d+)x_"
-    "(?<y>-?\\d+)y_(?<z>-?\\d+)z_(?<t>\\d+)t'; end; "
-    "tmp = regexpi(fsnames, expression, 'names'); out = {tmp};"
+    "(?<y>-?\\d+)y_(?<z>-?\\d+)z_(?<t>\\d+)t'; "
+    "hasCam = ~cellfun(@isempty, regexp(fsnames, '_Cam\\w_ch', 'match')); "
+    "tmp = cell(numel(fsnames), 1); "
+    "tmp(hasCam) = regexpi(fsnames(hasCam), camExpression, 'names', 'once'); "
+    "tmp(~hasCam) = regexpi(fsnames(~hasCam), expression, 'names', 'once'); out = {tmp};"
 )
 
 
@@ -479,6 +480,7 @@ def _dataset_case(
     parse=False,
     error=False,
     make=None,
+    marks=(),
 ):
     decon_sub = decon_sub if decon_sub is not None else [s + "_decon" for s in sub]
     return Case(
@@ -493,6 +495,7 @@ def _dataset_case(
         py_out=dataset_out,
         inputs={"root": Tree(make or make_dataset, "root")},
         warnings="ids",
+        marks=marks,
     )
 
 
@@ -542,12 +545,7 @@ CASES = [
     ),
     Case("grammar_no_cam", code=MATLAB_GRAMMAR, args=[[NAMES[5], NAMES[6]]], python=grammar),
     Case(
-        "grammar_mixed_fails",
-        code=MATLAB_GRAMMAR,
-        args=[[NAMES[0], NAMES[5], "plain"]],
-        python=grammar,
-        expect_error="MATLAB:UndefinedFunction",
-        py_error=MatlabError,
+        "grammar_mixed", code=MATLAB_GRAMMAR, args=[[NAMES[0], NAMES[5], "plain"]], python=grammar
     ),
     Case("grammar_empty_list", code=MATLAB_GRAMMAR, args=[mcell()], py_args=[[]], python=grammar),
     # parseImageFilenames
@@ -559,7 +557,7 @@ CASES = [
     _listing_case("listing_data_formats", "d1", False, ["CamA", "CamB"], [".nd2", ".czi"]),
     _listing_case("listing_empty_folder", "empty", False, ["CamA"]),
     _listing_case("listing_no_match", ["d1", "d2"], False, ["CamC"]),
-    _listing_case("listing_invalid_pattern", "d1", False, ["Cam(A"], error=True),
+    _listing_case("listing_invalid_pattern", "d1", False, ["Cam(A"]),
     # groupImageFilenamesByChannels
     _group_case("group_two_channels", a3 + b3, ["CamA", "CamB"]),
     _group_case("group_shuffled", [b3[2], a3[0], b3[0], a3[2], a3[1], b3[1]], ["CamA", "CamB"]),
@@ -572,8 +570,8 @@ CASES = [
     _group_case("group_given_channels_column", a3 + b3, ["x", "y"], [2, 2, 2, 1, 1, 1]),
     _group_case("group_tie_takes_first", ["a1_c0", "b1_c0", "x_c1", "y_c1"], ["c0", "c1"]),
     _group_case("group_ignore_case", ["s_CAMA_1", "s_camb_1"], ["CamA", "CamB"]),
-    _group_case("group_unequal_counts", [a3[0], b3[0], a3[1]], ["CamA", "CamB"], error=True),
-    _group_case("group_unequal_counts_2", [b3[0], a3[0], b3[1]], ["CamA", "CamB"], error=True),
+    _group_case("group_unequal_counts", [a3[0], b3[0], a3[1]], ["CamA", "CamB"]),
+    _group_case("group_unequal_counts_2", [b3[0], a3[0], b3[1]], ["CamA", "CamB"]),
     _group_case("group_unmatched_file", [a3[0], "other"], ["CamA", "CamB"], error=True),
     _group_case("group_channel_count", a3, ["CamA", "CamB"], error=True),
     _group_case("group_empty", EMPTY, EMPTY),
@@ -581,7 +579,17 @@ CASES = [
     _dataset_case("dataset_two_channels", ["ds1"], ["CamA_ch0", "CamB_ch0"]),
     _dataset_case("dataset_pattern_order", ["ds1"], ["CamB_ch0", "CamA_ch0"], flip=True),
     _dataset_case("dataset_setting_files", ["set"], ["CamA_ch0"], parse=True, flip=True),
-    _dataset_case("dataset_setting_files_missing", ["ds1"], ["CamA_ch0"], parse=True, error=True),
+    _dataset_case("dataset_setting_files_missing", ["ds1"], ["CamA_ch0"], parse=True),
+    # images without a setting file keep flipZstack (M02's rule, after oracle 1697257, which
+    # gives not flipped): a known difference until the next oracle tree
+    _dataset_case(
+        "dataset_setting_files_missing_flip",
+        ["ds1"],
+        ["CamA_ch0"],
+        parse=True,
+        flip=True,
+        marks=("xfail",),
+    ),
     _dataset_case("dataset_setting_files_no_file", ["ds1"], ["CamC_ch0"], parse=True),
     _dataset_case("dataset_three_folders_decon", ["ds1", "ds2", "ds3"], ["CamA_ch0"], decon=True),
     _dataset_case("dataset_partial_volumes", ["part"], ["CamA_ch0", "CamB_ch0"], decon=True),
@@ -671,8 +679,8 @@ def test_channel_pattern_literal_or_regexp():
     assert matches_channel_pattern(names, ".zarr") == [True, True, False]
     assert matches_channel_pattern(["CAMA"], "cama", True) == [True]
     assert matches_channel_pattern(["CAMA"], "cama") == [False]
-    with pytest.raises(MatlabError):
-        matches_channel_pattern(names, "a(b")  # literal match, but not a valid expression
+    # not a valid expression: matched as text (channel_regexp_pattern)
+    assert matches_channel_pattern(names, "a(b") == [False, False, True]
 
 
 def test_parse_image_filenames_lists_in_dir_order(tmp_path):
@@ -699,17 +707,15 @@ def test_group_rows_follow_names():
     a, b = make_groups_corpus()
     g = group_image_filenames_by_channels([b[1], a[0], b[0], a[1]], ["CamA", "CamB"])
     assert g.tolist() == [[3, 0], [1, 2]]
-    with pytest.raises(MatlabError) as e:
-        group_image_filenames_by_channels(a + b[:1], ["CamA", "CamB"])
-    assert e.value.identifier == "MATLAB:matrix:singleSubscriptNumelMismatch"
+    g = group_image_filenames_by_channels(a + b[:1], ["CamA", "CamB"])
+    assert g.tolist() == [[0, 3], [1, -1], [2, -1]]  # -1: no file of the channel left
 
 
 def test_grammar_selects_expression():
-    assert "Cam" in parse_filename_fields([NAMES[0]])[0][0]
-    assert "Cam" not in parse_filename_fields([NAMES[5]])[0][0]
-    assert parse_filename_fields(["plain_CamA_ch0_x"]) == [[]]
-    with pytest.raises(MatlabError):
-        parse_filename_fields([NAMES[0], "plain"])
+    f = parse_filename_fields([NAMES[0], NAMES[5], "plain_CamA_ch0_x", NAMES[18]])
+    assert "Cam" in f[0] and "Cam" not in f[1]
+    assert f[2] is None
+    assert f[3]["prefix"] == "a"  # the first match only
 
 
 def _age(paths, minutes):

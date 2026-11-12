@@ -1,6 +1,25 @@
 {
  "task": "T05",
  "classes": {
+  "ComputingMemoryEstimateTest": {
+   "finished": true,
+   "methods": {
+    "eachStepOfSeveralGetsItsEstimate": [
+     "pytest:tests/tools/test_small_tools.py::test_each_step_of_several_gets_its_estimate",
+     "oracle:tests/tools/test_small_tools.py::est_default_steps_given_size",
+     "oracle:tests/tools/test_small_tools.py::est_rotate_deskew_given_size"
+    ],
+    "dataSizeWithSeveralSteps": [
+     "pytest:tests/tools/test_small_tools.py::test_data_size_with_several_steps",
+     "oracle:tests/tools/test_small_tools.py::est_data_size_rotate_decon_cpu",
+     "oracle:tests/tools/test_small_tools.py::est_data_size_with_deskew"
+    ],
+    "singleStepsAsTheCallersPassThem": [
+     "pytest:tests/tools/test_small_tools.py::test_single_steps_as_the_callers_pass_them",
+     "oracle:tests/tools/test_small_tools.py::est_decon_*"
+    ]
+   }
+  },
   "ParallelRsyncWrapperTest": {
    "finished": true,
    "methods": {
@@ -9,6 +28,15 @@
     ],
     "eachBatchIsCheckedByItsLastFile": [
      "pytest:tests/tools/test_small_tools.py::test_each_batch_is_checked_by_its_last_file"
+    ],
+    "namesWithSpacesCommasAndQuotesAreCopied": [
+     "pytest:tests/tools/test_small_tools.py::test_names_with_spaces_commas_and_quotes_are_copied"
+    ],
+    "clusterFileCheckFindsTheFiles": [
+     "pytest:tests/tools/test_small_tools.py::test_cluster_file_check_finds_the_files"
+    ],
+    "largeCopiesPassTheirSettingsToTheClusterCheck": [
+     "pytest:tests/tools/test_small_tools.py::test_large_copies_pass_their_settings_to_the_cluster_check"
     ]
    }
   }

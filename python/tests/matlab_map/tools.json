@@ -144,6 +144,41 @@
     }
    }
   },
+  "ComputingMemoryEstimateTest": {
+   "file": "tests/tools/ComputingMemoryEstimateTest.m",
+   "pins": "XR_estimateComputingMemory: memory (GB) for each processing step of an image, rawImageSize * memFactors(step) (deskew: also times (nz / 300) ^ 2 above 300 slices), and the GPU memory of deconvolution",
+   "category": "data",
+   "owner": "T05",
+   "phase": 1,
+   "finished": false,
+   "fate": [],
+   "methods": {
+    "dataSizeWithSeveralSteps": {
+     "pins": "with dataSize, several steps failed at || (a condition of two values)",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "eachStepOfSeveralGetsItsEstimate": {
+     "pins": "a step was estimated only if every step matched it, so with the default three steps every estimate was 0 and the GPU estimate was not assigned",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "singleStepsAsTheCallersPassThem": {
+     "pins": "the callers pass one step: their estimates stay as they were",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    }
+   }
+  },
   "MIPTest": {
    "file": "tests/tools/MIPTest.m",
    "pins": "maximum intensity projections: XR_MIP_wrapper (tiff, zarr and large zarr paths), saveMIP_tiff, and max_pooling_3d; and min_bbox_3d",
@@ -325,6 +360,14 @@
      ],
      "fate": []
     },
+    "clusterFileCheckFindsTheFiles": {
+     "pins": "batch_file_exist_cluster (the check of 100000 files or more) used undefined MatlabLaunchStr, mccMode and configFile, so it always failed",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
     "eachBatchIsCheckedByItsLastFile": {
      "pins": "the job framework counts a batch as done once its checked file exists, and cancels the remaining jobs when all are; the second to last file of each batch was checked, so the last one could be cut short, and a last batch of fewer files had none",
      "tags": [
@@ -332,8 +375,29 @@
      ],
      "cases": null,
      "fate": []
+    },
+    "largeCopiesPassTheirSettingsToTheClusterCheck": {
+     "pins": "copies of 100000 files or more are checked by jobs: the wrapper's settings go to the check (a stub here, given 100000 file names that report all files as copied)",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "namesWithSpacesCommasAndQuotesAreCopied": {
+     "pins": "paths had their spaces escaped as '\\ ' (also in the checked files, so files with spaces were never found, and a batch checked by one was skipped), the batch script split its lists at commas (a name with a comma), and the final rsync had its paths unquoted (a folder with a space)",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
     }
-   }
+   },
+   "reopened": [
+    "clusterFileCheckFindsTheFiles",
+    "largeCopiesPassTheirSettingsToTheClusterCheck",
+    "namesWithSpacesCommasAndQuotesAreCopied"
+   ]
   },
   "ResampleTest": {
    "file": "tests/tools/ResampleTest.m",
@@ -834,6 +898,25 @@
     },
     "otherFailuresLeaveForwardCompatibilityOff": {
      "pins": "e.g., a GPU in use or broken: the reason is MATLAB's, and forward compatibility isn't tried (the GPUs are counted once)",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    }
+   }
+  },
+  "WriteJsonFileTest": {
+   "file": "tests/tools/WriteJsonFileTest.m",
+   "pins": "writeJsonFile, which writes the parameters.json of every wrapper: it passed the JSON text to fprintf as the format, so a % in a value (e.g., a file name pattern like x%03d.tif) cut the file off there, and the doubled backslashes of Windows paths and of escaped characters became single ones, which made the file invalid JSON",
+   "category": "data",
+   "owner": "F02",
+   "phase": 1,
+   "finished": false,
+   "fate": [],
+   "methods": {
+    "fileHoldsTheJsonTextAsItIs": {
+     "pins": "file holds the json text as it is",
      "tags": [
       "Unit"
      ],

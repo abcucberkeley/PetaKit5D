@@ -1,0 +1,62 @@
+{
+ "task": "P01",
+ "classes": {
+  "FilenameParsingTest": {
+   "finished": true,
+   "methods": {
+    "channelPatternThatIsNotARegexp": [
+     "pytest:tests/pipeline/test_filenames.py::test_channel_pattern_literal_or_regexp",
+     "oracle:tests/pipeline/test_filenames.py::listing_invalid_pattern",
+     "oracle:tests/pipeline/test_filenames.py::channel_patterns_*"
+    ],
+    "channelPatternsStayRegularExpressions": [
+     "oracle:tests/pipeline/test_filenames.py::channel_patterns_*",
+     "oracle:tests/pipeline/test_filenames.py::listing_tif_regexp_pattern",
+     "oracle:tests/pipeline/test_filenames.py::dataset_regexp_pattern"
+    ],
+    "channelsWithDifferentNumbersOfFiles": [
+     "pytest:tests/pipeline/test_filenames.py::test_group_rows_follow_names",
+     "oracle:tests/pipeline/test_filenames.py::group_unequal_counts*"
+    ],
+    "fileListAsARow": [
+     "na:the file list form of groupPartialVolumeFiles is T05's (petakit5d.tools.partial_volumes); the pipeline's file names (P01) use only the folder form"
+    ],
+    "partialVolumeFlagsAreLogicalWithAnEmptyFolder": [
+     "oracle:tests/pipeline/test_filenames.py::dataset_three_folders_decon",
+     "oracle:tests/pipeline/test_filenames.py::dataset_none_found"
+    ],
+    "partsOfNamesWithRegexpCharacters": [
+     "oracle:tests/pipeline/test_filenames.py::dataset_names_as_expressions*"
+    ]
+   }
+  },
+  "SettingFilesTest": {
+   "finished": true,
+   "methods": {
+    "imageNameThatMatchesNoGrammar": [
+     "oracle:tests/pipeline/test_settings.py::wrapper_no_grammar",
+     "oracle:tests/pipeline/test_settings.py::wrapper_no_setting_file",
+     "oracle:tests/pipeline/test_filenames.py::grammar_mixed"
+    ],
+    "imagesWithAndWithoutACameraInTheirNames": [
+     "oracle:tests/pipeline/test_settings.py::wrapper_mixed_folders",
+     "oracle:tests/pipeline/test_filenames.py::grammar_mixed"
+    ],
+    "lastLineWithoutANewlineIsRead": [
+     "pytest:tests/pipeline/test_settings.py::test_fgetl_loop",
+     "pytest:tests/pipeline/test_settings.py::test_matlab[settings_last_line_no_newline]",
+     "pytest:tests/pipeline/test_settings.py::test_matlab[settings_last_line_newline]",
+     "pytest:tests/pipeline/test_settings.py::test_matlab[settings_second_last_no_newline]"
+    ],
+    "missingFilesAreNamedInTheWarning": [
+     "pytest:tests/pipeline/test_settings.py::test_missing_files",
+     "oracle:tests/pipeline/test_settings.py::settings_*_missing"
+    ],
+    "onlyTheFirstHundredLinesAreRead": [
+     "pytest:tests/pipeline/test_settings.py::test_matlab[settings_line_100]",
+     "pytest:tests/pipeline/test_settings.py::test_matlab[settings_line_101]"
+    ]
+   }
+  }
+ }
+}

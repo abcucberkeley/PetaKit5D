@@ -3,12 +3,14 @@
 A volume saved in parts is ``<name>.tif``, ``<name>_part0001.tif``, ``<name>_part0002.tif``,
 ...; each group is the main file and its parts in sorted order.
 
-MATLAB's quirks are kept: the extension and the main file's name are used as regular
-expressions (unescaped, and the part pattern is not anchored at the start, so the parts of
-``b`` also go to ``ab``), parts without a main file are left out, the dates and sizes of the
-parts are in listing order while their names are sorted, the data size of tiff files is the
-largest of the first and last file's image sizes and the other files' bytes, and without
-parts the dates of a folder listing are a row (a column for a list of files).
+The main names are matched as text (MATLAB since b24c975), and a channel pattern that is not a
+valid regular expression is matched as text only (``channel_regexp_pattern``). MATLAB's
+quirks are kept: the extension is used as a regular expression, the part pattern is not
+anchored at the start (the parts of ``ab`` also go to ``b``), parts without a main file are
+left out, the dates and sizes of the parts are in listing order while their names are sorted,
+the data size of tiff files is the largest of the first and last file's image sizes and the
+other files' bytes, and without parts the dates of a folder listing are a row (a column for a
+list of files).
 """
 
 from __future__ import annotations
@@ -125,7 +127,10 @@ def group_partial_volume_files(
             fns = [f"{data_path}{filesep}{x}" for x in fnames]
             keep = [False] * len(fns)
             for c in channel_patterns:
-                rx = re.compile(c)
+                try:
+                    rx = re.compile(c)
+                except re.error:  # matched as text (channel_regexp_pattern)
+                    rx = re.compile(re.escape(c))
                 keep = [
                     k or c in f or rx.search(f) is not None for k, f in zip(keep, fns, strict=True)
                 ]
@@ -170,7 +175,7 @@ def group_partial_volume_files(
     grouped_fnames, grouped_datenum, grouped_datasize = [], [], []
     for i in [j for j, m in enumerate(main) if m]:
         mstr = fsnames[i]
-        parts = [j for j, m in enumerate(_has_match(f"{mstr}_part\\d+$", fsnames)) if m]
+        parts = [j for j, m in enumerate(_has_match(f"{re.escape(mstr)}_part\\d+$", fsnames)) if m]
         if parts:
             names = sorted((fsnames[j] for j in parts), key=matlab_sort_key)
             grouped_fnames.append([f"{x}{ext}" for x in [mstr, *names]])

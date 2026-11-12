@@ -239,7 +239,7 @@ Kind: req (required, positional), opt (optional, positional), par (name-value; k
 | `PSF` | `psf` | req |  | `@isnumeric` |
 | `NUMIT` | `numit` | req |  | `@isnumeric` |
 | `Background` | `background` | par | `[]` | `@isnumeric` |
-| `useGPU` | `use_gpu` | par | `true` | `@islogical` |
+| `useGPU` | `use_gpu` | par | `[]` | `@(x) isempty(x) \|\| islogical(x)` |
 | `save16bit` | `save_16bit` | par | `true` | `@islogical` |
 | `dampFactor` | `damp_factor` | par | `1` | `@isnumeric` |
 | `scaleFactor` | `scale_factor` | par | `1` | `@isnumeric` |
@@ -261,7 +261,7 @@ Kind: req (required, positional), opt (optional, positional), par (name-value; k
 | `PSF_b` | `psf_b` | req |  | `@isnumeric` |
 | `NUMIT` | `numit` | req |  | `@isnumeric` |
 | `Background` | `background` | par | `[]` | `@isnumeric` |
-| `useGPU` | `use_gpu` | par | `true` | `@islogical` |
+| `useGPU` | `use_gpu` | par | `[]` | `@(x) isempty(x) \|\| islogical(x)` |
 | `save16bit` | `save_16bit` | par | `true` | `@islogical` |
 | `dampFactor` | `damp_factor` | par | `1` | `@isnumeric` |
 | `scaleFactor` | `scale_factor` | par | `1` | `@isnumeric` |
@@ -572,7 +572,7 @@ Check and group file names that are parts of the same volume.
 | `deconBbox` | `decon_bbox` | par | `[]` | `@isnumeric` |
 | `debug` | `debug` | par | `false` | `@islogical` |
 | `saveStep` | `save_step` | par | `5` | `@isnumeric` |
-| `useGPU` | `use_gpu` | par | `true` | `@islogical` |
+| `useGPU` | `use_gpu` | par | `[]` | `@(x) isempty(x) \|\| islogical(x)` |
 | `save3Dstack` | `save_3_dstack` | par | `[true, true, true]` | `@(x) islogical(x) && (numel(x) == 1 \|\| numel(x) == 3)` |
 | `mipAxis` | `mip_axis` | par | `[0,0,1]` | `@(x) isnumeric(x) && numel(x) == 3` |
 | `psfGen` | `psf_gen` | par | `true` | `@islogical` |
@@ -661,7 +661,7 @@ Check and group file names that are parts of the same volume.
 | `uuid` | `uuid` | par | `''` | `@ischar` |
 | `debug` | `debug` | par | `false` | `@islogical` |
 | `psfGen` | `psf_gen` | par | `true` | `@islogical` |
-| `useGPU` | `use_gpu` | par | `true` | `@islogical` |
+| `useGPU` | `use_gpu` | par | `[]` | `@(x) isempty(x) \|\| islogical(x)` |
 
 ### `RLdecon_large_in_place` -> `petakit5d.decon.decon_large_in_place` (planned)
 

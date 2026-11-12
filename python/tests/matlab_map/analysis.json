@@ -223,6 +223,22 @@
    "finished": false,
    "fate": [],
    "methods": {
+    "bboxCropsTheBoxOfTheDefinition": {
+     "pins": "inputBbox is 1-based and inclusive, the converter's -B 0-based and end-exclusive: the crop started one row, column and slice late. The first voxel of the box holds the maximum of the crop; the voxels just before and just past the box hold larger values.",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "bboxOfTiffInputIsRefused": {
+     "pins": "the bundled converter crops the output of tiff input but not the tiff it reads, which scrambled the image; it is now refused before any output",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
     "converterArgumentsHaveNoSpaces": {
      "pins": "c9f2f9c regression: num2str pads numbers of different widths with spaces ([8, 8, 16] became '8, 8,16,'), which split the converter's -b/-v arguments. The command is captured with a framework spy instead of running the converter.",
      "tags": [
@@ -388,6 +404,14 @@
     },
     "gaussianUnmixingThroughDataWrapper": {
      "pins": "the wrapper used to format the sigma matrix (one row per channel) as a row vector",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "imagesWithoutAllChannelsAreLeftOut": {
+     "pins": "time points without all channels failed the grouping by channels; their images are left out with a warning, as the wrapper says (and the second folder was grouped with the channels of the first one's files)",
      "tags": [
       "Integration"
      ],

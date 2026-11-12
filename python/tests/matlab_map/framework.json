@@ -144,15 +144,39 @@
   },
   "CheckBatchSlurmJobsStatusTest": {
    "file": "tests/framework/CheckBatchSlurmJobsStatusTest.m",
-   "pins": "check_batch_slurm_jobs_status, which the job framework uses to poll its jobs, with pktest.FakeSlurmFixture: 1 running, 0 pending, -1 any other state or not in the queue",
+   "pins": "check_batch_slurm_jobs_status, which the job framework uses to poll its jobs, with pktest.FakeSlurmFixture: 1 running, 0 pending, -1 any other state or not in the queue (or unknown, the second output, if squeue failed)",
    "category": "framework_fake_slurm",
    "owner": "J03",
    "phase": 1,
    "finished": false,
    "fate": [],
    "methods": {
+    "failedQueryLeavesStatesUnknown": {
+     "pins": "a failed squeue (a timeout of a busy controller) read as all jobs gone, which the framework then submitted again; their states are unknown now. \"Invalid job id\" means gone, as before",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "jobsInAnyOrderGetTheirOwnStatus": {
+     "pins": "distinct jobs whose ids aren't in order (e.g., the job of a retry has a newer id than the jobs after it) got the states in the order of their sorted ids, so a pending job could get the state of a running one and a running job that of a gone one",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
     "mapsQueueStatesToJobs": {
      "pins": "maps queue states to jobs",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "singleJobOfAFailedQueryMayStillRun": {
+     "pins": "check_slurm_job_status (single jobs) read a failed squeue as the job gone, so its callers submitted or ran the task again; the job may still run now (1, and unknown). \"Invalid job id\" means gone, as before",
      "tags": [
       "Unit"
      ],
@@ -167,7 +191,12 @@
      "cases": null,
      "fate": []
     }
-   }
+   },
+   "reopened": [
+    "failedQueryLeavesStatesUnknown",
+    "jobsInAnyOrderGetTheirOwnStatus",
+    "singleJobOfAFailedQueryMayStillRun"
+   ]
   },
   "CoordinatorNiceTest": {
    "file": "tests/framework/CoordinatorNiceTest.m",
@@ -342,6 +371,22 @@
      "fate": [],
      "owner": "J03"
     },
+    "clusterModeFailedQueryKeepsJobStates": {
+     "pins": "a failed squeue (e.g., a timeout of a busy controller) read as all jobs gone: they stopped counting against maxJobNum (and were submitted again after 45 s); they keep their states now",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "clusterModeFailingMasterCancelsItsJobs": {
+     "pins": "a master whose own batch fails twice raises; the call's jobs stayed in the queue",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
     "clusterModeFinishedShortLastBatchFreesItsJobSlot": {
      "pins": "a batch whose tasks are all done stops counting against maxJobNum even while its job is still listed (e.g., exiting). Here the batch is the last one and shorter than taskBatchNum; the count pads it to taskBatchNum tasks, which must count as done.",
      "tags": [
@@ -350,6 +395,38 @@
      "cases": null,
      "fate": [],
      "owner": "J03"
+    },
+    "clusterModeLostSubmissionAnswerFindsTheJob": {
+     "pins": "sbatch failed with \"Socket timed out\" after Slurm made the job, and the framework submitted the batch again at once (with the task in a file): two jobs, one unknown to it. It now looks for the job by its comment and uses it; while squeue fails (here the first two times) the batch waits",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "clusterModeLostSubmissionWithoutJobIsSubmittedAgain": {
+     "pins": "a submission whose answer was lost and of which Slurm lists no job (looked for until 30 s after it) is submitted again; until then it counts against maxJobNum",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "clusterModePausesWhileOnlyLastTriesRun": {
+     "pins": "while only jobs of last tries were listed, the framework looped without a pause (a busy core) until they ended",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "clusterModeRefusedTasksAreSavedAsTheyAre": {
+     "pins": "after a refused submission the framework saves the task to a file and submits a job that runs it from there; a bash task was written as fprintf's format (its % and \\ taken as conversions and escapes, e.g. of a file name with ' quoted as '\\''), and a MATLAB task with its double quotes escaped for the shell",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
     },
     "clusterModeSubmitsEachTaskOnceWithMaxJobNum": {
      "pins": "with more jobs than maxJobNum the framework holds tasks back until earlier jobs end (it counts its active jobs for every batch); the fake jobs end at once without results",
@@ -433,6 +510,15 @@
      "cases": null,
      "fate": []
     },
+    "parforBashWorkersUseTheJobsGPUs": {
+     "pins": "the bash tasks of a parfor GPU job got GPU k - 1 for worker k, other GPUs than a Slurm job's own where they aren't 0 to n - 1; they get the k-th GPU in its CUDA_VISIBLE_DEVICES now, with no more workers than it lists (usable_gpu_num and gpuDevice are stubs of 2 GPUs; no GPU is used)",
+     "tags": [
+      "Integration",
+      "Slow"
+     ],
+     "cases": null,
+     "fate": []
+    },
     "parforGPUJobHasAWorkerPerUsableGPU": {
      "pins": "GPUs newer than this MATLAB supports (e.g., B200 GPUs in R2024b) weren't counted without forward compatibility, so a GPU job asked for a pool of 0 workers. usable_gpu_num and gpuDevice are stubs (2 GPUs; the workers select them too).",
      "tags": [
@@ -509,7 +595,16 @@
      "cases": null,
      "fate": []
     }
-   }
+   },
+   "reopened": [
+    "clusterModeFailedQueryKeepsJobStates",
+    "clusterModeFailingMasterCancelsItsJobs",
+    "clusterModeLostSubmissionAnswerFindsTheJob",
+    "clusterModeLostSubmissionWithoutJobIsSubmittedAgain",
+    "clusterModePausesWhileOnlyLastTriesRun",
+    "clusterModeRefusedTasksAreSavedAsTheyAre",
+    "parforBashWorkersUseTheJobsGPUs"
+   ]
   },
   "LocalPoolFrameworkTest": {
    "file": "tests/framework/LocalPoolFrameworkTest.m",
@@ -822,6 +917,14 @@
      "fate": [],
      "owner": "J03"
     },
+    "failedQueryKeepsJobStates": {
+     "pins": "a failed squeue (e.g., a timeout of a busy controller) read as all jobs gone: they stopped counting against maxJobNum (and were submitted again after 45 s); they keep their states now",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
     "finishedShortLastBatchFreesItsJobSlot": {
      "pins": "a batch whose tasks are all done stops counting against maxJobNum even while its job is still listed (e.g., exiting). Here the batch is the last one and shorter than taskBatchNum; the count pads it to taskBatchNum tasks, which must count as done.",
      "tags": [
@@ -831,8 +934,64 @@
      "fate": [],
      "owner": "J03"
     },
+    "gpuSlotsUseTheJobsGPUs": {
+     "pins": "GNU parallel gave slot k GPU k - 1, another job's GPU where Slurm doesn't renumber the GPUs of a job (it doesn't where it doesn't constrain them); slot k takes the k-th GPU in the job's CUDA_VISIBLE_DEVICES now, a job with fewer GPUs than slots runs fewer slots, and without a list slot k takes GPU k - 1 as before. The job script runs here with GPU lists of a test (no GPU is used)",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "lostSubmissionAnswerFindsTheJob": {
+     "pins": "sbatch failed with \"Socket timed out\" after Slurm made the job, and the framework submitted the batch again (also past maxJobNum): two jobs, one unknown to it. It now looks for the job by its comment and uses it, and until then the batch counts against maxJobNum",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "lostSubmissionWaitsWhileSqueueFails": {
+     "pins": "a batch submitted without an answer isn't submitted again while its job can't be looked for (squeue fails, here the first two times)",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "masterGpuSlotsUseTheJobsGPUs": {
+     "pins": "the master's own GNU parallel slots of a GPU call (here of a local run) set no GPU: all used its first one. Slot k takes the k-th GPU in its CUDA_VISIBLE_DEVICES now, with fewer slots if it lists fewer, and without a list GPUs 0 to n - 1 of those MATLAB can use (usable_gpu_num, a stub of 3 here; no GPU is used)",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
     "outdatedBuildStopsBeforeSubmitting": {
      "pins": "a compiled master built from code with other task interfaces rejects the tasks' options; the run stops at once with a clear error instead of every task failing (here a build from before XR_crop_block, the tasks' function, got mipBatchSize)",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "pausesWhileOnlyLastTriesRun": {
+     "pins": "while only jobs of last tries were listed, the framework looped without a pause (a busy core) until they ended",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "runExtraTasksResubmitsBatchOne": {
+     "pins": "with runExtraTasks and master compute, the last waiting batch was left out of the submissions also when the master doesn't take it (batch 1, whose job runs other batches' tasks too): a batch 1 whose job failed was never submitted again, and the call didn't end (here a watchdog ends it after 60 s)",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "stoppedCallCancelsItsJobs": {
+     "pins": "a call stopped while it waits for its jobs (Ctrl+C; here an error of pause) or ended by an error left them in the queue; here also the job of a submission whose answer was lost",
      "tags": [
       "Unit"
      ],
@@ -975,6 +1134,14 @@
      "cases": null,
      "fate": []
     },
+    "ownerJobsAreLiveWhileSqueueFails": {
+     "pins": "a failed squeue (e.g., a timeout of a busy controller) read as the writers' jobs gone, so a second writer started making the result; they may still work now (as for 'orphaned'). Neither job is in the queue: once squeue answers, none is live",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
     "releaseMarksOnlyThisProcesssRecordEnded": {
      "pins": "a writer that ends but by publishing (an error, Ctrl+C) marks its record ended, once; not a record of another process, and no record again once the flags are gone (the result published)",
      "tags": [
@@ -1015,7 +1182,10 @@
      "cases": null,
      "fate": []
     }
-   }
+   },
+   "reopened": [
+    "ownerJobsAreLiveWhileSqueueFails"
+   ]
   },
   "SingleJobRunnerTest": {
    "file": "tests/framework/SingleJobRunnerTest.m",
@@ -1210,6 +1380,14 @@
      "cases": null,
      "fate": []
     },
+    "runnerKeepsItsTaskWhileSqueueFails": {
+     "pins": "a failed squeue (e.g., a timeout of a busy controller) read as the job of a runner that took a pool task gone, so the master took the task back and ran or submitted it again; the runner keeps it now",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
     "runnersTakeOnlyTasksWhoseJobsWaitInTheQueue": {
      "pins": "a job's runner takes another job's task only while Slurm keeps that job in the queue (pending with a reason: resources, priority, a limit), not a job its scheduler hasn't looked at yet (reason None: it may start at once; in idle streaming, runners took the tasks of tiles submitted a moment before), a job that runs, or a task whose job is not recorded yet",
      "tags": [
@@ -1308,6 +1486,14 @@
     },
     "emptyJobLogPathsInAConfigFileAreTheDefaults": {
      "pins": "empty job log paths in a cluster config (\"jobLogDir\": \"\", \"jobLogFname\": \"\") gave the job \"-o -e\", so its log went to a file named -e; they are now the default ones (as given: Slurm is hidden here, see logPathsStayWhenSinfoFails)",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "failedQueryLeavesTheJob": {
+     "pins": "a failed squeue (e.g., a timeout of a busy controller) read as the job gone: the task was submitted again, or (master compute, last file) the caller ran it too; it counts as running now",
      "tags": [
       "Unit"
      ],
@@ -1948,6 +2134,14 @@
      "cases": null,
      "fate": []
     },
+    "claimsStayLiveWhileSqueueFails": {
+     "pins": "a failed squeue (e.g., a timeout of a busy controller) read as the claims' owners gone: their claims were released and their tasks run twice; the owners count as live now",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
     "compiledEmptyJobLogDirIsTheDefaultFolder": {
      "pins": "compiled mode: an empty jobLogDir (as from a config file) gave the jobs \"-o -e\", so their logs went to a file named -e in the folder the framework submits from (the code folder); it is now the default folder (../job_logs beside the code folder if it is there, else <data folder>/job_logs; the fake jobs make their log files only in the test's folders)",
      "tags": [
@@ -2028,6 +2222,14 @@
      "cases": null,
      "fate": []
     },
+    "gpuSlotsUseTheJobsGPUs": {
+     "pins": "slot s took GPU s - 1, another job's GPU where Slurm doesn't renumber the GPUs of a job (it doesn't where it doesn't constrain them); it takes the s-th GPU in the job's CUDA_VISIBLE_DEVICES now, and a job with fewer GPUs than slots runs fewer slots (lists of a test, no GPU is used)",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
     "jobLeavesClaimedTasksResubmittedBatchesAndOutputs": {
      "pins": "a task another job claimed, a task whose output exists, and a batch the master resubmitted (its job runs it)",
      "tags": [
@@ -2094,6 +2296,14 @@
     },
     "localRunsSkipTasksThatOtherCallsProcess": {
      "pins": "local runs (no cluster) keep the .tmp files with which framework calls on the same data share their tasks: a task whose .tmp is younger than the wait time is left alone, an older one is taken; .tmp files of finished tasks are removed",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "masterGpuSlotsUseTheJobsGPUs": {
+     "pins": "the master's own runner slots of a compiled GPU call set no GPU (all used its first one): a local run's pass, and in cluster mode the master's batch and its extra tasks. Slot k takes the k-th GPU in its CUDA_VISIBLE_DEVICES now (a list of a test, no GPU is used)",
      "tags": [
       "Unit"
      ],
@@ -2284,7 +2494,12 @@
      "cases": null,
      "fate": []
     }
-   }
+   },
+   "reopened": [
+    "claimsStayLiveWhileSqueueFails",
+    "gpuSlotsUseTheJobsGPUs",
+    "masterGpuSlotsUseTheJobsGPUs"
+   ]
   },
   "WaitForFilesTest": {
    "file": "tests/framework/WaitForFilesTest.m",

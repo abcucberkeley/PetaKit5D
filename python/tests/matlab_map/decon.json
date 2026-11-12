@@ -1,6 +1,176 @@
 {
  "folder": "decon",
  "classes": {
+  "DeconAccelTest": {
+   "file": "tests/decon/DeconAccelTest.m",
+   "pins": "the acceleration step of the CPU 'simplified' RL (decon_lucy_accel: decon_lucy_accel_mex from 89000 elements on, else the MATLAB code) and the sums in double in an order that doesn't depend on the number of threads (decon_sum_double: MATLAB's order at one thread), against the MATLAB expressions, bit for bit (also -0 and NaN), and decon results at different thread counts. MATLAB splits sums of 8...",
+   "category": "data",
+   "owner": "R03",
+   "phase": 1,
+   "finished": false,
+   "fate": [],
+   "methods": {
+    "deconDoesNotDependOnTheThreadCount": {
+     "pins": "with MATLAB's sums the acceleration factor changed in the last bits with the thread count, and with it most voxels of large volumes (a demo tile: 40% of them); at this size a change of a few ulps rarely reaches a voxel, so lambdaDoesNotDependOn... checks the sums; also with the MATLAB FFT steps",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "lambdaDoesNotDependOnTheThreadCount": {
+     "pins": "products over a wide range of exponents, whose sums MATLAB's sum gives with other last bits at each thread count (so did the acceleration factor of 70be771's decon_lucy_function)",
+     "tags": [
+      "Unit"
+     ],
+     "cases": [
+      "dataClass=single",
+      "dataClass=double"
+     ],
+     "fate": []
+    },
+    "lambdaIsClampedAsMatlabDoes": {
+     "pins": "max(min(lambda, 1), 0): MATLAB's min gives 1 for NaN, and min and max keep -0",
+     "tags": [
+      "Unit"
+     ],
+     "cases": [
+      "lambdaCase=aboveOne",
+      "lambdaCase=negative",
+      "lambdaCase=nan",
+      "lambdaCase=negativeZero",
+      "lambdaCase=zeroDenominator",
+      "lambdaCase=inf",
+      "lambdaCase=inside"
+     ],
+     "fate": []
+    },
+    "lambdaStepIsTheMatlabExpressions": {
+     "pins": "the products in the class of the data (single), summed in double, then the clamp; the new J_4 is J_2(:) - Y(:), a column (lambda of finite inputs, also over a wide range of exponents, whose sums depend on the order, and with large products in the last three elements, three lanes of the last group of four; NaN and Inf in J_4's difference)",
+     "tags": [
+      "Unit"
+     ],
+     "cases": [
+      "dataClass=single",
+      "dataClass=double"
+     ],
+     "fate": []
+    },
+    "loopIsTheMatlabLoop": {
+     "pins": "decon_lucy_function's iterations (k == 1 and 2: lambda 0, J_4 from the second) against the MATLAB loop with the same sums, bit for bit; with the MATLAB FFT steps, whose max(., 0) keeps the -0s of products with zeros of the data",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "mexRejectsInvalidInputs": {
+     "pins": "mex rejects invalid inputs",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "mexSumEqualsTheMatlabCode": {
+     "pins": "special values: -0 everywhere (the sum is -0), a +0 among -0s (+0), NaN, Inf, -Inf, subnormal numbers",
+     "tags": [
+      "Unit"
+     ],
+     "cases": [
+      "dataClass=single",
+      "dataClass=double"
+     ],
+     "fate": []
+    },
+    "predictIsTheMatlabExpression": {
+     "pins": "max(J_2 + lambda * (J_2 - J_3), 0): lambda * x in double, then rounded to single; max is 0 for NaN and keeps -0",
+     "tags": [
+      "Unit"
+     ],
+     "cases": [
+      "dataClass=single",
+      "dataClass=double"
+     ],
+     "fate": []
+    },
+    "psfNormalizationDoesNotDependOnTheThreadCount": {
+     "pins": "a PSF of 63^3 elements: RLdecon's normalization, the OTF of decon_lucy_function and decon_lucy_omw_function, and the back projector (normalization and the sum of the OTF magnitudes)",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "psfNormalizationsUseTheFixedOrderSum": {
+     "pins": "(the PSF sums of these sizes give the same normalized PSFs at any thread count, so a spy checks the call sites): RLdecon and decon_lucy_function normalize the PSF, decon_lucy_omw_function the PSF and the back projector, omw_backprojector_generation the PSF and sums the OTF magnitudes with decon_sum_double",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "smallArraysRunTheMatlabCode": {
+     "pins": "below 89000 elements, where MATLAB's sums don't depend on the number of threads, the step is MATLAB's own code (the same bits on every platform) (exponents over a wide range: other orders give other bits)",
+     "tags": [
+      "Unit"
+     ],
+     "cases": [
+      "dataClass=single",
+      "dataClass=double"
+     ],
+     "fate": []
+    },
+    "sumDoesNotDependOnTheThreadCount": {
+     "pins": "MATLAB's own sum of these elements changes with the thread count",
+     "tags": [
+      "Unit"
+     ],
+     "cases": [
+      "dataClass=single",
+      "dataClass=double"
+     ],
+     "fate": []
+    },
+    "sumIsMatlabsAtOneThread": {
+     "pins": "data with a wide range of exponents, so that another order gives other bits. Below 89000 elements decon_sum_double is MATLAB's sum; above, MATLAB's order at one thread (as found for R2024b and R2025b on Linux)",
+     "tags": [
+      "Unit"
+     ],
+     "cases": [
+      "dataClass=single,sumSize=1",
+      "dataClass=single,sumSize=43",
+      "dataClass=single,sumSize=44",
+      "dataClass=single,sumSize=4097",
+      "dataClass=single,sumSize=88999",
+      "dataClass=single,sumSize=89000",
+      "dataClass=single,sumSize=89001",
+      "dataClass=single,sumSize=122880",
+      "dataClass=single,sumSize=122883",
+      "dataClass=single,sumSize=250047",
+      "dataClass=double,sumSize=1",
+      "dataClass=double,sumSize=43",
+      "dataClass=double,sumSize=44",
+      "dataClass=double,sumSize=4097",
+      "dataClass=double,sumSize=88999",
+      "dataClass=double,sumSize=89000",
+      "dataClass=double,sumSize=89001",
+      "dataClass=double,sumSize=122880",
+      "dataClass=double,sumSize=122883",
+      "dataClass=double,sumSize=250047"
+     ],
+     "fate": []
+    },
+    "withoutTheMexTheMatlabCodeRuns": {
+     "pins": "a .m file of the same name first on the path hides the mex, as on a platform without it; the same bits (also -0)",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    }
+   }
+  },
   "DeconBackProjectorTest": {
    "file": "tests/decon/DeconBackProjectorTest.m",
    "pins": "omw_backprojector_generation with omw_backprojector_mex (sorted OTF values, connected components, convex hulls of the OTF mask slices, bounds of the window) gives the same outputs, bit for bit, as the code before it (private/omw_backprojector_generation_before), psf_gen_new's median filter in the mex the same PSFs as medfilt3, and the mex modes match the MATLAB functions they replace.",
@@ -200,7 +370,7 @@
      "fate": []
     },
     "gpuJobReadsTheNextFileDuringTheDecon": {
-     "pins": "a GPU job with several files reads the next file while the GPU deconvolves the current one (before the current result is moved into place), each file once, with the same results as one file per job (a gpuDevice stub reports room on the GPU; without a GPU the decon runs on the CPU)",
+     "pins": "a GPU job with several files reads the next file while the GPU deconvolves the current one (before the current result is moved into place), each file once, with the same results as one file per job (a gpuDevice stub reports room on the GPU, and RLdecon runs on the CPU: GPU jobs need a usable GPU)",
      "tags": [
       "Integration"
      ],
@@ -347,6 +517,17 @@
      "cases": null,
      "fate": []
     },
+    "defaultFallsBackToTheCPUWithAWarning": {
+     "pins": "without useGPU (or with []), a GPU if one is usable, else the CPU with a warning with the same reason (stubs as above)",
+     "tags": [
+      "Unit"
+     ],
+     "cases": [
+      "method=simplified",
+      "method=omw"
+     ],
+     "fate": []
+    },
     "deltaPSFReturnsBackgroundSubtractedInput": {
      "pins": "with a delta PSF the forward model is the identity, so the result is the background subtracted input, also below background",
      "tags": [
@@ -377,8 +558,16 @@
      "cases": null,
      "fate": []
     },
-    "gpuRequestWithoutGPUFallsBackToCPU": {
-     "pins": "gpu request without gpufalls back to cpu",
+    "gpuBlockTaskWithoutUsableGPUErrors": {
+     "pins": "a large-file GPU job's block task (useGPU = GPUJob) fails, so that the framework retries it and the call reports it, instead of running on the CPU; with useGPU false it runs",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "gpuRequestWithoutUsableGPUErrors": {
+     "pins": "useGPU true requires a GPU: with GPUs found but none usable (e.g., a B200 in R2024b without forward compatibility, compute capability 10.0) or none found, the decon errors with the counts, CUDA_VISIBLE_DEVICES and MATLAB's reason, the error of selecting GPU 1 (not tried with none found); GPU jobs used to run on the CPU instead, about 60x slower. Also after a call without useGPU cached a CPU OTF...",
      "tags": [
       "Unit"
      ],
@@ -386,8 +575,7 @@
       "method=simplified",
       "method=omw"
      ],
-     "fate": [],
-     "owner": "R04"
+     "fate": []
     },
     "higherOTFThresholdGivesLargerMask": {
      "pins": "higher otfthreshold gives larger mask",
@@ -431,8 +619,8 @@
      ],
      "fate": []
     },
-    "noUsableGPUWarningGivesMATLABsReason": {
-     "pins": "the GPUs are counted with usable_gpu_num (GPUs newer than this MATLAB supports get forward compatibility), and the warning of a GPU job that runs on the CPU gives MATLAB's reason (a stub here: 1 GPU found, none usable)",
+    "noUsableGPUMessagesGiveMATLABsReason": {
+     "pins": "the GPUs are counted with usable_gpu_num (GPUs newer than this MATLAB supports get forward compatibility), and MATLAB's reason is in the warning of the default (auto: the CPU) and in the error of useGPU true (a stub here: 1 GPU found, none usable)",
      "tags": [
       "Unit"
      ],
@@ -440,8 +628,7 @@
       "method=simplified",
       "method=omw"
      ],
-     "fate": [],
-     "owner": "R04"
+     "fate": []
     },
     "otfIsCachedForTheSamePSFBitsAndThreads": {
      "pins": "the cached OTF is used for a PSF with the same values (another array), but computed again for one that only differs in the sign of a zero (the key is bit for bit) or with another number of threads (the PSF normalization depends on it); counted with a copy of decon_psf2otf that logs its calls (MATLAB code)",

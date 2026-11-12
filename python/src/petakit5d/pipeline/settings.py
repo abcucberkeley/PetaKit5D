@@ -18,6 +18,7 @@ import os
 import re
 from collections.abc import Sequence
 
+from petakit5d.core.dtypes import NAN
 from petakit5d.core.paths import fileparts, matlab_sort_key
 from petakit5d.core.text import sprintf, str2double
 from petakit5d.pipeline.filenames import (
@@ -44,12 +45,8 @@ _EOL = re.compile(r"\r\n|\r|\n")  # fgetl's line ends
 
 
 def _fgetl_lines(fn: str) -> list[str]:
-    """The lines parseSingleSettingFile keeps: MATLAB's ``while ~feof(fid)`` loop of ``fgetl``.
-
-    fgetl returns a line without its end (``\\n``, ``\\r\\n`` or ``\\r``); feof turns true once a
-    read reached the end of the file, so the line read last is dropped (MATLAB's loop meant
-    to drop the -1 that fgetl returns at the end; it drops the last line of a file without a
-    final newline). At most 101 lines are read, and the 101st is dropped too.
+    """The lines parseSingleSettingFile keeps: ``fgetl`` until the end of the file (-1) or the
+    100th line; fgetl ends a line at ``\\n``, ``\\r\\n`` or ``\\r`` and returns it without its end.
     """
     try:
         if os.path.isdir(fn):
@@ -62,31 +59,21 @@ def _fgetl_lines(fn: str) -> list[str]:
             "MATLAB:FileIO:InvalidFid",
         ) from None
     text = data.decode("utf-8", errors="replace")
-    lines: list = []
+    lines: list[str] = []
     pos, n = 0, len(text)
-    eof = False
-    while not eof:
-        if pos >= n:
-            lines.append(-1)  # fgetl at the end: -1, and the end is reached
-            eof = True
-        else:
-            m = _EOL.search(text, pos)
-            if m is None:
-                lines.append(text[pos:])
-                pos = n
-                eof = True  # the read ran into the end of the file
-            else:
-                lines.append(text[pos : m.start()])
-                pos = m.end()
-                # after a lone '\r' at the end, looking for its '\n' reached the end
-                eof = m.group() == "\r" and pos >= n
-        if len(lines) > MAX_LINES:
+    while len(lines) < MAX_LINES and pos < n:
+        m = _EOL.search(text, pos)
+        if m is None:
+            lines.append(text[pos:])
             break
-    return lines[:-1]
+        lines.append(text[pos : m.start()])
+        pos = m.end()
+    return lines
 
 
 def _parse_single_setting_file(fn: str) -> dict:
-    allline = "\n".join(_fgetl_lines(fn))
+    # each line ends with a newline (the stage line can also be the last one)
+    allline = "\n".join(_fgetl_lines(fn)) + "\n"
     m = matlab_regex(STAGE_LINE, True).search(allline)
     if m is None:
         # str{1}{1} of no match
@@ -112,25 +99,18 @@ def parse_setting_files(setting_filenames: Sequence[str]) -> list[dict]:
     """The stage offset, interval and excitation pixels of each setting file.
 
     One dict per file. As in MATLAB: a missing file is skipped with a warning that names
-    the file before it, its entry gets None values when a later file is read (and no entry
-    when none is), and a missing first file fails (MATLAB's warning reads an undefined
-    variable). A file without the stage line fails.
+    it; its entry gets None values when a later file is read (and no entry when none is).
+    A file without the stage line fails.
     """
     from petakit5d.jobs.files import batch_file_exist
 
     setting_filenames = list(setting_filenames)
     exists = batch_file_exist(setting_filenames)
     info: list[dict] = []
-    fn = None
-    for i, name in enumerate(setting_filenames):
+    for i, fn in enumerate(setting_filenames):
         if not exists[i]:
-            if fn is None:
-                raise MatlabError(
-                    "Unrecognized function or variable 'fn'.", "MATLAB:UndefinedFunction"
-                )
             _warn(f"Setting file {fn} does not exist, skip it.")
             continue
-        fn = name
         s = _parse_single_setting_file(fn)
         while len(info) <= i:
             info.append(dict.fromkeys(FIELDS))
@@ -138,9 +118,7 @@ def parse_setting_files(setting_filenames: Sequence[str]) -> list[dict]:
     return info
 
 
-def _comma_list(matches: list[dict[str, str]], *names: str) -> list[str]:
-    # tmp{x}.a, tmp{x}.b, ... of a struct array: each field's values of every match in turn
-    return [m[k] for k in names for m in matches]
+NAN_INFO = {"stageOff": NAN, "StageInterval": NAN, "numExiciation": NAN}
 
 
 def parse_image_setting_files(image_filenames: Sequence[str]) -> list[dict]:
@@ -148,9 +126,9 @@ def parse_image_setting_files(image_filenames: Sequence[str]) -> list[dict]:
 
     Partial volume files (``_part<digits>.tif``) are left out first. An image's setting file
     is ``<name>_Settings.txt``, else ``<prefix>Scan_Iter_<iter>_<x>x_<y>y_<z>z_<t>t_Settings.txt``,
-    else ``<prefix>Scan_Iter_<iter>_Settings.txt`` from the tile name grammar, with the paths
-    MATLAB's ``sprintf`` makes of the parsed fields. Each setting file is read once. Fails, as
-    MATLAB, when an image has no setting file.
+    else ``<prefix>Scan_Iter_<iter>_Settings.txt``, from the fields of its tile name (no such
+    files for a name that matches no grammar). Each setting file is read once. Images
+    without a setting file get NaN values, with one warning that names them.
     """
     from petakit5d.jobs.files import batch_file_exist, exist
 
@@ -162,20 +140,25 @@ def parse_image_setting_files(image_filenames: Sequence[str]) -> list[dict]:
     sfns = [f"{p}{os.sep}{s}_Settings.txt" for p, s in zip(pathstrs, fsnames, strict=True)]
     sfns_exist = batch_file_exist(sfns)
 
-    tmp: list[list[dict[str, str]]] = []
+    tmp: list[dict[str, str] | None] = []
     sfns_1: list[str] = []
     sfns_1_exist: list[bool] = []
     if not all(sfns_exist):
         tmp = parse_filename_fields(fsnames)
         sfns_1 = [
-            sprintf(
+            ""
+            if t is None
+            else sprintf(
                 "%s/%sScan_Iter_%s_%sx_%sy_%sz_%st_Settings.txt",
                 pathstrs[x],
-                *_comma_list(tmp[x], "prefix", "Iter", "x", "y", "z", "t"),
+                *(t[k] for k in ("prefix", "Iter", "x", "y", "z", "t")),
             )
-            for x in range(len(fsnames))
+            for x, t in enumerate(tmp)
         ]
-        sfns_1_exist = batch_file_exist(sfns_1)
+        matched = [x for x, t in enumerate(tmp) if t is not None]
+        sfns_1_exist = [False] * len(fsnames)
+        for x, e in zip(matched, batch_file_exist([sfns_1[x] for x in matched]), strict=True):
+            sfns_1_exist[x] = e
 
     sfn_cell: list[str | None] = [None] * len(image_filenames)
     for i in range(len(image_filenames)):
@@ -185,23 +168,24 @@ def parse_image_setting_files(image_filenames: Sequence[str]) -> list[dict]:
         if sfns_1_exist[i]:
             sfn_cell[i] = sfns_1[i]
             continue
-        sfn_2 = sprintf(
-            "%s/%sScan_Iter_%s_Settings.txt", pathstrs[i], *_comma_list(tmp[i], "prefix", "Iter")
-        )
+        t = tmp[i]
+        if t is None:
+            continue
+        sfn_2 = sprintf("%s/%sScan_Iter_%s_Settings.txt", pathstrs[i], t["prefix"], t["Iter"])
         if exist(sfn_2):
             sfn_cell[i] = sfn_2
 
-    if any(s is None for s in sfn_cell):
-        # unique() of a cell with [] for the images without a setting file
-        raise MatlabError(
-            "Cell array input must be a cell array of character vectors.",
-            "MATLAB:UNIQUE:InputClass",
-        )
-    uniq = sorted(set(sfn_cell), key=matlab_sort_key)
+    missing = [f for f, s in zip(image_filenames, sfn_cell, strict=True) if s is None]
+    if missing:
+        _warn(f"No setting file found for {', '.join(missing)}, skip it.")
+    uniq = sorted({s for s in sfn_cell if s is not None}, key=matlab_sort_key)
     index = {s: k for k, s in enumerate(uniq)}
     uniq_info = parse_setting_files(uniq)
     out = []
     for s in sfn_cell:
+        if s is None:
+            out.append(dict(NAN_INFO))
+            continue
         k = index[s]
         if k >= len(uniq_info):
             raise MatlabError(

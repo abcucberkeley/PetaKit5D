@@ -4,7 +4,7 @@
 ``parse_image_filenames``                parseImageFilenames (utils)
 ``parse_dataset_filenames``              XR_parseImageFilenames (the pipeline's file list)
 ``group_image_filenames_by_channels``    groupImageFilenamesByChannels
-``matches_channel_pattern``              ``contains(s, p) | contains(s, regexpPattern(p))``
+``matches_channel_pattern``              the channel pattern test (channel_regexp_pattern)
 ``matlab_regex``                         a MATLAB regular expression as a compiled ``re``
 ``parse_filename_fields``                the tile name grammar of XR_parseSettingFiles_wrapper
 =======================================  ===================================================
@@ -28,7 +28,8 @@ differences (each pinned by an oracle case in tests/pipeline/test_filenames.py):
 - a ``)`` without ``(``, a quantifier with nothing to repeat (``*a``, the second ``*`` of
   ``a**``) and ``{,n}`` are literal text (``re`` fails or reads ``{0,n}``);
 - an unmatched ``(``, ``[`` or ``{`` is the character itself for ``regexp``, and an error
-  with MATLAB's identifier for ``regexpPattern`` (``strict``).
+  with MATLAB's identifier for ``regexpPattern`` (``strict``); a channel pattern that fails
+  so is matched as text.
 """
 
 from __future__ import annotations
@@ -376,14 +377,20 @@ def contains_text(texts: Sequence[str], pattern: str, ignore_case: bool = False)
 def matches_channel_pattern(
     texts: Sequence[str], pattern: str, ignore_case: bool = False
 ) -> list[bool]:
-    """``contains(texts, p) | contains(texts, regexpPattern(p))``: the channel pattern test.
+    """``contains(texts, p) | contains(texts, channel_regexp_pattern(p))``: the channel
+    pattern test.
 
-    The regular expression is always compiled (as regexpPattern does: strict), so a pattern
-    that is not a valid MATLAB expression raises MATLAB's error even where the text contains
-    it literally.
+    A pattern that is not a valid MATLAB expression (regexpPattern's errors: an unmatched
+    ``(``, ``[`` or ``{``, as ``Cam(A``) is matched as text only, as channel_regexp_pattern
+    does.
     """
-    rx = matlab_regex(pattern, ignore_case, True)
     lit = contains_text(texts, pattern, ignore_case)
+    try:
+        rx = matlab_regex(pattern, ignore_case, True)
+    except MatlabError as err:
+        if not err.identifier.startswith("MATLAB:REGEXP:"):
+            raise
+        return lit
     return [a or rx.search(t) is not None for a, t in zip(lit, texts, strict=True)]
 
 
@@ -411,24 +418,23 @@ def regexp_names(text: str, rx: re.Pattern) -> list[dict[str, str]]:
     return [{k: m.group(k) or "" for k in names} for m in rx.finditer(text)]
 
 
-def parse_filename_fields(fsnames: Sequence[str]) -> list[list[dict[str, str]]]:
+def parse_filename_fields(fsnames: Sequence[str]) -> list[dict[str, str] | None]:
     """The tile fields of file names without extension (XR_parseSettingFiles_wrapper).
 
-    Names with ``_Cam<x>_ch`` (all of them) use the camera grammar, else names that all have
-    ``_ch<digit>_`` the grammar without a camera; otherwise MATLAB fails (no expression).
-    Each name gives its list of matches (``regexpi(..., 'names')``), each a dict of prefix,
-    Iter, (Cam,) ch, stack, laser, abstime, fpgatime, x, y, z and t, as text.
+    Each name is read with the camera grammar if it has ``_Cam<x>_ch``, else with the grammar
+    without a camera; the first match (``regexpi(..., 'names', 'once')``) is a dict of
+    prefix, Iter, (Cam,) ch, stack, laser, abstime, fpgatime, x, y, z and t, as text, and a
+    name that matches no grammar gives None.
     """
-    if all(matlab_regex(r"_Cam\w_ch").search(s) for s in fsnames):
-        expression = FILENAME_EXPRESSION_CAM
-    elif all(matlab_regex(r"_ch[0-9]_").search(s) for s in fsnames):
-        expression = FILENAME_EXPRESSION_NO_CAM
-    else:
-        raise MatlabError(
-            "Unrecognized function or variable 'expression'.", "MATLAB:UndefinedFunction"
-        )
-    rx = matlab_regex(expression, True)
-    return [regexp_names(s, rx) for s in fsnames]
+    has_cam = matlab_regex(r"_Cam\w_ch")
+    cam = matlab_regex(FILENAME_EXPRESSION_CAM, True)
+    no_cam = matlab_regex(FILENAME_EXPRESSION_NO_CAM, True)
+    out: list[dict[str, str] | None] = []
+    for s in fsnames:
+        rx = cam if has_cam.search(s) else no_cam
+        m = rx.search(s)
+        out.append(None if m is None else {k: m.group(k) or "" for k in rx.groupindex})
+    return out
 
 
 # ---------------------------------------------------------------------------------------------
@@ -566,8 +572,8 @@ def group_image_filenames_by_channels(
     row takes the free file of that channel with the longest common start plus end (the first
     such file). Returns an int64 array (groups x channels) of 0-based file indices.
 
-    As MATLAB, it fails when a channel has no free file left for a row (channels with
-    different numbers of files).
+    A channel with no free file left for a row (channels with different numbers of files)
+    gets -1 there (MATLAB: 0).
     """
     filenames = list(filenames)
     nf = len(filenames)
@@ -614,15 +620,12 @@ def group_image_filenames_by_channels(
                 continue
             cur = np.flatnonzero(~included & (ch_arr == c))
             if cur.size == 0:
-                # max of an empty column gives an empty 0x1 index: the assignment fails
-                raise MatlabError(
-                    "Unable to perform assignment because the left and right sides have a "
-                    "different number of elements.",
-                    "MATLAB:matrix:singleSubscriptNumelMismatch",
-                )
+                group[c - 1] = 0  # no file of the channel left for the group
+                continue
             counts = np.argmin(fwd[cur] == rf, axis=1) + np.argmin(rev[cur] == rr, axis=1)
             group[c - 1] = int(cur[np.argmax(counts)]) + 1  # the first largest, as max
-        included[np.array(group) - 1] = True
+        g = np.array(group)
+        included[g[g > 0] - 1] = True
         rows.append(list(group))
     if not rows:
         return np.zeros((0, 0), np.int64)
@@ -729,7 +732,8 @@ def _group_partial_volume_files(
     mains = [i for i, s in enumerate(fsnames) if main_rx.search(s) is None]
     groups, gtimes, gsizes = [], [], []
     for i in mains:
-        rx = matlab_regex(fsnames[i] + "_part\\d+$", True)
+        # the main name as text (regexptranslate('escape', ...)), not as an expression
+        rx = re.compile(re.escape(fsnames[i]) + r"_part\d+\Z", re.IGNORECASE | re.DOTALL)
         parts = [k for k, s in enumerate(fsnames) if rx.search(s)]
         names = [fsnames[i]] + sorted((fsnames[k] for k in parts), key=matlab_sort_key)
         groups.append([s + ext for s in names])
@@ -773,9 +777,7 @@ def parse_dataset_filenames(
     pv_cell: list[list[bool]] = [[] for _ in range(nd)]
     ds_cell: list[list[float]] = [[] for _ in range(nd)]
     latest = np.zeros(nd)
-    # partialvols is logical if every folder had files: cat(1, ...) with the [] of a skipped
-    # folder makes it double
-    skipped = False
+
     for d, data_path in enumerate(data_paths):
         contain, groups, gtimes, gsizes = _group_partial_volume_files(
             data_path, ext, channel_patterns
@@ -784,7 +786,6 @@ def parse_dataset_filenames(
         times_d = [max(t) for t in gtimes] if contain else list(gtimes)
         sizes_d = list(gsizes)
         if not fn_d:
-            skipped = True
             continue
         if streaming:
             now = time.time()
@@ -828,7 +829,7 @@ def parse_dataset_filenames(
             [],
             np.array(fd_inds, np.int64),
             [],
-            np.array(partialvols, np.float64 if skipped else bool),
+            np.array(partialvols, bool),
             np.array(data_sizes, np.float64),
             np.zeros(0, bool),
             latest,
@@ -842,7 +843,6 @@ def parse_dataset_filenames(
         include = [
             a or b for a, b in zip(include, matches_channel_pattern(fullnames, p), strict=True)
         ]
-    pv_dtype = np.float64 if skipped else bool
     fnames = [x for x, k in zip(fnames, include, strict=True) if k]
     fd_inds = [x for x, k in zip(fd_inds, include, strict=True) if k]
     gfnames = [x for x, k in zip(gfnames, include, strict=True) if k]
@@ -859,9 +859,10 @@ def parse_dataset_filenames(
         if not info:
             # struct() without fields: no images, or only partial volume files
             raise MatlabError('Unrecognized field name "StageInterval".', "MATLAB:nonExistentField")
-        # [settingInfo.StageInterval] skips the [] of setting files that were missing
+        # [settingInfo.StageInterval] < 0; an image without a setting file (NaN) keeps
+        # flip_zstack (M02's rule, ahead of the oracle tree, which gives not flipped)
         vals = [s["StageInterval"] for s in info if s.get("StageInterval") is not None]
-        flip = np.array([v < 0 for v in vals], bool)
+        flip = np.array([bool(flip_zstack) if math.isnan(v) else v < 0 for v in vals], bool)
 
     ftp_inds = np.full(nd, -1, np.int64)
     mask_fullpaths: list[str | None] = [None] * nd
@@ -891,7 +892,7 @@ def parse_dataset_filenames(
         fnames,
         np.array(fd_inds, np.int64),
         gfnames,
-        np.array(partialvols, pv_dtype),
+        np.array(partialvols, bool),
         np.array(data_sizes, np.float64),
         flip,
         latest,

@@ -103,24 +103,24 @@ SETTING_CASES = [
     "interval_forms_5",
     "interval_tab_inside",
     "line_99",
+    "line_100",
     "two_stage_lines",
     "crlf",
     "crlf_stage_line",
     "cr_only",
     "mixed_eol",
+    "last_line_newline",
+    "last_line_no_newline",
+    "second_last_no_newline",
+    "crlf_no_final",
+    "cr_last_line",
 ]
 SETTING_ERRORS = [
     "two_digit_offset",
     "no_stage_line",
     "z_stage_only",
     "first_line",
-    "last_line_no_newline",
-    "crlf_no_final",
-    "cr_last_line",
-    "line_100",
     "line_101",
-    "last_line_newline",
-    "second_last_no_newline",
     "empty",
 ]
 
@@ -259,7 +259,7 @@ CASES = (
     + [
         _settings_case("settings_several", [f"{n}_Settings.txt" for n in SETTING_CASES]),
         _settings_case("settings_none", EMPTY),
-        _settings_case("settings_first_missing", ["missing_Settings.txt"], True),
+        _settings_case("settings_first_missing", ["missing_Settings.txt"]),
         _settings_case(
             "settings_middle_missing",
             ["x_stage_Settings.txt", "missing_Settings.txt", "xz_stage_Settings.txt"],
@@ -273,10 +273,10 @@ CASES = (
         _wrapper_case("wrapper_tile_settings", TILE),
         _wrapper_case("wrapper_iter_settings", ITER),
         _wrapper_case("wrapper_no_prefix", NOPREFIX),
-        _wrapper_case("wrapper_mixed_folders", ITER + OWN + TILE + OWN[:1], True),
+        _wrapper_case("wrapper_mixed_folders", ITER + OWN + TILE + OWN[:1]),
         _wrapper_case("wrapper_mixed_own_and_tile", OWN + TILE + OWN[:1]),
-        _wrapper_case("wrapper_no_setting_file", ["none/" + tile("A", 0) + ".tif"], True),
-        _wrapper_case("wrapper_no_grammar", ["none/plain_ch0_x.tif", "none/other.tif"], True),
+        _wrapper_case("wrapper_no_setting_file", ["none/" + tile("A", 0) + ".tif"]),
+        _wrapper_case("wrapper_no_grammar", ["none/plain_ch0_x.tif", "none/other.tif"]),
         _wrapper_case("wrapper_only_own_without_grammar", ["none/other.tif"]),
         _wrapper_case("wrapper_empty", EMPTY),
         _wrapper_case("wrapper_name_matched_twice", [f"twice/{TWICE}.tif"]),
@@ -305,11 +305,11 @@ def _file(tmp_path, text, name="a_Settings.txt"):
     ("text", "lines"),
     [
         ("a\nb\n", ["a", "b"]),
-        ("a\nb", ["a"]),  # the last line without a newline is lost (MATLAB's loop)
+        ("a\nb", ["a", "b"]),
         ("", []),
         ("a\r\nb\r\n", ["a", "b"]),
-        ("a\rb\rc", ["a", "b"]),
-        ("a\rb\r", ["a"]),
+        ("a\rb\rc", ["a", "b", "c"]),
+        ("a\rb\r", ["a", "b"]),
         ("\n".join(str(i) for i in range(200)), [str(i) for i in range(100)]),
     ],
 )
@@ -329,10 +329,9 @@ def test_both_stage_formats(tmp_path):
 
 def test_missing_files(tmp_path):
     a = _file(tmp_path, settings_text())
-    with pytest.raises(MatlabError) as e:
-        parse_setting_files([str(tmp_path / "missing.txt"), a])
-    assert e.value.identifier == "MATLAB:UndefinedFunction"
-    with pytest.warns(UserWarning, match="a_Settings.txt does not exist"):
+    with pytest.warns(UserWarning, match="missing.txt does not exist"):
+        assert parse_setting_files([str(tmp_path / "missing.txt")]) == []
+    with pytest.warns(UserWarning, match="missing.txt does not exist"):
         info = parse_setting_files([a, str(tmp_path / "missing.txt"), a])
     assert info[1] == {"stageOff": None, "StageInterval": None, "numExiciation": None}
     with pytest.warns(UserWarning):

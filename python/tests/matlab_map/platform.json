@@ -328,7 +328,7 @@
    "category": "matlab_only",
    "owner": "E04",
    "phase": 1,
-   "finished": true,
+   "finished": false,
    "fate": [
     "na:shadowing on the MATLAB path that setup.m builds with genpath; Python packages have namespaces"
    ],
@@ -351,6 +351,65 @@
     },
     "pipelineUsesExpectedCopies": {
      "pins": "pipeline uses expected copies",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "setupLeavesThePythonPackageOffThePath": {
+     "pins": "python/ holds the Python package. Its MATLAB files run MATLAB for the Python tests, which put them on the path themselves.",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    }
+   }
+  },
+  "WaitsOfASecondTest": {
+   "file": "tests/platform/WaitsOfASecondTest.m",
+   "pins": "pktest.waitsOfASecondProblem, the check of the wrappers' waits between their looks for results (pktest.verifyWaitsOfASecond): the wrapper tests checked that every wait was exactly a second, and failed now and then on slow CI runners (waits of 1 and 1.19 s on GitHub's macOS runner), where wait_for_files waits longer after a slow look, as it should. Whole-round waits between looks, which the wrap...",
+   "category": "matlab_only",
+   "owner": "E04",
+   "phase": 1,
+   "finished": false,
+   "fate": [],
+   "methods": {
+    "otherCountsAndWaitsAreWrong": {
+     "pins": "other counts and waits are wrong",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "verifyGivesTheWaits": {
+     "pins": "the wrapper tests' diagnostic names the waits",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "waitsAfterSlowLooksAreRight": {
+     "pins": "ten times a look of 0.1185 s, and the rest of a 3 s round",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "waitsOfASecondAreRight": {
+     "pins": "waits of asecond are right",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "wholeRoundWaitsAreWrong": {
+     "pins": "whole round waits are wrong",
      "tags": [
       "Unit"
      ],

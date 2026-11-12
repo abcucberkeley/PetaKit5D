@@ -25,6 +25,7 @@ from petakit5d.params.registry import REGISTRY
 from petakit5d.testing import oracle
 from petakit5d.testing.cases import Case, File, InPath, Tree, Work
 from petakit5d.testing.compare import MCell, ignore
+from petakit5d.testing.slurm_fake import no_slurm  # noqa: F401 (a fixture)
 from petakit5d.tools import memory_estimate as me
 from petakit5d.tools import partial_volumes as pv
 from petakit5d.tools import rsync
@@ -330,7 +331,11 @@ def test_up_to_five_rounds_copy_what_is_missing(tmp_path, fake_rsync, spy):
     assert len([c for c in fake_rsync() if c[0] == ["-avP"]]) == 1
 
 
-def test_large_lists_are_checked_by_jobs(tmp_path, fake_rsync, spy, monkeypatch):
+def test_large_copies_pass_their_settings_to_the_cluster_check(
+    tmp_path, fake_rsync, spy, monkeypatch
+):
+    # copies of 100000 files or more are checked by jobs (a stub here that reports every file
+    # as copied): the wrapper's settings go to the check, and nothing is copied again
     src = tmp_path / "src"
     make_files(src, ["a.txt", "b.txt", "c.txt"])
     monkeypatch.setattr(rsync, "CLUSTER_CHECK_FILES", 3)
@@ -338,34 +343,125 @@ def test_large_lists_are_checked_by_jobs(tmp_path, fake_rsync, spy, monkeypatch)
 
     def check(paths, tmp_dir, **kw):
         seen.append((list(paths), tmp_dir, kw))
-        return [False] * len(paths)
+        return [True] * len(paths)
 
     monkeypatch.setattr(rsync, "batch_file_exist_cluster", check)
     rsync.parallel_rsync(str(src), str(tmp_path / "d"), parse_cluster=False, config_file="c.json")
-    assert len(seen) == 5 and len(seen[0][0]) == 3
+    assert len(seen) == 1 and len(seen[0][0]) == 3
     assert re.search(r"/tmp/[0-9a-f-]+//\d{14}/$", seen[0][1])
-    assert seen[0][2] == {"mcc_mode": False, "config_file": "c.json"}
+    assert seen[0][2] == {"parse_cluster": False, "mcc_mode": False, "config_file": "c.json"}
+    assert spy == [], "The files were copied again."
 
 
-def test_batch_file_exist_cluster_checks_with_tasks(tmp_path, monkeypatch):
-    # the check jobs run here (parse_cluster false); 50000 paths per job
-    monkeypatch.setattr(rsync, "CLUSTER_CHECK_BATCH", 2)
-    real = framework.run_tasks
+@pytest.mark.usefixtures("no_slurm")
+def test_cluster_file_check_finds_the_files(tmp_path, monkeypatch):
+    # batch_file_exist_cluster: MATLAB's used undefined variables and always failed; without
+    # Slurm the framework runs the checks here (default parse_cluster), as with it false
+    # (3 per job here; a job of one path writes no result file, as in MATLAB: see the report)
+    monkeypatch.setattr(rsync, "CLUSTER_CHECK_BATCH", 3)
     calls = []
+    real = framework.run_tasks
 
-    def local(*a, **kw):
+    def recording(*a, **kw):
         calls.append(kw)
-        return real(*a, **{**kw, "parse_cluster": False})
+        return real(*a, **kw)
 
-    monkeypatch.setattr(framework, "run_tasks", local)
-    monkeypatch.chdir(tmp_path)
-    files = make_files(tmp_path / "f", ["a", "b", "c"])
-    paths = [files[0], str(tmp_path / "f" / "missing"), files[2], str(tmp_path / "nope")]
-    out = rsync.batch_file_exist_cluster(paths, str(tmp_path / "chk"))
-    assert out == [True, False, True, False]
-    flags = sorted(os.listdir(tmp_path / "chk" / "file_exist_flags"))
-    assert flags == ["file_exist_1_2.mat", "file_exist_3_4.mat", "parameters.mat"]
+    monkeypatch.setattr(framework, "run_tasks", recording)
+    (tmp_path / "cwd").mkdir()
+    monkeypatch.chdir(tmp_path / "cwd")
+    names = ["a b.txt", "c,d.txt", "it's.txt", "plain.txt", "missing.txt"]
+    make_files(tmp_path, names[:4])
+    paths = [str(tmp_path / n) for n in names]
+    want = [True, True, True, True, False]
+    assert rsync.batch_file_exist_cluster(paths, str(tmp_path / "check1")) == want
+    out = rsync.batch_file_exist_cluster(paths, str(tmp_path / "check2"), parse_cluster=False)
+    assert out == want
+    flags = sorted(os.listdir(tmp_path / "check1" / "file_exist_flags"))
+    assert flags == ["file_exist_1_3.mat", "file_exist_4_5.mat", "parameters.mat"]
+    assert [c["parse_cluster"] for c in calls] == [True, False]
     assert calls[0]["mem_allocate"] == 20 and calls[0]["master_compute"] is True
+
+
+@needs_bash
+def test_names_with_spaces_commas_and_quotes_are_copied(tmp_path, fake_rsync, spy):
+    # MATLAB escaped spaces as '\\ ' (also in the checked files), split its lists at commas
+    # and left the final rsync's paths unquoted; 750 files: batches of 2
+    import shutil
+
+    from petakit5d.jobs.tasks import Call, write_call
+
+    src = tmp_path / "my src"
+    special = ["a b.txt", "c,d.txt", "it's.txt", "sub dir/e,f g.txt"]
+    names = special + [f"f{i:04d}.txt" for i in range(1, 747)]
+    make_files(src, names)
+    dest = tmp_path / "out dir"
+    copy = dest / "my src"
+    rsync.parallel_rsync(str(src), str(dest), parse_cluster=False)
+    c = spy[0]
+    assert all(os.path.isfile(p) for p in c["inputs"]), "A batch is checked by a missing file."
+    assert sorted(os.path.relpath(p, copy) for p in c["outputs"]) == sorted(
+        os.path.relpath(p, src) for p in c["inputs"]
+    )
+    for n in names:
+        assert (copy / n).read_text() == n, "The final rsync"
+    final = [x for x in fake_rsync() if x[0] == ["-avP"]]
+    assert final == [[["-avP"], f"{src}/", f"{copy}/"]]
+
+    batches = [t for t in c["tasks"] if any(f"{src}/{n}" in batch_args(t) for n in special)]
+    files = [os.path.relpath(a, src) for t in batches for a in batch_args(t)[0::2]]
+    assert all(len(batch_args(t)) == 4 for t in batches)
+    assert set(special) <= set(files), "The batches leave out a file."
+    # run as this process runs them, and as a job runs them, in an empty folder
+    cwd = tmp_path / "cwd2"
+    cwd.mkdir()
+    root = str(Path(rsync.__file__).resolve().parents[2])
+    recs = [{"bash": t} for t in batches]
+    folder = write_call(
+        Call(["x"] * len(recs), ["y"] * len(recs), recs, {"language": "bash"}), tmp_path / "call"
+    )
+    for mode in ("local", "job"):
+        shutil.rmtree(copy)
+        for b, t in enumerate(batches, start=1):
+            if mode == "local":
+                cmd = ["bash", "-c", t]
+            else:
+                cmd = [sys.executable, "-m", "petakit5d.jobs.exec", folder, str(b)]
+            r = subprocess.run(
+                cmd,
+                cwd=cwd,
+                capture_output=True,
+                text=True,
+                timeout=120,
+                env=dict(os.environ, PYTHONPATH=root),
+            )
+            assert r.returncode == 0, r.stderr
+            assert not re.search("error|cannot", r.stdout + r.stderr, re.I), r.stdout + r.stderr
+        for f in files:
+            assert (copy / f).read_text() == f, f"The batches ({mode})"
+        assert os.listdir(cwd) == [], "The batches made files elsewhere."
+
+
+def test_shell_quote_is_matlabs(monkeypatch):
+    monkeypatch.setenv("HOME", "/users/someone")
+    assert rsync.shell_quote("/a b/it's") == "'/a b/it'\\''s'"
+    assert rsync.shell_quote("~/x y") == "'/users/someone/x y'"
+    assert rsync.shell_quote("~") == "'/users/someone'"
+    assert rsync.shell_quote("~other/x") == "'~other/x'"
+    assert shlex.split(rsync.shell_quote("a'b\"c")) == ["a'b\"c"]
+
+
+@needs_bash
+def test_source_under_home_is_listed_and_copied(tmp_path, fake_rsync, spy, monkeypatch):
+    # MATLAB's dir and shell_quote expand a leading ~; the checked paths keep it
+    home = tmp_path / "home"
+    monkeypatch.setenv("HOME", str(home))
+    make_files(home / "src", ["a.txt"])
+    rsync.parallel_rsync("~/src", "~/out", parse_cluster=False)
+    c = spy[0]
+    assert c["inputs"] == ["~/src/a.txt"] and c["outputs"] == ["~/out/src/a.txt"]
+    assert batch_args(c["tasks"][0]) == [f"{home}/src/a.txt", f"{home}/out/src"]
+    assert (home / "out" / "src" / "a.txt").read_text() == "a.txt"
+    assert not os.path.exists("~")
 
 
 def test_rsync_is_registered():
@@ -391,10 +487,48 @@ def test_estimate_deskew_from_the_given_size(tmp_path):
     assert est.tolist() == [299 * 10 * 20 * 4 / GB * 15]
 
 
-def test_estimate_of_several_steps_is_zero():
-    # MATLAB's if of contains() over a cell: true only if every step matches
-    est, gpu, _, _ = me.estimate_computing_memory("", im_size=(5, 6, 7))
-    assert est.tolist() == [0.0, 0.0, 0.0] and gpu is None
+# ComputingMemoryEstimateTest (MATLAB sizes [ny nx nz] = [100 200 600] are (600, 100, 200) here)
+SZ = (600, 100, 200)
+RAW = 100 * 200 * 600 * 4 / GB
+
+
+def test_each_step_of_several_gets_its_estimate():
+    # a step was estimated only if every step matched it (before 4b79f9b)
+    est, gpu, raw, sz = me.estimate_computing_memory("", im_size=SZ)
+    assert est.tolist() == [RAW * 15 * 4, RAW * 5, RAW * 15]
+    assert gpu == RAW * 1.5 and raw == RAW and sz == SZ
+    est = me.estimate_computing_memory("", ("rotate", "deskew"), im_size=SZ)[0]
+    assert est.tolist() == [RAW * 5, RAW * 15 * 4]
+
+
+def test_data_size_with_several_steps():
+    est = me.estimate_computing_memory(
+        "", ("rotate", "deconvolution"), data_size=2**30, cuda_decon=False
+    )[0]
+    assert est.tolist() == [2 * 5, 2 * 15]
+    # with deskew among them, the image size counts
+    est = me.estimate_computing_memory("", ("deskew", "rotate"), im_size=SZ, data_size=2**30)[0]
+    assert est.tolist() == [RAW * 15 * 4, RAW * 5]
+
+
+def test_single_steps_as_the_callers_pass_them(tmp_path):
+    from petakit5d.testing.synth import write_tiff
+
+    sz = (301, 64, 48)
+    raw = 64 * 48 * 301 * 4 / GB
+    assert me.estimate_computing_memory("", ("deskew",), im_size=sz)[0].tolist() == [
+        raw * 15 * (301 / 300) * (301 / 300)
+    ]
+    assert me.estimate_computing_memory("", ("rotate",), im_size=sz)[0].tolist() == [raw * 5]
+    est, gpu, _, _ = me.estimate_computing_memory("", ("deconvolution",), im_size=sz)
+    assert est.tolist() == [raw * 15] and gpu == raw * 1.5
+    gpu = me.estimate_computing_memory("", ("deconvolution",), im_size=sz, cuda_decon=False)[1]
+    assert math.isnan(gpu)
+    # a tiff file, as XR_cppDeconFrame3D passes it
+    fn = tmp_path / "im.tif"
+    write_tiff(fn, np.zeros((16, 12, 5), dtype=np.uint16, order="F"))
+    est, _, raw, sz = me.estimate_computing_memory(str(fn), ("deconvolution",), cuda_decon=False)
+    assert sz == (5, 16, 12) and raw == 16 * 12 * 5 * 4 / GB and est.tolist() == [raw * 15]
 
 
 def test_estimate_with_text_steps_has_one_value_per_character():
@@ -415,9 +549,6 @@ def test_estimate_errors_as_matlab():
     with pytest.raises(me.MatlabError, match="does not exist") as e:
         me.estimate_computing_memory("", ("deskew",))
     assert e.value.identifier == ""
-    with pytest.raises(me.MatlabError) as e:
-        me.estimate_computing_memory("", data_size=10)
-    assert e.value.identifier == "MATLAB:nonLogicalConditional"
 
 
 def test_estimate_reads_the_size_of_the_file(tmp_path):
@@ -621,6 +752,46 @@ def make_text_tree(d: Path):
     (d / "a.txt").write_text("a")
 
 
+SPECIAL_NAMES = [
+    "a+b.tif",
+    "a+b_part0001.tif",
+    "c(1).tif",
+    "c(1)_part0002.tif",
+    "c(1)_part0001.tif",
+    "x_Cam(A_ch0.tif",
+    "x_Cam(A_ch0_part0001.tif",
+    "zz.tif",
+]
+SPECIAL_LIST = [Work(f"p/{n}") for n in SPECIAL_NAMES]
+
+
+def make_special_tree(d: Path):
+    from petakit5d.testing.synth import write_tiff
+
+    for i, n in enumerate(SPECIAL_NAMES):
+        write_tiff(d / n, np.zeros((4, 5, i + 1), dtype=np.uint16, order="F"))
+
+
+def test_grouping_matches_main_names_as_text(tmp_path):
+    files = [_touch(tmp_path / n) for n in SPECIAL_NAMES]
+    contain, fnames, _, _ = pv.group_partial_volume_files("", files)
+    assert contain.tolist() == [False, True, False, True, True, False, True, False]
+    assert fnames == [
+        ["a+b.tif", "a+b_part0001.tif"],
+        ["c(1).tif", "c(1)_part0001.tif", "c(1)_part0002.tif"],
+        ["x_Cam(A_ch0.tif", "x_Cam(A_ch0_part0001.tif"],
+        ["zz.tif"],
+    ]
+
+
+def test_channel_pattern_that_is_not_a_regexp_is_text(tmp_path):
+    make_special_tree(tmp_path)
+    _, fnames, _, _ = pv.group_partial_volume_files(str(tmp_path), channel_patterns=("Cam(A",))
+    assert fnames == [["x_Cam(A_ch0.tif", "x_Cam(A_ch0_part0001.tif"]]
+    with pytest.warns(pv.PartialVolumeWarning):
+        pv.group_partial_volume_files(str(tmp_path), channel_patterns=("Cam(B",))
+
+
 def make_list_tree(d: Path):
     for i, n in enumerate(["m.tif", "m_part0002.tif", "m_part0001.tif", "n.tif"]):
         (d / n).write_bytes(bytes(range(i + 1)) * 3)
@@ -767,8 +938,39 @@ EST_CASES = [
         matlab="XR_estimateComputingMemory",
         args=["", ("rotate", "deconvolution"), "dataSize", 1000],
         python=est_matlab,
-        expect_error=True,
-        py_error=me.MatlabError,
+        py_out=first(1),
+    ),
+    # ComputingMemoryEstimateTest
+    Case(
+        # the optional steps left out before a name-value pair: F03's binding takes 'imSize'
+        # as steps (requested, as est_steps_by_name)
+        "est_default_steps_given_size",
+        matlab="XR_estimateComputingMemory",
+        args=["", "imSize", [100, 200, 600]],
+        nargout=4,
+        python=est_matlab,
+        marks=("xfail",),
+    ),
+    Case(
+        "est_rotate_deskew_given_size",
+        matlab="XR_estimateComputingMemory",
+        args=["", ("rotate", "deskew"), "imSize", [100, 200, 600]],
+        python=est_matlab,
+        py_out=first(1),
+    ),
+    Case(
+        "est_data_size_rotate_decon_cpu",
+        matlab="XR_estimateComputingMemory",
+        args=["", ("rotate", "deconvolution"), "dataSize", 2**30, "cudaDecon", False],
+        nargout=4,
+        python=est_matlab,
+    ),
+    Case(
+        "est_data_size_with_deskew",
+        matlab="XR_estimateComputingMemory",
+        args=["", ("deskew", "rotate"), "imSize", [100, 200, 600], "dataSize", 2**30],
+        python=est_matlab,
+        py_out=first(1),
     ),
 ]
 
@@ -845,6 +1047,45 @@ GROUP_CASES = [
         nargout=4,
         python=group_matlab,
         inputs={"p": Tree(make_list_tree, "p")},
+        compare=NO_DATES,
+    ),
+    Case(
+        # a row list failed in MATLAB's concatenation before b24c975
+        "group_file_list_row",
+        matlab="groupPartialVolumeFiles",
+        args=["", LIST],
+        nargout=4,
+        python=group_matlab,
+        inputs={"p": Tree(make_list_tree, "p")},
+        compare=NO_DATES,
+    ),
+    Case(
+        # main names with regular expression characters ('+', '(1)') are matched as text
+        "group_names_with_regexp_characters",
+        matlab="groupPartialVolumeFiles",
+        args=[InPath("p")],
+        nargout=4,
+        python=group_matlab,
+        inputs={"p": Tree(make_special_tree, "p")},
+        compare=NO_DATES,
+    ),
+    Case(
+        "group_list_names_with_regexp_characters",
+        matlab="groupPartialVolumeFiles",
+        args=["", SPECIAL_LIST],
+        nargout=4,
+        python=group_matlab,
+        inputs={"p": Tree(make_special_tree, "p")},
+        compare=NO_DATES,
+    ),
+    Case(
+        # a channel pattern that is not a valid regular expression is matched as text
+        "group_channel_pattern_not_a_regexp",
+        matlab="groupPartialVolumeFiles",
+        args=[InPath("p"), "channelPatterns", ("Cam(A", "a\\+b")],
+        nargout=4,
+        python=group_matlab,
+        inputs={"p": Tree(make_special_tree, "p")},
         compare=NO_DATES,
     ),
 ]

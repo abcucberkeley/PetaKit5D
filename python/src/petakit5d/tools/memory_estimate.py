@@ -4,15 +4,10 @@ Image sizes are ``(nz, ny, nx)`` in the Python API (``im_size`` and the returned
 MATLAB's ``[ny nx nz]`` is converted by ``matlab_in`` and ``matlab_out`` for the MATLAB-name
 layer.
 
-MATLAB's quirks are kept:
-
-- ``steps`` is tested with ``if contains(steps, name)``, which for a cell is true only if
-  every step contains the name: with the default three steps no estimate is made (all
-  zeros) and the GPU estimate is unassigned (``None`` here; MATLAB errors when it is asked
-  for). Give one step, as MATLAB's callers do.
-- ``steps`` as text (``'deskew'``) gives as many estimates as it has characters, the first
-  one set.
-- with ``data_size`` and more than one step, MATLAB's ``||`` fails (``nonLogicalConditional``).
+Each step among ``steps`` is estimated (``any(contains(steps, name))``, MATLAB since 4b79f9b).
+The GPU estimate is None when deconvolution is not among them (MATLAB leaves it unassigned).
+MATLAB's quirk is kept: ``steps`` as text (``'deskew'``) gives as many estimates as it has
+characters, the first one set.
 """
 
 from __future__ import annotations
@@ -79,24 +74,10 @@ def _contains(steps: Any, name: str) -> Any:
     raise MatlabError("First argument must be text.", "MATLAB:string:MustBeCharCellArrayOrString")
 
 
-def _if(v: Any) -> bool:
-    # MATLAB's if: true when nonempty and all true
+def _any(v: Any) -> bool:
+    # any(contains(...)): a bool for text, any of a cell's
     if isinstance(v, list):
-        return len(v) > 0 and all(v)
-    return bool(v)
-
-
-def _scalar(v: Any) -> bool:
-    # an operand of || must be a logical scalar
-    if isinstance(v, list):
-        if len(v) != 1:
-            raise MatlabError(
-                "Operands to the logical AND (&&) and OR (||) operators must be convertible to "
-                "logical scalar values. Use the ANY or ALL functions to reduce operands to "
-                "logical scalar values.",
-                "MATLAB:nonLogicalConditional",
-            )
-        return bool(v[0])
+        return any(v)
     return bool(v)
 
 
@@ -171,7 +152,7 @@ def estimate_computing_memory(
     with warnings.catch_warnings():
         # MATLAB hides its warnings during the estimate
         warnings.simplefilter("ignore")
-        if empty_data or _scalar(_contains(steps, "deskew")):
+        if empty_data or _any(_contains(steps, "deskew")):
             if not (file_path and os.path.exists(file_path)):
                 if msize is None or len(msize) == 0:
                     raise MatlabError(f"File {file_path} does not exist!")
@@ -201,13 +182,13 @@ def estimate_computing_memory(
         est = np.zeros(_numel(steps), dtype=np.float64)
         gpu = None
         mf = [float(x) for x in np.asarray(mem_factors, dtype=np.float64).ravel(order="F")]
-        if _if(_contains(steps, "deskew")):
+        if _any(_contains(steps, "deskew")):
             # 300 slices as threshold
             q = float(msize[2]) / 300
             est[_strcmpi(steps, "deskew")] = raw * mf[0] * max(1.0, q * q)
-        if _if(_contains(steps, "rotate")):
+        if _any(_contains(steps, "rotate")):
             est[_strcmpi(steps, "rotate")] = raw * mf[1]
-        if _if(_contains(steps, "deconvolution")):
+        if _any(_contains(steps, "deconvolution")):
             est[_strcmpi(steps, "deconvolution")] = raw * mf[2]
             gpu = float(NAN)
             if cuda_decon:

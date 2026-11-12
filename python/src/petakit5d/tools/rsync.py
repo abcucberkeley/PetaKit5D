@@ -6,23 +6,18 @@ left alone), split into batches, and each batch is one bash task that rsyncs its
 one; a batch counts as done once its last file exists in the destination. Up to five rounds
 copy what is still missing; a last ``rsync -avP`` of the whole folder finishes the copy.
 
-Differences from MATLAB (see the T05 report):
-
-- the batch script is part of the task's command (``bash -c <script> rsync_batch_files
-  <in> <out folder> ...``), so the task works from any current folder and any install
-  location, and needs no file next to the module (MATLAB's fix 9047731 took the script from
-  the wrapper's own folder);
-- paths are quoted for the shell, one argument each: MATLAB escaped spaces as ``\\ `` inside
-  single quotes (a literal backslash, so those files were never found) and joined the paths
-  with commas (a comma in a name split it);
-- the final rsync runs without a shell (MATLAB's command line was unquoted).
+As MATLAB since 03510da: every path is one single-quoted word (``shell_quote``, a leading ``~``
+expanded), the batch script takes pairs of a file and its folder, and the final rsync gets
+its paths unchanged. The one difference: the batch script is part of the task's command
+(``bash -c <script> rsync_batch_files <in> <out folder> ...``, the text of MATLAB's
+rsync_batch_files.sh), so the task works from any current folder and install location and
+needs no file next to the module (MATLAB takes it from the wrapper's folder, fix 9047731).
 """
 
 from __future__ import annotations
 
 import math
 import os
-import shlex
 import shutil
 import subprocess
 import sys
@@ -35,6 +30,7 @@ __all__ = [
     "BATCH_SCRIPT",
     "batch_file_exist_cluster",
     "batch_size_for",
+    "shell_quote",
     "parallel_rsync",
     "randperm_seed1",
     "rsync_batch_command",
@@ -83,12 +79,25 @@ def batch_size_for(n_files: int) -> int:
     return max(1, int(mround(x)))
 
 
+def _expand_home(p: str) -> str:
+    # a leading ~ as bash expands it in an unquoted path
+    if p == "~" or p.startswith("~/"):
+        return os.environ.get("HOME", "") + p[1:]
+    return p
+
+
+def shell_quote(p: str) -> str:
+    """A path as one bash word, as MATLAB's shell_quote: in single quotes (a ``'`` as
+    ``'\\''``), with a leading ``~`` expanded."""
+    return "'" + _expand_home(p).replace("'", "'\\''") + "'"
+
+
 def rsync_batch_command(inputs: Sequence[str], out_folders: Sequence[str]) -> str:
     """The bash task of one batch: rsync each input into its destination folder, in order."""
     args = []
     for i, o in zip(inputs, out_folders, strict=True):
-        args += [shlex.quote(i), shlex.quote(o)]
-    return " ".join(["bash -c", shlex.quote(BATCH_SCRIPT), "rsync_batch_files", *args])
+        args += [shell_quote(i), shell_quote(o)]
+    return " ".join(["bash -c", shell_quote(BATCH_SCRIPT), "rsync_batch_files", *args])
 
 
 def _strrep(s: str, old: str, new: str) -> str:
@@ -99,24 +108,28 @@ def _strrep(s: str, old: str, new: str) -> str:
 def _list_files(source: str, include_subdir: bool) -> list[str]:
     from petakit5d.core.paths import dir_recursive, matlab_dir
 
+    # MATLAB's dir expands a leading ~; the paths keep the folder as given
+    folder = source[:-1] if source.endswith("/") else source
+    real = _expand_home(folder)
     if include_subdir:
-        return dir_recursive(source, "file", True)
-    return [f"{source}/{e.name}" for e in matlab_dir(f"{source}/*") if not e.isdir]
+        return [folder + p[len(real) :] for p in dir_recursive(real, "file", True)]
+    return [f"{source}/{e.name}" for e in matlab_dir(f"{real}/*") if not e.isdir]
 
 
 def batch_file_exist_cluster(
     file_fullpaths: Sequence[str],
     tmp_dir: str,
     *,
+    parse_cluster: bool = True,
     mcc_mode: bool = False,
     config_file: str = "",
 ) -> list[bool]:
     """``batch_file_exist_cluster``: whether each path exists, checked by jobs of 50000 paths.
 
     Each job runs ``batch_file_exist`` and saves its result to
-    ``<tmp_dir>/file_exist_flags/file_exist_<s>_<t>.mat``. MATLAB's version fails on undefined
-    variables (MatlabLaunchStr, mccMode, configFile) and returns a cell of empties when a job
-    fails; this one passes ``config_file`` on and raises when a job fails.
+    ``<tmp_dir>/file_exist_flags/file_exist_<s>_<t>.mat``; ``parse_cluster`` and ``config_file`` go
+    to the framework. MATLAB returns a cell of empties when a job fails (its caller then
+    fails); this one raises.
     """
     from petakit5d.core.paths import mkdir_recursive
     from petakit5d.io import matfile
@@ -127,7 +140,7 @@ def batch_file_exist_cluster(
     paths = [os.fspath(p) for p in file_fullpaths]
     n = len(paths)
     num_batch = math.ceil(n / CLUSTER_CHECK_BATCH)
-    flag_dir = f"{tmp_dir}/file_exist_flags/"
+    flag_dir = f"{_expand_home(tmp_dir)}/file_exist_flags/"
     mkdir_recursive(flag_dir)
     param_fullpath = f"{flag_dir}/parameters.mat"
     matfile.write_mat(
@@ -136,6 +149,7 @@ def batch_file_exist_cluster(
             "pr": {
                 "fileFullpaths": paths,
                 "tmpDir": tmp_dir,
+                "parseCluster": bool(parse_cluster),
                 "mccMode": False,
                 "configFile": config_file,
             }
@@ -159,6 +173,7 @@ def batch_file_exist_cluster(
         mem_allocate=20,
         max_job_num=math.inf,
         master_compute=True,
+        parse_cluster=parse_cluster,
         config_file=config_file,
     )
     if not all(done):
@@ -240,7 +255,7 @@ def parallel_rsync(
     outputs = [_strrep(p, source, dest) for p in inputs]
     out_folders = [fileparts(p)[0] for p in outputs]
 
-    tmp_dir = f"{dest}/tmp/{uuid}/"
+    tmp_dir = f"{_expand_home(dest)}/tmp/{uuid}/"
     os.makedirs(tmp_dir, exist_ok=True)
 
     # shuffled so that large files spread over the workers (the order of rng(1))
@@ -255,7 +270,11 @@ def parallel_rsync(
         else:
             stamp = time.strftime("%Y%m%d%H%M%S")
             exist = batch_file_exist_cluster(
-                outputs, f"{tmp_dir}/{stamp}/", mcc_mode=mcc_mode, config_file=config_file
+                outputs,
+                f"{tmp_dir}/{stamp}/",
+                parse_cluster=parse_cluster,
+                mcc_mode=mcc_mode,
+                config_file=config_file,
             )
         if all(exist):
             break
@@ -293,7 +312,7 @@ def parallel_rsync(
     sys.stdout.flush()
     sys.stderr.flush()
     try:
-        subprocess.run(["rsync", "-avP", source, dest], check=False)
+        subprocess.run(["rsync", "-avP", _expand_home(source), _expand_home(dest)], check=False)
     except OSError as err:
         print(f"rsync: {err}", file=sys.stderr)
 

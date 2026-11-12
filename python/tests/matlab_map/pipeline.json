@@ -187,6 +187,116 @@
      "fate": []
     }
    }
+  },
+  "FilenameParsingTest": {
+   "file": "tests/pipeline/FilenameParsingTest.m",
+   "pins": "the file lists of the pipeline: channel patterns, partial volume files (groupPartialVolumeFiles, XR_parseImageFilenames) and the grouping of the files of a time point by channel (groupImageFilenamesByChannels)",
+   "category": "data",
+   "owner": "P01",
+   "phase": 1,
+   "finished": false,
+   "fate": [],
+   "methods": {
+    "channelPatternThatIsNotARegexp": {
+     "pins": "contains(names, regexpPattern(p)) fails for a pattern with an unmatched '(', '[' or '{', also where the names contain it",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "channelPatternsStayRegularExpressions": {
+     "pins": "valid patterns are still regular expressions, others text",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "channelsWithDifferentNumbersOfFiles": {
+     "pins": "a channel without a file left for a group failed (assignment of an empty max); the group gets 0 for it",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "fileListAsARow": {
+     "pins": "a file list given as a row failed (rows of part names put under the main name)",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "partialVolumeFlagsAreLogicalWithAnEmptyFolder": {
+     "pins": "partialvols was double when a folder had no files",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "partsOfNamesWithRegexpCharacters": {
+     "pins": "the main names were used as regular expressions, so the parts of a name with '+' or '(1)' were lost",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    }
+   }
+  },
+  "SettingFilesTest": {
+   "file": "tests/pipeline/SettingFilesTest.m",
+   "pins": "the setting files of an acquisition (parseSettingFile): the stage offset, interval and excitation pixels of XR_parseSettingFiles, and the setting file of each image (XR_parseSettingFiles_wrapper)",
+   "category": "data",
+   "owner": "P01",
+   "phase": 1,
+   "finished": false,
+   "fate": [],
+   "methods": {
+    "imageNameThatMatchesNoGrammar": {
+     "pins": "a name that matches no grammar got the folder as its setting file (and failed reading it); it has no setting file: a warning, and NaN setting values",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "imagesWithAndWithoutACameraInTheirNames": {
+     "pins": "names with and without a camera were all read with the grammar of names without one: the names with one got the folder as their setting file",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "lastLineWithoutANewlineIsRead": {
+     "pins": "the last line read was dropped (feof is true once fgetl has read the last line, with or without a final newline), and the stage line pattern needs a newline after the line: a stage line needed two lines after it",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "missingFilesAreNamedInTheWarning": {
+     "pins": "a missing first file failed (its warning used an undefined name), a missing later file was named as the file before it",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "onlyTheFirstHundredLinesAreRead": {
+     "pins": "the stage line can be the 100th line (it was the last line kept, without a newline after it), not the 101st",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    }
+   }
   }
  }
 }
