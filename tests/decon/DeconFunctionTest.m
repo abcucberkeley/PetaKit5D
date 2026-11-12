@@ -341,6 +341,31 @@ classdef DeconFunctionTest < pktest.TestCase
             testCase.verifyEqual(sum(out, 'all', 'double'), sum(ideal, 'all', 'double'), 'RelTol', 0.05);
         end
 
+        function psfGen2DMedianMethodRemovesIsolatedPoints(testCase)
+            % 2D 'median' method (it called medfilt, which doesn't exist):
+            % subtract medFactor times the median of the positive pixels and
+            % keep the component around the peak, without an isolated hot
+            % pixel or a line of 1 pixel width from the PSF's edge (which
+            % only the median filter cuts off); the peak is moved to the
+            % center
+            psf = pktest.beads([41, 41, 1], [18, 23, 1], [2, 2], 5000, 100);
+            psf(5, 35) = 3000;
+            psf(18, 30 : 41) = 3000;
+            out = psf_gen_new(psf, 0.2, 0.2, 1.5, 'median');
+
+            core = max(psf - 1.5 * median(psf(psf > 0)), 0);
+            expected = circshift(core, [21, 21] - [18, 23]);
+            testCase.verifyEqual(size(out), [41, 41]);
+            testCase.verifyEqual(out(21, 21), max(core(:)), 'The peak is not at the center.');
+            testCase.verifyTrue(all(out == expected | out == 0, 'all'), 'Values other than those of the PSF without background.');
+            testCase.verifyEqual(out(8, 33), single(0), 'The isolated hot pixel remains.');
+            testCase.verifyEqual(out(21, 31 : 39), zeros(1, 9, 'single'), 'The line from the PSF remains.');
+            core(5, 35) = 0;
+            core(18, 30 : 41) = 0;
+            testCase.verifyEqual(sum(out, 'all', 'double'), sum(core, 'all', 'double'), 'RelTol', 0.01, ...
+                'The component around the peak is not kept whole.');
+        end
+
         function psfGenResamplesZToTheDataStep(testCase)
             % a PSF sampled at half the data z step is resampled to the
             % data step by Fourier truncation: half the slices, half the width

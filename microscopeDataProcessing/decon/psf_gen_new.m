@@ -68,7 +68,7 @@ else
             % convert all negative pixels to 0
             psf_raw = max(psf_raw, 0);
             %  remove isolated points
-            psf_med = medfilt(psf_raw, [3, 3]);
+            psf_med = medfilt2(psf_raw, [3, 3]);
             BW = bwareaopen(psf_med > 0, 30, 8);
             L = bwlabeln(BW);
             [~, peakInd] = max(psf_med(:));
