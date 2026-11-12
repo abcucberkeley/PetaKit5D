@@ -19,12 +19,12 @@ file_exist_mat = batch_file_exist(settingFilenames);
 
 settingInfo = struct();
 for i = 1 : numel(settingFilenames)
+    fn = settingFilenames{i};
     if ~file_exist_mat(i)
         warning('Setting file %s does not exist, skip it.', fn)
         continue;
     end
 
-    fn = settingFilenames{i};
     sInfo_i = parseSingleSettingFile(fn);
     fieldnms = fieldnames(sInfo_i);
     for j = 1 : numel(fieldnms)
@@ -46,19 +46,20 @@ line_cell = cell(10000, 1);
 counter = 0;
 % line_cell{counter} = tline;
 % only read the first 100 lines
-while ~feof(fid)
+while counter < 100
     tline = fgetl(fid);
-    counter = counter + 1;
-    line_cell{counter} = tline;
-    if counter > 100
+    % -1 at the end of the file (feof is already true after the last line)
+    if ~ischar(tline)
         break;
     end
+    counter = counter + 1;
+    line_cell{counter} = tline;
 end
 fclose(fid);
 
-% tline in the last loop is -1, not a string
-line_cell(counter : end) = [];
-allline = strjoin(line_cell, '\n');
+line_cell(counter + 1 : end) = [];
+% each line ends with a newline (the stage line can also be the last one)
+allline = [strjoin(line_cell, '\n'), newline];
 
 % get the sign of the X Stage interval
 pattern = '\n(XZ? +Stage Offset, Interval \(um\), # of Pixels for Excitation \(0\) :\t\d\t-?\d*?.?\d+\t\d+)\n';

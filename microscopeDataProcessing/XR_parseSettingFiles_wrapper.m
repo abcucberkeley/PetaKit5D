@@ -31,19 +31,23 @@ sfns = arrayfun(@(x) [pathstrs{x}, filesep, fsnames{x}, '_Settings.txt'], 1 : nu
 sfns_exist_mat = batch_file_exist(sfns);
 
 if ~all(sfns_exist_mat)
-    % mapping with the iter and xyz tile number    
-    if all(~cellfun(@isempty, regexp(fsnames, '_Cam\w_ch', 'match')))
-        expression = '(?<prefix>\w*)Scan_Iter_(?<Iter>(\d+_)*\d+?)_Cam(?<Cam>\w+)_ch(?<ch>\d+)_CAM1_stack(?<stack>\d+)_(?<laser>\d+)nm_(?<abstime>\d+)msec_(?<fpgatime>\d+)msecAbs_(?<x>-?\d+)x_(?<y>-?\d+)y_(?<z>-?\d+)z_(?<t>\d+)t';
-    elseif all(~cellfun(@isempty, regexp(fsnames, '_ch[0-9]_', 'match')))
-        expression = '(?<prefix>\w*)Scan_Iter_(?<Iter>(\d+_)*\d+?)_ch(?<ch>\d+)_CAM1_stack(?<stack>\d+)_(?<laser>\d+)nm_(?<abstime>\d+)msec_(?<fpgatime>\d+)msecAbs_(?<x>-?\d+)x_(?<y>-?\d+)y_(?<z>-?\d+)z_(?<t>\d+)t';
-        % specifyCam = false;
+    % mapping with the iter and xyz tile number, with the grammar of names
+    % with a camera or of those without, for each name
+    camExpression = '(?<prefix>\w*)Scan_Iter_(?<Iter>(\d+_)*\d+?)_Cam(?<Cam>\w+)_ch(?<ch>\d+)_CAM1_stack(?<stack>\d+)_(?<laser>\d+)nm_(?<abstime>\d+)msec_(?<fpgatime>\d+)msecAbs_(?<x>-?\d+)x_(?<y>-?\d+)y_(?<z>-?\d+)z_(?<t>\d+)t';
+    expression = '(?<prefix>\w*)Scan_Iter_(?<Iter>(\d+_)*\d+?)_ch(?<ch>\d+)_CAM1_stack(?<stack>\d+)_(?<laser>\d+)nm_(?<abstime>\d+)msec_(?<fpgatime>\d+)msecAbs_(?<x>-?\d+)x_(?<y>-?\d+)y_(?<z>-?\d+)z_(?<t>\d+)t';
+    hasCam = ~cellfun(@isempty, regexp(fsnames, '_Cam\w_ch', 'match'));
+    tmp = cell(numel(fsnames), 1);
+    tmp(hasCam) = regexpi(fsnames(hasCam), camExpression, 'names', 'once');
+    tmp(~hasCam) = regexpi(fsnames(~hasCam), expression, 'names', 'once');
+
+    % names that match no grammar have no such setting file
+    sfns_1 = repmat({''}, numel(fsnames), 1);
+    for x = reshape(find(~cellfun(@isempty, tmp)), 1, [])
+        sfns_1{x} = sprintf('%s/%sScan_Iter_%s_%sx_%sy_%sz_%st_Settings.txt', ...
+            pathstrs{x}, tmp{x}.prefix, tmp{x}.Iter, tmp{x}.x, tmp{x}.y, tmp{x}.z, tmp{x}.t);
     end
-    tmp = regexpi(fsnames, expression, 'names');
-    
-    sfns_1 = arrayfun(@(x) sprintf('%s/%sScan_Iter_%s_%sx_%sy_%sz_%st_Settings.txt', ...
-        pathstrs{x}, tmp{x}.prefix, tmp{x}.Iter, tmp{x}.x, tmp{x}.y, tmp{x}.z, tmp{x}.t), ...
-        1 : numel(fsnames), 'unif', 0);
-    sfns_1_exist_mat = batch_file_exist(sfns_1);
+    sfns_1_exist_mat = false(numel(fsnames), 1);
+    sfns_1_exist_mat(~cellfun(@isempty, tmp)) = batch_file_exist(sfns_1(~cellfun(@isempty, tmp)));
 end
 
 sfn_cell = cell(numel(imageFilenames), 1);
@@ -61,7 +65,10 @@ for i = 1 : numel(imageFilenames)
         continue;
     end
     
-    % add another pattern
+    % add another pattern (not for names that match no grammar)
+    if isempty(tmp{i})
+        continue;
+    end
     sfn_2 = sprintf('%s/%sScan_Iter_%s_Settings.txt', pathstr, tmp{i}.prefix, tmp{i}.Iter);
     if exist(sfn_2, 'file')
         sfn_cell{i} = sfn_2;
@@ -69,17 +76,34 @@ for i = 1 : numel(imageFilenames)
     end
 end
 
+% images without a setting file are skipped with a warning: their setting
+% values are NaN
+no_sfn = cellfun(@isempty, sfn_cell);
+if any(no_sfn)
+    warning('No setting file found for %s, skip it.', strjoin(imageFilenames(no_sfn), ', '));
+end
+
 % get the unique setting filenames
-[uniq_sfn_cell, ia, ic] = unique(sfn_cell);
+[uniq_sfn_cell, ia, ic] = unique(sfn_cell(~no_sfn));
+sfn_inds = zeros(numel(imageFilenames), 1);
+sfn_inds(~no_sfn) = ic;
 
 % then get setting info for each setting file
 uniq_settingInfo = XR_parseSettingFiles(uniq_sfn_cell);
 fieldnms = fieldnames(uniq_settingInfo);
+nanInfo = struct('stageOff', NaN, 'StageInterval', NaN, 'numExiciation', NaN);
+nanFieldnms = fieldnames(nanInfo);
 
 settingInfo = struct();
 for i = 1 : numel(imageFilenames)
+    if sfn_inds(i) == 0
+        for j = 1 : numel(nanFieldnms)
+            settingInfo(i).(nanFieldnms{j}) = nanInfo.(nanFieldnms{j});
+        end
+        continue;
+    end
     for j = 1 : numel(fieldnms)
-        settingInfo(i).(fieldnms{j}) = uniq_settingInfo(ic(i)).(fieldnms{j});  
+        settingInfo(i).(fieldnms{j}) = uniq_settingInfo(sfn_inds(i)).(fieldnms{j});
     end
 end
 
