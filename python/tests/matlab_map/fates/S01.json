@@ -1,0 +1,38 @@
+{
+ "task": "S01",
+ "classes": {
+  "ImageListGenerationTest": {
+   "finished": true,
+   "methods": {
+    "tileListCoordinates": [
+     "pytest:tests/stitch/test_imagelist_generate.py::test_tileListCoordinates",
+     "oracle:tests/stitch/test_imagelist_generate.py::generate_tile_list*"
+    ],
+    "encoderSliceListCoordinates": [
+     "pytest:tests/stitch/test_imagelist_generate.py::test_encoderSliceListCoordinates",
+     "oracle:tests/stitch/test_imagelist_generate.py::generate_encoder"
+    ],
+    "encoderListsForMultipleDatasets": [
+     "pytest:tests/stitch/test_imagelist_generate.py::test_encoderListsForMultipleDatasets",
+     "oracle:tests/stitch/test_imagelist_generate.py::generate_encoder_two_cameras"
+    ],
+    "tilePositionStepsForNonSquareTiles": [
+     "pytest:tests/stitch/test_imagelist_generate.py::test_tilePositionStepsForNonSquareTiles",
+     "oracle:tests/stitch/test_imagelist_generate.py::generate_tile_position_ioscan_pixel"
+    ],
+    "tilePositions2DPhase": [
+     "pytest:tests/stitch/test_imagelist_generate.py::test_tilePositions2DPhase",
+     "oracle:tests/stitch/test_imagelist_generate.py::generate_tile_position_ioscan_pixel"
+    ],
+    "tilePositions3DNonStandardNames": [
+     "pytest:tests/stitch/test_imagelist_generate.py::test_tilePositions3DNonStandardNames",
+     "oracle:tests/stitch/test_imagelist_generate.py::generate_tile_position_um_two_photon"
+    ],
+    "tileNamesWithoutStandardChannel": [
+     "pytest:tests/stitch/test_imagelist_generate.py::test_tileNamesWithoutStandardChannel",
+     "oracle:tests/stitch/test_imagelist_generate.py::generate_tile_position_no_standard_channel"
+    ]
+   }
+  }
+ }
+}
