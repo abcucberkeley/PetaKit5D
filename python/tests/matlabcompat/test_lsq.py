@@ -233,9 +233,10 @@ def global_systems(p):
     return [(C, dw[:, i], A, np.r_[mas[:, 3 + i], -mas[:, i]]) for i in range(3)], "dense"
 
 
-def assign(p, method):
+def assign(p, method, grid=None):
     """the rounded shifts relative to tile 1, and the flags of each value (near, free), as the
-    caller computes them: round, then subtract tile 1's"""
+    caller computes them: round, then subtract tile 1's (with ``grid``, the solution is first
+    rounded to a multiple of it)"""
     systems, form = (grid_systems if method == "grid" else global_systems)(p)
     nF = int(p["nF"])
     x = np.zeros((nF, 3))
@@ -249,6 +250,8 @@ def assign(p, method):
         x[:, i] = xi
         near[:, i] = res.near_half
         free[:, i] = res.free
+    if grid is not None:
+        x = mround(x / grid) * grid
     d_shift = mround(x)
     # + 0: a zero shift is +0 (its sign follows the solver's rounding noise near 0)
     d_shift = d_shift - d_shift[0] + 0.0
@@ -258,8 +261,15 @@ def assign(p, method):
     return d_shift, nh, fr
 
 
+# Python's values at the flagged places are rounded from the solution on this grid: a value at
+# an exact half integer (a tie of the problem) ends a few ulps above or below it by CPU and BLAS
+# (grid_tight_2x2x1_s109: 1.5 + 1 ulp with AVX-512, 1.5 - 1 ulp with AVX2), and the input, which
+# is part of the case's key, must be the same everywhere
+FLAG_GRID = 2.0**-20
+
+
 def flags_input(p, method):
-    d, nh, fr = assign(p, method)
+    d, nh, fr = assign(p, method, FLAG_GRID)
     m = nh | fr
     return {"near": nh, "free": fr, "pyv": d.ravel(order="F")[m.ravel(order="F")][:, None]}
 
@@ -857,6 +867,31 @@ def test_near_half_integer():
         True,
         False,
     ]
+
+
+@pytest.mark.parametrize("ulps", [-4, 4])
+def test_flag_input_does_not_depend_on_the_solutions_last_bits(monkeypatch, ulps):
+    """the input MATLAB reads (part of the key) is the same when the solver ends a few ulps to
+    either side of a tie, as it does by CPU and BLAS: grid_tight_2x2x1_s109's exact optimum has
+    1.5 for tile 4 along z, reached as 1.5 + 1 ulp with AVX-512 and 1.5 - 1 ulp with AVX2"""
+    from petakit5d.testing.cases import to_mvalue, vhash
+
+    (spec,) = [s for cid, s in _grid_specs() if cid == "grid_tight_2x2x1_s109"]
+    seed, gx, gy, gz, kw = spec
+    p = grid_problem(seed, gx, gy, gz, **kw)
+    base = vhash(to_mvalue(flags_input(p, "grid")))
+    solve = lsq.solve
+
+    def nudged(*args, **kwargs):
+        res = solve(*args, **kwargs)
+        for _ in range(abs(ulps)):
+            res.x = np.nextafter(res.x, np.inf if ulps > 0 else -np.inf)
+        return res
+
+    monkeypatch.setattr(lsq, "solve", nudged)
+    f = flags_input(p, "grid")
+    assert f["near"].any()
+    assert vhash(to_mvalue(f)) == base
 
 
 @pytest.mark.parametrize("seed", range(4))
