@@ -99,6 +99,30 @@ classdef SettingFilesTest < pktest.TestCase
             testCase.verifyEqual(fieldnames(info), {'stageOff'; 'StageInterval'; 'numExiciation'});
             testCase.verifyTrue(isnan(info.StageInterval));
         end
+
+        function imageWithoutASettingFileKeepsFlipZstack(testCase)
+            % XR_parseImageFilenames starts each image at flipZstack and the
+            % setting files decide; an image without one became not flipped
+            % (NaN < 0), now it keeps flipZstack
+            folder = testCase.createTempFolder();
+            for t = 0 : 1
+                writetiff(zeros(8, 6, 3, 'uint16'), [folder, sprintf(testCase.CamName, t), '.tif']);
+            end
+            testCase.writeStageSettings([folder, 'Scan_Iter_0000_000x_000y_000z_0000t_Settings.txt'], '0.5');
+            lastwarn('');
+            [fnames, ~, ~, ~, ~, flips] = XR_parseImageFilenames({folder}, {'CamA'}, true, true, false, {}, false, 1, false);
+            testCase.verifyEqual(fnames, {[sprintf(testCase.CamName, 0), '.tif']; [sprintf(testCase.CamName, 1), '.tif']});
+            testCase.verifyEqual(flips, [false, true]);
+            testCase.verifySubstring(lastwarn(), [sprintf(testCase.CamName, 1), '.tif, its setting values are NaN.']);
+
+            % with all setting files: as the setting files say (a row, as before)
+            testCase.writeStageSettings([folder, 'Scan_Iter_0001_000x_000y_000z_0000t_Settings.txt'], '-0.5');
+            [~, ~, ~, ~, ~, flips] = XR_parseImageFilenames({folder}, {'CamA'}, true, true, false, {}, false, 1, false);
+            testCase.verifyEqual(flips, [false, true]);
+            testCase.writeStageSettings([folder, 'Scan_Iter_0001_000x_000y_000z_0000t_Settings.txt'], '0.25');
+            [~, ~, ~, ~, ~, flips] = XR_parseImageFilenames({folder}, {'CamA'}, true, true, false, {}, false, 1, false);
+            testCase.verifyEqual(flips, [false, false]);
+        end
     end
 
     methods (Static, Access = private)

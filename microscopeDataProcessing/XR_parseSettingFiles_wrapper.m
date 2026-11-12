@@ -76,11 +76,11 @@ for i = 1 : numel(imageFilenames)
     end
 end
 
-% images without a setting file are skipped with a warning: their setting
-% values are NaN
+% images without a setting file get NaN setting values, with a warning (the
+% callers decide what to do for them)
 no_sfn = cellfun(@isempty, sfn_cell);
 if any(no_sfn)
-    warning('No setting file found for %s, skip it.', strjoin(imageFilenames(no_sfn), ', '));
+    warning('No setting file found for %s, its setting values are NaN.', strjoin(imageFilenames(no_sfn), ', '));
 end
 
 % get the unique setting filenames

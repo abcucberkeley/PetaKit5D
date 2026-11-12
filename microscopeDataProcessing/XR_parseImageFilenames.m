@@ -128,7 +128,10 @@ flipZstack_mat = repmat(flipZstack, nF, 1);
 if parseSettingFile
     frameFullpaths = arrayfun(@(x) [dataPaths{fdinds(x)}, fnames{x}], 1 : nF, 'unif', 0);
     settingInfo = XR_parseSettingFiles_wrapper(frameFullpaths);
-    flipZstack_mat = [settingInfo.StageInterval] < 0;
+    stageIntervals = [settingInfo.StageInterval];
+    flipZstack_mat = stageIntervals < 0;
+    % images without a setting file (NaN values) keep flipZstack
+    flipZstack_mat(isnan(stageIntervals)) = flipZstack;
 end
 
 % for ErodeByFTP, set up the frame numbers as first time point for each
