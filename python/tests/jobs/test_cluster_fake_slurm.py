@@ -171,7 +171,7 @@ SCENARIOS: dict[str, dict] = {
 }
 
 # The MATLAB framework's commands on the scenarios and its done flags (oracle tree
-# PetaKit5D_5df18b2, MATLAB R2024b, taskRunner false, recorded by j03_record.py of task J03):
+# PetaKit5D_7ed28c0, MATLAB R2024b, taskRunner false, recorded by j03_record.py of task J03):
 # normalized, consecutive repeats collapsed, the job logs as <LOGS> and SLURM_PARAM as <P>
 MATLAB_HISTORIES: dict[str, dict] = {
     "batches_of_tasks_with_master_compute": {
@@ -464,14 +464,17 @@ _COMMENT = re.compile(r" --comment=\S+")
 
 def normalize(line: str, folder: Path) -> str:
     """a history line with the folder as <D>, the wrap as <W> (slots and GPU of in-job
-    slots kept: Python's --slots N --gpu, MATLAB's parallel --jobs N and its
-    CUDA_VISIBLE_DEVICES, bash <task file> as one slot) and without the --comment"""
+    slots kept: Python's --slots N --gpu, MATLAB's parallel --jobs N, or P=N; ... --jobs $P
+    in GPU jobs, and its CUDA_VISIBLE_DEVICES, bash <task file> as one slot) and without the
+    --comment"""
     line = line.replace(str(folder), "<D>")
     m = _WRAP.search(line)
     if m:
         wrap = m.group(0)
         tag = "<W>"
         slots = re.search(r"--slots (\d+)", wrap) or re.search(r"--jobs (\d+)", wrap)
+        if slots is None and "--jobs $P " in wrap:
+            slots = re.search(r"\bP=(\d+);", wrap)
         if slots:
             gpu = "--gpu" in wrap or "CUDA_VISIBLE_DEVICES" in wrap
             tag = f"<W slots={slots.group(1)}{' gpu' if gpu else ''}>"
