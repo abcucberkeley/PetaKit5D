@@ -1,0 +1,30 @@
+{
+ "task": "J05",
+ "classes": {
+  "PublishResultTest": {
+   "finished": true,
+   "methods": {
+    "resultIsMovedIntoPlace": ["pytest:tests/jobs/test_publish.py::test_result_is_moved_into_place"],
+    "resultOfAnotherWriterIsKept": ["pytest:tests/jobs/test_publish.py::test_result_of_another_writer_is_kept"],
+    "resultOfAWriterJustBeforeIsKept": ["pytest:tests/jobs/test_publish.py::test_result_of_a_writer_just_before_is_kept"],
+    "keptResultRemovesATemporaryFile": ["pytest:tests/jobs/test_publish.py::test_kept_result_removes_a_temporary_file"]
+   }
+  },
+  "ResultWritersTest": {
+   "finished": true,
+   "methods": {
+    "liveWritersAreThoseOfOtherUuids": ["pytest:tests/jobs/test_writers.py::test_live_writers_are_those_of_other_uuids"],
+    "ownerJobsAreLiveWhileInTheQueue": ["pytest:tests/jobs/test_writers.py::test_owner_jobs_are_live_while_in_the_queue"],
+    "writersOfThisProcesssJobAreItsProcesses": ["pytest:tests/jobs/test_writers.py::test_writers_of_this_processs_job_are_its_processes"],
+    "waitEndsWhenTheResultComes": ["pytest:tests/jobs/test_writers.py::test_wait_ends_when_the_result_comes"],
+    "writerRecordedLaterDoesNotWaitForAnEarlierOne": ["pytest:tests/jobs/test_writers.py::test_writer_recorded_later_does_not_wait_for_an_earlier_one"],
+    "releaseMarksOnlyThisProcesssRecordEnded": ["pytest:tests/jobs/test_writers.py::test_release_marks_only_this_processs_record_ended"],
+    "blocksOfAWriterWhoseJobEndedAreOrphans": ["pytest:tests/jobs/test_writers.py::test_blocks_of_a_writer_whose_job_ended_are_orphans"],
+    "failingSqueueDoesNotMakeOrphans": ["pytest:tests/jobs/test_writers.py::test_failing_squeue_does_not_make_orphans"],
+    "squeueAnswersAreKeptForAMinute": ["pytest:tests/jobs/test_writers.py::test_squeue_answers_are_kept_for_a_minute"],
+    "failedSqueueIsKeptAsRunning": ["pytest:tests/jobs/test_writers.py::test_failed_squeue_is_kept_as_running"],
+    "noWaitWithoutAnotherWriter": ["pytest:tests/jobs/test_writers.py::test_no_wait_without_another_writer"]
+   }
+  }
+ }
+}
