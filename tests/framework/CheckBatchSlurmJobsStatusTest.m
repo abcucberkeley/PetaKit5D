@@ -26,5 +26,22 @@ classdef CheckBatchSlurmJobsStatusTest < pktest.TestCase
             testCase.verifyEqual(status, [1; 1; 0; 0]);
             testCase.verifyEqual(slurm.callCount('squeue'), 1, 'All jobs should be checked with one squeue call.');
         end
+
+        function jobsInAnyOrderGetTheirOwnStatus(testCase)
+            % distinct jobs whose ids aren't in order (e.g., the job of a
+            % retry has a newer id than the jobs after it) got the states in
+            % the order of their sorted ids, so a pending job could get the
+            % state of a running one and a running job that of a gone one
+            testCase.assumeFalse(ispc, 'The fake Slurm needs a POSIX shell.');
+            slurm = testCase.applyFixture(pktest.FakeSlurmFixture);
+            slurm.setJobStates('101_1', {'PD'});
+            slurm.setJobStates('100_1', {'R'});
+            % 102_1 isn't in the queue
+            status = check_batch_slurm_jobs_status([101; 100; 102], [1; 1; 1]);
+            testCase.verifyEqual(status, [0; 1; -1]);
+            % with tasks sharing a job, as before
+            status = check_batch_slurm_jobs_status([101; 100; 101], [1; 1; 1]);
+            testCase.verifyEqual(status, [0; 1; 0]);
+        end
     end
 end

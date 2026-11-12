@@ -88,9 +88,9 @@ is_running = strcmp(status_s_m(:), 'R');
 is_set = found & (is_running | strcmp(status_s_m(:), 'PD'));
 valid_job_status(loc(is_set)) = double(is_running(is_set));
 
-if numel(job_array_ids) > numel(ia)
-    valid_job_status = valid_job_status(ic);
-end
+% back to the jobs as given (unique sorted them), also without duplicates:
+% jobs whose ids weren't in order got each other's states
+valid_job_status = valid_job_status(ic);
 
 job_status(valid_inds) = valid_job_status;
 
