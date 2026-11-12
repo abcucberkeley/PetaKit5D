@@ -46,6 +46,7 @@ from petakit5d.testing.compare import (
     read_mat,
     read_pkv,
     to_mvalue,
+    tol,
     vhash,
     write_pkv,
 )
@@ -725,6 +726,35 @@ def test_reference_errors_must_be_expected(tmp_path, monkeypatch):
     with pytest.warns(UserWarning, match="manifest"):
         with pytest.raises(pytest.fail.Exception, match="Python returned normally"):
             oracle.check(expected, tmp_path / "r2")
+
+
+def test_a_tolerance_on_a_hash_only_manifest_is_skipped_not_failed(tmp_path, monkeypatch):
+    # with the store a tolerance passes; the manifest keeps only the hash of this array, from
+    # which a tolerance cannot be decided: the test is skipped in CI, never failed or passed
+    commit = oracle.expected_commit()
+    monkeypatch.setenv(oracle.ENV_GOLDEN, str(tmp_path / "golden"))
+    monkeypatch.setenv(oracle.ENV_COMMIT, commit)
+    store = oracle.Store(tmp_path / "golden", commit)
+    x = np.linspace(1, 2, 1000)
+    case = Case(
+        "tol_hash_only",
+        matlab="identity",
+        args=[1],
+        python=lambda _: np.nextafter(x, 3.0),
+        compare=tol(ulp=1, reason="parity/example.md: test"),
+    )
+    case._module_globals = {
+        "__file__": str(tmp_path / "t.py"),
+        "ORACLE_MANIFEST": str(tmp_path / "m.json"),
+    }
+    fake_publish(store, case, [x])
+    with pytest.warns(UserWarning, match="manifest"):
+        oracle.check(case, tmp_path / "r1")
+    oracle._REGISTRY[str(tmp_path / "t.py")] = [case]
+    oracle._write_manifests([("n", case)], store, None)
+    monkeypatch.delenv(oracle.ENV_GOLDEN)
+    with pytest.raises(pytest.skip.Exception, match="not decided with the manifest alone"):
+        oracle.check(case, tmp_path / "r2")
 
 
 # --- tests that need the golden store with the self-test references ------------------------------

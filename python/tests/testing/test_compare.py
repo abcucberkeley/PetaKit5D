@@ -301,6 +301,74 @@ def test_large_struct_arrays_and_maps_keep_fields_and_types():
     assert not compare(roundtrip(dm), dict.fromkeys(keys, 0.0)).ok
 
 
+# a Python result is read as the MATLAB reference (to_mvalue's rules); with a hash-only manifest
+# it must be read the same way, or a CI pass would mean something else than a store pass
+READING = [
+    ("empty list as empty cell", MCell((0, 0), []), []),
+    (
+        "struct field: empty list as empty cell",
+        MStruct((1, 1), ["name", "other"], [{"name": mchar("abc"), "other": MCell((0, 0), [])}]),
+        {"name": "abc", "other": []},
+    ),
+    ("int as uint16", to_mvalue(np.array([[7]], np.uint16)), 7),
+    ("1-D as column", to_mvalue(np.arange(3.0).reshape(3, 1)), np.arange(3.0)),
+    ("empty str as 1x0 char", MArray("char", np.zeros((1, 0), "<u2")), ""),
+    ("None as empty struct", MStruct((0, 0), ["a"], []), None),
+    (
+        "list of dicts as struct array",
+        MStruct((1, 2), ["a"], [{"a": to_mvalue(1.0)}, {"a": to_mvalue(2.0)}]),
+        [{"a": 1.0}, {"a": 2.0}],
+    ),
+    (
+        "dict as containers.Map",
+        MMap("char", "double", to_mvalue(["a"]), MCell((1, 1), [to_mvalue(1.0)])),
+        {"a": 1.0},
+    ),
+    ("str as string", MString((1, 1), ["x"]), "x"),
+    (
+        "dict as inputParser value",
+        MObject("inputParser", to_mvalue({"alpha": 5.0}), ""),
+        {"alpha": 5},
+    ),
+]
+
+
+@pytest.mark.parametrize(("ref", "py"), [r[1:] for r in READING], ids=[r[0] for r in READING])
+def test_results_are_read_alike_with_the_store_and_with_a_hash_only_manifest(ref, py):
+    big = MCell((1, 400), [ref] * 400)  # large enough that the manifest keeps only its hash
+    d = json.loads(json.dumps(describe(big)))
+    assert "v" not in d
+    store, ci = compare(big, [py] * 400), compare(from_descriptor(d), [py] * 400)
+    assert store.ok, store.text()
+    assert ci.ok, ci.text()
+    assert not store.undecided and not ci.undecided
+
+
+def test_hash_only_manifests_still_find_differences_and_leave_tolerances_undecided():
+    big = MCell((1, 400), [MArray("char", np.zeros((1, 0), "<u2"))] * 400)
+    py = [""] * 399 + ["x"]
+    assert not compare(big, py).ok
+    ci = compare(roundtrip(describe(big)), py)
+    assert not ci.ok and "differs from MATLAB's" in ci.text()
+    r = to_mvalue(np.linspace(1, 2, 1000))  # 8 KB: kept by hash only
+    a = np.nextafter(r.data, 3.0)
+    spec = tol(ulp=1, reason="parity/example.md: test")
+    assert compare(r, a, spec).ok
+    ci = compare(roundtrip(describe(r)), a, spec)
+    assert ci.ok and ci.undecided and "not decided without the golden store" in ci.text()
+    assert not compare(roundtrip(describe(r)), a).ok  # exact: a difference
+
+
+def test_a_manifest_without_reading_signatures_decides_only_equal_hashes():
+    # written before the signature: a matching hash still passes, any other is undecided
+    big = MCell((1, 400), [MCell((0, 0), [])] * 400)
+    old = describe(big)
+    del old["r"]
+    assert compare(roundtrip(old), [MCell((0, 0), [])] * 400).ok
+    ci = compare(roundtrip(old), [[]] * 400)
+    assert ci.ok and "lacks the reading signature" in ci.undecided[0]
+
+
 # --- seeded mismatches give readable reports ----------------------------------------------------
 
 

@@ -678,6 +678,10 @@ def check(case: Case, tmp_path: str | os.PathLike) -> Report:
         )
     if not rep.ok:
         pytest.fail(rep.text(_title(case, ref)), pytrace=False)
+    if rep.undecided:
+        pytest.skip(
+            f"case {case.id}: not decided with the manifest alone: " + "; ".join(rep.undecided[:3])
+        )
     return rep
 
 

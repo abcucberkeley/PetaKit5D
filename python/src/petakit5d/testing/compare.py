@@ -301,7 +301,8 @@ class MObject(MValue):
 
 class MHashed(MValue):
     """a value known only by its kind, size and hash (a large cell, struct, string array or map
-    in a manifest); ``info`` holds what else is known: struct fields, map key and value types"""
+    in a manifest); ``info`` holds what else is known: struct fields, map key and value types,
+    and ``sig``, the reading signature (see ``reading_signature``)"""
 
     kind = "hashed"
     __slots__ = ("of", "size", "info", "_hash")
@@ -311,7 +312,10 @@ class MHashed(MValue):
         self.info = info or {}
 
     def skeleton(self) -> MValue | None:
-        """a value without elements, of this kind and size, to read Python results as"""
+        """a value without data, of this kind, size and element kinds and classes, to read
+        Python results as (as the full value would read them, when the signature is known)"""
+        if self.info.get("sig") is not None:
+            return _like_of_signature(self.info["sig"])
         if self.of == "cell" and self.size:
             return MCell(self.size, None)
         if self.of == "struct" and self.size:
@@ -322,6 +326,14 @@ class MHashed(MValue):
             empty = MCell((1, 0), [])
             return MMap(self.info.get("kt", "char"), self.info.get("vt", "any"), empty, empty)
         return None
+
+    @property
+    def decides(self) -> bool:
+        """whether a Python value is read as the full value would read it (so that a hash
+        mismatch is a difference): cells, structs and maps need their reading signature"""
+        return (
+            self.of not in ("cell", "struct", "map", "object") or self.info.get("sig") is not None
+        )
 
 
 class MPlaceholder(MValue):
@@ -555,7 +567,8 @@ def to_mvalue(x: Any, like: MValue | None = None) -> MValue:
     if isinstance(x, MValue):
         return x
     if isinstance(like, MObject) and like.value is not None:
-        like = like.value
+        # compared with the object's value: read as that object, so that hashes agree too
+        return MObject(like.mclass, to_mvalue(x, like.value), READ_AS_OBJECT)
     if isinstance(like, MHashed):
         like = like.skeleton()
     if x is None:
@@ -887,6 +900,97 @@ HASH_ONLY = (
 
 
 _MIN_NODE = 40  # bytes of the smallest element descriptor
+READ_AS_OBJECT = "(a Python value, read as this object's value)"
+
+
+def _runs(sigs: list) -> list:
+    out: list = []
+    for s in sigs:
+        if out and out[-1][1] == s:
+            out[-1][0] += 1
+        else:
+            out.append([1, s])
+    return out
+
+
+def _unruns(runs: list) -> list:
+    return [s for n, s in runs for _ in range(n)]
+
+
+def reading_signature(v: MValue) -> Any:
+    """what reading a Python value as ``v`` uses (``to_mvalue``'s rules), for hash-only
+    descriptors: kinds, array classes, the sizes of empty arrays and of columns, struct fields,
+    map types; element lists run-length encoded"""
+    if isinstance(v, MArray):
+        s = v.size
+        if v.numel == 0 or (len(s) == 2 and s[1] == 1 and s[0] > 1):
+            return f"{v.mclass}:{'x'.join(str(n) for n in s)}"
+        return v.mclass
+    if isinstance(v, MCell):
+        return {"k": "cell", "s": list(v.size), "v": _runs([reading_signature(x) for x in v.items])}
+    if isinstance(v, MStruct):
+        cols = {f: _runs([reading_signature(el[f]) for el in v.items]) for f in v.fields}
+        return {"k": "struct", "s": list(v.size), "f": v.fields, "v": cols}
+    if isinstance(v, MString):
+        return {"k": "string", "s": list(v.size)}
+    if isinstance(v, MMap):
+        return {
+            "k": "map",
+            "kt": v.key_type,
+            "vt": v.value_type,
+            "keys": reading_signature(v.keys),
+            "values": reading_signature(v.values),
+        }
+    if isinstance(v, MObject):
+        return {
+            "k": "object",
+            "c": v.mclass,
+            "v": None if v.value is None else reading_signature(v.value),
+        }
+    if isinstance(v, MHashed) and v.info.get("sig") is not None:
+        return v.info["sig"]
+    return {"k": v.kind}
+
+
+def _like_of_signature(sig: Any) -> MValue | None:
+    """a value without data that reads Python values as the value of this signature does"""
+    if isinstance(sig, str):
+        cls, _, size = sig.partition(":")
+        return MArray(cls, None, size=tuple(int(n) for n in size.split("x")) if size else (1, 1))
+    k = sig.get("k")
+    if k == "cell":
+        return MCell(sig["s"], [_like_of_signature(x) for x in _unruns(sig["v"])])
+    if k == "struct":
+        cols = {f: _unruns(sig["v"][f]) for f in sig["f"]}
+        n = math.prod(sig["s"])
+        return MStruct(
+            sig["s"],
+            sig["f"],
+            [{f: _like_of_signature(cols[f][i]) for f in sig["f"]} for i in range(n)],
+        )
+    if k == "string":
+        return MString(sig["s"], None)
+    if k == "map":
+        keys, values = _like_of_signature(sig["keys"]), _like_of_signature(sig["values"])
+        empty = MCell((1, 0), [])
+        return MMap(
+            sig["kt"],
+            sig["vt"],
+            keys if isinstance(keys, MCell) else empty,
+            values if isinstance(values, MCell) else empty,
+        )
+    if k == "object":
+        return MObject(sig["c"], None if sig.get("v") is None else _like_of_signature(sig["v"]))
+    return None
+
+
+def _with_signature(d: dict, v: MValue, budget: int) -> dict:
+    """a hash-only container descriptor with its reading signature, when that fits"""
+    if "v" not in d and "keys" not in d:
+        sig = reading_signature(v)
+        if _fits(sig, budget):
+            d["r"] = sig
+    return d
 
 
 def _fits(obj: Any, budget: int) -> bool:
@@ -927,7 +1031,7 @@ def describe(v: MValue, inline: int = INLINE_BYTES, budget: int = DESCRIPTOR_BYT
             kids = [_derived(describe(x, inline, budget)) for x in v.items]
             if _fits(kids, budget):
                 d["v"] = kids
-        return d
+        return _with_signature(d, v, budget)
     if isinstance(v, MStruct):
         d = {"k": "struct", "s": list(v.size), "f": v.fields, "h": h}
         if v.items is not None and len(v.items) * max(len(v.fields), 1) * _MIN_NODE <= budget:
@@ -937,7 +1041,7 @@ def describe(v: MValue, inline: int = INLINE_BYTES, budget: int = DESCRIPTOR_BYT
             ]
             if _fits(kids, budget):
                 d["v"] = kids
-        return d
+        return _with_signature(d, v, budget)
     if isinstance(v, MString):
         d = {"k": "string", "s": list(v.size), "h": h}
         if v.items is not None and _fits(v.items, budget):
@@ -959,13 +1063,15 @@ def describe(v: MValue, inline: int = INLINE_BYTES, budget: int = DESCRIPTOR_BYT
         kd, vd = describe(v.keys, inline, budget), describe(v.values, inline, budget)
         if "v" in kd and "v" in vd and _fits([kd, vd], budget):
             d["keys"], d["values"] = _derived(kd), _derived(vd)
-        return d
+        return _with_signature(d, v, budget)
     if isinstance(v, MHashed):
         d = {"k": v.of, "s": list(v.size) if v.size else None, "h": h}
         if "fields" in v.info:
             d["f"] = v.info["fields"]
         if "kt" in v.info:
             d["kt"], d["vt"] = v.info["kt"], v.info.get("vt")
+        if v.info.get("sig") is not None:
+            d["r"] = v.info["sig"]
         return d
     raise TypeError(f"cannot describe {type(v).__name__}")
 
@@ -993,11 +1099,11 @@ def from_descriptor(d: dict) -> MValue:
         return MArray(cls, None, size=size, complex=cx, hash=d["h"])
     if k == "cell":
         if "v" not in d:
-            return MHashed("cell", d["s"], d["h"])
+            return MHashed("cell", d["s"], d["h"], {"sig": d.get("r")})
         return MCell(d["s"], [from_descriptor(x) for x in d["v"]], hash=d.get("h"))
     if k == "struct":
         if "v" not in d:
-            return MHashed("struct", d["s"], d["h"], {"fields": list(d["f"])})
+            return MHashed("struct", d["s"], d["h"], {"fields": list(d["f"]), "sig": d.get("r")})
         return MStruct(
             d["s"],
             d["f"],
@@ -1017,7 +1123,8 @@ def from_descriptor(d: dict) -> MValue:
         if isinstance(keys, MCell) and isinstance(values, MCell):
             return MMap(d["kt"], d["vt"], keys, values, hash=d.get("h"))
     if k == "map":
-        return MHashed("map", None, d["h"], {"kt": d.get("kt", "char"), "vt": d.get("vt", "any")})
+        info = {"kt": d.get("kt", "char"), "vt": d.get("vt", "any"), "sig": d.get("r")}
+        return MHashed("map", None, d["h"], info)
     return MHashed(k, d.get("s"), d["h"])
 
 
@@ -1234,6 +1341,7 @@ class Problem:
 class Report:
     problems: list[Problem] = dataclasses.field(default_factory=list)
     notes: list[str] = dataclasses.field(default_factory=list)
+    undecided: list[str] = dataclasses.field(default_factory=list)  # needs the golden store
 
     @property
     def ok(self) -> bool:
@@ -1245,9 +1353,13 @@ class Report:
     def note(self, path: str, text: str) -> None:
         self.notes.append(f"{path}: {text}" if path else text)
 
+    def undecide(self, path: str, why: str) -> None:
+        self.undecided.append(f"{path}: {why}")
+
     def extend(self, other: Report) -> None:
         self.problems.extend(other.problems)
         self.notes.extend(other.notes)
+        self.undecided.extend(other.undecided)
 
     def text(self, title: str = "") -> str:
         out = []
@@ -1259,6 +1371,9 @@ class Report:
             out.extend(f"      {ln}" for ln in rest)
         if len(self.problems) > MAX_PROBLEMS:
             out.append(f"  ... and {len(self.problems) - MAX_PROBLEMS} more problems")
+        if self.undecided:
+            out.append("  not decided without the golden store (run on the cluster):")
+            out.extend(f"    {u}" for u in self.undecided[:MAX_PROBLEMS])
         if self.notes:
             out.append("  notes:")
             out.extend(f"    {n}" for n in self.notes[:MAX_PROBLEMS])
@@ -1271,6 +1386,7 @@ class Report:
             "ok": self.ok,
             "problems": [dataclasses.asdict(p) for p in self.problems],
             "notes": self.notes,
+            "undecided": self.undecided,
         }
 
 
@@ -1320,6 +1436,12 @@ def _cmp(r: MValue, a: MValue, spec: Spec, path: str, rep: Report) -> None:
     if isinstance(spec, Ignore):
         return
     if isinstance(spec, Custom):
+        if isinstance(r, MHashed) or (isinstance(r, MArray) and r.data is None):
+            if vhash(a) != r._hash:
+                rep.undecide(
+                    path, f"{spec.name} needs MATLAB's data; the manifest has its hash only"
+                )
+            return
         for p in spec.fn(r, a):
             rep.add(path, spec.name, p)
         return
@@ -1354,12 +1476,19 @@ def _cmp(r: MValue, a: MValue, spec: Spec, path: str, rep: Report) -> None:
                 f"{sorted(fa - fr)}",
             )
         elif vhash(a) != r._hash:
-            rep.add(
-                path,
-                "values",
-                f"the {_kind_name(r)} differs from MATLAB's (SHA-256 of all its elements)",
-                HASH_ONLY,
-            )
+            if not isinstance(spec, Exact):
+                rep.undecide(
+                    path, f"{spec.describe()} needs MATLAB's data; the manifest has its hash only"
+                )
+            elif not r.decides:
+                rep.undecide(path, "the manifest lacks the reading signature of this large value")
+            else:
+                rep.add(
+                    path,
+                    "values",
+                    f"the {_kind_name(r)} differs from MATLAB's (SHA-256 of all its elements)",
+                    HASH_ONLY,
+                )
         return
     if r.kind != a.kind:
         hint = ""
@@ -1459,6 +1588,8 @@ def _cmp(r: MValue, a: MValue, spec: Spec, path: str, rep: Report) -> None:
         _cmp(r.keys, a.keys, EXACT, f"{path}.keys", rep)
         _cmp(r.values, a.values, spec, f"{path}.values", rep)
     elif isinstance(r, MObject):
+        if a.text == READ_AS_OBJECT and r.mclass == a.mclass:
+            rep.note(path, f"MATLAB returned a {r.mclass} object; compared its value")
         if r.mclass != a.mclass:
             rep.add(path, "class", f"object class: MATLAB {r.mclass}, Python {a.mclass}")
         elif r.value is not None and a.value is not None:
@@ -1638,7 +1769,11 @@ def _cmp_array(r: MArray, a: MArray, spec: Spec, path: str, rep: Report) -> None
         rep.add(path, "size", *lines)
         return
     if r.data is None:
-        if vhash(a) != r._hash:
+        if vhash(a) != r._hash and not isinstance(spec, Exact):
+            rep.undecide(
+                path, f"{spec.describe()} needs MATLAB's data; the manifest has its hash only"
+            )
+        elif vhash(a) != r._hash:
             rep.add(
                 path,
                 "values",
@@ -2455,7 +2590,7 @@ def _cmp_file(r: _Side, a: _Side, vspec: Spec, spec: TreeSpec, path: str, rep: R
         sub = Report()
         _cmp(r.voxels(), a.voxels(), vspec, path + " (voxels)", sub)
         rep.extend(sub)
-        if sub.ok:
+        if sub.ok and not sub.undecided:
             if spec.tiff_bytes:
                 rep.add(
                     path,

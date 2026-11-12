@@ -129,8 +129,10 @@ A Python result is read as the MATLAB reference where Python has no counterpart,
 there: a 1-D array or list matches a row or a column; a Python int takes the reference's
 integer class if it fits; `''`, `None` and empty 1-D arrays match MATLAB's empty sizes; a list
 of dicts is a struct array; a dict is a struct or a `containers.Map`; a value compared with a
-MATLAB object (a saved `inputParser`) is compared with the object's value, with a note. Classes
-are never changed otherwise: a float64 result for a single reference is a class difference.
+MATLAB object (a saved `inputParser`) is read as that object and compared by its value, with a
+note. Classes are never changed otherwise: a float64 result for a single reference is a class
+difference. These rules read a result the same way with the store and with a manifest (see the
+reading signature below), so a pass with the manifest means what a pass with the store means.
 
 ## Comparisons
 
@@ -261,9 +263,15 @@ notes it); other kinds similarly (see `vhash`). Manifests keep descriptors: kind
 hash, and the data of arrays up to 2 KB (base64; char rows as text) and texts up to 4 KB;
 elements whose data is kept carry no hash of their own (it is computed again). A cell, struct,
 string array or map whose descriptor would take more than 8 KB (compact JSON) keeps only its
-kind, size, struct fields or map types, and hash: CI checks it bit for bit by hash and reports
-kind, size and field differences; the element-by-element report needs the store. A manifest has
-one line per case (a changed case is one changed line); older layouts are read too.
+kind, size, struct fields or map types, and hash, with its **reading signature** (`"r"`: per
+element the kind, the array class, the size of empty arrays and columns, struct fields and map
+types, run-length encoded), from which Python results are read exactly as the full value reads
+them. CI checks such a value bit for bit by hash and reports kind, size and field differences;
+the element-by-element report needs the store. What a hash cannot decide, CI skips with the
+reason ("not decided with the manifest alone"), never passes or fails: a tolerance or a custom
+comparison against a hash-only value, or a hash-only container without its signature (manifests
+written before the signature: regenerate them with `orun.sh -M -D`). A manifest has one line per
+case (a changed case is one changed line); older layouts are read too.
 
 ## Environment variables
 
