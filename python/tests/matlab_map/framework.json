@@ -216,7 +216,7 @@
      "fate": []
     },
     "jobsAtAnotherPlaceKeepTheirNice": {
-     "pins": "with SlurmAlternatives a job goes to the first place with room (here the alternative abc, as gpu8 is full): it keeps its nice there, as a single job and as a framework job (a moved pending job keeps it, as Slurm keeps its nice)",
+     "pins": "with SlurmAlternatives a job goes to the first place with room (here the alternative cpu_queue, as gpu8 is full): it keeps its nice there, as a single job and as a framework job (a moved pending job keeps it, as Slurm keeps its nice)",
      "tags": [
       "Unit"
      ],
@@ -328,7 +328,7 @@
    "fate": [],
    "methods": {
     "demoConfigFileRoundTripsAndRunsLocally": {
-     "pins": "the slurm configuration from the demo, written the same way",
+     "pins": "the slurm configuration from the demo (with placeholder paths and names), written the same way",
      "tags": [
       "Integration"
      ],
@@ -1574,6 +1574,33 @@
     }
    }
   },
+  "SlurmAlternativesNiceTest": {
+   "file": "tests/framework/SlurmAlternativesNiceTest.m",
+   "pins": "the nice of a call (its nice option, sbatch --nice) with SlurmAlternatives (see slurm_alternatives): it is the call's, not a place's. The jobs get it at every place, and pending jobs move between places as without it (the main place's options had it and the alternatives' didn't, and places that differ in options don't trade jobs, so no job of a call with nice moved). The cluster is pktest.FakeS...",
+   "category": "framework_fake_slurm",
+   "owner": "J09",
+   "phase": 1,
+   "finished": false,
+   "fate": [],
+   "methods": {
+    "jobsGetTheCallsNiceAtEveryPlace": {
+     "pins": "a place's own --nice gave way to the call's only where it had none: here the jobs go to gpu (cpu is full), whose SlurmParam has --nice=5, and get the call's 1000 there, as framework jobs and as single jobs",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "pendingJobOfACallWithNiceMoves": {
+     "pins": "the job of batch 1 waits at cpu (full, gpu too); then gpu has room (the second look at the nodes): the wait loop moves it there, and it keeps its nice",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    }
+   }
+  },
   "SlurmAlternativesTest": {
    "file": "tests/framework/SlurmAlternativesTest.m",
    "pins": "jobs of a call on more than one place of a Slurm cluster (the SlurmAlternatives of a cluster config, see slurm_alternatives): each job goes to the first place with room for it now, and pending jobs move to a place where they can start now. A job is shaped for the main place; at a place with more memory per CPU it gets that place's own shape (fewer CPUs), at one with less it keeps its CPUs and m...",
@@ -1584,7 +1611,7 @@
    "fate": [],
    "methods": {
     "burstOfJobsFillsTheRoomInOrder": {
-     "pins": "(one view of the cluster for all jobs of a burst) abc has room for 2 jobs (4 CPUs of 21418 MB), gpu8 for 3 of them (its free memory); the others wait at abc (not in the GPU nodes' queue)",
+     "pins": "(one view of the cluster for all jobs of a burst) cpu_queue has room for 2 jobs (4 CPUs of 21418 MB), gpu8 for 3 of them (its free memory); the others wait at cpu_queue (not in the GPU nodes' queue)",
      "tags": [
       "Unit"
      ],
@@ -1608,7 +1635,7 @@
      "fate": []
     },
     "cpuJobLeavesTheQueueOfGPUNodes": {
-     "pins": "a CPU-only job waiting at gpu8 (main place) without room there or anywhere: it waits at abc instead, shaped for abc",
+     "pins": "a CPU-only job waiting at gpu8 (main place) without room there or anywhere: it waits at cpu_queue instead, shaped for cpu_queue",
      "tags": [
       "Unit"
      ],
@@ -1616,7 +1643,7 @@
      "fate": []
     },
     "cpuJobsDoNotGoToGPUNodesOfAnAlternativeWithoutCpuJobs": {
-     "pins": "GPU nodes are for jobs that need a GPU: abc full, gpu8 idle (no headroom), but the entry doesn't say cpuJobs: the job waits at abc, and a job waiting there doesn't move to gpu8",
+     "pins": "GPU nodes are for jobs that need a GPU: cpu_queue full, gpu8 idle (no headroom), but the entry doesn't say cpuJobs: the job waits at cpu_queue, and a job waiting there doesn't move to gpu8",
      "tags": [
       "Unit"
      ],
@@ -1624,7 +1651,7 @@
      "fate": []
     },
     "cpuJobsKeepOutOfGPUNodesWhereGPUJobsOfTheUserWait": {
-     "pins": "(gpu8 takes CPU jobs and has room, but a GPU job of the user is pending there, held): new CPU jobs wait at abc, and one waiting at gpu8 moves to abc, also where it would fit",
+     "pins": "(gpu8 takes CPU jobs and has room, but a GPU job of the user is pending there, held): new CPU jobs wait at cpu_queue, and one waiting at gpu8 moves to cpu_queue, also where it would fit",
      "tags": [
       "Unit"
      ],
@@ -1640,7 +1667,7 @@
      "fate": []
     },
     "cpuJobsWaitOutsideGPUNodes": {
-     "pins": "main place gpu8 (GPU nodes), nothing has room: the job waits at abc (which has GPU nodes too, not only)",
+     "pins": "main place gpu8 (GPU nodes), nothing has room: the job waits at cpu_queue (which has GPU nodes too, not only)",
      "tags": [
       "Unit"
      ],
@@ -1664,7 +1691,7 @@
      "fate": []
     },
     "frameworkMovesPendingJobs": {
-     "pins": "the job of batch 1 waits at abc (full, gpu8 too); then gpu8 has room (the second look at the nodes): the wait loop moves it there, with its abc shape, and not again once it fits there",
+     "pins": "the job of batch 1 waits at cpu_queue (full, gpu8 too); then gpu8 has room (the second look at the nodes): the wait loop moves it there, with its cpu_queue shape, and not again once it fits there",
      "tags": [
       "Unit"
      ],
@@ -1672,7 +1699,7 @@
      "fate": []
     },
     "frameworkSubmitsToThePlaceWithRoom": {
-     "pins": "a main place of GPU nodes (for CPU jobs), whose idle GPUs keep their share; abc has room: the jobs go to abc with the CPUs of an abc config (4, not gpu8's 16), and the time limit of its SlurmParam (not the framework's)",
+     "pins": "a main place of GPU nodes (for CPU jobs), whose idle GPUs keep their share; cpu_queue has room: the jobs go to cpu_queue with the CPUs of a cpu_queue config (4, not gpu8's 16), and the time limit of its SlurmParam (not the framework's)",
      "tags": [
       "Unit"
      ],
@@ -1696,7 +1723,7 @@
      "fate": []
     },
     "jobIsReshapedAtAPlaceWithMoreMemoryPerCPU": {
-     "pins": "(shaped for gpu8: 10 CPUs of 7.8 GB; at abc 4 CPUs of 21418 MB)",
+     "pins": "(shaped for gpu8: 10 CPUs of 7.8 GB; at cpu_queue 4 CPUs of 21418 MB)",
      "tags": [
       "Unit"
      ],
@@ -1704,7 +1731,7 @@
      "fate": []
     },
     "jobKeepsItsShapeAtAPlaceWithLessMemoryPerCPU": {
-     "pins": "(shaped for abc: 4 CPUs of 21418 MB; at gpu8 it keeps them, not the 10 CPUs of 7.8 GB a gpu8 config gives it)",
+     "pins": "(shaped for cpu_queue: 4 CPUs of 21418 MB; at gpu8 it keeps them, not the 10 CPUs of 7.8 GB a gpu8 config gives it)",
      "tags": [
       "Unit"
      ],
@@ -1712,7 +1739,7 @@
      "fate": []
     },
     "jobMovedBySomethingElseIsLeftToIt": {
-     "pins": "(recorded at abc, found at gpu8: e.g. a user's script moved it; gpu9 has room)",
+     "pins": "(recorded at cpu_queue, found at gpu8: e.g. a user's script moved it; gpu9 has room)",
      "tags": [
       "Unit"
      ],
@@ -1720,7 +1747,7 @@
      "fate": []
     },
     "jobWithRoomOnlyOutsideItsPlaceMoves": {
-     "pins": "(its place is abc without n1; the room at abc is on n1)",
+     "pins": "(its place is cpu_queue without n1; the room at cpu_queue is on n1)",
      "tags": [
       "Unit"
      ],
@@ -1728,7 +1755,7 @@
      "fate": []
     },
     "jobsThatDoNotWaitForResourcesStay": {
-     "pins": "held, waiting for a start time or dependency, not seen by the scheduler yet, running, or with room where they are (abc has room for 2: the one not seen yet and the last one)",
+     "pins": "held, waiting for a start time or dependency, not seen by the scheduler yet, running, or with room where they are (cpu_queue has room for 2: the one not seen yet and the last one)",
      "tags": [
       "Unit"
      ],
@@ -1792,7 +1819,7 @@
      "fate": []
     },
     "pendingJobMovesToAPlaceWithRoom": {
-     "pins": "(at gpu8 it keeps its abc shape)",
+     "pins": "(at gpu8 it keeps its cpu_queue shape)",
      "tags": [
       "Unit"
      ],
@@ -1808,7 +1835,7 @@
      "fate": []
     },
     "pendingJobsOfTheUserStartFirst": {
-     "pins": "abc has 8 free CPUs, which a pending job of the user takes",
+     "pins": "cpu_queue has 8 free CPUs, which a pending job of the user takes",
      "tags": [
       "Unit"
      ],
@@ -1848,7 +1875,7 @@
      "fate": []
     },
     "singleJobGoesToThePlaceWithRoomAndMoves": {
-     "pins": "the pipeline's and decon's single jobs (main place gpu8 without GPU headroom): submitted to abc (gpu8 full) with an abc shape, then moved back to gpu8 once it has room and abc not (keeping the abc shape), by the wrapper's and check_single_job_status's looks at pending jobs",
+     "pins": "the pipeline's and decon's single jobs (main place gpu8 without GPU headroom): submitted to cpu_queue (gpu8 full) with a cpu_queue shape, then moved back to gpu8 once it has room and cpu_queue not (keeping the cpu_queue shape), by the wrapper's and check_single_job_status's looks at pending jobs",
      "tags": [
       "Unit"
      ],
@@ -2278,6 +2305,14 @@
      "cases": null,
      "fate": []
     },
+    "jobsWhoseRunnersTakeOtherBatchesCountAgainstMaxJobNum": {
+     "pins": "maxJobNum counted batches: a job whose runner takes another batch's task (its own batch done) didn't count, and the call's jobs in the queue passed maxJobNum (here 1); while runners take other batches' tasks, the call's jobs in the queue count. Batch 1's job runs for 6 polls (its output at the first) and its runner takes task 2; batch 3 waits for it, also in compiled mode",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
     "localRunsFindTheTmpFilesOfTildePaths": {
      "pins": "a local run whose .tmp files and outputs are given as ~/... (the demos' data paths): the job script finds the .tmp files (bash doesn't expand ~ in the paths it reads from tmps.txt), so a task that another call processes is left to it, as with full paths",
      "tags": [
@@ -2400,6 +2435,14 @@
     },
     "processWithManyMoreOpenFilesIsRecycled": {
      "pins": "before a runner's next task, the job script compares its open files with those after its first task: 64 more end the process",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "resubmittedMarkComesBeforeTheRelease": {
+     "pins": "a batch submitted again had its claims released before its mark (resubmitted) was written: a runner could take its tasks in between, which then ran twice (also in the batch's new job, which runs without runners). Here an rm first on the PATH records whether the mark is there when the claims go",
      "tags": [
       "Unit"
      ],

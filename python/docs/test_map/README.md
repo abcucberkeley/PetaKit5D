@@ -13,15 +13,15 @@ Categories:
 
 ## Counts
 
-MATLAB suite of oracle 1697257 (24.2.0.2863752 (R2024b) Update 5): 1562 tests, 1552 in a default run (without KnownIssue), 85 classes, 935 methods.
+MATLAB suite of oracle 7ed28c0 (24.2.0.2863752 (R2024b) Update 5): 1567 tests, 1557 in a default run (without KnownIssue), 86 classes, 940 methods.
 
 By category (tests: default run, all; classes of the category, with such tests):
 
 | category | default run | all | classes | classes with such tests |
 |---|---|---|---|---|
-| data | 1143 | 1147 | 55 | 55 |
-| framework_fake_slurm | 190 | 191 | 10 | 16 |
-| framework_design | 172 | 172 | 11 | 11 |
+| data | 1144 | 1148 | 55 | 55 |
+| framework_fake_slurm | 192 | 193 | 11 | 17 |
+| framework_design | 174 | 174 | 11 | 11 |
 | matlab_only | 47 | 52 | 9 | 9 |
 
 By MATLAB folder and category (default run):
@@ -29,7 +29,7 @@ By MATLAB folder and category (default run):
 | folder | default run | data | framework_fake_slurm | framework_design | matlab_only | all |
 |---|---|---|---|---|---|---|
 | decon | 373 | 353 | 20 |  |  | 373 |
-| framework | 288 |  | 140 | 131 | 17 | 294 |
+| framework | 292 |  | 142 | 133 | 17 | 298 |
 | deskew_rotate | 217 | 212 | 2 |  | 3 | 219 |
 | tools | 180 | 173 | 1 | 6 |  | 181 |
 | stitch | 141 | 129 | 12 |  |  | 141 |
@@ -37,14 +37,14 @@ By MATLAB folder and category (default run):
 | analysis | 68 | 68 |  |  |  | 69 |
 | crop | 69 | 67 | 2 |  |  | 69 |
 | platform | 40 | 12 |  | 1 | 27 | 40 |
-| pipeline | 30 | 17 | 13 |  |  | 30 |
+| pipeline | 31 | 18 | 13 |  |  | 31 |
 | isolation | 23 |  |  | 23 |  | 23 |
 | cluster | 11 |  |  | 11 |  | 11 |
 | flatfield | 8 | 8 |  |  |  | 8 |
 | golden | 8 | 8 |  |  |  | 8 |
 | point_detection | 6 | 6 |  |  |  | 6 |
 | demo_data | 4 | 4 |  |  |  | 4 |
-| total | 1552 | 1143 | 190 | 172 | 47 | 1562 |
+| total | 1557 | 1144 | 192 | 174 | 47 | 1567 |
 
 By owner (default run / all):
 
@@ -75,10 +75,10 @@ By owner (default run / all):
 | J03 | 13 | 13 | 3 |
 | J04 | 10 | 10 | 2 |
 | J05 | 16 | 16 | 2 |
-| J06 | 49 | 49 | 1 |
+| J06 | 51 | 51 | 1 |
 | J07 | 49 | 49 | 3 |
 | J08 | 12 | 12 | 2 |
-| J09 | 36 | 36 | 2 |
+| J09 | 38 | 38 | 3 |
 | J10 | 27 | 27 | 1 |
 | J11 | 11 | 11 | 1 |
 | J12 | 28 | 33 | 4 |
@@ -89,7 +89,7 @@ By owner (default run / all):
 | K05 | 126 | 126 | 3 |
 | K07 | 1 | 1 | 1 |
 | K09 | 27 | 27 | 2 |
-| P01 | 11 | 11 | 2 |
+| P01 | 12 | 12 | 2 |
 | P02 | 19 | 19 | 1 |
 | R01 | 12 | 12 | 2 |
 | R02 | 29 | 29 | 2 |
@@ -113,11 +113,11 @@ By fate (all):
 
 | fate | tests |
 |---|---|
-| na | 62 |
-| oracle | 8 |
-| oracle+pytest | 17 |
-| pending | 1300 |
-| pytest | 175 |
+| na | 63 |
+| oracle | 13 |
+| oracle+pytest | 23 |
+| pending | 1288 |
+| pytest | 180 |
 
 ## Classes
 
@@ -169,9 +169,10 @@ By fate (all):
 | framework/ResultWritersTest | framework_fake_slurm | J05 | 12 | 12 | no | pending 1, pytest 11 |
 | framework/SingleJobRunnerTest | framework_design | J07 | 30 | 30 | no | pending 30 |
 | framework/SingleJobSubmitWrapperTest | framework_fake_slurm | J07 | 15 | 18 | no | pending 18 |
+| framework/SlurmAlternativesNiceTest | framework_fake_slurm | J09 | 2 | 2 | no | pending 2 |
 | framework/SlurmAlternativesTest | framework_fake_slurm | J09 | 35 | 35 | yes | oracle+pytest 5, pytest 30 |
 | framework/TaskMetricsTest | framework_design | J10 | 27 | 27 | yes | na 7, oracle+pytest 2, pytest 18 |
-| framework/TaskRunnerTest | framework_design | J06 | 49 | 49 | no | na 7, pending 3, pytest 39 |
+| framework/TaskRunnerTest | framework_design | J06 | 51 | 51 | no | na 7, pending 5, pytest 39 |
 | framework/WaitForFilesTest | framework_fake_slurm | J02 | 7 | 7 | yes | pytest 7 |
 | golden/GoldenOutputTest | data | F06 | 1 | 8 | yes | oracle 8 |
 | io/ImageInfoTest | data | IO2 | 8 | 14 | no | pending 14 |
@@ -180,8 +181,8 @@ By fate (all):
 | isolation/IsolationHarnessTest | framework_design | E06 | 8 | 8 | no | pending 8 |
 | isolation/TaskStateLeakTest | framework_design | E06 | 7 | 15 | no | pending 15 |
 | pipeline/AutomaticProcessingTest | data | P02 | 19 | 19 | no | pending 19 |
-| pipeline/FilenameParsingTest | data | P01 | 6 | 6 | no | pending 6 |
-| pipeline/SettingFilesTest | data | P01 | 5 | 5 | no | pending 5 |
+| pipeline/FilenameParsingTest | data | P01 | 6 | 6 | yes | na 1, oracle 3, oracle+pytest 2 |
+| pipeline/SettingFilesTest | data | P01 | 6 | 6 | no | oracle 2, oracle+pytest 1, pending 1, pytest 2 |
 | platform/MexFallbackTest | matlab_only | E04 | 15 | 15 | yes | na 15 |
 | platform/MexInputCheckTest | data | E04 | 12 | 12 | no | pending 12 |
 | platform/MexInventoryTest | matlab_only | E04 | 1 | 1 | yes | na 1 |
@@ -200,9 +201,9 @@ By fate (all):
 | stitch/StitchingTest | data | S09 | 46 | 61 | no | pending 61 |
 | stitch/TileBlendingTest | data | K04 | 4 | 18 | no | pending 18 |
 | tools/BlockMIPTest | data | T02 | 15 | 19 | no | pending 19 |
-| tools/ComputingMemoryEstimateTest | data | T05 | 3 | 3 | no | pending 3 |
+| tools/ComputingMemoryEstimateTest | data | T05 | 3 | 3 | yes | oracle+pytest 3 |
 | tools/MIPTest | data | T02 | 16 | 27 | no | pending 27 |
-| tools/ParallelRsyncWrapperTest | data | T05 | 5 | 6 | no | pending 3, pytest 3 |
+| tools/ParallelRsyncWrapperTest | data | T05 | 5 | 6 | yes | pytest 6 |
 | tools/ResampleTest | data | T04 | 17 | 95 | no | pending 95 |
 | tools/SystemMemoryTest | data | F02 | 4 | 4 | no | pending 4 |
 | tools/TiffZarrConversionTest | data | T01 | 20 | 20 | no | pending 20 |

@@ -582,15 +582,9 @@ CASES = [
     _dataset_case("dataset_pattern_order", ["ds1"], ["CamB_ch0", "CamA_ch0"], flip=True),
     _dataset_case("dataset_setting_files", ["set"], ["CamA_ch0"], parse=True, flip=True),
     _dataset_case("dataset_setting_files_missing", ["ds1"], ["CamA_ch0"], parse=True),
-    # images without a setting file keep flipZstack (M02's rule, after oracle 1697257, which
-    # gives not flipped): a known difference until the next oracle tree
+    # images without a setting file keep flipZstack (1249929)
     _dataset_case(
-        "dataset_setting_files_missing_flip",
-        ["ds1"],
-        ["CamA_ch0"],
-        parse=True,
-        flip=True,
-        marks=("xfail",),
+        "dataset_setting_files_missing_flip", ["ds1"], ["CamA_ch0"], parse=True, flip=True
     ),
     _dataset_case("dataset_setting_files_no_file", ["ds1"], ["CamC_ch0"], parse=True),
     _dataset_case("dataset_three_folders_decon", ["ds1", "ds2", "ds3"], ["CamA_ch0"], decon=True),

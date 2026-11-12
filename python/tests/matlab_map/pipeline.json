@@ -264,6 +264,14 @@
      "cases": null,
      "fate": []
     },
+    "imageWithoutASettingFileKeepsFlipZstack": {
+     "pins": "XR_parseImageFilenames starts each image at flipZstack and the setting files decide; an image without one became not flipped (NaN < 0), now it keeps flipZstack",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
     "imagesWithAndWithoutACameraInTheirNames": {
      "pins": "names with and without a camera were all read with the grammar of names without one: the names with one got the folder as their setting file",
      "tags": [
@@ -296,7 +304,10 @@
      "cases": null,
      "fate": []
     }
-   }
+   },
+   "reopened": [
+    "imageWithoutASettingFileKeepsFlipZstack"
+   ]
   }
  }
 }

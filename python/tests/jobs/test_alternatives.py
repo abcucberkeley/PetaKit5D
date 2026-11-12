@@ -2699,6 +2699,9 @@ ORACLE_CASES = [
         ),
         args=[OPTION_TEXTS],
         python=py_parse_options,
+        # a known difference until the port follows 7ed28c0, where MATLAB's parse_options keeps
+        # the call's --nice in a field of its own (J09)
+        marks=("xfail",),
     ),
     Case(
         "local_with_memory",
