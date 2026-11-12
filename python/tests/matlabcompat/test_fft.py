@@ -6,14 +6,17 @@ transforms themselves); its other methods test the decon mex (the decon task's).
 (MATLAB's own fft, ifft, fftn and ifftn: 1D lengths 2 to 1024, MATLAB's rules, the 3D sizes of the
 demos, the tests and real data) run with MATLAB on the cluster; here the 1D and rule packs are
 checked against digests of MATLAB's outputs, where our plans are MATLAB's (x86-64, AVX) and the C
-library's cos and sin give FFTW the reference platform's twiddle factors.
+library gives FFTW the reference platform's twiddle factors.
 """
 
+import ctypes
+import ctypes.util
 import functools
 import hashlib
 import math
 import os
 import platform
+import sys
 
 import numpy as np
 import pytest
@@ -350,18 +353,22 @@ MATLAB_DIGESTS = {
 # execute
 MATLAB_PLANS_DIGEST = "238f71138c3fc44f1e4ee2f59f906394ef30577c29d25fe103989a91ccb48bd9"
 
-# FFTW makes its twiddle factors with the C library's cos and sin (kernel/trig.c, in double for
-# both precisions), so their last bits, and with them the FFT's, follow the C library: its version
-# and the code path it picks for the CPU. MATLAB's own FFTW calls the same functions. The digests
-# above were recorded where cos and sin give these values for FFTW's arguments (twiddle_fingerprint;
-# glibc 2.28 on Intel x86-64); elsewhere MATLAB's results would differ from them too.
-REFERENCE_TWIDDLE_FINGERPRINT = "5442ee1a3bc9ca08a71ef7c693dab89979f4788915be2b27e3525416adce53bb"
+# FFTW makes its twiddle factors with the C library (kernel/trig.c, in double for both
+# precisions), so their last bits, and with them the FFT's, follow the C library: its version and
+# the code path it picks for the CPU. GCC merges real_cexp's cos and sin calls into one call of
+# sincos, in MATLAB's libmwfftw3f / libmwfftw3 as in our build, and glibc's sincos is not always its
+# sin and cos: on glibc 2.28 and 2.35 they differ in the last bit at 944 of these arguments, while
+# glibc 2.39's sincos gives sin's and cos's values (the packs' digests there are those of sincos
+# answered by sin and cos). The digests above were recorded where sincos gives these values for
+# FFTW's arguments (twiddle_fingerprint; glibc 2.28 on Intel x86-64); elsewhere MATLAB's own FFTW
+# would differ from them too.
+REFERENCE_TWIDDLE_FINGERPRINT = "9c27d5b80b58341c8c9f1ee72499b969dc7673edb6a30793fd23fd87761327a6"
 _K2PI = 6.2831853071795864769252867665590057683943388  # FFTW's K2PI, rounded to double as C does
 
 
 def twiddle_arguments(n):
-    """The arguments FFTW's real_cexp passes to cos and sin for 2 pi m / n, m = 0 .. n - 1: 4m and
-    4n reduced to the first octant, then (K2PI * m) / n in double."""
+    """The arguments FFTW's real_cexp takes the cosine and sine of for 2 pi m / n, m = 0 .. n - 1:
+    4m and 4n reduced to the first octant, then (K2PI * m) / n in double."""
     m = 4 * np.arange(n, dtype=np.int64)
     n4 = 4 * n
     m = np.where(m > n4 - m, n4 - m, m)
@@ -370,13 +377,56 @@ def twiddle_arguments(n):
     return (_K2PI * np.unique(m).astype(np.float64)) / float(n4)
 
 
-def twiddle_fingerprint(nmax=2048, cos=math.cos, sin=math.sin):
-    """sha256 of cos and sin at every argument of twiddle_arguments(n), n = 1 .. nmax (the lengths
-    of the packs and of FFTW's sub-plans for them)."""
+def separate_sincos(v):
+    return math.sin(v), math.cos(v)
+
+
+def c_sincos():
+    """The C library's sincos(x, &s, &c) as a function of x giving (s, c), or None."""
+    if sys.platform == "win32":
+        return None
+    try:
+        f = ctypes.CDLL(ctypes.util.find_library("m") or "libm.so.6").sincos
+    except (OSError, AttributeError):
+        return None
+    f.argtypes = [ctypes.c_double, ctypes.POINTER(ctypes.c_double), ctypes.POINTER(ctypes.c_double)]
+    f.restype = None
+    s, c = ctypes.c_double(), ctypes.c_double()
+
+    def sincos(v):
+        f(v, ctypes.byref(s), ctypes.byref(c))
+        return s.value, c.value
+
+    return sincos
+
+
+def imports_sincos(path):
+    """Whether a library names sincos among its symbols (its dynamic string table)."""
+    with open(path, "rb") as fh:
+        return b"\0sincos\0" in fh.read()
+
+
+def fftw_sincos():
+    """The function FFTW's twiddle factors come from: the C library's sincos where FFTW's code
+    (built into the extension, or the libraries the driver was switched to) imports it (built with
+    GCC), else its sin and cos."""
+    name = F.fftw_info()["name"]
+    paths = name.split(";") if name != "builtin" else [F._ext().__file__]
+    f = c_sincos()
+    if f is not None and all(os.path.isfile(p) and imports_sincos(p) for p in paths):
+        return f
+    return separate_sincos
+
+
+def twiddle_fingerprint(nmax=2048, sincos=None):
+    """sha256 of the cosines and sines of every argument of twiddle_arguments(n), n = 1 .. nmax
+    (the lengths of the packs and of FFTW's sub-plans for them), from sincos (default: the function
+    FFTW calls here)."""
+    sincos = fftw_sincos() if sincos is None else sincos
     h = hashlib.sha256()
     for n in range(1, nmax + 1):
-        t = twiddle_arguments(n).tolist()
-        h.update(np.array([cos(v) for v in t] + [sin(v) for v in t], dtype=np.float64).tobytes())
+        sc = [sincos(v) for v in twiddle_arguments(n).tolist()]
+        h.update(np.array([c for _, c in sc] + [s for s, _ in sc], dtype=np.float64).tobytes())
     return h.hexdigest()
 
 
@@ -388,9 +438,9 @@ def digests_hold_here():
     fp = twiddle_fingerprint()
     if fp != REFERENCE_TWIDDLE_FINGERPRINT:
         return (
-            "the C library's cos and sin give FFTW other twiddle factors than where the digests "
-            f"were recorded (fingerprint {fp[:16]}, not {REFERENCE_TWIDDLE_FINGERPRINT[:16]}): "
-            "MATLAB's own FFTW would differ from them here too"
+            "the C library gives FFTW other twiddle factors than where the digests were recorded "
+            f"(fingerprint {fp[:16]}, not {REFERENCE_TWIDDLE_FINGERPRINT[:16]}): MATLAB's own FFTW "
+            "would differ from them here too"
         )
     return ""
 
@@ -823,12 +873,20 @@ def test_pack_results_do_not_depend_on_our_thread_count(pack):
 
 
 def test_twiddle_fingerprint_sees_another_c_library():
-    def bumped_sin(v):
-        return math.nextafter(math.sin(v), math.inf) if v > 0.5 else math.sin(v)
+    def bumped(v):
+        s, c = separate_sincos(v)
+        return (math.nextafter(s, math.inf) if v > 0.5 else s), c
 
-    a = twiddle_fingerprint(64)
-    assert a == twiddle_fingerprint(64)
-    assert twiddle_fingerprint(64, sin=bumped_sin) != a
+    a = twiddle_fingerprint(64, separate_sincos)
+    assert a == twiddle_fingerprint(64, separate_sincos)
+    assert twiddle_fingerprint(64, bumped) != a
+    # the C library's sincos, as FFTW's GCC build calls it, is a function of its own
+    f = c_sincos()
+    if f is not None:
+        assert f(0.25) == pytest.approx(separate_sincos(0.25), rel=1e-15)
+    if sys.platform.startswith("linux") and F.fftw_info()["name"] == "builtin":
+        # our FFTW, built into the extension with GCC, imports sincos: the fingerprint takes it
+        assert fftw_sincos() is not separate_sincos
     # the arguments are FFTW's: in the first octant, 0 and pi/4 included where n is a multiple of 8
     t = twiddle_arguments(8)
     assert t[0] == 0 and t[-1] == _K2PI / 8 and np.all(t <= math.pi / 4 + 1e-15)
