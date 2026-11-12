@@ -403,6 +403,49 @@ def test_one_dimensional_points():
     assert d[:, 0].tolist() == [0.5, 1.0]
 
 
+def test_hypot_is_the_reference_platforms():
+    """msun's hypot is the reference platform's C library's (glibc 2.28) and MATLAB's; glibc
+    2.35 and later round the first three the other way (fdlibm 5.3's own version the next two:
+    it does not read the scaled arguments again); then both scalings, and two subnormals of the
+    same high word, larger second, which are swapped after the scaling"""
+    pairs = [
+        (1.7799444501991235e-05, 0.4917817083544318, 0.4917817086765465),
+        (69806544.69088814, 69803484.08146675, 98719198.0903033),
+        (1934.5564907201772, 967.2782453604309, 2162.899909782032),
+        (2.186954278671333e-307, 1.4686997726e-314, 2.1869542786713378e-307),
+        (1.0040762481921225e-306, 6.2987061748e-313, 1.0040762481923201e-306),
+        (3e200, 4e200, 4.9999999999999995e200),
+        (1.2345e300, 6.789e299, 1.4088631800142978e300),
+        (4.564467125769093e180, 2.6971851197726455e180, 5.30180796639691e180),
+        (3e-140, 4e-140, 5e-140),
+        (1e-140, 9.999999990686774e-141, 1.4142135617145506e-140),
+        (2.086006742350502e-308, 2.086008864346292e-308, 2.9500605267117925e-308),
+        (1.582266161533255e-309, 1.58227677151221e-309, 2.237669767324993e-309),
+        (2.1219957924e-314, 4.2439915814e-314, 4.7449268366e-314),
+    ]
+    x, y, want = (np.array(v) for v in zip(*pairs, strict=True))
+    assert nbrs._hypot(x, y).tobytes() == want.tobytes()
+    assert nbrs._hypot(-y, x).tobytes() == want.tobytes()
+    assert nbrs._hypot(3.0, 4.0) == 5.0 and nbrs._hypot(np.ones((2, 3)), 1.0).shape == (2, 3)
+
+
+def test_cart2sph_and_sph2cart_call_no_c_library_function(monkeypatch):
+    """hypot, atan2, sin and cos are written out, so that the results are MATLAB's on any C
+    library and CPU (NumPy's ufuncs call the C library's functions or SIMD versions of them;
+    angles up to 2^20 pi/2)"""
+    V = np.vstack([_sph_values("rand", 0), _sph_values("special", 0), _sph_values("nan", 0)])
+    A = np.vstack([_angles(p) for p in range(8)])
+    want = _py_sph(V) + [v.copy() for v in nbrs.sph2cart(A[:, 0], A[:, 1], A[:, 2])]
+
+    def refuse(*args, **kwargs):
+        raise AssertionError("a C library function was called")
+
+    for name in ("hypot", "arctan2", "arctan", "sin", "cos", "tan", "exp", "log"):
+        monkeypatch.setattr(np, name, refuse)
+    got = _py_sph(V) + list(nbrs.sph2cart(A[:, 0], A[:, 1], A[:, 2]))
+    assert all(g.tobytes() == w.tobytes() for g, w in zip(got, want, strict=True))
+
+
 def test_cart2sph_round_trip_and_hypot():
     az, el, r = nbrs.cart2sph(np.array([3.0, 0.0]), np.array([4.0, 0.0]), np.array([12.0, 0.0]))
     assert r.tolist() == [13.0, 0.0]

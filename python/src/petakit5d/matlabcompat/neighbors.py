@@ -12,12 +12,14 @@ them the same way, so the result is the same.
 
 ``cart2sph`` and ``sph2cart`` are MATLAB's formulas (``hypot(hypot(x, y), z)``,
 ``atan2(z, hypot(x, y))``, ``atan2(y, x)``; ``r .* sin(elev)``, ``r .* cos(elev) .* cos(az)``, ...).
-``hypot`` equals MATLAB's bit for bit (with MATLAB's NaN for a NaN argument, also next to Inf), and
-``atan2`` of two zeros is +0 as in MATLAB (C gives -0 or +-pi for signed zeros). The C library's
-``atan2``, ``sin`` and ``cos`` differ from MATLAB's in the last bit for a part of the inputs
-(MATLAB's ``atan2`` is also 1 ulp above +-pi/2 for a negative x tiny next to y); the coordinates of
-``sph2cart`` carry such differences of the angles, amplified where a cosine or sine is near zero
-(up to about 5e-16 of the radius). See ``_atan2``, ``_sin``, ``_cos``.
+``hypot``, ``atan2``, ``sin`` and ``cos`` are written out here (fdlibm's, as MATLAB computes them),
+so that the results are MATLAB's on every C library and CPU: ``hypot`` with MATLAB's NaN for a NaN
+argument, also next to Inf, and ``atan2`` of two zeros +0 as in MATLAB (C gives -0 or +-pi for
+signed zeros). The C libraries' ``hypot`` (glibc 2.35 and later), ``atan2``, ``sin`` and ``cos``
+differ from MATLAB's in the last bit for a part of the inputs (MATLAB's ``atan2`` is also 1 ulp
+above +-pi/2 for a negative x tiny next to y); the coordinates of ``sph2cart`` would carry such
+differences of the angles, amplified where a cosine or sine is near zero (up to about 5e-16 of the
+radius). See ``_hypot``, ``_atan2``, ``_sin``, ``_cos``.
 """
 
 from __future__ import annotations
@@ -165,16 +167,19 @@ def _tree(X, Y, k):
 
 # --- the elementary functions of cart2sph and sph2cart ------------------------------------------
 #
-# hypot is the C library's (equal to MATLAB's bit for bit) with MATLAB's NaN for a NaN argument,
-# also next to Inf. atan2, sin and cos are fdlibm's (MATLAB's are, bit for bit, measured on
-# 357,997 values; the C library's and NumPy's differ in the last bit for a part of them), with
-# MATLAB's +0 for atan2 of two zeros of any sign; sin and cos of |x| > 2^20 pi/2 (fdlibm's
-# Payne-Hanek reduction, not ported) are the C library's. Element-wise NumPy operations round each
-# operation as the C code does (no fused multiply-adds).
+# hypot is fdlibm's as FreeBSD's msun has it (the reference platform's C library, glibc 2.28, gives
+# the same bits on 24 million argument pairs of every range, and MATLAB on the oracle cases;
+# glibc 2.35 and later compute hypot otherwise and differ in the last bit for about one value in
+# ten), with MATLAB's NaN for a NaN argument, also next to Inf. atan2, sin and cos are fdlibm's
+# (MATLAB's are, bit for bit, measured on 357,997 values; the C library's and NumPy's differ in
+# the last bit for a part of them), with MATLAB's +0 for atan2 of two zeros of any sign; sin and
+# cos of |x| > 2^20 pi/2 (fdlibm's Payne-Hanek reduction, not ported) are the C library's.
+# Element-wise NumPy operations round each operation as the C code does (no fused multiply-adds).
 #
-# The algorithms and constants of _atan, _atan2, _rem_pio2, _ksin, _kcos, _sin and _cos follow
-# fdlibm 5.3 (s_atan.c, e_atan2.c, e_rem_pio2.c, k_sin.c, k_cos.c, s_sin.c, s_cos.c), whose
-# notice is:
+# The algorithms and constants of _hypot follow FreeBSD msun's e_hypot.c (fdlibm's, with b below
+# 2^-450 scaled, and a and b read again after a subnormal b is scaled), those of _atan, _atan2,
+# _rem_pio2, _ksin, _kcos, _sin and _cos fdlibm 5.3 (s_atan.c, e_atan2.c, e_rem_pio2.c, k_sin.c,
+# k_cos.c, s_sin.c, s_cos.c); the notice of both is:
 #   Copyright (C) 1993 by Sun Microsystems, Inc. All rights reserved.
 #   Developed at SunSoft, a Sun Microsystems, Inc. business.
 #   Permission to use, copy, modify, and distribute this software is freely granted, provided
@@ -283,18 +288,73 @@ def _lo(x):
     return (np.ascontiguousarray(x).view(np.uint64) & np.uint64(0xFFFFFFFF)).astype(np.uint32)
 
 
+def _with_hi(x, hw):
+    """x with its high 32-bit word replaced by hw"""
+    lo = np.ascontiguousarray(x).view(np.uint64) & np.uint64(0xFFFFFFFF)
+    return ((hw.astype(np.uint32).astype(np.uint64) << np.uint64(32)) | lo).view(np.float64)
+
+
+def _from_hi(hw):
+    """the float64 of high word hw and low word 0"""
+    return (hw.astype(np.uint32).astype(np.uint64) << np.uint64(32)).view(np.float64)
+
+
 _POS_NAN = float(np.array([0x7FF8000000000000], dtype=np.uint64).view(np.float64)[0])
 _MATLAB_NAN = float(np.array([0xFFF8000000000000], dtype=np.uint64).view(np.float64)[0])
 
 
 def _hypot(x, y):
-    """MATLAB's hypot: the C library's, and the positive quiet NaN (0x7FF8000000000000) when an
-    argument is NaN, whatever its payload and also next to Inf"""
-    h = np.hypot(x, y)
-    nan = np.isnan(x) | np.isnan(y)
-    if np.any(nan):
-        h = np.where(nan, _POS_NAN, h)
-    return h
+    """MATLAB's hypot: msun's e_hypot.c, +Inf for an infinite argument, and the positive quiet
+    NaN (0x7FF8000000000000) when an argument is NaN, whatever its payload and also next to Inf"""
+    x, y = np.broadcast_arrays(np.asarray(x, dtype=np.float64), np.asarray(y, dtype=np.float64))
+    shape = x.shape
+    x = np.ascontiguousarray(x).ravel()
+    y = np.ascontiguousarray(y).ravel()
+    # a = |the larger|, b = |the smaller| by high word
+    ha, hb = _hi(x) & 0x7FFFFFFF, _hi(y) & 0x7FFFFFFF
+    sw = hb > ha
+    a, b = np.abs(np.where(sw, y, x)), np.abs(np.where(sw, x, y))
+    ha, hb = np.where(sw, hb, ha), np.where(sw, ha, hb)
+    with np.errstate(over="ignore", under="ignore", invalid="ignore"):
+        # a / b > 2^60: a + b
+        ratio = (ha - hb) > 0x3C00000
+        direct = a + b
+        # a > 2^500: both scaled by 2^-600 (k: the exponent of the scale back)
+        big = ha > 0x5F300000
+        ha = np.where(big, ha - 0x25800000, ha)
+        hb = np.where(big, hb - 0x25800000, hb)
+        a, b = np.where(big, _with_hi(a, ha), a), np.where(big, _with_hi(b, hb), b)
+        # b < 2^-450: a subnormal b with a scaled by 2^1022 and both read again (and swapped
+        # if b became the larger), a normal one by 2^600; b == 0: a
+        small = hb < 0x23D00000
+        zero = small & ((hb | _lo(b).astype(np.int32)) == 0)
+        sub = small & ~zero & (hb <= 0x000FFFFF)
+        a, b = np.where(sub, a * 2.0**1022, a), np.where(sub, b * 2.0**1022, b)
+        ha, hb = np.where(sub, _hi(a), ha), np.where(sub, _hi(b), hb)
+        s2 = sub & (hb > ha)
+        a, b = np.where(s2, b, a), np.where(s2, a, b)
+        ha, hb = np.where(s2, hb, ha), np.where(s2, ha, hb)
+        tiny = small & ~zero & ~sub
+        ha = np.where(tiny, ha + 0x25800000, ha)
+        hb = np.where(tiny, hb + 0x25800000, hb)
+        a, b = np.where(tiny, _with_hi(a, ha), a), np.where(tiny, _with_hi(b, hb), b)
+        k = np.select([big, sub, tiny], [600, -1022, -600], 0).astype(np.int32)
+        # medium size a and b: sqrt(a^2 + b^2) from the products of their 21-bit high parts
+        w = a - b
+        t1 = _from_hi(ha)
+        t2 = a - t1
+        far = np.sqrt(t1 * t1 - (b * (-b) - t2 * (a + t1)))
+        y1 = _from_hi(hb)
+        y2 = b - y1
+        t1 = _from_hi(ha + 0x00100000)
+        t2 = (a + a) - t1
+        near = np.sqrt(t1 * y1 - (w * (-w) - (t1 * y2 + t2 * b)))
+        h = np.where(w > b, far, near)
+        h = np.where(k != 0, _from_hi((1023 + k) << 20) * h, h)
+        h = np.where(ratio, direct, np.where(zero, a, h))
+        h = np.where(np.isinf(x) | np.isinf(y), np.inf, h)
+    h = np.where(np.isnan(x) | np.isnan(y), _POS_NAN, h)
+    return h.reshape(shape)
 
 
 def _atan(x):
