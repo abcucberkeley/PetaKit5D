@@ -67,7 +67,7 @@ classdef FunctionSpyFixture < matlab.unittest.fixtures.Fixture
             end
             % a spy of a built-in (e.g., pause) would warn at each use
             fixture.WarningState = warning('off', 'MATLAB:dispatcher:nameConflict');
-            addpath(fixture.Folder, '-begin');
+            pktest.addFunctionFolder(fixture.Folder, fixture.FunctionName);
             fixture.SetupDescription = sprintf('Replaced %s with a spy', fixture.FunctionName);
         end
 

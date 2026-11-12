@@ -37,7 +37,7 @@ classdef FunctionStubFixture < matlab.unittest.fixtures.Fixture
             fclose(fid);
             % a stub of a built-in (e.g., pause) would warn at each use
             fixture.WarningState = warning('off', 'MATLAB:dispatcher:nameConflict');
-            addpath(fixture.Folder, '-begin');
+            pktest.addFunctionFolder(fixture.Folder, fixture.FunctionName);
             fixture.SetupDescription = sprintf('Replaced %s with a stub', fixture.FunctionName);
         end
 

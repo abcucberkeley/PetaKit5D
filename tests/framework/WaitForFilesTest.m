@@ -3,6 +3,13 @@ classdef WaitForFilesTest < pktest.TestCase
     % rounds: at most waitTime, until all files of one group exist. pause is
     % a spy (it doesn't wait); files appear at its calls (pktest.atCall).
 
+    properties (TestParameter)
+        % how long a look takes (ms): slow, and as slow as the first look
+        % on a loaded Windows runner (0.95 s: the next pause is the rest of
+        % the wait)
+        lookTime = struct('slow', 300, 'verySlow', 950)
+    end
+
     methods (Test, TestTags = {'Unit'})
         function withoutFilesItIsOnePause(testCase)
             pauses = testCase.applyFixture(pktest.FunctionSpyFixture('pause'));
@@ -68,21 +75,38 @@ classdef WaitForFilesTest < pktest.TestCase
             testCase.verifyLooksAtLeastASecondApart(testCase.waits(pauses), 3);
         end
 
-        function slowLooksAreFewer(testCase)
-            % a look that takes 0.3 s (slow storage, many files): the next
-            % ones are 3 s or more apart, so that looking takes at most a
-            % tenth of the wait, which stays the same
+        function slowLooksAreFewer(testCase, lookTime)
+            % a look that takes 0.3 s or more (slow storage, many files):
+            % the next ones are 10 times as far apart (3 s or more), so that
+            % looking takes at most a tenth of the wait, which stays the
+            % same. The stub records how long each look took, so a slower
+            % machine (longer looks, fewer of them) passes too.
             testCase.assumeTrue(usejava('jvm'), 'The slow stub sleeps with Java.');
             stubFolder = testCase.createTempFolder();
             fid = fopen([stubFolder, 'batch_file_exist.m'], 'w');
-            fprintf(fid, 'function [tf] = batch_file_exist(paths, varargin)\njava.lang.Thread.sleep(300);\ntf = false(numel(paths), 1);\nend\n');
+            fprintf(fid, '%s\n', 'function [tf] = batch_file_exist(paths, varargin)', 't0 = tic;', ...
+                sprintf('java.lang.Thread.sleep(%d);', lookTime), ...
+                'fid = fopen([fileparts(mfilename(''fullpath'')), ''/looks.txt''], ''a'');', ...
+                'fprintf(fid, ''%.6f\n'', toc(t0));', 'fclose(fid);', 'tf = false(numel(paths), 1);', 'end');
             fclose(fid);
             testCase.applyFixture(matlab.unittest.fixtures.PathFixture(stubFolder));
             pauses = testCase.applyFixture(pktest.FunctionSpyFixture('pause'));
             testCase.verifyFalse(wait_for_files({{[stubFolder, 'a.tif']}}, 10));
             waits = testCase.waits(pauses);
+            fid = fopen([stubFolder, 'looks.txt'], 'r');
+            looks = fscanf(fid, '%f');
+            fclose(fid);
+            % a look after each pause but the last
+            testCase.assertNumElements(looks, numel(waits) - 1);
             testCase.verifyEqual(waits(1), 1);
-            testCase.verifyGreaterThanOrEqual(waits(2 : end - 1), 3);
+            for k = 1 : numel(looks)
+                % at least 10 times the look before it, or the rest of the wait
+                left = 10 - sum(waits(1 : k));
+                testCase.verifyGreaterThanOrEqual(waits(k + 1), min(10 * looks(k), left) - 1e-9, ...
+                    sprintf('The pause after look %d (%.3f s) is %.3f s.', k, looks(k), waits(k + 1)));
+            end
+            % (looks of under 0.1 s: 9)
+            testCase.verifyLessThanOrEqual(numel(looks), 3);
             testCase.verifyEqual(sum(waits), 10, 'AbsTol', 1e-9);
         end
     end

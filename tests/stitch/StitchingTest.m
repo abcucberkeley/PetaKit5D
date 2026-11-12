@@ -620,9 +620,18 @@ classdef StitchingTest < pktest.TestCase
             csvFn = testCase.writeTiles(dataPath, gt, [0, 0, 0; 36, 0, 0; 0, 48, 0; 36, 48, 0], [64, 72, 32], ...
                 [], [], [], 'tileDir', 'DSR');
             testCase.applyFixture(pktest.FunctionStubFixture('batch_file_exist', true));
-            pauses = testCase.applyFixture(pktest.FunctionSpyFixture('pause', [], 20));
+            % (each wait notes the batch_file_exist in effect, for the
+            % diagnostic)
+            noteFn = [dataPath, 'pauses.txt'];
+            pauses = testCase.applyFixture(pktest.FunctionSpyFixture('pause', ...
+                @() writelines(string(which('batch_file_exist')), noteFn, 'WriteMode', 'append'), 20));
             testCase.stitch(dataPath, csvFn, 'processedDirStr', 'DSR', 'streaming', true);
-            testCase.verifyEmpty(pauses.getCalls(), 'The wrapper waited for tiles batch_file_exist reported made.');
+            notes = '';
+            if isfile(noteFn)
+                notes = strjoin(readlines(noteFn), '; ');
+            end
+            testCase.verifyEmpty(pauses.getCalls(), ['The wrapper waited for tiles batch_file_exist reported made ', ...
+                '(batch_file_exist at the waits: ', notes, ').']);
         end
 
         function secondaryChannelUsesTheTaskSizeOfThePrimary(testCase)

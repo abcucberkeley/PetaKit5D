@@ -45,7 +45,7 @@ classdef MovefileSpyFixture < matlab.unittest.fixtures.Fixture
             % MATLAB warns that the spy shadows a built-in each time it looks
             % through the path again
             fixture.WarningState = warning('off', 'MATLAB:dispatcher:nameConflict');
-            addpath(fixture.Folder, '-begin');
+            pktest.addFunctionFolder(fixture.Folder, 'movefile');
             fixture.SetupDescription = 'Wrapped movefile in a spy';
         end
 

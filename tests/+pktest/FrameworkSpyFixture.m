@@ -55,7 +55,7 @@ classdef FrameworkSpyFixture < matlab.unittest.fixtures.Fixture
             end
             done = fixture.Done;
             save([fixture.Folder, '/done.mat'], 'done');
-            addpath(fixture.Folder, '-begin');
+            pktest.addFunctionFolder(fixture.Folder, 'generic_computing_frameworks_wrapper');
             fixture.SetupDescription = 'Replaced generic_computing_frameworks_wrapper with a spy';
         end
 
