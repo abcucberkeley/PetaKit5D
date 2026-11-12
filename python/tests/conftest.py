@@ -21,6 +21,13 @@ import pytest
 # the shared fixtures (pk_temp_folder, rng, thread_count, write_volume, ...) for every test
 pytest_plugins = ["petakit5d.testing.fixtures"]
 
+# the oracle harness's MATLAB side and the repo's oracle commit live next to these tests; an
+# installed petakit5d (site-packages, as in CI) can't find them from its own folder
+os.environ.setdefault(
+    "PETAKIT5D_ORACLE_HARNESS",
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "oracle_matlab"),
+)
+
 SITE_VARIABLES = (
     "PETAKIT5D_ORACLE_DIR",
     "PETAKIT5D_GOLDEN_DIR",

@@ -25,6 +25,9 @@ jobs:
   test:
     name: Python ${{ matrix.python }} on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
+    # Linux is the gate. macOS and Windows report without failing the workflow until the port's
+    # platform task (E04) and a cpp-zarr wheel whose write_zarr doesn't crash on macOS arm64
+    continue-on-error: ${{ matrix.os != 'ubuntu-24.04' }}
     timeout-minutes: 45
     strategy:
       fail-fast: false
