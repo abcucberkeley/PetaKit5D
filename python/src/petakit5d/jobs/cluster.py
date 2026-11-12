@@ -255,22 +255,22 @@ class _NoRunners:
 class _OnePlace:
     """The places of the jobs (SlurmAlternatives, J09) when there is one. A places object has:
 
-    choose(cpus, trial) -> (cpus, slurm_param, slurm_constraint, time_str)
+    choose(cpus, trial, batch) -> (cpus, slurm_param, slurm_constraint, time_str)
     move(job_keys)                    pending jobs that can start now elsewhere move there
-    submitted(job_id, array_id, trial)
+    submitted(job_id, array_id, trial, batch)
     forget(job_keys)                  at the end
     """
 
     def __init__(self, slurm_param: str, slurm_constraint: str, time_option: str) -> None:
         self.place = (slurm_param, slurm_constraint, time_option)
 
-    def choose(self, cpus: int, trial: int) -> tuple[int, str, str, str]:
+    def choose(self, cpus: int, trial: int, batch: int = 0) -> tuple[int, str, str, str]:
         return (cpus, *self.place)
 
     def move(self, job_keys: Sequence[str]) -> None:
         pass
 
-    def submitted(self, job_id: int, array_id: int, trial: int) -> None:
+    def submitted(self, job_id: int, array_id: int, trial: int, batch: int = 0) -> None:
         pass
 
     def forget(self, job_keys: Sequence[str]) -> None:
@@ -359,6 +359,8 @@ class _ClusterLoop:
             return framework.run_local(call)
 
         self.shape = job_shape(s, n)
+        # (the places shape their jobs from the CPUs asked for, as MATLAB's do)
+        requested_cpus = s.get("cpus_per_task", 1)
         s["cpus_per_task"] = self.shape.cpus_per_task
         s["task_batch_num"] = self.shape.task_batch_num
         s["para_job_num"] = self.shape.para_job_num
@@ -386,7 +388,7 @@ class _ClusterLoop:
         self.launch = s.get("python_launch_str") or default_python_launch_str()
 
         self.runners = self._runners()
-        self.places = self._places()
+        self.places = self._places(requested_cpus)
         parent = s.get("tmp_dir") or self.log_dir
         self.folder = new_call_folder(parent, s.get("uuid") or "call")
         self.marker_base = os.path.basename(self.folder)
@@ -431,7 +433,7 @@ class _ClusterLoop:
             return _NoRunners()
         return mod.cluster_runners(self.call, self.shape)
 
-    def _places(self) -> Any:
+    def _places(self, requested_cpus: float = 1) -> Any:
         s = self.s
         one = _OnePlace(s.get("slurm_param", ""), s.get("slurm_constraint", ""), self.time_option)
         if s.get("slurm_alternatives") in (None, [], {}) or s.get("whole_node_job"):
@@ -444,7 +446,8 @@ class _ClusterLoop:
                 stacklevel=3,
             )
             return one
-        return mod.cluster_places(self.call, self.shape, self.time_option) or one
+        places = mod.cluster_places(self.call, self.shape, self.time_option, requested_cpus)
+        return places or one
 
     # -- the rounds ------------------------------------------------------------------------
 
@@ -798,7 +801,7 @@ class _ClusterLoop:
             print(f"Task {b: 4d}:    Process {', '.join(names)} with function {text}... ")
         else:
             print(f"Task {b: 4d}:    Process {', '.join(names)} ... ")
-        place = self.places.choose(self._job_cpus(trial), trial)
+        place = self.places.choose(self._job_cpus(trial), trial, b)
         cpus, slurm_param, constraint, time_option = place
         argv = [
             "sbatch",
@@ -837,7 +840,7 @@ class _ClusterLoop:
             self.job_ids[x] = job_id
             self.cur[x] = state
             self.trials[x] += 1
-        self.places.submitted(job_id, b % ARRAY_ID_MODULUS, trial)
+        self.places.submitted(job_id, b % ARRAY_ID_MODULUS, trial, b)
 
     def _find_unknown(self) -> None:
         """looks for the jobs of submissions without answer by their comments"""

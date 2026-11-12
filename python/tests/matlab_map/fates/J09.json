@@ -1,0 +1,129 @@
+{
+ "task": "J09",
+ "classes": {
+  "SlurmAlternativesTest": {
+   "finished": true,
+   "methods": {
+    "placesTakeTheMainSettingsForKeysTheyLeaveOut": [
+     "pytest:tests/jobs/test_alternatives.py::test_places_take_the_main_settings_for_keys_they_leave_out",
+     "pytest:tests/jobs/test_alternatives.py::test_entries_that_matlab_refuses"
+    ],
+    "memoryPerCPUOfAPlaceWithoutOneComesFromItsNodes": [
+     "pytest:tests/jobs/test_alternatives.py::test_memory_per_cpu_of_a_place_without_one_comes_from_its_nodes",
+     "oracle:tests/jobs/test_alternatives.py::memory_per_cpu_from_nodes"
+    ],
+    "optionsOfASlurmParamAreRead": [
+     "pytest:tests/jobs/test_alternatives.py::test_options_of_a_slurm_param_are_read",
+     "oracle:tests/jobs/test_alternatives.py::local_parse_options"
+    ],
+    "jobGoesToTheFirstPlaceWithRoom": [
+     "pytest:tests/jobs/test_alternatives.py::test_job_goes_to_the_first_place_with_room"
+    ],
+    "jobKeepsItsShapeAtAPlaceWithLessMemoryPerCPU": [
+     "pytest:tests/jobs/test_alternatives.py::test_job_keeps_its_shape_at_a_place_with_less_memory_per_cpu"
+    ],
+    "jobIsReshapedAtAPlaceWithMoreMemoryPerCPU": [
+     "pytest:tests/jobs/test_alternatives.py::test_job_is_reshaped_at_a_place_with_more_memory_per_cpu"
+    ],
+    "cpuJobsDoNotGoToGPUNodesOfAnAlternativeWithoutCpuJobs": [
+     "pytest:tests/jobs/test_alternatives.py::test_cpu_jobs_do_not_go_to_gpu_nodes_of_an_alternative_without_cpu_jobs"
+    ],
+    "cpuJobsKeepOutOfGPUNodesWhereGPUJobsOfTheUserWait": [
+     "pytest:tests/jobs/test_alternatives.py::test_cpu_jobs_keep_out_of_gpu_nodes_where_gpu_jobs_of_the_user_wait"
+    ],
+    "mainPlaceOfGPUNodesTakesCPUJobs": [
+     "pytest:tests/jobs/test_alternatives.py::test_main_place_of_gpu_nodes_takes_cpu_jobs"
+    ],
+    "plannedNodesHaveNoRoom": [
+     "pytest:tests/jobs/test_alternatives.py::test_planned_nodes_have_no_room"
+    ],
+    "pendingJobsOfTheUserStartFirst": [
+     "pytest:tests/jobs/test_alternatives.py::test_pending_jobs_of_the_user_start_first"
+    ],
+    "slurmsOwnCheckDecides": [
+     "pytest:tests/jobs/test_alternatives.py::test_slurms_own_check_decides"
+    ],
+    "placeSlurmRefusesIsNotUsed": [
+     "pytest:tests/jobs/test_alternatives.py::test_place_slurm_refuses_is_not_used"
+    ],
+    "mainPlaceIsNotLeftOutWhenSlurmRefusesItOnce": [
+     "pytest:tests/jobs/test_alternatives.py::test_main_place_is_not_left_out_when_slurm_refuses_it_once"
+    ],
+    "burstOfJobsFillsTheRoomInOrder": [
+     "pytest:tests/jobs/test_alternatives.py::test_burst_of_jobs_fills_the_room_in_order"
+    ],
+    "cpuJobsLeaveIdleGPUsTheirShare": [
+     "pytest:tests/jobs/test_alternatives.py::test_cpu_jobs_leave_idle_gpus_their_share"
+    ],
+    "featuresAndNodeListsOfAPlaceCount": [
+     "pytest:tests/jobs/test_alternatives.py::test_features_and_node_lists_of_a_place_count",
+     "oracle:tests/jobs/test_alternatives.py::local_expand_hostlist"
+    ],
+    "gpuJobsNeedAFreeGPU": [
+     "pytest:tests/jobs/test_alternatives.py::test_gpu_jobs_need_a_free_gpu"
+    ],
+    "limitThatPendingJobsWaitForClosesAPlace": [
+     "pytest:tests/jobs/test_alternatives.py::test_limit_that_pending_jobs_wait_for_closes_a_place"
+    ],
+    "cpuJobsWaitOutsideGPUNodes": [
+     "pytest:tests/jobs/test_alternatives.py::test_cpu_jobs_wait_outside_gpu_nodes"
+    ],
+    "pendingJobMovesToAPlaceWithRoom": [
+     "pytest:tests/jobs/test_alternatives.py::test_pending_job_moves_to_a_place_with_room"
+    ],
+    "onlyAsManyJobsMoveAsFit": [
+     "pytest:tests/jobs/test_alternatives.py::test_only_as_many_jobs_move_as_fit"
+    ],
+    "jobsThatDoNotWaitForResourcesStay": [
+     "pytest:tests/jobs/test_alternatives.py::test_jobs_that_do_not_wait_for_resources_stay"
+    ],
+    "jobWithRoomOnlyOutsideItsPlaceMoves": [
+     "pytest:tests/jobs/test_alternatives.py::test_job_with_room_only_outside_its_place_moves"
+    ],
+    "pendingJobsAreFoundByTheirIds": [
+     "pytest:tests/jobs/test_alternatives.py::test_pending_jobs_are_found_by_their_ids",
+     "oracle:tests/jobs/test_alternatives.py::local_pending_keys"
+    ],
+    "noSlurmCallsBeforeAJobHasWaited": [
+     "pytest:tests/jobs/test_alternatives.py::test_no_slurm_calls_before_a_job_has_waited"
+    ],
+    "cpuJobLeavesTheQueueOfGPUNodes": [
+     "pytest:tests/jobs/test_alternatives.py::test_cpu_job_leaves_the_queue_of_gpu_nodes"
+    ],
+    "placesWithOtherOptionsDoNotTrade": [
+     "pytest:tests/jobs/test_alternatives.py::test_places_with_other_options_do_not_trade",
+     "oracle:tests/jobs/test_alternatives.py::local_move_fields_and_shapes_of_place_pairs"
+    ],
+    "jobMovedBySomethingElseIsLeftToIt": [
+     "pytest:tests/jobs/test_alternatives.py::test_job_moved_by_something_else_is_left_to_it"
+    ],
+    "failedMoveLeavesTheJob": [
+     "pytest:tests/jobs/test_alternatives.py::test_failed_move_leaves_the_job"
+    ],
+    "frameworkSubmitsToThePlaceWithRoom": [
+     "pytest:tests/jobs/test_alternatives.py::test_framework_submits_to_the_place_with_room"
+    ],
+    "compiledFrameworkSubmitsToThePlaceWithRoom": [
+     "pytest:tests/jobs/test_alternatives.py::test_compiled_framework_submits_to_the_place_with_room"
+    ],
+    "frameworkMovesPendingJobs": [
+     "pytest:tests/jobs/test_alternatives.py::test_framework_moves_pending_jobs"
+    ],
+    "singleJobGoesToThePlaceWithRoomAndMoves": [
+     "pytest:tests/jobs/test_alternatives.py::test_single_job_goes_to_the_place_with_room_and_moves"
+    ],
+    "configWithoutAlternativesIsAsBefore": [
+     "pytest:tests/jobs/test_alternatives.py::test_config_without_alternatives_is_as_before",
+     "pytest:tests/jobs/test_alternatives.py::test_one_place_gives_the_commands_of_no_alternatives"
+    ]
+   }
+  },
+  "CoordinatorNiceTest": {
+   "methods": {
+    "jobsAtAnotherPlaceKeepTheirNice": [
+     "pytest:tests/jobs/test_alternatives.py::test_jobs_at_another_place_keep_their_nice"
+    ]
+   }
+  }
+ }
+}

@@ -167,6 +167,43 @@ CPU job keep its CPUs with P and then round(P / 2) slots, try 3 runs one task at
 jobs keep P slots and get CPUs x (try + 1). The master runs its batch with P - 1 slots
 (`master_para_factor`).
 
+## Jobs on more than one place (SlurmAlternatives)
+
+A cluster config may list other places for its jobs after its main settings, in order of
+preference (`jobs.alternatives`, the port of MATLAB's slurm_alternatives; the module docstring
+has the rules):
+
+```json
+{
+  "SlurmParam": "-p cpu --qos normal -n1 --mem-per-cpu=21418M",
+  "memPerCPU": 20.9,
+  "SlurmAlternatives": [
+    {"SlurmParam": "-p gpu --qos normal -n1 --mem-per-cpu=7800M", "memPerCPU": 7.6,
+     "maxCPUNum": 32, "cpuJobs": true}
+  ]
+}
+```
+
+- An entry has any of SlurmParam, SlurmConstraint, memPerCPU, maxCPUNum, minCPUNum,
+  gpuHeadroom and cpuJobs (any case); keys it leaves out are the main settings', except
+  memPerCPU (its `--mem-per-cpu`, else the smallest memory per CPU of its nodes) and cpuJobs
+  (false). Without the key, or with `[]` or `{}`, nothing changes: no Slurm command is added.
+  Jobs of whole nodes use the main place only.
+- A job goes to the first place where Slurm can start it now: the nodes and the user's pending
+  jobs (read at most every 20 s; jobs placed since are taken from that view), then `sbatch
+  --test-only`. It is shaped for that place: at a place with as much memory per CPU as the job's
+  shape, the CPUs a config of only that place gives it; at one with less, its CPUs and memory.
+  With no room anywhere it waits at the first place that isn't of GPU nodes only.
+- A pending job that waited 2 minutes in its place moves to a place that can start it now, by
+  one `scontrol update` (partition, QOS, account, CPUs, memory, GRES, features, node lists, job
+  name). Only the call's own jobs are looked at, each at most once a minute.
+- GPU nodes are for jobs that need a GPU: a CPU-only job goes to an alternative of GPU nodes
+  only if its entry says `"cpuJobs": true`, leaves each idle GPU its share (gpuHeadroom: [CPUs,
+  GB] per idle GPU, by default the node's share; 0 for none), never goes to a partition where
+  GPU jobs of the user are pending (held ones too), and doesn't wait in the queue of GPU nodes.
+- If Slurm doesn't answer the view's queries, jobs go to the main place and none moves until
+  the next view.
+
 ## Task records
 
 ```python
