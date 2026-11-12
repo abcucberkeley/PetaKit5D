@@ -1,0 +1,28 @@
+{
+ "task": "K02",
+ "classes": {
+  "MIPTest": {
+   "methods": {
+    "maxPoolingMatchesBlockwiseMax": [
+     "pytest:tests/kernels/test_mip.py::test_max_pooling_matches_blockwise_max",
+     "oracle:tests/kernels/test_mip.py::max_pooling_3d_mex.*",
+     "oracle:tests/kernels/test_mip.py::max_pooling_3d.*"
+    ],
+    "maxPoolingOfNegativeValues": [
+     "pytest:tests/kernels/test_mip.py::test_max_pooling_of_negative_values_gives_zero_known_issue",
+     "oracle:tests/kernels/test_mip.py::max_pooling_3d_mex.single.negative_block"
+    ]
+   }
+  },
+  "MexInputCheckTest": {
+   "methods": {
+    "mipMexCheckTheirInputs": [
+     "pytest:tests/kernels/test_mip.py::test_mip_mex_check_their_inputs",
+     "oracle:tests/kernels/test_mip.py::max_pooling_3d_mex.single.pool_*",
+     "oracle:tests/kernels/test_mip.py::max_pooling_3d_mex.single.input_check_truncates",
+     "oracle:tests/kernels/test_mip.py::range_max_3d.error_*"
+    ]
+   }
+  }
+ }
+}
