@@ -1,0 +1,80 @@
+name: Python
+
+# The Python port (python/) only; the MATLAB workflow (tests.yml) ignores python/**.
+on:
+  push:
+    branches: [main, dev, test]
+    paths: ['python/**', '.github/workflows/python.yml']
+  pull_request:
+    paths: ['python/**', '.github/workflows/python.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: python-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+    working-directory: python
+
+jobs:
+  test:
+    name: Python ${{ matrix.python }} on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        # Linux, Apple silicon, Windows; the oldest tested Python with the pinned
+        # environment (Linux), and the newest supported one with the newest packages
+        os: [ubuntu-24.04, macos-15, windows-2025]
+        python: ['3.12', '3.14']
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python }}
+
+      # Apple Clang has no OpenMP runtime of its own
+      - if: runner.os == 'macOS'
+        run: brew install libomp
+
+      - name: Install (pinned environment)
+        if: runner.os == 'Linux' && matrix.python == '3.12'
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install --require-hashes --only-binary=:all: -r requirements/linux-x86_64-py312.txt
+          python -m pip install -v --no-build-isolation --no-deps .
+
+      - name: Install
+        if: ${{ !(runner.os == 'Linux' && matrix.python == '3.12') }}
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -v ".[test]"
+
+      - name: Build information
+        run: |
+          python -m pip list
+          python -c "from petakit5d._ext import load, groups; print(groups()); print(load('core').build_info())"
+
+      - name: Tests
+        run: python -m pytest -v --timeout=900
+
+  lint:
+    name: ruff
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - run: python -m pip install "ruff==$(sed -n 's/^ruff==\([0-9.]*\).*/\1/p' requirements/linux-x86_64-py312.txt)"
+      - run: ruff check .
+      - run: ruff format --check .

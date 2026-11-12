@@ -1,0 +1,4 @@
+# Test and lint tools
+pytest>=8
+pytest-timeout>=2.3
+ruff>=0.8

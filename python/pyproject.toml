@@ -1,0 +1,88 @@
+[build-system]
+requires = ["scikit-build-core>=0.11", "nanobind>=2.4"]
+build-backend = "scikit_build_core.build"
+
+[project]
+name = "petakit5d"
+dynamic = ["version"]
+description = "Petabyte-scale 5D image processing for light-sheet microscopy (Python port of PetaKit5D)"
+readme = "README.md"
+license = "GPL-3.0-or-later"
+license-files = ["LICENSE"]
+requires-python = ">=3.11"
+dependencies = [
+    "numpy>=2.0",
+    "scipy>=1.13",
+    "scikit-image>=0.24",
+    "cpp-zarr>=1.7.3,<2",
+    "cpp-tiff>=1.7.3,<2",
+]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: C++",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: MacOS",
+    "Operating System :: Microsoft :: Windows",
+    "Topic :: Scientific/Engineering :: Image Processing",
+]
+
+[project.optional-dependencies]
+test = ["pytest>=8", "pytest-timeout>=2.3"]
+dev = ["pytest>=8", "pytest-timeout>=2.3", "ruff>=0.8"]
+
+[tool.scikit-build]
+minimum-version = "build-system.requires"
+cmake.version = ">=3.26"
+cmake.build-type = "Release"
+ninja.version = ">=1.11"
+wheel.packages = ["src/petakit5d"]
+wheel.exclude = ["**/__pycache__/**"]
+sdist.exclude = ["build/", "dist/", ".venv/", "**/__pycache__/**"]
+metadata.version.provider = "scikit_build_core.metadata.regex"
+metadata.version.input = "src/petakit5d/_version.py"
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+# importlib mode: test files of different areas may share a base name
+addopts = ["--import-mode=importlib", "-ra", "--strict-markers", "--strict-config"]
+markers = [
+    "gpu: needs a usable NVIDIA GPU and CuPy (skipped otherwise)",
+    "cluster: needs a real Slurm cluster (PETAKIT5D_TEST_SLURM_CONFIG; skipped otherwise)",
+    "slow: takes more than about 30 s",
+    "demodata: needs the demo datasets (PETAKIT5D_DEMO_DATA; skipped otherwise)",
+    "oracle: compares with MATLAB references (the store, or the repo manifests)",
+]
+xfail_strict = true
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["src", "tests"]
+extend-exclude = ["build", "dist"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "NPY", "TID", "PIE", "C4"]
+ignore = ["E741"]
+
+[tool.ruff.lint.flake8-tidy-imports.banned-api]
+# NumPy rounds, interpolates and orders differently from MATLAB; see docs/conventions.md
+"numpy.round".msg = "use petakit5d.matlabcompat (MATLAB rounds half away from zero)"
+"numpy.around".msg = "use petakit5d.matlabcompat (MATLAB rounds half away from zero)"
+"numpy.rint".msg = "use petakit5d.matlabcompat (MATLAB rounds half away from zero)"
+"numpy.percentile".msg = "use petakit5d.matlabcompat (MATLAB's prctile)"
+"numpy.nanpercentile".msg = "use petakit5d.matlabcompat (MATLAB's prctile)"
+"numpy.quantile".msg = "use petakit5d.matlabcompat (MATLAB's quantile)"
+"numpy.median".msg = "use petakit5d.matlabcompat (MATLAB's median)"
+"numpy.nanmedian".msg = "use petakit5d.matlabcompat (MATLAB's median)"
+
+[tool.ruff.lint.per-file-ignores]
+# the MATLAB emulations, the comparison and benchmark helpers and the tests may use them
+"src/petakit5d/matlabcompat/**" = ["TID251"]
+"src/petakit5d/core/**" = ["TID251"]
+"src/petakit5d/testing/**" = ["TID251"]
+"tests/**" = ["TID251"]
+"benchmarks/**" = ["TID251"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["petakit5d"]

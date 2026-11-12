@@ -1,0 +1,5 @@
+# Build tools for the extension modules (pip install --no-build-isolation, or CMake directly)
+scikit-build-core>=0.11
+nanobind>=2.4
+cmake>=3.26
+ninja>=1.11
