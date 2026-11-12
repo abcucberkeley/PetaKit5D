@@ -5,10 +5,13 @@ MATLAB tests whose intent is ported: tests/decon/DeconRFFTTest.m linesAreGrouped
 transforms themselves); its other methods test the decon mex (the decon task's). The oracle packs
 (MATLAB's own fft, ifft, fftn and ifftn: 1D lengths 2 to 1024, MATLAB's rules, the 3D sizes of the
 demos, the tests and real data) run with MATLAB on the cluster; here the 1D and rule packs are
-checked against digests of MATLAB's outputs, on a CPU where our plans are MATLAB's (x86-64, AVX).
+checked against digests of MATLAB's outputs, where our plans are MATLAB's (x86-64, AVX) and the C
+library's cos and sin give FFTW the reference platform's twiddle factors.
 """
 
+import functools
 import hashlib
+import math
 import os
 import platform
 
@@ -278,9 +281,9 @@ def pack_3d():
 PACKS = {"1d": pack_1d, "edge": pack_edge, "3d": pack_3d}
 
 
-def run_case(c, x, parallel=True):
+def run_case(c, x, parallel=True, threads=None):
     """The case's call (the manifest's dim is MATLAB's, 1-based)."""
-    kw = {"matlab_parallel": parallel}
+    kw = {"matlab_parallel": parallel, "threads": threads}
     dim = c.get("dim")
     d0 = None if dim is None else dim - 1
     f = c["func"]
@@ -316,14 +319,17 @@ def case_record(cid, y):
     return f"{cid} {cls[y.dtype.type]} {real} {dims} {hashlib.sha256(raw).hexdigest()}"
 
 
-def pack_digest(pack, parallel):
-    """sha256 over the records of a pack's cases ('<id> ERROR' where MATLAB raises)."""
+def pack_digest(pack, parallel, threads=None, step=1):
+    """sha256 over the records of a pack's cases ('<id> ERROR' where MATLAB raises); step > 1 takes
+    every step-th case."""
     lines = []
     for i, c in enumerate(PACKS[pack]()):
+        if i % step:
+            continue
         cid = f"{pack}{i:05d}"
         x = case_input(c)
         try:
-            y = run_case(c, x, parallel)
+            y = run_case(c, x, parallel, threads)
         except (ValueError, TypeError):
             lines.append(f"{cid} ERROR")
             continue
@@ -343,6 +349,50 @@ MATLAB_DIGESTS = {
 # plan) for every n in 1..1024, both precisions, kinds r2c c2c-1 c2c+1 c2r, 1 and 4 lines per
 # execute
 MATLAB_PLANS_DIGEST = "238f71138c3fc44f1e4ee2f59f906394ef30577c29d25fe103989a91ccb48bd9"
+
+# FFTW makes its twiddle factors with the C library's cos and sin (kernel/trig.c, in double for
+# both precisions), so their last bits, and with them the FFT's, follow the C library: its version
+# and the code path it picks for the CPU. MATLAB's own FFTW calls the same functions. The digests
+# above were recorded where cos and sin give these values for FFTW's arguments (twiddle_fingerprint;
+# glibc 2.28 on Intel x86-64); elsewhere MATLAB's results would differ from them too.
+REFERENCE_TWIDDLE_FINGERPRINT = "5442ee1a3bc9ca08a71ef7c693dab89979f4788915be2b27e3525416adce53bb"
+_K2PI = 6.2831853071795864769252867665590057683943388  # FFTW's K2PI, rounded to double as C does
+
+
+def twiddle_arguments(n):
+    """The arguments FFTW's real_cexp passes to cos and sin for 2 pi m / n, m = 0 .. n - 1: 4m and
+    4n reduced to the first octant, then (K2PI * m) / n in double."""
+    m = 4 * np.arange(n, dtype=np.int64)
+    n4 = 4 * n
+    m = np.where(m > n4 - m, n4 - m, m)
+    m = np.where(m - n > 0, m - n, m)
+    m = np.where(m > n - m, n - m, m)
+    return (_K2PI * np.unique(m).astype(np.float64)) / float(n4)
+
+
+def twiddle_fingerprint(nmax=2048, cos=math.cos, sin=math.sin):
+    """sha256 of cos and sin at every argument of twiddle_arguments(n), n = 1 .. nmax (the lengths
+    of the packs and of FFTW's sub-plans for them)."""
+    h = hashlib.sha256()
+    for n in range(1, nmax + 1):
+        t = twiddle_arguments(n).tolist()
+        h.update(np.array([cos(v) for v in t] + [sin(v) for v in t], dtype=np.float64).tobytes())
+    return h.hexdigest()
+
+
+@functools.cache
+def digests_hold_here():
+    """'' where the MATLAB digests apply, else why not (FFTW's plans or twiddle factors differ)."""
+    if not matlab_platform():
+        return "FFTW's plans differ from MATLAB's here (not x86-64 with AVX)"
+    fp = twiddle_fingerprint()
+    if fp != REFERENCE_TWIDDLE_FINGERPRINT:
+        return (
+            "the C library's cos and sin give FFTW other twiddle factors than where the digests "
+            f"were recorded (fingerprint {fp[:16]}, not {REFERENCE_TWIDDLE_FINGERPRINT[:16]}): "
+            "MATLAB's own FFTW would differ from them here too"
+        )
+    return ""
 
 
 def plans_digest():
@@ -703,13 +753,18 @@ def test_arguments_follow_matlab():
         "zeros": lambda *s: np.zeros(s, order="F"),
         "five": np.full((1, 1), 5.0),
     }
+    # the values' digests hold where the packs' do (FFTW's plans and twiddle factors); class,
+    # realness and size everywhere
+    values = digests_hold_here() == ""
     for line in MATLAB_ARGUMENT_RULES.strip().splitlines():
         call, want = (p.strip() for p in line.split("|"))
         if want == "error":
             with pytest.raises(ValueError):
                 eval(call, names)
-        else:
+        elif values:
             assert _outcome(eval(call, names)) == want, call
+        else:
+            assert _outcome(eval(call, names)).rsplit(" ", 1)[0] == want.rsplit(" ", 1)[0], call
     # a 1-D array is a column: siz needs two elements; integer values of any type are counts
     with pytest.raises(ValueError):
         F.fftn(np.ones(4), [8])
@@ -746,14 +801,37 @@ def test_plans_are_matlabs():
 
 
 @pytest.mark.oracle
-@needs_matlab_platform
 @pytest.mark.parametrize("pack", ["1d", "edge"])
 @pytest.mark.parametrize("mode", ["multi", "single"])
 def test_oracle_pack_equals_matlab(pack, mode):
     if (pack, mode) not in MATLAB_DIGESTS:
         pytest.skip("no MATLAB digest recorded for this pack")
+    reason = digests_hold_here()
+    if reason:
+        pytest.skip(reason)
     digest, count = pack_digest(pack, mode == "multi")
     assert (digest, count) == MATLAB_DIGESTS[(pack, mode)]
+
+
+@pytest.mark.parametrize("pack", ["1d", "edge"])
+def test_pack_results_do_not_depend_on_our_thread_count(pack):
+    # MATLAB's split of a stage follows its own FFT mode (the grain), never our thread count, so the
+    # packs' digests hold on a runner with any number of CPUs
+    for mode in (True, False):
+        d = {t: pack_digest(pack, mode, threads=t, step=7) for t in (1, 3, 8)}
+        assert d[1] == d[3] == d[8], d
+
+
+def test_twiddle_fingerprint_sees_another_c_library():
+    def bumped_sin(v):
+        return math.nextafter(math.sin(v), math.inf) if v > 0.5 else math.sin(v)
+
+    a = twiddle_fingerprint(64)
+    assert a == twiddle_fingerprint(64)
+    assert twiddle_fingerprint(64, sin=bumped_sin) != a
+    # the arguments are FFTW's: in the first octant, 0 and pi/4 included where n is a multiple of 8
+    t = twiddle_arguments(8)
+    assert t[0] == 0 and t[-1] == _K2PI / 8 and np.all(t <= math.pi / 4 + 1e-15)
 
 
 @pytest.mark.skipif(not os.environ.get("PETAKIT5D_TEST_FFTW"), reason="PETAKIT5D_TEST_FFTW not set")
