@@ -1,0 +1,15 @@
+{
+ "name": "n03_morph",
+ "repeats": 5,
+ "variants": [
+  {"id": "ml", "impl": "matlab", "paths": ["benchmarks/matlabcompat", "benchmarks/common"],
+   "code": "bench_morph_n03([1, 4, 24], 3)"},
+  {"id": "py", "impl": "python", "script": "benchmarks/matlabcompat/bench_morph_n03.py",
+   "args": ["--threads", "1", "4", "24", "--repeats", "3"]}
+ ],
+ "compare": [
+  {"a": "py", "b": "ml"},
+  {"a": "py", "b": "ml", "op_map": {"imerode_disk11": "mex_erode_disk11", "medfilt3_psf": "mex_medfilt3_psf"}}
+ ],
+ "gate": {"ratio_max": 1.05, "threads": [1, 4, 24], "metrics": ["op:imerode_disk11", "op:bwdist_2048"]}
+}
