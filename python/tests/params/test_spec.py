@@ -56,21 +56,26 @@ def test_snake_name(matlab, py):
 
 def test_three_ways_give_the_same_call(sample_crop):
     spec = sample_crop.REG.find("XR_crop_dataset")
-    box = [1, 1, 1, 100, 200, 50]
+    # MATLAB's box [ymin xmin zmin ymax xmax zmax] and batch [y x z]; Python's (z, y, x) forms
+    mbox = [2, 3, 4, 100, 200, 50]
     a = sample_crop.crop_dataset(
-        ROOT, box, batch_size=[512, 512, 512], pad=True, channel_patterns=["CamA_ch0"]
+        ROOT,
+        (3, 1, 2, 50, 100, 200),
+        batch_size=[64, 512, 256],
+        pad=True,
+        channel_patterns=["CamA_ch0"],
     )
     b = spec.call_matlab(
-        ROOT, box, "BatchSize", [512, 512, 512], "pad", True, ChannelPatterns=["CamA_ch0"]
+        ROOT, mbox, "BatchSize", [512, 256, 64], "pad", True, ChannelPatterns=["CamA_ch0"]
     )
     c = spec.call_strings(
-        [ROOT, "[1,1,1,100,200,50]", "batchsize", "[512,512,512]", "Pad", "true",
+        [ROOT, "[2,3,4,100,200,50]", "batchsize", "[512,256,64]", "Pad", "true",
          "channelPatterns", "{'CamA_ch0'}"]
     )  # fmt: skip
     import petakit5d.matlab as pm
 
     assert a == b == c
-    assert a["batch_size"] == (512, 512, 512) and a["input_bbox"] == (1, 1, 1, 100, 200, 50)
+    assert a["batch_size"] == (64, 512, 256) and a["input_bbox"] == (3, 1, 2, 50, 100, 200)
     assert a["channel_patterns"] == ("CamA_ch0",)
     assert a["result_dir_name"] == "Cropped"
     # values the function gets are canonical: tuples, ints, str
@@ -118,11 +123,14 @@ def test_values_are_checked_as_matlab_checks_them(sample_crop):
 def test_string_conversions_follow_the_mcc_parser(sample_crop):
     spec = sample_crop.REG.find("XR_crop_dataset")
     got = spec.bind_strings(
-        [ROOT, "1 1 1 10 10 10", "lastStartCoords", "[]", "uuid", "abc", "cropType", "{x}"]
+        [ROOT, "1 2 3 10 20 30", "lastStartCoords", "[]", "uuid", "abc", "cropType", "{x}"]
     )
-    assert got["input_bbox"] == (1, 1, 1, 10, 10, 10)
+    assert got["input_bbox"] == (2, 0, 1, 30, 10, 20)
     assert got["last_start_coords"] is None
     assert got["uuid"] == "abc" and got["crop_type"] == "{x}"  # char: never converted
+    got = spec.bind_strings([ROOT, "[1 1 1 10 20 Inf]", "lastStartCoords", "[5 6 7]"])
+    assert got["input_bbox"] == (0, 0, 0, None, 10, 20)
+    assert got["last_start_coords"] == (6, 4, 5)
     got = spec.bind_strings(["{'/a','/b'}", "[1,2,3,4,5,6]"])
     assert got["data_paths"] == ("/a", "/b")
     got = spec.bind_strings(["[/a]", "[1,2,3,4,5,6]"])
@@ -149,12 +157,18 @@ def test_matlab_layer_takes_structs_and_keywords(sample_crop):
 
 def test_matlab_results_is_ip_results(sample_crop):
     spec = sample_crop.REG.find("XR_crop_dataset")
-    out = sample_crop.crop_dataset(ROOT, [1, 2, 3, 4, 5, 6], channel_patterns=["CamB_ch0"])
+    out = sample_crop.crop_dataset(
+        ROOT, (2, 0, 1, 30, 10, 20), channel_patterns=["CamB_ch0"], batch_size=(8, 16, 32)
+    )
     res = spec.matlab_results(out)
     names = list(res)
     assert names == sorted(names, key=str.lower)
     assert names[0] == "batchSize" and "dataPaths" in names
-    assert describe(res["batchSize"]) == describe(MArray("double", (1, 3), [1024.0] * 3))
+    # MATLAB's values: [y x z] sizes, [ymin xmin zmin ymax xmax zmax] boxes
+    assert describe(res["batchSize"]) == describe(MArray("double", (1, 3), [16.0, 32.0, 8.0]))
+    assert describe(res["inputBbox"]) == describe(
+        MArray("double", (1, 6), [1.0, 2.0, 3.0, 10.0, 20.0, 30.0])
+    )
     assert isinstance(res["channelPatterns"], Cell) and res["channelPatterns"].shape == (1, 1)
     assert res["lastStartCoords"].shape == (0, 0)
     assert res["uuid"].mclass == "char" and res["uuid"].shape == (0, 0)
@@ -231,6 +245,34 @@ def test_optional_arguments_take_matlabs_rule():
         spec.call_matlab("a.tif", "Overwrite", True)
     assert spec.call_matlab("a.tif", "", "Overwrite", True)["overwrite"] is True
     assert spec.call_strings(["a.tif", "out", "overwrite", "true"])["overwrite"] is True
+
+
+def test_optional_without_validator_takes_no_text():
+    """inputParser reads text in an optional's place as a parameter name when the optional
+    has no validator (XR_estimateComputingMemory's steps), and fails for any other text."""
+    reg = Registry()
+
+    @reg.register(
+        "f_steps",
+        Param("filePath", None),
+        Param("steps", None),
+        Param("imSize", "@isnumeric", convert="size_yxz"),
+    )
+    def f(file_path, steps=("deskew", "rotate"), *, im_size=None):
+        return locals()
+
+    spec = reg.find("f_steps")
+    got = spec.call_matlab("", "imSize", [100, 200, 600])
+    assert got["steps"] == ("deskew", "rotate") and got["im_size"] == (600, 100, 200)
+    assert spec.call_matlab("", "steps", ["deskew"])["steps"] == ("deskew",)
+    assert spec.call_matlab("", ["rotate"])["steps"] == ("rotate",)
+    with pytest.raises(MatlabArgumentError) as e:
+        spec.call_matlab("", "deskew")
+    assert e.value.identifier == "MATLAB:InputParser:ArgumentFailedDefaultValidation"
+    assert str(e.value) == (
+        "The argument 'deskew' is a string scalar or character vector and does not match any "
+        "parameter names. It failed validation for the argument 'steps'."
+    )
 
 
 @pytest.mark.parametrize(

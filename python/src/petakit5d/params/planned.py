@@ -172,3 +172,110 @@ PLANNED: tuple[tuple[str, str, str, int], ...] = (
 def planned() -> dict[str, tuple[str, str, int]]:
     """{MATLAB name: (Python name, task, phase)}."""
     return {m: (p, t, ph) for m, p, t, ph in PLANNED}
+
+
+# -- conversion kinds of the Phase 1 parameters (params/kinds.py), decided from the MATLAB code
+# A kind by parameter name; KINDS_BY_FUNCTION overrides it where a function differs. "?<task>"
+# marks a parameter whose kind its area task decides (it reads the code that uses it). The
+# skeletons and the mapping table use these; a registration's own convert= wins.
+
+KINDS_BY_NAME: dict[str, str] = {
+    # boxes [ymin xmin zmin ymax xmax zmax] (1-based, inclusive)
+    **dict.fromkeys(
+        ["inputBbox", "InputBbox", "tileOutBbox", "outBbox", "bbox", "deconBbox", "inBbox",
+         "distBbox"],
+        "bbox",
+    ),
+    # rows of boxes (n x 6)
+    **dict.fromkeys(
+        ["BatchBBoxes", "RegionBBoxes", "inBatchBBoxes", "outBatchBBoxes", "outRegionBBoxes",
+         "outLocalBboxes", "distBboxes"],
+        "bboxes",
+    ),
+    # sizes and per-axis vectors [y x z] (pool sizes: groups of three)
+    **dict.fromkeys(
+        ["batchSize", "blockSize", "shardSize", "zarrSubSize", "mipBatchSize", "imSize",
+         "borderSize", "BorderSize", "stitchPadSize", "poolSize", "dataSize"],
+        "size_yxz",
+    ),
+    # per-axis flags [y x z] (a z MIP is [0 0 1])
+    **dict.fromkeys(["axis", "mipAxis", "GenMaxZproj", "stitchMIP"], "flags_yxz"),
+    "inputAxisOrder": "axis_string",
+    "outputAxisOrder": "axis_string",
+    "dataOrder": "data_order",
+    # 1-based indices and coordinates
+    **dict.fromkeys(["batchInds", "blockInds", "tileInd", "imdistFileIdx"], "index1"),
+    **dict.fromkeys(["startCoord", "lastStartCoords"], "point1_yxz"),
+    "range": "range1",
+    # image arrays (y, x, z)
+    **dict.fromkeys(
+        ["vol", "data", "img", "I", "PSF", "PSF_f", "PSF_b", "psf", "Rawdata", "LSImage",
+         "rawdata", "frame"],
+        "volume",
+    ),
+    # checked, no conversion: stage and physical values in x, y, z by name (exception 2),
+    # counts, intensities, per-channel or per-step flags
+    **dict.fromkeys(
+        ["axisOrder", "tileInterval", "taskSize", "Overlap", "esize", "TileOffset", "tileOffset",
+         "deconOffset", "save3Dstack", "save16bit", "flippedTile", "locIds", "Background",
+         "xyz_voxelsizes", "constOffset", "resampleType", "usePrimaryCoords"],
+        "same",
+    ),
+    # decided by the area task
+    "xcorrDownsample": "?S09",
+    "downSample": "?S04",
+    "MaxOffset": "?S04",
+    "cuboid_1": "?S04",
+    "cuboid_2": "?S04",
+    "cuboid_overlap_12": "?S04",
+    "pair_indices": "?S04",
+    "data_order_mat": "?S04",
+    "dataOrderMat": "?S06",
+    "axisWeight": "?S05",
+    "halfOrder": "?S03",
+    "tileIdx": "?S08",
+    "tileIndices": "?S01",
+    "overlapSize": "?S01",
+    "outSize": "?D02",
+}  # fmt: skip
+
+_DESKEW_RS = "resample_xyz"  # passed on to deskewRotateFrame3D's [x y z] resample
+KINDS_BY_FUNCTION: dict[str, dict[str, str]] = {
+    # resample factors: [y x z] (or [xy z]) where they divide an image size, [x y z] where they
+    # reach the deskew/rotate transform or the stitching's xf, yf, zf
+    **{
+        f: {"resampleFactor": "resample_yxz"}
+        for f in ("XR_resample_dataset", "XR_resampleFrame", "XR_resampleSingleZarr",
+                  "resampleZarrBlock", "tiffToZarr", "XR_tiffToZarr_wrapper")
+    },
+    "stitch_process_zarr_tile": {"resample": "resample_yxz"},
+    **{
+        f: {"resampleFactor": _DESKEW_RS}
+        for f in ("XR_deskewRotateFrame", "XR_deskew_rotate_data_wrapper", "XR_deskewRotateZarr",
+                  "XR_deskewRotateBlock", "XR_microscopeAutomaticProcessing",
+                  "XR_stitching_frame_zarr_dev_v1", "XR_matlab_stitching_wrapper")
+    },
+    "deskewRotateFrame3D": {"resample": _DESKEW_RS, "resampleFactor": _DESKEW_RS},
+    # the memory order flag of a new zarr ('F' in MATLAB; the port writes 'C'): IO3 decides
+    "createzarr": {"order": "?IO3"},
+    # a crop box or size of the in-memory large-file decon ([] by default): R07 decides
+    "RLdecon_large_in_memory": {"Crop": "?R07"},
+    "XR_RotateFrame3D": {"resample": _DESKEW_RS},
+    "RLdecon": {"Resample": _DESKEW_RS},
+    # a size of voxels only in XR_estimateComputingMemory (a count there)
+    "XR_estimateComputingMemory": {"dataSize": "same"},
+    # an image (the flat field's background) there; a scalar elsewhere
+    "XR_LSFlatFieldCorrection": {"background": "volume"},
+    "XR_decon_data_wrapper": {"background": "same"},
+    # resample of rotateFrame3D: GPL source, not read; D02 decides
+    "rotateFrame3D": {"resample": "?D02", "zxRatio": "?D02"},
+}  # fmt: skip
+
+
+def planned_kind(function: str, param: str) -> str | None:
+    """The planned conversion kind of a parameter ("?<task>": the area task decides; None:
+    no decision needed by name)."""
+    own = KINDS_BY_FUNCTION.get(function, {})
+    if param in own:
+        return own[param]
+    return KINDS_BY_NAME.get(param)

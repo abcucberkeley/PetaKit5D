@@ -2,7 +2,9 @@
 
     python tools/check_registry.py [--matlab-root TREE | --extract FILE]
         every registered spec against a MATLAB tree (on the cluster: the oracle tree) or the
-        stored extract (default; CI); exit 1 on any difference
+        stored extract (default; CI); exit 1 on any difference, a parameter that looks like
+        a box, size, axis or array without a conversion kind included (--pending F1,F2:
+        only report those of these functions)
     python tools/check_registry.py extract --matlab-root TREE [--commit C] [--out FILE]
         write the stored extract (planned, registered and mcc functions) from a MATLAB tree
     python tools/check_registry.py skeleton NAME [NAME ...] --matlab-root TREE
@@ -31,6 +33,9 @@ def _names(root: Path) -> set[str]:
     return names
 
 
+MISSING_KIND = "looks like a box, size, axis or array"
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("command", nargs="?", default="check", choices=["check", "extract", "skeleton"])
@@ -39,6 +44,12 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--extract", type=Path, default=DEFAULT_EXTRACT)
     ap.add_argument("--out", type=Path, default=DEFAULT_EXTRACT)
     ap.add_argument("--commit", default="")
+    ap.add_argument(
+        "--pending",
+        action="append",
+        default=[],
+        help="functions (comma-separated) whose missing conversion kinds are reported, not failed",
+    )
     a = ap.parse_args(argv)
 
     from petakit5d.params import REGISTRY
@@ -78,10 +89,15 @@ def main(argv: list[str] | None = None) -> int:
         matlab = read_extract(a.extract)
         source = str(a.extract)
     problems = check_all(specs, matlab)
-    bad = {k: v for k, v in problems.items() if v}
-    for msgs in bad.values():
+    pending = {n for arg in a.pending for n in arg.split(",") if n}
+    bad = {}
+    for name, msgs in problems.items():
         for m in msgs:
-            print(f"DRIFT {m}")
+            if name in pending and MISSING_KIND in m:
+                print(f"PENDING {m}")
+            else:
+                print(f"DRIFT {m}")
+                bad.setdefault(name, []).append(m)
     print(f"{len(specs)} registered functions checked against {source}: "
           f"{len(specs) - len(bad)} in step, {len(bad)} with differences")  # fmt: skip
     return 1 if bad else 0

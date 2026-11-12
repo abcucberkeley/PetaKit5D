@@ -14,9 +14,10 @@ import re
 from pathlib import Path
 
 from petakit5d.params.check import is_site_value, site_pattern
+from petakit5d.params.kinds import KINDS, looks_converted
 from petakit5d.params.literal import LiteralError, parse
 from petakit5d.params.matlab_source import MatlabFunction
-from petakit5d.params.planned import planned
+from petakit5d.params.planned import planned, planned_kind
 from petakit5d.params.spec import snake_name
 from petakit5d.params.values import to_python
 
@@ -70,15 +71,23 @@ def skeleton(fn: MatlabFunction, path: str | Path | None = None, task: str = "")
         args.append(repr(docs.get(p.name, "")))
         if override:
             args.append(f"py={override!r}")
+        kind = planned_kind(fn.name, p.name)
+        conv = KINDS.get(kind) if kind else None
+        if kind and not kind.startswith("?"):
+            args.append(f"convert={kind!r}")
+        elif kind is None and looks_converted(p.name):
+            kind = "?"
         default = ""
-        comment = ""
-        if p.kind != "required" and (is_site_value(p.default) or _SCAN.search(p.default or "")):
+        comment = f"  # convert: {kind[1:] or 'you'} decide(s)" if kind and kind[0] == "?" else ""
+        required = p.kind in ("required", "positional")
+        if not required and (is_site_value(p.default) or _SCAN.search(p.default or "")):
             # a site-specific MATLAB default never goes into the repository
             args.append('differs="site-specific MATLAB default (from the cluster config)"')
             default = '""'
-        elif p.kind != "required":
+        elif not required:
             try:
-                default = repr(to_python(parse(p.default or "")))
+                v = to_python(parse(p.default or ""))
+                default = repr(conv.from_matlab(v) if conv else v)
             except LiteralError:
                 args.append(f"matlab_default={p.default!r}")
                 default = "None"
@@ -87,7 +96,7 @@ def skeleton(fn: MatlabFunction, path: str | Path | None = None, task: str = "")
         if p.kind == "parameter" and not star:
             sig.append("    *,")
             star = True
-        sig.append(f"    {py}," if p.kind == "required" else f"    {py}={default},{comment}")
+        sig.append(f"    {py},{comment}" if required else f"    {py}={default},{comment}")
     if task:
         lines.append(f'    task="{task}",')
     lines.append(")")

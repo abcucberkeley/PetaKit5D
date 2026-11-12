@@ -54,6 +54,8 @@ class Registry:
         doc: str | None = None,
         keep_unmatched: bool = False,
         task: str | None = None,
+        matlab_in: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
+        matlab_out: Callable[[Any], Any] | None = None,
     ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
         """Decorator: declare ``func`` as the port of MATLAB's ``matlab_name``.
 
@@ -61,6 +63,10 @@ class Registry:
         doc: one line for the mapping table (default: the docstring's first paragraph).
         keep_unmatched: MATLAB's ``ip.KeepUnmatched = true`` (unknown names are ignored).
         task: the port task that owns the function (shown in the mapping table).
+        matlab_in, matlab_out: function-level conversions for the MATLAB-name layer and the
+            command line, applied after the parameters' kinds: ``matlab_in(kwargs) -> kwargs``
+            (MATLAB values to Python's) and ``matlab_out(result) -> result`` (Python's to
+            MATLAB's). Without them, functions of those names in the function's module are used.
         """
         if not isinstance(matlab_name, str) or not re.fullmatch(r"[A-Za-z]\w*", matlab_name):
             raise RegistryError(f"bad MATLAB name {matlab_name!r}")
@@ -69,7 +75,9 @@ class Registry:
                 raise RegistryError(f"{matlab_name}: parameters are Param(...), got {p!r}")
 
         def deco(func: Callable[..., Any]) -> Callable[..., Any]:
-            spec = FunctionSpec(matlab_name, func, params, doc, keep_unmatched, task)
+            spec = FunctionSpec(
+                matlab_name, func, params, doc, keep_unmatched, task, matlab_in, matlab_out
+            )
             old = self._specs.get(matlab_name)
             if old is not None and old.python_name != spec.python_name:
                 raise RegistryError(
@@ -214,10 +222,18 @@ def register(
     doc: str | None = None,
     keep_unmatched: bool = False,
     task: str | None = None,
+    matlab_in: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
+    matlab_out: Callable[[Any], Any] | None = None,
 ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
     """Declare a user-facing function in the package registry (see ``Registry.register``)."""
     return REGISTRY.register(
-        matlab_name, *params, doc=doc, keep_unmatched=keep_unmatched, task=task
+        matlab_name,
+        *params,
+        doc=doc,
+        keep_unmatched=keep_unmatched,
+        task=task,
+        matlab_in=matlab_in,
+        matlab_out=matlab_out,
     )
 
 

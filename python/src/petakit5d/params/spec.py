@@ -441,6 +441,11 @@ class Param(_Record):
     differs: why the Python default differs from MATLAB's on purpose (a site-specific MATLAB
         default such as Slurm options); check_registry then skips the default and the table
         shows the reason. Needs the orchestrator's OK.
+    convert: how the MATLAB value becomes the Python value and back: a kind of
+        ``petakit5d.params.kinds`` (``"bbox"``, ``"size_yxz"``, ``"per_axis_xyz"``, ``"index1"``,
+        ``"range1"``, ``"dim"``, ``"flags_yxz"``, ``"axis_string"``, ``"data_order"``, ...;
+        ``"same"``: checked, no conversion) or a ``(from_matlab, to_matlab)`` pair. None: the
+        name does not suggest a conversion (check_registry asks for one where it does).
     """
 
     __slots__ = _PARAM_FIELDS = (
@@ -452,6 +457,7 @@ class Param(_Record):
         "mcc",
         "python_only",
         "differs",
+        "convert",
     )
     _fields = _PARAM_FIELDS
     _defaults = {
@@ -461,6 +467,7 @@ class Param(_Record):
         "mcc": None,
         "python_only": False,
         "differs": None,
+        "convert": None,
     }
     matlab: str
     validator: str | None
@@ -470,6 +477,7 @@ class Param(_Record):
     mcc: str | None
     python_only: bool
     differs: str | None
+    convert: Any
 
     def __setattr__(self, name: str, value: Any) -> None:
         raise AttributeError("Param is immutable (use .replace)")
@@ -482,7 +490,8 @@ class ParamSpec(_Record):
     """A resolved parameter: the declaration joined with the function's signature.
 
     kind: required | optional | parameter; default: the Python default (``_MISSING`` for
-    required arguments); alternatives: the validator's class checks (validator_alternatives).
+    required arguments, else in Python's form); alternatives: the validator's class checks
+    (validator_alternatives); conv: the conversion kind (``kinds.Kind``) or None.
     """
 
     __slots__ = _SPEC_FIELDS = (
@@ -497,9 +506,10 @@ class ParamSpec(_Record):
         "python_only",
         "differs",
         "alternatives",
+        "conv",
     )
     _fields = _SPEC_FIELDS
-    _defaults = {"alternatives": None}
+    _defaults = {"alternatives": None, "conv": None}
     matlab: str
     py: str
     kind: str
@@ -511,6 +521,7 @@ class ParamSpec(_Record):
     python_only: bool
     differs: str | None
     alternatives: list[frozenset[str]] | None
+    conv: Any
 
     __hash__ = None  # type: ignore[assignment]
 
@@ -524,21 +535,34 @@ class ParamSpec(_Record):
         preds = set().union(*alts) if alts else set()
         if "iscell" in preds and not preds & {"isnumeric", "islogical", "isfloat", "isvector"}:
             return "cell"
-        if isinstance(self.default, tuple) and any(
-            isinstance(e, str | tuple) for e in self.default
+        if isinstance(self.default, tuple) and any(isinstance(e, str) for e in self.default):
+            return "cell"
+        if (
+            isinstance(self.default, tuple)
+            and any(isinstance(e, tuple) for e in self.default)
+            and (self.conv is None or self.conv.name != "bboxes")
         ):
             return "cell"
         return None
 
+    def from_matlab(self, value: Any) -> Any:
+        """A (normalized) MATLAB value of this parameter in Python's form."""
+        return value if self.conv is None else self.conv.from_matlab(value)
+
+    def to_matlab(self, value: Any) -> Any:
+        """A Python value of this parameter in MATLAB's form."""
+        return value if self.conv is None else self.conv.to_matlab(value)
+
     def default_text(self) -> str:
-        """The MATLAB text of the default."""
+        """The MATLAB text of the default (the Python default converted to MATLAB's form)."""
         if self.matlab_default is not None:
             return self.matlab_default
         if self.default is _MISSING:
             return ""
         from petakit5d.params.literal import format_literal
 
-        return format_literal(self.default, self.cell_hint() or _cell_if_empty_default(self))
+        hint = self.cell_hint() or _cell_if_empty_default(self)
+        return format_literal(self.to_matlab(self.default), hint)
 
     def check(self, value: Any, fname: str) -> None:
         """Raise MatlabArgumentError if ``value`` fails the MATLAB validator's class checks."""
@@ -553,6 +577,17 @@ class ParamSpec(_Record):
             f"{_matlab_validator_display(self.validator)}.",
             "MATLAB:InputParser:ArgumentFailedValidation",
         )
+
+
+def _kind_of(d: Param, where: str) -> Any:
+    if d.convert is None:
+        return None
+    from petakit5d.params.kinds import get_kind
+
+    try:
+        return get_kind(d.convert)
+    except ValueError as err:
+        raise RegistryError(f"{where}: {d.matlab}: {err}") from None
 
 
 def _passes(p: ParamSpec, value: Any) -> bool:
@@ -587,6 +622,8 @@ class FunctionSpec:
         doc: str | None,
         keep_unmatched: bool,
         task: str | None,
+        matlab_in: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
+        matlab_out: Callable[[Any], Any] | None = None,
     ):
         self.matlab_name = matlab_name
         self.func = func
@@ -594,6 +631,8 @@ class FunctionSpec:
         self._doc = doc
         self.keep_unmatched = keep_unmatched
         self.task = task
+        self._matlab_in = matlab_in
+        self._matlab_out = matlab_out
         self._params: list[ParamSpec] | None = None
         self.wrapper: Callable[..., Any] | None = None
 
@@ -610,6 +649,26 @@ class FunctionSpec:
 
         d = inspect.getdoc(self.func) or ""
         return d.split("\n\n")[0].replace("\n", " ").strip()
+
+    def _hook(self, name: str) -> Callable[..., Any] | None:
+        own = getattr(self, f"_{name}")
+        if own is not None:
+            return own
+        # function-level hooks a module declares by name (as tools/memory_estimate.py does)
+        import sys
+
+        f = getattr(sys.modules.get(self.func.__module__), name, None)
+        return f if callable(f) else None
+
+    @property
+    def matlab_in(self) -> Callable[[dict[str, Any]], dict[str, Any]] | None:
+        """The function-level conversion of the bound keyword arguments, MATLAB -> Python."""
+        return self._hook("matlab_in")
+
+    @property
+    def matlab_out(self) -> Callable[[Any], Any] | None:
+        """The function-level conversion of the result, Python -> MATLAB."""
+        return self._hook("matlab_out")
 
     @property
     def params(self) -> list[ParamSpec]:
@@ -670,6 +729,7 @@ class FunctionSpec:
                     python_only=d.python_only,
                     differs=d.differs,
                     alternatives=validator_alternatives(d.validator),
+                    conv=_kind_of(d, where),
                 )
             )
         return out
@@ -777,7 +837,21 @@ class FunctionSpec:
         pairs or structs, then keyword arguments (MATLAB names, any case, unique prefixes).
         Returns {python name: normalized value} of what was given; later values win."""
         given = self._bind(list(args), dict(kwargs or {}))
-        return {k: normalize(a) for k, a in given.items()}
+        return self._from_matlab({k: normalize(a) for k, a in given.items()})
+
+    def _from_matlab(self, values: dict[str, Any]) -> dict[str, Any]:
+        by_py = {p.py: p for p in self.params}
+        out = {}
+        for k, v in values.items():
+            p = by_py[k]
+            try:
+                out[k] = p.from_matlab(v)
+            except (ValueError, TypeError) as err:
+                raise MatlabArgumentError(
+                    f"The value of '{p.matlab}' is not a valid {p.conv.doc or p.conv.name}: {err}",
+                    "PETAKIT5D:params:badValue",
+                ) from None
+        return out
 
     def bind_strings(self, argv: Sequence[str]) -> dict[str, Any]:
         """Bind command-line strings as the compiled master and the mcc parser functions do.
@@ -813,7 +887,7 @@ class FunctionSpec:
             val = convert_string(p, s)
             p.check(val, self.matlab_name)
             given[k] = val
-        return {k: normalize(a) for k, a in given.items()}
+        return self._from_matlab({k: normalize(a) for k, a in given.items()})
 
     def _bind(self, args: list[Any], kwargs: dict[str, Any]) -> dict[str, Any]:
         params = self.params
@@ -834,6 +908,17 @@ class FunctionSpec:
             if not rest:
                 break
             a = rest[0]
+            if p.alternatives is None and not p.validator and isinstance(a, str):
+                # an optional without a validator never takes text: inputParser reads it as
+                # a parameter name, and fails for text that names no parameter
+                if self._matches(str(a)):
+                    break
+                raise MatlabArgumentError(
+                    f"The argument '{a}' is a string scalar or character vector and does not "
+                    f"match any parameter names. It failed validation for the argument "
+                    f"'{p.matlab}'.",
+                    "MATLAB:InputParser:ArgumentFailedDefaultValidation",
+                )
             if not _passes(p, a):
                 # not this optional: a name followed by a value, or a struct of names,
                 # starts the name-value part; anything else fails the optional's validator
@@ -877,18 +962,29 @@ class FunctionSpec:
         return self.func(**self.bind_python(args, kwargs))
 
     def call_matlab(self, *args: Any, **kwargs: Any) -> Any:
-        return self.func(**self.bind_matlab(args, kwargs))
+        """Call with MATLAB's arguments and values; the result in MATLAB's form."""
+        return self._call_converted(self.bind_matlab(args, kwargs))
 
     def call_strings(self, argv: Sequence[str]) -> Any:
-        return self.func(**self.bind_strings(argv))
+        """Call with command-line strings; the result in MATLAB's form."""
+        return self._call_converted(self.bind_strings(argv))
+
+    def _call_converted(self, kwargs: dict[str, Any]) -> Any:
+        hook_in, hook_out = self.matlab_in, self.matlab_out
+        if hook_in is not None:
+            kwargs = hook_in(kwargs)
+        result = self.func(**kwargs)
+        return result if hook_out is None else hook_out(result)
 
     # -- what MATLAB saves --------------------------------------------------------------------
     def matlab_results(self, values: Mapping[str, Any]) -> dict[str, Any]:
         """``ip.Results`` as MATLAB builds it: {MATLAB name: model value}, in MATLAB's order.
 
         ``values`` maps Python names to the values the function got (``locals()`` at its
-        top works); parameters missing from it take their defaults. Python-only parameters
-        are left out. Pass the result to the .mat and JSON writers (parameters.mat/.json).
+        top works); parameters missing from it take their defaults. Values are converted to
+        MATLAB's form by their kinds (boxes, sizes, axis strings, ...), so the files hold
+        MATLAB's values. Python-only parameters are left out. Pass the result to the .mat and
+        JSON writers (parameters.mat/.json).
         """
         out = {}
         for p in results_order(self.params):
@@ -900,9 +996,18 @@ class FunctionSpec:
                 v = p.default
             else:
                 raise KeyError(f"no value for required argument {p.py!r}")
+            v = p.to_matlab(normalize(v))
             hint = p.cell_hint() or (_cell_if_empty_default(p) if v == () else None)
             out[p.matlab] = _v.from_python(v, hint)
         return out
+
+    def parameters_json(self, values: Mapping[str, Any]) -> str:
+        """``jsonencode(pr, PrettyPrint=true)`` of ``matlab_results(values)``: the text MATLAB's
+        writeJsonFile puts in parameters.json (MATLAB's values)."""
+        from petakit5d.core.jsonenc import jsonencode
+
+        res = self.matlab_results(values)
+        return jsonencode({k: _v.to_plain(v) for k, v in res.items()}, pretty_print=True)
 
     def __repr__(self) -> str:
         return f"<FunctionSpec {self.matlab_name} -> {self.python_name}>"

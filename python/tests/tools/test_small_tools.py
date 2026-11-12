@@ -814,7 +814,7 @@ EST_CASES = [
     ),
     Case(
         # inputParser takes text without a validator as a parameter name, not as the
-        # optional steps; the MATLAB-name binding (F03) takes it as steps: requested
+        # optional steps (the MATLAB-name binding does the same since F13)
         "est_deskew_char_steps",
         matlab="XR_estimateComputingMemory",
         args=[InPath("t.tif"), "deskew"],
@@ -822,18 +822,15 @@ EST_CASES = [
         py_out=first(1),
         inputs={"t.tif": File(tiff_writer((20, 30, 7)), "t.tif")},
         expect_error="MATLAB:InputParser:ArgumentFailedDefaultValidation",
-        marks=("xfail",),
     ),
     Case(
-        # the optional steps given by name, as XR_microscopeAutomaticProcessing calls it;
-        # the MATLAB-name binding (F03) takes 'steps' as the value of steps: requested
+        # the optional steps given by name, as XR_microscopeAutomaticProcessing calls it
         "est_steps_by_name",
         matlab="XR_estimateComputingMemory",
         args=[InPath("t.tif"), "steps", ("deskew",)],
         python=est_matlab,
         py_out=first(1),
         inputs={"t.tif": File(tiff_writer((20, 30, 7)), "t.tif")},
-        marks=("xfail",),
     ),
     Case(
         "est_default_steps",
@@ -942,14 +939,12 @@ EST_CASES = [
     ),
     # ComputingMemoryEstimateTest
     Case(
-        # the optional steps left out before a name-value pair: F03's binding takes 'imSize'
-        # as steps (requested, as est_steps_by_name)
+        # the optional steps left out before a name-value pair ('imSize' is a parameter name)
         "est_default_steps_given_size",
         matlab="XR_estimateComputingMemory",
         args=["", "imSize", [100, 200, 600]],
         nargout=4,
         python=est_matlab,
-        marks=("xfail",),
     ),
     Case(
         "est_rotate_deskew_given_size",

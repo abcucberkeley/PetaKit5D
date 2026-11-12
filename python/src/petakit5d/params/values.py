@@ -372,6 +372,44 @@ def from_python(x: Any, hint: str | None = None) -> Any:
     raise TypeError(f"no MATLAB value for a {type(x).__name__}")
 
 
+_NP_DTYPE = {
+    "double": "float64",
+    "single": "float32",
+    "logical": "bool",
+    **{c: c for c in INT_RANGES},
+}
+
+
+def to_plain(v: Any) -> Any:
+    """A model value in the form ``petakit5d.core.jsonenc`` and the .mat writer take: str for
+    char rows and strings, list for cells, dict for structs, Python scalars for double and
+    logical scalars, NumPy scalars and arrays (MATLAB's size) for the rest, None for []."""
+    import numpy as np
+
+    v = from_python(v)
+    if isinstance(v, MString):
+        return str(v)
+    if isinstance(v, Cell):
+        return [to_plain(e) for e in v]
+    if isinstance(v, dict):
+        return {k: to_plain(e) for k, e in v.items()}
+    if v.mclass == "char":
+        if len(v.shape) == 2 and v.shape[0] <= 1:
+            return v.text()
+        return np.array(v.data, dtype="<U1").reshape(v.shape, order="F")
+    if v.shape == (0, 0) and v.mclass == "double":
+        return None
+    dtype = np.dtype(_NP_DTYPE[v.mclass])
+    if v.is_scalar():
+        x = v.data[0]
+        if v.mclass == "double":
+            return float(x)
+        if v.mclass == "logical":
+            return bool(x)
+        return dtype.type(x)
+    return np.array(v.data, dtype=dtype).reshape(v.shape, order="F")
+
+
 def matlab_class(v: Any) -> str:
     """MATLAB's class() of a value (model or plain Python)."""
     if callable(v) and not isinstance(v, type):

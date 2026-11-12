@@ -23,7 +23,11 @@ CALLS: list[dict[str, Any]] = []
         "same experimental settings.",
     ),
     Param(
-        "inputBbox", "@isnumeric", "Bounding box of the crop: [ymin, xmin, zmin, ymax, xmax, zmax]."
+        "inputBbox",
+        "@isnumeric",
+        "Bounding box of the crop: (z0, y0, x0, z1, y1, x1) (MATLAB: [ymin xmin zmin ymax xmax "
+        "zmax]).",
+        convert="bbox",
     ),
     Param("resultDirName", "@ischar", "Crop result directory under each data path."),
     Param(
@@ -36,7 +40,8 @@ CALLS: list[dict[str, Any]] = []
     Param(
         "lastStartCoords",
         "@isnumeric",
-        "Start coordinates of the box at the last time point, for cropType 'moving'.",
+        "Start coordinates (z, y, x) of the box at the last time point, for cropType 'moving'.",
+        convert="point1_yxz",
     ),
     Param("channelPatterns", "@iscell", "Channel identifiers of the included channels."),
     Param("zarrFile", "@islogical", "Zarr files as input."),
@@ -46,8 +51,13 @@ CALLS: list[dict[str, Any]] = []
         "Large-scale crop that reads and writes the cropped regions in place (zarr only).",
     ),
     Param("saveZarr", "@islogical", "Save the results as zarr files."),
-    Param("batchSize", "@isnumeric", "Batch size per task for large-scale cropping."),
-    Param("blockSize", "@isnumeric", "Block (chunk) size of zarr output."),
+    Param("batchSize", "@isnumeric", "Batch size (z, y, x) per task.", convert="size_yxz"),
+    Param(
+        "blockSize",
+        "@isnumeric",
+        "Block (chunk) size (z, y, x) of zarr output.",
+        convert="size_yxz",
+    ),
     Param("save16bit", "@islogical", "Save 16-bit results."),
     Param("parseCluster", "@islogical", "Use the Slurm cluster."),
     Param("masterCompute", "@islogical", "The master job takes part in the processing."),

@@ -97,10 +97,14 @@ def generate(reg: Registry, extract: Mapping[str, MatlabFunction]) -> str:
     lines.append("")
     lines.append("## Parameters\n")
     lines.append(
-        "Kind: req (required, positional), opt (optional, positional), par (name-value; "
-        "keyword-only in Python), pos (positional; MATLAB fills defaults by nargin). Defaults "
-        "in MATLAB syntax. Registered functions show their spec; planned ones MATLAB's "
-        "inputParser or arguments block under the naming rule.\n"
+        "Arg: req (required, positional), opt (optional, positional), par (name-value; "
+        "keyword-only in Python), pos (positional; MATLAB fills defaults by nargin). "
+        "Conversion: the parameter's kind (params/kinds.py: the MATLAB-name layer, the command "
+        "line and parameter files convert MATLAB's value to the Python one and back; empty: "
+        "none; '<task> decides': open). The MATLAB default in MATLAB syntax, the Python "
+        "default as the snake_case function takes it. Registered functions show their spec; "
+        "planned ones MATLAB's inputParser or arguments block under the naming rule and the "
+        "planned kinds (params/planned.py).\n"
     )
     for n in names:
         if n in specs:
@@ -118,9 +122,9 @@ def _spec_section(s: FunctionSpec) -> list[str]:
     out = [f"### `{s.matlab_name}` -> `{s.python_name}`\n"]
     if s.doc:
         out.append(_md(s.doc) + "\n")
-    out.append("| MATLAB | Python | Kind | Default | Validator | Meaning |")
-    out.append("|---|---|---|---|---|---|")
-    kinds = {"required": "req", "optional": "opt", "parameter": "par", "positional": "pos"}
+    out.append("| MATLAB | Python | Arg | Conversion | MATLAB default | Python default | Validator "
+               "| Meaning |")  # fmt: skip
+    out.append("|---|---|---|---|---|---|---|---|")
     for p in s.params:
         notes = []
         if p.python_only:
@@ -131,25 +135,53 @@ def _spec_section(s: FunctionSpec) -> list[str]:
             notes.append("renamed")
         meaning = _md(p.doc) + (f" ({'; '.join(notes)})" if notes else "")
         default = "" if p.required else _code(p.default_text())
+        pydef = "" if p.required else _code(repr(p.default))
+        conv = "" if p.conv is None else p.conv.name
         out.append(
-            f"| `{p.matlab}` | `{p.py}` | {kinds[p.kind]} | {default} | "
+            f"| `{p.matlab}` | `{p.py}` | {_ARGS[p.kind]} | {conv} | {default} | {pydef} | "
             f"{_code(p.validator or '')} | {meaning} |"
         )
     out.append("")
     return out
 
 
+_ARGS = {"required": "req", "optional": "opt", "parameter": "par", "positional": "pos"}
+
+
+def _python_default(text: str | None, kind: str | None) -> str:
+    """The Python default of a planned parameter: MATLAB's literal through its kind."""
+    from petakit5d.params.kinds import KINDS
+    from petakit5d.params.literal import LiteralError, parse
+    from petakit5d.params.values import to_python
+
+    if text is None or is_site_value(text) or (kind or "").startswith("?"):
+        return ""
+    try:
+        v = to_python(parse(text))
+        if kind in KINDS:
+            v = KINDS[kind].from_matlab(v)
+    except (LiteralError, ValueError, TypeError):
+        return ""
+    return _code(repr(v))
+
+
 def _planned_section(name: str, py: str, fn: MatlabFunction) -> list[str]:
+    from petakit5d.params.planned import planned_kind
+
     out = [f"### `{name}` -> `{py}` (planned)\n"]
-    out.append("| MATLAB | Python | Kind | Default | Validator |")
-    out.append("|---|---|---|---|---|")
-    kinds = {"required": "req", "optional": "opt", "parameter": "par", "positional": "pos"}
+    out.append(
+        "| MATLAB | Python | Arg | Conversion | MATLAB default | Python default | Validator |"
+    )
+    out.append("|---|---|---|---|---|---|---|")
     for p in fn.params:
         default = "<site-specific>" if is_site_value(p.default) else p.default or ""
         validator = "<site-specific>" if is_site_value(p.validator) else p.validator or ""
+        kind = planned_kind(name, p.name)
+        conv = "" if kind is None else (f"{kind[1:]} decides" if kind.startswith("?") else kind)
+        pydef = "" if p.kind in ("required", "positional") else _python_default(p.default, kind)
         out.append(
-            f"| `{p.name}` | `{snake_name(p.name)}` | {kinds[p.kind]} | "
-            f"{_code(default) if p.kind != 'required' else ''} | {_code(validator)} |"
+            f"| `{p.name}` | `{snake_name(p.name)}` | {_ARGS[p.kind]} | {conv} | "
+            f"{_code(default) if p.kind != 'required' else ''} | {pydef} | {_code(validator)} |"
         )
     out.append("")
     return out

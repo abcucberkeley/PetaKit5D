@@ -46,12 +46,45 @@ def test_worked_example_is_in_step(sample_crop, extract):
         ("pad", {"kind": "optional"}, "optional here"),
         ("batchSize", {"mcc": "none"}, "mcc parser converts"),
         ("jobLogDir", {"matlab_default": "'../logs'"}, "default text"),
+        ("inputBbox", {"conv": None}, "looks like a box"),
+        ("batchSize", {"conv": None}, "looks like a box"),
     ],
 )
 def test_drift_is_found(sample_crop, extract, name, changes, expect):
     spec = _mutated(sample_crop.REG.find("XR_crop_dataset"), name, **changes)
     problems = check_spec(spec, extract["XR_crop_dataset"])
     assert any(expect in p for p in problems), problems
+
+
+def test_defaults_are_compared_after_conversion():
+    """MATLAB's [500 500 250] (y x z) is the Python default (250, 500, 500) of a size_yxz."""
+    from petakit5d.params import Param, Registry
+    from petakit5d.params.matlab_source import MatlabFunction, MatlabParam
+
+    fn = MatlabFunction(
+        "XR_zarr_fake", "XR_zarr_fake.m", ["filepath", "varargin"],
+        [MatlabParam("required", "filepath", None, "@ischar"),
+         MatlabParam("parameter", "blockSize", "[500, 500, 250]", "@isnumeric"),
+         MatlabParam("parameter", "inputAxisOrder", "'yxz'", "@ischar")],
+    )  # fmt: skip
+
+    def make(block, order):
+        reg = Registry()
+
+        @reg.register(
+            "XR_zarr_fake",
+            Param("filepath", "@ischar"),
+            Param("blockSize", "@isnumeric", convert="size_yxz"),
+            Param("inputAxisOrder", "@ischar", convert="axis_string"),
+        )
+        def zarr_fake(filepath, *, block_size=block, input_axis_order=order):
+            return filepath
+
+        return reg.find("XR_zarr_fake")
+
+    assert check_spec(make((250, 500, 500), "zyx"), fn) == []
+    problems = check_spec(make((500, 500, 250), "yxz"), fn)
+    assert len(problems) == 2 and "size_yxz" in problems[0] and "axis_string" in problems[1]
 
 
 def test_missing_and_extra_parameters_are_found(sample_crop, extract):
@@ -110,7 +143,8 @@ def test_same_python():
 def test_check_all_and_the_tools(sample_crop, extract):
     spec = sample_crop.REG.find("XR_crop_dataset")
     assert check_all([spec], extract) == {"XR_crop_dataset": []}
-    assert _tool("check_registry").main([]) == 0
+    # S01 has yet to give the kinds of XR_generate_image_list_wrapper (F13 report)
+    assert _tool("check_registry").main(["--pending", "XR_generate_image_list_wrapper"]) == 0
     assert _tool("gen_mapping").main(["--check"]) == 0, "run python tools/gen_mapping.py"
 
 

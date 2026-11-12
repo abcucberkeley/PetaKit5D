@@ -112,10 +112,28 @@ def _check_default(spec: FunctionSpec, p: ParamSpec, m: MatlabParam) -> list[str
             f"{where}: MATLAB's default {m.default!r} is not a literal; give "
             f"matlab_default={m.default!r} (and the Python default that matches it)"
         ]
-    want = to_python(mv)
+    try:
+        want = p.from_matlab(to_python(mv))
+    except (ValueError, TypeError) as err:
+        return [f"{where}: MATLAB's default {m.default} does not convert ({p.conv}): {err}"]
     got = p.default
     if not same_python(want, got):
-        return [f"{where}: default {got!r}, MATLAB has {m.default} ({want!r})"]
+        conv = "" if p.conv is None else f" -> {p.conv.name}"
+        return [f"{where}: default {got!r}, MATLAB has {m.default}{conv} ({want!r})"]
+    return []
+
+
+def _check_kind(spec: FunctionSpec, p: ParamSpec) -> list[str]:
+    """A parameter whose name suggests a box, a size, an axis or an image array needs a kind
+    (``convert="same"`` when it needs no conversion), unless the function converts its
+    arguments itself (``matlab_in``)."""
+    from petakit5d.params.kinds import looks_converted
+
+    if p.conv is None and looks_converted(p.matlab) and spec.matlab_in is None:
+        return [
+            f"{spec.matlab_name}.{p.matlab}: looks like a box, size, axis or array; give "
+            f'convert=<kind> (convert="same" if it needs no conversion)'
+        ]
     return []
 
 
@@ -145,6 +163,7 @@ def check_spec(spec: FunctionSpec, fn: MatlabFunction | None) -> list[str]:
         where = f"{name}.{p.matlab}"
         if p.matlab != m.name:
             out.append(f"{where}: MATLAB spells it {m.name!r}")
+        out.extend(_check_kind(spec, p))
         if m.kind == "positional":
             # no inputParser or arguments block: MATLAB fills defaults by nargin
             if p.kind == "parameter":
