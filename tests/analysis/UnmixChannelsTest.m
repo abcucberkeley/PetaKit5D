@@ -250,15 +250,17 @@ classdef UnmixChannelsTest < pktest.TestCase
             testCase.verifySubstring(lastwarn(), 'do not have all channels');
             calls = spy.getCalls();
             testCase.assertNumElements(calls, 1);
-            % the first time point of each folder
+            % the first time point of each folder (paths compared with / and
+            % single separators: the wrapper's folders are as dir gives
+            % them, with \ on Windows)
+            unify = @(p) regexprep(strrep(p, '\', '/'), '/+', '/');
+            ins = unify(calls{1}.inputFullpaths);
             fnA = ['/', sprintf(testCase.Fsn, 'CamA'), '.tif'];
-            testCase.assertNumElements(calls{1}.inputFullpaths, 2);
-            testCase.verifyTrue(all(endsWith(calls{1}.inputFullpaths, fnA)));
-            testCase.verifyTrue(startsWith(calls{1}.inputFullpaths{1}, dataPath1));
-            testCase.verifyTrue(startsWith(calls{1}.inputFullpaths{2}, dataPath2));
+            testCase.assertNumElements(ins, 2);
+            testCase.verifyEqual(ins(:), {[unify(dataPath1), fnA(2 : end)]; [unify(dataPath2), fnA(2 : end)]});
             testCase.verifyNumElements(calls{1}.funcStrs, 2);
-            testCase.verifyNotEmpty(regexp(calls{1}.funcStrs{2}, [regexptranslate('escape', dataPath2), '/*', ...
-                regexptranslate('escape', sprintf(testCase.Fsn, 'CamB')), '\.tif'], 'once'), 'Not unmixed with CamB.');
+            testCase.verifySubstring(unify(calls{1}.funcStrs{2}), [unify(dataPath2), sprintf(testCase.Fsn, 'CamB'), '.tif'], ...
+                'Not unmixed with CamB.');
         end
 
         function zarrInputAndOutput(testCase)
