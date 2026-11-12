@@ -42,6 +42,10 @@ end
 fprintf('Add matlab libraries to path...\n')
 addpath(genpath([codeRt]));
 rmpath(genpath([codeRt, '/mcc/mac']));
+% the Python package (python/) has no MATLAB code for the path
+if exist([codeRt, '/python'], 'dir')
+    rmpath(genpath([codeRt, '/python']));
+end
 
 % also add python libary
 if addPython

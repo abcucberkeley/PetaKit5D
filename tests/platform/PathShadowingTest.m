@@ -72,13 +72,39 @@ classdef PathShadowingTest < pktest.TestCase
             testCase.verifyEmpty(shadowed, sprintf('Repo functions with the same name as MATLAB functions:\n  %s', ...
                 strjoin(shadowed, '\n  ')));
         end
+
+        function setupLeavesThePythonPackageOffThePath(testCase)
+            % python/ holds the Python package. Its MATLAB files run MATLAB
+            % for the Python tests, which put them on the path themselves.
+            root = testCase.createTempFolder();
+            probes = {'utils', 'pk_setup_probe_utils'; 'python', 'pk_setup_probe_python'; ...
+                'python/tests/oracle_matlab', 'pk_setup_probe_oracle'};
+            for i = 1 : size(probes, 1)
+                mkdir([root, probes{i, 1}]);
+                fid = fopen(sprintf('%s%s/%s.m', root, probes{i, 1}, probes{i, 2}), 'w');
+                fprintf(fid, 'function %s\nend\n', probes{i, 2});
+                fclose(fid);
+            end
+            p = path;
+            testCase.addTeardown(@path, p);
+
+            evalc('feval(''setup'', root(1 : end - 1))');
+            testCase.verifyNotEmpty(which(probes{1, 2}), 'setup.m no longer adds the other folders.');
+            testCase.verifyEmpty(which(probes{2, 2}), 'setup.m puts python/ on the path.');
+            testCase.verifyEmpty(which(probes{3, 2}), 'setup.m puts the subfolders of python/ on the path.');
+            folders = strrep(strsplit(path, pathsep), '\', '/');
+            testCase.verifyEmpty(folders(startsWith(folders, [root, 'python'])));
+        end
     end
 
     methods (Static, Access = private)
         function [names] = repoFunctionNames()
+            % the functions setup.m puts on the path: not those of the tests
+            % or of the Python package (python/)
             root = pktest.repoRoot();
             dir_info = dir(fullfile(root, '**', '*.m'));
-            dir_info = dir_info(~startsWith({dir_info.folder}, fullfile(root, 'tests')));
+            folders = strcat({dir_info.folder}, filesep);
+            dir_info = dir_info(~startsWith(folders, strcat({fullfile(root, 'tests'), fullfile(root, 'python')}, filesep)));
             [~, names] = cellfun(@fileparts, {dir_info.name}, 'unif', 0);
         end
     end

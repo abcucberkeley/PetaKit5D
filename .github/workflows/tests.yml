@@ -3,7 +3,10 @@ name: Tests
 on:
   push:
     branches: [main, dev, test]
+    # the Python package has its own workflow (python.yml)
+    paths-ignore: ['python/**', '.github/workflows/python.yml']
   pull_request:
+    paths-ignore: ['python/**', '.github/workflows/python.yml']
   workflow_dispatch:
   schedule:
     # weekly, to catch breakage from runner image or MATLAB updates
