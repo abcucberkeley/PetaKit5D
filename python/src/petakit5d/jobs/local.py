@@ -124,6 +124,7 @@ def run_pool(call: Call, worker_num: float | None = None) -> list[bool] | None:
         final_out_fullpath=s.get("final_out_fullpath", ""),
         worker_num=workers,
         language=call.language,
+        task_metrics=_metrics_dir(call, workers),
     )
 
 
@@ -135,6 +136,7 @@ def run_on_pool(
     final_out_fullpath: str = "",
     worker_num: float = 2,
     language: str = "python",
+    task_metrics: str = "",
 ) -> list[bool]:
     """MATLAB's matlab_pool_generic_computing_wrapper: runs the tasks at most
     ``worker_num`` at a time on a pool of worker processes, in task order, and returns
@@ -155,7 +157,7 @@ def run_on_pool(
         return done
 
     workers = _worker_count(worker_num, len(todo))
-    pool = _Pool(_slots(workers), language)
+    pool = _Pool(_slots(workers), language, task_metrics)
     try:
         if not pool.start():
             return done
@@ -205,7 +207,11 @@ def run_parfor(call: Call) -> list[bool]:
     out_exist = list(batch_file_exist(call.outputs, None, True))
     todo = [i for i in range(n) if in_exist[i] and not out_exist[i]]
     if todo:
-        pool = _Pool(_slots(_worker_count(workers, len(todo)), gpus), call.language)
+        pool = _Pool(
+            _slots(_worker_count(workers, len(todo)), gpus),
+            call.language,
+            _metrics_dir(call, workers),
+        )
         try:
             if pool.start():
                 for g, slot in enumerate(pool.slots, 1):
@@ -295,9 +301,10 @@ def _read_messages(w: _Worker, events: queue.Queue) -> None:
 class _Pool:
     """Worker processes of one call: start, run tasks (several rounds), close."""
 
-    def __init__(self, slots: list[_Slot], language: str) -> None:
+    def __init__(self, slots: list[_Slot], language: str, task_metrics: str = "") -> None:
         self.slots = slots
         self.language = language
+        self.task_metrics = task_metrics  # the run's metrics folder ('' without metrics)
         self.events: queue.Queue = queue.Queue()
         self.workers: list[_Worker] = []
         self.restarts = 0
@@ -357,7 +364,10 @@ class _Pool:
         def dispatch(w: _Worker) -> None:
             while pending and not state["stop"] and w.alive and w.task is None:
                 i = pending.popleft()
-                if w.send({"i": i, "language": self.language, "task": records[i]}):
+                msg = {"i": i, "language": self.language, "task": records[i]}
+                if self.task_metrics:
+                    msg["metrics"] = self.task_metrics
+                if w.send(msg):
                     w.task = i
                     state["running"] += 1
                 else:
@@ -546,16 +556,23 @@ def _run_in_worker(msg: dict[str, Any], cap: IO[bytes]) -> dict[str, Any]:
     os.dup2(cap.fileno(), 1)
     os.dup2(cap.fileno(), 2)
     err = None
+    outcome: Any = None
+    tm = None
+    if msg.get("metrics"):
+        from petakit5d.jobs import metrics
+
+        tm = metrics.worker_task_start(msg["task"], msg["i"], msg["metrics"], worker_info())
     t0 = time.perf_counter()
     try:
         if msg["language"] == "bash":
             from petakit5d.jobs.framework import run_shell
 
-            run_shell(msg["task"]["bash"])  # its exit status is ignored, as in MATLAB
+            outcome = run_shell(msg["task"]["bash"])  # its exit status is ignored, as in MATLAB
         else:
             run_record(msg["task"])
-    except (Exception, SystemExit):
+    except (Exception, SystemExit) as exc:
         err = traceback.format_exc()
+        outcome = exc
     finally:
         t = time.perf_counter() - t0
         _flush_all()
@@ -563,6 +580,8 @@ def _run_in_worker(msg: dict[str, Any], cap: IO[bytes]) -> dict[str, Any]:
         os.dup2(saved[1], 2)
         os.close(saved[0])
         os.close(saved[1])
+        if tm is not None:
+            metrics.task_stop(tm, outcome)
     # the next task starts from the same state
     if os.getcwd() != cwd:
         os.chdir(cwd)
@@ -592,6 +611,16 @@ def _flush_all() -> None:
 
 
 # --- helpers --------------------------------------------------------------------------------
+
+
+def _metrics_dir(call: Call, workers: float) -> str:
+    # the run's metrics folder for the workers ('' without metrics); made here if run_tasks
+    # hasn't made it (metrics.run_start returns a folder the call has)
+    if not call.settings.get("task_metrics"):
+        return ""
+    from petakit5d.jobs import metrics
+
+    return metrics.run_start(call, poolWorkerNum=workers)
 
 
 def _input_exist(inputs: Sequence[str | Sequence[str]]) -> list[bool]:

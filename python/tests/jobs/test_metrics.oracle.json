@@ -1,0 +1,2039 @@
+{
+ "cases": {
+  "read_hand_written_run_folders": {
+   "error": null,
+   "files": {
+    "deleted": [],
+    "files": {}
+   },
+   "format": 2,
+   "key": "15b2bd606e665c5b75c24fd9fbbcfa3dba29d1f0977347df720f2326b33e50f1",
+   "matlab": "(code)",
+   "oracle": "5df18b227e5ac00e584e8274a783c3df5a09c97b",
+   "outputs": [
+    {
+     "f": [
+      "runId",
+      "task",
+      "func",
+      "mode",
+      "status",
+      "exitCode",
+      "error",
+      "node",
+      "pid",
+      "jobId",
+      "arrayJobId",
+      "arrayTaskId",
+      "slot",
+      "seq",
+      "start",
+      "xEnd",
+      "wallSec",
+      "cpuSec",
+      "userSec",
+      "sysSec",
+      "childCpuSec",
+      "rssStartGB",
+      "rssEndGB",
+      "rssPeakGB",
+      "rssPeakBeforeGB",
+      "readBytes",
+      "writeBytes",
+      "rchar",
+      "wchar",
+      "minorFaults",
+      "majorFaults",
+      "threads",
+      "cpus",
+      "slurmCpus",
+      "osThreads",
+      "gpu",
+      "gpuMemGB",
+      "gpuFreeGB",
+      "cudaDevices",
+      "processStart",
+      "memTotalGB",
+      "batchSize",
+      "parent",
+      "metricsSec",
+      "startupSec",
+      "lineSec",
+      "exitSec",
+      "input",
+      "output",
+      "cpusPerTask",
+      "memAllocate"
+     ],
+     "h": "463624fc5dba799446c19c17ede6f86b4d0a3d438f003449fe4be49414e0f943",
+     "k": "struct",
+     "s": [
+      1,
+      1
+     ],
+     "v": [
+      {
+       "arrayJobId": {
+        "h": "17e8b8c6a807bc1806dcf81c15a2513d895ccda677b35201c72ecdef8f33c140",
+        "k": "string",
+        "s": [
+         7,
+         1
+        ],
+        "v": [
+         "",
+         "9",
+         "",
+         "",
+         "",
+         "",
+         ""
+        ]
+       },
+       "arrayTaskId": {
+        "h": "efd220d34189656c6fcb2d03032da3bc6e4548141eca903e8d1e4bf6a2280d6e",
+        "k": "string",
+        "s": [
+         7,
+         1
+        ],
+        "v": [
+         "",
+         "",
+         "",
+         "",
+         "",
+         "",
+         ""
+        ]
+       },
+       "batchSize": {
+        "b64": "AAAAAAAA+P8AAAAAAAD4/wAAAAAAAPj/AAAAAAAA+P8AAAAAAAD4/wAAAAAAAPj/AAAAAAAA+P8=",
+        "c": "double",
+        "h": "5d39136d8c5edfcbe8e5fd8ee2184b10abcd8f9edac242ceb5f53cd49b1f6d5c",
+        "k": "a",
+        "s": [
+         7,
+         1
+        ],
+        "x": 0
+       },
+       "childCpuSec": {
+        "b64": "AAAAAAAA+P8AAAAAAAD4/wAAAAAAAPj/AAAAAAAA+P8AAAAAAAD4/wAAAAAAAPj/AAAAAAAA+P8=",
+        "c": "double",
+        "h": "5d39136d8c5edfcbe8e5fd8ee2184b10abcd8f9edac242ceb5f53cd49b1f6d5c",
+        "k": "a",
+        "s": [
+         7,
+         1
+        ],
+        "x": 0
+       },
+       "cpuSec": {
+        "b64": "AAAAAAAA+P8AAAAAAAD4/wAAAAAAAPj/AAAAAAAA+P8AAAAAAAD4/wAAAAAAAPj/AAAAAAAA+P8=",
+        "c": "double",
+        "h": "5d39136d8c5edfcbe8e5fd8ee2184b10abcd8f9edac242ceb5f53cd49b1f6d5c",
+        "k": "a",
+        "s": [
+         7,
+         1
+        ],
+        "x": 0
+       },
+       "cpus": {
+        "b64": "AAAAAAAA+P8AAAAAAAD4/wAAAAAAAPj/AAAAAAAA+P8AAAAAAAD4/wAAAAAAAPj/AAAAAAAA+P8=",
+        "c": "double",
+        "h": "5d39136d8c5edfcbe8e5fd8ee2184b10abcd8f9edac242ceb5f53cd49b1f6d5c",
+        "k": "a",
+        "s": [
+         7,
+         1
+        ],
+        "x": 0
+       },
+       "cpusPerTask": {
+        "b64": "AAAAAAAAAEAAAAAAAADwPwAAAAAAAAhAAAAAAAAACEAAAAAAAAD4/wAAAAAAAABAAAAAAAAAAEA=",
+        "c": "double",
+        "h": "f71912832d01aec089375fc4a2723bad436b6bac411c99665e9a7fee93172a0e",
+        "k": "a",
+        "s": [
+         7,
+         1
+        ],
+        "x": 0
+       },
+       "cudaDevices": {
+        "h": "efd220d34189656c6fcb2d03032da3bc6e4548141eca903e8d1e4bf6a2280d6e",
+        "k": "string",
+        "s": [
+         7,
+         1
+        ],
+        "v": [
+         "",
+         "",
+         "",
+         "",
+         "",
+         "",
+         ""
+        ]
+       },
+       "error": {
+        "h": "5509c535872f268b7ebacd4ce839261600841a02df3516ea31912b2eab258302",
+        "k": "string",
+        "s": [
+         7,
+         1
+        ],
+        "v": [
+         "",
+         "x \"y\"\n\tz \u00e9",
+         "",
+         "",
+         "",
+         "",
+         ""
+        ]
+       },
+       "exitCode": {
+        "b64": "AAAAAAAA+P8AAAAAAAD4/wAAAAAAABBAAAAAAAAA+P8AAAAAAAD4/wAAAAAAIGFAAAAAAAAAAAA=",
+        "c": "double",
+        "h": "192e31cce729f36daa358dc5e29b6e757b1c777f4d1206965fe3f4a2c3f2546d",
+        "k": "a",
+        "s": [
+         7,
+         1
+        ],
+        "x": 0
+       },
+       "exitSec": {
+        "b64": "AAAAAAAA4D8AAAAAAAD4/wAAAAAAAPj/AAAAAAAA+P8AAAAAAAD4/wAAAAAAAPj/AAAAAAAA+P8=",
+        "c": "double",
+        "h": "3494d9dbb86371a78ee0d86aa809772aa7b318e4c7dbcbce30139a99b26f0be3",
+        "k": "a",
+        "s": [
+         7,
+         1
+        ],
+        "x": 0
+       },
+       "func": {
+        "h": "a09b13a6673eb97eea2317593f31fbc8da551dc2b8f184eced57c14d8aa1d5c5",
+        "k": "string",
+        "s": [
+         7,
+         1
+        ],
+        "v": [
+         "f",
+         "g",
+         "",
+         "",
+         "",
+         "",
+         ""
+        ]
+       },
+       "gpu": {
+        "h": "efd220d34189656c6fcb2d03032da3bc6e4548141eca903e8d1e4bf6a2280d6e",
+        "k": "string",
+        "s": [
+         7,
+         1
+        ],
+        "v": [
+         "",
+         "",
+         "",
+         "",
+         "",
+         "",
+         ""
+        ]
+       },
+       "gpuFreeGB": {
+        "b64": "AAAAAAAA+P8AAAAAAAD4/wAAAAAAAPj/AAAAAAAA+P8AAAAAAAD4/wAAAAAAAPj/AAAAAAAA+P8=",
+        "c": "double",
+        "h": "5d39136d8c5edfcbe8e5fd8ee2184b10abcd8f9edac242ceb5f53cd49b1f6d5c",
+        "k": "a",
+        "s": [
+         7,
+         1
+        ],
+        "x": 0
+       },
+       "gpuMemGB": {
+        "b64": "AAAAAAAA+P8AAAAAAAD4/wAAAAAAAPj/AAAAAAAA+P8AAAAAAAD4/wAAAAAAAPj/AAAAAAAA+P8=",
+        "c": "double",
+        "h": "5d39136d8c5edfcbe8e5fd8ee2184b10abcd8f9edac242ceb5f53cd49b1f6d5c",
+        "k": "a",
+        "s": [
+         7,
+         1
+        ],
+        "x": 0
+       },
+       "input": {
+        "h": "ad55602fe259181e422891c426d43ac1bf245f4bee2463fa17598a1c8d34ae5b",
+        "k": "string",
+        "s": [
+         7,
+         1
+        ],
+        "v": [
+         "/d/in_1.tif",
+         "/d/a_1",
+         "/d/a_2",
+         "/d/a_2",
+         "",
+         "/d/in_2.tif",
+         "/d/in_3.tif"
+        ]
+       },
+       "jobId": {
+        "h": "1df027d3ec9b6f0c13ac096516c151044721ab5f37b10ea32e67c9f925ca5039",
+        "k": "string",
+        "s": [
+         7,
+         1
+        ],
+        "v": [
+         "55",
+         "",
+         "",
+         "",
+         "",
+         "55",
+         "55"
+        ]
+       },
+       "lineSec": {
+        "b64": "ZmZmZmZmGEAAAAAAAAD4/wAAAAAAAPj/AAAAAAAA+P8AAAAAAAD4/wAAAAAAADRAexSuR+F6hD8=",
+        "c": "double",
+        "h": "162a290206dbc7f2020118e0ca3b05e2206719b8dc15e5df7e32d48c8ed2d536",
+        "k": "a",
+        "s": [
+         7,
+         1
+        ],
+        "x": 0
+       },
+       "majorFaults": {
+        "b64": "AAAAAAAA+P8AAAAAAAD4/wAAAAAAAPj/AAAAAAAA+P8AAAAAAAD4/wAAAAAAAPj/AAAAAAAA+P8=",
+        "c": "double",
+        "h": "5d39136d8c5edfcbe8e5fd8ee2184b10abcd8f9edac242ceb5f53cd49b1f6d5c",
+        "k": "a",
+        "s": [
+         7,
+         1
+        ],
+        "x": 0
+       },
+       "memAllocate": {
+        "b64": "AAAAAAAAFEAAAAAAAAAAQAAAAAAAAPj/AAAAAAAA+P8AAAAAAAD4/wAAAAAAABRAAAAAAAAAFEA=",
+        "c": "double",
+        "h": "284ae37a6999d110c0d37c8649f9b5f5741899080965e03ae848913f81b9bdb2",
+        "k": "a",
+        "s": [
+         7,
+         1
+        ],
+        "x": 0
+       },
+       "memTotalGB": {
+        "b64": "AAAAAAAA+P8AAAAAAAD4/wAAAAAAAPj/AAAAAAAA+P8AAAAAAAD4/wAAAAAAAPj/AAAAAAAA+P8=",
+        "c": "double",
+        "h": "5d39136d8c5edfcbe8e5fd8ee2184b10abcd8f9edac242ceb5f53cd49b1f6d5c",
+        "k": "a",
+        "s": [
+         7,
+         1
+        ],
+        "x": 0
+       },
+       "metricsSec": {
+        "b64": "AAAAAAAA+P8AAAAAAAD4/wAAAAAAAPj/AAAAAAAA+P8AAAAAAAD4/wAAAAAAAPj/AAAAAAAA+P8=",
+        "c": "double",
+        "h": "5d39136d8c5edfcbe8e5fd8ee2184b10abcd8f9edac242ceb5f53cd49b1f6d5c",
+        "k": "a",
+        "s": [
+         7,
+         1
+        ],
+        "x": 0
+       },
+       "minorFaults": {
+        "b64": "AAAAAAAA+P8AAAAAAAD4/wAAAAAAAPj/AAAAAAAA+P8AAAAAAAD4/wAAAAAAAPj/AAAAAAAA+P8=",
+        "c": "double",
+        "h": "5d39136d8c5edfcbe8e5fd8ee2184b10abcd8f9edac242ceb5f53cd49b1f6d5c",
+        "k": "a",
+        "s": [
+         7,
+         1
+        ],
+        "x": 0
+       },
+       "mode": {
+        "h": "d5cf181f3662f55e4c94d054b44e0324880ddb0dffca094bb13957bee4d7609f",
+        "k": "string",
+        "s": [
+         7,
+         1
+        ],
+        "v": [
+         "slurm_mcc",
+         "local",
+         "slurm_python",
+         "slurm_python",
+         "slurm_matlab",
+         "",
+         ""
+        ]
+       },
+       "node": {
+        "h": "78994aebc5d0127f552809d8ac998e7dfa6e0bb22436a111dce29319098e52e1",
+        "k": "string",
+        "s": [
+         7,
+         1
+        ],
+        "v": [
+         "n1",
+         "b",
+         "b",
+         "b",
+         "c",
+         "",
+         ""
+        ]
+       },
+       "osThreads": {
+        "b64": "AAAAAAAA+P8AAAAAAAD4/wAAAAAAAPj/AAAAAAAA+P8AAAAAAAD4/wAAAAAAAPj/AAAAAAAA+P8=",
+        "c": "double",
+        "h": "5d39136d8c5edfcbe8e5fd8ee2184b10abcd8f9edac242ceb5f53cd49b1f6d5c",
+        "k": "a",
+        "s": [
+         7,
+         1
+        ],
+        "x": 0
+       },
+       "output": {
+        "h": "7cbe204e9b1797206d49882973dd3e5c5cece991e1801e07ddf1532b1c0969a4",
+        "k": "string",
+        "s": [
+         7,
+         1
+        ],
+        "v": [
+         "/d/out_1.tif",
+         "/d/only",
+         "",
+         "",
+         "",
+         "/d/out_2.tif",
+         "/d/out_3.tif"
+        ]
+       },
+       "parent": {
+        "h": "efd220d34189656c6fcb2d03032da3bc6e4548141eca903e8d1e4bf6a2280d6e",
+        "k": "string",
+        "s": [
+         7,
+         1
+        ],
+        "v": [
+         "",
+         "",
+         "",
+         "",
+         "",
+         "",
+         ""
+        ]
+       },
+       "pid": {
+        "b64": "AAAAAAAAJkAAAAAAAAAIQAAAAAAAAAhAAAAAAAAACEAAAAAAAAAUQAAAAAAAAPj/AAAAAAAA+P8=",
+        "c": "double",
+        "h": "028d6ff4d898585a051339a2d9981fc4954bf2ca1ec019efd6492cc51f28a845",
+        "k": "a",
+        "s": [
+         7,
+         1
+        ],
+        "x": 0
+       },
+       "processStart": {
+        "b64": "AAAAAACgWkAAAAAAAOhoQAAAAAAA6GhAAAAAAADoaEBmZmZmZiZyQAAAAAAAAPj/AAAAAAAA+P8=",
+        "c": "double",
+        "h": "b06eac5b01fb84a26556934c9985e97ae26df3b456cb271d9d85e3a0c4646416",
+        "k": "a",
+        "s": [
+         7,
+         1
+        ],
+        "x": 0
+       },
+       "rchar": {
+        "b64": "AAAAAAAA+P8AAAAAAAD4/wAAAAAAAPj/AAAAAAAA+P8AAAAAAAD4/wAAAAAAAPj/AAAAAAAA+P8=",
+        "c": "double",
+        "h": "5d39136d8c5edfcbe8e5fd8ee2184b10abcd8f9edac242ceb5f53cd49b1f6d5c",
+        "k": "a",
+        "s": [
+         7,
+         1
+        ],
+        "x": 0
+       },
+       "readBytes": {
+        "b64": "AAAAAAAA+P8AAAAAAAD4/wAAAAAAAPj/AAAAAAAA+P8AAAAAAAD4/wAAAAAAAPj/AAAAAAAA+P8=",
+        "c": "double",
+        "h": "5d39136d8c5edfcbe8e5fd8ee2184b10abcd8f9edac242ceb5f53cd49b1f6d5c",
+        "k": "a",
+        "s": [
+         7,
+         1
+        ],
+        "x": 0
+       },
+       "rssEndGB": {
+        "b64": "AAAAAAAA+P8AAAAAAAD4/wAAAAAAAPj/AAAAAAAA+P8AAAAAAAD4/wAAAAAAAPj/AAAAAAAA+P8=",
+        "c": "double",
+        "h": "5d39136d8c5edfcbe8e5fd8ee2184b10abcd8f9edac242ceb5f53cd49b1f6d5c",
+        "k": "a",
+        "s": [
+         7,
+         1
+        ],
+        "x": 0
+       },
+       "rssPeakBeforeGB": {
+        "b64": "AAAAAAAA+P8AAAAAAAD4/wAAAAAAAPj/AAAAAAAA+P8AAAAAAAD4/wAAAAAAAPj/AAAAAAAA+P8=",
+        "c": "double",
+        "h": "5d39136d8c5edfcbe8e5fd8ee2184b10abcd8f9edac242ceb5f53cd49b1f6d5c",
+        "k": "a",
+        "s": [
+         7,
+         1
+        ],
+        "x": 0
+       },
+       "rssPeakGB": {
+        "b64": "AAAAAAAA+P8AAAAAAAD4/wAAAAAAAPj/AAAAAAAA+P8AAAAAAAD4/wAAAAAAAPj/AAAAAAAA+P8=",
+        "c": "double",
+        "h": "5d39136d8c5edfcbe8e5fd8ee2184b10abcd8f9edac242ceb5f53cd49b1f6d5c",
+        "k": "a",
+        "s": [
+         7,
+         1
+        ],
+        "x": 0
+       },
+       "rssStartGB": {
+        "b64": "AAAAAAAA+P8AAAAAAAD4/wAAAAAAAPj/AAAAAAAA+P8AAAAAAAD4/wAAAAAAAPj/AAAAAAAA+P8=",
+        "c": "double",
+        "h": "5d39136d8c5edfcbe8e5fd8ee2184b10abcd8f9edac242ceb5f53cd49b1f6d5c",
+        "k": "a",
+        "s": [
+         7,
+         1
+        ],
+        "x": 0
+       },
+       "runId": {
+        "h": "21b03da1f7923cdc02cbcbab802e5b4fb022d118e799b2ecb0b9c8ee7df91a79",
+        "k": "string",
+        "s": [
+         7,
+         1
+        ],
+        "v": [
+         "run_1",
+         "run_2",
+         "run_2",
+         "run_2",
+         "run_9",
+         "run_1",
+         "run_1"
+        ]
+       },
+       "seq": {
+        "b64": "AAAAAAAA+P8AAAAAAAD4/wAAAAAAAPj/AAAAAAAA+P8AAAAAAAD4/wAAAAAAAPj/AAAAAAAA+P8=",
+        "c": "double",
+        "h": "5d39136d8c5edfcbe8e5fd8ee2184b10abcd8f9edac242ceb5f53cd49b1f6d5c",
+        "k": "a",
+        "s": [
+         7,
+         1
+        ],
+        "x": 0
+       },
+       "slot": {
+        "b64": "AAAAAAAA+P8AAAAAAAD4/wAAAAAAAPj/AAAAAAAA+P8AAAAAAAD4/wAAAAAAAPj/AAAAAAAA+P8=",
+        "c": "double",
+        "h": "5d39136d8c5edfcbe8e5fd8ee2184b10abcd8f9edac242ceb5f53cd49b1f6d5c",
+        "k": "a",
+        "s": [
+         7,
+         1
+        ],
+        "x": 0
+       },
+       "slurmCpus": {
+        "b64": "AAAAAAAA+P8AAAAAAAD4/wAAAAAAAPj/AAAAAAAA+P8AAAAAAAD4/wAAAAAAAPj/AAAAAAAA+P8=",
+        "c": "double",
+        "h": "5d39136d8c5edfcbe8e5fd8ee2184b10abcd8f9edac242ceb5f53cd49b1f6d5c",
+        "k": "a",
+        "s": [
+         7,
+         1
+        ],
+        "x": 0
+       },
+       "start": {
+        "b64": "AAAAAACAW0AAAAAAACBpQAAAAAAAYGlAAAAAAABQaUAAAAAAAMByQGZmZmZmplpAMzMzMzOzWkA=",
+        "c": "double",
+        "h": "f5c6c28a9b5b15467507de5a4aa7182957545f6e3b9b18b86804e4855af84ac9",
+        "k": "a",
+        "s": [
+         7,
+         1
+        ],
+        "x": 0
+       },
+       "startupSec": {
+        "b64": "AAAAAAAADEAAAAAAAAD8PwAAAAAAAPj/AAAAAAAA+P9AMzMzMzMjQAAAAAAAAPj/AAAAAAAA+P8=",
+        "c": "double",
+        "h": "49bd0a887e615fb2ee945be67dab6c19a0e92b102a7f3060a0a219cc1f3a3113",
+        "k": "a",
+        "s": [
+         7,
+         1
+        ],
+        "x": 0
+       },
+       "status": {
+        "h": "9c7aeb70382a561d1847dfd8a25af2a612e3e5457fb88e7273f6d009130debb7",
+        "k": "string",
+        "s": [
+         7,
+         1
+        ],
+        "v": [
+         "ok",
+         "",
+         "",
+         "",
+         "",
+         "killed",
+         "skipped"
+        ]
+       },
+       "sysSec": {
+        "b64": "AAAAAAAA+P8AAAAAAAD4/wAAAAAAAPj/AAAAAAAA+P8AAAAAAAD4/wAAAAAAAPj/AAAAAAAA+P8=",
+        "c": "double",
+        "h": "5d39136d8c5edfcbe8e5fd8ee2184b10abcd8f9edac242ceb5f53cd49b1f6d5c",
+        "k": "a",
+        "s": [
+         7,
+         1
+        ],
+        "x": 0
+       },
+       "task": {
+        "b64": "AAAAAAAA8D8AAAAAAADwPwAAAAAAAABAAAAAAAAAAEAAAAAAAADwPwAAAAAAAABAAAAAAAAACEA=",
+        "c": "double",
+        "h": "9b05edc8bb2909bdf2dab273742999fa99696a2f729e91bba1acceb4db193faf",
+        "k": "a",
+        "s": [
+         7,
+         1
+        ],
+        "x": 0
+       },
+       "threads": {
+        "b64": "AAAAAAAA+P8AAAAAAAD4/wAAAAAAAPj/AAAAAAAA+P8AAAAAAAD4/wAAAAAAAPj/AAAAAAAA+P8=",
+        "c": "double",
+        "h": "5d39136d8c5edfcbe8e5fd8ee2184b10abcd8f9edac242ceb5f53cd49b1f6d5c",
+        "k": "a",
+        "s": [
+         7,
+         1
+        ],
+        "x": 0
+       },
+       "userSec": {
+        "b64": "AAAAAAAA+P8AAAAAAAD4/wAAAAAAAPj/AAAAAAAA+P8AAAAAAAD4/wAAAAAAAPj/AAAAAAAA+P8=",
+        "c": "double",
+        "h": "5d39136d8c5edfcbe8e5fd8ee2184b10abcd8f9edac242ceb5f53cd49b1f6d5c",
+        "k": "a",
+        "s": [
+         7,
+         1
+        ],
+        "x": 0
+       },
+       "wallSec": {
+        "b64": "AAAAAAAAAEAAAAAAAAD4/wAAAAAAAPj/AAAAAAAA+P8AAAAAAAD4/wAAAAAAAPj/AAAAAAAA+P8=",
+        "c": "double",
+        "h": "7ae2382f8b3eef7d4b6811c6b1096b7936ae3c1026e0fa5acf5857bf7edc5308",
+        "k": "a",
+        "s": [
+         7,
+         1
+        ],
+        "x": 0
+       },
+       "wchar": {
+        "b64": "AAAAAAAA+P8AAAAAAAD4/wAAAAAAAPj/AAAAAAAA+P8AAAAAAAD4/wAAAAAAAPj/AAAAAAAA+P8=",
+        "c": "double",
+        "h": "5d39136d8c5edfcbe8e5fd8ee2184b10abcd8f9edac242ceb5f53cd49b1f6d5c",
+        "k": "a",
+        "s": [
+         7,
+         1
+        ],
+        "x": 0
+       },
+       "writeBytes": {
+        "b64": "AAAAAAAA+P8AAAAAAAD4/wAAAAAAAPj/AAAAAAAA+P8AAAAAAAD4/wAAAAAAAPj/AAAAAAAA+P8=",
+        "c": "double",
+        "h": "5d39136d8c5edfcbe8e5fd8ee2184b10abcd8f9edac242ceb5f53cd49b1f6d5c",
+        "k": "a",
+        "s": [
+         7,
+         1
+        ],
+        "x": 0
+       },
+       "xEnd": {
+        "b64": "AAAAAAAAXEAAAAAAAEBpQAAAAAAAAPj/AAAAAAAA+P8AAAAAANByQGZmZmZmpl9ApHA9CtezWkA=",
+        "c": "double",
+        "h": "f79039d08a47841919add3434fb70c3edab3b6f01d51194f2fb24c15d970e732",
+        "k": "a",
+        "s": [
+         7,
+         1
+        ],
+        "x": 0
+       }
+      }
+     ]
+    },
+    {
+     "f": [
+      "runId",
+      "kind",
+      "func",
+      "backend",
+      "node",
+      "start",
+      "xEnd",
+      "elapsedSec",
+      "nTasks",
+      "nDone",
+      "nRecords",
+      "parseCluster",
+      "mccMode",
+      "cpusPerTask",
+      "memAllocate",
+      "taskBatchNum",
+      "paraJobNum",
+      "GPUJob",
+      "parent",
+      "folder"
+     ],
+     "h": "34fd2c069bc38401a72a56ae30446c3d27ae04c5c35592a253b4adc2c8816315",
+     "k": "struct",
+     "s": [
+      1,
+      1
+     ],
+     "v": [
+      {
+       "GPUJob": {
+        "b64": "AAAAAAAA+P8AAAAAAADwPw==",
+        "c": "double",
+        "h": "3919f38d387b2e74b1f2182a3cafdfec99cea43a57f9e1b8e72ae491d1d078b3",
+        "k": "a",
+        "s": [
+         2,
+         1
+        ],
+        "x": 0
+       },
+       "backend": {
+        "h": "d3e2c06a8281ec01b169f007d921eb40285c50cf924c07b78b0461bb7cddbd9a",
+        "k": "string",
+        "s": [
+         2,
+         1
+        ],
+        "v": [
+         "mcc",
+         "python"
+        ]
+       },
+       "cpusPerTask": {
+        "b64": "AAAAAAAAAEAAAAAAAAAIQA==",
+        "c": "double",
+        "h": "48166a7ecfa1ad4d1fe0c07df9c1972b218b14579a1874be4edfcbeb2d6ff7ab",
+        "k": "a",
+        "s": [
+         2,
+         1
+        ],
+        "x": 0
+       },
+       "elapsedSec": {
+        "b64": "AAAAAACAREAAAAAAAAD4/w==",
+        "c": "double",
+        "h": "54f7cee24d293c728f33f7e2b5ec1632583e04270c67d1f1ea8c9f00efee3b28",
+        "k": "a",
+        "s": [
+         2,
+         1
+        ],
+        "x": 0
+       },
+       "folder": {
+        "h": "3ae1a631906aa983e4daa5c3b7dead697815a1e34508c991295a432d401b390c",
+        "k": "string",
+        "s": [
+         2,
+         1
+        ],
+        "v": [
+         "<WORK>/runs/task_metrics/run_1/",
+         "<WORK>/runs/task_metrics/run_2/"
+        ]
+       },
+       "func": {
+        "h": "84b7b4b0633a4cc870aaa6154b554912df96bd8525d2585bd085a4e85a6a7532",
+        "k": "string",
+        "s": [
+         2,
+         1
+        ],
+        "v": [
+         "f",
+         "g"
+        ]
+       },
+       "kind": {
+        "h": "7ff181880d6b66e07b3e139fe091e6a8b425ebf2ae05f78ddfca3b8f473b6e59",
+        "k": "string",
+        "s": [
+         2,
+         1
+        ],
+        "v": [
+         "framework",
+         "single"
+        ]
+       },
+       "mccMode": {
+        "b64": "AAAAAAAA8D8AAAAAAAD4/w==",
+        "c": "double",
+        "h": "e299e6064d0093d6dce22932991fa4d49da66f8c8d84727d1a1a37b04b4c1dae",
+        "k": "a",
+        "s": [
+         2,
+         1
+        ],
+        "x": 0
+       },
+       "memAllocate": {
+        "b64": "AAAAAAAAFEAAAAAAAAD4/w==",
+        "c": "double",
+        "h": "054f282ce008b7dfd0eaef352fc6cf9169af1c5669e79a8e19b5ad8145f23326",
+        "k": "a",
+        "s": [
+         2,
+         1
+        ],
+        "x": 0
+       },
+       "nDone": {
+        "b64": "AAAAAAAAAEAAAAAAAAD4/w==",
+        "c": "double",
+        "h": "35fd2630672d47a9043c3b57c2b4b5ab64f690a60abd2fc09606d8f213d7fe13",
+        "k": "a",
+        "s": [
+         2,
+         1
+        ],
+        "x": 0
+       },
+       "nRecords": {
+        "b64": "AAAAAAAA8D8AAAAAAAAUQA==",
+        "c": "double",
+        "h": "b62dbd9f8bfbdb9728b35e4c4e1456cd90d2be2401bc305c08eeee93b1f2544e",
+        "k": "a",
+        "s": [
+         2,
+         1
+        ],
+        "x": 0
+       },
+       "nTasks": {
+        "b64": "AAAAAAAACEAAAAAAAAAIQA==",
+        "c": "double",
+        "h": "82c77375ecbcf20f09cee9ee4a5ccbb46e16e6d4845a8a570a11abc78bf820a1",
+        "k": "a",
+        "s": [
+         2,
+         1
+        ],
+        "x": 0
+       },
+       "node": {
+        "h": "568c232c27be84925deb24ad15f47307913008f79c9c654f736d6ffc1dd610dc",
+        "k": "string",
+        "s": [
+         2,
+         1
+        ],
+        "v": [
+         "",
+         ""
+        ]
+       },
+       "paraJobNum": {
+        "b64": "AAAAAAAA+P8AAAAAAAD4/w==",
+        "c": "double",
+        "h": "a0b4abad664c369732eea5bc8df42bb0025ef5b8193bcd0802c626bed000f03c",
+        "k": "a",
+        "s": [
+         2,
+         1
+        ],
+        "x": 0
+       },
+       "parent": {
+        "h": "d8576d4f189ae2760398bc923b98ab3822a6249c47767e88a116bf782c40b3a8",
+        "k": "string",
+        "s": [
+         2,
+         1
+        ],
+        "v": [
+         "",
+         "run_0/3"
+        ]
+       },
+       "parseCluster": {
+        "b64": "AAAAAAAA+P8AAAAAAAAAAA==",
+        "c": "double",
+        "h": "e117ae8d5a61b967055ec3e6a7eb988d6a0473d27dcccf0b09dbe45f36436cf9",
+        "k": "a",
+        "s": [
+         2,
+         1
+        ],
+        "x": 0
+       },
+       "runId": {
+        "h": "2ea0d76b21e3b2e1e9306e5904f703c50dea2efc53a49af3d86857b404ab1a61",
+        "k": "string",
+        "s": [
+         2,
+         1
+        ],
+        "v": [
+         "run_1",
+         "run_2"
+        ]
+       },
+       "start": {
+        "b64": "AAAAAADAWEAAAAAAAMBiQA==",
+        "c": "double",
+        "h": "a71998d1e9beeeeb4c9045178b8043f33f5716b06d756053246897d3c1af867e",
+        "k": "a",
+        "s": [
+         2,
+         1
+        ],
+        "x": 0
+       },
+       "taskBatchNum": {
+        "b64": "AAAAAAAA+P8AAAAAAAAAQA==",
+        "c": "double",
+        "h": "b9ce0ec3640f8939498c1158484b2263b95505182dd3138899beb2c2630170b8",
+        "k": "a",
+        "s": [
+         2,
+         1
+        ],
+        "x": 0
+       },
+       "xEnd": {
+        "b64": "AAAAAACAYUAAAAAAAAD4/w==",
+        "c": "double",
+        "h": "9d05752e9998f25dd1ef7c62db167f5210f1e2569ebc4a784e392e3e6fdc2838",
+        "k": "a",
+        "s": [
+         2,
+         1
+        ],
+        "x": 0
+       }
+      }
+     ]
+    }
+   ],
+   "status": "ok",
+   "warnings": [
+    {
+     "identifier": "MATLAB:table:ModifiedVarnames",
+     "message": "Table variable names that were not valid MATLAB identifiers have been\nmodified. Since table variable names must be unique, any table variable names\nthat happened to match the new identifiers also have been modified."
+    },
+    {
+     "identifier": "MATLAB:table:ModifiedVarnames",
+     "message": "Table variable names that were not valid MATLAB identifiers have been modified. Since table variable names must be unique, any table variable names that happened to match the new identifiers also have been modified."
+    }
+   ]
+  },
+  "read_python_run_folders": {
+   "error": null,
+   "files": {
+    "deleted": [],
+    "files": {}
+   },
+   "format": 2,
+   "key": "35f6e41c2987535c128c1762571d4ecb691962d0bf998dbec82a4833bbdc0b9e",
+   "matlab": "(code)",
+   "oracle": "5df18b227e5ac00e584e8274a783c3df5a09c97b",
+   "outputs": [
+    {
+     "f": [
+      "runId",
+      "task",
+      "func",
+      "mode",
+      "status",
+      "exitCode",
+      "error",
+      "node",
+      "pid",
+      "jobId",
+      "arrayJobId",
+      "arrayTaskId",
+      "slot",
+      "seq",
+      "start",
+      "xEnd",
+      "wallSec",
+      "cpuSec",
+      "userSec",
+      "sysSec",
+      "childCpuSec",
+      "rssStartGB",
+      "rssEndGB",
+      "rssPeakGB",
+      "rssPeakBeforeGB",
+      "readBytes",
+      "writeBytes",
+      "rchar",
+      "wchar",
+      "minorFaults",
+      "majorFaults",
+      "threads",
+      "cpus",
+      "slurmCpus",
+      "osThreads",
+      "gpu",
+      "gpuMemGB",
+      "gpuFreeGB",
+      "cudaDevices",
+      "processStart",
+      "memTotalGB",
+      "batchSize",
+      "parent",
+      "metricsSec",
+      "startupSec",
+      "lineSec",
+      "exitSec",
+      "input",
+      "output",
+      "cpusPerTask",
+      "memAllocate"
+     ],
+     "h": "7c310b2be8070b5bcf02cc591dc07fd0886b741bd78119645a75439886489908",
+     "k": "struct",
+     "s": [
+      1,
+      1
+     ],
+     "v": [
+      {
+       "arrayJobId": {
+        "h": "a05436d10de32ac33abbf7dcb5000795a95d0edbd8722c3229a2d3e4e154042f",
+        "k": "string",
+        "s": [
+         8,
+         1
+        ],
+        "v": [
+         "",
+         "",
+         "",
+         "",
+         "",
+         "",
+         "",
+         "1000"
+        ]
+       },
+       "arrayTaskId": {
+        "h": "47f2410e34818545a8c6e43a9a557ac51ca185b1d0d09dde90677fbf3de5a473",
+        "k": "string",
+        "s": [
+         8,
+         1
+        ],
+        "v": [
+         "",
+         "",
+         "",
+         "",
+         "",
+         "",
+         "",
+         "7"
+        ]
+       },
+       "batchSize": {
+        "b64": "AAAAAAAA8D8AAAAAAADwPwAAAAAAAPA/AAAAAAAA8D8AAAAAAADwPwAAAAAAAPA/AAAAAAAA8D8AAAAAAADwPw==",
+        "c": "double",
+        "h": "07c7777f0f7f71ad23be7c1278f1190330a53c8846ca49b494c49c63f224910f",
+        "k": "a",
+        "s": [
+         8,
+         1
+        ],
+        "x": 0
+       },
+       "childCpuSec": {
+        "b64": "exSuR+F6hD97FK5H4XqEP7gehetRuJ4/exSuR+F6hD97FK5H4XqEP3sUrkfheoQ/exSuR+F6hD97FK5H4XqEPw==",
+        "c": "double",
+        "h": "2678622c085560d57b0cf05074592ee7e44d0e53a92b586a31b2bfcf26a5d4e9",
+        "k": "a",
+        "s": [
+         8,
+         1
+        ],
+        "x": 0
+       },
+       "cpuSec": {
+        "b64": "AAAAAAAAsD8AAAAAAACwPwAAAAAAAMg/AAAAAAAAsD8AAAAAAACwPwAAAAAAALA/AAAAAAAAsD8AAAAAAACwPw==",
+        "c": "double",
+        "h": "740275fff5c6563d7d91d8190eadd0487cb70ea68c13d48616781dc680a9f199",
+        "k": "a",
+        "s": [
+         8,
+         1
+        ],
+        "x": 0
+       },
+       "cpus": {
+        "b64": "AAAAAAAAIEAAAAAAAAAgQAAAAAAAACBAAAAAAAAAIEAAAAAAAAAgQAAAAAAAACBAAAAAAAAAIEAAAAAAAAAgQA==",
+        "c": "double",
+        "h": "92ab8d56fbfac851d3ab0f9ab2100d87fdd9cbff5c6ccd30f4ba4b00035a5c02",
+        "k": "a",
+        "s": [
+         8,
+         1
+        ],
+        "x": 0
+       },
+       "cpusPerTask": {
+        "b64": "AAAAAAAA8D8AAAAAAADwPwAAAAAAAPA/AAAAAAAA8D8AAAAAAADwPwAAAAAAAPA/AAAAAAAA8D8AAAAAAAAAQA==",
+        "c": "double",
+        "h": "350e7a51f88cc71ccfa193ac4cdcc441d9c7865523f99624f5c84673ee4d5902",
+        "k": "a",
+        "s": [
+         8,
+         1
+        ],
+        "x": 0
+       },
+       "cudaDevices": {
+        "h": "b251cd01d3876a4c39ef385e8aab189bcd40a2de4334e5fdaf529e6cd0a96539",
+        "k": "string",
+        "s": [
+         8,
+         1
+        ],
+        "v": [
+         "",
+         "",
+         "",
+         "",
+         "",
+         "",
+         "",
+         ""
+        ]
+       },
+       "error": {
+        "h": "83b54e3840452e59c41c4c6e806aa1bea0496bf2c32b4c398bfd85185e76b944",
+        "k": "string",
+        "s": [
+         8,
+         1
+        ],
+        "v": [
+         "",
+         "FileNotFoundError: [Errno 2] No such file or directory: 'data/missing.txt'",
+         "",
+         "",
+         "",
+         "",
+         "",
+         ""
+        ]
+       },
+       "exitCode": {
+        "b64": "AAAAAAAACEAAAAAAAADwPwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
+        "c": "double",
+        "h": "840e7682c9ba79ee70053deaf6d9ed863cf55687e5ceb14000f8b15e05c0d920",
+        "k": "a",
+        "s": [
+         8,
+         1
+        ],
+        "x": 0
+       },
+       "exitSec": {
+        "b64": "AAAAAAAA+P8AAAAAAAD4/wAAAAAAAPj/AAAAAAAA+P8AAAAAAAD4/wAAAAAAAPj/AAAAAAAA+P8AAAAAAAD4/w==",
+        "c": "double",
+        "h": "2fb913d8a4c386d483bbc2592edaa6a9d94fd1335143acf4e307b2dc311b18f5",
+        "k": "a",
+        "s": [
+         8,
+         1
+        ],
+        "x": 0
+       },
+       "func": {
+        "h": "9702bf33368bba70d0994e23768c50b2022b49e81d0f97c9e7aa8c796567d5b9",
+        "k": "string",
+        "s": [
+         8,
+         1
+        ],
+        "v": [
+         "exit 3",
+         "os:remove",
+         "petakit5d.jobs.framework:run_tasks",
+         "shutil:copyfile",
+         "shutil:copyfile",
+         "shutil:copyfile",
+         "shutil:copyfile",
+         "shutil:copyfile"
+        ]
+       },
+       "gpu": {
+        "h": "b251cd01d3876a4c39ef385e8aab189bcd40a2de4334e5fdaf529e6cd0a96539",
+        "k": "string",
+        "s": [
+         8,
+         1
+        ],
+        "v": [
+         "",
+         "",
+         "",
+         "",
+         "",
+         "",
+         "",
+         ""
+        ]
+       },
+       "gpuFreeGB": {
+        "b64": "AAAAAAAA+P8AAAAAAAD4/wAAAAAAAPj/AAAAAAAA+P8AAAAAAAD4/wAAAAAAAPj/AAAAAAAA+P8AAAAAAAD4/w==",
+        "c": "double",
+        "h": "2fb913d8a4c386d483bbc2592edaa6a9d94fd1335143acf4e307b2dc311b18f5",
+        "k": "a",
+        "s": [
+         8,
+         1
+        ],
+        "x": 0
+       },
+       "gpuMemGB": {
+        "b64": "AAAAAAAA+P8AAAAAAAD4/wAAAAAAAPj/AAAAAAAA+P8AAAAAAAD4/wAAAAAAAPj/AAAAAAAA+P8AAAAAAAD4/w==",
+        "c": "double",
+        "h": "2fb913d8a4c386d483bbc2592edaa6a9d94fd1335143acf4e307b2dc311b18f5",
+        "k": "a",
+        "s": [
+         8,
+         1
+        ],
+        "x": 0
+       },
+       "input": {
+        "h": "96061982a5193a11445a18e031dd0c368a0958dc7afd080763d0794c6dccf4ae",
+        "k": "string",
+        "s": [
+         8,
+         1
+        ],
+        "v": [
+         "data/in_4.txt",
+         "data/in_4.txt",
+         "data/in_4.txt",
+         "data/in_1.txt",
+         "data/in_2.txt",
+         "data/in_3.txt",
+         "data/in_4.txt",
+         ""
+        ]
+       },
+       "jobId": {
+        "h": "605ba29497ccac133541428446664b1504a840f0cc50eaaf46bc3f92cb7d629b",
+        "k": "string",
+        "s": [
+         8,
+         1
+        ],
+        "v": [
+         "",
+         "",
+         "",
+         "",
+         "",
+         "",
+         "",
+         "1001"
+        ]
+       },
+       "lineSec": {
+        "b64": "AAAAAAAA+P8AAAAAAAD4/wAAAAAAAPj/AAAAAAAA+P8AAAAAAAD4/wAAAAAAAPj/AAAAAAAA+P8AAAAAAAD4/w==",
+        "c": "double",
+        "h": "2fb913d8a4c386d483bbc2592edaa6a9d94fd1335143acf4e307b2dc311b18f5",
+        "k": "a",
+        "s": [
+         8,
+         1
+        ],
+        "x": 0
+       },
+       "majorFaults": {
+        "b64": "AAAAAAAA8L8AAAAAAADwvwAAAAAAAPC/AAAAAAAA8L8AAAAAAADwvwAAAAAAAPC/AAAAAAAA8D8AAAAAAADwvw==",
+        "c": "double",
+        "h": "7c3fd57c5716215dd988b1211782138e9fcfed7ec6a98805c1a3edb60583428e",
+        "k": "a",
+        "s": [
+         8,
+         1
+        ],
+        "x": 0
+       },
+       "memAllocate": {
+        "b64": "AAAAAAAA+P8AAAAAAAD4/wAAAAAAAPj/AAAAAAAA+P8AAAAAAAD4/wAAAAAAAPj/AAAAAAAA+P8AAAAAAAA+QA==",
+        "c": "double",
+        "h": "3f3df491f662c7666fb29e665ea7640c6840bbc3069efc8c71cf939b031ddf36",
+        "k": "a",
+        "s": [
+         8,
+         1
+        ],
+        "x": 0
+       },
+       "memTotalGB": {
+        "b64": "AAAAAAAAgEAAAAAAAACAQAAAAAAAAIBAAAAAAAAAgEAAAAAAAACAQAAAAAAAAIBAAAAAAAAAgEAAAAAAAACAQA==",
+        "c": "double",
+        "h": "0c4ffd1318cb135713d63eff276eb02340d152b3b04ac4e2a526e8fef555051f",
+        "k": "a",
+        "s": [
+         8,
+         1
+        ],
+        "x": 0
+       },
+       "metricsSec": {
+        "b64": "AAAAAAAA4D8AAAAAAADgPwAAAAAAAOA/AAAAAAAA4D8AAAAAAADQPwAAAAAAANA/AAAAAAAA4D8AAAAAAADQPw==",
+        "c": "double",
+        "h": "3aa9e3072568499570f2c8df47a58e5649cc188196bc3a0a5954074ef3191e1e",
+        "k": "a",
+        "s": [
+         8,
+         1
+        ],
+        "x": 0
+       },
+       "minorFaults": {
+        "b64": "AAAAAABAj0AAAAAAAECPQAAAAAAAcKdAAAAAAABAj0AAAAAAAECPQAAAAAAAQI9AAAAAAABAj0AAAAAAAECPQA==",
+        "c": "double",
+        "h": "8f7f0f83b25f6e6003c2a7e3c8e1941b06a13e4eb97ae080bd048a0e5437e78b",
+        "k": "a",
+        "s": [
+         8,
+         1
+        ],
+        "x": 0
+       },
+       "mode": {
+        "h": "5bf4af84ffde6775fd8a8d634ca3eab4a32366f3030ed9bc49829ff239311ab8",
+        "k": "string",
+        "s": [
+         8,
+         1
+        ],
+        "v": [
+         "local",
+         "local",
+         "local",
+         "local",
+         "local",
+         "local",
+         "local",
+         "slurm_python"
+        ]
+       },
+       "node": {
+        "h": "4e63310975ec80a5908708c186fb453a2289ad0561200e1c97ae8b77cd6731fe",
+        "k": "string",
+        "s": [
+         8,
+         1
+        ],
+        "v": [
+         "node12",
+         "node12",
+         "node12",
+         "node12",
+         "node12",
+         "node12",
+         "node12",
+         "node12"
+        ]
+       },
+       "osThreads": {
+        "b64": "AAAAAAAAFEAAAAAAAAAYQAAAAAAAABhAAAAAAAAAGEAAAAAAAAAUQAAAAAAAABBAAAAAAAAAFEAAAAAAAAAUQA==",
+        "c": "double",
+        "h": "c0d105a664d21b783ca6c0e135b8ab96c343636652a62749a7589b8223c45fff",
+        "k": "a",
+        "s": [
+         8,
+         1
+        ],
+        "x": 0
+       },
+       "output": {
+        "h": "83c6e656f22a582e83db1236bd8de359db4152e3d42fe793676a1b345c6fbfe8",
+        "k": "string",
+        "s": [
+         8,
+         1
+        ],
+        "v": [
+         "data/out/out_4.txt",
+         "data/out/out_4.txt",
+         "data/out/out_4.txt",
+         "data/out/out_1.txt",
+         "data/out/out_2.txt",
+         "data/out/out_3.txt",
+         "data/out/out_4.txt",
+         ""
+        ]
+       },
+       "parent": {
+        "h": "9d19544c410c6d726e34d2ad4de0cc9dbb1fda1a71808bd843141aff44881eeb",
+        "k": "string",
+        "s": [
+         8,
+         1
+        ],
+        "v": [
+         "",
+         "",
+         "",
+         "",
+         "",
+         "",
+         "20261111_120000_petakit5d.jobs.framework_run_tasks_00000004/1",
+         ""
+        ]
+       },
+       "pid": {
+        "b64": "AAAAAACSsEAAAAAAAJKwQAAAAAAAkrBAAAAAAACSsEAAAAAAAJKwQAAAAAAAkrBAAAAAAACSsEAAAAAAAJKwQA==",
+        "c": "double",
+        "h": "472276dd6d7000632ab23a12241934710f993e1bfaab4de7fa0428c2b07eb4e2",
+        "k": "a",
+        "s": [
+         8,
+         1
+        ],
+        "x": 0
+       },
+       "processStart": {
+        "b64": "AACgfXTS2kEAAKB9dNLaQQAAoH100tpBAACgfXTS2kEAAKB9dNLaQQAAoH100tpBAACgfXTS2kEAAKB9dNLaQQ==",
+        "c": "double",
+        "h": "ac35865cd3e3a1e2c96ca076ae5e4553ae693b8930ef400c404637c70f164e78",
+        "k": "a",
+        "s": [
+         8,
+         1
+        ],
+        "x": 0
+       },
+       "rchar": {
+        "b64": "AAAAAAAAsEAAAAAAAACwQAAAAAAAAMhAAAAAAAAAsEAAAAAAAACwQAAAAAAAALBAAAAAAAAAsEAAAAAAAACwQA==",
+        "c": "double",
+        "h": "86da5ec53736cfdcba08cd5c2ed4c3962063789b60d2f60d7eb65646465424ba",
+        "k": "a",
+        "s": [
+         8,
+         1
+        ],
+        "x": 0
+       },
+       "readBytes": {
+        "b64": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
+        "c": "double",
+        "h": "a7d33a2352a23392b031f45652df17d9870cfc671555fbf1ce0d732eeee15e03",
+        "k": "a",
+        "s": [
+         8,
+         1
+        ],
+        "x": 0
+       },
+       "rssEndGB": {
+        "b64": "AAAAAACg0D8AAAAAAIDQPwAAAAAA4NA/AAAAAAAg0D8AAAAAAEDQPwAAAAAAYNA/AAAAAADQ0D8AAAAAAADRPw==",
+        "c": "double",
+        "h": "a78824b796162e39fdb9d8b67e36f821ddfdb0180234ebf2be8c660973adadae",
+        "k": "a",
+        "s": [
+         8,
+         1
+        ],
+        "x": 0
+       },
+       "rssPeakBeforeGB": {
+        "b64": "AAAAAIBv0z8AAAAAgC/TPwAAAACAr9M/AAAAAIBv0j8AAAAAgK/SPwAAAACA79I/AAAAAIDP0z8AAAAAgC/UPw==",
+        "c": "double",
+        "h": "1afa2fc70d5dc6f377df3a7b8b19adfae4f9553e8ca794ff83eed19a90254c0d",
+        "k": "a",
+        "s": [
+         8,
+         1
+        ],
+        "x": 0
+       },
+       "rssPeakGB": {
+        "b64": "AAAAAICP0z8AAAAAgE/TPwAAAACAD9Q/AAAAAICP0j8AAAAAgM/SPwAAAACAD9M/AAAAAIDv0z8AAAAAgE/UPw==",
+        "c": "double",
+        "h": "988bf0b961519c3b3de65c1efa62ef189396184eeef5c532f05a3a2663b99ab4",
+        "k": "a",
+        "s": [
+         8,
+         1
+        ],
+        "x": 0
+       },
+       "rssStartGB": {
+        "b64": "AAAAAACQ0D8AAAAAAHDQPwAAAAAAsNA/AAAAAAAQ0D8AAAAAADDQPwAAAAAAUNA/AAAAAADA0D8AAAAAAPDQPw==",
+        "c": "double",
+        "h": "f9e62308d2de523b4e9ee19f91d485d5467d7a1318638a0c8cb5c83b70a9cead",
+        "k": "a",
+        "s": [
+         8,
+         1
+        ],
+        "x": 0
+       },
+       "runId": {
+        "h": "2a55bba95ec8b1e86bad6dca29f681b8a2bc6daf1baa162b037f43e95e87a12c",
+        "k": "string",
+        "s": [
+         8,
+         1
+        ],
+        "v": [
+         "20261111_120000_exit_3_00000003",
+         "20261111_120000_os_remove_00000002",
+         "20261111_120000_petakit5d.jobs.framework_run_tasks_00000004",
+         "20261111_120000_shutil_copyfile_00000001",
+         "20261111_120000_shutil_copyfile_00000001",
+         "20261111_120000_shutil_copyfile_00000001",
+         "20261111_120000_shutil_copyfile_00000005",
+         "20261111_120000_single_00000006"
+        ]
+       },
+       "seq": {
+        "b64": "AAAAAAAA+P8AAAAAAAD4/wAAAAAAAPj/AAAAAAAA+P8AAAAAAAD4/wAAAAAAAPj/AAAAAAAA+P8AAAAAAAD4/w==",
+        "c": "double",
+        "h": "2fb913d8a4c386d483bbc2592edaa6a9d94fd1335143acf4e307b2dc311b18f5",
+        "k": "a",
+        "s": [
+         8,
+         1
+        ],
+        "x": 0
+       },
+       "slot": {
+        "b64": "AAAAAAAA+P8AAAAAAAD4/wAAAAAAAPj/AAAAAAAA+P8AAAAAAAD4/wAAAAAAAPj/AAAAAAAA+P8AAAAAAAAAQA==",
+        "c": "double",
+        "h": "9ff999668459074d860981a9eaa3584a616486a18582bed44e2530b252f7c61d",
+        "k": "a",
+        "s": [
+         8,
+         1
+        ],
+        "x": 0
+       },
+       "slurmCpus": {
+        "b64": "AAAAAAAA+P8AAAAAAAD4/wAAAAAAAPj/AAAAAAAA+P8AAAAAAAD4/wAAAAAAAPj/AAAAAAAA+P8AAAAAAAAAQA==",
+        "c": "double",
+        "h": "9ff999668459074d860981a9eaa3584a616486a18582bed44e2530b252f7c61d",
+        "k": "a",
+        "s": [
+         8,
+         1
+        ],
+        "x": 0
+       },
+       "start": {
+        "b64": "AACAgHTS2kEAAGCAdNLaQQAAoIB00tpBAAAggHTS2kEAADCAdNLaQQAAQIB00tpBAADAgHTS2kEAAOCAdNLaQQ==",
+        "c": "double",
+        "h": "4b31ae307215c380874cd82f22d54f4e1fb6b909f29f2dcf7b480b09fca9b16f",
+        "k": "a",
+        "s": [
+         8,
+         1
+        ],
+        "x": 0
+       },
+       "startupSec": {
+        "b64": "AAAAAAAA+P8AAAAAAAD4/wAAAAAAAPj/AAAAAAAA+P8AAAAAAAD4/wAAAAAAAPj/AAAAAAAA+P8AAAAAAAD4/w==",
+        "c": "double",
+        "h": "2fb913d8a4c386d483bbc2592edaa6a9d94fd1335143acf4e307b2dc311b18f5",
+        "k": "a",
+        "s": [
+         8,
+         1
+        ],
+        "x": 0
+       },
+       "status": {
+        "h": "823ca92fe88ff0d100e5cb490428af3682c3bda5245bbf9ba04a61ab33fc3ee6",
+        "k": "string",
+        "s": [
+         8,
+         1
+        ],
+        "v": [
+         "failed",
+         "error",
+         "ok",
+         "ok",
+         "ok",
+         "ok",
+         "ok",
+         "ok"
+        ]
+       },
+       "sysSec": {
+        "b64": "exSuR+F6lD97FK5H4XqUP7gehetRuK4/exSuR+F6lD97FK5H4XqUP3sUrkfhepQ/exSuR+F6lD97FK5H4XqUPw==",
+        "c": "double",
+        "h": "fe41a340214d0dadfb94bda79e55241666cda7a93dbf1a6f84a142d315c63483",
+        "k": "a",
+        "s": [
+         8,
+         1
+        ],
+        "x": 0
+       },
+       "task": {
+        "b64": "AAAAAAAA8D8AAAAAAADwPwAAAAAAAPA/AAAAAAAA8D8AAAAAAAAAQAAAAAAAAAhAAAAAAAAA8D8AAAAAAAAcQA==",
+        "c": "double",
+        "h": "dfb6a56f3e7d8cfe11d3ce62833b57b18304f25fb6868ac4b49704b6e1647af1",
+        "k": "a",
+        "s": [
+         8,
+         1
+        ],
+        "x": 0
+       },
+       "threads": {
+        "b64": "AAAAAAAAEEAAAAAAAAAQQAAAAAAAABBAAAAAAAAAEEAAAAAAAAAQQAAAAAAAABBAAAAAAAAAEEAAAAAAAAAQQA==",
+        "c": "double",
+        "h": "9fdf4763b0c107ddf9b60543c71a7b757907fdc66a1c606a917ac0eed6f6c4b0",
+        "k": "a",
+        "s": [
+         8,
+         1
+        ],
+        "x": 0
+       },
+       "userSec": {
+        "b64": "mpmZmZmZuT+amZmZmZm5PzMzMzMzM9M/mpmZmZmZuT+amZmZmZm5P5qZmZmZmbk/mpmZmZmZuT+amZmZmZm5Pw==",
+        "c": "double",
+        "h": "cdcd1aedd0bec15892ec68d507c08a1f26b936f3c1ddad7b3b38c0be2ce9a7c7",
+        "k": "a",
+        "s": [
+         8,
+         1
+        ],
+        "x": 0
+       },
+       "wallSec": {
+        "b64": "AAAAAAAAwD8AAAAAAADAPwAAAAAAAPI/AAAAAAAAwD8AAAAAAADAPwAAAAAAAMA/AAAAAAAAwD8AAAAAAADAPw==",
+        "c": "double",
+        "h": "dfc7052f6bef5da6fe2b77de183364dc06e7b4970f2215b81e41c7a949adaf33",
+        "k": "a",
+        "s": [
+         8,
+         1
+        ],
+        "x": 0
+       },
+       "wchar": {
+        "b64": "AAAAAAAAwEAAAAAAAADAQAAAAAAAANhAAAAAAAAAwEAAAAAAAADAQAAAAAAAAMBAAAAAAAAAwEAAAAAAAADAQA==",
+        "c": "double",
+        "h": "2fa29d1abea9b1f7532924f948a800cedca72cd1271039e751ef69f0d6ece5ea",
+        "k": "a",
+        "s": [
+         8,
+         1
+        ],
+        "x": 0
+       },
+       "writeBytes": {
+        "b64": "AAAAAAAA8EAAAAAAAADwQAAAAAAAAAhBAAAAAAAA8EAAAAAAAADwQAAAAAAAAPBAAAAAAAAA8EAAAAAAAADwQA==",
+        "c": "double",
+        "h": "ce78828af6ad912de4c1474524c0b76ed5d2e240b7b541a54e713d209f886072",
+        "k": "a",
+        "s": [
+         8,
+         1
+        ],
+        "x": 0
+       },
+       "xEnd": {
+        "b64": "AACIgHTS2kEAAGiAdNLaQQAA6IB00tpBAAAogHTS2kEAADiAdNLaQQAASIB00tpBAADIgHTS2kEAAOiAdNLaQQ==",
+        "c": "double",
+        "h": "f5c130961eecef5ed7c39cc62029451c6a88050197739c326f7da60fa1d5ca90",
+        "k": "a",
+        "s": [
+         8,
+         1
+        ],
+        "x": 0
+       }
+      }
+     ]
+    },
+    {
+     "f": [
+      "runId",
+      "kind",
+      "func",
+      "backend",
+      "node",
+      "start",
+      "xEnd",
+      "elapsedSec",
+      "nTasks",
+      "nDone",
+      "nRecords",
+      "parseCluster",
+      "mccMode",
+      "cpusPerTask",
+      "memAllocate",
+      "taskBatchNum",
+      "paraJobNum",
+      "GPUJob",
+      "parent",
+      "folder"
+     ],
+     "h": "721cf45c759fa78af978deae2e1b8aee027ae467b13cd0c9e826fe95bae0aced",
+     "k": "struct",
+     "s": [
+      1,
+      1
+     ],
+     "v": [
+      {
+       "GPUJob": {
+        "b64": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAPj/",
+        "c": "double",
+        "h": "50349abb31cd0ff913dd7a5ab7f801348502e04389f07177c1ac1d28da84ecf2",
+        "k": "a",
+        "s": [
+         6,
+         1
+        ],
+        "x": 0
+       },
+       "backend": {
+        "h": "f78ca7e09116590c15d4332d77479205c2361c63d8b02d1c33c7b2bbd236cd20",
+        "k": "string",
+        "s": [
+         6,
+         1
+        ],
+        "v": [
+         "python",
+         "python",
+         "python",
+         "python",
+         "python",
+         ""
+        ]
+       },
+       "cpusPerTask": {
+        "b64": "AAAAAAAA8D8AAAAAAADwPwAAAAAAAPA/AAAAAAAA8D8AAAAAAADwPwAAAAAAAPj/",
+        "c": "double",
+        "h": "3953465d994b46ab78d42b84e349cbb5233cefbe1af98e7690ae7020d1b5e50b",
+        "k": "a",
+        "s": [
+         6,
+         1
+        ],
+        "x": 0
+       },
+       "elapsedSec": {
+        "b64": "AAAAAAAA+P8AAAAAAAD4/wAAAAAAAPj/AAAAAAAA+P8AAAAAAAD4/wAAAAAAAPj/",
+        "c": "double",
+        "h": "e0927a1fbfa36ba270da20bbfbf11b2b87e59d91b33b0623e69a740f90059ae9",
+        "k": "a",
+        "s": [
+         6,
+         1
+        ],
+        "x": 0
+       },
+       "folder": {
+        "h": "b04ccd6eed120606e0ba9f9a889f6da288335429d8938ffe1440e6d11f13bdec",
+        "k": "string",
+        "s": [
+         6,
+         1
+        ],
+        "v": [
+         "<WORK>/pyrun/data/job_logs/task_metrics/20261111_120000_exit_3_00000003/",
+         "<WORK>/pyrun/data/job_logs/task_metrics/20261111_120000_os_remove_00000002/",
+         "<WORK>/pyrun/data/job_logs/task_metrics/20261111_120000_petakit5d.jobs.framework_run_tasks_00000004/",
+         "<WORK>/pyrun/data/job_logs/task_metrics/20261111_120000_shutil_copyfile_00000001/",
+         "<WORK>/pyrun/data/job_logs/task_metrics/20261111_120000_shutil_copyfile_00000005/",
+         "<WORK>/pyrun/data/job_logs/task_metrics/20261111_120000_single_00000006/"
+        ]
+       },
+       "func": {
+        "h": "1a9957b8d1e2e598c536460568245652ace14b09b44818de66e4f427a9de36c5",
+        "k": "string",
+        "s": [
+         6,
+         1
+        ],
+        "v": [
+         "exit 3",
+         "os:remove",
+         "petakit5d.jobs.framework:run_tasks",
+         "shutil:copyfile",
+         "shutil:copyfile",
+         "shutil:copyfile"
+        ]
+       },
+       "kind": {
+        "h": "909f4a5cff07cacd1f495addfd5cc513df98651bec7aaa692f9888a2f59a3c00",
+        "k": "string",
+        "s": [
+         6,
+         1
+        ],
+        "v": [
+         "framework",
+         "framework",
+         "framework",
+         "framework",
+         "framework",
+         "single"
+        ]
+       },
+       "mccMode": {
+        "b64": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAPj/",
+        "c": "double",
+        "h": "50349abb31cd0ff913dd7a5ab7f801348502e04389f07177c1ac1d28da84ecf2",
+        "k": "a",
+        "s": [
+         6,
+         1
+        ],
+        "x": 0
+       },
+       "memAllocate": {
+        "b64": "AAAAAAAA+P8AAAAAAAD4/wAAAAAAAPj/AAAAAAAA+P8AAAAAAAD4/wAAAAAAAPj/",
+        "c": "double",
+        "h": "e0927a1fbfa36ba270da20bbfbf11b2b87e59d91b33b0623e69a740f90059ae9",
+        "k": "a",
+        "s": [
+         6,
+         1
+        ],
+        "x": 0
+       },
+       "nDone": {
+        "b64": "AAAAAAAA+P8AAAAAAAD4/wAAAAAAAPj/AAAAAAAA+P8AAAAAAAD4/wAAAAAAAPj/",
+        "c": "double",
+        "h": "e0927a1fbfa36ba270da20bbfbf11b2b87e59d91b33b0623e69a740f90059ae9",
+        "k": "a",
+        "s": [
+         6,
+         1
+        ],
+        "x": 0
+       },
+       "nRecords": {
+        "b64": "AAAAAAAA8D8AAAAAAADwPwAAAAAAAPA/AAAAAAAACEAAAAAAAADwPwAAAAAAAPA/",
+        "c": "double",
+        "h": "33ca6bf1be460d28d00ea922a2ab4722e7ffffa2b8bbcc9f8ffcdc7f3e6a5571",
+        "k": "a",
+        "s": [
+         6,
+         1
+        ],
+        "x": 0
+       },
+       "nTasks": {
+        "b64": "AAAAAAAA8D8AAAAAAADwPwAAAAAAAPA/AAAAAAAACEAAAAAAAADwPwAAAAAAAPA/",
+        "c": "double",
+        "h": "33ca6bf1be460d28d00ea922a2ab4722e7ffffa2b8bbcc9f8ffcdc7f3e6a5571",
+        "k": "a",
+        "s": [
+         6,
+         1
+        ],
+        "x": 0
+       },
+       "node": {
+        "h": "96313fd5adb30ffcf84d0965d514eab67b0683826eb83a552451ebf02f871ff2",
+        "k": "string",
+        "s": [
+         6,
+         1
+        ],
+        "v": [
+         "node12",
+         "node12",
+         "node12",
+         "node12",
+         "node12",
+         "node12"
+        ]
+       },
+       "paraJobNum": {
+        "b64": "AAAAAAAA8D8AAAAAAADwPwAAAAAAAPA/AAAAAAAA8D8AAAAAAADwPwAAAAAAAPj/",
+        "c": "double",
+        "h": "3953465d994b46ab78d42b84e349cbb5233cefbe1af98e7690ae7020d1b5e50b",
+        "k": "a",
+        "s": [
+         6,
+         1
+        ],
+        "x": 0
+       },
+       "parent": {
+        "h": "9114da20fdd6cd208991f2573886263517c5c2d2e7e8fa0cdb21f2a87b951664",
+        "k": "string",
+        "s": [
+         6,
+         1
+        ],
+        "v": [
+         "",
+         "",
+         "",
+         "",
+         "20261111_120000_petakit5d.jobs.framework_run_tasks_00000004/1",
+         ""
+        ]
+       },
+       "parseCluster": {
+        "b64": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAPj/",
+        "c": "double",
+        "h": "50349abb31cd0ff913dd7a5ab7f801348502e04389f07177c1ac1d28da84ecf2",
+        "k": "a",
+        "s": [
+         6,
+         1
+        ],
+        "x": 0
+       },
+       "runId": {
+        "h": "571b2e8378610799b75f4b850749d0533bd04839607ddb680849a3c0c5f630dd",
+        "k": "string",
+        "s": [
+         6,
+         1
+        ],
+        "v": [
+         "20261111_120000_exit_3_00000003",
+         "20261111_120000_os_remove_00000002",
+         "20261111_120000_petakit5d.jobs.framework_run_tasks_00000004",
+         "20261111_120000_shutil_copyfile_00000001",
+         "20261111_120000_shutil_copyfile_00000005",
+         "20261111_120000_single_00000006"
+        ]
+       },
+       "start": {
+        "b64": "AABogHTS2kEAAEiAdNLaQQAAiIB00tpBAAAIgHTS2kEAAKiAdNLaQQAA0IB00tpB",
+        "c": "double",
+        "h": "6a5314bc3c249ebb7e26d07e8c4e18b5cb9106f880e6c73506d4b83a890b856b",
+        "k": "a",
+        "s": [
+         6,
+         1
+        ],
+        "x": 0
+       },
+       "taskBatchNum": {
+        "b64": "AAAAAAAA8D8AAAAAAADwPwAAAAAAAPA/AAAAAAAA8D8AAAAAAADwPwAAAAAAAPj/",
+        "c": "double",
+        "h": "3953465d994b46ab78d42b84e349cbb5233cefbe1af98e7690ae7020d1b5e50b",
+        "k": "a",
+        "s": [
+         6,
+         1
+        ],
+        "x": 0
+       },
+       "xEnd": {
+        "b64": "AAAAAAAA+P8AAAAAAAD4/wAAAAAAAPj/AAAAAAAA+P8AAAAAAAD4/wAAAAAAAPj/",
+        "c": "double",
+        "h": "e0927a1fbfa36ba270da20bbfbf11b2b87e59d91b33b0623e69a740f90059ae9",
+        "k": "a",
+        "s": [
+         6,
+         1
+        ],
+        "x": 0
+       }
+      }
+     ]
+    }
+   ],
+   "status": "ok",
+   "warnings": [
+    {
+     "identifier": "MATLAB:table:ModifiedVarnames",
+     "message": "Table variable names that were not valid MATLAB identifiers have been\nmodified. Since table variable names must be unique, any table variable names\nthat happened to match the new identifiers also have been modified."
+    },
+    {
+     "identifier": "MATLAB:table:ModifiedVarnames",
+     "message": "Table variable names that were not valid MATLAB identifiers have been modified. Since table variable names must be unique, any table variable names that happened to match the new identifiers also have been modified."
+    }
+   ]
+  }
+ },
+ "format": 2,
+ "module": "tests/jobs/test_metrics.py",
+ "oracle": "5df18b227e5ac00e584e8274a783c3df5a09c97b"
+}

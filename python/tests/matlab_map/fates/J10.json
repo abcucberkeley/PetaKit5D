@@ -1,0 +1,100 @@
+{
+ "task": "J10",
+ "classes": {
+  "TaskMetricsTest": {
+   "finished": true,
+   "methods": {
+    "localTasksAreRecorded": [
+     "pytest:tests/jobs/test_metrics.py::test_local_tasks_are_recorded",
+     "pytest:tests/jobs/test_metrics.py::test_local_run_records_its_end"
+    ],
+    "metricsAreOffByDefault": [
+     "pytest:tests/jobs/test_metrics.py::test_metrics_are_off_by_default",
+     "pytest:tests/jobs/test_metrics.py::test_metrics_off_imports_nothing"
+    ],
+    "configFileTurnsMetricsOn": [
+     "pytest:tests/jobs/test_metrics.py::test_config_file_turns_metrics_on"
+    ],
+    "failedLocalTaskIsRecordedAndStillFails": [
+     "pytest:tests/jobs/test_metrics.py::test_failed_local_task_is_recorded_and_still_fails",
+     "pytest:tests/jobs/test_metrics.py::test_failed_task_without_identifier_names_its_class"
+    ],
+    "bashTaskExitStatusIsRecorded": [
+     "pytest:tests/jobs/test_metrics.py::test_bash_task_exit_status_is_recorded"
+    ],
+    "memoryAndCpuOnLinux": [
+     "pytest:tests/jobs/test_metrics.py::test_memory_and_cpu_on_linux"
+    ],
+    "unwritableMetricsDoNotFailTasks": [
+     "pytest:tests/jobs/test_metrics.py::test_unwritable_metrics_do_not_fail_tasks"
+    ],
+    "failedRecordWriteOnlyWarns": [
+     "pytest:tests/jobs/test_metrics.py::test_failed_record_write_only_warns",
+     "pytest:tests/jobs/test_metrics.py::test_task_start_never_raises"
+    ],
+    "matlabJobsRunEachTaskWithMetrics": [
+     "pytest:tests/jobs/test_metrics.py::test_job_tasks_are_recorded",
+     "pytest:tests/jobs/test_metrics.py::test_job_entry_point_records_tasks"
+    ],
+    "masterComputedTasksAreRecordedAsMaster": [
+     "pytest:tests/jobs/test_metrics.py::test_master_computed_tasks_are_recorded_as_master"
+    ],
+    "matlabJobStatementRunsWithoutTaskMetrics": [
+     "pytest:tests/jobs/test_metrics.py::test_tasks_run_without_the_metrics_module"
+    ],
+    "matlabJobStatementRethrowsTaskErrors": [
+     "pytest:tests/jobs/test_metrics.py::test_job_task_errors_are_recorded"
+    ],
+    "matlabJobCommandIsUnchangedWithoutMetrics": [
+     "pytest:tests/jobs/test_metrics.py::test_call_without_metrics_writes_no_metrics"
+    ],
+    "compiledTaskLinesCarryMetricsEnvironment": [
+     "na:compiled MATLAB tasks only (MATLAB Runtime task lines and their environment); Python jobs have no compiled mode and no task line environment"
+    ],
+    "gpuTaskLinesAskForTheGPU": [
+     "na:compiled MATLAB tasks only (the GPU flag of a Runtime task line's environment); Python tasks take it from the call's gpu_job setting"
+    ],
+    "compiledLocalRunKeepsAJoblog": [
+     "na:GNU parallel joblogs of compiled task lines; the in-job slot manager replaces GNU parallel (the reader still reads MATLAB's joblogs: test_reader_joins_joblog_and_run_settings)"
+    ],
+    "compiledTaskLinesAreUnchangedWithoutMetrics": [
+     "na:compiled MATLAB tasks only (MATLAB Runtime task lines); Python jobs have no compiled mode"
+    ],
+    "compiledJobsKeepAJoblog": [
+     "na:GNU parallel joblogs of compiled jobs; the in-job slot manager replaces GNU parallel (the reader still reads MATLAB's joblogs: test_reader_joins_joblog_and_run_settings)"
+    ],
+    "mccMasterRecordsTaskFromEnvironment": [
+     "na:compiled MATLAB tasks only (mccMaster reads its metrics settings from the task line's environment); Python jobs have no compiled mode"
+    ],
+    "callWithoutMetricsClearsTaskEnvironment": [
+     "pytest:tests/jobs/test_metrics.py::test_nested_call_without_metrics_records_nothing"
+    ],
+    "singleJobWithoutMetricsClearsTaskEnvironment": [
+     "pytest:tests/jobs/test_metrics.py::test_nested_call_without_metrics_records_nothing",
+     "pytest:tests/jobs/test_metrics.py::test_session_dir_without_metrics_or_folder"
+    ],
+    "readerLabelsTasksTheMasterRan": [
+     "pytest:tests/jobs/test_metrics.py::test_reader_labels_tasks_the_master_ran",
+     "oracle:tests/jobs/test_metrics.py::read_hand_written_run_folders"
+    ],
+    "singleJobsRecordSubmissionAndTask": [
+     "pytest:tests/jobs/test_metrics.py::test_single_jobs_record_submission_and_task"
+    ],
+    "singleCompiledJobCarriesMetricsEnvironment": [
+     "na:compiled MATLAB tasks only (a single compiled job's task line environment); Python jobs have no compiled mode"
+    ],
+    "nestedRunRecordsItsParent": [
+     "pytest:tests/jobs/test_metrics.py::test_nested_run_records_its_parent"
+    ],
+    "readerJoinsJoblogAndRunSettings": [
+     "pytest:tests/jobs/test_metrics.py::test_reader_joins_joblog_and_run_settings",
+     "oracle:tests/jobs/test_metrics.py::read_hand_written_run_folders"
+    ],
+    "poolTasksAreRecordedOnTheWorkers": [
+     "pytest:tests/jobs/test_metrics.py::test_pool_tasks_are_recorded_in_their_processes",
+     "pytest:tests/jobs/test_metrics.py::test_pool_tasks_are_recorded_on_the_workers"
+    ]
+   }
+  }
+ }
+}
