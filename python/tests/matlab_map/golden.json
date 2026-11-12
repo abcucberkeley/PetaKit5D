@@ -7,7 +7,7 @@
    "category": "data",
    "owner": "F06",
    "phase": 1,
-   "finished": true,
+   "finished": false,
    "fate": [],
    "methods": {
     "outputMatchesReference": {
@@ -25,33 +25,7 @@
       "scenario=stitch_feather_xcorr",
       "scenario=point_detection"
      ],
-     "fate": [],
-     "case_fates": {
-      "scenario=deskew_rotate_sample_scan": [
-       "oracle:tests/matlab_map/test_golden.py::golden.deskew_rotate_sample_scan.*"
-      ],
-      "scenario=deskew_rotate_skewed_interp": [
-       "oracle:tests/matlab_map/test_golden.py::golden.deskew_rotate_skewed_interp.*"
-      ],
-      "scenario=deskew_rotate_resampled": [
-       "oracle:tests/matlab_map/test_golden.py::golden.deskew_rotate_resampled.*"
-      ],
-      "scenario=decon_rl_simplified": [
-       "oracle:tests/matlab_map/test_golden.py::golden.decon_rl_simplified.*"
-      ],
-      "scenario=decon_omw": [
-       "oracle:tests/matlab_map/test_golden.py::golden.decon_omw.*"
-      ],
-      "scenario=psf_gen_masked": [
-       "oracle:tests/matlab_map/test_golden.py::golden.psf_gen_masked.*"
-      ],
-      "scenario=stitch_feather_xcorr": [
-       "oracle:tests/matlab_map/test_golden.py::golden.stitch_feather_xcorr.*"
-      ],
-      "scenario=point_detection": [
-       "oracle:tests/matlab_map/test_golden.py::golden.point_detection.*"
-      ]
-     }
+     "fate": []
     }
    }
   }

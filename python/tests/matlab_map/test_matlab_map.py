@@ -314,3 +314,149 @@ def test_update_from_the_repos_map_is_a_fixed_point(tmp_path):
     assert notes == []
     _, again = ctm.load_map(d)
     assert again == folders
+
+
+# ------------------------------------------------------------------------------------------
+# task overlays (fates/<TASK>.json)
+# ------------------------------------------------------------------------------------------
+
+ME = "tests/matlab_map/test_matlab_map.py"
+OK_FATE = [f"pytest:{ME}::test_map_is_consistent"]
+
+
+def _overlay(d: Path, task: str, classes: dict, name: str | None = None) -> None:
+    (d / "fates").mkdir(exist_ok=True)
+    (d / "fates" / f"{name or task}.json").write_text(
+        json.dumps({"task": task, "classes": classes})
+    )
+
+
+def _with_method_owner(d: Path) -> None:
+    # rejectsBbox belongs to another task (as DeconFunctionTest's psf* methods to R01)
+    _edit(d, lambda c: c["methods"]["rejectsBbox"].update(owner="K03"))
+
+
+def test_overlays_are_merged(tmp_path):
+    d = _small_map(tmp_path)
+    _with_method_owner(d)
+    base = (d / "crop.json").read_text()
+    crop3d = {"fate": OK_FATE, "case_fates": {"dtype=single": ["na:single elsewhere"]}}
+    _overlay(
+        d,
+        "K01",
+        {
+            "CropMexTest": {
+                "finished": True,
+                "fate": ["na:the rest is not applicable here"],
+                "methods": {"crop3dMatchesIndexing": crop3d},
+            }
+        },
+    )
+    _overlay(d, "K03", {"CropMexTest": {"methods": {"rejectsBbox": OK_FATE}}})
+    assert ctm.check(d, PYTHON_ROOT)[0] == []
+    _, folders = ctm.load_map(d)
+    c = folders["crop"]["classes"]["CropMexTest"]
+    assert c["finished"] is True and c["fate"] == ["na:the rest is not applicable here"]
+    m = c["methods"]["crop3dMatchesIndexing"]
+    assert m["fate"] == OK_FATE and m["case_fates"] == {"dtype=single": ["na:single elsewhere"]}
+    assert c["methods"]["rejectsBbox"]["fate"] == OK_FATE
+    # the folder file is unchanged; the base view has no overlays
+    assert (d / "crop.json").read_text() == base
+    assert ctm.load_base(d)[1]["crop"]["classes"]["CropMexTest"]["finished"] is False
+    text = "\n".join(ctm.report_lines(*ctm.load_map(d)))
+    assert "| pytest | 2 |" in text
+
+
+def test_a_finished_overlay_needs_every_fate(tmp_path):
+    d = _small_map(tmp_path)
+    _overlay(d, "K01", {"CropMexTest": {"finished": True, "methods": {"rejectsBbox": OK_FATE}}})
+    errs, _ = ctm.check(d, PYTHON_ROOT)
+    assert len(errs) == 3 and all("no fate (class finished, owner K01)" in e for e in errs)
+
+
+_C = "CropMexTest"
+_OVERLAY_ERRORS = [
+    ([("K03", {_C: {"finished": True}})], "finished: K03 is not the owner (K01)"),
+    ([("K03", {_C: {"fate": OK_FATE}})], "fate: K03 is not the owner (K01)"),
+    ([("K01", {_C: {"methods": {"rejectsBbox": OK_FATE}}})], "K01 is not the owner (K03)"),
+    ([("K01", {"NoSuchTest": {"finished": True}})], "no such class"),
+    ([("K01", {_C: {"methods": {"gone": OK_FATE}}})], "gone: no such method"),
+    (
+        [("K01", {_C: {"finished": True}}), ("K01", {_C: {"finished": False}}, "K01b")],
+        "finished also set by fates/K01.json",
+    ),
+    (
+        [
+            ("K03", {_C: {"methods": {"rejectsBbox": OK_FATE}}}),
+            ("K03", {_C: {"methods": {"rejectsBbox": []}}}, "K03b"),
+        ],
+        "also set by fates/K03.json",
+    ),
+    ([("K01", {_C: {"finished": True}}, "K02")], "the file must be fates/K01.json"),
+    ([("K01", {_C: {"owner": "K02"}})], "class entries take only"),
+    (
+        [("K01", {_C: {"finished": "yes"}})],
+        "fates/K01.json: CropMexTest: finished must be true or false",
+    ),
+    ([("K01", {_C: {"methods": {"crop3dMatchesIndexing": {"fates": []}}}})], "a fate list"),
+    ([("K01", {_C: {"methods": {"crop3dMatchesIndexing": ["maybe:later"]}}})], "bad fate kind"),
+]
+
+
+@pytest.mark.parametrize("overlays, message", _OVERLAY_ERRORS)
+def test_overlay_errors(tmp_path, overlays, message):
+    d = _small_map(tmp_path)
+    _with_method_owner(d)
+    for ov in overlays:
+        _overlay(d, ov[0], ov[1], ov[2] if len(ov) > 2 else None)
+    errs, _ = ctm.check(d, PYTHON_ROOT)
+    assert any(message in e for e in errs), errs
+
+
+def test_overlay_file_problems(tmp_path):
+    d = _small_map(tmp_path)
+    (d / "fates").mkdir()
+    (d / "fates" / "K01.json").write_text("{not json")
+    (d / "fates" / "K02.json").write_text(json.dumps({"classes": {}}))
+    (d / "fates" / "K04.json").write_text(json.dumps({"task": "K04", "fates": {}}))
+    errs, _ = ctm.check(d, PYTHON_ROOT)
+    assert any("K01.json: does not parse" in e for e in errs)
+    assert any("K02.json: no task" in e for e in errs)
+    assert any("K04.json: unknown keys ['fates']" in e for e in errs)
+
+
+def _update_dump(tmp_path: Path, methods: list[str]) -> Path:
+    tests = [("CropMexTest/crop3dMatchesIndexing", ["Unit"], ["dtype=uint8", "dtype=single"])]
+    tests += [(f"CropMexTest/{m}", ["Unit"], []) for m in methods]
+    p = tmp_path / "dump.json"
+    p.write_text(json.dumps(_dump(tests)))
+    return p
+
+
+def test_update_keeps_overlays_and_reopens_a_finished_class(tmp_path):
+    d = _small_map(tmp_path)
+    _overlay(d, "K01", {_C: {"finished": True, "fate": OK_FATE}})
+    before = (d / "fates" / "K01.json").read_text()
+    assert ctm.check(d, PYTHON_ROOT)[0] == []
+    # a new method: the class is unfinished until it has a fate; the overlay is untouched
+    dump = _update_dump(tmp_path, ["rejectsBbox", "newCheck"])
+    notes = ctm.update(dump, tmp_path / "none", "def5678", d)
+    assert "CropMexTest: no longer finished (new method newCheck; its overlay stays)" in notes
+    assert (d / "fates" / "K01.json").read_text() == before
+    base = ctm.load_base(d)[1]["crop"]["classes"][_C]
+    assert base["reopened"] == ["newCheck"] and base["finished"] is False
+    assert ctm.load_map(d)[1]["crop"]["classes"][_C]["finished"] is False
+    # a fate of its own finishes it again (the class fate alone doesn't count for it)
+    new = {"finished": True, "fate": OK_FATE, "methods": {"newCheck": OK_FATE}}
+    _overlay(d, "K01", {_C: new})
+    assert ctm.load_map(d)[1]["crop"]["classes"][_C]["finished"] is True
+    assert ctm.check(d, PYTHON_ROOT)[0] == []
+
+
+def test_update_leaves_overlays_naming_removed_methods(tmp_path):
+    d = _small_map(tmp_path)
+    _overlay(d, "K01", {_C: {"methods": {"rejectsBbox": OK_FATE}}})
+    ctm.update(_update_dump(tmp_path, ["negativeValues"]), tmp_path / "none", "def5678", d)
+    assert json.loads((d / "fates" / "K01.json").read_text())["classes"][_C]["methods"]
+    errs, _ = ctm.check(d, PYTHON_ROOT)
+    assert any("fates/K01.json: CropMexTest/rejectsBbox: no such method" in e for e in errs)
