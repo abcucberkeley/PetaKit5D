@@ -1,11 +1,13 @@
 """Image sizes, data types and zarr metadata without reading the data.
 
 Ports getImageSize, getImageSizeBatch, getImageDataType, getZarrInfo and
-getImageBoundingBox. Sizes are MATLAB's: ``(ny, nx, nz)`` (``(ny, nx, nz, samples)`` for
-color tiff), data types MATLAB's class names (``'uint16'``, ``'single'``, ...).
+getImageBoundingBox. Sizes are ``(nz, ny, nx)`` for tiff files and for zarr arrays of both
+layouts (the port's native ``[nz, ny, nx]`` arrays and MATLAB's ``[ny, nx, nz]`` ones, order
+F); data types are MATLAB's class names (``'uint16'``, ``'single'``, ...); boxes are the
+Python API's ``(z0, y0, x0, z1, y1, x1)``, 0-based, end-exclusive.
 
-Also the helpers ``tiff.py`` and ``zarr.py`` share: the default thread count, MATLAB's class
-names and size rules. They stand in for ``petakit5d.core`` (task F02) until it lands.
+Also the helpers ``tiff.py`` and ``zarr.py`` share: thread counts, file names, the layout of a
+zarr array.
 """
 
 from __future__ import annotations
@@ -29,72 +31,19 @@ __all__ = [
     "get_zarr_info",
 ]
 
-# --- stand-ins for petakit5d.core (F02) ----------------------------------------------------
-
-# MATLAB class <-> NumPy type
-MATLAB_TO_NUMPY = {
-    "double": "float64",
-    "single": "float32",
-    "uint8": "uint8",
-    "int8": "int8",
-    "uint16": "uint16",
-    "int16": "int16",
-    "uint32": "uint32",
-    "int32": "int32",
-    "uint64": "uint64",
-    "int64": "int64",
-    "logical": "bool",
-}
-NUMPY_TO_MATLAB = {v: k for k, v in MATLAB_TO_NUMPY.items()}
-
-
-def matlab_class(dtype) -> str:
-    """MATLAB's class name of a NumPy type (``float32`` -> ``'single'``)."""
-    name = np.dtype(dtype).newbyteorder("=").name
-    try:
-        return NUMPY_TO_MATLAB[name]
-    except KeyError:
-        raise ValueError(f"{name} has no MATLAB class") from None
-
-
-def numpy_dtype(cls) -> np.dtype:
-    """The NumPy type of a MATLAB class name (or of anything ``np.dtype`` takes)."""
-    if isinstance(cls, str) and cls in MATLAB_TO_NUMPY:
-        return np.dtype(MATLAB_TO_NUMPY[cls])
-    return np.dtype(cls)
-
-
-def default_threads() -> int:
-    """The CPUs this process may run on (the affinity mask; F02 adds cgroup quotas)."""
-    try:
-        return max(1, len(os.sched_getaffinity(0)))
-    except (AttributeError, OSError):
-        return max(1, os.cpu_count() or 1)
+_AXES = ("auto", "zyx", "yxz")
 
 
 def threads(num_threads: int | None) -> int:
-    """A call's thread count: the caller's, or every CPU the process may use."""
-    if num_threads is None:
-        return default_threads()
-    if isinstance(num_threads, bool) or int(num_threads) != num_threads or num_threads < 1:
+    """A call's thread count: the caller's (at most the CPUs this process may use), or all of
+    them for None."""
+    from petakit5d.core.threads import resolve_threads
+
+    if num_threads is not None and (
+        isinstance(num_threads, bool) or int(num_threads) != num_threads or num_threads < 1
+    ):
         raise ValueError(f"num_threads must be a whole number of at least 1, not {num_threads!r}")
-    return int(num_threads)
-
-
-def matlab_shape(shape: Sequence[int]) -> tuple[int, ...]:
-    """A shape as MATLAB's ``size`` gives it: at least 2 axes, trailing singletons dropped."""
-    shape = [int(s) for s in shape] + [1] * max(0, 2 - len(shape))
-    while len(shape) > 2 and shape[-1] == 1:
-        shape.pop()
-    return tuple(shape)
-
-
-def matlab_squeeze(a: np.ndarray) -> np.ndarray:
-    """A view of ``a`` with MATLAB's shape (trailing singleton axes dropped; no copy)."""
-    shape = matlab_shape(a.shape)
-    if shape == a.shape:
-        return a
-    return a.reshape(shape, order="F" if a.flags.f_contiguous else "C")
+    return resolve_threads(num_threads)
 
 
 def path_str(path) -> str:
@@ -110,6 +59,37 @@ def is_tiff_name(path: str) -> bool:
 
 def is_zarr_name(path: str) -> bool:
     return path.endswith("zarr")
+
+
+def zarr_meta(path: str) -> dict:
+    """The array metadata: ``.zarray`` (Zarr v2), else ``zarr.json`` (v3)."""
+    for name in (".zarray", "zarr.json"):
+        fn = os.path.join(path, name)
+        if os.path.isfile(fn):
+            with open(fn, "rb") as f:
+                return json.loads(f.read().decode())
+    raise FileNotFoundError(f"zarr file {path} does not exist (no .zarray or zarr.json)")
+
+
+def zarr_layout(meta: dict, axes: str = "auto") -> str:
+    """``'zyx'`` (the port's native arrays, shape ``[nz, ny, nx]``) or ``'yxz'`` (MATLAB's,
+    shape ``[ny, nx, nz]``). ``'auto'``: MATLAB's when a Zarr v2 array has ``"order": "F"``."""
+    if axes not in _AXES:
+        raise ValueError(f"axes must be one of {_AXES}, not {axes!r}")
+    if axes != "auto":
+        return axes
+    v2 = int(meta.get("zarr_format", 2)) == 2 and "dtype" in meta
+    return "yxz" if v2 and meta.get("order") == "F" else "zyx"
+
+
+def _zyx(v: Sequence[int], layout: str) -> tuple[int, ...]:
+    # a shape or chunk shape of the file in (z, y, x)
+    v = [int(s) for s in v]
+    if layout == "yxz" and len(v) >= 2:
+        from petakit5d.core.arrays import size_from_matlab
+
+        return tuple(size_from_matlab(v, len(v)))
+    return tuple(v)
 
 
 # --- the first directory of a tiff file ----------------------------------------------------
@@ -229,44 +209,43 @@ def _tiff_size(path: str) -> tuple[int, ...]:
     h = _tiff_header(path)
     z = int(cpptiff.get_image_shape(path)[0])
     # getImageSizeMex: an ImageJ stack of one uncompressed directory holds all its slices
+    # (cpp-tiff 1.7.3 reports 1, T8)
     images = _imagej_images(h.description)
     if z == 1 and h.compression == 1 and images:
         z = images
     if h.samples > 1:
-        return (h.length, h.width, z, h.samples)
-    return (h.length, h.width, z)
-
-
-def _zarr_meta(path: str) -> dict:
-    with open(os.path.join(path, ".zarray"), "rb") as f:
-        return json.loads(f.read().decode())
+        return (z, h.length, h.width, h.samples)
+    return (z, h.length, h.width)
 
 
 def get_image_size(file_path) -> tuple[int, ...]:
     """Size of a tiff file or zarr array without reading the data (MATLAB ``getImageSize``).
 
-    Tiff: ``(ny, nx, nz)``, with the number of slices of an ImageJ stack saved in one
-    directory, and the samples as a fourth value for color images. Zarr: the ``shape`` of
-    its ``.zarray``.
+    Tiff: ``(nz, ny, nx)`` (an image has ``nz = 1``), with the slices of an ImageJ stack saved
+    in one directory, and the samples as a fourth value for color images:
+    ``(nz, ny, nx, c)``. Zarr: the array's shape in ``(z, y, x)``, for native arrays and for
+    MATLAB's (``[ny, nx, nz]``, order F).
     """
     path = path_str(file_path)
     if is_tiff_name(path):
         return _tiff_size(path)
     if is_zarr_name(path) or os.path.isfile(os.path.join(path, ".zarray")):
-        return tuple(int(s) for s in _zarr_meta(path)["shape"])
+        # (MATLAB reads .zarray only; the port's sharded arrays have a zarr.json)
+        meta = zarr_meta(path)
+        return _zyx(meta["shape"], zarr_layout(meta))
     raise ValueError(f"{path} is not a tiff file or a zarr array")
 
 
 def get_image_size_batch(file_paths: Sequence, use_parpool: bool = True) -> np.ndarray:
-    """Sizes of many files, one row each (MATLAB ``getImageSizeBatch``); all have the same
-    number of dimensions. ``use_parpool`` reads them on threads (same result)."""
+    """Sizes of many files, one row ``(nz, ny, nx)`` each (MATLAB ``getImageSizeBatch``); all
+    have the same number of dimensions. ``use_parpool`` reads them on threads (same result)."""
     paths = [path_str(p) for p in file_paths]
     if not paths:
         return np.zeros((0, 0), dtype=np.int64)
     if use_parpool and len(paths) > 64:
         from concurrent.futures import ThreadPoolExecutor
 
-        with ThreadPoolExecutor(min(16, default_threads() * 2)) as ex:
+        with ThreadPoolExecutor(min(16, threads(None) * 2)) as ex:
             sizes = list(ex.map(get_image_size, paths))
     else:
         sizes = [get_image_size(p) for p in paths]
@@ -308,7 +287,9 @@ def get_image_dtype(file_path, zarr_file: bool = False) -> str:
 
 @dataclass(frozen=True)
 class ZarrInfo:
-    """The fields of MATLAB's ``getZarrInfo`` struct (``blockSize`` is ``block_size``)."""
+    """The fields of MATLAB's ``getZarrInfo`` struct (``blockSize`` is ``block_size``), with
+    ``size`` and ``block_size`` in ``(z, y, x)`` and ``axes`` the layout of the file: ``'zyx'``
+    (native) or ``'yxz'`` (MATLAB's)."""
 
     size: tuple[int, ...]
     block_size: tuple[int, ...]
@@ -319,36 +300,54 @@ class ZarrInfo:
     filters: Any
     zarr_format: int
     dtype: str
+    axes: str
 
 
 _ZARR_CLASS = {"f8": "double", "f4": "single", "u2": "uint16", "u1": "uint8"}
 
 
+_V3_CLASS = {"float64": "double", "float32": "single", "uint16": "uint16", "uint8": "uint8"}
+
+
 def get_zarr_info(file_path) -> ZarrInfo:
     """The ``.zarray`` of a zarr array (MATLAB ``getZarrInfo``); ``dtype`` is the MATLAB
-    class of the four types PetaKit5D writes, ``''`` (with a warning) for others."""
+    class of the four types PetaKit5D writes, ``''`` (with a warning) for others. A Zarr v3
+    array (the port's sharded arrays) is described from its ``zarr.json``: ``block_size`` is
+    its shard (chunk grid) shape, ``compressor`` its codecs."""
     path = path_str(file_path)
-    if not (is_zarr_name(path) or os.path.isfile(os.path.join(path, ".zarray"))):
+    v2 = os.path.isfile(os.path.join(path, ".zarray"))
+    v3 = not v2 and os.path.isfile(os.path.join(path, "zarr.json"))
+    if not (v2 or v3):
         raise FileNotFoundError(
             f"The input zarr file {path} does not exist or the .zarray file is missing!"
         )
-    meta = _zarr_meta(path)
-    ddtype = meta["dtype"]
-    dtype = _ZARR_CLASS.get(ddtype[-2:], "")
+    meta = zarr_meta(path)
+    if v3:
+        ddtype = str(meta["data_type"])
+        dtype = _V3_CLASS.get(ddtype, "")
+        chunks = meta["chunk_grid"]["configuration"]["chunk_shape"]
+        order, compressor, filters = "C", meta.get("codecs"), None
+    else:
+        ddtype = meta["dtype"]
+        dtype = _ZARR_CLASS.get(ddtype[-2:], "")
+        chunks, order = meta["chunks"], meta["order"]
+        compressor, filters = meta["compressor"], meta["filters"]
     if not dtype:
         warnings.warn(
             f"Unknown/Unsupported zarr data type {ddtype}, set dtype as empty!", stacklevel=2
         )
+    layout = zarr_layout(meta)
     return ZarrInfo(
-        size=tuple(int(s) for s in meta["shape"]),
-        block_size=tuple(int(c) for c in meta["chunks"]),
+        size=_zyx(meta["shape"], layout),
+        block_size=_zyx(chunks, layout),
         ddtype=ddtype,
-        order=meta["order"],
-        compressor=meta["compressor"],
+        order=order,
+        compressor=compressor,
         fill_value=meta["fill_value"],
-        filters=meta["filters"],
+        filters=filters,
         zarr_format=int(meta["zarr_format"]),
         dtype=dtype,
+        axes=layout,
     )
 
 
@@ -360,7 +359,7 @@ def _positive_along(a: np.ndarray, axis: int) -> np.ndarray:
     others = tuple(i for i in range(a.ndim) if i != axis)
     if a.dtype.kind in "bu":
         # sums of non-negative values are positive exactly when one value is
-        return np.any(a != 0, axis=others) if a.ndim > 1 else a != 0
+        return np.any(a != 0, axis=others)
     if a.dtype.kind == "i":
         # MATLAB sums integers in double: exact below 2^53, as int64 sums are (8 to 32 bits)
         if a.dtype.itemsize < 8:
@@ -371,21 +370,24 @@ def _positive_along(a: np.ndarray, axis: int) -> np.ndarray:
         pos = np.any(a > 0, axis=others)
         nan = np.any(np.isnan(a), axis=others)
         return pos & ~nan
-    # stand-in for MATLAB's single/double sum order (matlabcompat sums, N05)
+    # stand-in for MATLAB's order of single/double sums with negative values (no matlabcompat
+    # sum yet): NumPy's pairwise sum
     return np.sum(a, axis=others) > 0
 
 
 def get_image_bounding_box(img: np.ndarray) -> tuple[int, ...]:
-    """1-based inclusive box of the positive part of a 2D or 3D image (MATLAB
-    ``getImageBoundingBox``): ``(ymin, xmin, zmin, ymax, xmax, zmax)``, or
-    ``(ymin, xmin, ymax, xmax)`` for 2D; ``()`` when no value is positive."""
+    """The box of the positive part of a volume ``(z, y, x)`` or an image ``(y, x)`` (MATLAB
+    ``getImageBoundingBox``): ``(z0, y0, x0, z1, y1, x1)`` (``(y0, x0, y1, x1)`` for an image),
+    0-based, end-exclusive; ``()`` when no value is positive. A plane counts as positive when
+    its sum is (MATLAB's rule)."""
     a = np.asarray(img)
-    nd = len(matlab_shape(a.shape))
-    a3 = a.reshape(a.shape + (1,) * (3 - a.ndim), order="A") if a.ndim < 3 else a
+    if a.ndim not in (2, 3):
+        raise ValueError(f"an image (y, x) or a volume (z, y, x), not shape {a.shape}")
     lo, hi = [], []
-    for axis in range(3 if nd == 3 else 2):
-        idx = np.flatnonzero(_positive_along(a3, axis))
-        if idx.size:
-            lo.append(int(idx[0]) + 1)
-            hi.append(int(idx[-1]) + 1)
+    for axis in range(a.ndim):
+        idx = np.flatnonzero(_positive_along(a, axis))
+        if idx.size == 0:
+            return ()
+        lo.append(int(idx[0]))
+        hi.append(int(idx[-1]) + 1)
     return tuple(lo + hi)

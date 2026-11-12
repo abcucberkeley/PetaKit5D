@@ -20,10 +20,11 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+from petakit5d.core import axes
 from petakit5d.jobs import framework
 from petakit5d.params.registry import REGISTRY
 from petakit5d.testing import oracle
-from petakit5d.testing.cases import Case, File, InPath, Tree, Work
+from petakit5d.testing.cases import Case, File, InPath, PerAxis, Tree, Work
 from petakit5d.testing.compare import MCell, ignore
 from petakit5d.testing.slurm_fake import no_slurm  # noqa: F401 (a fixture)
 from petakit5d.tools import memory_estimate as me
@@ -561,10 +562,61 @@ def test_estimate_reads_the_size_of_the_file(tmp_path):
 
 
 def test_matlab_layer_conversions():
-    assert me.matlab_in({"im_size": (10, 20, 30)}) == {"im_size": (30, 10, 20)}
-    assert me.matlab_in({"im_size": None}) == {"im_size": None}
+    # imSize by the registry's size_yxz kind; the returned size by matlab_out
+    spec = REGISTRY.find("XR_estimateComputingMemory")
+    assert spec.param("imSize").conv.name == "size_yxz"
+    assert not hasattr(me, "matlab_in") and spec.matlab_in is None
+    assert spec.bind_matlab(["", ("rotate",), "imSize", [10, 20, 30]])["im_size"] == (30, 10, 20)
+    assert spec.bind_matlab(["", ("rotate",), "imSize", []]).get("im_size") is None
     assert me.matlab_out((1, 2, 3, (3, 1, 2)))[3] == (1, 2, 3)
     assert me.matlab_out((1, 2, 3, (3, 1, 2, 4)))[3] == (1, 2, 3, 4)
+    assert me.matlab_out((1, 2, 3, None))[3] is None
+
+
+def test_matlab_name_call_gives_matlabs_size(tmp_path):
+    from petakit5d import matlab
+    from petakit5d.testing.synth import write_tiff_matlab as write_tiff
+
+    est, _, raw, sz = matlab.XR_estimateComputingMemory("", ("deskew",), "imSize", [10, 20, 600])
+    assert sz == (10, 20, 600) and raw == 10 * 20 * 600 * 4 / GB
+    assert est.tolist() == [raw * 15 * 4.0]
+    f = tmp_path / "a.tif"
+    write_tiff(f, np.zeros((4, 5, 3), dtype=np.uint16, order="F"))
+    assert matlab.XR_estimateComputingMemory(str(f), ("rotate",))[3] == (4, 5, 3)
+
+
+@pytest.mark.parametrize("layout", ["native", "matlab"])
+def test_estimate_reads_z_of_a_non_cubic_zarr(tmp_path, layout):
+    # the slice count is the first of get_image_size's (nz, ny, nx), for both zarr layouts
+    from petakit5d.testing.synth import write_zarr
+
+    f = tmp_path / "a.zarr"
+    write_zarr(f, np.zeros((600, 7, 5), dtype=np.uint16), block_size=(600, 7, 5), layout=layout)
+    est, _, raw, sz = me.estimate_computing_memory(str(f), ("deskew",))
+    assert sz == (600, 7, 5) and raw == 600 * 7 * 5 * 4 / GB
+    assert est.tolist() == [raw * 15 * 4.0]
+
+
+def test_estimate_of_a_2d_zarr_fails_as_matlab(tmp_path):
+    from petakit5d.testing.synth import write_zarr
+
+    f = tmp_path / "a.zarr"
+    write_zarr(f, np.zeros((7, 5), dtype=np.uint16), block_size=(7, 5))
+    with pytest.raises(me.MatlabError) as e:
+        me.estimate_computing_memory(str(f), ("rotate",))
+    assert e.value.identifier == "MATLAB:badsubscript"
+
+
+@pytest.mark.parametrize("layout", ["native", "matlab"])
+def test_partial_volume_sizes_of_non_cubic_zarr(tmp_path, layout):
+    # sizes are products of get_image_size's values: the same for both zarr layouts
+    from petakit5d.testing.synth import write_zarr
+
+    for n, shape in {"v.zarr": (3, 5, 7), "v_part0001.zarr": (2, 5, 7)}.items():
+        write_zarr(tmp_path / n, np.zeros(shape, dtype=np.uint16), block_size=shape, layout=layout)
+    contain, names, _, sizes = pv.group_partial_volume_files(str(tmp_path), ext=".zarr")
+    assert contain.tolist() == [False, True] and names == [["v.zarr", "v_part0001.zarr"]]
+    assert sizes[0].tolist() == [3 * 5 * 7 * 2, 2 * 5 * 7 * 2]
 
 
 # ---------------------------------------------------------------------------------------------
@@ -651,14 +703,48 @@ def randperm1(n):
     return np.array([i + 1 for i in rsync.randperm_seed1(int(n))], dtype=np.float64)
 
 
+def _matlab_size(sz):
+    # imSize as MATLAB returns it: [] for none, a double row otherwise
+    return np.zeros((0, 0)) if sz is None else np.array(sz, dtype=np.float64)
+
+
 def est_matlab(*args):
-    """XR_estimateComputingMemory called the MATLAB way: the MATLAB-name binding, imSize
-    converted to (nz, ny, nx) and back (what the MATLAB-name layer does)."""
-    spec = REGISTRY.find("XR_estimateComputingMemory")
-    kw = me.matlab_in(spec.bind_matlab(args))
-    mem, gpu, raw, sz = me.matlab_out(spec.func(**kw))
-    sz = np.zeros((0, 0)) if sz is None else np.array(sz, dtype=np.float64)
-    return [mem, gpu, raw, sz]
+    """XR_estimateComputingMemory through the MATLAB-name layer (MATLAB's arguments; imSize
+    converted by its kind, the returned size by matlab_out): for the cases about the binding."""
+    mem, gpu, raw, sz = REGISTRY.find("XR_estimateComputingMemory").call_matlab(*args)
+    return [mem, gpu, raw, _matlab_size(sz)]
+
+
+_EST_KW = {
+    "imSize": "im_size",
+    "dataSize": "data_size",
+    "memFactors": "mem_factors",
+    "cudaDecon": "cuda_decon",
+    "GPUMemFactor": "gpu_mem_factor",
+}
+
+
+def est_case(cid, args, nargout=1, **kw):
+    """A case of XR_estimateComputingMemory whose Python side is the snake_case function: the
+    leading arguments positional, the name-value pairs by their Python names, imSize (nz, ny,
+    nx) through its role, the returned size back to MATLAB's [ny nx nz] by its out role."""
+    k = next((i for i, a in enumerate(args) if isinstance(a, str) and a in _EST_KW), len(args))
+    py_kwargs = {}
+    for name, v in zip(args[k::2], args[k + 1 :: 2], strict=True):
+        py_kwargs[_EST_KW[name]] = PerAxis(v, "yxz") if name == "imSize" else v
+    roles = (None, None, None, lambda sz: _matlab_size(None if sz is None else axes.to_yxz(sz)))
+    return Case(
+        cid,
+        matlab="XR_estimateComputingMemory",
+        args=args,
+        nargout=nargout,
+        python=me.estimate_computing_memory,
+        py_args=args[:k],
+        py_kwargs=py_kwargs,
+        py_out=first(1) if nargout == 1 else None,
+        out_roles=roles[:nargout] if nargout == 4 else None,
+        **kw,
+    )
 
 
 def first(n):
@@ -803,15 +889,10 @@ LIST_COL = MCell((len(LIST), 1), LIST)
 
 NO_DATES = {"out3": ignore("dates of the work folder's copies differ between runs")}
 
+TIFF_IN = {"t.tif": File(tiff_writer((20, 30, 7)), "t.tif")}
+
 EST_CASES = [
-    Case(
-        "est_deskew_tiff",
-        matlab="XR_estimateComputingMemory",
-        args=[InPath("t.tif"), ("deskew",)],
-        python=est_matlab,
-        py_out=first(1),
-        inputs={"t.tif": File(tiff_writer((20, 30, 7)), "t.tif")},
-    ),
+    est_case("est_deskew_tiff", [InPath("t.tif"), ("deskew",)], inputs=TIFF_IN),
     Case(
         # inputParser takes text without a validator as a parameter name, not as the
         # optional steps (the MATLAB-name binding does the same since F13)
@@ -820,7 +901,7 @@ EST_CASES = [
         args=[InPath("t.tif"), "deskew"],
         python=est_matlab,
         py_out=first(1),
-        inputs={"t.tif": File(tiff_writer((20, 30, 7)), "t.tif")},
+        inputs=TIFF_IN,
         expect_error="MATLAB:InputParser:ArgumentFailedDefaultValidation",
     ),
     Case(
@@ -830,113 +911,64 @@ EST_CASES = [
         args=[InPath("t.tif"), "steps", ("deskew",)],
         python=est_matlab,
         py_out=first(1),
-        inputs={"t.tif": File(tiff_writer((20, 30, 7)), "t.tif")},
+        inputs=TIFF_IN,
     ),
-    Case(
-        "est_default_steps",
-        matlab="XR_estimateComputingMemory",
-        args=[InPath("t.tif")],
-        python=est_matlab,
-        py_out=first(1),
-        inputs={"t.tif": File(tiff_writer((20, 30, 7)), "t.tif")},
-    ),
-    Case(
-        "est_two_steps",
-        matlab="XR_estimateComputingMemory",
-        args=[InPath("t.tif"), ("deskew", "deconvolution")],
-        python=est_matlab,
-        py_out=first(1),
-        inputs={"t.tif": File(tiff_writer((20, 30, 7)), "t.tif")},
-    ),
+    est_case("est_default_steps", [InPath("t.tif")], inputs=TIFF_IN),
+    est_case("est_two_steps", [InPath("t.tif"), ("deskew", "deconvolution")], inputs=TIFF_IN),
     *[
-        Case(
-            f"est_deskew_size_z{z}",
-            matlab="XR_estimateComputingMemory",
-            args=["missing.tif", ("Deskew",), "imSize", [512, 1800, z]],
-            python=est_matlab,
-            py_out=first(1),
-        )
+        est_case(f"est_deskew_size_z{z}", ["missing.tif", ("Deskew",), "imSize", [512, 1800, z]])
         for z in (299, 300, 301, 450, 777, 1999, 12345)
     ],
-    Case(
-        # one slice of a tiff: the bytes of a file that does not exist
+    # one slice of a tiff: the bytes of a file that does not exist
+    est_case(
         "est_deskew_size_z1_missing_tiff",
-        matlab="XR_estimateComputingMemory",
-        args=["missing.tif", ("deskew",), "imSize", [512, 1800, 1]],
-        python=est_matlab,
+        ["missing.tif", ("deskew",), "imSize", [512, 1800, 1]],
         expect_error="MATLAB:minrhs",
         py_error=me.MatlabError,
     ),
-    Case(
-        "est_deskew_size_z1",
-        matlab="XR_estimateComputingMemory",
-        args=["missing.zarr", ("deskew",), "imSize", [512, 1800, 1]],
-        python=est_matlab,
-        py_out=first(1),
-    ),
-    Case(
+    est_case("est_deskew_size_z1", ["missing.zarr", ("deskew",), "imSize", [512, 1800, 1]]),
+    est_case(
         "est_rotate_mem_factors",
-        matlab="XR_estimateComputingMemory",
-        args=["", ("rotate",), "imSize", [100, 200, 300], "memFactors", [3, 2.7, 7.5]],
-        python=est_matlab,
-        py_out=first(1),
+        ["", ("rotate",), "imSize", [100, 200, 300], "memFactors", [3, 2.7, 7.5]],
     ),
-    Case(
+    est_case(
         "est_decon_cuda_tiff",
-        matlab="XR_estimateComputingMemory",
-        args=[InPath("t.tif"), ("deconvolution",), "cudaDecon", True, "GPUMemFactor", 2.25],
+        [InPath("t.tif"), ("deconvolution",), "cudaDecon", True, "GPUMemFactor", 2.25],
         nargout=4,
-        python=est_matlab,
-        inputs={"t.tif": File(tiff_writer((20, 30, 7)), "t.tif")},
+        inputs=TIFF_IN,
     ),
-    Case(
+    est_case(
         "est_decon_cpu_tiff",
-        matlab="XR_estimateComputingMemory",
-        args=[InPath("t.tif"), ("deconvolution",), "cudaDecon", False],
+        [InPath("t.tif"), ("deconvolution",), "cudaDecon", False],
         nargout=4,
-        python=est_matlab,
-        inputs={"t.tif": File(tiff_writer((20, 30, 7)), "t.tif")},
+        inputs=TIFF_IN,
     ),
-    Case(
+    est_case(
         "est_decon_single_slice_tiff_bytes",
-        matlab="XR_estimateComputingMemory",
-        args=[InPath("t.tif"), ("deconvolution",), "cudaDecon", False],
+        [InPath("t.tif"), ("deconvolution",), "cudaDecon", False],
         nargout=4,
-        python=est_matlab,
         inputs={"t.tif": File(tiff_writer((33, 17)), "t.tif")},
     ),
-    Case(
+    est_case(
         "est_decon_zarr",
-        matlab="XR_estimateComputingMemory",
-        args=[InPath("z.zarr"), ("deconvolution",)],
+        [InPath("z.zarr"), ("deconvolution",)],
         nargout=4,
-        python=est_matlab,
         inputs={
             "z.zarr": Tree(lambda d: (d / ".zarray").write_text(zarray((10, 11, 1))), "z.zarr")
         },
     ),
-    Case(
+    est_case(
         "est_decon_data_size",
-        matlab="XR_estimateComputingMemory",
-        args=["", ("deconvolution",), "dataSize", 123456789, "cudaDecon", True],
+        ["", ("deconvolution",), "dataSize", 123456789, "cudaDecon", True],
         nargout=4,
-        python=est_matlab,
     ),
-    Case(
+    est_case(
         "est_missing_file",
-        matlab="XR_estimateComputingMemory",
-        args=["missing.tif", ("deskew",)],
-        python=est_matlab,
+        ["missing.tif", ("deskew",)],
         expect_error=True,
         py_error=me.MatlabError,
     ),
-    Case(
-        "est_data_size_several_steps",
-        matlab="XR_estimateComputingMemory",
-        args=["", ("rotate", "deconvolution"), "dataSize", 1000],
-        python=est_matlab,
-        py_out=first(1),
-    ),
+    est_case("est_data_size_several_steps", ["", ("rotate", "deconvolution"), "dataSize", 1000]),
     # ComputingMemoryEstimateTest
     Case(
         # the optional steps left out before a name-value pair ('imSize' is a parameter name)
@@ -946,26 +978,15 @@ EST_CASES = [
         nargout=4,
         python=est_matlab,
     ),
-    Case(
-        "est_rotate_deskew_given_size",
-        matlab="XR_estimateComputingMemory",
-        args=["", ("rotate", "deskew"), "imSize", [100, 200, 600]],
-        python=est_matlab,
-        py_out=first(1),
-    ),
-    Case(
+    est_case("est_rotate_deskew_given_size", ["", ("rotate", "deskew"), "imSize", [100, 200, 600]]),
+    est_case(
         "est_data_size_rotate_decon_cpu",
-        matlab="XR_estimateComputingMemory",
-        args=["", ("rotate", "deconvolution"), "dataSize", 2**30, "cudaDecon", False],
+        ["", ("rotate", "deconvolution"), "dataSize", 2**30, "cudaDecon", False],
         nargout=4,
-        python=est_matlab,
     ),
-    Case(
+    est_case(
         "est_data_size_with_deskew",
-        matlab="XR_estimateComputingMemory",
-        args=["", ("deskew", "rotate"), "imSize", [100, 200, 600], "dataSize", 2**30],
-        python=est_matlab,
-        py_out=first(1),
+        ["", ("deskew", "rotate"), "imSize", [100, 200, 600], "dataSize", 2**30],
     ),
 ]
 

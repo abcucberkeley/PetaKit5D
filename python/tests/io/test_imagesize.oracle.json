@@ -1,0 +1,13 @@
+{
+ "format": 2,
+ "module": "tests/io/test_imagesize.py",
+ "oracle": "7ed28c0098bc2411abc781229b4ca466ea4de7d3",
+ "cases": {
+  "bbox_bool_box_3d": {"error":null,"files":null,"format":2,"key":"4a4055c0eb3e884c0b9bdfef6c422bba98e4a43a391062114ee74ce08b54ea33","matlab":"getImageBoundingBox","oracle":"7ed28c0098bc2411abc781229b4ca466ea4de7d3","outputs":[{"b64":"AAAAAAAAEEAAAAAAAAAYQAAAAAAAAAhAAAAAAAAAIkAAAAAAAAA1QAAAAAAAABxA","c":"double","h":"2e0feb4a92a247881389446f48ff87873697cc0c04123222aedd83800816fc56","k":"a","s":[1,6]}],"status":"ok","warnings":[]},
+  "bbox_int16_random_3d": {"error":null,"files":null,"format":2,"key":"d1c064f3c632872189ff8f61273aaf3d369d7ea4ea5782ebe14358aa3a38c21d","matlab":"getImageBoundingBox","oracle":"7ed28c0098bc2411abc781229b4ca466ea4de7d3","outputs":[{"b64":"AAAAAAAA8D8AAAAAAADwPwAAAAAAAPA/AAAAAAAAKkAAAAAAAAAiQAAAAAAAABRA","c":"double","h":"8fa4cac475a50330fbe31dbe7e19b2ab6d591cea801e9318db1cd9fa06b075a9","k":"a","s":[1,6]}],"status":"ok","warnings":[]},
+  "bbox_single_box_3d": {"error":null,"files":null,"format":2,"key":"df00d76fc1b250dfe027ce80ef42d35c25883869f69ba7b23e08c0d28da7a2d9","matlab":"getImageBoundingBox","oracle":"7ed28c0098bc2411abc781229b4ca466ea4de7d3","outputs":[{"b64":"AAAAAAAAEEAAAAAAAAAYQAAAAAAAAAhAAAAAAAAAIkAAAAAAAAA1QAAAAAAAABxA","c":"double","h":"2e0feb4a92a247881389446f48ff87873697cc0c04123222aedd83800816fc56","k":"a","s":[1,6]}],"status":"ok","warnings":[]},
+  "bbox_uint16_random_2d": {"error":null,"files":null,"format":2,"key":"ecbc44efd3b5885428065320bf122f6dde281f2f01056219074e679d030faebf","matlab":"getImageBoundingBox","oracle":"7ed28c0098bc2411abc781229b4ca466ea4de7d3","outputs":[{"b64":"AAAAAAAA8D8AAAAAAADwPwAAAAAAAERAAAAAAACAQEA=","c":"double","h":"c2e659f0fbb54f13e2727f74ab946241262b4b849699ffdb830f498c924325f0","k":"a","s":[1,4]}],"status":"ok","warnings":[]},
+  "bbox_uint16_random_3d": {"error":null,"files":null,"format":2,"key":"e2a3b4f2d8449d2aa0d21c0833f59f5218379526662b1f721b994abf9d674916","matlab":"getImageBoundingBox","oracle":"7ed28c0098bc2411abc781229b4ca466ea4de7d3","outputs":[{"b64":"AAAAAAAA8D8AAAAAAADwPwAAAAAAAPA/AAAAAAAAKkAAAAAAAAAiQAAAAAAAABhA","c":"double","h":"8d0cb0de941e04f6b2c4efaee4ac4444d2b05248aa278eb579e6d8ac49e3915e","k":"a","s":[1,6]}],"status":"ok","warnings":[]},
+  "bbox_uint8_box_3d": {"error":null,"files":null,"format":2,"key":"7fe8b18bcadbf85d5f466c434803c2b95d92aff26e9001ab30c99ffd6246ef1b","matlab":"getImageBoundingBox","oracle":"7ed28c0098bc2411abc781229b4ca466ea4de7d3","outputs":[{"b64":"AAAAAAAAEEAAAAAAAAAYQAAAAAAAAAhAAAAAAAAAIkAAAAAAAAA1QAAAAAAAABxA","c":"double","h":"2e0feb4a92a247881389446f48ff87873697cc0c04123222aedd83800816fc56","k":"a","s":[1,6]}],"status":"ok","warnings":[]}
+ }
+}

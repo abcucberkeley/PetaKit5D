@@ -301,7 +301,7 @@ def generate_image_list_from_tile_positions(
     dz=0.2,
     skew_angle=32.45,
     axis_order: str = "x,y,z",
-    data_order: str = "y,x,z",
+    data_order: str = "z,y,x",
     objective_scan: bool = False,
     io_scan: bool = False,
     zarr_file: bool = False,
@@ -312,8 +312,9 @@ def generate_image_list_from_tile_positions(
     """``stitch_generate_imagelist_from_tile_positions``: ``ImageList_from_tile_positions.csv``
     in the first folder; tile steps are the tile size (the most common one, in stage
     coordinates of the scan type) minus the overlap. Names outside the LLSM grammar get a
-    ``mappedFilename`` column. ``axis_order`` and ``data_order`` are accepted and unused, as in
-    MATLAB. Returns the file's path."""
+    ``mappedFilename`` column. ``overlap_size`` is ``(z, y, x)``, in pixels or in um
+    (``overlap_size_type``). ``axis_order`` and ``data_order`` (``'z,y,x'``, the array's axes)
+    are accepted and unused, as in MATLAB. Returns the file's path."""
     from petakit5d.io.imagesize import get_image_size_batch
 
     uuid = _uuid(uuid)
@@ -345,12 +346,13 @@ def generate_image_list_from_tile_positions(
         tab = _nonstandard_tab(base, tile_info, cam_patterns, specify_cam)
 
     nf = tab.height
+    # rows (nz, ny, nx), (ny, nx) for a 2D zarr array; mode per column (order-free)
     im_sizes = get_image_size_batch(list(tab["Filepath"])).astype(np.float64)
     idx = np.column_stack([tab["x"], tab["y"], tab["z"]])
     ts = idx.min(axis=0)
     sz = _mode_rows(im_sizes)
     if sz.size < 3:
-        sz = np.concatenate((sz, np.ones(3 - sz.size)))
+        sz = np.concatenate((np.ones(3 - sz.size), sz))
 
     # coordinates conversion for skewed space and DS space data
     if objective_scan or io_scan:
@@ -360,15 +362,18 @@ def generate_image_list_from_tile_positions(
         z_aniso = _sind(float(skew_angle)) * pixel_sizes[2] / pixel_sizes[0]
     theta = float(skew_angle) * math.pi / 180
 
+    # overlap (z, y, x) -> xyz, in um
     ov = np.asarray(overlap_size if overlap_size is not None else [], dtype=np.float64)
     ov = ov.reshape(-1)
     if overlap_size_type.lower() == "pixel":
-        ov = ov[[1, 0, 2]] * pixel_sizes[0] * np.array([1.0, 1.0, z_aniso])
-    elif overlap_size_type.lower() != "um":
+        ov = ov[[2, 1, 0]] * pixel_sizes[0] * np.array([1.0, 1.0, z_aniso])
+    elif overlap_size_type.lower() == "um":
+        ov = ov[::-1]
+    else:
         raise ImageListError("Unknown overlap size type, must be pixel or um!")
 
-    # physical size in xyz order
-    sz_phy = sz[[1, 0, 2]] * pixel_sizes[0] * np.array([1.0, 1.0, z_aniso])
+    # physical size in xyz order, from (nz, ny, nx)
+    sz_phy = sz[[2, 1, 0]] * pixel_sizes[0] * np.array([1.0, 1.0, z_aniso])
     sz_dsr = sz_phy
     st, ct = math.sin(theta), math.cos(theta)
     if objective_scan or ds:
@@ -950,6 +955,19 @@ def generate_image_list_from_sqlite_old_format(data_path: str) -> str:
 # ------------------------------------------------------------------------------------------
 
 
+def _matlab_in(kwargs: dict[str, Any]) -> dict[str, Any]:
+    """MATLAB-name layer: ``overlapSize`` is ``[y x z]`` in pixels and ``[x y z]`` in um
+    (``overlapSizeType``, default pixel); the Python value is ``(z, y, x)`` for both units."""
+    from petakit5d.params.kinds import KINDS
+
+    ov = kwargs.get("overlap_size")
+    if ov is None or np.ndim(ov) == 0:
+        return kwargs
+    unit = str(kwargs.get("overlap_size_type", "pixel")).lower()
+    kind = KINDS["per_axis_xyz" if unit == "um" else "size_yxz"]
+    return {**kwargs, "overlap_size": kind.from_matlab(ov)}
+
+
 @register(
     "XR_generate_image_list_wrapper",
     Param(
@@ -977,11 +995,13 @@ def generate_image_list_from_sqlite_old_format(data_path: str) -> str:
         "tileIndices",
         "@(x) isempty(x) || (isnumeric(x) && size(x, 2) == 5)",
         "Tile indices of the tile files, #file x 5, order t, c, x, y, z (tile_list).",
+        convert="same",
     ),
     Param(
         "tileInterval",
         "@(x) isempty(x) || (isnumeric(x) && size(x, 1) == 1 && size(x, 2) == 3)",
         "Interval between neighboring tiles in um, order x, y, z (tile_list).",
+        convert="same",
     ),
     Param("DS", "@islogical", "Data is in deskewed space."),
     Param("DSR", "@islogical", "Data is in deskew/rotated space (with stage coordinates)."),
@@ -992,8 +1012,14 @@ def generate_image_list_from_sqlite_old_format(data_path: str) -> str:
         "axisOrder",
         "@ischar",
         "Axis order of the coordinates in the image list ('-yxz': -y maps to x, x to y, z to z).",
+        convert="same",
     ),
-    Param("dataOrder", "@ischar", "Axis order of the data ('y,x,z')."),
+    Param(
+        "dataOrder",
+        "@ischar",
+        "Axis order of the data ('z,y,x' in Python, MATLAB's 'y,x,z').",
+        convert="data_order",
+    ),
     Param("objectiveScan", "@islogical", "Objective scan."),
     Param(
         "IOScan",
@@ -1004,7 +1030,8 @@ def generate_image_list_from_sqlite_old_format(data_path: str) -> str:
     Param(
         "overlapSize",
         "@isnumeric",
-        "Overlap between tiles in pixels (order y, x, z) or um (order x, y, z).",
+        "Overlap between tiles in pixels or um ((z, y, x) in Python; MATLAB's [y x z] in "
+        "pixels and [x y z] in um, converted by the unit).",
     ),
     Param(
         "overlapSizeType",
@@ -1013,6 +1040,7 @@ def generate_image_list_from_sqlite_old_format(data_path: str) -> str:
     ),
     Param("uuid", "@ischar", "uuid in the temporary result paths."),
     task="S01",
+    matlab_in=_matlab_in,
 )
 def generate_image_list(
     data_paths,
@@ -1030,7 +1058,7 @@ def generate_image_list(
     dz=0.2,
     skew_angle=32.45,
     axis_order="x,y,z",
-    data_order="y,x,z",
+    data_order="z,y,x",
     objective_scan=False,
     io_scan=False,
     zarr_file=False,

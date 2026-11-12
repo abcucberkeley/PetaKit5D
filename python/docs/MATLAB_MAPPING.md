@@ -1373,8 +1373,8 @@ Estimate the memory a step needs, in GB.
 |---|---|---|---|---|---|---|---|
 | `filePath` | `file_path` | req |  |  |  |  | Image file (tiff or zarr). |
 | `steps` | `steps` | opt |  | `{'deskew','rotate','deconvolution'}` | `('deskew', 'rotate', 'deconvolution')` |  | Steps to estimate: 'deskew', 'rotate' or 'deconvolution'. |
-| `imSize` | `im_size` | par |  | `[]` | `None` | `@(x) isnumeric(x) && (isempty(x) \|\| numel(x) == 3)` | Image size, used when the file does not exist ((nz, ny, nx) in Python). |
-| `dataSize` | `data_size` | par |  | `[]` | `None` | `@(x) isnumeric(x) && (isempty(x) \|\| numel(x) == 1)` | Number of voxels (uint16), used without deskew. |
+| `imSize` | `im_size` | par | size_yxz | `[]` | `None` | `@(x) isnumeric(x) && (isempty(x) \|\| numel(x) == 3)` | Image size, used when the file does not exist ((nz, ny, nx) in Python). |
+| `dataSize` | `data_size` | par | same | `[]` | `None` | `@(x) isnumeric(x) && (isempty(x) \|\| numel(x) == 1)` | Number of voxels (uint16), used without deskew. |
 | `memFactors` | `mem_factors` | par |  | `[15,5,15]` | `(15, 5, 15)` |  | Memory factors of deskew, rotate and deconvolution. |
 | `cudaDecon` | `cuda_decon` | par |  | `true` | `True` | `@islogical` | Deconvolution on the GPU (gives the GPU estimate). |
 | `GPUMemFactor` | `gpu_mem_factor` | par |  | `1.5` | `1.5` |  | GPU memory factor of deconvolution. |
@@ -1512,19 +1512,19 @@ Generate the image list (stage coordinates of the tiles) of datasets as ``ImageL
 | `mapTilename` | `map_tilename` | par |  | `true` | `True` | `@islogical` | Map tile names to standard ones (sqlite only). |
 | `tilePatterns` | `tile_patterns` | par |  | `{'0000t','ch0','000x','000y','000z'}` | `('0000t', 'ch0', '000x', '000y', '000z')` | `@iscell` | Patterns for time, channel, x, y and z in the tile names ([a-zA-Z]*[0-9]* or [0-9]*[a-zA-Z]*). |
 | `tileFilenames` | `tile_filenames` | par |  | `{}` | `()` | `@iscell` | Tile file names (tile_list). |
-| `tileIndices` | `tile_indices` | par |  | `[]` | `None` | `@(x) isempty(x) \|\| (isnumeric(x) && size(x, 2) == 5)` | Tile indices of the tile files, #file x 5, order t, c, x, y, z (tile_list). |
-| `tileInterval` | `tile_interval` | par |  | `[]` | `None` | `@(x) isempty(x) \|\| (isnumeric(x) && size(x, 1) == 1 && size(x, 2) == 3)` | Interval between neighboring tiles in um, order x, y, z (tile_list). |
+| `tileIndices` | `tile_indices` | par | same | `[]` | `None` | `@(x) isempty(x) \|\| (isnumeric(x) && size(x, 2) == 5)` | Tile indices of the tile files, #file x 5, order t, c, x, y, z (tile_list). |
+| `tileInterval` | `tile_interval` | par | same | `[]` | `None` | `@(x) isempty(x) \|\| (isnumeric(x) && size(x, 1) == 1 && size(x, 2) == 3)` | Interval between neighboring tiles in um, order x, y, z (tile_list). |
 | `DS` | `ds` | par |  | `false` | `False` | `@islogical` | Data is in deskewed space. |
 | `DSR` | `dsr` | par |  | `false` | `False` | `@islogical` | Data is in deskew/rotated space (with stage coordinates). |
 | `xyPixelSize` | `xy_pixel_size` | par |  | `0.108` | `0.108` | `@isnumeric` | Pixel size in um. |
 | `dz` | `dz` | par |  | `0.2` | `0.2` | `@isnumeric` | Scan interval in um. |
 | `skewAngle` | `skew_angle` | par |  | `32.45` | `32.45` | `@isnumeric` | Skew angle (in degrees) of the stage. |
-| `axisOrder` | `axis_order` | par |  | `'x,y,z'` | `'x,y,z'` | `@ischar` | Axis order of the coordinates in the image list ('-yxz': -y maps to x, x to y, z to z). |
-| `dataOrder` | `data_order` | par |  | `'y,x,z'` | `'y,x,z'` | `@ischar` | Axis order of the data ('y,x,z'). |
+| `axisOrder` | `axis_order` | par | same | `'x,y,z'` | `'x,y,z'` | `@ischar` | Axis order of the coordinates in the image list ('-yxz': -y maps to x, x to y, z to z). |
+| `dataOrder` | `data_order` | par | data_order | `'y,x,z'` | `'z,y,x'` | `@ischar` | Axis order of the data ('z,y,x' in Python, MATLAB's 'y,x,z'). |
 | `objectiveScan` | `objective_scan` | par |  | `false` | `False` | `@islogical` | Objective scan. |
 | `IOScan` | `io_scan` | par |  | `false` | `False` | `@islogical` | Inverted objective scan (the scan with the stage coordinates, DSR space). |
 | `zarrFile` | `zarr_file` | par |  | `false` | `False` | `@islogical` | Zarr files as input. |
-| `overlapSize` | `overlap_size` | par |  | `[10,10,10]` | `(10, 10, 10)` | `@isnumeric` | Overlap between tiles in pixels (order y, x, z) or um (order x, y, z). |
+| `overlapSize` | `overlap_size` | par |  | `[10,10,10]` | `(10, 10, 10)` | `@isnumeric` | Overlap between tiles in pixels or um ((z, y, x) in Python; MATLAB's [y x z] in pixels and [x y z] in um, converted by the unit). |
 | `overlapSizeType` | `overlap_size_type` | par |  | `'pixel'` | `'pixel'` | `@(x) ischar(x) && ismember(lower(x), {'pixel', 'um'})` | Unit of the overlap size: 'pixel' or 'um'. |
 | `uuid` | `uuid` | par |  | `''` | `''` | `@ischar` | uuid in the temporary result paths. |
 

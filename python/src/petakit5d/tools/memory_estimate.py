@@ -1,8 +1,9 @@
 """Memory estimate of a processing step (``XR_estimateComputingMemory``), in GB.
 
-Image sizes are ``(nz, ny, nx)`` in the Python API (``im_size`` and the returned size);
-MATLAB's ``[ny nx nz]`` is converted by ``matlab_in`` and ``matlab_out`` for the MATLAB-name
-layer.
+Image sizes are ``(nz, ny, nx)`` in the Python API (``im_size``, ``get_image_size`` and the
+returned size); the MATLAB-name layer converts MATLAB's ``[ny nx nz]`` with the registry's
+``size_yxz`` kind (``imSize``) and gives the returned size back in MATLAB's order
+(``matlab_out``).
 
 Each step among ``steps`` is estimated (``any(contains(steps, name))``, MATLAB since 4b79f9b).
 The GPU estimate is None when deconvolution is not among them (MATLAB leaves it unassigned).
@@ -19,7 +20,7 @@ from typing import Any
 
 from petakit5d.params import Param, register
 
-__all__ = ["estimate_computing_memory", "matlab_in", "matlab_out"]
+__all__ = ["estimate_computing_memory", "matlab_out"]
 
 GB = 1024.0**3
 
@@ -32,35 +33,14 @@ class MatlabError(RuntimeError):
         self.identifier = identifier
 
 
-def _zyx_to_matlab(sz: Sequence[Any]) -> list[Any]:
-    # (z, y, x[, c]) -> [y x z [c]]
-    sz = list(sz)
-    if len(sz) < 3:
-        return sz
-    return [sz[1], sz[2], sz[0], *sz[3:]]
-
-
-def _matlab_to_zyx(sz: Sequence[Any]) -> tuple[Any, ...]:
-    # [y x z [c]] -> (z, y, x[, c])
-    sz = list(sz)
-    if len(sz) < 3:
-        return tuple(sz)
-    return (sz[2], sz[0], sz[1], *sz[3:])
-
-
-def matlab_in(kwargs: dict[str, Any]) -> dict[str, Any]:
-    """MATLAB-name layer: ``imSize`` ``[ny nx nz]`` -> ``im_size`` ``(nz, ny, nx)``."""
-    out = dict(kwargs)
-    if out.get("im_size") is not None and len(out["im_size"]) > 0:
-        out["im_size"] = _matlab_to_zyx(out["im_size"])
-    return out
-
-
 def matlab_out(result: tuple[Any, ...]) -> tuple[Any, ...]:
-    """MATLAB-name layer: the returned ``(nz, ny, nx)`` size as MATLAB's ``[ny nx nz]``."""
+    """MATLAB-name layer: the returned size ``(nz, ny, nx[, c])`` as MATLAB's ``[ny nx nz [c]]``
+    (the ``size_yxz`` kind on the first three values; a color tiff's samples stay last)."""
+    from petakit5d.params.kinds import KINDS
+
     mem, gpu, raw, sz = result
-    if sz is not None and len(sz) > 0:
-        sz = tuple(_zyx_to_matlab(sz))
+    if sz is not None and len(sz) >= 3:
+        sz = (*KINDS["size_yxz"].to_matlab(tuple(sz[:3])), *sz[3:])
     return mem, gpu, raw, sz
 
 
@@ -108,17 +88,20 @@ def _prod(sz: Sequence[Any]) -> float:
         "imSize",
         "@(x) isnumeric(x) && (isempty(x) || numel(x) == 3)",
         "Image size, used when the file does not exist ((nz, ny, nx) in Python).",
+        convert="size_yxz",
     ),
     Param(
         "dataSize",
         "@(x) isnumeric(x) && (isempty(x) || numel(x) == 1)",
         "Number of voxels (uint16), used without deskew.",
+        convert="same",
     ),
     Param("memFactors", None, "Memory factors of deskew, rotate and deconvolution."),
     Param("cudaDecon", "@islogical", "Deconvolution on the GPU (gives the GPU estimate)."),
     Param("GPUMemFactor", None, "GPU memory factor of deconvolution."),
     Param("GPUMaxMem", "@isnumeric", "GPU memory in GB (not used)."),
     task="T05",
+    matlab_out=matlab_out,
 )
 def estimate_computing_memory(
     file_path: str,
@@ -145,8 +128,8 @@ def estimate_computing_memory(
 
     del gpu_max_mem
     file_path = os.fspath(file_path) if file_path is not None else ""
-    # MATLAB order inside: [ny nx nz]
-    msize = None if im_size is None else _zyx_to_matlab(im_size)
+    # (nz, ny, nx)
+    sz = None if im_size is None else tuple(im_size)
     empty_data = data_size is None or (np.size(data_size) == 0)
 
     with warnings.catch_warnings():
@@ -154,28 +137,29 @@ def estimate_computing_memory(
         warnings.simplefilter("ignore")
         if empty_data or _any(_contains(steps, "deskew")):
             if not (file_path and os.path.exists(file_path)):
-                if msize is None or len(msize) == 0:
+                if sz is None or len(sz) == 0:
                     raise MatlabError(f"File {file_path} does not exist!")
             else:
                 from petakit5d.io.imagesize import get_image_size
 
-                msize = list(get_image_size(file_path))
-            if len(msize) < 3:
+                sz = tuple(get_image_size(file_path))
+            if len(sz) < 3:
+                # MATLAB's sz(3) of a 2D size (a 2D zarr array)
                 raise MatlabError(
-                    "Index exceeds the number of array elements. Index must not exceed "
-                    f"{len(msize)}.",
+                    f"Index exceeds the number of array elements. Index must not exceed {len(sz)}.",
                     "MATLAB:badsubscript",
                 )
+            nz = float(sz[0])
             # in some cases only the size of the first slice is known
             ext = fileparts(file_path)[2]
-            if float(msize[2]) == 1 and ext in (".tif", ".tiff"):
+            if nz == 1 and ext in (".tif", ".tiff"):
                 if not os.path.isfile(file_path):
                     # dir() of a missing file is empty: MATLAB's dir_info.bytes fails
                     raise MatlabError("Not enough input arguments.", "MATLAB:minrhs")
                 raw = os.stat(file_path).st_size / GB
             else:
-                # in single size
-                raw = _prod(msize) * 4 / GB
+                # in single size (MATLAB's prod over [ny nx nz])
+                raw = _prod((sz[1], sz[2], sz[0], *sz[3:])) * 4 / GB
         else:
             raw = float(np.asarray(data_size).ravel()[0]) * 2 / GB
 
@@ -184,7 +168,7 @@ def estimate_computing_memory(
         mf = [float(x) for x in np.asarray(mem_factors, dtype=np.float64).ravel(order="F")]
         if _any(_contains(steps, "deskew")):
             # 300 slices as threshold
-            q = float(msize[2]) / 300
+            q = nz / 300
             est[_strcmpi(steps, "deskew")] = raw * mf[0] * max(1.0, q * q)
         if _any(_contains(steps, "rotate")):
             est[_strcmpi(steps, "rotate")] = raw * mf[1]
@@ -194,5 +178,4 @@ def estimate_computing_memory(
             if cuda_decon:
                 gpu = raw * float(gpu_mem_factor)
 
-    out_size = None if msize is None else _matlab_to_zyx(msize)
-    return est, gpu, raw, out_size
+    return est, gpu, raw, sz

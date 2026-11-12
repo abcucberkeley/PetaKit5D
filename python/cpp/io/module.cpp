@@ -1,12 +1,12 @@
-// petakit5d._ext.io: the layout change after a tiff read (task IO2).
+// petakit5d._ext.io: the layout change of zarr arrays in MATLAB's layout (tasks IO2, IO3).
 //
-// cpp-tiff's Python package returns a stack as (z, y, x) C order: page by page, each page
-// row by row (x fastest). PetaKit5D's volumes are (y, x, z) Fortran order (y fastest), the
-// layout the mex fills while it decodes. transpose_pages_inplace turns one into the other in
-// the reader's own buffer (what petakit5d.io.read_tiff uses), transpose_pages copies it into
-// another array; both page by page, in tiles that fit the first-level cache, split among the
-// call's threads. They move bytes only, so the result never depends on the path (SIMD or
-// scalar) or the thread count.
+// MATLAB wrote its zarr arrays as (y, x, z) in Fortran order: plane by plane, each plane column
+// by column (y fastest). The port's volumes are (z, y, x) in C order (x fastest, as in a tiff
+// page). transpose_pages_inplace turns each plane around in the buffer cpp-zarr read it into
+// (petakit5d.io.read_zarr), in tiles that fit the first-level cache, split among the call's
+// threads. It moves bytes only, so the result never depends on the path (SIMD or scalar) or
+// the thread count. (In IO2 it turned cpp-tiff's pages into MATLAB's layout; tiff is read as
+// it is since IO3.)
 #include <pk5d/common.hpp>
 
 #include <algorithm>
@@ -136,23 +136,6 @@ inline void tile(const T *s, T *d, int64_t nx, int64_t ny, int64_t x0, int64_t x
     tile_scalar(s, d, nx, ny, x0, x1, y0, y1);
 }
 
-template <typename T>
-void transpose_pages_t(const T *src, T *dst, int64_t nx, int64_t ny, int64_t nz, int threads) {
-    const int64_t nby = (ny + kTile - 1) / kTile, nbx = (nx + kTile - 1) / kTile;
-    const int64_t per_page = nby * nbx, ntiles = nz * per_page, page = nx * ny;
-    // tiles in the order of the output (y fastest), so that a thread's static share is a
-    // contiguous part of it
-#pragma omp parallel for schedule(static) num_threads(threads)
-    for (int64_t t = 0; t < ntiles; ++t) {
-        const int64_t z = t / per_page, r = t % per_page;
-        const int64_t bx = r / nby, by = r % nby;
-        const int64_t x0 = bx * kTile, y0 = by * kTile;
-        const int64_t x1 = x0 + kTile < nx ? x0 + kTile : nx;
-        const int64_t y1 = y0 + kTile < ny ? y0 + kTile : ny;
-        tile(src + z * page, dst + z * page, nx, ny, x0, x1, y0, y1);
-    }
-}
-
 // one page through a scratch copy, its tiles in the order of the output
 template <typename T>
 inline void page_tiles(const T *s, T *d, int64_t nx, int64_t ny, int64_t t0, int64_t t1) {
@@ -245,55 +228,10 @@ void transpose_pages_inplace(flat_array buf, int64_t nx, int64_t ny, int64_t nz,
     }
 }
 
-using src_array = nb::ndarray<nb::ro, nb::ndim<3>, nb::f_contig, nb::device::cpu>;
-using dst_array = nb::ndarray<nb::ndim<3>, nb::f_contig, nb::device::cpu>;
-
-void transpose_pages(src_array src, dst_array dst, int num_threads) {
-    pk5d::check_threads(num_threads);
-    if (src.dtype() != dst.dtype())
-        throw std::invalid_argument("transpose_pages: src and dst have different data types");
-    const size_t bits = src.dtype().bits * src.dtype().lanes;
-    const int64_t nx = static_cast<int64_t>(src.shape(0)), ny = static_cast<int64_t>(src.shape(1)),
-                  nz = static_cast<int64_t>(src.shape(2));
-    if (static_cast<int64_t>(dst.shape(0)) != ny || static_cast<int64_t>(dst.shape(1)) != nx ||
-        static_cast<int64_t>(dst.shape(2)) != nz)
-        throw std::invalid_argument("transpose_pages: dst must have the shape (ny, nx, nz) of src (nx, ny, nz)");
-    if (bits != 8 && bits != 16 && bits != 32 && bits != 64)
-        throw std::invalid_argument("transpose_pages: elements of 1, 2, 4 or 8 bytes only");
-    if (nx == 0 || ny == 0 || nz == 0) return;
-    const void *s = src.data();
-    void *d = dst.data();
-    nb::gil_scoped_release release;
-    switch (bits) {
-        case 8:
-            transpose_pages_t(static_cast<const uint8_t *>(s), static_cast<uint8_t *>(d), nx, ny, nz,
-                              num_threads);
-            break;
-        case 16:
-            transpose_pages_t(static_cast<const uint16_t *>(s), static_cast<uint16_t *>(d), nx, ny, nz,
-                              num_threads);
-            break;
-        case 32:
-            transpose_pages_t(static_cast<const uint32_t *>(s), static_cast<uint32_t *>(d), nx, ny, nz,
-                              num_threads);
-            break;
-        case 64:
-            transpose_pages_t(static_cast<const uint64_t *>(s), static_cast<uint64_t *>(d), nx, ny, nz,
-                              num_threads);
-            break;
-        default:
-            break;
-    }
-}
-
 }  // namespace
 
 NB_MODULE(io, m) {
-    m.doc() = "Layout changes of the tiff and zarr readers and writers (petakit5d.io)";
-    m.def("transpose_pages", &transpose_pages, nb::arg("src").noconvert(),
-          nb::arg("dst").noconvert(), nb::arg("num_threads"),
-          "Copy src, (nx, ny, nz) Fortran order (pages of rows, x fastest), into dst,\n"
-          "(ny, nx, nz) Fortran order (y fastest), with num_threads threads.");
+    m.doc() = "The plane transpose of MATLAB-layout zarr reads (petakit5d.io)";
     m.def("transpose_pages_inplace", &transpose_pages_inplace, nb::arg("buf").noconvert(),
           nb::arg("nx"), nb::arg("ny"), nb::arg("nz"), nb::arg("num_threads"), nb::arg("mode") = 0,
           "Turn buf, nz pages of ny rows of nx elements (x fastest), into the (ny, nx, nz)\n"

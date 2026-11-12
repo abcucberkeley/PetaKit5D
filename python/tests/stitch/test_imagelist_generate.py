@@ -53,12 +53,17 @@ def wrapper_case(cid, make, *args, error=False, marks=()):
 
 
 def write_tile(path: Path, shape, value=1) -> None:
+    """a tile of MATLAB size ``shape`` ((y, x) or (y, x, z)), written as the (z, y, x) array"""
+    from petakit5d.core.arrays import size_from_matlab
     from petakit5d.io import write_tiff
 
-    write_tiff(np.full(shape, value, dtype=np.uint16, order="F"), str(path), group_write=False)
+    zyx = size_from_matlab(shape, len(shape))
+    write_tiff(np.full(zyx, value, dtype=np.uint16), str(path), group_write=False)
 
 
 def tiles(names, shape=(48, 64)):
+    """tile files of MATLAB size ``shape`` (or ``shape(name)``)"""
+
     def make(root: Path) -> None:
         for n in names:
             sh = shape(n) if callable(shape) else shape
@@ -576,7 +581,7 @@ def test_tilePositionStepsForNonSquareTiles(tmp_path):
         "tile_position",
         xy_pixel_size=XY_PIXEL_SIZE,
         channel_patterns=("Scan",),
-        overlap_size=(8, 8, 1),
+        overlap_size=(1, 8, 8),
         overlap_size_type="pixel",
         io_scan=True,
     )
@@ -596,7 +601,7 @@ def test_tilePositions2DPhase(tmp_path):
         "tile_position",
         xy_pixel_size=XY_PIXEL_SIZE,
         channel_patterns=("Scan",),
-        overlap_size=(8, 8, 1),
+        overlap_size=(1, 8, 8),
         overlap_size_type="pixel",
         objective_scan=False,
         io_scan=True,
@@ -623,7 +628,7 @@ def test_tilePositions3DNonStandardNames(tmp_path):
         dz=0.5,
         channel_patterns=("Tile",),
         tile_patterns=("0000t", "ch0", "000x", "000y", "000z"),
-        overlap_size=(8 * XY_PIXEL_SIZE, 8 * XY_PIXEL_SIZE, 4 * 0.5),
+        overlap_size=(4 * 0.5, 8 * XY_PIXEL_SIZE, 8 * XY_PIXEL_SIZE),
         overlap_size_type="um",
         objective_scan=False,
         io_scan=True,
@@ -650,7 +655,7 @@ def test_tileNamesWithoutStandardChannel(tmp_path):
         dz=0.5,
         channel_patterns=("Tile",),
         tile_patterns=("0000t", "c0", "000x", "000y", "000z"),
-        overlap_size=(8, 8, 0),
+        overlap_size=(0, 8, 8),
         overlap_size_type="pixel",
         io_scan=True,
     )
@@ -688,3 +693,136 @@ def test_estimate_step_size(tmp_path):
     assert dz == pytest.approx(0.2, abs=1e-6)
     assert (tmp_path / "encoder_info" / "coordinates_info.mat").is_file()
     assert any(p.name.startswith("dz_actual_") for p in (tmp_path / "encoder_info").iterdir())
+
+
+# ------------------------------------------------------------------------------------------
+# sizes and orders in the (z, y, x) convention (F15)
+# ------------------------------------------------------------------------------------------
+
+GRID_XYZ = [llsm_name("A", 0, x, y, z) for x in range(2) for y in range(2) for z in range(2)]
+
+
+def _steps(path) -> tuple[float, ...]:
+    tab = read_list(path)
+    return tuple(float(np.max(tab[f"Stage{a}_um_"])) for a in "XYZ")
+
+
+@pytest.mark.parametrize(
+    ("unit", "overlap", "expected"),
+    [
+        # (z, y, x) overlaps: 2 slices, 3 rows, 5 columns; or 1.0, 0.3, 0.7 um
+        ("pixel", (2, 3, 5), ((24 - 5) * XY_PIXEL_SIZE, (16 - 3) * XY_PIXEL_SIZE, (10 - 2) * 0.5)),
+        ("um", (1.0, 0.3, 0.7), (24 * XY_PIXEL_SIZE - 0.7, 16 * XY_PIXEL_SIZE - 0.3, 10 * 0.5 - 1)),
+    ],
+)
+def test_tile_steps_of_non_cubic_tiles_follow_zyx(tmp_path, unit, overlap, expected):
+    # tiles of 10 slices, 16 rows and 24 columns ((nz, ny, nx) from get_image_size)
+    tiles(GRID_XYZ, (16, 24, 10))(tmp_path)
+    ig.generate_image_list(
+        str(tmp_path),
+        "tile_position",
+        xy_pixel_size=XY_PIXEL_SIZE,
+        dz=0.5,
+        channel_patterns=("CamA",),
+        overlap_size=overlap,
+        overlap_size_type=unit,
+        io_scan=True,
+    )
+    got = _steps(tmp_path / "ImageList_from_tile_positions.csv")
+    np.testing.assert_allclose(got, expected, rtol=0, atol=1e-9)
+
+
+@pytest.mark.parametrize(
+    ("unit", "matlab_overlap", "py_overlap"),
+    [("pixel", [3, 5, 2], (2, 3, 5)), ("um", [0.7, 0.3, 1.0], (1.0, 0.3, 0.7))],
+)
+def test_matlab_name_layer_converts_the_overlap_by_its_unit(
+    tmp_path, unit, matlab_overlap, py_overlap
+):
+    # MATLAB's overlapSize is [y x z] in pixels and [x y z] in um; Python's (z, y, x) for both
+    from petakit5d import matlab
+
+    a, b = tmp_path / "a", tmp_path / "b"
+    for d in (a, b):
+        d.mkdir()
+        tiles(GRID_XYZ, (16, 24, 10))(d)
+    matlab.XR_generate_image_list_wrapper(
+        str(a),
+        "tile_position",
+        "overlapSize",
+        matlab_overlap,
+        "overlapSizeType",
+        unit,
+        "IOScan",
+        True,
+        "xyPixelSize",
+        XY_PIXEL_SIZE,
+        "dz",
+        0.5,
+        "channelPatterns",
+        ["CamA"],
+    )
+    ig.generate_image_list(
+        str(b),
+        "tile_position",
+        xy_pixel_size=XY_PIXEL_SIZE,
+        dz=0.5,
+        channel_patterns=("CamA",),
+        overlap_size=py_overlap,
+        overlap_size_type=unit,
+        io_scan=True,
+    )
+    ta = read_list(a / "ImageList_from_tile_positions.csv")
+    tb = read_list(b / "ImageList_from_tile_positions.csv")
+    for col in ("StageX_um_", "StageY_um_", "StageZ_um_"):
+        assert np.asarray(ta[col]).tobytes() == np.asarray(tb[col]).tobytes()
+
+
+def test_overlap_by_unit_and_scalars_in_the_matlab_name_layer():
+    from petakit5d.params.registry import REGISTRY
+
+    hook = REGISTRY.find("XR_generate_image_list_wrapper").matlab_in
+    # no unit given: pixels, [y x z]
+    assert hook({"overlap_size": (3, 5, 2)})["overlap_size"] == (2, 3, 5)
+    assert hook({"overlap_size": (3, 5, 2), "overlap_size_type": "UM"})["overlap_size"] == (2, 5, 3)
+    assert hook({"overlap_size": 4})["overlap_size"] == 4
+    assert hook({"overlap_size_type": "um"}) == {"overlap_size_type": "um"}
+
+
+def test_data_order_is_zyx_with_matlabs_value_in_the_name_layer():
+    from petakit5d.params.registry import REGISTRY
+
+    spec = REGISTRY.find("XR_generate_image_list_wrapper")
+    assert spec.param("dataOrder").default == "z,y,x"
+    assert spec.param("dataOrder").conv.name == "data_order"
+    assert spec.bind_matlab(["d", "tile_position", "dataOrder", "y,x,z"])["data_order"] == "z,y,x"
+    assert spec.bind_matlab(["d", "tile_position", "dataOrder", "x,y,z"])["data_order"] == "z,x,y"
+    # stage axis names and tile indices are not converted
+    for name in ("axisOrder", "tileIndices", "tileInterval"):
+        assert spec.param(name).conv.name == "same"
+    ind = np.array([[0, 0, 1, 2, 3]], dtype=np.float64)
+    got = spec.bind_matlab(["d", "tile_list", "tileIndices", ind, "axisOrder", "-y,x,z"])
+    assert np.array_equal(got["tile_indices"], ind) and got["axis_order"] == "-y,x,z"
+    saved = spec.matlab_results({"data_paths": "d", "generation_method": "tile_list"})
+    assert saved["dataOrder"].text() == "y,x,z"
+
+
+@pytest.mark.parametrize("layout", ["native", "matlab"])
+def test_tile_steps_of_2d_zarr_tiles(tmp_path, layout):
+    # 2D zarr tiles: get_image_size gives (ny, nx); one slice in z
+    from petakit5d.testing.synth import write_zarr
+
+    for n in GRID_2X2:
+        f = tmp_path / n.replace(".tif", ".zarr")
+        write_zarr(f, np.ones((40, 64), dtype=np.uint16), block_size=(40, 64), layout=layout)
+    ig.generate_image_list(
+        str(tmp_path),
+        "tile_position",
+        xy_pixel_size=XY_PIXEL_SIZE,
+        channel_patterns=("CamB",),
+        overlap_size=(0, 6, 10),
+        io_scan=True,
+        zarr_file=True,
+    )
+    got = _steps(tmp_path / "ImageList_from_tile_positions.csv")
+    np.testing.assert_allclose(got, ((64 - 10) * XY_PIXEL_SIZE, (40 - 6) * XY_PIXEL_SIZE, 0.0))

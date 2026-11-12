@@ -251,7 +251,7 @@ def prepare(work):
 
     rng = np.random.default_rng(7)
     os.makedirs(f"{work}/in", exist_ok=True)
-    vol = np.asfortranarray(rng.integers(0, 4000, size=(48, 40, 12), dtype=np.uint16))
+    vol = rng.integers(0, 4000, size=(12, 48, 40), dtype=np.uint16)
     write_tiff(vol, f"{work}/in/vol.tif")
     np.save(f"{work}/in/vol.npy", np.asfortranarray(rng.standard_normal((32, 24, 10))))
     np.save(f"{work}/in/vol32.npy", np.asfortranarray(rng.standard_normal((20, 18, 6)), np.float32))
@@ -268,7 +268,7 @@ def tiff_mip(work, name, axis):
     from petakit5d.io.tiff import read_tiff, write_tiff
 
     vol = read_tiff(f"{work}/in/vol.tif")
-    write_tiff(np.asfortranarray(vol.max(axis=axis)), f"{work}/out/{name}.tif")
+    write_tiff(np.ascontiguousarray(vol.max(axis=axis)), f"{work}/out/{name}.tif")
 
 
 def fftn_of(work, name, src):
@@ -288,7 +288,7 @@ def cast_tiff(work, name, cls):
     from petakit5d.io.tiff import write_tiff
 
     x = np.load(f"{work}/in/vol32.npy") * 1000
-    write_tiff(np.asfortranarray(cast(x, cls)), f"{work}/out/{name}.tif")
+    write_tiff(np.ascontiguousarray(cast(x, cls)), f"{work}/out/{name}.tif")
 
 
 def info(work, name):
@@ -371,10 +371,10 @@ def harness_spec(tmp_path, with_leaks=True):
         return task_record(t, "python")
 
     tasks = [
-        rec("tiff_to_zarr", "zarr_a", [16, 16, 4]),
-        rec("tiff_to_zarr", "zarr_b", [48, 40, 12]),
-        rec("tiff_mip", "mip_z", 2),
-        rec("tiff_mip", "mip_y", 0),
+        rec("tiff_to_zarr", "zarr_a", [4, 16, 16]),
+        rec("tiff_to_zarr", "zarr_b", [12, 48, 40]),
+        rec("tiff_mip", "mip_z", 0),
+        rec("tiff_mip", "mip_y", 1),
         rec("fftn_of", "fft64", "vol.npy"),
         rec("fftn_of", "fft32", "vol32.npy"),
         rec("ifftn_of", "ifft64", "vol.npy"),

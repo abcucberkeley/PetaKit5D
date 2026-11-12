@@ -1,7 +1,9 @@
 """Tiff and zarr files (over cpp-tiff and cpp-zarr), image sizes and types.
 
-Arrays are ``(y, x, z)`` in Fortran order, boxes and ranges MATLAB's (1-based, inclusive),
-files laid out as PetaKit5D's mex files write them (docs/decisions/0004-io-bindings.md).
+Arrays are ``(z, y, x)`` in C order (images ``(y, x)``); boxes are ``(z0, y0, x0, z1, y1, x1)``
+and ranges ``(start, stop)``, 0-based, end-exclusive; sizes and block sizes are ``(z, y, x)``.
+Tiff files are the mex's; zarr arrays written by the port are native (``[nz, ny, nx]``, order
+C), and MATLAB's (``[ny, nx, nz]``, order F) are still read (docs/decisions/0004-io-bindings.md).
 
 ========================  =========================
 ``read_tiff``             readtiff
