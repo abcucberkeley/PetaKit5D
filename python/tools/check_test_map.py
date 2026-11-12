@@ -76,13 +76,21 @@ KNOWN_ISSUE = "KnownIssue"
 # ------------------------------------------------------------------------------------------
 
 
+def folder_files(map_dir: Path = MAP_DIR) -> list[Path]:
+    """the folder files of the map: its *.json, but not suite.json and not the oracle manifests
+    of the test modules in it (<module>.oracle.json, petakit5d.testing.oracle)"""
+    return sorted(
+        f
+        for f in map_dir.glob("*.json")
+        if f.name != "suite.json" and not f.name.endswith(".oracle.json")
+    )
+
+
 def load_base(map_dir: Path = MAP_DIR) -> tuple[dict, dict[str, dict]]:
     """suite.json and the folder files, without the overlays"""
     suite = json.loads((map_dir / "suite.json").read_text())
     folders = {}
-    for f in sorted(map_dir.glob("*.json")):
-        if f.name == "suite.json":
-            continue
+    for f in folder_files(map_dir):
         folders[f.stem] = json.loads(f.read_text())
     return suite, folders
 
@@ -702,8 +710,8 @@ def update(
         "folders": dict(sorted(counts.items())),
     }
     map_dir.mkdir(parents=True, exist_ok=True)
-    for f in map_dir.glob("*.json"):
-        if f.stem not in new_folders and f.name != "suite.json":
+    for f in folder_files(map_dir):
+        if f.stem not in new_folders:
             f.unlink()
     (map_dir / "suite.json").write_text(json.dumps(suite, indent=1) + "\n")
     for folder, fd in new_folders.items():

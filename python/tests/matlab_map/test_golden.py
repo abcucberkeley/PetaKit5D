@@ -100,6 +100,7 @@ class _StandinCase:
     nargout: int = 1
     python: Any = None
     py_args: tuple | None = None
+    py_out: Any = None
     helpers: tuple = ()
     files: bool | None = None
     outputs: tuple | None = None
@@ -139,6 +140,8 @@ def golden_cases() -> list[Any]:
                     outputs=fields,
                     python=load_stored if what == "stored" else None,
                     py_args=[s] if what == "stored" else None,
+                    # the list of arrays is the outputs, also when there is one
+                    py_out=list if what == "stored" else None,
                     helpers=HELPERS,
                     files=False,
                     note=f"GoldenOutputTest/outputMatchesReference(scenario={s}): {what}",

@@ -285,6 +285,20 @@ def test_update_keeps_fates_and_adds_new_tests(tmp_path):
     assert any("NewClassTest: unclassified" in e for e in errs)
 
 
+def test_oracle_manifests_beside_the_map_are_not_folder_files(tmp_path):
+    # test_golden.py sits in the map's folder, and its manifest (test_golden.oracle.json) beside it
+    d = _small_map(tmp_path)
+    manifest = d / "test_x.oracle.json"
+    manifest.write_text(json.dumps({"format": 2, "cases": {}}))
+    suite, folders = ctm.load_map(d)
+    assert "test_x.oracle" not in folders and "test_x" not in folders
+    assert ctm.check(d, PYTHON_ROOT)[0] == []
+    dump = _dump([("CropMexTest/rejectsBbox", ["Unit"], [])])
+    (tmp_path / "dump.json").write_text(json.dumps(dump))
+    ctm.update(tmp_path / "dump.json", tmp_path / "no_tests_dir", "def5678", d)
+    assert manifest.exists(), "update deleted an oracle manifest"
+
+
 def test_update_from_the_repos_map_is_a_fixed_point(tmp_path):
     # the map rebuilt from its own inventory (without the MATLAB files) is the same map
     d = tmp_path / "map"
