@@ -27,7 +27,7 @@ classdef DeskewRotateMemoryTest < pktest.TestCase
             'cubic', {{0.3, {'interpMethod', 'cubic'}}})
 
         % peak memory (GB, maximum resident set) of production-like tasks on
-        % the abc cluster (2026-10-22): MATLAB -nojvm tasks, the largest over
+        % the Slurm cluster (2026-10-22): MATLAB -nojvm tasks, the largest over
         % 1 to 48 threads (compiled tasks need about 0.6 GB less). Input size
         % (one batch for large files), dz, options, measured peak. The demo
         % tile is 1800 x 512 x 500; others are cropped or repeated along z.
