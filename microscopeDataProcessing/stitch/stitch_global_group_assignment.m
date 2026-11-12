@@ -279,22 +279,92 @@ for i = 1 : 3
         beq = Beq(:, i);
     end
 
-    [x, resnorm, residual, exitflag, output, lambda] = lsqlin(C, d, A, b, Aeq, beq);
-    d_shift_opt(:, i) = x;
+    % (unique, see stitch_assignment_lsqlin)
+    d_shift_opt(:, i) = stitch_assignment_lsqlin(C, d, A, b, Aeq, beq);
 end
 
-% step 3: reconstruct the d_shift for all tiles
+% step 3: reconstruct the d_shift for all tiles. Groups without a pair above
+% the xcorr threshold to another group have no nodes: they keep their stage
+% positions relative to the tiles of the other groups they overlap
 d_shift = zeros(nF, 3);
+gid = zeros(nF, 1);
+placed = false(ng, 1);
 for g = 1 : ng
     grpIdx_i = gind_cell{g};
+    gid(grpIdx_i) = g;
     node_g = unique([g_node_pairs(g_node_pairs(:, 3) == g, 1); g_node_pairs(g_node_pairs(:, 4) == g, 2)]);
+    if isempty(node_g)
+        continue;
+    end
+    placed(g) = true;
 
     d_shift(grpIdx_i, :) = d_shift_pre(grpIdx_i, :) - node_centroids(node_g(1), :) + d_shift_opt(node_g(1), :);
 end
+if ~all(placed)
+    free = ~placed(gid);
+    offset = place_free_groups(placed, gid, d_shift, d_shift_pre, overlap_matrix);
+    d_shift(free, :) = d_shift_pre(free, :) + offset(gid(free), :);
+end
 
-% round to integers and normalize for the first tile.
-d_shift = round(d_shift);
+% round to integers (ties up, within 1e-9: the exact shifts of tiles at mean
+% zero can all lie on half integers, as for integer shifts of 4 tiles one of
+% which is off by 1 voxel, and must round alike) and normalize for the first
+% tile.
+d_shift = round(d_shift + 1e-9);
 d_shift = d_shift - d_shift(1, :);
+
+end
+
+
+function [offset] = place_free_groups(placed, gid, d_shift, d_shift_pre, overlap_matrix)
+% the offsets of the groups without nodes (free), which keep them at their
+% stage positions relative to the tiles of the other groups they overlap: along
+% each axis, the least sum of squares of the shift differences of the
+% overlapping pairs of tiles of two groups (one of them free), with the tiles
+% of free groups at their shifts within the group plus its offset and the
+% others at their shifts, adjacent free groups together, and without bounds
+% (wide between groups). So a free group that overlaps only placed groups gets
+% the mean over these pairs of the other tile's shift less its own tile's. Of
+% free groups without a path of such pairs to a placed group, the first (of
+% each set linked by pairs) keeps offset 0.
+ng = numel(placed);
+[p, q] = find(overlap_matrix);
+p = p(:);
+q = q(:);
+use = gid(p) ~= gid(q) & ~(placed(gid(p)) & placed(gid(q)));
+p = p(use);
+q = q(use);
+np = numel(p);
+free = find(~placed);
+k = numel(free);
+col = zeros(ng, 1);
+col(free) = 1 : k;
+cp = col(gid(p));
+cq = col(gid(q));
+
+% the shift differences d(q) - d(p) = r0 + G * (offsets of the free groups)
+known = d_shift_pre;
+known(placed(gid), :) = d_shift(placed(gid), :);
+r0 = known(q, :) - known(p, :);
+G = sparse([find(cq > 0); find(cp > 0)], [cq(cq > 0); cp(cp > 0)], ...
+    [ones(nnz(cq), 1); -ones(nnz(cp), 1)], np, k);
+
+% sets of free groups linked by pairs; those with a pair to a placed group are
+% held by it, the others keep their first group at offset 0
+ff = cp > 0 & cq > 0;
+comp = conncomp(graph(cp(ff), cq(ff), [], k))';
+held = false(max([comp; 0]), 1);
+fp = xor(cp > 0, cq > 0);
+held(comp(cp(fp) + cq(fp))) = true;
+[~, first] = unique(comp, 'first');
+keep = true(k, 1);
+keep(first(~held)) = false;
+
+c = zeros(k, 3);
+Gk = G(:, keep);
+c(keep, :) = -((Gk' * Gk) \ (Gk' * r0));
+offset = zeros(ng, 3);
+offset(free, :) = c;
 
 end
 

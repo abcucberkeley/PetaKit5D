@@ -9,7 +9,12 @@ neq = sum(overlap_matrix(:));
 
 R = zeros(neq, nF);
 
+% the pairs by first, then second tile: the order of max_xcorr_mat and of the
+% bounds in max_allow_shift
 [n_i, n_j] = find(overlap_matrix);
+[~, sinds] = sortrows([n_i, n_j]);
+n_i = n_i(sinds);
+n_j = n_j(sinds);
 
 inds_i = sub2ind(size(R), 1 : neq, n_i');
 inds_j = sub2ind(size(R), 1 : neq, n_j');
@@ -41,6 +46,7 @@ R_w = W.^0.5 * R_w;
 d_w = absolute_shift_mat(~filt_inds, 3 : 5);
 d_w = W.^0.5 * d_w;
 
+% the solution, made unique (see stitch_assignment_lsqlin)
 d_shift = zeros(nF, 3);
 for i = 1 : 3
     C = R_w;
@@ -51,12 +57,14 @@ for i = 1 : 3
     u = max_allow_shift(:, 3 + i);
     b = [u; -l];
 
-    [x,resnorm,residual,exitflag,output,lambda] = lsqlin(C,d,A,b);
-    d_shift(:, i) = x;
+    d_shift(:, i) = stitch_assignment_lsqlin(C, d, A, b);
 end
 
-% round to integers and normalize for the first tile.
-d_shift = round(d_shift);
+% round to integers (ties up, within 1e-9: the exact shifts of tiles at mean
+% zero can all lie on half integers, as for integer shifts of 4 tiles one of
+% which is off by 1 voxel, and must round alike) and normalize for the first
+% tile.
+d_shift = round(d_shift + 1e-9);
 d_shift = d_shift - d_shift(1, :);
 
 end

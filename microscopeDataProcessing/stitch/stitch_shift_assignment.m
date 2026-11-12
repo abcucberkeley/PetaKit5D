@@ -251,6 +251,12 @@ fprintf('Optimize registration for all tiles with %s method ...\n', assign_metho
 fprintf('xcorr threshold: %f , %d / %d pairs are below the threashold.\n', ...
     xcorr_thresh, sum(max_xcorr_mat(:, 3) < xcorr_thresh), size(max_xcorr_mat, 1));
 
+% the overlap sizes (voxels) of the pairs in the order of max_xcorr_mat (by
+% first, then second tile), the order of the bounds and the other inputs of
+% each pair in the assignment
+pinds_p = (max_xcorr_mat(:, 1) - 1) * nF - max_xcorr_mat(:, 1) .* (max_xcorr_mat(:, 1) + 1) / 2 + max_xcorr_mat(:, 2);
+ol_size_p = (overlap_regions(pinds_p, 4 : 6) - overlap_regions(pinds_p, 1 : 3)) ./ xyz_voxelsizes;
+
 % perform assignment
 switch assign_method
     case 'local'
@@ -258,7 +264,7 @@ switch assign_method
     case 'global'
         neq = size(max_xcorr_mat, 1);
         max_shift_l = -ones(neq, 1) .* MaxOffset;
-        max_shift_u = (cuboid_overlap_ij_mat(:, 4 : 6) - cuboid_overlap_ij_mat(:, 1 : 3)) ./ xyz_voxelsizes;
+        max_shift_u = ol_size_p;
         max_shift_u = min(max_shift_u - 1, MaxOffset);
         
         % max_allow_shift = [max_shift_l, max_shift_u];
@@ -269,7 +275,7 @@ switch assign_method
     case 'grid'
         neq = size(max_xcorr_mat, 1);
         max_shift_l = -ones(neq, 1) .* MaxOffset;
-        max_shift_u = (cuboid_overlap_ij_mat(:, 4 : 6) - cuboid_overlap_ij_mat(:, 1 : 3)) ./ xyz_voxelsizes;
+        max_shift_u = ol_size_p;
         % max_shift_u = min(max_shift_u - 1, MaxOffset);
         max_shift_u = min(max_shift_u - 3, MaxOffset);
 
@@ -285,7 +291,7 @@ switch assign_method
     case 'group'
         neq = size(max_xcorr_mat, 1);
         max_shift_l = -ones(neq, 1) .* MaxOffset;
-        max_shift_u = (cuboid_overlap_ij_mat(:, 4 : 6) - cuboid_overlap_ij_mat(:, 1 : 3)) ./ xyz_voxelsizes;
+        max_shift_u = ol_size_p;
         max_shift_u = min(max_shift_u - 1, MaxOffset);
 
         if stitch2D

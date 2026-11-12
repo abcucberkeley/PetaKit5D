@@ -18,7 +18,12 @@ neq = sum(overlap_matrix(:));
 
 R = zeros(neq, nF);
 
+% the pairs by first, then second tile: the order of max_xcorr_mat and of the
+% bounds in max_allow_shift
 [n_i, n_j] = find(overlap_matrix);
+[~, sinds] = sortrows([n_i, n_j]);
+n_i = n_i(sinds);
+n_j = n_j(sinds);
 
 inds_i = sub2ind(size(R), 1 : neq, n_i');
 inds_j = sub2ind(size(R), 1 : neq, n_j');
@@ -70,6 +75,11 @@ R_w = W.^0.5 * R_w;
 d_w = absolute_shift_mat(~filt_inds, 3 : 5);
 d_w = W.^0.5 * d_w;
 
+% the solution, made unique (see stitch_assignment_lsqlin): the exact optimum,
+% free groups of tiles at their stage positions relative to their neighbors
+% (as far as the bounds allow), each group of overlapping tiles at mean zero
+% (as the shifts are rounded before they are made relative to the first tile,
+% the constant matters)
 d_shift = zeros(nF, 3);
 for i = 1 : 3
     C = R_w;
@@ -80,27 +90,29 @@ for i = 1 : 3
     u = max_allow_shift(:, 3 + i);
     b = [u; -l];
 
-    [x,resnorm,residual,exitflag,output,lambda] = lsqlin(C,d,A,b);
-    d_shift(:, i) = x;
+    d_shift(:, i) = stitch_assignment_lsqlin(C, d, A, b);
 end
 
-% round to integers and normalize for the first tile.
-d_shift = round(d_shift);
+% round to integers (ties up, within 1e-9: the exact shifts of tiles at mean
+% zero can all lie on half integers, as for integer shifts of 4 tiles one of
+% which is off by 1 voxel, and must round alike) and normalize for the first
+% tile.
+d_shift = round(d_shift + 1e-9);
 d_shift = d_shift - d_shift(1, :);
 
 end
 
 
 function [d_shift] = stitch_global_grid_assignment_sparse(nF, max_xcorr_mat, absolute_shift_mat, overlap_matrix, max_allow_shift, xcorr_thresh, tileIdx, axisWeight)
-% the same problem with sparse matrices. The solution is only defined up to
-% a constant (only differences between tiles are constrained), and the
-% shifts are rounded before they are made relative to the first tile, so the
-% constant matters: the dense solver keeps the mean of the solution near
-% zero, the sparse one doesn't, so the solution is moved to mean zero. A
-% shift can still differ by 1 from the dense solver's when it is within
-% about 0.005 of a half integer.
+% the same problem with sparse matrices (stitch_assignment_lsqlin solves both
+% forms the same way, so the shifts are the same as the dense form's)
 
+% the pairs by first, then second tile: the order of max_xcorr_mat and of the
+% bounds in max_allow_shift
 [n_i, n_j] = find(overlap_matrix);
+[~, sinds] = sortrows([n_i, n_j]);
+n_i = n_i(sinds);
+n_j = n_j(sinds);
 neq = numel(n_i);
 R = sparse([1 : neq, 1 : neq], [n_i', n_j'], [-ones(1, neq), ones(1, neq)], neq, nF);
 
@@ -129,12 +141,14 @@ for i = 1 : 3
     u = max_allow_shift(:, 3 + i);
     b = [u; -l];
 
-    x = lsqlin(R_w, full(d_w(:, i)), A, b);
-    d_shift(:, i) = x - mean(x);
+    d_shift(:, i) = stitch_assignment_lsqlin(R_w, full(d_w(:, i)), A, b);
 end
 
-% round to integers and normalize for the first tile.
-d_shift = round(d_shift);
+% round to integers (ties up, within 1e-9: the exact shifts of tiles at mean
+% zero can all lie on half integers, as for integer shifts of 4 tiles one of
+% which is off by 1 voxel, and must round alike) and normalize for the first
+% tile.
+d_shift = round(d_shift + 1e-9);
 d_shift = d_shift - d_shift(1, :);
 
 end
