@@ -1,0 +1,104 @@
+{
+  "task": "K04",
+  "classes": {
+    "TileBlendingTest": {
+      "finished": true,
+      "methods": {
+        "mexMatchesTheMatlabCode": {
+          "case_fates": {
+            "blendMethod=none,dtype=uint8": [
+              "oracle:tests/kernels/test_stitch_kernels.py::tile.uint8.none.*",
+              "oracle:tests/kernels/test_stitch_kernels.py::tile.matlab.uint8.none.*"
+            ],
+            "blendMethod=none,dtype=uint16": [
+              "oracle:tests/kernels/test_stitch_kernels.py::tile.uint16.none.*",
+              "oracle:tests/kernels/test_stitch_kernels.py::tile.matlab.uint16.none.*"
+            ],
+            "blendMethod=none,dtype=single": [
+              "oracle:tests/kernels/test_stitch_kernels.py::tile.single.none.*",
+              "oracle:tests/kernels/test_stitch_kernels.py::tile.matlab.single.none.*"
+            ],
+            "blendMethod=max,dtype=uint8": [
+              "oracle:tests/kernels/test_stitch_kernels.py::tile.uint8.max.*",
+              "oracle:tests/kernels/test_stitch_kernels.py::tile.matlab.uint8.max.*"
+            ],
+            "blendMethod=max,dtype=uint16": [
+              "oracle:tests/kernels/test_stitch_kernels.py::tile.uint16.max.*",
+              "oracle:tests/kernels/test_stitch_kernels.py::tile.matlab.uint16.max.*"
+            ],
+            "blendMethod=max,dtype=single": [
+              "oracle:tests/kernels/test_stitch_kernels.py::tile.single.max.*",
+              "oracle:tests/kernels/test_stitch_kernels.py::tile.matlab.single.max.*"
+            ],
+            "blendMethod=mean,dtype=uint8": [
+              "oracle:tests/kernels/test_stitch_kernels.py::tile.uint8.mean.*",
+              "oracle:tests/kernels/test_stitch_kernels.py::tile.matlab.uint8.mean.*"
+            ],
+            "blendMethod=mean,dtype=uint16": [
+              "oracle:tests/kernels/test_stitch_kernels.py::tile.uint16.mean.*",
+              "oracle:tests/kernels/test_stitch_kernels.py::tile.matlab.uint16.mean.*"
+            ],
+            "blendMethod=mean,dtype=single": [
+              "oracle:tests/kernels/test_stitch_kernels.py::tile.single.mean.*",
+              "oracle:tests/kernels/test_stitch_kernels.py::tile.matlab.single.mean.*"
+            ],
+            "blendMethod=median,dtype=uint8": [
+              "oracle:tests/kernels/test_stitch_kernels.py::tile.uint8.median.*",
+              "oracle:tests/kernels/test_stitch_kernels.py::tile.matlab.uint8.median.*"
+            ],
+            "blendMethod=median,dtype=uint16": [
+              "oracle:tests/kernels/test_stitch_kernels.py::tile.uint16.median.*",
+              "oracle:tests/kernels/test_stitch_kernels.py::tile.matlab.uint16.median.*"
+            ],
+            "blendMethod=median,dtype=single": [
+              "oracle:tests/kernels/test_stitch_kernels.py::tile.single.median.*",
+              "oracle:tests/kernels/test_stitch_kernels.py::tile.matlab.single.median.*"
+            ]
+          }
+        },
+        "mexRejectsInvalidInput": [
+          "pytest:tests/kernels/test_stitch_kernels.py::test_mex_rejects_invalid_input",
+          "oracle:tests/kernels/test_stitch_kernels.py::tile.error.*"
+        ],
+        "otherClassesUseTheMatlabCode": [
+          "pytest:tests/kernels/test_stitch_kernels.py::test_other_classes_use_the_matlab_code",
+          "oracle:tests/kernels/test_stitch_kernels.py::tile.wrapper.*"
+        ],
+        "voxelsBlendTheTilesOutsideTheirRegions": {
+          "case_fates": {
+            "blendMethod=none": [
+              "pytest:tests/kernels/test_stitch_kernels.py::test_voxels_blend_the_tiles_outside_their_regions",
+              "oracle:tests/kernels/test_stitch_kernels.py::tile.voxels.none"
+            ],
+            "blendMethod=max": [
+              "pytest:tests/kernels/test_stitch_kernels.py::test_voxels_blend_the_tiles_outside_their_regions",
+              "oracle:tests/kernels/test_stitch_kernels.py::tile.voxels.max"
+            ],
+            "blendMethod=mean": [
+              "pytest:tests/kernels/test_stitch_kernels.py::test_voxels_blend_the_tiles_outside_their_regions",
+              "oracle:tests/kernels/test_stitch_kernels.py::tile.voxels.mean"
+            ],
+            "blendMethod=median": [
+              "pytest:tests/kernels/test_stitch_kernels.py::test_voxels_blend_the_tiles_outside_their_regions",
+              "oracle:tests/kernels/test_stitch_kernels.py::tile.voxels.median"
+            ]
+          }
+        }
+      }
+    },
+    "MexInputCheckTest": {
+      "methods": {
+        "stitchMexCheckTheirInputs": [
+          "oracle:tests/kernels/test_stitch_kernels.py::feather.error.*",
+          "oracle:tests/kernels/test_stitch_kernels.py::feather.indexing.ones_at_end",
+          "oracle:tests/kernels/test_stitch_kernels.py::resize.error.*",
+          "oracle:tests/kernels/test_stitch_kernels.py::resize.ones",
+          "oracle:tests/kernels/test_stitch_kernels.py::resize.empty",
+          "oracle:tests/kernels/test_stitch_kernels.py::integral.error.*",
+          "oracle:tests/kernels/test_stitch_kernels.py::integral.ones_full_window",
+          "oracle:tests/kernels/test_stitch_kernels.py::major.error.*"
+        ]
+      }
+    }
+  }
+}
