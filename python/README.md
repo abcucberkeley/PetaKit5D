@@ -79,4 +79,6 @@ Markers: `gpu` (skipped without a usable GPU), `cluster` (skipped unless
 
 ## License
 
-GPL-3.0-or-later; see `LICENSE`.
+BSD 3-Clause; see `LICENSE`.
+
+The CPU FFT backend currently builds FFTW (MATLAB's FFT library, so that FFT results match MATLAB bit for bit). FFTW is GPL-2.0-or-later, so binaries built with it are covered by the GPL. The GPU path uses NVIDIA's cuFFT, which is not GPL.

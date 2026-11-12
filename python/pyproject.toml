@@ -7,7 +7,8 @@ name = "petakit5d"
 dynamic = ["version"]
 description = "Petabyte-scale 5D image processing for light-sheet microscopy (Python port of PetaKit5D)"
 readme = "README.md"
-license = "GPL-3.0-or-later"
+authors = [{ name = "Matthew Mueller" }]
+license = "BSD-3-Clause"
 license-files = ["LICENSE"]
 requires-python = ">=3.11"
 dependencies = [
