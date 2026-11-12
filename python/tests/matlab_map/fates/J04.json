@@ -29,6 +29,16 @@
      "pytest:tests/jobs/test_local_pool.py::test_thread_pool_is_not_used"
     ]
    }
+  },
+  "GenericComputingFrameworkTest": {
+   "methods": {
+    "parforWrapperRunsEveryTask": [
+     "pytest:tests/jobs/test_local_pool.py::test_parfor_wrapper_runs_every_task"
+    ],
+    "parforGPUJobHasAWorkerPerUsableGPU": [
+     "pytest:tests/jobs/test_local_pool.py::test_parfor_gpu_job_has_a_worker_per_usable_gpu"
+    ]
+   }
   }
  }
 }

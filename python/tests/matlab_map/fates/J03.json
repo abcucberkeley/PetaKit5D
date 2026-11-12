@@ -11,6 +11,38 @@
      "pytest:tests/jobs/test_slurm.py::test_tasks_sharing_a_job_get_its_status"
     ]
    }
+  },
+  "GenericComputingFrameworkTest": {
+   "methods": {
+    "clusterModeSubmitsEachTaskOnceWithMaxJobNum": [
+     "pytest:tests/jobs/test_cluster_fake_slurm.py::test_cluster_mode_submits_each_task_once_with_max_job_num"
+    ],
+    "clusterModeCountsJobUntilAllItsTasksAreDone": [
+     "pytest:tests/jobs/test_cluster_fake_slurm.py::test_cluster_mode_counts_job_until_all_its_tasks_are_done"
+    ],
+    "clusterModeFinishedShortLastBatchFreesItsJobSlot": [
+     "pytest:tests/jobs/test_cluster_fake_slurm.py::test_cluster_mode_finished_short_last_batch_frees_its_job_slot"
+    ],
+    "emptyJobLogDirInAConfigFileIsTheDefaultFolder": [
+     "pytest:tests/jobs/test_cluster_fake_slurm.py::test_empty_job_log_dir_in_a_config_file_is_the_default_folder"
+    ]
+   }
+  },
+  "MccClusterWrapperTest": {
+   "methods": {
+    "submitsEachTaskOnceWithMaxJobNum": [
+     "pytest:tests/jobs/test_cluster_fake_slurm.py::test_mcc_submits_each_task_once_with_max_job_num"
+    ],
+    "countsJobUntilAllItsTasksAreDone": [
+     "pytest:tests/jobs/test_cluster_fake_slurm.py::test_mcc_counts_job_until_all_its_tasks_are_done"
+    ],
+    "finishedShortLastBatchFreesItsJobSlot": [
+     "pytest:tests/jobs/test_cluster_fake_slurm.py::test_mcc_finished_short_last_batch_frees_its_job_slot"
+    ],
+    "taskFilesThatCannotBeRemovedDoNotFailTheRun": [
+     "pytest:tests/jobs/test_cluster_fake_slurm.py::test_task_files_that_cannot_be_removed_do_not_fail_the_run"
+    ]
+   }
   }
  }
 }

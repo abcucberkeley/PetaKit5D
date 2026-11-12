@@ -339,7 +339,8 @@
       "Unit"
      ],
      "cases": null,
-     "fate": []
+     "fate": [],
+     "owner": "J03"
     },
     "clusterModeFinishedShortLastBatchFreesItsJobSlot": {
      "pins": "a batch whose tasks are all done stops counting against maxJobNum even while its job is still listed (e.g., exiting). Here the batch is the last one and shorter than taskBatchNum; the count pads it to taskBatchNum tasks, which must count as done.",
@@ -347,7 +348,8 @@
       "Unit"
      ],
      "cases": null,
-     "fate": []
+     "fate": [],
+     "owner": "J03"
     },
     "clusterModeSubmitsEachTaskOnceWithMaxJobNum": {
      "pins": "with more jobs than maxJobNum the framework holds tasks back until earlier jobs end (it counts its active jobs for every batch); the fake jobs end at once without results",
@@ -355,7 +357,8 @@
       "Unit"
      ],
      "cases": null,
-     "fate": []
+     "fate": [],
+     "owner": "J03"
     },
     "configFileKeysIgnoreCase": {
      "pins": "the cluster configs in use spell MemPerCPU; config keys used to be matched case-sensitively, so it was silently ignored",
@@ -379,7 +382,8 @@
       "Unit"
      ],
      "cases": null,
-     "fate": []
+     "fate": [],
+     "owner": "J03"
     },
     "existingFinalOutputSkipsAllTasks": {
      "pins": "existing final output skips all tasks",
@@ -436,7 +440,8 @@
       "Slow"
      ],
      "cases": null,
-     "fate": []
+     "fate": [],
+     "owner": "J04"
     },
     "parforWrapperRunsEveryTask": {
      "pins": "starts a local pool with 2 workers. parseParfor used to fail on the first line, which looked for the root path in 'XiongtaoScripts'.",
@@ -445,7 +450,8 @@
       "Slow"
      ],
      "cases": null,
-     "fate": []
+     "fate": [],
+     "owner": "J04"
     },
     "runsEveryTaskOnceAndWritesOutputs": {
      "pins": "runs every task once and writes outputs",
@@ -813,7 +819,8 @@
       "Unit"
      ],
      "cases": null,
-     "fate": []
+     "fate": [],
+     "owner": "J03"
     },
     "finishedShortLastBatchFreesItsJobSlot": {
      "pins": "a batch whose tasks are all done stops counting against maxJobNum even while its job is still listed (e.g., exiting). Here the batch is the last one and shorter than taskBatchNum; the count pads it to taskBatchNum tasks, which must count as done.",
@@ -821,7 +828,8 @@
       "Unit"
      ],
      "cases": null,
-     "fate": []
+     "fate": [],
+     "owner": "J03"
     },
     "outdatedBuildStopsBeforeSubmitting": {
      "pins": "a compiled master built from code with other task interfaces rejects the tasks' options; the run stops at once with a clear error instead of every task failing (here a build from before XR_crop_block, the tasks' function, got mipBatchSize)",
@@ -837,7 +845,8 @@
       "Unit"
      ],
      "cases": null,
-     "fate": []
+     "fate": [],
+     "owner": "J03"
     },
     "taskFilesThatCannotBeRemovedDoNotFailTheRun": {
      "pins": "on NFS, a job that still has its task script open keeps a .nfs file in the task folder, so removing the folder at the end failed and the run errored although its outputs were complete",
@@ -845,7 +854,8 @@
       "Unit"
      ],
      "cases": null,
-     "fate": []
+     "fate": [],
+     "owner": "J03"
     },
     "tasksOutsideGNUParallelUseOwnRuntimeCache": {
      "pins": "tasks outside gnuparallel use own runtime cache",
