@@ -340,10 +340,12 @@ def test_groupWrite(tmp_path):
 
 def test_readAndWriteMakeNoCopy(tmp_path):
     # read_tiff returns cpp-tiff's array, write_tiff passes the C-ordered memory: at most one
-    # volume in memory either way
+    # volume in memory either way. The volume is large next to the fixed costs of a call
+    # (reading the cgroup's CPU limit allocates open()'s buffer: 8 KiB up to Python 3.13,
+    # 128 KiB from 3.14), and one slice is still 5 % of it
     import tracemalloc
 
-    vol = _rand("uint16", (20, 300, 200), 7)
+    vol = _rand("uint16", (20, 1200, 1000), 7)
     fn = tmp_path / "im.tif"
     tracemalloc.start()
     write_tiff(vol, fn, compression="none")

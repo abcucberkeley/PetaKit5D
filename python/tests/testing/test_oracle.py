@@ -86,7 +86,9 @@ ROUND_TRIP = {
     "int8_row": lambda: np.arange(-5, 5, dtype=np.int8),
     "empty_0x3_uint16": lambda: np.zeros((0, 3), np.uint16),
     "empty_1x0x2_single": lambda: np.zeros((1, 0, 2), np.float32),
-    "complex64": lambda: np.array([[1.5 - 0j, complex(0, -0.0)], [2j, -1]], np.complex64),
+    # complex() rather than 1.5 - 0j: Python 3.14 subtracts a complex from a real as C does
+    # (1.5 - 0j is 1.5 - 0.0j there, 1.5 + 0.0j before; MATLAB read the +0)
+    "complex64": lambda: np.array([[complex(1.5, 0.0), complex(0, -0.0)], [2j, -1]], np.complex64),
     "logical": lambda: np.array([[True, False, True]]),
     "char_unicode": lambda: "héllo \U0001f600",
     "char_empty": lambda: "",

@@ -152,7 +152,7 @@ def special_values():
         to_mvalue(nd),
         to_mvalue(np.zeros((0, 3), np.uint16)),
         to_mvalue(np.zeros((1, 0, 2), np.single)),
-        to_mvalue(np.array([[1.5 - 0j, complex(0, -0.0)]], np.complex64)),
+        to_mvalue(np.array([[complex(1.5, 0.0), complex(0, -0.0)]], np.complex64)),
         to_mvalue(np.array([[True, False], [False, True]])),
         mchar("héllo \U0001f600"),
         mchar(""),
