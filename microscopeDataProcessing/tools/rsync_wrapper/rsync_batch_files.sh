@@ -1,23 +1,17 @@
 #!/bin/bash
 
-# input and output are separated by comma
-IN="$1"
-OUT="$2"
-
-# inputFullpaths=($(echo $IN | tr "," "\n"))
-# outputPaths=($(echo $OUT | tr "," "\n"))
-
-IFS=',' read -r -a inputFullpaths <<< "$IN"
-IFS=',' read -r -a outputPaths <<< "$OUT"
-
-for i in "${!inputFullpaths[@]}"; do 
-    # echo $i
-    echo ${inputFullpaths[$i]}
-    echo ${outputPaths[$i]}
-    if [ ! -d "${outputPaths[$i]}" ]; then
-        mkdir -p "${outputPaths[$i]}"
+# arguments: pairs of an input file and its output folder, one argument each
+n=$(( $# / 2 ))
+i=0
+while [ $# -ge 2 ]; do
+    i=$(( i + 1 ))
+    echo "$1"
+    echo "$2"
+    if [ ! -d "$2" ]; then
+        mkdir -p "$2"
     fi
 
-    rsync -aP "${inputFullpaths[$i]}" "${outputPaths[$i]}/"
-    echo $(( $i + 1 )) / $(( ${#inputFullpaths[@]}))
+    rsync -aP "$1" "$2/"
+    echo $i / $n
+    shift 2
 done

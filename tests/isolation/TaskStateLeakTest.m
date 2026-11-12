@@ -55,8 +55,9 @@ classdef TaskStateLeakTest < pktest.TestCase
             % batches of one file, in the order of rng(1)'s permutation
             calls = spy.getCalls();
             testCase.assertNotEmpty(calls, 'The job framework was not called.');
-            files = cellfun(@(x) regexp(x, '''''([^'']*)''''', 'tokens', 'once'), calls{1}.funcStrs, 'unif', 0);
-            files = cellfun(@(x) x{1}, files, 'unif', 0);
+            % (the batch script, then pairs of a file and its folder, quoted)
+            files = cellfun(@(x) regexp(x, '''([^'']*)''', 'tokens'), calls{1}.funcStrs, 'unif', 0);
+            files = cellfun(@(x) x{2}{1}, files, 'unif', 0);
             d = dir([src, '/*.txt']);
             names = sort(strcat(src, '/', {d.name}'));
             rng(1);

@@ -8,12 +8,16 @@ ip = inputParser;
 ip.CaseSensitive = false;
 ip.addRequired('fileFullpaths', @(x) ischar(x) || iscell(x));
 ip.addRequired('tmpDir', @(x) ischar(x));
+ip.addParameter('parseCluster', true, @islogical);
 ip.addParameter('mccMode', false, @islogical);
 ip.addParameter('configFile', '', @ischar);
 
 ip.parse(fileFullpaths, tmpDir, varargin{:});
 
 pr = ip.Results;
+parseCluster = pr.parseCluster;
+mccMode = pr.mccMode;
+configFile = pr.configFile;
 
 batchSize = 50000;
 nF = numel(fileFullpaths);
@@ -32,7 +36,8 @@ for i = 1 : numBatch
     s = (i - 1) * batchSize + 1;
     t = min(i * batchSize, nF);
     
-    inputFullpath_str = sprintf('{''%s''}', strjoin(fileFullpaths(s : t), ''','''));
+    % (a ' in a path doubled for the MATLAB text)
+    inputFullpath_str = sprintf('{''%s''}', strjoin(strrep(fileFullpaths(s : t), '''', ''''''), ''','''));
     
     flagFullpath = sprintf('%s/file_exist_%d_%d.mat', flag_dir, s, t);
     flagFullpaths{i} = flagFullpath;
@@ -46,9 +51,9 @@ cpusPerTask = 1;
 memAllocate = 20;
 maxJobNum = inf;
 is_done_flag = generic_computing_frameworks_wrapper(inputFlagpaths, flagFullpaths, ...
-    func_strs, 'tmpDir', flag_dir, 'language', 'matlab', 'MatlabLaunchStr', MatlabLaunchStr, ...
-    'cpusPerTask', cpusPerTask, 'memAllocate', memAllocate, 'maxJobNum', maxJobNum, ...
-    'masterCompute', ~false, 'mccMode', mccMode, 'configFile', configFile);
+    func_strs, 'tmpDir', flag_dir, 'language', 'matlab', 'cpusPerTask', cpusPerTask, ...
+    'memAllocate', memAllocate, 'maxJobNum', maxJobNum, 'masterCompute', ~false, ...
+    'parseCluster', parseCluster, 'mccMode', mccMode, 'configFile', configFile);
 
 % collect results
 file_exist_mat = cell(numBatch, 1);

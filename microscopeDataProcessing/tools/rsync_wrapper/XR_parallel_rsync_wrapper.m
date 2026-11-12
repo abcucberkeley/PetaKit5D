@@ -73,10 +73,6 @@ end
 outputFullpaths = strrep(inputFullpaths, source, dest);
 outputPaths = fileparts(outputFullpaths);
 
-% handle file/folder with space
-inputFullpaths = strrep(inputFullpaths, ' ', '\ ');
-outputFullpaths = strrep(outputFullpaths, ' ', '\ ');
-
 % split into batches (argument list cannot be too long for a single batch)
 batchSize = max(1, round(min(nF / 500, min(max(5, nF / 10000), 200))));
 % batchSize = 1;
@@ -103,7 +99,8 @@ for n = 1 : 5
     else
         t = datetime('now', 'format', 'yMMddHHmmss');
         exist_info_dir = sprintf('%s/%s/', tmpDir, t);        
-        out_exist_mat = batch_file_exist_cluster(outputFullpaths, exist_info_dir);
+        out_exist_mat = batch_file_exist_cluster(outputFullpaths, exist_info_dir, ...
+            parseCluster=parseCluster, mccMode=mccMode, configFile=configFile);
     end
 
     if all(out_exist_mat)
@@ -127,11 +124,12 @@ for n = 1 : 5
         s = (i - 1) * batchSize + 1;
         t = min(i * batchSize, nF);
 
-        inputFullpath_str = sprintf('%s', strjoin(inputFullpaths(s : t), ','));
-        outPath_str = sprintf('%s', strjoin(outputPaths(s : t), ','));
+        % pairs of an input file and its output folder, each path quoted
+        pair_strs = cellfun(@(x, y) [shell_quote(x), ' ', shell_quote(y)], ...
+            inputFullpaths(s : t), outputPaths(s : t), 'unif', 0);
 
-        func_strs{i} = sprintf(['bash %s/microscopeDataProcessing/tools/rsync_wrapper/rsync_batch_files.sh ', ...
-            '''''%s'''' ''''%s'''' '], codePath, inputFullpath_str, outPath_str);
+        func_strs{i} = sprintf('bash %s %s', shell_quote([codePath, ...
+            '/microscopeDataProcessing/tools/rsync_wrapper/rsync_batch_files.sh']), strjoin(pair_strs, ' '));
     end
 
     % check the last file of each batch, which rsync_batch_files.sh copies
@@ -150,12 +148,24 @@ for n = 1 : 5
 end
 
 % final check with all file rsync 
-cmd = sprintf("rsync -avP %s %s", source, dest);
+cmd = sprintf('rsync -avP %s %s', shell_quote(source), shell_quote(dest));
 system(cmd, '-echo');
 
 rmdir(tmpDir, 's');
 toc
 
+
+end
+
+
+function [str] = shell_quote(p)
+% path p as one bash word: in single quotes (a ' as '\''), with a leading ~
+% expanded, as bash does for an unquoted path
+
+if strcmp(p, '~') || startsWith(p, '~/')
+    p = [getenv('HOME'), p(2 : end)];
+end
+str = ['''', strrep(p, '''', '''\'''''), ''''];
 
 end
 
