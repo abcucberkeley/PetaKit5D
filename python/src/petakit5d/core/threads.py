@@ -10,6 +10,12 @@ The affinity is read once, when this module is first imported (importing any par
 ``petakit5d.core`` imports it), before any kernel has run: with ``OMP_PROC_BIND`` set, libgomp
 binds the main thread to one CPU at its first parallel region, and the process's affinity read
 after that is that one CPU.
+
+``available_cpus()`` is computed once per process (the cgroup files cost about 0.1 ms to read,
+which showed in the per-call overhead of small kernels) and then returned from a cache.
+``refresh_cpus()`` reads the affinity and the cgroup quota again and replaces the cached value:
+for tests and for a process whose affinity or cgroup changed. Call it before any kernel has
+run, or with ``OMP_PROC_BIND`` unset: after a bound OpenMP region it would read one CPU.
 """
 
 from __future__ import annotations
@@ -19,7 +25,7 @@ import os
 import re
 import sys
 
-__all__ = ["available_cpus", "cgroup_cpu_limit", "resolve_threads"]
+__all__ = ["available_cpus", "cgroup_cpu_limit", "refresh_cpus", "resolve_threads"]
 
 
 def _affinity_now() -> int:
@@ -112,13 +118,39 @@ def cgroup_cpu_limit(proc_cgroup: str | None = None, root: str = "/sys/fs/cgroup
     return min(limits) if limits else None
 
 
-def available_cpus() -> int:
-    """CPUs this process may use: affinity, limited by the cgroup CPU quota (at least 1)."""
+def _available_uncached() -> int:
     n = _affinity_count()
     q = cgroup_cpu_limit()
     if q is not None:
         n = min(n, max(1, math.ceil(q - 1e-9)))
     return max(1, n)
+
+
+_AVAILABLE: int | None = None  # the cached value of available_cpus()
+
+
+def available_cpus() -> int:
+    """CPUs this process may use: affinity, limited by the cgroup CPU quota (at least 1).
+
+    Computed on the first call and cached for the process (``refresh_cpus`` recomputes it).
+    """
+    global _AVAILABLE
+    n = _AVAILABLE
+    if n is None:
+        n = _AVAILABLE = _available_uncached()
+    return n
+
+
+def refresh_cpus() -> int:
+    """Read the affinity and the cgroup CPU quota again, cache and return ``available_cpus()``.
+
+    For tests and for a process whose affinity or cgroup changed; call it before any OpenMP
+    region has bound the main thread (see the module's docstring).
+    """
+    global _AFFINITY_AT_IMPORT, _AVAILABLE
+    _AFFINITY_AT_IMPORT = _affinity_now()
+    _AVAILABLE = None
+    return available_cpus()
 
 
 def resolve_threads(n: int | None = None) -> int:

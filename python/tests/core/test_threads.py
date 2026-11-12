@@ -1,3 +1,4 @@
+import math
 import os
 
 import pytest
@@ -48,11 +49,60 @@ def test_available_and_resolved_threads(monkeypatch):
     assert threads.resolve_threads(10**6) == n
     with pytest.raises(ValueError):
         threads.resolve_threads(-2)
-    monkeypatch.setattr(threads, "_affinity_count", lambda: 8)
-    monkeypatch.setattr(threads, "cgroup_cpu_limit", lambda: 1.5)
-    assert threads.available_cpus() == 2
-    monkeypatch.setattr(threads, "cgroup_cpu_limit", lambda: None)
-    assert threads.available_cpus() == 8
+    try:
+        monkeypatch.setattr(threads, "_affinity_now", lambda: 8)
+        monkeypatch.setattr(threads, "cgroup_cpu_limit", lambda: 1.5)
+        assert threads.refresh_cpus() == 2 == threads.available_cpus()
+        monkeypatch.setattr(threads, "cgroup_cpu_limit", lambda: None)
+        assert threads.refresh_cpus() == 8
+    finally:
+        monkeypatch.undo()
+        threads.refresh_cpus()
+    assert threads.available_cpus() == n
+
+
+def test_the_cached_value_is_the_uncached_one():
+    assert threads.available_cpus() == threads._available_uncached()
+    # and what reading the affinity and the cgroup now gives (no OpenMP region has run here)
+    n = threads._affinity_now()
+    q = threads.cgroup_cpu_limit()
+    if q is not None:
+        n = min(n, max(1, math.ceil(q - 1e-9)))
+    assert threads.available_cpus() == max(1, n)
+
+
+_REFRESH_CHILD = """
+import os, petakit5d.core.threads as t
+before = t.available_cpus()
+os.sched_setaffinity(0, {sorted(os.sched_getaffinity(0))[0]})
+cached = t.available_cpus()
+print(before, cached, t.refresh_cpus(), t.available_cpus(), t.resolve_threads())
+"""
+
+
+def test_refresh_picks_up_a_changed_affinity():
+    import subprocess
+    import sys
+
+    if not hasattr(os, "sched_setaffinity") or len(os.sched_getaffinity(0)) < 2:
+        pytest.skip("needs Linux affinity masks and 2 or more CPUs")
+    out = subprocess.run(
+        [sys.executable, "-c", _REFRESH_CHILD], capture_output=True, text=True, check=True
+    ).stdout
+    before, cached, refreshed, after, resolved = (int(v) for v in out.split())
+    assert before > 1 and cached == before  # the cache keeps the value taken first
+    assert refreshed == after == resolved == 1  # refresh_cpus reads the new affinity
+
+
+def test_the_call_is_cheap():
+    import time
+
+    threads.available_cpus()
+    t0 = time.perf_counter()
+    for _ in range(10000):
+        threads.resolve_threads(None)
+    # cached: well under a microsecond a call; reading the cgroup files took about 100 us
+    assert (time.perf_counter() - t0) / 10000 < 20e-6
 
 
 def test_agrees_with_the_compiled_count():
