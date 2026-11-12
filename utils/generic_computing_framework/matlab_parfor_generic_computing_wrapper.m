@@ -63,6 +63,11 @@ if GPUJob
 else 
     nGPU = 0;
 end
+% the GPUs of the workers' bash tasks (worker k's task got GPU k - 1, another
+% job's in a Slurm job with other GPUs): the k-th of this process's, and no
+% more workers than GPUs (see slot_gpus)
+gpus = slot_gpus(nGPU);
+nGPU = min(nGPU, numel(gpus));
 
 if GPUJob 
     nworker = nGPU * jobsPerGPU;
@@ -148,7 +153,7 @@ while ~all(is_done_flag) && loop_counter < max_loop
                 if GPUJob
                     t = getCurrentTask();              
                     idx = rem(t.ID - 1, nGPU) + 1;
-                    gpu_str = sprintf('CUDA_VISIBLE_DEVICES=%s', num2str(idx-1));
+                    gpu_str = sprintf('CUDA_VISIBLE_DEVICES=%s', gpus{idx});
                 end
                 fprintf(gpu_str);
                 t0=tic; system([gpu_str, ' ', func_str], '-echo'); toc(t0)

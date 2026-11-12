@@ -324,6 +324,35 @@ classdef GenericComputingFrameworkTest < pktest.TestCase
                 'Batch 1 should be submitted again once batch 2 is done.');
         end
 
+        function clusterModeRefusedTasksAreSavedAsTheyAre(testCase)
+            % after a refused submission the framework saves the task to a
+            % file and submits a job that runs it from there; a bash task
+            % was written as fprintf's format (its % and \ taken as
+            % conversions and escapes, e.g. of a file name with ' quoted as
+            % '\''), and a MATLAB task with its double quotes escaped for
+            % the shell
+            testCase.assumeFalse(ispc, 'The fake Slurm needs a POSIX shell.');
+            slurm = testCase.applyFixture(pktest.FakeSlurmFixture);
+            [inFns, outFns] = testCase.makeTasks(1);
+            task = ['printf ''%d\n'' 5 > ''', outFns{1}, '''; echo ''it''\''''s'''];
+            slurm.rejectSubmissions(1);
+            testCase.runCluster(inFns, outFns, {task}, 'language', 'bash', 'maxTrialNum', 1, 'queryInterval', 0);
+            taskFiles = dir([fileparts(outFns{1}), '/func_strs/*.sh']);
+            testCase.assertNumElements(taskFiles, 1, 'The task was not saved.');
+            testCase.verifyEqual(fileread(fullfile(taskFiles(1).folder, taskFiles(1).name)), task);
+            calls = slurm.calls('sbatch');
+            testCase.verifyNotEmpty(regexp(calls{end}, ['bash \S+/', taskFiles(1).name], 'once'), calls{end});
+
+            slurm.rejectSubmissions(1);
+            [inFns, outFns] = testCase.makeTasks(1);
+            task = 'fprintf("%d\n", 5)';
+            testCase.runCluster(inFns, outFns, {task}, 'maxTrialNum', 1, 'queryInterval', 0);
+            taskFiles = dir([fileparts(outFns{1}), '/func_strs/*.mat']);
+            testCase.assertNumElements(taskFiles, 1, 'The task was not saved.');
+            a = load(fullfile(taskFiles(1).folder, taskFiles(1).name), 'func_str');
+            testCase.verifyEqual(a.func_str, task);
+        end
+
         function clusterModeFailedQueryKeepsJobStates(testCase)
             % a failed squeue (e.g., a timeout of a busy controller) read as
             % all jobs gone: they stopped counting against maxJobNum (and
@@ -521,6 +550,39 @@ classdef GenericComputingFrameworkTest < pktest.TestCase
             testCase.verifyEqual(numel(strfind(out, 'Using GPU')), 2, out);
             for i = 1 : 2
                 testCase.verifyEqual(fileread(outFns{i}), fileread(inFns{i}));
+            end
+        end
+    end
+
+    methods (Test, TestTags = {'Integration', 'Slow'})
+        function parforBashWorkersUseTheJobsGPUs(testCase)
+            % the bash tasks of a parfor GPU job got GPU k - 1 for worker k,
+            % other GPUs than a Slurm job's own where they aren't 0 to n - 1;
+            % they get the k-th GPU in its CUDA_VISIBLE_DEVICES now, with no
+            % more workers than it lists (usable_gpu_num and gpuDevice are
+            % stubs of 2 GPUs; no GPU is used)
+            testCase.assumeFalse(ispc, 'The tasks are POSIX shell commands.');
+            testCase.applyFixture(pktest.FunctionStubFixture('usable_gpu_num', 2));
+            testCase.applyFixture(pktest.FunctionStubFixture('gpuDevice', struct('Index', 1)));
+            delete(gcp('nocreate'));
+            testCase.addTeardown(@() delete(gcp('nocreate')));
+            % GPU lists, the GPUs of the tasks and the workers
+            lists = {'4,6', {'4', '6'}, 2; '5', {'5'}, 1};
+            for i = 1 : size(lists, 1)
+                testCase.applyFixture(matlab.unittest.fixtures.EnvironmentVariableFixture('CUDA_VISIBLE_DEVICES', lists{i, 1}));
+                [inFns, outFns] = testCase.makeTasks(2);
+                funcStrs = cellfun(@(x) sprintf('sh -c ''echo $CUDA_VISIBLE_DEVICES > %s''', x), outFns, 'unif', 0); %#ok<NASGU>
+                flags = []; %#ok<NASGU>
+                evalc(['flags = matlab_parfor_generic_computing_wrapper(inFns, outFns, funcStrs, ''GPUJob'', true, ', ...
+                    '''language'', ''bash'');']);
+                testCase.verifyTrue(all(flags));
+                gpus = cellfun(@(x) strtrim(fileread(x)), outFns(cellfun(@isfile, outFns)), 'unif', 0);
+                msg = sprintf('CUDA_VISIBLE_DEVICES=%s: %s', lists{i, 1}, strjoin(gpus, ', '));
+                testCase.verifyTrue(all(ismember(gpus, lists{i, 2})), msg);
+                pool = gcp('nocreate');
+                testCase.assertNotEmpty(pool, 'No pool was started.');
+                testCase.verifyEqual(pool.NumWorkers, lists{i, 3}, msg);
+                delete(pool);
             end
         end
     end

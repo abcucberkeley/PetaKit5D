@@ -226,6 +226,23 @@ classdef SingleJobSubmitWrapperTest < pktest.TestCase
             testCase.verifyEqual(strip(fileread(logFn)), [dataPath, 'cache/mcr_cache_42']);
         end
 
+        function failedQueryLeavesTheJob(testCase)
+            % a failed squeue (e.g., a timeout of a busy controller) read as
+            % the job gone: the task was submitted again, or (master
+            % compute, last file) the caller ran it too; it counts as
+            % running now
+            testCase.assumeFalse(ispc, 'The fake Slurm needs a POSIX shell.');
+            slurm = testCase.applyFixture(pktest.FakeSlurmFixture);
+            slurm.setJobStates('123_7', {'R'});
+            slurm.failQueries(2);
+            [jobId, jobStatus, submitStatus] = testCase.callWrapper(123, 7);
+            testCase.verifyEqual([jobId, jobStatus, submitStatus], [123, 1, 0]);
+            [~, jobStatus] = testCase.callWrapper(123, 7, 'masterCompute', true, 'lastFile', true);
+            testCase.verifyEqual(jobStatus, 1);
+            testCase.verifyEqual(slurm.callCount('sbatch'), 0);
+            testCase.verifyEqual(slurm.callCount('scancel'), 0);
+        end
+
         function pendingLastJobGoesToTheMaster(testCase)
             % with masterCompute the master cancels the last file's pending
             % job and computes it itself
@@ -240,8 +257,10 @@ classdef SingleJobSubmitWrapperTest < pktest.TestCase
 
     methods (Access = private)
         function [cmd] = submitCommand(testCase, varargin)
+            % (a task without a job: the failing squeue stub would count a
+            % job as running)
             args = testCase.withLogDir(varargin); %#ok<NASGU>
-            out = evalc('generic_single_job_submit_wrapper(''disp(12345)'', 1, 7, ''maxTrialNum'', 1, args{:})');
+            out = evalc('generic_single_job_submit_wrapper(''disp(12345)'', -1, 7, ''maxTrialNum'', 1, args{:})');
             cmd = regexp(out, 'sbatch [^\n]*', 'match', 'once');
         end
 

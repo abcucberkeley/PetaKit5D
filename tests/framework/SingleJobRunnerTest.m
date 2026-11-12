@@ -481,6 +481,31 @@ classdef SingleJobRunnerTest < pktest.TestCase
             testCase.verifyTrue(marked, 'The task is not marked submitted again.');
         end
 
+        function runnerKeepsItsTaskWhileSqueueFails(testCase)
+            % a failed squeue (e.g., a timeout of a busy controller) read as
+            % the job of a runner that took a pool task gone, so the master
+            % took the task back and ran or submitted it again; the runner
+            % keeps it now
+            testCase.assumeLinux();
+            slurm = testCase.applyFixture(pktest.FakeSlurmFixture);
+            c = testCase.compiledSetup(true);
+            testCase.startKind(c, slurm);
+            testCase.submit(c, 1, 'ok', -1);
+            testCase.submit(c, 2, 'ok', -1);
+            pool = testCase.poolDir(c);
+            system(sprintf('ln -s "1000_1:othernode:5:1" "%s/claims/t2"', pool));
+            slurm.setJobStates('1000_1', {'R'});
+            funcStr = sprintf('pk_task(''%s'',''ok'')', c.outFns{2});
+            slurm.failQueries(1);
+            [live, claimed] = task_runner_run('single_live', funcStr);
+            testCase.verifyEqual([live, claimed], [true, true]);
+            slurm.failQueries(1);
+            testCase.verifyFalse(task_runner_run('single_take', funcStr), 'The master took the task of a runner squeue failed to answer about.');
+            [owner, marked] = testCase.claimOf(pool, 2);
+            testCase.verifyEqual(owner, '1000_1:othernode:5:1');
+            testCase.verifyFalse(marked);
+        end
+
         function pendingJobGetsBackTheTaskOfARunnerThatEnded(testCase)
             % a runner of another job took the task of a pending job and
             % ended without finishing it (its job was killed): the master

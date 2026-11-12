@@ -511,7 +511,10 @@ while (~parseCluster && ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
                         end
                         
                         if strcmpi(language, 'matlab')
-                            func_str_fn = sprintf('%s/func_str_f%04d_%s_%s.mat', func_str_dir, f, fsnames{f}, uuid);                            
+                            func_str_fn = sprintf('%s/func_str_f%04d_%s_%s.mat', func_str_dir, f, fsnames{f}, uuid);
+                            % the tasks as given (func_str has its double quotes
+                            % escaped for the job's shell, which broke them here)
+                            func_str = strjoin(funcStrs(fs), ';');
                             save('-v7.3', func_str_fn, 'func_str');
                             
                             matlab_cmd = sprintf('%s;t0_=tic;load(''%s'',''func_str'');func_str,feval(str2func([''@()'',func_str]));toc(t0_)', ...
@@ -524,9 +527,9 @@ while (~parseCluster && ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
                         elseif strcmpi(language, 'bash')
                             func_str_fn = sprintf('%s/func_str_f%04d_%s_%s.sh', func_str_dir, f, fsnames{f}, uuid);     
                             fid = fopen(func_str_fn, 'w');
-                            % escape '\ ' for writing to the disk
-                            func_str = strrep(func_str, '\ ', '\\ ');
-                            fprintf(fid, func_str);
+                            % the tasks as they are (as fprintf's format, their % and
+                            % \ were taken as conversions and escapes)
+                            fprintf(fid, '%s', func_str);
                             fclose(fid);
                             
                             cmd = sprintf(['sbatch --array=%d -o %s -e %s --cpus-per-task=%d %s %s %s ', ...

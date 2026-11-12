@@ -20,9 +20,10 @@ function [varargout] = result_writers(action, varargin)
 %   writers = result_writers('live', resultFullpath, uuid)
 %       the owners of the records of other uuids that may still work on the
 %       result: not ended, and their Slurm job (not this process's own) is
-%       in the queue, or (outside Slurm, or in this process's own job) their
-%       process runs on this node (Linux). Others (a process that ended, or
-%       runs on another machine outside Slurm) are not waited for, as before.
+%       in the queue (or squeue failed), or (outside Slurm, or in this
+%       process's own job) their process runs on this node (Linux). Others
+%       (a process that ended, or runs on another machine outside Slurm)
+%       are not waited for, as before.
 %   done = result_writers('wait', resultFullpath, uuid)
 %       after 'register': waits while a writer recorded before this one may
 %       still work; true if the result exists then (another writer made it),
@@ -249,7 +250,8 @@ end
 function [tf] = owners_live(owners)
 % whether the owners <job>_<array task>:<node>:<pid>[:<start>] may still
 % work: a Slurm job other than this process's own that is pending or
-% running (one squeue for all array jobs), or else (outside Slurm, or in
+% running or that squeue failed to answer about (one squeue for all array
+% jobs), or else (outside Slurm, or in
 % this process's own job, e.g. the record of a call this process made
 % before, or of a job started again) a process other than this one that
 % runs on this node
@@ -277,8 +279,9 @@ end
 isArray = cellfun(@(x) ~isempty(x{2}), tok(inJob));
 inds = inJob(isArray);
 if ~isempty(inds)
-    status = check_batch_slurm_jobs_status(jobs(inds), cellfun(@(x) str2double(x{2}), tok(inds)));
-    tf(inds) = status >= 0;
+    % (also if squeue failed: the owner may still work, as 'orphaned' has it)
+    [status, unknown] = check_batch_slurm_jobs_status(jobs(inds), cellfun(@(x) str2double(x{2}), tok(inds)));
+    tf(inds) = status >= 0 | unknown;
 end
 for i = reshape(inJob(~isArray), 1, [])
     tf(i) = check_slurm_job_status(jobs(i)) >= 0;

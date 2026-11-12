@@ -449,7 +449,10 @@ newKeys = unique(jobKeys(inJob));
 newKeys = newKeys(~isKey(cache.jobStatus, newKeys));
 if ~isempty(newKeys)
     ids = sscanf(strjoin(strrep(newKeys, '_', ' '), ' '), '%d');
-    status = check_batch_slurm_jobs_status(ids(1 : 2 : end), ids(2 : 2 : end));
+    [status, unknown] = check_batch_slurm_jobs_status(ids(1 : 2 : end), ids(2 : 2 : end));
+    % (a failed squeue: the owners may still run, as for a running job;
+    % their claims were released and their tasks run twice)
+    status(unknown) = 1;
     for i = 1 : numel(newKeys)
         cache.jobStatus(newKeys{i}) = status(i);
     end
@@ -978,7 +981,9 @@ job = str2double(tok{1});
 arr = str2double(tok{2});
 [myJob, myArray] = own_job();
 if job > 0 && ~(job == myJob && arr == myArray)
-    live = check_batch_slurm_jobs_status(job, arr) >= 0;
+    % (also if squeue failed: the owner may still run)
+    [status, unknown] = check_batch_slurm_jobs_status(job, arr);
+    live = status >= 0 || unknown;
 else
     live = strcmp(tok{3}, node_name()) && str2double(tok{4}) ~= feature('getpid') && isfolder(['/proc/', tok{4}]);
 end

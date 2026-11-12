@@ -61,5 +61,26 @@ classdef CheckBatchSlurmJobsStatusTest < pktest.TestCase
             [status, unknown] = check_batch_slurm_jobs_status(100, 1);
             testCase.verifyEqual([status, unknown], [-1, 0]);
         end
+
+        function singleJobOfAFailedQueryMayStillRun(testCase)
+            % check_slurm_job_status (single jobs) read a failed squeue as
+            % the job gone, so its callers submitted or ran the task again;
+            % the job may still run now (1, and unknown). "Invalid job id"
+            % means gone, as before
+            testCase.assumeFalse(ispc, 'The fake Slurm needs a POSIX shell.');
+            slurm = testCase.applyFixture(pktest.FakeSlurmFixture);
+            slurm.setJobStates('100_1', {'PD'});
+            slurm.failQueries(1);
+            testCase.verifyEqual(check_slurm_job_status(101, 1), 1);
+            slurm.failQueries(1);
+            [status, unknown] = check_slurm_job_status(100, 1);
+            testCase.verifyEqual([status, unknown], [1, 1]);
+            [status, unknown] = check_slurm_job_status(100, 1);
+            testCase.verifyEqual([status, unknown], [0, 0]);
+            testCase.verifyEqual(check_slurm_job_status(101, 1), -1);
+            slurm.failQueries(1, 'slurm_load_jobs error: Invalid job id specified');
+            [status, unknown] = check_slurm_job_status(100, 1);
+            testCase.verifyEqual([status, unknown], [-1, 0]);
+        end
     end
 end

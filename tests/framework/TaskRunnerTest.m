@@ -363,6 +363,31 @@ classdef TaskRunnerTest < pktest.TestCase
             testCase.verifySubstring(out, 'GPUs 5: 1 slots');
         end
 
+        function masterGpuSlotsUseTheJobsGPUs(testCase)
+            % the master's own runner slots of a compiled GPU call set no GPU
+            % (all used its first one): a local run's pass, and in cluster
+            % mode the master's batch and its extra tasks. Slot k takes the
+            % k-th GPU in its CUDA_VISIBLE_DEVICES now (a list of a test, no
+            % GPU is used)
+            testCase.assumeLinux();
+            testCase.assumeEqual(system('command -v parallel > /dev/null'), 0, 'GNU parallel is not installed.');
+            testCase.applyFixture(matlab.unittest.fixtures.EnvironmentVariableFixture('CUDA_VISIBLE_DEVICES', '4,6'));
+            % a local run: one pass of two runner slots
+            [b, outFns] = testCase.compiledGpuCall(false);
+            runs = testCase.gpuRuns(b);
+            testCase.verifyEqual(sort(runs(:, 1)), sort(outFns(:)), 'Each task should run once.');
+            testCase.verifyEqual(unique(runs(:, 2)), {'4'; '6'});
+            % cluster mode with master compute (a compiled master's): two
+            % slots for the master's batch (2), then, while the job of batch
+            % 1 runs, its tasks as extra tasks with one slot
+            slurm = testCase.applyFixture(pktest.FakeSlurmFixture);
+            slurm.setJobStates('1000_1', {'R'});
+            [b, outFns] = testCase.compiledGpuCall(true);
+            runs = testCase.gpuRuns(b);
+            testCase.verifyEqual(sort(runs(ismember(runs(:, 1), outFns(3 : 4)), 2)), {'4'; '6'});
+            testCase.verifyEqual(runs(ismember(runs(:, 1), outFns(1 : 2)), 2), {'4'; '4'});
+        end
+
         function stealingStopsNearTheJobsEnd(testCase)
             % a job takes tasks of other batches only if it has the time for
             % them (twice the longest task so far and a minute); its own
@@ -854,6 +879,25 @@ classdef TaskRunnerTest < pktest.TestCase
             testCase.verifyEqual(sort(names), sort({'t1', 't3', 't4', 't6', 'r3'}));
         end
 
+        function claimsStayLiveWhileSqueueFails(testCase)
+            % a failed squeue (e.g., a timeout of a busy controller) read as
+            % the claims' owners gone: their claims were released and their
+            % tasks run twice; the owners count as live now
+            testCase.assumeLinux();
+            slurm = testCase.applyFixture(pktest.FakeSlurmFixture);
+            slurm.setJobStates('77_1', {'R'});
+            [~, outFns] = testCase.makeTasks(2);
+            evalc('rc = task_runner_run(''setup_matlab'', [testCase.createTempFolder(), ''call''], outFns, outFns, '''', false(2, 1), 1, ''x'', '''', false);');
+            % (78_1 is not in the queue)
+            system(sprintf('ln -s "77_1:n1:5:1" "%s/t1"', rc.claimsDir));
+            system(sprintf('ln -s "78_1:n1:5:1" "%s/t2"', rc.claimsDir));
+            slurm.failQueries(1);
+            [~, live] = task_runner_run('claims', rc, 1 : 2);
+            testCase.verifyEqual(live', [true, true]);
+            [~, live] = task_runner_run('claims', rc, 1 : 2);
+            testCase.verifyEqual(live', [true, false]);
+        end
+
         function oneTaskPerSlotRunsTaskLinesAsBefore(testCase)
             % with one task per slot and no batch waiting in the queue, the
             % task lines run as before (no runner; a slot that is done takes
@@ -1173,6 +1217,38 @@ classdef TaskRunnerTest < pktest.TestCase
             for i = 1 : numel(c{1})
                 runs(i) = struct('task', c{3}(i), 'out', c{1}{i}, 'mode', c{2}{i}, 'pid', c{4}(i), 'cuda', c{5}{i}, ...
                     'runner', c{6}(i));
+            end
+        end
+
+        function [b, outFns] = compiledGpuCall(testCase, cluster)
+            % 4 slow fake tasks in batches of 2 of a compiled GPU call with
+            % GNU parallel (2 slots) and runners, by the compiled wrapper
+            % with master compute; cluster: in cluster mode (a fake Slurm;
+            % the jobs never run)
+            dataPath = testCase.createTempFolder();
+            b = testCase.fakeBuild([dataPath, 'build/']);
+            inFns = arrayfun(@(x) sprintf('%sin_%d.txt', dataPath, x), 1 : 4, 'unif', 0);
+            outFns = arrayfun(@(x) sprintf('%sout_%d.txt', dataPath, x), 1 : 4, 'unif', 0);
+            cellfun(@(x) fclose(fopen(x, 'w')), inFns);
+            funcStrs = cellfun(@(x) sprintf('pk_task(''%s'',''slow'')', x), outFns, 'unif', 0); %#ok<NASGU>
+            evalc(['mcc_slurm_cluster_generic_computing_wrapper(inFns, outFns, funcStrs, ''parseCluster'', cluster, ', ...
+                '''masterCompute'', true, ''taskBatchNum'', 2, ''maxTrialNum'', 1, ''unitWaitTime'', 0, ''GPUJob'', true, ', ...
+                '''GNUparallel'', true, ''paraJobNum'', 2, ''queryInterval'', 0.5, ''MCCMasterStr'', b.master, ', ...
+                '''MCRParam'', b.mcr, ''MCRCacheRoot'', [dataPath, ''cache''], ''BashLaunchStr'', ''echo'', ', ...
+                '''jobLogDir'', dataPath)']);
+        end
+
+        function [runs] = gpuRuns(~, b)
+            % the fake tasks that ran, as {output, CUDA device} per run (the
+            % task lines the framework writes don't set PETAKIT5D_TASK)
+            runs = cell(0, 2);
+            if ~isfile(b.log)
+                return;
+            end
+            lines = splitlines(strip(fileread(b.log)));
+            for i = 1 : numel(lines)
+                p = strsplit(strtrim(lines{i}));
+                runs(i, :) = p([1, end - 1]);
             end
         end
 

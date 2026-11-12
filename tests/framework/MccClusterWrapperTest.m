@@ -261,6 +261,34 @@ classdef MccClusterWrapperTest < pktest.TestCase
                 'The framework did not pause while the job of the last try ran.');
         end
 
+        function masterGpuSlotsUseTheJobsGPUs(testCase)
+            % the master's own GNU parallel slots of a GPU call (here of a
+            % local run) set no GPU: all used its first one. Slot k takes
+            % the k-th GPU in its CUDA_VISIBLE_DEVICES now, with fewer slots
+            % if it lists fewer, and without a list GPUs 0 to n - 1 of those
+            % MATLAB can use (usable_gpu_num, a stub of 3 here; no GPU is
+            % used)
+            testCase.assumeFalse(ispc, 'GNU parallel needs a POSIX shell.');
+            testCase.assumeEqual(system('command -v parallel > /dev/null'), 0, 'GNU parallel is not installed.');
+            testCase.applyFixture(pktest.FunctionStubFixture('usable_gpu_num', 3));
+            % GPU lists, and the GPUs and slots of the tasks
+            lists = {'4,6', {'4'; '6'}, 2; '5', {'5'; '5'}, 1; '', {'0'; '1'}, 2};
+            for i = 1 : size(lists, 1)
+                testCase.applyFixture(matlab.unittest.fixtures.EnvironmentVariableFixture('CUDA_VISIBLE_DEVICES', lists{i, 1}));
+                dataPath = testCase.createTempFolder();
+                gpuFn = [dataPath, 'gpus.log'];
+                % (the tasks overlap: each slot runs one)
+                testCase.runFrameworkIn(dataPath, 2, 'parseCluster', false, 'GPUJob', true, 'GNUparallel', true, ...
+                    'paraJobNum', 2, 'taskBatchNum', 2, 'masterLines', {'#!/bin/bash', ...
+                    sprintf('echo "${CUDA_VISIBLE_DEVICES-unset} ${PARALLEL_JOBSLOT-}" >> "%s"', gpuFn), 'sleep 1'});
+                testCase.assertTrue(isfile(gpuFn), 'No task ran.');
+                runs = split(splitlines(strip(fileread(gpuFn))));
+                msg = sprintf('CUDA_VISIBLE_DEVICES=%s', lists{i, 1});
+                testCase.verifyEqual(sort(runs(:, 1)), lists{i, 2}, msg);
+                testCase.verifyNumElements(unique(runs(:, 2)), lists{i, 3}, msg);
+            end
+        end
+
         function gpuSlotsUseTheJobsGPUs(testCase)
             % GNU parallel gave slot k GPU k - 1, another job's GPU where
             % Slurm doesn't renumber the GPUs of a job (it doesn't where it

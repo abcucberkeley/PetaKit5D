@@ -55,6 +55,21 @@ classdef ResultWritersTest < pktest.TestCase
                 'A job that is not an array job was checked as one.');
         end
 
+        function ownerJobsAreLiveWhileSqueueFails(testCase)
+            % a failed squeue (e.g., a timeout of a busy controller) read as
+            % the writers' jobs gone, so a second writer started making the
+            % result; they may still work now (as for 'orphaned'). Neither
+            % job is in the queue: once squeue answers, none is live
+            testCase.assumeFalse(ispc, 'The fake Slurm needs a POSIX shell.');
+            [resultFn, flagRoot] = testCase.makeResultFolder();
+            slurm = testCase.applyFixture(pktest.FakeSlurmFixture);
+            testCase.writeRecord(flagRoot, resultFn, 'aaa', '777_3:node1:11');
+            testCase.writeRecord(flagRoot, resultFn, 'bbb', '778_:node2:12');
+            slurm.failQueries(2);
+            testCase.verifyEqual(sort(result_writers('live', resultFn, 'zzz')), {'777_3:node1:11', '778_:node2:12'});
+            testCase.verifyEmpty(result_writers('live', resultFn, 'zzz'));
+        end
+
         function writersOfThisProcesssJobAreItsProcesses(testCase)
             % a record of another uuid owned by this process's own Slurm job
             % (a call this process made before and stopped, or a job started

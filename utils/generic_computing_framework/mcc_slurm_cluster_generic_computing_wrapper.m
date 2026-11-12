@@ -784,6 +784,7 @@ while (~parseCluster && ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
             end
             fprintf('\nProcess task batch %d ... \n', b);
             fprintf('\nProcess %s with function %s... \n', strjoin(fsnames(fs), ', '), func_str);
+            gpus = {};
             if ~GNUparallel
                 if isunix
                     cmd = sprintf(['%s; bash %s'], BashLaunchStr, inputFn);
@@ -796,11 +797,16 @@ while (~parseCluster && ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
                 else
                     paraJobNum_f = max(1, min(paraJobNum - 1, round(paraJobNum * masterParaFactor / (trial_counter(f) + 1))));
                 end
-                cmd = sprintf(['%s; parallel %s--retries 2 --jobs %d --delay 0.2 < %s'], BashLaunchStr, masterJoblogStr, paraJobNum_f, inputFn);
-                if ismcc || isdeployed
-                    % reduce the load of master job in case of crash due to oom
-                    cmd = sprintf(['%s; parallel %s--ungroup --retries 2 --jobs %d --delay 0.2 < %s'], BashLaunchStr, masterJoblogStr, paraJobNum_f, inputFn);
+                % GPU jobs: a GPU per slot, the k-th of this process's (the
+                % slots had none of their own, all used its first one), and
+                % no more slots than GPUs (see slot_gpus)
+                if GPUJob
+                    gpus = slot_gpus(paraJobNum_f);
+                    if ~isempty(gpus)
+                        paraJobNum_f = numel(gpus);
+                    end
                 end
+                cmd = master_parallel_cmd(BashLaunchStr, masterJoblogStr, ismcc || isdeployed, paraJobNum_f, inputFn, gpus);
             end
             % task runners: in a local run with more tasks than slots, all
             % tasks in one pass; in the master's job, the batch's tasks that
@@ -814,7 +820,8 @@ while (~parseCluster && ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
                     retries = 2;
                 end
                 if ~parseCluster && ~runnerPassDone && sum(~is_done_flag) > runnerNum
-                    cmd = sprintf('%s; %s', BashLaunchStr, task_runner_run('job', rc, b, runnerNum, 0, 2, retries));
+                    cmd = sprintf('%s; %s%s', BashLaunchStr, gpu_env(gpus), task_runner_run('job', rc, b, runnerNum, ...
+                        double(~isempty(gpus)), 2, retries));
                     localPass = true;
                     % the runners mark the tasks they take (this batch's too)
                     if exist(tmpFullpath, 'file')
@@ -824,7 +831,8 @@ while (~parseCluster && ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
                     fs_u = fs(~is_done_flag(fs));
                     [claimed, live, claimCache] = task_runner_run('claims', rc, fs_u, claimCache);
                     task_runner_run('release', rc, fs_u(claimed & ~live));
-                    cmd = sprintf('%s; %s', BashLaunchStr, task_runner_run('job', rc, b, runnerNum, 0, 0, retries));
+                    cmd = sprintf('%s; %s%s', BashLaunchStr, gpu_env(gpus), task_runner_run('job', rc, b, runnerNum, ...
+                        double(~isempty(gpus)), 0, retries));
                 end
             end
             t0=tic; [status, cmdout] = system(cmd, '-echo'); t1=toc(t0);
@@ -860,6 +868,7 @@ while (~parseCluster && ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
         end
         inputFn = mainExtraInputFns{main_extra_ind};
         fprintf('\nProcess extra task batch %d ... \n', main_extra_ind);
+        gpus = {};
         if ~GNUparallel
             if isunix
                 cmd = sprintf(['%s; bash %s'], BashLaunchStr, inputFn);
@@ -872,11 +881,14 @@ while (~parseCluster && ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
             else
                 paraJobNum_f = max(1, min(paraJobNum, round(paraJobNum * masterParaFactor)));
             end
-            cmd = sprintf(['%s; parallel %s--retries 2 --jobs %d --delay 0.2 < %s'], BashLaunchStr, masterJoblogStr, paraJobNum_f, inputFn);
-            if ismcc || isdeployed
-                % reduce the load of master job in case of crash due to oom
-                cmd = sprintf(['%s; parallel %s--ungroup --retries 2 --jobs %d --delay 0.2 < %s'], BashLaunchStr, masterJoblogStr, paraJobNum_f, inputFn);
+            % (GPU jobs: a GPU per slot, as for the master's batch)
+            if GPUJob
+                gpus = slot_gpus(paraJobNum_f);
+                if ~isempty(gpus)
+                    paraJobNum_f = numel(gpus);
+                end
             end
+            cmd = master_parallel_cmd(BashLaunchStr, masterJoblogStr, ismcc || isdeployed, paraJobNum_f, inputFn, gpus);
         end
         if rc.on
             % task runners: the tasks that no job's runner took
@@ -886,8 +898,8 @@ while (~parseCluster && ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
                 runnerNum = paraJobNum_f;
                 retries = 2;
             end
-            cmd = sprintf('%s; %s', BashLaunchStr, task_runner_run('job', rc, main_extra_task_inds_cell(main_extra_ind), ...
-                runnerNum, 0, 0, retries));
+            cmd = sprintf('%s; %s%s', BashLaunchStr, gpu_env(gpus), task_runner_run('job', rc, ...
+                main_extra_task_inds_cell(main_extra_ind), runnerNum, double(~isempty(gpus)), 0, retries));
         end
         t0=tic; [status, cmdout] = system(cmd, '-echo'); t1=toc(t0);
         main_extra_ind = main_extra_ind + 1;
@@ -961,6 +973,39 @@ if all(is_done_flag)
     catch ME
         warning('The task files in %s could not be removed: %s', funcInputDir, ME.message);
     end
+end
+
+end
+
+
+function [cmd] = master_parallel_cmd(BashLaunchStr, joblogStr, ungroup, P, inputFn, gpus)
+% the master's GNU parallel command for the task lines in inputFn with P
+% slots (--ungroup if ungroup: a compiled master, to reduce the load of the
+% master job in case of a crash due to OOM); with GPUs (gpus, one per slot)
+% slot k gets the k-th
+
+opts = '';
+if ungroup
+    opts = '--ungroup ';
+end
+if isempty(gpus)
+    cmd = sprintf('%s; parallel %s%s--retries 2 --jobs %d --delay 0.2 < %s', BashLaunchStr, joblogStr, opts, P, inputFn);
+else
+    cmd = sprintf(['%s; PK_SLOT_GPUS=%s parallel %s%s--retries 2 --jobs %d --delay 0.2 ', ...
+        '''CUDA_VISIBLE_DEVICES=$(echo $PK_SLOT_GPUS | cut -d, -f{%%})'' eval {} < %s'], BashLaunchStr, ...
+        strjoin(gpus, ','), joblogStr, opts, P, inputFn);
+end
+
+end
+
+
+function [envStr] = gpu_env(gpus)
+% the environment of the job script's command for the GPUs of its slots
+% (gpus; none without)
+
+envStr = '';
+if ~isempty(gpus)
+    envStr = sprintf('CUDA_VISIBLE_DEVICES=%s ', strjoin(gpus, ','));
 end
 
 end
