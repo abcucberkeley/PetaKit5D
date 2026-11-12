@@ -790,7 +790,7 @@ class Case:
                 "names": {n: getattr(x, "name", "") for n, x in sorted(self.inputs.items())},
                 "files": self.captures_files,
                 "device": self.device,
-                "helpers": {h: tree_hash(_python_root() / h) for h in sorted(self.helpers)},
+                "helpers": _helpers_hash(self.helpers),
                 "harness": _harness_file_hash(self.matlab, harness),
             }
             # InPath(key) of an input whose name differs from its key: MATLAB resolved the key
@@ -1029,8 +1029,22 @@ def _subst(v: MValue, input_ref: Callable[[MPlaceholder], MValue]) -> MValue:
 
 
 def _python_root() -> Path:
-    """the python/ folder of the repo"""
-    return Path(__file__).resolve().parents[3]
+    """the python/ folder of the repo (oracle.python_root: also when petakit5d is installed)"""
+    from petakit5d.testing.oracle import python_root
+
+    return python_root()
+
+
+def _helpers_hash(helpers: Sequence[str]) -> dict[str, str]:
+    """{folder: tree_hash} of a case's helper folders (relative to python/); a folder that is
+    not there is an error, not the hash of an empty folder"""
+    out = {}
+    for h in sorted(helpers):
+        p = _python_root() / h
+        if not p.is_dir():
+            raise FileNotFoundError(f"helper folder {h} not found at {p}")
+        out[h] = tree_hash(p)
+    return out
 
 
 def _harness_file_hash(func: str | None, harness: Path | None) -> str:

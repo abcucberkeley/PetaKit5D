@@ -96,6 +96,13 @@ def harness_dir() -> Path:
     return Path(p) if p else Path(__file__).resolve().parents[3] / "tests" / "oracle_matlab"
 
 
+def python_root() -> Path:
+    """the repo's python/ folder, which the cases' helper folders and the manifests' module
+    names are relative to: the harness's (python/tests/oracle_matlab), since an installed
+    petakit5d (site-packages, as in CI) is not inside it"""
+    return harness_dir().resolve().parents[1]
+
+
 def expected_commit() -> str:
     """the oracle commit the repo's manifests are made with (tests/oracle_matlab/ORACLE_COMMIT)"""
     return (harness_dir() / "ORACLE_COMMIT").read_text().split()[0].strip()
@@ -749,7 +756,7 @@ def write_pack(cases: Sequence[Case], store: Store, pack_dir: Path, work_root: P
                     }
                 )
         for h in c.helpers:
-            src = Path(__file__).resolve().parents[3] / h
+            src = python_root() / h
             dst = pack_dir / "helpers" / h.replace("/", "__")
             if not dst.exists():
                 shutil.copytree(src, dst)
@@ -885,7 +892,7 @@ def _write_manifests(
 ) -> list[str]:
     files = sorted({c.module_file for _, c in items if c.module_file})
     written = []
-    py_root = Path(__file__).resolve().parents[3]
+    py_root = python_root()
     for f in files:
         cases = _REGISTRY.get(f, [])
         if not cases:
@@ -922,7 +929,7 @@ def _write_manifests(
         pack_dir.mkdir(parents=True, exist_ok=True)
         # with each file's SHA-256: orun.sh checks its copy against it (network file systems
         # can show another machine a file before all its bytes)
-        py = Path(__file__).resolve().parents[3]
+        py = python_root()
         lines = [f"{sha256_file(py / w)}  {w}\n" for w in written]  # py / an absolute w is w
         (pack_dir / "manifests.txt").write_text("".join(lines))
     return written

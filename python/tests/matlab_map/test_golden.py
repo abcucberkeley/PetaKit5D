@@ -237,6 +237,21 @@ def test_golden_case(case, tmp_path):
     _oracle.check(case, tmp_path)
 
 
+def test_case_keys_do_not_depend_on_where_petakit5d_is_installed(monkeypatch, tmp_path):
+    """the keys hash the helper folder tests/matlab_map/matlab, found from the oracle harness's
+    place: CI installs petakit5d into site-packages, where the package's own folder has no
+    tests/ (every case here failed there, its key made from no helper files)"""
+    _need_harness()
+    from petakit5d.testing import cases, oracle
+
+    site = tmp_path / "lib" / "python3.12" / "site-packages" / "petakit5d" / "testing"
+    monkeypatch.setattr(cases, "__file__", str(site / "cases.py"))
+    monkeypatch.setattr(oracle, "__file__", str(site / "oracle.py"))
+    manifest = oracle.load_manifest(Path(__file__).with_suffix(".oracle.json"))
+    for c in golden_cases():  # new cases: no key computed yet
+        assert c.key() == manifest[c.id]["key"], c.id
+
+
 @pytest.mark.parametrize("scenario", list(SCENARIOS))
 def test_stored_reference_has_the_expected_fields(scenario):
     _need_tree()
