@@ -27,23 +27,25 @@ Three places hold MATLAB's results:
 ```python
 import numpy as np
 
+from petakit5d.core import bbox
 from petakit5d.testing import oracle
-from petakit5d.testing.cases import Case, In, InPath, Tree, Value, Work
+from petakit5d.testing.cases import Box, Case, In, InPath, Tree, Value, Vol, Work
 from petakit5d.testing.compare import tol, tree
 
 
-def crop(im, bbox):  # the Python side (normally the port's own function)
-    b = [int(x) for x in bbox]
-    return im[b[0] - 1 : b[3], b[1] - 1 : b[4], b[2] - 1 : b[5]]
+def crop(im, box):  # the Python side (normally the port's own function): (z, y, x), a box
+    return im[bbox.box_slices(box)]
 
 
 CASES = [
     Case(
         "crop_uint16_odd",  # unique in the module; no spaces or slashes
         matlab="crop3d_mex",  # the MATLAB function (feval)
-        args=[In("im"), [2, 3, 1, 9, 10, 7]],
-        python=crop,  # or "petakit5d.tools.crop:crop_3d"
-        inputs={"im": Value(lambda: make_volume((10, 12, 8), np.uint16))},
+        # MATLAB's arguments as MATLAB takes them; the roles say what they are
+        args=[Vol(In("im")), Box([2, 3, 1, 9, 10, 7])],
+        python=crop,  # or "petakit5d.tools.crop:crop_3d"; gets (z, y, x) and (z0, y0, x0, z1, y1, x1)
+        out_roles=("vol",),  # the (z, y, x) result is mapped to MATLAB's (y, x, z) to compare
+        inputs={"im": Value(lambda: make_volume((10, 12, 8), np.uint16))},  # MATLAB's form
     ),
 ]
 
@@ -70,6 +72,7 @@ def test_matlab(case, tmp_path):
 | `python` | the Python callable, or `"package.module:function"`; None: a reference-only case |
 | `py_args`, `py_kwargs` | Python arguments (default: `args`); placeholders work here too |
 | `py_out` | maps the Python result to the list of `nargout` outputs (default: the result, or the tuple it returns) |
+| `out_roles` | one out role per output (`'vol'`, `'box'`, ..., None; below): each Python output in MATLAB's form before it is compared |
 | `inputs` | name → `Value`, `File`, `Tree` or `Data` (below) |
 | `compare` | a spec for every output, or `{output name or index: spec}` (default exact) |
 | `files`, `tree` | compare the files written in the work folder (default: when the case uses `Work`, `InPath` or file inputs); `tree(...)` sets how |
@@ -120,8 +123,61 @@ output. Paths in outputs, texts and files are compared with each side's work fol
 | dict, dataclass, `SimpleNamespace` | 1x1 struct |
 | `mcell(...)`, `mcol(values, cls)`, `mtyped(x, cls)`, `mstring(...)`, `mstruct(...)`, `mempty(cls, size)` | a cell, a column, a typed array, a string array, a struct, an empty array |
 
-Arrays are `(y, x, z)` with MATLAB's sizes; give Fortran-ordered arrays where the port uses them
-(values are compared by index, not by memory layout).
+Arguments, inputs and references are in MATLAB's form: arrays `(y, x, z)` with MATLAB's sizes
+(values are compared by index, not by memory layout), boxes and indices 1-based. Roles give
+the Python call Python's form.
+
+### Roles: MATLAB's form for MATLAB, Python's for Python
+
+The port's arrays are `(z, y, x)`, C-contiguous, and its boxes `(z0, y0, x0, z1, y1, x1)`,
+0-based and end-exclusive (`docs/conventions.md`). A case keeps its `args` as MATLAB takes them
+and marks what an argument is; the Python call gets it converted (with `core.arrays`,
+`core.bbox`, `core.axes`), and MATLAB and the case key see it unchanged:
+
+| Role | MATLAB's argument | The Python call gets |
+|---|---|---|
+| `Vol(x)` | an image array `(y, x, z, ...)` | `arrays.from_matlab(x)`: `(..., z, y, x)`, C-contiguous (an image `(y, x)` as it is) |
+| `Box(x)` | `[ymin xmin zmin ymax xmax zmax]` (2D `[ymin xmin ymax xmax]`), 1-based, inclusive | `bbox.box_from_matlab(x)`: `(z0, y0, x0, z1, y1, x1)` (an `Inf` end is `None`) |
+| `PerAxis(x, 'yxz')`, `PerAxis(x, 'xyz')` | a per-axis vector `[y x z]` or `[x y z]` (a scalar passes) | `axes.from_yxz(x)` / `axes.from_xyz(x)`: `(z, y, x)` |
+| `Index1(x)` | 1-based indices | 0-based integers |
+| `Range1(x)` | `[first last]`, 1-based, inclusive | `bbox.range_from_matlab(x)`: `(start, stop)` |
+| `Dim(x)`, `Dim(x, ndim)` | a dimension (1: y, 2: x, 3: z) | `axes.dim_to_axis(x, ndim)`: the NumPy axis (negative without `ndim`) |
+| `LinIndex(x, size)` | 1-based linear indices into an array of MATLAB size `size` (or of the `Value` input of that name, `In(name)` or `'name'`) | the `(z, y, x)` index tuple (`arrays.matlab_index_to_zyx`) |
+
+A role wraps a value or a placeholder (`Vol(In("im"))`) anywhere in `args`, `py_args` or
+`py_kwargs` (`py_kwargs={"bbox": Box([1, 1, 1, 8, 8, 4])}` when MATLAB takes the box as a
+name-value pair). `out_roles` give one out role per output; the Python result is mapped to
+MATLAB's form before it is read and compared (and in CI hashed), so stored references and
+manifests stay in MATLAB's form:
+
+| Out role | Python's result | Compared as |
+|---|---|---|
+| `'vol'` | `(..., z, y, x)` array | `arrays.to_matlab`: `(y, x, z, ...)` |
+| `'box'`, `'boxes'` | a Python box, or rows of them | `[ymin xmin zmin ymax xmax zmax]` |
+| `'yxz'`, `'xyz'` | a `(z, y, x)` vector | `[y x z]`, `[x y z]` |
+| `'index1'` | 0-based indices | plus 1 (an array keeps its class: double places stay double) |
+| `'range1'` | `(start, stop)` | `[first last]` |
+| `('dim', ndim)` | a NumPy axis | MATLAB's dimension |
+| `('linindex', size)` | a `(z, y, x)` index tuple | MATLAB's 1-based linear index (`size` as for `LinIndex`) |
+| `('each', role)` | a list (MATLAB's cell) | the role on each item |
+| `[r1, r2]` | | `r1`, then `r2` (`['index1', 'vol']`: 0-based places along an axis of a volume) |
+| `{field: role}` | a dict (MATLAB's struct) | each field by its role |
+| a callable, None | | applied; unchanged |
+
+Rules:
+
+- **Keys do not change with roles**: the key is made from the arguments without their roles,
+  so adding roles to a case needs no MATLAB run and no new manifest
+  (`test_the_keys_of_cases_moved_to_roles_are_their_references` checks the harness's own).
+- **New cases whose data is in Python's form** give MATLAB's form to the role:
+  `Vol(arrays.to_matlab(a))`, `Box(bbox.box_to_matlab(b))`, `PerAxis(axes.to_yxz(v), 'yxz')`.
+  Input generators (`Value`) return MATLAB's form, as MATLAB reads them.
+- A case may still convert by hand in `py_args` and `py_out`; it gives the same result
+  (`test_a_case_with_roles_equals_the_case_converted_by_hand`).
+- `PyResult.raw_outputs` keeps Python's results before the out roles.
+- The golden scenarios (`tests/matlab_map/test_golden.py`) give their inputs in Python's form
+  (`scenario_inputs(scenario)`, with the golden store) and the out roles of their outputs
+  (`ROLES[scenario]`); their stored cases go through the same roles.
 
 ### Reading Python results
 
@@ -148,11 +204,22 @@ reading signature below), so a pass with the manifest means what a pass with the
 - `Custom(fn)`: `fn(ref, act)` returns a list of problems.
 
 A report lists class, size and kind differences first, then for values: how many differ, the
-first index (0-based, column-major, and as MATLAB subscripts), the next ones, the largest
-absolute and relative difference, a histogram (counts for integers, ULP distance for floats),
-NaN and signed-zero categories, and hints: values in C order, axes permuted, data shifted by
-one along an axis, a constant offset, a missing last slice. Nested values are named by path
-(`out2(3).field{2}`).
+first index (0-based, column-major, as MATLAB subscripts and, for arrays of 3 or more
+dimensions and for any output with out role `'vol'`, as Python's 0-based `(z, y, x)` index:
+`MATLAB (3,4,2) = (z, y, x) (1, 2, 3)`), the next ones, the largest absolute and relative
+difference, a histogram (counts for integers, ULP distance for floats), NaN and signed-zero
+categories, and hints: values in C order, axes permuted, data shifted by one along an axis, a
+constant offset, a missing last slice. Nested values are named by path (`out2(3).field{2}`).
+
+Hints name the mapping's mistakes, from the sizes alone (CI) or from the values:
+
+| Hint | Usual cause |
+|---|---|
+| Python's result is MATLAB's in (z, y, x) form | out role `'vol'` missing, or `to_matlab` left out of `py_out` |
+| Python's result is MATLAB's mapped once more | a volume mapped twice (out role and `to_matlab` in `py_out`), or a `(y, x, z)` argument without its `Vol` role |
+| y and x swapped | x and y exchanged in an index, a per-axis vector (`'xyz'` for `'yxz'`) or a transpose |
+| a box converted twice / still in Python's form | `box_to_matlab` in `py_out` besides out role `'box'`; out role `'box'` missing |
+| a first-index rule taken in C order | `np.argmax` (or a first nonzero) on the `(z, y, x)` array: MATLAB's first is in its linear order (y fastest, then x, then z); search `arrays.matlab_order(vol)` (out role `('linindex', name)` names the input) |
 
 ### Files
 
@@ -165,7 +232,13 @@ tiff_bytes=True, zarr_chunks='note', text_format=True, masks=[(regex, replacemen
   voxels is a layout problem (`tiff_bytes=False`: a note);
 - **zarr**: decoded voxels and the metadata texts (`.zarray`, `.zattrs`, ...); different
   chunk-file sets with equal data are a note (`zarr_chunks='strict'`: a problem), since the
-  Python writer skips all-zero chunks;
+  Python writer skips all-zero chunks. A native zarr of the port (order C, shape and chunks
+  `(z, y, x)`) against MATLAB's (order F, `(y, x, z)`) is compared after the mapping: the
+  `.zarray` modulo the permutation of shape and chunks and the order flag (every other field
+  exact; `zarray_to_matlab` gives what MATLAB writes), the chunk files by their grid indices
+  permuted, the voxels mapped with `to_matlab` (a note says so); a Python zarr with MATLAB's
+  shape in order C is named as a volume written without its mapping. Two zarrs of the same
+  layout compare as before;
 - **.mat**: the variables, decoded (MATLAB's own reading of its file; the Python side through
   SciPy for v4-v7 and h5py for v7.3), without `ignore_vars`;
 - **.json** and text files: the text with masks applied (uuids, times, the work folder, the
@@ -215,7 +288,7 @@ The **key** is the SHA-256 of what determines MATLAB's result: the key format, t
 code, `nargout`, the arguments (values by their hash, placeholders by name), the content hash
 of every input and its name in the work folder, whether files are captured, the device, the
 helper folders' contents and, for the harness's own `pkpy_oracle.*` functions, their file. The
-Python side, the comparison and the case id are not part of it. Results are stored by oracle
+Python side, the roles, the comparison and the case id are not part of it. Results are stored by oracle
 commit and key; the manifest keeps the key, so CI notices a case or input that changed since its
 reference was made, and every entry names its oracle commit, so a reference made with another
 commit is flagged (`check_manifests`, and `test_repo_manifests_use_the_current_oracle`).
@@ -294,6 +367,9 @@ case (a changed case is one changed line); older layouts are read too.
   changed nothing, an input generator is not deterministic on this platform.
 - *reference made with oracle X*: the manifest predates the current oracle tree.
 - *MATLAB raised ...; set expect_error=True*: the case calls MATLAB wrongly, or tests an error.
+- a size like `MATLAB [10 12 8], Python [8 10 12]`, or a hint that names the mapping: an
+  argument or output without its role, or one converted twice (see the hints above). Roles never
+  change the key, so fixing them needs no MATLAB run.
 - a session that crashes on a case stops the pack; the cases before it are published and the
   log is the pack's `matlab.log`. The next run runs the rest, that case included: select it
   alone (`-k`) to debug it.

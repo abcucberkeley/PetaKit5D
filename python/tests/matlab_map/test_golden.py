@@ -9,11 +9,15 @@ MATLAB repo. Each scenario has three MATLAB cases (pkpy_golden.m in matlab/):
 
 An area task tests its port on a scenario with the inputs case's outputs and compares with
 the compute case (exact) and the stored reference (relative L2 error <= 1e-4, as the MATLAB
-test):
+test). The references are in MATLAB's form; ``scenario_inputs`` gives the inputs in Python's
+((z, y, x)), and a case's ``out_roles`` (``ROLES[scenario]``: 'vol' for each volume) map the
+port's results back for the comparison:
 
-    ref = oracle.reference(GOLDEN_CASES['golden.decon_omw.inputs'])   # outputs: im, psf
+    im = scenario_inputs('decon_omw')['im']                    # (z, y, x), golden store only
+    Case(..., python=my_decon, out_roles=ROLES['decon_omw'])   # backProjector, decon
 
-Until the oracle harness (F04) is in the tree, the cases are stand-ins and their tests skip.
+The stored cases go through the same roles: Python reads the .mat in Python's form
+(``load_stored_zyx``) and its arrays are mapped back before they are compared.
 """
 
 from __future__ import annotations
@@ -74,6 +78,17 @@ def stored_path(scenario: str) -> Path | None:
     return p if p.is_file() else None
 
 
+def _role(size: tuple) -> str | None:
+    # volumes are (z, y, x) in Python; tables of points (5x1, 5x3) keep MATLAB's form
+    return "vol" if len(size) == 3 else None
+
+
+# the out roles of each scenario's outputs, in SCENARIOS' order
+ROLES: dict[str, tuple] = {
+    s: tuple(_role(size) for _, size in spec["outputs"].values()) for s, spec in SCENARIOS.items()
+}
+
+
 def load_stored(scenario: str) -> list[np.ndarray]:
     """the stored reference of a scenario, its fields in SCENARIOS' order (Python side of the
     stored case)"""
@@ -85,6 +100,32 @@ def load_stored(scenario: str) -> list[np.ndarray]:
     m = scipy.io.loadmat(p, squeeze_me=False, struct_as_record=False)
     e = m["expected"][0, 0]
     return [np.asfortranarray(getattr(e, f)) for f in SCENARIOS[scenario]["outputs"]]
+
+
+def load_stored_zyx(scenario: str) -> list[np.ndarray]:
+    """the stored reference in Python's form: volumes (z, y, x), tables as stored (the Python
+    side of the stored case; its out roles map the volumes back)"""
+    from petakit5d.core import arrays
+
+    return [
+        arrays.from_matlab(a) if r == "vol" else a
+        for a, r in zip(load_stored(scenario), ROLES[scenario], strict=True)
+    ]
+
+
+def scenario_inputs(scenario: str) -> dict[str, np.ndarray]:
+    """the arrays a scenario starts from, in Python's form ((z, y, x)), from the inputs case's
+    reference (the golden store: the manifest keeps their hashes only; skips without it)"""
+    from petakit5d.core import arrays
+
+    _need_harness()
+    ref = _oracle.reference(GOLDEN_CASES[f"golden.{scenario}.inputs"])
+    if any(getattr(v, "data", None) is None for v in ref.outputs):
+        pytest.skip("the scenario's inputs are in the golden store (the manifest has hashes)")
+    return {
+        f: arrays.from_matlab(v.data)
+        for f, v in zip(SCENARIOS[scenario]["inputs"], ref.outputs, strict=True)
+    }
 
 
 # ------------------------------------------------------------------------------------------
@@ -101,6 +142,7 @@ class _StandinCase:
     python: Any = None
     py_args: tuple | None = None
     py_out: Any = None
+    out_roles: Any = None
     helpers: tuple = ()
     files: bool | None = None
     outputs: tuple | None = None
@@ -138,10 +180,11 @@ def golden_cases() -> list[Any]:
                     args=[what, s, _mcell(*fields), _work()],
                     nargout=len(fields),
                     outputs=fields,
-                    python=load_stored if what == "stored" else None,
+                    python=load_stored_zyx if what == "stored" else None,
                     py_args=[s] if what == "stored" else None,
                     # the list of arrays is the outputs, also when there is one
                     py_out=list if what == "stored" else None,
+                    out_roles=ROLES[s] if what == "stored" else None,
                     helpers=HELPERS,
                     files=False,
                     note=f"GoldenOutputTest/outputMatchesReference(scenario={s}): {what}",
@@ -234,3 +277,29 @@ def test_oracle_tree_reproduces_the_stored_reference(scenario):
         assert c.mclass == s.mclass, name
         assert tuple(c.size) == tuple(s.size), name
         assert rel_l2(c.data, s.data) <= REL_TOL, name
+
+
+@pytest.mark.oracle
+@pytest.mark.parametrize("scenario", list(SCENARIOS))
+def test_stored_reference_through_roles_matches_the_computed_one(scenario):
+    """the stored reference read in Python's form and mapped back by the scenario's out roles
+    agrees with the oracle tree's scenario (class, size, relative L2 error <= 1e-4): the path
+    an area task's results take"""
+    _need_harness()
+    _need_tree()
+    from petakit5d.core import arrays
+    from petakit5d.testing.cases import out_to_matlab
+
+    computed = _oracle.reference(GOLDEN_CASES[f"golden.{scenario}.compute"])
+    if computed.source != "store":
+        pytest.skip("needs the golden store (the manifests hold hashes only)")
+    zyx = load_stored_zyx(scenario)
+    for name, role, a, c in zip(
+        SCENARIOS[scenario]["outputs"], ROLES[scenario], zyx, computed.outputs, strict=True
+    ):
+        if role == "vol":
+            assert a.flags.c_contiguous and a.shape == arrays.size_from_matlab(c.size), name
+        m = np.asarray(out_to_matlab(role, a))
+        assert m.dtype == _DTYPES[c.mclass], name
+        assert m.shape == tuple(c.size), name
+        assert rel_l2(m, c.data) <= REL_TOL, name

@@ -19,6 +19,8 @@ and ``compare_trees`` compare and explain. Formats and rules: ``python/docs/test
 from __future__ import annotations
 
 import base64
+import contextlib
+import contextvars
 import dataclasses
 import fnmatch
 import hashlib
@@ -95,6 +97,52 @@ def size_text(size: Sequence[int]) -> str:
 def subscripts(index: int, size: Sequence[int]) -> tuple[int, ...]:
     """MATLAB subscripts (1-based) of a 0-based column-major index"""
     return tuple(int(i) + 1 for i in np.unravel_index(int(index), tuple(size), order="F"))
+
+
+# what the value being compared is: "vol" for an image array that Python holds as (z, y, x)
+# (an output with out role 'vol', a zarr in Python's layout); set with ``layout(kind)``
+_LAYOUT: contextvars.ContextVar[str | None] = contextvars.ContextVar("pk5d_layout", default=None)
+
+
+@contextlib.contextmanager
+def layout(kind: str | None) -> Iterator[None]:
+    """compare values of this kind ("vol": diff reports give (z, y, x) indices too)"""
+    tok = _LAYOUT.set(kind)
+    try:
+        yield
+    finally:
+        _LAYOUT.reset(tok)
+
+
+def _perm_from_matlab(n: int) -> tuple[int, ...]:
+    # MATLAB (y, x, z, d4, ..., dn) -> ours (dn, ..., d4, z, y, x), as core.arrays.from_matlab
+    return (*range(n - 1, 1, -1), 0, 1) if n >= 2 else tuple(range(n))
+
+
+def _perm_to_matlab(n: int) -> tuple[int, ...]:
+    # ours (dn, ..., d4, z, y, x) -> MATLAB (y, x, z, d4, ..., dn), as core.arrays.to_matlab
+    return (n - 2, n - 1, *range(n - 3, -1, -1)) if n >= 2 else tuple(range(n))
+
+
+def zyx_text(sub: Sequence[int]) -> str:
+    """the 0-based index in Python's form of MATLAB's 1-based subscripts ``sub`` (an array of
+    3 or more dimensions, or any image while comparing a volume), else ''"""
+    n = len(sub)
+    if n < 2 or (n == 2 and _LAYOUT.get() != "vol"):
+        return ""
+    p = [int(v) - 1 for v in sub]
+    if n == 2:
+        return f"(y, x) ({p[0]}, {p[1]})"
+    names = [f"d{k + 1}" for k in range(n - 1, 2, -1)] + ["z", "y", "x"]
+    vals = p[2:][::-1] + [p[0], p[1]]
+    return f"({', '.join(names)}) ({', '.join(map(str, vals))})"
+
+
+def _at(i: int, size: Sequence[int]) -> str:
+    """MATLAB's subscripts of a 0-based column-major index, with Python's index where it differs"""
+    sub = subscripts(i, size)
+    z = zyx_text(sub)
+    return f"({','.join(map(str, sub))})" + (f" = {z}" if z else "")
 
 
 def _sha(*parts: bytes | str) -> hashlib._Hash:
@@ -1602,11 +1650,35 @@ def _sub_text(i: int, size: Sequence[int]) -> str:
     return ",".join(str(s) for s in subscripts(i, size))
 
 
+MISSING_MAP = (
+    "Python's result is MATLAB's in (z, y, x) form: a volume not mapped back to MATLAB's "
+    "(out role 'vol' missing, or to_matlab left out of py_out)?"
+)
+DOUBLE_MAP = (
+    "Python's result is MATLAB's mapped once more (to_matlab of MATLAB's (y, x, z) array): a "
+    "volume mapped twice (out role 'vol' and to_matlab in py_out), or a (y, x, z) argument "
+    "without its Vol role?"
+)
+YX_SWAP = (
+    "Python's result is MATLAB's with y and x swapped (dimensions 1 and 2): x and y exchanged "
+    "in an index, a per-axis vector or a transpose?"
+)
+
+
 def _size_hint(rs: Sequence[int], as_: Sequence[int]) -> str:
-    if sorted(rs) == sorted(as_) and len(rs) == len(as_):
+    rs, as_ = tuple(rs), tuple(as_)
+    if sorted(rs) == sorted(as_) and len(rs) == len(as_) and rs != as_:
+        n = len(rs)
+        named = ""
+        if n >= 3 and as_ == tuple(rs[i] for i in _perm_from_matlab(n)):
+            named = MISSING_MAP
+        elif n >= 3 and as_ == tuple(rs[i] for i in _perm_to_matlab(n)):
+            named = DOUBLE_MAP
+        elif n >= 2 and min(rs[:2]) > 1 and as_ == (rs[1], rs[0], *rs[2:]):
+            named = YX_SWAP
         return (
             "the sizes are a permutation of each other: axes in another order ((y, x, z) is "
-            "MATLAB's)?"
+            "MATLAB's)?" + (f" {named}" if named else "")
         )
     if len(rs) == len(as_):
         d = [b - a for a, b in zip(rs, as_, strict=True)]
@@ -1809,15 +1881,12 @@ def _value_details(r: MArray, a: MArray, rf, af, neq, nd, spec) -> tuple[list[st
     ]
     i0 = int(idx[0])
     lines.append(
-        f"first difference at index {i0} (0-based, column-major) = MATLAB "
-        f"({','.join(map(str, subscripts(i0, r.size)))}): "
+        f"first difference at index {i0} (0-based, column-major) = MATLAB {_at(i0, r.size)}: "
         f"MATLAB {_fmt(rv[0], cls)}, Python {_fmt(av[0], cls)}"
     )
     if nd > 1:
         more = ", ".join(
-            f"({','.join(map(str, subscripts(int(j), r.size)))}) {_fmt(rf[j], cls)} vs "
-            f"{_fmt(af[j], cls)}"
-            for j in idx[1:5]
+            f"{_at(int(j), r.size)} {_fmt(rf[j], cls)} vs {_fmt(af[j], cls)}" for j in idx[1:5]
         )
         lines.append(f"next: {more}" + (" ..." if nd > 5 else ""))
     within = False
@@ -1857,7 +1926,7 @@ def _value_details(r: MArray, a: MArray, rf, af, neq, nd, spec) -> tuple[list[st
         k = int(np.argmax(absd))
         j = int(idx[k])
         lines.append(
-            f"largest |difference| {absd[k]:.6g} at ({','.join(map(str, subscripts(j, r.size)))}): "
+            f"largest |difference| {absd[k]:.6g} at {_at(j, r.size)}: "
             f"MATLAB {_fmt(rf[j], cls)}, Python {_fmt(af[j], cls)}"
         )
         with np.errstate(divide="ignore", invalid="ignore"):
@@ -1940,12 +2009,34 @@ def _sum_sq(f: np.ndarray, chunk: int = 1 << 23) -> float:
     return s
 
 
-def _layout_hints(r: np.ndarray, a: np.ndarray) -> list[str]:
-    """explanations for values in the wrong place: order, permutation, shift, offset"""
-    out: list[str] = []
-    nd = r.ndim
+def _mapping_hints(r: np.ndarray, a: np.ndarray) -> list[str]:
+    """the mapping's mistakes that explain Python's array from MATLAB's: not mapped back,
+    mapped twice (or an argument without its role), y and x swapped"""
+    out = []
+    n = r.ndim
     if r.size < 2:
         return out
+    tests = []
+    if n >= 3:
+        tests += [(_perm_from_matlab(n), MISSING_MAP), (_perm_to_matlab(n), DOUBLE_MAP)]
+    if n >= 2 and r.shape[0] > 1 and r.shape[1] > 1:
+        tests.append(((1, 0, *range(2, n)), YX_SWAP))
+    for perm, text in tests:
+        t = np.transpose(r, perm)
+        if t.shape != a.shape or (t.shape == r.shape and _bits_equal(t, r)):
+            continue
+        if _bits_equal(t, a):
+            out.append(text)
+    return out
+
+
+def _layout_hints(r: np.ndarray, a: np.ndarray) -> list[str]:
+    """explanations for values in the wrong place: the mapping, order, permutation, shift,
+    offset"""
+    nd = r.ndim
+    if r.size < 2:
+        return []
+    out: list[str] = _mapping_hints(r, a)
     rc = r.reshape(-1, order="F").reshape(r.shape, order="C")
     if not _bits_equal(rc, r) and _bits_equal(a, rc):
         out.append(
@@ -1992,6 +2083,7 @@ def _layout_hints(r: np.ndarray, a: np.ndarray) -> list[str]:
 def _size_data_hints(r: np.ndarray, a: np.ndarray) -> list[str]:
     out = []
     if r.ndim == a.ndim and sorted(r.shape) == sorted(a.shape):
+        out += [f"hint: {h} (the values agree)" for h in _mapping_hints(r, a)]
         for p in itertools.permutations(range(r.ndim)):
             if tuple(r.shape[i] for i in p) == a.shape and _bits_equal(np.transpose(r, p), a):
                 out.append(
@@ -2459,6 +2551,21 @@ class _Side:
         fn = _read_tiff if self.it.kind == "tiff" else _read_zarr
         return self._get("vox", lambda: fn(self.it.path))
 
+    def voxels_to_matlab(self) -> MValue:
+        """the voxels of a zarr in Python's layout ((..., z, y, x)) as MATLAB's (y, x, z, ...)"""
+        if not self.has_file:
+            return self.voxels()
+
+        def load():
+            import cppzarr
+
+            x = np.asarray(cppzarr.read_zarr(str(self.it.path)))
+            if x.ndim >= 2:
+                x = np.transpose(x, _perm_to_matlab(x.ndim))
+            return _array_from_numpy(x if x.ndim >= 2 else x.reshape(1, -1))
+
+        return self._get("voxm", load)
+
     def mat(self) -> MValue:
         if not self.has_file:
             return from_descriptor(self.d("vars"))
@@ -2603,6 +2710,10 @@ def _cmp_file(r: _Side, a: _Side, vspec: Spec, spec: TreeSpec, path: str, rep: R
         return
     if rk == "zarr":
         rmeta, ameta = r.zarr_meta(), a.zarr_meta()
+        rz, az = _zarray_of(rmeta), _zarray_of(ameta)
+        if rz is not None and az is not None and rz.get("order") == "F" and az.get("order") == "C":
+            _cmp_zarr_layouts(r, a, rz, az, vspec, spec, path, rep)
+            return
         for k in sorted(set(rmeta) | set(ameta)):
             if rmeta.get(k) != ameta.get(k):
                 rep.add(f"{path}/{k}", "meta", _text_diff(rmeta.get(k), ameta.get(k)))
@@ -2669,6 +2780,92 @@ def _cmp_file(r: _Side, a: _Side, vspec: Spec, spec: TreeSpec, path: str, rep: R
         return
     if r.sha() != a.sha():
         rep.add(path, "bytes", f"bytes differ: MATLAB {r.sha()[:16]}, Python {a.sha()[:16]}")
+
+
+def _zarray_of(meta: Mapping[str, str]) -> dict | None:
+    """the array's .zarray (zarr v2) as a dict, or None"""
+    t = meta.get(".zarray")
+    if t is None:
+        return None
+    try:
+        d = json.loads(t)
+    except ValueError:
+        return None
+    return d if isinstance(d, dict) and isinstance(d.get("shape"), list) else None
+
+
+def zarray_to_matlab(z: Mapping[str, Any]) -> dict:
+    """a .zarray of Python's layout (order C, shape and chunks (..., z, y, x)) as MATLAB's
+    (order F, (y, x, z, ...)): what MATLAB writes for the same array"""
+    out = dict(z)
+    n = len(z["shape"])
+    perm = _perm_to_matlab(n)
+    out["shape"] = [z["shape"][i] for i in perm]
+    if isinstance(z.get("chunks"), list) and len(z["chunks"]) == n:
+        out["chunks"] = [z["chunks"][i] for i in perm]
+    out["order"] = "F"
+    return out
+
+
+def _chunk_names_to_matlab(names: list[str], n: int, sep: str) -> list[str]:
+    perm = _perm_to_matlab(n)
+    out = []
+    for nm in names:
+        parts = nm.split("/" if sep == "/" else ".")
+        if len(parts) == n and all(x.isdigit() for x in parts):
+            nm = (sep or ".").join(parts[i] for i in perm)
+        out.append(nm)
+    return sorted(out)
+
+
+def _cmp_zarr_layouts(
+    r: _Side, a: _Side, rz: dict, az: dict, vspec: Spec, spec: TreeSpec, path: str, rep: Report
+) -> None:
+    """MATLAB's zarr (order F, (y, x, z)) against Python's native one (order C, (z, y, x)):
+    .zarray modulo the permutation of shape and chunks and the order flag, the voxels after
+    the mapping (core.arrays.to_matlab)"""
+    rep.note(
+        path,
+        "Python's zarr is in Python's layout (order C, (z, y, x)), MATLAB's in its own (order F, "
+        "(y, x, z)): .zarray and voxels compared after the mapping",
+    )
+    mz = zarray_to_matlab(az)
+    for k in sorted(set(rz) | set(mz)):
+        if rz.get(k) == mz.get(k):
+            continue
+        lines = [f"{k}: MATLAB {json.dumps(rz.get(k))}, Python {json.dumps(az.get(k))}"]
+        if k in ("shape", "chunks"):
+            lines[0] += f" (in MATLAB's axes {json.dumps(mz.get(k))})"
+            if az.get(k) == rz.get(k):
+                lines.append(
+                    f"hint: Python wrote MATLAB's (y, x, z) {k} with order C: a volume written "
+                    "without its mapping (from_matlab)?"
+                )
+        rep.add(f"{path}/.zarray", "meta", *lines)
+    rmeta, ameta = r.zarr_meta(), a.zarr_meta()
+    for k in sorted((set(rmeta) | set(ameta)) - {".zarray"}):
+        if rmeta.get(k) != ameta.get(k):
+            rep.add(f"{path}/{k}", "meta", _text_diff(rmeta.get(k), ameta.get(k)))
+    n = len(az["shape"])
+    rc, ac = r.chunk_names(), a.chunk_names()
+    if rc is not None and ac is not None:
+        sep = az.get("dimension_separator", ".") or "."
+        mapped = _chunk_names_to_matlab(ac, n, sep)
+        rsep = rz.get("dimension_separator", ".") or "."
+        rmapped = sorted(nm if sep == rsep else nm.replace(rsep, sep) for nm in rc)
+        if mapped != rmapped:
+            line = (
+                f"chunk files differ after the mapping: MATLAB {len(rc)}, Python {len(ac)}"
+                f" (only MATLAB: {sorted(set(rmapped) - set(mapped))[:5]}; only Python: "
+                f"{sorted(set(mapped) - set(rmapped))[:5]})"
+            )
+            if spec.zarr_chunks == "strict":
+                rep.add(path, "layout", line)
+            else:
+                rep.note(path, line + "; zarr is compared by decoded data")
+    av = a.voxels_to_matlab()
+    with layout("vol"):
+        _cmp(r.voxels(), av, vspec, path + " (voxels)", rep)
 
 
 def _drop_json(x: Any, name: str) -> Any:

@@ -54,9 +54,9 @@ def test_matches_matlab(c, tmp_path):
     inputs = {k: mk() for k, mk in c.inputs.items()}
     if ref["kind"] == "error":
         with pytest.raises(Exception):  # noqa: B017 (MATLAB errors; the Python error type is the port's)
-            c.python(**inputs)
+            c.run_python(inputs)
         return
-    got = _oracle.entry_of_python(c.kind, c.python(**inputs))
+    got = _oracle.entry_of_python(c.kind, c.run_python(inputs))
     assert _oracle.same(ref, got), _oracle.describe(ref, got)
 
 

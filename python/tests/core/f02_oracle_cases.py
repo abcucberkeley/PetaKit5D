@@ -35,13 +35,27 @@ class OCase:
     inputs: dict[str, Callable[[], Any]] = dataclasses.field(default_factory=dict)
     kind: str = "array"  # array | list | text
     setup: str = ""  # 'tree': inputs include a file tree; the callable gets its root
+    # roles (petakit5d.testing.cases): the inputs are MATLAB's; roles[name] ('vol', 'box', ...)
+    # gives the Python callable an input in Python's form, out_role maps its result back
+    roles: dict[str, str] = dataclasses.field(default_factory=dict)
+    out_role: Any = None
+
+    def run_python(self, inputs: dict[str, Any]) -> Any:
+        """the Python side: inputs through their roles, the result through out_role"""
+        from petakit5d.testing.cases import Role, out_to_matlab, role_to_python
+
+        args = {
+            k: role_to_python(Role(self.roles[k], v), v) if k in self.roles else v
+            for k, v in inputs.items()
+        }
+        return out_to_matlab(self.out_role, self.python(**args))
 
 
 CASES: list[OCase] = []
 
 
-def case(id, matlab, python, kind="array", setup="", **inputs):
-    CASES.append(OCase(id, matlab, python, inputs, kind, setup))
+def case(id, matlab, python, kind="array", setup="", roles=None, out_role=None, **inputs):
+    CASES.append(OCase(id, matlab, python, inputs, kind, setup, dict(roles or {}), out_role))
 
 
 # -- conversions -------------------------------------------------------------------------------
@@ -1297,8 +1311,9 @@ case(
 )
 
 # -- F12: the mapping between MATLAB's arrays and ours ----------------------------------------
-# Inputs are MATLAB-form arrays (NumPy shape = MATLAB size); the Python side maps them with
-# core.arrays and, where the result is one of our arrays, maps it back for the comparison.
+# Inputs are MATLAB-form arrays (NumPy shape = MATLAB size); their role 'vol' gives the Python
+# side our (z, y, x) arrays, and out_role 'vol' maps a result that is one of our arrays back for
+# the comparison (the MATLAB snippets and references are unchanged).
 
 F12_CLASSES = (
     "double",
@@ -1347,13 +1362,15 @@ for _cls in F12_CLASSES:
         case(
             f"f12.permute.{_cls}.{_nd}",
             "out = permute(a, [ndims(a):-1:3, 1, 2]);",
-            lambda a: arrays.from_matlab(a),
+            lambda a: a,  # MATLAB's permute is our array itself
+            roles={"a": "vol"},
             a=_mk,
         )
     case(
         f"f12.colon.{_cls}",
         "out = a(:);",
-        lambda a: arrays.matlab_order(arrays.from_matlab(a)).reshape(-1),
+        lambda a: arrays.matlab_order(a).reshape(-1),
+        roles={"a": "vol"},
         a=(lambda c=_cls: f12_array(c, F12_SHAPES["4d"], SEED + 21)),
     )
 
@@ -1377,14 +1394,18 @@ for _k, (_sa, _sb) in enumerate(F12_PAIRS):
     case(
         f"f12.broadcast.{_k:02d}.plus",
         "out = pkpy_f02_arith(a, b, 'plus');",
-        lambda a, b: arrays.to_matlab(dtypes.plus(arrays.from_matlab(a), arrays.from_matlab(b))),
+        lambda a, b: dtypes.plus(a, b),
+        roles={"a": "vol", "b": "vol"},
+        out_role="vol",
         a=_ma,
         b=_mb,
     )
     case(
         f"f12.broadcast.{_k:02d}.numpy_times",
         "out = a .* b;",
-        lambda a, b: arrays.to_matlab(arrays.from_matlab(a) * arrays.from_matlab(b)),
+        lambda a, b: a * b,
+        roles={"a": "vol", "b": "vol"},
+        out_role="vol",
         a=_ma,
         b=_mb,
     )
@@ -1393,7 +1414,9 @@ for _k in (0, 3, 7):
     case(
         f"f12.broadcast.{_k:02d}.single_double",
         "out = pkpy_f02_arith(a, b, 'times');",
-        lambda a, b: arrays.to_matlab(dtypes.times(arrays.from_matlab(a), arrays.from_matlab(b))),
+        lambda a, b: dtypes.times(a, b),
+        roles={"a": "vol", "b": "vol"},
+        out_role="vol",
         a=(lambda sh=_sa: f12_array("single", sh, SEED + 24)),
         b=(lambda sh=_sb: f12_array("double", sh, SEED + 25)),
     )

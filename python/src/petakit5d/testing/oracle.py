@@ -40,7 +40,17 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
-from petakit5d.testing.cases import FORMAT, Case, Data, File, PyResult, Tree, Value
+from petakit5d.testing.cases import (
+    FORMAT,
+    Case,
+    Data,
+    File,
+    PyResult,
+    Tree,
+    Value,
+    role_hints,
+    role_kind,
+)
 from petakit5d.testing.compare import (
     NO_MASKS,
     FileTree,
@@ -52,6 +62,7 @@ from petakit5d.testing.compare import (
     describe,
     describe_tree,
     from_descriptor,
+    layout,
     mask_value,
     read_pkv,
     scan_tree,
@@ -521,6 +532,7 @@ def compare_case(case: Case, ref: Reference, res: PyResult) -> Report:
             )
         else:
             names = case.output_names()
+            roles = list(case.out_roles) if case.out_roles is not None else [None] * len(names)
             for i, name in enumerate(names):
                 r = mask_value(ref.outputs[i], rm) if ref.source == "store" else ref.outputs[i]
                 try:
@@ -528,7 +540,16 @@ def compare_case(case: Case, ref: Reference, res: PyResult) -> Report:
                 except (TypeError, ValueError) as e:
                     rep.add(name, "kind", f"the Python value cannot be read as a MATLAB value: {e}")
                     continue
-                _cmp(r, a, case.spec_for(i), name, rep)
+                sub = Report()
+                with layout("vol" if role_kind(roles[i]) == "vol" else None):
+                    _cmp(r, a, case.spec_for(i), name, sub)
+                if sub.problems:
+                    try:
+                        hints = role_hints(case, roles[i], r, a)
+                    except Exception:  # a hint never stops a report
+                        hints = []
+                    sub.problems[0].lines.extend(f"hint: {h}" for h in hints)
+                rep.extend(sub)
     if case.captures_files and ref.files is not None and res.files is not None:
         rep.extend(compare_trees(ref.files, res.files, case.tree, ref_masks=rm, act_masks=am))
     if case.warnings == "ids":

@@ -19,15 +19,20 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+from petakit5d.core import bbox
 from petakit5d.testing import oracle
 from petakit5d.testing.cases import (
     FORMAT,
+    Box,
     Case,
+    Dim,
     File,
     In,
     InPath,
+    Role,
     Tree,
     Value,
+    Vol,
     Work,
     changed_files,
     mcell,
@@ -47,6 +52,7 @@ from petakit5d.testing.compare import (
     read_pkv,
     to_mvalue,
     tol,
+    tree,
     vhash,
     write_pkv,
 )
@@ -101,12 +107,16 @@ ROUND_TRIP = {
     "struct_literal": lambda: mstruct(x=1.5, y="z"),
 }
 
+# image arrays go to Python as (z, y, x) and come back mapped (roles; the keys are as before)
+VOLUMES = {"single_4d", "uint16_3d_odd", "empty_1x0x2_single"}
+
 CASES = [
     Case(
         f"identity_{name}",
         matlab="pkpy_oracle.selftest.identity",
-        args=[In("x")],
+        args=[Vol(In("x")) if name in VOLUMES else In("x")],
         python=lambda x: x,
+        out_roles=("vol",) if name in VOLUMES else None,
         inputs={"x": Value(make)},
     )
     for name, make in ROUND_TRIP.items()
@@ -176,57 +186,66 @@ CASES.append(
 # --- array functions (PetaKit5D mex and MATLAB built-ins) ----------------------------------------
 
 
-def py_crop(a, bbox):
-    b = [int(x) for x in bbox]
-    return a[b[0] - 1 : b[3], b[1] - 1 : b[4], b[2] - 1 : b[5]]
+def py_crop(a, box):
+    """a (z, y, x) volume cropped to a Python box"""
+    return a[bbox.box_slices(box)]
 
 
-def py_sort3(x):
-    i = np.argsort(x, axis=2, kind="stable")
-    return np.take_along_axis(x, i, axis=2), (i + 1).astype(np.float64)
+def py_sort(x, axis):
+    """sorted along an axis, and the 0-based places (the out role makes them MATLAB's)"""
+    i = np.argsort(x, axis=axis, kind="stable")
+    return np.take_along_axis(x, i, axis=axis), i.astype(np.float64)
 
 
-def py_max3(x):
-    i = np.argmax(x, axis=2)
-    return x.max(axis=2), (i + 1).astype(np.float64)
+def py_max_z(x):
+    """the maximum along z (an image) and its first 0-based z"""
+    return x.max(axis=0), np.argmax(x, axis=0).astype(np.float64)
+
+
+INDEX = ["index1", "vol"]  # 0-based places along an axis, as MATLAB's 1-based ones
 
 
 CASES += [
     Case(
         "crop3d_mex_uint16",
         matlab="crop3d_mex",
-        args=[In("im"), [2, 3, 1, 9, 10, 7]],
+        args=[Vol(In("im")), Box([2, 3, 1, 9, 10, 7])],
         python=py_crop,
+        out_roles=("vol",),
         inputs={"im": Value(lambda: vol((10, 12, 8), np.uint16, 1))},
     ),
     Case(
         "crop3d_mex_single",
         matlab="crop3d_mex",
-        args=[In("im"), [1, 1, 2, 5, 3, 3]],
+        args=[Vol(In("im")), Box([1, 1, 2, 5, 3, 3])],
         python=py_crop,
+        out_roles=("vol",),
         inputs={"im": Value(lambda: vol((5, 3, 4), np.float32, 2))},
     ),
     Case(
         "cumsum_dim2_double",
         matlab="cumsum",
-        args=[In("x"), 2],
-        python=lambda x, d: np.cumsum(x, axis=d - 1),
+        args=[Vol(In("x")), Dim(2)],
+        python=lambda x, axis: np.cumsum(x, axis=axis),
+        out_roles=("vol",),
         inputs={"x": Value(lambda: vol((6, 50, 3), np.float64, 5) / 7)},
     ),
     Case(
         "sort_dim3_single",
         matlab="sort",
-        args=[In("x"), 3],
+        args=[Vol(In("x")), Dim(3)],
         nargout=2,
-        python=lambda x, d: py_sort3(x),
+        python=py_sort,
+        out_roles=("vol", INDEX),
         inputs={"x": Value(lambda: vol((4, 5, 9), np.float32, 6) % 13)},
     ),
     Case(
         "max_dim3_uint16_ties",
         code="[m, i] = max(in{1}, [], 3); out = {m, i};",
         nargout=2,
-        args=[In("x")],
-        python=py_max3,
+        args=[Vol(In("x"))],
+        python=py_max_z,
+        out_roles=("vol", INDEX),
         inputs={"x": Value(lambda: vol((4, 5, 9), np.uint16, 7) % 5)},
     ),
     Case(
@@ -440,14 +459,58 @@ CASES += [
     ),
 ]
 
+# --- a zarr MATLAB writes in its layout (order F, (y, x, z)), Python in its own (order C) ---------
+
+
+def py_write_native_zarr(p, path, plane_transposed=None):
+    """a (z, y, x) volume as a native zarr: order C, shape and chunks (z, y, x)"""
+    import cppzarr
+
+    if plane_transposed is not None:
+        p = p.copy()
+        p[plane_transposed] = p[plane_transposed].T
+    cppzarr.write_zarr(path, p, chunks=[2, 4, 4], order="C", dimension_separator=".")
+
+
+ZARR_CASE = Case(
+    "zarr_native_against_matlabs",
+    code="writezarr(in{1}, in{2}, 'blockSize', [4, 4, 2]); out = {};",
+    nargout=0,
+    args=[Vol(In("x")), Work("a.zarr")],
+    python=py_write_native_zarr,
+    inputs={"x": Value(lambda: vol((8, 8, 5), np.uint16, 12))},
+    tree=tree(zarr_chunks="strict"),
+)
+CASES.append(ZARR_CASE)
+
+
+def test_one_transposed_plane_against_matlabs_zarr(tmp_path):
+    """MATLAB's zarr and Python's native one of the same data are equal (the case above); with
+    one z plane transposed they are not, and the report names the voxel in both forms"""
+    ref = oracle.reference(ZARR_CASE)
+    bad = Case(
+        "zarr_plane_transposed",
+        code=ZARR_CASE.code,
+        nargout=0,
+        args=ZARR_CASE.args,
+        python=lambda p, path: py_write_native_zarr(p, path, plane_transposed=3),
+        inputs=ZARR_CASE.inputs,
+        tree=ZARR_CASE.tree,
+    )
+    rep = oracle.compare_case(bad, ref, bad.run_python(tmp_path))
+    text = rep.text()
+    assert "a.zarr (voxels): values" in text and "= (z, y, x) (3," in text, text
+
+
 # --- 100 small cases (harness overhead per case) -------------------------------------------------
 
 SMALL = [
     Case(
         f"small_plus_{i:03d}",
         matlab="plus",
-        args=[In("a"), In("b")],
+        args=[Vol(In("a")), Vol(In("b"))],
         python=np.add,
+        out_roles=("vol",),
         inputs={
             "a": Value(lambda i=i: vol((8, 9, 3), np.float64, i) / 3),
             "b": Value(lambda i=i: vol((8, 9, 3), np.float64, i + 1000) / 7),
@@ -463,8 +526,9 @@ CASES.append(
     Case(
         "gpu_times_two",
         code="out = {gather(gpuArray(in{1}) * 2)};",
-        args=[In("x")],
+        args=[Vol(In("x"))],
         python=lambda x: x * 2,
+        out_roles=("vol",),
         device="gpu",
         inputs={"x": Value(lambda: vol((16, 16, 4), np.float32, 11))},
     )
@@ -474,6 +538,22 @@ CASES.append(
 @oracle.parametrize(CASES)
 def test_matlab(case, tmp_path):
     oracle.check(case, tmp_path)
+
+
+def test_the_keys_of_cases_moved_to_roles_are_their_references():
+    """the cases above that got roles keep their keys: each is the key its committed reference
+    was made with, and with the golden store (cluster) the result is there"""
+    with_roles = [
+        c for c in CASES if c.out_roles is not None or any(isinstance(a, Role) for a in c.args)
+    ]
+    assert len(with_roles) >= 50
+    refs = json.loads(ORACLE_MANIFEST.read_text())["cases"]
+    for c in with_roles:
+        assert refs[c.id]["key"] == c.key(), c.id
+    store = oracle.Store.from_env()
+    if store is not None:
+        missing = [c.id for c in with_roles if not store.has(c.key())]
+        assert not missing, missing
 
 
 # --- harness logic (no MATLAB) -------------------------------------------------------------------

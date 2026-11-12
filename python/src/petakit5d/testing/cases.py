@@ -12,6 +12,12 @@ Placeholders in arguments: ``In(name)`` (the value of a ``Value`` input), ``InPa
 path of a ``File``, ``Tree`` or ``Data`` input in the case's work folder) and ``Work(sub)``
 (the work folder, with a trailing slash). Both sides run in a fresh work folder; the files a
 call writes there (new or changed) are its file output.
+
+Roles: arguments are written as MATLAB takes them; a role says what one means, and the Python
+call gets it in Python's form (``Vol``: a ``(y, x, z)`` array as ``(z, y, x)``; ``Box``: a
+1-based inclusive box as ``(z0, y0, x0, z1, y1, x1)``; ``PerAxis``, ``Index1``, ``Range1``,
+``Dim``, ``LinIndex``). ``out_roles`` map Python's results back to MATLAB's form before they
+are compared and hashed. Roles change neither the case key nor MATLAB's arguments.
 """
 
 from __future__ import annotations
@@ -75,6 +81,344 @@ def InPath(name: str) -> MPlaceholder:
 def Work(sub: str = "") -> MPlaceholder:
     """the case's work folder with a trailing '/', followed by ``sub``"""
     return MPlaceholder("work", "", sub)
+
+
+# ---------------------------------------------------------------------------------------------
+# roles: what a MATLAB argument means, so that Python gets it in Python's form
+# ---------------------------------------------------------------------------------------------
+
+ROLE_KINDS = ("vol", "box", "peraxis", "index1", "range1", "dim", "linindex")
+OUT_KINDS = ("vol", "box", "boxes", "yxz", "xyz", "index1", "range1", "dim", "linindex", "each")
+
+
+class Role:
+    """a MATLAB argument (as MATLAB takes it) with its meaning; MATLAB and the case key see the
+    value, the Python call the value in Python's form"""
+
+    __slots__ = ("kind", "value", "param")
+
+    def __init__(self, kind: str, value: Any, param: Any = None):
+        if kind not in ROLE_KINDS:
+            raise ValueError(f"unknown role {kind!r}")
+        self.kind, self.value, self.param = kind, value, param
+
+    def __repr__(self) -> str:
+        name = {
+            "vol": "Vol",
+            "box": "Box",
+            "peraxis": "PerAxis",
+            "index1": "Index1",
+            "range1": "Range1",
+            "dim": "Dim",
+            "linindex": "LinIndex",
+        }[self.kind]
+        extra = "" if self.param is None else f", {self.param!r}"
+        return f"{name}({self.value!r}{extra})"
+
+
+def Vol(x: Any) -> Role:
+    """an image array, MATLAB's ``(y, x, z, ...)``; Python gets ``(..., z, y, x)``
+    (``arrays.from_matlab``)"""
+    return Role("vol", x)
+
+
+def Box(x: Any) -> Role:
+    """MATLAB's ``[ymin xmin zmin ymax xmax zmax]`` (1-based, inclusive; 2D ``[ymin xmin ymax
+    xmax]``); Python gets ``(z0, y0, x0, z1, y1, x1)`` (``bbox.box_from_matlab``)"""
+    return Role("box", x)
+
+
+def PerAxis(x: Any, order: str = "yxz") -> Role:
+    """a per-axis vector in MATLAB's ``[y x z]`` (``'yxz'``) or ``[x y z]`` (``'xyz'``) order;
+    Python gets ``(z, y, x)`` (``axes.from_yxz`` / ``from_xyz``)"""
+    if order not in ("yxz", "xyz"):
+        raise ValueError(f"PerAxis order is 'yxz' or 'xyz', got {order!r}")
+    return Role("peraxis", x, order)
+
+
+def Index1(x: Any) -> Role:
+    """a 1-based index (or indices); Python gets them 0-based"""
+    return Role("index1", x)
+
+
+def Range1(x: Any) -> Role:
+    """MATLAB's ``[first last]`` (1-based, inclusive); Python gets ``(start, stop)``"""
+    return Role("range1", x)
+
+
+def Dim(x: Any, ndim: int | None = None) -> Role:
+    """MATLAB's dimension (1: y, 2: x, 3: z); Python gets the NumPy axis (``axes.dim_to_axis``;
+    negative unless ``ndim`` is given)"""
+    return Role("dim", x, ndim)
+
+
+def LinIndex(x: Any, size: Any) -> Role:
+    """MATLAB's 1-based linear index (or indices) into an array of MATLAB size ``size`` (a size,
+    or ``In(name)`` / the name of a ``Value`` input); Python gets the ``(z, y, x)`` index
+    tuple (``arrays.matlab_index_to_zyx``)"""
+    return Role("linindex", x, size)
+
+
+def _strip_roles(x: Any) -> Any:
+    """the arguments as MATLAB takes them (roles removed; a container without roles is
+    returned as it is, so that its reading as a MATLAB value cannot change)"""
+    if isinstance(x, Role):
+        return _strip_roles(x.value)
+    if type(x) in (list, tuple):
+        items = [_strip_roles(y) for y in x]
+        if all(a is b for a, b in zip(items, x, strict=True)):
+            return x
+        return items if type(x) is list else tuple(items)
+    if type(x) is dict:
+        items = {k: _strip_roles(y) for k, y in x.items()}
+        return x if all(items[k] is y for k, y in x.items()) else items
+    return x
+
+
+def _plain(v: Any) -> Any:
+    """a value for the conversions: a MATLAB array as its data"""
+    if isinstance(v, MArray):
+        return v.data
+    return v
+
+
+def _as_int(v: Any) -> Any:
+    a = np.asarray(_plain(v))
+    if a.dtype.kind == "f":
+        if not np.all(a == np.trunc(a)):
+            raise ValueError(f"an index must be integral, got {v!r}")
+        a = a.astype(np.int64)
+    return int(a) if a.ndim == 0 else a
+
+
+def _shift(v: Any, d: int) -> Any:
+    """MATLAB's indices as integers moved by d, keeping the container (list, tuple or array)"""
+    if isinstance(v, (list, tuple)):
+        return type(v)(_shift(x, d) for x in v)
+    return _as_int(v) + d
+
+
+def _shift_keep(v: Any, d: int) -> Any:
+    """Python's indices moved by d, keeping the container and an array's class (a float array
+    of places stays float, as MATLAB's double indices)"""
+    if isinstance(v, (list, tuple)):
+        return type(v)(_shift_keep(x, d) for x in v)
+    if isinstance(v, (np.ndarray, np.generic)):
+        return v + np.asarray(d, dtype=v.dtype)
+    return v + d
+
+
+class _Sizes:
+    """the MATLAB size a LinIndex role or output refers to"""
+
+    def __init__(self, case: Case):
+        self.case = case
+
+    def __call__(self, param: Any) -> tuple[int, ...]:
+        if isinstance(param, MPlaceholder):
+            param = param.name
+        if isinstance(param, str):
+            x = self.case.inputs.get(param)
+            if not isinstance(x, Value):
+                raise ValueError(
+                    f"case {self.case.id}: LinIndex size {param!r} names no Value input"
+                )
+            return tuple(x.mvalue().size)
+        return tuple(int(n) for n in np.asarray(_plain(param)).ravel())
+
+
+def role_to_python(role: Role, v: Any, sizes: Callable[[Any], tuple] | None = None) -> Any:
+    """a MATLAB argument value in Python's form, as its role says"""
+    from petakit5d.core import arrays, axes, bbox
+
+    k = role.kind
+    if k == "vol":
+        return arrays.from_matlab(np.asarray(_plain(v)))
+    if k == "box":
+        return bbox.box_from_matlab(_plain(v))
+    if k == "peraxis":
+        f = axes.from_yxz if role.param == "yxz" else axes.from_xyz
+        return f(_plain(v))
+    if k == "index1":
+        return _shift(v, -1)
+    if k == "range1":
+        return bbox.range_from_matlab(_plain(v))
+    if k == "dim":
+        return axes.dim_to_axis(int(_as_int(v)), role.param)
+    if k == "linindex":
+        size = sizes(role.param) if sizes is not None else tuple(role.param)
+        return arrays.matlab_index_to_zyx(np.asarray(_as_int(v)) - 1, arrays.size_from_matlab(size))
+    raise ValueError(k)
+
+
+def out_to_matlab(role: Any, v: Any, sizes: Callable[[Any], tuple] | None = None) -> Any:
+    """a Python result in MATLAB's form, as its out role says
+
+    None: unchanged. 'vol': ``to_matlab``; 'box': ``box_to_matlab``; 'boxes': rows of boxes;
+    'yxz' / 'xyz': a ``(z, y, x)`` vector as MATLAB's ``[y x z]`` / ``[x y z]``; 'index1': 0-based
+    indices plus 1; 'range1': ``(start, stop)`` as ``[first last]``; ('dim', ndim): a NumPy
+    axis as MATLAB's dimension; ('linindex', size): a ``(z, y, x)`` index tuple as MATLAB's
+    1-based linear index into an array of MATLAB size ``size`` (or of the ``Value`` input of
+    that name); ('each', role): the role on every item of a list (a cell); a list of roles:
+    applied in order; a dict: by field; a callable: applied.
+    """
+    from petakit5d.core import arrays, axes, bbox
+
+    if role is None:
+        return v
+    if callable(role) and not isinstance(role, str):
+        return role(v)
+    if isinstance(role, list):
+        for r in role:
+            v = out_to_matlab(r, v, sizes)
+        return v
+    if isinstance(role, dict):
+        if not isinstance(v, Mapping):
+            raise TypeError(f"out role {role!r} needs a dict result, got {type(v).__name__}")
+        return {f: out_to_matlab(role.get(f), x, sizes) for f, x in v.items()}
+    kind, param = role if isinstance(role, tuple) else (role, None)
+    if kind not in OUT_KINDS:
+        raise ValueError(f"unknown out role {kind!r}")
+    if kind == "each":
+        if not isinstance(v, (list, tuple)):
+            raise TypeError(f"out role ('each', ...) needs a list result, got {type(v).__name__}")
+        return [out_to_matlab(param, x, sizes) for x in v]
+    if kind == "vol":
+        return arrays.to_matlab(np.asarray(v))
+    if kind == "box":
+        return bbox.box_to_matlab(v)
+    if kind == "boxes":
+        return bbox.boxes_to_matlab(v)
+    if kind == "yxz":
+        return axes.to_yxz(v)
+    if kind == "xyz":
+        return axes.to_xyz(v)
+    if kind == "index1":
+        return _shift_keep(v, 1)
+    if kind == "range1":
+        return bbox.range_to_matlab(v)
+    if kind == "dim":
+        if param is None:
+            raise ValueError("out role 'dim' needs ('dim', ndim)")
+        return axes.axis_to_dim(int(v), param)
+    if kind == "linindex":
+        if param is None:
+            raise ValueError("out role 'linindex' needs ('linindex', MATLAB size or input name)")
+        size = sizes(param) if sizes is not None else tuple(param)
+        k = arrays.zyx_to_matlab_index(tuple(v), arrays.size_from_matlab(size))
+        return k + 1
+    raise ValueError(kind)
+
+
+def role_kind(role: Any) -> str | None:
+    """the kind of an out role ('vol', 'box', ...; ('each', r) and lists by their last role)"""
+    if role is None or callable(role) and not isinstance(role, str):
+        return None
+    if isinstance(role, list):
+        return role_kind(role[-1]) if role else None
+    if isinstance(role, tuple):
+        return role_kind(role[1]) if role and role[0] == "each" else role[0]
+    return role if isinstance(role, str) else None
+
+
+def _numbers(v: MValue) -> np.ndarray | None:
+    if isinstance(v, MArray) and v.data is not None and v.mclass not in ("char",):
+        return np.asarray(v.data, dtype=np.float64).reshape(-1, order="F")
+    return None
+
+
+def _same(x: Any, y: np.ndarray) -> bool:
+    x = np.asarray(x, dtype=np.float64).reshape(-1)
+    return x.shape == y.shape and bool(np.all((x == y) | (np.isnan(x) & np.isnan(y))))
+
+
+def role_hints(case: Case, role: Any, ref: MValue, act: MValue) -> list[str]:
+    """what a role's mistakes explain of an output that differs from MATLAB's (the array
+    mapping's are in compare's hints): a box converted twice or not converted, a per-axis
+    vector in another order, a first-index rule taken in C order"""
+    from petakit5d.core import axes, bbox
+
+    kind = role_kind(role)
+    r, a = _numbers(ref), _numbers(act)
+    if r is None or a is None:
+        return []
+    out = []
+    if kind in ("box", None) and r.size in (4, 6) and a.size == r.size:
+        try:
+            twice = bbox.box_to_matlab(tuple(int(x) for x in r))
+            once = bbox.box_from_matlab(r)
+        except (ValueError, TypeError, OverflowError):
+            twice = once = None
+        if twice is not None and _same(twice, a):
+            out.append(
+                "Python's box is MATLAB's converted once more (box_to_matlab of a MATLAB box): "
+                "a box converted twice (out role 'box' and box_to_matlab in py_out, or a Box "
+                "role on a box already in Python's form)?"
+            )
+        elif once is not None and _same([np.inf if x is None else x for x in once], a):
+            out.append(
+                "Python's box is in Python's form ((z0, y0, x0, z1, y1, x1), 0-based, end "
+                "exclusive): out role 'box' missing?"
+            )
+    if kind in ("yxz", "xyz", None) and r.size == 3 and a.size == 3 and not _same(r, a):
+        if _same(r[[1, 0, 2]], a):
+            out.append(
+                "y and x swapped: Python's per-axis vector is MATLAB's in the other of [y x z] "
+                "and [x y z] (PerAxis(..., 'xyz') for 'yxz', or out role 'xyz' for 'yxz')?"
+            )
+        else:
+            frm = axes.from_yxz if kind != "xyz" else axes.from_xyz
+            to = axes.to_yxz if kind != "xyz" else axes.to_xyz
+            if _same(frm(r), a):
+                out.append(
+                    "Python's per-axis vector is in (z, y, x) order: not mapped back (out role "
+                    f"'{kind or 'yxz'}' missing)?"
+                )
+            elif _same(to(r), a):
+                out.append(
+                    "Python's per-axis vector is MATLAB's mapped once more: converted twice?"
+                )
+    if kind == "linindex" and isinstance(role, tuple) and len(role) > 1:
+        out += _first_index_hints(case, role[1], r, a)
+    return out
+
+
+def _first_index_hints(case: Case, param: Any, r: np.ndarray, a: np.ndarray) -> list[str]:
+    """a linear index result that names another voxel of the same value: a first-index rule
+    (first maximum, first nonzero) taken in C order"""
+    from petakit5d.core import arrays
+
+    name = param.name if isinstance(param, MPlaceholder) else param
+    x = case.inputs.get(name) if isinstance(name, str) else None
+    if not isinstance(x, Value) or r.shape != a.shape:
+        return []
+    vol = np.asarray(_plain(x.python_value()))
+    flat = vol.reshape(-1, order="F")
+    bad = np.flatnonzero(r != a)
+    if not bad.size:
+        return []
+    kr, ka = int(r[bad[0]]) - 1, int(a[bad[0]]) - 1
+    if not (0 <= kr < flat.size and 0 <= ka < flat.size) or flat[ka] != flat[kr]:
+        return []
+    zyx = arrays.from_matlab(vol)
+    hits = np.flatnonzero(zyx.reshape(-1) == flat[kr])
+    first_c = (
+        arrays.zyx_to_matlab_index(np.unravel_index(int(hits[0]), zyx.shape), zyx.shape)
+        if hits.size
+        else None
+    )
+    if first_c == ka:
+        return [
+            f"Python's index {ka + 1} is the first voxel of value {flat[kr]!r} in C order of "
+            "(z, y, x) (x fastest); MATLAB's first is in its linear order (y fastest, then x, "
+            "then z): a first-index rule (first maximum, first nonzero) taken in C order? "
+            "Search arrays.matlab_order(vol) instead"
+        ]
+    return [
+        f"Python's index {ka + 1} names another voxel of the same value {flat[kr]!r} as "
+        f"MATLAB's {kr + 1} (a tie): MATLAB takes the first in its linear order (y fastest, then "
+        "x, then z)"
+    ]
 
 
 def mcell(*items: Any) -> MCell:
@@ -321,6 +665,7 @@ class PyResult:
     files: FileTree | None
     work: Path
     elapsed: float
+    raw_outputs: list | None = None  # before out_roles (Python's form)
 
 
 @dataclasses.dataclass(eq=False)
@@ -338,8 +683,11 @@ class Case:
     MATLAB must raise (an identifier string: that one). py_error: exception classes Python
     may raise when MATLAB raises. error_message: compare error messages too. helpers:
     folders of MATLAB helper files (relative to python/) put on MATLAB's path. device: 'cpu',
-    'gpu' or 'gpu:<model>'. marks: extra pytest marks. outputs: output names.
+    'gpu' or 'gpu:<model>'. marks: extra pytest marks. outputs: output names. out_roles: one
+    out role per output (see ``out_to_matlab``): Python's results in MATLAB's form.
     warnings: 'record' or 'ids' (Python must give warnings with the same identifiers).
+    Arguments in args, py_args and py_kwargs may carry roles (Vol, Box, PerAxis, Index1,
+    Range1, Dim, LinIndex): MATLAB and the key see the value, Python its Python form.
     """
 
     id: str
@@ -362,6 +710,7 @@ class Case:
     device: str = "cpu"
     marks: Sequence[str] = ()
     outputs: Sequence[str] | None = None
+    out_roles: Sequence[Any] | None = None
     warnings: str = "record"
     note: str = ""
 
@@ -373,6 +722,10 @@ class Case:
         if self.outputs is not None and len(self.outputs) != self.nargout:
             raise ValueError(
                 f"case {self.id}: {len(self.outputs)} output names for nargout={self.nargout}"
+            )
+        if self.out_roles is not None and len(self.out_roles) != self.nargout:
+            raise ValueError(
+                f"case {self.id}: {len(self.out_roles)} out roles for nargout={self.nargout}"
             )
         for ph in _placeholders(self.args):
             if ph.what in ("input", "path") and ph.name not in self.inputs:
@@ -455,11 +808,12 @@ class Case:
         return self._key
 
     def _args_mvalue(self, input_ref: Callable[[MPlaceholder], MValue]) -> MCell:
-        mv = to_mvalue(list(self.args)) if self.args else MCell((1, 0), [])
+        args = _strip_roles(list(self.args))  # roles change neither MATLAB's call nor the key
+        mv = to_mvalue(args) if args else MCell((1, 0), [])
         if not isinstance(mv, MCell):
-            mv = MCell((1, len(self.args)), [to_mvalue(a) for a in self.args])
-        if len(mv.items) != len(self.args):
-            mv = MCell((1, len(self.args)), [to_mvalue(a) for a in self.args])
+            mv = MCell((1, len(args)), [to_mvalue(a) for a in args])
+        if len(mv.items) != len(args):
+            mv = MCell((1, len(args)), [to_mvalue(a) for a in args])
         return _subst(mv, input_ref)
 
     def matlab_args(self, input_path: Callable[[str, Input], str]) -> MCell:
@@ -534,7 +888,11 @@ class Case:
                     shutil.copyfile(src, work / x.name)
 
     def python_args(self, work: Path) -> tuple[list, dict]:
+        sizes = _Sizes(self)
+
         def fill(v: Any) -> Any:
+            if isinstance(v, Role):
+                return role_to_python(v, fill(v.value), sizes)
             if isinstance(v, MPlaceholder):
                 if v.what == "input":
                     return self.inputs[v.name].python_value()
@@ -589,14 +947,22 @@ class Case:
             }
             for w in wl
         ]
-        outs = None
+        outs = raw = None
         if err is None:
-            outs = self._outputs(res)
+            raw = self._outputs(res)
+            outs = self.map_outputs(raw)
         files = None
         if self.captures_files:
             rels, deleted = changed_files(before, snapshot(work))
             files = scan_tree(work, rels, deleted=deleted)
-        return PyResult(outs, err, etext, wlist, files, work, elapsed)
+        return PyResult(outs, err, etext, wlist, files, work, elapsed, raw)
+
+    def map_outputs(self, outs: list) -> list:
+        """Python's results in MATLAB's form, as out_roles say"""
+        if self.out_roles is None:
+            return outs
+        sizes = _Sizes(self)
+        return [out_to_matlab(r, v, sizes) for r, v in zip(self.out_roles, outs, strict=True)]
 
     def _outputs(self, res: Any) -> list:
         if self.py_out is not None:
@@ -626,7 +992,9 @@ class Case:
 
 def _placeholders(x: Any) -> list[MPlaceholder]:
     out = []
-    if isinstance(x, MPlaceholder):
+    if isinstance(x, Role):
+        out.extend(_placeholders(x.value))
+    elif isinstance(x, MPlaceholder):
         out.append(x)
     elif isinstance(x, (list, tuple)):
         for y in x:
