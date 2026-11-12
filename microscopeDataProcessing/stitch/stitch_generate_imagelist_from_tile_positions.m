@@ -156,16 +156,17 @@ else
     end
 end
 
-% get image sizes for all tiles
+% get image sizes for all tiles (2D zarr files have [ny, nx])
 nF = size(tab, 1);
 imSizes = getImageSizeBatch(tab.Filepath);
+imSizes(:, end + 1 : 3) = 1;
 
-% generate coordiantes 
+% generate coordiantes (per axis, also for a single tile)
 tileIndices = [tab.x, tab.y, tab.z];
-ts = min(tileIndices);
-tt = max(tileIndices);
+ts = min(tileIndices, [], 1);
+tt = max(tileIndices, [], 1);
 
-sz = mode(imSizes);
+sz = mode(imSizes, 1);
 
 % coordinates conversion for skewed space and DS space data
 if objectiveScan || IOScan

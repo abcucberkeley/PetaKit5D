@@ -85,10 +85,10 @@ end
 % get image sizes for all tiles
 nF = size(tab, 1);
 
-% generate coordiantes 
+% generate coordiantes (per axis, also for a single tile)
 tileIndices_xyz = [tab.x, tab.y, tab.z];
-ts = min(tileIndices_xyz);
-tt = max(tileIndices_xyz);
+ts = min(tileIndices_xyz, [], 1);
+tt = max(tileIndices_xyz, [], 1);
 
 % calculate physical size in xyz order
 fullIter = unique(tab.fullIter);

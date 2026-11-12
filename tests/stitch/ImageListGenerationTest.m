@@ -32,6 +32,73 @@ classdef ImageListGenerationTest < pktest.TestCase
                 'Scan_Iter_0000_CamA_ch1_CAM1_stack0000_488nm_000000msec_000000msecAbs_002x_001y_003z_0000t.tif');
         end
 
+        function tileListOfASingleTile(testCase)
+            % the minimum tile index of a single tile was the minimum over
+            % its axes, so the tile was placed away from the origin
+            dataPath = testCase.createTempFolder();
+            XR_generate_image_list_wrapper(dataPath, 'tile_list', 'tileFilenames', {'tile_a.tif'}, ...
+                'tileIndices', [0, 0, 1, 3, 2], 'tileInterval', [50, 40, 10]);
+
+            tab = readtable([dataPath, 'ImageList_from_tile_list.csv'], 'Delimiter', 'comma');
+            testCase.verifyEqual(tab.Filename, {'tile_a.tif'});
+            testCase.verifyEqual([tab.StageX_um_, tab.StageY_um_, tab.StageZ_um_], [0, 0, 0]);
+        end
+
+        function tilePositionsOfASingleTile(testCase)
+            % the mode of the sizes of a single tile (a 1 x 3 row) was a
+            % single number, and indexing it as [y, x, z] errored
+            dataPath = testCase.createTempFolder();
+            writetiff(ones(48, 64, 4, 'uint16'), [dataPath, 'Scan_Iter_0000_CamB_ch0_CAM1_stack0000_642nm_', ...
+                '0000000msec_0000000000msecAbs_002x_003y_001z_0000t.tif']);
+
+            XR_generate_image_list_wrapper(dataPath, 'tile_position', 'xyPixelSize', testCase.XYPixelSize, ...
+                'channelPatterns', {'Scan'}, 'overlapSize', [8, 8, 1], 'overlapSizeType', 'pixel', 'IOScan', true);
+
+            tab = readtable([dataPath, 'ImageList_from_tile_positions.csv'], 'Delimiter', 'comma');
+            testCase.verifyEqual(height(tab), 1);
+            testCase.verifyEqual([tab.StageX_um_, tab.StageY_um_, tab.StageZ_um_], [0, 0, 0]);
+        end
+
+        function tilePositionsOf2DZarrTiles(testCase)
+            % the size of a 2D zarr tile (here made without the z axis
+            % createzarr adds by default; the list reads only its header) is
+            % [ny, nx], that of a 2D tiff [ny, nx, 1], and indexing it as
+            % [y, x, z] errored; the list must be that of the same tiles as
+            % tiff files
+            px = testCase.XYPixelSize;
+            formats = {'tif', 'zarr'};
+            stages = cell(1, 2);
+            for k = 1 : 2
+                dataPath = testCase.createTempFolder();
+                % 48 x 64 (y x) tiles in a 2 x 2 grid
+                for xi = 0 : 1
+                    for yi = 0 : 1
+                        fn = sprintf(['%sScan_Iter_0000_CamB_ch0_CAM1_stack0000_642nm_0000000msec_', ...
+                            '0000000000msecAbs_%03dx_%03dy_000z_0000t.%s'], dataPath, xi, yi, formats{k});
+                        if k == 1
+                            writetiff(ones(48, 64, 'uint16'), fn);
+                        else
+                            createzarr(fn, dataSize=[48, 64], blockSize=[48, 64], expand2dDim=false);
+                        end
+                    end
+                end
+                if k == 2
+                    testCase.assertEqual(getImageSize(fn), [48, 64], 'The zarr tiles are not 2D.');
+                end
+
+                XR_generate_image_list_wrapper(dataPath, 'tile_position', 'xyPixelSize', px, ...
+                    'channelPatterns', {'Scan'}, 'overlapSize', [8, 8, 1], 'overlapSizeType', 'pixel', 'IOScan', true, ...
+                    'zarrFile', k == 2);
+
+                tab = readtable([dataPath, 'ImageList_from_tile_positions.csv'], 'Delimiter', 'comma');
+                testCase.assertEqual(height(tab), 4);
+                tab = sortrows(tab, 'Filename');
+                stages{k} = [tab.StageX_um_, tab.StageY_um_, tab.StageZ_um_];
+            end
+            testCase.verifyEqual(stages{2}, stages{1}, 'The 2D zarr tiles are placed unlike the same tiff tiles.');
+            testCase.verifyEqual(max(stages{2}(:, 1 : 2)), [64 - 8, 48 - 8] * px, 'AbsTol', 1e-9);
+        end
+
         function encoderSliceListCoordinates(testCase)
             % stage coordinates come from the first MCS2 position of each
             % tile in the SliceList csv files
