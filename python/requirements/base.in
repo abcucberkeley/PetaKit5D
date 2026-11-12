@@ -4,3 +4,4 @@ scipy>=1.13
 scikit-image>=0.24
 cpp-zarr>=1.7.3,<2
 cpp-tiff>=1.7.3,<2
+h5py>=3.11
