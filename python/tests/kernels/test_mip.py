@@ -1005,6 +1005,50 @@ def test_binding_refuses_other_layouts_and_classes():
         ext.max_pooling_3d(np.zeros((4, 4, 4), np.uint16), out, 2, 2, 2, 0)
 
 
+@pytest.mark.parametrize("dtype", [np.bool_, np.uint8, np.uint16, np.float32, np.float64])
+def test_every_instruction_set_gives_the_baseline_bits(dtype):
+    """the kernels run the best instruction set of the CPU (SSE4.1, AVX2 on x86-64); each one
+    the CPU has gives the baseline's results, bit for bit"""
+    ext = mip._ext()
+    isas = list(range(ext.best_isa() + 1))
+    shape = (13, 41, 133)
+    if np.dtype(dtype).kind == "f":
+        v = native_specials(np.dtype(dtype) == np.float32 and "single" or "double", shape)
+        v[3, 7] = -0.0
+        v[3, 7, 50] = 0.0
+        v[4] = np.where(np.isnan(v[4]), v[4], -np.abs(v[4]))
+        v[4, :, 9] = 0.0
+        v[4, :, 3] = -0.0
+    elif dtype == np.bool_:
+        v = native(shape, "logical", "isa")
+    else:
+        v = native(shape, np.dtype(dtype).name, "isa")
+    runs = []
+    for isa in isas:
+        r = {}
+        for pool in ((1, 1, 1), (2, 3, 4), (1, 1, 7), (13, 41, 133)):
+            m = [-(-s // p) for s, p in zip(shape, pool, strict=True)]
+            out = np.empty(m, dtype=v.dtype)
+            ext.max_pooling_3d(v, out, *pool, 3, isa)
+            r["pool", pool] = out
+        for box in ((0, 0, 0, 13, 41, 133), (2, 3, 4, 11, 40, 100), (4, 0, 0, 5, 41, 133)):
+            r["min", box] = ext.min_box_3d(v, *box, 3, isa)
+        if dtype != np.bool_:
+            for axis in (0, 1, 2):
+                for starts in ([0], list(range(0, shape[axis], 6))):
+                    osz = list(shape)
+                    osz[axis] = len(starts)
+                    out = np.empty(osz, dtype=v.dtype)
+                    ext.range_max_3d(v, out, axis, starts, 3, isa)
+                    r["range", axis, len(starts)] = out
+        runs.append(r)
+    for isa, r in zip(isas[1:], runs[1:], strict=True):
+        for k, val in r.items():
+            assert same_bits(np.asarray(val), np.asarray(runs[0][k])), (isa, k)
+    with pytest.raises(ValueError):
+        ext.min_box_3d(v, 0, 0, 0, 1, 1, 1, 1, ext.best_isa() + 1)
+
+
 def test_mex_uint64_conversion():
     u = mip._mex_u64
     assert u(2.9) == 2 and u(-0.5) == 0 and u(-1.0) == 2**64 - 1
