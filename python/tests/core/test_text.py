@@ -1,0 +1,146 @@
+import math
+
+import numpy as np
+import pytest
+
+from petakit5d.core import dtypes, text
+
+
+@pytest.mark.parametrize(
+    "fmt,args,expected",
+    [
+        ("%d", (1.5,), "1.500000e+00"),
+        ("%.20d", (0.108,), "1.07999999999999998779e-01"),
+        ("%.20d", (32,), "00000000000000000032"),
+        ("%.20d", (-3,), "-00000000000000000003"),
+        ("%d", (2.0**63,), "9.223372e+18"),
+        ("%d", (-(2.0**63),), "-9223372036854775808"),
+        ("%d", (np.uint64(2**64 - 1),), "1.844674e+19"),
+        ("%u", (np.uint64(2**64 - 1),), "18446744073709551615"),
+        ("%x", (-3,), "-3.000000e+00"),
+        ("%x", (255,), "ff"),
+        ("%#o", (8,), "010"),
+        ("%d", (-0.0,), "0"),
+        ("%g", (-0.0,), "-0"),
+        ("%05d", (math.nan,), "  NaN"),
+        ("%+d", (math.inf,), "+Inf"),
+        ("%+d", (math.nan,), "NaN"),
+        ("%-8d|", (32,), "32      |"),
+        ("%s", (65,), "A"),
+        ("%s", (70000,), "7.000000e+04"),
+        ("%s", (1.5,), "1.500000e+00"),
+        ("%c%c", (72, 105.5), "H1.055000e+02"),
+        ("%d,", ([1, 2, 3],), "1,2,3,"),
+        ("%d %s;", (1, "ab", 2), "1 ab;2 "),
+        ("%s,", ("ab", "c"), "ab,c,"),
+        ("%d,", ("ab",), "97,98,"),
+        ("%d %d", (np.array([[1, 2], [3, 4]]),), "1 32 4"),
+        ("abc%ddef", (), "abc"),
+        ("a%db", ([],), "ab"),
+        ("%d,", ([],), ","),
+        ("%s\\n", ("",), "\n"),
+        ("a\\nb\\\\c\\tq", (), "a\nb\\c\tq"),
+        ('a\\"b', (), 'a"b'),
+        ("a\\qb", (), "a"),
+        ("a%qb", (1,), "a"),
+        ("\\x41\\101", (), "AA"),
+        ("100%%", (), "100%"),
+        ("%*d|", (5, 3), "    3|"),
+        ("%.f", (2.5,), "2"),
+        ("%.0f", (1.5,), "2"),
+        ("%.20f", (0.108,), "0.10799999999999999878"),
+        ("%.10f", (-0.0,), "-0.0000000000"),
+        ("%f", (np.int64(9007199254740993),), "9007199254740992.000000"),
+        ("%d", (np.int64(9007199254740993),), "9007199254740993"),
+        ("%.20g", (np.float32(0.1),), "0.10000000149011611938"),
+        ("%d", (np.float32(3e9),), "3000000000"),
+    ],
+)
+def test_sprintf(fmt, args, expected):
+    assert text.sprintf(fmt, *args) == expected
+
+
+def test_sprintf_rejects_cells():
+    with pytest.raises(TypeError, match="invalidInputType"):
+        text.sprintf("%s", ["a", "b"])
+
+
+@pytest.mark.parametrize(
+    "x,expected",
+    [
+        (0.108, "0.108"),
+        (math.pi, "3.1416"),
+        ([1.5, -2.25, 3], "1.5       -2.25           3"),
+        (123456.789, "123456.789"),
+        (1e-7, "1e-07"),
+        (32, "32"),
+        ([1, 2, 10], "1   2  10"),
+        (1e20, "1e+20"),
+        (-0.0, "0"),
+        (math.nan, "NaN"),
+        (True, "1"),
+        (np.int16(-5), "-5"),
+        ([], ""),
+    ],
+)
+def test_num2str(x, expected):
+    assert text.num2str(x) == expected
+
+
+def test_num2str_with_format_and_precision():
+    assert text.num2str([1.5, 22.25], "%.10f,") == "1.5000000000,22.2500000000,"
+    assert text.num2str(np.pi, 8) == "3.1415927"
+    assert text.num2str("text") == "text"
+    with pytest.raises(ValueError):
+        text.num2str(1, "no percent")
+
+
+def test_int2str():
+    assert text.int2str(2.5) == "3" and text.int2str(-2.5) == "-3" and text.int2str(-0.4) == "0"
+    assert text.int2str([1, 22, -3]) == "1  22  -3"
+    with pytest.raises(ValueError, match="subsassigndimmismatch"):
+        text.int2str([0.001, 0.002])  # MATLAB's own int2str errors here
+
+
+def test_mat2str_and_comma():
+    assert text.mat2str(0.1) == "0.1"
+    assert text.mat2str(1 / 3) == "0.333333333333333"
+    assert text.mat2str(np.float32(np.pi)) == "3.14159274101257"
+    assert text.mat2str([1, math.nan, -math.inf]) == "[1 NaN -Inf]"
+    assert text.mat2str(np.array([[1, 2], [3, 4]])) == "[1 2;3 4]"
+    assert text.mat2str(np.zeros((1, 0))) == "zeros(1,0)" and text.mat2str(np.zeros((0, 0))) == "[]"
+    assert text.mat2str(np.array([True, False])) == "[true false]"
+    assert text.mat2str("it's") == "'it''s'"
+    assert text.mat2str(np.int64(2**62)) == "4611686018427387904"
+    assert text.mat2str(np.int64(2**62), 6) == "4.61169e+18"
+    assert text.mat2str(np.array([1.0, 2.0], np.float32), cls=True) == "single([1 2])"
+    assert text.mat2str_comma([1, 2, 3]) == "[1,2,3]"
+    assert text.mat2str_comma(5) == "5"
+    assert text.mat2str_comma([0.5, 1.25], 3) == "[0.500,1.250]"
+
+
+def test_str2double():
+    assert text.str2double("1,000") == 1000 and text.str2double(" 2.5 ") == 2.5
+    assert text.str2double("0x10") == 16 and text.str2double("-Inf") == -math.inf
+    assert text.str2double("1e400") == math.inf
+    for s in ("abc", "", "Infinity", "1 2", "+-1", "NaN"):
+        v = text.str2double(s)
+        assert math.isnan(v)
+        # MATLAB's NaN, with the sign bit set
+        assert (
+            np.float64(v).view(np.uint64)
+            == np.float64(dtypes.NAN).view(np.uint64)
+            == 0xFFF8000000000000
+        )
+    assert math.isnan(text.str2double(5))
+
+
+def test_through_text():
+    # a pixel size through '%.10f' and '%.20d' (MATLAB's wrappers)
+    assert text.through_text(0.1234567890123, "%.10f") == 0.123456789
+    assert text.through_text(0.108, "%.20d") == 0.108
+    np.testing.assert_array_equal(
+        text.through_text(np.array([1 / 3, 2.0]), "%.10f"), [0.3333333333, 2.0]
+    )
+    assert text.through_mat2str(1 / 3) == 0.333333333333333
+    assert math.isinf(text.through_mat2str(math.inf))
