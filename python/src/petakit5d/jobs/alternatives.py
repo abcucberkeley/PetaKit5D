@@ -25,6 +25,10 @@ place; a config with one place behaves exactly as one without the key.
   partition, QOS, account, CPUs, memory, GRES, features, node lists and job name (places that
   differ in other options don't trade jobs). Only jobs recorded with ``submitted`` (the
   caller's own) are looked at, and between looks no Slurm command runs.
+- **Nice.** ``--nice`` belongs to the call, not to a place: the call's nice goes to its jobs at
+  every place, in place of a place's own ``--nice`` (``with_nice``), and the options keep
+  ``--nice`` apart from the others, so it doesn't keep jobs from moving between the main place
+  and an alternative. A moved job keeps its nice (Slurm's update leaves it).
 - **Room.** Whether a place can start a job now comes from a view of the cluster, read at most
   every 20 s: the nodes (``scontrol show node -o``: free CPUs, memory and GPUs; not down,
   drained, reserved or PLANNED for a pending job), after the user's pending jobs that start
@@ -114,6 +118,7 @@ __all__ = [
     "single_job_places",
     "time_strs",
     "with_memory",
+    "with_nice",
 ]
 
 # --- timing (s), MATLAB's; Session.set_timing changes them --------------------------------------
@@ -386,7 +391,8 @@ class Options:
     """what a SlurmParam (and SlurmConstraint) says about where a job runs and what it takes:
     partition, QOS, account, memory (MB per CPU or per node, and the option as given), GPUs,
     constraint, node lists, job name, tasks and time limit; other tokens are kept in order
-    (places that differ in them don't trade jobs)"""
+    (places that differ in them don't trade jobs), except --nice (the last one, as given): the
+    call's nice, not a place's"""
 
     partition: str = ""
     qos: str = ""
@@ -402,6 +408,7 @@ class Options:
     job_name: str = ""
     ntasks: float = 1.0
     time: str = ""
+    nice: str = ""
     other: tuple[str, ...] = ()
 
 
@@ -433,7 +440,10 @@ def parse_options(text: str) -> Options:
                     i += 1
                     value = tokens[i]
         if not name:
-            other.append(t)
+            if t == "--nice" or t.startswith("--nice="):
+                values["nice"] = t
+            else:
+                other.append(t)
         elif name == "mem_per_cpu":
             values["mem_per_cpu"] = memory_mb(value)
             values["mem_token"] = f"--mem-per-cpu={value}"
@@ -486,6 +496,18 @@ def with_memory(param: str, mem_token: str) -> str:
             *(t for t, k in zip(tokens[at:], keep[at:], strict=True) if k),
         ]
     return " ".join(tokens)
+
+
+# a --nice token with the whitespace before it: MATLAB's (^|\s+)--nice(=\S*)?(?=\s|$), with its
+# \s ([ \f\n\r\t\v]) and its ^ and $ (the ends of the text)
+_NICE_TOKEN = re.compile(r"(?:\A|[ \f\n\r\t\v]+)--nice(?:=[^ \f\n\r\t\v]*)?(?=[ \f\n\r\t\v]|\Z)")
+
+
+def with_nice(param: str, nice: float) -> str:
+    """slurm_alternatives('with_nice', param, nice): a place's SlurmParam with the call's nice
+    (--nice=<round(nice)>) in place of any --nice of its own: the nice is the call's, not a
+    place's, so the jobs get it at every place (and keep it when they move)"""
+    return f"{_NICE_TOKEN.sub('', param)} --nice={_round_half_away(nice)}"
 
 
 _SPLITTABLE: dict[str, bool] = {}
@@ -615,7 +637,8 @@ def _shape_memory(place: Place, shape: Shape) -> float:
 
 def move_fields(a_place: Place, b_place: Place, current: Shape, shape: Shape) -> dict[str, str]:
     """the scontrol update fields that move a job of shape current from place a to place b with
-    a shape, in order ({} if the places differ in options a pending job can't change)
+    a shape, in order ({} if the places differ in options a pending job can't change; --nice
+    isn't one of them: it's the call's, and the job keeps its nice)
 
     The QOS is always set when the partition, account or QOS changes (Slurm keeps a QOS the new
     partition's association doesn't allow, and can't clear one), so a place without a QOS
@@ -1529,9 +1552,9 @@ def cluster_places(
     main place's shaping; without it, the main place's CPUs).
 
     Each place gets the CPUs a config of only that place gives a job (job_cpus from
-    memAllocate and its memPerCPU, minCPUNum, maxCPUNum, rounded), the --nice of the call (in
-    its SlurmParam, not in its options: with a nice, the main place and the alternatives don't
-    trade jobs, as in MATLAB), and the time option of its SlurmParam."""
+    memAllocate and its memPerCPU, minCPUNum, maxCPUNum, rounded), the call's nice in place of a
+    --nice of its own (with_nice; the main place's SlurmParam has the call's from the framework)
+    and the time option of its SlurmParam."""
     s = call.settings
     alternatives = s.get("slurm_alternatives")
     if _is_empty(alternatives) or s.get("whole_node_job"):
@@ -1558,9 +1581,7 @@ def cluster_places(
             cpus = job_cpus(
                 request, s.get("mem_allocate"), p.mem_per_cpu, p.min_cpu_num, p.max_cpu_num, True
             )
-        param = p.slurm_param
-        if nice > 0 and "--nice=" not in param:
-            param = f"{param} --nice={_round_half_away(nice)}"
+        param = with_nice(p.slurm_param, nice) if nice > 0 else p.slurm_param
         shaped.append(replace(p, slurm_param=param, cpus_per_task=_int(float(cpus))))
     fmt = TIME_FORMAT_MCC if shape.slot_mode else TIME_FORMAT_BATCH
     options = time_strs(shaped, s.get("job_time_limit"), fmt, time_option)
@@ -1572,9 +1593,9 @@ def cluster_places(
 
 class SingleJobPlaces:
     """the places of a single job (generic_single_job_submit_wrapper): ``choose`` gives the
-    place index, CPUs, SlurmParam (with the call's --nice), SlurmConstraint and time option of
-    a submission, ``submitted(job_id, array_id, k)`` records it; the status checks call the
-    module's ``move`` and ``forget``"""
+    place index, CPUs, SlurmParam (with the call's nice in place of a place's own, at every
+    place), SlurmConstraint and time option of a submission, ``submitted(job_id, array_id, k)``
+    records it; the status checks call the module's ``move`` and ``forget``"""
 
     def __init__(
         self,
@@ -1592,8 +1613,8 @@ class SingleJobPlaces:
 
     def choose(self) -> tuple[int, int | float, str, str, str]:
         k, cpus, param = self.session.choose(self.places, self.own_cpus, self.time_options)
-        if self.nice > 0 and "--nice=" not in param:
-            param = f"{param} --nice={_round_half_away(self.nice)}"
+        if self.nice > 0:
+            param = with_nice(param, self.nice)
         return k, cpus, param, self.places[k].slurm_constraint, self.time_options[k]
 
     def submitted(self, job_id: int, array_id: int, k: int) -> None:

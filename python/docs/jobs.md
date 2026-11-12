@@ -197,6 +197,8 @@ has the rules):
 - A pending job that waited 2 minutes in its place moves to a place that can start it now, by
   one `scontrol update` (partition, QOS, account, CPUs, memory, GRES, features, node lists, job
   name). Only the call's own jobs are looked at, each at most once a minute.
+- `nice` is the call's: its jobs get it at every place (in place of a place's own `--nice`), it
+  doesn't keep jobs from moving between places, and a moved job keeps it.
 - GPU nodes are for jobs that need a GPU: a CPU-only job goes to an alternative of GPU nodes
   only if its entry says `"cpuJobs": true`, leaves each idle GPU its share (gpuHeadroom: [CPUs,
   GB] per idle GPU, by default the node's share; 0 for none), never goes to a partition where

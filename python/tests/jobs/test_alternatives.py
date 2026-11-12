@@ -3,11 +3,13 @@ real Slurm.
 
 Ported from the MATLAB suite: SlurmAlternativesTest (all 35 methods, names in snake_case;
 singleJobGoesToThePlaceWithRoomAndMoves at the level of the single jobs' places, which J07's
-wrapper calls) and CoordinatorNiceTest/jobsAtAnotherPlaceKeepTheirNice. The tests on the fake
-Slurm also compare its command history with MATLAB's for the same steps (MATLAB_HISTORIES:
-SlurmAlternativesTest of the oracle tree, recorded by task J01 with an instrumented
-FakeSlurmFixture; site names replaced, the --wrap text of submissions as <W>, the test's folder
-as <T1>; Python's --comment of the cluster loop's jobs is left out).
+wrapper calls), SlurmAlternativesNiceTest (both methods) and
+CoordinatorNiceTest/jobsAtAnotherPlaceKeepTheirNice. The tests on the fake Slurm also compare
+its command history with MATLAB's for the same steps (MATLAB_HISTORIES: SlurmAlternativesTest
+and SlurmAlternativesNiceTest of the oracle tree, recorded with an instrumented
+FakeSlurmFixture (tasks J01, F04 and J09); the --wrap text of submissions as <W>, the test's
+folder as <T1>; the --comment of submissions, MATLAB's and the cluster loop's call tags, is set
+aside).
 
 Oracle cases (ORACLE_CASES): the local functions of MATLAB's slurm_alternatives.m (extracted
 from the oracle tree) on grids of inputs, and scenarios on a fake cluster (nodes, pending jobs
@@ -37,6 +39,7 @@ import re
 import shlex
 import subprocess
 import time
+from dataclasses import replace
 from pathlib import Path
 
 import numpy as np
@@ -75,11 +78,18 @@ def touch(path: str) -> None:
     os.replace(tmp, path)
 
 
-# --- MATLAB's command histories (oracle tree PetaKit5D_5df18b2) ---------------------------------
+# --- MATLAB's command histories (oracle tree PetaKit5D_7ed28c0) ---------------------------------
+#
+# A test's history is the commands of its last call: those that started after its last
+# clearCalls. (The framework's normal end runs scancel in the background, which can write to the
+# fake's log after the next clearCalls; recorded so, configWithoutAlternativesIsAsBefore started
+# with its first call's scancel.) MATLAB's submissions carry its call tag
+# (--comment=pk5d_<uuid12>_<batch>), the cluster loop's its own: the comparison sets both aside.
 #
 # Compact: "view" is scontrol show node -o and the squeue of the user's pending jobs, "test X"
 # sbatch --test-only X --wrap=true, "update X" scontrol update JobId=X; {ABC}, {GPU}, {GPU_ABC}
-# (gpu8 with cpu_queue's memory per CPU), {LOGS} and {M4} as in ABBREV.
+# (gpu8 with cpu_queue's memory per CPU), {LOGS}, {M4}, and {CPU} and {GPU_CPU}
+# (SlurmAlternativesNiceTest's places) as in ABBREV.
 
 ABBREV = {
     "{ABC}": ABC,
@@ -87,6 +97,8 @@ ABBREV = {
     "{GPU}": GPU,
     "{LOGS}": "-o <T1>/job_%A_%a.out -e <T1>/job_%A_%a.err",
     "{M4}": "NumCPUs=4 CPUsPerTask=4 MinMemoryCPU=21418",
+    "{CPU}": "-p cpu --qos normal -n1 --mem-per-cpu=21418M",
+    "{GPU_CPU}": "-p gpu --qos normal -n1 --mem-per-cpu=21418M",
 }
 NODES_CMD = "scontrol show node -o"
 PENDING_CMD = (
@@ -204,10 +216,12 @@ MATLAB_HISTORIES: dict[str, list[str]] = {
         "sinfo ",
         "view",
         "test --cpus-per-task=4 {ABC} -t 2:00:00",
-        "sbatch --array=1 {LOGS} --cpus-per-task=4 {ABC} -t 2:00:00 --wrap=<W>",
+        "sbatch --array=1 --comment=pk5d_175c0ac1cd56_1 {LOGS} --cpus-per-task=4 {ABC} -t 2:00:00 "
+        "--wrap=<W>",
         "view",
         "test --cpus-per-task=4 {ABC} -t 2:00:00",
-        "sbatch --array=2 {LOGS} --cpus-per-task=4 {ABC} -t 2:00:00 --wrap=<W>",
+        "sbatch --array=2 --comment=pk5d_175c0ac1cd56_2 {LOGS} --cpus-per-task=4 {ABC} -t 2:00:00 "
+        "--wrap=<W>",
         "squeue -j 1000_1,1001_2",
         "scancel 1000 1001",
     ],
@@ -215,17 +229,20 @@ MATLAB_HISTORIES: dict[str, list[str]] = {
         "sinfo ",
         "view",
         "test --cpus-per-task=4 {ABC} -t 24:00:00",
-        "sbatch --array=1 {LOGS} --cpus-per-task=4 {ABC} -t 24:00:00 --wrap=<W>",
+        "sbatch --array=1 --comment=pk5d_4fcba99a6897_1 {LOGS} --cpus-per-task=4 {ABC} "
+        "-t 24:00:00 --wrap=<W>",
         "view",
         "test --cpus-per-task=4 {ABC} -t 24:00:00",
-        "sbatch --array=2 {LOGS} --cpus-per-task=4 {ABC} -t 24:00:00 --wrap=<W>",
+        "sbatch --array=2 --comment=pk5d_4fcba99a6897_2 {LOGS} --cpus-per-task=4 {ABC} "
+        "-t 24:00:00 --wrap=<W>",
         "squeue -j 1000_1,1001_2",
         "scancel 1000 1001",
     ],
     "frameworkMovesPendingJobs": [
         "sinfo ",
         "view",
-        "sbatch --array=1 {LOGS} --cpus-per-task=4 {ABC} -t 24:00:00 --wrap=<W>",
+        "sbatch --array=1 --comment=pk5d_e782c4fd7c46_1 {LOGS} --cpus-per-task=4 {ABC} "
+        "-t 24:00:00 --wrap=<W>",
         "squeue -j 1000_1",
         "view",
         "test --cpus-per-task=4 {GPU_ABC} -t 24:00:00",
@@ -248,10 +265,38 @@ MATLAB_HISTORIES: dict[str, list[str]] = {
         "test --cpus-per-task=4 {ABC} -t 24:0:00",
         "update 1000_3 Partition=cpu_queue QOS=qos_normal {M4}",
     ],
+    "pendingJobOfACallWithNiceMoves": [
+        "sinfo ",
+        "view",
+        "sbatch --array=1 --comment=pk5d_6b16c0658c2f_1 {LOGS} --cpus-per-task=4 {CPU} --nice=1000 "
+        "-t 24:00:00 --wrap=<W>",
+        "squeue -j 1000_1",
+        "view",
+        "test --cpus-per-task=4 {GPU_CPU} --nice=1000 -t 24:00:00",
+        "update 1000_1 Partition=gpu QOS=normal {M4}",
+        *["squeue -j 1000_1", "view"] * 5,
+        "squeue -j 1000_1",
+        "scancel 1000",
+    ],
+    "jobsGetTheCallsNiceAtEveryPlace": [
+        "sinfo ",
+        "view",
+        "test --cpus-per-task=4 {GPU_CPU} --nice=1000 -t 24:00:00",
+        "sbatch --array=1 --comment=pk5d_3d7153916e5a_1 {LOGS} --cpus-per-task=4 {GPU_CPU} "
+        "--nice=1000 -t 24:00:00 --wrap=<W>",
+        "squeue -j 1000_1",
+        "scancel 1000",
+        "sinfo ",
+        "view",
+        "test --cpus-per-task=4 {GPU_CPU} --nice=5 -t 24:0:00",
+        "sbatch --array=3 {LOGS} --cpus-per-task=4 {GPU_CPU} --nice=1000 -t 24:0:00 --wrap=<W>",
+    ],
     "configWithoutAlternativesIsAsBefore": [
         "sinfo ",
-        "sbatch --array=1 {LOGS} --cpus-per-task=4 {ABC} -t 24:00:00 --wrap=<W>",
-        "sbatch --array=2 {LOGS} --cpus-per-task=4 {ABC} -t 24:00:00 --wrap=<W>",
+        "sbatch --array=1 --comment=pk5d_u1_1 {LOGS} --cpus-per-task=4 {ABC} -t 24:00:00 "
+        "--wrap=<W>",
+        "sbatch --array=2 --comment=pk5d_u1_2 {LOGS} --cpus-per-task=4 {ABC} -t 24:00:00 "
+        "--wrap=<W>",
         "squeue -j 1000_1,1001_2",
         "scancel 1000 1001",
     ],
@@ -281,21 +326,25 @@ _CALL_FOLDER = re.compile(r"pk5d_call_\d{8}_\d{6}_\d{3}_[0-9A-Za-z]+")
 
 
 def history(fake: FakeSlurm, folder: Path | None = None) -> list[str]:
-    """the fake's commands with the test's folder as <T1>, the wrap of submissions as <W> and
-    without the cluster loop's --comment"""
+    """the fake's commands with the test's folder as <T1> and the wrap of submissions as <W>"""
     out = []
     for line in fake.history():
         if folder is not None:
             line = line.replace(str(folder), "<T1>")
-        line = _COMMENT.sub("", line)
         if line.startswith("sbatch ") and "--test-only" not in line:
             line = _WRAP.sub(" --wrap=<W>", line)
         out.append(line)
     return out
 
 
+def comment_aside(lines: list[str]) -> list[str]:
+    """commands without their --comment: a call's tag (MATLAB's pk5d_<uuid12>_<batch>, the
+    cluster loop's pk5d_call_<...>:<batch>) differs in form and from call to call"""
+    return [_COMMENT.sub("", x) for x in lines]
+
+
 def assert_matlab_history(fake: FakeSlurm, name: str, folder: Path | None = None) -> None:
-    assert history(fake, folder) == expand(MATLAB_HISTORIES[name])
+    assert comment_aside(history(fake, folder)) == comment_aside(expand(MATLAB_HISTORIES[name]))
 
 
 # --- set-up and helpers (SlurmAlternativesTest's) ------------------------------------------------
@@ -1152,6 +1201,33 @@ def test_config_without_alternatives_is_as_before(fake_slurm, tmp_path, virtual_
     assert_matlab_history(fake_slurm, "configWithoutAlternativesIsAsBefore", tmp_path)
 
 
+def test_matlab_histories_are_compared_with_the_comment_set_aside():
+    # MATLAB tags every submission of a framework call with --comment=pk5d_<uuid12>_<batch>,
+    # the cluster loop with its own tag: the comparison sets both aside, and nothing else
+    names = [
+        "frameworkSubmitsToThePlaceWithRoom",
+        "compiledFrameworkSubmitsToThePlaceWithRoom",
+        "frameworkMovesPendingJobs",
+        "configWithoutAlternativesIsAsBefore",
+        "pendingJobOfACallWithNiceMoves",
+    ]
+    tag = re.compile(r"=pk5d_[0-9A-Za-z]{1,12}_(?=\d+ )")
+    for name in names:
+        subs = [x for x in expand(MATLAB_HISTORIES[name]) if x.startswith("sbatch --array=")]
+        assert subs and all(re.search(rf" --comment{tag.pattern}", x) for x in subs), name
+    matlab = expand(MATLAB_HISTORIES["frameworkSubmitsToThePlaceWithRoom"])
+    ours = [tag.sub("=pk5d_call_20261112_000000_000_a1b2c3:", x) for x in matlab]
+    assert ours != matlab and comment_aside(ours) == comment_aside(matlab)
+    untagged = [re.sub(r" --comment=\S+", "", x) for x in matlab]
+    assert untagged != matlab and comment_aside(untagged) == comment_aside(matlab)
+    assert comment_aside([x.replace("--array=2", "--array=3") for x in ours]) != comment_aside(
+        matlab
+    )
+    assert comment_aside([x.replace("-t 2:00:00", "-t 2:00:01") for x in ours]) != comment_aside(
+        matlab
+    )
+
+
 # --- CoordinatorNiceTest/jobsAtAnotherPlaceKeepTheirNice --------------------------------------
 
 
@@ -1183,6 +1259,114 @@ def test_jobs_at_another_place_keep_their_nice(fake_slurm, tmp_path, virtual_clo
     assert all(" --nice=1000" in x for x in jobs), jobs
 
 
+@POSIX
+def test_a_pending_job_with_a_nice_moves_to_an_alternative_and_keeps_its_nice(
+    fake_slurm, tmp_path, virtual_clock
+):
+    # --nice is the call's (the user's rule): a job of a call with a nice waits at the main
+    # place, whose options hold the nice; when gpu8 has room, it moves there as a job without a
+    # nice does (MATLAB's frameworkMovesPendingJobs), with the nice on each sbatch and an update
+    # that leaves it (Slurm keeps a job's nice when it moves); MATLAB before its fix (oracle
+    # PetaKit5D_1697257) didn't move it (the oracle case nice_job_moves_to_an_alternative)
+    fake_slurm.set_nodes(
+        [abc_node("n1", 24), gpu_node("g1", 128, 0)], [abc_node("n1", 24), gpu_node("g1", 0, 0)]
+    )
+    fake_slurm.set_job_states("1000_1", ["PD:Priority"] * 6 + ["done"])
+    ins, outs, tasks = make_tasks(tmp_path, 1)
+    S().set_timing(min_wait=0, look_interval=0, view_age=0)
+    config_file = write_config(tmp_path, abc_first_config(0))
+    framework(ins, outs, tasks, tmp_path, config_file, query_interval=0, nice=5)
+    jobs = submissions(fake_slurm)
+    assert len(jobs) == 1 and f"--cpus-per-task=4 {ABC} --nice=5 -t 24:00:00 " in jobs[0]
+    assert updates(fake_slurm) == [
+        "update JobId=1000_1 Partition=gpu8 QOS=qos_normal NumCPUs=4 CPUsPerTask=4 "
+        "MinMemoryCPU=21418"
+    ]
+    expected = [
+        x.replace("{ABC} -t", "{ABC} --nice=5 -t").replace("{GPU_ABC} -t", "{GPU_ABC} --nice=5 -t")
+        for x in MATLAB_HISTORIES["frameworkMovesPendingJobs"]
+    ]
+    assert comment_aside(history(fake_slurm, tmp_path)) == comment_aside(expand(expected))
+
+
+# --- SlurmAlternativesNiceTest (its places: cpu, and gpu, which takes CPU jobs) ---------------
+
+NICE_CPU = "-p cpu --qos normal -n1 --mem-per-cpu=21418M"
+NICE_GPU = "-p gpu --qos normal -n1 --mem-per-cpu=7800M"
+
+
+def nice_cpu_node(cpu_alloc: int) -> str:
+    return FakeSlurm.node_line(
+        "n1", "cpu", 24, cpu_alloc, 514048, cpu_alloc * 21418, 0, 0, "MIXED", "cpu24"
+    )
+
+
+def nice_gpu_node(cpu_alloc: int) -> str:
+    return FakeSlurm.node_line(
+        "g1", "gpu", 128, cpu_alloc, 1031600, cpu_alloc * 8000, 8, 0, "MIXED", "gpu8"
+    )
+
+
+def nice_conf(alt_param: str) -> dict:
+    """a cluster config of cpu with gpu (alt_param) as its alternative"""
+    alternative = {
+        "SlurmParam": alt_param,
+        "memPerCPU": 7.6,
+        "maxCPUNum": 32,
+        "gpuHeadroom": 0,
+        "cpuJobs": True,
+    }
+    return {
+        "SlurmParam": NICE_CPU,
+        "memPerCPU": 20.9,
+        "maxCPUNum": 24,
+        "SlurmAlternatives": [alternative],
+    }
+
+
+def nice_call(folder: Path, config_file: str, nice: float) -> None:
+    """a framework call of one task of 70 GB with nice (its job never runs: the call gives up
+    after its try)"""
+    ins, outs, tasks = make_tasks(folder, 1)
+    framework(ins, outs, tasks, folder, config_file, query_interval=0, nice=nice)
+
+
+@POSIX
+def test_pending_job_of_a_call_with_nice_moves(fake_slurm, tmp_path, virtual_clock):
+    # the job of batch 1 waits at cpu (full, gpu too); then gpu has room (the second look at the
+    # nodes): the wait loop moves it there, and it keeps its nice
+    fake_slurm.set_nodes(
+        [nice_cpu_node(24), nice_gpu_node(128)], [nice_cpu_node(24), nice_gpu_node(0)]
+    )
+    fake_slurm.set_job_states("1000_1", ["PD:Priority"] * 6 + ["done"])
+    S().set_timing(min_wait=0, look_interval=0, view_age=0)
+    nice_call(tmp_path, write_config(tmp_path, nice_conf(NICE_GPU)), 1000)
+    jobs = submissions(fake_slurm)
+    assert len(jobs) == 1 and f"{NICE_CPU} --nice=1000" in jobs[0]
+    assert updates(fake_slurm) == [
+        "update JobId=1000_1 Partition=gpu QOS=normal NumCPUs=4 CPUsPerTask=4 MinMemoryCPU=21418"
+    ], "The pending job of a call with nice did not move."
+    assert_matlab_history(fake_slurm, "pendingJobOfACallWithNiceMoves", tmp_path)
+
+
+@POSIX
+def test_jobs_get_the_calls_nice_at_every_place(fake_slurm, tmp_path, virtual_clock):
+    # a place's own --nice gave way to the call's only where it had none: here the jobs go to
+    # gpu (cpu is full), whose SlurmParam has --nice=5, and get the call's 1000 there, as
+    # framework jobs and as single jobs
+    fake_slurm.set_nodes([nice_cpu_node(24), nice_gpu_node(0)])
+    S().set_timing(view_age=0)
+    conf = nice_conf(f"{NICE_GPU} --nice=5")
+    nice_call(tmp_path, write_config(tmp_path, conf), 1000)
+    with contextlib.redirect_stdout(io.StringIO()):
+        single_job(conf, tmp_path, nice=1000)
+    jobs = submissions(fake_slurm)
+    assert len(jobs) == 2
+    for x in jobs:
+        assert "-p gpu " in x and re.findall(r"--nice=(\d+)", x) == ["1000"], x
+    assert_matlab_history(fake_slurm, "jobsGetTheCallsNiceAtEveryPlace", tmp_path)
+
+
 # --- the parts, and what differs from MATLAB -----------------------------------------------------
 
 
@@ -1192,8 +1376,11 @@ def test_options_parse_as_matlab_reads_them():
     assert o.mem_token == "--mem-per-cpu=7800"
     o = alt.parse_options("--gres=gpu:2,shard:1 -n 2 --nice=5 -c 4 --exclusive")
     assert (o.gres, o.gpus, o.ntasks) == ("gpu:2,shard:1", 2, 2)
-    # (unknown options and their values are other tokens, kept in order)
-    assert o.other == ("--nice=5", "-c", "4", "--exclusive")
+    # (unknown options and their values are other tokens, kept in order; --nice is apart, the
+    # last one as given)
+    assert o.other == ("-c", "4", "--exclusive") and o.nice == "--nice=5"
+    assert alt.parse_options("-p a --nice=2 --nice -x n1").nice == "--nice"
+    assert alt.parse_options("-p a --nicex").other == ("--nicex",)
     assert alt.parse_options("--gres=gpu:a100").gpus == 1
     assert alt.parse_options("--gres=gpu").gpus == 1
     assert alt.parse_options("--mem=1T --mem-per-cpu=512K").mem_token == "--mem-per-cpu=512K"
@@ -1338,9 +1525,12 @@ def test_cpus_of_a_try_at_each_place():
     assert alt.ClusterPlaces(session, p, ["", ""], True, True).own_cpus(1) == [8, 32]
 
 
-def test_nice_goes_to_every_place_but_main_and_alternatives_do_not_trade():
-    # (MATLAB: the main place's options hold the nice, the alternatives' don't, so pending
-    # jobs don't move between the main place and an alternative; at submission all are used)
+def test_the_calls_nice_goes_to_every_place_and_keeps_no_jobs_apart():
+    # --nice is the call's, not a place's: every place's jobs get it in place of a --nice of
+    # the place's own (with_nice), and the options keep --nice apart from the other tokens, so
+    # the main place (whose SlurmParam holds the call's nice) and the alternatives trade jobs, as
+    # do places with a --nice of their own; a move leaves the nice to Slurm, which keeps it
+    # (MATLAB before its fix moved no job with a nice between the main place and an alternative)
     settings = {
         "slurm_param": f"{ABC} --nice=5",
         "slurm_constraint": "",
@@ -1364,11 +1554,47 @@ def test_nice_goes_to_every_place_but_main_and_alternatives_do_not_trade():
         f"{ABC} --nice=5",
         f"{GPU} --nice=5",
         f"{GPU.replace('gpu8', 'gpu9')} --nice=5",
-        f"{ABC} --nice=2",
+        f"{ABC} --nice=5",
     ]
-    shape = alt._main_shape(places, [4, 16, 16, 4])
-    assert alt.move_fields(places[0], places[1], shape, shape) == {}
-    assert alt.move_fields(places[1], places[2], shape, shape)["Partition"] == "gpu9"
+    own = [4, 16, 16, 4]
+    shape = alt._main_shape(places, own)
+    to_gpu = alt._place_shape(places, own, 1, shape)
+    assert alt.move_fields(places[0], places[1], shape, to_gpu) == {
+        "Partition": "gpu8",
+        "QOS": "qos_normal",
+        "NumCPUs": "4",
+        "CPUsPerTask": "4",
+        "MinMemoryCPU": "21418",
+    }
+    back = alt._place_shape(places, own, 0, to_gpu)
+    assert alt.move_fields(places[1], places[0], to_gpu, back)["Partition"] == "cpu_queue"
+    assert alt.move_fields(places[1], places[2], to_gpu, to_gpu)["Partition"] == "gpu9"
+    assert alt.move_fields(places[3], places[0], shape, shape)["Partition"] == "cpu_queue"
+    # other options still keep places apart
+    exclusive = replace(places[1], opts=alt.parse_options(f"{GPU} --exclusive --nice=5"))
+    assert alt.move_fields(places[0], exclusive, shape, to_gpu) == {}
+    # without a nice, each place's SlurmParam is as configured
+    call.settings.update(slurm_param=ABC, nice=0)
+    places = alt.cluster_places(call, JobShape(4, 1, 1, False, False), " -t 24:00:00 ", 1).places
+    assert [p.slurm_param for p in places][::3] == [ABC, f"{ABC} --nice=2"]
+
+    # single jobs: the call's nice in place of the chosen place's own, at the main place too
+    class Chooses:
+        def __init__(self, k: int, param: str) -> None:
+            self.k, self.param = k, param
+
+        def choose(self, places, own_cpus, time_options):
+            return self.k, own_cpus[self.k], self.param
+
+    for k, param in enumerate([ABC, GPU, GPU, f"{ABC} --nice=2"]):
+        sp = alt.SingleJobPlaces(Chooses(k, param), places, own, [""] * 4, 5)
+        assert sp.choose()[2] == f"{param.replace(' --nice=2', '')} --nice=5"
+        assert alt.SingleJobPlaces(Chooses(k, param), places, own, [""] * 4, 0).choose()[2] == param
+    # with_nice: every --nice token goes, with the whitespace before it, then the call's comes
+    # (MATLAB's regexprep and sprintf; the oracle case with_nice has more)
+    assert alt.with_nice("--nice=2 -p a\t--nice --comment=--nice=3", 2.5) == (
+        " -p a --comment=--nice=3 --nice=3"
+    )
 
 
 def test_single_job_places_are_not_rounded():
@@ -2004,6 +2230,25 @@ OPTION_TEXTS = [
     '-J "my job" --account',
     "--mem 5G --mem-per-cpu",
 ]
+# slurm_alternatives('with_nice', SlurmParam, nice): SlurmParams with and without a --nice of
+# their own (MATLAB's regexprep: its whitespace, the ends of the text, tokens that only contain
+# --nice), nices rounded half away from zero
+WITH_NICE = [
+    (ABC, 5),
+    (f"{ABC} --nice=2", 5),
+    (f"--nice=2 {ABC}", 5),
+    ("-p cpu_queue --nice", 2.5),
+    ("-p cpu_queue --nicex -n1", 1),
+    ("-p cpu_queue\t--nice=3\t--nice=4 -n1", 7),
+    ("", 3),
+    ("-p cpu_queue  ", 1),
+    ("--nice", 1),
+    ("-p cpu_queue --nice=1 -t 1:00:00 --nice=2", 1000),
+    ("-p cpu_queue --comment=--nice=3", 4),
+    ("-p cpu_queue --nice=", 0.5),
+    ("-p cpu_queue --nice=7x -n1", 2.4999),
+    ("-p cpu_queue -n1 --nice=1\n", 3),
+]
 MEMORY_PAIRS = [
     (ABC, "--mem=1G"),
     ("-p a --mem 5G -n1", "--mem-per-cpu=1M"),
@@ -2106,6 +2351,7 @@ def _opts_struct(o: alt.Options) -> dict:
         "jobName": o.job_name,
         "ntasks": float(o.ntasks),
         "time": o.time,
+        "nice": o.nice,
         "other": list(o.other),
     }
 
@@ -2116,6 +2362,10 @@ def py_parse_options(texts):
 
 def py_with_memory(params, tokens):
     return [alt.with_memory(p, t) for p, t in zip(params, tokens, strict=True)]
+
+
+def py_with_nice(params, nices):
+    return [alt.with_nice(p, n) for p, n in zip(params, nices, strict=True)]
 
 
 def py_expand_hostlist(texts):
@@ -2580,7 +2830,7 @@ def scenario(seed: int) -> dict:
     return {"steps": steps}
 
 
-def _scenario_case(name: str, spec: dict) -> Case:
+def _scenario_case(name: str, spec: dict, marks: tuple[str, ...] = (), note: str = "") -> Case:
     return Case(
         name,
         code=_SCENARIO,
@@ -2591,7 +2841,69 @@ def _scenario_case(name: str, spec: dict) -> Case:
         outputs=["K", "C", "P", "W", "H", "J"],
         files=False,
         warnings="ids",
+        marks=marks,
+        note=note,
     )
+
+
+# a job of a call with a nice (in the main place's SlurmParam, as the framework passes it) waits
+# at the main place, then gpu8 has room: the job moves there (MATLAB before its fix of the nice,
+# oracle PetaKit5D_1697257 and older, kept it, as the main place's options held the nice and
+# gpu8's didn't)
+NICE_SCENARIO = {
+    "steps": [
+        {"op": "set", "viewAge": 0, "minWait": 0, "lookInterval": 0},
+        {
+            "op": "nodes",
+            "lines": [
+                FakeSlurm.node_line(
+                    "n1", "cpu_queue", 24, 24, 514048, 514048, 0, 0, "MIXED", "c24"
+                ),
+                FakeSlurm.node_line(
+                    "g1", "gpu8", 128, 128, 1031600, 1031600, 8, 0, "MIXED", "gpu8"
+                ),
+            ],
+        },
+        {
+            "op": "places",
+            "main": {**GRID_MAIN, "SlurmParam": f"{ABC} --nice=5"},
+            "alts": [
+                {
+                    "SlurmParam": GPU,
+                    "memPerCPU": 7.6,
+                    "maxCPUNum": 32,
+                    "gpuHeadroom": 0,
+                    "cpuJobs": True,
+                }
+            ],
+        },
+        {"op": "choose", "cpus": [4, 10], "times": ["", ""]},
+        {"op": "submit", "job": 1000, "array": 1, "states": ["PD:Resources"]},
+        {
+            "op": "nodes",
+            "lines": [
+                FakeSlurm.node_line(
+                    "n1", "cpu_queue", 24, 24, 514048, 514048, 0, 0, "MIXED", "c24"
+                ),
+                FakeSlurm.node_line("g1", "gpu8", 128, 0, 1031600, 0, 8, 0, "MIXED", "gpu8"),
+            ],
+        },
+        {"op": "move", "jobs": [1000], "arrays": [1]},
+    ]
+}
+
+
+@POSIX
+def test_the_nice_scenario_moves_the_job(tmp_path):
+    # (the oracle case nice_job_moves_to_an_alternative, on the Python side alone)
+    make_bare_fake(tmp_path / "fake")
+    ks, _, ps, _, h, j = py_scenario(str(tmp_path / "fake"), json.dumps(NICE_SCENARIO))
+    assert ks == [1] and ps == f"{ABC} --nice=5"
+    assert h.splitlines()[-1] == (
+        "scontrol update JobId=1000_1 Partition=gpu8 QOS=qos_normal NumCPUs=4 CPUsPerTask=4 "
+        "MinMemoryCPU=21418"
+    )
+    assert j == "1000_1 partition=gpu8 qos=qos_normal cpus=4 mem=85672 gpus=0"
 
 
 def _hand_scenarios() -> dict[str, dict]:
@@ -2699,9 +3011,6 @@ ORACLE_CASES = [
         ),
         args=[OPTION_TEXTS],
         python=py_parse_options,
-        # a known difference until the port follows 7ed28c0, where MATLAB's parse_options keeps
-        # the call's --nice in a field of its own (J09)
-        marks=("xfail",),
     ),
     Case(
         "local_with_memory",
@@ -2710,6 +3019,13 @@ ORACLE_CASES = [
         ),
         args=[[p for p, _ in MEMORY_PAIRS], [t for _, t in MEMORY_PAIRS]],
         python=py_with_memory,
+    ),
+    Case(
+        "with_nice",
+        code="out = {cellfun(@(p, n) slurm_alternatives('with_nice', p, n), in{1}(:)', "
+        "num2cell(in{2}(:)'), 'UniformOutput', false)};",
+        args=[[p for p, _ in WITH_NICE], [float(n) for _, n in WITH_NICE]],
+        python=py_with_nice,
     ),
     Case(
         "local_expand_hostlist",
@@ -2749,6 +3065,7 @@ ORACLE_CASES = [
     ),
     *[_scenario_case(name, spec) for name, spec in sorted(_hand_scenarios().items())],
     *[_scenario_case(f"scenario_{seed:03d}", scenario(seed)) for seed in range(48)],
+    _scenario_case("nice_job_moves_to_an_alternative", NICE_SCENARIO),
 ]
 
 
@@ -2801,8 +3118,9 @@ def test_real_cluster_places_view_and_moves_of_jobs_that_never_run(real_slurm):
     sbatch --test-only answers (and refuses an unknown QOS: that place is left out), a job
     submitted to the chosen place has its shape, move() leaves held and later-beginning jobs
     alone, and the fields of a move to another place (scontrol update of partition, QOS, CPUs,
-    memory and node lists) are accepted and give the job that shape. Every update and cancel
-    names our jobs only; they are cancelled by their ids.
+    memory and node lists) are accepted and give the job that shape, and the held job keeps its
+    nice (a call's, --nice=5) through every move. Every update and cancel names our jobs only;
+    they are cancelled by their ids.
 
     The config (PETAKIT5D_TEST_SLURM_CONFIG, outside the repo) gives SlurmParam and
     SlurmAlternatives: places between which a pending job may move."""
@@ -2832,7 +3150,8 @@ def test_real_cluster_places_view_and_moves_of_jobs_that_never_run(real_slurm):
     keys: list[str] = []
     moved = 0
     try:
-        held = _never_running(slurm, cpus, param, places[k].slurm_constraint, "--hold")
+        nice = f"{param} --nice=5"
+        held = _never_running(slurm, cpus, nice, places[k].slurm_constraint, "--hold")
         keys.append(held)
         later = _never_running(slurm, cpus, param, places[k].slurm_constraint, "--begin=now+1hour")
         keys.append(later)
@@ -2840,7 +3159,7 @@ def test_real_cluster_places_view_and_moves_of_jobs_that_never_run(real_slurm):
             session.submitted(int(key.split("_")[0]), 1, places, own, k, times)
         job = _show(held)
         assert (job["JobState"], job["Reason"]) == ("PENDING", "JobHeldUser"), job
-        assert job["NumCPUs"] == str(cpus)
+        assert job["NumCPUs"] == str(cpus) and job["Nice"] == "5", job
         if places[k].opts.partition:
             assert job["Partition"] == places[k].opts.partition
         # the view lists them as pending jobs of the user, with their shape and reason
@@ -2873,6 +3192,8 @@ def test_real_cluster_places_view_and_moves_of_jobs_that_never_run(real_slurm):
                 assert alt.memory_mb(job["MinMemoryCPU"]) == float(fields["MinMemoryCPU"]), job
             if "QOS" in fields:
                 assert job["QOS"] == fields["QOS"], job
+            # (an update leaves the job's nice)
+            assert job["Nice"] == "5", job
             e.k, e.shape = b, shape
             moved += 1
         assert moved >= 1, "no two places of the config can trade jobs"

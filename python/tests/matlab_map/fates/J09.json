@@ -121,7 +121,26 @@
   "CoordinatorNiceTest": {
    "methods": {
     "jobsAtAnotherPlaceKeepTheirNice": [
-     "pytest:tests/jobs/test_alternatives.py::test_jobs_at_another_place_keep_their_nice"
+     "pytest:tests/jobs/test_alternatives.py::test_jobs_at_another_place_keep_their_nice",
+     "pytest:tests/jobs/test_alternatives.py::test_a_pending_job_with_a_nice_moves_to_an_alternative_and_keeps_its_nice",
+     "pytest:tests/jobs/test_alternatives.py::test_the_calls_nice_goes_to_every_place_and_keeps_no_jobs_apart",
+     "oracle:tests/jobs/test_alternatives.py::nice_job_moves_to_an_alternative",
+     "oracle:tests/jobs/test_alternatives.py::with_nice"
+    ]
+   }
+  },
+  "SlurmAlternativesNiceTest": {
+   "finished": true,
+   "methods": {
+    "pendingJobOfACallWithNiceMoves": [
+     "pytest:tests/jobs/test_alternatives.py::test_pending_job_of_a_call_with_nice_moves",
+     "pytest:tests/jobs/test_alternatives.py::test_a_pending_job_with_a_nice_moves_to_an_alternative_and_keeps_its_nice",
+     "oracle:tests/jobs/test_alternatives.py::nice_job_moves_to_an_alternative"
+    ],
+    "jobsGetTheCallsNiceAtEveryPlace": [
+     "pytest:tests/jobs/test_alternatives.py::test_jobs_get_the_calls_nice_at_every_place",
+     "pytest:tests/jobs/test_alternatives.py::test_the_calls_nice_goes_to_every_place_and_keeps_no_jobs_apart",
+     "oracle:tests/jobs/test_alternatives.py::with_nice"
     ]
    }
   }
