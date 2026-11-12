@@ -3,9 +3,11 @@ classdef RegistrationXcorrTest < pktest.TestCase
     % the max shifts (normxcorr3_max_shift -> normxcorr3_fast with a bbox ->
     % normxcorr3_window_mex on Linux) against the computation of the whole
     % output: the mex runs the same FFTW transforms as MATLAB's fftn and ifftn
-    % and the recurrences of integral_image_3d_mex, only for the window, so
-    % every value is the same bit for bit (also signed zeros), whether this
-    % MATLAB session runs its FFTs in parallel or not.
+    % and the cumulative sums of the window sums in double, only for the
+    % window, so every value is the same bit for bit (also signed zeros),
+    % whether this MATLAB session runs its FFTs in parallel or not. The NCC is
+    % that of double precision also for data with a large offset and flat
+    % regions.
 
     properties (TestParameter)
         % template and image sizes: even and odd, a length of 64 along y, x
@@ -32,22 +34,22 @@ classdef RegistrationXcorrTest < pktest.TestCase
         end
 
         function mexPartsEqualMatlabs(testCase, xcorrSize)
-            % the mex's correlation and integral images equal those of the
-            % MATLAB code (fftn/ifftn, integral_image_3d_mex) in the window
+            % the mex's correlation and window sums equal those of the MATLAB
+            % code (fftn/ifftn, cumulative sums in double) in the window
             testCase.assumeExactMex();
             [T, A] = testCase.pair(xcorrSize(1 : 3), xcorrSize(4 : 6));
             szT = size(T, 1 : 3);
             sz = szT + size(A, 1 : 3) - 1;
             corr = real(ifftn(fftn(A, sz) .* fftn(T(end : -1 : 1, end : -1 : 1, end : -1 : 1), sz)));
-            iA = integral_image_3d(A, szT);
-            iA2 = integral_image_3d(A .* A, szT);
             grain = testCase.matlabGrain();
             for bbox = testCase.windows(sz)
                 b = bbox';
-                [c, i1, i2] = normxcorr3_window_mex('ncc', T, A, b, 4, grain);
+                [sA, sA2, sT] = testCase.windowSums(T, A, b);
+                [c, s1, s2, s3] = normxcorr3_window_mex('ncc', T, A, b, 4, grain);
                 testCase.verifyBitEqual(c, corr(b(1) : b(4), b(2) : b(5), b(3) : b(6)), ['corr ', mat2str(b)]);
-                testCase.verifyBitEqual(i1, iA(b(1) : b(4), b(2) : b(5), b(3) : b(6)), ['intA ', mat2str(b)]);
-                testCase.verifyBitEqual(i2, iA2(b(1) : b(4), b(2) : b(5), b(3) : b(6)), ['intA2 ', mat2str(b)]);
+                testCase.verifyBitEqual(s1, sA, ['sA ', mat2str(b)]);
+                testCase.verifyBitEqual(s2, sA2, ['sA2 ', mat2str(b)]);
+                testCase.verifyBitEqual(s3, sT, ['sT ', mat2str(b)]);
             end
         end
 
@@ -80,15 +82,15 @@ classdef RegistrationXcorrTest < pktest.TestCase
             szT = size(T, 1 : 3);
             sz = szT + size(A, 1 : 3) - 1;
             corr = real(ifftn(fftn(A, sz) .* fftn(T(end : -1 : 1, end : -1 : 1, end : -1 : 1), sz)));
-            iA = integral_image_3d(A, szT);
             tol = 1e-5 * max(abs(corr(:)));
             for bbox = testCase.windows(sz)
                 b = bbox';
-                [c, i1, i2] = normxcorr3_window_mex('ncc', T, A, b, 4, 32, true);
+                sA = testCase.windowSums(T, A, b);
+                [c, s1] = normxcorr3_window_mex('ncc', T, A, b, 4, 32, true);
                 ref = corr(b(1) : b(4), b(2) : b(5), b(3) : b(6));
                 testCase.verifyEqual(size(c), size(ref), ['corr ', mat2str(b)]);
                 testCase.verifyLessThanOrEqual(max(abs(c(:) - ref(:))), tol, ['corr ', mat2str(b)]);
-                testCase.verifyBitEqual(i1, iA(b(1) : b(4), b(2) : b(5), b(3) : b(6)), ['intA ', mat2str(b)]);
+                testCase.verifyBitEqual(s1, sA, ['sA ', mat2str(b)]);
             end
         end
 
@@ -101,6 +103,85 @@ classdef RegistrationXcorrTest < pktest.TestCase
             [offFast, mxFast] = normxcorr3_max_shift(T, A, maxShifts, true);
             testCase.verifyEqual(offFast, off);
             testCase.verifyEqual(mxFast, mx, 'AbsTol', single(1e-5));
+        end
+
+        function lowContrastOnALargeOffset(testCase)
+            % data with a large offset (16-bit data shifted by 2^15) and a
+            % contrast of a few counts: in single precision the correlation
+            % and the window sums of the NCC kept the offset, whose rounding
+            % was larger than the NCC itself (|NCC| up to about 10, the peak
+            % at a wrong shift). The NCC is now that of double precision.
+            im = round(pktest.texture([90, 80, 40], 2, [2 ^ 15 - 6, 2 ^ 15 + 6]));
+            A = single(im(11 : 70, 6 : 65, 6 : 35));
+            T = single(im(25 : 54, 18 : 47, 13 : 27));
+            maxShifts = [-20, -15, -8; 25, 20, 9];
+            [off, mx, C] = normxcorr3_max_shift(T, A, maxShifts);
+            testCase.verifyEqual(off, [14, 12, 7]);
+            testCase.verifyEqual(mx, single(1), 'AbsTol', single(1e-5));
+            testCase.verifyLessThanOrEqual(max(abs(C(:))), 1 + 1e-5);
+            [s, t] = testCase.maxShiftWindow(T, A, maxShifts);
+            Cref = testCase.directNCC(T, A, s, t);
+            testCase.verifyLessThanOrEqual(max(abs(double(C(:)) - Cref(:))), 1e-4);
+        end
+
+        function flatWindowsAreZero(testCase)
+            % windows of an exactly flat region (as the background of
+            % flat-field corrected data) have no NCC: 0, not the rounding
+            % errors of their sums divided by each other (here, with a wide
+            % range of intensities, up to about 4.5). The others are the NCC
+            % of double precision.
+            im = pktest.texture([90, 80, 40]);
+            im = single(exp(12 * (im - 100) / 1900));
+            im(:, 31 : end, :) = single(1000.1);
+            A = im(11 : 70, 6 : 65, 6 : 35);
+            T = im(25 : 54, 18 : 47, 13 : 27);
+            maxShifts = [-20, -15, -8; 25, 30, 9];
+            [off, mx, C] = normxcorr3_max_shift(T, A, maxShifts);
+            testCase.verifyEqual(off, [14, 12, 7]);
+            testCase.verifyEqual(mx, single(1), 'AbsTol', single(1e-5));
+            testCase.verifyLessThanOrEqual(max(abs(C(:))), 1 + 1e-5);
+            [s, t] = testCase.maxShiftWindow(T, A, maxShifts);
+            [Cref, flat] = testCase.directNCC(T, A, s, t);
+            testCase.assertGreaterThan(nnz(flat), 100);
+            testCase.verifyEqual(nnz(C(flat)), 0, 'The NCC of flat windows is not 0.');
+            testCase.verifyLessThanOrEqual(max(abs(double(C(:)) - Cref(:))), 1e-4);
+            % also without the mex
+            testCase.applyFixture(pktest.FunctionStubFixture('normxcorr3_window_mex'));
+            testCase.expectMexFallback('normxcorr3_window_mex');
+            [~, ~, Cm] = normxcorr3_max_shift(T, A, maxShifts);
+            testCase.verifyEqual(Cm, C, 'AbsTol', single(1e-5));
+            testCase.verifyEqual(nnz(Cm(flat)), 0);
+        end
+
+        function faintRegionsHaveTheirNCC(testCase)
+            % windows of a faint region (a contrast of a few counts next to
+            % hundreds) are not flat to single precision: their NCC is that of
+            % double precision, not 0
+            im = pktest.texture([90, 80, 40]);
+            f = pktest.texture([90, 80, 40], 2, [0, 6]);
+            im(:, 31 : end, :) = 1000 + f(:, 31 : end, :);
+            A = im(11 : 70, 6 : 65, 6 : 35);
+            T = im(25 : 54, 18 : 47, 13 : 27);
+            maxShifts = [-20, -15, -8; 25, 30, 9];
+            [off, ~, C] = normxcorr3_max_shift(T, A, maxShifts);
+            testCase.verifyEqual(off, [14, 12, 7]);
+            [s, t] = testCase.maxShiftWindow(T, A, maxShifts);
+            Cref = testCase.directNCC(T, A, s, t);
+            testCase.verifyLessThanOrEqual(max(abs(double(C(:)) - Cref(:))), 1e-4);
+        end
+
+        function validAndSameShapes(testCase)
+            % 'valid' started along x at the template's size along y, which
+            % gave a wrong part (and size) for templates of different sizes
+            % along y and x
+            [T, A] = testCase.pair([6, 9, 4], [20, 22, 11]);
+            szT = size(T, 1 : 3);
+            C = normxcorr3_fast(T, A);
+            Cv = normxcorr3_fast(T, A, 'valid');
+            testCase.verifyEqual(size(Cv), size(A, 1 : 3) - szT + 1);
+            testCase.verifyEqual(Cv, C(szT(1) : end - szT(1) + 1, szT(2) : end - szT(2) + 1, szT(3) : end - szT(3) + 1));
+            p = fix((szT - 1) / 2);
+            testCase.verifyEqual(normxcorr3_fast(T, A, 'same'), C(p(1) + 1 : p(1) + 20, p(2) + 1 : p(2) + 22, p(3) + 1 : p(3) + 11));
         end
 
         function maxShiftOf2DImages(testCase)
@@ -269,6 +350,80 @@ classdef RegistrationXcorrTest < pktest.TestCase
             if isequal(normxcorr3_window_mex('fft1', X, 4, 0), Y(1 : 33, :)) ...
                     && ~isequal(normxcorr3_window_mex('fft1', X, 4, 32), Y(1 : 33, :))
                 grain = 0;
+            end
+        end
+
+        function [sA, sA2, sT] = windowSums(T, A, bbox)
+            % the window sums of normxcorr3_fast's MATLAB code in the window
+            % bbox: of A, A .* A (zero outside A) and of T where it overlaps A,
+            % in double, by cumulative sums along y, x and z
+            szT = size(T, 1 : 3);
+            szA = size(A, 1 : 3);
+            [loT, hiT, loA, hiA] = deal(cell(1, 3));
+            for d = 1 : 3
+                k = bbox(d) : bbox(d + 3);
+                loT{d} = max(1, szT(d) - k + 1);
+                hiT{d} = min(szT(d), szT(d) - k + szA(d));
+                loA{d} = max(1, k - szT(d) + 1);
+                hiA{d} = min(k, szA(d));
+            end
+            X = double(A);
+            sA = RegistrationXcorrTest.boxSums(X, loA, hiA);
+            sA2 = RegistrationXcorrTest.boxSums(X .* X, loA, hiA);
+            sT = RegistrationXcorrTest.boxSums(double(T), loT, hiT);
+        end
+
+        function [S] = boxSums(S, lo, hi)
+            % sums over the boxes lo{d}(k) .. hi{d}(k) along each dimension
+            for d = 1 : 3
+                P = cumsum(S, d);
+                idx = repmat({':'}, 1, 3);
+                idx{d} = hi{d};
+                W = P(idx{:});
+                m = lo{d} > 1;
+                if any(m)
+                    idx{d} = lo{d}(m) - 1;
+                    L = P(idx{:});
+                    idx{d} = find(m);
+                    W(idx{:}) = W(idx{:}) - L;
+                end
+                S = W;
+            end
+        end
+
+        function [s, t] = maxShiftWindow(T, A, maxShifts)
+            % the window of the full output that normxcorr3_max_shift takes
+            sz_t = size(T, 1 : 3);
+            s = max(1, ceil(maxShifts(1, :) + sz_t));
+            t = min(floor(maxShifts(2, :) + sz_t), sz_t + size(A, 1 : 3) - 1);
+        end
+
+        function [C, flat] = directNCC(T, A, s, t)
+            % the NCC of the windows s .. t of the full output, each from its
+            % elements in double precision (the image zero-padded); flat:
+            % windows of one value (0 there)
+            T = double(T);
+            szT = size(T, 1 : 3);
+            szA = size(A, 1 : 3);
+            Ap = zeros(szA + 2 * szT);
+            Ap(szT(1) + 1 : szT(1) + szA(1), szT(2) + 1 : szT(2) + szA(2), szT(3) + 1 : szT(3) + szA(3)) = double(A);
+            T0 = T(:) - mean(T(:));
+            sT = std(T(:));
+            n = numel(T);
+            C = zeros(t - s + 1);
+            flat = false(t - s + 1);
+            for z = s(3) : t(3)
+                for x = s(2) : t(2)
+                    for y = s(1) : t(1)
+                        w = Ap(y + 1 : y + szT(1), x + 1 : x + szT(2), z + 1 : z + szT(3));
+                        sw = std(w(:));
+                        k = {y - s(1) + 1, x - s(2) + 1, z - s(3) + 1};
+                        flat(k{:}) = sw == 0;
+                        if sw > 0
+                            C(k{:}) = sum(T0 .* w(:)) / ((n - 1) * sT * sw);
+                        end
+                    end
+                end
             end
         end
 

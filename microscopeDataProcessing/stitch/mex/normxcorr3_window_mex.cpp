@@ -1,9 +1,10 @@
 // The parts of the normalized cross-correlation of normxcorr3_fast in a window of its 'full' output, with
-// the same FFTs as MATLAB's own fftn and ifftn (as decon_lucy_rfft_mex) and the same integral images as
-// integral_image_3d_mex, so that they equal normxcorr3_fast's bit for bit:
-//   corr  = real(ifftn(fftn(A, szOut) .* fftn(T(end : -1 : 1, end : -1 : 1, end : -1 : 1), szOut)))
-//   intA  = integral_image_3d_mex(A, szT)
-//   intA2 = integral_image_3d_mex(A .* A, szT)
+// the same FFTs as MATLAB's own fftn and ifftn (as decon_lucy_rfft_mex) and the same window sums as its MATLAB
+// code (box_sums), so that they equal normxcorr3_fast's bit for bit:
+//   corr = real(ifftn(fftn(A, szOut) .* fftn(T(end : -1 : 1, end : -1 : 1, end : -1 : 1), szOut)))
+//   sA   = sums of A over the windows of size szT (zero outside A), in double
+//   sA2  = sums of A .* A (in double) over the windows
+//   sT   = sums of the elements of T that overlap A at each window position, in double
 // in the window, with szOut = szT + szA - 1.
 //   fftn of real data: 1D real-to-complex transforms along y, complex ones along x and z (MATLAB's single
 //     precision FFTW and its plans), then the Hermitian fill of MATLAB (an element whose mirror has the
@@ -14,18 +15,18 @@
 //     mark_alone); for some lengths the two give different last bits, so the mex runs the same lines alone.
 // Only what the window needs is computed: the zero padding is not transformed, the forward transforms keep
 // the half spectrum (k_z <= nz / 2) that the inverse uses (A's multiplied into T's as it is computed), the
-// inverse transforms along x only the rows of the window and along z only its lines, and the integral images
-// run their recurrences only along the lines that lead to the window. 2D data (nz = 1) uses the same steps
-// along y and x.
+// inverse transforms along x only the rows of the window and along z only its lines, and the window sums
+// only the window's lines along x and z. 2D data (nz = 1) uses the same steps along y and x.
 //
-// [corr, intA, intA2, t] = normxcorr3_window_mex('ncc', T, A, bbox, nThreads, grain[, fast])
+// [corr, sA, sA2, sT, t] = normxcorr3_window_mex('ncc', T, A, bbox, nThreads, grain[, fast])
 //   T, A     : real single arrays (2D or 3D), size(T) <= size(A), szOut with at least 2 elements along y and x
 //   bbox     : [s1, s2, s3, t1, t2, t3], the window in the full output (1-based, 1 <= s <= t <= szOut)
 //   fast     : true for smaller FFTs instead of MATLAB's (default false): per dimension the smallest 2, 3, 5,
 //              7-smooth size n >= size(A) with n >= t and n >= szOut - s + 1, for which the circular
 //              correlation equals the linear one in the window; corr then differs from MATLAB's by rounding
-//   corr, intA, intA2 : single arrays of the window size
-//   t        : seconds in [planning, forward transform of T, of A, inverse transform, integral images]
+//   corr     : single array of the window size
+//   sA, sA2, sT : double arrays of the window size (computed only when requested)
+//   t        : seconds in [planning, forward transform of T, of A, inverse transform, window sums]
 //
 // Y = normxcorr3_window_mex('fft1', X, nThreads, grain)
 //   rows 1 .. n / 2 + 1 of fft(X, [], 1) for single X (n x m, n >= 2), with MATLAB's groups of lines for
@@ -731,117 +732,104 @@ static void inv_last_win(Ctx& c, const fftwf_complex* P, const float* Q, const W
     }
 }
 
-// The backward recurrence of integral_image_3d_mex along a line of n elements (a of them from the data, box
-// length t): col[k - lo] holds element k (k >= lo) of the previous stage (zero for k >= a); afterwards the
-// elements k >= max(w0, 1) hold the box sums (element 0 stays, as in the mex). The recurrence reads no
-// element below lo when lo <= max(0, w0 - t + 1).
-static inline void integral_backward(float* col, const idx_t lo, const idx_t n, const idx_t a, const idx_t t, const idx_t w0) {
-    float tmp_post = 0.0f;
-    const idx_t kend = w0 > 1 ? w0 : 1;
-    for (idx_t k = n - 1; k >= kend; k--) {
-        const float tmp = col[k - lo];
-        if (k == n - 1) {
-            col[k - lo] = col[n - t - lo];
-        } else if (k >= a) {
-            col[k - lo] = col[k + 1 - lo] + col[k - t + 1 - lo];
-        } else if (k >= t - 1) {
-            col[k - lo] = col[k + 1 - lo] - tmp_post + col[k - t + 1 - lo];
-        } else {
-            col[k - lo] = col[k + 1 - lo] - tmp_post;
-        }
-        tmp_post = tmp;
+// The window sums of normxcorr3_fast's MATLAB code in double (its box_sums): along each dimension d, for the
+// window's positions k (k = 0 .. w[d] - 1), the sum of the elements lo[d][k] .. hi[d][k] (1-based, inclusive)
+// of the previous stage, as MATLAB's cumsum from the first element (P(1) = x(1), P(i) = P(i - 1) + x(i)) and
+// P(hi) - P(lo - 1) (P(hi) for lo = 1), along y, then x, then z, so that the sums are MATLAB's bit for bit.
+// The elements are X, or X .* X in double (sq). n: size of X; out: [w0, w1, w2].
+static void box_sums_window(const float* X, const int* n, int* const* lo, int* const* hi, const int* w, const bool sq,
+                            double* out, const int nt) {
+    int H[3] = {0, 0, 0};
+    for (int d = 0; d < 3; d++) {
+        for (int k = 0; k < w[d]; k++) H[d] = hi[d][k] > H[d] ? hi[d][k] : H[d];
     }
-}
-
-// The integral images of integral_image_3d_mex of A and A .* A (sums over boxes of size ts, zero outside A,
-// size a + ts - 1) in the window, with its recurrences: forward along y from the first element of each line,
-// then backward along x and z from the last one, only along the lines that lead to the window (y lines of the
-// rows and slices that the x and z recurrences read, x lines of the window columns, z lines of the window).
-// IA, IA2: window size.
-static void integral_window(const float* A, const int* a, const int* ts, const Win& W, float* IA, float* IA2, const int nt) {
-    const int i1 = a[1] + ts[1] - 1, i2 = a[2] + ts[2] - 1;
-    const int wy = W.wn[0], wx = W.wn[1], wz = W.wn[2];
-    const idx_t wyx = (idx_t)wy * wx;
-    // first row along x and slice along z that the x and z recurrences read
-    const int lo1 = W.w0[1] - ts[1] + 1 > 0 ? W.w0[1] - ts[1] + 1 : 0;
-    const int lo2 = W.w0[2] - ts[2] + 1 > 0 ? W.w0[2] - ts[2] + 1 : 0;
-    const idx_t n1r = a[1] - lo1, n2r = a[2] - lo2;
-    // stage 1 (along y, forward) of the rows [lo1, a[1]) in the slices [lo2, a[2]), the window part kept:
-    // S1 [wy, n1r, n2r] for A, S1b for A .* A
-    float* S1 = (float*)mxMalloc(sizeof(float) * 2 * (size_t)wy * n1r * n2r);
-    float* S1b = S1 + (idx_t)wy * n1r * n2r;
-    const int ty = ts[0], ay = a[0];
-    #pragma omp parallel for num_threads(nt) schedule(static) collapse(2)
-    for (idx_t z = 0; z < n2r; z++) {
-        for (idx_t x = 0; x < n1r; x++) {
-            const float* f = A + ((lo1 + x) + (idx_t)a[1] * (lo2 + z)) * ay;
-            float* o = S1 + (x + n1r * z) * wy;
-            float* ob = S1b + (x + n1r * z) * wy;
-            float v = 0.0f, vb = 0.0f;
-            for (int y = 0; y <= W.w1[0]; y++) {
-                if (y == 0) {
-                    v = f[0];
-                    vb = f[0] * f[0];
-                } else if (y < ty) {
-                    v = v + f[y];
-                    vb = vb + f[y] * f[y];
-                } else if (y < ay) {
-                    v = v + f[y] - f[y - ty];
-                    vb = vb + f[y] * f[y] - f[y - ty] * f[y - ty];
-                } else {
-                    v = v - f[y - ty];
-                    vb = vb - f[y - ty] * f[y - ty];
-                }
-                if (y >= W.w0[0]) {
-                    o[y - W.w0[0]] = v;
-                    ob[y - W.w0[0]] = vb;
-                }
-            }
-        }
-    }
-    // stage 2 (along x, backward) of the window rows in the slices [lo2, a[2]): S2 [wy, wx, n2r], S2b
-    float* S2 = (float*)mxMalloc(sizeof(float) * 2 * (size_t)wyx * n2r);
-    float* S2b = S2 + wyx * n2r;
-    const idx_t clen = i1 - lo1;
-    float* cbuf = (float*)mxMalloc(sizeof(float) * (size_t)clen * nt);
+    // stage 1 (y) of every column: S1 [w0, n1, n2]
+    const idx_t ncol = (idx_t)n[1] * n[2];
+    double* S1 = (double*)mxMalloc(sizeof(double) * (size_t)w[0] * ncol);
+    double* pb = (double*)mxMalloc(sizeof(double) * (size_t)H[0] * nt);
     #pragma omp parallel num_threads(nt)
     {
-        float* col = cbuf + clen * omp_get_thread_num();
-        #pragma omp for schedule(static) collapse(2)
-        for (idx_t z = 0; z < n2r; z++) {
-            for (idx_t y = 0; y < wy; y++) {
-                for (int s = 0; s < 2; s++) {
-                    const float* src = (s == 0 ? S1 : S1b) + y + (idx_t)wy * n1r * z;
-                    for (idx_t x = 0; x < n1r; x++) col[x] = src[x * wy];
-                    for (idx_t x = n1r; x < clen; x++) col[x] = 0.0f;
-                    integral_backward(col, lo1, i1, a[1], ts[1], W.w0[1]);
-                    float* dst = (s == 0 ? S2 : S2b) + y + wyx * z;
-                    for (int x = 0; x < wx; x++) dst[(idx_t)x * wy] = col[W.w0[1] + x - lo1];
-                }
-            }
-        }
-    }
-    mxFree(cbuf);
-    mxFree(S1);
-    // stage 3 (along z, backward) of the window lines
-    const idx_t zlen = i2 - lo2;
-    float* zbuf = (float*)mxMalloc(sizeof(float) * (size_t)zlen * nt);
-    #pragma omp parallel num_threads(nt)
-    {
-        float* col = zbuf + zlen * omp_get_thread_num();
+        double* P = pb + (size_t)H[0] * omp_get_thread_num();
         #pragma omp for schedule(static)
-        for (idx_t L = 0; L < wyx; L++) {
-            for (int s = 0; s < 2; s++) {
-                const float* src = (s == 0 ? S2 : S2b) + L;
-                for (idx_t z = 0; z < n2r; z++) col[z] = src[z * wyx];
-                for (idx_t z = n2r; z < zlen; z++) col[z] = 0.0f;
-                integral_backward(col, lo2, i2, a[2], ts[2], W.w0[2]);
-                float* dst = (s == 0 ? IA : IA2) + L;
-                for (int z = 0; z < wz; z++) dst[(idx_t)z * wyx] = col[W.w0[2] + z - lo2];
+        for (idx_t c = 0; c < ncol; c++) {
+            const float* f = X + c * n[0];
+            for (int i = 0; i < H[0]; i++) {
+                const double v = sq ? (double)f[i] * (double)f[i] : (double)f[i];
+                P[i] = i == 0 ? v : P[i - 1] + v;
+            }
+            double* o = S1 + c * w[0];
+            for (int k = 0; k < w[0]; k++) {
+                o[k] = lo[0][k] > 1 ? P[hi[0][k] - 1] - P[lo[0][k] - 2] : P[hi[0][k] - 1];
             }
         }
     }
-    mxFree(zbuf);
+    mxFree(pb);
+    // stage 2 (x) of the rows of every slice: S2 [w0, w1, n2]; P holds the prefix sums of the w0 rows
+    const idx_t w0 = w[0];
+    double* S2 = (double*)mxMalloc(sizeof(double) * (size_t)w0 * w[1] * n[2]);
+    pb = (double*)mxMalloc(sizeof(double) * (size_t)w0 * H[1] * nt);
+    #pragma omp parallel num_threads(nt)
+    {
+        double* P = pb + (size_t)w0 * H[1] * omp_get_thread_num();
+        #pragma omp for schedule(static)
+        for (idx_t z = 0; z < n[2]; z++) {
+            const double* src = S1 + w0 * n[1] * z;
+            for (int i = 0; i < H[1]; i++) {
+                const double* s = src + w0 * i;
+                double* p = P + w0 * i;
+                if (i == 0) {
+                    for (idx_t y = 0; y < w0; y++) p[y] = s[y];
+                } else {
+                    const double* q = p - w0;
+                    for (idx_t y = 0; y < w0; y++) p[y] = q[y] + s[y];
+                }
+            }
+            double* o = S2 + w0 * w[1] * z;
+            for (int k = 0; k < w[1]; k++) {
+                const double* ph = P + w0 * (hi[1][k] - 1);
+                double* ok = o + w0 * k;
+                if (lo[1][k] > 1) {
+                    const double* pl = P + w0 * (lo[1][k] - 2);
+                    for (idx_t y = 0; y < w0; y++) ok[y] = ph[y] - pl[y];
+                } else {
+                    for (idx_t y = 0; y < w0; y++) ok[y] = ph[y];
+                }
+            }
+        }
+    }
+    mxFree(pb);
+    mxFree(S1);
+    // stage 3 (z) of the lines of every window column: out [w0, w1, w2]
+    const idx_t wyx = w0 * w[1];
+    pb = (double*)mxMalloc(sizeof(double) * (size_t)w0 * H[2] * nt);
+    #pragma omp parallel num_threads(nt)
+    {
+        double* P = pb + (size_t)w0 * H[2] * omp_get_thread_num();
+        #pragma omp for schedule(static)
+        for (idx_t x = 0; x < w[1]; x++) {
+            for (int i = 0; i < H[2]; i++) {
+                const double* s = S2 + w0 * x + wyx * i;
+                double* p = P + w0 * i;
+                if (i == 0) {
+                    for (idx_t y = 0; y < w0; y++) p[y] = s[y];
+                } else {
+                    const double* q = p - w0;
+                    for (idx_t y = 0; y < w0; y++) p[y] = q[y] + s[y];
+                }
+            }
+            for (int k = 0; k < w[2]; k++) {
+                const double* ph = P + w0 * (hi[2][k] - 1);
+                double* ok = out + w0 * x + wyx * k;
+                if (lo[2][k] > 1) {
+                    const double* pl = P + w0 * (lo[2][k] - 2);
+                    for (idx_t y = 0; y < w0; y++) ok[y] = ph[y] - pl[y];
+                } else {
+                    for (idx_t y = 0; y < w0; y++) ok[y] = ph[y];
+                }
+            }
+        }
+    }
+    mxFree(pb);
     mxFree(S2);
 }
 
@@ -940,12 +928,12 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 
     if (strcmp(method, "ncc") == 0) {
         if (nrhs != 6 && nrhs != 7) {
-            mexErrMsgIdAndTxt("normxcorr3_window_mex:inputError", "Usage: [corr, intA, intA2] = normxcorr3_window_mex('ncc', T, A, bbox, nThreads, grain[, fast])");
+            mexErrMsgIdAndTxt("normxcorr3_window_mex:inputError", "Usage: [corr, sA, sA2, sT, t] = normxcorr3_window_mex('ncc', T, A, bbox, nThreads, grain[, fast])");
         }
         // fast: smaller FFTs (2, 3, 5, 7-smooth sizes that just avoid wrap-around in the window), not MATLAB's
         const bool fast = nrhs == 7 && mxGetNumberOfElements(prhs[6]) == 1 && mxGetScalar(prhs[6]) != 0;
-        if (nlhs > 4) {
-            mexErrMsgIdAndTxt("normxcorr3_window_mex:outputError", "At most 4 outputs.");
+        if (nlhs > 5) {
+            mexErrMsgIdAndTxt("normxcorr3_window_mex:outputError", "At most 5 outputs.");
         }
         check_real_single(prhs[1], "T");
         check_real_single(prhs[2], "A");
@@ -996,8 +984,6 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 
         const mwSize od[3] = {(mwSize)W.wn[0], (mwSize)W.wn[1], (mwSize)W.wn[2]};
         plhs[0] = mxCreateNumericArray(3, od, mxSINGLE_CLASS, mxREAL);
-        mxArray* ia = mxCreateNumericArray(3, od, mxSINGLE_CLASS, mxREAL);
-        mxArray* ia2 = mxCreateNumericArray(3, od, mxSINGLE_CLASS, mxREAL);
 
         // the y-half columns, the half spectrum (of T, then of the product), the self-conjugate planes of A's
         Buffers buf;
@@ -1027,22 +1013,45 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
             inv_last_win(c, P, NULL, W, R);
         }
         tm[3] = omp_get_wtime() - t0;
+        // the window sums (only the requested ones): at window position k (1-based in the full output) the
+        // image's elements max(1, k - ts + 1) .. min(k, a) and the template's max(1, ts - k + 1) ..
+        // min(ts, ts - k + a) overlap
         t0 = omp_get_wtime();
-        integral_window(mxGetSingles(prhs[2]), a, ts, W, mxGetSingles(ia), mxGetSingles(ia2), nt);
-        tm[4] = omp_get_wtime() - t0;
         if (nlhs > 1) {
-            plhs[1] = ia;
-        } else {
-            mxDestroyArray(ia);
+            int* lohi = (int*)mxMalloc(sizeof(int) * 4 * (size_t)(W.wn[0] + W.wn[1] + W.wn[2]));
+            int* loA[3];
+            int* hiA[3];
+            int* loT[3];
+            int* hiT[3];
+            int* q = lohi;
+            for (int i = 0; i < 3; i++) {
+                loA[i] = q;
+                hiA[i] = q + W.wn[i];
+                loT[i] = q + 2 * W.wn[i];
+                hiT[i] = q + 3 * W.wn[i];
+                q += 4 * W.wn[i];
+                for (int j = 0; j < W.wn[i]; j++) {
+                    const int k = W.w0[i] + j + 1;
+                    loA[i][j] = k - ts[i] + 1 > 1 ? k - ts[i] + 1 : 1;
+                    hiA[i][j] = k < a[i] ? k : a[i];
+                    loT[i][j] = ts[i] - k + 1 > 1 ? ts[i] - k + 1 : 1;
+                    hiT[i][j] = ts[i] < ts[i] - k + a[i] ? ts[i] : ts[i] - k + a[i];
+                }
+            }
+            for (int o = 1; o < nlhs && o < 4; o++) {
+                plhs[o] = mxCreateNumericArray(3, od, mxDOUBLE_CLASS, mxREAL);
+                if (o < 3) {
+                    box_sums_window(mxGetSingles(prhs[2]), a, loA, hiA, W.wn, o == 2, mxGetDoubles(plhs[o]), nt);
+                } else {
+                    box_sums_window(mxGetSingles(prhs[1]), ts, loT, hiT, W.wn, false, mxGetDoubles(plhs[o]), nt);
+                }
+            }
+            mxFree(lohi);
         }
-        if (nlhs > 2) {
-            plhs[2] = ia2;
-        } else {
-            mxDestroyArray(ia2);
-        }
-        if (nlhs > 3) {
-            plhs[3] = mxCreateDoubleMatrix(1, 5, mxREAL);
-            memcpy(mxGetDoubles(plhs[3]), tm, sizeof(tm));
+        tm[4] = omp_get_wtime() - t0;
+        if (nlhs > 4) {
+            plhs[4] = mxCreateDoubleMatrix(1, 5, mxREAL);
+            memcpy(mxGetDoubles(plhs[4]), tm, sizeof(tm));
         }
     } else if (strcmp(method, "fft1") == 0) {
         if (nrhs != 4) {
