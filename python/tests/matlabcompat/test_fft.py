@@ -1,12 +1,20 @@
-"""Tests of petakit5d.matlabcompat.fft: MATLAB R2024b's fft, ifft, fftn and ifftn, bit for bit.
+"""Tests of petakit5d.matlabcompat.fft: MATLAB R2024b's fft, ifft, fftn and ifftn on (z, y, x)
+arrays.
+
+Every test runs on the backends this build has (petakit5d.fft): the permissive one (pocketfft, the
+default) always, the exact one (FFTW 3.3.8 with MATLAB's codelets, the optional GPL add-on) when it
+is installed. With the exact backend the oracle packs (MATLAB's own fft, ifft, fftn and ifftn: 1D
+lengths 2 to 1024, MATLAB's rules; the 3D sizes of the demos, the tests and real data run on the
+cluster) are checked bit for bit against digests of MATLAB's outputs, where our plans are MATLAB's
+(x86-64, AVX) and the C library gives FFTW the reference platform's twiddle factors;
+the permissive backend's results are checked against double precision with the tolerances of
+decision record 0006. The cases keep MATLAB's form (arrays (y, x, z), dimensions from 1, siz in
+MATLAB's order) and reach the Python functions through the oracle's mappings (``mform``):
+``from_matlab`` for arrays, the dimension's axis, the size's shape, and ``to_matlab`` for results.
 
 MATLAB tests whose intent is ported: tests/decon/DeconRFFTTest.m linesAreGroupedAsMatlabDoes
 (MATLAB's groups of lines in both FFT modes) and resultsDoNotDependOnTheThreadCount (for the
-transforms themselves); its other methods test the decon mex (the decon task's). The oracle packs
-(MATLAB's own fft, ifft, fftn and ifftn: 1D lengths 2 to 1024, MATLAB's rules, the 3D sizes of the
-demos, the tests and real data) run with MATLAB on the cluster; here the 1D and rule packs are
-checked against digests of MATLAB's outputs, where our plans are MATLAB's (x86-64, AVX) and the C
-library gives FFTW the reference platform's twiddle factors.
+transforms themselves); its other methods test the decon mex (the decon task's).
 """
 
 import ctypes
@@ -14,14 +22,22 @@ import ctypes.util
 import functools
 import hashlib
 import math
-import os
 import platform
 import sys
 
 import numpy as np
 import pytest
 
+from petakit5d import fft as P
+from petakit5d.core.arrays import from_matlab, to_matlab
 from petakit5d.matlabcompat import fft as F
+
+BACKENDS = P.available()
+EXACT = "exact" in BACKENDS
+needs_exact = pytest.mark.skipif(
+    not EXACT, reason="the exact FFT backend (the FFTW add-on) is not installed"
+)
+each_backend = pytest.mark.parametrize("be", BACKENDS)
 
 # --- bit-stable inputs (the oracle packs' generator) -------------------------------------------
 
@@ -284,19 +300,68 @@ def pack_3d():
 PACKS = {"1d": pack_1d, "edge": pack_edge, "3d": pack_3d}
 
 
-def run_case(c, x, parallel=True, threads=None):
+# --- the Python functions with MATLAB's arguments (the oracle's mappings) ----------------------
+
+
+class MForm:
+    """``petakit5d.matlabcompat.fft`` called with MATLAB's arguments, as the oracle's roles call it:
+    arrays ``(y, x, z, ...)`` in (``from_matlab``) and out (``to_matlab``), ``dim`` 0-based
+    (MATLAB's dimension - 1) as the dimension's NumPy axis, ``siz`` in MATLAB's order as the Python
+    shape."""
+
+    def __init__(self, backend=None, threads=None, parallel=True):
+        self.kw = {"backend": backend, "threads": threads, "matlab_parallel": parallel}
+
+    @staticmethod
+    def axis(dim):
+        if dim is None:
+            return None
+        d = float(dim)
+        if d != math.floor(d):
+            return d  # the Python function refuses it
+        d = int(d)
+        if d < 0:
+            raise ValueError("dim must be at least 0")
+        return {0: -2, 1: -1}.get(d, -(d + 1))
+
+    @staticmethod
+    def shape(siz):
+        if siz is None:
+            return None
+        s = list(np.asarray(siz).ravel())
+        if not s:
+            return []
+        if len(s) == 1:
+            raise ValueError("MATLAB's siz has at least two elements")
+        # MATLAB's (y, x, z, d4, ...) in Python's order (..., d4, z, y, x), the values as given
+        return [*s[:1:-1], s[0], s[1]]
+
+    def fft(self, x, n=None, dim=None):
+        return to_matlab(F.fft(from_matlab(x), n, self.axis(dim), **self.kw))
+
+    def ifft(self, x, n=None, dim=None, symmetric=False):
+        return to_matlab(F.ifft(from_matlab(x), n, self.axis(dim), symmetric, **self.kw))
+
+    def fftn(self, x, siz=None):
+        return to_matlab(F.fftn(from_matlab(x), self.shape(siz), **self.kw))
+
+    def ifftn(self, x, siz=None, symmetric=False):
+        return to_matlab(F.ifftn(from_matlab(x), self.shape(siz), symmetric, **self.kw))
+
+
+def run_case(c, x, parallel=True, threads=None, backend=None):
     """The case's call (the manifest's dim is MATLAB's, 1-based)."""
-    kw = {"matlab_parallel": parallel, "threads": threads}
+    m = MForm(backend, threads, parallel)
     dim = c.get("dim")
     d0 = None if dim is None else dim - 1
     f = c["func"]
     if f == "fft":
-        return F.fft(x, c.get("n"), d0, **kw)
+        return m.fft(x, c.get("n"), d0)
     if f == "ifft":
-        return F.ifft(x, c.get("n"), d0, c.get("sym", False), **kw)
+        return m.ifft(x, c.get("n"), d0, c.get("sym", False))
     if f == "fftn":
-        return F.fftn(x, c.get("siz"), **kw)
-    return F.ifftn(x, c.get("siz"), c.get("sym", False), **kw)
+        return m.fftn(x, c.get("siz"))
+    return m.ifftn(x, c.get("siz"), c.get("sym", False))
 
 
 def matlab_shape(shape):
@@ -322,7 +387,7 @@ def case_record(cid, y):
     return f"{cid} {cls[y.dtype.type]} {real} {dims} {hashlib.sha256(raw).hexdigest()}"
 
 
-def pack_digest(pack, parallel, threads=None, step=1):
+def pack_digest(pack, parallel, threads=None, step=1, backend="exact"):
     """sha256 over the records of a pack's cases ('<id> ERROR' where MATLAB raises); step > 1 takes
     every step-th case."""
     lines = []
@@ -332,7 +397,7 @@ def pack_digest(pack, parallel, threads=None, step=1):
         cid = f"{pack}{i:05d}"
         x = case_input(c)
         try:
-            y = run_case(c, x, parallel, threads)
+            y = run_case(c, x, parallel, threads, backend)
         except (ValueError, TypeError):
             lines.append(f"{cid} ERROR")
             continue
@@ -407,13 +472,11 @@ def imports_sincos(path):
 
 
 def fftw_sincos():
-    """The function FFTW's twiddle factors come from: the C library's sincos where FFTW's code
-    (built into the extension, or the libraries the driver was switched to) imports it (built with
-    GCC), else its sin and cos."""
-    name = F.fftw_info()["name"]
-    paths = name.split(";") if name != "builtin" else [F._ext().__file__]
+    """The function FFTW's twiddle factors come from: the C library's sincos where the exact
+    backend's libraries import it (built with GCC), else its sin and cos."""
+    paths = P.exact_libraries() if EXACT else None
     f = c_sincos()
-    if f is not None and all(os.path.isfile(p) and imports_sincos(p) for p in paths):
+    if paths and f is not None and all(imports_sincos(q) for q in paths):
         return f
     return separate_sincos
 
@@ -430,9 +493,39 @@ def twiddle_fingerprint(nmax=2048, sincos=None):
     return h.hexdigest()
 
 
+def ext_plan(kind, n, hm, prec=False):
+    return " ".join(P._ext().plan_string(P._backend_id("exact"), prec, kind, n, hm).split())
+
+
+def plans_digest():
+    lines = []
+    for prec in (False, True):
+        for kind in ("r2c", "c2c-1", "c2c+1", "c2r"):
+            for hm in (1, 4):
+                for n in range(1, 1025):
+                    lines.append(
+                        f"{'d' if prec else 'f'} {kind} hm={hm} n={n} | "
+                        + ext_plan(kind, n, hm, prec)
+                    )
+    return hashlib.sha256("\n".join(lines).encode()).hexdigest()
+
+
+def matlab_platform():
+    """Whether the exact backend's plans can be MATLAB's here: x86-64 with AVX (FFTW picks its
+    codelets from the CPU)."""
+    if not EXACT or platform.machine().lower() not in ("x86_64", "amd64"):
+        return False
+    return ext_plan("r2c", 64, 4) == '(rdft2-r2hc-direct-64-x4 "r2cf_64")' and "avx" in ext_plan(
+        "c2c-1", 64, 4
+    )
+
+
 @functools.cache
 def digests_hold_here():
-    """'' where the MATLAB digests apply, else why not (FFTW's plans or twiddle factors differ)."""
+    """'' where the MATLAB digests apply, else why not (no exact backend, or FFTW's plans or twiddle
+    factors differ)."""
+    if not EXACT:
+        return "the exact FFT backend (the FFTW add-on) is not installed"
     if not matlab_platform():
         return "FFTW's plans differ from MATLAB's here (not x86-64 with AVX)"
     fp = twiddle_fingerprint()
@@ -445,35 +538,20 @@ def digests_hold_here():
     return ""
 
 
-def plans_digest():
-    ext = F._ext()
-    lines = []
-    for prec in (False, True):
-        for kind in ("r2c", "c2c-1", "c2c+1", "c2r"):
-            for hm in (1, 4):
-                for n in range(1, 1025):
-                    s = " ".join(ext.plan_string(prec, kind, n, hm).split())
-                    lines.append(f"{'d' if prec else 'f'} {kind} hm={hm} n={n} | {s}")
-    return hashlib.sha256("\n".join(lines).encode()).hexdigest()
-
-
-def matlab_platform():
-    """Whether our plans can be MATLAB's here: x86-64 with AVX (FFTW picks its codelets from the
-    CPU)."""
-    if platform.machine().lower() not in ("x86_64", "amd64"):
-        return False
-    return ext_plan("r2c", 64, 4) == '(rdft2-r2hc-direct-64-x4 "r2cf_64")' and "avx" in ext_plan(
-        "c2c-1", 64, 4
+def close(y, ref, single):
+    """Decision record 0006's tolerances for single transforms (max <= 1e-5 of the largest value,
+    rel L2 <= 1e-6; double: 1e-13 and 1e-14)."""
+    y = np.asarray(y, dtype=np.complex128)
+    ref = np.asarray(ref, dtype=np.complex128)
+    scale = np.max(np.abs(ref)) if ref.size else 0.0
+    if scale == 0:
+        return np.max(np.abs(y), initial=0.0) == 0
+    tmax, tl2 = (1e-5, 1e-6) if single else (1e-13, 1e-14)
+    d = np.abs(y - ref)
+    return (
+        d.max() <= tmax * scale
+        and np.linalg.norm(d) <= tl2 * np.linalg.norm(ref) + tmax * scale * 1e-3
     )
-
-
-def ext_plan(kind, n, hm, prec=False):
-    return " ".join(F._ext().plan_string(prec, kind, n, hm).split())
-
-
-needs_matlab_platform = pytest.mark.skipif(
-    "not matlab_platform()", reason="plans differ from MATLAB here"
-)
 
 
 # --- MATLAB's driver rules ---------------------------------------------------------------------
@@ -523,7 +601,7 @@ def mark_alone(N, n, seg, grain):
     ],
 )
 def test_line_rule_matches_the_decon_mex(N, n, seg, grain):
-    ext = F._ext()
+    ext = P._ext()
     ours = np.array([ext.line_alone(j, N, n, seg, grain) for j in range(N)])
     np.testing.assert_array_equal(ours, mark_alone(N, n, seg, grain))
 
@@ -535,40 +613,66 @@ def halve(a, b, g):
     return halve(a, m, g) + halve(m, b, g)
 
 
-def fft_by_pieces(X, pieces):
+def fft_by_pieces(m, X, pieces):
     """MATLAB's lines of a piece: groups of four from its start, the rest alone; each computed by a
     call that MATLAB (and we) run as one group or alone."""
     out = []
     for a, b in pieces:
         j = a
         while j + 4 <= b:
-            out.append(F.fft(np.asfortranarray(X[:, j : j + 4]), dim=0))
+            out.append(m.fft(np.asfortranarray(X[:, j : j + 4]), dim=0))
             j += 4
         while j < b:
-            out.append(F.fft(np.asfortranarray(X[:, j : j + 1]), dim=0))
+            out.append(m.fft(np.asfortranarray(X[:, j : j + 1]), dim=0))
             j += 1
     return np.concatenate(out, axis=1)
 
 
+@needs_exact
 @pytest.mark.parametrize("N", [2000, 222, 210])
 def test_lines_are_grouped_as_matlab_does(N):
     # DeconRFFTTest/linesAreGroupedAsMatlabDoes: MATLAB's parallel mode halves the lines into pieces
-    # of at most 32 (if n * N * (bits of n) > 98304), its single-thread mode does not
+    # of at most 32 (if n * N * (bits of n) > 98304), its single-thread mode does not; along y of
+    # the (z, y, x) array the lines are strided, numbered in MATLAB's order
+    m = MForm("exact")
     X = make_array(N, [64, N], "single", False)
     pieces = halve(0, N, 32) if 64 * N * 7 > 98304 else [(0, N)]
-    ref_split = fft_by_pieces(X, pieces)
-    ref_serial = fft_by_pieces(X, [(0, N)])
+    ref_split = fft_by_pieces(m, X, pieces)
+    ref_serial = fft_by_pieces(m, X, [(0, N)])
     if N == 2000 and np.array_equal(ref_split, ref_serial):
         pytest.skip("FFTW gives the same bits for groups of four and single lines here")
-    assert F.fft(X, dim=0).tobytes() == ref_split.tobytes()
-    assert F.fft(X, dim=0, matlab_parallel=False).tobytes() == ref_serial.tobytes()
+    assert m.fft(X, dim=0).tobytes() == ref_split.tobytes()
+    assert MForm("exact", parallel=False).fft(X, dim=0).tobytes() == ref_serial.tobytes()
 
 
+@needs_exact
+def test_the_two_matlab_modes_differ_only_in_the_lines_run_alone():
+    X = make_array(12, [64, 2000], "single", False)
+    a = MForm("exact").fft(X, dim=0)
+    b = MForm("exact", parallel=False).fft(X, dim=0)
+    split = mark_alone(2000, 64, 0, 32)
+    serial = mark_alone(2000, 64, 0, 0)
+    same = split == serial
+    assert a[:, same].tobytes() == b[:, same].tobytes()
+    if a[:, ~same].tobytes() == b[:, ~same].tobytes():
+        pytest.skip("FFTW gives the same bits for groups of four and single lines here")
+
+
+def test_permissive_results_do_not_depend_on_matlabs_mode_or_groups():
+    # pocketfft computes each lane of a group as a single line: MATLAB's mode changes nothing
+    X = make_array(12, [64, 2000], "single", False)
+    a = MForm("permissive").fft(X, dim=0)
+    assert MForm("permissive", parallel=False).fft(X, dim=0).tobytes() == a.tobytes()
+    assert fft_by_pieces(MForm("permissive"), X, [(0, 2000)]).tobytes() == a.tobytes()
+
+
+@each_backend
 @pytest.mark.parametrize(
     "case",
     [
         ("fft", [64, 300], False, None),
         ("fft", [6, 64, 37], True, 1),
+        ("fft", [6, 64, 37], False, 2),
         ("fftn", [64, 50, 40], False, None),
         ("fftn", [47, 45, 33], True, None),
         ("ifftn", [64, 50, 40], True, None),
@@ -576,104 +680,154 @@ def test_lines_are_grouped_as_matlab_does(N):
     ],
 )
 @pytest.mark.parametrize("cls", ["single", "double"])
-def test_results_do_not_depend_on_the_thread_count(case, cls):
+def test_results_do_not_depend_on_the_thread_count(be, case, cls):
     func, shape, cplx, dim = case
     x = make_array(7, shape, cls, cplx)
     if func == "ifftn":
         x = make_array(7, shape, cls, True, hermitian="nd")
-    f = getattr(F, func)
     kw = {} if dim is None else {"dim": dim}
-    ref = f(x, threads=1, **kw)
+    ref = getattr(MForm(be, 1), func)(x, **kw)
     for t in (2, 3, 8):
-        assert f(x, threads=t, **kw).tobytes() == ref.tobytes()
+        assert getattr(MForm(be, t), func)(x, **kw).tobytes() == ref.tobytes()
 
 
-@pytest.mark.parametrize("cls,tol", [("single", 2e-6), ("double", 1e-14)])
-def test_values_agree_with_numpy(cls, tol):
+@each_backend
+@pytest.mark.parametrize("cls", ["single", "double"])
+def test_values_agree_with_numpy(be, cls):
+    single = cls == "single"
+    m = MForm(be)
     x = make_array(3, [24, 18, 10], cls, True)
     r = make_array(4, [24, 18, 10], cls, False)
-    ref = np.fft.fftn(x.astype(np.complex128))
-    assert np.max(np.abs(F.fftn(x) - ref)) <= tol * np.max(np.abs(ref))
-    ref = np.fft.fft(r.astype(np.float64), axis=1)
-    assert np.max(np.abs(F.fft(r, dim=1) - ref)) <= tol * np.max(np.abs(ref))
-    y = F.ifftn(F.fftn(r))
-    assert y.dtype == r.dtype and np.max(np.abs(y - r)) <= 10 * tol
-    z = F.ifft(x, 30, 0)
+    assert close(m.fftn(x), np.fft.fftn(x.astype(np.complex128)), single)
+    assert close(m.fft(r, dim=1), np.fft.fft(r.astype(np.float64), axis=1), single)
+    y = m.ifftn(m.fftn(r))
+    assert y.dtype == r.dtype and close(y, r, single)
+    z = m.ifft(x, 30, 0)
     assert z.shape == (30, 18, 10)
-    assert np.max(np.abs(z - np.fft.ifft(x.astype(np.complex128), 30, axis=0))) <= tol
+    assert close(z, np.fft.ifft(x.astype(np.complex128), 30, axis=0), single)
+
+
+@each_backend
+@pytest.mark.parametrize("cls", ["single", "double"])
+def test_awkward_lengths_agree_with_numpy(be, cls):
+    # primes (pocketfft's Bluestein, FFTW's generic and Rader codes) and products with them
+    single = cls == "single"
+    for n in (97, 1153, 551, 571, 2007, 11530):
+        x = make_array(n, [n, 3], cls, True, "img")
+        ref = np.fft.fft(from_matlab(x).astype(np.complex128), axis=-2)
+        assert close(F.fft(from_matlab(x), axis=-2, backend=be), ref, single), n
+    v = from_matlab(make_array(5, [19, 29, 11], cls, False, "img"))
+    ref = np.fft.fftn(v.astype(np.float64))
+    assert close(F.fftn(v, backend=be), ref, single)
+    assert close(F.ifftn(ref.astype(F.fftn(v, backend=be).dtype), backend=be), v, single)
+
+
+@each_backend
+def test_axes_are_matlabs_dimensions_mapped(be):
+    # (z, y, x): MATLAB's dimension 1 (y) is axis -2, 2 (x) is axis -1, 3 (z) is axis -3
+    v = from_matlab(make_array(21, [9, 8, 6], "double", False))  # (6, 9, 8)
+    for ax in (-1, -2, -3, 0, 1, 2):
+        assert close(F.fft(v, axis=ax, backend=be), np.fft.fft(v, axis=ax), False), ax
+    # the default: MATLAB's first non-singleton dimension (y, then x, then z)
+    assert F.fft(v, backend=be).tobytes() == F.fft(v, axis=-2, backend=be).tobytes()
+    assert F.fft(v[:, :1, :], backend=be).shape == (6, 1, 8)
+    assert np.array_equal(F.fft(v[:, :1, :], backend=be), F.fft(v[:, :1, :], axis=-1, backend=be))
+    assert (
+        F.fft(v[:, :1, :1], backend=be).tobytes()
+        == F.fft(v[:, :1, :1], axis=-3, backend=be).tobytes()
+    )
+    # an axis beyond the array's: MATLAB's dimension of length 1 (z of an image, 4 of a volume)
+    im = v[0]
+    assert F.fft(im, 4, axis=-3, backend=be).shape == (4, 9, 8)
+    assert F.fft(v, axis=-4, backend=be).tobytes() == v.astype(np.float64).tobytes()
+    # a 1-D array is a row
+    row = v[0, 0]
+    assert F.fft(row, backend=be).shape == (8,)
+    assert F.fftn(row, (16,), backend=be).shape == (16,)
 
 
 def test_classes_follow_matlab():
-    assert F.fft(np.arange(8, dtype=np.uint16)).dtype == np.complex128
-    # imaginary parts all zero
-    assert F.fft(np.array([True, False, True, False])).dtype == np.float64
-    assert F.fftn(np.zeros((3, 4), np.float32)).dtype == np.float32
-    assert F.fft(np.ones((2, 1), np.float32)).dtype == np.float32
-    assert F.fft(np.arange(3.0)).dtype == np.complex128
-    assert F.fftn(make_array(1, [2, 2, 2], "double", False)).dtype == np.float64
+    for be in BACKENDS:
+        assert F.fft(np.arange(8, dtype=np.uint16), backend=be).dtype == np.complex128
+        # imaginary parts all zero
+        assert F.fft(np.array([True, False, True, False]), backend=be).dtype == np.float64
+        assert F.fftn(np.zeros((3, 4), np.float32), backend=be).dtype == np.float32
+        assert F.fft(np.ones((2, 1), np.float32), axis=-2, backend=be).dtype == np.float32
+        assert F.fft(np.arange(3.0), backend=be).dtype == np.complex128
+        assert (
+            F.fftn(from_matlab(make_array(1, [2, 2, 2], "double", False)), backend=be).dtype
+            == np.float64
+        )
     with pytest.raises(TypeError):
         F.fft(np.array(["a", "b"]))
     with pytest.raises(TypeError):
         F.fft(np.arange(4, dtype=np.int64))
 
 
-def test_conjugate_symmetric_input_gives_a_real_result():
-    X = F.fft(make_array(5, [16, 3], "single", False), dim=0)
+@each_backend
+def test_conjugate_symmetric_input_gives_a_real_result(be):
+    m = MForm(be)
+    X = m.fft(make_array(5, [16, 3], "single", False), dim=0)
     assert X.dtype == np.complex64
-    assert F.ifft(X, dim=0).dtype == np.float32
+    assert m.ifft(X, dim=0).dtype == np.float32
     Y = X.copy(order="F")
     Y[1, 0] = complex(Y[1, 0].real, Y[1, 0].imag * (1 + np.finfo(np.float32).eps))
-    assert F.ifft(Y, dim=0).dtype == np.complex64  # one line fails: every line is complex
+    assert m.ifft(Y, dim=0).dtype == np.complex64  # one line fails: every line is complex
     Y = X.copy(order="F")
     Y[0, 0] = complex(Y[0, 0].real, -0.0)
-    assert F.ifft(Y, dim=0).dtype == np.float32  # -0 counts as 0
+    assert m.ifft(Y, dim=0).dtype == np.float32  # -0 counts as 0
     Y[0, 0] = complex(Y[0, 0].real, np.finfo(np.float32).eps)
-    assert F.ifft(Y, dim=0).dtype == np.complex64
+    assert m.ifft(Y, dim=0).dtype == np.complex64
     Y = X.copy(order="F")
     Y[1, 1] = Y[15, 1] = np.nan
-    assert F.ifft(Y, dim=0).dtype == np.complex64  # NaN is not equal to itself
+    assert m.ifft(Y, dim=0).dtype == np.complex64  # NaN is not equal to itself
     # N-D: data symmetric along dimension 0 only is not
     A = make_array(6, [8, 6, 4], "double", False)
-    assert F.ifftn(F.fft(A, dim=0)).dtype == np.complex128
-    assert F.ifftn(F.fftn(A)).dtype == np.float64
+    assert m.ifftn(m.fft(A, dim=0)).dtype == np.complex128
+    assert m.ifftn(m.fftn(A)).dtype == np.float64
 
 
-def test_fftn_of_real_data_is_exactly_hermitian():
+@each_backend
+def test_fftn_of_real_data_is_exactly_hermitian(be):
+    m = MForm(be)
     for shape in ([9, 7, 5], [12, 10, 8], [1, 7, 6], [16, 1]):
-        X = F.fftn(make_array(8, shape, "single", False, "img"))
-        m = X
+        X = m.fftn(make_array(8, shape, "single", False, "img"))
+        mir = X
         for ax in range(X.ndim):
-            m = np.roll(np.flip(m, axis=ax), 1, axis=ax)
-        assert np.array_equal(X.real, m.real) and np.array_equal(X.imag, -m.imag)
+            mir = np.roll(np.flip(mir, axis=ax), 1, axis=ax)
+        assert np.array_equal(X.real, mir.real) and np.array_equal(X.imag, -mir.imag)
 
 
-def test_fftn_fill_conjugate_is_zero_minus_im():
+@each_backend
+def test_fftn_fill_conjugate_is_zero_minus_im(be):
     # MATLAB's fill writes 0 - im: a zero imaginary part copied from a mirror is +0, never -0
     for cls in ("single", "double"):
         x = case_input(case("fftn", cls, False, [16, 16, 8], 7, kind="sepsym"))
-        X = F.fftn(x)
+        X = MForm(be).fftn(x)
         assert np.iscomplexobj(X)
         flat = X.reshape(-1, order="F")
         idx = np.arange(X.size).reshape(X.shape, order="F")
-        m = idx
+        mir = idx
         for ax in range(X.ndim):
-            m = np.roll(np.flip(m, axis=ax), 1, axis=ax)
-        mi = m.reshape(-1, order="F")
+            mir = np.roll(np.flip(mir, axis=ax), 1, axis=ax)
+        mi = mir.reshape(-1, order="F")
         filled = (mi < np.arange(X.size)) & (flat.imag[mi] == 0)
         assert filled.sum() > 0
         assert not np.signbit(flat.imag[filled]).any()
 
 
-def test_symmetric_flag_is_the_fill_of_fftn():
+@each_backend
+def test_symmetric_flag_is_the_fill_of_fftn(be):
     # ifftn(X, 'symmetric') makes the (padded) data conjugate symmetric as fftn's fill does, then
     # inverts it
+    m = MForm(be)
     for siz in (None, [13, 11, 9], [9, 7, 5]):
         X = make_array(9, [12, 10, 8], "double", True)
-        P = X if siz is None else np.asfortranarray(_pad(X, siz))
-        H = _fill(P)
-        ref = F.ifftn(H)
+        Pd = X if siz is None else np.asfortranarray(_pad(X, siz))
+        H = _fill(Pd)
+        ref = m.ifftn(H)
         assert ref.dtype == np.float64
-        assert F.ifftn(X, siz, True).tobytes() == ref.tobytes()
+        assert m.ifftn(X, siz, True).tobytes() == ref.tobytes()
 
 
 def _pad(a, siz):
@@ -702,39 +856,44 @@ def _fill(a):
     return np.asfortranarray(flat.reshape(a.shape, order="F"))
 
 
-def test_padding_and_truncation_come_first():
+@each_backend
+def test_padding_and_truncation_come_first(be):
+    m = MForm(be)
     x = make_array(10, [12, 10, 8], "single", False)
-    assert F.fft(x, 15, 1).tobytes() == F.fft(_pad(x, [12, 15, 8]), None, 1).tobytes()
-    assert F.fft(x, 7, 2).tobytes() == F.fft(np.asfortranarray(x[:, :, :7]), None, 2).tobytes()
-    assert F.fftn(x, [14, 9, 11]).tobytes() == F.fftn(_pad(x, [14, 9, 11])).tobytes()
+    assert m.fft(x, 15, 1).tobytes() == m.fft(_pad(x, [12, 15, 8]), None, 1).tobytes()
+    assert m.fft(x, 7, 2).tobytes() == m.fft(np.asfortranarray(x[:, :, :7]), None, 2).tobytes()
+    assert m.fftn(x, [14, 9, 11]).tobytes() == m.fftn(_pad(x, [14, 9, 11])).tobytes()
 
 
-def test_length_one_dimensions():
+@each_backend
+def test_length_one_dimensions(be):
+    m = MForm(be)
     x = make_array(11, [12, 10], "single", False)
-    assert F.fft(x, dim=2).tobytes() == x.tobytes()  # no transform: the input
-    assert F.fft(np.array([[5.0]]), 3).shape == (1, 3)  # a scalar is a row
-    assert F.fftn(np.array([[2.0]])).tobytes() == np.array([[2.0]]).tobytes()
+    assert m.fft(x, dim=2).tobytes() == np.asfortranarray(x).tobytes()  # no transform: the input
+    assert m.fft(np.array([[5.0]]), 3).shape == (1, 3)  # a scalar is a row
+    assert m.fftn(np.array([[2.0]])).tobytes() == np.array([[2.0]]).tobytes()
     with pytest.raises(ValueError):
-        F.fftn(make_array(1, [4, 4, 4], "single", False), [4, 4])
+        m.fftn(make_array(1, [4, 4, 4], "single", False), [4, 4])
 
 
-def test_dimensions_beyond_the_input_are_length_1():
-    # the copy for a transform along a dimension beyond the input's read its size past the end
+@each_backend
+def test_dimensions_beyond_the_input_are_length_1(be):
+    m = MForm(be)
     for k in range(40):
-        shape = [3 + k % 5, 4 + k % 3, 2 + k % 4][: 1 + k % 3]
+        shape = [3 + k % 5, 4 + k % 3, 2 + k % 4][: 2 + k % 2]
         x = make_array(30 + k, shape, "single" if k % 2 else "double", bool(k % 4 == 1))
         nd = len(shape)
-        assert F.fft(x, dim=nd + k % 2).tobytes() == x.tobytes()
-        assert F.ifft(x, dim=nd + 1).tobytes() == np.asfortranarray(x).tobytes()
-        y = F.fftn(x, shape + [1, 1])
-        assert y.shape == tuple(shape + [1, 1])
-        assert y.tobytes() == F.fftn(x).tobytes()
+        assert m.fft(x, dim=nd + k % 2).tobytes() == np.asfortranarray(x).tobytes()
+        assert m.ifft(x, dim=nd + 1).tobytes() == np.asfortranarray(x).tobytes()
+        y = m.fftn(x, shape + [1, 1])
+        assert matlab_shape(y.shape) == matlab_shape(shape)
+        assert y.tobytes() == m.fftn(x).tobytes()
 
 
 # MATLAB R2024b's outcomes of the same calls (ones, zeros, the scalar 5, 'symmetric', dims from 1):
 # an error, or class, realness, MATLAB's size and sha256 of the values' hex digits (num2hex, column
 # order). siz needs ndims(X) elements, 2 at least; an empty siz is the input's size; n and siz must
-# be non-negative integers.
+# be non-negative integers. The calls go through MForm (MATLAB's arguments mapped).
 MATLAB_ARGUMENT_RULES = """
 fftn(ones(4, 1), [8])                          | error
 fftn(ones(1, 4), [8])                          | error
@@ -792,20 +951,22 @@ def _outcome(y):
     return f"{cls} {real} {size} {digest}"
 
 
-def test_arguments_follow_matlab():
+@each_backend
+def test_arguments_follow_matlab(be):
+    m = MForm(be)
     names = {
-        "fft": F.fft,
-        "ifft": F.ifft,
-        "fftn": F.fftn,
-        "ifftn": F.ifftn,
+        "fft": m.fft,
+        "ifft": m.ifft,
+        "fftn": m.fftn,
+        "ifftn": m.ifftn,
         "np": np,
         "ones": lambda *s: np.ones(s, order="F"),
         "zeros": lambda *s: np.zeros(s, order="F"),
         "five": np.full((1, 1), 5.0),
     }
-    # the values' digests hold where the packs' do (FFTW's plans and twiddle factors); class,
-    # realness and size everywhere
-    values = digests_hold_here() == ""
+    # the values' digests hold on the exact backend where the packs' do (FFTW's plans and twiddle
+    # factors); class, realness and size everywhere
+    values = be == "exact" and digests_hold_here() == ""
     for line in MATLAB_ARGUMENT_RULES.strip().splitlines():
         call, want = (p.strip() for p in line.split("|"))
         if want == "error":
@@ -815,31 +976,33 @@ def test_arguments_follow_matlab():
             assert _outcome(eval(call, names)) == want, call
         else:
             assert _outcome(eval(call, names)).rsplit(" ", 1)[0] == want.rsplit(" ", 1)[0], call
-    # a 1-D array is a column: siz needs two elements; integer values of any type are counts
-    with pytest.raises(ValueError):
-        F.fftn(np.ones(4), [8])
-    x = make_array(40, [6, 5], "double", True)
-    assert F.fftn(np.ones(4), [8, 1]).tobytes() == F.fftn(np.ones((4, 1)), [8, 1]).tobytes()
+
+
+def test_python_arguments():
+    x = from_matlab(make_array(40, [6, 5], "double", True))
+    # integer values of any type are counts and axes; the shape of a 1-D array is its own
     assert F.fft(x, 8.0, np.int64(1)).tobytes() == F.fft(x, 8, 1).tobytes()
     assert F.fftn(x, np.array([7.0, 6.0])).tobytes() == F.fftn(x, [7, 6]).tobytes()
     with pytest.raises(ValueError):
         F.fft(x, None, 0.5)
+    with pytest.raises(ValueError):
+        F.fft(x, None, 2)  # a non-negative axis must exist
+    with pytest.raises(ValueError):
+        F.fftn(np.ones((3, 4, 5)), (4, 5))  # MATLAB's ndims(X) is 3
+    assert F.fftn(np.ones((1, 4, 5)), (4, 5)).shape == (4, 5)  # here 2
+    assert F.fftn(np.ones(4), (8,)).shape == (8,)
+    assert F.fftn(np.ones(4), (2, 8)).shape == (2, 8)
+    # Fortran-ordered input is taken as the array it is (copied to C order)
+    v = np.asfortranarray(np.arange(60.0).reshape(3, 4, 5))
+    assert F.fftn(v).tobytes() == F.fftn(np.ascontiguousarray(v)).tobytes()
+    with pytest.raises(ValueError):
+        F.fft(x, backend="other")
 
 
-def test_the_two_matlab_modes_differ_only_in_the_lines_run_alone():
-    X = make_array(12, [64, 2000], "single", False)
-    a = F.fft(X, dim=0)
-    b = F.fft(X, dim=0, matlab_parallel=False)
-    split = mark_alone(2000, 64, 0, 32)
-    serial = mark_alone(2000, 64, 0, 0)
-    same = split == serial
-    assert a[:, same].tobytes() == b[:, same].tobytes()
-    if a[:, ~same].tobytes() == b[:, ~same].tobytes():
-        pytest.skip("FFTW gives the same bits for groups of four and single lines here")
-
-
-@needs_matlab_platform
+@needs_exact
 def test_plans_are_matlabs():
+    if not matlab_platform():
+        pytest.skip("FFTW's plans differ from MATLAB's here (not x86-64 with AVX)")
     assert ext_plan("r2c", 64, 4) == '(rdft2-r2hc-direct-64-x4 "r2cf_64")'
     assert ext_plan("c2c-1", 64, 4) == '(dft-direct-64-x4 "n1fv_64_avx")'
     assert ext_plan("c2c+1", 64, 1) == (
@@ -864,11 +1027,39 @@ def test_oracle_pack_equals_matlab(pack, mode):
 
 
 @pytest.mark.parametrize("pack", ["1d", "edge"])
-def test_pack_results_do_not_depend_on_our_thread_count(pack):
+def test_permissive_pack_is_close_to_double_precision(pack):
+    # every 3rd case: class, realness and size as with double input, values within the tolerances
+    worst = 0.0
+    for i, c in enumerate(PACKS[pack]()):
+        if i % 3 or c["cls"] != "single":
+            continue
+        x = case_input(c)
+        try:
+            y = run_case(c, x, backend="permissive")
+        except (ValueError, TypeError):
+            with pytest.raises((ValueError, TypeError)):
+                run_case(
+                    c,
+                    x.astype(np.complex128 if np.iscomplexobj(x) else np.float64),
+                    backend="permissive",
+                )
+            continue
+        xd = x.astype(np.complex128 if np.iscomplexobj(x) else np.float64)
+        ref = run_case(c, xd, backend="permissive")
+        assert y.shape == ref.shape, (i, c)
+        assert close(y, ref, True), (i, c)
+        if ref.size:
+            worst = max(worst, float(np.abs(y - ref).max() / max(np.abs(ref).max(), 1e-300)))
+    assert worst <= 1e-5
+
+
+@each_backend
+@pytest.mark.parametrize("pack", ["1d", "edge"])
+def test_pack_results_do_not_depend_on_our_thread_count(be, pack):
     # MATLAB's split of a stage follows its own FFT mode (the grain), never our thread count, so the
     # packs' digests hold on a runner with any number of CPUs
     for mode in (True, False):
-        d = {t: pack_digest(pack, mode, threads=t, step=7) for t in (1, 3, 8)}
+        d = {t: pack_digest(pack, mode, threads=t, step=7, backend=be) for t in (1, 3, 8)}
         assert d[1] == d[3] == d[8], d
 
 
@@ -884,26 +1075,18 @@ def test_twiddle_fingerprint_sees_another_c_library():
     f = c_sincos()
     if f is not None:
         assert f(0.25) == pytest.approx(separate_sincos(0.25), rel=1e-15)
-    if sys.platform.startswith("linux") and F.fftw_info()["name"] == "builtin":
-        # our FFTW, built into the extension with GCC, imports sincos: the fingerprint takes it
+    if EXACT and sys.platform.startswith("linux"):
+        # our recipe's libraries, built with GCC, import sincos: the fingerprint takes it
         assert fftw_sincos() is not separate_sincos
     # the arguments are FFTW's: in the first octant, 0 and pi/4 included where n is a multiple of 8
     t = twiddle_arguments(8)
     assert t[0] == 0 and t[-1] == _K2PI / 8 and np.all(t <= math.pi / 4 + 1e-15)
 
 
-@pytest.mark.skipif(not os.environ.get("PETAKIT5D_TEST_FFTW"), reason="PETAKIT5D_TEST_FFTW not set")
-def test_switch_to_another_fftw():
-    # the driver on MATLAB's own FFTW gives the same bits as on ours
-    info = F.fftw_info()
-    assert info["name"] != "builtin" and info["single"].startswith("fftw-3.3")
-    x = make_array(13, [64, 300], "single", False)
-    y = make_array(14, [47, 45, 33], "double", True)
-    a = (F.fft(x), F.fftn(y), F.ifftn(F.fftn(x)))
-    try:
-        F.use_fftw()
-        assert F.fftw_info()["name"] == "builtin"
-        b = (F.fft(x), F.fftn(y), F.ifftn(F.fftn(x)))
-    finally:
-        F.use_fftw(*F._library_paths(os.environ["PETAKIT5D_TEST_FFTW"]))
-    assert all(u.tobytes() == v.tobytes() for u, v in zip(a, b, strict=True))
+@needs_exact
+def test_the_exact_backend_is_fftw_338_with_matlabs_codelets():
+    info = P.info("exact")
+    assert info["single"].startswith("fftw-3.3.8-sse2-avx") or info["single"].startswith(
+        "fftw-3.3.10-sse2-avx"
+    )
+    assert info["double"].split("-")[1] == info["single"].split("-")[1]

@@ -25,13 +25,8 @@ FORTRAN_PY = re.compile(r"asfortranarray|order\s*=\s*['\"]F['\"]")
 FORTRAN_CPP = re.compile(r"\bf_contig\b|\bfvolume\b|\bfimage\b")
 
 # path relative to python/ -> number of lines, and who removes them
-KNOWN = {
-    "src/petakit5d/matlabcompat/fft.py": (
-        1,
-        "F18: the exact FFT backend works in MATLAB's layout behind the interface",
-    ),
-}
-KNOWN_CPP = {"cpp/fft/module.cpp": (1, "F18: the exact FFT backend")}
+KNOWN: dict[str, tuple[int, str]] = {}
+KNOWN_CPP: dict[str, tuple[int, str]] = {}
 ALLOWED_CPP = ("common", "io")
 
 

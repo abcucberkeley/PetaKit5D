@@ -25,6 +25,25 @@ pip install ./python            # or: pip install "./python[test]" for the test 
 The build uses scikit-build-core, CMake and nanobind; pip fetches them. A GPU is optional:
 the package imports and runs every CPU path without CuPy and without a GPU.
 
+### CPU FFTs
+
+The CPU FFTs (`petakit5d.matlabcompat.fft`, `petakit5d.fft`) run MATLAB's FFT driver on one of
+two backends:
+
+- `permissive`, the default: pocketfft (BSD-3), built in. Results differ from MATLAB's in the
+  last bits (single precision: relative differences up to about 5e-7); the measurements and
+  tolerances are in `docs/decisions/0006-fft-backends.md`.
+- `exact`: FFTW 3.3.8 built as MATLAB builds it, an optional add-on of two shared libraries
+  (GPL-2.0-or-later, so not part of this package). With it the FFTs give MATLAB's bits on Linux
+  x86-64. Build and install it with `pip install ./python/cpp/fft/exact`, then choose it with
+  `PETAKIT5D_FFT=exact` (or `auto`: exact when installed) or `petakit5d.fft.set_backend("exact")`;
+  `PETAKIT5D_FFTW` can point at its libraries instead (a folder, or the two paths). Every call
+  may also name its backend (`backend="exact"`), so both can be used in one process.
+
+On Windows, MSVC compiles pocketfft without its vector code: the results are the same, the FFTs
+take 1.2 to 1.3 times as long (`docs/decisions/0006-fft-backends.md`). clang-cl (Visual Studio's
+"C++ Clang tools for Windows") compiles the vector code; the build has not been tried with it yet.
+
 ## Development
 
 Build the extension modules in a build tree outside the repository (never inside it: MATLAB's
@@ -81,4 +100,9 @@ Markers: `gpu` (skipped without a usable GPU), `cluster` (skipped unless
 
 BSD 3-Clause; see `LICENSE`.
 
-The CPU FFT backend currently builds FFTW (MATLAB's FFT library, so that FFT results match MATLAB bit for bit). FFTW is GPL-2.0-or-later, so binaries built with it are covered by the GPL. The GPU path uses NVIDIA's cuFFT, which is not GPL.
+The CPU FFTs use pocketfft (BSD 3-Clause, `cpp/fft/third_party/pocketfft/LICENSE.md`, included
+with the package). The package contains no GPL code. FFTW, which gives MATLAB's exact FFT bits,
+is GPL-2.0-or-later and comes only as the separate, optional add-on `petakit5d-fftw`
+(`cpp/fft/exact`, a package of its own, left out of this package's source distribution). A
+program that is distributed together with the add-on is covered by the GPL. The GPU path uses
+NVIDIA's cuFFT, which is not GPL.

@@ -1,6 +1,9 @@
-// FFTW entry points used by the MATLAB fft driver, for one precision: our statically linked FFTW
-// (built with the codelet sets of MATLAB R2024b's libmwfftw3f / libmwfftw3) or, for tests, a
-// library loaded at run time (MATLAB's own, through PETAKIT5D_TEST_FFTW).
+// The CPU FFT backends behind MATLAB's fft driver, each a table of FFTW's guru64 entry points (rank-1 plans
+// of several lines, new-array execute) for single and double precision:
+//   permissive  pocketfft (BSD-3), built in: cpp/fft/pocketfft_api.cpp
+//   exact       FFTW 3.3.8 with MATLAB R2024b's codelet sets, an optional GPL add-on of two shared libraries
+//               (cpp/fft/exact) loaded at run time; with it the driver gives MATLAB's bits
+// No file of the default build includes fftw3.h: the exact backend is reached only through this table.
 #pragma once
 
 #include <cstddef>
@@ -8,6 +11,8 @@
 #include <string>
 
 namespace pk5d::fft {
+
+enum BackendId { kPermissive = 0, kExact = 1 };
 
 // FFTW's fftw_iodim64
 struct Iodim {
@@ -27,19 +32,29 @@ struct FftwApi {
     const char* version = "";
 };
 
-// the two precisions of one library (index 0: single, 1: double)
+// the two precisions of one backend (index 0: single, 1: double)
 struct Backend {
     FftwApi api[2];
-    std::string name;  // "builtin" or the loaded files
+    std::string name;   // "permissive" or "exact"
+    std::string where;  // "built-in" or the loaded files
     void* handles[2] = {nullptr, nullptr};
+    bool ready = false;
 };
 
-// the backend in use (the built-in one unless load_backend was called)
-const Backend& backend();
-// loads the single and double precision libraries at libf and libd (throws std::runtime_error);
-// an empty libf returns to the built-in FFTW. Cached plans of the old backend are dropped by the caller.
-void set_backend(const std::string& libf, const std::string& libd);
+// the backend id (kPermissive, kExact); throws std::runtime_error for the exact one when it is not loaded
+const Backend& backend(int id);
+bool exact_loaded();
+// loads the exact backend's single and double precision libraries (throws std::runtime_error); the
+// caller drops the exact backend's cached plans first
+void load_exact(const std::string& libf, const std::string& libd);
+void unload_exact();
+// the backend the calls use when they name none (kPermissive unless set)
+int default_backend();
+void set_default_backend(int id);
 // FFTW's planner is not thread-safe: every plan is made and destroyed under this lock
 std::mutex& planner_lock();
+
+// pocketfft's table (pocketfft_api.cpp)
+FftwApi pocketfft_api(int prec);
 
 }  // namespace pk5d::fft

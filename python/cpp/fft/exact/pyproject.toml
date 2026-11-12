@@ -1,0 +1,25 @@
+[build-system]
+requires = ["scikit-build-core>=0.11"]
+build-backend = "scikit_build_core.build"
+
+[project]
+name = "petakit5d-fftw"
+version = "3.3.8.0"
+description = "FFTW 3.3.8 with MATLAB R2024b's codelet sets: the exact CPU FFT backend of petakit5d (optional)"
+readme = "README.md"
+license = "GPL-2.0-or-later"
+requires-python = ">=3.11"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: C",
+    "Topic :: Scientific/Engineering :: Image Processing",
+]
+
+[tool.scikit-build]
+minimum-version = "build-system.requires"
+cmake.version = ">=3.26"
+cmake.build-type = "Release"
+ninja.version = ">=1.11"
+wheel.packages = ["src/petakit5d_fftw"]
+# the libraries are loaded with ctypes-like dlopen by petakit5d, not imported: no ABI tag of Python's
+wheel.py-api = "py3"

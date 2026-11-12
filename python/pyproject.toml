@@ -9,7 +9,7 @@ description = "Petabyte-scale 5D image processing for light-sheet microscopy (Py
 readme = "README.md"
 authors = [{ name = "Matthew Mueller" }]
 license = "BSD-3-Clause"
-license-files = ["LICENSE"]
+license-files = ["LICENSE", "cpp/fft/third_party/pocketfft/LICENSE.md"]
 requires-python = ">=3.11"
 dependencies = [
     "numpy>=2.0",
@@ -39,7 +39,8 @@ cmake.build-type = "Release"
 ninja.version = ">=1.11"
 wheel.packages = ["src/petakit5d"]
 wheel.exclude = ["**/__pycache__/**"]
-sdist.exclude = ["build/", "dist/", ".venv/", "**/__pycache__/**"]
+# the exact FFT add-on (FFTW, GPL) is a package of its own (cpp/fft/exact): not in this one
+sdist.exclude = ["build/", "dist/", ".venv/", "**/__pycache__/**", "cpp/fft/exact/"]
 metadata.version.provider = "scikit_build_core.metadata.regex"
 metadata.version.input = "src/petakit5d/_version.py"
 
