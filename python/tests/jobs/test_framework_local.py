@@ -992,6 +992,8 @@ def test_call_settings_reach_the_backend(tmp_path, monkeypatch):
 
     fake.run_cluster = run_cluster
     monkeypatch.setitem(sys.modules, "petakit5d.jobs.cluster", fake)
+    # also the attribute, which the real module sets once it has been imported (J03)
+    monkeypatch.setattr(petakit5d.jobs, "cluster", fake, raising=False)
     monkeypatch.setattr(framework, "_slurm_available", lambda: True)
     config_fn = tmp_path / "c.json"
     config_fn.write_text(json.dumps({"SlurmParam": "-p compute", "jobLogDir": ""}))

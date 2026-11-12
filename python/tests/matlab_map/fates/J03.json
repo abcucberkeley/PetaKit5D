@@ -1,0 +1,16 @@
+{
+ "task": "J03",
+ "classes": {
+  "CheckBatchSlurmJobsStatusTest": {
+   "finished": true,
+   "methods": {
+    "mapsQueueStatesToJobs": [
+     "pytest:tests/jobs/test_slurm.py::test_maps_queue_states_to_jobs"
+    ],
+    "tasksSharingAJobGetItsStatus": [
+     "pytest:tests/jobs/test_slurm.py::test_tasks_sharing_a_job_get_its_status"
+    ]
+   }
+  }
+ }
+}
