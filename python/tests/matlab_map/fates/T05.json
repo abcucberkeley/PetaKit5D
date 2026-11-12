@@ -1,0 +1,16 @@
+{
+ "task": "T05",
+ "classes": {
+  "ParallelRsyncWrapperTest": {
+   "finished": true,
+   "methods": {
+    "batchScriptIsFoundWhicheverSetupIsFirst": [
+     "pytest:tests/tools/test_small_tools.py::test_batch_script_is_found_whichever_setup_is_first"
+    ],
+    "eachBatchIsCheckedByItsLastFile": [
+     "pytest:tests/tools/test_small_tools.py::test_each_batch_is_checked_by_its_last_file"
+    ]
+   }
+  }
+ }
+}

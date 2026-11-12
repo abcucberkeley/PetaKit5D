@@ -1,0 +1,877 @@
+"""The parallel rsync wrapper, the memory estimate and the partial-volume grouping (T05).
+
+Ported from tests/tools/ParallelRsyncWrapperTest.m (names in snake_case); the rsync tests use a
+fake rsync on PATH and temporary folders only. Oracle cases compare the memory estimate, the
+grouping and the shuffle's permutation with MATLAB.
+"""
+
+from __future__ import annotations
+
+import json
+import math
+import os
+import random
+import re
+import shlex
+import subprocess
+import sys
+from pathlib import Path
+
+import numpy as np
+import pytest
+
+from petakit5d.jobs import framework
+from petakit5d.params.registry import REGISTRY
+from petakit5d.testing import oracle
+from petakit5d.testing.cases import Case, File, InPath, Tree, Work
+from petakit5d.testing.compare import MCell, ignore
+from petakit5d.tools import memory_estimate as me
+from petakit5d.tools import partial_volumes as pv
+from petakit5d.tools import rsync
+
+needs_bash = pytest.mark.skipif(
+    sys.platform.startswith("win"), reason="rsync and bash tasks are not available on Windows"
+)
+
+FAKE_RSYNC = '''\
+#!{python}
+"""fake rsync: copies as rsync -a does (a source with a trailing / copies its contents) and
+logs each call (options, source, destination) as a JSON line to $FAKE_RSYNC_LOG"""
+import json, os, shutil, sys
+
+args = sys.argv[1:]
+opts = [a for a in args if a.startswith("-")]
+src, dst = [a for a in args if not a.startswith("-")]
+with open(os.environ["FAKE_RSYNC_LOG"], "a") as f:
+    f.write(json.dumps([opts, src, dst]) + "\\n")
+if src.endswith("/"):
+    shutil.copytree(src, dst, dirs_exist_ok=True)
+elif os.path.isdir(src):
+    shutil.copytree(src, os.path.join(dst, os.path.basename(src)), dirs_exist_ok=True)
+else:
+    os.makedirs(dst, exist_ok=True)
+    shutil.copy2(src, os.path.join(dst, os.path.basename(src)) if dst.endswith("/") else dst)
+'''
+
+
+@pytest.fixture
+def fake_rsync(tmp_path, monkeypatch):
+    """A fake rsync first on PATH; returns a function that reads its call log."""
+    bin_dir = tmp_path / "fakebin"
+    bin_dir.mkdir()
+    exe = bin_dir / "rsync"
+    exe.write_text(FAKE_RSYNC.format(python=sys.executable))
+    exe.chmod(0o755)
+    log = tmp_path / "rsync_calls.ndjson"
+    monkeypatch.setenv("PATH", f"{bin_dir}{os.pathsep}{os.environ['PATH']}")
+    monkeypatch.setenv("FAKE_RSYNC_LOG", str(log))
+    # the framework's default job log folder is relative to the current folder
+    work = tmp_path / "cwd" / "here"
+    work.mkdir(parents=True)
+    monkeypatch.chdir(work)
+
+    def calls():
+        if not log.exists():
+            return []
+        return [json.loads(x) for x in log.read_text().splitlines()]
+
+    return calls
+
+
+@pytest.fixture
+def spy(monkeypatch):
+    """Records run_tasks calls (MATLAB's FrameworkSpyFixture): nothing runs."""
+    calls = []
+
+    def fake(inputs, outputs, tasks, **kw):
+        calls.append({"inputs": list(inputs), "outputs": list(outputs), "tasks": list(tasks), **kw})
+        return [True] * len(tasks)
+
+    monkeypatch.setattr(framework, "run_tasks", fake)
+    return calls
+
+
+def make_files(folder: Path, names) -> list[str]:
+    folder.mkdir(parents=True, exist_ok=True)
+    for n in names:
+        p = folder / n
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(n)
+    return [str(folder / n) for n in names]
+
+
+def batch_args(command: str) -> list[str]:
+    """The source and destination arguments of a batch command."""
+    words = shlex.split(command)
+    assert words[:2] == ["bash", "-c"] and words[2] == rsync.BATCH_SCRIPT
+    assert words[3] == "rsync_batch_files"
+    return words[4:]
+
+
+# ---------------------------------------------------------------------------------------------
+# parallel_rsync (ParallelRsyncWrapperTest)
+
+
+@needs_bash
+def test_batch_script_is_found_whichever_setup_is_first(tmp_path, fake_rsync, spy):
+    # MATLAB took the code folder from the first setup.m on the path; the batch script here
+    # is part of the command, so a batch runs from any current folder and install location
+    src = tmp_path / "src"
+    make_files(src, [f"f{i}.txt" for i in range(1, 5)])
+    dest = tmp_path / "dest"
+    rsync.parallel_rsync(str(src), str(dest), parse_cluster=False)
+    assert spy, "The job framework was not called."
+    other = tmp_path / "elsewhere"
+    other.mkdir()
+    for cmd in spy[0]["tasks"]:
+        subprocess.run(["bash", "-c", cmd], cwd=other, check=True, stdout=subprocess.DEVNULL)
+    batch_calls = [c for c in fake_rsync() if c[0] == ["-aP"]]
+    assert len(batch_calls) == 4
+    assert sorted(os.listdir(dest / "src")) == ["f1.txt", "f2.txt", "f3.txt", "f4.txt", "tmp"]
+    final = [c for c in fake_rsync() if c[0] == ["-avP"]]
+    assert final == [[["-avP"], f"{src}/", f"{dest}/src/"]], "The final rsync is missing."
+
+
+def test_each_batch_is_checked_by_its_last_file(tmp_path, fake_rsync, spy):
+    # 1252 files: batches of 3, the last with 1 file; each is checked by its last file
+    src = tmp_path / "src"
+    make_files(src, [f"f{i:04d}.txt" for i in range(1, 1253)])
+    dest = tmp_path / "dest"
+    rsync.parallel_rsync(str(src), str(dest), parse_cluster=False)
+    c = spy[0]
+    assert len(c["tasks"]) == math.ceil(1252 / 3) == len(c["inputs"]) == len(c["outputs"])
+    for cmd, inp, out in zip(c["tasks"], c["inputs"], c["outputs"], strict=True):
+        args = batch_args(cmd)
+        assert len(args) in (2, 6)
+        assert args[-2] == inp, "Batches are not checked by their last file."
+        assert out == f"{args[-1]}/{os.path.basename(inp)}"
+    assert len(batch_args(c["tasks"][-1])) == 2
+    assert len(os.listdir(dest / "src")) == 1252 + 1  # and the tmp folder MATLAB leaves
+
+
+def test_shuffles_with_rng1_and_leaves_the_global_random_numbers(tmp_path, fake_rsync, spy):
+    # batches of one file in the order of rng(1)'s permutation; NumPy's and Python's global
+    # random states are left as they were
+    src = tmp_path / "src"
+    names = make_files(src, [f"f{i:04d}.txt" for i in range(1, 41)])
+    np.random.seed(7)  # noqa: NPY002 (the global state the wrapper must leave alone)
+    random.seed(7)
+    before = (np.random.get_state()[1].copy(), random.getstate())  # noqa: NPY002
+    rsync.parallel_rsync(str(src), str(tmp_path / "dest"), parse_cluster=False)
+    assert np.array_equal(np.random.get_state()[1], before[0])  # noqa: NPY002
+    assert random.getstate() == before[1]
+    files = [batch_args(t)[0] for t in spy[0]["tasks"]]
+    # rng(1); randperm(40) in MATLAB (oracle case randperm_seed1_40)
+    first = [3, 39, 15, 28, 27, 6, 31, 19, 5, 29]
+    assert files[:10] == [names[i - 1] for i in first]
+    assert sorted(files) == names
+
+
+def test_randperm_seed1_is_matlabs():
+    # MATLAB R2024b: randperm(RandStream('twister', 'Seed', 1), n)
+    want = {
+        1: [1],
+        3: [3, 1, 2],
+        5: [3, 5, 4, 1, 2],
+        10: [3, 6, 5, 7, 4, 8, 9, 1, 10, 2],
+    }
+    for n, p in want.items():
+        assert [i + 1 for i in rsync.randperm_seed1(n)] == p
+    assert rsync.randperm_seed1(0) == []
+
+
+@pytest.mark.parametrize(
+    ("n", "size"),
+    [
+        (1, 1),
+        (249, 1),
+        (250, 1),
+        (1249, 2),
+        (1250, 3),
+        (1252, 3),
+        (2500, 5),
+        (49999, 5),
+        (75000, 8),
+        (100000, 10),
+        (1_000_000, 100),
+        (3_000_000, 200),
+        (10**8, 200),
+    ],
+)
+def test_batch_size(n, size):
+    # max(1, round(min(nF / 500, min(max(5, nF / 10000), 200)))), round half away from zero
+    assert rsync.batch_size_for(n) == size
+
+
+@needs_bash
+def test_local_mode_copies_every_file_with_its_batches(tmp_path, fake_rsync):
+    # the whole path with the real framework in local mode: the batches copy the files (names
+    # with spaces and commas, subfolders), the final rsync runs once, the temporary folder of
+    # the call is removed and the source is left as it was
+    src = tmp_path / "data set"
+    names = ["a.txt", "b c.txt", "d,e.txt", "sub/f.txt", "sub/deeper/g h.txt", "z.tif"]
+    make_files(src, names)
+    dest = tmp_path / "out"
+    rsync.parallel_rsync(str(src), str(dest), parse_cluster=False, master_compute=True)
+    calls = fake_rsync()
+    batch = [c for c in calls if c[0] == ["-aP"]]
+    assert sorted(c[1] for c in batch) == sorted(f"{src}/{n}" for n in names)
+    for c in batch:
+        rel = os.path.dirname(os.path.relpath(c[1], src))
+        assert c[2] == (f"{dest}/data set/{rel}" if rel else f"{dest}/data set") + "/"
+    assert [c for c in calls if c[0] == ["-avP"]] == [[["-avP"], f"{src}/", f"{dest}/data set/"]]
+    for n in names:
+        assert (dest / "data set" / n).read_text() == n
+        assert (src / n).read_text() == n
+    assert os.listdir(dest / "data set" / "tmp") == []
+
+
+@needs_bash
+def test_existing_files_are_not_copied_again(tmp_path, fake_rsync):
+    src = tmp_path / "src"
+    make_files(src, ["a.txt", "b.txt", "c.txt"])
+    dest = tmp_path / "dest"
+    make_files(dest / "src", ["a.txt", "c.txt"])
+    rsync.parallel_rsync(str(src), str(dest), parse_cluster=False)
+    batch = [c[1] for c in fake_rsync() if c[0] == ["-aP"]]
+    assert batch == [f"{src}/b.txt"]
+
+
+@needs_bash
+def test_source_with_trailing_separator_copies_its_contents(tmp_path, fake_rsync, spy):
+    src = tmp_path / "src"
+    make_files(src, ["a.txt", "s/b.txt"])
+    dest = tmp_path / "dest"
+    rsync.parallel_rsync(f"{src}/", str(dest), parse_cluster=False)
+    assert sorted(spy[0]["outputs"]) == [f"{dest}/a.txt", f"{dest}/s/b.txt"]
+    folders = sorted(batch_args(t)[1] for t in spy[0]["tasks"])
+    assert folders == [str(dest), f"{dest}/s"]
+    assert [c for c in fake_rsync() if c[0] == ["-avP"]] == [[["-avP"], f"{src}/", f"{dest}/"]]
+
+
+@needs_bash
+def test_without_subfolders_only_the_top_files_are_batched(tmp_path, fake_rsync, spy):
+    src = tmp_path / "src"
+    make_files(src, ["a.txt", "B.txt", ".hidden", "s/b.txt"])
+    rsync.parallel_rsync(str(src), str(tmp_path / "d"), include_subdir=False, parse_cluster=False)
+    files = sorted(batch_args(t)[0] for t in spy[0]["tasks"])
+    assert files == sorted(f"{src}/{n}" for n in ["a.txt", "B.txt", ".hidden"])
+
+
+def test_framework_gets_the_wrappers_settings(tmp_path, fake_rsync, spy):
+    src = tmp_path / "src"
+    make_files(src, ["a.txt"])
+    cfg = str(tmp_path / "cfg.json")
+    rsync.parallel_rsync(
+        str(src),
+        str(tmp_path / "d"),
+        cpus_per_task=2,
+        num_stream=7,
+        slurm_param="-p compute",
+        nice_factor=5,
+        parse_cluster=False,
+        master_compute=True,
+        config_file=cfg,
+    )
+    c = spy[0]
+    assert c["language"] == "bash"
+    assert c["slurm_param"] == "-p compute --nice=5"
+    assert c["cpus_per_task"] == 2 and c["max_job_num"] == 7
+    assert c["master_compute"] is True and c["parse_cluster"] is False
+    assert c["config_file"] == cfg
+    assert re.fullmatch(rf"{tmp_path}/d/src//tmp/[0-9a-f-]+/", c["tmp_dir"])
+    assert not os.path.exists(c["tmp_dir"]), "The call's temporary folder was not removed."
+    rsync.parallel_rsync(str(src), str(tmp_path / "e"), parse_cluster=False)
+    assert spy[5]["slurm_param"] == " --nice=0" and spy[5]["max_job_num"] == math.inf
+
+
+def test_source_folder_name_keeps_its_extension(tmp_path, fake_rsync, spy):
+    src = tmp_path / "run.v2"
+    make_files(src, ["a.txt"])
+    dest = tmp_path / "d"
+    rsync.parallel_rsync(str(src), f"{dest}//", parse_cluster=False)
+    assert spy[0]["outputs"] == [f"{dest}/run.v2/a.txt"]
+
+
+@needs_bash
+def test_batch_runs_in_a_job_from_its_call_folder(tmp_path, fake_rsync, spy):
+    # what a Slurm job runs: the job entry point with the call folder, from another folder
+    from petakit5d.jobs.tasks import Call, write_call
+
+    src = tmp_path / "src"
+    make_files(src, ["a b.txt", "c,d.txt"])
+    dest = tmp_path / "dest"
+    rsync.parallel_rsync(str(src), str(dest), parse_cluster=False)
+    c = spy[0]
+    recs = [{"bash": t} for t in c["tasks"]]
+    folder = write_call(
+        Call(c["inputs"], c["outputs"], recs, {"language": "bash"}), tmp_path / "call"
+    )
+    root = str(Path(rsync.__file__).resolve().parents[2])
+    for b in range(1, len(recs) + 1):
+        r = subprocess.run(
+            [sys.executable, "-m", "petakit5d.jobs.exec", folder, str(b)],
+            cwd=tmp_path / "cwd",
+            capture_output=True,
+            text=True,
+            env=dict(os.environ, PYTHONPATH=root),
+            timeout=120,
+        )
+        assert r.returncode == 0, r.stderr
+    assert all(os.path.exists(o) for o in c["outputs"])
+
+
+def test_up_to_five_rounds_copy_what_is_missing(tmp_path, fake_rsync, spy):
+    # the spy copies nothing: five rounds of the same batch, then the final rsync
+    src = tmp_path / "src"
+    make_files(src, ["a.txt"])
+    rsync.parallel_rsync(str(src), str(tmp_path / "d"), parse_cluster=False)
+    assert len(spy) == 5
+    assert len([c for c in fake_rsync() if c[0] == ["-avP"]]) == 1
+
+
+def test_large_lists_are_checked_by_jobs(tmp_path, fake_rsync, spy, monkeypatch):
+    src = tmp_path / "src"
+    make_files(src, ["a.txt", "b.txt", "c.txt"])
+    monkeypatch.setattr(rsync, "CLUSTER_CHECK_FILES", 3)
+    seen = []
+
+    def check(paths, tmp_dir, **kw):
+        seen.append((list(paths), tmp_dir, kw))
+        return [False] * len(paths)
+
+    monkeypatch.setattr(rsync, "batch_file_exist_cluster", check)
+    rsync.parallel_rsync(str(src), str(tmp_path / "d"), parse_cluster=False, config_file="c.json")
+    assert len(seen) == 5 and len(seen[0][0]) == 3
+    assert re.search(r"/tmp/[0-9a-f-]+//\d{14}/$", seen[0][1])
+    assert seen[0][2] == {"mcc_mode": False, "config_file": "c.json"}
+
+
+def test_batch_file_exist_cluster_checks_with_tasks(tmp_path, monkeypatch):
+    # the check jobs run here (parse_cluster false); 50000 paths per job
+    monkeypatch.setattr(rsync, "CLUSTER_CHECK_BATCH", 2)
+    real = framework.run_tasks
+    calls = []
+
+    def local(*a, **kw):
+        calls.append(kw)
+        return real(*a, **{**kw, "parse_cluster": False})
+
+    monkeypatch.setattr(framework, "run_tasks", local)
+    monkeypatch.chdir(tmp_path)
+    files = make_files(tmp_path / "f", ["a", "b", "c"])
+    paths = [files[0], str(tmp_path / "f" / "missing"), files[2], str(tmp_path / "nope")]
+    out = rsync.batch_file_exist_cluster(paths, str(tmp_path / "chk"))
+    assert out == [True, False, True, False]
+    flags = sorted(os.listdir(tmp_path / "chk" / "file_exist_flags"))
+    assert flags == ["file_exist_1_2.mat", "file_exist_3_4.mat", "parameters.mat"]
+    assert calls[0]["mem_allocate"] == 20 and calls[0]["master_compute"] is True
+
+
+def test_rsync_is_registered():
+    spec = REGISTRY.find("XR_parallel_rsync_wrapper")
+    assert spec.python_name == "petakit5d.tools.rsync.parallel_rsync"
+    assert spec.param("SlurmParam").default == ""
+
+
+# ---------------------------------------------------------------------------------------------
+# estimate_computing_memory
+
+GB = 1024.0**3
+
+
+def test_estimate_deskew_from_the_given_size(tmp_path):
+    # imSize (nz, ny, nx) in Python; deskew grows with (nz / 300)^2 above 300 slices
+    missing = str(tmp_path / "missing.tif")
+    est, gpu, raw, sz = me.estimate_computing_memory(missing, ("deskew",), im_size=(600, 10, 20))
+    assert raw == 600 * 10 * 20 * 4 / GB
+    assert est.tolist() == [raw * 15 * 4.0]
+    assert gpu is None and sz == (600, 10, 20)
+    est = me.estimate_computing_memory(missing, ("deskew",), im_size=(299, 10, 20))[0]
+    assert est.tolist() == [299 * 10 * 20 * 4 / GB * 15]
+
+
+def test_estimate_of_several_steps_is_zero():
+    # MATLAB's if of contains() over a cell: true only if every step matches
+    est, gpu, _, _ = me.estimate_computing_memory("", im_size=(5, 6, 7))
+    assert est.tolist() == [0.0, 0.0, 0.0] and gpu is None
+
+
+def test_estimate_with_text_steps_has_one_value_per_character():
+    est = me.estimate_computing_memory("", "deskew", im_size=(5, 6, 7))[0]
+    assert est.shape == (6,) and est[0] > 0 and not est[1:].any()
+
+
+def test_estimate_deconvolution_on_the_gpu_and_cpu():
+    est, gpu, raw, sz = me.estimate_computing_memory(
+        "", ("deconvolution",), data_size=1e9, mem_factors=(1, 2, 3), gpu_mem_factor=2.5
+    )
+    assert raw == 1e9 * 2 / GB and est.tolist() == [raw * 3] and gpu == raw * 2.5 and sz is None
+    gpu = me.estimate_computing_memory("", ("deconvolution",), data_size=1e9, cuda_decon=False)[1]
+    assert math.isnan(gpu) and np.float64(gpu).view(np.uint64) == 0xFFF8000000000000
+
+
+def test_estimate_errors_as_matlab():
+    with pytest.raises(me.MatlabError, match="does not exist") as e:
+        me.estimate_computing_memory("", ("deskew",))
+    assert e.value.identifier == ""
+    with pytest.raises(me.MatlabError) as e:
+        me.estimate_computing_memory("", data_size=10)
+    assert e.value.identifier == "MATLAB:nonLogicalConditional"
+
+
+def test_estimate_reads_the_size_of_the_file(tmp_path):
+    from petakit5d.testing.synth import write_tiff
+
+    f = tmp_path / "a.tif"
+    write_tiff(f, np.zeros((4, 5, 3), dtype=np.uint16, order="F"))
+    est, gpu, raw, sz = me.estimate_computing_memory(str(f), ("rotate",), im_size=(9, 9, 9))
+    assert sz == (3, 4, 5) and raw == 60 * 4 / GB and est.tolist() == [raw * 5]
+
+
+def test_matlab_layer_conversions():
+    assert me.matlab_in({"im_size": (10, 20, 30)}) == {"im_size": (30, 10, 20)}
+    assert me.matlab_in({"im_size": None}) == {"im_size": None}
+    assert me.matlab_out((1, 2, 3, (3, 1, 2)))[3] == (1, 2, 3)
+    assert me.matlab_out((1, 2, 3, (3, 1, 2, 4)))[3] == (1, 2, 3, 4)
+
+
+# ---------------------------------------------------------------------------------------------
+# group_partial_volume_files
+
+
+def test_dir_datenum():
+    # MATLAB's dir on a node in US Pacific time: 2019-02-21 17:11:42 is 737477.71645833331
+    import datetime
+    import time
+
+    lt = time.localtime(1550797902)
+    days = datetime.date(lt.tm_year, lt.tm_mon, lt.tm_mday).toordinal() + 366
+    assert (
+        pv.dir_datenum(1550797902.9)
+        == days + (lt.tm_hour * 3600 + lt.tm_min * 60 + lt.tm_sec) / 86400
+    )
+    if (lt.tm_year, lt.tm_mon, lt.tm_mday, lt.tm_hour) == (2019, 2, 21, 17):
+        assert pv.dir_datenum(1550797902) == 737477.71645833331
+
+
+def test_grouping_keeps_matlabs_order_and_quirks(tmp_path):
+    names = [
+        "a.tif",
+        "a_part0002.tif",
+        "a_part0001.tif",
+        "ab.tif",
+        "ab_part0001.tif",
+        "b.tif",
+        "c_part0001.tif",
+    ]
+    files = [str(tmp_path / n) for n in names]
+    for i, f in enumerate(files):
+        Path(f).write_bytes(b"x" * (i + 1))
+    contain, fnames, dn, ds = pv.group_partial_volume_files("", files)
+    assert contain.tolist() == [False, True, True, False, True, False, True]
+    # 'b' takes ab's part (the pattern is not anchored); c's part has no main file
+    assert fnames == [
+        ["a.tif", "a_part0001.tif", "a_part0002.tif"],
+        ["ab.tif", "ab_part0001.tif"],
+        ["b.tif", "ab_part0001.tif"],
+    ]
+    # names sorted, sizes in list order
+    assert [x.tolist() for x in ds] == [[1, 2, 3], [4, 5], [6, 5]]
+    assert len(dn) == 3 and dn[0].shape == (3,)
+
+
+def test_grouping_without_parts_and_without_files(tmp_path):
+    files = [_touch(tmp_path / "x.tif"), _touch(tmp_path / "y.tif")]
+    contain, fnames, dn, ds = pv.group_partial_volume_files("", files)
+    assert contain.tolist() == [False, False] and fnames == [["x.tif"], ["y.tif"]]
+    with pytest.warns(pv.PartialVolumeWarning, match="empty"):
+        out = pv.group_partial_volume_files(str(tmp_path / "empty_folder_that_is_missing"))
+    assert out[0] is False and out[1] == [] and out[2].size == 0 and out[3].size == 0
+
+
+def test_grouping_of_a_list_ignores_case_and_takes_the_first_time_point(tmp_path):
+    names = ["s_Iter_0000_a.tif", "s_Iter_0000_a_PART0001.tif", "s_Iter_0001_a.tif"]
+    files = [_touch(tmp_path / n) for n in names]
+    contain, fnames, _, _ = pv.group_partial_volume_files("", files)
+    assert contain.tolist() == [False, True, False]
+    assert fnames == [["s_Iter_0000_a.tif", "s_Iter_0000_a_PART0001.tif"], ["s_Iter_0001_a.tif"]]
+    contain, fnames, _, _ = pv.group_partial_volume_files("", files, only_first_tp="yes")
+    assert fnames == [["s_Iter_0000_a.tif", "s_Iter_0000_a_PART0001.tif"]]
+
+
+def _touch(p: Path) -> str:
+    p.write_bytes(b"")
+    return str(p)
+
+
+def test_grouping_is_registered():
+    spec = REGISTRY.find("groupPartialVolumeFiles")
+    assert spec.python_name == "petakit5d.tools.partial_volumes.group_partial_volume_files"
+    spec = REGISTRY.find("XR_estimateComputingMemory")
+    assert spec.python_name == "petakit5d.tools.memory_estimate.estimate_computing_memory"
+
+
+# ---------------------------------------------------------------------------------------------
+# oracle cases
+
+
+def randperm1(n):
+    return np.array([i + 1 for i in rsync.randperm_seed1(int(n))], dtype=np.float64)
+
+
+def est_matlab(*args):
+    """XR_estimateComputingMemory called the MATLAB way: the MATLAB-name binding, imSize
+    converted to (nz, ny, nx) and back (what the MATLAB-name layer does)."""
+    spec = REGISTRY.find("XR_estimateComputingMemory")
+    kw = me.matlab_in(spec.bind_matlab(args))
+    mem, gpu, raw, sz = me.matlab_out(spec.func(**kw))
+    sz = np.zeros((0, 0)) if sz is None else np.array(sz, dtype=np.float64)
+    return [mem, gpu, raw, sz]
+
+
+def first(n):
+    def out(r):
+        return list(r)[:n]
+
+    return out
+
+
+def group_matlab(*args):
+    from petakit5d import matlab
+
+    return list(matlab.groupPartialVolumeFiles(*args))
+
+
+def tiff_writer(shape, dtype=np.uint16):
+    def make(path):
+        from petakit5d.testing.synth import write_tiff
+
+        write_tiff(path, np.zeros(shape, dtype=dtype, order="F"))
+
+    return make
+
+
+def zarray(shape, dtype="<u2"):
+    return json.dumps(
+        {
+            "chunks": list(shape),
+            "compressor": None,
+            "dimension_separator": ".",
+            "dtype": dtype,
+            "fill_value": 0,
+            "filters": None,
+            "order": "F",
+            "shape": list(shape),
+            "zarr_format": 2,
+        }
+    )
+
+
+def make_zarr(folder: Path, shape, dtype="<u2"):
+    folder.mkdir()
+    (folder / ".zarray").write_text(zarray(shape, dtype))
+
+
+def make_parts_tree(d: Path):
+    from petakit5d.testing.synth import write_tiff
+
+    sizes = {
+        "a.tif": (10, 12, 3),
+        "a_part0001.tif": (10, 12, 2),
+        "a_part0002.tif": (10, 12, 1),
+        "ab.tif": (8, 8, 2),
+        "ab_part0001.tif": (8, 8, 1),
+        "b.tif": (6, 7, 4),
+        "c_part0001.tif": (5, 5, 1),
+        "z.tif": (4, 4, 2),
+    }
+    for n, s in sizes.items():
+        write_tiff(d / n, np.zeros(s, dtype=np.uint16, order="F"))
+    (d / "notes.txt").write_text("not an image")
+
+
+def make_plain_tree(d: Path):
+    from petakit5d.testing.synth import write_tiff
+
+    for n, s in {"x.tif": (6, 6, 2), "y.tif": (6, 6, 3)}.items():
+        write_tiff(d / n, np.ones(s, dtype=np.uint8, order="F"))
+
+
+def make_channel_tree(d: Path):
+    from petakit5d.testing.synth import write_tiff
+
+    for n in [
+        "s_CamA_ch0_Iter_0000_t.tif",
+        "s_CamA_ch0_Iter_0001_t.tif",
+        "s_CamB_ch1_Iter_0000_t.tif",
+        "s_CamB_ch1_Iter_0000_t_part0001.tif",
+        "s_CamC_ch2_Iter_0000_t.tif",
+    ]:
+        write_tiff(d / n, np.zeros((4, 5, 2), dtype=np.float32, order="F"))
+
+
+def make_zarr_tree(d: Path):
+    make_zarr(d / "v.zarr", (10, 11, 12))
+    make_zarr(d / "v_part0001.zarr", (10, 11, 3))
+    make_zarr(d / "w.zarr", (2, 3, 4))
+
+
+def make_text_tree(d: Path):
+    (d / "a.txt").write_text("a")
+
+
+def make_list_tree(d: Path):
+    for i, n in enumerate(["m.tif", "m_part0002.tif", "m_part0001.tif", "n.tif"]):
+        (d / n).write_bytes(bytes(range(i + 1)) * 3)
+
+
+# a column cell, as MATLAB's callers pass it (a row cell fails in MATLAB's concatenation)
+LIST = [Work(f"p/{n}") for n in ["m.tif", "m_part0002.tif", "m_part0001.tif", "n.tif"]]
+LIST_COL = MCell((len(LIST), 1), LIST)
+
+NO_DATES = {"out3": ignore("dates of the work folder's copies differ between runs")}
+
+EST_CASES = [
+    Case(
+        "est_deskew_tiff",
+        matlab="XR_estimateComputingMemory",
+        args=[InPath("t.tif"), ("deskew",)],
+        python=est_matlab,
+        py_out=first(1),
+        inputs={"t.tif": File(tiff_writer((20, 30, 7)), "t.tif")},
+    ),
+    Case(
+        # inputParser takes text without a validator as a parameter name, not as the
+        # optional steps; the MATLAB-name binding (F03) takes it as steps: requested
+        "est_deskew_char_steps",
+        matlab="XR_estimateComputingMemory",
+        args=[InPath("t.tif"), "deskew"],
+        python=est_matlab,
+        py_out=first(1),
+        inputs={"t.tif": File(tiff_writer((20, 30, 7)), "t.tif")},
+        expect_error="MATLAB:InputParser:ArgumentFailedDefaultValidation",
+        marks=("xfail",),
+    ),
+    Case(
+        # the optional steps given by name, as XR_microscopeAutomaticProcessing calls it;
+        # the MATLAB-name binding (F03) takes 'steps' as the value of steps: requested
+        "est_steps_by_name",
+        matlab="XR_estimateComputingMemory",
+        args=[InPath("t.tif"), "steps", ("deskew",)],
+        python=est_matlab,
+        py_out=first(1),
+        inputs={"t.tif": File(tiff_writer((20, 30, 7)), "t.tif")},
+        marks=("xfail",),
+    ),
+    Case(
+        "est_default_steps",
+        matlab="XR_estimateComputingMemory",
+        args=[InPath("t.tif")],
+        python=est_matlab,
+        py_out=first(1),
+        inputs={"t.tif": File(tiff_writer((20, 30, 7)), "t.tif")},
+    ),
+    Case(
+        "est_two_steps",
+        matlab="XR_estimateComputingMemory",
+        args=[InPath("t.tif"), ("deskew", "deconvolution")],
+        python=est_matlab,
+        py_out=first(1),
+        inputs={"t.tif": File(tiff_writer((20, 30, 7)), "t.tif")},
+    ),
+    *[
+        Case(
+            f"est_deskew_size_z{z}",
+            matlab="XR_estimateComputingMemory",
+            args=["missing.tif", ("Deskew",), "imSize", [512, 1800, z]],
+            python=est_matlab,
+            py_out=first(1),
+        )
+        for z in (299, 300, 301, 450, 777, 1999, 12345)
+    ],
+    Case(
+        # one slice of a tiff: the bytes of a file that does not exist
+        "est_deskew_size_z1_missing_tiff",
+        matlab="XR_estimateComputingMemory",
+        args=["missing.tif", ("deskew",), "imSize", [512, 1800, 1]],
+        python=est_matlab,
+        expect_error="MATLAB:minrhs",
+        py_error=me.MatlabError,
+    ),
+    Case(
+        "est_deskew_size_z1",
+        matlab="XR_estimateComputingMemory",
+        args=["missing.zarr", ("deskew",), "imSize", [512, 1800, 1]],
+        python=est_matlab,
+        py_out=first(1),
+    ),
+    Case(
+        "est_rotate_mem_factors",
+        matlab="XR_estimateComputingMemory",
+        args=["", ("rotate",), "imSize", [100, 200, 300], "memFactors", [3, 2.7, 7.5]],
+        python=est_matlab,
+        py_out=first(1),
+    ),
+    Case(
+        "est_decon_cuda_tiff",
+        matlab="XR_estimateComputingMemory",
+        args=[InPath("t.tif"), ("deconvolution",), "cudaDecon", True, "GPUMemFactor", 2.25],
+        nargout=4,
+        python=est_matlab,
+        inputs={"t.tif": File(tiff_writer((20, 30, 7)), "t.tif")},
+    ),
+    Case(
+        "est_decon_cpu_tiff",
+        matlab="XR_estimateComputingMemory",
+        args=[InPath("t.tif"), ("deconvolution",), "cudaDecon", False],
+        nargout=4,
+        python=est_matlab,
+        inputs={"t.tif": File(tiff_writer((20, 30, 7)), "t.tif")},
+    ),
+    Case(
+        "est_decon_single_slice_tiff_bytes",
+        matlab="XR_estimateComputingMemory",
+        args=[InPath("t.tif"), ("deconvolution",), "cudaDecon", False],
+        nargout=4,
+        python=est_matlab,
+        inputs={"t.tif": File(tiff_writer((33, 17)), "t.tif")},
+    ),
+    Case(
+        "est_decon_zarr",
+        matlab="XR_estimateComputingMemory",
+        args=[InPath("z.zarr"), ("deconvolution",)],
+        nargout=4,
+        python=est_matlab,
+        inputs={
+            "z.zarr": Tree(lambda d: (d / ".zarray").write_text(zarray((10, 11, 1))), "z.zarr")
+        },
+    ),
+    Case(
+        "est_decon_data_size",
+        matlab="XR_estimateComputingMemory",
+        args=["", ("deconvolution",), "dataSize", 123456789, "cudaDecon", True],
+        nargout=4,
+        python=est_matlab,
+    ),
+    Case(
+        "est_missing_file",
+        matlab="XR_estimateComputingMemory",
+        args=["missing.tif", ("deskew",)],
+        python=est_matlab,
+        expect_error=True,
+        py_error=me.MatlabError,
+    ),
+    Case(
+        "est_data_size_several_steps",
+        matlab="XR_estimateComputingMemory",
+        args=["", ("rotate", "deconvolution"), "dataSize", 1000],
+        python=est_matlab,
+        expect_error=True,
+        py_error=me.MatlabError,
+    ),
+]
+
+GROUP_CASES = [
+    Case(
+        "group_parts_tiff",
+        matlab="groupPartialVolumeFiles",
+        args=[InPath("p")],
+        nargout=4,
+        python=group_matlab,
+        inputs={"p": Tree(make_parts_tree, "p")},
+        compare=NO_DATES,
+    ),
+    Case(
+        "group_plain_tiff",
+        matlab="groupPartialVolumeFiles",
+        args=[InPath("p")],
+        nargout=4,
+        python=group_matlab,
+        inputs={"p": Tree(make_plain_tree, "p")},
+        compare=NO_DATES,
+    ),
+    Case(
+        "group_channel_patterns",
+        matlab="groupPartialVolumeFiles",
+        args=[InPath("p"), "channelPatterns", ("CamA_ch0", "Cam[B]_ch1")],
+        nargout=4,
+        python=group_matlab,
+        inputs={"p": Tree(make_channel_tree, "p")},
+        compare=NO_DATES,
+    ),
+    Case(
+        "group_only_first_tp",
+        matlab="groupPartialVolumeFiles",
+        args=[InPath("p"), "onlyFirstTP", "yes"],
+        nargout=4,
+        python=group_matlab,
+        inputs={"p": Tree(make_channel_tree, "p")},
+        compare=NO_DATES,
+    ),
+    Case(
+        "group_zarr",
+        matlab="groupPartialVolumeFiles",
+        args=[InPath("p"), "ext", ".zarr"],
+        nargout=4,
+        python=group_matlab,
+        inputs={"p": Tree(make_zarr_tree, "p")},
+        compare=NO_DATES,
+    ),
+    Case(
+        "group_no_images",
+        matlab="groupPartialVolumeFiles",
+        args=[InPath("p")],
+        nargout=4,
+        python=group_matlab,
+        inputs={"p": Tree(make_text_tree, "p")},
+        compare=NO_DATES,
+    ),
+    Case(
+        "group_file_list",
+        matlab="groupPartialVolumeFiles",
+        args=["", LIST_COL],
+        py_args=["", LIST],
+        nargout=4,
+        python=group_matlab,
+        inputs={"p": Tree(make_list_tree, "p")},
+        compare=NO_DATES,
+    ),
+    Case(
+        "group_file_list_first_tp",
+        matlab="groupPartialVolumeFiles",
+        args=["", LIST_COL, "onlyFirstTP", ""],
+        py_args=["", LIST, "onlyFirstTP", ""],
+        nargout=4,
+        python=group_matlab,
+        inputs={"p": Tree(make_list_tree, "p")},
+        compare=NO_DATES,
+    ),
+]
+
+RANDPERM_CASES = [
+    Case(
+        f"randperm_seed1_{n}",
+        code="out = {randperm(RandStream('twister', 'Seed', 1), in{1})};",
+        args=[n],
+        python=randperm1,
+    )
+    for n in (1, 7, 40, 1000, 123457)
+]
+
+
+@oracle.parametrize(EST_CASES + GROUP_CASES + RANDPERM_CASES)
+def test_matlab(case, tmp_path):
+    oracle.check(case, tmp_path)
+
+
+def test_oracle_inputs_are_deterministic(tmp_path):
+    for make in (make_parts_tree, make_channel_tree, make_zarr_tree, make_list_tree):
+        a, b = tmp_path / f"{make.__name__}_a", tmp_path / f"{make.__name__}_b"
+        a.mkdir()
+        b.mkdir()
+        make(a)
+        make(b)
+        for p in a.rglob("*"):
+            if p.is_file():
+                assert p.read_bytes() == (b / p.relative_to(a)).read_bytes()
