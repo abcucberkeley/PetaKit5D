@@ -64,8 +64,10 @@ jobs:
       # after the PetaKit5D mex files have been used, so finishCI stops it
       # right after the tests and the next step checks the results instead
       # of MATLAB's exit code.
+      # R2026b runs the suite about 1.8 times slower than R2024b on the macOS
+      # runners (about 56 minutes for R2024b's 31), so the limit leaves room
       - name: Run tests
-        timeout-minutes: 45
+        timeout-minutes: 75
         continue-on-error: ${{ runner.os != 'Linux' }}
         uses: matlab-actions/run-command@v3
         with:
