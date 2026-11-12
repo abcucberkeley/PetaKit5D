@@ -1,0 +1,15 @@
+{
+ "name": "n06_lsq_assign",
+ "description": "N06: the grid shift assignment of 900 tiles (stitch_global_grid_assignment, sparse above 400 tiles) in MATLAB against the same systems solved by petakit5d.matlabcompat.lsq; 900-tile problems with free tiles and with active bounds for information.",
+ "repeats": 7,
+ "warmup": 1,
+ "setup": ["{python} {src}/benchmarks/matlabcompat/n06_lsq_assign_setup.py {src} {work}"],
+ "variants": [
+  {"id": "ml", "impl": "matlab", "paths": ["benchmarks/matlabcompat"],
+   "code": "n06_lsq_assign_ml('{work}', [1, 4, 24], 5)"},
+  {"id": "py", "impl": "python", "script": "benchmarks/matlabcompat/n06_lsq_assign.py",
+   "args": ["{src}", "{work}", "--threads", "1", "4", "24", "--repeats", "5"]}
+ ],
+ "compare": [{"a": "py", "b": "ml"}],
+ "gate": {"ratio_max": 1.05, "threads": [1, 4, 24], "metrics": ["op:assign_900_grid"]}
+}
