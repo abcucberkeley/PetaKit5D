@@ -41,6 +41,10 @@ function [varargout] = task_runner_run(action, varargin)
 %   task_runner_run('release', rc, fs, b)
 %       removes the claims of tasks fs and their failed marks; with b, marks
 %       batch b resubmitted (other jobs leave its tasks to its own job)
+%   [tf, cache] = task_runner_run('stealing', rc, cache, taskBatchNum)
+%       whether a job's runner has taken a task of another batch than its
+%       own (a claim whose owner is a job of another array task); cache as
+%       for 'claims'
 %   ok = task_runner_run('claim', rc, fs)
 %       claims tasks fs for this process (the master runs them itself)
 %   rc = task_runner_run('waiting', rc, waiting, t, taskBatchNum)
@@ -129,6 +133,8 @@ switch action
         [varargout{1 : max(1, nargout)}] = claim_states(varargin{:});
     case 'release'
         release_claims(varargin{:});
+    case 'stealing'
+        [varargout{1 : max(1, nargout)}] = stealing(varargin{:});
     case 'claim'
         varargout{1} = claim_tasks(varargin{:});
     case 'single_task'
@@ -462,6 +468,36 @@ live(inJob) = cellfun(@(x) cache.jobStatus(x) >= 0, jobKeys(inJob));
 end
 
 
+function [tf, cache] = stealing(rc, cache, taskBatchNum)
+% whether a job's runner has taken a task of another batch than its own: a
+% claim whose owner is a job (not this process's) of another array task
+
+if isempty(cache)
+    cache = read_claims(rc);
+end
+tf = false;
+isTask = startsWith(cache.names, 't');
+if ~any(isTask)
+    return;
+end
+tasks = str2double(extractAfter(cache.names(isTask), 1));
+tok = regexp(cache.targets(isTask), '^(\d+)_(\d+):', 'tokens', 'once');
+[myJob, myArray] = own_job();
+for i = 1 : numel(tasks)
+    if isempty(tok{i})
+        continue;
+    end
+    job = str2double(tok{i}{1});
+    arr = str2double(tok{i}{2});
+    if job > 0 && ~(job == myJob && arr == myArray) && arr ~= rem(ceil(tasks(i) / taskBatchNum), 5000)
+        tf = true;
+        return;
+    end
+end
+
+end
+
+
 function [cache] = read_claims(rc)
 % the claims folder's entries and their link targets (owners)
 
@@ -510,18 +546,21 @@ end
 
 
 function [] = release_claims(rc, fs, b)
-% removes the claims and failed marks of tasks fs; marks batch b resubmitted
+% marks batch b resubmitted, then removes the claims and failed marks of
+% tasks fs (a runner that sees a claim gone sees the mark too; with the
+% mark after them, a runner could take a task in between, which then ran
+% twice: also in the batch's new job, which runs without runners)
 
-if ~isempty(fs)
-    names = [arrayfun(@(x) sprintf('t%d', x), fs(:)', 'unif', 0), arrayfun(@(x) sprintf('f%d', x), fs(:)', 'unif', 0)];
-    for i = 1 : 500 : numel(names)
-        system(sprintf('cd "%s" && rm -f %s', rc.claimsDir, strjoin(names(i : min(i + 499, end)), ' ')));
-    end
-end
 if nargin > 2 && ~isempty(b)
     fid = fopen(sprintf('%s/r%d', rc.claimsDir, b), 'w');
     if fid >= 0
         fclose(fid);
+    end
+end
+if ~isempty(fs)
+    names = [arrayfun(@(x) sprintf('t%d', x), fs(:)', 'unif', 0), arrayfun(@(x) sprintf('f%d', x), fs(:)', 'unif', 0)];
+    for i = 1 : 500 : numel(names)
+        system(sprintf('cd "%s" && rm -f %s', rc.claimsDir, strjoin(names(i : min(i + 499, end)), ' ')));
     end
 end
 

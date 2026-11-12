@@ -299,9 +299,10 @@ while submit_status == 0 && trial_counter < maxTrialNum
                 k = 1;
                 if numel(places) > 1
                     [k, cpusPerTask, SlurmParam] = slurm_alternatives('choose', places, cpus_k, timeStrs);
-                    % (the nice too, at whichever place)
-                    if pr.nice > 0 && ~contains(SlurmParam, '--nice=')
-                        SlurmParam = sprintf('%s --nice=%d', SlurmParam, round(pr.nice));
+                    % (the call's nice too, at whichever place, also in place
+                    % of a place's own)
+                    if pr.nice > 0
+                        SlurmParam = slurm_alternatives('with_nice', SlurmParam, pr.nice);
                     end
                     SlurmConstraint = places(k).SlurmConstraint;
                     time_str = timeStrs{k};

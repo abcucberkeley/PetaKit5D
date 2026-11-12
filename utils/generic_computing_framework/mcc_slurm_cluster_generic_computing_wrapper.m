@@ -482,8 +482,10 @@ while (~parseCluster && ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
     end
 
     fsnames = cell(1, nF);
-    % the claims of task runners, read once per loop when needed
+    % the claims of task runners, read once per loop when needed, and the
+    % call's jobs in the queue while runners take other batches' tasks
     claimCache = [];
+    callJobNum = [];
     for b = 1 : nB
         fs = (b - 1) * taskBatchNum + 1 : min(b * taskBatchNum, nF);
         task_id = rem(b, 5000);
@@ -656,6 +658,23 @@ while (~parseCluster && ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
                         if any(live) && (trial_counter(f) > 0 || all(live))
                             continue;
                         end
+                        % while jobs' runners take other batches' tasks, those
+                        % jobs don't count against maxJobNum (their own batches
+                        % are done), and the call's jobs in the queue passed it:
+                        % then the call's jobs listed (by their comments) and
+                        % those submitted since count
+                        if isfinite(maxJobNum)
+                            if isempty(callJobNum)
+                                [stealing, claimCache] = task_runner_run('stealing', rc, claimCache, taskBatchNum);
+                                callJobNum = -inf;
+                                if stealing
+                                    callJobNum = slurm_call_jobs('count', jobReg);
+                                end
+                            end
+                            if callJobNum >= maxJobNum
+                                continue;
+                            end
+                        end
                         retryB = [];
                         if trial_counter(f) > 0
                             retryB = b;
@@ -740,6 +759,7 @@ while (~parseCluster && ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
                     % no answer from Slurm: the job may exist
                     if strcmp(answer, 'unknown')
                         unknown_b(b) = true;
+                        callJobNum = callJobNum + 1;
                         continue;
                     end
                     
@@ -750,6 +770,7 @@ while (~parseCluster && ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
                     job_id = str2double(job_id{1}{1});
                     job_ids(fs) = job_id;
                     job_status_mat(fs, 1) = 0;
+                    callJobNum = callJobNum + 1;
                     trial_counter(fs) = trial_counter(fs) + 1;                                
                     if multiPlace
                         slurm_alternatives('submitted', job_id, task_id, places, cpus_k, k, timeStrs);

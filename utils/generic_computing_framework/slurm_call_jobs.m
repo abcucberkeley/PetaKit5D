@@ -28,6 +28,9 @@ function [varargout] = slurm_call_jobs(action, varargin)
 %   slurm_call_jobs('done', reg)
 %       at the call's normal end (it cancels its jobs itself): cancels the
 %       jobs squeue lists of the batches still without an answer
+%   n = slurm_call_jobs('count', reg)
+%       the number of the call's jobs that squeue lists running or pending
+%       (by their comments); inf if squeue fails
 
 
 switch action
@@ -103,6 +106,14 @@ switch action
             end
         end
         reg('done') = true;
+    case 'count'
+        reg = varargin{1};
+        varargout{1} = inf;
+        [status, cmdout] = system('squeue -u "$(id -un)" -h -r -o "%i %t %k"');
+        if status == 0
+            tok = regexp(cmdout, sprintf('^(\\d+)\\S* (R|PD) %s_\\d+[ \\t]*$', reg('tag')), 'tokens', 'lineanchors');
+            varargout{1} = numel(unique(cellfun(@(x) str2double(x{1}), tok)));
+        end
     otherwise
         error('slurm_call_jobs:action', 'Unknown action %s.', action);
 end

@@ -63,6 +63,10 @@ function [varargout] = slurm_alternatives(action, varargin)
 %   slurm_alternatives('set', name, value, ...)
 %       timing settings (s): viewAge (20), minWait (120), lookInterval (60),
 %       startTolerance (60)
+%   SlurmParam = slurm_alternatives('with_nice', SlurmParam, nice)
+%       a place's SlurmParam with the call's nice (--nice=<nice>) in place of
+%       any --nice of its own: the nice is the call's, not a place's, so the
+%       jobs get it at every place (and keep it when they move)
 
 
 persistent S view reg disabled
@@ -113,6 +117,10 @@ switch action
             S.(varargin{i}) = varargin{i + 1};
         end
         view = [];
+    case 'with_nice'
+        [param, nice] = varargin{1 : 2};
+        param = regexprep(param, '(^|\s+)--nice(=\S*)?(?=\s|$)', '');
+        varargout{1} = sprintf('%s --nice=%d', param, round(nice));
     otherwise
         error('slurm_alternatives:action', 'Unknown action %s.', action);
 end
@@ -212,11 +220,13 @@ function [opts] = parse_options(str)
 % may run and what it takes: partition, QOS, account, memory (MB per CPU or
 % per node, and the option as given), GPUs, constraint, node lists, job name,
 % tasks and time limit; other tokens are kept in order (places that differ
-% in them don't trade jobs)
+% in them don't trade jobs), except --nice: the call's nice, not a place's
+% (the framework gives it to the jobs at every place, and a moved job keeps
+% it; as another token, a call with nice moved no job)
 
 opts = struct('partition', '', 'qos', '', 'account', '', 'memPerCPU', [], 'mem', [], 'memToken', '', ...
     'gres', '', 'gpus', 0, 'constraint', '', 'exclude', '', 'nodelist', '', 'jobName', '', 'ntasks', 1, ...
-    'time', '', 'other', {{}});
+    'time', '', 'nice', '', 'other', {{}});
 tokens = strsplit(strtrim(char(str)));
 tokens = tokens(~cellfun(@isempty, tokens));
 % option names: short (with a separate or attached value), long (with = or
@@ -262,7 +272,11 @@ while i <= numel(tokens)
     end
     switch name
         case ''
-            opts.other{end + 1} = t;
+            if strcmp(t, '--nice') || startsWith(t, '--nice=')
+                opts.nice = t;
+            else
+                opts.other{end + 1} = t;
+            end
         case 'memPerCPU'
             opts.memPerCPU = memory_mb(value);
             opts.memToken = ['--mem-per-cpu=', value];

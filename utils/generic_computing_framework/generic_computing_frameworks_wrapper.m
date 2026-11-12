@@ -205,9 +205,10 @@ switch clusterType
             for k = 1 : numel(places)
                 places(k).cpusPerTask = job_cpus(cpusPerTask, memAllocate, places(k).memPerCPU, ...
                     places(k).minCPUNum, places(k).maxCPUNum, roundCPUs);
-                % (the nice too, at every place)
-                if pr.nice > 0 && ~contains(places(k).SlurmParam, '--nice=')
-                    places(k).SlurmParam = sprintf('%s --nice=%d', places(k).SlurmParam, round(pr.nice));
+                % (the call's nice too, at every place, also in place of a
+                % place's own)
+                if pr.nice > 0
+                    places(k).SlurmParam = slurm_alternatives('with_nice', places(k).SlurmParam, pr.nice);
                 end
             end
             if numel(places) > 1

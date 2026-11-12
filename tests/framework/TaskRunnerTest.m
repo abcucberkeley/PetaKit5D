@@ -845,6 +845,74 @@ classdef TaskRunnerTest < pktest.TestCase
             testCase.verifyTrue(all(cellfun(@isfile, outFns)));
         end
 
+        function jobsWhoseRunnersTakeOtherBatchesCountAgainstMaxJobNum(testCase)
+            % maxJobNum counted batches: a job whose runner takes another
+            % batch's task (its own batch done) didn't count, and the call's
+            % jobs in the queue passed maxJobNum (here 1); while runners
+            % take other batches' tasks, the call's jobs in the queue count.
+            % Batch 1's job runs for 6 polls (its output at the first) and
+            % its runner takes task 2; batch 3 waits for it, also in
+            % compiled mode
+            testCase.assumeLinux();
+            for compiled = [false, true]
+                slurm = testCase.applyFixture(pktest.FakeSlurmFixture);
+                [inFns, outFns, logFn, dataPath] = testCase.makeTasks(3);
+                slurm.setJobStates('1000_1', [repmat({'R'}, 1, 6), {'done'}], outFns(1));
+                args = {'parseCluster', true, 'masterCompute', false, 'maxTrialNum', 1, 'maxJobNum', 1, ...
+                    'queryInterval', 1, 'jobLogDir', dataPath};
+                if compiled
+                    b = testCase.recordingBuild([dataPath, 'build/']);
+                    configFn = [dataPath, 'config.json'];
+                    testCase.writeLines(configFn, {jsonencode(struct('MCRParam', b.mcr, 'MCCMasterStr', b.master, ...
+                        'MCRCacheRoot', [dataPath, 'cache'], 'BashLaunchStr', 'echo'))});
+                    funcStrs = cellfun(@(x, y) sprintf('XR_crop_frame(''%s'',''%s'',[1,1,1,2,2,2])', x, y), inFns, outFns, ...
+                        'unif', 0);
+                    args = [args, {'mccMode', true, 'ConfigFile', configFn}]; %#ok<AGROW>
+                    claimer = timer('StartDelay', 0.5, 'TimerFcn', @(~, ~) testCase.claimInCompiledCall(dataPath, 2, '1000_1'));
+                else
+                    funcStrs = cellfun(@(x, y) sprintf('pktest.frameworkTask(''%s'',''%s'',''%s'',''noop'')', x, y, logFn), ...
+                        inFns, outFns, 'unif', 0);
+                    claimer = timer('StartDelay', 0.5, 'TimerFcn', @(~, ~) testCase.claimInCall(dataPath, 2, '1000_1'));
+                end
+                testCase.addTeardown(@() delete(claimer));
+                start(claimer);
+
+                evalc('generic_computing_frameworks_wrapper(inFns, outFns, funcStrs, args{:})');
+
+                cmds = slurm.history();
+                submit3 = find(startsWith(cmds, 'sbatch') & contains(cmds, '--array=3 '));
+                msg = sprintf('compiled %d', compiled);
+                testCase.assertNumElements(submit3, 1, msg);
+                running = find(startsWith(cmds, 'squeue -j') & contains(cmds, '1000_1'));
+                testCase.assertGreaterThanOrEqual(numel(running), 6, msg);
+                testCase.verifyGreaterThan(submit3, running(6), ['Batch 3 was submitted while the job whose runner took ', ...
+                    'task 2 ran (', msg, ').']);
+            end
+        end
+
+        function resubmittedMarkComesBeforeTheRelease(testCase)
+            % a batch submitted again had its claims released before its
+            % mark (resubmitted) was written: a runner could take its tasks
+            % in between, which then ran twice (also in the batch's new
+            % job, which runs without runners). Here an rm first on the PATH
+            % records whether the mark is there when the claims go
+            testCase.assumeLinux();
+            [~, outFns] = testCase.makeTasks(2);
+            evalc('rc = task_runner_run(''setup_matlab'', [testCase.createTempFolder(), ''call''], outFns, outFns, '''', false(2, 1), 1, ''x'', '''', false);');
+            system(sprintf('ln -s "77_1:n1:5:1" "%s/t2"', rc.claimsDir));
+            stubDir = testCase.createTempFolder();
+            logFn = [stubDir, 'rm.log'];
+            testCase.writeLines([stubDir, 'rm'], {'#!/bin/sh', ...
+                sprintf('if [ -f r2 ]; then echo mark >> "%s"; else echo none >> "%s"; fi', logFn, logFn), ...
+                'exec /bin/rm "$@"'});
+            fileattrib([stubDir, 'rm'], '+x');
+            testCase.applyFixture(matlab.unittest.fixtures.EnvironmentVariableFixture('PATH', ...
+                [stubDir, pathsep, getenv('PATH')]));
+            task_runner_run('release', rc, 2, 2);
+            testCase.verifyEqual(strtrim(fileread(logFn)), 'mark', 'The claims went before the batch was marked.');
+            testCase.verifyEqual(sort(testCase.claimNames(struct('rc', rc))), {'r2'});
+        end
+
         function claimStatesFollowTheirOwners(testCase)
             % a claim is live while its owner's job is in the queue (running
             % or pending), or (no job) while its process runs on this node;
