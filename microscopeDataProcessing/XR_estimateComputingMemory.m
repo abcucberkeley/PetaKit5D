@@ -31,7 +31,7 @@ memFactors = ip.Results.memFactors;
 cudaDecon = ip.Results.cudaDecon;
 GPUMemFactor = ip.Results.GPUMemFactor;
 
-if isempty(dataSize) || contains(steps, 'deskew', 'IgnoreCase', true)
+if isempty(dataSize) || any(contains(steps, 'deskew', 'IgnoreCase', true))
     if ~exist(filePath, 'file')
         if isempty(imSize)
             error('File %s does not exist!', filePath);        
@@ -54,18 +54,18 @@ end
     
 estRequiredMemory = zeros(numel(steps), 1);
 
-if contains(steps, 'deskew', 'IgnoreCase', true)
+if any(contains(steps, 'deskew', 'IgnoreCase', true))
     ind = strcmpi(steps, 'deskew');
     % use 300 slices as threshold
     estRequiredMemory(ind) = rawImageSize * memFactors(1) * max(1, (imSize(3) / 300) ^ 2);
 end
 
-if contains(steps, 'rotate', 'IgnoreCase', true)
+if any(contains(steps, 'rotate', 'IgnoreCase', true))
     ind = strcmpi(steps, 'rotate');
     estRequiredMemory(ind) = rawImageSize * memFactors(2);
 end
 
-if contains(steps, 'deconvolution', 'IgnoreCase', true)
+if any(contains(steps, 'deconvolution', 'IgnoreCase', true))
     ind = strcmpi(steps, 'deconvolution');
     estRequiredMemory(ind) = rawImageSize * memFactors(3);
     estRequiredGPUMem = NaN;
