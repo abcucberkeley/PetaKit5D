@@ -90,7 +90,8 @@ fdinds = arrayfun(@(x) ones(numel(fnames_cell{x}), 1) * x, 1 : nd, 'unif', 0);
 fnames = cat(1, fnames_cell{:});
 fdinds = cat(1, fdinds{:});
 gfnames = cat(1, gfnames_cell{:});
-partialvols = cat(1, partialvol_cell{:});
+% (logical also when a folder has no files: its cell is [])
+partialvols = logical(cat(1, partialvol_cell{:}));
 dataSizes = cat(1, datesize_cell{:});
 
 % filter filenames by channel patterns 
@@ -112,7 +113,7 @@ end
 fullnames = cellfun(@(x, y) [x, y], dataPaths(fdinds), fnames, 'unif', 0);
 include_flag = false(numel(fnames), 1);
 for c = 1 : numel(channelPatterns)
-    include_flag = include_flag | contains(fullnames, channelPatterns{c}) | contains(fullnames, regexpPattern(channelPatterns{c}));
+    include_flag = include_flag | contains(fullnames, channelPatterns{c}) | contains(fullnames, channel_regexp_pattern(channelPatterns{c}));
 end
 fnames = fnames(include_flag);
 fdinds = fdinds(include_flag);
@@ -142,7 +143,7 @@ for d = 1 : nd
     end
     while isempty(FTPfname)
         fullnames_d = cellfun(@(x) [dataPaths{d}, x], fnames_cell{d}, 'unif', 0);
-        all_inds = contains(fullnames_d, channelPatterns{c}) | contains(fullnames_d, regexpPattern(channelPatterns{c}));
+        all_inds = contains(fullnames_d, channelPatterns{c}) | contains(fullnames_d, channel_regexp_pattern(channelPatterns{c}));
         if ~isempty(all_inds) && ~isempty(find(all_inds, 1, 'first'))
             FTPfname = fnames_cell{d}{find(all_inds, 1, 'first')};
         end

@@ -143,7 +143,7 @@ if useMapFname
     imageFullnames = cellfun(@(x) sprintf('%s/%s%s', dataPath, x, ext), fsn, 'unif', 0);    
     for c = 1 : numel(channelPatterns)
         include_flag = include_flag | contains(imageFullnames, channelPatterns{c}) ...
-            | contains(imageFullnames, regexpPattern(channelPatterns{c}));
+            | contains(imageFullnames, channel_regexp_pattern(channelPatterns{c}));
     end
     if ~all(include_flag)
         tab = tab(include_flag, :);
@@ -153,7 +153,7 @@ else
     imageFullnames = cellfun(@(x) [dataPath, '/', x], imageFnames, 'unif', 0);
     for c = 1 : numel(channelPatterns)
         include_flag = include_flag | contains(imageFullnames, channelPatterns{c}) ...
-            | contains(imageFullnames, regexpPattern(channelPatterns{c}));
+            | contains(imageFullnames, channel_regexp_pattern(channelPatterns{c}));
     end
     imageFnames = imageFnames(include_flag);    
 end

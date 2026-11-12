@@ -57,7 +57,7 @@ else
         include_flag = false(numel(fnames), 1);
         fns = cellfun(@(x) [dataPath, filesep, x], fnames, 'unif', 0);
         for c = 1 : numel(channelPatterns)
-            include_flag = include_flag | contains(fns, channelPatterns{c}) | contains(fns, regexpPattern(channelPatterns{c}));
+            include_flag = include_flag | contains(fns, channelPatterns{c}) | contains(fns, channel_regexp_pattern(channelPatterns{c}));
         end
         fnames = fnames(include_flag);
         datenum = datenum(include_flag);
@@ -139,12 +139,15 @@ for i = 1 : numel(mstr)
     mstr_i = mstr{i};
     mdn_i = mdn(i);
     mds_i = mds(i);
-    pstr_inds = ~cellfun(@isempty, regexpi(fsnames, [mstr_i, '_part\d+$']));
-    
+    % (the main name as text, not as a regular expression)
+    pstr_inds = ~cellfun(@isempty, regexpi(fsnames, [regexptranslate('escape', mstr_i), '_part\d+$']));
+
     if any(pstr_inds)
         pdn = datenum(pstr_inds);
         pds = datasize(pstr_inds);
+        % (a column also for a file list given as a row)
         pstr_i = sort(fsnames(pstr_inds));
+        pstr_i = pstr_i(:);
         gstr = [mstr_i; pstr_i];
         groupedFnames{i} = cellfun(@(x) [x, ext], gstr, 'unif', 0);
         groupedDatenum{i} = [mdn_i; pdn(:)];

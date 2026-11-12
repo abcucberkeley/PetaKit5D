@@ -218,7 +218,7 @@ for d = 1 : numel(dataPath_exps)
     
     include_flag = false(numel(fn), 1);
     for c = 1 : numel(channelPatterns)
-        include_flag = include_flag | contains(fn, channelPatterns{c}) | contains(fn, regexpPattern(channelPatterns{c}));
+        include_flag = include_flag | contains(fn, channelPatterns{c}) | contains(fn, channel_regexp_pattern(channelPatterns{c}));
     end
     fn = fn(include_flag);
     fsn = fsn(include_flag);

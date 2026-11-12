@@ -131,7 +131,7 @@ for d = 1 : nd
     nc = numel(channelPatterns);
     ch_inds = false(nF, nc);
     for c = 1 : nc
-        ch_inds(:, c) = contains(fnames_d, channelPatterns{c}, 'IgnoreCase', true) | contains(fnames_d, regexpPattern(channelPatterns{c}), 'IgnoreCase', true);
+        ch_inds(:, c) = contains(fnames_d, channelPatterns{c}, 'IgnoreCase', true) | contains(fnames_d, channel_regexp_pattern(channelPatterns{c}), 'IgnoreCase', true);
     end
     fnames_d = fnames_d(any(ch_inds, 2));
     fnames{d} = fnames_d;

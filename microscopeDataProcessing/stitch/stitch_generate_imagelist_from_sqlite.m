@@ -78,7 +78,7 @@ include_flag = false(numel(fsn), 1);
 imageFullnames = cellfun(@(x) sprintf('%s/%s%s', dataPath, x), fsn, 'unif', 0);
 for c = 1 : numel(channelPatterns)
     include_flag = include_flag | contains(imageFullnames, channelPatterns{c}) ...
-        | contains(imageFullnames, regexpPattern(channelPatterns{c}));
+        | contains(imageFullnames, channel_regexp_pattern(channelPatterns{c}));
 end
 if ~all(include_flag)
     t = t(include_flag, :);

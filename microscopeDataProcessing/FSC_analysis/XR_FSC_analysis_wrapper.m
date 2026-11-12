@@ -141,7 +141,7 @@ end
 % filter filenames by channel patterns
 include_flag = false(numel(inputFullnames), 1);
 for c = 1 : numel(channelPatterns)
-    include_flag = include_flag | contains(inputFullnames, channelPatterns{c}) | contains(inputFullnames, regexpPattern(channelPatterns{c}));
+    include_flag = include_flag | contains(inputFullnames, channelPatterns{c}) | contains(inputFullnames, channel_regexp_pattern(channelPatterns{c}));
 end
 inputFullnames = inputFullnames(include_flag);
 outputFullnames = outputFullnames(include_flag);
@@ -239,7 +239,7 @@ if ~multiRegions
         fscPath = [dataPath_exp_d, resultDirName, '/'];
     
         for c = 1 : nC
-            include_flag = contains(inputFullnames, channelPatterns{c}) | contains(inputFullnames, regexpPattern(channelPatterns{c}));
+            include_flag = contains(inputFullnames, channelPatterns{c}) | contains(inputFullnames, channel_regexp_pattern(channelPatterns{c}));
             fsns_c = fsns(include_flag);
             if isempty(fsns_c)
                 continue;
@@ -340,7 +340,7 @@ else
         fscPath = [dataPath_exp_d, resultDirName, '/'];
     
         for c = 1 : nC
-            include_flag = contains(inputFullnames, channelPatterns{c}) | contains(inputFullnames, regexpPattern(channelPatterns{c}));
+            include_flag = contains(inputFullnames, channelPatterns{c}) | contains(inputFullnames, channel_regexp_pattern(channelPatterns{c}));
             fsns_c = fsns(include_flag);
             if isempty(fsns_c)
                 continue;

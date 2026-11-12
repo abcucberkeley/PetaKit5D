@@ -57,7 +57,7 @@ for d = 1 : nd
     ch_inds_d = false(nF, nc);
     for c = 1 : nc
         ch_inds_d(:, c) = contains(fnames_d, ChannelPatterns{c}, 'IgnoreCase', true) | ...
-            contains(fnames_d, regexpPattern(ChannelPatterns{c}), 'IgnoreCase', true);
+            contains(fnames_d, channel_regexp_pattern(ChannelPatterns{c}), 'IgnoreCase', true);
     end
     include_flag = any(ch_inds_d, 2);
     fnames_d = fnames_d(include_flag);

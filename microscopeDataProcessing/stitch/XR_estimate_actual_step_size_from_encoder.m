@@ -97,7 +97,7 @@ t_fns = unique(t.Filename);
 % channel patterns
 include_flag = false(numel(t_fns), 1);
 for c = 1 : numel(channelPatterns)
-    include_flag = include_flag | contains(t_fns, channelPatterns{c}) | contains(t_fns, regexpPattern(channelPatterns{c}));
+    include_flag = include_flag | contains(t_fns, channelPatterns{c}) | contains(t_fns, channel_regexp_pattern(channelPatterns{c}));
 end
 
 % exclude files that are not in the folder

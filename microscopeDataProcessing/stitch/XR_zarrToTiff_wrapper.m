@@ -81,7 +81,7 @@ allTiffFullpaths = cat(1, allTiffFullpaths{:});
 % filter filenames by channel patterns
 include_flag = false(numel(allZarrFullpaths), 1);
 for c = 1 : numel(channelPatterns)
-    include_flag = include_flag | contains(allZarrFullpaths, channelPatterns{c}) | contains(allZarrFullpaths, regexpPattern(channelPatterns{c}));
+    include_flag = include_flag | contains(allZarrFullpaths, channelPatterns{c}) | contains(allZarrFullpaths, channel_regexp_pattern(channelPatterns{c}));
 end
 allZarrFullpaths = allZarrFullpaths(include_flag);
 allTiffFullpaths = allTiffFullpaths(include_flag);

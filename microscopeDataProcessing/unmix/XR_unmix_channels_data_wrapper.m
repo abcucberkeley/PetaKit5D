@@ -160,20 +160,23 @@ else
     for d = 1 : nd
         fd_ind_d = find(fd_inds == d);
         fnames_d = fnames(fd_ind_d);
-        fd_ch_group_d = groupImageFilenamesByChannels(fnames_d, channelPatterns, ch_inds);
+        fd_ch_group_d = groupImageFilenamesByChannels(fnames_d, channelPatterns, ch_inds(fd_ind_d));
+        % (0: no file of the channel in the group)
+        fd_ind_d = [0; fd_ind_d(:)];
         if size(fd_ch_group_d, 1) == 1
-            fd_ch_groups_cell{d} = fd_ind_d(fd_ch_group_d)';
+            fd_ch_groups_cell{d} = fd_ind_d(fd_ch_group_d + 1)';
         else
-            fd_ch_groups_cell{d} = fd_ind_d(fd_ch_group_d);
+            fd_ch_groups_cell{d} = fd_ind_d(fd_ch_group_d + 1);
         end
     end
     fd_ch_groups = cat(1, fd_ch_groups_cell{:});
 end
 
 % exclude groups that don't have all channels
-incomplete_groups = find(any(fd_ch_groups == 0, 2), 1);
+incomplete_groups = find(any(fd_ch_groups == 0, 2));
 if ~isempty(incomplete_groups)
     warning('Some images do not have all channels and are excluded for unmixing!');
+    fd_ch_groups(incomplete_groups, :) = [];
 end
 
 primary_fd_inds = fd_ch_groups(:, channelInd);

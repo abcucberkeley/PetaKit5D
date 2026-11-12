@@ -135,7 +135,7 @@ for i = 1 : numel(dataPaths)
         include_flag = false(numel(fnames), 1);
         for c = 1 : numel(channelPatterns)
             include_flag = include_flag | contains(dFullpaths, channelPatterns{c}) | ...
-                contains(dFullpaths, regexpPattern(channelPatterns{c}));
+                contains(dFullpaths, channel_regexp_pattern(channelPatterns{c}));
         end
         dFullpaths = dFullpaths(include_flag);
         spctmFullnames = spctmFullnames(include_flag);

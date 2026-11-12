@@ -230,6 +230,37 @@ classdef UnmixChannelsTest < pktest.TestCase
             testCase.verifyEqual(spy.getOption(1, 'memAllocate'), prod([48, 40, 24]) * 4 * 2.5 / 1024 ^ 3, 'RelTol', 1e-12);
         end
 
+        function imagesWithoutAllChannelsAreLeftOut(testCase)
+            % time points without all channels failed the grouping by
+            % channels; their images are left out with a warning, as the
+            % wrapper says (and the second folder was grouped with the
+            % channels of the first one's files)
+            dataPath1 = testCase.twoChannelData(false);
+            dataPath2 = testCase.twoChannelData(false);
+            for t = 1 : 2
+                fn = strrep(sprintf(testCase.Fsn, 'CamA'), 'Iter_0000_', sprintf('Iter_%04d_', t));
+                writetiff(zeros(48, 40, 24, 'uint16'), [dataPath2, fn, '.tif']);
+            end
+            spy = testCase.applyFixture(pktest.FrameworkSpyFixture);
+
+            lastwarn('');
+            XR_unmix_channels_data_wrapper({dataPath1, dataPath2}, 'unmixFactors', [1, -0.1], ...
+                'channelPatterns', {'CamA', 'CamB'}, 'parseCluster', false, 'masterCompute', true);
+
+            testCase.verifySubstring(lastwarn(), 'do not have all channels');
+            calls = spy.getCalls();
+            testCase.assertNumElements(calls, 1);
+            % the first time point of each folder
+            fnA = ['/', sprintf(testCase.Fsn, 'CamA'), '.tif'];
+            testCase.assertNumElements(calls{1}.inputFullpaths, 2);
+            testCase.verifyTrue(all(endsWith(calls{1}.inputFullpaths, fnA)));
+            testCase.verifyTrue(startsWith(calls{1}.inputFullpaths{1}, dataPath1));
+            testCase.verifyTrue(startsWith(calls{1}.inputFullpaths{2}, dataPath2));
+            testCase.verifyNumElements(calls{1}.funcStrs, 2);
+            testCase.verifyNotEmpty(regexp(calls{1}.funcStrs{2}, [regexptranslate('escape', dataPath2), '/*', ...
+                regexptranslate('escape', sprintf(testCase.Fsn, 'CamB')), '\.tif'], 'once'), 'Not unmixed with CamB.');
+        end
+
         function zarrInputAndOutput(testCase)
             [dataPath, chA, chB] = testCase.twoChannelData(true);
 

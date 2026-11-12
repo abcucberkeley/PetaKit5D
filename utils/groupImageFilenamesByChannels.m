@@ -1,5 +1,7 @@
 function [fd_ch_groups] = groupImageFilenamesByChannels(filenames, channelPatterns, chInds)
-% group images by channels
+% group images by channels: a row of file indices per group, one per
+% channel, 0 for a channel without a file left for the group (channels with
+% different numbers of files)
 
 
 nF = numel(filenames);
@@ -10,7 +12,7 @@ if nargin < 3
     ch_inds_d = false(nF, nc);
     for c = 1 : nc
         ch_inds_d(:, c) = contains(filenames, channelPatterns{c}, 'IgnoreCase', true) | ...
-            contains(filenames, regexpPattern(channelPatterns{c}), 'IgnoreCase', true);
+            contains(filenames, channel_regexp_pattern(channelPatterns{c}), 'IgnoreCase', true);
     end
     chInds = arrayfun(@(x) find(ch_inds_d(x, :), 1, 'first'), 1 : size(ch_inds_d, 1));
 end
@@ -38,6 +40,11 @@ for f = 1 : nF
         end
         % find the file with largest common substrings from start or end to fsn
         cur_inds = find(~include_flag & chInds(:) == c);
+        % 0: no file of the channel left for the group
+        if isempty(cur_inds)
+            group_f_inds(c) = 0;
+            continue;
+        end
         cur_fsns = filenames(cur_inds);
         common_str_count_mat = zeros(numel(cur_fsns), 1);
         for i = 1 : numel(cur_fsns)
@@ -51,7 +58,7 @@ for f = 1 : nF
         [~, max_ind] = max(common_str_count_mat) ;
         group_f_inds(c) = cur_inds(max_ind);
     end
-    include_flag(group_f_inds) = true;
+    include_flag(group_f_inds(group_f_inds > 0)) = true;
     fd_ch_groups_cell{f} = group_f_inds;
 end
 
