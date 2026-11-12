@@ -78,6 +78,33 @@ classdef StitchingTest < pktest.TestCase
             testCase.verifyEqual(nnz(out) - nnz(out(1 : 100, 1 : 120, 1 : 32)), 0, 'Voxels outside the tiles are nonzero.');
         end
 
+        function featherBlendingOfUint8TilesInABatchThatIsNotFull(testCase)
+            % two tiles with a narrow overlap: a batch that isn't full, whose
+            % overlap is blended into the block of the tiles. uint8 tiles
+            % kept the second tile's values there; they must blend as the
+            % same tiles in uint16 (the mex, which may round a voxel the
+            % other way where the compiler fuses its multiply-adds). Tile 2
+            % is offset by 100, so blended voxels have values of neither tile.
+            gt = testCase.randomVolume([64, 104, 32], [1, 120]);
+            ims = {gt(:, 1 : 64, :), gt(:, 41 : 104, :) + 100};
+            dtypes = {'uint8', 'uint16'};
+            outs = cell(1, 2);
+            for k = 1 : 2
+                dataPath = testCase.createTempFolder();
+                tiles = struct('im', cellfun(@(x) cast(x, dtypes{k}), ims, 'unif', 0), 'idx', {[0, 0, 0], [1, 0, 0]}, ...
+                    'xyz', {[0, 0, 0], [40 * testCase.XYPixelSize, 0, 0]});
+                [~, csvFn] = pktest.writeStitchTiles(dataPath, tiles);
+                testCase.stitch(dataPath, csvFn, 'blendMethod', 'feather', 'save16bit', false);
+                outs{k} = testCase.readResult(dataPath);
+            end
+            testCase.verifyClass(outs{1}, 'uint8');
+            testCase.verifyEqual(double(outs{1}), double(outs{2}), 'AbsTol', 1, ...
+                'uint8 tiles blend unlike the same tiles in uint16.');
+            overlap = double(outs{1}(1 : 64, 41 : 64, 1 : 32));
+            testCase.verifyTrue(any(overlap ~= double(ims{1}(:, 41 : 64, :)) & overlap ~= double(ims{2}(:, 1 : 24, :)), 'all'), ...
+                'The overlap is not blended.');
+        end
+
         function mipIsMadeBeforePublishing(testCase)
             % the stitching wrapper and the pipeline count a volume as
             % stitched once its result exists; the stitched MIP was written

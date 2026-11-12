@@ -24,7 +24,8 @@ catch ME
         tim_block = sum(single(tim_f_block) .* tim_w_block, 4) ./ sum(tim_w_block, 4);
     else
         tim_block_crop = sum(single(tim_f_block) .* tim_w_block, 4) ./ sum(tim_w_block, 4);
-        indexing4d(tim_block, tim_block_crop, [bbox(1 : 3), 1, bbox(4 : 6), 1]);
+        % in the class of the block, which indexing4d_mex writes in place
+        tim_block = indexing4d(tim_block, cast(tim_block_crop, class(tim_block)), [bbox(1 : 3), 1, bbox(4 : 6), 1]);
     end
 end
 
