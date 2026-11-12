@@ -28,6 +28,35 @@ def _succ(x, dt):
     return np.nextafter(dt(x), dt(np.inf))
 
 
+# Powers of ten without pow(): glibc's pow (10.0 ** k) and NumPy's SIMD power (10.0 ** array)
+# differ between C libraries and CPUs (glibc 2.35+ gives 1.0000000000000001e+23, glibc 2.28 the
+# correctly rounded 1e23; NumPy's AVX-512 power is 1 ulp low at k = -5, -17, -30, its AVX2 and
+# libm paths are not). The MATLAB references were made from the inputs of the reference
+# platform (glibc 2.28, AVX-512), which are the correctly rounded powers except NumPy's 10^-5
+# where the generators used NumPy's power; these functions give those bits everywhere.
+_ARRAY_POW10_EXCEPTIONS = {-5: 0x3EE4F8B588E368F0}  # 9.999999999999999e-06
+
+
+def pow10(k: int) -> float:
+    """10^k correctly rounded (Python's ``float('1e<k>')``), the same on every platform."""
+    return float(f"1e{int(k)}")
+
+
+def pow10_array(k: np.ndarray) -> np.ndarray:
+    """``10.0 ** k`` of integral exponents as the reference platform's NumPy gave it."""
+    k = np.asarray(k)
+    if np.any(k != np.floor(k)):
+        raise ValueError("integral exponents only")
+    out = np.empty(k.shape, dtype=np.float64)
+    for idx, e in np.ndenumerate(k):
+        e = int(e)
+        bits = _ARRAY_POW10_EXCEPTIONS.get(e)
+        out[idx] = (
+            np.array([bits], dtype=np.uint64).view(np.float64)[0] if bits is not None else pow10(e)
+        )
+    return out
+
+
 def float_edges(dtype) -> np.ndarray:
     """Edge values for conversions to every integer class: halves, their neighbours, limits."""
     dt = np.float32 if dtype == np.float32 else np.float64

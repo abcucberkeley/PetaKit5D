@@ -365,10 +365,10 @@ def fmt_values() -> np.ndarray:
         12345678901.5,
     ]
     for e in range(-12, 26):
-        p = 10.0**e
-        v += [p, 1.5 * p, -2.25 * p, p / 3, p - 1, 123456789 * 10.0 ** (e - 8)]
+        p = _gen.pow10(e)
+        v += [p, 1.5 * p, -2.25 * p, p / 3, p - 1, 123456789 * _gen.pow10(e - 8)]
     u = _gen.uniform(SEED + 6, 900)
-    v += list((u[:300] * 2 - 1) * 10.0 ** np.floor(u[300:600] * 40 - 15))
+    v += list((u[:300] * 2 - 1) * _gen.pow10_array(np.floor(u[300:600] * 40 - 15)))
     v += list(np.floor(u[600:750] * 2e6) - 1e6)
     v += list(np.floor(u[750:900] * 2000) / 8 - 125)
     return np.array(v, dtype=np.float64)
@@ -499,7 +499,9 @@ for _src, _mk in _SRC_VALUES.items():
 
 def _rows(seed, n, ints: bool):
     u = _gen.uniform(seed, n * 5)
-    m = (u[: n * 4].reshape(n, 4) * 2 - 1) * 10.0 ** np.floor(u[n * 4 :].reshape(n, 1) * 12 - 4)
+    m = (u[: n * 4].reshape(n, 4) * 2 - 1) * _gen.pow10_array(
+        np.floor(u[n * 4 :].reshape(n, 1) * 12 - 4)
+    )
     if ints:
         m = np.floor(m)
     m[::7, 1] = np.nan
