@@ -26,7 +26,7 @@ throws if any test failed. To debug a single test, run it with
 On the Slurm cluster, run on a compute node rather than the login node, e.g.:
 
 ```bash
-srun -c4 --mem=16G --account=co_abc --partition=abc --qos=abc_normal \
+srun -c4 --mem=16G --account=lab_acct --partition=cpu_queue --qos=qos_normal \
     matlab -batch "addpath('tests'); assertSuccess(run_tests)"
 ```
 
@@ -69,7 +69,7 @@ In Jenkins, the same command can run next to the existing demo stages, e.g.
 on Linux:
 
 ```bash
-srun -c8 --mem=64G --account=co_abc --partition=abc --qos=abc_high bash -c \
+srun -c8 --mem=64G --account=lab_acct --partition=cpu_queue --qos=qos_high bash -c \
   "cd $PETAKIT5D_FOLDER && PETAKIT5D_DEMO_DATA=$(dirname $DEMO_DATA_FOLDER) \
    matlab -batch \"addpath('tests'); assertSuccess(run_tests('outputDir', 'test-results'))\""
 ```
@@ -96,8 +96,8 @@ environment variables are set:
 For example, on the lab cluster (from a compute node):
 
 ```matlab
-setenv('PETAKIT5D_TEST_SLURM_CONFIG', '/path/to/abc_slurm_config.json')
-setenv('PETAKIT5D_TEST_SLURM_SCRATCH', '/clusterfs/fiona/<user>/pk5d_test_scratch')
+setenv('PETAKIT5D_TEST_SLURM_CONFIG', '/path/to/lab_slurm_config.json')
+setenv('PETAKIT5D_TEST_SLURM_SCRATCH', '/mnt/scratch/<user>/pk5d_test_scratch')
 setenv('PETAKIT5D_TEST_SLURM_MATLAB', 'true')
 run_tests('tag', 'Cluster')
 ```
@@ -106,7 +106,7 @@ with a configuration like
 
 ```json
 {
-    "SlurmParam": "-p abc --qos abc_normal -n1 --mem-per-cpu=4G",
+    "SlurmParam": "-p cpu_queue --qos qos_normal -n1 --mem-per-cpu=4G",
     "MatlabLaunchStr": "module load matlab/r2024b; matlab -nodisplay -nosplash -nodesktop -nojvm -r",
     "maxCPUNum": 24,
     "memPerCPU": 4
@@ -254,7 +254,7 @@ compares every output with the fresh ones (see its header for the options),
 e.g.
 
 ```bash
-srun -c8 --mem=64G --gres=gpu:1 -p abc --qos abc_high -A co_abc --time=03:00:00 \
+srun -c8 --mem=64G --gres=gpu:1 -p gpu_queue --qos qos_high -A lab_acct --time=03:00:00 \
     bash tests/isolation/run_isolation_harness.sh -c $PWD -o <output folder> -j 4
 ```
 

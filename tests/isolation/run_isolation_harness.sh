@@ -29,9 +29,9 @@
 #       (record .mat) replaced, e.g. to run the tasks through the job framework:
 #       "isolation_run_framework('$TASKS', 'order', $ORDER, 'frameworkArgs', {'parseCluster', false})"
 #
-# example (abc cluster):
-#   srun -c8 --mem=64G --gres=gpu:1 -p abc --qos abc_high -A co_abc --time=04:00:00 \
-#     bash tests/isolation/run_isolation_harness.sh -c $PWD -o /clusterfs/nvme/$USER/isolation_run1
+# example (on a Slurm cluster):
+#   srun -c8 --mem=64G --gres=gpu:1 -p gpu_queue --qos qos_high -A lab_acct --time=04:00:00 \
+#     bash tests/isolation/run_isolation_harness.sh -c $PWD -o /mnt/fast_scratch/$USER/isolation_run1
 
 CODE=""; OUT=""; WORK=/tmp/pk5d_isolation_work
 RUNS="none:none:fwd,proto:prototype:rev,full1:full:1,full2:full:2,full3:full:3"

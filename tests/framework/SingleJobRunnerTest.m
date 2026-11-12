@@ -51,9 +51,10 @@ classdef SingleJobRunnerTest < pktest.TestCase
             testCase.assumeLinux();
             slurm = testCase.applyFixture(pktest.FakeSlurmFixture);
             c = testCase.compiledSetup(true);
-            testCase.startKind(c, slurm);
+            slurmParam = '-p cpu_queue --qos qos_normal -n1 --mem-per-cpu=21418M';
+            testCase.startKind(c, slurm, 'SlurmParam', slurmParam);
             for k = 1 : 4
-                [~, ~, submitted] = testCase.submit(c, k, 'ok', -1);
+                [~, ~, submitted] = testCase.submit(c, k, 'ok', -1, 'SlurmParam', slurmParam);
                 testCase.assertEqual(submitted, 1);
             end
             for k = 2 : 4
@@ -62,7 +63,7 @@ classdef SingleJobRunnerTest < pktest.TestCase
             cmds = slurm.calls('sbatch');
             testCase.assertNumElements(cmds, 4);
             for k = 1 : 4
-                testCase.verifyNotEmpty(regexp(cmds{k}, sprintf(['^--array=%d -o \\S+ -e \\S+ --cpus-per-task=1 -p abc ', ...
+                testCase.verifyNotEmpty(regexp(cmds{k}, sprintf(['^--array=%d -o \\S+ -e \\S+ --cpus-per-task=1 -p cpu_queue ', ...
                     '.*-t 24:0:00 +--wrap=date; echo Matlab command: +"pk_task\\(.*o_%d\\.txt.*\\)"; ', ...
                     'bash \\S+/task_runner_single_\\S+/run_tasks\\.sh job %d 1 0 3 1$'], k, k, k), 'once'), cmds{k});
             end

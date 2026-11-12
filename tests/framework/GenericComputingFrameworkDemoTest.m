@@ -44,14 +44,15 @@ classdef GenericComputingFrameworkDemoTest < pktest.TestCase
         end
 
         function demoConfigFileRoundTripsAndRunsLocally(testCase)
-            % the slurm configuration from the demo, written the same way
+            % the slurm configuration from the demo (with placeholder paths
+            % and names), written the same way
             dataPath = testCase.createTempFolder();
             a = struct();
-            a.MCRParam = '/global/home/users/user/bin/MATLAB_Runtime/R2024b';
-            a.MCCMasterStr = '/clusterfs/fiona/user/PetaKit5D/mcc/linux/run_mccMaster.sh';
+            a.MCRParam = '/opt/MATLAB_Runtime/R2024b';
+            a.MCCMasterStr = '/mnt/projects/PetaKit5D/mcc/linux/run_mccMaster.sh';
             a.BashLaunchStr = 'module load parallel/20190822';
-            a.SlurmParam = '-p abc --qos abc_normal -n1 --mem-per-cpu=21418M';
-            a.jobLogDir = '/clusterfs/fiona/user/Projects/job_logs';
+            a.SlurmParam = '-p cpu_queue --qos qos_normal -n1 --mem-per-cpu=21418M';
+            a.jobLogDir = '/mnt/projects/job_logs';
             a.maxCPUNum = 24;
             a.minCPUNum = 1;
             a.wholeNodeJob = true;

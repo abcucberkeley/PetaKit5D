@@ -58,7 +58,7 @@ classdef CoordinatorNiceTest < pktest.TestCase
     methods (Test, TestTags = {'Unit'})
         function jobsAtAnotherPlaceKeepTheirNice(testCase)
             % with SlurmAlternatives a job goes to the first place with room
-            % (here the alternative abc, as gpu8 is full): it keeps its nice
+            % (here the alternative cpu_queue, as gpu8 is full): it keeps its nice
             % there, as a single job and as a framework job (a moved
             % pending job keeps it, as Slurm keeps its nice)
             testCase.assumeFalse(ispc, 'The fake Slurm needs a POSIX shell.');
@@ -68,12 +68,12 @@ classdef CoordinatorNiceTest < pktest.TestCase
                 'generic_single_job_submit_wrapper', 'task_runner_run', 'single_job_pools');
             slurm_alternatives('set', 'viewAge', 0);
             slurm = testCase.applyFixture(pktest.FakeSlurmFixture);
-            slurm.setNodes({pktest.FakeSlurmFixture.nodeLine('n1', 'abc', 24, 0, 514048, 0, 0, 0, 'MIXED', 'c24'), ...
+            slurm.setNodes({pktest.FakeSlurmFixture.nodeLine('n1', 'cpu_queue', 24, 0, 514048, 0, 0, 0, 'MIXED', 'c24'), ...
                 pktest.FakeSlurmFixture.nodeLine('g1', 'gpu8', 128, 128, 1031600, 128 * 8000, 8, 0, 'MIXED', 'gpu8')});
             folder = testCase.createTempFolder();
-            abcParam = '-p abc --qos abc_normal -n1 --mem-per-cpu=21418M';
-            conf = struct('SlurmParam', '-p gpu8 --qos abc_normal -n1 --mem-per-cpu=7800M', 'memPerCPU', 7.6, ...
-                'maxCPUNum', 32, 'gpuHeadroom', 0, 'SlurmAlternatives', {{struct('SlurmParam', abcParam, ...
+            cpuParam = '-p cpu_queue --qos qos_normal -n1 --mem-per-cpu=21418M';
+            conf = struct('SlurmParam', '-p gpu8 --qos qos_normal -n1 --mem-per-cpu=7800M', 'memPerCPU', 7.6, ...
+                'maxCPUNum', 32, 'gpuHeadroom', 0, 'SlurmAlternatives', {{struct('SlurmParam', cpuParam, ...
                 'memPerCPU', 20.9, 'maxCPUNum', 24)}});
             configFn = [folder, 'config.json'];
             fid = fopen(configFn, 'w');
@@ -91,7 +91,7 @@ classdef CoordinatorNiceTest < pktest.TestCase
             jobs = slurm.calls('sbatch');
             jobs = jobs(~contains(jobs, '--test-only'));
             testCase.assertNumElements(jobs, 2);
-            testCase.verifyTrue(all(contains(jobs, abcParam)), 'The jobs did not go to the place with room.');
+            testCase.verifyTrue(all(contains(jobs, cpuParam)), 'The jobs did not go to the place with room.');
             testCase.verifyTrue(all(contains(jobs, ' --nice=1000')), strjoin(jobs, newline));
         end
     end
