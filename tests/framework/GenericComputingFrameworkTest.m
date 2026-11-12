@@ -324,6 +324,118 @@ classdef GenericComputingFrameworkTest < pktest.TestCase
                 'Batch 1 should be submitted again once batch 2 is done.');
         end
 
+        function clusterModeFailedQueryKeepsJobStates(testCase)
+            % a failed squeue (e.g., a timeout of a busy controller) read as
+            % all jobs gone: they stopped counting against maxJobNum (and
+            % were submitted again after 45 s); they keep their states now
+            testCase.assumeFalse(ispc, 'The fake Slurm needs a POSIX shell.');
+            slurm = testCase.applyFixture(pktest.FakeSlurmFixture);
+            [inFns, outFns, logFn] = testCase.makeTasks(2);
+            funcStrs = testCase.taskStrings(inFns, outFns, logFn, 'noop');
+            % the first two polls fail; the job of batch 1 then runs and
+            % writes its output
+            slurm.failQueries(2);
+            slurm.setJobStates('1000_1', {'R', 'R', 'done'}, outFns(1));
+
+            testCase.runCluster(inFns, outFns, funcStrs, 'maxTrialNum', 1, 'maxJobNum', 1, 'queryInterval', 0);
+
+            cmds = slurm.history();
+            submit2 = find(startsWith(cmds, 'sbatch') & contains(cmds, '--array=2 '));
+            testCase.assertNumElements(submit2, 1, 'Batch 2 should be submitted once.');
+            polls = find(startsWith(cmds, 'squeue') & contains(cmds, '1000_1'));
+            testCase.assertGreaterThanOrEqual(numel(polls), 3, 'The job of batch 1 was not polled until it ran.');
+            testCase.verifyGreaterThan(submit2, polls(3), ...
+                'Batch 2 was submitted while squeue failed to answer about the job of batch 1.');
+        end
+
+        function clusterModeLostSubmissionAnswerFindsTheJob(testCase)
+            % sbatch failed with "Socket timed out" after Slurm made the job,
+            % and the framework submitted the batch again at once (with the
+            % task in a file): two jobs, one unknown to it. It now looks for
+            % the job by its comment and uses it; while squeue fails (here
+            % the first two times) the batch waits
+            testCase.assumeFalse(ispc, 'The fake Slurm needs a POSIX shell.');
+            slurm = testCase.applyFixture(pktest.FakeSlurmFixture);
+            [inFns, outFns, logFn] = testCase.makeTasks(1);
+            funcStrs = testCase.taskStrings(inFns, outFns, logFn, 'noop');
+            slurm.loseSubmissionAnswers(1);
+            slurm.failQueries(2);
+            slurm.setJobStates('1000_1', {'R'}, outFns(1));
+
+            flags = testCase.runCluster(inFns, outFns, funcStrs, 'maxTrialNum', 1, 'queryInterval', 0);
+
+            testCase.verifyEqual(flags, true);
+            testCase.verifyNumElements(slurm.calls('sbatch'), 1, 'The batch was submitted again.');
+            cmds = slurm.history();
+            lookup = find(startsWith(cmds, 'squeue -u') & contains(cmds, '%k'), 1);
+            testCase.assertNotEmpty(lookup, strjoin(cmds, newline));
+            testCase.verifyTrue(any(strcmp(cmds(lookup + 1 : end), 'squeue -j 1000_1')), ...
+                'The job found was not polled.');
+            % cancelled once at the end (in the background)
+            pause(1);
+            testCase.verifyEqual(slurm.calls('scancel'), {'1000'});
+        end
+
+        function clusterModeLostSubmissionWithoutJobIsSubmittedAgain(testCase)
+            % a submission whose answer was lost and of which Slurm lists no
+            % job (looked for until 30 s after it) is submitted again; until
+            % then it counts against maxJobNum
+            testCase.assumeFalse(ispc, 'The fake Slurm needs a POSIX shell.');
+            slurm = testCase.applyFixture(pktest.FakeSlurmFixture);
+            [inFns, outFns, logFn] = testCase.makeTasks(2);
+            funcStrs = testCase.taskStrings(inFns, outFns, logFn, 'noop');
+            slurm.rejectSubmissions(1, 'sbatch: error: Batch job submission failed: Socket timed out on send/recv operation');
+            slurm.setJobStates('1000_1', {'R'}, outFns(1));
+            slurm.setJobStates('1001_2', {'R'}, outFns(2));
+
+            t0 = tic;
+            flags = testCase.runCluster(inFns, outFns, funcStrs, 'maxTrialNum', 1, 'maxJobNum', 1, 'queryInterval', 1);
+
+            testCase.verifyEqual(flags, true(2, 1));
+            cmds = slurm.history();
+            arrays = cellfun(@(x) str2double(regexp(x, '--array=(\d+)', 'tokens', 'once')), slurm.calls('sbatch'));
+            testCase.assertEqual(arrays(:)', [1, 1, 2], strjoin(cmds, newline));
+            submits = find(startsWith(cmds, 'sbatch'));
+            lookups = find(startsWith(cmds, 'squeue -u'));
+            testCase.verifyTrue(any(lookups > submits(1) & lookups < submits(2)), ...
+                'The batch was submitted again before its job was looked for.');
+            testCase.verifyGreaterThanOrEqual(toc(t0), 30, 'The batch was submitted again before 30 s.');
+        end
+
+        function clusterModeFailingMasterCancelsItsJobs(testCase)
+            % a master whose own batch fails twice raises; the call's jobs
+            % stayed in the queue
+            testCase.assumeFalse(ispc, 'The fake Slurm needs a POSIX shell.');
+            slurm = testCase.applyFixture(pktest.FakeSlurmFixture);
+            [inFns, outFns, logFn] = testCase.makeTasks(2);
+            funcStrs = [testCase.taskStrings(inFns(1), outFns(1), logFn, 'noop'), ...
+                testCase.taskStrings(inFns(2), outFns(2), logFn, 'error')];
+            slurm.setJobStates('1000_1', {'PD'});
+
+            % (the master runs the last batch; memAllocate: its task fits the
+            % test's job)
+            testCase.verifyError(@() testCase.runCluster(inFns, outFns, funcStrs, 'masterCompute', true, ...
+                'memAllocate', 1, 'queryInterval', 0), 'pktest:frameworkTask:failed');
+
+            testCase.verifyEqual(slurm.calls('scancel'), {'1000'}, 'The job of batch 1 was left in the queue.');
+        end
+
+        function clusterModePausesWhileOnlyLastTriesRun(testCase)
+            % while only jobs of last tries were listed, the framework looped
+            % without a pause (a busy core) until they ended
+            testCase.assumeFalse(ispc, 'The fake Slurm needs a POSIX shell.');
+            slurm = testCase.applyFixture(pktest.FakeSlurmFixture);
+            [inFns, outFns, logFn] = testCase.makeTasks(1);
+            funcStrs = testCase.taskStrings(inFns, outFns, logFn, 'noop');
+            slurm.setJobStates('1000_1', {'R', 'R', 'R', 'done'});
+            pauses = testCase.applyFixture(pktest.FunctionSpyFixture('pause', @() builtin('pause', 0.05)));
+
+            testCase.runCluster(inFns, outFns, funcStrs, 'maxTrialNum', 1, 'queryInterval', 0.2);
+
+            testCase.verifyGreaterThanOrEqual(numel(pauses.getCalls()), 3, ...
+                'The framework did not pause while the job of the last try ran.');
+        end
+
         function missingConfigFileErrors(testCase)
             [inFns, outFns, logFn, dataPath] = testCase.makeTasks(2);
             funcStrs = testCase.taskStrings(inFns, outFns, logFn, 'copy');
@@ -426,6 +538,14 @@ classdef GenericComputingFrameworkTest < pktest.TestCase
                 fclose(fid);
             end
             logFn = [dataPath, 'calls.log'];
+        end
+
+        function [flags] = runCluster(~, inFns, outFns, funcStrs, varargin)
+            % the framework in cluster mode with a fake Slurm (output
+            % hidden), with the jobs' logs in the tasks' folder
+            dataPath = [fileparts(fileparts(outFns{1})), '/'];
+            evalc(['flags = generic_computing_frameworks_wrapper(inFns, outFns, funcStrs, ''parseCluster'', true, ', ...
+                '''masterCompute'', false, ''jobLogDir'', dataPath, varargin{:});']);
         end
 
         function [funcStrs] = taskStrings(~, inFns, outFns, logFn, mode)

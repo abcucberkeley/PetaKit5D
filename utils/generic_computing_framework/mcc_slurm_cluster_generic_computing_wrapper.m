@@ -402,6 +402,11 @@ if parseCluster
     task_ids = task_ids(:);
     task_ids = task_ids(1 : nF);
     task_ids = rem(task_ids, 5000);
+    % the call's jobs, tagged with the call and batch (to find the job of a
+    % submission without an answer), are cancelled also if the call ends
+    % with an error or is stopped (see slurm_call_jobs)
+    [jobReg, cancelJobs] = slurm_call_jobs('start', uuid); %#ok<ASGLU>
+    unknown_b = false(nB, 1);
 end
 
 fprintf('Task number : %d, task batch size : %d, task parallel number : %d, job number : %d \n', ...
@@ -421,9 +426,22 @@ while (~parseCluster && ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
     querySystem = ~parseCluster || (parseCluster && (loop_counter == 0 || toc(qts) > queryInterval));    
     if parseCluster && querySystem
         job_status_mat(~is_done_flag, 2) = job_status_mat(~is_done_flag, 1);
-        job_status_mat(~is_done_flag, 1) = check_batch_slurm_jobs_status(job_ids(~is_done_flag), task_ids(~is_done_flag));
+        % a failed squeue (e.g., a timeout) leaves the jobs' states as they
+        % were (it read as all jobs gone, which were then submitted again)
+        qinds = find(~is_done_flag);
+        [qstatus, qunknown] = check_batch_slurm_jobs_status(job_ids(qinds), task_ids(qinds));
+        job_status_mat(qinds(~qunknown), 1) = qstatus(~qunknown);
+        qknown = true(nF, 1);
+        qknown(qinds(qunknown)) = false;
+        if any(qunknown)
+            fprintf('squeue failed, the jobs keep their last states\n');
+        end
+        if any(unknown_b)
+            [job_ids, job_status_mat, trial_counter, unknown_b] = slurm_call_jobs('resolve', jobReg, unknown_b, ...
+                job_ids, job_status_mat, trial_counter, taskBatchNum);
+        end
         timestamp = seconds(datetime('now') - start_time);
-        job_timestamp_mat(job_status_mat(:, 1) >= 0) = timestamp;
+        job_timestamp_mat(job_status_mat(:, 1) >= 0 & qknown) = timestamp;
         pending_flag = any(job_status_mat(~is_done_flag, 1) == 0);        
         qts = tic;        
         % pending jobs that can start now at another place move there
@@ -445,7 +463,12 @@ while (~parseCluster && ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
     end
     
     if parseCluster
-        lastP = find(~is_done_flag & trial_counter < maxTrialNum & job_status_mat(:, 1) < 1, 1, 'last');
+        waiting = ~is_done_flag & trial_counter < maxTrialNum & job_status_mat(:, 1) < 1;
+        % (not a batch submitted without an answer: its job may exist)
+        if any(unknown_b)
+            waiting = waiting & ~unknown_b(ceil((1 : nF)' / taskBatchNum));
+        end
+        lastP = find(waiting, 1, 'last');
         if isempty(lastP)
             lastP = -1;
         else
@@ -482,9 +505,12 @@ while (~parseCluster && ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
                 output_exist_mat(job_inds) = batch_file_exist(outputFullpaths(job_inds), [], true);
                 is_done_flag(job_inds) = output_exist_mat(job_inds);                
                 
-                job_status_mat(job_inds, 1) = check_batch_slurm_jobs_status(job_ids(job_inds), task_ids(job_inds));
+                % (a failed squeue leaves the states as they were)
+                qinds = find(job_inds);
+                [qstatus, qunknown] = check_batch_slurm_jobs_status(job_ids(qinds), task_ids(qinds));
+                job_status_mat(qinds(~qunknown), 1) = qstatus(~qunknown);
                 timestamp = seconds(datetime('now') - start_time);                
-                job_timestamp_mat(job_inds) = timestamp;
+                job_timestamp_mat(qinds(~qunknown)) = timestamp;
                 pending_flag = any(job_status_mat(~is_done_flag, 1) == 0);                
                 qts = tic;                
                 if masterCompute
@@ -567,6 +593,16 @@ while (~parseCluster && ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
         f = fs(end);
         inputFn = inputFns{b};
 
+        % a batch submitted without an answer waits until its job is found
+        % or Slurm has none
+        if parseCluster && unknown_b(b)
+            continue;
+        end
+
+        % the master runs the last waiting batch itself (with runExtraTasks
+        % not batch 1, whose job runs the other batches' tasks too)
+        masterTakes = parseCluster && masterCompute && b == lastP && ~(runExtraTasks && nB > 1 && b == 1);
+
         % set parameter to skip job submission step in case of reaching max job
         % number and masterCompute is true
         skip_job_submission = false;
@@ -575,14 +611,15 @@ while (~parseCluster && ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
             done_pad = true(taskBatchNum * nB, 1);
             done_pad(1 : nF) = is_done_flag;
             job_done_flag = all(reshape(done_pad, taskBatchNum, nB), 1)';
-            skip_job_submission = sum(job_status_mat(1 : taskBatchNum : nF, 1) >= 0 & ~job_done_flag) >= maxJobNum;
+            skip_job_submission = sum(job_status_mat(1 : taskBatchNum : nF, 1) >= 0 & ~job_done_flag) ...
+                + sum(unknown_b & ~job_done_flag) >= maxJobNum;
         end
         
         func_str = strjoin(funcStrs(fs), ';');
         if ~skip_job_submission && (parseCluster || exist(tmpFullpath, 'file'))
             if parseCluster
                 % kill the first pending job and use master node do the computing.
-                if job_status_mat(f, 1) == 0 && (masterCompute && b == lastP && ~(runExtraTasks && nB > 1 && b == 1))
+                if job_status_mat(f, 1) == 0 && masterTakes
                     system(sprintf('scancel %d_%d', job_ids(f), task_id), '-echo');
                     pending_flag = true;
                     trial_counter(fs) = trial_counter(fs) - 1;
@@ -606,8 +643,10 @@ while (~parseCluster && ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
                     cpusPerTask_f = min(maxCPUNum, cpusPerTask);
                 end
 
-                % If there is no job, submit a job
-                if job_status_mat(f, 1) == -1 && job_status_mat(f, 2) == -1 && ~(masterCompute && b == lastP)
+                % If there is no job, submit a job (it left out the last
+                % waiting batch also when the master doesn't take it: with
+                % runExtraTasks a batch 1 whose job failed never ran again)
+                if job_status_mat(f, 1) == -1 && job_status_mat(f, 2) == -1 && ~masterTakes
                     % task runners of other jobs keep the tasks they took
                     % while they run; a batch is resubmitted once none has
                     % its tasks, and other jobs then leave them to its job
@@ -660,11 +699,17 @@ while (~parseCluster && ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
                                 task_id, job_log_fname, job_log_error_fname, cpusPerTask_f, SlurmParam_f, ...
                                 SlurmConstraint_f, time_str_f, date_cmd_str, inputFn, BashLaunchStr, jobJoblogStr, paraJobNum_f, inputFn, date_cmd_str);
                             if GPUJob
+                                % slot k gets the k-th GPU of the job (of its CUDA_VISIBLE_DEVICES;
+                                % GPU k - 1 was another job's where Slurm doesn't renumber them),
+                                % GPU k - 1 if the job lists none, and no more slots than GPUs
+                                gpu_slot_str = sprintf(['P=%d; G=\\${CUDA_VISIBLE_DEVICES:-\\$(seq -s, 0 \\$((P - 1)))}; ', ...
+                                    'N=\\$(IFS=,; set -- \\$G; echo \\$#); [ \\$N -lt \\$P ] && echo GPUs \\$G: \\$N slots && P=\\$N; '], paraJobNum);
                                 cmd = sprintf(['sbatch --array=%d -o %s -e %s --cpus-per-task=%d ', ...
                                     '--ntasks=1 %s %s %s --wrap="printf \\\"Start time: \\\"; %s; echo $PWD; echo bash command: \\\"%s\\\"; ', ...
-                                    '%s; parallel %s--ungroup --retries 2 --jobs %d --delay 0.2 CUDA_VISIBLE_DEVICES=''\\$(({%%} - 1))'' eval {} < %s; echo; printf \\\"End time: \\\"; %s"'], ...
+                                    '%s; %sPK_SLOT_GPUS=\\$G parallel %s--ungroup --retries 2 --jobs \\$P --delay 0.2 ', ...
+                                    '''CUDA_VISIBLE_DEVICES=\\$(echo \\$PK_SLOT_GPUS | cut -d, -f{%%})'' eval {} < %s; echo; printf \\\"End time: \\\"; %s"'], ...
                                     task_id, job_log_fname, job_log_error_fname, cpusPerTask_f, SlurmParam_f, ...
-                                    SlurmConstraint_f, time_str_f, date_cmd_str, inputFn, BashLaunchStr, jobJoblogStr, paraJobNum, inputFn, date_cmd_str);
+                                    SlurmConstraint_f, time_str_f, date_cmd_str, inputFn, BashLaunchStr, gpu_slot_str, jobJoblogStr, inputFn, date_cmd_str);
                             end
                         end
                     end
@@ -686,9 +731,16 @@ while (~parseCluster && ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
                                 task_runner_run('job', rc, b, paraJobNum, double(GPUJob), 1, 2), date_cmd_str);
                         end
                     end
+                    cmd = slurm_call_jobs('tag', jobReg, cmd, b);
                     [status, cmdout] = system(cmd, '-echo');
-                    if isempty(cmdout) || isempty(regexp(cmdout, 'Submitted batch job (\d+)\n', 'match'))
+                    answer = slurm_call_jobs('answer', jobReg, cmdout, b);
+                    if strcmp(answer, 'refused')
                         fprintf('Unable to run the code, save the func str to disk and load it to run\n');
+                    end
+                    % no answer from Slurm: the job may exist
+                    if strcmp(answer, 'unknown')
+                        unknown_b(b) = true;
+                        continue;
                     end
                     
                     job_id = regexp(cmdout, 'Submitted batch job (\d+)\n', 'tokens');
@@ -717,7 +769,7 @@ while (~parseCluster && ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
             end
         end
 
-        if ~parseCluster || (parseCluster && masterCompute && b == lastP && ~(runExtraTasks && nB > 1 && b == 1))
+        if ~parseCluster || masterTakes
             if parseCluster && loop_counter > 0
                 % for nonpending killed jobs, wait a bit longer in case of just finished job.
                 % change the wait time to the maximum of 30s and half of computing time
@@ -842,7 +894,9 @@ while (~parseCluster && ~all(is_done_flag | trial_counter >= maxTrialNum, 'all')
         fprintf('Done! Elapsed time is %f seconds.\n\n', t1);
     end
 
-    if parseCluster && ~all(is_done_flag | trial_counter >= maxTrialNum, 'all') 
+    % (also while only jobs of last tries are listed: it looped without a
+    % pause until they ended)
+    if parseCluster && ~all(is_done_flag | (trial_counter >= maxTrialNum & job_status_mat(:, 1) < 0), 'all')
         wt = max(0.001, queryInterval - toc(qts) - 0.001);
         % if all jobs are still pending, wait another query interval
         if ~masterCompute && ~any(job_status_mat(~is_done_flag, 1), 'all')
@@ -882,6 +936,8 @@ if parseCluster
     if any(unfinished_job_ids)
         system(sprintf('scancel %s &', num2str(unfinished_job_ids(:)')), '-echo');
     end
+    % (and the jobs Slurm lists of batches submitted without an answer)
+    slurm_call_jobs('done', jobReg);
     if multiPlace
         [~, ia] = unique(job_ids);
         slurm_alternatives('forget', job_ids(ia), task_ids(ia));

@@ -325,7 +325,8 @@ classdef TaskRunnerTest < pktest.TestCase
             testCase.assumeLinux();
             testCase.assumeEqual(system('command -v parallel > /dev/null'), 0, 'GNU parallel is not installed.');
             [c, b] = testCase.makeCall(4, 4, {1, 'slow'; 2, 'slow'; 3, 'slow'; 4, 'slow'});
-            testCase.runJob(c, 'job 1 2 1 0 2');
+            % (a job without a GPU list: GPU s - 1 for slot s)
+            testCase.runJob(c, 'job 1 2 1 0 2', '-u CUDA_VISIBLE_DEVICES');
             runs = testCase.taskRuns(b);
             testCase.verifyEqual(sort([runs.task]), 1 : 4);
             testCase.verifyEqual(sort(unique({runs.cuda})), {'0', '1'});
@@ -333,6 +334,33 @@ classdef TaskRunnerTest < pktest.TestCase
             for p = unique([runs.pid])
                 testCase.verifyNumElements(unique({runs([runs.pid] == p).cuda}), 1);
             end
+        end
+
+        function gpuSlotsUseTheJobsGPUs(testCase)
+            % slot s took GPU s - 1, another job's GPU where Slurm doesn't
+            % renumber the GPUs of a job (it doesn't where it doesn't
+            % constrain them); it takes the s-th GPU in the job's
+            % CUDA_VISIBLE_DEVICES now, and a job with fewer GPUs than
+            % slots runs fewer slots (lists of a test, no GPU is used)
+            testCase.assumeLinux();
+            testCase.assumeEqual(system('command -v parallel > /dev/null'), 0, 'GNU parallel is not installed.');
+            [c, b] = testCase.makeCall(4, 4, {1, 'slow'; 2, 'slow'; 3, 'slow'; 4, 'slow'});
+            testCase.runJob(c, 'job 1 2 1 0 2', 'CUDA_VISIBLE_DEVICES=4,6');
+            runs = testCase.taskRuns(b);
+            testCase.verifyEqual(sort([runs.task]), 1 : 4);
+            testCase.verifyEqual(sort(unique({runs.cuda})), {'4', '6'});
+            for p = unique([runs.pid])
+                testCase.verifyNumElements(unique({runs([runs.pid] == p).cuda}), 1);
+            end
+
+            [c, b] = testCase.makeCall(2, 2, {1, 'slow'; 2, 'slow'});
+            out = testCase.runJob(c, 'job 1 2 1 0 2', 'CUDA_VISIBLE_DEVICES=5');
+            runs = testCase.taskRuns(b);
+            testCase.verifyEqual(sort([runs.task]), 1 : 2);
+            testCase.verifyEqual({runs.cuda}, {'5', '5'}, out);
+            % (one slot: its runner process runs both tasks)
+            testCase.verifyNumElements(unique([runs.pid]), 1, out);
+            testCase.verifySubstring(out, 'GPUs 5: 1 slots');
         end
 
         function stealingStopsNearTheJobsEnd(testCase)
@@ -1125,9 +1153,13 @@ classdef TaskRunnerTest < pktest.TestCase
             fileattrib([folder, 'mccMaster'], '+x');
         end
 
-        function [out] = runJob(testCase, c, args)
-            % runs the job script (bash run_tasks.sh <args>) as a job would
-            [status, out] = system(sprintf('env -u PETAKIT5D_RUNNER bash "%s" %s 2>&1', c.rc.script, args));
+        function [out] = runJob(testCase, c, args, envStr)
+            % runs the job script (bash run_tasks.sh <args>) as a job would,
+            % with the environment changes envStr of env (optional)
+            if nargin < 4
+                envStr = '';
+            end
+            [status, out] = system(sprintf('env -u PETAKIT5D_RUNNER %s bash "%s" %s 2>&1', envStr, c.rc.script, args));
             testCase.assertEqual(status, 0, out);
         end
 

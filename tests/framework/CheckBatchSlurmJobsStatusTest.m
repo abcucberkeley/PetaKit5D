@@ -1,7 +1,8 @@
 classdef CheckBatchSlurmJobsStatusTest < pktest.TestCase
     % check_batch_slurm_jobs_status, which the job framework uses to poll
     % its jobs, with pktest.FakeSlurmFixture: 1 running, 0 pending, -1 any
-    % other state or not in the queue
+    % other state or not in the queue (or unknown, the second output, if
+    % squeue failed)
 
     methods (Test, TestTags = {'Unit'})
         function mapsQueueStatesToJobs(testCase)
@@ -42,6 +43,23 @@ classdef CheckBatchSlurmJobsStatusTest < pktest.TestCase
             % with tasks sharing a job, as before
             status = check_batch_slurm_jobs_status([101; 100; 101], [1; 1; 1]);
             testCase.verifyEqual(status, [0; 1; 0]);
+        end
+
+        function failedQueryLeavesStatesUnknown(testCase)
+            % a failed squeue (a timeout of a busy controller) read as all
+            % jobs gone, which the framework then submitted again; their
+            % states are unknown now. "Invalid job id" means gone, as before
+            testCase.assumeFalse(ispc, 'The fake Slurm needs a POSIX shell.');
+            slurm = testCase.applyFixture(pktest.FakeSlurmFixture);
+            slurm.setJobStates('100_1', {'R'});
+            slurm.failQueries(1);
+            [status, unknown] = check_batch_slurm_jobs_status([100; -1], [1; 1]);
+            testCase.verifyEqual([status, unknown], [-1, 1; -1, 0]);
+            [status, unknown] = check_batch_slurm_jobs_status([100; -1], [1; 1]);
+            testCase.verifyEqual([status, unknown], [1, 0; -1, 0]);
+            slurm.failQueries(1, 'slurm_load_jobs error: Invalid job id specified');
+            [status, unknown] = check_batch_slurm_jobs_status(100, 1);
+            testCase.verifyEqual([status, unknown], [-1, 0]);
         end
     end
 end

@@ -288,7 +288,8 @@ unfinished() {
 slot() {
     # one slot: <own> <gpu> <steal> <retries> <local folder> <slot> <slots>
     local own=$1 gpu=$2 steal=$3 retries=$4 L=$5 s=$6 P=$7 k=0 est=0 f u line st kind nown nwait nsteal later more
-    [ "$gpu" = 1 ] && export CUDA_VISIBLE_DEVICES=$(( s - 1 ))
+    # the slot's GPU: the s-th of the job's (PK_SLOT_GPUS, see job), else GPU s - 1
+    [ "$gpu" = 1 ] && export CUDA_VISIBLE_DEVICES=$(echo "${PK_SLOT_GPUS:-$(seq -s, 0 $(( s - 1 )))}" | cut -d, -f"$s")
     while true; do
         k=$((k + 1))
         st="$L/s${s}_$k"
@@ -370,7 +371,7 @@ slot() {
 
 job() {
     # a compiled job: <own> <slots> <gpu> <steal> <retries>
-    local own=$1 P=$2 gpu=$3 steal=$4 retries=$5 L n
+    local own=$1 P=$2 gpu=$3 steal=$4 retries=$5 L n g
     # no more slots than tasks to take (GNU parallel started one process
     # per task line): the batch's unclaimed tasks and (steal) the others'
     # (steal 3: one, the single job's own task, which the slot claims first)
@@ -384,6 +385,17 @@ job() {
         return 0
     fi
     [ "$n" -lt "$P" ] && P=$n
+    if [ "$gpu" = 1 ]; then
+        # a GPU per slot: the job's own (CUDA_VISIBLE_DEVICES; GPU s - 1 for
+        # slot s was another job's where Slurm doesn't renumber the GPUs),
+        # GPUs 0 to P - 1 if it lists none; no more slots than GPUs
+        export PK_SLOT_GPUS=${CUDA_VISIBLE_DEVICES:-$(seq -s, 0 $(( P - 1 )))}
+        g=$(IFS=,; set -- $PK_SLOT_GPUS; echo $#)
+        if [ "$g" -lt "$P" ]; then
+            echo "Task runner: GPUs $PK_SLOT_GPUS: $g slots"
+            P=$g
+        fi
+    fi
     L=$(mktemp -d "${TMPDIR:-/tmp}/pk5d_runner_XXXXXX")
     if [ "$P" -gt 1 ]; then
         parallel --ungroup --jobs "$P" --delay 0.2 bash "$SELF" slot "$own" "$gpu" "$steal" "$retries" "$L" {%} "$P" ::: $(seq "$P")
