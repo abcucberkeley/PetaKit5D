@@ -1,0 +1,48 @@
+{
+ "task": "K03",
+ "classes": {
+  "DeskewRotateKernelExactTest": {
+   "finished": true,
+   "methods": {
+    "wholeVolumeMatchesReference": [
+     "oracle:tests/kernels/test_deskew.py::warp.*.whole",
+     "oracle:tests/kernels/test_deskew.py::fused.*.whole",
+     "oracle:tests/kernels/test_deskew.py::odd.*",
+     "pytest:tests/kernels/test_deskew.py::test_reference_model"
+    ],
+    "boundingBoxMatchesReference": [
+     "oracle:tests/kernels/test_deskew.py::warp.*.y61.bbox",
+     "oracle:tests/kernels/test_deskew.py::fused.*.y61.bbox",
+     "pytest:tests/kernels/test_deskew.py::test_reference_model"
+    ],
+    "boundingBoxPastTheInputRows": [
+     "oracle:tests/kernels/test_deskew.py::warp.*.y61.bboxpast",
+     "oracle:tests/kernels/test_deskew.py::warp.*.y61.bboxbeyond",
+     "oracle:tests/kernels/test_deskew.py::fused.*.y61.bboxpast",
+     "oracle:tests/kernels/test_deskew.py::fused.*.y61.bboxbeyond",
+     "pytest:tests/kernels/test_deskew.py::test_reference_model"
+    ],
+    "interpolationMatchesTheMatlabFunction": [
+     "oracle:tests/kernels/test_deskew.py::mfunction.*",
+     "oracle:tests/kernels/test_deskew.py::interp.*",
+     "pytest:tests/kernels/test_deskew.py::test_reference_model"
+    ]
+   }
+  },
+  "MexInputCheckTest": {
+   "methods": {
+    "deskewRotateWarpChecksItsInputs": [
+     "oracle:tests/kernels/test_deskew.py::err.warp.*"
+    ],
+    "skewedSpaceInterpWarpChecksItsInputs": [
+     "oracle:tests/kernels/test_deskew.py::err.fused.*",
+     "oracle:tests/kernels/test_deskew.py::edge.emptyinput.*"
+    ],
+    "skewedSpaceInterpChecksItsInputs": [
+     "oracle:tests/kernels/test_deskew.py::err.interp.*",
+     "oracle:tests/kernels/test_deskew.py::edge.emptyinterp.*"
+    ]
+   }
+  }
+ }
+}
