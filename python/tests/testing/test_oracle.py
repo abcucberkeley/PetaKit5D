@@ -397,6 +397,48 @@ CASES += [
     ),
 ]
 
+# --- an input whose key is not its name; warnings in all the forms MATLAB prints -----------------
+
+
+def make_csv(p):
+    p.write_text("a b,c-d,e\n1,2,3\n4,5,6\n")  # headers readtable must rename: it warns
+
+
+def py_warn_forms(csv):
+    for ident, msg in (
+        ("pkpy:selftest:long", "long " + "words " * 20),
+        ("MATLAB:table:ModifiedAndSavedVarnames", "Column headers from the file were modified"),
+        ("pkpy:selftest:quiet", "quiet [x]"),
+    ):
+        w = UserWarning(msg)
+        w.identifier = ident
+        warnings.warn(w, stacklevel=2)
+    return float(len(Path(csv).read_text().splitlines()) - 1)
+
+
+CASES += [
+    Case(
+        "inpath_by_name",
+        matlab="pkpy_oracle.selftest.read_inputs",
+        args=[InPath("tiles"), InPath("m")],
+        nargout=4,
+        python=py_read_inputs,
+        inputs={"tiles": Tree(make_data_tree, "raw"), "m": File(make_mat, "m.mat")},
+    ),
+    Case(
+        "warnings_wrapped_readtable_quiet",
+        code=(
+            "warning('pkpy:selftest:long', ['long ', repmat('words ', 1, 20)]); "
+            "T = readtable(in{1}); w = warning('off', 'verbose'); "
+            "warning('pkpy:selftest:quiet', 'quiet [x]'); warning(w); out = {height(T)};"
+        ),
+        args=[InPath("csv")],
+        python=py_warn_forms,
+        warnings="ids",
+        inputs={"csv": File(make_csv, "t.csv")},
+    ),
+]
+
 # --- 100 small cases (harness overhead per case) -------------------------------------------------
 
 SMALL = [
@@ -434,6 +476,59 @@ def test_matlab(case, tmp_path):
 
 
 # --- harness logic (no MATLAB) -------------------------------------------------------------------
+
+BS = "\x08"
+# command window text as MATLAB R2024b's evalc gives it (from a probe): readtable's warning,
+# wrapped at 80 columns also inside the "Type" line; warnings issued with verbose off
+READTABLE_TEXT = (
+    f"[{BS}Warning: Column headers from the file were modified to make them valid MATLAB\n"
+    "identifiers before creating variable names for the table. The original column\n"
+    "headers are saved in the VariableDescriptions property.\n"
+    "Set 'VariableNamingRule' to 'preserve' to use the original column headers as\n"
+    "table variable names.\n"
+    '(Type "<a href="matlab:warning off MATLAB:table:ModifiedAndSavedVarnames">warning off '
+    'MATLAB:table:ModifiedAndSavedVarnames</a>" to suppress this\nwarning.)\n'
+    f"]{BS} \n"
+)
+QUIET_TEXT = f"[{BS}Warning: quiet one]{BS} \n[{BS}Warning: quiet two [x]]{BS} \n"
+
+
+def test_matlab_warnings_are_parsed_in_every_form():
+    w = oracle.parse_matlab_warnings(READTABLE_TEXT)
+    assert [x["identifier"] for x in w] == ["MATLAB:table:ModifiedAndSavedVarnames"]
+    assert w[0]["message"].startswith("Column headers") and w[0]["message"].endswith("names.")
+    w = oracle.parse_matlab_warnings(QUIET_TEXT, "pk:b", "quiet two [x]")
+    assert w == [
+        {"identifier": "", "message": "quiet one"},  # verbose off and not the last: no id
+        {"identifier": "pk:b", "message": "quiet two [x]"},  # the last: lastwarn's
+    ]
+    exact = "Column headers from the file were modified to make them valid MATLAB identifiers"
+    w = oracle.parse_matlab_warnings(
+        READTABLE_TEXT + QUIET_TEXT, "MATLAB:table:ModifiedAndSavedVarnames", exact
+    )
+    assert [x["identifier"] for x in w] == ["MATLAB:table:ModifiedAndSavedVarnames", "", ""]
+    plain = '[Warning: plain\n(Type "warning off a:b" to suppress this warning.)\n]\n'
+    w = oracle.parse_matlab_warnings(plain)
+    assert w == [{"identifier": "a:b", "message": "plain"}]
+    w = oracle.parse_matlab_warnings(f"[{BS}Warning: cut off")
+    assert w[-1]["identifier"] == "pkpy:oracle:unparsedWarning"
+    # a warning without an identifier, wrapped: the last one's exact text is lastwarn's
+    noid = (
+        f"[{BS}Warning: Setting file\n<WORK>/s/x.txt does not\nexist, skip it.\n"
+        '(Type "<a href="matlab:warning off ">warning off </a>" to suppress this warning.)\n'
+        f"]{BS} \n"
+    )
+    exact = "Setting file <WORK>/s/x.txt does not exist, skip it."
+    assert oracle.parse_matlab_warnings(noid, "", exact) == [{"identifier": "", "message": exact}]
+    assert oracle.parse_matlab_warnings(noid, "", "another")[0]["message"] != "another"
+
+
+def test_inpath_resolves_the_input_name_on_both_sides(tmp_path):
+    case = next(c for c in CASES if c.id == "inpath_by_name")
+    args = case.matlab_args(lambda name, x: "")
+    assert [(a.what, a.name) for a in args.items] == [("path", "raw"), ("path", "m.mat")]
+    py_args, _ = case.python_args(tmp_path)
+    assert py_args == [tmp_path.as_posix() + "/raw", tmp_path.as_posix() + "/m.mat"]
 
 
 def test_case_validation():
@@ -570,6 +665,8 @@ def test_reference_from_store_then_manifest(tmp_path, monkeypatch):
     oracle._write_manifests([("n", case)], store, None)
     entry = json.loads(mfile.read_text())["cases"]["fake_path"]
     assert entry["outputs"][0]["k"] == "a" and "/scratch" not in mfile.read_text()
+    lines = mfile.read_text().splitlines()  # one line per case: a changed case is one line
+    assert sum(ln.startswith('  "fake_path": {') for ln in lines) == 1 and len(lines) == 8
     monkeypatch.delenv(oracle.ENV_GOLDEN)
     oracle.check(case, tmp_path / "run2")  # manifest only, as in CI
     bad = Case(

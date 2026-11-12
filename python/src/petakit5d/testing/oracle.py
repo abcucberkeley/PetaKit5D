@@ -220,6 +220,54 @@ class Store:
         raise TypeError(type(x).__name__)
 
 
+_WARN_BLOCK = re.compile(r"\[\x08Warning: (.*?)\]\x08", re.S)
+_WARN_BLOCK_PLAIN = re.compile(r"\[Warning: (.*?)\]\s*(?:\n|$)", re.S)
+_WARN_TYPE = re.compile(
+    r'^(.*?)\s*\(Type\s+"(?:<a href="[^"]*">)?warning\s+off\s+([^"<]*?)(?:</a>)?"\s+'
+    r"to\s+suppress\s+this\s+warning\.\)\s*$",
+    re.S,
+)
+UNKNOWN_IDS = ("", "pkpy:oracle:unparsedWarning")
+
+
+def parse_matlab_warnings(
+    text: str, last_id: str | None = None, last_msg: str | None = None
+) -> list[dict]:
+    """the warnings in MATLAB's captured command window text (as +pkpy_oracle/parse_warnings.m)
+
+    MATLAB writes ``[<backspace>Warning: message]<backspace>``, with the line ``(Type "warning
+    off <id>" to suppress this warning.)`` before the ``]`` unless the warning was issued with
+    verbose off; long lines are wrapped at the window width, also inside that line. A warning
+    without the line has an empty identifier. The last warning takes ``last_id`` and the exact
+    ``last_msg`` (MATLAB's lastwarn) when its identifier is ``last_id`` or its message is
+    ``last_msg`` but for line breaks.
+    """
+    blocks = _WARN_BLOCK.findall(text)
+    if not blocks and "[Warning: " in text:
+        blocks = _WARN_BLOCK_PLAIN.findall(text)
+    out = []
+    for body in blocks:
+        m = _WARN_TYPE.match(body)
+        if m:
+            out.append({"identifier": m.group(2).strip(), "message": m.group(1)})
+        else:
+            out.append({"identifier": "", "message": body.strip()})
+    if out and last_msg is not None:
+        ident = out[-1]["identifier"]
+        same = " ".join(out[-1]["message"].split()) == " ".join(last_msg.split())
+        if (ident == (last_id or "") and (last_id or same)) or (not ident and same):
+            out[-1] = {"identifier": last_id or ident, "message": last_msg}
+    n = text.count("[Warning: ") + text.count("[\x08Warning: ")
+    if n > len(blocks):
+        out.append(
+            {
+                "identifier": "pkpy:oracle:unparsedWarning",
+                "message": f"{n - len(blocks)} warnings could not be parsed; see stdout.txt",
+            }
+        )
+    return out
+
+
 def _seq(v: Any) -> list:
     if v is None:
         return []
@@ -260,6 +308,19 @@ class Reference:
             )
         err = meta.get("error") if meta["status"] == "error" else None
         warns = [w for w in _seq(meta.get("warnings")) if isinstance(w, dict)]
+        so = d / "stdout.txt"
+        if so.is_file():
+            # parsed again from the command window text, so that results made by an older
+            # runner get today's rules; the last warning's exact text is in the meta
+            lw = meta.get("last_warning")
+            lid = lmsg = None
+            if isinstance(lw, dict):
+                lid, lmsg = lw.get("identifier", ""), lw.get("message", "")
+            elif warns and warns[-1].get("identifier") != UNKNOWN_IDS[1]:
+                # made before last_warning was recorded: the runner had the last one exact
+                lid, lmsg = warns[-1].get("identifier", ""), warns[-1].get("message", "")
+            text = so.read_text(encoding="utf-8", errors="replace")
+            warns = parse_matlab_warnings(text, lid, lmsg)
         return cls(
             key,
             meta["status"],
@@ -367,9 +428,19 @@ def manifest_entry(case: Case, ref: Reference) -> dict:
 
 
 def write_manifest(path: Path, entries: dict[str, dict], module: str) -> bool:
-    """write a manifest (sorted, stable); True if it changed"""
-    doc = {"format": FORMAT, "oracle": expected_commit(), "module": module, "cases": entries}
-    text = json.dumps(doc, indent=1, sort_keys=True, ensure_ascii=True) + "\n"
+    """write a manifest (sorted, stable; one compact line per case, so that a changed case is
+    one changed line); True if it changed"""
+
+    def dump(x: Any) -> str:
+        return json.dumps(x, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
+
+    cases = [f"  {dump(cid)}: {dump(entries[cid])}" for cid in sorted(entries)]
+    head = [
+        f' "format": {FORMAT}',
+        f' "module": {dump(module)}',
+        f' "oracle": {dump(expected_commit())}',
+    ]
+    text = "{\n" + ",\n".join(head) + ',\n "cases": {\n' + ",\n".join(cases) + "\n }\n}\n"
     if path.is_file() and path.read_text(encoding="utf-8") == text:
         return False
     tmp = path.with_name(path.name + f".tmp{os.getpid()}")

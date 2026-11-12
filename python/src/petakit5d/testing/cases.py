@@ -440,6 +440,15 @@ class Case:
                 "helpers": {h: tree_hash(_python_root() / h) for h in sorted(self.helpers)},
                 "harness": _harness_file_hash(self.matlab, harness),
             }
+            # InPath(key) of an input whose name differs from its key: MATLAB resolved the key
+            # until the harness resolved the name (results made before are not reused)
+            renamed = {
+                p.name: self.inputs[p.name].name
+                for p in _placeholders(self.args)
+                if p.what == "path" and getattr(self.inputs[p.name], "name", p.name) != p.name
+            }
+            if renamed:
+                spec["paths"] = renamed
             self._key = hashlib.sha256(
                 json.dumps(spec, sort_keys=True, separators=(",", ":")).encode()
             ).hexdigest()
@@ -462,11 +471,13 @@ class Case:
         mv = self._args_mvalue(ref)
 
         def data_paths(v: MValue) -> MValue:
+            # InPath(key): MATLAB gets the path of the input's copy, which has the input's name
             if isinstance(v, MPlaceholder) and v.what == "path":
                 x = self.inputs[v.name]
                 if isinstance(x, Data) and not x.copy:
                     p = str(x.local())
                     return mchar(p + ("/" if x.local().is_dir() else ""))
+                return MPlaceholder("path", x.name)
             return v
 
         return _walk(mv, data_paths)

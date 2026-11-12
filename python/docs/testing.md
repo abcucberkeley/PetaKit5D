@@ -18,7 +18,8 @@ Three places hold MATLAB's results:
   in full, with the files a function wrote, its warnings and error. Written only by the harness.
 - **manifests** in the repo, next to each test module (`test_x.py` → `test_x.oracle.json`): per
   case the SHA-256 of every output, its class and size, and small arrays and texts inline. CI
-  has no MATLAB and no store; it checks the cases against the manifests.
+  has no MATLAB and no store; it checks the cases against the manifests (bit for bit by hash;
+  the readable element-by-element diff of a large value needs the store).
 - nothing else: a test never stores references of its own.
 
 ## Writing cases
@@ -74,7 +75,7 @@ def test_matlab(case, tmp_path):
 | `files`, `tree` | compare the files written in the work folder (default: when the case uses `Work`, `InPath` or file inputs); `tree(...)` sets how |
 | `expect_error` | MATLAB must raise (a string: with that identifier); otherwise a MATLAB error fails the test as a broken case |
 | `py_error`, `error_message` | the exception classes Python may raise when MATLAB raises; compare messages too |
-| `warnings` | `'record'` (default) or `'ids'`: Python must give warnings with the same identifiers (set `identifier` on the warning). MATLAB's warnings are read from its command window text: identifiers are exact, messages as displayed (long ones wrapped at the window width; the last warning's message is exact) |
+| `warnings` | `'record'` (default) or `'ids'`: Python must give warnings with the same identifiers (set `identifier` on the warning). MATLAB's warnings are read from its command window text (kept as the result's `stdout.txt` and parsed again when a reference is read): identifiers are exact; messages as displayed, long ones wrapped at the window width, the last one exact. A warning issued with verbose off (MATLAB prints no "Type warning off" line) has an empty identifier unless it is the last one, which gets `lastwarn`'s |
 | `helpers` | folders of MATLAB helper files (relative to `python/`) put on MATLAB's path for the pack; part of the key |
 | `device` | `'cpu'` (default), `'gpu'` or `'gpu:<model>'` (the MATLAB GPU's name must contain it) |
 | `marks` | more pytest marks (`slow`, ...) |
@@ -91,9 +92,13 @@ example: overwrite it).
 | Input | Made by | MATLAB gets | Python gets |
 |---|---|---|---|
 | `Value(make)` | `make()` returns an array or value | the value (`In(name)`) | a copy of what `make` returned |
-| `File(make, name)` | `make(path)` writes the file | a copy in the work folder (`InPath(name)`) | the same |
-| `Tree(make, name)` | `make(folder)` fills the folder | a copy in the work folder (`InPath(name)`, with a trailing `/`) | the same |
+| `File(make, name)` | `make(path)` writes the file | a copy in the work folder named `name` (`InPath(key)`) | the same |
+| `Tree(make, name)` | `make(folder)` fills the folder | a copy in the work folder named `name` (`InPath(key)`, with a trailing `/`) | the same |
 | `Data(path, name, copy=True, content=False)` | existing data, `$VARIABLES` expanded | a copy in the work folder, or the path itself (`copy=False`) | the same |
+
+`InPath(key)` names an input by its key in `inputs` and gives the path of its copy, which has
+the input's `name` (`inputs={"m": File(make, "m.mat")}`: `InPath("m")` is `<work>/m.mat`), on
+both sides.
 
 `Work(sub)` is the case's work folder with a trailing `/` (and `sub`). Both sides run with the
 work folder as the current folder; the files a call writes or changes there are its file
@@ -253,7 +258,12 @@ Hashes (`vhash`): array `sha256("pk1:a:<class>:<size>:<r|c>:" + raw data)`, size
 `sha256("pk1:struct:<size>:<sorted fields>:" + per element the children's hashes in sorted
 field order joined by ",", elements joined by ";")` (field order is not part of it; a report
 notes it); other kinds similarly (see `vhash`). Manifests keep descriptors: kind, class, size,
-hash, and the data of arrays up to 2 KB (base64) and texts up to 4 KB.
+hash, and the data of arrays up to 2 KB (base64; char rows as text) and texts up to 4 KB;
+elements whose data is kept carry no hash of their own (it is computed again). A cell, struct,
+string array or map whose descriptor would take more than 8 KB (compact JSON) keeps only its
+kind, size, struct fields or map types, and hash: CI checks it bit for bit by hash and reports
+kind, size and field differences; the element-by-element report needs the store. A manifest has
+one line per case (a changed case is one changed line); older layouts are read too.
 
 ## Environment variables
 

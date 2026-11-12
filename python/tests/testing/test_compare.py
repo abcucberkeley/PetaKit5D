@@ -234,6 +234,71 @@ def test_descriptors_keep_small_arrays_and_hashes_of_large_ones():
     changed[3, 4, 5] += 1
     rep = compare(from_descriptor(db), changed, path="out1")
     assert not rep.ok and "SHA-256 mismatch" in rep.text()
+    assert "readable element-by-element diff is in the golden store" in rep.text()
+
+
+def roundtrip(d):
+    return from_descriptor(json.loads(json.dumps(d)))
+
+
+def test_large_containers_keep_only_their_hash_and_compare_bit_for_bit():
+    rows = [f"tile_{i:04d}_CamA_ch0_stack{i:04d}.tif" for i in range(1600)]
+    c = to_mvalue(rows)
+    d = describe(c)
+    assert "v" not in d and len(json.dumps(d)) < 200
+    assert d["h"] == describe(c, budget=10**9)["h"] == vhash(c)
+    ref = roundtrip(d)
+    assert compare(ref, rows).ok
+    bad = list(rows)
+    bad[7] = "x"
+    text = compare(ref, bad, path="out1").text()
+    assert "out1: values: the cell array [1 1600] differs from MATLAB's" in text
+    assert "readable element-by-element diff is in the golden store" in text
+    assert "cell size: MATLAB [1 1600], Python [1 1599]" in compare(ref, rows[:-1]).text()
+    # few elements, but long: the size counts, not the number of elements
+    long_rows = [f"{i:03d}" + "x" * 300 for i in range(100)]
+    assert "v" not in describe(to_mvalue(long_rows))
+    assert "v" in describe(to_mvalue(long_rows[:20]))
+    # an old manifest kept every element: still read, with the element-by-element report
+    full = roundtrip(describe(c, budget=10**9))
+    assert "value{8}: text" in compare(full, bad).text()
+    # a small field next to a large one keeps its data
+    s = MStruct((1, 1), ["n", "names"], [{"n": to_mvalue(3.0), "names": c}])
+    ds = describe(s)
+    assert "b64" in ds["v"][0]["n"] and "v" not in ds["v"][0]["names"]
+    assert len(json.dumps(ds, separators=(",", ":"))) <= C.DESCRIPTOR_BYTES
+    assert "value.n: values" in compare(roundtrip(ds), {"n": 4.0, "names": rows}).text()
+
+
+def test_char_rows_are_kept_as_text_and_element_hashes_computed_again():
+    texts = ["abc", "héllo \U0001f600", ""]
+    c = to_mvalue(texts)
+    d = json.loads(json.dumps(describe(c)))
+    assert [x.get("t") for x in d["v"]] == texts and all("h" not in x for x in d["v"])
+    assert vhash(roundtrip(d)) == vhash(c) == d["h"]
+    lone = MArray("char", np.array([[0xD800, 0x41]], "<u2"))  # a lone surrogate (UTF-16)
+    assert vhash(roundtrip(describe(lone))) == vhash(lone)
+    empty = MArray("char", np.zeros((1, 0), "<u2"))
+    assert roundtrip(describe(empty)).size == (1, 0)
+
+
+def test_large_struct_arrays_and_maps_keep_fields_and_types():
+    els = [{"a": to_mvalue(float(i)), "b": mchar(f"x{i}")} for i in range(500)]
+    sa = MStruct((1, 500), ["a", "b"], els)
+    d = describe(sa)
+    assert "v" not in d and d["f"] == ["a", "b"]
+    py = [{"a": float(i), "b": f"x{i}"} for i in range(500)]
+    assert compare(roundtrip(d), py).ok
+    text = compare(roundtrip(d), [{"a": float(i), "c": f"x{i}"} for i in range(500)]).text()
+    assert "only in MATLAB ['b'], only in Python ['c']" in text
+    keys = [f"k{i:04d}" for i in range(2000)]
+    mp = MMap(
+        "char", "any", to_mvalue(keys), MCell((1, 2000), [to_mvalue(float(i)) for i in range(2000)])
+    )
+    dm = describe(mp)
+    assert "keys" not in dm and dm["kt"] == "char"
+    assert compare(roundtrip(dm), {k: float(i) for i, k in enumerate(keys)}).ok
+    assert not compare(roundtrip(dm), dict.fromkeys(keys, 0.0)).ok
 
 
 # --- seeded mismatches give readable reports ----------------------------------------------------

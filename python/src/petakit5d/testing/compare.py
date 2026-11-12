@@ -37,7 +37,7 @@ import numpy as np
 HASH_VERSION = b"pk1"
 INLINE_BYTES = 2048  # arrays up to this size are kept inline in descriptors
 INLINE_TEXT = 4096  # text and json files up to this size are kept inline
-MAX_CHILDREN = 1000  # cells and structs with more elements keep only their hash
+DESCRIPTOR_BYTES = 8192  # a container whose descriptor would be larger keeps only its hash
 MAX_PROBLEMS = 40  # problems listed in a report (all are counted)
 HINT_NUMEL = 20_000_000  # arrays up to this size get layout hints
 
@@ -300,13 +300,28 @@ class MObject(MValue):
 
 
 class MHashed(MValue):
-    """a value known only by its kind, size and hash (large cells and structs in manifests)"""
+    """a value known only by its kind, size and hash (a large cell, struct, string array or map
+    in a manifest); ``info`` holds what else is known: struct fields, map key and value types"""
 
     kind = "hashed"
     __slots__ = ("of", "size", "info", "_hash")
 
-    def __init__(self, of: str, size: Sequence[int] | None, hash: str, info: str = ""):
-        self.of, self.size, self.info, self._hash = of, tuple(size) if size else None, info, hash
+    def __init__(self, of: str, size: Sequence[int] | None, hash: str, info: dict | None = None):
+        self.of, self.size, self._hash = of, tuple(size) if size else None, hash
+        self.info = info or {}
+
+    def skeleton(self) -> MValue | None:
+        """a value without elements, of this kind and size, to read Python results as"""
+        if self.of == "cell" and self.size:
+            return MCell(self.size, None)
+        if self.of == "struct" and self.size:
+            return MStruct(self.size, self.info.get("fields", []), None)
+        if self.of == "string" and self.size:
+            return MString(self.size, None)
+        if self.of == "map":
+            empty = MCell((1, 0), [])
+            return MMap(self.info.get("kt", "char"), self.info.get("vt", "any"), empty, empty)
+        return None
 
 
 class MPlaceholder(MValue):
@@ -542,7 +557,7 @@ def to_mvalue(x: Any, like: MValue | None = None) -> MValue:
     if isinstance(like, MObject) and like.value is not None:
         like = like.value
     if isinstance(like, MHashed):
-        like = None
+        like = like.skeleton()
     if x is None:
         if isinstance(like, MStruct) and math.prod(like.size) == 0:
             return MStruct(like.size, like.fields, [])
@@ -864,28 +879,68 @@ def _dec(node: dict, f) -> MValue:
 # descriptors (repo manifests)
 # ---------------------------------------------------------------------------------------------
 
+HASH_ONLY = (
+    f"the manifest keeps the data of arrays up to {INLINE_BYTES} bytes and the elements of "
+    f"containers up to {DESCRIPTOR_BYTES // 1024} KB, else hashes: the readable element-by-element "
+    "diff is in the golden store (run this test on the cluster)"
+)
 
-def describe(v: MValue, inline: int = INLINE_BYTES) -> dict:
-    """JSON descriptor: kind, class, size, hash, and the data of small arrays"""
+
+_MIN_NODE = 40  # bytes of the smallest element descriptor
+
+
+def _fits(obj: Any, budget: int) -> bool:
+    return len(json.dumps(obj, separators=(",", ":"))) <= budget
+
+
+def _derived(d: dict) -> dict:
+    """an element's descriptor without the hash that its data gives again"""
+    k = d["k"]
+    if (
+        (k == "a" and ("b64" in d or "t" in d))
+        or (k in ("cell", "struct", "string") and "v" in d)
+        or (k == "map" and "keys" in d)
+    ):
+        d.pop("h", None)
+    return d
+
+
+def describe(v: MValue, inline: int = INLINE_BYTES, budget: int = DESCRIPTOR_BYTES) -> dict:
+    """JSON descriptor: kind, class, size, hash, and the data of small arrays (up to ``inline``
+    bytes; char rows as text); a cell, struct, string array or map whose descriptor would take
+    more than ``budget`` bytes keeps only its kind, size (struct fields, map types) and hash.
+    Elements whose data is kept carry no hash of their own (it is computed again)."""
     h = vhash(v)
     if isinstance(v, MArray):
-        d = {"k": "a", "c": v.mclass, "s": list(v.size), "x": int(v.complex), "h": h}
+        d = {"k": "a", "c": v.mclass, "s": list(v.size), "h": h}
+        if v.complex:
+            d["x"] = 1
         if v.data is not None and v.nbytes <= inline:
-            d["b64"] = base64.b64encode(_raw_bytes(v.data)).decode("ascii")
+            if v.mclass == "char" and v.is_char_row():
+                d["t"] = v.text()
+            else:
+                d["b64"] = base64.b64encode(_raw_bytes(v.data)).decode("ascii")
         return d
     if isinstance(v, MCell):
         d = {"k": "cell", "s": list(v.size), "h": h}
-        if v.items is not None and len(v.items) <= MAX_CHILDREN:
-            d["v"] = [describe(x, inline) for x in v.items]
+        if v.items is not None and len(v.items) * _MIN_NODE <= budget:
+            kids = [_derived(describe(x, inline, budget)) for x in v.items]
+            if _fits(kids, budget):
+                d["v"] = kids
         return d
     if isinstance(v, MStruct):
         d = {"k": "struct", "s": list(v.size), "f": v.fields, "h": h}
-        if v.items is not None and len(v.items) * max(len(v.fields), 1) <= MAX_CHILDREN:
-            d["v"] = [{fn: describe(el[fn], inline) for fn in v.fields} for el in v.items]
+        if v.items is not None and len(v.items) * max(len(v.fields), 1) * _MIN_NODE <= budget:
+            kids = [
+                {fn: _derived(describe(el[fn], inline, budget)) for fn in v.fields}
+                for el in v.items
+            ]
+            if _fits(kids, budget):
+                d["v"] = kids
         return d
     if isinstance(v, MString):
         d = {"k": "string", "s": list(v.size), "h": h}
-        if len(v.items) <= MAX_CHILDREN:
+        if v.items is not None and _fits(v.items, budget):
             d["v"] = v.items
         return d
     if isinstance(v, MObject):
@@ -893,31 +948,36 @@ def describe(v: MValue, inline: int = INLINE_BYTES) -> dict:
             "k": "object",
             "c": v.mclass,
             "h": h,
-            "v": None if v.value is None else describe(v.value, inline),
+            "v": None if v.value is None else describe(v.value, inline, budget),
         }
     if isinstance(v, MFunc):
         return {"k": "func", "t": v.text, "h": h}
     if isinstance(v, MSparse):
         return {"k": "sparse", "c": v.mclass, "s": list(v.size), "h": h, "nnz": int(v.rows.size)}
     if isinstance(v, MMap):
-        return {
-            "k": "map",
-            "h": h,
-            "kt": v.key_type,
-            "vt": v.value_type,
-            "keys": describe(v.keys, inline),
-            "values": describe(v.values, inline),
-        }
+        d = {"k": "map", "h": h, "kt": v.key_type, "vt": v.value_type}
+        kd, vd = describe(v.keys, inline, budget), describe(v.values, inline, budget)
+        if "v" in kd and "v" in vd and _fits([kd, vd], budget):
+            d["keys"], d["values"] = _derived(kd), _derived(vd)
+        return d
     if isinstance(v, MHashed):
-        return {"k": v.of, "s": list(v.size) if v.size else None, "h": h}
+        d = {"k": v.of, "s": list(v.size) if v.size else None, "h": h}
+        if "fields" in v.info:
+            d["f"] = v.info["fields"]
+        if "kt" in v.info:
+            d["kt"], d["vt"] = v.info["kt"], v.info.get("vt")
+        return d
     raise TypeError(f"cannot describe {type(v).__name__}")
 
 
 def from_descriptor(d: dict) -> MValue:
-    """the value a descriptor stands for (arrays without inline data keep only their hash)"""
+    """the value a descriptor stands for (arrays without inline data keep only their hash);
+    reads descriptors of every manifest layout (elements with or without their own hash)"""
     k = d["k"]
     if k == "a":
         cls, size, cx = d["c"], msize(d["s"]), bool(d.get("x"))
+        if "t" in d:
+            return MArray("char", _str_to_units(d["t"]).reshape(size, order="F"), hash=d.get("h"))
         if "b64" in d:
             raw = base64.b64decode(d["b64"])
             dt = _DTYPE[cls]
@@ -929,25 +989,25 @@ def from_descriptor(d: dict) -> MValue:
                 c = np.empty(cnt, dtype=_CDTYPE[cls])
                 c.real, c.imag = a[:cnt], a[cnt:]
                 a = c
-            return MArray(cls, a.reshape(size, order="F"), hash=d["h"])
+            return MArray(cls, a.reshape(size, order="F"), hash=d.get("h"))
         return MArray(cls, None, size=size, complex=cx, hash=d["h"])
     if k == "cell":
         if "v" not in d:
             return MHashed("cell", d["s"], d["h"])
-        return MCell(d["s"], [from_descriptor(x) for x in d["v"]], hash=d["h"])
+        return MCell(d["s"], [from_descriptor(x) for x in d["v"]], hash=d.get("h"))
     if k == "struct":
         if "v" not in d:
-            return MHashed("struct", d["s"], d["h"], ",".join(d["f"]))
+            return MHashed("struct", d["s"], d["h"], {"fields": list(d["f"])})
         return MStruct(
             d["s"],
             d["f"],
             [{fn: from_descriptor(el[fn]) for fn in d["f"]} for el in d["v"]],
-            hash=d["h"],
+            hash=d.get("h"),
         )
     if k == "string":
         if "v" not in d:
             return MHashed("string", d["s"], d["h"])
-        return MString(d["s"], d["v"], hash=d["h"])
+        return MString(d["s"], d["v"], hash=d.get("h"))
     if k == "object":
         return MObject(d["c"], None if d.get("v") is None else from_descriptor(d["v"]), hash=d["h"])
     if k == "func":
@@ -955,7 +1015,9 @@ def from_descriptor(d: dict) -> MValue:
     if k == "map" and "keys" in d:
         keys, values = from_descriptor(d["keys"]), from_descriptor(d["values"])
         if isinstance(keys, MCell) and isinstance(values, MCell):
-            return MMap(d["kt"], d["vt"], keys, values, hash=d["h"])
+            return MMap(d["kt"], d["vt"], keys, values, hash=d.get("h"))
+    if k == "map":
+        return MHashed("map", None, d["h"], {"kt": d.get("kt", "char"), "vt": d.get("vt", "any")})
     return MHashed(k, d.get("s"), d["h"])
 
 
@@ -1220,9 +1282,8 @@ class Report:
 def _kind_name(v: MValue) -> str:
     if isinstance(v, MArray):
         return f"{v.mclass}{' complex' if v.complex else ''} array {size_text(v.size)}"
-    if isinstance(v, MHashed):
-        return f"{v.of} {size_text(v.size) if v.size else ''}".strip()
     size = getattr(v, "size", None)
+    kind = v.of if isinstance(v, MHashed) else v.kind
     name = {
         "cell": "cell array",
         "struct": "struct",
@@ -1232,7 +1293,7 @@ def _kind_name(v: MValue) -> str:
         "map": "containers.Map",
         "object": f"{getattr(v, 'mclass', '')} object",
     }
-    return f"{name.get(v.kind, v.kind)}{' ' + size_text(size) if size else ''}"
+    return f"{name.get(kind, kind)}{' ' + size_text(size) if size else ''}"
 
 
 def compare(
@@ -1274,14 +1335,30 @@ def _cmp(r: MValue, a: MValue, spec: Spec, path: str, rep: Report) -> None:
         rep.note(path, f"MATLAB returned a {r.mclass} object; compared its value")
         r = r.value
     if isinstance(r, MHashed):
-        if getattr(a, "kind", None) not in (r.of, "hashed"):
+        asize = getattr(a, "size", None)
+        if getattr(a, "kind", None) != r.of:
             rep.add(path, "kind", f"MATLAB: {_kind_name(r)}, Python: {_kind_name(a)}")
+        elif r.size is not None and asize is not None and tuple(asize) != tuple(r.size):
+            rep.add(
+                path,
+                "size",
+                f"{r.of} size: MATLAB {size_text(r.size)}, Python {size_text(asize)}",
+                _size_hint(r.size, asize),
+            )
+        elif r.of == "struct" and set(r.info.get("fields", [])) != set(a.fields):
+            fr, fa = set(r.info["fields"]), set(a.fields)
+            rep.add(
+                path,
+                "fields",
+                f"struct fields differ: only in MATLAB {sorted(fr - fa)}, only in Python "
+                f"{sorted(fa - fr)}",
+            )
         elif vhash(a) != r._hash:
             rep.add(
                 path,
                 "values",
-                f"{r.of} differs from the reference (SHA-256 mismatch; the manifest keeps only "
-                f"the hash of large {r.of}s, the golden store has the full reference)",
+                f"the {_kind_name(r)} differs from MATLAB's (SHA-256 of all its elements)",
+                HASH_ONLY,
             )
         return
     if r.kind != a.kind:
@@ -1565,10 +1642,8 @@ def _cmp_array(r: MArray, a: MArray, spec: Spec, path: str, rep: Report) -> None
             rep.add(
                 path,
                 "values",
-                f"values differ from the reference ({r.mclass} {size_text(r.size)}; SHA-256 "
-                "mismatch)",
-                f"the manifest keeps the data of arrays up to {INLINE_BYTES} bytes; the golden "
-                "store has the full reference",
+                f"values differ from MATLAB's ({r.mclass} {size_text(r.size)}; SHA-256 mismatch)",
+                HASH_ONLY,
             )
         return
     rf, af = _flat(r.data), _flat(a.data)
@@ -2442,8 +2517,9 @@ def _cmp_file(r: _Side, a: _Side, vspec: Spec, spec: TreeSpec, path: str, rep: R
             rep.add(
                 path,
                 "text",
-                "text differs from the reference (SHA-256 mismatch; the manifest keeps only the "
-                "hash of long files)",
+                f"text differs from MATLAB's (SHA-256 mismatch; the manifest keeps texts up to "
+                f"{INLINE_TEXT} bytes, else hashes: the readable diff is in the golden store, run "
+                "this test on the cluster)",
             )
         else:
             rep.add(path, "text", _text_diff(rt, at))
