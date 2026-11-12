@@ -28,6 +28,7 @@
 // (exact_sum), since the fast loops leave the operand order to the compiler.
 #include "ops_common.hpp"
 
+#include <atomic>
 #include <memory>
 #include <vector>
 
@@ -323,7 +324,7 @@ double blocks_exact(const Src &src, idx_t n, bool single) {
 }
 
 template <typename T, typename Src>
-double fixed_sum(const Src &src, idx_t n, int num_threads) {
+double fixed_sum(const Src &src, idx_t n, int num_threads, bool bind) {
     constexpr bool single = std::is_same_v<T, float>;
     if (n == 0) return 0.0;
     if (n < kBlocksFrom) {
@@ -334,28 +335,45 @@ double fixed_sum(const Src &src, idx_t n, int num_threads) {
         return s;
     }
     const idx_t nb = (n + kBlock - 1) / kBlock;
-    std::vector<double> bs(static_cast<size_t>(nb));
+    std::unique_ptr<double[]> bs(new double[static_cast<size_t>(nb)]);  // every one is written
     const int nt = team(n, num_threads);
-    if constexpr (Src::direct) {
-#pragma omp parallel for num_threads(nt) schedule(static)
-        for (idx_t b = 0; b < nb; b++) {
-            const idx_t i0 = b * kBlock;
-            const idx_t m = b < nb - 1 ? kBlock : n - i0;
-            bs[static_cast<size_t>(b)] = lanes_sum(src.p + i0, m);
-        }
-    } else {
-        // each thread a range of whole blocks
-#pragma omp parallel num_threads(nt)
-        {
-#ifdef _OPENMP
-            const idx_t k = omp_get_thread_num(), nk = omp_get_num_threads();
-#else
-            const idx_t k = 0, nk = 1;
+    // the block sums are stored by block and added in order afterwards, so which thread sums a
+    // block doesn't change the result: contiguous chunks of blocks are handed out as threads
+    // ask for them (threads that start late or run slower do less); the transposing source
+    // takes one range of whole blocks per thread
+    std::atomic<idx_t> next{0};
+    constexpr idx_t kChunk = 16;  // blocks (256 KB of single) per request (16 to 64 measured best)
+    parallel(nt, bind, [&](int k, int nk) {
+        if constexpr (Src::direct) {
+            // one thread alone has too few reads in flight to fill the memory bandwidth:
+            // it prefetches the block after next into L2 (about 5-8% at one thread; with
+            // more threads the bandwidth is the limit and the prefetches cost, measured)
+            const bool ahead = nk == 1;
+            constexpr idx_t kAheadBlocks = 2;
+            for (;;) {
+                const idx_t b0 = next.fetch_add(kChunk, std::memory_order_relaxed);
+                if (b0 >= nb) break;
+                const idx_t b1 = b0 + kChunk < nb ? b0 + kChunk : nb;
+                for (idx_t b = b0; b < b1; b++) {
+                    const idx_t i0 = b * kBlock;
+                    const idx_t m = b < nb - 1 ? kBlock : n - i0;
+#ifdef PK5D_OPS_SSE2
+                    if (ahead && b + kAheadBlocks < nb) {
+                        const char *q =
+                            reinterpret_cast<const char *>(src.p + (b + kAheadBlocks) * kBlock);
+                        const idx_t bytes = kBlock * static_cast<idx_t>(sizeof(*src.p));
+                        for (idx_t o = 0; o < bytes; o += 64) _mm_prefetch(q + o, _MM_HINT_T1);
+                    }
 #endif
-            const idx_t b0 = nb * k / nk, b1 = nb * (k + 1) / nk;
-            if (b1 > b0) src.block_sums(n, b0, b1, bs.data());
+                    bs[static_cast<size_t>(b)] = lanes_sum(src.p + i0, m);
+                }
+            }
+        } else {
+            idx_t b0, b1;
+            share(nb, k, nk, b0, b1);
+            if (b1 > b0) src.block_sums(n, b0, b1, bs.get());
         }
-    }
+    });
     double s = -0.0;
     for (idx_t b = 0; b < nb; b++) s = s + bs[static_cast<size_t>(b)];
     if (is_float_v<T> && s != s) return blocks_exact(src, n, single);
@@ -374,7 +392,7 @@ void with_sum_class(nb::dlpack::dtype dt, Fn &&fn) {
     });
 }
 
-double sum_double(const flat_in &x, int num_threads) {
+double sum_double(const flat_in &x, int num_threads, bool bind) {
     check_threads(num_threads);
     const idx_t n = static_cast<idx_t>(x.shape(0));
     const void *px = x.data();
@@ -382,12 +400,12 @@ double sum_double(const flat_in &x, int num_threads) {
     nb::gil_scoped_release release;
     with_sum_class(x.dtype(), [&](auto ts) {
         using T = typename decltype(ts)::type;
-        s = fixed_sum<T>(linear_source<T>{static_cast<const T *>(px)}, n, num_threads);
+        s = fixed_sum<T>(linear_source<T>{static_cast<const T *>(px)}, n, num_threads, bind);
     });
     return s;
 }
 
-double sum_double_yx(const flat3_in &x, int num_threads) {
+double sum_double_yx(const flat3_in &x, int num_threads, bool bind) {
     check_threads(num_threads);
     const idx_t np_ = static_cast<idx_t>(x.shape(0));
     const idx_t ny = static_cast<idx_t>(x.shape(1));
@@ -400,9 +418,9 @@ double sum_double_yx(const flat3_in &x, int num_threads) {
         using T = typename decltype(ts)::type;
         const T *p = static_cast<const T *>(px);
         if (ny == 1 || nx == 1)
-            s = fixed_sum<T>(linear_source<T>{p}, n, num_threads);
+            s = fixed_sum<T>(linear_source<T>{p}, n, num_threads, bind);
         else
-            s = fixed_sum<T>(yx_source<T>{p, ny, nx}, n, num_threads);
+            s = fixed_sum<T>(yx_source<T>{p, ny, nx}, n, num_threads, bind);
     });
     return s;
 }
@@ -413,11 +431,11 @@ double sum_double_yx(const flat3_in &x, int num_threads) {
 PK5D_BINDINGS(bind_ops_sum) {
     namespace nb = nanobind;
     m.def("ops_sum_double", &pk5d::ops::sum_double, nb::arg("x").noconvert(),
-          nb::arg("num_threads"),
+          nb::arg("num_threads"), nb::arg("bind") = true,
           "sum(x(:), 'double') of a vector in its order, MATLAB's at one thread, independent of "
           "num_threads.");
     m.def("ops_sum_double_yx", &pk5d::ops::sum_double_yx, nb::arg("x").noconvert(),
-          nb::arg("num_threads"),
+          nb::arg("num_threads"), nb::arg("bind") = true,
           "sum(v(:), 'double') of a (planes, ny, nx) C array in MATLAB's linear order (y "
           "fastest), MATLAB's order at one thread, independent of num_threads.");
 }

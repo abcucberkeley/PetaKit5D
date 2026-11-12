@@ -61,6 +61,11 @@ SUM_SEQUENTIAL_UPTO = 43
 SUM_BLOCK_FROM = 89000
 SUM_BLOCK = 4096
 
+# Each thread of a kernel's team is pinned to one CPU of the caller's mask for that region only
+# and restored after it (cpp/core/ops/ops_bind.hpp; never the process's or OpenMP's global
+# binding; the user's OMP_PROC_BIND or OMP_PLACES turn it off). Benchmarks set it False to compare.
+_BIND = True
+
 _NUMERIC = ("int8", "uint8", "int16", "uint16", "int32", "uint32", "int64", "uint64")
 _ARITH = ("int8", "uint8", "int16", "uint16", "int32", "uint32", "single", "double")
 _MODES = ("class", "cast")
@@ -159,11 +164,16 @@ def _mode(mode: str) -> str:
 # -- convert -----------------------------------------------------------------------------------
 
 
-def _exact_rounding(a: np.ndarray, mode: str, scalar_fast: bool) -> bool:
+def _exact_rounding(a: np.ndarray, mode: str, scalar_fast: bool, cls: str | None = None) -> bool:
     """whether a conversion rounds exactly (else floor(|x| + 0.5) in single, for single data to
     8 and 16-bit classes, and through double for 64-bit integers to single): to_class rounds a
-    scalar exactly unless scalar_fast"""
-    return mode == "cast" or (a.size < 2 and not scalar_fast)
+    scalar exactly unless scalar_fast, except single() of 64-bit integers, which rounds through
+    double for scalars too"""
+    if mode == "cast":
+        return True
+    if cls == "single" and a.dtype.kind in "iu" and a.dtype.itemsize == 8:
+        return False
+    return a.size < 2 and not scalar_fast
 
 
 def convert_ref(x, cls, *, mode: str = "class", scalar_fast: bool = False) -> np.ndarray:
@@ -172,9 +182,6 @@ def convert_ref(x, cls, *, mode: str = "class", scalar_fast: bool = False) -> np
     cls = _class_name(cls)
     if _mode(mode) == "cast":
         r = dtypes.cast(a, cls)
-    elif cls == "single" and a.dtype.kind in "iu" and a.dtype.itemsize == 8 and a.size >= 2:
-        # MATLAB's single() of a 64-bit integer array rounds through double (cast doesn't)
-        r = dtypes.to_class(dtypes.to_class(a, "double"), "single")
     else:
         r = dtypes.to_class(a, cls, scalar_fast=scalar_fast)
     return np.asarray(r)
@@ -191,13 +198,13 @@ def convert(
 ) -> np.ndarray:
     """MATLAB's ``cls(x)`` (mode 'class', ``uint16(x)`` in MATLAB code) or ``cast(x, cls)``
     (mode 'cast'): round half away from zero (single data to int8, uint8, int16 and uint16 in
-    mode 'class': ``floor(|x| + 0.5)`` in single), saturate, NaN to 0. In mode 'class' a 64-bit
-    integer array becomes single through double (rounded twice, as MATLAB's ``single(x)``; its
-    ``cast`` rounds once). ``cls`` is a MATLAB class name or a NumPy dtype; logical and real
-    numeric inputs."""
+    mode 'class': ``floor(|x| + 0.5)`` in single), saturate, NaN to 0. In mode 'class' 64-bit
+    integers (arrays and scalars) become single through double (rounded twice, as MATLAB's
+    ``single(x)``; its ``cast`` rounds once). ``cls`` is a MATLAB class name or a NumPy dtype;
+    logical and real numeric inputs."""
     a = _contig(_array(x))
     cls = _class_name(cls)
-    exact = _exact_rounding(a, _mode(mode), scalar_fast)
+    exact = _exact_rounding(a, _mode(mode), scalar_fast, cls)
     m = _core()
     if m is None:
         r = convert_ref(a, cls, mode="cast" if exact else "class", scalar_fast=True)
@@ -207,7 +214,7 @@ def convert(
         out[...] = r
         return out
     o = _out_array(a, CLASS_DTYPES[cls], out)
-    m.ops_convert(_flat(a), _flat(o), exact, resolve_threads(num_threads))
+    m.ops_convert(_flat(a), _flat(o), exact, resolve_threads(num_threads), _BIND)
     return o
 
 
@@ -359,6 +366,7 @@ def scale_offset(
         mk,
         exact,
         resolve_threads(num_threads),
+        _BIND,
     )
     return o
 
@@ -438,7 +446,7 @@ def compare(x, op: str, value: float, *, num_threads: int | None = None) -> np.n
     if m is None:
         return compare_ref(a, op, value)
     o = _empty_like(a, np.bool_)
-    m.ops_compare(_flat(a), _flat(o), k, float(value), resolve_threads(num_threads))
+    m.ops_compare(_flat(a), _flat(o), k, float(value), resolve_threads(num_threads), _BIND)
     return o
 
 
@@ -561,8 +569,8 @@ def sum_double(x, *, matlab_layout: bool = False, num_threads: int | None = None
         return 0.0
     if matlab_layout:
         v = a.reshape(-1, order="F")  # a view when a is Fortran-contiguous
-        return float(m.ops_sum_double(np.ascontiguousarray(v), nt))
+        return float(m.ops_sum_double(np.ascontiguousarray(v), nt, _BIND))
     if a.ndim < 2:
-        return float(m.ops_sum_double(np.ascontiguousarray(a.reshape(-1)), nt))
+        return float(m.ops_sum_double(np.ascontiguousarray(a.reshape(-1)), nt, _BIND))
     a = np.ascontiguousarray(a)
-    return float(m.ops_sum_double_yx(a.reshape(-1, a.shape[-2], a.shape[-1]), nt))
+    return float(m.ops_sum_double_yx(a.reshape(-1, a.shape[-2], a.shape[-1]), nt, _BIND))

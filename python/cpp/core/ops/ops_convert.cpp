@@ -16,9 +16,12 @@ namespace pk5d::ops {
 namespace {
 
 template <typename S, typename D, bool Exact>
-void convert_loop(const S *x, D *y, idx_t n, int nt) {
-#pragma omp parallel for num_threads(nt) schedule(static)
-    for (idx_t i = 0; i < n; i++) y[i] = convert_value<D, S, Exact>(x[i]);
+void convert_loop(const S *x, D *y, idx_t n, int nt, bool bind) {
+    parallel(nt, bind, [&](int k, int nk) {
+        idx_t lo, hi;
+        share(n, k, nk, lo, hi);
+        for (idx_t i = lo; i < hi; i++) y[i] = convert_value<D, S, Exact>(x[i]);
+    });
 }
 
 struct affine_args {
@@ -53,18 +56,22 @@ inline S affine_value(S v, const affine_args &a, S hi, S lo) {
 }
 
 template <typename S, typename D, bool Exact, bool Mask>
-void affine_loop(const S *x, D *y, const bool *mask, idx_t n, const affine_args &a, int nt) {
+void affine_loop(const S *x, D *y, const bool *mask, idx_t n, const affine_args &a, int nt,
+                 bool bind) {
     const S hi = static_cast<S>(a.hi);
     const S lo = static_cast<S>(a.lo);
-#pragma omp parallel for num_threads(nt) schedule(static)
-    for (idx_t i = 0; i < n; i++) {
-        S v = affine_value<S>(x[i], a, hi, lo);
-        if constexpr (Mask) v = v * static_cast<S>(mask[i] ? 1 : 0);
-        y[i] = convert_value<D, S, Exact>(v);
-    }
+    parallel(nt, bind, [&](int k, int nk) {
+        idx_t i0, i1;
+        share(n, k, nk, i0, i1);
+        for (idx_t i = i0; i < i1; i++) {
+            S v = affine_value<S>(x[i], a, hi, lo);
+            if constexpr (Mask) v = v * static_cast<S>(mask[i] ? 1 : 0);
+            y[i] = convert_value<D, S, Exact>(v);
+        }
+    });
 }
 
-void convert(const flat_in &x, flat_out &out, bool exact, int num_threads) {
+void convert(const flat_in &x, flat_out &out, bool exact, int num_threads, bool bind) {
     check_same_size(x, out, "ops_convert");
     const idx_t n = static_cast<idx_t>(x.shape(0));
     const int nt = team(n, num_threads);
@@ -82,11 +89,11 @@ void convert(const flat_in &x, flat_out &out, bool exact, int num_threads) {
                 D *yd = static_cast<D *>(py);
                 if constexpr (has_inexact_v<S, D>) {
                     if (exact)
-                        convert_loop<S, D, true>(xs, yd, n, nt);
+                        convert_loop<S, D, true>(xs, yd, n, nt, bind);
                     else
-                        convert_loop<S, D, false>(xs, yd, n, nt);
+                        convert_loop<S, D, false>(xs, yd, n, nt, bind);
                 } else {
-                    convert_loop<S, D, true>(xs, yd, n, nt);
+                    convert_loop<S, D, true>(xs, yd, n, nt, bind);
                 }
             }
         });
@@ -95,16 +102,16 @@ void convert(const flat_in &x, flat_out &out, bool exact, int num_threads) {
 
 template <typename S, typename D, bool Exact>
 void affine_masked(const S *xs, D *yd, const bool *mask, idx_t n, const affine_args &a,
-                   int nt) {
+                   int nt, bool bind) {
     if (mask != nullptr)
-        affine_loop<S, D, Exact, true>(xs, yd, mask, n, a, nt);
+        affine_loop<S, D, Exact, true>(xs, yd, mask, n, a, nt, bind);
     else
-        affine_loop<S, D, Exact, false>(xs, yd, nullptr, n, a, nt);
+        affine_loop<S, D, Exact, false>(xs, yd, nullptr, n, a, nt, bind);
 }
 
 void affine(const flat_in &x, flat_out &out, bool has_scale, double scale, bool has_offset,
             double offset, bool has_hi, double hi, bool has_lo, double lo, const flat_in &mask,
-            bool exact, int num_threads) {
+            bool exact, int num_threads, bool bind) {
     check_same_size(x, out, "ops_affine");
     const idx_t n = static_cast<idx_t>(x.shape(0));
     const int nt = team(n, num_threads);
@@ -137,11 +144,11 @@ void affine(const flat_in &x, flat_out &out, bool has_scale, double scale, bool 
                     D *yd = static_cast<D *>(py);
                     if constexpr (has_inexact_v<S, D>) {
                         if (exact)
-                            affine_masked<S, D, true>(xs, yd, pm, n, a, nt);
+                            affine_masked<S, D, true>(xs, yd, pm, n, a, nt, bind);
                         else
-                            affine_masked<S, D, false>(xs, yd, pm, n, a, nt);
+                            affine_masked<S, D, false>(xs, yd, pm, n, a, nt, bind);
                     } else {
-                        affine_masked<S, D, true>(xs, yd, pm, n, a, nt);
+                        affine_masked<S, D, true>(xs, yd, pm, n, a, nt, bind);
                     }
                 }
             });
@@ -156,12 +163,14 @@ PK5D_BINDINGS(bind_ops_convert) {
     namespace nb = nanobind;
     m.def("ops_convert", &pk5d::ops::convert, nb::arg("x").noconvert(),
           nb::arg("out").noconvert(), nb::arg("exact"), nb::arg("num_threads"),
+          nb::arg("bind") = true,
           "out = cls(x) (exact=False) or cast(x, cls) (exact=True) with MATLAB's rounding and "
           "saturation; cls is the class of out (1-D contiguous arrays).");
     m.def("ops_affine", &pk5d::ops::affine, nb::arg("x").noconvert(), nb::arg("out").noconvert(),
           nb::arg("has_scale"), nb::arg("scale"), nb::arg("has_offset"), nb::arg("offset"),
           nb::arg("has_hi"), nb::arg("hi"), nb::arg("has_lo"), nb::arg("lo"),
           nb::arg("mask").noconvert().none(), nb::arg("exact"), nb::arg("num_threads"),
+          nb::arg("bind") = true,
           "MATLAB's y = x * scale + offset; min(y, hi); max(y, lo); y .* mask; cls(y), each "
           "step when given, rounded to the class of x at every step.");
 }

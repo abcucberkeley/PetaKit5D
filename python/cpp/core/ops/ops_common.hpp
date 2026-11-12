@@ -7,6 +7,8 @@
 
 #include <pk5d/common.hpp>
 
+#include "ops_bind.hpp"
+
 #include <cmath>
 #include <cstddef>
 #include <cstdint>

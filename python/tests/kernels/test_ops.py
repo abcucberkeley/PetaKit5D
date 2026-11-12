@@ -9,6 +9,8 @@ independence, layouts, ``out``, errors and the fall-back without the extension.
 
 from __future__ import annotations
 
+import os
+
 import numpy as np
 import pytest
 
@@ -805,6 +807,53 @@ def test_strided_sum_tiles_and_thread_ranges(shape):
         assert _bitwise(np.float64(m.ops_sum_double_yx(v, nt)), want), nt
 
 
+# the calling thread's CPUs before any kernel of this module ran (at collection)
+_MASK_AT_IMPORT = sorted(os.sched_getaffinity(0)) if hasattr(os, "sched_getaffinity") else []
+
+
+@needs_ext
+@pytest.mark.skipif(not hasattr(os, "sched_getaffinity"), reason="no CPU affinity (Linux only)")
+def test_threads_are_pinned_per_region_and_restored():
+    from petakit5d import _ext as ext
+    from petakit5d.core import threads
+
+    m = _ext()
+    mask = sorted(os.sched_getaffinity(0))
+    # the kernels that ran in the tests before left the calling thread's CPUs as they were
+    assert mask == _MASK_AT_IMPORT
+    avail = threads.available_cpus()
+    if len(mask) < 2:
+        pytest.skip("needs 2 or more CPUs")
+    nt = len(mask)
+    bound = m.ops_team_cpus(nt, True)
+    assert sorted(os.sched_getaffinity(0)) == mask
+    if any(k in os.environ for k in ("OMP_PROC_BIND", "OMP_PLACES", "GOMP_CPU_AFFINITY")):
+        assert all(len(c) >= 1 for c in bound)  # the user's binding is left alone
+    else:
+        assert all(len(c) == 1 for c in bound), bound
+        assert sorted(c[0] for c in bound) == mask  # one CPU each, every CPU of the mask
+    # a kernel, then each thread of a team without binding has the full mask again
+    x = np.ones((8, 300, 300), np.float32)
+    ops.convert(x, "uint16", num_threads=nt)
+    ops.sum_double(x, num_threads=nt)
+    assert all(sorted(c) == mask for c in m.ops_team_cpus(nt, False))
+    assert sorted(os.sched_getaffinity(0)) == mask
+    assert threads.available_cpus() == avail
+    if hasattr(threads, "refresh_cpus"):
+        threads.refresh_cpus()
+        assert threads.available_cpus() == avail
+    # other OpenMP kernels still get their whole team
+    assert ext.load("core").parallel_threads(nt) == nt
+    # the results don't depend on the binding
+    try:
+        ops._BIND = False
+        free = (ops.convert(x * 1.5, "uint16"), ops.sum_double(x))
+    finally:
+        ops._BIND = True
+    assert _bitwise(free[0], ops.convert(x * 1.5, "uint16"))
+    assert free[1] == ops.sum_double(x)
+
+
 def test_sum_order_matters_and_is_matlabs():
     # the data make the order visible: MATLAB's order, memory order, pairwise and sequential
     # sums differ
@@ -871,6 +920,14 @@ def test_zero_dim_and_empty():
             assert _bitwise(ops.convert(a, "uint16", mode=mode), ops.convert_ref(a, "uint16"))
     assert ops.scale_offset(np.zeros((3, 0)), 2.0).shape == (3, 0)
     assert ops.compare(np.zeros(0, np.int64), "eq", 1.0).shape == (0,)
+
+
+def test_single_of_64_bit_integers_rounds_through_double_also_for_scalars():
+    # MATLAB's single() of int64(2^53 + 2^29 + 1) is 2^53; cast(x, 'single') is 2^53 + 2^30
+    for a in (np.array([2**53 + 2**29 + 1], np.int64), np.uint64(2**53 + 2**29 + 1)):
+        assert ops.convert(a, "single")[()] == np.float32(2.0**53)
+        assert ops.convert(a, "single", mode="cast")[()] == np.float32(2.0**53 + 2.0**30)
+        assert _bitwise(ops.convert(a, "single"), dtypes.single(a))
 
 
 def test_class_rounding_of_a_single_scalar_is_exact_unless_scalar_fast():
