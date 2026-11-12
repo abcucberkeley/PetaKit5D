@@ -1,0 +1,34 @@
+{
+ "task": "J04",
+ "classes": {
+  "LocalPoolFrameworkTest": {
+   "finished": true,
+   "methods": {
+    "tasksRunOnTheLocalPool": [
+     "pytest:tests/jobs/test_local_pool.py::test_tasks_run_on_the_local_pool"
+    ],
+    "callLogKeepsTasksThatRunAtOnce": [
+     "pytest:tests/jobs/test_local_pool.py::test_call_log_keeps_tasks_that_run_at_once"
+    ],
+    "failedTasksAreRetriedInThisMatlab": [
+     "pytest:tests/jobs/test_local_pool.py::test_failed_tasks_are_retried_in_this_process"
+    ],
+    "failedTasksAreReportedUnfinished": [
+     "pytest:tests/jobs/test_local_pool.py::test_failed_tasks_are_reported_unfinished"
+    ],
+    "tasksThatDoNotFitInMemoryRunInThisMatlab": [
+     "pytest:tests/jobs/test_local_pool.py::test_tasks_that_do_not_fit_in_memory_run_in_this_process"
+    ],
+    "existingFinalOutputSkipsAllTasks": [
+     "pytest:tests/jobs/test_local_pool.py::test_existing_final_output_skips_all_tasks"
+    ],
+    "tasksWithMissingInputsAreSkipped": [
+     "pytest:tests/jobs/test_local_pool.py::test_tasks_with_missing_inputs_are_skipped"
+    ],
+    "threadPoolIsNotUsed": [
+     "pytest:tests/jobs/test_local_pool.py::test_thread_pool_is_not_used"
+    ]
+   }
+  }
+ }
+}
