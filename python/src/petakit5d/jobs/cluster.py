@@ -29,8 +29,9 @@ What differs from MATLAB, on purpose:
   file (the wrap no longer holds the tasks, which was why MATLAB retried that way).
 - The call's jobs are cancelled also when the loop ends with an exception, and on SIGTERM
   (the master then exits with status 143); MATLAB left them in the queue.
-- In-job slots give GPU slot k the k-th device of the job's CUDA_VISIBLE_DEVICES when it lists
-  enough (MATLAB: device k - 1, another job's GPU where Slurm doesn't renumber them).
+- In-job slots give GPU slot k the k-th device of the job's CUDA_VISIBLE_DEVICES, and a job
+  that lists fewer devices than slots runs fewer slots, as MATLAB since its fix (before it,
+  MATLAB used device k - 1, another job's GPU where Slurm doesn't renumber them).
 - Timing only: a pause ends once the outputs of all tasks not done exist (MATLAB saw them at
   its next query, up to two query intervals later); and while only jobs of last tries are left,
   the loop pauses until its next query (MATLAB looped without a pause).
@@ -428,7 +429,7 @@ class _ClusterLoop:
         s = self.s
         if not (s.get("task_runner", True) and sys.platform.startswith("linux")):
             return _NoRunners()
-        mod = _plugin("runners")
+        mod = _plugin("runner")
         if mod is None:
             return _NoRunners()
         return mod.cluster_runners(self.call, self.shape)

@@ -204,6 +204,42 @@ has the rules):
 - If Slurm doesn't answer the view's queries, jobs go to the main place and none moves until
   the next view.
 
+## Task runners
+
+On by default in cluster mode on Linux (`task_runner=False` turns them off); bash tasks and jobs
+with in-job slots have none (`jobs.runner`, `jobs.claims`, `jobs.isolation`). call.json names
+`petakit5d.jobs.runner:run` as the runner of the job entry point. A job's process runs its own
+batch's tasks in order, then unclaimed tasks of the call's other batches, from the last task
+backwards, while it has twice its longest task and a minute left (SLURM_JOB_END_TIME): only of
+batches whose jobs get the same CPUs and GPU (call.json's keys), never of the batch the master
+runs itself, of a batch the master submitted again, or a task whose output existed or whose
+input was missing when the call started. A claimed task whose output (or the final output)
+exists is skipped.
+
+- Claims are symbolic links in `<call folder>/claims/`: `t<task>` (1-based) points to its
+  owner `<job>_<array task>:<node>:<pid>:<slot>`; `f<task>` marks a task that failed there,
+  `r<batch>` a batch the master submitted again, `s<job>_<array task>` a job that took tasks
+  of other batches. A claim is live while its owner's job is running or pending (one
+  `squeue -j` of the owners' jobs per round of the master), or, outside a job, while the
+  owner's process runs on this node; when squeue doesn't answer, nothing is released.
+- Between tasks the process state is given back (`jobs.isolation.ProcessState`: folder,
+  environment, sys.path, warning filters, CPU affinity, floating-point environment, umask,
+  locale, signal handlers, stdio, ...; a task runs in a copy of the context, so NumPy's print
+  options and error state stay with it). The job goes on in a new process (`os.execv`, same
+  pid) after a failed task (marked failed; the job takes no more tasks of other batches),
+  when the process holds more than 0.5 GB above its memory after its first task
+  (PETAKIT5D_RUNNER_MEM_GB), has 64 more open files or 256 more threads, or has run tasks for
+  10 minutes (PETAKIT5D_RUNNER_MINUTES).
+- The master (`jobs.runner.cluster_runners`, the cluster loop's runner object) leaves a batch
+  while live runners hold its tasks (a first submission: all of them), removes the claims of
+  owners that ended before it submits a batch again (and marks it resubmitted: its job runs
+  it as without runners), claims the tasks of its own batch before it runs them, keeps the
+  call's jobs in the queue to maxJobNum while jobs run other batches' tasks, and cancels the
+  pending jobs of batches whose tasks are done or taken (`scancel --state=PENDING`).
+- The isolation harness (`python -m petakit5d.jobs.isolation run <spec> <work> <results>`)
+  runs task records in fresh processes and in one process in random orders and compares the
+  outputs (`jobs.isolation.run_harness`).
+
 ## Task records
 
 ```python

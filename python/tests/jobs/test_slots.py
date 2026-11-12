@@ -162,23 +162,41 @@ def test_nothing_runs_once_the_final_output_exists(tmp_path, task_module):
     assert [tries(o) for o in outs] == [0, 0]
 
 
-def test_gpu_slots_get_one_gpu_each(tmp_path, task_module, monkeypatch):
+def test_gpu_slots_get_one_gpu_each(tmp_path, task_module, monkeypatch, capfd):
     folder, outs = make_call(tmp_path, task_module, [("record", {"seconds": 0.5})] * 4)
+
+    def seen():
+        got = {(info(o)["slot"], info(o)["gpu"]) for o in outs}
+        for o in outs:
+            Path(o).unlink()
+        return got
+
     monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "4,6")
     run_slots(folder, range(4), 2, gpu=True)
-    assert {(info(o)["slot"], info(o)["gpu"]) for o in outs} == {("1", "4"), ("2", "6")}
-    # without enough devices listed: slot - 1, as MATLAB's CUDA_VISIBLE_DEVICES=$(({%} - 1))
-    for o in outs:
-        Path(o).unlink()
+    assert seen() == {("1", "4"), ("2", "6")}
+    # fewer devices listed than slots: fewer slots, one of the job's devices each, never
+    # another job's GPU (MATLAB since its fix)
+    capfd.readouterr()
+    run_slots(folder, range(4), 3, gpu=True)
+    assert seen() == {("1", "4"), ("2", "6")}
+    assert "GPUs 4,6: 2 slots" in capfd.readouterr().out
+    monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "5")
+    run_slots(folder, range(4), 3, gpu=True)
+    assert seen() == {("1", "5")}
+    assert "GPUs 5: 1 slots" in capfd.readouterr().out
+    # without a list: devices 0 to P - 1
     monkeypatch.delenv("CUDA_VISIBLE_DEVICES")
-    run_slots(folder, range(4), 2, gpu=True)
-    assert {(info(o)["slot"], info(o)["gpu"]) for o in outs} == {("1", "0"), ("2", "1")}
+    run_slots(folder, range(4), 3, gpu=True)
+    assert seen() == {("1", "0"), ("2", "1"), ("3", "2")}
 
 
 def test_gpu_for_slot():
     assert gpu_for_slot(1, 2, "4,6") == "4" and gpu_for_slot(2, 2, "4, 6") == "6"
-    assert gpu_for_slot(2, 2, "3") == "1" and gpu_for_slot(1, 1, None) == "0"
+    assert gpu_for_slot(1, 1, None) == "0" and gpu_for_slot(2, 2, "") == "1"
     assert gpu_for_slot(2, 2, "GPU-a,GPU-b") == "GPU-b"
+    with pytest.raises(ValueError):
+        gpu_for_slot(2, 2, "3")
+    assert [slots.gpu_slots(3, v) for v in ("4,6", "5", None, "", "1,2,3,4")] == [2, 1, 3, 3, 3]
 
 
 def test_bash_tasks_run_in_slots_with_bash_launch_str(tmp_path, task_module):

@@ -1,0 +1,162 @@
+{
+ "task": "J06",
+ "classes": {
+  "TaskRunnerTest": {
+   "finished": true,
+   "methods": {
+    "batchesWaitThirtySecondsBeforeRunnersTakeThem": [
+     "na:the Python runners take unclaimed tasks of other batches without a waiting list, as MATLAB's runners did; MATLAB's 30 s list (waiting.txt) only chose, in compiled jobs, between a runner and a task line run as before, which a 0.03 s Python start makes moot (measured in speed/reports/pyport_J06.md)"
+    ],
+    "callFolderInTheHomeFolderAsTildeRunsItsTasks": [
+     "na:Python call folders are absolute paths (tasks.new_call_folder) that no shell reads; the job script with quoted paths is gone"
+    ],
+    "claimStatesFollowTheirOwners": [
+     "pytest:tests/jobs/test_claims.py::test_claim_states_follow_their_owners",
+     "pytest:tests/jobs/test_claims.py::test_release_removes_claims_and_failed_marks_and_marks_resubmitted"
+    ],
+    "claimsAreTakenOnceUnderConcurrency": [
+     "pytest:tests/jobs/test_claims.py::test_claims_are_taken_once_under_concurrency"
+    ],
+    "compiledEmptyJobLogDirIsTheDefaultFolder": [
+     "pytest:tests/jobs/test_cluster_fake_slurm.py::test_empty_job_log_dir_in_a_config_file_is_the_default_folder"
+    ],
+    "compiledJobsRunTheJobScript": [
+     "pytest:tests/jobs/test_runner.py::test_cluster_jobs_get_the_runner"
+    ],
+    "compiledLocalCallDoneInItsLastTryRemovesItsTaskFolder": [
+     "pytest:tests/jobs/test_framework_local.py::test_task_done_in_its_last_try_counts_as_done"
+    ],
+    "compiledMasterKeepsItsBatch": [
+     "pytest:tests/jobs/test_runner.py::test_runner_settings_for_the_jobs"
+    ],
+    "compiledMasterLeavesTasksToRunningRunners": [
+     "pytest:tests/jobs/test_runner.py::test_master_leaves_a_task_to_a_running_runner_until_its_job_is_gone"
+    ],
+    "compiledResubmissionsRunAsBefore": [
+     "pytest:tests/jobs/test_runner.py::test_resubmitted_batch_runs_as_before"
+    ],
+    "compiledRunnerTasksGetTheEnvironmentOfTheirLines": [
+     "pytest:tests/jobs/test_runner.py::test_task_metrics_of_runner_tasks"
+    ],
+    "compiledTaskLinesCheckTildeOutputs": [
+     "pytest:tests/jobs/test_runner.py::test_outputs_given_with_a_tilde_that_exist_are_skipped"
+    ],
+    "failedTaskRunsAgainInItsOwnProcessAndIsMarked": [
+     "pytest:tests/jobs/test_runner.py::test_failed_task_is_marked_and_the_job_takes_no_more_of_other_batches"
+    ],
+    "gpuSlotsGetOneDeviceEach": [
+     "pytest:tests/jobs/test_slots.py::test_gpu_slots_get_one_gpu_each"
+    ],
+    "jobLeavesClaimedTasksResubmittedBatchesAndOutputs": [
+     "pytest:tests/jobs/test_runner.py::test_job_leaves_claimed_tasks_resubmitted_batches_and_outputs"
+    ],
+    "jobRunsEachTaskOnceInFewerProcesses": [
+     "pytest:tests/jobs/test_runner.py::test_job_runs_each_task_once_in_one_process",
+     "pytest:tests/jobs/test_runner.py::test_two_jobs_share_the_tasks"
+    ],
+    "jobStartsNoMoreSlotsThanTasks": [
+     "na:in-job slots have no task runners in Python and no GNU parallel; the slot manager starts one process per task (tests/jobs/test_slots.py)"
+    ],
+    "jobTakesOnlyTasksOfBatchesWithItsKey": [
+     "pytest:tests/jobs/test_runner.py::test_job_takes_only_tasks_of_batches_with_its_key",
+     "pytest:tests/jobs/test_runner.py::test_batch_keys",
+     "pytest:tests/jobs/test_runner.py::test_job_with_other_cpus_than_its_key_takes_only_its_batch"
+    ],
+    "jobTakesUnstartedTasksOfOtherBatches": [
+     "pytest:tests/jobs/test_runner.py::test_job_takes_unstarted_tasks_of_other_batches_last_first"
+    ],
+    "jobWithNoTaskLeftStartsNoProcess": [
+     "pytest:tests/jobs/test_runner.py::test_job_with_no_task_left_runs_none"
+    ],
+    "localRunsFindTheTmpFilesOfTildePaths": [
+     "na:Python's local mode has no task runners (its tasks run in the calling process); its .tmp markers are run_local's (tests/jobs/test_framework_local.py)"
+    ],
+    "localRunsRunATaskARunnerGaveBack": [
+     "na:Python's local mode has no task runners, so no task is given back; a cluster runner gives no claim back (it measures before it claims)"
+    ],
+    "localRunsSkipTasksThatOtherCallsProcess": [
+     "pytest:tests/jobs/test_framework_local.py::test_fresh_marker_of_another_caller_leaves_the_task_to_it",
+     "pytest:tests/jobs/test_framework_local.py::test_two_callers_cooperate_through_tmp_markers"
+    ],
+    "masterLeavesTasksToRunningRunnersAndResubmitsStaleOnes": [
+     "pytest:tests/jobs/test_runner.py::test_master_leaves_a_task_to_a_running_runner_until_its_job_is_gone",
+     "pytest:tests/jobs/test_runner.py::test_master_leaves_batches_that_live_runners_hold",
+     "pytest:tests/jobs/test_runner.py::test_master_leaves_batches_while_slurm_does_not_answer"
+    ],
+    "matlabJobMarksTasksItDidNotFinish": [
+     "pytest:tests/jobs/test_runner.py::test_failed_task_is_marked_and_the_job_takes_no_more_of_other_batches"
+    ],
+    "matlabJobSeesTildeOutputsThatExist": [
+     "pytest:tests/jobs/test_runner.py::test_outputs_given_with_a_tilde_that_exist_are_skipped"
+    ],
+    "matlabJobWithNoTaskLeftStartsNoMatlab": [
+     "pytest:tests/jobs/test_runner.py::test_job_with_no_task_left_runs_none"
+    ],
+    "matlabJobsRunTheJobScript": [
+     "pytest:tests/jobs/test_runner.py::test_cluster_jobs_get_the_runner"
+    ],
+    "matlabMasterKeepsItsBatch": [
+     "pytest:tests/jobs/test_runner.py::test_runner_settings_for_the_jobs",
+     "pytest:tests/jobs/test_runner.py::test_master_runs_the_tasks_it_can_claim"
+    ],
+    "matlabResubmissionsRunAsBefore": [
+     "pytest:tests/jobs/test_runner.py::test_resubmitted_batch_runs_as_before"
+    ],
+    "matlabRunnerRecordsTaskMetrics": [
+     "pytest:tests/jobs/test_runner.py::test_task_metrics_of_runner_tasks"
+    ],
+    "matlabRunnerRunsCompoundTaskStrings": [
+     "na:Python tasks are records of one callable each, not task strings of several statements"
+    ],
+    "matlabRunnerRunsItsBatchThenOtherBatches": [
+     "pytest:tests/jobs/test_runner.py::test_job_takes_unstarted_tasks_of_other_batches_last_first"
+    ],
+    "oneTaskPerSlotRunsTaskLinesAsBefore": [
+     "na:a compiled slot's choice between a runner and a task line; a Python job runs its tasks in its one process, with or without runners"
+    ],
+    "processWithManyMoreOpenFilesIsRecycled": [
+     "pytest:tests/jobs/test_runner.py::test_process_with_many_more_open_files_is_renewed",
+     "pytest:tests/jobs/test_runner.py::test_process_with_many_more_threads_is_renewed"
+    ],
+    "runnerEndsAfterATaskThatChangesTheThreadCount": [
+     "pytest:tests/jobs/test_runner.py::test_runner_resets_the_process_between_tasks",
+     "pytest:tests/jobs/test_isolation.py::test_cpus_are_given_back"
+    ],
+    "runnerEndsAfterItsTime": [
+     "pytest:tests/jobs/test_runner.py::test_runner_ends_after_its_time"
+    ],
+    "runnerGivesMccMasterTheArgumentsOfTheTaskLine": [
+     "pytest:tests/jobs/test_framework_local.py::test_task_records_are_canonical_json"
+    ],
+    "runnerRecyclesAProcessThatHoldsMemory": [
+     "pytest:tests/jobs/test_runner.py::test_memory_guard_after_the_first_task"
+    ],
+    "runnerRecyclesAProcessWhoseLaterTaskHoldsMemory": [
+     "pytest:tests/jobs/test_runner.py::test_memory_guard_after_a_later_task"
+    ],
+    "runnerResetsTheProcessBetweenTasks": [
+     "pytest:tests/jobs/test_runner.py::test_runner_resets_the_process_between_tasks",
+     "pytest:tests/jobs/test_isolation.py::test_folder_environment_and_path_are_given_back",
+     "pytest:tests/jobs/test_isolation.py::test_harness_five_random_orders_equal_fresh_processes"
+    ],
+    "runnerStopsAfterAFailedTask": [
+     "pytest:tests/jobs/test_runner.py::test_failed_task_is_marked_and_the_job_takes_no_more_of_other_batches"
+    ],
+    "runnersAreOnlyUsedWithBuildsThatHaveThem": [
+     "pytest:tests/jobs/test_runner.py::test_runner_settings_of_another_version_run_the_batch_as_before"
+    ],
+    "stealingStopsNearTheJobsEnd": [
+     "pytest:tests/jobs/test_runner.py::test_stealing_stops_near_the_jobs_end",
+     "pytest:tests/jobs/test_runner.py::test_time_left"
+    ],
+    "taskRunnerOffOrOldBuildsRunAsBefore": [
+     "pytest:tests/jobs/test_runner.py::test_cluster_jobs_get_the_runner",
+     "pytest:tests/jobs/test_runner.py::test_runner_settings_of_another_version_run_the_batch_as_before"
+    ],
+    "tasksWithoutInputsStayInTheirBatch": [
+     "pytest:tests/jobs/test_runner.py::test_tasks_without_inputs_stay_in_their_batch"
+    ]
+   }
+  }
+ }
+}

@@ -5,9 +5,13 @@ This replaces GNU parallel in MATLAB's compiled mode (``parallel --ungroup --ret
 SLOT_DELAY s apart, a task whose process fails runs once more (SLOT_TRIES runs in all), and the
 processes write to the job's log directly. A task whose output (or the call's final output)
 exists when its turn comes is skipped, as the task lines of the compiled mode do. In GPU jobs
-slot k gets one GPU: the k-th device of the job's CUDA_VISIBLE_DEVICES if it lists enough,
-else device k - 1 (MATLAB's ``CUDA_VISIBLE_DEVICES=$(({%} - 1))``). Each process also gets
-GNU parallel's PARALLEL_JOBSLOT (the slot) and PARALLEL_SEQ (the task's place in the batch).
+slot k gets one GPU: the k-th device of the job's CUDA_VISIBLE_DEVICES; a job that lists fewer
+devices than slots runs fewer slots, one device each (``GPUs <list>: <n> slots`` in its log),
+never another job's GPU, as MATLAB's slots do since its fix; without a list (unset or empty)
+the slots take devices 0 to P - 1. Each slot's task process gets its share of the job's CPUs,
+max(1, CPUs // slots) threads (the thread variables of the numeric libraries) and on Linux a
+block of CPUs of its own. Each process also gets GNU parallel's PARALLEL_JOBSLOT (the slot)
+and PARALLEL_SEQ (the task's place in the batch).
 
 With runExtraTasks (call.json ``"slots": {"extra_tasks": true}``) a batch's tasks are followed
 by tasks of later batches, in MATLAB's order, so that a job whose own tasks are done helps
@@ -38,7 +42,9 @@ __all__ = [
     "SLOT_DELAY",
     "SLOT_TRIES",
     "batch_tasks",
+    "gpu_devices",
     "gpu_for_slot",
+    "gpu_slots",
     "main",
     "run_batch",
     "run_slots",
@@ -53,6 +59,8 @@ SLOT_TRIES = 2
 MAX_EXIT_STATUS = 101
 # extra tasks of a batch after the first come from at most this many tasks' worth of batches
 EXTRA_TASK_LIMIT = 500
+# the CPUs of a slot's task process, which binds to them (Linux; a list of CPU numbers)
+SLOT_CPUS_VARIABLE = "PETAKIT5D_SLOT_CPUS"
 
 USAGE = (
     "usage: python -m petakit5d.jobs.slots <call folder> <batch> [--slots P] [--tries T] [--gpu]\n"
@@ -64,14 +72,28 @@ _sleep = time.sleep
 _clock = time.monotonic
 
 
+def gpu_devices(visible: str | None) -> list[str]:
+    """the devices a job's CUDA_VISIBLE_DEVICES lists ([] if it is unset or empty)"""
+    return [d.strip() for d in (visible or "").split(",") if d.strip()]
+
+
+def gpu_slots(slots: int, visible: str | None) -> int:
+    """the slots of a GPU job: one per device of its CUDA_VISIBLE_DEVICES at most (all of
+    them without a list)"""
+    devices = gpu_devices(visible)
+    return min(slots, len(devices)) if devices else slots
+
+
 def gpu_for_slot(slot: int, n_slots: int, visible: str | None) -> str:
-    """CUDA_VISIBLE_DEVICES of slot (1-based) of n_slots: the slot-th entry of the job's
-    CUDA_VISIBLE_DEVICES if it lists n_slots or more, else slot - 1"""
-    if visible:
-        devices = [d.strip() for d in visible.split(",") if d.strip()]
-        if len(devices) >= n_slots:
-            return devices[slot - 1]
-    return str(slot - 1)
+    """CUDA_VISIBLE_DEVICES of slot (1-based) of n_slots: the slot-th device of the job's
+    CUDA_VISIBLE_DEVICES, or slot - 1 without a list; a slot the list has no device for is an
+    error (gpu_slots gives the slots a list allows; another job's GPU is never taken)"""
+    devices = gpu_devices(visible)
+    if not devices:
+        return str(slot - 1)
+    if not 1 <= slot <= len(devices):
+        raise ValueError(f"GPUs {visible}: no device for slot {slot} of {n_slots}")
+    return devices[slot - 1]
 
 
 def extra_batches(b: int, nb: int, outputs_existed: bool, batch_size: int) -> list[int]:
@@ -112,6 +134,46 @@ def batch_tasks(meta: dict[str, Any], batch: int) -> list[int]:
     return tasks
 
 
+def slot_shares(slots: int) -> dict[int, tuple[int, list[int] | None]]:
+    """per slot (1-based): its threads, max(1, CPUs // slots) of the CPUs this process may use,
+    and on Linux a block of them of its own (None: no binding), as the local pool shares CPUs
+    among its workers"""
+    from petakit5d.core.threads import available_cpus
+
+    threads = max(1, available_cpus() // slots)
+    cpus = None
+    if hasattr(os, "sched_getaffinity"):
+        try:
+            cpus = sorted(os.sched_getaffinity(0))
+        except OSError:
+            cpus = None
+    bind = cpus is not None and len(cpus) >= threads * slots
+    return {
+        k: (threads, cpus[(k - 1) * threads : k * threads] if bind and cpus else None)
+        for k in range(1, slots + 1)
+    }
+
+
+def slot_env(threads: int, cpus: Sequence[int] | None) -> dict[str, str]:
+    """the environment of a slot's task process: the thread variables of the numeric libraries
+    (read when they load) and its CPUs, which the task process binds to (run_task)"""
+    from petakit5d.jobs.exec import THREAD_VARIABLES
+
+    env = {name: str(threads) for name in THREAD_VARIABLES}
+    env[SLOT_CPUS_VARIABLE] = ",".join(str(c) for c in cpus) if cpus else ""
+    return env
+
+
+def _bind_slot_cpus() -> None:
+    # a task process of a slot runs on its slot's CPUs (Linux)
+    cpus = os.environ.pop(SLOT_CPUS_VARIABLE, "")
+    if cpus and hasattr(os, "sched_setaffinity"):
+        try:
+            os.sched_setaffinity(0, [int(c) for c in cpus.split(",")])
+        except (OSError, ValueError):
+            pass
+
+
 def _output_exists(paths: Sequence[str]) -> bool:
     from petakit5d.jobs.files import batch_file_exist
 
@@ -140,6 +202,11 @@ def run_slots(
     slots = max(1, int(slots))
     tries = max(1, int(tries))
     visible = os.environ.get("CUDA_VISIBLE_DEVICES")
+    if gpu and gpu_slots(slots, visible) < slots:
+        # (one GPU of the job's own per slot: fewer slots, never another job's GPU)
+        slots = gpu_slots(slots, visible)
+        print(f"GPUs {visible}: {slots} slots", flush=True)
+    shares = slot_shares(slots)
 
     todo: deque[tuple[int, int, int]] = deque((i, 1, seq) for seq, i in enumerate(indices, 1))
     free = list(range(1, slots + 1))
@@ -168,6 +235,7 @@ def run_slots(
             todo.popleft()
             slot = free.pop(0)
             env = dict(os.environ, PARALLEL_JOBSLOT=str(slot), PARALLEL_SEQ=str(seq))
+            env.update(slot_env(*shares[slot]))
             if gpu:
                 env["CUDA_VISIBLE_DEVICES"] = gpu_for_slot(slot, slots, visible)
             if bash:
@@ -228,6 +296,7 @@ def run_task(call_folder: str, index: int) -> int:
 
     from petakit5d.jobs.tasks import CallFolder, run_record
 
+    _bind_slot_cpus()
     line = CallFolder(call_folder).lines([index])[0]
     try:
         run_record(line["task"])
