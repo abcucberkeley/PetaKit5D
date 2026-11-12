@@ -1,0 +1,12 @@
+{
+ "name": "self_check",
+ "description": "The same Python build as two variants, interleaved: every compared metric must agree within 3% (the harness's own noise floor).",
+ "repeats": 7,
+ "warmup": 1,
+ "variants": [
+  {"id": "py_a", "impl": "python", "script": "benchmarks/common/self_check.py", "args": ["--threads", "1", "4", "24"]},
+  {"id": "py_b", "impl": "python", "script": "benchmarks/common/self_check.py", "args": ["--threads", "1", "4", "24"]}
+ ],
+ "compare": [{"a": "py_b", "b": "py_a"}],
+ "gate": {"within": 0.03, "metrics": ["op:*", "startup", "task", "total"]}
+}

@@ -1,0 +1,14 @@
+{
+ "name": "process_costs_gpu",
+ "description": "A GPU task process outside its work: Python bare, with NumPy, with CuPy and the GPU (device count, context, a cached kernel, a cuFFT plan; caches warm after the warm-up run), the environment on network storage; MATLAB -batch with gpuDevice and one gpuArray operation.",
+ "repeats": 5,
+ "warmup": 1,
+ "variants": [
+  {"id": "py_bare", "impl": "python", "code": ""},
+  {"id": "py_numpy", "impl": "python", "script": "benchmarks/common/startup_probe.py", "args": ["numpy"]},
+  {"id": "py_cupy", "impl": "python", "script": "benchmarks/common/startup_probe.py", "args": ["cupy"]},
+  {"id": "ml_batch_gpu", "impl": "matlab", "code": "g = gpuDevice; x = gpuArray(single(1)) + 1; wait(g); pk5d_bench_mark('gpu');"}
+ ],
+ "compare": [{"a": "py_cupy", "b": "ml_batch_gpu"}],
+ "gate": {"overhead_max": 3.0, "metrics": ["startup", "teardown", "overhead", "total"]}
+}

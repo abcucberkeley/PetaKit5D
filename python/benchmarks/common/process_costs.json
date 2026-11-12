@@ -1,0 +1,34 @@
+{
+ "name": "process_costs",
+ "description": "What a task process costs outside its work: Python bare, with the package, NumPy, SciPy, the I/O stack; environment on network storage and copied to node-local disk; file cache warm and cold (page cache dropped before each run); MATLAB -batch as the job framework launches it (-nojvm) and with the JVM; the compiled master when a build is given (PK5D_MCC_MASTER, PK5D_MCR).",
+ "repeats": 10,
+ "warmup": 1,
+ "setup": ["[ -z \"$PK5D_MCC_MASTER\" ] || {python} -c \"import numpy as np, petakit5d.io as io; io.write_tiff(np.zeros((64, 64, 64), np.uint16, order='F'), 'x.tif')\""],
+ "variants": [
+  {"id": "py_bare", "impl": "python", "code": ""},
+  {"id": "py_skeleton", "impl": "python", "script": "benchmarks/common/startup_probe.py", "args": ["skeleton"]},
+  {"id": "py_numpy", "impl": "python", "script": "benchmarks/common/startup_probe.py", "args": ["numpy"]},
+  {"id": "py_scipy", "impl": "python", "script": "benchmarks/common/startup_probe.py", "args": ["scipy"]},
+  {"id": "py_io", "impl": "python", "script": "benchmarks/common/startup_probe.py", "args": ["io"]},
+  {"id": "py_full", "impl": "python", "script": "benchmarks/common/startup_probe.py", "args": ["full"]},
+  {"id": "py_bare_local", "impl": "python", "code": "", "env_copy": "local"},
+  {"id": "py_scipy_local", "impl": "python", "script": "benchmarks/common/startup_probe.py", "args": ["scipy"], "env_copy": "local"},
+  {"id": "py_io_local", "impl": "python", "script": "benchmarks/common/startup_probe.py", "args": ["io"], "env_copy": "local"},
+  {"id": "py_bare_cold", "impl": "python", "code": "", "cache": "cold"},
+  {"id": "py_scipy_cold", "impl": "python", "script": "benchmarks/common/startup_probe.py", "args": ["scipy"], "cache": "cold"},
+  {"id": "py_io_cold", "impl": "python", "script": "benchmarks/common/startup_probe.py", "args": ["io"], "cache": "cold"},
+  {"id": "py_io_local_cold", "impl": "python", "script": "benchmarks/common/startup_probe.py", "args": ["io"], "env_copy": "local", "cache": "cold"},
+  {"id": "ml_batch_nojvm", "impl": "matlab", "code": "", "timeout": 600},
+  {"id": "ml_r_nojvm", "impl": "matlab", "code": "", "launch": "r", "timeout": 600},
+  {"id": "ml_batch_jvm", "impl": "matlab", "code": "", "flags": [], "timeout": 600},
+  {"id": "mcc_master", "impl": "command", "when": "PK5D_MCC_MASTER",
+   "argv": ["{env[PK5D_MCC_MASTER]}", "{env[PK5D_MCR]}", "XR_crop_frame", "{work}/x.tif", "{work}/crop_out.tif", "[1,1,1,32,32,32]"]}
+ ],
+ "compare": [
+  {"a": "py_io", "b": "ml_batch_nojvm"},
+  {"a": "py_full", "b": "ml_batch_nojvm"},
+  {"a": "py_io_cold", "b": "py_io"},
+  {"a": "py_io_local", "b": "py_io"}
+ ],
+ "gate": {"overhead_max": 1.0, "metrics": ["startup", "teardown", "overhead", "total"]}
+}
