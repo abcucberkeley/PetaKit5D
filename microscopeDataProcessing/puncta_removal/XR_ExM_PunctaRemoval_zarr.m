@@ -138,10 +138,7 @@ end
 
 % save parameters
 save('-v7.3', [outPath, '/parameters.mat'], 'pr');
-s = jsonencode(pr, PrettyPrint=true);
-fid = fopen([outPath, '/parameters.json'], 'w');
-fprintf(fid, s);
-fclose(fid);
+writeJsonFile(pr, [outPath, '/parameters.json']);
 
 fprintf(['reading ' fsname '...\n'])
 

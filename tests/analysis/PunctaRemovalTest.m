@@ -30,11 +30,27 @@ classdef PunctaRemovalTest < pktest.TestCase
                 'parseCluster', false, 'masterCompute', true);
             testCase.verifyPunctaRemoved(zarrFn, vol);
         end
+
+        function parametersFileHoldsTheParameters(testCase)
+            % parameters.json was written with its text as fprintf's format:
+            % a % in a value (here in the folder name) cut the file off there
+            [zarrFn, vol] = testCase.punctaVolume('data_100%/');
+            XR_ExM_PunctaRemoval_zarr(zarrFn, 'batchSize', [64, 64, 64], 'blockSize', [32, 32, 32], ...
+                'parseCluster', false, 'masterCompute', true);
+            testCase.verifyPunctaRemoved(zarrFn, vol);
+            pr = jsondecode(fileread([fileparts(zarrFn), '/Puncta_Removed/parameters.json']));
+            testCase.verifyEqual(pr.zarrFullpath, zarrFn);
+        end
     end
 
     methods (Access = private)
-        function [zarrFn, vol] = punctaVolume(testCase)
+        function [zarrFn, vol] = punctaVolume(testCase, folder)
+            % the volume in a folder of a temporary folder (folder: its name)
             dataPath = testCase.createTempFolder();
+            if nargin > 1
+                dataPath = [dataPath, folder];
+                mkdir(dataPath);
+            end
             vol = 100 + pktest.beads([64, 64, 64], testCase.Puncta, 1.5, testCase.PunctumAmplitude, 0);
             st = testCase.Structure;
             vol(st{:}) = vol(st{:}) + 4900 + 200 * randn(cellfun(@numel, st));
