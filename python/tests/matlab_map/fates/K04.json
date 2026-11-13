@@ -99,6 +99,34 @@
           "oracle:tests/kernels/test_stitch_kernels.py::major.error.*"
         ]
       }
+    },
+    "FeatherBlendingTest": {
+      "finished": true,
+      "methods": {
+        "overlapIsBlendedIntoTheBlock": {
+          "case_fates": {
+            "classes=uint8Tiles": [
+              "pytest:tests/kernels/test_stitch_kernels.py::test_overlap_is_blended_into_the_block",
+              "oracle:tests/kernels/test_stitch_kernels.py::feather.wrapper.matlab.uint8_single.indexing_uint8"
+            ],
+            "classes=doubleTiles": [
+              "pytest:tests/kernels/test_stitch_kernels.py::test_overlap_is_blended_into_the_block",
+              "oracle:tests/kernels/test_stitch_kernels.py::feather.wrapper.matlab.double_single.indexing_double"
+            ],
+            "classes=uint16TilesDoubleWeights": [
+              "pytest:tests/kernels/test_stitch_kernels.py::test_overlap_is_blended_into_the_block",
+              "oracle:tests/kernels/test_stitch_kernels.py::feather.wrapper.matlab.uint16_double.indexing_uint16"
+            ],
+            "classes=singleTilesDoubleWeights": [
+              "pytest:tests/kernels/test_stitch_kernels.py::test_overlap_is_blended_into_the_block",
+              "oracle:tests/kernels/test_stitch_kernels.py::feather.wrapper.matlab.single_double.indexing_single"
+            ]
+          }
+        },
+        "overlapIsBlendedIntoTheBlockWithoutIndexingMex": [
+          "na:the port has no indexing4d_mex to fall back from; the block gets the same values (oracle feather.wrapper.matlab.uint8_single.indexing_uint8)"
+        ]
+      }
     }
   }
 }

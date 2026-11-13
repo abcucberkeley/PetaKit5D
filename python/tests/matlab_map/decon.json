@@ -682,6 +682,14 @@
      "fate": [],
      "owner": "R01"
     },
+    "psfGen2DMedianMethodRemovesIsolatedPoints": {
+     "pins": "2D 'median' method (it called medfilt, which doesn't exist): subtract medFactor times the median of the positive pixels and keep the component around the peak, without an isolated hot pixel or a line of 1 pixel width from the PSF's edge (which only the median filter cuts off); the peak is moved to the center",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
     "psfGenCentersOddSizePSF": {
      "pins": "without background (zero edge slices) the PSF is only circularly shifted so its peak is at the center",
      "tags": [

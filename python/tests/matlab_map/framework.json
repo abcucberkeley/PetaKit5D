@@ -132,6 +132,14 @@
      "cases": null,
      "fate": []
     },
+    "singlePathSavesResultToOutputFile": {
+     "pins": "a single path had no result file, so the task of a cluster check whose last batch has one path (a number of files 1 more than a multiple of 50000) never finished",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
     "unreadableFolder": {
      "pins": "a folder that can be searched but not listed: exist() finds its files, so batch_file_exist must too",
      "tags": [
@@ -140,7 +148,10 @@
      "cases": null,
      "fate": []
     }
-   }
+   },
+   "reopened": [
+    "singlePathSavesResultToOutputFile"
+   ]
   },
   "CheckBatchSlurmJobsStatusTest": {
    "file": "tests/framework/CheckBatchSlurmJobsStatusTest.m",
@@ -2578,11 +2589,14 @@
      "fate": []
     },
     "slowLooksAreFewer": {
-     "pins": "a look that takes 0.3 s (slow storage, many files): the next ones are 3 s or more apart, so that looking takes at most a tenth of the wait, which stays the same",
+     "pins": "a look that takes 0.3 s or more (slow storage, many files): the next ones are 10 times as far apart (3 s or more), so that looking takes at most a tenth of the wait, which stays the same. The stub records how long each look took, so a slower machine (longer looks, fewer of them) passes too.",
      "tags": [
       "Unit"
      ],
-     "cases": null,
+     "cases": [
+      "lookTime=slow",
+      "lookTime=verySlow"
+     ],
      "fate": []
     },
     "waitEndsOnceAllFilesOfOneGroupExist": {

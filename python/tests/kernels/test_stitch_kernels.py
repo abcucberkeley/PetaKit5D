@@ -13,12 +13,12 @@ stacks, (z, y, x) volumes, Python boxes) and map the results back:
   larger output, voxels without weight), the wrapper with both, other classes (MATLAB's code),
   weights outside the usual range (the mex's integer conversion), invalid input.
 - resize.*: feather_distance_map_resize_3d_mex (sizes not multiples of the map's, 2D, singleton
-  axes, non-integer sizes, weight degrees 0, 1, 2, 10, -2, 2.7), the wrapper, the w_space mex.
+  axes, non-integer sizes, weight degrees 0, 1, 2, 10, -2, 2.7), the wrapper.
 - integral.*: integral_image_3d_mex (uint16, single, 2D, T = 1 and T = size), the wrapper's
   MATLAB code for double, uint8 and logical, invalid input.
 - major.*: any_4th_dim_mex and check_major_tile_valid (StitchHelperMexTest's cases, NaN, other
   classes).
-- nan.*: replace_nan_with_value (the value read in the input's class).
+- nan.*: replace_nan_with_value (the value's first element as a double, in the input's class).
 
 Cases of MATLAB's own argument class checks (a single or int64 box or size, a column of sizes)
 are references only: the port's functions take Python numbers.
@@ -187,10 +187,6 @@ def feather_into_mbox(f, d, out, mbox, num_threads=None):
     """feather_blending_3d_with_indexing_mex with MATLAB's box converted inside the call (a box
     that has no Python form raises there)"""
     return feather_into(f, d, out, box_from_matlab(mbox), num_threads)
-
-
-def resize_w_space(dmat, size, wd, num_threads=None):
-    return sk.resize_distance_map(dmat, size, wd, w_space=True, num_threads=num_threads)
 
 
 def box_or_empty(b):
@@ -480,15 +476,15 @@ def _feather_f(fc):
     return feather_tiles((9, 8, 5), 3, "uint16", 71)[0].astype(fc)
 
 
-# MATLAB's code: other tile classes, double weights; with an output, written only where
-# indexing4d_mex takes it (a single output)
-for _fc, _dc in [
-    ("uint8", "single"),
-    ("double", "single"),
-    ("uint16", "double"),
-    ("single", "double"),
-    ("uint16", "single"),
-]:
+# MATLAB's code: other tile classes, double weights; with an output, the blend cast to the
+# block's class and written into it (ids feather.wrapper.matlab.<pair>, and with a block of each
+# class, .indexing_single and .indexing_uint8, .indexing_double, .indexing_uint16:
+# FeatherBlendingTest's cases). Each block is an input of one case only: MATLAB's code writes
+# into the block in place, and the cases of a MATLAB pack share their inputs.
+for _p, _pair in enumerate(
+    ["uint8_single", "double_single", "uint16_double", "single_double", "uint16_single"]
+):
+    _fc, _dc = _pair.split("_")  # the tiles' and the weights' classes
     _inp = {
         "f": V(lambda fc=_fc: _feather_f(fc)),
         "d": V(lambda dc=_dc: feather_tiles((9, 8, 5), 3, "uint16", 71)[1].astype(dc)),
@@ -512,7 +508,10 @@ for _fc, _dc in [
                 args=[Vol(In("f")), Vol(In("d")), Vol(In("o")), Box([2, 3, 1, 10, 10, 5])],
                 nargout=2,
                 python=M + "feather_blending_3d",
-                inputs={**_inp, "o": V(lambda oc=_oc: fvol((12, 11, 6), oc, 72, 1, 200))},
+                inputs={
+                    **_inp,
+                    "o": V(lambda oc=_oc, p=_p: fvol((12, 11, 6), oc, 72 + 10 * p, 1, 200)),
+                },
                 out_roles=("vol", None),
             )
         )
@@ -626,17 +625,6 @@ for _k, (_id, _msz, _sz, _wd) in enumerate(RESIZE):
             out_roles=("vol",),
         )
     )
-    if _id in ("up", "wd10", "plane", "large", "fractional_size"):
-        CASES.append(
-            Case(
-                f"resize.w_space.{_id}",
-                matlab="feather_distance_map_resize_3d_w_space_mex",
-                args=[Vol(In("dmat")), PerAxis(_sz, "yxz"), _wd],
-                python=resize_w_space,
-                inputs=_inp,
-                out_roles=("vol",),
-            )
-        )
 CASES += [
     Case(
         "resize.wrapper",
@@ -934,12 +922,18 @@ def _with_nans(cls, seed):
 _NAN_CASES = [
     ("single_zero", np.float32, 0),
     ("double_five", np.float64, 5),
-    ("single_double_five", np.float32, 5),  # the double's low 4 bytes: 0
+    ("single_double_five", np.float32, 5),
     ("single_single_five", np.float32, np.float32(5)),
     ("single_double_pi", np.float32, np.pi),
     ("single_uint8_bytes", np.float32, np.array([1, 2, 3, 200], dtype=np.uint8)),
     ("double_single_pair", np.float64, np.array([1.5, -2.25], dtype=np.float32)),
     ("single_minus_zero", np.float32, np.float32(-0.0)),
+    # MexInputCheckTest/replaceNanTakesADoubleValueForSingleInput, singleVolumeGetsTheValue...
+    ("single_uint8_seven", np.float32, np.uint8(7)),
+    ("single_minus_1e8", np.float32, -1e8),
+    ("single_logical", np.float32, True),
+    ("double_int16", np.float64, np.int16(-3)),
+    ("double_row_first", np.float64, [2.5, 3.5]),
 ]
 for _k, (_name, _dt, _val) in enumerate(_NAN_CASES):
     CASES.append(
@@ -952,10 +946,26 @@ for _k, (_name, _dt, _val) in enumerate(_NAN_CASES):
             out_roles=("vol",),
         )
     )
+CASES += [  # rows of values: element-wise, no mapping
+    Case(
+        "nan.single_value_double_input",
+        matlab="replace_nan_with_value",
+        args=[In("x"), np.float32(5)],
+        python=M + "replace_nan_with_value",
+        inputs={"x": V(lambda: np.array([1.0, NAN]))},
+    ),
+    Case(
+        "nan.empty_input",
+        matlab="replace_nan_with_value",
+        args=[In("x"), 1],
+        python=M + "replace_nan_with_value",
+        inputs={"x": V(lambda: np.zeros((0, 3)))},
+    ),
+]
 _NAN_ERRORS = [  # MexInputCheckTest/pointDetectionMexCheckTheirInputs
-    ("single_value_double_input", np.array([1.0, NAN]), np.float32(0), "data:inputError"),
     ("empty_value", np.array([1.0, 2.0]), None, "data:inputError"),
     ("char_value", np.array([1.0, NAN]), "a", "data:inputError"),
+    ("complex_value", np.array([1.0, NAN], dtype=np.float32), 1j, "data:inputError"),
     ("uint16_input", np.array([1, 2], dtype=np.uint16), 0, "data:TypeError"),
 ]
 for _name, _x, _val, _id in _NAN_ERRORS:
@@ -968,6 +978,7 @@ for _name, _x, _val, _id in _NAN_ERRORS:
             inputs={"x": V(lambda x=_x: x.copy())},
             expect_error=_id,
             py_error=ERRORS,
+            error_message=_id == "data:inputError",
         )
     )
 
@@ -1198,3 +1209,35 @@ def test_arrays_are_never_copied():
     ro.flags.writeable = False
     with pytest.raises(ValueError, match="writeable"):
         sk.feather_blend_into(f, d, ro, (1, 1, 1, 5, 7, 6))
+
+
+# --- FeatherBlendingTest ------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "tile_class, weight_class",
+    [("uint8", "single"), ("double", "single"), ("uint16", "double"), ("single", "double")],
+)
+def test_overlap_is_blended_into_the_block(tile_class, weight_class):
+    """FeatherBlendingTest/overlapIsBlendedIntoTheBlock: MATLAB's code for these classes writes
+    its blend (single), cast to the block's class, into the block at the box"""
+    from petakit5d.core.dtypes import cast, single, times
+
+    rng = CounterRNG(400, f"overlap/{tile_class}/{weight_class}")
+    shape = (2, 5, 6, 7)
+    f = rng.integers(1, 200, shape) * (rng.uniform(shape) > 0.2)
+    f[0] = np.maximum(f[0], 1)  # tile 1 has data everywhere
+    f = f.astype(tile_class)
+    d = (rng.uniform(shape) * 0.9 + 0.1).astype(weight_class)
+    block = rng.integers(1, 200, (8, 10, 12)).astype(tile_class)
+    box = (1, 2, 3, 6, 8, 10)
+    w = d * (f != 0)
+    p = times(single(f), w)  # single, as MATLAB's single .* double
+    blend = (p[0] + p[1]) / (w[0] + w[1])
+    if blend.dtype != np.float32:  # single ./ double: in double, rounded
+        blend = blend.astype(np.float32)
+    expected = block.copy()
+    expected[1:6, 2:8, 3:10] = cast(blend, tile_class)
+    out, mex_compute = sk.feather_blending_3d(f, d, block, box)
+    assert out is block and not mex_compute and out.dtype == np.dtype(tile_class)
+    np.testing.assert_array_equal(out, expected)

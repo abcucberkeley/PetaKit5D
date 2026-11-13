@@ -282,8 +282,12 @@ def feather_blending_3d(
 
     uint16 and single tiles with single weights (and a ``tim_block`` of the tiles' class) run the
     kernel (``mex_compute`` True). Other classes run MATLAB's code: a single result with NaN
-    where no tile has a weight; with ``tim_block``, written only where ``indexing4d_mex`` takes
-    it (a single ``tim_block``), else ``tim_block`` comes back unchanged, as in MATLAB.
+    where no tile has a weight; with ``tim_block``, that result cast to the block's class
+    (MATLAB's ``cast``: rounded half away from zero, saturated, NaN to 0) and written at ``box``.
+    ``indexing4d_mex``'s classes (logical, uint8, uint16, single, double) are written into
+    ``tim_block`` in place; for other classes MATLAB writes into a copy, which is returned. A box
+    outside the block or of another size than the tiles raises (MATLAB would grow the block or
+    fail in its assignment).
     """
     f, d = _array(tim_f_block, "tim_f_block"), _array(tim_d_block, "tim_d_block")
     indexed = tim_block is not None or box is not None
@@ -301,15 +305,22 @@ def feather_blending_3d(
     crop = _feather_matlab(f, d)
     if not indexed:
         return crop, False
+    from petakit5d.core import dtypes
+    from petakit5d.core.arrays import matlab_class
+
     b = _ints(box, 6, "box")
-    # indexing4d_mex writes a single region of the box's size into a single array of at most 4
-    # dimensions; otherwise indexing4d assigns to a copy, which feather_blending_3d drops
-    o = tim_block
+    o = _array(tim_block, "tim_block")
     odims = _pad(o.shape, 3)
-    fits = all(0 <= b[i] and b[i + 3] <= odims[i] for i in range(3)) and _mndims(o) <= 4
-    if fits and o.dtype == crop.dtype and [b[i + 3] - b[i] for i in range(3)] == list(crop.shape):
-        o.reshape(odims)[b[0] : b[3], b[1] : b[4], b[2] : b[5]] = crop
-    return tim_block, False
+    if _mndims(o) > 3 or not all(0 <= b[i] <= b[i + 3] <= odims[i] for i in range(3)):
+        raise StitchKernelError(_FB, "The bounding box is out of bound.")
+    if [b[i + 3] - b[i] for i in range(3)] != list(crop.shape):
+        raise StitchKernelError(_FB, "The bounding box is out of bound.")
+    # tim_block = indexing4d(tim_block, cast(crop, class(tim_block)), [bbox(1:3), 1, bbox(4:6), 1])
+    region = dtypes.cast(crop, matlab_class(o))
+    if o.dtype not in (np.bool_, np.uint8, np.uint16, np.float32, np.float64):
+        o = o.copy()  # indexing4d's MATLAB code: an assignment to its own copy, returned
+    o.reshape(odims)[b[0] : b[3], b[1] : b[4], b[2] : b[5]] = region
+    return o, False
 
 
 # ---------------------------------------------------------------------------------------------
@@ -321,13 +332,12 @@ _DR_SMALL = "The resized dimensions must not be smaller than those of the input 
 
 
 def resize_distance_map(
-    dmat: np.ndarray, size, wd, *, w_space: bool = False, num_threads: int | None = None
+    dmat: np.ndarray, size, wd, *, num_threads: int | None = None
 ) -> np.ndarray:
     """``feather_distance_map_resize_3d_mex(dmat, sz, wd)``: the single distance map
     ``(z, y, x)`` resized to ``size`` ``(nz, ny, nx)`` (not smaller than the map; values are
     truncated) by trilinear interpolation (the corners map onto each other), raised to the
-    power ``int(single(wd))``. ``w_space``: ``feather_distance_map_resize_3d_w_space_mex``,
-    which interpolates ``dmat .^ (1 / wd)`` (C ``powf``; that mex has no callers in MATLAB)."""
+    power ``int(single(wd))``."""
     dm = _array(dmat, "dmat")
     if _mndims(dm) > 3:
         raise StitchKernelError(_FB, "The distance map must have at most 3 dimensions")
@@ -346,8 +356,7 @@ def resize_distance_map(
     if dm.dtype != np.float32:
         raise StitchKernelTypeError(_FB_TYPE, "Data type not suppported")
     out = np.zeros(rdims, dtype=np.float32)
-    name = "feather_distance_map_resize_3d" + ("_w_space" if w_space else "")
-    getattr(_ext(), name)(
+    _ext().feather_distance_map_resize_3d(
         _flat(dm, "dmat"), _flat(out, "out"), dims, rdims, float(d), _threads(num_threads)
     )
     return out
@@ -644,13 +653,13 @@ def check_major_tile_valid(
 # ---------------------------------------------------------------------------------------------
 
 
-def _value_bytes(value) -> tuple[bytes, int] | None:
-    """the bytes MATLAB passes for value (its data in MATLAB's element order) and its element
-    size; None for values that are not numeric or logical"""
+def _value_scalar(value) -> float | None:
+    """mxGetScalar of the value MATLAB receives: its first element as a double; None for values
+    the mex rejects (not numeric or logical, complex, empty)"""
     if isinstance(value, np.ndarray | np.generic):
         a = np.asarray(value)
-    elif value is None:
-        a = np.zeros((0, 0))
+    elif value is None or isinstance(value, str):
+        return None
     elif isinstance(value, bool):
         a = np.asarray(value, dtype=np.bool_)
     elif isinstance(value, int | float):
@@ -661,30 +670,26 @@ def _value_bytes(value) -> tuple[bytes, int] | None:
         a = np.asarray(value, dtype=np.float64)
     else:
         return None
-    if a.dtype.kind not in "biuf":
+    if a.dtype.kind not in "biuf" or a.size == 0:
         return None
-    return a.reshape(-1).tobytes(), a.dtype.itemsize
+    return float(a.reshape(-1)[0])  # the first element (MATLAB's order and NumPy's agree)
 
 
 def replace_nan_with_value(
     x: np.ndarray, value: Any, *, inplace: bool = False, num_threads: int | None = None
 ) -> np.ndarray:
     """``replace_nan_with_value(x, value)`` (pointDetection's mex): ``x`` (single or double, any
-    shape) with NaN replaced by ``value``. As the mex, the value is read from its first bytes as
-    an element of ``x``'s class: a double ``value`` for single ``x`` gives the single whose bits
-    are the double's low 4 bytes (``0`` gives 0). ``inplace`` writes into ``x``."""
+    shape) with NaN replaced by ``value`` in ``x``'s class: its first element as a double
+    (``mxGetScalar``), rounded to single for single ``x``. ``inplace`` writes into ``x``."""
     x = _array(x, "x")
     if x.dtype not in (np.float32, np.float64):
         raise StitchKernelTypeError(
             "data:TypeError", "Only single and double types are supported!\n"
         )
-    vb = _value_bytes(value)
-    if vb is None or len(vb[0]) < x.dtype.itemsize:
-        raise StitchKernelError(
-            "data:inputError",
-            "The value must be a full numeric scalar of the class of the input or double.",
-        )
-    val = np.frombuffer(vb[0][: x.dtype.itemsize], dtype=x.dtype)[0]
+    dval = _value_scalar(value)
+    if dval is None:
+        raise StitchKernelError("data:inputError", "The value must be a full real numeric scalar.")
+    val = x.dtype.type(dval)  # (float) dval for single input
     if not (x.flags.c_contiguous or x.flags.f_contiguous):
         raise ValueError("x must be a contiguous array")
     if inplace:

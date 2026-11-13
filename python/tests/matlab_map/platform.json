@@ -224,6 +224,30 @@
      "fate": [],
      "owner": "C02"
     },
+    "replaceNanMatlabCodeMatchesTheMex": {
+     "pins": "replace_nan_with_value.m, which runs where the mex isn't built (macOS), gives the results and errors of the mex (it runs here as a copy under another name, beside the mex where it is built)",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "replaceNanTakesADoubleValueForSingleInput": {
+     "pins": "replace_nan_with_value read the value's first bytes as an element of the input's class, so a double value for single input gave the single of its low 4 bytes (0 for 5), and a single value for double input was rejected (where the mex isn't built, its MATLAB code runs)",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "singleVolumeGetsTheValueXRLocmax3dPasses": {
+     "pins": "XR_locmax3d calls replace_nan_with_value(img, -1e8), so that NaNs are no local maxima; in a single volume they became 0",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
     "skewedSpaceInterpChecksItsInputs": {
      "pins": "skewed space interp checks its inputs",
      "tags": [
@@ -276,15 +300,23 @@
   },
   "MexPackagingTest": {
    "file": "tests/platform/MexPackagingTest.m",
-   "pins": "the ARM macOS binaries must only load libraries that every Mac has or that ship next to them, and the Linux cpp-tiff/cpp-zarr binaries must use their own codecs. This reads the Mach-O load commands and ELF dynamic sections, so it runs on any OS and doesn't depend on what is installed on the runner.",
+   "pins": "the ARM macOS binaries must only load libraries that every Mac has or that ship next to them, the Linux cpp-tiff/cpp-zarr binaries must use their own codecs, and the other Linux mex files must not name folders of the machine they were built on. This reads the Mach-O load commands and ELF dynamic sections, so it runs on any OS and doesn't depend on what is installed on the runner.",
    "category": "matlab_only",
    "owner": "E04",
    "phase": 1,
-   "finished": true,
+   "finished": false,
    "fate": [
     "na:libraries the prebuilt MATLAB mex binaries load; the libraries of the port's wheels are checked by E07"
    ],
    "methods": {
+    "linuxMexFilesNameNoFoldersOfTheBuildMachine": {
+     "pins": "Linux mex files built with a compiler outside the system folders kept its library folder, an absolute path on the build machine, as their RPATH, and patchelf --remove-rpath left that path in their dynamic string table. They need neither: they use the runtime libraries that MATLAB or the system loads. Their RPATH and RUNPATH may only name folders relative to the file ($ORIGIN), and no string of...",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
     "linuxTiffZarrBinariesUseTheirOwnCodecs": {
      "pins": "on Linux, once Tiff or imread had loaded MATLAB's libtiff, the cpp-tiff mex files called it instead of their own (before cpp-tiff/cpp-zarr v1.7.3), so readtiff couldn't read zstd tiffs in that session. Their libraries must bind their own symbols first (-Bsymbolic), and the mex files must not call a codec themselves (that call would go to MATLAB's).",
      "tags": [

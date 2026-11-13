@@ -243,6 +243,9 @@ def assign(p, method, grid=None):
     near = np.zeros((nF, 3), bool)
     free = np.zeros((nF, 3), bool)
     for i, (C, d, A, b) in enumerate(systems):
+        if C.shape[0] == 0:
+            # every pair below the threshold: MATLAB keeps the stage positions (x = 0)
+            continue
         res = lsq.solve(C, d, A, b, form=form)
         xi = res.x
         if form == "sparse":
@@ -336,19 +339,6 @@ def _assignment_case(cid, method, spec):
     def prob():
         return grid_problem(seed, gx, gy, gz, **kw)
 
-    p = prob()
-    if not np.any(p["mx"][:, 2] >= p["thr"]):
-        # every pair below the threshold: C is empty and lsqlin refuses it
-        return Case(
-            cid,
-            code=_GRID_CODE if method == "grid" else _GLOBAL_CODE,
-            args=[In("p"), {}],
-            nargout=2,
-            python=lambda p, f: py_assign(p, f, method),
-            inputs={"p": Value(prob)},
-            expect_error="optimlib:lsqlin:FirstTwoArgsEmpty",
-            py_error=lsq.LsqlinError,
-        )
     return Case(
         cid,
         code=_GRID_CODE if method == "grid" else _GLOBAL_CODE,

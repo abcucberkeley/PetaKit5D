@@ -1,15 +1,12 @@
 // Resize of a feather distance map to a block's size by trilinear interpolation, then raised
-// to the integer weight degree: feather_distance_map_resize_3d_mex.c, and its older variant
-// feather_distance_map_resize_3d_w_space_mex.c (the map is first taken back to the linear
-// space with powf(d, 1 / wd)). The single-precision arithmetic is the mex's: the source
-// coordinate of each axis is (float)i * factor with factor = (n - 1) / (rn - 1) computed in
-// double, and the interpolation goes along y (MATLAB's first dimension), then x, then z.
+// to the integer weight degree: feather_distance_map_resize_3d_mex.c. The single-precision
+// arithmetic is the mex's: the source coordinate of each axis is (float)i * factor with
+// factor = (n - 1) / (rn - 1) computed in double, and the interpolation goes along y (MATLAB's
+// first dimension), then x, then z.
 //
 // dmat: (nz, ny, nx), out: (rz, ry, rx), C order; the work is split by output (z, y) lines.
 #include "stitch.hpp"
 
-#include <cmath>
-#include <memory>
 
 namespace {
 
@@ -96,23 +93,6 @@ void feather_distance_map_resize_3d(const float *dmat, float *rmat, const float 
     resize_loop(dmat, rmat, x86_float_to_int(d), dims, rdims, nthread);
 }
 
-// feather_distance_map_resize_3d_w_space_mex
-void feather_distance_map_resize_3d_w_space(const float *dmat, float *rmat, const float d,
-                                            const uint64_t *dims, const uint64_t *rdims,
-                                            int nthread) {
-    const int64_t n = (int64_t)(dims[0] * dims[1] * dims[2]);
-    const float d_inv = 1. / (float)d;
-
-    // restore to the linear space
-    std::unique_ptr<float[]> dmat_1(new float[n > 0 ? n : 1]);
-    float *d1 = dmat_1.get();
-#pragma omp parallel for schedule(static) num_threads(nthread) if (nthread > 1)
-    for (int64_t i = 0; i < n; i++) {
-        d1[i] = powf(dmat[i], d_inv);
-    }
-    resize_loop(d1, rmat, x86_float_to_int(d), dims, rdims, nthread);
-}
-
 template <void (*K)(const float *, float *, const float, const uint64_t *, const uint64_t *, int)>
 auto resize_binding() {
     return [](in1d<float> dmat, out1d<float> out, std::vector<uint64_t> dims,
@@ -137,9 +117,4 @@ PK5D_BINDINGS(bind_distance_map_resize) {
           nb::arg("rdims"), nb::arg("wd"), nb::arg("num_threads"),
           "Trilinear resize of dmat ((z, y, x) sizes dims) into out (sizes rdims), raised to "
           "int(wd).");
-    m.def("feather_distance_map_resize_3d_w_space",
-          resize_binding<feather_distance_map_resize_3d_w_space>(), nb::arg("dmat").noconvert(),
-          nb::arg("out").noconvert(), nb::arg("dims"), nb::arg("rdims"), nb::arg("wd"),
-          nb::arg("num_threads"),
-          "As feather_distance_map_resize_3d, with dmat ** (1 / wd) interpolated.");
 }

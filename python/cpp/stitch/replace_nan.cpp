@@ -1,6 +1,6 @@
 // NaN replaced by a value: replace_nan_with_value.c (pointDetection/mex_functions), used by the
-// stitching blending. The Python side passes the value already read as the input's class (the
-// mex reads the first bytes of the value argument as an element of the input's class).
+// stitching blending and the point detection. The Python side passes the value already in the
+// input's class (the mex's mxGetScalar, then (float) for single input).
 #include "stitch.hpp"
 
 #include <cmath>

@@ -368,8 +368,24 @@
      "cases": null,
      "fate": []
     },
+    "clusterFileCheckOfABatchOfOnePath": {
+     "pins": "the task of a batch of one path (e.g., the last batch of 50001 files) wrote no result, so its check never finished",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
     "eachBatchIsCheckedByItsLastFile": {
      "pins": "the job framework counts a batch as done once its checked file exists, and cancels the remaining jobs when all are; the second to last file of each batch was checked, so the last one could be cut short, and a last batch of fewer files had none",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "failedClusterFileChecksAreCheckedHere": {
+     "pins": "a batch whose check failed in its jobs (here every batch: a framework spy that runs nothing) made the result a cell of empties, on which the rsync wrapper failed; such batches are checked in this MATLAB, with a warning",
      "tags": [
       "Unit"
      ],
@@ -396,7 +412,9 @@
    "reopened": [
     "clusterFileCheckFindsTheFiles",
     "largeCopiesPassTheirSettingsToTheClusterCheck",
-    "namesWithSpacesCommasAndQuotesAreCopied"
+    "namesWithSpacesCommasAndQuotesAreCopied",
+    "clusterFileCheckOfABatchOfOnePath",
+    "failedClusterFileChecksAreCheckedHere"
    ]
   },
   "ResampleTest": {

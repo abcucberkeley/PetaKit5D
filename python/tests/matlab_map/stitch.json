@@ -1,6 +1,38 @@
 {
  "folder": "stitch",
  "classes": {
+  "FeatherBlendingTest": {
+   "file": "tests/stitch/FeatherBlendingTest.m",
+   "pins": "feather_blending_3d, which blends the tiles of a batch of processStitchBlock by their distance maps: the whole batch, or, for a batch that isn't full, the common overlap region of the tiles, written at bbox into the block that holds the tiles. The mex takes uint16 and single tiles with single weights; the MATLAB code blends the others.",
+   "category": "data",
+   "owner": "K04",
+   "phase": 1,
+   "finished": false,
+   "fate": [],
+   "methods": {
+    "overlapIsBlendedIntoTheBlock": {
+     "pins": "the MATLAB code wrote its blend (single) into a copy of a block of another class (indexing4d_mex rejects the mix), which it dropped: the block came back with the tiles' values, so uint8 tiles in a batch that isn't full weren't blended",
+     "tags": [
+      "Unit"
+     ],
+     "cases": [
+      "classes=uint8Tiles",
+      "classes=doubleTiles",
+      "classes=uint16TilesDoubleWeights",
+      "classes=singleTilesDoubleWeights"
+     ],
+     "fate": []
+    },
+    "overlapIsBlendedIntoTheBlockWithoutIndexingMex": {
+     "pins": "without indexing4d_mex (a stub that errors) indexing4d writes into a copy of the block, which must be kept",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    }
+   }
+  },
   "ImageListGenerationTest": {
    "file": "tests/stitch/ImageListGenerationTest.m",
    "pins": "XR_generate_image_list_wrapper: image list csv files (stage coordinates for stitching) from tile lists, tile positions, and encoder slice lists. The tile_position cases follow demo_phase_and_2photon_stitching.m and check that the generated list stitches synthetic tiles back to the ground truth.",
@@ -28,6 +60,14 @@
     },
     "tileListCoordinates": {
      "pins": "tile list coordinates",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "tileListOfASingleTile": {
+     "pins": "the minimum tile index of a single tile was the minimum over its axes, so the tile was placed away from the origin",
      "tags": [
       "Unit"
      ],
@@ -65,8 +105,29 @@
      ],
      "cases": null,
      "fate": []
+    },
+    "tilePositionsOf2DZarrTiles": {
+     "pins": "the size of a 2D zarr tile (here made without the z axis createzarr adds by default; the list reads only its header) is [ny, nx], that of a 2D tiff [ny, nx, 1], and indexing it as [y, x, z] errored; the list must be that of the same tiles as tiff files",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "tilePositionsOfASingleTile": {
+     "pins": "the mode of the sizes of a single tile (a 1 x 3 row) was a single number, and indexing it as [y, x, z] errored",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
     }
-   }
+   },
+   "reopened": [
+    "tileListOfASingleTile",
+    "tilePositionsOf2DZarrTiles",
+    "tilePositionsOfASingleTile"
+   ]
   },
   "PhaseFlatFieldCorrectionTest": {
    "file": "tests/stitch/PhaseFlatFieldCorrectionTest.m",
@@ -89,13 +150,21 @@
   },
   "RegistrationXcorrTest": {
    "file": "tests/stitch/RegistrationXcorrTest.m",
-   "pins": "the normalized cross-correlation of the registration in the window of the max shifts (normxcorr3_max_shift -> normxcorr3_fast with a bbox -> normxcorr3_window_mex on Linux) against the computation of the whole output: the mex runs the same FFTW transforms as MATLAB's fftn and ifftn and the recurrences of integral_image_3d_mex, only for the window, so every value is the same bit for bit (also si...",
+   "pins": "the normalized cross-correlation of the registration in the window of the max shifts (normxcorr3_max_shift -> normxcorr3_fast with a bbox -> normxcorr3_window_mex on Linux) against the computation of the whole output: the mex runs the same FFTW transforms as MATLAB's fftn and ifftn and the cumulative sums of the window sums in double, only for the window, so every value is the same bit for bit...",
    "category": "data",
    "owner": "S04",
    "phase": 1,
    "finished": false,
    "fate": [],
    "methods": {
+    "faintRegionsHaveTheirNCC": {
+     "pins": "windows of a faint region (a contrast of a few counts next to hundreds) are not flat to single precision: their NCC is that of double precision, not 0",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
     "fastFFTFindsTheSameShift": {
      "pins": "fast fftfinds the same shift",
      "tags": [
@@ -122,8 +191,24 @@
      ],
      "fate": []
     },
+    "flatWindowsAreZero": {
+     "pins": "windows of an exactly flat region (as the background of flat-field corrected data) have no NCC: 0, not the rounding errors of their sums divided by each other (here, with a wide range of intensities, up to about 4.5). The others are the NCC of double precision.",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
     "linesAreGroupedAsMatlabDoes": {
      "pins": "'fft1' transforms the columns as MATLAB's fft(X, [], 1) does: in its parallel mode, MATLAB halves the columns until a piece has at most 32, then runs each piece in groups of four from its start and the rest alone; without it (or when n * N * (bits of n) <= 98304), the whole range so. MATLAB's own fft of a piece of at most 32 columns, or of four or one, runs as one group (or alone), which gives...",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "lowContrastOnALargeOffset": {
+     "pins": "data with a large offset (16-bit data shifted by 2^15) and a contrast of a few counts: in single precision the correlation and the window sums of the NCC kept the offset, whose rounding was larger than the NCC itself (|NCC| up to about 10, the peak at a wrong shift). The NCC is now that of double precision.",
      "tags": [
       "Unit"
      ],
@@ -147,7 +232,7 @@
      "fate": []
     },
     "mexPartsEqualMatlabs": {
-     "pins": "the mex's correlation and integral images equal those of the MATLAB code (fftn/ifftn, integral_image_3d_mex) in the window",
+     "pins": "the mex's correlation and window sums equal those of the MATLAB code (fftn/ifftn, cumulative sums in double) in the window",
      "tags": [
       "Unit"
      ],
@@ -182,6 +267,14 @@
     },
     "unsupportedCallsRunTheMatlabCode": {
      "pins": "double data runs the MATLAB code (by design, without a fallback record of the mex)",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "validAndSameShapes": {
+     "pins": "'valid' started along x at the template's size along y, which gave a wrong part (and size) for templates of different sizes along y and x",
      "tags": [
       "Unit"
      ],
@@ -357,15 +450,103 @@
   },
   "StitchShiftAssignmentTest": {
    "file": "tests/stitch/StitchShiftAssignmentTest.m",
-   "pins": "stitch_global_grid_assignment (shiftMethod 'grid', the default): the tile shifts from the pairwise registration shifts, by constrained least squares. Above 400 tiles it uses sparse matrices.",
+   "pins": "stitch_global_grid_assignment (shiftMethod 'grid', the default): the tile shifts from the pairwise registration shifts, by constrained least squares (stitch_assignment_lsqlin). Above 400 tiles it uses sparse matrices. Also stitch_global_assignment ('global') and stitch_global_group_assignment ('group').",
    "category": "data",
    "owner": "S05",
    "phase": 1,
    "finished": false,
    "fate": [],
    "methods": {
+    "activeBoundsGiveTheExactOptimum": {
+     "pins": "with a bound active, the shifts are the exact optimum: lsqlin's solution refined on its active set (lsqlin alone stops about 1e-8 away). Three tiles in a row, the first pair measured 10 voxels apart with a bound of u: the optimum along x is [-2 u, u, u] / 3, here 1e-8 above a half integer.",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "allPairsBelowTheThresholdKeepTheStagePositions": {
+     "pins": "lsqlin errored without rows in its objective",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "boundsHoldForTheirOwnPairs": {
+     "pins": "the bounds come in the order of max_xcorr_mat (the pairs by first, then second tile); they bounded the pairs of find(overlap_matrix)'s order instead, so a pair whose overlap allows only 4 voxels got another pair's bounds",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "boundsOfAFreeTileHoldItsNeighbors": {
+     "pins": "a free tile that overlaps two tiles within 1 voxel each limits how far apart they are: the least squares alone (10 voxels apart) can't place it, so the bounded solve gives them 2 voxels apart and the free tile in between",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "freeTileHeldByItsBounds": {
+     "pins": "a free tile whose stage position relative to its neighbor is outside its bounds goes to the nearest bound: three tiles in a row, the last free, its pair bounded to 2 .. 8 voxels in x",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "freeTilesKeepTheirStagePositionsRelativeToTheirNeighbors": {
+     "pins": "tiles whose pairs are all below the threshold are free in the objective: they were where lsqlin's iterations stopped. They keep their stage positions relative to their neighbors: each free tile (no two are neighbors) gets the mean of its neighbors' shifts, also with asymmetric bounds (here -20 .. 8 voxels), the other tiles are at the optimum, all at mean zero.",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "groupsWithoutPairsAboveTheThresholdKeepTheirStagePositions": {
+     "pins": "the group method (shiftMethod 'group') errored for a group without a pair above the threshold to another group (it has no nodes in step 2), or in lsqlin if no group had one. Six tiles in a row in three groups of two: pairs (1, 2), (3, 4) and (5, 6) within the groups, (2, 3) and (4, 5) between them.",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "integerShiftsRoundAlike": {
+     "pins": "2 x 2 tiles with integer pairwise shifts, one tile 2 voxels off in x: at mean zero the exact shifts lie on half integers (0.5 and -1.5) and round alike, so that the tile stays 2 voxels off relative to the others (they rounded away from zero, 1 and -2)",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
     "largeGridMatchesDenseSolver": {
      "pins": "the sparse solution is moved to mean zero, as the dense solver leaves it, so the rounded shifts agree except rarely by 1",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "onePairOfTiles": {
+     "pins": "one pair (one row in the objective and in each half of the bounds): the second tile moves by the pair's shift (even, so that the tiles at mean zero, at -shift / 2 and shift / 2, round exactly)",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "separateGroupsOfALargeGridHaveMeanZeroEach": {
+     "pins": "above 400 tiles (sparse form) the solution of two groups of overlapping tiles was moved to one mean, with each group's constant arbitrary: each group is at mean zero, its shifts (relative to its first tile) those of the group alone",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "shiftsRoundTheExactOptimumAtAnyThreadCount": {
+     "pins": "the shifts are the exact optimum of the group (at mean zero) rounded, at 1, 2, 4 and 24 threads: lsqlin's solution is inexact and drifted along the group's constant by rounding noise that depended on the thread count. Here the exact optimum lies 1e-7 above or below half integers.",
      "tags": [
       "Unit"
      ],
@@ -486,6 +667,14 @@
     },
     "featherBlendingOfUint8Tiles": {
      "pins": "the feather blending mex takes uint16 and single tiles; uint8 tiles (kept as uint8 without save16bit) are blended by the MATLAB code, and its NaNs replaced in replace_nan_with_value (the MATLAB code where it isn't built)",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "featherBlendingOfUint8TilesInABatchThatIsNotFull": {
+     "pins": "two tiles with a narrow overlap: a batch that isn't full, whose overlap is blended into the block of the tiles. uint8 tiles kept the second tile's values there; they must blend as the same tiles in uint16 (the mex, which may round a voxel the other way where the compiler fuses its multiply-adds). Tile 2 is offset by 100, so blended voxels have values of neither tile.",
      "tags": [
       "Integration"
      ],
