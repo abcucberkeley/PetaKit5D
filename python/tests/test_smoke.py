@@ -62,7 +62,10 @@ def test_core_extension_builds():
     core = _ext.load("core")
     info = core.build_info()
     assert info["compiler"] != "unknown"
-    assert info["openmp_version"] >= 201107, info  # OpenMP 3.1: collapse, min/max reductions
+    # OpenMP 3.1: collapse, min/max reductions; MSVC's /openmp:llvm has them but keeps _OPENMP
+    # at 2.0's 200203
+    msvc_llvm = info["openmp"] == "MSVC /openmp:llvm"
+    assert info["openmp_version"] >= (200203 if msvc_llvm else 201107), info
 
 
 def test_modules_load_after_the_other_libraries(tmp_path):

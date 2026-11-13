@@ -1,0 +1,4 @@
+# Check out every file byte for byte, also where git converts line endings (core.autocrlf on
+# Windows): the oracle cases hash MATLAB helper files and input files, and the tests compare
+# text outputs with stored references, so a CRLF checkout changed their keys and results.
+* -text

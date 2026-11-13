@@ -50,15 +50,35 @@ Windows speed matters.
 | `matlabcompat.neighbors` sph2cart | Inf * 0 | an Inf radius at a zero sine or cosine | x86's NaN |
 | `stitch.geometry` batch grid | 0 / 0 | a stitched size with a zero | x86's NaN |
 | `kernels.stitch` feather blending, MATLAB's code | 0 / 0, Inf * 0, Inf - Inf | a voxel without weight; Inf data or weights | x86's NaN |
-| tile blending (C++ `stitch/tile_blending.cpp`, its last step `nv .* (1 - z) + nvf .* z`) | Inf * 0 | the tiles hold Inf | open (E04): ARM's NaN |
-| feather blending (C++ `stitch/feather_blending.cpp`) | Inf * 0, Inf / Inf | Inf weights | open (E04): ARM's NaN |
-| flat-field correction (C++ `flatfield/kernels.inc`) | Inf - Inf, 0 / 0 | Inf in the data, the background or the flat field, or a zero flat field | open (E04): ARM's NaN |
+| tile blending (C++ `stitch/tile_blending.cpp`: 'none', and the last step `nv .* (1 - z) + nvf .* z`) | Inf * 0 | the tiles hold Inf | x86's NaN |
+| feather blending (C++ `stitch/feather_blending.cpp`) | Inf * 0, Inf / Inf | Inf weights | x86's NaN |
+| flat-field correction (C++ `flatfield/kernels.inc`, and its NumPy reference) | Inf - Inf | Inf in the data and the background | x86's NaN |
+| scale and offset (C++ `core/ops/ops_convert.cpp`) | Inf * 0, Inf - Inf | Inf data with a zero scale or an infinite offset | x86's NaN |
 | not covered by tests yet: decon's ratio `x ./ max(v, eps)`, the interpolations (warp, deskew), FFTs of data with Inf | Inf / Inf, Inf * 0 | the data hold Inf | to check (E04) |
 
   Real microscope data (uint16) hold no Inf or NaN, so outside the feather blending of
-  MATLAB's code these NaNs come from special values in float inputs. The C++ kernels' open
-  cases need a per-site rewrite that compiles to nothing on x86-64 (no hardware mode gives a
-  negative default NaN: AArch64's FPCR.DN gives the positive one and drops payloads).
+  MATLAB's code these NaNs come from special values in float inputs. In C++ the step is
+  `PK5D_X86_NAN(r, a, b)` (`cpp/common/pk5d/fpexact.hpp`), which expands to `r` except on ARM,
+  so the x86-64 builds compile the same code (checked by disassembly). No hardware mode gives a
+  negative default NaN: AArch64's FPCR.DN gives the positive one and drops payloads.
+- **64-bit integers to single.** AArch64 compilers convert vectors of int64 to float through
+  double, which rounds twice above 2^53 (2^53 + 2^29 + 1 became 2^53, not 2^53 + 2^30). The
+  port's cast (`kernels.ops.convert(x, 'single', mode='cast')`) rounds once on every processor
+  (`pk5d::int64_to_float`); MATLAB's `single()` rounds through double on purpose and still
+  does. NumPy's `astype(np.float32)` of int64 rounds twice on ARM too: don't use it where MATLAB
+  rounds once. Tests: tests/platform/test_conversions.py.
+- **MSVC's selects.** MSVC (19.5x, also with `/fp:strict`) compiles `a >= b ? a : b` and
+  `a <= b ? a : b` to `maxss`/`minss`, which return b on a tie: `max(-0, 0)` gave +0 where
+  MATLAB keeps -0 (decon's acceleration step, the flat-field correction, the clamps of
+  `kernels.ops`). `PK5D_GE_SELECT` and `PK5D_LE_SELECT` make the select on the bits under MSVC
+  and are the plain expressions elsewhere.
+- **Line ends.** git on Windows checks text files out with CRLF by default (core.autocrlf), which
+  changed the bytes of the MATLAB helper and harness files that oracle keys hash.
+  `python/.gitattributes` (`* -text`) checks every file out as committed. Text files that tests
+  or the port write must be written with `newline="\n"` (Python's text mode writes CRLF on
+  Windows).
+- **OpenMP version.** MSVC's `/openmp:llvm` has OpenMP 3.1's features but reports `_OPENMP`
+  200203 (2.0).
 - **The C library's elementary functions** (exp, log, sin, pow, hypot) differ in the last bit
   between glibc versions, Apple's libm and the UCRT. Where MATLAB's bits matter the port uses
   its own fdlibm-based functions (`petakit5d.matlabcompat.elementary`), not libm or NumPy's

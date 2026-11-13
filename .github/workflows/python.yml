@@ -94,6 +94,19 @@ jobs:
                   print("NumPy's OpenBLAS:", os.path.basename(f), e)
           EOF
 
+      # what goes into the keys of oracle cases whose keys differed on Windows (input files
+      # written there, harness files checked out there), to compare with Linux's
+      - name: Oracle key probe (Windows)
+        if: runner.os == 'Windows'
+        continue-on-error: true
+        run: >
+          python tests/platform/key_probe.py
+          tests/stitch/test_imagelist.py::parse_two_cams_auto_primary
+          tests/pipeline/test_filenames.py::dataset_two_channels
+          tests/tools/test_mip.py::zarr.uint16.slabs
+          tests/testing/test_oracle.py::identity_int8_row
+          tests/io/test_convert.py::t2z.existing_kept
+
       - name: Tests
         if: runner.os != 'macOS'
         run: python -m pytest -v --timeout=900
