@@ -104,6 +104,31 @@ def test_mkdir_recursive_group_write(tmp_path):
     assert paths.mkdir_recursive(str(target)) == 1  # existing folders are fine
 
 
+def test_mkdir_recursive_tolerates_a_folder_made_concurrently(tmp_path, monkeypatch):
+    # another job makes the folder between the isdir check and the mkdir
+    target = tmp_path / "a" / "b"
+    real_isdir = os.path.isdir
+    seen = set()
+
+    def isdir_then_race(p):
+        p = os.fspath(p)
+        if p == os.fspath(target) and p not in seen:
+            seen.add(p)
+            os.mkdir(p)  # the other job's mkdir
+            return False
+        return real_isdir(p)
+
+    monkeypatch.setattr(paths.os.path, "isdir", isdir_then_race)
+    assert paths.mkdir_recursive(str(target)) == 1
+    assert real_isdir(target)
+
+
+def test_mkdir_recursive_still_raises_when_a_file_is_in_the_way(tmp_path):
+    (tmp_path / "f").write_text("x", newline="\n")
+    with pytest.raises(FileExistsError):
+        paths.mkdir_recursive(str(tmp_path / "f"))
+
+
 def test_mkdir_recursive_relative_path_starts_at_the_root(monkeypatch):
     # MATLAB's strjoin({'', 'rel'}, '/') makes 'rel/sub' into '/rel', '/rel/sub' (kept)
     made = []

@@ -249,7 +249,14 @@ def mkdir_recursive(full_path: str | os.PathLike, group_write: bool = False) -> 
         target = os.path.expanduser(cur)
         if os.path.isdir(target):
             continue
-        os.mkdir(target)
+        try:
+            os.mkdir(target)
+        except FileExistsError:
+            # another process made it after the check (parallel jobs make the same folders);
+            # MATLAB's mkdir doesn't fail on a folder that exists
+            if not os.path.isdir(target):
+                raise
+            continue
         if group_write and not _IS_PC:
             os.chmod(target, os.stat(target).st_mode | stat.S_IWGRP)
     return 1
