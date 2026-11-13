@@ -1,0 +1,43 @@
+{
+ "name": "s03_geometry",
+ "description": "S03: the stitching geometry of XR_stitching_frame_zarr_dev_v1 (orders, voxel sizes, coordinates, cuboids, both overlap passes and the half-overlap regions, canvas, batch grid, tile boxes) for 1,600 DSR tiles (40 x 40) with registration and feather blending: MATLAB's lines (an excerpt run as a function) against prepare_layout + place_tiles.",
+ "repeats": 7,
+ "warmup": 1,
+ "variants": [
+  {
+   "id": "ml",
+   "impl": "matlab",
+   "paths": [
+    "benchmarks/stitch",
+    "benchmarks/common"
+   ],
+   "code": "s03_geometry_ml(40, 5)"
+  },
+  {
+   "id": "py",
+   "impl": "python",
+   "script": "benchmarks/stitch/s03_geometry.py",
+   "args": [
+    "--n",
+    "40",
+    "--repeats",
+    "5"
+   ]
+  }
+ ],
+ "compare": [
+  {
+   "a": "py",
+   "b": "ml"
+  }
+ ],
+ "gate": {
+  "ratio_max": 1.05,
+  "threads": [
+   1
+  ],
+  "metrics": [
+   "op:geometry_1600@*"
+  ]
+ }
+}
