@@ -95,7 +95,18 @@ jobs:
           EOF
 
       - name: Tests
+        if: runner.os != 'macOS'
         run: python -m pytest -v --timeout=900
+
+      # macOS: with the cpp-tiff and cpp-zarr 1.7.3 wheels, whichever is imported second crashes
+      # on its first write (weak C++ symbols merged across the two modules; fixed in cpp-zarr's
+      # next release). Until then the tests run in workers, so that a crash ends only its worker
+      # and the rest of the suite still runs.
+      - name: Tests (macOS, in workers)
+        if: runner.os == 'macOS'
+        run: |
+          python -m pip install pytest-xdist
+          python -m pytest -v --timeout=900 -n 3 --max-worker-restart=2000
 
   lint:
     name: ruff
