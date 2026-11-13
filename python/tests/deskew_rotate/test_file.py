@@ -481,6 +481,28 @@ def make_band(shape, step, width, start, kind="single", reverse=False, seed=0, f
     return Value(make)
 
 
+def make_fringe(mode, shape=(24, 19, 70), step=1.5627, width=30, start=2):
+    """a band of positive values with a column of negative values on both ends of each slice,
+    as a cubic deskew's ringing: in every row (``'neg'``: the columns' maximum along y is
+    negative) or in every other row with zeros between (``'mixed'``: the maximum is 0)"""
+
+    def make():
+        nz, ny, nx = shape
+        rng = CounterRNG(7, f"fringe/{mode}/{shape}")
+        vals = rng.uniform(shape, np.float32) * np.float32(1000) + np.float32(1)
+        neg = -(rng.uniform(shape, np.float32) * np.float32(0.5) + np.float32(0.01))
+        v = np.zeros(shape, dtype=np.float32)
+        rows = slice(None) if mode == "neg" else slice(0, None, 2)
+        for k in range(nz):
+            x0 = start + int(np.floor(k * step))
+            v[k, :, x0 : x0 + width] = vals[k, :, x0 : x0 + width]
+            for x in (x0 - 1, x0 + width):
+                v[k, rows, x] = neg[k, rows, x]
+        return to_matlab(v)
+
+    return Value(make)
+
+
 def make_box(shape, box, kind="single", seed=0):
     def make():
         rng = CounterRNG(seed, f"rbox/{shape}/{box}")
@@ -536,6 +558,9 @@ def _rotcrop_cases() -> list[Case]:
         ("box.edge", make_box((21, 13, 61), (0, 0, 0, 21, 13, 40)), SKEW, z2, False),
         ("box.off", make_box((21, 13, 61), (2, 4, 20, 15, 9, 61), "uint16"), SKEW, z2, False),
         ("full", make_box((21, 13, 61), (0, 0, 0, 21, 13, 61)), SKEW, z2, False),
+        # a column is data where its maximum along y is not 0
+        ("fringe.mixed", make_fringe("mixed"), SKEW, z2, False),
+        ("fringe.neg", make_fringe("neg"), SKEW, z2, False),
     ):
         cases.append(rot_case(cid, make, ang, zx, rev, "Crop", True, py={"crop": True}))
     band = make_band(sh, s2, 30, 0)
@@ -577,6 +602,45 @@ def _rotcrop_cases() -> list[Case]:
             "Interp",
             "cubic",
             py={"crop": True, "interp": "cubic"},
+        ),
+        # an objective scan is never cropped (RLdecon's objective-scan rotation)
+        rot_case(
+            "band.objective",
+            band,
+            SKEW,
+            z2,
+            False,
+            "Crop",
+            True,
+            "objectiveScan",
+            True,
+            py={"crop": True, "objective_scan": True},
+        ),
+        rot_case(
+            "band.objective_cubic",
+            band,
+            SKEW,
+            z2,
+            True,
+            "Crop",
+            True,
+            "objectiveScan",
+            True,
+            "Interp",
+            "cubic",
+            py={"crop": True, "objective_scan": True, "interp": "cubic"},
+        ),
+        rot_case(
+            "band.objective_false",
+            band,
+            SKEW,
+            z2,
+            False,
+            "Crop",
+            True,
+            "objectiveScan",
+            False,
+            py={"crop": True, "objective_scan": False},
         ),
         rot_case(
             "err.voxel",

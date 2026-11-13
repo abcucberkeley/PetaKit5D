@@ -557,8 +557,10 @@ def _crop_out_size(
     (the default size) where it finds no edge.
 
     Found from MATLAB's behaviour (black-box probes on 132 inputs: deskewed volumes, boxes and
-    parallelograms of data in zeros, both scan directions, angles, z ratios and classes): in
-    each z slice, the x profile of the data (any voxel along y not 0; NaN counts as data) has
+    parallelograms of data in zeros, both scan directions, angles, z ratios and classes, and a
+    deskewed decon volume with negative cubic ringing): in each z slice, a column x is data
+    where the maximum along y is not 0 (MATLAB's ``max``: NaN omitted unless all NaN), so a
+    column of negative values and zeros is not, one of negatives only is; the profile has
     an edge between voxels i and i + 1 wherever it changes, at x = i + 1/2 (1-based); the edge
     points ``(x, z)`` of all slices are rotated as the volume is (z scaled by ``zx_ratio``, by
     ``-angle`` for reverse scans), and each output size is ``round(extent) - 4`` in x and z;
@@ -567,7 +569,13 @@ def _crop_out_size(
     from petakit5d.core.dtypes import mround
     from petakit5d.deskew_rotate.geometry import _cos, _sin
 
-    prof = np.asarray(v != 0).any(axis=1)  # (z, x)
+    a = np.asarray(v)
+    if a.dtype.kind == "f":
+        with np.errstate(invalid="ignore"):
+            mx = np.fmax.reduce(a, axis=1)  # NaN omitted; all NaN gives NaN
+    else:
+        mx = a.max(axis=1)
+    prof = mx != 0  # (z, x)
     ch = np.diff(prof.astype(np.int8), axis=1) != 0
     zs, xs = np.nonzero(ch)
     if zs.size == 0:
@@ -597,7 +605,9 @@ def _crop_out_size(
         "Without outSize, a smaller output size from the zero regions of the data.",
     ),
     Param("resample", "@isnumeric", "Resample factor (z, y, x).", convert="resample_xyz"),
-    Param("ObjectiveScan", "@islogical", "Accepted; does not change the result (as in MATLAB)."),
+    Param(
+        "ObjectiveScan", "@islogical", "Turns Crop off (otherwise changes nothing, as in MATLAB)."
+    ),
     Param(
         "outSize", "@isnumeric", "Output size (nz, ny, nx) before resampling.", convert="size_yxz"
     ),
@@ -626,19 +636,19 @@ def rotate_volume(
     sin|angle|)`` in z, each divided by its factor and rounded with ``resample``; the class is
     the input's (``imwarp``, ``interp`` 'linear' or 'cubic', 0 outside). ``crop`` without
     ``out_size`` takes a smaller output size from where the data's zero regions are
-    (``_crop_out_size``; the same transform, the output centred as before); ``objective_scan``
-    is accepted and changes nothing, as in MATLAB. A new implementation from the math and
+    (``_crop_out_size``; the same transform, the output centred as before), except for an
+    ``objective_scan``, which MATLAB never crops (measured; otherwise the flag changes
+    nothing). A new implementation from the math and
     MATLAB's behaviour: bit for bit MATLAB's ``rotateFrame3D`` in the oracle cases.
     """
     from petakit5d.deskew_rotate.geometry import rotate_geometry
 
-    _ = objective_scan
     method = _check_interp_method(interp)
     v = _as_input(vol)
     shape = v.shape if v.ndim == 3 else (1, *v.shape)
     rs = None if resample is None or np.size(resample) == 0 else resample
     osz = None if out_size is None or np.size(out_size) == 0 else out_size
-    if osz is None and _logical(crop):
+    if osz is None and _logical(crop) and not _logical(objective_scan):
         osz = _crop_out_size(
             v if v.ndim == 3 else v[np.newaxis], float(angle), float(zx_ratio), _logical(reverse)
         )

@@ -745,7 +745,7 @@ Rotate a deskewed volume about y into the coverslip frame (``rotateFrame3D``).
 | `reverse` | `reverse` | opt |  | `false` | `False` | `@islogical` | Reverse scan direction. |
 | `Crop` | `crop` | par |  | `true` | `True` | `@islogical` | Without outSize, a smaller output size from the zero regions of the data. |
 | `resample` | `resample` | par | resample_xyz | `[]` | `None` | `@isnumeric` | Resample factor (z, y, x). |
-| `ObjectiveScan` | `objective_scan` | par |  | `false` | `False` | `@islogical` | Accepted; does not change the result (as in MATLAB). |
+| `ObjectiveScan` | `objective_scan` | par |  | `false` | `False` | `@islogical` | Turns Crop off (otherwise changes nothing, as in MATLAB). |
 | `outSize` | `out_size` | par | size_yxz | `[]` | `None` | `@isnumeric` | Output size (nz, ny, nx) before resampling. |
 | `Interp` | `interp` | par |  | `'linear'` | `'linear'` | `@(x) any(strcmpi(x, {'cubic', 'linear'}))` | Interpolation: 'linear' or 'cubic'. |
 
