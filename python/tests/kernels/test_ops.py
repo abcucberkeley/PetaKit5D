@@ -1029,3 +1029,135 @@ def test_matlab_semantics_spot_checks():
     assert list(ops.compare(i, "gt", 2.0**53)) == [True, False]
     assert list(ops.compare(i, "eq", -(2.0**63))) == [False, True]
     assert _same(ops.sum_double(np.arange(5.0)), 10.0)
+
+
+# -- MATLAB's sums in single and double, the slice rule, var's sum (N05's matlabcompat) ---------
+
+
+def _reference(fn, *args, **kwargs):
+    """fn computed by matlabcompat's NumPy code (the kernels hidden)"""
+    saved = ops._core
+    ops._core = lambda: None
+    try:
+        return fn(*args, **kwargs)
+    finally:
+        ops._core = saved
+
+
+def _wide_values(shape, dtype, seed):
+    """values whose sums depend on the order (magnitudes 2^-20 to 2^20, some zeros)"""
+    rng = CounterRNG(12, f"ops/reduce/{seed}")
+    n = int(np.prod(shape))
+    v = rng.normal(n).reshape(-1) * 2.0 ** rng.integers(-20, 20, n).reshape(-1)
+    v[::17] = 0.0
+    if np.dtype(dtype).kind in "iub":
+        v = np.abs(v) % 1000
+    return np.ascontiguousarray(v.reshape(shape).astype(dtype))
+
+
+_REDUCE_SHAPES = [
+    (5, 7, 3),  # sequential and four-lane sizes
+    (3, 211, 223),  # four lanes over the whole, x slices of 223
+    (7, 64, 300),  # blocks over the whole
+    (2, 5000, 3),  # ny above 4,096
+    (3, 15, 2048),  # x slices of 2,048: chunks of 1,024
+    (2, 16, 1025),  # x slices of 1,025 in a large array (chunks)
+    (1025, 4, 6),  # z slices of 1,025 (chunks), inner 24
+    (2049, 2, 3),  # z slices of 2,049 (chunks)
+    (64, 64),  # an image
+    (89001,),  # a row
+]
+
+
+@needs_ext
+@pytest.mark.parametrize("shape", _REDUCE_SHAPES, ids=lambda s: "x".join(map(str, s)))
+@pytest.mark.parametrize("cls", ["single", "double", "uint16", "logical"])
+def test_reduce_kernels_equal_matlabcompat_numpy(shape, cls):
+    from petakit5d.matlabcompat import reduce as R
+    from petakit5d.matlabcompat import stats as S
+
+    x = _wide_values(shape, NP[cls], f"{cls}/{shape}")
+    axes = [None] + list(range(-1, -len(shape) - 1, -1))
+    for ax in axes:
+        for fn, kw in ((R.sum, {}), (R.mean, {}), (R.sum, {"outtype": "double"})):
+            got = fn(x, ax, num_threads=3, **kw)
+            want = _reference(fn, x, ax, num_threads=1, **kw)
+            assert _bitwise(np.asarray(got), np.asarray(want)), (fn.__name__, ax, kw)
+        if cls in ("single", "double"):
+            for fn in (S.var, S.std):
+                got = fn(x, 0, ax, num_threads=5)
+                want = _reference(fn, x, 0, ax, num_threads=1)
+                assert _bitwise(np.asarray(got), np.asarray(want)), (fn.__name__, ax)
+    # MATLAB's own layout (a Fortran array; axis k is MATLAB's dimension k + 1)
+    m = to_matlab(x) if x.ndim >= 2 else x
+    for ax in [None] + list(range(m.ndim)):
+        got = R.sum(m, ax, matlab_layout=True, num_threads=2)
+        want = _reference(R.sum, m, ax, matlab_layout=True, num_threads=1)
+        assert _bitwise(np.asarray(got), np.asarray(want)), ("matlab_layout", ax)
+
+
+@needs_ext
+@pytest.mark.parametrize("nt", [1, 2, 7])
+def test_reduce_kernels_do_not_depend_on_threads(nt):
+    from petakit5d.matlabcompat import reduce as R
+    from petakit5d.matlabcompat import stats as S
+
+    x = _wide_values((9, 131, 257), np.float32, "threads")
+    for ax in (None, -1, -3):
+        assert _bitwise(
+            np.asarray(R.sum(x, ax, num_threads=nt)), np.asarray(R.sum(x, ax, num_threads=1))
+        )
+        assert _bitwise(
+            np.asarray(S.std(x, 0, ax, num_threads=nt)), np.asarray(S.std(x, 0, ax, num_threads=1))
+        )
+
+
+@needs_ext
+def test_reduce_kernels_nan_inputs_give_matlabcompat_results():
+    from petakit5d.matlabcompat import reduce as R
+    from petakit5d.matlabcompat import stats as S
+
+    x = _wide_values((4, 50, 600), np.float32, "nan")
+    x[1, 3, 5] = dtypes.NAN
+    x[2, 7, 9] = np.float32(np.inf)
+    x[3, 9, 11] = -np.float32(np.inf)
+    for ax in (None, -1, -3):
+        for fn in (R.sum, R.mean, S.var):
+            got = fn(x, ax) if fn is not S.var else fn(x, 0, ax)
+            want = _reference(fn, x, ax) if fn is not S.var else _reference(fn, x, 0, ax)
+            assert _bitwise(np.asarray(got), np.asarray(want)), (fn.__name__, ax)
+
+
+@needs_ext
+@pytest.mark.parametrize(
+    "shape", [(3, 2500, 37), (37, 2501, 1), (5, 3, 1), (19, 1030, 3), (33, 2048, 1)]
+)
+def test_slice_kernel_chunks_and_center(shape):
+    # tiles along i, groups of rows (4 x 4 transposes for an inner size of 1), chunk boundaries
+    rng = CounterRNG(13, f"ops/slices/{shape}")
+    x3 = (rng.normal(int(np.prod(shape))).reshape(shape) * 2.0**10).astype(np.float32)
+    for chunked in (False, True):
+        for single in (True, False):
+            got = ops.sum_slices(x3, single=single, chunked=chunked, num_threads=4)
+            dt = np.float32 if single else np.float64
+            C = 1024 if chunked else x3.shape[1]
+            total = None
+            for c0 in range(0, x3.shape[1], C):
+                part = x3[:, c0].astype(dt)
+                for r in range(c0 + 1, min(c0 + C, x3.shape[1])):
+                    part = np.add(part, x3[:, r], dtype=dt)
+                total = part if total is None else np.add(total, part, dtype=dt)
+            assert _bitwise(got, total), (chunked, single)
+    q = np.ascontiguousarray(x3.mean(axis=1), dtype=np.float32)
+    got = ops.sum_slices(x3, single=True, chunked=True, center=q, num_threads=3)
+    d = np.abs(x3 - q[:, None, :])
+    sq = d * d
+    total = None
+    for c0 in range(0, x3.shape[1], 1024):
+        part = sq[:, c0].copy()
+        for r in range(c0 + 1, min(c0 + 1024, x3.shape[1])):
+            part = part + sq[:, r]
+        total = part if total is None else total + part
+    assert _bitwise(got, total)
+    # no slices: 0
+    assert not ops.sum_slices(np.zeros((2, 0, 3), np.float32), single=True, chunked=False).any()

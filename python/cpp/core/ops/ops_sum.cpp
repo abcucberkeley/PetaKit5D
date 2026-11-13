@@ -1,13 +1,18 @@
-// sum(x(:), 'double') in MATLAB's order at one thread, at any thread count (K08; the order of
-// decon_sum_double and decon_lucy_accel_mex of the MATLAB code).
+// MATLAB's vector rule of sums in its order at one thread, at any thread count (K08; the order
+// of decon_sum_double and decon_lucy_accel_mex of the MATLAB code, and of MATLAB's sum, mean and
+// var of single and double data, N05's docs/decisions/0005-sums-and-math-library.md).
 //
-// ops_sum_double(x, num_threads): x 1-D contiguous, summed in its order (MATLAB's linear order
-//   of a MATLAB-layout array, or a vector).
-// ops_sum_double_yx(x, num_threads): x (planes, ny, nx) C-contiguous, the (z, y, x) volume of
-//   the port; summed in MATLAB's linear order t = y + ny * (x + nx * plane) (y fastest): tiles
-//   of columns transposed into a scratch per thread (yx_block_sums), strided reads below
-//   89000 elements. It costs a transposing read: 1.6 to 1.8 times the contiguous sum at 1
-//   and 4 threads (K08's report); a kernel that holds MATLAB's layout sums it contiguously.
+// ops_sum_double(x, num_threads): x 1-D contiguous, sum(x(:), 'double') in its order (MATLAB's
+//   linear order of a MATLAB-layout array, or a vector), with MATLAB's NaN payloads.
+// ops_sum_double_yx(x, num_threads): the same of x (planes, ny, nx) C-contiguous, the (z, y, x)
+//   volume of the port, in MATLAB's linear order t = y + ny * (x + nx * plane) (y fastest):
+//   tiles of columns transposed into a scratch per thread (yx_block_sums), strided reads below
+//   89000 elements. It costs a transposing read: 1.6 to 1.8 times the contiguous sum at 1 and 4
+//   threads; a kernel that holds MATLAB's layout sums it contiguously.
+// ops_sum_ordered(x, single, has_center, center, num_threads) and ops_sum_ordered_yx(...): the
+//   same order with the additions in single (single=True, single data) or double, of the values
+//   or, with has_center, of abs(x - center).^2 in the class of x (var's sum, center its mean in
+//   that class). The payload of a NaN result is left to the caller (N05 canonicalizes it).
 //
 // The order, by the number n of elements, in MATLAB's linear index t:
 //   n <= 43: in index order, ((x1 + x2) + x3) + ...;
@@ -18,257 +23,20 @@
 //     so the result doesn't depend on the number of threads (MATLAB splits the blocks among its
 //     threads, which changes its last bits).
 // Accumulators start at -0 (a sum of -0s is -0); an empty sum is 0. Logical, single, double
-// and 8 to 32-bit integer data (converted to double exactly).
+// and 8 to 32-bit integer data (converted exactly to double; single sums of single data only).
 //
-// A NaN sum has the payload MATLAB gives it, which follows the operand order of each addition
-// (x86 returns the first NaN operand, quieted). Measured in R2024b: the running sums are the
-// first operand, except in the lanes' tails (the last mod(m, 4) elements of the four-lane sum,
-// and of the last block of single data) and for the block sums of double data, which are the
-// first operand of their additions. A sum that comes out NaN is summed again in that order
-// (exact_sum), since the fast loops leave the operand order to the compiler.
-#include "ops_common.hpp"
-
-#include <atomic>
-#include <memory>
-#include <vector>
-
-#if defined(__SSE2__) || defined(_M_X64)
-#include <emmintrin.h>
-#define PK5D_OPS_SSE2 1
-#endif
+// ops_sum_double's NaN sum has the payload MATLAB gives it, which follows the operand order of
+// each addition (x86 returns the first NaN operand, quieted). Measured in R2024b: the running
+// sums are the first operand, except in the lanes' tails (the last mod(m, 4) elements of the
+// four-lane sum, and of the last block of single data) and for the block sums of double data,
+// which are the first operand of their additions. A sum that comes out NaN is summed again in
+// that order (blocks_exact), since the fast loops leave the operand order to the compiler.
+#include "ops_sum.hpp"
 
 namespace pk5d::ops {
 namespace {
 
-constexpr idx_t kSequentialUpTo = 43;
-constexpr idx_t kBlocksFrom = 89000;
-constexpr idx_t kBlock = 4096;
-
 using flat3_in = nb::ndarray<nb::ro, nb::ndim<3>, nb::c_contig, nb::device::cpu>;
-
-// MATLAB's linear order of a contiguous vector: element t is p[t]
-template <typename T>
-struct linear_source {
-    const T *p;
-    static constexpr bool direct = true;
-    void fill(idx_t t0, idx_t m, double *out) const {
-        for (idx_t k = 0; k < m; k++) out[k] = static_cast<double>(p[t0 + k]);
-    }
-};
-
-// MATLAB's linear order of a (planes, ny, nx) C array: t = y + ny * (x + nx * plane)
-template <typename T>
-struct yx_source {
-    const T *p;
-    idx_t ny, nx;
-    static constexpr bool direct = false;
-    void fill(idx_t t0, idx_t m, double *out) const {
-        const idx_t plane = ny * nx;
-        idx_t pl = t0 / plane, r = t0 % plane;
-        idx_t col = r / ny, y = r % ny;
-        idx_t k = 0;
-        while (k < m) {
-            const idx_t run = ny - y < m - k ? ny - y : m - k;
-            const T *c = p + pl * plane + y * nx + col;
-            for (idx_t j = 0; j < run; j++) out[k + j] = static_cast<double>(c[j * nx]);
-            k += run;
-            y = 0;
-            if (++col == nx) {
-                col = 0;
-                ++pl;
-            }
-        }
-    }
-    void block_sums(idx_t n, idx_t b0, idx_t b1, double *bs) const;
-};
-
-// adds m elements whose first one has linear index pos to the lanes a (element t to lane
-// mod(t, 4), each lane in increasing t); lanes 1-2 and 3-4 as vector pairs where possible
-template <typename T>
-inline void lanes_add(double *a, const T *p, idx_t m, idx_t pos) {
-    idx_t j = 0;
-    for (; j < m && ((pos + j) & 3) != 0; j++) {
-        const idx_t l = (pos + j) & 3;
-        a[l] = a[l] + static_cast<double>(p[j]);
-    }
-#ifdef PK5D_OPS_SSE2
-    if constexpr (std::is_same_v<T, float> || std::is_same_v<T, double>) {
-        __m128d v01 = _mm_loadu_pd(a), v23 = _mm_loadu_pd(a + 2);
-        for (; j + 4 <= m; j += 4) {
-            if constexpr (std::is_same_v<T, float>) {
-                const __m128 f = _mm_loadu_ps(p + j);
-                v01 = _mm_add_pd(v01, _mm_cvtps_pd(f));
-                v23 = _mm_add_pd(v23, _mm_cvtps_pd(_mm_movehl_ps(f, f)));
-            } else {
-                v01 = _mm_add_pd(v01, _mm_loadu_pd(p + j));
-                v23 = _mm_add_pd(v23, _mm_loadu_pd(p + j + 2));
-            }
-        }
-        _mm_storeu_pd(a, v01);
-        _mm_storeu_pd(a + 2, v23);
-    }
-#endif
-    double a0 = a[0], a1 = a[1], a2 = a[2], a3 = a[3];
-    for (; j + 4 <= m; j += 4) {
-        a0 = a0 + static_cast<double>(p[j]);
-        a1 = a1 + static_cast<double>(p[j + 1]);
-        a2 = a2 + static_cast<double>(p[j + 2]);
-        a3 = a3 + static_cast<double>(p[j + 3]);
-    }
-    if (j < m) a0 = a0 + static_cast<double>(p[j]);
-    if (j + 1 < m) a1 = a1 + static_cast<double>(p[j + 1]);
-    if (j + 2 < m) a2 = a2 + static_cast<double>(p[j + 2]);
-    a[0] = a0;
-    a[1] = a1;
-    a[2] = a2;
-    a[3] = a3;
-}
-
-inline double add_lanes(const double *a) { return ((a[0] + a[1]) + a[2]) + a[3]; }
-
-// the four lanes of m elements: ((l1 + l2) + l3) + l4
-template <typename T>
-inline double lanes_sum(const T *p, idx_t m) {
-    double a[4] = {-0.0, -0.0, -0.0, -0.0};
-    lanes_add(a, p, m, 0);
-    return add_lanes(a);
-}
-
-// the block sums of a run of elements in MATLAB's order, fed in pieces
-struct block_stream {
-    double *bs;  // the block sums, from block b
-    idx_t b;
-    idx_t pos = 0;
-    double a[4] = {-0.0, -0.0, -0.0, -0.0};
-
-    template <typename T>
-    void feed(const T *p, idx_t m) {
-        while (m > 0) {
-            const idx_t k = m < kBlock - pos ? m : kBlock - pos;
-            lanes_add(a, p, k, pos);
-            pos += k;
-            p += k;
-            m -= k;
-            if (pos == kBlock) flush();
-        }
-    }
-    void flush() {
-        bs[b++] = add_lanes(a);
-        a[0] = a[1] = a[2] = a[3] = -0.0;
-        pos = 0;
-    }
-};
-
-// A tile of a (planes, ny, nx) C array: w columns of one plane transposed into a scratch
-// (column c of the tile at s + c * ld; ld padded so that columns don't share cache sets), and
-// the run of MATLAB's linear order it holds: t in [tile + c * ny, tile + (c + 1) * ny) for column
-// c, of which [t_cur, t_stop) is still to be fed to the lanes.
-template <typename T>
-struct yx_tile {
-    T *s = nullptr;
-    idx_t ld = 0, ny = 0, tile = 0, t_cur = 0, t_stop = 0;
-
-    idx_t left() const { return t_stop - t_cur; }
-
-    // feeds up to budget elements, in MATLAB's order
-    void feed(block_stream &st, idx_t budget) {
-        while (budget > 0 && t_cur < t_stop) {
-            const idx_t c = (t_cur - tile) / ny;
-            const idx_t col_end = tile + (c + 1) * ny < t_stop ? tile + (c + 1) * ny : t_stop;
-            const idx_t take = col_end - t_cur < budget ? col_end - t_cur : budget;
-            st.feed(s + c * ld + (t_cur - tile - c * ny), take);
-            t_cur += take;
-            budget -= take;
-        }
-    }
-};
-
-// rows [y0, y0 + yb) of wc columns from src (row stride nx) into the scratch columns dst (stride
-// ld); 4 x 4 transposes in registers for single (a copy: the values don't change)
-template <typename T>
-inline void transpose_rows(const T *src, idx_t nx, idx_t yb, idx_t wc, T *dst, idx_t ld) {
-    idx_t c = 0;
-#ifdef PK5D_OPS_SSE2
-    if constexpr (std::is_same_v<T, float>) {
-        if (yb == 4) {
-            for (; c + 4 <= wc; c += 4) {
-                __m128 r0 = _mm_loadu_ps(src + c), r1 = _mm_loadu_ps(src + nx + c);
-                __m128 r2 = _mm_loadu_ps(src + 2 * nx + c), r3 = _mm_loadu_ps(src + 3 * nx + c);
-                _MM_TRANSPOSE4_PS(r0, r1, r2, r3);
-                _mm_storeu_ps(dst + c * ld, r0);
-                _mm_storeu_ps(dst + (c + 1) * ld, r1);
-                _mm_storeu_ps(dst + (c + 2) * ld, r2);
-                _mm_storeu_ps(dst + (c + 3) * ld, r3);
-            }
-        }
-    }
-#endif
-    for (; c < wc; c++)
-        for (idx_t k = 0; k < yb; k++) dst[c * ld + k] = src[k * nx + c];
-}
-
-// the block sums of blocks [b0, b1) of a (planes, ny, nx) C array in MATLAB's order. Tiles of
-// w columns (about 512 KB) are transposed four rows at a time, with the rows ahead prefetched,
-// and the previous tile is fed to the lanes in between, so that the reads of one and the
-// additions of the other overlap; the tiles are fed in order, each in MATLAB's order.
-template <typename T>
-void yx_block_sums(const T *p, idx_t ny, idx_t nx, idx_t n, idx_t b0, idx_t b1, double *bs) {
-    constexpr idx_t kRows = 4;
-    constexpr idx_t kAhead = 8;  // rows prefetched ahead, into L2
-    const idx_t plane = ny * nx;
-    const idx_t ld = ny + static_cast<idx_t>(64 / sizeof(T));
-    idx_t w = static_cast<idx_t>(524288 / sizeof(T)) / ld;
-    w = w < 8 ? 8 : w;
-    w = w > nx ? nx : w;
-    std::unique_ptr<T[]> buf(new T[static_cast<size_t>(2 * w * ld)]);
-    block_stream st{bs, b0};
-    yx_tile<T> prev;
-    const idx_t t_end = b1 * kBlock < n ? b1 * kBlock : n;
-    idx_t t = b0 * kBlock;
-    for (idx_t k = 0; t < t_end; k++) {
-        const idx_t pl = t / plane;
-        const idx_t c0 = (t - pl * plane) / ny;
-        const idx_t plane_end = (pl + 1) * plane < t_end ? (pl + 1) * plane : t_end;
-        const idx_t c_last = (plane_end - 1 - pl * plane) / ny;
-        const idx_t c1 = c_last + 1 < c0 + w ? c_last + 1 : c0 + w;
-        const idx_t wc = c1 - c0;
-        const T *base = p + pl * plane + c0;
-        T *s = buf.get() + (k & 1) * w * ld;
-        const idx_t groups = (ny + kRows - 1) / kRows;
-        const idx_t share = (prev.left() + groups - 1) / groups;
-        for (idx_t y0 = 0; y0 < ny; y0 += kRows) {
-            const idx_t yb = ny - y0 < kRows ? ny - y0 : kRows;
-#ifdef PK5D_OPS_SSE2
-            if (y0 + kAhead < ny) {
-                const idx_t ya = y0 + kAhead + kRows <= ny ? kRows : ny - y0 - kAhead;
-                for (idx_t r = 0; r < ya; r++)
-                    for (idx_t c = 0; c < wc; c += static_cast<idx_t>(64 / sizeof(T)))
-                        _mm_prefetch(
-                            reinterpret_cast<const char *>(base + (y0 + kAhead + r) * nx + c),
-                            _MM_HINT_T1);
-            }
-#endif
-            transpose_rows(base + y0 * nx, nx, yb, wc, s + y0, ld);
-            prev.feed(st, share);
-        }
-        prev.feed(st, prev.left());
-        const idx_t tile = pl * plane + c0 * ny;
-        prev.s = s;
-        prev.ld = ld;
-        prev.ny = ny;
-        prev.tile = tile;
-        prev.t_cur = t;
-        prev.t_stop = tile + wc * ny < t_end ? tile + wc * ny : t_end;
-        t = prev.t_stop;
-    }
-    prev.feed(st, prev.left());
-    if (st.pos > 0) st.flush();
-}
-
-template <typename T>
-void yx_source<T>::block_sums(idx_t n, idx_t b0, idx_t b1, double *bs) const {
-    yx_block_sums(p, ny, nx, n, b0, b1, bs);
-}
 
 // a + b with the NaN of a, else of b, quieted (as x86 adds a NaN a and b)
 inline double add_first(double a, double b) {
@@ -288,16 +56,6 @@ double lanes_sum_exact(const double *p, idx_t m, bool tail_first) {
     return add_first(add_first(add_first(a[0], a[1]), a[2]), a[3]);
 }
 
-// below 89000 elements, on the values in MATLAB's order
-double small_sum(const double *v, idx_t n) {
-    if (n <= kSequentialUpTo) {
-        double s = -0.0;
-        for (idx_t i = 0; i < n; i++) s = s + v[i];
-        return s;
-    }
-    return lanes_sum(v, n);
-}
-
 double small_sum_exact(const double *v, idx_t n) {
     if (n <= kSequentialUpTo) {
         double s = -0.0;
@@ -308,84 +66,44 @@ double small_sum_exact(const double *v, idx_t n) {
 }
 
 // the blocks again on one thread with MATLAB's operand order (the payload of a NaN result)
-template <typename Src>
-double blocks_exact(const Src &src, idx_t n, bool single) {
+template <typename Src, typename Op>
+double blocks_exact(const Src &src, idx_t n, bool single, const Op &op) {
     const idx_t nb = (n + kBlock - 1) / kBlock;
     std::vector<double> buf(static_cast<size_t>(kBlock));
     double s = -0.0;
     for (idx_t b = 0; b < nb; b++) {
         const idx_t i0 = b * kBlock;
         const idx_t m = b < nb - 1 ? kBlock : n - i0;
-        src.fill(i0, m, buf.data());
+        src.fill(i0, m, buf.data(), op);
         const double bs = lanes_sum_exact(buf.data(), m, single);
         s = single ? add_first(s, bs) : add_first(bs, s);
     }
     return s;
 }
 
+// sum(x(:), 'double') with MATLAB's NaN payloads
 template <typename T, typename Src>
-double fixed_sum(const Src &src, idx_t n, int num_threads, bool bind) {
+double sum_double_exact(const Src &src, idx_t n, int nt, bool bind) {
     constexpr bool single = std::is_same_v<T, float>;
-    if (n == 0) return 0.0;
-    if (n < kBlocksFrom) {
+    const op_value<T, double> op{};
+    if (n > 0 && n < kBlocksFrom) {
         std::vector<double> v(static_cast<size_t>(n));
-        src.fill(0, n, v.data());
+        src.fill(0, n, v.data(), op);
         const double s = small_sum(v.data(), n);
         if (is_float_v<T> && s != s) return small_sum_exact(v.data(), n);
         return s;
     }
-    const idx_t nb = (n + kBlock - 1) / kBlock;
-    std::unique_ptr<double[]> bs(new double[static_cast<size_t>(nb)]);  // every one is written
-    const int nt = team(n, num_threads);
-    // the block sums are stored by block and added in order afterwards, so which thread sums a
-    // block doesn't change the result: contiguous chunks of blocks are handed out as threads
-    // ask for them (threads that start late or run slower do less); the transposing source
-    // takes one range of whole blocks per thread
-    std::atomic<idx_t> next{0};
-    constexpr idx_t kChunk = 16;  // blocks (256 KB of single) per request (16 to 64 measured best)
-    parallel(nt, bind, [&](int k, int nk) {
-        if constexpr (Src::direct) {
-            // one thread alone has too few reads in flight to fill the memory bandwidth:
-            // it prefetches the block after next into L2 (about 5-8% at one thread; with
-            // more threads the bandwidth is the limit and the prefetches cost, measured)
-            const bool ahead = nk == 1;
-            constexpr idx_t kAheadBlocks = 2;
-            for (;;) {
-                const idx_t b0 = next.fetch_add(kChunk, std::memory_order_relaxed);
-                if (b0 >= nb) break;
-                const idx_t b1 = b0 + kChunk < nb ? b0 + kChunk : nb;
-                for (idx_t b = b0; b < b1; b++) {
-                    const idx_t i0 = b * kBlock;
-                    const idx_t m = b < nb - 1 ? kBlock : n - i0;
-#ifdef PK5D_OPS_SSE2
-                    if (ahead && b + kAheadBlocks < nb) {
-                        const char *q =
-                            reinterpret_cast<const char *>(src.p + (b + kAheadBlocks) * kBlock);
-                        const idx_t bytes = kBlock * static_cast<idx_t>(sizeof(*src.p));
-                        for (idx_t o = 0; o < bytes; o += 64) _mm_prefetch(q + o, _MM_HINT_T1);
-                    }
-#endif
-                    bs[static_cast<size_t>(b)] = lanes_sum(src.p + i0, m);
-                }
-            }
-        } else {
-            idx_t b0, b1;
-            share(nb, k, nk, b0, b1);
-            if (b1 > b0) src.block_sums(n, b0, b1, bs.get());
-        }
-    });
-    double s = -0.0;
-    for (idx_t b = 0; b < nb; b++) s = s + bs[static_cast<size_t>(b)];
-    if (is_float_v<T> && s != s) return blocks_exact(src, n, single);
+    const double s = fixed_sum(src, n, nt, bind, op);
+    if (is_float_v<T> && s != s) return blocks_exact(src, n, single, op);
     return s;
 }
 
 template <typename Fn>
 void with_sum_class(nb::dlpack::dtype dt, Fn &&fn) {
-    with_class(class_of(dt), "ops_sum_double input", [&](auto ts) {
+    with_class(class_of(dt), "ops_sum input", [&](auto ts) {
         using T = typename decltype(ts)::type;
         if constexpr (std::is_same_v<T, int64_t> || std::is_same_v<T, uint64_t>) {
-            bad_class("ops_sum_double input (64-bit integers)");
+            bad_class("ops_sum input (64-bit integers)");
         } else {
             fn(ts);
         }
@@ -400,7 +118,8 @@ double sum_double(const flat_in &x, int num_threads, bool bind) {
     nb::gil_scoped_release release;
     with_sum_class(x.dtype(), [&](auto ts) {
         using T = typename decltype(ts)::type;
-        s = fixed_sum<T>(linear_source<T>{static_cast<const T *>(px)}, n, num_threads, bind);
+        s = sum_double_exact<T>(linear_source<T>{static_cast<const T *>(px)}, n, num_threads,
+                                bind);
     });
     return s;
 }
@@ -418,9 +137,77 @@ double sum_double_yx(const flat3_in &x, int num_threads, bool bind) {
         using T = typename decltype(ts)::type;
         const T *p = static_cast<const T *>(px);
         if (ny == 1 || nx == 1)
-            s = fixed_sum<T>(linear_source<T>{p}, n, num_threads, bind);
+            s = sum_double_exact<T>(linear_source<T>{p}, n, num_threads, bind);
         else
-            s = fixed_sum<T>(yx_source<T>{p, ny, nx}, n, num_threads, bind);
+            s = sum_double_exact<T>(yx_source<T>{p, ny, nx}, n, num_threads, bind);
+    });
+    return s;
+}
+
+// the sum in single or double of the values or of abs(x - center).^2, from a source
+template <typename Fn>
+void with_ordered(nb::dlpack::dtype dt, bool single, bool has_center, Fn &&fn) {
+    with_sum_class(dt, [&](auto ts) {
+        using T = typename decltype(ts)::type;
+        if (has_center) {
+            if constexpr (is_float_v<T>) {
+                if (single != std::is_same_v<T, float>)
+                    throw std::invalid_argument(
+                        "ops_sum_ordered: abs(x - center).^2 is summed in the class of x");
+                fn(op_sqdev<T>{});
+            } else {
+                throw std::invalid_argument("ops_sum_ordered: a center needs single or double data");
+            }
+        } else if (single) {
+            if constexpr (std::is_same_v<T, float>)
+                fn(op_value<float, float>{});
+            else
+                throw std::invalid_argument("ops_sum_ordered: single sums need single data");
+        } else {
+            fn(op_value<T, double>{});
+        }
+    });
+}
+
+double sum_ordered(const flat_in &x, bool single, bool has_center, double center, int num_threads,
+                   bool bind) {
+    check_threads(num_threads);
+    const idx_t n = static_cast<idx_t>(x.shape(0));
+    const void *px = x.data();
+    double s = 0.0;
+    nb::gil_scoped_release release;
+    with_ordered(x.dtype(), single, has_center, [&](auto op0) {
+        using Op = decltype(op0);
+        using T = typename Op::src_t;
+        Op op = op0;
+        if constexpr (Op::sq) op.q = static_cast<T>(center);
+        s = static_cast<double>(ordered_sum(linear_source<T>{static_cast<const T *>(px)}, n,
+                                            num_threads, bind, op));
+    });
+    return s;
+}
+
+double sum_ordered_yx(const flat3_in &x, bool single, bool has_center, double center,
+                      int num_threads, bool bind) {
+    check_threads(num_threads);
+    const idx_t np_ = static_cast<idx_t>(x.shape(0));
+    const idx_t ny = static_cast<idx_t>(x.shape(1));
+    const idx_t nx = static_cast<idx_t>(x.shape(2));
+    const idx_t n = np_ * ny * nx;
+    const void *px = x.data();
+    double s = 0.0;
+    nb::gil_scoped_release release;
+    with_ordered(x.dtype(), single, has_center, [&](auto op0) {
+        using Op = decltype(op0);
+        using T = typename Op::src_t;
+        Op op = op0;
+        if constexpr (Op::sq) op.q = static_cast<T>(center);
+        const T *p = static_cast<const T *>(px);
+        if (ny == 1 || nx == 1)
+            s = static_cast<double>(ordered_sum(linear_source<T>{p}, n, num_threads, bind, op));
+        else
+            s = static_cast<double>(
+                ordered_sum(yx_source<T>{p, ny, nx}, n, num_threads, bind, op));
     });
     return s;
 }
@@ -438,4 +225,13 @@ PK5D_BINDINGS(bind_ops_sum) {
           nb::arg("num_threads"), nb::arg("bind") = true,
           "sum(v(:), 'double') of a (planes, ny, nx) C array in MATLAB's linear order (y "
           "fastest), MATLAB's order at one thread, independent of num_threads.");
+    m.def("ops_sum_ordered", &pk5d::ops::sum_ordered, nb::arg("x").noconvert(), nb::arg("single"),
+          nb::arg("has_center"), nb::arg("center"), nb::arg("num_threads"),
+          nb::arg("bind") = true,
+          "MATLAB's vector-rule sum of a vector (or of abs(x - center).^2) in single or double.");
+    m.def("ops_sum_ordered_yx", &pk5d::ops::sum_ordered_yx, nb::arg("x").noconvert(),
+          nb::arg("single"), nb::arg("has_center"), nb::arg("center"), nb::arg("num_threads"),
+          nb::arg("bind") = true,
+          "MATLAB's vector-rule sum of a (planes, ny, nx) C array in MATLAB's linear order (or of "
+          "abs(x - center).^2), in single or double.");
 }

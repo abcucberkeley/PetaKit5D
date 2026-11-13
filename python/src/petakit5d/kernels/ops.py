@@ -53,6 +53,8 @@ __all__ = [
     "scale_offset_ref",
     "sum_double",
     "sum_double_ref",
+    "sum_ordered",
+    "sum_slices",
 ]
 
 # MATLAB's sum(x, 'double') at one thread: index order up to 43 elements, one block of four
@@ -574,3 +576,69 @@ def sum_double(x, *, matlab_layout: bool = False, num_threads: int | None = None
         return float(m.ops_sum_double(np.ascontiguousarray(a.reshape(-1)), nt, _BIND))
     a = np.ascontiguousarray(a)
     return float(m.ops_sum_double_yx(a.reshape(-1, a.shape[-2], a.shape[-1]), nt, _BIND))
+
+
+# -- MATLAB's sums in single and double, and var's sum (for matlabcompat.reduce) ---------------
+
+
+def sum_ordered(
+    x,
+    *,
+    single: bool,
+    matlab_layout: bool = False,
+    center: float | None = None,
+    num_threads: int | None = None,
+) -> float | None:
+    """MATLAB's vector rule over all elements of ``x`` in MATLAB's linear order (as
+    ``sum_double``) with the additions in single (``single=True``, single data) or double; with
+    ``center`` the values added are ``abs(x - center).^2`` in the class of ``x`` (the sum of
+    MATLAB's ``var``: single sums of single data, double sums of double data). The payload of a
+    NaN result is not MATLAB's (``matlabcompat.reduce`` makes it so). None without the extension
+    (``matlabcompat.reduce`` then sums in NumPy, its reference)."""
+    m = _core()
+    a = _array(x)
+    if m is None or not hasattr(m, "ops_sum_ordered"):
+        return None
+    _check_sum_class(a)
+    nt = resolve_threads(num_threads)
+    if a.size == 0:
+        return 0.0
+    has_c = center is not None
+    c = float(center) if has_c else 0.0
+    if matlab_layout:
+        v = np.ascontiguousarray(a.reshape(-1, order="F"))  # a view when Fortran-contiguous
+        return float(m.ops_sum_ordered(v, single, has_c, c, nt, _BIND))
+    if a.ndim < 2:
+        v = np.ascontiguousarray(a.reshape(-1))
+        return float(m.ops_sum_ordered(v, single, has_c, c, nt, _BIND))
+    a = np.ascontiguousarray(a)
+    v3 = a.reshape(-1, a.shape[-2], a.shape[-1])
+    return float(m.ops_sum_ordered_yx(v3, single, has_c, c, nt, _BIND))
+
+
+def sum_slices(
+    x3: np.ndarray,
+    *,
+    single: bool,
+    chunked: bool,
+    center: np.ndarray | None = None,
+    num_threads: int | None = None,
+) -> np.ndarray | None:
+    """MATLAB's slice rule: ``out[o, i] = x3[o, 0, i] + x3[o, 1, i] + ...`` in index order (in
+    chunks of 1,024 slices, added in order, when ``chunked``) for ``x3`` of shape (O, R, I); in
+    single (``single=True``, single data) or double; with ``center`` (O, I) of ``x3``'s class the
+    values added are ``abs(x - center).^2`` in that class. The payload of a NaN result is not
+    MATLAB's. None without the extension."""
+    m = _core()
+    if m is None or not hasattr(m, "ops_slice_sum"):
+        return None
+    a = np.ascontiguousarray(_array(x3))
+    if a.ndim != 3:
+        raise ValueError("sum_slices takes an (O, R, I) array")
+    _check_sum_class(a)
+    out = np.empty((a.shape[0], a.shape[2]), np.float32 if single else np.float64)
+    cen = None
+    if center is not None:
+        cen = np.ascontiguousarray(center, dtype=a.dtype).reshape(out.shape)
+    m.ops_slice_sum(a, out, bool(chunked), cen, resolve_threads(num_threads), _BIND)
+    return out

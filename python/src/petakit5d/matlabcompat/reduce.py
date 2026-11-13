@@ -476,6 +476,64 @@ def _native_int_sum(m: np.ndarray, dims, dt) -> np.ndarray:
     return r.astype(dt)
 
 
+def _from_view(v: np.ndarray, ndim: int, matlab_layout: bool) -> np.ndarray:
+    """an array of MATLAB's view (reduced dims of size 1) in the layout of an input of ndim
+    dimensions (the inverse of ``_mview``)"""
+    if matlab_layout or ndim < 2:
+        return v
+    perm = (ndim - 2, ndim - 1, *range(ndim - 3, -1, -1))
+    return np.transpose(v, np.argsort(perm))
+
+
+def _kernel_sum(a, m, dims, dt, nt: int, matlab_layout: bool, center=None):
+    """the sum by K08's kernels (``kernels.ops``) where they cover it, in MATLAB's view with the
+    reduced dims of size 1, else None: all elements (the vector rule), and one dimension of the
+    slice rule on a C- or Fortran-contiguous array; single sums of single data, double sums of
+    any data. ``center`` (MATLAB's view, of a's class): the sum of ``abs(x - center).^2`` (var's).
+    The same additions in the same order as the NumPy code below, which stays the reference."""
+    from petakit5d.kernels import ops
+
+    if not ops.extension_available() or (a.dtype.kind in "iu" and a.dtype.itemsize == 8):
+        return None
+    single = dt == np.float32
+    if (single and a.dtype != np.float32) or (center is not None and dt != a.dtype):
+        return None
+    if len(dims) == m.ndim:
+        c = None if center is None else float(np.asarray(center).reshape(-1)[0])
+        s = ops.sum_ordered(a, single=single, matlab_layout=matlab_layout, center=c, num_threads=nt)
+        return None if s is None else np.full((1,) * m.ndim, s, dtype=dt)
+    if len(dims) != 1 or a.ndim < 2:
+        return None
+    d = dims[0]
+    inner = int(np.prod(m.shape[:d], dtype=np.int64))
+    if inner == 1:
+        return None  # the vector rule on many vectors (NumPy)
+    red = m.shape[d]
+    outer = int(np.prod(m.shape[d + 1 :], dtype=np.int64))
+    chunked = _slice_chunked(red, inner, outer, m.size)
+    ax = _py_axes((d,), a.ndim, matlab_layout)[0]
+    if a.flags.c_contiguous:
+        A, axA = a, ax
+    elif a.flags.f_contiguous:
+        A, axA = a.T, a.ndim - 1 - ax
+    else:
+        return None
+    O = int(np.prod(A.shape[:axA], dtype=np.int64))
+    I = int(np.prod(A.shape[axA + 1 :], dtype=np.int64))  # noqa: E741
+    cen = None
+    if center is not None:
+        cA = _from_view(np.asarray(center), a.ndim, matlab_layout)
+        cA = cA if A is a else cA.T
+        cen = np.ascontiguousarray(cA, dtype=a.dtype).reshape(O, I)
+    out = ops.sum_slices(
+        A.reshape(O, A.shape[axA], I), single=single, chunked=chunked, center=cen, num_threads=nt
+    )
+    if out is None:
+        return None
+    rA = out.reshape(A.shape[:axA] + (1,) + A.shape[axA + 1 :])
+    return _mview(rA if A is a else rA.T, matlab_layout)
+
+
 def _sum_core(
     a: np.ndarray, m: np.ndarray, dims, dt, omit: bool, nt: int, matlab_layout: bool
 ) -> np.ndarray:
@@ -491,6 +549,10 @@ def _sum_core(
         return np.full(
             (1,) * m.ndim, ops.sum_double(src, matlab_layout=matlab_layout, num_threads=nt)
         )
+    if not omit and dt.kind == "f":
+        r = _kernel_sum(a, m, dims, dt, nt, matlab_layout)
+        if r is not None:
+            return _canon_nan(r, a)
     numel = m.size
     r = m
     for d0, d1 in _groups(dims):
@@ -544,7 +606,8 @@ def _mean_view(a, m, dims, outtype, omit, nt, matlab_layout):
     n = _count(m, dims, omit)
     with np.errstate(invalid="ignore", divide="ignore"):
         q = s.astype(np.float64) / n
-    q = np.where(np.asarray(n) == 0, dtypes.NAN, q)
+    if np.any(np.asarray(n) == 0):
+        q = np.where(np.asarray(n) == 0, dtypes.NAN, q)
     if a.dtype.kind in "iu" and outtype == "native":
         return q, a.dtype.name
     if a.dtype.kind in "biu" or outtype == "double":

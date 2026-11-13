@@ -73,10 +73,18 @@ def var(
     nt = _r.resolve_threads(num_threads)
     dt = a.dtype
     q, _ = _r._mean_view(a, m, dims, "default", omitnan, nt, matlab_layout)
-    d = np.abs(np.subtract(m, q.astype(dt), dtype=dt))
-    sq = np.multiply(d, d, dtype=dt)
     omit = bool(omitnan)
-    s2 = _r._sum_core(sq, sq, dims, dt, omit, nt, True)
+    s2 = None
+    if not omit:
+        # K08's fused sum of abs(x - mean).^2 (the same values in the same order); a NaN result
+        # goes the NumPy way below, which gives MATLAB's payload
+        s2 = _r._kernel_sum(a, m, dims, dt, nt, matlab_layout, center=q.astype(dt))
+        if s2 is not None and np.isnan(s2).any():
+            s2 = None
+    if s2 is None:
+        d = np.abs(np.subtract(m, q.astype(dt), dtype=dt))
+        sq = np.multiply(d, d, dtype=dt)
+        s2 = _r._sum_core(sq, sq, dims, dt, omit, nt, True)
     n = np.asarray(_r._count(m, dims, omit), dtype=np.float64)
     den = np.where(n > 1, n - 1, 1.0) if w == 0 else np.where(n > 0, n, 1.0)
     with np.errstate(invalid="ignore", divide="ignore"):
