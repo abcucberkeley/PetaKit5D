@@ -1,0 +1,85 @@
+{
+ "task": "T01",
+ "classes": {
+  "TiffZarrConversionTest": {
+   "finished": true,
+   "methods": {
+    "resaveGroupedBatchesDoNotTakeOtherFlags": [
+     "pytest:tests/io/test_resave.py::test_resave_grouped_batches_do_not_take_other_flags"
+    ],
+    "resaveGroupedBatchesWriteTheSameChunks": [
+     "pytest:tests/io/test_resave.py::test_resave_grouped_batches_write_the_same_chunks"
+    ],
+    "resaveGroupsBatchesWithoutCluster": [
+     "pytest:tests/io/test_resave.py::test_resave_groups_batches_without_cluster"
+    ],
+    "resaveGroupsWithinTheShareOfTheMemory": [
+     "pytest:tests/io/test_resave.py::test_resave_groups_within_the_share_of_the_memory"
+    ],
+    "resaveKeepsResultOfAnotherCopy": [
+     "pytest:tests/io/test_resave.py::test_resave_keeps_result_of_another_copy"
+    ],
+    "resaveKeepsResultOfAnotherRun": [
+     "pytest:tests/io/test_resave.py::test_resave_keeps_result_of_another_run"
+    ],
+    "resaveLargeZarrInBatches": [
+     "pytest:tests/io/test_resave.py::test_resave_large_zarr_in_batches",
+     "oracle:tests/io/test_resave.py::wrapper.batches_box"
+    ],
+    "resaveOnLocalPoolGroupsWithinTheWorkersThreads": [
+     "pytest:tests/io/test_resave.py::test_resave_on_local_pool_groups_within_the_workers_threads"
+    ],
+    "resaveZarrChangesChunks": [
+     "pytest:tests/io/test_resave.py::test_resave_zarr_changes_chunks",
+     "oracle:tests/io/test_resave.py::wrapper.whole_files"
+    ],
+    "singleFileRoundTrip": [
+     "pytest:tests/io/test_convert.py::test_single_file_round_trip",
+     "oracle:tests/io/test_convert.py::t2z.uint16",
+     "oracle:tests/io/test_convert.py::z2t.uint16"
+    ],
+    "tiffToZarrFromMemory": [
+     "pytest:tests/io/test_convert.py::test_tiff_to_zarr_from_memory",
+     "oracle:tests/io/test_convert.py::t2z.frame_*"
+    ],
+    "tiffToZarrPartialFilesAndFrames": [
+     "pytest:tests/io/test_convert.py::test_tiff_to_zarr_partial_files_and_frames",
+     "oracle:tests/io/test_convert.py::t2z.partial_files*",
+     "oracle:tests/io/test_convert.py::t2z.image*"
+    ],
+    "tiffToZarrProcessingOptions": [
+     "pytest:tests/io/test_convert.py::test_tiff_to_zarr_processing_options",
+     "pytest:tests/io/test_convert.py::test_resampling_calls_the_t04_interface",
+     "oracle:tests/io/test_convert.py::t2z.usrfcn_single",
+     "oracle:tests/io/test_convert.py::t2z.resample"
+    ],
+    "tiffToZarrReadsRegions": [
+     "pytest:tests/io/test_convert.py::test_tiff_to_zarr_reads_regions",
+     "oracle:tests/io/test_convert.py::t2z.regions*"
+    ],
+    "tiffToZarrWrapper": [
+     "pytest:tests/io/test_convert.py::test_tiff_to_zarr_wrapper",
+     "oracle:tests/io/test_convert.py::t2zw.default"
+    ],
+    "tiffToZarrWrapperWithInputBbox": [
+     "pytest:tests/io/test_convert.py::test_tiff_to_zarr_wrapper_with_input_bbox",
+     "oracle:tests/io/test_convert.py::t2zw.input_bbox"
+    ],
+    "tiffToZarrWrapperWithoutReadingWholeTiff": [
+     "pytest:tests/io/test_convert.py::test_tiff_to_zarr_wrapper_without_reading_whole_tiff",
+     "oracle:tests/io/test_convert.py::t2zw.regions"
+    ],
+    "tiffToZarrWritesPrivateResultInPlace": [
+     "pytest:tests/io/test_convert.py::test_tiff_to_zarr_writes_private_result_in_place"
+    ],
+    "zarrToTiffWrapper": [
+     "pytest:tests/io/test_convert.py::test_zarr_to_tiff_wrapper",
+     "oracle:tests/io/test_convert.py::z2tw.default"
+    ],
+    "zarrToTiffWrapperPassesJobSettings": [
+     "pytest:tests/io/test_convert.py::test_zarr_to_tiff_wrapper_passes_job_settings"
+    ]
+   }
+  }
+ }
+}
