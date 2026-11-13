@@ -167,15 +167,18 @@ jobs:
   # posix-seh UCRT rt_v10-rev2): setup.m adds every folder of the repository
   # to the path, so binaries in it would shadow the repository's.
   # Then the test suite in parts, as the test job runs it but without finishCI:
-  # each tests/ folder, and then all of them, in a MATLAB of its own that must
-  # exit by itself before its step's timeout. probe-results/suite_<part>.txt
-  # has the counts, the mex files in memory, the seconds from the end of the
-  # tests until MATLAB was gone (watch_matlab_exit.ps1, with its threads and CPU
-  # time while it is alive) and the step's outcome.
+  # each test class of tests/stitch and tests/tools (of the folders, only these
+  # two hung after their tests), and then all of them, in a MATLAB of its own
+  # that must exit by itself before its step's timeout.
+  # probe-results/suite_<part>.txt has the counts, the mex files in memory, what
+  # could hold MATLAB open when the tests ended (pools and their futures,
+  # timers, Java's non-daemon threads), the seconds from the end of the tests
+  # until MATLAB was gone (watch_matlab_exit.ps1, with its threads and CPU time
+  # while it is alive) and the step's outcome.
   exit-probe:
     name: Mex exit probe (R2024b on windows-2025)
     runs-on: windows-2025
-    # the step timeouts add up to about 145 minutes
+    # the step timeouts add up to about 150 minutes
     timeout-minutes: 155
     continue-on-error: true
     # the OpenMP threads of the mex files that take no thread count (their
@@ -275,213 +278,278 @@ jobs:
           echo "TMP=${{ runner.temp }}" >> "$GITHUB_ENV"
           echo "TEMP=${{ runner.temp }}" >> "$GITHUB_ENV"
 
-      - name: Suite, tests/decon, MATLAB exits by itself
-        id: suite_decon
+      - name: Suite, StitchingTest, MATLAB exits by itself
+        id: suite_StitchingTest
         timeout-minutes: 6
         continue-on-error: true
         uses: matlab-actions/run-command@v3
         with:
-          command: addpath('.github/scripts'); suite_exit_probe('decon');
+          command: addpath('.github/scripts'); suite_exit_probe('StitchingTest');
 
-      - name: After the suite step, tests/decon
+      - name: After the suite step, StitchingTest
         if: always()
         shell: bash
-        run: bash .github/scripts/suite_step_done.sh decon ${{ steps.suite_decon.outcome }}
+        run: bash .github/scripts/suite_step_done.sh StitchingTest ${{ steps.suite_StitchingTest.outcome }}
 
-      - name: Suite, tests/stitch, MATLAB exits by itself
-        id: suite_stitch
-        timeout-minutes: 6
-        continue-on-error: true
-        uses: matlab-actions/run-command@v3
-        with:
-          command: addpath('.github/scripts'); suite_exit_probe('stitch');
-
-      - name: After the suite step, tests/stitch
-        if: always()
-        shell: bash
-        run: bash .github/scripts/suite_step_done.sh stitch ${{ steps.suite_stitch.outcome }}
-
-      - name: Suite, tests/deskew_rotate, MATLAB exits by itself
-        id: suite_deskew_rotate
+      - name: Suite, StitchShiftAssignmentTest, MATLAB exits by itself
+        id: suite_StitchShiftAssignmentTest
         timeout-minutes: 4
         continue-on-error: true
         uses: matlab-actions/run-command@v3
         with:
-          command: addpath('.github/scripts'); suite_exit_probe('deskew_rotate');
+          command: addpath('.github/scripts'); suite_exit_probe('StitchShiftAssignmentTest');
 
-      - name: After the suite step, tests/deskew_rotate
+      - name: After the suite step, StitchShiftAssignmentTest
         if: always()
         shell: bash
-        run: bash .github/scripts/suite_step_done.sh deskew_rotate ${{ steps.suite_deskew_rotate.outcome }}
+        run: bash .github/scripts/suite_step_done.sh StitchShiftAssignmentTest ${{ steps.suite_StitchShiftAssignmentTest.outcome }}
 
-      - name: Suite, tests/framework, MATLAB exits by itself
-        id: suite_framework
-        timeout-minutes: 11
-        continue-on-error: true
-        uses: matlab-actions/run-command@v3
-        with:
-          command: addpath('.github/scripts'); suite_exit_probe('framework');
-
-      - name: After the suite step, tests/framework
-        if: always()
-        shell: bash
-        run: bash .github/scripts/suite_step_done.sh framework ${{ steps.suite_framework.outcome }}
-
-      - name: Suite, tests/tools, MATLAB exits by itself
-        id: suite_tools
-        timeout-minutes: 6
-        continue-on-error: true
-        uses: matlab-actions/run-command@v3
-        with:
-          command: addpath('.github/scripts'); suite_exit_probe('tools');
-
-      - name: After the suite step, tests/tools
-        if: always()
-        shell: bash
-        run: bash .github/scripts/suite_step_done.sh tools ${{ steps.suite_tools.outcome }}
-
-      - name: Suite, tests/io, MATLAB exits by itself
-        id: suite_io
-        timeout-minutes: 3
-        continue-on-error: true
-        uses: matlab-actions/run-command@v3
-        with:
-          command: addpath('.github/scripts'); suite_exit_probe('io');
-
-      - name: After the suite step, tests/io
-        if: always()
-        shell: bash
-        run: bash .github/scripts/suite_step_done.sh io ${{ steps.suite_io.outcome }}
-
-      - name: Suite, tests/crop, MATLAB exits by itself
-        id: suite_crop
-        timeout-minutes: 3
-        continue-on-error: true
-        uses: matlab-actions/run-command@v3
-        with:
-          command: addpath('.github/scripts'); suite_exit_probe('crop');
-
-      - name: After the suite step, tests/crop
-        if: always()
-        shell: bash
-        run: bash .github/scripts/suite_step_done.sh crop ${{ steps.suite_crop.outcome }}
-
-      - name: Suite, tests/flatfield, MATLAB exits by itself
-        id: suite_flatfield
-        timeout-minutes: 3
-        continue-on-error: true
-        uses: matlab-actions/run-command@v3
-        with:
-          command: addpath('.github/scripts'); suite_exit_probe('flatfield');
-
-      - name: After the suite step, tests/flatfield
-        if: always()
-        shell: bash
-        run: bash .github/scripts/suite_step_done.sh flatfield ${{ steps.suite_flatfield.outcome }}
-
-      - name: Suite, tests/analysis, MATLAB exits by itself
-        id: suite_analysis
+      - name: Suite, RegistrationXcorrTest, MATLAB exits by itself
+        id: suite_RegistrationXcorrTest
         timeout-minutes: 4
         continue-on-error: true
         uses: matlab-actions/run-command@v3
         with:
-          command: addpath('.github/scripts'); suite_exit_probe('analysis');
+          command: addpath('.github/scripts'); suite_exit_probe('RegistrationXcorrTest');
 
-      - name: After the suite step, tests/analysis
+      - name: After the suite step, RegistrationXcorrTest
         if: always()
         shell: bash
-        run: bash .github/scripts/suite_step_done.sh analysis ${{ steps.suite_analysis.outcome }}
+        run: bash .github/scripts/suite_step_done.sh RegistrationXcorrTest ${{ steps.suite_RegistrationXcorrTest.outcome }}
 
-      - name: Suite, tests/golden, MATLAB exits by itself
-        id: suite_golden
+      - name: Suite, ImageListGenerationTest, MATLAB exits by itself
+        id: suite_ImageListGenerationTest
+        timeout-minutes: 4
+        continue-on-error: true
+        uses: matlab-actions/run-command@v3
+        with:
+          command: addpath('.github/scripts'); suite_exit_probe('ImageListGenerationTest');
+
+      - name: After the suite step, ImageListGenerationTest
+        if: always()
+        shell: bash
+        run: bash .github/scripts/suite_step_done.sh ImageListGenerationTest ${{ steps.suite_ImageListGenerationTest.outcome }}
+
+      - name: Suite, TileBlendingTest, MATLAB exits by itself
+        id: suite_TileBlendingTest
         timeout-minutes: 3
         continue-on-error: true
         uses: matlab-actions/run-command@v3
         with:
-          command: addpath('.github/scripts'); suite_exit_probe('golden');
+          command: addpath('.github/scripts'); suite_exit_probe('TileBlendingTest');
 
-      - name: After the suite step, tests/golden
+      - name: After the suite step, TileBlendingTest
         if: always()
         shell: bash
-        run: bash .github/scripts/suite_step_done.sh golden ${{ steps.suite_golden.outcome }}
+        run: bash .github/scripts/suite_step_done.sh TileBlendingTest ${{ steps.suite_TileBlendingTest.outcome }}
 
-      - name: Suite, tests/pipeline, MATLAB exits by itself
-        id: suite_pipeline
+      - name: Suite, PhaseFlatFieldCorrectionTest, MATLAB exits by itself
+        id: suite_PhaseFlatFieldCorrectionTest
         timeout-minutes: 3
         continue-on-error: true
         uses: matlab-actions/run-command@v3
         with:
-          command: addpath('.github/scripts'); suite_exit_probe('pipeline');
+          command: addpath('.github/scripts'); suite_exit_probe('PhaseFlatFieldCorrectionTest');
 
-      - name: After the suite step, tests/pipeline
+      - name: After the suite step, PhaseFlatFieldCorrectionTest
         if: always()
         shell: bash
-        run: bash .github/scripts/suite_step_done.sh pipeline ${{ steps.suite_pipeline.outcome }}
+        run: bash .github/scripts/suite_step_done.sh PhaseFlatFieldCorrectionTest ${{ steps.suite_PhaseFlatFieldCorrectionTest.outcome }}
 
-      - name: Suite, tests/point_detection, MATLAB exits by itself
-        id: suite_point_detection
+      - name: Suite, FeatherBlendingTest, MATLAB exits by itself
+        id: suite_FeatherBlendingTest
         timeout-minutes: 3
         continue-on-error: true
         uses: matlab-actions/run-command@v3
         with:
-          command: addpath('.github/scripts'); suite_exit_probe('point_detection');
+          command: addpath('.github/scripts'); suite_exit_probe('FeatherBlendingTest');
 
-      - name: After the suite step, tests/point_detection
+      - name: After the suite step, FeatherBlendingTest
         if: always()
         shell: bash
-        run: bash .github/scripts/suite_step_done.sh point_detection ${{ steps.suite_point_detection.outcome }}
+        run: bash .github/scripts/suite_step_done.sh FeatherBlendingTest ${{ steps.suite_FeatherBlendingTest.outcome }}
 
-      - name: Suite, tests/platform, MATLAB exits by itself
-        id: suite_platform
+      - name: Suite, StitchHelperMexTest, MATLAB exits by itself
+        id: suite_StitchHelperMexTest
         timeout-minutes: 3
         continue-on-error: true
         uses: matlab-actions/run-command@v3
         with:
-          command: addpath('.github/scripts'); suite_exit_probe('platform');
+          command: addpath('.github/scripts'); suite_exit_probe('StitchHelperMexTest');
 
-      - name: After the suite step, tests/platform
+      - name: After the suite step, StitchHelperMexTest
         if: always()
         shell: bash
-        run: bash .github/scripts/suite_step_done.sh platform ${{ steps.suite_platform.outcome }}
+        run: bash .github/scripts/suite_step_done.sh StitchHelperMexTest ${{ steps.suite_StitchHelperMexTest.outcome }}
 
-      - name: Suite, tests/isolation, MATLAB exits by itself
-        id: suite_isolation
+      - name: Suite, StitchJobResourcesTest, MATLAB exits by itself
+        id: suite_StitchJobResourcesTest
         timeout-minutes: 3
         continue-on-error: true
         uses: matlab-actions/run-command@v3
         with:
-          command: addpath('.github/scripts'); suite_exit_probe('isolation');
+          command: addpath('.github/scripts'); suite_exit_probe('StitchJobResourcesTest');
 
-      - name: After the suite step, tests/isolation
+      - name: After the suite step, StitchJobResourcesTest
         if: always()
         shell: bash
-        run: bash .github/scripts/suite_step_done.sh isolation ${{ steps.suite_isolation.outcome }}
+        run: bash .github/scripts/suite_step_done.sh StitchJobResourcesTest ${{ steps.suite_StitchJobResourcesTest.outcome }}
 
-      - name: Suite, tests/cluster, MATLAB exits by itself
-        id: suite_cluster
+      - name: Suite, StitchGeometryTest, MATLAB exits by itself
+        id: suite_StitchGeometryTest
         timeout-minutes: 3
         continue-on-error: true
         uses: matlab-actions/run-command@v3
         with:
-          command: addpath('.github/scripts'); suite_exit_probe('cluster');
+          command: addpath('.github/scripts'); suite_exit_probe('StitchGeometryTest');
 
-      - name: After the suite step, tests/cluster
+      - name: After the suite step, StitchGeometryTest
         if: always()
         shell: bash
-        run: bash .github/scripts/suite_step_done.sh cluster ${{ steps.suite_cluster.outcome }}
+        run: bash .github/scripts/suite_step_done.sh StitchGeometryTest ${{ steps.suite_StitchGeometryTest.outcome }}
 
-      - name: Suite, tests/demo_data, MATLAB exits by itself
-        id: suite_demo_data
+      - name: Suite, StitchMergeBlockMipsTest, MATLAB exits by itself
+        id: suite_StitchMergeBlockMipsTest
         timeout-minutes: 3
         continue-on-error: true
         uses: matlab-actions/run-command@v3
         with:
-          command: addpath('.github/scripts'); suite_exit_probe('demo_data');
+          command: addpath('.github/scripts'); suite_exit_probe('StitchMergeBlockMipsTest');
 
-      - name: After the suite step, tests/demo_data
+      - name: After the suite step, StitchMergeBlockMipsTest
         if: always()
         shell: bash
-        run: bash .github/scripts/suite_step_done.sh demo_data ${{ steps.suite_demo_data.outcome }}
+        run: bash .github/scripts/suite_step_done.sh StitchMergeBlockMipsTest ${{ steps.suite_StitchMergeBlockMipsTest.outcome }}
+
+      - name: Suite, TiffZarrConversionTest, MATLAB exits by itself
+        id: suite_TiffZarrConversionTest
+        timeout-minutes: 4
+        continue-on-error: true
+        uses: matlab-actions/run-command@v3
+        with:
+          command: addpath('.github/scripts'); suite_exit_probe('TiffZarrConversionTest');
+
+      - name: After the suite step, TiffZarrConversionTest
+        if: always()
+        shell: bash
+        run: bash .github/scripts/suite_step_done.sh TiffZarrConversionTest ${{ steps.suite_TiffZarrConversionTest.outcome }}
+
+      - name: Suite, ResampleTest, MATLAB exits by itself
+        id: suite_ResampleTest
+        timeout-minutes: 4
+        continue-on-error: true
+        uses: matlab-actions/run-command@v3
+        with:
+          command: addpath('.github/scripts'); suite_exit_probe('ResampleTest');
+
+      - name: After the suite step, ResampleTest
+        if: always()
+        shell: bash
+        run: bash .github/scripts/suite_step_done.sh ResampleTest ${{ steps.suite_ResampleTest.outcome }}
+
+      - name: Suite, BlockMIPTest, MATLAB exits by itself
+        id: suite_BlockMIPTest
+        timeout-minutes: 4
+        continue-on-error: true
+        uses: matlab-actions/run-command@v3
+        with:
+          command: addpath('.github/scripts'); suite_exit_probe('BlockMIPTest');
+
+      - name: After the suite step, BlockMIPTest
+        if: always()
+        shell: bash
+        run: bash .github/scripts/suite_step_done.sh BlockMIPTest ${{ steps.suite_BlockMIPTest.outcome }}
+
+      - name: Suite, FixedOrderStatTest, MATLAB exits by itself
+        id: suite_FixedOrderStatTest
+        timeout-minutes: 3
+        continue-on-error: true
+        uses: matlab-actions/run-command@v3
+        with:
+          command: addpath('.github/scripts'); suite_exit_probe('FixedOrderStatTest');
+
+      - name: After the suite step, FixedOrderStatTest
+        if: always()
+        shell: bash
+        run: bash .github/scripts/suite_step_done.sh FixedOrderStatTest ${{ steps.suite_FixedOrderStatTest.outcome }}
+
+      - name: Suite, MIPTest, MATLAB exits by itself
+        id: suite_MIPTest
+        timeout-minutes: 3
+        continue-on-error: true
+        uses: matlab-actions/run-command@v3
+        with:
+          command: addpath('.github/scripts'); suite_exit_probe('MIPTest');
+
+      - name: After the suite step, MIPTest
+        if: always()
+        shell: bash
+        run: bash .github/scripts/suite_step_done.sh MIPTest ${{ steps.suite_MIPTest.outcome }}
+
+      - name: Suite, UsableGPUNumTest, MATLAB exits by itself
+        id: suite_UsableGPUNumTest
+        timeout-minutes: 3
+        continue-on-error: true
+        uses: matlab-actions/run-command@v3
+        with:
+          command: addpath('.github/scripts'); suite_exit_probe('UsableGPUNumTest');
+
+      - name: After the suite step, UsableGPUNumTest
+        if: always()
+        shell: bash
+        run: bash .github/scripts/suite_step_done.sh UsableGPUNumTest ${{ steps.suite_UsableGPUNumTest.outcome }}
+
+      - name: Suite, ParallelRsyncWrapperTest, MATLAB exits by itself
+        id: suite_ParallelRsyncWrapperTest
+        timeout-minutes: 3
+        continue-on-error: true
+        uses: matlab-actions/run-command@v3
+        with:
+          command: addpath('.github/scripts'); suite_exit_probe('ParallelRsyncWrapperTest');
+
+      - name: After the suite step, ParallelRsyncWrapperTest
+        if: always()
+        shell: bash
+        run: bash .github/scripts/suite_step_done.sh ParallelRsyncWrapperTest ${{ steps.suite_ParallelRsyncWrapperTest.outcome }}
+
+      - name: Suite, ComputingMemoryEstimateTest, MATLAB exits by itself
+        id: suite_ComputingMemoryEstimateTest
+        timeout-minutes: 3
+        continue-on-error: true
+        uses: matlab-actions/run-command@v3
+        with:
+          command: addpath('.github/scripts'); suite_exit_probe('ComputingMemoryEstimateTest');
+
+      - name: After the suite step, ComputingMemoryEstimateTest
+        if: always()
+        shell: bash
+        run: bash .github/scripts/suite_step_done.sh ComputingMemoryEstimateTest ${{ steps.suite_ComputingMemoryEstimateTest.outcome }}
+
+      - name: Suite, SystemMemoryTest, MATLAB exits by itself
+        id: suite_SystemMemoryTest
+        timeout-minutes: 3
+        continue-on-error: true
+        uses: matlab-actions/run-command@v3
+        with:
+          command: addpath('.github/scripts'); suite_exit_probe('SystemMemoryTest');
+
+      - name: After the suite step, SystemMemoryTest
+        if: always()
+        shell: bash
+        run: bash .github/scripts/suite_step_done.sh SystemMemoryTest ${{ steps.suite_SystemMemoryTest.outcome }}
+
+      - name: Suite, WriteJsonFileTest, MATLAB exits by itself
+        id: suite_WriteJsonFileTest
+        timeout-minutes: 3
+        continue-on-error: true
+        uses: matlab-actions/run-command@v3
+        with:
+          command: addpath('.github/scripts'); suite_exit_probe('WriteJsonFileTest');
+
+      - name: After the suite step, WriteJsonFileTest
+        if: always()
+        shell: bash
+        run: bash .github/scripts/suite_step_done.sh WriteJsonFileTest ${{ steps.suite_WriteJsonFileTest.outcome }}
 
       - name: Suite, the whole suite, MATLAB exits by itself
         id: suite_all
