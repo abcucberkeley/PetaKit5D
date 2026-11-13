@@ -119,8 +119,8 @@ By fate (all):
 | na+oracle | 1 |
 | na+oracle+pytest | 2 |
 | oracle | 127 |
-| oracle+pytest | 525 |
-| pending | 544 |
+| oracle+pytest | 528 |
+| pending | 541 |
 | pytest | 392 |
 
 ## Classes
@@ -203,7 +203,7 @@ By fate (all):
 | stitch/StitchGeometryTest | data | S03 | 3 | 3 | yes | oracle+pytest 3 |
 | stitch/StitchHelperMexTest | data | S04 | 8 | 14 | no | pending 14 |
 | stitch/StitchJobResourcesTest | data | S09 | 2 | 2 | no | pending 2 |
-| stitch/StitchMergeBlockMipsTest | data | S07 | 3 | 3 | no | pending 3 |
+| stitch/StitchMergeBlockMipsTest | data | S07 | 3 | 3 | yes | oracle+pytest 3 |
 | stitch/StitchShiftAssignmentTest | data | S05 | 18 | 18 | yes | oracle+pytest 15, pytest 3 |
 | stitch/StitchingTest | data | S09 | 52 | 70 | no | pending 70 |
 | stitch/TileBlendingTest | data | K04 | 4 | 18 | yes | oracle 12, oracle+pytest 6 |
