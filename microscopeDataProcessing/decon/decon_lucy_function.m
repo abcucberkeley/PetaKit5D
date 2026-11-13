@@ -243,9 +243,15 @@ for k = 1 : NUMIT
         end
     end
 end
+% (a loop without iterations leaves k empty)
+if isempty(k)
+    k = 0;
+end
 
 if debug
-    err_mat = err_mat(1 : istp, :);
+    % the first floor(NUMIT / saveStep) rows, as decon_lucy_omw_function
+    % (istp, that number from the third step on, is unset before it)
+    err_mat = err_mat(1 : floor(NUMIT / estep), :);
 end
 
 clear J_3 J_4 Y;
@@ -256,10 +262,11 @@ if ~isempty(pr.overlapFcn)
     overlapOut = pr.overlapFcn();
 end
 
-% post-processing of deconvolved result
+% post-processing of deconvolved result (at most dampFactor * I: the first
+% term without the voxels at that value, which the second gives)
 if dampFactor > 1
     I = cast(I, 'like', J_2);
-    J_2 = J_2 .* (J_2 <= dampFactor * I) + min(J_2, dampFactor * I .* (J_2 >= dampFactor * I));
+    J_2 = J_2 .* (J_2 < dampFactor * I) + min(J_2, dampFactor * I .* (J_2 >= dampFactor * I));
 end
 clear I;
 

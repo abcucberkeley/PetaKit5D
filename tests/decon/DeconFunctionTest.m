@@ -121,6 +121,57 @@ classdef DeconFunctionTest < pktest.TestCase
             testCase.verifyGreaterThan(nnz(abs(out - bound) < 1e-3 & bound > 0), 0);
         end
 
+        function dampFactorKeepsVoxelsAtTheBound(testCase, method)
+            % a voxel exactly at dampFactor times the background-subtracted
+            % input was doubled (both terms of the damping expression took
+            % it). With 0 iterations the result is that input, and a factor
+            % of 1 + 2^-30 (1 in single precision) puts every voxel at the
+            % bound; on the default path (the mex where there is one) and
+            % in the MATLAB loop
+            im = testCase.blurredBeads();
+            expected = max(single(im) - testCase.Background, 0);
+            for useMex = {[], false}
+                out = testCase.runDecon(method, im, testCase.PSF, testCase.BackProjector, 0, 'Background', testCase.Background, ...
+                    'save16bit', false, 'dampFactor', 1 + 2 ^ -30, 'useMex', useMex{1});
+                testCase.verifyEqual(out, expected, sprintf('useMex %s', mat2str(useMex{1})));
+            end
+        end
+
+        function iterationCountIsZeroWithoutIterations(testCase)
+            % decon_lucy_function's third output, the iterations run, was []
+            % for 0 iterations (the loop variable of an empty loop)
+            im = testCase.blurredBeads();
+            for nIter = [0, 2]
+                [~, ~, k] = decon_lucy_function(im, testCase.PSF, nIter, 'Background', testCase.Background, 'useGPU', false);
+                testCase.verifyEqual(k, nIter);
+            end
+        end
+
+        function debugOutputOfFewerThanThreeSteps(testCase, method)
+            % RL's debug err_mat errored (istp undefined) with fewer than three
+            % saveStep steps of iterations, e.g., 10 iterations with saveStep 5:
+            % both methods keep the first floor(NUMIT / saveStep) rows and
+            % write the estimates of the steps
+            im = testCase.blurredBeads();
+            for c = {[10, 5], [2, 5]}
+                folder = sprintf('%sdebug_%d_%d/', testCase.createTempFolder(), c{1});
+                args = {'Background', testCase.Background, 'useGPU', false, 'save16bit', false, 'debug', true, ...
+                    'debug_folder', folder, 'saveStep', c{1}(2)};
+                switch method
+                    case 'simplified'
+                        [~, ~, errMat] = evalc('decon_lucy_function(im, testCase.PSF, c{1}(1), args{:})');
+                    case 'omw'
+                        [~, ~, errMat] = evalc('decon_lucy_omw_function(im, testCase.PSF, testCase.BackProjector, c{1}(1), args{:})');
+                end
+                n = floor(c{1}(1) / c{1}(2));
+                testCase.verifyEqual(size(errMat), [n, 4], mat2str(c{1}));
+                testCase.verifyEqual(errMat(:, [1, 4]), [(1 : n)', ones(n, 1)], mat2str(c{1}));
+                files = dir([folder, 'Iter_*.tif']);
+                testCase.verifyEqual(reshape(sort({files.name}), 1, []), arrayfun(@(k) sprintf('Iter_%04d.tif', k), ...
+                    c{1}(2) * (1 : n), 'unif', 0), mat2str(c{1}));
+            end
+        end
+
         function bboxCropsTheResult(testCase, method)
             im = testCase.blurredBeads();
             full = testCase.runDecon(method, im, testCase.PSF, testCase.BackProjector, 3, 'Background', testCase.Background, 'save16bit', true);

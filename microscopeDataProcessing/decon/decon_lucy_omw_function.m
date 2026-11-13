@@ -230,10 +230,11 @@ if ~isempty(pr.overlapFcn)
     overlapOut = pr.overlapFcn();
 end
 
-% post-processing of deconvolved result
+% post-processing of deconvolved result (at most dampFactor * I: the first
+% term without the voxels at that value, which the second gives)
 if dampFactor > 1
     I = cast(I, 'like', J);
-    J = J .* (J <= dampFactor * I) + min(J, dampFactor * I .* (J >= dampFactor * I));
+    J = J .* (J < dampFactor * I) + min(J, dampFactor * I .* (J >= dampFactor * I));
 end
 clear I CX;
 

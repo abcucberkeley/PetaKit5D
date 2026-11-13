@@ -16,12 +16,16 @@ classdef DeconMaskErosionTest < pktest.TestCase
         function masksEqualImerode(testCase, shape, maskSize)
             % disks of radius 0 to 40 (no decomposition up to 2, then periodic
             % lines with morphop's padding, with or without extra lines)
-            % (full masks thinner than the erosion error in both)
+            % (full masks thinner than the erosion, which errored, are all
+            % edge)
             testCase.assumeMexAvailable('decon_mask_edge_erosion_mex');
             A = testCase.makeMask(shape, maskSize);
             for E = 1 : 41
-                testCase.verifyEqual(testCase.outcome(@() decon_mask_edge_erosion(A, E)), ...
-                    testCase.outcome(@() decon_mask_edge_erosion_before(A, E)), sprintf('EdgeErosion %d', E));
+                expected = testCase.outcome(@() decon_mask_edge_erosion_before(A, E));
+                if all(A, 'all')
+                    expected = testCase.fullMaskErosion(A, E);
+                end
+                testCase.verifyEqual(testCase.outcome(@() decon_mask_edge_erosion(A, E)), expected, sprintf('EdgeErosion %d', E));
             end
         end
 
@@ -123,10 +127,39 @@ classdef DeconMaskErosionTest < pktest.TestCase
             testCase.verifyEqual(testCase.outcome(@() decon_mask_edge_erosion(S, 3)), ...
                 testCase.outcome(@() decon_mask_edge_erosion_before(S, 3)), 'sparse mask');
             B = testCase.makeMask('skewed', [20, 22, 12]);
-            for E = {0, single(3), 2.5}
+            for E = {0, 2.5}
                 testCase.verifyEqual(testCase.outcome(@() decon_mask_edge_erosion(B, E{1})), ...
                     testCase.outcome(@() decon_mask_edge_erosion_before(B, E{1})), sprintf('EdgeErosion %g', E{1}));
             end
+        end
+
+        function nonDoubleErosionValuesAreTakenAsDoubles(testCase)
+            % single and integer EdgeErosion (e.g., single(3)) errored in
+            % strel for masks that aren't full (MATLAB:strel:invalidType),
+            % and for full masks uint8 ran out of range in the edge indices
+            % (MATLAB:colon:OutOfRange) where a dimension is longer than 255
+            B = testCase.makeMask('skewed', [20, 22, 12]);
+            A = true(300, 22, 12);
+            for E = {single(3), uint8(3), int16(3)}
+                testCase.verifyEqual(decon_mask_edge_erosion(B, E{1}), decon_mask_edge_erosion(B, 3), class(E{1}));
+                testCase.verifyEqual(decon_mask_edge_erosion(A, E{1}), testCase.fullMaskErosion(A, 3), [class(E{1}), ', full mask']);
+            end
+        end
+
+        function fullMasksThinnerThanTheErosionAreAllEdge(testCase)
+            % a full mask with a dimension shorter than EdgeErosion (e.g., 3
+            % slices with the default EdgeErosion 8) errored in the edge
+            % indices (MATLAB:badsubscript); it is all edge there, as for
+            % masks that aren't full
+            for c = {[40, 44, 3], 8; [30, 1, 20], 2; [2, 20, 10], 3; [1, 30], 2; [5, 5, 5], 6}'
+                A = true(c{1});
+                out = decon_mask_edge_erosion(A, c{2});
+                testCase.verifyEqual(out, testCase.fullMaskErosion(A, c{2}), mat2str(c{1}));
+                testCase.verifyFalse(any(out, 'all'), mat2str(c{1}));
+            end
+            A = true(40, 44, 3);
+            A(1) = false;
+            testCase.verifyFalse(any(decon_mask_edge_erosion(A, 8), 'all'), 'mask that isn''t full');
         end
 
         function mexRejectsInvalidInputs(testCase)
@@ -220,6 +253,18 @@ classdef DeconMaskErosionTest < pktest.TestCase
     end
 
     methods (Static, Access = private)
+        function [A] = fullMaskErosion(A, E)
+            % a full mask without its voxels within E of a border (of y and
+            % x, and of z for 3D masks)
+            sz = size(A, 1 : 3);
+            [y, x, z] = ndgrid(1 : sz(1), 1 : sz(2), 1 : sz(3));
+            inner = y > E & y <= sz(1) - E & x > E & x <= sz(2) - E;
+            if ndims(A) == 3
+                inner = inner & z > E & z <= sz(3) - E;
+            end
+            A = A & reshape(inner, size(A));
+        end
+
         function [out] = outcome(f)
             % the output of f or the identifier of its error
             try

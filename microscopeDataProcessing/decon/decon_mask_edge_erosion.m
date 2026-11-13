@@ -10,15 +10,18 @@ function [mask] = decon_mask_edge_erosion(mask, EdgeErosion)
 if ~islogical(mask)
     mask = mask > 0;
 end
+% (strel takes a double radius, and integer classes saturate the indices)
+EdgeErosion = double(EdgeErosion);
 
 % for regular rectangler full image, directly set edges as false (unique
 % indices: gpuArray assignments take no repeated subscripts, which the two
-% ranges have for masks thinner than 2 * EdgeErosion)
+% ranges have for masks thinner than 2 * EdgeErosion; within the mask, which
+% is all edge along a dimension shorter than EdgeErosion)
 if all(mask, 'all')
-    mask(unique([1 : EdgeErosion, end - EdgeErosion + 1 : end]), :, :) = false;
-    mask(:, unique([1 : EdgeErosion, end - EdgeErosion + 1 : end]), :) = false;
+    mask(unique(min(max([1 : EdgeErosion, end - EdgeErosion + 1 : end], 1), end)), :, :) = false;
+    mask(:, unique(min(max([1 : EdgeErosion, end - EdgeErosion + 1 : end], 1), end)), :) = false;
     if ndims(mask) == 3
-        mask(:, :, unique([1 : EdgeErosion, end - EdgeErosion + 1 : end])) = false;
+        mask(:, :, unique(min(max([1 : EdgeErosion, end - EdgeErosion + 1 : end], 1), end))) = false;
     end
     return;
 end
