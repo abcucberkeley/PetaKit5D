@@ -30,7 +30,7 @@ ip.addParameter('DSRCombined', true , @islogical);
 ip.addParameter('Reverse', false, @islogical);
 ip.addParameter('SkewAngle', 32.45 , @isnumeric);
 ip.addParameter('flipZstack', false, @islogical); 
-ip.addParameter('interpMethod', 'linear', @isnumeric); 
+ip.addParameter('interpMethod', 'linear', @(x) any(strcmpi(x, {'cubic', 'linear'})));
 ip.addParameter('Crop', false, @islogical); 
 ip.addParameter('xStepThresh', 2, @isnumeric); 
 % decon parameters
@@ -144,6 +144,13 @@ file_exist_mat = false(3, 1);
 if numel(save3Dstack) == 1
     save3Dstack = repmat(save3Dstack, 3, 1);
 end
+% rotation without deskew (XR_decon_data_wrapper's deconRotate) is the
+% combined deskew and rotation for sample scan data (before the DSR paths)
+if ~Deskew && Rotate && ~objectiveScan
+    Deskew = true;
+    DSRCombined = true;
+end
+
 if Deskew 
     if ~DSRCombined
         dsPath = sprintf('%s/DS/', deconPath);
@@ -162,11 +169,6 @@ if objectiveScan
         dsrPath = sprintf('%s/Rotated/', deconPath);    
         dsrFn = sprintf('%s/%s%s', dsrPath, outFsn, ext);
     end
-end
-
-if ~Deskew && Rotate && ~objectiveScan
-    Deskew = true;
-    DSRCombined = true;
 end
 
 if ~Deskew || DSRCombined
@@ -429,7 +431,7 @@ if Deskew && (~Rotate || ~DSRCombined)
         end
     
         ds = deskewFrame3D(single(deconvolved), SkewAngle, dz, xyPixelSize, Reverse, ...
-            'Crop', Crop, 'interpMethod', interpMethod); 
+            'Crop', Crop, 'Interp', interpMethod);
             
         MIPFn = sprintf('%s/MIPs/%s_MIP_z.tif', dsPath, fsname);
         saveMIP_frame(ds, MIPFn, 'axis', mipAxis);
@@ -466,7 +468,7 @@ if Deskew && (~Rotate || ~DSRCombined)
     if Rotate
         fprintf('Rotate deskewed deconvolved frame %s...\n', fsname);
         dsr = rotateFrame3D(ds, SkewAngle, zAniso, Reverse,...
-            'Crop', true, 'objectiveScan', objectiveScan, 'interpMethod', interpMethod);
+            'Crop', true, 'objectiveScan', objectiveScan, 'Interp', interpMethod);
         ds = [];
     end
 elseif Deskew && Rotate && DSRCombined
@@ -480,7 +482,7 @@ end
 if objectiveScan && Rotate    
     fprintf('Rotate deconvolved frame %s...\n', fsname);
     dsr = rotateFrame3D(single(deconvolved), SkewAngle, zAniso, Reverse,...
-        'Crop', true, 'objectiveScan', objectiveScan, 'interpMethod', interpMethod);
+        'Crop', true, 'objectiveScan', objectiveScan, 'Interp', interpMethod);
 end
 
 if Rotate 

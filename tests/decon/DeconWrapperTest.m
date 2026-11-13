@@ -56,6 +56,21 @@ classdef DeconWrapperTest < pktest.TestCase
             testCase.verifyEqual(readtiff([d.dataPath, 'matlab_decon/', d.fsns{1}, '.tif']), expected);
         end
 
+        function deconRotateWritesTheDeskewedRotatedResult(testCase)
+            % deconRotate errored in each task (RLdecon: dsrFn undefined for
+            % Rotate without Deskew); the result is deskewed and rotated in one
+            % step, in DSR/ with its MIP
+            d = testCase.createDataset({'A'}, 1);
+            testCase.runWrapper(d, 'RLMethod', 'simplified', 'deconIter', 2, 'deconRotate', true);
+
+            deconPath = [d.dataPath, 'matlab_decon/'];
+            decon = readtiff([deconPath, d.fsns{1}, '.tif']);
+            expected = uint16(deskewRotateFrame3D(decon, 32.45, testCase.Dz, testCase.XYPixelSize, 'reverse', true, ...
+                'Crop', true, 'save16bit', true));
+            testCase.verifyEqual(readtiff([deconPath, 'DSR/', d.fsns{1}, '.tif']), expected);
+            testCase.verifyEqual(readtiff([deconPath, 'DSR/MIPs/', d.fsns{1}, '_MIP_z.tif']), max(expected, [], 3));
+        end
+
         function save16bitFalseWritesSingle(testCase)
             d = testCase.createDataset({'A'}, 1);
             testCase.runWrapper(d, 'RLMethod', 'simplified', 'deconIter', 3, 'save16bit', false);

@@ -1,6 +1,7 @@
 classdef DeconFrameTest < pktest.TestCase
-    % XR_RLdeconFrame3D (single file decon) and
-    % XR_visualize_OTF_mask_segmentation on small synthetic data
+    % XR_RLdeconFrame3D (single file decon), RLdecon's deskew and rotation
+    % after the decon, and XR_visualize_OTF_mask_segmentation on small
+    % synthetic data
 
     properties (Constant)
         ImSize = [48, 48, 32]
@@ -238,6 +239,56 @@ classdef DeconFrameTest < pktest.TestCase
                 'MATLAB:test:otherError');
             testCase.verifyEqual(testCase.fakeUseGPU(fake), true);
         end
+
+        function deskewAndRotationAfterTheDeconRunSeparately(testCase)
+            % RLdecon's separate deskew and rotation after the decon
+            % (DSRCombined false) errored: it passed interpMethod to
+            % deskewFrame3D and rotateFrame3D, whose parameter is Interp (and
+            % took only numbers for it); with linear (the default) and cubic
+            % interpolation
+            [fn, psfFn] = testCase.writeFrame();
+            zAniso = sind(32.45) * testCase.Dz / testCase.XYPixelSize;
+            dsLinear = [];
+            for interp = {'linear', 'cubic'}
+                [decon, outPath, fsn] = testCase.runRLdecon(fn, psfFn, interp{1}, 'Deskew', true, 'Rotate', true, ...
+                    'DSRCombined', false, 'interpMethod', interp{1});
+                ds = deskewFrame3D(single(decon), 32.45, testCase.Dz, testCase.XYPixelSize, false, 'Crop', false, 'Interp', interp{1});
+                testCase.verifyEqual(readtiff([outPath, 'DS/', fsn, '.tif']), uint16(ds), interp{1});
+                dsr = rotateFrame3D(ds, 32.45, zAniso, false, 'Crop', true, 'Interp', interp{1});
+                testCase.verifyEqual(readtiff([outPath, 'DSR/', fsn, '.tif']), uint16(dsr), interp{1});
+                testCase.verifyTrue(isfile([outPath, 'DS/MIPs/', fsn, '_MIP_z.tif']) && isfile([outPath, 'DSR/MIPs/', fsn, '_MIP_z.tif']), interp{1});
+                if isempty(dsLinear)
+                    dsLinear = ds;
+                end
+            end
+            testCase.verifyNotEqual(ds, dsLinear, 'The cubic interpolation was not used.');
+        end
+
+        function objectiveScanFramesAreRotatedAfterTheDecon(testCase)
+            % RLdecon's rotation of objective scan data after the decon
+            % errored (interpMethod for rotateFrame3D's Interp)
+            [fn, psfFn] = testCase.writeFrame();
+            [decon, outPath, fsn] = testCase.runRLdecon(fn, psfFn, 'decon', 'objectiveScan', true, 'Rotate', true);
+            expected = rotateFrame3D(single(decon), 32.45, testCase.Dz / testCase.XYPixelSize, false, 'Crop', true, ...
+                'ObjectiveScan', true, 'Interp', 'linear');
+            testCase.verifyEqual(readtiff([outPath, 'Rotated/', fsn, '.tif']), uint16(expected));
+            testCase.verifyEqual(readtiff([outPath, 'Rotated/MIPs/', fsn, '_MIP_z.tif']), max(uint16(expected), [], 3));
+        end
+
+        function rotationWithoutDeskewIsTheCombinedDeskewAndRotation(testCase)
+            % Rotate without Deskew (XR_decon_data_wrapper's deconRotate)
+            % errored before the decon: RLdecon set the DSR file name only
+            % for Deskew (dsrFn undefined); it deskews and rotates in one step
+            [fn, psfFn] = testCase.writeFrame();
+            testCase.runFrame(fn, '', psfFn, 'DeconIter', 2, 'Rotate', true);
+            [dataPath, fsn] = fileparts(fn);
+            deconPath = [dataPath, '/matlab_decon/'];
+            decon = readtiff([deconPath, fsn, '.tif']);
+            expected = uint16(deskewRotateFrame3D(decon, 32.45, testCase.Dz, testCase.XYPixelSize, 'reverse', true, ...
+                'Crop', true, 'save16bit', true));
+            testCase.verifyEqual(readtiff([deconPath, 'DSR/', fsn, '.tif']), expected);
+            testCase.verifyEqual(readtiff([deconPath, 'DSR/MIPs/', fsn, '_MIP_z.tif']), max(expected, [], 3));
+        end
     end
 
     methods (Access = private)
@@ -267,6 +318,19 @@ classdef DeconFrameTest < pktest.TestCase
             args = [{'PSFfile', psfFn, 'dzPSF', testCase.Dz, 'Background', testCase.Background, ...
                 'RLMethod', 'simplified', 'EdgeErosion', 0, 'parseCluster', false, 'GPUJob', false}, varargin];
             evalc('XR_RLdeconFrame3D(fn, testCase.XYPixelSize, testCase.Dz, deconPath, args{:})');
+        end
+
+        function [decon, outPath, fsn] = runRLdecon(testCase, fn, psfFn, name, varargin)
+            % RLdecon of the frame fn (2 RL iterations, its raw PSF) into
+            % <data folder>/<name>/; the decon result
+            [dataPath, fsn] = fileparts(fn);
+            outPath = sprintf('%s/%s/', dataPath, name);
+            mkdir(outPath);
+            outFn = [outPath, fsn, '.tif'];
+            args = [{'Background', testCase.Background, 'DeconIter', 2, 'RLMethod', 'simplified', 'psfGen', false, ...
+                'useGPU', false}, varargin];
+            evalc('RLdecon(fn, outFn, psfFn, testCase.XYPixelSize, testCase.Dz, testCase.Dz, args{:})');
+            decon = readtiff(outFn);
         end
 
         function [folder] = writeCPURLdecon(testCase)
