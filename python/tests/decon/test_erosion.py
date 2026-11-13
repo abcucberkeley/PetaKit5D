@@ -5,10 +5,11 @@ form; the roles give the Python calls the port's form):
 
 - erosion.full.*: full masks, whose edges are set directly (DeconMaskErosionTest/
   fullMasksAndOtherErosionValues and the thin/oneColumn case of masksEqualImerode), erosions 1 to 41
-  on masks thinner than the erosion (MATLAB's index error), 2D masks, numeric masks, erosions that
-  aren't positive integers;
-- erosion.other.*: masks that aren't full with erosions the mex doesn't take (0, single(3), 2.5:
-  MATLAB's imerode code, with its errors);
+  on masks thinner than the erosion (all edge there since M07, 834604d; MATLAB's index error
+  before), 2D masks, numeric masks, erosions that aren't positive integers, and
+  fullMasksThinnerThanTheErosionAreAllEdge's and nonDoubleErosionValuesAreTakenAsDoubles' masks;
+- erosion.other.*: masks that aren't full with erosions the mex doesn't take (0, 2.5, NaN: MATLAB's
+  imerode code, with strel's errors) and single and integer ones (taken as doubles since M07);
 - erosion.mex.*: DeconMaskErosionTest's shapes and sizes, erosions 1 to 41, through the module's
   dispatch to the kernel (the references of K05's kernel cases: the same MATLAB calls).
 """
@@ -184,6 +185,61 @@ for _name, _e in [("single3", np.float32(3)), ("int3", np.uint8(3))]:
             inputs={"a": V(lambda: make_mask("skewed", [45, 47]))},
         )
     )
+# NaN (MATLAB's colon gives NaN, which max(., 1) makes index 1 on full masks), int16
+for _name, _e in [("enan", math.nan), ("int16_3", np.int16(3))]:
+    for _what, _inp in (("full", _full), ("other", _skewed)):
+        CASES.append(
+            Case(
+                f"erosion.{_what}.{_name}",
+                code=ONE_OUTCOME_CODE,
+                args=[Vol(In("a")), _e],
+                python=outcome,
+                inputs={"a": _inp},
+            )
+        )
+# DeconMaskErosionTest/nonDoubleErosionValuesAreTakenAsDoubles: a full mask longer than 255 (uint8
+# saturated MATLAB's edge indices before M07)
+_long = V(lambda: to_matlab(np.ones((12, 300, 22), bool)))
+for _name, _e in [("double3", 3), ("single3", np.float32(3)), ("int3", np.uint8(3)),
+                  ("int16_3", np.int16(3))]:  # fmt: skip
+    CASES.append(
+        Case(
+            f"erosion.full.300x22x12.{_name}",
+            code=ONE_OUTCOME_CODE,
+            args=[Vol(In("a")), _e],
+            python=outcome,
+            inputs={"a": _long},
+        )
+    )
+# DeconMaskErosionTest/fullMasksThinnerThanTheErosionAreAllEdge: all edge, also a mask that isn't
+# full (the mex)
+for _ms, _e in (([40, 44, 3], 8), ([30, 1, 20], 2), ([2, 20, 10], 3), ([1, 30], 2), ([5, 5, 5], 6)):
+    CASES.append(
+        Case(
+            f"erosion.full.alledge.{size_name(_ms)}.e{_e}",
+            code=ONE_OUTCOME_CODE,
+            args=[Vol(In("a")), _e],
+            python=outcome,
+            inputs={"a": V(lambda m=_ms: np.ones(m, bool))},
+        )
+    )
+
+
+def _not_quite_full():
+    a = np.ones((40, 44, 3), bool)
+    a[0, 0, 0] = False
+    return a
+
+
+CASES.append(
+    Case(
+        "erosion.other.alledge.40x44x3.e8",
+        code=ONE_OUTCOME_CODE,
+        args=[Vol(In("a")), 8],
+        python=outcome,
+        inputs={"a": V(_not_quite_full)},
+    )
+)
 
 # the mex path through the module's dispatch: K05's cases, the same MATLAB calls
 for _shape in ["random", "skewed", "thin", "single", "singleFalse", "blobs"]:
@@ -244,33 +300,58 @@ def test_numeric_masks_count_positive_values():
 
 
 def test_erosions_the_mex_does_not_take_run_imerode():
-    """MATLAB's imerode code: strel('disk', EdgeErosion - 1) takes only doubles (a single 3 and a
-    uint8 3 are errors there, as in MATLAB), nonnegative integers"""
+    """MATLAB's imerode code for erosions that aren't integers of at least 1, with strel's errors
+    for strel('disk', EdgeErosion - 1) (an integer, then nonnegative)"""
     b = from_matlab(make_mask("skewed", [20, 22, 12]))
     for e, ident in [
-        (np.float32(3), "MATLAB:strel:invalidType"),
-        (np.uint8(3), "MATLAB:strel:invalidType"),
         (2.5, "MATLAB:strel:expectedInteger"),
         (0, "MATLAB:strel:expectedNonnegative"),
+        (math.nan, "MATLAB:strel:expectedInteger"),
+        (-0.5, "MATLAB:strel:expectedInteger"),
     ]:
         with pytest.raises(E.MatlabError) as ei:
             E.decon_mask_edge_erosion(b, e)
         assert ei.value.identifier == ident
-    # full masks don't use strel
-    full = np.ones((12, 20, 22), bool)
-    assert np.array_equal(
-        E.decon_mask_edge_erosion(full, np.float32(3)), E.decon_mask_edge_erosion(full, 3)
-    )
 
 
-def test_a_full_mask_thinner_than_the_erosion_errors():
+def test_non_double_erosion_values_are_taken_as_doubles():
+    """DeconMaskErosionTest/nonDoubleErosionValuesAreTakenAsDoubles: single and integer erosions
+    give the double's masks (the mex), also on a full mask longer than 255"""
+    b = from_matlab(make_mask("skewed", [20, 22, 12]))
+    full = np.ones((12, 300, 22), bool)
+    for e in (np.float32(3), np.uint8(3), np.int16(3), True):
+        d = float(e)
+        assert np.array_equal(E.decon_mask_edge_erosion(b, e), E.decon_mask_edge_erosion(b, d))
+        assert np.array_equal(
+            E.decon_mask_edge_erosion(full, e), E.decon_mask_edge_erosion(full, d)
+        )
+    m = E.decon_mask_edge_erosion(full, np.uint8(3))
+    assert m[3:-3, 3:-3, 3:-3].all() and m.sum() == 6 * 294 * 16
+
+
+def test_a_full_mask_thinner_than_the_erosion_is_all_edge():
+    """DeconMaskErosionTest/fullMasksThinnerThanTheErosionAreAllEdge: the edge indices stay in the
+    mask, so a dimension shorter than the erosion is all edge (MATLAB errored before M07); a
+    fractional erosion still errors (an index that isn't an integer); NaN takes index 1"""
+    for shape, e in (
+        ((3, 40, 44), 8),
+        ((20, 30, 1), 2),
+        ((10, 2, 20), 3),
+        ((30,), 2),
+        ((5, 5, 5), 6),
+    ):
+        a = np.ones(shape if len(shape) > 1 else (1, *shape), bool)
+        assert not E.decon_mask_edge_erosion(a, e).any()
+    a = np.ones((3, 40, 44), bool)
+    a[0, 0, 0] = False
+    assert not E.decon_mask_edge_erosion(a, 8).any()
     with pytest.raises(E.MatlabError) as ei:
-        E.decon_mask_edge_erosion(np.ones((3, 20, 20), bool), 4)
-    assert "position 3" in str(ei.value)
-    with pytest.raises(E.MatlabError) as ei:
-        E.decon_mask_edge_erosion(np.ones((20, 1, 20), bool), 2)
-    assert "position 1" in str(ei.value)
-    assert not E.decon_mask_edge_erosion(np.ones((20, 1, 20), bool), 1).any()
+        E.decon_mask_edge_erosion(np.ones((3, 20, 20), bool), 2.5)
+    assert ei.value.identifier == "MATLAB:badsubscript" and "position 1" in str(ei.value)
+    m = E.decon_mask_edge_erosion(np.ones((3, 20, 20), bool), math.nan)
+    inner = np.ones((3, 20, 20), bool)
+    inner[0], inner[:, 0], inner[:, :, 0] = False, False, False
+    assert np.array_equal(m, inner)
 
 
 def test_disk_decomposition_is_strels():

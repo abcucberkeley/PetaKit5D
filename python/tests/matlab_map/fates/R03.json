@@ -55,6 +55,22 @@
         "psfGen2DMedianMethodRemovesIsolatedPoints": [
           "pytest:tests/decon/test_psf.py::test_psf_gen_2d_median_method_removes_isolated_points",
           "oracle:tests/decon/test_psf.py::gen.2d.median*"
+        ],
+        "dampFactorKeepsVoxelsAtTheBound": [
+          "oracle:tests/decon/test_rl.py::rl.damp_bound.*",
+          "oracle:tests/decon/test_rl.py::omw.damp_bound.*",
+          "pytest:tests/decon/test_rl.py::test_damp_is_matlabs_expression"
+        ],
+        "debugOutputOfFewerThanThreeSteps": [
+          "oracle:tests/decon/test_rl.py::rl.debug.fewSteps.*",
+          "oracle:tests/decon/test_rl.py::omw.debug.fewSteps.*",
+          "oracle:tests/decon/test_rl.py::rl.debug.stepPastTheEnd.*",
+          "oracle:tests/decon/test_rl.py::omw.debug.stepPastTheEnd.*",
+          "pytest:tests/decon/test_rl.py::test_debug_output_of_fewer_than_three_steps"
+        ],
+        "iterationCountIsZeroWithoutIterations": [
+          "oracle:tests/decon/test_rl.py::rl.iter*",
+          "pytest:tests/decon/test_rl.py::test_iteration_count_is_the_iterations_run"
         ]
       }
     },
@@ -161,6 +177,20 @@
           "oracle:tests/decon/test_erosion.py::erosion.other.*",
           "pytest:tests/decon/test_erosion.py::test_erosions_the_mex_does_not_take_run_imerode",
           "pytest:tests/decon/test_erosion.py::test_full_masks_get_their_edges_set"
+        ],
+        "fullMasksThinnerThanTheErosionAreAllEdge": [
+          "oracle:tests/decon/test_erosion.py::erosion.full.alledge.*",
+          "oracle:tests/decon/test_erosion.py::erosion.other.alledge.*",
+          "oracle:tests/decon/test_erosion.py::erosion.full.outcomes.*",
+          "pytest:tests/decon/test_erosion.py::test_a_full_mask_thinner_than_the_erosion_is_all_edge"
+        ],
+        "nonDoubleErosionValuesAreTakenAsDoubles": [
+          "oracle:tests/decon/test_erosion.py::erosion.full.300x22x12.*",
+          "oracle:tests/decon/test_erosion.py::erosion.other.single3",
+          "oracle:tests/decon/test_erosion.py::erosion.other.int3",
+          "oracle:tests/decon/test_erosion.py::erosion.other.int16_3",
+          "oracle:tests/decon/test_erosion.py::erosion.other.2d.*",
+          "pytest:tests/decon/test_erosion.py::test_non_double_erosion_values_are_taken_as_doubles"
         ]
       }
     }

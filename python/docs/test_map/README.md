@@ -13,13 +13,13 @@ Categories:
 
 ## Counts
 
-MATLAB suite of oracle c49fc95 (24.2.0.2863752 (R2024b) Update 5): 1657 tests, 1647 in a default run (without KnownIssue), 90 classes, 987 methods.
+MATLAB suite of oracle 32a064d (24.2.0.2863752 (R2024b) Update 5): 1674 tests, 1664 in a default run (without KnownIssue), 90 classes, 1002 methods.
 
 By category (tests: default run, all; classes of the category, with such tests):
 
 | category | default run | all | classes | classes with such tests |
 |---|---|---|---|---|
-| data | 1229 | 1233 | 58 | 58 |
+| data | 1246 | 1250 | 58 | 58 |
 | framework_fake_slurm | 194 | 195 | 11 | 17 |
 | framework_design | 174 | 174 | 11 | 11 |
 | matlab_only | 50 | 55 | 10 | 10 |
@@ -28,11 +28,11 @@ By MATLAB folder and category (default run):
 
 | folder | default run | data | framework_fake_slurm | framework_design | matlab_only | all |
 |---|---|---|---|---|---|---|
-| decon | 375 | 355 | 20 |  |  | 375 |
+| decon | 386 | 366 | 20 |  |  | 386 |
 | framework | 294 |  | 144 | 133 | 17 | 300 |
 | tools | 223 | 216 | 1 | 6 |  | 224 |
 | deskew_rotate | 217 | 212 | 2 |  | 3 | 219 |
-| stitch | 178 | 166 | 12 |  |  | 178 |
+| stitch | 184 | 172 | 12 |  |  | 184 |
 | io | 86 | 86 |  |  |  | 86 |
 | analysis | 68 | 68 |  |  |  | 69 |
 | crop | 69 | 67 | 2 |  |  | 69 |
@@ -44,7 +44,7 @@ By MATLAB folder and category (default run):
 | golden | 8 | 8 |  |  |  | 8 |
 | point_detection | 6 | 6 |  |  |  | 6 |
 | demo_data | 4 | 4 |  |  |  | 4 |
-| total | 1647 | 1229 | 194 | 174 | 50 | 1657 |
+| total | 1664 | 1246 | 194 | 174 | 50 | 1674 |
 
 By owner (default run / all):
 
@@ -94,15 +94,15 @@ By owner (default run / all):
 | P02 | 19 | 19 | 1 |
 | R01 | 12 | 12 | 2 |
 | R02 | 29 | 29 | 2 |
-| R03 | 126 | 126 | 4 |
+| R03 | 133 | 133 | 4 |
 | R04 | 42 | 42 | 3 |
-| R05 | 17 | 17 | 2 |
-| R06 | 29 | 29 | 1 |
+| R05 | 20 | 20 | 2 |
+| R06 | 30 | 30 | 1 |
 | R07 | 19 | 19 | 1 |
 | S01 | 10 | 10 | 1 |
 | S03 | 3 | 3 | 1 |
 | S04 | 54 | 54 | 2 |
-| S05 | 12 | 12 | 1 |
+| S05 | 18 | 18 | 1 |
 | S07 | 3 | 3 | 1 |
 | S09 | 72 | 72 | 2 |
 | T01 | 20 | 20 | 1 |
@@ -118,9 +118,9 @@ By fate (all):
 | na | 76 |
 | na+oracle | 1 |
 | oracle | 107 |
-| oracle+pytest | 404 |
-| pending | 774 |
-| pytest | 295 |
+| oracle+pytest | 415 |
+| pending | 778 |
+| pytest | 297 |
 
 ## Classes
 
@@ -139,15 +139,15 @@ By fate (all):
 | crop/CropMexTest | data | K01 | 10 | 46 | no | oracle+pytest 46 |
 | decon/DeconAccelTest | data | R03 | 15 | 46 | no | na 1, oracle 24, oracle+pytest 16, pending 1, pytest 4 |
 | decon/DeconBackProjectorTest | data | R02 | 16 | 24 | no | pending 24 |
-| decon/DeconFrameTest | data | R05 | 14 | 14 | no | pending 14 |
-| decon/DeconFunctionTest | data | R03 | 30 | 65 | no | oracle 24, oracle+pytest 12, pending 9, pytest 20 |
+| decon/DeconFrameTest | data | R05 | 17 | 17 | no | pending 17 |
+| decon/DeconFunctionTest | data | R03 | 33 | 70 | no | oracle 24, oracle+pytest 17, pending 9, pytest 20 |
 | decon/DeconGPUTest | data | R04 | 4 | 19 | no | pending 19 |
-| decon/DeconMaskErosionTest | data | K05 | 11 | 46 | no | na 2, na+oracle 1, oracle 2, oracle+pytest 40, pytest 1 |
+| decon/DeconMaskErosionTest | data | K05 | 13 | 48 | no | na 2, na+oracle 1, oracle 2, oracle+pytest 42, pytest 1 |
 | decon/DeconOverlapTest | data | R04 | 3 | 3 | no | pending 3 |
 | decon/DeconRFFTGPUTest | data | K09 | 7 | 24 | no | oracle+pytest 3, pending 20, pytest 1 |
 | decon/DeconRFFTTest | data | K05 | 17 | 82 | no | na 6, oracle 27, oracle+pytest 47, pytest 2 |
 | decon/DeconReadCacheTest | data | R01 | 4 | 4 | yes | oracle+pytest 1, pytest 3 |
-| decon/DeconWrapperTest | data | R06 | 48 | 48 | no | pending 48 |
+| decon/DeconWrapperTest | data | R06 | 49 | 49 | no | pending 49 |
 | demo_data/DemoDatasetTest | data | E01 | 4 | 4 | no | pending 4 |
 | deskew_rotate/AxisOrderMappingTest | data | D03 | 1 | 6 | no | pending 6 |
 | deskew_rotate/DeskewMexSourceTest | matlab_only | K03 | 1 | 3 | yes | na 3 |
@@ -203,7 +203,7 @@ By fate (all):
 | stitch/StitchHelperMexTest | data | S04 | 8 | 14 | no | pending 14 |
 | stitch/StitchJobResourcesTest | data | S09 | 2 | 2 | no | pending 2 |
 | stitch/StitchMergeBlockMipsTest | data | S07 | 3 | 3 | no | pending 3 |
-| stitch/StitchShiftAssignmentTest | data | S05 | 12 | 12 | yes | oracle+pytest 11, pytest 1 |
+| stitch/StitchShiftAssignmentTest | data | S05 | 18 | 18 | yes | oracle+pytest 15, pytest 3 |
 | stitch/StitchingTest | data | S09 | 52 | 70 | no | pending 70 |
 | stitch/TileBlendingTest | data | K04 | 4 | 18 | yes | oracle 12, oracle+pytest 6 |
 | tools/BlockMIPTest | data | T02 | 15 | 19 | yes | oracle+pytest 15, pytest 4 |

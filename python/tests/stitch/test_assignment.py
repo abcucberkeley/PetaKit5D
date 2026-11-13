@@ -9,16 +9,18 @@ registration runs): the pairs of each method, the signs, the bounds, the large-f
 group file and the 'test' method. Inputs are in MATLAB's form (1-based tile numbers, [y x z]
 axis weights); the Python side converts them by hand.
 
-MATLAB tests whose intent is ported (tests/stitch/StitchShiftAssignmentTest.m, all 12 methods:
+MATLAB tests whose intent is ported (tests/stitch/StitchShiftAssignmentTest.m, all 18 methods:
 the ``test_`` functions below with their names, and their fixed problems as the oracle cases
-``mtest_*``), and the assignment part of StitchingTest's xcorrRecoversPerturbedTilePosition,
+``mtest.*``), and the assignment part of StitchingTest's xcorrRecoversPerturbedTilePosition,
 largeFileRegistrationRecoversPerturbedTilePosition and localShiftMethod (from the registration
 results a correct registration gives; the registration is S04's).
 """
 
+import json
 import os
 import subprocess
 import sys
+import warnings
 from pathlib import Path
 
 import numpy as np
@@ -178,8 +180,8 @@ def group_problem(
     twice it between groups (as stitch_shift_assignment sets them; ``vary_bounds``: 0 to 3 voxels
     wider, per pair and side, so that the groups' bounds are the widest of their pairs');
     ``free_groups``: bands whose pairs to other groups are all below the threshold; ``perm``:
-    tiles numbered at random (pairs whose first tile is in the higher group are not used between
-    groups, as MATLAB has it); ``islands``: groups of one tile, overlapping the last band"""
+    tiles numbered at random (pairs between groups whose first tile is in the higher group, which
+    step 2 turns around); ``islands``: groups of one tile, overlapping the last band"""
     r = _rng(seed, "group")
     idx = np.array([(x, y, 0) for x in range(gx) for y in range(gy)], dtype=np.float64)
     band = np.minimum((idx[:, 0] * bands) // gx, bands - 1).astype(np.int64)
@@ -536,6 +538,38 @@ def _mtests():
             ("group",),
             None,
         )
+    # groupLabelsOutOfTileOrderGiveTheSameShifts: four tiles in a row, groups of two, labels in
+    # and against the tiles' order; bounded: tile 3 at most 1 voxel right of tile 2
+    t4r = _row(4)
+    pr4 = _neighbor_pairs(t4r)
+    rel4 = np.column_stack([[2.0, 2.0, -4.0], np.zeros((3, 2))])
+    mas4 = np.tile([-50.0, -50, -50, 50, 50, 50], (3, 1))
+    mas4b = mas4.copy()
+    mas4b[1, 3] = 1
+    for name, mas, want in (
+        ("labels", mas4, [0, 2, 4, 0]),
+        ("labels_bounded", mas4b, [0, 2, 3, -1]),
+    ):
+        for tag, grp in (("in_order", [1, 1, 2, 2]), ("swapped", [2, 2, 1, 1])):
+            out[f"groups_{name}_{tag}"] = (
+                mtest_problem(t4r, pr4, [0.9] * 3, rel4, mas, grp=grp),
+                ("group",),
+                np.column_stack([want, np.zeros((4, 2))]),
+            )
+    # localAssignmentPlacesEachTreeOfTheForest: pairs (1, 2) and (3, 4) of five tiles; one tile
+    t5 = _row(5)
+    out["local_forest"] = (
+        mtest_problem(
+            t5, [(1, 2), (3, 4)], [0.9, 0.9], [[5, 1, 0], [-3, 2, 1]], [-50] * 3 + [50] * 3
+        ),
+        ("local",),
+        np.array([[0, 0, 0], [5, 1, 0], [0, 0, 0], [-3, 2, 1], [0, 0, 0]]),
+    )
+    out["local_one_tile"] = (
+        mtest_problem(_row(1), [], [], np.zeros((0, 3)), [-50] * 3 + [50] * 3),
+        ("local",),
+        np.zeros((1, 3)),
+    )
     return out
 
 
@@ -637,6 +671,7 @@ def ssa_problem(
     locs=None,
     even=False,
     zshift_2d=False,
+    return_true=False,
 ):
     """stitch_shift_assignment's inputs for a grid of tiles (``size_yxz`` voxels, MATLAB's
     [ny nx nz] in ``data_order``'s layout) placed with ``overlap`` voxels (x, y, z) between
@@ -693,7 +728,7 @@ def ssa_problem(
     flag = (0.5 - (xyz[ri] > xyz[rj])) * 2
     xc = 0.3 + 0.7 * r.uniform(pr)
     xc[r.uniform(pr) < filt] = 0.1
-    return {
+    p = {
         "nF": float(n),
         "imSizes": np.tile(im_size, (n, 1)),
         "xyz": xyz,
@@ -716,6 +751,7 @@ def ssa_problem(
         "xc": xc,
         "grp": np.zeros(0) if grp is None else grp,
     }
+    return (p, true) if return_true else p
 
 
 def ssa_tree(make):
@@ -848,9 +884,7 @@ def _ssa_specs():
                 kw["group_file"] = 5
             out.append((f"ssa.{method}.{name}.s{s}", (s, gx, gy, gz, dict(kw, method=method))))
     extra = [
-        # 'test' takes the pairs' values from the first columns of absolute_shift_mat (tile
-        # numbers, then x) and leaves the constant to plain lsqlin: two tiles along y, x held at
-        # 0 by its bounds, even x shifts, so that no value is a half integer
+        # two tiles along y, x held at 0 by its bounds, even x shifts
         ("test_1x2", 1, 2, 1, {"method": "test", "max_off": (0, 12, 5), "noise": 0.0,
                                "even": True, "filt": 0.0, "off": (1, 1, 1)}),
         ("grid_xyz_order", 3, 3, 1, {"data_order": "x,y,z"}),
@@ -888,6 +922,21 @@ def _ssa_specs():
     for name, gx, gy, gz, kw in extra:
         s += 1
         out.append((f"ssa.{name}.s{s}", (s, gx, gy, gz, kw)))
+    # 'test', solved as the grid method since f782b35: the layouts of the other methods, tight
+    # bounds, small overlaps, 2D and two data folders
+    for name, gx, gy, gz, kw in [
+        ("2x1", 2, 1, 1, {}),
+        ("3x3", 3, 3, 1, {}),
+        ("4x3jit", 4, 3, 1, {"jitter": 1.5}),
+        ("3x2x2", 3, 2, 2, {}),
+        ("5x4filt", 5, 4, 1, {"filt": 0.3}),
+        ("tight", 4, 4, 1, {"max_off": (3, 3, 2), "off": (8, 8, 3)}),
+        ("small_overlap", 4, 3, 1, {"overlap": (4, 5, 2), "max_off": (20, 20, 8)}),
+        ("2d", 3, 3, 1, {"stitch2d": True, "size_yxz": (64, 72, 1), "overlap": (10, 12, 0)}),
+        ("locations", 3, 2, 1, {"locs": [1, 1, 1, 2, 2, 2]}),
+    ]:
+        s += 1
+        out.append((f"ssa.test.{name}.s{s}", (s, gx, gy, gz, dict(kw, method="test"))))
     return out
 
 
@@ -936,14 +985,9 @@ def _error_cases():
             "grid",
             lambda: _half_tile(grid_problem(9904, 20, 20, filt=0.0, isolated=1)),
         ),
-        ssa_case(
-            "error.ssa_test_pair_index",
-            # pairs (1, 2) and (2, 3) above the threshold: the second's pair index, 3, is past
-            # the 2 rows of absolute_shift_mat
-            lambda: ssa_problem(9901, 3, 1, method="test", filt=0.0),
-            expect_error=True,
-            py_error=sa.AssignmentError,
-        ),
+        # three tiles in a row with both pairs above the threshold ('test' read the second
+        # pair's values past the end of the table until f782b35)
+        ssa_case("ssa.test_3x1", lambda: ssa_problem(9901, 3, 1, method="test", filt=0.0)),
         ssa_case(
             "error.ssa_unknown_method",
             lambda: ssa_problem(9902, 2, 1, method="mst"),
@@ -1056,6 +1100,129 @@ def test_groupsWithoutPairsAboveTheThresholdKeepTheirStagePositions():
         p, _, _ = _MTESTS[name]
         d = py_group(p)
         assert np.array_equal(d, np.column_stack([x, np.zeros((6, 2))])), name
+
+
+def test_groupLabelsOutOfTileOrderGiveTheSameShifts():
+    # step 2 takes the pairs whose first tile is in the group of the higher label too (turned
+    # around, with their bounds)
+    for name in ("labels", "labels_bounded"):
+        for tag in ("in_order", "swapped"):
+            p, _, want = _MTESTS[f"groups_{name}_{tag}"]
+            assert np.array_equal(py_group(p), want), (name, tag)
+
+
+def _local_run_tasks(monkeypatch):
+    """run_tasks of the job framework in this process (the cluster path, locally)"""
+    from petakit5d.jobs import framework
+
+    real = framework.run_tasks
+    calls = []
+
+    def run(inputs, outputs, tasks, **kw):
+        calls.append(list(outputs))
+        kw["parse_cluster"] = False
+        return real(inputs, outputs, tasks, **kw)
+
+    monkeypatch.setattr(framework, "run_tasks", run)
+    return calls
+
+
+def test_groupsOfOneTileOnTheClusterPath(tmp_path, monkeypatch):
+    # 102 tiles in a row, the last in a group of its own: it has no task and keeps shift 0 in
+    # its group, as on the local path
+    monkeypatch.chdir(tmp_path)
+    calls = _local_run_tasks(monkeypatch)
+    n = 102
+    t = _row(n)
+    pr = _neighbor_pairs(t)
+    sx = _rng(93, "one").integers(-3, 3, n - 1).astype(np.float64)
+    rel = np.column_stack([sx, np.zeros((n - 1, 2))])
+    p = mtest_problem(t, pr, [0.9] * (n - 1), rel, [-50] * 3 + [50] * 3, grp=[1] * (n - 1) + [2])
+    n_, mx, ash, om, mas, thr = py_problem(p)
+    args = (n_, mx, ash, om, mas, thr, t, (1, 1, 1), np.ravel(p["grp"]))
+    d = sa.group_assignment(*args, xcorr_dir=str(tmp_path), parse_cluster=True)
+    assert np.array_equal(d, np.column_stack([np.r_[0, np.cumsum(sx)], np.zeros((n, 2))]))
+    assert np.array_equal(d, sa.group_assignment(*args))
+    assert len(calls[0]) == 1 and calls[0][0].endswith("xcorr_group_1_opt_result.mat")
+
+
+def test_localAssignmentPlacesEachTreeOfTheForest():
+    for name in ("local_forest", "local_one_tile"):
+        p, _, want = _MTESTS[name]
+        assert np.array_equal(py_local(p), want), name
+
+
+def test_testMethodAssignsThePairShifts(tmp_path):
+    # the registration's shifts: three tiles in a row; tiles numbered against x (their bounds
+    # turned around); a tile whose pair is below the threshold at its stage position relative to
+    # its neighbor; and the grid method's shifts with its weights where no bound holds them
+    px = 0.108
+    tidx3 = np.array([[0, 0, 0, 1], [1, 0, 0, 1], [2, 0, 0, 1]], dtype=np.float64)
+    stage = np.array([[0, 0, 0], [52 * px, 0, 0], [104 * px, 0, 0]])
+    true = stage + np.array([[0, 0, 0], [6 * px, -2 * px, -0.25], [px, px, -0.5]])
+    for sub in ("a", "b"):
+        (tmp_path / sub).mkdir()
+    _, shifts = _registered(tmp_path / "a", stage, true, tidx3, (32, 64, 64), "test")
+    assert np.array_equal(shifts, [[0, 0, 0], [6, -2, -1], [1, 1, -2]])
+    # tile 2 before tile 1 along x, 6 voxels of overlap: 8 voxels closer, within -5 .. 20
+    stage2 = np.array([[57 * px, 0, 0], [0, 0, 0]])
+    true2 = stage2 + np.array([[0, 0, 0], [8 * px, 3 * px, -0.5]])
+    tidx2 = np.array([[0, 0, 0, 1], [1, 0, 0, 1]], dtype=np.float64)
+    _, shifts = _registered(tmp_path / "b", stage2, true2, tidx2, (32, 64, 64), "test")
+    assert np.array_equal(shifts, [[0, 0, 0], [8, 3, -2]])
+    # without an active bound, the grid method with axis weights (0.1, 10, 1)
+    p = ssa_problem(95, 3, 2, method="test", noise=0.4, filt=0.0, off=(2, 2, 1))
+    d = _ssa_python(tmp_path / "c", p)[1]
+    q = dict(p, method="grid", aw=np.array([10.0, 1.0, 0.1]))
+    assert np.array_equal(d, _ssa_python(tmp_path / "d", q)[1])
+
+
+def test_registrationMemoryUsesTheTileSizeAlongXYZ(tmp_path, monkeypatch):
+    # two tiles of 8192 x 1024 x 1000 (y, x, z) side by side along x with 100 voxels of overlap:
+    # 112 x 8192 x 1000 voxels of single, 4 GB, 128 GB with the factor of 32 (the tile's [ny nx nz]
+    # against x, y, z gave 32 GB); tile 1 as zarr metadata only
+    from petakit5d.jobs import framework
+
+    seen = []
+
+    def record(inputs, outputs, tasks, **kw):
+        seen.append(kw.get("mem_allocate"))
+        return [True] * len(outputs)
+
+    monkeypatch.setattr(framework, "run_tasks", record)
+    z = tmp_path / "t0.zarr"
+    z.mkdir()
+    meta = {"chunks": [64, 64, 64], "compressor": None, "dtype": "<u2", "fill_value": 0,
+            "filters": None, "order": "C", "shape": [1000, 8192, 1024],
+            "zarr_format": 2}  # fmt: skip
+    (z / ".zarray").write_text(json.dumps(meta))
+    vs = np.array([0.108, 0.108, 0.25])
+    ext = np.array([1024.0, 8192.0, 1000.0])
+    xyz = np.array([[0.0, 0.0, 0.0], [(1024 - 1 - 100) * 0.108, 0.0, 0.0]])
+    om, regions = geometry.find_overlaps(np.hstack([xyz, xyz + (ext - 1) * vs]))
+    _write_results(str(tmp_path / "x"), {(1, 2): (np.zeros(3), 0.9)})
+    sa.shift_assignment(
+        [str(z), str(tmp_path / "t1.zarr")], str(tmp_path / "x"), [(1000, 8192, 1024)] * 2, xyz,
+        vs, "z,y,x", om, regions, (5, 12, 12), (1, 1, 1), 0.25, _row(2), node_factor=1,
+    )  # fmt: skip
+    assert seen[0] == 128
+
+
+def test_groupFileWithoutDataFoldersGroupsEveryTile(tmp_path):
+    # a group file of 4 columns (x, y, z, g) matches the tiles by their x, y, z indices: no
+    # warning, the registration's shifts; and without a group file (one data folder)
+    # (offsets whose differences are within the bounds)
+    kw = {"method": "group", "noise": 0.0, "off": (6, 6, 2), "overlap": (30, 30, 4)}
+    p, true = ssa_problem(96, 4, 2, groups=2, group_file=4, return_true=True, **kw)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        a = _ssa_python(tmp_path / "a", p)[1]
+    q, true_q = ssa_problem(96, 4, 2, return_true=True, **kw)
+    with pytest.warns(sa.AssignmentWarning, match="treat all tiles as one group"):
+        b = _ssa_python(tmp_path / "b", q)[1]
+    assert np.array_equal(true, true_q)
+    for d in (a, b):
+        assert np.array_equal(mround(d / p["vs"]), true - true[0])
 
 
 def test_shiftsRoundTheExactOptimumAtAnyThreadCount(tmp_path):
@@ -1381,16 +1548,6 @@ def test_group_cluster_tasks_equal_the_local_solve(tmp_path, monkeypatch):
     assert np.array_equal(d, local)
 
 
-def test_group_of_one_tile_in_the_cluster_path_errors_as_matlab(tmp_path):
-    p = group_problem(92, 15, 8, bands=4, islands=1)
-    n, mx, ash, om, mas, thr = py_problem(p)
-    with pytest.raises(sa.AssignmentError, match="group of one tile"):
-        sa.group_assignment(
-            n, mx, ash, om, mas, thr, p["tileIdx"], from_yxz(p["aw"]), np.ravel(p["grp"]),
-            xcorr_dir=str(tmp_path), parse_cluster=True,
-        )  # fmt: skip
-
-
 def test_wrapper_keeps_an_existing_result(tmp_path, capsys):
     p = grid_problem(81, 3, 3)
     write_fixed_mat(tmp_path / "info.mat", group_info(p))
@@ -1532,16 +1689,15 @@ def test_xcorr_results_read_as_load_reads_them(tmp_path):
         assert np.array_equal(r, rel) and np.array_equal(mxv, [0.9, 0.1, 0.5])
 
 
-def test_test_method_rounds_without_the_offset():
-    # 'test' rounds plain lsqlin's solution with plain round: tiles at -0.5 and 0.5 end 2 apart
+def test_test_method_rounds_as_the_grid_method():
+    # 'test' rounds with round(x + 1e-9): tiles at -0.5 and 0.5 (1 apart) end 1 apart
     tidx = np.array([[0, 0, 0, 1], [1, 0, 0, 1]], dtype=np.float64)
     mx = np.array([[0, 1, 0.9]])
-    ash = np.array([[0, 1, 1.0, 0, 0]])
+    ash = np.array([[0, 1, 1.0, 2.0, -1.0]])
     om = np.array([[False, True], [False, False]])
-    mas = np.array([[0.0, -12, -5, 0, 12, 5]])
+    mas = np.array([[-12.0, -12, -5, 12, 12, 5]])
     d = sa.grid_assignment_test(2, mx, ash, om, mas, 0.25, tidx)
-    # x: tile number 1, held at 0 by its bounds; y: tile number 2; z: the x shift, 1
-    assert np.array_equal(d, [[0, 0, 0], [0, 2, 2]])
+    assert np.array_equal(d, [[0, 0, 0], [1, 2, -1]])
 
 
 def test_free_group_steps_use_the_modified_overlaps():

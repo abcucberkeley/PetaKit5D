@@ -28,8 +28,9 @@ decon_lucy_omw_function.m at the head of ``test``, on the CPU):
 - **Debug output** (``debug``): the error metric per iteration (``err_mat``: iteration, mean
   squared difference of the estimate and the data in MATLAB's order at one thread, its ratio to
   the first one, MATLAB's stop criterion) and the estimate as ``<debug_folder>/Iter_%04d.tif``
-  every ``save_step`` iterations, with MATLAB's bookkeeping and its errors (a step past the
-  iterations or one that isn't an integer can leave ``istp`` undefined).
+  every ``save_step`` iterations, with MATLAB's bookkeeping (both methods keep the first
+  ``floor(NUMIT / save_step)`` rows) and its errors (a step that isn't an integer can leave
+  ``istp`` undefined).
 
 ``use_gpu``: False runs on the CPU; None (MATLAB's ``[]``) on a GPU if one is usable, else on the
 CPU with a ``GPUFallbackWarning`` (once per new OTF, as MATLAB warns); True requires a usable GPU
@@ -79,7 +80,8 @@ class DeconError(ValueError):
 
 class RLResult(NamedTuple):
     """decon_lucy_function's outputs: the result, err_mat (NUMIT x 4; with debug output the rows
-    MATLAB keeps), the number of iterations run, and the output of ``overlap_fcn`` (or None)."""
+    MATLAB keeps), the number of iterations run (0 for none), and the output of ``overlap_fcn``
+    (or None)."""
 
     decon: np.ndarray
     err_mat: np.ndarray
@@ -228,8 +230,9 @@ def _parallel(fn: Callable[[int, int], None], n: int, threads: int) -> None:
 
 
 def _damp(j: np.ndarray, i: np.ndarray, damp: float, threads: int) -> np.ndarray:
-    """``J .* (J <= d * I) + min(J, d * I .* (J >= d * I))``: d * I in double rounded to the class
-    (single data), MATLAB's min (NaN gives the other value, a tie J)"""
+    """``J .* (J < d * I) + min(J, d * I .* (J >= d * I))`` (M07: a voxel at the bound is the
+    second term's alone): d * I in double rounded to the class (single data), MATLAB's min (NaN
+    gives the other value, a tie J)"""
     from petakit5d.kernels import ops
 
     if j.dtype == np.float32 and i.dtype == np.float32:
@@ -244,7 +247,7 @@ def _damp(j: np.ndarray, i: np.ndarray, damp: float, threads: int) -> np.ndarray
     def piece(s: int, e: int) -> None:
         a, b = jf[s:e], df[s:e]
         with np.errstate(invalid="ignore"):
-            lo = a * (a <= b).astype(a.dtype)
+            lo = a * (a < b).astype(a.dtype)
             hi = b * (a >= b).astype(a.dtype)
             pick = (hi < a) | (np.isnan(a) & ~np.isnan(hi))
             out[s:e] = lo + np.where(pick, hi, a)
@@ -476,15 +479,8 @@ class _Debug:
             u = ops.convert(estimate(), "uint16", num_threads=self.threads)
             write_tiff(u, f"{self.folder}/Iter_{k:04d}.tif")
 
-    def rows_to_istp(self) -> np.ndarray:
-        """decon_lucy_function's ``err_mat(1 : istp, :)``"""
-        if self.istp is None:
-            raise self._undefined()
-        self._row(self.istp)
-        return self.err[: int(self.istp)].copy()
-
     def rows_kept(self, n_iter: int) -> np.ndarray:
-        """decon_lucy_omw_function's ``err_mat(1 : floor(NUMIT / estep), :)``"""
+        """the rows both functions keep, ``err_mat(1 : floor(NUMIT / estep), :)``"""
         with np.errstate(all="ignore"):
             m = np.floor(np.float64(n_iter) / np.float64(self.step))
         if not m >= 1:
@@ -805,7 +801,7 @@ def lucy(
         def damp_input():
             return im
 
-    err_mat = dbg.rows_to_istp() if dbg is not None else np.zeros((n_iter, 4))
+    err_mat = dbg.rows_kept(n_iter) if dbg is not None else np.zeros((n_iter, 4))
     overlap_out = overlap_fcn() if overlap_fcn is not None else None
     out = _post(
         j,
@@ -973,7 +969,7 @@ def _omw_kernel_debug(k, raw, hf, hb, numit, bg, step, folder, threads):
 def _matlab_out_rl(r: RLResult):
     from petakit5d.core.arrays import to_matlab
 
-    k = float(r.iterations) if r.iterations > 0 else np.zeros((0, 0))
+    k = float(r.iterations)  # (0 without iterations, as MATLAB since M07)
     return (to_matlab(r.decon), r.err_mat, k, r.overlap_out)
 
 

@@ -567,7 +567,7 @@ Copy the input boxes ``batch_b_boxes`` of a zarr array into the output boxes ``r
 | `Reverse` | `reverse` | par |  | `false` | `False` | `@islogical` |
 | `SkewAngle` | `skew_angle` | par |  | `32.45` | `32.45` | `@isnumeric` |
 | `flipZstack` | `flip_zstack` | par |  | `false` | `False` | `@islogical` |
-| `interpMethod` | `interp_method` | par |  | `'linear'` | `'linear'` | `@isnumeric` |
+| `interpMethod` | `interp_method` | par |  | `'linear'` | `'linear'` | `@(x) any(strcmpi(x, {'cubic', 'linear'}))` |
 | `Crop` | `crop` | par |  | `false` | `False` | `@islogical` |
 | `xStepThresh` | `x_step_thresh` | par |  | `2` | `2` | `@isnumeric` |
 | `Background` | `background` | par | same | `[]` | `None` | `@isnumeric` |

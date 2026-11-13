@@ -2,16 +2,18 @@
 
 ``decon_mask_edge_erosion(mask, edge_erosion)`` returns the mask with its edges eroded, as the
 decon functions apply it to the mask of nonzero input voxels before they multiply the result by
-it (``EdgeErosion``):
+it (``EdgeErosion``). The erosion is taken as a double (MATLAB's ``double(EdgeErosion)``: single
+and integer values give the same masks as the double).
 
-- a full mask (every voxel true) gets its first and last ``edge_erosion`` rows, columns and (3D)
-  slices set false directly, with MATLAB's errors where the erosion is larger than the mask or
-  not an integer;
-- other masks are eroded by the decomposition of ``strel('disk', edge_erosion - 1)`` in each z
+- A full mask (every voxel true) gets its first and last ``edge_erosion`` rows, columns and (3D)
+  slices set false directly: MATLAB's ``unique([1 : E, end - E + 1 : end])`` kept within the
+  mask, so a dimension shorter than the erosion is all edge; MATLAB's index error where the
+  indices are not integers (a fractional erosion).
+- Other masks are eroded by the decomposition of ``strel('disk', edge_erosion - 1)`` in each z
   slice and by a line of ``2 * edge_erosion - 1`` voxels along z, with the first and last rows,
   columns and slices set false first (``kernels.decon.mask_edge_erosion``, the mex's kernel, for
-  erosions the mex takes: a double integer of at least 1; MATLAB's ``imerode`` code for others,
-  with its errors).
+  erosions the mex takes: an integer of at least 1; MATLAB's ``imerode`` code for others, with
+  strel's errors).
 
 Masks are ``(z, y, x)`` volumes or ``(y, x)`` images; a volume with one z slice is MATLAB's 2D
 mask (its size has no third dimension). Numeric masks count their positive values. The input is
@@ -76,48 +78,45 @@ def _logical(mask: Any) -> tuple[np.ndarray, bool]:
     return ops.compare(a, "gt", 0.0), True
 
 
-def _scalar(edge_erosion: Any) -> tuple[float, bool, str]:
-    """the erosion's value, whether it is a MATLAB double (the mex and strel take only doubles;
-    a Python int or float is one) and its MATLAB class"""
-    from petakit5d.core.arrays import matlab_class
-
+def _scalar(edge_erosion: Any) -> float:
+    """MATLAB's ``double(EdgeErosion)`` of a real numeric scalar"""
     e = np.asarray(edge_erosion)
     if e.size != 1 or e.dtype.kind not in "biuf":
         raise TypeError("EdgeErosion must be a real numeric scalar")
-    if isinstance(edge_erosion, (int, float)) and not isinstance(edge_erosion, bool):
-        return float(edge_erosion), True, "double"
-    cls = matlab_class(e)
-    return float(e.reshape(-1)[0]), cls == "double", cls
+    return float(e.reshape(-1)[0])
 
 
-def _edge_rows(n: int, e: float, position: int, ndims: int) -> np.ndarray:
-    """0-based indices of MATLAB's ``unique([1 : e, end - e + 1 : end])`` along a dimension of n
-    (empty for e < 1); MATLAB's error where they are not positive integers (e beyond n, or not an
-    integer)"""
-    if e < 1:
-        return np.zeros(0, dtype=np.int64)
-    if e != math.floor(e) or e > n:
+def _colon(a: float, b: float) -> list[float]:
+    """MATLAB's ``a : b`` of doubles (a NaN end gives NaN)"""
+    if math.isnan(a) or math.isnan(b):
+        return [math.nan]
+    if a > b:
+        return []
+    if math.isinf(b - a):
+        raise MatlabError("MATLAB:pmaxsize", "Maximum variable size allowed is exceeded.")
+    return [a + k for k in range(int(math.floor(b - a)) + 1)]
+
+
+def _edge_rows(n: int, e: float, position: int) -> np.ndarray:
+    """0-based indices of MATLAB's ``unique(min(max([1 : e, end - e + 1 : end], 1), end))``
+    along a dimension of n (min and max ignore NaN); MATLAB's error where they are not integers"""
+    v = set()
+    for x in _colon(1.0, e) + _colon(n - e + 1, float(n)):
+        v.add(min(1.0 if math.isnan(x) else max(x, 1.0), float(n)))
+    if any(x != math.floor(x) for x in v):
         raise MatlabError(
             _BAD_INDEX,
             f"Index in position {position} is invalid. Array indices must be positive integers "
             "or logical values.",
         )
-    k = int(e)
-    return np.unique(np.concatenate([np.arange(k), np.arange(n - k, n)]))
+    return np.array(sorted(int(x) - 1 for x in v), dtype=np.int64)
 
 
 def _full_mask(a: np.ndarray, e: float, ndims: int) -> np.ndarray:
     """a full mask's first and last e rows, columns (and slices) false"""
-    if math.isnan(e):
-        raise MatlabError(
-            _BAD_INDEX,
-            "Index in position 1 is invalid. Array indices must be positive integers or logical "
-            "values.",
-        )
-    ny, nx = a.shape[-2], a.shape[-1]
-    rows = _edge_rows(ny, e, 1, ndims)
-    cols = _edge_rows(nx, e, 2, ndims)
-    planes = _edge_rows(a.shape[0], e, 3, ndims) if ndims == 3 else None
+    rows = _edge_rows(a.shape[-2], e, 1)
+    cols = _edge_rows(a.shape[-1], e, 2)
+    planes = _edge_rows(a.shape[0], e, 3) if ndims == 3 else None
     out = a.copy()
     out[..., rows, :] = False
     out[..., :, cols] = False
@@ -126,30 +125,22 @@ def _full_mask(a: np.ndarray, e: float, ndims: int) -> np.ndarray:
     return out
 
 
-def _disk_radius(e: float, is_double: bool, cls: str) -> int:
-    """strel('disk', e - 1)'s check of its radius (MATLAB's validateattributes: a double, then
-    nonnegative, then an integer)"""
-    if not is_double:
-        raise MatlabError(
-            "MATLAB:strel:invalidType",
-            "Expected input number 2, R, to be one of these types:\n\ndouble\n\nInstead its type "
-            f"was {cls}.",
-        )
+def _disk_radius(e: float) -> int:
+    """strel('disk', e - 1)'s check of its radius (MATLAB's validateattributes: an integer, NaN
+    and Inf not, then nonnegative)"""
     r = e - 1
-    if not r >= 0:
-        raise MatlabError(
-            "MATLAB:strel:expectedNonnegative", "Expected input number 2, R, to be nonnegative."
-        )
-    if r != math.floor(r) or not math.isfinite(r):
+    if not math.isfinite(r) or r != math.floor(r):
         raise MatlabError(
             "MATLAB:strel:expectedInteger", "Expected input number 2, R, to be integer-valued."
+        )
+    if r < 0:
+        raise MatlabError(
+            "MATLAB:strel:expectedNonnegative", "Expected input number 2, R, to be nonnegative."
         )
     return int(r)
 
 
-def _imerode_code(
-    a: np.ndarray, e: float, is_double: bool, cls: str, ndims: int, threads: int | None
-) -> np.ndarray:
+def _imerode_code(a: np.ndarray, e: float, ndims: int, threads: int | None) -> np.ndarray:
     """decon_mask_edge_erosion.m's imerode code (erosions the mex doesn't take)"""
     from petakit5d.matlabcompat.morphology import Strel, imerode, strel
 
@@ -161,11 +152,16 @@ def _imerode_code(
     if ndims == 3:
         out[0] = False
         out[-1] = False
-    r = _disk_radius(e, is_double, cls)
+    r = _disk_radius(e)
     out = imerode(out, strel("disk", r), threads=threads)
     if ndims == 3:
         out = imerode(out, Strel(np.ones((2 * r + 1, 1, 1), dtype=bool)), threads=threads)
     return out
+
+
+def _mex_takes(e: float) -> bool:
+    """whether the mex erodes with e (an integer of at least 1)"""
+    return e >= 1 and e == math.floor(e) and math.isfinite(e)
 
 
 def decon_mask_edge_erosion(mask: Any, edge_erosion: Any, *, threads: int | None = None):
@@ -175,14 +171,14 @@ def decon_mask_edge_erosion(mask: Any, edge_erosion: Any, *, threads: int | None
     a, _ = _logical(mask)
     if a.ndim not in (2, 3):
         raise ValueError("decon_mask_edge_erosion: a (z, y, x) volume or a (y, x) image")
-    e, is_double, cls = _scalar(edge_erosion)
+    e = _scalar(edge_erosion)
     ndims = 3 if a.ndim == 3 and a.shape[0] > 1 else 2
     if bool(np.all(a)):
         return _full_mask(a, e, ndims)
-    if is_double and e >= 1 and e == math.floor(e) and math.isfinite(e):
+    if _mex_takes(e):
         from petakit5d.kernels.decon import mask_edge_erosion
 
         nhoods, pad_ul, pad_lr = disk_decomposition(int(e) - 1)
         rz = int(e) - 1 if ndims == 3 else 0
         return mask_edge_erosion(a, nhoods, pad_ul, pad_lr, rz, True, threads=threads)
-    return _imerode_code(a, e, is_double, cls, ndims, threads)
+    return _imerode_code(a, e, ndims, threads)

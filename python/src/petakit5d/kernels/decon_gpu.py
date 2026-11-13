@@ -850,11 +850,12 @@ def _erode(mask, start, dr, dc, pu, pl, rz: int, clear: bool) -> Any:
 def decon_mask_edge_erosion_gpu(mask: Any, edge_erosion: Any) -> Any:
     """decon_mask_edge_erosion.m for gpuArray masks: the mask (bool or numeric, (z, y, x) or (y,
     x), NumPy or CuPy; numeric counts its positive values) with its edges eroded by
-    ``edge_erosion``, a bool CuPy array. A full mask gets its first and last ``edge_erosion``
-    rows, columns and (3D) slices set false directly; others go through
-    ``mask_edge_erosion`` with the decomposition of ``strel('disk', edge_erosion - 1)`` and the line
-    along z, for erosions the mex takes (a double integer of at least 1), else MATLAB's imerode
-    code with its errors (computed on the CPU: MATLAB's GPU imerode gives the CPU's result). As
+    ``edge_erosion`` (taken as a double), a bool CuPy array. A full mask gets its first and last
+    ``edge_erosion`` rows, columns and (3D) slices set false directly (within the mask: a
+    dimension shorter than the erosion is all edge); others go through ``mask_edge_erosion``
+    with the decomposition of ``strel('disk', edge_erosion - 1)`` and the line along z, for
+    erosions the mex takes (an integer of at least 1), else MATLAB's imerode code with its errors
+    (computed on the CPU: MATLAB's GPU imerode gives the CPU's result). As
     ``petakit5d.decon.erosion.decon_mask_edge_erosion`` on the CPU, with the same results."""
     from petakit5d.decon import erosion as E
 
@@ -868,16 +869,14 @@ def decon_mask_edge_erosion_gpu(mask: Any, edge_erosion: Any) -> Any:
         m = m > 0
     if m.ndim not in (2, 3):
         raise ValueError("decon_mask_edge_erosion_gpu: a (z, y, x) volume or a (y, x) image")
-    e, is_double, cls = E._scalar(edge_erosion)
+    e = E._scalar(edge_erosion)
     ndims = 3 if m.ndim == 3 and m.shape[0] > 1 else 2
     if bool(m.all()):
-        # MATLAB's index checks (petakit5d.decon.erosion), with a gpuArray's error
+        # MATLAB's edge indices and their check (petakit5d.decon.erosion), with a gpuArray's error
         try:
-            if math.isnan(e):
-                raise E.MatlabError(E._BAD_INDEX, "NaN")
-            rows = E._edge_rows(m.shape[-2], e, 1, ndims)
-            cols = E._edge_rows(m.shape[-1], e, 2, ndims)
-            planes = E._edge_rows(m.shape[0], e, 3, ndims) if ndims == 3 else None
+            rows = E._edge_rows(m.shape[-2], e, 1)
+            cols = E._edge_rows(m.shape[-1], e, 2)
+            planes = E._edge_rows(m.shape[0], e, 3) if ndims == 3 else None
         except E.MatlabError as err:
             if err.identifier != E._BAD_INDEX:
                 raise
@@ -891,8 +890,8 @@ def decon_mask_edge_erosion_gpu(mask: Any, edge_erosion: Any) -> Any:
         if planes is not None:
             out[cp.asarray(planes)] = False
         return out
-    if is_double and e >= 1 and e == math.floor(e) and math.isfinite(e):
+    if E._mex_takes(e):
         nhoods, pad_ul, pad_lr = E.disk_decomposition(int(e) - 1)
         rz = int(e) - 1 if ndims == 3 else 0
         return mask_edge_erosion(m, nhoods, pad_ul, pad_lr, rz, True)
-    return cp.asarray(E._imerode_code(cp.asnumpy(m), e, is_double, cls, ndims, None))
+    return cp.asarray(E._imerode_code(cp.asnumpy(m), e, ndims, None))

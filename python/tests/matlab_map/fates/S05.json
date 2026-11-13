@@ -56,6 +56,37 @@
     "largeGridMatchesDenseSolver": [
      "pytest:tests/stitch/test_assignment.py::test_largeGridMatchesDenseSolver",
      "oracle:tests/stitch/test_assignment.py::grid.conn.*"
+    ],
+    "groupLabelsOutOfTileOrderGiveTheSameShifts": [
+     "pytest:tests/stitch/test_assignment.py::test_groupLabelsOutOfTileOrderGiveTheSameShifts",
+     "oracle:tests/stitch/test_assignment.py::group.labels.*",
+     "oracle:tests/stitch/test_assignment.py::group.perm.*",
+     "oracle:tests/stitch/test_assignment.py::group.permlabels.*",
+     "oracle:tests/stitch/test_assignment.py::group.tightinterperm.*",
+     "oracle:tests/stitch/test_assignment.py::group.varyboundsperm.*"
+    ],
+    "groupsOfOneTileOnTheClusterPath": [
+     "pytest:tests/stitch/test_assignment.py::test_groupsOfOneTileOnTheClusterPath"
+    ],
+    "localAssignmentPlacesEachTreeOfTheForest": [
+     "pytest:tests/stitch/test_assignment.py::test_localAssignmentPlacesEachTreeOfTheForest",
+     "oracle:tests/stitch/test_assignment.py::mtest.local_forest.local",
+     "oracle:tests/stitch/test_assignment.py::mtest.local_one_tile.local"
+    ],
+    "testMethodAssignsThePairShifts": [
+     "pytest:tests/stitch/test_assignment.py::test_testMethodAssignsThePairShifts",
+     "pytest:tests/stitch/test_assignment.py::test_test_method_rounds_as_the_grid_method",
+     "oracle:tests/stitch/test_assignment.py::ssa.test.*",
+     "oracle:tests/stitch/test_assignment.py::ssa.test_3x1",
+     "oracle:tests/stitch/test_assignment.py::ssa.test_1x2.*"
+    ],
+    "registrationMemoryUsesTheTileSizeAlongXYZ": [
+     "pytest:tests/stitch/test_assignment.py::test_registrationMemoryUsesTheTileSizeAlongXYZ"
+    ],
+    "groupFileWithoutDataFoldersGroupsEveryTile": [
+     "pytest:tests/stitch/test_assignment.py::test_groupFileWithoutDataFoldersGroupsEveryTile",
+     "oracle:tests/stitch/test_assignment.py::ssa.group_file4.*",
+     "oracle:tests/stitch/test_assignment.py::ssa.group_2d.*"
     ]
    }
   }

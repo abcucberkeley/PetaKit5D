@@ -143,7 +143,7 @@ def make_psf(msize, which: str = "f") -> np.ndarray:
 
 
 def _iterations_out(r):
-    return float(r.iterations) if r.iterations > 0 else np.zeros((0, 0))
+    return float(r.iterations)
 
 
 def py_rl(im, psf, numit, *, backend, nargout=1, threads=None, **kw):
@@ -459,10 +459,11 @@ DEBUG_CASES = {
     "everySecond": (7, 2),
     "stepPastTheEnd": (2, 5),
     "nonIntegerStep": (9, 2.5),
+    # DeconFunctionTest/debugOutputOfFewerThanThreeSteps (RL errored before M07, 834604d)
+    "fewSteps": (10, 5),
 }
-# MATLAB's bookkeeping errors: istp undefined
-DEBUG_ERRORS = {("simplified", "stepPastTheEnd"), ("simplified", "nonIntegerStep"),
-                ("omw", "nonIntegerStep")}  # fmt: skip
+# MATLAB's bookkeeping errors: istp undefined (a step that isn't an integer)
+DEBUG_ERRORS = {("simplified", "nonIntegerStep"), ("omw", "nonIntegerStep")}
 for _m, (_method, _) in METHODS.items():
     for _dn, (_n, _step) in DEBUG_CASES.items():
         for _path, _use in (("kernels", True), ("loop", False)):
@@ -483,7 +484,7 @@ for _m, (_method, _) in METHODS.items():
                 files=True,
                 expect_error=(_method, _dn) in DEBUG_ERRORS,
             )
-    # 89,000 or more voxels: M05's fixed-order mean (the reference changes at switch #4)
+    # 89,000 or more voxels: M05's fixed-order mean (in the oracle since c49fc95)
     _big = [64, 50, 40]
     _cs = decon_cases(
         f"{_m}.debug.big",
@@ -501,6 +502,18 @@ for _m, (_method, _) in METHODS.items():
         files=True,
     )
     CASES += _cs
+
+# DeconFunctionTest/dampFactorKeepsVoxelsAtTheBound: with 0 iterations and a factor of 1 + 2^-30 (1
+# in single) every voxel is at the bound; MATLAB doubled them before M07 (834604d)
+for _m, (_method, _) in METHODS.items():
+    for _path, _use in (("kernels", None), ("loop", False)):
+        CASES += decon_cases(
+            f"{_m}.damp_bound.{_path}",
+            _method,
+            _inputs(_MS, 55),
+            0,
+            {"Background": 100, "save16bit": False, "dampFactor": 1 + 2**-30, "useMex": _use},
+        )
 
 # DeconRFFTTest/resultDoesNotDependOnTheThreadCount's data: a 63^3 PSF (89,000 or more elements:
 # the normalization's fixed-order sum) and 1 Mi voxels (lambda's blocks)
@@ -953,16 +966,16 @@ def test_damp_factor_bounds_the_result():
 
 
 def test_damp_is_matlabs_expression():
-    """``J .* (J <= d * I) + min(J, d * I .* (J >= d * I))`` element by element: d * I in double
-    rounded to single; at a tie both terms are J (MATLAB's expression doubles it); MATLAB's min
-    gives the other value for NaN"""
+    """``J .* (J < d * I) + min(J, d * I .* (J >= d * I))`` element by element: d * I in double
+    rounded to single; a voxel at the bound is the second term's alone (MATLAB's expression with
+    ``<=`` doubled it before M07, 834604d); MATLAB's min gives the other value for NaN"""
     d = 1.2
     i = np.array([2.0, 2.0, 2.0, 0.0, 1.0, 3.0, 1.0], np.float32)
     di = (d * i.astype(np.float64)).astype(np.float32)
     j = np.array([di[0], 1.0, 5.0, 0.0, np.nan, -1.0, -0.0], np.float32)
     out = rl._damp(j, i, d, 1)
-    # a tie: J + min(J, J); below: J + min(J, 0); above: 0 + min(J, dI); J < 0: J + min(J, 0)
-    ref = np.array([2 * di[0], 1.0, di[2], 0.0, 0.0, -2.0], np.float32)
+    # a tie: 0 + min(J, J); below: J + min(J, 0); above: 0 + min(J, dI); J < 0: J + min(J, 0)
+    ref = np.array([di[0], 1.0, di[2], 0.0, 0.0, -2.0], np.float32)
     assert np.array_equal(out[[0, 1, 2, 3, 5]], ref[[0, 1, 2, 3, 5]])
     # NaN J: NaN .* false is NaN, min(NaN, 0) is 0: NaN + 0
     assert np.isnan(out[4])
@@ -1134,3 +1147,37 @@ def test_matlab_names_take_and_give_matlabs_values():
         im, psf, psf, 0, "Background", 100, "useGPU", False
     )
     assert j.shape == (48, 46, 36) and err.shape == (0, 4)
+
+
+@pytest.mark.parametrize("n_iter", [0, 2])
+def test_iteration_count_is_the_iterations_run(n_iter):
+    """DeconFunctionTest/iterationCountIsZeroWithoutIterations: decon_lucy_function's third output
+    is NUMIT, also 0 (MATLAB gave [] before M07, 834604d)"""
+    from petakit5d.params import find
+
+    im, psf = blurred_beads([48, 46, 36], 12), make_psf([48, 46, 36])
+    k = find("decon_lucy_function").call_matlab(
+        im, psf, n_iter, "Background", 100, "useGPU", False
+    )[2]
+    assert isinstance(k, float) and k == n_iter
+    assert rl.lucy(from_matlab(im), from_matlab(psf), n_iter, background=100.0).iterations == n_iter
+
+
+@pytest.mark.parametrize("method", ["simplified", "omw"])
+def test_debug_output_of_fewer_than_three_steps(method, tmp_path):
+    """DeconFunctionTest/debugOutputOfFewerThanThreeSteps: both methods keep the first
+    floor(NUMIT / saveStep) rows (RL errored with istp undefined before M07) and save the steps'
+    estimates"""
+    im, psf, psfb = py_data([48, 46, 36], 13), py_psf([48, 46, 36]), py_psf([48, 46, 36], "b")
+    for n, step in ((10, 5), (2, 5)):
+        folder = tmp_path / f"d{n}_{step}"
+        kw = {"background": 100.0, "debug": True, "debug_folder": str(folder), "save_step": step}
+        if method == "simplified":
+            err = rl.lucy(im, psf, n, **kw).err_mat
+        else:
+            err = rl.lucy_omw(im, psf, psfb, n, **kw).err_mat
+        m = n // step
+        assert err.shape == (m, 4)
+        assert np.array_equal(err[:, [0, 3]], np.column_stack([np.arange(1, m + 1), np.ones(m)]))
+        names = sorted(p.name for p in folder.glob("Iter_*.tif"))
+        assert names == [f"Iter_{k * step:04d}.tif" for k in range(1, m + 1)]

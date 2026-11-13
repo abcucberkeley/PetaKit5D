@@ -481,8 +481,10 @@ CASES.append(
         device="gpu",
     )
 )
-# full masks get their edges set directly, also when thinner than 2 * EdgeErosion; beyond their
-# size MATLAB's GPU code errors as the CPU's does (fullGpuArrayMasksThinnerThanTheErosion)
+# full masks get their edges set directly, also when thinner than 2 * EdgeErosion, and all edge
+# when thinner than EdgeErosion (M07, 834604d; before, MATLAB's GPU code errored there as the
+# CPU's did); a fractional erosion errors, NaN takes index 1
+# (fullGpuArrayMasksThinnerThanTheErosion)
 for _ms, _es in (
     ([3, 20, 20], (1.0, 2.0, 3.0)),
     ([20, 3, 20], (1.0, 2.0, 3.0)),
@@ -492,12 +494,7 @@ for _ms, _es in (
     ([30, 1], (1.0, 2.0, 3.0)),
 ):
     for _e in _es:
-        _sz3 = list(_ms) + [1] * (3 - len(_ms))
-        _bad = (
-            not (_e == _e and _e == math.floor(_e))
-            or _e > min(_sz3[0], _sz3[1])
-            or (len(_ms) == 3 and _ms[2] > 1 and _e > _ms[2])
-        )
+        _bad = _e == _e and _e != math.floor(_e)
         _en = "nan" if _e != _e else f"{_e:g}".replace(".", "p")
         CASES.append(
             Case(
@@ -512,8 +509,9 @@ for _ms, _es in (
                 py_error=Exception if _bad else None,
             )
         )
-# erosion values the mex doesn't take: MATLAB's imerode code (and its errors)
-for _e, _err in ((2.5, True), (np.float32(3.0), True), (0.0, True), (-1.0, True)):
+# erosion values the mex doesn't take: MATLAB's imerode code (and strel's errors); a single 3 is
+# taken as the double 3 since M07 (834604d), so the mex erodes with it (the case keeps its name)
+for _e, _err in ((2.5, True), (np.float32(3.0), False), (0.0, True), (-1.0, True)):
     CASES.append(
         Case(
             f"any.erosion.nonmex.{np.asarray(_e).dtype.name}.{float(_e):g}".replace("-", "m"),

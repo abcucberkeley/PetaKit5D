@@ -330,7 +330,7 @@
   },
   "DeconFrameTest": {
    "file": "tests/decon/DeconFrameTest.m",
-   "pins": "XR_RLdeconFrame3D (single file decon) and XR_visualize_OTF_mask_segmentation on small synthetic data",
+   "pins": "XR_RLdeconFrame3D (single file decon), RLdecon's deskew and rotation after the decon, and XR_visualize_OTF_mask_segmentation on small synthetic data",
    "category": "data",
    "owner": "R05",
    "phase": 1,
@@ -339,6 +339,14 @@
    "methods": {
     "allZeroFrameIsDeconvolved": {
      "pins": "an all-zero frame used to error when saving the 'simplified' info (err_mat is only set when the decon runs)",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "deskewAndRotationAfterTheDeconRunSeparately": {
+     "pins": "RLdecon's separate deskew and rotation after the decon (DSRCombined false) errored: it passed interpMethod to deskewFrame3D and rotateFrame3D, whose parameter is Interp (and took only numbers for it); with linear (the default) and cubic interpolation",
      "tags": [
       "Integration"
      ],
@@ -393,6 +401,14 @@
      "cases": null,
      "fate": []
     },
+    "objectiveScanFramesAreRotatedAfterTheDecon": {
+     "pins": "RLdecon's rotation of objective scan data after the decon errored (interpMethod for rotateFrame3D's Interp)",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
     "otfMaskVisualizationSavesTheFigure": {
      "pins": "demo step: check the OTF mask threshold before decon",
      "tags": [
@@ -419,6 +435,14 @@
     },
     "psfGenFalseUsesTheRawPSF": {
      "pins": "with psfGen=false the raw PSF is used even if a generated PSF from an earlier run is cached in psfgen/ (regression test for d280863 and a3eb8bd)",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "rotationWithoutDeskewIsTheCombinedDeskewAndRotation": {
+     "pins": "Rotate without Deskew (XR_decon_data_wrapper's deconRotate) errored before the decon: RLdecon set the DSR file name only for Deskew (dsrFn undefined); it deskews and rotates in one step",
      "tags": [
       "Integration"
      ],
@@ -525,6 +549,28 @@
      "cases": null,
      "fate": []
     },
+    "dampFactorKeepsVoxelsAtTheBound": {
+     "pins": "a voxel exactly at dampFactor times the background-subtracted input was doubled (both terms of the damping expression took it). With 0 iterations the result is that input, and a factor of 1 + 2^-30 (1 in single precision) puts every voxel at the bound; on the default path (the mex where there is one) and in the MATLAB loop",
+     "tags": [
+      "Unit"
+     ],
+     "cases": [
+      "method=simplified",
+      "method=omw"
+     ],
+     "fate": []
+    },
+    "debugOutputOfFewerThanThreeSteps": {
+     "pins": "RL's debug err_mat errored (istp undefined) with fewer than three saveStep steps of iterations, e.g., 10 iterations with saveStep 5: both methods keep the first floor(NUMIT / saveStep) rows and write the estimates of the steps",
+     "tags": [
+      "Unit"
+     ],
+     "cases": [
+      "method=simplified",
+      "method=omw"
+     ],
+     "fate": []
+    },
     "defaultFallsBackToTheCPUWithAWarning": {
      "pins": "without useGPU (or with []), a GPU if one is usable, else the CPU with a warning with the same reason (stubs as above)",
      "tags": [
@@ -593,6 +639,14 @@
      "cases": null,
      "fate": [],
      "owner": "R02"
+    },
+    "iterationCountIsZeroWithoutIterations": {
+     "pins": "decon_lucy_function's third output, the iterations run, was [] for 0 iterations (the loop variable of an empty loop)",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
     },
     "loopMatchesThePreviousFormulation": {
      "pins": "the decon loops run one FFT step per statement (and keep uint16 input as uint16 on the GPU) to save GPU memory; the results are bit-identical to the previous loops (tests/decon/private/*_before.m), here on the CPU and in DeconGPUTest on the GPU",
@@ -881,6 +935,15 @@
      "fate": [],
      "owner": "R03"
     },
+    "fullMasksThinnerThanTheErosionAreAllEdge": {
+     "pins": "a full mask with a dimension shorter than EdgeErosion (e.g., 3 slices with the default EdgeErosion 8) errored in the edge indices (MATLAB:badsubscript); it is all edge there, as for masks that aren't full",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": [],
+     "owner": "R03"
+    },
     "gpuArrayMasksEqualTheCPUMasks": {
      "pins": "the GPU path erodes gpuArray masks with imerode on the GPU",
      "tags": [
@@ -910,7 +973,7 @@
      "fate": []
     },
     "masksEqualImerode": {
-     "pins": "disks of radius 0 to 40 (no decomposition up to 2, then periodic lines with morphop's padding, with or without extra lines) (full masks thinner than the erosion error in both)",
+     "pins": "disks of radius 0 to 40 (no decomposition up to 2, then periodic lines with morphop's padding, with or without extra lines) (full masks thinner than the erosion, which errored, are all edge)",
      "tags": [
       "Unit"
      ],
@@ -969,6 +1032,15 @@
      ],
      "cases": null,
      "fate": []
+    },
+    "nonDoubleErosionValuesAreTakenAsDoubles": {
+     "pins": "single and integer EdgeErosion (e.g., single(3)) errored in strel for masks that aren't full (MATLAB:strel:invalidType), and for full masks uint8 ran out of range in the edge indices (MATLAB:colon:OutOfRange) where a dimension is longer than 255",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": [],
+     "owner": "R03"
     },
     "resultDoesNotDependOnTheThreadCount": {
      "pins": "whole slices per thread, or the columns of each slice split among the threads when there are few slices",
@@ -1055,7 +1127,6 @@
      "fate": []
     },
     "gpuMexAppliesTheOptions": {
-     "owner": "R04",
      "pins": "gpu mex applies the options",
      "tags": [
       "GPU",
@@ -1071,10 +1142,10 @@
       "method=omw,options=1x2_cell_2",
       "method=omw,options=1x10_cell"
      ],
-     "fate": []
+     "fate": [],
+     "owner": "R04"
     },
     "gpuMexMatchesForOddAnd2DSizes": {
-     "owner": "R04",
      "pins": "gpu mex matches for odd and2 dsizes",
      "tags": [
       "GPU",
@@ -1088,10 +1159,10 @@
       "method=omw,dataSize=1x2_double",
       "method=omw,dataSize=1x3_double_1"
      ],
-     "fate": []
+     "fate": [],
+     "owner": "R04"
     },
     "gpuMexMatchesGpuMatlabLoop": {
-     "owner": "R04",
      "pins": "gpu mex matches gpu matlab loop",
      "tags": [
       "GPU",
@@ -1103,7 +1174,8 @@
       "method=omw,inputClass=uint16",
       "method=omw,inputClass=single"
      ],
-     "fate": []
+     "fate": [],
+     "owner": "R04"
     },
     "outOfMemoryLeavesNoGpuArraysBehind": {
      "pins": "an allocation that fails inside the mex (here its third buffer) frees the buffers it made before, so a CPU fallback or the next file has the memory",
@@ -1115,7 +1187,6 @@
      "fate": []
     },
     "withoutTheGpuMexTheGpuLoopRuns": {
-     "owner": "R04",
      "pins": "without the gpu mex the gpu loop runs",
      "tags": [
       "GPU",
@@ -1125,7 +1196,8 @@
       "method=simplified",
       "method=omw"
      ],
-     "fate": []
+     "fate": [],
+     "owner": "R04"
     }
    }
   },
@@ -1503,6 +1575,14 @@
      "cases": null,
      "fate": [],
      "category": "framework_fake_slurm"
+    },
+    "deconRotateWritesTheDeskewedRotatedResult": {
+     "pins": "deconRotate errored in each task (RLdecon: dsrFn undefined for Rotate without Deskew); the result is deskewed and rotated in one step, in DSR/ with its MIP",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
     },
     "deconvolvedDataCanBeDeskewedAndRotated": {
      "pins": "demo_RL_deconvolution step 5: deskew/rotate raw and decon results",

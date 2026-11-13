@@ -35,7 +35,7 @@ Conventions (S03's for the stitching geometry):
 - Files keep MATLAB's form: the registration results ``xcorr_tile_<i>.mat`` (``relative_shift_mat``,
   ``max_xcorr_mat``, 1-based ``pair_indices``) and the group method's optimization files.
 
-The grid, global and group methods solve with ``matlabcompat.lsq.assignment`` (MATLAB's
+The grid, global, group and test methods solve with ``matlabcompat.lsq.assignment`` (MATLAB's
 ``stitch_assignment_lsqlin``, the three axes in one call), then round with ``round(x + 1e-9)`` and
 subtract tile 1's value, as MATLAB does, so the shifts do not depend on the thread count.
 """
@@ -181,13 +181,13 @@ def _bounded_system(n, ni, nj, C, D, mas):
     return lsq.assignment(C, D, _bounds_matrix(ni, nj, n), _bound_rows(mas))
 
 
-def _round_to_first(x: np.ndarray, offset: bool = True) -> np.ndarray:
-    """``round(d_shift + 1e-9) - (its first row)`` (``offset`` False: plain ``round``)"""
+def _round_to_first(x: np.ndarray) -> np.ndarray:
+    """``round(d_shift + 1e-9) - (its first row)``"""
     from petakit5d.core.dtypes import mround
     from petakit5d.matlabcompat.lsq import ROUND_OFFSET
 
     x = np.asarray(x, dtype=np.float64)
-    d = mround(x + ROUND_OFFSET) if offset else mround(x)
+    d = mround(x + ROUND_OFFSET)
     if d.shape[0] == 0:
         raise AssignmentError(
             "Index in position 1 exceeds array bounds. Index must not exceed 0.",
@@ -210,9 +210,10 @@ def local_assignment(
     n_tiles: int, max_xcorr_mat, absolute_shift_mat, overlap_matrix, xcorr_thresh: float
 ) -> np.ndarray:
     """``stitch_local_assignment``: the minimum spanning forest of the pairs weighted by minus
-    their correlation (pairs below ``xcorr_thresh`` at 0.001), searched depth first from tile 0;
-    each tile's shift is its predecessor's plus their pair's (signed by the pair's order). Tiles
-    the search doesn't reach keep 0. ``overlap_matrix`` is not used. Not rounded."""
+    their correlation (pairs below ``xcorr_thresh`` at 0.001), each tree searched depth first
+    from its first tile (tile 0's first), which keeps its stage position; each other tile's shift
+    is its predecessor's plus their pair's (signed by the pair's order). Without pairs, zeros.
+    ``overlap_matrix`` is not used. Not rounded."""
     from petakit5d.matlabcompat import graph as mg
 
     del overlap_matrix
@@ -220,14 +221,26 @@ def local_assignment(
     mx = _table(max_xcorr_mat, 3, "max_xcorr_mat")
     ash = _table(absolute_shift_mat, 5, "absolute_shift_mat")
     d = np.zeros((n, 3))
+    if mx.shape[0] == 0:
+        # a graph without nodes
+        return d
     w = mx[:, 2].copy()
     w[w < xcorr_thresh] = 0.001
     G = mg.graph(_tiles(mx[:, 0]), _tiles(mx[:, 1]), -w)
     T, _ = mg.minspantree(G, type="forest")
-    v = mg.dfsearch(T, 0)
-    # each tile's predecessor, its only neighbor in the tree visited before it
+    # the trees in turn, from their first tile: the search order of all tiles
     order = np.full(T.numnodes, -1, dtype=np.int64)
-    order[v] = np.arange(v.size)
+    seq = []
+    pos = 0
+    for r in range(T.numnodes):
+        if order[r] >= 0:
+            continue
+        vr = mg.dfsearch(T, r)
+        order[vr] = np.arange(pos, pos + vr.size)
+        pos += vr.size
+        seq.append(vr[1:])
+    v = np.concatenate(seq)
+    # each tile's predecessor, its only neighbor in the tree visited before it
     e = T.edges
     reached = (order[e[:, 0]] >= 0) & (order[e[:, 1]] >= 0)
     e = e[reached]
@@ -241,7 +254,7 @@ def local_assignment(
     keys, first = np.unique(si * m + ti, return_index=True)
     vals = ash[:, 2:5].tolist()
     out = d.tolist()
-    for ni in v[1:].tolist():
+    for ni in v.tolist():
         npr = int(pred[ni])
         if ni > npr:
             s, t, sign = npr, ni, 1.0
@@ -342,14 +355,13 @@ def grid_assignment_test(
     xcorr_thresh: float,
     tile_idx,
 ) -> np.ndarray:
-    """``stitch_global_grid_assignment_test`` (shiftMethod 'test'), as MATLAB has it: the bounds
-    rows in ``find(overlap_matrix)``'s column-major order, neighbors weighted 1, 10 and 0.1 along
-    tile index x, y and z (all four columns compared), the pairs' values taken from rows of
-    ``absolute_shift_mat`` at their pair index (``pair_index(i, j, n)``, an error past its end)
-    and from its first three columns (MATLAB's 1-based tile numbers, then x), solved by plain
-    ``lsqlin`` and rounded without the offset."""
+    """``stitch_global_grid_assignment_test`` (shiftMethod 'test'): as the grid method, with the
+    bounds rows in ``find(overlap_matrix)``'s column-major order (``max_allow_shift`` in that
+    order) and neighbors weighted 1, 10 and 0.1 along tile index x, y and z (all four columns
+    compared: tiles of two data folders get 0); solved as ``stitch_assignment_lsqlin``, rounded
+    and relative to tile 0. Without an active bound it gives the grid method's shifts with
+    ``axis_weight`` (0.1, 10, 1)."""
     from petakit5d.matlabcompat import lsq
-    from petakit5d.stitch.geometry import pair_index
 
     n = int(n_tiles)
     mx = _table(max_xcorr_mat, 3, "max_xcorr_mat")
@@ -357,7 +369,8 @@ def grid_assignment_test(
     mas = _table(max_allow_shift, 6, "max_allow_shift")
     tidx = _table(tile_idx, 4, "tile_idx")
     ni, nj = _find(_overlap(overlap_matrix, n))
-    mxf = mx[mx[:, 2] >= xcorr_thresh]
+    filt = mx[:, 2] < xcorr_thresh
+    mxf = mx[~filt]
     s, t = _tiles(mxf[:, 0]), _tiles(mxf[:, 1])
     tdiff = np.abs(tidx[s] - tidx[t])
     nb = ((tdiff[:, 0] + tdiff[:, 1]) + tdiff[:, 2]) + tdiff[:, 3] == 1
@@ -372,21 +385,9 @@ def grid_assignment_test(
         w[nb] = np.array([1.0, 10.0, 0.1, 0.0])[np.argmax(nz, axis=1)]
     sw = np.sqrt(w)
     C = _differences(s, t, n, sw)
-    c = np.array([pair_index(int(i), int(j), n) for i, j in zip(s, t, strict=True)], np.int64)
-    if c.size and c.max() >= ash.shape[0]:
-        raise AssignmentError(
-            f"Index in position 1 exceeds array bounds. Index must not exceed {ash.shape[0]}.",
-            "MATLAB:badsubscript",
-        )
-    rows = ash[c]
-    vals = np.column_stack([rows[:, 0] + 1, rows[:, 1] + 1, rows[:, 2]])
-    D = sw[:, None] * vals
-    A = _bounds_matrix(ni, nj, n)
-    B = _bound_rows(mas)
-    x = np.zeros((n, 3))
-    for k in range(3):
-        x[:, k] = lsq.lsqlin(C, D[:, k], A, B[:, k])
-    return _round_to_first(x, offset=False)
+    D = sw[:, None] * ash[~filt, 2:5]
+    x = lsq.assignment(C, D, _bounds_matrix(ni, nj, n), _bound_rows(mas))
+    return _round_to_first(x)
 
 
 def group_assignment(
@@ -409,10 +410,11 @@ def group_assignment(
     """``stitch_global_group_assignment``: step 1, the grid method in each group of tiles
     (``grp_idx``: each tile's group; with ``parse_cluster``, more than 100 tiles and more than one
     group, as tasks of ``global_grid_assignment`` on .mat files in
-    ``<xcorr_dir>/xcorr_group_optimization/``); step 2, for each pair of groups (first group lower)
-    with pairs at or above the threshold from the first to the second, two nodes at the centroids
-    of the pairs' tiles, linked by the correlation-weighted mean shift of these pairs (weight 0.01)
-    within their widest bounds, the nodes of a group at their centroids' distances (equalities),
+    ``<xcorr_dir>/xcorr_group_optimization/``; a group of one tile has no task and keeps shift 0);
+    step 2, for each pair of groups with pairs at or above the threshold between them (those whose
+    first tile is in the second group turned around), two nodes at the centroids of the pairs'
+    tiles, linked by the correlation-weighted mean shift of these pairs (weight 0.01) within their
+    widest bounds, the nodes of a group at their centroids' distances (equalities),
     solved as ``stitch_assignment_lsqlin``; step 3, each group moved by its first node, groups
     without nodes at their stage positions relative to the tiles of the groups they overlap
     (``lsq.free_group_offsets``). Rounded and relative to tile 0; with one group, the grid
@@ -492,20 +494,28 @@ def group_assignment(
     pair_sizes = np.zeros((ng, ng))
     dist = np.zeros((ng, ng, 3))
     cent = np.zeros((ng, ng, 6))
-    sel_of = {}
+    pairs_of = {}
     for gi in range(ng - 1):
-        in_i = np.isin(first, gind_cell[gi])
+        first_i, second_i = np.isin(first, gind_cell[gi]), np.isin(second, gind_cell[gi])
         for gj in range(gi + 1, ng):
-            sel = in_i & np.isin(second, gind_cell[gj])
-            pair_sizes[gi, gj] = np.count_nonzero(sel)
-            if not sel.any():
+            # the pairs between the two groups, also those whose first tile is in group gj
+            # (turned around: from group gi to group gj)
+            ji = np.isin(first, gind_cell[gj]) & second_i
+            sel = np.nonzero((first_i & np.isin(second, gind_cell[gj])) | ji)[0]
+            pair_sizes[gi, gj] = sel.size
+            if sel.size == 0:
                 continue
-            sel_of[gi, gj] = sel
+            turn = ji[sel]
+            pairs_of[gi, gj] = (sel, turn)
             w = mxf[sel, 2]
-            num = mr.sum(ashf[sel, 2:5] * w[:, None], axis=0, matlab_layout=True)
+            sign = (1.0 - 2.0 * turn)[:, None]
+            num = mr.sum((ashf[sel, 2:5] * sign) * w[:, None], axis=0, matlab_layout=True)
             dist[gi, gj] = num / mr.sum(w)
-            ci = np.unique(first[sel])
-            cj = np.unique(second[sel])
+            # the pairs' tiles in group gi and in group gj
+            tiles = np.column_stack([first[sel], second[sel]])
+            tiles[turn] = tiles[turn][:, ::-1]
+            ci = np.unique(tiles[:, 0])
+            cj = np.unique(tiles[:, 1])
             cent[gi, gj, 0:3] = mr.mean(d_pre[ci], axis=0, matlab_layout=True)
             cent[gi, gj, 3:6] = mr.mean(d_pre[cj], axis=0, matlab_layout=True)
     # the pairs of groups in find's (column-major) order, two nodes each
@@ -519,9 +529,12 @@ def group_assignment(
     D = sw * dist[gpi, gpj]
     gmas = np.zeros((n_p, 6))
     for k in range(n_p):
-        sel = sel_of[int(gpi[k]), int(gpj[k])]
-        gmas[k, 0:3] = mr.min(masf[sel, 0:3], axis=0, matlab_layout=True)[0]
-        gmas[k, 3:6] = mr.max(masf[sel, 3:6], axis=0, matlab_layout=True)[0]
+        # the widest bounds of the pairs (those of turned pairs turned around: [-u, -l])
+        sel, turn = pairs_of[int(gpi[k]), int(gpj[k])]
+        m = masf[sel]
+        m[turn] = -m[turn][:, [3, 4, 5, 0, 1, 2]]
+        gmas[k, 0:3] = mr.min(m[:, 0:3], axis=0, matlab_layout=True)[0]
+        gmas[k, 3:6] = mr.max(m[:, 3:6], axis=0, matlab_layout=True)[0]
     # equalities: the nodes of a group at their centroids' distances
     eq_rows, eq_vals = [], []
     node_cent = np.zeros((n_node, 3))
@@ -611,11 +624,10 @@ def _run_group_tasks(d_pre, grp, uniq, inputs, outputs, tasks, node_factor, mcc_
     from petakit5d.jobs import framework
 
     ng = uniq.size
-    if any(t is None for t in tasks):
-        # a group of one tile has no task: MATLAB's call gets empty paths and errors
-        raise AssignmentError(
-            "A group of one tile has no optimization task (MATLAB's cluster path errors for it)."
-        )
+    # groups of one tile have no task: the tile keeps shift 0 within its group
+    have = [g for g in range(ng) if tasks[g] is not None]
+    if not have:
+        return d_pre
     _, counts = np.unique(grp, return_counts=True)
     mem = max(20.0, float(counts.max()) ** 2 * 0.0001) * node_factor
     min_task_job_num = 1
@@ -624,9 +636,9 @@ def _run_group_tasks(d_pre, grp, uniq, inputs, outputs, tasks, node_factor, mcc_
     done: list[bool] = []
     for i in range(3):
         done = framework.run_tasks(
-            inputs,
-            outputs,
-            tasks,
+            [inputs[g] for g in have],
+            [outputs[g] for g in have],
+            [tasks[g] for g in have],
             max_trial_num=2,
             parse_cluster=True,
             mem_allocate=mem * 2**i,
@@ -638,7 +650,7 @@ def _run_group_tasks(d_pre, grp, uniq, inputs, outputs, tasks, node_factor, mcc_
             break
     if not all(done):
         raise AssignmentError("group registartion cannot be fully done!")
-    for g in range(ng):
+    for g in have:
         a = read_mat(outputs[g], "d_shift_g")
         d_pre[grp == uniq[g]] = np.asarray(a["d_shift_g"], dtype=np.float64).reshape(-1, 3)
     return d_pre
@@ -724,14 +736,6 @@ def xcorr_result_paths(xcorr_dir: str, n_tiles: int) -> list[str]:
             os.mkdir(sub)
         out.extend(os.path.join(sub, f"xcorr_tile_{k}.mat") for k in range(s, t + 1))
     return out
-
-
-def _matlab_size(shape) -> np.ndarray:
-    """MATLAB's getImageSize of an image of ``(z, y, x)`` shape: ``[ny nx nz]``"""
-    s = [int(v) for v in shape]
-    if len(s) >= 3:
-        return np.array([s[1], s[2], s[0]] + s[3:], dtype=np.float64)
-    return np.array(s, dtype=np.float64)
 
 
 def _tile_mip_slabs(tile_paths, pool_size, parse_cluster, mcc_mode, config_file) -> str:
@@ -932,12 +936,15 @@ def shift_assignment(
         min_task_job_num = 1
 
     print("Compute pairwise cross correlation between overlap tiles...")
-    sz = _matlab_size(get_image_size(tile_paths[0]))
-    ext = (cov[:, 3:6] - cov[:, 0:3]) / vs + mo_xyz
-    if sz.size != 3:
+    # the overlaps plus the max offset, at most the tile's size, along x, y, z
+    shape = get_image_size(tile_paths[0])
+    if len(shape) < 3:
         raise AssignmentError(
-            "Arrays have incompatible sizes for this operation.", "MATLAB:sizeDimensionsMustMatch"
+            "Index exceeds the number of array elements. Index must not exceed 2.",
+            "MATLAB:badsubscript",
         )
+    sz = np.array([shape[a] for a in dop], dtype=np.float64)
+    ext = (cov[:, 3:6] - cov[:, 0:3]) / vs + mo_xyz
     m = np.fmin(ext, sz)
     raw = ((m[:, 0] * m[:, 1]) * m[:, 2]) * 4 / 1024**3
     ds_prod = (ds[1] * ds[2]) * ds[0] if ds.size == 3 else float(np.prod(ds))
@@ -1018,13 +1025,15 @@ def shift_assignment(
             parse_cluster, node_factor, mcc_mode, config_file,
         )  # fmt: skip
     elif method == "test":
+        # the bounds of the pairs in find's order (the test's inequalities), turned around by
+        # the tiles' order
         hi = np.fmin((cov[:, 3:6] - cov[:, 0:3]) / vs - 1, mo_xyz)
         if hi.shape[0] != neq:
             raise AssignmentError(
-                "Dimensions of arrays being concatenated are not consistent.",
-                "MATLAB:catenate:dimensionMismatch",
+                "Arrays have incompatible sizes for this operation.",
+                "MATLAB:sizeDimensionsMustMatch",
             )
-        mas = np.hstack([lo, hi])
+        mas = _bounds(lo, hi, xyz[tj] >= xyz[ti])
         d_shift = grid_assignment_test(n, mx, ash, om, mas, xcorr_thresh, tidx)
     else:
         raise AssignmentError(
@@ -1040,8 +1049,8 @@ def shift_assignment(
 
 
 def _groups(tidx: np.ndarray, group_file: str) -> np.ndarray:
-    """each tile's group: of the nearest row of ``group_file`` (x, y, z[, did], g; 4 columns: did
-    0), else the tile's location"""
+    """each tile's group: of the nearest row of ``group_file`` (x, y, z[, did], g; a file of 4
+    columns matches the tiles by their x, y, z indices), else the tile's location"""
     from petakit5d.matlabcompat.neighbors import knnsearch
 
     if not group_file:
@@ -1056,10 +1065,10 @@ def _groups(tidx: np.ndarray, group_file: str) -> np.ndarray:
 
         t = read_table(group_file)
         col = lambda k: np.asarray(t[k], dtype=np.float64)  # noqa: E731
-        did = np.zeros(t.height) if len(t.names) == 4 else col("did")
-        g_idx = np.column_stack([col("x"), col("y"), col("z"), did])
+        names = ["x", "y", "z"] if len(t.names) == 4 else ["x", "y", "z", "did"]
+        g_idx = np.column_stack([col(k) for k in names])
         gid = col("g")
-    kidx, d = knnsearch(g_idx, tidx, 1)
+    kidx, d = knnsearch(g_idx, tidx[:, : g_idx.shape[1]], 1)
     if np.any(d != 0):
         _warn("Some tiles are not included in the groups")
     return gid[kidx[:, 0]]
