@@ -67,9 +67,10 @@ USAGE = (
     "       python -m petakit5d.jobs.slots --task <call folder> <index>"
 )
 
-# the pause and clock of the slot loop (tests replace them)
+# the pause and clock of the slot loop (tests replace them); perf_counter is CLOCK_MONOTONIC on
+# Linux, as monotonic, and resolves well below a millisecond on Windows (monotonic: 15.6 ms)
 _sleep = time.sleep
-_clock = time.monotonic
+_clock = time.perf_counter
 
 
 def gpu_devices(visible: str | None) -> list[str]:

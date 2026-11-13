@@ -35,6 +35,7 @@ Command line: ``python -m petakit5d.testing.bench run|summary|gate|history|node 
 from __future__ import annotations
 
 import os
+import posixpath
 import sys
 import time
 
@@ -797,9 +798,10 @@ def _fmt(s, ctx: dict):
 
 
 def _matlab_argv(v: dict, ctx: dict) -> list[str]:
-    common = os.path.join(ctx["src"], "benchmarks", "common")
+    # MATLAB's paths joined with '/' (os.path.join's on POSIX), which MATLAB takes everywhere
+    common = posixpath.join(ctx["src"], "benchmarks", "common")
     paths = [common] + [
-        p if os.path.isabs(p) else os.path.join(ctx["src"], p)
+        p if os.path.isabs(p) else posixpath.join(ctx["src"], p)
         for p in _fmt(v.get("paths", []), ctx)
     ]
     q = "', '".join(p.replace("'", "''") for p in paths)

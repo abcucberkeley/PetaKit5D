@@ -76,7 +76,14 @@ Windows speed matters.
   changed the bytes of the MATLAB helper and harness files that oracle keys hash.
   `python/.gitattributes` (`* -text`) checks every file out as committed. Text files that tests
   or the port write must be written with `newline="\n"` (Python's text mode writes CRLF on
-  Windows).
+  Windows); the oracle cases' input generators do. cpp-zarr writes `.zarray` and the other zarr
+  metadata in text mode, so with CRLF on Windows: MATLAB reads them the same, and the oracle
+  keys and comparisons take zarr metadata with LF line ends (`testing.cases.tree_hash`,
+  `testing.compare`).
+- **MATLAB's parameter files on Windows.** `writeJsonFile` writes the JSON with
+  `fprintf(fid, s)`, which turns the `\\` of a Windows path into `\`, so `parameters.json`
+  is not valid JSON where a parameter holds a Windows path; the port writes the same bytes.
+- **Tests that need POSIX tools** (the fake Slurm, the fake rsync, bash tasks) skip on Windows.
 - **OpenMP version.** MSVC's `/openmp:llvm` has OpenMP 3.1's features but reports `_OPENMP`
   200203 (2.0).
 - **The C library's elementary functions** (exp, log, sin, pow, hypot) differ in the last bit
