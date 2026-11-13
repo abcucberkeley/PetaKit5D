@@ -88,14 +88,14 @@ By owner (default run / all):
 | K04 | 24 | 24 | 3 |
 | K05 | 95 | 95 | 3 |
 | K07 | 1 | 1 | 1 |
-| K09 | 27 | 27 | 2 |
+| K09 | 7 | 7 | 2 |
 | N05 | 40 | 40 | 1 |
 | P01 | 12 | 12 | 2 |
 | P02 | 19 | 19 | 1 |
 | R01 | 12 | 12 | 2 |
 | R02 | 29 | 29 | 2 |
 | R03 | 126 | 126 | 4 |
-| R04 | 22 | 22 | 2 |
+| R04 | 42 | 42 | 3 |
 | R05 | 17 | 17 | 2 |
 | R06 | 29 | 29 | 1 |
 | R07 | 19 | 19 | 1 |
@@ -116,10 +116,11 @@ By fate (all):
 | fate | tests |
 |---|---|
 | na | 76 |
+| na+oracle | 1 |
 | oracle | 107 |
-| oracle+pytest | 391 |
-| pending | 794 |
-| pytest | 289 |
+| oracle+pytest | 396 |
+| pending | 787 |
+| pytest | 290 |
 
 ## Classes
 
@@ -141,9 +142,9 @@ By fate (all):
 | decon/DeconFrameTest | data | R05 | 14 | 14 | no | pending 14 |
 | decon/DeconFunctionTest | data | R03 | 30 | 65 | no | oracle 24, oracle+pytest 5, pending 18, pytest 18 |
 | decon/DeconGPUTest | data | R04 | 4 | 19 | no | pending 19 |
-| decon/DeconMaskErosionTest | data | K05 | 11 | 46 | no | na 2, oracle 2, oracle+pytest 38, pending 3, pytest 1 |
+| decon/DeconMaskErosionTest | data | K05 | 11 | 46 | no | na 2, na+oracle 1, oracle 2, oracle+pytest 40, pytest 1 |
 | decon/DeconOverlapTest | data | R04 | 3 | 3 | no | pending 3 |
-| decon/DeconRFFTGPUTest | data | K09 | 7 | 24 | no | pending 24 |
+| decon/DeconRFFTGPUTest | data | K09 | 7 | 24 | no | oracle+pytest 3, pending 20, pytest 1 |
 | decon/DeconRFFTTest | data | K05 | 17 | 82 | no | na 6, oracle 27, oracle+pytest 47, pytest 2 |
 | decon/DeconReadCacheTest | data | R01 | 4 | 4 | no | pending 4 |
 | decon/DeconWrapperTest | data | R06 | 48 | 48 | no | pending 48 |

@@ -1055,6 +1055,7 @@
      "fate": []
     },
     "gpuMexAppliesTheOptions": {
+     "owner": "R04",
      "pins": "gpu mex applies the options",
      "tags": [
       "GPU",
@@ -1073,6 +1074,7 @@
      "fate": []
     },
     "gpuMexMatchesForOddAnd2DSizes": {
+     "owner": "R04",
      "pins": "gpu mex matches for odd and2 dsizes",
      "tags": [
       "GPU",
@@ -1089,6 +1091,7 @@
      "fate": []
     },
     "gpuMexMatchesGpuMatlabLoop": {
+     "owner": "R04",
      "pins": "gpu mex matches gpu matlab loop",
      "tags": [
       "GPU",
@@ -1112,6 +1115,7 @@
      "fate": []
     },
     "withoutTheGpuMexTheGpuLoopRuns": {
+     "owner": "R04",
      "pins": "without the gpu mex the gpu loop runs",
      "tags": [
       "GPU",

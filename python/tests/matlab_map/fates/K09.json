@@ -1,0 +1,44 @@
+{
+  "task": "K09",
+  "classes": {
+    "DeconRFFTGPUTest": {
+      "methods": {
+        "gpuHalfOTFIsTheFirstHalfOfTheOTF": [
+          "pytest:tests/gpu/test_decon_gpu_kernels.py::test_half_otf_is_the_first_half_of_the_otf",
+          "oracle:tests/gpu/test_decon_gpu_kernels.py::A100.otf.*",
+          "oracle:tests/gpu/test_decon_gpu_kernels.py::B200.otf.*",
+          "oracle:tests/gpu/test_decon_gpu_kernels.py::TitanV.otf.*"
+        ],
+        "gpuBackgroundIsSubtractedAsInTheGpuLoop": [
+          "pytest:tests/gpu/test_decon_gpu_kernels.py::test_background_is_subtracted_as_in_the_gpu_loop",
+          "oracle:tests/gpu/test_decon_gpu_kernels.py::A100.omw0.*",
+          "oracle:tests/gpu/test_decon_gpu_kernels.py::B200.omw0.*",
+          "oracle:tests/gpu/test_decon_gpu_kernels.py::TitanV.omw0.*"
+        ],
+        "outOfMemoryLeavesNoGpuArraysBehind": [
+          "pytest:tests/gpu/test_decon_gpu_kernels.py::test_out_of_memory_leaves_no_gpu_arrays_behind",
+          "pytest:tests/gpu/test_decon_gpu_kernels.py::test_plan_memory_errors_have_matlabs_identifiers"
+        ]
+      }
+    },
+    "DeconMaskErosionTest": {
+      "methods": {
+        "gpuArrayMasksEqualTheCPUMasks": [
+          "pytest:tests/gpu/test_decon_gpu_kernels.py::test_gpu_erosion_equals_the_cpu_kernel",
+          "oracle:tests/gpu/test_decon_gpu_kernels.py::any.erosion.skewedHoles",
+          "oracle:tests/gpu/test_decon_gpu_kernels.py::any.erosion.random.*",
+          "oracle:tests/gpu/test_decon_gpu_kernels.py::any.erosion.mex.*"
+        ],
+        "fullGpuArrayMasksThinnerThanTheErosion": [
+          "pytest:tests/gpu/test_decon_gpu_kernels.py::test_gpu_erosion_wrapper_equals_the_cpu_wrapper",
+          "oracle:tests/gpu/test_decon_gpu_kernels.py::any.erosion.full.*"
+        ],
+        "gpuArrayMasksWithoutTheGPUMex": [
+          "na:the port compiles its CUDA kernels at run time wherever there is a GPU, so no platform lacks the GPU erosion; the masks of one row or column that the method pins are in the any.erosion.* oracle cases",
+          "oracle:tests/gpu/test_decon_gpu_kernels.py::any.erosion.*.oneRow",
+          "oracle:tests/gpu/test_decon_gpu_kernels.py::any.erosion.*.oneColumn"
+        ]
+      }
+    }
+  }
+}
