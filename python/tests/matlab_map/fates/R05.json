@@ -1,0 +1,100 @@
+{
+  "task": "R05",
+  "classes": {
+    "DeconFrameTest": {
+      "finished": true,
+      "methods": {
+        "allZeroFrameIsDeconvolved": [
+          "pytest:tests/decon/test_frame.py::test_all_zero_frame_is_deconvolved",
+          "oracle:tests/decon/test_frame.py::frame.zero.*",
+          "oracle:tests/decon/test_file.py::file.zero_data.*"
+        ],
+        "deskewAndRotationAfterTheDeconRunSeparately": [
+          "pytest:tests/decon/test_file.py::test_deskew_and_rotation_after_the_decon_run_separately",
+          "pytest:tests/decon/test_file.py::test_cubic_interpolation_is_used",
+          "oracle:tests/decon/test_file.py::file.separate.*"
+        ],
+        "existingResultIsSkipped": [
+          "pytest:tests/decon/test_frame.py::test_existing_result_is_skipped",
+          "oracle:tests/decon/test_frame.py::frame.existing.*",
+          "oracle:tests/decon/test_file.py::file.exists*"
+        ],
+        "fileThatDoesNotFitOnTheGPUIsDeconvolvedOnTheCPU": [
+          "pytest:tests/decon/test_frame.py::test_file_that_does_not_fit_on_the_gpu_is_deconvolved_on_the_cpu"
+        ],
+        "flipZstackFlipsTheResult": [
+          "pytest:tests/decon/test_frame.py::test_flip_zstack_flips_the_result",
+          "oracle:tests/decon/test_frame.py::frame.flip.*",
+          "oracle:tests/decon/test_file.py::file.flip.*"
+        ],
+        "gpuJobDoesNotReadAFinishedNextFile": [
+          "pytest:tests/decon/test_frame.py::test_gpu_job_does_not_read_a_finished_next_file"
+        ],
+        "gpuJobReadsTheNextFileDuringTheDecon": [
+          "pytest:tests/decon/test_frame.py::test_gpu_job_reads_the_next_file_during_the_decon",
+          "pytest:tests/decon/test_frame.py::test_gpu_has_room_is_twice_the_decon"
+        ],
+        "gpuJobWithoutRoomOnTheGPUReadsTheFilesInTurn": [
+          "pytest:tests/decon/test_frame.py::test_gpu_job_without_room_on_the_gpu_reads_the_files_in_turn"
+        ],
+        "objectiveScanFramesAreRotatedAfterTheDecon": [
+          "pytest:tests/decon/test_file.py::test_objective_scan_frames_are_rotated_after_the_decon",
+          "oracle:tests/decon/test_file.py::file.objective_scan*"
+        ],
+        "otfMaskVisualizationSavesTheFigure": [
+          "na:XR_visualize_OTF_mask_segmentation is a figure tool of the MIP mask and figure group (Phase 2), not part of RLdecon or XR_RLdeconFrame3D"
+        ],
+        "otherGPUJobErrorsAreNotRetriedOnTheCPU": [
+          "pytest:tests/decon/test_frame.py::test_other_gpu_job_errors_are_not_retried_on_the_cpu",
+          "oracle:tests/decon/test_frame.py::error.gpu_job_without_gpu.*"
+        ],
+        "overwriteRecomputesTheResult": [
+          "pytest:tests/decon/test_frame.py::test_overwrite_recomputes_the_result",
+          "oracle:tests/decon/test_frame.py::frame.overwrite.*"
+        ],
+        "psfGenFalseUsesTheRawPSF": [
+          "pytest:tests/decon/test_frame.py::test_psf_gen_false_uses_the_raw_psf",
+          "oracle:tests/decon/test_frame.py::frame.psfgen_false.*"
+        ],
+        "rotationWithoutDeskewIsTheCombinedDeskewAndRotation": [
+          "pytest:tests/decon/test_frame.py::test_rotation_without_deskew_is_the_combined_deskew_and_rotation",
+          "pytest:tests/decon/test_file.py::test_rotation_without_deskew_is_the_combined_deskew_and_rotation",
+          "oracle:tests/decon/test_frame.py::frame.rotate.*",
+          "oracle:tests/decon/test_file.py::file.rotate_only.*"
+        ],
+        "savedErosionMaskCanBeReplaced": [
+          "pytest:tests/decon/test_frame.py::test_saved_erosion_mask_can_be_replaced",
+          "oracle:tests/decon/test_frame.py::frame.mask*"
+        ],
+        "simplifiedInfoFilesGoToTheDeconInfoFolder": [
+          "pytest:tests/decon/test_frame.py::test_simplified_info_files_go_to_the_decon_info_folder",
+          "oracle:tests/decon/test_frame.py::frame.default.*"
+        ],
+        "writesResultsToMatlabDeconByDefault": [
+          "pytest:tests/decon/test_frame.py::test_writes_results_to_matlab_decon_by_default",
+          "oracle:tests/decon/test_frame.py::frame.default.*"
+        ]
+      }
+    },
+    "DeconFunctionTest": {
+      "methods": {
+        "rldeconInMemoryMatchesDirectFunction": [
+          "pytest:tests/decon/test_file.py::test_rldecon_in_memory_matches_direct_function",
+          "oracle:tests/decon/test_file.py::mem.simplified.*"
+        ],
+        "rldeconWithZeroIterationsReturnsTheInput": [
+          "pytest:tests/decon/test_file.py::test_rldecon_with_zero_iterations_returns_the_input",
+          "oracle:tests/decon/test_file.py::mem.zero_iter.*"
+        ]
+      }
+    },
+    "DeconOverlapTest": {
+      "methods": {
+        "rldeconReturnsTheOverlapOutput": [
+          "pytest:tests/decon/test_file.py::test_rldecon_returns_the_overlap_output",
+          "oracle:tests/decon/test_file.py::mem.overlap.*"
+        ]
+      }
+    }
+  }
+}

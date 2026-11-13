@@ -13,6 +13,8 @@
 ``decon_lucy_omw``              decon_lucy_omw_function (``lucy_omw``)
 ``clear_otf_cache``             ``clear decon_lucy_function decon_lucy_omw_function``
 ``decon_mask_edge_erosion``     decon_mask_edge_erosion
+``rl_decon_file``               RLdecon (``RLDeconResult``)
+``decon_file``                  XR_RLdeconFrame3D
 ==============================  ========================================================
 
 Nothing is imported until a name is first used.
@@ -44,6 +46,9 @@ _EXPORTS = {
     "lucy": "rl",
     "lucy_omw": "rl",
     "decon_mask_edge_erosion": "erosion",
+    "RLDeconResult": "file",
+    "rl_decon_file": "file",
+    "decon_file": "frame",
 }
 
 __all__ = sorted(_EXPORTS)
