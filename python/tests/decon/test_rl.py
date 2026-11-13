@@ -1133,10 +1133,15 @@ def test_a_gpu_applies_its_own_kernel_rules(monkeypatch, method):
     """decon_use_rfft_mex with a GPU applies the GPU mex's rules (it takes one row along y): the
     CPU kernels' refusal of use_mex=True waits until the call runs on the CPU (use_gpu False, no
     usable GPU, a cached CPU OTF), and a selected GPU gets the call (petakit5d.decon.rl_gpu, a
-    stand-in here); clear_otf_cache clears the GPU path's cache too"""
+    stand-in here); clear_otf_cache clears the GPU path's cache too. The stand-in replaces the
+    module in sys.modules and as the package's attribute, which ``from petakit5d.decon import
+    rl_gpu`` takes first once the real module was imported (by an earlier test or a GPU run), so
+    the result doesn't depend on what ran before"""
+    import importlib
     import sys
     import types
 
+    import petakit5d.decon as decon_package
     from petakit5d.gpu import device as G
 
     row = py_data([1, 64, 33], 14)  # MATLAB's 1 x 64 x 33: (33, 1, 64)
@@ -1158,7 +1163,9 @@ def test_a_gpu_applies_its_own_kernel_rules(monkeypatch, method):
     fake = types.ModuleType("petakit5d.decon.rl_gpu")
     fake.decon_lucy = fake.decon_lucy_omw = lambda **kw: calls.append(kw) or "gpu result"
     fake.clear_otf_cache = lambda: calls.append("cleared")
+    importlib.import_module("petakit5d.decon.rl_gpu")  # the real module loaded, as after GPU tests
     monkeypatch.setitem(sys.modules, "petakit5d.decon.rl_gpu", fake)
+    monkeypatch.setattr(decon_package, "rl_gpu", fake)
     monkeypatch.setattr(rl, "_gpu_device", lambda use_gpu: "a GPU")
     assert run(None) == "gpu result" and calls[-1]["use_mex"] is True
     rl.clear_otf_cache()
