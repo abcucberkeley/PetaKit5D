@@ -85,9 +85,12 @@ if ~isempty(resampleFactor)
 end
 switch resampleType
     case 'given'
-        xf = resampleFactor(1);
-        yf = resampleFactor(2);
-        zf = resampleFactor(3);
+        % in the order of the tiles' axes (yxz for 'y,x,z'), as the tiles
+        % are resampled
+        xyzf = resampleFactor(data_order_mat);
+        xf = xyzf(1);
+        yf = xyzf(2);
+        zf = xyzf(3);
     case 'method_1'
         zf = cot(abs(theta));
         yf = 1;

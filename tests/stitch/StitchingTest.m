@@ -38,7 +38,10 @@ classdef StitchingTest < pktest.TestCase
             'skewedSpace', struct('gtSize', [100, 64, 50], 'starts', [0, 0, 0; 36, 0, 0; 0, 0, 10; 36, 0, 10], ...
                 'tileSize', [64, 64, 40], 'stageXYZ', [0, 0, 0; 0, 36 * 0.108, 0; 3, 0, 0; 3, 36 * 0.108, 0], ...
                 'tileIdx', [0, 0, 0; 0, 1, 0; 1, 0, 0; 1, 1, 0], ...
-                'params', {{'DSR', false, 'dz', 0.3, 'skewAngle', 32.45, 'reverse', true, 'axisOrder', '-x,y,z'}}))
+                'params', {{'DSR', false, 'dz', 0.3, 'skewAngle', 32.45, 'reverse', true, 'axisOrder', '-x,y,z'}}), ...
+            'resampledDSR', struct('gtSize', [80, 108, 32], 'starts', [0, 0, 0; 0, 36, 0; 30, 0, 0; 30, 36, 0], ...
+                'tileSize', [50, 72, 32], 'pixelSizes', [0.216, 0.108, 0.108], ...
+                'params', {{'resampleType', 'given', 'resampleFactor', [2, 1, 1]}}))
     end
 
     methods (Test, TestTags = {'Integration'})
@@ -1191,6 +1194,25 @@ classdef StitchingTest < pktest.TestCase
             out = testCase.readResult(dataPath);
             testCase.verifyEqual(size(out), [10, 3, 102]);
             testCase.verifyEqual(out(1 : 8, 1, 1 : 100), gt);
+        end
+
+        function resampleFactorIsInTheTilesAxisOrder(testCase)
+            % resampleFactor is in yxz order, the order in which tiles are
+            % resampled (and DSR tiles were deskewed with it); the stitching
+            % took it as x, y, z for the voxel sizes, so tiles whose y and x
+            % factors differ were placed with the x and y voxel sizes
+            % swapped. DSR tiles with y voxels of 2 px, as a factor of
+            % [2, 1, 1] makes them.
+            dataPath = testCase.createTempFolder();
+            px = testCase.XYPixelSize;
+            gt = testCase.randomVolume([80, 108, 32]);
+            csvFn = testCase.writeTiles(dataPath, gt, [0, 0, 0; 0, 36, 0; 30, 0, 0; 30, 36, 0], [50, 72, 32], [2 * px, px, px]);
+
+            testCase.stitch(dataPath, csvFn, 'resampleType', 'given', 'resampleFactor', [2, 1, 1]);
+
+            out = testCase.readResult(dataPath);
+            testCase.verifyEqual(size(out), [82, 110, 34]);
+            testCase.verifyEqual(out(1 : 80, 1 : 108, 1 : 32), gt);
         end
     end
 
