@@ -1,0 +1,126 @@
+{
+ "task": "T02",
+ "classes": {
+  "MIPTest": {
+   "finished": true,
+   "methods": {
+    "allAxesOfTiff": [
+     "pytest:tests/tools/test_mip.py::test_all_axes_of_tiff",
+     "oracle:tests/tools/test_mip.py::wrapper.tif.uint16.all"
+    ],
+    "defaultIsZOnly": [
+     "pytest:tests/tools/test_mip.py::test_default_is_z_only",
+     "oracle:tests/tools/test_mip.py::wrapper.tif.uint16.default_z"
+    ],
+    "singleOutputWithoutSave16bit": [
+     "pytest:tests/tools/test_mip.py::test_single_output_without_save16bit",
+     "oracle:tests/tools/test_mip.py::wrapper.tif.single.save16bit_false"
+    ],
+    "allAxesOfZarr": [
+     "pytest:tests/tools/test_mip.py::test_all_axes_of_zarr",
+     "oracle:tests/tools/test_mip.py::wrapper.zarr.uint16.all"
+    ],
+    "allAxesOfLargeZarr": [
+     "pytest:tests/tools/test_mip.py::test_all_axes_of_large_zarr",
+     "oracle:tests/tools/test_mip.py::wrapper.large.*"
+    ],
+    "inputBboxProjectsTheCroppedRegion": [
+     "pytest:tests/tools/test_mip.py::test_input_bbox_projects_the_cropped_region",
+     "oracle:tests/tools/test_mip.py::wrapper.tif.uint16.bbox"
+    ],
+    "saveMIPTiffWritesRequestedAxes": [
+     "pytest:tests/tools/test_mip.py::test_save_mip_tiff_writes_requested_axes",
+     "oracle:tests/tools/test_mip.py::tif.uint16.y_and_z"
+    ],
+    "slabAnotherWriterMadeIsKept": [
+     "pytest:tests/tools/test_mip.py::test_slab_another_writer_made_is_kept"
+    ],
+    "largeZarrJobsGoAfterTheirBatches": [
+     "pytest:tests/tools/test_mip.py::test_large_zarr_jobs_go_after_their_batches"
+    ],
+    "largeZarrJobsAskForWhatTheyHold": [
+     "pytest:tests/tools/test_mip.py::test_large_zarr_jobs_ask_for_what_they_hold"
+    ],
+    "mipsAreMovedIntoPlace": [
+     "pytest:tests/tools/test_mip.py::test_mips_are_moved_into_place"
+    ],
+    "zarrIsReadInSlabsOfWholeChunks": [
+     "pytest:tests/tools/test_mip.py::test_zarr_is_read_in_slabs_of_whole_chunks",
+     "oracle:tests/tools/test_mip.py::zarr.*"
+    ],
+    "minimumOfARegion": [
+     "pytest:tests/kernels/test_mip.py::test_minimum_of_a_region",
+     "oracle:tests/kernels/test_mip.py::min_bbox_3d*"
+    ],
+    "minimumOfARegionSkipsNaN": [
+     "pytest:tests/kernels/test_mip.py::test_minimum_of_a_region_skips_nan",
+     "oracle:tests/kernels/test_mip.py::min_bbox_3d*.nan_*"
+    ]
+   }
+  },
+  "BlockMIPTest": {
+   "finished": true,
+   "methods": {
+    "rangeMaxMatchesMaxOfEachRange": [
+     "pytest:tests/kernels/test_mip.py::test_range_max_matches_max_of_each_range",
+     "oracle:tests/kernels/test_mip.py::range_max_3d.*"
+    ],
+    "rangeMaxRejectsInvalidInput": [
+     "pytest:tests/kernels/test_mip.py::test_range_max_rejects_invalid_input",
+     "oracle:tests/kernels/test_mip.py::range_max_3d.error_*"
+    ],
+    "mergedSlabsMatchTheImage": [
+     "pytest:tests/tools/test_mip.py::test_merged_slabs_match_the_image",
+     "oracle:tests/tools/test_mip.py::merge.*.dim*"
+    ],
+    "blockMIPsWithoutTheMexMatch": [
+     "pytest:tests/tools/test_mip.py::test_block_mips_without_the_kernel_match"
+    ],
+    "blockMIPsAreCastAsTheZarrStoresThem": [
+     "pytest:tests/tools/test_mip.py::test_block_mips_are_cast_as_the_zarr_stores_them",
+     "oracle:tests/tools/test_mip.py::block_mips.single_to_uint16"
+    ],
+    "flagIsMovedIntoPlace": [
+     "pytest:tests/tools/test_mip.py::test_flag_is_moved_into_place",
+     "oracle:tests/tools/test_mip.py::save_flag.*"
+    ],
+    "mergeNeedsMIPsOfAllBlocks": [
+     "pytest:tests/tools/test_mip.py::test_merge_needs_mips_of_all_blocks",
+     "oracle:tests/tools/test_mip.py::merge.other_*",
+     "oracle:tests/tools/test_mip.py::merge.missing_flag",
+     "oracle:tests/tools/test_mip.py::merge.flag_with_only_t"
+    ],
+    "mergeNeedsBlocksThatCoverTheImageOnce": [
+     "pytest:tests/tools/test_mip.py::test_merge_needs_blocks_that_cover_the_image_once"
+    ],
+    "mergeKeepsToTheMemoryLimit": [
+     "pytest:tests/tools/test_mip.py::test_merge_keeps_to_the_memory_limit",
+     "oracle:tests/tools/test_mip.py::merge.*_memory"
+    ],
+    "batchSizeIsRoundedToBlocksAndCapped": [
+     "pytest:tests/tools/test_mip.py::test_batch_size_is_rounded_to_blocks_and_capped",
+     "oracle:tests/tools/test_mip.py::batch_size.*"
+    ],
+    "batchSizeGrowsForSlabsOver100GB": [
+     "pytest:tests/tools/test_mip.py::test_batch_size_grows_for_slabs_over_100gb",
+     "oracle:tests/tools/test_mip.py::batch_size.*"
+    ],
+    "xrMIPZarrMergesTheBlockMIPs": [
+     "pytest:tests/tools/test_mip.py::test_xr_mip_zarr_merges_the_block_mips",
+     "oracle:tests/tools/test_mip.py::mip_zarr.*.merge_flags"
+    ],
+    "xrMIPZarrReadsTheZarrIfAFlagHasNoMIPs": [
+     "pytest:tests/tools/test_mip.py::test_xr_mip_zarr_reads_the_zarr_if_a_flag_has_no_mips",
+     "oracle:tests/tools/test_mip.py::mip_zarr.uint16.merge_flag_without_mips"
+    ],
+    "xrMIPZarrReadsTheZarrWithoutMemoryForTheMerge": [
+     "pytest:tests/tools/test_mip.py::test_xr_mip_zarr_reads_the_zarr_without_memory_for_the_merge"
+    ],
+    "xrMIPZarrResumesFromExistingSlabs": [
+     "pytest:tests/tools/test_mip.py::test_xr_mip_zarr_resumes_from_existing_slabs",
+     "oracle:tests/tools/test_mip.py::mip_zarr.uint16.existing_slabs"
+    ]
+   }
+  }
+ }
+}
