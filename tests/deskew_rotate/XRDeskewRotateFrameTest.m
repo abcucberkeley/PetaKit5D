@@ -234,6 +234,22 @@ classdef XRDeskewRotateFrameTest < pktest.TestCase
                 end
             end
         end
+
+        function rescaleRotateScalesTheResultToTheUint16Range(testCase)
+            % rescaleRotate scales the DSR from its range to [0, 65535]; with
+            % save16bit (the default) the range was uint16, which
+            % scaleContrast doesn't take (MATLAB:mixedClasses), after the MIP
+            % was written
+            [dataPath, fn, frame] = testCase.writeFrame();
+            XR_deskewRotateFrame(fn, testCase.XYPixelSize, testCase.Dz, 'reverse', true, 'rescaleRotate', true);
+
+            dsr = deskewRotateFrame3D(frame, testCase.SkewAngle, testCase.Dz, testCase.XYPixelSize, ...
+                'reverse', true, 'save16bit', true);
+            lim = double([min(dsr(:)), max(dsr(:))]);
+            out = readtiff([dataPath, 'DSR/', testCase.Fsn, '.tif']);
+            testCase.verifyEqual(out, uint16((double(dsr) - lim(1)) ./ (lim(2) - lim(1)) .* 65535));
+            testCase.verifyEqual([min(out(:)), max(out(:))], uint16([0, 65535]));
+        end
     end
 
     methods (Test, TestTags = {'Integration', 'KnownIssue'})

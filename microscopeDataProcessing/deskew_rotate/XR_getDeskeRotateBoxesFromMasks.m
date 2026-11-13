@@ -1,6 +1,9 @@
-function [inBbox, outBbox, dsr] = XR_getDeskeRotateBoxesFromMasks(maskFullpaths, BorderSize, xyPixelSize, dz, SkewAngle, Reverse, resample, inputBbox)
+function [inBbox, outBbox, dsr] = XR_getDeskeRotateBoxesFromMasks(maskFullpaths, BorderSize, xyPixelSize, dz, SkewAngle, Reverse, resample, inputBbox, flipZstack)
 % estimate input and output bbox for deskew and rotation by providing the
 % MIP masks. 
+%
+% resample: 1, 2 or 3 values in xyz order, as deskewRotateFrame3D takes them
+% flipZstack: the data is flipped along z after the crop by inBbox
 %
 % Author: Xiongtao Ruan (08/02/2023)
 
@@ -11,6 +14,10 @@ end
 
 if nargin < 8
     inputBbox = [];
+end
+
+if nargin < 9
+    flipZstack = false;
 end
 
 bboxes = zeros(3, 4);
@@ -55,13 +62,22 @@ inBbox = [max(inputBbox(1 : 3), bbox(1 : 3) - BorderSize), min(inputBbox(4 : 6),
 
 % deskew and rotate MIP y
 im_y = im_y(inBbox(2) : inBbox(5), inBbox(3) : inBbox(6));
+if flipZstack
+    im_y = flip(im_y, 2);
+end
 frame = uint16(permute(im_y, [3, 1, 2]));
 objectiveScan = false;
 
+% the MIP along y has one row: resampled along x and z here, the output rows
+% are the input rows resampled along y
 rs = [1, 1, 1];
+rsy = 1;
 if ~isempty(resample)
-    rs(1) = resample(2);
-    rs(3) = resample(3);
+    rs_in = resample(:)';
+    rs_in = [ones(1, 4 - numel(rs_in)) * rs_in(1), rs_in(2 : end)];
+    rs(1) = rs_in(1);
+    rs(3) = rs_in(3);
+    rsy = rs_in(2);
 end
 interpMethod = 'linear';
 xStepThresh = 2;
@@ -74,7 +90,7 @@ dsr = deskewRotateFrame3D(frame, SkewAngle, dz, xyPixelSize, 'reverse', Reverse,
 dsr = squeeze(dsr);
 
 bbox = getImageBoundingBox(dsr);
-outBbox = [1, max(1, bbox(1 : 2) - BorderSize(2 : 3)), round((inBbox(4) - inBbox(1)  + 1) ./ resample(1)), ...
+outBbox = [1, max(1, bbox(1 : 2) - BorderSize(2 : 3)), round((inBbox(4) - inBbox(1)  + 1) ./ rsy), ...
     min(size(dsr), bbox(3 : 4) + BorderSize(2 : 3))];
 
 end

@@ -195,6 +195,36 @@ classdef DeskewRotateMemoryTest < pktest.TestCase
                 'blockSize', [16, 64, outSize(3)]);
             testCase.verifyEqual(spy.getOption(1, 'memAllocate'), expected, 'RelTol', 1e-12);
         end
+
+        function largeFileJobAsksForTheBatchOfItsBlocks(testCase)
+            % the job of a large file that computes batches itself
+            % (masterCompute; no MIP merge) asks for what one of its block
+            % jobs gets. It read the resample factor as [y x z] and only with
+            % 3 values (XR_deskewRotateZarr failed on 1 or 2), and neither
+            % counted the flipped copy of a batch (dz 0.2: no interpolated
+            % slices, so with the result halved along z and small chunks the
+            % copy is the largest array, and it has the batch's input rows: 2
+            % per row of the result here, 1 along x). Batches of 64 rows along
+            % y: the largest have a border row on each side, as the job counts
+            dataPath = testCase.createTempFolder();
+            zarrFn = [dataPath, testCase.Fsn, '.zarr'];
+            createzarr(zarrFn, dataSize=[512, 256, 64], blockSize=[64, 64, 64], dtype='uint16');
+            cases = {{'resampleFactor', [1.5, 1, 1.25]}, {'resampleFactor', 1.5}, {'resampleFactor', [1, 2, 2]}, ...
+                {'resampleFactor', [1, 2, 2], 'flipZstack', true}};
+            sizes = {'batchSize', [64, 1024, 1024], 'blockSize', [16, 16, 16]};
+            blockMem = zeros(1, numel(cases));
+            for i = 1 : numel(cases)
+                spy = testCase.applyFixture(pktest.FrameworkSpyFixture);
+                testCase.runWrapper(dataPath, 'zarrFile', true, 'largeFile', true, 'saveMIP', false, 'cpusPerTask', 8, ...
+                    'dz', 0.2, sizes{:}, 'DSRDirName', sprintf('DSR_%d', i), cases{i}{:});
+                XR_deskewRotateZarr(zarrFn, testCase.XYPixelSize, 0.2, 'skewAngle', testCase.SkewAngle, 'reverse', true, ...
+                    sizes{:}, 'saveMIP', false, 'parseCluster', false, 'masterCompute', true, ...
+                    'resultDirStr', sprintf('DSRZ_%d/', i), cases{i}{:});
+                blockMem(i) = spy.getOption(2, 'memAllocate');
+                testCase.verifyEqual(spy.getOption(1, 'memAllocate'), blockMem(i), 'RelTol', 1e-12, sprintf('Case %d.', i));
+            end
+            testCase.verifyGreaterThan(blockMem(4), blockMem(3), 'The flipped copy was not counted.');
+        end
     end
 
     methods (Access = private)

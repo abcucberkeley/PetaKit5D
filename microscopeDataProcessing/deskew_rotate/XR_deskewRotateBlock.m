@@ -92,6 +92,11 @@ for i = 1 : numel(batchInds)
     
     % load the region in input 
     in_batch = readzarr(zarrFullpath, 'inputBbox', inBbox);
+    % (a batch has the whole z range of the input box: flipped after the crop,
+    % as in XR_deskewRotateFrame)
+    if flipZstack
+        in_batch = flip(in_batch, 3);
+    end
     if (save16bit && ~strcmp(dtype, 'uint16')) || ~save16bit
         in_batch = single(in_batch);
     end

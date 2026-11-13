@@ -72,6 +72,16 @@ classdef DeskewRotateDataWrapperTest < pktest.TestCase
             testCase.verifyFalse(isfolder([dataPath, 'DSR']));
         end
 
+        function deskewOnlyIsCroppedWithCrop(testCase)
+            % the wrapper didn't pass crop to XR_deskewRotateFrame: the
+            % deskewed data was never cropped
+            [dataPath, frames] = testCase.writeDataset();
+            testCase.runWrapper(dataPath, 'rotate', false, 'DSRCombined', false, 'crop', true);
+            ds = readtiff([dataPath, 'DS/', testCase.FsnA0, '.tif']);
+            testCase.verifyEqual(ds, uint16(deskewFrame3D(single(frames{1}), testCase.SkewAngle, testCase.Dz, ...
+                testCase.XYPixelSize, true, 'Crop', true)));
+        end
+
         function separateDeskewRotateWritesBoth(testCase)
             dataPath = testCase.writeDataset();
             testCase.runWrapper(dataPath, 'DSRCombined', false);
@@ -118,6 +128,115 @@ classdef DeskewRotateDataWrapperTest < pktest.TestCase
             dsr = readzarr([dataPath, 'DSR/', testCase.FsnA0, '.zarr']);
             testCase.verifyEqual(dsr, testCase.expectedDSR(frame));
             testCase.verifyEqual(readtiff([dataPath, 'DSR/MIPs/', testCase.FsnA0, '_MIP_z.tif']), max(dsr, [], 3));
+        end
+
+        function largeFileReadsTheResampleFactorAsRegularFiles(testCase)
+            % XR_deskewRotateZarr read the factor as [y x z] for the result's
+            % size and its batches, while its blocks (deskewRotateFrame3D) and
+            % the regular path read [x y z], and 1 or 2 values failed with an
+            % index error. The result is the regular path's, completed to 3
+            % values as XR_deskewRotateFrame does; a fractional factor along y
+            % (the batches' axis) only gives its size here
+            dataPath = testCase.createTempFolder();
+            frame = testCase.makeFrame(1);
+            writezarr(frame, [dataPath, testCase.FsnA0, '.zarr']);
+            % factors, the [x y z] factor of the regular path, and whether the
+            % values are compared (integer factors and 1 along y give the
+            % regular path's values)
+            factors = {[1.5, 1, 1.25], [1.5, 1, 1.25], true; [1, 2, 1], [1, 2, 1], true; 2, [2, 2, 2], true; ...
+                [2, 1], [2, 2, 1], true; [1, 1.5, 1.25], [1, 1.5, 1.25], false};
+            for i = 1 : size(factors, 1)
+                name = sprintf('DSR_%d', i);
+                testCase.runWrapper(dataPath, 'zarrFile', true, 'largeFile', true, 'batchSize', [16, 1024, 1024], ...
+                    'blockSize', [16, 64, 64], 'saveMIP', false, 'resampleFactor', factors{i, 1}, 'DSRDirName', name);
+                dsr = readzarr([dataPath, name, '/', testCase.FsnA0, '.zarr']);
+                expected = deskewRotateFrame3D(frame, testCase.SkewAngle, testCase.Dz, testCase.XYPixelSize, ...
+                    'reverse', true, 'save16bit', true, 'resampleFactor', factors{i, 2});
+                testCase.verifySize(dsr, size(expected), mat2str(factors{i, 1}));
+                if factors{i, 3}
+                    testCase.verifyEqual(dsr, expected, mat2str(factors{i, 1}));
+                end
+            end
+        end
+
+        function largeFileIsFlippedAsRegularFiles(testCase)
+            % the large-file path took flipZstack (the wrapper's, not the one
+            % of each file's setting file) and never flipped the data
+            dataPath = testCase.createTempFolder();
+            frame = testCase.makeFrame(1);
+            writezarr(frame, [dataPath, testCase.FsnA0, '.zarr']);
+            args = {'zarrFile', true, 'largeFile', true, 'batchSize', [16, 1024, 1024], 'blockSize', [16, 64, 64], ...
+                'saveMIP', false};
+            testCase.runWrapper(dataPath, args{:}, 'flipZstack', true);
+            testCase.verifyEqual(readzarr([dataPath, 'DSR/', testCase.FsnA0, '.zarr']), testCase.expectedDSR(flip(frame, 3)));
+
+            % a setting file with a negative stage interval flips its file
+            testCase.writeStageInterval([dataPath, testCase.FsnA0, '_Settings.txt'], '-0.2');
+            testCase.runWrapper(dataPath, args{:}, 'parseSettingFile', true, 'DSRDirName', 'DSR_settings');
+            testCase.verifyEqual(readzarr([dataPath, 'DSR_settings/', testCase.FsnA0, '.zarr']), ...
+                testCase.expectedDSR(flip(frame, 3)));
+        end
+
+        function largeFileMIPMaskBoxesFollowTheFactorAndTheFlip(testCase)
+            % XR_getDeskeRotateBoxesFromMasks took x from the factor's second
+            % value and the output rows from its first ([y x z]; one value or
+            % none failed), and had no flip. The output box is the box of the
+            % regular path's result of the masked region, and with the flip
+            % that of the flipped masks (the input box stays in the
+            % coordinates of the raw data: it is flipped after the crop)
+            root = testCase.createTempFolder();
+            m = false(testCase.RawSize);
+            m(10 : 50, 20 : 40, 15 : 30) = true;
+            m(10 : 50, 50 : 70, 40 : 60) = true;
+            maskFns = testCase.writeMIPMasks([root, 'raw_'], m);
+            flippedFns = testCase.writeMIPMasks([root, 'flipped_'], flip(m, 3));
+            args = {[0, 0, 0], testCase.XYPixelSize, testCase.Dz, testCase.SkewAngle, true};
+            factors = {[1, 1, 1], [1.5, 1, 1.25], [1, 1.5, 1.25], 1.5, [1.5, 1]};
+            outBboxes = cell(size(factors));
+            for i = 1 : numel(factors)
+                rs = factors{i};
+                msg = mat2str(rs);
+                r = [ones(1, 4 - numel(rs)) * rs(1), rs(2 : end)];
+                [inBbox, outBboxes{i}] = XR_getDeskeRotateBoxesFromMasks(maskFns, args{:}, rs);
+                testCase.verifyEqual(inBbox, [10, 20, 15, 50, 70, 60], msg);
+                % (as the masks' MIP: 16 bits without resampling along x and z)
+                dsr = deskewRotateFrame3D(uint16(m(10 : 50, 20 : 70, 15 : 60)), testCase.SkewAngle, testCase.Dz, ...
+                    testCase.XYPixelSize, 'reverse', true, 'resampleFactor', r, 'save16bit', all(r([1, 3]) == 1));
+                xz = squeeze(max(dsr, [], 1)) > 0;
+                xs = find(any(xz, 2));
+                zs = find(any(xz, 1));
+                testCase.verifyEqual(outBboxes{i}, [1, xs(1), zs(1), size(dsr, 1), xs(end), zs(end)], msg);
+            end
+            for i = 1 : numel(factors)
+                rs = factors{i};
+                msg = mat2str(rs);
+                [inFlip, outFlip, mipFlip] = XR_getDeskeRotateBoxesFromMasks(maskFns, args{:}, rs, [], true);
+                [inFlipped, outFlipped, mipFlipped] = XR_getDeskeRotateBoxesFromMasks(flippedFns, args{:}, rs);
+                testCase.verifyEqual(inFlip, inBbox, msg);
+                testCase.verifyEqual(inFlipped([3, 6]), testCase.RawSize(3) + 1 - inBbox([6, 3]), msg);
+                testCase.verifyEqual(outFlip, outFlipped, msg);
+                % (the deskewed and rotated MIP the box is taken from)
+                testCase.verifyEqual(mipFlip, mipFlipped, msg);
+                testCase.verifyNotEqual(outFlip, outBboxes{i}, msg);
+            end
+        end
+
+        function largeFileParforRunsTheBlocks(testCase)
+            % XR_deskewRotateZarr with parseParfor and no cluster failed on an
+            % undefined GPUJob. The parfor wrapper is a stand-in that runs the
+            % tasks in this process (GenericComputingFrameworkTest runs the
+            % real one on a pool)
+            dataPath = testCase.createTempFolder();
+            frame = testCase.makeFrame(1);
+            zarrFn = [dataPath, testCase.FsnA0, '.zarr'];
+            writezarr(frame, zarrFn);
+            optionsFn = testCase.writeParforStandIn();
+            evalc(['XR_deskewRotateZarr(zarrFn, testCase.XYPixelSize, testCase.Dz, ''skewAngle'', testCase.SkewAngle, ', ...
+                '''reverse'', true, ''batchSize'', [16, 1024, 1024], ''blockSize'', [16, 64, 64], ''saveMIP'', false, ', ...
+                '''parseCluster'', false, ''parseParfor'', true)']);
+            testCase.verifyEqual(readzarr([dataPath, 'DSR/', testCase.FsnA0, '.zarr']), testCase.expectedDSR(frame));
+            a = load(optionsFn);
+            testCase.verifyEqual(a.GPUJob, false);
         end
 
         function largeFilePassesJobSettingsToMIPs(testCase)
@@ -448,6 +567,54 @@ classdef DeskewRotateDataWrapperTest < pktest.TestCase
         function [dsr] = expectedDSR(testCase, frame)
             dsr = deskewRotateFrame3D(frame, testCase.SkewAngle, testCase.Dz, testCase.XYPixelSize, ...
                 'reverse', true, 'save16bit', true);
+        end
+
+        function [] = writeStageInterval(~, fn, interval)
+            % a setting file with the stage interval (negative: the stack is
+            % flipped)
+            lines = {'***** ***** *****   General   ***** ***** *****', 'Date :  1/1/2024 10:00:00 AM', '', ...
+                sprintf('X Stage Offset, Interval (um), # of Pixels for Excitation (0) :\t0\t%s\t101', interval), ''};
+            fid = fopen(fn, 'w');
+            fprintf(fid, '%s\n', lines{:});
+            fclose(fid);
+        end
+
+        function [fns] = writeMIPMasks(~, prefix, m)
+            % the MIP masks of a mask volume, in xy, xz and yz order
+            fns = {[prefix, 'xy.tif'], [prefix, 'xz.tif'], [prefix, 'yz.tif']};
+            writetiff(uint8(max(m, [], 3)), fns{1});
+            writetiff(uint8(squeeze(max(m, [], 1))), fns{2});
+            writetiff(uint8(squeeze(max(m, [], 2))), fns{3});
+        end
+
+        function [optionsFn] = writeParforStandIn(testCase)
+            % a matlab_parfor_generic_computing_wrapper first on the path that
+            % saves its GPUJob and nworker and runs the tasks in this process
+            folder = [testCase.createTempFolder(), 'parfor/'];
+            mkdir(folder);
+            optionsFn = [folder, 'options.mat'];
+            lines = {
+                'function [is_done_flag] = matlab_parfor_generic_computing_wrapper(inputFullpaths, outputFullpaths, funcStrs, varargin)'
+                '% test stand-in written by DeskewRotateDataWrapperTest'
+                'ip = inputParser;'
+                'ip.KeepUnmatched = true;'
+                'ip.addParameter(''GPUJob'', true);'
+                'ip.addParameter(''nworker'', 24);'
+                'ip.parse(varargin{:});'
+                'GPUJob = ip.Results.GPUJob;'
+                'nworker = ip.Results.nworker;'
+                sprintf('save(''%s'', ''GPUJob'', ''nworker'');', optionsFn)
+                'for i = 1 : numel(funcStrs)'
+                '    eval(funcStrs{i});'
+                'end'
+                'is_done_flag = true(numel(funcStrs), 1);'
+                'end'};
+            fid = fopen([folder, 'matlab_parfor_generic_computing_wrapper.m'], 'w');
+            fprintf(fid, '%s\n', lines{:});
+            fclose(fid);
+            testCase.addTeardown(@() clear('matlab_parfor_generic_computing_wrapper'));
+            testCase.addTeardown(@() rmpath(folder));
+            pktest.addFunctionFolder(folder, 'matlab_parfor_generic_computing_wrapper');
         end
     end
 end

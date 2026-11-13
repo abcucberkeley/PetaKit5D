@@ -141,9 +141,13 @@ if result_writers('wait', dsrFullpath, uuid)
     return;
 end
 
+% 1, 2 or 3 values in xyz order, completed as XR_deskewRotateFrame does (the
+% blocks pass them to deskewRotateFrame3D)
 rs = [1, 1, 1];
 if ~isempty(resampleFactor)
-    rs = resampleFactor;
+    rs = resampleFactor(:)';
+    rs = [ones(1, 4 - numel(rs)) * rs(1), rs(2 : end)];
+    resampleFactor = rs;
 end
 
 % map input and output for xz
@@ -156,9 +160,9 @@ if ~isempty(maskFullpaths) && (iscell(maskFullpaths) && ~isempty(maskFullpaths{1
     disp(maskFullpaths(:));
 
     BorderSize = [100, 100, 100];
-    BorderSize = max(10, round(BorderSize ./ rs));
+    BorderSize = max(10, round(BorderSize ./ rs([2, 1, 3])));
     [maskInBbox, maskOutBbox] = XR_getDeskeRotateBoxesFromMasks(maskFullpaths, BorderSize, ...
-        xyPixelSize, dz, skewAngle, reverse, rs, inputBbox);
+        xyPixelSize, dz, skewAngle, reverse, rs, inputBbox, flipZstack);
 
     inputBbox = maskInBbox;
     outputBbox = maskOutBbox;
@@ -187,7 +191,7 @@ else
     % exact proportions of rotated box
     dsrOutSize = round([ny, nx*cos(theta)+nz*zAniso*sin(abs(theta)), nz*zAniso*cos(theta)+nx*sin(abs(theta))]);
 end
-dsrOutSize = round(dsrOutSize ./ rs([1,2,3]));
+dsrOutSize = round(dsrOutSize ./ rs([2, 1, 3]));
 
 outSize = dsrOutSize;
 if isempty(outputBbox)
@@ -209,10 +213,10 @@ outBlockSize = min(outbatchSize, outBlockSize);
     batchSize=outbatchSize, blockSize=outBlockSize, bbox=outputBbox, sameBatchSize=false, BorderSize=BorderSize(1 : 3));
 
 inBatchBboxes = outBatchBBoxes;
-inBatchBboxes(:, 1) = round((inBatchBboxes(:, 1) - 1) .* rs(1)) + wdStart(1);
+inBatchBboxes(:, 1) = round((inBatchBboxes(:, 1) - 1) .* rs(2)) + wdStart(1);
 inBatchBboxes(:, 2) = wdStart(2);
 inBatchBboxes(:, 3) = wdStart(3);
-inBatchBboxes(:, 4) = min(inBatchBboxes(:, 1) + round((outBatchBBoxes(:, 4) - outBatchBBoxes(:, 1) + 1) .* rs(1) - 1), bimSize(1));
+inBatchBboxes(:, 4) = min(inBatchBboxes(:, 1) + round((outBatchBBoxes(:, 4) - outBatchBBoxes(:, 1) + 1) .* rs(2) - 1), bimSize(1));
 inBatchBboxes(:, 5) = inBatchBboxes(:, 2) + imSize(2) - 1;
 inBatchBboxes(:, 6) = inBatchBboxes(:, 3) + imSize(3) - 1;
 
@@ -282,14 +286,15 @@ inputFullpaths = repmat({frameFullpath}, numTasks, 1);
 
 % submit jobs
 if parseCluster || ~parseParfor
-    % memory of the largest batch: its input with border rows, the
-    % interpolated slices and its output region, plus MATLAB itself
+    % memory of the largest batch: its input with border rows (and its
+    % flipped copy), the interpolated slices and its output region, plus
+    % MATLAB itself
     inSizes = inBatchBboxes(:, 4 : 6) - inBatchBboxes(:, 1 : 3) + 1;
     outSizes = outRegionBBoxes(:, 4 : 6) - outRegionBBoxes(:, 1 : 3) + 1;
     [~, ind] = max(prod(inSizes, 2) + prod(outSizes, 2));
     memAllocate = XR_estimateDeskewRotateMemory(inSizes(ind, :), xyPixelSize, dz, 'skewAngle', skewAngle, ...
         'save16bit', save16bit, 'interpMethod', interpMethod, 'resampleFactor', resampleFactor, ...
-        'outSize', outSizes(ind, :), 'largeFile', true, 'blockSize', outBlockSize, ...
+        'preprocess', flipZstack, 'outSize', outSizes(ind, :), 'largeFile', true, 'blockSize', outBlockSize, ...
         'dataType', getImageDataType(frameFullpath));
 
     % (the blocks stop once the result exists: another writer made it)
@@ -305,9 +310,11 @@ if parseCluster || ~parseParfor
             'jobLogDir', jobLogDir, 'mccMode', mccMode, 'configFile', configFile, 'finalOutFullpath', dsrFullpath);
     end
 elseif parseParfor
-    is_done_flag= generic_computing_frameworks_wrapper(inputFullpaths, outputFullpaths, ...
-        funcStrs, 'clusterType', 'parfor', 'maxJobNum', maxJobNum, 'taskBatchNum', taskBatchNum, ...
-        'GPUJob', GPUJob, 'uuid', uuid);
+    % (as XR_crop_zarr and XR_MIP_zarr)
+    GPUJob = false;
+    nworker = 12;
+    is_done_flag= matlab_parfor_generic_computing_wrapper(inputFullpaths, outputFullpaths, ...
+        funcStrs, 'taskBatchNum', taskBatchNum, 'GPUJob', GPUJob, 'nworker', nworker, 'uuid', uuid);
 end
 
 if ~all(is_done_flag)

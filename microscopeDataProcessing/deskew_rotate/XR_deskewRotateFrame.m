@@ -487,6 +487,11 @@ if ip.Results.rotate || DSRCombined
         
         if ip.Results.rescaleRotate
             iRange = [min(dsr(:)), max(dsr(:))];
+            % scaleContrast takes no integer range (the uint16 result of
+            % save16bit): its range in double
+            if isinteger(iRange)
+                iRange = double(iRange);
+            end
             dsr = scaleContrast(dsr, iRange, [0 65535]);
         end
         
