@@ -19,7 +19,9 @@ Oracle cases (MATLAB runs the oracle tree's functions, Python the port; bit for 
 - ``skewed_space_interp_defined_stepsize.m`` (``skewed_space_interp_matlab``) and MATLAB's colon
   that it uses;
 - GoldenOutputTest's deskew/rotate scenarios: the port on each scenario's inputs against the
-  oracle tree's result and the stored reference, both bit for bit (golden store only).
+  oracle tree's result and the stored reference, both bit for bit (golden store only);
+- ``gpu_process``: MATLAB's gpuProcess code path (the interpolation, then imwarp) computed on
+  the CPU, which the port runs (MATLAB's own GPU result differs from it in the last bits).
 
 Tests without MATLAB: DeskewRotateFrame3DTest in intent (bead grids: fitted raw-to-output maps,
 canvas origins, intensities, classes, boxes, the fall-back paths), the layouts and thread
@@ -1117,6 +1119,91 @@ def _golden_cases() -> list[Case]:
     return cases
 
 
+# ------------------------------------------------------------------------------------------
+# gpu_process: MATLAB's gpuProcess code path computed on the CPU, bit for bit
+# ------------------------------------------------------------------------------------------
+
+# deskewRotateFrame3D.m with gpuProcess (lines 50-213; sample scan, no resampling, linear): the
+# interpolation mex where the x step is above the threshold, then imwarp with the combined
+# matrix. MATLAB runs that imwarp on a gpuArray; here it runs on the CPU.
+GPU_PATH_CODE = """
+vol = in{1}; angle = in{2}; dz = in{3}; xyPixelSize = in{4}; Reverse = in{5}; save16bit = in{6};
+xStepThresh = 2.0;
+[ny, nx, nz] = size(vol);
+theta = angle * pi/180;
+dx = cos(theta)*dz/xyPixelSize;
+zAniso = sin(abs(theta)) * dz / xyPixelSize;
+outSize = round([ny, (nx-1)*cos(theta)+(nz-1)*zAniso/sin(abs(theta)), ...
+    (nx-1)*sin(abs(theta))-4]);
+vol_1 = vol;
+if abs(dx) > xStepThresh
+    if abs(dx) / xStepThresh < 1.5
+        dzout_thresh = xyPixelSize * xStepThresh / cos(theta);
+        dzout = dz / (ceil((dz / dzout_thresh) / (1 / 1)) *(1 / 1));
+        counter = 1;
+        while dzout / dzout_thresh < 0.4
+            dzout = dz / (ceil((dz / dzout_thresh) / (1 / (counter + 1))) *(1 / (counter + 1)));
+            counter = counter + 1;
+        end
+    else
+        dzout = dz / ceil(abs(dx) / xStepThresh);
+    end
+    int_stepsize = dzout / dz;
+    vol_1 = skewed_space_interp_defined_stepsize_mex(vol, abs(dx), int_stepsize, ...
+        Reverse, save16bit);
+    [ny, nx, nz] = size(vol_1);
+    dz = dzout;
+    dx = cos(theta)*dz/xyPixelSize;
+    zAniso = sin(abs(theta)) * dz / xyPixelSize;
+end
+if ~Reverse
+    xshift = -dx; xstep = dx;
+else
+    xshift = dx + ceil((nz-1)*dx); xstep = -dx;
+end
+nxDs = ceil((nz-1)*dx) + nx;
+ds_S = [1 0 0 0; 0 1 0 0; xstep 0 1 0; xshift 0 0 1];
+if Reverse
+    theta = -theta;
+end
+center = ([ny nxDs nz]+1)/2;
+T1 = [1 0 0 0; 0 1 0 0; 0 0 1 0; -center([2 1 3]) 1];
+S1 = [1 0 0 0; 0 1 0 0; 0 0 zAniso 0; 0 0 0 1];
+R = [cos(theta) 0 -sin(theta) 0; 0 1 0 0; sin(theta) 0 cos(theta) 0; 0 0 0 1];
+T2 = [1 0 0 0; 0 1 0 0; 0 0 1 0; (outSize([2 1 3])+1)/2 1];
+M = ds_S*(T1*S1*R*T2)*(eye(4)*eye(4)*eye(4));
+RA = imref3d(outSize, 1, 1, 1);
+out = {imwarp(vol_1, affine3d(M), 'linear', 'FillValues', 0, 'OutputView', RA)};
+"""
+
+
+def _gpu_cases() -> list[Case]:
+    cases = []
+    for sname, size, seed in (("small", SIZE, 0), ("odd", (67, 101, 53), 1), ("beads", None, 0)):
+        for kname, (cls, s16) in KINDS.items():
+            if sname == "beads" and cls == "uint16":
+                continue
+            for dz in (0.2, 0.3):
+                for reverse in (True, False):
+                    if sname == "beads":
+                        vin = _vol((24, 64, 40), "beads")
+                    else:
+                        vin = _vol(size, cls, seed)
+                    cases.append(
+                        Case(
+                            f"gpu.{sname}.{kname}.{_id(dz)}.{'rev' if reverse else 'fwd'}",
+                            code=GPU_PATH_CODE,
+                            args=[In("vol"), SKEW, dz, PX, reverse, s16],
+                            python=p_dsr,
+                            py_args=[Vol(In("vol")), SKEW, dz, PX],
+                            py_kwargs={"reverse": reverse, "save_16bit": s16, "gpu_process": True},
+                            out_roles=("vol",),
+                            inputs={"vol": vin},
+                        )
+                    )
+    return cases
+
+
 CASES = (
     _dsr_cases()
     + _dsr_error_cases()
@@ -1125,6 +1212,7 @@ CASES = (
     + _rotate_file_cases()
     + _interp_function_cases()
     + _golden_cases()
+    + _gpu_cases()
 )
 
 
@@ -1483,6 +1571,23 @@ def test_layouts_and_thread_counts_give_the_same_result(dz, opts):
             vm, SKEW, dz, PX, save_16bit=True, num_threads=n, **opts
         )
         assert np.array_equal(out.transpose(0, 2, 1), ref)
+
+
+def test_gpu_process_runs_matlabs_gpu_code_path_on_the_cpu():
+    """gpu_process runs imwarp after the interpolation, as MATLAB's gpuProcess, with its output
+    class (uint16 input without save16bit and interpolation stays uint16), on both layouts"""
+    from petakit5d.matlabcompat.warp import imwarp
+
+    v = from_matlab(make_volume((19, 41, 23), "uint16"))
+    out = dv.deskew_rotate_volume(v, SKEW, 0.2, PX, reverse=True, gpu_process=True)
+    g = geo.deskew_rotate_geometry(v.shape, SKEW, 0.2, PX, reverse=True, gpu_process=True)
+    assert not g.use_fast_method and out.dtype == np.uint16
+    assert np.array_equal(out, imwarp(v, g.affine, "linear", output_size=g.out_size))
+    for dz in (0.2, 0.3):
+        ref = dv.deskew_rotate_volume(v, SKEW, dz, PX, gpu_process=True)
+        vm = np.ascontiguousarray(v.transpose(0, 2, 1))
+        ml = dv.deskew_rotate_volume_matlab_layout(vm, SKEW, dz, PX, gpu_process=True)
+        assert np.array_equal(ml.transpose(0, 2, 1), ref)
 
 
 def test_the_matlab_name_layer_converts_boxes_factors_and_volumes():

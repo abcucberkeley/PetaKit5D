@@ -16,10 +16,11 @@
   ``imwarp`` as in MATLAB (without MATLAB's ``PetaKit5D:mexFallback`` warning: the port has no
   mex to miss).
 
-Results are bit for bit MATLAB's on every path. ``gpu_process`` runs MATLAB's GPU code path
-(``imwarp`` instead of the kernels) on the CPU, bit for bit MATLAB's ``imwarp`` on the CPU;
-MATLAB's own GPU result differs from that by 1 count in 0.008 to 0.016 % of uint16 voxels
-(single: relative L2 error 2e-6 to 3e-6), measured on an A100.
+Results are bit for bit MATLAB's on every path. ``gpu_process`` runs MATLAB's GPU code path on
+the CPU (the interpolation, then ``imwarp`` instead of the kernels), bit for bit MATLAB's CPU
+result for that path, with its output class; MATLAB's own GPU result differs from it by 1 count
+in about 0.01 % of uint16 voxels (0.008 to 0.016 % on the demo tile, A100; single: relative L2
+error 2e-6 to 3e-6), and the port has no GPU path for this function.
 
 ``deskew_volume`` and ``rotate_volume`` replace ``deskewFrame3D`` and ``rotateFrame3D``, another
 author's GPL functions, which the port does not read: the shear of x by z and the rotation about
