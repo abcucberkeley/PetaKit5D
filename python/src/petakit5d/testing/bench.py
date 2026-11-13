@@ -103,16 +103,27 @@ def info(**values) -> None:
     _append(json.dumps({"info": values}))
 
 
-def timeit(fn, repeats: int = 5, warmup: int = 1, before=None) -> list[float]:
+def timeit(
+    fn, repeats: int = 5, warmup: int = 1, before=None, include_free: bool = False
+) -> list[float]:
     """Seconds per call of ``fn()`` for ``repeats`` calls after ``warmup`` calls; ``before()``
-    runs untimed before each call."""
+    runs untimed before each call. The result is freed after the timer stops (as MATLAB
+    benchmarks ``clear`` after ``toc``): freeing a large array in 4 KB pages costs tens of
+    milliseconds on a node short of 2 MB blocks. ``include_free=True`` times the free too, for a
+    pipeline whose cost includes it."""
     out = []
     for i in range(warmup + repeats):
         if before is not None:
             before()
-        t0 = time.perf_counter()
-        fn()
-        dt = time.perf_counter() - t0
+        if include_free:
+            t0 = time.perf_counter()
+            fn()
+            dt = time.perf_counter() - t0
+        else:
+            t0 = time.perf_counter()
+            res = fn()
+            dt = time.perf_counter() - t0
+            del res
         if i >= warmup:
             out.append(dt)
     return out
@@ -377,12 +388,25 @@ def evaluate_gate(result: dict, gate: dict | None = None) -> dict:
     summ = result.get("summary") or summarize(result)
     checks = []
     metrics = gate.get("metrics")
+    ratios = [k for k in ("ratio_max", "within", "threads", "mem_ratio_max") if k in gate]
+    if ratios and not comps:
+        # a gate on ratios with nothing compared is never met
+        checks.append(_unmatched("-", "comparison", f"{', '.join(ratios)} but no pair compared"))
     for c in comps:
+        pair = f"{c['a']}/{c['b']}"
         ops = [r for r in c["rows"] if r["metric"].startswith("op:")]
         if metrics is None:
             sel = ops
+            if ("ratio_max" in gate or "threads" in gate) and not ops:
+                checks.append(_unmatched(pair, "op:*", "no operation measured on both sides"))
         else:
             sel = [r for r in c["rows"] if _metric_selected(r["metric"], metrics)]
+            # every metric named must match a row of every pair: a name that matches nothing
+            # (e.g. "op:x" for the row "op:x@4") would otherwise leave the gate unchecked
+            for m in metrics if ratios else []:
+                if not any(_metric_selected(r["metric"], [m]) for r in c["rows"]):
+                    have = sorted({r["metric"] for r in c["rows"]})
+                    checks.append(_unmatched(pair, m, f"matches no row; rows: {have}"))
         if "ratio_max" in gate:
             for r in sel:
                 checks.append(
@@ -406,7 +430,8 @@ def evaluate_gate(result: dict, gate: dict | None = None) -> dict:
                     }
                 )
         if "threads" in gate:
-            for opn in sorted({r["op"] for r in ops}):
+            gated = ops if metrics is None else [r for r in sel if r["metric"].startswith("op:")]
+            for opn in sorted({r["op"] for r in gated}):
                 have = {r["threads"] for r in ops if r["op"] == opn}
                 missing = [t for t in gate["threads"] if t not in have]
                 checks.append(
@@ -448,6 +473,10 @@ def evaluate_gate(result: dict, gate: dict | None = None) -> dict:
                 )
     met = all(c["ok"] for c in checks) if checks else None
     return {"gate": gate, "met": met, "checks": checks}
+
+
+def _unmatched(pair: str, metric: str, why: str) -> dict:
+    return {"pair": pair, "metric": f"unmatched:{metric}", "value": None, "limit": why, "ok": False}
 
 
 def _metric_selected(metric: str, metrics) -> bool:
@@ -520,10 +549,103 @@ def node_info() -> dict:
         if k in os.environ
     }
     d["node_type"] = os.environ.get("PK5D_BENCH_NODETYPE")
+    d["numa_policy"] = _numa_policy()
+    d["hugepages"] = hugepage_info()
     d["cuda_visible_devices"] = os.environ.get("CUDA_VISIBLE_DEVICES")
     if os.environ.get("CUDA_VISIBLE_DEVICES", None) != "":
         d["gpus"] = _nvidia_smi()
     return d
+
+
+HUGE = 2 << 20  # a transparent huge page (x86-64)
+LOW_HUGE_DEFAULT = 1 << 30  # warn below this much in free 2 MB blocks unless a spec says more
+
+
+def hugepage_info(
+    buddyinfo: str = "/proc/buddyinfo",
+    thp_dir: str = "/sys/kernel/mm/transparent_hugepage",
+    status: str = "/proc/self/status",
+) -> dict:
+    """Free 2 MB blocks per NUMA node (the buddy allocator's free blocks of order 9 and up, all
+    zones, counted in 2 MB blocks), the transparent huge page settings, and the NUMA nodes this
+    process may allocate on. Large arrays get 4 KB pages when the 2 MB blocks run out, and
+    freeing them then costs tens of milliseconds per GB."""
+    free: dict = {}
+    for ln in (_read(buddyinfo) or "").splitlines():
+        p = ln.replace(",", " ").split()
+        if len(p) < 5 or p[0] != "Node" or p[2] != "zone":
+            continue
+        try:
+            counts = [int(x) for x in p[4:]]
+        except ValueError:
+            continue
+        n = sum(c << (order - 9) for order, c in enumerate(counts) if order >= 9)
+        free[p[1]] = free.get(p[1], 0) + n
+
+    def chosen(name):
+        txt = _read(os.path.join(thp_dir, name))
+        if txt is None:
+            return None
+        m = [w[1:-1] for w in txt.split() if w.startswith("[")]
+        return m[0] if m else txt.strip()
+
+    mems = None
+    for ln in (_read(status) or "").splitlines():
+        if ln.startswith("Mems_allowed_list:"):
+            mems = _cpu_list(ln.split(":", 1)[1].strip())
+    return {
+        "free_2mb_blocks": free,
+        "thp_enabled": chosen("enabled"),
+        "thp_defrag": chosen("defrag"),
+        "mems_allowed": mems,
+    }
+
+
+def _cpu_list(s: str) -> list[int]:
+    out = []
+    for part in s.split(","):
+        a, _, b = part.partition("-")
+        if a.strip().isdigit():
+            out += list(range(int(a), int(b or a) + 1))
+    return out
+
+
+def hugepage_warnings(result: dict, need_bytes: int | None = None) -> list[str]:
+    """Warnings for NUMA nodes the processes may allocate on that had fewer free 2 MB blocks
+    than ``need_bytes`` (the spec's ``output_bytes``, else 1 GB) at the start or the end of the
+    run: there, large outputs fall back to 4 KB pages and their allocation and free are slow."""
+    need = need_bytes or result.get("spec", {}).get("output_bytes") or LOW_HUGE_DEFAULT
+    out = []
+    for when, n in (("start", result.get("node", {})), ("end", result.get("node_after", {}))):
+        hp = (n or {}).get("hugepages")
+        if not hp:
+            continue
+        allowed = hp.get("mems_allowed")
+        for node, blocks in sorted(hp["free_2mb_blocks"].items()):
+            if allowed is not None and int(node) not in allowed:
+                continue
+            if blocks * HUGE < need:
+                out.append(
+                    f"NUMA node {node} had {blocks} free 2 MB blocks ({blocks * 2} MB) at the "
+                    f"{when}, less than the {need / 2**20:.0f} MB an output needs: large arrays "
+                    f"there get 4 KB pages, and allocating and freeing them is slow (THP "
+                    f"{hp.get('thp_enabled')}, defrag {hp.get('thp_defrag')}); compare within "
+                    f"this node only"
+                )
+    return out
+
+
+def _numa_policy() -> str | None:
+    """The memory policy this process (and the processes it starts) runs under: ``default``, or
+    e.g. ``interleave:0-1`` under ``numactl --interleave=all``; None where unknown."""
+    maps = _read("/proc/self/numa_maps")
+    if maps is None:
+        return None
+    for ln in maps.splitlines():
+        p = ln.split()
+        if len(p) > 1 and not p[1].startswith(("default", "prefer")):
+            return p[1]
+    return "default"
 
 
 def _nvidia_smi() -> list[dict] | None:
@@ -1063,15 +1185,26 @@ def run(
                 )
             stale.discard(v["id"])
         result["busy_after"] = _busy_processes()
-        result["node_after"] = {"loadavg": node_info()["loadavg"]}
+        after = node_info()
+        result["node_after"] = {
+            "loadavg": after["loadavg"],
+            "hugepages": after["hugepages"],
+            "numa_free_kb": after["numa_free_kb"],
+        }
         if result["node"].get("gpus") is not None:
             result["node_after"]["gpus"] = _nvidia_smi()
+        result["warnings"] = hugepage_warnings(result)
+        for w in result["warnings"]:
+            log(f"WARNING: {w}")
         result["summary"] = summarize(result)
         result["comparisons"] = compare(result, result["summary"])
         gate = spec.get("gate")
         if gate is None and result["task"]:
             gate = task_gate(result["task"], tasks_json)
         result["gate"] = evaluate_gate(result, gate) if gate else None
+        for c in (result["gate"] or {}).get("checks", []):
+            if c["metric"].startswith("unmatched:"):
+                log(f"GATE ERROR: {c['pair']} {c['metric']} {c['limit']}")
         result["finished"] = time.strftime("%Y%m%d_%H%M%S")
         if out_dir:
             result["path"] = _write_result(result, out_dir, work)
@@ -1127,7 +1260,9 @@ def report(result: dict) -> str:
     lines = [
         f"## {result['name']} ({result.get('task') or '-'}), {result['started']}",
         "",
-        f"Node {n['host']} ({n.get('node_type') or '?'}), {n['cpu_model']}, "
+        f"Node {n['host']} ({n.get('node_type') or '?'}"
+        f"{', memory ' + n['numa_policy'] if n.get('numa_policy') not in (None, 'default') else ''}"
+        f"), {n['cpu_model']}, "
         f"{n['cpus_affinity']} CPUs, job {n['slurm'].get('SLURM_JOB_ID', '-')}, load "
         f"{' '.join(n['loadavg'])}; source {result['source'].get('commit', '?')[:12]}"
         f"{diff}",
@@ -1146,6 +1281,21 @@ def report(result: dict) -> str:
         ]
     for sk in result.get("skipped", []):
         lines.append(f"Skipped {sk['id']}: {sk['why']}")
+    hp = n.get("hugepages") or {}
+    if hp.get("free_2mb_blocks"):
+        hpa = (result.get("node_after") or {}).get("hugepages") or {}
+        lines += [
+            "Free 2 MB blocks per NUMA node, start / end: "
+            + ", ".join(
+                f"{k}: {v} / {hpa.get('free_2mb_blocks', {}).get(k, '-')}"
+                for k, v in sorted(hp["free_2mb_blocks"].items())
+            )
+            + f"; THP {hp.get('thp_enabled')}, defrag {hp.get('thp_defrag')}",
+            "",
+        ]
+    # older results have no warnings field: work them out from the recorded metadata
+    for w in result.get("warnings", hugepage_warnings(result)):
+        lines += [f"**Warning:** {w}", ""]
     cols = ["start", "setup", "startup", "task", "teardown", "overhead", "total"]
     lines += [
         "| variant | n | " + " | ".join(cols) + " | first run: startup / teardown | "
@@ -1262,7 +1412,9 @@ def history(
             "date": r["started"],
             "commit": (r.get("source", {}).get("commit") or "?")[:9]
             + ("+" if r.get("source", {}).get("dirty") not in (None, "", "clean") else ""),
-            "ntype": r["node"].get("node_type") or "?",
+            # interleaved memory is another setting: its results form their own line
+            "ntype": (r["node"].get("node_type") or "?")
+            + ("" if r["node"].get("numa_policy") in (None, "default") else " ilv"),
             "node": r["node"]["host"].split(".")[0],
             "file": os.path.relpath(f, bench_dir),
         }

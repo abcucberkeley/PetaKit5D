@@ -25,8 +25,10 @@ speed gate checked.
 - **Node type pinned for timings only**, with the type in the job name (`..._c24_...`), and
   the job asks for the cores it measures with (24 for a gate at 1, 4 and 24 threads).
 - **Recorded**: node name, CPU model, CPUs of the process, memory, load before and after, the
-  busiest processes on the node (own or other), transparent huge pages and free memory per NUMA
-  node, the Slurm job, GPUs (name, memory in use, load, persistence mode) before and after,
+  busiest processes on the node (own or other), free memory per NUMA node, free 2 MB blocks
+  per NUMA node (`/proc/buddyinfo`, order 9 and up) and the transparent huge page settings
+  (`enabled`, `defrag`) at the start and the end, the NUMA nodes the processes may use, the
+  Slurm job, GPUs (name, memory in use, load, persistence mode) before and after,
   Python and package versions (`pip freeze`), MATLAB's version and thread count, the source
   commit and a hash of uncommitted changes, every process's marks, exit status, peak memory
   (max RSS of the process and the processes it waited for), CPU time and log.
@@ -120,6 +122,7 @@ JSON (or a Python file that defines `SPEC`), in `benchmarks/<area>/`:
 | `variants` | the processes (below) |
 | `compare` | pairs `{a, b, op_map}`: candidate a against reference b; default: every Python variant against the only MATLAB variant |
 | `gate` | overrides the task's gate from `tasks.json` (below) |
+| `output_bytes` | the largest output's size, for the warning about free 2 MB blocks (default 1 GB) |
 
 | Variant field | Meaning |
 |---|---|
@@ -153,6 +156,14 @@ for t in (1, 4, 24):
 In MATLAB: `pk5d_bench_record('sum', t, times)` and `pk5d_bench_mark('label')`. The two sides
 must use the same op names and thread counts (or an `op_map`).
 
+**The free of an output is not timed** unless it belongs to the measured pipeline: `timeit`
+keeps the result until the timer has stopped (`include_free=True` times it), and MATLAB
+scripts `clear` the output after `toc`. On a node whose free memory has run out of 2 MB blocks,
+large arrays get 4 KB pages, and freeing a 0.92 GB one costs 37-58 ms instead of about 3 ms.
+The report shows the free 2 MB blocks per NUMA node and warns when a NUMA node the processes
+may use had fewer than an output needs (the spec's `output_bytes`, default 1 GB) at the start
+or the end; compare such a run only with runs on the same node.
+
 ## Gates
 
 A task's gate comes from its `benchmark_gate` text in `tasks.json`; the harness checks the parts
@@ -168,7 +179,13 @@ it can read and shows the text for the rest:
 
 A spec's `gate` can set `ratio_max`, `threads`, `overhead_max`, `mem_ratio_max`, `metrics`
 (glob patterns of metrics to check: `op:*`, `startup`, `task`, ...) and `within` (|ratio - 1|
-at most this: a build against itself). The verdict is met, missed or nothing to check; a met
+at most this: a build against itself). An operation's metric carries its thread count,
+`op:<name>@<threads>`: name an operation at every thread count as `op:<name>@*`. In a gate on
+ratios (`ratio_max`, `within`, `threads`, `mem_ratio_max`), each pattern in `metrics` must
+match a row of every compared pair, and the gate needs a compared
+pair (and, without `metrics`, an operation timed on both sides); otherwise the gate fails with
+an `unmatched:` check that lists the rows there are. With `metrics`, `threads` applies to the
+operations they select. The verdict is met, missed or nothing to check; a met
 gate whose text asks for more (data sizes, modes) still needs a reader. A missed gate is
 reported, never averaged away. The median of the per-round ratios (`paired`) and whether the
 round-median ranges overlap are shown next to each ratio.
@@ -189,7 +206,14 @@ type and node, the candidate's median, the reference's, their ratio, and the cha
 previous result of the same metric on the same node type (the ratio's change when there is a
 reference, which cancels the node's speed; else the median's). Changes above 5% are flagged
 when the median moved by more than 5 ms (`--threshold`, `--min-seconds`); results of
-unpinned jobs (node type `any`) form their own line.
+unpinned jobs (node type `any`) form their own line, and so do runs with interleaved memory
+(`ilv`).
+
+**Memory placement.** On two-socket nodes, a memory-bound kernel at 24 threads is timed with
+both processes under `numactl --interleave=all` (the cluster helper's `-I` runs the driver that
+way; the processes it starts inherit the policy). Without it, single-threaded first touch puts
+a process's arrays on one socket. The result records the policy the driver ran under
+(`node.numa_policy`).
 
 ## Environment variables
 

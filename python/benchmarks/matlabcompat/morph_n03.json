@@ -11,5 +11,5 @@
   {"a": "py", "b": "ml"},
   {"a": "py", "b": "ml", "op_map": {"imerode_disk11": "mex_erode_disk11", "medfilt3_psf": "mex_medfilt3_psf"}}
  ],
- "gate": {"ratio_max": 1.05, "threads": [1, 4, 24], "metrics": ["op:imerode_disk11", "op:bwdist_2048"]}
+ "gate": {"ratio_max": 1.05, "threads": [1, 4, 24], "metrics": ["op:imerode_disk11@*", "op:bwdist_2048@*"]}
 }

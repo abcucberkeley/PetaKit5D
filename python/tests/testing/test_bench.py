@@ -207,6 +207,55 @@ def test_gate_met_and_missed():
     assert bench.evaluate_gate(res, {"overhead_max": 0.5})["met"] is True
 
 
+def test_gate_metric_that_matches_no_row_fails():
+    # N06's case: rows carry @threads, so "op:x" matches nothing and only the thread counts were
+    # checked: the gate said met for an op 1.3x slower
+    only_x = [
+        {**r, "records": [x for x in r["records"] if x["op"] == "x"]} for r in _ab_runs(fa=1.3)
+    ]
+    res = _result(only_x, compare=[["a", "b"]])
+    g = bench.evaluate_gate(res, {"ratio_max": 1.05, "threads": [4], "metrics": ["op:x"]})
+    assert g["met"] is False
+    res = _result(_ab_runs(fa=1.3), compare=[["a", "b"]])
+    g = bench.evaluate_gate(res, {"ratio_max": 1.05, "threads": [4], "metrics": ["op:x"]})
+    assert g["met"] is False
+    bad = [c for c in g["checks"] if not c["ok"]]
+    assert [c["metric"] for c in bad] == ["unmatched:op:x"]
+    assert "op:x@4" in bad[0]["limit"]
+    # the right name checks the ratio (and only the gated op's threads)
+    g = bench.evaluate_gate(res, {"ratio_max": 1.05, "threads": [4], "metrics": ["op:x@*"]})
+    assert g["met"] is False
+    assert {c["metric"] for c in g["checks"]} == {"op:x@4", "threads:x"}
+    assert not next(c for c in g["checks"] if c["metric"] == "op:x@4")["ok"]
+    res = _result(_ab_runs(fa=1.0), compare=[["a", "b"]])
+    assert bench.evaluate_gate(res, {"ratio_max": 1.05, "threads": [4], "metrics": ["op:x@*"]})[
+        "met"
+    ]
+    # one name matching, another not: still fails
+    g = bench.evaluate_gate(res, {"ratio_max": 1.05, "metrics": ["op:x@*", "op:z@*"]})
+    assert g["met"] is False and [c["metric"] for c in g["checks"] if not c["ok"]] == [
+        "unmatched:op:z@*"
+    ]
+
+
+def test_gate_on_ratios_without_comparisons_or_ops_fails():
+    res = _result(_ab_runs(), compare=[])
+    g = bench.evaluate_gate(res, {"ratio_max": 1.05})
+    assert g["met"] is False and g["checks"][0]["metric"] == "unmatched:comparison"
+    # compared, but no operation timed on both sides
+    runs = [r for r in _ab_runs() if r["variant"] == "a"] + [
+        {**r, "records": []} for r in _ab_runs() if r["variant"] == "b"
+    ]
+    g = bench.evaluate_gate(_result(runs, compare=[["a", "b"]]), {"ratio_max": 1.05})
+    assert g["met"] is False and g["checks"][0]["metric"] == "unmatched:op:*"
+    # a gate on process costs alone needs no comparison, and its metrics select nothing
+    assert bench.evaluate_gate(res, {"overhead_max": 0.5})["met"] is True
+    assert bench.evaluate_gate(res, {"overhead_max": 0.5, "metrics": ["startup"]})["met"] is True
+    compared = _result(_ab_runs(), compare=[["a", "b"]])
+    g = bench.evaluate_gate(compared, {"overhead_max": 0.5, "metrics": ["op:none"]})
+    assert g["met"] is True  # metrics only select rows for ratio checks
+
+
 def test_gate_within_for_a_build_against_itself():
     res = _result(_ab_runs(fa=1.02), compare=[["a", "b"]])
     assert bench.evaluate_gate(res, {"within": 0.03, "metrics": ["op:*", "task"]})["met"]
@@ -257,6 +306,80 @@ def test_timeit_skips_warmup():
     calls = []
     t = bench.timeit(lambda: calls.append(1), repeats=3, warmup=2, before=lambda: calls.append(0))
     assert len(t) == 3 and calls == [0, 1] * 5
+
+
+class _SlowFree:
+    def __del__(self):
+        __import__("time").sleep(0.05)
+
+
+def test_timeit_frees_the_result_after_the_timer():
+    t = bench.timeit(_SlowFree, repeats=3, warmup=0)
+    assert max(t) < 0.04, t
+    t = bench.timeit(_SlowFree, repeats=3, warmup=0, include_free=True)
+    assert min(t) >= 0.045, t
+
+
+BUDDY = """\
+Node 0, zone      DMA      0      0      0      0      0      0      0      0      1      1      2
+Node 0, zone    DMA32      7      5      8      8     11      6      8      6      6      7    395
+Node 0, zone   Normal  32599   8188   2556   1018    401    193     50     31  56121     12      3
+Node 1, zone   Normal   3472   1722    897    697    388    149     69  56045  52419  28182  63065
+"""
+
+
+def _hp_files(tmp_path, buddy=BUDDY, mems="0-1"):
+    (tmp_path / "buddyinfo").write_text(buddy)
+    thp = tmp_path / "thp"
+    thp.mkdir(exist_ok=True)
+    (thp / "enabled").write_text("always [madvise] never\n")
+    (thp / "defrag").write_text("always defer defer+madvise [madvise] never\n")
+    (tmp_path / "status").write_text(f"Name:\tpython\nMems_allowed_list:\t{mems}\n")
+    return str(tmp_path / "buddyinfo"), str(thp), str(tmp_path / "status")
+
+
+def test_hugepage_info_counts_free_2mb_blocks_per_numa_node(tmp_path):
+    hp = bench.hugepage_info(*_hp_files(tmp_path))
+    # order 9 counts once, order 10 twice; all zones of a node add up
+    assert hp["free_2mb_blocks"] == {
+        "0": (1 + 2 * 2) + (7 + 2 * 395) + (12 + 2 * 3),
+        "1": 28182 + 2 * 63065,
+    }
+    assert hp["thp_enabled"] == "madvise" and hp["thp_defrag"] == "madvise"
+    assert hp["mems_allowed"] == [0, 1]
+    assert (
+        bench.hugepage_info(str(tmp_path / "none"), str(tmp_path / "none"))["free_2mb_blocks"] == {}
+    )
+
+
+def test_warning_when_a_numa_node_is_short_of_2mb_blocks(tmp_path):
+    low = BUDDY.replace("395", "0").replace("    12      3", "     5      0")
+    hp_low = bench.hugepage_info(*_hp_files(tmp_path, low))
+    assert hp_low["free_2mb_blocks"]["0"] == 1 + 4 + 7 + 5
+    res = _result(_ab_runs(), compare=[["a", "b"]])
+    res["node"]["hugepages"] = hp_low
+    w = bench.hugepage_warnings(res)
+    assert len(w) == 1 and w[0].startswith(
+        "NUMA node 0 had 17 free 2 MB blocks (34 MB) at the start"
+    )
+    assert "4 KB pages" in w[0] and "**Warning:** NUMA node 0" in bench.report(res)
+    # enough blocks for a small output: no warning; a node the job may not use: no warning
+    assert bench.hugepage_warnings(res, need_bytes=32 << 20) == []
+    assert len(bench.hugepage_warnings(res, need_bytes=40 << 20)) == 1  # 34 MB < 40 MB
+    res["node"]["hugepages"] = bench.hugepage_info(*_hp_files(tmp_path, low, mems="1"))
+    assert bench.hugepage_warnings(res) == []
+    # the end of the run counts too, and the spec can say how large an output is
+    res["node"]["hugepages"] = bench.hugepage_info(*_hp_files(tmp_path))
+    res["node_after"] = {"hugepages": hp_low}
+    res["spec"]["output_bytes"] = 20 << 20
+    assert bench.hugepage_warnings(res) == []
+    res["spec"]["output_bytes"] = 100 << 20  # start: 1,640 MB free; end: 34 MB
+    assert [x.split(" at the ")[1][:3] for x in bench.hugepage_warnings(res)] == ["end"]
+
+
+def test_node_info_records_hugepages():
+    d = bench.node_info()
+    assert set(d["hugepages"]) == {"free_2mb_blocks", "thp_enabled", "thp_defrag", "mems_allowed"}
 
 
 def test_load_spec_checks(tmp_path):
@@ -432,6 +555,16 @@ def test_history_flags_a_ratio_that_grew(tmp_path):
     rows = json.loads((tmp_path / "history.json").read_text())
     c48 = [r for r in rows if r["metric"] == "a:op:x@4" and r["ntype"] == "c48"]
     assert len(c48) == 1 and c48[0]["change"] is None and c48[0]["flag"] == ""
+    # so does a run with interleaved memory on the same node type
+    res = _result(_ab_runs(fa=2.0), compare=[["a", "b"]])
+    res["started"], res["node"]["numa_policy"] = "20260110_000000", "interleave:0-1"
+    res["comparisons"] = bench.compare(res)
+    (tmp_path / "r10.json").write_text(json.dumps(res))
+    bench.history(str(tmp_path), write=True)
+    rows = json.loads((tmp_path / "history.json").read_text())
+    ilv = [r for r in rows if r["metric"] == "a:op:x@4" and r["ntype"] == "c24 ilv"]
+    assert len(ilv) == 1 and ilv[0]["change"] is None
+    assert "memory interleave:0-1" in bench.report(res)
 
 
 def test_history_ignores_changes_of_a_few_milliseconds(tmp_path):
