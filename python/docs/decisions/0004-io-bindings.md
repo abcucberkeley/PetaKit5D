@@ -64,6 +64,16 @@ zarr data needs a conversion step; tiff data is exchanged as before.
   a v3 array with shards of `block_size` holding chunks of `shard_size` (tested against the
   package's own file, text and shard bytes), and the data goes in as regions. MATLAB's
   v2-sharded files (order F) are read through the package like its other arrays.
+- **Outputs of reads** (2026-11-12): `read_zarr` and `read_tiff` take `out=`, an array of the
+  read's shape and class (C-contiguous, writeable) or a `ReadBuffer`, whose first bytes a read
+  takes as a C-contiguous view. Loops that read block after block (MIP slabs and batches, crop
+  and resave blocks, the z blocks of tiff-to-zarr) reuse one `ReadBuffer`: its pages are
+  touched once and nothing is freed between reads. Without `out`, `read_zarr` reads into an
+  `np.empty` array (NumPy's memory gets huge pages also where cpp-zarr's calloc falls back to
+  4 KB pages; as fast elsewhere); `read_tiff` keeps cpp-tiff's own output (already huge pages,
+  and as fast). MATLAB-layout arrays are read into `out` too: the Fortran array in its bytes,
+  then the planes turned around in place. cpp-zarr 1.7.3 takes only C- or F-contiguous `out`
+  (no strided views), hence the prefix views.
 - **Conversions**: a region of another class written into an array is converted first with
   `core.dtypes.cast` (MATLAB's rounding and saturation, which the mex applies; the package
   would use NumPy's `astype`).

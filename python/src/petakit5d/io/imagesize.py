@@ -23,6 +23,7 @@ from typing import Any
 import numpy as np
 
 __all__ = [
+    "ReadBuffer",
     "ZarrInfo",
     "get_image_bounding_box",
     "get_image_dtype",
@@ -90,6 +91,58 @@ def _zyx(v: Sequence[int], layout: str) -> tuple[int, ...]:
 
         return tuple(size_from_matlab(v, len(v)))
     return tuple(v)
+
+
+# --- buffers of reads --------------------------------------------------------------------
+
+
+class ReadBuffer:
+    """One buffer for a loop of reads: ``read_zarr(..., out=buf)`` and ``read_tiff(...,
+    out=buf)`` read into a C-contiguous view of its first bytes, so the blocks or frames of a
+    loop reuse memory that is already touched (no page faults for a new output, no free after
+    it). The buffer grows to the largest read; a returned array is valid until the next read
+    into the same buffer."""
+
+    def __init__(self) -> None:
+        self._buf: np.ndarray | None = None
+
+    def view(self, shape: Sequence[int], dtype) -> np.ndarray:
+        """A C-contiguous array of ``shape`` and ``dtype`` on the buffer's first bytes."""
+        dt = np.dtype(dtype)
+        shape = tuple(int(v) for v in shape)
+        n = 1
+        for v in shape:
+            n *= v
+        if self._buf is None or self._buf.dtype != dt or self._buf.size < n:
+            self._buf = None
+            self._buf = np.empty(max(n, 1), dtype=dt)
+        return self._buf[:n].reshape(shape)
+
+    def release(self) -> None:
+        """Free the buffer (the next read allocates a new one)."""
+        self._buf = None
+
+
+def out_array(out, shape: Sequence[int], dtype, what: str) -> tuple[np.ndarray, np.ndarray]:
+    """The array a read fills (C-contiguous, of ``shape``) and the one it returns, for ``out``:
+    a ``ReadBuffer`` (a view of it; an image of one slice returned 2D), or an array of the
+    read's dtype, writeable and C-contiguous, of ``shape`` or, for one slice, ``shape[1:]``
+    (returned as it is)."""
+    shape = tuple(int(v) for v in shape)
+    dt = np.dtype(dtype).newbyteorder("=")
+    if isinstance(out, ReadBuffer):
+        a = out.view(shape, dt)
+        return a, (a[0] if len(shape) == 3 and shape[0] == 1 else a)
+    if not isinstance(out, np.ndarray):
+        raise TypeError(f"{what}: out must be a NumPy array or a ReadBuffer, not {type(out)}")
+    if out.dtype != dt:
+        raise TypeError(f"{what}: out has class {out.dtype}, the data {dt}")
+    if not out.flags.writeable or not out.flags.c_contiguous:
+        raise ValueError(f"{what}: out must be writeable and C-contiguous (z, y, x)")
+    ok = [shape] + ([shape[1:]] if len(shape) == 3 and shape[0] == 1 else [])
+    if out.shape not in ok:
+        raise ValueError(f"{what}: out has shape {out.shape}, the read gives {shape}")
+    return out.reshape(shape), out
 
 
 # --- the first directory of a tiff file ----------------------------------------------------

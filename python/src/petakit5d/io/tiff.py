@@ -38,6 +38,10 @@ _TIFF_TYPES = frozenset(
 )
 _COMPRESSIONS = ("none", "lzw", "zstd")
 _MODES = ("parallel", "libtiff", "imwrite")
+# a read without out= into np.empty memory instead of cpp-tiff's own output: off, as cpp-tiff's
+# output (NumPy's) already gets huge pages and IO3's probe found the two as fast; it would also
+# need the page count before the read
+_ALLOC_EMPTY = False
 
 
 # --- readtiff ------------------------------------------------------------------------------
@@ -73,12 +77,20 @@ def _check_range(path: str, rng) -> list[int]:
 
 
 def read_tiff(
-    filepath, range: Sequence[int] | None = None, *, num_threads: int | None = None
+    filepath,
+    range: Sequence[int] | None = None,
+    *,
+    num_threads: int | None = None,
+    out=None,
 ) -> np.ndarray:
     """Read a tiff file as a ``(z, y, x)`` C-ordered array (MATLAB ``readtiff``).
 
     ``range``: the slices ``(start, stop)``, 0-based, end-exclusive (``stop`` ``None``: to the
     end). One slice comes back as an image ``(y, x)``; color images as ``(z, y, x, c)``.
+
+    ``out``: read into this array (``(nz, ny, nx)``, or ``(ny, nx)`` for one slice, of the
+    file's class, writeable and C-contiguous; it is returned) or into a view of a
+    ``ReadBuffer`` reused over a loop of reads. Not for color images.
     """
     import cpptiff
 
@@ -86,7 +98,25 @@ def read_tiff(
     if not os.path.isfile(path):
         raise FileNotFoundError(f'File "{path}" cannot be opened')
     z_range = None if range is None or len(range) == 0 else _check_range(path, range)
-    return cpptiff.read_tiff(path, z_range, num_threads=threads(num_threads))
+    n = threads(num_threads)
+    if out is None and not _ALLOC_EMPTY:
+        return cpptiff.read_tiff(path, z_range, num_threads=n)
+    from petakit5d.core.arrays import numpy_dtype
+    from petakit5d.io.imagesize import _tiff_class, out_array
+
+    h = _tiff_header(path)
+    if h.samples > 1:
+        raise ValueError("read_tiff: out is not supported for color images")
+    nz = z_range[1] - z_range[0] if z_range is not None else _num_pages(path)
+    shape = (nz, h.length, h.width)
+    dtype = numpy_dtype(_tiff_class(h))
+    if out is None:
+        fill = np.empty(shape, dtype=dtype)
+        res = fill[0] if nz == 1 else fill
+    else:
+        fill, res = out_array(out, shape, dtype, "read_tiff")
+    cpptiff.read_tiff(path, z_range, num_threads=n, out=fill)
+    return res
 
 
 def read_tiff_parallel(

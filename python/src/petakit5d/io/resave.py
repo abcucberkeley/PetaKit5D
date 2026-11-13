@@ -90,7 +90,7 @@ def resave_zarr_block(
     """Copy the input boxes ``batch_b_boxes`` of a zarr array into the output boxes
     ``region_b_boxes`` of an existing native array (``resaveZarrBlock``), then write the
     task's flag. The flag's folder must exist (else MATLAB's error: the run is over)."""
-    from petakit5d.io import read_zarr, write_zarr
+    from petakit5d.io import ReadBuffer, read_zarr, write_zarr
 
     inds = _ints(batch_inds)
     flag_fullname = os.fspath(flag_fullname)
@@ -112,10 +112,12 @@ def resave_zarr_block(
 
     inb = [_ints(b) for b in batch_b_boxes]
     outb = [_ints(b) for b in region_b_boxes]
+    # (one buffer for the batches' reads; each batch is written before the next is read)
+    buf = ReadBuffer()
     for i, bi in enumerate(inds):
         _print(f"Process Batch {bi + 1}... ", end="")
         t0 = time.perf_counter()
-        data = read_zarr(zarr_fullpath, input_bbox=inb[i])
+        data = read_zarr(zarr_fullpath, input_bbox=inb[i], out=buf)
         write_zarr(data, result_fullpath, bbox=outb[i], create=False)
         del data
         _print(f"Elapsed time is {time.perf_counter() - t0:f} seconds.")

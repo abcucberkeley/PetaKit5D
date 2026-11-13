@@ -18,6 +18,7 @@ C), and MATLAB's (``[ny, nx, nz]``, order F) are still read (docs/decisions/0004
 ``get_image_dtype``       getImageDataType
 ``get_zarr_info``         getZarrInfo
 ``get_image_bounding_box``  getImageBoundingBox
+``ReadBuffer``            (one buffer reused by the reads of a loop: ``out=``)
 ``read_mat``              load (.mat files)
 ``write_mat``             save (.mat files)
 ``save_ascii``            save -ascii
@@ -40,6 +41,7 @@ _EXPORTS = {
     "get_zarr_info": "imagesize",
     "get_image_bounding_box": "imagesize",
     "ZarrInfo": "imagesize",
+    "ReadBuffer": "imagesize",
     "read_mat": "matfile",
     "write_mat": "matfile",
     "save_ascii": "matfile",

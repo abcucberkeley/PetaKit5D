@@ -705,6 +705,124 @@ def test_readThreadsGiveTheSameResult(tmp_path):
         assert ic.bits_equal(read_zarr(fn, num_threads=t), from_matlab(m))
 
 
+# --- reading into a given array or a reused buffer (out=) ------------------------------------
+
+
+@pytest.mark.parametrize("alloc_empty", [False, True], ids=["ownOutput", "npEmptyOutput"])
+def test_readIntoOut(tmp_path, monkeypatch, alloc_empty):
+
+    monkeypatch.setattr(Z, "_ALLOC_EMPTY", alloc_empty)
+    vol = _rand("uint16", IM, 40)
+    fn = tmp_path / "im.zarr"
+    write_zarr(vol, fn, block_size=(5, 16, 16))
+    assert ic.bits_equal(read_zarr(fn), vol) and read_zarr(fn).flags.c_contiguous
+    o = np.empty(IM, np.uint16)
+    assert read_zarr(fn, out=o) is o and ic.bits_equal(o, vol)
+    b = (1, 2, 3, 9, 30, 40)
+    o = np.zeros((8, 28, 37), np.uint16)
+    assert read_zarr(fn, input_bbox=b, out=o) is o and ic.bits_equal(o, vol[box_slices(b)])
+    # one slice: out (ny, nx) or (1, ny, nx)
+    for shape in [(37, 41), (1, 37, 41)]:
+        o = np.empty(shape, np.uint16)
+        assert read_zarr(fn, input_bbox=(6, 0, 0, 7, 37, 41), out=o) is o
+        assert ic.bits_equal(o.reshape(37, 41), vol[6])
+
+
+def test_readBufferIsReusedOverBlocks(tmp_path):
+    # edge blocks read into the first bytes of the buffer give a fresh read's bits
+    from petakit5d.io import ReadBuffer
+
+    vol = _rand("float32", IM, 41)
+    fn = tmp_path / "im.zarr"
+    write_zarr(vol, fn, block_size=(5, 16, 16))
+    buf = ReadBuffer()
+    first = None
+    for z0 in range(0, 13, 5):
+        for y0 in range(0, 37, 16):
+            for x0 in range(0, 41, 16):
+                b = (z0, y0, x0, min(z0 + 5, 13), min(y0 + 16, 37), min(x0 + 16, 41))
+                got = read_zarr(fn, input_bbox=b, out=buf)
+                first = got.base if first is None else first
+                assert got.flags.c_contiguous and got.base is first  # one buffer
+                want = read_zarr(fn, input_bbox=b)
+                assert ic.bits_equal(got, want), b
+    # a larger read or another class makes a new buffer
+    assert ic.bits_equal(read_zarr(fn, out=buf), vol)
+    write_zarr(vol.astype(np.float64), tmp_path / "d.zarr")
+    assert ic.bits_equal(read_zarr(tmp_path / "d.zarr", out=buf), vol.astype(np.float64))
+
+
+def test_readIntoOutChecksIt(tmp_path):
+    fn = tmp_path / "im.zarr"
+    write_zarr(_rand("uint16", IM, 42), fn)
+    bad = {
+        "dtype": np.empty(IM, np.uint8),
+        "shape": np.empty((13, 37, 40), np.uint16),
+        "permuted": np.empty((41, 37, 13), np.uint16),  # as many elements, other axes
+        "fortran": np.empty(IM, np.uint16, order="F"),
+        "strided": np.empty((13, 37, 82), np.uint16)[:, :, ::2],
+        "readonly": np.empty(IM, np.uint16),
+        "list": [0] * 10,
+    }
+    bad["readonly"].flags.writeable = False
+    for name, o in bad.items():
+        with pytest.raises((TypeError, ValueError)):
+            read_zarr(fn, out=o)
+        assert name
+
+
+@pytest.mark.parametrize("kernel", [True, False], ids=["inPlace", "noExtension"])
+def test_readMatlabLayoutIntoOut(tmp_path, monkeypatch, kernel):
+    from petakit5d.io import ReadBuffer
+
+    if not kernel:
+        monkeypatch.setattr(Z, "_inplace_kernel", lambda: None)
+    m = ic.make_data("uint16", (37, 41, 13), "random", 43)
+    fn = tmp_path / "m.zarr"
+    _matlab_zarr(fn, m, (16, 16, 5))
+    want = from_matlab(m)
+    o = np.empty(IM, np.uint16)
+    assert read_zarr(fn, out=o) is o and ic.bits_equal(o, want)
+    buf = ReadBuffer()
+    for b in [
+        (0, 0, 0, 13, 37, 41),
+        (1, 2, 3, 9, 30, 40),
+        (12, 36, 40, 13, 37, 41),
+        (5, 0, 0, 6, 37, 41),
+    ]:
+        sub = want[box_slices(b)]
+        got = read_zarr(fn, input_bbox=b, out=buf)
+        assert ic.bits_equal(got, sub[0] if sub.shape[0] == 1 else sub), b
+    # MATLAB's 2D array [ny, nx]
+    m2 = ic.make_data("uint16", (21, 17), "random", 44)
+    fn2 = tmp_path / "m2.zarr"
+    cppzarr.write_zarr(
+        str(fn2), np.asfortranarray(m2), order="F", chunks=[8, 8], dimension_separator="."
+    )
+    o2 = np.empty((21, 17), np.uint16)
+    assert read_zarr(fn2, out=o2) is o2 and ic.bits_equal(o2, m2)
+
+
+def test_readIntoOutMakesNoAllocation(tmp_path):
+    import tracemalloc
+
+    from petakit5d.io import ReadBuffer
+
+    vol = _rand("uint16", (20, 300, 200), 45)
+    fn = tmp_path / "im.zarr"
+    write_zarr(vol, fn, block_size=(8, 128, 128))
+    buf = ReadBuffer()
+    read_zarr(fn, out=buf)
+    tracemalloc.start()
+    for b in [(0, 0, 0, 10, 300, 200), (10, 0, 0, 20, 300, 200), (0, 0, 0, 20, 300, 200)]:
+        read_zarr(fn, input_bbox=b, out=buf)
+    peak = tracemalloc.get_traced_memory()[1]
+    tracemalloc.stop()
+    # (a new output of the smallest box would be half the volume; small temporaries of the
+    # packages stay far below)
+    assert peak < 0.2 * vol.nbytes
+
+
 # --- the plane transpose (petakit5d._ext.io) --------------------------------------------------
 
 

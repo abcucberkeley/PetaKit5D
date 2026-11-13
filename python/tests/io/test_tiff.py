@@ -359,6 +359,53 @@ def test_readAndWriteMakeNoCopy(tmp_path):
     assert peak_r <= 1.05 * vol.nbytes
 
 
+@pytest.mark.parametrize("alloc_empty", [False, True], ids=["ownOutput", "npEmptyOutput"])
+def test_readIntoOut(tmp_path, monkeypatch, alloc_empty):
+    from petakit5d.io import ReadBuffer
+
+    monkeypatch.setattr(T, "_ALLOC_EMPTY", alloc_empty)
+    vol = _rand("uint16", (11, 37, 53), 40)
+    fn = tmp_path / "im.tif"
+    write_tiff(vol, fn)
+    assert ic.bits_equal(read_tiff(fn), vol) and read_tiff(fn).flags.c_contiguous
+    assert read_tiff(fn, range=(4, 5)).shape == (37, 53)
+    o = np.empty((11, 37, 53), np.uint16)
+    assert read_tiff(fn, out=o) is o and ic.bits_equal(o, vol)
+    o = np.empty((5, 37, 53), np.uint16)
+    assert read_tiff(fn, range=(2, 7), out=o) is o and ic.bits_equal(o, vol[2:7])
+    for shape in [(37, 53), (1, 37, 53)]:
+        o = np.empty(shape, np.uint16)
+        assert read_tiff(fn, range=(4, 5), out=o) is o and ic.bits_equal(o.reshape(37, 53), vol[4])
+    # a buffer reused over z blocks (the last one smaller), as a fresh read
+    buf = ReadBuffer()
+    for z0 in range(0, 11, 4):
+        got = read_tiff(fn, range=(z0, min(z0 + 4, 11)), out=buf)
+        want = vol[z0 : z0 + 4]
+        assert ic.bits_equal(got, want[0] if want.shape[0] == 1 else want), z0
+
+
+def test_readIntoOutChecksIt(tmp_path):
+    fn = tmp_path / "im.tif"
+    write_tiff(_rand("uint16", (4, 6, 7), 41), fn)
+    for o in [
+        np.empty((4, 6, 7), np.uint8),
+        np.empty((4, 6, 8), np.uint16),
+        np.empty((4, 7, 6), np.uint16),
+        np.empty((4, 6, 7), np.uint16, order="F"),
+        np.empty((3, 6, 7), np.uint16),
+    ]:
+        with pytest.raises((TypeError, ValueError)):
+            read_tiff(fn, out=o)
+    tifffile = pytest.importorskip("tifffile")
+    rgb = tmp_path / "rgb.tif"
+    tifffile.imwrite(str(rgb), np.zeros((2, 6, 7, 3), np.uint8), photometric="rgb")
+    from petakit5d.io import ReadBuffer
+
+    for o in (np.empty((2, 6, 7, 3), np.uint8), ReadBuffer()):
+        with pytest.raises(ValueError, match="color"):
+            read_tiff(rgb, out=o)
+
+
 def test_readThreadsGiveTheSameResult(tmp_path):
     vol = _rand("uint16", (9, 300, 257), 8)
     fn = tmp_path / "im.tif"

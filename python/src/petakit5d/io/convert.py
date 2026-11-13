@@ -538,11 +538,15 @@ def tiff_to_zarr(
         write_zarr(data, tmp, block_size=_pysize(bs), uuid=not private_tmp)
         del data
     else:
+        from petakit5d.io import ReadBuffer
+
         z0, y0, x0, z1, y1, x1 = region["box"]
         nz, bz = z1 - z0, bs[2]
+        # (one buffer for the z blocks: its pages are touched once)
+        buf = ReadBuffer()
         for i in range(math.ceil(nz / bz)):
             zs, zt = i * bz, min((i + 1) * bz, nz)
-            block = read_tiff(region["path"], (z0 + zs, z0 + zt))
+            block = read_tiff(region["path"], (z0 + zs, z0 + zt), out=buf)
             block = _crop_yx(block, (0, y0, x0, 0, y1, x1))
             write_zarr(
                 block,

@@ -60,6 +60,11 @@ _BLOSC = ("lz4", "blosclz", "lz4hc", "zlib", "zstd")
 # MATLAB's defaults dataSize and blockSize [500, 500, 500] ([y x z]) in (z, y, x)
 _SIZE = tuple(from_yxz((500, 500, 500)))
 _BLOCK = tuple(from_yxz((500, 500, 500)))
+# a read without out= allocates its output with np.empty and reads into it, rather than letting
+# cpp-zarr allocate: as fast where both get huge pages (IO3's probe, 1 to 24 threads), and
+# NumPy's memory keeps huge pages on nodes short of 2 MB blocks, where cpp-zarr's calloc falls
+# back to 4 KB pages (reads 6-14% slower and frees of 0.08-0.32 s, the cpp-zarr session's study)
+_ALLOC_EMPTY = True
 
 
 @cache
@@ -377,6 +382,10 @@ def create_zarr(
 # --- readzarr ------------------------------------------------------------------------------
 
 
+def _array_dtype(meta: dict) -> np.dtype:
+    return np.dtype(meta["dtype"] if "dtype" in meta else meta["data_type"]).newbyteorder("=")
+
+
 def read_zarr(
     filepath,
     *,
@@ -384,6 +393,7 @@ def read_zarr(
     sparse_data: bool = True,
     axes: str = "auto",
     num_threads: int | None = None,
+    out=None,
 ) -> np.ndarray:
     """Read a zarr array, or its box ``input_bbox`` (``(z0, y0, x0, z1, y1, x1)``, 0-based,
     end-exclusive), as a ``(z, y, x)`` C-ordered array (MATLAB ``readzarr``); one slice comes
@@ -393,6 +403,11 @@ def read_zarr(
     (one threaded transposing pass) and others as native ``[nz, ny, nx]`` (no copy); ``'zyx'``
     or ``'yxz'`` say which it is. ``sparse_data`` only speeds up the mex's reads of all-zero
     chunks; results are the same, so it is not used.
+
+    ``out``: read into this array (the read's shape, or ``(ny, nx)`` for one slice, the
+    array's class, writeable and C-contiguous; it is returned) or into a view of a
+    ``ReadBuffer`` reused over a loop of reads, whose memory is already touched. Arrays in
+    MATLAB's layout are read into it too (its planes turned around in place).
     """
     import cppzarr
 
@@ -407,23 +422,54 @@ def read_zarr(
     whole = input_bbox is None or len(input_bbox) == 0
     if layout == "zyx":
         if whole:
-            a = cppzarr.read_zarr(path, order="C", num_threads=n)
+            start, stop = [0] * len(fshape), fshape
         else:
             start, stop = _region(input_bbox, fshape)
-            a = cppzarr.read_zarr(path, start, stop, order="C", num_threads=n)
-        return _squeeze_z(a)
+        if out is None and not _ALLOC_EMPTY:
+            return _squeeze_z(cppzarr.read_zarr(path, start, stop, order="C", num_threads=n))
+        shape = [e - s for s, e in zip(start, stop, strict=True)]
+        fill, res = _target(out, shape, _array_dtype(meta))
+        cppzarr.read_zarr(path, start, stop, order="C", num_threads=n, out=fill)
+        return res
     # MATLAB's layout: [ny, nx] or [ny, nx, nz] (y fastest)
     if len(fshape) not in (2, 3):
         raise ValueError(f"MATLAB-layout zarr arrays have 2 or 3 dimensions, not {fshape}")
     if whole:
-        a = cppzarr.read_zarr(path, order="F", num_threads=n)
+        start, stop = [0] * len(fshape), fshape
     else:
         start, stop = _region(input_bbox, fshape[2:] + fshape[:2])
         if len(fshape) == 3:
             # (z, y, x) -> the file's (y, x, z)
             start, stop = start[1:] + start[:1], stop[1:] + stop[:1]
+    if out is None and not _ALLOC_EMPTY:
         a = cppzarr.read_zarr(path, start, stop, order="F", num_threads=n)
-    return _squeeze_z(_planes_from_matlab(a, n))
+        return _squeeze_z(_planes_from_matlab(a, n))
+    fshape_r = [e - s for s, e in zip(start, stop, strict=True)]  # (ny, nx[, nz])
+    zshape = fshape_r[2:] + fshape_r[:2]
+    fill, res = _target(out, zshape, _array_dtype(meta))
+    if _inplace_kernel() is None:
+        a = cppzarr.read_zarr(path, start, stop, order="F", num_threads=n)
+        np.copyto(fill, _planes_from_matlab(a, n).reshape(fill.shape))
+        return res
+    # the file's (y, x, z) Fortran array in the out's bytes, then its planes turned around
+    flat = fill.reshape(-1)
+    cppzarr.read_zarr(
+        path, start, stop, order="F", num_threads=n, out=flat.reshape(fshape_r, order="F")
+    )
+    ny, nx = fshape_r[:2]
+    nz = fshape_r[2] if len(fshape_r) == 3 else 1
+    _inplace_kernel()(flat, ny, nx, nz, n)
+    return res
+
+
+def _target(out, shape, dtype) -> tuple[np.ndarray, np.ndarray]:
+    """The array to read into and the one to return: ``out``'s, or a new ``np.empty`` one"""
+    from petakit5d.io.imagesize import out_array
+
+    if out is None:
+        a = np.empty(shape, dtype=dtype)
+        return a, _squeeze_z(a)
+    return out_array(out, shape, dtype, "read_zarr")
 
 
 def _planes_from_matlab(a: np.ndarray, n: int) -> np.ndarray:

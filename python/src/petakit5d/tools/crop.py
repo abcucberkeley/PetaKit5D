@@ -416,7 +416,7 @@ def crop_block(
     ``crop_fullpath``; then the flag: empty, or with the MIPs of the blocks for MIP slabs of
     ``mip_batch_size`` (``save_block_mips``). Nothing is done if the flag exists (unless
     ``overwrite``) or if the writer of the crop has ended (``writers.orphaned``)."""
-    from petakit5d.io import get_zarr_info, read_zarr, write_zarr
+    from petakit5d.io import ReadBuffer, get_zarr_info, read_zarr, write_zarr
     from petakit5d.jobs import writers
     from petakit5d.kernels.crop import indexing_3d
     from petakit5d.tools.mip import block_mips, save_block_mips
@@ -450,6 +450,8 @@ def crop_block(
     mbs = None if mip_batch_size is None or len(mip_batch_size) == 0 else list(mip_batch_size)
 
     done = [False] * len(inds)
+    # (one buffer for the blocks' reads; each block is written before the next is read)
+    buf = ReadBuffer()
     for i, bi in enumerate(inds):
         print(f"Process Batch {bi + 1} ... ", end="", flush=True)
         t0 = time.perf_counter()
@@ -466,13 +468,13 @@ def crop_block(
                 min(n, v) for n, v in zip(im_size, ib[3:], strict=True)
             ]
             if cut != ib:
-                part = _vol3(read_zarr(zarr_fullpath, input_bbox=cut))
+                part = _vol3(read_zarr(zarr_fullpath, input_bbox=cut, out=buf))
                 out = np.zeros(shape, dtype=ndtype)
                 place = [cut[q] - ib[q] for q in range(3)] + [cut[q + 3] - ib[q] for q in range(3)]
                 indexing_3d(out, place, part)
                 del part
             else:
-                out = _vol3(read_zarr(zarr_fullpath, input_bbox=cut))
+                out = _vol3(read_zarr(zarr_fullpath, input_bbox=cut, out=buf))
         write_zarr(out, crop_fullpath, bbox=ob, create=False)
         if mbs is not None:
             mips.append(block_mips(out, ob, mbs, dtype))

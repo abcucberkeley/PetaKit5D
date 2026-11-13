@@ -366,7 +366,7 @@ def _slab_mips(zarr_fullname: str, flags: list[bool], box: Sequence[int] | None)
     """saveMIP_zarr_slabs: the MIPs (z, y, x) of the image or its box, read in z slabs with a
     running max along z and the y and x MIPs of the slabs placed along z (one read for files
     that aren't 3D or can't be described)"""
-    from petakit5d.io import read_zarr
+    from petakit5d.io import ReadBuffer, read_zarr
 
     zs: list[int] = []
     b: list[int] = []
@@ -383,8 +383,11 @@ def _slab_mips(zarr_fullname: str, flags: list[bool], box: Sequence[int] | None)
         return mips
     ze = [*zs[1:], b[3]]
     nz = b[3] - b[0]
+    # (one buffer for the slabs: its pages are touched once)
+    buf = ReadBuffer()
     for s, (za, zb) in enumerate(zip(zs, ze, strict=True)):
-        im = _vol3(read_zarr(zarr_fullname, input_bbox=(za, b[1], b[2], zb, b[4], b[5])))
+        box_s = (za, b[1], b[2], zb, b[4], b[5])
+        im = _vol3(read_zarr(zarr_fullname, input_bbox=box_s, out=buf))
         for i in range(3):
             if not flags[i]:
                 continue
@@ -409,7 +412,7 @@ def _slab_mips(zarr_fullname: str, flags: list[bool], box: Sequence[int] | None)
 def _axis_mip_blockwise(zarr_fullname: str, i: int, box: Sequence[int] | None) -> np.ndarray:
     """saveMIP_zarr_axis: the MIP along one axis in blocks of up to ten chunks (5000 voxels)
     across it, for images that can't be read whole"""
-    from petakit5d.io import get_zarr_info, read_zarr
+    from petakit5d.io import ReadBuffer, get_zarr_info, read_zarr
 
     if box is not None and len(box):
         raise MipError("Batch MIP is not supported with input BBox yet!")
@@ -424,12 +427,13 @@ def _axis_mip_blockwise(zarr_fullname: str, i: int, box: Sequence[int] | None) -
     out_shape = list(size)
     out_shape[p] = 1
     out = None
+    buf = ReadBuffer()
     for z0 in range(0, size[0], blk[0]):
         for y0 in range(0, size[1], blk[1]):
             for x0 in range(0, size[2], blk[2]):
                 bb = (z0, y0, x0, min(z0 + blk[0], size[0]), min(y0 + blk[1], size[1]))
                 bb = (*bb, min(x0 + blk[2], size[2]))
-                mip = axis_max(_vol3(read_zarr(zarr_fullname, input_bbox=bb)), _AXES[i])
+                mip = axis_max(_vol3(read_zarr(zarr_fullname, input_bbox=bb, out=buf)), _AXES[i])
                 if out is None:
                     out = np.zeros(out_shape, dtype=mip.dtype)
                 sl = [slice(z0, bb[3]), slice(y0, bb[4]), slice(x0, bb[5])]
@@ -887,7 +891,7 @@ def mip_block(
     batch's place relative to ``start_coord``; then the empty flag file. Pool sizes: 3 values
     along the MIP axis, 6 with the pooling across it, 9 with resampling (not ported).
     Nothing is done if the flag exists (unless ``overwrite``)."""
-    from petakit5d.io import read_zarr, write_zarr
+    from petakit5d.io import ReadBuffer, read_zarr, write_zarr
     from petakit5d.kernels.mip import max_pooling_3d
 
     del uuid, debug
@@ -930,11 +934,13 @@ def mip_block(
             pre_mip = True
 
     done = [False] * len(inds)
+    # (one buffer for the batches' reads; each batch is written before the next is read)
+    buf = ReadBuffer()
     for i, bi in enumerate(inds):
         print(f"Process Batch {bi + 1} ... ", end="", flush=True)
         t0 = time.perf_counter()
         box = [int(v) for v in boxes[i]]
-        in_batch = _vol3(read_zarr(zarr_fullpath, input_bbox=box))
+        in_batch = _vol3(read_zarr(zarr_fullpath, input_bbox=box, out=buf))
         if pre_mip:
             in_batch = max_pooling_3d(in_batch, pool_1)
         for j in range(3):
