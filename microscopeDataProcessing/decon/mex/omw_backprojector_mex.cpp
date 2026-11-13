@@ -911,6 +911,13 @@ static int get_threads(const mxArray* a) {
 }
 
 void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
+#ifdef __APPLE__
+    // keep the mex file loaded until MATLAB exits: GCC's OpenMP runtime leaves
+    // thread exit handlers in it, so unloading it crashes MATLAB on exit
+    if (!mexIsLocked()) {
+        mexLock();
+    }
+#endif
     if (nrhs < 1 || !mxIsChar(prhs[0])) {
         mexErrMsgIdAndTxt("omw_backprojector_mex:invalidInput", "The first input must be 'convhull', 'window', 'components', 'sortdesc' or 'medfilt3'.");
     }

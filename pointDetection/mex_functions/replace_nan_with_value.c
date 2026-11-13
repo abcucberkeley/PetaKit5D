@@ -27,6 +27,13 @@ void mexFunction( int nlhs, mxArray *plhs[],
     uint64_t nDims, n_element, i;
     mwSize *pDims;
 
+#ifdef __APPLE__
+    // keep the mex file loaded until MATLAB exits: GCC's OpenMP runtime leaves
+    // thread exit handlers in it, so unloading it crashes MATLAB on exit
+    if (!mexIsLocked()) {
+        mexLock();
+    }
+#endif
     /*  check for proper number of arguments */
     /* NOTE: You do not need an else statement when using mexErrMsgTxt
      within an if statement, because it will never get to the else

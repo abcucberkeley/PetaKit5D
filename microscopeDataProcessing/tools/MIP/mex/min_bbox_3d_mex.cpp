@@ -4,7 +4,7 @@
 #include <omp.h>
 #include "mex.h"
 
-// mex -v COPTIMFLAGS="-O3 -DNDEBUG" CFLAGS='$CFLAGS -O3 -fopenmp' LDFLAGS='$LDFLAGS -O3 -fopenmp' min_bbox_3d_mex.cpp
+// mex -v CXXOPTIMFLAGS="-O3 -DNDEBUG" CXXFLAGS='$CXXFLAGS -O3 -fopenmp' LDFLAGS='$LDFLAGS -O3 -fopenmp' min_bbox_3d_mex.cpp
 // macOS
 // mex -v CC="/usr/local/bin/gcc-12" CXX="/usr/local/bin/g++-12" COPTIMFLAGS="-O3 -DNDEBUG" CFLAGS='$CFLAGS -O3 -fopenmp' LDFLAGS='$LDFLAGS -O3 -fopenmp' min_bbox_3d_mex.cpp
 
@@ -41,6 +41,13 @@ void min_bbox_3d_mex(const T* const &orig, T* const &out, const uint64_t &startX
 void mexFunction( int nlhs, mxArray *plhs[],
                   int nrhs, const mxArray *prhs[])
 {
+#ifdef __APPLE__
+    // keep the mex file loaded until MATLAB exits: GCC's OpenMP runtime leaves
+    // thread exit handlers in it, so unloading it crashes MATLAB on exit
+    if (!mexIsLocked()) {
+        mexLock();
+    }
+#endif
     /*  check for proper number of arguments */
     if(nrhs!=2) 
         mexErrMsgTxt("Two input required.");
