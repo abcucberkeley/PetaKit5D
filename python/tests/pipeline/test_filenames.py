@@ -601,6 +601,10 @@ CASES = [
 
 @oracle.parametrize(CASES)
 def test_matlab(case, tmp_path):
+    if case.id == "dataset_folder_in_pattern" and os.name == "nt":
+        # groupPartialVolumeFiles matches the patterns against [dataPath, filesep, name]: on
+        # Windows the '/' of 'ds2/+Scan' meets '\', so MATLAB there, as the port, keeps nothing
+        pytest.skip("MATLAB's filesep join makes a folder in a channel pattern miss on Windows")
     oracle.check(case, tmp_path)
 
 

@@ -479,6 +479,10 @@ def test_evict_counts_files(tmp_path):
         assert e["files"] == 3
 
 
+@pytest.mark.skipif(
+    not hasattr(os, "posix_fadvise"),
+    reason="no page-cache eviction here (posix_fadvise: Linux only; not on Windows or macOS)",
+)
 def test_warm_variants_are_rewarmed_after_a_cold_one(tmp_path, monkeypatch):
     monkeypatch.setenv("PK5D_SRC", str(tmp_path))
     (tmp_path / "d").mkdir()

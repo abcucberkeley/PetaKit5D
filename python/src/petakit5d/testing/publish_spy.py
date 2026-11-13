@@ -378,6 +378,7 @@ class _Watcher(threading.Thread):
     def run(self) -> None:
         parent = os.path.dirname(self.result)
         last_verify = 0.0
+        denied = 0
         while not self.stop.is_set():
             self.looks += 1
             try:
@@ -401,9 +402,20 @@ class _Watcher(threading.Thread):
                 last_verify = now
                 try:
                     w = verify_result(self.result, self.kind)
+                except PermissionError as err:
+                    # Windows refuses a file that a scanner (or a closing handle) holds for a
+                    # moment after its rename: looked at again, up to 2 s; elsewhere an error
+                    if sys.platform.startswith("win") and denied < 100:
+                        denied += 1
+                        last_verify = 0.0
+                        time.sleep(0.02)
+                        continue
+                    self.errors.append(f"an incomplete result was seen: {err}")
+                    return
                 except (OSError, ValueError) as err:
                     self.errors.append(f"an incomplete result was seen: {err}")
                     return
+                denied = 0
                 if self.writer and w != self.writer:
                     self.errors.append(f"the result changed from {self.writer}'s to {w}'s")
                     return

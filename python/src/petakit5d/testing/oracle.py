@@ -23,6 +23,7 @@ manifests. Details: ``python/docs/testing.md``.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import dataclasses
 import inspect
 import json
@@ -153,6 +154,18 @@ def same_commit(a: str, b: str) -> bool:
 # ---------------------------------------------------------------------------------------------
 
 
+def _replace_same(tmp: Path, p: Path) -> None:
+    """os.replace(tmp, p) of a file named by its content: Windows refuses the replace while
+    another writer replaces or reads p (PermissionError); p then holds the same bytes"""
+    try:
+        os.replace(tmp, p)
+    except PermissionError:
+        if not p.is_file():
+            raise
+        with contextlib.suppress(OSError):
+            os.remove(tmp)
+
+
 class Store:
     """the shared store of MATLAB results, written only by publishing folders by rename
 
@@ -202,7 +215,7 @@ class Store:
             p.parent.mkdir(parents=True, exist_ok=True)
             tmp = self._tmp()
             write_pkv(tmp, v)
-            os.replace(tmp, p)
+            _replace_same(tmp, p)
         return p
 
     def put_file(self, src: Path, h: str) -> Path:
@@ -211,7 +224,7 @@ class Store:
             p.parent.mkdir(parents=True, exist_ok=True)
             tmp = self._tmp()
             shutil.copyfile(src, tmp)
-            os.replace(tmp, p)
+            _replace_same(tmp, p)
         return p
 
     def put_tree(self, src: Path, h: str) -> Path:

@@ -30,6 +30,7 @@ import math
 import os
 import re
 import struct
+import sys
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from pathlib import Path
 from typing import Any
@@ -1188,12 +1189,18 @@ TIME_RE = (
 )
 
 
+# on Windows get_uuid keeps the uuid's first 4 characters (as MATLAB there, for long paths): a
+# name part of 4 hex digits after '_' that ends a path component
+_WIN_UUID = ((r"(?<=_)[0-9a-f]{4}(?=/|$)", "<uuid>"),) if sys.platform.startswith("win") else ()
+
+
 @dataclasses.dataclass(frozen=True)
 class Masks:
     """text substitutions applied to both sides before comparing: (regex, replacement) pairs"""
 
     subs: tuple[tuple[str, str], ...] = (
         (UUID_RE, "<uuid>"),
+        *_WIN_UUID,
         (STAMP_RE, "<timestamp>"),
         (TIME_RE, "<time>"),
     )

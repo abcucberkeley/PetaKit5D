@@ -1253,6 +1253,10 @@ CASES = [
 
 @oracle.parametrize(CASES)
 def test_matlab(case, tmp_path):
+    if case.id == "read_python_run_folders" and os.name == "nt":
+        # its run folders hold the OS's own text of the failing task's error ([WinError 2] The
+        # system cannot find the file specified), so the input differs from the reference's
+        pytest.skip("the run folders hold the OS's error text")
     oracle.check(case, tmp_path)
 
 

@@ -1681,9 +1681,8 @@ def test_large_file_path_publishes_slabs_and_mips_before_its_flag(tmp_path):
         assert f"{names[0]}_MIP_{lab}.tif" in seen, lab
     for lab in "yxz":
         assert f"{names[0]}_{lab}.zarr" in seen, lab
-    order = [
-        c.dst for c in spy.calls if c.ok and c.dst.startswith(f"{path}MIPs".replace("//", "/"))
-    ]
+    mips = os.path.normpath(f"{path}MIPs")
+    order = [c.dst for c in spy.calls if c.ok and os.path.normpath(c.dst).startswith(mips)]
     slabs = [i for i, d in enumerate(order) if d.endswith(".zarr")]
     tifs = [i for i, d in enumerate(order) if d.endswith("tif")]
     assert slabs and tifs and max(slabs) < min(tifs), order
