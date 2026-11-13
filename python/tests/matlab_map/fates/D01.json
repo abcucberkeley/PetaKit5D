@@ -1,0 +1,43 @@
+{
+ "task": "D01",
+ "classes": {
+  "FlatFieldCorrectionTest": {
+   "finished": true,
+   "methods": {
+    "correctsWithExpectedFormula": [
+     "pytest:tests/flatfield/test_correction.py::test_corrects_with_expected_formula",
+     "oracle:tests/flatfield/test_correction.py::test.formula"
+    ],
+    "constOffsetReplacesBackground": [
+     "pytest:tests/flatfield/test_correction.py::test_const_offset_replaces_background",
+     "oracle:tests/flatfield/test_correction.py::test.const_offset"
+    ],
+    "singleInputGivesSingle": [
+     "pytest:tests/flatfield/test_correction.py::test_single_input_gives_single",
+     "oracle:tests/flatfield/test_correction.py::test.single",
+     "oracle:tests/flatfield/test_correction.py::test.nocast"
+    ],
+    "matlabFallbackMatchesMex": [
+     "pytest:tests/flatfield/test_correction.py::test_matlab_fallback_matches_mex",
+     "oracle:tests/flatfield/test_correction.py::test.double_fallback"
+    ],
+    "flatFieldStackIsAveragedOverZ": [
+     "pytest:tests/flatfield/test_correction.py::test_flat_field_stack_is_averaged_over_z",
+     "oracle:tests/flatfield/test_correction.py::test.stack"
+    ],
+    "largerImagesAreCenterCropped": [
+     "pytest:tests/flatfield/test_correction.py::test_larger_images_are_center_cropped",
+     "oracle:tests/flatfield/test_correction.py::test.center_crop"
+    ],
+    "nonSingleFlatFieldUsesFastPath": [
+     "pytest:tests/flatfield/test_correction.py::test_non_single_flat_field_uses_fast_path",
+     "oracle:tests/flatfield/test_correction.py::test.uint16_images"
+    ],
+    "processFrameReadsImagesFromDisk": [
+     "pytest:tests/flatfield/test_correction.py::test_process_frame_reads_images_from_disk",
+     "oracle:tests/flatfield/test_correction.py::test.process_frame"
+    ]
+   }
+  }
+ }
+}
