@@ -156,3 +156,96 @@ jobs:
           name: test-results-cluster
           path: test-results/
           if-no-files-found: ignore
+
+  # Diagnostic, not required: does MATLAB on Windows exit by itself after the
+  # PetaKit5D OpenMP mex files ran? (The test job stops MATLAB with finishCI
+  # because it hangs at exit there.) Each probe is a MATLAB session of its own
+  # that writes probe-results/<probe>.txt and returns; one that doesn't exit
+  # by itself runs into its step timeout (outcome failure, results written).
+  # The mex files that lock themselves on Windows too are built here, in the
+  # runner's temp folder, with the MinGW-w64 of the committed mexw64 (12.2.0
+  # posix-seh UCRT rt_v10-rev2): setup.m adds every folder of the repository
+  # to the path, so binaries in it would shadow the repository's.
+  exit-probe:
+    name: Mex exit probe (R2024b on windows-2025)
+    runs-on: windows-2025
+    timeout-minutes: 60
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: matlab-actions/setup-matlab@v3
+        with:
+          release: R2024b
+
+      # the MinGW-builds project's release (github.com/niXman/mingw-builds-binaries), the toolchain of the
+      # committed mexw64; the release publishes no digest, so the archive's SHA-256 is pinned here
+      - name: Get MinGW-w64 12.2.0 (UCRT)
+        shell: bash
+        run: |
+          url=https://github.com/niXman/mingw-builds-binaries/releases/download/12.2.0-rt_v10-rev2/x86_64-12.2.0-release-posix-seh-ucrt-rt_v10-rev2.7z
+          curl -sSL --fail -o "$RUNNER_TEMP/mingw.7z" "$url"
+          sha=$(sha256sum "$RUNNER_TEMP/mingw.7z" | cut -d' ' -f1)
+          echo "sha256 $sha"
+          if [ "$sha" != "dc1f299e8450c96f59f4b8f7c1290ebb78ee00ddb71f9ed4ca0efaf5462f8c4e" ]; then
+            echo "::error::unexpected MinGW archive"
+            exit 1
+          fi
+          7z x -y -o"$RUNNER_TEMP" "$RUNNER_TEMP/mingw.7z" > /dev/null
+          echo "MINGW_DIR=$RUNNER_TEMP\\mingw64" >> "$GITHUB_ENV"
+
+      - name: Build mex files that lock themselves on Windows too
+        timeout-minutes: 15
+        uses: matlab-actions/run-command@v3
+        with:
+          command: addpath('.github/scripts'); build_lockwin_mex(fullfile(getenv('RUNNER_TEMP'), 'lockwin'), getenv('MINGW_DIR'));
+
+      # the mex files that lock themselves first, on a fresh runner
+      - name: Probe, mex files that lock themselves
+        id: locked
+        timeout-minutes: 8
+        continue-on-error: true
+        uses: matlab-actions/run-command@v3
+        with:
+          command: addpath('.github/scripts'); mex_exit_probe('locked', fullfile(getenv('RUNNER_TEMP'), 'lockwin'));
+
+      - name: Probe, the committed mex files
+        id: committed
+        timeout-minutes: 8
+        continue-on-error: true
+        uses: matlab-actions/run-command@v3
+        with:
+          command: addpath('.github/scripts'); mex_exit_probe('committed');
+
+      - name: Probe, cpp-tiff and cpp-zarr only
+        id: io
+        timeout-minutes: 8
+        continue-on-error: true
+        uses: matlab-actions/run-command@v3
+        with:
+          command: addpath('.github/scripts'); mex_exit_probe('io');
+
+      # clear mex unloads the mex files during the session: if it hangs, the
+      # unload of OpenMP mex files with their threads is what hangs at exit
+      - name: Probe, the committed mex files, then clear mex
+        id: unload
+        timeout-minutes: 8
+        continue-on-error: true
+        uses: matlab-actions/run-command@v3
+        with:
+          command: addpath('.github/scripts'); mex_exit_probe('unload');
+
+      - name: Summary
+        if: always()
+        shell: bash
+        run: |
+          for f in probe-results/*.txt; do echo "== $f"; cat "$f"; done
+          echo "outcomes (success: MATLAB exited by itself; failure with a 'done' line: it hung at exit):"
+          echo "  locked ${{ steps.locked.outcome }}, committed ${{ steps.committed.outcome }}, io ${{ steps.io.outcome }}, unload ${{ steps.unload.outcome }}"
+
+      - if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: mex-exit-probe
+          path: probe-results/
+          if-no-files-found: ignore
