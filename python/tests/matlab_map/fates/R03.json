@@ -51,6 +51,10 @@
         ],
         "regionsAtBackgroundStayZero": [
           "pytest:tests/decon/test_rl.py::test_regions_at_background_stay_zero"
+        ],
+        "psfGen2DMedianMethodRemovesIsolatedPoints": [
+          "pytest:tests/decon/test_psf.py::test_psf_gen_2d_median_method_removes_isolated_points",
+          "oracle:tests/decon/test_psf.py::gen.2d.median*"
         ]
       }
     },

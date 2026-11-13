@@ -1,0 +1,58 @@
+{
+  "task": "R01",
+  "classes": {
+    "DeconFunctionTest": {
+      "methods": {
+        "otfIsCachedForTheSamePSFBitsAndThreads": [
+          "pytest:tests/decon/test_rl.py::test_otf_is_cached_for_the_same_psf_bits",
+          "pytest:tests/decon/test_otf.py::test_the_decon_loop_uses_this_otf"
+        ],
+        "psf2otfOfCenteredDeltaIsFlat": [
+          "pytest:tests/decon/test_otf.py::test_psf2otf_of_centered_delta_is_flat",
+          "oracle:tests/decon/test_otf.py::delta.*"
+        ],
+        "psf2otfPadsToTheOutputSize": [
+          "pytest:tests/decon/test_otf.py::test_psf2otf_pads_to_the_output_size",
+          "oracle:tests/decon/test_otf.py::rand5.padded.*",
+          "oracle:tests/decon/test_otf.py::err.*"
+        ],
+        "psfGenCentersOddSizePSF": [
+          "pytest:tests/decon/test_psf.py::test_psf_gen_centers_odd_size_psf",
+          "oracle:tests/decon/test_psf.py::gen.case.centered"
+        ],
+        "psfGenKeepsEvenSizePSFAtTheFFTCenter": [
+          "pytest:tests/decon/test_psf.py::test_psf_gen_keeps_even_size_psf_at_the_fft_center",
+          "oracle:tests/decon/test_psf.py::gen.case.centered_even"
+        ],
+        "psfGenRemovesBackground": [
+          "pytest:tests/decon/test_psf.py::test_psf_gen_removes_background",
+          "oracle:tests/decon/test_psf.py::gen.bead.*"
+        ],
+        "psfGenResamplesZToTheDataStep": [
+          "pytest:tests/decon/test_psf.py::test_psf_gen_resamples_z_to_the_data_step",
+          "pytest:tests/decon/test_psf.py::test_truncation_index_arithmetic",
+          "oracle:tests/decon/test_psf.py::gen.bead.nz4*.r*"
+        ]
+      }
+    },
+    "DeconReadCacheTest": {
+      "finished": true,
+      "methods": {
+        "backProjectorIsReadOnce": [
+          "pytest:tests/decon/test_psf.py::test_back_projector_is_read_once",
+          "oracle:tests/decon/test_psf.py::read.cached"
+        ],
+        "changedFilesAreReadAgain": [
+          "pytest:tests/decon/test_psf.py::test_changed_files_are_read_again"
+        ],
+        "missingFilesError": [
+          "pytest:tests/decon/test_psf.py::test_missing_files_error"
+        ],
+        "severalFilesAreKept": [
+          "pytest:tests/decon/test_psf.py::test_several_files_are_kept",
+          "pytest:tests/decon/test_psf.py::test_a_hit_does_not_refresh_the_order"
+        ]
+      }
+    }
+  }
+}

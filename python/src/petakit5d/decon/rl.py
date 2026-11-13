@@ -321,22 +321,10 @@ def _cmul(h: np.ndarray, s: np.ndarray, conj: bool = False) -> np.ndarray:
 
 
 def _psf2otf(psf: np.ndarray, shape: Sequence[int], backend: str | None, threads: int):
-    """decon_psf2otf(psf, outSize): the PSF padded at the end to the data size, shifted so that
-    its center floor(size / 2) is at the origin, and transformed (MATLAB's fftn); an all-zero PSF
-    gives real zeros"""
-    from petakit5d.matlabcompat import fft as F
+    """decon_psf2otf(psf, outSize) (``decon.otf.psf2otf``)"""
+    from petakit5d.decon.otf import psf2otf
 
-    ps = (1,) * (3 - psf.ndim) + psf.shape
-    os_ = (1,) * (3 - len(shape)) + tuple(shape)
-    if any(o < p for o, p in zip(os_, ps, strict=True)):
-        raise DeconError("", "outSizeIsSmallerThanPsfSize")
-    if not np.any(psf != 0):
-        return np.zeros(tuple(shape), dtype=psf.dtype)
-    p = np.zeros(tuple(shape), dtype=psf.dtype)
-    pp = psf.reshape(ps[3 - len(shape) :])
-    p[tuple(slice(0, n) for n in pp.shape)] = pp
-    p = np.roll(p, tuple(-(n // 2) for n in pp.shape), axis=tuple(range(p.ndim)))
-    return F.fftn(p, backend=backend, threads=threads)
+    return psf2otf(psf, shape, backend=backend, threads=threads)
 
 
 def _conv(x: np.ndarray, h: np.ndarray, backend, threads, conj: bool = False) -> np.ndarray:
