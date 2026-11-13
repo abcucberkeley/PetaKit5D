@@ -83,7 +83,6 @@ _RFFT = "decon_lucy_rfft_mex"
 _ACCEL = "decon_lucy_accel_mex:inputError"
 _EROSION = "decon_mask_edge_erosion_mex:inputError"
 _OMW = "omw_backprojector_mex:invalidInput"
-_state: dict = {"exact": False}
 
 
 class DeconKernelError(ValueError):
@@ -111,26 +110,14 @@ def _err(identifier: str, message: str) -> DeconKernelError:
 
 
 def _backend(name: str | None) -> tuple[str, int]:
-    """the backend's name and this module's id for it (the exact one loaded on first use)"""
+    """the backend's name and its id; the exact one is loaded on first use into the process's FFT
+    state, which this module shares with petakit5d._ext.fft"""
     from petakit5d import fft
 
     name = fft.backend() if name is None else name
     if name not in fft.BACKENDS:
         raise ValueError(f"unknown FFT backend {name!r}: use one of {fft.BACKENDS}")
-    m = _ext()
-    if name == "permissive":
-        return name, int(m.PERMISSIVE)
-    if not _state["exact"]:
-        paths = fft.exact_libraries()
-        if paths is None:
-            raise RuntimeError(
-                "the exact FFT backend is not installed: install the petakit5d-fftw add-on "
-                "(python/cpp/fft/exact, GPL) or set PETAKIT5D_FFTW to its libraries"
-            )
-        if not m.exact_loaded():
-            m.load_exact(*paths)
-        _state["exact"] = True
-    return name, int(m.EXACT)
+    return name, fft._backend_id(name)
 
 
 def _count(v: Any, name: str) -> int:

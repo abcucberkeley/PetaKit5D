@@ -20,6 +20,7 @@
 
 #include "backend.h"
 #include "decon.hpp"
+#include "shared.h"
 
 namespace nb = nanobind;
 using namespace pk5d::decon;
@@ -374,11 +375,12 @@ void py_transpose(const any_in& src, any_out& dst, std::int64_t rows, std::int64
     transpose_planes(src.data(), dst.data(), nz, rows, cols, static_cast<int>(src.itemsize()), threads > 0 ? threads : 1);
 }
 
-void py_load_exact(const std::string& libf, const std::string& libd) { pk5d::fft::load_exact(libf, libd); }
-
 }  // namespace
 
 NB_MODULE(decon, m) {
+    // the process's one FFT state: petakit5d._ext.fft's backends, planner lock and plan cache
+    pk5d::fft::attach_to_fft_module();
+    pk5d::fft::def_shared_state_hooks(m);
     m.doc() = "the deconvolution kernels: half-spectrum Richardson-Lucy steps, acceleration, mask erosion, back projector steps";
     m.def("matlab_otf", &py_matlab_otf, nb::arg("psf").noconvert(), nb::arg("d"), nb::arg("threads"), nb::arg("grain"),
           nb::arg("backend"));
@@ -426,9 +428,6 @@ NB_MODULE(decon, m) {
     m.def("transpose_planes", &py_transpose, nb::arg("src").noconvert(), nb::arg("dst").noconvert(), nb::arg("rows"),
           nb::arg("cols"), nb::arg("threads"),
           "dst[z][c][r] = src[z][r][c] for planes of rows x cols elements");
-    m.def("load_exact", &py_load_exact, nb::arg("libf"), nb::arg("libd"),
-          "loads the exact backend's single and double precision libraries into this module's backend table");
-    m.def("exact_loaded", &pk5d::fft::exact_loaded);
     m.attr("PERMISSIVE") = static_cast<int>(pk5d::fft::kPermissive);
     m.attr("EXACT") = static_cast<int>(pk5d::fft::kExact);
     m.attr("GRAIN_PARALLEL") = 32;

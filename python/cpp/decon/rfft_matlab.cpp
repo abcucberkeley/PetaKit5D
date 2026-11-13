@@ -16,7 +16,6 @@
 #include <cfloat>
 #include <cmath>
 #include <cstring>
-#include <mutex>
 #include <stdexcept>
 
 #include "backend.h"
@@ -26,16 +25,12 @@ namespace pk5d::decon {
 namespace {
 
 using pk5d::fft::FftwApi;
-using pk5d::fft::Iodim;
 
 // transforms per execute, as in MATLAB's fft
 constexpr int kB = 4;
 // byte offsets (modulo 64) of the scratch buffers, as MATLAB's
 constexpr int kInOff = 16;
 constexpr int kOutOff = 32;
-constexpr unsigned kEstimate = 1U << 6;  // the planner flag MATLAB uses
-constexpr int kForward = -1;
-constexpr int kBackward = 1;
 
 struct Timer {
     Times& t;
@@ -87,16 +82,7 @@ struct RfftPlan {
     RfftPlan() = default;
     RfftPlan(const RfftPlan&) = delete;
     RfftPlan& operator=(const RfftPlan&) = delete;
-    ~RfftPlan() {
-        if (api == nullptr) return;
-        std::lock_guard<std::mutex> g(pk5d::fft::planner_lock());
-        void** ps[6] = {fy, fx, fz, iy, ix, il};
-        for (auto* q : ps) {
-            for (int i = 0; i < 2; i++) {
-                if (q[i] != nullptr) api->destroy(q[i]);
-            }
-        }
-    }
+    // the plans belong to the process's plan cache (pk5d::fft::cached_plan)
     float* in(int t) const { return sin[t].p; }
     float* out(int t) const { return sout[t].p; }
     float* band(int t) const { return sband[t].p; }
@@ -167,27 +153,21 @@ void setup(Ctx& c, const Call& call) {
         c.sout[t].alloc(sbytes, kOutOff);
         if (c.is3d) c.sband[t].alloc(2 * sizeof(float) * kB * static_cast<size_t>(c.nx) * c.nz, 0);
     }
-    // 1D plans as MATLAB makes them: rank 1, contiguous transforms, its planner flag
-    const FftwApi& a = pk5d::fft::backend(call.backend).api[0];
-    std::lock_guard<std::mutex> g(pk5d::fft::planner_lock());
-    c.api = &a;
-    float* ri = c.in(0);
-    float* ro = c.out(0);
+    // 1D plans as MATLAB makes them (rank 1, contiguous transforms, its planner flag, its scratch alignment):
+    // the process's cached plans, made under the one planner lock (pk5d::fft::cached_plan)
+    const int be = call.backend;
+    c.api = &pk5d::fft::backend(be).api[0];
     for (int b = 0; b < 2; b++) {
-        const idx_t m = b == 0 ? kB : 1;
-        const Iodim dy = {c.ny, 1, 1}, hy = {m, c.ny, c.nyh}, hyc = {m, c.ny, c.ny};
-        c.fy[b] = a.plan_r2c(1, &dy, 1, &hy, ri, ro, kEstimate);
-        c.iy[b] = a.plan_dft(1, &dy, 1, &hyc, ri, ro, kBackward, kEstimate);
-        const Iodim dx = {c.nx, 1, 1}, hx = {m, c.nx, c.nx};
-        c.fx[b] = a.plan_dft(1, &dx, 1, &hx, ri, ro, kForward, kEstimate);
+        const int m = b == 0 ? kB : 1;
+        c.fy[b] = pk5d::fft::cached_plan(be, 0, pk5d::fft::kR2C, c.ny, m);
+        c.iy[b] = pk5d::fft::cached_plan(be, 0, pk5d::fft::kC2CB, c.ny, m);
+        c.fx[b] = pk5d::fft::cached_plan(be, 0, pk5d::fft::kC2CF, c.nx, m);
         if (c.is3d) {
-            c.ix[b] = a.plan_dft(1, &dx, 1, &hx, ri, ro, kBackward, kEstimate);
-            const Iodim dz = {c.nz, 1, 1}, hz = {m, c.nz, c.nz}, hzr = {m, c.nh, c.nz};
-            c.fz[b] = a.plan_dft(1, &dz, 1, &hz, ri, ro, kForward, kEstimate);
-            c.il[b] = a.plan_c2r(1, &dz, 1, &hzr, ri, ro, kEstimate);
+            c.ix[b] = pk5d::fft::cached_plan(be, 0, pk5d::fft::kC2CB, c.nx, m);
+            c.fz[b] = pk5d::fft::cached_plan(be, 0, pk5d::fft::kC2CF, c.nz, m);
+            c.il[b] = pk5d::fft::cached_plan(be, 0, pk5d::fft::kC2R, c.nz, m);
         } else {
-            const Iodim hxr = {m, c.nh, c.nx};
-            c.il[b] = a.plan_c2r(1, &dx, 1, &hxr, ri, ro, kEstimate);
+            c.il[b] = pk5d::fft::cached_plan(be, 0, pk5d::fft::kC2R, c.nx, m);
         }
         if (c.fy[b] == nullptr || c.iy[b] == nullptr || c.fx[b] == nullptr || c.il[b] == nullptr ||
             (c.is3d && (c.ix[b] == nullptr || c.fz[b] == nullptr))) {

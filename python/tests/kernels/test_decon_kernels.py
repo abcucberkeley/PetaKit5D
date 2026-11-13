@@ -30,9 +30,7 @@ from __future__ import annotations
 
 import dataclasses
 import functools
-import importlib.util
 import math
-from pathlib import Path
 
 import numpy as np
 import pytest
@@ -44,6 +42,7 @@ from petakit5d.kernels import decon as D
 from petakit5d.testing import oracle
 from petakit5d.testing.cases import Case, In, Index1, PerAxis, Value, Vol
 from petakit5d.testing.compare import tol
+from petakit5d.testing.fft_reference import digests_hold_here
 from petakit5d.testing.synth import CounterRNG, beads, decon_psf
 
 BACKENDS = P.available()
@@ -57,17 +56,16 @@ PERMISSIVE_OTF = tol(
 )
 
 
-@functools.cache
+def test_the_kernels_use_the_processs_fft_state():
+    # petakit5d._ext.decon attaches to petakit5d._ext.fft's backends, planner lock and plan cache at
+    # import (tests/fft/test_shared_state.py plans from both modules at once)
+    assert D._ext()._fft_state_id() == P._ext()._fft_state_id()
+
+
 def exact_skip_reason() -> str:
-    """'' where the exact backend gives MATLAB's bits here, else why not (test_fft's check: the
-    add-on, x86-64 with AVX, the reference platform's twiddle factors)"""
-    if not EXACT:
-        return "the exact FFT backend (the FFTW add-on) is not installed"
-    path = Path(__file__).resolve().parents[1] / "matlabcompat" / "test_fft.py"
-    spec = importlib.util.spec_from_file_location("pk5d_decon_uses_test_fft", path)
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    return mod.digests_hold_here()
+    """'' where the exact backend gives MATLAB's bits here, else why not (the add-on, x86-64 with
+    AVX, the reference platform's twiddle factors: petakit5d.testing.fft_reference)"""
+    return digests_hold_here()
 
 
 def V(make):
