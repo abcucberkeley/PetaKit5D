@@ -18,6 +18,7 @@
 ``decon_large_in_memory``       RLdecon_large_in_memory
 ``decon_large_in_place``        RLdecon_large_in_place
 ``decon_zarr_block``            RLdecon_for_zarr_block
+``decon_dataset``               XR_decon_data_wrapper
 ==============================  ========================================================
 
 Nothing is imported until a name is first used.
@@ -57,6 +58,8 @@ _EXPORTS = {
     "decon_large_in_place": "large",
     "in_place_controller_resources": "large",
     "decon_zarr_block": "block",
+    "DeconDatasetError": "dataset",
+    "decon_dataset": "dataset",
 }
 
 __all__ = sorted(_EXPORTS)

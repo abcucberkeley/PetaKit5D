@@ -115,13 +115,13 @@ By fate (all):
 
 | fate | tests |
 |---|---|
-| na | 78 |
+| na | 80 |
 | na+oracle | 1 |
 | na+oracle+pytest | 2 |
 | oracle | 127 |
-| oracle+pytest | 515 |
-| pending | 584 |
-| pytest | 367 |
+| oracle+pytest | 525 |
+| pending | 553 |
+| pytest | 386 |
 
 ## Classes
 
@@ -142,13 +142,13 @@ By fate (all):
 | decon/DeconBackProjectorTest | data | R02 | 16 | 24 | yes | na 1, oracle 12, oracle+pytest 9, pytest 2 |
 | decon/DeconFrameTest | data | R05 | 17 | 17 | yes | na 1, oracle+pytest 12, pytest 4 |
 | decon/DeconFunctionTest | data | R03 | 33 | 70 | no | oracle 24, oracle+pytest 21, pending 5, pytest 20 |
-| decon/DeconGPUTest | data | R04 | 4 | 19 | no | oracle+pytest 14, pending 1, pytest 4 |
+| decon/DeconGPUTest | data | R04 | 4 | 19 | no | oracle+pytest 15, pytest 4 |
 | decon/DeconMaskErosionTest | data | K05 | 13 | 48 | no | na 2, na+oracle 1, oracle 2, oracle+pytest 42, pytest 1 |
 | decon/DeconOverlapTest | data | R04 | 3 | 3 | no | oracle+pytest 1, pytest 2 |
 | decon/DeconRFFTGPUTest | data | K09 | 7 | 24 | no | na+oracle+pytest 2, oracle 8, oracle+pytest 13, pytest 1 |
 | decon/DeconRFFTTest | data | K05 | 17 | 82 | no | na 6, oracle 27, oracle+pytest 47, pytest 2 |
 | decon/DeconReadCacheTest | data | R01 | 4 | 4 | yes | oracle+pytest 1, pytest 3 |
-| decon/DeconWrapperTest | data | R06 | 49 | 49 | no | oracle+pytest 8, pending 30, pytest 11 |
+| decon/DeconWrapperTest | data | R06 | 49 | 49 | yes | na 2, oracle+pytest 17, pytest 30 |
 | demo_data/DemoDatasetTest | data | E01 | 4 | 4 | no | pending 4 |
 | deskew_rotate/AxisOrderMappingTest | data | D03 | 1 | 6 | no | pending 6 |
 | deskew_rotate/DeskewMexSourceTest | matlab_only | K03 | 1 | 3 | yes | na 3 |

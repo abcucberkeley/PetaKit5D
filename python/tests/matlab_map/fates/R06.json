@@ -1,0 +1,121 @@
+{
+  "task": "R06",
+  "classes": {
+    "DeconWrapperTest": {
+      "finished": true,
+      "methods": {
+        "simplifiedWritesOutputsThatMatchTheFunction": [
+          "pytest:tests/decon/test_dataset.py::test_simplified_writes_outputs_that_match_the_function",
+          "oracle:tests/decon/test_dataset.py::rl.tif.uint16.*"
+        ],
+        "omwWritesBackProjectorFilesAndMatchesTheFunction": [
+          "pytest:tests/decon/test_dataset.py::test_omw_writes_back_projector_files_and_matches_the_function",
+          "oracle:tests/decon/test_dataset.py::omw.tif.*"
+        ],
+        "deconRotateWritesTheDeskewedRotatedResult": [
+          "pytest:tests/decon/test_dataset.py::test_decon_rotate_writes_the_deskewed_rotated_result",
+          "oracle:tests/decon/test_dataset.py::decon_rotate.*"
+        ],
+        "save16bitFalseWritesSingle": [
+          "pytest:tests/decon/test_dataset.py::test_save16bit_false_writes_single",
+          "oracle:tests/decon/test_dataset.py::rl.tif.single.*",
+          "oracle:tests/decon/test_dataset.py::omw.*.single.*"
+        ],
+        "zarrOutputMatchesTiffOutput": [
+          "pytest:tests/decon/test_dataset.py::test_zarr_output_matches_tiff_output",
+          "oracle:tests/decon/test_dataset.py::rl.zarr.*",
+          "oracle:tests/decon/test_dataset.py::rl.tif_to_zarr.*"
+        ],
+        "eachChannelUsesItsOwnPSFAndBackground": [
+          "pytest:tests/decon/test_dataset.py::test_each_channel_uses_its_own_psf_and_background",
+          "oracle:tests/decon/test_dataset.py::channels.rl.*"
+        ],
+        "omwParametersArePerChannel": [
+          "pytest:tests/decon/test_dataset.py::test_omw_parameters_are_per_channel",
+          "oracle:tests/decon/test_dataset.py::channels.omw.*"
+        ],
+        "erodeByFirstTimePointAppliesItsMaskToAllFiles": [
+          "pytest:tests/decon/test_dataset.py::test_erode_by_first_time_point_applies_its_mask_to_all_files",
+          "pytest:tests/decon/test_dataset.py::test_a_mask_of_another_size_is_not_used",
+          "pytest:tests/decon/test_dataset.py::test_a_finished_first_time_point_without_its_mask_is_deconvolved_again",
+          "oracle:tests/decon/test_dataset.py::erode_by_ftp.*"
+        ],
+        "clusterModeWaitsForAControllerOfAnotherCall": [
+          "pytest:tests/decon/test_dataset.py::test_cluster_mode_waits_for_a_controller_of_another_call"
+        ],
+        "widefieldDemoSettingsWithPlainFilenames": [
+          "pytest:tests/decon/test_dataset.py::test_widefield_demo_settings_with_plain_filenames",
+          "oracle:tests/decon/test_dataset.py::widefield_demo.*"
+        ],
+        "deconvolvedDataCanBeDeskewedAndRotated": [
+          "pytest:tests/decon/test_dataset.py::test_deconvolved_data_can_be_deskewed_and_rotated"
+        ],
+        "originalMethodWorksWithMultipleBatches": [
+          "na:RLMethod 'original' (MATLAB's deconvlucy) is Phase 2 (B11); R05's decon raises NotImplementedError for it (test_dataset.py::test_original_method_is_phase_two)"
+        ],
+        "originalMethodBatchesAreCopiedByTheMex": [
+          "na:RLMethod 'original' (MATLAB's deconvlucy) is Phase 2 (B11); R05's decon raises NotImplementedError for it (test_dataset.py::test_original_method_is_phase_two)"
+        ],
+        "clusterModeChecksFewJobsSoon": [
+          "pytest:tests/decon/test_dataset.py::test_cluster_mode_checks_few_jobs_soon"
+        ],
+        "clusterModeEndsSoonAfterTheLastResult": [
+          "pytest:tests/decon/test_dataset.py::test_cluster_mode_ends_soon_after_the_last_result"
+        ],
+        "clusterModeSubmitsFilesSoonAfterTheirMask": [
+          "pytest:tests/decon/test_dataset.py::test_cluster_mode_submits_files_soon_after_their_mask"
+        ],
+        "clusterModeSeesMasksOtherNodesJustMade": [
+          "pytest:tests/decon/test_dataset.py::test_cluster_mode_sees_masks_other_nodes_just_made"
+        ],
+        "clusterModeWaitsForTheLastTry": [
+          "pytest:tests/decon/test_dataset.py::test_cluster_mode_waits_for_the_last_try"
+        ],
+        "clusterModeWaitsForTheLastTryOfAJobOfSeveralFiles": [
+          "pytest:tests/decon/test_dataset.py::test_cluster_mode_waits_for_the_last_try_of_a_job_of_several_files"
+        ],
+        "clusterModeWaitGrowsWithUnfinishedFiles": [
+          "pytest:tests/decon/test_dataset.py::test_cluster_mode_wait_grows_with_unfinished_files"
+        ],
+        "lastTryWaitsForATaskRunnerThatHasTheTask": [
+          "pytest:tests/decon/test_dataset.py::test_last_try_waits_for_a_task_runner_that_has_the_task"
+        ],
+        "filesOfAJobWaitForATaskRunnerThatHasThem": [
+          "pytest:tests/decon/test_dataset.py::test_files_of_a_job_wait_for_a_task_runner_that_has_them"
+        ],
+        "gpuJobsTakeAtMostFourCPUs": [
+          "pytest:tests/decon/test_dataset.py::test_gpu_jobs_take_at_most_four_cpus"
+        ],
+        "gpuJobsTakeSeveralFilesWithTheSameSettings": [
+          "pytest:tests/decon/test_dataset.py::test_gpu_jobs_take_several_files_with_the_same_settings"
+        ],
+        "runningJobIsNotSubmittedAgain": [
+          "pytest:tests/decon/test_dataset.py::test_running_job_is_not_submitted_again"
+        ],
+        "retriedFilesGetAJobEach": [
+          "pytest:tests/decon/test_dataset.py::test_retried_files_get_a_job_each"
+        ],
+        "filesOfDifferentSizesGoToDifferentJobs": [
+          "pytest:tests/decon/test_dataset.py::test_files_of_different_sizes_go_to_different_jobs"
+        ],
+        "gpuJobsTakeUpToEightFilesWhileThereAreSixteenJobs": [
+          "pytest:tests/decon/test_dataset.py::test_gpu_jobs_take_up_to_eight_files_while_there_are_sixteen_jobs"
+        ],
+        "omwBackProjectorIsMadeOnceBeforeTheJobs": [
+          "pytest:tests/decon/test_dataset.py::test_omw_back_projector_is_made_once_before_the_jobs"
+        ],
+        "compiledJobGetsAllFilesOfItsBatch": [
+          "pytest:tests/decon/test_dataset.py::test_a_job_of_several_files_gets_all_its_files"
+        ]
+      }
+    },
+    "DeconGPUTest": {
+      "methods": {
+        "wrapperGPUJobMatchesCPU": [
+          "pytest:tests/decon/test_dataset.py::test_wrapper_gpu_job_matches_cpu",
+          "oracle:tests/decon/test_dataset.py::gpu.*"
+        ]
+      }
+    }
+  }
+}
