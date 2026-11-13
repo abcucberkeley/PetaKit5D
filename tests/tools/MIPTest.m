@@ -67,6 +67,18 @@ classdef MIPTest < pktest.TestCase
                 'parseCluster', false, 'masterCompute', true);
             testCase.verifyMIPs([dataPath, 'MIPs/', names{1}], ims{1}(b(1) : b(4), b(2) : b(5), b(3) : b(6)), 'uint16');
         end
+
+        function largeZarrInputBboxThatEndsBeforeTheImageEnd(testCase)
+            % (XR_MIP_zarr) the last batches of a box whose size isn't a
+            % multiple of the batch size ran to the end of the image instead
+            % of the box, so their MIPs went past the end of the MIP slabs
+            % and writezarr raised "Upper bound is invalid"
+            [dataPath, ims, names] = testCase.writeDataset('zarr');
+            b = [5, 7, 3, 30, 33, 10];
+            XR_MIP_wrapper(dataPath, 'axis', [1, 1, 1], 'inputBbox', b, 'channelPatterns', testCase.Channels(1), ...
+                'zarrFile', true, 'largeFile', true, 'batchSize', [16, 16, 4], 'parseCluster', false, 'masterCompute', true);
+            testCase.verifyMIPs([dataPath, 'MIPs/', names{1}], ims{1}(b(1) : b(4), b(2) : b(5), b(3) : b(6)), 'uint16');
+        end
     end
 
     methods (Test, TestTags = {'Unit'})

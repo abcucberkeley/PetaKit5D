@@ -123,9 +123,10 @@ numBatch = prod(bSubSz);
 bSubs = [Y(:), X(:), Z(:)];
 clear Y X Z
 
+% (the last batches end at the end of the input box, within the image)
 batchBBoxes = zeros(numBatch, 6);
 batchBBoxes(:, 1 : 3) = (bSubs - 1) .* batchSize + startCoord;
-batchBBoxes(:, 4 : 6) = min(batchBBoxes(:, 1 : 3) + batchSize - 1, imSize);
+batchBBoxes(:, 4 : 6) = min(batchBBoxes(:, 1 : 3) + batchSize - 1, min(startCoord + inSize - 1, imSize));
 
 MIPZarrTmppaths = cellfun(@(x) sprintf('%s/%s_%s_%s.zarr', MIPPath, fsname, x, uuid), axis_strs, 'unif', 0);
 
