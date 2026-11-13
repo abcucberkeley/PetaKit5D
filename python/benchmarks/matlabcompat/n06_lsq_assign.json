@@ -11,5 +11,5 @@
    "args": ["{src}", "{work}", "--threads", "1", "4", "24", "--repeats", "5"]}
  ],
  "compare": [{"a": "py", "b": "ml"}],
- "gate": {"ratio_max": 1.05, "threads": [1, 4, 24], "metrics": ["op:assign_900_grid"]}
+ "gate": {"ratio_max": 1.05, "threads": [1, 4, 24], "metrics": ["op:assign_900_grid@*"]}
 }

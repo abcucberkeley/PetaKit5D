@@ -1,61 +1,80 @@
-"""MATLAB's ``lsqlin`` with its default (interior-point) algorithm, as the stitching shift
-assignment calls it: ``x = lsqlin(C, d, A, b)`` or ``lsqlin(C, d, A, b, Aeq, beq)``, the minimum of
-``||C x - d||^2`` subject to ``A x <= b`` and ``Aeq x = beq``.
+"""MATLAB's ``stitch_assignment_lsqlin`` (the solver of the grid, global and group shift
+assignment since d67e1b7) and ``lsqlin`` with its default (interior-point) algorithm: the minimum of
+``||C x - d||^2`` subject to ``A x <= b`` and ``Aeq x = beq``, whose rows are weighted differences
+of the shifts of two tiles.
 
-MATLAB's solver is iterative and closed (``ipqpdense``, ``ipqpsparse``), so it is not copied: the
-optimum here is exact (an interior-point method, then the equality-constrained problem of its
-active set solved again by regularized iterative refinement, so it is reached to rounding). Where
-the optimum is not unique, the member returned is the one MATLAB's solvers come closest to:
+``assignment(C, d, A, b, Aeq, beq)`` is ``stitch_assignment_lsqlin``, step by step:
 
-- **Lineality** (adding a constant to every variable of a group that the rows of ``C``, ``A`` and
-  ``Aeq`` connect changes nothing; for shifts: all tiles of a group of overlapping tiles): the mean
-  of each group is zero. MATLAB's dense solver starts at mean zero and drifts from it by rounding
-  noise that changes with MATLAB's thread count (up to 0.02 on generated grids, 0.065 on the demo
-  datasets, more with small weights); its sparse solver ends anywhere, which is why the sparse
-  caller subtracts the mean (``x - mean(x)``).
-- **Free offsets** (groups of variables that ``C`` and ``Aeq`` don't connect to the rest, held
-  only by inequalities that are not active: tiles whose pairs all fall below the correlation
-  threshold): the analytic center of the optimal set, the limit of the interior-point path.
-  MATLAB stops on its path after a few iterations, a voxel or more from it (up to 8 on the demo
-  datasets); these values are flagged (``free``).
+1. Groups: of the rows of C and Aeq (objective groups: their offsets are free in the objective)
+   and of all rows (lineality groups: a constant added to one changes nothing), numbered by their
+   first tile.
+2. Without rows in C (every pair below the correlation threshold), the stage positions (x = 0).
+   Without rows in Aeq, the least squares of C (the first tile of each objective group fixed),
+   the groups placed (3.), kept if every bound holds to 1e-9 (1 + max|b|).
+3. Placement: the offsets of the objective groups (the group of each lineality group's first
+   tile held) with the least sum of squares of the rows of A between groups, unconstrained, or
+   within those rows' bounds where the unconstrained offsets break one. So a free tile gets the
+   mean of its neighbors' shifts, a free group the mean over its pairs of the neighbor's shift
+   less its own tile's.
+4. Otherwise (equalities, a broken bound, or no offsets within the bounds): the exact optimum of
+   the whole problem (the first tile of each lineality group fixed), then 3. again. MATLAB solves
+   it with lsqlin refined on its active set, here an interior-point method refined the same way:
+   the optimum's values within each objective group are unique, and 3. sets the offsets.
+5. Mean zero in each lineality group. The callers round with ``round(x + 1e-9)``
+   (``ROUND_OFFSET``) and subtract tile 1's value.
 
-``solve`` also flags values near a half integer, where rounding the solution can differ from
-MATLAB's (``near_half``; the window is ``LsqlinResult.tol``).
+Both solve the same linear systems (MATLAB's sparse Cholesky and SuperLU here differ in the last
+bits), so the rounded shifts can differ only for a value within about 1e-12 of a rounding
+boundary, ``k + 0.5 - 1e-9`` (``near_round_boundary``).
 
-The rows are expected as the stitching code makes them: each row of ``C``, ``A`` and ``Aeq`` is
-zero or ``v * (e_j - e_i)`` (a weighted difference of two variables). Other rows are solved the
-same way with dense null spaces (for small problems). Results never depend on the thread count
-(sparse LU and sparse products only).
+``lsqlin``/``solve`` give MATLAB's ``lsqlin`` itself: the same exact optimum and member (rows of
+differences; other rows by dense null spaces, small problems), with flags for where MATLAB's own
+lsqlin differs, as it ends where its iterations stop: values near a half integer (its dense solver
+drifts from mean zero by rounding noise that changes with the thread count) and values its path
+decides (``free``: objective groups other than the largest of a lineality group).
+
+``free_group_offsets`` is the group method's step 3 (``place_free_groups``).
+
+Results never depend on the thread count (sparse LU and sparse products only).
 """
 
 from __future__ import annotations
 
-import math
 from dataclasses import dataclass, field
 
 import numpy as np
 
 __all__ = [
+    "assignment",
+    "free_group_offsets",
     "lsqlin",
     "solve",
     "LsqlinResult",
     "LsqlinError",
     "near_half_integer",
+    "near_round_boundary",
+    "ROUND_OFFSET",
+    "ROUND_TOL",
     "HALF_TOL",
     "HALF_REL",
     "FREE_TOL",
 ]
 
-# values within this of a half integer are flagged, by form of MATLAB's solver: the sparse
-# solution is moved to mean zero by its caller and agrees to about 3e-5; the dense one drifts from
-# mean zero by rounding noise that changes with MATLAB's thread count: up to 0.017 on generated
-# grids (shifts up to about 30), 0.065 on the demo datasets (shifts up to about 110), so the window
-# is the larger of HALF_TOL and HALF_REL times the largest |x| of the lineality group (callers
-# with other scales pass their own: the group method's step, weights 0.01, drifts up to 0.19)
+# the callers round with round(x + ROUND_OFFSET), so that ties of the problem (exact shifts on
+# half integers) round alike; the boundary moves to k + 0.5 - ROUND_OFFSET, and a value within
+# ROUND_TOL of it is flagged (MATLAB's solution and this one agree to about 1e-12)
+ROUND_OFFSET = 1e-9
+ROUND_TOL = 1e-10
+
+# for MATLAB's plain lsqlin: values within this of a half integer are flagged, by form of its
+# solver: the sparse solution agrees to about 3e-5 once its mean is removed; the dense one drifts
+# from mean zero by rounding noise that changes with MATLAB's thread count (up to 0.017 on
+# generated grids, 0.065 on the demo datasets, 0.19 with weights 0.01), so the window is the larger
+# of HALF_TOL and HALF_REL times the largest |x| of the lineality group
 HALF_TOL = {"dense": 0.02, "sparse": 0.005}
 HALF_REL = {"dense": 1e-3, "sparse": 0.0}
-# how far MATLAB's free values land from the analytic center (measured: up to 1.65 voxels dense,
-# 1.51 sparse); the mean-zero rule passes their mean on to the other values of their group
+# how far MATLAB's plain lsqlin leaves free values from ours (a few voxels); mean zero passes their
+# mean on to the other values of their group
 FREE_TOL = 2.0
 
 _TOL = 1e-10  # interior-point stopping tolerance (relative); the active set's solve does the rest
@@ -73,20 +92,18 @@ class LsqlinError(ValueError):
 
 @dataclass
 class LsqlinResult:
-    """The solution and what is known about it.
+    """``solve``'s solution and where MATLAB's plain lsqlin can differ from it.
 
-    ``x``: the solution. ``free``: values in a group of variables whose offset only inactive
-    inequalities hold, other than the largest such group of their lineality group (MATLAB's value
-    is where its iterations stopped, ours the analytic center), and, for the sparse form, every
-    value when there is more than one lineality group (MATLAB's offsets of the groups are
-    arbitrary and its caller subtracts one mean). ``near_half``: values within ``tol`` of a half
-    integer, where rounding can differ from MATLAB's; ``tol`` is the window of the value's
-    lineality group (the larger of ``half_tol`` and ``HALF_REL[form]`` times the group's largest
-    |x|), widened where the group has free values (the mean-zero rule passes their deviation on:
-    the window times the group's size over its main part's, plus ``FREE_TOL`` times its free
-    values over its main part's). ``active``: rows of ``A`` that hold with equality. ``groups``: the
-    lineality group of each variable (0-based, numbered by first variable). ``iterations``:
-    interior-point iterations (0 when the unconstrained optimum is feasible)."""
+    ``x``: the solution (``assignment``'s for rows of differences). ``free``: values in an
+    objective group other than the largest of their lineality group (MATLAB's lsqlin leaves them
+    where its iterations stop), and, for the sparse form, every value when there is more than one
+    lineality direction (its offsets per group are arbitrary). ``near_half``: values within
+    ``tol`` of a half integer; ``tol`` is the window of the value's lineality group (the larger of
+    ``half_tol`` and ``HALF_REL[form]`` times the group's largest |x|), widened where the group has
+    free values (the window times the group's size over its main part's, plus ``FREE_TOL`` times
+    its free values over its main part's). ``active``: rows of ``A`` that hold with equality.
+    ``groups``: the lineality group of each variable (0-based, numbered by first variable).
+    ``iterations``: interior-point iterations (0 when none was needed)."""
 
     x: np.ndarray
     near_half: np.ndarray
@@ -97,6 +114,30 @@ class LsqlinResult:
     form: str = "dense"
     tol: np.ndarray = field(default_factory=lambda: np.zeros(0))
     info: dict = field(default_factory=dict)
+
+
+def assignment(C, d, A=None, b=None, Aeq=None, beq=None, *, info=None) -> np.ndarray:
+    """``x = stitch_assignment_lsqlin(C, d, A, b, Aeq, beq)`` (see the module): float64 (n,).
+    ``d``, ``b`` and ``beq`` may have columns, one system each, as the callers' three axes (which
+    share C, A and Aeq): x has as many, each column bit for bit what a call with that column gives,
+    and the work on the matrices is shared. A dict ``info`` receives how it was solved (a list per
+    column with columns): ``path`` (``'stage'``: no rows in C; ``'ls'``: the least squares of C;
+    ``'fallback'``: the whole problem; ``'empty'``: no variables), ``bounded`` (a bound held the
+    last placement of the groups) and ``iterations`` (interior-point iterations)."""
+    S = _System(C, d, A, b, Aeq, beq)
+    x = np.zeros((0, S.k)) if S.n == 0 else _assign(S)
+    if info is not None:
+        for key in ("path", "bounded", "iterations"):
+            v = getattr(S, key)
+            info[key] = v if S.columns else v[0]
+    return x if S.columns else x[:, 0]
+
+
+def near_round_boundary(x, tol: float = ROUND_TOL) -> np.ndarray:
+    """True where ``round(x + ROUND_OFFSET)`` is within ``tol`` of changing (``x`` within ``tol``
+    of ``k + 0.5 - ROUND_OFFSET``)."""
+    y = np.asarray(x, dtype=np.float64) + ROUND_OFFSET
+    return np.abs(y - np.floor(y) - 0.5) < tol
 
 
 def lsqlin(C, d, A=None, b=None, Aeq=None, beq=None) -> np.ndarray:
@@ -118,11 +159,21 @@ def solve(C, d, A=None, b=None, Aeq=None, beq=None, *, form=None, half_tol=None)
     if half_tol is None:
         half_tol = HALF_TOL[form]
     P = _Problem(C, d, A, b, Aeq, beq)
+    it = 0
+    sup = None
+    extra = np.zeros(P.n, bool)
     if P.p == 0 and P.q == 0:
-        x, active, it, sup = _unconstrained(P), np.zeros(0, bool), 0, None
+        x = _unconstrained(P)
+    elif P.structured:
+        S = _System(P.C, P.d, P.A, P.b, P.Aeq, P.beq)
+        x = _assign(S)[:, 0]
+        sup, it = S.grp, S.iterations[0]
     else:
-        x, active, it, sup = _solve_constrained(P)
+        x, extra, it = _solve_generic(P)
+    tol0 = 1e-9 * (1.0 + np.abs(P.b).max(initial=0.0))
+    active = (P.b - P.A @ x) <= tol0
     free, tol = _flags(P, x, sup, form, half_tol)
+    free |= extra
     return LsqlinResult(
         x,
         near_half_integer(x, tol),
@@ -137,10 +188,10 @@ def solve(C, d, A=None, b=None, Aeq=None, beq=None, *, form=None, half_tol=None)
 
 
 def _flags(P, x, sup, form, half_tol):
-    """free values (outside the main group of their lineality group, or all for the sparse form
-    with several lineality groups) and the rounding tolerance of each value: the window of the
-    group (the larger of ``half_tol`` and HALF_REL times its largest |x|) scaled to its main part,
-    plus FREE_TOL times its share of free values"""
+    """free values (outside the main objective group of their lineality group, or all for the
+    sparse form with several lineality directions) and the rounding window of each value: the
+    group's (the larger of ``half_tol`` and HALF_REL times its largest |x|) scaled to its main
+    part, plus FREE_TOL times its share of free values"""
     n = P.n
     lab = P.lineality
     free = np.zeros(n, bool)
@@ -171,7 +222,266 @@ def near_half_integer(x, tol: float) -> np.ndarray:
 
 
 # ------------------------------------------------------------------------------------------------
-# the problem and its structure
+# stitch_assignment_lsqlin
+# ------------------------------------------------------------------------------------------------
+
+
+class _System:
+    """the system as stitch_assignment_lsqlin takes it: n is the most columns of C, A and Aeq (a
+    matrix without rows takes n); each row with entries has exactly two. The right-hand sides are
+    columns (D, B, BEQ: one system each), with the tolerance of each (``tol``)."""
+
+    def __init__(self, C, d, A, b, Aeq, beq):
+        import scipy.sparse as sp
+        from scipy.sparse.csgraph import connected_components
+
+        names = ("C", "A", "Aeq")
+        mats = [_csr(M, None, name) for M, name in zip((C, A, Aeq), names, strict=True)]
+        n = max(M.shape[1] for M in mats)
+        for i, name in enumerate(names):
+            if mats[i].shape[1] != n:
+                if mats[i].shape[0]:
+                    raise LsqlinError(f"{name} must have {n} columns")
+                mats[i] = sp.csr_matrix((0, n))
+        self.C, self.A, self.Aeq = mats
+        self.n = n
+        k = max([np.shape(v)[1] for v in (d, b, beq) if v is not None and np.ndim(v) == 2] + [1])
+        self.k, self.columns = k, k > 1
+        self.D = _rhs(d, self.C.shape[0], k, "d")
+        self.B = _rhs(b, self.A.shape[0], k, "b")
+        self.BEQ = _rhs(beq, self.Aeq.shape[0], k, "beq")
+        self.iterations = [0] * k
+        self.path = ["empty"] * k
+        self.bounded = [False] * k
+        if n == 0:
+            return
+        self.ec, _ = _row_ends(self.C)
+        self.ea, self.ra = _row_ends(self.A)
+        self.ee, _ = _row_ends(self.Aeq)
+        self.grp = _labels(n, np.concatenate([self.ec, self.ee]), connected_components, sp)
+        self.lin = _labels(n, np.concatenate([self.ec, self.ea, self.ee]), connected_components, sp)
+        self.tol = 1e-9 * (1.0 + np.abs(self.B).max(axis=0, initial=0.0))
+        self._place = False
+
+    def placement(self):
+        """place_groups' matrices, shared by the columns: (rows of A between objective groups, G,
+        the factorization of G' G, G' G, the groups that move, the number of groups), or None if
+        there is nothing to place"""
+        import scipy.sparse as sp
+
+        if self._place is not False:
+            return self._place
+        grp = self.grp
+        cross = grp[self.ea[:, 0]] != grp[self.ea[:, 1]]
+        kg = int(grp.max()) + 1
+        mov = np.ones(kg, bool)
+        mov[grp[_first_members(self.lin)]] = False
+        self._place = None
+        if cross.any() and mov.any():
+            rows = self.ra[cross]
+            Pm = sp.csr_matrix((np.ones(self.n), (np.arange(self.n), grp)), shape=(self.n, kg))
+            G = (self.A[rows] @ Pm[:, np.nonzero(mov)[0]]).tocsr()
+            H = (G.T @ G).tocsc()
+            self._place = (rows, G, _splu(H), H, mov, kg)
+        return self._place
+
+
+def _rhs(v, m, k, name):
+    """a right-hand side as (m, k): a vector (or one column) for every column"""
+    v = np.zeros((0, 1)) if v is None else np.asarray(v, dtype=np.float64)
+    if v.ndim < 2:
+        v = v.reshape(-1, 1)
+    if v.size == 0 and m == 0:
+        return np.zeros((0, k))
+    if v.ndim != 2 or v.shape[0] != m or v.shape[1] not in (1, k):
+        raise LsqlinError(f"{name} must have {m} rows and 1 or {k} columns")
+    return np.repeat(v, k, axis=1) if v.shape[1] != k else v.copy()
+
+
+def _row_ends(M):
+    """the two columns (ascending) of each row with entries, and those rows' indices; a row of one
+    or of more than two entries is MATLAB's error"""
+    nnz = np.diff(M.indptr)
+    if np.any((nnz != 0) & (nnz != 2)):
+        raise LsqlinError(
+            "Each row must be a difference of the shifts of two tiles.",
+            "stitch_assignment_lsqlin:rowError",
+        )
+    r = np.nonzero(nnz == 2)[0]
+    st = M.indptr[r]
+    c0, c1 = M.indices[st], M.indices[st + 1]
+    ends = np.column_stack([np.minimum(c0, c1), np.maximum(c0, c1)]).astype(np.int64)
+    return ends.reshape(-1, 2), r.astype(np.int64)
+
+
+def _first_members(lab):
+    """the first (lowest) index of each group, in order of the groups"""
+    first = np.full(int(lab.max()) + 1, lab.size)
+    np.minimum.at(first, lab, np.arange(lab.size))
+    return first
+
+
+def _assign(S):
+    """stitch_assignment_lsqlin for each column: (n, k)"""
+    n, k = S.n, S.k
+    x = np.zeros((n, k))
+    ok = np.zeros(k, bool)
+    if S.ec.shape[0] == 0:
+        # no rows in C: the stage positions
+        ok[:] = True
+        S.path = ["stage"] * k
+    elif S.ee.shape[0] == 0:
+        # the optimum of C alone (the first tile of each objective group fixed)
+        S.path = ["ls"] * k
+        keep = np.ones(n, bool)
+        keep[_first_members(S.grp)] = False
+        x[keep] = _normal_solve(S.C[:, keep], S.D)
+        x, ok = _place_groups(S, x, range(k))
+        for j in range(k):
+            ok[j] = ok[j] and bool(np.all(S.A @ x[:, j] <= S.B[:, j] + S.tol[j]))
+    if not ok.all():
+        # the whole problem, refined on its active set (the first tile of each lineality group
+        # fixed), then the groups placed again
+        keep = np.ones(n, bool)
+        keep[_first_members(S.lin)] = False
+        Ck, Ak, Ek = S.C[:, keep], S.A[:, keep], S.Aeq[:, keep]
+        for j in np.nonzero(~ok)[0]:
+            S.path[j], S.bounded[j] = "fallback", False
+            xj = np.zeros((n, 1))
+            xj[keep, 0], it = _optimum(Ck, S.D[:, j], Ak, S.B[:, j], Ek, S.BEQ[:, j])
+            S.iterations[j] += it
+            x[:, j] = _place_groups(S, xj, [j])[0][:, 0]
+    # mean zero in each lineality group (sums in index order, as accumarray's)
+    cnt = np.bincount(S.lin)
+    for j in range(k):
+        x[:, j] -= (np.bincount(S.lin, weights=x[:, j]) / cnt)[S.lin]
+    return x
+
+
+def _normal_solve(C, d):
+    """(C' C) \\ (C' d) for C' C positive definite (a sparse LU and a step of refinement); d may
+    have columns (one factorization, each column solved alone)"""
+    H = (C.T @ C).tocsc()
+    lu = _splu(H)
+    if d.ndim == 1:
+        return _refined(lu, H, C.T @ d)
+    return np.column_stack([_refined(lu, H, C.T @ d[:, j]) for j in range(d.shape[1])])
+
+
+def _refined(lu, H, g):
+    v = lu.solve(g)
+    return v + lu.solve(g - H @ v)
+
+
+def _optimum(C, d, G, h, E, e):
+    """the exact optimum of min ||C u - d||^2, G u <= h, E u = e (no lineality left): an interior
+    point refined on its active set, or the equalities' KKT system alone. (u, iterations)"""
+    if G.shape[0] == 0:
+        u = _eq_ls(C, d, E, e)
+        if u is None:
+            raise LsqlinError("no feasible point: the equalities are inconsistent")
+        return u, 0
+    u, _, z, y, it = _ipm(C, d, G, h, E, e)
+    s = h - G @ u
+    act = z > np.maximum(s, 1e-9 * (1.0 + np.abs(z).max(initial=0.0)))
+    return _polish(C, d, G, h, E, e, u, act, z, y), it
+
+
+def _place_groups(S, x, cols):
+    """stitch_assignment_lsqlin's place_groups for the columns ``cols`` of the system (x: one
+    column each): the offsets of the objective groups (the group of each lineality group's first
+    tile held) with the least sum of squares of the rows of A between groups, within those rows'
+    bounds. (x, ok); ok is False for a column if no offsets hold its bounds (x left as it was)."""
+    import scipy.sparse as sp
+
+    ok = np.ones(len(cols), bool)
+    P = S.placement()
+    if P is None:
+        return x, ok
+    rows, G, lu, H, mov, kg = P
+    Ar = S.A[rows]
+    x = x.copy()
+    for i, j in enumerate(cols):
+        S.bounded[j] = False
+        r0 = Ar @ x[:, i]
+        s0 = S.B[rows, j] - r0
+        c = -_refined(lu, H, G.T @ r0)
+        if np.any(G @ c > s0 + S.tol[j]):
+            # a bound holds them: the bounded least squares, refined on its active set
+            try:
+                c, it = _optimum(G, -r0, G, s0, sp.csr_matrix((0, G.shape[1])), np.zeros(0))
+            except LsqlinError:
+                ok[i] = False
+                continue
+            S.iterations[j] += it
+            S.bounded[j] = True
+        cm = np.zeros(kg)
+        cm[mov] = c
+        x[:, i] = x[:, i] + cm[S.grp]
+    return x, ok
+
+
+# ------------------------------------------------------------------------------------------------
+# the group method's step 3
+# ------------------------------------------------------------------------------------------------
+
+
+def free_group_offsets(placed, gid, d_shift, d_shift_pre, overlap) -> np.ndarray:
+    """stitch_global_group_assignment's place_free_groups: the offsets (ng, 3) of the groups
+    without nodes (``placed`` False), which keep them at their stage positions relative to the
+    tiles of the other groups they overlap: per axis, the least squares of the shift differences
+    ``d(q) - d(p)`` of the overlapping pairs (p, q) of tiles of two groups, at least one of them
+    free (tiles of free groups at ``d_shift_pre`` plus their group's offset, the others at
+    ``d_shift``), without bounds. Of each set of free groups linked by pairs and without a pair to
+    a placed group, the first keeps offset 0. ``gid``: the 0-based group of each tile;
+    ``overlap``: the tiles' overlap matrix."""
+    import scipy.sparse as sp
+    from scipy.sparse.csgraph import connected_components
+
+    placed = np.asarray(placed, bool).reshape(-1)
+    gid = np.asarray(gid, np.int64).reshape(-1)
+    d_shift = np.asarray(d_shift, np.float64)
+    d_shift_pre = np.asarray(d_shift_pre, np.float64)
+    ng = placed.size
+    offset = np.zeros((ng, 3))
+    if placed.all():
+        return offset
+    qq, pp = np.nonzero(np.asarray(overlap, bool).T)  # find(overlap_matrix): column-major
+    use = (gid[pp] != gid[qq]) & ~(placed[gid[pp]] & placed[gid[qq]])
+    p, q = pp[use], qq[use]
+    free = np.nonzero(~placed)[0]
+    k = free.size
+    col = -np.ones(ng, np.int64)
+    col[free] = np.arange(k)
+    cp, cq = col[gid[p]], col[gid[q]]
+    # the shift differences d(q) - d(p) = r0 + G * (offsets of the free groups)
+    known = d_shift_pre.copy()
+    pl = placed[gid]
+    known[pl] = d_shift[pl]
+    r0 = known[q] - known[p]
+    rq, rp = np.nonzero(cq >= 0)[0], np.nonzero(cp >= 0)[0]
+    G = sp.csr_matrix(
+        (np.r_[np.ones(rq.size), -np.ones(rp.size)], (np.r_[rq, rp], np.r_[cq[rq], cp[rp]])),
+        shape=(p.size, k),
+    )
+    # sets of free groups linked by pairs; those with a pair to a placed group are held by it, the
+    # others keep their first group at offset 0
+    ff = (cp >= 0) & (cq >= 0)
+    comp = _labels(k, np.column_stack([cp[ff], cq[ff]]), connected_components, sp)
+    held = np.zeros(int(comp.max()) + 1, bool)
+    fp = (cp >= 0) ^ (cq >= 0)
+    held[comp[np.where(cp[fp] >= 0, cp[fp], cq[fp])]] = True
+    keep = np.ones(k, bool)
+    keep[_first_members(comp)[~held]] = False
+    c = np.zeros((k, 3))
+    if keep.any():
+        c[keep] = -_normal_solve(G[:, np.nonzero(keep)[0]], r0)
+    offset[free] = c
+    return offset
+
+
+# ------------------------------------------------------------------------------------------------
+# lsqlin: the problem
 # ------------------------------------------------------------------------------------------------
 
 
@@ -210,17 +520,10 @@ class _Problem:
         if self.structured:
             from scipy.sparse.csgraph import connected_components
 
-            ce, ae, ee = cs[0], as_[0], es[0]
-            obj = np.concatenate([ce, ee], axis=0)
-            allr = np.concatenate([ce, ae, ee], axis=0)
+            allr = np.concatenate([cs[0], as_[0], es[0]], axis=0)
             self.lineality = _labels(n, allr, connected_components, sp)
             self.ndirections = int(self.lineality.max()) + 1
-            self.ccomp = _labels(n, obj, connected_components, sp)
-            self.a_ends = ae  # (p, 2) ends of each A row (i, j), -1 for zero rows
-            self.a_val = as_[1]  # A row = v * (e_j - e_i)
         else:
-            self.lineality = None
-            self.ccomp = None
             self._dense_structure()
 
     def _dense_structure(self):
@@ -251,6 +554,21 @@ class _Problem:
         rank[lab[np.sort(first)]] = np.arange(first.size)
         self.lineality = rank[lab]
         self.ndirections = self.L.shape[1]
+
+
+def _solve_generic(P):
+    """rows that are not differences: the exact optimum without the lineality directions (the
+    solution orthogonal to them). Directions that only inequalities hold are left where the
+    interior point ends; the variables they move are returned as free. (x, free, iterations)"""
+    T, expand = _reduction(P)
+    u, it = _optimum(P.C @ T, P.d, P.A @ T, P.b, P.Aeq @ T, P.beq)
+    x = expand(u)
+    N, L = P.N, P.L
+    free = np.zeros(P.n, bool)
+    if N.shape[1] > L.shape[1]:
+        Q = N @ _null(L.T @ N) if L.shape[1] else N
+        free = np.abs(Q).max(axis=1) > 1e-12
+    return x, free, it
 
 
 def _csr(M, n, name):
@@ -360,53 +678,13 @@ def _unconstrained(P):
     return x
 
 
-def _solve_constrained(P):
-    """(x, active rows, iterations, super groups: variables whose offsets move together)"""
-    if P.structured:
-        r = _without_inequalities(P)
-        if r is not None:
-            x, sup = r
-            return _center_groups(P, x), np.zeros(P.p, bool), 0, sup
-    T, expand = _reduction(P)
-    Cu, Au, Eu = P.C @ T, P.A @ T, P.Aeq @ T
-    it = 0
-    if P.p == 0:
-        u = _eq_ls(Cu, P.d, Eu, P.beq)
-        if u is None:
-            raise LsqlinError("no feasible point: the equalities are inconsistent")
-        active = np.zeros(0, bool)
-    else:
-        u, s, z, y, it = _ipm(Cu, P.d, Au, P.b, Eu, P.beq)
-        active = z > np.maximum(s, 1e-9 * (1.0 + np.abs(z).max(initial=0.0)))
-        u = _polish(Cu, P.d, Au, P.b, Eu, P.beq, u, active, z, y)
-    x = expand(u)
-    x, active, sup = _face_center(P, x, active)
-    return _center_groups(P, x), active, it, sup
-
-
 def _reduction(P):
-    """x = T u without the lineality directions: one variable per lineality group is fixed at 0
-    (rows of differences), or u spans its orthogonal complement (other rows)"""
+    """x = T u without the lineality directions (rows that are not differences): u spans their
+    orthogonal complement"""
     import scipy.sparse as sp
 
-    n = P.n
-    if P.structured:
-        lab = P.lineality
-        root = np.zeros(n, bool)
-        first = np.full(lab.max() + 1, n)
-        np.minimum.at(first, lab, np.arange(n))
-        root[first] = True
-        keep = np.nonzero(~root)[0]
-        T = sp.csr_matrix((np.ones(keep.size), (keep, np.arange(keep.size))), shape=(n, keep.size))
-
-        def expand(u):
-            x = np.zeros(n)
-            x[keep] = u
-            return x
-
-        return T, expand
     L = P.L
-    Q = _null(L.T) if L.shape[1] else np.eye(n)
+    Q = _null(L.T) if L.shape[1] else np.eye(P.n)
     T = sp.csr_matrix(Q)
     return T, lambda u: Q @ u
 
@@ -428,32 +706,6 @@ def _splu(K, symmetric=True):
         except RuntimeError:
             pass
     return sla.splu(K)
-
-
-def _without_inequalities(P):
-    """The optimum of C and Aeq alone, if some point of it holds every inequality: then it is the
-    optimum, returned with its free offsets at the analytic center. None otherwise."""
-    import scipy.sparse as sp
-
-    # a particular solution: one variable per group of C and Aeq fixed (their offsets are free)
-    n = P.n
-    lab = P.ccomp
-    first = np.full(lab.max() + 1, n)
-    np.minimum.at(first, lab, np.arange(n))
-    root = np.zeros(n, bool)
-    root[first] = True
-    keep = np.nonzero(~root)[0]
-    S = sp.csr_matrix((np.ones(keep.size), (keep, np.arange(keep.size))), shape=(n, keep.size))
-    v = _eq_ls(P.C @ S, P.d, P.Aeq @ S, P.beq)
-    if v is None:
-        return None
-    x = np.zeros(n)
-    x[keep] = v
-    r = _center_offsets(P, P.b - P.A @ x, np.zeros(P.p, bool), need_feasible=True)
-    if r is None:
-        return None
-    c, sup = r
-    return x + c[P.ccomp], sup[P.ccomp]
 
 
 def _eq_ls(C, d, E, e, refine=4):
@@ -647,207 +899,3 @@ def _polish(C, d, G, h, E, e, u, active, z, y, refine=6, rounds=30):
             act[j] = True
             zw[j] = 0.0
     return u
-
-
-# ------------------------------------------------------------------------------------------------
-# the member of the optimal set: free offsets at the analytic center, groups at mean zero
-# ------------------------------------------------------------------------------------------------
-
-
-def _face_center(P, x, active):
-    """x on the optimal set; its free offsets moved to the analytic center. (x, active, free)"""
-    if not P.structured:
-        return _face_center_dense(P, x, active)
-    s0 = P.b - P.A @ x
-    r = _center_offsets(P, s0, active, need_feasible=False)
-    if r is None:
-        return x, active, P.lineality.copy()
-    c, sup = r
-    return x + c[P.ccomp], active, sup[P.ccomp]
-
-
-def _center_offsets(P, s0, eq, need_feasible):
-    """(c, super groups): offsets c (one per group of C and Aeq) maximizing
-    sum log(s0_i - v_i (c_J - c_I)) over the rows between groups that are not tight on the whole
-    set (those, and the rows in ``eq``, hold their groups together: the super groups, one label
-    per group); one group per lineality group fixed at 0. With ``need_feasible``: None if no c
-    holds every row."""
-    import scipy.sparse as sp
-
-    lab = P.ccomp
-    k = lab.max() + 1
-    ends = P.a_ends
-    rowok = ends[:, 0] >= 0
-    gi = np.where(rowok, lab[np.maximum(ends[:, 0], 0)], -1)
-    gj = np.where(rowok, lab[np.maximum(ends[:, 1], 0)], -1)
-    cross = rowok & (gi != gj)
-    tol = 1e-9 * (1.0 + np.abs(P.b).max(initial=0.0))
-    if need_feasible and np.any(s0[~cross] < -tol):
-        return None
-    eqc = eq & cross
-    sup = _join(k, gi[eqc], gj[eqc])
-    lin_of_group = np.zeros(k, np.int64)
-    lin_of_group[lab] = P.lineality
-    rows = np.nonzero(cross & ~eq)[0]
-    while True:
-        ns = sup.max() + 1
-        # fixed per lineality group: the super group of its first group
-        fixed = np.zeros(ns, bool)
-        seen = set()
-        for g in range(k):
-            if lin_of_group[g] not in seen:
-                seen.add(lin_of_group[g])
-                fixed[sup[g]] = True
-        var = np.nonzero(~fixed)[0]
-        vidx = -np.ones(ns, np.int64)
-        vidx[var] = np.arange(var.size)
-        a = sup[gi[rows]]
-        bb = sup[gj[rows]]
-        same = a == bb
-        if np.any(same):
-            if need_feasible and np.any(s0[rows[same]] < -tol):
-                return None
-            rows, a, bb = rows[~same], a[~same], bb[~same]
-        if var.size == 0:
-            if need_feasible and np.any(s0[rows] < -tol):
-                return None
-            return np.zeros(k), sup
-        v = P.a_val[rows]
-        # slack_i(c) = s0_i - v_i (c_b - c_a)
-        rr = np.arange(rows.size)
-        ia, ib = vidx[a], vidx[bb]
-        data = np.concatenate([-v[ia >= 0], v[ib >= 0]])
-        ri = np.concatenate([rr[ia >= 0], rr[ib >= 0]])
-        ci = np.concatenate([ia[ia >= 0], ib[ib >= 0]])
-        G = sp.csr_matrix((data, (ri, ci)), shape=(rows.size, var.size))
-        st = _strict_point(G, s0[rows])
-        if st is None:
-            return None
-        t, cv, tight = st
-        if need_feasible and t < -tol:
-            return None
-        if t > tol:
-            cv = _analytic_center(G, s0[rows], cv)
-            c_sup = np.zeros(ns)
-            c_sup[var] = cv
-            return c_sup[sup], sup
-        # rows tight on the whole set: they hold their groups together
-        if not np.any(tight):
-            tight = s0[rows] - G @ cv <= tol
-        tr = rows[tight]
-        sup = _join(ns, sup[gi[tr]], sup[gj[tr]])[sup]
-        rows = rows[~tight]
-
-
-def _join(k, a, b):
-    import scipy.sparse as sp
-    from scipy.sparse.csgraph import connected_components
-
-    G = sp.csr_matrix((np.ones(a.size), (a, b)), shape=(k, k))
-    _, lab = connected_components(G, directed=False)
-    return lab
-
-
-def _strict_point(G, s0):
-    """max t such that G c + t <= s0 (t <= 1): (t, c, rows with a positive dual) or None"""
-    from scipy.optimize import linprog
-
-    m, k = G.shape
-    if m == 0:
-        return 1.0, np.zeros(k), np.zeros(0, bool)
-    import scipy.sparse as sp
-
-    Aub = sp.hstack([G, sp.csr_matrix(np.ones((m, 1)))]).tocsr()
-    cost = np.zeros(k + 1)
-    cost[-1] = -1.0
-    res = linprog(
-        cost, A_ub=Aub, b_ub=s0, bounds=[(None, None)] * k + [(None, 1.0)], method="highs"
-    )
-    if res.status != 0:
-        return None
-    t = float(res.x[-1])
-    marg = np.asarray(res.ineqlin.marginals)
-    return t, res.x[:k], marg < -1e-12
-
-
-def _analytic_center(G, s0, c, maxit=100):
-    """Newton's method for max sum log(s0 - G c) from a strictly feasible c (damped while the
-    Newton decrement is large, full steps near the center)"""
-    import scipy.sparse as sp
-
-    for _ in range(maxit):
-        sl = s0 - G @ c
-        g = G.T @ (1.0 / sl)
-        Hn = (G.T @ sp.diags(1.0 / sl**2) @ G).tocsc()
-        try:
-            dc = -_splu(Hn).solve(g)
-        except RuntimeError:
-            return c
-        lam2 = float(-np.sum(g * dc))
-        if not np.isfinite(lam2):
-            break
-        if lam2 < 1e-26:
-            return c
-        t = 1.0
-        fo = -np.sum(np.log(sl))
-        while t > 1e-14:
-            sn = s0 - G @ (c + t * dc)
-            if np.all(sn > 0) and (lam2 < 1e-6 or -np.sum(np.log(sn)) <= fo - 0.25 * t * lam2):
-                break
-            t *= 0.5
-        c = c + t * dc
-        if lam2 < 1e-18 and t == 1.0:
-            return c
-        if not np.all(np.abs(c) < 1e15):
-            break
-    else:
-        return c
-    raise LsqlinError("the optimal set is unbounded in a direction the objective leaves free")
-
-
-def _center_groups(P, x):
-    """mean zero in each lineality group (an exactly rounded mean)"""
-    if not P.structured:
-        return x
-    lab = P.lineality
-    x = x.copy()
-    for g in range(lab.max() + 1):
-        m = np.nonzero(lab == g)[0]
-        x[m] = x[m] - math.fsum(x[m]) / m.size
-    return x
-
-
-def _face_center_dense(P, x, active):
-    """the analytic center over x + N c for rows that are not differences (dense, small)"""
-    N = P.N
-    L = P.L
-    fixed = P.lineality.copy()
-    if N.shape[1] == 0:
-        return x, active, fixed
-    A = P.A.toarray()
-    s0 = P.b - A @ x
-    G = A @ N
-    vary = np.abs(G).max(axis=1) > 1e-12
-    E = []
-    if L.shape[1]:
-        E.append(L.T @ N)
-    eqr = active & vary
-    if np.any(eqr):
-        E.append(G[eqr])
-    Z = _null(np.vstack(E)) if E else np.eye(N.shape[1])
-    rows = vary & ~active
-    if Z.shape[1] == 0 or not np.any(rows):
-        return x, active, fixed
-    import scipy.sparse as sp
-
-    Gz = sp.csr_matrix(G[rows] @ Z)
-    st = _strict_point(Gz, s0[rows])
-    if st is None or st[0] <= 1e-9:
-        return x, active, fixed
-    w = _analytic_center(Gz, s0[rows], st[1])
-    x = x + N @ (Z @ w)
-    # variables the free directions move are their own group (marked free)
-    moved = np.abs(N @ Z).max(axis=1) > 1e-12
-    sup = fixed * 2
-    sup[moved] = fixed[moved] * 2 + 1
-    return x, active, sup
