@@ -1,0 +1,63 @@
+{
+ "task": "S05",
+ "classes": {
+  "StitchShiftAssignmentTest": {
+   "finished": true,
+   "methods": {
+    "allPairsBelowTheThresholdKeepTheStagePositions": [
+     "pytest:tests/stitch/test_assignment.py::test_allPairsBelowTheThresholdKeepTheStagePositions",
+     "oracle:tests/stitch/test_assignment.py::grid.allbelow.*",
+     "oracle:tests/stitch/test_assignment.py::global.allbelow.*"
+    ],
+    "onePairOfTiles": [
+     "pytest:tests/stitch/test_assignment.py::test_onePairOfTiles",
+     "oracle:tests/stitch/test_assignment.py::mtest.one_pair.*"
+    ],
+    "freeTilesKeepTheirStagePositionsRelativeToTheirNeighbors": [
+     "pytest:tests/stitch/test_assignment.py::test_freeTilesKeepTheirStagePositionsRelativeToTheirNeighbors",
+     "oracle:tests/stitch/test_assignment.py::grid.free.*",
+     "oracle:tests/stitch/test_assignment.py::global.free.*"
+    ],
+    "freeTileHeldByItsBounds": [
+     "pytest:tests/stitch/test_assignment.py::test_freeTileHeldByItsBounds",
+     "oracle:tests/stitch/test_assignment.py::mtest.free_tile_held_by_its_bounds.grid",
+     "oracle:tests/stitch/test_assignment.py::grid.freebound.*"
+    ],
+    "boundsOfAFreeTileHoldItsNeighbors": [
+     "pytest:tests/stitch/test_assignment.py::test_boundsOfAFreeTileHoldItsNeighbors",
+     "oracle:tests/stitch/test_assignment.py::mtest.bounds_of_a_free_tile_hold_its_neighbors.grid"
+    ],
+    "groupsWithoutPairsAboveTheThresholdKeepTheirStagePositions": [
+     "pytest:tests/stitch/test_assignment.py::test_groupsWithoutPairsAboveTheThresholdKeepTheirStagePositions",
+     "oracle:tests/stitch/test_assignment.py::mtest.groups_*",
+     "oracle:tests/stitch/test_assignment.py::group.*free*"
+    ],
+    "shiftsRoundTheExactOptimumAtAnyThreadCount": [
+     "pytest:tests/stitch/test_assignment.py::test_shiftsRoundTheExactOptimumAtAnyThreadCount",
+     "pytest:tests/stitch/test_assignment.py::test_results_do_not_depend_on_the_thread_count"
+    ],
+    "integerShiftsRoundAlike": [
+     "pytest:tests/stitch/test_assignment.py::test_integerShiftsRoundAlike",
+     "oracle:tests/stitch/test_assignment.py::mtest.integer_shifts_round_alike.*"
+    ],
+    "activeBoundsGiveTheExactOptimum": [
+     "pytest:tests/stitch/test_assignment.py::test_activeBoundsGiveTheExactOptimum",
+     "oracle:tests/stitch/test_assignment.py::mtest.active_bounds_give_the_exact_optimum.grid"
+    ],
+    "boundsHoldForTheirOwnPairs": [
+     "pytest:tests/stitch/test_assignment.py::test_boundsHoldForTheirOwnPairs",
+     "oracle:tests/stitch/test_assignment.py::grid.jitter.*",
+     "oracle:tests/stitch/test_assignment.py::ssa.grid.4x3jit.*"
+    ],
+    "separateGroupsOfALargeGridHaveMeanZeroEach": [
+     "pytest:tests/stitch/test_assignment.py::test_separateGroupsOfALargeGridHaveMeanZeroEach",
+     "oracle:tests/stitch/test_assignment.py::grid.two.*"
+    ],
+    "largeGridMatchesDenseSolver": [
+     "pytest:tests/stitch/test_assignment.py::test_largeGridMatchesDenseSolver",
+     "oracle:tests/stitch/test_assignment.py::grid.conn.*"
+    ]
+   }
+  }
+ }
+}
