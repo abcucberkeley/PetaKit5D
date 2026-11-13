@@ -25,8 +25,10 @@ end
 [sz_2_adj, adj_axes] = sort(sz_2, 'descend');
 adj_axes(sz_2_adj <= dimNumThrsh) = [];
 
-mu_2 = mean(region_2(:));
-std_2 = std(single(region_2(:)));
+% MATLAB's mean and std at one thread (its own change with the number of
+% threads, except the mean of integer data, which is exact)
+mu_2 = fixed_order_stat('mean', region_2);
+std_2 = fixed_order_stat('std', single(region_2));
 region_2_bw = region_2 > mu_2 + 3 * std_2;
 
 for i = 1 : numel(adj_axes)

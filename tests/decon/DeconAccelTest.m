@@ -353,6 +353,48 @@ classdef DeconAccelTest < pktest.TestCase
                 sprintf('%d and %d threads differ with the MATLAB FFT steps.', threads));
         end
 
+        function debugErrorDoesNotDependOnTheThreadCount(testCase)
+            % the error metric of the debug output (the mean squared
+            % difference of the result and the data, 89000 or more voxels) was
+            % MATLAB's mean, which changes in the last bits with the number of
+            % threads (here in 2 to 4 of the 4 iterations); now the same at 2,
+            % 4 and 24 threads as at 1: decon_lucy_function, and
+            % decon_lucy_omw_function with the MATLAB loop and with the FFT
+            % mex in pieces
+            nt = maxNumCompThreads;
+            testCase.addTeardown(@() maxNumCompThreads(nt));
+            [im, psf] = testCase.texturedData([48, 48, 40]);
+            [~, b] = evalc('omw_backprojector_generation(psf, 0.005, false)');
+            root = testCase.createTempFolder();
+            threads = [1, 2, 4, 24];
+            useMex = [false, DeconAccelTest.rfftMexDefault()];
+            errs = cell(numel(threads), 3);
+            for k = 1 : numel(threads)
+                maxNumCompThreads(threads(k));
+                clear decon_lucy_function decon_lucy_omw_function
+                args = {'Background', testCase.Background, 'useGPU', false, 'save16bit', false, 'debug', true};
+                [~, errs{k, 1}] = decon_lucy_function(im, psf, 4, args{:}, 'debug_folder', sprintf('%srl_%d', root, k));
+                for m = 1 : 2
+                    if m == 2 && ~useMex(m)
+                        continue;
+                    end
+                    [~, errs{k, m + 1}] = decon_lucy_omw_function(im, psf, b, 4, args{:}, 'useMex', useMex(m), ...
+                        'debug_folder', sprintf('%somw_%d_%d', root, m, k));
+                end
+            end
+            names = {'decon_lucy_function', 'OMW, MATLAB loop', 'OMW, FFT mex'};
+            for i = 1 : 3
+                if isempty(errs{1, i})
+                    continue;
+                end
+                testCase.verifyEqual(size(errs{1, i}), [4, 4], names{i});
+                for k = 2 : numel(threads)
+                    testCase.verifyEqual(DeconAccelTest.bits(errs{k, i}), DeconAccelTest.bits(errs{1, i}), ...
+                        sprintf('%s: %d and 1 threads differ.', names{i}, threads(k)));
+                end
+            end
+        end
+
         function psfNormalizationDoesNotDependOnTheThreadCount(testCase)
             % a PSF of 63^3 elements: RLdecon's normalization, the OTF of
             % decon_lucy_function and decon_lucy_omw_function, and the back

@@ -186,7 +186,14 @@ else
         J = max(J, 0);
             
         if debug
-            err_mat(k, 1:2) = [k, mean((double(J) - double(I)) .^ 2, 'all')];
+            % on the CPU MATLAB's mean at one thread (fixed_order_stat), as
+            % its own changes in the last bits with the number of threads
+            if useGPU
+                err = mean((double(J) - double(I)) .^ 2, 'all');
+            else
+                err = fixed_order_stat('mean', (double(J) - double(I)) .^ 2);
+            end
+            err_mat(k, 1:2) = [k, err];
             err_mat(k, 3) = err_mat(k, 2) ./ err_mat(1, 2); 
             if rem(k, estep) == 0 && k > estep * 2
                 istp = k/estep;
@@ -287,7 +294,7 @@ for k = 1 : NUMIT
 
     err_mat(k, 1) = k;
     if k <= nErr
-        err_mat(k, 2) = mean((double(J) - double(Is)) .^ 2, 'all');
+        err_mat(k, 2) = fixed_order_stat('mean', (double(J) - double(Is)) .^ 2);
     end
     err_mat(k, 3) = err_mat(k, 2) ./ err_mat(1, 2); 
     if rem(k, estep) == 0 && k > estep * 2

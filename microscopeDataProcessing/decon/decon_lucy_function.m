@@ -27,10 +27,11 @@ function [J_2, err_mat, k, overlapOut] = decon_lucy_function(I, PSF, NUMIT, vara
 %   usable, false on the CPU, [] (the default) on a GPU if one is usable, else
 %   on the CPU with a warning
 %
-% On the CPU, the PSF normalization and the acceleration factor are summed in
-% an order that doesn't depend on the number of threads (decon_sum_double,
-% decon_lucy_accel), and the acceleration step runs in decon_lucy_accel_mex
-% for arrays of 89000 or more elements, with the results of the MATLAB code.
+% On the CPU, the PSF normalization, the acceleration factor and the debug
+% error metric are summed in an order that doesn't depend on the number of
+% threads (decon_sum_double, decon_lucy_accel, fixed_order_stat), and the
+% acceleration step runs in decon_lucy_accel_mex for arrays of 89000 or more
+% elements, with the results of the MATLAB code.
 
 
 ip = inputParser;
@@ -210,7 +211,14 @@ for k = 1 : NUMIT
     end
         
     if debug
-        err_mat(k, 1:2) = [k, mean((double(J_2) - double(I)) .^ 2, 'all')];
+        % on the CPU MATLAB's mean at one thread (fixed_order_stat), as its
+        % own changes in the last bits with the number of threads
+        if useGPU
+            err = mean((double(J_2) - double(I)) .^ 2, 'all');
+        else
+            err = fixed_order_stat('mean', (double(J_2) - double(I)) .^ 2);
+        end
+        err_mat(k, 1:2) = [k, err];
         err_mat(k, 3) = err_mat(k, 2) ./ err_mat(1, 2); 
         if rem(k, estep) == 0 && k > estep * 2
             istp = k/estep;

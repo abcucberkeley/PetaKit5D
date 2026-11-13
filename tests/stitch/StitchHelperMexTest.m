@@ -1,9 +1,10 @@
 classdef StitchHelperMexTest < pktest.TestCase
     % stitching helpers that run a mex with MATLAB code as the fallback and
     % that the stitching tests don't reach: the crop of a long registration
-    % region to its brightest part (crop_subregion_by_intensity, crop3d_mex)
-    % and the check that the major tiles of a batch have data at every voxel
-    % (check_major_tile_valid, any_4th_dim_mex); the edge erosion of tiles
+    % region to its brightest part (crop_subregion_by_intensity, crop3d_mex;
+    % the same at any number of threads) and the check that the major tiles
+    % of a batch have data at every voxel (check_major_tile_valid,
+    % any_4th_dim_mex); the edge erosion of tiles
     % (erodeVolumeBy2DProjection, indexing3d_mex) and the integral images
     % of the registration (integral_image_3d_mex). pktest.TestCase fails a
     % test in which the mex call fails.
@@ -26,6 +27,38 @@ classdef StitchHelperMexTest < pktest.TestCase
             [kept, bbox] = crop_subregion_by_intensity(region, 40);
             testCase.verifyEqual(kept, region);
             testCase.verifyEqual(bbox, [1, 1, 1, 30, 40, 12]);
+        end
+
+        function cropDoesNotDependOnTheThreadCount(testCase)
+            % the threshold of the crop, the mean plus 3 std of the region
+            % (89000 or more voxels), was MATLAB's, which changes with the
+            % number of threads: in a region of large values (single, around
+            % 6e7 in steps of 4), whose single sums MATLAB rounds otherwise at
+            % each thread count, with slices of bright voxels of one value
+            % each, increasing along z (the first slice above the threshold
+            % has the most), the crop along z moved with it (here by up to 52
+            % slices at 2 to 24 threads). Now the same at 2, 4 and 24 threads
+            % as at 1.
+            nt = maxNumCompThreads;
+            testCase.addTeardown(@() maxNumCompThreads(nt));
+            nz = 1000;
+            region = single(6e7 + 4 * randi([-4, 4], [32, 32, nz]));
+            for z = 1 : nz
+                k = 10 + floor((nz - z) / 50);
+                region(randperm(32 * 32, k) + (z - 1) * 32 * 32) = single(6e7 + 4 * z);
+            end
+            maxNumCompThreads(1);
+            [ref, refBbox] = crop_subregion_by_intensity(region, 100);
+            % the crop is inside the region along z, and only along z
+            testCase.verifyGreaterThan(refBbox(3), 1);
+            testCase.verifyLessThan(refBbox(6), nz);
+            testCase.verifyEqual(refBbox([1, 2, 4, 5]), [1, 1, 32, 32]);
+            for t = [2, 4, 24]
+                maxNumCompThreads(t);
+                [cropped, bbox] = crop_subregion_by_intensity(region, 100);
+                testCase.verifyEqual(bbox, refBbox, sprintf('%d threads', t));
+                testCase.verifyEqual(cropped, ref, sprintf('%d threads', t));
+            end
         end
 
         function majorTilesWithDataEverywhereAreValid(testCase, tileClass)

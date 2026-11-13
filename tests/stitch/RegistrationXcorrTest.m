@@ -212,6 +212,32 @@ classdef RegistrationXcorrTest < pktest.TestCase
             end
         end
 
+        function nccDoesNotDependOnTheThreadCount(testCase)
+            % the means, the sum and the variances of the template and the
+            % image (89000 or more elements each) were MATLAB's, which change
+            % in the last bits with the number of threads, and with them the
+            % NCC of double data in most values (of single data rarely: at
+            % windows at the flatness threshold). Now the NCC is the same at
+            % 2, 4 and 24 threads as at 1: the MATLAB code (double) and the
+            % mex (single, on Linux).
+            nt = maxNumCompThreads;
+            testCase.addTeardown(@() maxNumCompThreads(nt));
+            T = rand([50, 45, 41]) * 100;
+            A = rand([70, 66, 50]) * 100;
+            bbox = [30, 25, 20, 90, 85, 70];
+            threads = [1, 2, 4, 24];
+            for cls = {'double', 'single'}
+                C = cell(1, numel(threads));
+                for k = 1 : numel(threads)
+                    maxNumCompThreads(threads(k));
+                    C{k} = normxcorr3_fast(cast(T, cls{1}), cast(A, cls{1}), 'full', bbox);
+                end
+                for k = 2 : numel(threads)
+                    testCase.verifyBitEqual(C{k}, C{1}, sprintf('%s data, %d threads', cls{1}, threads(k)));
+                end
+            end
+        end
+
         function linesAreGroupedAsMatlabDoes(testCase)
             % 'fft1' transforms the columns as MATLAB's fft(X, [], 1) does: in
             % its parallel mode, MATLAB halves the columns until a piece has at
@@ -309,7 +335,11 @@ classdef RegistrationXcorrTest < pktest.TestCase
             testCase.verifyEqual(size(actual), size(expected), [name, ': size']);
             testCase.verifyClass(actual, class(expected));
             if isequal(size(actual), size(expected)) && isa(actual, class(expected))
-                nDiff = nnz(typecast(actual(:), 'uint32') ~= typecast(expected(:), 'uint32'));
+                if isa(expected, 'double')
+                    nDiff = nnz(typecast(actual(:), 'uint64') ~= typecast(expected(:), 'uint64'));
+                else
+                    nDiff = nnz(typecast(actual(:), 'uint32') ~= typecast(expected(:), 'uint32'));
+                end
                 testCase.verifyEqual(nDiff, 0, sprintf('%s: %d of %d values differ in their bits.', name, nDiff, numel(expected)));
             end
         end

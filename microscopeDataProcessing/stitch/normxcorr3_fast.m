@@ -84,9 +84,11 @@ end
 % means, the correlation and the window sums keep a large constant part, whose
 % rounding (and that of its removal) in single precision is larger than the
 % NCC of faint or flat regions. The image stays zero-padded (its mean is
-% accounted for where the template overlaps it).
-cT = cast(mean(T(:), 'double'), 'like', T);
-cA = cast(mean(A(:), 'double'), 'like', A);
+% accounted for where the template overlaps it). The means, sums and
+% variances of all elements are MATLAB's at one thread (fixed_order_stat), as
+% MATLAB's own change in the last bits with the number of threads.
+cT = cast(fixed_order_stat('mean', T, 'double'), 'like', T);
+cA = cast(fixed_order_stat('mean', A, 'double'), 'like', A);
 T0 = T - cT;
 A0 = A - cA;
 % at the output position k (along each dimension) the template's elements
@@ -133,8 +135,8 @@ cAd = double(cA);
 sB = sA - nPad * cAd;
 sB2 = sA2 + nPad * cAd ^ 2;
 clear sA sA2 nPad;
-sumT0 = sum(T0(:), 'double');
-denomT = std(double(T0(:)));
+sumT0 = fixed_order_stat('sum', T0, 'double');
+denomT = fixed_order_stat('std', double(T0));
 clear T0;
 num = (double(corrTA) - cAd * (sumT0 - sT) - sB * (sumT0 / pSzT)) / (pSzT - 1);
 clear corrTA sT;
@@ -143,7 +145,7 @@ clear sB sB2;
 
 % the NCC, 0 for windows that are flat to the precision of the image's class
 % (variance at most eps times the image's) and for a flat template
-valid = varA > eps(class(A)) * var(A(:), 1) & denomT > 0;
+valid = varA > eps(class(A)) * fixed_order_stat('var', A, 1) & denomT > 0;
 C = zeros(size(num), class(A));
 C(valid) = num(valid) ./ (denomT * sqrt(varA(valid)));
 
