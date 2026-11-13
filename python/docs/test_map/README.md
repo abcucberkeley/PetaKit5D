@@ -115,13 +115,13 @@ By fate (all):
 
 | fate | tests |
 |---|---|
-| na | 80 |
+| na | 83 |
 | na+oracle | 1 |
 | na+oracle+pytest | 2 |
 | oracle | 127 |
 | oracle+pytest | 525 |
-| pending | 553 |
-| pytest | 386 |
+| pending | 544 |
+| pytest | 392 |
 
 ## Classes
 
@@ -168,7 +168,7 @@ By fate (all):
 | framework/MasterComputeFitTest | framework_fake_slurm | J08 | 11 | 11 | no | oracle+pytest 3, pending 1, pytest 7 |
 | framework/McCParserConsistencyTest | matlab_only | J12 | 6 | 6 | yes | na 6 |
 | framework/MccBuildCheckTest | matlab_only | J12 | 4 | 4 | yes | na 4 |
-| framework/MccClusterWrapperTest | framework_design | J12 | 15 | 15 | no | pending 11, pytest 4 |
+| framework/MccClusterWrapperTest | framework_design | J12 | 15 | 15 | no | na 3, pending 2, pytest 10 |
 | framework/PublishResultTest | framework_fake_slurm | J05 | 4 | 4 | yes | pytest 4 |
 | framework/ResultWritersTest | framework_fake_slurm | J05 | 12 | 12 | no | pending 1, pytest 11 |
 | framework/SingleJobRunnerTest | framework_design | J07 | 30 | 30 | yes | pytest 30 |

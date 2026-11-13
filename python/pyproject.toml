@@ -28,6 +28,10 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Image Processing",
 ]
 
+[project.scripts]
+pk5d = "petakit5d.cli.main:main"
+pk5d-master = "petakit5d.cli.master:main"
+
 [project.optional-dependencies]
 test = ["pytest>=8", "pytest-timeout>=2.3"]
 dev = ["pytest>=8", "pytest-timeout>=2.3", "ruff>=0.8"]

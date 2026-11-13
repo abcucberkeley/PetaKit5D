@@ -1,0 +1,39 @@
+{
+ "task": "J12",
+ "classes": {
+  "MccClusterWrapperTest": {
+   "methods": {
+    "failedQueryKeepsJobStates": [
+     "pytest:tests/jobs/test_cluster_fake_slurm.py::test_a_failed_query_keeps_the_job_states"
+    ],
+    "lostSubmissionAnswerFindsTheJob": [
+     "pytest:tests/jobs/test_cluster_fake_slurm.py::test_a_submission_without_answer_is_looked_for_before_it_is_submitted_again"
+    ],
+    "lostSubmissionWaitsWhileSqueueFails": [
+     "pytest:tests/jobs/test_cluster_fake_slurm.py::test_nothing_is_submitted_while_a_lost_submission_cannot_be_looked_for"
+    ],
+    "stoppedCallCancelsItsJobs": [
+     "pytest:tests/jobs/test_cluster_fake_slurm.py::test_jobs_are_cancelled_when_the_master_raises",
+     "pytest:tests/jobs/test_cluster_fake_slurm.py::test_jobs_are_cancelled_when_the_master_gets_sigterm"
+    ],
+    "gpuSlotsUseTheJobsGPUs": [
+     "pytest:tests/jobs/test_slots.py::test_gpu_slots_get_one_gpu_each",
+     "pytest:tests/jobs/test_slots.py::test_gpu_for_slot"
+    ],
+    "masterGpuSlotsUseTheJobsGPUs": [
+     "pytest:tests/jobs/test_slots.py::test_gpu_slots_get_one_gpu_each",
+     "pytest:tests/jobs/test_slots.py::test_gpu_for_slot"
+    ],
+    "outdatedBuildStopsBeforeSubmitting": [
+     "na:a compiled master built from older task interfaces; the port has no build: tasks run the installed package (pk5d-master rejects an unknown option at once, MATLAB:InputParser:UnmatchedParameter, exit 249: tests/cli/test_master.py)"
+    ],
+    "tasksUseOwnRuntimeCachePerSlot": [
+     "na:a MATLAB Runtime cache per GNU parallel slot; Python tasks start no MATLAB Runtime"
+    ],
+    "tasksOutsideGNUParallelUseOwnRuntimeCache": [
+     "na:a MATLAB Runtime cache per compiled task; Python tasks start no MATLAB Runtime"
+    ]
+   }
+  }
+ }
+}
