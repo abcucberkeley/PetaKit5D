@@ -256,23 +256,31 @@ def file_cases(
 
 
 CASES: list[Case] = []
+# The rotations after the decon run on the exact backend only: rotateFrame3D's Crop sizes the
+# output from where the data is exactly zero, which the permissive backend's last bits can move
+ROTATED = ("exact",)
 # DeconFrameTest/deskewAndRotationAfterTheDeconRunSeparately
 for _interp in ("linear", "cubic"):
     CASES += file_cases(
         f"file.separate.{_interp}",
         ["Deskew", True, "Rotate", True, "DSRCombined", False, "interpMethod", _interp],
+        backends=ROTATED,
     )
 CASES += file_cases(
     "file.separate.reverse_crop",
     ["Deskew", True, "Rotate", True, "DSRCombined", False, "Reverse", True, "Crop", True],
+    backends=ROTATED,
 )
 CASES += file_cases("file.deskew_separate", ["Deskew", True, "DSRCombined", False])
 CASES += file_cases("file.deskew_only", ["Deskew", True])  # MATLAB writes no DS file
 # DeconFrameTest/objectiveScanFramesAreRotatedAfterTheDecon
-CASES += file_cases("file.objective_scan", ["objectiveScan", True, "Rotate", True])
+CASES += file_cases(
+    "file.objective_scan", ["objectiveScan", True, "Rotate", True], backends=ROTATED
+)
 CASES += file_cases(
     "file.objective_scan_cubic",
     ["objectiveScan", True, "Rotate", True, "interpMethod", "cubic", "Reverse", True],
+    backends=ROTATED,
 )
 # DeconFrameTest/rotationWithoutDeskewIsTheCombinedDeskewAndRotation (through RLdecon)
 CASES += file_cases("file.rotate_only", ["Rotate", True])
@@ -565,11 +573,6 @@ CASES += mem_cases(
 )
 
 
-# rotateFrame3D's Crop crops MATLAB's rotation to a size that depends on the data (probes in the
-# R05 report); D02's rotate_volume ignores it, so these fail until D02 follows MATLAB
-D02_CROP = ("file.separate.",)
-
-
 def _check(case, tmp_path):
     if case.id.endswith(".exact"):
         reason = digests_hold_here()
@@ -577,14 +580,7 @@ def _check(case, tmp_path):
             pytest.skip(reason)
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        if not case.id.startswith(D02_CROP):
-            oracle.check(case, tmp_path)
-            return
-        try:
-            oracle.check(case, tmp_path)
-        except pytest.fail.Exception:
-            pytest.xfail("D02: rotate_volume ignores rotateFrame3D's Crop (the DSR size)")
-        pytest.fail("rotate_volume now follows rotateFrame3D's Crop: drop D02_CROP")
+        oracle.check(case, tmp_path)
 
 
 @oracle.parametrize(CASES)

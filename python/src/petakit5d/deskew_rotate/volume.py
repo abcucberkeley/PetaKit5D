@@ -550,13 +550,52 @@ def deskew_volume(
     return _imwarp_view(v, t, method, size, box)
 
 
+def _crop_out_size(
+    v: np.ndarray, angle: float, zx_ratio: float, reverse: bool
+) -> tuple[int, int, int] | None:
+    """``rotateFrame3D``'s ``Crop``: the output size ``(nz, ny, nx)`` from the data, or None
+    (the default size) where it finds no edge.
+
+    Found from MATLAB's behaviour (black-box probes on 132 inputs: deskewed volumes, boxes and
+    parallelograms of data in zeros, both scan directions, angles, z ratios and classes): in
+    each z slice, the x profile of the data (any voxel along y not 0; NaN counts as data) has
+    an edge between voxels i and i + 1 wherever it changes, at x = i + 1/2 (1-based); the edge
+    points ``(x, z)`` of all slices are rotated as the volume is (z scaled by ``zx_ratio``, by
+    ``-angle`` for reverse scans), and each output size is ``round(extent) - 4`` in x and z;
+    y keeps ``ny``. Data that reaches the volume's x edge has no edge there, so it shrinks the
+    size (MATLAB's behaviour, kept); a size of 0 or less is MATLAB's ``imref3d`` error."""
+    from petakit5d.core.dtypes import mround
+    from petakit5d.deskew_rotate.geometry import _cos, _sin
+
+    prof = np.asarray(v != 0).any(axis=1)  # (z, x)
+    ch = np.diff(prof.astype(np.int8), axis=1) != 0
+    zs, xs = np.nonzero(ch)
+    if zs.size == 0:
+        return None
+    th = angle * math.pi / 180
+    if reverse:
+        th = -th
+    c, s = _cos(th), _sin(th)
+    x = xs.astype(np.float64) + 1.5  # the edge after 1-based voxel xs + 1
+    z = (zs.astype(np.float64) + 1) * zx_ratio
+    xr = x * c + z * s
+    zr = -x * s + z * c
+    w = float(mround(np.float64(xr.max() - xr.min()))) - 4
+    h = float(mround(np.float64(zr.max() - zr.min()))) - 4
+    return (int(h), int(v.shape[1]), int(w))
+
+
 @register(
     "rotateFrame3D",
     Param("vol", None, "The deskewed volume (z, y, x).", convert="volume"),
     Param("angle", None, "Skew angle in degrees."),
     Param("zxRatio", None, "Slice spacing in pixels (z anisotropy).", convert="same"),
     Param("reverse", "@islogical", "Reverse scan direction."),
-    Param("Crop", "@islogical", "Accepted; does not change the result (as in MATLAB)."),
+    Param(
+        "Crop",
+        "@islogical",
+        "Without outSize, a smaller output size from the zero regions of the data.",
+    ),
     Param("resample", "@isnumeric", "Resample factor (z, y, x).", convert="resample_xyz"),
     Param("ObjectiveScan", "@islogical", "Accepted; does not change the result (as in MATLAB)."),
     Param(
@@ -585,18 +624,24 @@ def rotate_volume(
     by ``resample`` (``(z, y, x)``) about the center. The output size is ``out_size`` or
     ``round(nx cos(angle) + nz zx / sin|angle|)`` in x and ``round(nz zx cos(angle) + nx
     sin|angle|)`` in z, each divided by its factor and rounded with ``resample``; the class is
-    the input's (``imwarp``, ``interp`` 'linear' or 'cubic', 0 outside). ``crop`` and
-    ``objective_scan`` are accepted and change nothing, as in MATLAB. A new implementation from
-    the math and MATLAB's behaviour: bit for bit MATLAB's ``rotateFrame3D`` in the oracle cases.
+    the input's (``imwarp``, ``interp`` 'linear' or 'cubic', 0 outside). ``crop`` without
+    ``out_size`` takes a smaller output size from where the data's zero regions are
+    (``_crop_out_size``; the same transform, the output centred as before); ``objective_scan``
+    is accepted and changes nothing, as in MATLAB. A new implementation from the math and
+    MATLAB's behaviour: bit for bit MATLAB's ``rotateFrame3D`` in the oracle cases.
     """
     from petakit5d.deskew_rotate.geometry import rotate_geometry
 
-    _ = crop, objective_scan
+    _ = objective_scan
     method = _check_interp_method(interp)
     v = _as_input(vol)
     shape = v.shape if v.ndim == 3 else (1, *v.shape)
     rs = None if resample is None or np.size(resample) == 0 else resample
     osz = None if out_size is None or np.size(out_size) == 0 else out_size
+    if osz is None and _logical(crop):
+        osz = _crop_out_size(
+            v if v.ndim == 3 else v[np.newaxis], float(angle), float(zx_ratio), _logical(reverse)
+        )
     t, size = rotate_geometry(
         shape, float(angle), float(zx_ratio), reverse=_logical(reverse), resample=rs, out_size=osz
     )
