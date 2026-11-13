@@ -271,8 +271,9 @@ manifests from the store), `status` (store and manifest state of the selected ca
 
 The session: `cd` to the oracle tree, `setup([])`, the pack's copy of `+pkpy_oracle` (and the
 cases' `helpers`) on the path, then `pkpy_oracle.run_pack`. Each case starts as a MATLAB test
-does (`rng(0, 'twister')`, the session's warning state, the decon OTF caches cleared, figures
-closed afterwards) in a fresh work folder on local disk. MATLAB needs 4 or more CPUs (it fixes
+does (`rng(0, 'twister')`, the session's warning state, the decon OTF caches cleared,
+`mex_fallback`'s records and the warnings it gave reset, so that a mex fallback warns in every
+case as in a new session, figures closed afterwards) in a fresh work folder on local disk. MATLAB needs 4 or more CPUs (it fixes
 its FFT mode at the first FFT). A session starts in about 11 to 16 s; then a small case costs
 about 8 ms beyond its own compute (median; the first case of a session about 1 s more).
 

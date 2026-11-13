@@ -57,6 +57,17 @@ warning('off', 'backtrace');
 warning('on', 'verbose');
 lastwarn('');
 clear('decon_lucy_function', 'decon_lucy_omw_function');
+% mex_fallback warns once per mex, error and session, and pktest.TestCase resets
+% its records after each test: each case starts so, whichever cases of the pack
+% ran before it (PKPY_ORACLE_KEEP_SESSION_STATE=1 keeps them, as the harness
+% did before, for the harness's own test only)
+if ~strcmp(getenv('PKPY_ORACLE_KEEP_SESSION_STATE'), '1') && exist('mex_fallback', 'file') == 2
+    try
+        mex_fallback('-reset');
+    catch
+        clear('mex_fallback');
+    end
+end
 figs = get(groot, 'Children');
 cd(work);
 try

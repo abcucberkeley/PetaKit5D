@@ -1036,3 +1036,38 @@ def test_a_case_changing_its_inputs_in_place_leaves_the_next_cases_inputs_alone(
     assert not np.array_equal(got[True][0], x)  # shared: the writer's zeros
     assert np.all(got[True][0][:2, :2, 0] == 0)
     assert got[True][1] == ["a", "added", "b"]
+
+
+@pytest.mark.oracle
+@pytest.mark.slow
+def test_each_case_gets_the_mex_fallback_warnings_of_a_new_session(
+    tmp_path, monkeypatch, matlab_oracle
+):
+    """mex_fallback warns once per mex, error and session; the harness resets it before each
+    case (as pktest.TestCase does after each test), so a case's warnings do not depend on the
+    cases its pack ran before. As the harness was (PKPY_ORACLE_KEEP_SESSION_STATE=1), the
+    second of two cases with the same fallback gave none"""
+    cases = [
+        Case(
+            f"fallback_warns_{n}",
+            code=(
+                f"try; crop3d(zeros({n}, {n}, {n}, 'uint16'), [1 1 1 2 2]); catch; end; out = {{}};"
+            ),
+            nargout=0,
+        )
+        for n in (4, 5)
+    ]
+    got = {}
+    for keep in (False, True):
+        d = tmp_path / ("keep" if keep else "reset")
+        store = private_store(d, monkeypatch)
+        if keep:
+            monkeypatch.setenv("PKPY_ORACLE_KEEP_SESSION_STATE", "1")
+        else:
+            monkeypatch.delenv("PKPY_ORACLE_KEEP_SESSION_STATE", raising=False)
+        pj = oracle.write_pack(cases, store, d / "pack", d / "work")
+        (d / "work").mkdir()
+        assert oracle.run_matlab(pj, matlab_oracle, echo=False)[0] == 0
+        got[keep] = [[w.get("identifier") for w in store.load(c.key()).warnings] for c in cases]
+    assert got[False] == [["PetaKit5D:mexFallback"], ["PetaKit5D:mexFallback"]], got
+    assert got[True] == [["PetaKit5D:mexFallback"], []], got
