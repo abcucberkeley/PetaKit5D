@@ -185,7 +185,9 @@ jobs:
         run: |
           url=https://github.com/niXman/mingw-builds-binaries/releases/download/12.2.0-rt_v10-rev2/x86_64-12.2.0-release-posix-seh-ucrt-rt_v10-rev2.7z
           curl -sSL --fail -o "$RUNNER_TEMP/mingw.7z" "$url"
-          sha=$(sha256sum "$RUNNER_TEMP/mingw.7z" | cut -d' ' -f1)
+          # from stdin: sha256sum puts a backslash before a hash whose file
+          # name has backslashes, as Windows paths do
+          sha=$(sha256sum < "$RUNNER_TEMP/mingw.7z" | cut -d' ' -f1)
           echo "sha256 $sha"
           if [ "$sha" != "dc1f299e8450c96f59f4b8f7c1290ebb78ee00ddb71f9ed4ca0efaf5462f8c4e" ]; then
             echo "::error::unexpected MinGW archive"
