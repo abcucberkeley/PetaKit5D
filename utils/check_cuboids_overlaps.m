@@ -51,8 +51,9 @@ nol_1 = cuboid_22 < cuboid_11;
 nol_2 = cuboid_12 < cuboid_21;
 is_overlap_mat = ~any(nol_1 | nol_2, 2);
 
+% (also with one output: a singularity edge is no overlap either way)
 cuboid_overlap_mat = [];
-if nargout > 1 && any(is_overlap_mat)
+if any(is_overlap_mat)
     cuboid_overlap_mat = zeros(nP, 6);        
     for p = 1 : nP
         if ~is_overlap_mat(p)

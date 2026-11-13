@@ -1230,6 +1230,31 @@ classdef StitchingTest < pktest.TestCase
             testCase.verifyEqual(size(out), [82, 110, 34]);
             testCase.verifyEqual(out(1 : 80, 1 : 108, 1 : 32), gt);
         end
+
+        function tilesThatOnlyTouchAfterTheShiftsDoNotOverlap(testCase)
+            % the recheck of the overlaps after the registration's shifts
+            % kept a pair whose tiles then only touch (a shared plane of
+            % voxel centers), with half-overlap regions computed from a zero
+            % overlap: check_cuboids_overlaps dropped such pairs only when
+            % asked for the overlap regions. The shifts are given in the
+            % registration's result file; the tiles overlap by 36 voxels
+            % before them.
+            dataPath = testCase.createTempFolder();
+            px = testCase.XYPixelSize;
+            gt = testCase.randomVolume([64, 143, 32]);
+            csvFn = testCase.writeTiles(dataPath, gt, [0, 0, 0; 0, 71, 0], [64, 72, 32], [], [0, 0, 0; 36 * px, 0, 0]);
+            xcorrPath = [dataPath, 'matlab_stitch/xcorr/'];
+            mkdir(xcorrPath);
+            xyz_shift = [0, 0, 0; 71 * px, 0, 0];
+            dxyz_shift = [0, 0, 0; 35 * px, 0, 0];
+            save([xcorrPath, testCase.StitchName, '.mat'], 'xyz_shift', 'dxyz_shift');
+
+            testCase.stitch(dataPath, csvFn, 'xcorrShift', true, 'blendMethod', 'none');
+
+            info = load(sprintf('%smatlab_stitch/stitchInfo/%s.mat', dataPath, testCase.StitchName), 'overlap_matrix');
+            testCase.verifyFalse(info.overlap_matrix(1, 2), 'The tiles that only touch are a pair that overlaps.');
+            testCase.verifyEqual(testCase.cropToData(testCase.readResult(dataPath)), gt);
+        end
     end
 
     methods (Test, TestTags = {'Integration', 'Slow'})

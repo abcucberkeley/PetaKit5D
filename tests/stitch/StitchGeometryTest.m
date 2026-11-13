@@ -1,8 +1,30 @@
 classdef StitchGeometryTest < pktest.TestCase
-    % geometry helpers of the stitching: the axis order check of
+    % geometry helpers of the stitching: overlaps of tile cuboids
+    % (check_cuboids_overlaps) and the axis order check of
     % XR_stitching_frame_zarr_dev_v1
 
     methods (Test, TestTags = {'Unit'})
+        function cuboidsThatOnlyTouchDoNotOverlap(testCase)
+            % cuboids that share only a face, an edge or a corner don't
+            % overlap, also for a caller that asks for one output: the
+            % stitching's recheck after the registration's shifts did, and
+            % so kept such pairs, with half-overlap regions computed from a
+            % zero overlap
+            c = [0, 0, 0, 1, 1, 1];
+            js = [1, 0, 0, 2, 1, 1; 0, 1, 0, 1, 2, 1; 0, 0, 1, 1, 1, 2; 1, 1, 0, 2, 2, 1; 1, 1, 1, 2, 2, 2; ...
+                0.5, 0.5, 0.5, 2, 2, 2; 1.5, 0, 0, 2, 1, 1];
+            expected = [false(5, 1); true; false];
+            testCase.verifyEqual(check_cuboids_overlaps(c, js, false), expected, 'one output');
+            [isOverlap, regions] = check_cuboids_overlaps(c, js, false);
+            testCase.verifyEqual(isOverlap, expected, 'two outputs');
+            testCase.verifyEqual(regions(6, :), [0.5, 0.5, 0.5, 1, 1, 1]);
+            % in 2D a single z plane is no singularity
+            c = [0, 0, 0, 1, 1, 0];
+            js = [0.5, 0.5, 0, 2, 2, 0; 1, 0, 0, 2, 1, 0];
+            testCase.verifyEqual(check_cuboids_overlaps(c, js, true), [true; false], '2D');
+            testCase.verifyEqual(check_cuboids_overlaps(c, js, false), [false; false], '3D');
+        end
+
         function axisOrderMustBeAPermutationOfXYZ(testCase)
             % the check never raised (~regexpi(...) is false for no match
             % too), so the stitching sorted any order into some permutation;
