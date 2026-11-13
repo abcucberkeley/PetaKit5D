@@ -350,6 +350,39 @@ nb::ndarray<nb::numpy> py_omw_components(const nb::ndarray<const uint8_t, nb::nd
     return wrap_bool(b.release(), {static_cast<size_t>(nz), static_cast<size_t>(ny), static_cast<size_t>(nx)});
 }
 
+nb::object py_omw_window_values(const std::vector<std::int64_t>& psz, const flat_in<int64_t>& et, double l,
+                                double u, int threads) {
+    if (psz.size() != 3) throw std::invalid_argument("decon: psz is (n1, n2, n3)");
+    const idx_t ps[3] = {psz[0], psz[1], psz[2]};
+    const size_t nv = static_cast<size_t>(ps[0] * ps[1] * ps[2]);
+    const idx_t ne = static_cast<idx_t>(et.shape(0));
+    for (idx_t j = 0; j < ne; j++) {
+        if (et.data()[j] < 0 || static_cast<size_t>(et.data()[j]) >= nv || (j > 0 && et.data()[j] <= et.data()[j - 1]))
+            throw std::invalid_argument("decon: the edge indices must be increasing indices of the grid");
+    }
+    if (ne < 2) throw std::invalid_argument("decon: at least 2 edge points");
+    Owned<double> mask(nv);
+    bool ok;
+    {
+        nb::gil_scoped_release g;
+        ok = omw_window_values(ps, et.data(), ne, l, u, mask.p, threads > 0 ? threads : 1);
+    }
+    if (!ok) return nb::none();
+    return nb::cast(
+        wrap(mask.release(), {static_cast<size_t>(ps[2]), static_cast<size_t>(ps[0]), static_cast<size_t>(ps[1])}));
+}
+
+nb::ndarray<nb::numpy> py_omw_abs(const flat_in<float>& c, int threads) {
+    const idx_t n = static_cast<idx_t>(c.shape(0) / 2);
+    check_size(c.shape(0), static_cast<size_t>(2 * n), "c");
+    Owned<float> out(static_cast<size_t>(n));
+    {
+        nb::gil_scoped_release g;
+        omw_abs(c.data(), n, out.p, threads > 0 ? threads : 1);
+    }
+    return wrap(out.release(), {static_cast<size_t>(n)});
+}
+
 nb::object py_omw_sortdesc(const flat_in<float>& a, int threads) {
     const idx_t n = static_cast<idx_t>(a.shape(0));
     Owned<double> out(static_cast<size_t>(n));
@@ -425,6 +458,9 @@ NB_MODULE(decon, m) {
     m.def("omw_components", &py_omw_components, nb::arg("a").noconvert(), nb::arg("largest"), nb::arg("n"),
           nb::arg("threads"));
     m.def("omw_sortdesc", &py_omw_sortdesc, nb::arg("a").noconvert(), nb::arg("threads"));
+    m.def("omw_window_values", &py_omw_window_values, nb::arg("psz"), nb::arg("et").noconvert(), nb::arg("l"),
+          nb::arg("u"), nb::arg("threads"));
+    m.def("omw_abs", &py_omw_abs, nb::arg("c").noconvert(), nb::arg("threads"));
     m.def("transpose_planes", &py_transpose, nb::arg("src").noconvert(), nb::arg("dst").noconvert(), nb::arg("rows"),
           nb::arg("cols"), nb::arg("threads"),
           "dst[z][c][r] = src[z][r][c] for planes of rows x cols elements");

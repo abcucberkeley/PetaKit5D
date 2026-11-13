@@ -1,4 +1,4 @@
-"""Deconvolution: PSFs, OTFs and Richardson-Lucy on the CPU.
+"""Deconvolution: PSFs, OTFs, the OMW back projector and Richardson-Lucy on the CPU.
 
 ==============================  ========================================================
 ``psf_gen``                     psf_gen_new (``generate_psf`` with backend and threads)
@@ -7,6 +7,8 @@
 ``read_tiff_cached``            decon_readtiff_cached (``clear_read_cache``)
 ``rotate_psf``                  XR_rotate_PSF
 ``psf2otf``                     decon_psf2otf
+``omw_backprojector``           omw_backprojector_generation (``generate_backprojector``)
+``omw_backprojector_files``     omw_backprojector_files (``backprojector_file_names``)
 ``decon_lucy``                  decon_lucy_function (``lucy`` with backend and threads)
 ``decon_lucy_omw``              decon_lucy_omw_function (``lucy_omw``)
 ``clear_otf_cache``             ``clear decon_lucy_function decon_lucy_omw_function``
@@ -27,6 +29,12 @@ _EXPORTS = {
     "rotate_psf": "psf",
     "pad_shift_psf": "otf",
     "psf2otf": "otf",
+    "BackProjector": "backprojector",
+    "BackProjectorError": "backprojector",
+    "backprojector_file_names": "backprojector",
+    "generate_backprojector": "backprojector",
+    "omw_backprojector": "backprojector",
+    "omw_backprojector_files": "backprojector",
     "DeconError": "rl",
     "OMWResult": "rl",
     "RLResult": "rl",

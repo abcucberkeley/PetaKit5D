@@ -1,0 +1,101 @@
+{
+  "task": "R02",
+  "classes": {
+    "DeconBackProjectorTest": {
+      "finished": true,
+      "methods": {
+        "areaThresholdOfAComponentSizeMatches": [
+          "oracle:tests/decon/test_backprojector.py::bp.area.*",
+          "oracle:tests/decon/test_backprojector.py::bp.var.lobes3.areaThresh.*"
+        ],
+        "backProjectorMatchesThePreviousCode": {
+          "fate": [
+            "oracle:tests/decon/test_backprojector.py::bp.*"
+          ],
+          "case_fates": {
+            "psfCase=gaussian": [
+              "oracle:tests/decon/test_backprojector.py::bp.gaussian.*"
+            ],
+            "psfCase=gaussianSkewed": [
+              "oracle:tests/decon/test_backprojector.py::bp.gaussianSkewed.*"
+            ],
+            "psfCase=elongatedWideTaper": [
+              "oracle:tests/decon/test_backprojector.py::bp.elongatedWideTaper.*"
+            ],
+            "psfCase=elongatedNarrowTaper": [
+              "oracle:tests/decon/test_backprojector.py::bp.elongatedNarrowTaper.*"
+            ],
+            "psfCase=threeLobes": [
+              "oracle:tests/decon/test_backprojector.py::bp.threeLobes.*"
+            ],
+            "psfCase=threeLobesShearedDetected": [
+              "oracle:tests/decon/test_backprojector.py::bp.threeLobesShearedDetected.*"
+            ],
+            "psfCase=fiveLobes": [
+              "oracle:tests/decon/test_backprojector.py::bp.fiveLobes.*"
+            ],
+            "psfCase=degenerateBounds": [
+              "oracle:tests/decon/test_backprojector.py::bp.degenerateBounds.*"
+            ],
+            "psfCase=boundsBeyondTheEdge": [
+              "oracle:tests/decon/test_backprojector.py::bp.boundsBeyondTheEdge.*"
+            ]
+          }
+        },
+        "backProjectorMatchesWithOneThread": [
+          "pytest:tests/decon/test_backprojector.py::test_thread_counts"
+        ],
+        "componentsMatchBwareaopenAndBwconncomp": [
+          "oracle:tests/kernels/test_decon_kernels.py::omw.components.*",
+          "pytest:tests/kernels/test_decon_kernels.py::test_components_match_bwareaopen_and_the_largest_ties_go_to_the_first"
+        ],
+        "convexHullsMatchBwconvhull": [
+          "oracle:tests/kernels/test_decon_kernels.py::omw.convhull.*",
+          "oracle:tests/matlabcompat/test_morphology.py::hull.slices.*",
+          "pytest:tests/kernels/test_decon_kernels.py::test_hulls_are_bwconvhull_of_the_slices"
+        ],
+        "invalidMexInputsError": [
+          "oracle:tests/kernels/test_decon_kernels.py::omw.error.*"
+        ],
+        "largestComponentTiesGoToTheFirst": [
+          "oracle:tests/kernels/test_decon_kernels.py::omw.components.*",
+          "pytest:tests/kernels/test_decon_kernels.py::test_components_match_bwareaopen_and_the_largest_ties_go_to_the_first"
+        ],
+        "medianFilterMatchesMedfilt3": [
+          "oracle:tests/kernels/test_decon_kernels.py::omw.medfilt3.*",
+          "pytest:tests/kernels/test_decon_kernels.py::test_sort_and_median_return_none_where_the_mex_returns_empty"
+        ],
+        "psfGenerationDoesNotCallMedfilt3": [
+          "pytest:tests/decon/test_psf.py::test_psf_generation_matches_medfilt3_order_filter",
+          "oracle:tests/decon/test_psf.py::gen.bp.*"
+        ],
+        "psfGenerationMatchesMedfilt3": [
+          "pytest:tests/decon/test_psf.py::test_psf_generation_matches_medfilt3_order_filter",
+          "oracle:tests/decon/test_psf.py::gen.bp.*"
+        ],
+        "sliceHullsMatchBwconvhull": [
+          "oracle:tests/matlabcompat/test_morphology.py::hull.union.*"
+        ],
+        "sortMatchesSort": [
+          "oracle:tests/kernels/test_decon_kernels.py::omw.sortdesc.*",
+          "pytest:tests/kernels/test_decon_kernels.py::test_sort_and_median_return_none_where_the_mex_returns_empty"
+        ],
+        "theReplacedFunctionsAreNotCalled": [
+          "na:the port has no bwconvhull, bwareaopen or bwconncomp calls to stub on this path: the kernels compute the hulls, the components and the sort (their oracle cases are omw.*)"
+        ],
+        "windowBoundsHoldForSparseEdgePoints": [
+          "pytest:tests/decon/test_backprojector.py::test_window_bounds_hold_for_sparse_edge_points"
+        ],
+        "windowIsDecidedOnlyWhereTheBoundsHold": [
+          "pytest:tests/kernels/test_decon_kernels.py::test_window_is_decided_only_where_the_bounds_hold",
+          "oracle:tests/kernels/test_decon_kernels.py::omw.window.*"
+        ],
+        "withoutTheMexTheMatlabCodeRuns": [
+          "pytest:tests/decon/test_backprojector.py::test_the_window_without_the_bounds_is_the_same",
+          "oracle:tests/decon/test_backprojector.py::bp.degenerateBounds.*",
+          "oracle:tests/decon/test_backprojector.py::bp.var.lobes3.lowerBoundZero.*"
+        ]
+      }
+    }
+  }
+}

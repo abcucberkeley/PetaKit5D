@@ -141,5 +141,12 @@ void omw_window(const idx_t* psz, const double* e, const double* r, idx_t ne, do
 void omw_components(const uint8_t* a, idx_t n1, idx_t n2, idx_t n3, bool largest, idx_t n, uint8_t* b, int nt);
 // 'sortdesc': false for NaN or negative values (-0 included)
 bool omw_sortdesc(const float* a, idx_t n, double* out, int nt);
+// omw_backprojector_generation's window (R02): 'window''s mask for the edge voxels et (MATLAB linear
+// indices, increasing) with the window of the voxels it leaves computed as MATLAB computes it (cart2sph,
+// sph2cart, the 2 nearest edge points, the radii weighted with the first voxels' distances); false where
+// MATLAB computes every voxel (a zero weight or radius)
+bool omw_window_values(const idx_t* psz, const int64_t* et, idx_t ne, double l, double u, double* mask, int nt);
+// MATLAB's abs of n complex singles (interleaved): msun's hypotf, MATLAB's NaN for a NaN part
+void omw_abs(const float* c, idx_t n, float* out, int nt);
 
 }  // namespace pk5d::decon

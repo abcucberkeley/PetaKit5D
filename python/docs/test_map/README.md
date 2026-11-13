@@ -115,12 +115,12 @@ By fate (all):
 
 | fate | tests |
 |---|---|
-| na | 76 |
+| na | 77 |
 | na+oracle | 1 |
-| oracle | 107 |
-| oracle+pytest | 415 |
-| pending | 778 |
-| pytest | 297 |
+| oracle | 119 |
+| oracle+pytest | 424 |
+| pending | 754 |
+| pytest | 299 |
 
 ## Classes
 
@@ -138,7 +138,7 @@ By fate (all):
 | crop/CropDatasetTest | data | T03 | 23 | 23 | yes | oracle+pytest 14, pytest 9 |
 | crop/CropMexTest | data | K01 | 10 | 46 | no | oracle+pytest 46 |
 | decon/DeconAccelTest | data | R03 | 15 | 46 | no | na 1, oracle 24, oracle+pytest 16, pending 1, pytest 4 |
-| decon/DeconBackProjectorTest | data | R02 | 16 | 24 | no | pending 24 |
+| decon/DeconBackProjectorTest | data | R02 | 16 | 24 | yes | na 1, oracle 12, oracle+pytest 9, pytest 2 |
 | decon/DeconFrameTest | data | R05 | 17 | 17 | no | pending 17 |
 | decon/DeconFunctionTest | data | R03 | 33 | 70 | no | oracle 24, oracle+pytest 17, pending 9, pytest 20 |
 | decon/DeconGPUTest | data | R04 | 4 | 19 | no | pending 19 |
