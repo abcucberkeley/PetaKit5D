@@ -1172,6 +1172,26 @@ classdef StitchingTest < pktest.TestCase
             testCase.verifyEqual(out{2}, out{1}, 'The order of the list changed the stitched volume.');
             testCase.verifyNotEqual(out{3}, out{1}, 'The flag had no effect.');
         end
+
+        function zxyTilesOfOneXPlaneAreNot2D(testCase)
+            % the first 2D check read the size at z's place in the data order
+            % (imSize(data_order_mat == 3)) instead of z's dimension, which
+            % differ for 'y,z,x' and 'z,x,y': 3D tiles in 'z,x,y' order with
+            % one x plane passed for 2D tiles, and only their first z plane
+            % was stitched
+            dataPath = testCase.createTempFolder();
+            px = testCase.XYPixelSize;
+            gt = permute(testCase.randomVolume([100, 1, 8]), [3, 2, 1]);
+            tiles = struct('im', {gt(:, :, 1 : 60), gt(:, :, 41 : 100)}, 'idx', {[0, 0, 0], [0, 1, 0]}, ...
+                'xyz', {[0, 0, 0], [0, 40 * px, 0]});
+            [~, csvFn] = pktest.writeStitchTiles(dataPath, tiles);
+
+            testCase.stitch(dataPath, csvFn, 'dataOrder', 'z,x,y');
+
+            out = testCase.readResult(dataPath);
+            testCase.verifyEqual(size(out), [10, 3, 102]);
+            testCase.verifyEqual(out(1 : 8, 1, 1 : 100), gt);
+        end
     end
 
     methods (Test, TestTags = {'Integration', 'Slow'})

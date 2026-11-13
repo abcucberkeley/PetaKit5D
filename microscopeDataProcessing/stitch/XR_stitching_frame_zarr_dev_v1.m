@@ -433,7 +433,7 @@ processTiles = ~zarrFile || (zarrFile && (~isempty(InputBbox) || ~isempty(tileOu
 % first check if it is 2d stitch
 for f = 1 : nF
 	imSize = getImageSize(inputFullpaths{f});
-	if imSize(data_order_mat == 3) > 1
+	if imSize(data_order_mat(3)) > 1
 		stitch2D = false;
 		break;
 	end
