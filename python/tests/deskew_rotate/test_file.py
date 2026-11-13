@@ -152,11 +152,6 @@ def frame_case(cid, make_tree, runs, frames=f"{FSN}.tif", **kw):
     )
 
 
-# without save3DStack the results are empty files, which the manifest cannot describe (it decodes
-# every .tif and .zarr): not compared here; test_save_3d_stack_false_writes_empty_results
-_EMPTY = tree(ignore=[r"(^|/)(DS|DSR)/[^/]+\.(tif|zarr)$"])
-
-
 def _r(*extra, dz=0.3, reverse=True):
     """one call: pixel size, dz, skew angle, reverse and the extra name-value pairs"""
     return [PX, dz, "skewAngle", SKEW, "reverse", reverse, *extra]
@@ -213,10 +208,9 @@ def _frame_cases() -> list[Case]:
             frame_tree(existing=(f"DSR/{FSN}.tif",)),
             [_r()],
         ),
-        frame_case("combined.no3d", t, [_r("save3DStack", False)], tree=_EMPTY),
-        frame_case(
-            "combined.no3d_zarr", t, [_r("save3DStack", False, "saveZarr", True)], tree=_EMPTY
-        ),
+        # without save3DStack the results are empty files (compared as such)
+        frame_case("combined.no3d", t, [_r("save3DStack", False)]),
+        frame_case("combined.no3d_zarr", t, [_r("save3DStack", False, "saveZarr", True)]),
         frame_case("combined.nomip", t, [_r("saveMIP", False)]),
         frame_case(
             "combined.names",
@@ -274,12 +268,7 @@ def _frame_cases() -> list[Case]:
             frame_tree(existing=(f"DS/{FSN}.tif",)),
             [_r(*ds_only, "overwrite", True)],
         ),
-        frame_case(
-            "separate.no3d",
-            t,
-            [_r(*ds_only, "save3DStack", False)],
-            tree=_EMPTY,
-        ),
+        frame_case("separate.no3d", t, [_r(*ds_only, "save3DStack", False)]),
     ]
     # above 1000 slices: blocks of rows (XRDeskewRotateFrameTest/largeZSeparatePathWritesDSMIP);
     # MATLAB writes that DS file through blockedImage's MPageTiffAdapter, another tiff layout

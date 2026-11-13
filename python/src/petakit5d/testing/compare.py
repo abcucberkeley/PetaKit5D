@@ -2519,6 +2519,20 @@ class _Side:
     def d(self, key: str, default=None):
         return (self.it.desc or {}).get(key, default)
 
+    def empty(self) -> bool:
+        """an image result with nothing to decode: a tiff of no bytes, or a zarr folder without
+        files (MATLAB's save3DStack false leaves an empty file under the result's name)"""
+        if not self.has_file:
+            return bool(self.d("empty"))
+
+        def check():
+            p = self.it.path
+            if p.is_dir():
+                return not any(fns for _, _, fns in os.walk(p))
+            return p.stat().st_size == 0
+
+        return self._get("empty", check)
+
     def sha(self) -> str:
         if not self.has_file:
             return self.d("sha")
@@ -2624,7 +2638,11 @@ class _Side:
     def describe(self) -> dict:
         k = self.it.kind
         d: dict[str, Any] = {"k": k, "rel": normalize_name(self.it.rel, self.masks)}
-        if k == "tiff":
+        if k in ("tiff", "zarr") and self.empty():
+            d["empty"] = True
+            if k == "tiff":
+                d["sha"] = self.sha()
+        elif k == "tiff":
             d["sha"] = self.sha()
             d["data"] = describe(self.voxels())
         elif k == "zarr":
@@ -2716,6 +2734,12 @@ def _cmp_file(r: _Side, a: _Side, vspec: Spec, spec: TreeSpec, path: str, rep: R
         rep.add(path, "kind", f"MATLAB wrote a {rk}, Python a {ak}")
         return
     if rk == "dir":
+        return
+    if rk in ("tiff", "zarr") and (r.empty() or a.empty()):
+        # no voxels to decode: equal when both are empty
+        if r.empty() != a.empty():
+            who, other = ("MATLAB", "Python") if r.empty() else ("Python", "MATLAB")
+            rep.add(path, "empty", f"{who}'s {rk} is empty (nothing to decode), {other}'s is not")
         return
     if rk == "tiff":
         if r.sha() == a.sha():

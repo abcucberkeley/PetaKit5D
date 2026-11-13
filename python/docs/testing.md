@@ -244,6 +244,9 @@ tiff_bytes=True, zarr_chunks='note', text_format=True, masks=[(regex, replacemen
   permuted, the voxels mapped with `to_matlab` (a note says so); a Python zarr with MATLAB's
   shape in order C is named as a volume written without its mapping. Two zarrs of the same
   layout compare as before;
+- **empty results**: a tiff of no bytes or a zarr folder without files (as `save3DStack` off
+  leaves) has no voxels; manifests record it as empty, two empty ones are equal and an empty one
+  against a written one is a difference;
 - **.mat**: the variables, decoded (MATLAB's own reading of its file; the Python side through
   SciPy for v4-v7 and h5py for v7.3), without `ignore_vars`;
 - **.json** and text files: the text with masks applied (uuids, times, the work folder, the

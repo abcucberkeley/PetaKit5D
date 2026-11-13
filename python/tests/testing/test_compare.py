@@ -695,3 +695,45 @@ def test_an_empty_flag_file_named_mat_is_compared_by_its_bytes(tmp_path):
     assert "Python's file is not a readable MAT-file" in text, text
     text = compare_trees(ref, scan_tree(tmp_path / "d")).text()
     assert "not a readable MAT-file on either side" in text and "bytes differ" in text, text
+
+
+def test_empty_tif_and_zarr_results_are_recorded_and_compared(tmp_path):
+    """an empty .tif (save3DStack off leaves one under the result's name) or an empty zarr
+    folder has no voxels: the manifest records it as empty, two empty ones are equal (in the
+    store and from a manifest), an empty one against a written one is a difference"""
+    cpptiff = pytest.importorskip("cpptiff")
+    for side in ("a", "b", "c"):
+        (tmp_path / side / "im.zarr").mkdir(parents=True)
+    for side in ("a", "b"):
+        (tmp_path / side / "im.tif").write_bytes(b"")
+        (tmp_path / side / "flat.zarr").write_bytes(b"")  # an empty file named .zarr: bytes
+    cpptiff.write_tiff(str(tmp_path / "c" / "im.tif"), np.ones((2, 3, 4), np.uint16))
+    (tmp_path / "c" / "im.zarr" / ".zarray").write_text("{}", newline="\n")
+    (tmp_path / "c" / "flat.zarr").write_bytes(b"")
+    ref = scan_tree(tmp_path / "a")
+    assert {n: [it.kind for it in v] for n, v in ref.items.items()} == {
+        "flat.zarr": ["bytes"],
+        "im.tif": ["tiff"],
+        "im.zarr": ["zarr"],
+    }
+    rep = compare_trees(ref, scan_tree(tmp_path / "b"))
+    assert rep.ok, rep.text()
+    spec = tree()
+    d = json.loads(json.dumps(describe_tree(ref, spec, C.Masks())))
+    assert d["files"]["im.tif"][0] == {
+        "k": "tiff",
+        "rel": "im.tif",
+        "empty": True,
+        "sha": hashlib.sha256(b"").hexdigest(),
+    }
+    assert d["files"]["im.zarr"][0] == {"k": "zarr", "rel": "im.zarr", "empty": True}
+    rep = compare_trees(tree_from_descriptor(d), scan_tree(tmp_path / "b"), spec)
+    assert rep.ok, rep.text()
+    written = scan_tree(tmp_path / "c")
+    pairs = [(ref, written, "MATLAB"), (written, ref, "Python")]
+    pairs.append((tree_from_descriptor(d), written, "MATLAB"))
+    for r, a, who in pairs:
+        text = compare_trees(r, a, spec).text()
+        assert f"files/im.tif: empty: {who}'s tiff is empty (nothing to decode)" in text, text
+        assert f"files/im.zarr: empty: {who}'s zarr is empty (nothing to decode)" in text, text
+        assert "flat.zarr" not in text, text
