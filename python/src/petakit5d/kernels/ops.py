@@ -464,12 +464,14 @@ def _seq_sum(v: np.ndarray) -> float:
 
 
 def _add_first(a: float, b: float) -> float:
-    """a + b with the NaN of a, else of b, quieted (x86's addition of NaNs)"""
+    """a + b with the NaN of a, else of b, quieted (x86's addition of NaNs); Inf + -Inf is x86's
+    default NaN, also on CPUs whose default NaN is another (ARM's)"""
     if a != a:
         return a + a
     if b != b:
         return b + b
-    return a + b
+    r = a + b
+    return r if r == r else dtypes.NAN
 
 
 def _lanes_exact(v: list[float], tail_first: bool) -> float:

@@ -19,6 +19,8 @@
 #include <algorithm>
 #include <cfloat>
 #include <cmath>
+#include <cstdint>
+#include <cstring>
 #include <vector>
 
 #include "decon.hpp"
@@ -30,11 +32,17 @@ constexpr idx_t kBlock = 4096;
 
 inline idx_t n_blocks(idx_t n) { return (n + kBlock - 1) / kBlock; }
 
-// a + b with the NaN of a, else of b, quieted (as x86 adds a NaN a and b)
+// a + b with the NaN of a, else of b, quieted (as x86 adds a NaN a and b); Inf + -Inf is x86's
+// default NaN (sign bit set), also on CPUs whose default NaN is another (ARM's)
 inline double add_first(double a, double b) {
     if (a != a) return a + a;
     if (b != b) return b + b;
-    return a + b;
+    const double r = a + b;
+    if (r == r) return r;
+    const uint64_t u = 0xFFF8000000000000ull;
+    double nan;
+    std::memcpy(&nan, &u, sizeof nan);
+    return nan;
 }
 
 template <bool Exact>

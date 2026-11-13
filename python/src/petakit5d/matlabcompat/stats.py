@@ -243,6 +243,7 @@ def _interp(lo: np.ndarray, hi: np.ndarray, r: np.ndarray, dt) -> np.ndarray:
             v = np.add(t1, t2, dtype=f4)
         else:
             v = (1 - r) * lo.astype(np.float64) + r * hi.astype(np.float64)
+    v = dtypes.x86_nan(v, lo, hi)  # Inf - Inf: MATLAB's NaN on every CPU
     if dt.kind in "iu":
         v = np.asarray(dtypes.cast(v, dt.name))
     v = np.where((r == 0) | (lo == hi), lo, v)

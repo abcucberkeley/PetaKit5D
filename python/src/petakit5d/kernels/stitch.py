@@ -233,12 +233,15 @@ def feather_blend_into(
 
 
 def _sum_tiles(x: np.ndarray) -> np.ndarray:
-    """MATLAB's sum(x, 4) of a (y, x, z, t) array: the tiles added in order, in x's class"""
+    """MATLAB's sum(x, 4) of a (y, x, z, t) array: the tiles added in order, in x's class
+    (Inf + -Inf is MATLAB's NaN on every CPU)"""
+    from petakit5d.core import dtypes
+
     if x.shape[0] == 0:
         return np.zeros(x.shape[1:], dtype=x.dtype)
     s = x[0].copy()
     for t in range(1, x.shape[0]):
-        s = s + x[t]
+        s = dtypes.x86_nan(s + x[t], s, x[t])
     return s
 
 
@@ -259,12 +262,13 @@ def _feather_matlab(f: np.ndarray, d: np.ndarray) -> np.ndarray:
     if f4.shape != d4.shape:
         raise StitchKernelError(_FB, _FB_DMAT_SIZE)
     w = d4 * (f4 != 0).astype(d4.dtype)
+    w = dtypes.x86_nan(w, d4)  # Inf * 0: MATLAB's NaN on every CPU
     fs = dtypes.single(f4)
-    p = fs * w if w.dtype == np.float32 else dtypes.times(fs, w)
+    p = dtypes.x86_nan(fs * w, fs, w) if w.dtype == np.float32 else dtypes.times(fs, w)
     num, den = _sum_tiles(p), _sum_tiles(w)
     with np.errstate(divide="ignore", invalid="ignore"):
         if den.dtype == np.float32:
-            return np.ascontiguousarray(num / den)
+            return np.ascontiguousarray(dtypes.x86_nan(num / den, num, den))
         return np.ascontiguousarray(dtypes.rdivide(num, den))
 
 

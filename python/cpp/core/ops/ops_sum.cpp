@@ -33,16 +33,25 @@
 // that order (blocks_exact), since the fast loops leave the operand order to the compiler.
 #include "ops_sum.hpp"
 
+#include <cstdint>
+#include <cstring>
+
 namespace pk5d::ops {
 namespace {
 
 using flat3_in = nb::ndarray<nb::ro, nb::ndim<3>, nb::c_contig, nb::device::cpu>;
 
-// a + b with the NaN of a, else of b, quieted (as x86 adds a NaN a and b)
+// a + b with the NaN of a, else of b, quieted (as x86 adds a NaN a and b); Inf + -Inf is x86's
+// default NaN (sign bit set), also on CPUs whose default NaN is another (ARM's)
 inline double add_first(double a, double b) {
     if (a != a) return a + a;
     if (b != b) return b + b;
-    return a + b;
+    const double r = a + b;
+    if (r == r) return r;
+    const uint64_t u = 0xFFF8000000000000ull;
+    double nan;
+    std::memcpy(&nan, &u, sizeof nan);
+    return nan;
 }
 
 // the four lanes of m values with MATLAB's operand order; tail_first: the last mod(m, 4)

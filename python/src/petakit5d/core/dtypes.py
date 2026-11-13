@@ -32,6 +32,7 @@ docs/conventions.md for the measurements behind each rule):
 
 from __future__ import annotations
 
+import functools
 import operator
 from fractions import Fraction
 
@@ -68,6 +69,7 @@ __all__ = [
     "uint32",
     "uint64",
     "uminus",
+    "x86_nan",
 ]
 
 # eps, eps('double'): MATLAB code's bare eps is this, also next to single data
@@ -390,19 +392,45 @@ _QUIET = np.uint64(0x0008000000000000)
 
 def _nan_operands(r, a: np.ndarray, b: np.ndarray):
     """x86's rule, which MATLAB shows: a NaN result of a NaN operand is the first NaN operand,
-    quieted (NumPy may swap the operands of + and *); other NaNs are the default NaN."""
-    na, nb = np.isnan(a), np.isnan(b)
-    if not (na.any() or nb.any()):
+    quieted (NumPy may swap the operands of + and *); other NaNs (Inf - Inf, 0 * Inf, 0 / 0)
+    are x86's default NaN, ``NAN``, also where the CPU's default NaN is another (ARM's has the
+    sign bit clear)."""
+    nr = np.isnan(r)
+    if not nr.any():
         return r
     r = np.array(r, dtype=np.float64, copy=True)
-    a, b, r = np.broadcast_arrays(a, b, r)
+    a, b, r, nr = np.broadcast_arrays(a, b, r, nr)
     r = r.copy()
-    na, nb = (
-        np.broadcast_to(na, r.shape),
-        np.broadcast_to(nb, r.shape) & ~np.broadcast_to(na, r.shape),
-    )
+    r[nr] = NAN
+    na = np.isnan(a)
+    nb = np.isnan(b) & ~na
     r[na] = (a[na].view(np.uint64) | _QUIET).view(np.float64)
     r[nb] = (b[nb].view(np.uint64) | _QUIET).view(np.float64)
+    return r[()] if r.ndim == 0 else r
+
+
+@functools.cache
+def _cpu_nan_is_x86() -> bool:
+    with np.errstate(invalid="ignore"):
+        r = np.array([np.inf]) - np.array([np.inf])
+    return int(r.view(np.uint64)[0]) == 0xFFF8000000000000
+
+
+def x86_nan(r, *operands):
+    """``r`` (the result of IEEE operations on ``operands``) with x86's default NaN, ``NAN``,
+    where it is NaN and no operand is: the NaN of an invalid operation (Inf - Inf, 0 * Inf,
+    0 / 0) as MATLAB on x86 has it, also where the CPU's default NaN is another (ARM's has the
+    sign bit clear). NaN operands keep their payloads. On x86 ``r`` itself (nothing to do)."""
+    if _cpu_nan_is_x86():
+        return r
+    r = np.asarray(r)
+    nr = np.isnan(r)
+    if not nr.any():
+        return r[()] if r.ndim == 0 else r
+    for o in operands:
+        nr &= ~np.isnan(o)
+    r = r.copy()
+    r[nr] = NAN
     return r[()] if r.ndim == 0 else r
 
 

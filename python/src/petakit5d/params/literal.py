@@ -514,7 +514,13 @@ def _arith(op: str, u: Any, w: Any) -> MArray:
     if mclass == "single":
         x = [to_single(t) for t in x]
         y = [to_single(t) for t in y]
-    return _finish(mclass, shape, [f(p, q) for p, q in zip(x, y, strict=True)])
+    return _finish(mclass, shape, [_x86_nan(f(p, q), p, q) for p, q in zip(x, y, strict=True)])
+
+
+def _x86_nan(r: float, p: float, q: float) -> float:
+    """r, or MATLAB's NaN for an invalid operation (Inf - Inf, Inf * 0) of numbers, as x86 gives
+    it also where the CPU's default NaN is another (ARM's has the sign bit clear)"""
+    return NAN if r != r and p == p and q == q else r
 
 
 def _transpose(v: Any) -> Any:

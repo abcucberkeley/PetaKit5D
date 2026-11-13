@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import numpy as np
 
+from petakit5d.core import dtypes
 from petakit5d.matlabcompat.elementary import atan2, fdlibm_cos, fdlibm_sin, hypot
 
 __all__ = ["knnsearch", "cart2sph", "sph2cart", "KnnError"]
@@ -193,5 +194,5 @@ def _mul(a, b):
     """a * b with a NaN operand's payload kept as x86 does (the first NaN operand); NumPy may
     swap the operands of a product"""
     with np.errstate(invalid="ignore"):
-        p = a * b
+        p = dtypes.x86_nan(a * b, a, b)
     return np.where(np.isnan(a), a, np.where(np.isnan(b), b, p))

@@ -44,6 +44,7 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
+from petakit5d.core import dtypes
 from petakit5d.matlabcompat import elementary
 
 __all__ = [
@@ -836,8 +837,9 @@ def batch_grid(nv_size, im_sizes, batch_size=(500, 500, 500), block_size=(500, 5
         bs = np.fmin(nv, np.asarray(batch_size, dtype=np.float64))
         bs = np.fmin(_col_median(s) * 2, bs)
         bl = np.fmin(bs, np.asarray(block_size, dtype=np.float64))
-        bs = np.ceil(bs / bl) * bl
-        sub = np.ceil(nv / bs)
+        # 0 / 0 for a size with a zero: MATLAB's NaN on every CPU
+        bs = np.ceil(dtypes.x86_nan(bs / bl, bs, bl)) * bl
+        sub = np.ceil(dtypes.x86_nan(nv / bs, nv, bs))
     return bs, bl, sub, float(np.prod(sub))
 
 
@@ -847,8 +849,8 @@ def _batch_number(nv, im_size, batch_size, block_size) -> float:
         bs = np.fmin(nv, np.asarray(batch_size, dtype=np.float64))
         bs = np.fmin(np.asarray(im_size, dtype=np.float64) * 2, bs)
         bl = np.fmin(bs, np.asarray(block_size, dtype=np.float64))
-        bs = np.ceil(bs / bl) * bl
-        return float(np.prod(np.ceil(nv / bs)))
+        bs = np.ceil(dtypes.x86_nan(bs / bl, bs, bl)) * bl
+        return float(np.prod(np.ceil(dtypes.x86_nan(nv / bs, nv, bs))))
 
 
 # ---------------------------------------------------------------------------------------------
