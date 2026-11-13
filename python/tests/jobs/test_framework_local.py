@@ -47,6 +47,10 @@ def framework_task(input_fn: str, output_fn: str, log_fn: str, mode: str = "copy
     elif mode == "secondRun":
         if Path(log_fn).read_text().splitlines().count(output_fn) >= 2:
             Path(output_fn).write_bytes(Path(input_fn).read_bytes())
+    elif mode.startswith("alsoMakes:"):
+        # (and, as another caller would, the output of another task)
+        Path(output_fn).write_bytes(Path(input_fn).read_bytes())
+        Path(mode[10:]).write_text("by the other caller")
     elif mode.startswith("sleep:"):
         time.sleep(float(mode[6:]))
         tmp = f"{output_fn}_{os.getpid()}"
@@ -340,6 +344,46 @@ def test_fresh_marker_of_another_caller_leaves_the_task_to_it(tmp_path, monkeypa
     assert flags == [True, True]
     assert read_log(log_fn) == out_fns[1:]
     assert sleeps == [framework.LOCAL_IDLE_WAIT]
+    assert tmp_files(tmp_path / "out") == []
+
+
+def test_a_marker_another_caller_makes_at_the_same_time_leaves_the_task_to_it(
+    tmp_path, monkeypatch
+):
+    # two callers that look at a task at once both found no marker and both ran the task
+    # (MATLAB's look and write); one of them gets the new marker: here the other caller makes
+    # it between this caller's look and its marker, and writes the output during the wait
+    in_fns, out_fns, log_fn = make_tasks(tmp_path, 2)
+    marker = tmp_path / "out" / "out_1.tmp"
+    real = framework._new_marker
+
+    def racing(path):
+        if path == str(marker) and not marker.exists():
+            marker.touch()
+        return real(path)
+
+    def fake_sleep(t):
+        Path(out_fns[0]).write_text("by the other caller")
+        os.remove(marker)
+
+    monkeypatch.setattr(framework, "_new_marker", racing)
+    monkeypatch.setattr(framework.time, "sleep", fake_sleep)
+    flags = run_tasks(in_fns, out_fns, task_list(in_fns, out_fns, log_fn, "copy"), **LOCAL)
+    assert flags == [True, True]
+    assert read_log(log_fn) == out_fns[1:], "A task another caller has the marker of ran here."
+    assert tmp_files(tmp_path / "out") == []
+
+
+def test_a_task_another_caller_finished_since_the_round_looked_is_not_run_again(tmp_path):
+    # while this caller ran task 1, another caller finished task 2 and removed its marker: the
+    # round had looked at task 2's output before, so it looks again once it has the marker
+    in_fns, out_fns, log_fn = make_tasks(tmp_path, 2)
+    tasks_ = task_list(in_fns, out_fns, log_fn, "copy")
+    tasks_[0] = Task(FUNC, [in_fns[0], out_fns[0], log_fn, f"alsoMakes:{out_fns[1]}"])
+    flags = run_tasks(in_fns, out_fns, tasks_, **LOCAL)
+    assert flags == [True, True]
+    assert read_log(log_fn) == out_fns[:1], "A task another caller finished ran again."
+    assert Path(out_fns[1]).read_text() == "by the other caller"
     assert tmp_files(tmp_path / "out") == []
 
 

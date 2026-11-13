@@ -475,14 +475,26 @@ def run_local(call: Call) -> list[bool]:
             if all(done[f] or trials[f] >= max_trial for f in fs):
                 continue
 
-            # the marker of the batch is that of its last task
+            # the marker of the batch is that of its last task. A new marker is made only if
+            # none exists (one of two callers that look at once gets it; MATLAB's look and
+            # write could give it to both), and the caller that has it looks at the batch's
+            # outputs again: another caller may have finished it, and removed its marker,
+            # since this round looked
             if os.path.exists(tmp):
                 age = _marker_age(tmp)
                 if age is not None and age / 60 < unit_wait:
                     continue
                 _touch(tmp)
             elif os.path.isdir(cur_tmp_dir):
-                _touch(tmp)
+                if not _new_marker(tmp):
+                    continue
+            todo = [f for f in fs if not done[f]]
+            if todo and all(batch_file_exist([outputs[f] for f in todo], None, True)):
+                for f in todo:
+                    out_exist[f] = True
+                    done[f] = True
+                _remove(tmp)
+                continue
 
             ran = True
             t1 = run_batch_in_process(call, fs, [fsnames[f] for f in fs])
@@ -700,6 +712,20 @@ def _touch(path: str) -> None:
             pass
     except OSError:
         pass
+
+
+def _new_marker(path: str) -> bool:
+    """makes a marker that doesn't exist yet (O_EXCL, atomic also on NFS); False if another
+    caller made it first. Another error leaves the batch to this caller without a marker, as a
+    marker that can't be written does in MATLAB."""
+    try:
+        with open(path, "x"):
+            pass
+    except FileExistsError:
+        return False
+    except OSError:
+        pass
+    return True
 
 
 def _marker_age(path: str) -> float | None:

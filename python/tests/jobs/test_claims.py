@@ -5,7 +5,6 @@ import os
 import subprocess
 import sys
 import textwrap
-import time
 from pathlib import Path
 
 import pytest
@@ -164,23 +163,40 @@ import time
 sys.path.insert(0, sys.argv[1])
 from petakit5d.jobs.claims import Claims
 c = Claims(sys.argv[2])
-n, me, out = int(sys.argv[3]), sys.argv[4], sys.argv[5]
-while not os.path.exists(sys.argv[6]):
-    time.sleep(0.005)
-order = range(n) if int(me) % 2 else range(n - 1, -1, -1)
-got = [i for i in order if c.claim(i, f"0_0:test:{me}:1")]
+n, me, out, sync, procs, first = (int(sys.argv[3]), sys.argv[4], sys.argv[5], sys.argv[6],
+                                  int(sys.argv[7]), int(sys.argv[8]))
+
+
+def barrier(name):
+    # every claimer is here before any goes on
+    open(os.path.join(sync, f"{name}_{me}"), "w").close()
+    while sum(x.startswith(name + "_") for x in os.listdir(sync)) < procs:
+        time.sleep(0.001)
+
+
+order = list(range(n) if int(me) % 2 else range(n - 1, -1, -1))
+who = f"0_0:test:{me}:1"
+barrier("ready")
+got = [i for i in order[:first] if c.claim(i, who)]
+barrier("half")
+got += [i for i in order[first:] if c.claim(i, who)]
 with open(out, "w") as fh:
     fh.write("\\n".join(map(str, got)))
 """
 
 
 def test_claims_are_taken_once_under_concurrency(tmp_path):
-    # MATLAB's claimsAreTakenOnceUnderConcurrency: 16 processes claim 400 tasks at once
-    n, procs = 400, 16
+    # MATLAB's claimsAreTakenOnceUnderConcurrency: 16 processes claim 400 tasks at once, half
+    # of them from the first task up, half from the last down. They start together, and each
+    # tries its first 50 tasks before any goes on (barriers: a fixed wait before the start
+    # let one process take all 400 while the others still started, on a busy machine), so 8
+    # processes race for the first 50 tasks and 8 for the last 50, then all for the rest
+    n, procs, first = 400, 16, 50
     script = tmp_path / "claimer.py"
     script.write_text(textwrap.dedent(CLAIMER))
     outs = [tmp_path / f"got_{k}.txt" for k in range(procs)]
-    go = tmp_path / "go"
+    sync = tmp_path / "sync"
+    sync.mkdir()
     ps = [
         subprocess.Popen(
             [
@@ -191,19 +207,22 @@ def test_claims_are_taken_once_under_concurrency(tmp_path):
                 str(n),
                 str(k),
                 str(outs[k]),
-                str(go),
+                str(sync),
+                str(procs),
+                str(first),
             ]
         )
         for k in range(procs)
     ]
-    time.sleep(1.0)
-    go.write_text("")
     for p in ps:
         assert p.wait(timeout=120) == 0
-    got = []
-    for o in outs:
+    got: dict[int, list[int]] = {}
+    for k, o in enumerate(outs):
         text = o.read_text().strip()
-        got += [int(x) for x in text.split("\n")] if text else []
-    assert sorted(got) == list(range(n)), "each task should be claimed exactly once"
-    # (more than one claimer got tasks)
-    assert sum(1 for o in outs if o.read_text().strip()) > 1
+        got[k] = [int(x) for x in text.split("\n")] if text else []
+    claimed = sorted(i for v in got.values() for i in v)
+    assert claimed == list(range(n)), "each task should be claimed exactly once"
+    # (the first task went to a process that went up, the last to one that went down)
+    assert any(0 in got[k] for k in range(1, procs, 2))
+    assert any(n - 1 in got[k] for k in range(0, procs, 2))
+    assert sum(1 for v in got.values() if v) > 1
