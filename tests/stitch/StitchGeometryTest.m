@@ -1,7 +1,8 @@
 classdef StitchGeometryTest < pktest.TestCase
     % geometry helpers of the stitching: overlaps of tile cuboids
-    % (check_cuboids_overlaps) and the axis order check of
-    % XR_stitching_frame_zarr_dev_v1
+    % (check_cuboids_overlaps), the region of a minor tile that the major
+    % tiles leave uncovered (check_major_tile_cover), and the axis order
+    % check of XR_stitching_frame_zarr_dev_v1
 
     methods (Test, TestTags = {'Unit'})
         function cuboidsThatOnlyTouchDoNotOverlap(testCase)
@@ -23,6 +24,23 @@ classdef StitchGeometryTest < pktest.TestCase
             js = [0.5, 0.5, 0, 2, 2, 0; 1, 0, 0, 2, 1, 0];
             testCase.verifyEqual(check_cuboids_overlaps(c, js, true), [true; false], '2D');
             testCase.verifyEqual(check_cuboids_overlaps(c, js, false), [false; false], '3D');
+        end
+
+        function majorTileCoverBoxHoldsEveryUncoveredPiece(testCase)
+            % a major tile covers the middle of a minor tile: the box of the
+            % minor tile's region that large-file feather blending reads
+            % must hold the uncovered pieces on both sides (it ended at the
+            % smallest end of the pieces, so the second was left out)
+            [cover, box] = check_major_tile_cover([1, 1, 1, 10, 10, 10; 1, 4, 1, 10, 7, 10], [false; true]);
+            testCase.verifyEqual(cover, [false; true]);
+            testCase.verifyEqual(box(1, :), [1, 1, 1, 10, 10, 10]);
+            % one uncovered piece, and none
+            [cover, box] = check_major_tile_cover([1, 1, 1, 10, 10, 10; 1, 4, 1, 10, 10, 10], [false; true]);
+            testCase.verifyEqual(cover, [false; true]);
+            testCase.verifyEqual(box(1, :), [1, 1, 1, 10, 4, 10]);
+            [cover, box] = check_major_tile_cover([2, 2, 2, 9, 9, 9; 1, 1, 1, 10, 10, 10], [false; true]);
+            testCase.verifyEqual(cover, [true; true]);
+            testCase.verifyEqual(box(1, :), zeros(1, 6));
         end
 
         function axisOrderMustBeAPermutationOfXYZ(testCase)

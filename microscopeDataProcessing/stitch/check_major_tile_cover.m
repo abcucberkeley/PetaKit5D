@@ -52,7 +52,8 @@ for i = 1 : numel(major_inds)
         
     major_cover_mat(i) = all(cover_i_mat);
     if ~major_cover_mat(i)
-        uncover_bbox_mat(i, :) = [min(coords_i_mat(:, 1 : 3), [], 1), min(coords_i_mat(:, 4 : 6), [], 1)];
+        % the bounding box of the pieces left (it holds the uncovered ones)
+        uncover_bbox_mat(i, :) = [min(coords_i_mat(:, 1 : 3), [], 1), max(coords_i_mat(:, 4 : 6), [], 1)];
     end
 end
 
