@@ -666,3 +666,32 @@ def test_compare_finds_different_outputs(tmp_path):
     assert "files/diff.zarr (voxels): values: 1 of 4000 values differ" in text
     assert "files/diff.mat.value: values" in text
     assert "files/onlyA.txt: missing" in text
+
+
+def test_an_empty_flag_file_named_mat_is_compared_by_its_bytes(tmp_path):
+    """a 0-byte .mat (a flag file) is not a MAT-file: two of them are equal, in the store and
+    in a manifest; an empty one against a real MAT-file, or other bytes, is a difference"""
+    from scipy.io import savemat
+
+    for side in ("a", "b", "c", "d"):
+        (tmp_path / side).mkdir()
+    (tmp_path / "a" / "done.mat").write_bytes(b"")
+    (tmp_path / "b" / "done.mat").write_bytes(b"")
+    savemat(tmp_path / "c" / "done.mat", {"x": np.array([[1.0]])})
+    (tmp_path / "d" / "done.mat").write_bytes(b"not a mat")
+    ref = scan_tree(tmp_path / "a")
+    rep = compare_trees(ref, scan_tree(tmp_path / "b"))
+    assert rep.ok, rep.text()
+    assert any("not a readable MAT-file" in n for n in rep.notes)
+    spec = tree()
+    d = json.loads(json.dumps(describe_tree(ref, spec, C.Masks())))
+    entry = d["files"]["done.mat"][0]
+    assert "vars" not in entry and entry["sha"] == hashlib.sha256(b"").hexdigest()
+    rep = compare_trees(tree_from_descriptor(d), scan_tree(tmp_path / "b"), spec)
+    assert rep.ok, rep.text()
+    text = compare_trees(ref, scan_tree(tmp_path / "c")).text()
+    assert "MATLAB's file is not a readable MAT-file" in text, text
+    text = compare_trees(scan_tree(tmp_path / "c"), ref).text()
+    assert "Python's file is not a readable MAT-file" in text, text
+    text = compare_trees(ref, scan_tree(tmp_path / "d")).text()
+    assert "not a readable MAT-file on either side" in text and "bytes differ" in text, text

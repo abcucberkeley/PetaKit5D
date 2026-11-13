@@ -2579,6 +2579,20 @@ class _Side:
 
         return self._get("mat", load)
 
+    def mat_error(self) -> str | None:
+        """why the file is not a readable MAT-file (an empty flag file named .mat), or None"""
+        if not self.has_file:
+            return self.d("unreadable")
+
+        def check():
+            try:
+                self.mat()
+            except Exception as e:  # any reader's failure: the file is compared as bytes
+                return f"{type(e).__name__}: {str(e)[:200]}"
+            return None
+
+        return self._get("materr", check)
+
     def zarr_meta(self) -> dict[str, str]:
         if not self.has_file:
             return self.d("meta", {})
@@ -2610,7 +2624,11 @@ class _Side:
             d["nchunks"], d["chunks_sha"] = self.zarr_chunks()
             d["data"] = describe(self.voxels())
         elif k == "mat":
-            d["vars"] = describe(self.mat())
+            err = self.mat_error()
+            if err is None:
+                d["vars"] = describe(self.mat())
+            else:
+                d["sha"], d["unreadable"] = self.sha(), err
         elif k in ("json", "text"):
             d["sha"] = self.text_sha()
             t = self.text()
@@ -2734,7 +2752,23 @@ def _cmp_file(r: _Side, a: _Side, vspec: Spec, spec: TreeSpec, path: str, rep: R
         _cmp(r.voxels(), a.voxels(), vspec, path + " (voxels)", rep)
         return
     if rk == "mat":
-        _cmp(r.mat(), a.mat(), vspec, path, rep)
+        rerr, aerr = r.mat_error(), a.mat_error()
+        if rerr is None and aerr is None:
+            _cmp(r.mat(), a.mat(), vspec, path, rep)
+        elif rerr is not None and aerr is not None:
+            # neither side is a MAT-file (an empty flag file named .mat): byte for byte
+            if r.sha() != a.sha():
+                rep.add(
+                    path,
+                    "bytes",
+                    f"not a readable MAT-file on either side ({aerr}); the bytes differ: MATLAB "
+                    f"{r.sha()[:16]}, Python {a.sha()[:16]}",
+                )
+            else:
+                rep.note(path, f"not a readable MAT-file ({aerr}); compared byte for byte")
+        else:
+            who, err = ("MATLAB's", rerr) if rerr is not None else ("Python's", aerr)
+            rep.add(path, "mat", f"{who} file is not a readable MAT-file ({err}); the other's is")
         return
     if rk in ("json", "text"):
         if r.text_sha() == a.text_sha():
