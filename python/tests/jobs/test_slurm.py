@@ -258,14 +258,19 @@ def test_submit_issues_the_frameworks_command_line(fake_slurm):  # noqa: F811
 
 @posix_only
 def test_a_refused_submission_fails_and_one_without_answer_is_unknown(fake_slurm):  # noqa: F811
-    s = Slurm(submit_timeout=0.5)
+    # (the submissions that answer get the default timeout: with 0.5 s, the fake's sbatch on a
+    # busy machine sometimes answered too late, and a late answer is unknown, by design)
+    s = Slurm()
     fake_slurm.reject_submissions(1)
     r = s.submit(array_id=1, out="o", err="e", cpus_per_task=1, wrap="true")
     assert r.state == "failed" and r.job_id is None and "Socket timed out" in r.result.stderr
+    assert not r.result.timed_out
     assert s.submit(array_id=1, out="o", err="e", cpus_per_task=1, wrap="true").job_id == 1000
     fake_slurm.hang("sbatch", 60)
-    r = s.submit(array_id=2, out="o", err="e", cpus_per_task=1, wrap="true")
+    t0 = time.monotonic()
+    r = Slurm(submit_timeout=0.5).submit(array_id=2, out="o", err="e", cpus_per_task=1, wrap="true")
     assert r.state == "unknown" and r.job_id is None and r.result.timed_out
+    assert time.monotonic() - t0 < 20
 
 
 @posix_only
