@@ -1656,6 +1656,34 @@ def test_registered_names():
         assert getattr(__import__("petakit5d.deskew_rotate").deskew_rotate, pname).__name__ == pname
 
 
+def test_the_package_lists_the_functions_of_all_its_modules():
+    """petakit5d.deskew_rotate exports the public names of its modules lazily, the file (D03),
+    dataset and large-file (D04) ones too, and its table names each registered function with
+    its MATLAB name"""
+    import importlib
+    import re
+
+    import petakit5d.deskew_rotate as dr
+    from petakit5d.params import REGISTRY
+
+    for module in ("volume", "file", "memory", "dataset", "zarr"):
+        mod = importlib.import_module(f"petakit5d.deskew_rotate.{module}")
+        for name in mod.__all__:
+            if name.isupper():
+                continue  # constants stay in their module
+            assert name in dr.__all__ and name in dir(dr), name
+            assert getattr(dr, name) is getattr(mod, name)
+    registered = [
+        mname
+        for mname, (where, kind) in REGISTRY.index().items()
+        if kind == "register" and where.startswith("petakit5d.deskew_rotate.")
+    ]
+    assert len(registered) >= 8
+    for mname in registered:
+        pname = REGISTRY.find(mname).python_name.rsplit(".", 1)[-1]
+        assert re.search(rf"^``{pname}``\s+{mname}\b", dr.__doc__, re.M), (pname, mname)
+
+
 def test_matlab_matmul_sums_from_positive_zero():
     """MATLAB's product of 4 x 4 doubles starts each sum at +0: products that are all -0 give
     +0 (measured)"""
