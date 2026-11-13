@@ -1,0 +1,96 @@
+{
+  "task": "K05",
+  "classes": {
+    "DeconRFFTTest": {
+      "methods": {
+        "halfOTFIsTheFirstHalfOfTheOTF": [
+          "pytest:tests/kernels/test_decon_kernels.py::test_half_otf_is_the_first_half_of_the_otf",
+          "oracle:tests/kernels/test_decon_kernels.py::rfft.otf.*"
+        ],
+        "linesAreGroupedAsMatlabDoes": [
+          "pytest:tests/kernels/test_decon_kernels.py::test_lines_are_grouped_as_matlab_does",
+          "oracle:tests/kernels/test_decon_kernels.py::rfft.fft1.*"
+        ],
+        "mexEqualsMatlabLoop": [
+          "pytest:tests/kernels/test_decon_kernels.py::test_steps_are_the_matlab_loops_on_the_backends_ffts",
+          "oracle:tests/kernels/test_decon_kernels.py::rfft.omw2.*",
+          "oracle:tests/kernels/test_decon_kernels.py::rfft.rlstep.*"
+        ],
+        "mexEqualsMatlabLoopForOtherSizes": [
+          "pytest:tests/kernels/test_decon_kernels.py::test_steps_are_the_matlab_loops_on_the_backends_ffts",
+          "oracle:tests/kernels/test_decon_kernels.py::rfft.omw2.uint16.*",
+          "oracle:tests/kernels/test_decon_kernels.py::rfft.rlstep.*"
+        ],
+        "mexRejectsInvalidInputs": [
+          "oracle:tests/kernels/test_decon_kernels.py::rfft.error.*"
+        ],
+        "omwContinuesFromAnEstimate": [
+          "pytest:tests/kernels/test_decon_kernels.py::test_omw_continues_from_an_estimate",
+          "oracle:tests/kernels/test_decon_kernels.py::rfft.omw.continued.*"
+        ],
+        "resultsDoNotDependOnTheThreadCount": [
+          "pytest:tests/kernels/test_decon_kernels.py::test_results_do_not_depend_on_the_thread_count",
+          "pytest:tests/kernels/test_decon_kernels.py::test_thread_counts"
+        ],
+        "zeroIterationsGiveTheBackgroundSubtractedInput": [
+          "pytest:tests/kernels/test_decon_kernels.py::test_zero_iterations_give_the_background_subtracted_input",
+          "oracle:tests/kernels/test_decon_kernels.py::rfft.omw0.*"
+        ],
+        "defaultIsTheMexOnTheCpu": [
+          "na:the port has one path for the iterations (the kernels); there is no choice between a mex and a MATLAB loop"
+        ],
+        "switchingPathsRecomputesTheOTF": [
+          "na:the port has one path, so one kind of cached OTF; the OTF cache is the decon function's (R03)"
+        ],
+        "withoutTheMexTheMatlabLoopRuns": [
+          "na:the port has no mex fall-back: the kernels are part of the package"
+        ]
+      }
+    },
+    "DeconMaskErosionTest": {
+      "methods": {
+        "masksEqualImerode": {
+          "fate": [
+            "oracle:tests/kernels/test_decon_kernels.py::erosion.*",
+            "pytest:tests/kernels/test_decon_kernels.py::test_masks_equal_imerode"
+          ],
+          "case_fates": {
+            "shape=thin,maskSize=oneColumn": []
+          }
+        },
+        "demoSettingOnASkewedVolume": [
+          "oracle:tests/kernels/test_decon_kernels.py::erosion.demo*"
+        ],
+        "mexEqualsImerodeForOtherNeighborhoods": [
+          "oracle:tests/kernels/test_decon_kernels.py::erosion.mex.random.*",
+          "oracle:tests/kernels/test_decon_kernels.py::erosion.mex.zline",
+          "pytest:tests/kernels/test_decon_kernels.py::test_numeric_neighborhoods_are_converted_as_logical_does"
+        ],
+        "resultDoesNotDependOnTheThreadCount": [
+          "pytest:tests/kernels/test_decon_kernels.py::test_erosion_does_not_depend_on_the_thread_count",
+          "pytest:tests/kernels/test_decon_kernels.py::test_thread_counts"
+        ],
+        "mexRejectsInvalidInputs": [
+          "oracle:tests/kernels/test_decon_kernels.py::erosion.error.*",
+          "oracle:tests/kernels/test_decon_kernels.py::erosion.mex.numeric_nhood",
+          "oracle:tests/kernels/test_decon_kernels.py::erosion.mex.empty",
+          "pytest:tests/kernels/test_decon_kernels.py::test_erosion_rejects_what_the_mex_rejects"
+        ],
+        "irregularMasksDoNotUseImerode": [
+          "na:the kernel erodes the mask itself; the port has no imerode call to stub on this path"
+        ],
+        "withoutTheMexImerodeRuns": [
+          "na:the port has no mex fall-back: the kernel is part of the package"
+        ]
+      }
+    },
+    "MexInputCheckTest": {
+      "methods": {
+        "omwBackProjectorWindowNeedsBothOutputs": [
+          "oracle:tests/kernels/test_decon_kernels.py::omw.error.*",
+          "oracle:tests/kernels/test_decon_kernels.py::omw.window.axes"
+        ]
+      }
+    }
+  }
+}
