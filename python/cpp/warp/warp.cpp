@@ -107,7 +107,7 @@ inline T cast_like(double v) {
 // run of j for each row and plane; voxels outside the input in z go with the first or last band.
 // The few planes of a band and the rows of an item stay in cache, and their rows are read along
 // x. dir is qt's step along j (its sign gives the order of the bands).
-constexpr idx BI = 4, BK = 128, BAND = 8;
+constexpr idx BI = 4, BK = 128, BAND = 16;
 
 template <typename QT, typename F>
 void for_voxels(const Geometry& g, int threads, double dir, QT&& qt, F&& fn) {
