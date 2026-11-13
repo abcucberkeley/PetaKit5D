@@ -669,9 +669,10 @@ def test_wrapper_counts_all_partial_files(tmp_path, framework_spy):
     assert framework_spy.calls[0]["mem_allocate"] == pytest.approx(
         estimate(RAW, partial_file=True), rel=1e-12
     )
-    assert framework_spy.calls[0]["tasks"][0].args[0] == [
-        f"{tmp_path}/d/{FSN_A0}.tif",
-        f"{tmp_path}/d/{FSN_A0}_part0001.tif",
+    # (normalized: the separators of the given folder and of MATLAB's '/' join meet on Windows)
+    assert [os.path.normpath(p) for p in framework_spy.calls[0]["tasks"][0].args[0]] == [
+        os.path.normpath(f"{tmp_path}/d/{FSN_A0}.tif"),
+        os.path.normpath(f"{tmp_path}/d/{FSN_A0}_part0001.tif"),
     ]
 
 

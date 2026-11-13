@@ -19,6 +19,12 @@ def get_uuid() -> str:
     u = str(uuid.uuid4())
     if sys.platform.startswith("win"):
         u = u[:4]
+    log = os.environ.get("PETAKIT5D_UUID_LOG")
+    if log:
+        # the oracle harness masks the uuids a case's run made (Windows' 4 characters are
+        # otherwise not told from other names); appended, also from the run's subprocesses
+        with open(log, "a", encoding="utf-8", newline="\n") as fh:
+            fh.write(u + "\n")
     return u
 
 

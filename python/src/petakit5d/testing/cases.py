@@ -45,6 +45,7 @@ from petakit5d.testing.compare import (
     EXACT,
     FileTree,
     MArray,
+    Masks,
     MCell,
     MPlaceholder,
     MRef,
@@ -57,6 +58,7 @@ from petakit5d.testing.compare import (
     msize,
     scan_tree,
     to_mvalue,
+    uuid_masks,
     vhash,
 )
 
@@ -495,6 +497,7 @@ def _cache_dir() -> Path:
     return _CACHE
 
 
+UUID_LOG_ENV = "PETAKIT5D_UUID_LOG"  # core.ids.get_uuid appends its values there
 _ZARR_META = frozenset((".zarray", ".zattrs", ".zgroup", "zarr.json"))
 
 
@@ -675,6 +678,7 @@ class PyResult:
     work: Path
     elapsed: float
     raw_outputs: list | None = None  # before out_roles (Python's form)
+    uuids: tuple[str, ...] = ()  # what core.ids.get_uuid gave during the run
 
 
 @dataclasses.dataclass(eq=False)
@@ -936,6 +940,10 @@ class Case:
         before = snapshot(work)
         cwd = os.getcwd()
         err, etext, res = None, "", None
+        # the uuids the run makes (its subprocesses inherit the variable), outside the work folder
+        ulog = Path(tmp_dir) / f"uuids_{uuid.uuid4().hex}.log"
+        old_log = os.environ.get(UUID_LOG_ENV)
+        os.environ[UUID_LOG_ENV] = str(ulog)
         t0 = time.perf_counter()
         os.chdir(work)
         try:
@@ -947,7 +955,14 @@ class Case:
                     err, etext = e, traceback.format_exc()
         finally:
             os.chdir(cwd)
+            if old_log is None:
+                os.environ.pop(UUID_LOG_ENV, None)
+            else:
+                os.environ[UUID_LOG_ENV] = old_log
         elapsed = time.perf_counter() - t0
+        uuids = tuple(ulog.read_text(encoding="utf-8").split()) if ulog.is_file() else ()
+        if ulog.is_file():
+            ulog.unlink()
         wlist = [
             {
                 "identifier": getattr(w.message, "identifier", "") or "",
@@ -963,8 +978,8 @@ class Case:
         files = None
         if self.captures_files:
             rels, deleted = changed_files(before, snapshot(work))
-            files = scan_tree(work, rels, deleted=deleted)
-        return PyResult(outs, err, etext, wlist, files, work, elapsed, raw)
+            files = scan_tree(work, rels, deleted=deleted, masks=Masks().plus(*uuid_masks(uuids)))
+        return PyResult(outs, err, etext, wlist, files, work, elapsed, raw, uuids)
 
     def map_outputs(self, outs: list) -> list:
         """Python's results in MATLAB's form, as out_roles say"""

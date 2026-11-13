@@ -70,6 +70,7 @@ from petakit5d.testing.compare import (
     sha256_file,
     to_mvalue,
     tree_from_descriptor,
+    uuid_masks,
     write_pkv,
 )
 
@@ -513,6 +514,7 @@ def check_manifests(root: str | os.PathLike | None = None) -> list[str]:
 def compare_case(case: Case, ref: Reference, res: PyResult) -> Report:
     rep = Report()
     am = Masks().with_paths(work=str(res.work), host=socket.gethostname())
+    am = am.plus(*uuid_masks(res.uuids))
     rm = ref.masks
     if ref.status == "error":
         rid = (ref.error or {}).get("identifier", "")

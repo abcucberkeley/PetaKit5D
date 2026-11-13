@@ -30,7 +30,6 @@ import math
 import os
 import re
 import struct
-import sys
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from pathlib import Path
 from typing import Any
@@ -1189,9 +1188,15 @@ TIME_RE = (
 )
 
 
-# on Windows get_uuid keeps the uuid's first 4 characters (as MATLAB there, for long paths): a
-# name part of 4 hex digits after '_' that ends a path component
-_WIN_UUID = ((r"(?<=_)[0-9a-f]{4}(?=/|$)", "<uuid>"),) if sys.platform.startswith("win") else ()
+def uuid_masks(uuids) -> tuple[tuple[str, str], ...]:
+    """masks for the uuids a run made that UUID_RE does not take: on Windows get_uuid keeps the
+    first 4 characters (as MATLAB there, for long paths), which only the run's own list tells
+    from other names (embryo_2024, _0001)"""
+    out = []
+    for u in sorted(set(uuids)):
+        if u and not re.fullmatch(UUID_RE, u):
+            out.append((rf"(?<![0-9A-Za-z]){re.escape(u)}(?![0-9A-Za-z])", "<uuid>"))
+    return tuple(out)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -1200,7 +1205,6 @@ class Masks:
 
     subs: tuple[tuple[str, str], ...] = (
         (UUID_RE, "<uuid>"),
-        *_WIN_UUID,
         (STAMP_RE, "<timestamp>"),
         (TIME_RE, "<time>"),
     )
