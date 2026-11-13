@@ -12,6 +12,16 @@ function [] = mex_exit_probe(mode, mexDir)
 %     a line before and after it
 %   mode 'io': only the cpp-tiff and cpp-zarr mex files (writetiff, readtiff,
 %     writezarr, readzarr)
+%
+% Threads: decon_lucy_accel_mex, decon_mask_edge_erosion_mex and
+% omw_backprojector_mex take their thread count as an argument (nt here); the
+% others use OpenMP's default, which their OpenMP runtime (libgomp, linked into
+% each mex file on Windows) sets when the mex file is loaded: OMP_NUM_THREADS,
+% else the CPUs of the process. So OMP_NUM_THREADS is set to nt before the first
+% call (the CI job also sets it for MATLAB). MATLAB's own maxNumCompThreads (1
+% on the runner) is not what they read. Each line gives the process's threads
+% before and after the call: a mex file whose OpenMP threads started adds nt - 1
+% threads that stay until MATLAB exits (each mex file has its own on Windows).
 
 if nargin < 2
     mexDir = '';
@@ -23,23 +33,42 @@ if ~exist(outDir, 'dir')
 end
 resultFn = fullfile(outDir, [mode, '.txt']);
 note = @(varargin) writelines(string(sprintf(varargin{:})), resultFn, 'WriteMode', 'append');
-note('%s start %s, MATLAB %s, %d threads', mode, datestr(now, 'HH:MM:SS'), version, maxNumCompThreads);
+nt = 4;
+envNames = {'OMP_NUM_THREADS', 'OMP_THREAD_LIMIT', 'OMP_DYNAMIC', 'OMP_WAIT_POLICY', 'GOMP_SPINCOUNT', ...
+    'MKL_NUM_THREADS', 'NUMBER_OF_PROCESSORS'};
+envStr = strjoin(cellfun(@(n) sprintf('%s=%s', n, getenv(n)), envNames, 'unif', 0), ' ');
+cores = strjoin(splitlines(strtrim(evalc('feature(''numcores'');'))), ' ');
+[n0, cpus] = process_threads();
+note('%s start %s, MATLAB %s, maxNumCompThreads %d, %s, %s, process threads %d, CPUs %s', mode, ...
+    datestr(now, 'HH:MM:SS'), version, maxNumCompThreads, envStr, cores, n0, cpus);
+setenv('OMP_NUM_THREADS', num2str(nt));
+note('OMP_NUM_THREADS=%s for the mex files, %d threads for those that take a count', getenv('OMP_NUM_THREADS'), nt);
 
 if strcmp(mode, 'io')
     addpath(root);
     evalc('setup(root, false, '''')');
-    try
-        im = uint16(randi(60000, 128, 128, 64));
-        fn = fullfile(tempdir, 'mex_exit_probe');
-        writetiff(im, [fn, '.tif']);
-        a = readtiff([fn, '.tif']);
-        writezarr(im, [fn, '.zarr']);
-        b = readzarr([fn, '.zarr']);
-        note('io: tiff %d (%s), zarr %d', isequal(a, im), which('parallelReadTiff'), isequal(b, im));
-    catch ME
-        note('io: error %s: %s', ME.identifier, ME.message);
+    im = uint16(randi(60000, 128, 128, 64));
+    fn = fullfile(tempdir, sprintf('mex_exit_probe_%d', feature('getpid')));
+    calls = {'writetiff', @() writetiff(im, [fn, '.tif']), false; 'readtiff', @() isequal(readtiff([fn, '.tif']), im), true; ...
+        'writezarr', @() writezarr(im, [fn, '.zarr']), false; 'readzarr', @() isequal(readzarr([fn, '.zarr']), im), true};
+    for i = 1 : size(calls, 1)
+        n0 = process_threads();
+        t0 = tic;
+        try
+            if calls{i, 3}
+                status = sprintf('ok, equal %d', calls{i, 2}());
+            else
+                calls{i, 2}();
+                status = 'ok';
+            end
+        catch ME
+            status = ['error ', ME.identifier, ': ', ME.message];
+        end
+        n1 = process_threads();
+        note('%-50s %5.2f s %s, threads %d -> %d (%+d)', calls{i, 1}, toc(t0), status, n0, n1, n1 - n0);
     end
-    note('done %s', datestr(now, 'HH:MM:SS'));
+    note('io: %s', which('parallelReadTiff'));
+    note('done %s, process threads %d', datestr(now, 'HH:MM:SS'), process_threads());
     return;
 end
 
@@ -52,7 +81,6 @@ if ~isempty(mexDir)
 end
 
 rng(1);
-nt = 4;
 A16 = uint16(randi(60000, 128, 128, 64));
 L = rand(96, 96, 48) > 0.3;
 S = single(rand(128, 128, 64));
@@ -64,6 +92,7 @@ names = {'crop3d_mex', 'crop4d_mex', 'indexing3d_mex', 'indexing4d_mex', 'indexi
     'replace_nan_with_value'};
 for i = 1 : numel(names)
     name = names{i};
+    n0 = process_threads();
     t0 = tic;
     try
         switch name
@@ -117,14 +146,47 @@ for i = 1 : numel(names)
     catch ME
         status = ['error ', ME.identifier, ': ', ME.message];
     end
-    note('%-50s locked %d %5.2f s %s (%s)', name, mislocked(name), toc(t0), status, which(name));
+    t = toc(t0);
+    n1 = process_threads();
+    note('%-50s locked %d %5.2f s %s, threads %d -> %d (%+d) (%s)', name, mislocked(name), t, status, n0, n1, n1 - n0, which(name));
 end
 clear out
 if strcmp(mode, 'unload')
-    note('before clear mex %s', datestr(now, 'HH:MM:SS'));
+    note('before clear mex %s, process threads %d', datestr(now, 'HH:MM:SS'), process_threads());
     clear mex
-    note('after clear mex %s', datestr(now, 'HH:MM:SS'));
+    note('after clear mex %s, process threads %d', datestr(now, 'HH:MM:SS'), process_threads());
 end
-note('done %s', datestr(now, 'HH:MM:SS'));
+note('done %s, process threads %d', datestr(now, 'HH:MM:SS'), process_threads());
+
+end
+
+
+function [n, cpus] = process_threads()
+% the threads of this MATLAB process now (NaN if unknown) and the CPUs it may
+% run on (Windows: the affinity mask; Linux: Cpus_allowed_list)
+n = NaN;
+cpus = '';
+pid = feature('getpid');
+try
+    if ispc
+        [s, out] = system(sprintf(['powershell -NoProfile -NonInteractive -Command "$p = Get-Process -Id %d; ', ...
+            '''{0} {1}'' -f $p.Threads.Count, [int64]$p.ProcessorAffinity"'], pid));
+        if s == 0
+            v = sscanf(strtrim(out), '%d %d');
+            n = v(1);
+            cpus = sprintf('mask 0x%X', v(2));
+        end
+    elseif ismac
+        [s, out] = system(sprintf('ps -M -p %d | tail -n +2 | wc -l', pid));
+        if s == 0
+            n = str2double(strtrim(out));
+        end
+    else
+        st = fileread(sprintf('/proc/%d/status', pid));
+        n = str2double(regexp(st, 'Threads:\s*(\d+)', 'tokens', 'once'));
+        cpus = char(regexp(st, 'Cpus_allowed_list:\s*(\S+)', 'tokens', 'once'));
+    end
+catch
+end
 
 end

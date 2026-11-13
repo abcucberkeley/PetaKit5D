@@ -171,6 +171,11 @@ jobs:
     runs-on: windows-2025
     timeout-minutes: 60
     continue-on-error: true
+    # the OpenMP threads of the mex files that take no thread count (their
+    # OpenMP runtime reads it when a mex file is loaded; the probe sets it
+    # too): 4, also where the runner's MATLAB has maxNumCompThreads 1
+    env:
+      OMP_NUM_THREADS: 4
     steps:
       - uses: actions/checkout@v7
 
