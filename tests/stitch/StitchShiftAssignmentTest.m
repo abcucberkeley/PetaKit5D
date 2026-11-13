@@ -2,8 +2,10 @@ classdef StitchShiftAssignmentTest < pktest.TestCase
     % stitch_global_grid_assignment (shiftMethod 'grid', the default): the
     % tile shifts from the pairwise registration shifts, by constrained
     % least squares (stitch_assignment_lsqlin). Above 400 tiles it uses
-    % sparse matrices. Also stitch_global_assignment ('global') and
-    % stitch_global_group_assignment ('group').
+    % sparse matrices. Also stitch_global_assignment ('global'),
+    % stitch_global_group_assignment ('group'), stitch_local_assignment
+    % ('local') and stitch_shift_assignment on registration results written
+    % to disk ('test', group files, the registration jobs' memory).
 
     methods (Test, TestTags = {'Unit'})
         function allPairsBelowTheThresholdKeepTheStagePositions(testCase)
@@ -99,6 +101,123 @@ classdef StitchShiftAssignmentTest < pktest.TestCase
             testCase.verifyEqual(assign([0.9; 0.1; 0.9; 0.1; 0.9]), [0, 2, 2, 0, 0, 4]' .* [1, 0, 0]);
             % no pair above the threshold: the stage positions
             testCase.verifyEqual(assign(0.1 * ones(5, 1)), zeros(6, 3));
+        end
+
+        function groupLabelsOutOfTileOrderGiveTheSameShifts(testCase)
+            % step 2 of the group method took only the pairs whose first tile
+            % is in the group of the lower label, so with the labels swapped
+            % the pair between the groups was dropped and the groups kept
+            % their stage positions. Four tiles in a row, groups of two.
+            tileIdx = [(0 : 3)', zeros(4, 2), ones(4, 1)];
+            [ti, tj, overlap_matrix] = StitchShiftAssignmentTest.neighborPairs(tileIdx);
+            mas = repmat([-50, -50, -50, 50, 50, 50], 3, 1);
+            assign = @(g) stitch_global_group_assignment(4, [ti, tj, 0.9 * ones(3, 1)], [ti, tj, [2; 2; -4], zeros(3, 2)], ...
+                overlap_matrix, mas, 0.25, tileIdx, [1, 1, 1], g, [], '', false, 1, false, '');
+            expected = [0; 2; 4; 0] .* [1, 0, 0];
+            testCase.verifyEqual(assign([1; 1; 2; 2]), expected);
+            testCase.verifyEqual(assign([2; 2; 1; 1]), expected);
+            % and the pair's bounds turned around with it: tile 3 at most 1
+            % voxel right of tile 2
+            mas(2, 4) = 1;
+            assign = @(g) stitch_global_group_assignment(4, [ti, tj, 0.9 * ones(3, 1)], [ti, tj, [2; 2; -4], zeros(3, 2)], ...
+                overlap_matrix, mas, 0.25, tileIdx, [1, 1, 1], g, [], '', false, 1, false, '');
+            expected = [0; 2; 3; -1] .* [1, 0, 0];
+            testCase.verifyEqual(assign([1; 1; 2; 2]), expected, 'bounded');
+            testCase.verifyEqual(assign([2; 2; 1; 1]), expected, 'bounded, labels swapped');
+        end
+
+        function groupsOfOneTileOnTheClusterPath(testCase)
+            % the group method's cluster path (more than 100 tiles and more
+            % than one group) errored for a group of one tile, which has no
+            % task (an empty function string); here as the local path. 102
+            % tiles in a row, the last in a group of its own.
+            n = 102;
+            tileIdx = [(0 : n - 1)', zeros(n, 2), ones(n, 1)];
+            [ti, tj, overlap_matrix] = StitchShiftAssignmentTest.neighborPairs(tileIdx);
+            sx = randi([-3, 3], n - 1, 1);
+            xcorrDir = testCase.createTempFolder();
+            assign = @(parseCluster) stitch_global_group_assignment(n, [ti, tj, 0.9 * ones(n - 1, 1)], [ti, tj, sx, zeros(n - 1, 2)], ...
+                overlap_matrix, repmat([-50, -50, -50, 50, 50, 50], n - 1, 1), 0.25, tileIdx, [1, 1, 1], [ones(n - 1, 1); 2], ...
+                [], xcorrDir, parseCluster, 1, false, '');
+            [~, d] = evalc('assign(true)');
+            testCase.verifyEqual(d, [0; cumsum(sx)] .* [1, 0, 0]);
+            testCase.verifyEqual(d, assign(false));
+        end
+
+        function localAssignmentPlacesEachTreeOfTheForest(testCase)
+            % the local method placed only tile 1's tree (DFS from tile 1):
+            % the tiles of the other trees stayed at their stage positions.
+            % Each tree's first tile keeps its position, as tile 1 does.
+            overlap_matrix = false(5);
+            overlap_matrix(1, 2) = true;
+            overlap_matrix(3, 4) = true;
+            d = stitch_local_assignment(5, [1, 2, 0.9; 3, 4, 0.9], [1, 2, 5, 1, 0; 3, 4, -3, 2, 1], overlap_matrix, 0.25);
+            testCase.verifyEqual(d, [0, 0, 0; 5, 1, 0; 0, 0, 0; -3, 2, 1; 0, 0, 0]);
+            % a single tile (no pairs: a graph without nodes)
+            testCase.verifyEqual(stitch_local_assignment(1, zeros(0, 3), zeros(0, 5), false, 0.25), zeros(1, 3));
+        end
+
+        function testMethodAssignsThePairShifts(testCase)
+            % the 'test' method took the pairs' values at their index in
+            % the list of all pairs (an index error for three tiles in a
+            % row), the tile numbers as x and y shifts, and its bounds as
+            % if every second tile followed the first; it gives the
+            % registration's shifts, and the grid method's with its weights
+            % (10, 1, 0.1 for y, x, z) where no bound holds them
+            trueOff = [0, 0, 0; 6, -2, -1; 1, 1, -2];
+            [args, p] = testCase.shiftAssignmentArgs('test', 3, 1, trueOff);
+            [~, ~, dxyz] = evalc('stitch_shift_assignment(args{:})');
+            testCase.verifyEqual(round(dxyz ./ p.vs, 6), trueOff, 'three tiles in a row');
+            % tiles numbered against x, 6 voxels of overlap: the second tile
+            % comes 8 voxels closer, within its bounds of -5 .. 12 voxels
+            trueOff = [0, 0, 0; 8, 3, -2];
+            [args, p] = testCase.shiftAssignmentArgs('test', 2, 1, trueOff, 'overlap', [6, 10], 'reverseX', true);
+            [~, ~, dxyz] = evalc('stitch_shift_assignment(args{:})');
+            testCase.verifyEqual(round(dxyz ./ p.vs, 6), trueOff, 'tiles numbered against x');
+            % a tile whose pair is below the threshold keeps its stage
+            % position relative to its neighbor (the solution made unique),
+            % also where its bounds are -12 .. 2 voxels along x (3 voxels of
+            % overlap), not symmetric about that position
+            [args, p] = testCase.shiftAssignmentArgs('test', 3, 1, [0, 0, 0; 1, -2, -1; 5, 1, -2], 'overlap', [3, 10], ...
+                'lowPairs', 2);
+            [~, ~, dxyz] = evalc('stitch_shift_assignment(args{:})');
+            testCase.verifyEqual(round(dxyz ./ p.vs, 6), [0, 0, 0; 1, -2, -1; 1, -2, -1], 'a tile with its pair below the threshold');
+            % noisy shifts on a 3 x 2 grid
+            args = testCase.shiftAssignmentArgs('test', 3, 2, [randi([-2, 2], 6, 2), randi([-1, 1], 6, 1)], 'noise', 0.4);
+            [~, ~, dxyz] = evalc('stitch_shift_assignment(args{:})');
+            args{13} = 'grid';
+            args{15} = [10, 1, 0.1];
+            [~, ~, expected] = evalc('stitch_shift_assignment(args{:})');
+            testCase.verifyEqual(dxyz, expected, 'the grid method with its weights');
+        end
+
+        function registrationMemoryUsesTheTileSizeAlongXYZ(testCase)
+            % the registration jobs' memory took the size of the overlap
+            % plus the max offset along x, y, z, at most the tile's [ny nx
+            % nz]: two tiles of 8192 x 1024 x 1000 (y, x, z) side by side
+            % along x need 112 x 8192 x 1000 voxels (4 GB, single), 128 GB
+            % with the factor of 32; they got 112 x 1024 x 1000 (1 GB, 32 GB)
+            args = testCase.shiftAssignmentArgs('grid', 2, 1, zeros(2, 3), 'size', [8192, 1024, 1000], 'overlap', [100, 0]);
+            logFn = testCase.recordFrameworkMemory();
+            evalc('stitch_shift_assignment(args{:})');
+            testCase.verifyEqual(str2double(readlines(logFn, 'EmptyLineRule', 'skip')), 128);
+        end
+
+        function groupFileWithoutDataFoldersGroupsEveryTile(testCase)
+            % a group file of 4 columns (x, y, z, g) put its tiles in data
+            % folder 0, so every tile was 1 away from its group's entry and
+            % the method warned that tiles are not in the groups
+            % (offsets whose differences are within the z bounds of 5 voxels)
+            [args, p] = testCase.shiftAssignmentArgs('group', 4, 2, [randi([-3, 3], 8, 2), randi([-2, 2], 8, 1)], ...
+                'groups', [1; 1; 2; 2; 1; 1; 2; 2]);
+            testCase.verifyWarningFree(@() StitchShiftAssignmentTest.runQuietly(@() stitch_shift_assignment(args{:})));
+            [~, ~, dxyz] = evalc('stitch_shift_assignment(args{:})');
+            testCase.verifyEqual(round(dxyz ./ p.vs, 6), p.trueOff - p.trueOff(1, :));
+            % without a group file the groups are the tiles' data folders
+            % (one here)
+            args{16} = '';
+            [~, ~, dxyz] = evalc('stitch_shift_assignment(args{:})');
+            testCase.verifyEqual(round(dxyz ./ p.vs, 6), p.trueOff - p.trueOff(1, :), 'without a group file');
         end
 
         function shiftsRoundTheExactOptimumAtAnyThreadCount(testCase)
@@ -206,7 +325,93 @@ classdef StitchShiftAssignmentTest < pktest.TestCase
         end
     end
 
+    methods (Access = private)
+        function [args, p] = shiftAssignmentArgs(testCase, method, gx, gy, trueOff, varargin)
+            % stitch_shift_assignment's arguments for a gx x gy grid of tiles
+            % ('y,x,z', [ny nx nz] = size, voxel sizes 0.108, 0.108 and 0.25
+            % um) with overlap voxels between neighbors along x and y
+            % (reverseX: the x positions decrease with the tile index) and
+            % the registration results of the neighbor pairs on disk: the
+            % shifts between the true offsets (voxels, x y z; plus noise
+            % voxels of Gaussian noise), xcorr 0.9 (0.1 for the pairs lowPairs,
+            % by first, then second tile); tile 1 as zarr metadata; groups: a
+            % 4-column group file with these groups
+            ip = inputParser;
+            ip.addParameter('size', [64, 72, 20]);
+            ip.addParameter('overlap', [12, 10]);
+            ip.addParameter('reverseX', false);
+            ip.addParameter('noise', 0);
+            ip.addParameter('lowPairs', []);
+            ip.addParameter('groups', []);
+            ip.parse(varargin{:});
+            pr = ip.Results;
+            d = testCase.createTempFolder();
+            xcorrDir = [d, 'xcorr/'];
+            mkdir(xcorrDir);
+            p.vs = [0.108, 0.108, 0.25];
+            nF = gx * gy;
+            [ix, iy] = ndgrid(0 : gx - 1, 0 : gy - 1);
+            tileIdx = [ix(:), iy(:), zeros(nF, 1), ones(nF, 1)];
+            ext = pr.size([2, 1, 3]);
+            pos = tileIdx(:, 1 : 3);
+            if pr.reverseX
+                pos(:, 1) = gx - 1 - pos(:, 1);
+            end
+            xyz = pos .* (ext - 1 - [pr.overlap, 0]) .* p.vs;
+            paths = arrayfun(@(k) sprintf('%stile_%d.zarr', d, k), (1 : nF)', 'unif', 0);
+            createzarr(paths{1}, dataSize=pr.size, blockSize=[64, 64, 64], dtype='uint16');
+            cuboids = [xyz, xyz + (ext - 1) .* p.vs];
+            [ti, tj, overlap_matrix] = StitchShiftAssignmentTest.neighborPairs(tileIdx);
+            overlap_regions = zeros(nF * (nF - 1) / 2, 6);
+            for k = 1 : numel(ti)
+                [~, overlap_regions((ti(k) - 1) * nF - ti(k) * (ti(k) + 1) / 2 + tj(k), :)] = ...
+                    check_cuboids_overlaps(cuboids(ti(k), :), cuboids(tj(k), :), false);
+            end
+            p.trueOff = trueOff;
+            shifts = trueOff(tj, :) - trueOff(ti, :) + randn(numel(ti), 3) * pr.noise;
+            order_flag = (0.5 - (xyz(ti, :) > xyz(tj, :))) * 2;
+            xcorr = 0.9 * ones(numel(ti), 1);
+            xcorr(pr.lowPairs) = 0.1;
+            for f = unique(ti)'
+                k = find(ti == f);
+                relative_shift_mat = shifts(k, :) .* order_flag(k, :);
+                max_xcorr_mat = xcorr(k);
+                pair_indices = [ti(k), tj(k)];
+                save(sprintf('%sxcorr_tile_%d.mat', xcorrDir, f), 'relative_shift_mat', 'max_xcorr_mat', 'pair_indices');
+            end
+            groupFile = '';
+            if ~isempty(pr.groups)
+                groupFile = [d, 'groups.csv'];
+                writetable(table(tileIdx(:, 1), tileIdx(:, 2), tileIdx(:, 3), pr.groups(:), 'VariableNames', {'x', 'y', 'z', 'g'}), groupFile);
+            end
+            args = {paths, xcorrDir, repmat(pr.size, nF, 1), xyz, p.vs, [2, 1, 3], overlap_matrix, overlap_regions, ...
+                [12, 12, 5], [1, 1, 1], 0.25, tileIdx, method, false, [1, 0.1, 10], groupFile, false, [], false, 1, false, '', 1};
+        end
+
+        function [logFn] = recordFrameworkMemory(testCase)
+            % a stand-in for generic_computing_frameworks_wrapper that writes
+            % each call's memAllocate to logFn and reports every task done
+            folder = testCase.createTempFolder();
+            logFn = [folder, 'memAllocate.txt'];
+            fid = fopen([folder, 'generic_computing_frameworks_wrapper.m'], 'w');
+            fprintf(fid, '%s\n', 'function [is_done_flag] = generic_computing_frameworks_wrapper(inputFullpaths, outputFullpaths, funcStrs, varargin)', ...
+                'ip = inputParser;', 'ip.KeepUnmatched = true;', 'ip.addParameter(''memAllocate'', []);', 'ip.parse(varargin{:});', ...
+                sprintf('writelines(string(ip.Results.memAllocate), ''%s'', ''WriteMode'', ''append'');', logFn), ...
+                'is_done_flag = true(numel(outputFullpaths), 1);', 'end');
+            fclose(fid);
+            pktest.addFunctionFolder(folder, 'generic_computing_frameworks_wrapper');
+            testCase.addTeardown(@() clear('generic_computing_frameworks_wrapper'));
+            testCase.addTeardown(@() rmpath(folder));
+        end
+    end
+
     methods (Static, Access = private)
+        function [varargout] = runQuietly(f)
+            % the outputs of f(), without what it prints
+            varargout = cell(1, nargout);
+            [~, varargout{:}] = evalc('f()');
+        end
+
         function [args, trueOff, free] = freeTileProblem()
             % a 5 x 5 grid of tiles with exact pairwise shifts, three tiles
             % (no two neighbors: an edge tile with one smaller and two larger

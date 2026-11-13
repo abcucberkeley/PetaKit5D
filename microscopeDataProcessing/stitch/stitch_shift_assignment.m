@@ -77,14 +77,15 @@ switch assign_method
         else
             t = readtable(groupFile);
             if size(t, 2) == 4
-               gIdx = [t.x, t.y, t.z, zeros(size(t, 1), 1)];
+               % without data folders: the tiles by their x, y, z indices
+               gIdx = [t.x, t.y, t.z];
             else
                gIdx = [t.x, t.y, t.z, t.did];
             end
             gid = t.g;
         end
 
-        [kidx, d] = knnsearch(gIdx, tileIdx, 'k', 1);
+        [kidx, d] = knnsearch(gIdx, tileIdx(:, 1 : size(gIdx, 2)), 'k', 1);
 
         if any(d ~= 0)
             warning('Some tiles are not included in the groups');
@@ -203,7 +204,8 @@ fprintf('Compute pairwise cross correlation between overlap tiles...\n');
 sz = getImageSize(zarrFullpaths{1});
 pinds = (ti - 1) * nF - ti .* (ti + 1) / 2 + tj;
 cuboid_overlap_ij_mat = overlap_regions(pinds, :);
-rawImageSizes = prod(min((cuboid_overlap_ij_mat(:, 4 : 6) - cuboid_overlap_ij_mat(:, 1 : 3))' ./ xyz_voxelsizes(:) + MaxOffset(:), sz(:))) * 4 / 1024^3;
+% (the overlaps and the tile's size along x, y, z)
+rawImageSizes = prod(min((cuboid_overlap_ij_mat(:, 4 : 6) - cuboid_overlap_ij_mat(:, 1 : 3))' ./ xyz_voxelsizes(:) + MaxOffset(:), sz(data_order_mat)')) * 4 / 1024^3;
 % memAllocate = prctile(ceil(rawImageSizes) * (1.5 + 24 / prod(xcorrDownsample)), 99) * nodeFactor;
 % allocate slight more memory for faster computing and in case of oom
 memAllocate = prctile(ceil(rawImageSizes) * (2 + 30 / prod(xcorrDownsample)), 99) * nodeFactor;
@@ -314,7 +316,9 @@ switch assign_method
         max_shift_u = (cuboid_overlap_ij_mat(:, 4 : 6) - cuboid_overlap_ij_mat(:, 1 : 3)) ./ xyz_voxelsizes;
         max_shift_u = min(max_shift_u - 1, MaxOffset);
         
-        max_allow_shift = [max_shift_l, max_shift_u];
+        % (the pairs in the order of find, as the test's inequalities)
+        order_mat = xyz(tj, :) >= xyz(ti, :);
+        max_allow_shift = [max_shift_l .* order_mat + max_shift_u .* (order_mat - 1), max_shift_u .* order_mat + max_shift_l .* (order_mat - 1)];
         
         [d_shift] = stitch_global_grid_assignment_test(nF, max_xcorr_mat, absolute_shift_mat, overlap_matrix, max_allow_shift, xcorr_thresh, tileIdx);
 end
@@ -362,7 +366,8 @@ R(inds_i) = -1;
 R(inds_j) = 1;
 
 max_xcorr_mat_filt = max_xcorr_mat;
-max_xcorr_mat_filt(max_xcorr_mat_filt(:, 3) < xcorr_thresh, :) = [];
+filt_inds = max_xcorr_mat_filt(:, 3) < xcorr_thresh;
+max_xcorr_mat_filt(filt_inds, :) = [];
 % w = max_xcorr_mat_filt(:, 3);
 nP = size(max_xcorr_mat_filt, 1);
 w = ones(nP, 1) * 0.00;
@@ -397,10 +402,13 @@ W = diag(w);
 R_w = W.^0.5 * R_w;
 % R_w = R;
 
-c_inds = (np_i - 1) * nF - np_i .* (np_i + 1) / 2 + np_j;
-d_w = absolute_shift_mat(c_inds, :);
+% c_inds = (np_i - 1) * nF - np_i .* (np_i + 1) / 2 + np_j;
+% the pairs' x, y, z shifts (absolute_shift_mat has the rows of max_xcorr_mat)
+d_w = absolute_shift_mat(~filt_inds, 3 : 5);
 d_w = W.^0.5 * d_w;
 
+% the solution, made unique as for the other methods (see
+% stitch_assignment_lsqlin)
 d_shift = zeros(nF, 3);
 for i = 1 : 3
     C = R_w;
@@ -411,12 +419,12 @@ for i = 1 : 3
     u = max_allow_shift(:, 3 + i);
     b = [u; -l];
 
-    [x,resnorm,residual,exitflag,output,lambda] = lsqlin(C,d,A,b);
-    d_shift(:, i) = x;
+    d_shift(:, i) = stitch_assignment_lsqlin(C, d, A, b);
 end
 
-% round to integers and normalize for the first tile.
-d_shift = round(d_shift);
+% round to integers (ties up, as stitch_global_grid_assignment) and normalize
+% for the first tile.
+d_shift = round(d_shift + 1e-9);
 d_shift = d_shift - d_shift(1, :);
 
 end

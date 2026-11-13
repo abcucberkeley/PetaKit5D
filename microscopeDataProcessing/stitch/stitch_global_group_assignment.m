@@ -79,8 +79,10 @@ for g = 1 : ng
     end        
 end
 
-% submit jobs and collect results
-if parseCluster
+% submit jobs and collect results (groups of one tile have no task: the tile
+% keeps shift 0 within its group, as without the cluster)
+task_inds = ~cellfun(@isempty, funcStrs);
+if parseCluster && any(task_inds)
     ng_max = sum(grpIdx == mode(grpIdx));
     memAllocate = max(20, ng_max^2 * 0.0001) * nodeFactor;
     maxTrialNum_xcorr = 2;
@@ -92,8 +94,8 @@ if parseCluster
     %     minTaskJobNum = ng;
     % end
     for i = 1 : 3
-        is_done_flag = generic_computing_frameworks_wrapper(inputFullpaths, outputFullpaths, ...
-            funcStrs, 'maxTrialNum', maxTrialNum_xcorr, 'parseCluster', parseCluster, ...
+        is_done_flag = generic_computing_frameworks_wrapper(inputFullpaths(task_inds), outputFullpaths(task_inds), ...
+            funcStrs(task_inds), 'maxTrialNum', maxTrialNum_xcorr, 'parseCluster', parseCluster, ...
             'memAllocate', memAllocate * 2^(i - 1), 'minTaskJobNum', minTaskJobNum, ...
             'mccMode', mccMode, 'configFile', configFile);
         if all(is_done_flag)
@@ -105,6 +107,9 @@ if parseCluster
         error('group registartion cannot be fully done!')
     end
     for g = 1 : ng
+        if ~task_inds(g)
+            continue;
+        end
         a = load(outputFullpaths{g}, 'd_shift_g');
         d_shift_g = a.d_shift_g;
         d_shift_pre(grpIdx == uniq_grp(g), :) = d_shift_g;        
@@ -147,17 +152,25 @@ for gi = 1 : ng - 1
     grpIdx_i = gind_cell{gi};    
     for gj = gi + 1 : ng
         grpIdx_j = gind_cell{gj};
+        % the pairs between the two groups, also those whose first tile is in
+        % group gj (their shifts turned around, from group gi to group gj)
         xcorr_pair_ij = ismember(max_xcorr_mat_filt(:, 1), grpIdx_i) & ismember(max_xcorr_mat_filt(:, 2), grpIdx_j);
-        group_pair_sizes(gi, gj) = sum(xcorr_pair_ij);
+        xcorr_pair_ji = ismember(max_xcorr_mat_filt(:, 1), grpIdx_j) & ismember(max_xcorr_mat_filt(:, 2), grpIdx_i);
+        pair_inds = find(xcorr_pair_ij | xcorr_pair_ji);
+        group_pair_sizes(gi, gj) = numel(pair_inds);
         group_overlap_matrix(gi, gj) = any(overlap_matrix(grpIdx_i, grpIdx_j), 'all');
         if group_pair_sizes(gi, gj) == 0
             continue;
         end
 
-        g_w_ij = max_xcorr_mat_filt(xcorr_pair_ij, 3);
-        grp_dist_mat(gi, gj, :) = sum(absolute_shift_mat_filt(xcorr_pair_ij, 3 : 5) .* g_w_ij, 1) / sum(g_w_ij);
-        
-        grp_pair_centroids(gi, gj, :) = [mean(d_shift_pre(unique(max_xcorr_mat_filt(xcorr_pair_ij, 1)), :), 1), mean(d_shift_pre(unique(max_xcorr_mat_filt(xcorr_pair_ij, 2)), :), 1)];
+        turn_inds = xcorr_pair_ji(pair_inds);
+        g_w_ij = max_xcorr_mat_filt(pair_inds, 3);
+        grp_dist_mat(gi, gj, :) = sum(absolute_shift_mat_filt(pair_inds, 3 : 5) .* (1 - 2 * turn_inds) .* g_w_ij, 1) / sum(g_w_ij);
+
+        % the pairs' tiles in group gi and in group gj
+        pair_tiles = max_xcorr_mat_filt(pair_inds, 1 : 2);
+        pair_tiles(turn_inds, :) = pair_tiles(turn_inds, [2, 1]);
+        grp_pair_centroids(gi, gj, :) = [mean(d_shift_pre(unique(pair_tiles(:, 1)), :), 1), mean(d_shift_pre(unique(pair_tiles(:, 2)), :), 1)];
     end
 end
 
@@ -206,12 +219,19 @@ for gi = 1 : ng - 1
     for gj = gi + 1 : ng
         grpIdx_j = gind_cell{gj};
         xcorr_pair_ij = ismember(max_xcorr_mat_filt(:, 1), grpIdx_i) & ismember(max_xcorr_mat_filt(:, 2), grpIdx_j);
+        xcorr_pair_ji = ismember(max_xcorr_mat_filt(:, 1), grpIdx_j) & ismember(max_xcorr_mat_filt(:, 2), grpIdx_i);
         if group_pair_sizes(gi, gj) == 0
             continue;
         end
 
-        group_max_allow_shift(n_i == gi & n_j == gj, :) = [min(max_allow_shift_filt(xcorr_pair_ij, 1 : 3), [], 1), ...
-            max(max_allow_shift_filt(xcorr_pair_ij, 4 : 6), [], 1)];
+        % (the bounds of the pairs whose first tile is in group gj turned
+        % around)
+        pair_inds = find(xcorr_pair_ij | xcorr_pair_ji);
+        turn_inds = xcorr_pair_ji(pair_inds);
+        max_allow_shift_ij = max_allow_shift_filt(pair_inds, :);
+        max_allow_shift_ij(turn_inds, :) = -max_allow_shift_ij(turn_inds, [4 : 6, 1 : 3]);
+        group_max_allow_shift(n_i == gi & n_j == gj, :) = [min(max_allow_shift_ij(:, 1 : 3), [], 1), ...
+            max(max_allow_shift_ij(:, 4 : 6), [], 1)];
     end
 end
 
