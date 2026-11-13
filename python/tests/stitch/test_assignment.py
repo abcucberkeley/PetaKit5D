@@ -801,7 +801,7 @@ def ssa_tree(make):
             for k in range(n):
                 v = [t[k, 0], t[k, 1], t[k, 2]] + ([] if p["gf"] == 4 else [t[k, 3]]) + [g[k]]
                 rows.append(",".join(f"{x:g}" for x in v))
-            (folder / "groups.csv").write_text("\n".join(rows) + "\n")
+            (folder / "groups.csv").write_text("\n".join(rows) + "\n", newline="\n")
 
     return fill
 
@@ -1195,7 +1195,7 @@ def test_registrationMemoryUsesTheTileSizeAlongXYZ(tmp_path, monkeypatch):
     meta = {"chunks": [64, 64, 64], "compressor": None, "dtype": "<u2", "fill_value": 0,
             "filters": None, "order": "C", "shape": [1000, 8192, 1024],
             "zarr_format": 2}  # fmt: skip
-    (z / ".zarray").write_text(json.dumps(meta))
+    (z / ".zarray").write_text(json.dumps(meta), newline="\n")
     vs = np.array([0.108, 0.108, 0.25])
     ext = np.array([1024.0, 8192.0, 1000.0])
     xyz = np.array([[0.0, 0.0, 0.0], [(1024 - 1 - 100) * 0.108, 0.0, 0.0]])
@@ -1479,7 +1479,10 @@ def test_large_file_tasks_per_pair(tmp_path, monkeypatch):
             large_file=True, pool_size=(2, 3, 4),
         )  # fmt: skip
     mip_call, reg_call = calls.calls[0], calls.calls[3]
-    assert mip_call[1] == [str(tmp_path / f"MIP_Slabs_pooling_3_4_2/t{k}_z.zarr") for k in range(3)]
+    # the separator of MATLAB's '/' join is kept (Windows takes both)
+    assert [os.path.normpath(q) for q in mip_call[1]] == [
+        str(tmp_path / f"MIP_Slabs_pooling_3_4_2/t{k}_z.zarr") for k in range(3)
+    ]
     assert (tmp_path / "MIP_Slabs_pooling_3_4_2").is_dir()
     assert reg_call[1] == [os.path.join(str(tmp_path / "x"), f"xcorr_tile_{a}_{a + 1}.mat")
                            for a in (1, 2)]  # fmt: skip

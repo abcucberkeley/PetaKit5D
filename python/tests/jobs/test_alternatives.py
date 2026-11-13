@@ -3071,6 +3071,8 @@ ORACLE_CASES = [
 
 @oracle.parametrize(ORACLE_CASES)
 def test_matlab(case, tmp_path):
+    if os.name == "nt" and case.python is py_scenario:
+        pytest.skip("The fake Slurm needs a POSIX shell.")
     oracle.check(case, tmp_path)
 
 

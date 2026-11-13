@@ -215,6 +215,7 @@ def test_gpu_for_slot():
     assert [slots.gpu_slots(3, v) for v in ("4,6", "5", None, "", "1,2,3,4")] == [2, 1, 3, 3, 3]
 
 
+@pytest.mark.skipif(sys.platform.startswith("win"), reason="bash tasks run on POSIX systems")
 def test_bash_tasks_run_in_slots_with_bash_launch_str(tmp_path, task_module):
     specs = [("echo $GREETING $PARALLEL_JOBSLOT > {out}", None)] * 2
     folder, outs = make_call(

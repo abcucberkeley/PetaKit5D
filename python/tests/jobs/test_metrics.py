@@ -59,7 +59,7 @@ def framework_task(input_fn: str, output_fn: str, log_fn: str, mode: str = "copy
 def alloc_task(output_fn: str, n: int) -> None:
     """Fills n bytes (every page touched), then writes the output."""
     b = b"\x01" * n
-    Path(output_fn).write_text(str(len(b)))
+    Path(output_fn).write_text(str(len(b)), newline="\n")
 
 
 def compute_task(output_fn: str) -> None:
@@ -68,7 +68,7 @@ def compute_task(output_fn: str) -> None:
     s = 0.0
     while time.process_time() - t0 < 0.5:
         s += sum(math.sqrt(k) for k in range(10000))
-    Path(output_fn).write_text(repr(s))
+    Path(output_fn).write_text(repr(s), newline="\n")
 
 
 def nested_task(input_fn: str, output_fn: str, log_fn: str, metrics_on: bool, n: int = 2) -> None:
@@ -95,7 +95,7 @@ def make_tasks(tmp_path: Path, n: int):
     in_fns = [str(tmp_path / f"in_{i}.txt") for i in range(1, n + 1)]
     out_fns = [str(tmp_path / "out" / f"out_{i}.txt") for i in range(1, n + 1)]
     for i, fn in enumerate(in_fns, 1):
-        Path(fn).write_text(f"task {i}")
+        Path(fn).write_text(f"task {i}", newline="\n")
     return in_fns, out_fns, str(tmp_path / "calls.log")
 
 
@@ -118,7 +118,7 @@ def col(rows, name):
 
 
 def write_lines(fn: Path, lines) -> None:
-    fn.write_text("".join(x + "\n" for x in lines), encoding="utf-8")
+    fn.write_text("".join(x + "\n" for x in lines), encoding="utf-8", newline="\n")
 
 
 def the_run_folder(job_log_dir: Path) -> Path:
@@ -239,7 +239,7 @@ def test_metrics_off_imports_nothing(tmp_path):
 def test_config_file_turns_metrics_on(tmp_path):
     in_fns, out_fns, log_fn = make_tasks(tmp_path, 2)
     config = tmp_path / "config.json"
-    config.write_text(json.dumps({"taskMetrics": True}))
+    config.write_text(json.dumps({"taskMetrics": True}), newline="\n")
     run_tasks(in_fns, out_fns, task_list(in_fns, out_fns, log_fn), config_file=str(config), **LOCAL)
     t, _ = read_task_metrics(str(tmp_path / "job_logs"))
     assert sorted(col(t, "task")) == [1, 2]
@@ -267,7 +267,7 @@ def test_failed_task_without_identifier_names_its_class(tmp_path):
         run_tasks(in_fns, out_fns, [Task("os:remove", [missing])], task_metrics=True, **LOCAL)
     t, _ = read_task_metrics(str(tmp_path / "job_logs"))
     assert t[0]["error"].startswith("FileNotFoundError: ")
-    assert missing in t[0]["error"]
+    assert repr(missing)[1:-1] in t[0]["error"]  # the OSError's text quotes it (\ as \\)
 
 
 def test_bash_task_exit_status_is_recorded(tmp_path):
@@ -319,7 +319,7 @@ def test_memory_and_cpu_on_linux(tmp_path):
 def test_unwritable_metrics_do_not_fail_tasks(tmp_path):
     # a file where the metrics folder would be: no metrics, but the tasks run as usual
     in_fns, out_fns, log_fn = make_tasks(tmp_path, 2)
-    (tmp_path / "job_logs").write_text("")
+    (tmp_path / "job_logs").write_text("", newline="\n")
     with pytest.warns(TaskMetricsWarning) as rec:
         flags = run_tasks(
             in_fns, out_fns, task_list(in_fns, out_fns, log_fn), task_metrics=True, **LOCAL
@@ -330,7 +330,7 @@ def test_unwritable_metrics_do_not_fail_tasks(tmp_path):
 
 
 def test_failed_record_write_only_warns(tmp_path):
-    (tmp_path / "notAFolder").write_text("")
+    (tmp_path / "notAFolder").write_text("", newline="\n")
     tm = metrics.task_start(job_call(str(tmp_path / "notAFolder" / "run") + "/"), [0], "local")
     assert tm is not None
     with pytest.warns(TaskMetricsWarning) as rec:
@@ -841,7 +841,8 @@ def test_reader_leaves_out_broken_lines_and_other_kinds(tmp_path):
         }
     )
     (run / "task_a.ndjson").write_text(
-        good + '\n{"kind":"task","runId":"r","ta\n{"kind":"x"}\n{"kind":"task","task":NaN}\n\n'
+        good + '\n{"kind":"task","runId":"r","ta\n{"kind":"x"}\n{"kind":"task","task":NaN}\n\n',
+        newline="\n",
     )
     t, runs = read_task_metrics(str(run))
     assert len(t) == 1
@@ -900,7 +901,8 @@ def test_reader_adds_slurm_accounting(tmp_path, monkeypatch):
     bin_dir.mkdir()
     (bin_dir / "sacct").write_text(
         '#!/bin/sh\necho "$*" >> "$(dirname "$0")/sacct.log"\n'
-        "echo '55|2026-11-11T09:59:00|2026-11-11T10:01:00|2026-11-11T10:01:35|CANCELLED by 1'\n"
+        "echo '55|2026-11-11T09:59:00|2026-11-11T10:01:00|2026-11-11T10:01:35|CANCELLED by 1'\n",
+        newline="\n",
     )
     (bin_dir / "sacct").chmod(0o755)
     monkeypatch.setenv("PATH", f"{bin_dir}{os.pathsep}{os.environ['PATH']}")
@@ -914,7 +916,7 @@ def test_reader_adds_slurm_accounting(tmp_path, monkeypatch):
         5,
     )
     assert b["jobHeadSec"] == 10 and math.isnan(c["queueSec"]) and c["jobState"] == ""
-    (bin_dir / "sacct").write_text("#!/bin/sh\necho no >&2\nexit 1\n")
+    (bin_dir / "sacct").write_text("#!/bin/sh\necho no >&2\nexit 1\n", newline="\n")
     with pytest.warns(TaskMetricsWarning) as rec:
         read_task_metrics(str(run), slurm_accounting=True)
     assert rec[0].message.identifier == "read_task_metrics:sacct"

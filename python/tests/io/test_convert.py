@@ -720,7 +720,7 @@ def test_tiff_to_zarr_wrapper_job_settings(tmp_path, framework_spy):
     # 2.75 for the flat-field function; twice that without big_data
     path, _, _ = write_dataset(tmp_path / "d", "tif")
     fn = tmp_path / "ff.txt"
-    fn.write_text("petakit5d.flatfield:flatfield_correct_file\n")
+    fn.write_text("petakit5d.flatfield:flatfield_correct_file\n", newline="\n")
     gb = np.prod(IM_SIZE) * 2 / 1024**3
     convert.tiff_to_zarr_dataset(path, channel_patterns=CHANNELS, parse_cluster=False)
     convert.tiff_to_zarr_dataset(
@@ -762,7 +762,7 @@ def test_wrapper_user_functions_follow_channels_and_keywords(tmp_path, framework
 
     path, _, _ = write_dataset(tmp_path / "d", "tif")
     a = tmp_path / "a.txt"
-    a.write_text("pkg_a:f\n")
+    a.write_text("pkg_a:f\n", newline="\n")
     b = tmp_path / "b.mat"
     write_mat(str(b), {"usrFun": "pkg_b:g", "keywords": np.array(["CamB"], dtype=object)})
     c = tmp_path / "c.mat"
@@ -1126,7 +1126,7 @@ def test_user_function_by_import_path_through_a_task(tmp_path):
     # the dataset wrapper's tasks carry the function as text (import path or JSON record)
     path, ims, names = write_dataset(tmp_path / "d", "tif")
     fn = tmp_path / "fn.txt"
-    fn.write_text('{"func": "numpy:add", "args": [5]}\n')
+    fn.write_text('{"func": "numpy:add", "args": [5]}\n', newline="\n")
     convert.tiff_to_zarr_dataset(
         path, channel_patterns=CHANNELS[:1], parse_cluster=False, process_fun_path=str(fn)
     )
@@ -1158,6 +1158,11 @@ def test_wrapper_parameters_files_hold_matlabs_values(tmp_path):
         block_size=(4, 16, 8),
         input_bbox=(1, 2, 3, 10, 30, 33),
     )
-    pr = json.loads((tmp_path / "d" / "zarr" / "parameters.json").read_text())
+    text = (tmp_path / "d" / "zarr" / "parameters.json").read_text()
+    if os.name == "nt":
+        # MATLAB's writeJsonFile writes the JSON with fprintf(fid, s), which turns the \\ of a
+        # Windows path into \ (invalid JSON); the port does the same (core.textfiles)
+        text = text.replace("\\", "/")
+    pr = json.loads(text)
     assert pr["blockSize"] == [16, 8, 4]
     assert pr["inputBbox"] == [3, 4, 2, 30, 33, 10]

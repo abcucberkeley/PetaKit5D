@@ -524,14 +524,14 @@ def write_tree(root, im, *, tiff=True, zarr=True, text="line 1\n", js=None, mat=
             order="F",
             dimension_separator=".",
         )
-    (root / "log.txt").write_text(text)
-    (root / "params.json").write_text(js if js is not None else '{"a":1,"b":"x"}')
+    (root / "log.txt").write_text(text, newline="\n")
+    (root / "params.json").write_text(js if js is not None else '{"a":1,"b":"x"}', newline="\n")
     if mat:
         from scipy.io import savemat
 
         savemat(root / "info.mat", {"name": "demo", "sz": np.array([[10.0, 12, 8]]), "t": 1.0})
     (root / "empty").mkdir(exist_ok=True)
-    (root / "flag_0a1b2c3d-1111-2222-3333-444455556666.txt").write_text("")
+    (root / "flag_0a1b2c3d-1111-2222-3333-444455556666.txt").write_text("", newline="\n")
     if extra:
         (root / extra).write_bytes(b"x")
 
@@ -575,7 +575,7 @@ def test_json_formatting_and_mat_contents(tmp_path):
     for side, js, v in (("a", '{"a":1}', 2.0), ("b", '{"a": 1}', 3.0)):
         d = tmp_path / side
         d.mkdir()
-        (d / "p.json").write_text(js)
+        (d / "p.json").write_text(js, newline="\n")
         savemat(d / "m.mat", {"x": np.array([[1.0, v]]), "t": v})
     rep = compare_trees(scan_tree(tmp_path / "a"), scan_tree(tmp_path / "b"))
     text = rep.text()
@@ -653,9 +653,9 @@ def test_compare_finds_different_outputs(tmp_path):
     zarr(b / "diff.zarr", im2, [8, 8, 8])
     savemat(a / "diff.mat", {"value": 1.0})
     savemat(b / "diff.mat", {"value": 2.0})
-    (a / "tmp_0d8c8a76-1b6e-4c3e-9a51-0f5f2b6c1e11.txt").write_text("")
-    (b / "tmp_ffa1b2c3-1111-2222-3333-444455556666.txt").write_text("")
-    (a / "onlyA.txt").write_text("")
+    (a / "tmp_0d8c8a76-1b6e-4c3e-9a51-0f5f2b6c1e11.txt").write_text("", newline="\n")
+    (b / "tmp_ffa1b2c3-1111-2222-3333-444455556666.txt").write_text("", newline="\n")
+    (a / "onlyA.txt").write_text("", newline="\n")
 
     rep = compare_trees(scan_tree(a), scan_tree(b))
     text = rep.text()

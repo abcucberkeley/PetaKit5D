@@ -358,7 +358,7 @@ def test_a_marker_another_caller_makes_at_the_same_time_leaves_the_task_to_it(
     real = framework._new_marker
 
     def racing(path):
-        if path == str(marker) and not marker.exists():
+        if os.path.normpath(path) == str(marker) and not marker.exists():
             marker.touch()
         return real(path)
 
@@ -611,7 +611,7 @@ def test_task_records_are_canonical_json():
     )
     assert rec == {
         "func": FUNC,
-        "args": [1, 2.5, [3, 4], "/a/b"],
+        "args": [1, 2.5, [3, 4], str(Path("/a/b"))],
         "kwargs": {"x": None, "y": [True]},
     }
     values = [0.1, 1 / 3, -0.0, 5e-324, 1.7976931348623157e308, math.inf, -math.inf]

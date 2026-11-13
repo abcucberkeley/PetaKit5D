@@ -1035,7 +1035,7 @@ def test_large_zarr_jobs_ask_for_what_they_hold(tmp_path, framework_spy):
         block_size=(256, 256, 256),
     )
     off = tmp_path / "cpu_config.json"
-    off.write_text('{"masterCompute": false}')
+    off.write_text('{"masterCompute": false}', newline="\n")
     for i, (mc, cfg) in enumerate([(True, ""), (False, ""), (True, str(off))]):
         crop.crop_dataset(
             str(tmp_path),

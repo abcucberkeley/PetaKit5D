@@ -115,7 +115,9 @@ def write_slice_lists(root: Path, mcs2, cams=None, nslice=3, step=0.2, dup=(0, 0
                 f"{fn},0,{1 if cam == 'B' else 0},{x + 0.2:f},{mcs2[i, 1]:f},{mcs2[i, 2]:f},"
                 f"{x:f},{mcs2[i, 1]:f},{mcs2[i, 2]:f}"
             )
-        (root / f"SliceList_tile{i + 1}_part{i:04d}.csv").write_text("\n".join(lines) + "\n")
+        (root / f"SliceList_tile{i + 1}_part{i:04d}.csv").write_text(
+            "\n".join(lines) + "\n", newline="\n"
+        )
 
 
 def slice_tree(mcs2, **kw):
@@ -193,7 +195,7 @@ def ism_tree(root: Path) -> None:
             fn = f"Scan_Iter_0000_0000ISMslice_CamA_ch0_{i:03d}x.tif"
             v = [10.0 * i + 0.1 * s, -3.25, 7.0, 10.0 * i, -3.0, 7.5]
             lines.append(f"{fn},{s}," + ",".join(f"{x:.6f}" for x in v))
-        (root / f"SliceList_{i}.csv").write_text("\n".join(lines) + "\n")
+        (root / f"SliceList_{i}.csv").write_text("\n".join(lines) + "\n", newline="\n")
 
 
 # ------------------------------------------------------------------------------------------

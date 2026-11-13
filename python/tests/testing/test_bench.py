@@ -186,7 +186,9 @@ def test_parse_gate_none():
 
 def test_task_gate_reads_tasks_json(tmp_path):
     p = tmp_path / "tasks.json"
-    p.write_text(json.dumps({"tasks": [{"id": "K9", "benchmark_gate": "no slower (1.02x)"}]}))
+    p.write_text(
+        json.dumps({"tasks": [{"id": "K9", "benchmark_gate": "no slower (1.02x)"}]}), newline="\n"
+    )
     assert bench.task_gate("K9", str(p))["ratio_max"] == pytest.approx(1.02)
     assert bench.task_gate("K8", str(p)) is None
 
@@ -329,12 +331,12 @@ Node 1, zone   Normal   3472   1722    897    697    388    149     69  56045  5
 
 
 def _hp_files(tmp_path, buddy=BUDDY, mems="0-1"):
-    (tmp_path / "buddyinfo").write_text(buddy)
+    (tmp_path / "buddyinfo").write_text(buddy, newline="\n")
     thp = tmp_path / "thp"
     thp.mkdir(exist_ok=True)
-    (thp / "enabled").write_text("always [madvise] never\n")
-    (thp / "defrag").write_text("always defer defer+madvise [madvise] never\n")
-    (tmp_path / "status").write_text(f"Name:\tpython\nMems_allowed_list:\t{mems}\n")
+    (thp / "enabled").write_text("always [madvise] never\n", newline="\n")
+    (thp / "defrag").write_text("always defer defer+madvise [madvise] never\n", newline="\n")
+    (tmp_path / "status").write_text(f"Name:\tpython\nMems_allowed_list:\t{mems}\n", newline="\n")
     return str(tmp_path / "buddyinfo"), str(thp), str(tmp_path / "status")
 
 
@@ -393,7 +395,10 @@ def test_load_spec_checks(tmp_path):
     with pytest.raises(ValueError):
         bench.load_spec({"name": "x", "variants": [{"id": "a", "impl": "java"}]})
     p = tmp_path / "s.py"
-    p.write_text("SPEC = {'name': 'n', 'variants': [{'id': 'a', 'impl': 'python', 'code': ''}]}")
+    p.write_text(
+        "SPEC = {'name': 'n', 'variants': [{'id': 'a', 'impl': 'python', 'code': ''}]}",
+        newline="\n",
+    )
     assert bench.load_spec(str(p))["name"] == "n"
     with pytest.raises(ValueError):
         bench.run(
@@ -410,7 +415,8 @@ def test_run_interleaves_and_writes_a_result(tmp_path, monkeypatch):
         "mark('ready')\n"
         "time.sleep(0.02)\n"
         "record('sleep', [0.01, 0.01], threads=int(sys.argv[1]))\n"
-        "if sys.argv[2] == 'fail': sys.exit(3)\n"
+        "if sys.argv[2] == 'fail': sys.exit(3)\n",
+        newline="\n",
     )
     pp = os.pathsep.join(p for p in sys.path if p)
     spec = {
@@ -476,7 +482,7 @@ def test_evict_counts_files(tmp_path):
 def test_warm_variants_are_rewarmed_after_a_cold_one(tmp_path, monkeypatch):
     monkeypatch.setenv("PK5D_SRC", str(tmp_path))
     (tmp_path / "d").mkdir()
-    (tmp_path / "d" / "f").write_text("x")
+    (tmp_path / "d" / "f").write_text("x", newline="\n")
     spec = {
         "name": "cold",
         "repeats": 5,
@@ -537,8 +543,8 @@ def test_history_flags_a_ratio_that_grew(tmp_path):
         res["source"]["commit"] = commit
         res["summary"] = bench.summarize(res)
         res["comparisons"] = bench.compare(res, res["summary"])
-        (tmp_path / f"r{i}.json").write_text(json.dumps(res))
-    (tmp_path / "other.json").write_text("{}")
+        (tmp_path / f"r{i}.json").write_text(json.dumps(res), newline="\n")
+    (tmp_path / "other.json").write_text("{}", newline="\n")
     text = bench.history(str(tmp_path), write=True)
     rows = json.loads((tmp_path / "history.json").read_text())
     x = [r for r in rows if r["metric"] == "a:op:x@4"]
@@ -550,7 +556,7 @@ def test_history_flags_a_ratio_that_grew(tmp_path):
     res = _result(_ab_runs(fa=2.0), compare=[["a", "b"]])
     res["started"], res["node"]["node_type"] = "20260109_000000", "c48"
     res["comparisons"] = bench.compare(res)
-    (tmp_path / "r9.json").write_text(json.dumps(res))
+    (tmp_path / "r9.json").write_text(json.dumps(res), newline="\n")
     bench.history(str(tmp_path), write=True)
     rows = json.loads((tmp_path / "history.json").read_text())
     c48 = [r for r in rows if r["metric"] == "a:op:x@4" and r["ntype"] == "c48"]
@@ -559,7 +565,7 @@ def test_history_flags_a_ratio_that_grew(tmp_path):
     res = _result(_ab_runs(fa=2.0), compare=[["a", "b"]])
     res["started"], res["node"]["numa_policy"] = "20260110_000000", "interleave:0-1"
     res["comparisons"] = bench.compare(res)
-    (tmp_path / "r10.json").write_text(json.dumps(res))
+    (tmp_path / "r10.json").write_text(json.dumps(res), newline="\n")
     bench.history(str(tmp_path), write=True)
     rows = json.loads((tmp_path / "history.json").read_text())
     ilv = [r for r in rows if r["metric"] == "a:op:x@4" and r["ntype"] == "c24 ilv"]
@@ -572,7 +578,7 @@ def test_history_ignores_changes_of_a_few_milliseconds(tmp_path):
         res = _result(_ab_runs(fa=fa), compare=[["a", "b"]])
         res["started"] = f"2026010{i + 1}_000000"
         res["comparisons"] = bench.compare(res)
-        (tmp_path / f"r{i}.json").write_text(json.dumps(res))
+        (tmp_path / f"r{i}.json").write_text(json.dumps(res), newline="\n")
     bench.history(str(tmp_path), write=True)
     rows = json.loads((tmp_path / "history.json").read_text())
     x = [r for r in rows if r["metric"] == "a:op:x@4"]
@@ -593,7 +599,8 @@ def test_marks_first_and_ready_keep_the_first_last_keeps_the_last(tmp_path):
                 ("last", 6.0),
             ]
         )
-        + "\nnot json\n"
+        + "\nnot json\n",
+        newline="\n",
     )
     marks, _, _ = bench._read_marks(str(f))
     assert marks == {"first": 1.0, "ready": 2.0, "last": 6.0}
@@ -621,7 +628,7 @@ def test_unknown_placeholders_stay():
 
 def test_cold_variants_are_never_rewarmed(tmp_path, monkeypatch):
     monkeypatch.setenv("PK5D_SRC", str(tmp_path))
-    (tmp_path / "f").write_text("x")
+    (tmp_path / "f").write_text("x", newline="\n")
     spec = {
         "name": "cold2",
         "repeats": 5,

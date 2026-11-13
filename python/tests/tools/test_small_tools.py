@@ -59,10 +59,12 @@ else:
 @pytest.fixture
 def fake_rsync(tmp_path, monkeypatch):
     """A fake rsync first on PATH; returns a function that reads its call log."""
+    if os.name == "nt":
+        pytest.skip("The fake rsync is a POSIX script.")
     bin_dir = tmp_path / "fakebin"
     bin_dir.mkdir()
     exe = bin_dir / "rsync"
-    exe.write_text(FAKE_RSYNC.format(python=sys.executable))
+    exe.write_text(FAKE_RSYNC.format(python=sys.executable), newline="\n")
     exe.chmod(0o755)
     log = tmp_path / "rsync_calls.ndjson"
     monkeypatch.setenv("PATH", f"{bin_dir}{os.pathsep}{os.environ['PATH']}")
@@ -98,7 +100,7 @@ def make_files(folder: Path, names) -> list[str]:
     for n in names:
         p = folder / n
         p.parent.mkdir(parents=True, exist_ok=True)
-        p.write_text(n)
+        p.write_text(n, newline="\n")
     return [str(folder / n) for n in names]
 
 
@@ -787,7 +789,7 @@ def zarray(shape, dtype="<u2"):
 
 def make_zarr(folder: Path, shape, dtype="<u2"):
     folder.mkdir()
-    (folder / ".zarray").write_text(zarray(shape, dtype))
+    (folder / ".zarray").write_text(zarray(shape, dtype), newline="\n")
 
 
 def make_parts_tree(d: Path):
@@ -805,7 +807,7 @@ def make_parts_tree(d: Path):
     }
     for n, s in sizes.items():
         write_tiff(d / n, np.zeros(s, dtype=np.uint16, order="F"))
-    (d / "notes.txt").write_text("not an image")
+    (d / "notes.txt").write_text("not an image", newline="\n")
 
 
 def make_plain_tree(d: Path):
@@ -835,7 +837,7 @@ def make_zarr_tree(d: Path):
 
 
 def make_text_tree(d: Path):
-    (d / "a.txt").write_text("a")
+    (d / "a.txt").write_text("a", newline="\n")
 
 
 SPECIAL_NAMES = [
@@ -954,7 +956,9 @@ EST_CASES = [
         [InPath("z.zarr"), ("deconvolution",)],
         nargout=4,
         inputs={
-            "z.zarr": Tree(lambda d: (d / ".zarray").write_text(zarray((10, 11, 1))), "z.zarr")
+            "z.zarr": Tree(
+                lambda d: (d / ".zarray").write_text(zarray((10, 11, 1)), newline="\n"), "z.zarr"
+            )
         },
     ),
     est_case(

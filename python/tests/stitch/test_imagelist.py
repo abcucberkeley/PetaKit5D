@@ -176,13 +176,13 @@ def folder(listed, present=None, mapped=None, extra=(), zarr=False, sub="", head
 
     def make(root: Path) -> None:
         root.mkdir(parents=True, exist_ok=True)
-        (root / "list.csv").write_text(list_text(listed, mapped, header))
+        (root / "list.csv").write_text(list_text(listed, mapped, header), newline="\n")
         d = root / sub if sub else root
         d.mkdir(parents=True, exist_ok=True)
         for n in list(present) + list(extra):
             if zarr:
                 (d / n.replace(".tif", ".zarr")).mkdir()
-                (d / n.replace(".tif", ".zarr") / ".zarray").write_text("{}")
+                (d / n.replace(".tif", ".zarr") / ".zarray").write_text("{}", newline="\n")
             else:
                 (d / n).write_bytes(b"")
         (root / "stitchInfo.mat").write_bytes(b"x")
@@ -528,7 +528,7 @@ def test_make_valid_name(header, name):
 
 def test_read_table_renames_and_warns(tmp_path):
     p = tmp_path / "l.csv"
-    p.write_text("Filename,StageX (um)\na.tif,1.5\n")
+    p.write_text("Filename,StageX (um)\na.tif,1.5\n", newline="\n")
     with warnings.catch_warnings(record=True) as w:
         warnings.simplefilter("always")
         t = il.read_table(p)
@@ -541,17 +541,17 @@ def test_read_table_renames_and_warns(tmp_path):
 
 def test_read_table_majority_and_leading_text(tmp_path):
     p = tmp_path / "l.csv"
-    p.write_text("n,s\n1,x\nx,2\n")
+    p.write_text("n,s\n1,x\nx,2\n", newline="\n")
     t = il.read_table(p)
     assert t.kind("n") == "double" and t.kind("s") == "double"  # ties are numbers
-    p.write_text("a\nx\n01\ny\n")
+    p.write_text("a\nx\n01\ny\n", newline="\n")
     t = il.read_table(p)
     assert t.height == 2 and t["a"][0] == 1 and np.isnan(t["a"][1])
 
 
 def test_read_table_nan_is_matlab_nan(tmp_path):
     p = tmp_path / "l.csv"
-    p.write_text("a,b\n1,\nNaN,2\n")
+    p.write_text("a,b\n1,\nNaN,2\n", newline="\n")
     t = il.read_table(p)
     bits = t["a"].view(np.uint64)[1], t["b"].view(np.uint64)[0]
     assert all(int(b) == 0xFFF8000000000000 for b in bits)
@@ -559,10 +559,10 @@ def test_read_table_nan_is_matlab_nan(tmp_path):
 
 def test_read_table_unsupported(tmp_path):
     p = tmp_path / "l.csv"
-    p.write_text("a,b\n2024-01-02,x\n2024-01-03,y\n")
+    p.write_text("a,b\n2024-01-02,x\n2024-01-03,y\n", newline="\n")
     with pytest.raises(NotImplementedError):
         il.read_table(p)
-    p.write_text("a,b,c\n1,2\n3,4,5\n")
+    p.write_text("a,b,c\n1,2\n3,4,5\n", newline="\n")
     with pytest.raises(NotImplementedError):
         il.read_table(p)
 

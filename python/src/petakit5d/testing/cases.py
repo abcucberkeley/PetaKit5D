@@ -495,6 +495,9 @@ def _cache_dir() -> Path:
     return _CACHE
 
 
+_ZARR_META = frozenset((".zarray", ".zattrs", ".zgroup", "zarr.json"))
+
+
 def tree_hash(root: str | os.PathLike, content: bool = True) -> str:
     """SHA-256 of a folder: relative paths with the bytes (or only the sizes) of every file"""
     root = Path(root)
@@ -507,7 +510,13 @@ def tree_hash(root: str | os.PathLike, content: bool = True) -> str:
         for fn in sorted(fns):
             p = d / fn
             rel = p.relative_to(root).as_posix()
-            if content:
+            if fn in _ZARR_META:
+                # cpp-zarr writes its JSON in text mode (CRLF on Windows), which MATLAB reads
+                # the same: hashed with LF line ends, as on Linux
+                b = p.read_bytes().replace(b"\r\n", b"\n")
+                v = hashlib.sha256(b).hexdigest() if content else str(len(b))
+                h.update(f"{rel}\0{v}\n".encode())
+            elif content:
                 from petakit5d.testing.compare import sha256_file
 
                 h.update(f"{rel}\0{sha256_file(p)}\n".encode())

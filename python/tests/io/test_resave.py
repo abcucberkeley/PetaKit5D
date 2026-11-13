@@ -609,7 +609,7 @@ def test_resave_on_local_pool_groups_within_the_workers_threads(tmp_path, capfd)
         pytest.skip("needs 2 CPUs")
     path, ims, names = write_dataset(tmp_path / "d")
     cfg = tmp_path / "config.json"
-    cfg.write_text('{"localWorkerNum": 2}')
+    cfg.write_text('{"localWorkerNum": 2}', newline="\n")
     resave.resave_zarr_dataset(
         path,
         batch_size=(4, 8, 8),

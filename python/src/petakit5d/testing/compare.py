@@ -2598,8 +2598,9 @@ class _Side:
             return self.d("meta", {})
         return self._get(
             "zmeta",
+            # cpp-zarr writes its JSON in text mode, with CRLF line ends on Windows
             lambda: {
-                k: self.masks.text(v.decode("utf-8", "replace"))
+                k: self.masks.text(v.decode("utf-8", "replace").replace("\r\n", "\n"))
                 for k, v in _zarr_parts(self.it.path)[0].items()
             },
         )

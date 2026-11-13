@@ -293,12 +293,12 @@ def py_write_files(out_path, im):
     savemat(out / "info.mat", s)
     savemat(out / "info_v6.mat", s)
     (out / "params.json").write_text(
-        json.dumps({"a": 1, "b": "x", "c": [1, 2]}, separators=(",", ":"))
+        json.dumps({"a": 1, "b": "x", "c": [1, 2]}, separators=(",", ":")), newline="\n"
     )
-    (out / "log.txt").write_text(f"line 1\nwork {out_path}\n")
+    (out / "log.txt").write_text(f"line 1\nwork {out_path}\n", newline="\n")
     (out / "empty").mkdir()
     flag = f"flag_{uuid.uuid4()}.txt"
-    (out / flag).write_text("")
+    (out / flag).write_text("", newline="\n")
     return ["sub/im.tif", "im.zarr", "info.mat", "info_v6.mat", "params.json", "log.txt", flag]
 
 
@@ -332,7 +332,7 @@ def make_data_tree(d):
         dimension_separator=".",
     )
     (d / "sub").mkdir()
-    (d / "sub" / "c.txt").write_text("c\n")
+    (d / "sub" / "c.txt").write_text("c\n", newline="\n")
 
 
 def make_mat(p):
@@ -424,7 +424,9 @@ CASES += [
 
 
 def make_csv(p):
-    p.write_text("a b,c-d,e\n1,2,3\n4,5,6\n")  # headers readtable must rename: it warns
+    p.write_text(
+        "a b,c-d,e\n1,2,3\n4,5,6\n", newline="\n"
+    )  # headers readtable must rename: it warns
 
 
 def py_warn_forms(csv):
@@ -652,14 +654,14 @@ def test_changed_files_rules(tmp_path):
     w = tmp_path
     (w / "in.tif").write_bytes(b"1")
     (w / "z.zarr").mkdir()
-    (w / "z.zarr" / ".zarray").write_text("{}")
-    (w / "gone.txt").write_text("x")
+    (w / "z.zarr" / ".zarray").write_text("{}", newline="\n")
+    (w / "gone.txt").write_text("x", newline="\n")
     before = snapshot(w)
     (w / "out").mkdir()
     (w / "out" / "a.tif").write_bytes(b"2")
     (w / "z.zarr" / "0.0.0").write_bytes(b"c")
     (w / "new.zarr").mkdir()
-    (w / "new.zarr" / ".zarray").write_text("{}")
+    (w / "new.zarr" / ".zarray").write_text("{}", newline="\n")
     (w / "emptydir").mkdir()
     (w / "gone.txt").unlink()
     (w / "in.tif").write_bytes(b"12")  # an input the call changed
@@ -692,7 +694,7 @@ def test_input_store_takes_concurrent_writers(tmp_path):
 
 def make_text_tree(d):
     for i in range(20):
-        (d / f"f{i}.txt").write_text(str(i) * 1000)
+        (d / f"f{i}.txt").write_text(str(i) * 1000, newline="\n")
 
 
 def fake_publish(store, case, outputs, status="ok", error=None, work="/scratch/pkpy_1/w/abc"):
@@ -716,7 +718,7 @@ def fake_publish(store, case, outputs, status="ok", error=None, work="/scratch/p
         "host": "node12",
         "oracle_commit": store.commit,
     }
-    (stage / "meta.json").write_text(json.dumps(meta))
+    (stage / "meta.json").write_text(json.dumps(meta), newline="\n")
     final = store.case_dir(key)
     final.parent.mkdir(parents=True, exist_ok=True)
     os.rename(stage, final)
@@ -765,12 +767,12 @@ def test_reference_from_store_then_manifest(tmp_path, monkeypatch):
         oracle.check(bad, tmp_path / "run3")
     doc = json.loads(mfile.read_text())
     doc["cases"]["fake_path"]["oracle"] = "0" * 40
-    mfile.write_text(json.dumps(doc))
+    mfile.write_text(json.dumps(doc), newline="\n")
     with pytest.raises(pytest.fail.Exception, match="reference made with oracle 0000000"):
         oracle.check(case, tmp_path / "run4")
     doc["cases"]["fake_path"]["oracle"] = commit
     doc["cases"]["fake_path"]["key"] = "f" * 64
-    mfile.write_text(json.dumps(doc))
+    mfile.write_text(json.dumps(doc), newline="\n")
     with pytest.raises(pytest.fail.Exception, match="changed since its reference was made"):
         oracle.check(case, tmp_path / "run5")
     assert oracle.check_manifests(tmp_path) == []
@@ -778,7 +780,7 @@ def test_reference_from_store_then_manifest(tmp_path, monkeypatch):
 
 def test_check_manifests_flags_other_commits(tmp_path):
     (tmp_path / "a.oracle.json").write_text(
-        json.dumps({"cases": {"c1": {"oracle": "1234567" * 6, "format": FORMAT}}})
+        json.dumps({"cases": {"c1": {"oracle": "1234567" * 6, "format": FORMAT}}}), newline="\n"
     )
     probs = oracle.check_manifests(tmp_path)
     assert len(probs) == 1 and "made with oracle 1234567" in probs[0]
