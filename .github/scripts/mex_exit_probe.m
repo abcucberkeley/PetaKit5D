@@ -12,7 +12,7 @@ function [] = mex_exit_probe(mode, mexDir)
 %     a line before and after it
 %   mode 'io': only the cpp-tiff and cpp-zarr mex files (writetiff, readtiff,
 %     writezarr, readzarr)
-%   mode 'scale': the repository's, closer to win10vm (8 cores): 8 threads per
+%   mode 'scale': the repository's, closer to the lab's Windows machine (8 cores): 8 threads per
 %     mex file, maxNumCompThreads 8 and a matrix product first (MATLAB's own
 %     threads), and the calls in 5 rounds. (MATLAB runs no mex files on
 %     thread-based workers, so backgroundPool cannot call them.)

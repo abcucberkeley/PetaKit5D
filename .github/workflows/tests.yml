@@ -257,7 +257,7 @@ jobs:
         with:
           command: addpath('.github/scripts'); mex_exit_probe('unload');
 
-      # closer to win10vm (8 cores): 8 threads per mex file, maxNumCompThreads 8,
+      # closer to the lab's Windows machine (8 cores): 8 threads per mex file, maxNumCompThreads 8,
       # the calls in 5 rounds
       - name: Probe, the committed mex files at scale
         id: scale
