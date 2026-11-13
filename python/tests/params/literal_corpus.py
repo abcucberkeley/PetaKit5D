@@ -61,12 +61,26 @@ EDGE_CASES = [
     "ceil(-0.5)", "round(2.5)", "round(-0.4)", "fix(-2.5)", "floor([1.5 -1.5])",
     "0/0", "Inf-Inf", "-NaN", "[NaN 1]+1", "Inf*0", "1/0", "-1/0", "[1 2]/0", "1/-0",
     "[1,2;3]", "[1 2", "{1 2", "'abc", "1i", "x", "zeros(1,2)(1)", "a.b",
+    # hexadecimal and binary literals (values up to 2^53: pkpy_f03_literals describes integers
+    # as doubles), their classes, suffixes and errors, and integer classes in expressions
+    "0x100", "0xFF", "0x0", "0x0001", "0x00FF", "0x000000FF", "0x10000", "0xFFFFFFFF",
+    "0x100000000", "0b101", "0b11111111", "0b100000000", "0b0000000000000001", "0X1F", "0B11",
+    "0xAbC", "0x1e3", "0xFFu16", "0x1u64", "0xFFs8", "0x80s8", "0x7Fs8", "0xFFs16", "0xFFFFs16",
+    "0x80000000s32", "0b10000000s8", "0xFFU8", "0xFFS8", "0b00000001u8", "0x100u8", "0x00FFu8",
+    "0b000000001u8", "0x0000000000000000001", "0xFFu7", "0xFFs", "0x", "0b", "0xG", "0b102",
+    "0x1.5", "0x1F.", "0xFF_FF", "0b1e3", "00x10", "0xF'", "-0x10", "-0x10s8", "-0x80s8",
+    "+0x10", "~0x10", "[0x10, 0x100]", "[0x100, 0x10]", "[1.5, 0x10]", "[0x10; 0x20]", "{0x10}",
+    "[0x10 -1]", "[0x41 'a']", "[true, 0x2]", "[single(2.5), 0x10]", "[int8(-5), 0xFF]",
+    "[0xFFs8, 300]", "[512, 0x100]", "[0x10 0x20]", "double(0x10)", "single(0x10)", "int8(0xFF)",
+    "uint16(0xFFs8)", "logical(0x10)", "char(0x41)", "[int8(1), uint16(2)]",
+    "[uint16(70000), int8(-3)]", "-int8(-128)", "~uint8([0 2])", "-[int8(1), int8(-128)]",
+    "0x10 + 1", "0x1F:0x22",
 ]  # fmt: skip
 
 STR2NUM_EXTRA = [
     "1 2 3", "1,2,3", "1;2", "true false", "true", "[1,2],[3]", "yes", "'abc'", "{1}",
     "{'a','b'}", "", " ", "1e-3", "[1024, 1024, 1024]", "-32.45", "Inf", "NaN", "false",
-    "[true, false]", "1 -2", "1 - 2",
+    "[true, false]", "1 -2", "1 - 2", "512 0x100", "0xFF, 0x100",
 ]  # fmt: skip
 
 

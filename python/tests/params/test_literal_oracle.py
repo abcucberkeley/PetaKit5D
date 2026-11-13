@@ -23,6 +23,8 @@ MANIFEST = Path(__file__).parent / "data" / "literal_oracle.json"
 # Valid MATLAB that the parser deliberately does not take (it raises LiteralError instead)
 UNSUPPORTED = {
     "1i": "complex numbers",
+    "0x10 + 1": "arithmetic on integer classes",
+    "0x1F:0x22": "colon ranges of integer classes",
 }
 
 

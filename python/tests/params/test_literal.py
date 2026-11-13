@@ -87,6 +87,78 @@ def test_classes_and_sizes():
     assert parse("''").shape == (0, 0)
 
 
+# MATLAB R2024b's answers (eval; probes of task X01, 2026-11-13). The literal corpus holds more,
+# up to 2^53 (test_literal_oracle.py); these include the 64-bit ends.
+@pytest.mark.parametrize(
+    ("text", "mclass", "data"),
+    [
+        ("0x100", "uint16", [256]),
+        ("0x0001", "uint16", [1]),  # the digits' bits decide the class, not the value
+        ("0x000000FF", "uint32", [255]),
+        ("0xFFFFFFFFFFFFFFFF", "uint64", [2**64 - 1]),
+        ("0x8000000000000000", "uint64", [2**63]),
+        ("0b" + "1" * 64, "uint64", [2**64 - 1]),
+        ("0b100000000", "uint16", [256]),
+        ("0X1F", "uint8", [31]),
+        ("0x1e3", "uint16", [483]),
+        ("0xFFFFFFFFFFFFFFFFu64", "uint64", [2**64 - 1]),
+        ("0x8000000000000000s64", "int64", [-(2**63)]),
+        ("0x7FFFFFFFFFFFFFFFs64", "int64", [2**63 - 1]),
+        ("0xFFFFFFFFFFFFFFFFs64", "int64", [-1]),
+        ("0xFFs16", "int16", [255]),
+        ("0xFFS8", "int8", [-1]),
+        ("0b1s64", "int64", [1]),
+        ("-0xFFFFFFFFFFFFFFFF", "uint64", [0]),
+        ("--0x10", "uint8", [0]),
+        ("-0x80s8", "int8", [127]),
+        ("int8(-0x1s16)", "int8", [-1]),
+        ("[uint64(5), 0xFFFFFFFFFFFFFFFF]", "uint64", [5, 2**64 - 1]),
+        ("[0xFFFFFFFFFFFFFFFF, int8(-1)]", "uint64", [2**64 - 1, 0]),
+        ("[int64(-1), uint64(18446744073709551615)]", "int64", [-1, 2**63 - 1]),
+        ("uint64(0xFFFFFFFFFFFFFFFFs64)", "uint64", [0]),
+        ("int64(0xFFFFFFFFFFFFFFFF)", "int64", [2**63 - 1]),
+        ("-int64(-9223372036854775808)", "int64", [2**63 - 1]),
+        ("[0x41 'a']", "char", ["A", "a"]),
+        ("~0x10", "logical", [False]),
+    ],
+)
+def test_hex_and_binary_literals(text, mclass, data):
+    v = parse(text)
+    assert (v.mclass, v.data) == (mclass, data)
+    assert same(parse(format_literal(v)), v)
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "0x10000000000000000",  # 17 digits: more bits than uint64 has
+        "0x00000000000000000",
+        "0b1" + "0" * 64,
+        "0x00FFu8",  # the digits' bits, not the value, must fit the suffix
+        "0x0080s8",
+        "0b000000001u8",
+        "0x1FFFFFFFFFFFFFFFFu64",
+        "0xFFu", "0xFFs", "0x1u128", "0xFFi8", "0x1us8", "0x", "0b", "0xG", "0b2", "0b102",
+        "0x1.5", "0x1p3", "0x1F.", "0x10i", "0xFF_FF", "00x10", "0b1e3", "1x10",
+    ],
+)  # fmt: skip
+def test_hex_and_binary_literals_matlab_rejects(text):
+    with pytest.raises(LiteralError):
+        parse(text)
+
+
+@pytest.mark.parametrize("text", ["0x10 + 1", "2 * 0x10", "0x10:0x12", "abs(0x10)"])
+def test_integer_arithmetic_is_not_supported(text):
+    """valid MATLAB (uint8 17, 32, [16 17 18], 16) that the parser refuses"""
+    with pytest.raises(LiteralError):
+        parse(text)
+
+
+def test_str2num_reads_hex_literals():
+    x, ok, _ = str2num("512, 0x100")
+    assert ok and (x.mclass, x.data) == ("uint16", [512, 256])
+
+
 def test_nan_has_matlabs_bits():
     assert describe(parse("NaN"))["d"] == ["fff8000000000000"]
     assert describe(parse("-NaN"))["d"] == ["7ff8000000000000"]

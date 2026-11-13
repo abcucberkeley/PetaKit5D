@@ -1,15 +1,18 @@
 """MATLAB literals: a safe parser (no eval) and a formatter.
 
 ``parse`` evaluates the subset of MATLAB expressions that parameter values use: numbers
-(``1e-3``, ``.5``, ``Inf``, ``NaN``, ``pi``, ``eps``), ``true``/``false``, char vectors
-(``'it''s'``), string scalars (``"a"``), matrices (``[1,2;3,4]``, ``[1 -2]``, newlines as row
-breaks, ``...`` continuations), cells (``{'a',{'b'}}``), colon ranges, unary and element-wise
-arithmetic, transposes, the constructors ``zeros ones true false Inf NaN cell char double
-single logical int8 ... uint64`` and ``sind cosd sqrt abs floor ceil round fix``.
-Concatenation follows MATLAB's class rules (char wins, then integer classes, single, double;
-logical only if all are logical; ``[]`` is dropped). Anything else (variables, other
-functions, struct fields, complex numbers) raises ``LiteralError``. MATLAB's answers for the
-corpus of literals are in tests/params/data/literal_oracle.json.
+(``1e-3``, ``.5``, ``Inf``, ``NaN``, ``pi``, ``eps``), hexadecimal and binary literals
+(``0x100``, ``0b101``, ``0xFFs8``; see ``_Parser.hex_binary``), ``true``/``false``, char
+vectors (``'it''s'``), string scalars (``"a"``), matrices (``[1,2;3,4]``, ``[1 -2]``, newlines
+as row breaks, ``...`` continuations), cells (``{'a',{'b'}}``), colon ranges, unary and
+element-wise arithmetic, transposes, the constructors ``zeros ones true false Inf NaN cell char
+double single logical int8 ... uint64`` and ``sind cosd sqrt abs floor ceil round fix``.
+Concatenation follows MATLAB's class rules (char wins, then the first integer class, single,
+double; logical only if all are logical; ``[]`` is dropped), converting to an integer class
+with rounding and saturation. Integer classes take unary minus (saturated), plus and not, and
+the casts; their arithmetic, colon ranges and math functions are not supported. Anything else
+(variables, other functions, struct fields, complex numbers) raises ``LiteralError``. MATLAB's
+answers for the corpus of literals are in tests/params/data/literal_oracle.json.
 
 ``str2num`` and ``matlab_eval`` reproduce what the mcc parser functions do with string
 arguments (``str2num(s)`` evaluates ``['[' s ']']`` and gives ``[]`` on any error).
@@ -19,6 +22,7 @@ arguments (``str2num(s)`` evaluates ``['[' s ']']`` and gives ``[]`` on any erro
 from __future__ import annotations
 
 import math
+import re
 import struct
 from typing import Any
 
@@ -274,6 +278,8 @@ class _Parser:
     def number(self) -> MArray:
         j = self.i
         s = self.s
+        if s[j] == "0" and self.peek(1) in ("x", "X", "b", "B"):
+            return self.hex_binary()
         while j < self.n and s[j].isdigit():
             j += 1
         if j < self.n and s[j] == "." and not s.startswith((".*", "./", ".^", ".'"), j):
@@ -295,6 +301,44 @@ class _Parser:
             raise self.err(f"bad number {s[self.i : j + 1]!r}")
         self.i = j
         return MArray.scalar("double", float(text))
+
+    def hex_binary(self) -> MArray:
+        """MATLAB's ``0x``/``0X`` and ``0b``/``0B`` literals, an integer scalar (R2024b, probed):
+        the class is the suffix's (``u8 u16 u32 u64 s8 s16 s32 s64``, in either case), else the
+        smallest unsigned class with as many bits as the digits have (4 per hexadecimal digit,
+        1 per binary digit: ``0x0001`` is uint16); more digit bits than the class has is an
+        error, also where the value would fit (``0x00FFu8``). A signed class takes the digits
+        as two's complement (``0xFFs8`` is -1, ``0xFFs16`` 255)."""
+        s, j0 = self.s, self.i
+        hexa = s[j0 + 1] in "xX"
+
+        def in_token(k: int) -> bool:
+            # the literal's token: letters, digits and dots (``0x1.5`` and ``0x1F.`` are errors
+            # in MATLAB), not the dot of an element-wise operator or transpose
+            if s[k] == ".":
+                return not s.startswith((".*", "./", ".^", ".'", ".\\"), k)
+            return s[k].isascii() and s[k].isalnum()
+
+        j = j0 + 2
+        while j < self.n and in_token(j):
+            j += 1
+        digits = "[0-9A-Fa-f]" if hexa else "[01]"
+        m = re.fullmatch(f"({digits}+)([suSU](?:8|16|32|64))?", s[j0 + 2 : j])
+        what = "hexadecimal" if hexa else "binary"
+        if m is None:
+            raise self.err(f"invalid {what} literal {s[j0:j]!r}")
+        bits = len(m.group(1)) * (4 if hexa else 1)
+        if m.group(2):
+            signed, width = m.group(2)[0] in "sS", int(m.group(2)[1:])
+        else:
+            signed, width = False, next((w for w in (8, 16, 32, 64) if bits <= w), 0)
+        if bits > width:
+            raise self.err(f"{what} literal {s[j0:j]!r} has too many digits for its class")
+        value = int(m.group(1), 16 if hexa else 2)
+        if signed and value >= 1 << (width - 1):
+            value -= 1 << width
+        self.i = j
+        return MArray.scalar(f"{'int' if signed else 'uint'}{width}", value)
 
     def char_literal(self) -> MArray:
         j = self.i + 1
@@ -445,20 +489,29 @@ def _finish(mclass: str, shape: tuple[int, ...], data: list[float]) -> MArray:
     return MArray(mclass, shape, data)
 
 
+def _saturate(x: int, mclass: str) -> int:
+    lo, hi = INT_RANGES[mclass]
+    return min(max(x, lo), hi)
+
+
 def _negate(v: Any) -> MArray:
     a = _as_array(v, "unary minus")
+    if a.mclass in INT_RANGES:  # saturated: -uint8(5) is 0, -int8(-128) is 127
+        return MArray(a.mclass, a.shape, [_saturate(-x, a.mclass) for x in a.data])
     return _finish(_result_class(a), a.shape, [-x for x in _numeric_data(a)])
 
 
 def _uplus(v: Any) -> MArray:
     a = _as_array(v, "unary plus")
-    if a.mclass in FLOAT_CLASSES:
+    if a.mclass in FLOAT_CLASSES or a.mclass in INT_RANGES:
         return a
     return _finish("double", a.shape, _numeric_data(a))
 
 
 def _not(v: Any) -> MArray:
     a = _as_array(v, "not")
+    if a.mclass in INT_RANGES:
+        return MArray("logical", a.shape, [x == 0 for x in a.data])
     data = _numeric_data(a)
     if any(math.isnan(x) for x in data):
         raise LiteralError("NaN cannot be converted to logical")
@@ -601,9 +654,11 @@ def _class_of_concat(arrays: list[MArray]) -> str:
 def _convert(a: MArray, mclass: str) -> list[Any]:
     if a.mclass == mclass:
         return a.data
+    if a.mclass in INT_RANGES and mclass in INT_RANGES:
+        return [_saturate(x, mclass) for x in a.data]
     if mclass == "char":
         out = []
-        for x in _numeric_data(a) if a.mclass != "char" else a.data:
+        for x in a.data if a.mclass == "char" or a.mclass in INT_RANGES else _numeric_data(a):
             if isinstance(x, str):
                 out.append(x)
                 continue
@@ -716,7 +771,7 @@ def _cast(name: str, args: list[Any]) -> Any:
     if isinstance(v, Cell | MString | dict):
         raise LiteralError(f"{name} of a {type(v).__name__} is not supported")
     if name == "logical":
-        data = _numeric_data(v)
+        data = v.data if v.mclass in INT_RANGES else _numeric_data(v)
         if any(math.isnan(x) for x in data):
             raise LiteralError("NaN cannot be converted to logical")
         return MArray("logical", v.shape, [x != 0 for x in data])
