@@ -3,8 +3,10 @@ function [] = mex_exit_probe(mode, mexDir)
 % ran (CI job exit-probe; not a test). It calls each of them once with an
 % input big enough to start its OpenMP threads, writes
 % probe-results/<mode>.txt with a line per call (and whether the mex is
-% locked), and returns, so that matlab -batch exits; the CI step's timeout
-% shows a MATLAB that does not exit by itself.
+% locked), and returns, so that matlab -batch exits. It then starts the exit
+% watcher (start_exit_watch), which records whether MATLAB exits by itself and,
+% on a hang, its threads' stacks; this probe calls only the PetaKit5D OpenMP
+% mex files, not the cpp-tiff or cpp-zarr ones, so a hang here is those alone.
 %   mode 'committed': the repository's mex files
 %   mode 'locked': the mex files in mexDir, built to lock themselves on
 %     Windows too (shadowing the repository's)
@@ -179,6 +181,12 @@ if strcmp(mode, 'unload')
     clear mex
     note('after clear mex %s, process threads %d', datestr(now, 'HH:MM:SS'), process_threads());
 end
+tEnd = posixtime(datetime('now', 'TimeZone', 'UTC'));
+note('open when the calls ended: %s', open_handles());
 note('done %s, process threads %d', datestr(now, 'HH:MM:SS'), process_threads());
+% watch whether MATLAB exits by itself, and dump the stacks on a hang, as the
+% suite probe does (this probe calls only the PetaKit5D OpenMP mex files, not
+% the cpp-tiff or cpp-zarr ones, so a hang here is the PetaKit5D mex alone)
+start_exit_watch(root, resultFn, tEnd);
 
 end

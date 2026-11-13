@@ -33,6 +33,7 @@ ip.addParameter('outputDir', '', @(x) ischar(x) || isstring(x));
 ip.addParameter('coverage', false, @islogical);
 ip.addParameter('verbosity', 'Concise', @(x) any(strcmpi(x, {'Terse', 'Concise', 'Detailed', 'Verbose'})));
 ip.addParameter('summaryTitle', '', @(x) ischar(x) || isstring(x));
+ip.addParameter('runnerPlugins', {}, @iscell);
 
 ip.parse(varargin{:});
 
@@ -77,6 +78,10 @@ runner = matlab.unittest.TestRunner.withTextOutput('OutputDetail', verbosity, 'L
 % the fallbacks from mex functions to MATLAB code the tests recorded
 fallbackPlugin = pktest.MexFallbackPlugin;
 runner.addPlugin(fallbackPlugin);
+% extra runner plugins (the CI exit probe uses this to shadow the committed mex)
+for i = 1 : numel(pr.runnerPlugins)
+    runner.addPlugin(pr.runnerPlugins{i});
+end
 
 if ~isempty(outputDir)
     if ~exist(outputDir, 'dir')

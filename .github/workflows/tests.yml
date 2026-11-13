@@ -157,26 +157,30 @@ jobs:
           path: test-results/
           if-no-files-found: ignore
 
-  # Diagnostic, not required: why does MATLAB on Windows not exit by itself
-  # after some of the PetaKit5D tests? (The test job stops MATLAB with finishCI
-  # because it hangs at exit there.) The test suite in parts, as the test job
-  # runs it but without finishCI: BlockMIPTest's first 2, 4, 8, 12, 16 and 19
-  # tests (each of its tests alone exits, the class does not), each test of the
-  # groups of StitchingTest that hung, and then all tests, in a MATLAB of its
-  # own that must exit by itself before its step's timeout (outcome failure,
-  # results written, if it doesn't).
-  # probe-results/suite_<part>.txt has the counts, the mex files in memory, what
-  # could hold MATLAB open when the tests ended (pools and their futures,
-  # timers, Java's non-daemon threads), the processes MATLAB started that still
-  # ran then, 30 s later if it is still alive, and when the step ended
-  # (child_processes.ps1, with their command lines), if it is alive 30 s after
-  # its tests ended the stacks of its threads (thread_stacks.ps1), the seconds
-  # from the end of the tests until MATLAB was gone (watch_matlab_exit.ps1, with
-  # its threads and CPU time while it is alive) and the step's outcome.
+  # Diagnostic, not required: the exit hang on Windows is a loader-lock deadlock
+  # when a MinGW mex file's static-libgomp OpenMP worker ends through
+  # FreeLibraryAndExitThread after MATLAB has unloaded the mex file. This tries
+  # two fixes on the committed OpenMP mex files, built here into RUNNER_TEMP
+  # from changed copies (build_variant_mex; the committed mexw64 are not
+  # touched, a variant's folder goes ahead of them on the path): lock, the
+  # mexLock that macOS uses, so the mex file is never unloaded; atexit, a
+  # mexAtExit handler that ends the OpenMP pool before unload so the workers end
+  # while the mex file is still loaded (it stays unloadable, unlike with the
+  # lock); and both. parallelWriteZarr and the other cpp-tiff/cpp-zarr mex are
+  # vendored and unchanged, so they may still hang.
+  # The reproducer under each variant: a PetaKit5D-only mex probe (mex_exit_probe
+  # calls the PetaKit5D OpenMP mex files, not the cpp-tiff/cpp-zarr ones) and two
+  # known suite hangs (BlockMIPTest's first 16 tests, one StitchingTest blend
+  # test), each a MATLAB of its own that must exit by itself before its timeout.
+  # probe-results/<part>.txt has the counts, the mex files in memory (and how
+  # many came from the variant folder), what could hold MATLAB open, the stacks
+  # of the threads if it is alive 30 s after the tests ended (thread_stacks.ps1,
+  # which name the mex files whose workers are left), the seconds until MATLAB
+  # was gone (watch_matlab_exit.ps1) and the step's outcome.
   exit-probe:
     name: Mex exit probe (R2024b on windows-2025)
     runs-on: windows-2025
-    # the step timeouts add up to about 115 minutes
+    # the step timeouts add up to about 85 minutes
     timeout-minutes: 155
     continue-on-error: true
     # the OpenMP threads of the mex files that take no thread count (their
@@ -229,421 +233,191 @@ jobs:
           $note
           Set-Content -Path probe-results/debugger.txt -Value $note
 
+      # the MinGW-builds project's release (github.com/niXman/mingw-builds-binaries), the toolchain of the
+      # committed mexw64; the release publishes no digest, so the archive's SHA-256 is pinned here
+      - name: Get MinGW-w64 12.2.0 (UCRT)
+        timeout-minutes: 5
+        shell: bash
+        run: |
+          url=https://github.com/niXman/mingw-builds-binaries/releases/download/12.2.0-rt_v10-rev2/x86_64-12.2.0-release-posix-seh-ucrt-rt_v10-rev2.7z
+          curl -sSL --fail -o "$RUNNER_TEMP/mingw.7z" "$url"
+          # from stdin: sha256sum puts a backslash before a hash whose file
+          # name has backslashes, as Windows paths do
+          sha=$(sha256sum < "$RUNNER_TEMP/mingw.7z" | cut -d' ' -f1)
+          echo "sha256 $sha"
+          if [ "$sha" != "dc1f299e8450c96f59f4b8f7c1290ebb78ee00ddb71f9ed4ca0efaf5462f8c4e" ]; then
+            echo "::error::unexpected MinGW archive"
+            exit 1
+          fi
+          7z x -y -o"$RUNNER_TEMP" "$RUNNER_TEMP/mingw.7z" > /dev/null
+          echo "MINGW_DIR=$RUNNER_TEMP\\mingw64" >> "$GITHUB_ENV"
+
+      # the PetaKit5D OpenMP mex files built with the lock change, to shadow the committed mex
+      - name: Build the lock mex variant
+        timeout-minutes: 8
+        continue-on-error: true
+        uses: matlab-actions/run-command@v3
+        with:
+          command: addpath('.github/scripts'); build_variant_mex(fullfile(getenv('RUNNER_TEMP'), 'variant_lock'), getenv('MINGW_DIR'), 'lock');
+
+      # the PetaKit5D OpenMP mex files built with the atexit change, to shadow the committed mex
+      - name: Build the atexit mex variant
+        timeout-minutes: 8
+        continue-on-error: true
+        uses: matlab-actions/run-command@v3
+        with:
+          command: addpath('.github/scripts'); build_variant_mex(fullfile(getenv('RUNNER_TEMP'), 'variant_atexit'), getenv('MINGW_DIR'), 'atexit');
+
+      # the PetaKit5D OpenMP mex files built with the both change, to shadow the committed mex
+      - name: Build the both mex variant
+        timeout-minutes: 8
+        continue-on-error: true
+        uses: matlab-actions/run-command@v3
+        with:
+          command: addpath('.github/scripts'); build_variant_mex(fullfile(getenv('RUNNER_TEMP'), 'variant_both'), getenv('MINGW_DIR'), 'both');
+
       # short temp paths for the suite steps, as in the test job
       - shell: bash
         run: |
           echo "TMP=${{ runner.temp }}" >> "$GITHUB_ENV"
           echo "TEMP=${{ runner.temp }}" >> "$GITHUB_ENV"
 
-      - name: Suite, BlockMIPTest_first2, MATLAB exits by itself
-        id: suite_BlockMIPTest_first2
-        timeout-minutes: 3
+      - name: Reproducer, PetaKit5D-only mex probe, committed mex
+        id: probe_ourmex_committed
+        timeout-minutes: 5
         continue-on-error: true
         uses: matlab-actions/run-command@v3
         with:
-          command: addpath('.github/scripts'); suite_exit_probe('BlockMIPTest_first2', 'BlockMIPTest/*', 2);
+          command: addpath('.github/scripts'); mex_exit_probe('ourmex_committed');
 
-      - name: After the suite step, BlockMIPTest_first2
+      - name: After the reproducer, PetaKit5D-only mex probe, committed mex
         if: always()
         shell: bash
-        run: bash .github/scripts/suite_step_done.sh BlockMIPTest_first2 ${{ steps.suite_BlockMIPTest_first2.outcome }}
+        run: bash .github/scripts/suite_step_done.sh ourmex_committed ${{ steps.probe_ourmex_committed.outcome }}
 
-      - name: Suite, BlockMIPTest_first4, MATLAB exits by itself
-        id: suite_BlockMIPTest_first4
-        timeout-minutes: 3
+      - name: Reproducer, PetaKit5D-only mex probe, lock mex
+        id: probe_ourmex_lock
+        timeout-minutes: 5
         continue-on-error: true
         uses: matlab-actions/run-command@v3
         with:
-          command: addpath('.github/scripts'); suite_exit_probe('BlockMIPTest_first4', 'BlockMIPTest/*', 4);
+          command: addpath('.github/scripts'); mex_exit_probe('ourmex_lock', fullfile(getenv('RUNNER_TEMP'), 'variant_lock'));
 
-      - name: After the suite step, BlockMIPTest_first4
+      - name: After the reproducer, PetaKit5D-only mex probe, lock mex
         if: always()
         shell: bash
-        run: bash .github/scripts/suite_step_done.sh BlockMIPTest_first4 ${{ steps.suite_BlockMIPTest_first4.outcome }}
+        run: bash .github/scripts/suite_step_done.sh ourmex_lock ${{ steps.probe_ourmex_lock.outcome }}
 
-      - name: Suite, BlockMIPTest_first8, MATLAB exits by itself
-        id: suite_BlockMIPTest_first8
-        timeout-minutes: 3
+      - name: Reproducer, PetaKit5D-only mex probe, atexit mex
+        id: probe_ourmex_atexit
+        timeout-minutes: 5
         continue-on-error: true
         uses: matlab-actions/run-command@v3
         with:
-          command: addpath('.github/scripts'); suite_exit_probe('BlockMIPTest_first8', 'BlockMIPTest/*', 8);
+          command: addpath('.github/scripts'); mex_exit_probe('ourmex_atexit', fullfile(getenv('RUNNER_TEMP'), 'variant_atexit'));
 
-      - name: After the suite step, BlockMIPTest_first8
+      - name: After the reproducer, PetaKit5D-only mex probe, atexit mex
         if: always()
         shell: bash
-        run: bash .github/scripts/suite_step_done.sh BlockMIPTest_first8 ${{ steps.suite_BlockMIPTest_first8.outcome }}
+        run: bash .github/scripts/suite_step_done.sh ourmex_atexit ${{ steps.probe_ourmex_atexit.outcome }}
 
-      - name: Suite, BlockMIPTest_first12, MATLAB exits by itself
-        id: suite_BlockMIPTest_first12
-        timeout-minutes: 3
+      - name: Reproducer, PetaKit5D-only mex probe, both mex
+        id: probe_ourmex_both
+        timeout-minutes: 5
         continue-on-error: true
         uses: matlab-actions/run-command@v3
         with:
-          command: addpath('.github/scripts'); suite_exit_probe('BlockMIPTest_first12', 'BlockMIPTest/*', 12);
+          command: addpath('.github/scripts'); mex_exit_probe('ourmex_both', fullfile(getenv('RUNNER_TEMP'), 'variant_both'));
 
-      - name: After the suite step, BlockMIPTest_first12
+      - name: After the reproducer, PetaKit5D-only mex probe, both mex
         if: always()
         shell: bash
-        run: bash .github/scripts/suite_step_done.sh BlockMIPTest_first12 ${{ steps.suite_BlockMIPTest_first12.outcome }}
+        run: bash .github/scripts/suite_step_done.sh ourmex_both ${{ steps.probe_ourmex_both.outcome }}
 
-      - name: Suite, BlockMIPTest_first16, MATLAB exits by itself
+      - name: Reproducer, BlockMIPTest first 16, committed mex
         id: suite_BlockMIPTest_first16
-        timeout-minutes: 3
+        timeout-minutes: 5
         continue-on-error: true
         uses: matlab-actions/run-command@v3
         with:
           command: addpath('.github/scripts'); suite_exit_probe('BlockMIPTest_first16', 'BlockMIPTest/*', 16);
 
-      - name: After the suite step, BlockMIPTest_first16
+      - name: After the reproducer, BlockMIPTest first 16, committed mex
         if: always()
         shell: bash
-        run: bash .github/scripts/suite_step_done.sh BlockMIPTest_first16 ${{ steps.suite_BlockMIPTest_first16.outcome }}
+        run: bash .github/scripts/suite_step_done.sh suite_BlockMIPTest_first16 ${{ steps.suite_BlockMIPTest_first16.outcome }}
 
-      - name: Suite, BlockMIPTest_first19, MATLAB exits by itself
-        id: suite_BlockMIPTest_first19
-        timeout-minutes: 3
+      - name: Reproducer, BlockMIPTest first 16, lock mex
+        id: suite_BlockMIPTest_first16_lock
+        timeout-minutes: 5
         continue-on-error: true
         uses: matlab-actions/run-command@v3
         with:
-          command: addpath('.github/scripts'); suite_exit_probe('BlockMIPTest_first19', 'BlockMIPTest/*', 19);
+          command: addpath('.github/scripts'); suite_exit_probe('BlockMIPTest_first16_lock', 'BlockMIPTest/*', 16, fullfile(getenv('RUNNER_TEMP'), 'variant_lock'));
 
-      - name: After the suite step, BlockMIPTest_first19
+      - name: After the reproducer, BlockMIPTest first 16, lock mex
         if: always()
         shell: bash
-        run: bash .github/scripts/suite_step_done.sh BlockMIPTest_first19 ${{ steps.suite_BlockMIPTest_first19.outcome }}
+        run: bash .github/scripts/suite_step_done.sh suite_BlockMIPTest_first16_lock ${{ steps.suite_BlockMIPTest_first16_lock.outcome }}
 
-      - name: Suite, StitchingTest_exactPositionsReproduceGroundTruth_none, MATLAB exits by itself
-        id: suite_StitchingTest_exactPositionsReproduceGroundTruth_none
-        timeout-minutes: 3
+      - name: Reproducer, BlockMIPTest first 16, atexit mex
+        id: suite_BlockMIPTest_first16_atexit
+        timeout-minutes: 5
         continue-on-error: true
         uses: matlab-actions/run-command@v3
         with:
-          command: addpath('.github/scripts'); suite_exit_probe('StitchingTest_exactPositionsReproduceGroundTruth_none', {'StitchingTest/exactPositionsReproduceGroundTruth?blendMethod=none?'});
+          command: addpath('.github/scripts'); suite_exit_probe('BlockMIPTest_first16_atexit', 'BlockMIPTest/*', 16, fullfile(getenv('RUNNER_TEMP'), 'variant_atexit'));
 
-      - name: After the suite step, StitchingTest_exactPositionsReproduceGroundTruth_none
+      - name: After the reproducer, BlockMIPTest first 16, atexit mex
         if: always()
         shell: bash
-        run: bash .github/scripts/suite_step_done.sh StitchingTest_exactPositionsReproduceGroundTruth_none ${{ steps.suite_StitchingTest_exactPositionsReproduceGroundTruth_none.outcome }}
+        run: bash .github/scripts/suite_step_done.sh suite_BlockMIPTest_first16_atexit ${{ steps.suite_BlockMIPTest_first16_atexit.outcome }}
 
-      - name: Suite, StitchingTest_exactPositionsReproduceGroundTruth_feather, MATLAB exits by itself
-        id: suite_StitchingTest_exactPositionsReproduceGroundTruth_feather
-        timeout-minutes: 3
+      - name: Reproducer, BlockMIPTest first 16, both mex
+        id: suite_BlockMIPTest_first16_both
+        timeout-minutes: 5
         continue-on-error: true
         uses: matlab-actions/run-command@v3
         with:
-          command: addpath('.github/scripts'); suite_exit_probe('StitchingTest_exactPositionsReproduceGroundTruth_feather', {'StitchingTest/exactPositionsReproduceGroundTruth?blendMethod=feather?'});
+          command: addpath('.github/scripts'); suite_exit_probe('BlockMIPTest_first16_both', 'BlockMIPTest/*', 16, fullfile(getenv('RUNNER_TEMP'), 'variant_both'));
 
-      - name: After the suite step, StitchingTest_exactPositionsReproduceGroundTruth_feather
+      - name: After the reproducer, BlockMIPTest first 16, both mex
         if: always()
         shell: bash
-        run: bash .github/scripts/suite_step_done.sh StitchingTest_exactPositionsReproduceGroundTruth_feather ${{ steps.suite_StitchingTest_exactPositionsReproduceGroundTruth_feather.outcome }}
+        run: bash .github/scripts/suite_step_done.sh suite_BlockMIPTest_first16_both ${{ steps.suite_BlockMIPTest_first16_both.outcome }}
 
-      - name: Suite, StitchingTest_exactPositionsReproduceGroundTruth_max, MATLAB exits by itself
-        id: suite_StitchingTest_exactPositionsReproduceGroundTruth_max
-        timeout-minutes: 3
+      - name: Reproducer, StitchingTest blend mean, committed mex
+        id: suite_StitchBlendMean
+        timeout-minutes: 5
         continue-on-error: true
         uses: matlab-actions/run-command@v3
         with:
-          command: addpath('.github/scripts'); suite_exit_probe('StitchingTest_exactPositionsReproduceGroundTruth_max', {'StitchingTest/exactPositionsReproduceGroundTruth?blendMethod=max?'});
+          command: addpath('.github/scripts'); suite_exit_probe('StitchBlendMean', {'StitchingTest/blendingWithoutTheMexGivesTheSameResult?tileBlendMethod=mean?'});
 
-      - name: After the suite step, StitchingTest_exactPositionsReproduceGroundTruth_max
+      - name: After the reproducer, StitchingTest blend mean, committed mex
         if: always()
         shell: bash
-        run: bash .github/scripts/suite_step_done.sh StitchingTest_exactPositionsReproduceGroundTruth_max ${{ steps.suite_StitchingTest_exactPositionsReproduceGroundTruth_max.outcome }}
+        run: bash .github/scripts/suite_step_done.sh suite_StitchBlendMean ${{ steps.suite_StitchBlendMean.outcome }}
 
-      - name: Suite, StitchingTest_exactPositionsReproduceGroundTruth_mean, MATLAB exits by itself
-        id: suite_StitchingTest_exactPositionsReproduceGroundTruth_mean
-        timeout-minutes: 3
+      - name: Reproducer, StitchingTest blend mean, both mex
+        id: suite_StitchBlendMean_both
+        timeout-minutes: 5
         continue-on-error: true
         uses: matlab-actions/run-command@v3
         with:
-          command: addpath('.github/scripts'); suite_exit_probe('StitchingTest_exactPositionsReproduceGroundTruth_mean', {'StitchingTest/exactPositionsReproduceGroundTruth?blendMethod=mean?'});
+          command: addpath('.github/scripts'); suite_exit_probe('StitchBlendMean_both', {'StitchingTest/blendingWithoutTheMexGivesTheSameResult?tileBlendMethod=mean?'}, [], fullfile(getenv('RUNNER_TEMP'), 'variant_both'));
 
-      - name: After the suite step, StitchingTest_exactPositionsReproduceGroundTruth_mean
+      - name: After the reproducer, StitchingTest blend mean, both mex
         if: always()
         shell: bash
-        run: bash .github/scripts/suite_step_done.sh StitchingTest_exactPositionsReproduceGroundTruth_mean ${{ steps.suite_StitchingTest_exactPositionsReproduceGroundTruth_mean.outcome }}
-
-      - name: Suite, StitchingTest_exactPositionsReproduceGroundTruth_median, MATLAB exits by itself
-        id: suite_StitchingTest_exactPositionsReproduceGroundTruth_median
-        timeout-minutes: 3
-        continue-on-error: true
-        uses: matlab-actions/run-command@v3
-        with:
-          command: addpath('.github/scripts'); suite_exit_probe('StitchingTest_exactPositionsReproduceGroundTruth_median', {'StitchingTest/exactPositionsReproduceGroundTruth?blendMethod=median?'});
-
-      - name: After the suite step, StitchingTest_exactPositionsReproduceGroundTruth_median
-        if: always()
-        shell: bash
-        run: bash .github/scripts/suite_step_done.sh StitchingTest_exactPositionsReproduceGroundTruth_median ${{ steps.suite_StitchingTest_exactPositionsReproduceGroundTruth_median.outcome }}
-
-      - name: Suite, StitchingTest_featherBlendingOfUint8Tiles, MATLAB exits by itself
-        id: suite_StitchingTest_featherBlendingOfUint8Tiles
-        timeout-minutes: 3
-        continue-on-error: true
-        uses: matlab-actions/run-command@v3
-        with:
-          command: addpath('.github/scripts'); suite_exit_probe('StitchingTest_featherBlendingOfUint8Tiles', {'StitchingTest/featherBlendingOfUint8Tiles'});
-
-      - name: After the suite step, StitchingTest_featherBlendingOfUint8Tiles
-        if: always()
-        shell: bash
-        run: bash .github/scripts/suite_step_done.sh StitchingTest_featherBlendingOfUint8Tiles ${{ steps.suite_StitchingTest_featherBlendingOfUint8Tiles.outcome }}
-
-      - name: Suite, StitchingTest_featherBlendingOfUint8TilesInABatchThatIsNotFull, MATLAB exits by itself
-        id: suite_StitchingTest_featherBlendingOfUint8TilesInABatchThatIsNotFull
-        timeout-minutes: 3
-        continue-on-error: true
-        uses: matlab-actions/run-command@v3
-        with:
-          command: addpath('.github/scripts'); suite_exit_probe('StitchingTest_featherBlendingOfUint8TilesInABatchThatIsNotFull', {'StitchingTest/featherBlendingOfUint8TilesInABatchThatIsNotFull'});
-
-      - name: After the suite step, StitchingTest_featherBlendingOfUint8TilesInABatchThatIsNotFull
-        if: always()
-        shell: bash
-        run: bash .github/scripts/suite_step_done.sh StitchingTest_featherBlendingOfUint8TilesInABatchThatIsNotFull ${{ steps.suite_StitchingTest_featherBlendingOfUint8TilesInABatchThatIsNotFull.outcome }}
-
-      - name: Suite, StitchingTest_mipIsMadeBeforePublishing, MATLAB exits by itself
-        id: suite_StitchingTest_mipIsMadeBeforePublishing
-        timeout-minutes: 3
-        continue-on-error: true
-        uses: matlab-actions/run-command@v3
-        with:
-          command: addpath('.github/scripts'); suite_exit_probe('StitchingTest_mipIsMadeBeforePublishing', {'StitchingTest/mipIsMadeBeforePublishing'});
-
-      - name: After the suite step, StitchingTest_mipIsMadeBeforePublishing
-        if: always()
-        shell: bash
-        run: bash .github/scripts/suite_step_done.sh StitchingTest_mipIsMadeBeforePublishing ${{ steps.suite_StitchingTest_mipIsMadeBeforePublishing.outcome }}
-
-      - name: Suite, StitchingTest_mipIsMergedFromBlendingTasks, MATLAB exits by itself
-        id: suite_StitchingTest_mipIsMergedFromBlendingTasks
-        timeout-minutes: 3
-        continue-on-error: true
-        uses: matlab-actions/run-command@v3
-        with:
-          command: addpath('.github/scripts'); suite_exit_probe('StitchingTest_mipIsMergedFromBlendingTasks', {'StitchingTest/mipIsMergedFromBlendingTasks'});
-
-      - name: After the suite step, StitchingTest_mipIsMergedFromBlendingTasks
-        if: always()
-        shell: bash
-        run: bash .github/scripts/suite_step_done.sh StitchingTest_mipIsMergedFromBlendingTasks ${{ steps.suite_StitchingTest_mipIsMergedFromBlendingTasks.outcome }}
-
-      - name: Suite, StitchingTest_resultOfAnotherRunIsKept, MATLAB exits by itself
-        id: suite_StitchingTest_resultOfAnotherRunIsKept
-        timeout-minutes: 3
-        continue-on-error: true
-        uses: matlab-actions/run-command@v3
-        with:
-          command: addpath('.github/scripts'); suite_exit_probe('StitchingTest_resultOfAnotherRunIsKept', {'StitchingTest/resultOfAnotherRunIsKept'});
-
-      - name: After the suite step, StitchingTest_resultOfAnotherRunIsKept
-        if: always()
-        shell: bash
-        run: bash .github/scripts/suite_step_done.sh StitchingTest_resultOfAnotherRunIsKept ${{ steps.suite_StitchingTest_resultOfAnotherRunIsKept.outcome }}
-
-      - name: Suite, StitchingTest_largeVolumeMIPsAreMadeBeforePublishing, MATLAB exits by itself
-        id: suite_StitchingTest_largeVolumeMIPsAreMadeBeforePublishing
-        timeout-minutes: 3
-        continue-on-error: true
-        uses: matlab-actions/run-command@v3
-        with:
-          command: addpath('.github/scripts'); suite_exit_probe('StitchingTest_largeVolumeMIPsAreMadeBeforePublishing', {'StitchingTest/largeVolumeMIPsAreMadeBeforePublishing'});
-
-      - name: After the suite step, StitchingTest_largeVolumeMIPsAreMadeBeforePublishing
-        if: always()
-        shell: bash
-        run: bash .github/scripts/suite_step_done.sh StitchingTest_largeVolumeMIPsAreMadeBeforePublishing ${{ steps.suite_StitchingTest_largeVolumeMIPsAreMadeBeforePublishing.outcome }}
-
-      - name: Suite, StitchingTest_separateBlendWritesEachTileOnTheCanvas, MATLAB exits by itself
-        id: suite_StitchingTest_separateBlendWritesEachTileOnTheCanvas
-        timeout-minutes: 3
-        continue-on-error: true
-        uses: matlab-actions/run-command@v3
-        with:
-          command: addpath('.github/scripts'); suite_exit_probe('StitchingTest_separateBlendWritesEachTileOnTheCanvas', {'StitchingTest/separateBlendWritesEachTileOnTheCanvas'});
-
-      - name: After the suite step, StitchingTest_separateBlendWritesEachTileOnTheCanvas
-        if: always()
-        shell: bash
-        run: bash .github/scripts/suite_step_done.sh StitchingTest_separateBlendWritesEachTileOnTheCanvas ${{ steps.suite_StitchingTest_separateBlendWritesEachTileOnTheCanvas.outcome }}
-
-      - name: Suite, StitchingTest_processFunctionFileHasANameOfItsOwn, MATLAB exits by itself
-        id: suite_StitchingTest_processFunctionFileHasANameOfItsOwn
-        timeout-minutes: 3
-        continue-on-error: true
-        uses: matlab-actions/run-command@v3
-        with:
-          command: addpath('.github/scripts'); suite_exit_probe('StitchingTest_processFunctionFileHasANameOfItsOwn', {'StitchingTest/processFunctionFileHasANameOfItsOwn'});
-
-      - name: After the suite step, StitchingTest_processFunctionFileHasANameOfItsOwn
-        if: always()
-        shell: bash
-        run: bash .github/scripts/suite_step_done.sh StitchingTest_processFunctionFileHasANameOfItsOwn ${{ steps.suite_StitchingTest_processFunctionFileHasANameOfItsOwn.outcome }}
-
-      - name: Suite, StitchingTest_masterDoesNotStitchAVolumeWhoseJobRuns, MATLAB exits by itself
-        id: suite_StitchingTest_masterDoesNotStitchAVolumeWhoseJobRuns
-        timeout-minutes: 3
-        continue-on-error: true
-        uses: matlab-actions/run-command@v3
-        with:
-          command: addpath('.github/scripts'); suite_exit_probe('StitchingTest_masterDoesNotStitchAVolumeWhoseJobRuns', {'StitchingTest/masterDoesNotStitchAVolumeWhoseJobRuns'});
-
-      - name: After the suite step, StitchingTest_masterDoesNotStitchAVolumeWhoseJobRuns
-        if: always()
-        shell: bash
-        run: bash .github/scripts/suite_step_done.sh StitchingTest_masterDoesNotStitchAVolumeWhoseJobRuns ${{ steps.suite_StitchingTest_masterDoesNotStitchAVolumeWhoseJobRuns.outcome }}
-
-      - name: Suite, StitchingTest_primaryChannelRegistrationAppliesToOtherChannels, MATLAB exits by itself
-        id: suite_StitchingTest_primaryChannelRegistrationAppliesToOtherChannels
-        timeout-minutes: 3
-        continue-on-error: true
-        uses: matlab-actions/run-command@v3
-        with:
-          command: addpath('.github/scripts'); suite_exit_probe('StitchingTest_primaryChannelRegistrationAppliesToOtherChannels', {'StitchingTest/primaryChannelRegistrationAppliesToOtherChannels'});
-
-      - name: After the suite step, StitchingTest_primaryChannelRegistrationAppliesToOtherChannels
-        if: always()
-        shell: bash
-        run: bash .github/scripts/suite_step_done.sh StitchingTest_primaryChannelRegistrationAppliesToOtherChannels ${{ steps.suite_StitchingTest_primaryChannelRegistrationAppliesToOtherChannels.outcome }}
-
-      - name: Suite, StitchingTest_largeFileStitching, MATLAB exits by itself
-        id: suite_StitchingTest_largeFileStitching
-        timeout-minutes: 3
-        continue-on-error: true
-        uses: matlab-actions/run-command@v3
-        with:
-          command: addpath('.github/scripts'); suite_exit_probe('StitchingTest_largeFileStitching', {'StitchingTest/largeFileStitching'});
-
-      - name: After the suite step, StitchingTest_largeFileStitching
-        if: always()
-        shell: bash
-        run: bash .github/scripts/suite_step_done.sh StitchingTest_largeFileStitching ${{ steps.suite_StitchingTest_largeFileStitching.outcome }}
-
-      - name: Suite, StitchingTest_largeFileRegistrationRecoversPerturbedTilePosition, MATLAB exits by itself
-        id: suite_StitchingTest_largeFileRegistrationRecoversPerturbedTilePosition
-        timeout-minutes: 3
-        continue-on-error: true
-        uses: matlab-actions/run-command@v3
-        with:
-          command: addpath('.github/scripts'); suite_exit_probe('StitchingTest_largeFileRegistrationRecoversPerturbedTilePosition', {'StitchingTest/largeFileRegistrationRecoversPerturbedTilePosition'});
-
-      - name: After the suite step, StitchingTest_largeFileRegistrationRecoversPerturbedTilePosition
-        if: always()
-        shell: bash
-        run: bash .github/scripts/suite_step_done.sh StitchingTest_largeFileRegistrationRecoversPerturbedTilePosition ${{ steps.suite_StitchingTest_largeFileRegistrationRecoversPerturbedTilePosition.outcome }}
-
-      - name: Suite, StitchingTest_largeFileWithoutRegistration, MATLAB exits by itself
-        id: suite_StitchingTest_largeFileWithoutRegistration
-        timeout-minutes: 3
-        continue-on-error: true
-        uses: matlab-actions/run-command@v3
-        with:
-          command: addpath('.github/scripts'); suite_exit_probe('StitchingTest_largeFileWithoutRegistration', {'StitchingTest/largeFileWithoutRegistration'});
-
-      - name: After the suite step, StitchingTest_largeFileWithoutRegistration
-        if: always()
-        shell: bash
-        run: bash .github/scripts/suite_step_done.sh StitchingTest_largeFileWithoutRegistration ${{ steps.suite_StitchingTest_largeFileWithoutRegistration.outcome }}
-
-      - name: Suite, StitchingTest_noneBlendTakesHalfOverlapFromEachTile, MATLAB exits by itself
-        id: suite_StitchingTest_noneBlendTakesHalfOverlapFromEachTile
-        timeout-minutes: 3
-        continue-on-error: true
-        uses: matlab-actions/run-command@v3
-        with:
-          command: addpath('.github/scripts'); suite_exit_probe('StitchingTest_noneBlendTakesHalfOverlapFromEachTile', {'StitchingTest/noneBlendTakesHalfOverlapFromEachTile'});
-
-      - name: After the suite step, StitchingTest_noneBlendTakesHalfOverlapFromEachTile
-        if: always()
-        shell: bash
-        run: bash .github/scripts/suite_step_done.sh StitchingTest_noneBlendTakesHalfOverlapFromEachTile ${{ steps.suite_StitchingTest_noneBlendTakesHalfOverlapFromEachTile.outcome }}
-
-      - name: Suite, StitchingTest_blendingSplitsTheOverlapInQuarters, MATLAB exits by itself
-        id: suite_StitchingTest_blendingSplitsTheOverlapInQuarters
-        timeout-minutes: 3
-        continue-on-error: true
-        uses: matlab-actions/run-command@v3
-        with:
-          command: addpath('.github/scripts'); suite_exit_probe('StitchingTest_blendingSplitsTheOverlapInQuarters', {'StitchingTest/blendingSplitsTheOverlapInQuarters'});
-
-      - name: After the suite step, StitchingTest_blendingSplitsTheOverlapInQuarters
-        if: always()
-        shell: bash
-        run: bash .github/scripts/suite_step_done.sh StitchingTest_blendingSplitsTheOverlapInQuarters ${{ steps.suite_StitchingTest_blendingSplitsTheOverlapInQuarters.outcome }}
-
-      - name: Suite, StitchingTest_blendingWithoutTheMexGivesTheSameResult_none, MATLAB exits by itself
-        id: suite_StitchingTest_blendingWithoutTheMexGivesTheSameResult_none
-        timeout-minutes: 3
-        continue-on-error: true
-        uses: matlab-actions/run-command@v3
-        with:
-          command: addpath('.github/scripts'); suite_exit_probe('StitchingTest_blendingWithoutTheMexGivesTheSameResult_none', {'StitchingTest/blendingWithoutTheMexGivesTheSameResult?tileBlendMethod=none?'});
-
-      - name: After the suite step, StitchingTest_blendingWithoutTheMexGivesTheSameResult_none
-        if: always()
-        shell: bash
-        run: bash .github/scripts/suite_step_done.sh StitchingTest_blendingWithoutTheMexGivesTheSameResult_none ${{ steps.suite_StitchingTest_blendingWithoutTheMexGivesTheSameResult_none.outcome }}
-
-      - name: Suite, StitchingTest_blendingWithoutTheMexGivesTheSameResult_max, MATLAB exits by itself
-        id: suite_StitchingTest_blendingWithoutTheMexGivesTheSameResult_max
-        timeout-minutes: 3
-        continue-on-error: true
-        uses: matlab-actions/run-command@v3
-        with:
-          command: addpath('.github/scripts'); suite_exit_probe('StitchingTest_blendingWithoutTheMexGivesTheSameResult_max', {'StitchingTest/blendingWithoutTheMexGivesTheSameResult?tileBlendMethod=max?'});
-
-      - name: After the suite step, StitchingTest_blendingWithoutTheMexGivesTheSameResult_max
-        if: always()
-        shell: bash
-        run: bash .github/scripts/suite_step_done.sh StitchingTest_blendingWithoutTheMexGivesTheSameResult_max ${{ steps.suite_StitchingTest_blendingWithoutTheMexGivesTheSameResult_max.outcome }}
-
-      - name: Suite, StitchingTest_blendingWithoutTheMexGivesTheSameResult_mean, MATLAB exits by itself
-        id: suite_StitchingTest_blendingWithoutTheMexGivesTheSameResult_mean
-        timeout-minutes: 3
-        continue-on-error: true
-        uses: matlab-actions/run-command@v3
-        with:
-          command: addpath('.github/scripts'); suite_exit_probe('StitchingTest_blendingWithoutTheMexGivesTheSameResult_mean', {'StitchingTest/blendingWithoutTheMexGivesTheSameResult?tileBlendMethod=mean?'});
-
-      - name: After the suite step, StitchingTest_blendingWithoutTheMexGivesTheSameResult_mean
-        if: always()
-        shell: bash
-        run: bash .github/scripts/suite_step_done.sh StitchingTest_blendingWithoutTheMexGivesTheSameResult_mean ${{ steps.suite_StitchingTest_blendingWithoutTheMexGivesTheSameResult_mean.outcome }}
-
-      - name: Suite, StitchingTest_blendingWithoutTheMexGivesTheSameResult_median, MATLAB exits by itself
-        id: suite_StitchingTest_blendingWithoutTheMexGivesTheSameResult_median
-        timeout-minutes: 3
-        continue-on-error: true
-        uses: matlab-actions/run-command@v3
-        with:
-          command: addpath('.github/scripts'); suite_exit_probe('StitchingTest_blendingWithoutTheMexGivesTheSameResult_median', {'StitchingTest/blendingWithoutTheMexGivesTheSameResult?tileBlendMethod=median?'});
-
-      - name: After the suite step, StitchingTest_blendingWithoutTheMexGivesTheSameResult_median
-        if: always()
-        shell: bash
-        run: bash .github/scripts/suite_step_done.sh StitchingTest_blendingWithoutTheMexGivesTheSameResult_median ${{ steps.suite_StitchingTest_blendingWithoutTheMexGivesTheSameResult_median.outcome }}
-
-      - name: Suite, the whole suite, MATLAB exits by itself
-        id: suite_all
-        timeout-minutes: 22
-        continue-on-error: true
-        uses: matlab-actions/run-command@v3
-        with:
-          command: addpath('.github/scripts'); suite_exit_probe('all');
-
-      - name: After the suite step, the whole suite
-        if: always()
-        shell: bash
-        run: bash .github/scripts/suite_step_done.sh all ${{ steps.suite_all.outcome }}
+        run: bash .github/scripts/suite_step_done.sh suite_StitchBlendMean_both ${{ steps.suite_StitchBlendMean_both.outcome }}
 
       - name: Summary
         if: always()
         shell: bash
         run: |
           for f in probe-results/*.txt; do echo "== $f"; cat "$f"; done
-          echo "suite parts: see the 'step ended ..., outcome' and 'MATLAB gone ... s after the tests ended' lines of probe-results/suite_*.txt"
+          echo "per variant: see 'mex in memory from the variant folder', the 'step ended ..., outcome', the 'MATLAB gone ... s' and the '== stacks of MATLAB ...' lines of each probe-results/*.txt"
 
       - if: always()
         uses: actions/upload-artifact@v7
