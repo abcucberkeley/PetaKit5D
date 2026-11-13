@@ -10,6 +10,14 @@
    "finished": false,
    "fate": [],
    "methods": {
+    "debugErrorDoesNotDependOnTheThreadCount": {
+     "pins": "the error metric of the debug output (the mean squared difference of the result and the data, 89000 or more voxels) was MATLAB's mean, which changes in the last bits with the number of threads (here in 2 to 4 of the 4 iterations); now the same at 2, 4 and 24 threads as at 1: decon_lucy_function, and decon_lucy_omw_function with the MATLAB loop and with the FFT mex in pieces",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
     "deconDoesNotDependOnTheThreadCount": {
      "pins": "with MATLAB's sums the acceleration factor changed in the last bits with the thread count, and with it most voxels of large volumes (a demo tile: 40% of them); at this size a change of a few ulps rarely reaches a voxel, so lambdaDoesNotDependOn... checks the sums; also with the MATLAB FFT steps",
      "tags": [

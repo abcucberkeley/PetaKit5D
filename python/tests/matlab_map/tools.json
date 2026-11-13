@@ -179,6 +179,89 @@
     }
    }
   },
+  "FixedOrderStatTest": {
+   "file": "tests/tools/FixedOrderStatTest.m",
+   "pins": "fixed_order_stat: MATLAB's sum, mean, var and std of all elements in its order at one thread, bit for bit (also -0), at any number of threads (here 1, 2, 4 and 24). MATLAB splits sums of 89000 or more elements among its threads, so its own results there change in the last bits with the thread count (in 778 to 821 of 1476 cases of a probe on Linux at 2 to 24 threads); below 89000 elements, and f...",
+   "category": "data",
+   "owner": "N05",
+   "phase": 1,
+   "finished": false,
+   "fate": [],
+   "methods": {
+    "callersAskForMatlabsExpressions": {
+     "pins": "the registration's NCC, the crop of its region and decon's debug error metric take MATLAB's expressions of before (mean(T(:), 'double'), ..., var(A(:), 1)) from fixed_order_stat: a spy records its calls and returns MATLAB's own value; at one thread their results are the same as with fixed_order_stat (on Linux, where its order is MATLAB's)",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "isMatlabsAtOneThread": {
+     "pins": "around MATLAB's switches (44 elements: lanes, 89000: blocks of 4096), with a last block that isn't full and a last group of four lanes that isn't either, and a volume: from 89000 elements the same at every thread count, on Linux MATLAB's order at one thread (as found for R2024b); below, MATLAB's own sums, which don't depend on the thread count on Linux and macOS (as measured)",
+     "tags": [
+      "Unit"
+     ],
+     "cases": [
+      "dataClass=single,statCall=sum,dataKind=wideRange",
+      "dataClass=single,statCall=sum,dataKind=offset",
+      "dataClass=single,statCall=sumDouble,dataKind=wideRange",
+      "dataClass=single,statCall=sumDouble,dataKind=offset",
+      "dataClass=single,statCall=mean,dataKind=wideRange",
+      "dataClass=single,statCall=mean,dataKind=offset",
+      "dataClass=single,statCall=meanDouble,dataKind=wideRange",
+      "dataClass=single,statCall=meanDouble,dataKind=offset",
+      "dataClass=single,statCall=var,dataKind=wideRange",
+      "dataClass=single,statCall=var,dataKind=offset",
+      "dataClass=single,statCall=var0,dataKind=wideRange",
+      "dataClass=single,statCall=var0,dataKind=offset",
+      "dataClass=single,statCall=var1,dataKind=wideRange",
+      "dataClass=single,statCall=var1,dataKind=offset",
+      "dataClass=single,statCall=std,dataKind=wideRange",
+      "dataClass=single,statCall=std,dataKind=offset",
+      "dataClass=single,statCall=std1,dataKind=wideRange",
+      "dataClass=single,statCall=std1,dataKind=offset",
+      "dataClass=double,statCall=sum,dataKind=wideRange",
+      "dataClass=double,statCall=sum,dataKind=offset",
+      "dataClass=double,statCall=sumDouble,dataKind=wideRange",
+      "dataClass=double,statCall=sumDouble,dataKind=offset",
+      "dataClass=double,statCall=mean,dataKind=wideRange",
+      "dataClass=double,statCall=mean,dataKind=offset",
+      "dataClass=double,statCall=meanDouble,dataKind=wideRange",
+      "dataClass=double,statCall=meanDouble,dataKind=offset",
+      "dataClass=double,statCall=var,dataKind=wideRange",
+      "dataClass=double,statCall=var,dataKind=offset",
+      "dataClass=double,statCall=var0,dataKind=wideRange",
+      "dataClass=double,statCall=var0,dataKind=offset",
+      "dataClass=double,statCall=var1,dataKind=wideRange",
+      "dataClass=double,statCall=var1,dataKind=offset",
+      "dataClass=double,statCall=std,dataKind=wideRange",
+      "dataClass=double,statCall=std,dataKind=offset",
+      "dataClass=double,statCall=std1,dataKind=wideRange",
+      "dataClass=double,statCall=std1,dataKind=offset"
+     ],
+     "fate": []
+    },
+    "otherArraysAndOptionsAreMatlabs": {
+     "pins": "integer (exact in double), logical and complex data, options it doesn't take: MATLAB's own function of x(:)",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "signedZerosAndNonFiniteValues": {
+     "pins": "a sum of -0s is -0 (also the mean), a +0 among them +0; NaN and Inf give NaN or Inf as in MATLAB (above 89000 elements)",
+     "tags": [
+      "Unit"
+     ],
+     "cases": [
+      "dataClass=single",
+      "dataClass=double"
+     ],
+     "fate": []
+    }
+   }
+  },
   "MIPTest": {
    "file": "tests/tools/MIPTest.m",
    "pins": "maximum intensity projections: XR_MIP_wrapper (tiff, zarr and large zarr paths), saveMIP_tiff, and max_pooling_3d; and min_bbox_3d",
@@ -222,6 +305,14 @@
     },
     "inputBboxProjectsTheCroppedRegion": {
      "pins": "input bbox projects the cropped region",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "largeZarrInputBboxThatEndsBeforeTheImageEnd": {
+     "pins": "(XR_MIP_zarr) the last batches of a box whose size isn't a multiple of the batch size ran to the end of the image instead of the box, so their MIPs went past the end of the MIP slabs and writezarr raised \"Upper bound is invalid\"",
      "tags": [
       "Integration"
      ],
@@ -338,7 +429,10 @@
      ],
      "fate": []
     }
-   }
+   },
+   "reopened": [
+    "largeZarrInputBboxThatEndsBeforeTheImageEnd"
+   ]
   },
   "ParallelRsyncWrapperTest": {
    "file": "tests/tools/ParallelRsyncWrapperTest.m",

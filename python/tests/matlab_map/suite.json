@@ -1,14 +1,14 @@
 {
- "oracle_commit": "d67e1b7",
+ "oracle_commit": "c49fc95",
  "matlab": "24.2.0.2863752 (R2024b) Update 5",
  "computer": "GLNXA64",
- "n_all": 1600,
- "n_default": 1590,
+ "n_all": 1657,
+ "n_default": 1647,
  "folders": {
   "analysis": 69,
   "cluster": 11,
   "crop": 69,
-  "decon": 374,
+  "decon": 375,
   "demo_data": 4,
   "deskew_rotate": 219,
   "flatfield": 8,
@@ -17,9 +17,9 @@
   "io": 86,
   "isolation": 23,
   "pipeline": 31,
-  "platform": 44,
+  "platform": 46,
   "point_detection": 6,
-  "stitch": 165,
-  "tools": 183
+  "stitch": 178,
+  "tools": 224
  }
 }

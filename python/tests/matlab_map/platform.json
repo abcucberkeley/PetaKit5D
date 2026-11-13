@@ -298,6 +298,33 @@
     }
    }
   },
+  "MexLockTest": {
+   "file": "tests/platform/MexLockTest.m",
+   "pins": "on macOS, MATLAB crashed on exit (segmentation fault, exit status 137) after a session had called a mex file built with GCC's OpenMP: its runtime leaves thread exit handlers in the mex file, which MATLAB unloads at exit before the threads end. A mex file that uses OpenMP keeps itself loaded (mexLock, on macOS) from its first call; omw_backprojector_mex, min_bbox_3d_mex, replace_nan_with_value a...",
+   "category": "matlab_only",
+   "owner": "E04",
+   "phase": 1,
+   "finished": false,
+   "fate": [],
+   "methods": {
+    "macOSMexFilesStayLoadedAfterTheirFirstCall": {
+     "pins": "the binaries of those sources are locked after a call. A call without inputs is enough: the lock comes before the input checks, whose error the test ignores.",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "openMPMexSourcesLockThemselves": {
+     "pins": "(reads the sources, so it runs on any OS)",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    }
+   }
+  },
   "MexPackagingTest": {
    "file": "tests/platform/MexPackagingTest.m",
    "pins": "the ARM macOS binaries must only load libraries that every Mac has or that ship next to them, the Linux cpp-tiff/cpp-zarr binaries must use their own codecs, and the other Linux mex files must not name folders of the machine they were built on. This reads the Mach-O load commands and ELF dynamic sections, so it runs on any OS and doesn't depend on what is installed on the runner.",

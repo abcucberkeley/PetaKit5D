@@ -1,0 +1,22 @@
+{
+  "task": "S03",
+  "classes": {
+    "StitchGeometryTest": {
+      "finished": true,
+      "methods": {
+        "cuboidsThatOnlyTouchDoNotOverlap": [
+          "pytest:tests/stitch/test_geometry.py::test_cuboids_that_only_touch_do_not_overlap",
+          "oracle:tests/stitch/test_geometry.py::cuboids.n1.*"
+        ],
+        "majorTileCoverBoxHoldsEveryUncoveredPiece": [
+          "pytest:tests/stitch/test_geometry.py::test_major_tile_cover_box_holds_every_uncovered_piece",
+          "oracle:tests/stitch/test_geometry.py::cover.*"
+        ],
+        "axisOrderMustBeAPermutationOfXYZ": [
+          "pytest:tests/stitch/test_geometry.py::test_axis_order_must_be_a_permutation_of_xyz",
+          "oracle:tests/stitch/test_geometry.py::axisorder.error.*"
+        ]
+      }
+    }
+  }
+}

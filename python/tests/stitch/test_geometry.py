@@ -167,7 +167,7 @@ def make_layout(seed: int, *, uniform: bool = False) -> dict:
 # the frame's geometry: MATLAB's lines and the port
 # ------------------------------------------------------------------------------------------
 
-# the lines of XR_stitching_frame_zarr_dev_v1.m (d67e1b7) from 'if IOScan' (240-242), 256-351,
+# the lines of XR_stitching_frame_zarr_dev_v1.m (c49fc95) from 'if IOScan' (240-242), 256-351,
 # 410-420 (the 2D check on the input tiles), 470-473, 529-545, 568-585 (a secondary: the
 # primary's overlaps and shifts), 588-692, and of stitch_process_block_info.m 49-84; the
 # registration's xyz_shift is xyz + shiftVox .* [xp, yp, zp]
@@ -188,6 +188,10 @@ if IOScan
 	DSR = false;
 end
 axisOrder = strrep(axisOrder, ' ', '');
+pattern = '^(-?x,?-?y,?-?z|-?y,?-?x,?-?z|-?z,?-?y,?-?x|-?x,?-?z,?-?y|-?z,?-?x,?-?y|-?y,?-?z,?-?x)$';
+if isempty(regexpi(axisOrder, pattern, 'once'))
+	error('XR_stitching_frame_zarr_dev_v1:axisOrder', 'The axisOrder is not right');
+end
 order_sign_mat = zeros(2, 3); % first row: order for permute; second row: sign
 axisOrder_pure = strrep(strrep(axisOrder, ',', ''), '-', '');
 xyz_str = 'xyz';
@@ -207,6 +211,10 @@ if ~isempty(tileIdx)
 elseif isempty(tileIdx)
 	tileIdx = zeros(nF, 4);
 end
+flippedTile_sorted = flippedTile;
+if numel(flippedTile) == nF
+	flippedTile_sorted = flippedTile(sinds);
+end
 tileNum = [numel(unique(tileIdx(:,1))), numel(unique(tileIdx(:,2))), numel(unique(tileIdx(:,3)))];
 if isempty(tileNum)
 	tileNum = zeros(1, nF);
@@ -225,9 +233,10 @@ if ~isempty(resampleFactor)
 end
 switch resample_type
 	case 'given'
-		xf = resampleFactor(1);
-		yf = resampleFactor(2);
-		zf = resampleFactor(3);
+		xyzf = resampleFactor(data_order_mat);
+		xf = xyzf(1);
+		yf = xyzf(2);
+		zf = xyzf(3);
 	case 'method_1'  %% old one
 		zf = cot(abs(theta));
 		yf = 1;
@@ -252,7 +261,7 @@ zp = xyPixelSize * zf;
 imSizes = imSizes0(sinds, :);
 for f = 1 : nF
 	imSize = imSizes(f, :);
-	if imSize(data_order_mat == 3) > 1
+	if imSize(data_order_mat(3)) > 1
 		stitch2D = false;
 		break;
 	end
@@ -261,7 +270,8 @@ end
 if all(imSizes(:, data_order_mat(3)) == 1)
 	stitch2D = true;
 end
-xyz = stitch_process_coordinates(xyz, imSizes, flippedTile, order_sign_mat, data_order_mat, ...
+xyz = stitch_process_coordinates(xyz, imSizes, flippedTile_sorted, order_sign_mat, ...
+	data_order_mat, ...
 	xp, yp, zp, theta, IOScan, objectiveScan, DS, DSR);
 [~, data_order_reverse_mat] = sort(data_order_mat);
 cuboids = [xyz, xyz + (imSizes(:, data_order_mat) - 1) .* [xp, yp, zp]];
@@ -343,7 +353,8 @@ xyz_shift_orig = xyz_shift;
 origin = min(xyz_shift_orig, [], 1) - pad_size;
 xyz_shift = xyz_shift_orig - origin;
 if isPrimaryCh
-	dxyz = max(xyz_shift_orig + imSizes(:, data_order_mat) .* [xp, yp, zp]) + pad_size - origin;
+	dxyz = max(xyz_shift_orig + imSizes(:, data_order_mat) .* [xp, yp, zp], [], 1) ...
+		+ pad_size - origin;
 	vxyz = round(dxyz ./ [xp, yp, zp] + 2);
 	nvSize = vxyz(data_order_reverse_mat);
 	if any(stitchMIP) || max(imSizes(:, data_order_mat(3)) == 1)
@@ -367,7 +378,7 @@ if ~isempty(outBbox)
 end
 int_xyz_shift = round(xyz_shift ./ [xp, yp, zp]);
 batchSize = min(nvSize, batchSize);
-batchSize = min(median(imSizes) * 2, batchSize);
+batchSize = min(median(imSizes, 1) * 2, batchSize);
 blockSize = min(batchSize, blockSize);
 batchSize = ceil(batchSize ./ blockSize) .* blockSize;
 bSubSz = ceil(nvSize ./ batchSize);
@@ -466,7 +477,7 @@ def py_frame(p: dict) -> dict:
         ds=p["DS"],
         dsr=p["DSR"],
         resample_type=p["resampleType"],
-        resample_factor=None if p["resampleFactor"] is None else ax.from_xyz(p["resampleFactor"]),
+        resample_factor=None if p["resampleFactor"] is None else ax.from_yxz(p["resampleFactor"]),
         stitch_2d=g.stitch_2d_from_input_sizes(sizes[sinds], data_order),
     )
     om0 = lay.overlap_matrix.copy()
@@ -586,7 +597,8 @@ args = {'ResultPath', [rdir 'vol.zarr'], 'axisOrder', p.axisOrder, 'dataOrder', 
 	'flippedTile', p.flippedTile, 'dz', p.dz, 'xyPixelSize', p.xyPixelSize, ...
 	'SkewAngle', p.SkewAngle, ...
 	'objectiveScan', p.objectiveScan, 'IOScan', p.IOScan, 'DS', p.DS, 'DSR', p.DSR, ...
-	'resampleType', p.resampleType, 'BlendMethod', p.BlendMethod, 'halfOrder', p.halfOrder, ...
+	'resampleType', p.resampleType, 'resampleFactor', p.resampleFactor, ...
+	'BlendMethod', p.BlendMethod, 'halfOrder', p.halfOrder, ...
 	'overlapType', p.overlapType, 'xcorrShift', p.xcorrShift, 'stitchPadSize', p.stitchPadSize, ...
 	'outBbox', p.outBbox, 'batchSize', p.batchSize, 'blockSize', p.blockSize, ...
 	'tileIdx', p.tileIdx, ...
@@ -674,6 +686,108 @@ FRAMERUN_CASES = [
         marks=("slow",),
     )
     for seed in range(16)
+]
+
+
+def _run_base(coords, sizes, **kw) -> dict:
+    """a layout for the stitching function: DSR tiles, no registration, defaults otherwise"""
+    n = len(coords)
+    p = {
+        "coordinates": np.asarray(coords, dtype=np.float64),
+        "imSizes": np.asarray(sizes, dtype=np.float64)
+        .reshape(-1, 3)
+        .repeat(n if np.size(sizes) == 3 else 1, axis=0),
+        "tileIdx": None,
+        "flippedTile": None,
+        "axisOrder": "x,y,z",
+        "dataOrder": "y,x,z",
+        "xyPixelSize": 0.108,
+        "dz": 0.3,
+        "SkewAngle": 32.45,
+        "objectiveScan": False,
+        "IOScan": False,
+        "DS": False,
+        "DSR": True,
+        "resampleType": "isotropic",
+        "resampleFactor": None,
+        "xcorrShift": False,
+        "shiftVox": np.zeros((n, 3)),
+        "isPrimaryCh": True,
+        "BlendMethod": "none",
+        "overlapType": "",
+        "halfOrder": [3, 2, 1],
+        "stitchPadSize": [2, 2, 2],
+        "stitchMIP": None,
+        "outBbox": None,
+        "batchSize": [500, 500, 500],
+        "blockSize": [500, 500, 500],
+        "pImSz": None,
+        "pOverlap": None,
+    }
+    p.update(kw)
+    return p
+
+
+# the fixes of c49fc95 that the random layouts rarely reach, on the stitching function itself
+_REVERSED = np.array([[1, 0, 0, 0], [0, 0, 0, 0]], dtype=np.float64)
+FRAMERUN_FIXES = {
+    # flippedTile sorted with the tiles (a listing against the tileIdx order), DSR and skewed
+    "flip_dsr": lambda: _run_base(
+        [[1.5, 0, 0], [0, 0, 0]], [20, 24, 10], tileIdx=_REVERSED,
+        flippedTile=np.array([[1.0], [0.0]]),
+    ),
+    "flip_skewed": lambda: _run_base(
+        [[0.9, 0, 0], [0, 0, 0]], [20, 24, 16], tileIdx=_REVERSED,
+        flippedTile=np.array([[1.0], [0.0]]), DSR=False,
+    ),
+    # 'z,x,y' tiles of one x plane are 3D (the first 2D check read the size at z's place)
+    "zxy_one_x_plane": lambda: _run_base(
+        [[0, 0, 0], [0, 1.5, 0]], [8, 1, 20], dataOrder="z,x,y",
+        tileIdx=np.array([[0, 0, 0, 0], [0, 1, 0, 0]], dtype=np.float64),
+    ),
+    # one tile: the canvas is the tile plus two voxels
+    "single_tile": lambda: _run_base([[0, 0, 0]], [24, 28, 10]),
+    # a resample factor in the tiles' axis order ([y x z]), y and x differing
+    "resample_dsr": lambda: _run_base(
+        [[0, 0, 0], [1.5, 0, 0]], [20, 24, 10], resampleFactor=[2.0, 1.0, 1.0],
+        tileIdx=np.array([[0, 0, 0, 0], [1, 0, 0, 0]], dtype=np.float64),
+    ),
+}  # fmt: skip
+
+FRAMERUN_CASES += [
+    Case(
+        f"framerun.fix.{name}",
+        code=FRAMERUN_CODE,
+        args=[In("p")],
+        python=py_framerun,
+        inputs={"p": Value(make)},
+        files=False,
+        marks=("slow",),
+    )
+    for name, make in FRAMERUN_FIXES.items()
+]
+
+# the frame's axisOrder check (before the tiles are read: these tiles don't exist)
+AXIS_ORDER_CODE = r"""
+fns = {[work 't1.tif'], [work 't2.tif']};
+evalc(['XR_stitching_frame_zarr_dev_v1(fns, [0, 0, 0; 1, 0, 0], ''axisOrder'', in{1}, ', ...
+	'''parseCluster'', false, ''ResultPath'', [work ''res/out.zarr''])']);
+out = {};
+"""
+AXIS_ORDER_CASES = [
+    Case(
+        f"axisorder.error.{k}",
+        code=AXIS_ORDER_CODE,
+        args=[ao],
+        nargout=0,
+        python=lambda ao: g.prepare_layout(
+            np.array([[0.0, 0, 0], [1.0, 0, 0]]), np.ones((2, 3)), axis_order=ao
+        ),
+        expect_error="XR_stitching_frame_zarr_dev_v1:axisOrder",
+        py_error=g.GeometryError,
+        files=False,
+    )
+    for k, ao in enumerate(("x,x,z", "a,b,c", "x,y", "x,y,z,y", "x,y;z"))
 ]
 
 
@@ -1011,7 +1125,7 @@ def _estimate_py(p):
         ds=p["DS"],
         dsr=p["DSR"],
         resample_type=p["resampleType"],
-        resample_factor=None if p["resampleFactor"] is None else ax.from_xyz(p["resampleFactor"]),
+        resample_factor=None if p["resampleFactor"] is None else ax.from_yxz(p["resampleFactor"]),
         input_bbox=_box(p["InputBbox"]),
         tile_out_bbox=_box(p["tileOutBbox"]),
         xcorr_shift=p["xcorrShift"],
@@ -1094,6 +1208,7 @@ HALF_CASES = [_half_case(s) for s in range(150)]
     + COVER_CASES
     + FRAME_CASES
     + FRAMERUN_CASES
+    + AXIS_ORDER_CASES
 )
 def test_matlab(case, tmp_path):
     oracle.check(case, tmp_path)
@@ -1271,7 +1386,6 @@ def test_axis_and_data_orders():
     assert g.parse_axis_order("x,y,z") == ((0, 1, 2), (1.0, 1.0, 1.0))
     assert g.parse_axis_order(" -x, y,z") == ((0, 1, 2), (-1.0, 1.0, 1.0))
     assert g.parse_axis_order("y,-x,z") == ((1, 0, 2), (-1.0, 1.0, 1.0))
-    # MATLAB's pattern check never raises: any 3 letters are sorted
     assert g.parse_axis_order("z,x,y") == ((1, 2, 0), (1.0, 1.0, 1.0))
     with pytest.raises(g.GeometryError):
         g.parse_axis_order("x,y")
@@ -1280,6 +1394,20 @@ def test_axis_and_data_orders():
         py = ax.axis_string_from_matlab(m)
         assert g.data_order_axes_to_matlab(g.parse_data_order(py)) == tuple(_dom(m))
         assert g.data_order_axes_from_matlab(_dom(m)) == g.parse_data_order(py)
+
+
+def test_axis_order_must_be_a_permutation_of_xyz():
+    # StitchGeometryTest/axisOrderMustBeAPermutationOfXYZ: the check never raised, and 'z,x,y'
+    # was missing from its pattern
+    for ao in ("x,x,z", "a,b,c", "x,y", "x,y,z,y", "x,y;z"):
+        with pytest.raises(g.GeometryError) as e:
+            g.check_axis_order(ao)
+        assert e.value.identifier == "XR_stitching_frame_zarr_dev_v1:axisOrder"
+        with pytest.raises(g.GeometryError):
+            g.prepare_layout(np.zeros((2, 3)), np.ones((2, 3)), axis_order=ao)
+    for ao in ("x,y,z", "y,x,z", "z,y,x", "x,z,y", "z,x,y", "y,z,x", "-x,y,z", "x,-y,z",
+               "-z,x,-y", "yxz", " y, x, z", "X,Y,Z"):  # fmt: skip
+        g.check_axis_order(ao)
 
 
 def test_half_order_conversion():
@@ -1303,30 +1431,33 @@ def test_region_round_trip():
     assert np.array_equal(g.region_to_matlab(b), m)
 
 
-def test_first_2d_check_reads_the_dimension_at_zs_position():
-    # MATLAB's imSize(data_order_mat == 3): z for 'y,x,z', another axis for 'y,z,x'
-    sizes = np.array([[1.0, 30.0, 40.0]])  # (z, y, x)
-    assert g.stitch_2d_from_input_sizes(sizes, "z,y,x")
-    # MATLAB 'y,z,x' (ours 'x,y,z'): data_order_mat [3 1 2], position 1, MATLAB's y
-    sizes_xyz = np.array([[40.0, 30.0, 1.0]])  # axes x, y, z
-    assert not g.stitch_2d_from_input_sizes(sizes_xyz, ax.axis_string_from_matlab("y,z,x"))
-    assert g.stitch_2d_from_input_sizes(np.array([[40.0, 1.0, 9.0]]), "x,y,z")
+def test_first_2d_check_reads_zs_dimension():
+    # StitchingTest/zxyTilesOfOneXPlaneAreNot2D: the check read the size at z's place in the
+    # data order, another axis for 'y,z,x' and 'z,x,y'
+    assert g.stitch_2d_from_input_sizes(np.array([[1.0, 30.0, 40.0]]), "z,y,x")
+    # MATLAB 'y,z,x' is ours 'x,y,z': z is the last axis
+    zyx = ax.axis_string_from_matlab("y,z,x")
+    assert g.stitch_2d_from_input_sizes(np.array([[40.0, 30.0, 1.0]]), zyx)
+    assert not g.stitch_2d_from_input_sizes(np.array([[40.0, 1.0, 9.0]]), zyx)
+    # MATLAB 'z,x,y' (ours 'y,z,x'): one x plane is not 2D
+    zxy = ax.axis_string_from_matlab("z,x,y")
+    assert not g.stitch_2d_from_input_sizes(np.array([[30.0, 8.0, 1.0]]), zxy)
+    assert g.stitch_2d_from_input_sizes(np.array([[30.0, 1.0, 9.0]]), zxy)
 
 
-def test_single_tile_canvas_takes_the_largest_extent():
-    # max of a single tile's 1 x 3 row is a scalar in MATLAB: every axis gets the largest
-    # physical extent (the size estimate takes max(.., [], 1), per axis)
+def test_single_tile_canvas_is_the_tile_plus_two_voxels():
+    # StitchingTest/singleTileCanvasIsTheTilePlusTwoVoxels: max and median of one tile took the
+    # row (its largest extent on every axis); now per axis, as the size estimate
     stage = np.zeros((1, 3))
     sizes = np.array([[10.0, 30.0, 40.0]])
     lay = g.prepare_layout(stage, sizes, dsr=True, resample_type="isotropic")
     pl = g.place_tiles(lay, xcorr_shift=False)
-    assert tuple(pl.nv_size) == (42, 42, 42)
+    assert tuple(pl.nv_size) == (12, 32, 42)
     est = g.stitch_volume_size_estimate(stage, sizes[0], dsr=True, resample_type="isotropic")[0]
     assert tuple(est) == (12, 32, 42)
-    # the batches use the median of the row: twice 30
-    assert tuple(pl.batch_size) == (42, 42, 42)
-    bs, bl, sub, nb = g.batch_grid([42, 42, 42], sizes, (20, 20, 20), (20, 20, 20))
-    assert tuple(bs) == (20, 20, 20) and nb == 27
+    assert tuple(pl.batch_size) == (12, 32, 42)
+    bs, bl, sub, nb = g.batch_grid([12, 32, 42], sizes, (20, 20, 20), (20, 20, 20))
+    assert tuple(bs) == (12, 20, 20) and tuple(sub) == (1, 2, 3) and nb == 6
 
 
 def test_batch_grid_rounds_batches_up_to_blocks():
@@ -1338,15 +1469,30 @@ def test_batch_grid_rounds_batches_up_to_blocks():
     assert tuple(sub) == (1, 2, 3) and nb == 6
 
 
-def test_flipped_tiles_keep_their_listed_order():
-    # the frame sorts the tiles by tileIdx but not flippedTile (MATLAB's quirk, kept)
+def test_flipped_tiles_stay_with_their_tiles_when_sorted():
+    # StitchingTest/flippedTilesStayWithTheirTilesWhenSorted: the flags stayed in the listed
+    # order when the tiles were sorted by tileIdx
     stage = np.array([[3.0, 0, 0], [0.0, 0, 0]])
     sizes = np.tile([20.0, 30.0, 30.0], (2, 1))
     tidx = np.array([[1, 0, 0, 0], [0, 0, 0, 0]], dtype=np.float64)
-    a = g.prepare_layout(stage, sizes, tile_idx=tidx, flipped_tile=[1, 0], dsr=False)
-    b = g.prepare_layout(stage[::-1], sizes, tile_idx=tidx[::-1], flipped_tile=[0, 1], dsr=False)
-    assert list(a.sinds) == [1, 0] and list(b.sinds) == [0, 1]
-    assert not np.array_equal(a.xyz, b.xyz)
+    for dsr in (True, False):
+        a = g.prepare_layout(stage, sizes, tile_idx=tidx, flipped_tile=[1, 0], dsr=dsr)
+        b = g.prepare_layout(stage[::-1], sizes, tile_idx=tidx[::-1], flipped_tile=[0, 1], dsr=dsr)
+        assert list(a.sinds) == [1, 0] and list(b.sinds) == [0, 1]
+        assert np.array_equal(a.xyz, b.xyz)
+        # the flag still matters
+        c = g.prepare_layout(stage, sizes, tile_idx=tidx, flipped_tile=[0, 1], dsr=dsr)
+        assert not np.array_equal(a.xyz, c.xyz)
+
+
+def test_resample_factor_is_in_the_tiles_axis_order():
+    # StitchingTest/resampleFactorIsInTheTilesAxisOrder: the voxel sizes took the factor as
+    # x, y, z while the tiles are resampled with it in their axis order
+    sp = g.stitch_pixel_sizes(0.1, 0.2, 30, resample_factor=(1, 2, 1), dsr=True)
+    assert (sp.xf, sp.yf, sp.zf) == (1.0, 2.0, 1.0)
+    # (tiles named 'y,z,x': y is axis 0, z axis 1, x axis 2)
+    sp = g.stitch_pixel_sizes(0.1, 0.2, 30, resample_factor=(2, 3, 1), dsr=True, data_order="y,z,x")
+    assert (sp.xf, sp.yf, sp.zf) == (1.0, 2.0, 3.0)
 
 
 def test_cuboid_overlaps():
@@ -1355,10 +1501,10 @@ def test_cuboid_overlaps():
         [[1, 1, 1, 3, 3, 3], [2, 0, 0, 4, 2, 2], [3, 0, 0, 4, 1, 1]], dtype=np.float64
     )
     is_ov, ov = g.check_cuboids_overlaps(c, others)
-    # a shared face is no overlap with the regions, an overlap without them
+    # a shared face is no overlap, with one output too
     assert list(is_ov) == [True, False, False]
     assert np.array_equal(ov[0], [1, 1, 1, 2, 2, 2]) and not ov[1].any()
-    assert list(g.check_cuboids_overlaps(c, others, regions=False)[0]) == [True, True, False]
+    assert list(g.check_cuboids_overlaps(c, others, regions=False)[0]) == [True, False, False]
     # 2D: only the first two axes count for a single point
     flat = np.array([[1, 1, 2, 3, 3, 2]], dtype=np.float64)
     assert g.check_cuboids_overlaps(c, flat, True)[0][0]
@@ -1366,6 +1512,43 @@ def test_cuboid_overlaps():
     assert g.check_cuboids_overlaps(c, np.array([[5.0, 5, 5, 6, 6, 6]]))[1] is None
     with pytest.raises(g.GeometryError, match="n X 6"):
         g.check_cuboids_overlaps(np.zeros((1, 5)), c)
+
+
+def test_cuboids_that_only_touch_do_not_overlap():
+    # StitchGeometryTest/cuboidsThatOnlyTouchDoNotOverlap
+    c = np.array([0, 0, 0, 1, 1, 1], dtype=np.float64)
+    js = np.array(
+        [[1, 0, 0, 2, 1, 1], [0, 1, 0, 1, 2, 1], [0, 0, 1, 1, 1, 2], [1, 1, 0, 2, 2, 1],
+         [1, 1, 1, 2, 2, 2], [0.5, 0.5, 0.5, 2, 2, 2], [1.5, 0, 0, 2, 1, 1]], dtype=np.float64,
+    )  # fmt: skip
+    expected = [False] * 5 + [True, False]
+    assert list(g.check_cuboids_overlaps(c, js, False, regions=False)[0]) == expected
+    is_ov, regions = g.check_cuboids_overlaps(c, js, False)
+    assert list(is_ov) == expected
+    assert regions[5].tolist() == [0.5, 0.5, 0.5, 1, 1, 1]
+    c = np.array([0, 0, 0, 1, 1, 0], dtype=np.float64)
+    js = np.array([[0.5, 0.5, 0, 2, 2, 0], [1, 0, 0, 2, 1, 0]], dtype=np.float64)
+    assert list(g.check_cuboids_overlaps(c, js, True)[0]) == [True, False]
+    assert list(g.check_cuboids_overlaps(c, js, False)[0]) == [False, False]
+
+
+def test_major_tile_cover_box_holds_every_uncovered_piece():
+    # StitchGeometryTest/majorTileCoverBoxHoldsEveryUncoveredPiece (MATLAB boxes there)
+    def cover(rows):
+        c, unc = g.check_major_tile_cover(bbox.boxes_from_matlab(np.array(rows)), [False, True])
+        m = bbox.boxes_to_matlab(unc)
+        m[c] = 0
+        return c.tolist(), m[0].tolist()
+
+    assert cover([[1, 1, 1, 10, 10, 10], [1, 4, 1, 10, 7, 10]]) == (
+        [False, True],
+        [1, 1, 1, 10, 10, 10],
+    )
+    assert cover([[1, 1, 1, 10, 10, 10], [1, 4, 1, 10, 10, 10]]) == (
+        [False, True],
+        [1, 1, 1, 10, 4, 10],
+    )
+    assert cover([[2, 2, 2, 9, 9, 9], [1, 1, 1, 10, 10, 10]]) == ([True, True], [0] * 6)
 
 
 def test_cover_of_a_minor_tile():
@@ -1401,7 +1584,7 @@ def test_pixel_sizes():
     assert sk.zp == pytest.approx(0.108 * math.sin(math.radians(32.45)) * 0.5 / 0.108)
     # IO scans are never DSR
     assert not g.stitch_pixel_sizes(io_scan=True, dsr=True).dsr
-    # resample factors (z, y, x) are MATLAB's [x y z]
+    # resample factors in the tiles' axis order: (z, y, x)
     rs = g.stitch_pixel_sizes(0.1, 0.2, 30, resample_factor=(3, 2, 1), dsr=True)
     assert (rs.xf, rs.yf, rs.zf) == (1.0, 2.0, 3.0)
     with pytest.raises(g.GeometryError):

@@ -962,8 +962,7 @@ def mip_block(
                 )
                 out = _fit(out, shape)
             if any(b > n for b, n in zip(ob1, slab_shapes[p], strict=True)):
-                # (MATLAB: a box beyond the slab, as for the last batch of an input box that
-                # doesn't end at the image's end, fails in writezarr)
+                # (MATLAB: a box beyond the slab fails in writezarr)
                 raise MipError("Upper bound is invalid", "zarr:inputError")
             write_zarr(out, mip_fullpaths[p], bbox=(*ob0, *ob1), create=False)
         # (one batch in memory: MATLAB holds the last one while it reads the next)
@@ -1116,14 +1115,16 @@ def mip_zarr(
     ]
     b_sub = [math.ceil(n / b) for n, b in zip(in_size, batch, strict=True)]
     num_batch = b_sub[0] * b_sub[1] * b_sub[2]
-    # batches in MATLAB's order (y fastest, then x, then z); the last ends at the image's end
+    # batches in MATLAB's order (y fastest, then x, then z); the last ends at the end of the
+    # input box, within the image (MATLAB since 11c7d0b; before, at the image's end)
+    end = [min(start[q] + in_size[q], im_size[q]) for q in range(3)]
     batch_boxes = []
     for iz in range(b_sub[0]):
         for ix in range(b_sub[2]):
             for iy in range(b_sub[1]):
                 s = [iz * batch[0] + start[0], iy * batch[1] + start[1], ix * batch[2] + start[2]]
                 batch_boxes.append(
-                    [int(v) for v in s] + [int(min(s[q] + batch[q], im_size[q])) for q in range(3)]
+                    [int(v) for v in s] + [int(min(s[q] + batch[q], end[q])) for q in range(3)]
                 )
 
     tmp_paths = [f"{mip_path}/{fsname}_{a}_{uuid}.zarr" for a in _LABELS]

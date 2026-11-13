@@ -22,22 +22,23 @@ Conventions (``docs/conventions.md``):
   ``data_order_axes``, is the array axis of x, y and z (``(2, 1, 0)`` for ``'z,y,x'``; MATLAB's
   ``data_order_mat`` is the dimension of each, ``[2 1 3]``).
 - Sizes (tile sizes, the stitched size) and per-axis vectors (batch, block and pad sizes, flags)
-  are ``(z, y, x)`` in the order of the arrays' axes; ``resample_factor`` is ``(z, y, x)``
-  (MATLAB's ``[x y z]``).
+  are ``(z, y, x)`` in the order of the arrays' axes, ``resample_factor`` too (MATLAB's
+  in the tiles' axis order, ``[y x z]`` for ``'y,x,z'``, since c49fc95).
 - Boxes are ``(z0, y0, x0, z1, y1, x1)``, 0-based, end-exclusive. A half-overlap region is a box
   over a tile's voxels in ``(z, y, x)`` physical axes (MATLAB's ``3 x 2`` ``[s t]`` rows x, y,
   z, 1-based, inclusive), which the blending code reads with the standard data order.
 - Tiles are numbered from 0; a pair is ``(i, j)``, ``i < j``.
 
 Each value is computed with MATLAB's operations in MATLAB's order: ``round`` half away from zero,
-``min``/``max`` along a dimension skip NaN, ``max`` and ``median`` of a single tile's ``1 x 3``
-row reduce the row (a scalar, as in MATLAB), and ``sin``, ``cos``, ``tan`` and ``sind`` are
+``min``/``max``/``median`` along the tiles' dimension (NaN skipped by ``min`` and ``max``), and
+``sin``, ``cos``, ``tan`` and ``sind`` are
 ``matlabcompat.elementary``'s (fdlibm's: MATLAB's bits on every C library).
 """
 
 from __future__ import annotations
 
 import math
+import re
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 
@@ -51,6 +52,7 @@ __all__ = [
     "StitchSpace",
     "StitchLayout",
     "StitchPlacement",
+    "check_axis_order",
     "check_cuboids_overlaps",
     "check_major_tile_cover",
     "check_major_tile_valid",
@@ -142,17 +144,14 @@ def _col_min(a: np.ndarray) -> np.ndarray:
     return np.fmin.reduce(a, axis=0)
 
 
-def _max_default(a: np.ndarray) -> np.ndarray:
-    """``max(a)``: per column of a matrix, the whole row of a single row (a scalar); NaN
-    skipped"""
-    if a.shape[0] == 1:
-        return np.fmax.reduce(a[0])
+def _col_max(a: np.ndarray) -> np.ndarray:
+    """``max(a, [], 1)``: per column, NaN skipped"""
     return np.fmax.reduce(a, axis=0)
 
 
-def _median_default(a: np.ndarray) -> np.ndarray | np.float64:
-    """``median(a)`` of sizes: per column of a matrix, of the row of a single row (a scalar);
-    NaN gives NaN; an even count the mean of the two middle values"""
+def _col_median(a: np.ndarray) -> np.ndarray:
+    """``median(a, 1)`` of sizes: per column; NaN gives NaN; an even count the mean of the two
+    middle values"""
 
     def med(v: np.ndarray) -> np.float64:
         if np.isnan(v).any():
@@ -163,8 +162,6 @@ def _median_default(a: np.ndarray) -> np.ndarray | np.float64:
             return s[k // 2]
         return (s[k // 2 - 1] + s[k // 2]) / 2
 
-    if a.shape[0] == 1:
-        return med(a[0])
     return np.array([med(a[:, c]) for c in range(a.shape[1])])
 
 
@@ -191,9 +188,8 @@ def parse_axis_order(axis_order: str) -> tuple[tuple[int, int, int], tuple[float
     ``'y,x,z'``): for x, y and z, the stage coordinate column (0-based; MATLAB's first row minus
     1) and its sign (``-1`` where the string has ``'-x'``, ``'-y'``, ``'-z'``; case-sensitive).
 
-    Spaces are removed first. MATLAB's pattern check of the string never raises (``if
-    ~regexpi(...)`` is false for a match and for no match), so neither does this: the columns
-    are the sort order of its letters."""
+    Spaces are removed first; the columns are the sort order of its letters. The frame checks
+    the string first (``check_axis_order``); the size estimate does not."""
     s = axis_order.replace(" ", "")
     pure = _letters(s)
     if len(pure) != 3:
@@ -205,6 +201,25 @@ def parse_axis_order(axis_order: str) -> tuple[tuple[int, int, int], tuple[float
     perm = tuple(sorted(range(3), key=lambda k: pure[k]))
     signs = tuple(-1.0 if f"-{c}" in s else 1.0 for c in _XYZ)
     return perm, signs  # type: ignore[return-value]
+
+
+# the frame's pattern: a permutation of x, y and z, each with an optional '-', optional commas
+_AXIS_ORDER_RX = re.compile(
+    r"^(-?x,?-?y,?-?z|-?y,?-?x,?-?z|-?z,?-?y,?-?x|-?x,?-?z,?-?y|-?z,?-?x,?-?y|-?y,?-?z,?-?x)$",
+    re.IGNORECASE,
+)
+
+
+def check_axis_order(axis_order: str) -> None:
+    """The frame's check of ``axisOrder`` (spaces removed, case ignored): a permutation of x, y
+    and z with optional signs and commas, else ``GeometryError`` with MATLAB's identifier
+    ``XR_stitching_frame_zarr_dev_v1:axisOrder``."""
+    if _AXIS_ORDER_RX.search(axis_order.replace(" ", "")) is None:
+        raise GeometryError(
+            "The axisOrder is not right, it must has the form like 'y,x,z' or '-x,y,z' "
+            "(flipped in x-axis)!",
+            "XR_stitching_frame_zarr_dev_v1:axisOrder",
+        )
 
 
 def parse_data_order(data_order: str = "z,y,x") -> tuple[int, int, int]:
@@ -283,18 +298,10 @@ def tile_counts(tile_idx, axis_order: str = "x,y,z") -> np.ndarray:
 
 def stitch_2d_from_input_sizes(input_sizes, data_order: str = "z,y,x") -> bool:
     """The frame's first 2D check on the input tiles: 2D unless a tile has more than one voxel
-    along ``imSize(data_order_mat == 3)``. That is the dimension at the position of z's
-    dimension in ``data_order_mat``, which is z only for orders whose permutation is its own
-    inverse (MATLAB's quirk: for MATLAB's ``'y,z,x'`` and ``'z,x,y'`` it is another axis);
-    sizes ``(n, 3)`` in ``(z, y, x)`` array order."""
+    along z (``imSize(data_order_mat(3))``); sizes ``(n, 3)`` in array order."""
     s = _rows(input_sizes, 3, "input_sizes")
     dop = parse_data_order(data_order)
-    dom = data_order_axes_to_matlab(dop)
-    k = [i for i in range(3) if dom[i] == 3]  # MATLAB dimension k + 1 of the size
-    if len(k) != 1:
-        raise GeometryError("data_order must name z once")
-    ax = {1: 1, 2: 2, 3: 0}[k[0] + 1]
-    return not bool(np.any(s[:, ax] > 1))
+    return not bool(np.any(s[:, dop[2]] > 1))
 
 
 # ---------------------------------------------------------------------------------------------
@@ -334,11 +341,13 @@ def stitch_pixel_sizes(
     objective_scan: bool = False,
     io_scan: bool = False,
     dsr: bool = False,
+    data_order: str = "z,y,x",
 ) -> StitchSpace:
     """The voxel sizes of the stitching space (``XR_stitching_frame_zarr_dev_v1``,
-    ``stitch_volume_size_estimate``): ``resample_factor`` (``(z, y, x)``; given, it wins over
-    ``resample_type``), ``'method_1'``, ``'isotropic'`` or ``'xy_isotropic'``; outside DSR
-    space (also for IO scans) z is scaled by ``z_aniso``."""
+    ``stitch_volume_size_estimate``): ``resample_factor`` (in the tiles' array order, as the
+    tiles are resampled: ``(z, y, x)`` for ``'z,y,x'``; given, it wins over ``resample_type``),
+    ``'method_1'``, ``'isotropic'`` or ``'xy_isotropic'``; outside DSR space (also for IO
+    scans) z is scaled by ``z_aniso``."""
     dsr = bool(dsr) and not bool(io_scan)
     if objective_scan or io_scan:
         z_aniso = dz / xy_pixel_size
@@ -355,8 +364,9 @@ def stitch_pixel_sizes(
                 f"Index exceeds the number of array elements. Index must not exceed {rf.size}.",
                 "MATLAB:badsubscript",
             )
-        # MATLAB's [x y z] is (z, y, x)
-        xf, yf, zf = float(rf[rf.size - 1]), float(rf[rf.size - 2]), float(rf[rf.size - 3])
+        # resampleFactor(data_order_mat): the factors of the axes of x, y and z
+        dop = parse_data_order(data_order)
+        xf, yf, zf = (float(rf[a]) for a in dop)
     elif rtype == "method_1":
         zf = _cot(abs(theta))
         yf = 1.0
@@ -453,11 +463,11 @@ def check_cuboids_overlaps(
 ) -> tuple[np.ndarray, np.ndarray | None]:
     """``[is_overlap_mat, cuboid_overlap_mat] = check_cuboids_overlaps(cuboid_1, cuboid_2,
     stitch2D)``: whether closed cuboids ``[min1 min2 min3 max1 max2 max3]`` (rows; one row is
-    paired with every row of the other set) overlap, and with ``regions`` (MATLAB's second
-    output) their overlaps, ``None`` (MATLAB's ``[]``) when none does.
+    paired with every row of the other set) overlap, and their overlaps, ``None`` (MATLAB's
+    ``[]``) when none does (``regions=False``: None, MATLAB's one output).
 
-    With ``regions``, an overlap that is a single point along an axis (3D; along the first two
-    axes in 2D) counts as none, with a zero row; without it (MATLAB's one output) it counts."""
+    An overlap that is a single point along an axis (3D; along the first two axes in 2D)
+    counts as none, with a zero row, with one output too."""
     c1 = np.asarray(cuboid_1, dtype=np.float64)
     c2 = np.asarray(cuboid_2, dtype=np.float64)
     c1 = c1.reshape(1, -1) if c1.ndim == 1 else c1
@@ -480,7 +490,7 @@ def check_cuboids_overlaps(
         n = n1
     nol = (c2[:, 3:] < c1[:, :3]) | (c1[:, 3:] < c2[:, :3])
     is_overlap = ~nol.any(axis=1)
-    if not regions or not is_overlap.any():
+    if not is_overlap.any():
         return is_overlap, None
     out = np.zeros((n, 6))
     for p in np.nonzero(is_overlap)[0]:
@@ -493,7 +503,7 @@ def check_cuboids_overlaps(
         if np.any(b[:k, 0] == b[:k, 1]):
             out[p] = 0
             is_overlap[p] = False
-    return is_overlap, out
+    return is_overlap, (out if regions else None)
 
 
 def pair_index(i: int, j: int, n: int) -> int:
@@ -648,10 +658,10 @@ def half_overlap_regions(
     stitch_2d: bool = False,
 ) -> tuple[np.ndarray, list, list, np.ndarray]:
     """The frame's second overlap pass on the shifted cuboids: pairs of ``overlap_matrix`` that
-    no longer overlap (MATLAB's one-output check: a single-point overlap still counts) are
-    dropped; for the others the half-overlap regions (``overlap_type``) and the full ones
-    (``'zero'``). Returns the new ``overlap_matrix``, the half and full regions (a pair of boxes
-    per overlapping pair, in loop order) and the pairs ``(K, 2)`` ``(i, j)``."""
+    no longer overlap (a single-point overlap counts as none) are dropped; for the others the
+    half-overlap regions (``overlap_type``) and the full ones (``'zero'``). Returns the new
+    ``overlap_matrix``, the half and full regions (a pair of boxes per overlapping pair, in loop
+    order) and the pairs ``(K, 2)`` ``(i, j)``."""
     c = _rows(cuboids, 6, "cuboids")
     om = np.array(overlap_matrix, dtype=bool, copy=True)
     n = c.shape[0]
@@ -738,7 +748,7 @@ def stitch_canvas(
     origin = _col_min(xs) - pad_size
     rel = xs - origin
     if p_im_sz is None:
-        dxyz = _max_default(xs + s[:, list(dop)] * p) + pad_size - origin
+        dxyz = _col_max(xs + s[:, list(dop)] * p) + pad_size - origin
         vxyz = _mround(dxyz / p + 2)
         nv = vxyz[list(rev)]
         if (stitch_mip is not None and np.any(stitch_mip)) or bool(np.any(s[:, dop[2]] == 1)):
@@ -816,7 +826,7 @@ def tile_canvas_boxes_to_matlab(canvas_boxes, tile_boxes, valid) -> tuple[np.nda
 
 def batch_grid(nv_size, im_sizes, batch_size=(500, 500, 500), block_size=(500, 500, 500)):
     """The frame's batches: ``batch_size`` at most the stitched size and twice the median tile
-    size (of the row for a single tile: a scalar), ``block_size`` at most the batch size, the
+    size per axis, ``block_size`` at most the batch size, the
     batch size rounded up to whole blocks, the batch grid. All ``(z, y, x)``. Returns
     ``(batch_size, block_size, b_sub_sz, num_batches)``; ``num_batches`` is MATLAB's double
     (NaN, as in MATLAB, for a size with a zero)."""
@@ -824,7 +834,7 @@ def batch_grid(nv_size, im_sizes, batch_size=(500, 500, 500), block_size=(500, 5
     s = _rows(im_sizes, 3, "im_sizes")
     with np.errstate(invalid="ignore", divide="ignore"):
         bs = np.fmin(nv, np.asarray(batch_size, dtype=np.float64))
-        bs = np.fmin(_median_default(s) * 2, bs)
+        bs = np.fmin(_col_median(s) * 2, bs)
         bl = np.fmin(bs, np.asarray(block_size, dtype=np.float64))
         bs = np.ceil(bs / bl) * bl
         sub = np.ceil(nv / bs)
@@ -920,9 +930,12 @@ def prepare_layout(
     processed tiles' sizes): the axis order, the tile order by ``tile_idx`` (``(n, 4)`` x, y, z,
     location), the voxel sizes, the coordinates in stitching space (with ``coord_sizes``, a
     secondary's primary sizes, if given; ``xyz_orig`` replaces the stage coordinates from 0, as
-    ``usePrimaryCoords`` does), cuboids and overlaps. ``flipped_tile`` keeps its listed order, as
-    in MATLAB. ``stitch_2d`` is the frame's first check (``stitch_2d_from_input_sizes`` of the
-    input tiles; None: False); it is also set when every processed tile is one voxel along z."""
+    ``usePrimaryCoords`` does), cuboids and overlaps. ``flipped_tile`` (in the listed order) is
+    sorted with the tiles when it has one flag per tile. ``axis_order`` is checked
+    (``check_axis_order``). ``stitch_2d`` is the frame's first check
+    (``stitch_2d_from_input_sizes`` of the input tiles); it is also set when every processed
+    tile is one voxel along z."""
+    check_axis_order(axis_order)
     xyz0 = stage_to_xyz(coordinates, axis_order)
     xyz = xyz0 if xyz_orig is None else _rows(xyz_orig, 3, "xyz_orig")
     n = xyz.shape[0]
@@ -931,6 +944,9 @@ def prepare_layout(
         xyz = xyz[sinds]
     else:
         tidx, sinds = np.zeros((n, 4)), np.arange(n, dtype=np.intp)
+    flipped_sorted = flipped_tile
+    if flipped_tile is not None and np.size(flipped_tile) == n:
+        flipped_sorted = np.asarray(flipped_tile).ravel()[sinds]
     tnum = tile_counts(tidx, axis_order)
     space = stitch_pixel_sizes(
         xy_pixel_size,
@@ -941,6 +957,7 @@ def prepare_layout(
         objective_scan=objective_scan,
         io_scan=io_scan,
         dsr=dsr,
+        data_order=data_order,
     )
     s = _rows(im_sizes, 3, "im_sizes")[sinds]
     dop = parse_data_order(data_order)
@@ -949,7 +966,7 @@ def prepare_layout(
     pxyz = process_coordinates(
         xyz,
         cs,
-        flipped_tile,
+        flipped_sorted,
         axis_order,
         data_order,
         space,
@@ -1084,11 +1101,10 @@ def stitch_volume_size_estimate(
     (rows of ``nv_size_range``, ``(2, 3)``) and batch counts, the tiles moving by up to the max
     offsets at both ends.
 
-    Boxes are Python boxes, sizes and per-axis values ``(z, y, x)``, ``resample_factor``
-    ``(z, y, x)`` (MATLAB's ``[x y z]``; for a skewed-space resample MATLAB divides the tile
-    size ``[ny nx nz]`` by ``[xf yf zf]`` element by element, so ny by xf and nx by yf: kept).
-    The batches use twice the tile size per axis (the frame uses twice the median size, of the
-    row for a single tile)."""
+    Boxes are Python boxes, sizes and per-axis values ``(z, y, x)``, ``resample_factor`` in the
+    tiles' array order (``(z, y, x)`` for ``'z,y,x'``; outside DSR space it divides the tile
+    size axis by axis, as the tiles are resampled). The batches use twice the tile size per
+    axis (the frame twice the median size per axis)."""
     c = _rows(coordinates, 3, "coordinates")
     nf = c.shape[0]
     sz = [float(v) for v in np.asarray(im_size, dtype=np.float64).ravel()]
@@ -1111,6 +1127,7 @@ def stitch_volume_size_estimate(
         objective_scan=objective_scan,
         io_scan=io_scan,
         dsr=dsr,
+        data_order=data_order,
     )
     rs = (
         np.ones(3)
@@ -1124,10 +1141,12 @@ def stitch_volume_size_estimate(
         b = [int(v) for v in tile_out_bbox]
         im = np.array([b[3] - b[0], b[4] - b[1], b[5] - b[2]], dtype=np.float64)
     if not space.dsr and not np.all(rs == 1):
-        # MATLAB's [r1 r2 r3] = [x y z] factors, padded from [xy z] or [r], divide [ny nx nz]
-        m = rs[::-1]  # [x y z]
-        m = np.concatenate((np.ones(4 - m.size) * m[0], m[1:]))
-        im = _mround(im / m[[2, 0, 1]])
+        # MATLAB pads [r] and [xy z] to [r r r] and [xy xy z] (array order), then divides
+        if rs.size == 1:
+            rs = np.repeat(rs, 3)
+        elif rs.size == 2:
+            rs = np.array([rs[0], rs[1], rs[1]])  # (z, xy) as (z, y, x)
+        im = _mround(im / rs)
     sizes = np.repeat(im.reshape(1, 3), nf, axis=0)
     xyz = process_coordinates(
         xyz,
@@ -1212,7 +1231,7 @@ def check_major_tile_cover(coords, major_inds) -> tuple[np.ndarray, np.ndarray]:
     """``[major_cover_mat, uncover_bbox_mat] = check_major_tile_cover(coords_mat, major_inds)``:
     for each minor tile, whether the major tiles' boxes cover its box (``coords``, ``(n, 6)``
     Python boxes), and if not a box of the part left uncovered: MATLAB's ``[min of the starts,
-    min of the ends]`` of the pieces, computed on MATLAB's inclusive boxes. Rows of covered and
+    max of the ends]`` of the pieces, computed on MATLAB's inclusive boxes. Rows of covered and
     major tiles are zeros."""
     from petakit5d.core.bbox import boxes_from_matlab, boxes_to_matlab
 
@@ -1246,7 +1265,7 @@ def check_major_tile_cover(coords, major_inds) -> tuple[np.ndarray, np.ndarray]:
                 cov = np.concatenate((cov[keep], np.zeros(dm.shape[0], dtype=bool)))
         cover[i] = bool(np.all(cov))
         if not cover[i]:
-            unc[i] = np.concatenate((_col_min(ci[:, :3]), _col_min(ci[:, 3:])))
+            unc[i] = np.concatenate((_col_min(ci[:, :3]), _col_max(ci[:, 3:])))
     out = np.zeros((n, 6), dtype=np.int64)
     if (~cover).any():
         out[~cover] = boxes_from_matlab(unc[~cover])

@@ -55,6 +55,10 @@
     "minimumOfARegionSkipsNaN": [
      "pytest:tests/kernels/test_mip.py::test_minimum_of_a_region_skips_nan",
      "oracle:tests/kernels/test_mip.py::min_bbox_3d*.nan_*"
+    ],
+    "largeZarrInputBboxThatEndsBeforeTheImageEnd": [
+     "pytest:tests/tools/test_mip.py::test_xr_mip_zarr_with_a_box_ending_before_the_image_projects_the_box",
+     "oracle:tests/tools/test_mip.py::mip_zarr.*bbox*"
     ]
    }
   },

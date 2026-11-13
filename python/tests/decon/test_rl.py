@@ -17,8 +17,7 @@ Oracle cases (inputs made in MATLAB's form; the roles give the Python calls the 
   reference platform) and ``.permissive`` on the default backend (decision record 0006: relative
   L2 <= 1e-4; uint16 off by at most 1 in at most 0.1% of the voxels).
 - debug.*.big: err_mat of 89,000 or more voxels is MATLAB's mean at one thread (fixed_order_stat,
-  M05 c3efd96, the head of ``test``); the oracle tree d67e1b7 has MATLAB's multithreaded mean
-  there, so their references change at switch #4 (marked in SWITCH4).
+  M05 c3efd96, in the oracle tree since c49fc95), compared exactly.
 
 test_thread_counts runs cases again at 1, 2, 7 and 24 threads against the same references.
 """
@@ -51,15 +50,6 @@ PERMISSIVE_U16 = tol(
     "most 0.1% of the voxels)",
     abs=1,
     max_frac=1e-3,
-)
-# debug cases whose d67e1b7 reference changes at oracle switch #4 (M05's fixed-order err_mat):
-# until then err_mat is compared within the last bits of MATLAB's multithreaded mean (measured: at
-# most 128 ulp, relative 2.5e-14); exact from switch #4 on (drop SWITCH4_TOL there)
-SWITCH4: set[str] = set()
-SWITCH4_TOL = tol(
-    reason="M05 (c3efd96): the oracle tree d67e1b7's debug err_mat is MATLAB's mean at 8 threads, "
-    "the port (and the head of test) MATLAB's mean at one thread; exact after oracle switch #4",
-    rel=1e-12,
 )
 
 
@@ -201,10 +191,8 @@ def decon_cases(
     marks=(),
     backends=("exact", "permissive"),
     bg_role: bool = False,
-    switch4: bool = False,
 ) -> list[Case]:
-    """the case of a decon call with MATLAB's options (name: value), on each backend; switch4:
-    err_mat's reference (d67e1b7) changes at oracle switch #4"""
+    """the case of a decon call with MATLAB's options (name: value), on each backend"""
     vols = [Vol(In("im")), Vol(In("psf"))] + ([Vol(In("psfb"))] if method == "omw" else [])
     args = [*vols, numit, "useGPU", False]
     py_kwargs = {"nargout": nargout}
@@ -222,7 +210,7 @@ def decon_cases(
         if expect_error:
             spec = None
         elif be == "exact":
-            spec = {1: SWITCH4_TOL} if switch4 else None
+            spec = None
         else:
             first = PERMISSIVE_U16 if _u16(opts) else PERMISSIVE_TOL
             spec = {0: first, **dict.fromkeys(range(1, nargout), PERMISSIVE_TOL)}
@@ -511,9 +499,7 @@ for _m, (_method, _) in METHODS.items():
         },
         nargout=3 if _method == "simplified" else 2,
         files=True,
-        switch4=True,
     )
-    SWITCH4.update(c.id for c in _cs)
     CASES += _cs
 
 # DeconRFFTTest/resultDoesNotDependOnTheThreadCount's data: a 63^3 PSF (89,000 or more elements:

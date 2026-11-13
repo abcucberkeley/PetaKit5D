@@ -257,6 +257,14 @@
      "cases": null,
      "fate": []
     },
+    "nccDoesNotDependOnTheThreadCount": {
+     "pins": "the means, the sum and the variances of the template and the image (89000 or more elements each) were MATLAB's, which change in the last bits with the number of threads, and with them the NCC of double data in most values (of single data rarely: at windows at the flatness threshold). Now the NCC is the same at 2, 4 and 24 threads as at 1: the MATLAB code (double) and the mex (single, on Linux).",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
     "resultsDoNotDependOnTheThreadCount": {
      "pins": "as MATLAB's FFTs: the groups of lines don't depend on the threads",
      "tags": [
@@ -309,9 +317,44 @@
     }
    }
   },
+  "StitchGeometryTest": {
+   "file": "tests/stitch/StitchGeometryTest.m",
+   "pins": "geometry helpers of the stitching: overlaps of tile cuboids (check_cuboids_overlaps), the region of a minor tile that the major tiles leave uncovered (check_major_tile_cover), and the axis order check of XR_stitching_frame_zarr_dev_v1",
+   "category": "data",
+   "owner": "S03",
+   "phase": 1,
+   "finished": false,
+   "fate": [],
+   "methods": {
+    "axisOrderMustBeAPermutationOfXYZ": {
+     "pins": "the check never raised (~regexpi(...) is false for no match too), so the stitching sorted any order into some permutation; 'z,x,y' was missing from it. It comes before the tiles are read, so the tiles here don't exist: valid orders end in another error later.",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "cuboidsThatOnlyTouchDoNotOverlap": {
+     "pins": "cuboids that share only a face, an edge or a corner don't overlap, also for a caller that asks for one output: the stitching's recheck after the registration's shifts did, and so kept such pairs, with half-overlap regions computed from a zero overlap",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "majorTileCoverBoxHoldsEveryUncoveredPiece": {
+     "pins": "a major tile covers the middle of a minor tile: the box of the minor tile's region that large-file feather blending reads must hold the uncovered pieces on both sides (it ended at the smallest end of the pieces, so the second was left out)",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    }
+   }
+  },
   "StitchHelperMexTest": {
    "file": "tests/stitch/StitchHelperMexTest.m",
-   "pins": "stitching helpers that run a mex with MATLAB code as the fallback and that the stitching tests don't reach: the crop of a long registration region to its brightest part (crop_subregion_by_intensity, crop3d_mex) and the check that the major tiles of a batch have data at every voxel (check_major_tile_valid, any_4th_dim_mex); the edge erosion of tiles (erodeVolumeBy2DProjection, indexing3d_mex) an...",
+   "pins": "stitching helpers that run a mex with MATLAB code as the fallback and that the stitching tests don't reach: the crop of a long registration region to its brightest part (crop_subregion_by_intensity, crop3d_mex; the same at any number of threads) and the check that the major tiles of a batch have data at every voxel (check_major_tile_valid, any_4th_dim_mex); the edge erosion of tiles (erodeVolum...",
    "category": "data",
    "owner": "S04",
    "phase": 1,
@@ -320,6 +363,14 @@
    "methods": {
     "boundsOfVoxelsWithoutDataWithManyThreads": {
      "pins": "a block without data that all threads find and single voxels at the bounds that one thread each finds: the mex updated the bounds from all threads without synchronization and lost some of them (wrong in most calls with 8 threads); the threads keep their own now, combined at the end, as one thread would find them",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "cropDoesNotDependOnTheThreadCount": {
+     "pins": "the threshold of the crop, the mean plus 3 std of the region (89000 or more voxels), was MATLAB's, which changes with the number of threads: in a region of large values (single, around 6e7 in steps of 4), whose single sums MATLAB rounds otherwise at each thread count, with slices of bright voxels of one value each, increasing along z (the first slice above the threshold has the most), the crop...",
      "tags": [
       "Unit"
      ],
@@ -692,6 +743,17 @@
      ],
      "fate": []
     },
+    "flippedTilesStayWithTheirTilesWhenSorted": {
+     "pins": "the stitching sorts the tiles by their indices (zigzag listings), but the flags of flipped tiles (flippedTile, from the settings files) stayed in the listed order and so went to other tiles: the stitched volume depended on the order of the list. The frame is called directly, as the wrapper takes the flags only from settings files; each run has tiles of its own.",
+     "tags": [
+      "Integration"
+     ],
+     "cases": [
+      "flipDSR=DSR",
+      "flipDSR=skewedSpace"
+     ],
+     "fate": []
+    },
     "ioScanUsesStagePositionsAsIs": {
      "pins": "objective/IO scan tiles in x and z (z offsets in units of dz), as for the 3D 2-photon data in demo_phase_and_2photon_stitching.m",
      "tags": [
@@ -865,6 +927,14 @@
      "cases": null,
      "fate": []
     },
+    "resampleFactorIsInTheTilesAxisOrder": {
+     "pins": "resampleFactor is in yxz order, the order in which tiles are resampled (and DSR tiles were deskewed with it); the stitching took it as x, y, z for the voxel sizes, so tiles whose y and x factors differ were placed with the x and y voxel sizes swapped. DSR tiles with y voxels of 2 px, as a factor of [2, 1, 1] makes them.",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
     "resultOfAnotherRunIsKept": {
      "pins": "a run that lost the race to another run of the same volume (a rerun while the earlier jobs still run) wrote the MIP of its own unfinished result over the published one",
      "tags": [
@@ -907,6 +977,14 @@
     },
     "separateBlendWritesEachTileOnTheCanvas": {
      "pins": "blendMethod 'separate' writes each tile, padded to the stitched canvas, as its own result (cropped with XR_crop_zarr, with MIPs)",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "singleTileCanvasIsTheTilePlusTwoVoxels": {
+     "pins": "the canvas of a single tile took the tile's largest extent for every axis (max of a one-row matrix without a dimension), so a 64 x 72 x 32 tile made a 74 x 74 x 74 volume",
      "tags": [
       "Integration"
      ],
@@ -956,6 +1034,14 @@
      "cases": null,
      "fate": []
     },
+    "tilesThatOnlyTouchAfterTheShiftsDoNotOverlap": {
+     "pins": "the recheck of the overlaps after the registration's shifts kept a pair whose tiles then only touch (a shared plane of voxel centers), with half-overlap regions computed from a zero overlap: check_cuboids_overlaps dropped such pairs only when asked for the overlap regions. The shifts are given in the registration's result file; the tiles overlap by 36 voxels before them.",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
     "volumeSizeEstimateMatchesTheStitchedVolume": {
      "pins": "the stitching wrapper sizes a volume's job by the size of the volume (stitch_volume_size_estimate, which mirrors the stitching function's geometry): it is the size of the stitched volume (exact tiles: no registration shifts)",
      "tags": [
@@ -967,12 +1053,22 @@
       "sizeSetup=gridOutBbox",
       "sizeSetup=tiles2D",
       "sizeSetup=ioScan",
-      "sizeSetup=skewedSpace"
+      "sizeSetup=skewedSpace",
+      "sizeSetup=singleTile",
+      "sizeSetup=resampledDSR"
      ],
      "fate": []
     },
     "xcorrRecoversPerturbedTilePosition": {
      "pins": "the second tile is listed 4 voxels off in x; registration must recover the true position. Even shifts avoid the +/-1 rounding of the global position solver for two tiles.",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "zxyTilesOfOneXPlaneAreNot2D": {
+     "pins": "the first 2D check read the size at z's place in the data order (imSize(data_order_mat == 3)) instead of z's dimension, which differ for 'y,z,x' and 'z,x,y': 3D tiles in 'z,x,y' order with one x plane passed for 2D tiles, and only their first z plane was stitched",
      "tags": [
       "Integration"
      ],

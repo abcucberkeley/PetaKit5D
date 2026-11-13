@@ -535,7 +535,50 @@ def _mip_zarr_cases():
             [16, 12, 10],
             "inputBbox",
             [3, 2, 4, 30, 25, 20],
-            error="zarr:inputError",
+        ),
+        # boxes that end before the image's end along one axis or all, with batch remainders
+        # (batches 21 x 12 x 10 here: MATLAB's last batches end at the box's end since 11c7d0b)
+        mip_zarr_case(
+            "mip_zarr.uint16.bbox_end_y",
+            u16,
+            "batchSize",
+            [16, 12, 10],
+            "inputBbox",
+            [1, 1, 1, 30, 29, 23],
+        ),
+        mip_zarr_case(
+            "mip_zarr.uint16.bbox_end_x",
+            u16,
+            "batchSize",
+            [16, 12, 10],
+            "inputBbox",
+            [5, 1, 1, 37, 20, 23],
+        ),
+        mip_zarr_case(
+            "mip_zarr.uint16.bbox_end_z",
+            u16,
+            "batchSize",
+            [16, 12, 10],
+            "inputBbox",
+            [1, 2, 4, 37, 29, 17],
+        ),
+        mip_zarr_case(
+            "mip_zarr.single.bbox_end_all",
+            sgl,
+            "batchSize",
+            [16, 12, 10],
+            "inputBbox",
+            [2, 3, 2, 25, 17, 13],
+        ),
+        mip_zarr_case(
+            "mip_zarr.uint16.bbox_slabs_only",
+            u16,
+            "batchSize",
+            [16, 12, 10],
+            "inputBbox",
+            [3, 2, 4, 30, 25, 20],
+            "mipSlab",
+            True,
         ),
         mip_zarr_case(
             "mip_zarr.uint16.bbox_to_the_end",
@@ -1752,15 +1795,24 @@ def test_matlab_layer_converts_axis_and_box(tmp_path):
     assert not os.path.exists(tmp_path / "a_MIP_z.tif")
 
 
-def test_xr_mip_zarr_with_a_box_past_its_last_batch_fails_as_matlab(tmp_path):
-    # MATLAB's last batch of a box that doesn't end at the image's end runs to the image's end,
-    # past the slab: writezarr's 'Upper bound is invalid' (zarr:inputError), kept
+@pytest.mark.parametrize(
+    "box",
+    [(1, 1, 2, 20, 30, 27), (0, 0, 0, 23, 30, 29), (0, 0, 0, 23, 37, 25), (3, 0, 0, 19, 37, 29)],
+)
+def test_xr_mip_zarr_with_a_box_ending_before_the_image_projects_the_box(tmp_path, box):
+    # the last batches end at the box's end (MATLAB since 11c7d0b; before, at the image's end,
+    # past the slab: zarr:inputError): slabs of the box's size and the MIPs of the box
     fns, im = zarr_copies(tmp_path, "uint16")
-    with pytest.raises(mip.MipError) as err:
-        mip.mip_zarr(
-            fns[0], batch_size=(5, 8, 6), input_bbox=(1, 1, 2, 20, 30, 27), parse_cluster=False
-        )
-    assert err.value.identifier == "zarr:inputError"
+    mip.mip_zarr(fns[0], batch_size=(5, 8, 6), input_bbox=box, parse_cluster=False)
+    crop = im[box[0] : box[3], box[1] : box[4], box[2] : box[5]]
+    out = os.path.dirname(fns[0]) + "/MIPs/"
+    for lab, ax in AXES.items():
+        same_bits(read_tiff(f"{out}im_MIP_{lab}.tif"), tiff_image(ref_max(crop, ax)))
+        slab = read_zarr(f"{out}im_{lab}.zarr")
+        n = crop.shape[ax]
+        k = {"z": 5, "y": 8, "x": 6}[lab]
+        assert slab.shape[ax] == -(-n // k), lab
+        same_bits(slab, range_ref(crop, ax % 3, list(range(0, n, k))))
 
 
 def test_xr_mip_zarr_with_a_box_reads_the_zarr_not_the_flags(tmp_path):
