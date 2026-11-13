@@ -682,9 +682,11 @@ def test_unknown_method_raises(tmp_path):
 
 
 def test_sind_exact_and_reduced():
-    assert ig._sind(30.0) == 0.5
-    assert ig._sind(-210.0) == 0.5
-    assert ig._sind(32.45) == pytest.approx(np.sin(np.deg2rad(32.45)), rel=1e-15)
+    from petakit5d.matlabcompat import elementary
+
+    assert elementary.sind(30.0) == 0.5
+    assert elementary.sind(-210.0) == 0.5
+    assert elementary.sind(32.45) == pytest.approx(np.sin(np.deg2rad(32.45)), rel=1e-15)
 
 
 def test_estimate_step_size(tmp_path):

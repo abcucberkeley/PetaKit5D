@@ -122,15 +122,30 @@ dense and random values each (up to 116,010 for `exp`; 30,000 per exponent for p
 | `sqrt` | IEEE | 0 | 0 | IEEE |
 | `x.^p`, p = 2, 0.5, -1, 0, 1 | `x*x`, `sqrt`, `1/x` | 0 | 0 | the same |
 | `x.^p`, other p (integer p too) | fdlibm `pow` | 9.5 to 10 % | 10.5 to 11 % | fdlibm `e_pow.c`, exact on 125 exponents |
-| `sind`, `cosd` | exact reduction in degrees, exact zeros, a radian conversion more accurate than `z*(pi/180)` | n/a | n/a | exact on all special and skew angles measured (multiples of 15/30/45/90, 31.5, 32.45, 30.1, -32.45, 1e15, 1e300); **8.1 % (`sind`) and 4.3 % (`cosd`) of a dense grid differ by 1 ulp** |
+| `sind`, `cosd` | the rule below (S03's, measured) | n/a | n/a | exact on every angle measured: a dense 0.1-degree grid of 7,201, 59,451 dense and special values to 1e16, S03's 1,979 angles, 27,632 random and boundary angles (to 2^27, multiples of 7.5 and their neighbours, +-45 + k ulp, -0, subnormals, 1e300, Inf, NaN) |
 
+- `sind` and `cosd` (S03 found the rule; N05 completed it for `cosd`, `-0` and the rounding at
+  45): exact values at multiples of 30 degrees (`sqrt(3)/2` rounded at 60); otherwise
+  `a = fmod(|x|, 360)` (exact), `n = round(a/90)` (half away from zero, exact: `floor(a/90 +
+  0.5)` rounds up just below 45 and leaves [-45, 45]), `d = a - 90n`, at `d = +-45` the cosine
+  kernel (an odd quadrant for `sind`, an even one for `cosd`), and fdlibm's `__kernel_sin` or
+  `__kernel_cos` of `d*(pi/180)` with the tail `d*lo(pi/180)` (pi/180 to 60 digits; the
+  rounding error of the product is not part of the tail). `sind` is odd (`sind(-0)` is -0),
+  `cosd` even (+0 at odd multiples of 90). Inf and NaN give MATLAB's NaN in `sind` and the
+  positive NaN in `cosd`. The earlier `sin(z*(pi/180))` was 1 ulp off in 8 % / 4 % of a dense
+  grid; S01's image-list code (`math.sin` of the old reduction) in 8 % of angles.
+- One public module: `matlabcompat.elementary` holds all of these, E06's fdlibm and msun code
+  moved there from `matlabcompat.neighbors`, with fdlibm's kernels (`kernel_sin`,
+  `kernel_cos`, `kernel_tan`, `rem_pio2`) and its sine and cosine as they are (`fdlibm_sin`,
+  `fdlibm_cos`) public; `neighbors`, the stitching geometry and the image-list generation take
+  their trigonometry from it.
 - Repeated multiplication does not give MATLAB's `x.^p` for integer `p >= 3` (up to 10 ulp off
   at `p = 15`); PetaKit5D's own `fastPower` does binary powering in the class, which the port
   reproduces as written.
 - MATLAB returns the positive NaN for `cos`, `tan` and `cot` of Inf and NaN (fdlibm's `x - x`
   gives the negative default NaN, which MATLAB keeps for `sin`).
-- Single data: MATLAB's single `sin`, `cos`, `tan`, `exp`, `log`, `atan2`, `hypot` and `.^`
-  are neither `single(f(double(x)))` (2 to 20 % of values differ, by 1 to 4 ulp) nor glibc's
+- Single data: MATLAB's single `sin`, `cos`, `tan`, `exp`, `log`, `atan2`, `hypot`, `.^` and
+  `cosd` (2 of 44 single angles) are neither `single(f(double(x)))` (2 to 20 % of values differ, by 1 to 4 ulp) nor glibc's
   float functions (1 to 20 %). No Phase 1 code applies them to single data; the port computes them in double
   and rounds, a listed difference.
 - Arguments above 2^20 pi/2: fdlibm's Payne-Hanek reduction is not written out; the port uses
@@ -149,15 +164,14 @@ dense and random values each (up to 116,010 for `exp`; 30,000 per exponent for p
 
 ## Proposed exceptions (for the user)
 
-1. `sind`, `cosd` on arbitrary angles: 1 ulp in 8 % / 4 % of arguments (`tol(ulp=1)` in the dense
-   case). Effect in Phase 1: `zAniso = sind(SkewAngle)*dz/xyPixelSize` and the deskew output
-   sizes; a 1-ulp change of `zAniso` moves a rounded size only at an exact half.
-2. `median` and `mode` with both -0 and +0 among the equal values at the median or mode in
+(The `sind`/`cosd` exception of the first version, 1 ulp in 8 % / 4 % of a dense grid, is gone:
+both are exact with S03's rule.)
+
+1. `median` and `mode` with both -0 and +0 among the equal values at the median or mode in
    arrays of more than a few elements: MATLAB's sign of zero follows its selection code (3 of 269
    probe medians, 504 of 1,616 column modes of rounded data with many zeros); values always
-   agree. Same kind
-   as N03's approved `medfilt` exception.
-3. MATLAB's own sums of 89,000 elements or more at several threads (table above): the port gives
+   agree. Same kind as N03's approved `medfilt` exception.
+2. MATLAB's own sums of 89,000 elements or more at several threads (table above): the port gives
    the one-thread result; references of such sums are made at one thread.
 
 ## Consequences
@@ -166,7 +180,24 @@ dense and random values each (up to 116,010 for `exp`; 30,000 per exponent for p
   outputs from `matlabcompat.reduce` and `.stats`, elementary functions from `.elementary`.
 - Speed (2 GiB single volume, 24-core node, both processes under `numactl --interleave=all`, 5
   interleaved rounds): `median` takes 0.79 and `prctile` 0.18 to 0.56 of MATLAB's time at 1, 4
-  and 24 threads; `sum` and `mean` in MATLAB's order on `(z, y, x)` arrays take 15 to 22 times
-  MATLAB's time and `std` 8 to 30 times in NumPy. A C++ kernel with a single accumulator
-  (K08's `ops_sum_double_yx` with a `float` lane type, and a fused `(x - mean)^2`) would close
-  that, as K08's double kernel did for double sums.
+  and 24 threads. The NumPy sums of the first version took 15 to 22 times MATLAB's time for
+  `sum` and `mean` and 8 to 30 times for `std`; K08's C++ kernels (single and double
+  accumulators in MATLAB's order, the fused `abs(x - mean)^2` of `std` and `var`, the slice
+  sums), wired into `reduce` and `stats` and bit-identical to them, give these ratios of Python
+  to MATLAB at 1 / 4 / 24 threads (output frees not timed):
+
+  | Reduction | `(z, y, x)` arrays | MATLAB's layout |
+  |---|---|---|
+  | `sum(x(:))` | 1.99 / 1.88 / 1.92 | 1.17 / 0.91 / 0.97 |
+  | `mean(x(:))` | 2.06 / 1.86 / 1.86 | |
+  | `std(x(:))` | 0.57 / 0.40 / 0.17 | 0.33 / 0.21 / 0.09 |
+  | `sum(x, 2)` | 0.59 / 0.57 / 1.20 | |
+  | `sum(x, 3)` | 0.56 / 0.51 / 1.18 | |
+  | `mean(x, 3)` | 0.59 / 0.53 / 1.25 | |
+  | `std` along dimensions 2 and 3 | 0.14 to 0.22 | |
+
+- Open: the whole-array `sum` and `mean` of `(z, y, x)` arrays (1.9 to 2.1 times MATLAB's time)
+  are the accepted cost of reading in MATLAB's linear order, a transposing read; hot paths keep
+  MATLAB's layout, where the sum is at 0.91 to 1.17.
+- To be judged end to end: the MATLAB-layout sum at one thread (1.17) and the slice sums at 24
+  threads (1.18 to 1.25).

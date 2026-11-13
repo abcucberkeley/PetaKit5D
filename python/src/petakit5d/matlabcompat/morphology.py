@@ -38,6 +38,7 @@ from typing import Any
 import numpy as np
 
 from petakit5d.core.arrays import from_matlab, size_to_matlab, to_matlab
+from petakit5d.matlabcompat import elementary
 
 __all__ = [
     "Strel",
@@ -344,8 +345,8 @@ def _strel_line(length: float, deg: float) -> Strel:
         if theta < 0:
             theta += 180.0
         theta = theta * math.pi / 180
-        x = _mround((length - 1) / 2 * math.cos(theta))
-        y = -_mround((length - 1) / 2 * math.sin(theta))
+        x = _mround((length - 1) / 2 * float(elementary.cos(theta)))
+        y = -_mround((length - 1) / 2 * float(elementary.sin(theta)))
         c, r = _intline(-x, x, -y, y)
         return _mstrel(_line_nhood(r, c), (), "line")
     return _mstrel(np.zeros((0, 0), dtype=bool), (), "line")
@@ -383,7 +384,7 @@ def _strel_disk(r: int, n: int = 4) -> Strel:
         8: [(1, 0), (2, 1), (1, 1), (1, 2), (0, 1), (-1, 2), (-1, 1), (-2, 1)],
     }[n]
     theta = math.pi / (2 * n)
-    k = 2 * r / (1 / math.tan(theta) + 1 / math.sin(theta))
+    k = 2 * r / (1 / float(elementary.tan(theta)) + 1 / float(elementary.sin(theta)))
     dec = [_strel_periodicline(math.floor(k / math.sqrt(a * a + b * b)), (a, b)) for a, b in v]
     nhood = _full_dilate(np.ones((1, 1), dtype=bool), dec)
     rd = np.nonzero(nhood)[0]

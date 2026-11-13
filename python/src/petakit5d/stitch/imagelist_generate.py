@@ -28,6 +28,7 @@ import numpy as np
 
 from petakit5d.core.dtypes import NAN, mround
 from petakit5d.core.paths import fileparts, matlab_dir, simplify_path
+from petakit5d.matlabcompat import elementary
 from petakit5d.params import Param, register
 from petakit5d.stitch.imagelist import (
     TILE_EXPRESSION_CAM,
@@ -106,21 +107,6 @@ def _uuid(uuid: str) -> str:
     from petakit5d.core.ids import get_uuid
 
     return get_uuid()
-
-
-def _sind(x: float) -> float:
-    """MATLAB's ``sind``: exact at multiples of 30 and 45 degrees, else the sine of the angle
-    reduced to the nearest multiple of 90 (in radians as ``pi/180 * x``)."""
-    if not math.isfinite(x):
-        return NAN
-    sign = -1.0 if x < 0 else 1.0
-    a = math.fmod(abs(x), 360.0)
-    exact = {0: 0.0, 30: 0.5, 90: 1.0, 150: 0.5, 180: 0.0, 210: -0.5, 270: -1.0, 330: -0.5}
-    if a == math.floor(a) and int(a) in exact:
-        return sign * exact[int(a)]
-    n = int(math.floor(a / 90.0 + 0.5))
-    t = math.radians(a - 90.0 * n)
-    return sign * (math.sin(t), math.cos(t), -math.sin(t), -math.cos(t))[n % 4]
 
 
 def _mode_rows(a: np.ndarray) -> np.ndarray:
@@ -359,7 +345,7 @@ def generate_image_list_from_tile_positions(
         z_aniso = pixel_sizes[2] / pixel_sizes[0]
         ds = dsr = False
     else:
-        z_aniso = _sind(float(skew_angle)) * pixel_sizes[2] / pixel_sizes[0]
+        z_aniso = float(elementary.sind(float(skew_angle))) * pixel_sizes[2] / pixel_sizes[0]
     theta = float(skew_angle) * math.pi / 180
 
     # overlap (z, y, x) -> xyz, in um
@@ -375,7 +361,7 @@ def generate_image_list_from_tile_positions(
     # physical size in xyz order, from (nz, ny, nx)
     sz_phy = sz[[2, 1, 0]] * pixel_sizes[0] * np.array([1.0, 1.0, z_aniso])
     sz_dsr = sz_phy
-    st, ct = math.sin(theta), math.cos(theta)
+    st, ct = float(elementary.sin(theta)), float(elementary.cos(theta))
     if objective_scan or ds:
         # size in DS space to DSR space (stage coordinates)
         sz_dsr = np.array(

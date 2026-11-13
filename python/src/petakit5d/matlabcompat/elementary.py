@@ -1,5 +1,6 @@
 """MATLAB's elementary functions, windows and array shifts, bit for bit on every platform (R2024b;
-measured, N05; ``docs/decisions/0005-sums-and-math-library.md``).
+measured, N05 and S03; ``docs/decisions/0005-sums-and-math-library.md``). The port's one home for
+them: other modules take their sines, cosines, powers and so on from here.
 
 MATLAB's double ``sin``, ``cos``, ``tan``, ``atan``, ``atan2`` and ``exp`` are fdlibm's and its
 ``hypot`` msun's (measured on 318,207 values each): glibc 2.28 and NumPy differ from them in the
@@ -7,22 +8,24 @@ last bit for 1.5 to 15 % of the values, and other C libraries and NumPy's SIMD p
 other values, so they are written out here in NumPy (one IEEE operation per C operation, no
 fused multiply-adds), which gives the same bits everywhere:
 
-- ``sin``, ``cos``, ``atan2``, ``hypot``: E06's versions (``matlabcompat.neighbors``); ``tan``
-  (fdlibm's ``__kernel_tan``), ``cot`` (``1/tan``), ``exp`` and ``power`` (fdlibm's ``e_pow.c``)
-  below. fdlibm reduces arguments above 2^20 pi/2 by Payne-Hanek, which is not written out: there
-  the C library's sine and cosine are used (they may differ from MATLAB's in the last bit).
-- ``sind``, ``cosd``: the angle reduced exactly in degrees (``fmod(x, 360)``, then to
-  [-45, 45] around a multiple of 90), the sine or cosine of ``z*(pi/180)``, MATLAB's rounded
-  values at multiples of 30 and 45 degrees; exact zeros at multiples of 180 (``sind``, the sign
-  of ``x``) and odd multiples of 90 (``cosd``, +0). This is MATLAB's result at every special
-  angle measured and at skew angles such as 31.5, 32.45 and 30.1; MATLAB converts to radians
-  more accurately than one double product in other places, so 8 % (``sind``) and 4 %
-  (``cosd``) of dense arguments differ in the last bit (decision record 0005).
+- fdlibm's kernels and argument reduction are public: ``kernel_sin``, ``kernel_cos``,
+  ``kernel_tan``, ``rem_pio2``; ``fdlibm_sin`` and ``fdlibm_cos`` are fdlibm's functions as they
+  are (``x - x`` for Inf and NaN; MATLAB's NaN for Inf on every CPU).
+- ``sin``, ``cos``, ``tan``, ``cot`` (``1/tan``), ``atan``, ``atan2`` (+0 for two zeros),
+  ``hypot``, ``exp`` (e rounded at 1) and ``power`` (fdlibm's ``e_pow.c``) are MATLAB's;
+  ``cos``, ``tan`` and ``cot`` give the positive NaN for Inf and NaN, as MATLAB. fdlibm reduces
+  arguments above 2^20 pi/2 by Payne-Hanek, which is not written out: there the C library's
+  sine and cosine are used (they may differ from MATLAB's in the last bit).
+- ``sind`` and ``cosd`` (S03's rule, measured on 1,979 angles and a dense grid of 59,451): exact
+  at multiples of 30 degrees (with sqrt(3)/2 rounded); otherwise ``fmod(|x|, 360)`` reduced to
+  ``d`` in [-45, 45] from the nearest multiple of 90, the cosine kernel at +-45, and fdlibm's
+  kernel of ``d*(pi/180)`` with the tail ``d*lo(pi/180)`` (pi/180 to 60 digits); ``sind`` is
+  odd (``sind(-0)`` is -0), ``cosd`` even (+0 at odd multiples of 90, the positive NaN for Inf).
 - ``sqrt`` is IEEE (exact everywhere); ``power(x, p)`` is ``x*x`` for ``p = 2``, ``sqrt(x)`` for
   0.5, ``1/x`` for -1, else fdlibm's pow.
 - single data: the double function of the single value, rounded to single. MATLAB's single
-  ``sin``, ``exp``, ... differ from that in the last bit for a few percent of the values (as
-  glibc's ``sinf`` does); no Phase 1 code applies them to single data.
+  ``sin``, ``exp``, ``cosd``, ... differ from that in the last bit for a few percent of the
+  values (as glibc's ``sinf`` does); no Phase 1 code applies them to single data.
 
 ``fast_power`` is PetaKit5D's ``fastPower`` (binary powering in the class of the base);
 ``tukeywin`` MATLAB's Tukey window; ``padarray`` and ``circshift`` move elements only (exact).
@@ -33,9 +36,9 @@ from __future__ import annotations
 import numpy as np
 
 from petakit5d.core import dtypes
-from petakit5d.matlabcompat import neighbors as _nb
 
 __all__ = [
+    "atan",
     "atan2",
     "circshift",
     "cos",
@@ -43,15 +46,388 @@ __all__ = [
     "cot",
     "exp",
     "fast_power",
+    "fdlibm_cos",
+    "fdlibm_sin",
     "hypot",
+    "kernel_cos",
+    "kernel_sin",
+    "kernel_tan",
     "padarray",
     "power",
+    "rem_pio2",
     "sin",
     "sind",
     "sqrt",
     "tan",
     "tukeywin",
 ]
+
+# --- fdlibm and msun in NumPy (E06's, moved here from matlabcompat.neighbors) -----------------
+#
+# hypot is fdlibm's as FreeBSD's msun has it (the reference platform's C library, glibc 2.28, gives
+# the same bits on 24 million argument pairs of every range, and MATLAB on the oracle cases;
+# glibc 2.35 and later compute hypot otherwise and differ in the last bit for about one value in
+# ten), with MATLAB's NaN for a NaN argument, also next to Inf. atan2, sin and cos are fdlibm's
+# (MATLAB's are, bit for bit, measured on 357,997 values; the C library's and NumPy's differ in
+# the last bit for a part of them), with MATLAB's +0 for atan2 of two zeros of any sign; sin and
+# cos of |x| > 2^20 pi/2 (fdlibm's Payne-Hanek reduction, not ported) are the C library's.
+# Element-wise NumPy operations round each operation as the C code does (no fused multiply-adds).
+#
+# The algorithms and constants of _hypot follow FreeBSD msun's e_hypot.c (fdlibm's, with b below
+# 2^-450 scaled, and a and b read again after a subnormal b is scaled), those of _atan, _atan2,
+# _rem_pio2, _ksin, _kcos, _sin and _cos fdlibm 5.3 (s_atan.c, e_atan2.c, e_rem_pio2.c, k_sin.c,
+# k_cos.c, s_sin.c, s_cos.c); the notice of both is:
+#   Copyright (C) 1993 by Sun Microsystems, Inc. All rights reserved.
+#   Developed at SunSoft, a Sun Microsystems, Inc. business.
+#   Permission to use, copy, modify, and distribute this software is freely granted, provided
+#   that this notice is preserved.
+
+_ATANHI = (
+    4.63647609000806093515e-01,
+    7.85398163397448278999e-01,
+    9.82793723247329054082e-01,
+    1.57079632679489655800e00,
+)
+_ATANLO = (
+    2.26987774529616870924e-17,
+    3.06161699786838301793e-17,
+    1.39033110312309984516e-17,
+    6.12323399573676603587e-17,
+)
+_AT = (
+    3.33333333333329318027e-01,
+    -1.99999999998764832476e-01,
+    1.42857142725034663711e-01,
+    -1.11111104054623557880e-01,
+    9.09088713343650656196e-02,
+    -7.69187620504482999495e-02,
+    6.66107313738753120669e-02,
+    -5.83357013379057348645e-02,
+    4.97687799461593236017e-02,
+    -3.65315727442169155270e-02,
+    1.62858201153657823623e-02,
+)
+_TINY = 1.0e-300
+_PI_O_4 = 7.8539816339744827900e-01
+_PI_O_2 = 1.5707963267948965580e00
+_PI = 3.1415926535897931160e00
+_PI_LO = 1.2246467991473531772e-16
+_S = (
+    -1.66666666666666324348e-01,
+    8.33333333332248946124e-03,
+    -1.98412698298579493134e-04,
+    2.75573137070700676789e-06,
+    -2.50507602534068634195e-08,
+    1.58969099521155010221e-10,
+)
+_C = (
+    4.16666666666666019037e-02,
+    -1.38888888888741095749e-03,
+    2.48015872894767294178e-05,
+    -2.75573143513906633035e-07,
+    2.08757232129817482790e-09,
+    -1.13596475577881948265e-11,
+)
+_INVPIO2 = 6.36619772367581382433e-01
+_PIO2_1 = 1.57079632673412561417e00
+_PIO2_1T = 6.07710050650619224932e-11
+_PIO2_2 = 6.07710050630396597660e-11
+_PIO2_2T = 2.02226624879595063154e-21
+_PIO2_3 = 2.02226624871116645580e-21
+_PIO2_3T = 8.47842766036889956997e-32
+_NPIO2_HW = np.array(
+    [
+        0x3FF921FB,
+        0x400921FB,
+        0x4012D97C,
+        0x401921FB,
+        0x401F6A7A,
+        0x4022D97C,
+        0x4025FDBB,
+        0x402921FB,
+        0x402C463A,
+        0x402F6A7A,
+        0x4031475C,
+        0x4032D97C,
+        0x40346B9C,
+        0x4035FDBB,
+        0x40378FDB,
+        0x403921FB,
+        0x403AB41B,
+        0x403C463A,
+        0x403DD85A,
+        0x403F6A7A,
+        0x40407E4C,
+        0x4041475C,
+        0x4042106C,
+        0x4042D97C,
+        0x4043A28C,
+        0x40446B9C,
+        0x404534AC,
+        0x4045FDBB,
+        0x4046C6CB,
+        0x40478FDB,
+        0x404858EB,
+        0x404921FB,
+    ],
+    dtype=np.int32,
+)
+
+
+def _hi(x):
+    """the signed high 32-bit word of float64 values"""
+    return (
+        (np.ascontiguousarray(x).view(np.uint64) >> np.uint64(32)).astype(np.uint32).view(np.int32)
+    )
+
+
+def _lo(x):
+    return (np.ascontiguousarray(x).view(np.uint64) & np.uint64(0xFFFFFFFF)).astype(np.uint32)
+
+
+def _with_hi(x, hw):
+    """x with its high 32-bit word replaced by hw"""
+    lo = np.ascontiguousarray(x).view(np.uint64) & np.uint64(0xFFFFFFFF)
+    return ((hw.astype(np.uint32).astype(np.uint64) << np.uint64(32)) | lo).view(np.float64)
+
+
+def _from_hi(hw):
+    """the float64 of high word hw and low word 0"""
+    return (hw.astype(np.uint32).astype(np.uint64) << np.uint64(32)).view(np.float64)
+
+
+_POS_NAN = float(np.array([0x7FF8000000000000], dtype=np.uint64).view(np.float64)[0])
+_MATLAB_NAN = float(np.array([0xFFF8000000000000], dtype=np.uint64).view(np.float64)[0])
+
+
+def _hypot(x, y):
+    """MATLAB's hypot: msun's e_hypot.c, +Inf for an infinite argument, and the positive quiet
+    NaN (0x7FF8000000000000) when an argument is NaN, whatever its payload and also next to Inf"""
+    x, y = np.broadcast_arrays(np.asarray(x, dtype=np.float64), np.asarray(y, dtype=np.float64))
+    shape = x.shape
+    x = np.ascontiguousarray(x).ravel()
+    y = np.ascontiguousarray(y).ravel()
+    # a = |the larger|, b = |the smaller| by high word
+    ha, hb = _hi(x) & 0x7FFFFFFF, _hi(y) & 0x7FFFFFFF
+    sw = hb > ha
+    a, b = np.abs(np.where(sw, y, x)), np.abs(np.where(sw, x, y))
+    ha, hb = np.where(sw, hb, ha), np.where(sw, ha, hb)
+    with np.errstate(over="ignore", under="ignore", invalid="ignore"):
+        # a / b > 2^60: a + b
+        ratio = (ha - hb) > 0x3C00000
+        direct = a + b
+        # a > 2^500: both scaled by 2^-600 (k: the exponent of the scale back)
+        big = ha > 0x5F300000
+        ha = np.where(big, ha - 0x25800000, ha)
+        hb = np.where(big, hb - 0x25800000, hb)
+        a, b = np.where(big, _with_hi(a, ha), a), np.where(big, _with_hi(b, hb), b)
+        # b < 2^-450: a subnormal b with a scaled by 2^1022 and both read again (and swapped
+        # if b became the larger), a normal one by 2^600; b == 0: a
+        small = hb < 0x23D00000
+        zero = small & ((hb | _lo(b).astype(np.int32)) == 0)
+        sub = small & ~zero & (hb <= 0x000FFFFF)
+        a, b = np.where(sub, a * 2.0**1022, a), np.where(sub, b * 2.0**1022, b)
+        ha, hb = np.where(sub, _hi(a), ha), np.where(sub, _hi(b), hb)
+        s2 = sub & (hb > ha)
+        a, b = np.where(s2, b, a), np.where(s2, a, b)
+        ha, hb = np.where(s2, hb, ha), np.where(s2, ha, hb)
+        tiny = small & ~zero & ~sub
+        ha = np.where(tiny, ha + 0x25800000, ha)
+        hb = np.where(tiny, hb + 0x25800000, hb)
+        a, b = np.where(tiny, _with_hi(a, ha), a), np.where(tiny, _with_hi(b, hb), b)
+        k = np.select([big, sub, tiny], [600, -1022, -600], 0).astype(np.int32)
+        # medium size a and b: sqrt(a^2 + b^2) from the products of their 21-bit high parts
+        w = a - b
+        t1 = _from_hi(ha)
+        t2 = a - t1
+        far = np.sqrt(t1 * t1 - (b * (-b) - t2 * (a + t1)))
+        y1 = _from_hi(hb)
+        y2 = b - y1
+        t1 = _from_hi(ha + 0x00100000)
+        t2 = (a + a) - t1
+        near = np.sqrt(t1 * y1 - (w * (-w) - (t1 * y2 + t2 * b)))
+        h = np.where(w > b, far, near)
+        h = np.where(k != 0, _from_hi((1023 + k) << 20) * h, h)
+        h = np.where(ratio, direct, np.where(zero, a, h))
+        h = np.where(np.isinf(x) | np.isinf(y), np.inf, h)
+    h = np.where(np.isnan(x) | np.isnan(y), _POS_NAN, h)
+    return h.reshape(shape)
+
+
+def _atan(x):
+    """fdlibm atan (s_atan.c)"""
+    x = np.asarray(x, dtype=np.float64)
+    hx = _hi(x)
+    ix = hx & 0x7FFFFFFF
+    ax = np.abs(x)
+    big = ix >= 0x44100000
+    small = ix < 0x3FDC0000
+    m0 = ~small & ~big & (ix < 0x3FE60000)
+    m1 = ~small & ~big & (ix >= 0x3FE60000) & (ix < 0x3FF30000)
+    m2 = ~small & ~big & (ix >= 0x3FF30000) & (ix < 0x40038000)
+    m3 = ~small & ~big & (ix >= 0x40038000)
+    t = np.where(small, x, 0.0)
+    with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
+        t = np.where(m0, (2.0 * ax - 1.0) / (2.0 + ax), t)
+        t = np.where(m1, (ax - 1.0) / (ax + 1.0), t)
+        t = np.where(m2, (ax - 1.5) / (1.0 + 1.5 * ax), t)
+        t = np.where(m3, -1.0 / ax, t)
+        z = t * t
+        w = z * z
+        a = _AT
+        s1 = z * (a[0] + w * (a[2] + w * (a[4] + w * (a[6] + w * (a[8] + w * a[10])))))
+        s2 = w * (a[1] + w * (a[3] + w * (a[5] + w * (a[7] + w * a[9]))))
+        out = t - t * (s1 + s2)
+        for k, m in enumerate((m0, m1, m2, m3)):
+            zz = _ATANHI[k] - ((t * (s1 + s2) - _ATANLO[k]) - t)
+            out = np.where(m, np.where(hx < 0, -zz, zz), out)
+    out = np.where(small & (ix < 0x3E200000), x, out)
+    out = np.where(big, np.where(hx > 0, _ATANHI[3] + _ATANLO[3], -_ATANHI[3] - _ATANLO[3]), out)
+    return np.where(np.isnan(x), x + x, out)
+
+
+def _atan2(y, x):
+    """fdlibm atan2 (e_atan2.c), with MATLAB's +0 for two zeros and MATLAB's NaN for NaN"""
+    y, x = np.broadcast_arrays(np.asarray(y, dtype=np.float64), np.asarray(x, dtype=np.float64))
+    hx, hy = _hi(x), _hi(y)
+    ix, iy = hx & 0x7FFFFFFF, hy & 0x7FFFFFFF
+    lx, ly = _lo(x), _lo(y)
+    m = ((hy >> 31) & 1) | ((hx >> 30) & 2)
+    with np.errstate(divide="ignore", invalid="ignore", over="ignore", under="ignore"):
+        k = (iy - ix) >> 20
+        z = _atan(np.abs(y / x))
+        z = np.where(k > 60, _PI_O_2 + 0.5 * _PI_LO, np.where((hx < 0) & (k < -60), 0.0, z))
+        out = np.select([m == 0, m == 1, m == 2], [z, -z, _PI - (z - _PI_LO)], (z - _PI_LO) - _PI)
+        yinf = iy == 0x7FF00000
+        out = np.where(yinf, np.where(hy < 0, -_PI_O_2 - _TINY, _PI_O_2 + _TINY), out)
+        xinf = ix == 0x7FF00000
+        both = np.choose(
+            m, [_PI_O_4 + _TINY, -_PI_O_4 - _TINY, 3.0 * _PI_O_4 + _TINY, -3.0 * _PI_O_4 - _TINY]
+        )
+        one = np.choose(m, [0.0, -0.0, _PI + _TINY, -_PI - _TINY])
+        out = np.where(xinf, np.where(yinf, both, one), out)
+        xzero = (ix | lx) == 0
+        out = np.where(xzero, np.where(hy < 0, -_PI_O_2 - _TINY, _PI_O_2 + _TINY), out)
+        yzero = (iy | ly) == 0
+        out = np.where(
+            yzero,
+            np.choose(m, [y, y, np.full(y.shape, _PI + _TINY), np.full(y.shape, -_PI - _TINY)]),
+            out,
+        )
+        out = np.where(x == 1.0, _atan(y), out)
+        out = np.where(np.isnan(x) | np.isnan(y), _MATLAB_NAN, out)
+    return np.where(yzero & xzero, 0.0, out)
+
+
+def _ksin(x, y, iy):
+    """fdlibm __kernel_sin (k_sin.c), iy == 0 when y is 0"""
+    ix = _hi(x) & 0x7FFFFFFF
+    s = _S
+    z = x * x
+    v = z * x
+    r = s[1] + z * (s[2] + z * (s[3] + z * (s[4] + z * s[5])))
+    out = x + v * (s[0] + z * r) if iy == 0 else x - ((z * (0.5 * y - v * r) - y) - v * s[0])
+    return np.where(ix < 0x3E400000, x, out)
+
+
+def _kcos(x, y):
+    """fdlibm __kernel_cos (k_cos.c)"""
+    ix = _hi(x) & 0x7FFFFFFF
+    c = _C
+    z = x * x
+    r = z * (c[0] + z * (c[1] + z * (c[2] + z * (c[3] + z * (c[4] + z * c[5])))))
+    small = 1.0 - (0.5 * z - (z * r - x * y))
+    qhi = (ix - 0x00200000).astype(np.uint32).astype(np.uint64) << np.uint64(32)
+    qx = np.where(ix > 0x3FE90000, 0.28125, qhi.view(np.float64))
+    hz = 0.5 * z - qx
+    a = 1.0 - qx
+    out = np.where(ix < 0x3FD33333, small, a - (hz - (z * r - x * y)))
+    return np.where(ix < 0x3E400000, 1.0, out)
+
+
+def _rem_pio2(x):
+    """fdlibm __ieee754_rem_pio2 (e_rem_pio2.c) up to |x| = 2^20 pi/2: (n, y0, y1)"""
+    hx = _hi(x)
+    ix = hx & 0x7FFFFFFF
+    n = np.zeros(x.shape, np.int64)
+    y0 = x.copy()
+    y1 = np.zeros(x.shape)
+    # |x| < 3pi/4: one step
+    m = (ix > 0x3FE921FB) & (ix < 0x4002D97C)
+    if np.any(m):
+        sg = np.where(hx[m] > 0, 1.0, -1.0)
+        xm = x[m]
+        z = xm - sg * _PIO2_1
+        exact = ix[m] == 0x3FF921FB  # the 33+53 bits of pi/2 are not enough near pi/2
+        z2 = z - sg * _PIO2_2
+        a0 = np.where(exact, z2 - sg * _PIO2_2T, z - sg * _PIO2_1T)
+        a1 = np.where(exact, (z2 - a0) - sg * _PIO2_2T, (z - a0) - sg * _PIO2_1T)
+        y0[m], y1[m], n[m] = a0, a1, sg.astype(np.int64)
+    m = (ix >= 0x4002D97C) & (ix <= 0x413921FB)
+    if np.any(m):
+        t = np.abs(x[m])
+        nn = np.trunc(t * _INVPIO2 + 0.5)
+        fn = nn
+        r = t - fn * _PIO2_1
+        w = fn * _PIO2_1T
+        ni = nn.astype(np.int64)
+        quick = (ni < 32) & (ix[m] != _NPIO2_HW[np.clip(ni - 1, 0, 31)])
+        a0 = r - w
+        j = ix[m] >> 20
+        i = j - ((_hi(a0) >> 20) & 0x7FF)
+        s2 = ~quick & (i > 16)
+        t2 = r
+        w2 = fn * _PIO2_2
+        r2 = t2 - w2
+        w2 = fn * _PIO2_2T - ((t2 - r2) - w2)
+        b0 = r2 - w2
+        i2 = j - ((_hi(b0) >> 20) & 0x7FF)
+        s3 = s2 & (i2 > 49)
+        t3 = r2
+        w3 = fn * _PIO2_3
+        r3 = t3 - w3
+        w3 = fn * _PIO2_3T - ((t3 - r3) - w3)
+        c0 = r3 - w3
+        rr = np.where(s3, r3, np.where(s2, r2, r))
+        ww = np.where(s3, w3, np.where(s2, w2, w))
+        a0 = np.where(s3, c0, np.where(s2, b0, a0))
+        a1 = (rr - a0) - ww
+        neg = hx[m] < 0
+        y0[m] = np.where(neg, -a0, a0)
+        y1[m] = np.where(neg, -a1, a1)
+        n[m] = np.where(neg, -ni, ni)
+    return n, y0, y1
+
+
+def _sincos(x, which):
+    x = np.ascontiguousarray(np.asarray(x, dtype=np.float64))
+    ix = _hi(x) & 0x7FFFFFFF
+    n, y0, y1 = _rem_pio2(x)
+    q = n & 3
+    s = _ksin(y0, y1, 1)
+    c = _kcos(y0, y1)
+    if which == "sin":
+        out = np.select([q == 0, q == 1, q == 2], [s, c, -s], -c)
+        out = np.where(ix <= 0x3FE921FB, _ksin(x, np.zeros(x.shape), 0), out)
+        big = np.sin
+    else:
+        out = np.select([q == 0, q == 1, q == 2], [c, -s, -c], s)
+        out = np.where(ix <= 0x3FE921FB, _kcos(x, np.zeros(x.shape)), out)
+        big = np.cos
+    large = (ix > 0x413921FB) & (ix < 0x7FF00000)
+    if np.any(large):
+        out = np.where(large, big(np.where(large, x, 0.0)), out)
+    with np.errstate(invalid="ignore"):
+        return np.where(ix >= 0x7FF00000, x - x, out)
+
+
+def _sin(x):
+    return _sincos(x, "sin")
+
+
+def _cos(x):
+    return _sincos(x, "cos")
+
 
 # fdlibm 5.3 (k_tan.c, s_tan.c, e_exp.c, e_pow.c); their notice:
 #   Copyright (C) 1993, 2004 by Sun Microsystems, Inc. All rights reserved.
@@ -91,8 +467,6 @@ _O_THRESHOLD = 7.09782712893383973096e02
 _U_THRESHOLD = -7.45133219101941108420e02
 _TWOM1000 = 9.33263618503218878990e-302
 
-_hi, _lo, _with_hi, _from_hi = _nb._hi, _nb._lo, _nb._with_hi, _nb._from_hi
-
 
 def _f64(x) -> np.ndarray:
     return np.ascontiguousarray(np.asarray(x, dtype=np.float64))
@@ -113,8 +487,9 @@ def _single(fn):
         single = any(a.dtype == np.float32 for a in arrs) and not any(
             a.dtype == np.float64 and a.ndim > 0 for a in arrs
         )
+        shape = np.broadcast(*arrs).shape
         with np.errstate(all="ignore"):
-            r = fn(*[_f64(a) for a in arrs])
+            r = np.asarray(fn(*[_f64(a) for a in arrs])).reshape(shape)
         r = r.astype(np.float32) if single else r
         return r[()] if r.ndim == 0 else r
 
@@ -123,26 +498,77 @@ def _single(fn):
     return wrapped
 
 
-# -- sin, cos, tan, cot ------------------------------------------------------------------------
+# -- fdlibm's kernels and functions as they are ------------------------------------------------
+
+
+def _vec(*args):
+    """float64, C-contiguous, at least 1-D, broadcast; and the shape to return"""
+    arrs = np.broadcast_arrays(*(np.asarray(a, dtype=np.float64) for a in args))
+    shape = arrs[0].shape
+    return [np.ascontiguousarray(np.atleast_1d(a)) for a in arrs], shape
+
+
+def kernel_sin(x, y, iy: int = 1) -> np.ndarray:
+    """fdlibm's ``__kernel_sin(x, y, iy)``: sin(x + y) for |x| <= pi/4, ``y`` the tail of ``x``
+    (``iy = 0``: ``y`` is zero and not used)."""
+    (x, y), shape = _vec(x, y)
+    return _ksin(x, y, iy).reshape(shape)
+
+
+def kernel_cos(x, y) -> np.ndarray:
+    """fdlibm's ``__kernel_cos(x, y)``: cos(x + y) for |x| <= pi/4."""
+    (x, y), shape = _vec(x, y)
+    return _kcos(x, y).reshape(shape)
+
+
+def kernel_tan(x, y, iy) -> np.ndarray:
+    """fdlibm's ``__kernel_tan(x, y, iy)``: tan(x + y) for ``iy = 1``, -1/tan(x + y) for
+    ``iy = -1``, |x| <= pi/4."""
+    (x, y, k), shape = _vec(x, y, iy)
+    return _ktan(x, y, k.astype(np.int64)).reshape(shape)
+
+
+def rem_pio2(x):
+    """fdlibm's ``__ieee754_rem_pio2`` up to |x| = 2^20 pi/2: ``(n, y0, y1)`` with
+    ``x = n*pi/2 + y0 + y1`` (beyond, ``n = 0`` and ``y0 = x``: Payne-Hanek is not written
+    out)."""
+    (x,), shape = _vec(x)
+    n, y0, y1 = _rem_pio2(x)
+    return n.reshape(shape), y0.reshape(shape), y1.reshape(shape)
+
+
+def fdlibm_sin(x) -> np.ndarray:
+    """fdlibm's ``sin`` as it is (``x - x`` for NaN; MATLAB's NaN for Inf on every CPU); E06's,
+    as ``neighbors.sph2cart`` uses it."""
+    x = np.asarray(x, dtype=np.float64)
+    with np.errstate(invalid="ignore"):
+        return np.where(np.isinf(x), _MATLAB_NAN, _sincos(x, "sin").reshape(x.shape))
+
+
+def fdlibm_cos(x) -> np.ndarray:
+    """fdlibm's ``cos`` as it is (as ``fdlibm_sin``)."""
+    x = np.asarray(x, dtype=np.float64)
+    with np.errstate(invalid="ignore"):
+        return np.where(np.isinf(x), _MATLAB_NAN, _sincos(x, "cos").reshape(x.shape))
+
+
+# -- sin, cos, tan, cot, atan ------------------------------------------------------------------
 
 
 @_single
 def sin(x):
-    """MATLAB's ``sin`` (fdlibm)."""
-    return _nb._sin(x)
+    """MATLAB's ``sin`` (fdlibm; MATLAB's NaN for Inf, a NaN kept)."""
+    return fdlibm_sin(x)
 
 
 @_single
 def cos(x):
     """MATLAB's ``cos`` (fdlibm; the positive NaN for Inf and NaN, as MATLAB)."""
-    return _pos_nan(x, _nb._cos(x))
-
-
-_POS_NAN = float(np.array([0x7FF8000000000000], dtype=np.uint64).view(np.float64)[0])
+    return _pos_nan(x, _sincos(x, "cos").reshape(np.shape(x)))
 
 
 def _pos_nan(x, r):
-    """r with the positive quiet NaN where x is not finite (MATLAB's cos, tan and cot)"""
+    """r with the positive quiet NaN where x is not finite (MATLAB's cos, tan, cot and cosd)"""
     return np.where(np.isfinite(x), r, _POS_NAN)
 
 
@@ -198,7 +624,7 @@ def _tan_core(x: np.ndarray, which: str) -> np.ndarray:
     """tan (iy = 1) or -1/tan... of fdlibm's s_tan.c; which 'tan' or 'cot'"""
     x = np.ascontiguousarray(x)
     ix = _hi(x) & 0x7FFFFFFF
-    n, y0, y1 = _nb._rem_pio2(x)
+    n, y0, y1 = _rem_pio2(x)
     small = ix <= 0x3FE921FB
     y0 = np.where(small, x, y0)
     y1 = np.where(small, 0.0, y1)
@@ -226,35 +652,48 @@ def cot(x):
         return _pos_nan(x, 1.0 / _tan_core(x, "tan"))
 
 
-# -- sind, cosd --------------------------------------------------------------------------------
+@_single
+def atan(x):
+    """MATLAB's ``atan`` (fdlibm)."""
+    return _atan(x)
 
 
-# the values MATLAB returns at multiples of 30 and 45 degrees (rounded exact values)
-_DEG_EXACT = ((30.0, 0.5, 0.8660254037844386), (45.0, 0.7071067811865476, 0.7071067811865476))
+# -- sind, cosd (S03's rule) -------------------------------------------------------------------
+
+_DEG = float.fromhex("0x1.1df46a2529d39p-6")  # pi/180 rounded
+_DEG_LO = float.fromhex("0x1.5c1d8becdd291p-62")  # pi/180 - _DEG (pi/180 to 60 digits)
+_R3 = float.fromhex("0x1.bb67ae8584caap-1")  # sqrt(3)/2 rounded
+# sind and cosd at 0, 30, ..., 330 degrees
+_SIN30 = (0.0, 0.5, _R3, 1.0, _R3, 0.5, 0.0, -0.5, -_R3, -1.0, -_R3, -0.5)
+_COS30 = (1.0, _R3, 0.5, 0.0, -0.5, -_R3, -1.0, -_R3, -0.5, 0.0, 0.5, _R3)
 
 
 def _deg(x, sine: bool):
     x = _f64(x)
     with np.errstate(all="ignore"):
-        r = np.fmod(x, 360.0)  # exact (IEEE remainder of the division, the sign of x)
-        n = np.asarray(dtypes.mround(r / 90.0))
-        z = r - 90.0 * n
-        rad = z * (np.pi / 180.0)
-        s, c = _nb._sin(rad), _nb._cos(rad)
-        az = np.abs(z)
-        for a, sv, cv in _DEG_EXACT:
-            hit = az == a
-            s = np.where(hit, np.copysign(sv, z), s)
-            c = np.where(hit, cv, c)
+        a = np.fmod(np.abs(x), 360.0)  # exact
+        # round(a/90), half away from zero and exact: floor(a/90 + 0.5) rounds the sum up just
+        # below 45 (44.99999999999999 would leave [-45, 45]); MATLAB's cosd there is the cosine
+        n = np.asarray(dtypes.mround(a / 90.0))
+        d = a - 90.0 * n  # exact, in [-45, 45]
+        # at +-45 degrees the cosine kernel: an odd quadrant for sind, an even one for cosd
+        swap = (np.abs(d) == 45.0) & (np.mod(n, 2) != (1 if sine else 0))
+        n = np.where(swap, np.where(d < 0, n - 1, n + 1), n)
+        d = np.where(swap, np.where(d < 0, 45.0, -45.0), d)
+        t, tl = np.ascontiguousarray(d * _DEG), np.ascontiguousarray(d * _DEG_LO)
+        s, c = _ksin(t, tl, 1), _kcos(t, tl)
         q = np.mod(n, 4).astype(np.int64)
         if sine:
-            out = np.select([q == 0, q == 1, q == 2], [s, c, -s], -c)
-            out = np.where((z == 0) & (q % 2 == 0), np.copysign(0.0, x), out)
+            v = np.select([q == 0, q == 1, q == 2], [s, c, -s], -c)
         else:
-            out = np.select([q == 0, q == 1, q == 2], [c, -s, -c], s)
-            out = np.where((z == 0) & (q % 2 == 1), 0.0, out)
-        out = np.where(np.isfinite(x), out, dtypes.NAN if sine else -dtypes.NAN)
-    return out
+            v = np.select([q == 0, q == 1, q == 2], [c, -s, -c], s)
+        k = np.where((a == np.floor(a)) & (np.mod(a, 30.0) == 0), a / 30.0, -1.0)
+        k = np.nan_to_num(k, nan=-1.0).astype(np.int64)
+        table = np.asarray(_SIN30 if sine else _COS30)
+        v = np.where(k >= 0, table[np.clip(k, 0, 11)], v)
+        if sine:
+            v = np.copysign(1.0, x) * v  # odd: sind(-0) is -0
+        return np.where(np.isfinite(x), v, _MATLAB_NAN if sine else _POS_NAN)
 
 
 @_single
@@ -343,13 +782,13 @@ def sqrt(x):
 @_single
 def hypot(x, y):
     """MATLAB's ``hypot`` (msun)."""
-    return _nb._hypot(x, y)
+    return _hypot(x, y)
 
 
 @_single
 def atan2(y, x):
     """MATLAB's ``atan2`` (fdlibm; +0 for two zeros)."""
-    return _nb._atan2(y, x)
+    return _atan2(y, x)
 
 
 # -- power -------------------------------------------------------------------------------------
@@ -565,13 +1004,13 @@ def _pow_scalar(x: float, y: float) -> float:
 
 
 def _pow(x: np.ndarray, y: np.ndarray) -> np.ndarray:
-    x, y = np.broadcast_arrays(_f64(x), _f64(y))
+    x, y = np.broadcast_arrays(np.asarray(x, dtype=np.float64), np.asarray(y, dtype=np.float64))
     out = np.empty(x.shape)
     fx, fy, fo = x.reshape(-1), y.reshape(-1), out.reshape(-1)
     with np.errstate(all="ignore"):
         for i in range(fx.size):
             fo[i] = _pow_scalar(float(fx[i]), float(fy[i]))
-    return out
+    return out[()] if out.ndim == 0 else out
 
 
 def power(x, p):
@@ -646,13 +1085,13 @@ def tukeywin(n: int, r: float = 0.5) -> np.ndarray:
         return np.ones(n)
     if r >= 1:
         half = (n + 1) // 2
-        w = 0.5 - 0.5 * _nb._cos(2 * np.pi * t[:half])
+        w = 0.5 - 0.5 * _cos(2 * np.pi * t[:half])
         return np.concatenate([w, w[: n - half][::-1]])
     per = r / 2
     tl = int(np.floor(per * (n - 1))) + 1
     w = np.ones(n)
-    w[:tl] = (1 + _nb._cos(np.pi / per * (t[:tl] - per))) / 2
-    w[n - tl :] = (1 + _nb._cos(np.pi / per * (t[n - tl :] - 1 + per))) / 2
+    w[:tl] = (1 + _cos(np.pi / per * (t[:tl] - per))) / 2
+    w[n - tl :] = (1 + _cos(np.pi / per * (t[n - tl :] - 1 + per))) / 2
     return w
 
 

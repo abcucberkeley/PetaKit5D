@@ -466,12 +466,12 @@ def _not(v: Any) -> MArray:
 
 
 def _pow(x: float, y: float) -> float:
-    try:
-        return math.pow(x, y)
-    except ValueError as err:  # negative base, fractional exponent: complex in MATLAB
-        raise LiteralError("complex results are not supported") from err
-    except OverflowError:
-        return math.inf if x > 0 or y % 2 == 0 else -math.inf
+    """MATLAB's ``x ^ y`` of doubles (``matlabcompat.elementary.power``: fdlibm's pow)"""
+    if x < 0 and math.isfinite(y) and y != math.floor(y):  # complex in MATLAB
+        raise LiteralError("complex results are not supported")
+    from petakit5d.matlabcompat import elementary
+
+    return float(elementary.power(x, y))
 
 
 def _div(x: float, y: float) -> float:
@@ -751,30 +751,11 @@ def _call(name: str, args: list[Any], p: _Parser) -> Any:
     raise p.err(f"function {name!r} is not supported")
 
 
-# sin of the angles MATLAB's sind and cosd give exactly (multiples of 30 and 45 degrees)
-_S2, _S3 = math.sqrt(0.5), math.sqrt(3.0) / 2
-_SIN_EXACT = {
-    0: 0.0, 30: 0.5, 45: _S2, 60: _S3, 90: 1.0, 120: _S3, 135: _S2, 150: 0.5, 180: 0.0,
-    210: -0.5, 225: -_S2, 240: -_S3, 270: -1.0, 300: -_S3, 315: -_S2, 330: -0.5,
-}  # fmt: skip
-
-
 def _sincosd(x: float, cos: bool) -> float:
-    """MATLAB's sind and cosd: the angle reduced exactly, exact values at multiples of 30 and
-    45 degrees, else sin or cos (by quadrant) of the reduced angle times pi/180."""
-    if not math.isfinite(x):
-        return NAN
-    sign = -1.0 if (x < 0 and not cos) else 1.0  # sind is odd, cosd even
-    a = math.fmod(abs(x), 360.0)  # exact
-    if a == math.floor(a):
-        k = (int(a) + 90) % 360 if cos else int(a)
-        if k in _SIN_EXACT:
-            return sign * _SIN_EXACT[k]
-    n = int(round_half_away(a / 90.0))
-    t = math.radians(a - 90.0 * n)
-    if cos:
-        return (math.cos(t), -math.sin(t), -math.cos(t), math.sin(t))[n % 4]
-    return sign * (math.sin(t), math.cos(t), -math.sin(t), -math.cos(t))[n % 4]
+    """MATLAB's sind and cosd (``matlabcompat.elementary``, MATLAB's bits on every platform)"""
+    from petakit5d.matlabcompat import elementary
+
+    return float(elementary.cosd(x) if cos else elementary.sind(x))
 
 
 def _sqrt(x: float) -> float:

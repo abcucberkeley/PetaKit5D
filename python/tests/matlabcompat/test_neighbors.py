@@ -13,6 +13,7 @@ these functions alone (DeconBackProjectorTest covers the back projector; the dec
 import numpy as np
 import pytest
 
+from petakit5d.matlabcompat import elementary as E
 from petakit5d.matlabcompat import neighbors as nbrs
 from petakit5d.testing import oracle
 from petakit5d.testing.cases import Case, In, Value
@@ -308,16 +309,16 @@ def _elem_cases():
             "atan2",
             8,
             "out = {atan2(in{1}(:, 1), in{1}(:, 2))};",
-            lambda V: nbrs._atan2(V[:, 0], V[:, 1]).reshape(-1, 1),
+            lambda V: E.atan2(V[:, 0], V[:, 1]).reshape(-1, 1),
         ),
         (
             "hypot",
             4,
             "out = {hypot(in{1}(:, 1), in{1}(:, 2))};",
-            lambda V: nbrs._hypot(V[:, 0], V[:, 1]).reshape(-1, 1),
+            lambda V: E.hypot(V[:, 0], V[:, 1]).reshape(-1, 1),
         ),
-        ("sin", 7, "out = {sin(in{1})};", lambda V: nbrs._sin(V[:, 0]).reshape(-1, 1)),
-        ("cos", 7, "out = {cos(in{1})};", lambda V: nbrs._cos(V[:, 0]).reshape(-1, 1)),
+        ("sin", 7, "out = {sin(in{1})};", lambda V: E.sin(V[:, 0]).reshape(-1, 1)),
+        ("cos", 7, "out = {cos(in{1})};", lambda V: E.cos(V[:, 0]).reshape(-1, 1)),
     ):
         kind = "sincos" if fn in ("sin", "cos") else fn
         if fn in ("atan2", "hypot"):
@@ -424,9 +425,9 @@ def test_hypot_is_the_reference_platforms():
         (2.1219957924e-314, 4.2439915814e-314, 4.7449268366e-314),
     ]
     x, y, want = (np.array(v) for v in zip(*pairs, strict=True))
-    assert nbrs._hypot(x, y).tobytes() == want.tobytes()
-    assert nbrs._hypot(-y, x).tobytes() == want.tobytes()
-    assert nbrs._hypot(3.0, 4.0) == 5.0 and nbrs._hypot(np.ones((2, 3)), 1.0).shape == (2, 3)
+    assert E.hypot(x, y).tobytes() == want.tobytes()
+    assert E.hypot(-y, x).tobytes() == want.tobytes()
+    assert E.hypot(3.0, 4.0) == 5.0 and E.hypot(np.ones((2, 3)), 1.0).shape == (2, 3)
 
 
 def test_cart2sph_and_sph2cart_call_no_c_library_function(monkeypatch):
@@ -451,4 +452,4 @@ def test_cart2sph_round_trip_and_hypot():
     assert r.tolist() == [13.0, 0.0]
     x, y, z = nbrs.sph2cart(az, el, r)
     assert np.allclose([x[0], y[0], z[0]], [3, 4, 12], rtol=1e-15, atol=0)
-    assert np.array_equal(az, nbrs._atan2(np.array([4.0, 0.0]), np.array([3.0, 0.0])))
+    assert np.array_equal(az, E.atan2(np.array([4.0, 0.0]), np.array([3.0, 0.0])))

@@ -32,7 +32,7 @@ Conventions (``docs/conventions.md``):
 Each value is computed with MATLAB's operations in MATLAB's order: ``round`` half away from zero,
 ``min``/``max`` along a dimension skip NaN, ``max`` and ``median`` of a single tile's ``1 x 3``
 row reduce the row (a scalar, as in MATLAB), and ``sin``, ``cos``, ``tan`` and ``sind`` are
-fdlibm's (MATLAB's bits on every C library).
+``matlabcompat.elementary``'s (fdlibm's: MATLAB's bits on every C library).
 """
 
 from __future__ import annotations
@@ -42,6 +42,8 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 
 import numpy as np
+
+from petakit5d.matlabcompat import elementary
 
 __all__ = [
     "GeometryError",
@@ -108,155 +110,25 @@ def check_major_tile_valid(fmat, major_inds, *, num_threads=None):
 
 
 def _sin(x: float) -> float:
-    from petakit5d.matlabcompat.neighbors import _sin as f
-
-    return float(f(np.array([x], dtype=np.float64))[0])
+    return float(elementary.sin(x))
 
 
 def _cos(x: float) -> float:
-    from petakit5d.matlabcompat.neighbors import _cos as f
-
-    return float(f(np.array([x], dtype=np.float64))[0])
-
-
-# fdlibm 5.3 k_tan.c (the 2004 revision) and s_tan.c; argument reduction is fdlibm's
-# __ieee754_rem_pio2 of matlabcompat.neighbors. The notice of fdlibm:
-#   Copyright (C) 1993 by Sun Microsystems, Inc. All rights reserved.
-#   Developed at SunSoft, a Sun Microsystems, Inc. business.
-#   Permission to use, copy, modify, and distribute this software is freely granted, provided
-#   that this notice is preserved.
-_T = tuple(
-    float.fromhex(h)
-    for h in (
-        "0x1.5555555555563p-2",
-        "0x1.111111110fe7ap-3",
-        "0x1.ba1ba1bb341fep-5",
-        "0x1.664f48406d637p-6",
-        "0x1.226e3e96e8493p-7",
-        "0x1.d6d22c9560328p-9",
-        "0x1.7dbc8fee08315p-10",
-        "0x1.344d8f2f26501p-11",
-        "0x1.026f71a8d1068p-12",
-        "0x1.47e88a03792a6p-14",
-        "0x1.2b80f32f0a7e9p-14",
-        "-0x1.375cbdb605373p-16",
-        "0x1.b2a7074bf7ad4p-16",
-    )
-)
-_PIO4 = float.fromhex("0x1.921fb54442d18p-1")
-_PIO4LO = float.fromhex("0x1.1a62633145c07p-55")
-
-
-def _hi(x: float) -> int:
-    b = np.array([x], dtype=np.float64).view(np.uint64)[0]
-    v = int(b >> np.uint64(32))
-    return v - (1 << 32) if v >= 1 << 31 else v
-
-
-def _lo(x: float) -> int:
-    return int(np.array([x], dtype=np.float64).view(np.uint64)[0] & np.uint64(0xFFFFFFFF))
-
-
-def _zero_lo(x: float) -> float:
-    b = np.array([x], dtype=np.float64).view(np.uint64)
-    b &= np.uint64(0xFFFFFFFF00000000)
-    return float(b.view(np.float64)[0])
-
-
-def _ktan(x: float, y: float, iy: int) -> float:
-    hx = _hi(x)
-    ix = hx & 0x7FFFFFFF
-    if ix < 0x3E300000 and int(x) == 0:  # |x| < 2^-28
-        if ((ix | _lo(x)) | (iy + 1)) == 0:
-            return 1.0 / abs(x)
-        if iy == 1:
-            return x
-        z = w = x + y
-        z = _zero_lo(z)
-        v = y - (z - x)
-        t = a = -1.0 / w
-        t = _zero_lo(t)
-        s = 1.0 + t * z
-        return t + a * (s + t * v)
-    if ix >= 0x3FE59428:  # |x| >= 0.6744
-        if hx < 0:
-            x, y = -x, -y
-        z = _PIO4 - x
-        w = _PIO4LO - y
-        x = z + w
-        y = 0.0
-    T = _T
-    z = x * x
-    w = z * z
-    r = T[1] + w * (T[3] + w * (T[5] + w * (T[7] + w * (T[9] + w * T[11]))))
-    v = z * (T[2] + w * (T[4] + w * (T[6] + w * (T[8] + w * (T[10] + w * T[12])))))
-    s = z * x
-    r = y + z * (s * (r + v) + y)
-    r += T[0] * s
-    w = x + r
-    if ix >= 0x3FE59428:
-        v = float(iy)
-        return float(1 - ((hx >> 30) & 2)) * (v - 2.0 * (x - (w * w / (w + v) - r)))
-    if iy == 1:
-        return w
-    z = _zero_lo(w)
-    v = r - (z - x)
-    t = a = -1.0 / w
-    t = _zero_lo(t)
-    s = 1.0 + t * z
-    return t + a * (s + t * v)
+    return float(elementary.cos(x))
 
 
 def _tan(x: float) -> float:
-    ix = _hi(x) & 0x7FFFFFFF
-    if ix <= 0x3FE921FB:
-        return _ktan(x, 0.0, 1)
-    if ix >= 0x7FF00000:
-        return x - x
-    if ix > 0x413921FB:  # (fdlibm's large-argument reduction is not ported)
-        return math.tan(x)
-    from petakit5d.matlabcompat.neighbors import _rem_pio2
-
-    n, y0, y1 = _rem_pio2(np.array([x], dtype=np.float64))
-    return _ktan(float(y0[0]), float(y1[0]), 1 - ((int(n[0]) & 1) << 1))
+    return float(elementary.tan(x))
 
 
 def _cot(x: float) -> float:
     """MATLAB's ``cot``: ``1 / tan(x)``."""
-    return 1.0 / _tan(x)
-
-
-# pi/180 as a double and the rest (the low part of pi/180 to 60 digits)
-_DEG = float.fromhex("0x1.1df46a2529d39p-6")
-_DEG_LO = float.fromhex("0x1.5c1d8becdd291p-62")
-_R3 = float.fromhex("0x1.bb67ae8584caap-1")  # sqrt(3) / 2, correctly rounded
-_SIND_EXACT = {0: 0.0, 30: 0.5, 60: _R3, 90: 1.0, 120: _R3, 150: 0.5, 180: 0.0, 210: -0.5,
-               240: -_R3, 270: -1.0, 300: -_R3, 330: -0.5}  # fmt: skip
+    return float(elementary.cot(x))
 
 
 def _sind(x: float) -> float:
-    """MATLAB's ``sind`` (measured on 1,979 angles, ``elem.trig``): odd; the angle modulo 360
-    is exact at multiples of 30 degrees (0, 1/2, sqrt(3)/2, 1); otherwise it is reduced to
-    ``d`` in [-45, 45] from the nearest multiple ``n`` of 90 (at +-45 the odd one: the cosine),
-    and the sine or cosine is fdlibm's kernel of ``d * (pi/180)`` with the correction ``d *
-    lo(pi/180)``."""
-    from petakit5d.core.dtypes import NAN
-    from petakit5d.matlabcompat.neighbors import _kcos, _ksin
-
-    if not math.isfinite(x):
-        return NAN
-    sign = -1.0 if x < 0 else 1.0
-    a = math.fmod(abs(x), 360.0)
-    if a == math.floor(a) and int(a) in _SIND_EXACT:
-        return sign * _SIND_EXACT[int(a)]
-    n = int(math.floor(a / 90.0 + 0.5))
-    d = a - 90.0 * n
-    if abs(d) == 45.0 and n % 2 == 0:
-        n, d = (n - 1, 45.0) if d < 0 else (n + 1, -45.0)
-    t, tl = np.array([d * _DEG]), np.array([d * _DEG_LO])
-    s = float(_ksin(t, tl, 1)[0])
-    c = float(_kcos(t, tl)[0])
-    return sign * (s, c, -s, -c)[n % 4]
+    """MATLAB's ``sind`` (``matlabcompat.elementary``: S03's measured rule)."""
+    return float(elementary.sind(x))
 
 
 def _mround(a):

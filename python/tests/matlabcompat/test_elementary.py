@@ -3,11 +3,10 @@ sqrt, hypot, atan2 and power of doubles on dense grids and random values, sind a
 PetaKit5D's fastPower, tukeywin, padarray and circshift.
 
 Inputs are made with IEEE operations only (k/64, k*pi/1024, integers times powers of two), so
-they are the same on every platform; the results are compared bit for bit. sind and cosd on a
-dense grid differ from MATLAB's in the last bit for a few percent of the arguments (MATLAB
-converts to radians more accurately; decision record 0005): that case declares the measured
-difference as a proposed tolerance. The Hann window of tukeywin (r >= 1) differs in the last
-bit for some n above 11: only n up to 11 are cases. No MATLAB test covers these functions alone.
+they are the same on every platform; the results are compared bit for bit, sind and cosd (S03's
+rule) on a dense grid, S03's 1,979 angles and 27,000 random angles too. The Hann window of
+tukeywin (r >= 1) differs in the last bit for some n above 11: only n up to 11 are cases. No
+MATLAB test covers these functions alone.
 """
 
 import numpy as np
@@ -17,7 +16,6 @@ from petakit5d.core import dtypes
 from petakit5d.matlabcompat import elementary as E
 from petakit5d.testing import oracle
 from petakit5d.testing.cases import Case, In, PerAxis, Value, Vol
-from petakit5d.testing.compare import exact, tol
 
 _C1 = np.uint64(0xBF58476D1CE4E5B9)
 _C2 = np.uint64(0x94D049BB133111EB)
@@ -174,12 +172,44 @@ _ANGLES = [
 ]
 
 
-_DEG_REASON = (
-    "proposed (decision record 0005): MATLAB's radian conversion in sind and cosd is more "
-    "accurate than one double product"
-)
-_DEG_TOL = tol(ulp=1, max_frac=0.1, reason=_DEG_REASON)  # dense grids: 8 % and 4 % measured
-_DEG_TOL_FEW = tol(ulp=1, reason=_DEG_REASON)
+def s03_angles() -> np.ndarray:
+    """the 1,979 angles of S03's elem.trig case (stitching geometry)"""
+    a = [k / 100 for k in range(-36000, 36001, 137)] + [k / 4 for k in range(-720, 721)]
+    a += [32.45, 31.5, 30.0, 45.0, 60.0, 90.0, -30.0, 32.8, 0.0, 359.95, 0.01, 1e-9]
+    return np.array(a, dtype=np.float64)
+
+
+def wide_angles() -> np.ndarray:
+    """random angles of every size, multiples of 7.5 degrees and their neighbours, +-45 + k ulp,
+    tiny and signed-zero angles"""
+    k = np.arange(-96, 97, dtype=np.float64) * 7.5
+    near = np.concatenate([np.nextafter(k, np.inf), np.nextafter(k, -np.inf)])
+    q = np.array([45.0, 135.0, 225.0, 315.0, -45.0, -135.0])
+    ulps = np.concatenate([q + i * np.spacing(q) for i in range(-3, 4)])
+    tiny = [
+        NZ,
+        0.0,
+        5e-324,
+        -5e-324,
+        1e-300,
+        -1e-300,
+        2.2250738585072014e-308,
+        359.99999999999994,
+        -720.0000000000001,
+        1e9 + 0.5,
+        -3e12 - 0.25,
+    ]
+    return np.concatenate(
+        [
+            rand53(31, 20000, -40),
+            rand53(32, 5000, -26),
+            rand53(33, 2000, -50),
+            k,
+            near,
+            ulps,
+            np.array(tiny),
+        ]
+    )
 
 
 def _deg_cases():
@@ -201,12 +231,10 @@ def _deg_cases():
                 args=[In("a")],
                 python=getattr(E, fn),
                 inputs={"a": Value(lambda h=huge: np.array(h))},
-                # cosd(64) of these is one of cosd's last-bit differences
-                compare=_DEG_TOL_FEW if fn == "cosd" else exact(),
             )
         )
     for fn in ("sind", "cosd"):
-        # cosd(30.1) is one of cosd's last-bit differences (the dense case below)
+        # (cosd's set lacks 30.1, as when cosd was 1 ulp off there: the case's key stays)
         angles = [v for v in _ANGLES if fn == "sind" or v != 30.1]
         cs.append(
             Case(
@@ -224,9 +252,18 @@ def _deg_cases():
                 args=[In("a")],
                 python=getattr(E, fn),
                 inputs={"a": Value(lambda: np.arange(-3600, 3601) / 10.0)},
-                compare=_DEG_TOL,
             )
         )
+        for name, make in (("s03_angles", s03_angles), ("wide_angles", wide_angles)):
+            cs.append(
+                Case(
+                    f"{fn}_{name}",
+                    matlab=fn,
+                    args=[In("a")],
+                    python=getattr(E, fn),
+                    inputs={"a": Value(make)},
+                )
+            )
     return cs
 
 
@@ -455,3 +492,29 @@ def test_padarray_and_circshift():
         E.padarray(a, (1, 2), method="mirror")
     with pytest.raises(ValueError):
         E.fast_power(a, 1.5)
+
+
+def test_sind_and_cosd_rules():
+    assert np.signbit(E.sind(NZ)) and np.signbit(E.sind(-180.0)) and not np.signbit(E.sind(180.0))
+    assert E.sind(60.0) == E.cosd(30.0) == float.fromhex("0x1.bb67ae8584caap-1")
+    assert E.cosd(90.0) == 0 and not np.signbit(E.cosd(-270.0))
+    # at +-45 the cosine kernel, for both
+    assert E.sind(45.0) == E.cosd(45.0) == E.kernel_cos(np.pi / 4, 0.0)
+    a = wide_angles()
+    assert E.sind(-a).tobytes() == (-E.sind(a)).tobytes()  # odd
+    assert E.cosd(-a).tobytes() == E.cosd(a).tobytes()  # even
+    nan_s, nan_c = E.sind(np.inf), E.cosd(np.inf)
+    assert np.signbit(nan_s) and not np.signbit(nan_c)
+
+
+def test_kernels_and_raw_functions():
+    x = np.array([0.1, -0.7, 0.785])
+    assert E.kernel_sin(x, 0.0).tobytes() == E.fdlibm_sin(x).tobytes()
+    assert E.kernel_cos(x, 0.0).tobytes() == E.fdlibm_cos(x).tobytes()
+    assert E.kernel_tan(x, 0.0, 1).tobytes() == E.tan(x).tobytes()
+    n, y0, y1 = E.rem_pio2(np.array([10.0, -3.0]))
+    assert n.tolist() == [6, -2] and abs(y0[0] - (10 - 6 * np.pi / 2)) < 1e-15
+    # fdlibm's sine and cosine of Inf are MATLAB's NaN on every CPU; MATLAB's cos gives +NaN
+    r = E.fdlibm_cos(np.array([np.inf, -np.inf]))
+    assert all(np.signbit(r)) and not any(np.signbit(E.cos(np.array([np.inf, -np.inf]))))
+    assert E.kernel_sin(0.3, 0.0).shape == () and E.rem_pio2(5.0)[0].shape == ()
