@@ -39,6 +39,7 @@ classdef StitchingTest < pktest.TestCase
                 'tileSize', [64, 64, 40], 'stageXYZ', [0, 0, 0; 0, 36 * 0.108, 0; 3, 0, 0; 3, 36 * 0.108, 0], ...
                 'tileIdx', [0, 0, 0; 0, 1, 0; 1, 0, 0; 1, 1, 0], ...
                 'params', {{'DSR', false, 'dz', 0.3, 'skewAngle', 32.45, 'reverse', true, 'axisOrder', '-x,y,z'}}), ...
+            'singleTile', struct('gtSize', [100, 120, 32], 'starts', [0, 0, 0], 'tileSize', [64, 72, 32], 'params', {{}}), ...
             'resampledDSR', struct('gtSize', [80, 108, 32], 'starts', [0, 0, 0; 0, 36, 0; 30, 0, 0; 30, 36, 0], ...
                 'tileSize', [50, 72, 32], 'pixelSizes', [0.216, 0.108, 0.108], ...
                 'params', {{'resampleType', 'given', 'resampleFactor', [2, 1, 1]}}))
@@ -1194,6 +1195,21 @@ classdef StitchingTest < pktest.TestCase
             out = testCase.readResult(dataPath);
             testCase.verifyEqual(size(out), [10, 3, 102]);
             testCase.verifyEqual(out(1 : 8, 1, 1 : 100), gt);
+        end
+
+        function singleTileCanvasIsTheTilePlusTwoVoxels(testCase)
+            % the canvas of a single tile took the tile's largest extent for
+            % every axis (max of a one-row matrix without a dimension), so a
+            % 64 x 72 x 32 tile made a 74 x 74 x 74 volume
+            dataPath = testCase.createTempFolder();
+            gt = testCase.randomVolume([64, 72, 32]);
+            csvFn = testCase.writeTiles(dataPath, gt, [0, 0, 0], [64, 72, 32]);
+
+            testCase.stitch(dataPath, csvFn);
+
+            out = testCase.readResult(dataPath);
+            testCase.verifyEqual(size(out), [66, 74, 34]);
+            testCase.verifyEqual(out(1 : 64, 1 : 72, 1 : 32), gt);
         end
 
         function resampleFactorIsInTheTilesAxisOrder(testCase)

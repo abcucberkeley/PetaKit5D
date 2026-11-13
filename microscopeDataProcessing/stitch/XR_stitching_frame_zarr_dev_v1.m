@@ -660,7 +660,7 @@ origin = min(xyz_shift_orig, [], 1) - pad_size;
 xyz_shift = xyz_shift_orig - origin;
 
 if isPrimaryCh
-	dxyz = max(xyz_shift_orig + imSizes(:, data_order_mat) .* [xp, yp, zp]) + pad_size - origin;
+	dxyz = max(xyz_shift_orig + imSizes(:, data_order_mat) .* [xp, yp, zp], [], 1) + pad_size - origin;
 	vxyz = round(dxyz ./ [xp, yp, zp] + 2);
 	nvSize = vxyz(data_order_reverse_mat);
 	if any(stitchMIP) || max(imSizes(:, data_order_mat(3)) == 1)
@@ -694,7 +694,7 @@ int_xyz_shift = round(xyz_shift ./ [xp, yp, zp]);
 % to increase the scalability of the code, we use block-based processing
 % first obtain coordinate data structure for blocks
 batchSize = min(nvSize, batchSize);
-batchSize = min(median(imSizes) * 2, batchSize);
+batchSize = min(median(imSizes, 1) * 2, batchSize);
 blockSize = min(batchSize, blockSize);
 batchSize = ceil(batchSize ./ blockSize) .* blockSize;
 bSubSz = ceil(nvSize ./ batchSize);
