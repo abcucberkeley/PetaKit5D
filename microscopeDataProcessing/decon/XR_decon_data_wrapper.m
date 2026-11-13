@@ -329,8 +329,6 @@ if parseCluster && strcmp(RLMethod, 'omw') && ~largeFile
         [~, psfFsn] = fileparts(psfFn);
         wienerAlpha_j = str2double(sprintf('%.20f', wienerAlpha(p)));
         OTFCumThresh_j = str2double(sprintf('%.20f', OTFCumThresh(p)));
-        bpFsns = {sprintf('%s_back_projector_alpha_%0.6f_otf_cum_thresh_%0.6f.tif', psfFsn, wienerAlpha_j, OTFCumThresh_j), ...
-            sprintf('%s_OTF.tif', psfFsn), sprintf('%s_OTF_mask_otf_cum_thresh_%0.6f.tif', psfFsn, OTFCumThresh_j)};
         srcPath = '';
         for d = 1 : nd
             % the first file of the channel in the dataset
@@ -353,8 +351,9 @@ if parseCluster && strcmp(RLMethod, 'omw') && ~largeFile
                 mkdir(psfgenPath);
             end
             if isempty(srcPath)
-                % without the figure, as in the cluster jobs (no Java)
-                omw_backprojector_files(psf, psfgenPath, psfFsn, wienerAlpha_j, OTFCumThresh_j, skewed, hannWinBounds_j, psfFn, false);
+                % without the figure, as in the cluster jobs (no Java); the
+                % names of its files for the other datasets
+                [~, bpFsns] = omw_backprojector_files(psf, psfgenPath, psfFsn, wienerAlpha_j, OTFCumThresh_j, skewed, hannWinBounds_j, psfFn, false);
                 srcPath = psfgenPath;
             elseif ~exist([psfgenPath, bpFsns{1}], 'file')
                 % same PSF and parameters as in the first dataset

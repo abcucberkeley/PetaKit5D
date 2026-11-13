@@ -227,6 +227,37 @@ classdef DeconWrapperTest < pktest.TestCase
             end
         end
 
+        function largeFileInMemoryBatchesAreOnlyDeconvolved(testCase)
+            % XR_RLdeconFrame3D passes Deskew (skewed data: the dz of the PSF)
+            % to the in-memory large-file decon, which passed it on to the
+            % RLdecon of each batch: with nothing to save there (Deskew with
+            % the combined DSR) each batch returned an empty result
+            % (MATLAB:subsassigndimmismatch), and with Rotate each failed on
+            % its undefined file name. The batches are only deconvolved, as
+            % the in-place blocks: Deskew only changes the PSF that decides
+            % the batches' borders, so with one batch the results are equal
+            d = testCase.createDataset({'A'}, 1);
+            deconPath = [d.root, 'large/'];
+            args = {d.rawFns{1}, d.psfFns{1}, '', testCase.XYPixelSize, testCase.Dz, 'Background', testCase.Background, ...
+                'dzPSF', testCase.Dz, 'DeconIter', 2, 'EdgeErosion', 0, 'RLMethod', 'simplified', 'useGPU', false};
+            runs = {'plain', {'batchSize', [24, 24, 16]}; 'rotate', {'batchSize', [24, 24, 16], 'Rotate', true}; ...
+                'one', {'batchSize', [64, 64, 64]}; 'deskew', {'batchSize', [64, 64, 64], 'Deskew', true}};
+            out = struct();
+            for i = 1 : size(runs, 1)
+                args{3} = sprintf('%s%s/%s.tif', deconPath, runs{i, 1}, d.fsns{1});
+                evalc('RLdecon_large_in_memory(args{:}, runs{i, 2}{:})');
+                out.(runs{i, 1}) = readtiff(args{3});
+            end
+            testCase.verifyEqual(out.rotate, out.plain);
+            testCase.verifyEqual(out.deskew, out.one);
+            testCase.verifySize(out.plain, testCase.ImSize);
+            testCase.verifyGreaterThan(max(out.plain(:)), uint16(0), 'The batches were not deconvolved.');
+            % (a batch that is deskewed and rotated writes the MIP of its DSR)
+            for name = {'rotate', 'deskew'}
+                testCase.verifyFalse(isfolder([deconPath, name{1}, '/DSR']), sprintf('%s: a batch was rotated.', name{1}));
+            end
+        end
+
         function largeFileInMemoryUsesBlockSize(testCase)
             % the in-memory large-file path wrote its zarr result with
             % writezarr's default chunks (500^3) instead of blockSize
@@ -978,6 +1009,28 @@ classdef DeconWrapperTest < pktest.TestCase
                 testCase.verifyEqual(readtiff(bpFn), expected);
                 testCase.verifyTrue(exist([psfgenPath, '_OTF.tif'], 'file') == 2);
                 testCase.verifyTrue(exist([psfgenPath, '_OTF_mask_otf_cum_thresh_0.900000.tif'], 'file') == 2);
+            end
+        end
+
+        function omwBackProjectorOfOtherBoundsIsCopiedByItsName(testCase)
+            % the back projector's name didn't hold hannWinBounds (a call with
+            % other bounds read an earlier one); the wrapper copies the one
+            % it makes to the other datasets by the name it got
+            testCase.assumeFalse(ispc, 'The fake Slurm needs a POSIX shell.');
+            d = testCase.createDataset({'A'}, 1);
+            d2 = testCase.createDataset({'A'}, 1);
+            d.dataPaths = {d.dataPath, d2.dataPath};
+            testCase.applyFixture(pktest.FakeSlurmFixture);
+            testCase.runWrapper(d, 'RLMethod', 'omw', 'deconIter', 2, 'wienerAlpha', 0.005, 'OTFCumThresh', 0.9, ...
+                'hannWinBounds', [0.5, 0.9], 'skewed', false, 'parseCluster', true, 'GPUJob', true, 'maxTrialNum', 1, ...
+                'GPUConfigFile', testCase.writeGPUConfig(d.root, struct()), 'jobLogDir', [d.root, 'logs']);
+            for dataPath = {d.dataPath, d2.dataPath}
+                psfgenPath = [dataPath{1}, 'matlab_decon/psfgen/', d.psfFsns{1}];
+                bpFn = [psfgenPath, '_back_projector_alpha_0.005000_otf_cum_thresh_0.900000_hann_win_bounds_0.500000_0.900000.tif'];
+                testCase.assertTrue(exist(bpFn, 'file') == 2, 'The back projector of the bounds is missing.');
+                psf = single(readtiff([psfgenPath, '_omw.tif']));
+                [~, expected] = evalc('omw_backprojector_generation(psf, 0.005, false, ''OTFCumThresh'', 0.9, ''hannWinBounds'', [0.5, 0.9])');
+                testCase.verifyEqual(readtiff(bpFn), expected);
             end
         end
 

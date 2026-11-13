@@ -37,7 +37,7 @@ ip.addParameter('xStepThresh', 2, @isnumeric);
 ip.addParameter('Background', [], @isnumeric);
 ip.addParameter('Resample', [] , @isnumeric);
 ip.addParameter('DeconIter', 15 , @isnumeric); % number of iterations
-ip.addParameter('RLMethod', 'omw' , @ischar); % rl method {'original', 'simplified', 'omw', 'cudagen'}
+ip.addParameter('RLMethod', 'omw' , @(x) any(strcmp(x, {'original', 'simplified', 'omw', 'cudagen'}))); % rl method {'original', 'simplified', 'omw', 'cudagen'}
 ip.addParameter('wienerAlpha', 0.005, @isnumeric); % alpha for wiener in OMW method
 ip.addParameter('OTFCumThresh', 0.9, @isnumeric); % OTF cumutative sum threshold
 ip.addParameter('hannWinBounds', [0.8, 1.0], @isnumeric); % apodization range for distance matrix
@@ -127,9 +127,16 @@ end
 
 if ~isempty(outputFn)
     [deconPath, outFsn] = fileparts(outputFn);    
+    % in memory (rawdata), the results are named after the output file
+    if isempty(inputFn)
+        fsname = outFsn;
+    end
 else
     if ~isempty(inputFn)
         deconPath = [dataPath, '/matlab_decon/'];    
+    else
+        % in memory without an output file: no folder (nothing is saved)
+        deconPath = '';
     end
 end
 
@@ -215,8 +222,11 @@ else
     imSize = size(rawdata, 1 : 3);
 end
 
-% prepare for PSF
-if psfGen || ~isempty(inputFn) || strcmp(RLMethod, 'omw')
+% prepare for PSF (without a folder, the PSF and the back projector are
+% made without their files)
+psfgenPath = '';
+psfgen_filename = '';
+if (psfGen || ~isempty(inputFn) || strcmp(RLMethod, 'omw')) && ~isempty(deconPath)
     psfgenPath = sprintf('%s/psfgen/', deconPath);
     if ~exist(psfgenPath, 'dir')
         mkdir(psfgenPath);
@@ -229,7 +239,7 @@ if ischar(PSFfn)
         load(PSFfn, 'psf');
     elseif strcmp(suffix, '.tif')
         % xruan (01/12/2021)
-        if psfGen || ~isempty(inputFn)
+        if (psfGen || ~isempty(inputFn)) && ~isempty(psfgenPath)
             psfgen_filename = sprintf('%s/%s_%s.tif', psfgenPath, psfFsn, RLMethod);
         end
 
@@ -302,7 +312,12 @@ end
 % generate or load back projectors
 switch RLMethod
     case 'omw'
-        psf_b = omw_backprojector_files(psf, psfgenPath, psfFsn, wienerAlpha, OTFCumThresh, skewed, hannWinBounds, PSFfn);
+        if isempty(psfgenPath)
+            psf_b = omw_backprojector_generation(psf, wienerAlpha, skewed, 'OTFCumThresh', OTFCumThresh, ...
+                'hannWinBounds', hannWinBounds);
+        else
+            psf_b = omw_backprojector_files(psf, psfgenPath, psfFsn, wienerAlpha, OTFCumThresh, skewed, hannWinBounds, PSFfn);
+        end
         bSize = size(psf_b, 1 : 3);
         if any(bSize > imSize)
             warning('The psf size %s is larger than the data size %s, crop it!', mat2str(bSize), mat2str(imSize));

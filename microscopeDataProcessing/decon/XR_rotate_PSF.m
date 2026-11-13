@@ -35,6 +35,10 @@ if isempty(uuid)
 end
 
 [PSFdir, fsname] = fileparts(PSFfile);
+% a file name without a folder is in the current folder (not the root)
+if isempty(PSFdir)
+    PSFdir = '.';
+end
 rotPSFdir = [PSFdir, '/', 'Rotated/'];
 if ~exist(rotPSFdir, 'dir')
     mkdir(rotPSFdir);

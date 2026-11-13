@@ -1,8 +1,8 @@
 classdef DeconFunctionTest < pktest.TestCase
     % deconvolution building blocks (decon_lucy_function,
-    % decon_lucy_omw_function, omw_backprojector_generation, psf_gen_new,
-    % decon_psf2otf and RLdecon in memory) on synthetic beads blurred with a
-    % known Gaussian PSF.
+    % decon_lucy_omw_function, omw_backprojector_generation and the names of
+    % its files, psf_gen_new, XR_rotate_PSF, decon_psf2otf and RLdecon in
+    % memory) on synthetic beads blurred with a known Gaussian PSF.
 
     properties (Constant)
         ImSize = [48, 48, 40]
@@ -477,6 +477,106 @@ classdef DeconFunctionTest < pktest.TestCase
             [~, out] = evalc(['RLdecon('''', '''', psfFn, 0.108, 0.2, 0.2, ''rawdata'', im, ''RLMethod'', ''simplified'', ', ...
                 '''psfGen'', false, ''useGPU'', false, ''Background'', 100, ''DeconIter'', 0)']);
             testCase.verifyEqual(out, im);
+        end
+
+        function rldeconInMemoryWithAnOutputFileNamesItsFilesAfterIt(testCase)
+            % data in memory (rawdata, no input file) with an output file: its
+            % MIP took the input file's name (fsname undefined) and failed; the
+            % result and its MIP are named after the output file and equal
+            % those of the decon of a file
+            dataPath = testCase.createTempFolder();
+            psfFn = [dataPath, 'psf.tif'];
+            writetiff(testCase.PSF, psfFn);
+            im = testCase.blurredBeads();
+            inFn = [dataPath, 'in.tif'];
+            writetiff(im, inFn);
+            mkdir([dataPath, 'file']);
+            mkdir([dataPath, 'memory']);
+            args = {'RLMethod', 'simplified', 'psfGen', false, 'useGPU', false, 'Background', 100, 'DeconIter', 2};
+            evalc('RLdecon(inFn, [dataPath, ''file/in.tif''], psfFn, 0.108, 0.2, 0.2, args{:})');
+            evalc('RLdecon('''', [dataPath, ''memory/out.tif''], psfFn, 0.108, 0.2, 0.2, ''rawdata'', im, args{:})');
+            testCase.verifyEqual(readtiff([dataPath, 'memory/out.tif']), readtiff([dataPath, 'file/in.tif']));
+            testCase.verifyEqual(readtiff([dataPath, 'memory/MIPs/out_MIP_z.tif']), ...
+                readtiff([dataPath, 'file/MIPs/in_MIP_z.tif']));
+        end
+
+        function rldeconInMemoryWithoutAnOutputFileWritesNothing(testCase, method)
+            % without an input or an output file there is no folder: OMW (the
+            % back projector's files) and psfGen (the generated PSF's file)
+            % failed on the undefined folder. Both are made in memory, nothing
+            % is written, and the result equals the decon of a file
+            dataPath = testCase.createTempFolder();
+            psfFn = [dataPath, 'psf.tif'];
+            writetiff(uint16(pktest.deconPSF([31, 31, 31], testCase.PSFSigma) + 100), psfFn);
+            im = testCase.blurredBeads();
+            inFn = [dataPath, 'in.tif'];
+            writetiff(im, inFn);
+            args = {'RLMethod', method, 'psfGen', true, 'useGPU', false, 'Background', 100, 'DeconIter', 2};
+            evalc('RLdecon(inFn, [dataPath, ''file/in.tif''], psfFn, 0.108, 0.2, 0.2, args{:})');
+            here = testCase.createTempFolder();
+            cd(here);
+            [~, out] = evalc('RLdecon('''', '''', psfFn, 0.108, 0.2, 0.2, ''rawdata'', im, args{:})');
+            testCase.verifyEqual(out, readtiff([dataPath, 'file/in.tif']));
+            dir_info = dir(here);
+            testCase.verifyEmpty(setdiff({dir_info.name}, {'.', '..'}), 'Files were written without an output file.');
+        end
+
+        function rldeconRejectsAnUnknownMethod(testCase)
+            % RLdecon's method names are case-sensitive: another name left the
+            % result empty, and the decon failed writing its MIP
+            dataPath = testCase.createTempFolder();
+            psfFn = [dataPath, 'psf.tif'];
+            writetiff(testCase.PSF, psfFn);
+            inFn = [dataPath, 'in.tif'];
+            writetiff(testCase.blurredBeads(), inFn);
+            testCase.verifyError(@() RLdecon(inFn, [dataPath, 'out/in.tif'], psfFn, 0.108, 0.2, 0.2, 'RLMethod', ...
+                'Simplified', 'psfGen', false, 'useGPU', false, 'Background', 100, 'DeconIter', 2), ...
+                'MATLAB:InputParser:ArgumentFailedValidation');
+            testCase.verifyFalse(isfolder([dataPath, 'out']), 'The decon of an unknown method wrote files.');
+        end
+
+        function backProjectorFilesOfOtherBoundsAreTheirOwn(testCase)
+            % the back projector's file name didn't hold hannWinBounds: a
+            % call with other bounds read the back projector of the first.
+            % The default bounds keep their name
+            psfgenPath = testCase.createTempFolder();
+            args = {testCase.PSF, psfgenPath, 'PSF', testCase.WienerAlpha, 0.9, false};
+            [~, first] = evalc('omw_backprojector_files(args{:}, [0.8, 1], ''PSF.tif'', false)');
+            [~, other] = evalc('omw_backprojector_files(args{:}, [0.5, 0.9], ''PSF.tif'', false)');
+            testCase.verifyEqual(first, testCase.BackProjector);
+            [~, expected] = evalc('omw_backprojector_generation(testCase.PSF, testCase.WienerAlpha, false, ''hannWinBounds'', [0.5, 0.9])');
+            testCase.verifyEqual(other, expected);
+            % the names of the files (read again)
+            [~, ~, fsns] = evalc('omw_backprojector_files(args{:}, [0.8, 1], ''PSF.tif'', false)');
+            [~, ~, otherFsns] = evalc('omw_backprojector_files(args{:}, [0.5, 0.9], ''PSF.tif'', false)');
+            testCase.verifyEqual(fsns, {'PSF_back_projector_alpha_0.005000_otf_cum_thresh_0.900000.tif', 'PSF_OTF.tif', ...
+                'PSF_OTF_mask_otf_cum_thresh_0.900000.tif'});
+            testCase.verifyEqual(otherFsns{1}, ...
+                'PSF_back_projector_alpha_0.005000_otf_cum_thresh_0.900000_hann_win_bounds_0.500000_0.900000.tif');
+            % bounds that are the default in 6 decimals (as alpha and the
+            % threshold in the name) have its name
+            [~, ~, nearFsns] = evalc('omw_backprojector_files(args{:}, [0.8, 1 + eps], ''PSF.tif'', false)');
+            testCase.verifyEqual(nearFsns, fsns);
+            for fsn = [fsns, otherFsns(1)]
+                testCase.verifyTrue(isfile([psfgenPath, fsn{1}]), fsn{1});
+            end
+        end
+
+        function rotatedPSFOfAFileInTheCurrentFolderStaysThere(testCase)
+            % XR_rotate_PSF of a file name without a folder wrote to /Rotated/
+            % (fileparts gives no folder); it writes to Rotated/ in the current
+            % folder, the same as for the file's full path
+            root = testCase.createTempFolder();
+            psf = uint16(pktest.deconPSF([31, 31, 31], testCase.PSFSigma) + 100);
+            mkdir([root, 'full']);
+            mkdir([root, 'here']);
+            writetiff(psf, [root, 'full/psf.tif']);
+            writetiff(psf, [root, 'here/psf.tif']);
+            evalc('XR_rotate_PSF([root, ''full/psf.tif''], ''dz'', 0.3)');
+            cd([root, 'here']);
+            evalc('XR_rotate_PSF(''psf.tif'', ''dz'', 0.3)');
+            testCase.verifyEqual(readtiff([root, 'here/Rotated/psf.tif']), readtiff([root, 'full/Rotated/psf.tif']));
+            testCase.verifyTrue(isfile([root, 'here/Rotated/parameters.json']));
         end
 
         function psfGenKeepsEvenSizePSFAtTheFFTCenter(testCase)
