@@ -1128,6 +1128,49 @@ def test_default_falls_back_to_the_cpu_with_a_warning(monkeypatch, method):
     rl.clear_otf_cache()
 
 
+@pytest.mark.parametrize("method", ["simplified", "omw"])
+def test_a_gpu_applies_its_own_kernel_rules(monkeypatch, method):
+    """decon_use_rfft_mex with a GPU applies the GPU mex's rules (it takes one row along y): the
+    CPU kernels' refusal of use_mex=True waits until the call runs on the CPU (use_gpu False, no
+    usable GPU, a cached CPU OTF), and a selected GPU gets the call (petakit5d.decon.rl_gpu, a
+    stand-in here); clear_otf_cache clears the GPU path's cache too"""
+    import sys
+    import types
+
+    from petakit5d.gpu import device as G
+
+    row = py_data([1, 64, 33], 14)  # MATLAB's 1 x 64 x 33: (33, 1, 64)
+    psf = py_psf([1, 64, 33])
+
+    def run(use_gpu):
+        kw = {"background": 100.0, "use_mex": True, "use_gpu": use_gpu}
+        if method == "simplified":
+            return rl.decon_lucy(row, psf, 2, **kw)
+        return rl.decon_lucy_omw(row, psf, psf, 2, **kw)
+
+    rl.clear_otf_cache()
+    with pytest.raises(rl.DeconError, match="does not support the data"):
+        run(False)
+    _stub_gpus(monkeypatch, 0, "No GPU is found.")
+    with pytest.warns(G.GPUFallbackWarning), pytest.raises(rl.DeconError):
+        run(None)
+    calls = []
+    fake = types.ModuleType("petakit5d.decon.rl_gpu")
+    fake.decon_lucy = fake.decon_lucy_omw = lambda **kw: calls.append(kw) or "gpu result"
+    fake.clear_otf_cache = lambda: calls.append("cleared")
+    monkeypatch.setitem(sys.modules, "petakit5d.decon.rl_gpu", fake)
+    monkeypatch.setattr(rl, "_gpu_device", lambda use_gpu: "a GPU")
+    assert run(None) == "gpu result" and calls[-1]["use_mex"] is True
+    rl.clear_otf_cache()
+    assert calls[-1] == "cleared"
+    # supported data, use_gpu False: the CPU's result as before
+    monkeypatch.setattr(rl, "_gpu_device", lambda use_gpu: None)
+    im = py_data([48, 46, 36], 15)
+    a = rl.decon_lucy(im, py_psf([48, 46, 36]), 2, background=100.0, use_gpu=False, use_mex=True)
+    assert a.decon.shape == im.shape
+    rl.clear_otf_cache()
+
+
 def test_matlab_names_take_and_give_matlabs_values():
     """the MATLAB-name layer: MATLAB's (y, x, z) arrays and box, the outputs in MATLAB's form"""
     from petakit5d.params import find

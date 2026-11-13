@@ -505,9 +505,30 @@ _CACHE_LOCK = threading.Lock()
 
 
 def clear_otf_cache() -> None:
-    """Forget the cached OTFs (MATLAB's ``clear decon_lucy_function decon_lucy_omw_function``)."""
+    """Forget the cached OTFs (MATLAB's ``clear decon_lucy_function decon_lucy_omw_function``),
+    also the GPU path's (``petakit5d.decon.rl_gpu``, where it is loaded)."""
+    import sys
+
     with _CACHE_LOCK:
         _CACHE.clear()
+    gpu = sys.modules.get("petakit5d.decon.rl_gpu")
+    if gpu is not None:
+        gpu.clear_otf_cache()
+
+
+def _kernel_rule(
+    use_mex: bool | None, method: str, data, debug: bool, background, use_gpu: bool | None
+) -> tuple[bool, DeconError | None]:
+    """(use, deferred): ``use_rfft_kernels`` on the CPU. Where a GPU may run the call (use_gpu
+    not False), MATLAB's decon_use_rfft_mex applies the GPU mex's rules there (R04: e.g. one row
+    along y), so the CPU's refusal of ``use_mex=True`` is deferred: ``_otfs`` and the CPU path
+    raise it once the call runs on the CPU."""
+    try:
+        return use_rfft_kernels(use_mex, method, data, debug, background)[0], None
+    except DeconError as e:
+        if use_gpu is False:
+            raise
+        return False, e
 
 
 def _same_psfs(a: tuple[np.ndarray, ...], b: tuple[np.ndarray, ...]) -> bool:
@@ -547,20 +568,26 @@ def _otfs(
     backend: str,
     layout: str | None,
     threads: int,
+    deferred: DeconError | None = None,
 ):
     """(OTFs, GPU device): the cached OTFs of the same PSFs, data size, path, backend and layout,
-    else new ones; the GPU check of a new OTF as MATLAB makes it (None: the CPU)"""
+    else new ones; the GPU check of a new OTF as MATLAB makes it (None: the CPU). ``deferred``:
+    the CPU kernels' refusal of the call, raised where it runs on the CPU (``_kernel_rule``)."""
     want_gpu = use_gpu is not False
     key = (shape, kernels, backend, layout, want_gpu)
     with _CACHE_LOCK:
         e = _CACHE.get(method)
         hit = e is not None and e.key == key and _same_psfs(e.psfs, psfs)
         if hit and use_gpu is not True:
+            if deferred is not None:
+                raise deferred
             return e.otfs, None
         _CACHE.pop(method, None)
     dev = _gpu_device(use_gpu) if want_gpu else None
     if dev is not None:
         return None, dev
+    if deferred is not None:
+        raise deferred
     norm = [_normalized(p, threads) for p in psfs]
     if kernels:
         from petakit5d.kernels.decon import LucyRFFT
@@ -727,12 +754,14 @@ def lucy(
     data = _data(i)
     scalar_bg, bg = _background(background)
     p = _psf(psf)
-    use, _ = use_rfft_kernels(use_mex, "simplified", data, debug, None if scalar_bg else bg)
-    otfs, dev = _otfs("simplified", (p,), data.shape, use, use_gpu, be, layout, t)
+    rule = ("simplified", data, debug, None if scalar_bg else bg)
+    use, deferred = _kernel_rule(use_mex, *rule, use_gpu)
+    otfs, dev = _otfs("simplified", (p,), data.shape, use, use_gpu, be, layout, t, deferred)
     if dev is not None:
         r = _gpu_path("decon_lucy", use_gpu, call)
         if r is not None:
             return r
+        use, _ = use_rfft_kernels(use_mex, *rule)
         otfs, _ = _otfs("simplified", (p,), data.shape, use, False, be, layout, t)
     h = otfs[0]
 
@@ -879,12 +908,14 @@ def lucy_omw(
     data = _data(i)
     scalar_bg, bg = _background(background)
     pf, pb = _psf(psf_f), _psf(psf_b)
-    use, _ = use_rfft_kernels(use_mex, "omw", data, debug, None if scalar_bg else bg)
-    otfs, dev = _otfs("omw", (pf, pb), data.shape, use, use_gpu, be, layout, t)
+    rule = ("omw", data, debug, None if scalar_bg else bg)
+    use, deferred = _kernel_rule(use_mex, *rule, use_gpu)
+    otfs, dev = _otfs("omw", (pf, pb), data.shape, use, use_gpu, be, layout, t, deferred)
     if dev is not None:
         r = _gpu_path("decon_lucy_omw", use_gpu, call)
         if r is not None:
             return r
+        use, _ = use_rfft_kernels(use_mex, *rule)
         otfs, _ = _otfs("omw", (pf, pb), data.shape, use, False, be, layout, t)
     hf, hb = otfs
 
