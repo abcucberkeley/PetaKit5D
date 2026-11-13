@@ -442,17 +442,23 @@ jobs:
       # array's class before cpp-zarr's mex (copied as parallelWriteZarr_orig), so
       # that the mex runs no OpenMP of its own: if MATLAB then exits by itself,
       # nothing but cpp-zarr's own OpenMP pool is left in the deadlock
-      - name: Make the atexit mex variant with the casting parallelWriteZarr
+      - name: Make the mex variants with the casting parallelWriteZarr
         if: always()
         continue-on-error: true
         shell: bash
         run: |
-          d="$RUNNER_TEMP/variant_atexit_cast"
-          cp -r "$RUNNER_TEMP/variant_atexit" "$d"
-          cp .github/scripts/cast_shim_parallelWriteZarr.txt "$d/parallelWriteZarr.m"
+          # atexit, lock and both variants with the casting parallelWriteZarr,
+          # and cast_only: the committed mex with it
+          for v in atexit lock both; do
+            d="$RUNNER_TEMP/variant_${v}_cast"
+            cp -r "$RUNNER_TEMP/variant_$v" "$d"
+            cp .github/scripts/cast_shim_parallelWriteZarr.txt "$d/parallelWriteZarr.m"
+          done
+          mkdir -p "$RUNNER_TEMP/variant_cast_only"
+          cp .github/scripts/cast_shim_parallelWriteZarr.txt "$RUNNER_TEMP/variant_cast_only/parallelWriteZarr.m"
           z=microscopeDataProcessing/io/cpp-zarr/windows
           cp "$z/parallelWriteZarr.mexw64" "$z/parallelWriteZarr_orig.mexw64"
-          ls "$d" | tr '\n' ' '; echo
+          for v in atexit_cast lock_cast both_cast cast_only; do echo "$v: $(ls "$RUNNER_TEMP/variant_$v" | wc -l) files"; done
 
       - name: Reproducer, BlockMIPTest first 16, atexit mex and casting parallelWriteZarr
         id: suite_BlockMIPTest_first16_atexit_cast
@@ -483,6 +489,72 @@ jobs:
         if: always()
         shell: bash
         run: bash .github/scripts/suite_step_done.sh suite_StitchBlendMean_atexit_cast ${{ steps.suite_StitchBlendMean_atexit_cast.outcome }}
+
+      - name: Reproducer, BlockMIPTest first 16, committed mex and casting parallelWriteZarr
+        id: suite_BlockMIPTest_first16_cast_only
+        timeout-minutes: 5
+        continue-on-error: true
+        uses: matlab-actions/run-command@v3
+        env:
+          PROBE_CAST_LOG: ${{ github.workspace }}/probe-results/cast_BlockMIPTest_first16_cast_only.txt
+        with:
+          command: addpath('.github/scripts'); suite_exit_probe('BlockMIPTest_first16_cast_only', 'BlockMIPTest/*', 16, fullfile(getenv('RUNNER_TEMP'), 'variant_cast_only'));
+
+      - name: After the reproducer, BlockMIPTest first 16, committed mex and casting parallelWriteZarr
+        if: always()
+        shell: bash
+        run: bash .github/scripts/suite_step_done.sh suite_BlockMIPTest_first16_cast_only ${{ steps.suite_BlockMIPTest_first16_cast_only.outcome }}
+
+      - name: Reproducer, StitchingTest blend mean, locked mex and casting parallelWriteZarr
+        id: suite_StitchBlendMean_lock_cast
+        timeout-minutes: 5
+        continue-on-error: true
+        uses: matlab-actions/run-command@v3
+        env:
+          PROBE_CAST_LOG: ${{ github.workspace }}/probe-results/cast_StitchBlendMean_lock_cast.txt
+        with:
+          command: addpath('.github/scripts'); suite_exit_probe('StitchBlendMean_lock_cast', {'StitchingTest/blendingWithoutTheMexGivesTheSameResult?tileBlendMethod=mean?'}, [], fullfile(getenv('RUNNER_TEMP'), 'variant_lock_cast'));
+
+      - name: After the reproducer, StitchingTest blend mean, locked mex and casting parallelWriteZarr
+        if: always()
+        shell: bash
+        run: bash .github/scripts/suite_step_done.sh suite_StitchBlendMean_lock_cast ${{ steps.suite_StitchBlendMean_lock_cast.outcome }}
+
+      - name: Reproducer, StitchingTest blend mean, both mex and casting parallelWriteZarr
+        id: suite_StitchBlendMean_both_cast
+        timeout-minutes: 5
+        continue-on-error: true
+        uses: matlab-actions/run-command@v3
+        env:
+          PROBE_CAST_LOG: ${{ github.workspace }}/probe-results/cast_StitchBlendMean_both_cast.txt
+        with:
+          command: addpath('.github/scripts'); suite_exit_probe('StitchBlendMean_both_cast', {'StitchingTest/blendingWithoutTheMexGivesTheSameResult?tileBlendMethod=mean?'}, [], fullfile(getenv('RUNNER_TEMP'), 'variant_both_cast'));
+
+      - name: After the reproducer, StitchingTest blend mean, both mex and casting parallelWriteZarr
+        if: always()
+        shell: bash
+        run: bash .github/scripts/suite_step_done.sh suite_StitchBlendMean_both_cast ${{ steps.suite_StitchBlendMean_both_cast.outcome }}
+
+      # an exit that crashes (StitchingTest blend mean with the atexit mex and the
+      # casting parallelWriteZarr ended in an access violation): MATLAB's own crash
+      # reports, which name the module and stack of the faulting thread
+      - name: MATLAB crash reports
+        if: always()
+        continue-on-error: true
+        shell: bash
+        run: |
+          shopt -s nullglob
+          found=0
+          for d in "$TEMP" "$TMP" "$LOCALAPPDATA/Temp" "$USERPROFILE/AppData/Local/Temp"; do
+            [ -d "$d" ] || continue
+            for f in "$d"/matlab_crash_dump*; do
+              found=1
+              echo "== $f ($(stat -c %y "$f" 2>/dev/null))"
+              head -c 20000 "$f"
+              echo
+            done
+          done
+          [ "$found" = 1 ] || echo "no MATLAB crash report in the temp folders"
 
       - name: Summary
         if: always()
