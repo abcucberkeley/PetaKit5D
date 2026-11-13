@@ -250,7 +250,9 @@ def mkdir_recursive(full_path: str | os.PathLike, group_write: bool = False) -> 
         if os.path.isdir(target):
             continue
         try:
-            os.mkdir(target)
+            # makedirs: on Windows a path with backslashes is one part here, and MATLAB's
+            # mkdir makes the missing folders above it too
+            os.makedirs(target)
         except FileExistsError:
             # another process made it after the check (parallel jobs make the same folders);
             # MATLAB's mkdir doesn't fail on a folder that exists

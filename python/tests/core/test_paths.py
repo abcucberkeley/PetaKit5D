@@ -114,13 +114,21 @@ def test_mkdir_recursive_tolerates_a_folder_made_concurrently(tmp_path, monkeypa
         p = os.fspath(p)
         if p == os.fspath(target) and p not in seen:
             seen.add(p)
-            os.mkdir(p)  # the other job's mkdir
+            os.makedirs(p)  # the other job's mkdir (its parents too, as on Windows)
             return False
         return real_isdir(p)
 
     monkeypatch.setattr(paths.os.path, "isdir", isdir_then_race)
     assert paths.mkdir_recursive(str(target)) == 1
     assert real_isdir(target)
+
+
+def test_mkdir_recursive_makes_every_missing_folder(tmp_path):
+    # on Windows the path has backslashes, so it is one part: its missing parents are made too
+    target = tmp_path / "x" / "y" / "z"
+    assert paths.mkdir_recursive(str(target)) == 1
+    assert target.is_dir()
+    assert paths.mkdir_recursive(str(target)) == 1
 
 
 def test_mkdir_recursive_still_raises_when_a_file_is_in_the_way(tmp_path):
@@ -132,7 +140,7 @@ def test_mkdir_recursive_still_raises_when_a_file_is_in_the_way(tmp_path):
 def test_mkdir_recursive_relative_path_starts_at_the_root(monkeypatch):
     # MATLAB's strjoin({'', 'rel'}, '/') makes 'rel/sub' into '/rel', '/rel/sub' (kept)
     made = []
-    monkeypatch.setattr(paths.os, "mkdir", lambda p: made.append(p))
+    monkeypatch.setattr(paths.os, "makedirs", lambda p: made.append(p))
     monkeypatch.setattr(paths.os.path, "isdir", lambda p: False)
     monkeypatch.setattr(paths, "_IS_PC", False)
     paths.mkdir_recursive("rel_f02/sub")
