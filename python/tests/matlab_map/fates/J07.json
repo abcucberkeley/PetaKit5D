@@ -1,0 +1,176 @@
+{
+ "task": "J07",
+ "classes": {
+  "SingleJobSubmitWrapperTest": {
+   "finished": true,
+   "methods": {
+    "cpusPerTaskIsClampedToLimits": {
+     "case_fates": {
+      "cpuCase=cpusAboveMax": [
+       "pytest:tests/jobs/test_single.py::test_cpus_per_task_is_clamped_to_limits[cpusAboveMax]"
+      ],
+      "cpuCase=minCPUNum": [
+       "pytest:tests/jobs/test_single.py::test_cpus_per_task_is_clamped_to_limits[minCPUNum]"
+      ],
+      "cpuCase=memAllocate": [
+       "pytest:tests/jobs/test_single.py::test_cpus_per_task_is_clamped_to_limits[memAllocate]"
+      ],
+      "cpuCase=memAllocateAboveMax": [
+       "pytest:tests/jobs/test_single.py::test_cpus_per_task_is_clamped_to_limits[memAllocateAboveMax]"
+      ]
+     }
+    },
+    "commandWrapsTheTaskString": [
+     "pytest:tests/jobs/test_single.py::test_command_runs_the_task_from_its_folder"
+    ],
+    "compiledJobsUseOwnRuntimeCache": [
+     "na:a MATLAB Runtime cache per compiled job; Python single jobs run the job entry point (python -m petakit5d.jobs.exec) and have no MATLAB Runtime"
+    ],
+    "configFileKeysIgnoreCase": [
+     "pytest:tests/jobs/test_single.py::test_config_file_keys_ignore_case"
+    ],
+    "emptyJobLogPathsInAConfigFileAreTheDefaults": [
+     "pytest:tests/jobs/test_single.py::test_empty_job_log_paths_in_a_config_file_are_the_defaults"
+    ],
+    "failedQueryLeavesTheJob": [
+     "pytest:tests/jobs/test_single.py::test_failed_query_leaves_the_job"
+    ],
+    "jobNotInTheQueueIsSubmitted": [
+     "pytest:tests/jobs/test_single.py::test_job_not_in_the_queue_is_submitted"
+    ],
+    "logPathsStayWhenSinfoFails": [
+     "pytest:tests/jobs/test_single.py::test_log_paths_stay_when_sinfo_fails"
+    ],
+    "pendingJobReturnsWithoutWaiting": [
+     "pytest:tests/jobs/test_single.py::test_pending_job_returns_without_waiting"
+    ],
+    "pendingLastJobGoesToTheMaster": [
+     "pytest:tests/jobs/test_single.py::test_pending_last_job_goes_to_the_master"
+    ],
+    "runningJobReturnsWithoutWaiting": [
+     "pytest:tests/jobs/test_single.py::test_running_job_returns_without_waiting"
+    ],
+    "sessionWithoutRunnersDoesNotLoadThem": [
+     "pytest:tests/jobs/test_single.py::test_session_without_runners_does_not_load_them"
+    ],
+    "slurmIsCheckedInEachCallWithoutSlurm": [
+     "pytest:tests/jobs/test_single.py::test_slurm_is_checked_in_each_call_without_slurm"
+    ],
+    "slurmIsCheckedOncePerJobLogFolder": [
+     "pytest:tests/jobs/test_single.py::test_slurm_is_checked_once_per_job_log_folder"
+    ],
+    "taskWithoutAJobIsSubmittedWithoutAQueueCheck": [
+     "pytest:tests/jobs/test_single.py::test_task_without_a_job_is_submitted_without_a_queue_check"
+    ]
+   }
+  },
+  "SingleJobRunnerTest": {
+   "finished": true,
+   "methods": {
+    "claimsFolderThatFailsLeavesTasksToTheMaster": [
+     "pytest:tests/jobs/test_pools.py::test_claims_folder_that_fails_leaves_tasks_to_the_master"
+    ],
+    "compiledJobsRunTheUnstartedTasksOfTheirPool": [
+     "pytest:tests/jobs/test_pools.py::test_jobs_run_the_unstarted_tasks_of_their_pool"
+    ],
+    "endedPoolGoesWithItsLastJob": [
+     "pytest:tests/jobs/test_pools.py::test_ended_pool_goes_with_its_last_job"
+    ],
+    "endedPoolWithoutJobsGoesAtOnce": [
+     "pytest:tests/jobs/test_pools.py::test_ended_pool_without_jobs_goes_at_once"
+    ],
+    "failedSubmissionLeavesTheTaskToTheMaster": [
+     "pytest:tests/jobs/test_pools.py::test_failed_submission_leaves_the_task_to_the_master"
+    ],
+    "failedTaskIsSubmittedAgainAsBefore": [
+     "pytest:tests/jobs/test_pools.py::test_failed_task_is_submitted_again_as_before"
+    ],
+    "firstTaskOfAKindRunsAsBefore": [
+     "pytest:tests/jobs/test_pools.py::test_first_task_of_a_kind_runs_as_before"
+    ],
+    "jobWhoseTaskARunnerHasEndsAtOnce": [
+     "pytest:tests/jobs/test_pools.py::test_job_whose_task_a_runner_has_ends_at_once"
+    ],
+    "jobWithNothingToTakeRunsItsTaskAsBefore": [
+     "pytest:tests/jobs/test_pools.py::test_job_with_nothing_to_take_runs_its_task_as_before"
+    ],
+    "liveRunnerKeepsTheTaskOfAnEndedJob": [
+     "pytest:tests/jobs/test_pools.py::test_live_runner_keeps_the_task_of_an_ended_job"
+    ],
+    "masterTakesTheLastFileFromThePool": [
+     "pytest:tests/jobs/test_pools.py::test_master_takes_the_last_file_from_the_pool"
+    ],
+    "matlabJobGoesOnAfterAProcessEnded": [
+     "pytest:tests/jobs/test_pools.py::test_job_goes_on_after_a_process_ended",
+     "pytest:tests/jobs/test_pools.py::test_job_state_survives_a_new_process"
+    ],
+    "matlabJobsRunTheJobScript": [
+     "pytest:tests/jobs/test_pools.py::test_job_whose_task_a_runner_has_ends_at_once",
+     "pytest:tests/jobs/test_pools.py::test_jobs_run_the_unstarted_tasks_of_their_pool",
+     "pytest:tests/jobs/test_pools.py::test_off_switch_and_relative_log_folders_submit_as_before"
+    ],
+    "matlabPoolGoesWithItsLastJob": [
+     "pytest:tests/jobs/test_single.py::test_folder_stays_while_a_job_of_it_is_in_the_queue",
+     "pytest:tests/jobs/test_pools.py::test_ended_pool_goes_with_its_last_job"
+    ],
+    "matlabPoolTasksRecordTheirMetrics": [
+     "pytest:tests/jobs/test_pools.py::test_pool_tasks_record_their_metrics"
+    ],
+    "matlabRunnerTakesTaskStringsFromThePool": [
+     "pytest:tests/jobs/test_pools.py::test_runner_takes_task_records_from_the_pool"
+    ],
+    "offSwitchOldBuildsAndRelativeLogFoldersSubmitAsBefore": [
+     "pytest:tests/jobs/test_pools.py::test_off_switch_and_relative_log_folders_submit_as_before"
+    ],
+    "pendingJobGetsBackTheTaskOfARunnerThatEnded": [
+     "pytest:tests/jobs/test_pools.py::test_pending_job_gets_back_the_task_of_a_runner_that_ended"
+    ],
+    "pendingJobKeepsAnEndedPool": [
+     "pytest:tests/jobs/test_pools.py::test_pending_job_keeps_an_ended_pool"
+    ],
+    "pendingJobOfATaskARunnerFailedIsReplaced": [
+     "pytest:tests/jobs/test_pools.py::test_pending_job_of_a_task_a_runner_failed_is_replaced"
+    ],
+    "poolOfAnEnclosingCallStays": [
+     "pytest:tests/jobs/test_pools.py::test_pool_of_an_enclosing_call_stays"
+    ],
+    "poolThatCannotBeMadeLeavesJobsAsBefore": [
+     "pytest:tests/jobs/test_pools.py::test_pool_that_cannot_be_made_leaves_jobs_as_before",
+     "pytest:tests/jobs/test_pools.py::test_read_only_job_log_folder_leaves_jobs_as_before_with_their_tasks_elsewhere"
+    ],
+    "poolsKeepKindsApart": [
+     "pytest:tests/jobs/test_pools.py::test_pools_keep_kinds_apart",
+     "pytest:tests/jobs/test_pools.py::test_pools_keep_job_log_folders_apart"
+    ],
+    "runnerKeepsItsTaskWhileSqueueFails": [
+     "pytest:tests/jobs/test_pools.py::test_runner_keeps_its_task_while_squeue_fails"
+    ],
+    "runnersTakeOnlyTasksWhoseJobsWaitInTheQueue": [
+     "pytest:tests/jobs/test_pools.py::test_runners_take_only_tasks_whose_jobs_wait_in_the_queue"
+    ],
+    "singleJobStatusCountsTaskRunners": [
+     "pytest:tests/jobs/test_pools.py::test_single_job_status_counts_task_runners"
+    ],
+    "slotStartsWithItsOwnTask": [
+     "pytest:tests/jobs/test_pools.py::test_job_starts_with_its_own_task"
+    ],
+    "taskTakenBetweenSubmissionTriesIsSubmittedAsBefore": [
+     "pytest:tests/jobs/test_pools.py::test_task_taken_between_submission_tries_is_submitted_as_before"
+    ],
+    "taskWithALineBreakIsSubmittedAsBefore": [
+     "pytest:tests/jobs/test_pools.py::test_task_with_line_breaks_runs_from_its_pool"
+    ],
+    "tasksSubmittedWhileAJobRunsAreTaken": [
+     "pytest:tests/jobs/test_pools.py::test_tasks_submitted_while_a_job_runs_are_taken"
+    ]
+   }
+  },
+  "CoordinatorNiceTest": {
+   "methods": {
+    "singleJobsGetTheirNice": [
+     "pytest:tests/jobs/test_single.py::test_single_jobs_get_their_nice"
+    ]
+   }
+  }
+ }
+}
