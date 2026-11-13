@@ -55,7 +55,9 @@
             "pytest:tests/kernels/test_decon_kernels.py::test_masks_equal_imerode"
           ],
           "case_fates": {
-            "shape=thin,maskSize=oneColumn": []
+            "shape=thin,maskSize=oneColumn": [
+              "oracle:tests/decon/test_erosion.py::erosion.full.outcomes.*"
+            ]
           }
         },
         "demoSettingOnASkewedVolume": [

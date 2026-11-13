@@ -870,7 +870,8 @@
       "Unit"
      ],
      "cases": null,
-     "fate": []
+     "fate": [],
+     "owner": "R03"
     },
     "gpuArrayMasksEqualTheCPUMasks": {
      "pins": "the GPU path erodes gpuArray masks with imerode on the GPU",
@@ -1140,7 +1141,8 @@
       "method=omw,debugCase=stepPastTheEnd",
       "method=omw,debugCase=nonIntegerStep"
      ],
-     "fate": []
+     "fate": [],
+     "owner": "R03"
     },
     "defaultIsTheMexOnTheCpu": {
      "pins": "both methods use the CPU mex by default (it gives the same results as the MATLAB loop); true or false forces a path",
@@ -1179,7 +1181,8 @@
       "Unit"
      ],
      "cases": null,
-     "fate": []
+     "fate": [],
+     "owner": "R03"
     },
     "linesAreGroupedAsMatlabDoes": {
      "pins": "'fft1' transforms the columns as MATLAB's fft(X, [], 1) does: in its parallel mode, MATLAB halves the columns until a piece has at most 32, then runs each piece in groups of four from its start and the rest alone; without it (or when n * N * (bits of n) <= 98304), the whole range so. MATLAB's own fft of a piece of at most 32 columns, or of four or one, runs as one group (or alone), which gives...",
@@ -1274,7 +1277,8 @@
       "method=omw,options=1x2_cell_6",
       "method=omw,options=1x12_cell"
      ],
-     "fate": []
+     "fate": [],
+     "owner": "R03"
     },
     "resultDoesNotDependOnTheThreadCount": {
      "pins": "single precision sums over whole arrays (PSF normalization, RL's acceleration factor, the back projector) are split among the threads, so results changed in the last bits with the number of threads (and with where the back projector was made); they are summed in double now. The default path, with the mex on Linux and the MATLAB loop elsewhere.",
@@ -1285,7 +1289,8 @@
       "method=simplified",
       "method=omw"
      ],
-     "fate": []
+     "fate": [],
+     "owner": "R03"
     },
     "resultsDoNotDependOnTheThreadCount": {
      "pins": "as MATLAB's FFTs: the groups of lines don't depend on the threads",
@@ -1304,7 +1309,8 @@
       "Unit"
      ],
      "cases": null,
-     "fate": []
+     "fate": [],
+     "owner": "R03"
     },
     "switchingPathsRecomputesTheOTF": {
      "pins": "the cached OTF is a half OTF for the mex and the full OTF for the MATLAB loop",
@@ -1326,7 +1332,8 @@
       "method=simplified",
       "method=omw"
      ],
-     "fate": []
+     "fate": [],
+     "owner": "R03"
     },
     "withoutTheMexTheMatlabLoopRuns": {
      "pins": "a .m file of the same name first on the path hides the mex (exist(..., 'file') is 2), as on a platform without the mex",

@@ -1,0 +1,164 @@
+{
+  "task": "R03",
+  "classes": {
+    "DeconFunctionTest": {
+      "methods": {
+        "bboxCropsTheResult": [
+          "pytest:tests/decon/test_rl.py::test_bbox_crops_the_result",
+          "oracle:tests/decon/test_rl.py::rl.opt.bbox.*",
+          "oracle:tests/decon/test_rl.py::omw.opt.bbox.*"
+        ],
+        "changedBackProjectorWithSameEnergyIsNotIgnored": [
+          "pytest:tests/decon/test_rl.py::test_changed_psf_with_same_energy_is_not_ignored"
+        ],
+        "changedPSFWithSameEnergyIsNotIgnored": [
+          "pytest:tests/decon/test_rl.py::test_changed_psf_with_same_energy_is_not_ignored"
+        ],
+        "dampFactorBoundsTheResult": [
+          "pytest:tests/decon/test_rl.py::test_damp_factor_bounds_the_result",
+          "oracle:tests/decon/test_rl.py::rl.opt.damp.*"
+        ],
+        "defaultFallsBackToTheCPUWithAWarning": [
+          "pytest:tests/decon/test_rl.py::test_default_falls_back_to_the_cpu_with_a_warning"
+        ],
+        "deltaPSFReturnsBackgroundSubtractedInput": [
+          "pytest:tests/decon/test_rl.py::test_delta_psf_returns_background_subtracted_input"
+        ],
+        "edgeErosionZeroesTheBorderShell": [
+          "pytest:tests/decon/test_rl.py::test_edge_erosion_zeroes_the_border_shell",
+          "oracle:tests/decon/test_rl.py::rl.opt.erosion*",
+          "oracle:tests/decon/test_rl.py::omw.opt.erosion*"
+        ],
+        "fluxIsConserved": [
+          "pytest:tests/decon/test_rl.py::test_flux_is_conserved"
+        ],
+        "gpuRequestWithoutUsableGPUErrors": [
+          "pytest:tests/decon/test_rl.py::test_gpu_request_without_usable_gpu_errors"
+        ],
+        "loopMatchesThePreviousFormulation": [
+          "oracle:tests/decon/test_rl.py::rl.dft.*",
+          "oracle:tests/decon/test_rl.py::omw.dft.*"
+        ],
+        "noUsableGPUMessagesGiveMATLABsReason": [
+          "pytest:tests/decon/test_rl.py::test_gpu_request_without_usable_gpu_errors",
+          "pytest:tests/decon/test_rl.py::test_default_falls_back_to_the_cpu_with_a_warning"
+        ],
+        "outputScalesLinearlyWithInput": [
+          "pytest:tests/decon/test_rl.py::test_output_scales_linearly_with_input"
+        ],
+        "pointSourceIsSharpened": [
+          "pytest:tests/decon/test_rl.py::test_point_source_is_sharpened"
+        ],
+        "regionsAtBackgroundStayZero": [
+          "pytest:tests/decon/test_rl.py::test_regions_at_background_stay_zero"
+        ]
+      }
+    },
+    "DeconAccelTest": {
+      "methods": {
+        "deconDoesNotDependOnTheThreadCount": [
+          "pytest:tests/decon/test_rl.py::test_results_do_not_depend_on_the_thread_count",
+          "pytest:tests/decon/test_rl.py::test_thread_counts"
+        ],
+        "lambdaDoesNotDependOnTheThreadCount": [
+          "oracle:tests/kernels/test_decon_kernels.py::accel.lambda.*",
+          "pytest:tests/kernels/test_decon_kernels.py::test_thread_counts"
+        ],
+        "lambdaIsClampedAsMatlabDoes": [
+          "oracle:tests/kernels/test_decon_kernels.py::accel.clamp.*",
+          "pytest:tests/kernels/test_decon_kernels.py::test_lambda_is_clamped_as_matlab_does"
+        ],
+        "lambdaStepIsTheMatlabExpressions": [
+          "oracle:tests/kernels/test_decon_kernels.py::accel.lambda.*",
+          "pytest:tests/kernels/test_decon_kernels.py::test_lambda_sums_in_matlabs_order_in_both_layouts"
+        ],
+        "loopIsTheMatlabLoop": [
+          "pytest:tests/decon/test_rl.py::test_kernels_equal_the_matlab_loop",
+          "oracle:tests/decon/test_rl.py::rl.iter*",
+          "oracle:tests/decon/test_rl.py::rl.loop.*"
+        ],
+        "mexRejectsInvalidInputs": [
+          "oracle:tests/kernels/test_decon_kernels.py::accel.error.*",
+          "pytest:tests/kernels/test_decon_kernels.py::test_accel_rejects_what_the_mex_rejects"
+        ],
+        "mexSumEqualsTheMatlabCode": [
+          "oracle:tests/kernels/test_decon_kernels.py::accel.sum.*"
+        ],
+        "predictIsTheMatlabExpression": [
+          "oracle:tests/kernels/test_decon_kernels.py::accel.predict.*",
+          "pytest:tests/kernels/test_decon_kernels.py::test_predict_is_the_matlab_expression"
+        ],
+        "psfNormalizationDoesNotDependOnTheThreadCount": [
+          "pytest:tests/decon/test_rl.py::test_results_do_not_depend_on_the_thread_count",
+          "oracle:tests/decon/test_rl.py::rl.psf63.*",
+          "oracle:tests/decon/test_rl.py::omw.psf63.*"
+        ],
+        "psfNormalizationsUseTheFixedOrderSum": [
+          "pytest:tests/decon/test_rl.py::test_psf_normalizations_use_the_fixed_order_sum"
+        ],
+        "smallArraysRunTheMatlabCode": [
+          "oracle:tests/kernels/test_decon_kernels.py::accel.lambda.fn*",
+          "oracle:tests/kernels/test_decon_kernels.py::accel.predict.fn*",
+          "oracle:tests/kernels/test_decon_kernels.py::accel.sum.single*",
+          "oracle:tests/kernels/test_decon_kernels.py::accel.sum.double*"
+        ],
+        "sumDoesNotDependOnTheThreadCount": [
+          "pytest:tests/kernels/test_decon_kernels.py::test_thread_counts",
+          "pytest:tests/kernels/test_decon_kernels.py::test_sum_double_switches_and_blocks"
+        ],
+        "sumIsMatlabsAtOneThread": [
+          "oracle:tests/kernels/test_decon_kernels.py::accel.sum.*"
+        ],
+        "withoutTheMexTheMatlabCodeRuns": [
+          "na:the port has no mex fall-back: the acceleration kernels are part of the package"
+        ]
+      }
+    },
+    "DeconRFFTTest": {
+      "methods": {
+        "debugOutputsEqualTheMatlabLoop": [
+          "oracle:tests/decon/test_rl.py::rl.debug.*",
+          "oracle:tests/decon/test_rl.py::omw.debug.*"
+        ],
+        "iterationOutputsMatchTheMatlabLoop": [
+          "oracle:tests/decon/test_rl.py::rl.iter*",
+          "oracle:tests/decon/test_rl.py::rl.numit_negative.*"
+        ],
+        "optionsAreAppliedAsInTheMatlabLoop": [
+          "oracle:tests/decon/test_rl.py::rl.opt.*",
+          "oracle:tests/decon/test_rl.py::omw.opt.*",
+          "oracle:tests/decon/test_rl.py::rl.loop.opts.*",
+          "oracle:tests/decon/test_rl.py::omw.loop.opts.*"
+        ],
+        "rlAccelerationIsClampedAsInTheMatlabLoop": [
+          "oracle:tests/decon/test_rl.py::rl.clamped.*"
+        ],
+        "resultDoesNotDependOnTheThreadCount": [
+          "pytest:tests/decon/test_rl.py::test_results_do_not_depend_on_the_thread_count",
+          "pytest:tests/decon/test_rl.py::test_thread_counts",
+          "oracle:tests/decon/test_rl.py::rl.psf63.*",
+          "oracle:tests/decon/test_rl.py::omw.psf63.*"
+        ],
+        "unsupportedCallsRunTheMatlabLoop": [
+          "pytest:tests/decon/test_rl.py::test_use_rfft_kernels_takes_what_the_mex_takes",
+          "oracle:tests/decon/test_rl.py::rl.loop.*",
+          "oracle:tests/decon/test_rl.py::omw.loop.*",
+          "oracle:tests/decon/test_rl.py::rl.class.double.*",
+          "oracle:tests/decon/test_rl.py::omw.class.double.*",
+          "oracle:tests/decon/test_rl.py::rl.error.mex_double",
+          "oracle:tests/decon/test_rl.py::omw.error.mex_double"
+        ]
+      }
+    },
+    "DeconMaskErosionTest": {
+      "methods": {
+        "fullMasksAndOtherErosionValues": [
+          "oracle:tests/decon/test_erosion.py::erosion.full.*",
+          "oracle:tests/decon/test_erosion.py::erosion.other.*",
+          "pytest:tests/decon/test_erosion.py::test_erosions_the_mex_does_not_take_run_imerode",
+          "pytest:tests/decon/test_erosion.py::test_full_masks_get_their_edges_set"
+        ]
+      }
+    }
+  }
+}
