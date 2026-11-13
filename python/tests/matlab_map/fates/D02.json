@@ -1,0 +1,76 @@
+{
+ "task": "D02",
+ "classes": {
+  "DeskewRotateFrame3DTest": {
+   "finished": true,
+   "methods": {
+    "bboxCropsTheFullOutput": [
+     "pytest:tests/deskew_rotate/test_volume.py::test_bbox_crops_the_full_output",
+     "oracle:tests/deskew_rotate/test_volume.py::dsr.box.inside.*"
+    ],
+    "bboxPastTheInputRowsMatchesImwarp": [
+     "pytest:tests/deskew_rotate/test_volume.py::test_bbox_past_the_input_rows_matches_imwarp",
+     "oracle:tests/deskew_rotate/test_volume.py::dsr.box.past.*"
+    ],
+    "canvasOriginMatchesConvention": [
+     "pytest:tests/deskew_rotate/test_volume.py::test_canvas_origin_matches_convention"
+    ],
+    "combinedMatchesSeparateDeskewThenRotate": [
+     "pytest:tests/deskew_rotate/test_volume.py::test_combined_matches_separate_deskew_then_rotate",
+     "oracle:tests/deskew_rotate/test_volume.py::deskew.*",
+     "oracle:tests/deskew_rotate/test_volume.py::rotate.*"
+    ],
+    "forwardInterpolationEndsAtTheLastRawSlice": [
+     "pytest:tests/deskew_rotate/test_volume.py::test_forward_interpolation_ends_at_the_last_raw_slice",
+     "oracle:tests/deskew_rotate/test_volume.py::mfunction.*"
+    ],
+    "geometryMatchesAcquisition": [
+     "pytest:tests/deskew_rotate/test_volume.py::test_geometry_matches_acquisition",
+     "oracle:tests/deskew_rotate/test_volume.py::dsr.beads.*"
+    ],
+    "gpuProcessCountsUsableGPUsFirst": [
+     "na:the port's gpu_process runs MATLAB's GPU code path (imwarp) on the CPU: there is no GPU to count (D02's decision, measured)"
+    ],
+    "inputsNarrowerThanTheShiftRunTheMatlabCode": [
+     "pytest:tests/deskew_rotate/test_volume.py::test_inputs_narrower_than_the_shift_run_the_matlab_code",
+     "oracle:tests/deskew_rotate/test_volume.py::dsr.narrow.*",
+     "oracle:tests/deskew_rotate/test_volume.py::mfunction.*"
+    ],
+    "objectiveScanGeometryWithCubicInterpolation": [
+     "pytest:tests/deskew_rotate/test_volume.py::test_objective_scan_geometry_with_cubic_interpolation",
+     "oracle:tests/deskew_rotate/test_volume.py::dsr.os.*.cubic.*"
+    ],
+    "objectiveScanPreservesContent": [
+     "pytest:tests/deskew_rotate/test_volume.py::test_objective_scan_preserves_content",
+     "oracle:tests/deskew_rotate/test_volume.py::dsr.os.*.linear.*"
+    ],
+    "outputSizeMatchesGeometry": [
+     "pytest:tests/deskew_rotate/test_volume.py::test_output_size_matches_geometry",
+     "oracle:tests/deskew_rotate/test_volume.py::geometry.*"
+    ],
+    "resampleFactorScalesOutputSize": [
+     "pytest:tests/deskew_rotate/test_volume.py::test_resample_factor_scales_output_size",
+     "oracle:tests/deskew_rotate/test_volume.py::dsr.rs*"
+    ],
+    "save16bitRoundsToNearest": [
+     "pytest:tests/deskew_rotate/test_volume.py::test_save16bit_rounds_to_nearest",
+     "oracle:tests/deskew_rotate/test_volume.py::dsr.*.uint16"
+    ],
+    "separateMexStepsReplaceTheCombinedMex": [
+     "pytest:tests/deskew_rotate/test_volume.py::test_separate_kernel_steps_replace_the_combined_kernel"
+    ],
+    "singleSliceOrColumnReadsNothingOutside": [
+     "pytest:tests/deskew_rotate/test_volume.py::test_single_slice_or_column_reads_nothing_outside",
+     "oracle:tests/deskew_rotate/test_volume.py::dsr.oneslice.*"
+    ],
+    "totalIntensityScalesWithVoxelVolume": [
+     "pytest:tests/deskew_rotate/test_volume.py::test_total_intensity_scales_with_voxel_volume"
+    ],
+    "uint16InputWithSave16bitGivesUint16": [
+     "pytest:tests/deskew_rotate/test_volume.py::test_uint16_input_with_save16bit_gives_uint16",
+     "oracle:tests/deskew_rotate/test_volume.py::dsr.*.uint16"
+    ]
+   }
+  }
+ }
+}
