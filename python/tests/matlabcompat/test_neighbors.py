@@ -372,6 +372,34 @@ def test_tree_search_equals_exhaustive(seed, monkeypatch):
         assert de.tobytes() == dt.tobytes()
 
 
+def test_num_threads_are_the_tree_queries_and_keep_the_result(monkeypatch):
+    """num_threads (Python only; None: the CPUs available) go to the k-d tree's queries; the
+    result is the exhaustive search's at any count"""
+    from scipy import spatial
+
+    from petakit5d.core.threads import available_cpus
+
+    E, Q = directions((15, 13, 11), 53, frac=3)
+    E = np.vstack([E, E[::7]])
+    want_i, want_d = nbrs.knnsearch(E, Q, 2)  # exhaustive
+    workers = []
+
+    class Spy(spatial.cKDTree):
+        def query(self, *args, **kwargs):
+            workers.append(kwargs.get("workers"))
+            return super().query(*args, **kwargs)
+
+    monkeypatch.setattr(spatial, "cKDTree", Spy)
+    monkeypatch.setattr(nbrs, "_EXHAUSTIVE_MAX", 0)
+    avail = available_cpus()
+    for nt, expect in ((1, 1), (3, min(3, avail)), (None, avail)):
+        i, d = nbrs.knnsearch(E, Q, 2, num_threads=nt)
+        assert np.array_equal(i, want_i) and d.tobytes() == want_d.tobytes()
+        assert workers[-1] == expect
+    with pytest.raises(ValueError, match="thread count"):
+        nbrs.knnsearch(E, Q, 2, num_threads=-1)
+
+
 def test_ties_go_to_the_lowest_index():
     X = np.array([[1.0, 0, 0]] * 12)
     X[4] = [0, 1, 0]

@@ -29,6 +29,7 @@ from __future__ import annotations
 import numpy as np
 
 from petakit5d.core import dtypes
+from petakit5d.core.threads import resolve_threads
 from petakit5d.matlabcompat.elementary import atan2, fdlibm_cos, fdlibm_sin, hypot
 
 __all__ = ["knnsearch", "cart2sph", "sph2cart", "KnnError"]
@@ -47,10 +48,12 @@ class KnnError(ValueError):
         self.identifier = identifier
 
 
-def knnsearch(X, Y, k: int = 1):
+def knnsearch(X, Y, k: int = 1, *, num_threads: int | None = None):
     """``[idx, d] = knnsearch(X, Y, 'K', k)``: (idx (ny, min(k, nx)) int64, 0-based; d float64).
     Rows are points; a 1-D array is one point (a row). Rows of ``X`` with a NaN are never
-    neighbors; a query with a NaN gets the first rows of ``X`` and NaN distances (MATLAB)."""
+    neighbors; a query with a NaN gets the first rows of ``X`` and NaN distances (MATLAB).
+    ``num_threads`` (Python only; None: the CPUs available) are the k-d tree's query threads;
+    the result doesn't depend on them."""
     from petakit5d.core.dtypes import NAN
 
     X = _points(X, "X")
@@ -63,6 +66,7 @@ def knnsearch(X, Y, k: int = 1):
     if not float(k) == int(k) or int(k) < 1:
         raise KnnError("K must be a positive integer", "stats:KDTreeSearcher:knnsearch:BadK")
     k = int(k)
+    nt = resolve_threads(num_threads)
     valid = ~np.any(np.isnan(X), axis=1)
     rowmap = np.nonzero(valid)[0]
     Xv = X[valid] if not valid.all() else X
@@ -78,7 +82,7 @@ def knnsearch(X, Y, k: int = 1):
         if nx * Yq.shape[0] <= _EXHAUSTIVE_MAX or X.shape[1] > 16:
             i, d = _exhaustive(Xv, Yq, kk)
         else:
-            i, d = _tree(Xv, Yq, kk)
+            i, d = _tree(Xv, Yq, kk, nt)
         idx[qok] = rowmap[i]
         dist[qok] = d
     idx[~qok] = rowmap[:kk]
@@ -136,15 +140,15 @@ def _exhaustive(X, Y, k):
     return idx, np.sqrt(d2k)
 
 
-def _tree(X, Y, k):
-    """candidates from a k-d tree: every point within the k-th distance (and a margin), ranked
-    exactly"""
+def _tree(X, Y, k, workers=1):
+    """candidates from a k-d tree (queries on ``workers`` threads): every point within the k-th
+    distance (and a margin), ranked exactly"""
     from scipy.spatial import cKDTree
 
     tree = cKDTree(X)
     extra = 8
     m = min(X.shape[0], k + extra)
-    dist, cand = tree.query(Y, k=m)
+    dist, cand = tree.query(Y, k=m, workers=workers)
     dist = np.asarray(dist).reshape(Y.shape[0], m)
     cand = np.asarray(cand).reshape(Y.shape[0], m)
     radius = dist[:, k - 1] * (1 + 1e-9) + 1e-300
