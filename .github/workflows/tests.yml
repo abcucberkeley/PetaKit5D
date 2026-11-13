@@ -438,6 +438,52 @@ jobs:
         shell: bash
         run: bash .github/scripts/suite_step_done.sh suite_StitchBlendMean_atexit ${{ steps.suite_StitchBlendMean_atexit.outcome }}
 
+      # the atexit variant with a parallelWriteZarr that casts the data to the
+      # array's class before cpp-zarr's mex (copied as parallelWriteZarr_orig), so
+      # that the mex runs no OpenMP of its own: if MATLAB then exits by itself,
+      # nothing but cpp-zarr's own OpenMP pool is left in the deadlock
+      - name: Make the atexit mex variant with the casting parallelWriteZarr
+        if: always()
+        continue-on-error: true
+        shell: bash
+        run: |
+          d="$RUNNER_TEMP/variant_atexit_cast"
+          cp -r "$RUNNER_TEMP/variant_atexit" "$d"
+          cp .github/scripts/cast_shim_parallelWriteZarr.txt "$d/parallelWriteZarr.m"
+          z=microscopeDataProcessing/io/cpp-zarr/windows
+          cp "$z/parallelWriteZarr.mexw64" "$z/parallelWriteZarr_orig.mexw64"
+          ls "$d" | tr '\n' ' '; echo
+
+      - name: Reproducer, BlockMIPTest first 16, atexit mex and casting parallelWriteZarr
+        id: suite_BlockMIPTest_first16_atexit_cast
+        timeout-minutes: 5
+        continue-on-error: true
+        uses: matlab-actions/run-command@v3
+        env:
+          PROBE_CAST_LOG: ${{ github.workspace }}/probe-results/cast_BlockMIPTest_first16_atexit_cast.txt
+        with:
+          command: addpath('.github/scripts'); suite_exit_probe('BlockMIPTest_first16_atexit_cast', 'BlockMIPTest/*', 16, fullfile(getenv('RUNNER_TEMP'), 'variant_atexit_cast'));
+
+      - name: After the reproducer, BlockMIPTest first 16, atexit mex and casting parallelWriteZarr
+        if: always()
+        shell: bash
+        run: bash .github/scripts/suite_step_done.sh suite_BlockMIPTest_first16_atexit_cast ${{ steps.suite_BlockMIPTest_first16_atexit_cast.outcome }}
+
+      - name: Reproducer, StitchingTest blend mean, atexit mex and casting parallelWriteZarr
+        id: suite_StitchBlendMean_atexit_cast
+        timeout-minutes: 5
+        continue-on-error: true
+        uses: matlab-actions/run-command@v3
+        env:
+          PROBE_CAST_LOG: ${{ github.workspace }}/probe-results/cast_StitchBlendMean_atexit_cast.txt
+        with:
+          command: addpath('.github/scripts'); suite_exit_probe('StitchBlendMean_atexit_cast', {'StitchingTest/blendingWithoutTheMexGivesTheSameResult?tileBlendMethod=mean?'}, [], fullfile(getenv('RUNNER_TEMP'), 'variant_atexit_cast'));
+
+      - name: After the reproducer, StitchingTest blend mean, atexit mex and casting parallelWriteZarr
+        if: always()
+        shell: bash
+        run: bash .github/scripts/suite_step_done.sh suite_StitchBlendMean_atexit_cast ${{ steps.suite_StitchBlendMean_atexit_cast.outcome }}
+
       - name: Summary
         if: always()
         shell: bash

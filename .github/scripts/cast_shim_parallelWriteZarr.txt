@@ -1,0 +1,53 @@
+function parallelWriteZarr(fileName, data, varargin)
+% Mex exit probe only (CI job exit-probe; this file is never on the path
+% otherwise): the probe step copies it into a mex variant folder as
+% parallelWriteZarr.m, and cpp-zarr's mex as parallelWriteZarr_orig. It casts
+% the data to the class of the zarr array that is already there, so that the mex
+% runs no OpenMP of its own (its dtype conversion is its only parallel region of
+% its own), and notes each call in the file that PROBE_CAST_LOG names.
+cls = probe_zarr_class(fileName);
+casted = ~isempty(cls) && ~isa(data, cls) && isreal(data);
+logFn = getenv('PROBE_CAST_LOG');
+if ~isempty(logFn)
+    fid = fopen(logFn, 'a');
+    if fid > 0
+        fprintf(fid, '%s data %s, array %s%s\n', char(datetime('now', 'Format', 'HH:mm:ss.SS')), ...
+            class(data), cls, repmat(', cast', 1, double(casted)));
+        fclose(fid);
+    end
+end
+if casted
+    if strcmp(cls, 'logical')
+        data = logical(data);
+    else
+        data = cast(data, cls);
+    end
+end
+parallelWriteZarr_orig(fileName, data, varargin{:});
+end
+
+function cls = probe_zarr_class(fileName)
+% the class of the zarr array's data type ('' if there is no array yet)
+cls = '';
+v2 = struct('u1', 'uint8', 'u2', 'uint16', 'u4', 'uint32', 'u8', 'uint64', 'i1', 'int8', ...
+    'i2', 'int16', 'i4', 'int32', 'i8', 'int64', 'f4', 'single', 'f8', 'double', 'b1', 'logical');
+v3 = struct('uint8', 'uint8', 'uint16', 'uint16', 'uint32', 'uint32', 'uint64', 'uint64', ...
+    'int8', 'int8', 'int16', 'int16', 'int32', 'int32', 'int64', 'int64', 'float32', 'single', ...
+    'float64', 'double', 'bool', 'logical');
+try
+    if isfile(fullfile(fileName, '.zarray'))
+        m = jsondecode(fileread(fullfile(fileName, '.zarray')));
+        t = m.dtype(end - 1 : end);
+        if isfield(v2, t)
+            cls = v2.(t);
+        end
+    elseif isfile(fullfile(fileName, 'zarr.json'))
+        m = jsondecode(fileread(fullfile(fileName, 'zarr.json')));
+        if isfield(v3, m.data_type)
+            cls = v3.(m.data_type);
+        end
+    end
+catch
+    cls = '';
+end
+end
