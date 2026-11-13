@@ -1,0 +1,124 @@
+{
+ "task": "D04",
+ "classes": {
+  "DeskewRotateDataWrapperTest": {
+   "finished": true,
+   "methods": {
+    "processesEveryMatchingFile": [
+     "pytest:tests/deskew_rotate/test_dataset.py::test_processes_every_matching_file",
+     "oracle:tests/deskew_rotate/test_dataset.py::ds.combined"
+    ],
+    "channelPatternsSelectFiles": [
+     "pytest:tests/deskew_rotate/test_dataset.py::test_channel_patterns_select_files",
+     "oracle:tests/deskew_rotate/test_dataset.py::ds.channel_b"
+    ],
+    "multipleDataPathsAreProcessed": [
+     "pytest:tests/deskew_rotate/test_dataset.py::test_multiple_data_paths_are_processed",
+     "oracle:tests/deskew_rotate/test_dataset.py::ds.two_paths"
+    ],
+    "deskewOnlyWritesDS": [
+     "pytest:tests/deskew_rotate/test_dataset.py::test_deskew_only_writes_ds",
+     "oracle:tests/deskew_rotate/test_dataset.py::ds.deskew_only"
+    ],
+    "deskewOnlyWithCombinedDefaultWritesDS": [
+     "pytest:tests/deskew_rotate/test_dataset.py::test_deskew_only_writes_ds",
+     "oracle:tests/deskew_rotate/test_dataset.py::ds.deskew_only_combined_default"
+    ],
+    "separateDeskewRotateWritesBoth": [
+     "pytest:tests/deskew_rotate/test_dataset.py::test_separate_deskew_rotate_writes_both",
+     "oracle:tests/deskew_rotate/test_dataset.py::ds.separate"
+    ],
+    "existingOutputsAreSkippedUnlessOverwrite": [
+     "pytest:tests/deskew_rotate/test_dataset.py::test_existing_outputs_are_skipped_unless_overwrite",
+     "oracle:tests/deskew_rotate/test_dataset.py::ds.existing*"
+    ],
+    "saveZarrMatchesTiff": [
+     "pytest:tests/deskew_rotate/test_dataset.py::test_save_zarr_matches_tiff",
+     "oracle:tests/deskew_rotate/test_dataset.py::ds.save_zarr"
+    ],
+    "zarrInputMatchesTiffInput": [
+     "pytest:tests/deskew_rotate/test_dataset.py::test_zarr_input_matches_tiff_input",
+     "oracle:tests/deskew_rotate/test_dataset.py::ds.zarr_input"
+    ],
+    "largeFileMatchesRegular": [
+     "pytest:tests/deskew_rotate/test_dataset.py::test_large_file_matches_regular",
+     "pytest:tests/deskew_rotate/test_dataset.py::test_large_file_batches_change_only_the_uint16_tail",
+     "oracle:tests/deskew_rotate/test_dataset.py::ds.large*"
+    ],
+    "largeFilePassesJobSettingsToMIPs": [
+     "pytest:tests/deskew_rotate/test_dataset.py::test_large_file_passes_job_settings_to_mips"
+    ],
+    "largeFileMakesMIPsBeforePublishing": [
+     "pytest:tests/deskew_rotate/test_dataset.py::test_large_file_makes_mips_before_publishing"
+    ],
+    "largeFileMIPsAreMergedFromTheBlocks": [
+     "pytest:tests/deskew_rotate/test_dataset.py::test_large_file_mips_are_merged_from_the_blocks"
+    ],
+    "largeFileBlocksGetTheMIPOptionOnlyForMIPs": [
+     "pytest:tests/deskew_rotate/test_zarr.py::test_large_file_blocks_get_the_mip_option_only_for_mips",
+     "oracle:tests/deskew_rotate/test_zarr.py::zarr.no_mip"
+    ],
+    "largeFileWithFailedBlocksIsNotPublished": [
+     "pytest:tests/deskew_rotate/test_zarr.py::test_large_file_with_failed_blocks_is_not_published"
+    ],
+    "largeFileKeepsAResultAnotherWriterPublished": [
+     "pytest:tests/deskew_rotate/test_zarr.py::test_large_file_keeps_a_result_another_writer_published"
+    ],
+    "largeFileKeepsAResultPublishedDuringItsMIPs": [
+     "pytest:tests/deskew_rotate/test_zarr.py::test_large_file_keeps_a_result_published_during_its_mips"
+    ],
+    "largeFileBlocksOfAnEndedTaskAreSkipped": [
+     "pytest:tests/deskew_rotate/test_zarr.py::test_large_file_blocks_of_an_ended_task_are_skipped"
+    ],
+    "largeFileWaitsForAWriterOfAnotherCall": [
+     "pytest:tests/deskew_rotate/test_zarr.py::test_large_file_waits_for_a_writer_of_another_call"
+    ],
+    "largeFileJobsGoAfterTheirBlocks": [
+     "pytest:tests/deskew_rotate/test_dataset.py::test_large_file_jobs_go_after_their_blocks"
+    ],
+    "largeFileJobsAskForWhatTheyHold": [
+     "pytest:tests/deskew_rotate/test_dataset.py::test_large_file_jobs_ask_for_what_they_hold"
+    ],
+    "flatFieldUsesEachChannelsImages": [
+     "pytest:tests/deskew_rotate/test_dataset.py::test_flat_field_uses_each_channels_images",
+     "oracle:tests/deskew_rotate/test_dataset.py::ds.flatfield"
+    ],
+    "partialFilesAreJoinedAlongZ": [
+     "pytest:tests/deskew_rotate/test_dataset.py::test_partial_files_are_joined_along_z",
+     "oracle:tests/deskew_rotate/test_dataset.py::ds.partial_files"
+    ],
+    "saveMIPFalseWritesNoMIP": [
+     "pytest:tests/deskew_rotate/test_dataset.py::test_save_mip_false_writes_no_mip",
+     "oracle:tests/deskew_rotate/test_dataset.py::ds.no_mip"
+    ],
+    "blockSizeIsUsedForZarrOutput": [
+     "pytest:tests/deskew_rotate/test_dataset.py::test_block_size_is_used_for_zarr_output",
+     "oracle:tests/deskew_rotate/test_dataset.py::ds.save_zarr"
+    ],
+    "objectiveScanLargeFileIsRejected": [
+     "pytest:tests/deskew_rotate/test_dataset.py::test_objective_scan_large_file_is_rejected",
+     "oracle:tests/deskew_rotate/test_dataset.py::ds.large.objective"
+    ]
+   }
+  },
+  "DeskewRotateMemoryTest": {
+   "methods": {
+    "largeFileBlocksRequestOneBatch": [
+     "pytest:tests/deskew_rotate/test_zarr.py::test_large_file_blocks_request_one_batch"
+    ],
+    "wrapperCountsAllPartialFiles": [
+     "pytest:tests/deskew_rotate/test_dataset.py::test_wrapper_counts_all_partial_files"
+    ],
+    "wrapperCountsTheCroppedInput": [
+     "pytest:tests/deskew_rotate/test_dataset.py::test_wrapper_counts_the_cropped_input"
+    ],
+    "wrapperRequestsTheEstimate": [
+     "pytest:tests/deskew_rotate/test_dataset.py::test_wrapper_requests_the_estimate"
+    ],
+    "wrapperUsesTheLargestFile": [
+     "pytest:tests/deskew_rotate/test_dataset.py::test_wrapper_uses_the_largest_file"
+    ]
+   }
+  }
+ }
+}

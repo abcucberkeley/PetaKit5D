@@ -119,9 +119,9 @@ By fate (all):
 | na+oracle | 1 |
 | na+oracle+pytest | 2 |
 | oracle | 127 |
-| oracle+pytest | 499 |
-| pending | 615 |
-| pytest | 352 |
+| oracle+pytest | 515 |
+| pending | 584 |
+| pytest | 367 |
 
 ## Classes
 
@@ -152,10 +152,10 @@ By fate (all):
 | demo_data/DemoDatasetTest | data | E01 | 4 | 4 | no | pending 4 |
 | deskew_rotate/AxisOrderMappingTest | data | D03 | 1 | 6 | no | pending 6 |
 | deskew_rotate/DeskewMexSourceTest | matlab_only | K03 | 1 | 3 | yes | na 3 |
-| deskew_rotate/DeskewRotateDataWrapperTest | data | D04 | 26 | 26 | no | pending 26 |
+| deskew_rotate/DeskewRotateDataWrapperTest | data | D04 | 26 | 26 | yes | oracle+pytest 16, pytest 10 |
 | deskew_rotate/DeskewRotateFrame3DTest | data | D02 | 17 | 31 | yes | na 1, oracle+pytest 21, pytest 9 |
 | deskew_rotate/DeskewRotateKernelExactTest | data | K03 | 4 | 90 | yes | oracle+pytest 90 |
-| deskew_rotate/DeskewRotateMemoryTest | data | D03 | 10 | 45 | no | oracle+pytest 9, pending 5, pytest 31 |
+| deskew_rotate/DeskewRotateMemoryTest | data | D03 | 10 | 45 | no | oracle+pytest 9, pytest 36 |
 | deskew_rotate/XRDeskewRotateFrameTest | data | D03 | 18 | 18 | yes | oracle+pytest 17, pytest 1 |
 | flatfield/FlatFieldCorrectionTest | data | D01 | 8 | 8 | yes | oracle+pytest 8 |
 | framework/BatchFileExistTest | framework_fake_slurm | J02 | 17 | 17 | no | pending 1, pytest 16 |
