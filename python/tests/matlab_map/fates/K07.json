@@ -1,0 +1,14 @@
+{
+ "task": "K07",
+ "classes": {
+  "MexInputCheckTest": {
+   "methods": {
+    "flatFieldCorrectionChecksItsInputs": [
+     "pytest:tests/kernels/test_flatfield_kernel.py::test_flat_field_correction_checks_its_inputs",
+     "oracle:tests/kernels/test_flatfield_kernel.py::mex.error.*",
+     "oracle:tests/kernels/test_flatfield_kernel.py::mex.check.identity"
+    ]
+   }
+  }
+ }
+}
