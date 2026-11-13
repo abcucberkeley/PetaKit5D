@@ -1,4 +1,4 @@
-"""Tools: maximum intensity projections, memory estimates, rsync, partial volumes.
+"""Tools: maximum intensity projections, cropping, memory estimates, rsync, partial volumes.
 
 ========================================  =====================================
 ``mip_dataset``                           XR_MIP_wrapper
@@ -13,6 +13,11 @@
 ``save_block_mips``                       MIP_zarr_save_block_mips
 ``merge_block_mips``                      MIP_zarr_merge_block_mips
 ``merge_memory``                          MIP_zarr_merge_memory
+``crop_dataset``                          XR_crop_dataset
+``crop_file``                             XR_crop_frame
+``crop_zarr``                             XR_crop_zarr
+``crop_block``                            XR_crop_block
+``trim_border``                           trimBorder
 ``estimate_computing_memory``             XR_estimateComputingMemory
 ``parallel_rsync``                        XR_parallel_rsync_wrapper
 ``group_partial_volume_files``            groupPartialVolumeFiles
@@ -35,6 +40,11 @@ _EXPORTS = {
     "merge_block_mips": "mip",
     "merge_memory": "mip",
     "axis_max": "mip",
+    "crop_dataset": "crop",
+    "crop_file": "crop",
+    "crop_zarr": "crop",
+    "crop_block": "crop",
+    "trim_border": "crop",
     "estimate_computing_memory": "memory_estimate",
     "parallel_rsync": "rsync",
     "group_partial_volume_files": "partial_volumes",

@@ -41,6 +41,10 @@
     "indexing4dMexSupportsLogical": [
      "pytest:tests/kernels/test_crop.py::test_indexing4d_mex_supports_logical",
      "oracle:tests/kernels/test_crop.py::indexing4d_mex.logical.*"
+    ],
+    "trimBorderModes": [
+     "pytest:tests/tools/test_crop.py::test_trim_border_modes",
+     "oracle:tests/tools/test_crop.py::trim.*"
     ]
    }
   },

@@ -1,0 +1,93 @@
+{
+ "task": "T03",
+ "classes": {
+  "CropDatasetTest": {
+   "finished": true,
+   "methods": {
+    "tiffToTiff": [
+     "pytest:tests/tools/test_crop.py::test_tiff_to_tiff",
+     "oracle:tests/tools/test_crop.py::ds.tif.uint16.fixed"
+    ],
+    "zarrToZarr": [
+     "pytest:tests/tools/test_crop.py::test_zarr_to_zarr",
+     "oracle:tests/tools/test_crop.py::ds.zarr.uint16.zarr_out"
+    ],
+    "zarrToTiff": [
+     "pytest:tests/tools/test_crop.py::test_zarr_to_tiff",
+     "oracle:tests/tools/test_crop.py::ds.zarr.uint16.tif_out"
+    ],
+    "largeZarrMatchesInMemoryCrop": [
+     "pytest:tests/tools/test_crop.py::test_large_zarr_matches_in_memory_crop",
+     "oracle:tests/tools/test_crop.py::ds.large.*"
+    ],
+    "largeZarrMakesMIPsBeforePublishing": [
+     "pytest:tests/tools/test_crop.py::test_large_zarr_makes_mips_before_publishing",
+     "oracle:tests/tools/test_crop.py::ds.large.uint16"
+    ],
+    "largeZarrMIPsAreMergedFromTheBlocks": [
+     "pytest:tests/tools/test_crop.py::test_large_zarr_mips_are_merged_from_the_blocks"
+    ],
+    "largeZarrBlocksGetTheMIPOptionOnlyForMIPs": [
+     "pytest:tests/tools/test_crop.py::test_large_zarr_blocks_get_the_mip_option_only_for_mips",
+     "oracle:tests/tools/test_crop.py::zarr.uint16.no_mips"
+    ],
+    "largeZarrKeepsAResultAnotherWriterPublished": [
+     "pytest:tests/tools/test_crop.py::test_large_zarr_keeps_a_result_another_writer_published"
+    ],
+    "largeZarrKeepsAResultPublishedDuringItsMIPs": [
+     "pytest:tests/tools/test_crop.py::test_large_zarr_keeps_a_result_published_during_its_mips"
+    ],
+    "largeZarrWaitsForAWriterOfAnotherCall": [
+     "pytest:tests/tools/test_crop.py::test_large_zarr_waits_for_a_writer_of_another_call"
+    ],
+    "largeZarrBlocksOfAnEndedTaskAreSkipped": [
+     "pytest:tests/tools/test_crop.py::test_large_zarr_blocks_of_an_ended_task_are_skipped"
+    ],
+    "largeZarrTaskThatFailsMarksItsRecordEnded": [
+     "pytest:tests/tools/test_crop.py::test_large_zarr_task_that_fails_marks_its_record_ended"
+    ],
+    "largeZarrJobsGoAfterTheirBlocks": [
+     "pytest:tests/tools/test_crop.py::test_large_zarr_jobs_go_after_their_blocks"
+    ],
+    "largeZarrJobsAskForWhatTheyHold": [
+     "pytest:tests/tools/test_crop.py::test_large_zarr_jobs_ask_for_what_they_hold"
+    ],
+    "largeZarrPassesJobSettingsToMIPs": [
+     "pytest:tests/tools/test_crop.py::test_large_zarr_passes_job_settings_to_mips"
+    ],
+    "padPastImageEdge": [
+     "pytest:tests/tools/test_crop.py::test_pad_past_image_edge",
+     "oracle:tests/tools/test_crop.py::ds.tif.*.pad"
+    ],
+    "padPastImageEdgeLargeZarr": [
+     "pytest:tests/tools/test_crop.py::test_pad_past_image_edge_large_zarr",
+     "oracle:tests/tools/test_crop.py::ds.large.*.pad"
+    ],
+    "clipPastImageEdgeWithoutPad": [
+     "pytest:tests/tools/test_crop.py::test_clip_past_image_edge_without_pad",
+     "oracle:tests/tools/test_crop.py::ds.*.uint16.clip"
+    ],
+    "singleSliceZarrCrop": [
+     "pytest:tests/tools/test_crop.py::test_single_slice_zarr_crop",
+     "oracle:tests/tools/test_crop.py::ds.*.uint16.single_slice"
+    ],
+    "centerCrop": [
+     "pytest:tests/tools/test_crop.py::test_center_crop",
+     "oracle:tests/tools/test_crop.py::ds.tif.uint16.center*"
+    ],
+    "movingCrop": [
+     "pytest:tests/tools/test_crop.py::test_moving_crop",
+     "oracle:tests/tools/test_crop.py::ds.tif.uint16.moving*"
+    ],
+    "existingOutputIsNotOverwritten": [
+     "pytest:tests/tools/test_crop.py::test_existing_output_is_not_overwritten",
+     "oracle:tests/tools/test_crop.py::ds.tif.uint16.existing"
+    ],
+    "tiffInputSavedAsZarr": [
+     "pytest:tests/tools/test_crop.py::test_tiff_input_saved_as_zarr",
+     "oracle:tests/tools/test_crop.py::ds.tif.uint16.zarr_out"
+    ]
+   }
+  }
+ }
+}
