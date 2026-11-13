@@ -412,6 +412,32 @@ jobs:
         shell: bash
         run: bash .github/scripts/suite_step_done.sh suite_StitchBlendMean_both ${{ steps.suite_StitchBlendMean_both.outcome }}
 
+      - name: Reproducer, StitchingTest blend mean, locked mex
+        id: suite_StitchBlendMean_lock
+        timeout-minutes: 5
+        continue-on-error: true
+        uses: matlab-actions/run-command@v3
+        with:
+          command: addpath('.github/scripts'); suite_exit_probe('StitchBlendMean_lock', {'StitchingTest/blendingWithoutTheMexGivesTheSameResult?tileBlendMethod=mean?'}, [], fullfile(getenv('RUNNER_TEMP'), 'variant_lock'));
+
+      - name: After the reproducer, StitchingTest blend mean, locked mex
+        if: always()
+        shell: bash
+        run: bash .github/scripts/suite_step_done.sh suite_StitchBlendMean_lock ${{ steps.suite_StitchBlendMean_lock.outcome }}
+
+      - name: Reproducer, StitchingTest blend mean, mexAtExit mex
+        id: suite_StitchBlendMean_atexit
+        timeout-minutes: 5
+        continue-on-error: true
+        uses: matlab-actions/run-command@v3
+        with:
+          command: addpath('.github/scripts'); suite_exit_probe('StitchBlendMean_atexit', {'StitchingTest/blendingWithoutTheMexGivesTheSameResult?tileBlendMethod=mean?'}, [], fullfile(getenv('RUNNER_TEMP'), 'variant_atexit'));
+
+      - name: After the reproducer, StitchingTest blend mean, mexAtExit mex
+        if: always()
+        shell: bash
+        run: bash .github/scripts/suite_step_done.sh suite_StitchBlendMean_atexit ${{ steps.suite_StitchBlendMean_atexit.outcome }}
+
       - name: Summary
         if: always()
         shell: bash
