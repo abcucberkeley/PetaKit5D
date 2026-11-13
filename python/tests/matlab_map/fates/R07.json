@@ -1,0 +1,86 @@
+{
+  "task": "R07",
+  "classes": {
+    "DeconWrapperTest": {
+      "methods": {
+        "largeFileErosionMaskMatchesDistanceMap": [
+          "pytest:tests/decon/test_large.py::test_large_file_erosion_mask_matches_distance_map",
+          "pytest:tests/decon/test_large.py::test_eroded_mask_without_zeros_skips_the_distance_map",
+          "oracle:tests/decon/test_large.py::mem.erosion_zeros.*",
+          "oracle:tests/decon/test_large.py::mem.erosion_saved.*"
+        ],
+        "largeFileInMemoryUsesBlockSize": [
+          "pytest:tests/decon/test_large.py::test_large_file_in_memory_uses_block_size",
+          "oracle:tests/decon/test_large.py::mem.zarr.*",
+          "oracle:tests/decon/test_large.py::mem.zarr_default_chunks.*"
+        ],
+        "largeFileInPlaceBlocksLogToTheCallersJobLogDir": [
+          "pytest:tests/decon/test_large.py::test_large_file_in_place_blocks_log_to_the_callers_job_log_dir"
+        ],
+        "largeFileInPlaceBlocksOfAnEndedControllerAreSkipped": [
+          "pytest:tests/decon/test_large.py::test_large_file_in_place_blocks_of_an_ended_controller_are_skipped"
+        ],
+        "largeFileInPlaceControllersAskForWhatTheyHold": [
+          "pytest:tests/decon/test_large.py::test_large_file_in_place_controllers_ask_for_what_they_hold"
+        ],
+        "largeFileInPlaceGPUJobMIPsKeepMasterCompute": [
+          "pytest:tests/decon/test_large.py::test_large_file_in_place_gpu_job_mips_keep_master_compute"
+        ],
+        "largeFileInPlaceKeepsAResultAnotherWriterPublished": [
+          "pytest:tests/decon/test_large.py::test_large_file_in_place_keeps_a_result_another_writer_published"
+        ],
+        "largeFileInPlaceKeepsAResultPublishedDuringItsMIPs": [
+          "pytest:tests/decon/test_large.py::test_large_file_in_place_keeps_a_result_published_during_its_mips"
+        ],
+        "largeFileInPlaceMIPsAreMergedFromTheBlocks": [
+          "pytest:tests/decon/test_large.py::test_large_file_in_place_mips_are_merged_from_the_blocks",
+          "oracle:tests/decon/test_large.py::place.simplified.*"
+        ],
+        "largeFileInPlaceMIPsIncludeMaskedBlocks": [
+          "pytest:tests/decon/test_large.py::test_large_file_in_place_mips_include_masked_blocks",
+          "oracle:tests/decon/test_large.py::place.masks.*"
+        ],
+        "largeFileInPlaceMakesMIPsBeforePublishing": [
+          "pytest:tests/decon/test_large.py::test_large_file_in_place_makes_mips_before_publishing"
+        ],
+        "largeFileInPlaceMatchesRegular": [
+          "pytest:tests/decon/test_large.py::test_large_file_in_place_matches_regular",
+          "oracle:tests/decon/test_large.py::place.one_batch.*"
+        ],
+        "largeFileInPlaceMultipleBatchesMatchRegular": [
+          "pytest:tests/decon/test_large.py::test_large_file_in_place_multiple_batches_match_regular",
+          "oracle:tests/decon/test_large.py::place.erosion.*"
+        ],
+        "largeFileInPlacePassesJobSettingsToMIPs": [
+          "pytest:tests/decon/test_large.py::test_large_file_in_place_passes_job_settings_to_mips"
+        ],
+        "largeFileInPlaceWaitsForAControllerOfAnotherCall": [
+          "pytest:tests/decon/test_large.py::test_large_file_in_place_waits_for_a_controller_of_another_call"
+        ],
+        "largeFileMakesMIPBeforePublishing": [
+          "pytest:tests/decon/test_large.py::test_large_file_makes_mip_before_publishing"
+        ],
+        "largeFileMultipleBatchesMatchRegular": [
+          "pytest:tests/decon/test_large.py::test_large_file_multiple_batches_match_regular",
+          "oracle:tests/decon/test_large.py::mem.simplified.*"
+        ],
+        "largeFileSingleBatchMatchesRegular": [
+          "pytest:tests/decon/test_large.py::test_large_file_single_batch_matches_regular",
+          "oracle:tests/decon/test_large.py::mem.batch_one.*"
+        ],
+        "largeFileWithErodeByFirstTimePointCompletes": [
+          "pytest:tests/decon/test_large.py::test_large_file_with_erode_by_first_time_point_completes"
+        ]
+      }
+    },
+    "DeconFunctionTest": {
+      "methods": {
+        "gpuBlockTaskWithoutUsableGPUErrors": [
+          "pytest:tests/decon/test_large.py::test_gpu_block_task_without_usable_gpu_errors",
+          "oracle:tests/decon/test_large.py::error.block.gpu_without_gpu",
+          "oracle:tests/decon/test_large.py::block.cpu.*"
+        ]
+      }
+    }
+  }
+}

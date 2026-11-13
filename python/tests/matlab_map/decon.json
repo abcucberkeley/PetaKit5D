@@ -618,7 +618,8 @@
       "Unit"
      ],
      "cases": null,
-     "fate": []
+     "fate": [],
+     "owner": "R07"
     },
     "gpuRequestWithoutUsableGPUErrors": {
      "pins": "useGPU true requires a GPU: with GPUs found but none usable (e.g., a B200 in R2024b without forward compatibility, compute capability 10.0) or none found, the decon errors with the counts, CUDA_VISIBLE_DEVICES and MATLAB's reason, the error of selecting GPU 1 (not tried with none found); GPU jobs used to run on the CPU instead, about 60x slower. Also after a call without useGPU cached a CPU OTF...",

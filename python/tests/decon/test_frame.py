@@ -695,6 +695,7 @@ def test_without_the_large_file_port_a_large_file_raises(root, monkeypatch):
     from petakit5d import decon
 
     monkeypatch.delattr(decon, "decon_large_in_memory", raising=False)
+    monkeypatch.delitem(decon._EXPORTS, "decon_large_in_memory", raising=False)
     with pytest.raises(NotImplementedError, match="R07"):
         run(_fn(root), str(root / "decon"), root, large_file=True)
 

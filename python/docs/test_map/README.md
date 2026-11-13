@@ -94,11 +94,11 @@ By owner (default run / all):
 | P02 | 19 | 19 | 1 |
 | R01 | 12 | 12 | 2 |
 | R02 | 29 | 29 | 2 |
-| R03 | 133 | 133 | 4 |
+| R03 | 132 | 132 | 4 |
 | R04 | 40 | 40 | 3 |
 | R05 | 21 | 21 | 3 |
 | R06 | 31 | 31 | 2 |
-| R07 | 19 | 19 | 1 |
+| R07 | 20 | 20 | 2 |
 | S01 | 10 | 10 | 1 |
 | S03 | 3 | 3 | 1 |
 | S04 | 54 | 54 | 2 |
@@ -119,9 +119,9 @@ By fate (all):
 | na+oracle | 1 |
 | na+oracle+pytest | 2 |
 | oracle | 127 |
-| oracle+pytest | 490 |
-| pending | 635 |
-| pytest | 341 |
+| oracle+pytest | 499 |
+| pending | 615 |
+| pytest | 352 |
 
 ## Classes
 
@@ -141,14 +141,14 @@ By fate (all):
 | decon/DeconAccelTest | data | R03 | 15 | 46 | no | na 1, oracle 24, oracle+pytest 16, pending 1, pytest 4 |
 | decon/DeconBackProjectorTest | data | R02 | 16 | 24 | yes | na 1, oracle 12, oracle+pytest 9, pytest 2 |
 | decon/DeconFrameTest | data | R05 | 17 | 17 | yes | na 1, oracle+pytest 12, pytest 4 |
-| decon/DeconFunctionTest | data | R03 | 33 | 70 | no | oracle 24, oracle+pytest 20, pending 6, pytest 20 |
+| decon/DeconFunctionTest | data | R03 | 33 | 70 | no | oracle 24, oracle+pytest 21, pending 5, pytest 20 |
 | decon/DeconGPUTest | data | R04 | 4 | 19 | no | oracle+pytest 14, pending 1, pytest 4 |
 | decon/DeconMaskErosionTest | data | K05 | 13 | 48 | no | na 2, na+oracle 1, oracle 2, oracle+pytest 42, pytest 1 |
 | decon/DeconOverlapTest | data | R04 | 3 | 3 | no | oracle+pytest 1, pytest 2 |
 | decon/DeconRFFTGPUTest | data | K09 | 7 | 24 | no | na+oracle+pytest 2, oracle 8, oracle+pytest 13, pytest 1 |
 | decon/DeconRFFTTest | data | K05 | 17 | 82 | no | na 6, oracle 27, oracle+pytest 47, pytest 2 |
 | decon/DeconReadCacheTest | data | R01 | 4 | 4 | yes | oracle+pytest 1, pytest 3 |
-| decon/DeconWrapperTest | data | R06 | 49 | 49 | no | pending 49 |
+| decon/DeconWrapperTest | data | R06 | 49 | 49 | no | oracle+pytest 8, pending 30, pytest 11 |
 | demo_data/DemoDatasetTest | data | E01 | 4 | 4 | no | pending 4 |
 | deskew_rotate/AxisOrderMappingTest | data | D03 | 1 | 6 | no | pending 6 |
 | deskew_rotate/DeskewMexSourceTest | matlab_only | K03 | 1 | 3 | yes | na 3 |

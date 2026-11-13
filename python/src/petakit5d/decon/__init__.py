@@ -15,6 +15,9 @@
 ``decon_mask_edge_erosion``     decon_mask_edge_erosion
 ``rl_decon_file``               RLdecon (``RLDeconResult``)
 ``decon_file``                  XR_RLdeconFrame3D
+``decon_large_in_memory``       RLdecon_large_in_memory
+``decon_large_in_place``        RLdecon_large_in_place
+``decon_zarr_block``            RLdecon_for_zarr_block
 ==============================  ========================================================
 
 Nothing is imported until a name is first used.
@@ -49,6 +52,11 @@ _EXPORTS = {
     "RLDeconResult": "file",
     "rl_decon_file": "file",
     "decon_file": "frame",
+    "DeconLargeError": "large",
+    "decon_large_in_memory": "large",
+    "decon_large_in_place": "large",
+    "in_place_controller_resources": "large",
+    "decon_zarr_block": "block",
 }
 
 __all__ = sorted(_EXPORTS)
