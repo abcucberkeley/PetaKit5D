@@ -1,0 +1,73 @@
+{
+ "task": "K01",
+ "classes": {
+  "CropMexTest": {
+   "methods": {
+    "crop3dMatchesIndexing": [
+     "pytest:tests/kernels/test_crop.py::test_crop3d_matches_indexing",
+     "oracle:tests/kernels/test_crop.py::crop3d_mex.*",
+     "oracle:tests/kernels/test_crop.py::crop3d.*"
+    ],
+    "crop3dRejectsInvalidBbox": [
+     "pytest:tests/kernels/test_crop.py::test_crop3d_rejects_invalid_bbox",
+     "oracle:tests/kernels/test_crop.py::crop3d_mex.error.*",
+     "oracle:tests/kernels/test_crop.py::crop3d_mex.int16.interior"
+    ],
+    "crop4dMatchesIndexing": [
+     "pytest:tests/kernels/test_crop.py::test_crop4d_matches_indexing",
+     "oracle:tests/kernels/test_crop.py::crop4d_mex.*",
+     "oracle:tests/kernels/test_crop.py::crop4d.*"
+    ],
+    "crop4dRejectsInvalidBbox": [
+     "pytest:tests/kernels/test_crop.py::test_crop4d_rejects_invalid_bbox",
+     "oracle:tests/kernels/test_crop.py::crop4d_mex.error.*"
+    ],
+    "indexing3dAssignsRegionInPlace": [
+     "pytest:tests/kernels/test_crop.py::test_indexing3d_assigns_region_in_place",
+     "oracle:tests/kernels/test_crop.py::indexing3d_mex.*"
+    ],
+    "indexing3dRejectsMismatchedRegion": [
+     "pytest:tests/kernels/test_crop.py::test_indexing3d_rejects_mismatched_region",
+     "oracle:tests/kernels/test_crop.py::indexing3d_mex.error.mismatched_*"
+    ],
+    "indexing4dWrapperMatchesIndexing": [
+     "pytest:tests/kernels/test_crop.py::test_indexing4d_wrapper_matches_indexing",
+     "oracle:tests/kernels/test_crop.py::indexing4d.*"
+    ],
+    "indexing4dCropAssignsSubregion": [
+     "pytest:tests/kernels/test_crop.py::test_indexing4d_crop_assigns_subregion",
+     "oracle:tests/kernels/test_crop.py::indexing4d_crop_mex.*"
+    ],
+    "indexing4dMexSupportsLogical": [
+     "pytest:tests/kernels/test_crop.py::test_indexing4d_mex_supports_logical",
+     "oracle:tests/kernels/test_crop.py::indexing4d_mex.logical.*"
+    ]
+   }
+  },
+  "MexInputCheckTest": {
+   "methods": {
+    "crop3dChecksItsInputs": [
+     "pytest:tests/kernels/test_crop.py::test_crop3d_checks_its_inputs",
+     "oracle:tests/kernels/test_crop.py::crop3d_mex.error.*",
+     "oracle:tests/kernels/test_crop.py::crop3d_mex.*.fraction"
+    ],
+    "crop4dChecksItsInputs": [
+     "pytest:tests/kernels/test_crop.py::test_crop4d_checks_its_inputs",
+     "oracle:tests/kernels/test_crop.py::crop4d_mex.error.*",
+     "oracle:tests/kernels/test_crop.py::crop4d_mex.*.fraction"
+    ],
+    "indexing3dChecksItsInputs": [
+     "pytest:tests/kernels/test_crop.py::test_indexing3d_checks_its_inputs",
+     "oracle:tests/kernels/test_crop.py::indexing3d_mex.error.*",
+     "oracle:tests/kernels/test_crop.py::indexing3d_mex.*.fraction"
+    ],
+    "indexing4dChecksItsInputs": [
+     "pytest:tests/kernels/test_crop.py::test_indexing4d_checks_its_inputs",
+     "oracle:tests/kernels/test_crop.py::indexing4d_mex.error.*",
+     "oracle:tests/kernels/test_crop.py::indexing4d_crop_mex.error.*",
+     "oracle:tests/kernels/test_crop.py::indexing4d.error.*"
+    ]
+   }
+  }
+ }
+}
