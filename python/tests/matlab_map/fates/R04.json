@@ -1,0 +1,117 @@
+{
+  "task": "R04",
+  "classes": {
+    "DeconGPUTest": {
+      "methods": {
+        "gpuMatchesCPU": [
+          "pytest:tests/gpu/test_decon_gpu.py::test_gpu_matches_cpu"
+        ],
+        "gpuEdgeErosionUsesTheCPUMask": [
+          "pytest:tests/gpu/test_decon_gpu.py::test_gpu_edge_erosion_uses_the_eroded_mask",
+          "oracle:tests/gpu/test_decon_gpu.py::A100.rl.loop.zeroborder.*",
+          "oracle:tests/gpu/test_decon_gpu.py::A100.omw.loop.zeroborder.*",
+          "oracle:tests/gpu/test_decon_gpu.py::B200.rl.loop.zeroborder.*",
+          "oracle:tests/gpu/test_decon_gpu.py::B200.omw.loop.zeroborder.*",
+          "oracle:tests/gpu/test_decon_gpu.py::TitanV.rl.loop.zeroborder.*",
+          "oracle:tests/gpu/test_decon_gpu.py::TitanV.omw.loop.zeroborder.*"
+        ],
+        "gpuLoopMatchesThePreviousFormulation": [
+          "oracle:tests/gpu/test_decon_gpu.py::A100.rl.dgt.*",
+          "oracle:tests/gpu/test_decon_gpu.py::A100.omw.dgt.*",
+          "oracle:tests/gpu/test_decon_gpu.py::B200.rl.dgt.*",
+          "oracle:tests/gpu/test_decon_gpu.py::B200.omw.dgt.*",
+          "oracle:tests/gpu/test_decon_gpu.py::TitanV.rl.dgt.*",
+          "oracle:tests/gpu/test_decon_gpu.py::TitanV.omw.dgt.*",
+          "pytest:tests/gpu/test_decon_gpu.py::test_the_cached_otfs_give_the_same_bits"
+        ]
+      }
+    },
+    "DeconOverlapTest": {
+      "methods": {
+        "overlapFunctionRunsOnceAndReturnsItsOutput": [
+          "pytest:tests/decon/test_rl.py::test_overlap_function_runs_once_and_returns_its_output"
+        ],
+        "gpuOverlapFunctionRunsWhileTheGPUComputes": [
+          "pytest:tests/gpu/test_decon_gpu.py::test_gpu_overlap_function_runs_while_the_gpu_computes"
+        ]
+      }
+    },
+    "DeconRFFTGPUTest": {
+      "methods": {
+        "gpuMexMatchesGpuMatlabLoop": [
+          "oracle:tests/gpu/test_decon_gpu.py::A100.rl.loop.uint16.*",
+          "oracle:tests/gpu/test_decon_gpu.py::A100.omw.loop.uint16.*",
+          "oracle:tests/gpu/test_decon_gpu.py::B200.rl.loop.uint16.*",
+          "oracle:tests/gpu/test_decon_gpu.py::B200.omw.loop.uint16.*",
+          "oracle:tests/gpu/test_decon_gpu.py::TitanV.rl.loop.uint16.*",
+          "oracle:tests/gpu/test_decon_gpu.py::TitanV.omw.loop.uint16.*",
+          "oracle:tests/gpu/test_decon_gpu.py::A100.rl.loop.single.*",
+          "oracle:tests/gpu/test_decon_gpu.py::A100.omw.loop.single.*",
+          "oracle:tests/gpu/test_decon_gpu.py::B200.rl.loop.single.*",
+          "oracle:tests/gpu/test_decon_gpu.py::B200.omw.loop.single.*",
+          "oracle:tests/gpu/test_decon_gpu.py::TitanV.rl.loop.single.*",
+          "oracle:tests/gpu/test_decon_gpu.py::TitanV.omw.loop.single.*",
+          "oracle:tests/gpu/test_decon_gpu.py::A100.rl.dflt.*",
+          "oracle:tests/gpu/test_decon_gpu.py::A100.omw.dflt.*",
+          "oracle:tests/gpu/test_decon_gpu.py::B200.rl.dflt.*",
+          "oracle:tests/gpu/test_decon_gpu.py::B200.omw.dflt.*",
+          "oracle:tests/gpu/test_decon_gpu.py::TitanV.rl.dflt.*",
+          "oracle:tests/gpu/test_decon_gpu.py::TitanV.omw.dflt.*",
+          "oracle:tests/gpu/test_decon_gpu.py::A100.rl.mex.uint16.*",
+          "oracle:tests/gpu/test_decon_gpu.py::A100.omw.mex.uint16.*",
+          "oracle:tests/gpu/test_decon_gpu.py::B200.rl.mex.uint16.*",
+          "oracle:tests/gpu/test_decon_gpu.py::B200.omw.mex.uint16.*",
+          "oracle:tests/gpu/test_decon_gpu.py::TitanV.rl.mex.uint16.*",
+          "oracle:tests/gpu/test_decon_gpu.py::TitanV.omw.mex.uint16.*",
+          "oracle:tests/gpu/test_decon_gpu.py::A100.rl.mex.single.*",
+          "oracle:tests/gpu/test_decon_gpu.py::A100.omw.mex.single.*",
+          "oracle:tests/gpu/test_decon_gpu.py::B200.rl.mex.single.*",
+          "oracle:tests/gpu/test_decon_gpu.py::B200.omw.mex.single.*",
+          "oracle:tests/gpu/test_decon_gpu.py::TitanV.rl.mex.single.*",
+          "oracle:tests/gpu/test_decon_gpu.py::TitanV.omw.mex.single.*",
+          "pytest:tests/gpu/test_decon_gpu.py::test_the_gpu_path_is_chosen_as_matlab_chooses_it"
+        ],
+        "gpuMexMatchesForOddAnd2DSizes": [
+          "oracle:tests/gpu/test_decon_gpu.py::A100.rl.loop.size.*",
+          "oracle:tests/gpu/test_decon_gpu.py::A100.omw.loop.size.*",
+          "oracle:tests/gpu/test_decon_gpu.py::B200.rl.loop.size.*",
+          "oracle:tests/gpu/test_decon_gpu.py::B200.omw.loop.size.*",
+          "oracle:tests/gpu/test_decon_gpu.py::TitanV.rl.loop.size.*",
+          "oracle:tests/gpu/test_decon_gpu.py::TitanV.omw.loop.size.*",
+          "oracle:tests/gpu/test_decon_gpu.py::A100.rl.mex.size.*",
+          "oracle:tests/gpu/test_decon_gpu.py::A100.omw.mex.size.*",
+          "oracle:tests/gpu/test_decon_gpu.py::B200.rl.mex.size.*",
+          "oracle:tests/gpu/test_decon_gpu.py::B200.omw.mex.size.*",
+          "oracle:tests/gpu/test_decon_gpu.py::TitanV.rl.mex.size.*",
+          "oracle:tests/gpu/test_decon_gpu.py::TitanV.omw.mex.size.*",
+          "pytest:tests/gpu/test_decon_gpu.py::test_a_single_row_runs_in_the_gpu_mex"
+        ],
+        "gpuMexAppliesTheOptions": [
+          "oracle:tests/gpu/test_decon_gpu.py::A100.rl.loop.opt.*",
+          "oracle:tests/gpu/test_decon_gpu.py::A100.omw.loop.opt.*",
+          "oracle:tests/gpu/test_decon_gpu.py::B200.rl.loop.opt.*",
+          "oracle:tests/gpu/test_decon_gpu.py::B200.omw.loop.opt.*",
+          "oracle:tests/gpu/test_decon_gpu.py::TitanV.rl.loop.opt.*",
+          "oracle:tests/gpu/test_decon_gpu.py::TitanV.omw.loop.opt.*",
+          "oracle:tests/gpu/test_decon_gpu.py::A100.rl.mex.opt.*",
+          "oracle:tests/gpu/test_decon_gpu.py::A100.omw.mex.opt.*",
+          "oracle:tests/gpu/test_decon_gpu.py::B200.rl.mex.opt.*",
+          "oracle:tests/gpu/test_decon_gpu.py::B200.omw.mex.opt.*",
+          "oracle:tests/gpu/test_decon_gpu.py::TitanV.rl.mex.opt.*",
+          "oracle:tests/gpu/test_decon_gpu.py::TitanV.omw.mex.opt.*"
+        ],
+        "withoutTheGpuMexTheGpuLoopRuns": [
+          "na:the port compiles its CUDA kernels at run time wherever there is a GPU, so the GPU mex is never missing; MATLAB's default on the GPU is its loop with or without the mex, which the dflt cases check",
+          "oracle:tests/gpu/test_decon_gpu.py::A100.rl.dflt.*",
+          "oracle:tests/gpu/test_decon_gpu.py::A100.omw.dflt.*",
+          "oracle:tests/gpu/test_decon_gpu.py::B200.rl.dflt.*",
+          "oracle:tests/gpu/test_decon_gpu.py::B200.omw.dflt.*",
+          "oracle:tests/gpu/test_decon_gpu.py::TitanV.rl.dflt.*",
+          "oracle:tests/gpu/test_decon_gpu.py::TitanV.omw.dflt.*",
+          "pytest:tests/gpu/test_decon_gpu.py::test_the_gpu_path_is_chosen_as_matlab_chooses_it",
+          "pytest:tests/gpu/test_decon_gpu.py::test_the_gpu_mex_refuses_what_matlab_refuses"
+        ]
+      }
+    }
+  }
+}

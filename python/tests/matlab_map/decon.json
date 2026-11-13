@@ -889,6 +889,7 @@
      "fate": []
     },
     "wrapperGPUJobMatchesCPU": {
+     "owner": "R06",
      "pins": "wrapper gpujob matches cpu",
      "tags": [
       "GPU",
@@ -1087,6 +1088,7 @@
      "fate": []
     },
     "rldeconReturnsTheOverlapOutput": {
+     "owner": "R05",
      "pins": "as the large-file batches call RLdecon (data in memory, no result file)",
      "tags": [
       "Unit"
