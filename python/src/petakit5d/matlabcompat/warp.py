@@ -29,7 +29,7 @@ from collections.abc import Sequence
 
 import numpy as np
 
-__all__ = ["ImwarpError", "composite_matrix", "imwarp"]
+__all__ = ["ImwarpError", "composite_matrix", "imwarp", "mrdivide"]
 
 _CLASSES = {
     np.dtype(np.uint8): "uint8",
@@ -169,14 +169,27 @@ def _solve_upper_t(U: list[list[float]], b: list[float]) -> list[float]:
     return x
 
 
-def _mrdivide(a: list[list[float]], T: list[list[float]]) -> list[list[float]]:
-    """MATLAB's a / T for 4 x 4 matrices: the rows x of x * T = a"""
+def mrdivide(a, T) -> list[list[float]]:
+    """MATLAB's ``a / T`` for 4 x 4 double matrices, bit for bit: the rows ``x`` of ``x * T = a``.
+
+    As MATLAB R2024b computes it: a triangular solve when ``T`` is lower or upper triangular,
+    else an LU of ``T`` (partial pivoting, the first largest magnitude, multipliers by division)
+    and the transposed solve, each in LAPACK's dot-product order. ``a`` and ``T``: 4 x 4 array-
+    likes (rows); the result is a list of 4 rows of Python floats.
+    """
+    a = [[float(v) for v in row] for row in a]
+    T = [[float(v) for v in row] for row in T]
+    if len(a) != 4 or len(T) != 4 or any(len(r) != 4 for r in a + T):
+        raise ValueError("mrdivide: 4 x 4 matrices")
     if all(T[i][j] == 0 for i in range(4) for j in range(i + 1, 4)):
         return [_solve_lower_t(T, row) for row in a]
     if all(T[i][j] == 0 for i in range(4) for j in range(i)):
         return [_solve_upper_t(T, row) for row in a]
     LU, piv = _lu(T)
     return [_solve_lu_t(LU, piv, row) for row in a]
+
+
+_mrdivide = mrdivide  # the earlier private name (deskew_rotate.geometry imports it)
 
 
 def _view(
@@ -208,7 +221,7 @@ def composite_matrix(
     T = _matrix(tform)
     _, shift = _view(output_size, output_box)
     a = [[1.0, 0.0, 0.0, 0.0], [0.0, 1.0, 0.0, 0.0], [0.0, 0.0, 1.0, 0.0], [*shift, 1.0]]
-    X = _mrdivide(a, T)
+    X = mrdivide(a, T)
     # times the input's world-to-intrinsic matrix (the identity), as a matrix product
     eye = [[1.0 if r == c else 0.0 for c in range(4)] for r in range(4)]
     t = []

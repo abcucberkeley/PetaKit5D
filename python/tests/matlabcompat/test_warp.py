@@ -630,7 +630,7 @@ def _divide_cases():
                 f"divide{len(out)}",
                 code="out = {in{1} / in{2}};",
                 args=[a, T],
-                python=lambda a, T: np.array(warp._mrdivide(a.tolist(), T.tolist())),
+                python=lambda a, T: np.array(warp.mrdivide(a, T)),
             )
         )
     return out
@@ -779,6 +779,85 @@ def test_kernel_matches_the_model(cls, method):
         got = warp.imwarp(_from_matlab(v), T, method, output_size=arrays.size_from_matlab(out))
         assert got.dtype == np.dtype(cls) and got.shape == (out[2], out[0], out[1])
         assert _same_bits(_to_matlab(got), want), (seed, method)
+
+
+def _band_transforms():
+    """transforms whose input plane rises, falls or stays along output x, one whose x coefficient
+    is tiny but not zero (as in a resampled deskew and rotation), and content leaving the input
+    at both ends in z: the voxels are visited by bands of input planes"""
+    c_in, c_out = _center([30, 40, 48]), _center([28, 44, 52])
+    to_origin, from_origin = _translate(-c_in[0], -c_in[1], -c_in[2]), _translate(*c_out)
+    out = []
+    for lin in (
+        _rot_xz(35.0),  # plane falls along x
+        _rot_xz(-35.0),  # rises
+        _mul(_scale(0.5, 0.5, 0.5), _rot_xz(57.5)),  # resampled: input plane moves 2 per x step
+        [[1.0, 0, 0, 0], [0, 1.0, 0, 0], [0.3, 0, 1.0, 0], [0, 0, 0, 1.0]],  # constant along x
+        _mul(_scale(1.0, 1.0, 1.6), _rot_xz(20.0)),  # past both ends in z
+    ):
+        out.append(_mul(to_origin, lin, from_origin))
+    # deskew, rotation and resampling by 2 chained: the input x coefficient along output x is a
+    # rounding residue, not zero
+    s = _deskew_shift(0.3, 0.108, 32.45)
+    dsk = [30, 40 + math.ceil(47 * s), 48]
+    zs = abs(_sincos(32.45)[0]) * 0.3 / 0.108
+    rot = _rotated_size(30, 40, 48, 32.45, zs)
+    resample, _ = _resample(rot, (2.0, 2.0, 2.0))
+    out.append(_mul(_shear(s, -s), _rotation_chain(dsk, rot, 32.45, zs), resample))
+    return out
+
+
+@pytest.mark.parametrize("cls", [np.uint16, np.float32])
+@pytest.mark.parametrize("method", ["linear", "nearest", "cubic"])
+def test_band_visiting_matches_the_model(cls, method):
+    # volumes with many bands of input planes (48 planes), each transform shape
+    rng = np.random.default_rng(11)
+    size = (30, 40, 48)  # MATLAB's (y, x, z)
+    if np.dtype(cls).kind == "f":
+        v = np.asfortranarray((rng.normal(size=size) * 100).astype(cls))
+    else:
+        v = np.asfortranarray(rng.integers(0, 65535, size=size, endpoint=True).astype(cls))
+    out = (28, 44, 52)
+    for n, T in enumerate(_band_transforms()):
+        T = np.asarray(T)
+        t = warp.composite_matrix(T, output_size=arrays.size_from_matlab(out))
+        want = _model_class(_model(v, t, out, method), cls, method)
+        for nt in (1, 3):
+            got = warp.imwarp(
+                _from_matlab(v), T, method, output_size=arrays.size_from_matlab(out), num_threads=nt
+            )
+            assert _same_bits(_to_matlab(got), want), (n, method, nt)
+
+
+@pytest.mark.parametrize("cls", [np.uint16, np.float32])
+@pytest.mark.parametrize("method", ["linear", "nearest", "cubic"])
+def test_overflowing_coordinates_are_fill(cls, method):
+    # nearly singular T (affine3d takes any nonzero determinant): the inverse's 1e306 makes the
+    # input plane +inf from output plane 180 on, or NaN (inf - inf) where it also grows by
+    # 1e306 per output column; every such voxel is visited and is the fill value
+    rng = np.random.default_rng(12)
+    v = np.asfortranarray((rng.random((4, 5, 6)) * 1000).astype(cls))  # MATLAB's (y, x, z)
+    out = (2, 200, 200)
+    transforms = (
+        [[1.0, 0, 0, 0], [0, 1.0, 0, 0], [0, 0, 1e-306, 0], [0, 0, 0, 1.0]],
+        [[1.0, 0, 1.0, 0], [0, 1.0, 0, 0], [0, 0, -1e-306, 0], [0, 0, 0, 1.0]],
+    )
+    for n, T in enumerate(transforms):
+        T = np.asarray(T)
+        t = warp.composite_matrix(T, output_size=arrays.size_from_matlab(out))
+        with np.errstate(over="ignore", invalid="ignore"):
+            want = _model_class(_model(v, t, out, method, fill=7.0), cls, method)
+        assert np.all(want[:, :, 185:] == 7)  # the model: fill there
+        for nt in (1, 3):
+            got = warp.imwarp(
+                _from_matlab(v),
+                T,
+                method,
+                output_size=arrays.size_from_matlab(out),
+                fill_value=7,
+                num_threads=nt,
+            )
+            assert _same_bits(_to_matlab(got), want), (n, method, nt)
 
 
 @pytest.mark.parametrize("method", ["linear", "nearest", "cubic"])

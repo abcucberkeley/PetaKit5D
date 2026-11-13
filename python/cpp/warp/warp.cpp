@@ -98,24 +98,72 @@ inline T cast_like(double v) {
     }
 }
 
-// Visit the output in tiles of BK planes x BJ columns of one row: the input voxels a tile reads
-// (two rows, a patch of x and z for the transforms that keep y) stay in cache. Each voxel's value
-// does not depend on the order. fn(k, i, j0, j1) computes out[k, i, j0:j1].
-constexpr idx BK = 16, BJ = 64;
+// The order in which the output is visited (each voxel's value does not depend on it). In C
+// order an input plane lies megabytes from the next, and for the transforms that rotate or
+// resample x and z, consecutive voxels along x read other planes. So the voxels are visited by
+// bands of input planes: an item is BK output planes of BI output rows; with one cursor per
+// (row, plane) it visits the voxels whose input plane qt(k, i, j) falls in a band of BAND planes,
+// band after band. qt is monotone in j (a sum of a multiple of j and constants), so a band is a
+// run of j for each row and plane; voxels outside the input in z go with the first or last band.
+// The few planes of a band and the rows of an item stay in cache, and their rows are read along
+// x. dir is qt's step along j (its sign gives the order of the bands).
+constexpr idx BI = 4, BK = 128, BAND = 8;
 
-template <typename F>
-void for_tiles(const Geometry& g, int threads, F&& fn) {
-    const idx nkb = (g.nz + BK - 1) / BK, njb = (g.nx + BJ - 1) / BJ;
-    const idx items = nkb * g.ny;  // (k block, row), rows fastest
+template <typename QT, typename F>
+void for_voxels(const Geometry& g, int threads, double dir, QT&& qt, F&& fn) {
+    const idx nkb = (g.nz + BK - 1) / BK, nib = (g.ny + BI - 1) / BI;
+    const idx items = nkb * nib;  // row blocks fastest
+    const idx nband = (g.pz + BAND - 1) / BAND;  // bands 0 .. nband - 1, and -1 / nband outside
 #ifdef _OPENMP
-#pragma omp parallel for schedule(dynamic, 4) num_threads(threads)
+#pragma omp parallel num_threads(threads)
 #endif
-    for (idx it = 0; it < items; ++it) {
-        const idx i = it % g.ny, k0 = (it / g.ny) * BK;
-        const idx k1 = k0 + BK < g.nz ? k0 + BK : g.nz;
-        for (idx jb = 0; jb < njb; ++jb) {
-            const idx j0 = jb * BJ, j1 = j0 + BJ < g.nx ? j0 + BJ : g.nx;
-            for (idx k = k0; k < k1; ++k) fn(k, i, j0, j1);
+    {
+        std::vector<idx> cur(static_cast<size_t>(BI * BK));
+#ifdef _OPENMP
+#pragma omp for schedule(dynamic, 1)
+#endif
+        for (idx it = 0; it < items; ++it) {
+            const idx i0 = (it % nib) * BI, k0 = (it / nib) * BK;
+            const idx i1 = i0 + BI < g.ny ? i0 + BI : g.ny, k1 = k0 + BK < g.nz ? k0 + BK : g.nz;
+            const idx nk = k1 - k0;
+            for (idx c = 0; c < (i1 - i0) * nk; ++c) cur[c] = 0;
+            for (idx s = 0; s <= nband + 1; ++s) {
+                // ascending qt: band b takes qt < (b + 1) * BAND (b = -1: below 0), the last
+                // pass (b = nband) the rest; descending: band b takes qt >= b * BAND (b = nband
+                // first: above the volume), the last pass (b = -1) the rest
+                const idx b = dir >= 0 ? s - 1 : nband - s;
+                const double lim = static_cast<double>(dir >= 0 ? (b + 1) * BAND : b * BAND);
+                for (idx i = i0; i < i1; ++i)
+                    for (idx k = k0; k < k1; ++k) {
+                        idx& jc = cur[(i - i0) * nk + (k - k0)];
+                        const idx j0 = jc;
+                        if (j0 >= g.nx) continue;
+                        // the run's end, the first j not in the band: from the linear estimate,
+                        // then made exact by evaluating qt around it. The last pass takes all
+                        // that is left, so that every voxel is visited once whatever qt is
+                        // (+-inf or NaN where a nearly singular T overflows: those are fill)
+                        auto in_band = [&](idx j) {
+                            const double q = qt(k, i, j);
+                            return dir >= 0 ? q < lim : q >= lim;
+                        };
+                        idx je;
+                        if (s == nband + 1) {
+                            je = g.nx;
+                        } else if (dir == 0) {
+                            je = in_band(j0) ? g.nx : j0;
+                        } else {
+                            const double q0 = qt(k, i, j0);
+                            double est = static_cast<double>(j0) + (lim - q0) / dir;
+                            // below j0, or NaN (from a NaN qt): j0
+                            if (!(est >= static_cast<double>(j0))) est = static_cast<double>(j0);
+                            je = est > static_cast<double>(g.nx) ? g.nx : static_cast<idx>(est);
+                            while (je > j0 && !in_band(je - 1)) --je;
+                            while (je < g.nx && in_band(je)) ++je;
+                        }
+                        for (idx j = j0; j < je; ++j) fn(k, i, j);
+                        jc = je;
+                    }
+            }
         }
     }
 }
@@ -132,48 +180,50 @@ void warp3d(const T* in, T* out, const double (&tc)[4][4], const Geometry& g, T 
     }
     const double nf = static_cast<double>(g.py - 1), ns = static_cast<double>(g.px - 1),
                  nt = static_cast<double>(g.pz - 1);
-    for_tiles(g, threads, [&](idx k, idx i, idx j0, idx j1) {
-        const double If = tm.I[1][i], Is = tm.I[0][i], It = tm.I[2][i];
-        const double Pf = P[1][k], Ps = P[0][k], Pt = P[2][k];
-        const double* Jf = tm.J[1].data();
-        const double* Js = tm.J[0].data();
-        const double* Jt = tm.J[2].data();
+    const double *If = tm.I[1].data(), *Is = tm.I[0].data(), *It = tm.I[2].data();
+    const double *Jf = tm.J[1].data(), *Js = tm.J[0].data(), *Jt = tm.J[2].data();
+    const double *Pf = P[1].data(), *Ps = P[0].data(), *Pt = P[2].data();
+    const idx plane = g.py * g.px;
+    auto qt_of = [&](idx k, idx i, idx j) { return It[i] + (Jt[j] + Pt[k]); };
+    auto voxel = [&](idx k, idx i, idx j) {
         T* o = out + (k * g.ny + i) * g.nx;
-        for (idx j = j0; j < j1; ++j) {
-            const double qf = If + (Jf[j] + Pf);
-            const double qs = Is + (Js[j] + Ps);
-            const double qt = It + (Jt[j] + Pt);
+        {
+            const double qf = If[i] + (Jf[j] + Pf[k]);
+            const double qs = Is[i] + (Js[j] + Ps[k]);
+            const double qt = qt_of(k, i, j);
             if (!(qf >= 0 && qf <= nf && qs >= 0 && qs <= ns && qt >= 0 && qt <= nt)) {
                 o[j] = fill;
-                continue;
+                return;
             }
             if constexpr (Nearest) {
                 const idx f = floor_nn(qf + 0.5);
                 const idx s = floor_nn(qs + 0.5);
                 const idx t = floor_nn(qt + 0.5);
-                o[j] = in[(t * g.py + f) * g.px + s];
+                o[j] = in[t * plane + f * g.px + s];
             } else {
                 // q >= 0 here: floor is the truncation, ceil is floor + 1 unless q is whole
                 const idx F0 = floor_nn(qf), S0 = floor_nn(qs), T0 = floor_nn(qt);
                 const double fd = qf - static_cast<double>(F0), sd = qs - static_cast<double>(S0),
                              td = qt - static_cast<double>(T0);
-                const idx F1 = F0 + (fd > 0), S1 = S0 + (sd > 0), T1 = T0 + (td > 0);
-                const T* p00 = in + (T0 * g.py + F0) * g.px;  // (f0, t0)
-                const T* p10 = in + (T0 * g.py + F1) * g.px;  // (f1, t0)
-                const T* p01 = in + (T1 * g.py + F0) * g.px;  // (f0, t1)
-                const T* p11 = in + (T1 * g.py + F1) * g.px;  // (f1, t1)
+                // the sample (f0, s0, t0) and the steps to f1, s1, t1 (one stride or none)
+                const T* p00 = in + (T0 * plane + F0 * g.px + S0);
+                const idx ds = sd > 0, df = fd > 0 ? g.px : 0, dt = td > 0 ? plane : 0;
+                const T* p10 = p00 + df;  // (f1, t0)
+                const T* p01 = p00 + dt;  // (f0, t1)
+                const T* p11 = p01 + df;  // (f1, t1)
                 const double oms = 1 - sd;
-                const double c00 = static_cast<double>(p00[S0]) * oms + static_cast<double>(p00[S1]) * sd;
-                const double c10 = static_cast<double>(p10[S0]) * oms + static_cast<double>(p10[S1]) * sd;
-                const double c01 = static_cast<double>(p01[S0]) * oms + static_cast<double>(p01[S1]) * sd;
-                const double c11 = static_cast<double>(p11[S0]) * oms + static_cast<double>(p11[S1]) * sd;
+                const double c00 = static_cast<double>(p00[0]) * oms + static_cast<double>(p00[ds]) * sd;
+                const double c10 = static_cast<double>(p10[0]) * oms + static_cast<double>(p10[ds]) * sd;
+                const double c01 = static_cast<double>(p01[0]) * oms + static_cast<double>(p01[ds]) * sd;
+                const double c11 = static_cast<double>(p11[0]) * oms + static_cast<double>(p11[ds]) * sd;
                 const double omf = 1 - fd;
                 const double c0 = c00 * omf + c10 * fd;
                 const double c1 = c01 * omf + c11 * fd;
                 o[j] = round_trunc_half<T>(c0 * (1 - td) + c1 * td);
             }
         }
-    });
+    };
+    for_voxels(g, threads, tc[0][2], qt_of, voxel);
 }
 
 inline void cubic_weights(double t, double (&w)[4]) {
@@ -221,15 +271,18 @@ void cubic3d(const T* in, T* out, const double (&tc)[4][4], const Geometry& g, d
     const Extended<T> ext{in, g};
     const double n[3] = {static_cast<double>(g.px), static_cast<double>(g.py),
                          static_cast<double>(g.pz)};
-    for_tiles(g, threads, [&](idx k, idx i, idx j0, idx j1) {
+    const double* Jv[3] = {tm.J[0].data(), tm.J[1].data(), tm.J[2].data()};
+    const double* Iv[3] = {tm.I[0].data(), tm.I[1].data(), tm.I[2].data()};
+    const double* Kv[3] = {tm.K[0].data(), tm.K[1].data(), tm.K[2].data()};
+    auto voxel = [&](idx k, idx i, idx j) {
         T* o = out + (k * g.ny + i) * g.nx;
-        for (idx j = j0; j < j1; ++j) {
+        {
             double p[3];
-            for (int a = 0; a < 3; ++a) p[a] = ((tm.J[a][j] + tm.I[a][i]) + tm.K[a][k]) + tc[3][a];
+            for (int a = 0; a < 3; ++a) p[a] = ((Jv[a][j] + Iv[a][i]) + Kv[a][k]) + tc[3][a];
             if (!(p[0] >= 1 && p[0] <= n[0] && p[1] >= 1 && p[1] <= n[1] && p[2] >= 1 &&
                   p[2] <= n[2])) {
                 o[j] = cast_like<T>(fill);
-                continue;
+                return;
             }
             idx m[3];
             double w[3][4];
@@ -259,7 +312,23 @@ void cubic3d(const T* in, T* out, const double (&tc)[4][4], const Geometry& g, d
             }
             o[j] = cast_like<T>(sum4(w[2], lz));
         }
-    });
+    };
+    auto pt = [&](idx k, idx i, idx j) { return ((Jv[2][j] + Iv[2][i]) + Kv[2][k]) + tc[3][2]; };
+    for_voxels(g, threads, tc[0][2], pt, voxel);
+}
+
+// A fresh output's pages are faulted in (and zeroed by the system) on their first write. The
+// kernels write neighbouring rows from different threads, which then wait for each other's
+// page faults; touching one byte per page first, each thread its own contiguous range, makes
+// the faults parallel. The kernel writes every voxel afterwards, so values are not affected.
+inline void prefault(void* p, size_t bytes, int threads) {
+    unsigned char* b = static_cast<unsigned char*>(p);
+    const idx page = 4096;
+    const idx n = static_cast<idx>((bytes + page - 1) / page);
+#ifdef _OPENMP
+#pragma omp parallel for schedule(static) num_threads(threads)
+#endif
+    for (idx q = 0; q < n; ++q) b[q * page] = 0;
 }
 
 template <typename T>
@@ -279,6 +348,7 @@ void warp_affine(const cvolume<const T>& vol, const mat44& tcm, cvolume<T>& out,
     T* o = out.data();
     nb::gil_scoped_release release;
     if (g.nz * g.ny * g.nx == 0) return;
+    prefault(o, static_cast<size_t>(g.nz * g.ny * g.nx) * sizeof(T), threads);
     switch (method) {
         case 0: warp3d<T, false>(in, o, tc, g, static_cast<T>(fill), threads); break;
         case 1: warp3d<T, true>(in, o, tc, g, static_cast<T>(fill), threads); break;
