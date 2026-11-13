@@ -253,11 +253,11 @@ if any(stitchMIP)
 	end
 end
 
-% check if axis order is valid
+% check if axis order is valid (a permutation of x, y and z)
 axisOrder = strrep(axisOrder, ' ', '');
-pattern = '^(-?x,?-?y,?-?z|-?y,?-?x,?-?z|-?z,?-?y,?-?x|-?x,?-?z,?-?y|-?x,?-?z,?-?y|-?y,?-?z,?-?x)$';
-if ~regexpi(axisOrder, pattern)
-	error("The axisOrder is not right, it must has the form like 'y,x,z' or '-x,y,z' (flipped in x-axis)!");
+pattern = '^(-?x,?-?y,?-?z|-?y,?-?x,?-?z|-?z,?-?y,?-?x|-?x,?-?z,?-?y|-?z,?-?x,?-?y|-?y,?-?z,?-?x)$';
+if isempty(regexpi(axisOrder, pattern, 'once'))
+	error('XR_stitching_frame_zarr_dev_v1:axisOrder', "The axisOrder is not right, it must has the form like 'y,x,z' or '-x,y,z' (flipped in x-axis)!");
 end
 
 order_sign_mat = zeros(2, 3); % first row: order for permute; second row: sign
