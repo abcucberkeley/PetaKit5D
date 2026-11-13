@@ -47,6 +47,19 @@ driver calls (`cpp/fft/backend.h`).
   `PETAKIT5D_FFTW` (a folder, or the two paths), the installed `petakit5d_fftw` package, or
   `PETAKIT5D_TEST_FFTW` (MATLAB's own `libmwfftw3f` / `libmwfftw3`).
 
+### One FFT state per process
+
+The backends, the default backend, FFTW's planner lock and the plan cache are one per process.
+They live in `petakit5d._ext.fft`, which exports them as the capsule
+`petakit5d._ext.fft._shared_state`: a versioned table of the functions of `cpp/fft/backend.h`.
+Another extension module that links the driver library attaches to it when it is imported
+(`cpp/fft/shared.h`: `attach_to_fft_module()`), so that FFTW is loaded once, every plan is made
+under one lock (FFTW's planner is not thread-safe, and the transforms run without the interpreter
+lock) and plans are cached once and destroyed when the exact backend is unloaded. Kernels get
+MATLAB's plans with `cached_plan(backend, precision, kind, n, lines)`. A module built from other
+sources than `_ext.fft` refuses to import. `tests/fft/test_shared_state.py` plans from two modules
+at once without the interpreter lock.
+
 ### The license boundary
 
 - The package (wheel and source distribution) is BSD-3-Clause and contains no GPL code. It
@@ -125,9 +138,9 @@ make their twiddle factors with its cosine and sine, in double (GCC merges the t
 call of `sincos`, in MATLAB's FFTW as in ours). glibc's `sincos` is not always its `sin` and
 `cos`: on glibc 2.28 and 2.35 they differ in the last bit at 944 of FFTW's arguments for lengths
 up to 2048, while glibc 2.39 (Ubuntu 24.04) gives `sin`'s and `cos`'s values there. MATLAB's own
-FFTW gives other bits on such a system too. The tests compare MATLAB's digests only where the
+FFTW gives other bits on such a system too. Tests compare with MATLAB's FFT bits only where the
 function FFTW calls gives the values of the system they were recorded on
-(`tests/matlabcompat/test_fft.py`, `twiddle_fingerprint`).
+(`petakit5d.testing.fft_reference.digests_hold_here`, `twiddle_fingerprint`).
 
 ## Results
 

@@ -17,12 +17,8 @@ MATLAB tests whose intent is ported: tests/decon/DeconRFFTTest.m linesAreGrouped
 transforms themselves); its other methods test the decon mex (the decon task's).
 """
 
-import ctypes
-import ctypes.util
-import functools
 import hashlib
 import math
-import platform
 import sys
 
 import numpy as np
@@ -31,6 +27,17 @@ import pytest
 from petakit5d import fft as P
 from petakit5d.core.arrays import from_matlab, to_matlab
 from petakit5d.matlabcompat import fft as F
+from petakit5d.testing.fft_reference import (
+    K2PI,
+    c_sincos,
+    digests_hold_here,
+    exact_plan,
+    fftw_sincos,
+    matlab_platform,
+    separate_sincos,
+    twiddle_arguments,
+    twiddle_fingerprint,
+)
 
 BACKENDS = P.available()
 EXACT = "exact" in BACKENDS
@@ -418,83 +425,8 @@ MATLAB_DIGESTS = {
 # execute
 MATLAB_PLANS_DIGEST = "238f71138c3fc44f1e4ee2f59f906394ef30577c29d25fe103989a91ccb48bd9"
 
-# FFTW makes its twiddle factors with the C library (kernel/trig.c, in double for both
-# precisions), so their last bits, and with them the FFT's, follow the C library: its version and
-# the code path it picks for the CPU. GCC merges real_cexp's cos and sin calls into one call of
-# sincos, in MATLAB's libmwfftw3f / libmwfftw3 as in our build, and glibc's sincos is not always its
-# sin and cos: on glibc 2.28 and 2.35 they differ in the last bit at 944 of these arguments, while
-# glibc 2.39's sincos gives sin's and cos's values (the packs' digests there are those of sincos
-# answered by sin and cos). The digests above were recorded where sincos gives these values for
-# FFTW's arguments (twiddle_fingerprint; glibc 2.28 on Intel x86-64); elsewhere MATLAB's own FFTW
-# would differ from them too.
-REFERENCE_TWIDDLE_FINGERPRINT = "9c27d5b80b58341c8c9f1ee72499b969dc7673edb6a30793fd23fd87761327a6"
-_K2PI = 6.2831853071795864769252867665590057683943388  # FFTW's K2PI, rounded to double as C does
-
-
-def twiddle_arguments(n):
-    """The arguments FFTW's real_cexp takes the cosine and sine of for 2 pi m / n, m = 0 .. n - 1:
-    4m and 4n reduced to the first octant, then (K2PI * m) / n in double."""
-    m = 4 * np.arange(n, dtype=np.int64)
-    n4 = 4 * n
-    m = np.where(m > n4 - m, n4 - m, m)
-    m = np.where(m - n > 0, m - n, m)
-    m = np.where(m > n - m, n - m, m)
-    return (_K2PI * np.unique(m).astype(np.float64)) / float(n4)
-
-
-def separate_sincos(v):
-    return math.sin(v), math.cos(v)
-
-
-def c_sincos():
-    """The C library's sincos(x, &s, &c) as a function of x giving (s, c), or None."""
-    if sys.platform == "win32":
-        return None
-    try:
-        f = ctypes.CDLL(ctypes.util.find_library("m") or "libm.so.6").sincos
-    except (OSError, AttributeError):
-        return None
-    f.argtypes = [ctypes.c_double, ctypes.POINTER(ctypes.c_double), ctypes.POINTER(ctypes.c_double)]
-    f.restype = None
-    s, c = ctypes.c_double(), ctypes.c_double()
-
-    def sincos(v):
-        f(v, ctypes.byref(s), ctypes.byref(c))
-        return s.value, c.value
-
-    return sincos
-
-
-def imports_sincos(path):
-    """Whether a library names sincos among its symbols (its dynamic string table)."""
-    with open(path, "rb") as fh:
-        return b"\0sincos\0" in fh.read()
-
-
-def fftw_sincos():
-    """The function FFTW's twiddle factors come from: the C library's sincos where the exact
-    backend's libraries import it (built with GCC), else its sin and cos."""
-    paths = P.exact_libraries() if EXACT else None
-    f = c_sincos()
-    if paths and f is not None and all(imports_sincos(q) for q in paths):
-        return f
-    return separate_sincos
-
-
-def twiddle_fingerprint(nmax=2048, sincos=None):
-    """sha256 of the cosines and sines of every argument of twiddle_arguments(n), n = 1 .. nmax
-    (the lengths of the packs and of FFTW's sub-plans for them), from sincos (default: the function
-    FFTW calls here)."""
-    sincos = fftw_sincos() if sincos is None else sincos
-    h = hashlib.sha256()
-    for n in range(1, nmax + 1):
-        sc = [sincos(v) for v in twiddle_arguments(n).tolist()]
-        h.update(np.array([c for _, c in sc] + [s for s, _ in sc], dtype=np.float64).tobytes())
-    return h.hexdigest()
-
-
-def ext_plan(kind, n, hm, prec=False):
-    return " ".join(P._ext().plan_string(P._backend_id("exact"), prec, kind, n, hm).split())
+# where these digests hold: petakit5d.testing.fft_reference (FFTW's plans and twiddle factors here)
+ext_plan = exact_plan
 
 
 def plans_digest():
@@ -508,34 +440,6 @@ def plans_digest():
                         + ext_plan(kind, n, hm, prec)
                     )
     return hashlib.sha256("\n".join(lines).encode()).hexdigest()
-
-
-def matlab_platform():
-    """Whether the exact backend's plans can be MATLAB's here: x86-64 with AVX (FFTW picks its
-    codelets from the CPU)."""
-    if not EXACT or platform.machine().lower() not in ("x86_64", "amd64"):
-        return False
-    return ext_plan("r2c", 64, 4) == '(rdft2-r2hc-direct-64-x4 "r2cf_64")' and "avx" in ext_plan(
-        "c2c-1", 64, 4
-    )
-
-
-@functools.cache
-def digests_hold_here():
-    """'' where the MATLAB digests apply, else why not (no exact backend, or FFTW's plans or twiddle
-    factors differ)."""
-    if not EXACT:
-        return "the exact FFT backend (the FFTW add-on) is not installed"
-    if not matlab_platform():
-        return "FFTW's plans differ from MATLAB's here (not x86-64 with AVX)"
-    fp = twiddle_fingerprint()
-    if fp != REFERENCE_TWIDDLE_FINGERPRINT:
-        return (
-            "the C library gives FFTW other twiddle factors than where the digests were recorded "
-            f"(fingerprint {fp[:16]}, not {REFERENCE_TWIDDLE_FINGERPRINT[:16]}): MATLAB's own FFTW "
-            "would differ from them here too"
-        )
-    return ""
 
 
 def close(y, ref, single):
@@ -1080,7 +984,7 @@ def test_twiddle_fingerprint_sees_another_c_library():
         assert fftw_sincos() is not separate_sincos
     # the arguments are FFTW's: in the first octant, 0 and pi/4 included where n is a multiple of 8
     t = twiddle_arguments(8)
-    assert t[0] == 0 and t[-1] == _K2PI / 8 and np.all(t <= math.pi / 4 + 1e-15)
+    assert t[0] == 0 and t[-1] == K2PI / 8 and np.all(t <= math.pi / 4 + 1e-15)
 
 
 @needs_exact

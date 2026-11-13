@@ -7,6 +7,7 @@
 #pragma once
 
 #include <cstddef>
+#include <cstdint>
 #include <mutex>
 #include <string>
 
@@ -44,8 +45,8 @@ struct Backend {
 // the backend id (kPermissive, kExact); throws std::runtime_error for the exact one when it is not loaded
 const Backend& backend(int id);
 bool exact_loaded();
-// loads the exact backend's single and double precision libraries (throws std::runtime_error); the
-// caller drops the exact backend's cached plans first
+// loads the exact backend's single and double precision libraries (throws std::runtime_error), after
+// destroying the exact backend's cached plans
 void load_exact(const std::string& libf, const std::string& libd);
 void unload_exact();
 // the backend the calls use when they name none (kPermissive unless set)
@@ -53,6 +54,47 @@ int default_backend();
 void set_default_backend(int id);
 // FFTW's planner is not thread-safe: every plan is made and destroyed under this lock
 std::mutex& planner_lock();
+
+// MATLAB's plans: kind kR2C, kC2CF (forward), kC2CB (backward) or kC2R
+enum PlanKind { kR2C = 0, kC2CF = 1, kC2CB = 2, kC2R = 3 };
+// a rank-1 plan of `howmany` contiguous lines of length n, as MATLAB makes them (FFTW_ESTIMATE, out of place,
+// line distances n, or n / 2 + 1 on the complex side of r2c and c2r, scratch aligned as MATLAB's), on backend
+// be in precision prec (0 single, 1 double): made once under the planner lock and kept for the process until
+// the backend is unloaded
+void* cached_plan(int be, int prec, int kind, std::int64_t n, int howmany);
+// destroys backend be's cached plans
+void clear_plans(int be);
+
+// --- one state per process -------------------------------------------------------------------------------
+// The backends, the default backend, the planner lock and the plan cache are one per process. They live in
+// petakit5d._ext.fft, which exports this table as the capsule petakit5d._ext.fft._shared_state; another
+// extension module that links this library attaches to it at import (shared.h), so that FFTW is loaded once,
+// every plan is made under one lock and plans are cached and destroyed in one place.
+inline constexpr std::uint32_t kSharedAbi = 1;
+inline constexpr const char* kSharedCapsule = "petakit5d._ext.fft._shared_state";
+
+struct SharedApi {
+    std::uint32_t abi;           // kSharedAbi
+    std::uint32_t size;          // sizeof(SharedApi)
+    std::uint32_t backend_size;  // sizeof(Backend), whose fields both sides read
+    const Backend& (*backend)(int id);
+    bool (*exact_loaded)();
+    void (*load_exact)(const std::string& libf, const std::string& libd);
+    void (*unload_exact)();
+    int (*default_backend)();
+    void (*set_default_backend)(int id);
+    std::mutex& (*planner_lock)();
+    void* (*cached_plan)(int be, int prec, int kind, std::int64_t n, int howmany);
+    void (*clear_plans)(int be);
+};
+
+// this module's own state (petakit5d._ext.fft exports it)
+const SharedApi& own_state();
+// the state the functions above use: the attached one, else this module's own
+const SharedApi& state();
+// makes this module use another module's state; throws std::runtime_error when the two modules were built from
+// other sources (the ABI, the table's size or the Backend layout differ)
+void attach_shared(const SharedApi* other);
 
 // pocketfft's table (pocketfft_api.cpp)
 FftwApi pocketfft_api(int prec);

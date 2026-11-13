@@ -7,6 +7,7 @@
 #include <nanobind/stl/vector.h>
 
 #include <complex>
+#include <cstdint>
 #include <cstdlib>
 #include <stdexcept>
 #include <vector>
@@ -14,6 +15,7 @@
 #include "backend.h"
 #include "driver.h"
 #include "halfspec.h"
+#include "shared.h"
 
 namespace nb = nanobind;
 using namespace pk5d::fft;
@@ -279,12 +281,10 @@ nb::ndarray<nb::numpy> py_native_inverse(const OutArray& a, const std::vector<st
 }
 
 void py_load_exact(const std::string& libf, const std::string& libd) {
-    if (exact_loaded()) clear_plans(kExact);
     load_exact(libf, libd);
 }
 
 void py_unload_exact() {
-    if (exact_loaded()) clear_plans(kExact);
     unload_exact();
 }
 
@@ -326,4 +326,7 @@ NB_MODULE(fft, m) {
     m.attr("GRAIN_PARALLEL") = kGrainParallel;
     m.attr("PERMISSIVE") = static_cast<int>(kPermissive);
     m.attr("EXACT") = static_cast<int>(kExact);
+    // the process's FFT state (backends, planner lock, plan cache) for the other extension modules (shared.h)
+    m.attr("_shared_state") = nb::capsule(&own_state(), kSharedCapsule);
+    def_shared_state_hooks(m);
 }

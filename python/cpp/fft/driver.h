@@ -91,7 +91,4 @@ bool line_alone(idx_t j, idx_t N, idx_t n, idx_t seg, idx_t grain);
 // or 4; its description (FFTW's sprint_plan)
 std::string plan_string(int backend, bool is_double, const std::string& kind, idx_t n, int howmany);
 
-// drops the cached plans of a backend (before it changes)
-void clear_plans(int backend);
-
 }  // namespace pk5d::fft

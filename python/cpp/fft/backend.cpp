@@ -1,9 +1,12 @@
-// The two backends: pocketfft built in, FFTW (the exact add-on) loaded at run time by path.
+// The two backends: pocketfft built in, FFTW (the exact add-on) loaded at run time by path; this module's own
+// state, and the state the functions of backend.h use (another module's, once attached).
 #include "backend.h"
 
 #include <atomic>
 #include <cstdlib>
 #include <stdexcept>
+
+#include "own.h"
 
 #ifdef _WIN32
 #ifndef NOMINMAX
@@ -102,7 +105,7 @@ void load_api(FftwApi& a, void*& handle, const std::string& path, const std::str
 
 }  // namespace
 
-const Backend& backend(int id) {
+const Backend& own::backend(int id) {
     const Backend& b = slot(id);
     if (!b.ready) {
         throw std::runtime_error(
@@ -111,23 +114,24 @@ const Backend& backend(int id) {
     return b;
 }
 
-bool exact_loaded() { return slot(kExact).ready; }
+bool own::exact_loaded() { return slot(kExact).ready; }
 
-int default_backend() { return default_id().load(); }
+int own::default_backend() { return default_id().load(); }
 
-void set_default_backend(int id) {
-    if (id == kExact && !exact_loaded()) backend(kExact);  // throws
+void own::set_default_backend(int id) {
+    if (id == kExact && !own::exact_loaded()) own::backend(kExact);  // throws
     slot(id);
     default_id() = id;
 }
 
-std::mutex& planner_lock() {
+std::mutex& own::planner_lock() {
     static std::mutex m;
     return m;
 }
 
-void unload_exact() {
+void own::unload_exact() {
     Backend& b = slot(kExact);
+    if (b.ready) own::clear_plans(kExact);
     for (void*& h : b.handles) {
         if (h != nullptr) close_library(h);
         h = nullptr;
@@ -136,8 +140,8 @@ void unload_exact() {
     if (default_id() == kExact) default_id() = kPermissive;
 }
 
-void load_exact(const std::string& libf, const std::string& libd) {
-    unload_exact();
+void own::load_exact(const std::string& libf, const std::string& libd) {
+    own::unload_exact();
     Backend nb;
     try {
         load_api(nb.api[0], nb.handles[0], libf, "fftwf_");
@@ -153,5 +157,61 @@ void load_exact(const std::string& libf, const std::string& libd) {
     nb.ready = true;
     slot(kExact) = nb;
 }
+
+// --- the state of the process ------------------------------------------------------------------------------
+
+namespace {
+
+std::atomic<const SharedApi*>& attached() {
+    static std::atomic<const SharedApi*> a(nullptr);
+    return a;
+}
+
+}  // namespace
+
+const SharedApi& own_state() {
+    static const SharedApi api = {
+        kSharedAbi,
+        static_cast<std::uint32_t>(sizeof(SharedApi)),
+        static_cast<std::uint32_t>(sizeof(Backend)),
+        &own::backend,
+        &own::exact_loaded,
+        &own::load_exact,
+        &own::unload_exact,
+        &own::default_backend,
+        &own::set_default_backend,
+        &own::planner_lock,
+        &own::cached_plan,
+        &own::clear_plans,
+    };
+    return api;
+}
+
+const SharedApi& state() {
+    const SharedApi* a = attached().load(std::memory_order_acquire);
+    return a != nullptr ? *a : own_state();
+}
+
+void attach_shared(const SharedApi* other) {
+    if (other == nullptr) throw std::runtime_error("no shared FFT state to attach to");
+    if (other->abi != kSharedAbi || other->size != sizeof(SharedApi) || other->backend_size != sizeof(Backend)) {
+        throw std::runtime_error(
+            "petakit5d._ext.fft was built from other sources than this module (its shared FFT state differs): "
+            "rebuild the extension modules together");
+    }
+    attached().store(other == &own_state() ? nullptr : other, std::memory_order_release);
+}
+
+const Backend& backend(int id) { return state().backend(id); }
+bool exact_loaded() { return state().exact_loaded(); }
+void load_exact(const std::string& libf, const std::string& libd) { state().load_exact(libf, libd); }
+void unload_exact() { state().unload_exact(); }
+int default_backend() { return state().default_backend(); }
+void set_default_backend(int id) { state().set_default_backend(id); }
+std::mutex& planner_lock() { return state().planner_lock(); }
+void* cached_plan(int be, int prec, int kind, std::int64_t n, int howmany) {
+    return state().cached_plan(be, prec, kind, n, howmany);
+}
+void clear_plans(int be) { state().clear_plans(be); }
 
 }  // namespace pk5d::fft

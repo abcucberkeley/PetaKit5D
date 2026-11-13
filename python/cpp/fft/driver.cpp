@@ -10,11 +10,10 @@
 #include <tuple>
 
 #include "backend.h"
+#include "own.h"
 
 namespace pk5d::fft {
 namespace {
-
-enum Kind { kR2C = 0, kC2CF = 1, kC2CB = 2, kC2R = 3 };
 
 constexpr unsigned kEstimate = 1U << 6;  // FFTW_ESTIMATE, MATLAB's planner flags
 constexpr int kB = 4;                    // lines per execute of MATLAB's grouped plans
@@ -53,33 +52,6 @@ void dists(int kind, idx_t n, idx_t& idist, idx_t& odist) {
     const idx_t nh = n / 2 + 1;
     idist = kind == kC2R ? nh : n;
     odist = kind == kR2C ? nh : n;
-}
-
-void* get_plan(int be, int prec, int kind, idx_t n, int hm) {
-    std::lock_guard<std::mutex> g(planner_lock());
-    const PlanKey key(be, prec, kind, n, hm);
-    auto it = plan_cache().find(key);
-    if (it != plan_cache().end()) return it->second;
-    const FftwApi& a = backend(be).api[prec];
-    idx_t idist, odist;
-    dists(kind, n, idist, odist);
-    const size_t es = prec ? sizeof(double) : sizeof(float);
-    Buf bi, bo;
-    bi.alloc(static_cast<size_t>(hm) * idist * (kind == kR2C ? 1 : 2) * es, kInOff);
-    bo.alloc(static_cast<size_t>(hm) * odist * (kind == kC2R ? 1 : 2) * es, kOutOff);
-    const Iodim d = {n, 1, 1};
-    const Iodim h = {hm, idist, odist};
-    void* p;
-    if (kind == kR2C) {
-        p = a.plan_r2c(1, &d, 1, &h, bi.p, bo.p, kEstimate);
-    } else if (kind == kC2R) {
-        p = a.plan_c2r(1, &d, 1, &h, bi.p, bo.p, kEstimate);
-    } else {
-        p = a.plan_dft(1, &d, 1, &h, bi.p, bo.p, kind == kC2CF ? -1 : 1, kEstimate);
-    }
-    if (p == nullptr) throw std::runtime_error("FFT planning failed");
-    plan_cache()[key] = p;
-    return p;
 }
 
 inline void execute(const FftwApi& a, int kind, void* plan, void* in, void* out) {
@@ -402,8 +374,8 @@ template <typename R, int KIND, bool SRCC>
 void run_stage_k(const Stage<R>& st, const Geom& G, const Options& o) {
     constexpr int ci = KIND == kR2C ? 1 : 2;
     constexpr int co = KIND == kC2R ? 1 : 2;
-    void* p4 = get_plan(st.be, st.prec, KIND, G.n, kB);
-    void* p1 = get_plan(st.be, st.prec, KIND, G.n, 1);
+    void* p4 = cached_plan(st.be, st.prec, KIND, G.n, kB);
+    void* p1 = cached_plan(st.be, st.prec, KIND, G.n, 1);
     const FftwApi& api = backend(st.be).api[st.prec];
     const int nt = static_cast<int>(std::max<idx_t>(1, std::min<idx_t>(o.threads, G.ntiles)));
     std::atomic<bool> failed(false);
@@ -1256,7 +1228,7 @@ std::string plan_string(int be, bool is_double, const std::string& kind, idx_t n
         throw std::invalid_argument("kind must be r2c, c2c-1, c2c+1 or c2r");
     }
     const int prec = is_double ? 1 : 0;
-    void* p = get_plan(be, prec, k, n, howmany);
+    void* p = cached_plan(be, prec, k, n, howmany);
     std::lock_guard<std::mutex> g(planner_lock());
     const FftwApi& a = backend(be).api[prec];
     char* s = a.sprint(p);
@@ -1268,11 +1240,38 @@ std::string plan_string(int be, bool is_double, const std::string& kind, idx_t n
     return r;
 }
 
-void clear_plans(int be) {
-    std::lock_guard<std::mutex> g(planner_lock());
+void* own::cached_plan(int be, int prec, int kind, std::int64_t n, int hm) {
+    std::lock_guard<std::mutex> g(own::planner_lock());
+    const PlanKey key(be, prec, kind, n, hm);
+    auto it = plan_cache().find(key);
+    if (it != plan_cache().end()) return it->second;
+    const FftwApi& a = own::backend(be).api[prec];
+    idx_t idist, odist;
+    dists(kind, n, idist, odist);
+    const size_t es = prec ? sizeof(double) : sizeof(float);
+    Buf bi, bo;
+    bi.alloc(static_cast<size_t>(hm) * idist * (kind == kR2C ? 1 : 2) * es, kInOff);
+    bo.alloc(static_cast<size_t>(hm) * odist * (kind == kC2R ? 1 : 2) * es, kOutOff);
+    const Iodim d = {n, 1, 1};
+    const Iodim h = {hm, idist, odist};
+    void* p;
+    if (kind == kR2C) {
+        p = a.plan_r2c(1, &d, 1, &h, bi.p, bo.p, kEstimate);
+    } else if (kind == kC2R) {
+        p = a.plan_c2r(1, &d, 1, &h, bi.p, bo.p, kEstimate);
+    } else {
+        p = a.plan_dft(1, &d, 1, &h, bi.p, bo.p, kind == kC2CF ? -1 : 1, kEstimate);
+    }
+    if (p == nullptr) throw std::runtime_error("FFT planning failed");
+    plan_cache()[key] = p;
+    return p;
+}
+
+void own::clear_plans(int be) {
+    std::lock_guard<std::mutex> g(own::planner_lock());
     for (auto it = plan_cache().begin(); it != plan_cache().end();) {
         if (std::get<0>(it->first) == be) {
-            backend(be).api[std::get<1>(it->first)].destroy(it->second);
+            own::backend(be).api[std::get<1>(it->first)].destroy(it->second);
             it = plan_cache().erase(it);
         } else {
             ++it;
