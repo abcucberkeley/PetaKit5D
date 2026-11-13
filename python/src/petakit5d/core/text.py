@@ -11,11 +11,16 @@ MATLAB's rules that differ from C and Python (measured on R2024b, see docs/conve
   same flags, width and precision (``sprintf('%.20d', 0.108)`` is ``1.07999999999999998779e-01``).
   ``%u``, ``%x``, ``%o`` take ``[0, 2^64)``; negative values switch to ``%e``.
 - ``%s`` and ``%c`` of a number print the character for integers in ``[0, 65535]``, else ``%e``.
+  Text fills its width with zeros under the ``0`` flag (on the right with ``-``):
+  ``sprintf('%05s', 'ab')`` is ``000ab``.
 - ``Inf``, ``-Inf``, ``NaN`` print as such for every numeric conversion (width and ``-`` kept,
   ``0`` ignored, ``+`` kept for ``Inf`` only).
 - The format is applied again while data remain; it stops at the first conversion without
-  data. Without any data argument it stops at the first conversion; with only empty data it
-  prints the format once with empty conversions.
+  data. Without any data argument it stops at the first conversion.
+- An empty argument (``[]``, ``''``) holds one conversion's place and prints an empty field,
+  as empty text: ``sprintf('a[%d]b%d', [], 5)`` is ``a[]b5``, ``sprintf('a%db%dc', [])`` is
+  ``ab``, ``sprintf('[%05d]', [])`` is ``[00000]``. A ``*`` width or precision taken from an
+  empty argument ends the output there.
 - Escapes ``\\n \\t \\\\ \\" \\a \\b \\f \\r \\v \\xHH \\NNN`` are processed; an unknown
   escape or an invalid conversion ends the output there (MATLAB warns).
 """
@@ -55,11 +60,20 @@ class _Char:
         self.text = text
 
 
+class _EmptyArg:
+    """An empty argument (``[]``, ``''``): one conversion takes it and prints an empty field."""
+
+    __slots__ = ()
+
+
+_EMPTY = _EmptyArg()
+
+
 def _items(args) -> list:
     items = []
     for a in args:
         if isinstance(a, str):
-            items.append(_Char(a))
+            items.append(_Char(a) if a else _EMPTY)
         elif isinstance(a, dict | set) or (
             isinstance(a, list | tuple)
             and any(not isinstance(v, int | float | bool | np.number | np.bool_) for v in a)
@@ -71,14 +85,14 @@ def _items(args) -> list:
         else:
             arr = np.asarray(a)
             if arr.dtype.kind == "U":
-                items.append(_Char("".join(arr.ravel(order="F").tolist())))
+                text = "".join(arr.ravel(order="F").tolist())
+                items.append(_Char(text) if text else _EMPTY)
                 continue
             if arr.dtype.kind not in "biuf":
                 raise TypeError(
                     "Only numeric, logical and text arguments (MATLAB:printf:invalidInputType)"
                 )
-            if arr.size:
-                items.append(arr.ravel(order="F"))
+            items.append(arr.ravel(order="F") if arr.size else _EMPTY)
     return items
 
 
@@ -105,6 +119,15 @@ def _pad(s: str, flags: str, width: int | None, zero_ok: bool = False) -> str:
         sign = s[0] if s[:1] in "+- " else ""
         return sign + "0" * (width - len(s)) + s[len(sign) :]
     return " " * (width - len(s)) + s
+
+
+def _pad_text(s: str, flags: str, width: int | None) -> str:
+    """text (%s, %c) in its field: filled with zeros with the 0 flag (MATLAB; no sign rule), on
+    the right with -; an empty argument's field is the empty text's"""
+    if width is None or len(s) >= width:
+        return s
+    fill = ("0" if "0" in flags else " ") * (width - len(s))
+    return s + fill if "-" in flags else fill + s
 
 
 def _nonfinite(v: float, flags: str, width: int | None) -> str:
@@ -155,7 +178,7 @@ def _convert(flags: str, width: int | None, prec: int | None, conv: str, v) -> s
                 s = chr(iv)
                 if prec is not None and conv == "s":
                     s = s[:prec]
-                return _pad(s, flags, width)
+                return _pad_text(s, flags, width)
         if isinstance(v, float) and not math.isfinite(v):
             return _nonfinite(v, flags, width)
         return _format_float(flags, width, prec, "e", float(v))
@@ -269,7 +292,11 @@ class _Data:
             self.j = 0
 
     def take_number(self):
+        """One number (a char's code), or _EMPTY for an empty argument."""
         it = self.items[self.i]
+        if it is _EMPTY:
+            self.i += 1
+            return _EMPTY
         if isinstance(it, _Char):
             v = ord(it.text[self.j])
             self._advance(1, len(it.text))
@@ -300,36 +327,46 @@ class _Data:
 def sprintf(fmt: str, *args) -> str:
     """MATLAB's ``sprintf`` for numeric, logical and char arguments (arrays column-major)."""
     parts, complete = _unescape(fmt)
-    has_args = len(args) > 0
     data = _Data(_items(args))
     convs = [p for p in parts if not isinstance(p, str)]
     out: list[str] = []
 
-    def spec_values(m, need_data: bool):
+    def star():
+        """a * width or precision from the data; None where it ends the output (no data left,
+        or an empty argument)"""
+        if data.empty():
+            return None
+        v = data.take_number()
+        return None if v is _EMPTY else int(v)
+
+    def spec_values(m):
+        """flags, width and precision, or None where the output ends here"""
         flags, width, prec = m.group(1), m.group(2), m.group(3)
         w = p = None
         if width == "*":
-            w = int(data.take_number()) if need_data else None
+            w = star()
+            if w is None:
+                return None
         elif width:
             w = int(width)
         if prec == "*":
-            p = int(data.take_number()) if need_data else None
+            p = star()
+            if p is None:
+                return None
         elif prec is not None:
             p = int(prec) if prec else 0
+        if data.empty():
+            return None
         if w is not None and w < 0:
             flags, w = flags + "-", -w
         return flags, w, p
 
-    if not has_args or (data.empty() and not convs):
+    if not args:
         # no data: up to the first conversion (the whole format if it has none)
         for p in parts:
             if not isinstance(p, str):
                 break
             out.append(p)
-        return "".join(out)
-    if data.empty():
-        # only empty data: the format once, conversions print nothing
-        out.extend(p for p in parts if isinstance(p, str))
         return "".join(out)
 
     while True:
@@ -337,22 +374,25 @@ def sprintf(fmt: str, *args) -> str:
             if isinstance(p, str):
                 out.append(p)
                 continue
-            if data.empty():
+            spec = spec_values(p)
+            if spec is None:
                 return "".join(out)
-            flags, w, pr = spec_values(p, True)
-            if data.empty():
-                return "".join(out)
+            flags, w, pr = spec
             conv = p.group(4)
+            if data.items[data.i] is _EMPTY:
+                data.take_number()
+                out.append(_pad_text("", flags, w))
+                continue
             if conv == "s":
                 v = data.take_text()
                 if isinstance(v, str):
-                    out.append(_pad(v if pr is None else v[:pr], flags, w))
+                    out.append(_pad_text(v if pr is None else v[:pr], flags, w))
                 else:
                     out.append(_convert(flags, w, pr, "s", v))
             elif conv == "c":
                 v = data.take_char()
                 out.append(
-                    _pad(v, flags, w) if isinstance(v, str) else _convert(flags, w, pr, "c", v)
+                    _pad_text(v, flags, w) if isinstance(v, str) else _convert(flags, w, pr, "c", v)
                 )
             else:
                 out.append(_convert(flags, w, pr, conv, data.take_number()))

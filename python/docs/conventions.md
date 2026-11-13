@@ -205,11 +205,17 @@ numbers as text. Apply MATLAB's formatting at the same boundary:
     same flags, width and precision (`%.20d` of 0.108 is `1.07999999999999998779e-01`, of 32
     `00000000000000000032`). `%u`, `%x`, `%o` take `[0, 2^64)`; negative values switch to `%e`.
   - `%s` and `%c` of a number print the character for integers in `[0, 65535]`, else `%e`; a
-    char argument is consumed whole by `%s` and one character at a time by the others.
+    char argument is consumed whole by `%s` and one character at a time by the others. Text
+    fills its width with zeros under the `0` flag, on the right with `-` (`%05s` of `'ab'` is
+    `000ab`, `%-05s` `ab000`).
   - `Inf`, `-Inf`, `NaN` print as such (width and `-` kept, `0` ignored, `+` only for Inf).
   - Arrays are consumed column-major; the format repeats while data remain and stops at the
-    first conversion without data (with no data argument at all, at the first conversion;
-    with only empty data, the format is printed once with empty conversions).
+    first conversion without data (with no data argument at all, at the first conversion).
+  - An empty argument (`[]`, `''`, also among other arguments) holds the place of one
+    conversion, which prints the field of empty text: `sprintf('a[%d]b%d', [], 5)` is
+    `a[]b5`, `sprintf('a%db%dc', [])` `ab`, `sprintf('[%5d]', [], 1)` `[     ][    1]`, and
+    `[%05d]` of `[]` `[00000]`. A `*` width or precision taken from an empty argument ends the
+    output there.
   - Escapes `\n \t \\ \" \a \b \f \r \v \xHH \NNN` are processed in the format; an unknown escape
     (`\q`, `\/`, `\u`) or an invalid conversion (`%"`, `%q`) ends the output there.
 - `num2str`, `int2str`, `mat2str`, `mat2str_comma`: MATLAB's algorithms (`num2str(x)` uses
