@@ -12,6 +12,7 @@
 #pragma once
 
 #include <pk5d/common.hpp>
+#include <pk5d/fpexact.hpp>
 
 #include <nanobind/stl/vector.h>
 

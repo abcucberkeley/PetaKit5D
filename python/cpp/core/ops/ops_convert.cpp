@@ -29,12 +29,13 @@ struct affine_args {
     double scale, offset, hi, lo;
 };
 
-// v op scalar with a NaN v: v itself, quieted (v + v), whatever operand order the compiler
-// chose (x86 returns the first NaN operand, and so does MATLAB)
+// v op scalar s with a NaN v: v itself, quieted (v + v), whatever operand order the compiler
+// chose (x86 returns the first NaN operand, and so does MATLAB); Inf * 0 and Inf - Inf give
+// MATLAB's NaN on every processor (fpexact.hpp)
 template <typename S>
-inline S nan_first(S v, S r) {
+inline S nan_first(S v, S r, double s) {
     if constexpr (is_float_v<S>) {
-        return v != v ? v + v : r;
+        return v != v ? v + v : PK5D_X86_NAN(r, v, static_cast<S>(s));
     } else {
         return r;
     }
@@ -43,14 +44,14 @@ inline S nan_first(S v, S r) {
 // the chain for one value; the flags are loop-invariant, so the selects vectorize
 template <typename S>
 inline S affine_value(S v, const affine_args &a, S hi, S lo) {
-    const S s1 = nan_first(v, to_work<S>(static_cast<double>(v) * a.scale));
+    const S s1 = nan_first(v, to_work<S>(static_cast<double>(v) * a.scale), a.scale);
     v = a.has_scale ? s1 : v;
-    const S s2 = nan_first(v, to_work<S>(static_cast<double>(v) + a.offset));
+    const S s2 = nan_first(v, to_work<S>(static_cast<double>(v) + a.offset), a.offset);
     v = a.has_offset ? s2 : v;
     // min(v, hi): v on a tie, hi for NaN v; max(v, lo) likewise
-    const S s3 = v <= hi ? v : hi;
+    const S s3 = PK5D_LE_SELECT(v, hi);
     v = a.has_hi ? s3 : v;
-    const S s4 = v >= lo ? v : lo;
+    const S s4 = PK5D_GE_SELECT(v, lo);
     v = a.has_lo ? s4 : v;
     return v;
 }

@@ -52,7 +52,11 @@ static inline float medianOf(float *buf, const uint64_t n) {
 // the last step of the MATLAB code: nv, or nvf where nv is 0, as nv .* (1 - z) + nvf .* z
 static inline float fillZeros(const float nv, const float nvf) {
     const float z = (nv == 0.0f && nvf != 0.0f) ? 1.0f : 0.0f;
-    return nv * (1.0f - z) + nvf * z;
+    const float w = 1.0f - z;
+    // Inf * 0 is MATLAB's NaN on every processor (fpexact.hpp)
+    const float p = PK5D_X86_NAN(nv * w, nv, w);
+    const float q = PK5D_X86_NAN(nvf * z, nvf, z);
+    return PK5D_X86_NAN(p + q, p, q);
 }
 
 // Integer tiles: their values are exact in single, so 'none' is the first nonzero tile value
@@ -138,8 +142,13 @@ static inline float noneSingle(const T *f, const uint8_t *m, const uint64_t nX,
     float nv = TVAL(0);
     float nvf = f[0];
     for (uint64_t j = 1; j < nT; j++) {
-        nv = nv + TVAL(j) * (nv == 0.0f ? 1.0f : 0.0f);
-        nvf = nvf + f[j * nXYZ] * (nvf == 0.0f ? 1.0f : 0.0f);
+        // Inf * 0: MATLAB's NaN on every processor (fpexact.hpp)
+        const float v = TVAL(j), a = nv == 0.0f ? 1.0f : 0.0f;
+        const float p = PK5D_X86_NAN(v * a, v, a);
+        nv = PK5D_X86_NAN(nv + p, nv, p);
+        const float vf = f[j * nXYZ], af = nvf == 0.0f ? 1.0f : 0.0f;
+        const float pf = PK5D_X86_NAN(vf * af, vf, af);
+        nvf = PK5D_X86_NAN(nvf + pf, nvf, pf);
     }
     if (std::isnan(nvf)) nvf = 0.0f;
     return fillZeros(nv, nvf);

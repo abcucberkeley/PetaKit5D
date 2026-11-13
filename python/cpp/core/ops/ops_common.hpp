@@ -6,6 +6,7 @@
 #pragma once
 
 #include <pk5d/common.hpp>
+#include <pk5d/fpexact.hpp>
 
 #include "ops_bind.hpp"
 
@@ -163,6 +164,8 @@ inline D convert_value(S x) {
         if constexpr (!Exact && std::is_same_v<D, float> && is_int_v<S> && sizeof(S) == 8) {
             // single() of a 64-bit integer array: through double, as MATLAB (cast: directly)
             return static_cast<float>(static_cast<double>(x));
+        } else if constexpr (std::is_same_v<D, float> && is_int_v<S> && sizeof(S) == 8) {
+            return int64_to_float(x);  // rounded once on every processor (fpexact.hpp)
         } else {
             return static_cast<D>(x);
         }

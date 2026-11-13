@@ -23,6 +23,8 @@
 #include <cstring>
 #include <vector>
 
+#include <pk5d/fpexact.hpp>
+
 #include "decon.hpp"
 
 namespace pk5d::decon {
@@ -293,7 +295,7 @@ void block_sums(const E& e, const T* a0, const T* a1, const T* a2, T* out, idx_t
 double clamped_lambda(const double* s) {
     const double v = s[0] / (s[1] + DBL_EPSILON);
     const double m = std::isnan(v) ? 1.0 : (v < 1.0 ? v : 1.0);
-    return m >= 0.0 ? m : 0.0;
+    return PK5D_GE_SELECT(m, 0.0);
 }
 
 template <typename T>
@@ -334,7 +336,7 @@ void accel_predict(const T* j2, const T* j3, double lambda, T* y, idx_t n, int n
         const T t = static_cast<T>(lambda * static_cast<double>(d));
         const T u = j2[i] + t;
         // max(u, 0): NaN is 0, -0 is kept
-        y[i] = u >= static_cast<T>(0) ? u : static_cast<T>(0);
+        y[i] = PK5D_GE_SELECT(u, static_cast<T>(0));
     }
 }
 

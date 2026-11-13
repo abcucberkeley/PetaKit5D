@@ -13,6 +13,7 @@
 // background are read once per block of planes, and results do not depend on the thread count
 // or the instruction set.
 #include <pk5d/common.hpp>
+#include <pk5d/fpexact.hpp>
 
 #include "ops_bind.hpp"
 

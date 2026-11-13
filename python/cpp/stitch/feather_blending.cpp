@@ -56,14 +56,17 @@ NB_NOINLINE void feather_lines(const T *fmat, const float *dmat, T *nmat, const 
             const float *d_ptr = dmat + line + x;
             for (uint64_t t = 0; t < nT; t++) {
                 if (*f_ptr != 0) {
-                    sum_w += *d_ptr;
-                    nv += static_cast<float>(*f_ptr) * *d_ptr;
+                    // Inf * 0, Inf / Inf: MATLAB's NaN on every processor (fpexact.hpp)
+                    const float fv = static_cast<float>(*f_ptr), d = *d_ptr;
+                    sum_w = PK5D_X86_NAN(sum_w + d, sum_w, d);
+                    const float p = PK5D_X86_NAN(fv * d, fv, d);
+                    nv = PK5D_X86_NAN(nv + p, nv, p);
                 }
                 f_ptr += nZYX;
                 d_ptr += nZYX;
             }
             if (sum_w != 0) {
-                o[x] = round_output<T>(nv / sum_w);
+                o[x] = round_output<T>(PK5D_X86_NAN(nv / sum_w, nv, sum_w));
             }
         }
     }

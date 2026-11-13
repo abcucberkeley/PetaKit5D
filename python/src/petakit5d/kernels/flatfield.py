@@ -176,10 +176,13 @@ def _round_output_ref(w: np.ndarray) -> np.ndarray:
 
 def _ref(v: np.ndarray, f: np.ndarray, b: np.ndarray, out_dtype, offset) -> np.ndarray:
     # each step a float32 operation; a NaN v is replaced by 0 before it reaches a result
+    from petakit5d.core import dtypes
+
     with np.errstate(all="ignore"):
         w = (v.astype(np.float32) - b) / f
         w = np.where(w >= 0, w, np.float32(0))
-        w = w + (b if offset is None else offset)
+        add = b if offset is None else offset
+        w = dtypes.x86_nan(w + add, w, add)  # Inf - Inf: MATLAB's NaN on every processor
     if out_dtype == _U16:
         return _round_output_ref(w)
     return w.astype(np.float32, copy=False)

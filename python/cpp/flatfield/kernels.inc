@@ -11,8 +11,8 @@ PK5D_FF_ISA void ff_row(const T *__restrict in, const float *__restrict f,
                         const float *__restrict b, U *__restrict out, u64 n, float off) {
     for (u64 i = 0; i < n; i++) {
         float v = (static_cast<float>(in[i]) - b[i]) / f[i];
-        v = v >= 0.0f ? v : 0.0f;  // NaN gives +0, -0 stays
-        out[i] = round_output<U>(Off ? v + off : v + b[i]);
+        v = PK5D_GE_SELECT(v, 0.0f);  // NaN gives +0, -0 stays
+        out[i] = round_output<U>(Off ? PK5D_X86_NAN(v + off, v, off) : PK5D_X86_NAN(v + b[i], v, b[i]));
     }
 }
 
