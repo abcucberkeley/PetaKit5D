@@ -92,6 +92,11 @@ clock or library versions that change the output. `oracle run` makes each input 
 refuses to run MATLAB when they differ (`scipy.io.savemat` writes the time into the header, for
 example: overwrite it).
 
+A MATLAB session reads each input file once, and every case gets arrays of its own (and its
+own copy of a `containers.Map`): a case whose MATLAB code writes into an input in place through
+a mex (`indexing4d_mex`, as `feather_blending_3d`'s fallback does) or adds a key to a map
+input cannot change what the pack's later cases read. Python gets a fresh copy of each input.
+
 | Input | Made by | MATLAB gets | Python gets |
 |---|---|---|---|
 | `Value(make)` | `make()` returns an array or value | the value (`In(name)`) | a copy of what `make` returned |

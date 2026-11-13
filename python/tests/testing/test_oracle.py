@@ -44,6 +44,7 @@ from petakit5d.testing.cases import (
 )
 from petakit5d.testing.compare import (
     MCell,
+    MMap,
     MStruct,
     compare,
     ignore,
@@ -971,3 +972,67 @@ def test_a_killed_session_leaves_no_partial_case(tmp_path, monkeypatch, matlab_o
     assert not store.has(slow.key())  # ... is never visible in the store
     assert not store.case_dir(slow.key()).exists()
     store.load(quick.key())
+
+
+def _shared_input_cases():
+    """a case that changes its inputs where MATLAB does not copy them (a mex writing into its
+    argument in place, as feather_blending_3d's fallback calls indexing4d_mex; a key added to
+    a containers.Map, a handle), and cases of the same pack that read the same inputs after it"""
+    x = vol((4, 5, 3), np.uint16, 21)
+    m = MMap(
+        "char",
+        "any",
+        MCell((1, 2), [mchar("a"), mchar("b")]),
+        MCell((1, 2), [to_mvalue(1.0), to_mvalue(2.0)]),
+    )
+    inputs = {"x": Value(lambda: x), "m": Value(lambda: m)}
+    writer = Case(
+        "shared_inputs_writer",
+        code=(
+            "indexing4d_mex(in{1}, [1 1 1 1 2 2 1 1], zeros(2, 2, 'like', in{1})); "
+            "mp = in{2}; mp('added') = 3; out = {};"
+        ),
+        nargout=0,
+        args=[In("x"), In("m")],
+        inputs=inputs,
+    )
+    reader = Case(
+        "shared_inputs_reader",
+        code="out = {in{1}, keys(in{2})};",
+        nargout=2,
+        args=[In("x"), In("m")],
+        inputs=inputs,
+    )
+    return x, writer, reader
+
+
+@pytest.mark.oracle
+@pytest.mark.slow
+def test_a_case_changing_its_inputs_in_place_leaves_the_next_cases_inputs_alone(
+    tmp_path, monkeypatch, matlab_oracle
+):
+    """the pack's cases read the inputs of a session cache; each gets arrays of its own, so a
+    case that writes into an input in place (or adds a key to a map input) does not change
+    what a later case of the pack reads. As the harness was (PKPY_ORACLE_SHARE_INPUTS=1), the
+    later case got the changed input"""
+    x, writer, reader = _shared_input_cases()
+    got = {}
+    for shared in (False, True):
+        d = tmp_path / ("shared" if shared else "own")
+        store = private_store(d, monkeypatch)
+        if shared:
+            monkeypatch.setenv("PKPY_ORACLE_SHARE_INPUTS", "1")
+        else:
+            monkeypatch.delenv("PKPY_ORACLE_SHARE_INPUTS", raising=False)
+        pj = oracle.write_pack([writer, reader], store, d / "pack", d / "work")
+        (d / "work").mkdir()
+        assert oracle.run_matlab(pj, matlab_oracle, echo=False)[0] == 0
+        assert store.load(writer.key()).status == "ok"
+        ref = store.load(reader.key())
+        assert ref.status == "ok", ref.error
+        got[shared] = (ref.outputs[0].data, [e.text() for e in ref.outputs[1].items])
+    np.testing.assert_array_equal(got[False][0], x)  # its own copy: unchanged
+    assert got[False][1] == ["a", "b"]
+    assert not np.array_equal(got[True][0], x)  # shared: the writer's zeros
+    assert np.all(got[True][0][:2, :2, 0] == 0)
+    assert got[True][1] == ["a", "added", "b"]
