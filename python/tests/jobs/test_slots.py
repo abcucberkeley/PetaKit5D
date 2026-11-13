@@ -113,19 +113,35 @@ def test_tasks_run_in_slots_at_most_p_at_once(tmp_path, task_module):
 
 def test_starts_are_slot_delay_apart(tmp_path, task_module, monkeypatch):
     # with free slots, each start after the first waits until 0.2 s after the one before
-    # (parallel --delay 0.2)
+    # (parallel --delay 0.2): the starts, on the slot manager's own clock, are 0.2 s apart or
+    # more, and a wait is never longer than the delay (on a busy machine a start can take so
+    # long that the next needs a shorter wait, or none)
     folder, outs = make_call(tmp_path, task_module, [("record", {})] * 4)
-    waits = []
+    waits, starts, last = [], [], [0.0]
+    real_popen, real_clock = subprocess.Popen, slots._clock
 
     def sleep(seconds):
         waits.append(seconds)
         time.sleep(seconds)
 
+    def clock():
+        last[0] = real_clock()
+        return last[0]
+
+    def popen(*args, **kwargs):
+        # (the start the slot manager took: the clock it read last, just before the process)
+        starts.append(last[0])
+        return real_popen(*args, **kwargs)
+
     monkeypatch.setattr(slots, "_sleep", sleep)
+    monkeypatch.setattr(slots, "_clock", clock)
+    monkeypatch.setattr(slots.subprocess, "Popen", popen)
     t0 = datetime.now().timestamp()
     run_slots(folder, range(4), 4)
     assert datetime.now().timestamp() - t0 >= 3 * 0.2 * 0.95
-    assert len(waits) == 3 and all(0.1 < w <= 0.2 for w in waits)
+    assert len(starts) == 4
+    assert all(b - a >= 0.2 - 1e-6 for a, b in zip(starts, starts[1:], strict=False)), starts
+    assert len(waits) <= 3 and all(0 < w <= 0.2 for w in waits), waits
 
 
 def test_a_failing_task_runs_twice(tmp_path, task_module):
@@ -287,9 +303,38 @@ def test_the_job_entry_point_imports_little(tmp_path, task_module):
     assert r.stdout.strip() == "ok", r.stderr
 
 
-def test_task_processes_start_fast(tmp_path, task_module):
-    # job start to task start: the slot's process start-up (the gate: job overhead under 1 s)
-    folder, outs = make_call(tmp_path, task_module, [("record", {})])
+BARE_START = "import json, sys, time\njson.dump({'start': time.time()}, open(sys.argv[1], 'w'))\n"
+
+
+def bare_start(tmp_path, k: int) -> float:
+    """seconds from starting a bare interpreter to its first statement on this machine now"""
+    out = tmp_path / f"bare_{k}.json"
     t0 = datetime.now().timestamp()
-    run_slots(folder, [0], 1)
-    assert info(outs[0])["start"] - t0 < 1.0
+    subprocess.run([sys.executable, "-c", BARE_START, str(out)], check=True)
+    return info(out)["start"] - t0
+
+
+def test_task_processes_start_fast(tmp_path, task_module, monkeypatch):
+    # job start to task start: the slot's process start-up (the gate: job overhead under 1 s).
+    # The first task starts without a wait, and its process starts within 1 s, or within 20
+    # times a bare interpreter's start on this machine now if that is longer, in the best of
+    # three tries: a slow start (a fixed sleep, heavy imports) is slow in every try, while a
+    # runner's stall of a moment slows one (a single try failed there at 1.35 s, where it takes
+    # 0.03 to 0.18 s on an idle and on a loaded runner)
+    tries = []
+    for k in range(3):
+        (tmp_path / f"try_{k}").mkdir()
+        folder, outs = make_call(tmp_path / f"try_{k}", task_module, [("record", {})])
+        waits = []
+        monkeypatch.setattr(slots, "_sleep", lambda s, w=waits: w.append(s) or time.sleep(s))
+        bare = [bare_start(tmp_path, 3 * k)]
+        t0 = datetime.now().timestamp()
+        run_slots(folder, [0], 1)
+        took = info(outs[0])["start"] - t0
+        bare += [bare_start(tmp_path, 3 * k + 1), bare_start(tmp_path, 3 * k + 2)]
+        assert waits == [], "The first task waited before its start."
+        limit = max(1.0, 20 * sorted(bare)[1])
+        tries.append((round(took, 3), round(limit, 3)))
+        if took < limit:
+            return
+    pytest.fail(f"the task's start took longer than its limit in every try: {tries}")

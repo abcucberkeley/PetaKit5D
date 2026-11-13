@@ -104,18 +104,21 @@ def test_a_failed_query_is_unknown_not_gone(fake_slurm):  # noqa: F811
 
 
 @posix_only
-def test_a_query_that_times_out_is_unknown(fake_slurm):  # noqa: F811
+def test_a_query_that_times_out_is_unknown(fake_slurm, monkeypatch):  # noqa: F811
     fake_slurm.set_job_states("100_1", ["R"])
-    fake_slurm.hang("squeue", 60)
+    fake_slurm.hang("squeue", 600)
     s = Slurm(query_timeout=0.5)
     t0 = time.monotonic()
     assert s.batch_status([100], [1]) == [None]
     assert s.job_status(100, 1) is None
-    assert time.monotonic() - t0 < 20
-    # (the command gets SIGTERM at the timeout, so the call returns at once)
+    assert time.monotonic() - t0 < 60
+    # (the command gets SIGTERM at the timeout, so the call returns at once: not after the
+    # wait it leaves a command that ignores SIGTERM, here 120 s, or the command's 600 s; the
+    # bound keeps a busy machine's slowness apart from either)
+    monkeypatch.setattr(slurm_mod, "TERMINATE_WAIT", 120.0)
     t0 = time.monotonic()
     r = s.run(["squeue"])
-    assert time.monotonic() - t0 < 4
+    assert time.monotonic() - t0 < 60
     assert r.timed_out and r.returncode is None and not r.answered
 
 

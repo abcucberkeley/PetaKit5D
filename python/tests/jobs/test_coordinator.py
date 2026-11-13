@@ -539,7 +539,8 @@ def test_nice_is_0_without_slurm(tmp_path, monkeypatch):
 
 @posix_only
 def test_nice_is_0_when_scontrol_does_not_answer(tmp_path, monkeypatch):
-    # (MATLAB would wait; a timed-out query is unknown: no nice)
+    # (MATLAB would wait; a timed-out query is unknown: no nice, and no wait for the stub's
+    # 600 s: the bound keeps a busy machine's slowness apart from that)
     from petakit5d.jobs.slurm import Slurm
 
     stub_scontrol(
@@ -547,11 +548,11 @@ def test_nice_is_0_when_scontrol_does_not_answer(tmp_path, monkeypatch):
         tmp_path,
         ["PriorityType = priority/multifactor", "PriorityWeightAge = 9"],
         0,
-        5,
+        600,
     )
     t0 = time.monotonic()
     assert coordinator_nice(Slurm(query_timeout=0.5)) == 0
-    assert time.monotonic() - t0 < 4
+    assert time.monotonic() - t0 < 60
 
 
 @posix_only
