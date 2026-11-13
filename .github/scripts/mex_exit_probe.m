@@ -12,6 +12,10 @@ function [] = mex_exit_probe(mode, mexDir)
 %     a line before and after it
 %   mode 'io': only the cpp-tiff and cpp-zarr mex files (writetiff, readtiff,
 %     writezarr, readzarr)
+%   mode 'scale': the repository's, closer to win10vm (8 cores): 8 threads per
+%     mex file, maxNumCompThreads 8 and a matrix product first (MATLAB's own
+%     threads), and the calls in 5 rounds. (MATLAB runs no mex files on
+%     thread-based workers, so backgroundPool cannot call them.)
 %
 % Threads: decon_lucy_accel_mex, decon_mask_edge_erosion_mex and
 % omw_backprojector_mex take their thread count as an argument (nt here); the
@@ -34,6 +38,11 @@ end
 resultFn = fullfile(outDir, [mode, '.txt']);
 note = @(varargin) writelines(string(sprintf(varargin{:})), resultFn, 'WriteMode', 'append');
 nt = 4;
+rounds = 1;
+if strcmp(mode, 'scale')
+    nt = 8;
+    rounds = 5;
+end
 envNames = {'OMP_NUM_THREADS', 'OMP_THREAD_LIMIT', 'OMP_DYNAMIC', 'OMP_WAIT_POLICY', 'GOMP_SPINCOUNT', ...
     'MKL_NUM_THREADS', 'NUMBER_OF_PROCESSORS'};
 envStr = strjoin(cellfun(@(n) sprintf('%s=%s', n, getenv(n)), envNames, 'unif', 0), ' ');
@@ -79,6 +88,16 @@ addpath(fullfile(root, 'pointDetection', 'mex_functions'));
 if ~isempty(mexDir)
     addpath(mexDir, '-begin');
 end
+if strcmp(mode, 'scale')
+    try
+        maxNumCompThreads(nt);
+        B = single(rand(2000));
+        B = B * B;
+        note('maxNumCompThreads %d, matrix product done, process threads %d', maxNumCompThreads, process_threads());
+    catch ME
+        note('maxNumCompThreads(%d): error %s: %s', nt, ME.identifier, ME.message);
+    end
+end
 
 rng(1);
 A16 = uint16(randi(60000, 128, 128, 64));
@@ -90,8 +109,12 @@ names = {'crop3d_mex', 'crop4d_mex', 'indexing3d_mex', 'indexing4d_mex', 'indexi
     'any_4th_dim_mex', 'feather_blending_3d_mex', 'feather_blending_3d_with_indexing_mex', 'feather_distance_map_resize_3d_mex', ...
     'integral_image_3d_mex', 'tile_blending_3d_mex', 'max_pooling_3d_mex', 'range_max_3d_mex', 'unmix_channels_sum_mex', ...
     'replace_nan_with_value'};
-for i = 1 : numel(names)
-    name = names{i};
+for i = 1 : numel(names) * rounds
+    name = names{mod(i - 1, numel(names)) + 1};
+    label = name;
+    if rounds > 1
+        label = sprintf('%s (round %d)', name, ceil(i / numel(names)));
+    end
     n0 = process_threads();
     t0 = tic;
     try
@@ -148,7 +171,7 @@ for i = 1 : numel(names)
     end
     t = toc(t0);
     n1 = process_threads();
-    note('%-50s locked %d %5.2f s %s, threads %d -> %d (%+d) (%s)', name, mislocked(name), t, status, n0, n1, n1 - n0, which(name));
+    note('%-50s locked %d %5.2f s %s, threads %d -> %d (%+d) (%s)', label, mislocked(name), t, status, n0, n1, n1 - n0, which(name));
 end
 clear out
 if strcmp(mode, 'unload')
@@ -157,36 +180,5 @@ if strcmp(mode, 'unload')
     note('after clear mex %s, process threads %d', datestr(now, 'HH:MM:SS'), process_threads());
 end
 note('done %s, process threads %d', datestr(now, 'HH:MM:SS'), process_threads());
-
-end
-
-
-function [n, cpus] = process_threads()
-% the threads of this MATLAB process now (NaN if unknown) and the CPUs it may
-% run on (Windows: the affinity mask; Linux: Cpus_allowed_list)
-n = NaN;
-cpus = '';
-pid = feature('getpid');
-try
-    if ispc
-        [s, out] = system(sprintf(['powershell -NoProfile -NonInteractive -Command "$p = Get-Process -Id %d; ', ...
-            '''{0} {1}'' -f $p.Threads.Count, [int64]$p.ProcessorAffinity"'], pid));
-        if s == 0
-            v = sscanf(strtrim(out), '%d %d');
-            n = v(1);
-            cpus = sprintf('mask 0x%X', v(2));
-        end
-    elseif ismac
-        [s, out] = system(sprintf('ps -M -p %d | tail -n +2 | wc -l', pid));
-        if s == 0
-            n = str2double(strtrim(out));
-        end
-    else
-        st = fileread(sprintf('/proc/%d/status', pid));
-        n = str2double(regexp(st, 'Threads:\s*(\d+)', 'tokens', 'once'));
-        cpus = char(regexp(st, 'Cpus_allowed_list:\s*(\S+)', 'tokens', 'once'));
-    end
-catch
-end
 
 end
