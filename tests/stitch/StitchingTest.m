@@ -20,6 +20,8 @@ classdef StitchingTest < pktest.TestCase
         tileBlendMethod = {'none', 'max', 'mean', 'median'}
         axisOrder = struct('x', 'x,y,z', 'minusX', '-x,y,z')
         thinTileDepth = struct('nz8', 8, 'nz20', 20)
+        % DSR, or skewed space (where flipped tiles are also flipped in z)
+        flipDSR = struct('DSR', true, 'skewedSpace', false)
         % volumes the wrapper sizes jobs for (see the tests of the same layouts)
         sizeSetup = struct( ...
             'grid', struct('gtSize', [100, 120, 32], 'starts', [0, 0, 0; 36, 0, 0; 0, 48, 0; 36, 48, 0], ...
@@ -1139,6 +1141,36 @@ classdef StitchingTest < pktest.TestCase
 
             out = testCase.readResult(dataPath);
             testCase.verifyEqual(out(3 : 66, 5 : 108, 3 : 34), gt);
+        end
+
+        function flippedTilesStayWithTheirTilesWhenSorted(testCase, flipDSR)
+            % the stitching sorts the tiles by their indices (zigzag
+            % listings), but the flags of flipped tiles (flippedTile, from
+            % the settings files) stayed in the listed order and so went to
+            % other tiles: the stitched volume depended on the order of the
+            % list. The frame is called directly, as the wrapper takes the
+            % flags only from settings files; each run has tiles of its own.
+            px = testCase.XYPixelSize;
+            gt = testCase.randomVolume([64, 108, 32]);
+            tiles = testCase.cutTiles(gt, [0, 0, 0; 0, 36, 0], [64, 72, 32]);
+            idx = [cat(1, tiles.idx), zeros(2, 1)];
+            runs = {[1, 2], [false, true]; [2, 1], [true, false]; [1, 2], [false, false]};
+            out = cell(1, 3);
+            for k = 1 : 3
+                dataPath = testCase.createTempFolder();
+                fsns = pktest.writeStitchTiles(dataPath, tiles);
+                order = runs{k, 1};
+                fns = strcat(dataPath, fsns(order), '.tif');
+                xyz = cat(1, tiles(order).xyz);
+                mkdir([dataPath, 'res']);
+                evalc(['XR_stitching_frame_zarr_dev_v1(fns, xyz, ''ResultPath'', [dataPath, ''res/out.zarr''], ', ...
+                    '''tileIdx'', idx(order, :), ''flippedTile'', runs{k, 2}, ''DSR'', flipDSR, ''resampleType'', ''isotropic'', ', ...
+                    '''xyPixelSize'', px, ''dz'', 0.3, ''axisOrder'', ''x,y,z'', ''xcorrShift'', false, ', ...
+                    '''parseCluster'', false, ''BlendMethod'', ''none'')']);
+                out{k} = readzarr([dataPath, 'res/out.zarr']);
+            end
+            testCase.verifyEqual(out{2}, out{1}, 'The order of the list changed the stitched volume.');
+            testCase.verifyNotEqual(out{3}, out{1}, 'The flag had no effect.');
         end
     end
 

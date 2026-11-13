@@ -302,6 +302,12 @@ if ~isempty(tileIdx)
 elseif isempty(tileIdx)
 	tileIdx = zeros(nF, 4);
 end
+% the flipped tiles in the sorted order (flippedTile, in the listed order,
+% goes into the stitch info, whose secondary channels sort it as here)
+flippedTile_sorted = flippedTile;
+if numel(flippedTile) == nF
+	flippedTile_sorted = flippedTile(sinds);
+end
 tileNum = [numel(unique(tileIdx(:,1))), numel(unique(tileIdx(:,2))), numel(unique(tileIdx(:,3)))];
 if isempty(tileNum)
 	tileNum = zeros(1, nF);
@@ -406,12 +412,12 @@ end
 if isempty(resampleFactor)
 	resampleFactor = [1, 1, 1];
 end
-zarr_flippedTile = false(size(flippedTile)); 
+zarr_flippedTile = false(size(flippedTile_sorted));
 stitchResample = [1, 1, 1];
 if ~DSR
 	stitchResample = resampleFactor;
 	if isempty(ProcessedDirstr)
-		zarr_flippedTile = flippedTile > 0;
+		zarr_flippedTile = flippedTile_sorted > 0;
 	end
 end
 % check if there are partial files when converting tiff to zarr
@@ -522,7 +528,7 @@ if ~isPrimaryCh
 end
 
 % process coordinates based on the space of the data
-xyz = stitch_process_coordinates(xyz, coordSizes, flippedTile, order_sign_mat, data_order_mat, xp, yp, zp, theta, IOScan, objectiveScan, DS, DSR);
+xyz = stitch_process_coordinates(xyz, coordSizes, flippedTile_sorted, order_sign_mat, data_order_mat, xp, yp, zp, theta, IOScan, objectiveScan, DS, DSR);
 [~, data_order_reverse_mat] = sort(data_order_mat);
 
 % identify pairs between pairs
