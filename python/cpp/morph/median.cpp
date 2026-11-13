@@ -78,11 +78,30 @@ void order_filter(const T* P, T* out, const idx_t py, const idx_t px, const idx_
 // 3 x 3 x 3 single median (omw_backprojector_mex)
 
 static const int ML = 16;  // voxels along x per network pass
+#if defined(__GNUC__) || defined(__clang__)
 typedef float vfloat __attribute__((vector_size(4 * ML)));
+#define PK5D_MEDIAN_CX(a, b) { const vfloat x = v[a], y = v[b]; v[a] = y < x ? y : x; v[b] = y < x ? x : y; }
+#else
+// compilers without vector extensions (MSVC): the same compare-exchanges lane by lane, the same
+// selections, so the same bits
+struct vfloat {
+    float l[ML];
+};
+#define PK5D_MEDIAN_CX(a, b)                                                                       \
+    {                                                                                              \
+        float* p_ = v[a].l;                                                                        \
+        float* q_ = v[b].l;                                                                        \
+        for (int l_ = 0; l_ < ML; l_++) {                                                          \
+            const float x = p_[l_], y = q_[l_];                                                    \
+            p_[l_] = y < x ? y : x;                                                                \
+            q_[l_] = y < x ? x : y;                                                                \
+        }                                                                                          \
+    }
+#endif
 
 // the 14th smallest of v[0 .. 26] in v[13], for ML voxels at once
 inline void median27(vfloat* v) {
-#define CX(a, b) { const vfloat x = v[a], y = v[b]; v[a] = y < x ? y : x; v[b] = y < x ? x : y; }
+#define CX(a, b) PK5D_MEDIAN_CX(a, b)
     CX(0, 1); CX(2, 3); CX(0, 2); CX(1, 3); CX(1, 2); CX(4, 5);
     CX(6, 7); CX(4, 6); CX(5, 7); CX(5, 6); CX(0, 4); CX(2, 6);
     CX(2, 4); CX(1, 5); CX(3, 7); CX(3, 5); CX(1, 2); CX(3, 4);

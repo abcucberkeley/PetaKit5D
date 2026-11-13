@@ -61,6 +61,13 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -v ".[test]"
 
+      # the OpenMP runtime the build put next to the modules, and the toolset's copies
+      - name: OpenMP runtime (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          find "/c/Program Files/Microsoft Visual Studio"/*/*/VC -iname 'libomp140*.dll' 2>/dev/null || true
+          ls "$(python -c 'import os, petakit5d; print(os.path.dirname(petakit5d.__file__))')/_ext"
+
       - name: Build information
         run: |
           python -m pip list

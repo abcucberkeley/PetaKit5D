@@ -2,7 +2,7 @@
 #   PK5D_OPENMP_FOUND    TRUE when the kernels are built with OpenMP
 #   PK5D_OPENMP_DESC     what was used (reported by petakit5d._ext.core.build_info())
 #   PK5D_OPENMP_RUNTIME  a runtime DLL to put next to the modules (Windows), or empty
-#   PK5D_OPENMP_RPATH    the runtime's folder when it is not a system folder (Linux), or empty
+#   PK5D_OPENMP_RPATH    the runtime's folder when it is not a system folder (Linux, macOS), or empty
 #
 # Linux and GCC anywhere: -fopenmp, libgomp (FindOpenMP).
 # macOS with Apple Clang: -Xpreprocessor -fopenmp and libomp (Homebrew's, or OpenMP_ROOT).
@@ -41,6 +41,19 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
       list(APPEND _pk5d_omp_dlls ${_found})
     endforeach()
     list(FILTER _pk5d_omp_dlls EXCLUDE REGEX "[Dd]ebug")
+    if(NOT _pk5d_omp_dlls)
+      # other layouts (Visual Studio 2026): anywhere under the redistributable and tool folders
+      foreach(_d "${_pk5d_vc_dir}/Redist/MSVC" "${_pk5d_vc_dir}/Tools/MSVC")
+        file(GLOB_RECURSE _found "${_d}/libomp140.*.dll")
+        list(APPEND _pk5d_omp_dlls ${_found})
+      endforeach()
+      list(FILTER _pk5d_omp_dlls EXCLUDE REGEX "[Dd]ebug|libomp140d")
+      if(_pk5d_arch STREQUAL "x64")
+        list(FILTER _pk5d_omp_dlls INCLUDE REGEX "x86_64\\.dll$")
+      else()
+        list(FILTER _pk5d_omp_dlls INCLUDE REGEX "aarch64\\.dll$|arm64\\.dll$")
+      endif()
+    endif()
     if(_pk5d_omp_dlls)
       list(SORT _pk5d_omp_dlls COMPARE NATURAL ORDER DESCENDING)
       list(GET _pk5d_omp_dlls 0 PK5D_OPENMP_RUNTIME)
@@ -66,6 +79,9 @@ elseif(APPLE AND CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang")
     target_link_libraries(pk5d_openmp INTERFACE "${PK5D_LIBOMP_LIBRARY}")
     set(PK5D_OPENMP_FOUND TRUE)
     set(PK5D_OPENMP_DESC "AppleClang -Xpreprocessor -fopenmp, ${PK5D_LIBOMP_LIBRARY}")
+    # a libomp named @rpath/libomp.dylib (conda's, one built from LLVM's sources) is found
+    # through its folder on the modules' RPATH; Homebrew's has an absolute name
+    get_filename_component(PK5D_OPENMP_RPATH "${PK5D_LIBOMP_LIBRARY}" DIRECTORY)
   endif()
 else()
   find_package(OpenMP COMPONENTS C CXX)
