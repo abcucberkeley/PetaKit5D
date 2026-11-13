@@ -1,0 +1,51 @@
+{
+ "task": "J11",
+ "classes": {
+  "SlurmClusterTest": {
+   "finished": true,
+   "methods": {
+    "jobStatusFollowsSqueue": [
+     "pytest:tests/cluster/test_slurm_cluster.py::test_job_status_follows_squeue"
+    ],
+    "tasksRunAsSlurmJobs": [
+     "pytest:tests/cluster/test_slurm_cluster.py::test_tasks_run_as_slurm_jobs[bash]",
+     "pytest:tests/cluster/test_slurm_cluster.py::test_tasks_run_as_slurm_jobs[python]"
+    ],
+    "tasksInABatchShareAJob": [
+     "pytest:tests/cluster/test_slurm_cluster.py::test_tasks_in_a_batch_share_a_job[bash]",
+     "pytest:tests/cluster/test_slurm_cluster.py::test_tasks_in_a_batch_share_a_job[python]"
+    ],
+    "existingOutputsAreNotSubmitted": [
+     "pytest:tests/cluster/test_slurm_cluster.py::test_existing_outputs_are_not_submitted[bash]",
+     "pytest:tests/cluster/test_slurm_cluster.py::test_existing_outputs_are_not_submitted[python]"
+    ],
+    "masterComputesPartOfTheTasks": [
+     "pytest:tests/cluster/test_slurm_cluster.py::test_master_computes_part_of_the_tasks[bash]",
+     "pytest:tests/cluster/test_slurm_cluster.py::test_master_computes_part_of_the_tasks[python]"
+    ],
+    "requestedResourcesReachTheJob": [
+     "pytest:tests/cluster/test_slurm_cluster.py::test_requested_resources_reach_the_job[bash]",
+     "pytest:tests/cluster/test_slurm_cluster.py::test_requested_resources_reach_the_job[python]"
+    ],
+    "finalOutputEndsTheRun": [
+     "pytest:tests/cluster/test_slurm_cluster.py::test_final_output_ends_the_run[bash]",
+     "pytest:tests/cluster/test_slurm_cluster.py::test_final_output_ends_the_run[python]"
+    ],
+    "finalOutputCancelsRemainingJobs": [
+     "pytest:tests/cluster/test_slurm_cluster.py::test_final_output_cancels_remaining_jobs[bash]",
+     "pytest:tests/cluster/test_slurm_cluster.py::test_final_output_cancels_remaining_jobs[python]"
+    ],
+    "failedTaskIsRetriedWithMoreCPUs": [
+     "pytest:tests/cluster/test_slurm_cluster.py::test_failed_task_is_retried_with_more_cpus[bash]",
+     "pytest:tests/cluster/test_slurm_cluster.py::test_failed_task_is_retried_with_more_cpus[python]"
+    ],
+    "matlabTasksRunAsJobs": [
+     "pytest:tests/cluster/test_slurm_cluster.py::test_python_tasks_run_as_jobs"
+    ],
+    "deskewRotateWrapperRunsAsJobs": [
+     "pytest:tests/cluster/test_slurm_cluster.py::test_deskew_rotate_dataset_runs_as_jobs"
+    ]
+   }
+  }
+ }
+}

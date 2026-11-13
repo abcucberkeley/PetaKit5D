@@ -133,3 +133,47 @@ jobs:
       - run: python -m pip install "ruff==$(sed -n 's/^ruff==\([0-9.]*\).*/\1/p' requirements/linux-x86_64-py312.txt)"
       - run: ruff check .
       - run: ruff format --check .
+
+  # The job framework in Slurm cluster mode (tests/cluster, marker cluster) on a single-node
+  # Slurm set up on the runner: bash and Python tasks as real jobs, and the soak test at a size
+  # for the runner's 4 CPUs. (MATLAB's workflow has the same job with bash tasks only: its jobs
+  # couldn't start MATLAB there.)
+  cluster:
+    name: Slurm cluster mode (Python 3.12 on ubuntu-24.04)
+    runs-on: ubuntu-24.04
+    # reports without failing the workflow until it has passed on GitHub's runner twice
+    continue-on-error: true
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Set up Slurm
+        run: sudo bash tests/ci/setup_github_actions_slurm.sh
+
+      - name: Install (pinned environment)
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install --require-hashes --only-binary=:all: -r requirements/linux-x86_64-py312.txt
+          python -m pip install -v --no-build-isolation --no-deps .
+
+      - name: Cluster tests
+        env:
+          PETAKIT5D_TEST_SLURM_CONFIG: ${{ github.workspace }}/python/tests/ci/github_actions_slurm.json
+          PETAKIT5D_TEST_SLURM_SOAK: 200x20
+        run: |
+          python -m pytest -v -rA --timeout=1800 -m cluster tests/cluster | tee pytest-cluster.log
+          # a skipped test here is a set-up problem (no Slurm, no config)
+          if grep -q '^SKIPPED' pytest-cluster.log; then
+            echo "::error::Cluster tests were skipped"
+            exit 1
+          fi
+
+      - name: Show Slurm logs
+        if: failure()
+        run: |
+          squeue || true
+          sudo tail -n 100 /var/log/slurm/slurmctld.log /var/log/slurm/slurmd.log

@@ -120,8 +120,8 @@ By fate (all):
 | na+oracle+pytest | 2 |
 | oracle | 127 |
 | oracle+pytest | 528 |
-| pending | 541 |
-| pytest | 392 |
+| pending | 530 |
+| pytest | 403 |
 
 ## Classes
 
@@ -135,7 +135,7 @@ By fate (all):
 | analysis/PSFAnalysisTest | data | B06 | 3 | 6 | no | pending 6 |
 | analysis/PunctaRemovalTest | data | B08 | 2 | 2 | no | pending 2 |
 | analysis/UnmixChannelsTest | data | B02 | 17 | 20 | no | pending 20 |
-| cluster/SlurmClusterTest | framework_design | J11 | 11 | 11 | no | pending 11 |
+| cluster/SlurmClusterTest | framework_design | J11 | 11 | 11 | yes | pytest 11 |
 | crop/CropDatasetTest | data | T03 | 23 | 23 | yes | oracle+pytest 14, pytest 9 |
 | crop/CropMexTest | data | K01 | 10 | 46 | no | oracle+pytest 46 |
 | decon/DeconAccelTest | data | R03 | 15 | 46 | no | na 1, oracle 24, oracle+pytest 16, pending 1, pytest 4 |
