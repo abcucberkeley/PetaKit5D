@@ -128,7 +128,7 @@ def _transpose(a: Matrix) -> Matrix:
 
 
 def _mrdivide(a: Matrix, t: Matrix) -> Matrix:
-    from petakit5d.matlabcompat.warp import _mrdivide as mrdivide
+    from petakit5d.matlabcompat.warp import mrdivide
 
     return mrdivide(a, t)
 

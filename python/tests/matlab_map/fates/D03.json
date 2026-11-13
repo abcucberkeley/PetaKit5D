@@ -1,0 +1,104 @@
+{
+ "task": "D03",
+ "classes": {
+  "XRDeskewRotateFrameTest": {
+   "finished": true,
+   "methods": {
+    "combinedWritesDSRAndMIP": [
+     "pytest:tests/deskew_rotate/test_file.py::test_combined_writes_dsr_and_mip",
+     "oracle:tests/deskew_rotate/test_file.py::frame.combined*"
+    ],
+    "saveZarrMatchesTiff": [
+     "pytest:tests/deskew_rotate/test_file.py::test_save_zarr_matches_tiff",
+     "oracle:tests/deskew_rotate/test_file.py::frame.combined.zarr*"
+    ],
+    "save16bitFalseWritesSingle": [
+     "pytest:tests/deskew_rotate/test_file.py::test_save16bit_false_writes_single",
+     "oracle:tests/deskew_rotate/test_file.py::frame.combined.single_*"
+    ],
+    "separatePathWritesDeskewedAndRotated": [
+     "pytest:tests/deskew_rotate/test_file.py::test_separate_path_writes_deskewed_and_rotated",
+     "oracle:tests/deskew_rotate/test_file.py::frame.separate*"
+    ],
+    "deskewOnlyWritesOnlyDS": [
+     "pytest:tests/deskew_rotate/test_file.py::test_deskew_only_writes_only_ds",
+     "oracle:tests/deskew_rotate/test_file.py::frame.separate.deskew_only"
+    ],
+    "objectiveScanSeparatePathRuns": [
+     "pytest:tests/deskew_rotate/test_file.py::test_objective_scan_separate_path_runs",
+     "oracle:tests/deskew_rotate/test_file.py::frame.separate.objective"
+    ],
+    "largeZSeparatePathWritesDSMIP": [
+     "pytest:tests/deskew_rotate/test_file.py::test_large_z_separate_path_writes_ds_mip",
+     "oracle:tests/deskew_rotate/test_file.py::frame.separate.large_z*"
+    ],
+    "flatFieldCorrectionIsAppliedFirst": [
+     "pytest:tests/deskew_rotate/test_file.py::test_flat_field_correction_is_applied_first",
+     "oracle:tests/deskew_rotate/test_file.py::frame.combined.flatfield*"
+    ],
+    "inputBboxAndFlipAreAppliedFirst": [
+     "pytest:tests/deskew_rotate/test_file.py::test_input_bbox_and_flip_are_applied_first",
+     "oracle:tests/deskew_rotate/test_file.py::frame.combined.bbox_flip"
+    ],
+    "inputAxisOrderXYZIsPermutedToYXZ": [
+     "pytest:tests/deskew_rotate/test_file.py::test_input_axis_order_is_permuted_to_zyx",
+     "oracle:tests/deskew_rotate/test_file.py::frame.combined.in_xyz"
+    ],
+    "outputAxisOrderZYXPermutesTheResult": [
+     "pytest:tests/deskew_rotate/test_file.py::test_output_axis_order_permutes_the_result",
+     "oracle:tests/deskew_rotate/test_file.py::frame.*.out_*"
+    ],
+    "existingOutputIsNotRecomputed": [
+     "pytest:tests/deskew_rotate/test_file.py::test_existing_output_is_not_recomputed",
+     "oracle:tests/deskew_rotate/test_file.py::frame.combined.exists"
+    ],
+    "zStageScanSeparateMatchesCombined": [
+     "pytest:tests/deskew_rotate/test_file.py::test_z_stage_scan_separate_matches_combined",
+     "oracle:tests/deskew_rotate/test_file.py::frame.*.zstage"
+    ],
+    "inputAxisOrderZYXIsPermutedToYXZ": [
+     "pytest:tests/deskew_rotate/test_file.py::test_input_axis_order_is_permuted_to_zyx",
+     "oracle:tests/deskew_rotate/test_file.py::frame.combined.in_zyx"
+    ],
+    "rotationOfSavedDeskewedVolumeKeepsCropAndAxisOrder": [
+     "pytest:tests/deskew_rotate/test_file.py::test_rotation_of_saved_deskewed_volume_keeps_crop_and_axis_order",
+     "oracle:tests/deskew_rotate/test_file.py::frame.separate.two_runs*"
+    ],
+    "privateZarrResultsAreWrittenInPlace": [
+     "pytest:tests/deskew_rotate/test_file.py::test_private_zarr_results_are_written_in_place"
+    ],
+    "backgroundRemovalRuns": [
+     "pytest:tests/deskew_rotate/test_file.py::test_background_removal_raises_matlabs_error",
+     "oracle:tests/deskew_rotate/test_file.py::frame.combined.bkremoval"
+    ],
+    "objectiveScanSeparatePathIsNotDeskewed": [
+     "pytest:tests/deskew_rotate/test_file.py::test_objective_scan_separate_path_is_deskewed",
+     "oracle:tests/deskew_rotate/test_file.py::frame.separate.objective"
+    ]
+   }
+  },
+  "DeskewRotateMemoryTest": {
+   "finished": false,
+   "methods": {
+    "estimateCoversMeasuredPeak": [
+     "pytest:tests/deskew_rotate/test_file.py::test_estimate_covers_the_measured_peak"
+    ],
+    "mexPathHoldsInputInterpolatedSlicesAndOutput": [
+     "pytest:tests/deskew_rotate/test_file.py::test_kernel_path_holds_input_and_output"
+    ],
+    "outputSizeMatchesDeskewRotateFrame3D": [
+     "pytest:tests/deskew_rotate/test_file.py::test_output_size_matches_deskew_rotate_volume",
+     "oracle:tests/deskew_rotate/test_file.py::memory.*"
+    ],
+    "zStageScanUsesTheComplementaryAngle": [
+     "pytest:tests/deskew_rotate/test_file.py::test_z_stage_scan_uses_the_complementary_angle",
+     "oracle:tests/deskew_rotate/test_file.py::memory.zstage"
+    ],
+    "preResamplingOutputSizeMatchesXRDeskewRotateFrame": [
+     "oracle:tests/deskew_rotate/test_file.py::memory.preresample*",
+     "pytest:tests/deskew_rotate/test_file.py::test_pre_resampling_is_not_ported_yet"
+    ]
+   }
+  }
+ }
+}

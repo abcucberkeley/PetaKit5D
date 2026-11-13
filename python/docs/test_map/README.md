@@ -61,8 +61,8 @@ By owner (default run / all):
 | C02 | 7 | 7 | 2 |
 | D01 | 8 | 8 | 1 |
 | D02 | 31 | 31 | 1 |
-| D03 | 67 | 69 | 3 |
-| D04 | 26 | 26 | 1 |
+| D03 | 62 | 64 | 3 |
+| D04 | 31 | 31 | 2 |
 | E01 | 4 | 4 | 1 |
 | E04 | 33 | 33 | 7 |
 | E06 | 18 | 18 | 2 |
@@ -119,9 +119,9 @@ By fate (all):
 | na+oracle | 1 |
 | na+oracle+pytest | 2 |
 | oracle | 127 |
-| oracle+pytest | 464 |
-| pending | 693 |
-| pytest | 309 |
+| oracle+pytest | 490 |
+| pending | 635 |
+| pytest | 341 |
 
 ## Classes
 
@@ -155,8 +155,8 @@ By fate (all):
 | deskew_rotate/DeskewRotateDataWrapperTest | data | D04 | 26 | 26 | no | pending 26 |
 | deskew_rotate/DeskewRotateFrame3DTest | data | D02 | 17 | 31 | yes | na 1, oracle+pytest 21, pytest 9 |
 | deskew_rotate/DeskewRotateKernelExactTest | data | K03 | 4 | 90 | yes | oracle+pytest 90 |
-| deskew_rotate/DeskewRotateMemoryTest | data | D03 | 10 | 45 | no | pending 45 |
-| deskew_rotate/XRDeskewRotateFrameTest | data | D03 | 18 | 18 | no | pending 18 |
+| deskew_rotate/DeskewRotateMemoryTest | data | D03 | 10 | 45 | no | oracle+pytest 9, pending 5, pytest 31 |
+| deskew_rotate/XRDeskewRotateFrameTest | data | D03 | 18 | 18 | yes | oracle+pytest 17, pytest 1 |
 | flatfield/FlatFieldCorrectionTest | data | D01 | 8 | 8 | yes | oracle+pytest 8 |
 | framework/BatchFileExistTest | framework_fake_slurm | J02 | 17 | 17 | no | pending 1, pytest 16 |
 | framework/CheckBatchSlurmJobsStatusTest | framework_fake_slurm | J03 | 5 | 5 | no | pending 3, pytest 2 |

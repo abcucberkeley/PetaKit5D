@@ -632,6 +632,7 @@
      "fate": []
     },
     "largeFileBlocksRequestOneBatch": {
+     "owner": "D04",
      "pins": "XR_deskewRotateBlock tasks hold one batch (input rows with a one-row border, interpolated slices, output region)",
      "tags": [
       "Integration"
@@ -672,6 +673,7 @@
      "fate": []
     },
     "wrapperCountsAllPartialFiles": {
+     "owner": "D04",
      "pins": "<name>.tif + <name>_part0001.tif are read and concatenated in one task; only the first part used to be counted",
      "tags": [
       "Integration"
@@ -680,6 +682,7 @@
      "fate": []
     },
     "wrapperCountsTheCroppedInput": {
+     "owner": "D04",
      "pins": "wrapper counts the cropped input",
      "tags": [
       "Integration"
@@ -688,6 +691,7 @@
      "fate": []
     },
     "wrapperRequestsTheEstimate": {
+     "owner": "D04",
      "pins": "wrapper requests the estimate",
      "tags": [
       "Integration"
@@ -696,6 +700,7 @@
      "fate": []
     },
     "wrapperUsesTheLargestFile": {
+     "owner": "D04",
      "pins": "one memAllocate for all tasks: it must fit the largest input",
      "tags": [
       "Integration"
