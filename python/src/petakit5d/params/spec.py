@@ -596,6 +596,19 @@ def _passes(p: ParamSpec, value: Any) -> bool:
     return any(all(_pred(q, value) for q in alt) for alt in p.alternatives)
 
 
+def _as_matlab_sees(p: ParamSpec, value: Any) -> Any:
+    """A snake_case value as MATLAB's validator sees it: in MATLAB's form by the parameter's
+    kind (an open end None is MATLAB's Inf). Image arrays (only transposed) and a function's
+    own conversions are checked as given, and so is a value the kind cannot convert."""
+    k = p.conv
+    if k is None or k.name in ("same", "volume") or k.name.startswith("custom:"):
+        return value
+    try:
+        return k.to_matlab(normalize(value))
+    except (TypeError, ValueError):
+        return value
+
+
 def _cell_if_empty_default(p: ParamSpec) -> str | None:
     return "cell" if p.default == () else None
 
@@ -791,7 +804,8 @@ class FunctionSpec:
 
     # -- the three ways in --------------------------------------------------------------------
     def bind_python(self, args: tuple[Any, ...], kwargs: dict[str, Any]) -> dict[str, Any]:
-        """Check and normalize a snake_case call; returns {python name: value} of what was given."""
+        """Check and normalize a snake_case call; returns {python name: value} of what was given.
+        Each value is checked in MATLAB's form, as the validator sees it in MATLAB."""
         params = self.params
         by_py = {p.py: p for p in params}
         for k in kwargs:
@@ -826,7 +840,7 @@ class FunctionSpec:
         out = {}
         for k, a in given.items():
             p = by_py[k]
-            p.check(a, self.matlab_name)
+            p.check(_as_matlab_sees(p, a), self.matlab_name)
             out[k] = normalize(a)
         return out
 

@@ -448,12 +448,7 @@ out = {feather_distance_map_resize_3d(m(r(1) : r(4), r(2) : r(5), r(3) : r(6)), 
 
 def py_slab(p, d):
     box = _bbox_py(p["bbox"])
-    # (a box with an open end fails the registry's isnumeric check of the Python value: the
-    # function itself is called then)
-    fn = sd.compute_tile_bwdist_mip_slabs
-    if box is not None and None in box:
-        fn = fn.__wrapped__
-    fn(
+    sd.compute_tile_bwdist_mip_slabs(
         f"{d}bi.mat",
         int(p["i"]) - 1,
         f"{d}map.zarr",

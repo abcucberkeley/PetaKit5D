@@ -120,6 +120,51 @@ def test_values_are_checked_as_matlab_checks_them(sample_crop):
         spec.call_matlab(ROOT, [1] * 6, "pad", "true")
 
 
+def test_snake_case_values_are_checked_in_matlabs_form(sample_crop, monkeypatch):
+    """The validator sees the value as MATLAB has it: an open end (None) of a box or a range is
+    MATLAB's Inf, so @isnumeric passes; the function gets the value as given."""
+    from petakit5d.core import arrays
+
+    transposed = []
+    monkeypatch.setattr(arrays, "to_matlab", lambda v, **kw: transposed.append(v) or v)
+    got = sample_crop.crop_dataset(ROOT, (0, 1, 2, None, 10, None))
+    assert got["input_bbox"] == (0, 1, 2, None, 10, None)
+    reg = Registry()
+    seen = []
+
+    def vol_in(v):
+        return v
+
+    def vol_out(v):
+        seen.append(v)
+        return v
+
+    @reg.register(
+        "f_open_ends",
+        Param("zRange", "@isnumeric", convert="range1"),
+        Param("boxes", "@isnumeric", convert="bboxes"),
+        Param("vol", "@isnumeric", convert="volume"),
+        Param("other", "@isnumeric", convert=(vol_in, vol_out)),
+        Param("pad", "@islogical"),
+    )
+    def f(z_range=None, *, boxes=None, vol=None, other=None, pad=False):
+        return dict(locals())
+
+    got = f((4, None), boxes=((0, 0, 0, 5, None, 7), (1, 2, 3, 4, 5, 6)))
+    assert got["z_range"] == (4, None) and got["boxes"][0] == (0, 0, 0, 5, None, 7)
+    # image arrays and a function's own conversions are checked as given (not converted)
+    import numpy as np
+
+    v = np.zeros((2, 3, 4), np.uint16)
+    assert f(vol=v, other=v)["vol"] is v and seen == [] and transposed == []
+    # values the kind can't convert are checked as given; failing values still fail
+    assert f((1, 2, 3))["z_range"] == (1, 2, 3)
+    for bad in (lambda: f(("a", None)), lambda: f(pad=None), lambda: f(boxes=[[None, "x"]])):
+        with pytest.raises(MatlabArgumentError) as e:
+            bad()
+        assert e.value.identifier == "MATLAB:InputParser:ArgumentFailedValidation"
+
+
 def test_string_conversions_follow_the_mcc_parser(sample_crop):
     spec = sample_crop.REG.find("XR_crop_dataset")
     got = spec.bind_strings(
