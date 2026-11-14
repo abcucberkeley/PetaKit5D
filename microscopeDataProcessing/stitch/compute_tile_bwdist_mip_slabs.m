@@ -66,7 +66,8 @@ end
 
 im_i = readzarr(MIPZFn);
 if dataOrderMat(3) ~= 3
-    zdo = find(dataOrderMat == 3);
+    % (the dimension of z)
+    zdo = dataOrderMat(3);
     im_i = permute(im_i, [setdiff(1 : 3, zdo), zdo]);
 end
 im_i_orig = im_i ~= 0;
@@ -112,6 +113,7 @@ clear im_i_orig im_i;
 if dataOrderMat(3) ~= 3
     inds = 1 : 3;
     im_dist = permute(im_dist, [inds(inds < zdo), 3, setdiff(inds, [inds(inds < zdo), 3])]);
+    sz = size(im_dist, 1 : 3);
 end
 
 if ~isempty(distBbox)

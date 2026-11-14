@@ -51,8 +51,13 @@ nF = numel(tileFns);
 i = tileInd;
 
 im_i = readzarr(tileFns{i});
+% the rows (x, y, z) of the overlap regions in the order of the axes of
+% im_i: xyz once permuted (to put z last), else the tile's own order
+olOrder = [1, 2, 3];
 if dataOrderMat(3) ~= 3
     im_i = permute(im_i, dataOrderMat);
+else
+    olOrder = dataOrderMat;
 end
 
 im_i_orig = im_i ~= 0;
@@ -100,7 +105,7 @@ else
         % dsr_ol = dsr(mregion_f(2, 1) : mregion_f(2, 2), mregion_f(1, 1) : mregion_f(1, 2), mregion_f(3, 1) : mregion_f(3, 2));
         % dsr(midx(2, 1) : midx(2, 2), midx(1, 1) : midx(1, 2), midx(3, 1) : midx(3, 2)) = 0;
 
-        mbbox = [midx(2, 1), midx(1, 1), midx(3, 1), midx(2, 2), midx(1, 2), midx(3, 2)];
+        mbbox = [midx(olOrder, 1)', midx(olOrder, 2)'];
         if any(mbbox(4 : 6) < mbbox(1 : 3))
             continue;
         end

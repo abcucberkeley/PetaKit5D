@@ -94,6 +94,10 @@ movefile(paramTmpName, paramFullname);
 imdistFileIdx = (1 : nF)';
 distTileIdx = (1 : nF)';
 if singleDistMap
+    % (without location ids, the tiles are of one location)
+    if isempty(locIds)
+        locIds = ones(nF, 1);
+    end
     [uniq_locIds, uniq_inds] = unique(locIds);    
     tileFullpaths = tileFullpaths(uniq_inds);
     imdistFileIdx = zeros(nF, 1);
@@ -128,6 +132,9 @@ if singleDistMap
             error('Number of distance bounding box does not match the number of unique tile image sizes!')
         end
     end    
+elseif size(distBboxes, 1) == 1 && nF > 1
+    % (one box for the maps of all tiles)
+    distBboxes = repmat(distBboxes, nF, 1);
 end
 if all(imdistFileIdx == imdistFileIdx(1))
     imdistFileIdx = imdistFileIdx(1);
