@@ -215,6 +215,12 @@ way; the processes it starts inherit the policy). Without it, single-threaded fi
 a process's arrays on one socket. The result records the policy the driver ran under
 (`node.numa_policy`).
 
+**OpenMP spin.** Importing petakit5d sets `GOMP_SPINCOUNT` (decision 0007), and MATLAB's
+Linux mex files use libgomp too. So the harness starts MATLAB variants without the port's
+value, as the user's shell starts MATLAB (`_variant_env` drops `GOMP_SPINCOUNT` where
+`PETAKIT5D_GOMP_SPINCOUNT` marks it as the port's); a user's own value and a variant's `env`
+are kept, and Python variants keep the port's value.
+
 ## Environment variables
 
 | Variable | Meaning |
