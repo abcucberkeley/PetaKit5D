@@ -294,8 +294,8 @@ UNMATCHED = TWO_CAM[:4] + ["Scan_Iter_0000_CamA_ch0_bad_name.tif"] + TWO_CAM[4:8
 PARTIAL = grid(xs=(0, 1, 2))
 PARTIAL_LIST = PARTIAL + [n.replace(".tif", "_part0001.tif") for n in PARTIAL[:2]]
 SPLIT_ABST = [tile_name("A", 0, x, 0, 0, msec=10 * x, abst=2000 + x) for x in range(3)]
-# six msec values, none a character code: the stitch info name's format recycles until its empty
-# z-layer text meets a %d (MATLAB prints an empty field there)
+# tiles whose msec fields differ: the stitch info name takes the first tile's (until 60740c5 the
+# format took all of them, and recycled until its empty z-layer text met a %d)
 LONG_ABST = [tile_name("A", 0, x, 0, 0, msec=100000 + 1000 * x, abst=2000 + x) for x in range(6)]
 
 PARSE_CASES = [

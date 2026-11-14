@@ -1,0 +1,22 @@
+{
+ "task": "S06",
+ "classes": {
+  "FeatherBlendingTest": {
+   "methods": {
+    "perTileMapsFollowTheDataOrder": [
+     "oracle:tests/stitch/test_distance.py::tile.dom*"
+    ],
+    "largeFileMapsWithZNotLast": [
+     "oracle:tests/stitch/test_distance.py::slab.dom*"
+    ],
+    "singleMapWithoutLocationIds": [
+     "pytest:tests/stitch/test_distance.py::test_single_map_without_location_ids"
+    ],
+    "oneBoxForThePerTileMaps": [
+     "pytest:tests/stitch/test_distance.py::test_one_box_for_the_per_tile_maps",
+     "oracle:tests/stitch/test_distance.py::wrapper.large.tile"
+    ]
+   }
+  }
+ }
+}

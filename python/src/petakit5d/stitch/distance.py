@@ -33,24 +33,27 @@ are independent, so they are computed in threads (results do not depend on the t
 Arrays are ``(z, y, x)`` C order, boxes ``(z0, y0, x0, z1, y1, x1)`` 0-based and end-exclusive,
 sizes and block sizes ``(z, y, x)``. ``data_order_axes`` is the array axis of x, y and z of the
 tile (``stitch.geometry.parse_data_order``; MATLAB's ``dataOrderMat``, ``[2 1 3]`` being
-``(2, 1, 0)``). Overlap regions are the block information's (``stitch.geometry.region_from_matlab``
-of its ``ol_region_cell``), over the tile's voxels. Files keep MATLAB's names (``imdist/<first
+``(2, 1, 0)``). Overlap regions are the block information's (its ``ol_region_cell``, rows x, y
+and z), over the tile's voxels. Files keep MATLAB's names (``imdist/<first
 tile>/<tile>_wr_<wd>.zarr``, ``..._z_pooling_<pool>_wr_1_for_<wd>.zarr``, with MATLAB's ``//``
 after the folder) and its ``parameters.mat``; the maps are native zarr arrays. On Windows the
 folder is ``imdist/`` itself, as MATLAB's ``ispc`` branch has it (``imdist//<tile>_wr_<wd>.zarr``),
 so the stitched volumes of one result folder share it there.
 
+The overlap regions (rows x, y, z) are read in the order of the tile's axes (``x, y, z`` of the
+array turned to put z last, else the tile's own order); the large-file map of a tile whose z is
+not its last axis is turned along z's dimension and back, and takes its size after turning back;
+without location ids the tiles are of one location, and one distance box is for every
+per-tile map.
+
 MATLAB quirks kept (each with a test): ``compute_tile_bwdist`` ignores its ``compressor`` and
 ``shard_size`` (createzarr's defaults); the large-file variant picks the chunk-file separator
 from ``sz / blockSize``, a matrix division (one number: the least-squares quotient), not
-``sz ./ blockSize``, and with ``z`` not last in the tile keeps the size of the turned array for
-its box weights and the zarr (the write fails unless the slab is a cube); an output that exists
-when a task starts is left as it is (``overwrite`` only replaces one that appears while it
-runs); ``distance_weight_single_axis`` returns double ones when the box covers the axis and
-grows its result when the box starts beyond it; the overlap regions (rows x, y, z) are read as
-``[y x z]`` of the (turned) array, so with any data order but MATLAB's ``[2 1 3]`` their x and
-y are exchanged; on Windows a call whose overlap regions differ from the shared folder's
-``parameters.mat`` removes the whole ``imdist/``, other volumes' maps included.
+``sz ./ blockSize``; an output that exists when a task starts is left as it is (``overwrite``
+only replaces one that appears while it runs); ``distance_weight_single_axis`` returns double
+ones when the box covers the axis and grows its result when the box starts beyond it; on Windows
+a call whose overlap regions differ from the shared folder's ``parameters.mat`` removes the
+whole ``imdist/``, other volumes' maps included.
 """
 
 from __future__ import annotations
@@ -562,16 +565,16 @@ def tile_distance_map_mip_slab(
 ) -> np.ndarray:
     """The weights of a tile's z MIP slab (``(z, y, x)``) as ``compute_tile_bwdist_mip_slabs``
     computes them (module docstring): no powers, the box (in the tile's full-size voxels) scaled
-    by ``pool_size`` (``(z, y, x)``, 3 values or 6: along z, then across). The map of a tile
-    whose z is not its last axis keeps MATLAB's sizes (the module docstring's quirk)."""
+    by ``pool_size`` (``(z, y, x)``, 3 values or 6: along z, then across). A tile whose z is
+    not its last axis is turned to put z's dimension last and back."""
     wd = float(weight_degree)
     dom = _dom(data_order_axes)
     vol = _as_volume(slab)
-    zdo = dom.index(3) + 1
+    # (the dimension of z)
+    zdo = dom[2]
     if dom[2] != 3:
         vol = _mpermute(vol, [d for d in (1, 2, 3) if d != zdo] + [zdo])
     nt = _threads(num_threads)
-    sz_m = (vol.shape[1], vol.shape[2], vol.shape[0])  # (not updated after the turn back)
     shape = vol.shape
     back = None
     if dom[2] != 3:
@@ -580,6 +583,8 @@ def tile_distance_map_mip_slab(
         back = first + [3] + [i for i in inds if i not in first + [3]]
         q = _mpermute_axes(back)
         shape = tuple(vol.shape[q[k]] for k in range(3))
+    # (MATLAB's sizes, of the map turned back)
+    sz_m = (shape[1], shape[2], shape[0])
     res = _check_out(out, shape)
     m = res if back is None else np.empty(vol.shape, dtype=np.float32)
     _map_slices(vol, m, None, True, (), None, nt, power=False)
@@ -668,11 +673,27 @@ def _read_block_info(path: str) -> dict[str, Any]:
     return info
 
 
-def _tile_overlaps(info: dict[str, Any], i: int) -> list[tuple[int, ...]]:
-    """the overlap regions of tile i (0-based) in the order of the other tiles: each pair's
-    first region for the lower tile, its second for the higher"""
-    from petakit5d.stitch.geometry import region_from_matlab
+def _region_box(m, ol_order: Sequence[int]) -> tuple[int, ...]:
+    """MATLAB's region ``[s t]`` (rows x, y, z) as a box of the (turned) array whose MATLAB
+    dimensions hold the rows ``ol_order`` (MATLAB's ``[midx(olOrder, 1)', midx(olOrder, 2)']``)"""
+    r = np.asarray(m, dtype=np.float64).reshape(3, 2)
+    o = [int(v) - 1 for v in ol_order]
+    return (
+        int(r[o[2], 0]) - 1,
+        int(r[o[0], 0]) - 1,
+        int(r[o[1], 0]) - 1,
+        int(r[o[2], 1]),
+        int(r[o[0], 1]),
+        int(r[o[1], 1]),
+    )
 
+
+def _tile_overlaps(
+    info: dict[str, Any], i: int, ol_order: Sequence[int] = (2, 1, 3)
+) -> list[tuple[int, ...]]:
+    """the overlap regions of tile i (0-based) in the order of the other tiles: each pair's
+    first region for the lower tile, its second for the higher, as boxes of the (turned) array
+    whose MATLAB dimensions hold the regions' rows ``ol_order`` (x, y, z: 1, 2, 3)"""
     n = len(info["tileFns"])
     om = np.asarray(info["overlap_matrix"]).reshape(n, n, order="F")
     omap = info["overlap_map_mat"]
@@ -691,7 +712,7 @@ def _tile_overlaps(info: dict[str, Any], i: int) -> list[tuple[int, ...]]:
                 "MATLAB:index:expected_one_output_from_intermediate_indexing",
             )
         pair = info["ol_region_cell"][int(rows[0])]
-        out.append(region_from_matlab(pair[0 if i < j else 1]))
+        out.append(_region_box(pair[0 if i < j else 1], ol_order))
     return out
 
 
@@ -721,20 +742,15 @@ def _write_map(
     shard_size=None,
     compressor: str = "zstd",
     overwrite: bool = False,
-    size: Sequence[int] | None = None,
 ) -> None:
-    """the map written as MATLAB writes it: createzarr of ``size`` (the map's own unless given)
-    under a temporary name, writezarr, then the rename"""
+    """the map written as MATLAB writes it: createzarr of its size under a temporary name,
+    writezarr, then the rename"""
     from petakit5d.core.ids import get_uuid
     from petakit5d.io import create_zarr, write_zarr
 
     tmp = f"{final}_{get_uuid()}"
-    size = tuple(m.shape) if size is None else tuple(int(v) for v in size)
-    create_zarr(tmp, data_size=size, block_size=block, shard_size=shard_size, dtype="single",
-                compressor=compressor, dim_separator=sep)  # fmt: skip
-    if any(a > b for a, b in zip(m.shape, size, strict=True)):
-        # (MATLAB: writezarr of data beyond the array; the temporary array stays)
-        raise DistanceError("Upper bound is invalid", "zarr:inputError")
+    create_zarr(tmp, data_size=tuple(m.shape), block_size=block, shard_size=shard_size,
+                dtype="single", compressor=compressor, dim_separator=sep)  # fmt: skip
     write_zarr(m, tmp, num_threads=nt, bbox=(0, 0, 0, *m.shape))
     _publish(tmp, final, overwrite)
 
@@ -814,7 +830,11 @@ def compute_tile_bwdist(
     i = int(tile_ind)
     nt = _threads(num_threads)
     tile = read_zarr(info["tileFns"][i], num_threads=nt)
-    overlaps = () if single_dist_map else _tile_overlaps(info, i)
+    # the rows (x, y, z) of the overlap regions in the order of the turned array's axes: x, y, z
+    # once turned (to put z last), else the tile's own order
+    dom = _dom(data_order_axes)
+    ol_order = (1, 2, 3) if dom[2] != 3 else tuple(dom)
+    overlaps = () if single_dist_map else _tile_overlaps(info, i, ol_order)
     m = tile_distance_map(
         tile, weight_degree, single_dist_map=bool(single_dist_map), overlaps=overlaps,
         dist_bbox=dist_bbox, data_order_axes=data_order_axes, num_threads=nt,
@@ -891,28 +911,21 @@ def compute_tile_bwdist_mip_slabs(
     mip = f"{data_path}/{mip_slab_name(pool_size)}/{fsn}_z.zarr"
     nt = _threads(num_threads)
     slab = read_zarr(mip, num_threads=nt)
-    dom = _dom(data_order_axes)
-    zdo = dom.index(3) + 1
-    turned = _as_volume(slab).shape
-    if dom[2] != 3:
-        turned = tuple(turned[k] for k in _mpermute_axes(
-            [d for d in (1, 2, 3) if d != zdo] + [zdo]))  # fmt: skip
     m = tile_distance_map_mip_slab(
         slab, weight_degree, pool_size=pool_size, dist_bbox=dist_bbox,
         data_order_axes=data_order_axes, num_threads=nt,
     )  # fmt: skip
     del slab
-    # MATLAB's size of the zarr and the separator: those of the turned array (sz is not updated),
-    # with ceil(sz / blockSize) of the matrix division
+    # the separator from ceil(sz / blockSize), a matrix division
     block = [int(v) for v in block_size]
-    sz_m = [turned[1], turned[2], turned[0]]
+    sz_m = [m.shape[1], m.shape[2], m.shape[0]]
     from petakit5d.core.axes import to_yxz
 
     q = _mrdivide_rows(sz_m, to_yxz(block))
     sep = _dim_separator(float(math.ceil(q)))
     shard = None if shard_size is None or len(shard_size) == 0 else [int(v) for v in shard_size]
     _write_map(m, final, block, sep, nt, shard_size=shard, compressor=compressor,
-               overwrite=bool(overwrite), size=turned)  # fmt: skip
+               overwrite=bool(overwrite))  # fmt: skip
 
 
 # ---------------------------------------------------------------------------------------------
@@ -1041,6 +1054,9 @@ def compute_tile_distance_transform(
         boxes_m = np.array([box_to_matlab(b) for b in dist_bboxes], dtype=np.float64)
     if single_dist_map:
         lid = np.asarray([] if loc_ids is None else loc_ids, dtype=np.float64).ravel()
+        # (without location ids, the tiles are of one location)
+        if lid.size == 0:
+            lid = np.ones(n_f)
         uniq, first = _unique_first(lid)
         paths = [paths[k] for k in first]
         file_idx = [0] * n_f
@@ -1070,6 +1086,9 @@ def compute_tile_distance_transform(
                     "Number of distance bounding box does not match the number of unique tile "
                     "image sizes!"
                 )
+    elif boxes_m is not None and boxes_m.shape[0] == 1 and n_f > 1:
+        # (one box for the maps of all tiles)
+        boxes_m = np.repeat(boxes_m, n_f, axis=0)
     if file_idx and all(v == file_idx[0] for v in file_idx):
         file_idx = file_idx[:1]
     n_f = len(paths)

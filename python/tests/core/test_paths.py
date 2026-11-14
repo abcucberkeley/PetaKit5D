@@ -137,11 +137,22 @@ def test_mkdir_recursive_still_raises_when_a_file_is_in_the_way(tmp_path):
         paths.mkdir_recursive(str(tmp_path / "f"))
 
 
-def test_mkdir_recursive_relative_path_starts_at_the_root(monkeypatch):
-    # MATLAB's strjoin({'', 'rel'}, '/') makes 'rel/sub' into '/rel', '/rel/sub' (kept)
+def test_mkdir_recursive_relative_path_starts_at_the_current_folder(monkeypatch):
+    # (until bef98d1 MATLAB's strjoin({'', 'rel'}, '/') made 'rel/sub' into '/rel', '/rel/sub')
     made = []
     monkeypatch.setattr(paths.os, "makedirs", lambda p: made.append(p))
     monkeypatch.setattr(paths.os.path, "isdir", lambda p: False)
     monkeypatch.setattr(paths, "_IS_PC", False)
     paths.mkdir_recursive("rel_f02/sub")
-    assert made == ["/rel_f02", "/rel_f02/sub"]
+    assert made == ["./rel_f02", "./rel_f02/sub"]
+    made.clear()
+    # (an absolute path as before: strjoin({'', ''}, '/') is '/', then '//abs_f02', ...)
+    paths.mkdir_recursive("/abs_f02/sub")
+    assert made == ["/", "//abs_f02", "//abs_f02/sub"]
+
+
+def test_mkdir_recursive_makes_a_relative_path_in_the_current_folder(tmp_path, monkeypatch):
+    # (ZarrIOTest/relativePathsAreInTheCurrentFolder)
+    monkeypatch.chdir(tmp_path)
+    assert paths.mkdir_recursive("a/b") == 1
+    assert (tmp_path / "a" / "b").is_dir()

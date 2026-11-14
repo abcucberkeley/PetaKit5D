@@ -868,7 +868,8 @@ def parse_image_list(
     if xcorr_mode == "primaryFirst":
         primary_tab = _primary_rows(tab, ch, cam, full_iter, stackn, nz, zlayer_stitch)
         p_laser = unique_num(primary_tab["laser"])
-        p_abstime = unique_num(primary_tab["abstime"])
+        # the first tile's, as its fpga time (tiles' msec fields may differ)
+        p_abstime = _index1(primary_tab["abstime"], "abstime")
         p_fpgatime = primary_tab["fpgatime"][0]
         p_z = unique_num(primary_tab["z"])[0]
         if len(p_laser) > 1:

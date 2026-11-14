@@ -20,7 +20,9 @@ the files are compared: the stitched volume, the flags with their MIPs, the JSON
 - ``merge.*``: stitch_merge_block_mips of flags as processStitchBlock writes them
   (StitchMergeBlockMipsTest);
 - ``separate.*``: each tile on its own canvas (processStitchSeparteTiles, through XR_crop_zarr);
-- errors: a border (MATLAB's blocks read past the tiles), 'Feather' (strcmp at the merge).
+- ``blend.border.*``: batches with a border, cut to their own size; ``blend.Feather.*``: the
+  method's name in another case (MATLAB's blocks read past the tiles, and 'Feather' failed at
+  the merge, until bef98d1).
 
 The pytest functions port StitchMergeBlockMipsTest and the blending tests of StitchingTest in
 intent (the overlap split of 'none' and of 'half' in quarters, exact tiles giving the ground
@@ -270,8 +272,7 @@ LF_SCENES: dict[str, Scene] = {
         maps="pooled",
         holes=False,
         pooled_values=((8, 9), (1, 3), (1, 2)),
-        # (the hole's box in the overlap region's coordinates, read as the batch's, falls in
-        # tile 2 where tile 1 has data: tile 2 is read and blended there)
+        # (the minor tiles are read in the major tile's hole, in the batch's coordinates)
         major_hole=(2, 9, 9, 6, 12, 12),
     ),
     # one minor tile (tile 2) with two major ones: its weight is constant where it is read
@@ -599,16 +600,14 @@ BLENDS["blend.task1.grid2x2.feather.uint16"] = Blend(
 )
 for _c in ("uint16", "single"):
     BLENDS[f"blend.exact80.feather.{_c}"] = Blend(SCENES_EXTRA["exact80"], "feather", _c, _c)
-ERRORS: dict[str, Blend] = {
-    "error.blend.border.grid2x2.none": Blend(
-        SCENES["grid2x2"], "none", "uint16", "uint16", border=(1, 1, 1)
-    ),
-    "error.blend.Feather.partial": Blend(SCENES["partial"], "Feather", "uint16", "uint16"),
-}
+BLENDS["blend.border.grid2x2.none"] = Blend(
+    SCENES["grid2x2"], "none", "uint16", "uint16", border=(1, 1, 1)
+)
+BLENDS["blend.Feather.partial"] = Blend(SCENES["partial"], "Feather", "uint16", "uint16")
 
 
 def p_blend(name: str, work: str):
-    return run_blend({**BLENDS, **ERRORS}[name], base=work)[0]
+    return run_blend(BLENDS[name], base=work)[0]
 
 
 def _blend_case(name: str, b: Blend, **kw) -> Case:
@@ -628,7 +627,6 @@ def _blend_case(name: str, b: Blend, **kw) -> Case:
 
 
 CASES: list[Case] = [_blend_case(n, b) for n, b in BLENDS.items()]
-CASES += [_blend_case(n, b, expect_error=True, py_error=Exception) for n, b in ERRORS.items()]
 
 # --- stitch_merge_block_mips: flags as processStitchBlock writes them, merged
 _MERGE_CODE = (

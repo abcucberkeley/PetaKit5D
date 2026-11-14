@@ -54,17 +54,17 @@ jobs.
   result exists (``batch_file_exist``); a volume's last try is waited for, and between rounds
   the wait returns within a second of the results, tiles or stitch information still to come.
 
+A volume is named after its first tile's msec and fpga times (the tiles' msec fields may
+differ); a missing primary volume in 'primary' mode skips that time point's volumes of every
+camera and channel; ``process_fun_path`` has one path per channel pattern (one path: for all),
+chosen by the first tile's path (``contains``) of each volume; a resample factor of one or two
+values is completed to three (``[r r r]``, ``[xy xy z]``) and a 3 x 2 ``out_bbox`` (``[min max]``
+per axis) is its 1 x 6 form; the job log folder goes to the frame unless it is the default.
+
 The MATLAB function's quirks are kept: the axis-order check never raises; the job sizes use
-the first tile size seen for every volume; with ``multi_loc`` a volume's number in the job's
-array index, the last-volume rule and the job lookup is its tile count (the tile loops reuse
-MATLAB's variable ``f``); 'primary' secondaries without camera names take the first stack's
-stitch information; a missing primary volume in 'primary' mode skips the first time point's
-volumes of every camera and channel (and its secondary then fails, as MATLAB's index error);
-tiles of one volume whose msec fields differ give a garbled name (MATLAB's sprintf of the
-unique values), whose ``.tmp`` marker can't be made; ``process_fun_path`` entries are chosen by
-the first tile's path (``contains``) of each volume. Where MATLAB's function string would be
-garbled (a vector where it formats a scalar, a 3 x 2 ``out_bbox``), the port raises
-``StitchDatasetError``.
+the first tile size seen for every volume; 'primary' secondaries without camera names take the
+first stack's stitch information. Where MATLAB's function string would be garbled (a vector
+where it formats a scalar), the port raises ``StitchDatasetError``.
 
 Waiting on others: the registration (S04, through the frame: without it a registered primary
 with overlapping tiles needs its ``xcorr/<name>.mat``), MATLAB-code tile functions (S02).
@@ -718,6 +718,19 @@ def stitch_dataset(
         stitching_rt = f"{data_path_1}/{result_dir_name}"
     _mkdir_shared(stitching_rt)
     _save_parameters(stitching_rt, pr)
+    # the frame takes 3 resampling factors (y, x, z): 1 value for all axes, 2 for xy and z
+    if not _empty(pr["resampleFactor"]):
+        rf = [float(v) for v in np.asarray(pr["resampleFactor"], dtype=np.float64).ravel()]
+        if len(rf) == 1:
+            rf = rf * 3
+        elif len(rf) == 2:
+            rf = [rf[0], rf[0], rf[1]]
+        pr["resampleFactor"] = rf
+        if len(rf) == 3:
+            resample_factor = (rf[2], rf[0], rf[1])
+    # (a 3 x 2 outBbox, [min max] per axis, as its 1 x 6 form)
+    if not _empty(pr["outBbox"]):
+        pr["outBbox"] = [float(v) for v in np.asarray(pr["outBbox"], np.float64).ravel(order="F")]
 
     # the axis order (MATLAB's check never raises: `~regexpi(...)` is false for a match and
     # for no match)
@@ -766,7 +779,10 @@ def stitch_dataset(
     if isinstance(process_fun_path, str) or process_fun_path is None:
         fun_rows = [process_fun_path or ""] * len(channels)
     else:
+        # one path per channel pattern (as the rows are chosen by channel), or one for all
         fun_rows = ["" if _empty(p) else str(p) for p in process_fun_path]
+        if len(fun_rows) == 1 and len(channels) > 1:
+            fun_rows = fun_rows * len(channels)
 
     s = {
         "multi_loc": bool(multi_loc),
@@ -1024,11 +1040,11 @@ class _Loop:
         if cur.height == 0:
             self.row_exist[sub] = False
             self.done[sub] = True
-            # if the primary channel is missing, the other channels are skipped in 'primary'
-            # mode (MATLAB marks the first time point, stack and z layer)
+            # if the primary channel is missing, the other channels of the time point are
+            # skipped in 'primary' mode
             if ncam == 0 and c == 0 and xcorr_mode == "primary":
-                self.row_exist[0, :, 0, :, 0] = False
-                self.done[0, :, 0, :, 0] = True
+                self.row_exist[n, :, st, :, z] = False
+                self.done[n, :, st, :, z] = True
             return
 
         # 'primaryFirst': the number of tiles must be the primary channel's
@@ -1046,7 +1062,8 @@ class _Loop:
             return
 
         laser = _unique(cur["laser"])
-        abstime = _unique(cur["abstime"])
+        # the first tile's, as its fpga time (tiles' msec fields may differ)
+        abstime = float(cur["abstime"][0])
         fpgatime = float(cur["fpgatime"][0])
         xyz = np.column_stack(
             [
@@ -1066,8 +1083,6 @@ class _Loop:
         if s["multi_loc"]:
             did = [int(v) for v in cur["did"]]
             tile_fullpaths = [f"{s['paths'][d - 1]}/{x}" for d, x in zip(did, fnames, strict=True)]
-            # (MATLAB's tile loop reuses the volume's number f: it is nF from here on)
-            f = nf
         else:
             tile_fullpaths = [f"{s['paths'][0]}/{x}" for x in fnames]
 
@@ -1093,7 +1108,6 @@ class _Loop:
                     f"{s['paths'][d - 1]}/{processed_dir_str}/{x}"
                     for d, x in zip(did, fnames, strict=True)
                 ]
-                f = nf
             else:
                 tile_processed = [f"{s['paths'][0]}/{processed_dir_str}/{x}" for x in fnames]
             exist = _batch_exist(tile_processed)
@@ -1149,7 +1163,7 @@ class _Loop:
                     "MATLAB:badsubscript",
                 )
             p_laser = _unique(ptab["laser"])
-            p_abstime = _unique(ptab["abstime"])
+            p_abstime = float(ptab["abstime"][0])
             p_fpgatime = float(ptab["fpgatime"][0])
             p_z = _unique(ptab["z"])[0]
             if p_laser.size > 1:
@@ -1183,7 +1197,7 @@ class _Loop:
 
         # online stitching: results of fewer tiles are removed
         if s["online_stitch"]:
-            self._remove_fewer_tiles(save_fsname, z_str, nf, sub)
+            self._remove_fewer_tiles(save_fsname, z_str, nf, sub, zlayer)
 
         # first check if the volume is done
         if _batch_exist([save_fname])[0]:
@@ -1264,13 +1278,18 @@ class _Loop:
             _NAME_NOCAM + ext, folder, prefix, fi, ch, stack, laser, abstime, fpgatime, z_str
         )
 
-    def _remove_fewer_tiles(self, save_fsname: str, z_str: str, nf: int, sub) -> None:
+    def _remove_fewer_tiles(self, save_fsname: str, z_str: str, nf: int, sub, zlayer: bool) -> None:
         from petakit5d.core.paths import fileparts, matlab_dir
         from petakit5d.jobs.publish import remove_path
 
         rt = self.s["stitching_rt"]
-        # (for bidirectional scans the fpga time may change)
-        pattern = f"{save_fsname[:-32]}_*msecAbs_{z_str[1:5]}*ntile.zarr"
+        # (for bidirectional scans the fpga time may change; without streaming the names have
+        # no z layer)
+        if zlayer:
+            pattern = f"{save_fsname[:-32]}_*msecAbs_{z_str[1:5]}*ntile.zarr"
+        else:
+            pattern = f"{save_fsname[: max(0, len(save_fsname) - 18 - len(z_str))]}"
+            pattern += "_*msecAbs_*ntile.zarr"
         names = [e.name for e in matlab_dir(pattern)]
         for name in names:
             m = re.search(r"_(\d+)ntile", name)
@@ -1336,11 +1355,6 @@ class _Loop:
             tiles_str, xyz_str, tile_idx_str, flipped_str = "{}", "[]", "[]", ""
 
         out_bbox = pr["outBbox"]
-        if out_bbox is not None and np.ndim(out_bbox) == 2 and np.shape(out_bbox)[0] > 1:
-            raise StitchDatasetError(
-                "outBbox: a 3 x 2 box makes num2str give several rows, which garble MATLAB's "
-                "function string; give it as [ymin xmin zmin ymax xmax zmax]"
-            )
         v = {
             "tile_fullpaths": tiles_str,
             "xyz": xyz_str,
@@ -1404,6 +1418,9 @@ class _Loop:
         # (and masterCompute only when off, as the frame's default is true)
         if self.cluster and not s["master_compute"]:
             func_str = func_str[:-1] + ",'masterCompute',false)"
+        # (and the job log folder unless it is the frame's default, so that its jobs log there)
+        if s["job_log_dir"] != "../job_logs":
+            func_str = _sprintf("%s,'jobLogDir','%s')", func_str[:-1], s["job_log_dir"])
         return func_str
 
     # -- cluster jobs ------------------------------------------------------------------------

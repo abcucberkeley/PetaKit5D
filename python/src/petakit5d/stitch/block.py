@@ -33,11 +33,10 @@ x0, z1, y1, x1)``, 0-based, end-exclusive; sizes, the border and the pool size a
 x)``. The flags keep MATLAB's values (1-based batch numbers, ``[ymin xmin ymax xmax]`` MIP
 boxes). Reads go through one buffer per kind (tiles, distance maps), reused across batches.
 
-MATLAB quirks kept (each with a test): the box of voxels the major tiles leave empty is taken
-in the overlap region's coordinates but used as the batch's; minor tiles that the major tiles
-don't cover are read only when the major tiles leave voxels empty (``~any(major_cover(~minor))``
-is false whenever there is a major tile); with a border (``border_size`` > 0) the batch is cut
-to ``[s + 1, s + batchSize]``, which fails for a batch at the volume's end that is smaller.
+With pooled maps the voxels the major tiles leave without data are read from the minor tiles
+(their box in the batch's coordinates), as are the minor tiles' parts the major tiles don't
+cover (with the major tile's weight); 'feather' is matched in any case; with a border
+(``border_size`` > 0) the batch is cut to its own size.
 """
 
 from __future__ import annotations
@@ -442,9 +441,12 @@ def _minor_tiles(
     cells, ranges = st["cells"], st["ranges"]
     n = len(tiles)
     valid, unvalid = check_major_tile_valid(tim_f, ~minor, num_threads=nt)
+    # (in the batch's coordinates: tim_f is the overlap region)
+    if not valid:
+        unvalid = tuple(int(unvalid[q]) + c[q % 3] for q in range(6))  # type: ignore[index]
     cover, uncover = check_major_tile_cover(np.asarray(boxes, dtype=np.int64), ~minor)
     orig_major = ~minor
-    if not valid or not np.any(cover[~minor]):
+    if not valid or not bool(np.all(cover)):
         for j in range(n):
             if orig_major[j] and np.sum(orig_major) > 1 and cover[j]:
                 continue
@@ -457,8 +459,13 @@ def _minor_tiles(
                     else [min(unvalid[q], uc[q]) for q in range(3)]  # type: ignore[index]
                     + [max(unvalid[q + 3], uc[q + 3]) for q in range(3)]  # type: ignore[index]
                 )
+            elif not valid:
+                u = list(unvalid)  # type: ignore[arg-type]
+            elif orig_major[j]:
+                # (the major tile's weight, for the minor tiles it does not cover)
+                u = list(boxes[j])
             else:
-                u = None if valid else list(unvalid)  # type: ignore[arg-type]
+                u = None
             if u is None:
                 continue
             b = boxes[j]
@@ -625,9 +632,7 @@ def _blend_batch(
 
     if st["num_tiles"] == 1:
         return st["tim_f"][0]
-    # (MATLAB: strcmpi for the feather steps above, strcmp here: 'Feather' fails in
-    # tile_blending_3d)
-    if blend_method == "feather":
+    if blend_method.lower() == "feather":
         if st["full"]:
             nv, mex = K.feather_blending_3d(st["tim_f"], st["tim_d"], num_threads=nt)
         else:
@@ -860,7 +865,7 @@ def process_stitch_block(
         )
         if any(v > 0 for v in border):
             s = [(sub[q] != 0) * border[q] for q in range(3)]
-            nv = _crop3(nv, [s[q] for q in range(3)] + [s[q] + bs[q] for q in range(3)], nt)
+            nv = _crop3(nv, [s[q] for q in range(3)] + [s[q] + nbsz[q] for q in range(3)], nt)
         if list(nv.shape) != nbsz:
             nv = _crop3(nv, [0, 0, 0, *nbsz], nt)
         if save_mip:

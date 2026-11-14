@@ -380,8 +380,8 @@ def pixel_info_name(xp: float, yp: float, zp: float) -> str:
 
 
 def _write_pixel_info(result_root: str, name: str) -> None:
-    """the marker file of the voxel sizes in ``result_root``; other markers there are deleted
-    (MATLAB's ``fclose(fopen(..., 'w'))`` fails where the folder is missing)"""
+    """the marker file of the voxel sizes in ``result_root`` (made first if it is missing, as
+    for a direct call: the wrapper makes it); other markers there are deleted"""
     from petakit5d.core.paths import matlab_dir
     from petakit5d.io.tiff import group_writable
 
@@ -390,11 +390,7 @@ def _write_pixel_info(result_root: str, name: str) -> None:
             os.remove(f"{e.folder}/{e.name}")
     path = f"{result_root}/{name}"
     if not os.path.exists(path):
-        if not os.path.isdir(result_root):
-            raise StitchVolumeError(
-                "Invalid file identifier. Use fopen to generate a valid file identifier.",
-                "MATLAB:FileIO:InvalidFid",
-            )
+        os.makedirs(result_root, exist_ok=True)
         open(path, "w").close()
         group_writable(path)
 
@@ -806,14 +802,12 @@ def _edge_function(dsr: bool, stitch_mip, tile_offset: float, edge_artifacts: fl
 
 def _process_fun_rows(process_fun_path: Any) -> list[list[str]] | None:
     """processFunPath as MATLAB's cell: rows of function files (None: MATLAB's ``{''}``); a flat
-    sequence is one row (the wrapper passes ``1 x k``)"""
+    sequence is one row (the wrapper passes ``1 x k``), one path (text) the cell of it"""
     if _empty(process_fun_path):
         return None
     if isinstance(process_fun_path, str):
-        # MATLAB: cellfun(@isempty, processFunPath) of a char fails
-        raise StitchVolumeError(
-            "Input #2 expected to be a cell array, was char instead.", "MATLAB:cellfun:NotACell"
-        )
+        # (one path, for all tiles, as the wrapper gives it in a cell)
+        return [[process_fun_path]]
     items = list(process_fun_path)
     if items and all(isinstance(x, str) for x in items):
         rows = [[str(x) for x in items]]

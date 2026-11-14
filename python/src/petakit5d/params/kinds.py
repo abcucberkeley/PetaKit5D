@@ -127,8 +127,14 @@ _XYZ = (2, 1, 0)
 
 
 def _box_in(v: Any) -> Any:
+    import numpy as np
+
     from petakit5d.core.bbox import box_from_matlab
 
+    # (a 3 x 2 box, [min max] per axis as outBbox may be: MATLAB's linear order, v(:)')
+    a = np.asarray(v)
+    if a.shape == (3, 2):
+        v = a.ravel(order="F")
     return box_from_matlab(v)
 
 

@@ -1,23 +1,42 @@
 {
-  "task": "S07",
-  "classes": {
-    "StitchMergeBlockMipsTest": {
-      "finished": true,
-      "methods": {
-        "mergedMIPEqualsMIPOfTheImage": [
-          "pytest:tests/stitch/test_block.py::test_merged_mip_equals_mip_of_the_image",
-          "oracle:tests/stitch/test_block.py::merge.uint16",
-          "oracle:tests/stitch/test_block.py::merge.one_task"
-        ],
-        "singleKeepsNegativesAndNaN": [
-          "pytest:tests/stitch/test_block.py::test_single_keeps_negatives_and_nan",
-          "oracle:tests/stitch/test_block.py::merge.single_negative_nan"
-        ],
-        "flagWithoutMIPsGivesNoMIP": [
-          "pytest:tests/stitch/test_block.py::test_flag_without_mips_gives_no_mip",
-          "oracle:tests/stitch/test_block.py::merge.flag_without_mips"
-        ]
-      }
-    }
+ "task": "S07",
+ "classes": {
+  "StitchMergeBlockMipsTest": {
+   "finished": true,
+   "methods": {
+    "mergedMIPEqualsMIPOfTheImage": [
+     "pytest:tests/stitch/test_block.py::test_merged_mip_equals_mip_of_the_image",
+     "oracle:tests/stitch/test_block.py::merge.uint16",
+     "oracle:tests/stitch/test_block.py::merge.one_task"
+    ],
+    "singleKeepsNegativesAndNaN": [
+     "pytest:tests/stitch/test_block.py::test_single_keeps_negatives_and_nan",
+     "oracle:tests/stitch/test_block.py::merge.single_negative_nan"
+    ],
+    "flagWithoutMIPsGivesNoMIP": [
+     "pytest:tests/stitch/test_block.py::test_flag_without_mips_gives_no_mip",
+     "oracle:tests/stitch/test_block.py::merge.flag_without_mips"
+    ]
+   }
+  },
+  "StitchBlockTest": {
+   "finished": true,
+   "methods": {
+    "largeFileHoleOfTheMajorTileGetsTheMinorTiles": [
+     "oracle:tests/stitch/test_block.py::lf.lf_major_holes.*"
+    ],
+    "largeFileMinorTileOutsideTheMajorTileIsRead": [
+     "oracle:tests/stitch/test_block.py::lf.lf_minor_out.*",
+     "oracle:tests/stitch/test_block.py::lf.lf_one_minor.*"
+    ],
+    "featherBlendMethodInAnyCase": [
+     "oracle:tests/stitch/test_block.py::blend.Feather.partial"
+    ],
+    "blocksWithABorderGiveTheSameVolume": [
+     "oracle:tests/stitch/test_block.py::blend.border.grid2x2.none",
+     "oracle:tests/stitch/test_blockinfo.py::info.*"
+    ]
+   }
   }
+ }
 }

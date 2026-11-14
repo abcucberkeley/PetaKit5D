@@ -1,0 +1,13 @@
+{
+ "task": "IO2",
+ "classes": {
+  "ZarrIOTest": {
+   "methods": {
+    "relativePathsAreInTheCurrentFolder": [
+     "pytest:tests/core/test_paths.py::test_mkdir_recursive_makes_a_relative_path_in_the_current_folder",
+     "pytest:tests/core/test_paths.py::test_mkdir_recursive_relative_path_starts_at_the_current_folder"
+    ]
+   }
+  }
+ }
+}

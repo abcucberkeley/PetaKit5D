@@ -240,11 +240,14 @@ def mkdir_recursive(full_path: str | os.PathLike, group_write: bool = False) -> 
     folder it makes gets group write permission. Returns 1, as MATLAB does."""
     full_path = os.fspath(full_path)
     cur = ""
+    # (a relative path from the current folder, not from the root)
+    if not _IS_PC and full_path and full_path[0] not in "/~":
+        cur = "."
     for part in full_path.split("/"):
         if part == "~":
             cur = "~"
             continue
-        # strjoin({cur, part}, '/'): a relative path is taken from the root, as in MATLAB
+        # strjoin({cur, part}, '/')
         cur = part if (_IS_PC and cur == "") else cur + "/" + part
         target = os.path.expanduser(cur)
         if os.path.isdir(target):

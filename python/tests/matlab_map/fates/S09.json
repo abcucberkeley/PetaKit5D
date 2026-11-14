@@ -211,6 +211,42 @@
      "pytest:tests/stitch/test_volume.py::test_local_workers_give_the_same_result",
      "oracle:tests/stitch/test_dataset.py::wrapper.local_workers.feather",
      "oracle:tests/stitch/test_volume.py::frame.dsr.local_workers"
+    ],
+    "tilesWithOtherMsecFieldsAreStitched": [
+     "pytest:tests/stitch/test_dataset.py::test_tiles_with_other_msec_fields_are_stitched",
+     "oracle:tests/stitch/test_dataset.py::wrapper.msec_differ.*"
+    ],
+    "multiLocVolumesGetTheirOwnJobs": [
+     "pytest:tests/stitch/test_dataset.py::test_multi_loc_volumes_get_their_own_jobs"
+    ],
+    "primaryModeSkipsTheChannelsOfATimePointWithoutItsPrimary": [
+     "pytest:tests/stitch/test_dataset.py::test_primary_mode_skips_the_channels_of_a_time_point_without_its_primary",
+     "pytest:tests/stitch/test_dataset.py::test_primary_mode_keeps_the_channels_of_other_time_points",
+     "oracle:tests/stitch/test_dataset.py::wrapper.primary_mode.missing_primary.none"
+    ],
+    "onlineStitchWithoutStreamingRemovesResultsOfFewerTiles": [
+     "pytest:tests/stitch/test_dataset.py::test_online_stitch_without_streaming_removes_results_of_fewer_tiles"
+    ],
+    "stitchingFunctionGetsTheJobLogFolder": [
+     "pytest:tests/stitch/test_dataset.py::test_stitching_function_gets_the_job_log_folder"
+    ],
+    "outBboxOfThreeRowsIsItsSixValues": [
+     "pytest:tests/stitch/test_dataset.py::test_out_bbox_of_three_rows_is_its_six_values"
+    ],
+    "processFunctionRowHasOnePathPerChannel": [
+     "pytest:tests/stitch/test_dataset.py::test_process_function_row_has_one_path_per_channel"
+    ],
+    "resampleFactorOfOneOrTwoValues": [
+     "pytest:tests/stitch/test_dataset.py::test_resample_factor_of_one_or_two_values",
+     "oracle:tests/stitch/test_dataset.py::wrapper.resample.*"
+    ],
+    "stitchingFunctionMakesItsResultFolder": [
+     "pytest:tests/stitch/test_volume.py::test_stitching_function_makes_its_result_folder",
+     "oracle:tests/stitch/test_volume.py::frame.dsr.no_result_folder"
+    ],
+    "stitchingFunctionTakesOneProcessFunctionPath": [
+     "pytest:tests/stitch/test_volume.py::test_process_function_rows",
+     "oracle:tests/stitch/test_volume.py::frame.dsr.process_function_path"
     ]
    }
   },

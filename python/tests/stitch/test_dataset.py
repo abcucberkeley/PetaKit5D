@@ -1010,28 +1010,48 @@ def test_names_with_and_without_cameras(tmp_path, frames):
     )
 
 
-def test_garbled_name_when_the_msec_of_tiles_differ(tmp_path, frames):
-    """MATLAB passes the unique msec values into the name's sprintf: with two, the format is
-    used again from the start: the second msec value is the msecAbs field and the msecAbs value
-    goes to the z text's %s, which makes it char(0); the .tmp marker of that name can't be made
-    (MATLAB: fclose of fopen's -1). Kept."""
-    from petakit5d.core.text import sprintf
+def _set_msec(folder, csv, names, msecs):
+    """the tiles' msec fields (renamed, and in the image list)"""
+    text = Path(csv).read_bytes()
+    for n, ms in zip(names, msecs, strict=True):
+        new = n.replace("_0000000msec_", f"_{ms:07d}msec_")
+        os.rename(f"{folder}/{n}.tif", f"{folder}/{new}.tif")
+        text = text.replace(n.encode(), new.encode())
+    Path(csv).write_bytes(text)
 
+
+def _primary_info(root):
+    """a frame spy's action: the result, and for a primary its stitch information"""
+
+    def act(kw):
+        os.makedirs(kw["result_path"])
+        if kw["is_primary_ch"]:
+            n = Path(kw["result_path"]).stem
+            os.makedirs(f"{root}/matlab_stitch/stitchInfo", exist_ok=True)
+            Path(f"{root}/matlab_stitch/stitchInfo/{n}.mat").touch()
+
+    return act
+
+
+@pytest.mark.parametrize("xcorr_mode", ["primaryFirst", "primary", "all"])
+def test_tiles_with_other_msec_fields_are_stitched(tmp_path, frames, xcorr_mode):
+    """(StitchingTest/tilesWithOtherMsecFieldsAreStitched) the msec fields of a volume's tiles
+    can differ (real data): its names take the first tile's, as the fpga time, also for the
+    primary's stitch information that the secondary channel reads (until 60740c5 MATLAB's
+    sprintf took all of them, with a char(0) from the fpga time: the .tmp marker failed)"""
     gt = random_volume(GRID_GT)
-    _, csv = write_stitch_tiles(str(tmp_path), cut_tiles(gt, GRID_STARTS, GRID_TILE))
-    # tile 3's msec field is 5
-    old = stitch_tile_name([0, 1, 0])
-    new = old.replace("0000000msec", "0000005msec")
-    os.rename(f"{tmp_path}/{old}.tif", f"{tmp_path}/{new}.tif")
-    Path(csv).write_text(Path(csv).read_text().replace(old, new))
-    with pytest.raises(SD.StitchDatasetError) as err:
-        stitch(tmp_path, csv)
-    assert err.value.identifier == "MATLAB:FileIO:InvalidFid"
-    assert frames.calls == []
-    name = sprintf(SD._NAME_CAM, f"{tmp_path}//matlab_stitch", "", "0000_0000", "A", 0, 0, 488,
-                   np.array([0.0, 5.0]), 0.0, "")  # fmt: skip
-    # (the second pass of the format takes the empty z text and ends at its first %s)
-    assert name.endswith("_0000000msec_0000000005msecAbs\x00/")
+    tiles = cut_tiles(gt, GRID_STARTS, GRID_TILE)
+    for ch, base in ((0, 5000), (1, 5500)):
+        _, csv = write_stitch_tiles(str(tmp_path), tiles, ch=ch)
+        names = [stitch_tile_name(t["idx"], ch=ch) for t in tiles]
+        _set_msec(tmp_path, csv, names, [base, base + 1000, base, base + 1000])
+    frames.action = _primary_info(tmp_path)
+    stitch(tmp_path, csv, channel_patterns=("CamA_ch0", "CamA_ch1"), xcorr_mode=xcorr_mode)
+    want = [NAME.replace("_0000000msec_", "_0005000msec_"),
+            NAME.replace("ch0", "ch1").replace("_0000000msec_", "_0005500msec_")]  # fmt: skip
+    assert [Path(c["result_path"]).stem for c in frames.calls] == want
+    if xcorr_mode != "all":
+        assert Path(frames.calls[1]["stitch_info_fullpath"]).stem == want[0]
 
 
 def test_primary_mode_registers_each_time_point(tmp_path, frames):
@@ -1089,25 +1109,32 @@ def test_a_pinned_stitch_info_file_places_every_volume(tmp_path, frames):
     ]
 
 
-def test_a_secondary_without_its_time_points_primary_fails_in_primary_mode(tmp_path, frames):
-    """('primary') a time point whose primary channel has no tiles: MATLAB's wrapper marks the
-    first time point's volumes as missing (a quirk, kept) and fails on the secondary's
-    primary information (index error)"""
+def test_primary_mode_skips_the_channels_of_a_time_point_without_its_primary(tmp_path, frames):
+    """(StitchingTest/primaryModeSkipsTheChannelsOfATimePointWithoutItsPrimary) 'primary' skips
+    the other channels of a time point whose primary channel is missing (MATLAB marked those of
+    the first time point instead, and the secondary failed, until 60740c5)"""
     gt = random_volume(GRID_GT)
     write_tiles(tmp_path, gt, iter=0, cam="A")
     write_tiles(tmp_path, gt, iter=0, cam="B")
     csv = write_tiles(tmp_path, gt, iter=1, cam="B")
+    frames.action = _primary_info(tmp_path)
+    stitch(tmp_path, csv, xcorr_mode="primary", channel_patterns=("CamA_ch0", "CamB_ch0"))
+    assert [Path(c["result_path"]).stem for c in frames.calls] == [name_of(0, "A"), name_of(0, "B")]
 
-    def act(kw):
-        os.makedirs(kw["result_path"])
-        n = Path(kw["result_path"]).stem
-        os.makedirs(f"{tmp_path}/matlab_stitch/stitchInfo", exist_ok=True)
-        Path(f"{tmp_path}/matlab_stitch/stitchInfo/{n}.mat").touch()
 
-    frames.action = act
-    with pytest.raises(SD.StitchDatasetError) as err:
-        stitch(tmp_path, csv, xcorr_mode="primary", channel_patterns=("CamA_ch0", "CamB_ch0"))
-    assert err.value.identifier == "MATLAB:badsubscript"
+def test_primary_mode_keeps_the_channels_of_other_time_points(tmp_path, frames, monkeypatch):
+    """('primary') only the time point without its primary is skipped: a secondary of another
+    time point still waiting for its primary's stitch information is stitched once it comes
+    (MATLAB marked the first time point's volumes done instead until 60740c5)"""
+    gt = random_volume(GRID_GT)
+    write_tiles(tmp_path, gt, iter=0, cam="A")
+    write_tiles(tmp_path, gt, iter=0, cam="B")
+    csv = write_tiles(tmp_path, gt, iter=1, cam="B")
+    info = tmp_path / "matlab_stitch" / "stitchInfo" / f"{name_of(0, 'A')}.mat"
+    # (the primary's stitch information comes at the first wait, as from a job)
+    frames.action = lambda kw: os.makedirs(kw["result_path"])
+    monkeypatch.setattr(SD, "_wait", lambda groups, t: info.touch())
+    stitch(tmp_path, csv, xcorr_mode="primary", channel_patterns=("CamA_ch0", "CamB_ch0"))
     assert [Path(c["result_path"]).stem for c in frames.calls] == [name_of(0, "A"), name_of(0, "B")]
 
 
@@ -1122,18 +1149,22 @@ def test_online_stitch_names_by_tile_count_and_removes_fewer(tmp_path, frames):
     assert Path(frames.calls[0]["result_path"]).name == f"{NAME}_000z_004ntile.zarr"
 
 
-def test_online_stitch_without_streaming_names_by_tile_count(tmp_path, frames):
+def test_online_stitch_without_streaming_removes_results_of_fewer_tiles(tmp_path, frames):
+    """(StitchingTest/onlineStitchWithoutStreamingRemovesResultsOfFewerTiles) without streaming
+    the names have no z layer (MATLAB's pattern assumed it, so such results stayed, until
+    60740c5)"""
     gt = random_volume(GRID_GT)
     csv = write_tiles(tmp_path, gt)
     rt = tmp_path / "matlab_stitch"
     old = rt / f"{NAME}_003ntile.zarr"
     old.mkdir(parents=True)
+    (rt / "MIPs").mkdir()
+    old_mip = rt / "MIPs" / f"{NAME}_003ntile_MIP_z.tif"
+    old_mip.touch()
     frames.action = lambda kw: os.makedirs(kw["result_path"])
     stitch(tmp_path, csv, online_stitch=True)
     assert Path(frames.calls[0]["result_path"]).name == f"{NAME}_004ntile.zarr"
-    # (MATLAB's pattern cuts 32 characters of a name that has no z layer: it never matches
-    # the results of fewer tiles, which stay)
-    assert old.exists()
+    assert not old.exists() and not old_mip.exists(), "The result of 3 tiles was not removed."
 
 
 def test_online_stitch_removes_results_of_fewer_tiles(tmp_path, frames):
@@ -1228,10 +1259,10 @@ def test_the_primary_first_primary_is_stitched_by_the_master(tmp_path, fake_slur
 
 
 @POSIX
-def test_multi_loc_volumes_take_their_tile_count_as_their_number(tmp_path, fake_slurm, pauses,
-                                                                 frames):  # fmt: skip
-    """(multi_loc, MATLAB's quirk) the tile loop reuses the volume's number f: a volume's job
-    array index is its number of tiles"""
+def test_multi_loc_volumes_get_their_own_jobs(tmp_path, fake_slurm, pauses, frames):
+    """(StitchingTest/multiLocVolumesGetTheirOwnJobs) with multi_loc the tile loops have their
+    own index: a volume's job array index is its number (until 60740c5 MATLAB's loops reused
+    the volume's number f, so every volume's job got the tile count)"""
     gt = random_volume(GRID_GT)
     folders = []
     for k in range(2):
@@ -1243,8 +1274,8 @@ def test_multi_loc_volumes_take_their_tile_count_as_their_number(tmp_path, fake_
             write_stitch_tiles(str(d), tiles, iter=it)
         folders.append((str(d), csv))
     res = [f"{folders[0][0]}/matlab_stitch/{name_of(it)}.zarr" for it in range(3)]
-    for j, r in zip((1000, 1001, 1002), res, strict=True):
-        fake_slurm.set_job_states(f"{j}_4", ["R", "done"], [r])
+    for k, (j, r) in enumerate(zip((1000, 1001, 1002), res, strict=True)):
+        fake_slurm.set_job_states(f"{j}_{k + 1}", ["R", "done"], [r])
     SD.stitch_dataset(
         [dp(f[0]) for f in folders], [f[1] for f in folders], multi_loc=True, dsr=True,
         resample_type="isotropic", xy_pixel_size=PX, xcorr_shift=False,
@@ -1252,7 +1283,71 @@ def test_multi_loc_volumes_take_their_tile_count_as_their_number(tmp_path, fake_
         master_compute=False, xcorr_mode="all", job_log_dir=str(tmp_path / "logs"),
     )  # fmt: skip
     arrays = [re.search(r"--array=(\d+)", c).group(1) for c in fake_slurm.calls("sbatch")]
-    assert arrays == ["4", "4", "4"]
+    assert arrays == ["1", "2", "3"]
+    assert all(os.path.exists(r) for r in res), "The volumes' jobs did not have their own tasks."
+
+
+def test_stitching_function_gets_the_job_log_folder(tmp_path, frames):
+    """(StitchingTest/stitchingFunctionGetsTheJobLogFolder) the frame gets the wrapper's job
+    log folder, unless it is the frame's default (not passed until 60740c5)"""
+    gt = random_volume(GRID_GT)
+    csv = write_tiles(tmp_path, gt)
+    frames.action = lambda kw: os.makedirs(kw["result_path"])
+    log_dir = f"{tmp_path}/logs/"
+    stitch(tmp_path, csv, job_log_dir=log_dir)
+    assert frames.calls[0]["job_log_dir"] == log_dir
+    shutil.rmtree(tmp_path / "matlab_stitch")
+    stitch(tmp_path, csv)
+    # (the default: not in the function string, so the frame takes its own, the same)
+    assert "job_log_dir" not in frames.calls[1]
+
+
+def test_out_bbox_of_three_rows_is_its_six_values(tmp_path, frames):
+    """(StitchingTest/outBboxOfThreeRowsIsItsSixValues) outBbox may be 3 x 2 ([min max] per
+    axis): its 1 x 6 form, MATLAB's outBbox(:)' (num2str garbled it until 60740c5)"""
+    from petakit5d import matlab
+
+    gt = random_volume(GRID_GT)
+    csv = write_tiles(tmp_path, gt)
+    frames.action = lambda kw: os.makedirs(kw["result_path"])
+    matlab.XR_matlab_stitching_wrapper(
+        dp(tmp_path), csv, "DSR", True, "resampleType", "isotropic", "xyPixelSize", PX,
+        "axisOrder", "x,y,z", "xcorrShift", False, "channelPatterns", ["CamA_ch0"],
+        "primaryCh", "CamA_ch0", "parseCluster", False,
+        "outBbox", np.array([[3.0, 90.0], [5.0, 100.0], [2.0, 30.0]]),
+    )  # fmt: skip
+    # (MATLAB's [3 5 2 90 100 30])
+    assert tuple(frames.calls[0]["out_bbox"]) == (1, 2, 4, 30, 90, 100)
+
+
+def test_process_function_row_has_one_path_per_channel(tmp_path, frames):
+    """(StitchingTest/processFunctionRowHasOnePathPerChannel) one function file per channel
+    pattern, chosen by channel; one file (in a sequence) is for every channel (a 1 x 1 cell
+    worked only for the first channel until 60740c5)"""
+    gt = random_volume(GRID_GT)
+    for ch in (0, 1):
+        csv = write_tiles(tmp_path, gt, ch=ch)
+    frames.action = lambda kw: os.makedirs(kw["result_path"])
+    pats = ("CamA_ch0", "CamA_ch1")
+    for k, (funs, want) in enumerate(
+        ((("f1.mat", "f2.mat"), [["f1.mat"], ["f2.mat"]]), (("f1.mat",), [["f1.mat"]] * 2))
+    ):
+        # ('all': no channel waits for a primary's stitch information, which the spy doesn't
+        # write)
+        stitch(tmp_path, csv, channel_patterns=pats, process_fun_path=funs, xcorr_mode="all",
+               result_dir_name=f"matlab_stitch_{k}")  # fmt: skip
+        assert [list(c["process_fun_path"]) for c in frames.calls[2 * k :]] == want
+
+
+@pytest.mark.parametrize("factor, want", [(2, (2, 2, 2)), ((1, 2), (1, 2, 2))])
+def test_resample_factor_of_one_or_two_values(tmp_path, frames, factor, want):
+    """(StitchingTest/resampleFactorOfOneOrTwoValues) one value is for all axes, two for
+    (z, xy): completed to three for the frame (MATLAB's index error until 60740c5)"""
+    gt = random_volume(GRID_GT)
+    csv = write_tiles(tmp_path, gt)
+    frames.action = lambda kw: os.makedirs(kw["result_path"])
+    stitch(tmp_path, csv, resample_type="given", resample_factor=factor)
+    assert tuple(frames.calls[0]["resample_factor"]) == want
 
 
 def _settings(path: Path, interval: str) -> None:
@@ -1397,6 +1492,7 @@ class Group:
     tile_dir: str = ""
     fmt: str = "tif"
     intervals: tuple | None = None  # stage intervals of the tiles' setting files
+    msec: tuple | None = None  # the tiles' msec fields (else 0)
 
 
 @dataclass
@@ -1553,6 +1649,49 @@ WSCENES: dict[str, WScene] = {
         [_run({"BlendMethod": "feather", "localWorkerNum": 2})],
         [f"matlab_stitch/{NAME}.zarr"],
     ),
+    # StitchingTest/tilesWithOtherMsecFieldsAreStitched: the volumes take their first tile's msec
+    # field (until 60740c5 MATLAB's name took all of them and its .tmp marker failed)
+    "msec_differ.none": WScene(
+        [
+            Group(0, "A", msec=(5000, 6000, 5000, 6000)),
+            Group(0, "B", seed=2, msec=(5500, 6500, 5500, 6500)),
+        ],
+        [_run({**_TWO_CAMS, "BlendMethod": "none"})],
+        [
+            f"matlab_stitch/{NAME.replace('_0000000msec_', '_0005000msec_')}.zarr",
+            f"matlab_stitch/{name_of(0, 'B').replace('_0000000msec_', '_0005500msec_')}.zarr",
+        ],
+    ),  # fmt: skip
+    "msec_differ.primary.none": WScene(
+        [
+            Group(0, "A", msec=(5000, 6000, 5000, 6000)),
+            Group(0, "B", seed=2, msec=(5500, 6500, 5500, 6500)),
+        ],
+        [_run({**_TWO_CAMS, "xcorrMode": "primary", "BlendMethod": "none"})],
+        [
+            f"matlab_stitch/{NAME.replace('_0000000msec_', '_0005000msec_')}.zarr",
+            f"matlab_stitch/{name_of(0, 'B').replace('_0000000msec_', '_0005500msec_')}.zarr",
+        ],
+    ),  # fmt: skip
+    # StitchingTest/primaryModeSkipsTheChannelsOfATimePointWithoutItsPrimary (MATLAB failed on
+    # the secondary until 60740c5)
+    "primary_mode.missing_primary.none": WScene(
+        [Group(0, "A"), Group(0, "B", seed=2), Group(1, "B", seed=3)],
+        [_run({**_TWO_CAMS, "xcorrMode": "primary", "BlendMethod": "none"})],
+        [f"matlab_stitch/{name_of(0, c)}.zarr" for c in "AB"],
+    ),
+    # StitchingTest/resampleFactorOfOneOrTwoValues: completed to three (y, x, z) for the frame
+    # (an index error until 60740c5)
+    "resample.one_value.none": WScene(
+        [Group()],
+        [_run({"resampleType": "given", "resampleFactor": 2, "BlendMethod": "none"})],
+        [f"matlab_stitch/{NAME}.zarr"],
+    ),
+    "resample.two_values.none": WScene(
+        [Group()],
+        [_run({"resampleType": "given", "resampleFactor": [2, 1], "BlendMethod": "none"})],
+        [f"matlab_stitch/{NAME}.zarr"],
+    ),
     # 'primaryFirst': a time point of another tile count is skipped
     "primary_first.other_count": WScene(
         [Group(0), Group(1, keep=(0, 1, 2))],
@@ -1621,6 +1760,9 @@ def make_wroot(name: str):
             for tl, iv in zip(_scene_tiles(sc, g), g.intervals or (), strict=False):
                 n = stitch_tile_name(tl["idx"], g.cam, g.it)
                 _settings(Path(folder, f"{n}_Settings.txt"), iv)
+            if g.msec:
+                names = [stitch_tile_name(t["idx"], g.cam, g.it) for t in _scene_tiles(sc, g)]
+                _set_msec(folder, Path(folder, "ImageList.csv"), names, g.msec)
 
     return make
 

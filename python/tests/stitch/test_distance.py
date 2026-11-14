@@ -314,12 +314,12 @@ def grid_tiles(shape, seed, kind="full", ox=6, oy=5, zr=None, extra=(), sizes=No
     return tiles, lambda: block_info(names, grid_pairs(rs, ox, oy, zr, extra))
 
 
-def turned_shape(shape, dom):
-    """the (z, y, x) shape of a tile turned as compute_tile_bwdist turns it (z last)"""
-    if dom[2] == 3:
-        return tuple(shape)
-    q = sd._mpermute_axes(dom)
-    return tuple(shape[q[k]] for k in range(3))
+def axes_shape(shape, dom):
+    """the (z, y, x) extents of a tile of (z, y, x) array shape ``shape`` and data order ``dom``
+    (MATLAB's dataOrderMat: the dimensions of x, y and z), for its overlap regions (rows x, y,
+    z), as compute_tile_bwdist reads them"""
+    msize = (shape[1], shape[2], shape[0])
+    return (msize[dom[2] - 1], msize[dom[1] - 1], msize[dom[0] - 1])
 
 
 def _bwdist_cases():
@@ -422,7 +422,7 @@ def _bwdist_cases():
                            single=False))  # fmt: skip
     for dom in ((1, 2, 3), (3, 2, 1), (3, 1, 2)):
         tag = "".join(str(v) for v in dom)
-        tt = grid_tiles(g3, 38, "dsr", regions_of=turned_shape(g3, dom))
+        tt = grid_tiles(g3, 38, "dsr", regions_of=axes_shape(g3, dom))
         out.append(bwdist_case(f"tile.dom{tag}", *tt, i=1, single=False, dom=dom))
     return out
 
@@ -542,12 +542,11 @@ def _slab_cases():
     for dom in ((1, 2, 3), (3, 2, 1), (2, 3, 1)):
         tag = "".join(str(v) for v in dom)
         out.append(slab_case(f"slab.dom{tag}", (10, 10, 10), 47, dom=dom))
-        # z not last: MATLAB makes the temporary array of the turned size and fails to write
-        # the map into it (the array is left; its .zarray is compared as text, the layouts
-        # differ, so it is not compared)
-        out.append(slab_case(f"slab.dom{tag}.wide", s, 47, dom=dom, expect_error=dom[2] != 3,
-                             py_error=(sd.DistanceError,),
-                             tree=tree(ignore=(r"map\.zarr_[^/]*/",))))  # fmt: skip
+        # z not last: the map of the size turned back (MATLAB failed to write it into an array
+        # of the turned size until e9d8449), its box weights too
+        out.append(slab_case(f"slab.dom{tag}.wide", s, 47, dom=dom))
+        out.append(slab_case(f"slab.dom{tag}.wide.bbox", s, 47, dom=dom,
+                             bbox=[9, 11, 5, 51, 45, 30]))  # fmt: skip
     # the map resized for a tile's part, raised to the power (the blending's use of it)
     out.append(slab_case("slab.resize", s, 48, bbox=[9, 11, 5, 51, 45, 30],
                          resize=([2, 3, 1, 20, 18, 9], [1, 1, 1, 38, 34, 17])))  # fmt: skip
@@ -717,8 +716,6 @@ def _wrapper_cases():
                 "distBboxes",
                 [3, 3, 2, 20, 20, 8],
             ],
-            expect_error=True,
-            py_error=(IndexError, sd.DistanceError),
         )
     )
     out.append(
@@ -1208,11 +1205,36 @@ def test_large_file_maps_make_their_mip_slabs(tmp_path):
     assert _read_map(outs[0]).shape == _read_map(slab).shape
 
 
-def test_single_map_needs_location_ids(tmp_path):
+def test_single_map_without_location_ids(tmp_path):
+    # (FeatherBlendingTest/singleMapWithoutLocationIds) without location ids (the default) the
+    # tiles are of one location: one map, of the first tile (MATLAB failed until e9d8449)
     bi, paths = _wrapper_tiles(tmp_path, [(6, 20, 18)] * 4)
-    with pytest.raises(sd.DistanceError):
-        sd.compute_tile_distance_transform(bi, str(tmp_path / "s") + "/", paths,
-                                           parse_cluster=False)  # fmt: skip
+    outs, idx = sd.compute_tile_distance_transform(bi, str(tmp_path / "s") + "/", paths,
+                                                   parse_cluster=False)  # fmt: skip
+    assert len(outs) == 1 and idx == [0]
+    bj, paths_j = _wrapper_tiles(tmp_path / "j", [(6, 20, 18)] * 4)
+    outs_j, _ = sd.compute_tile_distance_transform(bj, str(tmp_path / "sj") + "/", paths_j,
+                                                   loc_ids=[1, 1, 1, 1],
+                                                   parse_cluster=False)  # fmt: skip
+    np.testing.assert_array_equal(_bits(_read_map(outs[0])), _bits(_read_map(outs_j[0])))
+
+
+def test_one_box_for_the_per_tile_maps(tmp_path):
+    # (FeatherBlendingTest/oneBoxForThePerTileMaps) one distance box is for the map of every
+    # tile (MATLAB failed for the second tile until e9d8449)
+    bi, paths = _wrapper_tiles(tmp_path, [(6, 20, 18)] * 4)
+    box = (1, 3, 2, 5, 15, 14)
+    outs, _ = sd.compute_tile_distance_transform(bi, str(tmp_path / "s") + "/", paths,
+                                                 single_dist_map=False, dist_bboxes=[box],
+                                                 parse_cluster=False)  # fmt: skip
+    bj, paths_j = _wrapper_tiles(tmp_path / "j", [(6, 20, 18)] * 4)
+    outs_j, _ = sd.compute_tile_distance_transform(bj, str(tmp_path / "sj") + "/", paths_j,
+                                                   single_dist_map=False,
+                                                   dist_bboxes=[box] * 4,
+                                                   parse_cluster=False)  # fmt: skip
+    assert len(outs) == len(outs_j) == 4
+    for a, b in zip(outs, outs_j, strict=True):
+        np.testing.assert_array_equal(_bits(_read_map(a)), _bits(_read_map(b)))
 
 
 def test_matlab_name_layer(tmp_path):

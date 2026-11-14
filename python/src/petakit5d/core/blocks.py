@@ -312,16 +312,11 @@ def _single_axis_split(
         raise IndexError("Index exceeds the number of array elements (the box touches no block).")
     n = subs.size
     if bdsz > 0:
-        block_bd = (subs != 1).astype(np.int64) * bdsz
-        cs = np.concatenate(
-            [[max(1, s - (subs[0] - 1) * bsz + block_bd[0])], np.ones(n - 1, dtype=np.int64)]
-        )
-        ct = np.concatenate(
-            [
-                bsz + bdsz + block_bd[:-1],
-                [min(bsz + 2 * bdsz, t - (subs[-1] - 1) * bsz + block_bd[-1])],
-            ]
-        )
+        # the part of [s, t] in each block with its borders, which spans (b - 1) * bsz + 1 -
+        # bdsz (none before the first block) to b * bsz + bdsz
+        block_s = (subs - 1) * bsz + 1 - (subs != 1).astype(np.int64) * bdsz
+        cs = np.maximum(s, block_s) - block_s + 1
+        ct = np.minimum(t, subs * bsz + bdsz) - block_s + 1
     else:
         cs = np.concatenate([[max(1, s - (subs[0] - 1) * bsz)], np.ones(n - 1, dtype=np.int64)])
         ct = np.concatenate(

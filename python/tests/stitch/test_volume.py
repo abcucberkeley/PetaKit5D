@@ -203,6 +203,14 @@ SCENES["skewed.partial_file"] = _skewed(BlendMethod="max")
 SCENES["skewed.partial_file"].extra = {"part_tile": 2}
 SCENES["mip.feather"] = _grid(BlendMethod="feather", stitchMIP=[False, False, True])
 SCENES["mip.feather"].mips = True
+# StitchingTest/stitchingFunctionMakesItsResultFolder: called directly, without the result
+# folder the wrapper makes (MATLAB's pixel-size marker failed there until 60740c5)
+SCENES["dsr.no_result_folder"] = _grid(BlendMethod="none")
+SCENES["dsr.no_result_folder"].extra = {"no_result_folder": True}
+# StitchingTest/stitchingFunctionTakesOneProcessFunctionPath: one function file as text, for
+# every tile (MATLAB:cellfun:NotACell until 60740c5)
+SCENES["dsr.process_function_path"] = _grid(BlendMethod="max")
+SCENES["dsr.process_function_path"].extra = {"process_fun": "@(x)erodeVolumeBy2DProjection(x,2)"}
 # secondary channels (CamB after CamA)
 for _m in ("feather", "none"):
     s = _grid(BlendMethod=_m, **_XC)
@@ -266,6 +274,11 @@ def make_root(name: str):
                     os.makedirs(os.path.join(d, "MIPs"), exist_ok=True)
                     mip = np.ascontiguousarray(t["im"].max(axis=0))
                     write_tiff(os.path.join(d, "MIPs", n + "_MIP_z.tif"), mip)
+            if sc.extra.get("process_fun"):
+                # (a .txt function file: its bytes are the same in every run, a .mat file holds
+                # its time; '\n' on every system)
+                with open(os.path.join(d, "processFunction.txt"), "w", newline="\n") as f:
+                    f.write(sc.extra["process_fun"] + "\n")
             if sc.extra.get("part_tile") is not None:
                 # a partial file of a tile (its last 6 slices, as an acquisition continued)
                 k = sc.extra["part_tile"]
@@ -325,6 +338,8 @@ def params(name: str) -> dict:
         if "flippedTile" in args:
             args["flippedTile"] = np.asarray(args["flippedTile"], dtype=np.float64)
         path_args = []
+        if sc.extra.get("process_fun"):
+            path_args = ["processFunPath", "processFunction.txt"]
         if cam == "B":
             args["isPrimaryCh"] = False
             path_args = [
@@ -404,6 +419,10 @@ end
 """
 
 
+# (without the result folder: the frame makes it)
+FRAME_CODE_NO_FOLDER = FRAME_CODE.replace("if ~exist(r, 'dir'), mkdir(r); end\n", "")
+
+
 def run_frame(name: str, d: str) -> list:
     """the Python side: the same files and runs through the MATLAB-name layer"""
     from petakit5d import matlab
@@ -411,7 +430,8 @@ def run_frame(name: str, d: str) -> list:
 
     p = params(name)
     r = d + "matlab_stitch/"
-    os.makedirs(r, exist_ok=True)
+    if not SCENES[name].extra.get("no_result_folder"):
+        os.makedirs(r, exist_ok=True)
     if "xcorr" in p:
         x = p["xcorr"]
         os.makedirs(r + "xcorr", exist_ok=True)
@@ -438,7 +458,7 @@ def _frame_case(name: str) -> Case:
     n = 2 if SCENES[name].secondary is not None else 1
     return Case(
         f"frame.{name}",
-        code=FRAME_CODE,
+        code=FRAME_CODE_NO_FOLDER if SCENES[name].extra.get("no_result_folder") else FRAME_CODE,
         args=[In("p"), InPath("root")],
         nargout=n,
         python=run_frame,
@@ -694,9 +714,9 @@ def test_process_function_rows():
     assert V._process_fun_rows(("",)) is None
     assert V._process_fun_rows(("a.mat", "b.mat")) == [["a.mat", "b.mat"]]
     assert V._process_fun_rows((("a.mat",), ("b.mat",))) == [["a.mat"], ["b.mat"]]
-    with pytest.raises(V.StitchVolumeError) as e:
-        V._process_fun_rows("a.mat")
-    assert e.value.identifier == "MATLAB:cellfun:NotACell"
+    # (StitchingTest/stitchingFunctionTakesOneProcessFunctionPath) one path for all tiles, as
+    # the wrapper gives it in a cell (MATLAB:cellfun:NotACell until 60740c5)
+    assert V._process_fun_rows("a.mat") == [["a.mat"]]
 
 
 def test_edge_function_text():
@@ -990,15 +1010,18 @@ def test_an_existing_result_is_kept(tmp_path, capsys):
     assert os.listdir(f"{root}/matlab_stitch/{NAME}.zarr") == []
 
 
-def test_the_result_folder_must_exist(tmp_path):
-    # MATLAB: fclose(fopen(...)) of the pixel-size marker fails without the result folder
+def test_stitching_function_makes_its_result_folder(tmp_path):
+    # (StitchingTest/stitchingFunctionMakesItsResultFolder) called directly, without the result
+    # folder the wrapper makes (MATLAB's marker failed there until 60740c5)
     sc = _grid()
     root = str(tmp_path)
     fns, coords, tidx = _write(sc, root)
-    with pytest.raises(V.StitchVolumeError) as e:
-        V.stitch_volume(fns, coords, tile_idx=tidx, dsr=True, parse_cluster=False,
-                        xcorr_shift=False)  # fmt: skip
-    assert e.value.identifier == "MATLAB:FileIO:InvalidFid"
+    assert not os.path.exists(f"{root}/matlab_stitch")
+    V.stitch_volume(fns, coords, tile_idx=tidx, dsr=True, resample_type="isotropic",
+                    xy_pixel_size=PX, dz=PX, axis_order="x,y,z", xcorr_shift=False,
+                    parse_cluster=False)  # fmt: skip
+    out = _result(root)
+    np.testing.assert_array_equal(out[: sc.gt[0], : sc.gt[1], : sc.gt[2]], _gt(sc))
 
 
 def test_other_pixel_size_markers_are_replaced(tmp_path):
