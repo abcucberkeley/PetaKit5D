@@ -477,7 +477,7 @@
   },
   "DeconFunctionTest": {
    "file": "tests/decon/DeconFunctionTest.m",
-   "pins": "deconvolution building blocks (decon_lucy_function, decon_lucy_omw_function, omw_backprojector_generation, psf_gen_new, decon_psf2otf and RLdecon in memory) on synthetic beads blurred with a known Gaussian PSF.",
+   "pins": "deconvolution building blocks (decon_lucy_function, decon_lucy_omw_function, omw_backprojector_generation and the names of its files, psf_gen_new, XR_rotate_PSF, decon_psf2otf and RLdecon in memory) on synthetic beads blurred with a known Gaussian PSF.",
    "category": "data",
    "owner": "R03",
    "phase": 1,
@@ -486,6 +486,15 @@
    "methods": {
     "backProjectorDCGainIsTheWienerFactor": {
      "pins": "the apodization window is 1 at DC and the normalized OTF is 1 there, so the back projector sums to 1 / (1 + alpha)",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": [],
+     "owner": "R02"
+    },
+    "backProjectorFilesOfOtherBoundsAreTheirOwn": {
+     "pins": "the back projector's file name didn't hold hannWinBounds: a call with other bounds read the back projector of the first. The default bounds keep their name",
      "tags": [
       "Unit"
      ],
@@ -812,6 +821,36 @@
      "fate": [],
      "owner": "R05"
     },
+    "rldeconInMemoryWithAnOutputFileNamesItsFilesAfterIt": {
+     "pins": "data in memory (rawdata, no input file) with an output file: its MIP took the input file's name (fsname undefined) and failed; the result and its MIP are named after the output file and equal those of the decon of a file",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": [],
+     "owner": "R05"
+    },
+    "rldeconInMemoryWithoutAnOutputFileWritesNothing": {
+     "pins": "without an input or an output file there is no folder: OMW (the back projector's files) and psfGen (the generated PSF's file) failed on the undefined folder. Both are made in memory, nothing is written, and the result equals the decon of a file",
+     "tags": [
+      "Unit"
+     ],
+     "cases": [
+      "method=simplified",
+      "method=omw"
+     ],
+     "fate": [],
+     "owner": "R05"
+    },
+    "rldeconRejectsAnUnknownMethod": {
+     "pins": "RLdecon's method names are case-sensitive: another name left the result empty, and the decon failed writing its MIP",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": [],
+     "owner": "R05"
+    },
     "rldeconWithZeroIterationsReturnsTheInput": {
      "pins": "rldecon with zero iterations returns the input",
      "tags": [
@@ -820,6 +859,15 @@
      "cases": null,
      "fate": [],
      "owner": "R05"
+    },
+    "rotatedPSFOfAFileInTheCurrentFolderStaysThere": {
+     "pins": "XR_rotate_PSF of a file name without a folder wrote to /Rotated/ (fileparts gives no folder); it writes to Rotated/ in the current folder, the same as for the file's full path",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": [],
+     "owner": "R01"
     },
     "wienerButterworthBackProjectorWorksWithOMWDecon": {
      "pins": "the WB back projector (Guo et al. 2020) used in the decon demo",
@@ -890,14 +938,14 @@
      "fate": []
     },
     "wrapperGPUJobMatchesCPU": {
-     "owner": "R06",
      "pins": "wrapper gpujob matches cpu",
      "tags": [
       "GPU",
       "Integration"
      ],
      "cases": null,
-     "fate": []
+     "fate": [],
+     "owner": "R06"
     }
    }
   },
@@ -1089,13 +1137,13 @@
      "fate": []
     },
     "rldeconReturnsTheOverlapOutput": {
-     "owner": "R05",
      "pins": "as the large-file batches call RLdecon (data in memory, no result file)",
      "tags": [
       "Unit"
      ],
      "cases": null,
-     "fate": []
+     "fate": [],
+     "owner": "R05"
     }
    }
   },
@@ -1665,6 +1713,15 @@
      "fate": [],
      "owner": "R07"
     },
+    "largeFileInMemoryBatchesAreOnlyDeconvolved": {
+     "pins": "XR_RLdeconFrame3D passes Deskew (skewed data: the dz of the PSF) to the in-memory large-file decon, which passed it on to the RLdecon of each batch: with nothing to save there (Deskew with the combined DSR) each batch returned an empty result (MATLAB:subsassigndimmismatch), and with Rotate each failed on its undefined file name. The batches are only deconvolved, as the in-place blocks: Deskew o...",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": [],
+     "owner": "R07"
+    },
     "largeFileInMemoryUsesBlockSize": {
      "pins": "the in-memory large-file path wrote its zarr result with writezarr's default chunks (500^3) instead of blockSize",
      "tags": [
@@ -1847,6 +1904,14 @@
      "fate": [],
      "category": "framework_fake_slurm"
     },
+    "omwBackProjectorOfOtherBoundsIsCopiedByItsName": {
+     "pins": "the back projector's name didn't hold hannWinBounds (a call with other bounds read an earlier one); the wrapper copies the one it makes to the other datasets by the name it got",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
     "omwParametersArePerChannel": {
      "pins": "demo_large_scale_processing passes wienerAlpha and OTFCumThresh per channel",
      "tags": [
@@ -1929,7 +1994,11 @@
      "cases": null,
      "fate": []
     }
-   }
+   },
+   "reopened": [
+    "largeFileInMemoryBatchesAreOnlyDeconvolved",
+    "omwBackProjectorOfOtherBoundsIsCopiedByItsName"
+   ]
   }
  }
 }

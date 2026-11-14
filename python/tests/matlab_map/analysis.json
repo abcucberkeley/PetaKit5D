@@ -351,6 +351,14 @@
    "finished": false,
    "fate": [],
    "methods": {
+    "parametersFileHoldsTheParameters": {
+     "pins": "parameters.json was written with its text as fprintf's format: a % in a value (here in the folder name) cut the file off there",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
     "removesPunctaWithDefaultThresholds": {
      "pins": "the task string used to be invalid with the default (empty) thresholds, and the block function couldn't handle them",
      "tags": [

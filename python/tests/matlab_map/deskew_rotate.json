@@ -77,6 +77,14 @@
      "cases": null,
      "fate": []
     },
+    "deskewOnlyIsCroppedWithCrop": {
+     "pins": "the wrapper didn't pass crop to XR_deskewRotateFrame: the deskewed data was never cropped",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
     "deskewOnlyWithCombinedDefaultWritesDS": {
      "pins": "DSRCombined=true (the default) used to send deskew only to the combined path, which writes DSR, and then wait minutes for DS before failing",
      "tags": [
@@ -126,6 +134,14 @@
      "fate": [],
      "category": "framework_fake_slurm"
     },
+    "largeFileIsFlippedAsRegularFiles": {
+     "pins": "the large-file path took flipZstack (the wrapper's, not the one of each file's setting file) and never flipped the data",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
     "largeFileJobsAskForWhatTheyHold": {
      "pins": "the job of a large file (XR_deskewRotateZarr) runs its y batches as jobs. It asked for 40 B per voxel of the whole input (masterCompute) or of a y slab (without, on one CPU): whole nodes for large data. Now it asks for MATLAB and the merge of the MIP slabs on one CPU, and if it computes batches itself (masterCompute, the config's if it sets it), for a batch's estimate on the CPUs of a batch's j...",
      "tags": [
@@ -159,6 +175,14 @@
      "cases": null,
      "fate": []
     },
+    "largeFileMIPMaskBoxesFollowTheFactorAndTheFlip": {
+     "pins": "XR_getDeskeRotateBoxesFromMasks took x from the factor's second value and the output rows from its first ([y x z]; one value or none failed), and had no flip. The output box is the box of the regular path's result of the masked region, and with the flip that of the flipped masks (the input box stays in the coordinates of the raw data: it is flipped after the crop)",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
     "largeFileMIPsAreMergedFromTheBlocks": {
      "pins": "the block tasks save the MIPs of their blocks in their flags, and XR_MIP_zarr merges them into the MIP slabs instead of reading the result again in MIP_block tasks",
      "tags": [
@@ -183,8 +207,24 @@
      "cases": null,
      "fate": []
     },
+    "largeFileParforRunsTheBlocks": {
+     "pins": "XR_deskewRotateZarr with parseParfor and no cluster failed on an undefined GPUJob. The parfor wrapper is a stand-in that runs the tasks in this process (GenericComputingFrameworkTest runs the real one on a pool)",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
     "largeFilePassesJobSettingsToMIPs": {
      "pins": "XR_deskewRotateZarr didn't pass parseCluster, masterCompute or jobLogDir to XR_MIP_zarr, so on a machine with Slurm the MIPs of a local run were made in Slurm jobs",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "largeFileReadsTheResampleFactorAsRegularFiles": {
+     "pins": "XR_deskewRotateZarr read the factor as [y x z] for the result's size and its batches, while its blocks (deskewRotateFrame3D) and the regular path read [x y z], and 1 or 2 values failed with an index error. The result is the regular path's, completed to 3 values as XR_deskewRotateFrame does; a fractional factor along y (the batches' axis) only gives its size here",
      "tags": [
       "Integration"
      ],
@@ -271,7 +311,14 @@
      "cases": null,
      "fate": []
     }
-   }
+   },
+   "reopened": [
+    "deskewOnlyIsCroppedWithCrop",
+    "largeFileIsFlippedAsRegularFiles",
+    "largeFileMIPMaskBoxesFollowTheFactorAndTheFlip",
+    "largeFileParforRunsTheBlocks",
+    "largeFileReadsTheResampleFactorAsRegularFiles"
+   ]
   },
   "DeskewRotateFrame3DTest": {
    "file": "tests/deskew_rotate/DeskewRotateFrame3DTest.m",
@@ -632,13 +679,22 @@
      "fate": []
     },
     "largeFileBlocksRequestOneBatch": {
-     "owner": "D04",
      "pins": "XR_deskewRotateBlock tasks hold one batch (input rows with a one-row border, interpolated slices, output region)",
      "tags": [
       "Integration"
      ],
      "cases": null,
-     "fate": []
+     "fate": [],
+     "owner": "D04"
+    },
+    "largeFileJobAsksForTheBatchOfItsBlocks": {
+     "pins": "the job of a large file that computes batches itself (masterCompute; no MIP merge) asks for what one of its block jobs gets. It read the resample factor as [y x z] and only with 3 values (XR_deskewRotateZarr failed on 1 or 2), and neither counted the flipped copy of a batch (dz 0.2: no interpolated slices, so with the result halved along z and small chunks the copy is the largest array, and it...",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": [],
+     "owner": "D04"
     },
     "mexPathHoldsInputInterpolatedSlicesAndOutput": {
      "pins": "uint16, dz 0.3: the x step (2.34 pixels) is above 2, so one slice is interpolated between neighboring slices",
@@ -673,40 +729,40 @@
      "fate": []
     },
     "wrapperCountsAllPartialFiles": {
-     "owner": "D04",
      "pins": "<name>.tif + <name>_part0001.tif are read and concatenated in one task; only the first part used to be counted",
      "tags": [
       "Integration"
      ],
      "cases": null,
-     "fate": []
+     "fate": [],
+     "owner": "D04"
     },
     "wrapperCountsTheCroppedInput": {
-     "owner": "D04",
      "pins": "wrapper counts the cropped input",
      "tags": [
       "Integration"
      ],
      "cases": null,
-     "fate": []
+     "fate": [],
+     "owner": "D04"
     },
     "wrapperRequestsTheEstimate": {
-     "owner": "D04",
      "pins": "wrapper requests the estimate",
      "tags": [
       "Integration"
      ],
      "cases": null,
-     "fate": []
+     "fate": [],
+     "owner": "D04"
     },
     "wrapperUsesTheLargestFile": {
-     "owner": "D04",
      "pins": "one memAllocate for all tasks: it must fit the largest input",
      "tags": [
       "Integration"
      ],
      "cases": null,
-     "fate": []
+     "fate": [],
+     "owner": "D04"
     },
     "zStageScanUsesTheComplementaryAngle": {
      "pins": "XR_deskewRotateFrame passes 90 - skewAngle for z stage scan",
@@ -835,6 +891,14 @@
      "cases": null,
      "fate": []
     },
+    "rescaleRotateScalesTheResultToTheUint16Range": {
+     "pins": "rescaleRotate scales the DSR from its range to [0, 65535]; with save16bit (the default) the range was uint16, which scaleContrast doesn't take (MATLAB:mixedClasses), after the MIP was written",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
     "rotationOfSavedDeskewedVolumeKeepsCropAndAxisOrder": {
      "pins": "rotating a deskewed volume read back from disk (deskewed in an earlier run) sized its output from the raw files, ignoring inputBbox and the input axis order. single output, so that the saved deskewed volume equals the one in memory.",
      "tags": [
@@ -875,7 +939,10 @@
      "cases": null,
      "fate": []
     }
-   }
+   },
+   "reopened": [
+    "rescaleRotateScalesTheResultToTheUint16Range"
+   ]
   }
  }
 }
