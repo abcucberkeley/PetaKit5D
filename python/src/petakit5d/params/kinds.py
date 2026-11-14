@@ -100,7 +100,7 @@ def _same_type(orig: Any, vals: list) -> Any:
     if type(orig).__module__ == "numpy":
         import numpy as np
 
-        return np.asarray(vals)
+        return np.asarray(vals, dtype=orig.dtype)  # the class stays (uint16 stays uint16)
     return tuple(vals)
 
 

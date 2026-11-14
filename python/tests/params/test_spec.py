@@ -188,6 +188,33 @@ def test_string_conversions_follow_the_mcc_parser(sample_crop):
     assert e.value.identifier == "MATLAB:InputParser:ParamMissingValue"
 
 
+def test_integer_classes_keep_their_class_through_the_binding(sample_crop):
+    """MATLAB passes an integer class on (str2num('[512, uint16(256)]') is uint16): the function
+    gets a NumPy value of that class, and the saved parameters have it too."""
+    import numpy as np
+
+    spec = sample_crop.REG.find("XR_crop_dataset")
+    box = "[1,1,1,10,20,30]"
+    got = spec.bind_strings(
+        [ROOT, box, "batchSize", "[512, uint16(256), 64]", "cpusPerTask", "uint8(4)"]
+    )
+    bs, cpus = got["batch_size"], got["cpus_per_task"]
+    assert bs.dtype == np.uint16 and bs.tolist() == [64, 512, 256]  # (z, y, x)
+    assert type(cpus) is np.uint8 and cpus == 4
+    res = spec.matlab_results(got)
+    assert describe(res["batchSize"]) == describe(MArray("uint16", (1, 3), [512, 256, 64]))
+    assert describe(res["cpusPerTask"]) == describe(MArray("uint8", (1, 1), [4]))
+    got = spec.bind_matlab([ROOT, [1] * 6, "blockSize", MArray("int16", (3, 1), [5, 6, 7])])
+    assert got["block_size"].dtype == np.int16 and got["block_size"].tolist() == [7, 5, 6]
+    m = spec.bind_matlab([ROOT, [1] * 6, "cpusPerTask", MArray("uint32", (2, 2), [1, 2, 3, 4])])
+    assert m["cpus_per_task"].dtype == np.uint32 and m["cpus_per_task"].tolist() == [[1, 3], [2, 4]]
+    v = spec.bind_matlab([ROOT, [1] * 6, "cpusPerTask", MArray("int8", (1, 2), [4, -5])])
+    assert v["cpus_per_task"].shape == (2,)  # vectors are 1-D, as the tuples of doubles
+    # doubles (and empty integer arrays) stay Python values
+    got = spec.bind_strings([ROOT, box, "batchSize", "[512, 256, 64]", "blockSize", "uint8([])"])
+    assert got["batch_size"] == (64, 512, 256) and got["block_size"] is None
+
+
 def test_matlab_layer_takes_structs_and_keywords(sample_crop):
     spec = sample_crop.REG.find("XR_crop_dataset")
     got = spec.bind_matlab([ROOT, [1] * 6, {"PAD": True, "uuid": "u"}, "uuid", "v"])

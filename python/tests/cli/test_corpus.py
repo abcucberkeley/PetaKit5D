@@ -170,6 +170,10 @@ EDGE = [
      ["{'" + P1 + "'}", BBOX, "cpusPerTask", "1e1", "batchSize", "[2^9, 256, 1.5e2]"], None),
     ("hex_literal", "XR_crop_dataset", ["{'" + P1 + "'}", BBOX, "batchSize", "[512, 0x100]"],
      None),
+    ("integer_class_scalar", "XR_crop_dataset", ["{'" + P1 + "'}", BBOX, "cpusPerTask", "0x4"],
+     None),
+    ("integer_class_constructor", "XR_crop_dataset",
+     ["{'" + P1 + "'}", BBOX, "blockSize", "uint16([64,128,32])"], None),
     ("text_path_not_cell", "XR_crop_dataset", [P1, BBOX], None),
     ("required_by_name", "XR_crop_dataset",
      ["{'" + P1 + "'}", BBOX, "inputBbox", "[1,1,1,5,5,5]", "dataPaths", "{'/mnt/x'}"], None),
@@ -216,9 +220,6 @@ EDGE = [
 
 # where pk5d-master differs from the compiled master (reported; none is a call of the callers)
 KNOWN_DIFFERENCES = {
-    "edge_hex_literal": "MATLAB's hex literal 0x100 is a uint16 and makes [512, 0x100] uint16; "
-    "petakit5d.params.literal reads it, but the binding gives the function Python numbers, so "
-    "the class is not kept (double in MATLAB's form)",
     "edge_nan_box_end": "a NaN box end: MATLAB passes it on, the bbox kind refuses it (a box "
     "end in the port is an integer or None)",
 }

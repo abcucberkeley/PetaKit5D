@@ -141,8 +141,9 @@ mccMaster and parser in the oracle tree (the task function replaced by a recorde
 inputParser applied) and through pk5d-master, and compares the values the function gets
 (in MATLAB's form), the errors and the `Function name / Variables` lines.
 
-Known differences (strict xfail cases): a hex literal (`0x100`) makes MATLAB's value uint16; the
-port's literal parser reads it, but the binding gives the function Python numbers, so the class
-is not kept; a NaN box end is refused by the `bbox` kind where MATLAB passes it on. A GUI call
+An integer class keeps its class: a hex literal (`0x100` is uint16, and makes `[512, 0x100]`
+uint16) or `uint16(...)` reaches the function as a NumPy value of that class, as in MATLAB.
+Known difference (a strict xfail case): a NaN box end is refused by the `bbox` kind where MATLAB
+passes it on (MATLAB's code treats it unlike Inf, so no Python box stands for it). A GUI call
 that MATLAB rejects too: the pipeline tab's bounding-box crop passes
 `boundboxCrop`, which `XR_microscopeAutomaticProcessing` doesn't have.

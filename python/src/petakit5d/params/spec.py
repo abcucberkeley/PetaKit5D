@@ -371,7 +371,11 @@ def _numel(x: Any) -> int:
 
 def normalize(x: Any) -> Any:
     """Values as the snake_case functions receive them: model values to plain Python
-    (``values.to_python``), lists to tuples (deeply); NumPy arrays and others unchanged."""
+    (``values.to_python``), lists to tuples (deeply); NumPy arrays and others unchanged.
+    An array of an integer class keeps its class, as a NumPy argument of that class does
+    (MATLAB's ``0x100`` is uint16): a NumPy scalar or array of its dtype."""
+    if isinstance(x, _v.MArray) and x.mclass in _v.INT_RANGES and x.data:
+        return _integer_class_value(x)
     if isinstance(x, _v.MArray | _v.Cell | _v.MString):
         return _v.to_python(x)
     if isinstance(x, list | tuple):
@@ -381,6 +385,17 @@ def normalize(x: Any) -> Any:
     ):
         return {k: normalize(e) for k, e in x.items()}
     return x
+
+
+def _integer_class_value(x: _v.MArray) -> Any:
+    """a non-empty integer-class array as NumPy: a scalar, a 1-D vector, else MATLAB's size"""
+    import numpy as np
+
+    dt = np.dtype(x.mclass)  # MATLAB's integer class names are NumPy's
+    if x.is_scalar():
+        return dt.type(x.data[0])
+    a = np.array(x.data, dtype=dt).reshape(x.shape, order="F")
+    return a.reshape(-1) if x.is_vector() else np.ascontiguousarray(a)
 
 
 # ----------------------------------------------------------------------------------------------
@@ -1011,7 +1026,8 @@ class FunctionSpec:
             else:
                 raise KeyError(f"no value for required argument {p.py!r}")
             v = p.to_matlab(normalize(v))
-            hint = p.cell_hint() or (_cell_if_empty_default(p) if v == () else None)
+            empty = isinstance(v, tuple) and not v  # (v may be a NumPy array)
+            hint = p.cell_hint() or (_cell_if_empty_default(p) if empty else None)
             out[p.matlab] = _v.from_python(v, hint)
         return out
 
