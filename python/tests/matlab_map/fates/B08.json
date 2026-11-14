@@ -1,0 +1,21 @@
+{
+ "task": "B08",
+ "classes": {
+  "PunctaRemovalTest": {
+   "finished": true,
+   "methods": {
+    "removesPunctaWithDefaultThresholds": [
+     "pytest:tests/tools/test_puncta_removal.py::test_removes_puncta_with_default_thresholds",
+     "oracle:tests/tools/test_puncta_removal.py::zarr.default"
+    ],
+    "removesPunctaWithScalarThresholds": [
+     "pytest:tests/tools/test_puncta_removal.py::test_removes_puncta_with_scalar_thresholds",
+     "oracle:tests/tools/test_puncta_removal.py::zarr.scalar_thresholds"
+    ],
+    "parametersFileHoldsTheParameters": [
+     "oracle:tests/tools/test_puncta_removal.py::zarr.percent_folder"
+    ]
+   }
+  }
+ }
+}

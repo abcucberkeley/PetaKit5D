@@ -1,0 +1,23 @@
+{
+ "name": "puncta_b08",
+ "description": "B08: XR_ExM_PunctaRemoval_zarr (updated method, default parameters, batches in the process) of a 200 x 384 x 384 uint16 expanded-sample-like volume with stained tubes and blocks and bright puncta, at 1, 4 and 24 threads: MATLAB against puncta_removal_zarr.",
+ "repeats": 5,
+ "warmup": 1,
+ "setup": ["{python} {src}/benchmarks/tools/puncta_b08_data.py {work}"],
+ "variants": [
+  {
+   "id": "ml",
+   "impl": "matlab",
+   "paths": ["benchmarks/tools", "benchmarks/common"],
+   "code": "puncta_b08_ml('{work}/matlab', [1, 4, 24], 1)"
+  },
+  {
+   "id": "py",
+   "impl": "python",
+   "script": "benchmarks/tools/puncta_b08.py",
+   "args": ["{work}/python", "--threads", "1", "4", "24", "--repeats", "1"]
+  }
+ ],
+ "compare": [{"a": "py", "b": "ml"}],
+ "gate": {"ratio_max": 1.05, "threads": [1, 4, 24], "overhead_max": 1.0, "metrics": ["op:puncta_removal_zarr@*"]}
+}
