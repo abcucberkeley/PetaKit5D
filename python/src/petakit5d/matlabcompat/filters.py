@@ -16,12 +16,17 @@ multiply-adds, which MATLAB's code chooses by the pass and by the place of the o
   (x) and planes (z) a fused chain in the correlation's order; along the columns (y, MATLAB's
   contiguous dimension) fused chains whose tap order MATLAB's vector code sets by the row: the
   rows in vectors of 8 (double) or 16 (single) outputs visit the taps from the top in chunks of
-  4 (8), the two halves of a chunk interleaved (with zero padding while the kernel's lower reach
-  stays inside the column, with the other paddings every whole vector); the rows after them
-  the top chunk ascending (padded columns: each chunk an ascending chain, the chains added);
-  the rows whose window passes the column's end the top chunk descending. Along x, rows and
-  planes read their data first and the padding after it (replicate along x: the padded taps
-  at an end as one product with their weights' sum). Arrays with less than a tenth nonzero
+  4 (8), the two halves of a chunk interleaved. With zero padding these vectors run while the
+  kernel's lower reach stays inside the column; the rows after them take the top chunk
+  ascending, and the rows whose window passes the column's end the top chunk descending. With
+  the other paddings the padded column goes in blocks of 8 KB of padded rows, each block after
+  the first starting m - 1 rows back. Each block's whole vectors take the body order (in single
+  with a three-tap remainder, the last vector of a block of whole vectors adds the remainder as
+  a chain of its own). Its other rows take each chunk as an ascending chain, the chains added
+  from the top, then the remainder's chain; a one-tap remainder is fused last into the sum.
+  Along x, rows and planes read their data first and the padding after it (along x with
+  replicate or constant padding: the padded taps at an end as one product with their weights'
+  sum). Arrays with less than a tenth nonzero
   values (kernels up to 15 taps) take a plain path: each product rounded, added in the
   correlation's order.
 - ``imgaussfilt``: ``padarray`` by the kernel's half size, then for kernels of 49 values or more
@@ -35,8 +40,8 @@ multiply-adds, which MATLAB's code chooses by the pass and by the place of the o
   ``n - 1`` points, closed periodically; the blur is the circular convolution with the PSF.
 
 What is not bit for bit MATLAB's (measured by the oracle cases; tolerances proposed for
-``docs/parity/matlabcompat.md``): the column pass's rows after the last vector for some kernel
-lengths (double 9 and 13 taps, 17 and more; 'full'; constant padding), imgaussfilt's small 2-D
+``docs/parity/matlabcompat.md``): the column pass with zero padding, the rows of its last
+vectors (double 7 taps or more, single 11 or more; 'full' from 5 taps), imgaussfilt's small 2-D
 kernels and imfilter's general 2-D and 3-D kernels (MATLAB's tap order there not measured),
 imgaussfilt's separable path for kernels of 21 or more taps (conv2's long kernels), the
 frequency domain path and edgetaper (rounding level: half spectra of ``petakit5d.fft``).
@@ -214,7 +219,8 @@ def _out_cast(y: np.ndarray, cls: str, nt: int | None = None) -> np.ndarray:
 
 # ---------------------------------------------------------------------------------------------
 # tap programs (python/cpp/filters): one row of ints per program; >= 0 a fused tap, <= -10 a
-# plain tap (-op - 10), -1 the end of a chain (the chains are added in order), -2 padding
+# plain tap (-op - 10), -1 the end of a chain (the chains are added in order), -3 the end of a
+# chain after which the taps continue from the sum so far, -2 padding
 # ---------------------------------------------------------------------------------------------
 
 
@@ -250,21 +256,35 @@ def _body_order(m: int, half: int) -> list[int]:
 
 def _column_rows(n_out: int, m: int, pre: int, double: bool, zero_pad: bool) -> list[list[int]]:
     """the tap order of every output row of imfilter's column pass (MATLAB's y). With zero
-    padding the vector body ends before the vectors whose windows pass the column's end; with
-    the other paddings (the column padded first) it covers every whole vector."""
+    padding the vector body ends before the vectors whose windows pass the column's end. A padded
+    column is taken in blocks of 8 KB of padded rows (1,024 double, 2,048 single), each block
+    after the first starting m - 1 rows back, and the body of each block covers its whole
+    vectors."""
     vec, half = (8, 2) if double else (16, 4)
-    post = m - 1 - pre
-    if zero_pad:
-        nbody = vec * max(0, (n_out - post) // vec)
-    else:
-        nbody = vec * (n_out // vec)
-        post = 0
     body = _body_order(m, half)
     c = min(m, 2 * half)
-    if zero_pad:
-        tail = sorted(body[:c]) + body[c:]
-    else:
+    if not zero_pad:
         tail = _padded_tail(m, 2 * half)
+        rows: list[list[int]] = []
+        step = (1024 if double else 2048) - (m - 1)
+        if step <= 0:
+            step = n_out
+        while len(rows) < n_out:
+            cnt = min(step, n_out - len(rows))
+            nbody = vec * (cnt // vec)
+            block = [body] * nbody + [tail] * (cnt - nbody)
+            if not double and nbody == cnt and cnt and m % (2 * half) == 3:
+                # single, a block of whole vectors and a remainder chunk of three taps: the
+                # last vector adds the remainder as an ascending chain of its own to the whole
+                # chunks (measured for 3, 11 and 19 taps, columns of 32 to 5,000 rows)
+                nfull = m - 3
+                last = body[:nfull] + ([-1] if nfull else []) + [0, 1, 2]
+                block[cnt - vec :] = [last] * vec
+            rows.extend(block)
+        return rows
+    post = m - 1 - pre
+    nbody = vec * max(0, (n_out - post) // vec)
+    tail = sorted(body[:c]) + body[c:]
     border = sorted(body[:c], reverse=True) + body[c:]
     rows = []
     for i in range(n_out):
@@ -279,9 +299,9 @@ def _column_rows(n_out: int, m: int, pre: int, double: bool, zero_pad: bool) -> 
 
 def _padded_tail(m: int, chunk: int) -> list[int]:
     """the column pass's rows after the vector body of an explicitly padded column: the chunks
-    of taps from the top, each an ascending chain, added from the lowest full chunk up, then the
-    remainder's chain; a remainder of one tap ends the top chunk's chain (measured for 5 to 13
-    taps; 9 and 13 double not confirmed)"""
+    of taps from the top, each an ascending chain, added from the top chunk down, then the
+    remainder's chain; a remainder of one tap is fused last into the sum of the chunks (measured
+    for 3 to 31 taps)"""
     if m <= chunk:
         return list(range(m))
     full = []
@@ -290,15 +310,18 @@ def _padded_tail(m: int, chunk: int) -> list[int]:
         full.append(list(range(a - chunk, a)))
         a -= chunk
     rem = list(range(a))
-    if len(rem) == 1:
-        full[0] = full[0] + rem
-        rem = []
-    chains = full[::-1] + ([rem] if rem else [])
     out: list[int] = []
-    for k, ch in enumerate(chains):
+    for k, ch in enumerate(full):
         if k:
             out.append(-1)
         out.extend(ch)
+    if len(rem) == 1:
+        if len(full) > 1:
+            out.append(-3)
+        out.extend(rem)
+    elif rem:
+        out.append(-1)
+        out.extend(rem)
     return out
 
 
@@ -352,9 +375,9 @@ def _flat_rows(
 ) -> tuple[list[list[int]], np.ndarray]:
     """the tap order of imfilter's row (x) and plane (z) passes: a fused chain in the
     correlation's order; at the borders of an explicitly padded array the taps that read data
-    first, then the padded ones; along the rows (x) with replicate padding the padded taps at each
-    end as one product of the edge value with their weights' sum, and with a constant at the
-    end (measured)."""
+    first, then the padded ones; along the rows (x) with replicate or constant padding the padded
+    taps at each end as one product, last, of the edge value or the constant with their weights'
+    sum (measured)."""
     asc = list(range(m))
     if mode == 0 and value == 0:
         return [asc] * n_out, w
@@ -367,23 +390,13 @@ def _flat_rows(
             rows.append(asc)
             continue
         valid = [t for t in range(m) if 0 <= i + t - pre < n_in]
-        merge_low = rows_axis and mode == 1
-        merge_high = rows_axis and mode in (0, 1)
+        merge_low = merge_high = rows_axis and mode in (0, 1)
         if not (merge_low and low) and not (merge_high and high):
             rows.append(valid + low + high)
             continue
         r = list(valid) + ([] if merge_low else low)
         for side, taps, merge in ((_EDGE_LOW, low, merge_low), (_EDGE_HIGH, high, merge_high)):
             if taps and merge:
-                if mode == 0:
-                    # a constant: the plain taps' weights summed, times the constant
-                    ws = w.dtype.type(0)
-                    for t in taps:
-                        ws = w.dtype.type(ws + w[t])
-                    extra.append(ws)
-                    # a tap past the end: the kernel reads the constant there
-                    r.append(m + len(extra) - 1)
-                    continue
                 ws = w.dtype.type(0)
                 for t in taps:
                     ws = w.dtype.type(ws + w[t])

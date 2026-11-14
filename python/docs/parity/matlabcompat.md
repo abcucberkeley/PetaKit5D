@@ -8,21 +8,27 @@ case's `reason` names its row.
 ## Filters (`matlabcompat.filters`)
 
 The filters are reproduced from MATLAB's behaviour only, by probing the built-ins on chosen
-inputs. 306 of the 361 oracle cases are bit-identical, including the unmixing (`imgaussfilt3` in
-single, sigma `[1 1 1]` and anisotropic) and puncta removal (uint16, sigma 2.5) call sites. The
-others stop at the best black-box result: MATLAB's vector code reorders a few taps in ways the
-probes don't pin down, its long-kernel `conv2` isn't a direct sum, and its frequency-domain bits
-match no FFT size tried.
+inputs. 352 of the 399 oracle cases are bit-identical. These include the call sites:
+- unmixing: `imgaussfilt3` in single, sigma `[1 1 1]`, `[1/3 1 1]` and anisotropic;
+- puncta removal: single and uint16, sigma 2.5, with y sizes that are multiples of 16;
+- PSF analysis: double, sigma 2.
+
+Every explicitly padded column pass that was probed is bit-identical: replicate, symmetric,
+circular and constant padding, 3 to 31 taps, columns of 32 to 5,000 rows.
+
+The other cases stop at the best black-box result. MATLAB's vector code orders a few taps in ways
+the probes don't pin down, its long-kernel `conv2` isn't a direct sum, and its frequency-domain
+bits match no FFT size tried.
 
 | Output | Measured | Tolerance |
 |---|---|---|
-| `imfilter` column pass, rows after the last vector (double 9 and 13 taps, 17 taps and more; `'full'`; constant padding; the PSF analysis site in double, sigma 2) | at most 3 ulp (single 4) in 0.3–12% of values of 64-row columns | `ulp` 5, `max_frac` per case |
+| `imfilter` column pass with zero padding (the default; no call site uses it): rows of the last vectors, double 7 taps or more, single 11 or more; `'full'` from 5 taps | at most 2 ulp (single 4) in 0.2–12% of values of 64-row columns | `ulp` 2–5, `max_frac` per case |
 | `imgaussfilt` with small 2-D kernels (fewer than 49 values, sigma below about 1.25) | at most 8 ulp in 50–77% of values | `ulp` 12; integers ±1 in at most 0.6% |
 | `imfilter` with general 2-D and 3-D kernels (point detection's form) | at most 10 ulp | `ulp` 16 |
 | `conv2` with long kernels (`imgaussfilt`'s separable path at 21 taps or more: the phase flat field's spatial path, the puncta MIP at sigma 50) | relative 1.4e-6; uint16 ±1 in 2 of 102,000 values | `rel_max` 2e-6; integers ±1 |
 | The frequency domain (`imgaussfilt`, `imgaussfilt3`) and `edgetaper` | rounding level | `rel_max` 1e-6; integers ±1 |
 | Sparse arrays (less than a tenth nonzero) with replicate borders | at most 3 ulp in 5.5% of values | `ulp` 4 |
-| `imfilter` of uint16 along z | ±1 in at most 0.05% of values (cause not found) | `abs` 1, `max_frac` 1e-3 |
+| `imfilter` of uint16 along z, and along x with `'full'` | ±1 in at most 0.05% of values (cause not found) | `abs` 1, `max_frac` 1e-3 |
 
 ## Puncta removal (`tools.puncta_removal`, B08; proposed)
 

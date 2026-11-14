@@ -123,12 +123,13 @@ void bind_line_program(in_array<T> src, out_array<T> dst, i64 outer, i64 n_in, i
     const int32_t *pp = prog.data();
     for (i64 k = 0; k < nprog * plen; k++) {
         const i64 op = pp[k];
-        if (op == -1 || op == -2) continue;
+        if (op == -1 || op == -2 || op == -3) continue;
         const i64 t = op >= 0 ? op : op <= -kEdgeHigh ? -op - kEdgeHigh : op <= -kEdgeLow ? -op - kEdgeLow : -op - 10;
         if (t < 0 || t >= m) throw std::invalid_argument("a tap out of range");
         if (t >= span && op >= 0 && mode != 0)
             throw std::invalid_argument("taps past the kernel need constant padding");
-        if (op <= -kEdgeLow && mode != 1) throw std::invalid_argument("edge taps need replicate padding");
+        if (op <= -kEdgeLow && mode != 0 && mode != 1)
+            throw std::invalid_argument("edge taps need replicate or constant padding");
     }
     for (i64 i = 0; i < n_out; i++)
         if (rowmap.data()[i] < 0 || rowmap.data()[i] >= nprog)

@@ -30,7 +30,8 @@ PK5D_FILT_ISA void mac_const(T *acc, T v, T w, i64 n, bool fused) {
 }
 
 // One output row of a tap program over rows of n values: rows(q) gives the input row of padded
-// index q (nullptr: the constant value). The chains of the program are added in their order.
+// index q (nullptr: the constant value). The chains of the program are added in their order; the
+// taps after a -3 continue from the sum of the chains before it.
 template <typename T, typename Rows>
 PK5D_FILT_ISA void run_program(const int32_t *pr, i64 plen, i64 i, i64 pre, i64 n_in, const T *w,
                                T value, Rows rows, T *acc, T *total, i64 n) {
@@ -39,7 +40,7 @@ PK5D_FILT_ISA void run_program(const int32_t *pr, i64 plen, i64 i, i64 pre, i64 
     for (i64 x = 0; x < n; x++) acc[x] = T(0);
     for (i64 k = 0; k <= plen; k++) {
         const int32_t op = k < plen ? pr[k] : int32_t(-2);
-        if (op == -1 || op == -2) {
+        if (op == -1 || op == -2 || op == -3) {
             if (open) {
                 if (first) {
                     for (i64 x = 0; x < n; x++) total[x] = acc[x];
@@ -51,19 +52,25 @@ PK5D_FILT_ISA void run_program(const int32_t *pr, i64 plen, i64 i, i64 pre, i64 
                 open = false;
             }
             if (op == -2) break;
+            if (op == -3 && !first) {
+                for (i64 x = 0; x < n; x++) acc[x] = total[x];
+                first = true;
+                open = true;
+            }
             continue;
         }
-        // a tap (fused or plain), or a fused tap of an edge value with weight w[k] (replicate
-        // padding: the padded taps at one end as one product)
+        // a tap (fused or plain), or a fused tap of the padding just past one end with weight
+        // w[k] (the edge value with replicate padding, the constant with a constant: the padded
+        // taps at that end as one product)
         bool fused = op >= 0;
         i64 t, q;
         if (op <= -kEdgeHigh) {
             t = -(i64)op - kEdgeHigh;
-            q = n_in - 1;
+            q = n_in;
             fused = true;
         } else if (op <= -kEdgeLow) {
             t = -(i64)op - kEdgeLow;
-            q = 0;
+            q = -1;
             fused = true;
         } else {
             t = fused ? op : -(i64)op - 10;

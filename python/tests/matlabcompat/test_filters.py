@@ -300,6 +300,33 @@ add(
         inputs={"v": Value(lambda: sparse(45, SIZE3["b"], 0.02, "single"))},
     )
 )
+# y sizes of whole vectors of the column pass (16 values single, 8 double) with kernels of 3 mod
+# 8 taps (sigma 1/3 as the unmixing task strings write it, 2.5 as in the puncta removal blocks,
+# 4.5), tails with a one-tap remainder after two chunks (sigma 2 double, 4 single), and y sizes
+# of two 8 KB blocks
+_IG3Y = [
+    ("single", "s1_3.y48", (48, 40, 24), [0.3333333333, 1.0, 1.0]),
+    ("single", "s1_3.y64", (64, 40, 12), [0.3333333333, 1.0, 1.0]),
+    ("single", "s2.5.y32", (32, 36, 20), 2.5),
+    ("single", "s2.5.y48", (48, 48, 48), 2.5),
+    ("uint16", "s2.5.y48", (48, 48, 40), 2.5),
+    ("single", "s4.5.y64", (64, 30, 22), 4.5),
+    ("single", "s4.y40", (40, 30, 22), 4.0),
+    ("double", "s2.y52", (52, 40, 24), 2.0),
+    ("single", "s2.5.y2064", (2064, 6, 5), [2.5, 1.0, 1.0]),
+    ("double", "s2.y1040", (1040, 6, 5), [2.0, 1.0, 1.0]),
+]
+for cls, name, shape, s in _IG3Y:
+    add(
+        Case(
+            f"ig3.{cls}.{name}",
+            matlab="imgaussfilt3",
+            args=[Vol(In("v")), PerAxis(s, "yxz")],
+            python=py_imgaussfilt3,
+            out_roles=("vol",),
+            inputs={"v": Value(lambda cls=cls, shape=shape: uniform(46, shape, cls))},
+        )
+    )
 
 # imgaussfilt (2-D): classes, sigmas, paddings, filter sizes, the frequency domain
 _SIG2 = {
@@ -478,6 +505,32 @@ add(
         },
     )
 )
+_PADS = {"rep": ["replicate"], "sym": ["symmetric"], "circ": ["circular"], "v2.5": [2.5]}
+# explicitly padded columns in 8 KB blocks of padded rows (1,024 double, 2,048 single), the last
+# vector of columns of whole vectors (single, 3 mod 8 taps), tails with a one-tap remainder after
+# two or more chunks
+for cls, n, m in (
+    ("double", 1024, 11),
+    ("double", 3000, 19),
+    ("single", 2048, 19),
+    ("single", 2070, 11),
+    ("single", 48, 3),
+    ("double", 100, 13),
+    ("single", 100, 25),
+):
+    for on, opts in _PADS.items():
+        add(
+            Case(
+                f"imf.{cls}.n{n}.col{m}.{on}",
+                matlab="imfilter",
+                args=[In("a"), In("k"), *opts],
+                python=py_imfilter,
+                inputs={
+                    "a": Value(lambda cls=cls, n=n: uniform(71, (n, 6), cls)),
+                    "k": Value(lambda m=m: kernel(72, (m, 1))),
+                },
+            )
+        )
 
 # edgetaper
 for cls in ("double", "single", "uint16"):
@@ -669,8 +722,8 @@ add(
 # for the orchestrator): the largest distance in ulp and the share of values that differ, each
 # with a margin over the measurement on these cases.
 _COLUMN_TAIL = (
-    "proposed: imfilter's column pass, rows after the vector body (9, 13 and 17 or more taps), "
-    "'full' and constant paddings"
+    "proposed: imfilter's column pass with zero padding or 'full', rows of the last vectors "
+    "(double 7 taps or more, single 11 or more; 'full' from 5)"
 )
 _SMALL_2D = (
     "proposed: imgaussfilt's small (< 49 values) 2-D kernels, imfilter's 2-D vector code "
@@ -685,18 +738,10 @@ _INT = (
     "proposed: integer results one count off where the double result is within rounding of a half"
 )
 TOLERANCES = {
-    "ig3.double.s2.a": tol(reason=_COLUMN_TAIL, ulp=4, max_frac=0.06),
-    "ig3.double.s2.b": tol(reason=_COLUMN_TAIL, ulp=4, max_frac=0.03),
-    "site.psf.double.s2": tol(reason=_COLUMN_TAIL, ulp=4, max_frac=0.01),
-    "site.psf.double.s2.spatial": tol(reason=_COLUMN_TAIL, ulp=4, max_frac=0.03),
-    "ig3.single.pad.v3.5": tol(reason=_COLUMN_TAIL, ulp=3, max_frac=0.01),
-    "ig3.double.pad.v3.5": tol(reason=_COLUMN_TAIL, ulp=3, max_frac=0.01),
     "imf.double.col5.full": tol(reason=_COLUMN_TAIL, ulp=2, max_frac=0.01),
     "imf.double.col9.full": tol(reason=_COLUMN_TAIL, ulp=2, max_frac=0.01),
     "imf.single.col5.full": tol(reason=_COLUMN_TAIL, ulp=2, max_frac=0.02),
     "imf.single.col9.full": tol(reason=_COLUMN_TAIL, ulp=3, max_frac=0.04),
-    "imf.double.row7.v2.5": tol(reason=_COLUMN_TAIL, ulp=2, max_frac=0.02),
-    "imf.single.row7.v2.5": tol(reason=_COLUMN_TAIL, ulp=2, max_frac=0.03),
     "ig3.single.sparse": tol(reason=_SPARSE, ulp=4, max_frac=0.08),
     "imf.double.col17.default": tol(reason=_COLUMN_TAIL, ulp=3, max_frac=0.05),
     "imf.double.col19.default": tol(reason=_COLUMN_TAIL, ulp=3, max_frac=0.07),
@@ -769,17 +814,22 @@ def test_results_do_not_depend_on_the_thread_count(dt):
     assert np.array_equal(F.convn(v, k, "same", num_threads=4), c)
 
 
+def _fma1(wj, xj, acc, dt):
+    """fma(wj, xj, acc) by exact arithmetic"""
+    from fractions import Fraction
+
+    flat = [
+        float(Fraction(float(wj)) * Fraction(float(v)) + Fraction(float(a)))
+        for v, a in zip(xj.ravel(), acc.ravel(), strict=True)
+    ]
+    return np.array(flat, dtype=np.float64).astype(dt).reshape(acc.shape)
+
+
 def _chain(x, w, order, dt, fused):
     acc = np.zeros(x.shape[1:], dtype=dt)
     for j in order:
         if fused:
-            from fractions import Fraction
-
-            flat = [
-                float(Fraction(float(w[j])) * Fraction(float(v)) + Fraction(float(a)))
-                for v, a in zip(x[j].ravel(), acc.ravel(), strict=True)
-            ]
-            acc = np.array(flat, dtype=np.float64).astype(dt).reshape(acc.shape)
+            acc = _fma1(w[j], x[j], acc, dt)
         else:
             acc = (acc + (x[j] * dt(w[j])).astype(dt)).astype(dt)
     return acc
@@ -808,6 +858,59 @@ def test_column_pass_follows_its_row_programs(dt):
     assert rows[vec * ((n - 4) // vec)] != rows[0]
     padded = F._column_rows(n, m, (m - 1) // 2, dt == np.float64, False)
     assert padded[n - 1] == F._padded_tail(m, 2 * half) and padded[0] == body
+
+
+def _program_ref(x, w, prog, dt):
+    """a tap program: fused chains split by -1 and added in order; the taps after a -3 continue
+    from the sum so far"""
+    total = acc = None
+    for op in [*prog, -1]:
+        if op in (-1, -3):
+            if acc is not None:
+                total = acc if total is None else (total + acc).astype(dt)
+            acc = None
+            if op == -3:
+                acc, total = total, None
+            continue
+        start = np.zeros(x.shape[1:], dtype=dt) if acc is None else acc
+        acc = _fma1(w[op], x[op], start, dt)
+    return total
+
+
+@pytest.mark.parametrize("dt", [np.float32, np.float64])
+def test_padded_columns_in_blocks(dt):
+    """an explicitly padded column in blocks of 8 KB of padded rows: each block's whole vectors
+    in body order, then its tail; single's last vector with a three-tap remainder; a one-tap
+    remainder fused last into the sum of two or more chunks"""
+    double = dt == np.float64
+    vec, half, block = (8, 2, 1024) if double else (16, 4, 2048)
+    body, tail = F._body_order(11, half), F._padded_tail(11, 2 * half)
+    rows = F._column_rows(block + 30, 11, 5, double, False)
+    first = block - 10
+    nb = vec * (first // vec)
+    assert rows[:nb] == [body] * nb and rows[nb:first] == [tail] * (first - nb)
+    second = len(rows) - first
+    nb2 = vec * (second // vec)
+    assert rows[first : first + nb2] == [body] * nb2
+    assert rows[first + nb2 :] == [tail] * (second - nb2)
+    whole = F._column_rows(4 * vec, 11, 5, double, False)
+    if double:
+        assert whole == [body] * (4 * vec)
+    else:
+        assert whole[: 3 * vec] == [body] * (3 * vec)
+        assert whole[-1] == [10, 6, 9, 5, 8, 4, 7, 3, -1, 0, 1, 2]
+    m = 4 * half + 1
+    top, low = list(range(1 + 2 * half, m)), list(range(1, 1 + 2 * half))
+    assert F._padded_tail(m, 2 * half) == [*top, -1, *low, -3, 0]
+    # the kernel runs those programs as the reference does
+    n = 2 * vec + 3
+    x = _rand((n, 4), dt, 7)
+    w = _rand((m,), dt, 8) + dt(0.5)
+    rows = F._column_rows(n, m, (m - 1) // 2, double, False)
+    y = F._line_pass(x, w, 0, rows, (m - 1) // 2, n, 1, 0.0, 2)
+    xp = np.pad(x, (((m - 1) // 2, m - 1 - (m - 1) // 2), (0, 0)), mode="edge")
+    for i in (0, n - 3, n - 1):
+        assert np.array_equal(y[i], _program_ref(xp[i : i + m], w, rows[i], dt)), i
 
 
 def test_body_order_interleaves_the_halves_of_each_chunk():
