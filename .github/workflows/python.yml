@@ -141,8 +141,6 @@ jobs:
   cluster:
     name: Slurm cluster mode (Python 3.12 on ubuntu-24.04)
     runs-on: ubuntu-24.04
-    # reports without failing the workflow until it has passed on GitHub's runner twice
-    continue-on-error: true
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
