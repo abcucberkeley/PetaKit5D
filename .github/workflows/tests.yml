@@ -482,6 +482,7 @@ jobs:
         uses: matlab-actions/run-command@v3
         env:
           PROBE_CAST_LOG: ${{ github.workspace }}/probe-results/cast_StitchBlendMean_atexit_cast.txt
+          PROBE_CRASH_CATCH: '1'
         with:
           command: addpath('.github/scripts'); suite_exit_probe('StitchBlendMean_atexit_cast', {'StitchingTest/blendingWithoutTheMexGivesTheSameResult?tileBlendMethod=mean?'}, [], fullfile(getenv('RUNNER_TEMP'), 'variant_atexit_cast'));
 
@@ -512,6 +513,7 @@ jobs:
         uses: matlab-actions/run-command@v3
         env:
           PROBE_CAST_LOG: ${{ github.workspace }}/probe-results/cast_StitchBlendMean_lock_cast.txt
+          PROBE_CRASH_CATCH: '1'
         with:
           command: addpath('.github/scripts'); suite_exit_probe('StitchBlendMean_lock_cast', {'StitchingTest/blendingWithoutTheMexGivesTheSameResult?tileBlendMethod=mean?'}, [], fullfile(getenv('RUNNER_TEMP'), 'variant_lock_cast'));
 
@@ -527,6 +529,7 @@ jobs:
         uses: matlab-actions/run-command@v3
         env:
           PROBE_CAST_LOG: ${{ github.workspace }}/probe-results/cast_StitchBlendMean_both_cast.txt
+          PROBE_CRASH_CATCH: '1'
         with:
           command: addpath('.github/scripts'); suite_exit_probe('StitchBlendMean_both_cast', {'StitchingTest/blendingWithoutTheMexGivesTheSameResult?tileBlendMethod=mean?'}, [], fullfile(getenv('RUNNER_TEMP'), 'variant_both_cast'));
 
@@ -534,6 +537,150 @@ jobs:
         if: always()
         shell: bash
         run: bash .github/scripts/suite_step_done.sh suite_StitchBlendMean_both_cast ${{ steps.suite_StitchBlendMean_both_cast.outcome }}
+
+      - name: Reproducer, StitchingTest blend mean, committed mex and casting parallelWriteZarr
+        id: suite_StitchBlendMean_cast_only
+        timeout-minutes: 5
+        continue-on-error: true
+        uses: matlab-actions/run-command@v3
+        env:
+          PROBE_CAST_LOG: ${{ github.workspace }}/probe-results/cast_StitchBlendMean_cast_only.txt
+          PROBE_CRASH_CATCH: '1'
+        with:
+          command: addpath('.github/scripts'); suite_exit_probe('StitchBlendMean_cast_only', {'StitchingTest/blendingWithoutTheMexGivesTheSameResult?tileBlendMethod=mean?'}, [], fullfile(getenv('RUNNER_TEMP'), 'variant_cast_only'));
+
+      - name: After the reproducer, StitchingTest blend mean, committed mex and casting parallelWriteZarr
+        if: always()
+        shell: bash
+        run: bash .github/scripts/suite_step_done.sh suite_StitchBlendMean_cast_only ${{ steps.suite_StitchBlendMean_cast_only.outcome }}
+
+      - name: Reproducer, StitchingTest blend mean, atexit mex (repeat 2) and casting parallelWriteZarr
+        id: suite_StitchBlendMean_atexit_cast_r2
+        timeout-minutes: 5
+        continue-on-error: true
+        uses: matlab-actions/run-command@v3
+        env:
+          PROBE_CAST_LOG: ${{ github.workspace }}/probe-results/cast_StitchBlendMean_atexit_cast_r2.txt
+          PROBE_CRASH_CATCH: '1'
+        with:
+          command: addpath('.github/scripts'); suite_exit_probe('StitchBlendMean_atexit_cast_r2', {'StitchingTest/blendingWithoutTheMexGivesTheSameResult?tileBlendMethod=mean?'}, [], fullfile(getenv('RUNNER_TEMP'), 'variant_atexit_cast'));
+
+      - name: After the reproducer, StitchingTest blend mean, atexit mex (repeat 2) and casting parallelWriteZarr
+        if: always()
+        shell: bash
+        run: bash .github/scripts/suite_step_done.sh suite_StitchBlendMean_atexit_cast_r2 ${{ steps.suite_StitchBlendMean_atexit_cast_r2.outcome }}
+
+      - name: Reproducer, StitchingTest blend mean, atexit mex (repeat 3) and casting parallelWriteZarr
+        id: suite_StitchBlendMean_atexit_cast_r3
+        timeout-minutes: 5
+        continue-on-error: true
+        uses: matlab-actions/run-command@v3
+        env:
+          PROBE_CAST_LOG: ${{ github.workspace }}/probe-results/cast_StitchBlendMean_atexit_cast_r3.txt
+          PROBE_CRASH_CATCH: '1'
+        with:
+          command: addpath('.github/scripts'); suite_exit_probe('StitchBlendMean_atexit_cast_r3', {'StitchingTest/blendingWithoutTheMexGivesTheSameResult?tileBlendMethod=mean?'}, [], fullfile(getenv('RUNNER_TEMP'), 'variant_atexit_cast'));
+
+      - name: After the reproducer, StitchingTest blend mean, atexit mex (repeat 3) and casting parallelWriteZarr
+        if: always()
+        shell: bash
+        run: bash .github/scripts/suite_step_done.sh suite_StitchBlendMean_atexit_cast_r3 ${{ steps.suite_StitchBlendMean_atexit_cast_r3.outcome }}
+
+      - name: Reproducer, StitchingTest blend mean, atexit mex (repeat 4) and casting parallelWriteZarr
+        id: suite_StitchBlendMean_atexit_cast_r4
+        timeout-minutes: 5
+        continue-on-error: true
+        uses: matlab-actions/run-command@v3
+        env:
+          PROBE_CAST_LOG: ${{ github.workspace }}/probe-results/cast_StitchBlendMean_atexit_cast_r4.txt
+          PROBE_CRASH_CATCH: '1'
+        with:
+          command: addpath('.github/scripts'); suite_exit_probe('StitchBlendMean_atexit_cast_r4', {'StitchingTest/blendingWithoutTheMexGivesTheSameResult?tileBlendMethod=mean?'}, [], fullfile(getenv('RUNNER_TEMP'), 'variant_atexit_cast'));
+
+      - name: After the reproducer, StitchingTest blend mean, atexit mex (repeat 4) and casting parallelWriteZarr
+        if: always()
+        shell: bash
+        run: bash .github/scripts/suite_step_done.sh suite_StitchBlendMean_atexit_cast_r4 ${{ steps.suite_StitchBlendMean_atexit_cast_r4.outcome }}
+
+      - name: Reproducer, StitchingTest blend mean, atexit mex (repeat 5) and casting parallelWriteZarr
+        id: suite_StitchBlendMean_atexit_cast_r5
+        timeout-minutes: 5
+        continue-on-error: true
+        uses: matlab-actions/run-command@v3
+        env:
+          PROBE_CAST_LOG: ${{ github.workspace }}/probe-results/cast_StitchBlendMean_atexit_cast_r5.txt
+          PROBE_CRASH_CATCH: '1'
+        with:
+          command: addpath('.github/scripts'); suite_exit_probe('StitchBlendMean_atexit_cast_r5', {'StitchingTest/blendingWithoutTheMexGivesTheSameResult?tileBlendMethod=mean?'}, [], fullfile(getenv('RUNNER_TEMP'), 'variant_atexit_cast'));
+
+      - name: After the reproducer, StitchingTest blend mean, atexit mex (repeat 5) and casting parallelWriteZarr
+        if: always()
+        shell: bash
+        run: bash .github/scripts/suite_step_done.sh suite_StitchBlendMean_atexit_cast_r5 ${{ steps.suite_StitchBlendMean_atexit_cast_r5.outcome }}
+
+      - name: Reproducer, StitchingTest blend mean, locked mex (repeat 2) and casting parallelWriteZarr
+        id: suite_StitchBlendMean_lock_cast_r2
+        timeout-minutes: 5
+        continue-on-error: true
+        uses: matlab-actions/run-command@v3
+        env:
+          PROBE_CAST_LOG: ${{ github.workspace }}/probe-results/cast_StitchBlendMean_lock_cast_r2.txt
+          PROBE_CRASH_CATCH: '1'
+        with:
+          command: addpath('.github/scripts'); suite_exit_probe('StitchBlendMean_lock_cast_r2', {'StitchingTest/blendingWithoutTheMexGivesTheSameResult?tileBlendMethod=mean?'}, [], fullfile(getenv('RUNNER_TEMP'), 'variant_lock_cast'));
+
+      - name: After the reproducer, StitchingTest blend mean, locked mex (repeat 2) and casting parallelWriteZarr
+        if: always()
+        shell: bash
+        run: bash .github/scripts/suite_step_done.sh suite_StitchBlendMean_lock_cast_r2 ${{ steps.suite_StitchBlendMean_lock_cast_r2.outcome }}
+
+      - name: Reproducer, StitchingTest blend mean, locked mex (repeat 3) and casting parallelWriteZarr
+        id: suite_StitchBlendMean_lock_cast_r3
+        timeout-minutes: 5
+        continue-on-error: true
+        uses: matlab-actions/run-command@v3
+        env:
+          PROBE_CAST_LOG: ${{ github.workspace }}/probe-results/cast_StitchBlendMean_lock_cast_r3.txt
+          PROBE_CRASH_CATCH: '1'
+        with:
+          command: addpath('.github/scripts'); suite_exit_probe('StitchBlendMean_lock_cast_r3', {'StitchingTest/blendingWithoutTheMexGivesTheSameResult?tileBlendMethod=mean?'}, [], fullfile(getenv('RUNNER_TEMP'), 'variant_lock_cast'));
+
+      - name: After the reproducer, StitchingTest blend mean, locked mex (repeat 3) and casting parallelWriteZarr
+        if: always()
+        shell: bash
+        run: bash .github/scripts/suite_step_done.sh suite_StitchBlendMean_lock_cast_r3 ${{ steps.suite_StitchBlendMean_lock_cast_r3.outcome }}
+
+      - name: Reproducer, StitchingTest blend mean, both mex (repeat 2) and casting parallelWriteZarr
+        id: suite_StitchBlendMean_both_cast_r2
+        timeout-minutes: 5
+        continue-on-error: true
+        uses: matlab-actions/run-command@v3
+        env:
+          PROBE_CAST_LOG: ${{ github.workspace }}/probe-results/cast_StitchBlendMean_both_cast_r2.txt
+          PROBE_CRASH_CATCH: '1'
+        with:
+          command: addpath('.github/scripts'); suite_exit_probe('StitchBlendMean_both_cast_r2', {'StitchingTest/blendingWithoutTheMexGivesTheSameResult?tileBlendMethod=mean?'}, [], fullfile(getenv('RUNNER_TEMP'), 'variant_both_cast'));
+
+      - name: After the reproducer, StitchingTest blend mean, both mex (repeat 2) and casting parallelWriteZarr
+        if: always()
+        shell: bash
+        run: bash .github/scripts/suite_step_done.sh suite_StitchBlendMean_both_cast_r2 ${{ steps.suite_StitchBlendMean_both_cast_r2.outcome }}
+
+      - name: Reproducer, StitchingTest blend mean, both mex (repeat 3) and casting parallelWriteZarr
+        id: suite_StitchBlendMean_both_cast_r3
+        timeout-minutes: 5
+        continue-on-error: true
+        uses: matlab-actions/run-command@v3
+        env:
+          PROBE_CAST_LOG: ${{ github.workspace }}/probe-results/cast_StitchBlendMean_both_cast_r3.txt
+          PROBE_CRASH_CATCH: '1'
+        with:
+          command: addpath('.github/scripts'); suite_exit_probe('StitchBlendMean_both_cast_r3', {'StitchingTest/blendingWithoutTheMexGivesTheSameResult?tileBlendMethod=mean?'}, [], fullfile(getenv('RUNNER_TEMP'), 'variant_both_cast'));
+
+      - name: After the reproducer, StitchingTest blend mean, both mex (repeat 3) and casting parallelWriteZarr
+        if: always()
+        shell: bash
+        run: bash .github/scripts/suite_step_done.sh suite_StitchBlendMean_both_cast_r3 ${{ steps.suite_StitchBlendMean_both_cast_r3.outcome }}
 
       # an exit that crashes (StitchingTest blend mean with the atexit mex and the
       # casting parallelWriteZarr ended in an access violation): MATLAB's own crash
