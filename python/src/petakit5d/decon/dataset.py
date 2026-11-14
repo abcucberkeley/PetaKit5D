@@ -709,9 +709,10 @@ def _premake_backprojectors(
     hann_win_bounds, psf_gen, uuid,
 ) -> None:  # fmt: skip
     """the OMW back projector of each PSF, made once before the jobs (as the jobs get the
-    parameters from the function string), copied to the other datasets"""
+    parameters from the function string), copied to the other datasets by the names of its
+    files (``omw_backprojector_files``' second output)"""
     from petakit5d.core.paths import fileparts
-    from petakit5d.core.text import mat2str_comma, sprintf, through_text
+    from petakit5d.core.text import mat2str_comma, through_text
     from petakit5d.decon.backprojector import omw_backprojector_files
     from petakit5d.io import get_image_size
     from petakit5d.params.literal import str2num
@@ -724,11 +725,7 @@ def _premake_backprojectors(
         fsn = fileparts(psf_fn)[1]
         alpha = float(through_text(float(alphas[p]), "%.20f"))
         thresh = float(through_text(float(threshs[p]), "%.20f"))
-        names = [
-            sprintf("%s_back_projector_alpha_%0.6f_otf_cum_thresh_%0.6f.tif", fsn, alpha, thresh),
-            f"{fsn}_OTF.tif",
-            sprintf("%s_OTF_mask_otf_cum_thresh_%0.6f.tif", fsn, thresh),
-        ]
+        names: list[str] = []
         src = ""
         for d, data_path in enumerate(paths):
             full = [data_path + fnames[i] for i in range(len(fnames)) if fd_inds[i] == d]
@@ -745,10 +742,11 @@ def _premake_backprojectors(
                 continue
             os.makedirs(psfgen_path, exist_ok=True)
             if not src:
-                # without the figure, as in the cluster jobs
-                omw_backprojector_files(
+                # without the figure, as in the cluster jobs; the names of its files for the
+                # other datasets
+                names = omw_backprojector_files(
                     psf, psfgen_path, fsn, alpha, thresh, skewed, hann, psf_fn, False
-                )
+                ).fsns
                 src = psfgen_path
             elif not os.path.exists(psfgen_path + names[0]):
                 # the same PSF and parameters as in the first dataset

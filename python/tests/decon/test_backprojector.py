@@ -17,7 +17,8 @@ Oracle cases (inputs made in MATLAB's form; the roles give the Python calls the 
 - bp.demo.*: the demo datasets' bead PSFs (copies; psf_gen_new first, as RLdecon) with the
   demos' parameters, skewed, not skewed and detected;
 - files.*: omw_backprojector_files (the psfgen files, a back projector that exists, a folder
-  with a trailing slash); decon.*: decon_lucy_omw_function with the back projector file;
+  with a trailing slash, the names of the files of other bounds and of the default ones, its
+  second output); decon.*: decon_lucy_omw_function with the back projector file;
 - probe.*: MATLAB's arithmetic of the steps on dense values (abs of complex single, the Wiener
   division and its product with the window, the window function, the fold of the thirds).
 
@@ -391,7 +392,7 @@ def py_files(psf, folder, name, alpha, thresh, skewed, bounds, psf_fn, save_figu
     os.makedirs(folder.rstrip("/"), exist_ok=True)
     return B.omw_backprojector_files(
         psf, folder, name, alpha, thresh, skewed, bounds, psf_fn, save_figure, **kw
-    )
+    ).b_omw
 
 
 _FILES_CODE = (
@@ -429,6 +430,48 @@ def existing_bp(folder) -> None:
     write_tiff(v, str(folder / "psf_x_back_projector_alpha_0.005000_otf_cum_thresh_0.900000.tif"))
 
 
+# the names of the files (the second output): the bounds in the back projector's name unless
+# they are the default in 6 decimals (DeconFunctionTest/backProjectorFilesOfOtherBoundsAreTheirOwn)
+_NAMES_CODE = (
+    "mkdir(in{2}); [b, f] = omw_backprojector_files(in{1}, in{2}, 'psf', 0.005, 0.9, false, "
+    "in{3}, 'psf.tif', false); [b2, f2] = omw_backprojector_files(in{1}, in{2}, 'psf', 0.005, "
+    "0.9, false, in{4}, 'psf.tif', false); out = {b, f, b2, f2};"
+)
+
+
+def py_names(psf, folder, bounds, bounds2, *, backend=None):
+    import os
+
+    os.makedirs(folder, exist_ok=True)
+    kw = {"backend": backend}
+    r = B.omw_backprojector_files(
+        psf, folder, "psf", 0.005, 0.9, False, bounds, "psf.tif", False, **kw
+    )
+    r2 = B.omw_backprojector_files(
+        psf, folder, "psf", 0.005, 0.9, False, bounds2, "psf.tif", False, **kw
+    )
+    return [r.b_omw, r.fsns, r2.b_omw, r2.fsns]
+
+
+for _k, (_b1, _b2) in {
+    "other": ([0.8, 1.0], [0.5, 0.9]),
+    "near_default": ([0.8, 1.0], [0.8, 1.0 + 2.0**-52]),
+    "other_first": ([0.5, 0.9], [0.8, 1.0]),
+}.items():
+    CASES.append(
+        Case(
+            f"files.names.{_k}.exact",
+            code=_NAMES_CODE,
+            args=[Vol(In("psf")), Work("psfgen"), _b1, _b2],
+            nargout=4,
+            python=py_names,
+            py_kwargs={"backend": "exact"},
+            inputs={"psf": V(lambda: bp_psf_m("elongated"))},
+            out_roles=("vol", None, "vol", None),
+            tree=FILES_TREE,
+        )
+    )
+
 CASES.append(
     Case(
         "files.existing",
@@ -437,8 +480,10 @@ CASES.append(
             "'psf.tif', false)};"
         ),
         args=[Vol(In("psf")), InPath("psfgen")],
-        python=lambda psf, folder: B.omw_backprojector_files(
-            psf, folder, "psf_x", 0.005, 0.9, True, (0.8, 1.0), "psf.tif", False
+        python=lambda psf, folder: (
+            B.omw_backprojector_files(
+                psf, folder, "psf_x", 0.005, 0.9, True, (0.8, 1.0), "psf.tif", False
+            ).b_omw
         ),
         inputs={"psf": V(lambda: bp_psf_m("lobes3")), "psfgen": Tree(existing_bp, "psfgen")},
         out_roles=("vol",),
@@ -479,7 +524,7 @@ def py_decon(im, psf, folder, *, backend=None):
     os.makedirs(folder, exist_ok=True)
     b = B.omw_backprojector_files(
         psf, folder, "psf", 0.005, 0.88, True, (0.8, 1.0), "psf.tif", False, backend=backend
-    )
+    ).b_omw
     r = rl.lucy_omw(im, psf, b, 2, background=100, use_gpu=False, backend=backend)
     return r.decon, True
 
@@ -1080,6 +1125,63 @@ def test_file_names_are_matlabs():
     assert n["figure"] == f"{stem}_back_projector_alpha_0.012346_otf_cum_thresh_0.900000_figure.png"
     assert n["otf"] == f"{stem}_OTF.tif"
     assert n["mask"] == f"{stem}_OTF_mask_otf_cum_thresh_0.900000.tif"
+    assert n["fsns"] == [
+        "psf_488_back_projector_alpha_0.012346_otf_cum_thresh_0.900000.tif",
+        "psf_488_OTF.tif",
+        "psf_488_OTF_mask_otf_cum_thresh_0.900000.tif",
+    ]
+
+
+@pytest.mark.parametrize(
+    ("bounds", "suffix"),
+    [
+        ((0.8, 1.0), ""),
+        ([0.8, 1], ""),
+        ((0.8, 1.0 + 2.0**-52), ""),
+        ((0.8000004, 0.9999996), ""),
+        ((0.5, 0.9), "_hann_win_bounds_0.500000_0.900000"),
+        ((0.8, 1.2), "_hann_win_bounds_0.800000_1.200000"),
+        ((0.8000006, 1.0), "_hann_win_bounds_0.800001_1.000000"),
+        (np.array([0.8, 1.0], np.float32), ""),
+    ],
+)
+def test_back_projectors_of_other_bounds_have_their_own_name(bounds, suffix):
+    """the bounds are in the back projector's name (and its figure's) unless they are the
+    default [0.8, 1] in 6 decimals; the OTF and the mask keep their names"""
+    n = B.backprojector_file_names("/mnt/projects/psfgen/", "p", 0.005, 0.9, bounds)
+    stem = f"/mnt/projects/psfgen//p_back_projector_alpha_0.005000_otf_cum_thresh_0.900000{suffix}"
+    assert n["bp"] == stem + ".tif"
+    assert n["figure"] == stem + "_figure.png"
+    assert n["fsns"][0] == os.path.basename(stem) + ".tif"
+    assert n["fsns"][1:] == ["p_OTF.tif", "p_OTF_mask_otf_cum_thresh_0.900000.tif"]
+
+
+def test_bounds_of_one_value_fail_on_their_second_value():
+    with pytest.raises(B.BackProjectorError) as e:
+        B.backprojector_file_names("/mnt/projects/psfgen/", "p", 0.005, 0.9, (0.8,))
+    assert e.value.identifier == "MATLAB:badsubscript"
+
+
+def test_a_call_with_other_bounds_makes_its_own_back_projector(tmp_path):
+    """the back projector of other bounds isn't the earlier one of the same PSF (it was: its
+    name lacked the bounds); each call returns the names of its files"""
+    psf = bp_psf("elongated")
+    folder = str(tmp_path)
+    a = B.omw_backprojector_files(psf, folder, "p", 0.005, 0.9, False, (0.8, 1.0), "p", False)
+    b = B.omw_backprojector_files(psf, folder, "p", 0.005, 0.9, False, (0.5, 0.9), "p", False)
+    ref = B.generate_backprojector(psf, 0.005, False, 0.9, hann_win_bounds=(0.5, 0.9))
+    assert b.b_omw.tobytes() == ref.b_omw.tobytes()
+    assert a.b_omw.tobytes() != b.b_omw.tobytes()
+    assert a.fsns[0] == "p_back_projector_alpha_0.005000_otf_cum_thresh_0.900000.tif"
+    assert b.fsns[0] == (
+        "p_back_projector_alpha_0.005000_otf_cum_thresh_0.900000_hann_win_bounds_0.500000_"
+        "0.900000.tif"
+    )
+    assert a.fsns[1:] == b.fsns[1:]
+    assert sorted(os.listdir(folder)) == sorted({*a.fsns, *b.fsns})
+    # read again by its name
+    c = B.omw_backprojector_files(psf, folder, "p", 0.005, 0.9, False, (0.5, 0.9), "p", False)
+    assert c.b_omw.tobytes() == b.b_omw.tobytes() and c.fsns == b.fsns
 
 
 def test_files_are_made_once_and_the_back_projector_last(tmp_path):
@@ -1095,7 +1197,7 @@ def test_files_are_made_once_and_the_back_projector_last(tmp_path):
     with PublishSpy() as spy:
         b1 = B.omw_backprojector_files(
             psf, folder, "p", 0.005, 0.88, True, (0.8, 1.0), "p.tif", False
-        )
+        ).b_omw
     files = spy.files_when_moved(names["bp"])
     assert "p_OTF.tif" in files and "p_OTF_mask_otf_cum_thresh_0.880000.tif" in files
     assert sorted(os.listdir(folder)) == sorted(
@@ -1107,7 +1209,9 @@ def test_files_are_made_once_and_the_back_projector_last(tmp_path):
     assert read_tiff(names["otf"]).tobytes() == r.abs_otf_c.tobytes()
     assert read_tiff(names["mask"]).tobytes() == r.otf_mask.astype(np.uint8).tobytes()
     before = {f: os.stat(os.path.join(folder, f)).st_mtime_ns for f in os.listdir(folder)}
-    b2 = B.omw_backprojector_files(psf, folder, "p", 0.005, 0.88, True, (0.8, 1.0), "p.tif", False)
+    b2 = B.omw_backprojector_files(
+        psf, folder, "p", 0.005, 0.88, True, (0.8, 1.0), "p.tif", False
+    ).b_omw
     assert b2 is read_tiff_cached(names["bp"])
     assert b2.tobytes() == b1.tobytes()
     assert {f: os.stat(os.path.join(folder, f)).st_mtime_ns for f in os.listdir(folder)} == before

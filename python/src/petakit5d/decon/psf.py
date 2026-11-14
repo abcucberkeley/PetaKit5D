@@ -760,8 +760,8 @@ def rotate_psf(
     scans), its zero voxels set to the median of its positive values below their
     ``high_prctile`` percentile, written to ``<folder>/Rotated/<name>.tif`` (uint16, or single
     without ``save_16bit``; first as ``<name>_<uuid>.tif``, then renamed) with parameters.mat
-    (v7.3) and parameters.json of the call there. An existing result is kept unless
-    ``overwrite``."""
+    (v7.3) and parameters.json of the call there; a file name without a folder is in the
+    current folder (``./Rotated/``). An existing result is kept unless ``overwrite``."""
     values = dict(locals())
     from petakit5d.core import dtypes
     from petakit5d.core.ids import get_uuid
@@ -778,6 +778,9 @@ def rotate_psf(
     # MATLAB's fileparts: the folder without its last separator, the name without extension
     folder, base = os.path.split(fn)
     fsname = os.path.splitext(base)[0]
+    # a file name without a folder is in the current folder (not the root)
+    if not folder:
+        folder = "."
     rot_dir = folder + "/Rotated/"
     os.makedirs(rot_dir, exist_ok=True)
     final = f"{rot_dir}{fsname}.tif"

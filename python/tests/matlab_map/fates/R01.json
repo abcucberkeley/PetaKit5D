@@ -32,6 +32,10 @@
           "pytest:tests/decon/test_psf.py::test_psf_gen_resamples_z_to_the_data_step",
           "pytest:tests/decon/test_psf.py::test_truncation_index_arithmetic",
           "oracle:tests/decon/test_psf.py::gen.bead.nz4*.r*"
+        ],
+        "rotatedPSFOfAFileInTheCurrentFolderStaysThere": [
+          "pytest:tests/decon/test_psf.py::test_rotated_psf_of_a_file_in_the_current_folder_stays_there",
+          "oracle:tests/decon/test_psf.py::rotate.bare_name"
         ]
       }
     },

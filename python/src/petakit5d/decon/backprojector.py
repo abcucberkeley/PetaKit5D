@@ -52,13 +52,16 @@ for skewed PSFs). Nothing depends on the thread count. Known differences:
   infinite) and the window is +-0 (only a non-finite OTF has such values).
 
 **omw_backprojector_files**:
-``<psfgen>/<name>_back_projector_alpha_<%0.6f>_otf_cum_thresh_<%0.6f>.tif`` is read
+``<psfgen>/<name>_back_projector_alpha_<%0.6f>_otf_cum_thresh_<%0.6f>.tif`` (with
+``_hann_win_bounds_<%0.6f>_<%0.6f>`` before ``.tif`` unless the bounds are the default
+``[0.8, 1]`` in 6 decimals, so that back projectors of other bounds are their own) is read
 (``read_tiff_cached``) if it exists, else made, with ``<name>_OTF.tif`` (the shifted |OTF|) and
 ``<name>_OTF_mask_otf_cum_thresh_<%0.6f>.tif`` (uint8), each written under a name with a uuid
 and renamed. The back projector is published last (MATLAB writes it first), so that the other
 files exist once it does, and a back projector another writer published meanwhile is kept. The
 figure of the mask's outline on the OTF (``<...>_figure.png``) is drawn with matplotlib when it
-is installed; the data files don't depend on it.
+is installed; the data files don't depend on it. It returns the back projector and the names of
+the three files (MATLAB's second output), by which the decon wrapper copies them.
 """
 
 from __future__ import annotations
@@ -77,6 +80,7 @@ from petakit5d.params import Param, register
 __all__ = [
     "BackProjector",
     "BackProjectorError",
+    "BackProjectorFiles",
     "backprojector_file_names",
     "generate_backprojector",
     "omw_backprojector",
@@ -1015,22 +1019,58 @@ def omw_backprojector(
 # ---------------------------------------------------------------------------------------------
 
 
-def backprojector_file_names(
-    psfgen_path: str, psf_fsn: str, wiener_alpha: float, otf_cum_thresh: float
-) -> dict[str, str]:
-    """the psfgen files of omw_backprojector_files, as MATLAB names them (``sprintf`` with
-    ``%0.6f``; the folder as given, a trailing ``/`` kept): 'bp', 'figure', 'otf', 'mask'"""
+_DEFAULT_BOUNDS = "_hann_win_bounds_0.800000_1.000000"
+
+
+class BackProjectorFiles(NamedTuple):
+    """omw_backprojector_files' outputs: ``b_omw`` the back projector, ``fsns`` the names of the
+    back projector, OTF and OTF mask files in the psfgen folder"""
+
+    b_omw: np.ndarray
+    fsns: list[str]
+
+
+def _bp_str(wiener_alpha: float, otf_cum_thresh: float, hann_win_bounds: Sequence[float]) -> str:
+    """the back projector's parameters in its name: alpha and the threshold, and the bounds
+    unless they are the default in 6 decimals (MATLAB's ``bpStr``)"""
     from petakit5d.core import text
 
+    b = np.asarray(hann_win_bounds).reshape(-1)
+    if b.size < 2:
+        raise BackProjectorError(
+            "MATLAB:badsubscript",
+            f"Index exceeds the number of array elements. Index must not exceed {b.size}.",
+        )
+    s = text.sprintf("alpha_%0.6f_otf_cum_thresh_%0.6f", wiener_alpha, otf_cum_thresh)
+    bounds = text.sprintf("_hann_win_bounds_%0.6f_%0.6f", b[0], b[1])
+    return s if bounds == _DEFAULT_BOUNDS else s + bounds
+
+
+def backprojector_file_names(
+    psfgen_path: str,
+    psf_fsn: str,
+    wiener_alpha: float,
+    otf_cum_thresh: float,
+    hann_win_bounds: Sequence[float] = (0.8, 1.0),
+) -> dict[str, Any]:
+    """the psfgen files of omw_backprojector_files, as MATLAB names them (``sprintf`` with
+    ``%0.6f``; the folder as given, a trailing ``/`` kept): 'bp', 'figure', 'otf', 'mask', and
+    'fsns' the names of the back projector, OTF and mask files without the folder"""
+    from petakit5d.core import text
+
+    bp_str = _bp_str(wiener_alpha, otf_cum_thresh, hann_win_bounds)
+    fsns = [
+        f"{psf_fsn}_back_projector_{bp_str}.tif",
+        f"{psf_fsn}_OTF.tif",
+        text.sprintf("%s_OTF_mask_otf_cum_thresh_%0.6f.tif", psf_fsn, otf_cum_thresh),
+    ]
     stem = f"{psfgen_path}/{psf_fsn}"
-    bp = text.sprintf(
-        "%s_back_projector_alpha_%0.6f_otf_cum_thresh_%0.6f", stem, wiener_alpha, otf_cum_thresh
-    )
     return {
-        "bp": bp + ".tif",
-        "figure": bp + "_figure.png",
-        "otf": f"{stem}_OTF.tif",
-        "mask": text.sprintf("%s_OTF_mask_otf_cum_thresh_%0.6f.tif", stem, otf_cum_thresh),
+        "bp": f"{psfgen_path}/{fsns[0]}",
+        "figure": f"{stem}_back_projector_{bp_str}_figure.png",
+        "otf": f"{psfgen_path}/{fsns[1]}",
+        "mask": f"{psfgen_path}/{fsns[2]}",
+        "fsns": fsns,
     }
 
 
@@ -1096,21 +1136,23 @@ def omw_backprojector_files(
     *,
     backend: str | None = None,
     threads: int | None = None,
-) -> np.ndarray:
+) -> BackProjectorFiles:
     """omw_backprojector_files: the back projector of ``psf`` from the psfgen folder, or made
     (``generate_backprojector`` with the default OTFAreaThresh and minIntThrsh) and saved there
     with the OTF, the OTF mask and, with ``save_figure`` and matplotlib, the figure (see the
     module). ``psf_fn`` names the PSF in the messages. Returns the back projector (a cached
-    read-only array when it was read)."""
+    read-only array when it was read) and the names of its three files."""
     from petakit5d.core.ids import get_uuid
     from petakit5d.decon.psf import read_tiff_cached
     from petakit5d.io import write_tiff
     from petakit5d.jobs.publish import remove_path, rename_no_replace
 
-    names = backprojector_file_names(psfgen_path, psf_fsn, wiener_alpha, otf_cum_thresh)
+    names = backprojector_file_names(
+        psfgen_path, psf_fsn, wiener_alpha, otf_cum_thresh, hann_win_bounds
+    )
     if os.path.exists(names["bp"]):
         print(f"Load existing OMW back projector {names['bp']} for {psf_fn} ...", flush=True)
-        return read_tiff_cached(names["bp"])
+        return BackProjectorFiles(read_tiff_cached(names["bp"]), names["fsns"])
     print(f"OMW back projector generation for {psf_fn} ...", flush=True)
     uuid = get_uuid()
     r = generate_backprojector(
@@ -1134,7 +1176,7 @@ def omw_backprojector_files(
     if not rename_no_replace(tmp, names["bp"]):
         # another writer published the same back projector: keep it
         remove_path(tmp)
-    return r.b_omw
+    return BackProjectorFiles(r.b_omw, names["fsns"])
 
 
 def _uint8(m: np.ndarray) -> np.ndarray:

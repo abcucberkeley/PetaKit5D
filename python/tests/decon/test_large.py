@@ -7,7 +7,8 @@ batches with odd remainders, a Gaussian PSF of 31^3 (and a noisy one for OMW); t
 side writes are compared (results, MIPs and MIP slabs, the generated PSF, masks): the in-memory
 decon with erosion (data without zeros, and with zeros: the distance map), a saved mask, a mask
 file, zarr input and output, single results, OMW, 2D masks that skip batches, psfGen false,
-flipZstack, the options, the default background and MATLAB's errors with Deskew and Rotate; the
+flipZstack, the options, the default background, and Deskew and Rotate (the batches are only
+deconvolved: Deskew sets the border PSF's z step); the
 in-place decon (through MATLAB's local job framework) with the same options, a deskewed PSF
 border, an existing result and options that change on their way through MATLAB's task strings;
 the block task with useGPU on a node without a GPU and on the CPU. Each runs on both CPU FFT
@@ -388,14 +389,10 @@ CASES += _cases(
 )
 CASES += _cases("mem.background_default", "mem", ["Background", []])
 CASES += _cases("mem.batch_one", "mem", ["batchSize", [64, 64, 64], "EdgeErosion", 3])
-# MATLAB's errors: each batch's RLdecon skips with Deskew (its empty result can't be placed)
-# and fails on its undefined file name with Rotate
-CASES += _cases(
-    "error.mem.deskew", "mem", ["Deskew", True], expect_error="MATLAB:subsassigndimmismatch"
-)
-CASES += _cases(
-    "error.mem.rotate", "mem", ["Rotate", True], expect_error="MATLAB:UndefinedFunction"
-)
+# the batches are only deconvolved (until c24801c each batch's RLdecon skipped with Deskew, and
+# its empty result couldn't be placed, and failed on its undefined file name with Rotate)
+CASES += _cases("mem.deskew", "mem", ["Deskew", True])
+CASES += _cases("mem.rotate", "mem", ["Rotate", True])
 # --- in place: through MATLAB's local job framework (tasks of 5 batches, flags with the
 # blocks' MIPs, the MIPs merged from them)
 CASES += _cases("place.simplified", "place", [], root=ZARR_ROOT)
@@ -828,17 +825,42 @@ def test_large_file_with_erode_by_first_time_point_completes(tmp_path):
         assert np.any(out[~shell]), fn
 
 
-def test_in_memory_deskew_and_rotate_fail_as_matlab(tmp_path):
-    from petakit5d.decon.rl import DeconError
+def test_large_file_in_memory_batches_are_only_deconvolved(tmp_path, monkeypatch):
+    """(MATLAB: largeFileInMemoryBatchesAreOnlyDeconvolved) Deskew and Rotate reached the RLdecon
+    of each batch: with Deskew each batch returned nothing to place
+    (MATLAB:subsassigndimmismatch), with Rotate each failed on its undefined file name. The
+    batches are only deconvolved, as the in-place blocks: Deskew only changes the PSF that sets
+    the batches' borders, so with one batch the results are equal"""
+    from petakit5d.decon import file as F
 
     d, fns, psf = dataset(tmp_path)
-    kw = {"background": BG, "dz_psf": DZ, "decon_iter": 1, "edge_erosion": 0, "use_gpu": False}
-    with pytest.raises(L.DeconLargeError) as e:
-        L.decon_large_in_memory(fns[0], psf, d + "x/a.tif", XY, DZ, deskew=True, **kw)
-    assert e.value.identifier == "MATLAB:subsassigndimmismatch"
-    with pytest.raises(DeconError) as e2:
-        L.decon_large_in_memory(fns[0], psf, d + "x/b.tif", XY, DZ, rotate=True, **kw)
-    assert e2.value.identifier == "MATLAB:UndefinedFunction"
+    kw = {"background": BG, "dz_psf": DZ, "decon_iter": 2, "edge_erosion": 0, "use_gpu": False,
+          "rl_method": "simplified"}  # fmt: skip
+    seen = []
+    real = F.rl_decon_file
+
+    def spy(*a, **k):
+        seen.append((k["deskew"], k["rotate"]))
+        return real(*a, **k)
+
+    monkeypatch.setattr(F, "rl_decon_file", spy)
+    runs = {
+        "plain": {"batch_size": (16, 24, 24)},
+        "rotate": {"batch_size": (16, 24, 24), "rotate": True},
+        "one": {"batch_size": (64, 64, 64)},
+        "deskew": {"batch_size": (64, 64, 64), "deskew": True},
+    }
+    out = {}
+    for name, opts in runs.items():
+        fn = f"{d}large/{name}/{os.path.basename(fns[0])}"
+        L.decon_large_in_memory(fns[0], psf, fn, XY, DZ, **kw, **opts)
+        out[name] = read(fn)
+    same_bits(out["rotate"], out["plain"])
+    same_bits(out["deskew"], out["one"])
+    assert out["plain"].shape == SMALL and out["plain"].max() > 0, "not deconvolved"
+    assert seen and set(seen) == {(False, False)}
+    for name in ("rotate", "deskew"):
+        assert not os.path.isdir(f"{d}large/{name}/DSR"), f"{name}: a batch was rotated"
 
 
 def test_in_memory_masks_skip_empty_batches(tmp_path, monkeypatch):

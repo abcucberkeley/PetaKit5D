@@ -47,14 +47,15 @@ is the batch's): the batches, their borders and their order are MATLAB's.
   MATLAB's ``ny x nx``, ``nx x nz`` and ``ny x nz`` images) a batch whose region has no nonzero
   mask value in one of them is not deconvolved: its result is zeros.
 
-MATLAB quirks kept (each has a test): the in-memory decon ignores ``rotate`` (passed to each
-batch's RLdecon, which then fails on its undefined file name) and fails with ``deskew``
-(RLdecon skips each batch, and its empty result can't be placed); its temporary names carry an
-empty uuid as ``<name>_.tif`` (a new uuid here); the in-place blocks ignore ``flip_zstack`` and
-always fix the iterations; the in-place call takes ``rl_method`` as it is (RLdecon's names are
-case-sensitive); the border PSF of a deskewed file has a negative z step with the default
-angle. ``in_place_controller_resources`` gives what the job of an in-place file asks for
-(XR_decon_data_wrapper's controller rule).
+The in-memory batches are only deconvolved, as the in-place blocks: their RLdecon gets
+``deskew`` and ``rotate`` false (``deskew`` only sets the z step of the border PSF).
+
+MATLAB quirks kept (each has a test): the in-memory temporary names carry an empty uuid as
+``<name>_.tif`` (a new uuid here); the in-place blocks ignore ``flip_zstack`` and always fix the
+iterations; the in-place call takes ``rl_method`` as it is (RLdecon's names are case-sensitive:
+another name fails in each block's RLdecon); the border PSF of a deskewed file has a negative z
+step with the default angle. ``in_place_controller_resources`` gives what the job of an
+in-place file asks for (XR_decon_data_wrapper's controller rule).
 """
 
 from __future__ import annotations
@@ -423,8 +424,8 @@ def _rl_batch(
     Param("xyPixelSize", "@isnumeric", "Pixel size (um)."),
     Param("dz", "@isnumeric", "Scan step (um)."),
     Param("save16bit", "@islogical", "Result in uint16 (else single).", convert="same"),
-    Param("Rotate", "@islogical", "Passed to each batch's RLdecon (which then fails)."),
-    Param("Deskew", "@islogical", "Border PSF at dz sind(SkewAngle); fails in the batches."),
+    Param("Rotate", "@islogical", "Accepted; not used (the batches are only deconvolved)."),
+    Param("Deskew", "@islogical", "Border PSF at dz sind(SkewAngle); the batches aren't deskewed."),
     Param("SkewAngle", "@isnumeric", "Skew angle (degrees)."),
     Param("flipZstack", "@islogical", "Flip the data in z first."),
     Param("Background", "@isnumeric", "Background ([]: 99).", convert="same"),
@@ -533,7 +534,7 @@ def decon_large_in_memory(
     from petakit5d.tools.mip import axis_max
 
     del edge_soften, z_edge_soften, crop, z_flip, gen_max_zproj, err_thresh, overlap
-    del cpu_max_mem, parse_cluster, debug
+    del cpu_max_mem, parse_cluster, debug, rotate
     t = _threads()
     frame = os.fspath(frame_fullpaths)
     psf_fn = os.fspath(psf_fullpath)
@@ -596,11 +597,12 @@ def decon_large_in_memory(
 
     print("Deconvolving chunks...", flush=True)
     masks = _use_masks(mask_fullpaths)
+    # the batches are only deconvolved, as the in-place blocks (deskew is for the PSF above)
     kw = {
         "save_16bit": bool(save_16bit),
         "skew_angle": skew_angle,
-        "deskew": bool(deskew),
-        "rotate": bool(rotate),
+        "deskew": False,
+        "rotate": False,
         "background": bg,
         "decon_iter": decon_iter,
         "rl_method": str(rl_method),

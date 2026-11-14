@@ -1371,6 +1371,40 @@ def test_omw_back_projector_is_made_once_before_the_jobs(tmp_path, fake_slurm, p
 
 
 @POSIX
+def test_omw_back_projector_of_other_bounds_is_copied_by_its_name(tmp_path, fake_slurm, pauses):
+    """(MATLAB: omwBackProjectorOfOtherBoundsIsCopiedByItsName) the back projector of bounds
+    other than the default has them in its name, and the wrapper copies it to the other
+    datasets by the name it got"""
+    from petakit5d.decon.backprojector import generate_backprojector
+
+    d = DS(tmp_path / "a")
+    d2 = DS(tmp_path / "b")
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        logs = tmp_path / "logs"
+        logs.mkdir()
+        D.decon_dataset(
+            [d.data, d2.data], channel_patterns=d.channels, psf_fullpaths=d.psfs, xy_pixel_size=XY,
+            dz=DZ, dz_psf=DZ, background=BG, rl_method="omw", decon_iter=2, wiener_alpha=0.005,
+            otf_cum_thresh=0.9, hann_win_bounds=(0.5, 0.9), skewed=False, parse_cluster=True,
+            gpu_job=True, max_trial_num=1, gpu_config_file=gpu_config(tmp_path),
+            job_log_dir=str(logs),
+        )  # fmt: skip
+    for data in (d.data, d2.data):
+        pg = data + "matlab_decon/psfgen/PSF_CamA"
+        bp = pg + (
+            "_back_projector_alpha_0.005000_otf_cum_thresh_0.900000_hann_win_bounds_0.500000_"
+            "0.900000.tif"
+        )
+        assert os.path.isfile(bp), "The back projector of the bounds is missing."
+        assert not os.path.exists(pg + "_back_projector_alpha_0.005000_otf_cum_thresh_0.900000.tif")
+        r = generate_backprojector(
+            _read(pg + "_omw.tif"), 0.005, False, 0.9, hann_win_bounds=(0.5, 0.9)
+        )
+        np.testing.assert_array_equal(_read(bp), r.b_omw)
+
+
+@POSIX
 def test_the_premade_back_projector_gets_the_jobs_values(tmp_path, fake_slurm, pauses, monkeypatch):
     """the master makes the back projector with the values the jobs get from the function
     string (%.20f of alpha and threshold, mat2str of the bounds): a small alpha is rounded"""
@@ -1378,7 +1412,11 @@ def test_the_premade_back_projector_gets_the_jobs_values(tmp_path, fake_slurm, p
     from petakit5d.decon import backprojector
 
     seen = []
-    monkeypatch.setattr(backprojector, "omw_backprojector_files", lambda *a, **kw: seen.append(a))
+    monkeypatch.setattr(
+        backprojector,
+        "omw_backprojector_files",
+        lambda *a, **kw: seen.append(a) or backprojector.BackProjectorFiles(np.zeros(0), []),
+    )
     d = DS(tmp_path)
     alpha, thresh = 1.2345678901234567e-5, 0.8812345678901234567
     cluster(

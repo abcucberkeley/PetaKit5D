@@ -106,6 +106,10 @@
         ],
         "compiledJobGetsAllFilesOfItsBatch": [
           "pytest:tests/decon/test_dataset.py::test_a_job_of_several_files_gets_all_its_files"
+        ],
+        "omwBackProjectorOfOtherBoundsIsCopiedByItsName": [
+          "pytest:tests/decon/test_dataset.py::test_omw_back_projector_of_other_bounds_is_copied_by_its_name",
+          "oracle:tests/decon/test_dataset.py::long_decimals.omw.*"
         ]
       }
     },

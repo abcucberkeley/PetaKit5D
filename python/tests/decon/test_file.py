@@ -14,8 +14,11 @@ MATLAB-name layer, so the registry's conversions are part of each case):
   flipZstack, no iterations, all-zero data, the skip rules, save3Dstack, OMW, a PSF larger than
   the data, no output file;
 - mem.*: RLdecon of data in memory (DeconFunctionTest's and DeconOverlapTest's calls): the
-  result, the overlap function's output;
-- error.*: MATLAB's errors ('cudagen', in-memory calls with an output file and a MIP, ...).
+  result, the overlap function's output; mem.files.*: the files of data in memory, named after
+  the output file (its MIP, the deskew and rotation), and none without an output file (the PSF
+  and the OMW back projector made without their files);
+- error.*: MATLAB's errors ('cudagen', a method name RLdecon doesn't have, the deskew and
+  rotation of data in memory without an output file, ...).
 
 Each case runs on both CPU FFT backends: ``.exact`` (MATLAB's bits; skipped without the add-on)
 and ``.permissive`` (decision record 0006: uint16 voxels at most 1 count off in at most 0.1% of
@@ -554,22 +557,89 @@ for _m in ("omw", "simplified"):
             single=False,
             noisy=True,
         )
+# data in memory with an output file: the results are named after it (they took the undefined
+# input file's name, fsname, until c24801c); without one, OMW makes its back projector in memory
 CASES += mem_cases(
     "mem.deskew_rotate",
     ["RLMethod", "simplified", "DeconIter", 2, "Deskew", True, "Rotate", True],
     out="out/result.tif",
-    expect_error=True,
+    single=False,
 )
 CASES += mem_cases(
-    "error.mem_output_mip",
-    ["RLMethod", "simplified", "DeconIter", 2],
-    out="out/result.tif",
-    expect_error=True,
+    "mem.output_mip", ["RLMethod", "simplified", "DeconIter", 2], out="out/result.tif", single=False
 )
+# (the symmetric PSF: exact only, see psf_noisy; mem.files.no_output.omw has the noisy one)
 CASES += mem_cases(
-    "error.mem_omw_no_output",
+    "mem.omw_no_output",
     ["RLMethod", "omw", "DeconIter", 2, "skewed", False],
-    expect_error=True,
+    single=False,
+    backends=("exact",),
+)
+
+
+def mem_file_cases(cid, opts, *, out="", noisy=False, expect_error=False, backends=BACKENDS):
+    """RLdecon of data in memory with the files written compared (DeconFunctionTest's
+    rldeconInMemoryWithAnOutputFileNamesItsFilesAfterIt and
+    rldeconInMemoryWithoutAnOutputFileWritesNothing)"""
+    res = []
+    for be in backends:
+        spec = None
+        if be == "permissive" and not expect_error:
+            spec = {0: PERMISSIVE_U16}
+        res.append(
+            Case(
+                f"{cid}.{be}",
+                code=_MEM_CODE,
+                args=[
+                    InPath("root"),
+                    out,
+                    False,
+                    In("im"),
+                    "useGPU",
+                    False,
+                    "Background",
+                    BG,
+                    *opts,
+                ],  # fmt: skip
+                nargout=2,
+                python=p_mem,
+                py_kwargs={"backend": be},
+                inputs={
+                    "root": Tree(make_root(noisy=noisy), "root"),
+                    "im": Value(lambda: to_matlab(frame(2))),
+                },
+                expect_error=expect_error,
+                py_error=Exception,
+                **({"compare": spec} if spec else {}),
+                **(
+                    {"tree": file_tree()} if be == "permissive" else {"tree": tree(ignore=[FIGURE])}
+                ),
+            )
+        )
+    return res
+
+
+_SIMPLE = ["RLMethod", "simplified", "DeconIter", 2]
+CASES += mem_file_cases("mem.files.output", [*_SIMPLE, "psfGen", False], out="out/result.tif")
+CASES += mem_file_cases("mem.files.output_psfgen", [*_SIMPLE, "psfGen", True], out="out/result.tif")
+CASES += mem_file_cases(
+    "mem.files.deskew_rotate",
+    [*_SIMPLE, "psfGen", False, "Deskew", True, "Rotate", True],
+    out="out/result.tif",
+    backends=ROTATED,
+)
+CASES += mem_file_cases("mem.files.no_output.simplified", [*_SIMPLE, "psfGen", True])
+CASES += mem_file_cases(
+    "mem.files.no_output.omw",
+    ["RLMethod", "omw", "DeconIter", 2, "psfGen", True, "skewed", False],
+    noisy=True,
+)
+# without an output file there is nowhere to write: MATLAB's undefined outFsn first
+CASES += mem_file_cases(
+    "error.mem_no_output.deskew_rotate",
+    [*_SIMPLE, "psfGen", False, "Deskew", True, "Rotate", True],
+    expect_error="MATLAB:UndefinedFunction",
+    backends=("permissive",),
 )
 
 
@@ -773,24 +843,136 @@ def test_the_separate_path_ignores_resample(root):
     np.testing.assert_array_equal(a.dsr, b.dsr)
 
 
-def test_in_memory_call_with_an_output_file_and_a_mip_raises_matlabs_error(root):
-    """MATLAB's behaviour (M07's report, not fixed): fsname is undefined without an input file"""
+def _files(folder) -> list[str]:
+    """the files under folder, relative, with forward slashes"""
+    return sorted(
+        os.path.relpath(os.path.join(d, f), folder).replace(os.sep, "/")
+        for d, _, fs in os.walk(folder)
+        for f in fs
+    )
+
+
+def test_rldecon_in_memory_with_an_output_file_names_its_files_after_it(root):
+    """(MATLAB: rldeconInMemoryWithAnOutputFileNamesItsFilesAfterIt) data in memory with an output
+    file: its MIP took the input file's name (fsname undefined) and failed; the result and its
+    MIP are named after the output file and equal those of the decon of the file"""
+    from petakit5d.io import read_tiff, write_tiff
+
+    im = frame(2)
+    fn = str(root / "in.tif")
+    write_tiff(im, fn)
+    psf = str(root / "psf" / "PSF_CamA.tif")
+    kw = {"rl_method": "simplified", "psf_gen": False, "use_gpu": False, "background": BG,
+          "decon_iter": 2}  # fmt: skip
+    F.rl_decon_file(fn, str(root / "file" / "in.tif"), psf, XY, DZ, DZ, **kw)
+    os.makedirs(root / "memory")
+    F.rl_decon_file("", str(root / "memory" / "out.tif"), psf, XY, DZ, DZ, rawdata=im, **kw)
+    np.testing.assert_array_equal(
+        read_tiff(str(root / "memory" / "out.tif")), read_tiff(str(root / "file" / "in.tif"))
+    )
+    np.testing.assert_array_equal(
+        read_tiff(str(root / "memory" / "MIPs" / "out_MIP_z.tif")),
+        read_tiff(str(root / "file" / "MIPs" / "in_MIP_z.tif")),
+    )
+    assert _files(root / "memory") == [
+        "MIPs/out_MIP_z.tif",
+        "decon_info/out_actual_iterations_2.txt",
+        "decon_info/out_info.mat",
+        "out.tif",
+    ]
+
+
+def test_rldecon_in_memory_deskews_and_rotates_into_the_output_folder(root):
+    """data in memory with an output file and Deskew and Rotate: the DSR and its MIP are named
+    after the output file, as the decon's MIP"""
+    from petakit5d.io import read_tiff
+
+    out = root / "out"
+    os.makedirs(out)
+    r = F.rl_decon_file(
+        "", str(out / "r.tif"), str(root / "psf" / "PSF_CamA.tif"), XY, DZ, DZ, rawdata=frame(2),
+        rl_method="simplified", psf_gen=False, use_gpu=False, background=BG, decon_iter=2,
+        deskew=True, rotate=True,
+    )  # fmt: skip
+    np.testing.assert_array_equal(read_tiff(str(out / "DSR" / "r.tif")), r.dsr)
+    np.testing.assert_array_equal(
+        read_tiff(str(out / "DSR" / "MIPs" / "r_MIP_z.tif")), r.dsr.max(axis=0)
+    )
+    assert os.path.isfile(out / "MIPs" / "r_MIP_z.tif")
+
+
+@pytest.mark.parametrize("method", ["simplified", "omw"])
+def test_rldecon_in_memory_without_an_output_file_writes_nothing(root, tmp_path, method,
+                                                                  monkeypatch):  # fmt: skip
+    """(MATLAB: rldeconInMemoryWithoutAnOutputFileWritesNothing) without an input or an output
+    file there is no folder: OMW (the back projector's files) and psfGen (the generated PSF's
+    file) failed on the undefined folder. Both are made in memory, nothing is written, and the
+    result equals the decon of the file"""
+    from petakit5d.io import read_tiff, write_tiff
+
+    im = frame(2)
+    fn = str(root / "in.tif")
+    write_tiff(im, fn)
+    psf = str(root / "psf" / "PSF_CamA.tif")
+    kw = {"rl_method": method, "psf_gen": True, "use_gpu": False, "background": BG,
+          "decon_iter": 2}  # fmt: skip
+    if method == "omw":
+        kw["skewed"] = False
+    F.rl_decon_file(fn, str(root / "file" / "in.tif"), psf, XY, DZ, DZ, **kw)
+    here = tmp_path / "here"
+    here.mkdir()
+    monkeypatch.chdir(here)
+    rl.clear_otf_cache()
+    r = F.rl_decon_file("", "", psf, XY, DZ, DZ, rawdata=im, **kw)
+    np.testing.assert_array_equal(r.decon, read_tiff(str(root / "file" / "in.tif")))
+    assert _files(here) == [], "Files were written without an output file."
+    if method == "omw":
+        assert any("_back_projector_" in f for f in _files(root / "file"))
+
+
+def test_rldecon_in_memory_without_an_output_file_cannot_deskew(tmp_path, root, monkeypatch):
+    """MATLAB's behaviour kept: the deskew and rotation of data in memory without an output file
+    fail on the undefined output name (outFsn) before anything is written"""
+    monkeypatch.chdir(tmp_path)
+    before = _files(tmp_path)
     with pytest.raises(rl.DeconError) as e:
         F.rl_decon_file(
-            "",
-            str(root / "out.tif"),
-            str(root / "psf" / "PSF_CamA.tif"),
-            XY,
-            DZ,
-            DZ,
-            rawdata=frame(2),
-            rl_method="simplified",
-            psf_gen=False,
-            use_gpu=False,
-            decon_iter=1,
-        )
+            "", "", str(root / "psf" / "PSF_CamA.tif"), XY, DZ, DZ, rawdata=frame(2),
+            rl_method="simplified", psf_gen=False, use_gpu=False, background=BG, decon_iter=1,
+            deskew=True, rotate=True,
+        )  # fmt: skip
     assert e.value.identifier == "MATLAB:UndefinedFunction"
-    assert "fsname" in str(e.value)
+    assert "'outFsn'" in str(e.value)
+    assert _files(tmp_path) == before
+
+
+def test_rldecon_in_memory_debug_folder_is_named_after_the_output(root):
+    out = root / "out"
+    os.makedirs(out)
+    F.rl_decon_file(
+        "", str(out / "r.tif"), str(root / "psf" / "PSF_CamA.tif"), XY, DZ, DZ, rawdata=frame(2),
+        rl_method="simplified", psf_gen=False, use_gpu=False, background=BG, decon_iter=2,
+        debug=True, save_step=1,
+    )  # fmt: skip
+    assert os.path.isdir(out / "r_debug") and os.listdir(out / "r_debug")
+
+
+@pytest.mark.parametrize("name", ["Simplified", "OMW", "rl", "", 3])
+def test_rldecon_rejects_an_unknown_method(root, name):
+    """(MATLAB: rldeconRejectsAnUnknownMethod) RLdecon's method names are case-sensitive: another
+    name left the result empty, and the decon failed writing its MIP; it fails with the
+    arguments, before anything is written"""
+    from petakit5d.params.spec import MatlabArgumentError
+
+    with pytest.raises(MatlabArgumentError) as e:
+        F.rl_decon_file(
+            str(root / "data" / (FSN + ".tif")), str(root / "out" / "in.tif"),
+            str(root / "psf" / "PSF_CamA.tif"), XY, DZ, DZ, rl_method=name, psf_gen=False,
+            use_gpu=False, background=BG, decon_iter=2,
+        )  # fmt: skip
+    assert e.value.identifier == "MATLAB:InputParser:ArgumentFailedValidation"
+    assert "'RLMethod'" in str(e.value)
+    assert not os.path.exists(root / "out"), "The decon of an unknown method wrote files."
 
 
 def test_methods_that_are_not_ported(root):

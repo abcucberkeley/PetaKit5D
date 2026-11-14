@@ -37,6 +37,7 @@ _EXPORTS = {
     "psf2otf": "otf",
     "BackProjector": "backprojector",
     "BackProjectorError": "backprojector",
+    "BackProjectorFiles": "backprojector",
     "backprojector_file_names": "backprojector",
     "generate_backprojector": "backprojector",
     "omw_backprojector": "backprojector",

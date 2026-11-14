@@ -96,6 +96,16 @@
           "oracle:tests/decon/test_backprojector.py::bp.var.lobes3.lowerBoundZero.*"
         ]
       }
+    },
+    "DeconFunctionTest": {
+      "methods": {
+        "backProjectorFilesOfOtherBoundsAreTheirOwn": [
+          "pytest:tests/decon/test_backprojector.py::test_back_projectors_of_other_bounds_have_their_own_name",
+          "pytest:tests/decon/test_backprojector.py::test_a_call_with_other_bounds_makes_its_own_back_projector",
+          "oracle:tests/decon/test_backprojector.py::files.names.*",
+          "oracle:tests/decon/test_backprojector.py::files.elongated.slash.*"
+        ]
+      }
     }
   }
 }

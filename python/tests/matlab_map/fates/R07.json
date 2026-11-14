@@ -70,6 +70,11 @@
         ],
         "largeFileWithErodeByFirstTimePointCompletes": [
           "pytest:tests/decon/test_large.py::test_large_file_with_erode_by_first_time_point_completes"
+        ],
+        "largeFileInMemoryBatchesAreOnlyDeconvolved": [
+          "pytest:tests/decon/test_large.py::test_large_file_in_memory_batches_are_only_deconvolved",
+          "oracle:tests/decon/test_large.py::mem.deskew.*",
+          "oracle:tests/decon/test_large.py::mem.rotate.*"
         ]
       }
     },

@@ -13,13 +13,13 @@ Categories:
 
 ## Counts
 
-MATLAB suite of oracle 32a064d (24.2.0.2863752 (R2024b) Update 5): 1674 tests, 1664 in a default run (without KnownIssue), 90 classes, 1002 methods.
+MATLAB suite of oracle 9232eee (24.2.0.2863752 (R2024b) Update 5): 1690 tests, 1680 in a default run (without KnownIssue), 90 classes, 1017 methods.
 
 By category (tests: default run, all; classes of the category, with such tests):
 
 | category | default run | all | classes | classes with such tests |
 |---|---|---|---|---|
-| data | 1246 | 1250 | 58 | 58 |
+| data | 1262 | 1266 | 58 | 58 |
 | framework_fake_slurm | 194 | 195 | 11 | 17 |
 | framework_design | 174 | 174 | 11 | 11 |
 | matlab_only | 50 | 55 | 10 | 10 |
@@ -28,13 +28,13 @@ By MATLAB folder and category (default run):
 
 | folder | default run | data | framework_fake_slurm | framework_design | matlab_only | all |
 |---|---|---|---|---|---|---|
-| decon | 386 | 366 | 20 |  |  | 386 |
+| decon | 394 | 374 | 20 |  |  | 394 |
 | framework | 294 |  | 144 | 133 | 17 | 300 |
+| deskew_rotate | 224 | 219 | 2 |  | 3 | 226 |
 | tools | 223 | 216 | 1 | 6 |  | 224 |
-| deskew_rotate | 217 | 212 | 2 |  | 3 | 219 |
 | stitch | 184 | 172 | 12 |  |  | 184 |
 | io | 86 | 86 |  |  |  | 86 |
-| analysis | 68 | 68 |  |  |  | 69 |
+| analysis | 69 | 69 |  |  |  | 70 |
 | crop | 69 | 67 | 2 |  |  | 69 |
 | platform | 46 | 15 |  | 1 | 30 | 46 |
 | pipeline | 31 | 18 | 13 |  |  | 31 |
@@ -44,7 +44,7 @@ By MATLAB folder and category (default run):
 | golden | 8 | 8 |  |  |  | 8 |
 | point_detection | 6 | 6 |  |  |  | 6 |
 | demo_data | 4 | 4 |  |  |  | 4 |
-| total | 1664 | 1246 | 194 | 174 | 50 | 1674 |
+| total | 1680 | 1262 | 194 | 174 | 50 | 1690 |
 
 By owner (default run / all):
 
@@ -57,12 +57,12 @@ By owner (default run / all):
 | B05 | 15 | 15 | 2 |
 | B06 | 6 | 6 | 1 |
 | B07 | 4 | 4 | 2 |
-| B08 | 2 | 2 | 1 |
+| B08 | 3 | 3 | 1 |
 | C02 | 7 | 7 | 2 |
 | D01 | 8 | 8 | 1 |
 | D02 | 31 | 31 | 1 |
-| D03 | 62 | 64 | 3 |
-| D04 | 31 | 31 | 2 |
+| D03 | 63 | 65 | 3 |
+| D04 | 37 | 37 | 2 |
 | E01 | 4 | 4 | 1 |
 | E04 | 33 | 33 | 7 |
 | E06 | 18 | 18 | 2 |
@@ -92,13 +92,13 @@ By owner (default run / all):
 | N05 | 40 | 40 | 1 |
 | P01 | 12 | 12 | 2 |
 | P02 | 19 | 19 | 1 |
-| R01 | 12 | 12 | 2 |
-| R02 | 29 | 29 | 2 |
+| R01 | 13 | 13 | 2 |
+| R02 | 30 | 30 | 2 |
 | R03 | 132 | 132 | 4 |
 | R04 | 40 | 40 | 3 |
-| R05 | 21 | 21 | 3 |
-| R06 | 31 | 31 | 2 |
-| R07 | 20 | 20 | 2 |
+| R05 | 25 | 25 | 3 |
+| R06 | 32 | 32 | 2 |
+| R07 | 21 | 21 | 2 |
 | S01 | 10 | 10 | 1 |
 | S03 | 3 | 3 | 1 |
 | S04 | 54 | 54 | 2 |
@@ -119,9 +119,9 @@ By fate (all):
 | na+oracle | 1 |
 | na+oracle+pytest | 2 |
 | oracle | 127 |
-| oracle+pytest | 528 |
-| pending | 530 |
-| pytest | 403 |
+| oracle+pytest | 542 |
+| pending | 531 |
+| pytest | 404 |
 
 ## Classes
 
@@ -133,7 +133,7 @@ By fate (all):
 | analysis/FlatfieldBackgroundEstimationTest | data | B07 | 3 | 3 | no | pending 3 |
 | analysis/ImarisConversionTest | data | B01 | 9 | 9 | no | pending 9 |
 | analysis/PSFAnalysisTest | data | B06 | 3 | 6 | no | pending 6 |
-| analysis/PunctaRemovalTest | data | B08 | 2 | 2 | no | pending 2 |
+| analysis/PunctaRemovalTest | data | B08 | 3 | 3 | no | pending 3 |
 | analysis/UnmixChannelsTest | data | B02 | 17 | 20 | no | pending 20 |
 | cluster/SlurmClusterTest | framework_design | J11 | 11 | 11 | yes | pytest 11 |
 | crop/CropDatasetTest | data | T03 | 23 | 23 | yes | oracle+pytest 14, pytest 9 |
@@ -141,22 +141,22 @@ By fate (all):
 | decon/DeconAccelTest | data | R03 | 15 | 46 | no | na 1, oracle 24, oracle+pytest 16, pending 1, pytest 4 |
 | decon/DeconBackProjectorTest | data | R02 | 16 | 24 | yes | na 1, oracle 12, oracle+pytest 9, pytest 2 |
 | decon/DeconFrameTest | data | R05 | 17 | 17 | yes | na 1, oracle+pytest 12, pytest 4 |
-| decon/DeconFunctionTest | data | R03 | 33 | 70 | no | oracle 24, oracle+pytest 21, pending 5, pytest 20 |
+| decon/DeconFunctionTest | data | R03 | 38 | 76 | no | oracle 24, oracle+pytest 27, pending 5, pytest 20 |
 | decon/DeconGPUTest | data | R04 | 4 | 19 | no | oracle+pytest 15, pytest 4 |
 | decon/DeconMaskErosionTest | data | K05 | 13 | 48 | no | na 2, na+oracle 1, oracle 2, oracle+pytest 42, pytest 1 |
 | decon/DeconOverlapTest | data | R04 | 3 | 3 | no | oracle+pytest 1, pytest 2 |
 | decon/DeconRFFTGPUTest | data | K09 | 7 | 24 | no | na+oracle+pytest 2, oracle 8, oracle+pytest 13, pytest 1 |
 | decon/DeconRFFTTest | data | K05 | 17 | 82 | no | na 6, oracle 27, oracle+pytest 47, pytest 2 |
 | decon/DeconReadCacheTest | data | R01 | 4 | 4 | yes | oracle+pytest 1, pytest 3 |
-| decon/DeconWrapperTest | data | R06 | 49 | 49 | yes | na 2, oracle+pytest 17, pytest 30 |
+| decon/DeconWrapperTest | data | R06 | 51 | 51 | yes | na 2, oracle+pytest 19, pytest 30 |
 | demo_data/DemoDatasetTest | data | E01 | 4 | 4 | no | pending 4 |
 | deskew_rotate/AxisOrderMappingTest | data | D03 | 1 | 6 | no | pending 6 |
 | deskew_rotate/DeskewMexSourceTest | matlab_only | K03 | 1 | 3 | yes | na 3 |
-| deskew_rotate/DeskewRotateDataWrapperTest | data | D04 | 26 | 26 | yes | oracle+pytest 16, pytest 10 |
+| deskew_rotate/DeskewRotateDataWrapperTest | data | D04 | 31 | 31 | yes | oracle+pytest 21, pytest 10 |
 | deskew_rotate/DeskewRotateFrame3DTest | data | D02 | 17 | 31 | yes | na 1, oracle+pytest 21, pytest 9 |
 | deskew_rotate/DeskewRotateKernelExactTest | data | K03 | 4 | 90 | yes | oracle+pytest 90 |
-| deskew_rotate/DeskewRotateMemoryTest | data | D03 | 10 | 45 | no | oracle+pytest 9, pytest 36 |
-| deskew_rotate/XRDeskewRotateFrameTest | data | D03 | 18 | 18 | yes | oracle+pytest 17, pytest 1 |
+| deskew_rotate/DeskewRotateMemoryTest | data | D03 | 11 | 46 | no | oracle+pytest 9, pytest 37 |
+| deskew_rotate/XRDeskewRotateFrameTest | data | D03 | 19 | 19 | yes | oracle+pytest 18, pytest 1 |
 | flatfield/FlatFieldCorrectionTest | data | D01 | 8 | 8 | yes | oracle+pytest 8 |
 | framework/BatchFileExistTest | framework_fake_slurm | J02 | 17 | 17 | no | pending 1, pytest 16 |
 | framework/CheckBatchSlurmJobsStatusTest | framework_fake_slurm | J03 | 5 | 5 | no | pending 3, pytest 2 |

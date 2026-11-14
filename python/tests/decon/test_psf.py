@@ -624,7 +624,7 @@ CASES.append(
 )
 
 
-def rotate_case(cid, make, *opts, existing=False):
+def rotate_case(cid, make, *opts, existing=False, code=None, python=None):
     """XR_rotate_PSF(<work>/psfs/psf.tif, ...) (the Rotated folder's files)"""
 
     def tree(folder):
@@ -635,10 +635,10 @@ def rotate_case(cid, make, *opts, existing=False):
 
     return Case(
         cid,
-        code="XR_rotate_PSF([in{1}, 'psf.tif'], in{2 : end}); out = {};",
+        code=code or "XR_rotate_PSF([in{1}, 'psf.tif'], in{2 : end}); out = {};",
         nargout=0,
         args=[InPath("d"), *opts],
-        python=py_rotate,
+        python=python or py_rotate,
         inputs={"d": Tree(tree, "psfs")},
     )
 
@@ -670,6 +670,30 @@ CASES += [
     rotate_case("rotate.existing", _ROT_PSF, *_ROT, existing=True),
     rotate_case("rotate.overwrite", _ROT_PSF, *_ROT, "Overwrite", True, existing=True),
 ]
+
+
+def py_rotate_bare(d, *opts):
+    from petakit5d import matlab
+
+    here = os.getcwd()
+    os.chdir(d)
+    try:
+        matlab.XR_rotate_PSF("psf.tif", *opts)
+    finally:
+        os.chdir(here)
+    return []
+
+
+# a file name without a folder is in the current folder (it wrote to /Rotated/ until c24801c)
+CASES.append(
+    rotate_case(
+        "rotate.bare_name",
+        _ROT_PSF,
+        *_ROT,
+        code="cd(in{1}); XR_rotate_PSF('psf.tif', in{2 : end}); out = {};",
+        python=py_rotate_bare,
+    )
+)
 
 # GoldenOutputTest's psf_gen_masked scenario: reference-only cases with the MATLAB calls (and so the
 # keys and references) of tests/matlab_map/test_golden.py's cases (F06)
@@ -1009,6 +1033,26 @@ def _stub_reads(monkeypatch):
 
     monkeypatch.setattr(petakit5d.io, "read_tiff", stub)
     return calls
+
+
+def test_rotated_psf_of_a_file_in_the_current_folder_stays_there(tmp_path, monkeypatch):
+    """(MATLAB: rotatedPSFOfAFileInTheCurrentFolderStaysThere) XR_rotate_PSF of a file name without
+    a folder wrote to /Rotated/ (fileparts gives no folder); it writes to Rotated/ in the current
+    folder, the same as for the file's full path"""
+    from petakit5d.io import read_tiff
+
+    psf = from_matlab(_ROT_PSF())
+    for sub in ("full", "here"):
+        (tmp_path / sub).mkdir()
+        write_tiff(str(tmp_path / sub / "psf.tif"), psf)
+    P.rotate_psf(str(tmp_path / "full" / "psf.tif"), dz=0.3)
+    monkeypatch.chdir(tmp_path / "here")
+    P.rotate_psf("psf.tif", dz=0.3)
+    np.testing.assert_array_equal(
+        read_tiff(str(tmp_path / "here" / "Rotated" / "psf.tif")),
+        read_tiff(str(tmp_path / "full" / "Rotated" / "psf.tif")),
+    )
+    assert (tmp_path / "here" / "Rotated" / "parameters.json").is_file()
 
 
 def test_back_projector_is_read_once(tmp_path, fresh_cache, monkeypatch):

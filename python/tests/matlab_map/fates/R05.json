@@ -85,6 +85,26 @@
         "rldeconWithZeroIterationsReturnsTheInput": [
           "pytest:tests/decon/test_file.py::test_rldecon_with_zero_iterations_returns_the_input",
           "oracle:tests/decon/test_file.py::mem.zero_iter.*"
+        ],
+        "rldeconInMemoryWithAnOutputFileNamesItsFilesAfterIt": [
+          "pytest:tests/decon/test_file.py::test_rldecon_in_memory_with_an_output_file_names_its_files_after_it",
+          "pytest:tests/decon/test_file.py::test_rldecon_in_memory_deskews_and_rotates_into_the_output_folder",
+          "pytest:tests/decon/test_file.py::test_rldecon_in_memory_debug_folder_is_named_after_the_output",
+          "oracle:tests/decon/test_file.py::mem.files.output*",
+          "oracle:tests/decon/test_file.py::mem.files.deskew_rotate.*",
+          "oracle:tests/decon/test_file.py::mem.output_mip.*",
+          "oracle:tests/decon/test_file.py::mem.deskew_rotate.*"
+        ],
+        "rldeconInMemoryWithoutAnOutputFileWritesNothing": [
+          "pytest:tests/decon/test_file.py::test_rldecon_in_memory_without_an_output_file_writes_nothing",
+          "pytest:tests/decon/test_file.py::test_rldecon_in_memory_without_an_output_file_cannot_deskew",
+          "oracle:tests/decon/test_file.py::mem.files.no_output.*",
+          "oracle:tests/decon/test_file.py::mem.omw_no_output.*",
+          "oracle:tests/decon/test_file.py::error.mem_no_output.*"
+        ],
+        "rldeconRejectsAnUnknownMethod": [
+          "pytest:tests/decon/test_file.py::test_rldecon_rejects_an_unknown_method",
+          "oracle:tests/decon/test_file.py::error.unknown_method.*"
         ]
       }
     },

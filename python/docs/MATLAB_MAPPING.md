@@ -586,7 +586,7 @@ Deconvolve a file (or ``rawdata``) and deskew and rotate the result (RLdecon): s
 | `Background` | `background` | par | same | `[]` | `None` | `@isnumeric` | Background ([]: 0 for 'simplified' and 'omw'). |
 | `Resample` | `resample` | par | resample_xyz | `[]` | `None` | `@isnumeric` | Resample factor of the combined deskew and rotation (z, y, x). |
 | `DeconIter` | `decon_iter` | par |  | `15` | `15` | `@isnumeric` | Number of iterations. |
-| `RLMethod` | `rl_method` | par |  | `'omw'` | `'omw'` | `@ischar` | 'simplified', 'omw', 'original' or 'cudagen'. |
+| `RLMethod` | `rl_method` | par |  | `'omw'` | `'omw'` | `@(x) any(strcmp(x, {'original', 'simplified', 'omw', 'cudagen'}))` | 'simplified', 'omw', 'original' or 'cudagen'. |
 | `wienerAlpha` | `wiener_alpha` | par |  | `0.005` | `0.005` | `@isnumeric` | Wiener alpha of the OMW back projector. |
 | `OTFCumThresh` | `otf_cum_thresh` | par |  | `0.9` | `0.9` | `@isnumeric` | OTF cumulative sum threshold (OMW). |
 | `hannWinBounds` | `hann_win_bounds` | par |  | `[0.8,1]` | `(0.8, 1)` | `@isnumeric` | Apodization range of the distance matrix (OMW). |
@@ -661,8 +661,8 @@ Deconvolve a file that fits in memory batch by batch (RLdecon_large_in_memory): 
 | `xyPixelSize` | `xy_pixel_size` | req |  |  |  | `@isnumeric` | Pixel size (um). |
 | `dz` | `dz` | req |  |  |  | `@isnumeric` | Scan step (um). |
 | `save16bit` | `save_16bit` | par | same | `true` | `True` | `@islogical` | Result in uint16 (else single). |
-| `Rotate` | `rotate` | par |  | `false` | `False` | `@islogical` | Passed to each batch's RLdecon (which then fails). |
-| `Deskew` | `deskew` | par |  | `false` | `False` | `@islogical` | Border PSF at dz sind(SkewAngle); fails in the batches. |
+| `Rotate` | `rotate` | par |  | `false` | `False` | `@islogical` | Accepted; not used (the batches are only deconvolved). |
+| `Deskew` | `deskew` | par |  | `false` | `False` | `@islogical` | Border PSF at dz sind(SkewAngle); the batches aren't deskewed. |
 | `SkewAngle` | `skew_angle` | par |  | `-32.45` | `-32.45` | `@isnumeric` | Skew angle (degrees). |
 | `flipZstack` | `flip_zstack` | par |  | `false` | `False` | `@islogical` | Flip the data in z first. |
 | `Background` | `background` | par | same | `[]` | `None` | `@isnumeric` | Background ([]: 99). |
@@ -1327,7 +1327,7 @@ Deskew and/or rotate the files of the datasets ``data_paths`` that match a chann
 
 ### `XR_deskewRotateBlock` -> `petakit5d.deskew_rotate.zarr.deskew_rotate_block`
 
-``XR_deskewRotateBlock``: each batch (rows of the input zarr, ``in_batch_bboxes``) deskewed and rotated on the output box its region has in the full result (``out_local_bboxes`` moved by ``out_batch_bboxes``' x and z starts), written into its region (``out_region_bboxes``) of the result zarr ``dsr_fullpath``; then the flag: ``t``, or with the MIPs of the blocks for MIP slabs of ``mip_batch_size``. Nothing is done if the flag exists (unless ``overwrite``) or if the writer of the result has ended (``writers.orphaned``). Returns the batches' done flags (None if nothing was done).
+``XR_deskewRotateBlock``: each batch (rows of the input zarr, ``in_batch_bboxes``; flipped along z with ``flip_zstack``) deskewed and rotated on the output box its region has in the full result (``out_local_bboxes`` moved by ``out_batch_bboxes``' x and z starts), written into its region (``out_region_bboxes``) of the result zarr ``dsr_fullpath``; then the flag: ``t``, or with the MIPs of the blocks for MIP slabs of ``mip_batch_size``. Nothing is done if the flag exists (unless ``overwrite``) or if the writer of the result has ended (``writers.orphaned``). Returns the batches' done flags (None if nothing was done).
 
 | MATLAB | Python | Arg | Conversion | MATLAB default | Python default | Validator | Meaning |
 |---|---|---|---|---|---|---|---|
@@ -1344,7 +1344,7 @@ Deskew and/or rotate the files of the datasets ``data_paths`` that match a chann
 | `Overwrite` | `overwrite` | par |  | `false` | `False` | `@islogical` | Redo batches whose flag exists. |
 | `SkewAngle` | `skew_angle` | par |  | `32.45` | `32.45` | `@isnumeric` | Skew angle in degrees. |
 | `Reverse` | `reverse` | par |  | `true` | `True` | `@islogical` | Reverse scan direction. |
-| `flipZstack` | `flip_zstack` | par |  | `false` | `False` | `@islogical` | Accepted; not used (as in MATLAB). |
+| `flipZstack` | `flip_zstack` | par |  | `false` | `False` | `@islogical` | Flip each batch along z after its read. |
 | `save16bit` | `save_16bit` | par | same | `true` | `True` | `@islogical` | uint16 result (else single). |
 | `interpMethod` | `interp_method` | par |  | `'linear'` | `'linear'` | `@(x) any(strcmpi(x, {'cubic', 'linear'}))` | Interpolation: 'linear' or 'cubic'. |
 | `resampleFactor` | `resample_factor` | par | resample_xyz | `[]` | `None` | `@(x) isempty(x) \|\| isnumeric(x)` | Resampling after rotation (z, y, x). |
@@ -1400,7 +1400,7 @@ Deskew and/or rotate one file, or the partial files of one volume (``XR_deskewRo
 
 ### `XR_deskewRotateZarr` -> `petakit5d.deskew_rotate.zarr.deskew_rotate_zarr`
 
-Deskew and rotate a large zarr file in blocks (``XR_deskewRotateZarr``): the batches of output rows (``batch_size``'s y; all of x and z), with a border row on each side, as ``deskew_rotate_block`` tasks through the job framework into ``<dir>/<result_dir_str>/<name>.zarr_<uuid>``, then its MIPs (``mip_zarr``, merged from the MIPs of the blocks) and the result moved into place. Sample scan only. Nothing is done if the result exists; a writer of another call of the same result is waited for, and a result another writer published is kept. Returns the tasks' done flags (None if nothing was done).
+Deskew and rotate a large zarr file in blocks (``XR_deskewRotateZarr``): the batches of output rows (``batch_size``'s y; all of x and z), with a border row on each side, as ``deskew_rotate_block`` tasks through the job framework (or a local pool of 12 workers with ``parse_parfor`` and no cluster) into ``<dir>/<result_dir_str>/<name>.zarr_<uuid>``, then its MIPs (``mip_zarr``, merged from the MIPs of the blocks) and the result moved into place. Sample scan only. Nothing is done if the result exists; a writer of another call of the same result is waited for, and a result another writer published is kept. Returns the tasks' done flags (None if nothing was done).
 
 | MATLAB | Python | Arg | Conversion | MATLAB default | Python default | Validator | Meaning |
 |---|---|---|---|---|---|---|---|
@@ -1414,7 +1414,7 @@ Deskew and rotate a large zarr file in blocks (``XR_deskewRotateZarr``): the bat
 | `skewAngle` | `skew_angle` | par |  | `32.45` | `32.45` | `@isscalar` | Skew angle in degrees. |
 | `reverse` | `reverse` | par |  | `false` | `False` | `@islogical` | Reverse scan direction. |
 | `DSRCombined` | `dsr_combined` | par |  | `true` | `True` | `@(x) islogical(x)` | Accepted; not used (always combined). |
-| `flipZstack` | `flip_zstack` | par |  | `false` | `False` | `@islogical` | Accepted; not used (as in MATLAB). |
+| `flipZstack` | `flip_zstack` | par |  | `false` | `False` | `@islogical` | Flip the input along z (each batch after its read). |
 | `save16bit` | `save_16bit` | par | same | `true` | `True` | `@islogical` | uint16 result (else single). |
 | `saveMIP` | `save_mip` | par |  | `true` | `True` | `@islogical` | Save the MIPs of the result (MIPs/). |
 | `saveZarr` | `save_zarr` | par |  | `false` | `False` | `@islogical` | Accepted; not used (the result is zarr). |
@@ -1426,7 +1426,7 @@ Deskew and rotate a large zarr file in blocks (``XR_deskewRotateZarr``): the bat
 | `interpMethod` | `interp_method` | par |  | `'linear'` | `'linear'` | `@(x) any(strcmpi(x, {'cubic', 'linear'}))` | Interpolation: 'linear' or 'cubic'. |
 | `maskFullpaths` | `mask_fullpaths` | par |  | `{}` | `()` | `@iscell` | MIP masks (xy, xz, yz) that set the boxes. |
 | `parseCluster` | `parse_cluster` | par |  | `true` | `True` | `@islogical` | Run the blocks as Slurm jobs. |
-| `parseParfor` | `parse_parfor` | par |  | `false` | `False` | `@islogical` | Local process pool (MATLAB's error without a cluster). |
+| `parseParfor` | `parse_parfor` | par |  | `false` | `False` | `@islogical` | Run the blocks on a local process pool (12 workers). |
 | `masterCompute` | `master_compute` | par |  | `true` | `True` | `@islogical` | This process computes blocks too. |
 | `jobLogDir` | `job_log_dir` | par |  | `'../job_logs'` | `'../job_logs'` | `@ischar` | Folder of the job logs. |
 | `cpusPerTask` | `cpus_per_task` | par |  | `8` | `8` | `@isnumeric` | CPUs of a block's job. |
@@ -2141,7 +2141,7 @@ Deconvolve each file of a job (XR_RLdeconFrame3D): see the module. Sizes and MIP
 
 ### `XR_rotate_PSF` -> `petakit5d.decon.psf.rotate_psf`
 
-Rotate a PSF file, as for rotated sample-scan data (``XR_rotate_PSF``): the PSF as double, rotated by ``rotate_volume`` (``zAniso = sin(angle) dz / px``, ``dz / px`` for objective scans), its zero voxels set to the median of its positive values below their ``high_prctile`` percentile, written to ``<folder>/Rotated/<name>.tif`` (uint16, or single without ``save_16bit``; first as ``<name>_<uuid>.tif``, then renamed) with parameters.mat (v7.3) and parameters.json of the call there. An existing result is kept unless ``overwrite``.
+Rotate a PSF file, as for rotated sample-scan data (``XR_rotate_PSF``): the PSF as double, rotated by ``rotate_volume`` (``zAniso = sin(angle) dz / px``, ``dz / px`` for objective scans), its zero voxels set to the median of its positive values below their ``high_prctile`` percentile, written to ``<folder>/Rotated/<name>.tif`` (uint16, or single without ``save_16bit``; first as ``<name>_<uuid>.tif``, then renamed) with parameters.mat (v7.3) and parameters.json of the call there; a file name without a folder is in the current folder (``./Rotated/``). An existing result is kept unless ``overwrite``.
 
 | MATLAB | Python | Arg | Conversion | MATLAB default | Python default | Validator | Meaning |
 |---|---|---|---|---|---|---|---|

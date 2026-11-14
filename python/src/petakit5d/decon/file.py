@@ -9,6 +9,9 @@ decon.
   ``(decon, DS, DSR)`` says which to write; nothing is computed when every one to write exists
   (or, without the decon, the DS and DSR ones). ``rotate`` without ``deskew`` (the decon
   wrapper's deconRotate) is the combined deskew and rotation for sample scans.
+- **The method** is one of 'original', 'simplified', 'omw' and 'cudagen' (case-sensitive), checked
+  with the arguments (``MATLAB:InputParser:ArgumentFailedValidation``) before anything is read
+  or written.
 - **The PSF** (a tiff; a ``.mat`` file's variable ``psf``; another suffix gives an empty PSF, as
   MATLAB's dummy): with ``psf_gen`` the generated PSF ``<result folder>/psfgen/<psf>_<method>.tif``
   of an earlier call is read (``read_tiff_cached``), else ``psf_gen`` (``'masked'``, medFactor
@@ -17,7 +20,9 @@ decon.
   (``crop_psf_to_data``, with MATLAB's warning) and, for file inputs, written as that psfgen
   file if it is missing. Errors in these steps are printed and the PSF kept as far as it got,
   as MATLAB's ``try``/``catch``. OMW's back projector comes from ``omw_backprojector_files``
-  (R02's ``decon.backprojector``), cropped to the data likewise.
+  (R02's ``decon.backprojector``), cropped to the data likewise. Data in memory without an
+  output file has no result folder: the PSF and the back projector are made without their
+  files (``generate_backprojector``), and nothing is written.
 - **The data**: ``rawdata`` or the file, flipped in z (``flip_zstack``); for methods other than
   'simplified' and 'omw' ``max(single(data) - background, 0)``.
 - **The decon**, for at least one iteration and data with a nonzero voxel: the PSF normalized by
@@ -42,13 +47,17 @@ decon.
 
 Returns the decon result, DS (None after the rotation), DSR and the output of ``overlap_fcn``.
 
+Data in memory (no ``input_fn``) with an output file names its results after the output file
+(its MIP ``MIPs/<output name>_MIP_z.tif``, its DS and DSR files and their MIPs); without an
+output file, the deskew and rotation and ``debug`` raise MATLAB's undefined ``outFsn`` and
+``fsname`` before anything is written (there is nowhere to write).
+
 MATLAB's behaviour is kept where it is odd (see the report of task R05): without an output file
 the result is returned as the decon gave it; without any 3D stack to save nothing else is
-written; an in-memory call (no ``input_fn``) with an output file and a MIP raises MATLAB's
-undefined ``fsname``; ``deskew`` without ``rotate`` under the default ``dsr_combined`` writes
-nothing; the separate path ignores ``resample``; ``n_tapering`` (MATLAB's ``edgetaper``) and the
-'original' method (``deconvlucy``, Phase 2) are not ported (``NotImplementedError``); 'cudagen'
-raises MATLAB's error for the missing ``decon_lucy_cuda_function``.
+written; ``deskew`` without ``rotate`` under the default ``dsr_combined`` writes nothing; the
+separate path ignores ``resample``; ``n_tapering`` (MATLAB's ``edgetaper``) and the 'original'
+method (``deconvlucy``, Phase 2) are not ported (``NotImplementedError``); 'cudagen' raises
+MATLAB's error for the missing ``decon_lucy_cuda_function``.
 """
 
 from __future__ import annotations
@@ -65,6 +74,7 @@ __all__ = ["RLDeconResult", "rl_decon_file"]
 
 _UNDEFINED = "MATLAB:UndefinedFunction"
 _METHODS = ("original", "simplified", "omw", "cudagen")
+_METHOD_VALIDATOR = "@(x) any(strcmp(x, {'original', 'simplified', 'omw', 'cudagen'}))"
 
 
 class RLDeconResult(NamedTuple):
@@ -81,6 +91,13 @@ def _undefined(name: str) -> Exception:
     from petakit5d.decon.rl import DeconError
 
     return DeconError(_UNDEFINED, f"Unrecognized function or variable '{name}'.")
+
+
+def _defined(value: Any, name: str) -> Any:
+    """a variable MATLAB reads: its undefined-variable error where it was never set"""
+    if value is None:
+        raise _undefined(name)
+    return value
 
 
 def _threads() -> int:
@@ -285,10 +302,10 @@ def _prepare_psf(
         return np.zeros((0, 0), np.float64), psf_fsn  # MATLAB's dummy PSF []
 
     psfgen_fn = None
-    if psf_gen or input_fn:
+    if (psf_gen or input_fn) and psfgen_path:
         psfgen_fn = f"{psfgen_path}/{psf_fsn}_{method}.tif"
     psf = None
-    if psf_gen and _exist(psfgen_fn):
+    if psf_gen and psfgen_fn is not None and _exist(psfgen_fn):
         print(f"Load existing generated PSF {psfgen_fn} for {psf_fn} ...", flush=True)
         try:
             psf = _single(np.asarray(P.read_tiff_cached(psfgen_fn)), threads)
@@ -319,21 +336,32 @@ def _prepare_psf(
 
 
 def _backprojector(psf, psfgen_path, psf_fsn, psf_fn, im_size, kw) -> np.ndarray:
+    """the OMW back projector, from (or into) the psfgen folder; made without its files where
+    there is no folder (data in memory without an output file)"""
     from petakit5d.decon import backprojector as B
     from petakit5d.decon import psf as P
 
     if psf is None:
         raise _undefined("psf")
-    b = B.omw_backprojector_files(
-        psf,
-        psfgen_path,
-        psf_fsn,
-        kw["wiener_alpha"],
-        kw["otf_cum_thresh"],
-        kw["skewed"],
-        kw["hann_win_bounds"],
-        os.fspath(psf_fn),
-    )
+    if not psfgen_path:
+        b = B.generate_backprojector(
+            psf,
+            kw["wiener_alpha"],
+            kw["skewed"],
+            kw["otf_cum_thresh"],
+            hann_win_bounds=kw["hann_win_bounds"],
+        ).b_omw
+    else:
+        b = B.omw_backprojector_files(
+            psf,
+            psfgen_path,
+            _defined(psf_fsn, "psfFsn"),
+            kw["wiener_alpha"],
+            kw["otf_cum_thresh"],
+            kw["skewed"],
+            kw["hann_win_bounds"],
+            os.fspath(psf_fn),
+        ).b_omw
     return P.crop_psf_to_data(np.asarray(b), im_size)
 
 
@@ -366,14 +394,13 @@ def _decon_call(rawdata, psf, psf_b, n_iter, method, kw, threads):
             "RLMethod 'original' (MATLAB's deconvlucy) is not ported yet (task B11, Phase 2); "
             "use 'simplified' or 'omw'"
         )
-    if method == "cudagen":
-        from petakit5d.decon.rl import DeconError
+    # 'cudagen', the only other method the arguments let through
+    from petakit5d.decon.rl import DeconError
 
-        raise DeconError(
-            _UNDEFINED,
-            "Undefined function 'decon_lucy_cuda_function' for input arguments of type 'single'.",
-        )
-    return np.zeros((0, 0), np.float64), None, None, None  # no case: MATLAB's [] stays
+    raise DeconError(
+        _UNDEFINED,
+        "Undefined function 'decon_lucy_cuda_function' for input arguments of type 'single'.",
+    )
 
 
 def _scale(dec: np.ndarray, scale: float) -> np.ndarray:
@@ -484,7 +511,7 @@ def _matlab_out(r: RLDeconResult):
         convert="resample_xyz",
     ),
     Param("DeconIter", "@isnumeric", "Number of iterations."),
-    Param("RLMethod", "@ischar", "'simplified', 'omw', 'original' or 'cudagen'."),
+    Param("RLMethod", _METHOD_VALIDATOR, "'simplified', 'omw', 'original' or 'cudagen'."),
     Param("wienerAlpha", "@isnumeric", "Wiener alpha of the OMW back projector."),
     Param("OTFCumThresh", "@isnumeric", "OTF cumulative sum threshold (OMW)."),
     Param("hannWinBounds", "@isnumeric", "Apodization range of the distance matrix (OMW)."),
@@ -584,6 +611,15 @@ def rl_decon_file(
     t = _threads()
     input_fn = os.fspath(input_fn) if input_fn else ""
     output_fn = os.fspath(output_fn) if output_fn else ""
+    # (inputParser's check of RLMethod: before anything is read or written)
+    if not (isinstance(rl_method, str) and rl_method in _METHODS):
+        from petakit5d.params.spec import MatlabArgumentError
+
+        raise MatlabArgumentError(
+            "The value of 'RLMethod' is invalid. It must satisfy the function: "
+            "@(x)any(strcmp(x,{'original','simplified','omw','cudagen'})).",
+            "MATLAB:InputParser:ArgumentFailedValidation",
+        )
     method = str(rl_method)
     if n_tapering is not None and _scalar(n_tapering, 0) > 0:
         raise NotImplementedError(
@@ -603,12 +639,17 @@ def rl_decon_file(
     fsname = None
     if input_fn:
         data_path, fsname, _ = fileparts(input_fn)
-    decon_path = None
     out_fsn = None
     if output_fn:
         decon_path, out_fsn, _ = fileparts(output_fn)
+        # in memory (rawdata), the results are named after the output file
+        if not input_fn:
+            fsname = out_fsn
     elif input_fn:
         decon_path = f"{data_path}/matlab_decon/"
+    else:
+        # in memory without an output file: no folder (nothing is saved)
+        decon_path = ""
     ext = ".zarr" if save_zarr else ".tif"
 
     save3 = list(_flags3(save_3d_stack))
@@ -620,21 +661,17 @@ def rl_decon_file(
         deskew = dsr_combined = True
     ds_path = ds_fn = dsr_path = dsr_fn = None
     if deskew:
-        if decon_path is None:
-            raise _undefined("deconPath")
         if not dsr_combined:
             ds_path = f"{decon_path}/DS/"
-            ds_fn = f"{ds_path}/{out_fsn}{ext}"
+            ds_fn = f"{ds_path}/{_defined(out_fsn, 'outFsn')}{ext}"
         if rotate:
             dsr_path = f"{decon_path}/DSR/"
-            dsr_fn = f"{dsr_path}/{out_fsn}{ext}"
+            dsr_fn = f"{dsr_path}/{_defined(out_fsn, 'outFsn')}{ext}"
     if objective_scan:
         deskew = False
         if rotate:
-            if decon_path is None:
-                raise _undefined("deconPath")
             dsr_path = f"{decon_path}/Rotated/"
-            dsr_fn = f"{dsr_path}/{out_fsn}{ext}"
+            dsr_fn = f"{dsr_path}/{_defined(out_fsn, 'outFsn')}{ext}"
     if not deskew or dsr_combined:
         save3[1] = False
         exists[1] = True
@@ -661,10 +698,9 @@ def rl_decon_file(
             raise ValueError("RLdecon needs an input file or rawdata")
         im_size = _image_size("", rawdata)
 
-    psfgen_path = None
-    if psf_gen or input_fn or method == "omw":
-        if decon_path is None:
-            raise _undefined("deconPath")
+    # (without a folder, the PSF and the back projector are made without their files)
+    psfgen_path = ""
+    if (psf_gen or input_fn or method == "omw") and decon_path:
         psfgen_path = f"{decon_path}/psfgen/"
         _mkdir(psfgen_path)
 
@@ -688,8 +724,6 @@ def rl_decon_file(
     }
     psf_b = None
     if method == "omw":
-        if psf_fsn is None:
-            raise _undefined("psfFsn")
         psf_b = _backprojector(psf, psfgen_path, psf_fsn, psf_fn, im_size, opts)
 
     own = False
