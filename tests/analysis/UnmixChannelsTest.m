@@ -302,6 +302,38 @@ classdef UnmixChannelsTest < pktest.TestCase
             testCase.verifyEmpty(dir([dataPath, 'Unmixed/*_test.zarr']), 'The temporary result was left behind.');
         end
 
+        function largeFileResultsAreTheZarrFilesOfTheTasks(testCase)
+            % with largeFile the tasks (XR_unmix_channels_zarr) write zarr,
+            % also without saveZarr, but the wrapper gave the job framework
+            % .tif results: it waited for files no task writes and ran each
+            % task three times (about 6 minutes even in local mode)
+            dataPath = testCase.twoChannelData(true);
+            spy = testCase.applyFixture(pktest.FrameworkSpyFixture);
+            for saveZarr = [false, true]
+                XR_unmix_channels_data_wrapper(dataPath, 'unmixFactors', [1, -0.1], 'channelPatterns', {'CamA', 'CamB'}, ...
+                    'zarrFile', true, 'largeFile', true, 'saveZarr', saveZarr, 'parseCluster', false, 'masterCompute', true);
+            end
+            calls = spy.getCalls();
+            testCase.assertNumElements(calls, 2);
+            unify = @(p) regexprep(strrep(p, '\', '/'), '/+', '/');
+            expected = unify([dataPath, 'Unmixed/', sprintf(testCase.Fsn, 'CamA'), '.zarr']);
+            for i = 1 : 2
+                testCase.verifyEqual(unify(calls{i}.outputFullpaths), {expected}, sprintf('saveZarr %d', i - 1));
+            end
+        end
+
+        function largeFileTasksRunOnce(testCase)
+            % (as above) the job framework finds the result of a large-file
+            % task after its first run
+            [dataPath, chA, chB] = testCase.twoChannelData(true);
+            consoleOut = evalc(['XR_unmix_channels_data_wrapper(dataPath, ''unmixFactors'', [1, -0.1], ', ...
+                '''channelPatterns'', {''CamA'', ''CamB''}, ''zarrFile'', true, ''largeFile'', true, ', ...
+                '''batchSize'', [32, 24, 16], ''blockSize'', [16, 8, 8], ''parseCluster'', false, ''masterCompute'', true)']);
+            testCase.verifyEqual(count(consoleOut, 'with function XR_unmix_channels_zarr('), 1, 'The task did not run once.');
+            out = readzarr([dataPath, 'Unmixed/', sprintf(testCase.Fsn, 'CamA'), '.zarr']);
+            testCase.verifyImagesClose(single(out), max(0, single(chA) - 0.1 * single(chB)), 'absTol', 1, 'relTol', 1e-3);
+        end
+
         function gaussianUnmixingBlursTheOtherChannel(testCase)
             % 'gaussian' mode filters each channel with its sigma (one row
             % per channel, [sy, sx, sz]) before the weighted sum

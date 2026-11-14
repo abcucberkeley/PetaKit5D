@@ -19,7 +19,7 @@ function [] = XR_unmix_channels_data_wrapper(dataPaths, varargin)
 %         constOffset : empty or a scalar (default: []). If not empy, add the const offset after unmixing.
 %            zarrFile : true|false (default: false). Specifies if the input data is in Zarr format.
 %           largeFile : true|false (default: false). Flag to indicate if the input files are large and require special handling.
-%            saveZarr : true|false (default: false). If true, the output is saved in Zarr format; otherwise, saved in Tiff format.
+%            saveZarr : true|false (default: false). If true, the output is saved in Zarr format; otherwise, saved in Tiff format. Large files are always saved in Zarr format.
 %           save16bit : true|false (default: true). If true, the output is saved as 16-bit integers; otherwise, save as single.
 %           batchSize : 1x3 numeric vector (default: [1024, 1024, 1024]). The size of data batches [y, x, z] for processing.
 %           blockSize : 1x3 numeric vector (default: [256, 256, 256]). The chunk/block size [y, x, z] for writing data, especially for Zarr.
@@ -181,8 +181,9 @@ end
 
 primary_fd_inds = fd_ch_groups(:, channelInd);
 
+% the large-file tasks (XR_unmix_channels_zarr) always write zarr
 ext = '.tif';
-if saveZarr
+if saveZarr || largeFile
     ext = '.zarr';
 end
 
