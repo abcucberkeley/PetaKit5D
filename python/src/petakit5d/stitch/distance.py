@@ -294,31 +294,15 @@ def _finish_slice(
     out_z: np.ndarray, src: np.ndarray | None, w: float, keep: np.ndarray, box: np.ndarray | None
 ) -> None:
     """``out_z = single(src * w) .* keep`` (src single, w double; src None: the double scalar
-    1), then ``.* box``"""
-    from petakit5d.core import dtypes
+    1), then ``.* box``; Inf .* 0 is MATLAB's NaN on every processor (the kernel's rule)"""
     from petakit5d.kernels.ops import scale_offset
 
     if src is None:
         out_z[...] = keep
     else:
         scale_offset(src, scale=float(w), mask=keep, out=out_z, num_threads=1)
-        if not _x86_nan():
-            # the maps' NaN come only from Inf .* 0 (no distance is NaN): x86's NaN, MATLAB's
-            out_z[np.isnan(out_z)] = dtypes.NAN
     if box is not None:
         np.multiply(out_z, box, out=out_z)
-
-
-_X86_NAN: list[bool] = []
-
-
-def _x86_nan() -> bool:
-    """whether this processor's NaN of an invalid operation is x86's (MATLAB's)"""
-    if not _X86_NAN:
-        with np.errstate(invalid="ignore"):
-            r = np.array([np.inf], dtype=np.float32) * np.float32(0)
-        _X86_NAN.append(int(r.view(np.uint32)[0]) == 0xFFC00000)
-    return _X86_NAN[0]
 
 
 def _check_out(out: np.ndarray | None, shape: tuple[int, ...]) -> np.ndarray:

@@ -66,7 +66,12 @@ void affine_loop(const S *x, D *y, const bool *mask, idx_t n, const affine_args 
         share(n, k, nk, i0, i1);
         for (idx_t i = i0; i < i1; i++) {
             S v = affine_value<S>(x[i], a, hi, lo);
-            if constexpr (Mask) v = v * static_cast<S>(mask[i] ? 1 : 0);
+            if constexpr (Mask) {
+                // Inf .* 0 is MATLAB's NaN on every processor (fpexact.hpp)
+                const S m = static_cast<S>(mask[i] ? 1 : 0);
+                const S r = v * m;
+                v = PK5D_X86_NAN(r, v, m);
+            }
             y[i] = convert_value<D, S, Exact>(v);
         }
     });

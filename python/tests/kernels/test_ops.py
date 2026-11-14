@@ -914,6 +914,32 @@ def test_layouts_c_fortran_and_strided():
         assert _bitwise(y, ops.scale_offset_ref(x, 2.0, mask=m))
 
 
+@pytest.mark.parametrize("dt", [np.float32, np.float64])
+def test_mask_of_an_infinity_is_matlabs_nan_on_every_processor(dt):
+    """Inf .* 0 in the mask step is x86's default NaN (sign bit set, MATLAB's) also on ARM,
+    whose default NaN has the sign bit clear; a NaN value keeps its payload, quieted"""
+    single = dt == np.float32
+    ub = np.uint32 if single else np.uint64
+    matlab_nan = 0xFFC00000 if single else 0xFFF8000000000000
+    snan = 0x7FA00001 if single else 0x7FF4000000000001
+    quiet = 1 << (22 if single else 51)
+    v = np.array([np.inf, -np.inf, 1.5, np.array([snan], ub).view(dt)[0], np.inf, -0.0, 3.0], dt)
+    x = np.tile(v, 300).reshape(30, 7, 10)  # several threads' ranges and vector loops
+    m = np.tile(np.array([0, 0, 0, 0, 1, 0, 1], bool), 300).reshape(30, 7, 10)
+    for kw in ({}, {"scale": 2.0}, {"scale": 0.5, "offset": -1.0, "lo": -5.0}):
+        with np.errstate(invalid="ignore"):
+            ref = ops.scale_offset_ref(x, mask=m, **kw)
+        made = np.isnan(ref) & ~np.isnan(x)  # the NaN of Inf .* 0 (-Inf meets lo first)
+        assert made.sum() == (600 if kw.get("lo") is None else 300)
+        for nt in (1, 3):
+            y = ops.scale_offset(x, mask=m, num_threads=nt, **kw)
+            assert _bitwise(y, ref), (kw, nt)
+            assert np.all(y.view(ub)[made] == matlab_nan), (kw, nt)
+    y = ops.scale_offset(x, mask=m)
+    assert np.all(y.view(ub)[np.isnan(x)] == snan | quiet)
+    assert np.all(y[np.isinf(x) & m] == np.inf)
+
+
 def test_zero_dim_and_empty():
     for a in (np.float32(0.49999997), np.zeros((0, 4), np.float32), np.array(2.5)):
         for mode in ("class", "cast"):
