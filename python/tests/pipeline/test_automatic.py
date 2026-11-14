@@ -248,6 +248,23 @@ def _cases():
             sub=["d1/", "d2/"],
             marks=slow,
         ),  # fmt: skip
+        # (AutomaticProcessingTest/imageListsStayWithTheirDatasets) datasets given out of order:
+        # the image lists follow the sorted data paths
+        pl_case(
+            "datasets_out_of_order",
+            two_datasets,
+            *cha,
+            "stitch",
+            True,
+            "DSRCombined",
+            True,
+            "imageListFullpaths",
+            ["@d/d2/ImageList.csv", "@d/d1/ImageList.csv"],
+            "axisOrder",
+            "-x,y,z",
+            sub=["d2/", "d1/"],
+            marks=slow,
+        ),  # fmt: skip
         pl_case("separate", one, *cha, "DSRCombined", False),
         pl_case("deskew_only", one, *cha, "rotate", False),
         pl_case("deskew_only_separate", one, *cha, "rotate", False, "DSRCombined", False),
@@ -265,7 +282,7 @@ def _cases():
             *STITCH_ON,
             marks=slow,
         ),  # fmt: skip
-        # a factor with rx != ry: the stitching reads the deskew's [x y z] as [y x z]
+        # a factor with rx != ry: the stitching gets it as [y x z]
         pl_case(
             "resample_rx_ry", one, *cha, "resampleFactor", [1.5, 1, 1], *STITCH_ON, marks=slow
         ),  # fmt: skip
@@ -291,7 +308,8 @@ def _cases():
             ["@d/d/x.tif"],
             error=True,
         ),  # fmt: skip
-        pl_case("save16bit_one_stitch", one, *cha, "save16bit", True, *STITCH_ON, error=True),
+        # one save16bit value for both steps (MATLAB's index error until e3fbccc)
+        pl_case("save16bit_one_stitch", one, *cha, "save16bit", True, *STITCH_ON),
     ]
 
 
@@ -873,8 +891,8 @@ def strings(monkeypatch):
 
 def test_values_reach_the_steps_as_matlab_formats_them(tmp_path, strings):
     """%.20d of the pixel size, z step and angle, mat2str of the box and of the deskew's [x y z]
-    resample factor, %.10d of the stitching's (MATLAB's 0000000001 for 1); the stitching of a local
-    run gets one try"""
+    resample factor, %.10d of the stitching's [y x z] (MATLAB's 0000000001 for 1); the stitching
+    of a local run gets one try"""
     data, csv = two_tiles(tmp_path)
     run(data, stitch=True, image_list_fullpaths=[csv], axis_order="-x,y,z",
         resample_factor=(1, 1, 1.5), max_trial_num=3)  # fmt: skip
@@ -885,17 +903,18 @@ def test_values_reach_the_steps_as_matlab_formats_them(tmp_path, strings):
     assert "3.24500000000000028422e+01" in deskew[0]
     assert "'resampleFactor',[[1.5,1,1]]" in deskew[0] and "'inputBbox',[]" in deskew[0]
     s = stitch[0]
-    assert "'resampleFactor',[1.5000000000e+00,0000000001,0000000001,]" in s
+    assert "'resampleFactor',[0000000001,1.5000000000e+00,0000000001,]" in s
     assert "'maxTrialNum',1," in s
     assert "'ResultDir','matlab_stitch'" in s and "'ProcessedDirStr','DSR'" in s
     assert "'resampleType','isotropic'" in s and "'stitchMIP',[]" in s
-    # read back: the deskew's [x y z] factor is (z, y, x) (1, 1, 1.5); the stitching reads the
-    # same text as [y x z] (MATLAB's quirk since M06): its y factor is the deskew's x factor
+    # read back: the deskew's [x y z] factor is (z, y, x) (1, 1, 1.5), and so is the stitching's
+    # (AutomaticProcessingTest/stitchingGetsTheResampleFactorInItsAxisOrder; until e3fbccc the
+    # stitching read the deskew's text as [y x z]: its y factor was the deskew's x factor)
     d = A.task_of(deskew[0]).kwargs
     assert d["xy_pixel_size"] == PX and d["dz"] == DZ and d["skew_angle"] == SKEW
     assert tuple(d["resample_factor"]) == (1, 1, 1.5)
     k = A.task_of(s).kwargs
-    assert tuple(k["resample_factor"]) == (1, 1.5, 1)
+    assert tuple(k["resample_factor"]) == (1, 1, 1.5)
     assert k["result_dir_name"] == "matlab_stitch" and k["processed_dir_str"] == "DSR"
 
 
@@ -907,8 +926,10 @@ def test_the_input_box_reaches_the_deskew_as_a_python_box(tmp_path, strings):
     assert tuple(A.task_of(strings[0]).kwargs["input_bbox"]) == (1, 2, 4, 20, 30, 38)
 
 
-def test_data_paths_are_sorted_but_image_lists_keep_their_order(tmp_path, strings, monkeypatch):
-    """(MATLAB's quirk) unique() sorts the data paths, not the image lists"""
+def test_image_lists_stay_with_their_datasets(tmp_path, strings, monkeypatch):
+    """(AutomaticProcessingTest/imageListsStayWithTheirDatasets) the data paths are sorted
+    (unique) and the image lists follow them (until e3fbccc they kept the given order, so
+    datasets given out of order got each other's lists)"""
     paths, csvs = [], []
     for d in ("b", "a"):
         data, csv = two_tiles(tmp_path / d)
@@ -916,11 +937,10 @@ def test_data_paths_are_sorted_but_image_lists_keep_their_order(tmp_path, string
         csvs.append(csv)
     run(paths, stitch=True, image_list_fullpaths=csvs, axis_order="-x,y,z")
     stitch = [s for s in strings if s.startswith("XR_matlab_stitching_wrapper(")]
-    first = A._split_call(stitch[0])[1]
-    want = [paths[1], csvs[0]]
-    if A._ispc():  # (MATLAB's ispc branch: the paths with '/')
-        want = [p.replace("\\", "/") for p in want]
-    assert first[:2] == want, "dataset a got its own image list"
+    assert stitch
+    for s in stitch:
+        data, csv = A._split_call(s)[1][:2]
+        assert csv == f"{data}ImageList.csv", f"Dataset {data} got another image list."
 
 
 def test_a_file_flip_is_the_default_of_files_found_later(tmp_path, monkeypatch):
@@ -947,15 +967,14 @@ def test_a_file_flip_is_the_default_of_files_found_later(tmp_path, monkeypatch):
     assert flips[0] is False and flips[1:] and all(f is True for f in flips[1:]), flips
 
 
-def test_a_new_file_named_as_a_listed_one_is_not_added(tmp_path, monkeypatch):
-    """(MATLAB's quirk: contains(fnames, x)) a new file whose name is part of a listed name (of
-    any folder) is not processed"""
+def test_streaming_adds_new_files_named_as_another_datasets_files(tmp_path, monkeypatch):
+    """(AutomaticProcessingTest/streamingAddsNewFilesNamedAsAnotherDatasetsFiles) a new file is
+    one with no listed file of its name in its data folder (until e3fbccc a file was left out if
+    any listed name of any dataset contained its name)"""
     d1, d2, stage = tmp_path / "d1", tmp_path / "d2", tmp_path / "stage"
     for d in (d1, d2, stage):
         d.mkdir()
-    listed = f"{d1}/x{os.path.basename(tile_fn(d1))}"
-    # (a folder without files keeps the run going: its newest file's age stays 0)
-    for fn in (listed, tile_fn(d2, yi=5), tile_fn(stage)):
+    for fn in (tile_fn(d1), tile_fn(d2, yi=1), tile_fn(stage)):
         synth.write_tiff(fn, np.zeros(SMALL, np.uint16))
         _age(fn, 5)
 
@@ -965,8 +984,10 @@ def test_a_new_file_named_as_a_listed_one_is_not_added(tmp_path, monkeypatch):
 
     monkeypatch.setattr(jfiles, "_pause", pause)
     run([dp(d1), dp(d2)], streaming=True, max_modify_time=1, max_wait_loop_num=2)
-    assert os.path.isfile(dsr_of(listed)) and os.path.isfile(dsr_of(tile_fn(d2, yi=5)))
-    assert not os.path.exists(dsr_of(tile_fn(d2))), "MATLAB leaves the second folder's file"
+    assert os.path.isfile(dsr_of(tile_fn(d1)))
+    assert os.path.isfile(dsr_of(tile_fn(d2))), (
+        "The new file of the second dataset was not processed."
+    )
 
 
 def test_the_axis_order_check_never_raises(tmp_path):
@@ -1116,6 +1137,57 @@ def test_stitching_gets_the_second_save_16bit(tmp_path, strings):
     stitch = [x for x in strings if x.startswith("XR_matlab_stitching_wrapper(")]
     assert A.task_of(deskew[0]).kwargs["save_16bit"] is True
     assert A.task_of(stitch[0]).kwargs["save_16bit"] is False
+
+
+def test_scalar_save16bit_is_for_both_steps(tmp_path, strings):
+    """(AutomaticProcessingTest/scalarSave16bitIsForBothSteps) one save16bit value is for both
+    steps (the stitching string took its second, an index error, until e3fbccc)"""
+    data, csv = two_tiles(tmp_path)
+    run(data, stitch=True, image_list_fullpaths=[csv], axis_order="-x,y,z", save_16bit=False,
+        edge_artifacts=0)  # fmt: skip
+    stitch = [x for x in strings if x.startswith("XR_matlab_stitching_wrapper(")]
+    assert stitch and A.task_of(stitch[0]).kwargs["save_16bit"] is False
+    assert read_tiff(dsr_of(tile_fn(data))).dtype == np.float32
+
+
+def test_local_stitching_without_result_is_tried_once(tmp_path, monkeypatch):
+    """(AutomaticProcessingTest/localStitchingWithoutResultIsTriedOnce) locally a try counts once
+    the dataset's files are deskewed, so that a stitching that makes no result ends (it was
+    called again in every round until e3fbccc)"""
+    data, csv = two_tiles(tmp_path)
+    stitches = []
+    real = A._State._run_here
+
+    def spy(self, func_str):
+        if func_str.startswith("XR_matlab_stitching_wrapper("):
+            stitches.append(func_str)
+            return None
+        return real(self, func_str)
+
+    monkeypatch.setattr(A._State, "_run_here", spy)
+    run(data, stitch=True, image_list_fullpaths=[csv], axis_order="-x,y,z")
+    # (after each file's deskew; the second one counts)
+    assert len(stitches) == 2
+
+
+def test_the_result_is_found_with_any_msec_field(tmp_path, strings):
+    """(AutomaticProcessingTest/clusterModeFindsTheResultOfTilesWithOtherMsecFields, here
+    locally) a stitched volume has its first tile's msec field, which another file of the
+    volume may not have: the look for the result takes any (until e3fbccc each file looked for
+    its own)"""
+    data, csv = two_tiles(tmp_path)
+    names = [os.path.basename(tile_fn(data, yi=k))[:-4] for k in (0, 1)]
+    text = Path(csv).read_bytes()
+    os.makedirs(f"{data}DSR")
+    for k, n in enumerate(names):
+        new = n.replace("_0000000msec_", f"_{5000 + 1000 * k:07d}msec_")
+        os.rename(f"{data}{n}.tif", f"{data}{new}.tif")
+        text = text.replace(n.encode(), new.encode())
+        Path(f"{data}DSR/{new}.tif").touch()
+    Path(csv).write_bytes(text)
+    os.makedirs(stitched(data).replace("_0000000msec_", "_0005000msec_"))
+    run(data, stitch=True, image_list_fullpaths=[csv], axis_order="-x,y,z")
+    assert not [x for x in strings if x.startswith("XR_matlab_stitching_wrapper(")]
 
 
 def test_a_stitched_result_removes_its_marker(tmp_path):

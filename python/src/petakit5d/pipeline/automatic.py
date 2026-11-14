@@ -28,7 +28,8 @@ no longer a step of it: ``decon.dataset.decon_dataset`` is its own wrapper):
 - **Two flags per file**: deskew (and rotation) and stitching; a file is finished when both
   are done (or the stitching is off). A file deleted during the run is finished. A deskew
   result is seen by ``batch_file_exist`` (results another node just made included); a
-  stitched result by the pattern ``<stitch folder>/<name less 39 characters>*Abs.zarr``.
+  stitched result by the pattern ``<stitch folder>/<name less 39 characters>*Abs.zarr`` with
+  any msec field (the result has its volume's first tile's).
 - **Local mode** (no Slurm, or ``parse_cluster`` False): each file in turn, here, with MATLAB's
   ``.tmp`` markers (a marker younger than ``unit_wait_time`` minutes is another process's file);
   after each deskew the dataset's stitching is called (it stitches the volumes whose tiles are
@@ -50,24 +51,24 @@ no longer a step of it: ``decon.dataset.decon_dataset`` is its own wrapper):
   (``'from_encoder'``, ``'from_sqlite'``) a dataset's image list is made again before its
   stitching.
 
-The MATLAB function's quirks are kept (each has a test): the data paths are sorted (unique)
-but the image lists keep their order; the axis-order check never raises; the stitching
-folders are made (and deskew and rotation forced on) even when a missing image list turns the
-stitching off; local stitching sets ``max_trial_num`` to 1 for the rest of the call (the deskew
-tries too); a file's z flip becomes the default flip of files found later while streaming; a new
-file whose name is part of a file name already listed (in any folder) is not added; the
-stitching's resample factor is the deskew's ``[x y z]`` factor, which the stitching reads in the
-tiles' axis order (``[y x z]``); a single ``save_16bit`` value fails when the stitching's string
-is made (MATLAB's ``save16bit(2)``); the job log folder is checked with the last data path; the
-stitched result's ``.tmp`` marker is ``<name>..tmp``. In local mode a dataset whose stitching
-never makes its result is called again in every round (MATLAB counts no stitching tries
-there).
+The data paths are sorted (unique) and the image lists follow them; a new file is one with no
+listed file of its name in its data folder; the stitching gets the deskew's resample factor in
+the tiles' axis order (``[y x z]``); one ``save_16bit`` value is for both steps; in local mode a
+dataset's stitching try counts once its files are deskewed or given up.
+
+The MATLAB function's quirks are kept (each has a test): the axis-order check never raises;
+the stitching folders are made (and deskew and rotation forced on) even when a missing image
+list turns the stitching off; local stitching sets ``max_trial_num`` to 1 for the rest of the
+call (the deskew tries too); a file's z flip becomes the default flip of files found later
+while streaming; the job log folder is checked with the last data path; the stitched result's
+``.tmp`` marker is ``<name>..tmp``.
 """
 
 from __future__ import annotations
 
 import math
 import os
+import re
 import time
 import warnings
 from collections.abc import Sequence
@@ -539,10 +540,16 @@ def automatic_processing(
     m = {k: to_plain(v) for k, v in matlab_results(automatic_processing, dict(locals())).items()}
     paths = m["dataPaths"]
     paths = [paths] if isinstance(paths, str) else [str(p) for p in paths]
-    # unique: sorted, each once
-    paths = sorted(set(paths), key=matlab_sort_key)
+    n_given = len(paths)
+    # unique: sorted, each once (with its first index)
+    uinds = sorted({p: i for i, p in reversed(list(enumerate(paths)))}.values(),
+                   key=lambda i: matlab_sort_key(paths[i]))  # fmt: skip
+    paths = [paths[i] for i in uinds]
     lists = m["imageListFullpaths"]
     lists = [lists] if isinstance(lists, str) else [str(p) for p in lists]
+    # (the image lists in the order of the data paths, as they were given)
+    if len(lists) == n_given:
+        lists = [lists[i] for i in uinds]
 
     s = _State(m, paths, lists)
     s.setup()
@@ -563,6 +570,9 @@ class _State:
         self.streaming = bool(m["streaming"])
         self.channels = [str(c) for c in m["channelPatterns"]]
         self.save16 = [bool(x) for x in np.atleast_1d(np.asarray(m["save16bit"])).reshape(-1)]
+        # (one value for both deskew/rotate and stitch)
+        if len(self.save16) == 1:
+            self.save16 = self.save16 * 2
         self.deskew = bool(m["deskew"])
         self.rotate = bool(m["rotate"])
         self.stitch = bool(m["stitch"])
@@ -821,10 +831,14 @@ class _State:
             self._new_files()
 
     def _stitch_pattern(self, f: int) -> str:
+        """the stitched result of a file's volume (a pattern for dir): the file's name up to its
+        laser, with any msec field, as the result has the msec field of the volume's first
+        tile, which other tiles may not have"""
         from petakit5d.core.paths import fileparts
 
         fsname = fileparts(self.fnames[f])[1]
-        return f"{self.stch_paths[self.fd_inds[f]]}/{_stitch_prefix(fsname)}*Abs.zarr"
+        prefix = re.sub(r"_\d+msec\Z", "_*msec", _stitch_prefix(fsname))
+        return f"{self.stch_paths[self.fd_inds[f]]}/{prefix}*Abs.zarr"
 
     def _awaited(self) -> list[str]:
         """the results of the steps still to come, as a round looks for them"""
@@ -855,8 +869,9 @@ class _State:
         new_names = list(parsed.fnames)
         if not new_names:
             return
-        # (MATLAB's contains(fnames, x): a name that is part of a listed name is not new)
-        new = [not any(x in g for g in self.fnames) for x in new_names]
+        # (new: no listed file of that name in its data folder)
+        listed = set(zip(self.fnames, self.fd_inds, strict=True))
+        new = [(x, int(fd)) not in listed for x, fd in zip(new_names, parsed.fd_inds, strict=True)]
         if not any(new):
             return
         for i, k in enumerate(new):
@@ -953,6 +968,9 @@ class _State:
             return
         if not self.parse_cluster and (not _exist(frame) or not _exist(dsr_full)):
             return
+        # (locally, the dataset's stitching was tried and gave no result)
+        if not self.parse_cluster and self.trials[f][1] >= self.max_trial:
+            return
         if not self.parse_cluster:
             self.mcc_mode = False
             # (MATLAB's maxTrialNum = 1: for the rest of the call, the deskew tries too)
@@ -977,6 +995,13 @@ class _State:
                 self.active[i][1] = submit_status > 0 or job_status >= 0
         else:
             self._run_here(func_str)
+            # a try once the deskew of the dataset's files is done or given up (before, the
+            # stitching waits for its tiles), so that a stitching without result isn't run every
+            # round
+            ds_inds = [i for i in range(len(self.fnames)) if self.fd_inds[i] == fd]
+            if all(self.done[i][0] or self.trials[i][0] >= self.max_trial for i in ds_inds):
+                for i in ds_inds:
+                    self.trials[i][1] += 1
         if found and _exist(stch_full):
             self.done[f][1] = True
             if os.path.isfile(stch_tmp):
@@ -1103,7 +1128,7 @@ class _State:
             "DSR",
             self.axis_order,
             "isotropic",
-            _num2str(self.resample, "%.10d,").replace(" ", ""),
+            _num2str(self._stitch_resample(), "%.10d,").replace(" ", ""),
             _string(m["reverse"]),
             _string(m["parseSettingFile"]),
             _string(m["xcorrShift"]),
@@ -1124,6 +1149,15 @@ class _State:
             m["configFile"],
             m["uuid"],
         )
+
+    def _stitch_resample(self) -> Any:
+        """the deskew's factor ([x y z]) in the tiles' axis order ([y x z]), as the stitching
+        reads it"""
+        r = self.resample
+        if r is not None and np.size(r) == 3:
+            v = np.asarray(r, dtype=np.float64).ravel()
+            return [float(v[1]), float(v[0]), float(v[2])]
+        return r
 
     def _run_here(self, func_str: str) -> None:
         """MATLAB's ``feval(str2func(['@()', func_str]))``"""

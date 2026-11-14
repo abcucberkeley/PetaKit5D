@@ -63,6 +63,27 @@
     ],
     "localRunSubmitsNoStitchingJobs": [
      "pytest:tests/pipeline/test_automatic.py::test_local_run_submits_no_stitching_jobs"
+    ],
+    "stitchingGetsTheResampleFactorInItsAxisOrder": [
+     "pytest:tests/pipeline/test_automatic.py::test_values_reach_the_steps_as_matlab_formats_them",
+     "oracle:tests/pipeline/test_automatic.py::pipeline.resample_rx_ry"
+    ],
+    "imageListsStayWithTheirDatasets": [
+     "pytest:tests/pipeline/test_automatic.py::test_image_lists_stay_with_their_datasets",
+     "oracle:tests/pipeline/test_automatic.py::pipeline.datasets_out_of_order"
+    ],
+    "scalarSave16bitIsForBothSteps": [
+     "pytest:tests/pipeline/test_automatic.py::test_scalar_save16bit_is_for_both_steps",
+     "oracle:tests/pipeline/test_automatic.py::pipeline.save16bit_one_stitch"
+    ],
+    "localStitchingWithoutResultIsTriedOnce": [
+     "pytest:tests/pipeline/test_automatic.py::test_local_stitching_without_result_is_tried_once"
+    ],
+    "clusterModeFindsTheResultOfTilesWithOtherMsecFields": [
+     "pytest:tests/pipeline/test_automatic.py::test_the_result_is_found_with_any_msec_field"
+    ],
+    "streamingAddsNewFilesNamedAsAnotherDatasetsFiles": [
+     "pytest:tests/pipeline/test_automatic.py::test_streaming_adds_new_files_named_as_another_datasets_files"
     ]
    }
   }
