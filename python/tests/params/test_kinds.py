@@ -143,6 +143,24 @@ def test_phase1_parameters_have_planned_kinds(extract):
     assert missing == [] and bad == []
 
 
+def test_stitching_resample_factors_are_planned_in_the_tiles_axis_order():
+    """The stitching frame reads resampleFactor in the tiles' axis order (its xf, yf, zf are
+    resampleFactor(data_order_mat), [y x z] for 'y,x,z' tiles, as the tiles are resampled) and
+    its wrapper passes it on: both are planned as resample_yxz, the kind the frame declares,
+    while the deskew/rotate functions keep [x y z]. Their xcorrDownsample is in the tiles' axis
+    order too (the registration max-pools the tiles' arrays by it): size_yxz."""
+    from petakit5d.params import REGISTRY
+    from petakit5d.params.planned import planned_kind
+
+    frame = REGISTRY.find("XR_stitching_frame_zarr_dev_v1")
+    declared = {p.matlab: p.conv.name for p in frame.params if p.conv is not None}
+    for name, kind in (("resampleFactor", "resample_yxz"), ("xcorrDownsample", "size_yxz")):
+        assert declared[name] == kind, name
+        for f in ("XR_stitching_frame_zarr_dev_v1", "XR_matlab_stitching_wrapper"):
+            assert planned_kind(f, name) == kind, (f, name)
+    assert planned_kind("XR_deskewRotateFrame", "resampleFactor") == "resample_xyz"
+
+
 def _registry():
     reg = Registry()
 

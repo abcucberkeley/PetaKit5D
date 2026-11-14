@@ -192,10 +192,12 @@ KINDS_BY_NAME: dict[str, str] = {
          "outLocalBboxes", "distBboxes"],
         "bboxes",
     ),
-    # sizes and per-axis vectors [y x z] (pool sizes: groups of three)
+    # sizes and per-axis vectors [y x z] (pool sizes: groups of three); the stitching's
+    # xcorrDownsample is in the tiles' axis order (the registration max-pools the tiles' arrays
+    # by it, [y x z] for 'y,x,z' tiles)
     **dict.fromkeys(
         ["batchSize", "blockSize", "shardSize", "zarrSubSize", "mipBatchSize", "imSize",
-         "borderSize", "BorderSize", "stitchPadSize", "poolSize", "dataSize"],
+         "borderSize", "BorderSize", "stitchPadSize", "poolSize", "dataSize", "xcorrDownsample"],
         "size_yxz",
     ),
     # per-axis flags [y x z] (a z MIP is [0 0 1])
@@ -222,7 +224,6 @@ KINDS_BY_NAME: dict[str, str] = {
         "same",
     ),
     # decided by the area task
-    "xcorrDownsample": "?S09",
     "downSample": "?S04",
     "MaxOffset": "?S04",
     "cuboid_1": "?S04",
@@ -241,19 +242,20 @@ KINDS_BY_NAME: dict[str, str] = {
 
 _DESKEW_RS = "resample_xyz"  # passed on to deskewRotateFrame3D's [x y z] resample
 KINDS_BY_FUNCTION: dict[str, dict[str, str]] = {
-    # resample factors: [y x z] (or [xy z]) where they divide an image size, [x y z] where they
-    # reach the deskew/rotate transform or the stitching's xf, yf, zf
+    # resample factors: [y x z] (or [xy z]) where they divide an image size or are read in the
+    # tiles' axis order (the stitching frame's xf, yf, zf are resampleFactor(data_order_mat),
+    # and its wrapper passes them on), [x y z] where they reach the deskew/rotate transform
     **{
         f: {"resampleFactor": "resample_yxz"}
         for f in ("XR_resample_dataset", "XR_resampleFrame", "XR_resampleSingleZarr",
-                  "resampleZarrBlock", "tiffToZarr", "XR_tiffToZarr_wrapper")
+                  "resampleZarrBlock", "tiffToZarr", "XR_tiffToZarr_wrapper",
+                  "XR_stitching_frame_zarr_dev_v1", "XR_matlab_stitching_wrapper")
     },
     "stitch_process_zarr_tile": {"resample": "resample_yxz"},
     **{
         f: {"resampleFactor": _DESKEW_RS}
         for f in ("XR_deskewRotateFrame", "XR_deskew_rotate_data_wrapper", "XR_deskewRotateZarr",
-                  "XR_deskewRotateBlock", "XR_microscopeAutomaticProcessing",
-                  "XR_stitching_frame_zarr_dev_v1", "XR_matlab_stitching_wrapper")
+                  "XR_deskewRotateBlock", "XR_microscopeAutomaticProcessing")
     },
     "deskewRotateFrame3D": {"resample": _DESKEW_RS, "resampleFactor": _DESKEW_RS},
     # the memory order flag of a new zarr ('F' in MATLAB; the port writes 'C'): IO3 decides
