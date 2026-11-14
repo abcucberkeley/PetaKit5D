@@ -1,4 +1,5 @@
-"""Tools: maximum intensity projections, cropping, memory estimates, rsync, partial volumes.
+"""Tools: maximum intensity projections, cropping, memory estimates, rsync, partial volumes,
+channel unmixing.
 
 ========================================  =====================================
 ``mip_dataset``                           XR_MIP_wrapper
@@ -21,6 +22,12 @@
 ``estimate_computing_memory``             XR_estimateComputingMemory
 ``parallel_rsync``                        XR_parallel_rsync_wrapper
 ``group_partial_volume_files``            groupPartialVolumeFiles
+``unmix_channels_dataset``                XR_unmix_channels_data_wrapper
+``unmix_channels_file``                   XR_unmix_channels_frame
+``unmix_channels_zarr``                   XR_unmix_channels_zarr
+``unmix_channels_block``                  unmix_channels_block
+``unmix_channels_gaussian_block``         unmix_channels_gaussian_block
+``unmix_channels_sum``                    unmix_channels_sum_mex (the weighted sum)
 ========================================  =====================================
 
 Nothing is imported until a function is first used.
@@ -48,6 +55,13 @@ _EXPORTS = {
     "estimate_computing_memory": "memory_estimate",
     "parallel_rsync": "rsync",
     "group_partial_volume_files": "partial_volumes",
+    "UnmixError": "unmix",
+    "unmix_channels_block": "unmix",
+    "unmix_channels_dataset": "unmix",
+    "unmix_channels_file": "unmix",
+    "unmix_channels_gaussian_block": "unmix",
+    "unmix_channels_sum": "unmix",
+    "unmix_channels_zarr": "unmix",
 }
 
 __all__ = sorted(_EXPORTS)

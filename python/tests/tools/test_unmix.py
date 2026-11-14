@@ -1747,3 +1747,24 @@ def test_instruction_sets_give_the_same_bits():
     for isa in (0, 1):
         ext.subtract(x, np.inf, r[isa], 2, True, isa)
     same_bits(r[0], r[1])
+
+
+def test_the_tools_package_exports_the_unmixing():
+    """petakit5d.tools exports the unmixing's functions and error lazily, and its table names
+    each registered function it exports with its MATLAB name"""
+    import re
+
+    import petakit5d.tools as tools
+    from petakit5d.params import REGISTRY
+
+    for name in ("unmix_channels_sum", "unmix_channels_file", "unmix_channels_block",
+                 "unmix_channels_gaussian_block", "unmix_channels_zarr", "unmix_channels_dataset",
+                 "UnmixError"):  # fmt: skip
+        assert name in tools.__all__ and name in dir(tools), name
+        assert getattr(tools, name) is getattr(unmix, name)
+    for mname, (where, kind) in REGISTRY.index().items():
+        if kind != "register" or not where.startswith("petakit5d.tools."):
+            continue
+        pname = REGISTRY.find(mname).python_name.rsplit(".", 1)[-1]
+        if pname in tools.__all__:
+            assert re.search(rf"^``{pname}``\s+{mname}\b", tools.__doc__, re.M), (pname, mname)
