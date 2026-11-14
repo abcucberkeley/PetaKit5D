@@ -1,0 +1,11 @@
+{
+ "name": "n04_filters",
+ "repeats": 5,
+ "variants": [
+  {"id": "ml", "impl": "matlab", "paths": ["benchmarks/matlabcompat", "benchmarks/common"],
+   "code": "bench_filters_n04([1, 4, 24], 3)"},
+  {"id": "py", "impl": "python", "script": "benchmarks/matlabcompat/bench_filters_n04.py",
+   "args": ["--threads", "1", "4", "24", "--repeats", "3"]}
+ ],
+ "compare": [{"a": "py", "b": "ml"}]
+}
