@@ -428,14 +428,12 @@ def _through_text(v: Any, fmt: str) -> Any:
 
 def _through_mat2str(v: Any, precision: int) -> Any:
     """values after ``mat2str(v, precision)`` and MATLAB's parser (NaN is MATLAB's NaN)"""
-    from petakit5d.core.dtypes import NAN
     from petakit5d.core.text import through_mat2str
 
     if _empty(v):
         return v
     a = np.asarray(v, dtype=np.float64)
     r = np.asarray(through_mat2str(a.reshape(-1), precision), dtype=np.float64)
-    r[np.isnan(r)] = NAN
     return _like(v, r.reshape(a.shape))
 
 
