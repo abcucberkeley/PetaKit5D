@@ -118,10 +118,10 @@ By fate (all):
 | na | 83 |
 | na+oracle | 1 |
 | na+oracle+pytest | 2 |
-| oracle | 127 |
-| oracle+pytest | 542 |
-| pending | 531 |
-| pytest | 404 |
+| oracle | 133 |
+| oracle+pytest | 596 |
+| pending | 436 |
+| pytest | 439 |
 
 ## Classes
 
@@ -133,8 +133,8 @@ By fate (all):
 | analysis/FlatfieldBackgroundEstimationTest | data | B07 | 3 | 3 | no | pending 3 |
 | analysis/ImarisConversionTest | data | B01 | 9 | 9 | no | pending 9 |
 | analysis/PSFAnalysisTest | data | B06 | 3 | 6 | no | pending 6 |
-| analysis/PunctaRemovalTest | data | B08 | 3 | 3 | no | pending 3 |
-| analysis/UnmixChannelsTest | data | B02 | 17 | 20 | no | pending 20 |
+| analysis/PunctaRemovalTest | data | B08 | 3 | 3 | yes | oracle 1, oracle+pytest 2 |
+| analysis/UnmixChannelsTest | data | B02 | 17 | 20 | yes | oracle+pytest 16, pytest 4 |
 | cluster/SlurmClusterTest | framework_design | J11 | 11 | 11 | yes | pytest 11 |
 | crop/CropDatasetTest | data | T03 | 23 | 23 | yes | oracle+pytest 14, pytest 9 |
 | crop/CropMexTest | data | K01 | 10 | 46 | no | oracle+pytest 46 |
@@ -202,10 +202,10 @@ By fate (all):
 | stitch/RegistrationXcorrTest | data | S04 | 16 | 40 | no | pending 40 |
 | stitch/StitchGeometryTest | data | S03 | 3 | 3 | yes | oracle+pytest 3 |
 | stitch/StitchHelperMexTest | data | S04 | 8 | 14 | no | pending 14 |
-| stitch/StitchJobResourcesTest | data | S09 | 2 | 2 | no | pending 2 |
+| stitch/StitchJobResourcesTest | data | S09 | 2 | 2 | yes | pytest 2 |
 | stitch/StitchMergeBlockMipsTest | data | S07 | 3 | 3 | yes | oracle+pytest 3 |
 | stitch/StitchShiftAssignmentTest | data | S05 | 18 | 18 | yes | oracle+pytest 15, pytest 3 |
-| stitch/StitchingTest | data | S09 | 52 | 70 | no | pending 70 |
+| stitch/StitchingTest | data | S09 | 52 | 70 | no | oracle 5, oracle+pytest 36, pytest 29 |
 | stitch/TileBlendingTest | data | K04 | 4 | 18 | yes | oracle 12, oracle+pytest 6 |
 | tools/BlockMIPTest | data | T02 | 15 | 19 | yes | oracle+pytest 15, pytest 4 |
 | tools/ComputingMemoryEstimateTest | data | T05 | 3 | 3 | yes | oracle+pytest 3 |

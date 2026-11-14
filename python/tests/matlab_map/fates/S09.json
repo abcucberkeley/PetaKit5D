@@ -1,0 +1,229 @@
+{
+ "task": "S09",
+ "classes": {
+  "StitchingTest": {
+   "finished": false,
+   "methods": {
+    "exactPositionsReproduceGroundTruth": [
+     "pytest:tests/stitch/test_dataset.py::test_exact_positions_reproduce_ground_truth",
+     "pytest:tests/stitch/test_volume.py::test_exact_positions_reproduce_ground_truth",
+     "pytest:tests/stitch/test_block.py::test_exact_positions_reproduce_ground_truth",
+     "pytest:tests/stitch/test_geometry.py::test_canvas_has_two_voxels_at_the_end_and_tiles_at_their_starts",
+     "oracle:tests/stitch/test_volume.py::frame.dsr.*"
+    ],
+    "featherBlendingOfUint8Tiles": [
+     "oracle:tests/stitch/test_block.py::blend.*.feather.uint8",
+     "oracle:tests/stitch/test_volume.py::frame.dsr.uint8"
+    ],
+    "featherBlendingOfUint8TilesInABatchThatIsNotFull": [
+     "pytest:tests/stitch/test_block.py::test_feather_blending_of_uint8_tiles_in_a_batch_that_is_not_full",
+     "oracle:tests/stitch/test_block.py::blend.partial.feather.uint8"
+    ],
+    "mipIsMadeBeforePublishing": [
+     "pytest:tests/stitch/test_volume.py::test_mip_is_made_before_publishing_and_merged_from_the_tasks"
+    ],
+    "mipIsMergedFromBlendingTasks": [
+     "pytest:tests/stitch/test_volume.py::test_mip_is_made_before_publishing_and_merged_from_the_tasks",
+     "pytest:tests/stitch/test_block.py::test_mip_of_a_mean_blend_is_the_mip_of_the_result",
+     "oracle:tests/stitch/test_block.py::merge.*"
+    ],
+    "resultOfAnotherRunIsKept": [
+     "pytest:tests/stitch/test_volume.py::test_result_of_another_run_is_kept"
+    ],
+    "largeVolumeMIPsAreMadeBeforePublishing": [
+     "pytest:tests/stitch/test_volume.py::test_large_volume_mips_are_made_by_the_large_file_mips"
+    ],
+    "separateBlendWritesEachTileOnTheCanvas": [
+     "pytest:tests/stitch/test_volume.py::test_separate_writes_each_tile_on_a_canvas",
+     "pytest:tests/stitch/test_block.py::test_separate_blend_writes_each_tile_on_the_canvas",
+     "oracle:tests/stitch/test_volume.py::frame.dsr.separate"
+    ],
+    "processFunctionFileHasANameOfItsOwn": [
+     "pytest:tests/stitch/test_volume.py::test_edge_artifacts_write_the_function_file"
+    ],
+    "masterDoesNotStitchAVolumeWhoseJobRuns": [
+     "pytest:tests/stitch/test_dataset.py::test_master_does_not_stitch_a_volume_whose_job_runs"
+    ],
+    "masterInAJobStitchesNoVolumeThatDoesNotFitIt": [
+     "pytest:tests/stitch/test_dataset.py::test_master_in_a_job_stitches_no_volume_that_does_not_fit_it"
+    ],
+    "clusterJobsAskForWhatTheyHold": [
+     "pytest:tests/stitch/test_dataset.py::test_cluster_jobs_ask_for_what_they_hold"
+    ],
+    "volumeSizeEstimateMatchesTheStitchedVolume": [
+     "pytest:tests/stitch/test_dataset.py::test_volume_size_estimate_matches_the_stitched_volume",
+     "pytest:tests/stitch/test_geometry.py::test_volume_size_estimate_matches_the_stitched_volume",
+     "oracle:tests/stitch/test_geometry.py::estimate.*"
+    ],
+    "masterWaitsForTheLastTryOfAJob": [
+     "pytest:tests/stitch/test_dataset.py::test_master_waits_for_the_last_try_of_a_job"
+    ],
+    "lastTryWaitsForATaskRunnerThatHasTheTask": [
+     "pytest:tests/stitch/test_dataset.py::test_last_try_waits_for_a_task_runner_that_has_the_task"
+    ],
+    "clusterModeSeesResultsOtherNodesJustMade": [
+     "pytest:tests/stitch/test_dataset.py::test_cluster_mode_sees_results_other_nodes_just_made"
+    ],
+    "processedTilesOtherNodesJustMadeAreSeen": [
+     "pytest:tests/stitch/test_dataset.py::test_processed_tiles_other_nodes_just_made_are_seen"
+    ],
+    "clusterModeWaitsForTheLastTry": [
+     "pytest:tests/stitch/test_dataset.py::test_cluster_mode_waits_for_the_last_try"
+    ],
+    "clusterModeEndsSoonAfterTheLastResult": [
+     "pytest:tests/stitch/test_dataset.py::test_cluster_mode_ends_soon_after_the_last_result"
+    ],
+    "clusterModeWaitsForTilesJobsStillMake": [
+     "pytest:tests/stitch/test_dataset.py::test_cluster_mode_waits_for_tiles_jobs_still_make"
+    ],
+    "clusterModeLooksForThePrimaryStitchInfoEachSecond": [
+     "pytest:tests/stitch/test_dataset.py::test_cluster_mode_looks_for_the_primary_stitch_info_each_second"
+    ],
+    "clusterModeGivesUpTilesWithoutARecentMarker": [
+     "pytest:tests/stitch/test_dataset.py::test_cluster_mode_gives_up_tiles_without_a_recent_marker"
+    ],
+    "streamingSeesTilesOtherMachinesJustMade": [
+     "pytest:tests/stitch/test_dataset.py::test_streaming_sees_tiles_other_machines_just_made"
+    ],
+    "secondaryChannelUsesTheTaskSizeOfThePrimary": [
+     "pytest:tests/stitch/test_dataset.py::test_secondary_channel_uses_the_task_size_of_the_primary",
+     "pytest:tests/stitch/test_volume.py::test_secondary_channel_uses_the_task_size_of_the_primary"
+    ],
+    "secondaryWithAShortTileStitchesWhatItHas": [
+     "pytest:tests/stitch/test_dataset.py::test_secondary_with_a_short_tile_stitches_what_it_has",
+     "pytest:tests/stitch/test_volume.py::test_secondary_with_a_short_tile_gets_its_own_block_info",
+     "oracle:tests/stitch/test_volume.py::frame.secondary.short_tile"
+    ],
+    "secondaryOfThePrimarySizesUsesItsBlockInfo": [
+     "pytest:tests/stitch/test_dataset.py::test_secondary_of_the_primary_sizes_uses_its_block_info",
+     "pytest:tests/stitch/test_volume.py::test_secondary_channel_uses_the_primary_information",
+     "oracle:tests/stitch/test_volume.py::frame.secondary.*"
+    ],
+    "secondaryOfAnotherStitchedSizeGetsItsOwnBlockInfo": [
+     "pytest:tests/stitch/test_dataset.py::test_secondary_of_another_stitched_size_gets_its_own_block_info",
+     "pytest:tests/stitch/test_volume.py::test_secondary_of_another_stitched_size_gets_its_own_block_info",
+     "oracle:tests/stitch/test_volume.py::frame.secondary.out_bbox"
+    ],
+    "largeDatasetsUseLocalWorkers": [
+     "pytest:tests/stitch/test_dataset.py::test_large_datasets_use_local_workers"
+    ],
+    "tiles2D": [
+     "pytest:tests/stitch/test_dataset.py::test_tiles_2d",
+     "pytest:tests/stitch/test_geometry.py::test_tiles_2d",
+     "oracle:tests/stitch/test_volume.py::frame.2d.feather"
+    ],
+    "ioScanUsesStagePositionsAsIs": [
+     "pytest:tests/stitch/test_dataset.py::test_io_scan_uses_stage_positions_as_is",
+     "pytest:tests/stitch/test_volume.py::test_io_scan_uses_stage_positions_as_is",
+     "pytest:tests/stitch/test_geometry.py::test_io_scan_uses_stage_positions_as_is",
+     "oracle:tests/stitch/test_volume.py::frame.ioscan.none"
+    ],
+    "skewedSpacePlacement": [
+     "pytest:tests/stitch/test_dataset.py::test_skewed_space_placement",
+     "pytest:tests/stitch/test_volume.py::test_skewed_space_placement",
+     "pytest:tests/stitch/test_geometry.py::test_skewed_space_placement",
+     "oracle:tests/stitch/test_dataset.py::wrapper.skewed.none",
+     "oracle:tests/stitch/test_volume.py::frame.skewed.*"
+    ],
+    "skewedSpaceRegistration": [
+     "oracle:tests/stitch/test_volume.py::frame.skewed.feather.xcorr"
+    ],
+    "registration2DTiles": [
+     "oracle:tests/stitch/test_volume.py::frame.2d.mean.xcorr"
+    ],
+    "processedZarrTiles": [
+     "pytest:tests/stitch/test_dataset.py::test_processed_zarr_tiles",
+     "pytest:tests/stitch/test_volume.py::test_processed_zarr_tiles",
+     "oracle:tests/stitch/test_dataset.py::wrapper.dsr_zarr.feather",
+     "oracle:tests/stitch/test_volume.py::frame.zarr.dsr"
+    ],
+    "processFunctionIsAppliedToTiles": [
+     "pytest:tests/stitch/test_volume.py::test_process_function_is_applied_to_tiles"
+    ],
+    "xcorrRecoversPerturbedTilePosition": [
+     "pytest:tests/stitch/test_assignment.py::test_xcorrRecoversPerturbedTilePosition",
+     "pytest:tests/stitch/test_volume.py::test_registration_result_is_applied"
+    ],
+    "primaryChannelRegistrationAppliesToOtherChannels": [
+     "pytest:tests/stitch/test_dataset.py::test_a_time_series_is_registered_once_on_one_canvas",
+     "oracle:tests/stitch/test_dataset.py::wrapper.timeseries.feather.xcorr",
+     "oracle:tests/stitch/test_dataset.py::wrapper.primary_mode.mean.xcorr",
+     "oracle:tests/stitch/test_volume.py::frame.secondary.*"
+    ],
+    "largeFileStitching": [
+     "oracle:tests/stitch/test_volume.py::frame.dsr.large_file_xcorr"
+    ],
+    "largeFileRegistrationRecoversPerturbedTilePosition": [
+     "pytest:tests/stitch/test_assignment.py::test_largeFileRegistrationRecoversPerturbedTilePosition"
+    ],
+    "largeFileWithoutRegistration": [
+     "pytest:tests/stitch/test_volume.py::test_large_file_without_registration",
+     "pytest:tests/stitch/test_distance.py::test_large_file_maps_make_their_mip_slabs",
+     "oracle:tests/stitch/test_volume.py::frame.dsr.large_file"
+    ],
+    "noneBlendTakesHalfOverlapFromEachTile": [
+     "pytest:tests/stitch/test_block.py::test_none_blend_takes_half_overlap_from_each_tile",
+     "pytest:tests/stitch/test_geometry.py::test_none_blend_splits_the_overlap_in_halves_along_z"
+    ],
+    "blendingSplitsTheOverlapInQuarters": [
+     "pytest:tests/stitch/test_block.py::test_blending_splits_the_overlap_in_quarters",
+     "pytest:tests/stitch/test_geometry.py::test_blending_takes_a_quarter_from_each_side"
+    ],
+    "blendingWithoutTheMexGivesTheSameResult": [
+     "pytest:tests/stitch/test_block.py::test_blending_gives_each_voxel_its_definition",
+     "oracle:tests/stitch/test_block.py::blend.*"
+    ],
+    "featherBlendingWithThinTiles": [
+     "pytest:tests/stitch/test_distance.py::test_z_window_has_no_zero_weight_for_thin_tiles"
+    ],
+    "tilesOfDifferentSizesGetTheirOwnDistanceMaps": [
+     "pytest:tests/stitch/test_distance.py::test_tiles_of_different_sizes_get_their_own_maps"
+    ],
+    "localShiftMethod": [
+     "pytest:tests/stitch/test_assignment.py::test_localShiftMethod"
+    ],
+    "flippedTilesStayWithTheirTilesWhenSorted": [
+     "pytest:tests/stitch/test_geometry.py::test_flipped_tiles_stay_with_their_tiles_when_sorted",
+     "oracle:tests/stitch/test_geometry.py::framerun.fix.flip_*",
+     "oracle:tests/stitch/test_volume.py::frame.skewed.flipped",
+     "oracle:tests/stitch/test_volume.py::frame.zarr.skewed_flipped"
+    ],
+    "zxyTilesOfOneXPlaneAreNot2D": [
+     "pytest:tests/stitch/test_geometry.py::test_first_2d_check_reads_zs_dimension",
+     "oracle:tests/stitch/test_geometry.py::framerun.fix.zxy_one_x_plane"
+    ],
+    "singleTileCanvasIsTheTilePlusTwoVoxels": [
+     "pytest:tests/stitch/test_volume.py::test_single_tile_canvas_is_the_tile_plus_two_voxels",
+     "pytest:tests/stitch/test_geometry.py::test_single_tile_canvas_is_the_tile_plus_two_voxels",
+     "oracle:tests/stitch/test_volume.py::frame.dsr.single_tile*"
+    ],
+    "resampleFactorIsInTheTilesAxisOrder": [
+     "pytest:tests/stitch/test_volume.py::test_resample_factor_is_in_the_tiles_axis_order",
+     "pytest:tests/stitch/test_geometry.py::test_resample_factor_is_in_the_tiles_axis_order",
+     "oracle:tests/stitch/test_dataset.py::wrapper.resampled.feather",
+     "oracle:tests/stitch/test_volume.py::frame.dsr.resampled"
+    ],
+    "tilesThatOnlyTouchAfterTheShiftsDoNotOverlap": [
+     "oracle:tests/stitch/test_volume.py::frame.dsr.touch_after_shift"
+    ],
+    "localWorkersGiveTheSameResult": [
+     "pytest:tests/stitch/test_dataset.py::test_local_workers_give_the_same_result",
+     "pytest:tests/stitch/test_volume.py::test_local_workers_give_the_same_result",
+     "oracle:tests/stitch/test_dataset.py::wrapper.local_workers.feather",
+     "oracle:tests/stitch/test_volume.py::frame.dsr.local_workers"
+    ]
+   }
+  },
+  "StitchJobResourcesTest": {
+   "finished": true,
+   "methods": {
+    "smallVolumesAreStitchedInTheirJobIfTheyFitIt": [
+     "pytest:tests/stitch/test_block.py::test_in_process_and_mip_memory"
+    ],
+    "mipMemoryOfAClusterJobIsAtLeastTheLargestJob": [
+     "pytest:tests/stitch/test_block.py::test_in_process_and_mip_memory"
+    ]
+   }
+  }
+ }
+}
