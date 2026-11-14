@@ -10,7 +10,9 @@ and every file the runs wrote (the converted tiles, the pixel-size marker, the s
 information, the per-block JSON files, the distance maps, the MIPs, the results), the zarr
 files by voxels and metadata after the axis mapping. The saved inputParser ``ip`` of the
 stitch information file is not compared (MATLAB saves the object, the port a struct of its
-Results).
+Results). On Windows the feather scenes skip: their distance maps go into imdist/ itself there
+(MATLAB's ispc branch), while the references are MATLAB's on Linux;
+test_feather_frame_under_the_windows_rule runs the frame under that rule on every system.
 
 Scenes: DSR tiles in a 2 x 2 grid blended by every method, with and without registration;
 skewed space (two axis orders, flipped tiles, registration); 2D tiles; an IO scan; processed
@@ -39,6 +41,7 @@ from dataclasses import dataclass, field
 import numpy as np
 import pytest
 
+from petakit5d.stitch import distance as sd
 from petakit5d.stitch import volume as V
 from petakit5d.testing import oracle
 from petakit5d.testing.cases import Case, In, InPath, Tree, Value, mcell
@@ -472,11 +475,31 @@ GOLDEN = Case(
 CASES.append(GOLDEN)
 
 
+# MATLAB on Windows (ispc) writes the feather distance maps into imdist/ itself, not
+# imdist/<first tile>/ (compute_tile_distance_transform's ispc branch), and so does the port
+# there: the references of the feather scenes, made on Linux, hold the other folder and paths.
+# The Windows layout is tested on every system by forcing that branch
+# (test_feather_frame_under_the_windows_rule).
+_WINDOWS_MAPS = (
+    "the feather distance maps go into imdist/ on Windows (MATLAB's ispc branch); these "
+    "references are MATLAB's on Linux (imdist/<first tile>/): "
+    "test_feather_frame_under_the_windows_rule covers it"
+)
+
+
+def _writes_maps(scene: str) -> bool:
+    """whether a scene's frame runs (primary or secondary) make feather distance maps"""
+    sc = SCENES[scene]
+    return "feather" in (sc.args.get("BlendMethod"), (sc.secondary or {}).get("BlendMethod"))
+
+
 @oracle.parametrize(CASES)
 def test_matlab(case, tmp_path):
     if case.python is None:
         oracle.reference(case)  # (a reference only: test_golden_stitch_feather_xcorr)
         return
+    if sd._is_pc() and _writes_maps(case.id.removeprefix("frame.")):
+        pytest.skip(_WINDOWS_MAPS)
     oracle.check(case, tmp_path)
 
 
@@ -621,6 +644,33 @@ def test_xcorr_result_round_trip(tmp_path):
     V.write_xcorr_result(fn, [1.0, 2.0, 3.0], [0.0, 0.0, 0.0])
     a, _ = V.read_xcorr_result(fn)
     assert a.shape == (1, 3)
+
+
+def test_the_package_exports_the_frame_and_its_files():
+    """petakit5d.stitch exports the frame, its errors and the readers and writers of its files
+    lazily, at the frame's planned name, and its table names each registered function it
+    exports with its MATLAB name"""
+    import importlib
+    import re
+
+    import petakit5d.stitch as st
+    from petakit5d.params import REGISTRY
+    from petakit5d.params.planned import PLANNED
+
+    names = ("stitch_volume", "read_stitch_info", "write_stitch_info", "read_xcorr_result",
+             "write_xcorr_result", "StitchVolumeError", "StitchVolumeWarning")  # fmt: skip
+    for name in names:
+        assert name in st.__all__ and name in dir(st), name
+        assert getattr(st, name) is getattr(V, name)
+    planned = {m: p for m, p, _, _ in PLANNED}["XR_stitching_frame_zarr_dev_v1"]
+    pkg, pname = planned.rsplit(".", 1)
+    assert getattr(importlib.import_module(pkg), pname) is V.stitch_volume
+    for mname, (where, kind) in REGISTRY.index().items():
+        if kind != "register" or not where.startswith("petakit5d.stitch."):
+            continue
+        pname = REGISTRY.find(mname).python_name.rsplit(".", 1)[-1]
+        if pname in st.__all__:
+            assert re.search(rf"^``{pname}``\s+{mname}\b", st.__doc__, re.M), (pname, mname)
 
 
 def test_stitch_mip_flags():
@@ -826,6 +876,55 @@ def test_secondary_channel_uses_the_primary_information(tmp_path):
     info = os.listdir(f"{root}/matlab_stitch/stitchInfo")
     assert not any("CamB" in f and "task_size" in f and not f.endswith(".mat") for f in info)
     assert all("CamB" not in f for f in os.listdir(f"{root}/matlab_stitch/imdist"))
+
+
+@pytest.mark.parametrize("single_map", [True, False])
+def test_feather_frame_under_the_windows_rule(tmp_path, monkeypatch, single_map):
+    # compute_tile_distance_transform's ispc branch, forced on any system: the maps go into
+    # imdist/ itself ('<stitch>//imdist//<tile>_wr_10.zarr' in the stitch information); the
+    # blending of the primary and of its secondary reads them there and gives the volumes and
+    # MIPs of the other rule (imdist/<first tile>/, the oracle cases' MATLAB references). The
+    # tiles differ in their overlaps (tile k plus 1000 k), so that the weights show.
+    sc = _grid()
+    sc.cls = "single"
+    names_ab = (NAME, NAME.replace("CamA", "CamB"))
+    got = {}
+    for pc in (False, True):
+        monkeypatch.setattr(sd, "_is_pc", lambda pc=pc: pc)
+        root = str(tmp_path / ("windows" if pc else "posix"))
+        os.makedirs(root)
+        for cam in ("A", "B"):
+            tiles = _tiles(sc, cam)
+            fns = []
+            for k, (t, n) in enumerate(zip(tiles, _names(sc, cam), strict=True)):
+                fns.append(f"{root}/{n}.tif")
+                write_tiff(fns[-1], np.ascontiguousarray(t["im"] + np.float32(1000 * k)))
+            coords = np.array([t["xyz"] for t in tiles], dtype=np.float64)
+            tidx = np.array([[*t["idx"], 0] for t in tiles], dtype=np.float64)
+            kw = {}
+            if cam == "B":
+                si = f"{root}/matlab_stitch/stitchInfo/{NAME}.mat"
+                kw = {"is_primary_ch": False, "stitch_info_fullpath": si}
+            _stitch(root, fns, coords, tidx, blend_method="feather", save_16bit=False,
+                    single_dist_map=single_map, **kw)  # fmt: skip
+        si = V.read_stitch_info(
+            f"{root}/matlab_stitch/stitchInfo/{NAME}.mat", ["imdistFullpaths", "imdistFileIdx"]
+        )
+        maps = si["imdistFullpaths"]
+        folder = f"{root}/matlab_stitch//imdist/" + ("" if pc else f"{_names(sc)[0]}/")
+        assert len(maps) == (1 if single_map else 4)
+        assert all(p.startswith(folder + "/") and os.path.isdir(p) for p in maps)
+        assert sorted(os.listdir(folder)) == sorted(
+            ["parameters.mat"] + [p[len(folder) + 1 :] for p in maps]
+        )
+        vols = [_result(root, n) for n in names_ab]
+        mips = [open(f"{root}/matlab_stitch/MIPs/{n}_MIP_z.tif", "rb").read() for n in names_ab]
+        got[pc] = (si["imdistFileIdx"], vols, mips)
+    assert got[True][0] == got[False][0]
+    for a, b in zip(got[True][1], got[False][1], strict=True):
+        assert a.dtype == np.float32
+        np.testing.assert_array_equal(a.view(np.uint32), b.view(np.uint32))
+    assert got[True][2] == got[False][2]
 
 
 def test_secondary_with_a_short_tile_gets_its_own_block_info(tmp_path):
@@ -1182,3 +1281,19 @@ def test_the_matlab_name_layer_takes_matlabs_values(tmp_path):
     r = si["ip"]["Results"]
     np.testing.assert_array_equal(np.asarray(r["batchSize"]).ravel(), [32, 32, 16])
     assert r["dataOrder"] == "y,x,z"
+
+
+def test_the_stitch_information_keeps_the_classes_of_the_call(tmp_path):
+    """ip.Results in the stitch information holds the call's arrays in their classes, as
+    MATLAB's inputParser does: a uint16 tile index stays uint16, the coordinates double"""
+    sc = _grid()
+    root = str(tmp_path)
+    fns, coords, tidx = _write(sc, root)
+    _stitch(root, fns, coords, tidx.astype(np.uint16), blend_method="max",
+            batch_size=(16, 32, 32), block_size=(16, 16, 16))  # fmt: skip
+    np.testing.assert_array_equal(_result(root)[:32, :100, :120], _gt(sc))
+    si = V.read_stitch_info(f"{root}/matlab_stitch/stitchInfo/{NAME}.mat", ["ip"])
+    r = si["ip"]["Results"]
+    assert r["tileIdx"].dtype == np.uint16 and r["coordinates"].dtype == np.float64
+    np.testing.assert_array_equal(r["tileIdx"], tidx)
+    np.testing.assert_array_equal(r["coordinates"], coords)
