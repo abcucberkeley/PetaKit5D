@@ -1,0 +1,28 @@
+{
+ "name": "b02_unmix_sum",
+ "repeats": 5,
+ "setup": [
+  "{python} {src}/benchmarks/tools/bench_unmix_b02_setup.py {data}/PetaKit5D_demo_cell_image_dataset {work}"
+ ],
+ "variants": [
+  {"id": "ml_t1", "impl": "matlab", "paths": ["benchmarks/tools", "benchmarks/common"],
+   "env": {"OMP_NUM_THREADS": "1"}, "code": "bench_unmix_sum_b02('{work}', 1)", "timeout": 1200},
+  {"id": "py_t1", "impl": "python", "script": "benchmarks/tools/bench_unmix_sum_b02.py",
+   "args": ["{work}", "1"], "env": {"OMP_NUM_THREADS": "1"}, "timeout": 1200},
+  {"id": "ml_t4", "impl": "matlab", "paths": ["benchmarks/tools", "benchmarks/common"],
+   "env": {"OMP_NUM_THREADS": "4"}, "code": "bench_unmix_sum_b02('{work}', 4)", "timeout": 1200},
+  {"id": "py_t4", "impl": "python", "script": "benchmarks/tools/bench_unmix_sum_b02.py",
+   "args": ["{work}", "4"], "env": {"OMP_NUM_THREADS": "4"}, "timeout": 1200},
+  {"id": "ml_t24", "impl": "matlab", "paths": ["benchmarks/tools", "benchmarks/common"],
+   "env": {"OMP_NUM_THREADS": "24"}, "code": "bench_unmix_sum_b02('{work}', 24)", "timeout": 1200},
+  {"id": "py_t24", "impl": "python", "script": "benchmarks/tools/bench_unmix_sum_b02.py",
+   "args": ["{work}", "24"], "env": {"OMP_NUM_THREADS": "24"}, "timeout": 1200}
+ ],
+ "compare": [
+  {"a": "py_t1", "b": "ml_t1"},
+  {"a": "py_t4", "b": "ml_t4"},
+  {"a": "py_t24", "b": "ml_t24"}
+ ],
+ "output_bytes": 420000000,
+ "gate": {"ratio_max": 1.05, "metrics": ["op:sum@*"]}
+}

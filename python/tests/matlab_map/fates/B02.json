@@ -1,0 +1,75 @@
+{
+ "task": "B02",
+ "classes": {
+  "UnmixChannelsTest": {
+   "finished": true,
+   "methods": {
+    "mexMatchesTheMatlabCode": [
+     "pytest:tests/tools/test_unmix.py::test_mex_matches_the_matlab_code",
+     "oracle:tests/tools/test_unmix.py::sum.*"
+    ],
+    "partialSumsGiveTheSameResult": [
+     "pytest:tests/tools/test_unmix.py::test_partial_sums_give_the_same_result",
+     "oracle:tests/tools/test_unmix.py::partial.*"
+    ],
+    "sumRoundsAsMatlab": [
+     "pytest:tests/tools/test_unmix.py::test_sum_rounds_as_matlab"
+    ],
+    "mexRejectsInvalidInput": [
+     "pytest:tests/tools/test_unmix.py::test_mex_rejects_invalid_input"
+    ],
+    "otherClassesUseTheMatlabCode": [
+     "pytest:tests/tools/test_unmix.py::test_other_classes_use_the_matlab_code",
+     "oracle:tests/tools/test_unmix.py::other.*"
+    ],
+    "linearUnmixingAsInDemo": [
+     "pytest:tests/tools/test_unmix.py::test_linear_unmixing_as_in_demo",
+     "oracle:tests/tools/test_unmix.py::ds.demo_linear"
+    ],
+    "unmixSecondChannelAsSingle": [
+     "pytest:tests/tools/test_unmix.py::test_unmix_second_channel_as_single",
+     "oracle:tests/tools/test_unmix.py::ds.second_single"
+    ],
+    "flatFieldCorrectionBeforeUnmixing": [
+     "pytest:tests/tools/test_unmix.py::test_flat_field_correction_before_unmixing",
+     "oracle:tests/tools/test_unmix.py::ds.ff"
+    ],
+    "memAllocateIsInGigabytes": [
+     "pytest:tests/tools/test_unmix.py::test_mem_allocate_is_in_gigabytes"
+    ],
+    "imagesWithoutAllChannelsAreLeftOut": [
+     "pytest:tests/tools/test_unmix.py::test_images_without_all_channels_are_left_out",
+     "oracle:tests/tools/test_unmix.py::ds.two_folders_incomplete"
+    ],
+    "zarrInputAndOutput": [
+     "pytest:tests/tools/test_unmix.py::test_zarr_input_and_output",
+     "oracle:tests/tools/test_unmix.py::ds.zarr_in_out"
+    ],
+    "zarrFunctionMatchesFrameFunction": [
+     "pytest:tests/tools/test_unmix.py::test_zarr_function_matches_frame_function",
+     "oracle:tests/tools/test_unmix.py::zarr.linear"
+    ],
+    "zarrFunctionKeepsResultOfAnotherRun": [
+     "pytest:tests/tools/test_unmix.py::test_zarr_function_keeps_result_of_another_run"
+    ],
+    "gaussianUnmixingBlursTheOtherChannel": [
+     "pytest:tests/tools/test_unmix.py::test_gaussian_unmixing_blurs_the_other_channel",
+     "oracle:tests/tools/test_unmix.py::zarr.gaussian_no_border"
+    ],
+    "gaussianUnmixingThroughDataWrapper": [
+     "pytest:tests/tools/test_unmix.py::test_gaussian_unmixing_through_data_wrapper",
+     "oracle:tests/tools/test_unmix.py::ds.gaussian"
+    ],
+    "frameMatchesTheOriginalCode": [
+     "pytest:tests/tools/test_unmix.py::test_frame_matches_the_original_code",
+     "oracle:tests/tools/test_unmix.py::frame.*"
+    ],
+    "zarrBlocksMatchTheOriginalCode": [
+     "pytest:tests/tools/test_unmix.py::test_zarr_blocks_match_the_original_code",
+     "oracle:tests/tools/test_unmix.py::zarr.gaussian_border",
+     "oracle:tests/tools/test_unmix.py::zarr.single_channels"
+    ]
+   }
+  }
+ }
+}
