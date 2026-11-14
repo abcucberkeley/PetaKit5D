@@ -1,6 +1,6 @@
 """Tests of the benchmark harness (petakit5d.testing.bench): marks and phases, statistics,
-comparisons, gates parsed from task texts, a real interleaved run of two small Python
-variants, and the history table.
+comparisons, gates parsed from task texts, the variants' environments, a real interleaved run
+of two small Python variants, and the history table.
 
     python -m pytest tests/testing/test_bench.py
 """
@@ -11,6 +11,7 @@ import sys
 
 import pytest
 
+import petakit5d
 from petakit5d.testing import bench
 
 
@@ -290,6 +291,55 @@ def test_matlab_command_wraps_the_code_in_marks():
     r = bench._matlab_argv({"code": "x = 1", "launch": "r"}, {"src": "/s"})
     assert r[-2] == "-r" and r[-1].startswith("try, ") and r[-1].endswith("exit(0)")
     assert r[-1].index("'last'") < r[-1].index("exit(0)")
+
+
+def test_matlab_starts_without_the_openmp_spin_that_petakit5d_set(monkeypatch):
+    # PetaKit5D's mex files use libgomp too: MATLAB runs as the user's shell starts it
+    spin, mark = petakit5d._OPENMP_SPINCOUNT, petakit5d._OPENMP_MARK
+    monkeypatch.setenv("GOMP_SPINCOUNT", spin)
+    monkeypatch.setenv(mark, spin)
+    ctx = {"work": "/w", "src": "/s"}
+    env = bench._variant_env({"impl": "matlab", "env": {"PK5D_X": "{work}"}}, ctx)
+    assert "GOMP_SPINCOUNT" not in env and mark not in env and env["PK5D_X"] == "/w"
+    env = bench._variant_env({"impl": "matlab", "env": {"GOMP_SPINCOUNT": spin}}, ctx)
+    assert env["GOMP_SPINCOUNT"] == spin  # a variant's own value, even the same
+    for impl in ("python", "command"):
+        assert bench._variant_env({"impl": impl}, ctx)["GOMP_SPINCOUNT"] == spin
+    monkeypatch.setenv("GOMP_SPINCOUNT", "1234")  # not the value petakit5d set
+    assert bench._variant_env({"impl": "matlab"}, ctx)["GOMP_SPINCOUNT"] == "1234"
+    monkeypatch.delenv(mark)  # the user's own setting
+    monkeypatch.setenv("GOMP_SPINCOUNT", spin)
+    assert bench._variant_env({"impl": "matlab"}, ctx)["GOMP_SPINCOUNT"] == spin
+
+
+@pytest.mark.skipif(os.name != "posix", reason="a shell script as the MATLAB command")
+def test_run_starts_matlab_without_the_openmp_spin(tmp_path, monkeypatch):
+    spin, mark = petakit5d._OPENMP_SPINCOUNT, petakit5d._OPENMP_MARK
+    monkeypatch.setenv("PK5D_SRC", str(tmp_path))
+    monkeypatch.setenv("GOMP_SPINCOUNT", spin)
+    monkeypatch.setenv(mark, spin)
+    seen, show, fake = tmp_path / "seen.txt", tmp_path / "show.py", tmp_path / "matlab"
+    show.write_text(
+        "import os, sys\n"
+        f"with open({str(seen)!r}, 'a') as f:\n"
+        "    print(sys.argv[1], os.environ.get('GOMP_SPINCOUNT', '-'), file=f)\n",
+        newline="\n",
+    )
+    fake.write_text(f'#!/bin/sh\nexec "{sys.executable}" "{show}" matlab\n', newline="\n")
+    fake.chmod(0o755)
+    spec = {
+        "name": "env",
+        "repeats": 1,
+        "warmup": 0,
+        "allow_few": True,
+        "variants": [
+            {"id": "m", "impl": "matlab", "matlab": str(fake), "cwd": str(tmp_path)},
+            {"id": "c", "impl": "command", "argv": [sys.executable, str(show), "command"]},
+        ],
+    }
+    r = bench.run(spec, log=lambda s: None)
+    assert [x["rc"] for x in r["runs"]] == [0, 0]
+    assert sorted(seen.read_text().splitlines()) == [f"command {spin}", "matlab -"]
 
 
 def test_mark_and_record_write_lines(tmp_path, monkeypatch):

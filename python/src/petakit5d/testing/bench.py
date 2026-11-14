@@ -822,6 +822,20 @@ def _matlab_argv(v: dict, ctx: dict) -> list[str]:
     return [exe, *flags, "-batch", stmt]
 
 
+def _variant_env(v: dict, ctx: dict) -> dict:
+    """A variant's environment: this process's, for MATLAB without the OpenMP spin that
+    importing petakit5d set (MATLAB as the user's shell starts it; decision 0007), then the
+    variant's ``env``."""
+    if v["impl"] == "matlab":
+        from petakit5d import _without_openmp_spin
+
+        env = _without_openmp_spin(os.environ)
+    else:
+        env = os.environ.copy()
+    env.update({k: str(x) for k, x in _fmt(v.get("env", {}), ctx).items()})
+    return env
+
+
 def _python_argv(v: dict, ctx: dict, python: str) -> list[str]:
     args = [str(a) for a in _fmt(v.get("args", []), ctx)]
     pyflags = v.get("python_flags", [])
@@ -1093,8 +1107,7 @@ def run(
         local = None
         prepared = {}
         for v in variants:
-            env = os.environ.copy()
-            env.update({k: str(x) for k, x in _fmt(v.get("env", {}), ctx).items()})
+            env = _variant_env(v, ctx)
             cwd = _fmt(v.get("cwd", "{oracle}" if v["impl"] == "matlab" else "{work}"), ctx)
             if v["impl"] == "python":
                 python = _fmt(v.get("python", sys.executable), ctx)

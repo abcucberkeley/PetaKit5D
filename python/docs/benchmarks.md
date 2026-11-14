@@ -131,7 +131,7 @@ JSON (or a Python file that defines `SPEC`), in `benchmarks/<area>/`:
 | `python`, `python_flags` | another interpreter; flags before `-c` |
 | `code`, `paths`, `setup`, `flags`, `launch`, `matlab` | MATLAB: statements, folders to add (relative to `python/`), `setup([])` first (default true), launcher flags (default the framework's `-nodisplay -nosplash -nodesktop -nojvm`), `batch` (default) or `r` (`-r` with `exit`, as the framework launched before), the MATLAB command (default `PETAKIT5D_MATLAB` or `matlab`) |
 | `argv` | a command (`command`): only launch and exit are known |
-| `env`, `cwd` | more environment variables; the folder to start in (MATLAB: the oracle tree; others: the work folder) |
+| `env`, `cwd` | more environment variables (a variant gets the harness's environment, MATLAB without the `GOMP_SPINCOUNT` that importing petakit5d set, as the user's shell starts it: decision 0007; `env` can set it); the folder to start in (MATLAB: the oracle tree; others: the work folder) |
 | `cache`, `evict`, `env_copy` | `cold`, the files to drop from the cache, `local` (above) |
 | `timeout` | seconds; a process past it is stopped with its process group (`rc` != 0, `timed_out`) |
 | `when` | run the variant only when this environment variable is set (e.g. a compiled build) |
