@@ -1121,9 +1121,7 @@ def stitch_volume(
         raise NotImplementedError(
             "saveMultires (a multi-resolution result) is not ported (PLAN.md 4.3)"
         )
-    # (arrays as nested lists: the registry's matlab_results compares values with ())
-    values = {k: v.tolist() if isinstance(v, np.ndarray) else v for k, v in locals().items()}
-    params = {k: to_plain(v) for k, v in matlab_results(stitch_volume, values).items()}
+    params = {k: to_plain(v) for k, v in matlab_results(stitch_volume, locals()).items()}
 
     tile_fullpaths = [os.fspath(p) for p in tile_fullpaths]
     # tile paths and coordinates from a file
