@@ -36,7 +36,9 @@ tile (``stitch.geometry.parse_data_order``; MATLAB's ``dataOrderMat``, ``[2 1 3]
 ``(2, 1, 0)``). Overlap regions are the block information's (``stitch.geometry.region_from_matlab``
 of its ``ol_region_cell``), over the tile's voxels. Files keep MATLAB's names (``imdist/<first
 tile>/<tile>_wr_<wd>.zarr``, ``..._z_pooling_<pool>_wr_1_for_<wd>.zarr``, with MATLAB's ``//``
-after the folder) and its ``parameters.mat``; the maps are native zarr arrays.
+after the folder) and its ``parameters.mat``; the maps are native zarr arrays. On Windows the
+folder is ``imdist/`` itself, as MATLAB's ``ispc`` branch has it (``imdist//<tile>_wr_<wd>.zarr``),
+so the stitched volumes of one result folder share it there.
 
 MATLAB quirks kept (each with a test): ``compute_tile_bwdist`` ignores its ``compressor`` and
 ``shard_size`` (createzarr's defaults); the large-file variant picks the chunk-file separator
@@ -47,7 +49,8 @@ when a task starts is left as it is (``overwrite`` only replaces one that appear
 runs); ``distance_weight_single_axis`` returns double ones when the box covers the axis and
 grows its result when the box starts beyond it; the overlap regions (rows x, y, z) are read as
 ``[y x z]`` of the (turned) array, so with any data order but MATLAB's ``[2 1 3]`` their x and
-y are exchanged.
+y are exchanged; on Windows a call whose overlap regions differ from the shared folder's
+``parameters.mat`` removes the whole ``imdist/``, other volumes' maps included.
 """
 
 from __future__ import annotations
@@ -55,6 +58,7 @@ from __future__ import annotations
 import math
 import os
 import shutil
+import sys
 from collections.abc import Callable, Sequence
 from typing import Any
 
@@ -916,6 +920,11 @@ def compute_tile_bwdist_mip_slabs(
 # ---------------------------------------------------------------------------------------------
 
 
+def _is_pc() -> bool:
+    """MATLAB's ``ispc`` (asked at each call, so that tests can take the Windows branch)"""
+    return sys.platform.startswith("win")
+
+
 def _unique_first(v: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     """MATLAB's ``[c, ia] = unique(v)``: sorted values and the first index of each"""
     c, ia = np.unique(v, return_index=True)
@@ -995,7 +1004,7 @@ def compute_tile_distance_transform(
     paths = [os.fspath(p) for p in tile_fullpaths]
     n_f = len(paths)
     _, fsn, _ = fileparts(paths[0])
-    if os.name == "nt":
+    if _is_pc():
         dist_path = sprintf("%s/imdist/", stitch_path)
     else:
         dist_path = sprintf("%s/imdist/%s/", stitch_path, fsn)

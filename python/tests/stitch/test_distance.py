@@ -745,8 +745,19 @@ def _wrapper_cases():
 CASES = _dwsa_cases() + _window_cases() + _bwdist_cases() + _slab_cases() + _wrapper_cases()
 
 
+# MATLAB on Windows (ispc) writes the maps into imdist/ itself, not imdist/<first tile>/, and
+# so does the port there: the wrapper's references, made on Linux, hold the other folder. The
+# Windows layout is tested on every system by forcing the Windows branch (test_*[windows]).
+_WINDOWS_WRAPPER = (
+    "compute_tile_distance_transform on Windows writes into imdist/ (MATLAB's ispc branch); "
+    "these references are MATLAB's on Linux (imdist/<first tile>/): the [windows] tests cover it"
+)
+
+
 @oracle.parametrize(CASES)
 def test_matlab(case, tmp_path):
+    if sd._is_pc() and case.id.startswith("wrapper."):
+        pytest.skip(_WINDOWS_WRAPPER)
     oracle.check(case, tmp_path)
 
 
@@ -1050,6 +1061,19 @@ def test_mip_slab_name():
     assert sd.mip_slab_name((4, 2, 3, 1, 2, 2)) == "MIP_Slabs_pooling_2_3_4_2_2_1"
 
 
+@pytest.fixture(params=["posix", "windows"])
+def rule(request, monkeypatch):
+    """the wrapper's folder rule: MATLAB's on Linux and macOS, or on Windows (ispc), forced on
+    any system"""
+    monkeypatch.setattr(sd, "_is_pc", lambda: request.param == "windows")
+    return request.param
+
+
+def _dist_folder(stitch, first, rule):
+    """compute_tile_distance_transform's folder of the maps, with its trailing '/'"""
+    return f"{stitch}/imdist/" if rule == "windows" else f"{stitch}/imdist/{first}/"
+
+
 def _wrapper_tiles(tmp_path, sizes, seed=20):
     names = [f"t{k + 1}" for k in range(len(sizes))]
     tiles = {
@@ -1071,14 +1095,19 @@ def _wrapper_tiles(tmp_path, sizes, seed=20):
         ([3, 2, 1, 4], [(6, 20, 18), (6, 20, 16), (6, 18, 18), (6, 20, 16)], 3, [2, 1, 0, 1]),
     ],
 )
-def test_single_maps_per_location_and_size(tmp_path, loc_ids, sizes, n_maps, idx):
+def test_single_maps_per_location_and_size(tmp_path, rule, loc_ids, sizes, n_maps, idx):
     bi, paths = _wrapper_tiles(tmp_path, sizes)
+    stitch = str(tmp_path / "stitch") + "/"
     outs, fidx = sd.compute_tile_distance_transform(
-        bi, str(tmp_path / "stitch") + "/", paths, loc_ids=loc_ids, parse_cluster=False
+        bi, stitch, paths, loc_ids=loc_ids, parse_cluster=False
     )
     assert len(outs) == n_maps and fidx == idx
     assert all(os.path.isdir(o) for o in outs)
-    assert all("/imdist/t" in o and "//" in o for o in outs)
+    # MATLAB's paths: '<stitch>/imdist/t1//<tile>_wr_10.zarr' ('<stitch>/imdist//...' on Windows)
+    folder = _dist_folder(stitch, "t1", rule)
+    names = {f"t{k + 1}_wr_10.zarr" for k in range(4)}
+    assert all(o.startswith(folder + "/") and o[len(folder) + 1 :] in names for o in outs)
+    assert os.path.isfile(folder + "parameters.mat")
 
 
 def test_tiles_of_different_sizes_get_their_own_maps(tmp_path):
@@ -1094,11 +1123,11 @@ def test_tiles_of_different_sizes_get_their_own_maps(tmp_path):
         assert _read_map(o).shape == sizes[k]
 
 
-def test_maps_of_other_overlaps_are_removed(tmp_path, capsys):
+def test_maps_of_other_overlaps_are_removed(tmp_path, capsys, rule):
     sizes = [(6, 20, 18)] * 4
     bi, paths = _wrapper_tiles(tmp_path, sizes)
     stitch = str(tmp_path / "stitch") + "/"
-    stale = tmp_path / "stitch" / "imdist" / "t1"
+    stale = Path(_dist_folder(stitch, "t1", rule))
     stale.mkdir(parents=True)
     write_fixed_mat(stale / "parameters.mat", {"overlap_matrix": np.zeros((4, 4), bool),
                                                "ol_region_cell": obj_col([]),
@@ -1113,6 +1142,55 @@ def test_maps_of_other_overlaps_are_removed(tmp_path, capsys):
     sd.compute_tile_distance_transform(bi, stitch, paths, single_dist_map=False,
                                        parse_cluster=False)  # fmt: skip
     assert (stale / "old.zarr").exists()
+
+
+@pytest.mark.parametrize("single", [True, False])
+def test_windows_folder_holds_the_same_maps(tmp_path, monkeypatch, single):
+    # MATLAB's ispc branch: imdist/ itself, the paths '<stitch>/imdist//<tile>_wr_10.zarr', the
+    # maps as in imdist/<first tile>/ (whose voxels the oracle cases compare with MATLAB's)
+    sizes = [(6, 20, 18), (6, 20, 16), (6, 20, 18), (6, 20, 16)]
+    bi, paths = _wrapper_tiles(tmp_path, sizes)
+    kw = {"loc_ids": [1, 2, 1, 2]} if single else {"single_dist_map": False}
+    got = {}
+    for pc in (False, True):
+        monkeypatch.setattr(sd, "_is_pc", lambda pc=pc: pc)
+        stitch = str(tmp_path / f"stitch_{int(pc)}") + "/"
+        outs, fidx = sd.compute_tile_distance_transform(bi, stitch, paths, parse_cluster=False,
+                                                        **kw)  # fmt: skip
+        folder = _dist_folder(stitch, "t1", "windows" if pc else "posix")
+        assert all(o.startswith(folder + "/") for o in outs)
+        assert sorted(os.listdir(folder)) == sorted(
+            ["parameters.mat"] + [o[len(folder) + 1 :] for o in outs]
+        )
+        got[pc] = (fidx, [_read_map(o) for o in outs])
+    assert got[True][0] == got[False][0]
+    for a, b in zip(got[True][1], got[False][1], strict=True):
+        np.testing.assert_array_equal(_bits(a), _bits(b))
+
+
+def test_windows_volumes_share_the_folder(tmp_path, monkeypatch, capsys):
+    # on Windows the volumes of one result folder share imdist/: a second volume's maps go next
+    # to the first's, and a call with other overlap regions removes them all (MATLAB's rmdir)
+    monkeypatch.setattr(sd, "_is_pc", lambda: True)
+    stitch = str(tmp_path / "stitch") + "/"
+    a = tmp_path / "a"
+    bi_a, paths_a = _wrapper_tiles(a, [(6, 20, 18)] * 4)
+    outs_a, _ = sd.compute_tile_distance_transform(bi_a, stitch, paths_a, loc_ids=[1, 1, 1, 1],
+                                                   parse_cluster=False)  # fmt: skip
+    b = tmp_path / "b"
+    tiles = {f"u{k}": make_tile((6, 20, 18), 40 + k, "dsr") for k in range(4)}
+    bi_b = _write_tile_info(b, tiles, grid_pairs([(6, 20, 18)] * 4, 3, 3))
+    paths_b = [str(b / "tiles" / f"{n}.zarr") for n in tiles]
+    outs_b, _ = sd.compute_tile_distance_transform(bi_b, stitch, paths_b, loc_ids=[1, 1, 1, 1],
+                                                   parse_cluster=False)  # fmt: skip
+    assert all(os.path.isdir(o) for o in outs_a + outs_b)
+    assert sorted(os.listdir(stitch + "imdist")) == ["parameters.mat", "t1_wr_10.zarr",
+                                                     "u0_wr_10.zarr"]  # fmt: skip
+    # volume a again, per tile: its overlap regions differ from b's parameters.mat
+    sd.compute_tile_distance_transform(bi_a, stitch, paths_a, single_dist_map=False,
+                                       parse_cluster=False)  # fmt: skip
+    assert "not in the same setting" in capsys.readouterr().out
+    assert not any(os.path.isdir(o) for o in outs_b)
 
 
 def test_large_file_maps_make_their_mip_slabs(tmp_path):

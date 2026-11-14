@@ -501,11 +501,18 @@ UUID_LOG_ENV = "PETAKIT5D_UUID_LOG"  # core.ids.get_uuid appends its values ther
 _ZARR_META = frozenset((".zarray", ".zattrs", ".zgroup", "zarr.json"))
 
 
+def _walk_order(entry: tuple) -> str:
+    """the sort key of an os.walk entry: its folder with '/' separators"""
+    return entry[0].replace(os.sep, "/")
+
+
 def tree_hash(root: str | os.PathLike, content: bool = True) -> str:
     """SHA-256 of a folder: relative paths with the bytes (or only the sizes) of every file"""
     root = Path(root)
     h = hashlib.sha256(b"pk1:tree:" if content else b"pk1:stat:")
-    for dp, dns, fns in sorted(os.walk(root)):
+    # folders in the order of their '/' paths on every system (Windows' '\' sorts after digits
+    # and '/' before them: '10' came before '1\2' there, after '1/2' here)
+    for dp, dns, fns in sorted(os.walk(root), key=_walk_order):
         dns.sort()
         d = Path(dp)
         if not dns and not fns and d != root:
