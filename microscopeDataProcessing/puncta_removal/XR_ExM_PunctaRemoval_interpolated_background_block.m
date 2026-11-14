@@ -118,7 +118,13 @@ for i = 1 : numel(batchInds)
     bg_ibEnd = min(bgSize, bg_ibStart + ceil((ibEnd - ibStart + 1) ./ bgBatchSize) - 1);
 
     bg = readzarr(bgFullpath, inputBbox=[bg_ibStart, bg_ibEnd]);
-    im_bg = imresize3(bg, (ibEnd - ibStart + 1), 'linear');
+    if ismatrix(bg)
+        % one background value deep in z: MATLAB drops the singleton z,
+        % which imresize3 needs; the plane's interpolation at every z
+        im_bg = repmat(imresize(bg, ibEnd(1 : 2) - ibStart(1 : 2) + 1, 'bilinear'), 1, 1, ibEnd(3) - ibStart(3) + 1);
+    else
+        im_bg = imresize3(bg, (ibEnd - ibStart + 1), 'linear');
+    end
         
     im_g = bwareaopen(im_g > im_bg .* bgFactor, volThrsh, 26);
     

@@ -234,6 +234,11 @@ for z = 1 : sz(3)
         im_i = vol(yi, xi, zi);
         BW_zi = BW_z(yi, xi);
         im_i = fillmissing2(im_i, 'linear', MissingLocations=BW_zi);
+        % pixels outside the convex hull of the known ones (at the image's
+        % corners) are left NaN: they take the value of the nearest pixel
+        if any(isnan(im_i(BW_zi)))
+            im_i = fillmissing2(im_i, 'nearest');
+        end
 
         binds = find(BW_zi);
         [byi, bxi] = ind2sub(size(BW_zi), binds);
