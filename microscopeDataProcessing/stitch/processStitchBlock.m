@@ -343,11 +343,15 @@ for i = 1 : numel(batchInds)
     % major tiles are zero, load the region of minor tiles
     if strcmpi(BlendMethod, 'feather') && numTiles > 2 && ~isempty(poolSize) && any(minor_inds)
         [major_valid_mat, unvalid_bbox] = check_major_tile_valid(tim_f_block, ~minor_inds);
+        % (in the batch's coordinates: tim_f_block is the overlap region)
+        if ~major_valid_mat
+            unvalid_bbox = unvalid_bbox + repmat(bCoords_c(1 : 3) - 1, 1, 2);
+        end
         % also ensure the major tiles cover regions minor tiles covered
         [major_cover, uncover_bbox_mat] = check_major_tile_cover(bCoords_mat, ~minor_inds);
         orig_major_inds = ~minor_inds;
 
-        if ~major_valid_mat || ~any(major_cover(~minor_inds))
+        if ~major_valid_mat || ~all(major_cover)
             for j = 1 : numTiles
                 if orig_major_inds(j) && sum(orig_major_inds) > 1 && major_cover(j)
                     continue;
@@ -361,6 +365,10 @@ for i = 1 : numel(batchInds)
                 else
                     if ~major_valid_mat
                         uCoords = unvalid_bbox;
+                    elseif orig_major_inds(j)
+                        % (the major tile's weight, for the minor tiles it
+                        % does not cover)
+                        uCoords = bCoords_mat(j, :);
                     else
                         uCoords = [];
                     end
@@ -446,7 +454,7 @@ for i = 1 : numel(batchInds)
     if numTiles == 1
         if any(BorderSize > 0)
             s = (batchSub ~= 1) .* BorderSize;
-            tim_f_block = crop3d(tim_f_block, [s + 1, s + batchSize]);
+            tim_f_block = crop3d(tim_f_block, [s + 1, s + nbsz]);
         end
         tim_f_block = cast(tim_f_block, dtype);
         if any(nbsz ~= size(tim_f_block, [1, 2, 3]))
@@ -463,7 +471,7 @@ for i = 1 : numel(batchInds)
     end
     
     % merge voxel info for the tiles
-    if strcmp(BlendMethod, 'feather')
+    if strcmpi(BlendMethod, 'feather')
         if is_full_batch
             [nv_block, mex_compute] = feather_blending_3d(tim_f_block, tim_d_block);
         else
@@ -483,7 +491,7 @@ for i = 1 : numel(batchInds)
 
     if any(BorderSize > 0)
         s = (batchSub ~= 1) .* BorderSize;
-        nv_block = crop3d(nv_block, [s + 1, s + batchSize]);
+        nv_block = crop3d(nv_block, [s + 1, s + nbsz]);
     end
         
     % write the block to zarr file

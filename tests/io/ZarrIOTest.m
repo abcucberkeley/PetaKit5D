@@ -193,6 +193,21 @@ classdef ZarrIOTest < pktest.TestCase
                     inPlace(i), sprintf('options %d', i));
             end
         end
+
+        function relativePathsAreInTheCurrentFolder(testCase)
+            % createzarr, writezarr and readzarr take paths relative to the
+            % current folder; mkdir_recursive, which makes the folders of
+            % results (e.g., XR_crop_zarr's), made a relative path's folders
+            % from the root (MATLAB:MKDIR:OSError without permission there)
+            folder = testCase.createTempFolder();
+            testCase.applyFixture(matlab.unittest.fixtures.CurrentFolderFixture(folder));
+            mkdir_recursive('a/b');
+            testCase.verifyTrue(isfolder([folder, 'a/b']), 'The relative folder was not made in the current folder.');
+            im = testCase.randomImage([8, 6, 4], 'uint16');
+            createzarr('a/b/im.zarr', dataSize=[8, 6, 4], blockSize=[4, 4, 4], dtype='uint16');
+            writezarr(im, 'a/b/im.zarr', create=false);
+            testCase.verifyEqual(readzarr([folder, 'a/b/im.zarr']), im);
+        end
     end
 
     methods (Static, Access = private)

@@ -12,6 +12,10 @@ end
 path_list = strsplit(full_path, '/');
 
 path_depth_i = '';
+% (a relative path from the current folder, not from the root)
+if ~ispc && ~isempty(full_path) && ~any(full_path(1) == '/~')
+    path_depth_i = '.';
+end
 for i = 1 : length(path_list)
     if strcmp(path_list{i}, '~')
         path_depth_i = '~';

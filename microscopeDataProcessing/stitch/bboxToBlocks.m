@@ -72,9 +72,11 @@ function [bSubs, bCoords] = singleAxisSplit(s, t, bsz, nb, bdsz)
 
 bSubs = max(1, ceil((s - bdsz) / bsz)) : min(nb, ceil((t + bdsz) / bsz));
 if bdsz > 0
-    block_bdsz = (bSubs ~= 1) * bdsz;
-    bcoords_s = [max(1, s - (bSubs(1) - 1) * bsz + block_bdsz(1)), ones(1, numel(bSubs) - 1)];
-    bcoords_t = [ones(1, numel(bSubs) - 1) .* (bsz + bdsz + block_bdsz(1 : end - 1)), min(bsz + 2 * bdsz, t - (bSubs(end) - 1) * bsz + block_bdsz(end))];
+    % the part of [s, t] in each block with its borders, which spans
+    % (b - 1) * bsz + 1 - bdsz (none before the first block) to b * bsz + bdsz
+    block_s = (bSubs - 1) * bsz + 1 - (bSubs ~= 1) * bdsz;
+    bcoords_s = max(s, block_s) - block_s + 1;
+    bcoords_t = min(t, bSubs * bsz + bdsz) - block_s + 1;
 else
     bcoords_s = [max(1, s - (bSubs(1) - 1) * bsz), ones(1, numel(bSubs) - 1)];
     bcoords_t = [ones(1, numel(bSubs) - 1) * bsz, min(bsz, t - (bSubs(end) - 1) * bsz)];
