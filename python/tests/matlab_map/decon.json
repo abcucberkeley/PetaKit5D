@@ -330,7 +330,7 @@
   },
   "DeconFrameTest": {
    "file": "tests/decon/DeconFrameTest.m",
-   "pins": "XR_RLdeconFrame3D (single file decon), RLdecon's deskew and rotation after the decon, and XR_visualize_OTF_mask_segmentation on small synthetic data",
+   "pins": "XR_RLdeconFrame3D (single file decon), RLdecon's deskew and rotation after the decon, and XR_visualize_OTF_mask_segmentation on small synthetic data; the file paths of XR_cppDeconFrame3D and XR_cudaDeconFrame3D with stand-ins for their decon programs",
    "category": "data",
    "owner": "R05",
    "phase": 1,
@@ -339,6 +339,30 @@
    "methods": {
     "allZeroFrameIsDeconvolved": {
      "pins": "an all-zero frame used to error when saving the 'simplified' info (err_mat is only set when the decon runs)",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "cppDeconOfAFileInTheCurrentFolderStaysThere": {
+     "pins": "XR_cppDeconFrame3D of a file name without a folder looked for the program's results in /CPPdecon/ and failed; they are in CPPdecon/ in the current folder, the same as for the file's full path. A stand-in for the program writes its input as the result to CPPdecon/ next to it",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "cudaDeconOfFilesInTheCurrentFolderStaysThere": {
+     "pins": "XR_cudaDeconFrame3D of a file name without a folder gave the program / as its folder and looked for the results in /GPUdecon/, and of a PSF file name without a folder wrote the OTF to /; they are in the current folder, the same as for full paths. Stand-ins for the programs (the decon writes its input as the result to GPUdecon/ of its folder, the OTF generator copies the PSF) and a GPU count of...",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "deconOfAFileInTheCurrentFolderStaysThere": {
+     "pins": "XR_RLdeconFrame3D of a file name without a folder wrote to /matlab_decon/ (fileparts gives no folder); it writes to matlab_decon/ in the current folder, the same as for the file's full path",
      "tags": [
       "Integration"
      ],
@@ -379,6 +403,14 @@
     },
     "gpuJobDoesNotReadAFinishedNextFile": {
      "pins": "gpu job does not read afinished next file",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "gpuJobDoesNotReadAFinishedNextFileOfTheCurrentFolder": {
+     "pins": "(as above) the GPU job looked for the result of the next file, a file name without a folder, in /matlab_decon/, and read the file although its result was there",
      "tags": [
       "Integration"
      ],
@@ -473,7 +505,13 @@
      "cases": null,
      "fate": []
     }
-   }
+   },
+   "reopened": [
+    "cppDeconOfAFileInTheCurrentFolderStaysThere",
+    "cudaDeconOfFilesInTheCurrentFolderStaysThere",
+    "deconOfAFileInTheCurrentFolderStaysThere",
+    "gpuJobDoesNotReadAFinishedNextFileOfTheCurrentFolder"
+   ]
   },
   "DeconFunctionTest": {
    "file": "tests/decon/DeconFunctionTest.m",

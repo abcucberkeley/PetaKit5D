@@ -364,6 +364,14 @@
      "cases": null,
      "fate": []
     },
+    "relativePathsAreInTheCurrentFolder": {
+     "pins": "createzarr, writezarr and readzarr take paths relative to the current folder; mkdir_recursive, which makes the folders of results (e.g., XR_crop_zarr's), made a relative path's folders from the root (MATLAB:MKDIR:OSError without permission there)",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
     "roundTripPreservesTypeAndValues": {
      "pins": "round trip preserves type and values",
      "tags": [

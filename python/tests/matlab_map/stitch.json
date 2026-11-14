@@ -10,6 +10,24 @@
    "finished": false,
    "fate": [],
    "methods": {
+    "largeFileMapsWithZNotLast": {
+     "pins": "compute_tile_bwdist_mip_slabs of data with z not last: the map (turned back to the data's order) was written with the turned size, so it failed unless the slab is a cube",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": [],
+     "owner": "S06"
+    },
+    "oneBoxForThePerTileMaps": {
+     "pins": "compute_tile_distance_transform with one distance box for per-tile maps (as the frame passes a 1 x 6 distBboxes when it turns singleDistMap off for tiles of other sizes): index error for the second tile. The box is the box of each tile's map.",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": [],
+     "owner": "S06"
+    },
     "overlapIsBlendedIntoTheBlock": {
      "pins": "the MATLAB code wrote its blend (single) into a copy of a block of another class (indexing4d_mex rejects the mix), which it dropped: the block came back with the tiles' values, so uint8 tiles in a batch that isn't full weren't blended",
      "tags": [
@@ -30,8 +48,36 @@
      ],
      "cases": null,
      "fate": []
+    },
+    "perTileMapsFollowTheDataOrder": {
+     "pins": "compute_tile_bwdist, a tile's map without the overlap regions (rows x, y, z): the regions were read as [y x z] of the tile (turned to put z last), whose axes are x, y, z then (and for 'x,y,z' data), so x and y were exchanged in the maps of data orders other than 'y,x,z'. The maps of the same tiles in each data order must be those of 'y,x,z', in that order.",
+     "tags": [
+      "Unit"
+     ],
+     "cases": [
+      "dataOrder=x_y_z",
+      "dataOrder=z_y_x",
+      "dataOrder=z_x_y"
+     ],
+     "fate": [],
+     "owner": "S06"
+    },
+    "singleMapWithoutLocationIds": {
+     "pins": "compute_tile_distance_transform with singleDistMap (its default) and no locIds (its default) failed (index of an empty cell): the tiles are of one location, as with locIds of ones",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": [],
+     "owner": "S06"
     }
-   }
+   },
+   "reopened": [
+    "largeFileMapsWithZNotLast",
+    "oneBoxForThePerTileMaps",
+    "perTileMapsFollowTheDataOrder",
+    "singleMapWithoutLocationIds"
+   ]
   },
   "ImageListGenerationTest": {
    "file": "tests/stitch/ImageListGenerationTest.m",
@@ -265,6 +311,14 @@
      "cases": null,
      "fate": []
     },
+    "pairRegistrationTakesTheAxesOfTheDataOrder": {
+     "pins": "cross_correlation_registration_3d took the dimensions of x, y and z as data_order_mat == 1, 2, 3 (the inverse permutation), and MaxOffset (xyz, as the shift assignment takes it) by them too: with z not last, x got z's max offset, and in 3-cycle data orders (e.g., 'z,x,y') other axes' downsampling. The same pair of tiles in each data order must give the shift of 'y,x,z' data. Tile 2 is 6 voxels...",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
     "resultsDoNotDependOnTheThreadCount": {
      "pins": "as MATLAB's FFTs: the groups of lines don't depend on the threads",
      "tags": [
@@ -317,6 +371,52 @@
     }
    }
   },
+  "StitchBlockTest": {
+   "file": "tests/stitch/StitchBlockTest.m",
+   "pins": "processStitchBlock, which blends the tiles of each stitching batch (block), on batches made here: feather blending of large files (distance maps pooled in z, poolSize [1 1 2]), where the minor tiles (weights far below the major tile's) are read only where the major tile has no data or doesn't reach; the blend method's name; and blocks with a border (BorderSize) through XR_stitching_frame_zarr_d...",
+   "category": "data",
+   "owner": "S07",
+   "phase": 1,
+   "finished": false,
+   "fate": [],
+   "methods": {
+    "blocksWithABorderGiveTheSameVolume": {
+     "pins": "with BorderSize, the blocks of a tile reached past its ends (where its end or start lies in a neighbor's border) and readzarr refused, and the last (smaller) batch was cropped to the batch size; a border changes no voxel of the stitched volume. Two by two tiles, 4 x 4 x 2 batches.",
+     "tags": [
+      "Integration"
+     ],
+     "cases": [
+      "borderBlend=feather",
+      "borderBlend=none"
+     ],
+     "fate": []
+    },
+    "featherBlendMethodInAnyCase": {
+     "pins": "the feather steps compared the method with strcmpi and the merge with strcmp, so 'Feather' computed the weights, then failed in tile_blending_3d ('Unsupported blending method')",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "largeFileHoleOfTheMajorTileGetsTheMinorTiles": {
+     "pins": "the box of the voxels without data in the major tile is in the coordinates of the tiles' overlap region, but was used as the batch's: the minor tile was read at another place (where the major tile has data) and the hole stayed 0. Tiles cut from a volume; the major tile has a hole that a minor tile fills.",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "largeFileMinorTileOutsideTheMajorTileIsRead": {
+     "pins": "the minor tiles the major tile doesn't cover were never read (~any(major_cover(~minor_inds)) is always false): their parts outside it stayed 0. Where they are inside, the major tile wins; here the minor tile's values are 1000 above.",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    }
+   }
+  },
   "StitchGeometryTest": {
    "file": "tests/stitch/StitchGeometryTest.m",
    "pins": "geometry helpers of the stitching: overlaps of tile cuboids (check_cuboids_overlaps), the region of a minor tile that the major tiles leave uncovered (check_major_tile_cover), and the axis order check of XR_stitching_frame_zarr_dev_v1",
@@ -327,7 +427,7 @@
    "fate": [],
    "methods": {
     "axisOrderMustBeAPermutationOfXYZ": {
-     "pins": "the check never raised (~regexpi(...) is false for no match too), so the stitching sorted any order into some permutation; 'z,x,y' was missing from it. It comes before the tiles are read, so the tiles here don't exist: valid orders end in another error later.",
+     "pins": "the check never raised (~regexpi(...) is false for no match too), so the stitching sorted any order into some permutation; 'z,x,y' was missing from it. It comes before the tiles are read, so the tiles here don't exist: valid orders end in another error later (the tiles' sizes, which the MATLAB code also tries after the mex).",
      "tags": [
       "Unit"
      ],
@@ -927,6 +1027,14 @@
      "cases": null,
      "fate": []
     },
+    "multiLocVolumesGetTheirOwnJobs": {
+     "pins": "with tiles in several folders (multiLoc), the loop over a volume's tiles took the volume's number f as its index, so in cluster mode every volume's job got the task of the tile count (and the master's last-volume rule looked at that number): the job of the first volume was a task another volume's job had. The fake jobs of the two volumes (tasks 1 and 2) make their results; the stitching functio...",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
     "noneBlendTakesHalfOverlapFromEachTile": {
      "pins": "'none' blending used to take the whole overlap from the lower index tile (regressions from d9a099b and 4a78ade). The split axis is the first in halfOrder (default [3, 2, 1], xyz) with more than one voxel of overlap, z for these tiles, so this checks only that half of the overlap comes from each tile.",
      "tags": [
@@ -935,8 +1043,32 @@
      "cases": null,
      "fate": []
     },
+    "onlineStitchWithoutStreamingRemovesResultsOfFewerTiles": {
+     "pins": "onlineStitch names results by their tile count and removes those of fewer tiles. The names' pattern assumed the z layer text of streaming, so without streaming (as the pipeline's local stitching runs) such results were never found and stayed.",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "outBboxOfThreeRowsIsItsSixValues": {
+     "pins": "outBbox may be 3 x 2 ([min, max] per axis, as the stitching function takes it), but num2str made two-dimensional text of it in the function string. The stitching function is a spy that makes the result.",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
     "primaryChannelRegistrationAppliesToOtherChannels": {
      "pins": "xcorrMode 'primaryFirst': the shift found in the primary channel (CamA) is used for CamB, whose overlap is featureless so it could not be registered on its own",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "primaryModeSkipsTheChannelsOfATimePointWithoutItsPrimary": {
+     "pins": "xcorrMode 'primary' skips the other channels of a time point whose primary channel is missing: it marked those of the first time point instead, and the secondary of the time point failed reading the primary's tiles (index exceeds the number of rows).",
      "tags": [
       "Integration"
      ],
@@ -953,6 +1085,14 @@
     },
     "processFunctionIsAppliedToTiles": {
      "pins": "user process function saved in a .mat file, as the flat field correction in demo_phase_and_2photon_stitching.m. With a flat flat-field image, background 100 and offset 1, x -> x - 99.",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "processFunctionRowHasOnePathPerChannel": {
+     "pins": "processFunPath has one path per channel pattern; its rows are chosen by channel, so a row (as one makes with processFunPath{i} = fn, e.g., in demo_skewed_space_stitching.m) worked only for the first channel: index error for the others. One path in a cell is for every channel, as one path as text. (Each case in a folder of its own: the processed tiles stay.)",
      "tags": [
       "Integration"
      ],
@@ -985,6 +1125,14 @@
     },
     "resampleFactorIsInTheTilesAxisOrder": {
      "pins": "resampleFactor is in yxz order, the order in which tiles are resampled (and DSR tiles were deskewed with it); the stitching took it as x, y, z for the voxel sizes, so tiles whose y and x factors differ were placed with the x and y voxel sizes swapped. DSR tiles with y voxels of 2 px, as a factor of [2, 1, 1] makes them.",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "resampleFactorOfOneOrTwoValues": {
+     "pins": "resampleFactor may have 1 value (all axes) or 2 (xy, z), but the stitching function took 3 (index error): they are completed",
      "tags": [
       "Integration"
      ],
@@ -1066,6 +1214,30 @@
      "cases": null,
      "fate": []
     },
+    "stitchingFunctionGetsTheJobLogFolder": {
+     "pins": "the stitching function didn't get the wrapper's jobLogDir, so its tile and block jobs logged to its default folder. The stitching function is a spy that makes the result.",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "stitchingFunctionMakesItsResultFolder": {
+     "pins": "called directly (not by the wrapper, which makes it), the stitching function failed making its pixel size file in the result folder (MATLAB:FileIO:InvalidFid)",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "stitchingFunctionTakesOneProcessFunctionPath": {
+     "pins": "processFunPath may be one path (char), but only cells worked (cellfun of a char: MATLAB:cellfun:NotACell)",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
     "streamingSeesTilesOtherMachinesJustMade": {
      "pins": "in streaming mode the tiles were checked with exist(), which on NFS can miss files another machine just made for 30 s or more; they are now checked with batch_file_exist. The stub reports all files made (the result too, so nothing is stitched), while there are no raw tiles on disk: the wrapper must not wait for them.",
      "tags": [
@@ -1096,6 +1268,18 @@
       "Integration"
      ],
      "cases": null,
+     "fate": []
+    },
+    "tilesWithOtherMsecFieldsAreStitched": {
+     "pins": "the msec fields of a volume's tiles can differ (real data): the volume's names got all of them (sprintf of a vector), with a char(0) from the fpga time, so its .tmp marker could not be made (MATLAB:FileIO:InvalidFid). They take the first tile's, as the fpga time, also for the primary's stitch info that the secondary channel reads.",
+     "tags": [
+      "Integration"
+     ],
+     "cases": [
+      "xcorrModeName=primaryFirst",
+      "xcorrModeName=primary",
+      "xcorrModeName=all"
+     ],
      "fate": []
     },
     "volumeSizeEstimateMatchesTheStitchedVolume": {

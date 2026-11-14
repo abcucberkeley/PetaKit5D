@@ -28,6 +28,15 @@
      "fate": [],
      "category": "framework_fake_slurm"
     },
+    "clusterModeFindsTheResultOfTilesWithOtherMsecFields": {
+     "pins": "a stitched volume has the msec field of its first tile, which other tiles' msec fields may differ from, but each file looked for the result by its own: the dataset's stitching job was submitted again for the other files. The tiles were deskewed before; the stitching job doesn't run, its result comes at the second wait.",
+     "tags": [
+      "Integration",
+      "Slow"
+     ],
+     "cases": null,
+     "fate": []
+    },
     "clusterModeLooksForTheStitchedResultEachSecond": {
      "pins": "(as clusterModeEndsSoonAfterTheLastResults, for the stitched result, which the pipeline finds by a pattern) the tiles were deskewed before; the stitching job doesn't run, its result comes during the third second, after its temporary folder (which doesn't count) during the second",
      "tags": [
@@ -131,6 +140,15 @@
      "cases": null,
      "fate": []
     },
+    "imageListsStayWithTheirDatasets": {
+     "pins": "the data paths are sorted (unique), but their image lists kept the given order, so datasets given out of order were stitched with each other's image lists. The stitching wrapper is a spy.",
+     "tags": [
+      "Integration",
+      "Slow"
+     ],
+     "cases": null,
+     "fate": []
+    },
     "lastTryWaitsForATaskRunnerThatHasTheTask": {
      "pins": "(task runners) tile 2's job makes its result and then runs tile 3's task (a task runner; tile 1, the first of its kind, runs as before), so tile 3's own job ends at once: the pipeline counts tile 3 as running while tile 2's job runs, instead of as finished (it returned before tile 3 was done), and does not submit it again",
      "tags": [
@@ -159,6 +177,33 @@
      "cases": null,
      "fate": []
     },
+    "localStitchingWithoutResultIsTriedOnce": {
+     "pins": "locally, the stitching of a dataset was called again in every round until its result came (no tries were counted), so a stitching that makes none kept the run going forever. A try counts once the dataset's files are deskewed; the stitching wrapper is a spy that makes no result.",
+     "tags": [
+      "Integration",
+      "Slow"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "scalarSave16bitIsForBothSteps": {
+     "pins": "save16bit may be one value, but the stitching string took its second (MATLAB:badsubscript after the first file's deskew). The stitching wrapper is a spy.",
+     "tags": [
+      "Integration",
+      "Slow"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "stitchingGetsTheResampleFactorInItsAxisOrder": {
+     "pins": "the deskew's resampleFactor is [x y z] (XR_checkResampleSetting), the stitching's [y x z]: it was passed unchanged, so x and y were exchanged in the stitching of factors whose x and y differ. The stitching wrapper is a spy.",
+     "tags": [
+      "Integration",
+      "Slow"
+     ],
+     "cases": null,
+     "fate": []
+    },
     "stitchingLastTryWaitsForATaskRunnerThatHasTheTask": {
      "pins": "(task runners) three datasets: the second dataset's stitching job makes its result and then runs the third dataset's stitching task (a task runner; the first stitching job, the first of its kind, runs as before), so the third one's own job ends at once: the pipeline counts it as running while the second job runs, and does not submit it again",
      "tags": [
@@ -167,6 +212,15 @@
      "cases": null,
      "fate": [],
      "category": "framework_fake_slurm"
+    },
+    "streamingAddsNewFilesNamedAsAnotherDatasetsFiles": {
+     "pins": "with streaming, a new file was left out if any listed file's name contained its name, of any dataset: in several datasets with the same file names, the later dataset's files were never processed. A file of the second dataset named as the first's arrives at the first wait.",
+     "tags": [
+      "Integration",
+      "Slow"
+     ],
+     "cases": null,
+     "fate": []
     },
     "streamingLeavesOutRecentFilesWithTheirSizes": {
      "pins": "in streaming mode, files changed in the last minModifyTime minutes (still being written) are left for later, but their sizes stayed in the list: a cluster run that started with only such files failed (3 sizes for no file), and the files after such a file got the sizes of the files before them",
@@ -186,7 +240,15 @@
      "cases": null,
      "fate": []
     }
-   }
+   },
+   "reopened": [
+    "clusterModeFindsTheResultOfTilesWithOtherMsecFields",
+    "imageListsStayWithTheirDatasets",
+    "localStitchingWithoutResultIsTriedOnce",
+    "scalarSave16bitIsForBothSteps",
+    "stitchingGetsTheResampleFactorInItsAxisOrder",
+    "streamingAddsNewFilesNamedAsAnotherDatasetsFiles"
+   ]
   },
   "FilenameParsingTest": {
    "file": "tests/pipeline/FilenameParsingTest.m",

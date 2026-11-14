@@ -204,6 +204,14 @@
      "cases": null,
      "fate": []
     },
+    "estimateOfAFileInTheCurrentFolderStaysThere": {
+     "pins": "XR_flatfield_background_estimation of a result file name without a folder wrote it and its MIP to the root (fileparts gives no folder); they are in the current folder, the same as for a full path (the MIPs folder is the caller's, as in the wrapper)",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
     "estimatesDarkLevelPerCamera": {
      "pins": "estimates dark level per camera",
      "tags": [
@@ -351,10 +359,26 @@
    "finished": false,
    "fate": [],
    "methods": {
+    "interpolatedBackgroundOneValueDeepInZ": {
+     "pins": "a background estimated in batches as deep as the volume is one value deep in z, which MATLAB's arrays drop: imresize3 of a batch's background failed (MATLAB:badsubscript). The plane's interpolation is the background at every z, the same as for the plane twice in z",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
     "parametersFileHoldsTheParameters": {
      "pins": "parameters.json was written with its text as fprintf's format: a % in a value (here in the folder name) cut the file off there",
      "tags": [
       "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "punctumAtACornerIsFilledFromTheNearestPixels": {
+     "pins": "the linear fill (fillmissing2) left the removed pixels of a punctum at a corner of the image NaN, outside the convex hull of the known pixels, and a later pass on that volume failed in imregionalmax (MATLAB:imregionalmax:expectedNonNaN); they take the value of the nearest pixel, so the fills stay within the values of the pixels that are kept",
+     "tags": [
+      "Unit"
      ],
      "cases": null,
      "fate": []
@@ -375,7 +399,11 @@
      "cases": null,
      "fate": []
     }
-   }
+   },
+   "reopened": [
+    "interpolatedBackgroundOneValueDeepInZ",
+    "punctumAtACornerIsFilledFromTheNearestPixels"
+   ]
   },
   "UnmixChannelsTest": {
    "file": "tests/analysis/UnmixChannelsTest.m",
@@ -420,6 +448,22 @@
     },
     "imagesWithoutAllChannelsAreLeftOut": {
      "pins": "time points without all channels failed the grouping by channels; their images are left out with a warning, as the wrapper says (and the second folder was grouped with the channels of the first one's files)",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "largeFileResultsAreTheZarrFilesOfTheTasks": {
+     "pins": "with largeFile the tasks (XR_unmix_channels_zarr) write zarr, also without saveZarr, but the wrapper gave the job framework .tif results: it waited for files no task writes and ran each task three times (about 6 minutes even in local mode)",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "largeFileTasksRunOnce": {
+     "pins": "(as above) the job framework finds the result of a large-file task after its first run",
      "tags": [
       "Integration"
      ],
@@ -527,7 +571,11 @@
      "cases": null,
      "fate": []
     }
-   }
+   },
+   "reopened": [
+    "largeFileResultsAreTheZarrFilesOfTheTasks",
+    "largeFileTasksRunOnce"
+   ]
   }
  }
 }

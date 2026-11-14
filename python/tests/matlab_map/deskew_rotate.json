@@ -899,6 +899,22 @@
      "cases": null,
      "fate": []
     },
+    "resultsOfAFileInTheCurrentFolderStayThere": {
+     "pins": "a file name without a folder wrote to /DS/ and /DSR/ (fileparts gives no folder); they are in the current folder, the same as for the file's full path",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "rotatedFrameOfAFileInTheCurrentFolderStaysThere": {
+     "pins": "XR_RotateFrame3D (rotation of deskewed data) of a file name without a folder wrote to /Rotated/; it writes to Rotated/ in the current folder, the same as for the file's full path",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
     "rotationOfSavedDeskewedVolumeKeepsCropAndAxisOrder": {
      "pins": "rotating a deskewed volume read back from disk (deskewed in an earlier run) sized its output from the raw files, ignoring inputBbox and the input axis order. single output, so that the saved deskewed volume equals the one in memory.",
      "tags": [
@@ -941,7 +957,9 @@
     }
    },
    "reopened": [
-    "rescaleRotateScalesTheResultToTheUint16Range"
+    "rescaleRotateScalesTheResultToTheUint16Range",
+    "resultsOfAFileInTheCurrentFolderStayThere",
+    "rotatedFrameOfAFileInTheCurrentFolderStaysThere"
    ]
   }
  }
