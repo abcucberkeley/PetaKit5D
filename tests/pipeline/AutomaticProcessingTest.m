@@ -558,6 +558,155 @@ classdef AutomaticProcessingTest < pktest.TestCase
             stitchFn = [dataPath, 'matlab_stitch/Scan_Iter_0000_0000_CamA_ch0_CAM1_stack0000_488nm_0000000msec_0000000000msecAbs.zarr'];
             testCase.verifyTrue(exist(stitchFn, 'dir') == 7, 'The stitched result is missing.');
         end
+
+        function stitchingGetsTheResampleFactorInItsAxisOrder(testCase)
+            % the deskew's resampleFactor is [x y z] (XR_checkResampleSetting),
+            % the stitching's [y x z]: it was passed unchanged, so x and y
+            % were exchanged in the stitching of factors whose x and y
+            % differ. The stitching wrapper is a spy.
+            [dataPath, csvFn] = testCase.writeTwoTiles();
+            stitches = testCase.applyFixture(pktest.FunctionSpyFixture('XR_matlab_stitching_wrapper', [], 4));
+
+            evalc(['XR_microscopeAutomaticProcessing(dataPath, ''xyPixelSize'', testCase.XYPixelSize, ', ...
+                '''dz'', testCase.Dz, ''reverse'', true, ''channelPatterns'', {''CamA_ch0''}, ''streaming'', false, ', ...
+                '''stitch'', true, ''imageListFullpaths'', {csvFn}, ''resampleFactor'', [1.5, 1, 1], ', ...
+                '''parseCluster'', false)']);
+
+            testCase.assertNotEmpty(stitches.getCalls());
+            testCase.verifyEqual(stitches.getOption(1, 'resampleFactor'), [1, 1.5, 1]);
+        end
+
+        function imageListsStayWithTheirDatasets(testCase)
+            % the data paths are sorted (unique), but their image lists kept
+            % the given order, so datasets given out of order were stitched
+            % with each other's image lists. The stitching wrapper is a spy.
+            px = testCase.XYPixelSize;
+            parent = testCase.createTempFolder();
+            dataPaths = {[parent, 'b_dataset/'], [parent, 'a_dataset/']};
+            csvFns = cell(1, 2);
+            raw = uint16(pktest.beads([80, 64, 40], [20, 30, 15; 64, 28, 20], 2, 3000, 200));
+            for d = 1 : 2
+                mkdir(dataPaths{d});
+                tiles = struct('im', {raw(1 : 48, :, :), raw(33 : 80, :, :)}, 'idx', {[0, 0, 0], [0, 1, 0]}, ...
+                    'xyz', {[0, 0, 0], [0, 32 * px, 0]});
+                [~, csvFns{d}] = pktest.writeStitchTiles(dataPaths{d}, tiles);
+            end
+            stitches = testCase.applyFixture(pktest.FunctionSpyFixture('XR_matlab_stitching_wrapper', [], 8));
+
+            evalc(['XR_microscopeAutomaticProcessing(dataPaths, ''xyPixelSize'', px, ''dz'', testCase.Dz, ', ...
+                '''reverse'', true, ''channelPatterns'', {''CamA_ch0''}, ''streaming'', false, ''stitch'', true, ', ...
+                '''imageListFullpaths'', csvFns, ''parseCluster'', false)']);
+
+            calls = stitches.getCalls();
+            testCase.assertNotEmpty(calls);
+            for i = 1 : numel(calls)
+                testCase.verifyEqual(calls{i}{2}, [calls{i}{1}, 'ImageList.csv'], ...
+                    sprintf('Dataset %s got another image list.', calls{i}{1}));
+            end
+        end
+
+        function scalarSave16bitIsForBothSteps(testCase)
+            % save16bit may be one value, but the stitching string took its
+            % second (MATLAB:badsubscript after the first file's deskew). The
+            % stitching wrapper is a spy.
+            [dataPath, csvFn] = testCase.writeTwoTiles();
+            stitches = testCase.applyFixture(pktest.FunctionSpyFixture('XR_matlab_stitching_wrapper', [], 4));
+
+            evalc(['XR_microscopeAutomaticProcessing(dataPath, ''xyPixelSize'', testCase.XYPixelSize, ', ...
+                '''dz'', testCase.Dz, ''reverse'', true, ''channelPatterns'', {''CamA_ch0''}, ''streaming'', false, ', ...
+                '''stitch'', true, ''imageListFullpaths'', {csvFn}, ''save16bit'', false, ''parseCluster'', false)']);
+
+            testCase.assertNotEmpty(stitches.getCalls());
+            testCase.verifyEqual(stitches.getOption(1, 'save16bit'), false);
+            [~, fsn] = fileparts(testCase.tileFilename(dataPath, 'CamA_ch0', 0));
+            testCase.verifyClass(readtiff(sprintf('%sDSR/%s.tif', dataPath, fsn)), 'single');
+        end
+
+        function localStitchingWithoutResultIsTriedOnce(testCase)
+            % locally, the stitching of a dataset was called again in every
+            % round until its result came (no tries were counted), so a
+            % stitching that makes none kept the run going forever. A try
+            % counts once the dataset's files are deskewed; the stitching
+            % wrapper is a spy that makes no result.
+            [dataPath, csvFn] = testCase.writeTwoTiles();
+            stitches = testCase.applyFixture(pktest.FunctionSpyFixture('XR_matlab_stitching_wrapper', [], 4));
+
+            evalc(['XR_microscopeAutomaticProcessing(dataPath, ''xyPixelSize'', testCase.XYPixelSize, ', ...
+                '''dz'', testCase.Dz, ''reverse'', true, ''channelPatterns'', {''CamA_ch0''}, ''streaming'', false, ', ...
+                '''stitch'', true, ''imageListFullpaths'', {csvFn}, ''parseCluster'', false)']);
+
+            % (after each file's deskew; the second one counts)
+            testCase.verifyNumElements(stitches.getCalls(), 2);
+        end
+
+        function clusterModeFindsTheResultOfTilesWithOtherMsecFields(testCase)
+            % a stitched volume has the msec field of its first tile, which
+            % other tiles' msec fields may differ from, but each file looked
+            % for the result by its own: the dataset's stitching job was
+            % submitted again for the other files. The tiles were deskewed
+            % before; the stitching job doesn't run, its result comes at the
+            % second wait.
+            testCase.assumeFalse(ispc, 'The fake Slurm needs a POSIX shell.');
+            px = testCase.XYPixelSize;
+            dataPath = testCase.createTempFolder();
+            raw = uint16(pktest.beads([80, 64, 40], [20, 30, 15; 64, 28, 20], 2, 3000, 200));
+            tiles = struct('im', {raw(1 : 48, :, :), raw(33 : 80, :, :)}, 'idx', {[0, 0, 0], [0, 1, 0]}, ...
+                'xyz', {[0, 0, 0], [0, 32 * px, 0]});
+            [fsns, csvFn] = pktest.writeStitchTiles(dataPath, tiles);
+            % (the tiles' msec fields 5000 and 6000)
+            csv = fileread(csvFn);
+            for i = 1 : 2
+                old = fsns{i};
+                fsns{i} = strrep(old, '_0000000msec_', sprintf('_%07dmsec_', 4000 + 1000 * i));
+                movefile([dataPath, old, '.tif'], [dataPath, fsns{i}, '.tif']);
+                csv = strrep(csv, old, fsns{i});
+            end
+            fid = fopen(csvFn, 'w');
+            fprintf(fid, '%s', csv);
+            fclose(fid);
+            mkdir([dataPath, 'DSR']);
+            for i = 1 : 2
+                fclose(fopen(sprintf('%sDSR/%s.tif', dataPath, fsns{i}), 'w'));
+            end
+            stitchFn = [dataPath, 'matlab_stitch/Scan_Iter_0000_0000_CamA_ch0_CAM1_stack0000_488nm_0005000msec_0000000000msecAbs.zarr'];
+            slurm = testCase.applyFixture(pktest.FakeSlurmFixture);
+            testCase.applyFixture(pktest.FunctionSpyFixture('pause', @() pktest.atCall( ...
+                [dataPath, 'calls.txt'], 2, @() mkdir(stitchFn)), 20));
+            args = testCase.clusterStitchArgs(dataPath, csvFn, 2);
+            evalc('XR_microscopeAutomaticProcessing(dataPath, args{:})');
+            testCase.verifyEqual(slurm.callCount('sbatch'), 1, 'The stitching job was submitted again.');
+        end
+
+        function streamingAddsNewFilesNamedAsAnotherDatasetsFiles(testCase)
+            % with streaming, a new file was left out if any listed file's
+            % name contained its name, of any dataset: in several datasets
+            % with the same file names, the later dataset's files were never
+            % processed. A file of the second dataset named as the first's
+            % arrives at the first wait.
+            testCase.assumeTrue(usejava('jvm'), 'Setting file times needs Java.');
+            px = testCase.XYPixelSize;
+            dataPaths = {testCase.createTempFolder(), testCase.createTempFolder()};
+            stagePath = testCase.createTempFolder();
+            raw = uint16(pktest.beads([48, 64, 40], [20, 30, 15], 2, 3000, 200));
+            fn1 = testCase.tileFilename(dataPaths{1}, 'CamA_ch0', 0);
+            fn2 = testCase.tileFilename(dataPaths{2}, 'CamA_ch0', 1);
+            stagedFn = testCase.tileFilename(stagePath, 'CamA_ch0', 0);
+            newFn = testCase.tileFilename(dataPaths{2}, 'CamA_ch0', 0);
+            % files changed in the last minute count as still being written
+            oldTime = java.lang.System.currentTimeMillis() - 5 * 60 * 1000;
+            for fn = {fn1, fn2, stagedFn}
+                writetiff(raw, fn{1});
+                java.io.File(fn{1}).setLastModified(oldTime);
+            end
+            testCase.applyFixture(pktest.FunctionSpyFixture('pause', @() testCase.moveIfPresent(stagedFn, newFn)));
+            evalc(['XR_microscopeAutomaticProcessing(dataPaths, ''xyPixelSize'', px, ''dz'', testCase.Dz, ', ...
+                '''reverse'', true, ''channelPatterns'', {''CamA_ch0''}, ''streaming'', true, ''deskew'', true, ', ...
+                '''rotate'', true, ''DSRCombined'', true, ''stitch'', false, ''parseCluster'', false, ', ...
+                '''maxModifyTime'', 1, ''maxWaitLoopNum'', 2, ''cpusPerTask'', 4)']);
+            testCase.verifyTrue(isfile(strrep(fn1, dataPaths{1}, [dataPaths{1}, 'DSR/'])));
+            testCase.verifyTrue(isfile(strrep(newFn, dataPaths{2}, [dataPaths{2}, 'DSR/'])), ...
+                'The new file of the second dataset was not processed.');
+        end
     end
 
     methods (Access = private)

@@ -208,10 +208,15 @@ restoreWarnings = onCleanup(@() warning(warnState));
 if ischar(dataPaths)
     dataPaths = {dataPaths};
 end
-dataPaths = unique(dataPaths);
+nGiven = numel(dataPaths);
+[dataPaths, uinds] = unique(dataPaths);
 
 if ischar(imageListFullpaths)
     imageListFullpaths = {imageListFullpaths};
+end
+% (the image lists in the order of the data paths, as they were given)
+if numel(imageListFullpaths) == nGiven
+    imageListFullpaths = imageListFullpaths(uinds);
 end
 
 nd = numel(dataPaths);
@@ -240,6 +245,10 @@ end
 
 if numel(overwrite) == 1
     overwrite = repmat(overwrite, 1, 3);
+end
+% (one value for both deskew/rotate and stitch)
+if numel(save16bit) == 1
+    save16bit = repmat(save16bit, 1, 2);
 end
 
 % check if a slurm-based computing cluster exists
@@ -598,7 +607,7 @@ while ~all(is_done_flag | (trial_counter >= maxTrialNum & ~job_active), 'all') |
             end
             stchPath = stchPaths{fdind};
             % dir_info = dir(sprintf('%s/%s*Abs.tif', stchPath, fname(regexp(fname, 'Scan.*') : end - 43)));
-            stch_dir_info = dir(sprintf('%s/%s*Abs.zarr', stchPath, fsname(1 : end - 39)));
+            stch_dir_info = dir(stitch_result_pattern(stchPath, fsname));
 
             if ~isempty(stch_dir_info) 
                 stch_fname = stch_dir_info(1).name;
@@ -632,6 +641,10 @@ while ~all(is_done_flag | (trial_counter >= maxTrialNum & ~job_active), 'all') |
                 % if DS or DSR, it means the deskew and rotation not done.
                 continue;
             end
+            % (locally, the dataset's stitching was tried and gave no result)
+            if ~parseCluster && trial_counter(f, 2) >= maxTrialNum
+                continue;
+            end
             
             stitch_DS = false;
             stitch_DSR = true;
@@ -640,6 +653,11 @@ while ~all(is_done_flag | (trial_counter >= maxTrialNum & ~job_active), 'all') |
             bbox = [];
             imageListFullpath = imageListFullpaths{fdind};
             channelPatterns_str = sprintf('{''%s''}', strjoin(channelPatterns, ''','''));
+            % (the stitching reads the factor in the tiles' axis order, yxz)
+            stitchResampleFactor = resampleFactor;
+            if numel(resampleFactor) == 3
+                stitchResampleFactor = resampleFactor([2, 1, 3]);
+            end
             if ~parseCluster
                 mccMode = false;
                 maxTrialNum = 1;
@@ -655,7 +673,7 @@ while ~all(is_done_flag | (trial_counter >= maxTrialNum & ~job_active), 'all') |
                 '''zarrFile'',%s,''maxTrialNum'',%d,''parseCluster'',%s,''mccMode'',%s,''configFile'',''%s'',''uuid'',''%s'')'], ...
                 dataPath, imageListFullpath, stitchResultDirName, string(parseCluster & streaming), string(stitch_DS), ...
                 string(stitch_DSR), channelPatterns_str, ProcessedDirStr, axisOrder, resampleType, ...
-                strrep(num2str(resampleFactor, '%.10d,'), ' ', ''), string(reverse), string(parseSettingFile), ...
+                strrep(num2str(stitchResampleFactor, '%.10d,'), ' ', ''), string(reverse), string(parseSettingFile), ...
                 string(xcorrShift), xcorrMode, xyMaxOffset, zMaxOffset, edgeArtifacts, blendMethod, ...
                 strrep(num2str(bbox, '%d,'), ' ', ''), string(save16bit(2)), primaryCh, ...
                 strrep(mat2str(stitchMIP), ' ', ','), string(onlineStitch), ...
@@ -698,6 +716,13 @@ while ~all(is_done_flag | (trial_counter >= maxTrialNum & ~job_active), 'all') |
             else
                 tic; feval(str2func(['@()', func_str])); toc;
                 fprintf('\n');                
+                % a try once the deskew of the dataset's files is done or
+                % given up (before, the stitching waits for its tiles), so
+                % that a stitching without result isn't run every round
+                ds_inds = fdinds == fdind;
+                if all(is_done_flag(ds_inds, 1) | trial_counter(ds_inds, 1) >= maxTrialNum)
+                    trial_counter(ds_inds, 2) = trial_counter(ds_inds, 2) + 1;
+                end
             end
             
             if ~isempty(stch_dir_info) && exist(stchFullpath, 'file')
@@ -716,7 +741,7 @@ while ~all(is_done_flag | (trial_counter >= maxTrialNum & ~job_active), 'all') |
         for f = find(~is_done_flag(:, 2))'
             [~, fsname] = fileparts(fnames{f});
             stchPath = stchPaths{fdinds(f)};
-            if ~isempty(dir(sprintf('%s/%s*Abs.zarr', stchPath, fsname(1 : end - 39))))
+            if ~isempty(dir(stitch_result_pattern(stchPath, fsname)))
                 is_done_flag(f, 2) = true;
             end
         end
@@ -761,7 +786,9 @@ while ~all(is_done_flag | (trial_counter >= maxTrialNum & ~job_active), 'all') |
         continue;
     end
     
-    new_inds = cellfun(@(x) ~any(contains(fnames, x)), fnames_new);
+    % (new: no listed file of that name in its data folder)
+    new_inds = arrayfun(@(i) ~any(strcmp(fnames(:), fnames_new{i}) & fdinds(:) == fdinds_new(i)), ...
+        (1 : numel(fnames_new))');
     if ~any(new_inds)
         continue;
     end
@@ -813,9 +840,19 @@ for f = reshape(find(any(coming, 2)), 1, [])
         paths{end + 1} = [dsrPaths{fdind}, fsname, ext];
     end
     if coming(f, 2) && ~isempty(stchPaths)
-        paths{end + 1} = sprintf('%s/%s*Abs.zarr', stchPaths{fdind}, fsname(1 : end - 39));
+        paths{end + 1} = stitch_result_pattern(stchPaths{fdind}, fsname);
     end
 end
+
+end
+
+
+function [pattern] = stitch_result_pattern(stchPath, fsname)
+% the stitched result of a file's volume (a pattern for dir): the file's
+% name up to its laser, with any msec field, as the result has the msec
+% field of the volume's first tile, which other tiles may not have
+
+pattern = sprintf('%s/%s*Abs.zarr', stchPath, regexprep(fsname(1 : end - 39), '_\d+msec$', '_*msec'));
 
 end
 
