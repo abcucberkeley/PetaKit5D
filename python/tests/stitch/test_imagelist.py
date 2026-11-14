@@ -294,6 +294,9 @@ UNMATCHED = TWO_CAM[:4] + ["Scan_Iter_0000_CamA_ch0_bad_name.tif"] + TWO_CAM[4:8
 PARTIAL = grid(xs=(0, 1, 2))
 PARTIAL_LIST = PARTIAL + [n.replace(".tif", "_part0001.tif") for n in PARTIAL[:2]]
 SPLIT_ABST = [tile_name("A", 0, x, 0, 0, msec=10 * x, abst=2000 + x) for x in range(3)]
+# six msec values, none a character code: the stitch info name's format recycles until its empty
+# z-layer text meets a %d (MATLAB prints an empty field there)
+LONG_ABST = [tile_name("A", 0, x, 0, 0, msec=100000 + 1000 * x, abst=2000 + x) for x in range(6)]
 
 PARSE_CASES = [
     parse_case("two_cams_auto_primary", folder(TWO_CAM)),
@@ -344,6 +347,7 @@ PARSE_CASES = [
     parse_case("no_tiles", folder(TWO_CAM, []), error=True),
     parse_case("no_listed_tile_exists", folder(TWO_CAM, [], extra=["other_CamA.tif"]), error=True),
     parse_case("abstime_split", folder(SPLIT_ABST)),
+    parse_case("abstime_split_recycles", folder(LONG_ABST)),
     parse_case("laser_split", folder([tile_name("A", 0, x, laser=488 + 72 * x) for x in range(2)])),
     parse_case("single_tile", folder(TWO_CAM[:1])),
     parse_case("empty_list", folder([], extra=TWO_CAM[:1]), error=True),

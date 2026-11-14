@@ -42,7 +42,7 @@ import numpy as np
 
 from petakit5d.core.dtypes import NAN
 from petakit5d.core.paths import fileparts, matlab_dir, matlab_sort_key
-from petakit5d.core.text import sprintf as _core_sprintf
+from petakit5d.core.text import sprintf as _sprintf
 
 __all__ = [
     "ImageListError",
@@ -95,17 +95,6 @@ class MatlabWarning(UserWarning):
 
 def _warn(message: str, identifier: str = "") -> None:
     warnings.warn(MatlabWarning(message, identifier), stacklevel=3)
-
-
-def _sprintf(fmt: str, *args) -> str:
-    try:
-        return _core_sprintf(fmt, *args)
-    except IndexError:
-        # core.text.sprintf fails when a vector argument makes the format recycle over an
-        # empty char argument (reported to F02); MATLAB prints the empty argument as nothing
-        raise NotImplementedError(
-            f"sprintf({fmt!r}, ...) recycles its format over an empty argument"
-        ) from None
 
 
 # ------------------------------------------------------------------------------------------
