@@ -932,6 +932,36 @@ def test_knn2_is_knnsearch():
         assert d.tobytes() == rd.tobytes()
 
 
+def test_knn2_runs_knnsearch_on_the_callers_threads(monkeypatch):
+    """where knnsearch searches (few or non-finite points, and the rows with more ties than the
+    tree's candidates) it gets the caller's thread count, not every CPU; same result at any"""
+    from petakit5d.matlabcompat import neighbors
+
+    real = neighbors.knnsearch
+    threads = []
+
+    def spy(*args, **kwargs):
+        threads.append(kwargs.get("num_threads"))
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(neighbors, "knnsearch", spy)
+    rng = CounterRNG(22, "knn-threads")
+    few = rng.normal((40, 3))
+    many = rng.normal((3000, 3))
+    many[200:400] = many[100]  # 201 equal points: more ties than the tree's 64 candidates
+    nonfinite = many.copy()
+    nonfinite[7] = np.inf
+    q = rng.normal((2000, 3))
+    q[:3] = many[100]
+    for p in (few, many, nonfinite):
+        want = real(p, q, 2)
+        for nt in (1, 3):
+            threads.clear()
+            i, d = B._knn2(p, q, nt)
+            assert threads and threads == [nt] * len(threads)
+            assert np.array_equal(i, want[0]) and d.tobytes() == want[1].tobytes()
+
+
 def test_window_function_is_matlabs_expression():
     """(x < l) + cos(pi (x - l) / 2 / (u - l))^2 (l <= x < u), with MATLAB's cos, where x is
     finite (probe.window.* compare it with MATLAB, NaN and Inf too)"""

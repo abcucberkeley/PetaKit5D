@@ -615,12 +615,12 @@ def _offsets(t: np.ndarray, psz: Sequence[int]):
 def _knn2(points: np.ndarray, queries: np.ndarray, nt: int):
     """``[idx, d] = knnsearch(points, queries, 'K', 2)`` as matlabcompat.neighbors.knnsearch
     gives it (squared distances summed over the columns in order, ties to the lower index,
-    0-based), with the k-d tree's candidates on ``nt`` threads"""
+    0-based), with the k-d tree's candidates on ``nt`` threads (knnsearch's too)"""
     from petakit5d.matlabcompat.neighbors import knnsearch
 
     n, nq = points.shape[0], queries.shape[0]
     if n < 64 or nq * n <= (1 << 22) or not np.all(np.isfinite(points)):
-        return knnsearch(points, queries, 2)
+        return knnsearch(points, queries, 2, num_threads=nt)
     from scipy.spatial import cKDTree
 
     k = 2
@@ -665,7 +665,7 @@ def _knn2(points: np.ndarray, queries: np.ndarray, nt: int):
     for r in rest:
         radius = tree.query(queries[r], k=k)[0][k - 1] * (1 + 1e-9) + 1e-300
         ball = np.asarray(sorted(tree.query_ball_point(queries[r], radius)), np.int64)
-        i, dd = knnsearch(points[ball], queries[r], k)
+        i, dd = knnsearch(points[ball], queries[r], k, num_threads=nt)
         idx[r] = ball[i[0]]
         dk[r] = dd[0]
     return idx, dk
