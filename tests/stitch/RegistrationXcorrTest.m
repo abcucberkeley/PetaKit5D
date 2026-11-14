@@ -320,6 +320,41 @@ classdef RegistrationXcorrTest < pktest.TestCase
             testCase.verifyThat(@() normxcorr3_window_mex('fft1', T, 1, 32), Throws(id, 'WhenNargoutIs', 1));
             testCase.verifyThat(@() normxcorr3_window_mex('nccc', T, A, bbox, 1, 32), Throws(id, 'WhenNargoutIs', 1));
         end
+
+        function pairRegistrationTakesTheAxesOfTheDataOrder(testCase)
+            % cross_correlation_registration_3d took the dimensions of x, y
+            % and z as data_order_mat == 1, 2, 3 (the inverse permutation),
+            % and MaxOffset (xyz, as the shift assignment takes it) by them
+            % too: with z not last, x got z's max offset, and in 3-cycle data
+            % orders (e.g., 'z,x,y') other axes' downsampling. The same pair
+            % of tiles in each data order must give the shift of 'y,x,z'
+            % data. Tile 2 is 6 voxels before its stage position in x and 4 in
+            % y; the max offsets are 10, 10 and 2 voxels, x is downsampled by 2.
+            gt = randi([1000, 60000], [44, 66, 16], 'uint16');
+            tiles = {gt(1 : 40, 1 : 40, :), gt(5 : 44, 25 : 66, :)};
+            % cuboids [x0 y0 z0 x1 y1 z1] (voxel size 1): tile 2 at x 30 and y 0, not 24 and 4
+            cuboids = [0, 0, 0, 39, 39, 15; 30, 0, 0, 71, 39, 15];
+            overlap = [30, 0, 0, 39, 39, 15];
+            orders = {'y,x,z', 'x,y,z', 'z,y,x', 'z,x,y'};
+            shifts = zeros(numel(orders), 3);
+            for i = 1 : numel(orders)
+                [~, dataOrderMat] = sort(strrep(orders{i}, ',', ''));
+                [~, perm] = sort(dataOrderMat([2, 1, 3]));
+                dataPath = testCase.createTempFolder();
+                fns = {[dataPath, 't1.zarr'], [dataPath, 't2.zarr']};
+                for j = 1 : 2
+                    writezarr(permute(tiles{j}, perm), fns{j}, blockSize=[16, 16, 16]);
+                end
+                % (the downsampling in the data's order, from y, x, z)
+                downSample = [1, 2, 1];
+                shifts(i, :) = cross_correlation_registration_3d(fns{1}, fns{2}, '', cuboids(1, :), cuboids(2, :), ...
+                    overlap, [1, 1, 1], dataOrderMat, 'downSample', downSample(perm), 'MaxOffset', [10, 10, 2]);
+            end
+            testCase.verifyEqual(abs(shifts(1, :)), [6, 4, 0], 'The shift of y,x,z data.');
+            for i = 2 : numel(orders)
+                testCase.verifyEqual(shifts(i, :), shifts(1, :), sprintf('The shift of %s data.', orders{i}));
+            end
+        end
     end
 
     methods (Access = private)

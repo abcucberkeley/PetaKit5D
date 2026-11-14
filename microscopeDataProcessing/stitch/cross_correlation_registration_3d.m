@@ -40,15 +40,17 @@ blankNumTrsh = pr.blankNumTrsh;
 
 downSample = downSample(:)';
 
-xdo = data_order_mat == 1;
-ydo = data_order_mat == 2;
-zdo = data_order_mat == 3;
+% the dimensions of the data that hold x, y and z (downSample is in the
+% data's order, MaxOffset in xyz order as the shift assignment takes it)
+xdo = data_order_mat(1);
+ydo = data_order_mat(2);
+zdo = data_order_mat(3);
 
 [~, data_order_reverse_mat] = sort(data_order_mat);
 
-maxXOffset = MaxOffset(xdo);
-maxYOffset = MaxOffset(ydo);
-maxZOffset = MaxOffset(zdo);
+maxXOffset = MaxOffset(1);
+maxYOffset = MaxOffset(2);
+maxZOffset = MaxOffset(3);
 
 saveResult = ~isempty(xcorrFullpath);
 if saveResult && exist(xcorrFullpath, 'file')
@@ -143,7 +145,9 @@ if ~any(z_inds) || ~any(x_inds) || ~any(y_inds)
 end
 
 bounds = [0.1, 0.25];
-maxoff = [maxoff_y, maxoff_x, maxoff_z] ./ downSample;
+% (in the data's order, as region_2's dimensions)
+maxoff = [maxoff_x, maxoff_y, maxoff_z];
+maxoff = maxoff(data_order_reverse_mat) ./ downSample;
 y_inds = cap_region_2_inds(y_inds, sz_2(1), maxoff(1), bounds);
 x_inds = cap_region_2_inds(x_inds, sz_2(2), maxoff(2), bounds);
 z_inds = cap_region_2_inds(z_inds, sz_2(3), maxoff(3), bounds);
