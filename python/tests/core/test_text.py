@@ -368,3 +368,55 @@ def test_through_text():
     )
     assert text.through_mat2str(1 / 3) == 0.333333333333333
     assert math.isinf(text.through_mat2str(math.inf))
+
+
+# MATLAB R2024b's str2num(mat2str(x)) and eval(mat2str(x)), the same double bits, for x of the
+# class and MATLAB size given with the bits given (MATLAB's linear order), at mat2str's default
+# precision and at 10, 15 and 17 digits (one answer for None: at all four). mat2str writes
+# every NaN as NaN, which reads back as MATLAB's NaN, and -0 as 0.
+MAT2STR_READ_BACK = [
+    ("double", (1, 1), "fff8000000000000", {None: "fff8000000000000"}),  # NaN
+    ("double", (1, 1), "7ff8000000000000", {None: "fff8000000000000"}),  # -NaN, Python's NaN
+    ("double", (1, 1), "7ff8000000000123", {None: "fff8000000000000"}),  # payloads
+    ("double", (1, 1), "7ff0000000000001", {None: "fff8000000000000"}),  # signaling
+    ("double", (1, 1), "fff0000000000abc", {None: "fff8000000000000"}),
+    ("single", (1, 1), "ffc00000", {None: "fff8000000000000"}),
+    ("single", (1, 1), "7fc00000", {None: "fff8000000000000"}),
+    ("double", (1, 1), "0000000000000000", {None: "0000000000000000"}),
+    ("double", (1, 1), "8000000000000000", {None: "0000000000000000"}),  # -0
+    ("single", (1, 1), "80000000", {None: "0000000000000000"}),
+    ("double", (1, 3), "3ff0000000000000 fff8000000000000 4008000000000000",
+     {None: "3ff0000000000000 fff8000000000000 4008000000000000"}),
+    ("double", (1, 3), "3ff0000000000000 7ff8000000000000 8000000000000000",
+     {None: "3ff0000000000000 fff8000000000000 0000000000000000"}),
+    ("double", (2, 2), "fff8000000000000 4000000000000000 8000000000000000 7ff8000000000000",
+     {None: "fff8000000000000 4000000000000000 0000000000000000 fff8000000000000"}),
+    ("double", (3, 1), "3fe0000000000000 fff8000000000000 fff0000000000000",
+     {None: "3fe0000000000000 fff8000000000000 fff0000000000000"}),
+    ("double", (1, 1), "3fd5555555555555",  # 1/3
+     {10: "3fd55555554c2bb5", 15: "3fd555555555554f", 17: "3fd5555555555555"}),
+    ("double", (1, 1), "7ff0000000000000", {None: "7ff0000000000000"}),
+    ("double", (1, 1), "fff0000000000000", {None: "fff0000000000000"}),
+    ("double", (1, 1), "3fd3333333333334",  # 0.1 + 0.2
+     {10: "3fd3333333333333", 15: "3fd3333333333333", 17: "3fd3333333333334"}),
+    ("double", (1, 1), "0000000000000001", {None: "0000000000000001"}),
+    ("double", (1, 1), "7fefffffffffffff",  # realmax: 15 digits read back as Inf
+     {10: "7ff0000000000000", 15: "7ff0000000000000", 17: "7fefffffffffffff"}),
+    ("double", (1, 1), "bbc79ca10c924223", {None: "bbc79ca10c924223"}),
+    ("double", (1, 1), "437b69b4ba630f35",
+     {10: "437b69b4ba574920", 15: "437b69b4ba630f49", 17: "437b69b4ba630f35"}),
+]  # fmt: skip
+
+
+@pytest.mark.parametrize(("cls", "size", "bits", "expected"), MAT2STR_READ_BACK)
+def test_through_mat2str_reads_back_as_matlab_does(cls, size, bits, expected):
+    u, f = (np.uint32, np.float32) if cls == "single" else (np.uint64, np.float64)
+    x = np.array([int(b, 16) for b in bits.split()], dtype=u).view(f).reshape(size, order="F")
+    for prec, want in expected.items():
+        want = [int(b, 16) for b in want.split()]
+        for p in (None, 10, 15, 17) if prec is None else (prec,):
+            for v in (x, x.reshape(())) if x.size == 1 else (x,):
+                got = text.through_mat2str(v) if p is None else text.through_mat2str(v, p)
+                a = np.asarray(got)
+                assert a.dtype == np.float64 and a.shape == v.shape
+                assert a.reshape(-1, order="F").view(np.uint64).tolist() == want, (p, v)

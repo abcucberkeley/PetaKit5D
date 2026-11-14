@@ -198,7 +198,9 @@ matches the MATLAB code for scalars.
 The wrappers hand parameters to their tasks as text, and folder names and parameter files hold
 numbers as text. Apply MATLAB's formatting at the same boundary:
 `text.through_text(value, '%.10f')` is `str2double(sprintf('%.10f', value))`, and
-`through_mat2str` is the trip through `mat2str` (15 significant digits).
+`through_mat2str` is the trip through `mat2str` (15 significant digits) and MATLAB's parser:
+every NaN comes back as MATLAB's NaN (`mat2str` writes `NaN`, whatever its sign and payload)
+and -0 as 0.
 
 - `sprintf` (`text.sprintf`): C formatting, plus MATLAB's rules:
   - `%d` and `%i` print integer values in `[-2^63, 2^63)`; other values switch to `%e` with the

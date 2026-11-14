@@ -678,9 +678,17 @@ def through_text(value, fmt: str):
 
 
 def through_mat2str(value, precision: int = 15):
-    """A value after ``mat2str`` and MATLAB's parser: 15 significant digits per element."""
+    """A value after ``mat2str`` and MATLAB's parser: 15 significant digits per element.
+
+    As MATLAB's ``str2num(mat2str(v))`` and ``eval``: a double; every NaN, of any sign and
+    payload, is MATLAB's NaN (``dtypes.NAN``), since ``mat2str`` writes ``NaN``, and -0 is 0.
+    """
     a = np.asarray(value)
-    conv = lambda v: float(_fmt_g(float(v), precision).replace("Inf", "inf"))  # noqa: E731
+
+    def conv(v) -> float:
+        v = float(v) + 0.0  # mat2str writes -0 as 0
+        return _nan() if math.isnan(v) else float(_fmt_g(v, precision))
+
     if a.ndim == 0:
         return conv(a)
     return np.asarray([conv(v) for v in a.ravel(order="F")], dtype=np.float64).reshape(
