@@ -14,6 +14,16 @@
     ],
     "parametersFileHoldsTheParameters": [
      "oracle:tests/tools/test_puncta_removal.py::zarr.percent_folder"
+    ],
+    "interpolatedBackgroundOneValueDeepInZ": [
+     "pytest:tests/tools/test_puncta_removal.py::test_interpolated_background_one_value_deep_in_z",
+     "oracle:tests/tools/test_puncta_removal.py::zarr.bg_interpolated_one_deep",
+     "oracle:tests/tools/test_puncta_removal.py::imresize.*"
+    ],
+    "punctumAtACornerIsFilledFromTheNearestPixels": [
+     "pytest:tests/tools/test_puncta_removal.py::test_punctum_at_a_corner_is_filled_from_the_nearest_pixels",
+     "oracle:tests/tools/test_puncta_removal.py::point_detection.*",
+     "oracle:tests/tools/test_puncta_removal.py::fillmissing2_nearest.*"
     ]
    }
   }

@@ -24,6 +24,7 @@ import itertools
 import json
 import math
 import os
+import shutil
 from pathlib import Path
 
 import numpy as np
@@ -187,6 +188,65 @@ def fill_windows():
     return out
 
 
+def fill_nearest_inputs():
+    """images with NaN (the pixels to fill): equal distances to several known pixels (in a
+    column, a row, across diagonals and at 5 = |(3, 4)| = |(5, 0)|), holes at corners and edges,
+    random holes, one, two or three known pixels, a known row or column (and one more), none"""
+    from petakit5d.core.dtypes import NAN
+
+    nan = np.float32(NAN)
+    rng = CounterRNG(0, "sw7/fill_nearest")
+    out = {}
+    a = np.arange(1, 10, dtype=np.float32).reshape(3, 3, order="F")
+    c = a.copy()
+    c[1, 1] = nan
+    out["cross"] = c
+    d = a.copy()
+    d[1, :] = nan
+    d[:, 1] = nan
+    out["diag"] = d
+    f = (np.arange(1, 82, dtype=np.float32) * 3).reshape(9, 9, order="F")
+    m = np.ones((9, 9), dtype=bool)
+    for p in ((3, 4), (5, 0), (0, 5), (4, 3), (8, 8), (8, 3)):
+        m[p] = False
+    f[m] = nan
+    out["far_ties"] = f
+    g = (rng.spawn("c").uniform((8, 8)) * 100).astype(np.float32)
+    g[0:3, 0:3] = nan
+    out["corner"] = g
+    e = (rng.spawn("e").uniform((7, 9)) * 100).astype(np.float32)
+    e[4:, 6:] = nan
+    e[0, :2] = nan
+    out["corners2"] = e
+    shapes = [(9, 10), (12, 13), (17, 23), (25, 19), (30, 28), (7, 31), (16, 16), (11, 5)]
+    for i, sh in enumerate(shapes):
+        r = rng.spawn(i)
+        v = (r.uniform(sh) * 1000 + 50).astype(np.float32)
+        v[r.spawn("m").uniform(sh) > (0.3, 0.5, 0.7, 0.9)[i % 4]] = nan
+        out[f"r{i}"] = v
+    one = np.full((6, 7), nan, dtype=np.float32)
+    one[2, 4] = 7
+    out["one"] = one
+    row = np.full((6, 7), nan, dtype=np.float32)
+    row[3] = np.arange(7, dtype=np.float32)
+    out["row"] = row
+    col = np.full((6, 7), nan, dtype=np.float32)
+    col[:, 2] = np.arange(6, dtype=np.float32)
+    out["col"] = col
+    two = np.full((6, 7), nan, dtype=np.float32)
+    two[1, 1], two[4, 5] = 3, 9
+    out["two"] = two
+    three = two.copy()
+    three[4, 0] = 5
+    out["three"] = three
+    row1 = row.copy()
+    row1[0, 6] = 11
+    out["row_plus_one"] = row1
+    out["none"] = np.full((4, 5), nan, dtype=np.float32)
+    out["full"] = a.copy()
+    return out
+
+
 def resize_inputs():
     rng = CounterRNG(0, "b08/resize")
     return {
@@ -195,6 +255,19 @@ def resize_inputs():
         "c": ((rng.spawn("c").uniform((4, 4, 4)) * 100).astype(np.float32), (64, 64, 64)),
         "d": ((rng.spawn("d").uniform((2, 2, 2)) * 100).astype(np.float32), (3, 224, 225)),
         "same": ((rng.spawn("e").uniform((5, 3, 4)) * 100).astype(np.float32), (5, 3, 4)),
+    }
+
+
+def resize2_inputs():
+    """background planes (one value deep in z) and the sizes of their batches' planes (y, x)"""
+    rng = CounterRNG(0, "sw7/resize2")
+    return {
+        "a": ((rng.uniform((2, 2)) * 100).astype(np.float32), (64, 56)),
+        "b": ((rng.spawn("b").uniform((2, 3)) * 100).astype(np.float32), (17, 40)),
+        "c": ((rng.spawn("c").uniform((3, 2)) * 100).astype(np.float32), (33, 9)),
+        "d": ((rng.spawn("d").uniform((4, 4)) * 100).astype(np.float32), (64, 64)),
+        "e": ((rng.spawn("e").uniform((1, 3)) * 100).astype(np.float32), (5, 47)),
+        "same": ((rng.spawn("f").uniform((3, 4)) * 100).astype(np.float32), (3, 4)),
     }
 
 
@@ -262,6 +335,17 @@ def _fill(name):
     )
 
 
+def _fill_nearest(name):
+    return Case(
+        f"fillmissing2_nearest.{name}",
+        code="out = {fillmissing2(in{1}, 'nearest')};",
+        args=[Vol(In("a"))],
+        python=pr.fillmissing2_nearest,
+        out_roles=("vol",),
+        inputs={"a": Value(lambda: fill_nearest_inputs()[name])},
+    )
+
+
 def _resize(name):
     a, size = resize_inputs()[name]
     msize = [size[1], size[2], size[0]]
@@ -272,6 +356,17 @@ def _resize(name):
         python=pr.imresize3_linear,
         out_roles=("vol",),
         inputs={"a": Value(lambda: to_matlab(resize_inputs()[name][0]))},
+    )
+
+
+def _resize2(name):
+    return Case(
+        f"imresize.{name}",
+        code="out = {imresize(in{1}, in{2}, 'bilinear')};",
+        args=[Vol(In("a")), list(resize2_inputs()[name][1])],
+        python=pr.imresize_bilinear,
+        out_roles=("vol",),
+        inputs={"a": Value(lambda: resize2_inputs()[name][0])},
     )
 
 
@@ -291,7 +386,9 @@ def _helper_cases():
     cases += [_locmax(n) for n in helper_volumes()]
     cases += [_regmax(n) for n in regmax_images()]
     cases += [_fill(n) for n in fill_windows()]
+    cases += [_fill_nearest(n) for n in fill_nearest_inputs()]
     cases += [_resize(n) for n in resize_inputs()]
+    cases += [_resize2(n) for n in resize2_inputs()]
     for d in (5, 20, 200):
         cases.append(
             Case(
@@ -451,6 +548,13 @@ def workflow_inputs():
             name="tall",
         ),
         "holes": holes_volume(),
+        # shallower than a batch: its background is one value deep in z
+        "shallow": expanded_volume(
+            shape=(24, 64, 56),
+            puncta=((12, 19, 19), (10, 39, 43), (14, 29, 49)),
+            structure=((4, 20), (44, 60), (4, 30)),
+            name="shallow",
+        ),
     }
 
 
@@ -595,7 +699,11 @@ def _wf_cases():
     ]
     est = ["batchSize", [32, 32, 32], "blockSize", [16, 16, 16], *LOCAL]
     interp = ["batchSize", [32, 32, 32], "blockSize", [16, 16, 16], "intThrsh", 5000, *LOCAL]
-    for cid, name in (("zarr.bg_interpolated", "odd"), ("zarr.bg_interpolated_tall", "tall")):
+    for cid, name in (
+        ("zarr.bg_interpolated", "odd"),
+        ("zarr.bg_interpolated_tall", "tall"),
+        ("zarr.bg_interpolated_one_deep", "shallow"),
+    ):
         cases.append(_bg_interp_case(cid, name, est, interp))
     return cases
 
@@ -882,31 +990,61 @@ def test_removed_regions_are_the_thresholded_components():
     assert changed.any() and not (changed & ~comp).any()
 
 
-def test_corner_fill_gives_nan_then_regionalmax_raises():
-    # a punctum at a corner: its fill window has no known pixels around the corner
+def test_punctum_at_a_corner_is_filled_from_the_nearest_pixels():
+    # (PunctaRemovalTest/punctumAtACornerIsFilledFromTheNearestPixels) the linear fill leaves the
+    # pixels of a punctum at a corner NaN, outside the convex hull of the known pixels; they
+    # take the value of the nearest pixel, so the fills stay within the values of the pixels
+    # that are kept, and a second pass on the volume runs (no imregionalmax NaN error)
     v = detection_volume((16, 20, 21), "corner", ((8, 0, 0),), amp=20000.0, noise=0.0)
-    out = pr.puncta_removal_point_detection(v, local_win_size=(23, 15, 15), int_thrsh=3000)
-    assert np.isnan(out).any()
-    with pytest.raises(pr.PunctaRemovalError) as e:
-        pr.puncta_removal_point_detection(out, local_win_size=(23, 15, 15), int_thrsh=3000)
-    assert e.value.identifier == "MATLAB:imregionalmax:expectedNonNaN"
+    kw = {"local_win_size": (23, 15, 15), "int_thrsh": 3000}
+    out = pr.puncta_removal_point_detection(v, **kw)
+    assert not np.isnan(out).any(), "The fill left NaN."
+    assert out[8, 0, 0] < 0.1 * 20000, "The punctum was not removed."
+    filled = out != v
+    assert filled.any(), "Nothing was filled."
+    kept = v[~filled]
+    assert out[filled].min() >= kept.min() and out[filled].max() <= kept.max()
+    assert pr.puncta_removal_point_detection(out, **kw).shape == v.shape
 
 
-def test_interpolated_background_one_value_deep_in_z_raises(tmp_path):
-    vol = expanded_volume(
-        shape=(20, 40, 44), puncta=(), structure=((2, 18), (5, 30), (5, 40)), name="flat"
-    )
+def test_nearest_fill_takes_the_last_of_equal_distances_in_column_major_order():
+    nan = np.float32(np.nan)
+    a = np.arange(1, 10, dtype=np.float32).reshape(3, 3, order="F")
+    a[1, 1] = nan
+    # (2,1), (1,2), (3,2) and (2,3) are 1 away: the last is (2,3)
+    assert pr.fillmissing2_nearest(a)[1, 1] == 8
+    b = np.full((6, 7), nan, dtype=np.float32)
+    b[3] = np.arange(7)
+    # (a line: no triangle) kept, as fillmissing2_linear
+    np.testing.assert_array_equal(pr.fillmissing2_nearest(b), b)
+    b[0, 6] = 11
+    f = pr.fillmissing2_nearest(b)
+    assert not np.isnan(f).any() and f[0, 0] == 0 and f[1, 6] == 11
+
+
+def test_interpolated_background_one_value_deep_in_z(tmp_path):
+    # (PunctaRemovalTest/interpolatedBackgroundOneValueDeepInZ) a background estimated in
+    # batches as deep as the volume is one value deep in z (MATLAB's array is 2-D): the plane's
+    # interpolation is the background at every z, the same as for the plane twice in z
+    vol = expanded_volume(shape=(48, 64, 56), name="test")
     fn = str(tmp_path / "expanded.zarr")
-    write_zarr(vol, fn, block_size=(16, 16, 16))
-    kw = {"batch_size": (32, 32, 32), "block_size": (16, 16, 16), "parse_cluster": False}
-    pr.puncta_removal_zarr(fn, mode="bg_estimation", **kw)
-    bg = str(
-        tmp_path / "Puncta_background_estimation" / "expanded_batch_32_32_32_background_values.zarr"
-    )
-    assert read_zarr(bg).ndim == 2  # (one z value)
-    with pytest.raises(pr.PunctaRemovalError) as e:
-        pr.puncta_removal_zarr(fn, mode="bg_interpolated", bg_fullpath=bg, **kw)
-    assert e.value.identifier == "MATLAB:badsubscript"
+    write_zarr(vol, fn, block_size=(32, 32, 32))
+    kw = {"block_size": (16, 16, 16), "parse_cluster": False}
+    pr.puncta_removal_zarr(fn, mode="bg_estimation", batch_size=(48, 32, 32), **kw)
+    bg_path = tmp_path / "Puncta_background_estimation"
+    bg_fn = str(bg_path / "expanded_batch_32_32_48_background_values.zarr")
+    bg = read_zarr(bg_fn)
+    assert bg.shape == (2, 2)  # (one z value: a 2-D array, as MATLAB's)
+    twice_fn = str(bg_path / "twice_batch_32_32_24_background_values.zarr")
+    write_zarr(np.stack([bg, bg]), twice_fn, block_size=(2, 2, 2))
+    out_fn = tmp_path / "Puncta_Removed" / "expanded.zarr"
+    interp = {"mode": "bg_interpolated", "batch_size": (48, 64, 64), **kw}
+    pr.puncta_removal_zarr(fn, bg_fullpath=twice_fn, **interp)
+    expected = read_zarr(str(out_fn))
+    shutil.rmtree(tmp_path / "Puncta_Removed")
+    pr.puncta_removal_zarr(fn, bg_fullpath=bg_fn, **interp)
+    np.testing.assert_array_equal(read_zarr(str(out_fn)), expected)
+    _verify_removed(fn, vol)
 
 
 def test_mask_threshold_only_with_a_base_threshold(monkeypatch):

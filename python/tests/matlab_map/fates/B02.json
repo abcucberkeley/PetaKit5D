@@ -68,6 +68,13 @@
      "pytest:tests/tools/test_unmix.py::test_zarr_blocks_match_the_original_code",
      "oracle:tests/tools/test_unmix.py::zarr.gaussian_border",
      "oracle:tests/tools/test_unmix.py::zarr.single_channels"
+    ],
+    "largeFileResultsAreTheZarrFilesOfTheTasks": [
+     "pytest:tests/tools/test_unmix.py::test_large_file_results_are_the_zarr_files_of_the_tasks"
+    ],
+    "largeFileTasksRunOnce": [
+     "pytest:tests/tools/test_unmix.py::test_large_file_tasks_run_once",
+     "oracle:tests/tools/test_unmix.py::ds.large_file_no_save_zarr"
     ]
    }
   }

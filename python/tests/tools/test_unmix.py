@@ -24,7 +24,9 @@ shapes (a framework spy), and results that don't depend on the threads or the pa
 
 from __future__ import annotations
 
+import functools
 import os
+import re
 from pathlib import Path
 
 import numpy as np
@@ -727,6 +729,22 @@ def _dataset_cases():
             "zarrFile",
             True,
             "saveZarr",
+            True,
+            "largeFile",
+            True,
+            "batchSize",
+            [32, 24, 16],
+            "blockSize",
+            [16, 8, 8],
+        ),
+        # (the tasks write zarr without saveZarr too, and run once)
+        dataset_case(
+            "ds.large_file_no_save_zarr",
+            dataset_tree(fmt="zarr", tag="dl"),
+            "unmixFactors",
+            [1, -0.1],
+            *pats,
+            "zarrFile",
             True,
             "largeFile",
             True,
@@ -1582,10 +1600,9 @@ def test_large_files_get_no_backgrounds_offsets_or_flat_fields(tmp_path, framewo
     assert call["mem_allocate"] == pytest.approx(1024**3 / 1024**3 * 4 * 2.5)
 
 
-def test_large_files_without_save_zarr_wait_for_a_tiff(tmp_path, framework_spy):
-    # MATLAB quirk: the dataset's outputs follow save_zarr, but the zarr tasks write .zarr, so
-    # without save_zarr the framework waits for a tiff that never comes (it runs each task
-    # max_trial_num times, minutes in local mode)
+def test_large_file_results_are_the_zarr_files_of_the_tasks(tmp_path, framework_spy):
+    # (UnmixChannelsTest/largeFileResultsAreTheZarrFilesOfTheTasks) the zarr tasks write .zarr,
+    # also without save_zarr, and the framework waits for those
     path, _, _ = two_channel_data(tmp_path / "d", zarr_file=True)
     for save_zarr in (False, True):
         unmix.unmix_channels_dataset(
@@ -1597,8 +1614,44 @@ def test_large_files_without_save_zarr_wait_for_a_tiff(tmp_path, framework_spy):
             save_zarr=save_zarr,
             **LOCAL_KW,
         )
-    assert framework_spy.calls[0]["outputs"][0].endswith(f"{FSN.format('CamA')}.tif")
-    assert framework_spy.calls[1]["outputs"][0].endswith(f"{FSN.format('CamA')}.zarr")
+
+    def unify(p):
+        return re.sub("/+", "/", p.replace("\\", "/"))
+
+    expected = unify(f"{path}/Unmixed/{FSN.format('CamA')}.zarr")
+    assert len(framework_spy.calls) == 2
+    for call in framework_spy.calls:
+        assert [unify(p) for p in call["outputs"]] == [expected]
+
+
+def test_large_file_tasks_run_once(tmp_path, monkeypatch):
+    # (UnmixChannelsTest/largeFileTasksRunOnce) the framework finds the result of a large-file
+    # task after its first run
+    path, a, b = two_channel_data(tmp_path / "d", zarr_file=True)
+    runs = []
+    real = unmix.unmix_channels_zarr
+
+    # (wraps: the task is still named petakit5d.tools.unmix:unmix_channels_zarr, which the
+    # in-process runner resolves to this)
+    @functools.wraps(real)
+    def counted(*args, **kwargs):
+        runs.append(1)
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(unmix, "unmix_channels_zarr", counted)
+    unmix.unmix_channels_dataset(
+        path,
+        unmix_factors=(1, -0.1),
+        channel_patterns=("CamA", "CamB"),
+        zarr_file=True,
+        large_file=True,
+        batch_size=(16, 32, 24),
+        block_size=(8, 16, 8),
+        **LOCAL_KW,
+    )
+    assert len(runs) == 1, "The task did not run once."
+    out = read_zarr(f"{path}Unmixed/{FSN.format('CamA')}.zarr")
+    same_bits(out, cast16(np.maximum(mul(a, 1) + mul(b, -0.1), F32(0))))
 
 
 def test_extra_factors_and_backgrounds_are_not_used():

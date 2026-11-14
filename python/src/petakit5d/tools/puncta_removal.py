@@ -31,9 +31,13 @@ MATLAB's helper functions are written from their method and from MATLAB's measur
   cocircular polygon is cut off first), NaN outside their convex hull, NaN pixels left out of
   the known ones; fewer than three known pixels, or all on a line, leave the image as it is.
   Computed in double, rounded to the class.
+- ``fillmissing2_nearest`` (``fillmissing2(A, 'nearest')``): each NaN pixel takes the value of
+  the nearest pixel that isn't NaN (Euclidean distance; of equal ones, the last in column-major
+  order); fewer than three known pixels, or all on a line, leave the image as it is.
 - ``imresize3_linear`` (``imresize3(A, size, 'linear')`` for enlarging): per dimension, in the
   order of increasing scale, triangle weights normalized, in double, rounded to the class after
-  each dimension.
+  each dimension; ``imresize_bilinear`` (``imresize(A, size, 'bilinear')`` for enlarging) is
+  the same of an image.
 - regionprops3's ``PrincipalAxisLength(:, 1) > 35``: the largest eigenvalue of the
   coordinates' covariance (normalized by the count) plus 1/12, decided in exact arithmetic.
 
@@ -41,10 +45,6 @@ MATLAB quirks kept (each has a test):
 
 - the watershed of each punctum's region in the point detection doesn't change the result
   (its mask is computed after the voxels to remove were taken), so it is not computed;
-- the fill of a punctum's pixels at a window's corner outside the known pixels' hull is NaN,
-  and a later NaN in a volume raises imregionalmax's ``MATLAB:imregionalmax:expectedNonNaN``;
-- the interpolated background of a batch one background value deep in z raises imresize3's
-  ``MATLAB:badsubscript`` (MATLAB's array is 2-D there);
 - the threshold from the MIP mask (``T_mask``) is computed only when ``base_threshold`` is
   given, as only then it is used (MATLAB computes it always; nothing else depends on it);
 - ``XR_ExM_PunctaRemoval_block`` (the first method, not used by the zarr workflow): an empty
@@ -69,8 +69,10 @@ from petakit5d.params import Param, register
 __all__ = [
     "PunctaRemovalError",
     "fillmissing2_linear",
+    "fillmissing2_nearest",
     "imregionalmax",
     "imresize3_linear",
+    "imresize_bilinear",
     "locmax3d",
     "puncta_removal_background_estimation_block",
     "puncta_removal_block",
@@ -570,6 +572,37 @@ def fillmissing2_linear(a: Any, missing: Any) -> np.ndarray:
     return out
 
 
+def fillmissing2_nearest(a: Any) -> np.ndarray:
+    """MATLAB's ``fillmissing2(A, 'nearest')`` of an image ``(y, x)`` (module docstring): each
+    NaN pixel takes the value of the nearest pixel that isn't NaN (Euclidean distance; of equal
+    ones, the last in MATLAB's column-major order); with fewer than three such pixels, or all on
+    a line, the image is kept."""
+    a = np.asarray(a)
+    out = a.copy()
+    if a.dtype.kind != "f":
+        return out
+    miss = np.isnan(a)
+    # the known pixels in column-major order, reversed, so that argmin's first minimum is the
+    # last of equal ones
+    kc, kr = (v[::-1].astype(np.int64) for v in np.nonzero(~miss.T))
+    if kr.size < 3 or not miss.any():
+        return out
+    dr, dc = kr - kr[0], kc - kc[0]
+    j = int(np.flatnonzero((dr != 0) | (dc != 0))[0])
+    if not np.any(dr[j] * dc - dc[j] * dr):
+        # (all on a line: no triangle)
+        return out
+    qr, qc = np.nonzero(miss)
+    vals = a[kr, kc]
+    step = max(1, 2**22 // kr.size)
+    for s in range(0, qr.size, step):
+        r = qr[s : s + step].astype(np.int64)[:, None]
+        c = qc[s : s + step].astype(np.int64)[:, None]
+        d2 = (r - kr[None, :]) ** 2 + (c - kc[None, :]) ** 2
+        out[qr[s : s + step], qc[s : s + step]] = vals[np.argmin(d2, axis=1)]
+    return out
+
+
 # ---------------------------------------------------------------------------------------------
 # imresize3(A, size, 'linear') (enlarging)
 # ---------------------------------------------------------------------------------------------
@@ -619,6 +652,17 @@ def imresize3_linear(a: Any, size: Sequence[int]) -> np.ndarray:
             r = cast(acc, matlab_class(v))
         b = np.ascontiguousarray(np.moveaxis(r, 0, ax))
     return b
+
+
+def imresize_bilinear(a: Any, size: Sequence[int]) -> np.ndarray:
+    """MATLAB's ``imresize(A, [ny nx], 'bilinear')`` of an image ``(y, x)`` to ``size``
+    ``(y, x)``, no smaller than ``A`` along either axis: ``imresize3_linear`` of the image as
+    one slice"""
+    v = np.asarray(a)
+    if v.ndim != 2:
+        raise ValueError("imresize_bilinear takes an image (y, x)")
+    ny, nx = (int(s) for s in size)
+    return imresize3_linear(v[np.newaxis], (1, ny, nx))[0]
 
 
 # ---------------------------------------------------------------------------------------------
@@ -810,6 +854,10 @@ def _fill_slices(vol: np.ndarray, bw_s: np.ndarray, border: int = 3) -> None:
             win = plane[y0:y1, x0:x1]
             m = bz[y0:y1, x0:x1]
             f = fillmissing2_linear(win, m)
+            # pixels outside the convex hull of the known ones are left NaN: they take the
+            # value of the nearest pixel
+            if np.isnan(f[m]).any():
+                f = fillmissing2_nearest(f)
             fills.append((y0, x0, m, f[m]))
         out = plane.copy()
         for y0, x0, m, v in fills:
@@ -1374,12 +1422,11 @@ def puncta_removal_interpolated_background_block(
         b1 = [min(bg_size[q], b0[q] + math.ceil(n[q] / bgb[q])) for q in range(3)]
         bg = _read_batch(bg_fullpath, b0 + b1, num_threads)
         if bg.shape[0] == 1:
-            # (MATLAB's array is 2-D: imresize3 indexes its third size)
-            raise PunctaRemovalError(
-                "Index exceeds the number of array elements. Index must not exceed 2.",
-                "MATLAB:badsubscript",
-            )
-        im_bg = imresize3_linear(bg, n)
+            # one background value deep in z (MATLAB's array is 2-D): the plane's
+            # interpolation at every z
+            im_bg = np.broadcast_to(imresize_bilinear(bg[0], n[1:]), n)
+        else:
+            im_bg = imresize3_linear(bg, n)
         thr = _times(im_bg, float(bg_factor))
         del im_bg
         above = np.empty(im_g.shape, dtype=bool)

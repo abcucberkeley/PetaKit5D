@@ -41,9 +41,8 @@ MATLAB quirks kept (each has a test):
 - ``unmix_channels_zarr`` writes the class of the channel it unmixes; ``save_16bit`` is not
   used there;
 - ``unmix_channels_dataset`` with ``large_file`` passes neither the backgrounds, the offset nor
-  the flat-field correction to the zarr tasks, and names their results ``.tif`` unless
-  ``save_zarr`` is set, so that without it the job framework waits for results that never come
-  (it runs each task three times, minutes in local mode);
+  the flat-field correction to the zarr tasks (whose results are zarr, also without
+  ``save_zarr``);
 - the linear blocks include channels with factor 0 (read and multiplied); the frames skip them.
 
 Differences: integer-class factors, backgrounds or offsets are taken as doubles (MATLAB's code
@@ -1135,7 +1134,7 @@ def unmix_channels_zarr(
     Param("constOffset", "@(x) isnumeric(x)", "If set, added after the unmixing.", convert="same"),
     Param("zarrFile", "@islogical", "The files are zarr."),
     Param("largeFile", "@islogical", "Large zarr files: unmix in blocks (unmix_channels_zarr)."),
-    Param("saveZarr", "@islogical", "Save the results as zarr."),
+    Param("saveZarr", "@islogical", "Save the results as zarr (large files: always)."),
     Param("save16bit", "@islogical", "Save uint16; otherwise single.", convert="same"),
     Param("batchSize", "@isvector", "Batch size (z, y, x) of large files.", convert="size_yxz"),
     Param("blockSize", "@isvector", "Chunk size (z, y, x) of zarr results.", convert="size_yxz"),
@@ -1278,7 +1277,8 @@ def unmix_channels_dataset(
         groups = groups[~incomplete]
 
     ci = int(channel_ind)
-    ext = ".zarr" if save_zarr else ".tif"
+    # (the large-file tasks, unmix_channels_zarr, always write zarr)
+    ext = ".zarr" if save_zarr or large_file else ".tif"
     im_size = get_image_size(f"{paths[fd_inds[0]]}/{fnames[0]}")
 
     # (MATLAB's task strings: the factors with %0.10f, the sigmas with mat2str(..., 10), the

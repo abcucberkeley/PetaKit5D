@@ -2540,7 +2540,7 @@ Unmix a channel of every time point of the datasets (``XR_unmix_channels_data_wr
 | `constOffset` | `const_offset` | par | same | `[]` | `None` | `@(x) isnumeric(x)` | If set, added after the unmixing. |
 | `zarrFile` | `zarr_file` | par |  | `false` | `False` | `@islogical` | The files are zarr. |
 | `largeFile` | `large_file` | par |  | `false` | `False` | `@islogical` | Large zarr files: unmix in blocks (unmix_channels_zarr). |
-| `saveZarr` | `save_zarr` | par |  | `false` | `False` | `@islogical` | Save the results as zarr. |
+| `saveZarr` | `save_zarr` | par |  | `false` | `False` | `@islogical` | Save the results as zarr (large files: always). |
 | `save16bit` | `save_16bit` | par | same | `true` | `True` | `@islogical` | Save uint16; otherwise single. |
 | `batchSize` | `batch_size` | par | size_yxz | `[1024,1024,1024]` | `(1024, 1024, 1024)` | `@isvector` | Batch size (z, y, x) of large files. |
 | `blockSize` | `block_size` | par | size_yxz | `[256,256,256]` | `(256, 256, 256)` | `@isvector` | Chunk size (z, y, x) of zarr results. |
