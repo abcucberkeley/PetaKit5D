@@ -203,6 +203,34 @@ def frame_tree(single=False):
     )
 
 
+# (the file's name without a folder, in data/ as the current folder)
+_CODE_HERE = (
+    "d = in{1}; a = in(6 : end); "
+    "for i = find(strcmp(a, 'PSFfile')), if ~isempty(a{i + 1}), a{i + 1} = [d, a{i + 1}]; end; "
+    "end; here = pwd; cd([d, 'data']); "
+    "try, XR_RLdeconFrame3D(in{2}, in{3}, in{4}, in{5}, a{:}); catch ME, cd(here); "
+    "rethrow(ME); end; cd(here); out = {};"
+)
+
+
+def p_frame_here(d, files, xy, dz, decon_path, *opts, backend):
+    from petakit5d import matlab
+
+    a = list(opts)
+    for i, v in enumerate(opts):
+        if v == "PSFfile" and a[i + 1]:
+            a[i + 1] = d + a[i + 1]
+    rl.clear_otf_cache()
+    here = os.getcwd()
+    os.chdir(d + "data")
+    try:
+        with P.using(backend):
+            matlab.XR_RLdeconFrame3D(files, xy, dz, decon_path, *a)
+    finally:
+        os.chdir(here)
+    return []
+
+
 def frame_cases(
     cid,
     opts,
@@ -215,6 +243,7 @@ def frame_cases(
     expect_error=False,
     backends=BACKENDS,
     device="cpu",
+    here=False,
 ):
     res = []
     for be in backends:
@@ -222,10 +251,10 @@ def frame_cases(
             Case(
                 f"{cid}.{be}",
                 device=device,
-                code=_CODE,
+                code=_CODE_HERE if here else _CODE,
                 args=[InPath("root"), files, XY, DZ, decon_path, *base, *opts],
                 nargout=0,
-                python=p_frame,
+                python=p_frame_here if here else p_frame,
                 py_kwargs={"backend": be},
                 inputs={"root": Tree(root or make_root(), "root")},
                 expect_error=expect_error,
@@ -278,6 +307,9 @@ CASES += frame_cases(
     files=[FSN + ".tif", FSN2 + ".tif", FSN3 + ".tif"],
 )
 CASES += frame_cases("frame.missing", [], files=["missing.tif", FSN + ".tif"])
+# DeconFrameTest/deconOfAFileInTheCurrentFolderStaysThere: a file name without a folder is in the
+# current folder (it wrote to /matlab_decon/ until b4eade6)
+CASES += frame_cases("frame.bare_name", [], here=True)
 # the methods and the options passed on
 # OMW: the symmetric PSF only with the exact backend (see psf_noisy), the noisy one on both
 _OMW = ["RLMethod", "omw", "skewed", False, "DeconIter", 2]
@@ -642,6 +674,23 @@ def test_gpu_job_does_not_read_a_finished_next_file(tmp_path, monkeypatch):
     run(fns, d, tmp_path, decon_iter=2, gpu_job=True)
     assert events.count(f"read {os.path.normpath(fns[1])}") == 0
     assert (tmp_path / "decon" / (FSN + ".tif")).is_file()
+
+
+def test_gpu_job_does_not_read_a_finished_next_file_of_the_current_folder(tmp_path, monkeypatch):
+    # (DeconFrameTest/gpuJobDoesNotReadAFinishedNextFileOfTheCurrentFolder) a file name without
+    # a folder is in the current folder: its result is looked for in matlab_decon/ there (in
+    # /matlab_decon/ until b4eade6, so the finished next file was read)
+    monkeypatch.setattr(FR, "gpu_free_bytes", lambda: 10**15)
+    _fake(monkeypatch, run_cpu=True)
+    _three(tmp_path)
+    monkeypatch.chdir(tmp_path / "data")
+    names = [FSN + ".tif", FSN2 + ".tif"]
+    kw = {"decon_iter": 2, "rl_method": "simplified", "gpu_job": True}
+    run(names[1], "", tmp_path, **kw)
+    events = _spy(monkeypatch)
+    run(names, "", tmp_path, **kw)
+    assert events.count(f"read {os.path.normpath(names[1])}") == 0
+    assert (tmp_path / "data" / "matlab_decon" / names[0]).is_file()
 
 
 def test_gpu_has_room_is_twice_the_decon(monkeypatch):

@@ -749,6 +749,9 @@ def rotate_file(
         # MATLAB's fileparts: the folder without its last separator, the name without extension
         rt, base = os.path.split(frame_path)
         fsname = os.path.splitext(base)[0]
+        # a file name without a folder is in the current folder (not the root)
+        if not rt:
+            rt = "."
         rt_path = rt + "/Rotated/"
         os.makedirs(rt_path, exist_ok=True)
         rt_fullname = rt_path + fsname + ".tif"

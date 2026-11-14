@@ -78,6 +78,12 @@
     "rescaleRotateScalesTheResultToTheUint16Range": [
      "pytest:tests/deskew_rotate/test_file.py::test_rescale_rotate_scales_the_result_to_the_uint16_range",
      "oracle:tests/deskew_rotate/test_file.py::frame.combined.rescale_u16"
+    ],
+    "resultsOfAFileInTheCurrentFolderStayThere": [
+     "oracle:tests/deskew_rotate/test_file.py::frame.bare_name"
+    ],
+    "rotatedFrameOfAFileInTheCurrentFolderStaysThere": [
+     "oracle:tests/deskew_rotate/test_file.py::rotcrop.rotate_file.bare_name"
     ]
    }
   },

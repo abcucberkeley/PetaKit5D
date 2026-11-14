@@ -664,6 +664,9 @@ def deskew_rotate_file(
             warnings.warn(f"{p} does not exist!", stacklevel=2)
             return
     rt, fsname, _ = fileparts(paths[0])
+    # a file name without a folder is in the current folder (not the root)
+    if not rt:
+        rt = "."
     ext = ".zarr" if save_zarr else ".tif"
     ds_path = ds_fullname = ""
     if not dsr_combined:

@@ -119,9 +119,11 @@ def zarr_case(cid, make, *args, error=False, code=None):
 # parseParfor runs the tasks on a pool of 12 (matlab_parfor_generic_computing_wrapper), which
 # MATLAB refuses in a job of fewer cores (parallel:cluster:LocalProfileNumWorkersExceeded),
 # and the wrapper takes an open pool as it is: the case opens the pool itself, of 12 workers
-# at most, so that its reference is the blocks' result in a job of any size, and closes it
+# at most, so that its reference is the blocks' result in a job of any size, and closes it; a
+# pool an earlier case of the pack left open is closed first (MATLAB refuses a second pool in a
+# session, parallel:convenience:ConnectionOpen)
 _PARFOR = (
-    "c = parcluster('local'); p = parpool(c, min(12, c.NumWorkers)); "
+    "delete(gcp('nocreate')); c = parcluster('local'); p = parpool(c, min(12, c.NumWorkers)); "
     f"try, XR_deskewRotateZarr([in{{1}}, '{FSN}.zarr'], in{{2 : end}}); "
     "catch ME, delete(p); rethrow(ME); end; delete(p); out = {};"
 )

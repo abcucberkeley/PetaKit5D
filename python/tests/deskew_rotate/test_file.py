@@ -152,6 +152,27 @@ def frame_case(cid, make_tree, runs, frames=f"{FSN}.tif", **kw):
     )
 
 
+def p_frame_here(d, fname, *args):
+    from petakit5d import matlab
+
+    here = os.getcwd()
+    os.chdir(d)
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", RuntimeWarning)
+            matlab.XR_deskewRotateFrame(fname, *args)
+    finally:
+        os.chdir(here)
+    return []
+
+
+# (the file's name without a folder, in the input folder as the current folder)
+_CODE_HERE = (
+    "here = pwd; cd(in{1}); try, {fn}(in{2 : end}); catch ME, cd(here); rethrow(ME); end; "
+    "cd(here); out = {};"
+)
+
+
 def _r(*extra, dz=0.3, reverse=True):
     """one call: pixel size, dz, skew angle, reverse and the extra name-value pairs"""
     return [PX, dz, "skewAngle", SKEW, "reverse", reverse, *extra]
@@ -191,6 +212,16 @@ def _frame_cases() -> list[Case]:
             "combined.bbox_flip",
             t,
             [_r("inputBbox", [5, 3, 2, 33, 58, 27], "flipZstack", True)],
+        ),
+        # XRDeskewRotateFrameTest/resultsOfAFileInTheCurrentFolderStayThere: a file name without
+        # a folder is in the current folder (it wrote to /DS/ and /DSR/ until b4eade6)
+        Case(
+            "frame.bare_name",
+            code=_CODE_HERE.replace("{fn}", "XR_deskewRotateFrame"),
+            nargout=0,
+            args=[InPath("d"), f"{FSN}.tif", *_r(*sep)],
+            python=p_frame_here,
+            inputs={"d": Tree(t, "d")},
         ),
         frame_case("combined.in_xyz", t, [_r("inputAxisOrder", "xyz")]),
         frame_case("combined.in_zyx", t, [_r("inputAxisOrder", "zyx")]),
@@ -659,6 +690,18 @@ def _rotcrop_cases() -> list[Case]:
             inputs={"d": Tree(band_tree, "d")},
         )
     )
+    # XRDeskewRotateFrameTest/rotatedFrameOfAFileInTheCurrentFolderStaysThere: a file name
+    # without a folder is in the current folder (it wrote to /Rotated/ until b4eade6)
+    cases.append(
+        Case(
+            "rotcrop.rotate_file.bare_name",
+            code=_CODE_HERE.replace("{fn}", "XR_RotateFrame3D"),
+            nargout=0,
+            args=[InPath("d"), "scan_ch0.tif", PX, 0.2, "SkewAngle", SKEW, "uuid", "u0"],
+            python=p_rotate_here,
+            inputs={"d": Tree(band_tree, "d")},
+        )
+    )
     return cases
 
 
@@ -666,6 +709,18 @@ def p_rotate_file(d, *args):
     from petakit5d import matlab
 
     matlab.XR_RotateFrame3D(d + "scan_ch0.tif", *args)
+    return []
+
+
+def p_rotate_here(d, fname, *args):
+    from petakit5d import matlab
+
+    here = os.getcwd()
+    os.chdir(d)
+    try:
+        matlab.XR_RotateFrame3D(fname, *args)
+    finally:
+        os.chdir(here)
     return []
 
 

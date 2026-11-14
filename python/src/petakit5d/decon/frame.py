@@ -141,6 +141,8 @@ def next_frame_needs_decon(
     if not _exist(fn):
         return False
     pathstr, fsname, _ = fileparts(fn)
+    if not pathstr:
+        pathstr = "."
     if not decon_path:
         decon_path = f"{pathstr}/matlab_decon"
     if not overwrite and _exist(_result_path(decon_path, fsname, save_zarr)):
@@ -386,6 +388,9 @@ def decon_file(
             _warn(f"{fn} does not exist! Skip it!")
             continue
         pathstr, fsname, ext = fileparts(fn)
+        # a file name without a folder is in the current folder (not the root)
+        if not pathstr:
+            pathstr = "."
         dpath = decon_path
         if not dpath:
             dpath = f"{pathstr}/matlab_decon"
