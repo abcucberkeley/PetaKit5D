@@ -1158,11 +1158,6 @@ def test_wrapper_parameters_files_hold_matlabs_values(tmp_path):
         block_size=(4, 16, 8),
         input_bbox=(1, 2, 3, 10, 30, 33),
     )
-    text = (tmp_path / "d" / "zarr" / "parameters.json").read_text()
-    if os.name == "nt":
-        # MATLAB's writeJsonFile writes the JSON with fprintf(fid, s), which turns the \\ of a
-        # Windows path into \ (invalid JSON); the port does the same (core.textfiles)
-        text = text.replace("\\", "/")
-    pr = json.loads(text)
+    pr = json.loads((tmp_path / "d" / "zarr" / "parameters.json").read_text())
     assert pr["blockSize"] == [16, 8, 4]
     assert pr["inputBbox"] == [3, 4, 2, 30, 33, 10]

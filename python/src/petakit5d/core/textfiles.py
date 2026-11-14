@@ -7,10 +7,9 @@ UTF-8 read as U+FFFD, as in MATLAB. Quirks kept on purpose (each has a test):
   ``readTextFile`` does. ``\\r\\n`` ends a line like ``\\n``.
 - ``write_text_file`` of a list writes every line followed by ``\\n`` (an empty list writes one
   ``\\n``); of a string, the string as it is.
-- ``write_json_file`` passes the JSON text to ``fprintf`` as the format, as ``writeJsonFile``
-  does: ``\\\\`` in the JSON becomes ``\\``, ``\\t`` a tab, and the file ends at the first ``%``
-  that starts a conversion (``"x%03d.tif"`` truncates the file after ``"x``) or at an escape
-  ``sprintf`` does not know (``\\u0001``).
+- ``write_json_file`` writes the JSON text as it is, as ``writeJsonFile`` does since its fix
+  (``fprintf(fid, '%s', s)``; it passed the text as the format before, which cut the file at a
+  ``%`` and turned the doubled backslashes of Windows paths into single ones).
 """
 
 from __future__ import annotations
@@ -19,7 +18,6 @@ import os
 import re
 
 from petakit5d.core.jsonenc import jsonencode
-from petakit5d.core.text import sprintf
 
 __all__ = ["read_text_file", "write_json_file", "write_text_file"]
 
@@ -57,7 +55,8 @@ def write_text_file(text_lines, filename: str | os.PathLike, batch_size: int = 1
 
 
 def write_json_file(pr, filename: str | os.PathLike) -> None:
-    """``writeJsonFile``: ``jsonencode(pr, PrettyPrint=true)`` written with ``fprintf(fid, s)``."""
+    """``writeJsonFile``: ``jsonencode(pr, PrettyPrint=true)`` written as it is
+    (``fprintf(fid, '%s', s)``)."""
     s = jsonencode(pr, pretty_print=True)
     with open(filename, "wb") as f:
-        f.write(sprintf(s).encode("utf-8"))
+        f.write(s.encode("utf-8"))

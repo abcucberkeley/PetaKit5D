@@ -1,3 +1,5 @@
+import json
+
 import pytest
 
 from petakit5d.core import textfiles
@@ -39,14 +41,16 @@ def test_write_text_file(tmp_path):
         textfiles.write_text_file(5, p)
 
 
-def test_write_json_file_goes_through_fprintf(tmp_path):
-    # writeJsonFile: fprintf(fid, s) takes the JSON as a format
+def test_write_json_file_writes_the_json_as_it_is(tmp_path):
+    # writeJsonFile: fprintf(fid, '%s', s), the JSON text as it is (it passed the text as the
+    # format before, which cut the file at a % and halved the backslashes of Windows paths)
     p = tmp_path / "p.json"
     textfiles.write_json_file({"a": "plain", "b": [1, 2], "c": 0.108}, p)
     assert p.read_text() == '{\n  "a": "plain",\n  "b": [\n    1,\n    2\n  ],\n  "c": 0.108\n}'
-    textfiles.write_json_file({"a": "C:\\data\\new", "b": "x%03d.tif"}, p)
-    assert p.read_bytes() == b'{\n  "a": "C:\\data\\new",\n  "b": "x'  # truncated at %03d
-    textfiles.write_json_file({"p": "100%% done"}, p)
-    assert p.read_text() == '{\n  "p": "100% done"\n}'
-    textfiles.write_json_file({"ctl": "\x01x"}, p)
-    assert p.read_text() == '{\n  "ctl": "'  # \u0001 is not an escape sprintf knows
+    pr = {"a": "C:\\data\\new", "b": "x%03d.tif", "p": "100%% done", "ctl": "\x01x"}
+    textfiles.write_json_file(pr, p)
+    assert p.read_bytes() == (
+        b'{\n  "a": "C:\\\\data\\\\new",\n  "b": "x%03d.tif",\n  "p": "100%% done",\n'
+        b'  "ctl": "\\u0001x"\n}'
+    )
+    assert json.loads(p.read_text()) == pr
