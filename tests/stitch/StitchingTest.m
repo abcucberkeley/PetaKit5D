@@ -17,6 +17,7 @@ classdef StitchingTest < pktest.TestCase
         % minutes, -1 for no marker
         markerAge = struct('none', -1, 'old', 11)
         blendMethod = {'none', 'feather', 'max', 'mean', 'median'}
+        xcorrModeName = {'primaryFirst', 'primary', 'all'}
         tileBlendMethod = {'none', 'max', 'mean', 'median'}
         axisOrder = struct('x', 'x,y,z', 'minusX', '-x,y,z')
         thinTileDepth = struct('nz8', 8, 'nz20', 20)
@@ -1255,6 +1256,238 @@ classdef StitchingTest < pktest.TestCase
             testCase.verifyFalse(info.overlap_matrix(1, 2), 'The tiles that only touch are a pair that overlaps.');
             testCase.verifyEqual(testCase.cropToData(testCase.readResult(dataPath)), gt);
         end
+
+        function tilesWithOtherMsecFieldsAreStitched(testCase, xcorrModeName)
+            % the msec fields of a volume's tiles can differ (real data): the
+            % volume's names got all of them (sprintf of a vector), with a
+            % char(0) from the fpga time, so its .tmp marker could not be
+            % made (MATLAB:FileIO:InvalidFid). They take the first tile's, as
+            % the fpga time, also for the primary's stitch info that the
+            % secondary channel reads.
+            dataPath = testCase.createTempFolder();
+            gt = testCase.randomVolume([100, 120, 32]);
+            starts = [0, 0, 0; 36, 0, 0; 0, 48, 0; 36, 48, 0];
+            msec = [5000, 6000, 5000, 6000];
+            testCase.writeTiles(dataPath, gt, starts, [64, 72, 32], [], [], [], 'msec', msec);
+            csvFn = testCase.writeTiles(dataPath, gt, starts, [64, 72, 32], [], [], [], 'ch', 1, 'msec', msec + 500);
+
+            testCase.stitch(dataPath, csvFn, 'channelPatterns', {'CamA_ch0', 'CamA_ch1'}, 'xcorrMode', xcorrModeName);
+
+            names = {strrep(testCase.StitchName, '_0000000msec_', '_0005000msec_'), ...
+                strrep(strrep(testCase.StitchName, 'ch0', 'ch1'), '_0000000msec_', '_0005500msec_')};
+            for c = 1 : 2
+                out = testCase.readResult(dataPath, 'matlab_stitch', names{c});
+                testCase.verifyEqual(out(1 : 100, 1 : 120, 1 : 32), gt, sprintf('Channel %d.', c - 1));
+            end
+        end
+
+        function multiLocVolumesGetTheirOwnJobs(testCase)
+            % with tiles in several folders (multiLoc), the loop over a
+            % volume's tiles took the volume's number f as its index, so in
+            % cluster mode every volume's job got the task of the tile count
+            % (and the master's last-volume rule looked at that number): the
+            % job of the first volume was a task another volume's job had.
+            % The fake jobs of the two volumes (tasks 1 and 2) make their
+            % results; the stitching function is a spy.
+            testCase.assumeFalse(ispc, 'The fake Slurm needs a POSIX shell.');
+            gt = testCase.randomVolume([100, 72, 32]);
+            dataPaths = {testCase.createTempFolder(), testCase.createTempFolder()};
+            csvFns = cell(1, 2);
+            for d = 1 : 2
+                for iter = 0 : 1
+                    csvFns{d} = testCase.writeTiles(dataPaths{d}, gt, [36 * (d - 1), 0, 0], [64, 72, 32], [], ...
+                        [0, 36 * (d - 1) * testCase.XYPixelSize, 0], [0, 0, 0], 'iter', iter);
+                end
+            end
+            resultFns = arrayfun(@(x) sprintf('%smatlab_stitch/%s.zarr', dataPaths{1}, ...
+                strrep(testCase.StitchName, 'Iter_0000', sprintf('Iter_%04d', x))), 0 : 1, 'unif', 0);
+            slurm = testCase.applyFixture(pktest.FakeSlurmFixture);
+            slurm.setJobStates('1000_1', {'R', 'done'}, resultFns(1));
+            slurm.setJobStates('1001_2', {'R', 'done'}, resultFns(2));
+            testCase.applyFixture(pktest.FunctionSpyFixture('pause', [], 20));
+            testCase.applyFixture(pktest.FunctionSpyFixture('XR_stitching_frame_zarr_dev_v1'));
+
+            XR_matlab_stitching_wrapper(dataPaths, csvFns, 'multiLoc', true, 'DSR', true, 'resampleType', 'isotropic', ...
+                'xyPixelSize', testCase.XYPixelSize, 'axisOrder', 'x,y,z', 'xcorrShift', false, ...
+                'channelPatterns', {'CamA_ch0'}, 'xcorrMode', 'all', 'parseCluster', true, 'masterCompute', false, ...
+                'jobLogDir', [dataPaths{1}, 'logs']);
+
+            lines = slurm.calls('sbatch');
+            testCase.verifyNumElements(lines, 2, 'Each volume should have one job.');
+            testCase.verifyTrue(all(cellfun(@isfolder, resultFns) | cellfun(@isfile, resultFns)), ...
+                'The volumes'' jobs did not have their own tasks.');
+        end
+
+        function primaryModeSkipsTheChannelsOfATimePointWithoutItsPrimary(testCase)
+            % xcorrMode 'primary' skips the other channels of a time point
+            % whose primary channel is missing: it marked those of the first
+            % time point instead, and the secondary of the time point failed
+            % reading the primary's tiles (index exceeds the number of rows).
+            dataPath = testCase.createTempFolder();
+            gt = testCase.randomVolume([100, 120, 32]);
+            starts = [0, 0, 0; 36, 0, 0; 0, 48, 0; 36, 48, 0];
+            testCase.writeTiles(dataPath, gt, starts, [64, 72, 32]);
+            testCase.writeTiles(dataPath, gt, starts, [64, 72, 32], [], [], [], 'ch', 1);
+            csvFn = testCase.writeTiles(dataPath, gt, starts, [64, 72, 32], [], [], [], 'ch', 1, 'iter', 1);
+
+            testCase.stitch(dataPath, csvFn, 'channelPatterns', {'CamA_ch0', 'CamA_ch1'}, 'xcorrMode', 'primary');
+
+            for c = 0 : 1
+                out = testCase.readResult(dataPath, 'matlab_stitch', strrep(testCase.StitchName, 'ch0', sprintf('ch%d', c)));
+                testCase.verifyEqual(out(1 : 100, 1 : 120, 1 : 32), gt, sprintf('Time point 0, channel %d.', c));
+            end
+            testCase.verifyFalse(isfolder(sprintf('%smatlab_stitch/%s.zarr', dataPath, ...
+                strrep(strrep(testCase.StitchName, 'Iter_0000', 'Iter_0001'), 'ch0', 'ch1'))), ...
+                'The secondary channel of the time point without its primary was stitched.');
+        end
+
+        function onlineStitchWithoutStreamingRemovesResultsOfFewerTiles(testCase)
+            % onlineStitch names results by their tile count and removes those
+            % of fewer tiles. The names' pattern assumed the z layer text of
+            % streaming, so without streaming (as the pipeline's local
+            % stitching runs) such results were never found and stayed.
+            dataPath = testCase.createTempFolder();
+            gt = testCase.randomVolume([100, 120, 32]);
+            csvFn = testCase.writeTiles(dataPath, gt, [0, 0, 0; 36, 0, 0; 0, 48, 0; 36, 48, 0], [64, 72, 32]);
+            oldFn = sprintf('%smatlab_stitch/%s_003ntile.zarr', dataPath, testCase.StitchName);
+            mkdir(oldFn);
+            mkdir([dataPath, 'matlab_stitch/MIPs']);
+            fclose(fopen(sprintf('%smatlab_stitch/MIPs/%s_003ntile_MIP_z.tif', dataPath, testCase.StitchName), 'w'));
+
+            testCase.stitch(dataPath, csvFn, 'onlineStitch', true);
+
+            out = testCase.readResult(dataPath, 'matlab_stitch', [testCase.StitchName, '_004ntile']);
+            testCase.verifyEqual(out(1 : 100, 1 : 120, 1 : 32), gt);
+            testCase.verifyFalse(isfolder(oldFn), 'The result of 3 tiles was not removed.');
+        end
+
+        function stitchingFunctionGetsTheJobLogFolder(testCase)
+            % the stitching function didn't get the wrapper's jobLogDir, so
+            % its tile and block jobs logged to its default folder. The
+            % stitching function is a spy that makes the result.
+            [dataPath, csvFn, resultFns] = testCase.writeTwoVolumes(1);
+            frames = testCase.applyFixture(pktest.FunctionSpyFixture('XR_stitching_frame_zarr_dev_v1', ...
+                @() fclose(fopen(resultFns{1}, 'w'))));
+            logDir = [dataPath, 'logs/'];
+
+            testCase.stitch(dataPath, csvFn, 'jobLogDir', logDir);
+
+            testCase.assertNumElements(frames.getCalls(), 1);
+            testCase.verifyEqual(frames.getOption(1, 'jobLogDir'), logDir);
+        end
+
+        function outBboxOfThreeRowsIsItsSixValues(testCase)
+            % outBbox may be 3 x 2 ([min, max] per axis, as the stitching
+            % function takes it), but num2str made two-dimensional text of
+            % it in the function string. The stitching function is a spy
+            % that makes the result.
+            [dataPath, csvFn, resultFns] = testCase.writeTwoVolumes(1);
+            frames = testCase.applyFixture(pktest.FunctionSpyFixture('XR_stitching_frame_zarr_dev_v1', ...
+                @() fclose(fopen(resultFns{1}, 'w'))));
+
+            testCase.stitch(dataPath, csvFn, 'outBbox', [3, 90; 5, 100; 2, 30]);
+
+            testCase.assertNumElements(frames.getCalls(), 1);
+            testCase.verifyEqual(frames.getOption(1, 'outBbox'), [3, 5, 2, 90, 100, 30]);
+        end
+
+        function processFunctionRowHasOnePathPerChannel(testCase)
+            % processFunPath has one path per channel pattern; its rows are
+            % chosen by channel, so a row (as one makes with
+            % processFunPath{i} = fn, e.g., in demo_skewed_space_stitching.m)
+            % worked only for the first channel: index error for the others.
+            % One path in a cell is for every channel, as one path as text.
+            % (Each case in a folder of its own: the processed tiles stay.)
+            gt = testCase.randomVolume([100, 120, 32], [1000, 50000]);
+            starts = [0, 0, 0; 36, 0, 0; 0, 48, 0; 36, 48, 0];
+            funPath = testCase.createTempFolder();
+            funFns = cell(1, 2);
+            for c = 1 : 2
+                usrFun = sprintf('@(x)x+%d', 100 * c);
+                funFns{c} = sprintf('%sprocessFunction_c%d.mat', funPath, c);
+                save('-v7.3', funFns{c}, 'usrFun');
+            end
+            cases = {funFns, [100, 200]; funFns(1), [100, 100]};
+            for i = 1 : size(cases, 1)
+                dataPath = testCase.createTempFolder();
+                testCase.writeTiles(dataPath, gt, starts, [64, 72, 32]);
+                csvFn = testCase.writeTiles(dataPath, gt, starts, [64, 72, 32], [], [], [], 'ch', 1);
+
+                testCase.stitch(dataPath, csvFn, 'channelPatterns', {'CamA_ch0', 'CamA_ch1'}, 'blendMethod', 'none', ...
+                    'processFunPath', cases{i, 1});
+
+                for c = 1 : 2
+                    out = testCase.readResult(dataPath, 'matlab_stitch', strrep(testCase.StitchName, 'ch0', sprintf('ch%d', c - 1)));
+                    testCase.verifyEqual(out(1 : 100, 1 : 120, 1 : 32), gt + cases{i, 2}(c), ...
+                        sprintf('Case %d, channel %d.', i, c - 1));
+                end
+            end
+        end
+
+        function resampleFactorOfOneOrTwoValues(testCase)
+            % resampleFactor may have 1 value (all axes) or 2 (xy, z), but the
+            % stitching function took 3 (index error): they are completed
+            dataPath = testCase.createTempFolder();
+            px = testCase.XYPixelSize;
+            gt = testCase.randomVolume([80, 108, 40]);
+            % (tiles 2 and 4 8 slices deeper: the z factor places them)
+            starts = [0, 0, 0; 0, 36, 8; 30, 0, 0; 30, 36, 8];
+            expected = zeros(size(gt), 'uint16');
+            for j = 1 : 4
+                s = starts(j, :);
+                expected(s(1) + 1 : s(1) + 50, s(2) + 1 : s(2) + 72, s(3) + 1 : s(3) + 32) = ...
+                    gt(s(1) + 1 : s(1) + 50, s(2) + 1 : s(2) + 72, s(3) + 1 : s(3) + 32);
+            end
+            cases = {2, [2 * px, 2 * px, 2 * px]; [2, 1], [2 * px, 2 * px, px]};
+            for i = 1 : size(cases, 1)
+                csvFn = testCase.writeTiles(dataPath, gt, starts, [50, 72, 32], cases{i, 2}, [], [], ...
+                    'imageList', sprintf('ImageList_%d.csv', i));
+                resultDirName = sprintf('matlab_stitch_%d', i);
+
+                testCase.stitch(dataPath, csvFn, 'resampleType', 'given', 'resampleFactor', cases{i, 1}, ...
+                    'resultDirName', resultDirName);
+
+                out = testCase.readResult(dataPath, resultDirName);
+                testCase.verifyEqual(size(out), [82, 110, 42], sprintf('Factor %s.', mat2str(cases{i, 1})));
+                testCase.verifyEqual(out(1 : 80, 1 : 108, 1 : 40), expected, sprintf('Factor %s.', mat2str(cases{i, 1})));
+            end
+        end
+
+        function stitchingFunctionMakesItsResultFolder(testCase)
+            % called directly (not by the wrapper, which makes it), the
+            % stitching function failed making its pixel size file in the
+            % result folder (MATLAB:FileIO:InvalidFid)
+            dataPath = testCase.createTempFolder();
+            gt = testCase.randomVolume([100, 120, 32]);
+            testCase.writeTiles(dataPath, gt, [0, 0, 0; 36, 0, 0; 0, 48, 0; 36, 48, 0], [64, 72, 32]);
+            [tileFullpaths, xyz, tileIdx] = testCase.tileList(dataPath);
+
+            XR_stitching_frame_zarr_dev_v1(tileFullpaths, xyz, 'axisOrder', 'x,y,z', 'xyPixelSize', testCase.XYPixelSize, ...
+                'DSR', true, 'resampleType', 'isotropic', 'xcorrShift', false, 'tileIdx', tileIdx, 'parseCluster', false);
+
+            out = testCase.readResult(dataPath);
+            testCase.verifyEqual(out(1 : 100, 1 : 120, 1 : 32), gt);
+        end
+
+        function stitchingFunctionTakesOneProcessFunctionPath(testCase)
+            % processFunPath may be one path (char), but only cells worked
+            % (cellfun of a char: MATLAB:cellfun:NotACell)
+            dataPath = testCase.createTempFolder();
+            gt = testCase.randomVolume([100, 120, 32], [1000, 50000]);
+            testCase.writeTiles(dataPath, gt, [0, 0, 0; 36, 0, 0; 0, 48, 0; 36, 48, 0], [64, 72, 32]);
+            [tileFullpaths, xyz, tileIdx] = testCase.tileList(dataPath);
+            usrFun = '@(x)x+100';
+            funFn = [dataPath, 'processFunction.mat'];
+            save('-v7.3', funFn, 'usrFun');
+            mkdir([dataPath, 'matlab_stitch']);
+
+            XR_stitching_frame_zarr_dev_v1(tileFullpaths, xyz, 'axisOrder', 'x,y,z', 'xyPixelSize', testCase.XYPixelSize, ...
+                'DSR', true, 'resampleType', 'isotropic', 'xcorrShift', false, 'tileIdx', tileIdx, 'parseCluster', false, ...
+                'processFunPath', funFn);
+
+            out = testCase.readResult(dataPath);
+            testCase.verifyEqual(out(1 : 100, 1 : 120, 1 : 32), gt + 100);
+        end
     end
 
     methods (Test, TestTags = {'Integration', 'Slow'})
@@ -1407,6 +1640,16 @@ classdef StitchingTest < pktest.TestCase
             XR_matlab_stitching_wrapper(dataPath, csvFn, 'DSR', true, 'resampleType', 'isotropic', ...
                 'xyPixelSize', testCase.XYPixelSize, 'axisOrder', 'x,y,z', 'xcorrShift', false, ...
                 'channelPatterns', {'CamA_ch0'}, 'primaryCh', 'CamA_ch0', 'parseCluster', false, varargin{:});
+        end
+
+        function [tileFullpaths, xyz, tileIdx] = tileList(~, dataPath)
+            % the tiles of dataPath's image list as the wrapper gives them to
+            % the stitching function (tile indices with the location 1)
+            tab = readtable([dataPath, 'ImageList.csv'], 'Delimiter', 'comma');
+            tileFullpaths = strcat(dataPath, tab.Filename);
+            xyz = [tab.StageX_um_, tab.StageY_um_, tab.StageZ_um_];
+            idx = regexp(tab.Filename, '_(\d+)x_(\d+)y_(\d+)z_', 'tokens', 'once');
+            tileIdx = [str2double(cat(1, idx{:})), ones(numel(tileFullpaths), 1)];
         end
 
         function [im] = cropToData(~, im)

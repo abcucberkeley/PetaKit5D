@@ -372,6 +372,10 @@ for i = 1 : numel(pixelFnames)
 end
 
 if ~exist(pixelInfoFullpath, 'file')
+	% (the result folder, which the wrapper makes, for direct calls)
+	if ~exist(sprintf('%s/%s', dataPath, ResultDir), 'dir')
+		mkdir(sprintf('%s/%s', dataPath, ResultDir));
+	end
 	fclose(fopen(pixelInfoFullpath, 'w'));
 	fileattrib(pixelInfoFullpath, '+w', 'g');
 end
@@ -381,6 +385,10 @@ if ~DS && ~DSR && ~any(stitchMIP)
 	singleDistMap = true;
 end
 
+% (one path, for all tiles, as the wrapper gives it in a cell)
+if ischar(processFunPath) && ~isempty(processFunPath)
+	processFunPath = {processFunPath};
+end
 if isempty(processFunPath) || all(cellfun(@isempty, processFunPath))
 	processFunPath = {''};
 	if EdgeArtifacts > 0

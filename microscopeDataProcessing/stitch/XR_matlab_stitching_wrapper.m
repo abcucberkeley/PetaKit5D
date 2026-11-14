@@ -301,6 +301,27 @@ elseif iscell(processFunPath)
             processFunPath{i} = '';
         end
     end
+    % a row of one path per channel pattern (as the rows are chosen by
+    % channel), or a single path for all channels
+    if size(processFunPath, 1) == 1 && numel(channelPatterns) > 1
+        if numel(processFunPath) == numel(channelPatterns)
+            processFunPath = processFunPath(:);
+        elseif numel(processFunPath) == 1
+            processFunPath = repmat(processFunPath, numel(channelPatterns), 1);
+        end
+    end
+end
+
+% the frame takes 3 resampling factors (yxz): 1 value for all axes, 2 for
+% xy and z
+if numel(resampleFactor) == 1
+    resampleFactor = resampleFactor * [1, 1, 1];
+elseif numel(resampleFactor) == 2
+    resampleFactor = resampleFactor([1, 1, 2]);
+end
+% (a 3 x 2 outBbox, [min, max] per axis, as its 1 x 6 form)
+if ~isempty(outBbox)
+    outBbox = outBbox(:)';
 end
 
 % without cluster, run the tasks of large datasets on a local MATLAB process
@@ -424,10 +445,10 @@ while ~all(is_done_flag | (trial_counter >= max_trial_num & ~job_status_flag), '
                             is_done_flag(n, ncam, s, c, z) = true;
 
                             % if the primary channel is missing, then skip
-                            % other channels if it is primary mode
+                            % other channels (of this time point) if it is primary mode
                             if (ncam == 1 && c == 1) && strcmp(xcorrMode, 'primary')
-                                row_exist_flag(1, 1 : end, 1, 1 : end, 1) = false;
-                                is_done_flag(1, 1 : end, 1, 1 : end, 1) = true;
+                                row_exist_flag(n, 1 : end, s, 1 : end, z) = false;
+                                is_done_flag(n, 1 : end, s, 1 : end, z) = true;
                             end
                             continue;
                         end
@@ -442,7 +463,9 @@ while ~all(is_done_flag | (trial_counter >= max_trial_num & ~job_status_flag), '
                         end
                         
                         laser = unique(cur_tab.laser);
-                        abstime = unique(cur_tab.abstime);
+                        % the first tile's, as its fpga time (tiles' msec
+                        % fields may differ)
+                        abstime = cur_tab.abstime(1);
                         % reltime = unique(cur_t.t);
                         fpgatime = cur_tab.fpgatime(1);
                         xyz = [cur_tab.StageX_um_, cur_tab.StageY_um_, cur_tab.StageZ_um_];
@@ -457,8 +480,9 @@ while ~all(is_done_flag | (trial_counter >= max_trial_num & ~job_status_flag), '
                         if multiLoc
                             nF = numel(tile_fnames);
                             tile_fullpaths = cell(nF, 1);
-                            for f = 1 : nF
-                                tile_fullpaths{f} = sprintf('%s/%s', dataPaths{cur_tab.did(f)}, tile_fnames{f});
+                            % (t: f is the volume's number)
+                            for t = 1 : nF
+                                tile_fullpaths{t} = sprintf('%s/%s', dataPaths{cur_tab.did(t)}, tile_fnames{t});
                             end
                         else
                             tile_fullpaths = cellfun(@(x) [dataPaths, '/', x], tile_fnames, 'unif', 0);
@@ -489,8 +513,8 @@ while ~all(is_done_flag | (trial_counter >= max_trial_num & ~job_status_flag), '
                             if multiLoc
                                 nF = numel(tile_fnames);
                                 tile_processed_fullpaths = cell(nF, 1);
-                                for f = 1 : nF
-                                    tile_processed_fullpaths{f} = sprintf('%s/%s/%s', dataPaths{cur_tab.did(f)}, processedDirStr, tile_fnames{f});
+                                for t = 1 : nF
+                                    tile_processed_fullpaths{t} = sprintf('%s/%s/%s', dataPaths{cur_tab.did(t)}, processedDirStr, tile_fnames{t});
                                 end
                             else
                                 tile_processed_fullpaths = cellfun(@(x) [dataPaths, '/', processedDirStr, '/', x], tile_fnames, 'unif', 0);
@@ -559,7 +583,7 @@ while ~all(is_done_flag | (trial_counter >= max_trial_num & ~job_status_flag), '
                                 isPrimaryCh = false;
                                 primary_tab = tab(tab.ch == Ch(1) & tab.camera == Cam(1) & strcmp(tab.fullIter, fullIter{n}) & tab.stack == stackn(s), :);
                                 p_laser = unique(primary_tab.laser);
-                                p_abstime = unique(primary_tab.abstime);
+                                p_abstime = primary_tab.abstime(1);
                                 p_fpgatime = primary_tab.fpgatime(1);
                                 p_z = unique(primary_tab.z);
                                 p_z = p_z(1);
@@ -611,7 +635,12 @@ while ~all(is_done_flag | (trial_counter >= max_trial_num & ~job_status_flag), '
                         if onlineStitch
                             % xruan: for bidirectional scan, the fpga time may change
                             % dir_info = dir([stitch_save_fsname(1:end-8), '*ntile.zarr']);
-                            dir_info = dir([stitch_save_fsname(1 : end - 32), '_*msecAbs_', z_str(2:5), '*ntile.zarr']);
+                            if zlayerStitch
+                                dir_info = dir([stitch_save_fsname(1 : end - 32), '_*msecAbs_', z_str(2:5), '*ntile.zarr']);
+                            else
+                                % (without streaming the names have no z layer)
+                                dir_info = dir([stitch_save_fsname(1 : end - 18 - numel(z_str)), '_*msecAbs_*ntile.zarr']);
+                            end
                             stitch_save_files = {dir_info.name}';
 
                             stitch_tile_nums = regexp(stitch_save_files, '_(\d+)ntile', 'tokens');
@@ -708,6 +737,11 @@ while ~all(is_done_flag | (trial_counter >= max_trial_num & ~job_status_flag), '
                         % function's default is true)
                         if parseCluster && ~masterCompute
                             func_str = sprintf('%s,''masterCompute'',false)', func_str(1 : end - 1));
+                        end
+                        % (and the job log folder unless it is the stitching
+                        % function's default, so that its jobs log there too)
+                        if ~strcmp(jobLogDir, '../job_logs')
+                            func_str = sprintf('%s,''jobLogDir'',''%s'')', func_str(1 : end - 1), jobLogDir);
                         end
 
                         job_running = false;

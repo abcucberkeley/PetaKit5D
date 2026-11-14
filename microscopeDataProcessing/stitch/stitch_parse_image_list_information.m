@@ -265,7 +265,8 @@ if strcmp(xcorrMode, 'primaryFirst')
     end
     
     p_laser = unique(primary_tab.laser);
-    p_abstime = unique(primary_tab.abstime);
+    % the first tile's, as its fpga time (tiles' msec fields may differ)
+    p_abstime = primary_tab.abstime(1);
     p_fpgatime = primary_tab.fpgatime(1);
     p_z = unique(primary_tab.z);
     p_z = p_z(1);

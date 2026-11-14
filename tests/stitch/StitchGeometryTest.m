@@ -48,7 +48,9 @@ classdef StitchGeometryTest < pktest.TestCase
             % too), so the stitching sorted any order into some permutation;
             % 'z,x,y' was missing from it. It comes before the tiles are
             % read, so the tiles here don't exist: valid orders end in
-            % another error later.
+            % another error later (the tiles' sizes, which the MATLAB code
+            % also tries after the mex).
+            testCase.expectMexFallback('getImageSizeMex');
             dataPath = testCase.createTempFolder();
             for ao = {'x,x,z', 'a,b,c', 'x,y', 'x,y,z,y', 'x,y;z'}
                 testCase.verifyError(@() testCase.frameWithAxisOrder(dataPath, ao{1}), ...

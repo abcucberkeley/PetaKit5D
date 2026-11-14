@@ -16,6 +16,7 @@ function [fsns, imageListFullpath] = writeStitchTiles(dataPath, tiles, varargin)
 %          imageList : char (default: 'ImageList.csv'). Image list filename in dataPath. Rows are appended if it exists.
 %            tileDir : char (default: ''). Subfolder of dataPath for the tile files, e.g., 'DSR'.
 %         saveFormat : 'tif'|'zarr' (default: 'tif'). Tile file format. The image list always has .tif names.
+%               msec : a number or one per tile (default: 0). The msec field of the filenames.
 
 ip = inputParser;
 ip.CaseSensitive = false;
@@ -28,6 +29,7 @@ ip.addParameter('laser', 488, @isnumeric);
 ip.addParameter('imageList', 'ImageList.csv', @ischar);
 ip.addParameter('tileDir', '', @ischar);
 ip.addParameter('saveFormat', 'tif', @(x) any(strcmpi(x, {'tif', 'zarr'})));
+ip.addParameter('msec', 0, @isnumeric);
 ip.parse(dataPath, tiles, varargin{:});
 
 pr = ip.Results;
@@ -53,11 +55,12 @@ if ~isempty(tileDir)
 end
 
 nT = numel(tiles);
+msec = pr.msec(:) .* ones(nT, 1);
 fsns = cell(nT, 1);
 xyz = zeros(nT, 3);
 for i = 1 : nT
-    fsns{i} = sprintf('Scan_Iter_%04d_0000%s_ch%d_CAM1_stack0000_%dnm_0000000msec_0000000000msecAbs_%03dx_%03dy_%03dz_0000t', ...
-        iter, camStr, ch, laser, tiles(i).idx);
+    fsns{i} = sprintf('Scan_Iter_%04d_0000%s_ch%d_CAM1_stack0000_%dnm_%07dmsec_0000000000msecAbs_%03dx_%03dy_%03dz_0000t', ...
+        iter, camStr, ch, laser, msec(i), tiles(i).idx);
     switch saveFormat
         case 'tif'
             writetiff(tiles(i).im, [outPath, fsns{i}, '.tif']);
