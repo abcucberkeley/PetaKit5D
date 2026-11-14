@@ -268,7 +268,9 @@ and -0 as 0.
 - **Thread counts** come from the machine: `threads.available_cpus()` is the CPU affinity
   (Slurm's cpuset, taskset) limited by the cgroup CPU quota (v1 and v2), never an environment
   variable. Kernels take a thread count argument; `threads.resolve_threads(n)` turns a user's
-  `n` (None or 0: all available) into it. Nothing sets global thread state.
+  `n` (None or 0: all available) into it. Nothing sets global thread state, except that
+  `import petakit5d` sets `GOMP_SPINCOUNT=100000` unless the user set `GOMP_SPINCOUNT` or
+  `OMP_WAIT_POLICY` (decision 0007).
 - **`memory.get_system_memory()`** is `getSystemMemory`: GB (2^30 bytes) of the job's cgroup
   limit in a Slurm job (if the cgroup is the job's own), else `SLURM_MEM_PER_NODE` (unless
   `SLURM_MEM_PER_CPU` is also set), else `scontrol show job`'s `mem=`; `MemTotal` without

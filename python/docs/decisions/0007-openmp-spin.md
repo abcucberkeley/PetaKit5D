@@ -95,6 +95,8 @@ shorter than libgomp's default, pays the team's wake-up (0.13-0.16 ms here).
   keeps a copy per package, Windows mixes MinGW's libgomp with MSVC's libomp), and any drift
   splits it again silently. Loading the wheels' libgomp `RTLD_GLOBAL` before the port's modules
   does the same at run time, but binds every later OpenMP library of the process to it.
+  Decision 0008 makes the Linux modules share the wheels' runtime; this default stays for
+  the processes where two runtimes remain.
 - **A spin by time**: the count's duration and the wake-up it must outlast both differ by CPU,
   so a count calibrated per machine (in an OpenMP-free extension, before the first OpenMP module
   loads) could give Skylake's short spin and Ice Lake's long one.
