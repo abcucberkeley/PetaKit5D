@@ -1,0 +1,70 @@
+{
+ "task": "P02",
+ "classes": {
+  "AutomaticProcessingTest": {
+   "finished": true,
+   "methods": {
+    "flatFieldAndDeskewRotate": [
+     "pytest:tests/pipeline/test_automatic.py::test_flat_field_and_deskew_rotate",
+     "oracle:tests/pipeline/test_automatic.py::pipeline.nostitch"
+    ],
+    "demoParameterSetIsAccepted": [
+     "pytest:tests/pipeline/test_automatic.py::test_demo_parameter_sets_are_accepted",
+     "oracle:tests/pipeline/test_automatic.py::pipeline.single_dataset"
+    ],
+    "clusterModeWaitGrowsWithUnfinishedFiles": [
+     "pytest:tests/pipeline/test_automatic.py::test_cluster_mode_wait_grows_with_unfinished_files"
+    ],
+    "clusterModeEndsSoonAfterTheLastResults": [
+     "pytest:tests/pipeline/test_automatic.py::test_cluster_mode_ends_soon_after_the_last_results"
+    ],
+    "clusterModeDoesNotWaitForStepsGivenUp": [
+     "pytest:tests/pipeline/test_automatic.py::test_cluster_mode_does_not_wait_for_steps_given_up"
+    ],
+    "lastTryWaitsForATaskRunnerThatHasTheTask": [
+     "pytest:tests/pipeline/test_automatic.py::test_last_try_waits_for_a_task_runner_that_has_the_task"
+    ],
+    "stitchingLastTryWaitsForATaskRunnerThatHasTheTask": [
+     "pytest:tests/pipeline/test_automatic.py::test_stitching_last_try_waits_for_a_task_runner_that_has_the_task"
+    ],
+    "clusterModeSeesResultsOtherNodesJustMade": [
+     "pytest:tests/pipeline/test_automatic.py::test_cluster_mode_sees_results_other_nodes_just_made"
+    ],
+    "deskewRotateAndStitchMultipleDatasets": [
+     "pytest:tests/pipeline/test_automatic.py::test_deskew_rotate_and_stitch_multiple_datasets",
+     "oracle:tests/pipeline/test_automatic.py::pipeline.multiple_datasets"
+    ],
+    "localStitchingFinishesWithoutWaiting": [
+     "pytest:tests/pipeline/test_automatic.py::test_local_stitching_finishes_without_waiting"
+    ],
+    "clusterModeWaitsForTheLastStitchingTry": [
+     "pytest:tests/pipeline/test_automatic.py::test_cluster_mode_waits_for_the_last_stitching_try"
+    ],
+    "clusterModeSubmitsStitchingAfterTheDeskewJobs": [
+     "pytest:tests/pipeline/test_automatic.py::test_cluster_mode_submits_stitching_after_the_deskew_jobs"
+    ],
+    "clusterModeSubmitsStitchingWhenTilesWereDeskewedBefore": [
+     "pytest:tests/pipeline/test_automatic.py::test_cluster_mode_submits_stitching_when_tiles_were_deskewed_before"
+    ],
+    "clusterModeLooksForTheStitchedResultEachSecond": [
+     "pytest:tests/pipeline/test_automatic.py::test_cluster_mode_looks_for_the_stitched_result_each_second"
+    ],
+    "clusterModeTellsStitchingThatTilesAreComing": [
+     "pytest:tests/pipeline/test_automatic.py::test_cluster_mode_tells_stitching_that_tiles_are_coming"
+    ],
+    "deskewMarkerIsRemovedWhenThePipelineStops": [
+     "pytest:tests/pipeline/test_automatic.py::test_deskew_marker_is_removed_when_the_pipeline_stops"
+    ],
+    "streamingLeavesOutRecentFilesWithTheirSizes": [
+     "pytest:tests/pipeline/test_automatic.py::test_streaming_leaves_out_recent_files_with_their_sizes"
+    ],
+    "streamingProcessesNewFiles": [
+     "pytest:tests/pipeline/test_automatic.py::test_streaming_processes_new_files"
+    ],
+    "localRunSubmitsNoStitchingJobs": [
+     "pytest:tests/pipeline/test_automatic.py::test_local_run_submits_no_stitching_jobs"
+    ]
+   }
+  }
+ }
+}

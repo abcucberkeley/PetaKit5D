@@ -119,9 +119,9 @@ By fate (all):
 | na+oracle | 1 |
 | na+oracle+pytest | 2 |
 | oracle | 133 |
-| oracle+pytest | 596 |
-| pending | 436 |
-| pytest | 439 |
+| oracle+pytest | 599 |
+| pending | 417 |
+| pytest | 455 |
 
 ## Classes
 
@@ -184,7 +184,7 @@ By fate (all):
 | io/ZarrIOTest | data | IO2 | 16 | 35 | no | pending 35 |
 | isolation/IsolationHarnessTest | framework_design | E06 | 8 | 8 | no | pending 8 |
 | isolation/TaskStateLeakTest | framework_design | E06 | 7 | 15 | no | pending 15 |
-| pipeline/AutomaticProcessingTest | data | P02 | 19 | 19 | no | pending 19 |
+| pipeline/AutomaticProcessingTest | data | P02 | 19 | 19 | yes | oracle+pytest 3, pytest 16 |
 | pipeline/FilenameParsingTest | data | P01 | 6 | 6 | yes | na 1, oracle 3, oracle+pytest 2 |
 | pipeline/SettingFilesTest | data | P01 | 6 | 6 | no | oracle 2, oracle+pytest 1, pending 1, pytest 2 |
 | platform/MexFallbackTest | matlab_only | E04 | 15 | 15 | yes | na 15 |
