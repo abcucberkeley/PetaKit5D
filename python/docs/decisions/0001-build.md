@@ -45,8 +45,10 @@ next to the modules (`petakit5d/_ext/cuda/`) and compiled at run time
 - Linux: `-static-libstdc++ -static-libgcc` and `--exclude-libs,ALL`. NumPy, SciPy and the I/O
   packages load the system's `libstdc++.so.6` first, and the loader reuses a loaded library of
   that name whatever a module's RPATH says, so a module built with a newer GCC than the system's
-  failed to import after NumPy (`CXXABI_1.3.13 not found`). The OpenMP runtime stays shared;
-  its folder goes on the modules' RPATH when it isn't a system folder.
+  failed to import after NumPy (`CXXABI_1.3.13 not found`). The OpenMP runtime stays shared:
+  the cpp-zarr wheel's libgomp, copied next to the modules, so that a process has one runtime
+  (`docs/decisions/0008-openmp-runtime.md`), else the toolchain's, whose folder goes on the
+  modules' RPATH when it isn't a system folder.
 
 **Compilers per system:**
 
@@ -66,7 +68,7 @@ next to the modules (`petakit5d/_ext/cuda/`) and compiled at run time
   linked statically or shipped.
 
 **Run-time checks** (`petakit5d._ext.core`, tested in `tests/test_smoke.py` on every system):
-`build_info()` (compiler, flags, OpenMP), `fma_contracted()` (a multiply-add whose result
+`build_info()` (compiler, flags, OpenMP and the shared runtime), `fma_contracted()` (a multiply-add whose result
 differs when fused), `subnormals_flushed()`, `parallel_threads(n)`, and the CPU counts
 (`affinity_cpu_count`, `omp_num_procs`, `omp_max_threads`: inside a Slurm job with `-c 2` all
 three are 2).

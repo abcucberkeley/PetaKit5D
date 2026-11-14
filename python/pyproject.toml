@@ -1,5 +1,11 @@
 [build-system]
-requires = ["scikit-build-core>=0.11", "nanobind>=2.4"]
+requires = [
+    "scikit-build-core>=0.11",
+    "nanobind>=2.4",
+    # Linux: the modules link the OpenMP runtime of the cpp-zarr wheel, so that a process has one
+    # (cmake/Pk5dOpenMP.cmake, docs/decisions/0008-openmp-runtime.md)
+    "cpp-zarr>=1.7.3,<2; sys_platform == 'linux' and platform_machine == 'x86_64'",
+]
 build-backend = "scikit_build_core.build"
 
 [project]

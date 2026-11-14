@@ -9,7 +9,7 @@ results the same. The build flags are in `docs/decisions/0001-build.md`.
 | | Linux x86-64 | macOS ARM (Apple silicon) | Windows x86-64 |
 |---|---|---|---|
 | compiler | GCC (reference: 13) | Apple Clang | MSVC (Visual Studio 2022 or 2026) |
-| OpenMP | libgomp | libomp (Homebrew's, or `OpenMP_ROOT`) | `/openmp:llvm`, runtime `libomp140.x86_64.dll` next to the modules |
+| OpenMP | libgomp: the cpp-zarr wheel's, shared with cpp-zarr and cpp-tiff (`docs/decisions/0008-openmp-runtime.md`) | libomp (Homebrew's, or `OpenMP_ROOT`) | `/openmp:llvm`, runtime `libomp140.x86_64.dll` next to the modules |
 | no contraction | `-ffp-contract=off` | `-ffp-contract=off` | `/fp:precise` |
 | vector code | GCC vector extensions, AVX2 dispatch | Clang vector extensions (NEON) | the same operations lane by lane |
 

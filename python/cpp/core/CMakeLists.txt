@@ -9,4 +9,5 @@ string(STRIP "${CMAKE_CXX_FLAGS} ${_pk5d_policy}" _pk5d_flags)
 target_compile_definitions(pk5d_ext_core PRIVATE
   "PK5D_BUILD_FLAGS=\"${_pk5d_flags}\""
   "PK5D_BUILD_CONFIG=\"$<CONFIG>\""
-  "PK5D_OPENMP_DESC=\"${PK5D_OPENMP_DESC}\"")
+  "PK5D_OPENMP_DESC=\"${PK5D_OPENMP_DESC}\""
+  "PK5D_OPENMP_SHARED=\"${PK5D_OPENMP_SHARED}\"")

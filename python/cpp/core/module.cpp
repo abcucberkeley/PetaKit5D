@@ -19,6 +19,9 @@ namespace nb = nanobind;
 #ifndef PK5D_OPENMP_DESC
 #define PK5D_OPENMP_DESC "none"
 #endif
+#ifndef PK5D_OPENMP_SHARED
+#define PK5D_OPENMP_SHARED ""
+#endif
 
 namespace {
 
@@ -114,6 +117,8 @@ NB_MODULE(core, m) {
         d["flags"] = std::string(PK5D_BUILD_FLAGS);
         d["config"] = std::string(PK5D_BUILD_CONFIG);
         d["openmp"] = std::string(PK5D_OPENMP_DESC);
+        // Linux: the I/O packages' libgomp the modules share (its SONAME), "off", or empty
+        d["openmp_shared"] = std::string(PK5D_OPENMP_SHARED);
 #ifdef _OPENMP
         d["openmp_version"] = _OPENMP;
 #else

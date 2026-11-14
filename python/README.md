@@ -25,6 +25,13 @@ pip install ./python            # or: pip install "./python[test]" for the test 
 The build uses scikit-build-core, CMake and nanobind; pip fetches them. A GPU is optional:
 the package imports and runs every CPU path without CuPy and without a GPU.
 
+On Linux the modules share the OpenMP runtime of the cpp-zarr and cpp-tiff wheels, so that a
+process has one pool of threads: the build links the libgomp that the cpp-zarr wheel bundles
+(pip fetches cpp-zarr for the build; with `--no-build-isolation` or CMake directly, install it
+first) and puts a copy next to the modules. `-DPK5D_OPENMP_SHARE=OFF` (with pip:
+`-Ccmake.define.PK5D_OPENMP_SHARE=OFF`) links the toolchain's instead
+(`docs/decisions/0008-openmp-runtime.md`).
+
 ### CPU FFTs
 
 The CPU FFTs (`petakit5d.matlabcompat.fft`, `petakit5d.fft`) run MATLAB's FFT driver on one of

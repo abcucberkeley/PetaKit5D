@@ -102,6 +102,14 @@ function(pk5d_add_extension group)
       set_property(TARGET ${_target} APPEND PROPERTY BUILD_RPATH "${PK5D_OPENMP_RPATH}")
       set_property(TARGET ${_target} APPEND PROPERTY INSTALL_RPATH "${PK5D_OPENMP_RPATH}")
     endif()
+    if(PK5D_OPENMP_SHARED AND NOT PK5D_OPENMP_SHARED STREQUAL "off")
+      # the module needs the shared runtime only, and nothing it lacks (Pk5dCheckOpenMP.cmake)
+      add_custom_command(TARGET ${_target} POST_BUILD
+        COMMAND "${CMAKE_COMMAND}" "-DPK5D_MODULE=$<TARGET_FILE:${_target}>"
+                "-DPK5D_SONAME=${PK5D_OPENMP_SHARED}" "-DPK5D_READELF=${PK5D_READELF}"
+                -P "${PROJECT_SOURCE_DIR}/cmake/Pk5dCheckOpenMP.cmake"
+        VERBATIM)
+    endif()
   endif()
   if(PK5D_X86_64)
     if(ARG_AVX2)
