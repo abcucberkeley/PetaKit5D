@@ -180,8 +180,8 @@ jobs:
   exit-probe:
     name: Mex exit probe (R2024b on windows-2025)
     runs-on: windows-2025
-    # the step timeouts add up to about 85 minutes
-    timeout-minutes: 155
+    # the step timeouts add up to about 160 minutes
+    timeout-minutes: 220
     continue-on-error: true
     # the OpenMP threads of the mex files that take no thread count (their
     # OpenMP runtime reads it when a mex file is loaded; the probe sets it
@@ -681,6 +681,83 @@ jobs:
         if: always()
         shell: bash
         run: bash .github/scripts/suite_step_done.sh suite_StitchBlendMean_both_cast_r3 ${{ steps.suite_StitchBlendMean_both_cast_r3.outcome }}
+
+      # cpp-zarr's dev build with its Windows exit fixes (no OpenMP in its mex
+      # files, libcppZarr.dll pinning itself), CI artifact mex-windows of
+      # cpp-zarr's run 43545235343 (dev 04343e4, GCC 16.2), downloaded here and
+      # never committed: in place of the vendored cpp-zarr, with its runtime DLLs
+      # also in cpp-tiff's folder (Windows loads one module per base name), then
+      # the reproducers and the whole suite with PetaKit5D's committed mex
+      - name: Get cpp-zarr's dev Windows mex build
+        id: czdev
+        if: always()
+        continue-on-error: true
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.CPP_ZARR_ARTIFACT_TOKEN || github.token }}
+        run: |
+          set -e
+          d="$RUNNER_TEMP/czdev"
+          mkdir -p "$d"
+          gh api "repos/${{ github.repository_owner }}/cpp-zarr/actions/artifacts/14093976643/zip" > "$d/mex-windows.zip"
+          7z x -y -o"$d" "$d/mex-windows.zip" > /dev/null
+          ls -la "$d"
+          sha256sum "$d"/*.mexw64 "$d"/*.dll
+          z=microscopeDataProcessing/io/cpp-zarr/windows
+          t=microscopeDataProcessing/io/cpp-tiff/windows
+          cp "$d"/*.mexw64 "$d"/*.dll "$z"/
+          for f in libgomp-1.dll libwinpthread-1.dll libgcc_s_seh-1.dll; do
+            [ -f "$d/$f" ] && cp "$d/$f" "$t/"
+          done
+          echo "ok=1" >> "$GITHUB_OUTPUT"
+
+      - name: Reproducer, BlockMIPTest first 16, cpp-zarr's dev build
+        id: suite_BlockMIPTest_first16_czdev
+        if: steps.czdev.outputs.ok == '1'
+        timeout-minutes: 5
+        continue-on-error: true
+        uses: matlab-actions/run-command@v3
+        env:
+          PROBE_CRASH_CATCH: '1'
+        with:
+          command: addpath('.github/scripts'); suite_exit_probe('BlockMIPTest_first16_czdev', 'BlockMIPTest/*', 16);
+
+      - name: After the reproducer, BlockMIPTest first 16, cpp-zarr's dev build
+        if: always() && steps.czdev.outputs.ok == '1'
+        shell: bash
+        run: bash .github/scripts/suite_step_done.sh suite_BlockMIPTest_first16_czdev ${{ steps.suite_BlockMIPTest_first16_czdev.outcome }}
+
+      - name: Reproducer, StitchingTest blend mean, cpp-zarr's dev build
+        id: suite_StitchBlendMean_czdev
+        if: steps.czdev.outputs.ok == '1'
+        timeout-minutes: 5
+        continue-on-error: true
+        uses: matlab-actions/run-command@v3
+        env:
+          PROBE_CRASH_CATCH: '1'
+        with:
+          command: addpath('.github/scripts'); suite_exit_probe('StitchBlendMean_czdev', {'StitchingTest/blendingWithoutTheMexGivesTheSameResult?tileBlendMethod=mean?'});
+
+      - name: After the reproducer, StitchingTest blend mean, cpp-zarr's dev build
+        if: always() && steps.czdev.outputs.ok == '1'
+        shell: bash
+        run: bash .github/scripts/suite_step_done.sh suite_StitchBlendMean_czdev ${{ steps.suite_StitchBlendMean_czdev.outcome }}
+
+      - name: Reproducer, the whole suite, cpp-zarr's dev build
+        id: suite_all_czdev
+        if: steps.czdev.outputs.ok == '1'
+        timeout-minutes: 75
+        continue-on-error: true
+        uses: matlab-actions/run-command@v3
+        env:
+          PROBE_CRASH_CATCH: '1'
+        with:
+          command: addpath('.github/scripts'); suite_exit_probe('all_czdev');
+
+      - name: After the reproducer, the whole suite, cpp-zarr's dev build
+        if: always() && steps.czdev.outputs.ok == '1'
+        shell: bash
+        run: bash .github/scripts/suite_step_done.sh suite_all_czdev ${{ steps.suite_all_czdev.outcome }}
 
       # an exit that crashes (StitchingTest blend mean with the atexit mex and the
       # casting parallelWriteZarr ended in an access violation): MATLAB's own crash

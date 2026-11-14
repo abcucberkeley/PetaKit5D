@@ -1,7 +1,7 @@
 function [] = suite_exit_probe(part, names, first, mexDir)
 % diagnostic of MATLAB's exit on Windows after the PetaKit5D tests (CI job
 % exit-probe; not a test). It runs the tests of one folder of tests/ or one
-% test class (part; 'all' for all of them), or the tests of one class that
+% test class (part; 'all', or 'all_<name>', for all of them), or the tests of one class that
 % names gives (run_tests' name patterns; part then names the results), or the
 % first of these (as many as first, in the order that run_tests runs them). A
 % mex variant folder (mexDir, built by build_variant_mex) goes ahead of the
@@ -51,7 +51,8 @@ if ~isempty(mexDir)
     plugins = {MexShadowPlugin(mexDir)};
     note('mex variant folder %s, ahead of the committed mex', mexDir);
 end
-if strcmp(part, 'all')
+if strcmp(part, 'all') || startsWith(part, 'all_')
+    % (all_<name>: the whole suite, its results named after the run)
     r = run_tests('runnerPlugins', plugins);
 elseif exist(fullfile(root, 'tests', part), 'dir')
     r = run_tests('folder', part, 'runnerPlugins', plugins);
