@@ -205,9 +205,13 @@ numbers as text. Apply MATLAB's formatting at the same boundary:
     same flags, width and precision (`%.20d` of 0.108 is `1.07999999999999998779e-01`, of 32
     `00000000000000000032`). `%u`, `%x`, `%o` take `[0, 2^64)`; negative values switch to `%e`.
   - `%s` and `%c` of a number print the character for integers in `[0, 65535]`, else `%e`; a
-    char argument is consumed whole by `%s` and one character at a time by the others. Text
-    fills its width with zeros under the `0` flag, on the right with `-` (`%05s` of `'ab'` is
-    `000ab`, `%-05s` `ab000`).
+    char argument is consumed whole by `%s` and one character at a time by the others. `%s` of
+    a numeric argument takes the run of character codes that starts at its current element as
+    one field (`sprintf('[%s]', [65 66 67])` is `[ABC]`, `[%05s]` of `[65 66]` `[000AB]`,
+    `[%.1s]` of `[65 66 67]` `[A]`); an element that is no code (a fraction, a negative value,
+    one above 65535, NaN, Inf) goes alone, with `%e` (`[%s]` of `[65 66.5 67]` is
+    `[A][6.650000e+01][C]`). Logical values are codes. Text fills its width with zeros under
+    the `0` flag, on the right with `-` (`%05s` of `'ab'` is `000ab`, `%-05s` `ab000`).
   - `Inf`, `-Inf`, `NaN` print as such (width and `-` kept, `0` ignored, `+` only for Inf).
   - Arrays are consumed column-major; the format repeats while data remain and stops at the
     first conversion without data (with no data argument at all, at the first conversion).

@@ -11,8 +11,11 @@ MATLAB's rules that differ from C and Python (measured on R2024b, see docs/conve
   same flags, width and precision (``sprintf('%.20d', 0.108)`` is ``1.07999999999999998779e-01``).
   ``%u``, ``%x``, ``%o`` take ``[0, 2^64)``; negative values switch to ``%e``.
 - ``%s`` and ``%c`` of a number print the character for integers in ``[0, 65535]``, else ``%e``.
-  Text fills its width with zeros under the ``0`` flag (on the right with ``-``):
-  ``sprintf('%05s', 'ab')`` is ``000ab``.
+  ``%s`` of a numeric array takes the run of such character codes that starts at the current
+  element as one text field (``sprintf('[%s]', [65 66 67])`` is ``[ABC]``, ``[%.1s]`` of it
+  ``[A]``); an element that is no code goes alone (``[%s]`` of ``[65 66.5]`` is
+  ``[A][6.650000e+01]``). Text fills its width with zeros under the ``0`` flag (on the right
+  with ``-``): ``sprintf('%05s', 'ab')`` is ``000ab``.
 - ``Inf``, ``-Inf``, ``NaN`` print as such for every numeric conversion (width and ``-`` kept,
   ``0`` ignored, ``+`` kept for ``Inf`` only).
 - The format is applied again while data remain; it stops at the first conversion without
@@ -276,6 +279,26 @@ def _unescape(fmt: str) -> tuple[list, bool]:
 # -- sprintf -----------------------------------------------------------------------------------
 
 
+def _code_run(a: np.ndarray) -> int:
+    """How many leading elements of ``a`` are character codes (integer values in [0, 65535];
+    logical values are), looked at in growing chunks, so that a run costs about its length."""
+    if a.dtype.kind == "b":
+        return a.size
+    n, step = 0, 16
+    while n < a.size:
+        c = a[n : n + step]
+        with np.errstate(invalid="ignore"):
+            ok = (c >= 0) & (c <= 65535)
+            if a.dtype.kind == "f":
+                ok &= c == np.floor(c)
+        bad = np.flatnonzero(~ok)
+        if bad.size:
+            return n + int(bad[0])
+        n += c.size
+        step *= 2
+    return n
+
+
 class _Data:
     def __init__(self, items: list):
         self.items = items
@@ -306,14 +329,21 @@ class _Data:
         return v
 
     def take_text(self):
-        """For %s: a whole char item (from the current position), or one number."""
+        """For %s: a whole char item (from the current position); of a numeric item, the run of
+        character codes that starts at the current element, as text, or one number where that
+        element is none."""
         it = self.items[self.i]
         if isinstance(it, _Char):
             s = it.text[self.j :]
             self.i += 1
             self.j = 0
             return s
-        return self.take_number()
+        n = _code_run(it[self.j :])
+        if n == 0:
+            return self.take_number()
+        s = "".join(map(chr, it[self.j : self.j + n].astype(np.int64).tolist()))
+        self._advance(n, it.size)
+        return s
 
     def take_char(self):
         it = self.items[self.i]

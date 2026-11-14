@@ -6845,6 +6845,141 @@
 "sha256": "c52849c48e59d2ce629c4ffbf91e2621057da3a6aa2940fa1de63d70cd517a4d",
 "value": "[0000B]"
 },
+"sprintf.call.67": {
+"kind": "text",
+"sha256": "199cf9ae37b50e8677c94be664b0da832524a7738900009b21392e6e9596d311",
+"value": "[ABC]"
+},
+"sprintf.call.68": {
+"kind": "text",
+"sha256": "0cfe76766abc1f0bd582a18dbaa967dee3fa3524b589618989a4c7e7b687e7ae",
+"value": "[ABCD]"
+},
+"sprintf.call.69": {
+"kind": "text",
+"sha256": "15bb76a2d5376307bbe26b3259efeaf5ff7c6a80f9fa0a97a6534a57c9ba22d5",
+"value": "[AB]|[CD]|"
+},
+"sprintf.call.70": {
+"kind": "text",
+"sha256": "090c336373c7b26b6b23044c38788bc81497f1f0f14a145f531badc148897d99",
+"value": "[1][AB]"
+},
+"sprintf.call.71": {
+"kind": "text",
+"sha256": "0019131e25cea5179f669320069c3715628eb7784b98705bd62b2a30b3fd39b6",
+"value": "[AB\u0005]["
+},
+"sprintf.call.72": {
+"kind": "text",
+"sha256": "8b7120a62e3d78d4f99e3fa8d9a71b89f42b4af06259ca4412749ed373dddfec",
+"value": "[000AB]"
+},
+"sprintf.call.73": {
+"kind": "text",
+"sha256": "f4a0980caecb3bf042ca8a156cf80de8f6a3d0bb4fa4649c6a77230427ca14b8",
+"value": "[AB   |   CD]"
+},
+"sprintf.call.74": {
+"kind": "text",
+"sha256": "014afd058af67f7403f8d2316514b69710c3bdaa420a90d393c5ffa32f507664",
+"value": "[A]"
+},
+"sprintf.call.75": {
+"kind": "text",
+"sha256": "92f96dbb66281ccee0783c587f30bb42bd1452e61fe41eac2e04eeee7fce99a2",
+"value": "[AB]"
+},
+"sprintf.call.76": {
+"kind": "text",
+"sha256": "cb8c40305e9f41ef26882b5efa1980dd06d5c826b22bb36bd87099cc2b171d29",
+"value": "[-1.000000e+00][A]"
+},
+"sprintf.call.77": {
+"kind": "text",
+"sha256": "811078663c0e94f8ed302071dee946a86a99a3e0a06dd78c3e8fca89fd6d13f3",
+"value": "[A][6.650000e+01]"
+},
+"sprintf.call.78": {
+"kind": "text",
+"sha256": "54bc1ed23036fe76c373a9057da0fa3df3ddd3a3d94274f4a1f72be74f8b6378",
+"value": "[\u0001\u0000\u0001]"
+},
+"sprintf.call.79": {
+"kind": "text",
+"sha256": "2e0bbbc56bbd103273bae4000f39e5270aed7a76f7a770f588db1059109e3029",
+"value": "[\u0000A\u0000]"
+},
+"sprintf.call.80": {
+"kind": "text",
+"sha256": "1cc0303fe92232e1aeb77d105913354ceab62ddeed60e5fc51f506f54f01dedc",
+"value": "[A][6.650000e+01][C]"
+},
+"sprintf.call.81": {
+"kind": "text",
+"sha256": "ab9d6046f82c2e0e54e439c28d32e53a72fb254fc540352b8ce5a30e76c94c27",
+"value": "[A￿][6.553600e+04]"
+},
+"sprintf.call.82": {
+"kind": "text",
+"sha256": "83ea6e25076fd37b599bbd0ca80a9ac508c67227852e7713ebc72cd19a096baf",
+"value": "[A][NaN][-Inf][B]"
+},
+"sprintf.call.83": {
+"kind": "text",
+"sha256": "e1eec6581fefd453c9b20f52ed8814ebf1bf9953fad4fd107118ac58bdb13185",
+"value": "[1.500000e+00  |][\u0002             |]"
+},
+"sprintf.call.84": {
+"kind": "text",
+"sha256": "116c5c6714b48cbaa026406f1de08b606e3d03441e786fff672d0a467fa2dc81",
+"value": "[A][6.65e+01]"
+},
+"sprintf.call.85": {
+"kind": "text",
+"sha256": "fce638fa29f4e13d115902c4fb473d371400f8f5d201e5ee591b65bf4dd20f06",
+"value": "[ABC|"
+},
+"sprintf.call.86": {
+"kind": "text",
+"sha256": "2fa9c8881ffc116b095c62f446073cbd18a4de27e34c0ba69cbef66bd79dbb82",
+"value": "[A|BC]"
+},
+"sprintf.call.87": {
+"kind": "text",
+"sha256": "7c642dda88249b8f985f825ec6ee71b08b9a0cd331a82e0c71399f6049c9a009",
+"value": "[ AB]"
+},
+"sprintf.call.88": {
+"kind": "text",
+"sha256": "8ec74b9060567be3276367c8039a87af491e3407b5c2e7e7163c55e76a25bea6",
+"value": "[AB][]"
+},
+"sprintf.call.89": {
+"kind": "text",
+"sha256": "a44557aa5a1012ba04ca73d2a963e44bc64b5777f743ca297f34b7005de371d8",
+"value": "[6.550000e+01][CBD]"
+},
+"sprintf.call.90": {
+"kind": "text",
+"sha256": "1ece45c37314013300a79a025a846dd0a0e86a840afdbfbdbfc91725c0080be8",
+"value": "[AB,2.500000e+00]"
+},
+"sprintf.call.91": {
+"kind": "text",
+"sha256": "3477bfbfcfe132996ef76fa584c346216bb67c1f9284cdc62bef526b57b52249",
+"value": "hi !"
+},
+"sprintf.call.92": {
+"kind": "text",
+"sha256": "7492ca181af16e2a12f7ed978299513d40e05e3da4342df8f599813f41e2e17e",
+"value": "[AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA][6.650000e+01]"
+},
+"sprintf.call.93": {
+"kind": "text",
+"sha256": "8a4da7f28a24ceca25962ec2772157987c837fb1cf297124a22fb5288003c422",
+"value": "AAAAAAAAAAAAAAAAA|1.500000e+00|BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB|"
+},
 "sprintf.double.00": {
 "kind": "list",
 "n": 893,
