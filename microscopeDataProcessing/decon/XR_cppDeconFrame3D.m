@@ -206,6 +206,10 @@ for f = 1 : nF
         continue;
     end
     [pathstr, fsname, ext] = fileparts(frameFullpath);
+    % a file name without a folder is in the current folder (not the root)
+    if isempty(pathstr)
+        pathstr = '.';
+    end
     fname = [fsname ext];
     if strcmp(ext, '.zarr')
         zarrFile = true;

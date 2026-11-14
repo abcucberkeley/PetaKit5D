@@ -250,6 +250,39 @@ classdef XRDeskewRotateFrameTest < pktest.TestCase
             testCase.verifyEqual(out, uint16((double(dsr) - lim(1)) ./ (lim(2) - lim(1)) .* 65535));
             testCase.verifyEqual([min(out(:)), max(out(:))], uint16([0, 65535]));
         end
+
+        function resultsOfAFileInTheCurrentFolderStayThere(testCase)
+            % a file name without a folder wrote to /DS/ and /DSR/ (fileparts
+            % gives no folder); they are in the current folder, the same as
+            % for the file's full path
+            [dataPath, fn] = testCase.writeFrame();
+            fsn = [testCase.Fsn, '.tif'];
+            mkdir([dataPath, 'full']);
+            copyfile(fn, [dataPath, 'full/', fsn]);
+            args = {testCase.XYPixelSize, testCase.Dz, 'reverse', true, 'DSRCombined', false, 'rotate', true};
+            XR_deskewRotateFrame([dataPath, 'full/', fsn], args{:});
+            cd(dataPath);
+            XR_deskewRotateFrame(fsn, args{:});
+            mip = ['MIPs/', testCase.Fsn, '_MIP_z.tif'];
+            for sub = {'DS/', 'DSR/'}
+                testCase.verifyEqual(readtiff([dataPath, sub{1}, fsn]), readtiff([dataPath, 'full/', sub{1}, fsn]), sub{1});
+                testCase.verifyEqual(readtiff([dataPath, sub{1}, mip]), readtiff([dataPath, 'full/', sub{1}, mip]), sub{1});
+            end
+        end
+
+        function rotatedFrameOfAFileInTheCurrentFolderStaysThere(testCase)
+            % XR_RotateFrame3D (rotation of deskewed data) of a file name
+            % without a folder wrote to /Rotated/; it writes to Rotated/ in the
+            % current folder, the same as for the file's full path
+            [dataPath, fn] = testCase.writeFrame();
+            fsn = [testCase.Fsn, '.tif'];
+            mkdir([dataPath, 'full']);
+            copyfile(fn, [dataPath, 'full/', fsn]);
+            evalc('XR_RotateFrame3D([dataPath, ''full/'', fsn], testCase.XYPixelSize, testCase.Dz)');
+            cd(dataPath);
+            evalc('XR_RotateFrame3D(fsn, testCase.XYPixelSize, testCase.Dz)');
+            testCase.verifyEqual(readtiff([dataPath, 'Rotated/', fsn]), readtiff([dataPath, 'full/Rotated/', fsn]));
+        end
     end
 
     methods (Test, TestTags = {'Integration', 'KnownIssue'})

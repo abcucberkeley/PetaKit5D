@@ -85,6 +85,10 @@ end
 
 % write OTF file    
 [OTFpathstr, psfFsname, ~] = fileparts(PSF);
+% a file name without a folder is in the current folder (not the root)
+if isempty(OTFpathstr)
+    OTFpathstr = '.';
+end
 OTFFileName = p.OTFFileName;
 if isempty(OTFFileName)
     OTFFileName = sprintf('OTF_%s.tif', psfFsname);    
@@ -213,6 +217,9 @@ for f = 1 : nF
         continue;
     end
     [pathstr, fsname, ext] = fileparts(frameFullpath);
+    if isempty(pathstr)
+        pathstr = '.';
+    end
     fname = [fsname ext];
     deconPath = p.deconPath;
     if isempty(deconPath)

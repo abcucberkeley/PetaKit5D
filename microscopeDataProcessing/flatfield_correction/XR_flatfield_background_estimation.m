@@ -60,6 +60,10 @@ if saveMIP
     MIP = max(im, [], 3);
     
     [outPath, fsn] = fileparts(resultFullname);
+    % a file name without a folder is in the current folder (not the root)
+    if isempty(outPath)
+        outPath = '.';
+    end
     MIPFullname = sprintf('%s/MIPs/%s_MIP_z.tif', outPath, fsn);
     MIPTmpname = sprintf('%s/MIPs/%s_MIP_z_%s.tif', outPath, fsn, uuid);
     writetiff(MIP, MIPTmpname);
@@ -106,6 +110,9 @@ if numSlice > 200
 end
 
 [pathstr, fname, ext] = fileparts(resultFullname);
+if isempty(pathstr)
+    pathstr = '.';
+end
 resultTempname = [pathstr, '/', fname, '_', uuid, ext];
 % save('-v7.3', resultTempname, 'im', 'mu', 'sigma', 'med', 'numSlice');
 save('-v7.3', resultTempname, 'imp', 'mu', 'sigma', 'med', 'numSlice', 'pmat');

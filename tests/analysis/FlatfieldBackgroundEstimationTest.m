@@ -64,6 +64,24 @@ classdef FlatfieldBackgroundEstimationTest < pktest.TestCase
 
             testCase.verifyTrue(exist([dataPath, 'matlab_flat_field_estimation/Scan_CamA_ch0_CAM1_background.tif'], 'file') == 2);
         end
+
+        function estimateOfAFileInTheCurrentFolderStaysThere(testCase)
+            % XR_flatfield_background_estimation of a result file name
+            % without a folder wrote it and its MIP to the root (fileparts
+            % gives no folder); they are in the current folder, the same as
+            % for a full path (the MIPs folder is the caller's, as in the
+            % wrapper)
+            dataPath = testCase.createTempFolder();
+            fn = sprintf(testCase.Fsn, 'CamA');
+            writetiff(testCase.darkStack(testCase.DarkLevel * ones(48, 40)), [dataPath, fn]);
+            mkdir([dataPath, 'full/MIPs']);
+            mkdir([dataPath, 'MIPs']);
+            evalc('XR_flatfield_background_estimation({[dataPath, fn]}, [dataPath, ''full/bg.mat''], ''saveMIP'', true)');
+            cd(dataPath);
+            evalc('XR_flatfield_background_estimation({fn}, ''bg.mat'', ''saveMIP'', true)');
+            testCase.verifyEqual(load([dataPath, 'bg.mat']), load([dataPath, 'full/bg.mat']));
+            testCase.verifyEqual(readtiff([dataPath, 'MIPs/bg_MIP_z.tif']), readtiff([dataPath, 'full/MIPs/bg_MIP_z.tif']));
+        end
     end
 
     methods (Access = private)

@@ -1,7 +1,8 @@
 classdef DeconFrameTest < pktest.TestCase
     % XR_RLdeconFrame3D (single file decon), RLdecon's deskew and rotation
     % after the decon, and XR_visualize_OTF_mask_segmentation on small
-    % synthetic data
+    % synthetic data; the file paths of XR_cppDeconFrame3D and
+    % XR_cudaDeconFrame3D with stand-ins for their decon programs
 
     properties (Constant)
         ImSize = [48, 48, 32]
@@ -289,9 +290,113 @@ classdef DeconFrameTest < pktest.TestCase
             testCase.verifyEqual(readtiff([deconPath, 'DSR/', fsn, '.tif']), expected);
             testCase.verifyEqual(readtiff([deconPath, 'DSR/MIPs/', fsn, '_MIP_z.tif']), max(expected, [], 3));
         end
+
+        function deconOfAFileInTheCurrentFolderStaysThere(testCase)
+            % XR_RLdeconFrame3D of a file name without a folder wrote to
+            % /matlab_decon/ (fileparts gives no folder); it writes to
+            % matlab_decon/ in the current folder, the same as for the file's
+            % full path
+            [fn, psfFn] = testCase.writeFrame();
+            [dataPath, fsn] = fileparts(fn);
+            full = [dataPath, '/full/'];
+            testCase.runFrame(fn, full, psfFn, 'DeconIter', 3);
+            cd(dataPath);
+            testCase.runFrame([fsn, '.tif'], '', psfFn, 'DeconIter', 3);
+            deconPath = [dataPath, '/matlab_decon/'];
+            testCase.verifyEqual(readtiff([deconPath, fsn, '.tif']), readtiff([full, fsn, '.tif']));
+            testCase.verifyEqual(readtiff([deconPath, 'MIPs/', fsn, '_MIP_z.tif']), readtiff([full, 'MIPs/', fsn, '_MIP_z.tif']));
+        end
+
+        function gpuJobDoesNotReadAFinishedNextFileOfTheCurrentFolder(testCase)
+            % (as above) the GPU job looked for the result of the next file,
+            % a file name without a folder, in /matlab_decon/, and read the
+            % file although its result was there
+            testCase.applyFixture(pktest.FunctionStubFixture('gpuDevice', struct('AvailableMemory', 1e15)));
+            testCase.writeCPURLdecon();
+            [fn1, psfFn] = testCase.writeFrame();
+            fn2 = strrep(fn1, '_000x_', '_001x_');
+            testCase.writeFrame(fn2);
+            [dataPath, fsn1] = fileparts(fn1);
+            [~, fsn2] = fileparts(fn2);
+            cd(dataPath);
+            args = {'DeconIter', 2, 'RLMethod', 'omw', 'skewed', false, 'GPUJob', true};
+            testCase.runFrame([fsn2, '.tif'], '', psfFn, args{:});
+            logFn = testCase.logReadsAndMoves();
+            testCase.runFrame({[fsn1, '.tif'], [fsn2, '.tif']}, '', psfFn, args{:});
+            events = readlines(logFn);
+            testCase.verifyEqual(nnz(events == "read " + fsn2 + ".tif"), 0);
+            testCase.verifyTrue(exist([dataPath, '/matlab_decon/', fsn1, '.tif'], 'file') == 2);
+        end
+
+        function cppDeconOfAFileInTheCurrentFolderStaysThere(testCase)
+            % XR_cppDeconFrame3D of a file name without a folder looked for
+            % the program's results in /CPPdecon/ and failed; they are in
+            % CPPdecon/ in the current folder, the same as for the file's full
+            % path. A stand-in for the program writes its input as the result
+            % to CPPdecon/ next to it
+            testCase.assumeFalse(ispc, 'The stand-in program is a POSIX shell script.');
+            [fn, psfFn] = testCase.writeFrame();
+            [dataPath, fsn] = fileparts(fn);
+            prog = testCase.writeProgram('cpuDeconv', {
+                'while [ $# -gt 0 ]; do if [ "$1" = "--input-file" ]; then f=$2; fi; shift; done'
+                'd=$(dirname "$f"); n=$(basename "$f" .tif)'
+                'mkdir -p "$d/CPPdecon/MIPs"'
+                'cp "$f" "$d/CPPdecon/${n}_decon.tif" && cp "$f" "$d/CPPdecon/MIPs/${n}_MIP_z.tif"'});
+            args = {'PSFfile', psfFn, 'cppDeconPath', prog, 'loadModules', '', 'parseCluster', false};
+            full = [dataPath, '/full/'];
+            mkdir(full);
+            copyfile(fn, full);
+            evalc('XR_cppDeconFrame3D([full, fsn, ''.tif''], testCase.XYPixelSize, testCase.Dz, '''', args{:})');
+            cd(dataPath);
+            evalc('XR_cppDeconFrame3D([fsn, ''.tif''], testCase.XYPixelSize, testCase.Dz, '''', args{:})');
+            testCase.verifyEqual(readtiff([dataPath, '/CPPdecon/', fsn, '_decon.tif']), readtiff([full, 'CPPdecon/', fsn, '_decon.tif']));
+            testCase.verifyTrue(isfile([dataPath, '/CPPdecon/MIPs/', fsn, '_decon_MIP_z.tif']));
+        end
+
+        function cudaDeconOfFilesInTheCurrentFolderStaysThere(testCase)
+            % XR_cudaDeconFrame3D of a file name without a folder gave the
+            % program / as its folder and looked for the results in /GPUdecon/,
+            % and of a PSF file name without a folder wrote the OTF to /; they
+            % are in the current folder, the same as for full paths.
+            % Stand-ins for the programs (the decon writes its input as the
+            % result to GPUdecon/ of its folder, the OTF generator copies the
+            % PSF) and a GPU count of 1: no GPU is used
+            testCase.assumeFalse(ispc, 'The stand-in programs are POSIX shell scripts.');
+            testCase.applyFixture(pktest.FunctionStubFixture('gpuDeviceCount', 1));
+            [fn, psfFn] = testCase.writeFrame();
+            [dataPath, fsn] = fileparts(fn);
+            [~, psfFsn] = fileparts(psfFn);
+            decon = testCase.writeProgram('cudaDeconv', {
+                'a=("$@"); n=${#a[@]}; d=${a[$((n - 3))]}; p=${a[$((n - 2))]}'
+                'mkdir -p "$d/GPUdecon/MIPs"'
+                'cp "$d/$p.tif" "$d/GPUdecon/${p}_decon.tif" && cp "$d/$p.tif" "$d/GPUdecon/MIPs/${p}_MIP_z.tif"'});
+            otf = testCase.writeProgram('radialft', {'cp "$1" "$2"'});
+            args = {'cudaDeconPath', decon, 'OTFGENPath', otf, 'parseCluster', false};
+            full = [dataPath, '/full/'];
+            mkdir(full);
+            copyfile(fn, full);
+            copyfile(psfFn, full);
+            copyfile(psfFn, dataPath);
+            evalc('XR_cudaDeconFrame3D([full, fsn, ''.tif''], testCase.XYPixelSize, testCase.Dz, '''', ''PSFfile'', [full, psfFsn, ''.tif''], args{:})');
+            cd(dataPath);
+            evalc('XR_cudaDeconFrame3D([fsn, ''.tif''], testCase.XYPixelSize, testCase.Dz, '''', ''PSFfile'', [psfFsn, ''.tif''], args{:})');
+            testCase.verifyEqual(readtiff([dataPath, '/GPUdecon/', fsn, '_decon.tif']), readtiff([full, 'GPUdecon/', fsn, '_decon.tif']));
+            testCase.verifyTrue(isfile([dataPath, '/GPUdecon/MIPs/', fsn, '_MIP_z.tif']));
+            testCase.verifyTrue(isfile([dataPath, '/OTF_', psfFsn, '.tif']));
+        end
     end
 
     methods (Access = private)
+        function [fn] = writeProgram(testCase, name, lines)
+            % an executable bash script <temporary folder>/<name> with these
+            % lines, as a stand-in for an external program
+            fn = [testCase.createTempFolder(), name];
+            fid = fopen(fn, 'w');
+            fprintf(fid, '%s\n', '#!/bin/bash', lines{:});
+            fclose(fid);
+            fileattrib(fn, '+x');
+        end
+
         function [fn, psfFn] = writeFrame(testCase, fn, psf, im)
             % write a frame of blurred beads (and a PSF in <root>/psf/);
             % with a given fn, only overwrite that frame with new beads

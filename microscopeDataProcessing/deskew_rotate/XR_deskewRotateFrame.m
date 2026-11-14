@@ -151,6 +151,10 @@ end
 
 % Create DS result dire
 [rt, fsname] = fileparts(framePath{1});
+% a file name without a folder is in the current folder (not the root)
+if isempty(rt)
+    rt = '.';
+end
 if ~DSRCombined    
     dsPath = sprintf('%s/%s%s/', rt, DSDirName, surffix);
     if ~exist(dsPath, 'dir')

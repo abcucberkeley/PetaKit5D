@@ -69,6 +69,10 @@ for f = 1 : numel(framePaths)
 
     % check if the result exists
     [rt, fsname] = fileparts(framePath);
+    % a file name without a folder is in the current folder (not the root)
+    if isempty(rt)
+        rt = '.';
+    end
     fname = [fsname, '.tif'];
     
     rtPath = [rt, '/', 'Rotated/'];

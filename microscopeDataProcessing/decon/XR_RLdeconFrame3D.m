@@ -181,6 +181,10 @@ for f = 1 : nF
         continue;
     end
     [pathstr, fsname, ext] = fileparts(frameFullpath);
+    % a file name without a folder is in the current folder (not the root)
+    if isempty(pathstr)
+        pathstr = '.';
+    end
     deconPath = pr.deconPath;
     if isempty(deconPath)
         deconPath = [pathstr, '/', 'matlab_decon'];
@@ -382,6 +386,9 @@ if ~exist(fn, 'file')
     return;
 end
 [pathstr, fsname] = fileparts(fn);
+if isempty(pathstr)
+    pathstr = '.';
+end
 if isempty(deconPath)
     deconPath = [pathstr, '/', 'matlab_decon'];
 end
