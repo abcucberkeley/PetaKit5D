@@ -36,6 +36,7 @@ from petakit5d.io import read_tiff, read_zarr
 from petakit5d.jobs import files as jfiles
 from petakit5d.jobs import single
 from petakit5d.pipeline import automatic as A
+from petakit5d.stitch import distance as sd
 from petakit5d.testing import oracle, slurm_fake, synth
 from petakit5d.testing.cases import Case, InPath, Tree
 from petakit5d.testing.compare import tree
@@ -296,9 +297,27 @@ def _cases():
 
 CASES = _cases()
 
+# MATLAB on Windows (ispc) writes the stitching's feather distance maps into imdist/ itself, not
+# imdist/<first tile>/, and so does the port there: the references that hold such maps, made on
+# Linux, hold the other folder and paths. The Windows layout is tested on every system by
+# forcing that branch (stitch/test_dataset.py::test_feather_maps_under_the_windows_rule).
+_WINDOWS_MAPS = (
+    "the feather distance maps go into imdist/ on Windows (MATLAB's ispc branch); this "
+    "reference is MATLAB's on Linux (imdist/<first tile>/): "
+    "stitch/test_dataset.py::test_feather_maps_under_the_windows_rule covers it"
+)
+
+
+def _maps_in_tile_folder(case: Case) -> bool:
+    """whether the case's MATLAB reference holds files in a folder of imdist/"""
+    files = oracle.reference(case).files
+    return files is not None and any(re.search(r"(^|/)imdist/[^/]+/", n) for n in files.names())
+
 
 @oracle.parametrize(CASES)
 def test_matlab(case, tmp_path):
+    if sd._is_pc() and _maps_in_tile_folder(case):
+        pytest.skip(_WINDOWS_MAPS)
     oracle.check(case, tmp_path)
 
 
@@ -898,7 +917,10 @@ def test_data_paths_are_sorted_but_image_lists_keep_their_order(tmp_path, string
     run(paths, stitch=True, image_list_fullpaths=csvs, axis_order="-x,y,z")
     stitch = [s for s in strings if s.startswith("XR_matlab_stitching_wrapper(")]
     first = A._split_call(stitch[0])[1]
-    assert first[0] == paths[1] and first[1] == csvs[0], "dataset a got its own image list"
+    want = [paths[1], csvs[0]]
+    if A._ispc():  # (MATLAB's ispc branch: the paths with '/')
+        want = [p.replace("\\", "/") for p in want]
+    assert first[:2] == want, "dataset a got its own image list"
 
 
 def test_a_file_flip_is_the_default_of_files_found_later(tmp_path, monkeypatch):

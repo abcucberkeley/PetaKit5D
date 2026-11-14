@@ -1257,7 +1257,8 @@ def test_multi_loc_volumes_take_their_tile_count_as_their_number(tmp_path, fake_
 
 def _settings(path: Path, interval: str) -> None:
     head = "X Stage Offset, Interval (um), # of Pixels for Excitation (0) :"
-    path.write_text(f"Settings\n{head}\t0\t{interval}\t101\nEnd\n")
+    # '\n' on every system (an oracle input: Windows' text mode would write '\r\n')
+    path.write_text(f"Settings\n{head}\t0\t{interval}\t101\nEnd\n", newline="\n")
 
 
 def test_setting_files_flip_tiles(tmp_path, frames):
@@ -1317,6 +1318,31 @@ def test_paths_follow_matlab_with_windows_rules(monkeypatch):
     assert not SD.processed_tiles_coming(tiles)
     assert seen == ["C:\\data\\run\\DSR/deskew_in_progress.tmp",
                     "D:/other/DSR/deskew_in_progress.tmp"]  # fmt: skip
+
+
+def test_feather_maps_under_the_windows_rule(tmp_path, monkeypatch):
+    """(MATLAB's ispc branch forced) the wrapper's feather distance maps go into imdist/ itself,
+    not imdist/<first tile>/, and the stitch information names them there; the stitched volume
+    and its MIP are those of the other rule (the Linux references, which Windows skips)"""
+    from petakit5d.stitch import distance
+
+    gt = random_volume(GRID_GT)
+    first = f"{NAME}_000x_000y_000z_0000t"
+    got = []
+    for pc in (False, True):
+        monkeypatch.setattr(distance, "_is_pc", lambda pc=pc: pc)
+        d = tmp_path / ("windows" if pc else "posix")
+        d.mkdir()
+        stitch(d, write_tiles(d, gt), blend_method="feather", batch_size=(16, 32, 32),
+               block_size=(16, 16, 16))  # fmt: skip
+        folder = d / "matlab_stitch" / "imdist"
+        folder = folder if pc else folder / first
+        si = V.read_stitch_info(f"{d}/matlab_stitch/stitchInfo/{NAME}.mat", ["imdistFullpaths"])
+        assert [Path(p).parent for p in si["imdistFullpaths"]] == [folder]
+        assert sorted(os.listdir(folder)) == [f"{first}_wr_10.zarr", "parameters.mat"]
+        got.append((result(d), _read_mip(d)))
+    for a, b in zip(*got, strict=True):
+        np.testing.assert_array_equal(a, b)
 
 
 def test_the_matlab_name_layer_takes_matlabs_values(tmp_path, frames):
@@ -1693,9 +1719,29 @@ def _wrapper_case(name: str) -> Case:
 
 CASES = [_wrapper_case(n) for n in WSCENES]
 
+# MATLAB on Windows (ispc) writes the feather distance maps into imdist/ itself, not
+# imdist/<first tile>/, and so does the port there: the references that hold such maps, made
+# on Linux, hold the other folder and paths. The Windows layout is tested on every system by
+# forcing that branch (test_feather_maps_under_the_windows_rule).
+_WINDOWS_MAPS = (
+    "the feather distance maps go into imdist/ on Windows (MATLAB's ispc branch); this "
+    "reference is MATLAB's on Linux (imdist/<first tile>/): "
+    "test_feather_maps_under_the_windows_rule covers it"
+)
+
+
+def _maps_in_tile_folder(case: Case) -> bool:
+    """whether the case's MATLAB reference holds files in a folder of imdist/"""
+    files = oracle.reference(case).files
+    return files is not None and any(re.search(r"(^|/)imdist/[^/]+/", n) for n in files.names())
+
 
 @oracle.parametrize(CASES)
 def test_matlab(case, tmp_path):
+    from petakit5d.stitch import distance
+
+    if distance._is_pc() and _maps_in_tile_folder(case):
+        pytest.skip(_WINDOWS_MAPS)
     oracle.check(case, tmp_path)
 
 
