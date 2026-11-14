@@ -51,7 +51,7 @@ from petakit5d.jobs.alternatives import AlternativesError, AlternativesWarning, 
 from petakit5d.jobs.cluster import JobShape
 from petakit5d.jobs.framework import run_tasks
 from petakit5d.jobs.shapes import TIME_FORMAT_SINGLE, time_str
-from petakit5d.jobs.slurm import Slurm, check_slurm_cluster
+from petakit5d.jobs.slurm import Slurm, check_slurm_cluster, split_options
 from petakit5d.jobs.tasks import Call, Task
 from petakit5d.testing import oracle, slurm_fake
 from petakit5d.testing.cases import Case, InPath, Tree
@@ -1121,16 +1121,12 @@ def single_job(
         nice=nice,
     )
     k, cpus, param, constraint, time_option = sp.choose()
-    r = slurm.submit(
-        array_id=array_id,
-        out=check.job_log_fname,
-        err=check.job_log_error_fname,
-        cpus_per_task=cpus,
-        wrap='date; echo Matlab command:  "disp(1)"',
-        slurm_param=param,
-        slurm_constraint=constraint,
-        time_str=time_option,
-    )
+    r = slurm.sbatch(
+        ["sbatch", f"--array={array_id}", "-o", check.job_log_fname, "-e",
+         check.job_log_error_fname, f"--cpus-per-task={int(cpus)}", *split_options(param),
+         *split_options(constraint), *split_options(time_option),
+         '--wrap=date; echo Matlab command:  "disp(1)"']
+    )  # fmt: skip
     assert r.submitted
     sp.submitted(r.job_id, array_id, k)
     return r.job_id, sp

@@ -236,37 +236,9 @@ class Slurm:
 
     # sbatch
 
-    def submit(
-        self,
-        *,
-        array_id: int,
-        out: str,
-        err: str,
-        cpus_per_task: int,
-        wrap: str,
-        slurm_param: str = "",
-        slurm_constraint: str = "",
-        time_str: str = "",
-    ) -> SubmitResult:
-        """sbatch --array=<a> -o <out> -e <err> --cpus-per-task=<n> <SlurmParam>
-        <SlurmConstraint> <time> --wrap=<wrap>, the framework's submission"""
-        argv = [
-            "sbatch",
-            f"--array={int(array_id)}",
-            "-o",
-            out,
-            "-e",
-            err,
-            f"--cpus-per-task={int(cpus_per_task)}",
-            *split_options(slurm_param),
-            *split_options(slurm_constraint),
-            *split_options(time_str),
-            f"--wrap={wrap}",
-        ]
-        return self.sbatch(argv)
-
     def sbatch(self, argv: Sequence[str]) -> SubmitResult:
-        """an sbatch command line (argv[0] 'sbatch'); the job id from 'Submitted batch job N'"""
+        """an sbatch command line (argv[0] 'sbatch'), as the cluster loop and the single-job
+        wrapper build it; the job id from 'Submitted batch job N'"""
         r = self.run(argv, self.submit_timeout)
         m = _SUBMITTED.search(r.output)
         if m:

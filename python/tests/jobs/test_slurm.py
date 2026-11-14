@@ -204,11 +204,18 @@ def test_job_state_live_jobs_and_pending_reasons(fake_slurm):  # noqa: F811
     ]
 
 
+def _submit(s, array_id, cpus=1, param="", *, out="o", err="e", wrap="true"):
+    """sbatch with the single-job wrapper's command line (the cluster loop adds --comment)"""
+    return s.sbatch(
+        ["sbatch", f"--array={array_id}", "-o", out, "-e", err, f"--cpus-per-task={cpus}",
+         *split_options(param), f"--wrap={wrap}"]
+    )  # fmt: skip
+
+
 @posix_only
 def test_pending_jobs_of_the_user(fake_slurm):  # noqa: F811
     s = Slurm()
-    r = s.submit(array_id=3, out="o", err="e", cpus_per_task=4, wrap="true",
-                 slurm_param="-p gpu8 --qos q2 -n1 --mem-per-cpu=7800M --gres=gpu:1")  # fmt: skip
+    r = _submit(s, 3, 4, "-p gpu8 --qos q2 -n1 --mem-per-cpu=7800M --gres=gpu:1")
     fake_slurm.set_job_states(f"{r.job_id}_3", ["PD:Priority"])
     fake_slurm.set_job_states("700_1", ["R"])
     rows = s.pending_jobs()
@@ -232,17 +239,16 @@ def test_pending_jobs_of_the_user(fake_slurm):  # noqa: F811
 
 
 @posix_only
-def test_submit_issues_the_frameworks_command_line(fake_slurm):  # noqa: F811
+def test_sbatch_issues_the_command_line_as_given(fake_slurm):  # noqa: F811
     s = Slurm()
     param = "-p cpu_queue --qos normal -n1 --mem-per-cpu=21418M"
-    r = s.submit(
-        array_id=7,
+    r = _submit(
+        s,
+        7,
+        4,
+        f"{param} --constraint=c1 {time_str(12, param)}",
         out="/logs/job_%A_%a.out",
         err="/logs/job_%A_%a.err",
-        cpus_per_task=4,
-        slurm_param=param,
-        slurm_constraint="--constraint=c1",
-        time_str=time_str(12, param),
         wrap='printf "Start time: "; python -m petakit5d.jobs.exec /calls/c1 7',
     )
     assert r.submitted and r.job_id == 1000
@@ -254,7 +260,7 @@ def test_submit_issues_the_frameworks_command_line(fake_slurm):  # noqa: F811
     assert fake_slurm.job_attributes("1000_7") == {
         "partition": "cpu_queue", "qos": "normal", "cpus": 4, "mem": 4 * 21418, "gpus": 0,
     }  # fmt: skip
-    r = s.submit(array_id=8, out="o", err="e", cpus_per_task=1, wrap="true")
+    r = _submit(s, 8)
     assert r.job_id == 1001
     assert fake_slurm.job_attributes("1001_8")["partition"] == DEFAULT_PARTITION
 
@@ -265,13 +271,13 @@ def test_a_refused_submission_fails_and_one_without_answer_is_unknown(fake_slurm
     # busy machine sometimes answered too late, and a late answer is unknown, by design)
     s = Slurm()
     fake_slurm.reject_submissions(1)
-    r = s.submit(array_id=1, out="o", err="e", cpus_per_task=1, wrap="true")
+    r = _submit(s, 1)
     assert r.state == "failed" and r.job_id is None and "Socket timed out" in r.result.stderr
     assert not r.result.timed_out
-    assert s.submit(array_id=1, out="o", err="e", cpus_per_task=1, wrap="true").job_id == 1000
+    assert _submit(s, 1).job_id == 1000
     fake_slurm.hang("sbatch", 60)
     t0 = time.monotonic()
-    r = Slurm(submit_timeout=0.5).submit(array_id=2, out="o", err="e", cpus_per_task=1, wrap="true")
+    r = _submit(Slurm(submit_timeout=0.5), 2)
     assert r.state == "unknown" and r.job_id is None and r.result.timed_out
     assert time.monotonic() - t0 < 20
 
@@ -324,9 +330,7 @@ def test_show_nodes_and_update(fake_slurm):  # noqa: F811
         "",
         "cpu=8,mem=100000M",
     )
-    r = s.submit(
-        array_id=1, out="o", err="e", cpus_per_task=4, wrap="true", slurm_param="-p cpu_queue"
-    )
+    r = _submit(s, 1, 4, "-p cpu_queue")
     fake_slurm.set_job_states("1000_1", ["PD"])
     assert s.update_job(
         "1000_1", "Partition=gpu8 QOS=q2 NumCPUs=2 CPUsPerTask=2 MinMemoryCPU=1000"

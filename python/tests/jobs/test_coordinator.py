@@ -592,20 +592,17 @@ def coordinator_job_task(scratch: str, child_params: str, child_time: str) -> No
     import resource
 
     from petakit5d.core import memory
-    from petakit5d.jobs.slurm import Slurm
+    from petakit5d.jobs.slurm import Slurm, split_options
 
     slurm = Slurm()
     ids = []
     for b in range(1, BLOCK_JOBS + 1):
-        r = slurm.submit(
-            array_id=b,
-            out=os.path.join(scratch, "block_%A_%a.out"),
-            err=os.path.join(scratch, "block_%A_%a.err"),
-            cpus_per_task=1,
-            wrap="sleep 1",
-            slurm_param=f"{child_params} --begin=now+{CHILD_DELAY}",
-            time_str=child_time,
-        )
+        r = slurm.sbatch(
+            ["sbatch", f"--array={b}", "-o", os.path.join(scratch, "block_%A_%a.out"),
+             "-e", os.path.join(scratch, "block_%A_%a.err"), "--cpus-per-task=1",
+             *split_options(f"{child_params} --begin=now+{CHILD_DELAY}"),
+             *split_options(child_time), "--wrap=sleep 1"]
+        )  # fmt: skip
         if r.job_id is not None:
             ids.append(f"{r.job_id}_{b}")
         if not r.submitted:
@@ -667,7 +664,7 @@ def test_coordinator_on_the_cluster(tmp_path):
     jobs at a time, all cancelled at the end by their ids."""
     from petakit5d.jobs import shapes
     from petakit5d.jobs.config import ClusterConfig, default_python_launch_str
-    from petakit5d.jobs.slurm import Slurm
+    from petakit5d.jobs.slurm import Slurm, split_options
     from petakit5d.jobs.tasks import Call, task_record, write_call
 
     conf = ClusterConfig.load(os.environ["PETAKIT5D_TEST_SLURM_CONFIG"])
@@ -696,15 +693,12 @@ def test_coordinator_on_the_cluster(tmp_path):
     folder = write_call(call, str(scratch / "call"))
     slurm = Slurm()
     coord_param = f"{slurm_param} --nice={nice}" if nice > 0 else slurm_param
-    r = slurm.submit(
-        array_id=1,
-        out=str(scratch / "coordinator_%A_%a.out"),
-        err=str(scratch / "coordinator_%A_%a.err"),
-        cpus_per_task=cpus,
-        wrap=f"{python} -m petakit5d.jobs.exec {folder} 1",
-        slurm_param=coord_param,
-        time_str=t_str,
-    )
+    r = slurm.sbatch(
+        ["sbatch", "--array=1", "-o", str(scratch / "coordinator_%A_%a.out"),
+         "-e", str(scratch / "coordinator_%A_%a.err"), f"--cpus-per-task={cpus}",
+         *split_options(coord_param), *split_options(t_str),
+         f"--wrap={python} -m petakit5d.jobs.exec {folder} 1"]
+    )  # fmt: skip
     assert r.submitted, r.result.output
     coord = f"{r.job_id}_1"
     children: list[str] = []
