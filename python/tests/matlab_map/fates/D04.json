@@ -98,6 +98,38 @@
     "objectiveScanLargeFileIsRejected": [
      "pytest:tests/deskew_rotate/test_dataset.py::test_objective_scan_large_file_is_rejected",
      "oracle:tests/deskew_rotate/test_dataset.py::ds.large.objective"
+    ],
+    "deskewOnlyIsCroppedWithCrop": [
+     "pytest:tests/deskew_rotate/test_dataset.py::test_deskew_only_is_cropped_with_crop",
+     "pytest:tests/deskew_rotate/test_dataset.py::test_each_file_gets_its_own_flip_and_the_crop",
+     "oracle:tests/deskew_rotate/test_dataset.py::ds.deskew_only_crop",
+     "oracle:tests/deskew_rotate/test_dataset.py::ds.separate_crop"
+    ],
+    "largeFileReadsTheResampleFactorAsRegularFiles": [
+     "pytest:tests/deskew_rotate/test_zarr.py::test_large_file_result_equals_the_regular_path_with_its_factor",
+     "pytest:tests/deskew_rotate/test_zarr.py::test_geometry_reads_the_resample_factor_as_x_y_z",
+     "pytest:tests/deskew_rotate/test_zarr.py::test_the_factor_is_completed_as_the_frame_function_completes_it",
+     "pytest:tests/deskew_rotate/test_zarr.py::test_blocks_get_the_flip_and_the_completed_factor",
+     "oracle:tests/deskew_rotate/test_zarr.py::zarr.resample_*",
+     "oracle:tests/deskew_rotate/test_dataset.py::ds.large.resample*"
+    ],
+    "largeFileIsFlippedAsRegularFiles": [
+     "pytest:tests/deskew_rotate/test_dataset.py::test_large_file_is_flipped_as_regular_files",
+     "pytest:tests/deskew_rotate/test_zarr.py::test_large_file_is_flipped_as_regular_files",
+     "pytest:tests/deskew_rotate/test_dataset.py::test_each_file_gets_its_own_flip_and_the_crop",
+     "oracle:tests/deskew_rotate/test_zarr.py::zarr.flip*",
+     "oracle:tests/deskew_rotate/test_dataset.py::ds.large.flip",
+     "oracle:tests/deskew_rotate/test_dataset.py::ds.large.setting_flip"
+    ],
+    "largeFileMIPMaskBoxesFollowTheFactorAndTheFlip": [
+     "pytest:tests/deskew_rotate/test_zarr.py::test_masks_follow_the_factor_and_the_flip",
+     "pytest:tests/deskew_rotate/test_zarr.py::test_the_masks_border_follows_the_factor_of_its_axis",
+     "oracle:tests/deskew_rotate/test_zarr.py::masks.*",
+     "oracle:tests/deskew_rotate/test_dataset.py::ds.large.masks_flip_resample"
+    ],
+    "largeFileParforRunsTheBlocks": [
+     "pytest:tests/deskew_rotate/test_zarr.py::test_large_file_parfor_runs_the_blocks_on_a_local_pool",
+     "oracle:tests/deskew_rotate/test_zarr.py::zarr.parfor"
     ]
    }
   },
@@ -117,6 +149,9 @@
     ],
     "wrapperUsesTheLargestFile": [
      "pytest:tests/deskew_rotate/test_dataset.py::test_wrapper_uses_the_largest_file"
+    ],
+    "largeFileJobAsksForTheBatchOfItsBlocks": [
+     "pytest:tests/deskew_rotate/test_dataset.py::test_large_file_job_asks_for_the_batch_of_its_blocks"
     ]
    }
   }

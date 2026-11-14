@@ -74,6 +74,10 @@
     "objectiveScanSeparatePathIsNotDeskewed": [
      "pytest:tests/deskew_rotate/test_file.py::test_objective_scan_separate_path_is_deskewed",
      "oracle:tests/deskew_rotate/test_file.py::frame.separate.objective"
+    ],
+    "rescaleRotateScalesTheResultToTheUint16Range": [
+     "pytest:tests/deskew_rotate/test_file.py::test_rescale_rotate_scales_the_result_to_the_uint16_range",
+     "oracle:tests/deskew_rotate/test_file.py::frame.combined.rescale_u16"
     ]
    }
   },

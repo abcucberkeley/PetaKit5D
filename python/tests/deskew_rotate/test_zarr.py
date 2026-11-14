@@ -2,9 +2,10 @@
 
 Oracle cases against MATLAB: ``XR_deskewRotateZarr`` on a copy of a folder with a zarr file in
 MATLAB's layout (batches and chunks that don't divide the result, a task per batch, no MIPs,
-single output, an existing result, a box, the errors of objective scans and parseParfor), its
+single output, an existing result, a box, resample factors of one, two and three values with x
+and y different, flipZstack, the error of objective scans, parseParfor on a local pool), its
 folder compared with the port's; ``XR_getDeskeRotateBoxesFromMasks`` on MIP masks (with and
-without an input box and a resample factor).
+without an input box, resample factors of none, one, two and three values, flipZstack).
 
 Then DeskewRotateDataWrapperTest's large-file methods and DeskewRotateMemoryTest's
 largeFileBlocksRequestOneBatch in intent: the MIP option of the block tasks, failed blocks not
@@ -85,10 +86,10 @@ def p_zarr(d, *args):
     return []
 
 
-def zarr_case(cid, make, *args, error=False):
+def zarr_case(cid, make, *args, error=False, code=None):
     return Case(
         f"zarr.{cid}",
-        code=f"XR_deskewRotateZarr([in{{1}}, '{FSN}.zarr'], in{{2 : end}}); out = {{}};",
+        code=code or f"XR_deskewRotateZarr([in{{1}}, '{FSN}.zarr'], in{{2 : end}}); out = {{}};",
         nargout=0,
         args=[
             InPath("d"),
@@ -115,10 +116,26 @@ def zarr_case(cid, make, *args, error=False):
     )
 
 
-def p_masks(d, border, px, dzv, skew, rev, resample=None, box=None):
+# parseParfor runs the tasks on a pool of 12 (matlab_parfor_generic_computing_wrapper), which
+# MATLAB refuses in a job of fewer cores (parallel:cluster:LocalProfileNumWorkersExceeded),
+# and the wrapper takes an open pool as it is: the case opens the pool itself, of 12 workers
+# at most, so that its reference is the blocks' result in a job of any size, and closes it
+_PARFOR = (
+    "c = parcluster('local'); p = parpool(c, min(12, c.NumWorkers)); "
+    f"try, XR_deskewRotateZarr([in{{1}}, '{FSN}.zarr'], in{{2 : end}}); "
+    "catch ME, delete(p); rethrow(ME); end; delete(p); out = {};"
+)
+
+
+def parfor_case(make, *args):
+    return zarr_case("parfor", make, *args, "parseParfor", True, code=_PARFOR)
+
+
+def p_masks(d, border, px, dzv, skew, rev, resample=None, box=None, flip=False):
     names = [d + n for n in ("mask_z.tif", "mask_y.tif", "mask_x.tif")]
-    rs = None if resample is None or not len(resample) else list(resample)
-    return dz.deskew_rotate_boxes_from_masks(names, border, px, dzv, skew, rev, rs, box)
+    rs = None if resample is None else [float(v) for v in np.asarray(resample).reshape(-1)]
+    rs = rs or None
+    return dz.deskew_rotate_boxes_from_masks(names, border, px, dzv, skew, rev, rs, box, flip)
 
 
 def mask_case(cid, border, *extra):
@@ -153,12 +170,30 @@ def _cases():
         zarr_case("result_dir", t, *SMALL, "resultDirStr", "out/"),
         zarr_case("existing", zarr_tree(existing=True), *SMALL),
         zarr_case("objective", t, *SMALL, "objectiveScan", True, error=True),
-        zarr_case("parfor", t, *SMALL, "parseParfor", True, error=True),
-        zarr_case("resample_two", t, *SMALL, "resampleFactor", [1.5, 1.5], error=True),
+        parfor_case(t, *SMALL),
+        # the factor is [x y z], 1 or 2 values completed to 3 (it was read [y x z], and 1 or 2
+        # values raised an index error)
+        zarr_case("resample_two", t, *SMALL, "resampleFactor", [1.5, 1.5]),
+        zarr_case("resample_one", t, *SMALL, "resampleFactor", 2),
+        zarr_case("resample_xz", t, *SMALL, "resampleFactor", [1.5, 1, 1.25]),
+        zarr_case("resample_yx", t, *SMALL, "resampleFactor", [1, 2, 1]),
+        zarr_case("resample_y_frac", t, *SMALL, "resampleFactor", [1, 1.5, 1.25]),
+        # each batch flipped along z after its read (the blocks never flipped)
+        zarr_case("flip", t, *SMALL, "flipZstack", True),
+        zarr_case("flip_bbox", t, *SMALL, "flipZstack", True, "inputBbox", [3, 5, 2, 30, 58, 27]),
+        zarr_case("flip_resample", t, *SMALL, "flipZstack", True, "resampleFactor", [1.5, 1, 1.25]),
         mask_case("default", [10, 10, 10], [1, 1, 1]),
         mask_case("box", [10, 10, 10], [1, 1, 1], Box([5, 8, 4, 33, 55, 25])),
         mask_case("resample", [7, 7, 7], [1.5, 1.5, 1.5]),
         mask_case("resample_xy", [10, 12, 14], [1, 1.5, 1.25]),
+        mask_case("resample_xz", [10, 12, 14], [1.5, 1, 1.25]),
+        mask_case("resample_one", [10, 12, 14], 1.5),
+        mask_case("resample_two", [10, 12, 14], [1.5, 1]),
+        mask_case("resample_none", [10, 12, 14], []),
+        # the y MIP flipped along z after its crop (the input box stays the raw data's)
+        mask_case("flip", [10, 10, 10], [1, 1, 1], [], True),
+        mask_case("flip_resample", [10, 12, 14], [1, 1.5, 1.25], [], True),
+        mask_case("flip_box", [10, 10, 10], [1, 1, 1], Box([5, 8, 4, 33, 55, 25]), True),
     ]
 
 
@@ -408,16 +443,117 @@ def test_geometry_has_matlabs_batches_and_borders():
     assert g2.out_batch_size[1:] == g2.out_size[1:]
 
 
-def test_geometry_reads_the_resample_factor_as_y_x_z():
-    # rs(1) sets the rows of a batch's input; a factor of fewer than 3 values raises
+def test_geometry_reads_the_resample_factor_as_x_y_z():
+    # (MATLAB: largeFileReadsTheResampleFactorAsRegularFiles) rs(2), y, sets the rows of a
+    # batch's input and divides the result's rows; x and z divide its x and z
     g = dz.large_file_geometry((37, 61, 29), PX, DZ, SKEW, [8, 1024, 1024], [8, 64, 64],
-                               [2, 1, 1], None, None)  # fmt: skip
-    assert g.dsr_out_size[0] == 19  # round(37 / 2)
+                               [1, 2, 1], None, None)  # fmt: skip
+    g1 = dz.large_file_geometry((37, 61, 29), PX, DZ, SKEW, [8, 1024, 1024], [8, 64, 64],
+                                None, None, None)  # fmt: skip
+    assert g.dsr_out_size == [19, *g1.dsr_out_size[1:]]  # round(37 / 2)
     assert g.in_batch_bboxes[1, 0] == 15  # round((8 - 1) * 2) + 1
-    with pytest.raises(dz.DeskewRotateZarrError) as err:
-        dz.large_file_geometry((37, 61, 29), PX, DZ, SKEW, [8, 1, 1], [8, 8, 8], [1.5, 1.5],
-                               None, None)  # fmt: skip
-    assert err.value.identifier == "MATLAB:badsubscript"
+    gx = dz.large_file_geometry((37, 61, 29), PX, DZ, SKEW, [8, 1024, 1024], [8, 64, 64],
+                                [2, 1, 1], None, None)  # fmt: skip
+    assert gx.dsr_out_size[0] == 37 and gx.dsr_out_size[1] == round(g1.dsr_out_size[1] / 2)
+    assert gx.in_batch_bboxes[1, 0] == 8
+
+
+@pytest.mark.parametrize(
+    ("given", "xyz"),
+    [
+        (None, [1, 1, 1]),
+        ([], [1, 1, 1]),
+        ([1.5], [1.5, 1.5, 1.5]),
+        ([2, 1.25], [2, 2, 1.25]),
+        ([1, 1.5, 1.25], [1, 1.5, 1.25]),
+        ([4, 1, 2, 3], [1, 2, 3]),
+    ],
+)
+def test_the_factor_is_completed_as_the_frame_function_completes_it(given, xyz):
+    # [ones(1, 4 - numel(rs)) * rs(1), rs(2 : end)]
+    assert dz._rs_xyz(given) == xyz
+
+
+@pytest.mark.parametrize("factor", [2, (1, 2), (1.25, 1, 1.5), (1, 2, 1)])
+def test_large_file_result_equals_the_regular_path_with_its_factor(tmp_path, factor):
+    """(MATLAB: largeFileReadsTheResampleFactorAsRegularFiles) one value, (z, xy) and (z, y, x)
+    with x and y different: the large file's result is the regular path's (integer factors and
+    1 along y give the same values; a fractional y factor only the same size, as in MATLAB)"""
+    from petakit5d.deskew_rotate import deskew_rotate_volume
+    from petakit5d.deskew_rotate.file import _resample_completed
+
+    # (dz 0.2: no skewed space interpolation, whose uint16 sums depend on a batch's rows; 64
+    # rows, MATLAB's test's: each batch's own deskew and rotation centers its rows, which
+    # matches the whole result's grid where the batches' and the volume's input rows are even)
+    fn, frame = write_input(tmp_path, shape=(29, 64, 61))
+    dz.deskew_rotate_zarr(fn, PX, 0.2, save_mip=False, resample_factor=factor, **KW)
+    got = read_zarr(str(tmp_path / "DSR" / f"{FSN}.zarr"))
+    # (the regular path's factor, completed as XR_deskewRotateFrame completes it)
+    want = deskew_rotate_volume(
+        frame, SKEW, 0.2, PX, reverse=True, resample_factor=_resample_completed(factor),
+        save_16bit=True,
+    )  # fmt: skip
+    same(got, want)
+
+
+def test_large_file_is_flipped_as_regular_files(tmp_path):
+    """(MATLAB: largeFileIsFlippedAsRegularFiles) each batch is flipped along z after its read:
+    the result is the flipped volume's (the blocks never flipped)"""
+    from petakit5d.deskew_rotate import deskew_rotate_volume
+
+    fn, frame = write_input(tmp_path)
+    dz.deskew_rotate_zarr(fn, PX, 0.2, save_mip=False, flip_zstack=True, **KW)
+    want = deskew_rotate_volume(
+        np.ascontiguousarray(frame[::-1]), SKEW, 0.2, PX, reverse=True, save_16bit=True
+    )
+    same(read_zarr(str(tmp_path / "DSR" / f"{FSN}.zarr")), want)
+
+
+def test_blocks_get_the_flip_and_the_completed_factor(tmp_path, framework_spy):
+    fn, _ = write_input(tmp_path)
+    dz.deskew_rotate_zarr(fn, PX, DZ, save_mip=False, flip_zstack=True, resample_factor=1.5, **KW)
+    tasks = framework_spy.calls[0]["tasks"]
+    assert all(t.kwargs["flip_zstack"] is True for t in tasks)
+    assert all(list(t.kwargs["resample_factor"]) == [1.5, 1.5, 1.5] for t in tasks)
+
+
+def test_large_file_parfor_runs_the_blocks_on_a_local_pool(tmp_path, framework_spy):
+    """(MATLAB: largeFileParforRunsTheBlocks) parseParfor without a cluster failed on an undefined
+    GPUJob; it runs the tasks on a local pool of 12 workers, as XR_crop_zarr"""
+    fn, _ = write_input(tmp_path)
+    kw = {**KW, "parse_parfor": True}
+    dz.deskew_rotate_zarr(fn, PX, DZ, save_mip=False, **kw)
+    (call,) = framework_spy.calls
+    assert call["cluster_type"] == "parfor" and call["local_worker_num"] == 12
+    assert call["gpu_job"] is False and call["task_batch_num"] == 1 and call["uuid"]
+
+
+def test_masks_follow_the_factor_and_the_flip(tmp_path):
+    """(MATLAB: largeFileMIPMaskBoxesFollowTheFactorAndTheFlip) the input box stays the raw
+    data's (the data is flipped after its crop); with the flip, the output box and the
+    deskewed MIP are those of the flipped masks"""
+    raw = tmp_path / "raw"
+    flipped = tmp_path / "flipped"
+    raw.mkdir()
+    flipped.mkdir()
+    m = np.zeros(RAW, dtype=np.uint8)
+    m[3:20, 10:30, 8:25] = 1
+    m[5:27, 12:20, 30:50] = 1
+    for folder, mask in ((raw, m), (flipped, m[::-1])):
+        synth.write_tiff(folder / "mask_z.tif", mask.max(axis=0))
+        synth.write_tiff(folder / "mask_y.tif", np.ascontiguousarray(mask.max(axis=1).T))
+        synth.write_tiff(folder / "mask_x.tif", np.ascontiguousarray(mask.max(axis=2).T))
+    names = ("mask_z.tif", "mask_y.tif", "mask_x.tif")
+    args = ((0, 0, 0), PX, DZ, SKEW, True)
+    for rs in ([1, 1, 1], [1.5, 1, 1.25], [1, 1.5, 1.25], [1.5], [1.5, 1]):
+        a = dz.deskew_rotate_boxes_from_masks([str(raw / n) for n in names], *args, rs)
+        b = dz.deskew_rotate_boxes_from_masks([str(raw / n) for n in names], *args, rs, None, True)
+        c = dz.deskew_rotate_boxes_from_masks([str(flipped / n) for n in names], *args, rs)
+        assert b[0] == a[0], rs
+        assert (c[0][0], c[0][3]) == (RAW[0] - a[0][3], RAW[0] - a[0][0]), rs
+        assert b[1] == c[1], rs
+        same(b[2], c[2])
+        assert b[1] != a[1], rs
 
 
 @pytest.mark.parametrize("cls", ["uint16", "single"])
@@ -477,6 +613,28 @@ def test_masks_set_the_boxes(tmp_path):
     )
     want = full[out_box[0] : out_box[3], :, out_box[2] : out_box[5]]
     same(read_zarr(str(tmp_path / "DSR" / f"{FSN}.zarr")), want)
+
+
+def test_the_masks_border_follows_the_factor_of_its_axis(tmp_path, framework_spy, monkeypatch):
+    """the masks' border is 100 voxels over the factor of its own axis (rs([2, 1, 3]) of the
+    [x y z] factor for the [y x z] border), at least 10"""
+    fn, _ = write_input(tmp_path)
+    seen = []
+
+    def spy(masks, border, *a, **k):
+        seen.append(tuple(int(v) for v in border))
+        return (0, 0, 0) + RAW, (0, 0, 0, 2, 8, 4), None
+
+    monkeypatch.setattr(dz, "deskew_rotate_boxes_from_masks", spy)
+    masks = ["m_z.tif", "m_y.tif", "m_x.tif"]
+    dz.deskew_rotate_zarr(
+        fn, PX, DZ, save_mip=False, mask_fullpaths=masks, resample_factor=(1.25, 1, 2), **KW
+    )
+    dz.deskew_rotate_zarr(
+        fn, PX, DZ, save_mip=False, mask_fullpaths=masks, resample_factor=(4,),
+        result_dir_str="DSR_4/", **KW,
+    )  # fmt: skip
+    assert seen == [(80, 100, 50), (25, 25, 25)]
 
 
 def test_the_output_region_of_the_masks_is_written(tmp_path, monkeypatch):

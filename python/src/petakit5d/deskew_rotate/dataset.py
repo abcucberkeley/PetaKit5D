@@ -6,10 +6,11 @@ as Slurm jobs), into ``<data>/DS/`` and ``<data>/DSR/``:
 
 - regular files (tiff or zarr): ``deskew_rotate_file`` tasks, with the file's partial volume
   files (``<name>_part0001.tif``, ...) read as one volume, the z flip from its setting file
-  (``parse_setting_file``) and the flat-field images of its channel (``ff_correction``: the
-  first channel pattern the path contains);
+  (``parse_setting_file``), the flat-field images of its channel (``ff_correction``: the
+  first channel pattern the path contains) and ``crop``;
 - large zarr files (``large_file``): ``deskew_rotate_zarr`` tasks, each running its blocks as
-  tasks of their own (the combined path only, zarr results, sample scan only).
+  tasks of their own (the combined path only, zarr results, sample scan only), with the file's
+  z flip.
 
 The files are listed as the pipeline lists them (``pipeline.filenames``: by listing each folder,
 not one file at a time). Existing results are skipped by the tasks; ``overwrite`` removes the
@@ -160,19 +161,21 @@ def controller_resources(
     batches as jobs (``coordinator_resources``): the process and the merge of the MIP slabs,
     and if it computes batches itself (``computes``) the estimate of its largest batch on the
     CPUs of a batch's job. The geometry is ``deskew_rotate_zarr``'s, without MIP masks (which
-    only make the result smaller). ``in_size`` is the input's ``(nz, ny, nx)``."""
+    only make the result smaller), its resample factor completed to ``[x y z]`` as there.
+    ``in_size`` is the input's ``(nz, ny, nx)``. (MATLAB also counts a batch's flipped copy
+    for ``flip_zstack``; the port's blocks flip in place.)"""
     from petakit5d.deskew_rotate.geometry import _cos, _round, _sin
     from petakit5d.deskew_rotate.memory import estimate_deskew_rotate_memory
-    from petakit5d.deskew_rotate.zarr import _resample_matlab
+    from petakit5d.deskew_rotate.zarr import _resample_matlab, _rs_xyz
     from petakit5d.jobs.coordinator import coordinator_resources
     from petakit5d.tools.mip import merge_memory
 
     nz, ny, nx = (int(v) for v in in_size)
     if not _empty(input_bbox):
         nz, ny, nx = _box_size(input_bbox)
-    rs_m = _resample_matlab(resample_factor)
-    # MATLAB's vector, read [y x z] as the batches read it
-    rs = rs_m if rs_m is not None and len(rs_m) == 3 else [1.0, 1.0, 1.0]
+    # 1, 2 or 3 values in xyz order, as deskew_rotate_zarr takes them
+    rx, ry, rz = _rs_xyz(_resample_matlab(resample_factor))[:3]
+    rs = [ry, rx, rz]  # rs([2, 1, 3]): [y x z]
     theta = float(skew_angle) * math.pi / 180
     st = _sin(abs(theta))
     z_aniso = st * float(dz) / float(xy_pixel_size)
@@ -188,7 +191,7 @@ def controller_resources(
     blk_yxz = [blk[1], blk[2], blk[0]]
     in_yxz = [ny, nx, nz]
     out_block = [min(blk_yxz[k], in_yxz[k], batch_out[k]) for k in range(3)]
-    batch_in = [int(min(_round((batch_out[0] + 2) * rs[0]), ny)), nx, nz]
+    batch_in = [int(min(_round((batch_out[0] + 2) * ry), ny)), nx, nz]
     zyx = lambda v: (int(v[2]), int(v[0]), int(v[1]))  # noqa: E731
     block_mem = estimate_deskew_rotate_memory(
         zyx(batch_in),
@@ -444,7 +447,7 @@ def deskew_rotate_dataset(
                     objective_scan=objective_scan,
                     skew_angle=_through(skew_angle, "%d"),
                     reverse=_logical(reverse),
-                    flip_zstack=_logical(flip_zstack),
+                    flip_zstack=bool(names.flip_zstack[f]),
                     crop=_logical(crop),
                     dsr_combined=dsr_combined,
                     save_16bit=save_16bit,
@@ -491,6 +494,7 @@ def deskew_rotate_dataset(
                 objective_scan=objective_scan,
                 z_stage_scan=_logical(z_stage_scan),
                 reverse=_logical(reverse),
+                crop=_logical(crop),
                 input_axis_order=input_axis_order,
                 output_axis_order=output_axis_order,
                 ff_correction=_logical(ff_correction),

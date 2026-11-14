@@ -5,10 +5,11 @@ dataset folders (MATLAB runs the oracle tree, Python the port through the MATLAB
 the folders they leave are compared, tiffs byte for byte, zarr by voxels and metadata after the
 layout mapping, parameters.mat by content, parameters.json as text): the combined path on a
 dataset of two channels and two time points, channel patterns, two data paths, deskew only
-(also with the combined default), the separate path, overwrite, zarr input and output, chunk
-sizes, single output, input boxes, partial files, flat field per channel, no MIPs, resampling,
-objective scans, and the large-file path (batches of rows that don't divide the result, input
-boxes, no MIPs, single output, resampling, MIP masks, its errors).
+(also with the combined default, and with crop), the separate path (with crop), overwrite, zarr
+input and output, chunk sizes, single output, input boxes, partial files, flat field per
+channel, no MIPs, resampling, objective scans, and the large-file path (batches of rows that
+don't divide the result, input boxes, no MIPs, single output, resample factors of one, two and
+three values, MIP masks, flipZstack and a setting file's flip, its errors).
 
 Then DeskewRotateDataWrapperTest and DeskewRotateMemoryTest's wrapper methods in intent on the
 port's (z, y, x) data: outputs equal the in-memory functions, the job shapes (a framework spy),
@@ -66,16 +67,32 @@ def make_frame(shape=RAW, kind="uint16", seed=0):
 # ------------------------------------------------------------------------------------------
 
 
+_SETTINGS = (
+    "***** ***** *****   General   ***** ***** *****\n"
+    "Date :  1/1/2024 10:00:00 AM\n"
+    "\n"
+    "X Stage Offset, Interval (um), # of Pixels for Excitation (0) :\t0\t{}\t101\n"
+    "\n"
+)
+
+
 def dataset_tree(
-    *, zarr=False, names=FSNS, parts=1, ff=False, kind="uint16", sub="", masks=False, chunks=None
-):
+    *, zarr=False, names=FSNS, parts=1, ff=False, kind="uint16", sub="", masks=False, chunks=None,
+    stage_interval=None,
+):  # fmt: skip
     """a dataset folder: the files ``names`` (seed = their index), as tiff (``parts`` partial
     files each) or as zarr in MATLAB's layout; flat-field images ff_A.tif, ff_B.tif, bg.tif;
-    MIP masks mask_{z,y,x}.tif of a box inside the volume"""
+    MIP masks mask_{z,y,x}.tif of a box inside the volume; with ``stage_interval`` a setting
+    file of each name with that stage interval (negative: the stack is flipped)"""
 
     def make(folder):
         d = Path(folder) / sub
         d.mkdir(parents=True, exist_ok=True)
+        if stage_interval is not None:
+            for name in names:
+                (d / f"{name}_Settings.txt").write_text(
+                    _SETTINGS.format(stage_interval), newline="\n"
+                )
         for k, name in enumerate(names):
             vol = make_frame(RAW, kind, k)
             if zarr:
@@ -180,6 +197,9 @@ def _cases():
         ds_case("channel_b", t, "channelPatterns", ["CamB"]),
         ds_case("two_paths", two_paths_tree, sub=["tile1", "tile2"]),
         ds_case("deskew_only", t, "rotate", False, "DSRCombined", False),
+        # the wrapper passes crop to XR_deskewRotateFrame (it didn't: the DS was never cropped)
+        ds_case("deskew_only_crop", t, "rotate", False, "DSRCombined", False, "crop", True),
+        ds_case("separate_crop", t, "DSRCombined", False, "crop", True),
         ds_case("deskew_only_combined_default", t, "rotate", False, "DSRCombined", True),
         ds_case("separate", t, "DSRCombined", False),
         ds_case("existing", existing_tree, sub=""),
@@ -223,7 +243,29 @@ def _cases():
         ),  # fmt: skip
         ds_case("large.objective", z1, *LARGE, "objectiveScan", True, error=True),
         ds_case("large.deskew_only", z1, *LARGE, "rotate", False, error=True),
-        ds_case("large.resample_one", z1, *LARGE, "resampleFactor", 1.5, error=True),
+        # the factor is [x y z], 1 or 2 values completed to 3 (1.5 raised an index error)
+        ds_case("large.resample_one", z1, *LARGE, "resampleFactor", 1.5),
+        ds_case("large.resample_two", z1, *LARGE, "resampleFactor", [2, 1]),
+        ds_case("large.resample_xz", z1, *LARGE, "resampleFactor", [1.5, 1, 1.25]),
+        # each file's flip reaches its large-file task (the blocks never flipped)
+        ds_case("large.flip", z1, *LARGE, "flipZstack", True),
+        ds_case(
+            "large.setting_flip",
+            dataset_tree(zarr=True, names=(FSN_A0,), sub="d", stage_interval="-0.2"),
+            *LARGE,
+            "parseSettingFile",
+            True,
+        ),  # fmt: skip
+        ds_case(
+            "large.masks_flip_resample",
+            dataset_tree(zarr=True, names=(FSN_A0,), sub="d", masks=True),
+            *LARGE,
+            *masks,
+            "flipZstack",
+            True,
+            "resampleFactor",
+            [1.5, 1, 1.25],
+        ),  # fmt: skip
     ]
 
 
@@ -332,6 +374,102 @@ def test_deskew_only_writes_ds(tmp_path, combined):
     same(read_tiff(f"{path}DS/{FSN_A0}.tif"), _deskewed(frames[0]))
     assert not os.path.isdir(f"{path}DSR")
     assert os.path.isfile(f"{path}DS/parameters.json")
+
+
+def test_deskew_only_is_cropped_with_crop(tmp_path):
+    """(MATLAB: deskewOnlyIsCroppedWithCrop) the wrapper didn't pass crop on: the deskewed data
+    was never cropped"""
+    from petakit5d.deskew_rotate import deskew_volume
+    from petakit5d.deskew_rotate.file import _to_class
+
+    path, frames = write_dataset(tmp_path / "d", names=(FSN_A0,))
+    run(path, rotate=False, dsr_combined=False, crop=True)
+    ds = deskew_volume(frames[0].astype(np.float32), SKEW, DZ, PX, True, crop=True)
+    same(read_tiff(f"{path}DS/{FSN_A0}.tif"), _to_class(ds, "uint16", 1))
+    assert ds.shape != _deskewed(frames[0]).shape
+
+
+def test_large_file_is_flipped_as_regular_files(tmp_path):
+    """(MATLAB: largeFileIsFlippedAsRegularFiles) the large-file path took the wrapper's
+    flipZstack and never flipped the data; a setting file's negative stage interval flips its
+    file too"""
+    path = f"{tmp_path}/"
+    frame = make_frame()
+    write_zarr(frame, f"{path}{FSN_A0}.zarr", block_size=(16, 16, 32))
+    kw = {**LARGE_KW, "save_mip": False, "dz": 0.2}
+    run(path, **kw, flip_zstack=True)
+    want = expected_dsr(np.ascontiguousarray(frame[::-1]), 0.2)
+    same(read_zarr(f"{path}DSR/{FSN_A0}.zarr"), want)
+    Path(f"{path}{FSN_A0}_Settings.txt").write_text(_SETTINGS.format("-0.2"), newline="\n")
+    run(path, **kw, parse_setting_file=True, dsr_dir_name="DSR_settings")
+    same(read_zarr(f"{path}DSR_settings/{FSN_A0}.zarr"), want)
+
+
+def test_each_file_gets_its_own_flip_and_the_crop(tmp_path, monkeypatch):
+    """the tasks get the crop and each file's flip (its setting file's): regular files and large
+    files alike"""
+    from petakit5d.jobs import framework
+
+    calls = []
+    monkeypatch.setattr(
+        framework, "run_tasks", lambda i, o, t, **k: calls.append(list(t)) or [True] * len(o)
+    )
+    path, _ = write_dataset(tmp_path / "d", names=(FSN_A0, FSN_A1))
+    Path(f"{path}{FSN_A1}_Settings.txt").write_text(_SETTINGS.format("-0.2"), newline="\n")
+    Path(f"{path}{FSN_A0}_Settings.txt").write_text(_SETTINGS.format("0.2"), newline="\n")
+    run(path, crop=True, parse_setting_file=True, dsr_combined=False)
+    flips = {os.path.basename(t.args[0][0]): t.kwargs["flip_zstack"] for t in calls[0]}
+    assert flips == {f"{FSN_A0}.tif": False, f"{FSN_A1}.tif": True}
+    assert all(t.kwargs["crop"] is True for t in calls[0])
+    zpath, _ = write_dataset(tmp_path / "z", zarr=True, names=(FSN_A0, FSN_A1))
+    Path(f"{zpath}{FSN_A1}_Settings.txt").write_text(_SETTINGS.format("-0.2"), newline="\n")
+    Path(f"{zpath}{FSN_A0}_Settings.txt").write_text(_SETTINGS.format("0.2"), newline="\n")
+    calls.clear()
+    run(zpath, **LARGE_KW, parse_setting_file=True)
+    flips = {os.path.basename(t.args[0]): t.kwargs["flip_zstack"] for t in calls[0]}
+    assert flips == {f"{FSN_A0}.zarr": False, f"{FSN_A1}.zarr": True}
+
+
+@pytest.mark.parametrize("factor", [(1.25, 1, 1.5), 1.5, (2, 2, 1), (1, 2), None], ids=str)
+def test_large_file_job_asks_for_the_batch_of_its_blocks(tmp_path, factor, monkeypatch):
+    """(MATLAB: largeFileJobAsksForTheBatchOfItsBlocks) the job of a large file that computes
+    batches itself (masterCompute; no MIP merge) asks for what one of its block jobs gets, for
+    factors of one, two and three values (it read the factor as [y x z] and only with 3
+    values); the port's blocks flip in place, so the flip adds nothing (MATLAB counts a copy)"""
+    from petakit5d.jobs import framework
+
+    calls = []
+    monkeypatch.setattr(
+        framework, "run_tasks", lambda i, o, t, **k: calls.append(k) or [True] * len(o)
+    )
+    fn = f"{tmp_path}/{FSN_A0}.zarr"
+    create_zarr(fn, data_size=(64, 512, 256), block_size=(64, 64, 64), dtype="uint16")
+    sizes = {"batch_size": (1024, 64, 1024), "block_size": (16, 16, 16)}
+    mem = []
+    for k, flip in enumerate((False, True)):
+        calls.clear()
+        run(
+            f"{tmp_path}/",
+            zarr_file=True,
+            large_file=True,
+            save_mip=False,
+            cpus_per_task=8,
+            dz=0.2,
+            resample_factor=factor,
+            flip_zstack=flip,
+            dsr_dir_name=f"DSR_{k}",
+            **sizes,
+        )
+        from petakit5d.deskew_rotate import zarr as dzr
+
+        dzr.deskew_rotate_zarr(
+            fn, PX, 0.2, skew_angle=SKEW, reverse=True, save_mip=False, parse_cluster=False,
+            master_compute=True, result_dir_str=f"DSRZ_{k}/", resample_factor=factor,
+            flip_zstack=flip, **sizes,
+        )  # fmt: skip
+        assert calls[0]["mem_allocate"] == pytest.approx(calls[1]["mem_allocate"], rel=1e-12)
+        mem.append(calls[1]["mem_allocate"])
+    assert mem[0] == mem[1]
 
 
 def test_separate_deskew_rotate_writes_both(tmp_path):

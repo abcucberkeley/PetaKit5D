@@ -21,20 +21,27 @@ output region come from the masks (``deskew_rotate_boxes_from_masks``): the mask
 border, and the deskewed and rotated y MIP's box with a border.
 
 Arrays are ``(z, y, x)``, boxes ``(z0, y0, x0, z1, y1, x1)``, 0-based, end-exclusive; sizes
-``(z, y, x)``; ``resample_factor`` ``(z, y, x)`` (``deskew_rotate_volume``'s). The batch and
-block geometry is computed in MATLAB's numbers (``[y x z]``, 1-based) as MATLAB computes it
-and converted at the end, so that the batches, their borders and the tasks are MATLAB's. Each
-block runs the deskew kernels on MATLAB's layout (``deskew_rotate_volume_matlab_layout``) and
-is written from it: the output voxels are MATLAB's.
+``(z, y, x)``; ``resample_factor`` ``(z, y, x)`` (``deskew_rotate_volume``'s; one value, or
+``(z, xy)``, completed to three as ``deskew_rotate_file`` completes it). The batch and block
+geometry is computed in MATLAB's numbers (``[y x z]``, 1-based) as MATLAB computes it and
+converted at the end, so that the batches, their borders and the tasks are MATLAB's. Each block
+runs the deskew kernels on MATLAB's layout (``deskew_rotate_volume_matlab_layout``) and is
+written from it: the output voxels are MATLAB's.
 
-MATLAB quirks kept (each has a test):
+- With ``flip_zstack`` each batch is flipped along z after its read (a batch has the whole z
+  range of the input box), and the masks' y MIP after its crop, as ``XR_deskewRotateFrame``
+  flips after the crop.
+- ``parse_parfor`` without a cluster runs the tasks on a local pool of 12 workers
+  (``matlab_parfor_generic_computing_wrapper`` with ``nworker`` 12, as ``XR_crop_zarr`` and
+  ``XR_MIP_zarr`` run theirs). MATLAB refuses that pool on a machine or job of fewer cores
+  (``parallel:cluster:LocalProfileNumWorkersExceeded``); the port's pool runs at any core count.
 
-- the batches read the resample factor as ``[y x z]`` (``rs(1)`` for the rows of a batch, the
-  result's size divided by ``rs``), where ``deskewRotateFrame3D`` reads it as ``[x y z]``: only
-  factors with equal x and y give the result the blocks write; a factor of one or two values
-  raises MATLAB's index error;
-- ``flip_zstack`` is accepted and not used (the blocks never flip);
-- ``parse_parfor`` without a cluster raises MATLAB's error for its undefined ``GPUJob``.
+MATLAB quirks kept: ``overwrite``, ``crop``, ``dsr_combined`` and ``save_zarr`` are accepted and
+not used (the result is always the combined deskew and rotation in zarr, and an existing result
+is never made again); with a fractional y factor a batch's rows are centered by the batch's own
+deskew and rotation, which matches the whole result's grid only where ``(row start - 1) * ry``
+is an integer (MATLAB's large files are approximate there, and so are the port's: the same
+voxels).
 """
 
 from __future__ import annotations
@@ -97,20 +104,14 @@ def _resample_matlab(resample_factor: Any) -> list[float] | None:
     return [float(x) for x in get_kind("resample_xyz").to_matlab(tuple(v.tolist()))]
 
 
-def _index_error(n: int) -> DeskewRotateZarrError:
-    return DeskewRotateZarrError(
-        f"Index exceeds the number of array elements. Index must not exceed {n}.",
-        "MATLAB:badsubscript",
-    )
-
-
-def _rs3(rs: list[float] | None) -> list[float]:
-    """MATLAB's ``rs([1, 2, 3])`` of ``rs = resampleFactor`` (``[1, 1, 1]`` if empty)"""
-    if rs is None:
+def _rs_xyz(rs: Sequence[float] | None) -> list[float]:
+    """MATLAB's ``rs = [ones(1, 4 - numel(rs)) * rs(1), rs(2 : end)]`` of a resample factor
+    (``[x y z]``, ``[xy z]`` or one value; ``XR_deskewRotateFrame``'s completion): ``[x y z]``,
+    ``[1, 1, 1]`` if empty"""
+    if rs is None or not len(rs):
         return [1.0, 1.0, 1.0]
-    if len(rs) < 3:
-        raise _index_error(len(rs))
-    return [float(v) for v in rs[:3]]
+    v = [float(x) for x in rs]
+    return [v[0]] * max(0, 4 - len(v)) + v[1:]
 
 
 # ---------------------------------------------------------------------------------------------
@@ -159,6 +160,7 @@ def deskew_rotate_boxes_from_masks(
     reverse: bool,
     resample: Sequence[float] | None = None,
     input_bbox: Sequence[int] | None = None,
+    flip_zstack: bool = False,
 ) -> tuple[tuple[int, ...], tuple[int, ...], np.ndarray]:
     """``XR_getDeskeRotateBoxesFromMasks``: the input box and the output region of a large-file
     deskew/rotation from the MIPs of a mask (``mask_fullpaths``: the z, y and x MIP files, in
@@ -166,9 +168,10 @@ def deskew_rotate_boxes_from_masks(
 
     The input box is the mask's box (from the three MIPs) widened by ``border_size`` (``(z, y,
     x)``) within ``input_bbox`` (None: the whole image). The output region: the box of the y
-    MIP's crop deskewed and rotated (as a volume of one row), widened by the border, and all
-    rows of the input box (divided by the resample factor's first value, as MATLAB does).
-    ``resample``: MATLAB's ``[y x z]`` vector of ``deskew_rotate_zarr`` (None: none).
+    MIP's crop (flipped along z with ``flip_zstack``, as the data is flipped after its crop)
+    deskewed and rotated as a volume of one row, resampled along x and z, widened by the
+    border, and all rows of the input box resampled along y. ``resample``: MATLAB's vector as
+    ``deskew_rotate_zarr`` passes it (``[x y z]``, ``[xy z]`` or one value; None: none).
 
     Returns the input box, the output region (Python boxes of the image and of the full
     result) and the deskewed y MIP (MATLAB's ``nx x nz`` image).
@@ -208,13 +211,18 @@ def deskew_rotate_boxes_from_masks(
         min(in_m[k + 3], bbox[k + 3] + bd_yxz[k]) for k in range(3)
     ]
     crop = np.asarray(im_y)[in_box[1] - 1 : in_box[4], in_box[2] - 1 : in_box[5]]
+    if _logical(flip_zstack):
+        # flip(im_y, 2): the image's columns are z
+        crop = crop[:, ::-1]
     # permute(im_y, [3, 1, 2]): a volume of one row, x along the crop's rows, z its columns
     frame = np.ascontiguousarray(dtypes.to_class(crop, "uint16").T[:, np.newaxis, :])
+    # the MIP along y has one row: resampled along x and z here, the output rows are the input
+    # rows resampled along y
     rs = [1.0, 1.0, 1.0]
+    rsy = 1.0
     if resample is not None and len(resample):
-        if len(resample) < 3:
-            raise _index_error(len(resample))
-        rs[0], rs[2] = float(resample[1]), float(resample[2])
+        rs_in = _rs_xyz(resample)
+        rs[0], rs[2], rsy = rs_in[0], rs_in[2], rs_in[1]
     dsr = deskew_rotate_volume(
         frame,
         skew_angle,
@@ -231,12 +239,11 @@ def deskew_rotate_boxes_from_masks(
     # squeeze: MATLAB's nx x nz image
     dsr2 = np.ascontiguousarray(dsr[:, 0, :].T)
     ob = _box2_matlab(dsr2)
-    r1 = 1.0 if resample is None or not len(resample) else float(resample[0])
     out_m = [
         1,
         max(1, ob[0] - bd_yxz[1]),
         max(1, ob[1] - bd_yxz[2]),
-        int(_mround((in_box[3] - in_box[0] + 1) / r1)),
+        int(_mround((in_box[3] - in_box[0] + 1) / rsy)),
         min(dsr2.shape[0], ob[2] + bd_yxz[1]),
         min(dsr2.shape[1], ob[3] + bd_yxz[2]),
     ]
@@ -248,6 +255,18 @@ def deskew_rotate_boxes_from_masks(
 # ---------------------------------------------------------------------------------------------
 # XR_deskewRotateBlock
 # ---------------------------------------------------------------------------------------------
+
+
+def _flip_z_in_place(a: np.ndarray) -> None:
+    """MATLAB's ``flip(a, 3)`` of a (z, y, x) array, its z planes swapped in place"""
+    nz = a.shape[0]
+    if nz < 2:
+        return
+    tmp = np.empty(a.shape[1:], dtype=a.dtype)
+    for k in range(nz // 2):
+        tmp[...] = a[k]
+        a[k] = a[nz - 1 - k]
+        a[nz - 1 - k] = tmp
 
 
 def _turn_pages(vol: np.ndarray, n: int) -> np.ndarray:
@@ -313,7 +332,7 @@ def _block_mips_zxy(out_zxy: np.ndarray, box: Sequence[int], mbs: Sequence[int],
     Param("Overwrite", "@islogical", "Redo batches whose flag exists."),
     Param("SkewAngle", "@isnumeric", "Skew angle in degrees."),
     Param("Reverse", "@islogical", "Reverse scan direction."),
-    Param("flipZstack", "@islogical", "Accepted; not used (as in MATLAB)."),
+    Param("flipZstack", "@islogical", "Flip each batch along z after its read."),
     Param("save16bit", "@islogical", "uint16 result (else single).", convert="same"),
     Param("interpMethod", _INTERP, "Interpolation: 'linear' or 'cubic'."),
     Param(
@@ -363,13 +382,14 @@ def deskew_rotate_block(
     debug: bool = False,
     num_threads: int | None = None,
 ) -> list[bool] | None:
-    """``XR_deskewRotateBlock``: each batch (rows of the input zarr, ``in_batch_bboxes``)
-    deskewed and rotated on the output box its region has in the full result
-    (``out_local_bboxes`` moved by ``out_batch_bboxes``' x and z starts), written into its
-    region (``out_region_bboxes``) of the result zarr ``dsr_fullpath``; then the flag: ``t``,
-    or with the MIPs of the blocks for MIP slabs of ``mip_batch_size``. Nothing is done if the
-    flag exists (unless ``overwrite``) or if the writer of the result has ended
-    (``writers.orphaned``). Returns the batches' done flags (None if nothing was done)."""
+    """``XR_deskewRotateBlock``: each batch (rows of the input zarr, ``in_batch_bboxes``;
+    flipped along z with ``flip_zstack``) deskewed and rotated on the output box its region has
+    in the full result (``out_local_bboxes`` moved by ``out_batch_bboxes``' x and z starts),
+    written into its region (``out_region_bboxes``) of the result zarr ``dsr_fullpath``; then
+    the flag: ``t``, or with the MIPs of the blocks for MIP slabs of ``mip_batch_size``.
+    Nothing is done if the flag exists (unless ``overwrite``) or if the writer of the result
+    has ended (``writers.orphaned``). Returns the batches' done flags (None if nothing was
+    done)."""
     from petakit5d.core import dtypes
     from petakit5d.core.threads import resolve_threads
     from petakit5d.deskew_rotate.volume import deskew_rotate_volume_matlab_layout
@@ -378,7 +398,8 @@ def deskew_rotate_block(
     from petakit5d.tools.mip import save_block_mips
 
     t_start = time.perf_counter()
-    del flip_zstack, uuid, debug
+    del uuid, debug
+    flip_zstack = _logical(flip_zstack)
     n = resolve_threads(num_threads)
     flag_path = os.path.dirname(flag_fullname)
     if not os.path.isdir(flag_path):
@@ -424,6 +445,10 @@ def deskew_rotate_block(
         in_batch = read_zarr(zarr_fullpath, input_bbox=ib, num_threads=n, out=buf)
         if in_batch.ndim == 2:
             in_batch = in_batch[np.newaxis]
+        # (a batch has the whole z range of the input box: flipped after the crop, as in
+        # XR_deskewRotateFrame; in the read buffer)
+        if flip_zstack:
+            _flip_z_in_place(in_batch)
         if not (save_16bit and dtype == "uint16"):
             in_batch = np.ascontiguousarray(dtypes.to_class(in_batch, "single"))
         # the box of the batch's region in the full result: the local box moved by the
@@ -494,11 +519,14 @@ def large_file_geometry(
     output_bbox_m: Sequence[int] | None,
 ) -> LargeFileGeometry:
     """``XR_deskewRotateZarr``'s geometry in MATLAB's numbers: ``im_size_m`` the input's
-    ``[ny nx nz]``, sizes ``[y x z]``, boxes MATLAB's, ``resample_m`` MATLAB's vector."""
+    ``[ny nx nz]``, sizes ``[y x z]``, boxes MATLAB's, ``resample_m`` MATLAB's vector
+    (``[x y z]``, ``[xy z]`` or one value, completed to ``[x y z]``): the result's size is
+    divided by ``[ry rx rz]``, a batch's input rows are its output rows times ``ry``."""
     from petakit5d.core.blocks import zarr_chunk_coordinates_matlab
     from petakit5d.deskew_rotate.geometry import _cos, _sin
 
-    rs = _rs3(resample_m)
+    rx, ry, rz = _rs_xyz(resample_m)[:3]
+    rs = [ry, rx, rz]  # rs([2, 1, 3]): [y x z]
     bim = [int(v) for v in im_size_m]
     if input_bbox_m is not None and len(input_bbox_m):
         ib = [int(v) for v in input_bbox_m]
@@ -539,15 +567,12 @@ def large_file_geometry(
         border_size=[1, 0, 0],
     )
     in_b = batch_b.astype(np.int64).copy()
-    first = np.array([_mround((v - 1) * rs[0]) for v in batch_b[:, 0]], dtype=np.int64)
+    first = np.array([_mround((v - 1) * ry) for v in batch_b[:, 0]], dtype=np.int64)
     in_b[:, 0] = first + wd_start[0]
     in_b[:, 1] = wd_start[1]
     in_b[:, 2] = wd_start[2]
     rows = np.array(
-        [
-            _mround((e - s + 1) * rs[0] - 1)
-            for s, e in zip(batch_b[:, 0], batch_b[:, 3], strict=True)
-        ],
+        [_mround((e - s + 1) * ry - 1) for s, e in zip(batch_b[:, 0], batch_b[:, 3], strict=True)],
         dtype=np.int64,
     )
     in_b[:, 3] = np.minimum(in_b[:, 0] + rows, bim[0])
@@ -579,7 +604,7 @@ def large_file_geometry(
     Param("skewAngle", "@isscalar", "Skew angle in degrees."),
     Param("reverse", "@islogical", "Reverse scan direction."),
     Param("DSRCombined", "@(x) islogical(x)", "Accepted; not used (always combined)."),
-    Param("flipZstack", "@islogical", "Accepted; not used (as in MATLAB)."),
+    Param("flipZstack", "@islogical", "Flip the input along z (each batch after its read)."),
     Param("save16bit", "@islogical", "uint16 result (else single).", convert="same"),
     Param("saveMIP", "@islogical", "Save the MIPs of the result (MIPs/)."),
     Param("saveZarr", "@islogical", "Accepted; not used (the result is zarr)."),
@@ -606,7 +631,7 @@ def large_file_geometry(
     Param("interpMethod", _INTERP, "Interpolation: 'linear' or 'cubic'."),
     Param("maskFullpaths", "@iscell", "MIP masks (xy, xz, yz) that set the boxes."),
     Param("parseCluster", "@islogical", "Run the blocks as Slurm jobs."),
-    Param("parseParfor", "@islogical", "Local process pool (MATLAB's error without a cluster)."),
+    Param("parseParfor", "@islogical", "Run the blocks on a local process pool (12 workers)."),
     Param("masterCompute", "@islogical", "This process computes blocks too."),
     Param("jobLogDir", "@ischar", "Folder of the job logs."),
     Param("cpusPerTask", "@isnumeric", "CPUs of a block's job."),
@@ -653,12 +678,12 @@ def deskew_rotate_zarr(
 ) -> list[bool] | None:
     """Deskew and rotate a large zarr file in blocks (``XR_deskewRotateZarr``): the batches of
     output rows (``batch_size``'s y; all of x and z), with a border row on each side, as
-    ``deskew_rotate_block`` tasks through the job framework into
-    ``<dir>/<result_dir_str>/<name>.zarr_<uuid>``, then its MIPs (``mip_zarr``, merged from the
-    MIPs of the blocks) and the result moved into place. Sample scan only. Nothing is done if
-    the result exists; a writer of another call of the same result is waited for, and a
-    result another writer published is kept. Returns the tasks' done flags (None if nothing
-    was done)."""
+    ``deskew_rotate_block`` tasks through the job framework (or a local pool of 12 workers with
+    ``parse_parfor`` and no cluster) into ``<dir>/<result_dir_str>/<name>.zarr_<uuid>``, then
+    its MIPs (``mip_zarr``, merged from the MIPs of the blocks) and the result moved into place.
+    Sample scan only. Nothing is done if the result exists; a writer of another call of the
+    same result is waited for, and a result another writer published is kept. Returns the
+    tasks' done flags (None if nothing was done)."""
     from petakit5d.core.bbox import box_to_matlab, boxes_from_matlab
     from petakit5d.core.ids import get_uuid
     from petakit5d.core.paths import fileparts
@@ -670,7 +695,8 @@ def deskew_rotate_zarr(
     from petakit5d.jobs.tasks import Task
     from petakit5d.tools.mip import mip_zarr, mip_zarr_batch_size
 
-    del overwrite, crop, dsr_combined, save_zarr, flip_zstack
+    del overwrite, crop, dsr_combined, save_zarr
+    flip_zstack = _logical(flip_zstack)
     if not uuid:
         uuid = get_uuid()
     # the block processing only supports sample scan
@@ -709,8 +735,12 @@ def deskew_rotate_zarr(
             keep_other_result(dsr_fullpath, dsr_tmp, flag_path)
             return None
 
+        # 1, 2 or 3 values in xyz order, completed as XR_deskewRotateFrame does (the blocks
+        # pass them to the deskew and rotation)
         rs_m = _resample_matlab(resample_factor)
-        rs = _rs3(rs_m)
+        rs = _rs_xyz(rs_m)
+        if rs_m is not None:
+            rs_m = rs
         nz_i, ny_i, nx_i = (int(v) for v in get_image_size(frame_fullpath))
         bim = [ny_i, nx_i, nz_i]
 
@@ -723,7 +753,8 @@ def deskew_rotate_zarr(
             print("Compute input and out bounding boxes with MIP masks...", flush=True)
             for p in masks:
                 print(f"    {{'{p}'}}", flush=True)  # (disp of the cell column)
-            border = [max(10, int(_mround(100 / r))) for r in rs]  # [y x z]
+            # [y x z]: 100 voxels over rs([2, 1, 3])
+            border = [max(10, int(_mround(100 / r))) for r in (rs[1], rs[0], rs[2])]
             in_py, out_py, _ = deskew_rotate_boxes_from_masks(
                 masks,
                 (border[2], border[0], border[1]),
@@ -731,8 +762,9 @@ def deskew_rotate_zarr(
                 dz,
                 skew_angle,
                 reverse,
-                rs_m if rs_m is not None else [1.0, 1.0, 1.0],
+                rs,
                 None if box_m is None else input_bbox,
+                flip_zstack,
             )
             box_m = [int(v) for v in box_to_matlab(in_py)]
             out_box_m = [int(v) for v in box_to_matlab(out_py)]
@@ -790,7 +822,8 @@ def deskew_rotate_zarr(
         else:
             tsz = int(np.asarray(task_size).reshape(-1)[0])
         num_tasks = math.ceil(num_batch / tsz)
-        rs_task = None if rs_m is None else resample_factor
+        # the completed factor (z, y, x), as the tasks and the estimate get it
+        rs_task = None if rs_m is None else (rs[2], rs[1], rs[0])
         tasks, outputs = [], []
         for t in range(num_tasks):
             inds = list(range(t * tsz, min((t + 1) * tsz, num_batch)))
@@ -812,7 +845,7 @@ def deskew_rotate_zarr(
                     overwrite=False,
                     skew_angle=_through(skew_angle, "%0.20d"),
                     reverse=_logical(reverse),
-                    flip_zstack=False,
+                    flip_zstack=flip_zstack,
                     save_16bit=save_16bit,
                     interp_method=interp_method,
                     resample_factor=None if rs_task is None else _through_mat2str(rs_task),
@@ -825,7 +858,8 @@ def deskew_rotate_zarr(
 
         if parse_cluster or not parse_parfor:
             # memory of the largest batch: its input with border rows, the deskew and its
-            # output region, plus the process
+            # output region, plus the process (a batch is flipped in place: MATLAB counts its
+            # flipped copy)
             in_sizes = g.in_batch_bboxes[:, 3:] - g.in_batch_bboxes[:, :3] + 1
             out_sizes = g.out_region_bboxes[:, 3:] - g.out_region_bboxes[:, :3] + 1
             ind = int(np.argmax(np.prod(in_sizes, axis=1) + np.prod(out_sizes, axis=1)))
@@ -836,7 +870,7 @@ def deskew_rotate_zarr(
                 skew_angle=skew_angle,
                 save_16bit=save_16bit,
                 interp_method=interp_method,
-                resample_factor=resample_factor,
+                resample_factor=rs_task,
                 out_size=_zyx(out_sizes[ind]),
                 large_file=True,
                 block_size=out_block,
@@ -863,9 +897,16 @@ def deskew_rotate_zarr(
                 if all(done):
                     break
         else:
-            # MATLAB passes a GPUJob it never defines
-            raise DeskewRotateZarrError(
-                "Unrecognized function or variable 'GPUJob'.", "MATLAB:UndefinedFunction"
+            # (as XR_crop_zarr and XR_MIP_zarr)
+            done = framework.run_tasks(
+                inputs,
+                outputs,
+                tasks,
+                cluster_type="parfor",
+                task_batch_num=1,
+                gpu_job=False,
+                local_worker_num=12,
+                uuid=uuid,
             )
         if not all(done):
             raise DeskewRotateZarrError("Some blocks are not finished!")

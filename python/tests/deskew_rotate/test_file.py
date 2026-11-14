@@ -11,8 +11,8 @@ port through the MATLAB-name layer; the folders they leave are compared, files b
   input and output, uint16, single and uint8 data, ``save16bit`` on and off, flat field (with
   and without a constant offset), input boxes, flips, input and output axis orders, partial
   files, an existing result, ``save3DStack`` and ``saveMIP`` off, other folder names, the
-  rescale (and its MATLAB error for 16-bit results), the background removal's known issue and
-  a missing input;
+  rescale (single and 16-bit results), the background removal's known issue and a missing
+  input;
 - ``scaleContrast`` (another author's GPL function, used as a black box; ``scale_contrast``):
   classes, ranges, NaN and Inf, degenerate ranges, its errors and defaults;
 - ``XR_estimateDeskewRotateMemory``: the output size of every geometry (the port's memory is
@@ -219,13 +219,8 @@ def _frame_cases() -> list[Case]:
         ),
         frame_case("combined.rescale_single", t, [_r("rescaleRotate", True, "save16bit", False)]),
         frame_case("combined.rescale_single_in", frame_tree("single"), [_r("rescaleRotate", True)]),
-        frame_case(
-            "combined.rescale_u16",
-            t,
-            [_r("rescaleRotate", True)],
-            expect_error="MATLAB:mixedClasses",
-            py_error=df.MatlabError,
-        ),
+        # the uint16 result's range in double (it raised MATLAB:mixedClasses after its MIP)
+        frame_case("combined.rescale_u16", t, [_r("rescaleRotate", True)]),
         frame_case(
             "combined.bkremoval",
             frame_tree(ff=True),
@@ -745,6 +740,24 @@ def test_save16bit_false_writes_single(tmp_path):
     dsr = _read(tmp_path / "DSR" / f"{FSN}.tif")
     assert dsr.dtype == np.float32
     np.testing.assert_array_equal(dsr, _expected_dsr(frame, save_16bit=False))
+
+
+def test_rescale_rotate_scales_the_result_to_the_uint16_range(tmp_path):
+    """(MATLAB: rescaleRotateScalesTheResultToTheUint16Range) rescaleRotate scales the DSR from
+    its range to [0, 65535]; with save16bit (the default) the range was uint16, which
+    scaleContrast doesn't take (MATLAB:mixedClasses), after the MIP was written"""
+    from petakit5d.core import dtypes
+
+    fn, frame = _write_frame(tmp_path)
+    df.deskew_rotate_file(fn, PX, 0.3, skew_angle=SKEW, reverse=True, rescale_rotate=True)
+    dsr = _expected_dsr(frame)
+    lo, hi = float(dsr.min()), float(dsr.max())
+    want = dtypes.uint16((dsr.astype(np.float64) - lo) / (hi - lo) * 65535)
+    out = _read(tmp_path / "DSR" / f"{FSN}.tif")
+    np.testing.assert_array_equal(out, want)
+    assert (int(out.min()), int(out.max())) == (0, 65535)
+    # (the MIP is the unscaled result's, written before the rescale, as in MATLAB)
+    np.testing.assert_array_equal(_read(tmp_path / "DSR" / "MIPs" / f"{FSN}_MIP_z.tif"), _mip(dsr))
 
 
 def test_separate_path_writes_deskewed_and_rotated(tmp_path):

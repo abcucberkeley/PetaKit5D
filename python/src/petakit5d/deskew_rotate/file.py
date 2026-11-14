@@ -823,6 +823,10 @@ def deskew_rotate_file(
         lo, _ = reduce.min(dsr)
         hi, _ = reduce.max(dsr)
         rng = (np.asarray(lo, dtype=dsr.dtype), np.asarray(hi, dtype=dsr.dtype))
+        # scale_contrast takes no integer range (the uint16 result of save_16bit): its range in
+        # double
+        if np.issubdtype(dsr.dtype, np.integer):
+            rng = (np.asarray(lo, dtype=np.float64), np.asarray(hi, dtype=np.float64))
         dsr = scale_contrast(dsr, rng, (0, 65535), num_threads=n)
     dsr = _to_output_class(dsr, save_16bit, n)
     if ml_layout:
