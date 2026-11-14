@@ -22,6 +22,13 @@ One volume (``volume``):
 ``StitchVolumeError``, ``StitchVolumeWarning``  the frame's errors and warnings
 ==============================================  ====================================
 
+Datasets (``dataset``):
+
+==============================================  ====================================
+``stitch_dataset``                              XR_matlab_stitching_wrapper
+``StitchDatasetError``                          its errors
+==============================================  ====================================
+
 Nothing is imported until a name is first used.
 """
 
@@ -54,6 +61,8 @@ _EXPORTS = {
     "stitch_volume": "volume",
     "write_stitch_info": "volume",
     "write_xcorr_result": "volume",
+    "StitchDatasetError": "dataset",
+    "stitch_dataset": "dataset",
 }
 
 __all__ = sorted(_EXPORTS)

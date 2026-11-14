@@ -648,8 +648,8 @@ def test_xcorr_result_round_trip(tmp_path):
 
 def test_the_package_exports_the_frame_and_its_files():
     """petakit5d.stitch exports the frame, its errors and the readers and writers of its files
-    lazily, at the frame's planned name, and its table names each registered function it
-    exports with its MATLAB name"""
+    lazily, and the wrapper (stitch_dataset), at their planned names, and its table names each
+    registered function it exports with its MATLAB name"""
     import importlib
     import re
 
@@ -665,6 +665,13 @@ def test_the_package_exports_the_frame_and_its_files():
     planned = {m: p for m, p, _, _ in PLANNED}["XR_stitching_frame_zarr_dev_v1"]
     pkg, pname = planned.rsplit(".", 1)
     assert getattr(importlib.import_module(pkg), pname) is V.stitch_volume
+    # the datasets (the wrapper), at its planned name too
+    from petakit5d.stitch import dataset as D
+
+    planned = {m: p for m, p, _, _ in PLANNED}["XR_matlab_stitching_wrapper"]
+    assert planned == "petakit5d.stitch.stitch_dataset"
+    assert st.stitch_dataset is D.stitch_dataset and st.StitchDatasetError is D.StitchDatasetError
+    assert "stitch_dataset" in st.__all__ and "StitchDatasetError" in dir(st)
     for mname, (where, kind) in REGISTRY.index().items():
         if kind != "register" or not where.startswith("petakit5d.stitch."):
             continue
