@@ -13,6 +13,15 @@ Image lists (``imagelist``, ``imagelist_generate``):
 ``Table``, ``ImageListInfo``      the tables and the parse results
 ================================  ===============================================
 
+One volume (``volume``):
+
+==============================================  ====================================
+``stitch_volume``                               XR_stitching_frame_zarr_dev_v1
+``read_stitch_info``, ``write_stitch_info``     the stitch information files (``stitchInfo/``)
+``read_xcorr_result``, ``write_xcorr_result``   the registration result files (``xcorr/``)
+``StitchVolumeError``, ``StitchVolumeWarning``  the frame's errors and warnings
+==============================================  ====================================
+
 Nothing is imported until a name is first used.
 """
 
@@ -38,6 +47,13 @@ _EXPORTS = {
     "generate_image_list_from_sqlite_old_format": "imagelist_generate",
     "generate_image_list_from_tile_list": "imagelist_generate",
     "generate_image_list_from_tile_positions": "imagelist_generate",
+    "StitchVolumeError": "volume",
+    "StitchVolumeWarning": "volume",
+    "read_stitch_info": "volume",
+    "read_xcorr_result": "volume",
+    "stitch_volume": "volume",
+    "write_stitch_info": "volume",
+    "write_xcorr_result": "volume",
 }
 
 __all__ = sorted(_EXPORTS)
