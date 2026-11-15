@@ -372,17 +372,27 @@ def feather_distance_map_resize_3d(
     """``feather_distance_map_resize_3d(dmat, bbox, wd)``: ``dmat`` resized to the size of
     ``box`` and raised to the power ``wd``.
 
-    Single maps run the kernel. MATLAB's code for other classes (``imresize``/``imresize3`` and
-    ``fastPower``) is not ported: they raise ``NotImplementedError``.
+    Single maps run the kernel. Other classes take MATLAB's code after the mex rejects them (by
+    design, without a warning): a box one plane deep ``imresize(dmat, [ny nx], 'bilinear')``
+    (every plane of the map), else ``imresize3(dmat, [ny nx nz], 'linear')`` of the map (one
+    plane doubled), then ``fastPower(dmat, wd)``.
     """
     b = _ints(box, 6, "box")
-    if _array(dmat, "dmat").dtype != np.float32:
-        raise NotImplementedError(
-            "feather_distance_map_resize_3d of a non-single distance map (MATLAB's imresize3 "
-            "fall-back) is not ported"
-        )
-    return resize_distance_map(dmat, [b[3] - b[0], b[4] - b[1], b[5] - b[2]], wd,
-                               num_threads=num_threads)  # fmt: skip
+    n = [b[3] - b[0], b[4] - b[1], b[5] - b[2]]
+    dm = _array(dmat, "dmat")
+    if dm.dtype == np.float32:
+        return resize_distance_map(dm, n, wd, num_threads=num_threads)
+    from petakit5d.matlabcompat.elementary import fast_power
+    from petakit5d.matlabcompat.resize import imresize, imresize3
+
+    if n[0] == 1:
+        out = imresize(dm, (n[1], n[2]), "bilinear", num_threads=num_threads)
+    else:
+        if dm.ndim == 2 or dm.shape[0] == 1:
+            plane = dm.reshape((1,) + dm.shape[-2:])
+            dm = np.concatenate([plane, plane], axis=0)
+        out = imresize3(dm, tuple(n), "linear", num_threads=num_threads)
+    return fast_power(out, wd)
 
 
 # ---------------------------------------------------------------------------------------------

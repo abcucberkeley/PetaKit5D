@@ -642,6 +642,31 @@ CASES += [
         inputs={"dmat": V(lambda: fvol((10, 9), np.float32, 96, 0.1, 1.3))},
         out_roles=("vol",),
     ),
+    # double maps: MATLAB's imresize/imresize3 fall-back and fastPower (matlabcompat.resize)
+    Case(
+        "resize.wrapper.double",
+        matlab="feather_distance_map_resize_3d",
+        args=[Vol(In("dmat")), Box([3, 5, 2, 19, 21, 14]), 10],
+        python=M + "feather_distance_map_resize_3d",
+        inputs={"dmat": V(lambda: fvol((8, 9, 6), np.float64, 97, 0.1, 1.3))},
+        out_roles=("vol",),
+    ),
+    Case(
+        "resize.wrapper.double.plane",
+        matlab="feather_distance_map_resize_3d",
+        args=[Vol(In("dmat")), Box([1, 1, 4, 30, 25, 4]), 2],
+        python=M + "feather_distance_map_resize_3d",
+        inputs={"dmat": V(lambda: fvol((10, 9), np.float64, 98, 0.1, 1.3))},
+        out_roles=("vol",),
+    ),
+    Case(
+        "resize.wrapper.double.plane_to_volume",
+        matlab="feather_distance_map_resize_3d",
+        args=[Vol(In("dmat")), Box([2, 3, 1, 21, 17, 5]), 3],
+        python=M + "feather_distance_map_resize_3d",
+        inputs={"dmat": V(lambda: fvol((10, 9), np.float64, 99, 0.1, 1.3))},
+        out_roles=("vol",),
+    ),
     Case(
         "resize.ones",
         matlab="feather_distance_map_resize_3d_mex",
