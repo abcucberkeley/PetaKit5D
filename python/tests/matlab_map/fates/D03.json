@@ -106,7 +106,8 @@
     ],
     "preResamplingOutputSizeMatchesXRDeskewRotateFrame": [
      "oracle:tests/deskew_rotate/test_file.py::memory.preresample*",
-     "pytest:tests/deskew_rotate/test_file.py::test_pre_resampling_is_not_ported_yet"
+     "pytest:tests/deskew_rotate/test_file.py::test_pre_resampling_bins_z_and_resizes_the_planes",
+     "oracle:tests/deskew_rotate/test_file.py::frame.combined.preresample"
     ]
    }
   }

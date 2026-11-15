@@ -200,6 +200,12 @@ def _frame_cases() -> list[Case]:
         frame_case("combined.resample", t, [_r("resampleFactor", [2, 2, 2])]),
         frame_case("combined.resample_xyz", t, [_r("resampleFactor", [1, 1, 1.5])]),
         frame_case("combined.resample_one", t, [_r("resampleFactor", 1.5)]),
+        # above 1000 slices: z binned and the planes resized (imresize) before the deskew
+        frame_case(
+            "combined.preresample",
+            frame_tree(shape=(1001, 16, 24)),
+            [_r("resampleFactor", [2, 2, 2], dz=0.1)],
+        ),
         frame_case("combined.cubic", t, [_r("interpMethod", "cubic")]),
         frame_case("combined.thresh", t, [_r("xStepThresh", 2.5)]),
         frame_case("combined.flatfield", frame_tree(ff=True), [_r(*ffa)]),
@@ -1213,12 +1219,21 @@ def test_an_empty_zarr_result_is_made_again(tmp_path, monkeypatch):
     assert len(calls) == 3  # a tiff result exists: not computed again
 
 
-def test_pre_resampling_is_not_ported_yet(tmp_path):
-    frame = np.zeros((1001, 16, 24), dtype=np.uint16) + 100
-    fn = tmp_path / f"{FSN}.tif"
-    synth.write_tiff(fn, frame)
-    with pytest.raises(NotImplementedError, match="imresize"):
-        df.deskew_rotate_file(str(fn), PX, 0.3, reverse=True, resample_factor=(2, 2, 2))
+def test_pre_resampling_bins_z_and_resizes_the_planes():
+    # MATLAB: pre_rs = min(rs * px) ./ [px px dz*sind(angle)], z rounded (at least 1); planes
+    # round(p/2) : p : end, imresize to round([ny nx] ./ p(1:2)) (bicubic)
+    from petakit5d.matlabcompat.resize import imresize
+
+    frame = (np.arange(1001 * 16 * 24) % 60000).astype(np.uint16).reshape(1001, 16, 24)
+    f, px, dz, rs = df._pre_resample(frame, (2, 2, 2), 0.108, 0.1, 32.45)
+    assert px == 0.108 * 2 and rs == (1.0, 1.0, 1.0)
+    p3 = dz / 0.1
+    assert p3 == round(p3) and p3 > 1
+    k = int(p3)
+    want = imresize(frame[int(np.floor(k / 2 + 0.5)) - 1 :: k], (8, 12))
+    assert f.shape == want.shape and np.array_equal(f, want)
+    same = df._pre_resample(frame, (1, 1, 1), 0.108, 0.3 / np.sin(np.radians(32.45)), 32.45)
+    assert same[0] is frame
 
 
 # -- rotateFrame3D's Crop ----------------------------------------------------------------------

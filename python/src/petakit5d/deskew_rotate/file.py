@@ -37,8 +37,8 @@ Differences from MATLAB, each reported:
 - above 1000 slices the separate path deskews in blocks of rows as MATLAB's ``blockedImage``
   does (MATLAB's block size and 5-row borders: the same voxels); its DS file is written as
   every port tiff (cpp-tiff), where MATLAB's ``MPageTiffAdapter`` writes another tiff layout;
-- the combined path's resampling of inputs above 1000 slices before the deskew uses MATLAB's
-  ``imresize``, which the port does not have yet (``NotImplementedError``);
+- the combined path's resampling of inputs above 1000 slices before the deskew bins z and
+  resizes the planes with MATLAB's ``imresize`` (``matlabcompat.resize``);
 - the flat field and background are prepared once per process for the same files (path, size
   and modification time), where MATLAB reads and prepares them for every frame: the same
   result (``_flat_field``).
@@ -497,9 +497,13 @@ def _combined(
 
 def _pre_resample(frame, resample, px, dz, angle):
     """MATLAB's binning in z and ``imresize`` in xy of more than 1000 slices before a combined
-    deskew/rotation with resampling (``imresize`` is not ported yet)"""
+    deskew/rotation with resampling: of the factors ``p`` the planes ``round(p_z / 2)``,
+    ``+ p_z``, ... (1-based), each resized to ``round([ny nx] ./ p)`` (bicubic); the pixel size
+    and the scan interval grow by the factors, and the resampling left is
+    ``outPixelSize ./ min(outPixelSize)``"""
     from petakit5d.deskew_rotate.geometry import _round
     from petakit5d.matlabcompat.elementary import sind
+    from petakit5d.matlabcompat.resize import imresize
 
     rs = resample[::-1]  # [x y z]
     out_px = [r * px for r in rs]
@@ -509,10 +513,12 @@ def _pre_resample(frame, resample, px, dz, angle):
     pre[2] = max(1.0, _round(pre[2]))
     if all(p == 1 for p in pre):
         return frame, px, dz, resample
-    raise NotImplementedError(
-        "the combined deskew/rotation of more than 1000 slices with resampling bins and "
-        "resizes the input first with MATLAB's imresize, which the port does not have yet"
-    )
+    step = int(pre[2])
+    frame = frame[int(_round(pre[2] / 2)) - 1 :: step]
+    ny, nx = frame.shape[-2:]
+    frame = imresize(frame, (int(_round(ny / pre[0])), int(_round(nx / pre[1]))))
+    resample = tuple(v / m for v in out_px)[::-1]
+    return frame, px * pre[0], dz * pre[2], resample
 
 
 @register(
