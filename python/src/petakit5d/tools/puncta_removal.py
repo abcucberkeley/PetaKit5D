@@ -34,10 +34,8 @@ MATLAB's helper functions are written from their method and from MATLAB's measur
 - ``fillmissing2_nearest`` (``fillmissing2(A, 'nearest')``): each NaN pixel takes the value of
   the nearest pixel that isn't NaN (Euclidean distance; of equal ones, the last in column-major
   order); fewer than three known pixels, or all on a line, leave the image as it is.
-- ``imresize3_linear`` (``imresize3(A, size, 'linear')`` for enlarging): per dimension, in the
-  order of increasing scale, triangle weights normalized, in double, rounded to the class after
-  each dimension; ``imresize_bilinear`` (``imresize(A, size, 'bilinear')`` for enlarging) is
-  the same of an image.
+- ``imresize3_linear`` (``imresize3(A, size, 'linear')``) and ``imresize_bilinear``
+  (``imresize(A, size, 'bilinear')``): ``petakit5d.matlabcompat.resize``'s.
 - regionprops3's ``PrincipalAxisLength(:, 1) > 35``: the largest eigenvalue of the
   coordinates' covariance (normalized by the count) plus 1/12, decided in exact arithmetic.
 
@@ -604,65 +602,31 @@ def fillmissing2_nearest(a: Any) -> np.ndarray:
 
 
 # ---------------------------------------------------------------------------------------------
-# imresize3(A, size, 'linear') (enlarging)
+# imresize3(A, size, 'linear'), imresize(A, size, 'bilinear')
 # ---------------------------------------------------------------------------------------------
-
-
-def _linear_weights(n_in: int, n_out: int) -> tuple[np.ndarray, np.ndarray]:
-    s = n_out / n_in
-    x = np.arange(1, n_out + 1, dtype=np.float64)
-    u = x / s + 0.5 * (1 - 1 / s)
-    left = np.floor(u - 1)
-    idx = left[:, None] + np.arange(3, dtype=np.float64)[None, :]
-    w = np.maximum(0.0, 1 - np.abs(u[:, None] - idx))
-    w = w / np.sum(w, axis=1, keepdims=True)
-    ind = (np.clip(idx, 1, n_in) - 1).astype(np.intp)
-    return w, ind
 
 
 def imresize3_linear(a: Any, size: Sequence[int]) -> np.ndarray:
     """MATLAB's ``imresize3(A, [ny nx nz], 'linear')`` of a volume ``(z, y, x)`` to ``size``
-    ``(z, y, x)``, no smaller than ``A`` along any axis (module docstring)."""
+    ``(z, y, x)`` (``matlabcompat.resize.imresize3``)."""
+    from petakit5d.matlabcompat.resize import imresize3
+
     v = np.asarray(a)
-    out_size = _size3(size, "size")
     if v.ndim != 3:
         raise ValueError("imresize3_linear takes a volume (z, y, x)")
-    if any(o < n for o, n in zip(out_size, v.shape, strict=True)):
-        raise ValueError("imresize3_linear only enlarges")
-    # MATLAB's dimensions (y, x, z) in the order of increasing scale (stable)
-    dims = [(-2, 1), (-1, 2), (-3, 0)]
-    scales = [out_size[k] / v.shape[k] for _, k in dims]
-    order = sorted(range(3), key=lambda i: scales[i])
-    cls = v.dtype
-    b = v
-    for i in order:
-        ax, k = dims[i]
-        w, ind = _linear_weights(b.shape[ax], out_size[k])
-        src = np.moveaxis(b, ax, 0)
-        acc = np.zeros((out_size[k],) + src.shape[1:], dtype=np.float64)
-        shp = (-1,) + (1,) * (src.ndim - 1)
-        for j in range(w.shape[1]):
-            acc += w[:, j].reshape(shp) * src[ind[:, j]].astype(np.float64)
-        if cls.kind == "f":
-            r = acc.astype(cls)
-        else:
-            from petakit5d.core.arrays import matlab_class
-            from petakit5d.core.dtypes import cast
-
-            r = cast(acc, matlab_class(v))
-        b = np.ascontiguousarray(np.moveaxis(r, 0, ax))
-    return b
+    return imresize3(v, tuple(_size3(size, "size")), "linear")
 
 
 def imresize_bilinear(a: Any, size: Sequence[int]) -> np.ndarray:
     """MATLAB's ``imresize(A, [ny nx], 'bilinear')`` of an image ``(y, x)`` to ``size``
-    ``(y, x)``, no smaller than ``A`` along either axis: ``imresize3_linear`` of the image as
-    one slice"""
+    ``(y, x)`` (``matlabcompat.resize.imresize``)."""
+    from petakit5d.matlabcompat.resize import imresize
+
     v = np.asarray(a)
     if v.ndim != 2:
         raise ValueError("imresize_bilinear takes an image (y, x)")
     ny, nx = (int(s) for s in size)
-    return imresize3_linear(v[np.newaxis], (1, ny, nx))[0]
+    return imresize(v, (ny, nx), "bilinear")
 
 
 # ---------------------------------------------------------------------------------------------

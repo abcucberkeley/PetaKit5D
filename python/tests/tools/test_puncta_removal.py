@@ -942,13 +942,18 @@ def test_regionalmax_plateau_next_to_a_higher_value():
     assert e.value.identifier == "MATLAB:imregionalmax:expectedNonNaN"
 
 
-def test_resize_keeps_a_constant_and_enlarges_in_order_of_scale():
+def test_resize_keeps_a_constant_and_takes_volumes_and_images():
     a = np.full((2, 3, 4), 7.25, dtype=np.float32)
     np.testing.assert_array_equal(
         pr.imresize3_linear(a, (5, 9, 4)), np.full((5, 9, 4), 7.25, np.float32)
     )
+    np.testing.assert_array_equal(
+        pr.imresize3_linear(a, (1, 9, 9)), np.full((1, 9, 9), 7.25, np.float32)
+    )
     with pytest.raises(ValueError):
-        pr.imresize3_linear(a, (1, 9, 9))
+        pr.imresize3_linear(a[0], (5, 9, 4))
+    with pytest.raises(ValueError):
+        pr.imresize_bilinear(a, (5, 9))
 
 
 def test_principal_axis_threshold_is_exact():
