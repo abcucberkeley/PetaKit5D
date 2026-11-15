@@ -28,9 +28,10 @@ jobs:
     # Linux and Windows are the gate (Windows since its first two fully green runs). macOS reports
     # without failing the workflow until a cpp-zarr wheel whose write_zarr doesn't crash on macOS arm64
     continue-on-error: ${{ matrix.os == 'macos-15' }}
-    # macOS: the known crash restarts a worker for each of ~900 tests, so its suite takes about
-    # 47 minutes; at 45 the job was cancelled, and the run with it, before the summary printed
-    timeout-minutes: ${{ matrix.os == 'macos-15' && 75 || 45 }}
+    # macOS: the known crash restarts a worker for each of ~1,100 tests, so its suite takes from
+    # 30 minutes to more than 75 (Python 3.12, at 98% of the tests when its 75 ran out); a job
+    # out of time is cancelled, and the run with it, before the summary prints
+    timeout-minutes: ${{ matrix.os == 'macos-15' && 120 || 45 }}
     strategy:
       fail-fast: false
       matrix:
