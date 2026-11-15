@@ -1,0 +1,78 @@
+{
+ "task": "T04",
+ "classes": {
+  "ResampleTest": {
+   "finished": true,
+   "methods": {
+    "linearMatchesImresize3": [
+     "pytest:tests/tools/test_resample.py::test_linear_matches_imresize3",
+     "oracle:tests/tools/test_resample.py::frame.uint16.*.linear"
+    ],
+    "constantImageStaysConstant": [
+     "pytest:tests/tools/test_resample.py::test_constant_image_stays_constant",
+     "oracle:tests/tools/test_resample.py::frame.constant.*"
+    ],
+    "maxAndMeanMatchBlockReference": [
+     "pytest:tests/tools/test_resample.py::test_max_and_mean_match_block_reference",
+     "oracle:tests/tools/test_resample.py::frame.uint16.blocks.*",
+     "oracle:tests/tools/test_resample.py::frame.single.blocks.*"
+    ],
+    "image2d": [
+     "pytest:tests/tools/test_resample.py::test_image_2d",
+     "oracle:tests/tools/test_resample.py::frame.image.down2"
+    ],
+    "inputBboxResamplesTheCroppedRegion": [
+     "pytest:tests/tools/test_resample.py::test_input_bbox_resamples_the_cropped_region",
+     "oracle:tests/tools/test_resample.py::frame.uint16.bbox"
+    ],
+    "singleOutputWithoutSave16bit": [
+     "pytest:tests/tools/test_resample.py::test_single_output_without_save_16bit",
+     "oracle:tests/tools/test_resample.py::frame.uint16.down2.single_out"
+    ],
+    "zarrInputAndOutput": [
+     "pytest:tests/tools/test_resample.py::test_zarr_input_and_output",
+     "oracle:tests/tools/test_resample.py::frame.zarr.zarr_out"
+    ],
+    "imresize3FastMatchesImresize3": [
+     "oracle:tests/matlabcompat/test_resize.py::resample_test.fast.*"
+    ],
+    "imresize3FastRegionMatchesCroppedImresize3": [
+     "oracle:tests/matlabcompat/test_resize.py::resample_test.region.*"
+    ],
+    "imresize3FastRegionWithOtherMethods": [
+     "oracle:tests/matlabcompat/test_resize.py::fast.4",
+     "oracle:tests/matlabcompat/test_resize.py::fast.5",
+     "na:lanczos3 is not ported (matlabcompat.resize, N01: no call site uses it); nearest and box are covered"
+    ],
+    "image2dWithYxzFactor": [
+     "pytest:tests/tools/test_resample.py::test_image_2d_with_yxz_factor",
+     "oracle:tests/tools/test_resample.py::frame.image.yxz_factor"
+    ],
+    "datasetWrapperTiff": [
+     "pytest:tests/tools/test_resample.py::test_dataset_wrapper_tiff",
+     "oracle:tests/tools/test_resample.py::ds.tif.down2"
+    ],
+    "datasetWrapperZarr": [
+     "pytest:tests/tools/test_resample.py::test_dataset_wrapper_zarr",
+     "oracle:tests/tools/test_resample.py::ds.zarr.down2"
+    ],
+    "largeZarrMatchesInMemory": [
+     "pytest:tests/tools/test_resample.py::test_large_zarr_matches_in_memory",
+     "oracle:tests/tools/test_resample.py::ds.large.border4",
+     "oracle:tests/tools/test_resample.py::zarr.uint16.down2.*.border4"
+    ],
+    "largeZarrKeepsResultOfAnotherCopy": [
+     "pytest:tests/tools/test_resample.py::test_large_zarr_keeps_result_of_another_copy"
+    ],
+    "largeZarrKeepsResultOfAnotherRun": [
+     "pytest:tests/tools/test_resample.py::test_large_zarr_keeps_result_of_another_run"
+    ],
+    "largeZarrWithDefaultBorderSize": [
+     "pytest:tests/tools/test_resample.py::test_large_zarr_matches_in_memory",
+     "oracle:tests/tools/test_resample.py::ds.large.default_border",
+     "oracle:tests/tools/test_resample.py::zarr.uint16.down2.*.default_border"
+    ]
+   }
+  }
+ }
+}
