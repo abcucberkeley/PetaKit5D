@@ -49,7 +49,7 @@
     ],
     "tiffToZarrProcessingOptions": [
      "pytest:tests/io/test_convert.py::test_tiff_to_zarr_processing_options",
-     "pytest:tests/io/test_convert.py::test_resampling_calls_the_t04_interface",
+     "pytest:tests/io/test_convert.py::test_resampling_calls_imresize3_fast",
      "oracle:tests/io/test_convert.py::t2z.usrfcn_single",
      "oracle:tests/io/test_convert.py::t2z.resample"
     ],

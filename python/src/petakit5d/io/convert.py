@@ -25,8 +25,8 @@ Hooks:
   task S02), and fails with ``NotImplementedError`` until that exists. The flat-field
   correction is such a function (D01's ``petakit5d.flatfield.flatfield_correct_file``,
   MATLAB's ``processFFCorrectionFrame``).
-- **resampling** goes to ``petakit5d.tools.resample.imresize3_fast(vol, out_size)`` (T04's
-  port of ``imresize3_fast``, cubic), and fails with ``NotImplementedError`` until it exists.
+- **resampling** is ``imresize3_fast(vol, out_size)`` (cubic) of
+  ``petakit5d.matlabcompat.resize``.
 
 Results are written under ``<name>_<uuid>`` and moved into place with one rename; a result
 another writer published first is kept (``jobs.publish``), also with ``overwrite`` (MATLAB
@@ -281,16 +281,9 @@ def _function_text(spec: Any) -> str:
 
 
 def _resize(vol: np.ndarray, out_size: Sequence[int]) -> np.ndarray:
-    """``imresize3_fast(I, outSize)`` (cubic), T04's"""
-    try:
-        from petakit5d.tools.resample import imresize3_fast  # type: ignore
-    except ImportError:
-        err = NotImplementedError(
-            "resampling (resample_factor) needs petakit5d.tools.resample.imresize3_fast "
-            "(task T04), which is not there yet"
-        )
-        err.identifier = "petakit5d:convert:resampleNotPorted"  # type: ignore[attr-defined]
-        raise err from None
+    """``imresize3_fast(I, outSize)`` (cubic)"""
+    from petakit5d.matlabcompat.resize import imresize3_fast
+
     return imresize3_fast(vol, tuple(int(v) for v in out_size))
 
 

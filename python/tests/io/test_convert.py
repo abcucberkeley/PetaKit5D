@@ -4,7 +4,7 @@ Oracle cases against MATLAB: tiffToZarr (uint8, uint16, single with NaN payloads
 chunk sizes that don't divide the image; the default chunks; flip, inputBbox, tileOutBbox and
 their combinations; a user function; reading by z blocks with and without boxes; partial files;
 images with and without expand2dDim; frames in memory; existing results; another compressor;
-the '/' separator above 10,000 chunks; an unsupported class; resampling, which waits for T04),
+the '/' separator above 10,000 chunks; an unsupported class; resampling),
 zarrToTiff (both layouts' classes, an image, a user function, a missing folder, an existing
 result), XR_tiffToZarr_wrapper (channel patterns, boxes, reading by blocks, flipped tiles,
 partial files, boxes per tile location, files given by path or folder) and
@@ -151,12 +151,8 @@ def _named(args, name):
 
 
 def needs_resampling():
-    """skips the Python side of a case until T04's imresize3_fast is there (the MATLAB
-    reference is made already)"""
-    try:
-        from petakit5d.tools.resample import imresize3_fast  # noqa: F401
-    except ImportError:
-        pytest.skip("resampling arrives with T04 (petakit5d.tools.resample.imresize3_fast)")
+    """skips the Python side of a case without the resize kernels (matlabcompat.resize)"""
+    pytest.importorskip("petakit5d._ext.resize", reason="the resize kernels are not built")
 
 
 def _py_t2z_file(d, name, *args):
@@ -850,19 +846,10 @@ def test_tiff_to_zarr_processing_options(tmp_path):
     assert_same(read_zarr(str(tmp_path / "flip.zarr")), cast(want.astype(np.float32), "uint16"))
 
 
-def test_tiff_to_zarr_resampling_needs_t04(tmp_path):
+def test_tiff_to_zarr_resamples(tmp_path):
+    needs_resampling()
     im = volume(IM_SIZE, "uint16", "rs")
     write_tiff(im, str(tmp_path / "im.tif"))
-    try:
-        from petakit5d.tools.resample import imresize3_fast  # noqa: F401
-    except ImportError:
-        with pytest.raises(NotImplementedError, match="T04") as err:
-            convert.tiff_to_zarr(
-                str(tmp_path / "im.tif"), str(tmp_path / "rs.zarr"), resample_factor=(2, 1)
-            )
-        assert err.value.identifier == "petakit5d:convert:resampleNotPorted"
-        assert not list(tmp_path.glob("rs.zarr*")), "a result was left"
-        return
     convert.tiff_to_zarr(
         str(tmp_path / "im.tif"), str(tmp_path / "rs.zarr"), resample_factor=(2, 1)
     )
@@ -878,10 +865,9 @@ def test_resample_factors_complete_as_matlab():
     assert rf((2, 3, 4)) == [2.0, 3.0, 4.0]
 
 
-def test_resampling_calls_the_t04_interface(tmp_path, monkeypatch):
+def test_resampling_calls_imresize3_fast(tmp_path, monkeypatch):
     # out size round(size ./ rs) in (z, y, x), before the user function
-    import sys
-    import types
+    from petakit5d.matlabcompat import resize
 
     seen = []
 
@@ -889,9 +875,7 @@ def test_resampling_calls_the_t04_interface(tmp_path, monkeypatch):
         seen.append((vol.shape, out_size))
         return np.zeros(out_size, vol.dtype)
 
-    mod = types.ModuleType("petakit5d.tools.resample")
-    mod.imresize3_fast = imresize3_fast
-    monkeypatch.setitem(sys.modules, "petakit5d.tools.resample", mod)
+    monkeypatch.setattr(resize, "imresize3_fast", imresize3_fast)
     im = volume(IM_SIZE, "uint16", "rs2")
     convert.tiff_to_zarr(
         "", str(tmp_path / "rs.zarr"), im, resample_factor=(2.5, 3), usr_fcn=lambda x: x + 1
