@@ -1,0 +1,42 @@
+{
+ "name": "mip_masks_b10",
+ "description": "B10: XR_generate_MIP_masks (defaults, tasks in the process) of the y, x and z MIPs of two demo tiles (MATLAB under the framework's -nojvm, so without the masks' figures; Python without them too, and with them as py_masks_fig), and XR_visualize_OTF_mask_segmentation of the demo PSF 560_c.tif (0.88, skewed, saved; MATLAB with its JVM), at 1 and 24 threads.",
+ "repeats": 5,
+ "warmup": 1,
+ "setup": ["{python} {src}/benchmarks/tools/mip_masks_b10_data.py {work}"],
+ "variants": [
+  {
+   "id": "ml_masks",
+   "impl": "matlab",
+   "paths": ["benchmarks/tools", "benchmarks/common"],
+   "code": "mip_masks_b10_ml('{work}/matlab', 'masks', [1, 24], 1)"
+  },
+  {
+   "id": "ml_seg",
+   "impl": "matlab",
+   "flags": ["-nodisplay", "-nosplash", "-nodesktop"],
+   "paths": ["benchmarks/tools", "benchmarks/common"],
+   "code": "mip_masks_b10_ml('{work}/matlab', 'seg', [1, 24], 1)"
+  },
+  {
+   "id": "py_masks",
+   "impl": "python",
+   "script": "benchmarks/tools/mip_masks_b10.py",
+   "args": ["{work}/python", "masks", "--threads", "1", "24", "--repeats", "1", "--no-figures"]
+  },
+  {
+   "id": "py_masks_fig",
+   "impl": "python",
+   "script": "benchmarks/tools/mip_masks_b10.py",
+   "args": ["{work}/python", "masks", "--threads", "1", "24", "--repeats", "1"]
+  },
+  {
+   "id": "py_seg",
+   "impl": "python",
+   "script": "benchmarks/tools/mip_masks_b10.py",
+   "args": ["{work}/python", "seg", "--threads", "1", "24", "--repeats", "1"]
+  }
+ ],
+ "compare": [{"a": "py_masks", "b": "ml_masks"}, {"a": "py_seg", "b": "ml_seg"}, {"a": "py_masks_fig", "b": "ml_masks"}],
+ "gate": {"ratio_max": 1.05, "threads": [1, 24], "overhead_max": 1.0, "metrics": ["op:generate_mip_masks@*", "op:otf_mask_segmentation@*"]}
+}
