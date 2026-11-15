@@ -1,0 +1,36 @@
+{
+ "name": "tiles_s02",
+ "description": "S02: stitch_process_tiles of 16 DSR-like 201 x 512 x 640 uint16 tiles with the flat-field correction and the edge erosion (a .mat function file), tiff tiles to zarr and zarr tiles, the tasks in the process (parseCluster false), at 4 and 24 threads, one process per thread count (a Python process that ran at 4 threads first is about 20% slower at 24); times per tile: MATLAB against process_tiles.",
+ "repeats": 5,
+ "warmup": 1,
+ "output_bytes": 2200000000,
+ "setup": ["{python} {src}/benchmarks/stitch/tiles_s02_data.py {work}"],
+ "variants": [
+  {
+   "id": "ml4",
+   "impl": "matlab",
+   "paths": ["benchmarks/stitch", "benchmarks/common"],
+   "code": "tiles_s02_ml('{work}', 4, 1)"
+  },
+  {
+   "id": "ml24",
+   "impl": "matlab",
+   "paths": ["benchmarks/stitch", "benchmarks/common"],
+   "code": "tiles_s02_ml('{work}', 24, 1)"
+  },
+  {
+   "id": "py4",
+   "impl": "python",
+   "script": "benchmarks/stitch/tiles_s02.py",
+   "args": ["{work}", "--threads", "4", "--repeats", "1"]
+  },
+  {
+   "id": "py24",
+   "impl": "python",
+   "script": "benchmarks/stitch/tiles_s02.py",
+   "args": ["{work}", "--threads", "24", "--repeats", "1"]
+  }
+ ],
+ "compare": [{"a": "py4", "b": "ml4"}, {"a": "py24", "b": "ml24"}],
+ "gate": {"ratio_max": 1.0, "threads": [4, 24], "overhead_max": 1.0, "metrics": ["op:tiff_tiles@*", "op:zarr_tiles@*"]}
+}
