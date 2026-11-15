@@ -1,0 +1,13 @@
+{
+ "name": "n01_resize",
+ "repeats": 5,
+ "output_bytes": 1843200000,
+ "variants": [
+  {"id": "ml", "impl": "matlab", "paths": ["benchmarks/matlabcompat", "benchmarks/common"],
+   "code": "bench_resize_n01([4, 24], 2)"},
+  {"id": "py", "impl": "python", "script": "benchmarks/matlabcompat/bench_resize_n01.py",
+   "args": ["--threads", "4", "24", "--repeats", "2"]}
+ ],
+ "compare": [{"a": "py", "b": "ml"}],
+ "gate": {"ratio_max": 1.05, "threads": [4, 24]}
+}
