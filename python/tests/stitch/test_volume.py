@@ -495,6 +495,41 @@ GOLDEN = Case(
 CASES.append(GOLDEN)
 
 
+# stitch_process_zarr_tile with a resample factor: imresize3(frame, round(size ./ rs)) (cubic)
+def _tile_tree(cls: str):
+    def make(folder):
+        u = CounterRNG(17, f"tile-rs/{cls}").uniform((12, 20, 16))
+        v = (u * 60000).astype(np.uint16) if cls == "uint16" else (u * 1000).astype(np.float32)
+        write_zarr(os.path.join(folder, "tile.zarr"), v, (4, 8, 8), layout="matlab")
+
+    return make
+
+
+def _py_tile(d, rs):
+    # MATLAB's [y x z] as (z, y, x), its [xy z] as (z, xy) (the registry's resample_yxz)
+    rs = [float(v) for v in np.ravel(rs)]
+    rs = [rs[2], rs[0], rs[1]] if len(rs) == 3 else rs[::-1]
+    V.process_zarr_tile([d + "tile.zarr"], d + "out.zarr", None, block_size=(4, 8, 8), resample=rs)
+    return []
+
+
+_TILE_CODE = (
+    "stitch_process_zarr_tile({[in{1}, 'tile.zarr']}, [in{1}, 'out.zarr'], [], "
+    "'blockSize', [8, 8, 4], 'resample', in{2}); out = {};"
+)
+for _cls, _rs in (("uint16", [2, 2, 1.5]), ("single", [0.5, 0.5, 2]), ("uint16", [1.5, 3])):
+    CASES.append(
+        Case(
+            f"tile.resample.{_cls}.{'x'.join(str(v) for v in _rs)}",
+            code=_TILE_CODE,
+            nargout=0,
+            args=[InPath("d"), _rs],
+            python=_py_tile,
+            inputs={"d": Tree(_tile_tree(_cls), "d")},
+        )
+    )
+
+
 # MATLAB on Windows (ispc) writes the feather distance maps into imdist/ itself, not
 # imdist/<first tile>/ (compute_tile_distance_transform's ispc branch), and so does the port
 # there: the references of the feather scenes, made on Linux, hold the other folder and paths.
@@ -518,7 +553,8 @@ def test_matlab(case, tmp_path):
     if case.python is None:
         oracle.reference(case)  # (a reference only: test_golden_stitch_feather_xcorr)
         return
-    if sd._is_pc() and _writes_maps(case.id.removeprefix("frame.")):
+    scene = case.id.removeprefix("frame.")
+    if sd._is_pc() and scene in SCENES and _writes_maps(scene):
         pytest.skip(_WINDOWS_MAPS)
     oracle.check(case, tmp_path)
 

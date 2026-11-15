@@ -51,8 +51,8 @@ secondary channel of one stitched with the primary's information of the other):
 
 Not ported: ``saveMultires`` (the multi-resolution result through Python's zarr in MATLAB;
 PLAN 4.3). Waiting on other tasks: the registration (S04: without it a primary channel with
-``xcorr_shift`` needs its ``xcorr/<name>.mat``), MATLAB-code tile functions such as the edge
-erosion (S02's parser) and resampled tiles (T04, N01).
+``xcorr_shift`` needs its ``xcorr/<name>.mat``) and MATLAB-code tile functions such as the edge
+erosion (S02's parser).
 """
 
 from __future__ import annotations
@@ -653,8 +653,8 @@ def process_zarr_tile(
 ) -> None:
     """A stand-in of S02's ``stitch_process_zarr_tile``: a zarr tile (its box ``input_bbox``)
     flipped in z, cropped to ``tile_out_bbox``, passed through the user function and cast back
-    to its class, as a native zarr (an existing result is kept). Resampling (MATLAB's
-    ``imresize3``) is not ported yet."""
+    to its class, as a native zarr (an existing result is kept); resampled by MATLAB's
+    ``imresize3`` (``matlabcompat.resize``) to ``round(size ./ resample)`` first."""
     from petakit5d.core.arrays import matlab_class
     from petakit5d.core.dtypes import cast
     from petakit5d.core.ids import get_uuid
@@ -690,11 +690,15 @@ def process_zarr_tile(
         frame = np.ascontiguousarray(frame[box_slices(list(tile_out_bbox))])
     rs = [] if _empty(resample) else [float(v) for v in np.asarray(resample).ravel()]
     if rs and not all(v == 1 for v in rs):
-        err = NotImplementedError(
-            "resampled zarr tiles need imresize3 (task N01) and S02's stitch_process_zarr_tile"
-        )
-        err.identifier = "petakit5d:stitch:resampleNotPorted"  # type: ignore[attr-defined]
-        raise err
+        # MATLAB: imresize3(frame, round(size(frame) ./ rs)), rs completed as [r r r] or
+        # [xy xy z]
+        from petakit5d.core.dtypes import mround
+        from petakit5d.io.convert import _resample_factors
+        from petakit5d.matlabcompat.resize import imresize3
+
+        f = _resample_factors(rs)
+        size = [int(mround(np.float64(n / r))) for n, r in zip(frame.shape, f, strict=True)]
+        frame = imresize3(frame, size)
     fn = user_function(usr_fcn)
     if fn is not None:
         _print(usr_fcn if isinstance(usr_fcn, str) else repr(usr_fcn))
