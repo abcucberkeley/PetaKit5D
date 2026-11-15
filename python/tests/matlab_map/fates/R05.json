@@ -42,7 +42,7 @@
      "oracle:tests/decon/test_file.py::file.objective_scan*"
     ],
     "otfMaskVisualizationSavesTheFigure": [
-     "na:XR_visualize_OTF_mask_segmentation is a figure tool of the MIP mask and figure group (Phase 2), not part of RLdecon or XR_RLdeconFrame3D"
+     "pytest:tests/tools/test_mip_masks.py::test_otf_mask_visualization_saves_the_figure"
     ],
     "otherGPUJobErrorsAreNotRetriedOnTheCPU": [
      "pytest:tests/decon/test_frame.py::test_other_gpu_job_errors_are_not_retried_on_the_cpu",

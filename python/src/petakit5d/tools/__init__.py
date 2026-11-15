@@ -1,5 +1,5 @@
 """Tools: maximum intensity projections, cropping, memory estimates, rsync, partial volumes,
-channel unmixing.
+channel unmixing, resampling, MIP masks and figures.
 
 ========================================  =====================================
 ``mip_dataset``                           XR_MIP_wrapper
@@ -28,6 +28,16 @@ channel unmixing.
 ``unmix_channels_block``                  unmix_channels_block
 ``unmix_channels_gaussian_block``         unmix_channels_gaussian_block
 ``unmix_channels_sum``                    unmix_channels_sum_mex (the weighted sum)
+``resample_dataset``                      XR_resample_dataset
+``resample_file``                         XR_resampleFrame
+``resample_zarr``                         XR_resampleSingleZarr
+``resample_zarr_block``                   resampleZarrBlock
+``check_resample_setting``                XR_checkResampleSetting
+``generate_mip_masks``                    XR_generate_MIP_masks
+``generate_single_mip_mask``              gererate_single_MIP_mask
+``visualize_otf_mask_segmentation``       XR_visualize_OTF_mask_segmentation
+``visualize_otf_and_mask_outline``        visualize_OTF_and_mask_outline
+``visualize_tile_positions``              XR_visualize_tile_positions
 ========================================  =====================================
 
 Nothing is imported until a function is first used.
@@ -62,6 +72,19 @@ _EXPORTS = {
     "unmix_channels_gaussian_block": "unmix",
     "unmix_channels_sum": "unmix",
     "unmix_channels_zarr": "unmix",
+    "ResampleError": "resample",
+    "check_resample_setting": "resample",
+    "resample_dataset": "resample",
+    "resample_file": "resample",
+    "resample_zarr": "resample",
+    "resample_zarr_block": "resample",
+    "MipMaskError": "mip_masks",
+    "generate_mip_masks": "mip_masks",
+    "generate_single_mip_mask": "mip_masks",
+    "FigureError": "figures",
+    "visualize_otf_and_mask_outline": "figures",
+    "visualize_otf_mask_segmentation": "figures",
+    "visualize_tile_positions": "figures",
 }
 
 __all__ = sorted(_EXPORTS)

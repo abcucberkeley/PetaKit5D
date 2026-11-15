@@ -53,6 +53,8 @@ basic = [
     "dask>=2023.1",
     "tqdm>=4.48",
 ]
+# the figure tools (tools.figures): MIP masks, OTF and mask outlines, tile positions
+figures = ["matplotlib>=3.8"]
 
 [tool.scikit-build]
 minimum-version = "build-system.requires"
