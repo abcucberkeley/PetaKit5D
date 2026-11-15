@@ -1,0 +1,35 @@
+{
+ "task": "B07",
+ "classes": {
+  "FlatfieldBackgroundEstimationTest": {
+   "finished": true,
+   "methods": {
+    "estimatesDarkLevelPerCamera": [
+     "pytest:tests/flatfield/test_estimation.py::test_estimates_dark_level_per_camera",
+     "oracle:tests/flatfield/test_estimation.py::wrapper.two_cams"
+    ],
+    "brightSlicesAreExcluded": [
+     "pytest:tests/flatfield/test_estimation.py::test_bright_slices_are_excluded",
+     "oracle:tests/flatfield/test_estimation.py::wrapper.bright"
+    ],
+    "acceptsMccModeFalse": [
+     "pytest:tests/flatfield/test_estimation.py::test_accepts_mcc_mode_false",
+     "oracle:tests/flatfield/test_estimation.py::wrapper.mcc_false"
+    ],
+    "estimateOfAFileInTheCurrentFolderStaysThere": [
+     "pytest:tests/flatfield/test_estimation.py::test_estimate_of_a_file_in_the_current_folder_stays_there",
+     "oracle:tests/flatfield/test_estimation.py::est.current_folder"
+    ]
+   }
+  },
+  "PhaseFlatFieldCorrectionTest": {
+   "finished": true,
+   "methods": {
+    "correctsTilesWithEstimatedFlatField": [
+     "pytest:tests/flatfield/test_estimation.py::test_corrects_tiles_with_estimated_flat_field",
+     "oracle:tests/flatfield/test_estimation.py::phase.tiles_128x8"
+    ]
+   }
+  }
+ }
+}

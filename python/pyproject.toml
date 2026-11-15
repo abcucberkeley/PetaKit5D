@@ -41,6 +41,18 @@ pk5d-master = "petakit5d.cli.master:main"
 [project.optional-dependencies]
 test = ["pytest>=8", "pytest-timeout>=2.3"]
 dev = ["pytest>=8", "pytest-timeout>=2.3", "ruff>=0.8"]
+# the phase-image flat field (flatfield.basic): BaSiCPy's dependencies. BaSiCPy 2.0.0 itself
+# (MIT) declares scipy<1.13 (it uses only scipy.fft), which this package's scipy>=1.13 rules
+# out, so it goes in after this extra: pip install --no-deps basicpy==2.0.0
+basic = [
+    "torch>=2.2",
+    "torch-dct>=0.1.6",
+    "hyperactive>=4.4,<5",
+    "pooch>=1.6",
+    "pydantic>=2",
+    "dask>=2023.1",
+    "tqdm>=4.48",
+]
 
 [tool.scikit-build]
 minimum-version = "build-system.requires"
