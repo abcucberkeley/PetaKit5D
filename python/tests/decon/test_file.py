@@ -984,8 +984,6 @@ def test_methods_that_are_not_ported(root):
         "background": BG,
         "decon_iter": 1,
     }
-    with pytest.raises(NotImplementedError, match="B11"):
-        F.rl_decon_file("", "", psf, XY, DZ, DZ, rl_method="original", **kw)
     with pytest.raises(rl.DeconError) as e:
         F.rl_decon_file("", "", psf, XY, DZ, DZ, rl_method="cudagen", **kw)
     assert e.value.identifier == "MATLAB:UndefinedFunction"

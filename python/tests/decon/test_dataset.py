@@ -944,10 +944,12 @@ def test_wrapper_gpu_job_matches_cpu(tmp_path):
     assert np.all(np.abs(a - b) <= np.maximum(1, 1e-3 * np.abs(b)))
 
 
-def test_original_method_is_phase_two(tmp_path):
+def test_original_method_runs(tmp_path):
+    # MATLAB's deconvlucy (decon.other_methods; its oracle cases are in test_other_methods.py)
     d = DS(tmp_path)
-    with pytest.raises(NotImplementedError):
-        run_wrapper(d, rl_method="original", decon_iter=2)
+    run_wrapper(d, rl_method="original", decon_iter=2)
+    for f in d.fsns:
+        assert os.path.exists(d.out(f)), f
 
 
 # ---------------------------------------------------------------------------------------------

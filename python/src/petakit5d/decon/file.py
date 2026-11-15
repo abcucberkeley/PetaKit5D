@@ -55,9 +55,10 @@ output file, the deskew and rotation and ``debug`` raise MATLAB's undefined ``ou
 MATLAB's behaviour is kept where it is odd (see the report of task R05): without an output file
 the result is returned as the decon gave it; without any 3D stack to save nothing else is
 written; ``deskew`` without ``rotate`` under the default ``dsr_combined`` writes nothing; the
-separate path ignores ``resample``; ``n_tapering`` (MATLAB's ``edgetaper``) and the 'original'
-method (``deconvlucy``, Phase 2) are not ported (``NotImplementedError``); 'cudagen' raises
-MATLAB's error for the missing ``decon_lucy_cuda_function``.
+separate path ignores ``resample``; ``n_tapering`` (MATLAB's ``edgetaper``) is not ported
+(``NotImplementedError``); 'original' is MATLAB's ``deconvlucy`` (``decon.other_methods``, on the
+CPU whatever ``use_gpu`` says, as MATLAB); 'cudagen' raises MATLAB's error for the missing
+``decon_lucy_cuda_function``.
 """
 
 from __future__ import annotations
@@ -390,10 +391,10 @@ def _decon_call(rawdata, psf, psf_b, n_iter, method, kw, threads):
         r = rl.decon_lucy_omw(rawdata, psf, psf_b, n_iter, **common)
         return r.decon, r.err_mat, None, r.overlap_out
     if method == "original":
-        raise NotImplementedError(
-            "RLMethod 'original' (MATLAB's deconvlucy) is not ported yet (task B11, Phase 2); "
-            "use 'simplified' or 'omw'"
-        )
+        from petakit5d.decon.other_methods import rl_decon_original
+
+        dec = rl_decon_original(rawdata, psf, n_iter, decon_bbox=kw["decon_bbox"], threads=threads)
+        return dec, None, None, None
     # 'cudagen', the only other method the arguments let through
     from petakit5d.decon.rl import DeconError
 

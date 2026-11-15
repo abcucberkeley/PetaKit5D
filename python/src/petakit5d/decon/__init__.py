@@ -1,4 +1,5 @@
-"""Deconvolution: PSFs, OTFs, the OMW back projector and Richardson-Lucy on the CPU.
+"""Deconvolution: PSFs, OTFs, the OMW back projector, Richardson-Lucy on the CPU and MATLAB's
+deconvlucy.
 
 ==============================  ========================================================
 ``psf_gen``                     psf_gen_new (``generate_psf`` with backend and threads)
@@ -19,6 +20,8 @@
 ``decon_large_in_place``        RLdecon_large_in_place
 ``decon_zarr_block``            RLdecon_for_zarr_block
 ``decon_dataset``               XR_decon_data_wrapper
+``deconvlucy``                  deconvlucy, MATLAB's ('original'; ``deconvlucy_state``)
+``rl_decon_original``           RLdecon's 'original' method
 ==============================  ========================================================
 
 Nothing is imported until a name is first used.
@@ -61,6 +64,12 @@ _EXPORTS = {
     "decon_zarr_block": "block",
     "DeconDatasetError": "dataset",
     "decon_dataset": "dataset",
+    "DeconvlucyError": "other_methods",
+    "LucyState": "other_methods",
+    "deconvlucy": "other_methods",
+    "deconvlucy_state": "other_methods",
+    "psf2otf_real": "other_methods",
+    "rl_decon_original": "other_methods",
 }
 
 __all__ = sorted(_EXPORTS)

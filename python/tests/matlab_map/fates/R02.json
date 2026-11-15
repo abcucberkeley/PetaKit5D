@@ -104,6 +104,9 @@
           "pytest:tests/decon/test_backprojector.py::test_a_call_with_other_bounds_makes_its_own_back_projector",
           "oracle:tests/decon/test_backprojector.py::files.names.*",
           "oracle:tests/decon/test_backprojector.py::files.elongated.slash.*"
+        ],
+        "wienerButterworthBackProjectorWorksWithOMWDecon": [
+          "na:the Wiener-Butterworth back projector (BackProjector of third_parties/WBDeconvolution, Guo et al. 2020) is not ported: the port neither reads nor ports that folder (its license is not the port's), and drops it with the decon demo's comparison; the port's back projector is OMW's (decon.backprojector)"
         ]
       }
     }
