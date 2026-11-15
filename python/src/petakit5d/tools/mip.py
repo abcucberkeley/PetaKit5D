@@ -30,9 +30,10 @@ A MIP file is written under a temporary name and renamed into place, as the job 
 counts a MIP task as done once its MIP exists; ``mip_zarr`` publishes its slabs before its MIPs,
 and the MIP of the last axis, the wrapper's flag, last.
 
-Not ported: the resampling of ``MIP_block`` before pooling (``pool_size`` with 9 values and a
-factor above 1, MATLAB's ``imresize3``), and the ``mean_*`` methods of ``project3DImageto2D``
-(``nanmean``); both raise ``NotImplementedError``.
+``MIP_block`` resamples each batch first when ``pool_size`` has 9 values with a factor above 1
+(MATLAB's ``imresize3(batch, round(size ./ factor), 'linear')``, ``matlabcompat.resize``), the
+pool sizes divided by the factors. Not ported: the ``mean_*`` methods of ``project3DImageto2D``
+(``nanmean``; ``NotImplementedError``).
 """
 
 from __future__ import annotations
@@ -889,7 +890,7 @@ def mip_block(
     """``MIP_block``: for each batch (``batch_bboxes``, in the zarr), its MIP (or max pooling)
     along each axis written into that axis's slab zarr (``mip_fullpaths``, ``(z, y, x)``) at the
     batch's place relative to ``start_coord``; then the empty flag file. Pool sizes: 3 values
-    along the MIP axis, 6 with the pooling across it, 9 with resampling (not ported).
+    along the MIP axis, 6 with the pooling across it, 9 with resampling factors.
     Nothing is done if the flag exists (unless ``overwrite``)."""
     from petakit5d.io import ReadBuffer, read_zarr, write_zarr
     from petakit5d.kernels.mip import max_pooling_3d
@@ -920,8 +921,12 @@ def mip_block(
     first = boxes[0, 3:] - boxes[0, :3]
     larger = any(float(first[q]) > pool[q] for q in range(3))
     max_pooling = larger or (len(pool) == 6 and any(v > 1 for v in pool[3:6]))
-    if larger and len(pool) == 9 and any(v > 1 for v in pool[6:9]):
-        raise NotImplementedError("MIP_block's resampling before pooling (imresize3) is not ported")
+    # resampling: the batches resized by the factors first, the pool sizes divided by them
+    resampling = larger and len(pool) == 9 and any(v > 1 for v in pool[6:9])
+    ds = [1.0, 1.0, 1.0]
+    if resampling:
+        ds = list(pool[6:9])
+        pool = [pool[q] / ds[q % 3] for q in range(6)] + ds
     pool_1 = [1.0, 1.0, 1.0]
     pre_mip = False
     if max_pooling and len(pool) >= 6:
@@ -941,6 +946,12 @@ def mip_block(
         t0 = time.perf_counter()
         box = [int(v) for v in boxes[i]]
         in_batch = _vol3(read_zarr(zarr_fullpath, input_bbox=box, out=buf))
+        if resampling:
+            from petakit5d.core.dtypes import mround
+            from petakit5d.matlabcompat.resize import imresize3
+
+            size = [int(mround(np.float64(n / d))) for n, d in zip(in_batch.shape, ds, strict=True)]
+            in_batch = imresize3(in_batch, size, "linear")
         if pre_mip:
             in_batch = max_pooling_3d(in_batch, pool_1)
         for j in range(3):

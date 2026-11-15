@@ -528,6 +528,23 @@ def _mip_zarr_cases():
             "poolSize",
             [4, 6, 4, 2, 2, 1, 1, 1, 1],
         ),
+        # MIP_block's resampling: imresize3(batch, round(size ./ factor), 'linear') first
+        mip_zarr_case(
+            "mip_zarr.uint16.pool9_resampling",
+            u16,
+            "batchSize",
+            [16, 12, 10],
+            "poolSize",
+            [4, 6, 4, 2, 2, 1, 2, 2, 1],
+        ),
+        mip_zarr_case(
+            "mip_zarr.single.pool9_resampling",
+            sgl,
+            "batchSize",
+            [16, 12, 10],
+            "poolSize",
+            [4, 3, 2, 2, 1, 2, 2, 1, 2],
+        ),
         mip_zarr_case(
             "mip_zarr.uint16.bbox",
             u16,
@@ -1756,22 +1773,6 @@ def test_mip_block_skips_done_batches_and_checks_its_folders(tmp_path, capsys):
             (0, 0, 0),
             (6, 10, 8),
             overwrite=True,
-        )
-
-
-def test_resampling_before_pooling_is_not_ported(tmp_path):
-    im = volume((6, 10, 8), "uint16", "rs")
-    fn = str(tmp_path / "im.zarr")
-    write_zarr(im, fn, block_size=(3, 5, 4))
-    with pytest.raises(NotImplementedError, match="imresize3"):
-        mip.mip_block(
-            [0],
-            fn,
-            ["a", "b", "c"],
-            str(tmp_path / "f.mat"),
-            [(0, 0, 0, 6, 10, 8)],
-            (0, 0, 0),
-            (2, 2, 2, 1, 1, 1, 2, 2, 2),
         )
 
 
