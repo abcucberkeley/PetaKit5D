@@ -561,7 +561,8 @@ def image_list(cam=True, sub_iter=False, mixed=False):
                         name = name.replace(f"Iter_{it:04d}_", f"Iter_{it:04d}_0000_")
                     sx, sy, sz = 100.5 * x + 0.25 * it, 80.25 * y + 0.5 * ch, 20.125 * z
                     lines.append(f"/data/{name},{name},{sx},{sy},{sz}")
-        Path(path).write_text("\n".join(lines) + "\n")
+        # LF on every platform: the case keys hash the inputs' bytes
+        Path(path).write_text("\n".join(lines) + "\n", newline="\n")
 
     return make
 
@@ -639,6 +640,11 @@ def test_matlab(case, tmp_path):
         reason = digests_hold_here()
         if reason:
             pytest.skip(reason)
+    if os.name == "nt" and case.id.startswith("ds.") and not case.expect_error:
+        # simplifyPath gives the data and result folders with '\' on Windows (from dir, as
+        # MATLAB's there), so the fn and fnout the _bbox.mat files hold are '<WORK>\d/...' and
+        # '<WORK>\d\masks/...'; these references are MATLAB's on Linux, with '/'
+        pytest.skip("the fn and fnout in _bbox.mat hold Windows folders; references are Linux's")
     oracle.check(case, tmp_path)
 
 
