@@ -67,7 +67,8 @@ first stack's stitch information. Where MATLAB's function string would be garble
 where it formats a scalar), the port raises ``StitchDatasetError``.
 
 Waiting on others: the registration (S04, through the frame: without it a registered primary
-with overlapping tiles needs its ``xcorr/<name>.mat``), MATLAB-code tile functions (S02).
+with overlapping tiles needs its ``xcorr/<name>.mat``). Tile functions written as MATLAB code
+are read in their standard forms only (``stitch.tile_functions``).
 """
 
 from __future__ import annotations

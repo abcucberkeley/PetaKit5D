@@ -1,6 +1,6 @@
-"""The stitching's edge erosion as MATLAB code (petakit5d.stitch.tile_functions, a stand-in of
-task S02 made by P02): erodeVolumeBy2DProjection against MATLAB's, and the two forms of MATLAB
-code the frame writes for it read by ``parse_tile_function``."""
+"""The stitching's edge erosion (petakit5d.stitch.tile_functions): erodeVolumeBy2DProjection
+against MATLAB's, and the two forms of MATLAB code the frame writes for it read by
+``parse_tile_function`` (the other forms: test_tiles.py)."""
 
 from __future__ import annotations
 
@@ -77,9 +77,10 @@ def test_matlab(case, tmp_path):
     oracle.check(case, tmp_path)
 
 
-def test_other_matlab_code_is_s02s():
-    with pytest.raises(NotImplementedError, match="S02"):
-        TF.parse_tile_function("@(x)processFFCorrectionFrame(x,'a.tif','b.tif',1,0.4,false)")
+def test_other_matlab_code_is_refused():
+    with pytest.raises(NotImplementedError) as err:
+        TF.parse_tile_function("@(x) imgaussfilt(x, 2)")
+    assert err.value.identifier == TF.UNSUPPORTED_ID
 
 
 def test_the_offset_saturates_uint16():

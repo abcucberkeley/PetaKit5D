@@ -1,0 +1,13 @@
+{
+ "task": "S04",
+ "classes": {
+  "StitchHelperMexTest": {
+   "methods": {
+    "edgeErosionWithoutTheMexMatches": [
+     "pytest:tests/stitch/test_tiles.py::test_edge_erosion_zeroes_esize_rows_at_both_ends_of_y",
+     "oracle:tests/stitch/test_tile_functions.py::erode.*"
+    ]
+   }
+  }
+ }
+}

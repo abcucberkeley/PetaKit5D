@@ -6,9 +6,9 @@ The steps, in MATLAB's order:
    .zarr`` (an existing result is kept), the axis order check, the stitching space's voxel sizes
    and its marker file ``px<xp>_py<yp>_pz<zp>``, the edge-erosion function file
    ``<result folder>/tmp/processFunction_<uuid>.mat``;
-2. **tile preparation** (``stitch_process_tiles``, S02's): tiff tiles to zarr through T01's
-   ``tiff_to_zarr_dataset``, zarr tiles that need processing through ``process_zarr_tile``
-   (a stand-in of S02's ``stitch_process_zarr_tile`` until it lands);
+2. **tile preparation** (``stitch.tiles.process_tiles``, stitch_process_tiles): tiff tiles to
+   zarr through T01's ``tiff_to_zarr_dataset``, zarr tiles that need processing through
+   ``stitch.tiles.process_zarr_tile`` tasks;
 3. **geometry** (S03's ``geometry.prepare_layout``): coordinates in stitching space, overlaps;
 4. **registration and assignment** of a primary channel (S05's ``assignment.shift_assignment``,
    whose registration tasks are S04's) into ``xcorr/<name>.mat``, or that file if it exists; a
@@ -51,8 +51,8 @@ secondary channel of one stitched with the primary's information of the other):
 
 Not ported: ``saveMultires`` (the multi-resolution result through Python's zarr in MATLAB;
 PLAN 4.3). Waiting on other tasks: the registration (S04: without it a primary channel with
-``xcorr_shift`` needs its ``xcorr/<name>.mat``) and MATLAB-code tile functions such as the edge
-erosion (S02's parser).
+``xcorr_shift`` needs its ``xcorr/<name>.mat``). Tile functions written as MATLAB code are read
+in their standard forms only (``stitch.tile_functions``).
 """
 
 from __future__ import annotations
@@ -431,301 +431,22 @@ def _task_order(block_info_bytes: Sequence[float]) -> list[int]:
 
 
 # ---------------------------------------------------------------------------------------------
-# tile preparation (stitch_process_tiles, S02's; a stand-in until it lands)
+# tile preparation (stitch_process_tiles: stitch.tiles)
 # ---------------------------------------------------------------------------------------------
 
 
-def _matlab_code_check(process_fun_path: Any) -> None:
-    """MATLAB code in a process function file needs S02's tile-function parser: fail before
-    any tile is converted"""
-    from petakit5d.io.convert import _fun_rows, _read_function_file, user_function
+def process_zarr_tile(*args: Any, **kwargs: Any) -> None:
+    """``stitch.tiles.process_zarr_tile`` (stitch_process_zarr_tile)"""
+    from petakit5d.stitch.tiles import process_zarr_tile as f
 
-    for row in _fun_rows(process_fun_path):
-        for fn in row:
-            if fn:
-                fun, _ = _read_function_file(fn)
-                if fun:
-                    user_function(fun)
+    f(*args, **kwargs)
 
 
-def _process_tiles(
-    input_fullpaths: Sequence[str],
-    *,
-    result_dir_name: str,
-    zarr_file: bool,
-    loc_ids: Sequence[float],
-    block_size: Sequence[int],
-    shard_size: Sequence[int] | None,
-    flipped_tile: Sequence[bool],
-    resample: Sequence[float],
-    partial_file: bool,
-    input_bbox: Any,
-    tile_out_bbox: Any,
-    process_fun_path: Any,
-    parse_cluster: bool,
-    master_compute: bool,
-    big_data: bool,
-    mcc_mode: bool,
-    config_file: str,
-) -> None:
-    """``stitch_process_tiles``: tiff tiles to zarr (``XR_tiffToZarr_wrapper`` with the channel
-    pattern '.'), zarr tiles through ``process_zarr_tile`` tasks when they need processing
-    (``result_dir_name`` given)."""
-    try:  # S02's, once it lands
-        from petakit5d.stitch.tiles import process_tiles  # type: ignore[import-not-found]
-    except ImportError:
-        process_tiles = None
-    kw = {
-        "result_dir_name": result_dir_name,
-        "zarr_file": zarr_file,
-        "loc_ids": loc_ids,
-        "block_size": block_size,
-        "shard_size": shard_size,
-        "flipped_tile": flipped_tile,
-        "resample": resample,
-        "partial_file": partial_file,
-        "input_bbox": input_bbox,
-        "tile_out_bbox": tile_out_bbox,
-        "process_fun_path": process_fun_path,
-        "parse_cluster": parse_cluster,
-        "master_compute": master_compute,
-        "big_data": big_data,
-        "mcc_mode": mcc_mode,
-        "config_file": config_file,
-    }
-    if process_tiles is not None:
-        process_tiles(list(input_fullpaths), **kw)
-        return
-    _matlab_code_check(process_fun_path)
-    if not zarr_file:
-        from petakit5d.io.convert import tiff_to_zarr_dataset
+def _process_tiles(input_fullpaths: Sequence[str], **kw: Any) -> None:
+    """``stitch_process_tiles`` (``stitch.tiles.process_tiles``) with the channel pattern '.'"""
+    from petakit5d.stitch.tiles import process_tiles
 
-        _print("\nConvert tiles from Tiff to Zarr...")
-        tiff_to_zarr_dataset(
-            "",
-            tiff_fullpaths=list(input_fullpaths),
-            result_dir_name=result_dir_name,
-            loc_ids=list(loc_ids),
-            block_size=tuple(block_size),
-            shard_size=None if shard_size is None else tuple(shard_size),
-            flipped_tile=list(flipped_tile),
-            resample_factor=tuple(resample),
-            partial_file=partial_file,
-            channel_patterns=(".",),
-            input_bbox=input_bbox,
-            tile_out_bbox=tile_out_bbox,
-            process_fun_path=process_fun_path,
-            parse_cluster=parse_cluster,
-            master_compute=master_compute,
-            big_data=big_data,
-            cpus_per_task=1,
-            mcc_mode=mcc_mode,
-            config_file=config_file,
-        )
-        return
-    if not result_dir_name:
-        return
-    _process_zarr_tiles(list(input_fullpaths), **kw)
-
-
-def _process_zarr_tiles(input_fullpaths: list[str], **kw: Any) -> None:
-    """the zarr branch of ``stitch_process_tiles``: one ``process_zarr_tile`` task per tile, the
-    function of its channel (the pattern '.') by keywords, boxes per location, two rounds"""
-    from petakit5d.core.paths import fileparts
-    from petakit5d.io import get_image_size
-    from petakit5d.io.convert import _box_rows, _fun_rows, _keywords, _read_function_file
-    from petakit5d.jobs import framework
-    from petakit5d.jobs.slurm import check_slurm_cluster
-    from petakit5d.jobs.tasks import Task
-
-    _print("\nPreprocess Zarr tiles...")
-    parse_cluster = bool(kw["parse_cluster"])
-    data_path = fileparts(input_fullpaths[0])[0]
-    if parse_cluster:
-        parse_cluster = bool(check_slurm_cluster(data_path, "../job_logs").parse_cluster)
-    rows = _fun_rows(kw["process_fun_path"])
-    n_cols = max(1, max((len(r) for r in rows), default=0))
-    usr = [[""] * n_cols for _ in range(max(1, len(rows)))]
-    kws = [[[""] for _ in range(n_cols)] for _ in range(max(1, len(rows)))]
-    _print("Process function paths:")
-    for r in rows:
-        _print("    " + "    ".join(r))
-    for i, r in enumerate(rows):
-        for j, fn in enumerate(r):
-            if not fn:
-                continue
-            fun, k = _read_function_file(fn)
-            if fun:
-                usr[i][j] = fun
-            if k is not None:
-                kws[i][j] = _keywords(k)
-    in_rows, out_rows = _box_rows(kw["input_bbox"]), _box_rows(kw["tile_out_bbox"])
-    loc = [float(v) for v in kw["loc_ids"]]
-    uniq = sorted(set(loc))
-    loc_specific = len(uniq) > 1 and (len(in_rows) == len(uniq) or len(out_rows) == len(uniq))
-    if loc_specific:
-        for what, r in (("InputBbox", in_rows), ("tileOutBbox", out_rows)):
-            if len(r) > 1 and len(r) != len(uniq):
-                raise StitchVolumeError(
-                    f"The number of {what} ({len(r)}) does not match the number of tile "
-                    f"locations ({len(uniq)})!"
-                )
-        in_rows = in_rows if len(in_rows) > 1 else [in_rows[0] if in_rows else None] * len(uniq)
-        out_rows = (
-            out_rows if len(out_rows) > 1 else [out_rows[0] if out_rows else None] * len(uniq)
-        )
-    flips = list(kw["flipped_tile"])
-    resample = [float(v) for v in kw["resample"]]
-    outs, tasks = [], []
-    for i, p in enumerate(input_fullpaths):
-        dpath, fsn, _ = fileparts(p)
-        zpath = f"{dpath}/{kw['result_dir_name']}"
-        if not os.path.isdir(zpath):
-            _mkdir_shared(zpath)
-        outs.append(f"{dpath}/{kw['result_dir_name']}/{fsn}.zarr/")
-        if loc_specific:
-            k = uniq.index(loc[i])
-            in_i, out_i = in_rows[k], out_rows[k]
-        else:
-            in_i = in_rows[0] if in_rows else None
-            out_i = out_rows[0] if out_rows else None
-        # the channel's functions ('.' matches every tile), column-major, picked by keywords
-        strs = [usr[0][j] for j in range(n_cols)]
-        kw_j = [kws[0][j] for j in range(n_cols)]
-        usr_i = strs[0]
-        for j in range(len(strs)):
-            if any(k in p for k in kw_j[j]):
-                usr_i = strs[j]
-                break
-        tasks.append(
-            Task.of(
-                process_zarr_tile,
-                [p],
-                outs[-1],
-                None,
-                block_size=list(kw["block_size"]),
-                shard_size=None if kw["shard_size"] is None else list(kw["shard_size"]),
-                flip_zstack=bool(flips[i]) if flips else False,
-                resample=resample,
-                input_bbox=None if in_i is None else list(in_i),
-                tile_out_bbox=None if out_i is None else list(out_i),
-                compressor="zstd",
-                usr_fcn=usr_i,
-            )
-        )
-    sz = get_image_size(input_fullpaths[-1])
-    mem = float(sz[1]) * float(sz[2]) * float(sz[0]) * 4 / 1024**3 * 2.5
-    if not kw["big_data"]:
-        mem *= 2
-    common = {
-        "parse_cluster": parse_cluster,
-        "master_compute": bool(kw["master_compute"]),
-        "max_trial_num": 2,
-        "job_log_dir": "../job_logs",
-        "mcc_mode": kw["mcc_mode"],
-        "config_file": kw["config_file"],
-    }
-    done = framework.run_tasks(
-        input_fullpaths, outs, tasks, cpus_per_task=1, mem_allocate=mem, **common
-    )
-    if not all(done):
-        framework.run_tasks(
-            input_fullpaths, outs, tasks, cpus_per_task=2, mem_allocate=mem * 2, **common
-        )
-
-
-def process_zarr_tile(
-    input_filename: str | Sequence[str],
-    zarr_filename: str,
-    frame: np.ndarray | None = None,
-    *,
-    overwrite: bool = False,
-    block_size: Sequence[int] = (250, 500, 500),
-    shard_size: Sequence[int] | None = None,
-    expand_2d_dim: bool = True,
-    flip_zstack: bool = False,
-    resample: Sequence[float] | None = None,
-    input_bbox: Sequence[int] | None = None,
-    tile_out_bbox: Sequence[int] | None = None,
-    compressor: str = "lz4",
-    usr_fcn: Any = "",
-    uuid: str = "",
-) -> None:
-    """A stand-in of S02's ``stitch_process_zarr_tile``: a zarr tile (its box ``input_bbox``)
-    flipped in z, cropped to ``tile_out_bbox``, passed through the user function and cast back
-    to its class, as a native zarr (an existing result is kept); resampled by MATLAB's
-    ``imresize3`` (``matlabcompat.resize``) to ``round(size ./ resample)`` first."""
-    from petakit5d.core.arrays import matlab_class
-    from petakit5d.core.dtypes import cast
-    from petakit5d.core.ids import get_uuid
-    from petakit5d.io import create_zarr, read_zarr, write_zarr
-    from petakit5d.io.convert import user_function
-    from petakit5d.jobs.publish import publish_result
-
-    zarr_filename = os.fspath(zarr_filename).rstrip("/")
-    if os.path.isdir(zarr_filename):
-        if not overwrite:
-            _print(f"Zarr result {zarr_filename} already exists, skip it!")
-            return
-        shutil.rmtree(zarr_filename)
-    if not uuid:
-        uuid = get_uuid()
-    t0 = time.perf_counter()
-    first = input_filename if isinstance(input_filename, str) else list(input_filename)[0]
-    _print(f"Process zarr tile for {first if first else zarr_filename} ...")
-    block = [int(v) for v in block_size]
-    if frame is None or np.size(frame) == 0:
-        frame = read_zarr(first, input_bbox=None if _empty(input_bbox) else list(input_bbox))
-    dtype = matlab_class(frame)
-    if frame.ndim == 2:
-        frame = frame.reshape(1, *frame.shape)
-    if any(s == 0 for s in frame.shape):
-        _print("The input image is empty, skip it!")
-        return
-    if flip_zstack:
-        frame = np.ascontiguousarray(frame[::-1])
-    if not _empty(tile_out_bbox):
-        from petakit5d.core.bbox import box_slices
-
-        frame = np.ascontiguousarray(frame[box_slices(list(tile_out_bbox))])
-    rs = [] if _empty(resample) else [float(v) for v in np.asarray(resample).ravel()]
-    if rs and not all(v == 1 for v in rs):
-        # MATLAB: imresize3(frame, round(size(frame) ./ rs)), rs completed as [r r r] or
-        # [xy xy z]
-        from petakit5d.core.dtypes import mround
-        from petakit5d.io.convert import _resample_factors
-        from petakit5d.matlabcompat.resize import imresize3
-
-        f = _resample_factors(rs)
-        size = [int(mround(np.float64(n / r))) for n, r in zip(frame.shape, f, strict=True)]
-        frame = imresize3(frame, size)
-    fn = user_function(usr_fcn)
-    if fn is not None:
-        _print(usr_fcn if isinstance(usr_fcn, str) else repr(usr_fcn))
-        frame = fn(frame)
-    sz = list(frame.shape)
-    block = [min(a, b) for a, b in zip(sz, block[-3:], strict=True)]
-    tmp = f"{zarr_filename}_{uuid}"
-    if not os.path.isdir(tmp):
-        sep = (
-            "/"
-            if math.prod(math.ceil(a / b) for a, b in zip(sz, block, strict=True)) > 10000
-            else "."
-        )
-        create_zarr(
-            tmp,
-            data_size=sz,
-            block_size=block,
-            shard_size=shard_size,
-            dtype=dtype,
-            expand_2d_dim=expand_2d_dim,
-            compressor=compressor,
-            dim_separator=sep,
-        )
-    write_zarr(np.ascontiguousarray(cast(frame, dtype)), tmp, create=False)
-    publish_result(tmp, zarr_filename)
-    _print(f"Elapsed time is {time.perf_counter() - t0:f} seconds.")
-    _print("Done!")
+    process_tiles(list(input_fullpaths), **kw)
 
 
 # ---------------------------------------------------------------------------------------------

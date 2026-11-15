@@ -16,7 +16,7 @@ test_feather_frame_under_the_windows_rule runs the frame under that rule on ever
 
 Scenes: DSR tiles in a 2 x 2 grid blended by every method, with and without registration;
 skewed space (two axis orders, flipped tiles, registration); 2D tiles; an IO scan; processed
-zarr tiles (and zarr tiles cut by a box, the stand-in of S02's processing); a single tile;
+zarr tiles (and zarr tiles cut by a box); a single tile;
 an output box; resampled DSR; large files with pooled distance maps; 'separate'; tiles of
 another data order; single and uint8 tiles; the tile information file; secondary channels of
 the same sizes (feather and not), with a short tile (its own block information and maps), of
@@ -191,7 +191,7 @@ SCENES["zarr.tile_out_bbox"] = _grid(
     BlendMethod="max", zarrFile=True, tileOutBbox=[1, 2, 3, 62, 70, 31]
 )
 SCENES["zarr.tile_out_bbox"].fmt = "zarr"
-# (skewed space: zarr tiles flipped by the processing, S02's stitch_process_zarr_tile)
+# (skewed space: zarr tiles flipped by the processing, stitch_process_zarr_tile)
 SCENES["zarr.skewed_flipped"] = _skewed(BlendMethod="mean", zarrFile=True, flippedTile=[1, 0, 1, 0])
 SCENES["zarr.skewed_flipped"].fmt = "zarr"
 # a distance map per tile (DSR), partial files (joined in skewed space, ignored for DSR tiles)
@@ -1225,12 +1225,9 @@ def test_secondary_channel_uses_the_task_size_of_the_primary(tmp_path):
     np.testing.assert_array_equal(_result(root, name_b)[:32, :100, :120], _gt(sc, "B"))
 
 
-@pytest.mark.xfail(
-    reason="MATLAB code in a tile function needs S02's tile-function parser", strict=True,
-    raises=NotImplementedError,
-)  # fmt: skip
 def test_process_function_is_applied_to_tiles(tmp_path):
-    # a flat field of 1000, background 100, offset 1: x -> x - 99 (StitchingTest)
+    # a flat field of 1000, background 100, offset 1: x -> max(x - 100, 0) + 1 (StitchingTest's
+    # x - 99 for its values from 1000)
     from petakit5d.io import write_mat
 
     sc = _grid()
@@ -1245,7 +1242,8 @@ def test_process_function_is_applied_to_tiles(tmp_path):
     )
     write_mat(f"{root}/processFunction.mat", {"usrFun": fun})
     _stitch(root, fns, coords, tidx, process_fun_path=(f"{root}/processFunction.mat",))
-    np.testing.assert_array_equal(_result(root)[:32, :100, :120], _gt(sc) - 99)
+    want = (np.maximum(_gt(sc).astype(np.int64) - 100, 0) + 1).astype(np.uint16)
+    np.testing.assert_array_equal(_result(root)[:32, :100, :120], want)
 
 
 def test_local_workers_give_the_same_result(tmp_path):
@@ -1303,10 +1301,7 @@ def test_edge_artifacts_write_the_function_file(tmp_path):
     sc = _grid()
     root = str(tmp_path)
     fns, coords, tidx = _write(sc, root)
-    try:
-        _stitch(root, fns, coords, tidx, edge_artifacts=2)
-    except NotImplementedError:
-        pass  # (MATLAB code needs S02's tile-function parser)
+    _stitch(root, fns, coords, tidx, edge_artifacts=2)
     tmp = f"{root}/matlab_stitch/tmp"
     (fn,) = os.listdir(tmp)
     assert fn.startswith("processFunction_") and fn.endswith(".mat")

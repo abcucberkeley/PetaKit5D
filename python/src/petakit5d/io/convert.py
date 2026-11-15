@@ -20,10 +20,11 @@ Hooks:
   callable, ``'package.module:function'``, or a record as JSON text
   ``'{"func": "package.module:function", "args": [...], "kwargs": {...}}'`` that calls
   ``func(volume, *args, **kwargs)`` (text, so it goes into job tasks and function files as
-  MATLAB's code strings did). MATLAB code (``'@(x)...'``) is handed to the
-  stitching's tile-function parser (``petakit5d.stitch.tile_functions.parse_tile_function``,
-  task S02), and fails with ``NotImplementedError`` until that exists. The flat-field
-  correction is such a function (D01's ``petakit5d.flatfield.flatfield_correct_file``,
+  MATLAB's code strings did). MATLAB code (``'@(x)...'``) is read by the stitching's
+  tile-function parser (``petakit5d.stitch.tile_functions.parse_tile_function``) in its
+  standard forms only (the edge erosion, the flat-field correction, their composition and
+  ``+``/``-`` of constants); other code raises ``NotImplementedError``. The flat-field
+  correction is also a Python function (D01's ``petakit5d.flatfield.flatfield_correct_file``,
   MATLAB's ``processFFCorrectionFrame``).
 - **resampling** is ``imresize3_fast(vol, out_size)`` (cubic) of
   ``petakit5d.matlabcompat.resize``.
@@ -223,7 +224,8 @@ def _import(name: str) -> Callable[..., Any]:
 
 
 def _matlab_code(text: str) -> Callable[..., Any]:
-    """MATLAB code as a user function: through the stitching's tile-function parser (S02)"""
+    """MATLAB code as a user function: through the stitching's tile-function parser (its
+    standard forms; NotImplementedError for others, and without the parser)"""
     try:
         from petakit5d.stitch.tile_functions import parse_tile_function  # type: ignore
     except ImportError:

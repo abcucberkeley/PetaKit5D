@@ -22,6 +22,15 @@ One volume (``volume``):
 ``StitchVolumeError``, ``StitchVolumeWarning``  the frame's errors and warnings
 ==============================================  ====================================
 
+Tile preparation (``tiles``, ``tile_functions``):
+
+==============================================  ====================================
+``process_tiles``                               stitch_process_tiles
+``process_zarr_tile``                           stitch_process_zarr_tile
+``erode_volume_by_2d_projection``               erodeVolumeBy2DProjection
+``parse_tile_function``                         tile functions written as MATLAB code
+==============================================  ====================================
+
 Datasets (``dataset``):
 
 ==============================================  ====================================
@@ -61,6 +70,10 @@ _EXPORTS = {
     "stitch_volume": "volume",
     "write_stitch_info": "volume",
     "write_xcorr_result": "volume",
+    "process_tiles": "tiles",
+    "process_zarr_tile": "tiles",
+    "erode_volume_by_2d_projection": "tile_functions",
+    "parse_tile_function": "tile_functions",
     "StitchDatasetError": "dataset",
     "stitch_dataset": "dataset",
 }
