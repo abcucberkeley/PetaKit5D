@@ -1,0 +1,24 @@
+{
+ "name": "flatfield_b07",
+ "description": "B07: XR_flatfield_background_wrapper of a dark dataset of two cameras (1024 x 1024 x 256 uint16 each, parseCluster false) and XR_phase_image_flat_field_correction of the 2 time points of the phase demo (offset 6000) at 1 and 24 threads: MATLAB (BaSiC) against flatfield_background_dataset and phase_image_flatfield_correction (BaSiCPy).",
+ "repeats": 5,
+ "warmup": 1,
+ "setup": ["{python} {src}/benchmarks/flatfield/flatfield_b07_data.py {work} {data}"],
+ "variants": [
+  {
+   "id": "ml",
+   "impl": "matlab",
+   "paths": ["benchmarks/flatfield", "benchmarks/common"],
+   "code": "flatfield_b07_ml('{work}/matlab', [1, 24], 1)"
+  },
+  {
+   "id": "py",
+   "impl": "python",
+   "script": "benchmarks/flatfield/flatfield_b07.py",
+   "args": ["{work}/python", "--threads", "1", "24", "--repeats", "1"]
+  }
+ ],
+ "compare": [{"a": "py", "b": "ml"}],
+ "gate": {"ratio_max": 1.05, "overhead_max": 1.0, "metrics": ["op:phase_flat_field@*", "op:flatfield_background_wrapper@*"]},
+ "output_bytes": 2200000000
+}
