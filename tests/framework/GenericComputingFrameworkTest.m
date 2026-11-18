@@ -528,6 +528,27 @@ classdef GenericComputingFrameworkTest < pktest.TestCase
             end
         end
 
+        function parforWrapperTakesNoMoreWorkersThanTheProfile(testCase)
+            % parpool refused more workers than the local profile has (as
+            % many as the cores of the machine or job), e.g. the 12 that
+            % XR_crop_zarr and XR_MIP_zarr ask for in a job of fewer cores
+            [inFns, outFns, logFn] = testCase.makeTasks(2);
+            funcStrs = testCase.taskStrings(inFns, outFns, logFn, 'copy');
+            delete(gcp('nocreate'));
+            testCase.addTeardown(@() delete(gcp('nocreate')));
+            n = parcluster('local').NumWorkers;
+
+            flags = matlab_parfor_generic_computing_wrapper(inFns, outFns, funcStrs, 'GPUJob', false, 'nworker', n + 1);
+
+            testCase.verifyTrue(all(flags));
+            pool = gcp('nocreate');
+            testCase.assertNotEmpty(pool, 'No pool was started.');
+            testCase.verifyEqual(pool.NumWorkers, n);
+            for i = 1 : 2
+                testCase.verifyEqual(fileread(outFns{i}), fileread(inFns{i}));
+            end
+        end
+
         function parforGPUJobHasAWorkerPerUsableGPU(testCase)
             % GPUs newer than this MATLAB supports (e.g., B200 GPUs in
             % R2024b) weren't counted without forward compatibility, so a

@@ -77,6 +77,10 @@ persistent c;
 NumThreads = maxNumCompThreads;
 if isempty(gcp('nocreate'))
     c = parcluster('local');
+    % no more workers than the profile has (as many as the cores of the
+    % machine or job): parpool refused more, e.g. the 12 of XR_crop_zarr,
+    % XR_MIP_zarr, XR_unmix_channels_zarr and XR_deskewRotateZarr
+    nworker = min(nworker, c.NumWorkers);
     c.NumThreads = max(1, round(maxNumCompThreads / nworker));
     parpool(c, nworker);
     if GPUJob 
