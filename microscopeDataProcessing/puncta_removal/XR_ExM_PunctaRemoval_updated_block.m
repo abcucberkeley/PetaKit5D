@@ -149,6 +149,12 @@ for i = 1 : numel(batchInds)
     if T_mask < prctile(mip_i(mip_mask_i), 25)
         T_mask = median(mip_i(mip_mask_i));
     end
+    % an empty mask gives no threshold of its own: the base threshold (its
+    % mode was NaN for float data, which became the max threshold or Inf
+    % and removed the whole batch)
+    if ~any(mip_mask_i(:))
+        T_mask = cast(baseBound, 'like', mip_i);
+    end
     T_mask = max(baseBound, min(T_mask, maxBound));
 
     if ~isempty(BaseThreshold)

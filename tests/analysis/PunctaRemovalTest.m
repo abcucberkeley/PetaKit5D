@@ -42,6 +42,38 @@ classdef PunctaRemovalTest < pktest.TestCase
             testCase.verifyEqual(pr.zarrFullpath, zarrFn);
         end
 
+        function emptyBackgroundMaskTakesTheBaseThreshold(testCase)
+            % with BaseThreshold, the threshold also takes the mode of the
+            % MIP's background mask; for an empty mask (here a MIP too small
+            % for its opening and erosion by a disk of 5) the mode of single
+            % or double data is NaN, which became Inf (or MaxThreshold) and
+            % removed the whole batch. The base threshold stands in for it, as
+            % it already did for integer data (whose mode of nothing is 0)
+            sz = [16, 16, 48];
+            vol = 100 + zeros(sz);
+            vol(4 : 13, 4 : 13, 10 : 40) = 5000 + 200 * randn(10, 10, 31);
+            dataPath = testCase.createTempFolder();
+            zarrFn = [dataPath, 'expanded.zarr'];
+            for cls = {'single', 'uint16'}
+                writezarr(cast(vol, cls{1}), zarrFn, blockSize=[16, 16, 16]);
+                XR_ExM_PunctaRemoval_zarr(zarrFn, 'batchSize', [16, 16, 48], 'blockSize', [16, 16, 16], ...
+                    'BaseThreshold', 1000, 'parseCluster', false, 'masterCompute', true);
+                outPath = [dataPath, 'Puncta_Removed/'];
+                out = readzarr([outPath, 'expanded.zarr']);
+                testCase.verifyEqual(mean(double(out(6 : 11, 6 : 11, 13 : 37)), 'all'), ...
+                    mean(vol(6 : 11, 6 : 11, 13 : 37), 'all'), 'RelTol', 0.01, sprintf('%s: the structure was removed.', cls{1}));
+                testCase.verifyEqual(nnz(out(:, :, 1 : 6)), 0, sprintf('%s: the background was kept.', cls{1}));
+                rmdir(outPath, 's');
+                rmdir(zarrFn, 's');
+            end
+            % (the background estimation's threshold of the batch was Inf)
+            writezarr(single(vol), zarrFn, blockSize=[16, 16, 16]);
+            XR_ExM_PunctaRemoval_zarr(zarrFn, 'mode', 'bg_estimation', 'batchSize', [16, 16, 48], ...
+                'blockSize', [16, 16, 16], 'BaseThreshold', 1000, 'parseCluster', false, 'masterCompute', true);
+            bg = readzarr([dataPath, 'Puncta_background_estimation/expanded_batch_16_16_48_background_values.zarr']);
+            testCase.verifyTrue(all(isfinite(bg(:)) & bg(:) > 900 & bg(:) < 1500), mat2str(bg));
+        end
+
         function interpolatedBackgroundOneValueDeepInZ(testCase)
             % a background estimated in batches as deep as the volume is one
             % value deep in z, which MATLAB's arrays drop: imresize3 of a
