@@ -1,0 +1,30 @@
+{
+ "name": "fsc_b05",
+ "description": "B05: XR_FSC_analysis_wrapper with demo_useful_tools.m's FSC parameters (one-bit, dr 5, dtheta pi/6, halfSize 201, tasks in the process) of the demo's ten decon iterations (the port's decon of the CamB 003y tile with the demo's OMW parameters, every 2nd of 20 iterations), with the figures (MATLAB's PNG and .fig with its JVM; Python's PNG with matplotlib) and without them in Python (py_nofig), at 1 and 24 threads.",
+ "repeats": 5,
+ "warmup": 1,
+ "setup": ["{python} {src}/benchmarks/tools/fsc_b05_data.py {work}"],
+ "variants": [
+  {
+   "id": "ml",
+   "impl": "matlab",
+   "flags": ["-nodisplay", "-nosplash", "-nodesktop"],
+   "paths": ["benchmarks/tools", "benchmarks/common"],
+   "code": "fsc_b05_ml('{work}/matlab', [1, 24], 1)"
+  },
+  {
+   "id": "py",
+   "impl": "python",
+   "script": "benchmarks/tools/fsc_b05.py",
+   "args": ["{work}/python", "--threads", "1", "24", "--repeats", "1"]
+  },
+  {
+   "id": "py_nofig",
+   "impl": "python",
+   "script": "benchmarks/tools/fsc_b05.py",
+   "args": ["{work}/python", "--threads", "1", "24", "--repeats", "1", "--no-figures"]
+  }
+ ],
+ "compare": [{"a": "py", "b": "ml"}, {"a": "py_nofig", "b": "ml"}],
+ "gate": {"ratio_max": 1.05, "threads": [24], "overhead_max": 1.0, "metrics": ["op:fsc_analysis_dataset@*"]}
+}
