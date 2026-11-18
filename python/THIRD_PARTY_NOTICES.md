@@ -14,11 +14,12 @@ The CPU FFTs' default backend, bundled in `cpp/fft/third_party/pocketfft`. Its l
 PetaKit5D's `normxcorr3_fast`. That function is the lab's adaptation of Daniel Eaton's
 `normxcorr3` ("normxcorr3 (Fast 3D NCC)", MATLAB File Exchange submission 73946, version 1.0.1,
 2020), which computes the normalized cross-correlation by the method of J. P. Lewis, "Fast
-Normalized Cross-Correlation", Vision Interface 1995. File Exchange submissions without a linked
-repository are distributed under its BSD license:
+Normalized Cross-Correlation", Vision Interface 1995. Its BSD license, as distributed with
+PetaKit5D's copy of `normxcorr3` (`third_parties/normxcorr3/license.txt` in the MATLAB
+repository):
 
 ```
-Copyright (c) 2020, Daniel Eaton
+Copyright (c) 2005, Daniel Eaton
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -29,12 +30,14 @@ modification, are permitted provided that the following conditions are met:
 
 * Redistributions in binary form must reproduce the above copyright notice,
   this list of conditions and the following disclaimer in the documentation
-  and/or other materials provided with the distribution.
-
+  and/or other materials provided with the distribution
+* Neither the name of  nor the names of its
+  contributors may be used to endorse or promote products derived from this
+  software without specific prior written permission.
 THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
 AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
 IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
-DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE
 FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
 DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
 SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
