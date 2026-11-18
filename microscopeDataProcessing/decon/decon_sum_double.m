@@ -1,6 +1,7 @@
 function [s] = decon_sum_double(x)
 % sum(x(:), 'double') of a real single or double array in an order that
-% doesn't depend on the number of threads: MATLAB's own order at one thread.
+% doesn't depend on the number of threads: MATLAB's own order at one thread,
+% except for a short last block (below).
 %
 % MATLAB (R2024b, R2025b) sums fewer than 89000 elements on one thread at any
 % thread count (in index order below 44 elements, else in four interleaved
@@ -10,8 +11,11 @@ function [s] = decon_sum_double(x)
 % splits the blocks among its threads, which changes the last bits of the sum
 % with the number of threads. Those are summed here as on one thread, with
 % decon_lucy_accel_mex in parallel or, without it, with the MATLAB code below
-% (the same bits). Other arrays (gpuArray, integer, complex, sparse) are
-% summed by MATLAB.
+% (the same bits), with one difference: MATLAB adds a last block of 5 to 43
+% elements (mod(numel(x), 4096)) in index order, as it sums fewer than 44
+% elements, while here it is added in four lanes like the other blocks, so
+% the last bits can differ from MATLAB's sum for such lengths. Other arrays
+% (gpuArray, integer, complex, sparse) are summed by MATLAB.
 
 
 if numel(x) < 89000 || ~(isa(x, 'single') || isa(x, 'double')) || ~isreal(x) || issparse(x)

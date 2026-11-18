@@ -1,7 +1,8 @@
 function [varargout] = decon_lucy_accel(method, varargin)
 % the acceleration step of decon_lucy_function's RL iterations on the CPU,
 % with the sums in an order that doesn't depend on the number of threads
-% (decon_sum_double: MATLAB's order at one thread):
+% (decon_sum_double's: MATLAB's order at one thread, but for a short last
+% block):
 %
 % [lambda, J_4] = decon_lucy_accel('lambda', J_2, Y, J_4)
 %   lambda = sum((J_2(:) - Y(:)) .* J_4, 'double') / (sum(J_4 .* J_4, 'double') + eps),

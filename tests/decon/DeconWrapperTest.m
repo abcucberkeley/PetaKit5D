@@ -258,6 +258,22 @@ classdef DeconWrapperTest < pktest.TestCase
             end
         end
 
+        function largeFileInMemoryDefaultBackgroundIsThatOfTheOtherPaths(testCase)
+            % without a Background the in-memory large-file decon used 99,
+            % while XR_RLdeconFrame3D (which always passes one) and the
+            % in-place path use 100
+            d = testCase.createDataset({'A'}, 1);
+            deconPath = [d.root, 'large/'];
+            args = {d.rawFns{1}, d.psfFns{1}, '', testCase.XYPixelSize, testCase.Dz, 'dzPSF', testCase.Dz, ...
+                'DeconIter', 2, 'EdgeErosion', 0, 'RLMethod', 'simplified', 'batchSize', [24, 24, 16], 'useGPU', false};
+            args{3} = [deconPath, 'default/', d.fsns{1}, '.tif'];
+            evalc('RLdecon_large_in_memory(args{:})');
+            byDefault = readtiff(args{3});
+            args{3} = [deconPath, 'given/', d.fsns{1}, '.tif'];
+            evalc('RLdecon_large_in_memory(args{:}, ''Background'', 100)');
+            testCase.verifyEqual(byDefault, readtiff(args{3}));
+        end
+
         function largeFileInMemoryUsesBlockSize(testCase)
             % the in-memory large-file path wrote its zarr result with
             % writezarr's default chunks (500^3) instead of blockSize

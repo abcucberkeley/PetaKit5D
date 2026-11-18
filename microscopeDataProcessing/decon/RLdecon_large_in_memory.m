@@ -82,10 +82,11 @@ end
 SaveMaskfile = pr.SaveMaskfile;
 
 % check if background information available, if not, estimate background
-% info. Currently use 99. 
+% info. Currently use 100, as XR_RLdeconFrame3D (which always passes it) and
+% RLdecon_large_in_place
 Background = pr.Background;
 if isempty(Background)
-    Background = 99;
+    Background = 100;
 end
 uuid = pr.uuid;
 
