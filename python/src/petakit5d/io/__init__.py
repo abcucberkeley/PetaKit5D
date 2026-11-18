@@ -22,7 +22,22 @@ C), and MATLAB's (``[ny, nx, nz]``, order F) are still read (docs/decisions/0004
 ``read_mat``              load (.mat files)
 ``write_mat``             save (.mat files)
 ``save_ascii``            save -ascii
+``n5_to_zarr``            N5ToZarr
+``n5_to_zarr_block``      N5ToZarrBlock
+``zarr_to_n5``            zarrToN5
+``zarr_to_n5_block``      zarrToN5Block
+``read_n5``               (N5Adapter's getIORegion: MATLAB's N5 layout)
+``write_n5``              (N5Adapter's setRegion)
+``create_n5``             (blockedImage with N5Adapter, mode 'w')
+``construct_xml_file``    constructXmlFile (the BigStitcher XML)
+``write_struct_xml``      writestruct (of its struct)
+``remove_text_tags``      removeTextTags
+``clean_xml_file``        cleanXmlFile
+``bioformats_to_tiff_or_zarr_dataset``  XR_bioformats_to_tiff_or_zarr_wrapper (ND2, CZI)
 ========================  =========================
+
+N5 blosc and zstd (before Python 3.14) need numcodecs, the ``n5`` extra; ND2 and CZI need
+nd2, czifile and imagecodecs, the ``formats`` extra (Bio-Formats is not ported).
 
 Nothing is imported until a function is first used.
 """
@@ -48,6 +63,23 @@ _EXPORTS = {
     "mat_version": "matfile",
     "StructArray": "matfile",
     "MatlabObject": "matfile",
+    "n5_to_zarr": "n5",
+    "n5_to_zarr_block": "n5",
+    "zarr_to_n5": "n5",
+    "zarr_to_n5_block": "n5",
+    "read_n5": "n5",
+    "write_n5": "n5",
+    "create_n5": "n5",
+    "open_n5": "n5",
+    "N5Array": "n5",
+    "N5Error": "n5",
+    "construct_xml_file": "n5",
+    "write_struct_xml": "n5",
+    "remove_text_tags": "n5",
+    "clean_xml_file": "n5",
+    "bioformats_to_tiff_or_zarr_dataset": "bioformats",
+    "bioformats_to_tiff_or_zarr_file": "bioformats",
+    "BioformatsError": "bioformats",
 }
 
 __all__ = sorted(_EXPORTS)

@@ -55,6 +55,11 @@ basic = [
 ]
 # the figure tools (tools.figures): MIP masks, OTF and mask outlines, tile positions
 figures = ["matplotlib>=3.8"]
+# N5 with blosc (MATLAB's N5 compression) and zstd before Python 3.14 (io.n5): numcodecs (MIT)
+n5 = ["numcodecs>=0.13"]
+# ND2 and CZI files (io.bioformats; Bio-Formats itself is not ported): nd2 (BSD-3, with dask,
+# ome-types, pydantic, xsdata: BSD-3/MIT), czifile and imagecodecs (BSD-3)
+formats = ["nd2>=0.12", "czifile>=2026.11.12", "imagecodecs>=2026.11.11"]
 
 [tool.scikit-build]
 minimum-version = "build-system.requires"

@@ -134,12 +134,6 @@ PLANNED: tuple[tuple[str, str, str, int], ...] = (
         2,
     ),
     ("XR_ExM_PunctaRemoval_zarr", "petakit5d.tools.puncta_removal_zarr", "B08", 2),
-    (
-        "XR_bioformats_to_tiff_or_zarr_wrapper",
-        "petakit5d.io.bioformats_to_tiff_or_zarr_dataset",
-        "B09",
-        2,
-    ),
     ("N5ToZarr", "petakit5d.io.n5_to_zarr", "B09", 2),
     ("zarrToN5", "petakit5d.io.zarr_to_n5", "B09", 2),
     ("XR_generate_MIP_masks", "petakit5d.tools.generate_mip_masks", "B10", 2),
