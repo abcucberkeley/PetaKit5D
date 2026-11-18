@@ -80,3 +80,10 @@ Proposed tolerance (`RES` and `RES_VALUES` in `tests/tools/test_fsc.py`, and
 `test_resolution_of_matlabs_fsc`, which applies the port's `XR_FSC_resolution` to MATLAB's own
 curves): `comp_angles` and `thetas` exact; every radius within 1 step of 1e-4 of MATLAB's; the
 resolutions within 1% relative (one step at the smallest radii); Inf and NaN at the same places.
+
+## Chromatic shift estimation (`tools.chromatic`, approved 2026-11-18)
+
+The estimation's normalized cross-correlation (`kernels.xcorr`) is bit for bit MATLAB's with the
+exact FFT backend. With the default backend the estimated shifts and the corrected files are
+exact; only the correlation peak values differ, by at most 1.8e-7 (measured), and the cases
+compare them within an absolute 1e-4.

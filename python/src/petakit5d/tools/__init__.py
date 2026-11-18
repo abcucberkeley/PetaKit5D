@@ -1,6 +1,6 @@
 """Tools: maximum intensity projections, cropping, memory estimates, rsync, partial volumes,
-channel unmixing, resampling, MIP masks, figures, FFT power spectra, PSF analysis and Fourier
-shell correlation.
+channel unmixing, resampling, MIP masks, figures, FFT power spectra, PSF analysis, Fourier
+shell correlation and chromatic shift correction.
 
 ========================================  =====================================
 ``mip_dataset``                           XR_MIP_wrapper
@@ -52,6 +52,9 @@ shell correlation.
 ``fsc_analysis_file``                     XR_one_image_FSC_analysis_frame
 ``fsc_analysis_dataset``                  XR_FSC_analysis_wrapper
 ``two_image_fsc_analysis``                XR_two_image_FSC_analysis (fails, as in MATLAB)
+``chromatic_shift_correction_dataset``    XR_chromatic_shift_correction_data_wrapper
+``chromatic_shift_estimation``            XR_chromatic_shift_estimation
+``correction_boxes``                      (the wrapper's regions per mode)
 ========================================  =====================================
 
 Nothing is imported until a function is first used.
@@ -116,6 +119,10 @@ _EXPORTS = {
     "fsc_resolution": "fsc",
     "one_image_fsc_analysis": "fsc",
     "two_image_fsc_analysis": "fsc",
+    "ChromaticError": "chromatic",
+    "chromatic_shift_correction_dataset": "chromatic",
+    "chromatic_shift_estimation": "chromatic",
+    "correction_boxes": "chromatic",
 }
 
 __all__ = sorted(_EXPORTS)

@@ -1,0 +1,33 @@
+{
+ "task": "B03",
+ "classes": {
+  "ChromaticShiftCorrectionTest": {
+   "finished": true,
+   "methods": {
+    "validModeAlignsChannels": [
+     "pytest:tests/tools/test_chromatic.py::test_valid_mode_aligns_channels",
+     "oracle:tests/tools/test_chromatic.py::wrapper.valid"
+    ],
+    "offsetsEstimatedFromPSFs": [
+     "pytest:tests/tools/test_chromatic.py::test_offsets_estimated_from_psfs",
+     "oracle:tests/tools/test_chromatic.py::wrapper.psf.*"
+    ],
+    "memAllocateIsInGigabytes": [
+     "pytest:tests/tools/test_chromatic.py::test_mem_allocate_is_in_gigabytes"
+    ],
+    "zarrOutput": [
+     "pytest:tests/tools/test_chromatic.py::test_zarr_output",
+     "oracle:tests/tools/test_chromatic.py::wrapper.save_zarr"
+    ],
+    "sameModeKeepsImageSize": [
+     "pytest:tests/tools/test_chromatic.py::test_same_mode_keeps_image_size",
+     "oracle:tests/tools/test_chromatic.py::wrapper.same"
+    ],
+    "fullModeContainsBothChannels": [
+     "pytest:tests/tools/test_chromatic.py::test_full_mode_contains_both_channels",
+     "oracle:tests/tools/test_chromatic.py::wrapper.full"
+    ]
+   }
+  }
+ }
+}
