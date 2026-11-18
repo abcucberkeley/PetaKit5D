@@ -1,0 +1,37 @@
+{
+ "task": "B06",
+ "classes": {
+  "PSFAnalysisTest": {
+   "finished": true,
+   "methods": {
+    "plotDataMatchWholeGrid": {
+     "fate": [
+      "oracle:tests/tools/test_psf_analysis.py::otf.*"
+     ],
+     "case_fates": {
+      "psfCase=centered": [
+       "oracle:tests/tools/test_psf_analysis.py::otf.centered.*"
+      ],
+      "psfCase=paddedZ": [
+       "oracle:tests/tools/test_psf_analysis.py::otf.paddedZ.*"
+      ],
+      "psfCase=largerThanGrid": [
+       "oracle:tests/tools/test_psf_analysis.py::otf.largerThanGrid.*"
+      ],
+      "psfCase=maxOutsideGrid": [
+       "oracle:tests/tools/test_psf_analysis.py::otf.maxOutsideGrid.*"
+      ]
+     }
+    },
+    "analysisWritesFiguresAndInfo": [
+     "pytest:tests/tools/test_psf_analysis.py::test_analysis_writes_figures_and_info",
+     "oracle:tests/tools/test_psf_analysis.py::wrapper.deskew.*"
+    ],
+    "detectionInfoIsMovedIntoPlace": [
+     "pytest:tests/tools/test_psf_analysis.py::test_detection_info_is_moved_into_place",
+     "oracle:tests/tools/test_psf_analysis.py::detect.two_beads"
+    ]
+   }
+  }
+ }
+}

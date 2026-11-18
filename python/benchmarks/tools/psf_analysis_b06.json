@@ -1,0 +1,36 @@
+{
+ "name": "psf_analysis_b06",
+ "description": "B06: XR_psf_analysis_wrapper on the demo PSF folder with the demo's parameters (deskew, the 515 nm Richards & Wolf PSF, figures not visible, tasks in the process; MATLAB with its JVM for the figures), and XR_psf_detection_and_cropping of a synthetic 512 x 256 x 201 bead image, at 1 and 24 threads.",
+ "repeats": 5,
+ "warmup": 1,
+ "setup": ["{python} {src}/benchmarks/tools/psf_analysis_b06_data.py {work}"],
+ "variants": [
+  {
+   "id": "ml_analysis",
+   "impl": "matlab",
+   "flags": ["-nodisplay", "-nosplash", "-nodesktop"],
+   "paths": ["benchmarks/tools", "benchmarks/common"],
+   "code": "psf_analysis_b06_ml('{work}/matlab', 'analysis', [1, 24], 1)"
+  },
+  {
+   "id": "ml_detection",
+   "impl": "matlab",
+   "paths": ["benchmarks/tools", "benchmarks/common"],
+   "code": "psf_analysis_b06_ml('{work}/matlab', 'detection', [1, 24], 1)"
+  },
+  {
+   "id": "py_analysis",
+   "impl": "python",
+   "script": "benchmarks/tools/psf_analysis_b06.py",
+   "args": ["{work}/python", "analysis", "--threads", "1", "24", "--repeats", "1"]
+  },
+  {
+   "id": "py_detection",
+   "impl": "python",
+   "script": "benchmarks/tools/psf_analysis_b06.py",
+   "args": ["{work}/python", "detection", "--threads", "1", "24", "--repeats", "1"]
+  }
+ ],
+ "compare": [{"a": "py_analysis", "b": "ml_analysis"}, {"a": "py_detection", "b": "ml_detection"}],
+ "gate": {"ratio_max": 1.05, "threads": [1, 24], "overhead_max": 1.0, "metrics": ["op:psf_*@*"]}
+}

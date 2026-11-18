@@ -1,5 +1,5 @@
 """Tools: maximum intensity projections, cropping, memory estimates, rsync, partial volumes,
-channel unmixing, resampling, MIP masks, figures and FFT power spectra.
+channel unmixing, resampling, MIP masks, figures, FFT power spectra and PSF analysis.
 
 ========================================  =====================================
 ``mip_dataset``                           XR_MIP_wrapper
@@ -40,6 +40,11 @@ channel unmixing, resampling, MIP masks, figures and FFT power spectra.
 ``visualize_tile_positions``              XR_visualize_tile_positions
 ``fft_spectrum_dataset``                  XR_fftSpectrumComputingWrapper
 ``fft_spectrum_file``                     XR_fftSpectrumComputingFrame
+``psf_analysis_dataset``                  XR_psf_analysis_wrapper
+``psf_analysis_plot``                     XR_psf_analysis_plot
+``psf_otf_analysis``                      Load_and_Plot_Exp_Overall_xzPSF_xzOTF_update
+``psf_detection_and_cropping``            XR_psf_detection_and_cropping
+``psf_detection_and_analysis_dataset``    XR_psf_detection_and_analysis_wrapper
 ========================================  =====================================
 
 Nothing is imported until a function is first used.
@@ -90,6 +95,13 @@ _EXPORTS = {
     "FFTSpectrumError": "fft_spectrum",
     "fft_spectrum_dataset": "fft_spectrum",
     "fft_spectrum_file": "fft_spectrum",
+    "PsfAnalysis": "psf_analysis",
+    "PsfAnalysisError": "psf_analysis",
+    "psf_analysis_dataset": "psf_analysis",
+    "psf_analysis_plot": "psf_analysis",
+    "psf_detection_and_analysis_dataset": "psf_analysis",
+    "psf_detection_and_cropping": "psf_analysis",
+    "psf_otf_analysis": "psf_analysis",
 }
 
 __all__ = sorted(_EXPORTS)

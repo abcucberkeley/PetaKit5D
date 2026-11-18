@@ -19,3 +19,29 @@ formula found for MATLAB's single log10 is fdlibm's single-precision `log10f`
 (`k*log10_2hi + (k*log10_2lo + ivln10*logf(m))`) with fdlibm's `logf`, which reproduces
 99.83% of the probe's values; correctly rounded log10 reproduces 86.1%, so the port keeps the
 correctly rounded one.
+
+## PSF analysis (`tools.psf_analysis`)
+
+| Output | Backend | Tolerance | Status | Why |
+|---|---|---|---|---|
+| PSF slices (xy, xz, yz) of `Load_and_Plot_Exp_Overall_xzPSF_xzOTF_update` | both | bit for bit | measured: 8 cases, 2 dataset cases | no FFT: MATLAB's median, `imresize3` linear, `imgaussfilt3` and divisions |
+| OTF slices (xy, xz, yz) and line cuts | exact | bit for bit | measured: 7 cases, 2 dataset cases | `fftn` on FFTW with MATLAB's driver, `abs` as msun's `hypot`, `interpn` linear (measured: along y, then x, then z, `(1 - t) a + t b`) |
+| OTF slices and line cuts, the info files and `RW_info.mat` | permissive | record 0006's double tolerance: max <= 1e-13 of the largest value, relative L2 <= 1e-14 | record 0006 | the FFT backend. Measured: at most 7.6e-16 of the largest value, relative L2 at most 1.1e-15, in 5-12% of the values of the 1001 x 1001 slices and 40-90% of the line cuts |
+
+## PSF detection (`tools.psf_analysis`, approved 2026-11-17)
+
+`XR_psf_detection_and_cropping` finds the PSFs with MATLAB's `radon` at the skewed angle
+`atand(tand(a) * xy / (dz * sind(a)))`, `imregionalmax`, `median` and `std`. The port's
+Radon transform is written from MathWorks' documented method (four subpixels per pixel, each
+split linearly between the two nearest radial bins), without its exact arithmetic:
+
+| Step | Measured | Tolerance |
+|---|---|---|
+| `radon` (internal, not an output) | single-pixel probes: the radial coordinates differ from MATLAB's by up to about 8 ulps of the terms (18 of 72 probes bit for bit); sums of random images within 4e-14 of their values | none: the decisions are compared |
+| `tand` and `atand` (internal) | within 1 ulp; 81% of 20,016 and 20,009 probed values bit for bit | none |
+| the decisions: the peaks (`pcoords`), the crops and their MIPs, the info file | bit for bit in the 4 cases (two beads, seven beads with a close pair, one at the border, a saturated and a dim one, the defaults at another angle, an image in two parts) | exact |
+
+A peak can come out differently only where a last-bit difference of the Radon transform decides:
+a regional maximum against an equal neighbour, a peak at the local threshold, or a voxel at the
+10-pixel distance from its line. None of the cases has one; real bead images are noisy enough
+that such ties are rare. Not compared bit for bit; approved on 2026-11-17 without MATLAB's `radon` to the last bit.
