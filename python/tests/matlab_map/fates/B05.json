@@ -1,0 +1,29 @@
+{
+ "task": "B05",
+ "classes": {
+  "FSCAnalysisTest": {
+   "finished": true,
+   "methods": {
+    "noisierIterationHasWorseResolution": [
+     "pytest:tests/tools/test_fsc.py::test_noisier_iteration_has_worse_resolution",
+     "oracle:tests/tools/test_fsc.py::wrapper.noisier.*"
+    ],
+    "existingResultsAreNotRecomputed": [
+     "pytest:tests/tools/test_fsc.py::test_existing_results_are_not_recomputed",
+     "oracle:tests/tools/test_fsc.py::wrapper.rerun_warns"
+    ],
+    "resultIsMovedIntoPlace": [
+     "pytest:tests/tools/test_fsc.py::test_result_is_moved_into_place"
+    ],
+    "oneImageMatchesResizingTheWholeImage": [
+     "pytest:tests/tools/test_fsc.py::test_one_image_matches_resizing_the_whole_image",
+     "oracle:tests/tools/test_fsc.py::one_image.*"
+    ],
+    "shellCacheFollowsParameters": [
+     "pytest:tests/tools/test_fsc.py::test_shell_cache_follows_parameters",
+     "oracle:tests/tools/test_fsc.py::fsc.cache.*"
+    ]
+   }
+  }
+ }
+}

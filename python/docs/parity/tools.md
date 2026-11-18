@@ -45,3 +45,38 @@ A peak can come out differently only where a last-bit difference of the Radon tr
 a regional maximum against an equal neighbour, a peak at the local threshold, or a voxel at the
 10-pixel distance from its line. None of the cases has one; real bead images are noisy enough
 that such ties are rare. Not compared bit for bit; approved on 2026-11-17 without MATLAB's `radon` to the last bit.
+
+## Fourier shell correlation: the resolutions (`tools.fsc`, approved 2026-11-18)
+
+`XR_FSC_resolution` smooths each FSC curve with the Curve Fitting Toolbox's
+`fit(r, fsc, 'smoothingSpline')` and takes the first radius on a grid of 1e-4 where the smoothed
+curve falls below the threshold (or the smoothed one-bit or half-bit curve). The toolbox's code
+is not reproduced. Its documentation says the smoothing spline is based on `csaps`, which
+implements de Boor's SMOOTH (*A Practical Guide to Splines*): the spline minimizing
+`p sum w (y - f)^2 + (1 - p) int f''^2` (weights 1, `Normalize` off by default), with the default
+`p` that "makes `p*trace(A)` equal `(1-p)*trace(B)`" for the coefficient matrix `p*A + (1-p)*B`
+of the spline's linear system. The port solves that system by Reinsch's algorithm (Green and
+Silverman 1994, 2.3: `(R + (1 - p)/p Q'Q) gamma = Q'y`, so `A = R`, `B = Q'Q` and
+`p = trace(Q'Q) / (trace(R) + trace(Q'Q))`), evaluates the piecewise cubic (the last piece past
+the last radius) and fits the quadratic fallback (`'poly2'`) by least squares in exact rational
+arithmetic.
+
+The method and its parameter are MATLAB's; the arithmetic is not MathWorks's code, so the
+smoothed values differ in their last bits. A radius would differ only where the smoothed curve
+meets the threshold within those bits at a grid point.
+
+Measured on the oracle cases of `tests/tools/test_fsc.py` with FFTs (XR_FSC, the eight images of
+FSCAnalysisTest and variants through XR_one_image_FSC_analysis, the frame and the wrapper): all
+626 radii per backend are MATLAB's, so every resolution (`res`, the four pairs' and their
+mean's, the wrapper's `res_mat` and `res_mu_mat`) equals MATLAB's. The FSC curves themselves are
+bit-identical with the exact FFT backend and within 0006's double tolerance with the permissive
+one (largest difference 5.9e-15 of the largest value); the radii were the same on both.
+
+With the guide value `1/(1 + h^3/6)` the documentation gives for the "favorable range" (an
+earlier version of this port), only 17.5% of the radii were MATLAB's and the resolutions differed
+by up to 44%.
+
+Proposed tolerance (`RES` and `RES_VALUES` in `tests/tools/test_fsc.py`, and
+`test_resolution_of_matlabs_fsc`, which applies the port's `XR_FSC_resolution` to MATLAB's own
+curves): `comp_angles` and `thetas` exact; every radius within 1 step of 1e-4 of MATLAB's; the
+resolutions within 1% relative (one step at the smallest radii); Inf and NaN at the same places.

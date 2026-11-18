@@ -1,5 +1,6 @@
 """Tools: maximum intensity projections, cropping, memory estimates, rsync, partial volumes,
-channel unmixing, resampling, MIP masks, figures, FFT power spectra and PSF analysis.
+channel unmixing, resampling, MIP masks, figures, FFT power spectra, PSF analysis and Fourier
+shell correlation.
 
 ========================================  =====================================
 ``mip_dataset``                           XR_MIP_wrapper
@@ -45,6 +46,12 @@ channel unmixing, resampling, MIP masks, figures, FFT power spectra and PSF anal
 ``psf_otf_analysis``                      Load_and_Plot_Exp_Overall_xzPSF_xzOTF_update
 ``psf_detection_and_cropping``            XR_psf_detection_and_cropping
 ``psf_detection_and_analysis_dataset``    XR_psf_detection_and_analysis_wrapper
+``fourier_shell_correlation``             XR_FSC
+``fsc_resolution``                        XR_FSC_resolution
+``one_image_fsc_analysis``                XR_one_image_FSC_analysis
+``fsc_analysis_file``                     XR_one_image_FSC_analysis_frame
+``fsc_analysis_dataset``                  XR_FSC_analysis_wrapper
+``two_image_fsc_analysis``                XR_two_image_FSC_analysis (fails, as in MATLAB)
 ========================================  =====================================
 
 Nothing is imported until a function is first used.
@@ -102,6 +109,13 @@ _EXPORTS = {
     "psf_detection_and_analysis_dataset": "psf_analysis",
     "psf_detection_and_cropping": "psf_analysis",
     "psf_otf_analysis": "psf_analysis",
+    "FSCError": "fsc",
+    "fourier_shell_correlation": "fsc",
+    "fsc_analysis_dataset": "fsc",
+    "fsc_analysis_file": "fsc",
+    "fsc_resolution": "fsc",
+    "one_image_fsc_analysis": "fsc",
+    "two_image_fsc_analysis": "fsc",
 }
 
 __all__ = sorted(_EXPORTS)
