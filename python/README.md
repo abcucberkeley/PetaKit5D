@@ -105,7 +105,8 @@ Markers: `gpu` (skipped without a usable GPU), `cluster` (skipped unless
 
 ## License
 
-BSD 3-Clause; see `LICENSE`.
+BSD 3-Clause; see `LICENSE`. The notices of the third-party work the package derives from or
+bundles are in `THIRD_PARTY_NOTICES.md` (included with the package).
 
 The CPU FFTs use pocketfft (BSD 3-Clause, `cpp/fft/third_party/pocketfft/LICENSE.md`, included
 with the package). The package contains no GPL code. FFTW, which gives MATLAB's exact FFT bits,

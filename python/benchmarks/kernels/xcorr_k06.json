@@ -1,0 +1,16 @@
+{
+ "name": "xcorr_k06",
+ "repeats": 5,
+ "setup": ["{python} {src}/benchmarks/kernels/xcorr_k06_setup.py {work}"],
+ "variants": [
+  {"id": "ml", "impl": "matlab", "paths": ["benchmarks/kernels", "benchmarks/common"],
+   "code": "bench_xcorr_k06('{work}', [1, 4, 24], 2)"},
+  {"id": "py", "impl": "python", "script": "benchmarks/kernels/bench_xcorr_k06.py",
+   "args": ["{work}", "--backend", "permissive", "--threads", "1", "4", "24", "--repeats", "2"]},
+  {"id": "py_exact", "impl": "python", "script": "benchmarks/kernels/bench_xcorr_k06.py",
+   "args": ["{work}", "--backend", "exact", "--threads", "1", "4", "24", "--repeats", "2"],
+   "env": {"PETAKIT5D_FFTW": "{env[K06_FFTW]}"}, "when": "K06_FFTW"}
+ ],
+ "compare": [{"a": "py", "b": "ml"}, {"a": "py_exact", "b": "ml"}],
+ "gate": {"ratio_max": 1.05, "threads": [1, 4, 24], "metrics": ["op:max_shift_ovl300@*"]}
+}

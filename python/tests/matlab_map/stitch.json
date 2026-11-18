@@ -198,7 +198,7 @@
    "file": "tests/stitch/RegistrationXcorrTest.m",
    "pins": "the normalized cross-correlation of the registration in the window of the max shifts (normxcorr3_max_shift -> normxcorr3_fast with a bbox -> normxcorr3_window_mex on Linux) against the computation of the whole output: the mex runs the same FFTW transforms as MATLAB's fftn and ifftn and the cumulative sums of the window sums in double, only for the window, so every value is the same bit for bit...",
    "category": "data",
-   "owner": "S04",
+   "owner": "K06",
    "phase": 1,
    "finished": false,
    "fate": [],

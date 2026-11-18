@@ -15,7 +15,7 @@ description = "Petabyte-scale 5D image processing for light-sheet microscopy (Py
 readme = "README.md"
 authors = [{ name = "Matthew Mueller" }]
 license = "BSD-3-Clause"
-license-files = ["LICENSE", "cpp/fft/third_party/pocketfft/LICENSE.md"]
+license-files = ["LICENSE", "THIRD_PARTY_NOTICES.md", "cpp/fft/third_party/pocketfft/LICENSE.md"]
 requires-python = ">=3.11"
 dependencies = [
     "numpy>=2.0",

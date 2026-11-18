@@ -1,0 +1,215 @@
+{
+  "task": "K06",
+  "classes": {
+    "RegistrationXcorrTest": {
+      "methods": {
+        "windowEqualsTheWholeOutput": {
+          "case_fates": {
+            "xcorrSize=evenOdd": [
+              "pytest:tests/kernels/test_xcorr.py::test_window_equals_the_whole_output",
+              "oracle:tests/kernels/test_xcorr.py::fast.evenOdd.*",
+              "oracle:tests/kernels/test_xcorr.py::whole.evenOdd.*"
+            ],
+            "xcorrSize=y64": [
+              "pytest:tests/kernels/test_xcorr.py::test_window_equals_the_whole_output",
+              "oracle:tests/kernels/test_xcorr.py::fast.y64.*",
+              "oracle:tests/kernels/test_xcorr.py::whole.y64.*"
+            ],
+            "xcorrSize=x64": [
+              "pytest:tests/kernels/test_xcorr.py::test_window_equals_the_whole_output",
+              "oracle:tests/kernels/test_xcorr.py::fast.x64.*",
+              "oracle:tests/kernels/test_xcorr.py::whole.x64.*"
+            ],
+            "xcorrSize=z64": [
+              "pytest:tests/kernels/test_xcorr.py::test_window_equals_the_whole_output",
+              "oracle:tests/kernels/test_xcorr.py::fast.z64.*",
+              "oracle:tests/kernels/test_xcorr.py::whole.z64.*"
+            ],
+            "xcorrSize=split": [
+              "pytest:tests/kernels/test_xcorr.py::test_window_equals_the_whole_output",
+              "oracle:tests/kernels/test_xcorr.py::fast.split.*",
+              "oracle:tests/kernels/test_xcorr.py::whole.split.*"
+            ],
+            "xcorrSize=thinTemplate": [
+              "pytest:tests/kernels/test_xcorr.py::test_window_equals_the_whole_output",
+              "oracle:tests/kernels/test_xcorr.py::fast.thinTemplate.*",
+              "oracle:tests/kernels/test_xcorr.py::whole.thinTemplate.*"
+            ],
+            "xcorrSize=singleSlice": [
+              "pytest:tests/kernels/test_xcorr.py::test_window_equals_the_whole_output",
+              "oracle:tests/kernels/test_xcorr.py::fast.singleSlice.*",
+              "oracle:tests/kernels/test_xcorr.py::whole.singleSlice.*"
+            ],
+            "xcorrSize=twoD": [
+              "pytest:tests/kernels/test_xcorr.py::test_window_equals_the_whole_output",
+              "oracle:tests/kernels/test_xcorr.py::fast.twoD.*",
+              "oracle:tests/kernels/test_xcorr.py::whole.twoD.*"
+            ],
+            "xcorrSize=equal": [
+              "pytest:tests/kernels/test_xcorr.py::test_window_equals_the_whole_output",
+              "oracle:tests/kernels/test_xcorr.py::fast.equal.*",
+              "oracle:tests/kernels/test_xcorr.py::whole.equal.*"
+            ]
+          }
+        },
+        "mexPartsEqualMatlabs": {
+          "case_fates": {
+            "xcorrSize=evenOdd": [
+              "oracle:tests/kernels/test_xcorr.py::mex.evenOdd.*",
+              "pytest:tests/kernels/test_xcorr.py::test_window_sums_are_the_cumulative_sums",
+              "pytest:tests/kernels/test_xcorr.py::test_correlation_is_the_correlation"
+            ],
+            "xcorrSize=y64": [
+              "oracle:tests/kernels/test_xcorr.py::mex.y64.*",
+              "pytest:tests/kernels/test_xcorr.py::test_window_sums_are_the_cumulative_sums",
+              "pytest:tests/kernels/test_xcorr.py::test_correlation_is_the_correlation"
+            ],
+            "xcorrSize=x64": [
+              "oracle:tests/kernels/test_xcorr.py::mex.x64.*",
+              "pytest:tests/kernels/test_xcorr.py::test_window_sums_are_the_cumulative_sums",
+              "pytest:tests/kernels/test_xcorr.py::test_correlation_is_the_correlation"
+            ],
+            "xcorrSize=z64": [
+              "oracle:tests/kernels/test_xcorr.py::mex.z64.*",
+              "pytest:tests/kernels/test_xcorr.py::test_window_sums_are_the_cumulative_sums",
+              "pytest:tests/kernels/test_xcorr.py::test_correlation_is_the_correlation"
+            ],
+            "xcorrSize=split": [
+              "oracle:tests/kernels/test_xcorr.py::mex.split.*",
+              "pytest:tests/kernels/test_xcorr.py::test_window_sums_are_the_cumulative_sums",
+              "pytest:tests/kernels/test_xcorr.py::test_correlation_is_the_correlation"
+            ],
+            "xcorrSize=thinTemplate": [
+              "oracle:tests/kernels/test_xcorr.py::mex.thinTemplate.*",
+              "pytest:tests/kernels/test_xcorr.py::test_window_sums_are_the_cumulative_sums",
+              "pytest:tests/kernels/test_xcorr.py::test_correlation_is_the_correlation"
+            ],
+            "xcorrSize=singleSlice": [
+              "oracle:tests/kernels/test_xcorr.py::mex.singleSlice.*",
+              "pytest:tests/kernels/test_xcorr.py::test_window_sums_are_the_cumulative_sums",
+              "pytest:tests/kernels/test_xcorr.py::test_correlation_is_the_correlation"
+            ],
+            "xcorrSize=twoD": [
+              "oracle:tests/kernels/test_xcorr.py::mex.twoD.*",
+              "pytest:tests/kernels/test_xcorr.py::test_window_sums_are_the_cumulative_sums",
+              "pytest:tests/kernels/test_xcorr.py::test_correlation_is_the_correlation"
+            ],
+            "xcorrSize=equal": [
+              "oracle:tests/kernels/test_xcorr.py::mex.equal.*",
+              "pytest:tests/kernels/test_xcorr.py::test_window_sums_are_the_cumulative_sums",
+              "pytest:tests/kernels/test_xcorr.py::test_correlation_is_the_correlation"
+            ]
+          }
+        },
+        "fastFFTIsCloseInEveryWindow": {
+          "case_fates": {
+            "xcorrSize=evenOdd": [
+              "pytest:tests/kernels/test_xcorr.py::test_fast_fft_is_close_in_every_window",
+              "oracle:tests/kernels/test_xcorr.py::mexfast.evenOdd.*",
+              "oracle:tests/kernels/test_xcorr.py::fastfft.evenOdd"
+            ],
+            "xcorrSize=y64": [
+              "pytest:tests/kernels/test_xcorr.py::test_fast_fft_is_close_in_every_window",
+              "oracle:tests/kernels/test_xcorr.py::mexfast.y64.*",
+              "oracle:tests/kernels/test_xcorr.py::fastfft.y64"
+            ],
+            "xcorrSize=x64": [
+              "pytest:tests/kernels/test_xcorr.py::test_fast_fft_is_close_in_every_window",
+              "oracle:tests/kernels/test_xcorr.py::mexfast.x64.*",
+              "oracle:tests/kernels/test_xcorr.py::fastfft.x64"
+            ],
+            "xcorrSize=z64": [
+              "pytest:tests/kernels/test_xcorr.py::test_fast_fft_is_close_in_every_window",
+              "oracle:tests/kernels/test_xcorr.py::mexfast.z64.*",
+              "oracle:tests/kernels/test_xcorr.py::fastfft.z64"
+            ],
+            "xcorrSize=split": [
+              "pytest:tests/kernels/test_xcorr.py::test_fast_fft_is_close_in_every_window",
+              "oracle:tests/kernels/test_xcorr.py::mexfast.split.*",
+              "oracle:tests/kernels/test_xcorr.py::fastfft.split"
+            ],
+            "xcorrSize=thinTemplate": [
+              "pytest:tests/kernels/test_xcorr.py::test_fast_fft_is_close_in_every_window",
+              "oracle:tests/kernels/test_xcorr.py::mexfast.thinTemplate.*",
+              "oracle:tests/kernels/test_xcorr.py::fastfft.thinTemplate"
+            ],
+            "xcorrSize=singleSlice": [
+              "pytest:tests/kernels/test_xcorr.py::test_fast_fft_is_close_in_every_window",
+              "oracle:tests/kernels/test_xcorr.py::mexfast.singleSlice.*",
+              "oracle:tests/kernels/test_xcorr.py::fastfft.singleSlice"
+            ],
+            "xcorrSize=twoD": [
+              "pytest:tests/kernels/test_xcorr.py::test_fast_fft_is_close_in_every_window",
+              "oracle:tests/kernels/test_xcorr.py::mexfast.twoD.*",
+              "oracle:tests/kernels/test_xcorr.py::fastfft.twoD"
+            ],
+            "xcorrSize=equal": [
+              "pytest:tests/kernels/test_xcorr.py::test_fast_fft_is_close_in_every_window",
+              "oracle:tests/kernels/test_xcorr.py::mexfast.equal.*",
+              "oracle:tests/kernels/test_xcorr.py::fastfft.equal"
+            ]
+          }
+        },
+        "maxShiftEqualsTheWholeOutputsMax": [
+          "pytest:tests/kernels/test_xcorr.py::test_max_shift_finds_the_shift",
+          "pytest:tests/kernels/test_xcorr.py::test_symmetric_bounds_are_minus_to_plus",
+          "oracle:tests/kernels/test_xcorr.py::shift.moved",
+          "oracle:tests/kernels/test_xcorr.py::shift.moved.symmetric"
+        ],
+        "fastFFTFindsTheSameShift": [
+          "pytest:tests/kernels/test_xcorr.py::test_fast_fft_finds_the_same_shift",
+          "oracle:tests/kernels/test_xcorr.py::shift.moved.fastfft"
+        ],
+        "lowContrastOnALargeOffset": [
+          "pytest:tests/kernels/test_xcorr.py::test_max_shift_finds_the_shift",
+          "oracle:tests/kernels/test_xcorr.py::shift.low_contrast"
+        ],
+        "flatWindowsAreZero": [
+          "pytest:tests/kernels/test_xcorr.py::test_flat_windows_are_zero",
+          "pytest:tests/kernels/test_xcorr.py::test_max_shift_finds_the_shift",
+          "pytest:tests/kernels/test_xcorr.py::test_mex_path_equals_the_matlab_code",
+          "oracle:tests/kernels/test_xcorr.py::shift.flat"
+        ],
+        "faintRegionsHaveTheirNCC": [
+          "pytest:tests/kernels/test_xcorr.py::test_max_shift_finds_the_shift",
+          "oracle:tests/kernels/test_xcorr.py::shift.faint"
+        ],
+        "validAndSameShapes": [
+          "pytest:tests/kernels/test_xcorr.py::test_valid_and_same_shapes",
+          "oracle:tests/kernels/test_xcorr.py::whole.*"
+        ],
+        "maxShiftOf2DImages": [
+          "pytest:tests/kernels/test_xcorr.py::test_max_shift_of_2d_images",
+          "oracle:tests/kernels/test_xcorr.py::shift.twoD"
+        ],
+        "resultsDoNotDependOnTheThreadCount": [
+          "pytest:tests/kernels/test_xcorr.py::test_results_do_not_depend_on_the_thread_count",
+          "pytest:tests/kernels/test_xcorr.py::test_thread_counts"
+        ],
+        "linesAreGroupedAsMatlabDoes": [
+          "pytest:tests/matlabcompat/test_fft.py::test_lines_are_grouped_as_matlab_does",
+          "na:the mex's 'fft1' mode finds the FFT mode of a running MATLAB session (matlab_fft_grain); the port takes the mode as an argument (matlab_parallel) and tests MATLAB's line groups with its FFT driver"
+        ],
+        "withoutTheMexTheMatlabCodeRuns": [
+          "pytest:tests/kernels/test_xcorr.py::test_mex_path_equals_the_matlab_code",
+          "oracle:tests/kernels/test_xcorr.py::double.*",
+          "oracle:tests/kernels/test_xcorr.py::thin.*"
+        ],
+        "unsupportedCallsRunTheMatlabCode": [
+          "pytest:tests/kernels/test_xcorr.py::test_double_data_runs_the_matlab_code",
+          "oracle:tests/kernels/test_xcorr.py::double.*",
+          "oracle:tests/kernels/test_xcorr.py::err.fast.bbox_needs_full"
+        ],
+        "mexRejectsInvalidInputs": [
+          "pytest:tests/kernels/test_xcorr.py::test_window_rejects_invalid_inputs",
+          "oracle:tests/kernels/test_xcorr.py::err.mex.*"
+        ],
+        "nccDoesNotDependOnTheThreadCount": [
+          "pytest:tests/kernels/test_xcorr.py::test_thread_counts",
+          "pytest:tests/kernels/test_xcorr.py::test_results_do_not_depend_on_the_thread_count",
+          "oracle:tests/kernels/test_xcorr.py::threads.*"
+        ]
+      }
+    }
+  }
+}
