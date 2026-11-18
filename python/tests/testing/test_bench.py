@@ -483,7 +483,9 @@ def test_run_interleaves_and_writes_a_result(tmp_path, monkeypatch):
             {
                 "id": "b",
                 "impl": "python",
-                "code": "import sys; assert sys.argv[1:] == ['x']",
+                # long enough to measure: before Python 3.13, Windows' time.time() (the marks'
+                # clock) moves in steps of 15.6 ms
+                "code": "import sys, time; time.sleep(0.05); assert sys.argv[1:] == ['x']",
                 "args": ["x"],
             },
             {

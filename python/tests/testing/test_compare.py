@@ -496,6 +496,9 @@ def test_masks_hide_the_work_folder_host_uuids_and_times():
     assert s == "<WORK>/a_<uuid>.tif on <host> at <time>"
     m2 = Masks().with_paths(work="C:\\Temp\\w2")
     assert m2.text("C:/Temp/w2/x and C:\\Temp\\w2\\y") == "<WORK>/x and <WORK>\\y"
+    # a JSON text holds a Windows path with its backslashes escaped
+    js = json.dumps({"a": "C:\\Temp\\w2/x", "b": "C:\\Temp\\w2\\y"})
+    assert m2.text(js) == '{"a": "<WORK>/x", "b": "<WORK>\\\\y"}'
     assert compare(
         mchar("/tmp/w1/x"),
         "/tmp/w2/x",

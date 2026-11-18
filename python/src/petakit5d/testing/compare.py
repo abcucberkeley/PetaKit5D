@@ -1226,7 +1226,10 @@ class Masks:
             if not p:
                 continue
             p = str(p).rstrip("/\\")
-            for form in {p, p.replace("\\", "/"), p.replace("/", "\\")}:
+            forms = {p, p.replace("\\", "/"), p.replace("/", "\\")}
+            # and as a JSON text holds a Windows path: with its backslashes escaped
+            forms |= {f.replace("\\", "\\\\") for f in forms if "\\" in f}
+            for form in sorted(forms):
                 subs.append((re.escape(form), f"<{tag}>"))
         if host:
             subs.append((r"(?<![\w.-])" + re.escape(host) + r"(?![\w-])", "<host>"))
