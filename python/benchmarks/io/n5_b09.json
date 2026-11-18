@@ -1,0 +1,23 @@
+{
+ "name": "n5_b09",
+ "description": "B09: zarrToN5 of a demo-sized volume (a CamB tile of the demo cell image dataset, 500 x 1800 x 512 uint16, zarr chunks 256^3; MATLAB reads its (y, x, z) array, Python the native array of the same data) to N5 with MATLAB's defaults (MATLAB writes its [nz, nx, ny] layout, Python standard N5), and N5ToZarr of each side's own N5 of that volume, tasks in the process (parseCluster false), at 24 threads. MATLAB's N5Adapter runs on zarr-python 2 and numcodecs in the active environment.",
+ "repeats": 5,
+ "warmup": 1,
+ "setup": ["{python} {src}/benchmarks/io/n5_b09_data.py {work}"],
+ "variants": [
+  {
+   "id": "ml_n5",
+   "impl": "matlab",
+   "paths": ["benchmarks/io", "benchmarks/common"],
+   "code": "n5_b09_ml('{work}/matlab', 24, 1)"
+  },
+  {
+   "id": "py_n5",
+   "impl": "python",
+   "script": "benchmarks/io/n5_b09.py",
+   "args": ["{work}/python", "--threads", "24", "--repeats", "1"]
+  }
+ ],
+ "compare": [{"a": "py_n5", "b": "ml_n5"}],
+ "gate": {"ratio_max": 1.05, "threads": [24], "overhead_max": 1.0, "metrics": ["op:zarr_to_n5@*", "op:n5_to_zarr@*"]}
+}
