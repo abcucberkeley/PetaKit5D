@@ -2696,10 +2696,15 @@ def compare_trees(
     rep = Report()
     rm = (ref_masks or Masks()).plus(*spec.masks)
     am = (act_masks or Masks()).plus(*spec.masks)
-    rnames = {n for n in ref.items if not any(re.search(p, n) for p in spec.ignore)}
-    anames = {n for n in act.items if not any(re.search(p, n) for p in spec.ignore)}
+    # each side's names through its own masks: a run's short uuids (Windows) mask its names
+    # when they are scanned, and are in both masks, so a reference name with a token equal to
+    # one (Iter_0000 against the uuid "0000") is masked the same way (masks are idempotent)
+    ritems = _items_by_masked_name(ref.items, rm)
+    aitems = _items_by_masked_name(act.items, am)
+    rnames = {n for n in ritems if not any(re.search(p, n) for p in spec.ignore)}
+    anames = {n for n in aitems if not any(re.search(p, n) for p in spec.ignore)}
     for n in sorted(rnames - anames):
-        kinds = ", ".join(sorted({it.kind for it in ref.items[n]}))
+        kinds = ", ".join(sorted({it.kind for it in ritems[n]}))
         rep.add(f"{path}/{n}", "missing", f"MATLAB wrote this {kinds}, Python did not")
     for n in sorted(anames - rnames):
         rep.add(f"{path}/{n}", "extra", "Python wrote this, MATLAB did not")
@@ -2710,7 +2715,7 @@ def compare_trees(
             path, "deleted", f"files removed from the work folder: MATLAB {rdel}, Python {adel}"
         )
     for n in sorted(rnames & anames):
-        ri, ai = ref.items[n], act.items[n]
+        ri, ai = ritems[n], aitems[n]
         if len(ri) != len(ai):
             rep.add(
                 f"{path}/{n}",
@@ -2728,6 +2733,15 @@ def compare_trees(
                 rep,
             )
     return rep
+
+
+def _items_by_masked_name(
+    items: dict[str, list[FileItem]], masks: Masks
+) -> dict[str, list[FileItem]]:
+    out: dict[str, list[FileItem]] = {}
+    for n, its in items.items():
+        out.setdefault(normalize_name(n, masks), []).extend(its)
+    return out
 
 
 def _cmp_file(r: _Side, a: _Side, vspec: Spec, spec: TreeSpec, path: str, rep: Report) -> None:

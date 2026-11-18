@@ -47,3 +47,18 @@ def test_a_value_equal_to_the_runs_short_uuid_is_masked_on_both_sides(tmp_path):
     )  # fmt: skip
     rm, am = oracle.case_masks(ref, res)
     assert rm.text("    1024,") == am.text("    1024,") == "    <uuid>,"
+
+
+def test_a_name_with_a_token_equal_to_the_runs_short_uuid_matches(tmp_path):
+    # a Windows run whose uuid was "0000": its names are masked when scanned
+    # (Scan_Iter_<uuid>_a.txt), so the reference's Scan_Iter_0000_a.txt is masked the same way
+    from petakit5d.testing.compare import compare_trees, scan_tree
+
+    for side in ("ref", "act"):
+        (tmp_path / side).mkdir()
+        (tmp_path / side / "Scan_Iter_0000_a.txt").write_text("x\n", newline="\n")
+    um = Masks().plus(*uuid_masks(["0000"]))
+    ref = scan_tree(tmp_path / "ref")
+    act = scan_tree(tmp_path / "act", masks=um)
+    rep = compare_trees(ref, act, ref_masks=um, act_masks=um)
+    assert rep.ok, rep.text()
