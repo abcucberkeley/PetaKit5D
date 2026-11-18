@@ -511,11 +511,18 @@ def check_manifests(root: str | os.PathLike | None = None) -> list[str]:
 # ---------------------------------------------------------------------------------------------
 
 
+def case_masks(ref: Reference, res: PyResult) -> tuple[Masks, Masks]:
+    """the reference's and the run's masks. The run's own short uuids (Windows' 4 characters)
+    are masked on both sides, so that a reference value that happens to equal one (a 1024 in
+    parameters.json against the uuid "1024") stays equal"""
+    um = uuid_masks(res.uuids)
+    am = Masks().with_paths(work=str(res.work), host=socket.gethostname()).plus(*um)
+    return ref.masks.plus(*um), am
+
+
 def compare_case(case: Case, ref: Reference, res: PyResult) -> Report:
     rep = Report()
-    am = Masks().with_paths(work=str(res.work), host=socket.gethostname())
-    am = am.plus(*uuid_masks(res.uuids))
-    rm = ref.masks
+    rm, am = case_masks(ref, res)
     if ref.status == "error":
         rid = (ref.error or {}).get("identifier", "")
         rmsg = (ref.error or {}).get("message", "")

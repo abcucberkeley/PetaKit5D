@@ -30,3 +30,20 @@ def test_get_uuid_logs_what_it_gives(tmp_path, monkeypatch):
     monkeypatch.undo()
     assert len(a) == 4 and len(b) == 4
     assert log.read_text().split() == [a, b]
+
+
+def test_a_value_equal_to_the_runs_short_uuid_is_masked_on_both_sides(tmp_path):
+    # a Windows run whose uuid was "1024", against a reference value 1024 (in parameters.json)
+    from petakit5d.testing import oracle
+    from petakit5d.testing.cases import PyResult
+
+    ref = oracle.Reference(
+        key="k", status="ok", error=None, warnings=[], outputs=[], files=None, meta={},
+        source="manifest", masks=Masks(), commit="",
+    )  # fmt: skip
+    res = PyResult(
+        outputs=[], error=None, error_text="", warnings=[], files=None, work=tmp_path,
+        elapsed=0.0, uuids=("1024",),
+    )  # fmt: skip
+    rm, am = oracle.case_masks(ref, res)
+    assert rm.text("    1024,") == am.text("    1024,") == "    <uuid>,"
