@@ -221,7 +221,7 @@ def test_shardedArrayIsCppZarrsArray(tmp_path, dtype, compressor, sep):
     write_zarr(vol, fn)
     assert _chunks(fn) == _chunks(ref)
     assert all((fn / c).read_bytes() == (ref / c).read_bytes() for c in _chunks(ref))
-    zarr = pytest.importorskip("zarr")
+    zarr = pytest.importorskip("zarr", minversion="3")  # sharded v3 arrays need zarr 3
     assert ic.bits_equal(np.asarray(zarr.open_array(str(fn), mode="r")[...]), vol)
 
 
