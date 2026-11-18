@@ -45,7 +45,7 @@ function [] = XR_microscopeAutomaticProcessing(dataPaths, varargin)
 %         blendMethod : 'none'|'feather'|'mean'|'median'|'max' (default: 'none'). Blending method for stitching.
 %          xcorrShift : true|false (default: false). Xcorr registration for stitching.
 %           xcorrMode : 'primary'|'primaryFirst'|'all' (default: 'primaryFirst'). Xcorr registration mode. 'primary': use all time points in primary channel. 'primaryFirst': use the first time point in primary channel. 'all': registration within each time point and channel.
-%         xyMaxOffset : a number (default: 300). Max offsets in voxel in xy axes in the registration.
+%         xyMaxOffset : a number or [x, y] (default: 300). Max offsets in voxel in xy axes in the registration.
 %          zMaxOffset : a number (default: 50). Max offset in voxel in z axis in the registration.
 %       edgeArtifacts : a number (default: 2). The number of voxels from the border to erode to remove edge artifacts. 
 %           primaryCh : empty or char (default: ''). The primary channel for registration. Must be one from channelPatterns.
@@ -61,7 +61,7 @@ function [] = XR_microscopeAutomaticProcessing(dataPaths, varargin)
 %        unitWaitTime : a number (default: 1). The wait time per file in minutes to check whether the computing is done.
 %       minModifyTime : a number (default: 10). The minimum time in minutes for the latest modified file to decide whether it is fully transferred.
 %       maxModifyTime : a number (default: 10). The maximum time in minutes to check whether there are coming new files.
-%      maxWaitLoopNum : a number (default: 10). Number of maximum loops without any computing.
+%      maxWaitLoopNum : a number (default: 10). Number of maximum loops without any computing (in streaming, once there are files: a run started before the acquisition waits for its first files, until it is stopped).
 %             mccMode : true|false (default: false). Use mcc mode.
 %          configFile : empty or char (default: ''). Path for the config file for job submission.
 %
@@ -639,6 +639,12 @@ while ~all(is_done_flag | (trial_counter >= maxTrialNum & ~job_active), 'all') |
             % if the deskew result is not available, wait for the deskew data to be finished        
             if ~parseCluster && (~exist(frameFullpath, 'file') || ~exist(dsrFullpath, 'file'))
                 % if DS or DSR, it means the deskew and rotation not done.
+                % (a file whose deskew was given up has no tile to stitch: its
+                % stitching is given up too, else a run whose deskews were
+                % all given up without an error never ended)
+                if ~is_done_flag(f, 1) && trial_counter(f, 1) >= maxTrialNum
+                    trial_counter(f, 2) = max(trial_counter(f, 2), maxTrialNum);
+                end
                 continue;
             end
             % (locally, the dataset's stitching was tried and gave no result)
@@ -663,18 +669,23 @@ while ~all(is_done_flag | (trial_counter >= maxTrialNum & ~job_active), 'all') |
                 maxTrialNum = 1;
             end
             stitchZarrFile = saveZarr;
+            % (a max offset of x and y, or [x, y]: two values garbled the string)
+            xyMaxOffset_str = sprintf('%.10f', xyMaxOffset);
+            if numel(xyMaxOffset) == 2
+                xyMaxOffset_str = sprintf('[%.10f,%.10f]', xyMaxOffset);
+            end
 
             func_str = sprintf(['XR_matlab_stitching_wrapper(''%s'',''%s'',''ResultDir'',''%s'',', ...
                 '''streaming'',%s,''DS'',%s,''DSR'',%s,''channelPatterns'',%s,''ProcessedDirStr'',''%s'',', ...
                 '''axisOrder'',''%s'',''resampleType'',''%s'',''resampleFactor'',[%s],''reverse'',%s,', ...
-                '''parseSettingFile'',%s,''xcorrShift'',%s,''xcorrMode'',''%s'',''xyMaxOffset'',%.10f,', ...
+                '''parseSettingFile'',%s,''xcorrShift'',%s,''xcorrMode'',''%s'',''xyMaxOffset'',%s,', ...
                 '''zMaxOffset'',%.10f,''edgeArtifacts'',%d,''blendMethod'',''%s'',', ...
                 '''outBbox'',[%s],''save16bit'',%s,''primaryCh'',''%s'',''stitchMIP'',%s,''onlineStitch'',%s,', ...
                 '''zarrFile'',%s,''maxTrialNum'',%d,''parseCluster'',%s,''mccMode'',%s,''configFile'',''%s'',''uuid'',''%s'')'], ...
                 dataPath, imageListFullpath, stitchResultDirName, string(parseCluster & streaming), string(stitch_DS), ...
                 string(stitch_DSR), channelPatterns_str, ProcessedDirStr, axisOrder, resampleType, ...
                 strrep(num2str(stitchResampleFactor, '%.10d,'), ' ', ''), string(reverse), string(parseSettingFile), ...
-                string(xcorrShift), xcorrMode, xyMaxOffset, zMaxOffset, edgeArtifacts, blendMethod, ...
+                string(xcorrShift), xcorrMode, xyMaxOffset_str, zMaxOffset, edgeArtifacts, blendMethod, ...
                 strrep(num2str(bbox, '%d,'), ' ', ''), string(save16bit(2)), primaryCh, ...
                 strrep(mat2str(stitchMIP), ' ', ','), string(onlineStitch), ...
                 string(stitchZarrFile), maxTrialNum, string(parseCluster), string(mccMode), configFile, uuid);

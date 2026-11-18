@@ -639,6 +639,28 @@ classdef AutomaticProcessingTest < pktest.TestCase
             testCase.verifyNumElements(stitches.getCalls(), 2);
         end
 
+        function localRunEndsWhenEveryDeskewIsGivenUp(testCase)
+            % locally, a file's stitching waits for its deskewed tile; when
+            % every deskew was given up without an error (here a spy that
+            % makes no result), no stitching try was ever counted and the run
+            % never ended. A file whose deskew is given up gives up its
+            % stitching; the spies stop a run stuck in its loop (a deskew is
+            % tried again at once, with no wait for its marker)
+            [dataPath, csvFn] = testCase.writeTwoTiles();
+            deskews = testCase.applyFixture(pktest.FunctionSpyFixture('XR_deskewRotateFrame', [], 12));
+            stitches = testCase.applyFixture(pktest.FunctionSpyFixture('XR_matlab_stitching_wrapper', [], 4));
+            testCase.applyFixture(pktest.FunctionSpyFixture('wait_for_files', [], 20));
+
+            evalc(['XR_microscopeAutomaticProcessing(dataPath, ''xyPixelSize'', testCase.XYPixelSize, ', ...
+                '''dz'', testCase.Dz, ''reverse'', true, ''channelPatterns'', {''CamA_ch0''}, ''streaming'', false, ', ...
+                '''stitch'', true, ''imageListFullpaths'', {csvFn}, ''parseCluster'', false, ''maxTrialNum'', 2, ', ...
+                '''unitWaitTime'', 0)']);
+
+            % (each file's deskew twice, then given up, and no stitching)
+            testCase.verifyNumElements(deskews.getCalls(), 4);
+            testCase.verifyEmpty(stitches.getCalls());
+        end
+
         function clusterModeFindsTheResultOfTilesWithOtherMsecFields(testCase)
             % a stitched volume has the msec field of its first tile, which
             % other tiles' msec fields may differ from, but each file looked
