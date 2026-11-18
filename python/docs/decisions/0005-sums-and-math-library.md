@@ -166,7 +166,7 @@ dense and random values each (up to 116,010 for `exp`; 30,000 per exponent for p
 | `exp` | fdlibm, except `exp(1)` = e rounded | 4.2 % | 5.8 % | fdlibm with `exp(1)` |
 | `sqrt` | IEEE | 0 | 0 | IEEE |
 | `x.^p`, p = 2, 0.5, -1, 0, 1 | `x*x`, `sqrt`, `1/x` | 0 | 0 | the same |
-| `x.^p`, other p (integer p too) | fdlibm `pow` | 9.5 to 10 % | 10.5 to 11 % | fdlibm `e_pow.c`, exact on 125 exponents |
+| `x.^p`, other p (integer p too) | fdlibm `pow`, with MATLAB's rules below | 9.5 to 10 % | 10.5 to 11 % | fdlibm `e_pow.c` with the rules, exact on 125 exponents and X06's probes |
 | `sind`, `cosd` | the rule below (S03's, measured) | n/a | n/a | exact on every angle measured: a dense 0.1-degree grid of 7,201, 59,451 dense and special values to 1e16, S03's 1,979 angles, 27,632 random and boundary angles (to 2^27, multiples of 7.5 and their neighbours, +-45 + k ulp, -0, subnormals, 1e300, Inf, NaN) |
 
 - `sind` and `cosd` (S03 found the rule; N05 completed it for `cosd`, `-0` and the rounding at
@@ -187,12 +187,25 @@ dense and random values each (up to 116,010 for `exp`; 30,000 per exponent for p
 - Repeated multiplication does not give MATLAB's `x.^p` for integer `p >= 3` (up to 10 ulp off
   at `p = 15`); PetaKit5D's own `fastPower` does binary powering in the class, which the port
   reproduces as written.
+- `x.^p` around fdlibm (X06's probes `PORT/agents/X06/probe/probe_power*.m`: 1,216 special
+  pairs, 684 negative bases with large exponents, NaN payloads; scalars and arrays alike):
+  p = 1 returns x (a signaling NaN stays signaling), -1, 2 and 0.5 are `1/x`, `x*x` and `sqrt`
+  (NaN payloads kept; `-0 .^ 0.5` is +0); otherwise a NaN anywhere gives MATLAB's NaN (also
+  `NaN .^ 0`, where C has 1); `x .^ 0` is 1 and `(+-1) .^ (+-Inf)` is 1 (fdlibm: NaN). fdlibm's
+  branch for large `|p|` starts at 2^31 (fdlibm: above 2^31), and its over- and underflows
+  there have no sign: a negative x not next to -1 with an odd `|p| >= 2^31` gives +Inf or +0
+  (fdlibm 5.3: -Inf and -0). A negative x with a non-integer p is complex in MATLAB (a real 0
+  or -0 where the result underflows); the port gives NaN there.
 - MATLAB returns the positive NaN for `cos`, `tan` and `cot` of Inf and NaN (fdlibm's `x - x`
   gives the negative default NaN, which MATLAB keeps for `sin`).
 - Single data: MATLAB's single `sin`, `cos`, `tan`, `exp`, `log`, `atan2`, `hypot`, `.^` and
   `cosd` (2 of 44 single angles) are neither `single(f(double(x)))` (2 to 20 % of values differ, by 1 to 4 ulp) nor glibc's
   float functions (1 to 20 %). No Phase 1 code applies them to single data; the port computes them in double
-  and rounds, a listed difference.
+  and rounds, a listed difference. For `.^` X06 measured where: with a double exponent (single
+  data `.^` a double scalar or array, a double scalar `.^` single data) MATLAB's result is
+  `single(double(x) .^ double(p))` (about 380,000 values, all equal); only single `.^`
+  single (both operands single) uses a single-precision pow (5 to 11 % differ by 1 ulp). The
+  result is single when either operand is.
 - Arguments above 2^20 pi/2: fdlibm's Payne-Hanek reduction is not written out; the port uses
   the C library's sine and cosine there (3 % of such values differ by 1 ulp). PetaKit5D's angles
   are below 2*pi.

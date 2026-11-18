@@ -1,0 +1,12 @@
+{
+ "name": "x06_power",
+ "repeats": 5,
+ "variants": [
+  {"id": "base", "impl": "python", "script": "benchmarks/matlabcompat/bench_power_x06.py",
+   "env": {"PYTHONPATH": "{env[PK5D_BASE_SRC]}"},
+   "args": ["--repeats", "2"]},
+  {"id": "new", "impl": "python", "script": "benchmarks/matlabcompat/bench_power_x06.py",
+   "args": ["--repeats", "2"]}
+ ],
+ "compare": [{"a": "new", "b": "base"}]
+}

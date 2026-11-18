@@ -22,7 +22,8 @@ fused multiply-adds), which gives the same bits everywhere:
   kernel of ``d*(pi/180)`` with the tail ``d*lo(pi/180)`` (pi/180 to 60 digits); ``sind`` is
   odd (``sind(-0)`` is -0), ``cosd`` even (+0 at odd multiples of 90, the positive NaN for Inf).
 - ``sqrt`` is IEEE (exact everywhere); ``power(x, p)`` is ``x*x`` for ``p = 2``, ``sqrt(x)`` for
-  0.5, ``1/x`` for -1, else fdlibm's pow.
+  0.5, ``1/x`` for -1, else fdlibm's pow with MATLAB's rules for NaN, 0, +-1 and large
+  exponents (``power``), element-wise.
 - single data: the double function of the single value, rounded to single. MATLAB's single
   ``sin``, ``exp``, ``cosd``, ... differ from that in the last bit for a few percent of the
   values (as glibc's ``sinf`` does); no Phase 1 code applies them to single data.
@@ -32,6 +33,8 @@ fused multiply-adds), which gives the same bits everywhere:
 """
 
 from __future__ import annotations
+
+import math
 
 import numpy as np
 
@@ -825,7 +828,26 @@ _TWO53 = 9007199254740992.0
 
 
 def _pow_scalar(x: float, y: float) -> float:
-    """fdlibm __ieee754_pow for one pair"""
+    """MATLAB's ``x .^ y`` of one pair of doubles (``power``'s rules, then ``_fdlibm_pow``)"""
+    if y == 1:
+        return x
+    if y == -1:
+        return float(np.divide(1.0, x))
+    if y == 2:
+        return x * x
+    if y == 0.5 and (x != x or not math.copysign(1.0, x) < 0):
+        return float(np.sqrt(x))
+    if x != x or y != y:
+        return dtypes.NAN
+    if y == 0 or (abs(x) == 1 and abs(y) == math.inf):
+        return 1.0
+    return _fdlibm_pow(x, y)
+
+
+def _fdlibm_pow(x: float, y: float) -> float:
+    """fdlibm __ieee754_pow for one pair, with MATLAB's branch for large |y| (below): from
+    |y| = 2^31 on (fdlibm: above), and its over- and underflows without the sign of a negative
+    x with an odd y"""
     import struct
 
     def words(v):
@@ -871,12 +893,12 @@ def _pow_scalar(x: float, y: float) -> float:
     if ly == 0:
         if iy == 0x7FF00000:
             if ((ix - 0x3FF00000) | lx) == 0:
-                return y - y
+                return dtypes.NAN
             if ix >= 0x3FF00000:
                 return y if hy >= 0 else 0.0
             return -y if hy < 0 else 0.0
         if iy == 0x3FF00000:
-            return 1.0 / x if hy < 0 else x
+            return float(np.divide(1.0, x)) if hy < 0 else x
         if hy == 0x40000000:
             return x * x
         if hy == 0x3FE00000 and hx >= 0:
@@ -885,29 +907,31 @@ def _pow_scalar(x: float, y: float) -> float:
     if lx == 0 and (ix == 0x7FF00000 or ix == 0 or ix == 0x3FF00000):
         z = ax
         if hy < 0:
-            z = 1.0 / z
+            z = float(np.divide(1.0, z))
         if hx < 0:
             if ((ix - 0x3FF00000) | yisint) == 0:
-                z = (z - z) / (z - z)
+                z = dtypes.NAN
             elif yisint == 1:
                 z = -z
         return z
     n = (hx >> 31) + 1
     if (n | yisint) == 0:
-        return (x - x) / (x - x)
+        return dtypes.NAN
     s = 1.0
     if (n | (yisint - 1)) == 0:
         s = -1.0
-    if iy > 0x41E00000:
+    # (MATLAB: from |y| = 2^31 on, where fdlibm has above 2^31, measured)
+    if iy >= 0x41E00000:
         if iy > 0x43F00000:
             if ix <= 0x3FEFFFFF:
                 return 1e300 * 1e300 if hy < 0 else 1e-300 * 1e-300
             if ix >= 0x3FF00000:
                 return 1e300 * 1e300 if hy > 0 else 1e-300 * 1e-300
+        # (MATLAB: without the sign s of a negative x and an odd y, measured)
         if ix < 0x3FEFFFFF:
-            return s * 1e300 * 1e300 if hy < 0 else s * 1e-300 * 1e-300
+            return 1e300 * 1e300 if hy < 0 else 1e-300 * 1e-300
         if ix > 0x3FF00000:
-            return s * 1e300 * 1e300 if hy > 0 else s * 1e-300 * 1e-300
+            return 1e300 * 1e300 if hy > 0 else 1e-300 * 1e-300
         t = ax - 1.0
         w = (t * t) * (0.5 - t * (0.3333333333333333333333 - t * 0.25))
         u = _IVLN2_H * t
@@ -970,7 +994,8 @@ def _pow_scalar(x: float, y: float) -> float:
         if p_l + _OVT > z - p_h:
             return s * 1e300 * 1e300
     elif (j & 0x7FFFFFFF) >= 0x4090CC00:
-        if ((j - 0xC090CC00) | i) != 0:
+        # (unsigned in C: zero only for z = -1075 exactly)
+        if (((j & 0xFFFFFFFF) - 0xC090CC00) | i) != 0:
             return s * 1e-300 * 1e-300
         if p_l <= z - p_h:
             return s * 1e-300 * 1e-300
@@ -1003,25 +1028,253 @@ def _pow_scalar(x: float, y: float) -> float:
     return s * z
 
 
+# below this many elements the pairs go through _pow_scalar (less overhead than the arrays)
+_POW_SCALAR_UPTO = 8
+_POW_PIECE = 32768
+_U32 = np.uint64(0xFFFFFFFF)
+_SH32 = np.uint64(32)
+
+
+def _words(v: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """the signed high and the unsigned low 32-bit words of float64 values, as int64"""
+    u = v.view(np.uint64)
+    return (u >> _SH32).astype(np.uint32).view(np.int32).astype(np.int64), (u & _U32).astype(
+        np.int64
+    )
+
+
+def _make(hi: np.ndarray, lo) -> np.ndarray:
+    """the float64 values of high words hi (the low 32 bits of the int64) and low words lo"""
+    h = (np.asarray(hi, dtype=np.int64) & 0xFFFFFFFF).astype(np.uint64) << _SH32
+    return (h | np.asarray(lo, dtype=np.int64).astype(np.uint64)).view(np.float64)
+
+
+def _log2_parts(ax: np.ndarray, ix: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """e_pow.c's log2(ax) = t1 + t2 for finite nonzero ax with high word ix (|y| < 2^31)"""
+    sub = ix < 0x00100000
+    n = np.zeros(ax.shape, np.int64)
+    if sub.any():
+        ax = ax.copy()
+        ax[sub] *= _TWO53
+        n[sub] = -53
+        ix = np.where(sub, _words(ax)[0], ix)
+    n += (ix >> 20) - 0x3FF
+    j = ix & 0x000FFFFF
+    ix = j | 0x3FF00000
+    k1 = (j > 0x3988E) & (j < 0xBB67A)
+    up = j >= 0xBB67A
+    n += up
+    ix = ix - up * 0x00100000
+    ax = _make(ix, _words(ax)[1])
+    bp = np.where(k1, _BP[1], _BP[0])
+    u = ax - bp
+    v = 1.0 / (ax + bp)
+    ss = u * v
+    s_h = _with_lo0(ss)
+    t_h = _make(((ix >> 1) | 0x20000000) + 0x00080000 + (k1.astype(np.int64) << 18), 0)
+    t_l = ax - (t_h - bp)
+    s_l = v * ((u - s_h * t_h) - s_h * t_l)
+    s2 = ss * ss
+    L = _L
+    r = s2 * s2 * (L[0] + s2 * (L[1] + s2 * (L[2] + s2 * (L[3] + s2 * (L[4] + s2 * L[5])))))
+    r += s_l * (s_h + ss)
+    s2 = s_h * s_h
+    t_h = _with_lo0(3.0 + s2 + r)
+    t_l = r - ((t_h - 3.0) - s2)
+    u = s_h * t_h
+    v = s_l * t_h + t_l * ss
+    p_h = _with_lo0(u + v)
+    p_l = v - (p_h - u)
+    z_h = _CP_H * p_h
+    z_l = _CP_L * p_h + p_l * _CP + np.where(k1, _DP_L[1], _DP_L[0])
+    dp_h = np.where(k1, _DP_H[1], _DP_H[0])
+    t = n.astype(np.float64)
+    t1 = _with_lo0(((z_h + z_l) + dp_h) + t)
+    t2 = z_l - (((t1 - t) - dp_h) - z_h)
+    return t1, t2
+
+
+def _log2_near1(ax: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """e_pow.c's log2(ax) = t1 + t2 for ax next to 1 (|y| >= 2^31)"""
+    t = ax - 1.0
+    w = (t * t) * (0.5 - t * (0.3333333333333333333333 - t * 0.25))
+    u = _IVLN2_H * t
+    v = t * _IVLN2_L - w * _IVLN2
+    t1 = _with_lo0(u + v)
+    return t1, v - (t1 - u)
+
+
+def _exp2_parts(
+    y: np.ndarray, t1: np.ndarray, t2: np.ndarray, s: np.ndarray
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """e_pow.c's s * 2^(y * (t1 + t2)), and the masks where it overflows and underflows instead
+    (s * huge * huge and s * tiny * tiny, set by the caller)"""
+    y1 = _with_lo0(y)
+    p_l = (y - y1) * t1 + y * t2
+    p_h = y1 * t1
+    z = p_l + p_h
+    j, i = _words(z)
+    hi = j >= 0x40900000
+    over = hi & ((((j - 0x40900000) | i) != 0) | (p_l + _OVT > z - p_h))
+    # (j - 0xc090cc00 is unsigned in C: zero only for z = -1075 exactly)
+    lo = ~hi & ((j & 0x7FFFFFFF) >= 0x4090CC00)
+    under = lo & (((((j & 0xFFFFFFFF) - 0xC090CC00) | i) != 0) | (p_l <= z - p_h))
+    i = j & 0x7FFFFFFF
+    k = (i >> 20) - 0x3FF
+    big = i > 0x3FE00000
+    n = j + (0x00100000 >> np.clip(k + 1, 0, 31))
+    k = ((n & 0x7FFFFFFF) >> 20) - 0x3FF
+    t = _make(n & ~(0x000FFFFF >> np.clip(k, 0, 31)), 0)
+    n = ((n & 0x000FFFFF) | 0x00100000) >> np.clip(20 - k, 0, 63)
+    n = np.where(big, np.where(j < 0, -n, n), 0)
+    p_h = np.where(big, p_h - t, p_h)
+    t = _with_lo0(p_l + p_h)
+    u = t * _LG2_H
+    v = (p_l - (t - p_h)) * _LG2 + t * _LG2_L
+    z = u + v
+    w = v - (z - u)
+    t = z * z
+    P = _PP
+    t1 = z - t * (P[0] + t * (P[1] + t * (P[2] + t * (P[3] + t * P[4]))))
+    r = (z * t1) / (t1 - 2.0) - (w + z * w)
+    z = 1.0 - (r - z)
+    jz, lz = _words(z)
+    jz = jz + (n << 20)
+    scaled = (jz >> 20) <= 0
+    res = _make(jz, lz)
+    if scaled.any():
+        # scalbn (exact; the exponents of over- and underflows are left out)
+        res[scaled] = np.ldexp(z[scaled], np.clip(n[scaled], -2100, 2100).astype(np.int32))
+    return s * res, over, under
+
+
+def _pow_vec(x: np.ndarray, y: np.ndarray) -> np.ndarray:
+    """``_pow_scalar`` element-wise in NumPy (flat float64 arrays of one size): the same cases in
+    the same order, as masks; the IEEE operations of e_pow.c on every element"""
+    hx, lx = _words(x)
+    hy, ly = _words(y)
+    ix, iy = hx & 0x7FFFFFFF, hy & 0x7FFFFFFF
+    out = np.empty(x.shape)
+    todo = np.ones(x.shape, bool)
+
+    def put(mask, val):
+        m = mask & todo
+        if m.any():
+            out[m] = val[m] if isinstance(val, np.ndarray) else val
+            todo[m] = False
+
+    # MATLAB's rules first (_pow_scalar)
+    put(y == 1, x)
+    put(y == -1, 1.0 / x)
+    put(y == 2, x * x)
+    nan_x = x != x
+    neg = hx < 0
+    put((y == 0.5) & (nan_x | ~neg), np.sqrt(np.where(neg & ~nan_x, 0.0, x)))
+    put(nan_x | (y != y), dtypes.NAN)
+    put(y == 0, 1.0)
+    put((np.abs(x) == 1) & (np.abs(y) == np.inf), 1.0)
+    if not todo.any():
+        return out
+    # yisint (x < 0): 0 not an integer, 1 odd, 2 even
+    yisint = np.zeros(x.shape, np.int64)
+    if neg.any():
+        k = (iy >> 20) - 0x3FF
+        jl = ly >> np.clip(52 - k, 0, 63)
+        jh = iy >> np.clip(20 - k, 0, 63)
+        lo_int = (k > 20) & ((jl << np.clip(52 - k, 0, 63)) == ly)
+        hi_int = (k <= 20) & (ly == 0) & ((jh << np.clip(20 - k, 0, 63)) == iy)
+        mid = (iy >= 0x3FF00000) & (iy < 0x43400000)
+        yisint = np.where(mid & lo_int, 2 - (jl & 1), np.where(mid & hi_int, 2 - (jh & 1), 0))
+        yisint = np.where(iy >= 0x43400000, 2, yisint)
+        yisint = np.where(neg, yisint, 0)
+    # fdlibm's (y = +-1, 2 and 0.5 are above)
+    inf_y = (ly == 0) & (iy == 0x7FF00000)
+    if (inf_y & todo).any():
+        put(inf_y & (ix >= 0x3FF00000), np.where(hy >= 0, y, 0.0))
+        put(inf_y, np.where(hy < 0, -y, 0.0))
+    ax = np.abs(x)
+    edge = (lx == 0) & ((ix == 0x7FF00000) | (ix == 0) | (ix == 0x3FF00000))
+    if (edge & todo).any():
+        z = np.where(hy < 0, 1.0 / ax, ax)
+        z = np.where(neg & (yisint == 1), -z, z)
+        put(edge & neg & (ix == 0x3FF00000) & (yisint == 0), dtypes.NAN)
+        put(edge, z)
+    put(neg & (yisint == 0), dtypes.NAN)
+    if not todo.any():
+        return out
+    s = np.where(neg & (yisint == 1), -1.0, 1.0)
+    # |y| >= 2^31 (MATLAB; fdlibm: > 2^31): over- or underflow, except for ax next to 1
+    huge = iy >= 0x41E00000
+    if (huge & todo).any():
+        inf_or_0 = np.where(hy < 0, np.inf, 0.0), np.where(hy > 0, np.inf, 0.0)
+        vhuge = iy > 0x43F00000
+        put(vhuge & (ix <= 0x3FEFFFFF), inf_or_0[0])
+        put(vhuge, inf_or_0[1])
+        # (MATLAB: without the sign s, as _fdlibm_pow)
+        put(huge & (ix < 0x3FEFFFFF), inf_or_0[0])
+        put(huge & (ix > 0x3FF00000), inf_or_0[1])
+    idx = np.flatnonzero(todo)
+    if idx.size == 0:
+        return out
+    full = idx.size == x.size
+    ty, ts = (y, s) if full else (y[idx], s[idx])
+    tax, tix, thuge = (ax, ix, huge) if full else (ax[idx], ix[idx], huge[idx])
+    t1, t2 = _log2_parts(tax, tix)
+    if thuge.any():
+        n1, n2 = _log2_near1(tax[thuge])
+        t1[thuge], t2[thuge] = n1, n2
+    r, over, under = _exp2_parts(ty, t1, t2, ts)
+    if over.any():
+        r[over] = ts[over] * np.inf
+    if under.any():
+        r[under] = ts[under] * 0.0
+    if full:
+        return r
+    out[idx] = r
+    return out
+
+
 def _pow(x: np.ndarray, y: np.ndarray) -> np.ndarray:
     x, y = np.broadcast_arrays(np.asarray(x, dtype=np.float64), np.asarray(y, dtype=np.float64))
-    out = np.empty(x.shape)
-    fx, fy, fo = x.reshape(-1), y.reshape(-1), out.reshape(-1)
+    shape = x.shape
     with np.errstate(all="ignore"):
-        for i in range(fx.size):
-            fo[i] = _pow_scalar(float(fx[i]), float(fy[i]))
+        if x.size <= _POW_SCALAR_UPTO:
+            out = np.empty(shape)
+            fo = out.reshape(-1)
+            pairs = zip(x.reshape(-1).tolist(), y.reshape(-1).tolist(), strict=True)
+            for i, (a, b) in enumerate(pairs):
+                fo[i] = _pow_scalar(a, b)
+        else:
+            fx = np.ascontiguousarray(x).reshape(-1)
+            fy = np.ascontiguousarray(y).reshape(-1)
+            out = np.empty(fx.size)
+            # in pieces whose temporaries stay in the cache
+            for i in range(0, fx.size, _POW_PIECE):
+                out[i : i + _POW_PIECE] = _pow_vec(fx[i : i + _POW_PIECE], fy[i : i + _POW_PIECE])
+            out = out.reshape(shape)
     return out[()] if out.ndim == 0 else out
 
 
 def power(x, p):
-    """MATLAB's ``x .^ p`` of real data (module docstring): ``p = 2`` is ``x .* x``, 0.5 ``sqrt``,
-    -1 ``1 ./ x``, 0 one and 1 ``x``; any other exponent fdlibm's pow (a negative base with a
-    non-integer exponent gives NaN here, where MATLAB returns a complex result). Single data:
-    the double result rounded to single, except for the exact cases above."""
+    """MATLAB's ``x .^ p`` of real data (measured, ``_pow_scalar``; module docstring).
+
+    - ``p = 1`` is ``x`` (a signaling NaN stays signaling), -1 ``1 ./ x``, 2 ``x .* x``, 0.5
+      ``sqrt(x)`` (``-0 .^ 0.5`` is +0);
+    - otherwise a NaN in ``x`` or ``p`` gives MATLAB's NaN (also ``NaN .^ 0``); ``x .^ 0``,
+      ``1 .^ Inf`` and ``-1 .^ -Inf`` are 1;
+    - any other pair fdlibm's ``pow``, except that a negative ``x`` not next to -1 with an odd
+      ``|p| >= 2^31`` overflows to +Inf or underflows to +0, as MATLAB has it (fdlibm gives -Inf
+      and -0; its branch for large ``|p|`` starts above 2^31).
+
+    A negative base with a non-integer exponent gives NaN here, where MATLAB returns a complex
+    result (a real 0 or -0 where its magnitude underflows). The class is MATLAB's: single when
+    either operand is single (docs/conventions.md 3.2), computed in double and rounded to
+    single. That is MATLAB's result with a double exponent; where both are single, MATLAB uses
+    a single-precision pow, whose last bit differs from the rounded double result for 5 to 11 %
+    of the values (measured), and which is not reproduced here. Element-wise in NumPy, in
+    pieces of ``_POW_PIECE`` values."""
     a, b = np.asarray(x), np.asarray(p)
-    single = (a.dtype == np.float32 or b.dtype == np.float32) and not (
-        (a.dtype == np.float64 and a.ndim > 0) or (b.dtype == np.float64 and b.ndim > 0)
-    )
+    single = a.dtype == np.float32 or b.dtype == np.float32
     dt = np.float32 if single else np.float64
     if b.ndim == 0:
         e = float(b)
@@ -1031,12 +1284,13 @@ def power(x, p):
         if e == 1:
             return A.copy()
         if e == 0:
-            return np.ones_like(A)
+            return np.where(np.isnan(A), dt(dtypes.NAN), dt(1))
         if e == -1:
             with np.errstate(divide="ignore"):
                 return np.divide(dt(1), A)
         if e == 0.5 and not np.any(A < 0):
-            return np.sqrt(A)
+            # (+ 0: -0 .^ 0.5 is +0)
+            return np.sqrt(A) + dt(0)
     r = _pow(a, b)
     return r.astype(dt) if single else r
 

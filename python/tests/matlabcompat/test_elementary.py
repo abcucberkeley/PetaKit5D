@@ -327,6 +327,250 @@ def _power_cases():
     return cs
 
 
+INF = np.inf
+# bases and exponents of every kind for .^ (X06's probes): zeros, ones, subnormal numbers,
+# over- and underflow, Inf, NaN, values next to 1, integers above 2^31, 2^53 and 2^64
+POW_BASES = [0.0, NZ, 1.0, -1.0, 2.0, -2.0, 0.5, -0.5, 3.0, -3.0, 10.0, -10.0, 1e300, -1e300]
+POW_BASES += [1e-300, -1e-300, 5e-324, -5e-324, 2.2250738585072014e-308, 1e-310, -1e-310]
+POW_BASES += [INF, -INF, dtypes.NAN, 1 + 2**-52, 1 - 2**-53, -(1 + 2**-52), 0.9999, 1.0001]
+POW_BASES += [7.5, -7.5, 600.25]
+POW_EXPS = [0.0, NZ, 1.0, -1.0, 2.0, -2.0, 3.0, -3.0, 0.5, -0.5, 1.5, 2.5, 1 / 3, 0.1, 7.0]
+POW_EXPS += [-7.0, 1023.0, 1024.0, -1074.0, -1075.0, 2.0**31, 2.0**31 + 1, 2.0**31 + 0.5]
+POW_EXPS += [2.0**52 + 1, 2.0**53, 2.0**53 + 2, 2.0**63, 1.5 * 2.0**64, -1.5 * 2.0**64]
+POW_EXPS += [-(2.0**31 + 1), 1e300, -1e300, INF, -INF, dtypes.NAN, 5e-324, 2.0**20 + 0.5]
+POW_EXPS += [2.0**21 + 1]
+# negative bases (and some positive ones) next to and away from 1, odd and even exponents
+# about 2^31, 2^53 and 2^64, and about the over- and underflow
+POW_NEG_BASES = [-2.0, -0.5, -3.0, -1.5, -(1 + 2**-19), -(1 + 2**-21), -(1 + 2**-40)]
+POW_NEG_BASES += [-(1 - 2**-22), -(1 - 2**-40), -(1 - 2**-53), -(1 + 2**-52), -1e-300, -1e300]
+POW_NEG_BASES += [-5e-324, 1 + 2**-21, 1 - 2**-22, 1 + 2**-19, 2.0, 0.5]
+POW_BIG_EXPS = [2.0**31 - 1, 2.0**31 + 1, 2.0**31 + 3, 2.0**31 + 2, 2.0**40 + 1, 2.0**53 - 1]
+POW_BIG_EXPS += [2.0**52 + 3, 2.0**62 + 2.0**10, 2.0**63, 2.0**64, 2.0**64 + 2.0**12, 2.0**70]
+POW_BIG_EXPS += [1023.0, 1025.0, -1073.0, -1075.0, -1077.0, 2.0**30 + 1]
+POW_BIG_EXPS += [-e for e in POW_BIG_EXPS]
+
+
+def _nan(bits: int) -> float:
+    return float(np.array([bits], np.uint64).view(np.float64)[0])
+
+
+# NaNs with payloads: quiet and signaling, both signs
+POW_NANS_X = [_nan(0x7FF8000000000005), _nan(0xFFF8000000000006)]
+POW_NANS_X += [_nan(0x7FF0000000000009), _nan(0xFFF000000000000A)]
+POW_NANS_Y = [_nan(0x7FF8000000000007), _nan(0xFFF8000000000008)]
+POW_NANS_Y += [_nan(0x7FF000000000000B), _nan(0xFFF000000000000C)]
+
+
+def _real_pairs(xs, ys):
+    """every pair but a negative base with a finite non-integer exponent (complex in MATLAB)"""
+    x, y = (np.asarray(v, np.float64) for v in np.meshgrid(xs, ys, indexing="ij"))
+    x, y = x.reshape(-1, order="F"), y.reshape(-1, order="F")
+    with np.errstate(invalid="ignore"):
+        keep = ~((x < 0) & np.isfinite(y) & (y != np.floor(y)))
+    return x[keep], y[keep]
+
+
+def _scalar_power(x, y):
+    """x(i) .^ y(i) one pair at a time (the scalar paths of power)"""
+    r = [E.power(float(a), float(b)) for a, b in zip(x.reshape(-1), y.reshape(-1), strict=True)]
+    return np.asarray(r, np.float64).reshape(x.shape)
+
+
+_LOOP = (
+    "x = in{1}; y = in{2}; r = zeros(size(x));"
+    " for i = 1 : numel(x), r(i) = x(i) .^ y(i); end; out = {r};"
+)
+
+
+def _wide_positive() -> np.ndarray:
+    """positive doubles of every magnitude and a dense grid about 1 (exact)"""
+    k = np.arange(1, 12001)
+    return np.concatenate(
+        [
+            np.ldexp(np.abs(rand53(31, 12000, 0)), (k * 37 % 121 - 113).astype(np.int32)),
+            np.ldexp(np.floor(np.abs(rand53(34, 2000, 0)) / 2048), -1074),
+            1 + np.arange(-2000, 2001) * 2.0**-12,
+            np.arange(1, 3001) / 64,
+        ]
+    )
+
+
+def _single_exps() -> np.ndarray:
+    return (np.arange(1, 20005) % 801 - 400).astype(np.float32) / np.float32(16)
+
+
+def _power_more_cases():
+    cs = []
+    xw = Value(_wide_positive)
+    for p in (-3.0, -0.5, 1e-3, 4.0, 31.5, 1 / 7, -1 / 3, 100.25):
+        cs.append(
+            Case(
+                f"power_wide_{str(round(p, 6)).replace('.', 'p').replace('-', 'm')}",
+                code="out = {in{1} .^ in{2}};",
+                args=[In("x"), p],
+                python=E.power,
+                inputs={"x": xw},
+            )
+        )
+    sp = {
+        "x": Value(lambda: _real_pairs(POW_BASES, POW_EXPS)[0]),
+        "y": Value(lambda: _real_pairs(POW_BASES, POW_EXPS)[1]),
+    }
+    big = {
+        "x": Value(lambda: _real_pairs(POW_NEG_BASES, POW_BIG_EXPS)[0]),
+        "y": Value(lambda: _real_pairs(POW_NEG_BASES, POW_BIG_EXPS)[1]),
+    }
+    nan_x = {
+        "x": Value(lambda: _real_pairs(POW_NANS_X, POW_EXPS + POW_NANS_Y)[0]),
+        "y": Value(lambda: _real_pairs(POW_NANS_X, POW_EXPS + POW_NANS_Y)[1]),
+    }
+    nan_y = {
+        "x": Value(lambda: _real_pairs(POW_BASES, POW_NANS_Y)[0]),
+        "y": Value(lambda: _real_pairs(POW_BASES, POW_NANS_Y)[1]),
+    }
+    for name, inp in (("special", sp), ("large", big), ("nan_x", nan_x), ("nan_y", nan_y)):
+        cs.append(
+            Case(
+                f"power_pairs_{name}",
+                code="out = {in{1} .^ in{2}};",
+                args=[In("x"), In("y")],
+                python=E.power,
+                inputs=inp,
+            )
+        )
+        cs.append(
+            Case(
+                f"power_pairs_{name}_scalars",
+                code=_LOOP,
+                args=[In("x"), In("y")],
+                python=_scalar_power,
+                inputs=inp,
+            )
+        )
+    # NaN bases with each scalar exponent (MATLAB's NaN, or the NaN itself for 1, -1, 2, 0.5)
+    for k, p in enumerate((0.0, NZ, 1.0, -1.0, 2.0, 0.5, 2.5, -2.5, 3.0, INF, -INF)):
+        cs.append(
+            Case(
+                f"power_nan_bases_e{k}",
+                code="out = {in{1} .^ in{2}};",
+                args=[In("x"), p],
+                python=E.power,
+                inputs={"x": Value(lambda: np.array(POW_NANS_X))},
+            )
+        )
+    # positive bases with exponents of every kind, negative bases with integers
+    cs.append(
+        Case(
+            "power_arrays",
+            code="out = {in{1} .^ in{2}};",
+            args=[In("x"), In("y")],
+            python=E.power,
+            inputs={
+                "x": Value(lambda: _wide_positive()[(np.arange(1, 30001) * 7) % 21001]),
+                "y": Value(
+                    lambda: (
+                        (np.arange(1, 30001) * 13 % 4001 - 2000) / 16
+                        + (np.arange(1, 30001) % 3 == 0) * ((np.arange(1, 30001) * 17 % 997) / 997)
+                    )
+                ),
+            },
+        )
+    )
+    cs.append(
+        Case(
+            "power_negative_integers",
+            code="out = {in{1} .^ in{2}};",
+            args=[In("x"), In("y")],
+            python=E.power,
+            inputs={
+                "x": Value(lambda: -_wide_positive()[:5000]),
+                "y": Value(lambda: (np.arange(1, 5001) % 41 - 20).astype(np.float64)),
+            },
+        )
+    )
+    # over- and underflow edges, bases next to 1 with exponents up to 2^80
+    k400 = np.arange(401)
+    cs.append(
+        Case(
+            "power_edges",
+            code="out = {in{1} .^ in{2}};",
+            args=[In("x"), In("y")],
+            python=E.power,
+            inputs={
+                "x": Value(
+                    lambda: np.concatenate(
+                        [
+                            np.full(401, 2.0),
+                            np.full(401, 0.5),
+                            np.full(201, 10.0),
+                            np.full(50, 1 + 2**-52),
+                            np.full(50, 1 - 2**-53),
+                            np.full(401, 2.0),
+                        ]
+                    )
+                ),
+                "y": Value(
+                    lambda: np.concatenate(
+                        [
+                            1023 + k400 / 200,
+                            1073 + k400 / 100,
+                            300 + np.arange(201) / 20,
+                            2.0 ** np.arange(31, 81),
+                            2.0 ** np.arange(31, 81),
+                            -1070 - k400 / 80,
+                        ]
+                    )
+                ),
+            },
+        )
+    )
+    # single data with double exponents: single results, the double result rounded
+    ws = Value(
+        lambda: np.concatenate(
+            [_wide_positive()[:20000].astype(np.float32), np.float32([0, NZ, INF, dtypes.NAN])]
+        )
+    )
+    for p in (-15.0, -2.5, -1.0, -0.5, 0.0, 0.1, 1 / 3, 0.5, 1.0, 2.0, 2.5, 3.0, 7.0, 10.0):
+        cs.append(
+            Case(
+                f"power_single_{str(round(p, 6)).replace('.', 'p').replace('-', 'm')}",
+                code="out = {in{1} .^ in{2}};",
+                args=[In("x"), p],
+                python=E.power,
+                inputs={"x": ws},
+            )
+        )
+    se = Value(_single_exps)
+    for b in (0.99, 2.0, 10.0, 0.5, 1e-50):
+        cs.append(
+            Case(
+                f"power_double_base_{str(b).replace('.', 'p').replace('-', 'm')}_single_exps",
+                code="out = {in{1} .^ in{2}};",
+                args=[b, In("y")],
+                python=E.power,
+                inputs={"y": se},
+            )
+        )
+    cs.append(
+        Case(
+            "power_single_double_arrays",
+            code="out = {in{1} .^ in{2}};",
+            args=[In("x"), In("y")],
+            python=E.power,
+            inputs={"x": ws, "y": Value(lambda: _single_exps().astype(np.float64))},
+        )
+    )
+    cs.append(
+        Case(
+            "power_single_base_double_exps",
+            code="out = {single(0.99) .^ (1 : 1500)};",
+            args=[],
+            python=lambda: E.power(np.float32(0.99), np.arange(1, 1501, dtype=np.float64)),
+        )
+    )
+    return cs
+
+
 def _window_cases():
     cs = []
     for r in (0.5, 0.05, 0.1, 0.25, 1 / 3, 0.75, 0.9, 0.0, -0.2):
@@ -434,7 +678,8 @@ def _pad_cases():
     return cs
 
 
-CASES = _fn_cases() + _deg_cases() + _power_cases() + _window_cases() + _pad_cases()
+CASES = _fn_cases() + _deg_cases() + _power_cases() + _power_more_cases()
+CASES += _window_cases() + _pad_cases()
 
 
 @oracle.parametrize(CASES)
@@ -453,6 +698,64 @@ def test_results_do_not_use_the_c_library():
     assert np.signbit(E.sind(-180.0))
     assert E.cosd(90.0) == 0 and not np.signbit(E.cosd(-90.0))
     assert E.power(2.0, 0.5) == np.sqrt(2.0)
+
+
+def test_power_of_arrays_is_the_rule_of_one_pair():
+    """the element-wise power (_pow_vec, in pieces) gives _pow_scalar's bits on every pair: the
+    special grid, random bit patterns (NaN, Inf, subnormal numbers of both signs), random
+    magnitudes with integer and other exponents, bases next to 1 with large exponents, and the
+    over- and underflow edges"""
+    x, y = (v.reshape(-1) for v in np.meshgrid(POW_BASES + POW_NANS_X, POW_EXPS + POW_NANS_Y))
+    n = 6000
+    bx, by = _bits64(41, n).view(np.float64), _bits64(42, n).view(np.float64)
+    mag = np.ldexp(
+        np.abs(rand53(43, n, -53)) + 0.5, (_bits64(44, n) % 2098).astype(np.int32) - 1074
+    )
+    ints = (_bits64(45, n) % 121).astype(np.float64) - 60
+    near = 1 + ((_bits64(46, n) % 2001).astype(np.float64) - 1000) * 2.0**-52
+    large = np.ldexp(1 + rand53(47, n, -53), (_bits64(48, n) % 50).astype(np.int32) + 20)
+    edge = np.concatenate([1023 + np.arange(n // 2) / (n // 2), -1076 + np.arange(n // 2) / 600])
+    # the significands where e_pow.c's reduction changes its interval (j = 0x3988E, 0xBB67A)
+    hw = np.array([0x3988D, 0x3988E, 0x3988F, 0xBB679, 0xBB67A, 0xBB67B], np.uint64)
+    lw = _bits64(49, 64) & np.uint64(0xFFFFFFFF)
+    ex = np.array([0x3FF, 0x3FE, 0x400, 0x41F, 0x3DF, 0x001, 0x7FE], np.uint64)
+    bnd = ((ex[:, None, None] << np.uint64(20) | hw[None, :, None]) << np.uint64(32)) | lw
+    bnd = bnd.reshape(-1).view(np.float64)
+    by2 = np.resize(np.array([2.5, -1.5, 1 / 3, 7.0, -0.1, 31.5, 1e3]), bnd.size)
+    x = np.concatenate([x, bx, mag, -mag, near, -near, np.full(n, 2.0), bnd])
+    y = np.concatenate([y, by, ints, ints, large, large, edge, by2])
+    with np.errstate(all="ignore"):
+        want = np.array([E._pow_scalar(float(a), float(b)) for a, b in zip(x, y, strict=True)])
+        old = E._POW_PIECE
+        try:
+            E._POW_PIECE = 1000  # several pieces
+            got = E.power(x, y)
+        finally:
+            E._POW_PIECE = old
+    assert got.view(np.uint64).tobytes() == want.view(np.uint64).tobytes()
+
+
+def test_power_rules_and_class():
+    """MATLAB's rules (measured): NaN .^ 0 is MATLAB's NaN, 1 .^ Inf is 1, -0 .^ 0.5 is +0, x .^ 1
+    keeps a signaling NaN, a negative base not next to -1 with an odd exponent of 2^31 or more
+    over- and underflows to +Inf and +0; single when either operand is single"""
+    snan = _nan(0x7FF0000000000009)
+    for x0 in (dtypes.NAN, snan):
+        r = E.power(np.array([x0, x0]), 0.0)
+        assert r.view(np.uint64)[0] == np.float64(dtypes.NAN).view(np.uint64)
+    assert E.power(np.array([1.0, -1.0]), np.array([INF, -INF])).tolist() == [1.0, 1.0]
+    assert not np.signbit(E.power(NZ, 0.5)) and not np.signbit(E.power(np.full(9, NZ), 0.5)[0])
+    assert E.power(np.full(9, snan), np.ones(9)).view(np.uint64)[0] == 0x7FF0000000000009
+    assert E.power(-2.0, 2.0**31 + 1) == INF and E.power(-2.0, 2.0**31 - 1) == -INF
+    assert E.power(np.full(9, -2.0), -(2.0**40 + 1))[0] == 0 and not np.signbit(
+        E.power(np.full(9, -2.0), -(2.0**40 + 1))[0]
+    )
+    assert E.power(-(1 + 2.0**-40), 2.0**40 + 1) < 0  # next to -1: the sign stays
+    s = np.float32([0.5, 2.0])
+    assert E.power(s, 2.5).dtype == np.float32
+    assert E.power(s, np.array([2.5, 1.5])).dtype == np.float32
+    assert E.power(np.float32(0.99), np.arange(1.0, 4.0)).dtype == np.float32
+    assert E.power(2.0, np.float32([0.5, 1.5])).dtype == np.float32
 
 
 def test_single_data_rounds_the_double_result():
