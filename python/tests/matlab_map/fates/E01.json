@@ -1,0 +1,22 @@
+{
+ "task": "E01",
+ "classes": {
+  "DemoDatasetTest": {
+   "finished": true,
+   "methods": {
+    "combinedDeskewRotateMatchesSeparate": [
+     "pytest:tests/e2e/test_demos.py::test_combined_deskew_rotate_matches_separate"
+    ],
+    "cppTiffReaderMatchesLibtiff": [
+     "pytest:tests/e2e/test_demos.py::test_cpp_tiff_reader_matches_libtiff"
+    ],
+    "omwDeconvolutionOnCPU": [
+     "pytest:tests/e2e/test_demos.py::test_omw_deconvolution_on_cpu"
+    ],
+    "writersRoundTripRealData": [
+     "pytest:tests/e2e/test_demos.py::test_writers_round_trip_real_data"
+    ]
+   }
+  }
+ }
+}

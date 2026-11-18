@@ -33,3 +33,6 @@ not_ported("image_intensity_correction_block", _NOSRC, "tools")
 not_ported("replicateDataBlock", _NOSRC, "tools")
 not_ported("multiple_region_spectra_encoding_block", _NOSRC + "; stale parser", "tools")
 not_ported("mccMaster", "the compiled master; pk5d-master takes its arguments (J12)", "cli")
+
+_DEMO = "a demo helper; its Python form is in python/examples/phase1/, outside the package"
+not_ported("crop_deskew_rotate_demo_function", _DEMO, "deskew_rotate")

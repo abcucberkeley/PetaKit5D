@@ -153,13 +153,6 @@ PLANNED: tuple[tuple[str, str, str, int], ...] = (
     ("simReconAutomaticProcessing", "petakit5d.sim.sim_recon_automatic_processing", "C06", 3),
     ("simReconFrame", "petakit5d.sim.sim_recon_file", "C06", 3),
     ("deskewPhasesFrame", "petakit5d.sim.deskew_phases_file", "C06", 3),
-    # demos
-    (
-        "crop_deskew_rotate_demo_function",
-        "petakit5d.examples.crop_deskew_rotate_demo_function",
-        "E01",
-        1,
-    ),
 )
 
 
