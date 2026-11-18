@@ -86,8 +86,13 @@ classdef FFTSpectrumTest < pktest.TestCase
             fsn = 'aniso';
             writetiff(single(pktest.texture([80, 80, 40], 2)), [dataPath, fsn, '.tif']);
 
+            % the crop's ends are whole numbers: a fractional end warned in the
+            % indexing, and cpp-tiff 1.8.0's reader refuses it
+            w = warning('error', 'MATLAB:colon:nonIntegerIndex');
+            restoreWarning = onCleanup(@() warning(w));
             XR_fftSpectrumComputingWrapper({dataPath}, 'xyPixelSize', 0.1, 'dz', 0.2, ...
                 'outSize', [testCase.N, testCase.N, testCase.N], 'parseCluster', false, 'masterCompute', true);
+            clear restoreWarning
 
             xz = readtiff([dataPath, 'FFT/central_slices/', fsn, '_center_xz.tif']);
             testCase.verifySize(xz, [testCase.N, testCase.N]);

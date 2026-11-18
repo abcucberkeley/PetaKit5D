@@ -55,7 +55,9 @@ end
 % first crop the image if it is too larger (add 10% buffer)
 keep_size = min(sz, ceil(N ./ ([xyPixelSize, xyPixelSize, dz] ./ px)) .* 1.1);
 s = max(1, ceil((sz - keep_size) / 2));
-t = min(sz, s + keep_size - 1);
+% whole-number ends: the readers refuse others (cpp-tiff 1.8.0), and the colon indexing
+% and the earlier mex took their floor
+t = min(sz, floor(s + keep_size - 1));
 
 if zarrFile
     im = readzarr(frameFullpath, inputBbox=[s, t]);
