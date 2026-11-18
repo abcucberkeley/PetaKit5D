@@ -571,7 +571,8 @@ if xcorrShift && isPrimaryCh
 		xcorTmpFn = sprintf('%s/%s/xcorr/%s_%s.mat', dataPath, ResultDir, nv_fsname, uuid);
 		assign_method = shiftMethod;
 
-		MaxOffset = [xyMaxOffset, xyMaxOffset, zMaxOffset];
+		% (in x, y, z; two values gave five)
+		MaxOffset = [xyMaxOffset(1), xyMaxOffset(end), zMaxOffset];
 		[xyz_shift, dxyz_shift] = stitch_shift_assignment(zarrFullpaths, xcorrDir, imSizes, xyz, ...
 			[xp, yp, zp], data_order_mat, overlap_matrix, overlap_regions, MaxOffset, xcorrDownsample, ...
 			xcorrThresh, tileIdx, assign_method, stitch2D, axisWeight, groupFile, largeFile, ...
@@ -971,14 +972,17 @@ if ~exist(nv_fullname, 'dir')
 		'configFile', configFile, 'localWorkerNum', localWorkerNum);
 end
 
-% retry with more resources and longer time
+% retry with more resources and longer time (the memory too, and the local
+% workers: without them the jobs got only the memory of their CPUs, less
+% than the first try's when that asked for more, and a local retry ran on
+% one worker)
 for i = 1 : 3
 	if ~exist(nv_fullname, 'dir') && ~all(is_done_flag)
 		is_done_flag = generic_computing_frameworks_wrapper(inputFullpaths, outputFullpaths, ...
 			funcStrs, 'finalOutFullpath', nv_fullname, 'cpusPerTask', cpusPerTask * 2^i, ...
-			'jobTimeLimit', jobTimeLimit * 2^i, 'maxTrialNum', maxTrialNum, ...
+			'memAllocate', memAllocate * 2^i, 'jobTimeLimit', jobTimeLimit * 2^i, 'maxTrialNum', maxTrialNum, ...
 			'masterCompute', masterCompute, 'parseCluster', parseCluster, 'jobLogDir', jobLogDir, 'mccMode', mccMode, ...
-			'configFile', configFile);
+			'configFile', configFile, 'localWorkerNum', localWorkerNum);
 	end
 end
 

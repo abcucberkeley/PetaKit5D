@@ -915,6 +915,26 @@ classdef StitchingTest < pktest.TestCase
             testCase.verifyEqual(out(3 : 66, 5 : 108, 3 : 34), gt);
         end
 
+        function twoValueMaxOffsetIsXAndY(testCase)
+            % the wrapper takes one or two xyMaxOffset values, but two garbled
+            % the stitching function's string, which made five max offsets of
+            % them. They are x and y (MaxOffset is in x, y, z): the second
+            % tile, listed 6 voxels off in x, is found within 10 in x and 2
+            % in y
+            dataPath = testCase.createTempFolder();
+            px = testCase.XYPixelSize;
+            gt = testCase.randomVolume([64, 104, 32]);
+            stageXYZ = [0, 0, 0; 46 * px, 0, 0];
+            csvFn = testCase.writeTiles(dataPath, gt, [0, 0, 0; 0, 40, 0], [64, 64, 32], [], stageXYZ, [0, 0, 0; 1, 0, 0]);
+
+            testCase.stitch(dataPath, csvFn, 'xcorrShift', true, 'xcorrDownsample', [1, 1, 1], ...
+                'xyMaxOffset', [10, 2], 'zMaxOffset', 2, 'blendMethod', 'none');
+
+            xcorrInfo = load(sprintf('%smatlab_stitch/xcorr/%s.mat', dataPath, testCase.StitchName));
+            testCase.verifyEqual(round(xcorrInfo.dxyz_shift / px), [0, 0, 0; -6, 0, 0], ...
+                'Registration did not recover the true tile offset.');
+        end
+
         function primaryChannelRegistrationAppliesToOtherChannels(testCase)
             % xcorrMode 'primaryFirst': the shift found in the primary channel
             % (CamA) is used for CamB, whose overlap is featureless so it
@@ -1376,6 +1396,31 @@ classdef StitchingTest < pktest.TestCase
             testCase.verifyEqual(frames.getOption(1, 'jobLogDir'), logDir);
         end
 
+        function blockRetriesAskForMoreMemory(testCase)
+            % the stitching function retries blocks that failed with twice
+            % the CPUs and time, but passed neither the memory nor the local
+            % workers: its jobs got the memory of their CPUs, less than the
+            % first try's when that asked for more. The job framework is a
+            % stand-in that runs the tasks here and leaves out the first
+            % call's blocks
+            [dataPath, csvFn] = testCase.writeTwoVolumes(1);
+            logFn = testCase.writeFrameworkStandIn();
+
+            testCase.stitch(dataPath, csvFn);
+
+            a = load(logFn);
+            blockCalls = a.calls(cellfun(@(c) c.block, a.calls));
+            testCase.assertNumElements(blockCalls, 2);
+            first = struct(blockCalls{1}.options{:});
+            retry = struct(blockCalls{2}.options{:});
+            testCase.verifyEqual(retry.cpusPerTask, 2 * first.cpusPerTask);
+            testCase.assertTrue(isfield(retry, 'memAllocate'), 'The retry asked for no memory.');
+            testCase.verifyEqual(retry.memAllocate, 2 * first.memAllocate);
+            testCase.assertTrue(isfield(retry, 'localWorkerNum'), 'The retry had no local workers.');
+            testCase.verifyEqual(retry.localWorkerNum, first.localWorkerNum);
+            testCase.verifyNotEmpty(testCase.readResult(dataPath));
+        end
+
         function outBboxOfThreeRowsIsItsSixValues(testCase)
             % outBbox may be 3 x 2 ([min, max] per axis, as the stitching
             % function takes it), but num2str made two-dimensional text of
@@ -1640,6 +1685,45 @@ classdef StitchingTest < pktest.TestCase
             XR_matlab_stitching_wrapper(dataPath, csvFn, 'DSR', true, 'resampleType', 'isotropic', ...
                 'xyPixelSize', testCase.XYPixelSize, 'axisOrder', 'x,y,z', 'xcorrShift', false, ...
                 'channelPatterns', {'CamA_ch0'}, 'primaryCh', 'CamA_ch0', 'parseCluster', false, varargin{:});
+        end
+
+        function [logFn] = writeFrameworkStandIn(testCase)
+            % a generic_computing_frameworks_wrapper first on the path that
+            % runs the tasks in this process, records the options of each
+            % call in logFn, and leaves out the blocks (processStitchBlock) of
+            % the first call that has them, as if they failed
+            folder = [testCase.createTempFolder(), 'framework/'];
+            mkdir(folder);
+            logFn = [folder, 'calls.mat'];
+            lines = {
+                'function [is_done_flag] = generic_computing_frameworks_wrapper(inputFullpaths, outputFullpaths, funcStrs, varargin)'
+                '% test stand-in written by StitchingTest'
+                sprintf('logFn = ''%s'';', logFn)
+                'calls = {};'
+                'if exist(logFn, ''file'')'
+                '    a = load(logFn);'
+                '    calls = a.calls;'
+                'end'
+                'funcStrs = cellstr(funcStrs);'
+                'outputFullpaths = cellstr(outputFullpaths);'
+                'isBlock = startsWith(funcStrs{1}, ''processStitchBlock'');'
+                'calls{end + 1} = struct(''block'', isBlock, ''options'', {varargin});'
+                'save(logFn, ''calls'');'
+                'if ~(isBlock && sum(cellfun(@(c) c.block, calls)) == 1)'
+                '    for i = 1 : numel(funcStrs)'
+                '        if ~exist(outputFullpaths{i}, ''file'')'
+                '            feval(str2func([''@()'', funcStrs{i}]));'
+                '        end'
+                '    end'
+                'end'
+                'is_done_flag = cellfun(@(f) exist(f, ''file'') > 0, outputFullpaths(:));'
+                'end'};
+            fid = fopen([folder, 'generic_computing_frameworks_wrapper.m'], 'w');
+            fprintf(fid, '%s\n', lines{:});
+            fclose(fid);
+            testCase.addTeardown(@() clear('generic_computing_frameworks_wrapper'));
+            testCase.addTeardown(@() rmpath(folder));
+            pktest.addFunctionFolder(folder, 'generic_computing_frameworks_wrapper');
         end
 
         function [tileFullpaths, xyz, tileIdx] = tileList(~, dataPath)

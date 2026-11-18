@@ -61,9 +61,11 @@ end
 
 fprintf('Compute xcorr shifts for tiles with MIP slab method:\n    %s\n    %s\n', imgFullpath_1, imgFullpath_2);
 mipFullpaths = cell(3, 2);
-axis_strs = {'x', 'y', 'z'};
+% slab i is pooled along the data's dimension i, named by XR_MIP_zarr after
+% the array's dimensions (y, x, z) whatever the data order (the names were
+% taken by axis, right only for y,x,z)
+axis_strs = {'y', 'x', 'z'};
 xyz_inds = data_order_mat;
-axis_strs = axis_strs(xyz_inds);
 
 inputFullpaths = cell(3, 1);
 outputFullpaths = cell(3, 1);
@@ -84,10 +86,15 @@ for i = 1 : 3
     imgFullpath_i1 = mipFullpaths{i, 1};
     imgFullpath_i2 = mipFullpaths{i, 2};
 
-    xyz_voxelsizes_i = xyz_voxelsizes .* poolSize_1(xyz_inds);
-    xyz_voxelsizes_i(xyz_inds(i)) = xyz_voxelsizes(xyz_inds(i)) * poolSize(i);
-    MaxOffset_i = ceil(MaxOffset ./ poolSize_1);
-    MaxOffset_i(i) = ceil(MaxOffset(i) / poolSize(i));
+    % the pooling of the slab's dimensions, and so the voxel sizes and max
+    % offsets (xyz, as cross_correlation_registration_3d reads them) of the
+    % axes in them: the max offsets were divided by the pooling of the
+    % dimension of their index, so x and y got each other's in the slabs
+    % of y and x of y,x,z data (and other orders other axes')
+    pool_i = poolSize_1;
+    pool_i(i) = poolSize(i);
+    xyz_voxelsizes_i = xyz_voxelsizes .* pool_i(xyz_inds);
+    MaxOffset_i = ceil(MaxOffset ./ pool_i(xyz_inds));
     downSample_i = round(downSample ./ poolSize_1);
     downSample_i(i) = majorDownsample;
         

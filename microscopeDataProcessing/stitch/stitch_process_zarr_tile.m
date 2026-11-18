@@ -27,6 +27,9 @@ ip.addParameter('uuid', '', @ischar);
 ip.parse(inputFilename, zarrFilename, frame, varargin{:});
 
 pr = ip.Results;
+% (from the parser: in a call with name-value pairs after zarrFilename, the
+% third argument is the first name)
+frame = pr.frame;
 Overwrite = pr.Overwrite;
 blockSize = pr.blockSize;
 shardSize = pr.shardSize;
@@ -68,6 +71,7 @@ end
 
 % Direct conversion should be faster. 
 if ~isempty(frame)
+    sz = size(frame);
     if ismatrix(frame)
         blockSize = blockSize(1 : 2);
     end

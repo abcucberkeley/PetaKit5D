@@ -354,6 +354,29 @@ classdef TiffZarrConversionTest < pktest.TestCase
             testCase.verifyEqual(getZarrInfo([dataPath, 'im2d.zarr']).size, [testCase.ImSize(1 : 2), 1]);
         end
 
+        function stitchZarrTileOfAFrameOrWithoutTheFrameInput(testCase)
+            % stitch_process_zarr_tile failed on an undefined sz for a given
+            % frame, and for name-value pairs right after the output name
+            % (it took the first name as the frame); with [] for the frame,
+            % as stitch_process_tiles calls it, it worked
+            dataPath = testCase.createTempFolder();
+            im = uint16(randi(60000, testCase.ImSize));
+            zr = [dataPath, 'im.zarr'];
+            writezarr(im, zr, 'blockSize', [16, 16, 4]);
+            b = [2, 3, 1, 30, 33, 8];
+            crop = im(b(1) : b(4), b(2) : b(5), b(3) : b(6));
+            evalc('stitch_process_zarr_tile(zr, [dataPath, ''given.zarr''], [], ''inputBbox'', b)');
+            testCase.verifyEqual(readzarr([dataPath, 'given.zarr']), crop);
+            evalc('stitch_process_zarr_tile(zr, [dataPath, ''names.zarr''], ''inputBbox'', b, ''blockSize'', [8, 8, 4])');
+            testCase.verifyEqual(readzarr([dataPath, 'names.zarr']), crop);
+            testCase.verifyEqual(getZarrInfo([dataPath, 'names.zarr']).blockSize, [8, 8, 4]);
+            evalc('stitch_process_zarr_tile('''', [dataPath, ''frame.zarr''], im, ''flipZstack'', true)');
+            testCase.verifyEqual(readzarr([dataPath, 'frame.zarr']), flip(im, 3));
+            % (a NaN box end is refused by readzarr)
+            testCase.verifyError(@() stitch_process_zarr_tile(zr, [dataPath, 'nan.zarr'], [], 'inputBbox', ...
+                [2, 3, 1, NaN, 33, 8]), 'MATLAB:validators:mustBeFinite');
+        end
+
         function tiffToZarrWritesPrivateResultInPlace(testCase)
             % with a full uuid made by the call (not on Windows, where
             % get_uuid shortens it) no other process writes the temporary

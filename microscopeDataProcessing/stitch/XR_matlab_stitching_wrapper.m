@@ -38,7 +38,7 @@ function [] = XR_matlab_stitching_wrapper(dataPaths, imageListFullpaths, varargi
 %        blendMethod : 'none'|'feather'|'mean'|'median'|'max' (default: 'feather'). Blending method for stitching. 'none' means taking half overlap from each tile; 'mean', 'median' and 'max' means use the mean, median or max intensity in the overlap region. 'feather' means feather blending.
 %        overlapType : ''|'none'|'half'|'full' (default: ''). Method to handle overlap regions for blending (feather use 'full'). 'none', 'half', and 'full' means the overlap region to use for blending. If empty, use 'none' for none blending, and 'half' for others.
 %         xcorrShift : true|false (default: false). Xcorr registration for stitching.
-%        xyMaxOffset : a number (default: 300). Max offsets in voxel in xy axes in the registration.
+%        xyMaxOffset : a number or [x, y] (default: 300). Max offsets in voxel in xy axes in the registration.
 %         zMaxOffset : a number (default: 50). Max offset in voxel in z axis in the registration.
 %    xcorrDownsample : 1x3 vector (default: [2, 2, 1]). Downsampling factor for registration in yxz axis order.
 %        xcorrThresh : a number (default: 0.25). Threshold for max xcorr value. The registration for a pair of tiles is not considered if belowing this threshold.
@@ -50,12 +50,12 @@ function [] = XR_matlab_stitching_wrapper(dataPaths, imageListFullpaths, varargi
 %          primaryCh : empty or char (default: ''). The primary channel for registration. Must be one from channelPatterns.
 %   usePrimaryCoords : true|false (default: false). Use the coordinates from the primary channel for stitching.
 %          save16bit : true|false (default: true). Save 16bit result for stitch result; otherwise save as single. 
-%      edgeArtifacts : a number (default: 2). The number of voxels from the border to erode to remove edge artifacts. 
+%      edgeArtifacts : a number (default: 0). The number of voxels from the border to erode to remove edge artifacts (not with processFunPath, which replaces it: a user function can erode too, with erodeVolumeBy2DProjection as in demo_phase_and_2photon_stitching.m). 
 %         distBboxes : empty or 1x6 or #Tilex6 vectors (default: []). Bounding boxes to define the distance transform for feather blending. Low weights are assigned outside the bounding boxes.
 %            saveMIP : true|false (default: true). Save MIPs after stitching.
 %          stitchMIP : empty or 1x1 or 1x3 bool vector (default: []). Stitching MIP for given axis. Order yxz. 
 %       onlineStitch : true|{false}. Support for online stitch (with partial number of tiles).
-%     processFunPath : empty or char (default: ''). Path for user-defined process function handle. Support .mat or .txt formats.
+%     processFunPath : empty or char (default: ''). Path for user-defined process function handle. Support .mat or .txt formats. It replaces the edge erosion of edgeArtifacts.
 %       parseCluster : true|false (default: true). Use slurm cluster for the processing.
 %      masterCompute : true|false (default: true). Master job node is involved in the processing.
 %          jobLogDir : char (default: '../job_logs'). Path for the slurm job logs.
@@ -310,6 +310,13 @@ elseif iscell(processFunPath)
             processFunPath = repmat(processFunPath, numel(channelPatterns), 1);
         end
     end
+end
+
+% a max offset of x and y, or [x, y] (two values garbled the function
+% string)
+xyMaxOffset_str = sprintf('%0.10f', xyMaxOffset);
+if numel(xyMaxOffset) == 2
+    xyMaxOffset_str = sprintf('[%0.10f,%0.10f]', xyMaxOffset);
 end
 
 % the frame takes 3 resampling factors (yxz): 1 value for all axes, 2 for
@@ -710,7 +717,7 @@ while ~all(is_done_flag | (trial_counter >= max_trial_num & ~job_status_flag), '
                             '''stitchInfoFullpath'',''%s'',''processedDirStr'',''%s'',''DS'',%s,''DSR'',%s,''zarrFile'',%s,', ...
                             '''largeFile'',%s,''poolSize'',%s,''batchSize'',%s,''blockSize'',%s,''shardSize'',%s,''resampleType'',''%s'',', ...
                             '''resampleFactor'',[%s],''inputBbox'',%s,''tileOutBbox'',%s,''tileOffset'',%d,''blendMethod'',''%s'',', ...
-                            '''overlapType'',''%s'',''xcorrShift'',%s,''xyMaxOffset'',%0.10f,''zMaxOffset'',%0.10f,''xcorrDownsample'',%s,', ...
+                            '''overlapType'',''%s'',''xcorrShift'',%s,''xyMaxOffset'',%s,''zMaxOffset'',%0.10f,''xcorrDownsample'',%s,', ...
                             '''xcorrThresh'',%0.10f,''shiftMethod'',''%s'',''axisWeight'',[%s],''groupFile'',''%s'',''isPrimaryCh'',%s,', ...
                             '''usePrimaryCoords'',%s,''outBbox'',[%s],''save16bit'',%s,', ...
                             '''tileIdx'',%s,''flippedTile'',[%s],''processFunPath'',%s,''stitchMIP'',%s,''bigStitchData'',%s,', ...
@@ -722,7 +729,7 @@ while ~all(is_done_flag | (trial_counter >= max_trial_num & ~job_status_flag), '
                             strrep(mat2str(poolSize), ' ', ','), strrep(mat2str(batchSize), ' ', ','), strrep(mat2str(blockSize), ' ', ','), ...
                             strrep(mat2str(shardSize), ' ', ','), resampleType, strrep(num2str(resampleFactor, '%.10d,'), ' ', ''),  ...
                             strrep(mat2str(inputBbox), ' ', ','), strrep(mat2str(tileOutBbox), ' ', ','), tileOffset, blendMethod, overlapType, ...
-                            string(xcorrShift), xyMaxOffset, zMaxOffset, strrep(mat2str(xcorrDownsample), ' ', ','), xcorrThresh, shiftMethod, ...
+                            string(xcorrShift), xyMaxOffset_str, zMaxOffset, strrep(mat2str(xcorrDownsample), ' ', ','), xcorrThresh, shiftMethod, ...
                             strrep(mat2str(axisWeight), ' ', ','), groupFile, string(isPrimaryCh), string(usePrimaryCoords), ...
                             strrep(num2str(outBbox, '%d,'), ' ', ''), ...
                             string(save16bit), tileIdx_str, flippedTile_str, processFunPath_str, strrep(mat2str(stitchMIP), ' ', ','), ...

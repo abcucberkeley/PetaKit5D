@@ -355,6 +355,43 @@ classdef RegistrationXcorrTest < pktest.TestCase
                 testCase.verifyEqual(shifts(i, :), shifts(1, :), sprintf('The shift of %s data.', orders{i}));
             end
         end
+
+        function mipSlabRegistrationTakesTheAxesOfTheDataOrder(testCase)
+            % cross_correlation_registration_3d_mip_slabs (large files) named
+            % the slab of the data's dimension i by the axis of index i (right
+            % only for y,x,z), and divided the max offsets (xyz, as
+            % cross_correlation_registration_3d reads them) by the pooling of
+            % the dimension of their index: in the slabs of y and x of y,x,z
+            % data, x and y got each other's bounds (halved here). The same
+            % pair in each data order must give the shift of 'y,x,z' data, 9
+            % voxels in x and 8 in y, within max offsets of 10, 10 and 2
+            gt = randi([1000, 60000], [48, 80, 32], 'uint16');
+            tiles = {gt(1 : 40, 1 : 44, :), gt(9 : 48, 31 : 80, :)};
+            % cuboids [x0 y0 z0 x1 y1 z1] (voxel size 1): tile 2 at x 21 and y 0, not 30 and 8
+            cuboids = [0, 0, 0, 43, 39, 31; 21, 0, 0, 70, 39, 31];
+            overlap = [21, 0, 0, 43, 39, 31];
+            orders = {'y,x,z', 'x,y,z', 'z,y,x', 'z,x,y'};
+            shifts = zeros(numel(orders), 3);
+            for i = 1 : numel(orders)
+                [~, dataOrderMat] = sort(strrep(orders{i}, ',', ''));
+                [~, perm] = sort(dataOrderMat([2, 1, 3]));
+                dataPath = testCase.createTempFolder();
+                fns = {[dataPath, 't1.zarr'], [dataPath, 't2.zarr']};
+                for j = 1 : 2
+                    writezarr(permute(tiles{j}, perm), fns{j}, blockSize=[16, 16, 16]);
+                end
+                mipDirStr = '';
+                evalc('mipDirStr = compute_tile_mip_slabs(fns, [2, 2, 2], false, false, '''');');
+                [~, shifts(i, :)] = evalc(['cross_correlation_registration_3d_mip_slabs(fns{1}, fns{2}, ', ...
+                    '[dataPath, ''xcorr.mat''], cuboids(1, :), cuboids(2, :), overlap, [1, 1, 1], dataOrderMat, ', ...
+                    '''MaxOffset'', [10, 10, 2], ''mipDirStr'', mipDirStr, ''poolSize'', [2, 2, 2], ', ...
+                    '''majorDownsample'', 1, ''parseCluster'', false)']);
+            end
+            testCase.verifyEqual(abs(shifts(1, :)), [9, 8, 0], 'The shift of y,x,z data.');
+            for i = 2 : numel(orders)
+                testCase.verifyEqual(shifts(i, :), shifts(1, :), sprintf('The shift of %s data.', orders{i}));
+            end
+        end
     end
 
     methods (Access = private)
