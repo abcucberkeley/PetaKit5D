@@ -952,6 +952,71 @@ def test_original_method_runs(tmp_path):
         assert os.path.exists(d.out(f)), f
 
 
+def test_original_method_works_with_multiple_batches(tmp_path):
+    """(MATLAB: originalMethodWorksWithMultipleBatches) 'original' used to skip the deconBbox
+    crop, so the batches of the in-memory large-file path couldn't be placed"""
+    d = DS(tmp_path)
+    run_wrapper(
+        d, rl_method="original", decon_iter=3, edge_erosion=0, large_file=True,
+        batch_size=(16, 24, 24),
+    )  # fmt: skip
+    out = _read(d.out(d.fsns[0]))
+    assert out.dtype == np.uint16 and out.shape == IM and out.max() > 0
+
+
+def test_original_method_batches_are_copied_by_the_mex(tmp_path, monkeypatch):
+    """(MATLAB: originalMethodBatchesAreCopiedByTheMex) RLMethod 'original' returns single
+    batches, which the in-memory large-file path converts to the result's class before
+    ``indexing_3d`` (indexing3d_mex) places them: the same image as a plain assignment, one copy
+    per batch, each of the output class"""
+    from petakit5d.decon import large as L
+    from petakit5d.kernels import crop as KC
+
+    d = DS(tmp_path)
+    out_fn = str(tmp_path / "large" / f"{d.fsns[0]}.tif")
+    # batches of (16, 24, 24) of the (32, 48, 44) image: 8
+    args = (d.raws[0], d.psfs[0], out_fn, XY, DZ)
+    kw = {"background": BG, "dz_psf": DZ, "decon_iter": 3, "edge_erosion": 0,
+          "rl_method": "original", "batch_size": (16, 24, 24), "use_gpu": False,
+          "parse_cluster": False}  # fmt: skip
+    L.decon_large_in_memory(*args, **kw)
+    out = _read(out_fn)
+    os.remove(out_fn)
+    assert out.dtype == np.uint16 and out.shape == IM and out.max() > 0
+
+    # the same image as the assignment (the copy replaced by NumPy's)
+    def assign(dst, box, region, **_):
+        z0, y0, x0, z1, y1, x1 = box
+        dst[z0:z1, y0:y1, x0:x1] = region
+        return dst
+
+    with monkeypatch.context() as mp:
+        mp.setattr(KC, "indexing_3d", assign)
+        L.decon_large_in_memory(*args, **kw)
+    np.testing.assert_array_equal(_read(out_fn), out)
+    os.remove(out_fn)
+
+    # one copy per batch, of the output class, of single batches (spies)
+    calls, batches = [], []
+    real, real_batch = KC.indexing_3d, L._rl_batch
+
+    def spy(dst, box, region, **k):
+        calls.append(region.dtype)
+        return real(dst, box, region, **k)
+
+    def batch_spy(*a, **k):
+        r = real_batch(*a, **k)
+        batches.append(np.asarray(r).dtype)
+        return r
+
+    monkeypatch.setattr(KC, "indexing_3d", spy)
+    monkeypatch.setattr(L, "_rl_batch", batch_spy)
+    L.decon_large_in_memory(*args, **kw)
+    assert batches == [np.dtype(np.float32)] * 8
+    assert calls == [np.dtype(np.uint16)] * 8
+    np.testing.assert_array_equal(_read(out_fn), out)
+
+
 # ---------------------------------------------------------------------------------------------
 # DeconWrapperTest in intent: cluster mode against the fake Slurm
 # ---------------------------------------------------------------------------------------------

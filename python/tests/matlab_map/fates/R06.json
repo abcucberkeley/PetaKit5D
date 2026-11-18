@@ -51,10 +51,10 @@
           "pytest:tests/decon/test_dataset.py::test_deconvolved_data_can_be_deskewed_and_rotated"
         ],
         "originalMethodWorksWithMultipleBatches": [
-          "na:RLMethod 'original' (MATLAB's deconvlucy) is Phase 2 (B11); R05's decon raises NotImplementedError for it (test_dataset.py::test_original_method_is_phase_two)"
+          "pytest:tests/decon/test_dataset.py::test_original_method_works_with_multiple_batches"
         ],
         "originalMethodBatchesAreCopiedByTheMex": [
-          "na:RLMethod 'original' (MATLAB's deconvlucy) is Phase 2 (B11); R05's decon raises NotImplementedError for it (test_dataset.py::test_original_method_is_phase_two)"
+          "pytest:tests/decon/test_dataset.py::test_original_method_batches_are_copied_by_the_mex"
         ],
         "clusterModeChecksFewJobsSoon": [
           "pytest:tests/decon/test_dataset.py::test_cluster_mode_checks_few_jobs_soon"
