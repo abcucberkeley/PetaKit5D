@@ -1,0 +1,18 @@
+{
+ "name": "registration_s04_pair",
+ "repeats": 5,
+ "setup": ["{python} {src}/benchmarks/stitch/registration_s04_setup.py {work}"],
+ "variants": [
+  {"id": "ml", "impl": "matlab", "paths": ["benchmarks/stitch", "benchmarks/common"],
+   "code": "bench_registration_s04('{work}', 'pair300', [1, 4, 24], 2)"},
+  {"id": "py", "impl": "python", "script": "benchmarks/stitch/registration_s04.py",
+   "args": ["{work}", "--case", "pair300", "--backend", "permissive", "--threads", "1", "4", "24",
+            "--repeats", "2"]},
+  {"id": "py_exact", "impl": "python", "script": "benchmarks/stitch/registration_s04.py",
+   "args": ["{work}", "--case", "pair300", "--backend", "exact", "--threads", "1", "4", "24",
+            "--repeats", "2"],
+   "env": {"PETAKIT5D_FFTW": "{env[S04_FFTW]}"}, "when": "S04_FFTW"}
+ ],
+ "compare": [{"a": "py", "b": "ml"}, {"a": "py_exact", "b": "ml"}],
+ "gate": {"ratio_max": 1.05, "threads": [1, 4, 24], "metrics": ["op:pair300@*"]}
+}
