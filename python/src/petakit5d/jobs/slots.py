@@ -158,9 +158,10 @@ def slot_shares(slots: int) -> dict[int, tuple[int, list[int] | None]]:
 def slot_env(threads: int, cpus: Sequence[int] | None) -> dict[str, str]:
     """the environment of a slot's task process: the thread variables of the numeric libraries
     (read when they load) and its CPUs, which the task process binds to (run_task)"""
-    from petakit5d.jobs.exec import THREAD_VARIABLES
+    from petakit5d.jobs.exec import MEMORY_VARIABLES, THREAD_VARIABLES
 
     env = {name: str(threads) for name in THREAD_VARIABLES}
+    env.update({k: v for k, v in MEMORY_VARIABLES.items() if not os.environ.get(k)})
     env[SLOT_CPUS_VARIABLE] = ",".join(str(c) for c in cpus) if cpus else ""
     return env
 

@@ -494,6 +494,11 @@ def _worker_env(slot: _Slot) -> dict[str, str]:
         env["PYTHONPATH"] = os.pathsep.join([root, old]) if old else root
     for name in THREAD_VARIABLES:
         env[name] = str(slot.threads)
+    from petakit5d.jobs.exec import MEMORY_VARIABLES
+
+    for name, value in MEMORY_VARIABLES.items():
+        if not env.get(name):
+            env[name] = value
     env[ENV_WORKER] = str(slot.id)
     env[ENV_THREADS] = str(slot.threads)
     env.pop(ENV_CPUS, None)

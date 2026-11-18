@@ -8,7 +8,8 @@ line is MATLAB's ``toc``: ``Elapsed time is <s> seconds.`` The job script around
 writes the ``Start time:`` and ``End time:`` lines of the job log.
 
 Before any task, the thread pools of the numeric libraries (OpenBLAS, OpenMP, MKL, numexpr)
-are limited to the CPUs this process may use, unless their variables are set. With task
+are limited to the CPUs this process may use, and NumPy's huge-page advice is turned off
+(``NUMPY_MADVISE_HUGEPAGE=0``), unless their variables are set. With task
 metrics (call settings ``task_metrics`` naming the run folder) each Python task, or the bash
 batch, gets a record of mode ``slurm_python``. SIGTERM (scancel, the time limit) during a
 Python task becomes the exception ``Terminated``, so that the task's ``finally`` blocks run;
@@ -40,6 +41,14 @@ THREAD_VARIABLES = (
 )
 
 
+# NumPy asks for transparent huge pages (madvise) for its large arrays on Linux. On a node whose
+# free memory is fragmented, the first touch of such an array makes the kernel compact memory:
+# a fresh process stalled 5.8 to 15.5 s on 16 GB on 3 of 5 nodes measured. Without the advice
+# there is no stall, and huge pages still come where 2 MB blocks are free (THP "always"); on a
+# fragmented node the arrays get 4 KB pages, whose frees take about 0.03 s per GB.
+MEMORY_VARIABLES = {"NUMPY_MADVISE_HUGEPAGE": "0"}
+
+
 class Terminated(BaseException):
     """SIGTERM (scancel, the job's time limit) as an exception, so that the running task's
     ``finally`` blocks and context managers run (a writer record is then marked ended at
@@ -61,16 +70,19 @@ def _default_sigterm() -> None:
 
 
 def limit_library_threads() -> None:
-    """Sets THREAD_VARIABLES to the CPUs this process may use (affinity and cgroup quota),
-    except those already set; called before any task imports NumPy. Without it, importing
-    NumPy with 24 CPUs costs 1.4 to 2.0 CPU-s of OpenBLAS threads, which packed task
-    processes take from each other."""
+    """Sets THREAD_VARIABLES to the CPUs this process may use (affinity and cgroup quota) and
+    MEMORY_VARIABLES to their values, except those already set; called before any task
+    imports NumPy. Without it, importing NumPy with 24 CPUs costs 1.4 to 2.0 CPU-s of
+    OpenBLAS threads, which packed task processes take from each other."""
     from petakit5d.core.threads import available_cpus
 
     cpus = str(available_cpus())
     for name in THREAD_VARIABLES:
         if not os.environ.get(name):
             os.environ[name] = cpus
+    for name, value in MEMORY_VARIABLES.items():
+        if not os.environ.get(name):
+            os.environ[name] = value
 
 
 def run_batch(call_folder: str, batch: int) -> int:
