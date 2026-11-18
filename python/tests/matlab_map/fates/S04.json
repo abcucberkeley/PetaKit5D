@@ -2,10 +2,79 @@
  "task": "S04",
  "classes": {
   "StitchHelperMexTest": {
+   "finished": true,
    "methods": {
     "edgeErosionWithoutTheMexMatches": [
      "pytest:tests/stitch/test_tiles.py::test_edge_erosion_zeroes_esize_rows_at_both_ends_of_y",
      "oracle:tests/stitch/test_tile_functions.py::erode.*"
+    ],
+    "longRegionIsCroppedAroundItsBrightestPart": [
+     "pytest:tests/stitch/test_xcorr.py::test_long_region_is_cropped_around_its_brightest_part",
+     "oracle:tests/stitch/test_xcorr.py::crop.long*"
+    ],
+    "cropDoesNotDependOnTheThreadCount": [
+     "pytest:tests/stitch/test_xcorr.py::test_crop_does_not_depend_on_the_thread_count",
+     "oracle:tests/stitch/test_xcorr.py::crop.threads*"
+    ],
+    "majorTilesWithDataEverywhereAreValid": [
+     "pytest:tests/kernels/test_stitch_kernels.py::test_major_tiles_with_data_everywhere_are_valid",
+     "oracle:tests/kernels/test_stitch_kernels.py::major.full.*"
+    ],
+    "voxelWithoutDataInTheMajorTilesIsFound": [
+     "pytest:tests/kernels/test_stitch_kernels.py::test_voxel_without_data_in_the_major_tiles_is_found",
+     "oracle:tests/kernels/test_stitch_kernels.py::major.hole.*"
+    ],
+    "boundsOfVoxelsWithoutDataWithManyThreads": [
+     "pytest:tests/kernels/test_stitch_kernels.py::test_bounds_of_voxels_without_data_with_many_threads",
+     "oracle:tests/kernels/test_stitch_kernels.py::major.bounds"
+    ],
+    "integralImageMexErrorsHaveIdentifiers": [
+     "pytest:tests/kernels/test_stitch_kernels.py::test_integral_image_mex_errors_have_identifiers",
+     "oracle:tests/kernels/test_stitch_kernels.py::integral.error.*"
+    ],
+    "integralImageMexRejectsMoreThan3D": [
+     "oracle:tests/kernels/test_stitch_kernels.py::integral.error.4d"
+    ]
+   }
+  },
+  "RegistrationXcorrTest": {
+   "methods": {
+    "pairRegistrationTakesTheAxesOfTheDataOrder": [
+     "pytest:tests/stitch/test_registration.py::test_pair_registration_takes_the_axes_of_the_data_order",
+     "oracle:tests/stitch/test_registration.py::axes.*"
+    ]
+   }
+  },
+  "StitchingTest": {
+   "methods": {
+    "xcorrRecoversPerturbedTilePosition": [
+     "pytest:tests/stitch/test_registration.py::test_stitching_recovers_the_perturbed_tile",
+     "pytest:tests/stitch/test_registration.py::test_registration_recovers_the_listed_offset",
+     "pytest:tests/stitch/test_assignment.py::test_xcorrRecoversPerturbedTilePosition",
+     "pytest:tests/stitch/test_volume.py::test_registration_result_is_applied"
+    ],
+    "localShiftMethod": [
+     "pytest:tests/stitch/test_registration.py::test_stitching_recovers_the_perturbed_tile",
+     "pytest:tests/stitch/test_assignment.py::test_localShiftMethod"
+    ],
+    "registration2DTiles": [
+     "pytest:tests/stitch/test_registration.py::test_stitching_registers_2d_tiles",
+     "pytest:tests/stitch/test_registration.py::test_registration_2d_recovers_the_listed_offset",
+     "oracle:tests/stitch/test_registration.py::r2.*",
+     "oracle:tests/stitch/test_volume.py::frame.2d.mean.xcorr"
+    ],
+    "skewedSpaceRegistration": [
+     "pytest:tests/stitch/test_registration.py::test_stitching_registers_in_skewed_space",
+     "oracle:tests/stitch/test_volume.py::frame.skewed.feather.xcorr"
+    ],
+    "largeFileStitching": [
+     "pytest:tests/stitch/test_registration.py::test_stitching_large_files",
+     "oracle:tests/stitch/test_registration.py::slab.*"
+    ],
+    "largeFileRegistrationRecoversPerturbedTilePosition": [
+     "pytest:tests/stitch/test_registration.py::test_stitching_large_files_recovers_the_perturbed_tile",
+     "pytest:tests/stitch/test_registration.py::test_mip_slab_registration_recovers_the_offset",
+     "pytest:tests/stitch/test_assignment.py::test_largeFileRegistrationRecoversPerturbedTilePosition"
     ]
    }
   }

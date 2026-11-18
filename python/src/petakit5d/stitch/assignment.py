@@ -1102,11 +1102,14 @@ def _registration_task(tile_paths, f, js, out_path, cub15, reg15, n, common):
     0-based pairs, the cuboids (``cub15``, per tile) and overlap cuboids (``reg15``, per pair
     index) as MATLAB's ``mat2str`` gives them"""
     from petakit5d.jobs.tasks import Task
-    from petakit5d.stitch.geometry import pair_index
+    from petakit5d.stitch.geometry import pair_index, parse_data_order
 
     js = [int(j) for j in js]
     kw = dict(common)
     vs, dorder = kw.pop("xyz_voxel_sizes"), kw.pop("data_order")
+    # the registered wrapper's data_order_mat is the axes, not the text
+    if isinstance(dorder, str):
+        dorder = list(parse_data_order(dorder))
     return Task(
         REGISTRATION_TASK,
         [

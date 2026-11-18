@@ -317,7 +317,8 @@
       "Unit"
      ],
      "cases": null,
-     "fate": []
+     "fate": [],
+     "owner": "S04"
     },
     "resultsDoNotDependOnTheThreadCount": {
      "pins": "as MATLAB's FFTs: the groups of lines don't depend on the threads",
@@ -932,7 +933,8 @@
       "Integration"
      ],
      "cases": null,
-     "fate": []
+     "fate": [],
+     "owner": "S04"
     },
     "largeFileStitching": {
      "pins": "large-file stitching used to fail making the MIP slabs (bim undefined in XR_MIP_zarr) and registering them (three slips in cross_correlation_registration_3d_mip_slabs from a86c36d)",
@@ -940,7 +942,8 @@
       "Integration"
      ],
      "cases": null,
-     "fate": []
+     "fate": [],
+     "owner": "S04"
     },
     "largeFileWithoutRegistration": {
      "pins": "the distance maps use MIP slabs, which used to be made only by the registration (xcorrShift)",
@@ -973,7 +976,8 @@
       "Integration"
      ],
      "cases": null,
-     "fate": []
+     "fate": [],
+     "owner": "S04"
     },
     "localWorkersGiveTheSameResult": {
      "pins": "with local workers, the tiles are registered and blended (in several tasks) on a local process pool; the result is that of one task at a time in this MATLAB",
@@ -1121,7 +1125,8 @@
       "Integration"
      ],
      "cases": null,
-     "fate": []
+     "fate": [],
+     "owner": "S04"
     },
     "resampleFactorIsInTheTilesAxisOrder": {
      "pins": "resampleFactor is in yxz order, the order in which tiles are resampled (and DSR tiles were deskewed with it); the stitching took it as x, y, z for the voxel sizes, so tiles whose y and x factors differ were placed with the x and y voxel sizes swapped. DSR tiles with y voxels of 2 px, as a factor of [2, 1, 1] makes them.",
@@ -1212,7 +1217,8 @@
       "Integration"
      ],
      "cases": null,
-     "fate": []
+     "fate": [],
+     "owner": "S04"
     },
     "stitchingFunctionGetsTheJobLogFolder": {
      "pins": "the stitching function didn't get the wrapper's jobLogDir, so its tile and block jobs logged to its default folder. The stitching function is a spy that makes the result.",
@@ -1305,7 +1311,8 @@
       "Integration"
      ],
      "cases": null,
-     "fate": []
+     "fate": [],
+     "owner": "S04"
     },
     "zxyTilesOfOneXPlaneAreNot2D": {
      "pins": "the first 2D check read the size at z's place in the data order (imSize(data_order_mat == 3)) instead of z's dimension, which differ for 'y,z,x' and 'z,x,y': 3D tiles in 'z,x,y' order with one x plane passed for 2D tiles, and only their first z plane was stitched",

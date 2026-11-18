@@ -125,12 +125,6 @@
      "oracle:tests/stitch/test_dataset.py::wrapper.skewed.none",
      "oracle:tests/stitch/test_volume.py::frame.skewed.*"
     ],
-    "skewedSpaceRegistration": [
-     "oracle:tests/stitch/test_volume.py::frame.skewed.feather.xcorr"
-    ],
-    "registration2DTiles": [
-     "oracle:tests/stitch/test_volume.py::frame.2d.mean.xcorr"
-    ],
     "processedZarrTiles": [
      "pytest:tests/stitch/test_dataset.py::test_processed_zarr_tiles",
      "pytest:tests/stitch/test_volume.py::test_processed_zarr_tiles",
@@ -140,21 +134,11 @@
     "processFunctionIsAppliedToTiles": [
      "pytest:tests/stitch/test_volume.py::test_process_function_is_applied_to_tiles"
     ],
-    "xcorrRecoversPerturbedTilePosition": [
-     "pytest:tests/stitch/test_assignment.py::test_xcorrRecoversPerturbedTilePosition",
-     "pytest:tests/stitch/test_volume.py::test_registration_result_is_applied"
-    ],
     "primaryChannelRegistrationAppliesToOtherChannels": [
      "pytest:tests/stitch/test_dataset.py::test_a_time_series_is_registered_once_on_one_canvas",
      "oracle:tests/stitch/test_dataset.py::wrapper.timeseries.feather.xcorr",
      "oracle:tests/stitch/test_dataset.py::wrapper.primary_mode.mean.xcorr",
      "oracle:tests/stitch/test_volume.py::frame.secondary.*"
-    ],
-    "largeFileStitching": [
-     "oracle:tests/stitch/test_volume.py::frame.dsr.large_file_xcorr"
-    ],
-    "largeFileRegistrationRecoversPerturbedTilePosition": [
-     "pytest:tests/stitch/test_assignment.py::test_largeFileRegistrationRecoversPerturbedTilePosition"
     ],
     "largeFileWithoutRegistration": [
      "pytest:tests/stitch/test_volume.py::test_large_file_without_registration",
@@ -178,9 +162,6 @@
     ],
     "tilesOfDifferentSizesGetTheirOwnDistanceMaps": [
      "pytest:tests/stitch/test_distance.py::test_tiles_of_different_sizes_get_their_own_maps"
-    ],
-    "localShiftMethod": [
-     "pytest:tests/stitch/test_assignment.py::test_localShiftMethod"
     ],
     "flippedTilesStayWithTheirTilesWhenSorted": [
      "pytest:tests/stitch/test_geometry.py::test_flipped_tiles_stay_with_their_tiles_when_sorted",
