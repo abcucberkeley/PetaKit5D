@@ -46,6 +46,11 @@ end
 debug = pr.debug;
 
 cropFullpath = strip(cropFullpath, 'right', filesep);
+% relative paths are from the current folder, made absolute: the block tasks
+% run after the job framework changes the folder (and a file name without a
+% folder put the flags at the filesystem root)
+zarrFullpath = absolute_path(zarrFullpath);
+cropFullpath = absolute_path(cropFullpath);
 [cropPath, fsname, ext] = fileparts(cropFullpath);
 
 if exist(cropFullpath, 'dir')
@@ -194,3 +199,15 @@ publish_result(cropTempPath, cropFullpath, zarrFlagPath);
 
 end
 
+
+function [p] = absolute_path(p)
+% a relative path (char) from the current folder
+
+if ~ischar(p) || isempty(p)
+    return;
+end
+if ~(p(1) == '/' || p(1) == '\' || (numel(p) > 1 && p(2) == ':'))
+    p = [pwd, '/', p];
+end
+
+end

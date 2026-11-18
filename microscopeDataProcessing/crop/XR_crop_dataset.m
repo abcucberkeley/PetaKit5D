@@ -8,7 +8,7 @@ function [] = XR_crop_dataset(dataPaths, inputBbox, varargin)
 %
 % Parameters (as 'specifier'-value pairs):
 %       resultDirName : char (default: 'Cropped'). Crop result directory under data path.
-%            cropType : 'fixed'|'moving'|'center' (default: 'fixed'). 'fixed': fixed bounding box; 'moving': crop the first time point with inputBbox, and linearly move the bbox according to the last time point coordinates (lastStartCoords); 'center': crop the center of the images with the size defined by inputBbox.
+%            cropType : 'fixed'|'moving'|'center' (default: 'fixed'). 'fixed': fixed bounding box; 'moving': crop the first time point with inputBbox, and linearly move the bbox according to the last time point coordinates (lastStartCoords; the time points of each dataset, and a single time point is cropped with inputBbox); 'center': crop the center of the images with the size defined by inputBbox.
 %                 pad : true|false (default: false). Pad an empty region if the bounding box is outside of the image.
 %     lastStartCoords : empty or 1x3 vector. The start coordinates for the last time point for 'moving' crop type.
 %     channelPatterns : a cell array (default: {'CamA_ch0', 'CamB_ch0'}).  Channel identifiers for included channels. 
@@ -115,6 +115,7 @@ end
 fnames = cell(nd, 1);
 if strcmp(cropType, 'moving')
     max_tp_mat = zeros(nd, 1);
+    tps = cell(nd, 1);
 end
 
 for d = 1 : nd
@@ -140,6 +141,7 @@ for d = 1 : nd
         ch_inds = ch_inds(any(ch_inds, 2), :);
         ch_tps = cumsum(ch_inds);
         ch_tps = sum(ch_tps .* ch_inds, 2);
+        tps{d} = ch_tps;
         max_tp = max(ch_tps);
         max_tp_mat(d) = max_tp;
         if any(inputBbox(4 : 6) - inputBbox(1 : 3) + lastStartCoords > sz)
@@ -152,6 +154,11 @@ fd_inds = arrayfun(@(x) ones(numel(fnames{x}), 1) * x, 1 : nd, 'unif', 0);
 fnames = cat(1, fnames{:});
 fd_inds = cat(1, fd_inds{:});
 nF = numel(fnames);
+% the time point of each file within its dataset (it held only the last
+% dataset's)
+if strcmp(cropType, 'moving')
+    ch_tps = cat(1, tps{:});
+end
 
 
 %% use generic framework for the cropping do computing
@@ -179,7 +186,12 @@ for f = 1 : nF
     if strcmp(cropType, 'moving')
         max_tp = max_tp_mat(d);
         bbox_size = inputBbox(4 : 6) - inputBbox(1 : 3) + 1;
-        bbox_start_f = inputBbox(1 : 3) + round((lastStartCoords - inputBbox(1 : 3)) / (max_tp - 1) * (ch_tps(f) - 1));
+        if max_tp > 1
+            bbox_start_f = inputBbox(1 : 3) + round((lastStartCoords - inputBbox(1 : 3)) / (max_tp - 1) * (ch_tps(f) - 1));
+        else
+            % (a single time point is the first one: it divided by 0)
+            bbox_start_f = inputBbox(1 : 3);
+        end
         bbox_f = [bbox_start_f, bbox_start_f + bbox_size - 1];
     elseif strcmp(cropType, 'center')
         bbox_size = inputBbox(4 : 6) - inputBbox(1 : 3) + 1;

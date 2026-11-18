@@ -331,6 +331,28 @@ classdef CropDatasetTest < pktest.TestCase
             testCase.verifyEqual(readzarr([testCase.DataPath, 'Cropped_large/', testCase.Names{1}, '.zarr']), expected);
         end
 
+        function largeZarrCropOfRelativePaths(testCase)
+            % XR_crop_zarr put the flags of a file name without a folder at
+            % the filesystem root (/zarr_flag/), and its block tasks, which
+            % run after the job framework changes the folder, got the
+            % relative paths: they are taken from the current folder
+            dataPath = testCase.createTempFolder();
+            im = uint16(randi(60000, testCase.ImSize));
+            writezarr(im, [dataPath, 'in.zarr'], 'blockSize', [16, 16, 4]);
+            mkdir([dataPath, 'sub']);
+            testCase.applyFixture(matlab.unittest.fixtures.CurrentFolderFixture(dataPath));
+            evalc(['XR_crop_zarr(''in.zarr'', ''out.zarr'', testCase.Bbox, ''batchSize'', [16, 16, 4], ', ...
+                '''blockSize'', [8, 8, 4], ''parseCluster'', false)']);
+            % (the job framework leaves the caller in its own folder)
+            cd(dataPath);
+            evalc(['XR_crop_zarr(''in.zarr'', ''sub/out.zarr'', testCase.Bbox, ''batchSize'', [16, 16, 4], ', ...
+                '''blockSize'', [8, 8, 4], ''parseCluster'', false)']);
+            for fn = {'out.zarr', 'sub/out.zarr'}
+                testCase.verifyEqual(readzarr([dataPath, fn{1}]), testCase.crop(im, testCase.Bbox), fn{1});
+            end
+            testCase.verifyTrue(isfolder([dataPath, 'MIPs']), 'The MIPs are not next to the result.');
+        end
+
         function centerCrop(testCase)
             testCase.writeDataset('tif');
             XR_crop_dataset(testCase.DataPath, [1, 1, 1, 10, 9, 4], 'cropType', 'center', ...
@@ -360,6 +382,48 @@ classdef CropDatasetTest < pktest.TestCase
                 s = bbox(1 : 3) + round((lastStart - bbox(1 : 3)) / (nt - 1) * (t - 1));
                 out = readtiff(sprintf('%sCropped/scan_CamA_ch0_t%04d.tif', dataPath, t - 1));
                 testCase.verifyEqual(out, testCase.crop(ims{t}, [s, s + bboxSize - 1]), sprintf('time point %d', t));
+            end
+        end
+
+        function movingCropOfASingleTimePointUsesTheBox(testCase)
+            % with one time point the move was divided by 0 (its start became
+            % NaN and the task failed); the time point is the first one
+            dataPath = testCase.createTempFolder();
+            im = uint16(randi(60000, testCase.ImSize));
+            writetiff(im, [dataPath, 'scan_CamA_ch0_t0000.tif']);
+            bbox = [3, 3, 2, 12, 12, 6];
+            XR_crop_dataset(dataPath, bbox, 'cropType', 'moving', 'lastStartCoords', [21, 13, 6], ...
+                'channelPatterns', testCase.Channels(1), 'parseCluster', false, 'masterCompute', true);
+            testCase.verifyEqual(readtiff([dataPath, 'Cropped/scan_CamA_ch0_t0000.tif']), testCase.crop(im, bbox));
+        end
+
+        function movingCropOfSeveralDatasetsMovesInEach(testCase)
+            % the time points of the files were those of the last dataset,
+            % indexed by the file's number among all datasets (an index
+            % error, or another time point's box); each dataset moves from
+            % inputBbox to lastStartCoords over its own time points (2 and 3)
+            nts = [2, 3];
+            dataPaths = cell(1, 2);
+            ims = cell(1, 2);
+            for k = 1 : 2
+                dataPaths{k} = testCase.createTempFolder();
+                for t = 1 : nts(k)
+                    ims{k}{t} = uint16(randi(60000, testCase.ImSize));
+                    writetiff(ims{k}{t}, sprintf('%sscan_CamA_ch0_t%04d.tif', dataPaths{k}, t - 1));
+                end
+            end
+            bbox = [3, 3, 2, 12, 12, 6];
+            lastStart = [21, 13, 6];
+            XR_crop_dataset(dataPaths, bbox, 'cropType', 'moving', 'lastStartCoords', lastStart, ...
+                'channelPatterns', testCase.Channels(1), 'parseCluster', false, 'masterCompute', true);
+            bboxSize = bbox(4 : 6) - bbox(1 : 3) + 1;
+            for k = 1 : 2
+                for t = 1 : nts(k)
+                    s = bbox(1 : 3) + round((lastStart - bbox(1 : 3)) / (nts(k) - 1) * (t - 1));
+                    out = readtiff(sprintf('%sCropped/scan_CamA_ch0_t%04d.tif', dataPaths{k}, t - 1));
+                    testCase.verifyEqual(out, testCase.crop(ims{k}{t}, [s, s + bboxSize - 1]), ...
+                        sprintf('dataset %d, time point %d', k, t));
+                end
             end
         end
 
