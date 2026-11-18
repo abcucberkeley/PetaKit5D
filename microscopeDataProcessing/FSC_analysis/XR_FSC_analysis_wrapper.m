@@ -158,20 +158,22 @@ if multiRegions
         d = regionInterval;
 
         for f = 1 : nF
-            ycs = cs(1) : -d(1) : halfSize + 1;
-            ycs = [ycs(end : -1 : 2), cs(1) : d(1) : imSizes(f, 1) - halfSize + 1];
+            % (each file's centre: cs(1), cs(2) and cs(3) were the first
+            % files' y centres when there are several files)
+            ycs = cs(f, 1) : -d(1) : halfSize(1) + 1;
+            ycs = [ycs(end : -1 : 2), cs(f, 1) : d(1) : imSizes(f, 1) - halfSize(1) + 1];
             if d(1) == -1
                 ycs = cs(f, 1);
             end
 
-            xcs = cs(2) : -d(2) : halfSize + 1;
-            xcs = [xcs(end : -1 : 2), cs(2) : d(2) : imSizes(f, 2) - halfSize + 1];
+            xcs = cs(f, 2) : -d(2) : halfSize(2) + 1;
+            xcs = [xcs(end : -1 : 2), cs(f, 2) : d(2) : imSizes(f, 2) - halfSize(2) + 1];
             if d(2) == -1
                 xcs = cs(f, 2);
             end
 
-            zcs = cs(3) : -d(3) : halfSize + 1;
-            zcs = [zcs(end : -1 : 2), cs(3) : d(3) : imSizes(f, 3) - halfSize + 1];
+            zcs = cs(f, 3) : -d(3) : halfSize(3) + 1;
+            zcs = [zcs(end : -1 : 2), cs(f, 3) : d(3) : imSizes(f, 3) - halfSize(3) + 1];
             if d(3) == -1
                 zcs = cs(f, 3);
             end
@@ -256,7 +258,7 @@ if ~multiRegions
                 res_mat(i, :) = a.res_mu.res;
             end
     
-            res_mu_mat = mean(res_mat(:, 1 : end - 1, :), 2);
+            res_mu_mat = mean(res_mat(:, 1 : end - 1, :), 2, nan_flag(res_mat));
             thetas = a.res_mu.thetas;
     
             % save the mean resolutions to disk
@@ -349,7 +351,8 @@ else
             % res_decon = cell(numel(fsns_c), 1);
             fscFn = [fscPath, fsns_c{1}(1:end-4), '.mat'];
             a = load(fscFn);
-            % number of regions
+            % number of regions (the result of one region holds its structs
+            % themselves, not in cells: a.res_mu{j} failed)
             nR = size(a.bbox, 1);
             res_mat = zeros(numel(fsns_c), ntheta, nR);
     
@@ -359,13 +362,17 @@ else
                 a = load(fscFn);
                 
                 % res_decon{i} = a.res_mu;
+                res_mu_a = a.res_mu;
+                if ~iscell(res_mu_a)
+                    res_mu_a = {res_mu_a};
+                end
                 for j = 1 : nR
-                    res_mat(i, :, j) = a.res_mu{j}.res;
+                    res_mat(i, :, j) = res_mu_a{j}.res;
                 end
             end
     
-            res_mu_mat = mean(res_mat(:, 1 : end - 1, :), 2);
-            thetas = a.res_mu{1}.thetas;
+            res_mu_mat = mean(res_mat(:, 1 : end - 1, :), 2, nan_flag(res_mat));
+            thetas = res_mu_a{1}.thetas;
     
             % save the mean resolutions to disk
             resFn = sprintf('%s/fsc_res_info_c%d.mat', fscPath, c);
@@ -445,3 +452,13 @@ end
 
 
 
+function [flag] = nan_flag(res_mat)
+% the mean of the measured angles: the sectors inside the cones are NaN
+% (the mean is computed as before when there are none)
+
+flag = 'includenan';
+if any(isnan(res_mat), 'all')
+    flag = 'omitnan';
+end
+
+end

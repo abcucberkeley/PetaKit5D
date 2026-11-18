@@ -128,6 +128,11 @@ im2_fft = fftshift(fftn(im2));
 frc = real(accumarray(shells(:), im1_fft(:) .* conj(im2_fft(:)), [num_xi, 1]) ) ...
         ./ sqrt(accumarray(shells(:), abs(im1_fft(:)).^2, [num_xi, 1]) .* accumarray(shells(:), abs(im2_fft(:)).^2, [num_xi, 1]));
 
+% (images without signal, e.g. all zero, have no FSC: every cell is 0 / 0,
+% and xi(end) = [] of the empty xi failed with an index error)
+if all(isnan(frc))
+    error('XR_FSC:noSignal', 'The FSC is undefined: the images have no signal (e.g., they are all zero).');
+end
 xi = [1 : max_r * max_e]';
 xi(isnan(frc)) = [];
 xi(end) = [];
@@ -174,7 +179,7 @@ fsc.npoints = npoints_mat;
 
 % calculate resulotion
 [res] = XR_FSC_resolution(fsc, 'xyPixelSize', xyPixelSize, 'dz', dz, 'resThreshMethod', resThreshMethod, ...
-    'resThresh', resThresh, 'debug', debug);
+    'resThresh', resThresh, 'dtheta', dtheta, 'debug', debug);
 
 
 end

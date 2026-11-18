@@ -1,5 +1,10 @@
 function [fsc, res] = XR_two_image_FSC_analysis(im1, im2, varargin)
 % perform FSC analysis for two images
+%
+% N: the half size (as XR_FSC's halfSize): the images are resized to
+% isotropic voxels, cropped or padded to 2 * N and split into the 8
+% sub-lattices of every other voxel; the FSC is the mean of the 8 pairs of
+% the two images' same sub-lattices
 
 
 ip = inputParser;
@@ -52,8 +57,9 @@ fsc_cell = cell(8, 1);
 res_cell = cell(8, 1);
 for i = 1 : 8
     [y, x, z] = ind2sub([2, 2, 2], i);
+    % (XR_FSC's size is halfSize: 'N' failed, MATLAB:InputParser:UnmatchedParameter)
     [fsc_i, res_i] = XR_FSC(im1(:, :, :, y, x, z), im2(:, :, :, y, x, z), ...
-        'xyPixelSize', xyPixelSize, 'dz', dz, 'dr', dr, 'dtheta', dtheta, 'N', N);
+        'xyPixelSize', xyPixelSize, 'dz', dz, 'dr', dr, 'dtheta', dtheta, 'halfSize', N);
     fsc_cell{i} = fsc_i;
     res_cell{i} = res_i;    
 end
@@ -64,7 +70,7 @@ fsc_vals = cellfun(@(x) x.fsc, fsc_cell, 'unif', 0);
 fsc_mu.fsc = mean(cat(3, fsc_vals{:}), 3);
 
 [res_mu] = XR_FSC_resolution(fsc_mu, 'xyPixelSize', xyPixelSize, 'dz', dz, 'resThreshMethod', resThreshMethod, ...
-    'resThresh', resThresh, 'debug', debug);
+    'resThresh', resThresh, 'dtheta', dtheta, 'debug', debug);
 
 fsc = fsc_mu;
 res = res_mu;
@@ -81,10 +87,12 @@ if dz ~= xyPixelSize
     im = imresize3(im, round(size(im) .* [xyPixelSize, xyPixelSize, dz] / psz));
 end
 
-% crop image if any size is greater than the 2 folder of split images
+% crop image if any size is greater than the 2 folder of split images (from
+% the centre, as XR_one_image_FSC_analysis: it started at the centre and
+% kept the second half)
 sz = size(im);
 if any(sz > N)
-    hsz = floor(sz / 2);
+    hsz = floor((sz - N) / 2);
     s = max(1, hsz);
     t = min(sz, s + N - 1);
     

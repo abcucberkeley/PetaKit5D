@@ -7,6 +7,7 @@ ip.addParameter('xyPixelSize', 0.108, @isnumeric);
 ip.addParameter('dz', 0.108, @isnumeric);
 ip.addParameter('resThreshMethod', 'fixed', @ischar);
 ip.addParameter('resThresh', 0.2, @isnumeric);
+ip.addParameter('dtheta', [], @isnumeric); % the angles' interval (default: that of the first two)
 ip.addParameter('debug', false, @islogical);
 
 ip.parse(fsc, varargin{:});
@@ -16,6 +17,7 @@ xyPixelSize = pr.xyPixelSize;
 dz = pr.dz;
 resThreshMethod = pr.resThreshMethod;
 resThresh = pr.resThresh;
+dtheta = pr.dtheta;
 
 frc_mat = fsc.fsc;
 r = fsc.r;
@@ -92,13 +94,28 @@ end
 psz = xyPixelSize + (dz - xyPixelSize)  * abs(cos(thetas));
 
 res_mat = 2 * psz' ./ points';
-dtheta = diff(thetas);
-dtheta = dtheta(1);
+if isempty(dtheta)
+    dtheta = diff(thetas);
+    dtheta = dtheta(1);
+end
 res_theta = 0 : dtheta: 2 * pi;
 
-% convert the output such that 0 is for x, and pi/2 for z
-cind = (numel(res_mat)) / 2 + 1;
-res_out = [res_mat(cind : end), res_mat(1:end), res_mat(1 : cind)]';
+% convert the output such that 0 is for x, and pi/2 for z: the angle phi
+% takes the sector of thetas at phi + pi/2 (mod pi). The sectors are placed
+% by their angles, as XR_FSC gives only those it found: the others (inside
+% the cones, e.g. at 0 and pi/2 for dtheta = pi/24) are NaN; they took other
+% sectors' places, and the result had fewer values than res_theta. An odd
+% number of sectors has no sector at pi/2 (it had 2n values for 2n + 1
+% angles)
+nSector = round(pi / dtheta);
+if mod(nSector, 2) ~= 0
+    error('XR_FSC_resolution:oddSectorNumber', ['The half circle has %d sectors (pi / dtheta): an ', ...
+        'even number is needed, so that x (pi / 2) is one of them.'], nSector);
+end
+res_s = NaN(1, nSector);
+res_s(round(thetas / dtheta) + 1) = res_mat;
+cind = nSector / 2 + 1;
+res_out = [res_s(cind : end), res_s(1:end), res_s(1 : cind)]';
 
 res.comp_angles = thetas; 
 res.points = points; 

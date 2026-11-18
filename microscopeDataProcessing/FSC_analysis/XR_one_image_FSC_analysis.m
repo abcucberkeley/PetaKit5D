@@ -88,12 +88,19 @@ if ~isempty(bbox)
 end
 
 % test permutation of x and y axes
+% (the pixel sizes of the axes after the permutation, and the dz of the FSC's
+% plane, which is the second and third axes: for 'xy', x and y, so the
+% resize and the resolution took z's pixel size for y)
+pixelSizes = [xyPixelSize, xyPixelSize, dz];
+fscDz = dz;
 switch resAxis 
     case 'xz'
     case 'yz'
         im = permute(im, [2, 1, 3]);        
     case 'xy'
         im = permute(im, [3, 2, 1]);
+        pixelSizes = pixelSizes([3, 2, 1]);
+        fscDz = xyPixelSize;
 end
 
 % resize to isotropic voxels and crop to 2 * halfSize if any size is greater:
@@ -102,7 +109,7 @@ end
 sz = size(im, 1 : 3);
 psz = min(xyPixelSize, dz);
 if dz ~= xyPixelSize
-    rsz = round(sz .* [xyPixelSize, xyPixelSize, dz] / psz);
+    rsz = round(sz .* pixelSizes / psz);
 else
     rsz = sz;
 end
@@ -132,16 +139,16 @@ im = permute(im, [2, 4, 6, 1, 3, 5]);
 
 % fsc computing
 [fsc_1, res_1] = XR_FSC(im(:, :, :, 1, 1, 1), im(:, :, :, 2, 2, 2), ...
-    'xyPixelSize', xyPixelSize, 'dz', dz, 'dr', dr, 'dtheta', dtheta, 'halfSize', halfSize, ...
+    'xyPixelSize', xyPixelSize, 'dz', fscDz, 'dr', dr, 'dtheta', dtheta, 'halfSize', halfSize, ...
     'skipConeRegion', skipConeRegion);
 [fsc_2, res_2] = XR_FSC(im(:, :, :, 2, 1, 1), im(:, :, :, 1, 2, 2), ...
-    'xyPixelSize', xyPixelSize, 'dz', dz, 'dr', dr, 'dtheta', dtheta, 'halfSize', halfSize, ...
+    'xyPixelSize', xyPixelSize, 'dz', fscDz, 'dr', dr, 'dtheta', dtheta, 'halfSize', halfSize, ...
     'skipConeRegion', skipConeRegion);    
 [fsc_3, res_3] = XR_FSC(im(:, :, :, 1, 2, 1), im(:, :, :, 2, 1, 2), ...
-    'xyPixelSize', xyPixelSize, 'dz', dz, 'dr', dr, 'dtheta', dtheta, 'halfSize', halfSize, ...
+    'xyPixelSize', xyPixelSize, 'dz', fscDz, 'dr', dr, 'dtheta', dtheta, 'halfSize', halfSize, ...
     'skipConeRegion', skipConeRegion);    
 [fsc_4, res_4] = XR_FSC(im(:, :, :, 1, 1, 2), im(:, :, :, 2, 2, 1), ...
-    'xyPixelSize', xyPixelSize, 'dz', dz, 'dr', dr, 'dtheta', dtheta, 'halfSize', halfSize, ...
+    'xyPixelSize', xyPixelSize, 'dz', fscDz, 'dr', dr, 'dtheta', dtheta, 'halfSize', halfSize, ...
     'skipConeRegion', skipConeRegion);    
 
 fsc_cell = {fsc_1, fsc_2, fsc_3, fsc_4};
@@ -151,8 +158,8 @@ res_cell = {res_1, res_2, res_3, res_4};
 fsc_mu = fsc_1;
 fsc_mu.fsc = (fsc_1.fsc + fsc_2.fsc + fsc_3.fsc + fsc_4.fsc) / 4;
 
-[res_mu] = XR_FSC_resolution(fsc_mu, 'xyPixelSize', xyPixelSize, 'dz', dz, 'resThreshMethod', resThreshMethod, ...
-    'resThresh', resThresh, 'debug', debug);
+[res_mu] = XR_FSC_resolution(fsc_mu, 'xyPixelSize', xyPixelSize, 'dz', fscDz, 'resThreshMethod', resThreshMethod, ...
+    'resThresh', resThresh, 'dtheta', dtheta, 'debug', debug);
 
 end
 
