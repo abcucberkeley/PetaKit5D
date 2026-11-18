@@ -1306,6 +1306,26 @@ def test_chunked_conversions_equal_matlabs_cast(n):
     np.testing.assert_array_equal(df._to_class(vol, "double", n), vol.astype(np.float64))
 
 
+@pytest.mark.parametrize("cls", ["uint16", "single"])
+def test_threaded_kernel_conversion_equals_the_chunked_one(monkeypatch, cls):
+    """large arrays go through kernels.ops.convert (threaded) when it is built; it gives the
+    chunked NumPy path's values, also for NaN, Inf, negative and saturating values"""
+    from petakit5d.kernels import ops
+
+    if not ops.extension_available():
+        pytest.skip("the core extension is not built")
+    rng = CounterRNG(11, "kernel")
+    size = 3 * df._CHUNK + 7
+    a = (rng.uniform((size,), np.float32) * np.float32(80000) - np.float32(5000)).astype(np.float32)
+    a[:8] = np.float32([0.49999997, 2.5, -0.5, 65535.5, np.nan, np.inf, -np.inf, 1.5])
+    vol = a.reshape(1, 1, size)
+    fast = df._to_class(vol, cls, 4)
+    monkeypatch.setattr(ops, "extension_available", lambda: False)
+    slow = df._to_class(vol, cls, 4)
+    assert fast.dtype == slow.dtype and fast.flags.c_contiguous
+    np.testing.assert_array_equal(fast, slow)
+
+
 def test_scale_contrast_slabs_equal_one_pass():
     rng = CounterRNG(5, "slabs")
     a = (rng.uniform((40, 300, 400), np.float32) * 1000).astype(np.float32)

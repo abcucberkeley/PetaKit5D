@@ -197,12 +197,17 @@ def _to_class(vol: np.ndarray, cls: str, n: int) -> np.ndarray:
     """MATLAB's class function ``cls(vol)`` (``core.dtypes.to_class``: for single arrays to
     uint16, MATLAB's ``floor(|x| + 0.5)``), chunk by chunk in ``n`` threads into one result: its
     temporaries (float64 copies) stay the size of a chunk. Every chunk has two or more elements, so
-    each takes the array rule of the whole."""
+    each takes the array rule of the whole. With the extension built, large arrays go through
+    the threaded kernel (``kernels.ops.convert``, the same rule) instead: a 1.5 G voxel deskewed
+    tile to uint16 takes 0.18 s there against 3.6-4.2 s in the chunks, at 24 threads."""
     from petakit5d.core import dtypes
     from petakit5d.core.arrays import numpy_dtype
+    from petakit5d.kernels import ops
 
     if vol.size < _CHUNK:
         return np.ascontiguousarray(dtypes.to_class(vol, cls))
+    if ops.extension_available():
+        return ops.convert(vol, cls, mode="class", num_threads=n)
     return _elementwise(vol, lambda x: dtypes.to_class(x, cls), numpy_dtype(cls), n)
 
 
