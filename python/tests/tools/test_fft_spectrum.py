@@ -743,8 +743,10 @@ def test_the_tasks_get_matlabs_text(tmp_path, monkeypatch, capsys):
         out_size=(41, 43, 45),
     )
     assert "Out pixel size: 1.083333e-01 um" in capsys.readouterr().out
-    assert seen["inputs"] == [f"{tmp_path}/b_CamB.tif"]
-    assert seen["outputs"] == [f"{tmp_path}/FFT/b_CamB.tif"]
+    # the folder as the code gives it (with '/' on Windows too), joined with '/'
+    posix = tmp_path.as_posix()
+    assert [p.replace("\\", "/") for p in seen["inputs"]] == [f"{posix}/b_CamB.tif"]
+    assert [p.replace("\\", "/") for p in seen["outputs"]] == [f"{posix}/FFT/b_CamB.tif"]
     kw = seen["tasks"][0].kwargs
     # %0.20d of a non-integer is %e with 20 digits (exact); %d of the background %e (7 digits)
     assert kw["xy_pixel_size"] == 0.1083333333333333
