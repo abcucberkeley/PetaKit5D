@@ -5,8 +5,10 @@ function [] = compileAllMexFiles(varargin)
 % path to the PetaKit5D base dir. Linux and Windows use the configured mex
 % compilers (GCC, MinGW-w64 on Windows, e.g., with MW_MINGW64_LOC set to
 % the MinGW folder). ARM macOS uses Homebrew gcc@13 (brew install gcc@13)
-% with the GCC runtime libraries linked statically, so that the mex files
-% don't need Homebrew to run.
+% with libstdc++ and libgcc linked statically and OpenMP from the libgomp
+% bundled with cpp-tiff (io/cpp-tiff/macArm), loaded through @rpath, so that
+% the mex files don't need Homebrew to run and share one OpenMP runtime with
+% cpp-tiff and cpp-zarr.
 
 ip = inputParser;
 ip.CaseSensitive = false;
@@ -57,9 +59,20 @@ mexFiles = {'deskew_rotate/mex', 'skewed_space_interp_defined_stepsize_mex.c', t
     'decon/mex', 'decon_lucy_accel_mex.cpp', false, {}, ' -ffp-contract=off';
     'unmix/mex', 'unmix_channels_sum_mex.cpp', false, {}, ' -ffp-contract=off'};
 
+% on macOS, a copy of the bundled libgomp whose install name is
+% @rpath/libgomp.1.dylib to link against (the bundled file keeps Homebrew's)
+gompDir = '';
+if ismac
+    gompDir = tempname;
+    mkdir(gompDir);
+    cleanupObj = onCleanup(@() rmdir(gompDir, 's'));
+    copyfile([srcDir, '/io/cpp-tiff/macArm/libgomp.1.dylib'], gompDir);
+    runCommand(sprintf('install_name_tool -id @rpath/libgomp.1.dylib "%s/libgomp.1.dylib" 2> /dev/null', gompDir));
+end
+
 for i = 1 : size(mexFiles, 1)
     cd([srcDir, '/', mexFiles{i, 1}]);
-    buildMex(mexFiles{i, 2}, mexFiles{i, 3}, mexFiles{i, 4}, mexFiles{i, 5});
+    buildMex(mexFiles{i, 2}, mexFiles{i, 3}, mexFiles{i, 4}, mexFiles{i, 5}, gompDir, mexFiles{i, 1});
 end
 
 % the other decon mex files, on Linux only. The CPU mex uses interleaved complex
@@ -69,23 +82,23 @@ end
 % Windows, and macOS has no CUDA.
 if isunix && ~ismac
     cd([srcDir, '/decon/mex']);
-    buildMex('decon_lucy_rfft_mex.cpp', false, [{'-R2018a'}, matlabFFTWArgs()], ' -ffp-contract=off');
+    buildMex('decon_lucy_rfft_mex.cpp', false, [{'-R2018a'}, matlabFFTWArgs()], ' -ffp-contract=off', '', '');
     buildCudaMex('decon_lucy_rfft_gpu_mex.cu');
     buildCudaMex('decon_mask_edge_erosion_gpu_mex.cu');
     % the registration's windowed normalized cross-correlation, with the
     % same FFTs as MATLAB's as the CPU decon mex
     cd([srcDir, '/stitch/mex']);
-    buildMex('normxcorr3_window_mex.cpp', false, [{'-R2018a'}, matlabFFTWArgs()], ' -ffp-contract=off');
+    buildMex('normxcorr3_window_mex.cpp', false, [{'-R2018a'}, matlabFFTWArgs()], ' -ffp-contract=off', '', '');
 end
 
 if ismac
-    % the mex files must not load libraries from Homebrew
+    % the mex files must not load libraries from or search Homebrew
     for i = 1 : size(mexFiles, 1)
         [~, fsn] = fileparts(mexFiles{i, 2});
         mexFn = sprintf('%s/%s/%s.%s', srcDir, mexFiles{i, 1}, fsn, mexext);
-        [~, deps] = system(sprintf('otool -L "%s"', mexFn));
+        [~, deps] = system(sprintf('otool -l "%s"', mexFn));
         if contains(deps, '/opt/homebrew/')
-            warning('%s still loads libraries from Homebrew:\n%s', mexFn, deps);
+            warning('%s still names Homebrew folders:\n%s', mexFn, deps);
         end
     end
 end
@@ -95,8 +108,9 @@ cd(baseDir);
 end
 
 
-function [] = buildMex(srcFn, useAVX, extraArgs, extraFlags)
-% build one mex file in the current folder
+function [] = buildMex(srcFn, useAVX, extraArgs, extraFlags, gompDir, mexDir)
+% build one mex file in the current folder (mexDir, relative to
+% microscopeDataProcessing; gompDir has the libgomp to link on macOS)
 
 [~, ~, ext] = fileparts(srcFn);
 isCpp = strcmp(ext, '.cpp');
@@ -115,9 +129,17 @@ if ~ismac
     return;
 end
 
-% ARM macOS with Homebrew gcc@13; libstdc++ is linked statically, and with
-% -static-libgcc GCC on macOS also links libgcc and libgomp statically
+% ARM macOS with Homebrew gcc@13; libstdc++ and libgcc are linked
+% statically. With -fopenmp at the link GCC would link libgomp statically
+% (with -static-libgcc), so that every mex file had an OpenMP runtime of its
+% own, or Homebrew's by absolute path. Instead the mex file loads the libgomp
+% bundled with cpp-tiff through @rpath, from io/cpp-tiff/macArm relative to
+% its folder; without the compiler's default rpaths (Homebrew folders), and
+% without the debug map (-Wl,-S), which names the build machine's folders of
+% the static libraries' object files.
 gccDir = '/opt/homebrew/opt/gcc@13/lib/gcc/13';
+upDir = repmat('../', 1, numel(strsplit(mexDir, '/')));
+macLink = sprintf('-static-libgcc -nodefaultrpaths -Wl,-S -Wl,-rpath,@loader_path/%sio/cpp-tiff/macArm', upDir);
 macFlags = ['-fno-common -arch arm64 -mmacosx-version-min=11.0 -fexceptions ', ...
     '-isysroot /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk -O3 -fopenmp ', ...
     '-DMATLAB_DEFAULT_RELEASE=R2017b -DUSE_MEX_CMD -DMATLAB_MEX_FILE', extraFlags];
@@ -126,10 +148,10 @@ if any(strcmp(extraArgs, '-R2018a'))
 end
 if isCpp
     mex('-v', 'CXX=/opt/homebrew/bin/g++-13', 'CXXOPTIMFLAGS=-O3 -DNDEBUG', ['CXXFLAGS=', macFlags, ' -std=c++11'], ...
-        'LDFLAGS=$LDFLAGS -O3 -fopenmp -static-libgcc', [gccDir, '/libstdc++.a'], srcFn, extraArgs{:});
+        ['LDFLAGS=$LDFLAGS -O3 ', macLink], [gccDir, '/libstdc++.a'], [gompDir, '/libgomp.1.dylib'], srcFn, extraArgs{:});
 else
     mex('-v', 'CC=/opt/homebrew/bin/gcc-13', 'COPTIMFLAGS=-O3 -DNDEBUG', ['CFLAGS=', macFlags], ...
-        'LDFLAGS=$LDFLAGS -O3 -fopenmp -static-libgcc', srcFn, extraArgs{:});
+        ['LDFLAGS=$LDFLAGS -O3 ', macLink], [gompDir, '/libgomp.1.dylib'], srcFn, extraArgs{:});
 end
 
 end
@@ -185,5 +207,16 @@ if isempty(fns)
 end
 [~, ind] = min(cellfun(@numel, fns));
 args = {['-L', binDir], ['-l', regexprep(fns{ind}, '^lib|\.(so|dylib|dll)(\..*)?$', '')]};
+
+end
+
+
+function [] = runCommand(cmd)
+% run a shell command, error if it fails
+
+[status, out] = system(cmd);
+if status ~= 0
+    error('%s failed:\n%s', cmd, out);
+end
 
 end

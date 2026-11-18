@@ -17,8 +17,9 @@ classdef MexPackagingTest < pktest.TestCase
             % the PetaKit5D .mexmaca64 files used to load Homebrew's libgomp
             % by absolute path, so on a Mac without Homebrew gcc@13 they only
             % loaded if cpp-tiff/cpp-zarr had loaded the bundled libgomp
-            % first. compileAllMexFiles now links the GCC runtime statically;
-            % cpp-tiff/cpp-zarr load theirs from next to them (@loader_path).
+            % first. They now load the libgomp bundled with cpp-tiff
+            % (@rpath); cpp-tiff/cpp-zarr load theirs from next to them
+            % (@loader_path).
             files = [testCase.findFiles('*.mexmaca64'), testCase.findFiles('*.dylib')];
             files = files(contains(files, {'.mexmaca64', [filesep, 'macArm', filesep]}));
             testCase.assertNotEmpty(files);
@@ -33,6 +34,49 @@ classdef MexPackagingTest < pktest.TestCase
                 end
             end
             testCase.verifyEmpty(bad, sprintf('ARM macOS binaries with absolute library paths:\n  %s', strjoin(bad, '\n  ')));
+        end
+
+        function macArmMexFilesShareTheBundledOpenMPRuntime(testCase)
+            % each PetaKit5D .mexmaca64 file had an OpenMP runtime of its
+            % own (libgomp linked statically) or Homebrew's, besides the one
+            % cpp-tiff and cpp-zarr load, and searched Homebrew folders
+            % (LC_RPATH). They must load the libgomp bundled with cpp-tiff
+            % through @rpath, from io/cpp-tiff/macArm relative to their
+            % folder, and search only folders relative to themselves. The
+            % vendored binaries are left out.
+            files = testCase.findFiles('*.mexmaca64');
+            files = files(~contains(files, [fullfile('io', {'cpp-tiff', 'cpp-zarr'}), {'Parallel_Imaris_Writer'}]));
+            testCase.assertNotEmpty(files);
+            gompFn = fullfile(pktest.repoRoot(), 'microscopeDataProcessing', 'io', 'cpp-tiff', 'macArm', 'libgomp.1.dylib');
+            testCase.assertTrue(isfile(gompFn), 'cpp-tiff''s macArm folder has no libgomp.1.dylib.');
+
+            bad = {};
+            for i = 1 : numel(files)
+                [deps, ~, rpaths] = pktest.machoDylibs(files{i});
+                name = strrep(files{i}, [pktest.repoRoot(), filesep], '');
+                if ~all(startsWith(rpaths, '@loader_path'))
+                    bad{end + 1} = sprintf('%s: %d LC_RPATH folders not relative to @loader_path', name, ...
+                        nnz(~startsWith(rpaths, '@loader_path')));
+                end
+                if ~any(strcmp(deps, '@rpath/libgomp.1.dylib'))
+                    bad{end + 1} = sprintf('%s doesn''t load @rpath/libgomp.1.dylib', name);
+                    continue;
+                end
+                % the first rpath folder with the file is the one loaded
+                folder = fileparts(files{i});
+                found = '';
+                for j = 1 : numel(rpaths)
+                    fn = fullfile(strrep(rpaths{j}, '@loader_path', folder), 'libgomp.1.dylib');
+                    if isfile(fn)
+                        found = fn;
+                        break;
+                    end
+                end
+                if isempty(found) || ~testCase.sameFile(found, gompFn)
+                    bad{end + 1} = sprintf('%s: @rpath/libgomp.1.dylib isn''t cpp-tiff''s', name);
+                end
+            end
+            testCase.verifyEmpty(bad, sprintf('ARM macOS mex files without the bundled OpenMP runtime:\n  %s', strjoin(bad, '\n  ')));
         end
 
         function linuxTiffZarrBinariesUseTheirOwnCodecs(testCase)
@@ -95,6 +139,24 @@ classdef MexPackagingTest < pktest.TestCase
     end
 
     methods (Static, Access = private)
+        function [tf] = sameFile(fn1, fn2)
+            % whether two absolute paths name the same file, after . and ..
+            tf = strcmp(MexPackagingTest.normalizePath(fn1), MexPackagingTest.normalizePath(fn2));
+        end
+
+        function [fn] = normalizePath(fn)
+            parts = strsplit(strrep(fn, '\', '/'), '/');
+            out = {};
+            for i = 1 : numel(parts)
+                if strcmp(parts{i}, '..') && ~isempty(out)
+                    out(end) = [];
+                elseif ~any(strcmp(parts{i}, {'.', ''})) || i == 1
+                    out{end + 1} = parts{i};
+                end
+            end
+            fn = strjoin(out, '/');
+        end
+
         function [files] = findFiles(pattern)
             % (not in folders whose names start with a dot, such as other
             % checkouts of the repository inside it)
