@@ -938,11 +938,19 @@ def test_the_kernels_window_is_the_numpy_window(shape, bounds, threads):
 
 
 def test_the_kernels_abs_is_hypotf():
-    """the decon kernels' abs equals the NumPy hypotf (both MATLAB's, probe.abs*) on dense and
-    special values"""
+    """the shared abs kernel (kernels.ops.complex_abs, which the back projector and the FFT
+    spectra use) equals the NumPy hypotf (both MATLAB's, probe.abs*) on dense and special
+    values, at any thread count"""
+    from petakit5d.kernels import ops
+    from petakit5d.tools import fft_spectrum
+
     for x, y in ((probe_single(1), probe_single(2)), special_pairs()):
         c = _complex(x, y)
-        assert B._abs(c, 3).tobytes() == B._abs_numpy(c, 3).tobytes()
+        ref = ops.complex_abs_ref(c).tobytes()
+        for t in (1, 3):
+            assert ops.complex_abs(c, num_threads=t).tobytes() == ref
+        assert B._abs(c, 3).tobytes() == ref
+        assert fft_spectrum._abs(c, 2).tobytes() == ref
 
 
 @pytest.mark.parametrize("psz", [(12, 9, 7), (10, 16, 13), (1, 9, 4)])

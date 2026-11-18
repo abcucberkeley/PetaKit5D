@@ -21,7 +21,6 @@
 //   MATLAB's cart2sph and sph2cart (fdlibm and msun in C), the 2 nearest edge points by the squared
 //   distance summed over y, x, z (ties to the lower index; found on a grid of cells), rn weighted with
 //   the distances of the first nE voxels (MATLAB's indexing), the cos^2 taper.
-// abs (R02): MATLAB's abs of complex single values, msun's hypotf (measured), MATLAB's NaN for a NaN part.
 #include <omp.h>
 
 #include <algorithm>
@@ -682,53 +681,6 @@ double fd_sincos(double x, bool sine) {
     return q == 0 ? c : (q == 1 ? -s : (q == 2 ? -c : s));
 }
 
-inline float f_of(int32_t w) {
-    float f;
-    std::memcpy(&f, &w, 4);
-    return f;
-}
-
-// msun hypotf of |parts| with the high words ha >= hb (signs cleared), MATLAB's NaN for a NaN part
-float m_hypotf(int32_t ha, int32_t hb) {
-    constexpr int32_t HI = static_cast<int32_t>(0xFFFFF000u);
-    if ((ha - hb) > 0x0F000000) return f_of(ha) + f_of(hb);
-    if (ha >= 0x7F800000) return ha > 0x7F800000 ? f_of(0x7FC00000) : INFINITY;
-    float a = f_of(ha), b = f_of(hb);
-    int k = 0;
-    if (ha > 0x58800000) {
-        ha -= 0x22000000;
-        hb -= 0x22000000;
-        k = 68;
-        a = f_of(ha);
-        b = f_of(hb);
-    }
-    if (hb < 0x26800000) {
-        if (hb == 0) return f_of(ha);
-        if (hb <= 0x007FFFFF) {
-            // the high words are not read again after this scaling
-            a *= 0x1p126f;
-            b *= 0x1p126f;
-            k = -126;
-        } else {
-            ha += 0x22000000;
-            hb += 0x22000000;
-            k = -68;
-            a = f_of(ha);
-            b = f_of(hb);
-        }
-    }
-    float w = a - b, h;
-    if (w > b) {
-        const float t1 = f_of(ha & HI);
-        h = std::sqrt(t1 * t1 - (b * (-b) - (a - t1) * (a + t1)));
-    } else {
-        const float y1 = f_of(hb & HI), t1 = f_of((ha + 0x00800000) & HI);
-        h = std::sqrt(t1 * y1 - (w * (-w) - (t1 * (b - y1) + ((a + a) - t1) * b)));
-    }
-    if (k != 0) h = f_of(0x3F800000 + (k << 23)) * h;
-    return h;
-}
-
 // the unit direction (y, x, z) and the radius of the offset (dx, dy, dz): MATLAB's cart2sph and
 // sph2cart with radius 1, given the plane's hypot(dx, dy) and cos and sin of atan2(dy, dx)
 inline void direction(double h, double caz, double saz, double dz, double* v, double* r) {
@@ -741,18 +693,6 @@ inline void direction(double h, double caz, double saz, double dz, double* v, do
 }
 
 }  // namespace
-
-void omw_abs(const float* c, idx_t n, float* out, int nThreads) {
-#pragma omp parallel for num_threads(nThreads) schedule(static)
-    for (idx_t i = 0; i < n; i++) {
-        int32_t hx, hy;
-        std::memcpy(&hx, c + 2 * i, 4);
-        std::memcpy(&hy, c + 2 * i + 1, 4);
-        hx &= 0x7FFFFFFF;
-        hy &= 0x7FFFFFFF;
-        out[i] = m_hypotf(std::max(hx, hy), std::min(hx, hy));
-    }
-}
 
 bool omw_window_values(const idx_t* psz, const int64_t* et, idx_t nE, double l, double u, double* mask,
                        int nThreads) {

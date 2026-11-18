@@ -146,7 +146,5 @@ bool omw_sortdesc(const float* a, idx_t n, double* out, int nt);
 // sph2cart, the 2 nearest edge points, the radii weighted with the first voxels' distances); false where
 // MATLAB computes every voxel (a zero weight or radius)
 bool omw_window_values(const idx_t* psz, const int64_t* et, idx_t ne, double l, double u, double* mask, int nt);
-// MATLAB's abs of n complex singles (interleaved): msun's hypotf, MATLAB's NaN for a NaN part
-void omw_abs(const float* c, idx_t n, float* out, int nt);
 
 }  // namespace pk5d::decon

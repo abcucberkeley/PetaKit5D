@@ -189,67 +189,6 @@ def _divide_single(a: np.ndarray, s: float, nt: int) -> np.ndarray:
     return out
 
 
-_HI = np.int32(-4096)  # 0xfffff000: the high 12 bits of a single's significand and its exponent
-
-
-def _f32(w: np.ndarray) -> np.ndarray:
-    return w.view(np.float32)
-
-
-def _hypotf_medium(ha: np.ndarray, hb: np.ndarray) -> np.ndarray:
-    """msun's hypotf for medium a >= b given as their bits (signs cleared): sqrt(a^2 + b^2)
-    from the products of their high parts, in single"""
-    a, b = _f32(ha), _f32(hb)
-    w = a - b
-    t1 = _f32(ha & _HI)
-    far = np.sqrt(t1 * t1 - (b * (-b) - (a - t1) * (a + t1)))
-    y1 = _f32(hb & _HI)
-    t1 = _f32((ha + 0x00800000) & _HI)
-    near = np.sqrt(t1 * y1 - (w * (-w) - (t1 * (b - y1) + ((a + a) - t1) * b)))
-    return np.where(w > b, far, near)
-
-
-def _hypotf_rest(ha: np.ndarray, hb: np.ndarray) -> np.ndarray:
-    """msun's hypotf where a / b > 2^30, a is Inf or NaN, or a or b is scaled first"""
-    a, b = _f32(ha).copy(), _f32(hb).copy()
-    direct = (ha - hb) > 0x0F000000
-    special = ~direct & (ha >= 0x7F800000)
-    big = ~direct & ~special & (ha > 0x58800000)
-    small = ~direct & ~special & (hb < 0x26800000)
-    zero = small & (hb == 0)
-    sub = small & ~zero & (hb <= 0x007FFFFF)
-    tiny = small & ~zero & ~sub
-    k = np.zeros(ha.shape, np.int32)
-    ha, hb = ha.copy(), hb.copy()
-    # a > 2^50: both scaled by 2^-68; b < 2^-50: by 2^68, or for a subnormal b by 2^126 (the
-    # high words of a and b are not read again there)
-    ha[big] -= 0x22000000
-    hb[big] -= 0x22000000
-    k[big] = 68
-    ha[tiny] += 0x22000000
-    hb[tiny] += 0x22000000
-    k[tiny] = -68
-    a = np.where(big | tiny, _f32(ha), a)
-    b = np.where(big | tiny, _f32(hb), b)
-    a[sub] *= np.float32(2.0**126)
-    b[sub] *= np.float32(2.0**126)
-    k[sub] = -126
-    w = a - b
-    t1 = _f32(ha & _HI)
-    far = np.sqrt(t1 * t1 - (b * (-b) - (a - t1) * (a + t1)))
-    y1 = _f32(hb & _HI)
-    t1 = _f32((ha + 0x00800000) & _HI)
-    near = np.sqrt(t1 * y1 - (w * (-w) - (t1 * (b - y1) + ((a + a) - t1) * b)))
-    h = np.where(w > b, far, near)
-    h = np.where(k != 0, _f32(np.int32(0x3F800000) + (k << 23)) * h, h)
-    h = np.where(direct, _f32(ha) + _f32(hb), h)
-    h = np.where(zero, _f32(ha), h)
-    # MATLAB's NaN for a NaN part (also next to Inf, where hypotf gives Inf), else Inf
-    nan = special & (ha > 0x7F800000)
-    h = np.where(special & ~nan, np.float32(np.inf), h)
-    return np.where(nan, _f32(np.int32(0x7FC00000)), h)
-
-
 def _ext():
     from petakit5d._ext import load
 
@@ -257,34 +196,10 @@ def _ext():
 
 
 def _abs(otf: np.ndarray, nt: int) -> np.ndarray:
-    """MATLAB's ``abs`` of the single OTF: for complex values msun's ``hypotf`` (e_hypotf.c in
-    single precision, with MATLAB's NaN for a NaN part; MATLAB's bits, measured), in the decon
-    kernels (``_abs_numpy`` writes it out in NumPy); for real values the magnitude"""
-    if not np.iscomplexobj(otf):
-        return np.abs(otf)
-    c = np.ascontiguousarray(otf, dtype=np.complex64).reshape(-1).view(np.float32)
-    return _ext().omw_abs(c, nt).reshape(otf.shape)
+    """MATLAB's ``abs`` of the single OTF (``kernels.ops.complex_abs``)"""
+    from petakit5d.kernels import ops
 
-
-def _abs_numpy(otf: np.ndarray, nt: int) -> np.ndarray:
-    """``_abs`` of complex single values in NumPy (the reference of the kernel)"""
-    out = np.empty(otf.shape, np.float32)
-    bits = np.ascontiguousarray(otf).reshape(-1).view(np.int32).reshape(-1, 2)
-    fo = out.reshape(-1)
-
-    def run(i0: int, i1: int) -> None:
-        hx = bits[i0:i1, 0] & 0x7FFFFFFF
-        hy = bits[i0:i1, 1] & 0x7FFFFFFF
-        ha, hb = np.maximum(hx, hy), np.minimum(hx, hy)
-        h = _hypotf_medium(ha, hb)
-        rest = np.flatnonzero(((ha - hb) > 0x0F000000) | (ha > 0x58800000) | (hb < 0x26800000))
-        if rest.size:
-            h[rest] = _hypotf_rest(ha[rest], hb[rest])
-        fo[i0:i1] = h
-
-    with np.errstate(all="ignore"):
-        _par(run, fo.size, nt)
-    return out
+    return ops.complex_abs(otf, num_threads=nt)
 
 
 def _sorted_descending(a: np.ndarray, nt: int) -> np.ndarray:

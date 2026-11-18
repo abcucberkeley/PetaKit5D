@@ -132,14 +132,11 @@ def _read_region(fn: str, zarr_file: bool, box: tuple[int, ...]) -> np.ndarray:
 
 
 def _abs(c: np.ndarray, nt: int) -> np.ndarray:
-    """MATLAB's abs of complex single (msun's hypotf; the decon kernels'), of real data the
-    magnitude"""
-    if not np.iscomplexobj(c):
-        return np.abs(c)
-    from petakit5d._ext import load
+    """MATLAB's abs of complex single (msun's hypotf; ``kernels.ops.complex_abs``), of real data
+    the magnitude"""
+    from petakit5d.kernels import ops
 
-    flat = np.ascontiguousarray(c, dtype=np.complex64).reshape(-1).view(np.float32)
-    return load("decon").omw_abs(flat, nt).reshape(c.shape)
+    return ops.complex_abs(c, num_threads=nt)
 
 
 def _max_all(a: np.ndarray) -> np.float32:

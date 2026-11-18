@@ -12,6 +12,7 @@ one. These primitives give MATLAB's bits at MATLAB's speed:
 - ``clamp(x, lo, hi)``: ``max(min(x, hi), lo)``.
 - ``compare(x, op, value)``: ``x == value`` (``'eq'``, ``'ne'``, ``'lt'``, ``'le'``, ``'gt'``,
   ``'ge'``) as a logical array.
+- ``complex_abs(c)``: MATLAB's ``abs`` of complex single data (msun's ``hypotf``).
 - ``sum_double(x)``: ``sum(x(:), 'double')`` in MATLAB's order at one thread, at any thread
   count, except where the last 4,096-block is short (decon_sum_double's order; ``sum_double``).
 
@@ -22,9 +23,9 @@ order first). ``sum_double`` adds in MATLAB's linear order (y fastest), read in 
 a transposing scratch; ``sum_double(v, matlab_layout=True)`` sums MATLAB's own array
 contiguously, for kernels that keep MATLAB's layout inside (faster: no transpose).
 Each primitive has a NumPy reference built on ``petakit5d.core.dtypes`` (``convert_ref``,
-``scale_offset_ref``, ``clamp_ref``, ``compare_ref``, ``sum_double_ref``), used when the
-extension is not built, and in the tests. ``num_threads`` (None or 0: all CPUs available)
-never changes a result.
+``scale_offset_ref``, ``clamp_ref``, ``compare_ref``, ``complex_abs_ref``, ``sum_double_ref``),
+used when the extension is not built, and in the tests. ``num_threads`` (None or 0: all CPUs
+available) never changes a result.
 """
 
 from __future__ import annotations
@@ -46,6 +47,8 @@ __all__ = [
     "clamp_ref",
     "compare",
     "compare_ref",
+    "complex_abs",
+    "complex_abs_ref",
     "convert",
     "convert_ref",
     "extension_available",
@@ -451,6 +454,106 @@ def compare(x, op: str, value: float, *, num_threads: int | None = None) -> np.n
     o = _empty_like(a, np.bool_)
     m.ops_compare(_flat(a), _flat(o), k, float(value), resolve_threads(num_threads), _BIND)
     return o
+
+
+# -- abs of complex single ---------------------------------------------------------------------
+
+_HF_HI = np.int32(-4096)  # 0xfffff000: the high 12 bits of a single's significand and its exponent
+
+
+def _f32(w: np.ndarray) -> np.ndarray:
+    return w.view(np.float32)
+
+
+def _hypotf_medium(ha: np.ndarray, hb: np.ndarray) -> np.ndarray:
+    """msun's hypotf for medium a >= b given as their bits (signs cleared): sqrt(a^2 + b^2)
+    from the products of their high parts, in single"""
+    a, b = _f32(ha), _f32(hb)
+    w = a - b
+    t1 = _f32(ha & _HF_HI)
+    far = np.sqrt(t1 * t1 - (b * (-b) - (a - t1) * (a + t1)))
+    y1 = _f32(hb & _HF_HI)
+    t1 = _f32((ha + 0x00800000) & _HF_HI)
+    near = np.sqrt(t1 * y1 - (w * (-w) - (t1 * (b - y1) + ((a + a) - t1) * b)))
+    return np.where(w > b, far, near)
+
+
+def _hypotf_rest(ha: np.ndarray, hb: np.ndarray) -> np.ndarray:
+    """msun's hypotf where a / b > 2^30, a is Inf or NaN, or a or b is scaled first"""
+    a, b = _f32(ha).copy(), _f32(hb).copy()
+    direct = (ha - hb) > 0x0F000000
+    special = ~direct & (ha >= 0x7F800000)
+    big = ~direct & ~special & (ha > 0x58800000)
+    small = ~direct & ~special & (hb < 0x26800000)
+    zero = small & (hb == 0)
+    sub = small & ~zero & (hb <= 0x007FFFFF)
+    tiny = small & ~zero & ~sub
+    k = np.zeros(ha.shape, np.int32)
+    ha, hb = ha.copy(), hb.copy()
+    # a > 2^50: both scaled by 2^-68; b < 2^-50: by 2^68, or for a subnormal b by 2^126 (the
+    # high words of a and b are not read again there)
+    ha[big] -= 0x22000000
+    hb[big] -= 0x22000000
+    k[big] = 68
+    ha[tiny] += 0x22000000
+    hb[tiny] += 0x22000000
+    k[tiny] = -68
+    a = np.where(big | tiny, _f32(ha), a)
+    b = np.where(big | tiny, _f32(hb), b)
+    a[sub] *= np.float32(2.0**126)
+    b[sub] *= np.float32(2.0**126)
+    k[sub] = -126
+    w = a - b
+    t1 = _f32(ha & _HF_HI)
+    far = np.sqrt(t1 * t1 - (b * (-b) - (a - t1) * (a + t1)))
+    y1 = _f32(hb & _HF_HI)
+    t1 = _f32((ha + 0x00800000) & _HF_HI)
+    near = np.sqrt(t1 * y1 - (w * (-w) - (t1 * (b - y1) + ((a + a) - t1) * b)))
+    h = np.where(w > b, far, near)
+    h = np.where(k != 0, _f32(np.int32(0x3F800000) + (k << 23)) * h, h)
+    h = np.where(direct, _f32(ha) + _f32(hb), h)
+    h = np.where(zero, _f32(ha), h)
+    # MATLAB's NaN for a NaN part (also next to Inf, where hypotf gives Inf), else Inf
+    nan = special & (ha > 0x7F800000)
+    h = np.where(special & ~nan, np.float32(np.inf), h)
+    return np.where(nan, _f32(np.int32(0x7FC00000)), h)
+
+
+def complex_abs_ref(c) -> np.ndarray:
+    """NumPy reference of ``complex_abs``."""
+    a = np.asarray(c)
+    if not np.iscomplexobj(a):
+        return np.abs(a)
+    out = np.empty(a.shape, np.float32)
+    bits = np.ascontiguousarray(a, dtype=np.complex64).reshape(-1).view(np.int32).reshape(-1, 2)
+    with np.errstate(all="ignore"):
+        hx = bits[:, 0] & 0x7FFFFFFF
+        hy = bits[:, 1] & 0x7FFFFFFF
+        ha, hb = np.maximum(hx, hy), np.minimum(hx, hy)
+        h = _hypotf_medium(ha, hb)
+        rest = np.flatnonzero(((ha - hb) > 0x0F000000) | (ha > 0x58800000) | (hb < 0x26800000))
+        if rest.size:
+            h[rest] = _hypotf_rest(ha[rest], hb[rest])
+    out.reshape(-1)[...] = h
+    return out
+
+
+def complex_abs(c, *, num_threads: int | None = None) -> np.ndarray:
+    """MATLAB's ``abs`` of complex single data: msun's ``hypotf`` (e_hypotf.c in single
+    precision; MATLAB's bits, measured), with MATLAB's NaN for a NaN part; complex double data
+    is taken as complex single (as both callers have it: OTFs and FFT spectra of single data);
+    real data: the magnitude (``np.abs``). The decon back projector's OTF threshold and the FFT
+    spectra share it."""
+    a = np.asarray(c)
+    if not np.iscomplexobj(a):
+        return np.abs(a)
+    m = _core()
+    if m is None or not hasattr(m, "ops_abs_single"):
+        return complex_abs_ref(a)
+    flat = np.ascontiguousarray(a, dtype=np.complex64).reshape(-1).view(np.float32)
+    out = np.empty(a.shape, np.float32)
+    m.ops_abs_single(flat, out.reshape(-1), resolve_threads(num_threads), _BIND)
+    return out
 
 
 # -- sum ---------------------------------------------------------------------------------------
