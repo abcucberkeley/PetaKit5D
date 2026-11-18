@@ -198,6 +198,14 @@ these were picked; confirm them with the author.
 | `XR_ExM_PunctaRemoval_zarr` | `MinThreshold` defaults to `0` instead of `[0, 0]` (a per-channel vector can't work for a single zarr), and empty `MaxThreshold`/`BaseThreshold` don't bound the masks. |
 | `XR_runDetTrack3d` | `DetectionMethod` defaults to `'lowSNR'` (the old default `'update_3'` matched no method; the demos pair `'lowSNR'` with `Analysis_update_3`). |
 | `XR_deskew_rotate_data_wrapper` | Deskew only (`rotate=false`) uses the separate path even with `DSRCombined=true`, as `XR_microscopeAutomaticProcessing` does, instead of rejecting the combination. |
+| `XR_deskew_rotate_data_wrapper` | Objective scan results stay in `DSR/`: the check for `'DSR/'` (line 200) never matches the default `'DSR'` since 9911d83, so the rename to `rotated/` hasn't happened since, and later steps and scripts look for `DSR/`. |
+| `XR_deskewRotateZarr` | With a factor along y (the batches' axis), the batches resample on the grid of the whole result where a batch's own grid is off it; where it lies on it (e.g., integer factors that divide the rows), they keep their own grid, as before. A result row that samples the input region's last row exactly takes that row, as the regular path does. The result is the regular path's but for a value off by 1 at a few interpolation ties (7 of 849,760 voxels for 0.8 in a probe; it was up to 276 counts in 6.8% of the voxels for 1.5). |
+| `XR_matlab_stitching_wrapper` | A two-value `xyMaxOffset` is `[x, y]` (the max offsets are in x, y, z order, as `stitch_volume_size_estimate` already read it). `edgeArtifacts` is not applied with a `processFunPath`, which replaces the edge erosion (the demo composes the erosion into its own function). |
+| `XR_FSC_resolution` | The sectors of the full circle are placed by their angles: those inside the skipped cones (e.g., at 0 and pi/2 for `dtheta = pi/24`) are NaN, and the wrapper's mean resolution omits them. An odd number of sectors (`pi / dtheta`) is refused (`XR_FSC_resolution:oddSectorNumber`), as x (pi/2) is not one of them. |
+| `XR_FSC` | Images without signal (e.g., all zero) have no FSC: `XR_FSC:noSignal`, not an index error. |
+| `XR_crop_dataset` | A `'moving'` crop of a single time point is cropped with `inputBbox` (the first time point). |
+| `XR_ExM_PunctaRemoval_zarr` | An empty MIP background mask gives no threshold of its own: the base threshold stands in for it (for float data its mode was NaN, which removed the whole batch). |
+| `XR_chromatic_shift_correction_data_wrapper` | `mode` is `'valid'`, `'same'` or `'full'` in any case (others are refused), `chromaticOffset` has a `[y, x, z]` row per channel pattern, and with `largeFile` Zarr files are cropped in batches into Zarr results (padded with 0 only). |
 
 Not covered by a test:
 
@@ -212,7 +220,8 @@ Not covered by a test:
   A platform gap rather than a code bug, but README.md doesn't say so.
 - For objective scan, `XR_deskew_rotate_data_wrapper.m:200` compares
   `DSRDirName` with `'DSR/'`, but the default is `'DSR'`, so the intended
-  rename of the output folder to `rotated/` never happens.
+  rename of the output folder to `rotated/` never happens (kept: see the
+  choices above).
 
 ## Golden outputs
 
