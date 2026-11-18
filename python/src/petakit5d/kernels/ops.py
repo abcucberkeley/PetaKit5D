@@ -13,7 +13,7 @@ one. These primitives give MATLAB's bits at MATLAB's speed:
 - ``compare(x, op, value)``: ``x == value`` (``'eq'``, ``'ne'``, ``'lt'``, ``'le'``, ``'gt'``,
   ``'ge'``) as a logical array.
 - ``sum_double(x)``: ``sum(x(:), 'double')`` in MATLAB's order at one thread, at any thread
-  count (decon_sum_double).
+  count, except where the last 4,096-block is short (decon_sum_double's order; ``sum_double``).
 
 Arrays are the port's ``(z, y, x)`` C arrays of any shape (docs/conventions.md 1). The
 element-wise primitives run in memory order, so a MATLAB-layout Fortran array that a kernel
@@ -58,7 +58,8 @@ __all__ = [
 ]
 
 # MATLAB's sum(x, 'double') at one thread: index order up to 43 elements, one block of four
-# lanes up to 88,999, from 89,000 on blocks of 4,096 (each in four lanes) added in index order
+# lanes up to 88,999, from 89,000 on blocks of 4,096 (each in four lanes; a last block of up to
+# 43 elements in index order) added in index order
 SUM_SEQUENTIAL_UPTO = 43
 SUM_BLOCK_FROM = 89000
 SUM_BLOCK = 4096
@@ -558,6 +559,13 @@ def sum_double(x, *, matlab_layout: bool = False, num_threads: int | None = None
     sums added in index order. A sum of -0s is -0, an empty sum 0; a NaN sum has MATLAB's
     payload (that of the first NaN in MATLAB's operand order, ``_nan_exact_sum``). Logical,
     single, double and 8 to 32-bit integer data.
+
+    One difference from MATLAB's ``sum``: from 89,000 elements, a last block of 5 to 43
+    elements is added in four lanes like the others, as decon_lucy_accel_mex and
+    decon_sum_double's MATLAB fall-back add it (measured), where MATLAB's ``sum`` adds it in
+    index order (1 to 4 elements give the same value either way); the last bits of the value
+    and the NaN payload can differ there. ``matlabcompat.reduce`` sums such lengths itself;
+    ``kernels.decon.sum_double`` is decon_sum_double (the mex's order and payloads).
 
     A C-contiguous ``x`` is read in place (strided along y); ``matlab_layout=True`` takes
     MATLAB's own array ``(y, x, z, ...)`` instead (as a kernel that works in MATLAB's layout

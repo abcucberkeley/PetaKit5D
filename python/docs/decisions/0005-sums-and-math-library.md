@@ -65,8 +65,17 @@ two more rules of the order and the operand order that decides a NaN result's pa
   four lanes (values differ: 16 of 17 sums of 90,155 single values against MATLAB before the
   change). `kernels.ops.sum_double` and `sum_ordered` keep four lanes there, the order K08
   measured for `decon_sum_double` (the decon reference, unchanged); `reduce` sums those lengths
-  in NumPy. If `decon_lucy_accel_mex('sum')` adds four lanes there too, `decon_sum_double`
-  differs from MATLAB's one-thread `sum` for those lengths, which its help text says it equals.
+  in NumPy.
+- **decon_sum_double there (X06, black-box probes `PORT/agents/X06/probe/probe_sum*.m`):**
+  `decon_lucy_accel_mex('sum')` and `('lambda')`, at 1 and 4 threads, and decon_sum_double's
+  MATLAB fall-back add a short last block in four lanes like the other blocks (42 of 42 lengths
+  of 90,113 to 90,155 and 122,885 to 122,923 elements: 40 of them differ from MATLAB's
+  one-thread `sum` in double, with rounding data). So `decon_sum_double` differs from MATLAB's
+  `sum` for those lengths, which its help text says it equals; the port reproduces the mex
+  (`kernels.decon.sum_double`, `accel_lambda`). The mex's NaN payloads: the running sum is the
+  first operand, except for the last mod(n, 4) elements (the tail of the last block, added
+  one at a time), which are the first operand of their additions in `'lambda'` (both
+  classes) and in `'sum'` of single data (2,764 NaN pairs of `'sum'`, 5,528 of `'lambda'`).
 - **NaN payloads:** x86 returns the first NaN operand of an addition, quieted, and Inf - Inf
   gives MATLAB's NaN, so each output's payload follows MATLAB's operand order:
 

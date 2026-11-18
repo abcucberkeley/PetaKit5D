@@ -804,6 +804,146 @@ for _cls in ("single", "double"):
         )
     )
 
+# a short last block (5 to 43 elements from 89,000 on): the mex adds it in four lanes, MATLAB's
+# sum in index order; the last mod(n, 4) elements (the tail) are the first operand of their
+# additions in 'lambda' and in the 'sum' of single data (the NaN payloads show it)
+SHORT_LAST = [90112 + 5, 90112 + 7, 90112 + 17, 90112 + 43, 4096 * 30 + 6]
+# MATLAB sizes in which the tail crosses columns and planes of the (z, y, x) array
+SHORT_VOLUMES = [(5, 13, 1387), (1, 1, 90155)]
+NP_CLS = {"single": np.float32, "double": np.float64}
+
+
+def short_last(n: int, cls: str) -> np.ndarray:
+    """rounding data, then a last block [2^53, 1, 1, ...]: 2^53 in index order, more in four
+    lanes (the ones of a lane add up before they meet 2^53); exact in single and double"""
+    x = wide_range(n, cls, 100 + n % 89)
+    b0 = (n - 1) // 4096 * 4096
+    x[b0] = 2.0**53
+    x[b0 + 1 :] = 1
+    return x
+
+
+def tail_nans(n: int, cls: str, k: int) -> np.ndarray:
+    """two NaNs of distinct payloads in one lane of the last block, the second in the tail (k
+    even: the tail's first; k odd: the other way round)"""
+    dt, it = (np.float32, np.uint32) if cls == "single" else (np.float64, np.uint64)
+    pay = (0x7FC00001, 0xFFC12345) if cls == "single" else (0x7FF8000000000001, 0xFFF8123456789ABC)
+    a, b = (np.array([v], it).view(dt)[0] for v in (pay if k % 2 == 0 else pay[::-1]))
+    x = wide_range(n, cls, 110 + k)
+    t = n - 1 - (k // 2) % (n % 4)  # in the tail
+    x[t] = b
+    x[t - 4] = a  # the same lane, before the tail
+    return x
+
+
+for _cls in ("single", "double"):
+    for _ns in SHORT_LAST:
+        _x = {"x": V(lambda n=_ns, cls=_cls: short_last(n, cls))}
+        CASES += with_layouts(
+            Case(
+                f"accel.sum.short.{_cls}.n{_ns}",
+                matlab="decon_sum_double",
+                args=[Vol(In("x"))],
+                python=sum_case,
+                inputs=_x,
+            )
+        )
+        CASES += with_layouts(
+            Case(
+                f"accel.sum.mex.short.{_cls}.n{_ns}",
+                matlab="decon_lucy_accel_mex",
+                args=["sum", Vol(In("x")), 2],
+                python=sum_case,
+                inputs=_x,
+            )
+        )
+        CASES += with_layouts(
+            Case(
+                f"accel.lambda.mex.short.{_cls}.n{_ns}",
+                matlab="decon_lucy_accel_mex",
+                args=["lambda", Vol(In("j2")), In("y"), In("j4"), 3],
+                nargout=3,
+                python=accel_lambda_mex,
+                inputs={
+                    "j2": V(lambda n=_ns, cls=_cls: short_last(n, cls)),
+                    "y": V(lambda n=_ns, cls=_cls: np.zeros((n, 1), NP_CLS[cls])),
+                    "j4": V(lambda n=_ns, cls=_cls: np.ones((n, 1), NP_CLS[cls])),
+                },
+            )
+        )
+    for _sz in SHORT_VOLUMES:
+        _sid = "x".join(map(str, _sz))
+        CASES += with_layouts(
+            Case(
+                f"accel.sum.short.{_cls}.volume{_sid}",
+                matlab="decon_sum_double",
+                args=[Vol(In("x"))],
+                python=sum_case,
+                inputs={
+                    "x": V(
+                        lambda sz=_sz, cls=_cls: np.reshape(
+                            short_last(math.prod(sz), cls), sz, order="F"
+                        )
+                    )
+                },
+            )
+        )
+        _tv = {
+            "x": V(
+                lambda sz=_sz, cls=_cls: np.reshape(tail_nans(math.prod(sz), cls, 0), sz, order="F")
+            )
+        }
+        CASES += with_layouts(
+            Case(
+                f"accel.sum.mex.tailnan.{_cls}.volume{_sid}",
+                matlab="decon_lucy_accel_mex",
+                args=["sum", Vol(In("x")), 2],
+                python=sum_case,
+                inputs=_tv,
+            )
+        )
+        CASES += with_layouts(
+            Case(
+                f"accel.lambda.mex.tailnan.{_cls}.volume{_sid}",
+                matlab="decon_lucy_accel_mex",
+                args=["lambda", Vol(In("j2")), In("y"), In("j4"), 3],
+                nargout=3,
+                python=accel_lambda_mex,
+                inputs={
+                    "j2": _tv["x"],
+                    "y": V(lambda sz=_sz, cls=_cls: -np.zeros((math.prod(sz), 1), NP_CLS[cls])),
+                    "j4": V(lambda sz=_sz, cls=_cls: np.ones((math.prod(sz), 1), NP_CLS[cls])),
+                },
+            )
+        )
+    for _k in range(4):
+        for _ns in (90112 + 7, 90112 + 43):
+            _tx = {"x": V(lambda n=_ns, cls=_cls, k=_k: tail_nans(n, cls, k))}
+            CASES += with_layouts(
+                Case(
+                    f"accel.sum.mex.tailnan.{_cls}.n{_ns}.k{_k}",
+                    matlab="decon_lucy_accel_mex",
+                    args=["sum", Vol(In("x")), 2],
+                    python=sum_case,
+                    inputs=_tx,
+                )
+            )
+            # the NaNs in J_4: both sums (J_4 .* J_4 and (J_2 - Y) .* J_4) are NaN
+            CASES += with_layouts(
+                Case(
+                    f"accel.lambda.mex.tailnan.{_cls}.n{_ns}.k{_k}",
+                    matlab="decon_lucy_accel_mex",
+                    args=["lambda", Vol(In("j2")), In("y"), In("j4"), 3],
+                    nargout=3,
+                    python=accel_lambda_mex,
+                    inputs={
+                        "j2": V(lambda n=_ns, cls=_cls: np.ones((n, 1), NP_CLS[cls])),
+                        "y": V(lambda n=_ns, cls=_cls: np.zeros((n, 1), NP_CLS[cls])),
+                        "j4": _tx["x"],
+                    },
+                )
+            )
+
 # lambda's clamp (DeconAccelTest/lambdaIsClampedAsMatlabDoes), single columns
 
 
@@ -1871,6 +2011,43 @@ def test_a_nan_sum_has_the_payload_of_the_mexs_order():
     w = np.ones(n, np.float64)
     w[8], w[12] = a, b  # one lane: the running sum (a) is the first operand when b comes
     assert _bits(D.sum_double(w)) == _bits(a)
+
+
+@pytest.mark.parametrize("cls", ["single", "double"])
+@pytest.mark.parametrize("n", [90112 + 7, 90112 + 43, 4096 * 30 + 6])
+def test_the_tail_is_the_first_operand_where_the_mex_has_it_so(cls, n):
+    """the last mod(n, 4) elements (the tail of the last block): the first operand of their
+    additions in 'lambda' and in the 'sum' of single data, the second in the 'sum' of double data
+    (the mex, measured); flat, (z, y, x) volumes whose tail crosses columns and planes, MATLAB's
+    layout, any thread count"""
+    dt, it = (np.float32, np.uint32) if cls == "single" else (np.float64, np.uint64)
+    pay = (0x7FC00001, 0xFFC12345) if cls == "single" else (0x7FF8000000000001, 0xFFF8123456789ABC)
+    a, b = (np.array([v], it).view(dt)[0] for v in pay)
+    tail_first = cls == "single"
+    one, zero = np.ones(n, dt), np.zeros(n, dt)
+    shapes = [(n,), (n, 1, 1), (1, n, 1)] + ([(n // 2, 2, 1), (n // 2, 1, 2)] if n % 2 == 0 else [])
+    # each element of the tail (b), with a NaN (a) in its lane before the tail; and the element
+    # before the tail (not first)
+    for p in range(n - n % 4 - 1, n):
+        x = np.ones(n, dt)
+        x[p], x[p - 4] = b, a
+        first = b if tail_first and p >= n - n % 4 else a
+        want = _bits(np.float64(first))
+        for shape in shapes:
+            v = in_shape(x, np.empty(shape, dt)) if len(shape) > 1 else x
+            for t in (1, 3):
+                assert _bits(D.sum_double(v, threads=t)) == want, (p, shape, t)
+                if len(shape) > 1:
+                    got = D.sum_double(to_matlab(v), matlab_layout=True, threads=t)
+                    assert _bits(got) == want, (p, shape, t)
+        # lambda: the tail first in both classes (both sums NaN with the NaNs in J_4)
+        want = _bits(np.float64(b if p >= n - n % 4 else a))
+        for shape in shapes[:3]:
+            o, z, v = (in_shape(w, np.empty(shape, dt)) for w in (one, zero, x))
+            r = D.accel_lambda(o, z, v)
+            assert _bits(r.sums[0]) == want == _bits(r.sums[1]), (p, shape)
+            r = D.accel_lambda(v, z, o, threads=4)
+            assert _bits(r.sums[0]) == want, (p, shape)
 
 
 @pytest.mark.parametrize("cls", ["single", "double"])

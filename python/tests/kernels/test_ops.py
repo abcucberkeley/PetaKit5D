@@ -599,6 +599,15 @@ def _regime_data(n: int) -> np.ndarray:
     return v
 
 
+def _short_last_data(n: int, cls: str) -> np.ndarray:
+    """rounding data, then a last block [2^53, 1, 1, ...] (2^53 in index order, more in lanes)"""
+    v = _sum_data(n, cls).astype(np.float64)
+    b0 = (n - 1) // SUM_BLOCK * SUM_BLOCK
+    v[b0] = 2.0**53
+    v[b0 + 1 :] = 1
+    return np.asfortranarray(v.astype(NP[cls]))
+
+
 def _sid(shape) -> str:
     return "x".join(str(v) for v in shape)
 
@@ -713,6 +722,19 @@ SUM_CASES = (
         for n in (44, 50001, 88999)
     ]
     + [
+        # a short last block (5 to 43 elements from 89,000 on) is added in four lanes, as the
+        # decon mex adds it (MATLAB's sum adds it in index order: other bits)
+        Case(
+            f"sum_shortlast_mex_{cls}_{n}",
+            code="out = {decon_lucy_accel_mex('sum', in{1}, 1)};",
+            args=[Vol(In("x"))],
+            python=_both(_sum, ops.sum_double_ref),
+            inputs={"x": Value(lambda n=n, cls=cls: _short_last_data(n, cls))},
+        )
+        for cls in ("double", "single")
+        for n in (90112 + 7, 90112 + 17, 90112 + 43, 4096 * 30 + 6)
+    ]
+    + [
         # decon_sum_double's MATLAB fall-back gives the same bits
         Case(
             f"sum_block_sum_{cls}_{n}",
@@ -732,6 +754,19 @@ CASES = CONVERT_CASES + AFFINE_CASES + CLAMP_CASES + COMPARE_CASES + SUM_CASES
 @oracle.parametrize(CASES)
 def test_matlab(case, tmp_path):
     oracle.check(case, tmp_path)
+
+
+def test_complex_abs_of_real_data_is_the_magnitude():
+    """complex_abs: real data (any class) gives abs; complex double is taken as complex single;
+    the shape is kept"""
+    x = np.array([[-1.5, 2.0, -0.0], [np.inf, -np.inf, 3.0]])
+    assert ops.complex_abs(x).tobytes() == np.abs(x).tobytes()
+    i = np.array([-3, 4, -32767], np.int16)
+    assert ops.complex_abs(i).tolist() == [3, 4, 32767]
+    c = (x + 1j * x[::-1]).astype(np.complex128)
+    got = ops.complex_abs(c, num_threads=2)
+    assert got.dtype == np.float32 and got.shape == c.shape
+    assert got.tobytes() == ops.complex_abs_ref(c.astype(np.complex64)).tobytes()
 
 
 # -- kernel against reference, threads, layouts ------------------------------------------------

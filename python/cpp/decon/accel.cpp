@@ -14,13 +14,16 @@
 // products converted to double for the sums), a double scalar times a single array computed in double and
 // rounded to single, max(v, 0) is 0 for NaN and keeps -0 (MATLAB returns the first argument on a tie), and
 // min(NaN, 1) is 1. A sum that comes out NaN is summed again with the operands of each addition in the
-// mex's order (the running sum first; x86 returns the first NaN operand, quieted), since the fast loops
-// leave the operand order to the compiler.
+// mex's order (x86 returns the first NaN operand, quieted), since the fast loops leave the operand order to
+// the compiler. The mex's order, measured (decon_lucy_accel_mex of R2024b's Linux build): the running sum
+// first, except for the last mod(n, 4) elements (the tail of the last block, added one by one), which are the
+// first operand of their additions in 'lambda' and in the 'sum' of single data (kTailFirst).
 #include <algorithm>
 #include <cfloat>
 #include <cmath>
 #include <cstdint>
 #include <cstring>
+#include <type_traits>
 #include <vector>
 
 #include <pk5d/fpexact.hpp>
@@ -75,6 +78,7 @@ double add_blocks(const std::vector<double>& b) {
 template <typename T, bool W = true>
 struct LambdaElem {
     static constexpr int K = 2;
+    static constexpr bool kTailFirst = true;
     const T* j2;
     const T* y;
     const T* j4;
@@ -93,13 +97,15 @@ struct LambdaElem {
 template <typename T>
 struct SumElem {
     static constexpr int K = 1;
+    static constexpr bool kTailFirst = std::is_same_v<T, float>;
     const T* x;
     inline void at(idx_t i, double* v) const { v[0] = static_cast<double>(x[i]); }
 };
 
-// elements o, o + s, ..., o + (m - 1) s, the first in lane l
+// elements o, o + s, ..., o + (m - 1) s, the first in lane l; with Exact, those from the k_tail-th on are
+// the first operand of their additions (the tail, E::kTailFirst)
 template <typename E, bool Exact>
-inline void run(const E& e, double (*a)[4], idx_t o, idx_t s, idx_t m, int l) {
+inline void run(const E& e, double (*a)[4], idx_t o, idx_t s, idx_t m, int l, idx_t k_tail = -1) {
     constexpr int K = E::K;
     double v[K];
     idx_t k = 0;
@@ -114,7 +120,11 @@ inline void run(const E& e, double (*a)[4], idx_t o, idx_t s, idx_t m, int l) {
     }
     for (; k < m; k++) {
         e.at(o + k * s, v);
-        for (int c = 0; c < K; c++) a[c][l] = add<Exact>(a[c][l], v[c]);
+        if (Exact && k_tail >= 0 && k >= k_tail) {
+            for (int c = 0; c < K; c++) a[c][l] = add<Exact>(v[c], a[c][l]);
+        } else {
+            for (int c = 0; c < K; c++) a[c][l] = add<Exact>(a[c][l], v[c]);
+        }
         l = (l + 1) & 3;
     }
 }
@@ -127,7 +137,9 @@ void blocks(const E& e, idx_t n, idx_t b0, idx_t b1, double* const* bs) {
         const idx_t t0 = b * kBlock, t1 = std::min(t0 + kBlock, n);
         double a[K][4];
         for (int c = 0; c < K; c++) a[c][0] = a[c][1] = a[c][2] = a[c][3] = -0.0;
-        run<E, Exact>(e, a, t0, 1, t1 - t0, 0);
+        // the tail: the last mod(n, 4) elements (the last block's; whole blocks have a multiple of 4)
+        const idx_t k_tail = Exact && E::kTailFirst && t1 == n ? (n - n % 4) - t0 : -1;
+        run<E, Exact>(e, a, t0, 1, t1 - t0, 0, k_tail);
         for (int c = 0; c < K; c++) bs[c][b] = add_lanes<Exact>(a[c]);
     }
 }
@@ -179,18 +191,21 @@ void differences_of(const T* a0, const T* a1, T* out, idx_t ny, idx_t nx, idx_t 
     }
 }
 
-// The lanes of m scratch elements from k0, the first in lane l; K streams (lambda: p0 = d, p1 = J_4)
+// The lanes of m scratch elements from k0, the first in lane l; K streams (lambda: p0 = d, p1 = J_4). With
+// Exact, the elements from the k_tail-th on are the first operand of their additions (the tail)
 template <typename T, int K, bool Exact>
-inline void feed(double (*acc)[4], const T* p0, const T* p1, idx_t m, int l) {
+inline void feed(double (*acc)[4], const T* p0, const T* p1, idx_t m, int l, idx_t k_tail = -1) {
     auto one = [&](idx_t k, int q) {
+        const bool tail = Exact && k_tail >= 0 && k >= k_tail;
+        auto acc_add = [&](double& a, double v) { a = tail ? add<Exact>(v, a) : add<Exact>(a, v); };
         if constexpr (K == 2) {
             const T d = p0[k], w = p1[k];
             const T v1 = d * w;
             const T v2 = w * w;
-            acc[0][q] = add<Exact>(acc[0][q], static_cast<double>(v1));
-            acc[1][q] = add<Exact>(acc[1][q], static_cast<double>(v2));
+            acc_add(acc[0][q], static_cast<double>(v1));
+            acc_add(acc[1][q], static_cast<double>(v2));
         } else {
-            acc[0][q] = add<Exact>(acc[0][q], static_cast<double>(p0[k]));
+            acc_add(acc[0][q], static_cast<double>(p0[k]));
         }
     };
     idx_t k = 0;
@@ -252,7 +267,11 @@ void zyx_blocks(const T* a0, const T* a1, const T* a2, T* out, idx_t n, idx_t ny
             const idx_t blk_end = std::min(t_end, (b + 1) * kBlock);
             const idx_t k0 = t - s_t0, m = blk_end - t;
             int l = static_cast<int>(t & 3);
-            feed<T, K, Exact>(acc, s0.data() + k0, K == 2 ? s1.data() + k0 : nullptr, m, l);
+            // the tail (the last mod(n, 4) elements) of lambda and of the sum of single data
+            constexpr bool tail_first = K == 2 || std::is_same_v<T, float>;
+            const idx_t tail0 = n - n % 4;
+            const idx_t k_tail = Exact && tail_first && blk_end > tail0 ? std::max<idx_t>(0, tail0 - t) : -1;
+            feed<T, K, Exact>(acc, s0.data() + k0, K == 2 ? s1.data() + k0 : nullptr, m, l, k_tail);
             t = blk_end;
             if (t == (b + 1) * kBlock || t == n) {
                 for (int c = 0; c < K; c++) {

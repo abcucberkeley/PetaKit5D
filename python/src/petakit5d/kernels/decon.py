@@ -566,7 +566,11 @@ def sum_double(x, *, matlab_layout: bool = False, threads: int | None = None) ->
     of threads. Below 89,000 elements (and for classes other than single and double) MATLAB's own
     sum (``petakit5d.kernels.ops.sum_double``); from there decon_lucy_accel_mex's: blocks of 4,096
     elements in MATLAB's linear order, each in four lanes, the block sums in order (a NaN sum with
-    the mex's payload). (z, y, x) arrays are read in MATLAB's linear order; MATLAB's arrays with
+    the mex's payload: the running sum is the first operand, the last mod(n, 4) elements of
+    single data are, measured). A last block of 5 to 43 elements is in four lanes too, as the mex
+    and decon_sum_double's MATLAB fall-back add it; MATLAB's own sum adds it in index order, so
+    there decon_sum_double differs from MATLAB's one-thread sum in the last bits, which its help
+    text doesn't say. (z, y, x) arrays are read in MATLAB's linear order; MATLAB's arrays with
     ``matlab_layout=True``."""
     from petakit5d.kernels import ops
 

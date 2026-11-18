@@ -21,7 +21,9 @@
 //   n >= 89000: blocks of 4096 elements (block t / 4096; the last one shorter), each in four
 //     lanes as above, the block sums added in index order. Each block is summed by one thread,
 //     so the result doesn't depend on the number of threads (MATLAB splits the blocks among its
-//     threads, which changes its last bits).
+//     threads, which changes its last bits). A last block of 5 to 43 elements is added in four
+//     lanes too, as decon_lucy_accel_mex does; MATLAB's sum adds it in index order (its callers
+//     in matlabcompat.reduce sum those lengths themselves).
 // Accumulators start at -0 (a sum of -0s is -0); an empty sum is 0. Logical, single, double
 // and 8 to 32-bit integer data (converted exactly to double; single sums of single data only).
 //
