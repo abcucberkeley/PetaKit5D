@@ -2,8 +2,9 @@
 ``XR_visualize_OTF_mask_segmentation`` and the figure of ``gererate_single_MIP_mask``), drawn with
 matplotlib, an optional dependency (``pip install matplotlib``): without it ``available()`` is
 False, the MIP masks are saved without their figure (as MATLAB without its JVM) and the other
-functions raise ``ImportError``. Figures that are not shown are made without pyplot, so they
-are saved on machines without a display.
+functions raise ``ImportError``. The MIP masks' tasks in the job framework draw no figure either
+(MATLAB's jobs run ``-nojvm``; ``petakit5d.jobs.tasks.in_job_task``). Figures that are not shown
+are made without pyplot, so they are saved on machines without a display.
 
 The figures show MATLAB's data: the same images (``imagesc``'s CData, rows and columns as MATLAB
 draws them), points, limits, color limits, labels and titles; fonts, colors and layout follow

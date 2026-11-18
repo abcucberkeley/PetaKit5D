@@ -23,11 +23,17 @@ The call folder (written by the cluster backend; local runs need none)::
 ``python -m petakit5d.jobs.exec <folder> <batch>``; batch ``b`` (1-based) holds tasks
 ``(b - 1) * task_batch_num + 1`` to ``min(b * task_batch_num, n)``.
 
+Every Python task runs through ``run_record``, whatever the mode (in the caller's process, in a
+local worker, in a Slurm job or a task runner), and ``in_job_task()`` is True while it runs (a
+context variable of the thread that runs the task). Code that MATLAB runs only outside its jobs
+asks it: MATLAB's jobs run ``-nojvm``, so figures, for one, are drawn only in direct calls.
+
 This module imports only the standard library: the job entry point reads it at start-up.
 """
 
 from __future__ import annotations
 
+import contextvars
 import importlib
 import json
 import math
@@ -43,6 +49,11 @@ CALL_FILE = "call.json"
 TASKS_FILE = "tasks.ndjson"
 
 LANGUAGES = ("python", "bash")
+
+# True while run_record runs a task (in this thread)
+_IN_JOB_TASK: contextvars.ContextVar[bool] = contextvars.ContextVar(
+    "petakit5d_in_job_task", default=False
+)
 
 
 class Task:
@@ -195,9 +206,21 @@ def resolve(rec: Mapping[str, Any]) -> Callable[..., Any]:
     return obj
 
 
+def in_job_task() -> bool:
+    """True while the job framework runs a task (``run_record``) in this thread: the task and
+    everything it calls, nested calls of the framework included; False in a direct call."""
+    return _IN_JOB_TASK.get()
+
+
 def run_record(rec: Mapping[str, Any]) -> Any:
-    """Calls a Python task record in this process and returns what the callable returns."""
-    return resolve(rec)(*rec.get("args", ()), **rec.get("kwargs", {}))
+    """Calls a Python task record in this process and returns what the callable returns
+    (``in_job_task()`` is True during the call)."""
+    func = resolve(rec)
+    token = _IN_JOB_TASK.set(True)
+    try:
+        return func(*rec.get("args", ()), **rec.get("kwargs", {}))
+    finally:
+        _IN_JOB_TASK.reset(token)
 
 
 def batch_indices(batch: int, task_batch_num: int, n_tasks: int) -> range:

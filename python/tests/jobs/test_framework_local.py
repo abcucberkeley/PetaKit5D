@@ -641,6 +641,29 @@ def test_task_of_a_function_and_a_partial():
         Task.of(lambda: None)
 
 
+def write_in_job_task(out_fn):
+    Path(out_fn).write_text(str(tasks.in_job_task()))
+
+
+def test_in_job_task_is_true_in_tasks_only(tmp_path):
+    """the flag MATLAB's -nojvm jobs stand for (figures are drawn only in direct calls)"""
+    assert tasks.in_job_task() is False
+    assert tasks.run_record({"func": "petakit5d.jobs.tasks:in_job_task"}) is True
+    assert tasks.in_job_task() is False
+    with pytest.raises(ValueError):
+        tasks.run_record({"func": "math:sqrt", "args": [-1]})
+    assert tasks.in_job_task() is False
+    # through the framework (master compute and a local worker pool)
+    for n in (1, 3):
+        (tmp_path / f"n{n}").mkdir()
+        ins, outs, _ = make_tasks(tmp_path / f"n{n}", n)
+        t = [Task.of(write_in_job_task, o) for o in outs]
+        assert run_tasks(ins, outs, t, **LOCAL, local_worker_num=n) == [True] * n
+        assert [Path(o).read_text() for o in outs] == ["True"] * n
+    write_in_job_task(str(tmp_path / "direct.txt"))
+    assert (tmp_path / "direct.txt").read_text() == "False"
+
+
 def test_task_names_are_checked():
     for bad in ("module", "a.b:", ":f", "a b:f", "a.b:f-g", "a:b:c"):
         with pytest.raises(ValueError):

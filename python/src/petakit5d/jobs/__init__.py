@@ -24,6 +24,7 @@ _EXPORTS = {
     "time_str": "shapes",
     "run_tasks": "framework",
     "Task": "tasks",
+    "in_job_task": "tasks",
 }
 
 __all__ = sorted(_EXPORTS)

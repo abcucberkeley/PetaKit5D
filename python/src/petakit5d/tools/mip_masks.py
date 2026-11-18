@@ -13,10 +13,13 @@ Files keep MATLAB's names and contents: the mask ``<result>/<name>.tif`` (``.zar
 ``save_zarr``; uint16, or single without ``save_16bit``), ``<name>_bbox.mat`` (v7.3: ``fn``,
 ``fnout``, ``intThresh``, ``volThresh``, ``sz`` and ``bbox`` with MATLAB's values: the size
 ``[ny nx]`` and the box ``[ymin xmin ymax xmax]``, 1-based, inclusive, ``[]`` for an empty
-mask) and the figure ``<name>_plot.png`` (the MIP and its mask; only with matplotlib, the
-optional ``figures`` dependency, as MATLAB draws it only with its JVM). The box file and the
-figure are written before the mask, which marks the task as done; each file is written under
-a temporary name and renamed.
+mask) and the figure ``<name>_plot.png`` (the MIP and its mask). MATLAB draws the figure only with
+its JVM, so only in direct calls: its job tasks run ``-nojvm``. Here the figure is drawn in
+direct calls of ``generate_single_mip_mask`` with matplotlib (the optional ``figures``
+dependency), and never in the tasks the job framework runs (``generate_mip_masks``' tasks, in
+every mode: ``petakit5d.jobs.tasks.in_job_task``); the other files are the same either way. The
+box file and the figure are written before the mask, which marks the task as done; each file is
+written under a temporary name and renamed.
 
 A MIP image is the 2D image of the tiff as MATLAB reads it (``petakit5d.tools.mip``: along z
 ``ny x nx``, along y ``nx x nz``, along x ``ny x nz``), so ``dilate_size`` of
@@ -156,10 +159,10 @@ def generate_single_mip_mask(
     uuid: str = "",
 ) -> None:
     """The mask of the MIP file ``fn`` as ``fnout`` (``.tif`` or ``.zarr``) with
-    ``<name>_bbox.mat`` and, with matplotlib, ``<name>_plot.png`` next to it
-    (``gererate_single_MIP_mask``; see the module). Nothing if ``fnout`` exists.
-    ``dilate_size``: (rows, columns) of the image; ``block_size``: the zarr mask's blocks
-    ``(z, y, x)``."""
+    ``<name>_bbox.mat`` and, in a direct call with matplotlib, ``<name>_plot.png`` next to it
+    (``gererate_single_MIP_mask``; see the module; a task of the job framework draws no
+    figure). Nothing if ``fnout`` exists. ``dilate_size``: (rows, columns) of the image;
+    ``block_size``: the zarr mask's blocks ``(z, y, x)``."""
     from petakit5d.core.arrays import size_to_matlab
     from petakit5d.core.ids import get_uuid
     from petakit5d.core.paths import fileparts
@@ -192,10 +195,11 @@ def generate_single_mip_mask(
     )
     os.replace(bbox_tmp, bbox_fnout)
 
-    # the figure of the input and the mask (MATLAB: with its JVM)
+    # the figure of the input and the mask (MATLAB: with its JVM, so not in its -nojvm jobs)
+    from petakit5d.jobs.tasks import in_job_task
     from petakit5d.tools import figures
 
-    if figures.available():
+    if not in_job_task() and figures.available():
         figures.save_mip_mask_figure(im, bw, f"{out_path}/{fsn}_plot.png")
 
     tmp = f"{out_path}/{fsn}_{uuid}{ext}"
@@ -317,7 +321,8 @@ def generate_mip_masks(
     (``XR_generate_MIP_masks``): for each MIP of a flagged axis whose name matches a channel
     pattern, ``generate_single_mip_mask`` into ``<data path>/<result_dir_str>/`` with the
     threshold of its axis and the dilate sizes of the other two, one task per file through the
-    job framework. parameters.mat of the call goes into each result folder."""
+    job framework (the tasks draw no figures, as MATLAB's -nojvm jobs). parameters.mat of the
+    call goes into each result folder."""
     values = {k: v for k, v in locals().items() if k in _WRAPPER_ARGS}
     from petakit5d.core.axes import to_yxz
     from petakit5d.core.dtypes import mround

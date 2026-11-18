@@ -724,6 +724,81 @@ def test_no_figure_without_matplotlib(tmp_path, monkeypatch):
     assert names == ["im.tif", "m.tif", "m_bbox.mat"]
 
 
+def _mask_files(folder):
+    """the files of a mask call and their contents (the mask's voxels, the box file's values
+    but its paths)"""
+    from petakit5d.io import read_mat, read_tiff
+
+    out = {}
+    for p in sorted(Path(folder).rglob("*")):
+        if p.suffix == ".tif" and "_MIP_" not in p.name and p.name != "im.tif":
+            out[p.relative_to(folder).as_posix()] = read_tiff(str(p)).tobytes()
+        elif p.name.endswith("_bbox.mat"):
+            m = read_mat(str(p))
+            out[p.relative_to(folder).as_posix()] = repr(
+                {k: np.asarray(v).tolist() for k, v in m.items() if k not in ("fn", "fnout")}
+            )
+        elif p.is_file():
+            out[p.relative_to(folder).as_posix()] = None
+    return out
+
+
+@needs_mpl
+def test_job_tasks_draw_no_figure_direct_calls_do(tmp_path):
+    """MATLAB's job tasks run -nojvm: a task of the job framework saves no _plot.png, a direct
+    call does; the other files are the same"""
+    from petakit5d.jobs.tasks import Task, run_record
+
+    a, b = tmp_path / "direct", tmp_path / "task"
+    for d in (a, b):
+        d.mkdir()
+        synth.write_tiff(str(d / "im.tif"), mip_image((60, 70), "jobs"))
+    args = (100, 50, (2, 2), (1, 256, 256), True, "u1")
+    mip_masks.generate_single_mip_mask(str(a / "im.tif"), str(a / "m.tif"), *args)
+    t = Task.of(mip_masks.generate_single_mip_mask, str(b / "im.tif"), str(b / "m.tif"), *args)
+    run_record(t.record())
+    assert (a / "m_plot.png").is_file() and not (b / "m_plot.png").exists()
+    fa, fb = _mask_files(a), _mask_files(b)
+    assert fa.pop("m_plot.png") is None
+    assert fa == fb and set(fb) == {"im.tif", "m.tif", "m_bbox.mat"}
+    # an all-zero MIP: the figure's clim fails in a direct call, not in a task (no figure)
+    z = tmp_path / "zero"
+    z.mkdir()
+    synth.write_tiff(str(z / "im.tif"), np.zeros((30, 40), np.uint16))
+    with pytest.raises(figures.FigureError):
+        mip_masks.generate_single_mip_mask(str(z / "im.tif"), str(z / "d.tif"), 100, 10, (1, 1))
+    t = Task.of(mip_masks.generate_single_mip_mask, str(z / "im.tif"), str(z / "t.tif"), 100, 10)
+    run_record(t.record())
+    assert (z / "t.tif").is_file() and not (z / "t_plot.png").exists()
+
+
+@needs_mpl
+def test_dataset_tasks_draw_no_figures(tmp_path):
+    """generate_mip_masks runs its masks as framework tasks: no figures (in local mode here),
+    and the masks are those of direct calls"""
+    d = tmp_path / "d"
+    d.mkdir()
+    mip_dataset()(str(d))
+    mip_masks.generate_mip_masks(
+        str(d), int_thresh=(100, 110, 120), vol_thresh=150, dilate_size=(2, 3, 4), uuid="u2",
+        parse_cluster=False,
+    )  # fmt: skip
+    masks = d / "masks"
+    assert sorted(masks.glob("*_plot.png")) == []
+    made = sorted(p.name for p in masks.glob("*_MIP_*.tif"))
+    assert len(made) == 6
+    # the same mask by a direct call: with its figure, the same voxels
+    from petakit5d.io import read_tiff
+
+    e = tmp_path / "e"
+    e.mkdir()
+    name = "scan_CamA_ch0_t0000_MIP_z.tif"
+    # the z MIP: the threshold of z, the dilate sizes of (y, x) (see the module)
+    mip_masks.generate_single_mip_mask(str(d / name), str(e / name), 100, 150, (3, 4))
+    assert (e / name.replace(".tif", "_plot.png")).is_file()
+    np.testing.assert_array_equal(read_tiff(str(e / name)), read_tiff(str(masks / name)))
+
+
 def test_modules_import_without_matplotlib():
     code = (
         "import sys; sys.modules['matplotlib'] = None\n"

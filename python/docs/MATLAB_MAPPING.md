@@ -1899,7 +1899,7 @@ Generate the image list (stage coordinates of the tiles) of datasets as ``ImageL
 
 ### `XR_generate_MIP_masks` -> `petakit5d.tools.mip_masks.generate_mip_masks`
 
-Masks of the MIPs ``<name>_MIP_{y,x,z}.tif`` (``.zarr`` with ``zarr_file``) of datasets (``XR_generate_MIP_masks``): for each MIP of a flagged axis whose name matches a channel pattern, ``generate_single_mip_mask`` into ``<data path>/<result_dir_str>/`` with the threshold of its axis and the dilate sizes of the other two, one task per file through the job framework. parameters.mat of the call goes into each result folder.
+Masks of the MIPs ``<name>_MIP_{y,x,z}.tif`` (``.zarr`` with ``zarr_file``) of datasets (``XR_generate_MIP_masks``): for each MIP of a flagged axis whose name matches a channel pattern, ``generate_single_mip_mask`` into ``<data path>/<result_dir_str>/`` with the threshold of its axis and the dilate sizes of the other two, one task per file through the job framework (the tasks draw no figures, as MATLAB's -nojvm jobs). parameters.mat of the call goes into each result folder.
 
 | MATLAB | Python | Arg | Conversion | MATLAB default | Python default | Validator | Meaning |
 |---|---|---|---|---|---|---|---|
