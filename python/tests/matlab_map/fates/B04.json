@@ -1,0 +1,62 @@
+{
+ "task": "B04",
+ "classes": {
+  "FFTSpectrumTest": {
+   "finished": true,
+   "methods": {
+    "spectrumOfCosineHasExpectedPeaks": [
+     "pytest:tests/tools/test_fft_spectrum.py::test_spectrum_of_cosine_has_expected_peaks",
+     "oracle:tests/tools/test_fft_spectrum.py::wrapper.cosine.exact",
+     "oracle:tests/tools/test_fft_spectrum.py::wrapper.cosine.permissive"
+    ],
+    "save3DStackWritesLogSpectrum": [
+     "pytest:tests/tools/test_fft_spectrum.py::test_save_3d_stack_writes_log_spectrum",
+     "oracle:tests/tools/test_fft_spectrum.py::wrapper.cosine.stack.*"
+    ],
+    "resamplesAnisotropicVoxels": [
+     "pytest:tests/tools/test_fft_spectrum.py::test_resamples_anisotropic_voxels",
+     "oracle:tests/tools/test_fft_spectrum.py::wrapper.aniso.*"
+    ],
+    "matchesWholeSpectrumComputation": {
+     "fate": [
+      "pytest:tests/tools/test_fft_spectrum.py::test_matches_whole_spectrum_computation"
+     ],
+     "case_fates": {
+      "spectrumCase=crop": [
+       "pytest:tests/tools/test_fft_spectrum.py::test_matches_whole_spectrum_computation",
+       "oracle:tests/tools/test_fft_spectrum.py::frame.crop.*"
+      ],
+      "spectrumCase=padY": [
+       "pytest:tests/tools/test_fft_spectrum.py::test_matches_whole_spectrum_computation",
+       "oracle:tests/tools/test_fft_spectrum.py::frame.pad_y.*"
+      ],
+      "spectrumCase=padAll": [
+       "pytest:tests/tools/test_fft_spectrum.py::test_matches_whole_spectrum_computation",
+       "oracle:tests/tools/test_fft_spectrum.py::frame.pad_all.*"
+      ],
+      "spectrumCase=stack": [
+       "pytest:tests/tools/test_fft_spectrum.py::test_matches_whole_spectrum_computation",
+       "oracle:tests/tools/test_fft_spectrum.py::frame.stack.*"
+      ],
+      "spectrumCase=background": [
+       "pytest:tests/tools/test_fft_spectrum.py::test_matches_whole_spectrum_computation",
+       "oracle:tests/tools/test_fft_spectrum.py::frame.background.*"
+      ],
+      "spectrumCase=cubic": [
+       "pytest:tests/tools/test_fft_spectrum.py::test_matches_whole_spectrum_computation",
+       "oracle:tests/tools/test_fft_spectrum.py::frame.cubic.*"
+      ],
+      "spectrumCase=evenEqual": [
+       "pytest:tests/tools/test_fft_spectrum.py::test_matches_whole_spectrum_computation",
+       "oracle:tests/tools/test_fft_spectrum.py::frame.even_equal.*"
+      ]
+     }
+    },
+    "evenSizeThatNeedsCropOrPadErrors": [
+     "pytest:tests/tools/test_fft_spectrum.py::test_even_size_that_needs_crop_or_pad_errors",
+     "oracle:tests/tools/test_fft_spectrum.py::frame.even_error.*"
+    ]
+   }
+  }
+ }
+}

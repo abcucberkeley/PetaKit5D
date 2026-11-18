@@ -1,5 +1,5 @@
 """Tools: maximum intensity projections, cropping, memory estimates, rsync, partial volumes,
-channel unmixing, resampling, MIP masks and figures.
+channel unmixing, resampling, MIP masks, figures and FFT power spectra.
 
 ========================================  =====================================
 ``mip_dataset``                           XR_MIP_wrapper
@@ -38,6 +38,8 @@ channel unmixing, resampling, MIP masks and figures.
 ``visualize_otf_mask_segmentation``       XR_visualize_OTF_mask_segmentation
 ``visualize_otf_and_mask_outline``        visualize_OTF_and_mask_outline
 ``visualize_tile_positions``              XR_visualize_tile_positions
+``fft_spectrum_dataset``                  XR_fftSpectrumComputingWrapper
+``fft_spectrum_file``                     XR_fftSpectrumComputingFrame
 ========================================  =====================================
 
 Nothing is imported until a function is first used.
@@ -85,6 +87,9 @@ _EXPORTS = {
     "visualize_otf_and_mask_outline": "figures",
     "visualize_otf_mask_segmentation": "figures",
     "visualize_tile_positions": "figures",
+    "FFTSpectrumError": "fft_spectrum",
+    "fft_spectrum_dataset": "fft_spectrum",
+    "fft_spectrum_file": "fft_spectrum",
 }
 
 __all__ = sorted(_EXPORTS)
