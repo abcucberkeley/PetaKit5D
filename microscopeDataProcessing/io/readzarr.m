@@ -1,6 +1,7 @@
 function [data, bim] = readzarr(filepath, options)
 % wrapper for zarr reader
 % bbox provide the region bounding box [ymin, xmin, zmin, ymax, xmax, zmax]
+% (finite values: NaN and Inf are refused before the mex reads anything)
 % 
 % Author: Xiongtao Ruan (01/25/2022)
 % 
@@ -9,7 +10,7 @@ function [data, bim] = readzarr(filepath, options)
 
 arguments
     filepath char 
-    options.inputBbox (1, :) {mustBeNumeric} = []
+    options.inputBbox (1, :) {mustBeNumeric, mustBeFinite} = []
     options.sparseData (1, :) {mustBeNumericOrLogical} = true
 end
 

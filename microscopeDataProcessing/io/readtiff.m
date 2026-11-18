@@ -1,14 +1,15 @@
 function [data] = readtiff(filepath, options)
 % wrapper for tiff reader with both mex parallel version and matlab version code
 % 
-%
+% range: [first, last] slice (finite values: the mex ended MATLAB for an Inf
+% end and read one slice for a NaN end)
 % 
 % Author: Xiongtao Ruan (09/28/2022)
 
 
 arguments
     filepath char
-    options.range (1, :) {mustBeNumeric} = []
+    options.range (1, :) {mustBeNumeric, mustBeFinite} = []
 end
 
 range = options.range;

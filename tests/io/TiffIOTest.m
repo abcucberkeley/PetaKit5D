@@ -63,6 +63,27 @@ classdef TiffIOTest < pktest.TestCase
             testCase.verifyEqual(readtiff_matlab(fn, 3 : 7), im(:, :, 3 : 7));
         end
 
+        function rangeWithANaNEndIsRefused(testCase)
+            % the mex read one slice for a NaN end; non-finite ranges are
+            % refused before the mex is called
+            fn = [testCase.createTempFolder(), 'im.tif'];
+            writetiff(testCase.randomImage([37, 53, 11], 'uint16'), fn);
+            for r = {[1, NaN], [NaN, 5], [NaN, NaN]}
+                testCase.verifyError(@() readtiff(fn, 'range', r{1}), 'MATLAB:validators:mustBeFinite', mat2str(r{1}));
+            end
+        end
+
+        function rangeWithAnInfEndIsRefused(testCase)
+            % parallelReadTiff(fn, [1, Inf]) ends MATLAB (a segmentation
+            % violation in Cpp-Tiff's reader), so readtiff refuses
+            % non-finite ranges before the mex is called
+            fn = [testCase.createTempFolder(), 'im.tif'];
+            writetiff(testCase.randomImage([37, 53, 11], 'uint16'), fn);
+            for r = {[1, Inf], [-Inf, 5], [Inf, Inf]}
+                testCase.verifyError(@() readtiff(fn, 'range', r{1}), 'MATLAB:validators:mustBeFinite', mat2str(r{1}));
+            end
+        end
+
         function moreThan65535Pages(testCase)
             % regression test for the page number limit (d2a8d7d)
             im = testCase.randomImage([4, 4, 70000], 'uint8');

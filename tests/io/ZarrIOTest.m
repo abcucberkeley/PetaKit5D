@@ -120,6 +120,17 @@ classdef ZarrIOTest < pktest.TestCase
             testCase.verifyError(@() readzarr(fn, 'inputBbox', [1, 1, 1, testCase.ImSize + [1, 0, 0]]), ?MException);
         end
 
+        function readBoundingBoxMustBeFinite(testCase)
+            % a NaN or Inf end (or start) reached the mex, which failed with
+            % 'Upper bound is invalid' or MATLAB:pmaxsize; it is refused
+            % before the mex is called
+            fn = [testCase.createTempFolder(), 'im.zarr'];
+            writezarr(testCase.randomImage(testCase.ImSize, 'uint16'), fn, 'blockSize', [16, 16, 5]);
+            for b = {[2, 3, 1, Inf, 30, 8], [2, 3, 1, NaN, 30, 8], [-Inf, 3, 1, 20, 30, 8], NaN(1, 6)}
+                testCase.verifyError(@() readzarr(fn, 'inputBbox', b{1}), 'MATLAB:validators:mustBeFinite', mat2str(b{1}));
+            end
+        end
+
         function readMissingFileErrors(testCase)
             testCase.verifyError(@() readzarr([testCase.createTempFolder(), 'missing.zarr']), ?MException);
         end
