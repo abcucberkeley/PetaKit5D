@@ -51,6 +51,42 @@ The port adds one IEEE operation at a time per lane, slice or block (NumPy eleme
 and cumulative sums, never NumPy reductions), in MATLAB's linear order on the `(z, y, x)` arrays;
 whole double sums use K08's `kernels.ops.sum_double`.
 
+### Amendment (X05, 2026-11-17): many vectors, short last blocks, NaN payloads
+
+Black-box probes (`PORT/agents/X05/probe/probe1.m` to `probe9.m`, one thread and four) found
+two more rules of the order and the operand order that decides a NaN result's payload:
+
+- **Many vectors:** 17 or more vectors (outputs of the vector rule) in an array of 39,600 or
+  more elements are summed in 4,096-blocks at any length, not only from 89,000 (16 vectors, or
+  fewer elements, keep the rules above). Values change from 4,097 elements per vector on: 17
+  columns of 5,000 single values gave the four-lane result in 2 of 17 sums. `reduce.sum` follows
+  (`MANY_VECTORS_FROM`, `MANY_NUMEL_FROM`); the same holds for `[1 2]` and other groups.
+- **Short last blocks:** a last 4,096-block of 4 to 43 elements is summed in index order, not in
+  four lanes (values differ: 16 of 17 sums of 90,155 single values against MATLAB before the
+  change). `kernels.ops.sum_double` and `sum_ordered` keep four lanes there, the order K08
+  measured for `decon_sum_double` (the decon reference, unchanged); `reduce` sums those lengths
+  in NumPy. If `decon_lucy_accel_mex('sum')` adds four lanes there too, `decon_sum_double`
+  differs from MATLAB's one-thread `sum` for those lengths, which its help text says it equals.
+- **NaN payloads:** x86 returns the first NaN operand of an addition, quieted, and Inf - Inf
+  gives MATLAB's NaN, so each output's payload follows MATLAB's operand order:
+
+  | | single sums | double sums | 'double' sums of single data |
+  |---|---|---|---|
+  | index order, lanes, slices, chunks | the running sum first | the same | the same, but each slice first in the slice rule |
+  | the four-lane sum's last mod(n, 4) terms (44 to 88,999) | each term first | the same | the same |
+  | a block's lanes | ((l1 + l2) + l3) + l4, the running sum first | the same | l2 first in l1 + l2 |
+  | the last block's tail terms | the running lane first | the same | each term first |
+  | block sums | each block first | each block first | the running sum first |
+  | many vectors (any length from 44) | the block order | the block order | the block order |
+
+  Later groups of a multi-dimension sum add sums of the sum's class (`[1 3]` of single data in
+  'double': the second stage takes double's order). A sum of one value is a copy (a signaling
+  NaN stays signaling); 'omitnan' NaN results (Inf - Inf) are MATLAB's NaN. `cumsum` keeps the
+  first NaN along dimension 1 (and rows) and each new NaN term along later dimensions; its first
+  element is a copy. Above 89,000 elements MATLAB's payloads depend on its thread count as its
+  values do; the port gives the one-thread payloads. `reduce` sums the NaN outputs alone again in
+  this order (`_exact_nans`), so the payloads are the same on every CPU and compiler.
+
 ### MATLAB disagreeing with itself across thread counts
 
 MATLAB's result at T threads against its result at one thread, n >= 89,000 (probe inputs with

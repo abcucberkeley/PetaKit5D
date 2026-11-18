@@ -1,0 +1,12 @@
+{
+ "name": "x05_reduce_nan",
+ "repeats": 5,
+ "variants": [
+  {"id": "base", "impl": "python", "script": "benchmarks/matlabcompat/bench_reduce_x05.py",
+   "env": {"PYTHONPATH": "{env[PK5D_BASE_SRC]}"},
+   "args": ["--threads", "1", "4", "24", "--repeats", "3"]},
+  {"id": "new", "impl": "python", "script": "benchmarks/matlabcompat/bench_reduce_x05.py",
+   "args": ["--threads", "1", "4", "24", "--repeats", "3"]}
+ ],
+ "compare": [{"a": "new", "b": "base"}]
+}

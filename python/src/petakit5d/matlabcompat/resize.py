@@ -614,37 +614,6 @@ def imresize3_fast(
     return b.reshape(b.shape[3 - a.ndim :]) if a.ndim < 3 else b
 
 
-def _nan_add(acc: np.ndarray, x: np.ndarray) -> np.ndarray:
-    """MATLAB's addition of a sum's next term where NaN can come out (measured): a NaN sum
-    keeps its NaN, else a NaN term's payload (quieted), else Inf - Inf is MATLAB's NaN"""
-    u = np.dtype(f"u{acc.dtype.itemsize}")
-    quiet = u.type(0x00400000 if acc.dtype == np.float32 else 0x0008000000000000)
-    xq = (x.view(u) | quiet).view(acc.dtype)
-    with np.errstate(invalid="ignore", over="ignore"):
-        r = np.add(acc, x, dtype=acc.dtype)
-    r = np.where(np.isnan(r) & ~np.isnan(acc) & ~np.isnan(x), acc.dtype.type(dtypes.NAN), r)
-    r = np.where(np.isnan(x), xq, r)
-    return np.where(np.isnan(acc), acc, r)
-
-
-def _block_nans(x6: np.ndarray, out: np.ndarray) -> np.ndarray:
-    """``out`` (the sums over MATLAB's dimensions 1, 3 and 5 of ``x6``, kept as singletons) with
-    each NaN as MATLAB's sum gives it: the dimensions reduced one after the other, each in index
-    order (the slice rule; the vector rule of dimension 1 is in order up to 43 values), the
-    first NaN operand of each addition kept"""
-    nan = np.isnan(out)
-    if not nan.any() or x6.shape[0] > 43:
-        return out
-    acc = x6.astype(out.dtype)
-    for ax in (0, 2, 4):
-        a = np.take(acc, [0], axis=ax)
-        a = np.where(np.isnan(a), _nan_add(np.zeros_like(a), a), a)
-        for k in range(1, acc.shape[ax]):
-            a = _nan_add(a, np.take(acc, [k], axis=ax))
-        acc = a
-    return np.where(nan, acc, out)
-
-
 def _squeeze_matlab(m: np.ndarray) -> np.ndarray:
     """MATLAB's squeeze of an array in MATLAB's layout (at least two dimensions remain)"""
     if m.ndim <= 2:
@@ -666,7 +635,8 @@ def imresize3_average(im, resample_factor: Sequence[int]) -> np.ndarray:
     ``resample_factor`` ``(z, y, x)`` voxels; sizes that the factor does not divide are padded
     with zeros at the end and the edge blocks divided by their voxels inside the image. The
     result has MATLAB's squeezed shape (a factor that leaves one plane along an axis drops it).
-    A NaN result keeps the first NaN of its block in MATLAB's order (y fastest, then x, z)."""
+    A NaN result has the NaN MATLAB's sum gives it (``reduce.sum``): for blocks of up to 43
+    values along y the first NaN of the block in MATLAB's order (y fastest, then x, z)."""
     from petakit5d.core.arrays import from_matlab, to_matlab
     from petakit5d.matlabcompat import reduce
 
@@ -688,12 +658,11 @@ def imresize3_average(im, resample_factor: Sequence[int]) -> np.ndarray:
         p6 = to_matlab(p).reshape(shp6, order="F")
         c6 = to_matlab(c).reshape(shp6, order="F")
         num = reduce.sum(p6, axis=(0, 2, 4), keepdims=True, matlab_layout=True)
-        num = _block_nans(p6, np.asarray(num))
         cnt = reduce.sum(c6, axis=(0, 2, 4), keepdims=True, matlab_layout=True)
         r = dtypes.rdivide(_squeeze_matlab(np.asarray(num)), _squeeze_matlab(np.asarray(cnt)))
     else:
         shp6 = (rs[0], sz[0] // rs[0], rs[1], sz[1] // rs[1], rs[2], sz[2] // rs[2])
         s6 = to_matlab(s).reshape(shp6, order="F")
         r = reduce.mean(s6, axis=(0, 2, 4), keepdims=True, matlab_layout=True)
-        r = _squeeze_matlab(_block_nans(s6, np.asarray(r)))
+        r = _squeeze_matlab(np.asarray(r))
     return from_matlab(np.asarray(r))

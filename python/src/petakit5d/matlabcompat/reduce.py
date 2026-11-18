@@ -15,9 +15,12 @@ integer and logical data and outtype 'double' in double):
 - **the vector rule**, for elements that are contiguous in MATLAB's memory (``x(:)``, ``'all'``,
   dimension 1, and reduced dimensions that only singletons precede): in index order up to 43
   elements; up to 88,999 in four lanes (element t in lane mod(t, 4), each lane in index order,
-  added as ((l1 + l2) + l3) + l4); from 89,000 in blocks of 4,096 elements, each in four lanes,
-  the block sums in index order. From 89,000 elements MATLAB splits the blocks among its threads,
-  so there its own result depends on its thread count; the result here is MATLAB's at one thread.
+  added as ((l1 + l2) + l3) + l4); from 89,000 in blocks of 4,096 elements, each in four lanes
+  (a last block of up to 43 elements in index order: X05), the block sums in index order. From
+  89,000 elements MATLAB splits the blocks among its threads, so there its own result depends on
+  its thread count; the result here is MATLAB's at one thread. ``MANY_VECTORS_FROM`` (17) or more
+  vectors in an array of ``MANY_NUMEL_FROM`` (39,600) or more elements are summed in 4,096-blocks
+  at any length: the same values up to 4,096 elements, other values above (measured, X05).
 - **the slice rule**, for dimensions that a non-singleton one precedes (``sum(x, 2)``,
   ``sum(x, 3)``): out(i) = x(i, 1) + x(i, 2) + ... in index order, at any thread count; in chunks
   of 1,024 (each chunk in order, the chunk sums in order) from 2,048 elements along the
@@ -33,14 +36,26 @@ n)``; single division differs above 2^24 elements). A sum of -0s is -0, an empty
 ``omitnan`` skips NaN, and a NaN that starts a sum (a lane, a block, a chunk) counts as +0.
 Every addition is one IEEE operation in the class, made by NumPy's element-wise ``add`` or a
 cumulative sum (never a NumPy reduction, whose order and SIMD paths differ), so results do not
-depend on the platform, the thread count or NumPy's SIMD dispatch. A NaN result is MATLAB's NaN,
-or the payload (quieted) of the input's NaNs when they all have one.
+depend on the platform, the thread count or NumPy's SIMD dispatch.
+
+Each NaN result has the NaN MATLAB gives that output (measured, task X05). An x86 addition
+returns its first NaN operand, quieted, and Inf - Inf MATLAB's NaN (sign bit set), so the
+payload follows MATLAB's operand order: the running sums are the first operand of their
+additions, except the four-lane sum's last mod(L, 4) terms (and those of the last 4,096-block of
+single data summed in double), the block sums (single and double sums of their own class) and
+the slices of single data summed in double; in a block of single data summed in double l2 is
+the first operand of l1 + l2. A sum of one value is a copy (a signaling NaN stays signaling);
+with 'omitnan' a NaN result is MATLAB's NaN. The fast paths leave the payload to the compiler
+and the CPU, so the NaN outputs alone are summed again in that order (``_exact_nans``), on every
+platform; results without NaN cost one ``isnan`` pass over the output. From 89,000 elements
+MATLAB's payloads, like its values, depend on its thread count: they are MATLAB's at one thread.
 """
 
 from __future__ import annotations
 
 import builtins
 from concurrent.futures import ThreadPoolExecutor
+from typing import NamedTuple
 
 import numpy as np
 
@@ -52,6 +67,8 @@ from petakit5d.core.threads import resolve_threads
 __all__ = [
     "BLOCK",
     "BLOCKS_FROM",
+    "MANY_NUMEL_FROM",
+    "MANY_VECTORS_FROM",
     "SEQUENTIAL_UPTO",
     "SLICE_CHUNK",
     "SLICE_CHUNK_FROM",
@@ -79,7 +96,9 @@ SLICE_CHUNK_NUMEL = 20000
 SLICE_CHUNK_INNER = 14
 
 _SEGMENT_BLOCKS = 256  # blocks of 4,096 per segment of a long vector (1 Mi elements)
-_FEW_VECTORS = 16  # up to this many vectors, each is summed as one contiguous run
+MANY_VECTORS_FROM = 17
+MANY_NUMEL_FROM = 39600
+_FEW_VECTORS = MANY_VECTORS_FROM - 1  # up to this many vectors, each is summed as one run
 _QUIET = {4: np.uint32(0x00400000), 8: np.uint64(0x0008000000000000)}
 _UINT = {4: np.uint32, 8: np.uint64}
 
@@ -196,30 +215,175 @@ def _sum_class(a: np.ndarray, outtype: str) -> np.dtype:
     return np.dtype(np.float32) if a.dtype == np.float32 else np.dtype(np.float64)
 
 
-def _nan_of(a: np.ndarray, dt: np.dtype):
-    """the NaN of a NaN result: the payload (quieted) of the input's NaNs when they all have
-    one, else MATLAB's NaN"""
-    nan = dt.type(dtypes.NAN)
-    if a.dtype.kind != "f":
-        return nan
-    vals = a[np.isnan(a)]
-    if not vals.size:
-        return nan
-    u = _UINT[a.dtype.itemsize]
-    bits = np.unique(vals.view(u) | _QUIET[a.dtype.itemsize])
-    if bits.size != 1:
-        return nan
-    return bits.view(a.dtype).astype(dt)[0]
+def _quiet(v: np.ndarray) -> np.ndarray:
+    """v (float) with its NaNs quieted, as an x86 addition returns a NaN operand"""
+    v = np.asarray(v)
+    u = _UINT[v.dtype.itemsize]
+    return np.where(np.isnan(v), (v.view(u) | _QUIET[v.dtype.itemsize]).view(v.dtype), v)
 
 
-def _canon_nan(r: np.ndarray, a: np.ndarray) -> np.ndarray:
-    if r.dtype.kind != "f":
+def _xadd(a: np.ndarray, b: np.ndarray, dt) -> np.ndarray:
+    """a + b in class dt with x86's NaN rule on every CPU: a's NaN, else b's (quieted), else
+    MATLAB's NaN (Inf - Inf)"""
+    with np.errstate(invalid="ignore", over="ignore"):
+        r = np.add(a, b, dtype=dt)
+    nan = np.isnan(r)
+    if nan.any():
+        na, nb = np.isnan(a), np.isnan(b)
+        r = np.where(na, _quiet(a), np.where(nb, _quiet(b), np.where(nan, dt.type(dtypes.NAN), r)))
+    return r
+
+
+def _fold_first(W: np.ndarray, dt) -> np.ndarray:
+    """((-0 + w1) + w2) + ... of each row of W (k, L), L >= 1, the running sum the first operand
+    of each addition: a NaN result has the NaN of the first addition that made one (the term's,
+    quieted, or MATLAB's NaN for Inf - Inf)"""
+    with np.errstate(invalid="ignore", over="ignore"):
+        c = np.cumsum(W, axis=1, dtype=dt)
+    s = np.array(c[:, -1], copy=True)
+    rows = np.flatnonzero(np.isnan(s))
+    if rows.size:
+        k = np.argmax(np.isnan(c[rows]), axis=1)
+        x = W[rows, k]
+        s[rows] = np.where(np.isnan(x), _quiet(x), dt.type(dtypes.NAN))
+    return s
+
+
+def _fold_last(W: np.ndarray, dt) -> np.ndarray:
+    """the same additions with each term the first operand: a NaN result has the last NaN term's
+    NaN (quieted), or MATLAB's NaN (Inf - Inf) without one"""
+    with np.errstate(invalid="ignore", over="ignore"):
+        s = np.array(np.cumsum(W, axis=1, dtype=dt)[:, -1], copy=True)
+    rows = np.flatnonzero(np.isnan(s))
+    if rows.size:
+        wn = np.isnan(W[rows])
+        last = W.shape[1] - 1 - np.argmax(wn[:, ::-1], axis=1)
+        x = W[rows, last]
+        s[rows] = np.where(wn.any(axis=1), _quiet(x), dt.type(dtypes.NAN))
+    return s
+
+
+def _lanes_exact(W: np.ndarray, dt, tail_first: bool, swap: bool = False) -> np.ndarray:
+    """the four-lane sum of the rows of W (k, L), L >= 4, in MATLAB's operand order: the lanes'
+    running sums first, but the last mod(L, 4) terms first with ``tail_first``; the lanes added
+    as ((l1 + l2) + l3) + l4, the running sum first (``swap``: l2 first in l1 + l2)"""
+    L = W.shape[1]
+    main = L - L % 4
+    acc = [_fold_first(W[:, j:main:4], dt) for j in range(4)]
+    for t in range(main, L):
+        j = t - main
+        acc[j] = _xadd(W[:, t], acc[j], dt) if tail_first else _xadd(acc[j], W[:, t], dt)
+    a01 = _xadd(acc[1], acc[0], dt) if swap else _xadd(acc[0], acc[1], dt)
+    return _xadd(_xadd(a01, acc[2], dt), acc[3], dt)
+
+
+class _Order(NamedTuple):
+    """MATLAB's operand order where NaNs meet, for one (data class, sum class)"""
+
+    tail: bool  # the four-lane sum's last mod(L, 4) terms are the first operand
+    block_tail: bool  # those of the last 4,096-block are
+    blocks_term_first: bool  # each block sum is the first operand of its addition
+    block_swap: bool  # in a block, l2 is the first operand of l1 + l2
+    slice_term_first: bool  # in the slice rule, each slice is the first operand
+
+
+# measured in R2024b at one thread (task X05's probes; from 89,000 elements MATLAB's own
+# payloads depend on its thread count, as its values do)
+_NAN_ORDER = {
+    (np.dtype(np.float32), np.dtype(np.float32)): _Order(True, False, True, False, False),
+    (np.dtype(np.float32), np.dtype(np.float64)): _Order(True, True, False, True, True),
+    (np.dtype(np.float64), np.dtype(np.float64)): _Order(True, False, True, False, False),
+}
+
+
+def _vector_exact(W: np.ndarray, dt, o: _Order, many: bool = False) -> np.ndarray:
+    """the vector rule over the rows of W (k, L) in MATLAB's operand order; ``many``: the order
+    of MATLAB's sums of many vectors (``MANY_VECTORS_FROM``), its 4,096-blocks at any length"""
+    k, L = W.shape
+    if L == 1:
+        return W[:, 0].copy()  # (a copy: a NaN not quieted)
+    if L <= SEQUENTIAL_UPTO:
+        return _fold_first(W, dt)
+    if L < BLOCKS_FROM and not many:
+        return _lanes_exact(W, dt, o.tail)
+    nf = L // BLOCK
+    full = W[:, : nf * BLOCK].reshape(k * nf, BLOCK)
+    bs = _lanes_exact(full, dt, False, o.block_swap).reshape(k, nf)
+    if L % BLOCK:
+        W1 = W[:, nf * BLOCK :]
+        if W1.shape[1] > SEQUENTIAL_UPTO:
+            last = _lanes_exact(W1, dt, o.block_tail, o.block_swap)
+        else:
+            last = _fold_first(W1, dt)
+        bs = np.concatenate([bs, last[:, None]], axis=1)
+    return _fold_last(bs, dt) if o.blocks_term_first else _fold_first(bs, dt)
+
+
+def _slice_exact(W: np.ndarray, dt, chunked: bool, term_first: bool) -> np.ndarray:
+    """the slice rule over the rows of W (k, R) in MATLAB's operand order: each sum from its first
+    slice (a copy), then the running sum the first operand of each addition (``term_first``: the
+    slice); with ``chunked`` the chunk sums added in order, the running total first"""
+    fold = _fold_last if term_first else _fold_first
+    R = W.shape[1]
+    if R == 1:
+        return W[:, 0].astype(dt)
+    if not chunked or R <= SLICE_CHUNK:
+        return fold(W, dt)
+    parts = []
+    for c0 in range(0, R, SLICE_CHUNK):
+        P = W[:, c0 : c0 + SLICE_CHUNK]
+        parts.append(P[:, 0].astype(dt) if P.shape[1] == 1 else fold(P, dt))
+    return _fold_first(np.stack(parts, axis=1), dt)
+
+
+def _exact_nans(m: np.ndarray, dims, dt, nan: np.ndarray) -> np.ndarray:
+    """the NaN outputs (``nan``, MATLAB's view) of the sum over dims of float view m, summed
+    again in MATLAB's operand order, which decides their payloads: each output's values gathered
+    alone, the dims reduced group by group by the rule ``_sum_core`` takes"""
+    kept = [d for d in range(m.ndim) if d not in dims]
+    idx = np.nonzero(nan)
+    mm = np.moveaxis(m, kept, list(range(len(kept))))
+    cur = mm[tuple(idx[d] for d in kept)] if kept else mm[None]
+    cur = cur.astype(dt, copy=False)
+    order = _NAN_ORDER.get((m.dtype, dt), _NAN_ORDER[(np.dtype(np.float64),) * 2])
+    shape = list(m.shape)
+    for d0, d1 in _groups(dims):
+        ng = d1 - d0 + 1
+        red = int(np.prod(cur.shape[1 : 1 + ng], dtype=np.int64))
+        inner = int(np.prod(shape[:d0], dtype=np.int64))
+        outer = int(np.prod(shape[d1 + 1 :], dtype=np.int64))
+        # the group's elements last, in MATLAB's order
+        t = np.moveaxis(cur, list(range(1, 1 + ng)), list(range(-1, -ng - 1, -1)))
+        rest = t.shape[: t.ndim - ng]
+        W = np.ascontiguousarray(t).reshape(-1, red)
+        if inner == 1:
+            numel = int(np.prod(shape, dtype=np.int64))
+            many = outer >= MANY_VECTORS_FROM and numel >= MANY_NUMEL_FROM
+            s = _vector_exact(W, dt, order, many)
+        else:
+            chunked = _slice_chunked(red, inner, outer, m.size)
+            s = _slice_exact(W, dt, chunked, order.slice_term_first)
+        cur = s.reshape(rest)
+        shape[d0 : d1 + 1] = [1] * ng
+        # the next dims add the sums so far, of the sum's class
+        order = _NAN_ORDER.get((dt, dt), order)
+    return cur.reshape(-1)
+
+
+def _nan_fix(r: np.ndarray, m: np.ndarray, dims, dt, omit: bool) -> np.ndarray:
+    """r (the sum over dims of view m, MATLAB's view) with each NaN output as MATLAB gives it:
+    with 'omitnan' MATLAB's NaN (only Inf - Inf makes one), else the NaN of the first addition
+    that made one in MATLAB's operand order"""
+    if dt.kind != "f":
         return r
     nan = np.isnan(r)
     if not nan.any():
         return r
-    r = np.array(r, copy=True)
-    r[nan] = _nan_of(a, r.dtype)
+    r = np.array(r, dtype=dt, copy=True)
+    if omit or m.dtype.kind != "f":
+        r[nan] = dt.type(dtypes.NAN)
+    else:
+        r[nan] = _exact_nans(m, dims, dt, nan)
     return r
 
 
@@ -279,7 +443,23 @@ def _rows_rule(w: np.ndarray, dt, omit: bool, nt: int) -> np.ndarray:
         bs[:, b0:b1] = _block_sums(_pad(seg, BLOCK, dt), dt)
 
     _parallel(run, jobs, nt)
+    if L - (nb - 1) * BLOCK <= SEQUENTIAL_UPTO:
+        bs[:, -1] = _seq_rows(w[:, (nb - 1) * BLOCK :], dt, omit)
     return np.cumsum(bs, axis=1, dtype=dt)[:, -1]
+
+
+def _short_last_block(n: int) -> bool:
+    """whether a sum of n values in 4,096-blocks ends with a block of 4 to 43 values, which
+    MATLAB adds in index order (``_seq_rows``; four lanes give other bits)"""
+    return n >= BLOCKS_FROM and 4 <= n % BLOCK <= SEQUENTIAL_UPTO
+
+
+def _seq_rows(w: np.ndarray, dt, omit: bool) -> np.ndarray:
+    """the sums of the rows of w (k, m) in index order (the last block of a block sum)"""
+    w = np.array(w, dtype=dt, copy=True)
+    if omit:
+        _omit_starts(w, w.shape[1], 1)
+    return np.cumsum(w, axis=1, dtype=dt)[:, -1]
 
 
 def _block_sums(w: np.ndarray, dt) -> np.ndarray:
@@ -348,6 +528,11 @@ def _long_rule(G: np.ndarray, dt, omit: bool, nt: int):
         bs[b0:b1] = _block_sums(_pad(w, BLOCK, dt), dt)[0]
 
     _parallel(run, jobs, nt)
+    m = L - (nb - 1) * BLOCK
+    if m <= SEQUENTIAL_UPTO:
+        seg = np.empty(m, dtype=G.dtype)
+        _fortran_fill(G, L - m, L, seg)
+        bs[-1] = _seq_rows(seg.reshape(1, -1), dt, omit)[0]
     return np.cumsum(bs, dtype=dt)[-1]
 
 
@@ -382,6 +567,17 @@ def _many_rule(V: np.ndarray, dt, omit: bool) -> np.ndarray:
     return _combine4(*lanes, dt)
 
 
+def _many_blocks(V: np.ndarray, dt, omit: bool) -> np.ndarray:
+    """the block rule over the last axis of V (..., L) for many vectors: blocks of 4,096, each
+    by ``_many_rule`` (a last block of up to 43 values in index order), the block sums added in
+    order (MATLAB sums 17 or more vectors this way at any length)"""
+    total = None
+    for b0 in range(0, V.shape[-1], BLOCK):
+        s = _many_rule(V[..., b0 : b0 + BLOCK], dt, omit)
+        total = s if total is None else np.add(total, s, dtype=dt)
+    return total
+
+
 def _vector_rule(m: np.ndarray, d0: int, d1: int, dt, omit: bool, nt: int) -> np.ndarray:
     """the vector rule over dims d0..d1 of view m (the dims before d0 are singletons); the
     result with those dims of size 1"""
@@ -405,9 +601,12 @@ def _vector_rule(m: np.ndarray, d0: int, d1: int, dt, omit: bool, nt: int) -> np
             w[i] = _fortran_flat(g[(Ellipsis, *idx[::-1])], dt)
         res = _rows_rule(w, dt, omit, nt)
         return res.reshape(oshape[::-1]).transpose().reshape(out_shape)
-    # many vectors: the group's elements last, in Fortran order (a view for one dimension)
+    # many vectors: the group's elements last, in Fortran order (a view for one dimension);
+    # MATLAB sums 17 or more in 4,096-blocks at any length (MANY_VECTORS_FROM)
     t = np.moveaxis(g, list(range(ng)), list(range(-1, -ng - 1, -1)))
     V = t.reshape(t.shape[: t.ndim - ng] + (red,))
+    if red > BLOCK:
+        return _many_blocks(V, dt, omit).reshape(out_shape)
     return _many_rule(V, dt, omit).reshape(out_shape)
 
 
@@ -499,6 +698,8 @@ def _kernel_sum(a, m, dims, dt, nt: int, matlab_layout: bool, center=None):
     if (single and a.dtype != np.float32) or (center is not None and dt != a.dtype):
         return None
     if len(dims) == m.ndim:
+        if _short_last_block(m.size):
+            return None  # (the kernels add a short last block in four lanes)
         c = None if center is None else float(np.asarray(center).reshape(-1)[0])
         s = ops.sum_ordered(a, single=single, matlab_layout=matlab_layout, center=c, num_threads=nt)
         return None if s is None else np.full((1,) * m.ndim, s, dtype=dt)
@@ -541,18 +742,25 @@ def _sum_core(
     omit = bool(omit) and m.dtype.kind == "f"
     if dt.kind in "iu":
         return _native_int_sum(m, dims, dt)
-    if dt == np.float64 and not omit and len(dims) == m.ndim and m.size >= BLOCKS_FROM:
+    full = len(dims) == m.ndim
+    if (
+        dt == np.float64
+        and not omit
+        and full
+        and m.size >= BLOCKS_FROM
+        and not _short_last_block(m.size)
+    ):
         # sum(x(:), 'double') in MATLAB's one-thread order: decon_sum_double's kernel (K08)
         from petakit5d.kernels import ops
 
         src = a if a.dtype.kind in "biuf" else a.astype(np.float64)
-        return np.full(
-            (1,) * m.ndim, ops.sum_double(src, matlab_layout=matlab_layout, num_threads=nt)
-        )
+        s = ops.sum_double(src, matlab_layout=matlab_layout, num_threads=nt)
+        # (a NaN: decon_sum_double's payload, which isn't sum's for single data)
+        return _nan_fix(np.full((1,) * m.ndim, s), m, dims, dt, False)
     if not omit and dt.kind == "f":
         r = _kernel_sum(a, m, dims, dt, nt, matlab_layout)
         if r is not None:
-            return _canon_nan(r, a)
+            return _nan_fix(r, m, dims, dt, False)
     numel = m.size
     r = m
     for d0, d1 in _groups(dims):
@@ -563,8 +771,7 @@ def _sum_core(
             red = int(np.prod(r.shape[d0 : d1 + 1], dtype=np.int64))
             outer = int(np.prod(r.shape[d1 + 1 :], dtype=np.int64))
             r = _slice_rule(r, d0, d1, dt, omit, _slice_chunked(red, inner, outer, numel))
-    r = np.asarray(r, dtype=dt)
-    return r if omit else _canon_nan(r, a)
+    return _nan_fix(np.asarray(r, dtype=dt), m, dims, dt, omit)
 
 
 def sum(  # noqa: A001
@@ -640,11 +847,12 @@ def mean(
 # -- cumsum ------------------------------------------------------------------------------------
 
 
-def cumsum(x, axis: int, *, omitnan: bool = False) -> np.ndarray:
+def cumsum(x, axis: int, *, omitnan: bool = False, matlab_layout: bool = False) -> np.ndarray:
     """MATLAB's ``cumsum(x, dim)``: each element the previous result plus itself, in index order
     along ``axis`` (the same computation in either layout), in the class (single for single data,
     double for double and logical; integers saturate at every step). ``omitnan``: NaN adds
-    nothing (+0 at the start)."""
+    nothing (+0 at the start). A NaN has MATLAB's payload (``_cumsum_nans``), which depends on
+    whether ``axis`` is MATLAB's dimension 1: ``matlab_layout`` as in ``sum``."""
     a = _array(x)
     if a.ndim == 0:
         a = a.reshape(1)
@@ -670,7 +878,45 @@ def cumsum(x, axis: int, *, omitnan: bool = False) -> np.ndarray:
             lead = np.moveaxis(w, ax, 0)
             first = np.moveaxis(nan, ax, 0)[0]
             lead[0, ...] = np.where(first, a.dtype.type(0.0), lead[0, ...])
-    return np.cumsum(w, axis=ax, dtype=a.dtype)
+    with np.errstate(invalid="ignore", over="ignore"):
+        r = np.cumsum(w, axis=ax, dtype=a.dtype)
+    # (a NaN stays NaN to the end of the axis: the last slice tells)
+    if r.shape[ax] and np.isnan(np.take(r, -1, axis=ax)).any():
+        d = _mdims(ax, a.ndim, matlab_layout)[0]
+        inner = int(np.prod(_mview(a, matlab_layout).shape[:d], dtype=np.int64))
+        _cumsum_nans(r, a, ax, omitnan, inner > 1)
+    return r
+
+
+def _cumsum_nans(r: np.ndarray, a: np.ndarray, ax: int, omit: bool, term_first: bool) -> None:
+    """in place: each NaN of cumsum's r as MATLAB gives it (measured), on the lines along the
+    axis that end in NaN: the first element a copy of x(1) (a NaN not quieted); along MATLAB's
+    dimension 1 (or a row) the running sum is the first operand of each addition, so a NaN keeps
+    the first NaN that came, a term's (quieted) or MATLAB's NaN for Inf - Inf; along a later
+    dimension (``term_first``) each term is, so a NaN is the last NaN term so far, or MATLAB's
+    NaN without one; MATLAB's NaN with 'omitnan'"""
+    if r.ndim == 1:
+        _cumsum_nans(r[None], a[None], 1, omit, term_first)  # (views: written in place)
+        return
+    rv_all, av_all = np.moveaxis(r, ax, -1), np.moveaxis(a, ax, -1)
+    lines = np.nonzero(np.isnan(rv_all[..., -1]))
+    rv, av = rv_all[lines], av_all[lines]  # (lines, L) copies
+    nv = np.isnan(rv)
+    if omit:
+        rv_all[lines] = np.where(nv, a.dtype.type(dtypes.NAN), rv)
+        return
+    if term_first:
+        last = np.where(np.isnan(av), np.arange(av.shape[-1]), -1)
+        k = np.maximum.accumulate(last, axis=-1)
+        x = np.take_along_axis(av, np.maximum(k, 0), axis=-1)
+        pay = np.where(k >= 0, _quiet(x), a.dtype.type(dtypes.NAN))
+    else:
+        k = np.argmax(nv, axis=-1)[..., None]
+        x = np.take_along_axis(av, k, axis=-1)
+        pay = np.where(np.isnan(x), _quiet(x), a.dtype.type(dtypes.NAN))
+    rv = np.where(nv, pay, rv)
+    rv[..., 0] = av[..., 0]  # (a copy)
+    rv_all[lines] = rv
 
 
 # -- max and min -------------------------------------------------------------------------------

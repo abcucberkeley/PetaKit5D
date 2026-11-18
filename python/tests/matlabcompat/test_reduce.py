@@ -14,6 +14,7 @@ import pytest
 
 from petakit5d.core import dtypes
 from petakit5d.matlabcompat import reduce as R
+from petakit5d.matlabcompat import stats as S
 from petakit5d.testing import oracle
 from petakit5d.testing.cases import Case, Dim, In, Value, Vol
 
@@ -615,6 +616,281 @@ def _zero_cases():
     return cs
 
 
+_QB = {
+    "single": (np.uint32, 0x7F800000, 0x00400000, 31),
+    "double": (np.uint64, 0x7FF0 << 48, 1 << 51, 63),
+}
+
+
+def nan_wide(seed: int, shape, cls: str = "single", every: int = 9, infs: int = 0, snan=False):
+    """``wide`` values (MATLAB's form) with NaNs at about one in ``every`` places, each with its
+    own payload: its 1-based MATLAB index, the sign bit set at odd ones, quiet (with ``snan``
+    every third signaling); ``infs`` pairs of Inf and -Inf at other places (Inf - Inf)"""
+    v = np.array(wide(seed, shape, cls), order="F")
+    flat = v.reshape(-1, order="F")  # a view
+    n = flat.size
+    b = _bits64(seed + 7919, n)
+    pos = np.flatnonzero(b % np.uint64(every) == 0)
+    ut, exp, quiet, sb = _QB[cls]
+    t = pos.astype(np.uint64) + 1
+    bits = np.uint64(exp) | t | ((t & np.uint64(1)) << np.uint64(sb))
+    sig = (t % np.uint64(3) == 0) if snan else np.zeros(t.size, bool)
+    bits = np.where(sig, bits, bits | np.uint64(quiet))
+    flat[pos] = bits.astype(ut).view(flat.dtype)
+    if infs:
+        rest = np.flatnonzero(b % np.uint64(every) != 0)
+        k = rest[(_bits64(seed + 104729, rest.size) % np.uint64(rest.size)).astype(np.int64)]
+        k = np.unique(k)[: 2 * infs]
+        flat[k[0::2]] = np.inf
+        flat[k[1::2]] = -np.inf
+    return v
+
+
+def _payload_cases():
+    """each output's NaN as MATLAB gives it (X05): two or more payloads per output, in the vector
+    rule's regimes (index order, four lanes and their tails, 4,096-blocks at one thread), the
+    slice rule and its chunks, merged and successive dimensions, single and double, 'double'
+    sums of single data, mean, 'omitnan' with Inf - Inf, cumsum, var, signaling NaNs"""
+    cs = []
+    seed = 900
+    for cls in ("single", "double"):
+        outs = (("sum", ()), ("mean", ()))
+        if cls == "single":
+            outs += (("sum", ("double",)),)
+        for n, every, infs in ((5, 2, 0), (43, 6, 1), (47, 5, 0), (50, 4, 1), (51, 7, 0),
+                               (4097, 300, 2), (50001, 4000, 0), (89003, 9000, 0),
+                               (90114, 20000, 1), (90122, 3, 0), (90155, 5000, 0)):  # fmt: skip
+            seed += 1
+            make = Value(
+                lambda s=seed, n=n, c=cls, e=every, i=infs: nan_wide(s, (1, n), c, e, i).ravel()
+            )
+            for fn, opt in outs:
+                tag = f"{fn}_payloads_row_{cls}_{n}" + ("_double_out" if opt else "")
+                args = ", " + ", ".join(f"'{o}'" for o in opt) if opt else ""
+                cs.append(
+                    Case(
+                        tag,
+                        code=_one_thread(f"{fn}(in{{1}}{args})"),
+                        args=[In("x")],
+                        py_args=[In("x"), None, *opt],
+                        python=py_sum if fn == "sum" else py_mean,
+                        inputs={"x": make},
+                    )
+                )
+    shapes = (
+        ((44, 30, 70), "single", 9),
+        ((130, 80, 9), "double", 11),
+        ((6, 2100, 5), "single", 300),
+        ((11, 1500, 2), "double", 200),
+        ((7, 300, 50), "single", 40),
+    )
+    for shape, cls, every in shapes:
+        seed += 1
+        tag = "x".join(map(str, shape))
+        make = Value(lambda s=seed, sh=shape, c=cls, e=every: nan_wide(s, sh, c, e, 3, True))
+        for d in _DIMS:
+            margs, pargs = _dim_args(d)
+            outs = [("sum", ()), ("mean", ())]
+            if cls == "single":
+                outs.append(("sum", ("double",)))
+            for fn, opt in outs:
+                o = "".join(f", '{x}'" for x in opt)
+                cs.append(
+                    Case(
+                        f"{fn}_payloads_{cls}_{tag}_{_dname(d)}" + ("_double_out" if opt else ""),
+                        code=_one_thread(f"{fn}(in{{1}}, in{{2}}{o})"),
+                        args=[Vol(In("x")), *margs],
+                        py_args=[Vol(In("x")), *pargs, *opt],
+                        python=py_sum if fn == "sum" else py_mean,
+                        out_roles=("vol",),
+                        inputs={"x": make},
+                    )
+                )
+    # 4,096-blocks in a merged group, and in a group after another
+    big = (
+        ((300, 300, 2), "single", (1, 2)),
+        ((300, 300, 2), "double", (1, 2)),
+        ((300, 300, 2), "single", "all"),
+        ((9, 3, 12000), "single", (1, 3)),
+    )
+    for shape, cls, d in big:
+        seed += 1
+        tag = "x".join(map(str, shape))
+        make = Value(lambda s=seed, sh=shape, c=cls: nan_wide(s, sh, c, 9000, 2))
+        margs, pargs = _dim_args(d)
+        opts = ((), ("double",)) if cls == "single" else ((),)
+        for opt in opts:
+            o = "".join(f", '{x}'" for x in opt)
+            cs.append(
+                Case(
+                    f"sum_payloads_{cls}_{tag}_{_dname(d)}" + ("_double_out" if opt else ""),
+                    code=_one_thread(f"sum(in{{1}}, in{{2}}{o})"),
+                    args=[Vol(In("x")), *margs],
+                    py_args=[Vol(In("x")), *pargs, *opt],
+                    python=py_sum,
+                    out_roles=("vol",),
+                    inputs={"x": make},
+                )
+            )
+    # many vectors (17 or more in 39,600 or more elements): 4,096-blocks at any length, values
+    # and payloads; a last block of up to 43 values in index order
+    many = (
+        ((5000, 17, 2), "single", 1, 0),
+        ((5000, 16), "single", 1, 0),
+        ((4101, 20), "double", 1, 0),
+        ((8193, 18), "single", 1, 0),
+        ((50, 800), "single", 9, 0),
+        ((51, 800), "double", 9, 0),
+        ((4140, 20), "single", 37, 0),
+        ((4140, 20), "double", 37, 1),
+        ((90, 21, 23), "single", 11, 0),
+    )
+    for shape, cls, every, infs in many:
+        seed += 1
+        tag = "x".join(map(str, shape))
+        if every == 1:
+            make = Value(lambda s=seed, sh=shape, c=cls: wide(s, sh, c))
+        else:
+            make = Value(lambda s=seed, sh=shape, c=cls, e=every, i=infs: nan_wide(s, sh, c, e, i))
+        for opt in ((), ("double",)) if cls == "single" else ((),):
+            o = "".join(f", '{x}'" for x in opt)
+            for d in (1, (1, 2)) if len(shape) == 3 and every > 1 else (1,):
+                margs, pargs = _dim_args(d)
+                cs.append(
+                    Case(
+                        f"sum_many_{cls}_{tag}_{_dname(d)}" + ("_double_out" if opt else ""),
+                        code=_one_thread(f"sum(in{{1}}, in{{2}}{o})"),
+                        args=[Vol(In("x")), *margs],
+                        py_args=[Vol(In("x")), *pargs, *opt],
+                        python=py_sum,
+                        out_roles=("vol",),
+                        inputs={"x": make},
+                    )
+                )
+    # 'omitnan': only Inf - Inf makes a NaN, MATLAB's
+    for cls in ("single", "double"):
+        seed += 1
+        make = Value(lambda s=seed, c=cls: nan_wide(s, (12, 40, 30), c, 5, 40))
+        for d in (1, 2, 3, "all"):
+            margs, pargs = _dim_args(d)
+            for fn in ("sum", "mean"):
+                cs.append(
+                    Case(
+                        f"{fn}_payloads_omitnan_{cls}_{_dname(d)}",
+                        code=f"out = {{{fn}(in{{1}}, in{{2}}, 'omitnan')}};",
+                        args=[Vol(In("x")), *margs],
+                        py_args=[Vol(In("x")), *pargs, "omitnan"],
+                        python=py_sum if fn == "sum" else py_mean,
+                        out_roles=("vol",),
+                        inputs={"x": make},
+                    )
+                )
+    # cumsum: the running sum first along dimension 1 and rows, each term first after it
+    for cls in ("single", "double"):
+        seed += 1
+        make = Value(lambda s=seed, c=cls: nan_wide(s, (20, 9, 11), c, 7, 4, True))
+        for d in (1, 2, 3):
+            cs.append(
+                Case(
+                    f"cumsum_payloads_{cls}_d{d}",
+                    matlab="cumsum",
+                    args=[Vol(In("x")), Dim(d)],
+                    python=py_cumsum,
+                    out_roles=("vol",),
+                    inputs={"x": make},
+                )
+            )
+        seed += 1
+        cs.append(
+            Case(
+                f"cumsum_payloads_row_{cls}",
+                matlab="cumsum",
+                args=[In("v"), 2],
+                py_args=[In("v"), -1],
+                python=py_cumsum,
+                inputs={
+                    "v": Value(lambda s=seed, c=cls: nan_wide(s, (1, 60), c, 4, 1, True).ravel())
+                },
+            )
+        )
+    # var: abs(x - mean).^2 summed (abs clears the sign of a NaN)
+    for cls in ("single", "double"):
+        seed += 1
+        make = Value(lambda s=seed, c=cls: nan_wide(s, (44, 30, 7), c, 13, 2))
+        for d in (1, 2, 3):
+            cs.append(
+                Case(
+                    f"var_payloads_{cls}_d{d}",
+                    code="out = {var(in{1}, 0, in{2})};",
+                    args=[Vol(In("x")), Dim(d)],
+                    python=lambda x, ax: S.var(x, 0, ax, keepdims=True),
+                    out_roles=("vol",),
+                    inputs={"x": make},
+                )
+            )
+    # one value: a copy (a signaling NaN stays signaling)
+    for cls in ("single", "double"):
+        seed += 1
+        make = Value(lambda s=seed, c=cls: nan_wide(s, (6, 5), c, 2, 0, True))
+        for d in (1, 2, 3):
+            cs.append(
+                Case(
+                    f"sum_payloads_singleton_{cls}_d{d}",
+                    code="x = in{1}; out = {sum(x(1, :), in{2}), sum(x(:, 1), in{2})};",
+                    args=[In("x"), d],
+                    nargout=2,
+                    python=_singleton_sums,
+                    inputs={"x": make},
+                )
+            )
+    # a last 4,096-block of 4 to 43 values: in index order (values), few and many vectors
+    for cls in ("single", "double"):
+        for n, k in ((90122, 1), (90155, 1), (8235, 17), (90155, 17)):
+            seed += 1
+            make = Value(lambda s=seed, n=n, k=k, c=cls: last_block_wide(s, n, k, c))
+            outs = ((), ("double",)) if cls == "single" else ((),)
+            for opt in outs:
+                o = "".join(f", '{x}'" for x in opt)
+                cs.append(
+                    Case(
+                        f"sum_short_last_block_{cls}_{n}x{k}" + ("_double_out" if opt else ""),
+                        code=_one_thread(f"sum(in{{1}}, 1{o})"),
+                        args=[In("x")],
+                        py_args=[In("x"), *opt],
+                        python=lambda x, *o: R.sum(
+                            x,
+                            0,
+                            outtype=o[0] if o else "default",
+                            keepdims=True,
+                            matlab_layout=True,
+                        ),  # fmt: skip
+                        inputs={"x": make},
+                    )
+                )
+    return cs
+
+
+def last_block_wide(seed: int, n: int, k: int, cls: str) -> np.ndarray:
+    """(n, k) in MATLAB's form: small values, and in the last 4,096-block values m * 2^e of a
+    wide range (e in [-60, 60]), whose sums differ between index order and four lanes"""
+    x = np.array(wide(seed, (n, k), cls), order="F")
+    x *= x.dtype.type(2.0**-40)
+    m = n % R.BLOCK
+    b = _bits64(seed + 31, m * k).reshape(m, k)
+    e = (b % np.uint64(121)).astype(np.int64) - 60
+    v = np.ldexp(((b >> np.uint64(40)) % np.uint64(2**20)).astype(np.float64) - 2**19, e)
+    x[n - m :, :] = v.astype(x.dtype)
+    return x
+
+
+def _singleton_sums(x, d):
+    """sum(x(1, :), d) and sum(x(:, 1), d) of a matrix in MATLAB's form"""
+    return tuple(
+        R.sum(v[..., None], d - 1, keepdims=True, matlab_layout=True)[..., 0]
+        for v in (x[:1, :], x[:, :1])
+    )
+
+
 CASES = (
     _vector_cases()
     + _volume_cases()
@@ -623,6 +899,7 @@ CASES = (
     + _index_cases()
     + _pair_cases()
     + _zero_cases()
+    + _payload_cases()
 )
 
 
@@ -656,12 +933,15 @@ def _model_vector(v: np.ndarray, dt) -> float:
         return lanes(v)
     s = None
     for i in range(0, n, R.BLOCK):
-        b = lanes(v[i : i + R.BLOCK])
+        w = v[i : i + R.BLOCK]
+        b = lanes(w) if w.size > R.SEQUENTIAL_UPTO else _model_vector(w, dt)  # a short last block
         s = b if s is None else T(s + b)
     return s
 
 
-@pytest.mark.parametrize("n", [1, 2, 43, 44, 45, 46, 47, 1000, 4097, 88999, 89000, 89001, 95000])
+@pytest.mark.parametrize(
+    "n", [1, 2, 43, 44, 45, 46, 47, 1000, 4097, 88999, 89000, 89001, 90122, 90155, 95000]
+)
 @pytest.mark.parametrize("cls", ["single", "double"])
 def test_vector_rule_equals_the_scalar_model(n, cls):
     v = wide(n + (7 if cls == "single" else 11), (n,), cls)
@@ -754,6 +1034,278 @@ def test_nan_results_are_matlabs_nan():
     assert np.asarray(r).tobytes() == np.float64(dtypes.NAN).tobytes()
     q = np.array([1.0, np.float64(np.nan)])  # a positive NaN keeps its payload
     assert np.asarray(R.sum(q)).view(np.uint64) == np.float64(np.nan).view(np.uint64)
+
+
+def _winner_vector(pos, L: int, o, many: bool = False) -> int | None:
+    """the 0-based place (of ``pos``, the NaNs among zeros) whose NaN a vector-rule sum of L
+    values keeps, from the operand order alone (``reduce._NAN_ORDER``'s fields); ``many``: in
+    MATLAB's order for many vectors (4,096-blocks at any length)"""
+
+    def first(ps):
+        return min(ps) if ps else None
+
+    def lanes(ps, m, tail_first, swap):
+        main = m - m % 4
+        win = []
+        for j in range(4):
+            w = first([p for p in ps if p < main and p % 4 == j])
+            t = [p for p in ps if p >= main and p - main == j]
+            if t and (tail_first or w is None):
+                w = t[0]
+            win.append(w)
+        order = (1, 0, 2, 3) if swap else (0, 1, 2, 3)
+        return next((win[j] for j in order if win[j] is not None), None)
+
+    if L == 1:
+        return first(pos)
+    if L <= R.SEQUENTIAL_UPTO:
+        return first(pos)
+    if L < R.BLOCKS_FROM and not many:
+        return lanes(pos, L, o.tail, False)
+    wins = []
+    for b0 in range(0, L, R.BLOCK):
+        m = min(R.BLOCK, L - b0)
+        ps = [p - b0 for p in pos if b0 <= p < b0 + m]
+        last = b0 + m == L and L % R.BLOCK
+        if m <= R.SEQUENTIAL_UPTO:
+            w = first(ps)
+        else:
+            w = lanes(ps, m, o.block_tail if last else False, o.block_swap)
+        wins.append(None if w is None else w + b0)
+    wins = [w for w in wins if w is not None]
+    if not wins:
+        return None
+    return wins[-1] if o.blocks_term_first else wins[0]
+
+
+def _winner_slices(pos, n: int, chunked: bool, term_first: bool) -> int | None:
+    """the same for the slice rule along n slices"""
+    size = R.SLICE_CHUNK if chunked and n > R.SLICE_CHUNK else n
+    wins = []
+    for c0 in range(0, n, size):
+        ps = sorted(p for p in pos if c0 <= p < c0 + size)
+        if ps:
+            wins.append(ps[-1] if term_first and len(ps) else ps[0])
+    return wins[0] if wins else None
+
+
+def _with_nans(shape, places, cls):
+    """zeros with NaNs at MATLAB linear places, each with its place + 1 as payload"""
+    ut, exp, quiet, _ = _QB[cls]
+    x = np.zeros(int(np.prod(shape)), np.float32 if cls == "single" else np.float64)
+    for p in places:
+        x[p] = ut(exp | quiet | (p + 1)).view(x.dtype)
+    return x.reshape(shape, order="F")
+
+
+def _bits(r) -> int:
+    r = np.asarray(r).reshape(1)
+    return int(r.view(np.uint32 if r.dtype == np.float32 else np.uint64)[0])
+
+
+def _payload_id(r, cls, outtype):
+    b = _bits(r)
+    if np.asarray(r).dtype == np.float32:
+        return b & 0x3FFFFF
+    return (b >> 29) & 0x3FFFFF if cls == "single" else b & 0xFFFFFFFFFFFF
+
+
+_COMBOS = (("single", "default"), ("double", "default"), ("single", "double"))
+
+
+@pytest.mark.parametrize("cls,outtype", _COMBOS)
+@pytest.mark.parametrize("n", [5, 43, 44, 50, 51, 4097, 89000, 89001, 89003, 90114])
+def test_vector_rule_payloads_follow_the_operand_order(cls, outtype, n):
+    """the NaN a sum keeps, against a model of the operand order alone (zeros elsewhere), in
+    rows, in columns of either layout and at 1 and 3 threads"""
+    o = R._NAN_ORDER[
+        (
+            np.dtype(np.float32 if cls == "single" else np.float64),
+            np.dtype(np.float32 if cls == "single" and outtype == "default" else np.float64),
+        )
+    ]
+    b = _bits64(n * 7 + len(cls) + len(outtype), 120)
+    special = [0, 1, 2, 3, n - 1, n - 2, n - 3, n - n % 4, max(n - 4096, 0), min(4096, n - 1)]
+    for t in range(20):
+        k = 2 + int(b[t] % np.uint64(3))
+        ps = sorted({int(v % np.uint64(n)) for v in b[20 + 4 * t : 20 + 4 * t + k]})
+        if t < 5:
+            ps = sorted({special[(t + j) % len(special)] for j in range(3)} | set(ps[:1]))
+        want = _winner_vector(ps, n, o) + 1
+        row = _with_nans((1, n), ps, cls)
+        col = np.ascontiguousarray(np.concatenate([row.T, np.zeros((n, 1), row.dtype)], 1))
+        got = [
+            R.sum(row.ravel(), outtype=outtype, num_threads=1),
+            R.sum(row, 1, outtype=outtype, matlab_layout=True, num_threads=3)[0],
+            R.sum(col, 0, outtype=outtype, matlab_layout=True, num_threads=3)[0],
+            R.sum(np.asfortranarray(col), 0, outtype=outtype, matlab_layout=True)[0],
+            R.sum(col[None], -2, outtype=outtype, num_threads=1)[0, 0],
+        ]
+        for g in got:
+            assert _payload_id(g, cls, outtype) == want, (ps, want)
+
+
+@pytest.mark.parametrize("cls,outtype", _COMBOS)
+@pytest.mark.parametrize(
+    "n,k", [(50, 792), (50, 791), (2475, 16), (2475, 17), (45, 880), (4101, 17), (4140, 20)]
+)
+def test_many_vector_payloads_follow_matlabs_order_for_many_vectors(cls, outtype, n, k):
+    """17 or more columns in 39,600 or more elements: MATLAB's 4,096-blocks at any length
+    (``MANY_VECTORS_FROM``, ``MANY_NUMEL_FROM``), in either layout"""
+    o = R._NAN_ORDER[
+        (
+            np.dtype(np.float32 if cls == "single" else np.float64),
+            np.dtype(np.float32 if cls == "single" and outtype == "default" else np.float64),
+        )
+    ]
+    many = k >= R.MANY_VECTORS_FROM and n * k >= R.MANY_NUMEL_FROM
+    b = _bits64(n * 3 + k, 60)
+    tails = [n - 1, n - 2, n - 3, 4096, 4097, 1, 2, 5]
+    for t in range(15):
+        ps = sorted({tails[t % 8], tails[(t * 3 + 1) % 8], int(b[t] % np.uint64(n))} - {n, n + 1})
+        ps = [p for p in ps if p < n]
+        want = _winner_vector(ps, n, o, many) + 1
+        x = np.zeros((n, k), np.float32 if cls == "single" else np.float64, order="F")
+        x[:, 0] = _with_nans((n,), ps, cls)
+        for got in (
+            R.sum(x, 0, outtype=outtype, matlab_layout=True)[0],
+            R.sum(np.ascontiguousarray(x)[None], -2, outtype=outtype)[0, 0],
+        ):
+            assert _payload_id(got, cls, outtype) == want, (ps, want)
+
+
+@pytest.mark.parametrize("cls", ["single", "double"])
+@pytest.mark.parametrize("n,k", [(90155, 1), (90122, 2), (90155, 2), (8235, 17)])
+def test_a_short_last_block_is_summed_in_index_order(cls, n, k):
+    """a last 4,096-block of 4 to 43 values: in index order (four lanes give other bits here),
+    on the kernel paths too (all elements, a column) and in either layout"""
+    x = last_block_wide(5 + n + k, n, k, cls)
+    dt = x.dtype
+    T = dt.type
+
+    def lanes4(w):
+        acc = [T(NZ)] * 4
+        for t, v in enumerate(w):
+            acc[t % 4] = T(acc[t % 4] + v)
+        return T(T(T(acc[0] + acc[1]) + acc[2]) + acc[3])
+
+    def blocks(v, last):
+        s = None
+        for i in range(0, v.size, R.BLOCK):
+            w = v[i : i + R.BLOCK]
+            b = lanes4(w) if w.size == R.BLOCK else last(w)
+            s = b if s is None else T(s + b)
+        return s
+
+    with np.errstate(all="ignore"):
+        want = blocks(x[:, 0], lambda w: _model_vector(w, dt))  # (in index order)
+        lanes_last = blocks(x[:, 0], lanes4)
+    if k == 1:
+        assert _bits(R.sum(x)) == _bits(want) != _bits(lanes_last)
+        assert _bits(R.sum(x, outtype="double")) == _bits(R.sum(x.astype(np.float64)))
+    got = R.sum(x, 0, matlab_layout=True)
+    assert _bits(got[0]) == _bits(want)
+    assert _bits(R.sum(np.ascontiguousarray(x)[None], -2)[0, 0]) == _bits(want)
+
+
+@pytest.mark.parametrize("cls", ["single", "double"])
+def test_many_vectors_of_more_than_4096_values_are_summed_in_blocks(cls):
+    """values: 17 columns of 5,000 add as two blocks (4,096 + 904), 16 in four lanes"""
+    for k in (16, 17):
+        x = wide(77 + k, (5000, k), cls)
+        got = R.sum(x, 0, matlab_layout=True)
+        dt = x.dtype.type
+        for c in (0, k - 1):
+            v = x[:, c]
+            if k >= R.MANY_VECTORS_FROM:
+                want = dt(_model_vector(v[:4096], x.dtype) + _model_vector(v[4096:], x.dtype))
+            else:
+                want = _model_vector(v, x.dtype)
+            assert _bits(got[c]) == _bits(want)
+
+
+@pytest.mark.parametrize("cls,outtype", _COMBOS)
+@pytest.mark.parametrize("n", [50, 1024, 1025, 2100, 3000])
+def test_slice_rule_payloads_follow_the_operand_order(cls, outtype, n):
+    o = R._NAN_ORDER[
+        (
+            np.dtype(np.float32 if cls == "single" else np.float64),
+            np.dtype(np.float32 if cls == "single" and outtype == "default" else np.float64),
+        )
+    ]
+    b = _bits64(n * 13 + len(cls) + len(outtype), 100)
+    for t in range(20):
+        ps = sorted({int(v % np.uint64(n)) for v in b[4 * t : 4 * t + 2 + t % 3]})
+        chunked = R._slice_chunked(n, 2, 1, 2 * n)
+        want = _winner_slices(ps, n, chunked, o.slice_term_first) + 1
+        x = _with_nans((2, n), [2 * p for p in ps], cls)
+        for got in (
+            R.sum(x, 1, outtype=outtype, matlab_layout=True)[0],
+            R.sum(np.ascontiguousarray(x), -1, outtype=outtype, num_threads=3)[0],
+        ):
+            assert _payload_id(got, cls, outtype) // 2 == want - 1, (ps, want)
+
+
+def test_payloads_of_merged_and_successive_dims():
+    """[1 2] is one vector of ny * nx values per plane; [1 3] reduces y first, then z, of the
+    sums so far (of the sum's class: 'double' sums of single data take double's order there)"""
+    for cls, outtype in _COMBOS:
+        x = _with_nans((7, 9, 5), [3, 10, 70, 71, 200, 214], cls)  # MATLAB's (y, x, z)
+        dt = np.dtype(np.float32 if cls == "single" and outtype == "default" else np.float64)
+        o = R._NAN_ORDER[(x.dtype, dt)]
+        r = R.sum(x, (0, 1), outtype=outtype, keepdims=True, matlab_layout=True)
+        for z in range(5):
+            ps = [p - 63 * z for p in (3, 10, 70, 71, 200, 214) if 63 * z <= p < 63 * (z + 1)]
+            if ps:
+                assert (
+                    _payload_id(r[0, 0, z], cls, outtype) == _winner_vector(ps, 63, o) + 63 * z + 1
+                )
+        r = R.sum(x, (0, 2), outtype=outtype, keepdims=True, matlab_layout=True)
+        # (y, x, z) of the places: 3 (3, 0, 0); 10 (3, 1, 0), 70 (0, 1, 1), 71 (1, 1, 1),
+        # 200 (4, 1, 3); 214 (4, 3, 3): x = 1 keeps z = 0's NaN, the running sum first
+        assert _payload_id(r[0, 0, 0], cls, outtype) == 4
+        assert _payload_id(r[0, 1, 0], cls, outtype) == 11
+        assert _payload_id(r[0, 3, 0], cls, outtype) == 215
+
+
+def test_payloads_are_x86s_on_every_cpu():
+    """a signaling NaN meets a quiet one: x86 keeps the first operand, quieted (ARM would keep
+    the signaling one); Inf - Inf is MATLAB's NaN (ARM's default NaN is positive)"""
+    for cls in ("single", "double"):
+        ut, exp, quiet, _ = _QB[cls]
+        dt = np.float32 if cls == "single" else np.float64
+        q = ut(exp | quiet | 5).view(dt)
+        s = ut(exp | 9).view(dt)
+        v = np.array([q, s, 1.0], dtype=dt)
+        assert _bits(R.sum(v)) == exp | quiet | 5
+        assert _bits(R.sum(v[::-1])) == exp | quiet | 9
+        v = np.array([np.inf, -np.inf, 2.0], dtype=dt)
+        for r in (R.sum(v), R.sum(v, omitnan=True), R.cumsum(v, 0)[1], R.mean(v)):
+            assert np.asarray(r).astype(np.float64).tobytes() == np.float64(dtypes.NAN).tobytes()
+
+
+def test_one_value_is_a_copy():
+    for cls in ("single", "double"):
+        ut, exp, _, _ = _QB[cls]
+        s = ut(exp | 9).view(np.float32 if cls == "single" else np.float64)
+        x = np.full((1, 3), s)
+        assert np.asarray(R.sum(x[:, :1])).view(ut) == ut(exp | 9)  # sum(x(1))
+        assert np.all(np.asarray(R.sum(x, 0, keepdims=True)).view(ut) == ut(exp | 9))
+        assert np.asarray(R.cumsum(x, 1)).view(ut)[0, 0] == ut(exp | 9)
+        assert np.asarray(R.cumsum(x, 1)).view(ut)[0, 1] != ut(exp | 9)  # added: quieted
+
+
+def test_cumsum_payloads():
+    """along MATLAB's dimension 1 the first NaN stays; along a later one the last NaN term"""
+    x = _with_nans((3, 4), [1, 2, 4, 7, 10], "double")  # (1-based) 2, 3, 5, 8, 11
+    ids = np.vectorize(lambda r: int(np.float64(r).view(np.uint64)) & 0xFFFF)
+    d1 = R.cumsum(x, 0, matlab_layout=True)
+    assert ids(d1[:, 0]).tolist() == [0, 2, 2] and ids(d1[:, 1]).tolist() == [0, 5, 5]
+    d2 = R.cumsum(x, 1, matlab_layout=True)
+    assert ids(d2[1]).tolist() == [2, 5, 8, 11] and ids(d2[2]).tolist() == [3, 3, 3, 3]
+    p = np.ascontiguousarray(x)  # an image (y, x): axis -1 is MATLAB's dimension 2
+    assert ids(R.cumsum(p, -1)[1]).tolist() == [2, 5, 8, 11]
+    assert ids(R.cumsum(p, -2)[:, 1]).tolist() == [0, 5, 5]
 
 
 def test_omitnan_lead_counts_as_plus_zero():

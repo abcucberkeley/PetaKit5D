@@ -422,7 +422,7 @@ Check and group file names that are parts of the same volume.
 
 ### `imresize3_average` -> `petakit5d.matlabcompat.resize.imresize3_average`
 
-PetaKit5D's ``imresize3_average(im, resampleFactor)``: the single mean of each block of ``resample_factor`` ``(z, y, x)`` voxels; sizes that the factor does not divide are padded with zeros at the end and the edge blocks divided by their voxels inside the image. The result has MATLAB's squeezed shape (a factor that leaves one plane along an axis drops it). A NaN result keeps the first NaN of its block in MATLAB's order (y fastest, then x, z).
+PetaKit5D's ``imresize3_average(im, resampleFactor)``: the single mean of each block of ``resample_factor`` ``(z, y, x)`` voxels; sizes that the factor does not divide are padded with zeros at the end and the edge blocks divided by their voxels inside the image. The result has MATLAB's squeezed shape (a factor that leaves one plane along an axis drops it). A NaN result has the NaN MATLAB's sum gives it (``reduce.sum``): for blocks of up to 43 values along y the first NaN of the block in MATLAB's order (y fastest, then x, z).
 
 | MATLAB | Python | Arg | Conversion | MATLAB default | Python default | Validator | Meaning |
 |---|---|---|---|---|---|---|---|
