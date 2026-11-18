@@ -47,6 +47,97 @@ classdef ChromaticShiftCorrectionTest < pktest.TestCase
             testCase.verifyTrue(exist([dataPath, 'Chromatic_Shift_Corrected/measurement/chromatic_shift_measurement_result.mat'], 'file') == 2);
         end
 
+        function psfBoundsAreInYXZ(testCase)
+            % the bounds (cropLength +- maxOffset, in y, x, z) were turned into
+            % x, y, z for normxcorr3_max_shift, which takes y, x, z: y was
+            % bounded by the x values and x by the y values. A bead 5 voxels
+            % off in y and 1 in x is found within bounds of 6 in y and 2 in x
+            % as within 6 in all axes
+            psfPath = testCase.createTempFolder();
+            psfFns = {[psfPath, 'psf_CamA.tif'], [psfPath, 'psf_CamB.tif']};
+            beads = [20, 20, 12; 25, 21, 12];
+            for c = 1 : 2
+                writetiff(uint16(pktest.beads([40, 40, 24], beads(c, :), [1.5, 2], 2000, 100)), psfFns{c});
+            end
+            wide = XR_chromatic_shift_estimation(psfFns, 'maxOffset', [6, 6, 6]);
+            testCase.assertEqual(abs(wide(2, :)), [5, 1, 0]);
+            testCase.verifyEqual(XR_chromatic_shift_estimation(psfFns, 'maxOffset', [6, 2, 2]), wide);
+            % (a char is one path: its characters were taken as the files)
+            testCase.verifyError(@() XR_chromatic_shift_estimation(psfFns{1}), ?MException);
+            try
+                XR_chromatic_shift_estimation(psfFns{1});
+            catch ME
+                testCase.verifyEqual(ME.message, 'At least two PSF files are needed!');
+            end
+        end
+
+        function zarrDataWithOffsetsFromPSFs(testCase)
+            % the offsets measured from (tiff) PSFs set zarrFile false for
+            % them, and it stayed false for the crops of the zarr data, which
+            % failed
+            [tifPath, ~, ~] = testCase.shiftedChannels(testCase.Offset);
+            dataPath = testCase.zarrCopy(tifPath);
+            psfFns = testCase.writePSFs(dataPath);
+
+            testCase.runCorrection(dataPath, 'valid', 'chromaticOffset', [], 'psfFullpaths', psfFns, ...
+                'maxOffset', [8, 8, 6], 'zarrFile', true);
+
+            [outA, outB] = testCase.readOutputs(dataPath);
+            testCase.verifyEqual(outB, outA, 'Channels corrected with the measured offsets are not aligned.');
+        end
+
+        function largeZarrFilesAreCroppedInBatches(testCase)
+            % largeFile only sized the jobs (with a batch's memory), and the
+            % files were cropped in memory; large zarr files are cropped in
+            % batches (XR_crop_zarr) into zarr results, equal to the crops of
+            % the regular path
+            [tifPath, ~, ~] = testCase.shiftedChannels(testCase.Offset);
+            dataPath = testCase.zarrCopy(tifPath);
+            args = {'chromaticOffset', testCase.Offset, 'zarrFile', true, 'batchSize', [16, 16, 8], 'blockSize', [8, 8, 8]};
+            for mode = {'valid', 'full'}
+                testCase.runCorrection(dataPath, mode{1}, args{:}, 'saveZarr', true, 'resultDirName', ['regular_', mode{1}]);
+                testCase.runCorrection(dataPath, mode{1}, args{:}, 'largeFile', true, 'resultDirName', ['large_', mode{1}]);
+                for cam = {'CamA', 'CamB'}
+                    fn = [sprintf(testCase.Fsn, cam{1}), '.zarr'];
+                    large = [dataPath, 'large_', mode{1}, '/', fn];
+                    testCase.verifyEqual(readzarr(large), readzarr([dataPath, 'regular_', mode{1}, '/', fn]), ...
+                        sprintf('%s, %s', mode{1}, cam{1}));
+                    % (XR_crop_zarr publishes its result with its MIPs)
+                    testCase.verifyTrue(isfile([dataPath, 'large_', mode{1}, '/MIPs/', sprintf(testCase.Fsn, cam{1}), ...
+                        '_MIP_z.tif']), sprintf('%s, %s: not cropped in batches.', mode{1}, cam{1}));
+                end
+            end
+            % (XR_crop_zarr pads with 0)
+            testCase.verifyError(@() testCase.runCorrection(dataPath, 'full', args{:}, 'largeFile', true, ...
+                'padValue', 7, 'resultDirName', 'large_pad'), 'XR_chromatic_shift_correction_data_wrapper:padValue');
+        end
+
+        function offsetsHaveARowPerChannel(testCase)
+            % without offsets (or PSFs) the boxes failed on a size mismatch,
+            % with a row too few on an index, and a row too many changed the
+            % overlap
+            dataPath = testCase.shiftedChannels(testCase.Offset);
+            id = 'XR_chromatic_shift_correction_data_wrapper:';
+            testCase.verifyError(@() testCase.runCorrection(dataPath, 'valid', 'chromaticOffset', []), [id, 'noOffsets']);
+            testCase.verifyError(@() testCase.runCorrection(dataPath, 'valid', 'chromaticOffset', testCase.Offset(2, :)), ...
+                [id, 'offsetSize']);
+            testCase.verifyError(@() testCase.runCorrection(dataPath, 'valid', 'chromaticOffset', [testCase.Offset; 0, 9, 0]), ...
+                [id, 'offsetSize']);
+        end
+
+        function modeIsOneOfThreeInAnyCase(testCase)
+            % another mode cropped each channel's box shifted against its
+            % offset (without error), and the switch took the case into
+            % account: 'Valid' is 'valid'
+            dataPath = testCase.shiftedChannels(testCase.Offset);
+            testCase.verifyError(@() testCase.runCorrection(dataPath, 'none', 'chromaticOffset', testCase.Offset), ...
+                'MATLAB:InputParser:ArgumentFailedValidation');
+            testCase.runCorrection(dataPath, 'Valid', 'chromaticOffset', testCase.Offset, 'resultDirName', 'upper');
+            testCase.runCorrection(dataPath, 'valid', 'chromaticOffset', testCase.Offset);
+            fn = [sprintf(testCase.Fsn, 'CamB'), '.tif'];
+            testCase.verifyEqual(readtiff([dataPath, 'upper/', fn]), readtiff([dataPath, 'Chromatic_Shift_Corrected/', fn]));
+        end
+
         function memAllocateIsInGigabytes(testCase)
             % 979fa55 regression: memAllocate (GB) was computed in bytes, so
             % every Slurm job requested the maximum number of CPUs
@@ -109,6 +200,27 @@ classdef ChromaticShiftCorrectionTest < pktest.TestCase
                 s = 1 + offsets(c, :) + base;
                 t = s + testCase.ImSize - 1;
                 writetiff(scene(s(1) : t(1), s(2) : t(2), s(3) : t(3)), [dataPath, sprintf(testCase.Fsn, cams{c}), '.tif']);
+            end
+        end
+
+        function [zarrPath] = zarrCopy(testCase, tifPath)
+            % the channels' tiff files of tifPath as zarr files in a folder of
+            % their own
+            zarrPath = testCase.createTempFolder();
+            for cam = {'CamA', 'CamB'}
+                fsn = sprintf(testCase.Fsn, cam{1});
+                writezarr(readtiff([tifPath, fsn, '.tif']), [zarrPath, fsn, '.zarr'], 'blockSize', [16, 16, 8]);
+            end
+        end
+
+        function [psfFns] = writePSFs(testCase, dataPath)
+            % bead images (tiff) of the same bead for the two channels
+            psfPath = [dataPath, 'PSF/'];
+            mkdir(psfPath);
+            psfFns = {[psfPath, 'psf_CamA.tif'], [psfPath, 'psf_CamB.tif']};
+            bead = [20, 20, 12];
+            for c = 1 : 2
+                writetiff(uint16(pktest.beads([40, 40, 24], bead - testCase.Offset(c, :), [1.5, 2], 2000, 100)), psfFns{c});
             end
         end
 

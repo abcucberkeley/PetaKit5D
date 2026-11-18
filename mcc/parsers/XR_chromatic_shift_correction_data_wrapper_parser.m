@@ -6,7 +6,7 @@ ip.CaseSensitive = false;
 ip.addRequired('dataPaths', @(x) ischar(x) || iscell(x));
 ip.addParameter('chromaticOffset', [], @(x) isnumeric(x) || ischar(x)); % y, x, z in voxels
 ip.addParameter('resultDirName', 'Chromatic_Shift_Corrected', @ischar); 
-ip.addParameter('mode', 'valid', @ischar); % same, valid or full
+ip.addParameter('mode', 'valid', @(x) ischar(x) && any(strcmpi(x, {'valid', 'same', 'full'}))); % same, valid or full
 ip.addParameter('padValue', 0, @(x) isnumeric(x) || ischar(x));
 ip.addParameter('newOrigin', [], @(x) isnumeric(x) || ischar(x)); % reset origin (only for same mode).
 ip.addParameter('channelPatterns', {'CamA', 'CamB'}, @(x) iscell(x) || ischar(x));

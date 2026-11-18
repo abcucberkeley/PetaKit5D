@@ -7,7 +7,7 @@ function [] = XR_chromatic_shift_correction_data_wrapper(dataPaths, varargin)
 % Parameters (as 'specifier'-value pairs):
 %     chromaticOffset : numeric array, [] or #channelx3 (default: []). The chromatic shift to apply, specified as [y, x, z] offsets in voxels, each row corresponds to a channel defined in channelPatterns.
 %       resultDirName : char (default: 'Chromatic_Shift_Corrected'). Name of the subdirectory within each dataPath where results will be saved.
-%                mode : char (default: 'valid'). Determines the output size. Options are 'valid' (only the overlapping region), 'same' (same size as input), or 'full' (large enough to contain the entire shifted image).
+%                mode : char (default: 'valid'). Determines the output size. Options are 'valid' (only the overlapping region), 'same' (same size as input), or 'full' (large enough to contain the entire shifted image), in any case.
 %            padValue : numeric scalar (default: 0). Value used for padding areas with no image data after shifting.
 %           newOrigin : numeric vector (default: []). Resets the origin coordinates, applicable only when 'mode' is 'same'.
 %     channelPatterns : cell array (default: {'CamA', 'CamB'}). File extensions or patterns used to identify image files for each channel.
@@ -15,7 +15,7 @@ function [] = XR_chromatic_shift_correction_data_wrapper(dataPaths, varargin)
 %           maxOffset : 1x3 numeric vector (default: [20, 20, 20]). The maximum expected offset [y, x, z] for chromatic measurement.
 %          cropLength : 1x3 numeric vector (default: [0, 0, 0]). The amount [y, x, z] to crop from the edges for chromatic measurement.
 %            zarrFile : true|false (default: false). Specifies if the input data is in Zarr format.
-%           largeFile : true|false (default: false). Flag to indicate if the input files are large and require special handling.
+%           largeFile : true|false (default: false). Flag to indicate if the input files are large and require special handling: Zarr files are cropped in batches (XR_crop_zarr, which pads with 0) and saved as Zarr; tiff files are cropped in memory.
 %            saveZar  : true|false (default: false). If true, the output is saved in Zarr format; otherwise, saved in Tiff format.
 %           batchSize : 1x3 numeric vector (default: [1024, 1024, 1024]). The size of data batches [y, x, z] for processing.
 %           blockSize : 1x3 numeric vector (default: [256, 256, 256]). The chunk/block size [y, x, z] for writing data, especially for Zarr.
@@ -36,7 +36,7 @@ ip.CaseSensitive = false;
 ip.addRequired('dataPaths', @(x) ischar(x) || iscell(x));
 ip.addParameter('chromaticOffset', [], @(x) isnumeric(x)); % y, x, z in voxels
 ip.addParameter('resultDirName', 'Chromatic_Shift_Corrected', @ischar); 
-ip.addParameter('mode', 'valid', @ischar); % same, valid or full
+ip.addParameter('mode', 'valid', @(x) ischar(x) && any(strcmpi(x, {'valid', 'same', 'full'}))); % same, valid or full
 ip.addParameter('padValue', 0, @isnumeric);
 ip.addParameter('newOrigin', [], @isnumeric); % reset origin (only for same mode).
 ip.addParameter('channelPatterns', {'CamA', 'CamB'}, @iscell);
@@ -62,7 +62,8 @@ ip.parse(dataPaths, varargin{:});
 pr = ip.Results;
 chromaticOffset = pr.chromaticOffset;
 resultDirName = pr.resultDirName;
-mode = pr.mode;
+% (another mode cropped each channel's box shifted against its offset)
+mode = lower(pr.mode);
 padValue = pr.padValue;
 newOrigin = pr.newOrigin;
 channelPatterns = pr.channelPatterns;
@@ -84,6 +85,12 @@ uuid = pr.uuid;
 
 if ischar(dataPaths)
     dataPaths = {dataPaths};
+end
+
+% (large Zarr files are cropped in batches, into a Zarr result)
+largeZarr = zarrFile && largeFile;
+if largeZarr
+    saveZarr = true;
 end
 
 nd = numel(dataPaths);
@@ -126,13 +133,26 @@ if isempty(chromaticOffset) && ~isempty(psfFullpaths)
     measureResultPath = [resultPaths{1}, 'measurement/'];
     mkdir(measureResultPath);
     measurementFullpath = sprintf('%s/chromatic_shift_measurement_result.mat', measureResultPath);
-    zarrFile = false; 
+    % (the PSFs are tiff files: zarrFile was set false for them and stayed
+    % false for the data, so zarr data failed in the crops)
     [relative_shift_yxz_mat] = XR_chromatic_shift_estimation(psfFullpaths, ...
         resultFullpath=measurementFullpath, maxOffset=maxOffset, cropLength=cropLength, ...
-        zarrFile=zarrFile, uuid=uuid);
+        zarrFile=false, uuid=uuid);
     
     % unify shifts across channels and generate bboxes
     chromaticOffset = relative_shift_yxz_mat - min(relative_shift_yxz_mat, [], 1);
+end
+
+% (without offsets or PSFs the boxes failed on a size mismatch, with too few
+% rows on an index; more rows changed the overlap)
+if isempty(chromaticOffset)
+    error('XR_chromatic_shift_correction_data_wrapper:noOffsets', ...
+        'Give chromaticOffset (a [y, x, z] row per channel pattern) or psfFullpaths to measure it.');
+end
+if ~isequal(size(chromaticOffset), [nc, 3])
+    error('XR_chromatic_shift_correction_data_wrapper:offsetSize', ...
+        'chromaticOffset must have a [y, x, z] row per channel pattern (%d x 3), not %s.', nc, ...
+        mat2str(size(chromaticOffset)));
 end
 
 disp('Chromatic offset across channels:');
@@ -174,6 +194,11 @@ for d = 1 : nd
     ch_bboxes_cell{d} = ch_bboxes_d;
 end
 
+if largeZarr && pad && padValue ~= 0
+    error('XR_chromatic_shift_correction_data_wrapper:padValue', ...
+        'Large Zarr files are padded with 0 (XR_crop_zarr): padValue %g is not supported.', padValue);
+end
+
 ext = '.tif';
 if saveZarr
     ext = '.zarr';
@@ -196,22 +221,44 @@ for f = 1 : nF
         mat2str_comma(bbox_f), string(pad), padValue, string(zarrFile), string(saveZarr), ...
         mat2str_comma(batchSize), mat2str_comma(blockSize), uuid, string(parseCluster), ...
         string(masterCompute), cpusPerTask, string(mccMode), configFile);
+    % (largeFile only sized the jobs: the crops were made in memory with the
+    % memory of a batch; passed only then, so that compiled masters built
+    % before still run the other tasks)
+    if largeZarr
+        func_strs{f} = sprintf('%s,''largeFile'',true)', func_strs{f}(1 : end - 1));
+    end
 end
 
-if largeFile
-    memAllocate = prod(batchSize) / 1024^3 * 4 * 2.5;
+jobCPUs = cpusPerTask;
+coordNice = 0;
+if largeZarr
+    % each file's job (XR_crop_zarr) runs its batches as jobs: it holds MATLAB
+    % and the merge of the MIP slabs, and if it crops batches itself
+    % (masterCompute) cpusPerTask and a batch's memory, as in XR_crop_dataset
+    boxes = cat(1, ch_bboxes_cell{:});
+    outSize = max(boxes(:, 4 : 6) - boxes(:, 1 : 3) + 1, [], 1);
+    batchSize_b = min(outSize, batchSize);
+    dtype = getImageDataType(frameFullpaths{1});
+    mergeMem = MIP_zarr_merge_memory(outSize, batchSize_b, min(outSize, blockSize), dtype);
+    [jobCPUs, memAllocate] = coordinator_resources(mergeMem, ...
+        cluster_config_value(configFile, 'masterCompute', masterCompute), cpusPerTask, prod(batchSize_b) * 4 * 2 / 1024^3);
+    % (and they wait for their batch jobs: these go first)
+    if parseCluster
+        coordNice = coordinator_nice();
+    end
 else
+    % (a large tiff file is cropped in memory)
     memAllocate = prod(max(imSizes, [], 1)) / 1024^3 * 4 * 2.5;
 end
 
 is_done_flag = generic_computing_frameworks_wrapper(frameFullpaths, resultFullpaths, func_strs, ...
     parseCluster=parseCluster, jobLogDir=jobLogDir, masterCompute=masterCompute, ...
-    cpusPerTask=cpusPerTask, memAllocate=memAllocate, mccMode=mccMode, configFile=configFile);
+    cpusPerTask=jobCPUs, memAllocate=memAllocate, mccMode=mccMode, configFile=configFile, nice=coordNice);
 
 if ~all(is_done_flag)
     is_done_flag = generic_computing_frameworks_wrapper(frameFullpaths, resultFullpaths, func_strs, ...
         parseCluster=parseCluster, jobLogDir=jobLogDir, masterCompute=masterCompute, ...
-        cpusPerTask=cpusPerTask, memAllocate=memAllocate * 2, mccMode=mccMode, configFile=configFile);
+        cpusPerTask=jobCPUs, memAllocate=memAllocate * 2, mccMode=mccMode, configFile=configFile, nice=coordNice);
 end
 
 if ~all(is_done_flag)

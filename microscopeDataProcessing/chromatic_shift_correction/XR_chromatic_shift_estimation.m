@@ -21,6 +21,10 @@ cropLength = pr.cropLength;
 zarrFile = pr.zarrFile;
 uuid = pr.uuid;
 
+% (a char is one path: its characters were taken as the files)
+if ischar(psfFullpaths)
+    psfFullpaths = {psfFullpaths};
+end
 
 nF = numel(psfFullpaths) ;
 if nF < 2
@@ -70,8 +74,9 @@ im_t1 = im_t(1 + cropLength(1) : end - cropLength(1), 1 + cropLength(2) : end - 
 
 maxShifts_lb = cropLength - maxOffset;
 maxShifts_ub = cropLength + maxOffset;
+% (in y, x, z, as normxcorr3_max_shift takes them: they were turned into x, y,
+% z, so y was bounded by the x values and x by the y values)
 maxShifts = [maxShifts_lb; maxShifts_ub];
-maxShifts = maxShifts(:, [2, 1, 3]);
 
 [offset_yxz, max_xcorr, C] = normxcorr3_max_shift(single(im_t1), single(im_s), maxShifts);
 sp2 = -cropLength;
