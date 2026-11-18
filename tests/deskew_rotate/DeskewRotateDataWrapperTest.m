@@ -135,16 +135,15 @@ classdef DeskewRotateDataWrapperTest < pktest.TestCase
             % size and its batches, while its blocks (deskewRotateFrame3D) and
             % the regular path read [x y z], and 1 or 2 values failed with an
             % index error. The result is the regular path's, completed to 3
-            % values as XR_deskewRotateFrame does; a fractional factor along y
-            % (the batches' axis) only gives its size here
+            % values as XR_deskewRotateFrame does (a fractional factor along y,
+            % the batches' axis, also in largeFileResamplesOnTheGridOfTheResult)
             dataPath = testCase.createTempFolder();
             frame = testCase.makeFrame(1);
             writezarr(frame, [dataPath, testCase.FsnA0, '.zarr']);
             % factors, the [x y z] factor of the regular path, and whether the
-            % values are compared (integer factors and 1 along y give the
-            % regular path's values)
+            % values are compared
             factors = {[1.5, 1, 1.25], [1.5, 1, 1.25], true; [1, 2, 1], [1, 2, 1], true; 2, [2, 2, 2], true; ...
-                [2, 1], [2, 2, 1], true; [1, 1.5, 1.25], [1, 1.5, 1.25], false};
+                [2, 1], [2, 2, 1], true; [1, 1.5, 1.25], [1, 1.5, 1.25], true};
             for i = 1 : size(factors, 1)
                 name = sprintf('DSR_%d', i);
                 testCase.runWrapper(dataPath, 'zarrFile', true, 'largeFile', true, 'batchSize', [16, 1024, 1024], ...
@@ -156,6 +155,41 @@ classdef DeskewRotateDataWrapperTest < pktest.TestCase
                 if factors{i, 3}
                     testCase.verifyEqual(dsr, expected, mat2str(factors{i, 1}));
                 end
+            end
+        end
+
+        function largeFileResamplesOnTheGridOfTheResult(testCase)
+            % with a fractional factor along y (the batches' axis) each batch
+            % resampled on a grid of its own, centred on its rows, which is the
+            % result's only if the batch's rows lie on it (here up to 276
+            % counts in 6.8% of the voxels for 1.5); and the last batch could
+            % stop a row short of the input region. The batches resample on the
+            % grid of the whole result: the result is the regular path's,
+            % also for an odd number of rows (with 2, whose batches were off by
+            % a quarter of a row; the last row samples the last input row, which
+            % came out as the fill value), an input box that crops y, and cubic
+            % interpolation
+            frame = testCase.makeFrame(1);
+            % factors ([x y z]), rows of the input, its box, interpolation
+            cases = {[1, 1.3, 1], 64, [], 'linear'; [1.2, 1.7, 0.9], 64, [], 'linear'; [1, 2, 1], 63, [], 'linear'; ...
+                [1, 2.5, 1], 61, [], 'linear'; [1, 0.75, 1], 64, [], 'linear'; [1, 1.5, 1], 64, [], 'cubic'; ...
+                [1, 1.3, 1], 64, [3, 1, 1, 61, 96, 80], 'linear'};
+            for i = 1 : size(cases, 1)
+                [r, ny, box, interp] = cases{i, :};
+                msg = sprintf('%s, %d rows, box %s, %s', mat2str(r), ny, mat2str(box), interp);
+                dataPath = testCase.createTempFolder();
+                writezarr(frame(1 : ny, :, :), [dataPath, testCase.FsnA0, '.zarr'], 'blockSize', [16, 64, 64]);
+                testCase.runWrapper(dataPath, 'zarrFile', true, 'largeFile', true, 'batchSize', [16, 1024, 1024], ...
+                    'blockSize', [16, 64, 64], 'saveMIP', false, 'resampleFactor', r, 'inputBbox', box, ...
+                    'interpMethod', interp);
+                dsr = readzarr([dataPath, 'DSR/', testCase.FsnA0, '.zarr']);
+                f = frame(1 : ny, :, :);
+                if ~isempty(box)
+                    f = f(box(1) : box(4), box(2) : box(5), box(3) : box(6));
+                end
+                expected = deskewRotateFrame3D(f, testCase.SkewAngle, testCase.Dz, testCase.XYPixelSize, ...
+                    'reverse', true, 'save16bit', true, 'resampleFactor', r, 'interpMethod', interp);
+                testCase.verifyEqual(dsr, expected, msg);
             end
         end
 

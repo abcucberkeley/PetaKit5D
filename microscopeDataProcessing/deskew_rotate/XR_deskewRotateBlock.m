@@ -28,6 +28,7 @@ ip.addParameter('save16bit', true, @islogical);
 ip.addParameter('interpMethod', 'linear', @(x) any(strcmpi(x, {'cubic', 'linear'})));
 ip.addParameter('resampleFactor', [], @(x) isempty(x) || isnumeric(x)); % resampling after rotation 
 ip.addParameter('mipBatchSize', [], @isnumeric); % save the MIPs of the blocks for MIP slabs with this batch size in the flag
+ip.addParameter('inputRows', [], @isnumeric); % [first, last] row of the input region: the batches are resampled on the grid of its result
 ip.addParameter('uuid', '', @ischar);
 ip.addParameter('debug', false, @islogical);
 
@@ -43,6 +44,7 @@ save16bit = pr.save16bit;
 interpMethod = pr.interpMethod;
 resampleFactor = pr.resampleFactor;
 mipBatchSize = pr.mipBatchSize;
+inputRows = pr.inputRows;
 uuid = pr.uuid;
 
 % we assume the path exists, otherwise return error (in case of completion 
@@ -105,10 +107,30 @@ for i = 1 : numel(batchInds)
     objectiveScan = false;
     
     dsrBbox = outLocalBboxes(i, :) + [1, outBatchBBoxes(i, 2 : 3), 1, outBatchBBoxes(i, 2 : 3)] - 1;
+    % with inputRows, a resampling along y on the grid of the whole result:
+    % the rows of the box are the result's, and the batch's input rows are
+    % placed in the input region's
+    batchRows = [];
+    if ~isempty(inputRows)
+        dsrBbox([1, 4]) = dsrBbox([1, 4]) + outBatchBBoxes(i, 1) - 1;
+        ny = inputRows(2) - inputRows(1) + 1;
+        batchRows = [inBbox(1) - inputRows(1) + 1, ny];
+        % a last row of the result that samples the region's last row exactly
+        % came out as the fill value: imwarp takes a sample past the last row
+        % as outside, and the batch's coordinate is past it by its last bit
+        % where the whole volume's is not. The last batch gets two copies of
+        % that row past it (they only reach samples past the last row)
+        nyOut = round(ny / resampleFactor(2));
+        if inBbox(4) == inputRows(2) && outRegionBBoxes(i, 4) == nyOut ...
+                && abs((nyOut - (nyOut + 1) / 2) * resampleFactor(2) + (ny + 1) / 2 - ny) < 1e-6
+            in_batch = cat(1, in_batch, repmat(in_batch(end, :, :), 2, 1, 1));
+        end
+    end
     
     out_batch = deskewRotateFrame3D(in_batch, SkewAngle, dz, xyPixelSize, ...
                 'reverse', Reverse, 'bbox', dsrBbox, 'objectiveScan', objectiveScan, ...
-                'resampleFactor', resampleFactor, 'save16bit', save16bit, 'interpMethod', interpMethod);
+                'resampleFactor', resampleFactor, 'save16bit', save16bit, 'interpMethod', interpMethod, ...
+                'batchRows', batchRows);
     clear in_batch;
     if save16bit && ~strcmp(dtype, 'uint16')
         % uint16 rounds to the nearest integer

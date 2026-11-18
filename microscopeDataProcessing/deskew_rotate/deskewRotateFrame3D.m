@@ -35,6 +35,7 @@ ip.addParameter('resampleFactor', [], @isnumeric); % resample factor in xyz orde
 ip.addParameter('gpuProcess', false, @islogical); % use gpu for the processing. 
 ip.addParameter('save16bit', false, @islogical); % direct output results as 16bit for mex functions
 ip.addParameter('interpMethod', 'linear', @(x) any(strcmpi(x, {'cubic', 'linear'})));
+ip.addParameter('batchRows', [], @isnumeric); % [first row, rows]: vol is these rows of a volume with more rows (a batch), resampled on its grid
 ip.parse(vol, angle, dz, xyPixelSize, varargin{:});
 
 pr = ip.Results;
@@ -46,8 +47,16 @@ resampleFactor = pr.resampleFactor;
 gpuProcess = pr.gpuProcess;
 save16bit = pr.save16bit;
 interpMethod = pr.interpMethod;
+batchRows = pr.batchRows;
 
 [ny,nx,nz] = size(vol);
+% the rows of the transform: for a batch of a volume, the volume's, so that
+% a resampling along y has its grid (bbox is in the rows of its result, and
+% imwarp places the batch's rows in it)
+nyT = ny;
+if ~isempty(batchRows)
+    nyT = batchRows(2);
+end
 
 theta = angle * pi/180;
 dx = cos(theta)*dz/xyPixelSize; % pixels shifted slice to slice in x
@@ -62,16 +71,17 @@ end
 if ~objectiveScan
     % outSize = round([ny nxDs/cos(theta) h]);
     % calculate height; first & last 2 frames have interpolation artifacts
-    outSize = round([ny, (nx-1)*cos(theta)+(nz-1)*zAniso/sin(abs(theta)), (nx-1)*sin(abs(theta))-4]);
+    outSize = round([nyT, (nx-1)*cos(theta)+(nz-1)*zAniso/sin(abs(theta)), (nx-1)*sin(abs(theta))-4]);
 else
     % exact proportions of rotated box
-    outSize = round([ny, nx*cos(theta)+nz*zAniso*sin(abs(theta)), nz*zAniso*cos(theta)+nx*sin(abs(theta))]);
+    outSize = round([nyT, nx*cos(theta)+nz*zAniso*sin(abs(theta)), nz*zAniso*cos(theta)+nx*sin(abs(theta))]);
 end
 
 do_interp = ~objectiveScan && abs(dx) > xStepThresh;
 rs = resampleFactor;
 % the mex only supports sample scan (it computes input x from output z only)
-use_fast_method = ~(objectiveScan || gpuProcess || (~isempty(rs) && any(rs ~= 1)) || ~strcmpi(interpMethod, 'linear'));
+use_fast_method = ~(objectiveScan || gpuProcess || (~isempty(rs) && any(rs ~= 1)) || ~strcmpi(interpMethod, 'linear') ...
+    || ~isempty(batchRows));
 %% skew space interpolation
 if do_interp
     % skewed space interplation combined dsr
@@ -155,7 +165,7 @@ if Reverse
     theta = -theta;
 end
 
-center = ([ny nxDs nz]+1)/2;
+center = ([nyT nxDs nz]+1)/2;
 T1 = [1 0 0 0
       0 1 0 0
       0 0 1 0
@@ -210,7 +220,13 @@ if gpuProcess
 end
 
 if ~use_fast_method
-    [volout] = imwarp(vol_1, affine3d(ds_S*(T1*S*R*T2)*(RT1*RS*RT2)), interpMethod, 'FillValues', 0, 'OutputView', RA);
+    if isempty(batchRows)
+        [volout] = imwarp(vol_1, affine3d(ds_S*(T1*S*R*T2)*(RT1*RS*RT2)), interpMethod, 'FillValues', 0, 'OutputView', RA);
+    else
+        RV = imref3d(size(vol_1, 1 : 3), [0.5, size(vol_1, 2) + 0.5], batchRows(1) + [-0.5, size(vol_1, 1) - 0.5], ...
+            [0.5, size(vol_1, 3) + 0.5]);
+        [volout] = imwarp(vol_1, RV, affine3d(ds_S*(T1*S*R*T2)*(RT1*RS*RT2)), interpMethod, 'FillValues', 0, 'OutputView', RA);
+    end
 else
     % convert the transformation matrix to backward and the form for c/c++
     offset = zeros(4, 4);

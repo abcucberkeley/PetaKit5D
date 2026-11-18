@@ -220,6 +220,36 @@ inBatchBboxes(:, 4) = min(inBatchBboxes(:, 1) + round((outBatchBBoxes(:, 4) - ou
 inBatchBboxes(:, 5) = inBatchBboxes(:, 2) + imSize(2) - 1;
 inBatchBboxes(:, 6) = inBatchBboxes(:, 3) + imSize(3) - 1;
 
+% with a factor along y (the batches' axis), each batch resamples on a grid
+% of its own, centred on its rows: it is the grid of the whole result only
+% if the batch's rows lie on it (e.g., integer factors and sizes they
+% divide), else it is off by a fraction of a row (up to 254 counts in 6.8%
+% of the voxels for 1.5). Then the batches resample on the grid of the
+% whole result (the blocks get the rows of the input region): their input
+% rows, as many as before (more if the interpolation needs more), are
+% placed over the rows that grid needs for their output rows, within the
+% input region (the last batch could stop a row short of its last row)
+resultGrid = false;
+if rs(2) ~= 1
+    nyb = inBatchBboxes(:, 4) - inBatchBboxes(:, 1) + 1;
+    offRows = (outBatchBBoxes(:, 1) - 1) * rs(2) - (inBatchBboxes(:, 1) - wdStart(1)) ...
+        + ((ny + 1) / 2 - (dsrOutSize(1) + 1) / 2 * rs(2)) - ((nyb + 1) / 2 - (round(nyb / rs(2)) + 1) / 2 * rs(2));
+    resultGrid = any(abs(offRows) > 1e-9) || any(inBatchBboxes(:, 4) > wdStart(1) + ny - 1);
+end
+if resultGrid
+    % (in the rows of the region: the rows the output rows sample, with a
+    % margin of one, two for cubic interpolation)
+    margin = 1 + strcmpi(interpMethod, 'cubic');
+    inRow = @(r) (r - (dsrOutSize(1) + 1) / 2) * rs(2) + (ny + 1) / 2;
+    need1 = max(1, floor(inRow(outRegionBBoxes(:, 1))) - margin);
+    need4 = min(ny, ceil(inRow(outRegionBBoxes(:, 4))) + margin);
+    nyb = min(ny, max(nyb, need4 - need1 + 1));
+    s = need1 - floor((nyb - (need4 - need1 + 1)) / 2);
+    s = max(1, min(s, ny - nyb + 1));
+    inBatchBboxes(:, 1) = s + wdStart(1) - 1;
+    inBatchBboxes(:, 4) = s + nyb - 1 + wdStart(1) - 1;
+end
+
 % initialize zarr file
 if exist(dsrTmppath, 'dir')
     bim = blockedImage(dsrTmppath, 'Adapter', CZarrAdapter);
@@ -245,6 +275,12 @@ if saveMIP
     zInfo = getZarrInfo(dsrTmppath);
     mipBatchSize = MIP_zarr_batch_size(zInfo.size, zInfo.blockSize, zInfo.dtype);
     mip_str = sprintf(',''mipBatchSize'',%s', strrep(mat2str(mipBatchSize), ' ', ','));
+end
+% (the rows of the input region for the result's grid: passed only then, as
+% mipBatchSize)
+rows_str = '';
+if resultGrid
+    rows_str = sprintf(',''inputRows'',[%d,%d]', wdStart(1), wdStart(1) + imSize(1) - 1);
 end
 
 % set up parallel computing 
@@ -274,12 +310,12 @@ for i = 1 : numTasks
     funcStrs{i} = sprintf(['XR_deskewRotateBlock([%s],''%s'',''%s'',''%s'',%s,%s,%s,%s,', ...
         '%0.20d,%0.20d,''Overwrite'',%s,''SkewAngle'',%0.20d,''Reverse'',%s,', ...
         '''flipZstack'',%s,''save16bit'',%s,''interpMethod'',''%s'',''resampleFactor'',%s,', ...
-        '''uuid'',''%s'',''debug'',%s%s)'], strrep(num2str(batchInds, '%d,'), ' ', ''), ...
+        '''uuid'',''%s'',''debug'',%s%s%s)'], strrep(num2str(batchInds, '%d,'), ' ', ''), ...
         frameFullpath, dsrTmppath, zarrFlagFullpath, strrep(mat2str(inBatchBBoxes_i), ' ', ','), ...
         strrep(mat2str(outBatchBBoxes_i), ' ', ','), strrep(mat2str(outRegionBBoxes_i), ' ', ','), ...
         strrep(mat2str(outLocalBBoxes_i), ' ', ','), xyPixelSize, dz, string(Overwrite), ...
         skewAngle, string(reverse), string(flipZstack), string(save16bit), interpMethod, ...
-        strrep(mat2str(resampleFactor), ' ', ','), uuid, string(debug), mip_str);
+        strrep(mat2str(resampleFactor), ' ', ','), uuid, string(debug), mip_str, rows_str);
 end
 
 inputFullpaths = repmat({frameFullpath}, numTasks, 1);
