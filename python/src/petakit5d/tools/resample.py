@@ -340,6 +340,9 @@ def resample_file(
     if _exist(fnout):
         print(f"The result file {fnout} already exists, skip it!", end="", flush=True)
         return
+    from petakit5d.core.bbox import refuse_nan_end
+
+    refuse_nan_end(input_bbox)  # (MATLAB indexes with it)
     box = None if _empty(input_bbox) else _ints(input_bbox)
     # (MATLAB's single() and uint16(), threaded)
     im = convert(_read_frame(fn, box, zarr_file), "single")
@@ -636,6 +639,9 @@ def resample_zarr(
     info = get_zarr_info(zarr_fullpath)
     dtype = info.dtype
     in_size = np.asarray(info.size[:3], dtype=np.float64)
+    from petakit5d.core.bbox import refuse_nan_end
+
+    refuse_nan_end(input_bbox, size=True)  # (MATLAB's batches of the size NaN)
     box = None if _empty(input_bbox) else _ints(input_bbox)
     if box is not None:
         in_size = np.asarray([box[q + 3] - box[q] for q in range(3)], dtype=np.float64)
@@ -839,6 +845,11 @@ def resample_dataset(
     results = [f"{result_paths[int(fd_inds[i])]}/{fsns[i]}{ext}" for i in range(n_f)]
     # the factors as the function strings give them (mat2str_comma(resampleFactor, 10))
     rf_t = [float(v) for v in through_text(_floats(resample_factor), "%0.10f")]
+    from petakit5d.core.bbox import refuse_nan_end
+
+    # a NaN end: MATLAB's file tasks fail where they index with it (large files: where the
+    # size of the box makes their batches)
+    refuse_nan_end(input_bbox, size=large_file)
     box = None if _empty(input_bbox) else _ints(input_bbox)
     rf = _floats(resample_factor)
     if large_file:

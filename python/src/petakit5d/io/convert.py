@@ -421,6 +421,11 @@ def tiff_to_zarr(
     fcn = user_function(usr_fcn)
     if flip_zstack or _resample_factors(resample_factor) is not None or fcn is not None:
         read_whole_tiff = True
+    from petakit5d.core.bbox import refuse_nan_end
+
+    # (MATLAB crops with both boxes)
+    refuse_nan_end(input_bbox)
+    refuse_nan_end(tile_out_bbox)
 
     # MATLAB's sizes and block size, [y x z] ([y x] for an image)
     bs = list(to_yxz(block_size)) if len(_ints(block_size)) == 3 else _ints(block_size)

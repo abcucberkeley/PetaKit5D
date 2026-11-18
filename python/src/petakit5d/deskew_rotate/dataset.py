@@ -417,6 +417,11 @@ def deskew_rotate_dataset(
     n_files = len(names.fnames)
 
     px = _first(xy_pixel_size)
+    from petakit5d.core.bbox import refuse_nan_end
+
+    # a NaN end: MATLAB's file tasks fail where they index with it (large files: where the
+    # size of the box makes their batches); the port's estimates take only integers
+    refuse_nan_end(input_bbox, size=large_file)
     box = None if _empty(input_bbox) else tuple(_ints(input_bbox))
     rs_task = _through_mat2str(resample_factor)
     block = tuple(_ints(block_size))

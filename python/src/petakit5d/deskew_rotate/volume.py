@@ -329,6 +329,13 @@ def _deskew_rotate(
     reverse = _logical(reverse)
     save_16bit = _logical(save_16bit)
     box = None if bbox is None or np.size(bbox) == 0 else tuple(bbox)
+    from petakit5d.core.bbox import has_nan_end
+
+    if has_nan_end(box):
+        # MATLAB's output reference: imref3d of the size bbox(4 : 6) - bbox(1 : 3) + 1
+        raise _error(
+            ValueError, "Expected ImageSize to be integer-valued.", "MATLAB:imref3d:expectedInteger"
+        )
     kw = {
         "reverse": reverse,
         "objective_scan": _logical(objective_scan),
@@ -664,6 +671,9 @@ def rotate_volume(
 def _crop_box(a: np.ndarray, box) -> np.ndarray:
     """``a(b(1) : b(4), b(2) : b(5), b(3) : b(6))`` for the box ``b`` in MATLAB's values: MATLAB's
     error where the indexing leaves the array (an empty range is empty)"""
+    from petakit5d.core.bbox import refuse_nan_end
+
+    refuse_nan_end(box)
     z0, y0, x0, z1, y1, x1 = (int(v) for v in box)
     for pos, (lo, hi, n) in enumerate(
         ((y0, y1, a.shape[1]), (x0, x1, a.shape[2]), (z0, z1, a.shape[0])), start=1

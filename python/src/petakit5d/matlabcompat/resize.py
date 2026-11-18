@@ -566,6 +566,9 @@ def imresize3_fast(
     whole output's region). ``out_class``: the MATLAB class to resize in (default: the class of
     ``im``); only the input region used is converted. Other methods crop imresize3's result.
     """
+    from petakit5d.core.bbox import refuse_nan_end
+
+    refuse_nan_end(out_bbox)  # (MATLAB indexes with it)
     a = np.asarray(im)
     cls = dtypes.matlab_class(a.dtype) if out_class is None else str(out_class)
     nt = resolve_threads(num_threads)

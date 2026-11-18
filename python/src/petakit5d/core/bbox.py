@@ -8,6 +8,15 @@ MATLAB's box ``[ymin xmin zmin ymax xmax zmax]`` (1-based, inclusive) is
 ``(ymin-1, xmin-1, ymax, xmax)``; its range ``[first last]`` is ``(first-1, last)``. Only the
 MATLAB-name layer and files in MATLAB's formats hold MATLAB's values; convert with
 ``box_from_matlab`` / ``box_to_matlab`` and ``range_from_matlab`` / ``range_to_matlab``.
+
+A NaN box end (``math.nan``; MATLAB's ``NaN``) is not an open end: MATLAB's code treats it
+unlike ``Inf``. ``min(bbox(4 : 6), imSize)`` makes both the image's end, but ``NaN > n`` is false
+where ``Inf > n`` is true, and the size ``NaN`` fails where it is used. So a NaN end is taken
+only where MATLAB takes it: the conversions keep it (with its bits, as MATLAB does), the
+functions that accept it say so (``open_nan_ends`` makes it the image's end there), and the
+helpers below refuse it with ``BoxEndError``, MATLAB's error when a NaN end reaches its
+indexing (``MATLAB:colon:nonFiniteEndpoint``); functions where MATLAB fails otherwise raise
+MATLAB's error of theirs. A NaN start is refused (``ValueError``), as before.
 """
 
 from __future__ import annotations
@@ -18,7 +27,10 @@ from collections.abc import Sequence
 import numpy as np
 
 __all__ = [
+    "NAN_END_ID",
+    "NAN_SIZE_ID",
     "Box",
+    "BoxEndError",
     "box_from_matlab",
     "box_shape",
     "box_slices",
@@ -29,13 +41,43 @@ __all__ = [
     "clamp_box",
     "crop",
     "full_box",
+    "has_nan_end",
     "intersect_boxes",
+    "is_nan",
+    "open_nan_ends",
     "pad_widths",
     "range_from_matlab",
     "range_to_matlab",
+    "refuse_nan_end",
 ]
 
 Box = tuple  # (z0, y0, x0, z1, y1, x1) or (y0, x0, y1, x1); ends may be None
+
+# MATLAB's error when a NaN box end reaches its indexing (``a(i : NaN)``)
+NAN_END_ID = "MATLAB:colon:nonFiniteEndpoint"
+NAN_END_MESSAGE = "Nonfinite endpoints or increment for colon operator in index."
+# MATLAB's error when the size of a box with a NaN end makes arrays (the batches of a zarr file)
+NAN_SIZE_ID = "MATLAB:nonaninf"
+NAN_SIZE_MESSAGE = "NaN and Inf not allowed."
+
+
+class BoxEndError(ValueError):
+    """A NaN box end where MATLAB's code doesn't take one; ``identifier`` is MATLAB's error id."""
+
+    def __init__(self, message: str = NAN_END_MESSAGE, identifier: str = NAN_END_ID) -> None:
+        super().__init__(message)
+        self.identifier = identifier
+
+
+def is_nan(v) -> bool:
+    """``v`` is a NaN number (``None`` and other values are not)."""
+    if v is None or isinstance(v, (str, bytes)):
+        return False
+    try:
+        return math.isnan(float(v))
+    except (TypeError, ValueError):
+        return False
+
 
 # MATLAB box position of each Python box position: 3D (z0 y0 x0 z1 y1 x1) <- [y x z y x z]
 _FROM_M3 = (2, 0, 1, 5, 3, 4)
@@ -56,25 +98,34 @@ def _end_from_matlab(v):
     return _int(f, "box ends")
 
 
+def _box_end_from_matlab(v):
+    f = float(v)
+    return f if math.isnan(f) else _end_from_matlab(f)  # (the NaN's bits kept)
+
+
 def _end_to_matlab(v):
     return math.inf if v is None else int(v)
 
 
+def _box_end_to_matlab(v):
+    return float(v) if is_nan(v) else _end_to_matlab(v)
+
+
 def box_from_matlab(b) -> Box:
     """MATLAB's ``[ymin xmin zmin ymax xmax zmax]`` (or 2D ``[ymin xmin ymax xmax]``) as our box
-    (``Inf`` ends become ``None``)."""
+    (``Inf`` ends become ``None``; ``NaN`` ends stay, with their bits)."""
     v = list(np.asarray(b, dtype=np.float64).ravel())
     if len(v) == 6:
         m = v
         return tuple(_int(m[i], "box starts") - 1 for i in (2, 0, 1)) + tuple(
-            _end_from_matlab(m[i]) for i in (5, 3, 4)
+            _box_end_from_matlab(m[i]) for i in (5, 3, 4)
         )
     if len(v) == 4:
         return (
             _int(v[0], "box starts") - 1,
             _int(v[1], "box starts") - 1,
-            _end_from_matlab(v[2]),
-            _end_from_matlab(v[3]),
+            _box_end_from_matlab(v[2]),
+            _box_end_from_matlab(v[3]),
         )
     raise ValueError(
         f"a MATLAB box has 6 values [ymin xmin zmin ymax xmax zmax] (or 4 in 2D), got {len(v)}"
@@ -83,13 +134,14 @@ def box_from_matlab(b) -> Box:
 
 def box_to_matlab(box) -> tuple:
     """Our box as MATLAB's ``[ymin xmin zmin ymax xmax zmax]`` (2D: ``[ymin xmin ymax xmax]``);
-    ``None`` ends become ``Inf``."""
-    b = _box_values(box)
+    ``None`` ends become ``Inf``; NaN ends stay (with their bits)."""
+    b = _box_values(box, nan_ends=True)
+    e = _box_end_to_matlab
     if len(b) == 6:
         z0, y0, x0, z1, y1, x1 = b
-        return (y0 + 1, x0 + 1, z0 + 1, _end_to_matlab(y1), _end_to_matlab(x1), _end_to_matlab(z1))
+        return (y0 + 1, x0 + 1, z0 + 1, e(y1), e(x1), e(z1))
     y0, x0, y1, x1 = b
-    return (y0 + 1, x0 + 1, _end_to_matlab(y1), _end_to_matlab(x1))
+    return (y0 + 1, x0 + 1, e(y1), e(x1))
 
 
 def boxes_from_matlab(rows) -> np.ndarray:
@@ -142,7 +194,17 @@ def range_to_matlab(r) -> tuple:
     )
 
 
-def _box_values(box) -> tuple:
+def _box_end(e, nan_ends: bool):
+    if e is None:
+        return None
+    if is_nan(e):
+        if not nan_ends:
+            raise BoxEndError()
+        return float(e)  # (its bits kept)
+    return _int(e, "box ends")
+
+
+def _box_values(box, nan_ends: bool = False) -> tuple:
     if box is None:
         raise ValueError("no box")
     v = list(box.tolist() if isinstance(box, np.ndarray) else box)
@@ -152,8 +214,31 @@ def _box_values(box) -> tuple:
         )
     h = len(v) // 2
     starts = [_int(s, "box starts") for s in v[:h]]
-    ends = [None if e is None else _int(e, "box ends") for e in v[h:]]
+    ends = [_box_end(e, nan_ends) for e in v[h:]]
     return tuple(starts) + tuple(ends)
+
+
+def has_nan_end(box) -> bool:
+    """The box (ours, or a sequence of numbers) has a NaN end."""
+    if box is None:
+        return False
+    v = list(box.tolist() if isinstance(box, np.ndarray) else box)
+    return any(is_nan(e) for e in v[len(v) // 2 :])
+
+
+def refuse_nan_end(box, *, size: bool = False) -> None:
+    """``BoxEndError`` if the box (ours, MATLAB's or empty) has a NaN end: MATLAB's error where
+    the end reaches its indexing, or with ``size`` where the box's size makes arrays."""
+    if has_nan_end(box):
+        raise BoxEndError(NAN_SIZE_MESSAGE, NAN_SIZE_ID) if size else BoxEndError()
+
+
+def open_nan_ends(box) -> Box:
+    """The box with its NaN ends as open ends (``None``): for MATLAB code that takes a NaN end as
+    the image's end (``min(bbox(4 : 6), imSize)``)."""
+    b = _box_values(box, nan_ends=True)
+    h = len(b) // 2
+    return b[:h] + tuple(None if is_nan(e) else e for e in b[h:])
 
 
 def _shape_like(shape: Sequence[int] | None, h: int):

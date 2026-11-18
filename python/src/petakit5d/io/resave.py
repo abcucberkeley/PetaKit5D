@@ -262,6 +262,9 @@ def resave_zarr(
     out_size = list(sz)
     start = [0, 0, 0]
     if not _empty(input_bbox):
+        from petakit5d.core.bbox import refuse_nan_end
+
+        refuse_nan_end(input_bbox, size=True)  # (MATLAB's batches of the size NaN)
         b = _ints(input_bbox)
         out_size = [b[i + 3] - b[i] for i in range(3)]
         start = b[:3]
@@ -464,6 +467,10 @@ def resave_zarr_dataset(
     results = [f"{result_paths[int(fd_inds[i])]}/{fsns[i]}.zarr" for i in range(n_f)]
     cpus = through_text(cpus_per_task, "%d")
     cpus = int(cpus) if float(cpus) == int(cpus) else float(cpus)
+    from petakit5d.core.bbox import refuse_nan_end
+
+    # a NaN end: MATLAB's tasks fail where the size of the box makes their batches
+    refuse_nan_end(input_bbox, size=True)
     tasks = [
         Task.of(
             resave_zarr,

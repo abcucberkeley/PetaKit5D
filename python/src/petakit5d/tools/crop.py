@@ -9,6 +9,20 @@ block sizes and borders are ``(z, y, x)``. The MATLAB-name layer converts MATLAB
 numbers). Boxes are integral: MATLAB's non-integer boxes (truncated by the mex, rounded by its
 indexing) are not taken.
 
+Open and NaN box ends (``None``, MATLAB's ``Inf``; ``math.nan``, MATLAB's ``NaN``) are taken
+where MATLAB takes them, and fail with MATLAB's errors elsewhere (each has an oracle case):
+
+- ``crop_file`` cuts both at the image's end (MATLAB's ``min(bbox(4 : 6), imSize)``); with
+  ``pad`` an open end fails (``Inf > imSize``: MATLAB pads by ``Inf``,
+  ``MATLAB:padarray:expectedInteger``) and a NaN end does not pad (``NaN > imSize`` is false);
+- ``crop_zarr`` (large files) fails with an open end without ``pad`` (out of bound) and else
+  with ``MATLAB:nonaninf`` (the batches of a size ``Inf`` or ``NaN``);
+- ``crop_dataset``: ``'fixed'`` passes both to its tasks; ``'moving'`` refuses an open end (the
+  box moves out of the image) and moves the start of a box with a NaN end, whose end stays NaN;
+  ``'center'`` fails with both (``MATLAB:colon:nonFiniteEndpoint``; with ``pad``, an open end
+  ``MATLAB:padarray:expectedInteger``); large files fail as ``crop_zarr``, at once (MATLAB's
+  resource estimate is ``NaN`` and every task fails).
+
 Files keep MATLAB's names and contents: ``<data>/<result_dir_name>/<name>.tif`` or ``.zarr``
 (the format follows ``save_zarr``), ``parameters.mat`` of the call, the MIPs of large crops in
 ``<result>/MIPs/`` (``mip_zarr``, merged from the MIPs the block tasks save in their flags), and
@@ -101,6 +115,51 @@ def _box(box: Any) -> list[int]:
     if len(b) != 6:
         raise ValueError(f"a box has 6 values (z0, y0, x0, z1, y1, x1), got {len(b)}")
     return b
+
+
+def _box_open(box: Any) -> list[Any]:
+    """a box whose ends may be open (None) or NaN (math.nan)"""
+    from petakit5d.core.bbox import is_nan
+
+    v = list(box.tolist() if isinstance(box, np.ndarray) else box)
+    if len(v) != 6:
+        raise ValueError(f"a box has 6 values (z0, y0, x0, z1, y1, x1), got {len(v)}")
+    ends = [e if e is None else (float(e) if is_nan(e) else _ints([e])[0]) for e in v[3:]]
+    return _ints(v[:3]) + ends
+
+
+def _m_end(e: Any) -> float:
+    """MATLAB's value of an end: Inf for an open end, NaN for NaN"""
+    return math.inf if e is None else e
+
+
+def _min_end(n: int, e: Any) -> int:
+    """MATLAB's min(e, n): the image's end for Inf and NaN"""
+    return n if e is None or math.isnan(e) or e > n else int(e)
+
+
+def _not_finite(v: Any) -> bool:
+    return not math.isfinite(v)
+
+
+_PADSIZE = (
+    "Expected input number 2, PADSIZE, to be integer-valued.",
+    "MATLAB:padarray:expectedInteger",
+)
+_NONANINF = ("NaN and Inf not allowed.", "MATLAB:nonaninf")
+_OUT_OF_BOUND = (
+    "The bounding box is out of bound! Please check the bbox setting or turn on pad option."
+)
+
+
+def _large_box_error(box: list[Any], im_size: Sequence[int], pad: bool) -> CropError | None:
+    """XR_crop_zarr's error for a box with an open or NaN end: out of bound without pad (an open
+    end, or an end past the image), else the batches of a size Inf or NaN"""
+    if not any(e is None or math.isnan(e) for e in box[3:]):
+        return None
+    if not pad and any(_m_end(box[q + 3]) > im_size[q] for q in range(3)):
+        return CropError(_OUT_OF_BOUND)
+    return CropError(*_NONANINF)
 
 
 def _size3(v: Any, name: str) -> list[int]:
@@ -317,17 +376,17 @@ def crop_file(
     if _exist(save_fullpath) and not overwrite:
         print(f"The cropped file {save_fullpath} is already exist, skip it!", flush=True)
         return
-    box = _box(bbox)
+    box = _box_open(bbox)
     print(f"Crop frame {data_fullpath} with bounding box {tuple(box)}...", flush=True)
 
     im_size = _image_size(data_fullpath)
-    outside = any(box[q] < 0 or box[q + 3] > im_size[q] for q in range(3))
+    # (an open end is past the image's end, a NaN end is not: Inf > n, NaN > n in MATLAB)
+    outside = any(box[q] < 0 or _m_end(box[q + 3]) > im_size[q] for q in range(3))
+    ends_1 = [_min_end(n, v) for n, v in zip(im_size, box[3:], strict=True)]
     if pad and outside:
-        box_1 = [max(0, v) for v in box[:3]] + [
-            min(n, v) for n, v in zip(im_size, box[3:], strict=True)
-        ]
+        box_1 = [max(0, v) for v in box[:3]] + ends_1
     else:
-        box_1 = box[:3] + [min(n, v) for n, v in zip(im_size, box[3:], strict=True)]
+        box_1 = box[:3] + ends_1
 
     if zarr_file and large_file:
         crop_zarr(
@@ -348,7 +407,12 @@ def crop_file(
         return
     im = _read_box(data_fullpath, box_1, zarr_file)
     if pad:
-        im = _padded(im, box, im_size, pad_value)
+        if any(e is None for e in box[3:]):
+            # MATLAB pads by Inf - imSize
+            raise CropError(*_PADSIZE)
+        # (a NaN end pads nothing)
+        box_p = box[:3] + [n if math.isnan(e) else e for n, e in zip(im_size, box[3:], strict=True)]
+        im = _padded(im, box_p, im_size, pad_value)
 
     if save_zarr:
         tmp = f"{save_fullpath[:-5]}_{uuid}.zarr"
@@ -576,12 +640,12 @@ def crop_zarr(
         info = get_zarr_info(zarr_fullpath)
         im_size = [int(v) for v in info.size[:3]]
         dtype = info.dtype
-        box = _box(bbox)
+        box = _box_open(bbox)
+        err = _large_box_error(box, im_size, pad)
+        if err is not None:
+            raise err
         if not pad and any(box[q + 3] > im_size[q] for q in range(3)):
-            raise CropError(
-                "The bounding box is out of bound! Please check the bbox setting or turn on "
-                "pad option."
-            )
+            raise CropError(_OUT_OF_BOUND)
         out_size = [box[q + 3] - box[q] for q in range(3)]
         batch = [min(o, b) for o, b in zip(out_size, _size3(batch_size, "batch_size"), strict=True)]
         block = [min(o, b) for o, b in zip(out_size, _size3(block_size, "block_size"), strict=True)]
@@ -803,7 +867,9 @@ def crop_dataset(
     paths = [os.fspath(p) for p in paths]
     if large_file:
         save_zarr = True
-    box = _box(input_bbox)
+    box = _box_open(input_bbox)
+    # MATLAB's extent bbox(4 : 6) - bbox(1 : 3) (Inf for an open end, NaN for a NaN end)
+    ext = [_m_end(box[q + 3]) - box[q] for q in range(3)]
 
     result_paths = []
     for d, data_path in enumerate(paths):
@@ -845,7 +911,6 @@ def crop_dataset(
                 ch_tps.append(sum(n * int(v) for n, v in zip(count, r, strict=True)))
             max_tps.append(max(ch_tps) if ch_tps else 0)
             last = _ints(last_start_coords if last_start_coords is not None else [])
-            ext = [box[q + 3] - box[q] for q in range(3)]
             if len(last) != 3:
                 raise CropError(
                     "Arrays have incompatible sizes for this operation.",
@@ -866,7 +931,6 @@ def crop_dataset(
         fsn = fileparts(fnames[f])[1]
         crop = f"{result_paths[d]}/{fsn}.{'zarr' if save_zarr else 'tif'}"
         crop_fullpaths.append(crop)
-        ext = [box[q + 3] - box[q] for q in range(3)]
         if moving:
             if f >= len(ch_tps):
                 raise CropError(
@@ -879,8 +943,19 @@ def crop_dataset(
                 box[q] + int(mround((last[q] - box[q]) / (max_tps[d] - 1) * (ch_tps[f] - 1)))
                 for q in range(3)
             ]
-            box_f = start + [s + e for s, e in zip(start, ext, strict=True)]
+            # (an open end failed above; a NaN end stays NaN)
+            box_f = start + [
+                s + e if math.isfinite(e) else e for s, e in zip(start, ext, strict=True)
+            ]
         elif crop_type == "center":
+            if any(map(_not_finite, ext)):
+                # MATLAB's start is -Inf (an open end) or NaN: its task pads by Inf (with pad),
+                # or indexes from it
+                if pad and any(e is None for e in box[3:]):
+                    raise CropError(*_PADSIZE)
+                from petakit5d.core.bbox import BoxEndError
+
+                raise BoxEndError()
             im_size = _image_size(frame)
             # center = round((imSize + 1) / 2) (1-based), start = center - floor(size / 2)
             start = [
@@ -908,10 +983,13 @@ def crop_dataset(
 
     coord_nice = 0
     if zarr_file and large_file:
+        err = _large_box_error(box, sz, pad)
+        if err is not None:
+            raise err
         # each file's job (crop_zarr) runs its blocks as jobs: it holds the process and the
         # merge of the MIP slabs, and if it crops blocks itself (master_compute, the config's
         # if it sets it), cpus_per_task and a block's estimate
-        out_size = [box[q + 3] - box[q] for q in range(3)]
+        out_size = [int(e) for e in ext]
         batch_b = [
             min(o, b) for o, b in zip(out_size, _size3(batch_size, "batch_size"), strict=True)
         ]

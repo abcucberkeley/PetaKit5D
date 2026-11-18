@@ -219,10 +219,7 @@ EDGE = [
 
 
 # where pk5d-master differs from the compiled master (reported; none is a call of the callers)
-KNOWN_DIFFERENCES = {
-    "edge_nan_box_end": "a NaN box end: MATLAB passes it on, the bbox kind refuses it (a box "
-    "end in the port is an integer or None)",
-}
+KNOWN_DIFFERENCES: dict[str, str] = {}
 
 # calls of the callers that MATLAB rejects too
 CALLER_ERRORS = {

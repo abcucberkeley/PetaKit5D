@@ -61,7 +61,11 @@ checked.
 
 - **A box is `(z0, y0, x0, z1, y1, x1)`**, 0-based, end-exclusive: it selects
   `vol[z0:z1, y0:y1, x0:x1]`. A 2D box is `(y0, x0, y1, x1)`. A range is `(start, stop)`. Indices
-  and offsets are 0-based. An open end is `None` (MATLAB's `Inf`).
+  and offsets are 0-based. An open end is `None` (MATLAB's `Inf`). A NaN end (`math.nan`,
+  MATLAB's `NaN`) is not an open end: MATLAB's code treats it unlike `Inf`, so it is taken only
+  where MATLAB takes it (the crop functions; `open_nan_ends` makes it the image's end there), and
+  elsewhere fails with MATLAB's error (the helpers raise `BoxEndError`,
+  `MATLAB:colon:nonFiniteEndpoint`).
 - **MATLAB's values convert at the boundary**, with `bbox`: `box_from_matlab` /
   `box_to_matlab` (`[ymin xmin zmin ymax xmax zmax]`, 1-based, inclusive, is
   `(zmin-1, ymin-1, xmin-1, zmax, ymax, xmax)`; 2D `[ymin xmin ymax xmax]` is

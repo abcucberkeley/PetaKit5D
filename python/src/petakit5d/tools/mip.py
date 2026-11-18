@@ -333,6 +333,9 @@ def save_mip_tiff(
     if input_bbox is None or len(input_bbox) == 0:
         im = read_tiff(frame_fullname)
     else:
+        from petakit5d.core.bbox import refuse_nan_end
+
+        refuse_nan_end(input_bbox)  # (MATLAB indexes with it)
         box = [int(v) for v in input_bbox]
         im = _crop_yx(read_tiff(frame_fullname, (box[0], box[3])), box)
     for i in range(3):
@@ -1095,6 +1098,9 @@ def mip_zarr(
     start = [0, 0, 0]
     has_box = input_bbox is not None and len(input_bbox) > 0
     if has_box:
+        from petakit5d.core.bbox import refuse_nan_end
+
+        refuse_nan_end(input_bbox, size=True)  # (MATLAB's batches of the size NaN)
         bb = _ints(input_bbox)
         in_size = [bb[q + 3] - bb[q] for q in range(3)]
         start = bb[:3]

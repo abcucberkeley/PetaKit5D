@@ -57,7 +57,7 @@ Rules:
 
   | kind | MATLAB | Python |
   |---|---|---|
-  | `bbox` | `[ymin xmin zmin ymax xmax zmax]` (2D `[ymin xmin ymax xmax]`) | `(z0, y0, x0, z1, y1, x1)` (2D `(y0, x0, y1, x1)`); Inf ends: None |
+  | `bbox` | `[ymin xmin zmin ymax xmax zmax]` (2D `[ymin xmin ymax xmax]`) | `(z0, y0, x0, z1, y1, x1)` (2D `(y0, x0, y1, x1)`); Inf ends: None, NaN ends `math.nan` |
   | `bboxes` | rows of boxes (`n x 6`) | tuple of boxes |
   | `size_yxz` | `[y x z]`; 6 or 9 values in groups of three (pool sizes); 2D `[y x]` | `(z, y, x)` per group; 2D `(y, x)` |
   | `per_axis_xyz` | `[x y z]` | `(z, y, x)` |

@@ -746,6 +746,9 @@ def deskew_rotate_zarr(
 
         box_m = None
         if input_bbox is not None and np.size(input_bbox):
+            from petakit5d.core.bbox import refuse_nan_end
+
+            refuse_nan_end(input_bbox, size=True)  # (MATLAB's batches of the size NaN)
             box_m = [int(v) for v in box_to_matlab(tuple(int(v) for v in input_bbox))]
         out_box_m = None
         masks = [os.fspath(p) for p in (mask_fullpaths or ())]
