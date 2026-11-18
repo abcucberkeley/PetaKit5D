@@ -1,0 +1,37 @@
+{
+ "name": "e2e_task_costs",
+ "description": "One framework task as a process, three implementations on one node: a demo tile's deskew/rotation (500 frames, tiff in and out) and a tiny crop (32^3), as a MATLAB job runs it (-batch, setup([]), the function string), as a compiled job runs it (run_mccMaster.sh with the Runtime; needs PK5D_MCC_MASTER and PK5D_MCR) and as a Python job runs it (the probe script with marks, and the real entry point python -m petakit5d.jobs.exec on a call folder). Start-up and teardown per task apart from the work.",
+ "repeats": 5,
+ "warmup": 1,
+ "setup": [
+  "for v in ml mcc py pyx; do mkdir -p {work}/$v; cp {data}/PetaKit5D_demo_cell_image_dataset/Scan_Iter_0000_0000_CamA_ch0_CAM1_stack0000_488nm_0000000msec_0106060251msecAbs_000x_003y_000z_0000t.tif {work}/$v/tile.tif; done",
+  "{python} -c \"import numpy as np, petakit5d.io as io; io.write_tiff(np.zeros((64, 64, 64), np.uint16), '{work}/x.tif')\"",
+  "{python} {src}/benchmarks/e2e/task_probe.py call {work}/call_dsr dsr {work}/pyx/tile.tif",
+  "{python} {src}/benchmarks/e2e/task_probe.py call {work}/call_tiny tiny {work}/x.tif {work}/pyx/tiny.tif"
+ ],
+ "variants": [
+  {"id": "ml_dsr", "impl": "matlab", "timeout": 900,
+   "code": "if exist('{work}/ml/DSR', 'dir'), rmdir('{work}/ml/DSR', 's'); end; XR_deskewRotateFrame('{work}/ml/tile.tif', 0.108, 0.3, 'SkewAngle', 32.45, 'Reverse', true, 'rotate', true, 'Save16bit', true);"},
+  {"id": "mcc_dsr", "impl": "command", "when": "PK5D_MCC_MASTER", "timeout": 900,
+   "argv": ["bash", "-c", "rm -rf {work}/mcc/DSR; exec \"$0\" \"$@\"", "{env[PK5D_MCC_MASTER]}", "{env[PK5D_MCR]}", "XR_deskewRotateFrame", "{work}/mcc/tile.tif", "0.108", "0.3", "skewAngle", "32.45", "reverse", "true", "rotate", "true", "save16bit", "true"]},
+  {"id": "py_dsr", "impl": "python", "script": "benchmarks/e2e/task_probe.py", "args": ["dsr", "{work}/py/tile.tif"]},
+  {"id": "pyexec_dsr", "impl": "command",
+   "argv": ["bash", "-c", "rm -rf {work}/pyx/DSR; exec \"$0\" -u -m petakit5d.jobs.exec {work}/call_dsr 1", "{python}"]},
+  {"id": "ml_tiny", "impl": "matlab", "timeout": 900,
+   "code": "XR_crop_frame('{work}/x.tif', '{work}/ml/tiny.tif', [1, 1, 1, 32, 32, 32], 'overwrite', true);"},
+  {"id": "mcc_tiny", "impl": "command", "when": "PK5D_MCC_MASTER", "timeout": 900,
+   "argv": ["{env[PK5D_MCC_MASTER]}", "{env[PK5D_MCR]}", "XR_crop_frame", "{work}/x.tif", "{work}/mcc/tiny.tif", "[1,1,1,32,32,32]", "overwrite", "true"]},
+  {"id": "py_tiny", "impl": "python", "script": "benchmarks/e2e/task_probe.py", "args": ["tiny", "{work}/x.tif", "{work}/py/tiny.tif"]},
+  {"id": "pyexec_tiny", "impl": "command",
+   "argv": ["{python}", "-u", "-m", "petakit5d.jobs.exec", "{work}/call_tiny", "1"]}
+ ],
+ "compare": [
+  {"a": "py_dsr", "b": "ml_dsr"},
+  {"a": "pyexec_dsr", "b": "ml_dsr"},
+  {"a": "pyexec_dsr", "b": "mcc_dsr"},
+  {"a": "py_tiny", "b": "ml_tiny"},
+  {"a": "pyexec_tiny", "b": "mcc_tiny"}
+ ],
+ "gate": {"overhead_max": 1.0, "metrics": ["startup", "teardown", "overhead", "total"]},
+ "output_bytes": 3000000000
+}
