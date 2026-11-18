@@ -254,6 +254,19 @@ def _turn_pages(vol: np.ndarray, n: int) -> np.ndarray:
 # -- reading -----------------------------------------------------------------------------------
 
 
+def _matlab_layout_zarr(path: str) -> bool:
+    """whether ``path`` is a zarr array in MATLAB's layout (``"order": "F"``, ``[ny, nx, nz]``)"""
+    from petakit5d.io.imagesize import zarr_layout, zarr_meta
+    from petakit5d.jobs.files import fileparts
+
+    if fileparts(path)[2] != ".zarr":
+        return False
+    try:
+        return zarr_layout(zarr_meta(path)) == "yxz"
+    except (OSError, ValueError, KeyError):
+        return False
+
+
 def _read_frame(paths: list[str], n: int, read_buffer: Any) -> np.ndarray:
     """``readtiff`` of each file and ``cat(3, ...)``, or ``readtiff`` / ``readzarr`` of one
     file by its extension, as a ``(z, y, x)`` array (an image as one slice). Partial files are
@@ -459,12 +472,19 @@ def _combined(
     s16,
     n,
     keep_matlab_layout=False,
+    frame_matlab_layout=False,
 ):
     """deskewRotateFrame3D on the frame: the kernels on MATLAB's layout where they run (the
     frame turned around in place and the result back, unless ``keep_matlab_layout``), else on
-    (z, y, x). Returns the result and whether it is in MATLAB's layout ((z, x, y) C)."""
+    (z, y, x). ``frame_matlab_layout``: the frame is in MATLAB's layout already ((z, x, y) C, as
+    read from a zarr file MATLAB wrote). Returns the result and whether it is in MATLAB's
+    layout ((z, x, y) C)."""
     from petakit5d.deskew_rotate import volume as dv
     from petakit5d.deskew_rotate.geometry import deskew_rotate_geometry
+
+    shape = frame.shape
+    if frame_matlab_layout:
+        shape = (shape[0], shape[2], shape[1])
 
     kw = {
         "reverse": reverse,
@@ -478,7 +498,7 @@ def _combined(
     if frame.dtype in (np.uint16, np.float32) and isinstance(interp, str):
         try:
             g = deskew_rotate_geometry(
-                frame.shape,
+                shape,
                 angle,
                 dz,
                 px,
@@ -492,8 +512,10 @@ def _combined(
         except (ValueError, IndexError):
             fast = False
     if not fast:
+        if frame_matlab_layout:
+            frame = _turn_pages(frame, n)
         return dv.deskew_rotate_volume(frame, angle, dz, px, crop=True, **kw), False
-    vol_zxy = _turn_pages(frame, n)
+    vol_zxy = frame if frame_matlab_layout else _turn_pages(frame, n)
     out = dv.deskew_rotate_volume_matlab_layout(vol_zxy, angle, dz, px, num_threads=n, **kw)
     if keep_matlab_layout:
         return out, True
@@ -687,9 +709,26 @@ def deskew_rotate_file(
 
     frame = ds = dsr = None
     in_shape = None
+    # a zarr file MATLAB wrote, deskewed and rotated without a box, flat field or axis change (a
+    # flip in z works on either layout): read in its own layout, MATLAB's, which the kernels
+    # take, without the read's turn and the turn back
+    frame_zxy = (
+        dsr_combined
+        and len(paths) == 1
+        and box is None
+        and not _logical(ff_correction)
+        and not _logical(bk_removal)
+        and axis_permutation(input_axis_order, "zyx") == (0, 1, 2)
+        and _matlab_layout_zarr(paths[0])
+    )
     if dsr_combined or not exist(ds_fullname) or _logical(overwrite):
         t0 = time.perf_counter()
-        frame = _read_frame(paths, n, read_buffer)
+        if frame_zxy:
+            from petakit5d.io.zarr import read_zarr_matlab_layout
+
+            frame = read_zarr_matlab_layout(paths[0], num_threads=n, out=read_buffer)
+        else:
+            frame = _read_frame(paths, n, read_buffer)
         print(f"Image read time: {time.perf_counter() - t0:0.6f} s", flush=True)
         frame = _preprocess(
             frame,
@@ -779,6 +818,8 @@ def deskew_rotate_file(
         print(f"Rotation processing time: {time.perf_counter() - t0:0.6f} s", flush=True)
     else:
         if resample is not None and any(r != 1 for r in resample) and frame.shape[0] > 1000:
+            if frame_zxy:
+                frame, frame_zxy = _turn_pages(frame, n), False
             frame, px, dz, resample = _pre_resample(frame, resample, px, dz, angle)
         if not save_16bit and frame.dtype != np.uint16 and frame.dtype != np.float32:
             frame = _to_class(frame, "single", n)
@@ -803,6 +844,7 @@ def deskew_rotate_file(
             s16=save_16bit,
             n=n,
             keep_matlab_layout=keep_ml,
+            frame_matlab_layout=frame_zxy,
         )
         frame = None
         print(

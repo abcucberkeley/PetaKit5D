@@ -269,12 +269,6 @@ def _flip_z_in_place(a: np.ndarray) -> None:
         a[nz - 1 - k] = tmp
 
 
-def _turn_pages(vol: np.ndarray, n: int) -> np.ndarray:
-    from petakit5d.deskew_rotate.file import _turn_pages as turn
-
-    return turn(vol, n)
-
-
 def _block_mips_zxy(out_zxy: np.ndarray, box: Sequence[int], mbs: Sequence[int], dtype: str):
     """``MIP_zarr_block_mips`` of a block in MATLAB's layout (``(z, x, y)`` C): the MIPs of the
     ``(z, y, x)`` block, from the layout itself (a maximum does not depend on the order of its
@@ -393,7 +387,8 @@ def deskew_rotate_block(
     from petakit5d.core import dtypes
     from petakit5d.core.threads import resolve_threads
     from petakit5d.deskew_rotate.volume import deskew_rotate_volume_matlab_layout
-    from petakit5d.io import ReadBuffer, get_image_dtype, read_zarr, write_mat, write_zarr
+    from petakit5d.io import ReadBuffer, get_image_dtype, write_mat, write_zarr
+    from petakit5d.io.zarr import read_zarr_matlab_layout
     from petakit5d.jobs import writers
     from petakit5d.tools.mip import save_block_mips
 
@@ -442,22 +437,22 @@ def deskew_rotate_block(
         t0 = time.perf_counter()
         ib = [int(v) for v in in_boxes[i]]
         ob = [int(v) for v in or_boxes[i]]
-        in_batch = read_zarr(zarr_fullpath, input_bbox=ib, num_threads=n, out=buf)
-        if in_batch.ndim == 2:
-            in_batch = in_batch[np.newaxis]
+        # read in the kernels' layout, MATLAB's ((z, x, y) C): an input MATLAB wrote as it is
+        # stored, a native one with its pages turned in place
+        in_zxy = read_zarr_matlab_layout(zarr_fullpath, input_bbox=ib, num_threads=n, out=buf)
         # (a batch has the whole z range of the input box: flipped after the crop, as in
         # XR_deskewRotateFrame; in the read buffer)
         if flip_zstack:
-            _flip_z_in_place(in_batch)
+            _flip_z_in_place(in_zxy)
         if not (save_16bit and dtype == "uint16"):
-            in_batch = np.ascontiguousarray(dtypes.to_class(in_batch, "single"))
+            in_zxy = np.ascontiguousarray(dtypes.to_class(in_zxy, "single"))
         # the box of the batch's region in the full result: the local box moved by the
         # batch's x and z starts (its y is the batch's own rows)
         bs = ob_boxes[i]
         dsr_box = [int(v) for v in ol_boxes[i] + np.array([bs[0], 0, bs[2], bs[0], 0, bs[2]])]
-        # the kernels on MATLAB's layout: the input's pages turned in place, the result kept
+        # the kernels on MATLAB's layout, the result kept in it
         out_zxy = deskew_rotate_volume_matlab_layout(
-            _turn_pages(in_batch, n),
+            in_zxy,
             skew_angle,
             dz,
             xy_pixel_size,
@@ -469,7 +464,7 @@ def deskew_rotate_block(
             interp_method=interp_method,
             num_threads=n,
         )
-        del in_batch
+        del in_zxy
         if save_16bit and dtype != "uint16" and out_zxy.dtype != np.uint16:
             # uint16 rounds to the nearest integer
             out_zxy = np.ascontiguousarray(dtypes.to_class(out_zxy, "uint16"))

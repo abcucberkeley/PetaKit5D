@@ -462,6 +462,84 @@ def read_zarr(
     return res
 
 
+def read_zarr_matlab_layout(
+    filepath,
+    *,
+    input_bbox: Sequence[int] | None = None,
+    num_threads: int | None = None,
+    out=None,
+) -> np.ndarray:
+    """Read a zarr array, or its box ``input_bbox`` (``(z0, y0, x0, z1, y1, x1)``, as for
+    ``read_zarr``), in MATLAB's layout: a C-ordered ``(nz, nx, ny)`` array, MATLAB's ``(y, x,
+    z)`` array in memory, for the kernels that run on that layout (the deskew/rotation's
+    ``*_matlab_layout`` functions). Not part of the MATLAB-name API.
+
+    An array MATLAB wrote (``"order": "F"``) is read as it is stored, without ``read_zarr``'s
+    transposing pass and without the pass back; a native array is read and each z plane turned
+    around in place. The bytes are those of ``read_zarr`` with the last two axes swapped.
+    ``out``: a ``ReadBuffer`` or a writeable C-contiguous ``(nz, nx, ny)`` array of the file's
+    class; it is returned (always 3D)."""
+    import cppzarr
+
+    from petakit5d.io.imagesize import ReadBuffer
+
+    path = path_str(filepath)
+    if not _is_array(path):
+        raise FileNotFoundError(f"zarr file {path} does not exist!")
+    meta = zarr_meta(path)
+    n = threads(num_threads)
+    fshape = [int(v) for v in meta["shape"]]
+    dtype = np.dtype(_array_dtype(meta)).newbyteorder("=")
+    whole = input_bbox is None or len(input_bbox) == 0
+    native = zarr_layout(meta) == "zyx"
+    if native:
+        start, stop = ([0] * len(fshape), fshape) if whole else _region(input_bbox, fshape)
+        if len(fshape) == 2:
+            start, stop = [0, *start], [1, *stop]
+        nz, ny, nx = (e - s for s, e in zip(start, stop, strict=True))
+    else:
+        if len(fshape) not in (2, 3):
+            raise ValueError(f"MATLAB-layout zarr arrays have 2 or 3 dimensions, not {fshape}")
+        if whole:
+            start, stop = [0] * len(fshape), fshape
+        else:
+            start, stop = _region(input_bbox, fshape[2:] + fshape[:2])
+            if len(fshape) == 3:
+                start, stop = start[1:] + start[:1], stop[1:] + stop[:1]
+        ny, nx = stop[0] - start[0], stop[1] - start[1]
+        nz = stop[2] - start[2] if len(fshape) == 3 else 1
+    if out is None:
+        res = np.empty((nz, nx, ny), dtype=dtype)
+    elif isinstance(out, ReadBuffer):
+        res = out.view((nz, nx, ny), dtype)
+    else:
+        if not isinstance(out, np.ndarray) or out.dtype != dtype:
+            raise TypeError(f"read_zarr_matlab_layout: out must be a {dtype} NumPy array")
+        if not out.flags.writeable or not out.flags.c_contiguous or out.shape != (nz, nx, ny):
+            raise ValueError(
+                f"read_zarr_matlab_layout: out must be writeable, C-contiguous, of shape "
+                f"{(nz, nx, ny)}"
+            )
+        res = out
+    flat = res.reshape(-1)
+    if not native:
+        # the file's (y, x[, z]) Fortran array: MATLAB's layout as it is
+        fr = [e - s for s, e in zip(start, stop, strict=True)]
+        fill = flat.reshape(fr, order="F")
+        cppzarr.read_zarr(path, start, stop, order="F", num_threads=n, out=fill)
+        return res
+    zs = start if len(fshape) == 3 else start[1:]
+    ze = stop if len(fshape) == 3 else stop[1:]
+    view = flat.reshape((nz, ny, nx) if len(fshape) == 3 else (ny, nx))
+    cppzarr.read_zarr(path, zs, ze, order="C", num_threads=n, out=view)
+    kernel = _inplace_kernel()
+    if kernel is not None:
+        kernel(flat, nx, ny, nz, n)
+    else:
+        res[...] = np.swapaxes(view.reshape(nz, ny, nx).copy(), 1, 2)
+    return res
+
+
 def _target(out, shape, dtype) -> tuple[np.ndarray, np.ndarray]:
     """The array to read into and the one to return: ``out``'s, or a new ``np.empty`` one"""
     from petakit5d.io.imagesize import out_array
