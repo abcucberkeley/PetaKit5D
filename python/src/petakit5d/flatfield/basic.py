@@ -76,15 +76,18 @@ def _basicpy():
     return basicpy
 
 
-def phase_prefilter(image: np.ndarray, const: Any = 1100) -> np.ndarray:
-    """``imf = single(im); imf - imgaussfilt(imf, 100) + const`` of a ``(y, x)`` tile."""
+def phase_prefilter(
+    image: np.ndarray, const: Any = 1100, *, num_threads: int | None = None
+) -> np.ndarray:
+    """``imf = single(im); imf - imgaussfilt(imf, 100) + const`` of a ``(y, x)`` tile
+    (``num_threads``: the filter's threads, all available by default)."""
     from petakit5d.core import dtypes
     from petakit5d.matlabcompat.filters import imgaussfilt
 
     imf = np.asarray(image)
     if imf.dtype != _F32:
         imf = np.asarray(dtypes.to_class(imf, "single"))
-    g = imgaussfilt(imf, GAUSS_SIGMA)
+    g = imgaussfilt(imf, GAUSS_SIGMA, num_threads=num_threads)
     d = np.subtract(imf, g, dtype=_F32)
     return np.asarray(dtypes.plus(d, np.float64(const)), dtype=_F32)
 
@@ -135,9 +138,12 @@ def phase_image_flatfield_correction(fns: Sequence[str], out_path: str, const: A
     saved as uint16 ``<out_path><name>.tif``; ``minval`` (the smallest pre-filtered value) and
     ``flatfield`` go to ``<out_path>BaSiC_flatfield/<first name>_flatfield.mat``. Nothing is
     done when every output exists."""
+    from concurrent.futures import ThreadPoolExecutor
+
     from petakit5d.core import dtypes
     from petakit5d.core.ids import get_uuid
     from petakit5d.core.paths import fileparts
+    from petakit5d.core.threads import resolve_threads
     from petakit5d.io import read_tiff, write_mat, write_tiff
     from petakit5d.jobs.files import exist
     from petakit5d.matlabcompat import reduce
@@ -152,15 +158,28 @@ def phase_image_flatfield_correction(fns: Sequence[str], out_path: str, const: A
         print("All output files exist, skip it!")
         return
 
-    ims = [phase_prefilter(read_tiff(f), const) for f in files]
+    # the tiles are read and pre-filtered, and later divided and converted, in threads (a tile
+    # per thread, each filter on one thread): the values of one tile after the other
+    nt = resolve_threads(None)
+
+    def prefiltered(fn: str) -> np.ndarray:
+        return phase_prefilter(read_tiff(fn), const, num_threads=1)
+
+    with ThreadPoolExecutor(max_workers=nt) as ex:
+        ims = list(ex.map(prefiltered, files))
     im = np.stack(ims)
     minval, _ = reduce.min(im)
     flatfield = basic_flatfield(im)
     del im
 
-    for f in range(len(files)):
+    def corrected(f: int) -> np.ndarray:
         imf = np.asarray(dtypes.rdivide(ims[f], flatfield), dtype=_F32)
-        write_tiff(np.asarray(dtypes.cast(imf, "uint16")), tmpouts[f])
+        return np.asarray(dtypes.cast(imf, "uint16"))
+
+    with ThreadPoolExecutor(max_workers=nt) as ex:
+        outs = list(ex.map(corrected, range(len(files))))
+    for f in range(len(files)):
+        write_tiff(outs[f], tmpouts[f])
         os.replace(tmpouts[f], fnouts[f])
 
     ff_path = f"{out_path}BaSiC_flatfield/"

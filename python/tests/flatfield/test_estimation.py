@@ -695,6 +695,32 @@ def test_corrects_tiles_with_estimated_flat_field(tmp_path):
         assert np.abs(got.astype(np.int64) - expected.astype(np.int64)).max() <= 1
 
 
+@pytest.mark.skipif(not fb.basic_available(), reason="needs BaSiCPy (the basic extra)")
+def test_phase_tiles_are_the_same_on_one_and_on_several_threads(tmp_path, monkeypatch):
+    """the tiles are pre-filtered and divided in threads: the files are those of one thread"""
+    import petakit5d.core.threads as th
+
+    fns = []
+    for i in range(6):
+        fns.append(str(tmp_path / f"tile_{i:03d}.tif"))
+        _write(fns[-1], phase_tile((96, 160), i, "t/threads"))
+    outs = {}
+    for n in (1, 4):
+        monkeypatch.setattr(th, "resolve_threads", lambda k=None, n=n: n)
+        out = str(tmp_path / f"out{n}") + os.sep
+        os.makedirs(out)
+        fb.phase_image_flatfield_correction(fns, out, 6000)
+        outs[n] = out
+    for i in range(6):
+        np.testing.assert_array_equal(
+            read_tiff(f"{outs[1]}tile_{i:03d}.tif"), read_tiff(f"{outs[4]}tile_{i:03d}.tif")
+        )
+    a = read_mat(f"{outs[1]}BaSiC_flatfield/tile_000_flatfield.mat")
+    b = read_mat(f"{outs[4]}BaSiC_flatfield/tile_000_flatfield.mat")
+    np.testing.assert_array_equal(np.asarray(a["flatfield"]), np.asarray(b["flatfield"]))
+    assert np.asarray(a["minval"]).tobytes() == np.asarray(b["minval"]).tobytes()
+
+
 # ---------------------------------------------------------------------------------------------
 # more of the port's own
 # ---------------------------------------------------------------------------------------------
