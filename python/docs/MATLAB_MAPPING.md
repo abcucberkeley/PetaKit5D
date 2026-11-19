@@ -370,6 +370,8 @@ Deskew, rotate and resample a raw light-sheet volume (``deskewRotateFrame3D``).
 | `save16bit` | `save_16bit` | par | same | `false` | `False` | `@islogical` | uint16 output for uint16 input on the kernel paths. |
 | `interpMethod` | `interp_method` | par |  | `'linear'` | `'linear'` | `@(x) any(strcmpi(x, {'cubic', 'linear'}))` | Interpolation: 'linear' or 'cubic'. |
 | `batchRows` | `batch_rows` | par | custom:_batch_rows_in | `[]` | `None` | `@isnumeric` | (y0, ny): vol is the rows from y0 of a volume of ny rows, resampled on its grid. |
+| `numThreads` | `num_threads` | par |  | `[]` | `None` |  | Threads of the kernels (None: the CPUs available). (Python only) |
+| `out` | `out` | par |  | `[]` | `None` |  | Array to write the result into (reused over frames). (Python only) |
 
 ### `erodeVolumeBy2DProjection` -> `petakit5d.stitch.tile_functions.erode_volume_by_2d_projection`
 

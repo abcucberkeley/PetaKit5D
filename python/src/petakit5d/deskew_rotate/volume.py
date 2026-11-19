@@ -247,7 +247,19 @@ def _interp(vol, x_step, step, reverse, save_16bit, matlab_layout, num_threads):
     return _from_zyx(out, matlab_layout, num_threads)
 
 
-def _warp(vol, geo, box, save_16bit, interp_method, matlab_layout, num_threads):
+def _into(res: np.ndarray, out: np.ndarray | None) -> np.ndarray:
+    """a result of the imwarp paths written into ``out`` (the kernel paths write it themselves)"""
+    if out is None:
+        return res
+    if out.shape != res.shape or out.dtype != res.dtype:
+        raise ValueError(
+            f"out must be a {res.dtype} array of shape {res.shape}, got {out.dtype} {out.shape}"
+        )
+    out[...] = res
+    return out
+
+
+def _warp(vol, geo, box, save_16bit, interp_method, matlab_layout, num_threads, out=None):
     """volume_deskew_rotate_warp_mex, or imwarp where it rejects vol"""
     from petakit5d.kernels import deskew
 
@@ -255,18 +267,18 @@ def _warp(vol, geo, box, save_16bit, interp_method, matlab_layout, num_threads):
     try:
         if matlab_layout:
             return deskew.volume_deskew_rotate_warp_matlab_layout(
-                vol, geo.tmat, kbox, save_16bit, num_threads=num_threads
+                vol, geo.tmat, kbox, save_16bit, num_threads=num_threads, out=out
             )
         return deskew.volume_deskew_rotate_warp(
-            vol, geo.tmat, kbox, save_16bit, num_threads=num_threads
+            vol, geo.tmat, kbox, save_16bit, num_threads=num_threads, out=out
         )
     except (ValueError, TypeError) as err:
         if not _kernel_error(err):
             raise
-    return _imwarp(vol, geo, interp_method, box, matlab_layout, num_threads)
+    return _into(_imwarp(vol, geo, interp_method, box, matlab_layout, num_threads), out)
 
 
-def _fused(vol, geo, reverse, box, save_16bit, interp_method, matlab_layout, num_threads):
+def _fused(vol, geo, reverse, box, save_16bit, interp_method, matlab_layout, num_threads, out=None):
     """skewed_space_interp_volume_deskew_rotate_warp_mex, or its two steps where it rejects vol"""
     from petakit5d.kernels import deskew
 
@@ -286,6 +298,7 @@ def _fused(vol, geo, reverse, box, save_16bit, interp_method, matlab_layout, num
             kbox,
             save_16bit,
             num_threads=num_threads,
+            out=out,
         )
     except (ValueError, TypeError) as err:
         if not _kernel_error(err):
@@ -293,7 +306,7 @@ def _fused(vol, geo, reverse, box, save_16bit, interp_method, matlab_layout, num
     vol_1 = _interp(
         vol, geo.x_step, geo.int_stepsize, reverse, save_16bit, matlab_layout, num_threads
     )
-    return _warp(vol_1, geo, box, save_16bit, interp_method, matlab_layout, num_threads)
+    return _warp(vol_1, geo, box, save_16bit, interp_method, matlab_layout, num_threads, out)
 
 
 def _shape_zyx(vol: np.ndarray, matlab_layout: bool) -> tuple[int, int, int]:
@@ -336,6 +349,7 @@ def _deskew_rotate(
     matlab_layout,
     num_threads,
     batch_rows=None,
+    out=None,
 ):
     from petakit5d.deskew_rotate.geometry import _check_size, deskew_rotate_geometry
 
@@ -399,11 +413,11 @@ def _deskew_rotate(
     if not geo.use_fast_method:
         # (a batch's rows placed in the volume's: its input view shifted by its first row)
         offset = None if rows is None else (0, rows[0], 0)
-        out = _imwarp(vol_1, geo, method, box, False, num_threads, offset)
-        return _from_zyx(out, to_matlab_layout, num_threads)
+        res = _imwarp(vol_1, geo, method, box, False, num_threads, offset)
+        return _into(_from_zyx(res, to_matlab_layout, num_threads), out)
     if geo.do_interp:
-        return _fused(v, geo, reverse, box, save_16bit, method, matlab_layout, num_threads)
-    return _warp(v, geo, box, save_16bit, method, matlab_layout, num_threads)
+        return _fused(v, geo, reverse, box, save_16bit, method, matlab_layout, num_threads, out)
+    return _warp(v, geo, box, save_16bit, method, matlab_layout, num_threads, out)
 
 
 @register(
@@ -432,6 +446,14 @@ def _deskew_rotate(
         "(y0, ny): vol is the rows from y0 of a volume of ny rows, resampled on its grid.",
         convert=(_batch_rows_in, _batch_rows_out),
     ),
+    Param(
+        "numThreads",
+        None,
+        "Threads of the kernels (None: the CPUs available).",
+        py="num_threads",
+        python_only=True,
+    ),
+    Param("out", None, "Array to write the result into (reused over frames).", python_only=True),
     task="D02",
     matlab_out=_volume_to_matlab,
 )
@@ -451,6 +473,8 @@ def deskew_rotate_volume(
     save_16bit: bool = False,
     interp_method: str = "linear",
     batch_rows: Sequence[int] | None = None,
+    num_threads: int | None = None,
+    out: np.ndarray | None = None,
 ) -> np.ndarray:
     """Deskew, rotate and resample a raw light-sheet volume (``deskewRotateFrame3D``).
 
@@ -460,10 +484,13 @@ def deskew_rotate_volume(
     y1, x1)`` of the full output (None: all of it). ``resample_factor``: ``(z, y, x)``, applied
     after the rotation. ``save_16bit``: uint16 output for uint16 input where the kernels run
     (single otherwise; ``imwarp`` keeps the class of what it warps). ``crop`` is accepted and not
-    used, as in MATLAB. The kernels use all CPUs this process may use. ``batch_rows``:
-    ``(y0, ny)``, ``vol`` is the rows from ``y0`` (0-based) of a volume of ``ny`` rows (a
-    batch): the transform and the output are the volume's (``bbox`` in its rows), ``imwarp``
-    places the batch's rows in it, so that a resampling along y has the volume's grid.
+    used, as in MATLAB. ``batch_rows``: ``(y0, ny)``, ``vol`` is the rows from ``y0`` (0-based)
+    of a volume of ``ny`` rows (a batch): the transform and the output are the volume's
+    (``bbox`` in its rows), ``imwarp`` places the batch's rows in it, so that a resampling
+    along y has the volume's grid. ``num_threads`` (None: all CPUs this process may use) never
+    changes the result. ``out``: a C-contiguous array of the result's shape and class, written
+    (every voxel) and returned instead of a new array, so that a loop over frames reuses its
+    memory.
 
     Returns the ``(nz, ny, nx)`` output (the box's shape with ``bbox``).
     """
@@ -482,8 +509,9 @@ def deskew_rotate_volume(
         save_16bit=save_16bit,
         interp_method=interp_method,
         matlab_layout=False,
-        num_threads=None,
+        num_threads=num_threads,
         batch_rows=batch_rows,
+        out=out,
     )
 
 
@@ -503,11 +531,13 @@ def deskew_rotate_volume_matlab_layout(
     interp_method: str = "linear",
     num_threads: int | None = None,
     batch_rows: Sequence[int] | None = None,
+    out: np.ndarray | None = None,
 ) -> np.ndarray:
     """``deskew_rotate_volume`` on MATLAB's layout: ``vol_zxy`` and the result are C arrays
     ``(z, x, y)`` (y fastest; MATLAB's ``(y, x, z)`` in memory, as a tiff read y-fastest gives
     it). The kernel paths run the mex's loops on that layout; the others turn the volume around
-    for ``imwarp`` and back. Boxes and factors are in the Python form."""
+    for ``imwarp`` and back. Boxes and factors are in the Python form; ``out`` (MATLAB's layout)
+    as for ``deskew_rotate_volume``."""
     return _deskew_rotate(
         vol_zxy,
         angle,
@@ -524,6 +554,7 @@ def deskew_rotate_volume_matlab_layout(
         matlab_layout=True,
         num_threads=num_threads,
         batch_rows=batch_rows,
+        out=out,
     )
 
 

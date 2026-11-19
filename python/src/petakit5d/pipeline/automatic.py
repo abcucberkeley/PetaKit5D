@@ -33,7 +33,9 @@ no longer a step of it: ``decon.dataset.decon_dataset`` is its own wrapper):
 - **Local mode** (no Slurm, or ``parse_cluster`` False): each file in turn, here, with MATLAB's
   ``.tmp`` markers (a marker younger than ``unit_wait_time`` minutes is another process's file);
   after each deskew the dataset's stitching is called (it stitches the volumes whose tiles are
-  there and leaves the others), and the round ends with a look for the stitched results.
+  there and leaves the others), and the round ends with a look for the stitched results. The
+  deskew of the files keeps its memory from file to file (``deskew_rotate.file.keep_buffers``)
+  and gives it back before the stitching of a volume whose files are all deskewed.
 - **Cluster mode**: one single job per file (``jobs.single``: never waiting, task runners from the
   second task of a kind, the call's pools ended with it) with MATLAB's memory requests (the
   combined path: ``size / 2^30 * 2 * (7 + 3 / prod(resample) + 8 * tries)`` GB; the separate
@@ -756,6 +758,9 @@ class _State:
                 self.done[f][1] = True
 
         self.markers: list[str] = []
+        # each file's stitched result's pattern, and the files of each pattern (_volume_deskewed)
+        self._pattern_of: list[str] = []
+        self._volume_files: dict[str, list[int]] = {}
         mark = None
         if self.parse_cluster:
             from petakit5d.jobs import single
@@ -763,8 +768,14 @@ class _State:
             mark = single.mark()
         if self.parse_cluster and self.stitch:
             self.markers = [p + DESKEW_MARKER for p in self.dsr_paths]
+        from contextlib import nullcontext
+
+        from petakit5d.deskew_rotate.file import keep_buffers
+
         try:
-            self._rounds()
+            # locally, the files' deskew and rotation keep their buffers from file to file
+            with keep_buffers() if not self.parse_cluster else nullcontext():
+                self._rounds()
         finally:
             if self.markers:
                 update_deskew_markers(self.markers, [], [])
@@ -846,6 +857,16 @@ class _State:
         fsname = fileparts(self.fnames[f])[1]
         prefix = re.sub(r"_\d+msec\Z", "_*msec", _stitch_prefix(fsname))
         return f"{self.stch_paths[self.fd_inds[f]]}/{prefix}*Abs.zarr"
+
+    def _volume_deskewed(self, f: int) -> bool:
+        """whether every listed file of f's volume (the files of its stitched result's pattern)
+        is deskewed"""
+        while len(self._pattern_of) < len(self.fnames):
+            i = len(self._pattern_of)
+            p = self._stitch_pattern(i)
+            self._pattern_of.append(p)
+            self._volume_files.setdefault(p, []).append(i)
+        return all(self.done[i][0] for i in self._volume_files[self._pattern_of[f]])
 
     def _awaited(self) -> list[str]:
         """the results of the steps still to come, as a round looks for them"""
@@ -1005,6 +1026,12 @@ class _State:
                 self.trials[i][1] = trials
                 self.active[i][1] = submit_status > 0 or job_status >= 0
         else:
+            if self._volume_deskewed(f):
+                # the stitching of the volume (its tiles all there) needs memory of its own: the
+                # files' kept buffers go back first
+                from petakit5d.deskew_rotate.file import release_kept_buffers
+
+                release_kept_buffers()
             self._run_here(func_str)
             # a try once the deskew of the dataset's files is done or given up (before, the
             # stitching waits for its tiles), so that a stitching without result isn't run every

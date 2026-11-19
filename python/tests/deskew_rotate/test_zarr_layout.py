@@ -115,8 +115,9 @@ def test_file_on_matlab_layout_zarr_gives_the_native_result(tmp_path, kind, kw):
 
 
 def test_file_reads_a_matlab_layout_zarr_without_turning_it(tmp_path, monkeypatch):
-    """the combined path on MATLAB's zarr: one read in the kernels' layout and no turn of the
-    input (the result's turn for a tiff output stays)"""
+    """the combined path on MATLAB's zarr: one read in the mex loops' layout and no turn of the
+    input (the result's turn for a tiff output stays); a native zarr runs the (z, y, x) kernels
+    as read, without a turn either"""
     import petakit5d.io.zarr as iz
     from petakit5d.deskew_rotate import file as df
 
@@ -130,4 +131,4 @@ def test_file_reads_a_matlab_layout_zarr_without_turning_it(tmp_path, monkeypatc
     assert (len(reads), len(turns)) == (1, 0)
     reads.clear()
     _dsr_file(tmp_path / "n", _frame("uint16"), "native", save_zarr=True)
-    assert (len(reads), len(turns)) == (0, 1)
+    assert (len(reads), len(turns)) == (0, 0)

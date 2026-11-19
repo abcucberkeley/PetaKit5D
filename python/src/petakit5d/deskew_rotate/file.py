@@ -26,11 +26,18 @@ Without ``save_3d_stack`` the result is an empty file. An existing DSR is never 
 MATLAB, ``overwrite`` is the DS's only). Zarr results without a given uuid are private to the
 call and their chunks are written in place (cpp-zarr's ``uuid=False``), as MATLAB writes them.
 
-The combined path reads tiff data into MATLAB's layout (one threaded in-place transpose of
-each page) and runs the deskew kernels on that layout at the mex's speed; the result is turned
-back the same way for tiff, and written from a ``(z, y, x)`` view of that layout for zarr.
-The ``imwarp`` paths (objective scan, resampling, cubic) and the separate path work on
-``(z, y, x)`` arrays. Every output voxel is MATLAB's: bit for bit.
+The combined path runs the deskew kernels on the data as read: a tiff (or a zarr file the port
+wrote) as ``(z, y, x)``, through the blocked kernels for that layout; a zarr file MATLAB wrote
+in its own layout, MATLAB's, through the mex's loops, the result turned back in place for tiff
+and written from a ``(z, y, x)`` view of that layout for zarr. The ``imwarp`` paths (objective
+scan, resampling, cubic) and the separate path work on ``(z, y, x)`` arrays. Every output voxel
+is MATLAB's: bit for bit.
+
+A loop over files in one process (the dataset wrapper's and the pipeline's local modes) runs
+inside ``keep_buffers``: the read, the flat-field result and the kernels' result go into memory
+kept from file to file (``FileBuffers``), as MATLAB's memory manager keeps its blocks, so the
+files after the first take no new memory and no page faults; the buffers are freed when the
+loop ends and are never returned.
 
 Differences from MATLAB, each reported:
 
@@ -51,11 +58,14 @@ CPUs this process may use) never changes a result.
 
 from __future__ import annotations
 
+import contextlib
 import math
 import os
+import sys
+import threading
 import time
 import warnings
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
 from typing import Any
 
 import numpy as np
@@ -71,6 +81,123 @@ _FF_CACHE: dict[tuple, tuple[np.ndarray, np.ndarray]] = {}
 _THREADED_BYTES = 1 << 22
 # elements per chunk of the element-wise conversions (their float64 temporaries: 8 MB a chunk)
 _CHUNK = 1 << 20
+# the buffers kept over the files of a loop, per thread (keep_buffers)
+_KEPT = threading.local()
+
+
+# -- buffers kept from file to file ----------------------------------------------------------
+
+
+def _allocate(nbytes: int) -> np.ndarray:
+    """``nbytes`` of memory for a kept buffer. On Linux, unless ``NUMPY_MADVISE_HUGEPAGE`` is
+    set, an anonymous mapping that NumPy does not advise to take huge pages: with the advice,
+    the first touch of a fresh process's large arrays compacts memory synchronously where free
+    memory is fragmented (seconds per GB); without it the system takes huge pages where they
+    are free and small ones elsewhere."""
+    if sys.platform.startswith("linux") and "NUMPY_MADVISE_HUGEPAGE" not in os.environ:
+        import mmap
+
+        try:
+            m = mmap.mmap(-1, nbytes, flags=mmap.MAP_PRIVATE | mmap.MAP_ANONYMOUS)
+        except (OSError, ValueError, AttributeError):
+            pass
+        else:
+            return np.frombuffer(m, dtype=np.uint8)
+    return np.empty(nbytes, dtype=np.uint8)
+
+
+def _byte_buffer():
+    """a ``petakit5d.io.ReadBuffer`` of bytes: views of any class on its first bytes, the
+    memory growing to the largest view asked for (the class is made on first use, so that
+    importing this module doesn't import the io package)"""
+    global _ByteBuffer
+    if _ByteBuffer is None:
+        from petakit5d.io import ReadBuffer
+
+        class ByteBuffer(ReadBuffer):
+            def __init__(self) -> None:
+                super().__init__()
+                self._bytes: np.ndarray | None = None
+
+            def view(self, shape: Sequence[int], dtype) -> np.ndarray:
+                dt = np.dtype(dtype)
+                shape = tuple(int(v) for v in shape)
+                n = dt.itemsize
+                for v in shape:
+                    n *= v
+                if self._bytes is None or self._bytes.size < n:
+                    self._bytes = None  # (the old memory goes before the new comes)
+                    self._bytes = _allocate(max(n, 1))
+                return self._bytes[:n].view(dt).reshape(shape)
+
+            def holds(self, a: np.ndarray) -> bool:
+                return self._bytes is not None and np.may_share_memory(a, self._bytes)
+
+            def release(self) -> None:
+                self._bytes = None
+
+        _ByteBuffer = ByteBuffer
+    return _ByteBuffer()
+
+
+_ByteBuffer = None
+
+
+class FileBuffers:
+    """The memory ``deskew_rotate_file`` reuses over the files of a loop (``keep_buffers``):
+    two byte buffers, each growing to the largest array asked of it. The input is read into
+    the first (``read``); the flat-field result and the deskew/rotation's go into whichever
+    does not hold their input (``other``), so a file of the same size as the last one takes no
+    new memory and no page faults. Arrays on them are valid until the next file."""
+
+    def __init__(self) -> None:
+        self.buffers = (_byte_buffer(), _byte_buffer())
+
+    @property
+    def read(self) -> Any:
+        return self.buffers[0]
+
+    def other(self, a: np.ndarray) -> Any:
+        """the buffer that does not hold ``a``"""
+        return self.buffers[1] if self.buffers[0].holds(a) else self.buffers[0]
+
+    def release(self) -> None:
+        for b in self.buffers:
+            b.release()
+
+
+@contextlib.contextmanager
+def keep_buffers() -> Iterator[FileBuffers]:
+    """Within the block, the ``deskew_rotate_file`` calls of this thread keep one set of
+    buffers (``FileBuffers``) from file to file, as MATLAB's memory manager keeps its blocks:
+    after the first file, the read, the flat field and the deskew/rotation write into memory
+    that is already there. The buffers are freed when the block ends; a block inside another
+    one uses the outer one's. Results are the same with or without it."""
+    kept = getattr(_KEPT, "buffers", None)
+    if kept is not None:
+        yield kept
+        return
+    kept = FileBuffers()
+    _KEPT.buffers = kept
+    try:
+        yield kept
+    finally:
+        _KEPT.buffers = None
+        kept.release()
+
+
+def _kept() -> FileBuffers | None:
+    return getattr(_KEPT, "buffers", None)
+
+
+def release_kept_buffers() -> None:
+    """Give the kept buffers' memory back now, inside ``keep_buffers`` (the next file takes new
+    memory): before other work of the loop that needs large arrays of its own, which would
+    otherwise get only the memory the kept buffers leave (where free memory is fragmented, in
+    small pages)."""
+    kept = _kept()
+    if kept is not None:
+        kept.release()
 
 
 class MatlabError(RuntimeError):
@@ -473,12 +600,15 @@ def _combined(
     n,
     keep_matlab_layout=False,
     frame_matlab_layout=False,
+    buffers=None,
 ):
-    """deskewRotateFrame3D on the frame: the kernels on MATLAB's layout where they run (the
-    frame turned around in place and the result back, unless ``keep_matlab_layout``), else on
-    (z, y, x). ``frame_matlab_layout``: the frame is in MATLAB's layout already ((z, x, y) C, as
-    read from a zarr file MATLAB wrote). Returns the result and whether it is in MATLAB's
-    layout ((z, x, y) C)."""
+    """deskewRotateFrame3D on the frame: the kernels on the frame's layout where they run, else
+    ``imwarp`` on (z, y, x). A (z, y, x) frame (tiff, or zarr the port wrote) runs the kernels
+    made for that layout; ``frame_matlab_layout``: the frame is in MATLAB's layout ((z, x, y)
+    C, as read from a zarr file MATLAB wrote), which the mex's loops take, and the result is
+    turned back in place unless ``keep_matlab_layout``. ``buffers``: kept ``FileBuffers`` the
+    kernels write into (the buffer not holding the frame). Returns the result and whether it is
+    in MATLAB's layout ((z, x, y) C)."""
     from petakit5d.deskew_rotate import volume as dv
     from petakit5d.deskew_rotate.geometry import deskew_rotate_geometry
 
@@ -495,6 +625,7 @@ def _combined(
         "interp_method": interp,
     }
     fast = False
+    g = None
     if frame.dtype in (np.uint16, np.float32) and isinstance(interp, str):
         try:
             g = deskew_rotate_geometry(
@@ -514,12 +645,23 @@ def _combined(
     if not fast:
         if frame_matlab_layout:
             frame = _turn_pages(frame, n)
-        return dv.deskew_rotate_volume(frame, angle, dz, px, crop=True, **kw), False
-    vol_zxy = frame if frame_matlab_layout else _turn_pages(frame, n)
-    out = dv.deskew_rotate_volume_matlab_layout(vol_zxy, angle, dz, px, num_threads=n, **kw)
+        return dv.deskew_rotate_volume(frame, angle, dz, px, crop=True, num_threads=n, **kw), False
+    out = None
+    # (the kernels take the frame unless it is narrower than the x step, where MATLAB's code
+    # runs and gives single)
+    if buffers is not None and (not g.do_interp or shape[2] >= math.ceil(g.x_step) + 2):
+        oz, oy, ox = g.out_size
+        dtype = np.uint16 if frame.dtype == np.uint16 and s16 else np.float32
+        out = buffers.other(frame).view(
+            (oz, ox, oy) if frame_matlab_layout else (oz, oy, ox), dtype
+        )
+    if not frame_matlab_layout:
+        res = dv.deskew_rotate_volume(frame, angle, dz, px, crop=True, num_threads=n, out=out, **kw)
+        return res, False
+    res = dv.deskew_rotate_volume_matlab_layout(frame, angle, dz, px, num_threads=n, out=out, **kw)
     if keep_matlab_layout:
-        return out, True
-    return _turn_pages(out, n), False
+        return res, True
+    return _turn_pages(res, n), False
 
 
 def _pre_resample(frame, resample, px, dz, angle):
@@ -658,7 +800,8 @@ def deskew_rotate_file(
 
     ``frame_path``: a tiff or zarr file, or a list of tiff files concatenated along z.
     ``read_buffer``: a ``petakit5d.io.ReadBuffer`` the input is read into, so that a loop over
-    files reuses its memory. A missing input warns and returns.
+    files reuses its memory (inside ``keep_buffers``, the kept buffers are used without it).
+    A missing input warns and returns.
     """
     from petakit5d.core.axes import axis_permutation
     from petakit5d.core.ids import get_uuid
@@ -666,6 +809,9 @@ def deskew_rotate_file(
 
     del s_cmos_camera_flip, z_offset_correction
     n = _threads(num_threads)
+    kept = _kept()
+    if read_buffer is None and kept is not None:
+        read_buffer = kept.read
     paths = (
         [os.fspath(frame_path)]
         if isinstance(frame_path, str | os.PathLike)
@@ -743,6 +889,7 @@ def deskew_rotate_file(
             bk_removal,
             input_axis_order,
             n,
+            kept,
         )
         in_shape = frame.shape
 
@@ -845,6 +992,7 @@ def deskew_rotate_file(
             n=n,
             keep_matlab_layout=keep_ml,
             frame_matlab_layout=frame_zxy,
+            buffers=kept,
         )
         frame = None
         print(
@@ -908,9 +1056,10 @@ def _preprocess(
     bk_removal,
     input_axis_order,
     n,
+    buffers=None,
 ):
     """the input box, the flip, the flat field, the background removal and the axis order, in
-    MATLAB's order"""
+    MATLAB's order; the flat-field result goes into the kept buffer not holding the frame"""
     from petakit5d.core.axes import axis_permutation
 
     if box is not None:
@@ -930,6 +1079,8 @@ def _preprocess(
             flush=True,
         )
         ls, bg = _flat_field(ff_image, background_image, frame.shape[1:], lower_limit)
+        # (the result has the frame's class)
+        out = None if buffers is None else buffers.other(frame).view(frame.shape, frame.dtype)
         frame = flatfield_correct_volume(
             frame,
             ls,
@@ -938,6 +1089,7 @@ def _preprocess(
             const_offset=const_offset,
             remove_ff_im_background=False,
             ls_rescale=False,
+            out=out,
             num_threads=n,
         )
         frame = frame if frame.ndim == 3 else frame[np.newaxis]

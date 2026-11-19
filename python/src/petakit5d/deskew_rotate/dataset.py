@@ -589,24 +589,30 @@ def deskew_rotate_dataset(
         )[0]
         cpus = _first(cpus_per_task)
 
-    # three rounds of tries, each with twice the resources
+    # three rounds of tries, each with twice the resources; the files that run in this process
+    # (local mode) keep their buffers from file to file
+    from contextlib import nullcontext
+
+    from petakit5d.deskew_rotate.file import keep_buffers
+
     done: list[bool] = [False]
-    for i in range(3):
-        if not all(done):
-            done = framework.run_tasks(
-                inputs,
-                outputs,
-                tasks,
-                cpus_per_task=cpus * 2**i,
-                mem_allocate=mem_allocate * 2**i,
-                max_trial_num=2,
-                master_compute=_logical(master_compute),
-                parse_cluster=parse_cluster,
-                job_log_dir=job_log_dir,
-                mcc_mode=mcc_mode,
-                config_file=config_file,
-                nice=coord_nice,
-            )
+    with keep_buffers() if not parse_cluster and not large_file else nullcontext():
+        for i in range(3):
+            if not all(done):
+                done = framework.run_tasks(
+                    inputs,
+                    outputs,
+                    tasks,
+                    cpus_per_task=cpus * 2**i,
+                    mem_allocate=mem_allocate * 2**i,
+                    max_trial_num=2,
+                    master_compute=_logical(master_compute),
+                    parse_cluster=parse_cluster,
+                    job_log_dir=job_log_dir,
+                    mcc_mode=mcc_mode,
+                    config_file=config_file,
+                    nice=coord_nice,
+                )
     if not all(done):
         raise DeskewRotateDatasetError(f"{sum(not d for d in done)} / {len(done)} failed")
 
