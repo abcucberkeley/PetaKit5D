@@ -5,6 +5,7 @@ The Python side of ``petakit5d._ext.mip`` (``python/cpp/mip``), the kernels of M
 
 - ``max_pooling_3d(vol, pool_size)``: pools ``(pz, py, px)``;
 - ``range_max_3d(vol, axis, starts)``: a NumPy axis, 0-based range starts;
+  ``range_max_3d_axes(vol, (starts_z, starts_y, starts_x))``: the three at once, in one pass;
 - ``min_bbox_3d(vol, box)``: a box ``(z0, y0, x0, z1, y1, x1)``, 0-based, end-exclusive.
 
 Arrays are C-contiguous ``(z, y, x)`` volumes or ``(y, x)`` images (other layouts are copied);
@@ -39,6 +40,7 @@ __all__ = [
     "min_bbox_3d",
     "min_bbox_3d_matlab",
     "range_max_3d",
+    "range_max_3d_axes",
 ]
 
 # classes the kernels (and the mex functions) take
@@ -315,6 +317,50 @@ def range_max_3d(
     dimensions, not empty (``range_max_3d_mex``); an image takes axis -3 as a z of size 1.
     ``MatlabError`` ``range_max_3d:inputError`` otherwise.
     """
+    a, v = _range_volume(vol)
+    ident = "range_max_3d:inputError"
+    if isinstance(axis, (bool, np.bool_)) or not isinstance(axis, (int, np.integer)):
+        raise MatlabError(ident, "axis must be an axis of im.")
+    neg = int(axis) - a.ndim if axis >= 0 else int(axis)
+    if not -3 <= neg <= -1 or (axis >= 0 and axis >= a.ndim):
+        raise MatlabError(ident, "axis must be an axis of im.")
+    kax = 3 + neg  # 0: z, 1: y, 2: x
+    begin = _range_starts(starts, v.shape[kax])
+    shape = list(v.shape)
+    shape[kax] = len(begin)
+    out = np.empty(shape, dtype=a.dtype)
+    _ext().range_max_3d(v, out, kax, begin, _threads(num_threads))
+    return _shaped(out, a)
+
+
+def range_max_3d_axes(
+    vol: np.ndarray,
+    starts: Sequence[Sequence[int] | np.ndarray],
+    *,
+    num_threads: int | None = None,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """``range_max_3d`` along z, y and x at once, in one pass over ``vol`` (three passes take
+    three times the memory traffic): ``starts`` holds the range starts along z, y and x, and the
+    result is ``(range_max_3d(vol, -3, starts[0]), range_max_3d(vol, -2, starts[1]),
+    range_max_3d(vol, -1, starts[2]))``, the same values (the block MIPs of the large-file tasks,
+    which MATLAB's ``MIP_zarr_block_mips`` takes in three passes). The classes and errors of
+    ``range_max_3d``; an image takes z as a size of 1."""
+    a, v = _range_volume(vol)
+    if len(starts) != 3:
+        raise MatlabError("range_max_3d:inputError", "starts must hold the starts of 3 axes.")
+    begin = [_range_starts(s, n) for s, n in zip(starts, v.shape, strict=True)]
+    nz, ny, nx = v.shape
+    out = (
+        np.empty((len(begin[0]), ny, nx), dtype=a.dtype),
+        np.empty((nz, len(begin[1]), nx), dtype=a.dtype),
+        np.empty((nz, ny, len(begin[2])), dtype=a.dtype),
+    )
+    _ext().range_max_axes(v, *out, *begin, _threads(num_threads))
+    return tuple(_shaped(o, a) for o in out)
+
+
+def _range_volume(vol: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """the array and the (z, y, x) volume range_max_3d reads (MATLAB's errors)"""
     ident = "range_max_3d:inputError"
     a = np.asarray(vol)
     if a.dtype not in _RANGE_DTYPES:
@@ -324,16 +370,15 @@ def range_max_3d(
     v = _vol3(a)
     if v.size == 0:
         raise MatlabError(ident, "im must not be empty.")
-    if isinstance(axis, (bool, np.bool_)) or not isinstance(axis, (int, np.integer)):
-        raise MatlabError(ident, "axis must be an axis of im.")
-    neg = int(axis) - a.ndim if axis >= 0 else int(axis)
-    if not -3 <= neg <= -1 or (axis >= 0 and axis >= a.ndim):
-        raise MatlabError(ident, "axis must be an axis of im.")
-    kax = 3 + neg  # 0: z, 1: y, 2: x
+    return a, v
+
+
+def _range_starts(starts: Sequence[int] | np.ndarray, n: int) -> list[int]:
+    """the range starts along an axis of n values (MATLAB's errors)"""
+    ident = "range_max_3d:inputError"
     st = np.asarray(starts)
     if st.size == 0 or st.dtype.kind not in "iuf":
         raise MatlabError(ident, "starts must be a nonempty vector of numbers.")
-    n = v.shape[kax]
     vals = [float(x) for x in st.astype(np.float64).ravel()]
     prev = -1.0
     for r, x in enumerate(vals):
@@ -342,12 +387,7 @@ def range_max_3d(
                 ident, "starts must be increasing integers from 0 to below the size along axis."
             )
         prev = x
-    begin = [int(x) for x in vals]
-    shape = list(v.shape)
-    shape[kax] = len(begin)
-    out = np.empty(shape, dtype=a.dtype)
-    _ext().range_max_3d(v, out, kax, begin, _threads(num_threads))
-    return _shaped(out, a)
+    return [int(x) for x in vals]
 
 
 # ---------------------------------------------------------------------------------------------

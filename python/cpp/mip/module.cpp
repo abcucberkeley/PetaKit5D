@@ -109,6 +109,40 @@ PK5D_MIP_INLINE T fold_max(const T *p, u64 n) {
     return m;
 }
 
+// a hint to bring the cache line at p in (other compilers: none)
+PK5D_MIP_INLINE void prefetch_line(const void *p) {
+#if defined(__GNUC__) || defined(__clang__)
+    __builtin_prefetch(p, 0, 3);
+#else
+    (void)p;
+#endif
+}
+
+// consecutive ranges [starts[r], ends[r]) that cover an axis of n values, and the range of
+// each index (of[i])
+struct axis_ranges {
+    std::vector<u64> starts, ends, of;
+};
+
+// the ranges that begin at starts (0-based, increasing, from 0, below n)
+axis_ranges make_ranges(const std::vector<u64> &starts, u64 n) {
+    const size_t nr = starts.size();
+    if (nr == 0 || starts[0] != 0) throw std::invalid_argument("starts must begin with 0");
+    for (size_t r = 1; r < nr; r++) {
+        if (starts[r] <= starts[r - 1]) throw std::invalid_argument("starts must increase");
+    }
+    if (starts[nr - 1] >= n) throw std::invalid_argument("starts must be below the size along axis");
+    axis_ranges a;
+    a.starts = starts;
+    a.ends.resize(nr);
+    a.of.resize(n);
+    for (size_t r = 0; r < nr; r++) {
+        a.ends[r] = r + 1 < nr ? starts[r + 1] : n;
+        for (u64 i = starts[r]; i < a.ends[r]; i++) a.of[i] = r;
+    }
+    return a;
+}
+
 // length of the parts a row of n values is cut into, given `units` such rows: `most`, smaller
 // (down to `least`, multiples of 64) when that leaves fewer than 8 tasks per thread. Only the
 // split among threads depends on it, not a result.
@@ -239,6 +273,29 @@ void bind_range_max(in_volume<T> im, out_volume<T> out, int axis,
 }
 
 template <typename T>
+void bind_range_max_axes(in_volume<T> im, out_volume<T> out0, out_volume<T> out1,
+                         out_volume<T> out2, const std::vector<u64> &starts0,
+                         const std::vector<u64> &starts1, const std::vector<u64> &starts2,
+                         int num_threads, int isa, u64 block_rows) {
+    pk5d::check_threads(num_threads);
+    isa = pick_isa(isa);
+    const u64 n0 = im.shape(0), n1 = im.shape(1), n2 = im.shape(2);
+    if (n0 * n1 * n2 == 0) throw std::invalid_argument("im must not be empty");
+    const axis_ranges a0 = make_ranges(starts0, n0), a1 = make_ranges(starts1, n1),
+                      a2 = make_ranges(starts2, n2);
+    const u64 nr0 = a0.starts.size(), nr1 = a1.starts.size(), nr2 = a2.starts.size();
+    if ((u64)out0.shape(0) != nr0 || (u64)out0.shape(1) != n1 || (u64)out0.shape(2) != n2 ||
+        (u64)out1.shape(0) != n0 || (u64)out1.shape(1) != nr1 || (u64)out1.shape(2) != n2 ||
+        (u64)out2.shape(0) != n0 || (u64)out2.shape(1) != n1 || (u64)out2.shape(2) != nr2)
+        throw std::invalid_argument("out0, out1 or out2 has the wrong size");
+    const T *src = im.data();
+    T *d0 = out0.data(), *d1 = out1.data(), *d2 = out2.data();
+    nb::gil_scoped_release release;
+    PK5D_MIP_CALL(isa, range_max_axes<T>, src, d0, d1, d2, n0, n1, n2, a0, a1, a2, num_threads,
+                  block_rows);
+}
+
+template <typename T>
 T bind_min_box(in_volume<T> im, u64 z0, u64 y0, u64 x0, u64 z1, u64 y1, u64 x1,
                int num_threads, int isa) {
     pk5d::check_threads(num_threads);
@@ -262,11 +319,18 @@ void def_all(nb::module_ &m, bool range_max) {
           "y1"_a, "x1"_a, "num_threads"_a, "isa"_a = -1,
           "Minimum of im[z0:z1, y0:y1, x0:x1], starting from the largest finite value of the "
           "class (NaN skipped), as min_bbox_3d_mex; of zeros the first in MATLAB's order.");
-    if (range_max)
+    if (range_max) {
         m.def("range_max_3d", &bind_range_max<T>, "im"_a.noconvert(), "out"_a.noconvert(),
               "axis"_a, "starts"_a, "num_threads"_a, "isa"_a = -1,
               "Max of im (nz, ny, nx) along axis over the ranges that begin at starts "
               "(0-based, increasing, from 0), as range_max_3d_mex.");
+        m.def("range_max_axes", &bind_range_max_axes<T>, "im"_a.noconvert(),
+              "out0"_a.noconvert(), "out1"_a.noconvert(), "out2"_a.noconvert(), "starts0"_a,
+              "starts1"_a, "starts2"_a, "num_threads"_a, "isa"_a = -1, "block_rows"_a = 0,
+              "range_max_3d of im (nz, ny, nx) along axes 0, 1 and 2 at once (one pass): out0 "
+              "(len(starts0), ny, nx), out1 (nz, len(starts1), nx), out2 (nz, ny, len(starts2)); "
+              "block_rows: rows per block (0: about 128 KB of a plane; never changes a result).");
+    }
 }
 
 }  // namespace

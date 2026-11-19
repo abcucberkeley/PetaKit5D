@@ -611,18 +611,23 @@ def block_mips(
     of a zarr, for MIP slabs with batches of ``mip_batch_size`` (``(z, y, x)``): along each
     axis, the max over each part of the block within one batch (the block's shape with one
     element per batch it overlaps along the axis), cast to the zarr's class ``dtype`` as the
-    writer casts the block (rounded and saturated, which keeps the order of values)."""
+    writer casts the block (rounded and saturated, which keeps the order of values). The
+    classes ``range_max_3d`` takes get the three in one pass over the block
+    (``range_max_3d_axes``), the same values."""
     a = _vol3(np.ascontiguousarray(block))
     b = _ints(box)
     bs = _ints(mip_batch_size)
-    out: list[Any] = [None, None, None]
-    for i in range(3):
-        p = _ZYX[i]
+    starts = []
+    for p in range(3):
         b0, b1, k = b[p], b[p + 3], bs[p]
-        starts = [b0, *range((b0 // k) * k + k, b1, k)]
-        mip = _range_max_parts(a, p, [s - b0 for s in starts])
-        out[p] = _cast(mip, dtype)
-    return out
+        starts.append([s - b0 for s in [b0, *range((b0 // k) * k + k, b1, k)]])
+    if a.dtype in _RANGE_DTYPES:
+        from petakit5d.kernels.mip import range_max_3d_axes
+
+        mips = list(range_max_3d_axes(a, starts))
+    else:
+        mips = [_range_max_parts(a, p, starts[p]) for p in range(3)]
+    return [_cast(m, dtype) for m in mips]
 
 
 def _matlab_cell(arrays: Sequence[np.ndarray]) -> np.ndarray:

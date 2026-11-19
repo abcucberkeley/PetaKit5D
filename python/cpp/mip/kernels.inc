@@ -108,6 +108,97 @@ PK5D_MIP_ISA void range_max_3d(const T *im, T *out, u64 nz, u64 ny, u64 nx, int 
     }
 }
 
+// the range maxima along all three axes in one pass (range_max_3d along each axis): out0
+// (nr0, n1, n2), out1 (n0, nr1, n2), out2 (n0, n1, nr2), every value range_max_3d's. The
+// threads take runs of whole blocks of rows (axis 1); a block is visited plane after plane, so
+// its axis-0 maxima (one plane's rows of the block) stay in the cache, and every value folds
+// its range in increasing index: along axis 2 in fold_max, along axes 0 and 1 by max_update in
+// the order of the planes and rows. A thread whose first row lies inside a range of axis 1
+// that began in an earlier thread's rows folds its rows of that range into a part of its own;
+// the parts are merged into the range's maximum in the order of the threads (of the rows),
+// which gives the fold's value (max_update of the two folds is the fold of both runs).
+template <typename T>
+PK5D_MIP_ISA void range_max_axes(const T *im, T *out0, T *out1, T *out2, u64 n0, u64 n1, u64 n2,
+                                 const axis_ranges &a0, const axis_ranges &a1,
+                                 const axis_ranges &a2, int num_threads, u64 block_rows) {
+    const u64 nr1 = a1.starts.size(), nr2 = a2.starts.size();
+    // rows per block: about 128 KB of a plane (or the caller's)
+    const u64 rb = std::min<u64>(
+        n1, block_rows ? block_rows : std::max<u64>(1, 131072 / (n2 * sizeof(T))));
+    const u64 nblocks = (n1 + rb - 1) / rb;
+    const int nt = (int)std::min<u64>((u64)num_threads, nblocks);
+    std::vector<u64> row0(nt + 1);
+    for (int t = 0; t <= nt; t++) row0[t] = std::min(n1, nblocks * (u64)t / (u64)nt * rb);
+    // the part of thread t (t >= 1): its rows of the range that holds its first row, if that
+    // range began before them
+    std::vector<char> has_part(nt, 0);
+    for (int t = 1; t < nt; t++) has_part[t] = a1.starts[a1.of[row0[t]]] < row0[t];
+    std::unique_ptr<T[]> parts(nt > 1 ? new T[(u64)(nt - 1) * n0 * n2] : nullptr);
+    // (a run of rows per iteration: every run is done whatever the team's size)
+#pragma omp parallel for schedule(static, 1) num_threads(nt)
+    for (int t = 0; t < nt; t++) {
+        const u64 y0 = row0[t], y1 = row0[t + 1];
+        const u64 rp = a1.of[y0];
+        const u64 yp = has_part[t] ? std::min(a1.ends[rp], y1) : y0;  // rows [y0, yp): the part
+        T *part = has_part[t] ? parts.get() + (u64)(t - 1) * n0 * n2 : nullptr;
+        for (u64 ya = y0; ya < y1; ya += rb) {
+            const u64 yb = std::min(ya + rb, y1);
+            for (u64 z = 0; z < n0; z++) {
+                const u64 q = a0.of[z];
+                const bool first0 = z == a0.starts[q];
+                const T *src = im + (z * n1 + ya) * n2;
+                T *acc = out0 + (q * n1 + ya) * n2;
+                for (u64 y = ya; y < yb; y++) {
+                    const T *row = src + (y - ya) * n2;
+                    // the row of the next plane on its way (the block's rows of a plane are
+                    // one run; the next plane's run lies a plane further)
+                    if (z + 1 < n0) {
+                        const char *next = reinterpret_cast<const char *>(row + n1 * n2);
+                        for (u64 b = 0; b < n2 * sizeof(T); b += 64) prefetch_line(next + b);
+                    }
+                    T *o2 = out2 + (z * n1 + y) * nr2;
+                    for (u64 r = 0; r < nr2; r++)
+                        o2[r] = fold_max(row + a2.starts[r], a2.ends[r] - a2.starts[r]);
+                    const u64 r = a1.of[y];
+                    T *o1 = y < yp ? part + z * n2 : out1 + (z * nr1 + r) * n2;
+                    const bool first1 = y == std::max(a1.starts[r], y0);
+                    T *o0 = acc + (y - ya) * n2;
+                    if (first0 && first1) {
+                        for (u64 k = 0; k < n2; k++) o0[k] = o1[k] = row[k];
+                    } else if (first0) {
+                        for (u64 k = 0; k < n2; k++) {
+                            o0[k] = row[k];
+                            o1[k] = max_update(o1[k], row[k]);
+                        }
+                    } else if (first1) {
+                        for (u64 k = 0; k < n2; k++) {
+                            o0[k] = max_update(o0[k], row[k]);
+                            o1[k] = row[k];
+                        }
+                    } else {
+                        for (u64 k = 0; k < n2; k++) {
+                            o0[k] = max_update(o0[k], row[k]);
+                            o1[k] = max_update(o1[k], row[k]);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    if (nt < 2) return;
+    // the parts, in the order of the threads
+    const int64_t nz = (int64_t)n0;
+#pragma omp parallel for schedule(static) num_threads(nt)
+    for (int64_t z = 0; z < nz; z++) {
+        for (int t = 1; t < nt; t++) {
+            if (!has_part[t]) continue;
+            const T *p = parts.get() + ((u64)(t - 1) * n0 + (u64)z) * n2;
+            T *o = out1 + ((u64)z * nr1 + a1.of[row0[t]]) * n2;
+            for (u64 k = 0; k < n2; k++) o[k] = max_update(o[k], p[k]);
+        }
+    }
+}
+
 template <typename T>
 PK5D_MIP_ISA T min_box_3d(const T *im, u64 ny, u64 nx, u64 z0, u64 y0, u64 x0, u64 z1, u64 y1, u64 x1,
              int num_threads) {
