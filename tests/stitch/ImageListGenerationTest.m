@@ -1,7 +1,7 @@
 classdef ImageListGenerationTest < pktest.TestCase
     % XR_generate_image_list_wrapper: image list csv files (stage
-    % coordinates for stitching) from tile lists, tile positions, and
-    % encoder slice lists. The tile_position cases follow
+    % coordinates for stitching) from tile lists, tile positions, encoder
+    % slice lists, and acquisition databases. The tile_position cases follow
     % demo_phase_and_2photon_stitching.m and check that the generated list
     % stitches synthetic tiles back to the ground truth.
 
@@ -127,6 +127,46 @@ classdef ImageListGenerationTest < pktest.TestCase
             for d = 1 : 2
                 testCase.verifyEncoderImageList(dataPaths{d}, fns{d}, mcs2{d});
             end
+        end
+
+        function sqliteViewWithoutMetadataHashReadsTheTables(testCase)
+            % ImageListView_NoNull selects JSONsettings_MD5 from
+            % EverythingView_NoNull, which joins on it but doesn't return
+            % it, so the view fails with "no such column: JSONsettings_MD5"
+            % (acquisition databases of 2026-09); the list is then read from
+            % the image and slice tables with a warning, and must be the one
+            % the view gives where the inner view returns the column
+            broken = testCase.createTempFolder();
+            fixed = testCase.createTempFolder();
+            testCase.writeAcquisitionDb([broken, 'Scan_Iter_0000_slicelist.sqlite3'], 'missing');
+            testCase.writeAcquisitionDb([fixed, 'Scan_Iter_0000_slicelist.sqlite3'], 'returned');
+
+            for mapTilename = [true, false]
+                testCase.verifyWarning(@() stitch_generate_imagelist_from_sqlite(broken, ...
+                    'mapTilename', mapTilename), 'stitch_generate_imagelist_from_sqlite:missingMetadataHashInView');
+                testCase.verifyWarningFree(@() stitch_generate_imagelist_from_sqlite(fixed, ...
+                    'mapTilename', mapTilename));
+                listBroken = fileread([broken, 'ImageList_from_sqlite.csv']);
+                listFixed = fileread([fixed, 'ImageList_from_sqlite.csv']);
+                testCase.verifyEqual(listBroken, listFixed, ...
+                    'The list read from the tables is not the one the view gives.');
+            end
+            % the images without a metadata row or without slices are left
+            % out, as the view's joins leave them out
+            tab = readtable([broken, 'ImageList_from_sqlite.csv'], 'Delimiter', 'comma');
+            testCase.verifyEqual(height(tab), 8);
+            testCase.verifyFalse(any(contains(tab.Filename, {'nohash', 'nometa', 'noslice'})));
+        end
+
+        function sqliteViewWithOtherMissingColumnStillFails(testCase)
+            % only the missing JSONsettings_MD5 is read around; another
+            % missing column (here one whose name only starts with it) is
+            % the view's error, without the warning
+            dataPath = testCase.createTempFolder();
+            testCase.writeAcquisitionDb([dataPath, 'Scan_Iter_0000_slicelist.sqlite3'], 'other');
+            testCase.verifyWarningFree(@() testCase.verifyError(@() ...
+                stitch_generate_imagelist_from_sqlite(dataPath), ?MException));
+            testCase.verifyFalse(exist([dataPath, 'ImageList_from_sqlite.csv'], 'file') == 2);
         end
 
         function tilePositionStepsForNonSquareTiles(testCase)
@@ -287,6 +327,93 @@ classdef ImageListGenerationTest < pktest.TestCase
                 end
                 fclose(fid);
             end
+        end
+
+        function [] = writeAcquisitionDb(~, fn, hash)
+            % a made-up acquisition database: image, slice and metadata
+            % tables, and the two views the image list reads. hash: the
+            % inner view's JSONsettings_MD5, 'returned' (the view works),
+            % 'missing' (joined on, not returned: the view fails as in the
+            % databases of 2026-09) or 'other' (the outer view asks for
+            % JSONsettings_MD5_old, which nothing returns)
+            conn = sqlite(fn, 'create');
+            cleanup = onCleanup(@() close(conn));
+            execute(conn, ['CREATE TABLE MetadataList (MetadataList_id INTEGER PRIMARY KEY, ', ...
+                'JSONsettings_MD5 INTEGER UNIQUE, JSONsettings TEXT)']);
+            execute(conn, ['CREATE TABLE ImageList (ImageList_id INTEGER PRIMARY KEY, Filename TEXT UNIQUE, ', ...
+                'Camera INTEGER, Channel INTEGER, Laser_nm INTEGER, File_Stack_Index INTEGER, Elapsed_ms REAL, ', ...
+                'Absolute_ms INTEGER, Tile_index_X INTEGER, Tile_index_Y INTEGER, Tile_index_Z INTEGER, ', ...
+                'Tile_index_T INTEGER, Frame_Type TEXT, JSONsettings_MD5 INTEGER)']);
+            execute(conn, ['CREATE TABLE SliceList (SliceList_id INTEGER PRIMARY KEY, ImageList_id INTEGER, ', ...
+                'Slice_Index INTEGER, X_Target_Position_um REAL, Y_Target_Position_um REAL, ', ...
+                'Z_Target_Position_um REAL, Encoder_Timestamp_ms REAL)']);
+            execute(conn, 'INSERT INTO MetadataList VALUES (1, 1001, ''{"a": 1}''), (2, 1002, ''{"a": 2}'')');
+            % 8 images (2 cameras x 2 channels x 2 tiles, not in name order),
+            % one without metadata, one whose hash has no metadata row and
+            % one without slices
+            imageRow = ['INSERT INTO ImageList VALUES (%d, ''acq_Cam%s_ch%d_%dnm_%s.tif'', ', ...
+                '%d, %d, %d, 0, %g, %d, %d, 0, 0, 0, '''', %s)'];
+            cams = 'AB';
+            k = 0;
+            for cam = [1, 0]
+                for ch = [1, 0]
+                    for x = [1, 0]
+                        k = k + 1;
+                        laser = 488 + 72 * ch;
+                        execute(conn, sprintf(imageRow, k, cams(cam + 1), ch, laser, sprintf('%03dx', x), ...
+                            cam, ch, laser, 0.5 * k, 5000 + 7 * k, x, num2str(1001 + mod(k, 2))));
+                    end
+                end
+            end
+            execute(conn, sprintf(imageRow, 9, 'A', 0, 488, 'nohash', 0, 0, 488, 0, 0, 5, 'NULL'));
+            execute(conn, sprintf(imageRow, 10, 'A', 0, 488, 'nometa', 0, 0, 488, 0, 0, 6, '9999'));
+            execute(conn, sprintf(imageRow, 11, 'A', 0, 488, 'noslice', 0, 0, 488, 0, 0, 7, '1001'));
+            % three slices an image, the images' slices interleaved as the
+            % cameras record them; one slice of image 3 without a target x
+            for s = 0 : 2
+                for k = [1 : 8, 9, 10]
+                    xt = sprintf('%g', 100 * mod(k, 2) + 0.25 * s + 0.125);
+                    if k == 3 && s == 1
+                        xt = 'NULL';
+                    end
+                    execute(conn, sprintf('INSERT INTO SliceList VALUES (NULL, %d, %d, %s, %g, %g, %g)', ...
+                        k, s, xt, -20.5 + 0.5 * k, 3 + 0.25 * s, 1000 * k + 10 * s));
+                end
+            end
+            hashCol = '';
+            outerHash = 'JSONsettings_MD5';
+            if strcmp(hash, 'returned')
+                hashCol = 'ImageList.JSONsettings_MD5 AS JSONsettings_MD5, ';
+            elseif strcmp(hash, 'other')
+                outerHash = 'JSONsettings_MD5_old';
+            end
+            execute(conn, ['CREATE VIEW EverythingView_NoNull AS SELECT ImageList.ImageList_id ImageList_id, ', ...
+                hashCol, 'IFNULL(Filename, ''N/A'') AS Filename, IFNULL(Camera, ''N/A'') AS Camera, ', ...
+                'IFNULL(Channel, ''N/A'') AS Channel, IFNULL(Laser_nm, ''N/A'') AS Laser_nm, ', ...
+                'IFNULL(File_Stack_Index, ''N/A'') AS File_Stack_Index, IFNULL(Elapsed_ms, ''N/A'') AS Elapsed_ms, ', ...
+                'IFNULL(Absolute_ms, ''N/A'') AS Absolute_ms, IFNULL(Tile_index_X, ''N/A'') AS Tile_index_X, ', ...
+                'IFNULL(Tile_index_Y, ''N/A'') AS Tile_index_Y, IFNULL(Tile_index_Z, ''N/A'') AS Tile_index_Z, ', ...
+                'IFNULL(Tile_index_T, ''N/A'') AS Tile_index_T, IFNULL(Frame_Type, ''N/A'') AS Frame_Type, ', ...
+                'IFNULL(X_Target_Position_um, ''N/A'') AS X_Target_Position_um, ', ...
+                'IFNULL(Y_Target_Position_um, ''N/A'') AS Y_Target_Position_um, ', ...
+                'IFNULL(Z_Target_Position_um, ''N/A'') AS Z_Target_Position_um, ', ...
+                'IFNULL(Encoder_Timestamp_ms, ''N/A'') AS Encoder_Timestamp_ms, ', ...
+                'IFNULL(MetadataList.JSONsettings, ''N/A'') AS JSONsettings ', ...
+                'FROM SliceList INNER JOIN ImageList ON ImageList.ImageList_id = SliceList.ImageList_id ', ...
+                'INNER JOIN MetadataList ON MetadataList.JSONsettings_MD5 = ImageList.JSONsettings_MD5 ', ...
+                'ORDER BY Filename, Encoder_Timestamp_ms']);
+            execute(conn, ['CREATE VIEW ImageListView_NoNull AS SELECT ImageList_id, ', ...
+                'IFNULL(Filename, ''N/A'') AS Filename, IFNULL(Camera, ''N/A'') AS Camera, ', ...
+                'IFNULL(Channel, ''N/A'') AS Channel, IFNULL(Laser_nm, ''N/A'') AS Laser_nm, ', ...
+                'IFNULL(File_Stack_Index, ''N/A'') AS File_Stack_Index, IFNULL(Elapsed_ms, ''N/A'') AS Elapsed_ms, ', ...
+                'IFNULL(Absolute_ms, ''N/A'') AS Absolute_ms, IFNULL(Tile_index_X, ''N/A'') AS Tile_index_X, ', ...
+                'IFNULL(Tile_index_Y, ''N/A'') AS Tile_index_Y, IFNULL(Tile_index_Z, ''N/A'') AS Tile_index_Z, ', ...
+                'IFNULL(Tile_index_T, ''N/A'') AS Tile_index_T, IFNULL(Frame_Type, ''N/A'') AS Frame_Type, ', ...
+                'IFNULL(', outerHash, ', ''N/A'') AS JSONsettings_MD5, JSONsettings, ', ...
+                'avg(X_Target_Position_um) Mean_X_Target_Position_um, avg(Y_Target_Position_um) Mean_Y_Target_Position_um, ', ...
+                'avg(Z_Target_Position_um) Mean_Z_Target_Position_um FROM EverythingView_NoNull ', ...
+                'GROUP BY ImageList_id ORDER BY Filename, Encoder_Timestamp_ms']);
+            clear cleanup;
         end
 
         function [] = verifyEncoderImageList(testCase, dataPath, fns, mcs2)
