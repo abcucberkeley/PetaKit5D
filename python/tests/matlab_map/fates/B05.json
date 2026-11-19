@@ -22,6 +22,28 @@
     "shellCacheFollowsParameters": [
      "pytest:tests/tools/test_fsc.py::test_shell_cache_follows_parameters",
      "oracle:tests/tools/test_fsc.py::fsc.cache.*"
+    ],
+    "imagesWithoutSignalHaveNoFSC": [
+     "pytest:tests/tools/test_fsc.py::test_images_without_signal_have_no_fsc",
+     "oracle:tests/tools/test_fsc.py::fsc.err.zero"
+    ],
+    "oddNumberOfSectorsIsRefused": [
+     "pytest:tests/tools/test_fsc.py::test_odd_number_of_sectors_is_refused",
+     "oracle:tests/tools/test_fsc.py::fsc.odd_angles",
+     "oracle:tests/tools/test_fsc.py::one_image.zUp_odd_angles"
+    ],
+    "regionsAreCentredOnEachFile": [
+     "pytest:tests/tools/test_fsc.py::test_regions_are_centred_on_each_file",
+     "oracle:tests/tools/test_fsc.py::wrapper.regions.interval.*",
+     "oracle:tests/tools/test_fsc.py::wrapper.regions.single_region.*"
+    ],
+    "sectorsInsideTheConesAreNaN": [
+     "pytest:tests/tools/test_fsc.py::test_sectors_inside_the_cones_are_nan",
+     "oracle:tests/tools/test_fsc.py::fsc.missing_sectors.*"
+    ],
+    "twoImageAnalysisRuns": [
+     "pytest:tests/tools/test_fsc.py::test_two_image_analysis_runs",
+     "oracle:tests/tools/test_fsc.py::two_image.*"
     ]
    }
   }

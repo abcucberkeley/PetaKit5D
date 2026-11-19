@@ -24,6 +24,9 @@
      "pytest:tests/tools/test_puncta_removal.py::test_punctum_at_a_corner_is_filled_from_the_nearest_pixels",
      "oracle:tests/tools/test_puncta_removal.py::point_detection.*",
      "oracle:tests/tools/test_puncta_removal.py::fillmissing2_nearest.*"
+    ],
+    "emptyBackgroundMaskTakesTheBaseThreshold": [
+     "pytest:tests/tools/test_puncta_removal.py::test_empty_background_mask_takes_the_base_threshold"
     ]
    }
   }

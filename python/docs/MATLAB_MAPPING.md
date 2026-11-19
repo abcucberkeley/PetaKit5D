@@ -1201,14 +1201,14 @@ Convert the ND2 and CZI files of datasets (those that match a channel pattern an
 
 ### `XR_chromatic_shift_correction_data_wrapper` -> `petakit5d.tools.chromatic.chromatic_shift_correction_dataset`
 
-Align the channels of the datasets by integer voxel offsets (``XR_chromatic_shift_correction_data_wrapper``): with ``chromatic_offset`` (rows ``(z, y, x)``, one per channel pattern) or, without, the offsets measured from ``psf_fullpaths`` (``chromatic_shift_estimation``, saved in ``<first result folder>/measurement/``). Each file is cropped to the ``mode``'s region by a ``crop_file`` task through the job framework, its result in ``<data path>/<result_dir_name>/``.
+Align the channels of the datasets by integer voxel offsets (``XR_chromatic_shift_correction_data_wrapper``): with ``chromatic_offset`` (rows ``(z, y, x)``, one per channel pattern) or, without, the offsets measured from ``psf_fullpaths`` (``chromatic_shift_estimation``, saved in ``<first result folder>/measurement/``). Each file is cropped to the ``mode``'s region by a ``crop_file`` task through the job framework (large zarr files in batches), its result in ``<data path>/<result_dir_name>/``.
 
 | MATLAB | Python | Arg | Conversion | MATLAB default | Python default | Validator | Meaning |
 |---|---|---|---|---|---|---|---|
 | `dataPaths` | `data_paths` | req |  |  |  | `@(x) ischar(x) \|\| iscell(x)` | Dataset folders (one or several). |
 | `chromaticOffset` | `chromatic_offset` | par | custom:_offsets_in | `[]` | `None` | `@(x) isnumeric(x)` | Offsets in voxels, a row (z, y, x) per channel (None: measured from the PSFs). |
 | `resultDirName` | `result_dir_name` | par |  | `'Chromatic_Shift_Corrected'` | `'Chromatic_Shift_Corrected'` | `@ischar` | Result folder under each data path. |
-| `mode` | `mode` | par |  | `'valid'` | `'valid'` | `@ischar` | Output region: 'valid' (overlap), 'same' (input size), 'full'. |
+| `mode` | `mode` | par |  | `'valid'` | `'valid'` | `@(x) ischar(x) && any(strcmpi(x, {'valid', 'same', 'full'}))` | Output region, in any case: 'valid' (overlap), 'same' (input size) or 'full'. |
 | `padValue` | `pad_value` | par | same | `0` | `0` | `@isnumeric` | Value of the voxels without data. |
 | `newOrigin` | `new_origin` | par | point1_yxz | `[]` | `None` | `@isnumeric` | Origin (z, y, x) of the 'same' region in the scene (None: centered on the overlap). |
 | `channelPatterns` | `channel_patterns` | par |  | `{'CamA','CamB'}` | `('CamA', 'CamB')` | `@iscell` | Channel identifiers, one per channel. |
@@ -1216,7 +1216,7 @@ Align the channels of the datasets by integer voxel offsets (``XR_chromatic_shif
 | `maxOffset` | `max_offset` | par | size_yxz | `[20,20,20]` | `(20, 20, 20)` | `@isnumeric` | Largest offset (z, y, x) of the measurement. |
 | `cropLength` | `crop_length` | par | size_yxz | `[0,0,0]` | `(0, 0, 0)` | `@isnumeric` | Voxels (z, y, x) cut from each side of the PSFs for the measurement. |
 | `zarrFile` | `zarr_file` | par |  | `false` | `False` | `@islogical` | The files are zarr. |
-| `largeFile` | `large_file` | par |  | `false` | `False` | `@islogical` | Large files: the tasks' memory from batchSize. |
+| `largeFile` | `large_file` | par |  | `false` | `False` | `@islogical` | Large files: zarr files cropped in batches into zarr, tiff files in memory. |
 | `saveZarr` | `save_zarr` | par |  | `false` | `False` | `@islogical` | Save the results as zarr. |
 | `batchSize` | `batch_size` | par | size_yxz | `[1024,1024,1024]` | `(1024, 1024, 1024)` | `@isvector` | Batch size (z, y, x) of large files. |
 | `blockSize` | `block_size` | par | size_yxz | `[256,256,256]` | `(256, 256, 256)` | `@isvector` | Chunk size (z, y, x) of zarr results. |
@@ -1263,7 +1263,7 @@ The shifts (rows ``(z, y, x)``, the first channel's 0) of the channels' PSFs aga
 
 ### `XR_crop_dataset` -> `petakit5d.tools.crop.crop_dataset`
 
-Crop every file of the datasets that matches a channel pattern (``XR_crop_dataset``) into ``<data path>/<result_dir_name>/<name>.tif`` (or ``.zarr`` with ``save_zarr``; large zarr files always give zarr), one ``crop_file`` task per file through the job framework. ``crop_type``: ``'fixed'`` crops ``input_bbox``; ``'moving'`` moves it linearly from its start at the first time point to ``last_start_coords`` at the last (per channel, rounded as MATLAB rounds); ``'center'`` crops a box of its size at each image's center. parameters.mat of the call goes into each result folder.
+Crop every file of the datasets that matches a channel pattern (``XR_crop_dataset``) into ``<data path>/<result_dir_name>/<name>.tif`` (or ``.zarr`` with ``save_zarr``; large zarr files always give zarr), one ``crop_file`` task per file through the job framework. ``crop_type``: ``'fixed'`` crops ``input_bbox``; ``'moving'`` moves it linearly from its start at the first time point to ``last_start_coords`` at the last (per dataset and channel, rounded as MATLAB rounds; a single time point is cropped with the box); ``'center'`` crops a box of its size at each image's center. parameters.mat of the call goes into each result folder.
 
 | MATLAB | Python | Arg | Conversion | MATLAB default | Python default | Validator | Meaning |
 |---|---|---|---|---|---|---|---|
@@ -1858,7 +1858,7 @@ FSC analysis of the tiff files of datasets (``XR_FSC_analysis_wrapper``): ``fsc_
 
 ### `XR_FSC_resolution` -> `petakit5d.tools.fsc.fsc_resolution`
 
-The resolution per angle of an FSC (``XR_FSC_resolution``; see the module): a dict of ``comp_angles`` (the FSC's angles), ``points`` (the radius found per angle), ``thetas`` (``0 : dtheta : 2 pi``) and ``res`` (the resolution on that circle: 0 for x, pi/2 for z). The smoothing spline is not MATLAB's (the module).
+The resolution per angle of an FSC (``XR_FSC_resolution``; see the module): a dict of ``comp_angles`` (the FSC's angles), ``points`` (the radius found per angle), ``thetas`` (``0 : dtheta : 2 pi``) and ``res`` (the resolution on that circle: 0 for x, pi/2 for z; each angle's sector at its place, NaN for the sectors the FSC lacks). The smoothing spline is not MATLAB's (the module).
 
 | MATLAB | Python | Arg | Conversion | MATLAB default | Python default | Validator | Meaning |
 |---|---|---|---|---|---|---|---|
@@ -1867,6 +1867,7 @@ The resolution per angle of an FSC (``XR_FSC_resolution``; see the module): a di
 | `dz` | `dz` | par |  | `0.108` | `0.108` | `@isnumeric` | Voxel size in z (um). |
 | `resThreshMethod` | `res_thresh_method` | par |  | `'fixed'` | `'fixed'` | `@ischar` | 'fixed', 'one-bit' or 'half-bit'. |
 | `resThresh` | `res_thresh` | par |  | `0.2` | `0.2` | `@isnumeric` | Threshold of 'fixed'. |
+| `dtheta` | `dtheta` | par |  | `[]` | `None` | `@isnumeric` | Interval of the angles (rad; None: that of the first two angles). |
 | `debug` | `debug` | par |  | `false` | `False` | `@islogical` | Not used. |
 
 ### `XR_generate_image_list_wrapper` -> `petakit5d.stitch.imagelist_generate.generate_image_list`
@@ -2732,7 +2733,7 @@ Convert the tiff files of datasets (those that match a channel pattern) to zarr 
 
 ### `XR_two_image_FSC_analysis` -> `petakit5d.tools.fsc.two_image_fsc_analysis`
 
-``XR_two_image_FSC_analysis``: MATLAB reads both images, resizes them to isotropic voxels and fails in its first ``XR_FSC`` call, which has no parameter ``'N'``; this reads the files (so a missing file fails as there) and fails the same way.
+The FSC of two images (``XR_two_image_FSC_analysis``; tiff files or ``(z, y, x)`` arrays): each resized to isotropic voxels in double (MATLAB's ``imresize3``, cubic), cropped about its centre or padded to twice ``n``, the FSC (``fourier_shell_correlation``, its defaults) of each of the eight sub-lattices of every other voxel of the first image with the same of the second, and the resolution of their mean: ``(fsc, res)`` (``fsc`` the last pair's, with the mean curves).
 
 | MATLAB | Python | Arg | Conversion | MATLAB default | Python default | Validator | Meaning |
 |---|---|---|---|---|---|---|---|
@@ -2746,6 +2747,7 @@ Convert the tiff files of datasets (those that match a channel pattern) to zarr 
 | `resThresh` | `res_thresh` | par |  | `0.2` | `0.2` | `@isnumeric` | Threshold of 'fixed'. |
 | `N` | `n` | par | size_yxz | `[501,501,501]` | `(501, 501, 501)` | `@isnumeric` | Half size (z, y, x). |
 | `debug` | `debug` | par |  | `false` | `False` | `@islogical` | Not used. |
+| `num_threads` | `num_threads` | par |  | `[]` | `None` |  | Threads (None: all available). (Python only) |
 
 ### `XR_unmix_channels_data_wrapper` -> `petakit5d.tools.unmix.unmix_channels_dataset`
 

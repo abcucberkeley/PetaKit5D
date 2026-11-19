@@ -26,8 +26,10 @@ permissive one (pocketfft, the default) within decision record 0006's double tol
 (from the first radius to 1, then to sqrt(2)) where the smoothed curve falls below the threshold
 (``'fixed'``) or below the smoothed one-bit or half-bit curve of the points per cell, and the
 resolution ``2 psz / radius`` with ``psz = xy + (dz - xy) |cos(theta)|``, put on a full circle
-(0 for x, pi/2 for z). A curve that never falls below it is fitted with a quadratic; failing that
-the radius is sqrt(2).
+(0 for x, pi/2 for z) by the angles' sectors (those the FSC lacks, inside the cones, are NaN; an
+odd number of sectors in the half circle is refused, ``XR_FSC_resolution:oddSectorNumber``). A
+curve that never falls below it is fitted with a quadratic; failing that the radius is sqrt(2).
+Images without signal (all zero) have no FSC (``XR_FSC:noSignal``).
 
 **The smoothing is not MathWorks's code.** MATLAB smooths with the Curve Fitting Toolbox's
 ``fit(r, fsc, 'smoothingSpline')``, which its documentation says is based on ``csaps``. Here it is
@@ -43,32 +45,30 @@ is plain IEEE operations in a fixed order, so the results are the same on every 
 
 ``one_image_fsc_analysis(fn)`` (``XR_one_image_FSC_analysis``): the image (a tiff file or a
 ``(z, y, x)`` array) clipped at a percentile (``clip_per``), cropped to ``bbox``, permuted for
-``res_axis`` (``'yz'`` swaps x and y; ``'xy'`` makes MATLAB's ``permute(im, [3, 2, 1])``), resized
-to isotropic voxels in double (``imresize3_fast``, linear, only the region kept) and cropped or
-padded to twice ``half_size``; the FSC of four pairs of its interleaved sub-lattices (every other
-voxel along each axis) and the resolution of their mean.
+``res_axis`` (``'yz'`` swaps x and y; ``'xy'`` makes MATLAB's ``permute(im, [3, 2, 1])``, with the
+pixel sizes of the permuted axes and the FSC's plane of x and y), resized to isotropic voxels in
+double (``imresize3_fast``, linear, only the region kept) and cropped or padded to twice
+``half_size``; the FSC of four pairs of its interleaved sub-lattices (every other voxel along each
+axis) and the resolution of their mean. ``two_image_fsc_analysis`` (``XR_two_image_FSC_analysis``):
+two images resized (``imresize3``, cubic), cropped about their centre or padded to twice ``n``, and
+the mean FSC of their eight same sub-lattices.
 
 ``fsc_analysis_file`` (``XR_one_image_FSC_analysis_frame``) writes the analysis of an image (of
 each box of ``bbox``) to a v7.3 MAT-file under a temporary name and renames it.
 ``fsc_analysis_dataset`` (``XR_FSC_analysis_wrapper``) runs it for the tiff files of datasets
-through the job framework, saves ``fsc_res_info_c<c>.mat`` per channel and, with matplotlib (the
-optional ``figures`` dependency), the figures as PNG (MATLAB's ``.fig`` files are not written).
+through the job framework (with ``multi_regions``, regions about each file's own centre), saves
+``fsc_res_info_c<c>.mat`` per channel (the mean resolutions leave out the NaN sectors) and, with
+matplotlib (the optional ``figures`` dependency), the figures as PNG (MATLAB's ``.fig`` files are
+not written). ``fsc['npoints']`` and ``fsc['fsc']`` hold the angles the FSC found
+(``fsc['thetas']``), column by column.
 
 Kept from MATLAB:
 
 - the crop to twice ``half_size`` starts at ``max(1, floor((size - 2 h) / 2))``, one voxel before
-  the centred box; ``'xy'`` keeps the pixel sizes ``[xy xy dz]`` of the unpermuted axes;
-- ``fsc['npoints']`` is filled by the position of each angle among the angles found, not by the
-  angle's sector, and ``fsc['thetas']`` lists only the angles found;
-- the resolution's full circle starts at ``cind = n / 2 + 1`` of the ``n`` angles: for an odd
-  ``n`` (``dtheta = pi / 5``) MATLAB warns twice (``MATLAB:colon:nonIntegerIndex``) and rounds
-  the indices ``cind : n`` and ``1 : cind``, so ``res`` has ``2 n`` values, not the ``2 n + 1``
-  of ``thetas``; a single angle fails;
-- ``XR_FSC_analysis_wrapper`` filters by channel pattern on the full paths, takes the region
-  centres of ``multi_regions`` from the first image's centre, and with one region per image
-  fails when it reads the results (the result holds a struct, not a cell);
-- ``XR_two_image_FSC_analysis`` passes ``'N'`` to ``XR_FSC``, which has no such parameter: it
-  always fails, after reading and resizing the images.
+  the centred box (the two-image analysis's at the centred box);
+- ``XR_FSC_resolution`` without ``dtheta`` takes the interval of the first two angles (a single
+  angle fails);
+- ``XR_FSC_analysis_wrapper`` filters by channel pattern on the full paths.
 
 Not kept: MATLAB keeps the last image read by file name in a persistent variable; here a file
 is read on each call.
@@ -656,12 +656,13 @@ def fourier_shell_correlation(
     frc = _frc(f1, f2, cells, nt)
     del f1, f2
     keep = ~np.isnan(frc)
-    xi = np.arange(1, num_xi + 1)[keep]
-    if xi.size == 0:
-        # xi(end) = [] of an empty xi (all cells empty: all-zero volumes)
+    if not keep.any():
+        # (every cell is 0 / 0: no FSC)
         raise FSCError(
-            "Array indices must be positive integers or logical values.", "MATLAB:badsubscript"
+            "The FSC is undefined: the images have no signal (e.g., they are all zero).",
+            "XR_FSC:noSignal",
         )
+    xi = np.arange(1, num_xi + 1)[keep]
     xi, n_points, frc = xi[:-1], npoints[keep][:-1], frc[keep][:-1]
     xri = (xi - 1) % max_r + 1
     xei = (xi - 1) // max_r + 1
@@ -689,6 +690,7 @@ def fourier_shell_correlation(
         dz=dz,
         res_thresh_method=res_thresh_method,
         res_thresh=res_thresh,
+        dtheta=dtheta,
         debug=debug,
     )
     return fsc, res
@@ -877,6 +879,11 @@ def _first(mask: np.ndarray) -> int | None:
     Param("dz", "@isnumeric", "Voxel size in z (um)."),
     Param("resThreshMethod", "@ischar", "'fixed', 'one-bit' or 'half-bit'."),
     Param("resThresh", "@isnumeric", "Threshold of 'fixed'."),
+    Param(
+        "dtheta",
+        "@isnumeric",
+        "Interval of the angles (rad; None: that of the first two angles).",
+    ),
     Param("debug", "@islogical", "Not used."),
     task="B05",
 )
@@ -887,12 +894,14 @@ def fsc_resolution(
     dz: float = 0.108,
     res_thresh_method: str = "fixed",
     res_thresh: float = 0.2,
+    dtheta: float | None = None,
     debug: bool = False,
 ) -> dict:
     """The resolution per angle of an FSC (``XR_FSC_resolution``; see the module): a dict of
     ``comp_angles`` (the FSC's angles), ``points`` (the radius found per angle), ``thetas``
-    (``0 : dtheta : 2 pi``) and ``res`` (the resolution on that circle: 0 for x, pi/2 for z).
-    The smoothing spline is not MATLAB's (the module)."""
+    (``0 : dtheta : 2 pi``) and ``res`` (the resolution on that circle: 0 for x, pi/2 for z;
+    each angle's sector at its place, NaN for the sectors the FSC lacks). The smoothing spline
+    is not MATLAB's (the module)."""
     from petakit5d.matlabcompat.elementary import cos
 
     frc_mat = np.asarray(fsc["fsc"], dtype=np.float64)
@@ -942,34 +951,34 @@ def fsc_resolution(
 
     psz = xy_pixel_size + (dz - xy_pixel_size) * np.abs(cos(thetas))
     res_mat = (2 * psz) / points
-    if nth < 2:
-        raise FSCError(
-            "Index exceeds the number of array elements. Index must not exceed 0.",
-            "MATLAB:badsubscript",
-        )
-    dth = thetas[1] - thetas[0]
-    res_theta = _colon(0, dth, 2 * math.pi)
-    # [res_mat(cind : end), res_mat(1 : end), res_mat(1 : cind)]; with an odd number of angles
-    # cind ends in .5: MATLAB warns for each index and rounds the colon's values
-    cind = nth / 2 + 1
-    first = _colon(cind, 1, nth)
-    last = _colon(1, 1, cind)
-    if cind != math.floor(cind):
-        import warnings
-
-        from petakit5d.core.dtypes import mround
-
-        for _ in range(2):
-            warnings.warn(
-                FSCWarning(
-                    "Integer operands are required for colon operator when used as index.",
-                    "MATLAB:colon:nonIntegerIndex",
-                ),
-                stacklevel=2,
+    if dtheta is None or np.size(dtheta) == 0:
+        if nth < 2:
+            raise FSCError(
+                "Index exceeds the number of array elements. Index must not exceed 0.",
+                "MATLAB:badsubscript",
             )
-        first, last = mround(first), mround(last)
-    fi, li = first.astype(np.intp) - 1, last.astype(np.intp) - 1
-    res_out = np.concatenate([res_mat[fi], res_mat, res_mat[li]])
+        dth = thetas[1] - thetas[0]
+    else:
+        dth = float(np.asarray(dtheta, dtype=np.float64).ravel()[0])
+    res_theta = _colon(0, dth, 2 * math.pi)
+    # the full circle (0 for x, pi/2 for z): the angle phi takes the sector of thetas at
+    # phi + pi/2 (mod pi), each angle's sector at its place (round(theta / dtheta)), the ones
+    # the FSC lacks NaN; an odd number of sectors has none at pi/2
+    from petakit5d.core.dtypes import NAN, mround
+
+    n_sector = int(mround(math.pi / dth))
+    if n_sector % 2 != 0:
+        raise FSCError(
+            f"The half circle has {n_sector} sectors (pi / dtheta): an even number is needed, "
+            "so that x (pi / 2) is one of them.",
+            "XR_FSC_resolution:oddSectorNumber",
+        )
+    idx = mround(thetas / dth).astype(np.int64)
+    res_s = np.full(max(n_sector, int(idx.max(initial=-1)) + 1), NAN)
+    res_s[n_sector:] = 0  # (MATLAB grows the array with zeros)
+    res_s[idx] = res_mat
+    cind = n_sector // 2 + 1
+    res_out = np.concatenate([res_s[cind - 1 :], res_s, res_s[:cind]])
     return {"comp_angles": thetas, "points": points, "thetas": res_theta, "res": res_out}
 
 
@@ -1006,15 +1015,16 @@ def _clip(im: np.ndarray, clip_per: float) -> np.ndarray:
         return im * (im <= v) + v * (im > v)
 
 
-def _isotropic_region(im: np.ndarray, xy: float, dz: float, half: tuple) -> np.ndarray:
+def _isotropic_region(
+    im: np.ndarray, xy: float, dz: float, half: tuple, scale: tuple[float, float, float]
+) -> np.ndarray:
     """the image resized to isotropic voxels (linear, in double), only the region kept, then
-    padded to twice ``half`` (MATLAB's pixel sizes [xy xy dz] of its dimensions y, x, z)"""
+    padded to twice ``half``; ``scale``: the pixel sizes of its axes (z, y, x)"""
     from petakit5d.core.dtypes import mround
     from petakit5d.matlabcompat.resize import imresize3_fast
 
     sz = im.shape  # (z, y, x)
     psz = min(xy, dz)
-    scale = (dz, xy, xy)
     if dz != xy:
         rsz = tuple(int(mround((s * f) / psz)) for s, f in zip(sz, scale, strict=True))
     else:
@@ -1118,14 +1128,19 @@ def one_image_fsc_analysis(
         if z1 > im.shape[0] or y1 > im.shape[1] or x1 > im.shape[2] or min(z0, y0, x0) < 0:
             raise FSCError("Index in position 1 exceeds array bounds.", "MATLAB:badsubscript")
         im = im[z0:z1, y0:y1, x0:x1]
+    xy, dz_ = float(xy_pixel_size), float(dz)
+    # the pixel sizes of the axes (z, y, x) after the permutation, and the FSC's dz (of its
+    # plane's second axis: for 'xy', y)
+    scale, fsc_dz = (dz_, xy, xy), dz
     if res_axis == "yz":
         im = np.swapaxes(im, 1, 2)
     elif res_axis == "xy":
         im = np.transpose(im, (1, 0, 2))
-    im = _isotropic_region(np.ascontiguousarray(im), float(xy_pixel_size), float(dz), half)
+        scale, fsc_dz = (xy, dz_, xy), xy_pixel_size
+    im = _isotropic_region(np.ascontiguousarray(im), xy, dz_, half, scale)
     kw = {
         "xy_pixel_size": xy_pixel_size,
-        "dz": dz,
+        "dz": fsc_dz,
         "dr": dr,
         "dtheta": dtheta,
         "half_size": half_size,
@@ -1144,9 +1159,10 @@ def one_image_fsc_analysis(
     res_mu = fsc_resolution(
         fsc_mu,
         xy_pixel_size=xy_pixel_size,
-        dz=dz,
+        dz=fsc_dz,
         res_thresh_method=res_thresh_method,
         res_thresh=res_thresh,
+        dtheta=dtheta,
         debug=debug,
     )
     return fsc_mu, res_mu, fsc_cell, res_cell
@@ -1384,12 +1400,12 @@ def _region_boxes(
     if interval is not None and len(interval) and grid is None:
         cs = mround((im_sizes + 1) / 2)
         d = [float(v) for v in interval]
-        h0 = float(hv[0])  # MATLAB's colon takes the first element of halfSize
-        c0 = cs.T.ravel()  # cs(1), cs(2), cs(3): the first column's first rows
         for f in range(nf):
+            # (each file's centre and the half size of each axis)
             axes = []
             for k in range(3):
-                axes.append(_ycs(float(c0[k]), d[k], h0, float(im_sizes[f, k]), float(cs[f, k])))
+                c = float(cs[f, k])
+                axes.append(_ycs(c, d[k], float(hv[k]), float(im_sizes[f, k]), c))
             ys, xs, zs = (np.asarray(a) for a in axes)
             Y, X, Z = np.meshgrid(ys, xs, zs, indexing="ij")
             ctr = np.stack([Y.ravel(order="F"), X.ravel(order="F"), Z.ravel(order="F")], axis=1)
@@ -1641,19 +1657,24 @@ def _summaries(
                     thetas = a["res_mu"]["thetas"]
                 else:
                     rm = a["res_mu"]
-                    if isinstance(rm, dict):
-                        raise FSCError(
-                            "Brace indexing is not supported for variables of this type.",
-                            "MATLAB:cellRefFromNonCell",
-                        )
-                    cells = list(np.asarray(rm, dtype=object).ravel(order="F"))
+                    # (one region's result holds its struct itself, not a cell of them)
+                    cells = (
+                        [rm]
+                        if isinstance(rm, dict)
+                        else list(np.asarray(rm, dtype=object).ravel(order="F"))
+                    )
                     for j in range(n_reg):
                         res_mat[i, :, j] = np.asarray(cells[j]["res"], dtype=np.float64).ravel()
                     thetas = cells[0]["thetas"]
             mm = res_mat if multi_regions else res_mat[:, :, 0]
+            # (the mean of the measured angles: the sectors inside the cones are NaN)
             res_mu_mat = np.asarray(
                 R.mean(
-                    np.ascontiguousarray(mm[:, :-1, ...]), axis=1, keepdims=True, matlab_layout=True
+                    np.ascontiguousarray(mm[:, :-1, ...]),
+                    axis=1,
+                    keepdims=True,
+                    matlab_layout=True,
+                    omitnan=bool(np.isnan(mm).any()),
                 )
             )
             write_mat(
@@ -1756,8 +1777,34 @@ def _draw_figures(fig_path, names, res_mat, thetas, it, channel, suffix, multi) 
 
 
 # ---------------------------------------------------------------------------------------------
-# two images: XR_two_image_FSC_analysis (fails in MATLAB)
+# two images: XR_two_image_FSC_analysis
 # ---------------------------------------------------------------------------------------------
+
+
+def _isotropic_cubic(im: np.ndarray, xy: float, dz: float, size: tuple) -> np.ndarray:
+    """resample_crop_pad_image_isotropic: the image (double) resized to isotropic voxels
+    (MATLAB's ``imresize3``, cubic), cropped about its centre (``floor((size - n) / 2)``) or
+    padded (``floor`` before) to ``size``"""
+    from petakit5d.core.dtypes import mround
+    from petakit5d.matlabcompat.resize import imresize3
+
+    psz = min(xy, dz)
+    if dz != xy:
+        im = imresize3(
+            im,
+            tuple(int(mround((s * f) / psz)) for s, f in zip(im.shape, (dz, xy, xy), strict=True)),
+        )
+    sz = im.shape
+    if any(s > n for s, n in zip(sz, size, strict=True)):
+        s0 = [max(1, math.floor((s - n) / 2)) for s, n in zip(sz, size, strict=True)]
+        t = [int(min(s, a + n - 1)) for s, a, n in zip(sz, s0, size, strict=True)]
+        im = im[s0[0] - 1 : t[0], s0[1] - 1 : t[1], s0[2] - 1 : t[2]]
+        sz = im.shape
+    if any(s < n for s, n in zip(sz, size, strict=True)):
+        pre = [math.floor((n - s) / 2) for s, n in zip(sz, size, strict=True)]
+        post = [int(n - s - a) for s, n, a in zip(sz, size, pre, strict=True)]
+        im = np.pad(im, list(zip(pre, post, strict=True)))
+    return np.ascontiguousarray(im)
 
 
 @register(
@@ -1784,6 +1831,7 @@ def _draw_figures(fig_path, names, res_mat, thetas, it, channel, suffix, multi) 
     Param("resThresh", "@isnumeric", "Threshold of 'fixed'."),
     Param("N", "@isnumeric", "Half size (z, y, x).", convert="size_yxz"),
     Param("debug", "@islogical", "Not used."),
+    Param("num_threads", None, "Threads (None: all available).", python_only=True),
     task="B05",
 )
 def two_image_fsc_analysis(
@@ -1798,15 +1846,61 @@ def two_image_fsc_analysis(
     res_thresh: float = 0.2,
     n: Sequence[float] = (501, 501, 501),
     debug: bool = False,
-):
-    """``XR_two_image_FSC_analysis``: MATLAB reads both images, resizes them to isotropic voxels
-    and fails in its first ``XR_FSC`` call, which has no parameter ``'N'``; this reads the
-    files (so a missing file fails as there) and fails the same way."""
+    num_threads: int | None = None,
+) -> tuple[dict, dict]:
+    """The FSC of two images (``XR_two_image_FSC_analysis``; tiff files or ``(z, y, x)``
+    arrays): each resized to isotropic voxels in double (MATLAB's ``imresize3``, cubic), cropped
+    about its centre or padded to twice ``n``, the FSC (``fourier_shell_correlation``, its
+    defaults) of each of the eight sub-lattices of every other voxel of the first image with the
+    same of the second, and the resolution of their mean: ``(fsc, res)`` (``fsc`` the last
+    pair's, with the mean curves)."""
+    from petakit5d.matlabcompat import reduce as R
+
+    half = _half3(n, "n")
+    vols = []
     for im in (im1, im2):
-        if isinstance(im, (str, os.PathLike)):
-            _read_image(os.fspath(im))
-    raise FSCError(
-        "'N' is not a recognized parameter. For a list of valid name-value pair arguments, see "
-        "the documentation for this function.",
-        "MATLAB:InputParser:UnmatchedParameter",
+        a = _read_image(os.fspath(im)) if isinstance(im, (str, os.PathLike)) else np.asarray(im)
+        if a.ndim == 2:
+            a = a[None]
+        a = np.asarray(a, dtype=np.float64)
+        vols.append(
+            _isotropic_cubic(a, float(xy_pixel_size), float(dz), tuple(2 * h for h in half))
+        )
+    kw = {
+        "xy_pixel_size": xy_pixel_size,
+        "dz": dz,
+        "dr": dr,
+        "dtheta": dtheta,
+        "half_size": n,
+        "num_threads": num_threads,
+    }
+    fsc_cell = []
+    fsc_i = None
+    for i in range(8):
+        # MATLAB's [y, x, z] = ind2sub([2, 2, 2], i)
+        par = (i % 2 + 1, (i // 2) % 2 + 1, i // 4 + 1)
+        fsc_i, _ = fourier_shell_correlation(
+            _sub_lattice(vols[0], par), _sub_lattice(vols[1], par), **kw
+        )
+        fsc_cell.append(fsc_i)
+    shapes = {np.shape(f["fsc"]) for f in fsc_cell}
+    if len(shapes) != 1:
+        raise FSCError(
+            "Dimensions of arrays being concatenated are not consistent.",
+            "MATLAB:catenate:dimensionMismatch",
+        )
+    stack = np.stack([np.asarray(f["fsc"], dtype=np.float64) for f in fsc_cell], axis=2)
+    fsc_mu = dict(fsc_i)
+    fsc_mu["fsc"] = np.ascontiguousarray(
+        np.asarray(R.mean(stack, axis=2, matlab_layout=True)).reshape(stack.shape[:2])
     )
+    res_mu = fsc_resolution(
+        fsc_mu,
+        xy_pixel_size=xy_pixel_size,
+        dz=dz,
+        res_thresh_method=res_thresh_method,
+        res_thresh=res_thresh,
+        dtheta=dtheta,
+        debug=debug,
+    )
+    return fsc_mu, res_mu

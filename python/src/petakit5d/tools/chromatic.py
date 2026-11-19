@@ -18,9 +18,14 @@ input's name (``.zarr`` with ``save_zarr``). The region by ``mode``:
 - ``'same'``: the input's size, at ``new_origin`` (0-based, in the scene), or without it centered
   on the overlap (``overlap start + floor((overlap size - image size) / 2)``; the origin of this
   mode is the one the MATLAB tests define, tests/README.md);
-- ``'full'``: the union of the channels;
-- any other mode: each channel's own box shifted by its offset (MATLAB's ``switch`` has no
-  ``otherwise``), padded.
+- ``'full'``: the union of the channels.
+
+Modes are taken in any case; others are refused (MATLAB's parser:
+``MATLAB:InputParser:ArgumentFailedValidation``). Large zarr files (``zarr_file`` and
+``large_file``) are cropped in batches (``crop_file`` with ``large_file``, MATLAB's
+``XR_crop_zarr``) into zarr results, their jobs sized as ``XR_crop_dataset`` sizes them; their
+padding is 0 (another ``pad_value`` is refused where they are padded). Offsets must be a row per
+channel pattern (``...:noOffsets`` without offsets and PSFs, ``...:offsetSize`` otherwise).
 
 Arrays are ``(z, y, x)``; offsets are rows ``(z, y, x)`` per channel (in ``channel_patterns``'
 order), shifts, bounds and crops ``(z, y, x)``; the MATLAB-name layer takes MATLAB's ``[y x z]``
@@ -28,18 +33,8 @@ rows and a 1-based ``newOrigin``. The NCC runs on the process's CPU FFT backend
 (``petakit5d.fft``): MATLAB's bits with ``exact``, within decision record 0006 with
 ``permissive``.
 
-MATLAB quirks kept (each has a test or an oracle case):
-
-- the estimation passes its bounds to ``normxcorr3_max_shift`` in ``[x y z]`` order where that
-  takes ``[y x z]``: the y shift is bounded by the x values of ``crop_length +- max_offset`` and
-  the x shift by the y values;
-- after a measurement the wrapper's tasks read the data as tiff (``zarrFile`` is set to false for
-  the PSFs and stays false);
-- ``large_file`` only sizes the tasks' memory (``prod(batchSize)``); the crops are not run in
-  blocks;
-- without offsets and PSFs, MATLAB's ``[1 1 1 imSize] + []`` errors; offsets with fewer rows than
-  channels error at the missing row;
-- a char ``psfFullpaths`` of two or more characters errors at its first brace index.
+The estimation takes one path as one PSF (too few). MATLAB quirks kept: ``padValue`` goes to the
+tasks through ``%d`` (a non-integer value as MATLAB's ``%e`` text).
 
 Differences: offsets and origins must be integers (MATLAB passes others to XR_crop_frame, whose
 mex truncate them).
@@ -150,8 +145,7 @@ def _two_channels(
     n = im_t.shape
     t1 = im_t[c[0] : n[0] - c[0], c[1] : n[1] - c[1], c[2] : n[2] - c[2]]
     lower, upper = crop - max_offset, crop + max_offset
-    # (MATLAB passes [x y z] bounds where [y x z] are taken: y gets x's, x gets y's)
-    bounds = np.stack([lower, upper])[:, [0, 2, 1]]
+    bounds = np.stack([lower, upper])
     off, peak, _ = normxcorr3_max_shift(
         np.ascontiguousarray(t1, dtype=np.float32),
         np.ascontiguousarray(im_s, dtype=np.float32),
@@ -211,13 +205,8 @@ def chromatic_shift_estimation(
     ``.mat``, ``[y x z]`` values; published by one rename)."""
     del debug
     if isinstance(psf_fullpaths, (str, os.PathLike)):
-        psf_fullpaths = os.fspath(psf_fullpaths)
-        if len(psf_fullpaths) < 2:
-            raise ChromaticError("At least two PSF files are needed!")
-        raise ChromaticError(
-            "Brace indexing is not supported for variables of this type.",
-            "MATLAB:cellRefFromNonCell",
-        )
+        # (one path is one PSF)
+        psf_fullpaths = [os.fspath(psf_fullpaths)]
     paths = [os.fspath(p) for p in psf_fullpaths]
     nf = len(paths)
     if nf < 2:
@@ -311,7 +300,11 @@ def correction_boxes(
         convert=(_offsets_in, _offsets_out),
     ),
     Param("resultDirName", "@ischar", "Result folder under each data path."),
-    Param("mode", "@ischar", "Output region: 'valid' (overlap), 'same' (input size), 'full'."),
+    Param(
+        "mode",
+        "@(x) ischar(x) && any(strcmpi(x, {'valid', 'same', 'full'}))",
+        "Output region, in any case: 'valid' (overlap), 'same' (input size) or 'full'.",
+    ),
     Param("padValue", "@isnumeric", "Value of the voxels without data.", convert="same"),
     Param(
         "newOrigin",
@@ -334,7 +327,11 @@ def correction_boxes(
         convert="size_yxz",
     ),
     Param("zarrFile", "@islogical", "The files are zarr."),
-    Param("largeFile", "@islogical", "Large files: the tasks' memory from batchSize."),
+    Param(
+        "largeFile",
+        "@islogical",
+        "Large files: zarr files cropped in batches into zarr, tiff files in memory.",
+    ),
     Param("saveZarr", "@islogical", "Save the results as zarr."),
     Param("batchSize", "@isvector", "Batch size (z, y, x) of large files.", convert="size_yxz"),
     Param("blockSize", "@isvector", "Chunk size (z, y, x) of zarr results.", convert="size_yxz"),
@@ -381,7 +378,7 @@ def chromatic_shift_correction_dataset(
     ``(z, y, x)``, one per channel pattern) or, without, the offsets measured from
     ``psf_fullpaths`` (``chromatic_shift_estimation``, saved in
     ``<first result folder>/measurement/``). Each file is cropped to the ``mode``'s region by a
-    ``crop_file`` task through the job framework, its result in
+    ``crop_file`` task through the job framework (large zarr files in batches), its result in
     ``<data path>/<result_dir_name>/``."""
     import warnings
 
@@ -396,8 +393,19 @@ def chromatic_shift_correction_dataset(
     from petakit5d.tools.crop import crop_file
 
     del debug
+    if not isinstance(mode, str) or mode.lower() not in ("valid", "same", "full"):
+        raise ChromaticError(
+            "The value of 'mode' is invalid. It must satisfy the function: "
+            "@(x)ischar(x)&&any(strcmpi(x,{'valid','same','full'})).",
+            "MATLAB:InputParser:ArgumentFailedValidation",
+        )
+    mode = mode.lower()
     paths = [data_paths] if isinstance(data_paths, str | os.PathLike) else list(data_paths)
     paths = [os.fspath(p) for p in paths]
+    # (large zarr files are cropped in batches, into zarr results)
+    large_zarr = bool(zarr_file) and bool(large_file)
+    if large_zarr:
+        save_zarr = True
     nd = len(paths)
     result_paths = []
     for d in range(nd):
@@ -433,17 +441,29 @@ def chromatic_shift_correction_dataset(
         print("\n".join(f"    {{'{os.fspath(p)}'}}" for p in psf_fullpaths), flush=True)
         measure_path = f"{result_paths[0]}measurement/"
         os.makedirs(measure_path, exist_ok=True)
-        # (MATLAB sets zarrFile to false here, for the PSFs and for the tasks after them)
-        zarr_file = False
+        # (the PSFs are tiff files; the data keeps zarr_file)
         shifts = chromatic_shift_estimation(
             psf_fullpaths,
             result_fullpath=f"{measure_path}/chromatic_shift_measurement_result.mat",
             max_offset=max_offset,
             crop_length=crop_length,
-            zarr_file=zarr_file,
+            zarr_file=False,
             uuid=uuid,
         )
         offsets = shifts - shifts.min(axis=0)
+    if _empty(offsets):
+        raise ChromaticError(
+            "Give chromaticOffset (a [y, x, z] row per channel pattern) or psfFullpaths to "
+            "measure it.",
+            "XR_chromatic_shift_correction_data_wrapper:noOffsets",
+        )
+    shape = np.shape(np.atleast_2d(np.asarray(offsets, dtype=np.float64)))
+    if shape != (nc, 3):
+        raise ChromaticError(
+            f"chromaticOffset must have a [y, x, z] row per channel pattern ({nc} x 3), not "
+            f"[{shape[0]} {shape[1]}].",
+            "XR_chromatic_shift_correction_data_wrapper:offsetSize",
+        )
     print("Chromatic offset across channels:", flush=True)
     print("" if _empty(offsets) else np.asarray(offsets), flush=True)
 
@@ -457,6 +477,16 @@ def chromatic_shift_correction_dataset(
         b, pad = correction_boxes(im_size, offsets, mode, new_origin)
         boxes.append(b)
 
+    if large_zarr and pad and float(pad_value) != 0:
+        from petakit5d.core.text import sprintf
+
+        raise ChromaticError(
+            sprintf(
+                "Large Zarr files are padded with 0 (XR_crop_zarr): padValue %g is not supported.",
+                float(pad_value),
+            ),
+            "XR_chromatic_shift_correction_data_wrapper:padValue",
+        )
     ext = ".zarr" if save_zarr else ".tif"
     # (the values as the task strings give them: padValue %d, the sizes through mat2str)
     pv = float(through_text(float(pad_value), "%d"))
@@ -468,11 +498,6 @@ def chromatic_shift_correction_dataset(
         frame = f"{paths[fd_inds[f]]}/{fnames[f]}"
         result = f"{result_paths[fd_inds[f]]}/{fsns[f]}{ext}"
         b = boxes[fd_inds[f]]
-        if ch_inds[f] >= b.shape[0]:
-            raise ChromaticError(
-                f"Index in position 1 exceeds array bounds. Index must not exceed {b.shape[0]}.",
-                "MATLAB:badsubscript",
-            )
         frame_fullpaths.append(frame)
         result_fullpaths.append(result)
         tasks.append(
@@ -493,20 +518,47 @@ def chromatic_shift_correction_dataset(
                 cpus_per_task=cpus,
                 mcc_mode=bool(mcc_mode),
                 config_file=config_file,
+                # (only then, as MATLAB passes it)
+                **({"large_file": True} if large_zarr else {}),
             )
         )
 
-    if large_file:
-        mem_allocate = float(np.prod(_floats(batch_size))) / 1024**3 * 4 * 2.5
+    job_cpus = cpus_per_task
+    coord_nice = 0
+    if large_zarr:
+        # each file's job (crop_zarr) runs its batches as jobs: it holds the process and the
+        # merge of the MIP slabs, and if it crops batches itself cpus_per_task and a batch's
+        # memory, as crop_dataset sizes them
+        from petakit5d.io import get_image_dtype
+        from petakit5d.jobs.config import cluster_config_value
+        from petakit5d.jobs.coordinator import coordinator_nice, coordinator_resources
+        from petakit5d.tools.mip import merge_memory
+
+        allb = np.concatenate(boxes, axis=0)
+        out_size = [int(v) for v in (allb[:, 3:6] - allb[:, 0:3]).max(axis=0)]
+        batch_b = [min(o, int(b)) for o, b in zip(out_size, batch, strict=True)]
+        block_b = [min(o, int(b)) for o, b in zip(out_size, block, strict=True)]
+        merge_mem = merge_memory(out_size, batch_b, block_b, get_image_dtype(frame_fullpaths[0]))
+        job_cpus, mem_allocate = coordinator_resources(
+            merge_mem,
+            cluster_config_value(config_file, "masterCompute", master_compute),
+            cpus_per_task,
+            float(np.prod(np.asarray(batch_b, dtype=np.float64))) * 4 * 2 / 1024**3,
+        )
+        # (and they wait for their batch jobs: these go first)
+        if parse_cluster:
+            coord_nice = coordinator_nice()
     else:
+        # (a large tiff file is cropped in memory)
         mem_allocate = float(np.prod(im_sizes.max(axis=0).astype(np.float64))) / 1024**3 * 4 * 2.5
     common = {
         "parse_cluster": parse_cluster,
         "job_log_dir": job_log_dir,
         "master_compute": master_compute,
-        "cpus_per_task": cpus_per_task,
+        "cpus_per_task": job_cpus,
         "mcc_mode": mcc_mode,
         "config_file": config_file,
+        "nice": coord_nice,
     }
     done = framework.run_tasks(
         frame_fullpaths, result_fullpaths, tasks, mem_allocate=mem_allocate, **common

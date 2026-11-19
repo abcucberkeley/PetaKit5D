@@ -26,6 +26,30 @@
     "fullModeContainsBothChannels": [
      "pytest:tests/tools/test_chromatic.py::test_full_mode_contains_both_channels",
      "oracle:tests/tools/test_chromatic.py::wrapper.full"
+    ],
+    "psfBoundsAreInYXZ": [
+     "pytest:tests/tools/test_chromatic.py::test_psf_bounds_are_in_zyx",
+     "oracle:tests/tools/test_chromatic.py::wrapper.psf.bounds.*"
+    ],
+    "zarrDataWithOffsetsFromPSFs": [
+     "pytest:tests/tools/test_chromatic.py::test_zarr_data_with_offsets_from_psfs",
+     "oracle:tests/tools/test_chromatic.py::wrapper.psf.zarr_data.*"
+    ],
+    "largeZarrFilesAreCroppedInBatches": [
+     "pytest:tests/tools/test_chromatic.py::test_large_zarr_files_are_cropped_in_batches",
+     "oracle:tests/tools/test_chromatic.py::wrapper.large_zarr.*"
+    ],
+    "offsetsHaveARowPerChannel": [
+     "pytest:tests/tools/test_chromatic.py::test_offsets_have_a_row_per_channel",
+     "oracle:tests/tools/test_chromatic.py::wrapper.no_offset.error",
+     "oracle:tests/tools/test_chromatic.py::wrapper.one_row.error",
+     "oracle:tests/tools/test_chromatic.py::wrapper.extra_row.error"
+    ],
+    "modeIsOneOfThreeInAnyCase": [
+     "pytest:tests/tools/test_chromatic.py::test_mode_is_one_of_three_in_any_case",
+     "oracle:tests/tools/test_chromatic.py::wrapper.other_mode.error",
+     "oracle:tests/tools/test_chromatic.py::wrapper.psf.other_mode.error.*",
+     "oracle:tests/tools/test_chromatic.py::wrapper.upper_mode"
     ]
    }
   }

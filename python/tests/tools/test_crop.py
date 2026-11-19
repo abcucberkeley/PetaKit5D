@@ -427,6 +427,17 @@ def _dataset_cases():
             "lastStartCoords",
             [6, 4, 3],
         ),
+        # (a single time point is cropped with the box: the move divided by 0 before)
+        ds(
+            "ds.tif.uint16.moving_one_time_point",
+            time_points_tree(1, "m1"),
+            [3, 3, 2, 12, 12, 6],
+            *ONE,
+            "cropType",
+            "moving",
+            "lastStartCoords",
+            [21, 13, 6],
+        ),
         ds(
             "ds.tif.uint16.moving_out_of_image",
             time_points_tree(2, "mo"),
@@ -472,27 +483,28 @@ def _dataset_cases():
             ],
         )
     )
-    # (MATLAB's ch_tps(f) of the last dataset, numbered over all files: an index error)
-    cases.append(
-        dataset_case(
-            "ds.two_datasets.moving_quirk",
-            {
-                "d1": Tree(time_points_tree(2, "q1"), "d1"),
-                "d2": Tree(time_points_tree(2, "q2"), "d2"),
-            },
-            [
-                [InPath("d1"), InPath("d2")],
-                [3, 3, 2, 12, 12, 6],
-                *ONE,
-                "cropType",
-                "moving",
-                "lastStartCoords",
-                [6, 4, 3],
-                *LOCAL,
-            ],
-            error=True,
+    # each dataset moves over its own time points (MATLAB took the last dataset's, numbered
+    # over all files: an index error, before the oracle of 2026-11-18)
+    for cid, nts in (("ds.two_datasets.moving", (2, 2)), ("ds.two_datasets.moving_2_3", (2, 3))):
+        cases.append(
+            dataset_case(
+                cid,
+                {
+                    "d1": Tree(time_points_tree(nts[0], "q1"), "d1"),
+                    "d2": Tree(time_points_tree(nts[1], "q2"), "d2"),
+                },
+                [
+                    [InPath("d1"), InPath("d2")],
+                    [3, 3, 2, 12, 12, 6],
+                    *ONE,
+                    "cropType",
+                    "moving",
+                    "lastStartCoords",
+                    [6, 4, 3],
+                    *LOCAL,
+                ],
+            )
         )
-    )
     return cases
 
 
@@ -768,6 +780,27 @@ def test_large_zarr_matches_in_memory_crop(tmp_path):
     crop.crop_dataset(path, PY_BOX, channel_patterns=CHANNELS, **LARGE_KW, **LOCAL_KW)
     for i in range(2):
         same_bits(read_zarr(f"{path}Cropped/{DATASET[i]}.zarr"), cut(ims[i], PY_BOX))
+
+
+def test_large_zarr_crop_of_relative_paths(tmp_path, monkeypatch):
+    # largeZarrCropOfRelativePaths: relative paths are from the current folder (a file name
+    # without a folder put the flags at the filesystem root); the MIPs go next to the result
+    im = volume(IM_SIZE, "uint16", "rel")
+    write_zarr(im, str(tmp_path / "in.zarr"), block_size=(4, 16, 16))
+    (tmp_path / "sub").mkdir()
+    monkeypatch.chdir(tmp_path)
+    for out in ("out.zarr", "sub/out.zarr"):
+        crop.crop_zarr(
+            "in.zarr",
+            out,
+            PY_BOX,
+            batch_size=(4, 16, 16),
+            block_size=(4, 8, 8),
+            parse_cluster=False,
+        )
+        same_bits(read_zarr(str(tmp_path / out)), cut(im, PY_BOX))
+    assert (tmp_path / "MIPs").is_dir() and (tmp_path / "sub" / "MIPs").is_dir()
+    assert (tmp_path / "zarr_flag").is_dir() and (tmp_path / "sub" / "zarr_flag").is_dir()
 
 
 def test_large_zarr_makes_mips_before_publishing(tmp_path):
@@ -1222,25 +1255,52 @@ def test_center_crop_of_odd_sizes(tmp_path):
     same_bits(read_tiff(f"{path}Cropped/scan_CamA_ch0_t0000.tif"), im[4:7, 15:23, 15:20])
 
 
-def test_moving_crop_of_two_datasets_fails_as_matlab(tmp_path):
-    # MATLAB numbers the files over all datasets but takes the time points of the last one
-    for d in ("a", "b"):
-        for t in range(2):
-            (tmp_path / d).mkdir(exist_ok=True)
-            write_tiff(
-                volume(IM_SIZE, "uint16", f"q{d}{t}"),
-                str(tmp_path / d / f"scan_CamA_ch0_t{t:04d}.tif"),
-            )
-    with pytest.raises(crop.CropError) as err:
-        crop.crop_dataset(
-            [str(tmp_path / "a"), str(tmp_path / "b")],
-            (1, 2, 2, 6, 12, 12),
-            crop_type="moving",
-            last_start_coords=(2, 3, 3),
-            channel_patterns=CHANNELS[:1],
-            **LOCAL_KW,
-        )
-    assert err.value.identifier == "MATLAB:badsubscript"
+def test_moving_crop_of_several_datasets_moves_in_each(tmp_path):
+    # movingCropOfSeveralDatasetsMovesInEach: each dataset moves from the box to
+    # last_start_coords over its own time points (2 and 3)
+    from petakit5d.core.dtypes import mround
+
+    nts = (2, 3)
+    ims = {}
+    for d, nt in zip("ab", nts, strict=True):
+        (tmp_path / d).mkdir()
+        for t in range(nt):
+            ims[d, t] = volume(IM_SIZE, "uint16", f"q{d}{t}")
+            write_tiff(ims[d, t], str(tmp_path / d / f"scan_CamA_ch0_t{t:04d}.tif"))
+    box = (1, 2, 2, 6, 12, 12)
+    last = (5, 20, 12)
+    crop.crop_dataset(
+        [str(tmp_path / "a"), str(tmp_path / "b")],
+        box,
+        crop_type="moving",
+        last_start_coords=last,
+        channel_patterns=CHANNELS[:1],
+        **LOCAL_KW,
+    )
+    size = [box[q + 3] - box[q] for q in range(3)]
+    for d, nt in zip("ab", nts, strict=True):
+        for t in range(nt):
+            s = [box[q] + int(mround((last[q] - box[q]) / (nt - 1) * t)) for q in range(3)]
+            got = read_tiff(str(tmp_path / d / "Cropped" / f"scan_CamA_ch0_t{t:04d}.tif"))
+            same_bits(got, cut(ims[d, t], (*s, *(a + e for a, e in zip(s, size, strict=True)))))
+
+
+def test_moving_crop_of_a_single_time_point_uses_the_box(tmp_path):
+    # movingCropOfASingleTimePointUsesTheBox: the one time point is the first (the move was
+    # divided by 0)
+    path = str(tmp_path) + "/"
+    im = volume(IM_SIZE, "uint16", "one")
+    write_tiff(im, f"{path}scan_CamA_ch0_t0000.tif")
+    box = (1, 2, 2, 6, 12, 12)
+    crop.crop_dataset(
+        path,
+        box,
+        crop_type="moving",
+        last_start_coords=(5, 20, 12),
+        channel_patterns=CHANNELS[:1],
+        **LOCAL_KW,
+    )
+    same_bits(read_tiff(f"{path}Cropped/scan_CamA_ch0_t0000.tif"), cut(im, box))
 
 
 def test_existing_output_is_not_overwritten(tmp_path):

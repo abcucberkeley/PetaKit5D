@@ -1052,6 +1052,39 @@ def test_interpolated_background_one_value_deep_in_z(tmp_path):
     _verify_removed(fn, vol)
 
 
+def test_empty_background_mask_takes_the_base_threshold(tmp_path):
+    # (PunctaRemovalTest/emptyBackgroundMaskTakesTheBaseThreshold) with a base threshold the
+    # threshold also takes the mode of the MIP's background mask; a MIP too small for its
+    # opening and erosion by a disk of 5 has an empty mask, whose mode of float data was NaN:
+    # the threshold became Inf and removed the whole batch. The base threshold stands in for it
+    vol = np.full((48, 16, 16), 100.0)
+    noise = CounterRNG(0, "sw8/empty_mask").normal((31, 10, 10))
+    vol[9:40, 3:13, 3:13] = 5000 + 200 * noise
+    fn = str(tmp_path / "expanded.zarr")
+    kw = {"batch_size": (48, 16, 16), "block_size": (16, 16, 16), "base_threshold": 1000}
+    kw |= {"parse_cluster": False, "master_compute": True}
+    inner = (slice(12, 37), slice(5, 11), slice(5, 11))
+    for cls in (np.float32, np.uint16):
+        a = vol.astype(np.float32) if cls is np.float32 else np.round(vol).astype(np.uint16)
+        write_zarr(a, fn, block_size=(16, 16, 16))
+        pr.puncta_removal_zarr(fn, **kw)
+        out_path = tmp_path / "Puncta_Removed"
+        out = read_zarr(str(out_path / "expanded.zarr"))
+        assert abs(out[inner].mean() / a[inner].astype(np.float64).mean() - 1) < 0.01, cls
+        assert not np.count_nonzero(out[:6]), f"{cls}: the background was kept"
+        shutil.rmtree(out_path)
+        shutil.rmtree(fn)
+    # (the background estimation's threshold of the batch was Inf)
+    write_zarr(vol.astype(np.float32), fn, block_size=(16, 16, 16))
+    pr.puncta_removal_zarr(fn, mode="bg_estimation", **kw)
+    bg = read_zarr(
+        str(
+            tmp_path / "Puncta_background_estimation/expanded_batch_16_16_48_background_values.zarr"
+        )
+    )
+    assert np.all(np.isfinite(bg) & (bg > 900) & (bg < 1500)), bg
+
+
 def test_mask_threshold_only_with_a_base_threshold(monkeypatch):
     calls = []
     from petakit5d.matlabcompat import filters

@@ -1,24 +1,26 @@
 """Fourier shell correlation (petakit5d.tools.fsc, task B05).
 
-MATLAB's FSCAnalysisTest (5 tests) is ported below: noisierIterationHasWorseResolution,
+MATLAB's FSCAnalysisTest is ported below: noisierIterationHasWorseResolution,
 existingResultsAreNotRecomputed and resultIsMovedIntoPlace as tests of the dataset function
 (and oracle cases of the wrapper), oneImageMatchesResizingTheWholeImage (its 8 image cases) as a
 test against resizing the whole image and as oracle cases, shellCacheFollowsParameters as a test
-of the kept shells and as oracle cases.
+of the kept shells and as oracle cases; imagesWithoutSignalHaveNoFSC, oddNumberOfSectorsIsRefused,
+sectorsInsideTheConesAreNaN, regionsAreCentredOnEachFile and twoImageAnalysisRuns as tests and
+oracle cases.
 
 Oracle cases against MATLAB:
 
 - hamming(n) (the Signal Processing Toolbox's window, MATLAB's bits);
 - XR_FSC of double volumes: odd and even sizes, sizes other than halfSize (padded and cropped),
-  dr, dtheta, skipConeRegion, the three threshold methods, and its errors (an odd number of
-  angles, all-zero volumes, a halfSize that is not cubic);
+  dr, dtheta (sectors inside the cones), skipConeRegion, the three threshold methods, and its
+  errors (an odd number of sectors, all-zero volumes, a halfSize that is not cubic);
 - XR_FSC_resolution of FSC structs MATLAB made;
 - XR_one_image_FSC_analysis on FSCAnalysisTest's eight images (resized up in z and in x and y,
   padded, isotropic, an even half size, bbox with 'yz', 'xy' with clipPer) and the one-bit and
   half-bit methods;
 - XR_one_image_FSC_analysis_frame with one box and several, and with an existing result;
 - XR_FSC_analysis_wrapper on decon-like iterations (the MATLAB test's), a rerun, the multi-region
-  modes, and XR_two_image_FSC_analysis's failure.
+  modes (one region per image too), and XR_two_image_FSC_analysis.
 
 Each FFT case runs on both FFT backends: ``.exact`` (the FFTW add-on; skipped without it or
 where MATLAB's FFT bits don't hold) gives MATLAB's FSC curves bit for bit, ``.permissive``
@@ -136,7 +138,7 @@ def _rel_problems(r: np.ndarray, a: np.ndarray, rel: float, path: str) -> list[s
         np.isnan(r), np.isnan(a)
     ):
         return [f"{path}: Inf or NaN at other places"]
-    if not np.array_equal(r[~fin], a[~fin]):
+    if not np.array_equal(r[~fin], a[~fin], equal_nan=True):
         return [f"{path}: other infinities"]
     with np.errstate(invalid="ignore", divide="ignore"):
         d = np.abs(r[fin] - a[fin]) / np.abs(r[fin])
@@ -179,11 +181,12 @@ def normal_pair(n: int, seed: str):
     return to_matlab(a), to_matlab(b)
 
 
-def fsc_image(sz_zyx, cls: str, name: str) -> np.ndarray:
-    """``cast(1000 + 300 * texture(sz, 1.5, [0, 1]) + 30 * randn(sz), cls)`` (MATLAB's form)"""
+def fsc_image(sz_zyx, cls: str, name: str, noise: str = "noise") -> np.ndarray:
+    """``cast(1000 + 300 * texture(sz, 1.5, [0, 1]) + 30 * randn(sz), cls)`` (MATLAB's form;
+    another ``noise`` stream: the same structure with other noise)"""
     rng = CounterRNG(0, f"b05/img/{name}")
     t = synth.texture(sz_zyx, 1.5, (0.0, 1.0), rng=rng).astype(np.float64)
-    v = 1000.0 + 300.0 * t + 30.0 * rng.spawn("noise").normal(sz_zyx)
+    v = 1000.0 + 300.0 * t + 30.0 * rng.spawn(noise).normal(sz_zyx)
     return to_matlab(np.asarray(dtypes.cast(v, cls)))
 
 
@@ -252,6 +255,13 @@ def py_one_image(*args, be=None):
 
     f, r, fc, rc = _with_backend(be, matlab.XR_one_image_FSC_analysis, *args)
     return [_fsc_m(f), _res_m(r), mcell(*[_fsc_m(x) for x in fc]), mcell(*[_res_m(x) for x in rc])]
+
+
+def py_two_image(*args, be=None):
+    from petakit5d import matlab
+
+    f, r = _with_backend(be, matlab.XR_two_image_FSC_analysis, *args)
+    return [_fsc_m(f), _res_m(r)]
 
 
 def py_matlab_call(name, *args, be=None):
@@ -376,7 +386,7 @@ CASES: list[Case] = [
 
 
 def fsc_cases(cid, make, nv, *, error=False, backends=BACKENDS, **kw):
-    """XR_FSC(a, b, nv{:}) on each backend"""
+    """XR_FSC(a, b, nv{:}) on each backend (an error: once, with its message)"""
     out = []
     for be in (None,) if error else backends:
         out.append(
@@ -390,7 +400,7 @@ def fsc_cases(cid, make, nv, *, error=False, backends=BACKENDS, **kw):
                 inputs={"a": Value(lambda m=make: m()[0]), "b": Value(lambda m=make: m()[1])},
                 compare={} if error else _compare(be, (0,), (1,)),
                 expect_error=error,
-                **({"py_error": (FS.FSCError,)} if error else {}),
+                **({"py_error": (FS.FSCError,), "error_message": True} if error else {}),
                 **kw,
             )
         )
@@ -446,25 +456,28 @@ CASES += fsc_cases(
         [25] * 3,
     ],
 )
+# an odd number of sectors in the half circle (pi/5): none at pi/2, refused (MATLAB warned and
+# rounded the full circle's indices before 45b2bb1)
 CASES += fsc_cases(
     "fsc.odd_angles",
     lambda: normal_pair(21, "a"),
     ["dr", 2, "dtheta", PI / 5, *H21],
-    warnings="ids",
+    error="XR_FSC_resolution:oddSectorNumber",
 )
-# pi/24: the sectors at 0 and pi/2 lie inside the cones, so two angles are missing (npoints
-# filled by the angles' positions)
+# pi/24: the sectors at 0 and pi/2 lie inside the cones, so two angles are missing: NaN at their
+# places on the full circle (they took other sectors' places before 45b2bb1)
 CASES += fsc_cases(
     "fsc.missing_sectors",
     lambda: normal_pair(21, "a"),
     ["dr", 2, "dtheta", PI / 24, *H21],
     warnings="ids",
 )
+# (no FSC without signal; MATLAB:badsubscript before 45b2bb1)
 CASES += fsc_cases(
     "fsc.err.zero",
     lambda: (np.zeros((21, 21, 21)), np.zeros((21, 21, 21))),
     ["dr", 2, *H21],
-    error=True,
+    error="XR_FSC:noSignal",
 )
 CASES += fsc_cases(
     "fsc.err.not_cubic",
@@ -487,12 +500,12 @@ FSC_IMAGES = {
 }
 
 
-def _image_of(name):
+def _image_of(name, noise="noise"):
     msz, cls = FSC_IMAGES[name][:2]
-    return fsc_image((msz[2], msz[0], msz[1]), cls, name)
+    return fsc_image((msz[2], msz[0], msz[1]), cls, name, noise)
 
 
-def one_image_cases(name, extra=(), cid=None, dtheta=PI / 6):
+def one_image_cases(name, extra=(), cid=None, dtheta=PI / 6, error=False):
     msz, cls, xy, dz, h, bbox, ax, cp = FSC_IMAGES[name]
     nv = [
         "xyPixelSize",
@@ -514,18 +527,19 @@ def one_image_cases(name, extra=(), cid=None, dtheta=PI / 6):
         *extra,
     ]
     out = []
-    for be in BACKENDS:
+    for be in (None,) if error else BACKENDS:
         out.append(
             Case(
-                f"{cid or 'one_image.' + name}.{be}",
+                f"{cid or 'one_image.' + name}.{be}" if be else (cid or f"one_image.{name}"),
                 matlab="XR_one_image_FSC_analysis",
                 args=[In("im"), *nv],
                 nargout=4,
                 python=py_one_image,
                 py_kwargs={"be": be},
                 inputs={"im": Value(lambda n=name: _image_of(n))},
-                compare=_compare(be, (0, 2), (1, 3)),
-                warnings="ids" if dtheta != PI / 6 else "record",
+                compare={} if error else _compare(be, (0, 2), (1, 3)),
+                expect_error=error,
+                **({"py_error": (FS.FSCError,), "error_message": True} if error else {}),
             )
         )
     return out
@@ -536,7 +550,9 @@ for _name in FSC_IMAGES:
 CASES += one_image_cases("zUp", ["resThreshMethod", "one-bit"], "one_image.zUp_one_bit")
 CASES += one_image_cases("zUp", ["resThreshMethod", "half-bit"], "one_image.zUp_half_bit")
 CASES += one_image_cases("xyUp", ["skipConeRegion", False], "one_image.xyUp_no_cone")
-CASES += one_image_cases("zUp", (), "one_image.zUp_odd_angles", PI / 5)
+CASES += one_image_cases(
+    "zUp", (), "one_image.zUp_odd_angles", PI / 5, error="XR_FSC_resolution:oddSectorNumber"
+)
 
 
 def _tif(name):
@@ -745,32 +761,37 @@ CASES += wrapper_cases(
     res_arrays=(0, 1),
     fsc_out=(),
 )
-CASES.append(
-    Case(
-        "wrapper.regions.single_region_fails",
-        code=REGION_CODE,
-        args=[InPath("d"), *REGION_NV, "regionGrid", [24, 22, 20]],
-        nargout=4,
-        python=py_wrapper_regions,
-        inputs={"d": Tree(lambda d: iterations(d, shape=(40, 48, 44)), "d")},
-        tree=WRAPPER_TREE,
-        expect_error=True,
-        py_error=(FS.FSCError,),
-    )
+# (one region per image: its result holds the struct itself; failed before 45b2bb1)
+CASES += wrapper_cases(
+    "wrapper.regions.single_region",
+    lambda d: iterations(d, shape=(40, 48, 44)),
+    [*REGION_NV, "regionGrid", [24, 22, 20]],
+    code=REGION_CODE,
+    nargout=4,
+    python=py_wrapper_regions,
+    res_values=(),
+    res_arrays=(0, 1),
+    fsc_out=(),
 )
-CASES.append(
-    Case(
-        "two_image.fails",
-        matlab="XR_two_image_FSC_analysis",
-        args=[In("a"), In("b"), "dz", 0.2, "N", [10, 10, 10]],
-        nargout=2,
-        python=lambda *a: py_matlab_call("XR_two_image_FSC_analysis", *a),
-        inputs={"a": Value(lambda: _image_of("padAll")), "b": Value(lambda: _image_of("padAll"))},
-        expect_error="MATLAB:InputParser:UnmatchedParameter",
-        py_error=(FS.FSCError,),
-        error_message=True,
+# (MATLAB passed 'N' to XR_FSC, which failed, before 45b2bb1) two images of one structure with
+# their own noise; after the resize wider than twice N in x (cropped about the centre) and
+# shorter in z (padded)
+for _be in BACKENDS:
+    CASES.append(
+        Case(
+            f"two_image.{_be}",
+            matlab="XR_two_image_FSC_analysis",
+            args=[In("a"), In("b"), "dz", 0.2, "N", [10, 10, 10]],
+            nargout=2,
+            python=py_two_image,
+            py_kwargs={"be": _be},
+            inputs={
+                "a": Value(lambda: _image_of("padAll")),
+                "b": Value(lambda: _image_of("padAll", "noise_b")),
+            },
+            compare=_compare(_be, (0,), (1,)),
+        )
     )
-)
 
 
 def _check(case, tmp_path):
@@ -789,6 +810,7 @@ def test_matlab(case, tmp_path):
 _KW = {
     "xyPixelSize": "xy_pixel_size",
     "dz": "dz",
+    "dtheta": "dtheta",
     "resThreshMethod": "res_thresh_method",
     "resThresh": "res_thresh",
 }
@@ -804,11 +826,16 @@ def _method_kw(case) -> dict:
 
 def _pairs_of(case) -> list[tuple[int, int, dict]]:
     """(FSC output, resolution output, the resolution's options) of a case; the pairs' own
-    resolutions (fsc_cell, res_cell) are XR_FSC's: the pixel sizes, 'fixed' at 0.2"""
+    resolutions (fsc_cell, res_cell) are XR_FSC's: the pixel sizes, 'fixed' at 0.2 (the
+    intervals of the angles as given; 'xy' takes the FSC's dz in its plane, x and y)"""
     kw = _method_kw(case)
     if case.matlab == "XR_FSC":
         return [(0, 1, kw)]
-    sizes = {k: v for k, v in kw.items() if k in ("xy_pixel_size", "dz")}
+    args = list(case.args)
+    k = next((i for i, a in enumerate(args) if isinstance(a, str) and a == "resAxis"), None)
+    if k is not None and args[k + 1] == "xy":
+        kw["dz"] = kw.get("xy_pixel_size", 0.108)
+    sizes = {k: v for k, v in kw.items() if k in ("xy_pixel_size", "dz", "dtheta")}
     return [(0, 1, kw), (2, 3, sizes)]
 
 
@@ -895,6 +922,43 @@ def test_noisier_iteration_has_worse_resolution(tmp_path):
         assert len(figs) >= 4
 
 
+def test_regions_are_centred_on_each_file(tmp_path):
+    """(FSCAnalysisTest/regionsAreCentredOnEachFile) each file's regions are about its own
+    centre (MATLAB took cs(1), cs(2) and cs(3), the first files' y centres, before 45b2bb1),
+    and one region per image is read as one (it failed with MATLAB:cellRefFromNonCell)"""
+    from petakit5d.core.dtypes import mround
+    from petakit5d.io import read_mat
+
+    d = str(tmp_path) + "/"
+    sizes_m = np.array([[64, 72, 40], [80, 56, 44]])  # MATLAB's [y x z]
+    for i, (ny, nx, nz) in enumerate(sizes_m):
+        rng = CounterRNG(0, f"sw8/regions/{i}")
+        t = synth.texture((nz, ny, nx), 1.5, (0.0, 1.0), rng=rng).astype(np.float64)
+        v = 1000.0 + 300.0 * t + 30.0 * rng.spawn("noise").normal((nz, ny, nx))
+        synth.write_tiff(os.path.join(d, f"Iter_{2 * (i + 1):04d}.tif"), v.astype(np.float32))
+    h = 16
+    kw = _wrapper_kw(dtheta=PI / 6, half_size=(h, h, h), iter_interval=2, multi_regions=True)
+    FS.fsc_analysis_dataset([d], region_interval=(-1, -1, -1), **kw)
+    for i in range(2):
+        bbox = np.asarray(read_mat(f"{d}FSCs/Iter_{2 * (i + 1):04d}.mat")["bbox"])
+        c = mround((sizes_m[i] + 1) / 2)
+        np.testing.assert_array_equal(bbox.reshape(-1), np.concatenate([c - h, c + h - 1]))
+    assert np.shape(read_mat(f"{d}FSCs/fsc_res_info_c1.mat")["res_mat"])[:2] == (2, 13)
+    # a grid of regions: the second file's are about its centre ((z, y, x): -1 along z)
+    import shutil
+
+    shutil.rmtree(f"{d}FSCs")
+    FS.fsc_analysis_dataset([d], region_interval=(-1, 10, 10), **kw)
+    bbox = np.asarray(read_mat(f"{d}FSCs/Iter_0004.mat")["bbox"]).reshape(-1, 6)
+    c = mround((sizes_m[1] + 1) / 2)
+    centres = mround((bbox[:, 0:3] + bbox[:, 3:6]) / 2)
+    for k in (0, 1):
+        down = np.arange(c[k] - 10, h, -10)[::-1]
+        want = np.concatenate([down, np.arange(c[k], sizes_m[1][k] - h + 2, 10)])
+        np.testing.assert_array_equal(np.unique(centres[:, k]), want)
+    np.testing.assert_array_equal(np.unique(centres[:, 2]), [c[2]])
+
+
 def test_existing_results_are_not_recomputed(tmp_path):
     d = str(tmp_path) + "/"
     smooth_iteration(d)
@@ -939,13 +1003,14 @@ def _reference_fsc(im, xy, dz, h, bbox, res_axis, clip_per):
     if bbox is not None:
         z0, y0, x0, z1, y1, x1 = bbox
         im = im[z0:z1, y0:y1, x0:x1]
+    f, fsc_dz = (dz, xy, xy), dz
     if res_axis == "yz":
         im = np.swapaxes(im, 1, 2)
     elif res_axis == "xy":
         im = np.transpose(im, (1, 0, 2))
+        f, fsc_dz = (xy, dz, xy), xy
     im = np.ascontiguousarray(im)
     if dz != xy:
-        f = (dz, xy, xy)
         osz = [int(mround(s * k / min(xy, dz))) for s, k in zip(im.shape, f, strict=True)]
         im = imresize3(im, osz, "linear")
     sz = im.shape
@@ -958,14 +1023,14 @@ def _reference_fsc(im, xy, dz, h, bbox, res_axis, clip_per):
         lo = [math.floor((2 * hv - s) / 2) for s, hv in zip(sz, h, strict=True)]
         im = np.pad(im, [(a, 2 * hv - s - a) for a, s, hv in zip(lo, sz, h, strict=True)])
     im = np.ascontiguousarray(im)
-    kw = {"xy_pixel_size": xy, "dz": dz, "dr": 2, "dtheta": PI / 6, "half_size": h}
+    kw = {"xy_pixel_size": xy, "dz": fsc_dz, "dr": 2, "dtheta": PI / 6, "half_size": h}
     fscs = [
         FS.fourier_shell_correlation(FS._sub_lattice(im, a), FS._sub_lattice(im, b), **kw)[0]
         for a, b in FS._PAIRS
     ]
     mu = dict(fscs[0])
     mu["fsc"] = (((fscs[0]["fsc"] + fscs[1]["fsc"]) + fscs[2]["fsc"]) + fscs[3]["fsc"]) / 4
-    return mu, FS.fsc_resolution(mu, xy_pixel_size=xy, dz=dz)
+    return mu, FS.fsc_resolution(mu, xy_pixel_size=xy, dz=fsc_dz, dtheta=PI / 6)
 
 
 def _assert_tree_equal(a, b):
@@ -1231,19 +1296,20 @@ def test_window_is_the_cube_root_of_the_hamming_products():
         assert np.array_equal(FS._window(n), want)
 
 
-def test_odd_number_of_angles_rounds_the_indices():
-    # [res(2.5 : 3), res, res(1 : 2.5)]: MATLAB warns twice and rounds the colon's values
+def test_odd_number_of_sectors_is_refused():
+    # (FSCAnalysisTest/oddNumberOfSectorsIsRefused) an odd number of sectors in the half circle
+    # has none at pi/2 (MATLAB warned and rounded the full circle's indices before 45b2bb1)
     f = {
         "r": np.linspace(0, 1, 11),
         "thetas": np.array([0, 1, 2]) * PI / 5,
         "fsc": np.tile(np.linspace(1, 0, 11)[:, None], (1, 3)),
         "npoints": np.ones((11, 3)),
     }
-    with pytest.warns(FS.FSCWarning, match="Integer operands") as rec:
-        res = FS.fsc_resolution(f, xy_pixel_size=0.1, dz=0.3)
-    assert [w.message.identifier for w in rec] == ["MATLAB:colon:nonIntegerIndex"] * 2
-    r = (2 * (0.1 + 0.2 * np.abs(np.cos(f["thetas"])))) / res["points"]
-    assert np.allclose(res["res"], np.concatenate([r[2:], r, r[:2]]))
+    with pytest.raises(FS.FSCError, match="5 sectors") as e:
+        FS.fsc_resolution(f, xy_pixel_size=0.1, dz=0.3)
+    assert e.value.identifier == "XR_FSC_resolution:oddSectorNumber"
+    with pytest.raises(FS.FSCError):
+        FS.fsc_resolution(f, dtheta=PI / 5)
     f["thetas"] = f["thetas"][:1]
     f["fsc"] = f["fsc"][:, :1]
     with pytest.raises(FS.FSCError) as e:
@@ -1256,6 +1322,52 @@ def test_odd_number_of_angles_rounds_the_indices():
     assert res["res"].size == 5
     # the curve 1 - r crosses 0.2 at 0.8 (the spline of a line is the line)
     assert np.allclose(res["points"], 0.8, atol=1e-4)
+
+
+def test_sectors_inside_the_cones_are_nan():
+    # (FSCAnalysisTest/sectorsInsideTheConesAreNaN) the full circle places each angle's sector
+    # by its angle: those the FSC lacks (here 0 and pi/2 of dtheta pi/4) are NaN, and the
+    # circle has the values of 0 : dtheta : 2 pi
+    from petakit5d.core.dtypes import NAN
+
+    th = np.array([1, 3]) * PI / 4
+    f = {
+        "r": np.linspace(0, 1, 11),
+        "thetas": th,
+        "fsc": np.tile(np.linspace(1, 0, 11)[:, None], (1, 2)),
+        "npoints": np.ones((11, 2)),
+    }
+    res = FS.fsc_resolution(f, xy_pixel_size=0.1, dz=0.3, dtheta=PI / 4)
+    r = (2 * (0.1 + 0.2 * np.abs(np.cos(th)))) / res["points"]
+    sec = np.array([NAN, r[0], NAN, r[1]])
+    want = np.concatenate([sec[2:], sec, sec[:3]])
+    assert res["res"].size == res["thetas"].size == 9
+    np.testing.assert_array_equal(np.isnan(res["res"]), np.isnan(want))
+    assert np.allclose(res["res"][~np.isnan(want)], want[~np.isnan(want)])
+
+
+def test_images_without_signal_have_no_fsc():
+    # (FSCAnalysisTest/imagesWithoutSignalHaveNoFSC) every cell is 0 / 0 (MATLAB's index error
+    # before 45b2bb1)
+    z = np.zeros((21, 21, 21))
+    with pytest.raises(FS.FSCError) as e:
+        FS.fourier_shell_correlation(z, z, dr=2, half_size=(21, 21, 21))
+    assert e.value.identifier == "XR_FSC:noSignal"
+
+
+def test_two_image_analysis_runs():
+    # (FSCAnalysisTest/twoImageAnalysisRuns) two noisy copies of a structure: the mean FSC of the
+    # eight same sub-lattices, on the full circle of 0 : dtheta : 2 pi (MATLAB passed 'N' to
+    # XR_FSC, which failed, before 45b2bb1)
+    a = from_matlab(_image_of("padAll"))
+    rng = CounterRNG(0, "sw8/two_image")
+    b = a.astype(np.float64) + 30.0 * rng.normal(a.shape)
+    fsc, res = FS.two_image_fsc_analysis(
+        a, b, dz=0.2, dtheta=PI / 6, n=(10, 10, 10), res_thresh_method="fixed"
+    )
+    assert fsc["fsc"].shape[1] == fsc["thetas"].size
+    assert res["res"].size == res["thetas"].size == 13
+    assert np.all(np.isfinite(res["points"])) and np.all(res["points"] > 0)
 
 
 def test_unknown_method_fails():

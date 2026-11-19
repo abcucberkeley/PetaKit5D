@@ -86,6 +86,17 @@
     "tiffInputSavedAsZarr": [
      "pytest:tests/tools/test_crop.py::test_tiff_input_saved_as_zarr",
      "oracle:tests/tools/test_crop.py::ds.tif.uint16.zarr_out"
+    ],
+    "largeZarrCropOfRelativePaths": [
+     "pytest:tests/tools/test_crop.py::test_large_zarr_crop_of_relative_paths"
+    ],
+    "movingCropOfASingleTimePointUsesTheBox": [
+     "pytest:tests/tools/test_crop.py::test_moving_crop_of_a_single_time_point_uses_the_box",
+     "oracle:tests/tools/test_crop.py::ds.tif.uint16.moving_one_time_point"
+    ],
+    "movingCropOfSeveralDatasetsMovesInEach": [
+     "pytest:tests/tools/test_crop.py::test_moving_crop_of_several_datasets_moves_in_each",
+     "oracle:tests/tools/test_crop.py::ds.two_datasets.moving*"
     ]
    }
   }

@@ -42,8 +42,6 @@ MATLAB quirks kept (each has a test):
   before the image (its blocks always pad);
 - ``crop_dataset`` passes neither ``cpus_per_task`` nor ``job_log_dir`` to the file tasks (the
   blocks of large crops ask for 1 CPU and log to ``../job_logs``);
-- a moving crop of several datasets takes the time points of the last dataset's files,
-  numbered over all files (MATLAB's ``ch_tps(f)``): an error when the last has fewer files;
 - ``trim_border`` takes a scalar border only for ``'post'``, as MATLAB indexes ``s(2)`` of a
   scalar otherwise.
 
@@ -108,6 +106,13 @@ def _ints(v: Any) -> list[int]:
             raise ValueError(f"expected integers, got {v!r}")
         out.append(int(f))
     return out
+
+
+def _absolute_path(p: str) -> str:
+    """a relative path from the current folder (MATLAB's ``[pwd, '/', p]``)"""
+    if not p or p[0] in "/\\" or (len(p) > 1 and p[1] == ":"):
+        return p
+    return os.getcwd() + "/" + p
 
 
 def _box(box: Any) -> list[int]:
@@ -616,8 +621,10 @@ def crop_zarr(
 
     if not uuid:
         uuid = get_uuid()
-    zarr_fullpath = os.fspath(zarr_fullpath)
-    crop_fullpath = strip_trailing_sep(os.fspath(crop_fullpath))
+    # relative paths are from the current folder, made absolute (a file name without a folder
+    # put the flags at the filesystem root)
+    zarr_fullpath = _absolute_path(os.fspath(zarr_fullpath))
+    crop_fullpath = _absolute_path(strip_trailing_sep(os.fspath(crop_fullpath)))
     crop_path, fsname, _ext = fileparts(crop_fullpath)
     if os.path.isdir(crop_fullpath):
         print("The output result exists, skip it!", flush=True)
@@ -845,8 +852,9 @@ def crop_dataset(
     into ``<data path>/<result_dir_name>/<name>.tif`` (or ``.zarr`` with ``save_zarr``; large
     zarr files always give zarr), one ``crop_file`` task per file through the job framework.
     ``crop_type``: ``'fixed'`` crops ``input_bbox``; ``'moving'`` moves it linearly from its
-    start at the first time point to ``last_start_coords`` at the last (per channel, rounded
-    as MATLAB rounds); ``'center'`` crops a box of its size at each image's center.
+    start at the first time point to ``last_start_coords`` at the last (per dataset and
+    channel, rounded as MATLAB rounds; a single time point is cropped with the box);
+    ``'center'`` crops a box of its size at each image's center.
     parameters.mat of the call goes into each result folder."""
     values = {k: v for k, v in locals().items() if k in _DATASET_ARGS}
     from petakit5d.core.dtypes import mround
@@ -884,6 +892,7 @@ def crop_dataset(
     fnames: list[str] = []
     fd_inds: list[int] = []
     max_tps: list[int] = []
+    # the time point of each file within its dataset
     ch_tps: list[int] = []
     sz: list[int] = []
     for d, data_path in enumerate(paths):
@@ -905,11 +914,12 @@ def crop_dataset(
             # the time point of each file in its channel (cumsum over the files kept)
             rows = [[c[i] for c in ch] for i in range(len(names)) if keep[i]]
             count = [0] * len(channel_patterns)
-            ch_tps = []
+            tps = []
             for r in rows:
                 count = [n + int(v) for n, v in zip(count, r, strict=True)]
-                ch_tps.append(sum(n * int(v) for n, v in zip(count, r, strict=True)))
-            max_tps.append(max(ch_tps) if ch_tps else 0)
+                tps.append(sum(n * int(v) for n, v in zip(count, r, strict=True)))
+            ch_tps += tps
+            max_tps.append(max(tps) if tps else 0)
             last = _ints(last_start_coords if last_start_coords is not None else [])
             if len(last) != 3:
                 raise CropError(
@@ -932,17 +942,15 @@ def crop_dataset(
         crop = f"{result_paths[d]}/{fsn}.{'zarr' if save_zarr else 'tif'}"
         crop_fullpaths.append(crop)
         if moving:
-            if f >= len(ch_tps):
-                raise CropError(
-                    "Index exceeds the number of array elements. Index must not exceed "
-                    f"{len(ch_tps)}.",
-                    _BADSUBSCRIPT,
-                )
             last = _ints(last_start_coords)
-            start = [
-                box[q] + int(mround((last[q] - box[q]) / (max_tps[d] - 1) * (ch_tps[f] - 1)))
-                for q in range(3)
-            ]
+            if max_tps[d] > 1:
+                start = [
+                    box[q] + int(mround((last[q] - box[q]) / (max_tps[d] - 1) * (ch_tps[f] - 1)))
+                    for q in range(3)
+                ]
+            else:
+                # a single time point is the first one
+                start = list(box[:3])
             # (an open end failed above; a NaN end stays NaN)
             box_f = start + [
                 s + e if math.isfinite(e) else e for s, e in zip(start, ext, strict=True)

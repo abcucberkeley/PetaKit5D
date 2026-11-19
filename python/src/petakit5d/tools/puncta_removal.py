@@ -1069,10 +1069,18 @@ def _batch_threshold(
     )
     mask = morph.imopen(mask, disk, threads=num_threads)
     mask = morph.imerode(mask, disk, threads=num_threads)
-    vals = mip[mask]
-    t_mask = _scalar(stats.mode(vals))
-    if t_mask < _scalar(stats.prctile(vals, 25)):
-        t_mask = _scalar(stats.median(vals))
+    if mask.any():
+        vals = mip[mask]
+        t_mask = _scalar(stats.mode(vals))
+        if t_mask < _scalar(stats.prctile(vals, 25)):
+            t_mask = _scalar(stats.median(vals))
+    else:
+        # an empty mask gives no threshold of its own: the base threshold, in the MIP's class
+        # (the mode of nothing is NaN for float data, which removed the whole batch)
+        from petakit5d.core.arrays import matlab_class
+        from petakit5d.core.dtypes import cast
+
+        t_mask = _scalar(cast(np.float64(base_bound), matlab_class(mip)))
     t_mask = _mmax(base_bound, _mmin(t_mask, max_bound))
     if t > max_bound:
         t = float(np.asarray(max_threshold).ravel()[0])

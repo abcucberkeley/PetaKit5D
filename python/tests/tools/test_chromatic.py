@@ -2,19 +2,20 @@
 
 Oracle cases against MATLAB: XR_chromatic_shift_correction_data_wrapper on
 ChromaticShiftCorrectionTest's data (two channels cut from one texture with the demo's offsets
-[0 0 0; 1 -5 -2]) in the 'valid', 'same' and 'full' modes, a 'same' origin, a pad value, a mode
-MATLAB has no case for, zarr results, zarr input, two datasets, three channels; offsets measured
-from bead PSFs (ChromaticShiftCorrectionTest's beads, and with a crop and bounds that differ
-along y and x, where MATLAB's [x y z] bounds matter), PSFs with zarr data (MATLAB's tasks read
-it as tiff and fail); MATLAB's errors (no offsets, too few offset rows, channel and PSF counts).
+[0 0 0; 1 -5 -2]) in the 'valid', 'same' and 'full' modes (and in upper case), a 'same' origin, a
+pad value, zarr results, zarr input, large zarr files cropped in batches, two datasets, three
+channels; offsets measured from bead PSFs (ChromaticShiftCorrectionTest's beads, and with a crop
+and bounds that differ along y and x), PSFs with zarr data; MATLAB's errors (another mode, no
+offsets, too few and too many offset rows, a pad value of large zarr files, channel and PSF
+counts).
 XR_chromatic_shift_estimation directly: three PSFs, a crop, one number as the bounds, the result
 file, too few PSFs. Cases with PSFs run on both CPU FFT backends (``.exact``: MATLAB's bits;
 ``.permissive``: the peaks of the NCC within 1e-4, decision record 0006, the shifts exact).
 Results are compared byte for byte (tiff), by data and metadata (zarr) and by content (.mat).
 
 Then ChromaticShiftCorrectionTest in intent on the port's (z, y, x) data, the regions of the
-modes against MATLAB's formulas, the bounds quirk, the MATLAB-name layer's conversions and the
-job shape (a framework spy).
+modes against MATLAB's formulas, the bounds in (z, y, x), the MATLAB-name layer's conversions and
+the job shape (a framework spy).
 """
 
 from __future__ import annotations
@@ -164,6 +165,10 @@ def chroma_tree(backend):
     return tree()
 
 
+# large zarr files: cropped in batches by XR_crop_zarr
+LARGE_ZARR = ["zarrFile", True, "largeFile", True, "batchSize", [16, 16, 8], "blockSize", [8, 8, 8]]
+
+
 def wrapper_case(cid, make, *opts, subs=(), psf=(), error=False, backend=None):
     kw = {} if backend is None else {"backend": backend}
     return Case(
@@ -202,7 +207,10 @@ def _wrapper_cases():
         wrapper_case("wrapper.full.pad_fraction", data, "mode", "full", *off, "padValue", 7.6),
         # %d gives 7.500000e+00: the tasks pad with 8, not 7
         wrapper_case("wrapper.full.pad_text", data, "mode", "full", *off, "padValue", 7.4999999),
-        wrapper_case("wrapper.other_mode", data, "mode", "shift", *off),
+        # (another mode is refused; it cropped the channels shifted against their offsets
+        # before 45b2bb1)
+        wrapper_case("wrapper.other_mode.error", data, "mode", "shift", *off, error=True),
+        wrapper_case("wrapper.upper_mode", data, "mode", "Valid", *off),
         wrapper_case("wrapper.zarr_in", dataset(fmt="zarr"), *off, "zarrFile", True),
         wrapper_case(
             "wrapper.zarr_in.same_zarr_out",
@@ -236,9 +244,39 @@ def _wrapper_cases():
             ["CamA", "CamB", "CamC"],
         ),
         wrapper_case("wrapper.large_file", data, *off, "largeFile", True),
-        # MATLAB's errors
+        # large zarr files are cropped in batches into zarr (only sized the jobs before 45b2bb1)
+        *[
+            wrapper_case(
+                f"wrapper.large_zarr.{m}",
+                dataset(fmt="zarr"),
+                "mode",
+                m,
+                *off,
+                *LARGE_ZARR,
+            )
+            for m in ("valid", "full")
+        ],
+        wrapper_case(
+            "wrapper.large_zarr.pad_value.error",
+            dataset(fmt="zarr"),
+            "mode",
+            "full",
+            *off,
+            *LARGE_ZARR,
+            "padValue",
+            7,
+            error=True,
+        ),
+        # MATLAB's errors (a row per channel: ...:noOffsets, ...:offsetSize)
         wrapper_case("wrapper.no_offset.error", data, error=True),
         wrapper_case("wrapper.one_row.error", data, "chromaticOffset", [1, 2, 3], error=True),
+        wrapper_case(
+            "wrapper.extra_row.error",
+            data,
+            "chromaticOffset",
+            np.concatenate([OFFSET_M, [[0.0, 9.0, 0.0]]]),
+            error=True,
+        ),
         wrapper_case(
             "wrapper.channels.error",
             data,
@@ -251,7 +289,8 @@ def _wrapper_cases():
     psf_data = dataset(psfs=True)
     # offsetsEstimatedFromPSFs
     cases += psf_cases("wrapper.psf", psf_data, "maxOffset", [8, 8, 6])
-    # bounds of 3 along x and 8 along y: MATLAB's swapped bounds still find x = -5
+    # bounds of 3 along x and 8 along y: x = -5 is out of reach (MATLAB's swapped bounds found it
+    # before 45b2bb1)
     cases += psf_cases(
         "wrapper.psf.bounds",
         psf_data,
@@ -263,12 +302,15 @@ def _wrapper_cases():
         [2, 3, 1],
     )
     cases += psf_cases("wrapper.psf.default_bounds", psf_data, "mode", "same")
-    # an origin and a mode without a case place the output by the offsets less their minimum
+    # an origin places the output by the offsets less their minimum
     cases += psf_cases(
         "wrapper.psf.origin", psf_data, "mode", "same", "newOrigin", [2, 3, 1], "maxOffset", 8
     )
-    cases += psf_cases("wrapper.psf.other_mode", psf_data, "mode", "shift", "maxOffset", 8)
-    # after the measurement zarrFile is false: the tasks read the zarr files as tiff and fail
+    cases += psf_cases(
+        "wrapper.psf.other_mode.error", psf_data, "mode", "shift", "maxOffset", 8, error=True
+    )
+    # the PSFs are read as tiff, the zarr data as zarr (zarrFile stayed false for the data after
+    # the measurement, and its tasks failed, before 45b2bb1)
     cases += psf_cases(
         "wrapper.psf.zarr_data",
         dataset(fmt="zarr", psfs=True),
@@ -276,7 +318,6 @@ def _wrapper_cases():
         [8, 8, 6],
         "zarrFile",
         True,
-        error=True,
     )
     cases += psf_cases("wrapper.psf.count.error", psf_data, psf=PSF_NAMES[:1], error=True)
     return cases
@@ -421,8 +462,10 @@ def test_mem_allocate_is_in_gigabytes(tmp_path, monkeypatch):
     assert calls[0]["job_log_dir"] == "logs"
     assert len(calls[0]["tasks"]) == 2
     calls.clear()
+    # (a large tiff file is cropped in memory: the image's memory)
     run(path, "valid", large_file=True, batch_size=(64, 128, 256))
-    assert calls[0]["mem_allocate"] == pytest.approx(64 * 128 * 256 * 4 * 2.5 / 1024**3)
+    assert calls[0]["mem_allocate"] == pytest.approx(48 * 40 * 24 * 4 * 2.5 / 1024**3, rel=1e-12)
+    assert "large_file" not in calls[0]["tasks"][0].kwargs
 
 
 def test_failed_tasks_are_retried_with_twice_the_memory(tmp_path, monkeypatch):
@@ -535,18 +578,27 @@ def test_box_errors():
         ch.correction_boxes((4, 5, 6), [[0, 0, 0.5]])
 
 
-def test_bounds_are_swapped_as_matlab_swaps_them(tmp_path):
-    # true shift (z, y, x) = (-2, 1, -5); x is bounded by the y value (8), y by the x value (3)
+def test_psf_bounds_are_in_zyx(tmp_path):
+    # (ChromaticShiftCorrectionTest/psfBoundsAreInYXZ) a bead 5 voxels off in y and 1 in x is
+    # found within bounds of 6 in y and 2 in x as within 6 in all axes (MATLAB bounded y by the
+    # x values and x by the y values before 45b2bb1)
+    paths = []
+    for c, off in enumerate(((0, 0, 0), (0, -5, -1))):
+        p = tmp_path / f"psf_{c}.tif"
+        synth.write_tiff(p, bead_psf(off))
+        paths.append(str(p))
+    wide = ch.chromatic_shift_estimation(paths, max_offset=(6, 6, 6))
+    np.testing.assert_array_equal(np.abs(wide[1]), [0, 5, 1])
+    np.testing.assert_array_equal(ch.chromatic_shift_estimation(paths, max_offset=(2, 6, 2)), wide)
+    # x's own bound of 4 finds x = -5 of the demo's offsets
     paths = []
     for c in range(2):
-        p = tmp_path / f"psf_{c}.tif"
+        p = tmp_path / f"demo_{c}.tif"
         synth.write_tiff(p, bead_psf(OFFSET[c]))
         paths.append(str(p))
-    s = ch.chromatic_shift_estimation(paths, max_offset=(6, 8, 3))
-    np.testing.assert_array_equal(s, OFFSET)
-    # y's value 4 bounds x: x = -5 is out of reach although x's own value is 8
-    s2 = ch.chromatic_shift_estimation(paths, max_offset=(6, 4, 8))
-    assert s2[1, 2] != -5
+    np.testing.assert_array_equal(
+        ch.chromatic_shift_estimation(paths, max_offset=(6, 4, 8))[1, 2], -5
+    )
 
 
 def test_estimation_crop(tmp_path):
@@ -562,9 +614,68 @@ def test_estimation_crop(tmp_path):
 def test_estimation_errors(tmp_path):
     with pytest.raises(ch.ChromaticError, match="At least two"):
         ch.chromatic_shift_estimation([str(tmp_path / "a.tif")])
-    with pytest.raises(ch.ChromaticError) as e:
+    # (a char is one path: its characters were taken as the files)
+    with pytest.raises(ch.ChromaticError, match="At least two PSF files are needed!"):
         ch.chromatic_shift_estimation("ab.tif")
-    assert e.value.identifier == "MATLAB:cellRefFromNonCell"
+
+
+def test_offsets_have_a_row_per_channel(tmp_path):
+    # (ChromaticShiftCorrectionTest/offsetsHaveARowPerChannel)
+    path = write_dataset(tmp_path / "d")
+    ids = []
+    for off in (None, OFFSET[1:], np.concatenate([OFFSET, [[0, 9, 0]]])):
+        with pytest.raises(ch.ChromaticError) as e:
+            run(path, "valid", chromatic_offset=off)
+        ids.append(e.value.identifier.split(":")[-1])
+    assert ids == ["noOffsets", "offsetSize", "offsetSize"]
+
+
+def test_mode_is_one_of_three_in_any_case(tmp_path):
+    # (ChromaticShiftCorrectionTest/modeIsOneOfThreeInAnyCase)
+    path = write_dataset(tmp_path / "d")
+    with pytest.raises(ch.ChromaticError) as e:
+        run(path, "none")
+    assert e.value.identifier == "MATLAB:InputParser:ArgumentFailedValidation"
+    assert not os.path.exists(f"{path}{RESULT}")
+    run(path, "Valid", result_dir_name="upper")
+    run(path, "valid")
+    fn = f"{FSN.format('CamB')}.tif"
+    np.testing.assert_array_equal(read_tiff(f"{path}upper/{fn}"), read_tiff(f"{path}{RESULT}/{fn}"))
+
+
+def test_large_zarr_files_are_cropped_in_batches(tmp_path):
+    # (ChromaticShiftCorrectionTest/largeZarrFilesAreCroppedInBatches) into zarr results equal to
+    # the regular path's, with the MIPs of the batches; their pad value is 0
+    path = write_dataset(tmp_path / "d", fmt="zarr")
+    kw = {"zarr_file": True, "batch_size": (8, 16, 16), "block_size": (8, 8, 8)}
+    for mode in ("valid", "full"):
+        run(path, mode, save_zarr=True, result_dir_name=f"regular_{mode}", **kw)
+        run(path, mode, large_file=True, result_dir_name=f"large_{mode}", **kw)
+        for cam in ("CamA", "CamB"):
+            fn = f"{FSN.format(cam)}.zarr"
+            np.testing.assert_array_equal(
+                read_zarr(f"{path}large_{mode}/{fn}"), read_zarr(f"{path}regular_{mode}/{fn}")
+            )
+            assert os.path.isfile(f"{path}large_{mode}/MIPs/{FSN.format(cam)}_MIP_z.tif")
+    with pytest.raises(ch.ChromaticError) as e:
+        run(path, "full", large_file=True, pad_value=7, result_dir_name="large_pad", **kw)
+    assert e.value.identifier == "XR_chromatic_shift_correction_data_wrapper:padValue"
+
+
+def test_zarr_data_with_offsets_from_psfs(tmp_path):
+    # (ChromaticShiftCorrectionTest/zarrDataWithOffsetsFromPSFs) the PSFs are read as tiff, the
+    # data as zarr
+    path = write_dataset(tmp_path / "d", fmt="zarr", psfs=True)
+    run(
+        path,
+        "valid",
+        chromatic_offset=None,
+        psf_fullpaths=[path + n for n in PSF_NAMES[:2]],
+        max_offset=(6, 8, 8),
+        zarr_file=True,
+    )
+    a, b = outputs(path)
+    np.testing.assert_array_equal(b, a)
 
 
 def test_matlab_layer_converts_offsets_and_origin(tmp_path, monkeypatch):
