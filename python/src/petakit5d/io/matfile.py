@@ -1112,29 +1112,169 @@ class _V5Reader:
         return t, d, nxt
 
 
-def _read_v5(path: PathLike, names: Sequence[str] | None) -> dict[str, Any]:
-    with open(path, "rb") as fh:
-        buf = fh.read()
-    order = ">" if buf[126:128] == b"MI" else "<"
-    sub = struct.unpack_from(order + "Q", buf, 116)[0]
-    if buf[116:124] in (b" " * 8, b"\x00" * 8):
+def _v5_header(head: bytes) -> tuple[str, int]:
+    """the byte order and the subsystem data's offset (0: none) of a MAT 5 file's header"""
+    order = ">" if head[126:128] == b"MI" else "<"
+    sub = struct.unpack_from(order + "Q", head, 116)[0]
+    if head[116:124] in (b" " * 8, b"\x00" * 8):
         sub = 0
-    mcos = None
-    if 128 <= sub < len(buf):
-        mcos = _v5_mcos(buf, sub, order)
-    r = _V5Reader(buf, order, mcos)
-    out: dict[str, Any] = {}
-    want = None if names is None else set(names)
-    pos = 128
-    while pos + 8 <= len(buf):
-        if pos == sub:
+    return order, sub
+
+
+class _Short(Exception):
+    """the bytes end before the element"""
+
+
+def _v5_name(head: bytes | memoryview, order: str) -> str | None:
+    """the variable name in the first bytes of a miMATRIX payload (array flags, dimensions
+    except for objects, name; as ``_V5Reader.matrix`` reads them), None if they end before it"""
+
+    def elem(pos: int) -> tuple[memoryview, int]:
+        if pos + 8 > len(head):
+            raise _Short
+        t, n = struct.unpack_from(order + "II", head, pos)
+        if t >> 16:
+            return memoryview(head)[pos + 4 : pos + 4 + (t >> 16)], pos + 8
+        if pos + 8 + n > len(head):
+            raise _Short
+        return memoryview(head)[pos + 8 : pos + 8 + n], pos + 8 + n + (-n % 8)
+
+    if len(head) == 0:
+        return ""
+    try:
+        fl, pos = elem(0)
+        if len(fl) < 4:
+            return ""
+        if struct.unpack(order + "I", bytes(fl[:4]))[0] & 0xFF != 17:
+            _, pos = elem(pos)  # dimensions (objects have none)
+        nm, _ = elem(pos)
+    except _Short:
+        return None
+    return bytes(nm).split(b"\x00", 1)[0].decode("ascii", "replace")
+
+
+class _LazyMcos:
+    """the object store of a MAT 5 file, read from the open file when an object is read"""
+
+    def __init__(self, fh: Any, sub: int, order: str) -> None:
+        self.fh, self.sub, self.order = fh, sub, order
+        self.store: _Mcos | None = None
+        self.read = False
+
+    def value(self, meta: np.ndarray, class_name: str) -> Any:
+        if not self.read:
+            self.fh.seek(self.sub)
+            self.store = _v5_mcos(self.fh.read(), 0, self.order)
+            self.read = True
+        if self.store is None:
+            return MatlabObject(class_name, "no object store")
+        return self.store.value(meta, class_name)
+
+
+# bytes of a variable read first for its name: its flags, dimensions and name fit in them
+# unless it has very many dimensions or a long name (then all of it is read)
+_NAME_BYTES = 1024
+
+
+def _read_at(fh: Any, pos: int, n: int) -> bytearray:
+    fh.seek(pos)
+    buf = bytearray(n)
+    got = fh.readinto(buf)
+    return buf if got == n else buf[:got]
+
+
+def _compressed_name(fh: Any, pos: int, n: int, order: str) -> str | None:
+    """the name of the variable in a miCOMPRESSED element (n bytes at pos): its stream inflated
+    as far as the name"""
+    d = zlib.decompressobj()
+    raw = b""
+    fh.seek(pos)
+    left = n
+    while left > 0:
+        chunk = fh.read(min(left, 1 << 16))
+        if not chunk:
             break
-        t, d, nxt = r.top(pos)
-        if t == 14 and d is not None:
-            name, value = r.matrix(d, want)
-            if want is None or name in want:
+        left -= len(chunk)
+        raw += d.decompress(chunk, _NAME_BYTES + 8 - len(raw))
+        while d.unconsumed_tail and len(raw) < _NAME_BYTES + 8:
+            raw += d.decompress(d.unconsumed_tail, _NAME_BYTES + 8 - len(raw))
+        if len(raw) >= 8:
+            t, m = struct.unpack_from(order + "II", raw, 0)
+            if t != 14:
+                return None
+            name = _v5_name(raw[8 : 8 + m], order)
+            if name is not None:
+                return name
+        if len(raw) >= _NAME_BYTES + 8:
+            break
+    # (a name past the first bytes, or a short stream: inflate all of it)
+    raw = zlib.decompressobj().decompress(bytes(_read_at(fh, pos, n)))
+    if len(raw) < 8 or struct.unpack_from(order + "II", raw, 0)[0] != 14:
+        return None
+    m = struct.unpack_from(order + "II", raw, 0)[1]
+    return _v5_name(raw[8 : 8 + m], order)
+
+
+def _read_v5_named(path: PathLike, names: Sequence[str]) -> dict[str, Any]:
+    """the variables named of a MAT 5 file, read from the file without the others: each
+    variable's tag and name are read, and its data only if it is named (a compressed variable
+    is inflated as far as its name). The values are ``_read_v5``'s, the last of a repeated
+    name as there."""
+    want = set(names)
+    out: dict[str, Any] = {}
+    with open(path, "rb") as fh:
+        size = os.fstat(fh.fileno()).st_size
+        order, sub = _v5_header(fh.read(128))
+        mcos = _LazyMcos(fh, sub, order) if 128 <= sub < size else None
+        pos = 128
+        while pos + 8 <= size:
+            if pos == sub:
+                break
+            fh.seek(pos)
+            t, n = struct.unpack(order + "II", fh.read(8))
+            if t >> 16:  # a small data element: no variable
+                pos += 8
+                continue
+            nxt = pos + 8 + n + (-n % 8 if t != 15 else 0)
+            if t == 14:
+                name = _v5_name(_read_at(fh, pos + 8, min(n, _NAME_BYTES)), order)
+                if name is None:
+                    name = _v5_name(_read_at(fh, pos + 8, n), order)
+                if name in want:
+                    d = memoryview(_read_at(fh, pos + 8, n))
+                    name, value = _V5Reader(d, order, mcos).matrix(d, want)
+                    out[name] = value
+            elif t == 15 and _compressed_name(fh, pos + 8, n, order) in want:
+                raw = zlib.decompressobj().decompress(bytes(_read_at(fh, pos + 8, n)))
+                t2, d2, _ = _V5Reader(raw, order).elem(0)
+                if t2 == 14:
+                    name, value = _V5Reader(raw, order, mcos).matrix(d2, want)
+                    out[name] = value
+            pos = nxt
+    return out
+
+
+def _read_v5(path: PathLike, names: Sequence[str] | None) -> dict[str, Any]:
+    if names is not None:
+        out = _read_v5_named(path, names)
+    else:
+        with open(path, "rb") as fh:
+            buf = fh.read()
+        order, sub = _v5_header(buf)
+        mcos = None
+        if 128 <= sub < len(buf):
+            mcos = _v5_mcos(buf, sub, order)
+        r = _V5Reader(buf, order, mcos)
+        out = {}
+        pos = 128
+        while pos + 8 <= len(buf):
+            if pos == sub:
+                break
+            t, d, nxt = r.top(pos)
+            if t == 14 and d is not None:
+                name, value = r.matrix(d)
                 out[name] = value
-        pos = nxt
+            pos = nxt
     if names is not None:
         for k in names:
             if k not in out:

@@ -776,6 +776,74 @@ def test_structarray_api() -> None:
     assert repr(s).startswith("StructArray(1x2")
 
 
+@pytest.mark.parametrize("version", ("7", "6"))
+def test_named_reads_give_the_values_of_the_whole_read(version: str, tmp_path: Path) -> None:
+    """read_mat of named variables of a MAT 5 file (the others skipped) gives the values the
+    whole read gives, in the order asked, a repeated name once"""
+    from petakit5d.io.matfile import read_mat, write_mat
+
+    values = {c.name: c.python() for c in CASES if c.write}
+    fn = tmp_path / f"all_{version}.mat"
+    write_mat(fn, values, version=version)
+    whole = read_mat(fn)
+    names = list(values)
+    for k in names:
+        got = read_mat(fn, [k])
+        assert list(got) == [k]
+        assert_same(got[k], whole[k], f"{k} (-v{version})")
+    got = read_mat(fn, names[::-1])
+    assert list(got) == names[::-1]
+    for k in names:
+        assert_same(got[k], whole[k], f"{k} (-v{version}, all)")
+    got = read_mat(fn, [names[3], names[3], names[0]])
+    assert list(got) == [names[3], names[0]]
+
+
+@pytest.mark.parametrize("version", ("7", "6"))
+def test_named_reads_skip_the_data_of_the_others(version: str, tmp_path: Path, monkeypatch) -> None:
+    """a named read takes the tags and names of the other variables, not their data (MATLAB's
+    load of named variables; the MIP merge's flags)"""
+    from petakit5d.io import matfile
+
+    big = np.arange(2_000_000, dtype=np.float64)  # 16 MB
+    fn = tmp_path / "f.mat"
+    matfile.write_mat(fn, {"a": 1.5, "big": big, "c": "text", "big2": big + 1}, version=version)
+    reads = []
+    real = matfile._read_at
+
+    def spy(fh, pos, n):
+        reads.append(n)
+        return real(fh, pos, n)
+
+    monkeypatch.setattr(matfile, "_read_at", spy)
+    got = matfile.read_mat(fn, ["c", "a"])
+    assert list(got) == ["c", "a"] and got["c"] == "text"
+    assert_same(got["a"], np.float64(1.5))
+    assert reads and max(reads) <= matfile._NAME_BYTES, reads
+    assert_same(matfile.read_mat(fn, ["big2"])["big2"], np.asfortranarray((big + 1)[None]))
+
+
+@pytest.mark.parametrize("probe", (8, 24, 40, 64))
+@pytest.mark.parametrize("version", ("7", "6"))
+def test_named_reads_of_names_past_the_first_bytes(
+    version: str, probe: int, tmp_path: Path, monkeypatch
+) -> None:
+    """a name past the bytes first read for it (many dimensions, a long name) is read from all
+    of the variable (a compressed one inflated whole)"""
+    from petakit5d.io import matfile
+
+    a = np.arange(24.0).reshape((1, 2, 1, 3, 1, 4), order="F")
+    long = "v" * 63
+    fn = tmp_path / "long.mat"
+    matfile.write_mat(fn, {"x": 1.0, "many_dims": a, long: "s", "y": 2.0}, version=version)
+    whole = matfile.read_mat(fn)
+    monkeypatch.setattr(matfile, "_NAME_BYTES", probe)
+    for k in ("many_dims", long, "y", "x"):
+        got = matfile.read_mat(fn, [k])
+        assert list(got) == [k]
+        assert_same(got[k], whole[k], k)
+
+
 def test_read_not_a_mat_file(tmp_path: Path) -> None:
     from petakit5d.io.matfile import read_mat
 
@@ -926,6 +994,26 @@ def test_matlab_reads(case: MatCase, version: str) -> None:
         got = read_mat(ref / f"ml{version}" / f"{case.name}.mat")
     assert list(got) == [case.name]
     assert_same(got[case.name], case.python(), f"{case.name} (MATLAB -v{version})")
+
+
+@pytest.mark.oracle
+@pytest.mark.parametrize("version", VERSIONS)
+@pytest.mark.parametrize("case", CASES, ids=lambda c: c.name)
+def test_matlab_reads_by_name(case: MatCase, version: str) -> None:
+    """read_mat of the variable by name (MAT 5: the named reader, objects' store read as needed)
+    reads what MATLAB saves"""
+    from petakit5d.io.matfile import read_mat
+
+    ref = _matlab_ref_dir()
+    if ref is None:
+        pytest.skip("no MATLAB references (cluster only)")
+    if version not in case.ml:
+        pytest.skip(f"MATLAB's -v{version} does not keep this value")
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        got = read_mat(ref / f"ml{version}" / f"{case.name}.mat", [case.name])
+    assert list(got) == [case.name]
+    assert_same(got[case.name], case.python(), f"{case.name} (MATLAB -v{version}, by name)")
 
 
 @pytest.mark.oracle
