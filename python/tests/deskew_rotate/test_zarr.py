@@ -116,12 +116,12 @@ def zarr_case(cid, make, *args, error=False, code=None):
     )
 
 
-# parseParfor runs the tasks on a pool of 12 (matlab_parfor_generic_computing_wrapper), which
-# MATLAB refuses in a job of fewer cores (parallel:cluster:LocalProfileNumWorkersExceeded),
-# and the wrapper takes an open pool as it is: the case opens the pool itself, of 12 workers
-# at most, so that its reference is the blocks' result in a job of any size, and closes it; a
-# pool an earlier case of the pack left open is closed first (MATLAB refuses a second pool in a
-# session, parallel:convenience:ConnectionOpen)
+# parseParfor runs the tasks on a pool of 12 (matlab_parfor_generic_computing_wrapper), at most
+# the local profile's workers (MATLAB refused more in a job of fewer cores before the oracle of
+# 2026-11-18, parallel:cluster:LocalProfileNumWorkersExceeded), and the wrapper takes an open
+# pool as it is: the case opens the pool itself, of 12 workers at most (no longer needed, kept
+# with its key), and closes it; a pool an earlier case of the pack left open is closed first
+# (MATLAB refuses a second pool in a session, parallel:convenience:ConnectionOpen)
 _PARFOR = (
     "delete(gcp('nocreate')); c = parcluster('local'); p = parpool(c, min(12, c.NumWorkers)); "
     f"try, XR_deskewRotateZarr([in{{1}}, '{FSN}.zarr'], in{{2 : end}}); "
@@ -476,17 +476,16 @@ def test_the_factor_is_completed_as_the_frame_function_completes_it(given, xyz):
     assert dz._rs_xyz(given) == xyz
 
 
-@pytest.mark.parametrize("factor", [2, (1, 2), (1.25, 1, 1.5), (1, 2, 1)])
+@pytest.mark.parametrize("factor", [2, (1, 2), (1.25, 1, 1.5), (1, 2, 1), (1.25, 1.5, 1)])
 def test_large_file_result_equals_the_regular_path_with_its_factor(tmp_path, factor):
     """(MATLAB: largeFileReadsTheResampleFactorAsRegularFiles) one value, (z, xy) and (z, y, x)
-    with x and y different: the large file's result is the regular path's (integer factors and
-    1 along y give the same values; a fractional y factor only the same size, as in MATLAB)"""
+    with x and y different: the large file's result is the regular path's (a fractional y factor
+    too: the batches resample on the result's grid)"""
     from petakit5d.deskew_rotate import deskew_rotate_volume
     from petakit5d.deskew_rotate.file import _resample_completed
 
     # (dz 0.2: no skewed space interpolation, whose uint16 sums depend on a batch's rows; 64
-    # rows, MATLAB's test's: each batch's own deskew and rotation centers its rows, which
-    # matches the whole result's grid where the batches' and the volume's input rows are even)
+    # rows, MATLAB's test's)
     fn, frame = write_input(tmp_path, shape=(29, 64, 61))
     dz.deskew_rotate_zarr(fn, PX, 0.2, save_mip=False, resample_factor=factor, **KW)
     got = read_zarr(str(tmp_path / "DSR" / f"{FSN}.zarr"))
@@ -496,6 +495,106 @@ def test_large_file_result_equals_the_regular_path_with_its_factor(tmp_path, fac
         save_16bit=True,
     )  # fmt: skip
     same(got, want)
+
+
+@pytest.mark.parametrize(
+    ("factor", "ny", "box", "interp"),
+    [
+        ((1, 1.3, 1), 64, None, "linear"),
+        ((0.9, 1.7, 1.2), 64, None, "linear"),
+        ((1, 2, 1), 63, None, "linear"),
+        ((1, 2.5, 1), 61, None, "linear"),
+        ((1, 0.75, 1), 64, None, "linear"),
+        ((1, 1.5, 1), 64, None, "cubic"),
+        ((1, 1.3, 1), 64, (0, 2, 0, 29, 61, 61), "linear"),
+    ],
+)
+def test_large_file_resamples_on_the_grid_of_the_result(tmp_path, factor, ny, box, interp):
+    """(MATLAB: largeFileResamplesOnTheGridOfTheResult) with a fractional factor along y (the
+    batches' axis) each batch resampled on a grid of its own, centred on its rows (until
+    27d4fac): the batches resample on the whole result's grid, and the result is the regular
+    path's, also for odd rows (2, whose last row samples the last input row), an input box that
+    crops y and cubic interpolation"""
+    from petakit5d.deskew_rotate import deskew_rotate_volume
+
+    fn, frame = write_input(tmp_path, shape=(29, ny, 61))
+    kw = {**KW, "interp_method": interp}
+    dz.deskew_rotate_zarr(fn, PX, 0.2, save_mip=False, resample_factor=factor, input_bbox=box, **kw)
+    got = read_zarr(str(tmp_path / "DSR" / f"{FSN}.zarr"))
+    f = frame if box is None else frame[box[0] : box[3], box[1] : box[4], box[2] : box[5]]
+    want = deskew_rotate_volume(
+        np.ascontiguousarray(f), SKEW, 0.2, PX, reverse=True, resample_factor=factor,
+        save_16bit=True, interp_method=interp,
+    )  # fmt: skip
+    same(got, want)
+
+
+def test_blocks_get_the_input_rows_only_for_the_results_grid(tmp_path, framework_spy):
+    # (as the MIP option: so that compiled masters built before still run the other tasks)
+    fn, _ = write_input(tmp_path, shape=(29, 64, 61))
+    dz.deskew_rotate_zarr(fn, PX, 0.2, save_mip=False, resample_factor=(1, 1.3, 1), **KW)
+    tasks = framework_spy.calls[0]["tasks"]
+    assert all(list(t.kwargs["input_rows"]) == [0, 64] for t in tasks)
+    framework_spy.calls.clear()
+    fn2, _ = write_input(tmp_path / "b", shape=(29, 64, 61))
+    dz.deskew_rotate_zarr(fn2, PX, 0.2, save_mip=False, resample_factor=(1, 2, 1), **KW)
+    assert all("input_rows" not in t.kwargs for t in framework_spy.calls[0]["tasks"])
+
+
+@pytest.mark.parametrize(("ry", "interp"), [(1.5, "cubic"), (1.3, "cubic"), (1.3, "linear")])
+def test_large_file_batches_read_the_rows_their_results_sample(ry, interp):
+    # (27d4fac) on the result's grid (centred on the region) each batch reads the input rows its
+    # output rows sample, with a margin of 1 (2 for cubic) within the region
+    import math
+
+    ny = 64
+    g = dz.large_file_geometry(
+        [ny, 61, 29], PX, 0.2, SKEW, [8, 1024, 1024], [8, 64, 64], [1, ry, 1], None, None, interp
+    )
+    assert g.result_grid and len(g.in_batch_bboxes) > 3
+    m = 2 if interp == "cubic" else 1
+    n_out = g.dsr_out_size[0]
+    for ib, rb in zip(g.in_batch_bboxes, g.out_region_bboxes, strict=True):
+        first = (rb[0] - (n_out + 1) / 2) * ry + (ny + 1) / 2
+        last = (rb[3] - (n_out + 1) / 2) * ry + (ny + 1) / 2
+        assert ib[0] <= max(1, math.floor(first) - m) and ib[3] >= min(ny, math.ceil(last) + m)
+
+
+@pytest.mark.parametrize(("ny", "factor", "copies"), [(63, 2, True), (64, 1.3, False)])
+def test_last_batch_gets_two_copies_of_the_last_row_it_samples(
+    tmp_path, framework_spy, monkeypatch, ny, factor, copies
+):
+    # (27d4fac) imwarp takes a sample past the last input row by its last bit as outside, where
+    # the whole volume's sample is on it: where the result's last row samples the region's last
+    # row exactly (2 along y with odd rows), the last batch gets two copies of that row past it
+    from petakit5d.deskew_rotate import volume as V
+    from petakit5d.jobs.tasks import run_record
+
+    kernel = V.deskew_rotate_volume_matlab_layout
+    seen = []
+
+    def spy(vol, *a, **kw):
+        y0, n = kw["batch_rows"]
+        # (the kernels' layout (z, x, y): y last)
+        extra = vol.shape[2] - (n - y0)
+        same_rows = extra == 2 and np.array_equal(vol[:, :, -1], vol[:, :, -3])
+        seen.append((y0, vol.shape[2], extra, same_rows))
+        return kernel(vol, *a, **kw)
+
+    def run_blocks():
+        for t in framework_spy.calls[-1]["tasks"]:
+            run_record(t.record())
+
+    monkeypatch.setattr(V, "deskew_rotate_volume_matlab_layout", spy)
+    framework_spy.action = run_blocks
+    fn, _ = write_input(tmp_path, shape=(29, ny, 61))
+    kw = {**KW, "batch_size": (1024, 8, 1024), "block_size": (64, 8, 64)}
+    dz.deskew_rotate_zarr(fn, PX, 0.2, save_mip=False, resample_factor=(1, factor, 1), **kw)
+    # (batches near the end may reach it too; only the last region's batch gets the copies)
+    last = max(seen)
+    longer = [s for s in seen if s[2] > 0]
+    assert len(seen) > 2 and longer == ([last] if copies else [])
+    assert not copies or (last[2] == 2 and last[3])
 
 
 def test_large_file_is_flipped_as_regular_files(tmp_path):
@@ -521,7 +620,7 @@ def test_blocks_get_the_flip_and_the_completed_factor(tmp_path, framework_spy):
 
 def test_large_file_parfor_runs_the_blocks_on_a_local_pool(tmp_path, framework_spy):
     """(MATLAB: largeFileParforRunsTheBlocks) parseParfor without a cluster failed on an undefined
-    GPUJob; it runs the tasks on a local pool of 12 workers, as XR_crop_zarr"""
+    GPUJob; it runs the tasks on a local pool of 12 workers (at most the CPUs), as XR_crop_zarr"""
     fn, _ = write_input(tmp_path)
     kw = {**KW, "parse_parfor": True}
     dz.deskew_rotate_zarr(fn, PX, DZ, save_mip=False, **kw)

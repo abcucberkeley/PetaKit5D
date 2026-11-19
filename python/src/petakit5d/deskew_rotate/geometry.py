@@ -251,9 +251,14 @@ def deskew_rotate_geometry(
     gpu_process: bool = False,
     interp_method: str = "linear",
     interp_nz: int | None = None,
+    batch_rows: Sequence[int] | None = None,
 ) -> DeskewRotateGeometry:
     """The geometry of ``deskewRotateFrame3D(vol, angle, dz, xyPixelSize, ...)`` for a raw
     volume of size ``raw_size`` ``(nz, ny, nx)``.
+
+    ``batch_rows``: ``(y0, ny)``, the raw volume is a batch of the rows from ``y0`` (0-based) of
+    a volume of ``ny`` rows (MATLAB's ``batchRows``): the transform and the output size are the
+    whole volume's (``imwarp`` places the batch's rows in it, never the kernels).
 
     ``resample_factor``: ``(z, y, x)`` (MATLAB's ``[x y z]``), None for none. ``interp_nz``: the
     slices of the interpolated volume where the code interpolates first and then warps with
@@ -262,6 +267,8 @@ def deskew_rotate_geometry(
     ``floor(round((nz - 1) / stepsize * 100000) / 100000) + 1``.
     """
     nz, ny, nx = (int(v) for v in raw_size)
+    # (the rows of the transform: a batch's volume's)
+    ny_t = ny if batch_rows is None else int(batch_rows[1])
     rs = _resample_xyz(resample_factor)
     theta = angle * math.pi / 180
     dx = _cos(theta) * dz / xy_pixel_size
@@ -269,7 +276,7 @@ def deskew_rotate_geometry(
         z_aniso = dz / xy_pixel_size
     else:
         z_aniso = _sin(abs(theta)) * dz / xy_pixel_size
-    out_size = _out_size_matlab((nz, ny, nx), angle, dz, xy_pixel_size, objective_scan)
+    out_size = _out_size_matlab((nz, ny_t, nx), angle, dz, xy_pixel_size, objective_scan)
 
     do_interp = (not objective_scan) and abs(dx) > x_step_thresh
     use_fast = not (
@@ -277,6 +284,7 @@ def deskew_rotate_geometry(
         or gpu_process
         or (rs is not None and any(r != 1 for r in rs))
         or interp_method.lower() != "linear"
+        or batch_rows is not None
     )
     x_step = abs(dx)
     dz_out, step = dz, 1.0
@@ -309,7 +317,7 @@ def deskew_rotate_geometry(
 
     # 2-5. rotate
     th = -theta if reverse else theta
-    center = [(ny + 1) / 2, (nx_ds + 1) / 2, (nzf + 1) / 2]
+    center = [(ny_t + 1) / 2, (nx_ds + 1) / 2, (nzf + 1) / 2]
     t1 = _translation([-center[1], -center[0], -center[2]])
     s = _eye()
     s[2][2] = z_aniso

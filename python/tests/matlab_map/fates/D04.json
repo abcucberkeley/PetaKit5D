@@ -130,6 +130,14 @@
     "largeFileParforRunsTheBlocks": [
      "pytest:tests/deskew_rotate/test_zarr.py::test_large_file_parfor_runs_the_blocks_on_a_local_pool",
      "oracle:tests/deskew_rotate/test_zarr.py::zarr.parfor"
+    ],
+    "largeFileResamplesOnTheGridOfTheResult": [
+     "pytest:tests/deskew_rotate/test_zarr.py::test_large_file_resamples_on_the_grid_of_the_result",
+     "pytest:tests/deskew_rotate/test_zarr.py::test_blocks_get_the_input_rows_only_for_the_results_grid",
+     "pytest:tests/deskew_rotate/test_zarr.py::test_large_file_batches_read_the_rows_their_results_sample",
+     "pytest:tests/deskew_rotate/test_zarr.py::test_last_batch_gets_two_copies_of_the_last_row_it_samples",
+     "oracle:tests/deskew_rotate/test_zarr.py::zarr.resample_*",
+     "oracle:tests/deskew_rotate/test_dataset.py::ds.large.resample*"
     ]
    }
   },

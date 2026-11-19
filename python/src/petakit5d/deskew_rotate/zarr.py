@@ -31,17 +31,23 @@ written from it: the output voxels are MATLAB's.
 - With ``flip_zstack`` each batch is flipped along z after its read (a batch has the whole z
   range of the input box), and the masks' y MIP after its crop, as ``XR_deskewRotateFrame``
   flips after the crop.
-- ``parse_parfor`` without a cluster runs the tasks on a local pool of 12 workers
-  (``matlab_parfor_generic_computing_wrapper`` with ``nworker`` 12, as ``XR_crop_zarr`` and
-  ``XR_MIP_zarr`` run theirs). MATLAB refuses that pool on a machine or job of fewer cores
-  (``parallel:cluster:LocalProfileNumWorkersExceeded``); the port's pool runs at any core count.
+- ``parse_parfor`` without a cluster runs the tasks on a local pool of 12 workers, at most the
+  CPUs the process may use (``matlab_parfor_generic_computing_wrapper`` with ``nworker`` 12, as
+  ``XR_crop_zarr`` and ``XR_MIP_zarr`` run theirs, which takes at most the local profile's
+  workers, the cores of the machine or job).
+
+With a resample factor along y whose batches' own grids are off the whole result's (each
+batch's deskew and rotation centres its rows), the batches resample on the result's grid
+(``deskew_rotate_volume``'s ``batch_rows``; the blocks get the input region's rows,
+``input_rows``): each batch keeps its number of input rows (more where the interpolation needs
+them), placed over the rows the result's grid needs for its output rows (a margin of 1, 2 for
+cubic), within the region; the last batch gets two copies of the region's last row past it where
+a result row samples that row exactly (``imwarp`` takes a sample past it by its last bit as
+outside). Where the batches' grids lie on the result's (or ``ry`` is 1), nothing changes.
 
 MATLAB quirks kept: ``overwrite``, ``crop``, ``dsr_combined`` and ``save_zarr`` are accepted and
 not used (the result is always the combined deskew and rotation in zarr, and an existing result
-is never made again); with a fractional y factor a batch's rows are centered by the batch's own
-deskew and rotation, which matches the whole result's grid only where ``(row start - 1) * ry``
-is an integer (MATLAB's large files are approximate there, and so are the port's: the same
-voxels).
+is never made again).
 """
 
 from __future__ import annotations
@@ -341,6 +347,12 @@ def _block_mips_zxy(out_zxy: np.ndarray, box: Sequence[int], mbs: Sequence[int],
         "Save the MIPs of the blocks in the flag, for MIP slabs of this batch size (z, y, x).",
         convert="size_yxz",
     ),
+    Param(
+        "inputRows",
+        "@isnumeric",
+        "Rows (start, stop) of the input region: the batches resample on its result's grid.",
+        convert="range1",
+    ),
     Param("uuid", "@ischar", "Id of the call."),
     Param("debug", "@islogical", "Not used."),
     Param(
@@ -372,6 +384,7 @@ def deskew_rotate_block(
     interp_method: str = "linear",
     resample_factor: Sequence[float] | None = None,
     mip_batch_size: Sequence[int] | None = None,
+    input_rows: Sequence[int] | None = None,
     uuid: str = "",
     debug: bool = False,
     num_threads: int | None = None,
@@ -380,7 +393,10 @@ def deskew_rotate_block(
     flipped along z with ``flip_zstack``) deskewed and rotated on the output box its region has
     in the full result (``out_local_bboxes`` moved by ``out_batch_bboxes``' x and z starts),
     written into its region (``out_region_bboxes``) of the result zarr ``dsr_fullpath``; then
-    the flag: ``t``, or with the MIPs of the blocks for MIP slabs of ``mip_batch_size``.
+    the flag: ``t``, or with the MIPs of the blocks for MIP slabs of ``mip_batch_size``. With
+    ``input_rows`` (the input region's rows) each batch is resampled on the grid of the
+    region's result (``deskew_rotate_volume``'s ``batch_rows``; the box's rows are the
+    result's).
     Nothing is done if the flag exists (unless ``overwrite``) or if the writer of the result
     has ended (``writers.orphaned``). Returns the batches' done flags (None if nothing was
     done)."""
@@ -424,6 +440,10 @@ def deskew_rotate_block(
     dtype = get_image_dtype(zarr_fullpath)
     mbs = None if mip_batch_size is None or np.size(mip_batch_size) == 0 else list(mip_batch_size)
     out_dtype = get_image_dtype(dsr_fullpath, True) if mbs is not None else ""
+    rows = None
+    if input_rows is not None and np.size(input_rows):
+        rows = [int(v) for v in np.asarray(input_rows).reshape(-1)[:2]]
+        ry = _rs_xyz(_resample_matlab(resample_factor))[1]
     in_boxes = np.asarray(in_batch_bboxes, dtype=np.int64).reshape(-1, 6)
     ob_boxes = np.asarray(out_batch_bboxes, dtype=np.int64).reshape(-1, 6)
     or_boxes = np.asarray(out_region_bboxes, dtype=np.int64).reshape(-1, 6)
@@ -450,6 +470,25 @@ def deskew_rotate_block(
         # batch's x and z starts (its y is the batch's own rows)
         bs = ob_boxes[i]
         dsr_box = [int(v) for v in ol_boxes[i] + np.array([bs[0], 0, bs[2], bs[0], 0, bs[2]])]
+        batch_rows = None
+        if rows is not None:
+            # on the grid of the region's result: the box in its rows, the batch's rows placed
+            # in the region's
+            dsr_box[1] += int(bs[1])
+            dsr_box[4] += int(bs[1])
+            ny = rows[1] - rows[0]
+            batch_rows = (ib[1] - rows[0], ny)
+            # a last result row that samples the region's last row exactly: two copies of
+            # that row past it (imwarp takes a sample past it by its last bit as outside; y is
+            # the last axis of the kernels' layout)
+            ny_out = _mround(ny / ry)
+            if (
+                ib[4] == rows[1]
+                and ob[4] == ny_out
+                and abs((ny_out - (ny_out + 1) / 2) * ry + (ny + 1) / 2 - ny) < 1e-6
+            ):
+                last = in_zxy[:, :, -1:]
+                in_zxy = np.concatenate([in_zxy, last, last], axis=2)
         # the kernels on MATLAB's layout, the result kept in it
         out_zxy = deskew_rotate_volume_matlab_layout(
             in_zxy,
@@ -463,6 +502,7 @@ def deskew_rotate_block(
             save_16bit=save_16bit,
             interp_method=interp_method,
             num_threads=n,
+            batch_rows=batch_rows,
         )
         del in_zxy
         if save_16bit and dtype != "uint16" and out_zxy.dtype != np.uint16:
@@ -512,11 +552,15 @@ def large_file_geometry(
     resample_m: list[float] | None,
     input_bbox_m: Sequence[int] | None,
     output_bbox_m: Sequence[int] | None,
+    interp_method: str = "linear",
 ) -> LargeFileGeometry:
     """``XR_deskewRotateZarr``'s geometry in MATLAB's numbers: ``im_size_m`` the input's
     ``[ny nx nz]``, sizes ``[y x z]``, boxes MATLAB's, ``resample_m`` MATLAB's vector
     (``[x y z]``, ``[xy z]`` or one value, completed to ``[x y z]``): the result's size is
-    divided by ``[ry rx rz]``, a batch's input rows are its output rows times ``ry``."""
+    divided by ``[ry rx rz]``, a batch's input rows are its output rows times ``ry``. Where the
+    batches' own grids are off the result's (a factor along y), ``result_grid``: the batches'
+    input rows are placed over the rows the result's grid needs, and ``input_rows`` (MATLAB's
+    ``[first last]``) are the region's."""
     from petakit5d.core.blocks import zarr_chunk_coordinates_matlab
     from petakit5d.deskew_rotate.geometry import _cos, _sin
 
@@ -573,7 +617,38 @@ def large_file_geometry(
     in_b[:, 3] = np.minimum(in_b[:, 0] + rows, bim[0])
     in_b[:, 4] = in_b[:, 1] + im_size[1] - 1
     in_b[:, 5] = in_b[:, 2] + im_size[2] - 1
+
+    # with a factor along y each batch resamples on a grid of its own, centred on its rows: the
+    # result's only where the batch's rows lie on it; else (or where a batch would read past the
+    # region) the batches resample on the result's grid
+    result_grid = False
+    if ry != 1:
+        nyb = (in_b[:, 3] - in_b[:, 0] + 1).astype(np.float64)
+        off_rows = (
+            ((batch_b[:, 0] - 1) * ry - (in_b[:, 0] - wd_start[0]))
+            + ((ny + 1) / 2 - (dsr_out[0] + 1) / 2 * ry)
+        ) - ((nyb + 1) / 2 - (np.array([_mround(v / ry) for v in nyb]) + 1) / 2 * ry)
+        result_grid = bool(np.any(np.abs(off_rows) > 1e-9)) or bool(
+            np.any(in_b[:, 3] > wd_start[0] + ny - 1)
+        )
+    if result_grid:
+        # the rows the output rows sample (in the region's rows), with a margin of one, two for
+        # cubic interpolation
+        margin = 1 + (str(interp_method).lower() == "cubic")
+
+        def in_row(r):
+            return (r - (dsr_out[0] + 1) / 2) * ry + (ny + 1) / 2
+
+        need1 = np.array([max(1, math.floor(in_row(v)) - margin) for v in region_b[:, 0]])
+        need4 = np.array([min(ny, math.ceil(in_row(v)) + margin) for v in region_b[:, 3]])
+        nyb = np.minimum(ny, np.maximum(nyb.astype(np.int64), need4 - need1 + 1))
+        s0 = need1 - (nyb - (need4 - need1 + 1)) // 2
+        s0 = np.maximum(1, np.minimum(s0, ny - nyb + 1))
+        in_b[:, 0] = s0 + wd_start[0] - 1
+        in_b[:, 3] = s0 + nyb - 1 + wd_start[0] - 1
     return LargeFileGeometry(
+        result_grid=result_grid,
+        input_rows=[wd_start[0], wd_start[0] + im_size[0] - 1],
         im_size=im_size,
         dsr_out_size=dsr_out,
         out_size=out_size,
@@ -626,7 +701,9 @@ def large_file_geometry(
     Param("interpMethod", _INTERP, "Interpolation: 'linear' or 'cubic'."),
     Param("maskFullpaths", "@iscell", "MIP masks (xy, xz, yz) that set the boxes."),
     Param("parseCluster", "@islogical", "Run the blocks as Slurm jobs."),
-    Param("parseParfor", "@islogical", "Run the blocks on a local process pool (12 workers)."),
+    Param(
+        "parseParfor", "@islogical", "Run the blocks on a local process pool (up to 12 workers)."
+    ),
     Param("masterCompute", "@islogical", "This process computes blocks too."),
     Param("jobLogDir", "@ischar", "Folder of the job logs."),
     Param("cpusPerTask", "@isnumeric", "CPUs of a block's job."),
@@ -673,8 +750,8 @@ def deskew_rotate_zarr(
 ) -> list[bool] | None:
     """Deskew and rotate a large zarr file in blocks (``XR_deskewRotateZarr``): the batches of
     output rows (``batch_size``'s y; all of x and z), with a border row on each side, as
-    ``deskew_rotate_block`` tasks through the job framework (or a local pool of 12 workers with
-    ``parse_parfor`` and no cluster) into ``<dir>/<result_dir_str>/<name>.zarr_<uuid>``, then
+    ``deskew_rotate_block`` tasks through the job framework (or a local pool of up to 12 workers
+    with ``parse_parfor`` and no cluster) into ``<dir>/<result_dir_str>/<name>.zarr_<uuid>``, then
     its MIPs (``mip_zarr``, merged from the MIPs of the blocks) and the result moved into place.
     Sample scan only. Nothing is done if the result exists; a writer of another call of the
     same result is waited for, and a result another writer published is kept. Returns the
@@ -779,6 +856,7 @@ def deskew_rotate_zarr(
             rs_m,
             box_m,
             out_box_m,
+            interp_method,
         )
         out_size = _zyx(g.out_size)
         out_block = _zyx(g.out_block_size)
@@ -822,6 +900,12 @@ def deskew_rotate_zarr(
         num_tasks = math.ceil(num_batch / tsz)
         # the completed factor (z, y, x), as the tasks and the estimate get it
         rs_task = None if rs_m is None else (rs[2], rs[1], rs[0])
+        # (the input region's rows for the result's grid: passed only then, as mip_batch_size)
+        rows_kw: dict[str, Any] = {}
+        if g.result_grid:
+            from petakit5d.core.bbox import range_from_matlab
+
+            rows_kw["input_rows"] = list(range_from_matlab(g.input_rows))
         tasks, outputs = [], []
         for t in range(num_tasks):
             inds = list(range(t * tsz, min((t + 1) * tsz, num_batch)))
@@ -850,6 +934,7 @@ def deskew_rotate_zarr(
                     uuid=uuid,
                     debug=_logical(debug),
                     **mip_kw,
+                    **rows_kw,
                 )
             )
         inputs = [frame_fullpath] * num_tasks

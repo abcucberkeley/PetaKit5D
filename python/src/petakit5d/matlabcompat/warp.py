@@ -2,7 +2,8 @@
 
 ``imwarp(V, affine3d(T), method, 'FillValues', fill, 'OutputView', R)`` as MATLAB R2024b
 computes it, for the output views PetaKit5D uses: ``imref3d(sz, 1, 1, 1)`` (``output_size``) and
-the view of a box of it (``output_box``).
+the view of a box of it (``output_box``); and ``imwarp(V, RV, ...)`` with an input view ``RV``
+whose world limits are shifted by whole voxels (``input_offset``).
 
 Arrays are ``(z, y, x)``. The transform keeps MATLAB's convention (the conventions' exception
 4): ``T`` is ``affine3d``'s 4 x 4 matrix, ``[x y z 1] * T`` maps a point of the input to the
@@ -12,10 +13,11 @@ column, y the row, z the plane).
 What MATLAB does, and this module with it:
 
 - The composite matrix ``tComp = I2W / T * W2I`` maps output subscripts to input ones (``I2W``
-  of the output view, ``W2I`` of the input's default view, the identity), its last column set
-  to ``[0 0 0 1]``. MATLAB's ``a / T`` is a triangular solve when ``T`` is triangular, else an LU
-  of ``T`` (partial pivoting, multipliers by division) and the transposed solve, each in
-  LAPACK's dot-product order; computed here in Python floats in the same order.
+  of the output view, ``W2I`` of the input's view: the identity for the default view, a
+  translation for a shifted one), its last column set to ``[0 0 0 1]``. MATLAB's ``a / T`` is a
+  triangular solve when ``T`` is triangular, else an LU of ``T`` (partial pivoting, multipliers
+  by division) and the transposed solve, each in LAPACK's dot-product order; computed here in
+  Python floats in the same order.
 - ``linear`` and ``nearest`` run MATLAB's ``warp3d`` built-in, ``cubic`` runs ``interp3``'s
   cubic convolution (griddedInterpolant); the arithmetic per output voxel is in
   ``python/cpp/warp/warp.cpp``. Values never depend on the thread count.
@@ -214,23 +216,31 @@ def _view(
 
 
 def composite_matrix(
-    tform, output_size: Sequence[int] | None = None, output_box: Sequence[int] | None = None
+    tform,
+    output_size: Sequence[int] | None = None,
+    output_box: Sequence[int] | None = None,
+    input_offset: Sequence[float] | None = None,
 ) -> np.ndarray:
     """imwarp's composite matrix tComp (4 x 4, MATLAB's convention): output subscripts to input
-    subscripts, as MATLAB computes it for the output view."""
+    subscripts, as MATLAB computes it for the output view (and the input view shifted by
+    ``input_offset``, (z, y, x) voxels)."""
     T = _matrix(tform)
     _, shift = _view(output_size, output_box)
     a = [[1.0, 0.0, 0.0, 0.0], [0.0, 1.0, 0.0, 0.0], [0.0, 0.0, 1.0, 0.0], [*shift, 1.0]]
     X = mrdivide(a, T)
-    # times the input's world-to-intrinsic matrix (the identity), as a matrix product
-    eye = [[1.0 if r == c else 0.0 for c in range(4)] for r in range(4)]
+    # times the input's world-to-intrinsic matrix (the identity for the default view, else the
+    # translation back by the offset, [x y z]), as a matrix product
+    w2i = [[1.0 if r == c else 0.0 for c in range(4)] for r in range(4)]
+    if input_offset is not None:
+        oz, oy, ox = (float(v) for v in input_offset)
+        w2i[3][:3] = [-ox, -oy, -oz]
     t = []
     for r in range(4):
         row = []
         for c in range(4):
             s = 0.0
             for m in range(4):
-                s = s + X[r][m] * eye[m][c]
+                s = s + X[r][m] * w2i[m][c]
             row.append(s)
         t.append(row)
     for r in range(4):
@@ -246,6 +256,7 @@ def imwarp(
     output_size: Sequence[int] | None = None,
     output_box: Sequence[int] | None = None,
     fill_value: float = 0,
+    input_offset: Sequence[float] | None = None,
     num_threads: int | None = None,
 ) -> np.ndarray:
     """MATLAB's imwarp(vol, affine3d(T), method, 'FillValues', fill, 'OutputView', R).
@@ -257,7 +268,9 @@ def imwarp(
     ``imref3d([ny nx nz], 1, 1, 1)``; output_box (z0, y0, x0, z1, y1, x1), 0-based and
     end-exclusive, that part of the full view (MATLAB's ``imref3d`` with world limits
     ``[x0 + 0.5, x1 + 0.5]``, ...). fill_value: for voxels mapped outside the input, cast like
-    vol. num_threads: None or 0 for all CPUs this process may use.
+    vol. input_offset: (z, y, x) whole voxels by which the input's world limits are shifted
+    (MATLAB's ``imwarp(vol, RV, ...)`` with ``RV = imref3d(size, [0.5, nx + 0.5] + ox, ...)``);
+    None: the default view. num_threads: None or 0 for all CPUs this process may use.
 
     Returns the (nz, ny, nx) result, of vol's class.
     """
@@ -278,7 +291,7 @@ def imwarp(
         )
     a = arrays.as_volume(a)
     size, _ = _view(output_size, output_box)
-    tcomp = composite_matrix(tform, output_size, output_box)
+    tcomp = composite_matrix(tform, output_size, output_box, input_offset)
     if m == "cubic" and min(a.shape) < 3:
         if min(a.shape) == 1:
             raise ImwarpError(

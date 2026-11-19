@@ -364,6 +364,7 @@ Deskew, rotate and resample a raw light-sheet volume (``deskewRotateFrame3D``).
 | `gpuProcess` | `gpu_process` | par |  | `false` | `False` | `@islogical` | MATLAB's GPU code path (imwarp), run on the CPU. |
 | `save16bit` | `save_16bit` | par | same | `false` | `False` | `@islogical` | uint16 output for uint16 input on the kernel paths. |
 | `interpMethod` | `interp_method` | par |  | `'linear'` | `'linear'` | `@(x) any(strcmpi(x, {'cubic', 'linear'}))` | Interpolation: 'linear' or 'cubic'. |
+| `batchRows` | `batch_rows` | par | custom:_batch_rows_in | `[]` | `None` | `@isnumeric` | (y0, ny): vol is the rows from y0 of a volume of ny rows, resampled on its grid. |
 
 ### `erodeVolumeBy2DProjection` -> `petakit5d.stitch.tile_functions.erode_volume_by_2d_projection`
 
@@ -1446,7 +1447,7 @@ Deskew and/or rotate the files of the datasets ``data_paths`` that match a chann
 
 ### `XR_deskewRotateBlock` -> `petakit5d.deskew_rotate.zarr.deskew_rotate_block`
 
-``XR_deskewRotateBlock``: each batch (rows of the input zarr, ``in_batch_bboxes``; flipped along z with ``flip_zstack``) deskewed and rotated on the output box its region has in the full result (``out_local_bboxes`` moved by ``out_batch_bboxes``' x and z starts), written into its region (``out_region_bboxes``) of the result zarr ``dsr_fullpath``; then the flag: ``t``, or with the MIPs of the blocks for MIP slabs of ``mip_batch_size``. Nothing is done if the flag exists (unless ``overwrite``) or if the writer of the result has ended (``writers.orphaned``). Returns the batches' done flags (None if nothing was done).
+``XR_deskewRotateBlock``: each batch (rows of the input zarr, ``in_batch_bboxes``; flipped along z with ``flip_zstack``) deskewed and rotated on the output box its region has in the full result (``out_local_bboxes`` moved by ``out_batch_bboxes``' x and z starts), written into its region (``out_region_bboxes``) of the result zarr ``dsr_fullpath``; then the flag: ``t``, or with the MIPs of the blocks for MIP slabs of ``mip_batch_size``. With ``input_rows`` (the input region's rows) each batch is resampled on the grid of the region's result (``deskew_rotate_volume``'s ``batch_rows``; the box's rows are the result's). Nothing is done if the flag exists (unless ``overwrite``) or if the writer of the result has ended (``writers.orphaned``). Returns the batches' done flags (None if nothing was done).
 
 | MATLAB | Python | Arg | Conversion | MATLAB default | Python default | Validator | Meaning |
 |---|---|---|---|---|---|---|---|
@@ -1468,6 +1469,7 @@ Deskew and/or rotate the files of the datasets ``data_paths`` that match a chann
 | `interpMethod` | `interp_method` | par |  | `'linear'` | `'linear'` | `@(x) any(strcmpi(x, {'cubic', 'linear'}))` | Interpolation: 'linear' or 'cubic'. |
 | `resampleFactor` | `resample_factor` | par | resample_xyz | `[]` | `None` | `@(x) isempty(x) \|\| isnumeric(x)` | Resampling after rotation (z, y, x). |
 | `mipBatchSize` | `mip_batch_size` | par | size_yxz | `[]` | `None` | `@isnumeric` | Save the MIPs of the blocks in the flag, for MIP slabs of this batch size (z, y, x). |
+| `inputRows` | `input_rows` | par | range1 | `[]` | `None` | `@isnumeric` | Rows (start, stop) of the input region: the batches resample on its result's grid. |
 | `uuid` | `uuid` | par |  | `''` | `''` | `@ischar` | Id of the call. |
 | `debug` | `debug` | par |  | `false` | `False` | `@islogical` | Not used. |
 | `numThreads` | `num_threads` | par |  | `[]` | `None` |  | Threads of the reads, kernels and writes (None: the CPUs available). (Python only) |
@@ -1519,7 +1521,7 @@ Deskew and/or rotate one file, or the partial files of one volume (``XR_deskewRo
 
 ### `XR_deskewRotateZarr` -> `petakit5d.deskew_rotate.zarr.deskew_rotate_zarr`
 
-Deskew and rotate a large zarr file in blocks (``XR_deskewRotateZarr``): the batches of output rows (``batch_size``'s y; all of x and z), with a border row on each side, as ``deskew_rotate_block`` tasks through the job framework (or a local pool of 12 workers with ``parse_parfor`` and no cluster) into ``<dir>/<result_dir_str>/<name>.zarr_<uuid>``, then its MIPs (``mip_zarr``, merged from the MIPs of the blocks) and the result moved into place. Sample scan only. Nothing is done if the result exists; a writer of another call of the same result is waited for, and a result another writer published is kept. Returns the tasks' done flags (None if nothing was done).
+Deskew and rotate a large zarr file in blocks (``XR_deskewRotateZarr``): the batches of output rows (``batch_size``'s y; all of x and z), with a border row on each side, as ``deskew_rotate_block`` tasks through the job framework (or a local pool of up to 12 workers with ``parse_parfor`` and no cluster) into ``<dir>/<result_dir_str>/<name>.zarr_<uuid>``, then its MIPs (``mip_zarr``, merged from the MIPs of the blocks) and the result moved into place. Sample scan only. Nothing is done if the result exists; a writer of another call of the same result is waited for, and a result another writer published is kept. Returns the tasks' done flags (None if nothing was done).
 
 | MATLAB | Python | Arg | Conversion | MATLAB default | Python default | Validator | Meaning |
 |---|---|---|---|---|---|---|---|
@@ -1545,7 +1547,7 @@ Deskew and rotate a large zarr file in blocks (``XR_deskewRotateZarr``): the bat
 | `interpMethod` | `interp_method` | par |  | `'linear'` | `'linear'` | `@(x) any(strcmpi(x, {'cubic', 'linear'}))` | Interpolation: 'linear' or 'cubic'. |
 | `maskFullpaths` | `mask_fullpaths` | par |  | `{}` | `()` | `@iscell` | MIP masks (xy, xz, yz) that set the boxes. |
 | `parseCluster` | `parse_cluster` | par |  | `true` | `True` | `@islogical` | Run the blocks as Slurm jobs. |
-| `parseParfor` | `parse_parfor` | par |  | `false` | `False` | `@islogical` | Run the blocks on a local process pool (12 workers). |
+| `parseParfor` | `parse_parfor` | par |  | `false` | `False` | `@islogical` | Run the blocks on a local process pool (up to 12 workers). |
 | `masterCompute` | `master_compute` | par |  | `true` | `True` | `@islogical` | This process computes blocks too. |
 | `jobLogDir` | `job_log_dir` | par |  | `'../job_logs'` | `'../job_logs'` | `@ischar` | Folder of the job logs. |
 | `cpusPerTask` | `cpus_per_task` | par |  | `8` | `8` | `@isnumeric` | CPUs of a block's job. |
