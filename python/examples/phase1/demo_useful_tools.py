@@ -2,9 +2,10 @@
 cropping, MIPs, the decon with intermediate results, tiff to zarr and back, image lists from a
 tile list, channel unmixing (tiff and zarr) and the resaving of zarr files.
 
-Left out (later phases of the port): the FFT spectra, the PSF and FSC analyses, the Imaris
-converter, the chromatic shift correction and the Bio-Formats converter. The steps that MATLAB
-runs with ``parseCluster=true`` run on this machine when there is no Slurm, as in MATLAB.
+The demo's Phase 2 steps (the FFT spectra, the PSF and FSC analyses, the chromatic shift
+correction and the Bio-Formats converter) are ``examples/phase2/demo_useful_tools.py``, to run
+after this one; the Imaris converter is not ported yet. The steps that MATLAB runs with
+``parseCluster=true`` run on this machine when there is no Slurm, as in MATLAB.
 Results: in the dataset folder (``resampled/``, ``Cropped/``, ``MIPs/``, ``tiff_to_zarr/``,
 ``Unmixed/``, ...).
 """
@@ -160,8 +161,8 @@ def main() -> None:
             config_file="",
         )
 
-    steps.skip("FFT analysis", "XR_fftSpectrumComputingWrapper is in a later phase")
-    steps.skip("PSF analysis", "XR_psf_analysis_wrapper is in a later phase")
+    steps.skip("FFT analysis", "a Phase 2 step: examples/phase2/demo_useful_tools.py")
+    steps.skip("PSF analysis", "a Phase 2 step: examples/phase2/demo_useful_tools.py")
 
     with steps("decon with intermediate results (for the FSC analysis)"):
         decon_dataset(
@@ -175,7 +176,7 @@ def main() -> None:
             debug=True,
             **decon_common,
         )
-    steps.skip("FSC analysis", "XR_FSC_analysis_wrapper is in a later phase")
+    steps.skip("FSC analysis", "a Phase 2 step: examples/phase2/demo_useful_tools.py")
 
     with steps("tiff to zarr conversion"):
         tiff_to_zarr_dataset(
@@ -204,7 +205,11 @@ def main() -> None:
             config_file="",
         )
 
-    steps.skip("Imaris converter", "XR_imaris_conversion_data_wrapper is in a later phase")
+    steps.skip(
+        "Imaris converter",
+        "XR_imaris_conversion_data_wrapper is not ported yet: it waits for the next release of "
+        "Parallel_Imaris_Writer",
+    )
 
     with steps("image list from a tile list"):
         # the 16 tiles' file names: time points, cameras, then y tiles 3 to 0
@@ -229,7 +234,7 @@ def main() -> None:
             tile_interval=[0, 189.4, 0],
         )
 
-    steps.skip("chromatic shift correction", "in a later phase")
+    steps.skip("chromatic shift correction", "a Phase 2 step: examples/phase2/demo_useful_tools.py")
 
     with steps("channel unmixing"):
         unmix_channels_dataset(
@@ -302,7 +307,10 @@ def main() -> None:
             config_file="",
         )
 
-    steps.skip("Bio-Formats conversion", "after the demo's return; in a later phase")
+    steps.skip(
+        "Bio-Formats conversion",
+        "after the demo's return: examples/phase2/demo_useful_tools.py has it, not run",
+    )
 
 
 if __name__ == "__main__":

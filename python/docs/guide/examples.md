@@ -3,6 +3,7 @@
 `python/examples/phase1/` has one Python file per MATLAB demo (`demos/demo_*.m`). Each follows
 its demo step by step with the same parameters, through the snake_case API; comments give
 MATLAB's values where the Python form differs (boxes, sizes). They need no MATLAB.
+`python/examples/phase2/` has the demos' Phase 2 steps, to run after them on the same data.
 
 | Example | MATLAB demo | What it shows |
 |---|---|---|
@@ -11,7 +12,7 @@ MATLAB's values where the Python form differs (boxes, sizes). They need no MATLA
 | `demo_geometric_transformation.py` | demo_geometric_transformation.m | combined and separate deskew and rotation of datasets and of large single files |
 | `demo_rl_deconvolution.py` | demo_RL_deconvolution.m | PSF preparation, the OMW back projector, RL (Biggs) and OMW deconvolution, in memory and on datasets |
 | `demo_skewed_space_stitching.py` | demo_skewed_space_stitching.m | stitching in skewed space with a tile processing function |
-| `demo_zarr_stitching.py` | demo_zarr_stitching.m | zarr stitching in skewed and DSR space, N5 conversion and the BigStitcher XML |
+| `demo_zarr_stitching.py` | demo_zarr_stitching.m | zarr stitching in skewed and DSR space (the demo's BigStitcher-Spark and stitching-spark setup, after its `return`, is left out) |
 | `demo_large_scale_processing.py` | demo_large_scale_processing.m | large-file deconvolution in place and deskew/rotation of stitched volumes |
 | `demo_useful_tools.py` | demo_useful_tools.m | resampling, cropping, MIPs, tiff/zarr conversion and resaving, image lists, unmixing, and the decon and DSR steps they use |
 | `demo_phase_and_2photon_stitching.py` | demo_phase_and_2photon_stitching.m | image lists from tile positions, 2D phase and 3D 2-photon stitching; the phase flat field with the `basic` extra |
@@ -20,6 +21,18 @@ MATLAB's values where the Python form differs (boxes, sizes). They need no MATLA
 | `demo_microscope_pipeline_multiple_dataset.py` | the same | the pipeline on several datasets, given as arguments |
 | `run_all_demos_for_the_paper.py` | demo_run_all_demos_for_the_paper.m | the paper's nine demos in order, in one process |
 | `compare_demo_trees.py` | | compares a Python run's output tree with a MATLAB run's |
+
+The Phase 2 examples, in `python/examples/phase2/`:
+
+| Example | MATLAB demo | What it shows |
+|---|---|---|
+| `demo_useful_tools.py` | demo_useful_tools.m | its Phase 2 steps, on the results of the phase 1 example: the FFT power spectra, the PSF and FSC analyses and the chromatic shift correction; the Bio-Formats conversion (`bioformats_conversion`), not run, as in MATLAB |
+| `run_all_demos_for_the_paper.py` | demo_run_all_demos_for_the_paper.m | the paper's nine demos in order with their Phase 2 steps, in one process |
+| `compare_phase2_trees.py` | | compares the outputs of a Python run's Phase 2 steps with a MATLAB run's, step by step |
+
+The phase 1 examples of the phase and 2-photon stitching and of the widefield and confocal
+deconvolution have their demos' Phase 2 steps already: the phase flat field (with the `basic`
+extra) and the OTF mask figures (with the `figures` extra).
 
 ## Running them
 
@@ -44,6 +57,16 @@ Later demos use the results of earlier ones (the tools use the deconvolved tiles
 so run them in the paper's order on one copy of the data. They need a large-memory machine: the
 reference runs took about 20 minutes on 24 cores with 450 GB.
 
+The Phase 2 examples run the same way from `python/examples/phase2/`, on the same copy of the
+data and after the phase 1 examples whose results they use. Its `run_all_demos_for_the_paper.py`
+runs each demo's phase 1 example and then its Phase 2 steps, in place of phase 1's:
+
+```
+cd python/examples/phase2
+python run_all_demos_for_the_paper.py                         # all nine with their Phase 2 steps
+python demo_useful_tools.py                                   # after phase 1's demo_useful_tools.py
+```
+
 Other variables:
 
 | Variable | Effect |
@@ -61,9 +84,13 @@ to the current folder; it runs locally unless you edit it for your cluster
 Steps whose functions are not in the port (or not yet) are skipped, and the example says so:
 the conventional MATLAB tiff reader and the blockedImage and zarr-python readers, the legacy
 separate deskew/rotation (`XR_deskewRotateFrame_old`), the Wiener-Butterworth back projector
-(WBDeconvolution, GPL), the Spark stitching tools, the Imaris conversion, and Bio-Formats.
-Figures are drawn only with the `figures` extra, the phase flat field only with the `basic`
-extra. [parity/demos.md](../parity/demos.md) lists the steps left out per demo.
+(WBDeconvolution, GPL), the Spark stitching tools, and the Imaris conversion (its port waits for
+the next release of Parallel_Imaris_Writer). The Bio-Formats conversion, which the data tools
+demo shows after its `return`, is the phase 2 example's `bioformats_conversion`, not run (the
+demo data has no such files). Figures are drawn only with the `figures` extra (the PSF analysis,
+whose results are figures, needs it), the phase flat field only with the `basic` extra.
+[parity/demos.md](../parity/demos.md) lists the steps left out per demo,
+[parity/phase2.md](../parity/phase2.md) the Phase 2 steps and what they leave out.
 
 ## How close they are to MATLAB
 
@@ -72,3 +99,8 @@ trees compared file by file (`compare_demo_trees.py`): with the exact FFT add-on
 every ported step is MATLAB's bit for bit, apart from a few listed file differences. With the
 default FFT backend the deconvolved outputs differ by 1 count in a few thousandths of a percent
 of their voxels. The numbers and every difference are in [parity/demos.md](../parity/demos.md).
+The Phase 2 steps were compared step by step (`compare_phase2_trees.py`): with the exact add-on
+every output is MATLAB's bit for bit apart from the phase flat field (BaSiCPy in place of
+MATLAB's BaSiC, within its parity row N8). On the default backend the FFT spectra and FSC
+curves, made from that backend's decon results, are within a proposed row (P14), the other
+outputs within their rows. The numbers are in [parity/phase2.md](../parity/phase2.md).

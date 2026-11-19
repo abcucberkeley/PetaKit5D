@@ -10,7 +10,10 @@ voxels and metadata (MATLAB's ``(y, x, z)`` arrays against the port's native one
 in .mat and JSON files and text. Each side's own root paths are masked (``--matlab-home``,
 ``--python-home``, ``--matlab-code``, ``--python-code``: the folders the runs' paths start with;
 a leading ``~`` is the home folder). Empty folders are not compared.
-MATLAB outputs of steps the port leaves out are listed by ``NOT_PORTED`` and not compared.
+MATLAB outputs of steps the port leaves out are listed by ``NOT_PORTED`` and not compared (the
+demos' Phase 2 steps: ``examples/phase2/compare_phase2_trees.py``). The per-pair registration
+results (``xcorr/<volume>/xcorr_tile_*.mat``) are compared within ``docs/parity/index.md``'s
+rows for them: their correlation peaks within P13 (2D) and P7 (3D), their shifts exact.
 
 Options: ``--only REGEX`` (names to compare), ``--demo NAME`` (one demo's run: every output is
 its), ``--out DIR`` (``compare_<label>.txt`` and ``.json``), ``--label``, ``--workers``. Exit
@@ -67,18 +70,31 @@ NOT_PORTED = [
     (_C + r"Chromatic_Shift_Corrected/", "XR_chromatic_shift_correction_data_wrapper (Phase 2)"),
     # MATLAB's figures (png, fig): the port draws them with the optional figures extra
     (r".*\.(png|fig)$", "figures (MATLAB graphics; the port's figures extra)"),
-    # the per-pair results of the tile registration (the merged xcorr/<name>.mat is compared):
-    # the reference runs gave the port MATLAB's merged results (docs/parity/demos.md, row 4)
-    (
-        r".*/xcorr/[^/]+/xcorr_tile_[^/]*\.mat$",
-        "per-tile registration results (given in the reference runs)",
-    ),
 ]
 
 # MATLAB outputs of steps that need an optional extra: not compared when Python has no such file
 OPTIONAL = [
     (_O + r"Phase/(ff_corrected_1/|.*_flatfield\.mat$)", "the phase flat field (basic extra)"),
 ]
+
+
+def tree_spec():
+    """how the outputs are compared: parameters.mat without its time stamps and MATLAB's
+    inputParser object; the per-pair registration results with their correlation peaks within
+    P13 (the phase stitching's 2D registration, normxcorr2) and P7 (3D), integer shifts exact"""
+    from petakit5d.testing.compare import tol, tree
+
+    return tree(
+        per_file={
+            "*/Phase/*/xcorr/*/xcorr_tile_*.mat": tol(
+                reason="P13 (proposed): 2D registration peaks of normxcorr2", abs=1e-7
+            ),
+            "*/xcorr/*/xcorr_tile_*.mat": tol(
+                reason="P7 (approved): 3D registration peaks of the default FFT backend", abs=5e-3
+            ),
+        },
+        ignore_vars=("t", "t1", "ip"),
+    )
 
 
 def demo_of(rel: str, default: str = "other") -> str:
@@ -99,7 +115,7 @@ def not_ported(rel: str, python_rels: frozenset[str] = frozenset()) -> str:
 
 
 def main(argv: list[str]) -> int:
-    from petakit5d.testing.compare import Masks, compare_trees, list_tree, scan_tree, tree
+    from petakit5d.testing.compare import Masks, compare_trees, list_tree, scan_tree
 
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("matlab_root")
@@ -138,8 +154,7 @@ def main(argv: list[str]) -> int:
     tilde = (r"(?<![\w.~-])~(?=/)", "<WORK>")
     mm = Masks().with_paths(work=ns.matlab_home, code=ns.matlab_code).plus(tilde)
     pm = Masks().with_paths(work=ns.python_home, code=ns.python_code).plus(tilde)
-    # parameters.mat: the time stamps and MATLAB's inputParser object are not compared
-    spec = tree(ignore_vars=("t", "t1", "ip"))
+    spec = tree_spec()
 
     pset = frozenset(prels)
     skipped = {r: s for r in mrels if (s := not_ported(r, pset))}

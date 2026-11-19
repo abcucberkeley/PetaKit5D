@@ -229,10 +229,24 @@ def test_compare_demo_trees_rules(examples):
     assert cmp.demo_of(c + "matlab_decon_omw/DSR_for_useful_tools/a.zarr") == "useful_tools"
     assert cmp.demo_of("x/y.tif", "pipeline") == "pipeline"
     assert "legacy" in cmp.not_ported(c + "DS_separated/a.tif")
-    assert cmp.not_ported(c + "matlab_stitch/xcorr/v/xcorr_tile_1.mat")
     assert not cmp.not_ported(c + "matlab_stitch/xcorr/v.mat")
     phase = cmp.OTHER + "/Phase/ff_corrected_1/a.tif"
     assert cmp.not_ported(phase) and not cmp.not_ported(phase, frozenset([phase]))
+
+
+def test_compare_demo_trees_compares_the_registration_results(examples):
+    """the per-pair registration results: peaks within P13 (2D, the phase stitching) and P7
+    (3D), the rest exact"""
+    cmp = examples("compare_demo_trees")
+    tile = "xcorr/v/xcorr_tile_1.mat"
+    two_d = cmp.OTHER + "/Phase/ff_corrected/matlab_stitch/" + tile
+    three_d = [CELL + "/matlab_stitch/" + tile, cmp.OTHER + "/2P/matlab_stitch/" + tile]
+    assert not any(cmp.not_ported(r) for r in [two_d, *three_d])
+    spec = cmp.tree_spec()
+    assert spec.spec_for(two_d).abs == 1e-7 and "P13" in spec.spec_for(two_d).reason
+    assert all(spec.spec_for(r).abs == 5e-3 and "P7" in spec.spec_for(r).reason for r in three_d)
+    assert spec.spec_for(CELL + "/matlab_stitch/xcorr/v.mat") == spec.values
+    assert spec.ignore_vars == ("t", "t1", "ip")
 
 
 def test_compare_demo_trees_masks_the_roots(examples, tmp_path):

@@ -71,7 +71,7 @@ them and say so, and their MATLAB outputs are not compared.
 | demo_geometric_transformation | the separate deskew and rotation `XR_deskewRotateFrame_old` (6 files) | legacy code, not ported |
 | demo_RL_deconvolution | the Wiener-Butterworth back projector (`BackProjector`) and its decon | WBDeconvolution is not ported |
 | demo_zarr_stitching | BigStitcher-Spark and stitching-spark (after the demo's `return`) | Spark tools |
-| demo_useful_tools | FFT spectra (57 files), PSF analysis (8), FSC analysis (25), the Imaris converter (4), the chromatic shift correction (16), Bio-Formats (after the `return`) | later phases |
+| demo_useful_tools | FFT spectra (57 files), PSF analysis (8), FSC analysis (25), the Imaris converter (4), the chromatic shift correction (16), Bio-Formats (after the `return`) | Phase 2 steps: `examples/phase2/demo_useful_tools.py`, compared in [phase2.md](phase2.md); the Imaris converter is not ported yet (T5) |
 | demo_microscope_pipeline_multiple_dataset | the whole demo | it points at the lab's own data; the example takes the dataset folders as arguments |
 
 ## Notes

@@ -50,6 +50,6 @@ microscopy, with MATLAB PetaKit5D's results and files.
 ## Per-area differences
 
 [decon.md](parity/decon.md), [demos.md](parity/demos.md), [flatfield.md](parity/flatfield.md),
-[matlabcompat.md](parity/matlabcompat.md), [realdata.md](parity/realdata.md),
-[stitch.md](parity/stitch.md), [tools.md](parity/tools.md); the index of all of them is
-[parity/index.md](parity/index.md).
+[matlabcompat.md](parity/matlabcompat.md), [phase2.md](parity/phase2.md) (the demos' Phase 2
+steps), [realdata.md](parity/realdata.md), [stitch.md](parity/stitch.md),
+[tools.md](parity/tools.md); the index of all of them is [parity/index.md](parity/index.md).
