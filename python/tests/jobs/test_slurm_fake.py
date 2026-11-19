@@ -343,6 +343,58 @@ def test_log_files_are_made_only_in_the_temporary_folders(fake_slurm, tmp_path):
         outside.unlink(missing_ok=True)
 
 
+def test_the_fixture_keeps_its_files_in_memory(fake_slurm):  # noqa: F811
+    # (where there is a memory folder: the stubs replace small files on every call, which a busy
+    # local disk made take seconds; the stubs keep the path they were called by, the link in
+    # pytest's base temp folder, so make_log_files still writes to the tests' folders)
+    fake_slurm.set_job_states("1_1", ["PD", "R"])
+    assert "1_1" in sh("squeue", "-j", "1_1").stdout
+    state = fake_slurm.folder / "state" / "1_1"
+    assert state.read_text() == "R\n" and fake_slurm.history() == ["squeue -j 1_1"]
+    if slurm_fake.memory_folder() is None:
+        assert not fake_slurm.folder.is_symlink()
+    else:
+        assert fake_slurm.folder.is_symlink()
+        assert state.resolve().is_relative_to(Path(slurm_fake.MEMORY_FOLDER).resolve())
+
+
+def test_memory_backed_folders_are_gone_afterwards(tmp_path):
+    for case in ("memory", "none"):
+        folder = tmp_path / case
+        folder.mkdir()
+        with pytest.MonkeyPatch.context() as mp:
+            if case == "none":
+                mp.setattr(slurm_fake, "memory_folder", lambda: None)
+            with slurm_fake.memory_backed(folder) as f:
+                assert f == folder and f.is_symlink() == (slurm_fake.memory_folder() is not None)
+                (f / "x").write_text("1")
+                real = (f / "x").resolve()
+        assert not folder.exists() and not folder.is_symlink() and not real.parent.exists()
+
+
+CASES = ["usable", "noexec", "read_only", "not_writable", "missing", "not_linux"]
+
+
+@pytest.mark.skipif(not hasattr(os, "ST_NOEXEC"), reason="statvfs's ST_NOEXEC is Linux's")
+@pytest.mark.parametrize("case", CASES)
+def test_a_memory_folder_only_where_the_stubs_can_run(tmp_path, monkeypatch, case):
+    statvfs = os.statvfs
+    flag = {"noexec": os.ST_NOEXEC, "read_only": os.ST_RDONLY}.get(case, 0)
+    monkeypatch.setattr(slurm_fake.sys, "platform", "darwin" if case == "not_linux" else "linux")
+    monkeypatch.setattr(
+        slurm_fake, "MEMORY_FOLDER", str(tmp_path / "none" if case == "missing" else tmp_path)
+    )
+
+    class Flags:
+        def __init__(self, path):
+            self.f_flag = statvfs(path).f_flag & ~(os.ST_NOEXEC | os.ST_RDONLY) | flag
+
+    monkeypatch.setattr(slurm_fake.os, "statvfs", Flags)
+    if case == "not_writable":
+        monkeypatch.setattr(slurm_fake.os, "access", lambda path, mode: False)
+    assert slurm_fake.memory_folder() == (str(tmp_path) if case == "usable" else None)
+
+
 def test_hang_and_fail_python_additions(fake_slurm):  # noqa: F811
     fake_slurm.fail("squeue", "boom")
     r = sh("squeue")

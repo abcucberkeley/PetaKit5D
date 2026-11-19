@@ -26,15 +26,21 @@ The stubs are those of the MATLAB fixture, with its default partition and node n
 parameters (made-up names by default), and two additions for failure tests: ``hang`` (a command
 that doesn't answer) and ``fail`` (a command that exits 1 with a message), both logged first.
 A third addition, ``use_builtin_squeue``, swaps in an squeue with the same answers whose loops
-over jobs use shell built-ins, for tests with many jobs pending for many rounds.
+over jobs use shell built-ins, for tests with many jobs pending for many rounds. The
+``fake_slurm`` fixture keeps its files in memory where it can (``memory_backed``: its folder
+is a link to one in ``memory_folder``), since the stubs replace small files on every call,
+which a busy local disk makes slow.
 """
 
 # ruff: noqa: E501  (the shell lines of the stubs are the MATLAB fixture's)
 from __future__ import annotations
 
+import contextlib
 import os
 import re
 import shutil
+import sys
+import tempfile
 from collections.abc import Iterator, Sequence
 from pathlib import Path
 
@@ -47,6 +53,8 @@ __all__ = [
     "FakeSlurm",
     "fake_slurm",
     "hide_slurm",
+    "memory_backed",
+    "memory_folder",
     "no_slurm",
     "no_slurm_session",
     "real_slurm",
@@ -659,18 +667,62 @@ def hide_slurm(mp: pytest.MonkeyPatch, folder: Path) -> None:
         mp.delenv(name, raising=False)
 
 
+# the fixture's files in memory where there is one (Python addition): the stubs replace small
+# files on every call (squeue steps a job's states by a rename over its state file, sbatch
+# writes the next job id over the last one), which ext4 writes back to disk before the call
+# returns (auto_da_alloc); on a node whose local disk other jobs kept busy, an squeue call naming
+# 30 jobs took up to 40 s, and a test of 61 such calls ran past the 900 s timeout
+MEMORY_FOLDER = "/dev/shm"
+
+
+def memory_folder() -> str | None:
+    """MEMORY_FOLDER if the fake's commands can live there (Linux, writable, executables
+    allowed: Docker mounts it noexec), else None"""
+    if not sys.platform.startswith("linux"):
+        return None
+    try:
+        flags = os.statvfs(MEMORY_FOLDER).f_flag
+    except OSError:
+        return None
+    if flags & (os.ST_NOEXEC | os.ST_RDONLY) or not os.access(MEMORY_FOLDER, os.W_OK | os.X_OK):
+        return None
+    return MEMORY_FOLDER
+
+
+@contextlib.contextmanager
+def memory_backed(folder: Path) -> Iterator[Path]:
+    """folder (an empty folder) as a link to a new folder in memory (memory_folder) while the
+    block runs, where there is one; afterwards folder and its files are gone"""
+    mem = memory_folder()
+    target = None
+    if mem is not None:
+        target = tempfile.mkdtemp(prefix="pk5d_fake_slurm_", dir=mem)
+        folder.rmdir()
+        folder.symlink_to(target, target_is_directory=True)
+    try:
+        yield folder
+    finally:
+        if target is None:
+            shutil.rmtree(folder, ignore_errors=True)
+        else:
+            folder.unlink()
+            shutil.rmtree(target, ignore_errors=True)
+
+
 @pytest.fixture
 def fake_slurm(
     tmp_path_factory: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch
 ) -> Iterator[FakeSlurm]:
     """a FakeSlurm first on the PATH for one test (its folder in pytest's base temp folder, so
-    that log files of make_log_files may go to any test's tmp_path)"""
+    that log files of make_log_files may go to any test's tmp_path; a link to a folder in memory
+    where there is one, see memory_backed: the stubs know their folder by the path they were
+    called by)"""
     if os.name == "nt":
         pytest.skip("The fake Slurm needs a POSIX shell.")
-    fake = FakeSlurm(tmp_path_factory.mktemp("fake_slurm")).install()
-    monkeypatch.setenv("PATH", fake.path_with())
-    yield fake
-    shutil.rmtree(fake.folder, ignore_errors=True)
+    with memory_backed(tmp_path_factory.mktemp("fake_slurm")) as folder:
+        fake = FakeSlurm(folder).install()
+        monkeypatch.setenv("PATH", fake.path_with())
+        yield fake
 
 
 @pytest.fixture

@@ -57,6 +57,10 @@ def work(out, log, mode="ok", seconds=0.0):
            "job": os.environ.get("SLURM_ARRAY_JOB_ID", "")}
     with open(log, "a") as fh:
         fh.write(json.dumps(rec) + "\\n")
+    if mode == "gate":  # runs until the test makes out + ".go" (at most 5 min)
+        end = time.monotonic() + 300
+        while not os.path.exists(out + ".go") and time.monotonic() < end:
+            time.sleep(0.01)
     if mode == "error":
         raise RuntimeError("on purpose")
     if seconds:
@@ -516,17 +520,25 @@ def test_job_with_nothing_to_take_runs_its_task_as_before(c):
 def test_tasks_submitted_while_a_job_runs_are_taken(c):
     # (streaming) a task added while a job runs is taken by it, after the tasks submitted
     # before it
+    # (task 1 runs until task 3 is submitted: with a fixed 3 s for it, a loaded machine
+    # submitted task 3 after the job had run tasks 1 and 2 and ended)
     c.start_kind()
-    c.submit(1, seconds=3)
+    c.submit(1, mode="gate")
     c.submit(2)
     c.fake.set_job_states("1001_2", ["PD"])
     p = c.run_job(1, background=True)
-    t0 = time.monotonic()
-    while not c.runs() and time.monotonic() - t0 < 60:
-        time.sleep(0.05)
-    c.submit(3)
-    c.fake.set_job_states("1002_3", ["PD"])
-    out, _ = p.communicate(timeout=120)
+    try:
+        t0 = time.monotonic()
+        while not c.runs() and p.poll() is None and time.monotonic() - t0 < 300:
+            time.sleep(0.05)
+        started = bool(c.runs())
+        if started:
+            c.submit(3)
+            c.fake.set_job_states("1002_3", ["PD"])
+    finally:
+        Path(c.outs[1] + ".go").touch()
+    out, _ = p.communicate(timeout=300)
+    assert started, f"The job did not start task 1.\n{out}"
     assert p.returncode == 0, out
     assert c.tasks_run() == [1, 2, 3], out
     assert len({x["token"] for x in c.runs()}) == 1
