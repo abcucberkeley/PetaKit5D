@@ -56,9 +56,17 @@ void* symbol(void* h, const char* name) {
 }
 void close_library(void* h) { FreeLibrary(reinterpret_cast<HMODULE>(h)); }
 #else
+// (AddressSanitizer's runtime ends a process that loads a library with RTLD_DEEPBIND)
+#if defined(__SANITIZE_ADDRESS__)
+#define PK5D_ASAN 1
+#elif defined(__has_feature)
+#if __has_feature(address_sanitizer)
+#define PK5D_ASAN 1
+#endif
+#endif
 void* open_library(const std::string& path) {
     int fl = RTLD_NOW | RTLD_LOCAL;
-#ifdef RTLD_DEEPBIND
+#if defined(RTLD_DEEPBIND) && !defined(PK5D_ASAN)
     // the loaded library resolves its own symbols first
     fl |= RTLD_DEEPBIND;
 #endif
