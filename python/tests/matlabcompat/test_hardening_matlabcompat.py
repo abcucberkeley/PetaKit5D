@@ -1,5 +1,7 @@
 """Tests the mutation campaign asked for (E06, docs/hardening.md): matlabcompat."""
 
+import math
+
 import numpy as np
 import pytest
 
@@ -18,10 +20,16 @@ def test_imwarp_method_must_be_a_nonempty_string(method):
     assert e.value.identifier == "MATLAB:imwarp:invalidType"
 
 
-@pytest.mark.parametrize("r", [-1, 1.5])
-def test_strel_sizes_must_be_nonnegative_integers(r):
-    with pytest.raises(morphology.MatlabError, match="must be a nonnegative integer"):
+@pytest.mark.parametrize(
+    ("r", "attribute"),
+    [(-1, "Nonnegative"), (1.5, "Integer"), (math.inf, "Integer"), (math.nan, "Integer")],
+)
+def test_strel_sizes_must_be_nonnegative_integers(r, attribute):
+    # validateattributes' identifiers (probed in MATLAB; the oracle cases strel.error.*): an
+    # infinite size was Python's OverflowError
+    with pytest.raises(morphology.MatlabError, match="input number 2, R,") as e:
         morphology.strel("disk", r)
+    assert e.value.identifier == f"MATLAB:strel:expected{attribute}"
 
 
 def test_conndef_type_must_be_minimal_or_maximal():

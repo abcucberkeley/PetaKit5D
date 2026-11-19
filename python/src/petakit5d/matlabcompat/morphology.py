@@ -473,11 +473,36 @@ def _strel_type(name: str) -> str:
     )
 
 
-def _nonneg_int(v: Any, name: str) -> int:
+def _strel_check(ok: bool, attribute: str, what: str, name: str, pos: int) -> None:
+    # validateattributes' error of strel's argument number pos (MATLAB's identifier and text)
+    if not ok:
+        raise MatlabError(
+            f"MATLAB:strel:expected{attribute}",
+            f"Expected input number {pos}, {name}, to be {what}.",
+        )
+
+
+def _integer(v: Any, name: str, pos: int) -> int:
+    """an integer-valued argument (Inf and NaN are not)"""
     f = float(v)
-    if not (f >= 0 and f == math.floor(f) and math.isfinite(f)):
-        raise MatlabError(f"MATLAB:strel:expected{name}", f"{name} must be a nonnegative integer")
+    _strel_check(math.isfinite(f) and f == math.floor(f), "Integer", "integer-valued", name, pos)
     return int(f)
+
+
+def _nonneg_int(v: Any, name: str, pos: int = 2) -> int:
+    """an integer-valued, then nonnegative argument (validateattributes' order)"""
+    n = _integer(v, name, pos)
+    _strel_check(n >= 0, "Nonnegative", "nonnegative", name, pos)
+    return n
+
+
+def _line_args(length: Any, deg: Any) -> tuple[float, float]:
+    """strel('line', LEN, DEG): finite, LEN nonnegative"""
+    lf, df = float(length), float(deg)
+    _strel_check(math.isfinite(lf), "Finite", "finite", "LEN", 2)
+    _strel_check(lf >= 0, "Nonnegative", "nonnegative", "LEN", 2)
+    _strel_check(math.isfinite(df), "Finite", "finite", "DEG", 3)
+    return lf, df
 
 
 def strel(shape: Any, *params: Any) -> Strel:
@@ -499,38 +524,45 @@ def strel(shape: Any, *params: Any) -> Strel:
     if t == "ball":
         raise NotImplementedError("strel('ball', ...) is nonflat; not supported")
     if t == "square":
-        w = _nonneg_int(params[0], "Size")
+        w = _nonneg_int(params[0], "SIZE")
         return _strel_arbitrary(np.ones((w, w), dtype=bool), "square")
     if t == "rectangle":
-        m, n = (_nonneg_int(v, "Size") for v in params[0])
+        m, n = (_nonneg_int(v, "SIZE") for v in params[0])
         return _strel_arbitrary(np.ones((m, n), dtype=bool), "rectangle")
     if t == "cube":
-        w = _nonneg_int(params[0], "Width")
+        w = _nonneg_int(params[0], "WIDTH")
         return _strel_arbitrary(np.ones((w, w, w), dtype=bool), "cube")
     if t == "cuboid":
-        p, m, n = (_nonneg_int(v, "Size") for v in params[0])
+        p, m, n = (_nonneg_int(v, "SIZE") for v in params[0])
         return _strel_arbitrary(np.ones((m, n, p), dtype=bool), "cuboid")
     if t == "disk":
         r = _nonneg_int(params[0], "R")
-        n = 4 if len(params) < 2 else int(params[1])
+        n = 4 if len(params) < 2 else _integer(params[1], "N", 3)
         if n not in (0, 4, 6, 8):
-            raise MatlabError("images:strel:invalidN", "N must be 0, 4, 6, or 8")
+            raise MatlabError(
+                "images:strel:invalidN", "For disk structuring elements, N must be 0, 4, 6, or 8."
+            )
         return _strel_disk(r, n)
     if t == "sphere":
         return _strel_sphere(_nonneg_int(params[0], "R"))
     if t == "diamond":
-        return _strel_diamond(_nonneg_int(params[0], "Size"))
+        return _strel_diamond(_nonneg_int(params[0], "SIZE"))
     if t == "octagon":
-        m = _nonneg_int(params[0], "Size")
+        m = _nonneg_int(params[0], "SIZE")
         if m % 3:
-            raise MatlabError("images:strel:notMultipleOf3", "M must be a multiple of 3")
+            raise MatlabError(
+                "images:strel:notMultipleOf3",
+                "For octagon structuring elements, the SIZE input must be a nonnegative "
+                "multiple of 3.",
+            )
         return _strel_octagon(m)
     if t == "line":
-        return _strel_line(float(params[0]), float(params[1]))
+        return _strel_line(*_line_args(params[0], params[1]))
     if t == "periodicline":
-        return _strel_periodicline(_nonneg_int(params[0], "P"), [int(v) for v in params[1]])
+        p = _nonneg_int(params[0], "P")
+        return _strel_periodicline(p, [_integer(v, "V", 3) for v in params[1]])
     if t == "pair":
-        return _strel_pair([int(v) for v in params[0]])
+        return _strel_pair([_integer(v, "OFFSET", 2) for v in params[0]])
     raise MatlabError("images:strel:unknownStrelType", f"unknown strel type {shape!r}")
 
 

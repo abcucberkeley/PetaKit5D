@@ -68,7 +68,7 @@ def strel_args(args) -> list:
         return [from_matlab(np.asarray(args[0]))]
     name = args[0].lower()
     if name == "cuboid":
-        m, n, p = (int(v) for v in args[1])
+        m, n, p = args[1]
         return [name, (p, m, n)]
     if name == "arbitrary":
         return [name, from_matlab(np.asarray(args[1]))]
@@ -223,6 +223,59 @@ STREL_CASES += [
         {"nh": Value(lambda s=s: np.ones(s, bool, order="F"))},
     )
     for s in [(3, 3), (5, 5), (1, 9), (7, 1), (3, 3, 3), (2, 2), (4, 6, 2), (3, 1, 5)]
+]
+
+
+def strel_error_case(cid: str, args) -> Case:
+    """strel's errors for its arguments: validateattributes' identifier and message (an
+    infinite size raised Python's OverflowError, E06)"""
+    c = strel_case(f"strel.error.{cid}", args)
+    c.expect_error = True
+    c.py_error = M.MatlabError
+    c.error_message = True
+    return c
+
+
+_INF, _NAN = math.inf, math.nan
+STREL_CASES += [
+    strel_error_case(cid, args)
+    for cid, args in [
+        ("disk.inf", ["disk", _INF]),
+        ("disk.minus_inf", ["disk", -_INF]),
+        ("disk.nan", ["disk", _NAN]),
+        ("disk.negative", ["disk", -1]),
+        ("disk.fraction", ["disk", 1.5]),
+        ("disk.negative_fraction", ["disk", -1.5]),
+        ("disk.n_inf", ["disk", 3, _INF]),
+        ("disk.n_nan", ["disk", 3, _NAN]),
+        ("disk.n_5", ["disk", 3, 5]),
+        ("sphere.inf", ["sphere", _INF]),
+        ("sphere.negative", ["sphere", -1]),
+        ("square.inf", ["square", _INF]),
+        ("square.fraction", ["square", 2.5]),
+        ("cube.nan", ["cube", _NAN]),
+        ("cube.negative", ["cube", -2]),
+        ("diamond.inf", ["diamond", _INF]),
+        ("octagon.inf", ["octagon", _INF]),
+        ("octagon.negative", ["octagon", -3]),
+        ("octagon.4", ["octagon", 4]),
+        ("rectangle.inf", ["rectangle", [_INF, 3]]),
+        ("rectangle.negative", ["rectangle", [3, -1]]),
+        ("cuboid.inf", ["cuboid", [1, _INF, 1]]),
+        ("cuboid.fraction", ["cuboid", [1, 1, 1.5]]),
+        ("periodicline.p_inf", ["periodicline", _INF, [1, 1]]),
+        ("periodicline.p_negative", ["periodicline", -1, [1, 1]]),
+        ("periodicline.v_inf", ["periodicline", 2, [1, _INF]]),
+        ("periodicline.v_fraction", ["periodicline", 2, [1.5, 1]]),
+        ("pair.inf", ["pair", [_INF, 0]]),
+        ("pair.nan", ["pair", [0, _NAN]]),
+        ("line.len_nan", ["line", _NAN, 0]),
+        ("line.len_minus_inf", ["line", -_INF, 0]),
+        ("line.len_inf", ["line", _INF, 0]),
+        ("line.len_negative", ["line", -1, 0]),
+        ("line.deg_inf", ["line", 3, _INF]),
+        ("line.deg_nan", ["line", 3, _NAN]),
+    ]
 ]
 
 # ---------------------------------------------------------------------------------------------
