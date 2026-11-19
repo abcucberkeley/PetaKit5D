@@ -11,8 +11,9 @@ decon_mask_edge_erosion_gpu_mex; its cuFFT is 11.0.8, the port's pin):
 - ``<gpu>.*`` (gpu: A100, B200, TitanV): the mex's 'otf', 'omw' and 'rlstep' on the same GPU model
   (cuFFT's kernels, and so its bits, depend on the GPU). Each case runs three Python sides:
   ``.zyx`` and ``.int`` in MATLAB's layout ((z, y, x) volumes, and RL's internal arrays), bit for
-  bit; ``.native`` with the native half spectra, within the proposed tolerance (NATIVE_TOL; the
-  counts are in the K09 report). Cases of another GPU model are skipped.
+  bit; ``.native`` with the native half spectra, within the tolerance approved on 2026-11-12
+  (NATIVE_TOL, row G1 of docs/parity/index.md; the counts are in the K09 report). Cases of
+  another GPU model are skipped.
 - ``any.*``: results that don't depend on the GPU (the erosion is logical; the mex's argument
   errors), on any GPU.
 
@@ -55,12 +56,12 @@ SRC_ROOT = str(Path(G.__file__).resolve().parents[2])
 MODELS = {"A100": "A100", "B200": "B200", "TitanV": "TITAN V"}
 
 NATIVE_TOL = tol(
-    reason="proposed (K09): the native (z, y, x) half spectra on the GPU, cuFFT's other plans",
+    reason="approved (K09, G1): the native (z, y, x) half spectra on the GPU, cuFFT's other plans",
     rel_max=1e-5,
     rel_l2=1e-5,
 )
 NATIVE_OTF = tol(
-    reason="proposed (K09): native half OTFs on the GPU, cuFFT's other plans",
+    reason="approved (K09, G1): native half OTFs on the GPU, cuFFT's other plans",
     rel_max=1e-6,
     rel_l2=1e-6,
 )

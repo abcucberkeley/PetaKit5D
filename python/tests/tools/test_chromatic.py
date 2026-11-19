@@ -155,7 +155,7 @@ def p_wrapper(d, subs, psf, *opts, backend="permissive"):
 # the NCC's peak with the permissive backend (0006: the NCC to 5e-3 in K06's cases; these
 # peaks are within 1e-6), the shifts exact
 PEAK_CLOSE = tol(
-    reason="proposed (B03, as K06): the NCC peaks with the permissive FFT backend", abs=1e-4
+    reason="approved (B03, P8): the NCC peaks with the permissive FFT backend", abs=1e-4
 )
 
 

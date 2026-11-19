@@ -337,9 +337,10 @@ PROBES = [
 
 # MATLAB's single log10 is not correctly rounded (it is 1-2 ulp off the rounded double log10 at
 # 5-10% of the values, and no single-precision formula reproduces it); the port's is the double
-# log10 rounded to single (proposed exception, figure data only: B10's report)
+# log10 rounded to single (figure data only: B10's report; approved on 2026-11-17, row N1 of
+# docs/parity/index.md)
 LOG10_ULP = tol(
-    reason="proposed (B10): figure images, log10 of single within 2 ulp of MATLAB's", ulp=2
+    reason="approved (B10, N1): figure images, log10 of single within 2 ulp of MATLAB's", ulp=2
 )
 
 # MATLAB: the data of the panels (axes with an image, in creation order), the colorbar and

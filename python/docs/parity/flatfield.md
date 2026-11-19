@@ -9,7 +9,7 @@ The light-sheet flat-field correction (`flatfield.correction`, D01) and the came
 estimation (`flatfield.estimation`, B07: `XR_flatfield_background_estimation` and
 `XR_flatfield_background_wrapper`) need no tolerance: all their oracle cases are bit-identical.
 
-## The phase-image flat field (`flatfield.basic`, B07; proposed)
+## The phase-image flat field (`flatfield.basic`, B07; approved 2026-11-18)
 
 `XR_phase_image_flat_field_correction` estimates the flat field of a time point's phase tiles
 with BaSiC (`third_parties/BaSiC-master`, CC BY-NC-ND 4.0, so not ported and not read). The

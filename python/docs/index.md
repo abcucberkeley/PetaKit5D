@@ -28,7 +28,10 @@ microscopy, with MATLAB PetaKit5D's results and files.
 - [platforms.md](platforms.md): Linux, macOS and Windows: toolchains and the same bits on each.
 - [testing.md](testing.md): the oracle harness that compares the port with MATLAB, and the test
   suite; [test_map/README.md](test_map/README.md): what became of each MATLAB test.
-- [benchmarks.md](benchmarks.md): the benchmark harness and the speed gates.
+- [hardening.md](hardening.md): what the suite misses: the mutation campaign, coverage per
+  area, the isolation of every task function and the soak of the job framework.
+- [benchmarks.md](benchmarks.md): the benchmark harness and the speed gates;
+  [benchmarks_e2e.md](benchmarks_e2e.md): whole workflows against MATLAB.
 
 ## Decision records
 
@@ -47,5 +50,6 @@ microscopy, with MATLAB PetaKit5D's results and files.
 ## Per-area differences
 
 [decon.md](parity/decon.md), [demos.md](parity/demos.md), [flatfield.md](parity/flatfield.md),
-[matlabcompat.md](parity/matlabcompat.md), [tools.md](parity/tools.md); the index of all of them
-is [parity/index.md](parity/index.md).
+[matlabcompat.md](parity/matlabcompat.md), [realdata.md](parity/realdata.md),
+[stitch.md](parity/stitch.md), [tools.md](parity/tools.md); the index of all of them is
+[parity/index.md](parity/index.md).

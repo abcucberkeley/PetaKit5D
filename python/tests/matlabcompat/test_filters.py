@@ -8,7 +8,7 @@ RLdecon: edgetaper with fspecial('gaussian', nTapering + 30, nTapering); point d
 imfilter(vol, k, 'conv', 'same', 'symmetric')).
 
 Oracle cases call the built-ins themselves (black box; inputs from our bit-stable generator in
-MATLAB's form, roles map them). Exact unless the case names its tolerance (proposed in
+MATLAB's form, roles map them). Exact unless the case names its tolerance (approved in
 docs/parity/matlabcompat.md).
 
 MATLAB tests whose intent is covered here (their classes belong to other tasks): none is N04's;
@@ -287,7 +287,9 @@ add(
         python=py_imgaussfilt3,
         out_roles=("vol",),
         inputs={"v": Value(lambda: uniform(44, SIZE3["a"], "single"))},
-        compare=tol(reason="proposed: imgaussfilt frequency domain (FFT rounding)", rel_max=1e-6),
+        compare=tol(
+            reason="approved (N5): imgaussfilt frequency domain (FFT rounding)", rel_max=1e-6
+        ),
     )
 )
 add(
@@ -369,7 +371,7 @@ for cls in ("single", "double"):
             python=py_imgaussfilt,
             inputs={"a": Value(lambda cls=cls: uniform(53, SIZE2["b"], cls))},
             compare=tol(
-                reason="proposed: imgaussfilt frequency domain (FFT rounding)", rel_max=1e-6
+                reason="approved (N5): imgaussfilt frequency domain (FFT rounding)", rel_max=1e-6
             ),
         )
     )
@@ -448,7 +450,7 @@ for cls in ("double", "single"):
                     "v": Value(lambda cls=cls: uniform(65, (40, 30, 12), cls)),
                     "k": Value(lambda ks=ks: kernel(66, ks)),
                 },
-                compare=tol(reason="proposed: imfilter general kernels (tap order)", ulp=4),
+                compare=tol(reason="approved (N5): imfilter general kernels (tap order)", ulp=4),
             )
         )
 # the kernel lengths around the switch from the chunked vector code to one chain
@@ -545,7 +547,7 @@ for cls in ("double", "single", "uint16"):
                     "i": Value(lambda cls=cls: uniform(71, (128, 150), cls)),
                     "p": Value(lambda hs=hs, s=s: F.fspecial("gaussian", hs, s)),
                 },
-                compare=tol(reason="proposed: edgetaper (FFT rounding)", rel_max=1e-6, abs=1),
+                compare=tol(reason="approved (N5): edgetaper (FFT rounding)", rel_max=1e-6, abs=1),
             )
         )
 
@@ -682,7 +684,9 @@ add(
         args=[In("a"), 100.0],
         python=py_imgaussfilt,
         inputs={"a": Value(lambda: uniform(98, (1500, 1500), "single"))},
-        compare=tol(reason="proposed: imgaussfilt frequency domain (FFT rounding)", rel_max=1e-6),
+        compare=tol(
+            reason="approved (N5): imgaussfilt frequency domain (FFT rounding)", rel_max=1e-6
+        ),
         marks=("slow",),
     )
 )
@@ -699,7 +703,7 @@ for cls in ("uint16", "single"):
             python=py_rldecon_taper,
             out_roles=("vol",),
             inputs={"v": Value(lambda cls=cls: beads_volume(99, (100, 120, 4), cls))},
-            compare=tol(reason="proposed: edgetaper (FFT rounding)", rel_max=1e-6, abs=1),
+            compare=tol(reason="approved (N5): edgetaper (FFT rounding)", rel_max=1e-6, abs=1),
         )
     )
 add(
@@ -713,29 +717,31 @@ add(
             "v": Value(lambda: beads_volume(100, (48, 40, 20), "double")),
             "k": Value(lambda: kernel(101, (5, 5, 3))),
         },
-        compare=tol(reason="proposed: imfilter general kernels (tap order)", ulp=4),
+        compare=tol(reason="approved (N5): imfilter general kernels (tap order)", ulp=4),
     )
 )
 
 
-# Measured differences (no exact model yet), proposed tolerances (docs/parity/matlabcompat.md,
-# for the orchestrator): the largest distance in ulp and the share of values that differ, each
-# with a margin over the measurement on these cases.
+# Measured differences (no exact model yet), tolerances approved on 2026-11-13
+# (docs/parity/matlabcompat.md, row N5 of docs/parity/index.md): the largest distance in ulp and
+# the share of values that differ, each with a margin over the measurement on these cases.
 _COLUMN_TAIL = (
-    "proposed: imfilter's column pass with zero padding or 'full', rows of the last vectors "
+    "approved (N5): imfilter's column pass with zero padding or 'full', rows of the last vectors "
     "(double 7 taps or more, single 11 or more; 'full' from 5)"
 )
 _SMALL_2D = (
-    "proposed: imgaussfilt's small (< 49 values) 2-D kernels, imfilter's 2-D vector code "
+    "approved (N5): imgaussfilt's small (< 49 values) 2-D kernels, imfilter's 2-D vector code "
     "(tap order not measured)"
 )
-_GENERAL = "proposed: imfilter with general 2-D and 3-D kernels (tap order not measured)"
+_GENERAL = "approved (N5): imfilter with general 2-D and 3-D kernels (tap order not measured)"
 _LONG = (
-    "proposed: conv2 with long kernels (imgaussfilt's separable path, kernels of 21 or more taps)"
+    "approved (N5): conv2 with long kernels (imgaussfilt's separable path, kernels of 21 or "
+    "more taps)"
 )
-_SPARSE = "proposed: imfilter's plain path for sparse arrays, borders of padded arrays"
+_SPARSE = "approved (N5): imfilter's plain path for sparse arrays, borders of padded arrays"
 _INT = (
-    "proposed: integer results one count off where the double result is within rounding of a half"
+    "approved (N5): integer results one count off where the double result is within rounding "
+    "of a half"
 )
 TOLERANCES = {
     "imf.double.col5.full": tol(reason=_COLUMN_TAIL, ulp=2, max_frac=0.01),

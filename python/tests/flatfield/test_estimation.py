@@ -11,7 +11,7 @@ fails on. Inputs are made in Python's form and handed to MATLAB as files.
 
 The phase flat field: the pre-filter (``imgaussfilt`` sigma 100, frequency domain: within the
 filters' tolerance) and the BaSiC flat field, which BaSiCPy estimates as another implementation
-of the method (the tolerance of docs/parity/flatfield.md, proposed). Its cases need BaSiCPy.
+of the method (the tolerance of docs/parity/flatfield.md, approved). Its cases need BaSiCPy.
 Then FlatfieldBackgroundEstimationTest's and PhaseFlatFieldCorrectionTest's methods.
 """
 
@@ -508,10 +508,10 @@ def phase_tree(shape, n, name):
 # value of the pre-filtered tiles, whose rounding is relative to the largest
 PREFILTER_TOL = tol(reason="matlabcompat: imgaussfilt frequency domain", rel_max=1e-6)
 MINVAL_TOL = tol(reason="matlabcompat: imgaussfilt frequency domain", abs=0.01)
-# docs/parity/flatfield.md (proposed): BaSiCPy's flat field against MATLAB's BaSiC, and the
-# tiles divided by it (uint16: plus their rounding): 12 tiles or more (the phase demo's 20
-# measured 5.6% at most, 0.64% in L2); 8 tiles with strong vignetting differ more
-BASIC = "flatfield: BaSiCPy flat field (proposed)"
+# docs/parity/flatfield.md (approved 2026-11-18, N8): BaSiCPy's flat field against MATLAB's
+# BaSiC, and the tiles divided by it (uint16: plus their rounding): 12 tiles or more (the phase
+# demo's 20 measured 5.6% at most, 0.64% in L2); 8 tiles with strong vignetting differ more
+BASIC = "flatfield: BaSiCPy flat field (approved, N8)"
 FEW_TILES = {"rel": 0.12, "rel_l2": 0.03}
 TILES = {"rel": 0.06, "rel_l2": 0.01}
 

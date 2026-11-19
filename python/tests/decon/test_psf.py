@@ -73,10 +73,11 @@ PERMISSIVE = tol(
 )
 # one plane left (new_nz = 1): the plane's inverse transform is negative but for rounding noise, so
 # MATLAB's result is that noise above 0 (at most 1.6e-4); the permissive backend's noise differs at
-# about 7e-8 of the raw PSF's largest value, as everywhere: proposed, 1e-6 of it (about 2,200)
+# about 7e-8 of the raw PSF's largest value, as everywhere: 1e-6 of it (about 2,200), approved
+# on 2026-11-12 (row P6 of docs/parity/index.md)
 PERMISSIVE_ONE_PLANE = tol(
-    reason="proposed (R01): a PSF resampled to one plane is rounding noise; with the permissive "
-    "backend |difference| <= 1e-6 of the raw PSF's largest value",
+    reason="approved (R01, P6): a PSF resampled to one plane is rounding noise; with the "
+    "permissive backend |difference| <= 1e-6 of the raw PSF's largest value",
     abs=2.2e-3,
 )
 SIN_32_45 = 0.5365729180004349  # MATLAB's sind(32.45)

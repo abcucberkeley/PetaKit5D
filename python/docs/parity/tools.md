@@ -76,7 +76,7 @@ With the guide value `1/(1 + h^3/6)` the documentation gives for the "favorable 
 earlier version of this port), only 17.5% of the radii were MATLAB's and the resolutions differed
 by up to 44%.
 
-Proposed tolerance (`RES` and `RES_VALUES` in `tests/tools/test_fsc.py`, and
+The tolerance, approved on 2026-11-18 (`RES` and `RES_VALUES` in `tests/tools/test_fsc.py`, and
 `test_resolution_of_matlabs_fsc`, which applies the port's `XR_FSC_resolution` to MATLAB's own
 curves): `comp_angles` and `thetas` exact; every radius within 1 step of 1e-4 of MATLAB's; the
 resolutions within 1% relative (one step at the smallest radii); Inf and NaN at the same places.

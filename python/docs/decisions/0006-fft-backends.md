@@ -1,8 +1,8 @@
 # 0006: Two CPU FFT backends: pocketfft by default, FFTW as an optional add-on
 
 Status: accepted (2026-11-12): pocketfft is the default CPU FFT backend, FFTW an optional GPL
-add-on; the tolerances below are proposed. Measured on Linux x86-64 (24-core nodes, Xeon Gold
-6146, glibc 2.28, GCC 13.2) against MATLAB R2024b Update 5.
+add-on; the tolerances below were approved the same day. Measured on Linux x86-64 (24-core
+nodes, Xeon Gold 6146, glibc 2.28, GCC 13.2) against MATLAB R2024b Update 5.
 
 ## Context
 
@@ -120,7 +120,7 @@ compiles the vector code; the build has not been tried with it (no Windows machi
 from a Developer prompt, `pip install ./python -C cmake.define.CMAKE_C_COMPILER=clang-cl
 -C cmake.define.CMAKE_CXX_COMPILER=clang-cl`; the other kernels then need clang-cl's OpenMP.
 
-## Tolerances (proposed)
+## Tolerances (approved 2026-11-12)
 
 For results of the permissive backend against MATLAB's:
 

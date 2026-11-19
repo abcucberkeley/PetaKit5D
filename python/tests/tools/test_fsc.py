@@ -26,7 +26,7 @@ Each FFT case runs on both FFT backends: ``.exact`` (the FFTW add-on; skipped wi
 where MATLAB's FFT bits don't hold) gives MATLAB's FSC curves bit for bit, ``.permissive``
 within decision record 0006's double tolerance. The resolutions come from the published
 smoothing spline with csaps's documented default, not MathWorks's code (the module): every
-radius measured is MATLAB's, and they are compared with the tolerance proposed in
+radius measured is MATLAB's, and they are compared with the tolerance approved (2026-11-18) in
 docs/parity/tools.md (one grid step).
 """
 
@@ -73,7 +73,7 @@ PERMISSIVE = tol(
     rel_l2=1e-14,
 )
 
-# the resolution (docs/parity/tools.md, proposed): the port's smoothing spline is the published
+# the resolution (docs/parity/tools.md, approved, N3): the port's smoothing spline is the published
 # method with csaps's documented default, not MathWorks's code, so its last bits differ; every
 # radius found on MATLAB's grid of 1e-4 is MATLAB's (all measured are), allowing RES_STEPS step
 # where the smoothed curve meets the threshold within those last bits; the resolutions within
@@ -149,11 +149,11 @@ def _rel_problems(r: np.ndarray, a: np.ndarray, rel: float, path: str) -> list[s
 
 RES = Custom(
     lambda r, a: _res_problems(r, a, RES_STEPS, RES_REL),
-    f"resolution: the radii within {RES_STEPS} step of 1e-4 (proposed, docs/parity/tools.md)",
+    f"resolution: the radii within {RES_STEPS} step of 1e-4 (approved, N3: docs/parity/tools.md)",
 )
 RES_VALUES = Custom(
     lambda r, a: _rel_problems(_data(r), _data(a), RES_REL, "res"),
-    f"resolution values within {RES_REL:g} relative (proposed, docs/parity/tools.md)",
+    f"resolution values within {RES_REL:g} relative (approved, N3: docs/parity/tools.md)",
 )
 
 
@@ -856,7 +856,7 @@ SPLINE_CASES = [
 @pytest.mark.parametrize("case", SPLINE_CASES, ids=lambda c: c.id[: -len(".permissive")])
 def test_resolution_of_matlabs_fsc(case):
     # XR_FSC_resolution of MATLAB's own FSC curves (no FFT difference): only the smoothing
-    # spline differs, and the radii are MATLAB's (docs/parity/tools.md, proposed)
+    # spline differs, and the radii are MATLAB's (docs/parity/tools.md, approved: N3)
     ref = oracle.reference(case)
     checked, probs = 0, []
     for i_f, i_r, kw in _pairs_of(case):

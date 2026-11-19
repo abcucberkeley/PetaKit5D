@@ -124,12 +124,14 @@ writes a launcher that
   variable `PETAKIT5D_MASTER` give another command.
 
 Replacing the file in a GUI install (keep the original) makes the GUI run the port; nothing
-in the GUI changes. The GUI's `linux_with_jvm/run_mccMaster.sh` is used for
-XR_visualize_OTF_mask_segmentation, XR_FSC_analysis_wrapper and the PSF analysis, which are not
-ported. On Windows the GUI starts `mcc/windows/mccMaster` (an .exe) without a Runtime folder:
-a copy of the `pk5d-master.exe` console script under that name has the same convention
-(untested). A one-line GUI change to read the master's path from its settings would make the
-copy unnecessary (PLAN open question 5).
+in the GUI changes. The GUI's `linux_with_jvm/run_mccMaster.sh` (the compiled master with Java,
+for MATLAB's figures) is used for XR_visualize_OTF_mask_segmentation, XR_FSC_analysis_wrapper and
+the PSF analysis. They are ported too: replace that launcher the same way
+(`pk5d mcc-shim <install>/PetaKit5D/mcc/linux_with_jvm/run_mccMaster.sh`); their figures need the
+`figures` extra (matplotlib). On Windows the GUI starts `mcc/windows/mccMaster` (an .exe)
+without a Runtime folder: a copy of the `pk5d-master.exe` console script under that name has
+the same convention (untested). A one-line GUI change to read the master's path from its
+settings would make the copy unnecessary (PLAN open question 5).
 
 ## What the corpus test covers
 

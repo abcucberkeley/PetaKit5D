@@ -133,19 +133,19 @@ def _power_close(power):
 
 GAMMA_CLOSE = Custom(
     _power_close(np.square),
-    "proposed (B04): MIPs and slices with the permissive FFT backend, |F|/max (their square) "
+    "approved (B04, P9): MIPs and slices with the permissive FFT backend, |F|/max (their square) "
     "within 0006's single tolerance",
 )
 STACK_CLOSE = Custom(
     _power_close(lambda v: np.power(10.0, v)),
-    "proposed (B04): the log10 spectrum with the permissive FFT backend, |F|/max (10^) within "
-    "0006's single tolerance",
+    "approved (B04, P9): the log10 spectrum with the permissive FFT backend, |F|/max (10^) "
+    "within 0006's single tolerance",
 )
 
 
 # MATLAB's single log10 is not correctly rounded (1 or 2 ulp off at 14% of the probe's values,
 # as B10 found); the port's is (the probe case pins both)
-LOG10_ULP = tol(reason="proposed (B04, as B10): log10 of single within 2 ulp of MATLAB's", ulp=2)
+LOG10_ULP = tol(reason="approved (B04, N1): log10 of single within 2 ulp of MATLAB's", ulp=2)
 
 
 def spectrum_tree(backend, stack=False):
