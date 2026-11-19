@@ -456,6 +456,17 @@ def test_load_spec_checks(tmp_path):
         )
 
 
+def test_gpu_process_costs_matlab_starts_as_petakit5d_gpu_tasks():
+    # usable_gpu_num (on the path after setup) before gpuDevice, as the GPU tasks do: R2024b's
+    # gpuDevice refuses GPUs newer than it supports (compute capability 10.0) until forward
+    # compatibility is on, so the MATLAB rounds failed on such GPUs
+    py = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    spec = bench.load_spec(os.path.join(py, "benchmarks", "common", "process_costs_gpu.json"))
+    (ml,) = [v for v in spec["variants"] if v["impl"] == "matlab"]
+    assert ml.get("setup", True)
+    assert ml["code"].index("usable_gpu_num()") < ml["code"].index("gpuDevice")
+
+
 def test_run_interleaves_and_writes_a_result(tmp_path, monkeypatch):
     monkeypatch.setenv("PK5D_SRC", str(tmp_path))
     script = tmp_path / "s.py"
