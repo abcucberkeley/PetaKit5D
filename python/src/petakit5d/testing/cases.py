@@ -63,6 +63,12 @@ from petakit5d.testing.compare import (
 )
 
 FORMAT = 2  # case key format; bump when the meaning of a key or of a stored result changes
+# How File and Tree inputs enter the key: "content" (since 2026-11-19) hashes a tiff by its
+# decoded voxels and tags and a zarr by its decoded voxels and metadata (testing.content), so
+# that the bytes cpp-tiff and cpp-zarr versions write for them don't count; "bytes" is the
+# earlier hash of every file's bytes, which `oracle rekey` maps from. Other files are hashed by
+# their bytes in both, so the keys of cases without tiff or zarr inputs are the same.
+SCHEMES = ("content", "bytes")
 
 
 # ---------------------------------------------------------------------------------------------
@@ -501,25 +507,76 @@ UUID_LOG_ENV = "PETAKIT5D_UUID_LOG"  # core.ids.get_uuid appends its values ther
 _ZARR_META = frozenset((".zarray", ".zattrs", ".zgroup", "zarr.json"))
 
 
+def _is_tiff(name: str) -> bool:
+    return name.lower().endswith((".tif", ".tiff"))
+
+
+def _scheme(scheme: str) -> str:
+    if scheme not in SCHEMES:
+        raise ValueError(f"key scheme {scheme!r}: one of {SCHEMES}")
+    return scheme
+
+
 def _walk_order(entry: tuple) -> str:
     """the sort key of an os.walk entry: its folder with '/' separators"""
     return entry[0].replace(os.sep, "/")
 
 
-def tree_hash(root: str | os.PathLike, content: bool = True) -> str:
-    """SHA-256 of a folder: relative paths with the bytes (or only the sizes) of every file"""
+def _decoded_zarrs(root: Path) -> dict[str, str]:
+    """{'/' path relative to root ('' for root itself): content digest} of the zarr folders
+    under root (outermost only) whose content decodes"""
+    from petakit5d.testing import content
+
+    out: dict[str, str] = {}
+    for dp, dns, _ in os.walk(root):
+        d = Path(dp)
+        if content.is_zarr_folder(d):
+            dg = content.zarr_digest(d)
+            if dg is not None:
+                out["" if d == root else d.relative_to(root).as_posix()] = dg
+                dns[:] = []
+    return out
+
+
+def _inside(rel: str, zarrs: dict[str, str]) -> bool:
+    return any(z == "" or rel == z or rel.startswith(z + "/") for z in zarrs)
+
+
+def tree_hash(root: str | os.PathLike, content: bool = True, decoded: bool = False) -> str:
+    """SHA-256 of a folder: relative paths with the bytes (or only the sizes) of every file.
+
+    decoded (with content): a tiff by its decoded content and a zarr folder (named *.zarr, with
+    its metadata) by its decoded voxels and metadata (testing.content), so that the bytes a
+    library writes for them don't count; one that doesn't decode by its bytes as before. A
+    folder without tiff and zarr files hashes the same either way."""
     root = Path(root)
     h = hashlib.sha256(b"pk1:tree:" if content else b"pk1:stat:")
+    zarrs = _decoded_zarrs(root) if content and decoded else {}
+    if "" in zarrs:
+        h.update(f"\0zarr:{zarrs['']}\n".encode())
+        return h.hexdigest()
     # folders in the order of their '/' paths on every system (Windows' '\' sorts after digits
     # and '/' before them: '10' came before '1\2' there, after '1/2' here)
     for dp, dns, fns in sorted(os.walk(root), key=_walk_order):
         dns.sort()
         d = Path(dp)
+        drel = d.relative_to(root).as_posix()
+        if zarrs and _inside(drel, zarrs):
+            if drel in zarrs:
+                h.update(f"{drel}/\0zarr:{zarrs[drel]}\n".encode())
+            continue
         if not dns and not fns and d != root:
             h.update(d.relative_to(root).as_posix().encode() + b"/\n")
         for fn in sorted(fns):
             p = d / fn
             rel = p.relative_to(root).as_posix()
+            if content and decoded and _is_tiff(fn):
+                from petakit5d.testing.content import tiff_digest
+
+                dg = tiff_digest(p)
+                if dg is not None:
+                    h.update(f"{rel}\0tiff:{dg}\n".encode())
+                    continue
             if fn in _ZARR_META:
                 # cpp-zarr writes its JSON in text mode (CRLF on Windows), which MATLAB reads
                 # the same: hashed with LF line ends, as on Linux
@@ -536,11 +593,11 @@ def tree_hash(root: str | os.PathLike, content: bool = True) -> str:
 
 
 class Input:
-    """base of the input kinds"""
+    """base of the input kinds; ``hash(scheme)`` is what the case key takes (``SCHEMES``)"""
 
     kind = ""
 
-    def hash(self) -> str:
+    def hash(self, scheme: str = "content") -> str:
         raise NotImplementedError
 
 
@@ -573,19 +630,23 @@ class Value(Input):
             self._mv = to_mvalue(self._value())
         return self._mv
 
-    def hash(self) -> str:
+    def hash(self, scheme: str = "content") -> str:
+        _scheme(scheme)
         return vhash(self.mvalue())
 
 
 class File(Input):
-    """a generated file: ``make(path)`` writes it; it is copied to ``<work>/<name>``"""
+    """a generated file: ``make(path)`` writes it; it is copied to ``<work>/<name>``
+
+    Its hash: a tiff (named .tif or .tiff) by its decoded content, any other file (and a tiff
+    that does not decode) by its bytes."""
 
     kind = "file"
 
     def __init__(self, make: Callable[[Path], Any], name: str):
         self.make, self.name = make, name
         self._local: Path | None = None
-        self._h: str | None = None
+        self._h: dict[str, str] = {}
 
     def local(self) -> Path:
         if self._local is None:
@@ -598,23 +659,34 @@ class File(Input):
             self._local = p
         return self._local
 
-    def hash(self) -> str:
-        if self._h is None:
+    def hash(self, scheme: str = "content") -> str:
+        if _scheme(scheme) not in self._h:
             from petakit5d.testing.compare import sha256_file
 
-            self._h = hashlib.sha256(b"pk1:file:" + sha256_file(self.local()).encode()).hexdigest()
-        return self._h
+            h = None
+            if scheme == "content" and _is_tiff(self.name):
+                from petakit5d.testing.content import tiff_digest
+
+                dg = tiff_digest(self.local())
+                if dg is not None:
+                    h = hashlib.sha256(b"pk2:tiff:" + dg.encode()).hexdigest()
+            if h is None:
+                h = hashlib.sha256(b"pk1:file:" + sha256_file(self.local()).encode()).hexdigest()
+            self._h[scheme] = h
+        return self._h[scheme]
 
 
 class Tree(Input):
-    """a generated folder: ``make(folder)`` fills it; it is copied to ``<work>/<name>/``"""
+    """a generated folder: ``make(folder)`` fills it; it is copied to ``<work>/<name>/``
+
+    Its hash: ``tree_hash`` with the tiff and zarr files by their decoded content."""
 
     kind = "tree"
 
     def __init__(self, make: Callable[[Path], Any], name: str):
         self.make, self.name = make, name
         self._local: Path | None = None
-        self._h: str | None = None
+        self._h: dict[str, str] = {}
 
     def local(self) -> Path:
         if self._local is None:
@@ -624,10 +696,10 @@ class Tree(Input):
             self._local = d
         return self._local
 
-    def hash(self) -> str:
-        if self._h is None:
-            self._h = tree_hash(self.local())
-        return self._h
+    def hash(self, scheme: str = "content") -> str:
+        if _scheme(scheme) not in self._h:
+            self._h[scheme] = tree_hash(self.local(), decoded=scheme == "content")
+        return self._h[scheme]
 
 
 class Data(Input):
@@ -635,7 +707,8 @@ class Data(Input):
     environment variables (``$PETAKIT5D_DEMO_DATA/...``)
 
     copy: copied into the work folder as ``name`` (functions may write next to their input);
-    else the path itself is passed. content: hash file contents (else names and sizes).
+    else the path itself is passed. content: hash file contents (else names and sizes). Data
+    is not written by the tests, so its bytes stay; it is hashed the same in every scheme.
     """
 
     kind = "data"
@@ -655,7 +728,8 @@ class Data(Input):
             )
         return p
 
-    def hash(self) -> str:
+    def hash(self, scheme: str = "content") -> str:
+        _scheme(scheme)
         if self._h is None:
             p = self.local()
             if p.is_dir():
@@ -798,34 +872,43 @@ class Case:
 
     # the key: what determines MATLAB's result
 
-    def key(self, harness: Path | None = None) -> str:
+    def key(self, harness: Path | None = None, *, scheme: str = "content") -> str:
+        """the case key; ``scheme`` 'bytes' gives the key the case had before file inputs were
+        hashed by their decoded content (``SCHEMES``; for ``oracle rekey``)"""
+        if _scheme(scheme) == "bytes":
+            return self._make_key(harness, scheme)
         if self._key is None:
-            spec = {
-                "format": FORMAT,
-                "matlab": self.matlab or "",
-                "code": self.code or "",
-                "nargout": self.nargout,
-                "args": vhash(self._args_mvalue(lambda ph: MRef("", self.inputs[ph.name].hash()))),
-                "inputs": {n: f"{x.kind}:{x.hash()}" for n, x in sorted(self.inputs.items())},
-                "names": {n: getattr(x, "name", "") for n, x in sorted(self.inputs.items())},
-                "files": self.captures_files,
-                "device": self.device,
-                "helpers": _helpers_hash(self.helpers),
-                "harness": _harness_file_hash(self.matlab, harness),
-            }
-            # InPath(key) of an input whose name differs from its key: MATLAB resolved the key
-            # until the harness resolved the name (results made before are not reused)
-            renamed = {
-                p.name: self.inputs[p.name].name
-                for p in _placeholders(self.args)
-                if p.what == "path" and getattr(self.inputs[p.name], "name", p.name) != p.name
-            }
-            if renamed:
-                spec["paths"] = renamed
-            self._key = hashlib.sha256(
-                json.dumps(spec, sort_keys=True, separators=(",", ":")).encode()
-            ).hexdigest()
+            self._key = self._make_key(harness, scheme)
         return self._key
+
+    def _make_key(self, harness: Path | None, scheme: str) -> str:
+        spec = {
+            "format": FORMAT,
+            "matlab": self.matlab or "",
+            "code": self.code or "",
+            "nargout": self.nargout,
+            "args": vhash(
+                self._args_mvalue(lambda ph: MRef("", self.inputs[ph.name].hash(scheme)))
+            ),
+            "inputs": {n: f"{x.kind}:{x.hash(scheme)}" for n, x in sorted(self.inputs.items())},
+            "names": {n: getattr(x, "name", "") for n, x in sorted(self.inputs.items())},
+            "files": self.captures_files,
+            "device": self.device,
+            "helpers": _helpers_hash(self.helpers),
+            "harness": _harness_file_hash(self.matlab, harness),
+        }
+        # InPath(key) of an input whose name differs from its key: MATLAB resolved the key
+        # until the harness resolved the name (results made before are not reused)
+        renamed = {
+            p.name: self.inputs[p.name].name
+            for p in _placeholders(self.args)
+            if p.what == "path" and getattr(self.inputs[p.name], "name", p.name) != p.name
+        }
+        if renamed:
+            spec["paths"] = renamed
+        return hashlib.sha256(
+            json.dumps(spec, sort_keys=True, separators=(",", ":")).encode()
+        ).hexdigest()
 
     def _args_mvalue(self, input_ref: Callable[[MPlaceholder], MValue]) -> MCell:
         args = _strip_roles(list(self.args))  # roles change neither MATLAB's call nor the key
@@ -857,24 +940,24 @@ class Case:
         return _walk(mv, data_paths)
 
     def check_inputs(self) -> list[str]:
-        """problems of the generated inputs: each is made a second time and must give the
-        same bytes (otherwise a reference cannot be matched when they are made again, as CI does)"""
+        """problems of the generated inputs: each is made a second time and must give the same
+        content (what the key takes) and the same bytes (MATLAB reads the stored copy, Python
+        makes it again, as CI does)"""
         out = []
         for name, x in sorted(self.inputs.items()):
             if isinstance(x, Value):
-                h = x.hash()
-                again = vhash(to_mvalue(x.make()))
+                pairs = [("bytes", x.hash(), vhash(to_mvalue(x.make())))]
             elif isinstance(x, (File, Tree)):
-                h = x.hash()
                 fresh = type(x)(x.make, x.name)
-                again = fresh.hash()
+                pairs = [(s, x.hash(s), fresh.hash(s)) for s in SCHEMES]
             else:
                 continue
-            if again != h:
+            what = [s for s, h, again in pairs if again != h]
+            if what:
                 out.append(
-                    f"case {self.id}: input {name!r} is not deterministic (made twice, the bytes "
-                    "differ; "
-                    "files must not hold times, uuids or random data)"
+                    f"case {self.id}: input {name!r} is not deterministic (made twice, the "
+                    f"{' and the '.join(what)} differ; files must not hold times, uuids or "
+                    "random data)"
                 )
         return out
 

@@ -86,11 +86,14 @@ def test_matlab(case, tmp_path):
 ### Inputs and placeholders
 
 Inputs are made by deterministic Python functions and written once; MATLAB reads them from the
-store, Python makes them again (in CI too) and the case key checks that the bytes are the same.
-**A generator must give the same bytes every time**: no times, uuids, random seeds from the
-clock or library versions that change the output. `oracle run` makes each input twice and
-refuses to run MATLAB when they differ (`scipy.io.savemat` writes the time into the header, for
-example: overwrite it).
+store, Python makes them again (in CI too) and the case key checks that they are the same: a
+tiff or a zarr folder in a `File` or `Tree` input by its decoded content (a tiff's voxels and
+tags, a zarr's voxels and metadata: `petakit5d.testing.content`), any other file by its bytes.
+So a cpp-tiff or cpp-zarr version that writes the same data with other bytes keeps the keys.
+**A generator must give the same output every time**: no times, uuids, random seeds from the
+clock or library versions that change the data. `oracle run` makes each input twice and
+refuses to run MATLAB when the content or the bytes differ (`scipy.io.savemat` writes the time
+into the header, for example: overwrite it).
 
 A MATLAB session reads each input file once, and every case gets arrays of its own (and its
 own copy of a `containers.Map`): a case whose MATLAB code writes into an input in place through
@@ -280,7 +283,8 @@ checks that their inputs are deterministic, puts the inputs in the store, and ru
 store lacks for the current oracle commit in **one MATLAB session** (a pack); each result is
 published as soon as it is complete. With `--manifest` it writes the manifests of the selected
 modules (`orun.sh -M` copies them into your worktree). Other commands: `manifest` (write
-manifests from the store), `status` (store and manifest state of the selected cases),
+manifests from the store), `status` (store and manifest state of the selected cases), `rekey`
+(move references made with the earlier keys by bytes to the keys by content: below),
 `clean-staging --hours N` (remove leftovers of stopped sessions).
 
 The session: `cd` to the oracle tree, `setup([])`, the pack's copy of `+pkpy_oracle` (and the
@@ -305,20 +309,48 @@ key format (`FORMAT` in `cases.py`, bumped when the meaning of a key or a stored
 ## How a case is identified
 
 The **key** is the SHA-256 of what determines MATLAB's result: the key format, the function or
-code, `nargout`, the arguments (values by their hash, placeholders by name), the content hash
-of every input and its name in the work folder, whether files are captured, the device, the
+code, `nargout`, the arguments (values by their hash, placeholders by name), the hash of every
+input and its name in the work folder, whether files are captured, the device, the
 helper folders' contents and, for the harness's own `pkpy_oracle.*` functions, their file. The
 Python side, the roles, the comparison and the case id are not part of it. Results are stored by oracle
 commit and key; the manifest keeps the key, so CI notices a case or input that changed since its
 reference was made, and every entry names its oracle commit, so a reference made with another
 commit is flagged (`check_manifests`, and `test_repo_manifests_use_the_current_oracle`).
 
+An input's hash: a `Value` by its value (`vhash`); a `File` or `Tree` by the bytes of its files,
+except tiff files and zarr folders (`*.zarr` with their metadata), which count by their
+decoded content (`testing.content`: a tiff's data type, pages' shape, voxels and tags without
+the layout and writer ones; a zarr array's voxels and its format, shape, chunks, data type,
+order, fill value and attributes, not its compressor, filters, separator or chunk bytes), so
+that the bytes a library version writes for the same data don't change the key. A tiff or zarr
+that does not decode counts by its bytes. A `Data` input (existing data, not written by the
+tests) counts by its bytes or sizes as before.
+
+**Keys by content since 2026-11-19.** Before, every file of an input counted by its bytes, so
+cpp-tiff 1.8.0 (which places each page's strip after its IFD) changed the keys of every case
+with a tiff input. `Case.key(scheme='bytes')` gives that earlier key, and
+
+```
+python -m petakit5d.testing.oracle rekey [--dry-run] [--report rows.json] <pytest selection>
+```
+
+moves the selected cases' references to their keys by content (with the library versions their
+inputs were made with): it copies each result stored under the earlier key, unchanged, to the
+new key (every file checked against the original, then one rename; the copy holds
+`migrated.json` with its earlier key, and `<commit7>/.rekey/` logs each run), checks that the
+copy reads as the original, gives the manifest entries the new key and their tiff descriptors'
+tags (read from the store, each checked to be the file the entry describes) and refuses to
+change anything else of an entry. Cases whose inputs have no tiff or zarr keep their keys and
+results. Run it again on a branch whose manifests were written before; it skips what is done.
+
 ## The golden store and concurrency
 
 ```
 <store>/inputs/<hh>/<hash>.pkv|.file|.tree     inputs, by content hash
 <store>/<commit7>/<hh>/<key>/                  one case: meta.json, outputs.pkv, files/, decoded/, stdout.txt
+                                               (migrated.json: a result copied from its earlier key)
 <store>/<commit7>/.staging/<pack>/<key>/       a result being written (never read)
+<store>/<commit7>/.rekey/<run>.json            the results each rekey run copied (old and new keys)
 ```
 
 Each result is written into the session's own staging folder and published with **one
@@ -384,7 +416,9 @@ case (a changed case is one changed line); older layouts are read too.
 
 - *no MATLAB reference*: run `orun.sh` for the module, then `orun.sh -M`.
 - *the case or its inputs changed since its reference was made*: rerun `orun.sh -M`; if you
-  changed nothing, an input generator is not deterministic on this platform.
+  changed nothing, an input generator is not deterministic on this platform, or the manifest
+  was written with the earlier keys by bytes (`oracle rekey` on the module, with the pinned
+  libraries).
 - *reference made with oracle X*: the manifest predates the current oracle tree.
 - *MATLAB raised ...; set expect_error=True*: the case calls MATLAB wrongly, or tests an error.
 - a size like `MATLAB [10 12 8], Python [8 10 12]`, or a hint that names the mapping: an

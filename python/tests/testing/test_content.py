@@ -1,23 +1,31 @@
-"""Decoded content of tiff and zarr files (petakit5d.testing.content): what the comparison of
-output tiffs takes (and the case keys of file inputs will), so that the bytes cpp-tiff and cpp-zarr
+"""Decoded content of tiff and zarr files (petakit5d.testing.content): what the case keys of
+file inputs and the comparison of output tiffs take, so that the bytes cpp-tiff and cpp-zarr
 versions write for the same data (strip and IFD offsets, page placement, compressed chunks)
 don't count, while a voxel, a tag or a metadata field of their own does."""
 
+import hashlib
 import json
 import math
+import os
 import struct
+from pathlib import Path
 
 import numpy as np
 import pytest
 
-from petakit5d.testing import cases, content
+from petakit5d.testing import cases, content, oracle
+from petakit5d.testing.cases import Case, File, InPath, Tree
 from petakit5d.testing.compare import (
     Masks,
+    MCell,
     compare_trees,
     describe_tree,
     scan_tree,
+    sha256_file,
+    to_mvalue,
     tree,
     tree_from_descriptor,
+    write_pkv,
 )
 
 cpptiff = pytest.importorskip("cpptiff")
@@ -346,3 +354,279 @@ def test_lzw_against_uncompressed_names_the_compression(tmp_path):
     rep = compare_trees(scan_tree(tmp_path / "a"), scan_tree(tmp_path / "b"))
     assert "files/im.tif: tags: page 0 Compression (259): MATLAB [5], Python [1]" in rep.text()
     assert "voxels" not in rep.text()
+
+
+# --- keys of file inputs ------------------------------------------------------------------------
+
+
+def _tree(vol, layout, cname):
+    def make(d):
+        raw_tiff(d / "a.tif", vol, **layout)
+        zarr(d / "b.zarr", vol, cname=cname)
+        (d / "sub").mkdir()
+        (d / "sub" / "c.txt").write_text("c\n", newline="\n")
+
+    return make
+
+
+def _case(inputs):
+    return Case("k", matlab="f", args=[InPath(n) for n in inputs], python=None, inputs=inputs)
+
+
+def test_keys_of_file_inputs_are_their_content(tmp_path):
+    vol = stack()
+    a = _case({"t": File(lambda p: raw_tiff(p, vol), "im.tif")})
+    b = _case({"t": File(lambda p: raw_tiff(p, vol, strips_first=False), "im.tif")})
+    c = _case({"t": File(lambda p: raw_tiff(p, vol + 1), "im.tif")})
+    assert a.key() == b.key() != c.key()
+    assert a.key(scheme="bytes") != b.key(scheme="bytes")
+    ta = _case({"d": Tree(_tree(vol, {}, "zstd"), "d")})
+    tb = _case({"d": Tree(_tree(vol, LAYOUTS["big_endian_classic"], "lz4"), "d")})
+    tc = _case({"d": Tree(_tree(vol[:2], {}, "zstd"), "d")})
+    assert ta.key() == tb.key() != tc.key()
+    assert ta.key(scheme="bytes") != tb.key(scheme="bytes")
+    with pytest.raises(ValueError, match="key scheme"):
+        ta.key(scheme="layout")
+
+
+def test_the_bytes_scheme_is_the_earlier_key(tmp_path):
+    """'bytes' hashes every file by its bytes, as keys were made before 2026-11-19 (what
+    oracle rekey maps from)"""
+    vol = stack()
+    f = File(lambda p: raw_tiff(p, vol), "im.tif")
+    want = hashlib.sha256(b"pk1:file:" + sha256_file(f.local()).encode()).hexdigest()
+    assert f.hash("bytes") == want != f.hash()
+    t = Tree(_tree(vol, {}, "zstd"), "d")
+    assert t.hash("bytes") == cases.tree_hash(t.local()) != t.hash()
+
+
+def test_inputs_without_tiff_or_zarr_keep_their_keys(tmp_path):
+    def make(d):
+        (d / "a.txt").write_text("a\n", newline="\n")
+        (d / "s").mkdir()
+        (d / "s" / "b.json").write_text('{"b": 1}', newline="\n")
+        (d / "empty").mkdir()
+
+    t = Tree(make, "d")
+    assert t.hash() == t.hash("bytes") == cases.tree_hash(t.local())
+    m = File(lambda p: p.write_bytes(b"MATLAB 5.0"), "m.mat")
+    assert m.hash() == m.hash("bytes")
+    case = _case({"d": t, "m": m})
+    assert case.key() == case.key(scheme="bytes")
+
+
+def test_a_tree_that_is_a_zarr_is_keyed_on_its_content(tmp_path):
+    vol = stack(shape=(5, 37, 23))
+    a = Tree(lambda d: zarr(d, vol), "t.zarr")
+    b = Tree(lambda d: zarr(d, vol, cname="lz4", dimension_separator="/"), "t.zarr")
+    assert a.hash() == b.hash() and a.hash("bytes") != b.hash("bytes")
+
+
+def test_check_inputs_names_content_and_bytes(tmp_path):
+    vol = stack()
+    calls = []
+
+    def make(p):  # same content, another layout every time
+        calls.append(1)
+        raw_tiff(p, vol, strips_first=len(calls) % 2 == 1)
+
+    case = _case({"t": File(make, "im.tif")})
+    probs = case.check_inputs()
+    assert len(probs) == 1 and "the bytes differ" in probs[0] and "content" not in probs[0]
+
+
+def test_a_zarr_that_does_not_decode_keeps_its_bytes(tmp_path):
+    d = tmp_path / "t" / "bad.zarr"
+    d.mkdir(parents=True)
+    (d / ".zarray").write_text("{}\n", newline="\n")
+    (d / "0.0.0").write_bytes(b"x")
+    assert content.zarr_digest(d) is None
+    assert cases.tree_hash(tmp_path / "t", decoded=True) == cases.tree_hash(tmp_path / "t")
+
+
+def test_an_input_that_does_not_decode_keeps_the_hash_of_its_bytes(tmp_path):
+    p = tmp_path / "x.tif"
+    p.write_bytes(b"not a tiff\n")
+    f = File(lambda q: q.write_bytes(p.read_bytes()), "x.tif")
+    want = hashlib.sha256(b"pk1:file:" + sha256_file(p).encode()).hexdigest()
+    assert f.hash() == f.hash("bytes") == want
+
+
+# --- rekey: the references move to the keys by content, unchanged ----------------------------
+
+
+def _publish(store, key, outputs, files):
+    """a result with files, as the MATLAB runner publishes it (staging folder, one rename)"""
+    stage = store.staging("test") / key
+    stage.mkdir(parents=True)
+    for rel, make in files.items():
+        p = stage / "files" / rel
+        p.parent.mkdir(parents=True, exist_ok=True)
+        make(p)
+    write_pkv(stage / "outputs.pkv", MCell((1, len(outputs)), [to_mvalue(x) for x in outputs]))
+    meta = {
+        "format": 2,
+        "key": key,
+        "id": "rekey",
+        "status": "ok",
+        "error": None,
+        "warnings": [],
+        "capture": True,
+        "files": sorted(files),
+        "deleted": [],
+        "work": "/scratch/pkpy_1/w/abc",
+        "host": "node12",
+        "oracle_commit": store.commit,
+    }
+    (stage / "meta.json").write_text(json.dumps(meta), newline="\n")
+    final = store.case_dir(key)
+    final.parent.mkdir(parents=True, exist_ok=True)
+    os.rename(stage, final)
+
+
+def test_rekey_moves_references_to_their_content_keys(tmp_path, monkeypatch):
+    commit = oracle.expected_commit()
+    golden = tmp_path / "golden"
+    golden.mkdir()
+    monkeypatch.setenv(oracle.ENV_GOLDEN, str(golden))
+    monkeypatch.setenv(oracle.ENV_COMMIT, commit)
+    monkeypatch.delenv(oracle.ENV_ORACLE, raising=False)
+    monkeypatch.delenv(oracle.ENV_MISSING, raising=False)
+    store = oracle.Store(golden, commit)
+    vol = stack()
+
+    def py_write(path):  # the Python side writes the result in another layout
+        raw_tiff(Path("out.tif"), vol, strips_first=False)
+        return 1.0
+
+    case = Case(
+        "rekey",
+        matlab="f",
+        args=[InPath("t")],
+        python=py_write,
+        inputs={"t": File(lambda p: raw_tiff(p, vol, rows=4), "in.tif")},
+    )
+    mfile = tmp_path / "test_fake.oracle.json"
+    case._module_globals = {"__file__": str(tmp_path / "test_fake.py"), "ORACLE_MANIFEST": mfile}
+    old, new = case.key(scheme="bytes"), case.key()
+    assert old != new
+    _publish(store, old, [1.0], {"out.tif": lambda p: raw_tiff(p, vol)})
+    # the manifest as it was: the earlier key, tiff descriptors without tags
+    entry = oracle.manifest_entry(case, store.load(old))
+    del entry["files"]["files"]["out.tif"][0]["tags"]
+    oracle.write_manifest(mfile, {case.id: entry}, "tests/testing/test_fake.py")
+    with pytest.raises(pytest.fail.Exception, match="changed since its reference was made"):
+        oracle.reference(case)
+
+    rows, written = oracle.rekey([case], store)
+    assert written == [mfile]
+    r = rows[0]
+    assert (r["store"], r["manifest"], r["tags"], r["old"], r["new"]) == (
+        "copied",
+        "re-keyed",
+        1,
+        old,
+        new,
+    )
+    copy = oracle.folder_digest(store.case_dir(new))
+    note = json.loads((store.case_dir(new) / oracle.REKEY_NOTE).read_text())
+    assert note["from_key"] == old and note["to_key"] == new
+    del copy[oracle.REKEY_NOTE]
+    assert copy == oracle.folder_digest(store.case_dir(old))
+    assert len(list((store.dir / ".rekey").iterdir())) == 1
+    got = oracle.load_manifest(mfile)[case.id]
+    assert got["key"] == new and got["files"]["files"]["out.tif"][0]["tags"]["n"] == 3
+    assert oracle._plain_entry(got) == oracle._plain_entry(entry)
+    # the case passes with the store and with the manifest alone (CI), the layout aside
+    assert oracle.check(case, tmp_path / "r1").ok
+    monkeypatch.delenv(oracle.ENV_GOLDEN)
+    rep = oracle.check(case, tmp_path / "r2")
+    assert rep.ok and any("layout only" in n for n in rep.notes), rep.text()
+    monkeypatch.setenv(oracle.ENV_GOLDEN, str(golden))
+    # a second run finds everything done
+    rows, written = oracle.rekey([case], store)
+    assert (rows[0]["store"], rows[0]["manifest"], rows[0]["tags"], written) == (
+        "present",
+        "current",
+        0,
+        [],
+    )
+    # a copy that is not its original any more is found, and nothing is written
+    with open(store.case_dir(new) / "files" / "out.tif", "ab") as f:
+        f.write(b"\0")
+    rows, written = oracle.rekey([case], store)
+    assert "RekeyError" in rows[0]["error"] and "other files" in rows[0]["error"], rows
+    assert written == []
+
+
+def test_rekey_keeps_cases_without_tiff_or_zarr_inputs(tmp_path, monkeypatch):
+    commit = oracle.expected_commit()
+    monkeypatch.setenv(oracle.ENV_GOLDEN, str(tmp_path))
+    monkeypatch.setenv(oracle.ENV_COMMIT, commit)
+    store = oracle.Store(tmp_path, commit)
+    case = Case(
+        "plain",
+        matlab="f",
+        args=[InPath("m")],
+        python=lambda p: 1.0,
+        inputs={"m": File(lambda p: p.write_bytes(b"x"), "m.txt")},
+    )
+    mfile = tmp_path / "m.oracle.json"
+    case._module_globals = {"__file__": str(tmp_path / "t.py"), "ORACLE_MANIFEST": mfile}
+    _publish(store, case.key(), [1.0], {})
+    entry = oracle.manifest_entry(case, store.load(case.key()))
+    oracle.write_manifest(mfile, {case.id: entry}, "t.py")
+    before = mfile.read_bytes()
+    rows, written = oracle.rekey([case], store)
+    assert (rows[0]["store"], rows[0]["manifest"], written) == ("same key", "current", [])
+    assert mfile.read_bytes() == before and not (store.dir / ".rekey").exists()
+    # an entry made for other inputs (neither key) is left as it is, for orun.sh -M
+    doc = json.loads(before)
+    doc["cases"][case.id]["key"] = "f" * 64
+    mfile.write_text(json.dumps(doc), newline="\n")
+    stale = mfile.read_bytes()
+    rows, written = oracle.rekey([case], store)
+    assert rows[0]["manifest"] == "out of date (neither key)" and written == []
+    assert mfile.read_bytes() == stale
+
+
+def test_rekey_skips_cases_whose_data_is_not_here(tmp_path, monkeypatch):
+    commit = oracle.expected_commit()
+    monkeypatch.setenv(oracle.ENV_COMMIT, commit)
+    monkeypatch.delenv("PETAKIT5D_X17_NO_SUCH_DATA", raising=False)
+    store = oracle.Store(tmp_path, commit)
+    case = Case(
+        "data",
+        matlab="f",
+        args=[InPath("d")],
+        python=lambda p: 1.0,
+        inputs={"d": cases.Data("$PETAKIT5D_X17_NO_SUCH_DATA/d", "d")},
+    )
+    case._module_globals = {"__file__": str(tmp_path / "t.py"), "ORACLE_MANIFEST": tmp_path / "m"}
+    rows, written = oracle.rekey([case], store)
+    assert "not found" in rows[0]["skipped"] and "error" not in rows[0] and written == []
+
+
+def test_tags_are_set_only_on_the_file_the_entry_describes(tmp_path):
+    vol = stack()
+    for side, v in (("a", vol), ("b", vol + 1)):
+        (tmp_path / side).mkdir()
+        raw_tiff(tmp_path / side / "im.tif", v)
+
+    def entry(side, tags=True):
+        d = describe_tree(scan_tree(tmp_path / side), tree(), Masks())
+        if not tags:
+            del d["files"]["im.tif"][0]["tags"]
+        return {"files": json.loads(json.dumps(d))}
+
+    e = entry("a", tags=False)
+    assert oracle._set_tiff_tags(e, entry("a")) == (1, [])
+    assert e == entry("a")
+    assert oracle._set_tiff_tags(e, entry("a")) == (0, [])
+    # tags kept by other rules (a manifest written before) are set to what the store gives now
+    e["files"]["files"]["im.tif"][0]["tags"]["sha"] = "0" * 64
+    assert oracle._set_tiff_tags(e, entry("a")) == (1, []) and e == entry("a")
+    e = entry("a", tags=False)
+    n, probs = oracle._set_tiff_tags(e, entry("b"))
+    assert n == 0 and "not the one the manifest describes" in probs[0]
+    assert "tags" not in e["files"]["files"]["im.tif"][0]

@@ -1079,6 +1079,260 @@ def cmd_status(ns: argparse.Namespace) -> int:
     return 1 if n_bad else 0
 
 
+# ---------------------------------------------------------------------------------------------
+# rekey: the keys of tiff and zarr inputs by their decoded content (cases.SCHEMES)
+# ---------------------------------------------------------------------------------------------
+
+REKEY_NOTE = "migrated.json"  # in a result copied to its new key: where it came from
+REKEY_RULE = (
+    "file inputs keyed on their decoded content: tiff by voxels and tags, zarr by voxels and "
+    "metadata (petakit5d.testing.content); the result is the one stored under from_key"
+)
+
+
+class RekeyError(RuntimeError):
+    """a re-keyed result or manifest entry would not carry its reference over unchanged"""
+
+
+def folder_digest(d: Path) -> dict[str, str]:
+    """{'/' path: SHA-256} of every file under d, and {'<folder>/': ''} of its empty folders"""
+    out = {}
+    for dp, dns, fns in os.walk(d):
+        p = Path(dp)
+        if not dns and not fns and p != d:
+            out[p.relative_to(d).as_posix() + "/"] = ""
+        for fn in fns:
+            q = p / fn
+            out[q.relative_to(d).as_posix()] = sha256_file(q)
+    return out
+
+
+def copy_result(store: Store, old: str, new: str, note: dict) -> str:
+    """publish the stored result of key ``old`` under key ``new`` as it is (every file checked
+    against the original) with REKEY_NOTE added, by one rename from a staging folder: 'copied',
+    or 'present' when the same result is there already; RekeyError when a result under ``new``
+    or the copy has other files than the original"""
+    src, dst = store.case_dir(old), store.case_dir(new)
+    want = folder_digest(src)
+
+    def same(d: Path) -> bool:
+        got = folder_digest(d)
+        got.pop(REKEY_NOTE, None)
+        return got == want
+
+    if store.has(new):
+        if not same(dst):
+            raise RekeyError(f"key {new[:12]} is in the store with other files than {old[:12]}")
+        return "present"
+    stage = store.staging(f"rekey_{os.getpid()}_{uuid.uuid4().hex[:8]}") / new
+    stage.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        shutil.copytree(src, stage)
+        if not same(stage):
+            raise RekeyError(f"the copy of {old[:12]} has other files than the original")
+        text = json.dumps(note, indent=1, sort_keys=True) + "\n"
+        (stage / REKEY_NOTE).write_text(text, encoding="utf-8")
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            os.rename(stage, dst)
+        except OSError:
+            if not (store.has(new) and same(dst)):
+                raise
+            return "present"
+    finally:
+        shutil.rmtree(stage, ignore_errors=True)
+        with contextlib.suppress(OSError):
+            stage.parent.rmdir()
+    return "copied"
+
+
+def _plain_entry(e: dict) -> dict:
+    """a manifest entry without its key and the tags of its tiff files: what re-keying keeps"""
+    e = json.loads(json.dumps(e))
+    e.pop("key", None)
+    for descs in ((e.get("files") or {}).get("files") or {}).values():
+        for d in descs:
+            if d.get("k") == "tiff":
+                d.pop("tags", None)
+    return e
+
+
+def _has_tiffs(e: dict) -> bool:
+    return any(
+        d.get("k") == "tiff" and not d.get("empty")
+        for descs in ((e.get("files") or {}).get("files") or {}).values()
+        for d in descs
+    )
+
+
+def _set_tiff_tags(entry: dict, fresh: dict) -> tuple[int, list[str]]:
+    """give the entry's tiff descriptors the tags of the entry the store gives now (each must be
+    the same descriptor otherwise: the same file), where they lack them or hold others (the
+    tags a manifest keeps are read from the stored file by the harness's rules);
+    (descriptors whose tags were set, problems)"""
+    ffiles = (fresh.get("files") or {}).get("files") or {}
+    n, probs = 0, []
+    for name, descs in ((entry.get("files") or {}).get("files") or {}).items():
+        for i, d in enumerate(descs):
+            if d.get("k") != "tiff" or d.get("empty"):
+                continue
+            fd = ffiles.get(name, [])[i] if i < len(ffiles.get(name, [])) else None
+            same = {k: v for k, v in d.items() if k != "tags"}
+            if fd is None or "tags" not in fd:
+                probs.append(f"{name}: the stored file has no TIFF tags to read")
+            elif {k: fd.get(k) for k in same} != same:
+                probs.append(f"{name}: the stored file is not the one the manifest describes")
+            elif d.get("tags") != fd["tags"]:
+                d["tags"] = fd["tags"]
+                n += 1
+    return n, probs
+
+
+def rekey(
+    cases: Sequence[Case], store: Store, dry_run: bool = False
+) -> tuple[list[dict], list[Path]]:
+    """move the cases' references to their keys by content: the result stored under a case's
+    earlier key (its file inputs hashed by their bytes, ``Case.key(scheme='bytes')``) is copied
+    unchanged to its key (``copy_result``), and its manifest entry gets the new key and the tags
+    of its tiff files from the store; each copy must read as its original and each entry may
+    change in nothing else (RekeyError otherwise). Returns a row per case (old and new key,
+    what was done in the store and the manifest, tags added, problems) and the manifests
+    written."""
+    when = time.strftime("%Y-%m-%dT%H:%M:%S")
+    py = python_root()
+    rows, by_path = [], {}
+    for c in cases:
+        try:
+            mod = Path(c.module_file).resolve().relative_to(py).as_posix()
+        except (TypeError, ValueError):
+            mod = str(c.module_file)
+        row = {"module": mod, "id": c.id, "store": "", "manifest": "", "tags": 0}
+        try:
+            for x in c.inputs.values():
+                if isinstance(x, Data):
+                    x.local()  # FileNotFoundError: its data is not on this machine
+        except FileNotFoundError as e:
+            row["skipped"] = str(e)
+            rows.append(row)
+            continue
+        try:
+            new, old = c.key(), c.key(scheme="bytes")
+            row.update(old=old, new=new)
+            if old == new:
+                row["store"] = "same key"
+            elif not store.has(old):
+                row["store"] = "present" if store.has(new) else "no result"
+            elif dry_run:
+                row["store"] = "present" if store.has(new) else "to copy"
+            else:  # copied, or checked against the original when it is there already
+                note = {"from_key": old, "to_key": new, "case": c.id, "module": mod}
+                row["store"] = copy_result(store, old, new, dict(note, rule=REKEY_RULE, date=when))
+            if row["store"] in ("copied", "present") and store.has(old):
+                # the copy reads as the original: the same manifest entry but for the key
+                a = manifest_entry(c, store.load(old))
+                b = manifest_entry(c, store.load(new))
+                if {**a, "key": ""} != {**b, "key": ""}:
+                    raise RekeyError(f"the result under {new[:12]} reads otherwise than {old[:12]}")
+        except Exception as e:  # reported per case; the run goes on
+            row["error"] = f"{type(e).__name__}: {e}"
+        rows.append(row)
+        if "error" not in row:
+            by_path.setdefault(manifest_path(c), []).append((c, row))
+    written = []
+    for path, group in sorted(by_path.items()):
+        if not path.is_file():
+            for _, row in group:
+                row["manifest"] = "no manifest"
+            continue
+        doc = json.loads(path.read_text(encoding="utf-8"))
+        entries = doc.get("cases", {})
+        before = json.loads(json.dumps(entries))
+        for c, row in group:
+            e = entries.get(c.id)
+            if e is None:
+                row["manifest"] = "no entry"
+                continue
+            if e.get("key") == row["new"]:
+                row["manifest"] = "current"
+            elif e.get("key") == row["old"]:
+                e["key"] = row["new"]
+                row["manifest"] = "re-keyed"
+            else:
+                row["manifest"] = "out of date (neither key)"
+                continue
+            if _has_tiffs(e):
+                # (the result under the new key, or the one it is copied from in a dry run)
+                k = next((k for k in (row["new"], row["old"]) if store.has(k)), None)
+                if k is not None:
+                    row["tags"], probs = _set_tiff_tags(e, manifest_entry(c, store.load(k)))
+                else:
+                    probs = ["no stored result: the tags of its tiff files are not set"]
+                if probs:
+                    row["problems"] = probs
+        for cid, e in entries.items():
+            if _plain_entry(e) != _plain_entry(before[cid]):
+                raise RekeyError(f"{path.name}: {cid}: re-keying changed more than its key")
+        if entries != before and not dry_run:
+            module = doc.get("module", path.name)
+            if write_manifest(path, entries, module):
+                if json.loads(path.read_text(encoding="utf-8")).get("cases") != entries:
+                    raise RekeyError(f"{path}: the manifest written does not read back the same")
+                written.append(path)
+    moved = [r for r in rows if r["store"] == "copied"]
+    if moved:
+        d = store.dir / ".rekey"
+        d.mkdir(parents=True, exist_ok=True)
+        fn = d / f"{time.strftime('%Y%m%d_%H%M%S')}_{os.getpid()}_{uuid.uuid4().hex[:6]}.json"
+        log = {"date": when, "rule": REKEY_RULE, "cases": moved}
+        fn.write_text(json.dumps(log, indent=1) + "\n", encoding="utf-8")
+    return rows, written
+
+
+def cmd_rekey(ns: argparse.Namespace) -> int:
+    """re-key the selected cases (``rekey``) and report what was done"""
+    store, _ = _store_and_oracle(ns.allow_other_oracle)
+    items = collect(ns.pytest_args)
+    cases, seen = [], set()
+    for _, c in items:
+        if id(c) not in seen:
+            seen.add(id(c))
+            cases.append(c)
+    rows, written = rekey(cases, store, ns.dry_run)
+    py = python_root()
+    bad = sum("error" in r for r in rows)
+    skipped = [r for r in rows if "skipped" in r]
+    counts: dict[str, int] = {}
+    for r in rows:
+        for k in ("store", "manifest"):
+            counts[f"{k}: {r.get(k) or '-'}"] = counts.get(f"{k}: {r.get(k) or '-'}", 0) + 1
+    tags = sum(r["tags"] for r in rows)
+    print(
+        f"{len(cases)} cases; tags set on {tags} tiff descriptors; {len(skipped)} skipped "
+        f"(their data is not here); {bad} errors"
+    )
+    for k in sorted(counts):
+        print(f"  {k}: {counts[k]}")
+    for r in rows:
+        for p in r.get("problems", []) + [r[k] for k in ("error", "skipped") if k in r]:
+            print(f"  {r['module']}::{r['id']}: {p}")
+    if ns.report:
+        log = {"rule": REKEY_RULE, "dry_run": bool(ns.dry_run), "cases": rows}
+        Path(ns.report).write_text(json.dumps(log, indent=1) + "\n", encoding="utf-8")
+    if ns.pack_dir and written:
+        pd = Path(ns.pack_dir)
+        pd.mkdir(parents=True, exist_ok=True)
+        lines = []
+        for p in written:
+            try:
+                rel = p.resolve().relative_to(py).as_posix()
+            except ValueError:
+                rel = str(p)
+            lines.append(f"{sha256_file(p)}  {rel}\n")
+        (pd / "manifests.txt").write_text("".join(lines))
+    print(f"{len(written)} manifests written")
+    return 1 if bad else 0
+
+
 def cmd_clean(ns: argparse.Namespace) -> int:
     """remove staging folders and temporary inputs older than --hours (left by stopped jobs)"""
     root = os.environ.get(ENV_GOLDEN)
@@ -1103,6 +1357,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         ("run", cmd_run, "run the selected cases missing from the store in one MATLAB session"),
         ("manifest", cmd_manifest, "write the manifests of the selected modules from the store"),
         ("status", cmd_status, "show store and manifest state of the selected cases"),
+        (
+            "rekey",
+            cmd_rekey,
+            "move the selected cases' references to their keys by decoded input content",
+        ),
     ):
         p = sub.add_parser(name, help=hlp)
         p.set_defaults(fn=fn)
@@ -1129,6 +1388,11 @@ def main(argv: Sequence[str] | None = None) -> int:
                 help="device of this job (default: from CUDA_VISIBLE_DEVICES)",
             )
             p.add_argument("--timeout", type=float, help="stop MATLAB after this many seconds")
+        if name == "rekey":
+            p.add_argument(
+                "--dry-run", action="store_true", help="only report what would be re-keyed"
+            )
+            p.add_argument("--report", help="write every case's old and new key there (JSON)")
     p = sub.add_parser("clean-staging", help="remove leftovers of stopped jobs")
     p.set_defaults(fn=cmd_clean)
     p.add_argument("--hours", type=float, default=24.0)
