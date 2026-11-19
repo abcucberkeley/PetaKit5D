@@ -81,7 +81,10 @@ The CPU FFTs run MATLAB's FFT driver on one of two backends:
   last bits: single-precision transforms by up to about 5e-7 relative, deconvolved uint16 volumes
   by 1 count in a few thousandths of a percent of the voxels. The tolerances are record 0006
   ([decisions/0006](../decisions/0006-fft-backends.md)); the exceptions that follow from them are
-  listed in [parity/index.md](../parity/index.md).
+  listed in [parity/index.md](../parity/index.md). One of them: many OMW iterations on data where
+  they don't settle, such as the widefield demo's 20, amplify the last bits in a few bright spots,
+  as they amplify the difference between MATLAB's own CPU and GPU results
+  ([parity/decon.md](../parity/decon.md)).
 - **`exact`:** FFTW 3.3.8 built as MATLAB builds it, the separate package `petakit5d-fftw`. With
   it the FFTs, and so deconvolution, registration, spectra and FSC, give MATLAB's bits on Linux
   x86-64.
