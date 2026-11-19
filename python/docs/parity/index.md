@@ -16,7 +16,8 @@ outputs that are not produced yet. Each row names the page or record with the me
 
 Tests name their row in the `reason` of their tolerance (`petakit5d.testing.compare.tol`,
 [testing.md](../testing.md)). The area pages: [decon.md](decon.md), [demos.md](demos.md),
-[flatfield.md](flatfield.md), [matlabcompat.md](matlabcompat.md), [tools.md](tools.md).
+[flatfield.md](flatfield.md), [matlabcompat.md](matlabcompat.md), [realdata.md](realdata.md),
+[stitch.md](stitch.md), [tools.md](tools.md).
 
 ## 1. Files: deliberate format choices
 
@@ -47,13 +48,13 @@ With the exact add-on none of these apply: the results are MATLAB's bits.
 | P4 | the OMW back projector and its masked Wiener filter | max and relative L2 <= 1e-5; masks identical | | approved 2026-11-13 | tests of `decon` (`PERMISSIVE_BP`) |
 | P5 | all-NaN back projectors (degenerate `hann_win_bounds`, `l == u`) | NaN positions compared, not NaN signs | | approved 2026-11-13 | `decon/backprojector.py` |
 | P6 | a PSF resampled to one plane (`new_nz = 1`) | difference <= 1e-6 of the raw PSF's largest value | MATLAB's own result there is rounding noise (it takes the spectrum's last plane, not DC) | approved 2026-11-12 | `decon/psf.py`, tests of `decon/test_psf.py` |
-| P7 | 3D registration (normalized cross-correlation) | the same integer shift where the correlation is well behaved; peak values within 5e-3 | shifts identical | approved 2026-11-12 | [decisions/0006](../decisions/0006-fft-backends.md) |
+| P7 | 3D registration (normalized cross-correlation) | the same integer shift where the correlation is well behaved; peak values within 5e-3 | shifts identical; peaks <= 4.2e-7 (1.8e-7 on the real-data workflow) | approved 2026-11-12 | [decisions/0006](../decisions/0006-fft-backends.md); [stitch.md](stitch.md); [realdata.md](realdata.md), row 3 |
 | P8 | chromatic shift estimation: correlation peak values | absolute 1e-4 | <= 1.8e-7; shifts and corrected files exact | approved 2026-11-18 | [tools.md](tools.md), chromatic shift |
 | P9 | FFT power spectra: MIPs, central slices, 3D stack | the normalized spectrum `\|F\| / max` within P1's single tolerance | largest difference 4.8e-8 | approved 2026-11-17 | [tools.md](tools.md), FFT power spectra |
 | P10 | PSF analysis: OTF slices, line cuts, info files | P1's double tolerance | <= 7.6e-16 of the largest value | approved 2026-11-12 | [tools.md](tools.md), PSF analysis |
 | P11 | FSC curves | P1's double tolerance | <= 5.9e-15 of the largest value; radii identical | approved 2026-11-12 | [tools.md](tools.md), Fourier shell correlation |
 | P12 | `deconvlucy` (RLdecon's `'original'` method) | P2 | | approved 2026-11-12 | [decon.md](decon.md) |
-| P13 | 2D tile registration (`normxcorr2`): correlation peak values | absolute 1e-7 | shifts identical; peaks <= 5.3e-8 | **proposed** | stitch.md, with the tile registration (T1) |
+| P13 | 2D tile registration (`normxcorr2`): correlation peak values | absolute 1e-7 | shifts identical; peaks <= 5.3e-8 | **proposed** | [stitch.md](stitch.md) |
 
 ## 3. Tolerances on both backends
 
@@ -92,7 +93,12 @@ default ([decisions/0003](../decisions/0003-gpu.md)).
 
 | # | Output | Until | Source |
 |---|---|---|---|
-| T1 | per-pair registration results `xcorr/<volume>/xcorr_tile_*.mat`, and registration itself | the tile registration is ported (planned: `cross_correlation_registration_wrapper`) | [demos.md](demos.md), row 4 |
 | T2 | figures (back projector and OTF masks, FSC, PSF, MIP masks) | the `figures` extra is installed | [demos.md](demos.md), row 5 |
 | T3 | the phase flat field (`ff_corrected_*/`, `_flatfield.mat`) | the `basic` extra is installed | [demos.md](demos.md), row 7 |
 | T4 | a box with a NaN end (`[... NaN]`) is refused where MATLAB passes it on | the fix of 2026-11-18: accepted where MATLAB accepts it | [cli.md](../cli.md) |
+
+T1 (the tile registration and its per-pair results `xcorr/<volume>/xcorr_tile_*.mat`) was
+removed on 2026-11-18: the registration is ported (`petakit5d.stitch.registration`), and the
+port writes those files as MATLAB does ([stitch.md](stitch.md), [realdata.md](realdata.md)). The
+demo runs, made before, were given MATLAB's merged results, so their per-pair files are compared
+when the demos run again ([demos.md](demos.md), row 4).

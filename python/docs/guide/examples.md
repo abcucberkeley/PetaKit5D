@@ -50,7 +50,6 @@ Other variables:
 |---|---|
 | `PETAKIT5D_DEMO_TIMINGS` | a file the time of every step is appended to (one JSON object per line) |
 | `PETAKIT5D_DEMO_SAVE_DIR` | a folder the in-memory results are written to as tiff files |
-| `PETAKIT5D_DEMO_XCORR_DIR` | registration results to use while the tile registration is not ported (a folder laid out as the data folder: `<dataset>/<stitch result folder>/xcorr/*.mat`, e.g. a MATLAB run's). Without them, stitching steps that register their tiles stitch at the stage positions and say so |
 | `PETAKIT5D_FFT` | `exact` for MATLAB's bits with the FFTW add-on ([install.md](install.md)) |
 
 The generic-framework example writes an example cluster configuration with placeholder values

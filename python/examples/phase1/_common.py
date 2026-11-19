@@ -16,10 +16,6 @@ Environment:
     a file the time of every step is appended to (one JSON object per line).
 ``PETAKIT5D_DEMO_SAVE_DIR``
     a folder the demos' in-memory results are written to as tiff files (``<demo>/<name>.tif``).
-``PETAKIT5D_DEMO_XCORR_DIR``
-    registration results to use while the tile registration is not ported: a folder laid out as
-    the data folder (``<dataset>/<stitch result folder>/xcorr/*.mat``, e.g. a MATLAB run's). Without
-    them a stitching step that registers its tiles runs without registration and says so.
 """
 
 from __future__ import annotations
@@ -29,7 +25,6 @@ import glob
 import importlib.util
 import json
 import os
-import shutil
 import sys
 import time
 from collections.abc import Iterator
@@ -110,38 +105,6 @@ def save_result(demo: str, name: str, im) -> None:
 
     os.makedirs(os.path.join(root, demo), exist_ok=True)
     write_tiff(im, os.path.join(root, demo, name + ".tif"))
-
-
-def registration_ported() -> bool:
-    """whether the tile registration (cross_correlation_registration_wrapper) is ported"""
-    return importlib.util.find_spec("petakit5d.stitch.registration") is not None
-
-
-def registration(data_folder: str, result_dir: str, dataset: str = CELL) -> bool:
-    """``xcorr_shift`` for a stitching step that registers its tiles into
-    ``data_folder/result_dir``: True when the registration is ported or its results are given
-    (copied from ``PETAKIT5D_DEMO_XCORR_DIR``), else False, with a note"""
-    if registration_ported():
-        return True
-    dst = os.path.join(data_folder, result_dir, "xcorr")
-    seed = os.environ.get("PETAKIT5D_DEMO_XCORR_DIR")
-    if seed:
-        rel = os.path.relpath(os.path.join(data_folder, result_dir), dest_path(dataset))
-        src = os.path.join(seed, rel, "xcorr")
-        os.makedirs(dst, exist_ok=True)
-        for p in sorted(glob.glob(os.path.join(src, "*.mat"))):
-            q = os.path.join(dst, os.path.basename(p))
-            if not os.path.exists(q):
-                shutil.copyfile(p, q)
-    if glob.glob(os.path.join(dst, "*.mat")):
-        return True
-    print(
-        f"Note: the tile registration is not ported yet, so {result_dir} is stitched at the "
-        "tiles' stage positions (xcorr_shift=False). Give registration results with "
-        "PETAKIT5D_DEMO_XCORR_DIR to stitch as MATLAB does.",
-        flush=True,
-    )
-    return False
 
 
 def replicate_frames(im, nframe: int):

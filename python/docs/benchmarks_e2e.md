@@ -69,9 +69,10 @@ times come:
   inputs are only read) and its own result folders, so no run skips work another did.
 - **Same inputs, each side's layout.** Tiff inputs are shared; zarr inputs written by MATLAB are
   read by both, as existing data would be.
-- **Steps the port gets from MATLAB.** Where a step is not ported yet (the stitching
-  registration), the Python run is given MATLAB's results and skips that computation: report
-  those steps with MATLAB's time for the skipped part beside them.
+- **Steps the port gets from MATLAB.** Where a step is not ported (until 2026-11-18 the stitching
+  registration, whose results the demo examples were given in the runs of that date), the
+  Python run is given MATLAB's results and skips that computation: report those steps with
+  MATLAB's time for the skipped part beside them.
 - **Memory state.** Record `/proc/buddyinfo` (free 2 MB blocks per NUMA node) at the start of
   each run. A fresh process on a node whose free memory is fragmented can stall for seconds in
   the kernel's compaction when NumPy asks for huge pages (`madvise`, NumPy's default on Linux):

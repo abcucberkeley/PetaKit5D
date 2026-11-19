@@ -6,8 +6,8 @@ edge erosion applied to each tile.
 
 The phase flat-field correction needs BaSiCPy (the ``basic`` extra) and is left out without it;
 the phase stitching reads the dataset's own corrected images (``Phase/ff_corrected/``), as in
-MATLAB. The registration of the tiles is not ported yet: see ``_common.registration``. Results:
-``Phase/ff_corrected_1/``, ``Phase/ff_corrected/matlab_stitch/`` and ``2P/matlab_stitch/``.
+MATLAB. Results: ``Phase/ff_corrected_1/``, ``Phase/ff_corrected/matlab_stitch/`` and
+``2P/matlab_stitch/``.
 """
 
 from __future__ import annotations
@@ -59,7 +59,6 @@ def main() -> None:
         )
 
     phase_dir = data_path + "Phase/ff_corrected/"
-    xcorr_shift = _common.registration(phase_dir, "matlab_stitch", _common.OTHER)
     with steps("Phase: 2D stitching"):
         stitch_dataset(
             phase_dir,
@@ -71,7 +70,7 @@ def main() -> None:
             objective_scan=False,
             io_scan=True,
             axis_order="x,y,z",
-            xcorr_shift=xcorr_shift,
+            xcorr_shift=True,
             xcorr_mode="primary",
             xy_max_offset=100,
             z_max_offset=10,
@@ -128,7 +127,6 @@ def main() -> None:
         fn = sprintf("%s/processFunction_c%04d_%s.mat", tmp_path, 1, dt)
         write_mat(fn, {"usrFun": usr_fun}, version="7.3")
 
-    xcorr_shift = _common.registration(curr_data_path, "matlab_stitch", _common.OTHER)
     with steps("2P: 3D stitching"):
         stitch_dataset(
             curr_data_path,
@@ -142,7 +140,7 @@ def main() -> None:
             axis_order="-x,y,-z",
             channel_patterns=["ch0"],
             primary_ch="ch0",
-            xcorr_shift=xcorr_shift,
+            xcorr_shift=True,
             xcorr_downsample=(1, 1, 1),
             shift_method="grid",
             xy_max_offset=200,

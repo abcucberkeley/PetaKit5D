@@ -3,8 +3,7 @@
 in DSR space (deskewed and rotated tiles as zarr, feather blending, registration).
 
 Left out: the parts after the demo's ``return`` (BigStitcher-Spark and stitching-spark, which
-run on a Spark cluster). The registration of the tiles is not ported yet: see
-``_common.registration``. Results: ``matlab_stitch/`` with its ``DSR/``, ``DSR/`` (the tiles)
+run on a Spark cluster). Results: ``matlab_stitch/`` with its ``DSR/``, ``DSR/`` (the tiles)
 and ``matlab_stitch_dsr/`` in the dataset folder.
 """
 
@@ -46,7 +45,6 @@ def main() -> None:
     with steps("Step 3: deskew/rotate the tiles (zarr output)"):
         deskew_rotate_dataset([data_path], zarr_file=False, **dsr_common)
 
-    xcorr_shift = _common.registration(data_path, "matlab_stitch_dsr")
     with steps("Step 4: stitching in DSR space"):
         stitch_dataset(
             data_path,
@@ -64,7 +62,7 @@ def main() -> None:
             data_order="z,y,x",
             blend_method="feather",
             result_dir_name="matlab_stitch_dsr",
-            xcorr_shift=xcorr_shift,
+            xcorr_shift=True,
             primary_ch="CamB_ch0",
             channel_patterns=["CamA_ch0", "CamB_ch0"],
             save_16bit=True,

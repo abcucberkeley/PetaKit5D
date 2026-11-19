@@ -67,8 +67,12 @@ NOT_PORTED = [
     (_C + r"Chromatic_Shift_Corrected/", "XR_chromatic_shift_correction_data_wrapper (Phase 2)"),
     # MATLAB's figures (png, fig): the port draws them with the optional figures extra
     (r".*\.(png|fig)$", "figures (MATLAB graphics; the port's figures extra)"),
-    # the per-pair results of the tile registration (the merged xcorr/<name>.mat is compared)
-    (r".*/xcorr/[^/]+/xcorr_tile_[^/]*\.mat$", "per-tile registration results (not ported yet)"),
+    # the per-pair results of the tile registration (the merged xcorr/<name>.mat is compared):
+    # the reference runs gave the port MATLAB's merged results (docs/parity/demos.md, row 4)
+    (
+        r".*/xcorr/[^/]+/xcorr_tile_[^/]*\.mat$",
+        "per-tile registration results (given in the reference runs)",
+    ),
 ]
 
 # MATLAB outputs of steps that need an optional extra: not compared when Python has no such file

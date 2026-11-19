@@ -2,8 +2,7 @@
 (4 tiles x 2 cameras x 2 time points) stitched without deskewing them first, with feather
 blending, the CamB channel registered and CamA placed by its result.
 
-The registration of the tiles is not ported yet: see ``_common.registration``. Results:
-``matlab_stitch/`` in the dataset folder. The demo_zarr_stitching and
+Results: ``matlab_stitch/`` in the dataset folder. The demo_zarr_stitching and
 demo_large_scale_processing examples run this one first.
 """
 
@@ -69,7 +68,6 @@ def main() -> None:
     with steps("process function files (flat-field correction; not used below)"):
         process_function_files(data_path, channel_patterns)
 
-    xcorr_shift = _common.registration(data_path, "matlab_stitch")
     with steps("stitch the tiles in skewed space"):
         stitch_dataset(
             data_path,
@@ -86,7 +84,7 @@ def main() -> None:
             data_order="z,y,x",
             blend_method="feather",
             result_dir_name="matlab_stitch",
-            xcorr_shift=xcorr_shift,
+            xcorr_shift=True,
             primary_ch="CamB_ch0",
             channel_patterns=channel_patterns,
             zarr_file=False,

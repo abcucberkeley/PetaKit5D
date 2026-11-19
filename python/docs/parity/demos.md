@@ -19,10 +19,10 @@ from MATLAB's, with numbers. Rows marked "proposed" wait for the user's approval
   inputParser object `ip` left out); JSON and text by content. Each run's root folders are
   masked, and MATLAB's `~` is the home folder (the demos pass `~/Downloads/...` on). Empty
   folders are not compared (flag folders; MATLAB's harness keeps no empty folders).
-- **Registration.** The tile registration is not ported yet, so the stitching steps that
-  register their tiles were given MATLAB's merged results (`xcorr/<name>.mat`, through
-  `PETAKIT5D_DEMO_XCORR_DIR`); everything else in those steps is the port's. Without them the
-  examples stitch at the stage positions and say so.
+- **Registration.** These runs predate the port's tile registration (2026-11-18), so the
+  stitching steps that register their tiles were given MATLAB's merged results
+  (`xcorr/<name>.mat`); everything else in those steps is the port's. The examples now register
+  their tiles themselves, as the MATLAB demos do (row 4).
 
 ## Results
 
@@ -54,7 +54,7 @@ everything else is identical there too.
 | 1 | deconvolved tiles and volumes and what is made from them (their DSR, MIPs and conversions), on the default FFT backend: demo_RL_deconvolution, demo_large_scale_processing, demo_useful_tools, the confocal decon | uint16 voxels off by 1 and never more: 0.0083% (RL demo, 64 outputs), 0.0023% (large-scale, 56), 0.0029% (tools, 52), 0.0047% (confocal); per decon result at most 0.0102% (RL, 30 iterations); z MIPs up to 0.175%. The single-precision OTFs and back projectors in `psfgen/` differ in most values by up to 3.0e-7 | record 0006 | the FFT backend (pocketfft): within 0006's rule for decon results (off by 1 in at most 0.1% of voxels) |
 | 2 | `replicated/*_conventional.tif` (the libtiff-mode writer, demo_fast_tiff_zarr_readers_writers) | voxels and tags identical; the LZW bytes of the last, partial strip of each page differ (MATLAB 119,946 bytes, the port 119,057 on the first page): the files are 8,092,569,376 and 8,081,857,536 bytes | approved | the two writers' LZW streams of the partial strip (264 of 512 rows) differ, by about 1 KB a page; the full strips have the same offsets and sizes. Readers get the same voxels. Follow-up for the io owner |
 | 3 | `tmp/processFunc/processFunction_*.mat` (demo_skewed_space_stitching, demo_phase_and_2photon_stitching) | `usrFun` is a char array; MATLAB's demo saves a string object (`sprintf` with a double-quoted format) | approved | `petakit5d.io.write_mat` writes no MATLAB string objects. The port and MATLAB read both forms as the same function text |
-| 4 | `xcorr/<volume>/xcorr_tile_*.mat` (the stitching steps with registration) | not written | until the registration lands | the per-pair registration results; the merged `xcorr/<volume>.mat` is given |
+| 4 | `xcorr/<volume>/xcorr_tile_*.mat` (the stitching steps with registration) | not compared: in these runs the port was given MATLAB's merged results and wrote no per-pair results | until the demos run again | the registration is ported since (`petakit5d.stitch.registration`) and writes them: on the cell dataset in skewed space they are MATLAB's bit for bit with the exact FFT add-on, with the same shifts on the default backend ([realdata.md](realdata.md)); the 2D registration of the phase tiles uses `normxcorr2` ([stitch.md](stitch.md)) |
 | 5 | `*.png`, `*.fig` (back-projector figures of the decon wrappers, FSC figures) | not drawn | the figures extra | the port draws the decon figures with matplotlib (the optional `figures` extra), which was not installed |
 | 6 | demo_RL_deconvolution's in-memory results (`decon_lucy`, `omw_backprojector`, `decon_lucy_omw` on one tile) | the back projector differs in 99.7% of its single values (largest difference 6.0e-8), and the uint16 results by 1 in 0.0036% (OMW) and 0.0082% (RL) of voxels, with the exact add-on | accepted (N05, 2026-11-12, item 3) | the demo normalizes the PSF by `sum(psf, 'all')`, which MATLAB computes at 24 threads as 4747003 and at 1 thread as 4747002.5; the port gives the 1-thread value at any thread count. With the 1-thread sum MATLAB's results are the port's bit for bit (exact add-on) |
 | 7 | `Phase/ff_corrected_1/` and the `_flatfield.mat` files (demo_phase_and_2photon_stitching) | not made | the basic extra | the phase flat field needs BaSiCPy (the optional `basic` extra, record of B07), not installed here |

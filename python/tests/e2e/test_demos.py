@@ -105,35 +105,27 @@ def test_background_path_is_found_and_written_as_the_demos_write_it(examples, tm
         common.background_path(data_path, "CamB")
 
 
-def test_registration_results_are_copied_or_registration_is_off(
-    examples, monkeypatch, tmp_path, capsys
-):
-    common = examples("_common")
-    monkeypatch.setattr(common, "registration_ported", lambda: False)
-    data = tmp_path / "data"
-    (data / CELL).mkdir(parents=True)
-    monkeypatch.setenv("PETAKIT5D_DEMO_DATA", str(data))
-    data_path = common.data_path()
+@pytest.mark.parametrize(
+    "name, calls",
+    [
+        ("demo_skewed_space_stitching", 1),
+        ("demo_zarr_stitching", 1),
+        ("demo_phase_and_2photon_stitching", 2),
+    ],
+)
+def test_the_stitching_examples_register_their_tiles(name, calls):
+    """every stitching step registers its tiles, as the MATLAB demos do (xcorrShift = true)"""
+    import ast
 
-    monkeypatch.delenv("PETAKIT5D_DEMO_XCORR_DIR", raising=False)
-    assert common.registration(data_path, "matlab_stitch") is False
-    assert "not ported yet" in capsys.readouterr().out
-
-    seed = tmp_path / "seed" / CELL / "matlab_stitch" / "xcorr"
-    seed.mkdir(parents=True)
-    (seed / "a.mat").write_bytes(b"MATLAB 7.3")
-    (seed / "sub").mkdir()  # per-tile results are not copied
-    monkeypatch.setenv("PETAKIT5D_DEMO_XCORR_DIR", str(tmp_path / "seed"))
-    assert common.registration(data_path, "matlab_stitch") is True
-    dst = data / CELL / "matlab_stitch" / "xcorr"
-    assert sorted(p.name for p in dst.iterdir()) == ["a.mat"]
-    # a result that is there already is kept
-    (dst / "a.mat").write_bytes(b"own")
-    assert common.registration(data_path, "matlab_stitch") is True
-    assert (dst / "a.mat").read_bytes() == b"own"
-
-    monkeypatch.setattr(common, "registration_ported", lambda: True)
-    assert common.registration(data_path, "other_result") is True
+    tree = ast.parse((EXAMPLES / f"{name}.py").read_text(encoding="utf-8"))
+    values = [
+        kw.value
+        for c in ast.walk(tree)
+        if isinstance(c, ast.Call) and getattr(c.func, "id", "") == "stitch_dataset"
+        for kw in c.keywords
+        if kw.arg == "xcorr_shift"
+    ]
+    assert [isinstance(v, ast.Constant) and v.value is True for v in values] == [True] * calls
 
 
 def test_steps_are_timed_into_the_timings_file(examples, monkeypatch, tmp_path):
