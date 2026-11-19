@@ -1,7 +1,9 @@
 // Skewed space interpolation together with the deskew/rotate warp, without an interpolated
 // volume: skewed_space_interp_volume_deskew_rotate_warp_mex.cpp (the fused kernel). The rows
 // of the interpolated slices each output z slice needs are computed on the fly into a small
-// per-thread cache. Loops, schedule, cache and arithmetic are the mex's.
+// per-thread cache. Loops, schedule, cache and arithmetic are the mex's; with fill, the voxels
+// the mex leaves alone (slices and lines outside the grid, values past lineLen) are written as
+// 0 (see warp.hpp).
 #pragma once
 
 #include <cmath>
@@ -235,14 +237,17 @@ void transformVolume(const T* const im, const double (&tmat)[4][4], TO* const nm
                      const uint64_t sz[3], const uint64_t shapeZ, const float startX,
                      const float startY, const float startZ, const uint64_t outShapeX,
                      const uint64_t outShapeY, const uint64_t outShapeZ, const uint64_t lineLen,
-                     TI* const cacheAll, const int nthreads) {
-    // a bbox past the input's rows: nothing to compute
-    if (lineLen == 0) return;
-
+                     TI* const cacheAll, const int nthreads, const bool fill) {
     const uint64_t shapeX = sz[0];
     const uint64_t shapeY = sz[1];
     const uint64_t shapeXY = shapeX * shapeY;
     const uint64_t outShapeXY = outShapeX * outShapeY;
+
+    // a bbox past the input's rows: nothing to compute
+    if (lineLen == 0) {
+        if (fill) zero_slices(nmat, outShapeXY, outShapeZ, nthreads);
+        return;
+    }
     const uint64_t x0 = floor(startX);
 
 #pragma omp parallel num_threads(nthreads)
@@ -266,8 +271,10 @@ void transformVolume(const T* const im, const double (&tmat)[4][4], TO* const nm
                         ty -= 1e-9 * counter;
                         counter *= 2;
                     }
-                } else
+                } else {
+                    if (fill) zero_values(nmat + z * outShapeXY, outShapeXY);
                     continue;
+                }
             }
             int64_t y0 = floor(ty);
             float wy = ty - y0;
@@ -275,6 +282,7 @@ void transformVolume(const T* const im, const double (&tmat)[4][4], TO* const nm
             for (int k = 0; k < NCACHE; k++) tag[k] = -1;
 
             for (uint64_t y = 0; y < outShapeY; ++y) {
+                TO* const line = nmat + y * outShapeX + z * outShapeXY;
                 double tz;
                 tz = tmat[2][1] * (y + startY) + tmat[2][2] * (z + startZ) + tmat[2][3];
                 if (tz < 0 || tz + 1 >= shapeZ) {
@@ -285,8 +293,10 @@ void transformVolume(const T* const im, const double (&tmat)[4][4], TO* const nm
                             tz -= 1e-9 * counter;
                             counter *= 2;
                         }
-                    } else
+                    } else {
+                        if (fill) zero_values(line, outShapeX);
                         continue;
+                    }
                 }
                 uint64_t z0 = floor(tz);
                 float wz = tz - z0;
@@ -317,9 +327,9 @@ void transformVolume(const T* const im, const double (&tmat)[4][4], TO* const nm
                     }
                 }
 
-                transform_line(rows[0], cached[0], rows[1], cached[1],
-                               nmat + y * outShapeX + z * outShapeXY, w00, w01, w10, w11, shapeX,
-                               lineLen);
+                transform_line(rows[0], cached[0], rows[1], cached[1], line, w00, w01, w10, w11,
+                               shapeX, lineLen);
+                if (fill && lineLen < outShapeX) zero_values(line + lineLen, outShapeX - lineLen);
             }
         }
     }
@@ -332,7 +342,8 @@ void skewed_space_interp_warp(const T* const im, const uint64_t sz[3], const dou
                               const double (&tmat)[4][4], TO* const nmat, const float startX,
                               const float startY, const float startZ, const uint64_t outShapeX,
                               const uint64_t outShapeY, const uint64_t outShapeZ,
-                              const uint64_t lineLen, const int nthreads) {
+                              const uint64_t lineLen, const int nthreads,
+                              const bool fill = false) {
     const uint64_t ntotal = (uint64_t)interp_grid_size(sz[2], stepsize);
 
     // determine which slices come from original and which come from interpolated
@@ -352,7 +363,8 @@ void skewed_space_interp_warp(const T* const im, const uint64_t sz[3], const dou
 
     transformVolume<T, TI, TO>(im, tmat, nmat, slices.data(), interp_index.data(),
                                is_original.get(), xa, Reverse, sz, ntotal, startX, startY, startZ,
-                               outShapeX, outShapeY, outShapeZ, lineLen, cache.data(), nthreads);
+                               outShapeX, outShapeY, outShapeZ, lineLen, cache.data(), nthreads,
+                               fill);
 }
 
 }  // namespace pk5d::deskew::ml

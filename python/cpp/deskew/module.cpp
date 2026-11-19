@@ -7,8 +7,8 @@
 //   skewed_space_interp_defined_stepsize_mex            -> interp_defined_stepsize
 // The argument checks of the mex gateways are in petakit5d.kernels.deskew (with MATLAB's error
 // ids); these bindings check class and layout, take the output array from the caller (zeros,
-// or with fill any values: the blocked kernels then write every voxel) and release the
-// interpreter lock around the loops. Also built without AVX2 as
+// or with fill any values: the kernels then write every voxel, the ones the mex leaves alone
+// as 0) and release the interpreter lock around the loops. Also built without AVX2 as
 // petakit5d._ext.deskew_scalar on x86-64, for the tests.
 #include <pk5d/common.hpp>
 
@@ -130,7 +130,7 @@ void mshape3(const A& a, uint64_t (&sz)[3]) {
 
 template <typename T, typename TO>
 void warp_ml(const in_volume<T>& vol, const matrix4& m, out_volume<TO>& out, float start_y,
-             float start_x, float start_z, uint64_t line_len, int num_threads) {
+             float start_x, float start_z, uint64_t line_len, int num_threads, bool fill) {
     pk5d::check_threads(num_threads);
     double tmat[4][4];
     read_tmat(m, tmat);
@@ -141,13 +141,13 @@ void warp_ml(const in_volume<T>& vol, const matrix4& m, out_volume<TO>& out, flo
     nb::gil_scoped_release release;
     pk5d::deskew::ml::transformVolume<T, TO>(vol.data(), tmat, out.data(), sz[0], sz[1], sz[2],
                                              start_y, start_x, start_z, osz[0], osz[1], osz[2],
-                                             line_len, num_threads);
+                                             line_len, num_threads, fill);
 }
 
 template <typename T, typename TI, typename TO>
 void skewed_warp_ml(const in_volume<T>& vol, double xstep, double stepsize, bool reverse,
                     const matrix4& m, out_volume<TO>& out, float start_y, float start_x,
-                    float start_z, uint64_t line_len, int num_threads) {
+                    float start_z, uint64_t line_len, int num_threads, bool fill) {
     pk5d::check_threads(num_threads);
     double tmat[4][4];
     read_tmat(m, tmat);
@@ -164,7 +164,7 @@ void skewed_warp_ml(const in_volume<T>& vol, double xstep, double stepsize, bool
     nb::gil_scoped_release release;
     pk5d::deskew::ml::skewed_space_interp_warp<T, TI, TO>(
         vol.data(), sz, xstep, stepsize, reverse ? 1 : 0, tmat, out.data(), start_y, start_x,
-        start_z, osz[0], osz[1], osz[2], line_len, num_threads);
+        start_z, osz[0], osz[1], osz[2], line_len, num_threads, fill);
 }
 
 template <typename T, typename TO>
@@ -255,23 +255,26 @@ NB_MODULE(PK5D_MODULE_NAME, m) {
     // MATLAB's layout: (z, x, y) C-ordered arrays
     m.def("warp_ml", &warp_ml<float, float>, "vol"_a.noconvert(), "tmat"_a.noconvert(),
           "out"_a.noconvert(), "start_y"_a, "start_x"_a, "start_z"_a, "line_len"_a,
-          "num_threads"_a, "warp on MATLAB's layout: vol and out (z, x, y), y fastest");
+          "num_threads"_a, "fill"_a = false,
+          "warp on MATLAB's layout: vol and out (z, x, y), y fastest (fill: as for warp)");
     m.def("warp_ml", &warp_ml<uint16_t, float>, "vol"_a.noconvert(), "tmat"_a.noconvert(),
           "out"_a.noconvert(), "start_y"_a, "start_x"_a, "start_z"_a, "line_len"_a,
-          "num_threads"_a);
+          "num_threads"_a, "fill"_a = false);
     m.def("warp_ml", &warp_ml<uint16_t, uint16_t>, "vol"_a.noconvert(), "tmat"_a.noconvert(),
           "out"_a.noconvert(), "start_y"_a, "start_x"_a, "start_z"_a, "line_len"_a,
-          "num_threads"_a);
+          "num_threads"_a, "fill"_a = false);
     m.def("skewed_warp_ml", &skewed_warp_ml<float, float, float>, "vol"_a.noconvert(), "xstep"_a,
           "stepsize"_a, "reverse"_a, "tmat"_a.noconvert(), "out"_a.noconvert(), "start_y"_a,
-          "start_x"_a, "start_z"_a, "line_len"_a, "num_threads"_a,
-          "skewed_warp on MATLAB's layout: vol and out (z, x, y), y fastest");
+          "start_x"_a, "start_z"_a, "line_len"_a, "num_threads"_a, "fill"_a = false,
+          "skewed_warp on MATLAB's layout: vol and out (z, x, y), y fastest (fill: as for warp)");
     m.def("skewed_warp_ml", &skewed_warp_ml<uint16_t, float, float>, "vol"_a.noconvert(),
           "xstep"_a, "stepsize"_a, "reverse"_a, "tmat"_a.noconvert(), "out"_a.noconvert(),
-          "start_y"_a, "start_x"_a, "start_z"_a, "line_len"_a, "num_threads"_a);
+          "start_y"_a, "start_x"_a, "start_z"_a, "line_len"_a, "num_threads"_a,
+          "fill"_a = false);
     m.def("skewed_warp_ml", &skewed_warp_ml<uint16_t, uint16_t, uint16_t>, "vol"_a.noconvert(),
           "xstep"_a, "stepsize"_a, "reverse"_a, "tmat"_a.noconvert(), "out"_a.noconvert(),
-          "start_y"_a, "start_x"_a, "start_z"_a, "line_len"_a, "num_threads"_a);
+          "start_y"_a, "start_x"_a, "start_z"_a, "line_len"_a, "num_threads"_a,
+          "fill"_a = false);
     m.def("interp_defined_stepsize_ml", &interp_ml<float, float>, "vol"_a.noconvert(), "xstep"_a, "stepsize"_a,
           "reverse"_a, "out"_a.noconvert(), "num_threads"_a,
           "interp_defined_stepsize on MATLAB's layout: vol and out (z, x, y), y fastest");

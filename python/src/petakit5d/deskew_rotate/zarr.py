@@ -294,6 +294,57 @@ def _block_mips_zxy(out_zxy: np.ndarray, box: Sequence[int], mbs: Sequence[int],
     ]
 
 
+def _kernel_out(
+    kept: np.ndarray | None,
+    in_zxy: np.ndarray,
+    box: Sequence[int],
+    angle: float,
+    dz: float,
+    px: float,
+    *,
+    reverse: bool,
+    resample_factor: Any,
+    save_16bit: bool,
+    interp_method: Any,
+    batch_rows: Any,
+) -> tuple[bool, np.ndarray | None]:
+    """Whether the deskew kernels compute a batch's result (else ``imwarp``, which would copy
+    its result into a kept output), and the result's place in ``kept`` (the bytes of an earlier
+    batch's result: MATLAB's layout ``(z, x, y)`` C, the box's size and the kernels' class), or
+    None (a new output, as for the first batch). The kernels write all of a kept output, so a
+    task's batches reuse the first one's memory."""
+    from petakit5d.deskew_rotate.geometry import deskew_rotate_geometry
+
+    if batch_rows is not None or in_zxy.dtype not in (np.uint16, np.float32):
+        return False, None
+    if not isinstance(interp_method, str):
+        return False, None
+    shape = (in_zxy.shape[0], in_zxy.shape[2], in_zxy.shape[1])
+    try:
+        g = deskew_rotate_geometry(
+            shape,
+            float(angle),
+            float(dz),
+            float(px),
+            reverse=reverse,
+            objective_scan=False,
+            resample_factor=resample_factor,
+            interp_method=interp_method,
+        )
+    except (ValueError, IndexError):
+        return False, None
+    # (the fused kernel takes inputs at least ceil(x step) + 2 wide; MATLAB's code the others)
+    if not g.use_fast_method or (g.do_interp and shape[2] < math.ceil(g.x_step) + 2):
+        return False, None
+    b = [int(v) for v in box]
+    dtype = np.dtype(np.uint16 if in_zxy.dtype == np.uint16 and save_16bit else np.float32)
+    out_shape = (b[3] - b[0], b[5] - b[2], b[4] - b[1])
+    n = dtype.itemsize * math.prod(out_shape)
+    if kept is None or kept.nbytes < n:
+        return True, None
+    return True, kept[:n].view(dtype).reshape(out_shape)
+
+
 @register(
     "XR_deskewRotateBlock",
     Param("batchInds", "@isnumeric", "Batch numbers (0-based).", convert="index1"),
@@ -450,8 +501,10 @@ def deskew_rotate_block(
     ol_boxes = np.asarray(out_local_bboxes, dtype=np.int64).reshape(-1, 6)
     mips: list[list[np.ndarray]] = []
     done = [False] * len(inds)
-    # (one buffer for the batches' reads; each is written before the next is read)
+    # (one buffer for the batches' reads; the kernels' results in the memory of the first one,
+    # kept: each batch is written before the next is read)
     buf = ReadBuffer()
+    kept = None
     for i, bi in enumerate(inds):
         print(f"Process Batch {bi + 1} ... ", end="", flush=True)
         t0 = time.perf_counter()
@@ -489,7 +542,21 @@ def deskew_rotate_block(
             ):
                 last = in_zxy[:, :, -1:]
                 in_zxy = np.concatenate([in_zxy, last, last], axis=2)
-        # the kernels on MATLAB's layout, the result kept in it
+        # the kernels on MATLAB's layout, the result kept in it (in the kept memory where the
+        # kernels compute it)
+        kernels, out = _kernel_out(
+            kept,
+            in_zxy,
+            dsr_box,
+            skew_angle,
+            dz,
+            xy_pixel_size,
+            reverse=reverse,
+            resample_factor=resample_factor,
+            save_16bit=save_16bit,
+            interp_method=interp_method,
+            batch_rows=batch_rows,
+        )
         out_zxy = deskew_rotate_volume_matlab_layout(
             in_zxy,
             skew_angle,
@@ -503,8 +570,11 @@ def deskew_rotate_block(
             interp_method=interp_method,
             num_threads=n,
             batch_rows=batch_rows,
+            out=out,
         )
-        del in_zxy
+        if kernels and out is None:
+            kept = out_zxy.reshape(-1).view(np.uint8)
+        del in_zxy, out
         if save_16bit and dtype != "uint16" and out_zxy.dtype != np.uint16:
             # uint16 rounds to the nearest integer
             out_zxy = np.ascontiguousarray(dtypes.to_class(out_zxy, "uint16"))
@@ -515,6 +585,8 @@ def deskew_rotate_block(
         del out_zxy
         done[i] = True
         _toc(t0)
+    buf.release()
+    del kept
 
     if all(done):
         t = time.perf_counter() - t_start

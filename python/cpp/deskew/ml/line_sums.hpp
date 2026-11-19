@@ -15,6 +15,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 
 #if defined(__AVX2__)
 #include <immintrin.h>
@@ -473,5 +474,19 @@ inline void compute_weighted_sum_16bit(const uint16_t* a, const uint16_t* b, con
 }
 
 #endif
+
+// The kernels' fill: the n values at r set to 0 (the bits of a zeroed output, single 0 or
+// uint16 0)
+template <typename TO>
+inline void zero_values(TO* r, uint64_t n) {
+    std::memset(r, 0, n * sizeof(TO));
+}
+
+// the nslices slices of n values at out set to 0, a slice per iteration of a parallel loop
+template <typename TO>
+void zero_slices(TO* out, uint64_t n, uint64_t nslices, int nthreads) {
+#pragma omp parallel for schedule(static) num_threads(nthreads)
+    for (uint64_t z = 0; z < nslices; ++z) zero_values(out + z * n, n);
+}
 
 }  // namespace pk5d::deskew::ml

@@ -255,10 +255,10 @@ def _run(
     v = vol if matlab_in else _swap(vol, nt)
     if out is not None and matlab_out:
         res = _out_array(out, (oz, ox, oy), dtype)
-        # the mex's loops leave the lines and slices outside alone
-        _zero(res, nt)
-    else:
-        res = np.zeros((oz, ox, oy), dtype=dtype)
+        # (fill: the lines and slices the mex's loops leave alone are written as 0 too)
+        getattr(ext, name + "_ml")(v, *pre, res, *post, nt, fill=True)
+        return res
+    res = np.zeros((oz, ox, oy), dtype=dtype)
     getattr(ext, name + "_ml")(v, *pre, res, *post, nt)
     if matlab_out:
         return res
@@ -476,8 +476,9 @@ def volume_deskew_rotate_warp_matlab_layout(
 ) -> np.ndarray:
     """``volume_deskew_rotate_warp`` on MATLAB's layout: ``vol_zxy`` and the result are C arrays
     ``(z, x, y)`` (y fastest, MATLAB's ``(y, x, z)`` in memory); ``box`` is ours, ``(z0, y0, x0,
-    z1, y1, x1)``. ``out`` (MATLAB's layout) is set to 0 in threads first: the mex's loops leave
-    lines and slices outside alone."""
+    z1, y1, x1)``. ``out`` (MATLAB's layout) as for ``volume_deskew_rotate_warp``: the mex's
+    loops write all of it (with ``fill``, the lines and slices outside, which they leave alone
+    in a zeroed output, as 0), so it needs no zeroing first."""
     v, shape = _matlab_volume(vol_zxy)
     return _warp(v, shape, True, True, tmat, box, save_16bit, num_threads, None, out)
 

@@ -2,7 +2,10 @@
 // volume_deskew_rotate_warp_mex.cpp (its three type versions as one template: single to
 // single, uint16 to single, uint16 to uint16; the loops, the schedule and the arithmetic are
 // the mex's). Output line (y, z) reads input rows y0, y0 + 1 of slices z0, z0 + 1 from row
-// x0 = floor(startX) on, lineLen values.
+// x0 = floor(startX) on, lineLen values. The mex leaves the slices and lines outside the
+// input, and the values of a line past lineLen, as they are (zeros in its new output); with
+// fill they are written as 0 too, by the thread of their slice, so that an output that holds
+// other values needs no zeroing pass first.
 #pragma once
 
 #include <cmath>
@@ -34,12 +37,15 @@ void transformVolume(const T* const dmat, const double (&tmat)[4][4], TO* const 
                      const uint64_t shapeX, const uint64_t shapeY, const uint64_t shapeZ,
                      const float startX, const float startY, const float startZ,
                      const uint64_t outShapeX, const uint64_t outShapeY, const uint64_t outShapeZ,
-                     const uint64_t lineLen, const int nthreads) {
-    // a bbox past the input's rows: nothing to compute
-    if (lineLen == 0) return;
-
+                     const uint64_t lineLen, const int nthreads, const bool fill = false) {
     uint64_t shapeXY = shapeX * shapeY;
     uint64_t outShapeXY = outShapeX * outShapeY;
+
+    // a bbox past the input's rows: nothing to compute
+    if (lineLen == 0) {
+        if (fill) zero_slices(nmat, outShapeXY, outShapeZ, nthreads);
+        return;
+    }
 
     int64_t x0 = floor(startX);
 
@@ -54,13 +60,16 @@ void transformVolume(const T* const dmat, const double (&tmat)[4][4], TO* const 
                     ty -= 1e-9 * counter;
                     counter *= 2;
                 }
-            } else
+            } else {
+                if (fill) zero_values(nmat + z * outShapeXY, outShapeXY);
                 continue;
+            }
         }
         int64_t y0 = floor(ty);
         float wy = ty - y0;
 
         for (uint64_t y = 0; y < outShapeY; ++y) {
+            TO* const line = nmat + y * outShapeX + z * outShapeXY;
             double tz;
             tz = tmat[2][1] * (y + startY) + tmat[2][2] * (z + startZ) + tmat[2][3];
             if (tz < 0 || tz + 1 >= shapeZ) {
@@ -71,8 +80,10 @@ void transformVolume(const T* const dmat, const double (&tmat)[4][4], TO* const 
                         tz -= 1e-9 * counter;
                         counter *= 2;
                     }
-                } else
+                } else {
+                    if (fill) zero_values(line, outShapeX);
                     continue;
+                }
             }
 
             int64_t z0 = floor(tz);
@@ -87,8 +98,8 @@ void transformVolume(const T* const dmat, const double (&tmat)[4][4], TO* const 
 
             // interpolation with simd vectorization
             warp_line(dmat + ind, dmat + ind + shapeXY, dmat + ind + shapeX,
-                      dmat + ind + shapeX + shapeXY, nmat + y * outShapeX + z * outShapeXY, w00,
-                      w01, w10, w11, lineLen);
+                      dmat + ind + shapeX + shapeXY, line, w00, w01, w10, w11, lineLen);
+            if (fill && lineLen < outShapeX) zero_values(line + lineLen, outShapeX - lineLen);
         }
     }
 }
