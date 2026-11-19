@@ -27,10 +27,12 @@ line, ``(uint16)(v + 0.5f)`` output, not MATLAB's ``uint16``). As in the mex, on
 may use) splits the work; results do not depend on it.
 
 Two implementations give the same bits, and the data's layout picks one: the functions above
-run kernels made for ``(z, y, x)`` volumes; the ``*_matlab_layout`` functions, for code that
-holds MATLAB's layout already (a tiff read y-fastest, a write from that layout), take and return
-C-ordered ``(z, x, y)`` arrays (MATLAB's ``(y, x, z)`` in memory) and run the mex's loops, at the
-mex's speed. Neither turns a volume around.
+run kernels made for ``(z, y, x)`` volumes (blocked: the mex's sums on y-fastest copies of the
+input in cache); the ``*_matlab_layout`` functions, for code that holds MATLAB's layout already
+(a zarr file MATLAB wrote, read as stored), take and return C-ordered ``(z, x, y)`` arrays
+(MATLAB's ``(y, x, z)`` in memory) and run the mex's loops, at the mex's speed. Neither turns a
+volume around. The warp and the fused kernel take ``out``, an array of the result's shape and
+class to write instead of a new one (a buffer reused over frames: all of it is written).
 
 The compiled module is ``petakit5d._ext.deskew``: AVX2 on x86-64 (as the mex), elsewhere the same
 operations in the same order (``simd()`` says which), so every platform gives the x86 mex's bits.
@@ -182,13 +184,13 @@ def interp_grid_size(nz: int, stepsize: float) -> int:
 #
 # Two implementations with the same bits; the data's layout picks one, so no volume is turned
 # around:
-# - (z, y, x) volumes: the C-layout kernels (lanes along y in 8 x 8-transposed scratch).
-#   Measured faster on (z, y, x) data than the MATLAB-layout kernels with a threaded transpose
-#   before and after, at 1, 4 and 24 threads (2.1 s against 2.7 s and 0.17 s against 0.51 s
-#   for the fused uint16 kernel on a demo tile), since the transposes add two passes and two
-#   fresh volumes.
-# - MATLAB-layout data ((z, x, y) C arrays, y fastest: a tiff read y-fastest, a write from
-#   that layout): the mex's loops (ml/ of the extension), at the mex's speed.
+# - (z, y, x) volumes: the blocked kernels (blocked.hpp): blocks of rows and windows of grid
+#   slices whose input columns are copied y-fastest into a ring in cache, the mex's sums over
+#   the rows, the blocks written back transposed. Faster on (z, y, x) data than the
+#   MATLAB-layout kernels with threaded transposes before and after (the input's and the
+#   result's: two more passes over memory), at 1, 4 and 24 threads.
+# - MATLAB-layout data ((z, x, y) C arrays, y fastest: a zarr file MATLAB wrote, read as
+#   stored): the mex's loops (ml/ of the extension), at the mex's speed.
 # ``_kernel_layout`` forces one ("c" or "matlab", with transposes as needed: for the tests).
 
 
@@ -199,20 +201,72 @@ def _swap(a: np.ndarray, num_threads: int) -> np.ndarray:
     return out
 
 
-def _run(name, vol, matlab_in, pre, post, out_zyx, dtype, num_threads, matlab_out, layout):
+def _out_array(out: Any, shape: tuple[int, int, int], dtype: type) -> np.ndarray:
+    """``out`` checked: a writeable C-contiguous array of the result's shape and class"""
+    if not isinstance(out, np.ndarray):
+        raise TypeError(f"out must be a NumPy array, got {type(out).__name__}")
+    if out.dtype != dtype or out.shape != tuple(shape):
+        raise ValueError(
+            f"out must be a {np.dtype(dtype)} array of shape {tuple(shape)}, got {out.dtype} "
+            f"{out.shape}"
+        )
+    if not out.flags.c_contiguous or not out.flags.writeable:
+        raise ValueError("out must be writeable and C-contiguous")
+    return out
+
+
+def _zero(a: np.ndarray, num_threads: int) -> None:
+    """``a`` set to 0, split over threads (NumPy's fill releases the interpreter lock)"""
+    flat = a.reshape(-1)
+    if num_threads < 2 or flat.nbytes < (1 << 22):
+        flat.fill(0)
+        return
+    from concurrent.futures import ThreadPoolExecutor
+
+    edges = np.linspace(0, flat.size, num_threads + 1).astype(np.int64)
+
+    def part(k: int) -> None:
+        flat[edges[k] : edges[k + 1]].fill(0)
+
+    with ThreadPoolExecutor(max_workers=num_threads) as ex:
+        list(ex.map(part, range(num_threads)))
+
+
+def _run(
+    name, vol, matlab_in, pre, post, out_zyx, dtype, num_threads, matlab_out, layout, out=None
+):
     """kernel `name` on vol ((z, y, x), or (z, x, y) with matlab_in); the output (z, y, x), or
-    (z, x, y) with matlab_out"""
+    (z, x, y) with matlab_out: a new array, or ``out`` (any values: every voxel is written)"""
     ext = _ext()
     nt = resolve_threads(num_threads)
     oz, oy, ox = out_zyx
     if layout == "c":  # (z, y, x) data only: the *_matlab_layout functions never force it
-        out = np.zeros(out_zyx, dtype=dtype)
-        getattr(ext, name)(vol, *pre, out, *post, nt)
-        return out
+        if out is None:
+            # a new output touched first in threads, each its own part in order: the kernels
+            # write it in short runs of rows from all threads, which fault new pages in slowly
+            res = np.empty(out_zyx, dtype=dtype)
+            _zero(res, nt)
+            getattr(ext, name)(vol, *pre, res, *post, nt)
+            return res
+        res = _out_array(out, out_zyx, dtype)
+        # (fill: the voxels the mex leaves alone are written as 0 too)
+        getattr(ext, name)(vol, *pre, res, *post, nt, fill=True)
+        return res
     v = vol if matlab_in else _swap(vol, nt)
-    out = np.zeros((oz, ox, oy), dtype=dtype)
-    getattr(ext, name + "_ml")(v, *pre, out, *post, nt)
-    return out if matlab_out else _swap(out, nt)
+    if out is not None and matlab_out:
+        res = _out_array(out, (oz, ox, oy), dtype)
+        # the mex's loops leave the lines and slices outside alone
+        _zero(res, nt)
+    else:
+        res = np.zeros((oz, ox, oy), dtype=dtype)
+    getattr(ext, name + "_ml")(v, *pre, res, *post, nt)
+    if matlab_out:
+        return res
+    if out is None:
+        return _swap(res, nt)
+    o = _out_array(out, out_zyx, dtype)
+    ext.swap_axes(res, o, nt)
+    return o
 
 
 def _layout(kernel_layout: str | None, matlab_in: bool) -> str:
@@ -233,7 +287,7 @@ def _matlab_volume(vol: Any) -> tuple[np.ndarray, tuple[int, int, int]]:
     return vol, (vol.shape[0], vol.shape[2], vol.shape[1])
 
 
-def _warp(vol, shape, matlab_in, matlab_out, tmat, box, save_16bit, num_threads, layout):
+def _warp(vol, shape, matlab_in, matlab_out, tmat, box, save_16bit, num_threads, layout, out=None):
     t = _tmat(tmat)
     start, out_shape, line_len = _box(box, shape[1])
     s16 = _logical_true(save_16bit)
@@ -249,6 +303,7 @@ def _warp(vol, shape, matlab_in, matlab_out, tmat, box, save_16bit, num_threads,
         num_threads,
         matlab_out,
         _layout(layout, matlab_in),
+        out,
     )
 
 
@@ -265,6 +320,7 @@ def _fused(
     save_16bit,
     num_threads,
     layout,
+    out=None,
 ):
     xs, step = _scalars(xstep, stepsize)
     rev = _logical_true(reverse)
@@ -289,6 +345,7 @@ def _fused(
         num_threads,
         matlab_out,
         _layout(layout, matlab_in),
+        out,
     )
 
 
@@ -331,12 +388,17 @@ def volume_deskew_rotate_warp(
     save_16bit: Any = False,
     *,
     num_threads: int | None = None,
+    out: np.ndarray | None = None,
     _kernel_layout: str | None = None,
 ) -> np.ndarray:
     """``volume_deskew_rotate_warp_mex``: deskew/rotate warp of ``vol`` (no interpolation in
-    skewed space) into the output region ``box``, with the backward transform ``tmat``."""
+    skewed space) into the output region ``box``, with the backward transform ``tmat``.
+    ``out``: an array of the result's shape and class written and returned instead of a new one
+    (a buffer reused over frames: every voxel is written, its old values don't matter)."""
     vol3 = _volume(vol)
-    return _warp(vol3, vol3.shape, False, False, tmat, box, save_16bit, num_threads, _kernel_layout)
+    return _warp(
+        vol3, vol3.shape, False, False, tmat, box, save_16bit, num_threads, _kernel_layout, out
+    )
 
 
 def skewed_space_interp_volume_deskew_rotate_warp(
@@ -349,11 +411,12 @@ def skewed_space_interp_volume_deskew_rotate_warp(
     save_16bit: Any = False,
     *,
     num_threads: int | None = None,
+    out: np.ndarray | None = None,
     _kernel_layout: str | None = None,
 ) -> np.ndarray:
     """``skewed_space_interp_volume_deskew_rotate_warp_mex``: skewed space interpolation at
     ``stepsize`` and the deskew/rotate warp in one pass, without an interpolated volume (the
-    fused kernel)."""
+    fused kernel). ``out`` as for ``volume_deskew_rotate_warp``."""
     vol3 = _volume(vol)
     return _fused(
         vol3,
@@ -368,6 +431,7 @@ def skewed_space_interp_volume_deskew_rotate_warp(
         save_16bit,
         num_threads,
         _kernel_layout,
+        out,
     )
 
 
@@ -408,12 +472,14 @@ def volume_deskew_rotate_warp_matlab_layout(
     save_16bit: Any = False,
     *,
     num_threads: int | None = None,
+    out: np.ndarray | None = None,
 ) -> np.ndarray:
     """``volume_deskew_rotate_warp`` on MATLAB's layout: ``vol_zxy`` and the result are C arrays
     ``(z, x, y)`` (y fastest, MATLAB's ``(y, x, z)`` in memory); ``box`` is ours, ``(z0, y0, x0,
-    z1, y1, x1)``."""
+    z1, y1, x1)``. ``out`` (MATLAB's layout) is set to 0 in threads first: the mex's loops leave
+    lines and slices outside alone."""
     v, shape = _matlab_volume(vol_zxy)
-    return _warp(v, shape, True, True, tmat, box, save_16bit, num_threads, None)
+    return _warp(v, shape, True, True, tmat, box, save_16bit, num_threads, None, out)
 
 
 def skewed_space_interp_volume_deskew_rotate_warp_matlab_layout(
@@ -426,12 +492,25 @@ def skewed_space_interp_volume_deskew_rotate_warp_matlab_layout(
     save_16bit: Any = False,
     *,
     num_threads: int | None = None,
+    out: np.ndarray | None = None,
 ) -> np.ndarray:
     """``skewed_space_interp_volume_deskew_rotate_warp`` on MATLAB's layout (``(z, x, y)`` C
-    arrays in and out)."""
+    arrays in and out; ``out`` as for ``volume_deskew_rotate_warp_matlab_layout``)."""
     v, shape = _matlab_volume(vol_zxy)
     return _fused(
-        v, shape, True, True, xstep, stepsize, reverse, tmat, box, save_16bit, num_threads, None
+        v,
+        shape,
+        True,
+        True,
+        xstep,
+        stepsize,
+        reverse,
+        tmat,
+        box,
+        save_16bit,
+        num_threads,
+        None,
+        out,
     )
 
 

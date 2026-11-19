@@ -1,12 +1,14 @@
 // petakit5d._ext.deskew: the deskew/rotate kernels of the three mex files, for C-ordered
-// (z, y, x) volumes, and (the *_ml functions, the mex's loops in ml/) for MATLAB's layout, the
-// C-ordered (z, x, y) arrays; swap_axes turns one layout into the other
+// (z, y, x) volumes (the warp and the fused kernel blocked, blocked.hpp), and (the *_ml
+// functions, the mex's loops in ml/) for MATLAB's layout, the C-ordered (z, x, y) arrays;
+// swap_axes turns one layout into the other
 //   volume_deskew_rotate_warp_mex                       -> warp
 //   skewed_space_interp_volume_deskew_rotate_warp_mex   -> skewed_warp
 //   skewed_space_interp_defined_stepsize_mex            -> interp_defined_stepsize
 // The argument checks of the mex gateways are in petakit5d.kernels.deskew (with MATLAB's error
-// ids); these bindings check class and layout, take the output array (zeros) from the caller
-// and release the interpreter lock around the loops. Also built without AVX2 as
+// ids); these bindings check class and layout, take the output array from the caller (zeros,
+// or with fill any values: the blocked kernels then write every voxel) and release the
+// interpreter lock around the loops. Also built without AVX2 as
 // petakit5d._ext.deskew_scalar on x86-64, for the tests.
 #include <pk5d/common.hpp>
 
@@ -57,7 +59,8 @@ void check_line_len(uint64_t line_len, float start_y, uint64_t ny, uint64_t oy) 
 
 template <typename T, typename TO>
 void warp(const in_volume<T>& vol, const matrix4& m, out_volume<TO>& out, float start_y,
-          float start_x, float start_z, uint64_t line_len, int num_threads) {
+          float start_x, float start_z, uint64_t line_len, int num_threads, bool fill,
+          uint64_t block_rows, uint64_t window) {
     pk5d::check_threads(num_threads);
     double tmat[4][4];
     read_tmat(m, tmat);
@@ -67,14 +70,15 @@ void warp(const in_volume<T>& vol, const matrix4& m, out_volume<TO>& out, float 
     check_line_len(line_len, start_y, sz[1], osz[1]);
     nb::gil_scoped_release release;
     pk5d::deskew::warp_volume<T, TO>(vol.data(), sz[0], sz[1], sz[2], tmat, out.data(), osz[0],
-                                     osz[1], osz[2], start_y, start_x, start_z, line_len,
-                                     num_threads);
+                                     osz[1], osz[2], start_y, start_x, start_z, line_len, fill,
+                                     num_threads, block_rows, window);
 }
 
 template <typename T, typename TO>
 void skewed_warp(const in_volume<T>& vol, double xstep, double stepsize, bool reverse,
                  const matrix4& m, out_volume<TO>& out, float start_y, float start_x, float start_z,
-                 uint64_t line_len, int num_threads) {
+                 uint64_t line_len, int num_threads, bool fill, uint64_t block_rows,
+                 uint64_t window) {
     pk5d::check_threads(num_threads);
     double tmat[4][4];
     read_tmat(m, tmat);
@@ -91,7 +95,8 @@ void skewed_warp(const in_volume<T>& vol, double xstep, double stepsize, bool re
     nb::gil_scoped_release release;
     pk5d::deskew::skewed_space_interp_warp<T, TO>(
         vol.data(), sz[0], sz[1], sz[2], xstep, stepsize, reverse ? 1 : 0, tmat, out.data(),
-        osz[0], osz[1], osz[2], start_y, start_x, start_z, line_len, num_threads);
+        osz[0], osz[1], osz[2], start_y, start_x, start_z, line_len, fill, num_threads,
+        block_rows, window);
 }
 
 template <typename T, typename TO>
@@ -194,10 +199,12 @@ void swap_axes(const in_volume<T>& src, out_volume<T>& dst, int num_threads) {
 
 const char* WARP_DOC =
     "warp(vol, tmat, out, start_y, start_x, start_z, line_len, num_threads)\n\n"
-    "volume_deskew_rotate_warp_mex's kernel: fills out (zeros, (z, y, x) C order) from vol "
-    "(single, or uint16 to single or uint16 out). tmat: MATLAB's 4 x 4 matrix (C order, "
-    "tmat[i, j] = M(i+1, j+1)); start_*: the box's starts in single precision (the mex's "
-    "startX, startY, startZ are y, x, z); line_len: rows y computed per output line.";
+    "volume_deskew_rotate_warp_mex's kernel: fills out ((z, y, x) C order: zeros, or any "
+    "values with fill, which writes the voxels outside as 0) from vol (single, or uint16 to "
+    "single or uint16 out). tmat: MATLAB's 4 x 4 matrix (C order, tmat[i, j] = M(i+1, j+1)); "
+    "start_*: the box's starts in single precision (the mex's startX, startY, startZ are y, x, "
+    "z); line_len: rows y computed per output line; block_rows, window: the blocking (0: "
+    "chosen by the kernel; results never depend on it).";
 
 const char* SKEWED_DOC =
     "skewed_warp(vol, xstep, stepsize, reverse, tmat, out, start_y, start_x, start_z, "
@@ -216,23 +223,25 @@ NB_MODULE(PK5D_MODULE_NAME, m) {
 
     m.def("warp", &warp<float, float>, "vol"_a.noconvert(), "tmat"_a.noconvert(),
           "out"_a.noconvert(), "start_y"_a, "start_x"_a, "start_z"_a, "line_len"_a,
-          "num_threads"_a, WARP_DOC);
+          "num_threads"_a, "fill"_a = false, "block_rows"_a = 0, "window"_a = 0, WARP_DOC);
     m.def("warp", &warp<uint16_t, float>, "vol"_a.noconvert(), "tmat"_a.noconvert(),
           "out"_a.noconvert(), "start_y"_a, "start_x"_a, "start_z"_a, "line_len"_a,
-          "num_threads"_a);
+          "num_threads"_a, "fill"_a = false, "block_rows"_a = 0, "window"_a = 0);
     m.def("warp", &warp<uint16_t, uint16_t>, "vol"_a.noconvert(), "tmat"_a.noconvert(),
           "out"_a.noconvert(), "start_y"_a, "start_x"_a, "start_z"_a, "line_len"_a,
-          "num_threads"_a);
+          "num_threads"_a, "fill"_a = false, "block_rows"_a = 0, "window"_a = 0);
 
     m.def("skewed_warp", &skewed_warp<float, float>, "vol"_a.noconvert(), "xstep"_a,
           "stepsize"_a, "reverse"_a, "tmat"_a.noconvert(), "out"_a.noconvert(), "start_y"_a,
-          "start_x"_a, "start_z"_a, "line_len"_a, "num_threads"_a, SKEWED_DOC);
+          "start_x"_a, "start_z"_a, "line_len"_a, "num_threads"_a, "fill"_a = false, "block_rows"_a = 0, "window"_a = 0, SKEWED_DOC);
     m.def("skewed_warp", &skewed_warp<uint16_t, float>, "vol"_a.noconvert(), "xstep"_a,
           "stepsize"_a, "reverse"_a, "tmat"_a.noconvert(), "out"_a.noconvert(), "start_y"_a,
-          "start_x"_a, "start_z"_a, "line_len"_a, "num_threads"_a);
+          "start_x"_a, "start_z"_a, "line_len"_a, "num_threads"_a, "fill"_a = false,
+          "block_rows"_a = 0, "window"_a = 0);
     m.def("skewed_warp", &skewed_warp<uint16_t, uint16_t>, "vol"_a.noconvert(), "xstep"_a,
           "stepsize"_a, "reverse"_a, "tmat"_a.noconvert(), "out"_a.noconvert(), "start_y"_a,
-          "start_x"_a, "start_z"_a, "line_len"_a, "num_threads"_a);
+          "start_x"_a, "start_z"_a, "line_len"_a, "num_threads"_a, "fill"_a = false,
+          "block_rows"_a = 0, "window"_a = 0);
 
     m.def("interp_defined_stepsize", &interp_defined_stepsize<float, float>, "vol"_a.noconvert(),
           "xstep"_a, "stepsize"_a, "reverse"_a, "out"_a.noconvert(), "num_threads"_a, INTERP_DOC);
