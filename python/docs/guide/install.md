@@ -47,6 +47,7 @@ works, and a function that needs the extra says which one to install.
 | `n5` | `pip install "./python[n5]"` | N5 with blosc, MATLAB's N5 compression, and zstd before Python 3.14 (`petakit5d.io.n5`): numcodecs | MIT |
 | `formats` | `pip install "./python[formats]"` | ND2 and CZI files (`petakit5d.io.bioformats`): nd2, czifile, imagecodecs. Bio-Formats itself is not ported | BSD-3 (their dependencies BSD-3 or MIT) |
 | `basic` | `pip install "./python[basic]"`, then `pip install --no-deps basicpy==2.0.0` | the phase-image flat field (`petakit5d.flatfield.basic`): BaSiCPy and PyTorch | MIT, BSD |
+| `gpu` | `pip install "./python[gpu]"` | the GPU paths (deconvolution, its OTFs and back projectors): CuPy, CUDA 12.9's runtime and NVRTC, cuFFT 11.0.8 ([GPU](#gpu) below) | CuPy MIT, cuda-pathfinder Apache-2.0; NVIDIA's CUDA license for the CUDA libraries |
 | `test` | `pip install "./python[test]"` | pytest, to run the test suite | MIT |
 | `dev` | `pip install "./python[dev]"` | pytest and ruff, for development | MIT |
 
@@ -60,8 +61,16 @@ a percent, not bit for bit (`parity/flatfield.md`).
 ## GPU
 
 A GPU is optional: every CPU path imports and runs without CuPy and without a GPU. The GPU paths
-(deconvolution, its OTFs and back projectors) need an NVIDIA GPU, a driver for CUDA 12 and these
-packages, all from PyPI (no CUDA toolkit is needed):
+(deconvolution, its OTFs and back projectors) need an NVIDIA GPU, a driver for CUDA 12 and the
+`gpu` extra's packages, all from PyPI (no CUDA toolkit is needed):
+
+```
+pip install "./python[gpu]"
+```
+
+The extra pins cuFFT to 11.0.8.103 and keeps CuPy, CUDA's runtime and NVRTC and cuda-pathfinder
+within the releases the GPU results were measured with (CuPy 14, CUDA 12.9). The measured
+versions themselves:
 
 ```
 pip install cupy-cuda12x==14.2.0 nvidia-cuda-runtime-cu12==12.9.79 \

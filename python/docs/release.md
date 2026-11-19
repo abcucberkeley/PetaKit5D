@@ -1,0 +1,223 @@
+# Releasing petakit5d
+
+The plan for the first release (Phase 1) and the checklist for every release: the version, the
+wheels, the licenses of everything the wheels bundle or require, and the move of the package into
+a repository of its own. What waits for a decision of the user is marked **(user)**.
+
+## Version and metadata
+
+- **Scheme:** PEP 440. The release candidates of Phase 1 are `0.1.0rc1`, `0.1.0rc2`, ...; the
+  release is `0.1.0`. The version lives in `src/petakit5d/_version.py` alone (`pyproject.toml`
+  reads it), so a release changes that one line.
+- **The exact FFT add-on** `petakit5d-fftw` has a version of its own, FFTW's version and a
+  packaging number (`3.3.8.0`), in `cpp/fft/exact/pyproject.toml`. It changes only when FFTW or its
+  build changes, not with every petakit5d release.
+- **Metadata** (`pyproject.toml`): license `BSD-3-Clause` with `LICENSE`,
+  `THIRD_PARTY_NOTICES.md` and pocketfft's license in the wheel's `licenses/`; Python 3.11 and
+  newer; the classifiers of the tested platforms and Pythons. `[project.urls]` (home page,
+  documentation, issues) is added with the new repository **(user: its name and owner)**.
+- **Dependencies:** NumPy, SciPy, scikit-image, h5py, cpp-zarr and cpp-tiff. The floors of
+  cpp-zarr and cpp-tiff move to their next release (1.8.0) once it is published, in both
+  `[project] dependencies` and `[build-system] requires` (the Linux build links cpp-zarr's
+  OpenMP runtime, below).
+
+## Wheels
+
+### The matrix
+
+| Platform | Wheel tag | Build | Repair | OpenMP runtime |
+|---|---|---|---|---|
+| Linux x86-64 | `manylinux_2_28_x86_64` (auditwheel also tags it `manylinux_2_24`) | GCC 14 of the image `quay.io/pypa/manylinux_2_28_x86_64:2026.06.04-1`, the image of the cpp-zarr and cpp-tiff wheels | auditwheel | the cpp-zarr wheel's libgomp, carried in the wheel (below) |
+| macOS arm64 | `macosx_15_0_arm64` | Apple Clang | delocate | Homebrew's libomp, copied in by delocate |
+| Windows x86-64 | `win_amd64` | MSVC 2022, `/openmp:llvm` | delvewheel `--no-diagnostic` | `libomp140.x86_64.dll`, put next to the modules by the build |
+
+For each platform two wheels: **CPython 3.11** (`cp311-cp311`) and **CPython 3.12 and newer**
+(`cp312-abi3`), with nanobind's stable ABI. The modules use no Python API outside the limited API
+(a capsule is the only direct call), so one abi3 wheel serves 3.12, 3.13, 3.14 and later
+versions. Free-threaded Pythons (`cp314t`) get no wheel: they have no stable ABI.
+`[tool.cibuildwheel]` in `pyproject.toml` holds the matrix; `cibuildwheel` builds it on each
+platform, or, on Linux machines with Apptainer only, the same recipe that builds the cpp-zarr and
+cpp-tiff wheels (a script that runs cibuildwheel's steps in the same image).
+
+Each wheel is tested where it is built, in a fresh environment, by cibuildwheel's test command:
+the smoke tests and the OpenMP runtime tests (`tests/test_smoke.py`,
+`tests/test_openmp_runtime.py`). The full suite runs against an installed wheel in CI (below).
+
+### The OpenMP runtime
+
+- **Linux:** the modules link the libgomp that the cpp-zarr wheel bundles
+  (`libgomp-e985bcbb.so.1.0.0`, the image's libgomp renamed by auditwheel) and carry a copy in
+  `petakit5d/_ext/` with the RUNPATH `$ORIGIN`, so that a process has one OpenMP runtime with
+  cpp-zarr and cpp-tiff ([decisions/0008](decisions/0008-openmp-runtime.md)). auditwheel leaves
+  the copy in place and bundles nothing else: the modules need only the C library, libm,
+  libpthread, libdl and the loader (libstdc++ and libgcc are linked statically and hidden). The
+  name depends on the image, so the image is pinned in all three projects and changes in all three
+  together.
+- **macOS:** Homebrew's libomp, which delocate copies into `petakit5d/.dylibs/`. A Homebrew
+  bottle is built for the runner's macOS, so the wheel's deployment target follows it
+  (`MACOSX_DEPLOYMENT_TARGET`, 15.0 on the macOS 15 runners); an older target needs libomp built
+  from LLVM's sources with that target.
+- **Windows:** MSVC's LLVM OpenMP runtime `libomp140.x86_64.dll`, copied next to the modules by
+  the build; delvewheel leaves it (`--ignore-existing`) and adds the C++ runtime
+  (`msvcp140.dll`) under a mangled name.
+
+### The GPU extra
+
+`pip install "petakit5d[gpu]"` adds CuPy for CUDA 12, CUDA 12.9's runtime and NVRTC and cuFFT
+11.0.8.103, MATLAB R2024b's, with which the GPU FFTs give MATLAB's bits
+([decisions/0003](decisions/0003-gpu.md)). The CUDA kernels are compiled at run time from the
+sources in `petakit5d/_ext/cuda/`, so the wheels carry no GPU binaries, and without the extra
+every CPU path works. The cuFFT pin can conflict with other packages that pin their own cuFFT
+(PyTorch's CUDA wheels): an environment with both needs one of them installed with `--no-deps`.
+
+### The exact FFT add-on (GPL)
+
+`cpp/fft/exact` is the separate package `petakit5d-fftw` (FFTW 3.3.8, GPL-2.0-or-later). Its
+wheel holds two C libraries and no Python extension, so one `py3-none-<platform>` wheel per
+platform serves every Python. It is built, published and installed apart from petakit5d. Nothing
+of it is in petakit5d's wheels or source distribution: the checks below find no FFTW symbol in the
+modules.
+
+### Checks of every wheel before it is published
+
+- auditwheel / delocate / delvewheel: the platform tag, and the bundled libraries are the
+  expected ones (Linux: only the libgomp copy);
+- every module's RUNPATH is `$ORIGIN` (Linux) and names no build folder;
+- no member names a folder of the build machine (a home folder, a temporary build environment,
+  cibuildwheel's folders): cpp-tiff's `check_wheel_paths.py` with the project's own patterns;
+- no FFTW symbol is defined in petakit5d's modules;
+- the license files are in the wheel's `licenses/`.
+
+**Tested for the Phase 1 plan (Linux):** the `cp311` and `cp312-abi3` wheels and the add-on's
+`py3` wheel, built in the pinned image with the recipe of the cpp-zarr and cpp-tiff wheels, passed
+their test commands and the checks above (one bundled library, `libgomp-e985bcbb.so.1.0.0`; every
+module's RUNPATH `$ORIGIN`; no build folder; no FFTW symbol; glibc 2.18 at most). The abi3 wheel,
+installed into a fresh environment on a machine of another CPU generation than the build's, passed
+the full CPU suite with and without the golden store and with the add-on's wheel installed, and
+installed with its dependencies from PyPI on CPython 3.14 it passed the FFT, core, deskew and
+decon tests. macOS and Windows wheels are built and tested first in CI.
+
+## Licenses
+
+petakit5d is BSD-3-Clause. **Nothing GPL-licensed is in its wheels**; the GCC runtime parts that
+are linked or carried are under the GPL with the GCC Runtime Library Exception, which allows
+shipping them with code under any license.
+
+### In the wheels
+
+| Component | Where | License |
+|---|---|---|
+| petakit5d (Python, C++, CUDA sources) | everything | BSD-3-Clause |
+| pocketfft | compiled into the `fft` module | BSD-3-Clause |
+| nanobind and its `tsl::robin_map` | compiled into every module | BSD-3-Clause; MIT |
+| fdlibm and FreeBSD msun algorithms | `matlabcompat.elementary`, the `decon` module | the Sun notice ("freely granted, provided that this notice is preserved"), kept in the sources |
+| normxcorr3 (method of J. P. Lewis) | `kernels.xcorr`, the `xcorr` module | BSD (`THIRD_PARTY_NOTICES.md`) |
+| libstdc++, libgcc (Linux) | linked statically | GPL-3.0 with the GCC Runtime Library Exception |
+| libgomp (Linux) | `petakit5d/_ext/libgomp-e985bcbb.so.1.0.0` | GPL-3.0 with the GCC Runtime Library Exception |
+| libomp (macOS) | `petakit5d/.dylibs/` | Apache-2.0 with LLVM exceptions |
+| libomp140, MSVC C++ runtime (Windows) | `petakit5d/_ext/`, `petakit5d.libs/` | Microsoft's redistributable terms (Visual Studio 2022) |
+
+### Required packages
+
+| Package | License | Bundles (their wheels) |
+|---|---|---|
+| NumPy | BSD-3-Clause AND 0BSD AND MIT AND Zlib AND CC0-1.0 | OpenBLAS (BSD-3-Clause) |
+| SciPy | BSD-3-Clause | OpenBLAS (BSD-3-Clause), libgfortran (GPL-3.0 with the GCC Runtime Library Exception), libquadmath (LGPL-2.1) |
+| scikit-image | BSD-3-Clause | - |
+| networkx, tifffile, lazy-loader (scikit-image's) | BSD-3-Clause | - |
+| imageio (scikit-image's) | BSD-2-Clause | - |
+| pillow (scikit-image's) | MIT-CMU | libjpeg-turbo, libpng, libtiff, libwebp, libavif, freetype, harfbuzz, brotli, lcms2, zlib, libXau, ... (permissive) |
+| packaging (scikit-image's) | Apache-2.0 OR BSD-2-Clause | - |
+| h5py | BSD-3-Clause | HDF5 (BSD-3-Clause-like), libaec and libsz (BSD-2-Clause) |
+| cpp-zarr, cpp-tiff | BSD-3-Clause (their repositories' `LICENSE`; the 1.7.3 wheels declare no license in their metadata) | their library, with its compression libraries linked in; libgomp (GPL-3.0 with the GCC Runtime Library Exception) |
+
+### Optional extras
+
+| Extra | Packages | Licenses |
+|---|---|---|
+| `gpu` | cupy-cuda12x, cuda-pathfinder; nvidia-cuda-runtime-cu12, nvidia-cuda-nvrtc-cu12, nvidia-cufft-cu12 | MIT; Apache-2.0; NVIDIA's proprietary license (the CUDA EULA: not open source, installed by the user from PyPI, never bundled) |
+| `figures` | matplotlib | PSF-based (matplotlib's own) |
+| `n5` | numcodecs | MIT |
+| `formats` | nd2, czifile, imagecodecs | BSD-3-Clause |
+| `basic` | basicpy (with `--no-deps`), torch, torch-dct, hyperactive, pooch, pydantic, dask, tqdm | MIT; BSD-3-Clause; MIT; MIT; BSD-3-Clause; MIT; BSD-3-Clause; MPL-2.0 and MIT |
+| `test`, `dev` | pytest, pytest-timeout, ruff | MIT |
+| (add-on) | petakit5d-fftw | **GPL-2.0-or-later**: a package of its own, never a dependency or an extra of petakit5d |
+
+The table is checked at each release from the installed packages' metadata (`License-Expression`,
+the license classifiers) and their bundled libraries (`*.libs/`, `.dylibs/`).
+
+## The new repository
+
+The package moves into a repository of its own, with its history. PetaKit5D (MATLAB) stays as it
+is: it remains the reference that the oracle cases were made from.
+
+### What travels, and how
+
+| What | How |
+|---|---|
+| `python/` with its history | `git filter-repo` (below): every commit that touched it, with its authors, dates and messages; `python/` becomes the root |
+| the CI workflow (`.github/workflows/python.yml`) | in the same filter, with its history; then one commit for the new layout: no `working-directory: python`, no `paths:` filters, the Slurm config's path without `python/` |
+| the oracle manifests (`tests/**/*.oracle.json`) | in `python/`, so with the history: they carry the MATLAB references that CI compares with |
+| the oracle harness (`tests/oracle_matlab`: the MATLAB side and `ORACLE_COMMIT`) | in `python/`. Making new references needs a MATLAB PetaKit5D tree at the commit `ORACLE_COMMIT` names (`PETAKIT5D_ORACLE_DIR`): a checkout of the MATLAB repository, which stays public. The docs name that repository and the commit |
+| the golden store (the full MATLAB outputs, `PETAKIT5D_GOLDEN_DIR`) | not in git; CI does not need it. **(user)** where it lives for other sites: kept local, or published as a versioned archive keyed by the oracle commit |
+| the demo data (`PETAKIT5D_DEMO_DATA`) | not in git, as now |
+| docs, examples, benchmarks, the lock files, the MATLAB test map | in `python/` |
+| the exact FFT add-on (`cpp/fft/exact`) | in `python/`, as a package with its own license. **(user)** whether it stays a folder of the new repository or gets one of its own |
+| paths that say `python/` (`pip install ./python`, `python/docs/...`) | one commit in the new repository |
+
+### What stays in PetaKit5D
+
+The MATLAB code, its tests (`tests/`), demos, `mcc/`, `setup.m`, `third_parties/` and the MATLAB
+workflow (`tests.yml`). The compiled MATLAB package is retired after the port's first release;
+`pk5d-master` and `pk5d mcc-shim` replace it for PetaKit5D-GUI and PyPetaKit5D. Once the new
+repository is live, `python/` and `python.yml` in PetaKit5D are replaced by a pointer to it in the
+README **(user)**, so that the package has one home.
+
+### The steps (rehearsed on a throw-away clone)
+
+```
+git clone --no-local --single-branch --branch <branch> <PetaKit5D> petakit5d-split
+cd petakit5d-split
+git filter-repo --path python/ --path .github/workflows/python.yml --path-rename python/:
+# check: the commit count, the authors, the trees (below)
+# then, in the new repository: the workflow's layout commit, the paths commit, the remote
+git remote add origin <the new repository>
+```
+
+The checks after the filter:
+
+- the number of commits equals `git rev-list --count <branch> -- python .github/workflows/python.yml`
+  in PetaKit5D;
+- with `--subdirectory-filter python` instead, every commit's tree is the `python/` tree of its
+  original, one for one (`git rev-parse <commit>:python` against the new commit's tree);
+- authors, committers and dates are unchanged; messages too, except the abbreviated hashes of
+  kept commits, which filter-repo rewrites to the new hashes (hashes of MATLAB commits stay);
+- the confidentiality scan over the whole history (every blob and message), not only the last
+  tree.
+
+## The release checklist
+
+1. **The libraries (user):** cpp-tiff 1.8.0 and cpp-zarr 1.8.0 are published, from the pinned
+   image. Raise the floors to 1.8.0 (dependencies and build requirements), check that their Linux
+   wheels still bundle `libgomp-e985bcbb.so.1.0.0`, and rerun the OpenMP runtime tests against
+   them. On macOS this also ends the known crash of the 1.7.3 wheels.
+2. **The version:** `src/petakit5d/_version.py` to `0.1.0rcN` (then `0.1.0`); the add-on's only
+   if FFTW or its build changed.
+3. **The suites, green:** the full CPU suite with and without the golden store, the exact add-on's
+   suite, the GPU tests on a Volta, an A100-class and a Blackwell GPU, and the CI on Linux, macOS
+   and Windows, all on the release commit.
+4. **The wheels:** the matrix above, built from the release commit; each passes its test command;
+   one Linux wheel installed into a fresh environment on another machine passes the full CPU
+   suite; the checks of every wheel (above) find nothing.
+5. **The source distribution:** `python -m build --sdist`; it has no `cpp/fft/exact/`, no build
+   folders, and builds a wheel from scratch.
+6. **The licenses:** the tables above against the installed packages' metadata; new bundled
+   libraries go into `THIRD_PARTY_NOTICES.md`.
+7. **The new repository (user):** its name and owner; the split as above; the CI in its new
+   layout green there; `[project.urls]` filled in.
+8. **Publishing (user):** PyPI (petakit5d, and petakit5d-fftw apart from it), from CI with trusted
+   publishing, first to TestPyPI; the tag `v0.1.0rcN` on the release commit.
+9. **The switch (user):** PetaKit5D-GUI and PyPetaKit5D move to `pk5d mcc-shim` / `pk5d-master`
+   ([migration.md](migration.md)); the compiled MATLAB package is retired after the first release.
+10. **The old repository (user):** PetaKit5D's README points at the new one; whether PetaKit5D
+    still takes the 1.8.0 vendoring of cpp-tiff and cpp-zarr and its Windows demos.

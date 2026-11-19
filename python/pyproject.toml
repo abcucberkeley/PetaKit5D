@@ -25,20 +25,40 @@ dependencies = [
     "cpp-tiff>=1.7.3,<2",
     "h5py>=3.11",
 ]
+keywords = ["light-sheet microscopy", "deskew", "deconvolution", "stitching", "zarr", "tiff"]
 classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Programming Language :: C++",
     "Operating System :: POSIX :: Linux",
     "Operating System :: MacOS",
     "Operating System :: Microsoft :: Windows",
+    "Environment :: GPU :: NVIDIA CUDA :: 12",
     "Topic :: Scientific/Engineering :: Image Processing",
 ]
+# [project.urls] comes with the new repository (its name and owner are the user's decision)
 
 [project.scripts]
 pk5d = "petakit5d.cli.main:main"
 pk5d-master = "petakit5d.cli.master:main"
 
 [project.optional-dependencies]
+# the GPU paths (decon, its OTFs and back projectors): CuPy, CUDA 12.9's runtime and NVRTC, which
+# compile for every GPU from Volta to Blackwell, and cuFFT 11.0.8, MATLAB R2024b's, with which the
+# GPU FFTs give MATLAB's bits (docs/decisions/0003-gpu.md); no CUDA toolkit is needed
+gpu = [
+    "cupy-cuda12x>=14.2,<15",
+    "nvidia-cuda-runtime-cu12>=12.9.79,<12.10",
+    "nvidia-cuda-nvrtc-cu12>=12.9.86,<12.10",
+    "nvidia-cufft-cu12==11.0.8.103",
+    "cuda-pathfinder>=1.8.6,<2",
+]
 test = ["pytest>=8", "pytest-timeout>=2.3"]
 dev = ["pytest>=8", "pytest-timeout>=2.3", "ruff>=0.8"]
 # the phase-image flat field (flatfield.basic): BaSiCPy's dependencies. BaSiCPy 2.0.0 itself
@@ -68,10 +88,43 @@ cmake.build-type = "Release"
 ninja.version = ">=1.11"
 wheel.packages = ["src/petakit5d"]
 wheel.exclude = ["**/__pycache__/**"]
+# one abi3 wheel for CPython 3.12 and newer (nanobind's stable ABI), and one for 3.11; the modules
+# use no Python API outside the limited API
+wheel.py-api = "cp312"
 # the exact FFT add-on (FFTW, GPL) is a package of its own (cpp/fft/exact): not in this one
 sdist.exclude = ["build/", "dist/", ".venv/", "**/__pycache__/**", "cpp/fft/exact/"]
 metadata.version.provider = "scikit_build_core.metadata.regex"
 metadata.version.input = "src/petakit5d/_version.py"
+
+# The release wheels (docs/release.md): Linux x86-64 (manylinux_2_28), macOS arm64 and Windows
+# x86-64, for CPython 3.11 and 3.12 (abi3: 3.12 and newer). The exact FFT add-on (cpp/fft/exact)
+# is a package and a wheel of its own, under the GPL.
+[tool.cibuildwheel]
+build = ["cp311-*", "cp312-*"]
+skip = ["*-musllinux_*"]
+test-requires = ["pytest>=8", "pytest-timeout>=2.3"]
+# the installed modules load, and share one OpenMP runtime with the I/O packages (Linux)
+test-command = "python -m pytest -q -p no:cacheprovider {package}/tests/test_smoke.py {package}/tests/test_openmp_runtime.py"
+
+[tool.cibuildwheel.linux]
+archs = ["x86_64"]
+# the image of the cpp-zarr and cpp-tiff wheels: its libgomp, which they bundle as
+# libgomp-e985bcbb.so.1.0.0, is the one the modules link and carry (docs/decisions/0008); it
+# changes together with theirs
+manylinux-x86_64-image = "quay.io/pypa/manylinux_2_28_x86_64:2026.06.04-1"
+
+[tool.cibuildwheel.macos]
+archs = ["arm64"]
+# Apple Clang has no OpenMP runtime: Homebrew's libomp, which delocate copies into the wheel; the
+# deployment target can't be older than that libomp's
+before-all = "brew install libomp"
+environment = { MACOSX_DEPLOYMENT_TARGET = "15.0" }
+
+[tool.cibuildwheel.windows]
+archs = ["AMD64"]
+# the build puts libomp140.x86_64.dll next to the modules; delvewheel adds the C++ runtime, and
+# --no-diagnostic keeps the build machine's folders out of its record
+repair-wheel-command = "delvewheel repair --ignore-existing --no-diagnostic -w {dest_dir} {wheel}"
 
 [tool.pytest.ini_options]
 minversion = "8.0"

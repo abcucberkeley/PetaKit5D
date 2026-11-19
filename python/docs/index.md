@@ -26,6 +26,8 @@ microscopy, with MATLAB PetaKit5D's results and files.
   as text, paths, threads.
 - [jobs.md](jobs.md): the job framework (local, pool and cluster modes, task records, runners).
 - [platforms.md](platforms.md): Linux, macOS and Windows: toolchains and the same bits on each.
+- [release.md](release.md): the release plan and checklist: versions, the wheels, the licenses of
+  what they bundle or require, and the move into a repository of its own.
 - [testing.md](testing.md): the oracle harness that compares the port with MATLAB, and the test
   suite; [test_map/README.md](test_map/README.md): what became of each MATLAB test.
 - [hardening.md](hardening.md): what the suite misses: the mutation campaign, coverage per
