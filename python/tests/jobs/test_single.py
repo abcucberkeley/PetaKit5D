@@ -819,6 +819,11 @@ def test_wait_between_rounds(monkeypatch):
     assert waits == [3.0, 6.0, 30.0, 0.5]
 
 
+@pytest.mark.skipif(
+    not single._LINUX,
+    reason="task runners (the pools' folders) run on Linux only: elsewhere both tasks are lines "
+    "of one plain folder",
+)
 def test_call_ends_its_pools_and_folders(tmp_path, fake_slurm):
     (tmp_path / "logs").mkdir()
     outer = single.mark()

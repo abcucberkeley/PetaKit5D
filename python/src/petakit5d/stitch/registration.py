@@ -492,6 +492,28 @@ def _matlab_size(path: str) -> list[int]:
     return [s[1], s[2], s[0]] if len(s) >= 3 else s
 
 
+def _slab_shift(rsm: np.ndarray, mxm: np.ndarray, dom0, pool_1) -> tuple[np.ndarray, float]:
+    """The shift and peak of the three slabs' results (``rsm`` 3 x 3, scaled in place by
+    ``pool_1``; ``mxm`` 3 x 1): each axis from the two slabs that see it, weighted by their
+    squared peaks, rounded, and the peak ``sum(p^3) / sum(p^2)``. Two weights of 0 give 0 / 0:
+    MATLAB's NaN on every processor."""
+    from petakit5d.core import dtypes
+    from petakit5d.matlabcompat import elementary
+
+    rel = np.zeros(3)
+    for i in range(3):
+        diff = [k for k in range(3) if k != dom0[i]]
+        w = elementary.power(mxm[diff, 0], 2)
+        rsm[diff, i] = rsm[diff, i] * pool_1[dom0[i]]
+        prod = rsm[diff, i] * w
+        rel[i] = dtypes.rdivide(prod[0] + prod[1], w[0] + w[1])
+    rel = dtypes.mround(rel)
+    p3 = elementary.power(mxm[:, 0], 3)
+    p2 = elementary.power(mxm[:, 0], 2)
+    max_xcorr = float(dtypes.rdivide((p3[0] + p3[1]) + p3[2], (p2[0] + p2[1]) + p2[2]))
+    return rel, max_xcorr
+
+
 def cross_correlation_registration_3d_mip_slabs(
     img_fullpath_1: str,
     img_fullpath_2: str,
@@ -537,7 +559,7 @@ def cross_correlation_registration_3d_mip_slabs(
     from petakit5d.io.matfile import read_mat
     from petakit5d.jobs import framework
     from petakit5d.jobs.tasks import Task
-    from petakit5d.matlabcompat import elementary, stats
+    from petakit5d.matlabcompat import stats
     from petakit5d.stitch.geometry import check_cuboids_overlaps
 
     names = ["relative_shift", "max_xcorr", "relative_shift_mat", "max_xcorr_mat"]
@@ -654,18 +676,7 @@ def cross_correlation_registration_3d_mip_slabs(
     if failed.any():
         if float(mxm.max()) - float(stats.median(mxm[:, 0])) > 0.2:
             mxm[failed, 0] = 0
-    # each axis from the two slabs that see it, weighted by their squared peaks
-    rel = np.zeros(3)
-    for i in range(3):
-        diff = [k for k in range(3) if k != dom0[i]]
-        w = elementary.power(mxm[diff, 0], 2)
-        rsm[diff, i] = rsm[diff, i] * pool_1[dom0[i]]
-        prod = rsm[diff, i] * w
-        rel[i] = (prod[0] + prod[1]) / (w[0] + w[1])
-    rel = mround(rel)
-    p3 = elementary.power(mxm[:, 0], 3)
-    p2 = elementary.power(mxm[:, 0], 2)
-    max_xcorr = float(((p3[0] + p3[1]) + p3[2]) / ((p2[0] + p2[1]) + p2[2]))
+    rel, max_xcorr = _slab_shift(rsm, mxm, dom0, pool_1)
     if xcorr_fullpath:
         print("Save results ...")
         _save(

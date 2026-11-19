@@ -86,3 +86,41 @@ def test_x86_nan_is_the_identity_on_x86():
     r = np.array([1.0, 2.0])
     if dtypes._cpu_nan_is_x86():
         assert dtypes.x86_nan(r, r) is r
+
+
+# Two places that made the CPU's NaN of an invalid operation, found on ARM. NumPy's error state
+# raises at an invalid operation that is not made MATLAB's NaN, so these fail on x86 too without
+# the step (with one thread: the error state is per thread).
+
+
+def test_distance_map_of_a_negative_weight_degree_has_matlabs_nan():
+    # weight degree -1 makes the box weights' floor Inf in single: the voxels of distance 0 are
+    # Inf .* 0 (tests/stitch/test_distance.py slab.wd-1)
+    from petakit5d.stitch import distance as sd
+    from petakit5d.testing.synth import CounterRNG
+
+    slab = CounterRNG(0, "e04/slab").integers(1, 1000, (11, 30, 26), dtype=np.uint16)
+    slab[:2] = 0
+    slab[:, :, :3] = 0
+    with np.errstate(invalid="raise"):
+        m = sd.tile_distance_map_mip_slab(
+            slab, -1, pool_size=(2, 2, 2), dist_bbox=(2, 4, 6, 18, 50, 40), num_threads=1
+        )
+    nan = np.isnan(m)
+    assert nan.any()
+    assert set(m[nan].view(np.uint32).tolist()) == {_NAN32}
+
+
+def test_slab_shift_of_two_zero_weights_has_matlabs_nan():
+    # failed slabs weigh 0: 0 / 0 in the registration's shift, and in its peak where all three
+    # are 0 (tests/stitch/test_registration.py weights.nan.3, weights.nan.6)
+    from petakit5d.stitch import registration as sr
+
+    rsm = np.arange(1.0, 10.0).reshape(3, 3)
+    one_seen = np.array([[0.0], [0.0], [0.5]])  # axis 0 is seen by slabs 0 and 1 only
+    with np.errstate(invalid="raise"):
+        rel, peak = sr._slab_shift(rsm.copy(), one_seen, [2, 1, 0], np.ones(3))
+        _, peak0 = sr._slab_shift(rsm.copy(), np.zeros((3, 1)), [2, 1, 0], np.ones(3))
+    assert _bits(rel)[0] == _NAN64 and not np.isnan(rel[1:]).any()
+    assert not np.isnan(peak)
+    assert _bits(np.float64(peak0)) == _NAN64

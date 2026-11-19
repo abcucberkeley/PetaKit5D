@@ -297,6 +297,19 @@ class _BoxWeights:
         return w
 
 
+def _times_into(a: np.ndarray, b: np.ndarray) -> None:
+    """``a = a .* b`` in place, with MATLAB's NaN for Inf .* 0 on every processor (ARM's default
+    NaN has the sign bit clear). The maps and weights it takes hold no NaN of their own, or only
+    MATLAB's, so every NaN of the product is MATLAB's."""
+    from petakit5d.core import dtypes
+
+    with np.errstate(invalid="ignore"):
+        r = np.multiply(a, b, out=a)
+    fixed = dtypes.x86_nan(r)
+    if fixed is not r:
+        a[...] = fixed
+
+
 def _finish_slice(
     out_z: np.ndarray, src: np.ndarray | None, w: float, keep: np.ndarray, box: np.ndarray | None
 ) -> None:
@@ -309,7 +322,7 @@ def _finish_slice(
     else:
         scale_offset(src, scale=float(w), mask=keep, out=out_z, num_threads=1)
     if box is not None:
-        np.multiply(out_z, box, out=out_z)
+        _times_into(out_z, box)
 
 
 def _check_out(out: np.ndarray | None, shape: tuple[int, ...]) -> np.ndarray:
@@ -605,7 +618,9 @@ def tile_distance_map_mip_slab(
         with np.errstate(divide="ignore"):
             floor = float(el.power(1e-50, 1.0 / wd)) if wd != 0 else 0.0
         boxes = _BoxWeights(*_expand(ws, shape), None, np.float32(floor))
-        _parallel(nt, lambda z: np.multiply(res[z], boxes.of(z), out=res[z]), range(shape[0]))
+        # (a weight degree below 0 makes the floor Inf in single: the voxels of distance 0 are
+        # Inf .* 0)
+        _parallel(nt, lambda z: _times_into(res[z], boxes.of(z)), range(shape[0]))
     return res
 
 
