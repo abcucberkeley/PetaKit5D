@@ -18,6 +18,14 @@
      "cases": null,
      "fate": []
     },
+    "largeZarrFilesAreCroppedInBatches": {
+     "pins": "largeFile only sized the jobs (with a batch's memory), and the files were cropped in memory; large zarr files are cropped in batches (XR_crop_zarr) into zarr results, equal to the crops of the regular path",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
     "memAllocateIsInGigabytes": {
      "pins": "979fa55 regression: memAllocate (GB) was computed in bytes, so every Slurm job requested the maximum number of CPUs",
      "tags": [
@@ -26,8 +34,32 @@
      "cases": null,
      "fate": []
     },
+    "modeIsOneOfThreeInAnyCase": {
+     "pins": "another mode cropped each channel's box shifted against its offset (without error), and the switch took the case into account: 'Valid' is 'valid'",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
     "offsetsEstimatedFromPSFs": {
      "pins": "without chromaticOffset, offsets are measured from bead images (one per channel) of the same beads",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "offsetsHaveARowPerChannel": {
+     "pins": "without offsets (or PSFs) the boxes failed on a size mismatch, with a row too few on an index, and a row too many changed the overlap",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "psfBoundsAreInYXZ": {
+     "pins": "the bounds (cropLength +- maxOffset, in y, x, z) were turned into x, y, z for normxcorr3_max_shift, which takes y, x, z: y was bounded by the x values and x by the y values. A bead 5 voxels off in y and 1 in x is found within bounds of 6 in y and 2 in x as within 6 in all axes",
      "tags": [
       "Integration"
      ],
@@ -50,6 +82,14 @@
      "cases": null,
      "fate": []
     },
+    "zarrDataWithOffsetsFromPSFs": {
+     "pins": "the offsets measured from (tiff) PSFs set zarrFile false for them, and it stayed false for the crops of the zarr data, which failed",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
     "zarrOutput": {
      "pins": "zarr output",
      "tags": [
@@ -58,7 +98,14 @@
      "cases": null,
      "fate": []
     }
-   }
+   },
+   "reopened": [
+    "largeZarrFilesAreCroppedInBatches",
+    "modeIsOneOfThreeInAnyCase",
+    "offsetsHaveARowPerChannel",
+    "psfBoundsAreInYXZ",
+    "zarrDataWithOffsetsFromPSFs"
+   ]
   },
   "FFTSpectrumTest": {
    "file": "tests/analysis/FFTSpectrumTest.m",
@@ -136,10 +183,26 @@
      "cases": null,
      "fate": []
     },
+    "imagesWithoutSignalHaveNoFSC": {
+     "pins": "all-zero images failed with an index error (xi(end) = [] of an empty xi)",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
     "noisierIterationHasWorseResolution": {
      "pins": "noisier iteration has worse resolution",
      "tags": [
       "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "oddNumberOfSectorsIsRefused": {
+     "pins": "with an odd number of sectors (pi / dtheta = 5) no sector is at pi/2 (x): the full circle had 2n values for 2n + 1 angles, with two MATLAB:colon:nonIntegerIndex warnings",
+     "tags": [
+      "Unit"
      ],
      "cases": null,
      "fate": []
@@ -161,10 +224,26 @@
      ],
      "fate": []
     },
+    "regionsAreCentredOnEachFile": {
+     "pins": "the region centres came from cs(1), cs(2) and cs(3) of the files' centres (the first files' y centres when there are several files), and with one region per image the wrapper failed when it read the results (MATLAB:cellRefFromNonCell): each file's regions are around its own centre, here one region each",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
     "resultIsMovedIntoPlace": {
      "pins": "the job framework counts a task as done once its result exists, and the wrapper loads each result right after it returns; a result saved in place could be read half written",
      "tags": [
       "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "sectorsInsideTheConesAreNaN": {
+     "pins": "with dtheta = pi/24 the sectors at 0 and pi/2 lie inside the cones that are skipped: XR_FSC gives the 22 others, which took their places in the full circle (45 values for 49 angles). Each angle phi takes the sector at phi + pi/2 (0 is x, pi/2 z), and the missing sectors are NaN",
+     "tags": [
+      "Unit"
      ],
      "cases": null,
      "fate": []
@@ -176,8 +255,23 @@
      ],
      "cases": null,
      "fate": []
+    },
+    "twoImageAnalysisRuns": {
+     "pins": "XR_two_image_FSC_analysis passed 'N' to XR_FSC, which has no such parameter (its halfSize), so it always failed; its crop kept the second half of an image larger than 2 * N. Two copies of one image correlate fully (the FSC never falls below a fixed 0.2: the resolution is that of the largest frequency, sqrt(2) of the Nyquist frequency), two images of independent noise much less",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
     }
-   }
+   },
+   "reopened": [
+    "imagesWithoutSignalHaveNoFSC",
+    "oddNumberOfSectorsIsRefused",
+    "regionsAreCentredOnEachFile",
+    "sectorsInsideTheConesAreNaN",
+    "twoImageAnalysisRuns"
+   ]
   },
   "FlatfieldBackgroundEstimationTest": {
    "file": "tests/analysis/FlatfieldBackgroundEstimationTest.m",
@@ -359,6 +453,14 @@
    "finished": false,
    "fate": [],
    "methods": {
+    "emptyBackgroundMaskTakesTheBaseThreshold": {
+     "pins": "with BaseThreshold, the threshold also takes the mode of the MIP's background mask; for an empty mask (here a MIP too small for its opening and erosion by a disk of 5) the mode of single or double data is NaN, which became Inf (or MaxThreshold) and removed the whole batch. The base threshold stands in for it, as it already did for integer data (whose mode of nothing is 0)",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
     "interpolatedBackgroundOneValueDeepInZ": {
      "pins": "a background estimated in batches as deep as the volume is one value deep in z, which MATLAB's arrays drop: imresize3 of a batch's background failed (MATLAB:badsubscript). The plane's interpolation is the background at every z, the same as for the plane twice in z",
      "tags": [
@@ -402,7 +504,8 @@
    },
    "reopened": [
     "interpolatedBackgroundOneValueDeepInZ",
-    "punctumAtACornerIsFilledFromTheNearestPixels"
+    "punctumAtACornerIsFilledFromTheNearestPixels",
+    "emptyBackgroundMaskTakesTheBaseThreshold"
    ]
   },
   "UnmixChannelsTest": {

@@ -1,25 +1,25 @@
 {
- "oracle_commit": "4a3bef3",
+ "oracle_commit": "45b2bb1",
  "matlab": "24.2.0.2863752 (R2024b) Update 5",
  "computer": "GLNXA64",
- "n_all": 1732,
- "n_default": 1722,
+ "n_all": 1758,
+ "n_default": 1748,
  "folders": {
-  "analysis": 75,
+  "analysis": 86,
   "cluster": 11,
-  "crop": 69,
-  "decon": 398,
+  "crop": 72,
+  "decon": 399,
   "demo_data": 4,
-  "deskew_rotate": 228,
+  "deskew_rotate": 229,
   "flatfield": 8,
-  "framework": 300,
+  "framework": 301,
   "golden": 8,
-  "io": 87,
+  "io": 90,
   "isolation": 23,
-  "pipeline": 37,
-  "platform": 46,
+  "pipeline": 38,
+  "platform": 47,
   "point_detection": 6,
-  "stitch": 208,
-  "tools": 224
+  "stitch": 211,
+  "tools": 225
  }
 }

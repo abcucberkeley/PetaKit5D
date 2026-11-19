@@ -550,6 +550,15 @@
      "fate": [],
      "owner": "J04"
     },
+    "parforWrapperTakesNoMoreWorkersThanTheProfile": {
+     "pins": "parpool refused more workers than the local profile has (as many as the cores of the machine or job), e.g. the 12 that XR_crop_zarr and XR_MIP_zarr ask for in a job of fewer cores",
+     "tags": [
+      "Integration",
+      "Slow"
+     ],
+     "cases": null,
+     "fate": []
+    },
     "runsEveryTaskOnceAndWritesOutputs": {
      "pins": "runs every task once and writes outputs",
      "tags": [

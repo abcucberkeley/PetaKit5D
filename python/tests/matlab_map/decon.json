@@ -1760,6 +1760,14 @@
      "fate": [],
      "owner": "R07"
     },
+    "largeFileInMemoryDefaultBackgroundIsThatOfTheOtherPaths": {
+     "pins": "without a Background the in-memory large-file decon used 99, while XR_RLdeconFrame3D (which always passes one) and the in-place path use 100",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
     "largeFileInMemoryUsesBlockSize": {
      "pins": "the in-memory large-file path wrote its zarr result with writezarr's default chunks (500^3) instead of blockSize",
      "tags": [
@@ -2035,7 +2043,8 @@
    },
    "reopened": [
     "largeFileInMemoryBatchesAreOnlyDeconvolved",
-    "omwBackProjectorOfOtherBoundsIsCopiedByItsName"
+    "omwBackProjectorOfOtherBoundsIsCopiedByItsName",
+    "largeFileInMemoryDefaultBackgroundIsThatOfTheOtherPaths"
    ]
   }
  }

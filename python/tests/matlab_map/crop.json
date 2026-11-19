@@ -51,6 +51,14 @@
      "fate": [],
      "category": "framework_fake_slurm"
     },
+    "largeZarrCropOfRelativePaths": {
+     "pins": "XR_crop_zarr put the flags of a file name without a folder at the filesystem root (/zarr_flag/), and its block tasks, which run after the job framework changes the folder, got the relative paths: they are taken from the current folder",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
     "largeZarrJobsAskForWhatTheyHold": {
      "pins": "the job of a large crop (XR_crop_zarr) runs its blocks as jobs (1 CPU each). It asked for 32 B per voxel of the whole input: whole nodes for large data. Now it asks for MATLAB and the merge of the MIP slabs with one CPU, and if it crops blocks itself (masterCompute, the config's if it sets it), for cpusPerTask (default 2) and a block's estimate (8 B per voxel of a batch, 1024 x 1024 x 512 here:...",
      "tags": [
@@ -140,6 +148,22 @@
      "cases": null,
      "fate": []
     },
+    "movingCropOfASingleTimePointUsesTheBox": {
+     "pins": "with one time point the move was divided by 0 (its start became NaN and the task failed); the time point is the first one",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "movingCropOfSeveralDatasetsMovesInEach": {
+     "pins": "the time points of the files were those of the last dataset, indexed by the file's number among all datasets (an index error, or another time point's box); each dataset moves from inputBbox to lastStartCoords over its own time points (2 and 3)",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
     "padPastImageEdge": {
      "pins": "bbox starts before and ends after the image in every axis",
      "tags": [
@@ -196,7 +220,12 @@
      "cases": null,
      "fate": []
     }
-   }
+   },
+   "reopened": [
+    "largeZarrCropOfRelativePaths",
+    "movingCropOfASingleTimePointUsesTheBox",
+    "movingCropOfSeveralDatasetsMovesInEach"
+   ]
   },
   "CropMexTest": {
    "file": "tests/crop/CropMexTest.m",

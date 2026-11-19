@@ -877,6 +877,14 @@
      "cases": null,
      "fate": []
     },
+    "stitchZarrTileOfAFrameOrWithoutTheFrameInput": {
+     "pins": "stitch_process_zarr_tile failed on an undefined sz for a given frame, and for name-value pairs right after the output name (it took the first name as the frame); with [] for the frame, as stitch_process_tiles calls it, it worked",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
     "tiffToZarrFromMemory": {
      "pins": "the optional third input converts data that is already loaded",
      "tags": [
@@ -957,7 +965,10 @@
      "cases": null,
      "fate": []
     }
-   }
+   },
+   "reopened": [
+    "stitchZarrTileOfAFrameOrWithoutTheFrameInput"
+   ]
   },
   "UsableGPUNumTest": {
    "file": "tests/tools/UsableGPUNumTest.m",

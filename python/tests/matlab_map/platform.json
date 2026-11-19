@@ -353,7 +353,15 @@
      "fate": []
     },
     "macArmBinariesOnlyLoadBundledOrSystemLibraries": {
-     "pins": "the PetaKit5D .mexmaca64 files used to load Homebrew's libgomp by absolute path, so on a Mac without Homebrew gcc@13 they only loaded if cpp-tiff/cpp-zarr had loaded the bundled libgomp first. compileAllMexFiles now links the GCC runtime statically; cpp-tiff/cpp-zarr load theirs from next to them (@loader_path).",
+     "pins": "the PetaKit5D .mexmaca64 files used to load Homebrew's libgomp by absolute path, so on a Mac without Homebrew gcc@13 they only loaded if cpp-tiff/cpp-zarr had loaded the bundled libgomp first. They now load the libgomp bundled with cpp-tiff (@rpath); cpp-tiff/cpp-zarr load theirs from next to them (@loader_path).",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "macArmMexFilesShareTheBundledOpenMPRuntime": {
+     "pins": "each PetaKit5D .mexmaca64 file had an OpenMP runtime of its own (libgomp linked statically) or Homebrew's, besides the one cpp-tiff and cpp-zarr load, and searched Homebrew folders (LC_RPATH). They must load the libgomp bundled with cpp-tiff through @rpath, from io/cpp-tiff/macArm relative to their folder, and search only folders relative to themselves. The vendored binaries are left out.",
      "tags": [
       "Unit"
      ],

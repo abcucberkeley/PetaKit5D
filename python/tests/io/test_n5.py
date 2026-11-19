@@ -5,8 +5,9 @@ MATLAB has no tests of these functions; the oracle cases are new:
 - zarrToN5 of MATLAB-layout zarr arrays (uint16 and single, chunks and batches that don't
   divide the image, a box, all-zero chunks, defaults, uint8's error): attributes.json's text,
   the chunk files, their headers and the data read back by MATLAB's N5Adapter. MATLAB's side
-  needs zarr-python 2 and numcodecs in the active environment (``pkpy_n5_setup``); the Python
-  side needs numcodecs (the n5 extra) for blosc, and these cases skip without it.
+  needs zarr-python 2 and numcodecs in the active environment (``pkpy_n5_setup``, which refuses
+  another with ``pkpy:n5:noZarr2``: run their pack with ``orun.sh -e`` such an environment); the
+  Python side needs numcodecs (the n5 extra) for blosc, and these cases skip without it.
 - N5ToZarr of N5 datasets in MATLAB's layout (raw chunks, so the inputs don't depend on a codec
   library's version): uint16 and single, flipEmptyValue, a box, edge chunks cut as n5-java
   writes them, a folder with a .zgroup (its s0), uint8's error; the zarr results compared by

@@ -158,6 +158,15 @@
      "fate": [],
      "category": "framework_fake_slurm"
     },
+    "localRunEndsWhenEveryDeskewIsGivenUp": {
+     "pins": "locally, a file's stitching waits for its deskewed tile; when every deskew was given up without an error (here a spy that makes no result), no stitching try was ever counted and the run never ended. A file whose deskew is given up gives up its stitching; the spies stop a run stuck in its loop (a deskew is tried again at once, with no wait for its marker)",
+     "tags": [
+      "Integration",
+      "Slow"
+     ],
+     "cases": null,
+     "fate": []
+    },
     "localRunSubmitsNoStitchingJobs": {
      "pins": "the stitching task didn't get parseCluster, so a local run on a machine with Slurm stitched in Slurm jobs",
      "tags": [
@@ -247,7 +256,8 @@
     "localStitchingWithoutResultIsTriedOnce",
     "scalarSave16bitIsForBothSteps",
     "stitchingGetsTheResampleFactorInItsAxisOrder",
-    "streamingAddsNewFilesNamedAsAnotherDatasetsFiles"
+    "streamingAddsNewFilesNamedAsAnotherDatasetsFiles",
+    "localRunEndsWhenEveryDeskewIsGivenUp"
    ]
   },
   "FilenameParsingTest": {

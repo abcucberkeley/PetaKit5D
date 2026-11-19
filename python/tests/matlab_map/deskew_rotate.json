@@ -224,7 +224,15 @@
      "fate": []
     },
     "largeFileReadsTheResampleFactorAsRegularFiles": {
-     "pins": "XR_deskewRotateZarr read the factor as [y x z] for the result's size and its batches, while its blocks (deskewRotateFrame3D) and the regular path read [x y z], and 1 or 2 values failed with an index error. The result is the regular path's, completed to 3 values as XR_deskewRotateFrame does; a fractional factor along y (the batches' axis) only gives its size here",
+     "pins": "XR_deskewRotateZarr read the factor as [y x z] for the result's size and its batches, while its blocks (deskewRotateFrame3D) and the regular path read [x y z], and 1 or 2 values failed with an index error. The result is the regular path's, completed to 3 values as XR_deskewRotateFrame does (a fractional factor along y, the batches' axis, also in largeFileResamplesOnTheGridOfTheResult)",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "largeFileResamplesOnTheGridOfTheResult": {
+     "pins": "with a fractional factor along y (the batches' axis) each batch resampled on a grid of its own, centred on its rows, which is the result's only if the batch's rows lie on it (here up to 276 counts in 6.8% of the voxels for 1.5); and the last batch could stop a row short of the input region. The batches resample on the grid of the whole result: the result is the regular path's, also for an odd n...",
      "tags": [
       "Integration"
      ],
@@ -317,7 +325,8 @@
     "largeFileIsFlippedAsRegularFiles",
     "largeFileMIPMaskBoxesFollowTheFactorAndTheFlip",
     "largeFileParforRunsTheBlocks",
-    "largeFileReadsTheResampleFactorAsRegularFiles"
+    "largeFileReadsTheResampleFactorAsRegularFiles",
+    "largeFileResamplesOnTheGridOfTheResult"
    ]
   },
   "DeskewRotateFrame3DTest": {

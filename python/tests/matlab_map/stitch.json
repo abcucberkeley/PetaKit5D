@@ -303,6 +303,15 @@
      "cases": null,
      "fate": []
     },
+    "mipSlabRegistrationTakesTheAxesOfTheDataOrder": {
+     "pins": "cross_correlation_registration_3d_mip_slabs (large files) named the slab of the data's dimension i by the axis of index i (right only for y,x,z), and divided the max offsets (xyz, as cross_correlation_registration_3d reads them) by the pooling of the dimension of their index: in the slabs of y and x of y,x,z data, x and y got each other's bounds (halved here). The same pair in each data order m...",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": [],
+     "owner": "S04"
+    },
     "nccDoesNotDependOnTheThreadCount": {
      "pins": "the means, the sum and the variances of the template and the image (89000 or more elements each) were MATLAB's, which change in the last bits with the number of threads, and with them the NCC of double data in most values (of single data rarely: at windows at the flatness threshold). Now the NCC is the same at 2, 4 and 24 threads as at 1: the MATLAB code (double) and the mex (single, on Linux).",
      "tags": [
@@ -791,6 +800,14 @@
       "tileBlendMethod=mean",
       "tileBlendMethod=median"
      ],
+     "fate": []
+    },
+    "blockRetriesAskForMoreMemory": {
+     "pins": "the stitching function retries blocks that failed with twice the CPUs and time, but passed neither the memory nor the local workers: its jobs got the memory of their CPUs, less than the first try's when that asked for more. The job framework is a stand-in that runs the tasks here and leaves out the first call's blocks",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
      "fate": []
     },
     "clusterJobsAskForWhatTheyHold": {
@@ -1287,6 +1304,15 @@
       "xcorrModeName=all"
      ],
      "fate": []
+    },
+    "twoValueMaxOffsetIsXAndY": {
+     "pins": "the wrapper takes one or two xyMaxOffset values, but two garbled the stitching function's string, which made five max offsets of them. They are x and y (MaxOffset is in x, y, z): the second tile, listed 6 voxels off in x, is found within 10 in x and 2 in y",
+     "tags": [
+      "Integration"
+     ],
+     "cases": null,
+     "fate": [],
+     "owner": "S04"
     },
     "volumeSizeEstimateMatchesTheStitchedVolume": {
      "pins": "the stitching wrapper sizes a volume's job by the size of the volume (stitch_volume_size_estimate, which mirrors the stitching function's geometry): it is the size of the stitched volume (exact tiles: no registration shifts)",

@@ -143,6 +143,22 @@
      "cases": null,
      "fate": []
     },
+    "rangeWithANaNEndIsRefused": {
+     "pins": "the mex read one slice for a NaN end; non-finite ranges are refused before the mex is called",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "rangeWithAnInfEndIsRefused": {
+     "pins": "parallelReadTiff(fn, [1, Inf]) ends MATLAB (a segmentation violation in Cpp-Tiff's reader), so readtiff refuses non-finite ranges before the mex is called",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
     "readsImageJStack": {
      "pins": "ImageJ/Fiji stacks are big-endian with contiguous pixel data and one IFD per slice; also a regression test for range reads of ImageJ files (f369d36)",
      "tags": [
@@ -342,6 +358,14 @@
     },
     "readBoundingBox": {
      "pins": "read bounding box",
+     "tags": [
+      "Unit"
+     ],
+     "cases": null,
+     "fate": []
+    },
+    "readBoundingBoxMustBeFinite": {
+     "pins": "a NaN or Inf end (or start) reached the mex, which failed with 'Upper bound is invalid' or MATLAB:pmaxsize; it is refused before the mex is called",
      "tags": [
       "Unit"
      ],
