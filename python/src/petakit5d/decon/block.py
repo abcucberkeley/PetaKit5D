@@ -12,7 +12,7 @@ As RLdecon_for_zarr_block.m at the oracle commit:
   gone); the flag's folder, the input and the result must exist;
 - a batch whose region is empty in one of the 2D masks (``mask_fullpaths``: xy, xz, yz) is
   written as zeros without a decon; the others are read with their border, deconvolved as
-  RLdecon does (``decon.file.rl_decon_file`` with the batch as ``rawdata``, its region as
+  RLdecon does (``decon.rl_file.rl_decon_file`` with the batch as ``rawdata``, its region as
   ``decon_bbox``, no deskew or rotation, iterations fixed, ``use_gpu`` as given: a GPU job's
   block fails without a usable GPU, so that the framework retries it) and written into the
   result in its class;

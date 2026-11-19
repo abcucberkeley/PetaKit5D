@@ -59,7 +59,7 @@ def test_without_kept_plans_the_otfs_plan_is_closed_at_once(gpu, monkeypatch):
 def test_the_frames_gpu_check_reads_the_free_memory(gpu):
     # the GPU's free memory as a number (MATLAB's gpuDevice().AvailableMemory): None, which sends
     # a frame's decon to the CPU, only without a usable GPU
-    from petakit5d.decon import frame
+    from petakit5d.decon import file as frame
     from petakit5d.gpu import device
 
     free = frame.gpu_free_bytes()

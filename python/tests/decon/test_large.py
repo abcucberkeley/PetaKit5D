@@ -106,7 +106,7 @@ def psf_raw() -> np.ndarray:
 
 def psf_noisy() -> np.ndarray:
     """the PSF with 5% deterministic noise in its nonzero slices (no exactly tied |OTF| values
-    at the OMW mask's threshold; see R05's test_frame)"""
+    at the OMW mask's threshold; see R05's test_file)"""
     p = decon_psf((31, 31, 31), (2.0, 1.5))
     u = CounterRNG(21, "psf_noise").uniform(p.shape, np.float32)
     p = p * (np.float32(1) + np.float32(0.05) * u)
@@ -569,7 +569,7 @@ def dataset(tmp_path, *, zarr=False, data=None, n=1) -> tuple[str, list[str], st
 
 def run_frame(fn, decon_path, psf, **kw):
     """decon_file (XR_RLdeconFrame3D) as the wrapper runs it: the CPU, no cluster"""
-    from petakit5d.decon.frame import decon_file
+    from petakit5d.decon.file import decon_file
 
     base = {
         "psf_file": psf,
@@ -831,7 +831,7 @@ def test_large_file_in_memory_batches_are_only_deconvolved(tmp_path, monkeypatch
     (MATLAB:subsassigndimmismatch), with Rotate each failed on its undefined file name. The
     batches are only deconvolved, as the in-place blocks: Deskew only changes the PSF that sets
     the batches' borders, so with one batch the results are equal"""
-    from petakit5d.decon import file as F
+    from petakit5d.decon import rl_file as F
 
     d, fns, psf = dataset(tmp_path)
     kw = {"background": BG, "dz_psf": DZ, "decon_iter": 2, "edge_erosion": 0, "use_gpu": False,
@@ -864,7 +864,7 @@ def test_large_file_in_memory_batches_are_only_deconvolved(tmp_path, monkeypatch
 
 
 def test_in_memory_masks_skip_empty_batches(tmp_path, monkeypatch):
-    from petakit5d.decon import file as F
+    from petakit5d.decon import rl_file as F
 
     d, fns, psf = dataset(tmp_path)
     nz, ny, nx = SMALL

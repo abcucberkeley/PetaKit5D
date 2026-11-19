@@ -1,6 +1,6 @@
 """Stitching (``microscopeDataProcessing/stitch``).
 
-Image lists (``imagelist``, ``imagelist_generate``):
+Image lists (``imagelist``, ``imagelist_generation``):
 
 ================================  ===============================================
 ``parse_image_list``              stitch_parse_image_list_information
@@ -55,14 +55,14 @@ _EXPORTS = {
     "read_table": "imagelist",
     "sortrows": "imagelist",
     "write_table": "imagelist",
-    "estimate_actual_step_size_from_encoder": "imagelist_generate",
-    "generate_image_list": "imagelist_generate",
-    "generate_image_list_from_encoder": "imagelist_generate",
-    "generate_image_list_from_encoder_ism": "imagelist_generate",
-    "generate_image_list_from_sqlite": "imagelist_generate",
-    "generate_image_list_from_sqlite_old_format": "imagelist_generate",
-    "generate_image_list_from_tile_list": "imagelist_generate",
-    "generate_image_list_from_tile_positions": "imagelist_generate",
+    "estimate_actual_step_size_from_encoder": "imagelist_generation",
+    "generate_image_list": "imagelist_generation",
+    "generate_image_list_from_encoder": "imagelist_generation",
+    "generate_image_list_from_encoder_ism": "imagelist_generation",
+    "generate_image_list_from_sqlite": "imagelist_generation",
+    "generate_image_list_from_sqlite_old_format": "imagelist_generation",
+    "generate_image_list_from_tile_list": "imagelist_generation",
+    "generate_image_list_from_tile_positions": "imagelist_generation",
     "StitchVolumeError": "volume",
     "StitchVolumeWarning": "volume",
     "read_stitch_info": "volume",

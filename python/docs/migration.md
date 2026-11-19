@@ -58,6 +58,28 @@ functions):
 | `setup.m`, the mcc and mex machinery, MATLAB-only readers (`readtiff_matlab`, blockedImage, the zarr-python adapters) | MATLAB-only | `pip install`; `petakit5d.io` |
 | `get_uuid` | a utility | `petakit5d.core.ids.get_uuid` |
 
+## Renamed before the first release
+
+Three modules were renamed on 2026-11-18, so that a function's module names its MATLAB folder or
+kind, as the names above do (`Frame` functions in `*_file` modules;
+[decisions/0010](decisions/0010-module-names.md)). The functions, their parameters and their
+MATLAB names stay as they were; only these module paths changed:
+
+| MATLAB | Was | Now |
+|---|---|---|
+| `XR_RotateFrame3D` | `petakit5d.deskew_rotate.volume.rotate_file` | `petakit5d.deskew_rotate.file.rotate_file` |
+| `XR_RLdeconFrame3D` | `petakit5d.decon.frame.decon_file` | `petakit5d.decon.file.decon_file` |
+| `RLdecon` | `petakit5d.decon.file.rl_decon_file` (and `RLDeconResult`) | `petakit5d.decon.rl_file.rl_decon_file` |
+| `XR_generate_image_list_wrapper` and its generators | `petakit5d.stitch.imagelist_generate` | `petakit5d.stitch.imagelist_generation` |
+
+The names the packages export (`petakit5d.deskew_rotate.rotate_file`,
+`petakit5d.decon.decon_file`, `petakit5d.decon.rl_decon_file`,
+`petakit5d.stitch.generate_image_list`, ...) and the MATLAB-name layer (`petakit5d.matlab`)
+did not change. The port had not been released, so the old module paths are not kept: there are
+no compatibility shims. Code or a task record that names a module by its old path
+(`"petakit5d.decon.frame:decon_file"`) takes the new one; note that `petakit5d.decon.file` now
+holds `decon_file`, not `rl_decon_file`.
+
 ## Cluster configuration files
 
 The files stay as they are: JSON (or `.mat`) with the framework's parameters in MATLAB's names.

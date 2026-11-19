@@ -4,7 +4,7 @@
 
 Both cut the volume into batches (``core.blocks.zarr_chunk_coordinates``, MATLAB's
 ``XR_zarrChunkCoordinatesExtraction``) and deconvolve each batch with its border as RLdecon does
-(``decon.file.rl_decon_file`` with the batch as ``rawdata`` and the batch's region as
+(``decon.rl_file.rl_decon_file`` with the batch as ``rawdata`` and the batch's region as
 ``decon_bbox``), so a voxel's result depends on the batch it is in (the FFT's periodic boundary
 is the batch's): the batches, their borders and their order are MATLAB's.
 
@@ -385,7 +385,7 @@ def _rl_batch(
     kw: dict[str, Any],
 ) -> np.ndarray:
     """RLdecon of one batch, as the large-file functions call it (no file written)"""
-    from petakit5d.decon import file as F
+    from petakit5d.decon import rl_file as F
 
     r = F.rl_decon_file(
         "",
@@ -528,7 +528,7 @@ def decon_large_in_memory(
     from petakit5d.core.arrays import matlab_class
     from petakit5d.core.ids import get_uuid
     from petakit5d.core.paths import fileparts
-    from petakit5d.decon.file import _flip_z, _move
+    from petakit5d.decon.rl_file import _flip_z, _move
     from petakit5d.io import ReadBuffer
     from petakit5d.kernels.crop import crop_3d, indexing_3d
     from petakit5d.tools.mip import axis_max
@@ -870,7 +870,7 @@ def decon_large_in_place(
     from petakit5d.core.ids import get_uuid
     from petakit5d.core.paths import fileparts, mkdir_recursive
     from petakit5d.decon.block import decon_zarr_block
-    from petakit5d.decon.file import _mkdir_group
+    from petakit5d.decon.rl_file import _mkdir_group
     from petakit5d.io import create_zarr, get_image_size, get_zarr_info
     from petakit5d.jobs import framework, writers
     from petakit5d.jobs.publish import keep_other_result, publish_result

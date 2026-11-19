@@ -1,5 +1,6 @@
-"""Deskew and rotation of files (``XR_deskewRotateFrame``) and the intensity rescale of its
-``rescaleRotate`` option (``scale_contrast``, after ``scaleContrast``).
+"""Deskew and rotation of files (``XR_deskewRotateFrame``), the intensity rescale of its
+``rescaleRotate`` option (``scale_contrast``, after ``scaleContrast``) and the rotation of tiff
+files of deskewed data (``rotate_file``, ``XR_RotateFrame3D``).
 
 ``deskew_rotate_file`` reads one file, or several partial files of one volume (concatenated
 along z in the order given), and writes MATLAB's outputs next to the first one:
@@ -71,7 +72,7 @@ import numpy as np
 
 from petakit5d.params import Param, register
 
-__all__ = ["deskew_rotate_file", "scale_contrast"]
+__all__ = ["deskew_rotate_file", "rotate_file", "scale_contrast"]
 
 _INTERP = "@(x) any(strcmpi(x, {'cubic', 'linear'}))"
 # the flat field and background prepared for the last files seen (see _flat_field)
@@ -1090,3 +1091,126 @@ def _read_ds(ds_fullname, paths, box, input_axis_order, save_zarr, n):
         sz = [box[i + 3] - box[i] for i in range(3)]
     perm = axis_permutation(input_axis_order, "zyx")
     return ds, tuple(int(sz[i]) for i in perm)
+
+
+# -- XR_RotateFrame3D ------------------------------------------------------------------------------
+
+
+def _crop_box(a: np.ndarray, box) -> np.ndarray:
+    """``a(b(1) : b(4), b(2) : b(5), b(3) : b(6))`` for the box ``b`` in MATLAB's values: MATLAB's
+    error where the indexing leaves the array (an empty range is empty)"""
+    from petakit5d.core.bbox import refuse_nan_end
+    from petakit5d.deskew_rotate.volume import _error
+
+    refuse_nan_end(box)
+    z0, y0, x0, z1, y1, x1 = (int(v) for v in box)
+    for pos, (lo, hi, n) in enumerate(
+        ((y0, y1, a.shape[1]), (x0, x1, a.shape[2]), (z0, z1, a.shape[0])), start=1
+    ):
+        if hi > lo and (lo < 0 or hi > n):
+            raise _error(
+                IndexError,
+                f"Index in position {pos} exceeds array bounds. Index must not exceed {n}.",
+                "MATLAB:badsubscript",
+            )
+    sl = tuple(slice(lo, max(hi, lo)) for lo, hi in ((z0, z1), (y0, y1), (x0, x1)))
+    return np.ascontiguousarray(a[sl])
+
+
+@register(
+    "XR_RotateFrame3D",
+    Param("framePaths", "@(x) ischar(x) || iscell(x)", "Tiff file or files."),
+    Param("xyPixelSize", "@isscalar", "Pixel size."),
+    Param("dz", "@isscalar", "Scan step."),
+    Param("objectiveScan", "@islogical", "Objective scan (zAniso dz / px)."),
+    Param("Overwrite", "@islogical", "Rotate again where the result exists."),
+    Param("Crop", "@islogical", "Passed to the rotation."),
+    Param(
+        "bbox", "@(x) isnumeric(x)", "Box (z0, y0, x0, z1, y1, x1) of the result.", convert="bbox"
+    ),
+    Param(
+        "resample",
+        "@(x) isnumeric(x)",
+        "Resampling after rotation (z, y, x).",
+        convert="resample_xyz",
+    ),
+    Param("SkewAngle", "@isscalar", "Skew angle in degrees."),
+    Param("Reverse", "@islogical", "Reverse scan direction."),
+    Param("sCMOSCameraFlip", "@islogical", "Accepted; not used (as in MATLAB)."),
+    Param("save16bit", "@islogical", "Save uint16 (else single).", convert="same"),
+    Param("uuid", "@ischar", "Id in the temporary name (empty: a new one)."),
+    task="D02",
+)
+def rotate_file(
+    frame_paths,
+    xy_pixel_size: float,
+    dz: float,
+    *,
+    objective_scan: bool = False,
+    overwrite: bool = False,
+    crop: bool = True,
+    bbox: Sequence[int] | None = None,
+    resample: Sequence[float] | None = None,
+    skew_angle: float = 31.5,
+    reverse: bool = False,
+    s_cmos_camera_flip: bool = False,
+    save_16bit: bool = True,
+    uuid: str = "",
+) -> None:
+    """Rotate tiff files of deskewed data (``XR_RotateFrame3D``).
+
+    Each file is read as double, rotated (``rotate_volume`` with ``zAniso = sin(angle) dz / px``,
+    ``dz / px`` for objective scans), cut to ``bbox`` and written as uint16 (or single) to
+    ``<folder>/Rotated/<name>.tif``, first as ``<name>_<uuid>.tif``, then renamed. A missing
+    file is skipped with a warning, an existing result unless ``overwrite``.
+    """
+    import warnings
+
+    from petakit5d.core import dtypes
+    from petakit5d.core.ids import get_uuid
+    from petakit5d.deskew_rotate.geometry import _sin
+    from petakit5d.deskew_rotate.volume import rotate_volume
+    from petakit5d.io import read_tiff, write_tiff
+
+    _ = s_cmos_camera_flip
+    paths = [frame_paths] if isinstance(frame_paths, str) else list(frame_paths)
+    uid = uuid if uuid else get_uuid()
+    if _logical(objective_scan):
+        z_aniso = dz / xy_pixel_size
+    else:
+        theta = skew_angle * math.pi / 180
+        dz0 = _sin(theta) * dz
+        z_aniso = dz0 / xy_pixel_size
+    box = None if bbox is None or np.size(bbox) == 0 else tuple(bbox)
+    for frame_path in paths:
+        if not os.path.exists(frame_path):
+            warnings.warn(f"{frame_path} does not exist!", stacklevel=2)
+            continue
+        # MATLAB's fileparts: the folder without its last separator, the name without extension
+        rt, base = os.path.split(frame_path)
+        fsname = os.path.splitext(base)[0]
+        # a file name without a folder is in the current folder (not the root)
+        if not rt:
+            rt = "."
+        rt_path = rt + "/Rotated/"
+        os.makedirs(rt_path, exist_ok=True)
+        rt_fullname = rt_path + fsname + ".tif"
+        if os.path.exists(rt_fullname) and not _logical(overwrite):
+            continue
+        print(f"Rotate frame {frame_path}...", flush=True)
+        im = dtypes.double(read_tiff(frame_path))
+        im_rt = rotate_volume(
+            im,
+            skew_angle,
+            z_aniso,
+            _logical(reverse),
+            crop=crop,
+            resample=resample,
+            objective_scan=objective_scan,
+        )
+        if box is not None:
+            im_rt = _crop_box(im_rt, box)
+        tmp = f"{rt_path}{fsname}_{uid}.tif"
+        out = dtypes.uint16(im_rt) if _logical(save_16bit) else dtypes.single(im_rt)
+        write_tiff(np.ascontiguousarray(out), tmp)
+        os.replace(tmp, rt_fullname)

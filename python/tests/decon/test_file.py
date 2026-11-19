@@ -1,31 +1,20 @@
-"""Deconvolution of one file or an array (petakit5d.decon.file.rl_decon_file) against MATLAB's
-RLdecon (the oracle tree's, on the CPU).
+"""Deconvolution of the files of a job (petakit5d.decon.file.decon_file) against MATLAB's
+XR_RLdeconFrame3D (the oracle tree's, on the CPU).
 
-Oracle cases (inputs in MATLAB's form; the Python side calls ``petakit5d.matlab.RLdecon``, the
-MATLAB-name layer, so the registry's conversions are part of each case):
+Oracle cases: XR_RLdeconFrame3D on a folder with frames of blurred beads (DeconFrameTest's,
+48 x 44 x 32) and a PSF, through ``petakit5d.matlab.XR_RLdeconFrame3D``; the files written are
+compared (names, classes, voxels, info files and masks) for the option matrix of DeconFrameTest:
+the default result folder and another one, existing results (kept, or replaced with Overwrite),
+psfGen with a generated PSF of an earlier file, the eroded mask of the first time point (made,
+replaced) and the erosion in the decon, flipZstack, an all-zero frame, several files, a missing
+file, OMW, the rotation without deskew (the wrapper's deconRotate), deskew and rotation, zarr
+and single results, the default background, the method's case, a GPU job without a usable GPU,
+and MATLAB's errors. Each runs on both CPU FFT backends (``.exact``: MATLAB's bits;
+``.permissive``: decision record 0006).
 
-- file.*: RLdecon of a frame of blurred beads (DeconFrameTest's frame, 48 x 44 x 32, a
-  background of 100) and its PSF in a folder; the files written are compared (names, classes,
-  voxels, info files): the deskew and rotation after the decon (separate with linear and cubic
-  interpolation, combined, with Reverse and Resample, objective scan, rotation without deskew,
-  deskew alone), PSF generation (written, read back, a resampled PSF, the raw PSF written as the
-  psfgen file without psfGen), zarr input and output, single output, all MIP axes, deconBbox,
-  EdgeErosion and an eroded-mask file, dampFactor, scaleFactor and deconOffset, debug output,
-  flipZstack, no iterations, all-zero data, the skip rules, save3Dstack, OMW, a PSF larger than
-  the data, no output file;
-- mem.*: RLdecon of data in memory (DeconFunctionTest's and DeconOverlapTest's calls): the
-  result, the overlap function's output; mem.files.*: the files of data in memory, named after
-  the output file (its MIP, the deskew and rotation), and none without an output file (the PSF
-  and the OMW back projector made without their files);
-- error.*: MATLAB's errors ('cudagen', a method name RLdecon doesn't have, the deskew and
-  rotation of data in memory without an output file, ...).
-
-Each case runs on both CPU FFT backends: ``.exact`` (MATLAB's bits; skipped without the add-on)
-and ``.permissive`` (decision record 0006: uint16 voxels at most 1 count off in at most 0.1% of
-them; single outputs relative L2 <= 1e-4; R02's tolerance for back projector files).
-
-The pytest functions below port DeconFrameTest's RLdecon methods and DeconFunctionTest's
-in-memory RLdecon methods in intent.
+The pytest functions port DeconFrameTest's methods in intent: the GPU job's read-ahead, its CPU
+rerun for files that don't fit on the GPU, and the large-file switch run with stand-ins (a GPU
+with room, an RLdecon that runs on the CPU or runs out of GPU memory, the large-file functions).
 """
 
 from __future__ import annotations
@@ -38,11 +27,11 @@ import numpy as np
 import pytest
 
 from petakit5d import fft as P
-from petakit5d.core.arrays import from_matlab, to_matlab
-from petakit5d.decon import file as F
+from petakit5d.decon import file as FR
 from petakit5d.decon import rl
+from petakit5d.decon import rl_file as F
 from petakit5d.testing import oracle
-from petakit5d.testing.cases import Case, In, InPath, Tree, Value
+from petakit5d.testing.cases import Case, InPath, Tree, Work
 from petakit5d.testing.compare import tol, tree
 from petakit5d.testing.fft_reference import digests_hold_here
 from petakit5d.testing.synth import CounterRNG, beads, decon_psf, write_tiff, write_zarr_matlab
@@ -55,6 +44,8 @@ FSN = (
     "Scan_Iter_0000_0000_CamA_ch0_CAM1_stack0000_488nm_0000000msec_0000000000msecAbs_"
     "000x_000y_000z_0000t"
 )
+FSN2 = FSN.replace("_000x_", "_001x_")
+FSN3 = FSN.replace("_000x_", "_002x_")
 
 PERMISSIVE_U16 = tol(
     reason="0006: uint16 deconvolution with the permissive FFT backend (at most 1 count in at "
@@ -80,11 +71,6 @@ PERMISSIVE_FFT = tol(
 FIGURE = r".*_figure\.png$"
 
 
-# ---------------------------------------------------------------------------------------------
-# inputs
-# ---------------------------------------------------------------------------------------------
-
-
 def frame(seed: int, shape=IM) -> np.ndarray:
     """DeconFrameTest.writeFrame: six blurred beads on a background of 100 (uint16, (z, y, x))"""
     rng = CounterRNG(seed, "frame")
@@ -98,8 +84,6 @@ def frame(seed: int, shape=IM) -> np.ndarray:
 
 
 def psf_raw() -> np.ndarray:
-    """pktest.deconPSF([31, 31, 31], [1.5, 2]) in uint16: zero in its first and last 5 slices, so
-    psf_gen_new keeps it as it is"""
     return np.floor(decon_psf((31, 31, 31), (2.0, 1.5)) + np.float32(0.5)).astype(np.uint16)
 
 
@@ -114,7 +98,6 @@ def psf_noisy() -> np.ndarray:
 
 
 def zero_border(a: np.ndarray) -> np.ndarray:
-    """zero triangles along x-z, as skewed data has (an erosion mask that isn't full)"""
     nz, _, nx = a.shape
     z = np.arange(nz, dtype=np.float64).reshape(-1, 1, 1)
     x = np.arange(nx, dtype=np.float64).reshape(1, 1, -1)
@@ -123,527 +106,279 @@ def zero_border(a: np.ndarray) -> np.ndarray:
 
 
 def make_root(
-    *,
-    data=None,
-    shape=IM,
-    zarr_input=False,
-    psf=True,
-    noisy=False,
-    psfgen=None,
-    existing=(),
-    mask=False,
+    *, frames=((FSN, 1),), data=None, existing=(), psfgen=False, old_mask=False, noisy=False
 ):
-    """a folder with data/<FSN>.tif (or .zarr in MATLAB's layout) and psf/PSF_CamA.tif; psfgen:
-    a PSF to put in out/psfgen/PSF_CamA_simplified.tif; existing: result files to put there
-    first (relative paths: frames of other beads); mask: an eroded-mask zarr in MATLAB's layout"""
+    """data/<frames>.tif, psf/PSF_CamA.tif; existing: result files there first (relative paths);
+    psfgen: a generated PSF of an earlier file in data/matlab_decon/psfgen; old_mask: an earlier
+    eroded mask (MATLAB's layout) in data/matlab_decon/Masks"""
 
     def make(folder):
         folder = os.fspath(folder)
         os.makedirs(os.path.join(folder, "data"))
-        im = frame(1, shape) if data is None else data()
-        if zarr_input:
-            write_zarr_matlab(
-                os.path.join(folder, "data", FSN + ".zarr"), to_matlab(im), (16, 16, 16)
-            )
-        else:
-            write_tiff(os.path.join(folder, "data", FSN + ".tif"), im)
-        if psf:
-            os.makedirs(os.path.join(folder, "psf"))
-            write_tiff(
-                os.path.join(folder, "psf", "PSF_CamA.tif"), psf_noisy() if noisy else psf_raw()
-            )
-        if psfgen is not None:
-            os.makedirs(os.path.join(folder, "out", "psfgen"))
-            write_tiff(os.path.join(folder, "out", "psfgen", "PSF_CamA_simplified.tif"), psfgen())
+        for name, seed in frames:
+            im = frame(seed) if data is None else data(seed)
+            write_tiff(os.path.join(folder, "data", name + ".tif"), im)
+        os.makedirs(os.path.join(folder, "psf"))
+        write_tiff(os.path.join(folder, "psf", "PSF_CamA.tif"), psf_noisy() if noisy else psf_raw())
         for rel in existing:
             p = os.path.join(folder, *rel.split("/"))
             os.makedirs(os.path.dirname(p), exist_ok=True)
-            write_tiff(p, frame(5, shape))
-        if mask:
-            # all but a corner block: the mask, not an erosion of the data's edges, shapes the
-            # result
-            m = np.ones(shape, np.uint8)
-            m[: shape[0] // 3, : shape[1] // 3, : shape[2] // 3] = 0
-            write_zarr_matlab(os.path.join(folder, "mask_eroded.zarr"), to_matlab(m), (16, 16, 16))
+            write_tiff(p, frame(9))
+        if psfgen:
+            p = os.path.join(folder, "data", "matlab_decon", "psfgen")
+            os.makedirs(p)
+            write_tiff(
+                os.path.join(p, "PSF_CamA_simplified.tif"),
+                (psf_raw()[2:-2, 3:-3, 1:-1] // 2).astype(np.float32),
+            )
+        if old_mask:
+            p = os.path.join(folder, "data", "matlab_decon", "Masks")
+            os.makedirs(p)
+            m = np.zeros(IM, np.uint8)
+            m[4:-4, 4:-4, 4:-4] = 1
+            write_zarr_matlab(
+                os.path.join(p, FSN + "_eroded.zarr"), m.transpose(1, 2, 0), (16, 16, 16)
+            )
 
     return make
 
 
-# ---------------------------------------------------------------------------------------------
-# file cases
-# ---------------------------------------------------------------------------------------------
-
-_FILE_CODE = (
-    "d = in{1}; fn = [d, 'data/', in{2}]; o = in{3}; if ~isempty(o), o = [d, o]; end; "
-    "p = in{4}; if ~isempty(p), p = [d, p]; end; a = in(8 : end); "
-    "i = find(strcmp(a, 'ErodeMaskfile')); if ~isempty(i), a{i + 1} = [d, a{i + 1}]; end; "
-    "RLdecon(fn, o, p, in{5}, in{6}, in{7}, a{:}); out = {};"
+_CODE = (
+    "d = in{1}; f = in{2}; if iscell(f), f = cellfun(@(x) [d, 'data/', x], f, "
+    "'UniformOutput', false); else, f = [d, 'data/', f]; end; a = in(6 : end); "
+    "for i = find(strcmp(a, 'PSFfile')), if ~isempty(a{i + 1}), a{i + 1} = [d, a{i + 1}]; end; "
+    "end; "
+    "XR_RLdeconFrame3D(f, in{3}, in{4}, in{5}, a{:}); out = {};"
 )
 
 
-def p_file(d, name, out, psf, xy, dz, dz_psf, *opts, backend):
+def p_frame(d, files, xy, dz, decon_path, *opts, backend):
     from petakit5d import matlab
 
+    if isinstance(files, (list, tuple)):
+        f = [d + "data/" + x for x in files]
+    else:
+        f = d + "data/" + files
     a = list(opts)
-    if "ErodeMaskfile" in a:
-        i = a.index("ErodeMaskfile")
-        a[i + 1] = d + a[i + 1]
+    for i, v in enumerate(opts):
+        if v == "PSFfile" and a[i + 1]:
+            a[i + 1] = d + a[i + 1]
+    rl.clear_otf_cache()
     with P.using(backend):
-        matlab.RLdecon(
-            d + "data/" + name, d + out if out else "", d + psf if psf else "", xy, dz, dz_psf, *a
-        )
+        matlab.XR_RLdeconFrame3D(f, xy, dz, decon_path, *a)
     return []
 
 
 BASE = [
+    "PSFfile",
+    "psf/PSF_CamA.tif",
+    "dzPSF",
+    DZ,
     "Background",
     BG,
-    "DeconIter",
-    2,
     "RLMethod",
     "simplified",
-    "psfGen",
+    "EdgeErosion",
+    0,
+    "parseCluster",
     False,
-    "useGPU",
+    "GPUJob",
     False,
+    "DeconIter",
+    3,
 ]
 
 
-def file_tree(single: bool = False):
-    per_file = {
-        "*_back_projector_*": PERMISSIVE_BP,
-        "*_OTF.tif": PERMISSIVE_FFT,
-        "*/psfgen/*": PERMISSIVE_FFT,
-        "*_info.mat": PERMISSIVE_TOL,
-        "*": PERMISSIVE_TOL if single else PERMISSIVE_U16,
-    }
-    return tree(ignore=[FIGURE], per_file=per_file, tiff_bytes=False)
+def frame_tree(single=False):
+    return tree(
+        ignore=[FIGURE],
+        per_file={
+            "*_back_projector_*": PERMISSIVE_BP,
+            "*_OTF.tif": PERMISSIVE_FFT,
+            "*/psfgen/*": PERMISSIVE_FFT,
+            "*_info.mat": PERMISSIVE_TOL,
+            "*": PERMISSIVE_TOL if single else PERMISSIVE_U16,
+        },
+        tiff_bytes=False,
+    )
 
 
-def file_cases(
+# (the file's name without a folder, in data/ as the current folder)
+_CODE_HERE = (
+    "d = in{1}; a = in(6 : end); "
+    "for i = find(strcmp(a, 'PSFfile')), if ~isempty(a{i + 1}), a{i + 1} = [d, a{i + 1}]; end; "
+    "end; here = pwd; cd([d, 'data']); "
+    "try, XR_RLdeconFrame3D(in{2}, in{3}, in{4}, in{5}, a{:}); catch ME, cd(here); "
+    "rethrow(ME); end; cd(here); out = {};"
+)
+
+
+def p_frame_here(d, files, xy, dz, decon_path, *opts, backend):
+    from petakit5d import matlab
+
+    a = list(opts)
+    for i, v in enumerate(opts):
+        if v == "PSFfile" and a[i + 1]:
+            a[i + 1] = d + a[i + 1]
+    rl.clear_otf_cache()
+    here = os.getcwd()
+    os.chdir(d + "data")
+    try:
+        with P.using(backend):
+            matlab.XR_RLdeconFrame3D(files, xy, dz, decon_path, *a)
+    finally:
+        os.chdir(here)
+    return []
+
+
+def frame_cases(
     cid,
     opts,
     *,
     root=None,
-    name=FSN + ".tif",
-    out="out/" + FSN + ".tif",
-    psf="psf/PSF_CamA.tif",
-    dz=DZ,
+    files=FSN + ".tif",
+    decon_path="",
     base=BASE,
     single=False,
     expect_error=False,
     backends=BACKENDS,
+    device="cpu",
+    here=False,
 ):
-    out_list = []
-    args = [InPath("root"), name, out, psf, XY, dz, DZ, *base, *opts]
+    res = []
     for be in backends:
-        out_list.append(
+        res.append(
             Case(
                 f"{cid}.{be}",
-                code=_FILE_CODE,
-                args=args,
+                device=device,
+                code=_CODE_HERE if here else _CODE,
+                args=[InPath("root"), files, XY, DZ, decon_path, *base, *opts],
                 nargout=0,
-                python=p_file,
+                python=p_frame_here if here else p_frame,
                 py_kwargs={"backend": be},
                 inputs={"root": Tree(root or make_root(), "root")},
                 expect_error=expect_error,
                 py_error=Exception,
-                **(
-                    {"tree": file_tree(single)}
-                    if be == "permissive"
-                    else {"tree": tree(ignore=[FIGURE])}
-                ),
+                tree=frame_tree(single) if be == "permissive" else tree(ignore=[FIGURE]),
             )
         )
-    return out_list
+    return res
 
 
+_DEC = "data/matlab_decon/"
 CASES: list[Case] = []
-# The rotations after the decon run on the exact backend only: rotateFrame3D's Crop sizes the
-# output from where the data is exactly zero, which the permissive backend's last bits can move
-ROTATED = ("exact",)
-# DeconFrameTest/deskewAndRotationAfterTheDeconRunSeparately
-for _interp in ("linear", "cubic"):
-    CASES += file_cases(
-        f"file.separate.{_interp}",
-        ["Deskew", True, "Rotate", True, "DSRCombined", False, "interpMethod", _interp],
-        backends=ROTATED,
-    )
-CASES += file_cases(
-    "file.separate.reverse_crop",
-    ["Deskew", True, "Rotate", True, "DSRCombined", False, "Reverse", True, "Crop", True],
-    backends=ROTATED,
+# DeconFrameTest/writesResultsToMatlabDeconByDefault
+CASES += frame_cases("frame.default", [])
+CASES += frame_cases("frame.decon_path", [], decon_path=Work("decon/"))
+# existingResultIsSkipped, overwriteRecomputesTheResult
+CASES += frame_cases("frame.existing", [], root=make_root(existing=(_DEC + FSN + ".tif",)))
+CASES += frame_cases(
+    "frame.overwrite",
+    ["Overwrite", True, "Rotate", True],
+    root=make_root(existing=(_DEC + FSN + ".tif", _DEC + "DSR/" + FSN + ".tif")),
 )
-CASES += file_cases("file.deskew_separate", ["Deskew", True, "DSRCombined", False])
-CASES += file_cases("file.deskew_only", ["Deskew", True])  # MATLAB writes no DS file
-# DeconFrameTest/objectiveScanFramesAreRotatedAfterTheDecon
-CASES += file_cases(
-    "file.objective_scan", ["objectiveScan", True, "Rotate", True], backends=ROTATED
+# psfGenFalseUsesTheRawPSF (a generated PSF of an earlier file in psfgen/)
+CASES += frame_cases("frame.psfgen_false", ["psfGen", False], root=make_root(psfgen=True))
+CASES += frame_cases("frame.psfgen_cached", [], root=make_root(psfgen=True))
+# savedErosionMaskCanBeReplaced, and the erosion in the decon
+_ZB = make_root(data=lambda s: zero_border(frame(s)))
+CASES += frame_cases("frame.mask", ["EdgeErosion", 2, "SaveMaskfile", True], root=_ZB)
+CASES += frame_cases(
+    "frame.mask_replaced",
+    ["EdgeErosion", 2, "SaveMaskfile", True],
+    root=make_root(data=lambda s: zero_border(frame(s)), old_mask=True),
 )
-CASES += file_cases(
-    "file.objective_scan_cubic",
-    ["objectiveScan", True, "Rotate", True, "interpMethod", "cubic", "Reverse", True],
-    backends=ROTATED,
+CASES += frame_cases("frame.erosion", ["EdgeErosion", 3], root=_ZB)
+CASES += frame_cases(
+    "frame.erode_maskfile_two",
+    ["EdgeErosion", 2, "SaveMaskfile", True],
+    root=make_root(frames=((FSN, 1), (FSN2, 2)), data=lambda s: zero_border(frame(s))),
+    files=[FSN + ".tif", FSN2 + ".tif"],
 )
-# DeconFrameTest/rotationWithoutDeskewIsTheCombinedDeskewAndRotation (through RLdecon)
-CASES += file_cases("file.rotate_only", ["Rotate", True])
-CASES += file_cases("file.combined", ["Deskew", True, "Rotate", True, "Reverse", True])
-CASES += file_cases(
-    "file.combined_resample", ["Deskew", True, "Rotate", True, "Resample", [1, 1, 1.5]]
+# flipZstackFlipsTheResult, allZeroFrameIsDeconvolved, simplifiedInfoFilesGoToTheDeconInfoFolder
+CASES += frame_cases("frame.flip", ["flipZstack", True])
+CASES += frame_cases("frame.zero", [], root=make_root(data=lambda s: np.zeros(IM, np.uint16)))
+# several files, a missing one
+_THREE = make_root(frames=((FSN, 1), (FSN2, 2), (FSN3, 3)))
+CASES += frame_cases(
+    "frame.three",
+    ["DeconIter", 2],
+    root=_THREE,
+    files=[FSN + ".tif", FSN2 + ".tif", FSN3 + ".tif"],
 )
-CASES += file_cases(
-    "file.combined_single", ["Deskew", True, "Rotate", True, "save16bit", False], single=True
-)
-CASES += file_cases(
-    "file.combined_zarr",
-    ["Deskew", True, "Rotate", True, "saveZarr", True],
-    out="out/" + FSN + ".zarr",
-)
-CASES += file_cases("file.save3d_dsr_only", ["Rotate", True, "save3Dstack", [False, True, True]])
-CASES += file_cases("file.save3d_scalar_false", ["save3Dstack", False])
-# PSF handling
-_PSFGEN = ["Background", BG, "DeconIter", 2, "RLMethod", "simplified", "useGPU", False]
-CASES += file_cases("file.psfgen", [], base=_PSFGEN)
-CASES += file_cases(
-    "file.psfgen_cached",
-    [],
-    base=_PSFGEN,
-    root=make_root(psfgen=lambda: (psf_raw()[2:-2, 3:-3, 1:-1] // 2).astype(np.float32)),
-)
-CASES += file_cases("file.psfgen_false_writes_raw", [])  # (BASE has psfGen false)
-CASES += file_cases("file.psfgen_resampled", [], base=_PSFGEN, dz=0.5)
-CASES += file_cases(
-    "file.psf_larger",
-    ["Deskew", True, "Rotate", True],
-    base=_PSFGEN,
-    root=make_root(shape=(20, 26, 24)),
-)
+CASES += frame_cases("frame.missing", [], files=["missing.tif", FSN + ".tif"])
+# DeconFrameTest/deconOfAFileInTheCurrentFolderStaysThere: a file name without a folder is in the
+# current folder (it wrote to /matlab_decon/ until b4eade6)
+CASES += frame_cases("frame.bare_name", [], here=True)
+# the methods and the options passed on
 # OMW: the symmetric PSF only with the exact backend (see psf_noisy), the noisy one on both
-_OMW = ["Background", BG, "DeconIter", 2, "RLMethod", "omw", "useGPU", False]
-CASES += file_cases("file.omw", ["skewed", False], base=_OMW, backends=("exact",))
-CASES += file_cases(
-    "file.omw_psfgen_false", ["skewed", False, "psfGen", False], base=_OMW, backends=("exact",)
+_OMW = ["RLMethod", "omw", "skewed", False, "DeconIter", 2]
+CASES += frame_cases("frame.omw", _OMW, backends=("exact",))
+CASES += frame_cases("frame.omw_noisy", _OMW, root=make_root(noisy=True))
+CASES += frame_cases(
+    "frame.omw_noisy_two",
+    _OMW,
+    root=make_root(frames=((FSN, 1), (FSN2, 2)), noisy=True),
+    files=[FSN + ".tif", FSN2 + ".tif"],
 )
-CASES += file_cases("file.omw_noisy", ["skewed", False], base=_OMW, root=make_root(noisy=True))
-CASES += file_cases(
-    "file.omw_noisy_psfgen_false",
-    ["skewed", False, "psfGen", False],
-    base=_OMW,
-    root=make_root(noisy=True),
+CASES += frame_cases("frame.method_case", ["RLMethod", "Simplified"])
+CASES += frame_cases("frame.background_default", ["Background", []])
+CASES += frame_cases("frame.single", ["save16bit", False], single=True)
+CASES += frame_cases("frame.zarr", ["saveZarr", True, "blockSize", [16, 32, 8]])
+CASES += frame_cases("frame.mip_all", ["mipAxis", [1, 1, 1]])
+CASES += frame_cases(
+    "frame.options",
+    ["dampFactor", 1.2, "scaleFactor", 2, "deconOffset", 5, "fixIter", True, "errThresh", 0.01],
 )
-# data and decon options
-CASES += file_cases("file.single", ["save16bit", False], single=True)
-CASES += file_cases("file.zarr", ["saveZarr", True], out="out/" + FSN + ".zarr")
-CASES += file_cases(
-    "file.zarr_input",
-    ["blockSize", [16, 32, 8], "saveZarr", True],
-    root=make_root(zarr_input=True),
-    name=FSN + ".zarr",
-    out="out/" + FSN + ".zarr",
-)
-CASES += file_cases("file.mip_all", ["mipAxis", [1, 1, 1]])
-CASES += file_cases("file.mip_none", ["mipAxis", [0, 0, 0]])
-CASES += file_cases("file.bbox", ["deconBbox", [3, 5, 2, 40, 38, 30]])
-CASES += file_cases(
-    "file.erosion", ["EdgeErosion", 3], root=make_root(data=lambda: zero_border(frame(1)))
-)
-CASES += file_cases(
-    "file.erode_maskfile",
-    ["EdgeErosion", 3, "ErodeMaskfile", "mask_eroded.zarr"],
-    root=make_root(mask=True, data=lambda: zero_border(frame(1))),
-)
-CASES += file_cases(
-    "file.damp_scale_offset", ["dampFactor", 1.2, "scaleFactor", 1.5, "deconOffset", 3]
-)
-CASES += file_cases("file.debug", ["debug", True, "saveStep", 1])
-CASES += file_cases("file.flip", ["flipZstack", True])
-CASES += file_cases(
-    "file.zero_iter",
-    ["Deskew", True, "Rotate", True],
-    base=[
-        "Background",
-        BG,
-        "DeconIter",
-        0,
-        "RLMethod",
-        "simplified",
-        "psfGen",
-        False,
-        "useGPU",
-        False,
-    ],
-)
-CASES += file_cases("file.zero_data", [], root=make_root(data=lambda: np.zeros(IM, np.uint16)))
-CASES += file_cases(
-    "file.original_zero_iter",
-    [],
-    base=[
-        "Background",
-        BG,
-        "DeconIter",
-        0,
-        "RLMethod",
-        "original",
-        "psfGen",
-        False,
-        "useGPU",
-        False,
-    ],
-    single=True,
-)
-# the skip rules
-_OUT = "out/" + FSN + ".tif"
-CASES += file_cases("file.exists", [], root=make_root(existing=(_OUT,)))
-CASES += file_cases(
-    "file.exists_rotate",
-    ["Rotate", True],
-    root=make_root(existing=(_OUT,)),
-)
-CASES += file_cases(
-    "file.exists_all",
-    ["Rotate", True],
-    root=make_root(existing=(_OUT, "out/DSR/" + FSN + ".tif")),
-)
-CASES += file_cases(
-    "file.exists_dsr",
+CASES += frame_cases("frame.debug", ["debug", True, "saveStep", 2])
+# rotationWithoutDeskewIsTheCombinedDeskewAndRotation, and deskew with rotation
+CASES += frame_cases("frame.rotate", ["Rotate", True, "DeconIter", 2])
+CASES += frame_cases("frame.deskew_rotate", ["Deskew", True, "Rotate", True, "Reverse", False])
+CASES += frame_cases("frame.save3d_dsr_only", ["Rotate", True, "save3Dstack", [False, True, True]])
+CASES += frame_cases(
+    "frame.dsr_exists",
     ["Rotate", True, "save3Dstack", [False, True, True]],
-    root=make_root(existing=("out/DSR/" + FSN + ".tif",)),
+    root=make_root(existing=(_DEC + "DSR/" + FSN + ".tif",)),
 )
-CASES += file_cases("file.no_output", [], out="")
+# GPU jobs of two files on an A100 (the next file read during the decon; R04's GPU path gives
+# MATLAB's gpuArray bits there)
+CASES += frame_cases(
+    "gpu.frame.simplified_two",
+    ["GPUJob", True, "DeconIter", 3],
+    root=make_root(frames=((FSN, 1), (FSN2, 2))),
+    files=[FSN + ".tif", FSN2 + ".tif"],
+    device="gpu:A100",
+)
+CASES += frame_cases(
+    "gpu.frame.omw_noisy_two",
+    ["GPUJob", True, *_OMW],
+    root=make_root(frames=((FSN, 1), (FSN2, 2)), noisy=True),
+    files=[FSN + ".tif", FSN2 + ".tif"],
+    device="gpu:A100",
+)
 # errors
-CASES += file_cases(
-    "error.cudagen",
-    [],
-    base=[
-        "Background",
-        BG,
-        "DeconIter",
-        2,
-        "RLMethod",
-        "cudagen",
-        "psfGen",
-        False,
-        "useGPU",
-        False,
-    ],
+CASES += frame_cases("error.no_psf", ["PSFfile", ""], base=BASE[2:], expect_error=True)
+CASES += frame_cases(
+    "error.nothing_to_save",
+    ["save3Dstack", [False, False, False], "mipAxis", [0, 0, 0]],
     expect_error=True,
 )
-CASES += file_cases(
-    "error.unknown_method",
-    [],
-    base=[
-        "Background",
-        BG,
-        "DeconIter",
-        2,
-        "RLMethod",
-        "Simplified",
-        "psfGen",
-        False,
-        "useGPU",
-        False,
-    ],
-    expect_error=True,
-)
-CASES += file_cases(
-    "error.original_no_background",
-    [],
-    base=["DeconIter", 0, "RLMethod", "original", "psfGen", False, "useGPU", False],
-    expect_error=True,
+CASES += frame_cases(
+    "error.gpu_job_without_gpu", ["GPUJob", True], expect_error="decon:noUsableGPU"
 )
 
 
-# ---------------------------------------------------------------------------------------------
-# in-memory cases
-# ---------------------------------------------------------------------------------------------
+def _gpu_name() -> str:
+    from petakit5d.gpu.device import select_device
 
-_MEM_CODE = (
-    "d = in{1}; o = in{2}; if ~isempty(o), o = [d, o]; end; f = in{3}; "
-    "if f, a = [in(5 : end), {'overlapFcn', @() 'next'}]; else, a = in(5 : end); end; "
-    "[r, s, t, v] = RLdecon('', o, [d, 'psf/PSF_CamA.tif'], 0.108, 0.2, 0.2, 'rawdata', in{4}, "
-    "a{:}); "
-    "out = {r, v};"
-)
-
-
-def p_mem(d, o, overlap, im, *opts, backend):
-    from petakit5d import matlab
-
-    a = list(opts)
-    if overlap:
-        a += ["overlapFcn", lambda: "next"]
-    with P.using(backend):
-        r = matlab.RLdecon(
-            "", d + o if o else "", d + "psf/PSF_CamA.tif", 0.108, 0.2, 0.2, "rawdata", im, *a
-        )
-    return [r[0], r[3]]
-
-
-_MEM = ["psfGen", False, "useGPU", False, "Background", BG]
-
-
-def mem_cases(
-    cid,
-    opts,
-    *,
-    out="",
-    overlap=False,
-    data=None,
-    single=True,
-    expect_error=False,
-    noisy=False,
-    backends=BACKENDS,
-):
-    res = []
-    make = data or (lambda: to_matlab(frame(2)))
-    for be in backends:
-        spec = None
-        if be == "permissive" and not expect_error:
-            spec = {0: PERMISSIVE_TOL if single else PERMISSIVE_U16}
-        res.append(
-            Case(
-                f"{cid}.{be}",
-                code=_MEM_CODE,
-                args=[InPath("root"), out, overlap, In("im"), *_MEM, *opts],
-                nargout=2,
-                python=p_mem,
-                py_kwargs={"backend": be},
-                inputs={"root": Tree(make_root(noisy=noisy), "root"), "im": Value(make)},
-                expect_error=expect_error,
-                py_error=Exception,
-                files=False,
-                **({"compare": spec} if spec else {}),
-            )
-        )
-    return res
-
-
-# DeconFunctionTest/rldeconInMemoryMatchesDirectFunction (both input classes)
-CASES += mem_cases(
-    "mem.simplified.uint16", ["RLMethod", "simplified", "DeconIter", 5, "save16bit", False]
-)
-CASES += mem_cases(
-    "mem.simplified.single",
-    ["RLMethod", "simplified", "DeconIter", 5, "save16bit", False],
-    data=lambda: to_matlab(frame(2).astype(np.float32)),
-)
-# DeconFunctionTest/rldeconWithZeroIterationsReturnsTheInput
-CASES += mem_cases("mem.zero_iter", ["RLMethod", "simplified", "DeconIter", 0], single=False)
-# DeconOverlapTest/rldeconReturnsTheOverlapOutput
-for _m in ("omw", "simplified"):
-    _ov = [
-        "RLMethod",
-        _m,
-        "DeconIter",
-        2,
-        "skewed",
-        False,
-        "save3Dstack",
-        [False, False, False],
-        "mipAxis",
-        [0, 0, 0],
-    ]
-    be = ("exact",) if _m == "omw" else BACKENDS
-    CASES += mem_cases(
-        f"mem.overlap.{_m}", _ov, out="out/result.tif", overlap=True, single=False, backends=be
-    )
-    CASES += mem_cases(f"mem.no_overlap.{_m}", _ov, out="out/result.tif", single=False, backends=be)
-    if _m == "omw":
-        CASES += mem_cases(
-            "mem.overlap.omw_noisy",
-            _ov,
-            out="out/result.tif",
-            overlap=True,
-            single=False,
-            noisy=True,
-        )
-# data in memory with an output file: the results are named after it (they took the undefined
-# input file's name, fsname, until c24801c); without one, OMW makes its back projector in memory
-CASES += mem_cases(
-    "mem.deskew_rotate",
-    ["RLMethod", "simplified", "DeconIter", 2, "Deskew", True, "Rotate", True],
-    out="out/result.tif",
-    single=False,
-)
-CASES += mem_cases(
-    "mem.output_mip", ["RLMethod", "simplified", "DeconIter", 2], out="out/result.tif", single=False
-)
-# (the symmetric PSF: exact only, see psf_noisy; mem.files.no_output.omw has the noisy one)
-CASES += mem_cases(
-    "mem.omw_no_output",
-    ["RLMethod", "omw", "DeconIter", 2, "skewed", False],
-    single=False,
-    backends=("exact",),
-)
-
-
-def mem_file_cases(cid, opts, *, out="", noisy=False, expect_error=False, backends=BACKENDS):
-    """RLdecon of data in memory with the files written compared (DeconFunctionTest's
-    rldeconInMemoryWithAnOutputFileNamesItsFilesAfterIt and
-    rldeconInMemoryWithoutAnOutputFileWritesNothing)"""
-    res = []
-    for be in backends:
-        spec = None
-        if be == "permissive" and not expect_error:
-            spec = {0: PERMISSIVE_U16}
-        res.append(
-            Case(
-                f"{cid}.{be}",
-                code=_MEM_CODE,
-                args=[
-                    InPath("root"),
-                    out,
-                    False,
-                    In("im"),
-                    "useGPU",
-                    False,
-                    "Background",
-                    BG,
-                    *opts,
-                ],  # fmt: skip
-                nargout=2,
-                python=p_mem,
-                py_kwargs={"backend": be},
-                inputs={
-                    "root": Tree(make_root(noisy=noisy), "root"),
-                    "im": Value(lambda: to_matlab(frame(2))),
-                },
-                expect_error=expect_error,
-                py_error=Exception,
-                **({"compare": spec} if spec else {}),
-                **(
-                    {"tree": file_tree()} if be == "permissive" else {"tree": tree(ignore=[FIGURE])}
-                ),
-            )
-        )
-    return res
-
-
-_SIMPLE = ["RLMethod", "simplified", "DeconIter", 2]
-CASES += mem_file_cases("mem.files.output", [*_SIMPLE, "psfGen", False], out="out/result.tif")
-CASES += mem_file_cases("mem.files.output_psfgen", [*_SIMPLE, "psfGen", True], out="out/result.tif")
-CASES += mem_file_cases(
-    "mem.files.deskew_rotate",
-    [*_SIMPLE, "psfGen", False, "Deskew", True, "Rotate", True],
-    out="out/result.tif",
-    backends=ROTATED,
-)
-CASES += mem_file_cases("mem.files.no_output.simplified", [*_SIMPLE, "psfGen", True])
-CASES += mem_file_cases(
-    "mem.files.no_output.omw",
-    ["RLMethod", "omw", "DeconIter", 2, "psfGen", True, "skewed", False],
-    noisy=True,
-)
-# without an output file there is nowhere to write: MATLAB's undefined outFsn first
-CASES += mem_file_cases(
-    "error.mem_no_output.deskew_rotate",
-    [*_SIMPLE, "psfGen", False, "Deskew", True, "Rotate", True],
-    expect_error="MATLAB:UndefinedFunction",
-    backends=("permissive",),
-)
+    return select_device().name
 
 
 def _check(case, tmp_path):
+    if case.device.startswith("gpu:"):
+        name = _gpu_name()
+        if case.device[4:].lower() not in name.lower():
+            pytest.skip(f"the reference is MATLAB's on a {case.device[4:]}; this GPU is a {name}")
     if case.id.endswith(".exact"):
         reason = digests_hold_here()
         if reason:
@@ -659,7 +394,7 @@ def test_matlab(case, tmp_path):
 
 
 # ---------------------------------------------------------------------------------------------
-# DeconFrameTest and DeconFunctionTest in intent
+# DeconFrameTest in intent
 # ---------------------------------------------------------------------------------------------
 
 
@@ -669,6 +404,32 @@ def root(tmp_path):
     return tmp_path
 
 
+def _fn(root, name=FSN):
+    return str(root / "data" / (name + ".tif"))
+
+
+def run(fn, decon_path, root, **kw):
+    base = {
+        "psf_file": str(root / "psf" / "PSF_CamA.tif"),
+        "dz_psf": DZ,
+        "background": BG,
+        "rl_method": "simplified",
+        "edge_erosion": 0,
+        "parse_cluster": False,
+        "gpu_job": False,
+    }
+    base.update(kw)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        FR.decon_file(fn, XY, DZ, decon_path, **base)
+
+
+def _read(p):
+    from petakit5d.io import read_tiff
+
+    return read_tiff(str(p))
+
+
 def _norm(psf):
     from petakit5d.kernels import decon as K
 
@@ -676,420 +437,337 @@ def _norm(psf):
     return (p / np.float64(K.sum_double(p))).astype(np.float32)
 
 
-@pytest.mark.parametrize("cls", ["uint16", "single"])
-def test_rldecon_in_memory_matches_direct_function(root, cls):
-    """the background is subtracted once, also for float input; RLdecon normalizes the PSF (its
-    double sum) before passing it on"""
-    im = frame(2) if cls == "uint16" else frame(2).astype(np.float32)
-    r = F.rl_decon_file(
-        "",
-        "",
-        str(root / "psf" / "PSF_CamA.tif"),
-        0.108,
-        0.2,
-        0.2,
-        rawdata=im,
-        rl_method="simplified",
-        psf_gen=False,
-        use_gpu=False,
-        background=BG,
-        decon_iter=5,
-        save_16bit=False,
-    )
+def _expected(fn, psf, n=3):
     rl.clear_otf_cache()
-    exp = rl.decon_lucy(im, _norm(psf_raw()), 5, background=BG, use_gpu=False, save_16bit=False)
-    assert r.decon.dtype == np.float32
-    np.testing.assert_array_equal(r.decon, exp.decon)
+    return rl.decon_lucy(_read(fn), _norm(psf), n, background=BG, use_gpu=False).decon
 
 
-def test_rldecon_with_zero_iterations_returns_the_input(root):
-    im = frame(2)
-    r = F.rl_decon_file(
-        "",
-        "",
-        str(root / "psf" / "PSF_CamA.tif"),
-        0.108,
-        0.2,
-        0.2,
-        rawdata=im,
-        rl_method="simplified",
-        psf_gen=False,
-        use_gpu=False,
-        background=BG,
-        decon_iter=0,
+def test_writes_results_to_matlab_decon_by_default(root):
+    fn = _fn(root)
+    run(fn, "", root, decon_iter=3)
+    d = root / "data" / "matlab_decon"
+    out = _read(d / (FSN + ".tif"))
+    assert out.dtype == np.uint16
+    np.testing.assert_array_equal(_read(d / "MIPs" / (FSN + "_MIP_z.tif")), out.max(axis=0))
+    psf = _read(d / "psfgen" / "PSF_CamA_simplified.tif")
+    np.testing.assert_array_equal(out, _expected(fn, psf))
+
+
+def test_existing_result_is_skipped(root):
+    fn = _fn(root)
+    run(fn, str(root / "decon"), root, decon_iter=3)
+    before = _read(root / "decon" / (FSN + ".tif"))
+    write_tiff(fn, frame(7))
+    run(fn, str(root / "decon"), root, decon_iter=3)
+    np.testing.assert_array_equal(_read(root / "decon" / (FSN + ".tif")), before)
+
+
+def test_psf_gen_false_uses_the_raw_psf(tmp_path):
+    raw = (psf_raw().astype(np.int32) + BG).astype(np.uint16)  # background in every slice
+    make_root()(tmp_path)
+    write_tiff(tmp_path / "psf" / "PSF_CamA.tif", raw)
+    fn1 = _fn(tmp_path)
+    fn2 = str(tmp_path / "data" / ("second_" + FSN + ".tif"))
+    write_tiff(fn2, _read(fn1))
+    d = tmp_path / "decon"
+    run(fn1, str(d), tmp_path, decon_iter=3, psf_gen=True)
+    run(fn2, str(d), tmp_path, decon_iter=3, psf_gen=False)
+    out2 = _read(d / ("second_" + FSN + ".tif"))
+    np.testing.assert_array_equal(out2, _expected(fn2, raw))
+    assert not np.array_equal(out2, _read(d / (FSN + ".tif")))
+
+
+def test_saved_erosion_mask_can_be_replaced(tmp_path):
+    from petakit5d.decon.erosion import decon_mask_edge_erosion
+    from petakit5d.io import read_zarr
+
+    make_root(data=lambda s: zero_border(frame(s)))(tmp_path)
+    fn = _fn(tmp_path)
+    d = tmp_path / "decon"
+    kw = {"decon_iter": 2, "edge_erosion": 2, "save_maskfile": True}
+    run(fn, str(d), tmp_path, **kw)
+    mask = d / "Masks" / (FSN + "_eroded.zarr")
+    assert mask.is_dir()
+    os.remove(d / (FSN + ".tif"))
+    run(fn, str(d), tmp_path, **kw)
+    assert (d / (FSN + ".tif")).is_file()
+    np.testing.assert_array_equal(
+        read_zarr(str(mask)) > 0, decon_mask_edge_erosion(_read(fn) > 0, 2)
     )
-    np.testing.assert_array_equal(r.decon, im)
-    assert r.decon.dtype == np.uint16
+    assert sorted(os.listdir(d / "Masks")) == [FSN + "_eroded.zarr"]
 
 
-def test_rldecon_returns_the_overlap_output(root):
-    """as the large-file batches call it (data in memory, no result file); simplified here (OMW
-    needs the back projector, covered by the mem.overlap.omw cases)"""
-    out = str(root / "out" / "result.tif")
-    os.makedirs(os.path.dirname(out))
-    kw = {
-        "rawdata": frame(2),
-        "decon_iter": 2,
-        "background": BG,
-        "use_gpu": False,
-        "psf_gen": False,
-        "rl_method": "simplified",
-        "save_3d_stack": (False, False, False),
-        "mip_axis": (0, 0, 0),
-    }
-    psf = str(root / "psf" / "PSF_CamA.tif")
-    a = F.rl_decon_file("", out, psf, 0.108, 0.2, 0.2, **kw, overlap_fcn=lambda: "next")
-    b = F.rl_decon_file("", out, psf, 0.108, 0.2, 0.2, **kw)
-    assert a.overlap_out == "next" and b.overlap_out is None
-    np.testing.assert_array_equal(a.decon, b.decon)
-    assert not os.path.exists(out)
+def test_overwrite_recomputes_the_result(root):
+    fn = _fn(root)
+    d = root / "decon"
+    run(fn, str(d), root, decon_iter=3)
+    write_tiff(fn, frame(7))
+    run(fn, str(d), root, decon_iter=3, overwrite=True)
+    psf = _read(d / "psfgen" / "PSF_CamA_simplified.tif")
+    np.testing.assert_array_equal(_read(d / (FSN + ".tif")), _expected(fn, psf))
 
 
-def _run(root, name, *, out_name=None, **kw):
-    fn = str(root / "data" / (FSN + ".tif"))
-    out_dir = root / name
-    os.makedirs(out_dir, exist_ok=True)
-    out = str(out_dir / (out_name or FSN + ".tif"))
-    base = {
-        "background": BG,
-        "decon_iter": 2,
-        "rl_method": "simplified",
-        "psf_gen": False,
-        "use_gpu": False,
-    }
-    base.update(kw)
-    r = F.rl_decon_file(fn, out, str(root / "psf" / "PSF_CamA.tif"), XY, DZ, DZ, **base)
-    return r, str(out_dir)
+def test_overwrite_removes_the_dsr_result_too(root):
+    """a zarr DSR result that is there would be kept, so Overwrite removes it with the decon"""
+    from petakit5d.io import read_zarr
+
+    fn = _fn(root)
+    d = root / "decon"
+    kw = {"decon_iter": 2, "rotate": True, "save_zarr": True}
+    run(fn, str(d), root, **kw)
+    dsr = d / "DSR" / (FSN + ".zarr")
+    before = read_zarr(str(dsr))
+    write_tiff(fn, frame(7))
+    run(fn, str(d), root, overwrite=True, **kw)
+    assert not np.array_equal(read_zarr(str(dsr)), before)
 
 
-@pytest.mark.parametrize("interp", ["linear", "cubic"])
-def test_deskew_and_rotation_after_the_decon_run_separately(root, interp):
-    """DeconFrameTest: the separate deskew and rotation (DSRCombined false) pass the interpolation
-    on (M07's 8146dc5)"""
-    from petakit5d.deskew_rotate import deskew_volume, rotate_volume
-    from petakit5d.io import read_tiff
-    from petakit5d.matlabcompat.elementary import sind
-
-    r, d = _run(root, interp, deskew=True, rotate=True, dsr_combined=False, interp_method=interp)
-    decon = read_tiff(os.path.join(d, FSN + ".tif"))
-    ds = deskew_volume(decon.astype(np.float32), 32.45, DZ, XY, False, crop=False, interp=interp)
-    np.testing.assert_array_equal(read_tiff(os.path.join(d, "DS", FSN + ".tif")), _u16(ds))
-    z_aniso = float(sind(32.45)) * DZ / XY
-    dsr = rotate_volume(ds, 32.45, z_aniso, False, crop=True, interp=interp)
-    np.testing.assert_array_equal(read_tiff(os.path.join(d, "DSR", FSN + ".tif")), _u16(dsr))
-    assert os.path.isfile(os.path.join(d, "DS", "MIPs", FSN + "_MIP_z.tif"))
-    assert os.path.isfile(os.path.join(d, "DSR", "MIPs", FSN + "_MIP_z.tif"))
-    assert r.ds is None and r.dsr.dtype == np.uint16
+def test_flip_zstack_flips_the_result(root):
+    fn = _fn(root)
+    run(fn, str(root / "noflip"), root, decon_iter=3, flip_zstack=False)
+    run(fn, str(root / "flip"), root, decon_iter=3, flip_zstack=True)
+    a = _read(root / "flip" / (FSN + ".tif")).astype(np.float64)
+    b = _read(root / "noflip" / (FSN + ".tif"))[::-1].astype(np.float64)
+    # the PSF is symmetric in z, so the decon commutes with the flip
+    assert np.linalg.norm(a - b) <= 1e-3 * np.linalg.norm(b)
 
 
-def test_cubic_interpolation_is_used(root):
-    a, _ = _run(root, "lin", deskew=True, dsr_combined=False, save_3d_stack=(False, True, False))
-    b, _ = _run(
-        root,
-        "cub",
-        deskew=True,
-        dsr_combined=False,
-        interp_method="cubic",
-        save_3d_stack=(False, True, False),
+def test_all_zero_frame_is_deconvolved(tmp_path):
+    make_root(data=lambda s: np.zeros(IM, np.uint16))(tmp_path)
+    run(_fn(tmp_path), str(tmp_path / "decon"), tmp_path, decon_iter=3)
+    np.testing.assert_array_equal(
+        _read(tmp_path / "decon" / (FSN + ".tif")), np.zeros(IM, np.uint16)
     )
-    assert not np.array_equal(a.ds, b.ds)
+    assert not (tmp_path / "decon" / "decon_info").exists()
 
 
-def _u16(a):
-    from petakit5d.kernels import ops
+def test_simplified_info_files_go_to_the_decon_info_folder(root):
+    from petakit5d.io.matfile import read_mat
 
-    return ops.convert(a, "uint16")
+    d = root / "decon"
+    run(_fn(root), str(d), root, decon_iter=3)
+    info = read_mat(str(d / "decon_info" / (FSN + "_info.mat")))
+    assert sorted(info) == ["debug", "errThresh", "err_mat", "fixIter", "nIter"]
+    assert info["err_mat"].shape == (3, 4)
+    txt = (d / "decon_info" / (FSN + "_actual_iterations_3.txt")).read_text()
+    assert txt == "   3.0000000e+00\n"
+    assert not (d / (FSN + "_info.mat")).exists()
 
 
-def test_objective_scan_frames_are_rotated_after_the_decon(root):
-    from petakit5d.deskew_rotate import rotate_volume
-    from petakit5d.io import read_tiff
+class _Calls:
+    def __init__(self):
+        self.use_gpu = []
 
-    _, d = _run(root, "decon", objective_scan=True, rotate=True)
-    decon = read_tiff(os.path.join(d, FSN + ".tif"))
-    exp = _u16(
-        rotate_volume(
-            decon.astype(np.float32), 32.45, DZ / XY, False, crop=True, objective_scan=True
+
+def _fake(monkeypatch, err_id=None, run_cpu=False):
+    """an RLdecon that records use_gpu, raises err_id on the GPU (or runs the real one on the
+    CPU)"""
+    calls = _Calls()
+    real = F.rl_decon_file
+
+    def fake(*args, **kw):
+        calls.use_gpu.append(kw.get("use_gpu"))
+        if run_cpu:
+            kw["use_gpu"] = False
+            return real(*args, **kw)
+        if kw.get("use_gpu") and err_id is not None:
+            from petakit5d.kernels.decon_gpu import GPUOutOfMemoryError
+
+            if err_id.startswith("parallel:gpu:array"):
+                raise GPUOutOfMemoryError(err_id, "No GPU for this test.")
+            raise rl.DeconError(err_id, "No GPU for this test.")
+        from petakit5d.io import write_tiff as w
+
+        w(np.zeros((4, 4, 4), np.uint16), args[1])
+        return F.RLDeconResult(None, None, None, None)
+
+    monkeypatch.setattr(F, "rl_decon_file", fake)
+    return calls
+
+
+@pytest.mark.parametrize("err_id", FR.GPU_CAPACITY_IDS)
+def test_file_that_does_not_fit_on_the_gpu_is_deconvolved_on_the_cpu(root, monkeypatch, err_id):
+    calls = _fake(monkeypatch, err_id)
+    run(_fn(root), str(root / "decon"), root, decon_iter=3, gpu_job=True, overwrite=True)
+    assert calls.use_gpu == [True, False]
+    assert (root / "decon" / (FSN + ".tif")).is_file()
+
+
+def test_other_gpu_job_errors_are_not_retried_on_the_cpu(root, monkeypatch):
+    calls = _fake(monkeypatch, "MATLAB:test:otherError")
+    with pytest.raises(rl.DeconError) as e:
+        run(_fn(root), str(root / "decon"), root, gpu_job=True)
+    assert e.value.identifier == "MATLAB:test:otherError"
+    assert calls.use_gpu == [True]
+
+
+def _spy(monkeypatch):
+    """a log of reads ('read <file>') and of renames onto results ('move <destination>')"""
+    from petakit5d import io
+
+    events = []
+    read, rename = io.read_tiff, F._move
+
+    def read_spy(path, *a, **kw):
+        events.append(f"read {os.path.normpath(os.fspath(path))}")
+        return read(path, *a, **kw)
+
+    def rename_spy(src, dst):
+        events.append(f"move {os.path.normpath(os.fspath(dst))}")
+        return rename(src, dst)
+
+    monkeypatch.setattr(io, "read_tiff", read_spy)
+    monkeypatch.setattr(F, "_move", rename_spy)
+    return events
+
+
+def _three(tmp_path):
+    make_root(frames=((FSN, 1), (FSN2, 2), (FSN3, 3)))(tmp_path)
+    return [_fn(tmp_path, n) for n in (FSN, FSN2, FSN3)]
+
+
+def test_gpu_job_reads_the_next_file_during_the_decon(tmp_path, monkeypatch):
+    """each file is read once, the next one before the current result is published, with the
+    results of one file per job (a GPU with room; RLdecon on the CPU)"""
+    monkeypatch.setattr(FR, "gpu_free_bytes", lambda: 10**15)
+    calls = _fake(monkeypatch, run_cpu=True)
+    fns = _three(tmp_path)
+    kw = {"decon_iter": 2, "rl_method": "simplified", "gpu_job": True}
+    for f in fns:
+        run(f, str(tmp_path / "single"), tmp_path, **kw)
+    events = _spy(monkeypatch)
+    run(fns, str(tmp_path / "multi"), tmp_path, **kw)
+    for f in fns:
+        name = os.path.basename(f)
+        np.testing.assert_array_equal(
+            _read(tmp_path / "multi" / name), _read(tmp_path / "single" / name)
         )
-    )
-    np.testing.assert_array_equal(read_tiff(os.path.join(d, "Rotated", FSN + ".tif")), exp)
-    mip = read_tiff(os.path.join(d, "Rotated", "MIPs", FSN + "_MIP_z.tif"))
-    np.testing.assert_array_equal(mip, exp.max(axis=0))
+        assert events.count(f"read {os.path.normpath(f)}") == 1
+    for i in range(2):
+        nxt = events.index(f"read {os.path.normpath(fns[i + 1])}")
+        cur = events.index(
+            f"move {os.path.normpath(str(tmp_path / 'multi' / os.path.basename(fns[i])))}"
+        )
+        assert nxt < cur
+    assert all(calls.use_gpu)
+
+
+def test_gpu_job_without_room_on_the_gpu_reads_the_files_in_turn(tmp_path, monkeypatch):
+    monkeypatch.setattr(FR, "gpu_free_bytes", lambda: 0)
+    _fake(monkeypatch, run_cpu=True)
+    fns = _three(tmp_path)[:2]
+    events = _spy(monkeypatch)
+    run(fns, str(tmp_path / "decon"), tmp_path, decon_iter=2, gpu_job=True)
+    r2 = f"read {os.path.normpath(fns[1])}"
+    assert events.count(r2) == 1
+    first = os.path.normpath(str(tmp_path / "decon" / (FSN + ".tif")))
+    assert events.index(r2) > events.index(f"move {first}")
+
+
+def test_gpu_job_does_not_read_a_finished_next_file(tmp_path, monkeypatch):
+    monkeypatch.setattr(FR, "gpu_free_bytes", lambda: 10**15)
+    _fake(monkeypatch, run_cpu=True)
+    fns = _three(tmp_path)[:2]
+    d = str(tmp_path / "decon")
+    run(fns[1], d, tmp_path, decon_iter=2, gpu_job=True)
+    events = _spy(monkeypatch)
+    run(fns, d, tmp_path, decon_iter=2, gpu_job=True)
+    assert events.count(f"read {os.path.normpath(fns[1])}") == 0
+    assert (tmp_path / "decon" / (FSN + ".tif")).is_file()
+
+
+def test_gpu_job_does_not_read_a_finished_next_file_of_the_current_folder(tmp_path, monkeypatch):
+    # (DeconFrameTest/gpuJobDoesNotReadAFinishedNextFileOfTheCurrentFolder) a file name without
+    # a folder is in the current folder: its result is looked for in matlab_decon/ there (in
+    # /matlab_decon/ until b4eade6, so the finished next file was read)
+    monkeypatch.setattr(FR, "gpu_free_bytes", lambda: 10**15)
+    _fake(monkeypatch, run_cpu=True)
+    _three(tmp_path)
+    monkeypatch.chdir(tmp_path / "data")
+    names = [FSN + ".tif", FSN2 + ".tif"]
+    kw = {"decon_iter": 2, "rl_method": "simplified", "gpu_job": True}
+    run(names[1], "", tmp_path, **kw)
+    events = _spy(monkeypatch)
+    run(names, "", tmp_path, **kw)
+    assert events.count(f"read {os.path.normpath(names[1])}") == 0
+    assert (tmp_path / "data" / "matlab_decon" / names[0]).is_file()
+
+
+def test_gpu_has_room_is_twice_the_decon(monkeypatch):
+    monkeypatch.setattr(FR, "gpu_free_bytes", lambda: 2 * 42 * 1000)
+    assert FR.gpu_has_room((10, 10, 10), "simplified")
+    assert not FR.gpu_has_room((10, 10, 11), "simplified")
+    monkeypatch.setattr(FR, "gpu_free_bytes", lambda: 2 * 38 * 1000)
+    assert FR.gpu_has_room((10, 10, 10), "omw")
+    monkeypatch.setattr(FR, "gpu_free_bytes", lambda: None)
+    assert not FR.gpu_has_room((1, 1, 1), "omw")
+
+
+def test_without_a_gpu_there_is_no_room():
+    assert FR.gpu_free_bytes() is None or isinstance(FR.gpu_free_bytes(), int)
 
 
 def test_rotation_without_deskew_is_the_combined_deskew_and_rotation(root):
     from petakit5d.deskew_rotate import deskew_rotate_volume
-    from petakit5d.io import read_tiff
+    from petakit5d.kernels import ops
 
-    _, d = _run(root, "decon", rotate=True, reverse=True)
-    decon = read_tiff(os.path.join(d, FSN + ".tif"))
-    exp = deskew_rotate_volume(decon, 32.45, DZ, XY, reverse=True, crop=True, save_16bit=True)
-    np.testing.assert_array_equal(read_tiff(os.path.join(d, "DSR", FSN + ".tif")), _u16(exp))
-
-
-def test_deskew_alone_under_dsr_combined_writes_nothing(root):
-    """MATLAB's behaviour (M07's report, not fixed): Deskew without Rotate and with the default
-    DSRCombined makes no DS result"""
-    r, d = _run(root, "decon", deskew=True)
-    assert r.ds is None and r.dsr is None
-    assert not os.path.exists(os.path.join(d, "DS"))
-    assert os.path.isfile(os.path.join(d, FSN + ".tif"))
-
-
-def test_the_separate_path_ignores_resample(root):
-    """MATLAB's behaviour (M07's report, not fixed): Resample reaches only the combined path"""
-    a, _ = _run(root, "a", deskew=True, rotate=True, dsr_combined=False)
-    b, _ = _run(root, "b", deskew=True, rotate=True, dsr_combined=False, resample=(2, 1, 1))
-    np.testing.assert_array_equal(a.dsr, b.dsr)
-
-
-def _files(folder) -> list[str]:
-    """the files under folder, relative, with forward slashes"""
-    return sorted(
-        os.path.relpath(os.path.join(d, f), folder).replace(os.sep, "/")
-        for d, _, fs in os.walk(folder)
-        for f in fs
+    run(_fn(root), "", root, decon_iter=2, rotate=True)
+    d = root / "data" / "matlab_decon"
+    decon = _read(d / (FSN + ".tif"))
+    exp = ops.convert(
+        deskew_rotate_volume(decon, 32.45, DZ, XY, reverse=True, crop=True, save_16bit=True),
+        "uint16",
     )
+    np.testing.assert_array_equal(_read(d / "DSR" / (FSN + ".tif")), exp)
+    np.testing.assert_array_equal(_read(d / "DSR" / "MIPs" / (FSN + "_MIP_z.tif")), exp.max(axis=0))
 
 
-def test_rldecon_in_memory_with_an_output_file_names_its_files_after_it(root):
-    """(MATLAB: rldeconInMemoryWithAnOutputFileNamesItsFilesAfterIt) data in memory with an output
-    file: its MIP took the input file's name (fsname undefined) and failed; the result and its
-    MIP are named after the output file and equal those of the decon of the file"""
-    from petakit5d.io import read_tiff, write_tiff
+def test_large_files_go_to_the_large_file_functions(root, monkeypatch):
+    """a file above CPUMaxMem, and every file after it, goes to R07's in-memory function (and the
+    call returns after it, as MATLAB's)"""
+    from petakit5d import decon
 
-    im = frame(2)
-    fn = str(root / "in.tif")
-    write_tiff(im, fn)
-    psf = str(root / "psf" / "PSF_CamA.tif")
-    kw = {"rl_method": "simplified", "psf_gen": False, "use_gpu": False, "background": BG,
-          "decon_iter": 2}  # fmt: skip
-    F.rl_decon_file(fn, str(root / "file" / "in.tif"), psf, XY, DZ, DZ, **kw)
-    os.makedirs(root / "memory")
-    F.rl_decon_file("", str(root / "memory" / "out.tif"), psf, XY, DZ, DZ, rawdata=im, **kw)
-    np.testing.assert_array_equal(
-        read_tiff(str(root / "memory" / "out.tif")), read_tiff(str(root / "file" / "in.tif"))
+    seen = []
+    monkeypatch.setattr(decon, "decon_large_in_memory", lambda **kw: seen.append(kw), raising=False)
+    run(
+        [_fn(root), _fn(root)], str(root / "decon"), root, cpu_max_mem=1e-6, batch_size=(16, 32, 32)
     )
-    np.testing.assert_array_equal(
-        read_tiff(str(root / "memory" / "MIPs" / "out_MIP_z.tif")),
-        read_tiff(str(root / "file" / "MIPs" / "in_MIP_z.tif")),
-    )
-    assert _files(root / "memory") == [
-        "MIPs/out_MIP_z.tif",
-        "decon_info/out_actual_iterations_2.txt",
-        "decon_info/out_info.mat",
-        "out.tif",
-    ]
+    assert len(seen) == 1
+    kw = seen[0]
+    assert kw["frame_fullpaths"] == _fn(root)
+    assert kw["decon_fullpath"].endswith(FSN + ".tif")
+    assert kw["batch_size"] == (16, 32, 32) and kw["background"] == BG
+    assert not (root / "decon" / (FSN + ".tif")).exists()
 
 
-def test_rldecon_in_memory_deskews_and_rotates_into_the_output_folder(root):
-    """data in memory with an output file and Deskew and Rotate: the DSR and its MIP are named
-    after the output file, as the decon's MIP"""
-    from petakit5d.io import read_tiff
+def test_without_the_large_file_port_a_large_file_raises(root, monkeypatch):
+    from petakit5d import decon
 
-    out = root / "out"
-    os.makedirs(out)
-    r = F.rl_decon_file(
-        "", str(out / "r.tif"), str(root / "psf" / "PSF_CamA.tif"), XY, DZ, DZ, rawdata=frame(2),
-        rl_method="simplified", psf_gen=False, use_gpu=False, background=BG, decon_iter=2,
-        deskew=True, rotate=True,
-    )  # fmt: skip
-    np.testing.assert_array_equal(read_tiff(str(out / "DSR" / "r.tif")), r.dsr)
-    np.testing.assert_array_equal(
-        read_tiff(str(out / "DSR" / "MIPs" / "r_MIP_z.tif")), r.dsr.max(axis=0)
-    )
-    assert os.path.isfile(out / "MIPs" / "r_MIP_z.tif")
+    monkeypatch.delattr(decon, "decon_large_in_memory", raising=False)
+    monkeypatch.delitem(decon._EXPORTS, "decon_large_in_memory", raising=False)
+    with pytest.raises(NotImplementedError, match="R07"):
+        run(_fn(root), str(root / "decon"), root, large_file=True)
 
 
-@pytest.mark.parametrize("method", ["simplified", "omw"])
-def test_rldecon_in_memory_without_an_output_file_writes_nothing(root, tmp_path, method,
-                                                                  monkeypatch):  # fmt: skip
-    """(MATLAB: rldeconInMemoryWithoutAnOutputFileWritesNothing) without an input or an output
-    file there is no folder: OMW (the back projector's files) and psfGen (the generated PSF's
-    file) failed on the undefined folder. Both are made in memory, nothing is written, and the
-    result equals the decon of the file"""
-    from petakit5d.io import read_tiff, write_tiff
-
-    im = frame(2)
-    fn = str(root / "in.tif")
-    write_tiff(im, fn)
-    psf = str(root / "psf" / "PSF_CamA.tif")
-    kw = {"rl_method": method, "psf_gen": True, "use_gpu": False, "background": BG,
-          "decon_iter": 2}  # fmt: skip
-    if method == "omw":
-        kw["skewed"] = False
-    F.rl_decon_file(fn, str(root / "file" / "in.tif"), psf, XY, DZ, DZ, **kw)
-    here = tmp_path / "here"
-    here.mkdir()
-    monkeypatch.chdir(here)
-    rl.clear_otf_cache()
-    r = F.rl_decon_file("", "", psf, XY, DZ, DZ, rawdata=im, **kw)
-    np.testing.assert_array_equal(r.decon, read_tiff(str(root / "file" / "in.tif")))
-    assert _files(here) == [], "Files were written without an output file."
-    if method == "omw":
-        assert any("_back_projector_" in f for f in _files(root / "file"))
+def test_matlab_errors(root):
+    with pytest.raises(FR.DeconFileError):
+        run(_fn(root), "", root, psf_file="")
+    with pytest.raises(FR.DeconFileError, match="needs to be saved"):
+        run(_fn(root), "", root, save_3d_stack=(False, False, False), mip_axis=(0, 0, 0))
 
 
-def test_rldecon_in_memory_without_an_output_file_cannot_deskew(tmp_path, root, monkeypatch):
-    """MATLAB's behaviour kept: the deskew and rotation of data in memory without an output file
-    fail on the undefined output name (outFsn) before anything is written"""
-    monkeypatch.chdir(tmp_path)
-    before = _files(tmp_path)
-    with pytest.raises(rl.DeconError) as e:
-        F.rl_decon_file(
-            "", "", str(root / "psf" / "PSF_CamA.tif"), XY, DZ, DZ, rawdata=frame(2),
-            rl_method="simplified", psf_gen=False, use_gpu=False, background=BG, decon_iter=1,
-            deskew=True, rotate=True,
-        )  # fmt: skip
-    assert e.value.identifier == "MATLAB:UndefinedFunction"
-    assert "'outFsn'" in str(e.value)
-    assert _files(tmp_path) == before
-
-
-def test_rldecon_in_memory_debug_folder_is_named_after_the_output(root):
-    out = root / "out"
-    os.makedirs(out)
-    F.rl_decon_file(
-        "", str(out / "r.tif"), str(root / "psf" / "PSF_CamA.tif"), XY, DZ, DZ, rawdata=frame(2),
-        rl_method="simplified", psf_gen=False, use_gpu=False, background=BG, decon_iter=2,
-        debug=True, save_step=1,
-    )  # fmt: skip
-    assert os.path.isdir(out / "r_debug") and os.listdir(out / "r_debug")
-
-
-@pytest.mark.parametrize("name", ["Simplified", "OMW", "rl", "", 3])
-def test_rldecon_rejects_an_unknown_method(root, name):
-    """(MATLAB: rldeconRejectsAnUnknownMethod) RLdecon's method names are case-sensitive: another
-    name left the result empty, and the decon failed writing its MIP; it fails with the
-    arguments, before anything is written"""
-    from petakit5d.params.spec import MatlabArgumentError
-
-    with pytest.raises(MatlabArgumentError) as e:
-        F.rl_decon_file(
-            str(root / "data" / (FSN + ".tif")), str(root / "out" / "in.tif"),
-            str(root / "psf" / "PSF_CamA.tif"), XY, DZ, DZ, rl_method=name, psf_gen=False,
-            use_gpu=False, background=BG, decon_iter=2,
-        )  # fmt: skip
-    assert e.value.identifier == "MATLAB:InputParser:ArgumentFailedValidation"
-    assert "'RLMethod'" in str(e.value)
-    assert not os.path.exists(root / "out"), "The decon of an unknown method wrote files."
-
-
-def test_methods_that_are_not_ported(root):
-    psf = str(root / "psf" / "PSF_CamA.tif")
-    kw = {
-        "rawdata": frame(2),
-        "psf_gen": False,
-        "use_gpu": False,
-        "background": BG,
-        "decon_iter": 1,
-    }
-    with pytest.raises(rl.DeconError) as e:
-        F.rl_decon_file("", "", psf, XY, DZ, DZ, rl_method="cudagen", **kw)
-    assert e.value.identifier == "MATLAB:UndefinedFunction"
-    with pytest.raises(NotImplementedError, match="edgetaper"):
-        F.rl_decon_file("", "", psf, XY, DZ, DZ, rl_method="simplified", n_tapering=3, **kw)
-
-
-def test_original_without_iterations_subtracts_the_background(root):
-    r = F.rl_decon_file(
-        "",
-        "",
-        str(root / "psf" / "PSF_CamA.tif"),
-        XY,
-        DZ,
-        DZ,
-        rawdata=frame(2),
-        rl_method="original",
-        psf_gen=False,
-        use_gpu=False,
-        background=BG,
-        decon_iter=0,
-    )
-    exp = np.maximum(frame(2).astype(np.float32) - np.float32(BG), np.float32(0))
-    np.testing.assert_array_equal(r.decon, exp)
-
-
-def test_a_mat_psf_is_read(root, tmp_path):
-    from petakit5d.io.matfile import write_mat
-
-    p = str(tmp_path / "psf.mat")
-    write_mat(p, {"psf": to_matlab(psf_raw().astype(np.float32))})
-    kw = {
-        "rawdata": frame(2),
-        "psf_gen": False,
-        "use_gpu": False,
-        "background": BG,
-        "decon_iter": 2,
-        "rl_method": "simplified",
-        "save_16bit": False,
-    }
-    a = F.rl_decon_file("", "", p, XY, DZ, DZ, **kw)
-    b = F.rl_decon_file("", "", str(root / "psf" / "PSF_CamA.tif"), XY, DZ, DZ, **kw)
-    np.testing.assert_array_equal(a.decon, b.decon)
-
-
-def test_existing_results_are_skipped_and_kept(root):
-    from petakit5d.io import read_tiff
-
-    r, d = _run(root, "decon")
-    before = read_tiff(os.path.join(d, FSN + ".tif"))
-    r2, _ = _run(root, "decon", decon_iter=5)
-    assert r2.decon is None
-    np.testing.assert_array_equal(read_tiff(os.path.join(d, FSN + ".tif")), before)
-
-
-def test_an_existing_tiff_result_is_written_again_and_a_zarr_kept(root, monkeypatch):
-    """the decon result exists (DSR to make): it is read; MATLAB moves the result over it again
-    (a tiff: the same voxels), a zarr result is kept"""
-    from petakit5d.io import read_tiff, read_zarr
-
-    moves = []
-    real = F._move
-    monkeypatch.setattr(F, "_move", lambda a, b: moves.append(b) or real(a, b))
-    _, d = _run(root, "decon")
-    before = read_tiff(os.path.join(d, FSN + ".tif"))
-    moves.clear()
-    _run(root, "decon", rotate=True)
-    assert [os.path.basename(os.path.dirname(p)) for p in moves] == ["DSR", "decon"]
-    np.testing.assert_array_equal(read_tiff(os.path.join(d, FSN + ".tif")), before)
-    assert not [f for f in os.listdir(d) if f.endswith(".tif") and f != FSN + ".tif"]
-    _, z = _run(root, "zarr", save_zarr=True, out_name=FSN + ".zarr")
-    before = read_zarr(os.path.join(z, FSN + ".zarr"))
-    moves.clear()
-    _run(root, "zarr", save_zarr=True, out_name=FSN + ".zarr", rotate=True)
-    assert [os.path.basename(os.path.dirname(p)) for p in moves] == ["DSR"]
-    np.testing.assert_array_equal(read_zarr(os.path.join(z, FSN + ".zarr")), before)
-    assert sorted(os.listdir(z)) == ["DSR", "MIPs", FSN + ".zarr", "decon_info", "psfgen"]
-
-
-def test_an_eroded_mask_file_replaces_the_erosion(tmp_path):
-    """EdgeErosion with an existing mask file: no erosion in the decon (data with zero borders,
-    whose erosion would show), the result times the mask"""
-    from petakit5d.io import read_tiff
-
-    make_root(mask=True, data=lambda: zero_border(frame(1)))(tmp_path)
-    root = tmp_path
-    mask = str(tmp_path / "mask_eroded.zarr")
-    _, d = _run(root, "a", edge_erosion=3, erode_maskfile=mask)
-    b, _ = _run(root, "b", edge_erosion=0)
-    m = np.ones(IM, bool)
-    m[: IM[0] // 3, : IM[1] // 3, : IM[2] // 3] = False
-    np.testing.assert_array_equal(read_tiff(os.path.join(d, FSN + ".tif")), np.where(m, b.decon, 0))
-
-
-def test_rawdata_given_with_a_file_is_used_and_not_changed(root):
-    """XR_RLdeconFrame3D's read-ahead hands RLdecon the data of the file: flipped in a copy"""
-    im = frame(3)
-    keep = im.copy()
-    r, _ = _run(root, "a", rawdata=im, flip_zstack=True, save_3d_stack=(False, False, False))
-    np.testing.assert_array_equal(im, keep)
-    b, _ = _run(root, "b", rawdata=im[::-1].copy(), save_3d_stack=(False, False, False))
-    np.testing.assert_array_equal(r.decon, b.decon)
-
-
-def test_from_matlab_roundtrip_of_the_frame():
-    """the inputs are MATLAB's 48 x 44 x 32 (never cubic)"""
-    m = to_matlab(frame(1))
-    assert m.shape == (48, 44, 32)
-    np.testing.assert_array_equal(from_matlab(m), frame(1))
+def test_a_missing_file_is_skipped_with_a_warning(root):
+    with pytest.warns(UserWarning, match="does not exist"):
+        FR.decon_file(
+            [str(root / "nope.tif"), _fn(root)],
+            XY,
+            DZ,
+            str(root / "decon"),
+            psf_file=str(root / "psf" / "PSF_CamA.tif"),
+            dz_psf=DZ,
+            background=BG,
+            edge_erosion=0,
+            parse_cluster=False,
+            decon_iter=1,
+        )
+    assert (root / "decon" / (FSN + ".tif")).is_file()

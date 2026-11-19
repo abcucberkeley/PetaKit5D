@@ -16,7 +16,7 @@ import numpy as np
 import pytest
 
 from petakit5d.stitch import imagelist as il
-from petakit5d.stitch import imagelist_generate as ig
+from petakit5d.stitch import imagelist_generation as ig
 from petakit5d.testing import oracle
 from petakit5d.testing.cases import Case, InPath, Tree
 
@@ -534,7 +534,7 @@ GENERATE_CASES = [
 ]
 
 # The fallback of stitch_generate_imagelist_from_sqlite to the image and slice tables where the
-# view can't resolve JSONsettings_MD5 (Matt's change of 2026-09-09): oracle trees before it
+# view can't resolve JSONsettings_MD5 (the change of 2026-09-09): oracle trees before it
 # fail on these databases, so they have no MATLAB reference yet; they join ORACLE_CASES at the
 # next oracle switch (the fates of ImageListGenerationTest's two sqlite methods name them).
 PENDING_CASES = [

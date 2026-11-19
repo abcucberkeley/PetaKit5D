@@ -713,7 +713,7 @@ class _State:
 
         dz = _number(m["dz"])
         if m["dzFromEncoder"] and not self.streaming:
-            from petakit5d.stitch.imagelist_generate import estimate_actual_step_size_from_encoder
+            from petakit5d.stitch.imagelist_generation import estimate_actual_step_size_from_encoder
 
             self.dz_all = [
                 estimate_actual_step_size_from_encoder(self.paths[d], dz=dz) for d in range(nd)
@@ -978,7 +978,7 @@ class _State:
                     if not self.done[i][1] and self.fd_inds[i] == fd
                 ]
                 if firsts and f == firsts[0]:
-                    from petakit5d.stitch import imagelist_generate as G
+                    from petakit5d.stitch import imagelist_generation as G
 
                     if gen == "from_encoder":
                         self._set_list(

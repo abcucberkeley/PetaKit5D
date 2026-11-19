@@ -11,7 +11,7 @@ import pytest
 
 from petakit5d.stitch import dataset as SD
 from petakit5d.stitch import imagelist as IL
-from petakit5d.stitch import imagelist_generate as ig
+from petakit5d.stitch import imagelist_generation as ig
 from petakit5d.testing.synth import cut_tiles, write_stitch_tiles
 
 POSIX = pytest.mark.skipif(os.name == "nt", reason="POSIX file modes")
@@ -23,7 +23,7 @@ SLICE_HEADER = (
 
 
 def _slice_lists(root: Path, names, mcs2, nslice=3, step=0.2):
-    """SliceList csv files of tiles whose stage moves in x (as test_imagelist_generate's)"""
+    """SliceList csv files of tiles whose stage moves in x (as test_imagelist_generation's)"""
     for i, (fn, (x0, y, z)) in enumerate(zip(names, mcs2, strict=True)):
         lines = [SLICE_HEADER]
         for k in range(nslice):

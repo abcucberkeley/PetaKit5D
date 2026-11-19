@@ -1,5 +1,5 @@
 """Deconvolution of datasets (``XR_decon_data_wrapper``): every file of the datasets that
-matches a channel pattern, deconvolved by ``decon.frame.decon_file`` (XR_RLdeconFrame3D) here or
+matches a channel pattern, deconvolved by ``decon.file.decon_file`` (XR_RLdeconFrame3D) here or
 in Slurm jobs.
 
 ``decon_dataset`` is XR_decon_data_wrapper.m at the oracle commit:
@@ -82,7 +82,7 @@ __all__ = [
 ]
 
 # the job's function (XR_RLdeconFrame3D)
-FRAME_FUNC = "petakit5d.decon.frame:decon_file"
+FRAME_FUNC = "petakit5d.decon.file:decon_file"
 FRAME_NAME = "XR_RLdeconFrame3D"
 ARRAY_ID_MODULUS = 5000
 # files per GPU job without task_batch_num: at most 8, while there are 16 jobs

@@ -46,6 +46,7 @@ microscopy, with MATLAB PetaKit5D's results and files.
 | [0007](decisions/0007-openmp-spin.md) | OpenMP's spin after a parallel region |
 | [0008](decisions/0008-openmp-runtime.md) | one OpenMP runtime with cpp-zarr and cpp-tiff |
 | [0009](decisions/0009-n5-layout.md) | standard N5 |
+| [0010](decisions/0010-module-names.md) | a function's module names its MATLAB folder or kind (the renames before the first release) |
 
 ## Per-area differences
 
