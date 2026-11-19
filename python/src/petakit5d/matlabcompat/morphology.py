@@ -25,8 +25,8 @@ arrays are ``bool``. A neighborhood follows the same rule (MATLAB's ``rows x col
 - ``medfilt2`` (zero padding by default) and ``medfilt3`` (symmetric padding by default): the
   median of each window, exact for data without NaN and -0. With NaN or both signs of zero in a
   window MATLAB's result depends on its code path and on the positions in the window; here a
-  window with NaN gives its first NaN in MATLAB's order and a zero result is +0 (proposed
-  exception, see the module tests).
+  window with NaN gives its first NaN in MATLAB's order and a zero result is +0 (approved
+  exception, parity row N9).
 """
 
 from __future__ import annotations

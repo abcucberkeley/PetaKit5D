@@ -831,8 +831,8 @@ def _lsqlin_cases():
 # --- stitch_assignment_lsqlin itself, unrounded ------------------------------------------------
 
 ASSIGN_TOL = tol(
-    reason="proposed (N06): stitch_assignment_lsqlin's linear solves (MATLAB's sparse Cholesky "
-    "and LU, SuperLU here) differ in the last bits",
+    reason="approved (N06, N12): stitch_assignment_lsqlin's linear solves (MATLAB's sparse "
+    "Cholesky and LU, SuperLU here) differ in the last bits",
     abs=1e-9,
 )
 

@@ -38,7 +38,7 @@ from petakit5d.testing.synth import CounterRNG, beads, decon_psf, write_tiff
 
 BACKENDS = ("exact", "permissive")
 DOUBLE_TOL = tol(
-    reason="proposed (B11): deconvlucy's double results on the exact FFT backend, whose "
+    reason="approved (B11, N2): deconvlucy's double results on the exact FFT backend, whose "
     "acceleration factor MATLAB takes from BLAS dot products in the CPU's order (max <= 1e-13 of "
     "the largest value, relative L2 <= 1e-13)",
     rel_max=1e-13,

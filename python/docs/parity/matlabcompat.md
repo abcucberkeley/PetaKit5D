@@ -30,7 +30,7 @@ bits match no FFT size tried.
 | Sparse arrays (less than a tenth nonzero) with replicate borders | at most 3 ulp in 5.5% of values | `ulp` 4 |
 | `imfilter` of uint16 along z, and along x with `'full'` | ±1 in at most 0.05% of values (cause not found) | `abs` 1, `max_frac` 1e-3 |
 
-## Puncta removal (`tools.puncta_removal`, B08; proposed)
+## Puncta removal (`tools.puncta_removal`, B08; approved 2026-11-18, parity row N6)
 
 The helpers MATLAB's puncta removal uses (`thresholdOtsu`, `XR_locmax3d`, `imregionalmax`,
 `imresize3` 'linear', regionprops3's principal axis filter, the Delaunay triangulation of

@@ -87,7 +87,7 @@ def tree_spec():
     return tree(
         per_file={
             "*/Phase/*/xcorr/*/xcorr_tile_*.mat": tol(
-                reason="P13 (proposed): 2D registration peaks of normxcorr2", abs=1e-7
+                reason="P13 (approved): 2D registration peaks of normxcorr2", abs=1e-7
             ),
             "*/xcorr/*/xcorr_tile_*.mat": tol(
                 reason="P7 (approved): 3D registration peaks of the default FFT backend", abs=5e-3

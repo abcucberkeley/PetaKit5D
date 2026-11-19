@@ -220,10 +220,10 @@ def tolerances(backend: str, matlab_inputs: bool = False) -> dict:
         rel_max=1e-13,
         rel_l2=1e-14,
     )
-    # P14 (proposed): the spectra and FSC curves of the default backend's decon results carry
+    # P14 (approved): the spectra and FSC curves of the default backend's decon results carry
     # the decon's differences (P2); P2's relative L2 for what is made from decon results
     from_decon = tol(
-        reason="P14 (proposed): made from the default backend's decon results, P2's relative L2",
+        reason="P14 (approved): made from the default backend's decon results, P2's relative L2",
         rel_l2=1e-4,
     )
     gamma = Custom(

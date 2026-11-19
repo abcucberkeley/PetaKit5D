@@ -205,7 +205,7 @@ def _sph_values(kind, part):
 
 # MATLAB's NaN payloads where NaN meets NaN in sph2cart's products are not reproduced (hypot's
 # positive NaN and atan2's MATLAB NaN are): NaN where MATLAB has NaN, other values exact
-_NAN_ONLY = tol(reason="proposed (N06): NaN payloads of sph2cart with NaN inputs", abs=0.0)
+_NAN_ONLY = tol(reason="approved (N06, N13): NaN payloads of sph2cart with NaN inputs", abs=0.0)
 
 
 def _sph_cases():

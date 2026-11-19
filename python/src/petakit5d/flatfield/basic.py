@@ -14,7 +14,7 @@ BaSiCPy for the flat field.
 
 MATLAB uses BaSiC (``third_parties/BaSiC-master``, CC BY-NC-ND: not ported, not read); BaSiCPy
 (MIT) implements the same published method (Peng et al., Nat. Commun. 8, 14836, 2017). The
-flat fields of the two agree within the tolerance in ``docs/parity/flatfield.md`` (proposed),
+flat fields of the two agree within the tolerance in ``docs/parity/flatfield.md`` (approved, N8),
 not bit for bit. BaSiCPy is an optional dependency (the ``basic`` extra and
 ``pip install --no-deps basicpy``: BaSiCPy 2.0.0 declares ``scipy<1.13``); without it the
 estimation raises ``ImportError``. Its fit runs with one PyTorch thread, so the flat field

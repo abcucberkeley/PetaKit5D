@@ -102,5 +102,5 @@ of their voxels. The numbers and every difference are in [parity/demos.md](../pa
 The Phase 2 steps were compared step by step (`compare_phase2_trees.py`): with the exact add-on
 every output is MATLAB's bit for bit apart from the phase flat field (BaSiCPy in place of
 MATLAB's BaSiC, within its parity row N8). On the default backend the FFT spectra and FSC
-curves, made from that backend's decon results, are within a proposed row (P14), the other
+curves, made from that backend's decon results, are within an approved row (P14), the other
 outputs within their rows. The numbers are in [parity/phase2.md](../parity/phase2.md).

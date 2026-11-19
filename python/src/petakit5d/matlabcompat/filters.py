@@ -39,12 +39,12 @@ multiply-adds, which MATLAB's code chooses by the pass and by the place of the o
 - ``edgetaper``: the weights from the circular autocorrelation of the PSF's projections over
   ``n - 1`` points, closed periodically; the blur is the circular convolution with the PSF.
 
-What is not bit for bit MATLAB's (measured by the oracle cases; tolerances proposed for
-``docs/parity/matlabcompat.md``): the column pass with zero padding, the rows of its last
-vectors (double 7 taps or more, single 11 or more; 'full' from 5 taps), imgaussfilt's small 2-D
-kernels and imfilter's general 2-D and 3-D kernels (MATLAB's tap order there not measured),
-imgaussfilt's separable path for kernels of 21 or more taps (conv2's long kernels), the
-frequency domain path and edgetaper (rounding level: half spectra of ``petakit5d.fft``).
+What is not bit for bit MATLAB's (measured by the oracle cases; tolerances approved in
+``docs/parity/matlabcompat.md``, parity row N5): the column pass with zero padding, the rows of
+its last vectors (double 7 taps or more, single 11 or more; 'full' from 5 taps), imgaussfilt's
+small 2-D kernels and imfilter's general 2-D and 3-D kernels (MATLAB's tap order there not
+measured), imgaussfilt's separable path for kernels of 21 or more taps (conv2's long kernels),
+the frequency domain path and edgetaper (rounding level: half spectra of ``petakit5d.fft``).
 """
 
 from __future__ import annotations

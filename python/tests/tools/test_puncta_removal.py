@@ -46,7 +46,10 @@ from petakit5d.tools import puncta_removal as pr
 # weights are 1/2 and 0): its fills differ from the exact interpolation by about 1e-16 of the
 # window's values, so a filled pixel may round to the next single, and an exact 0 between
 # zeros may be +-3e-14
-FILL_REASON = "puncta_removal: fillmissing2 fills: 1 ulp of single, or 1e-12 of the largest value"
+FILL_REASON = (
+    "approved (B08, N6): puncta_removal: fillmissing2 fills: 1 ulp of single, or 1e-12 of the "
+    "largest value"
+)
 FILL_TOL = tol(reason=FILL_REASON, ulp=1, rel_max=1e-12, max_frac=0.02)
 FILL_TOL_U16 = tol(reason=FILL_REASON + " (uint16: 1)", abs=1, max_frac=0.01)
 

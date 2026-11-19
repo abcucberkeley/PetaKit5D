@@ -7,7 +7,7 @@ Oracle cases (inputs in MATLAB's form):
   templates of several sizes and classes, a template that is a part of the image (peak 1), equal
   sizes, rows and columns, data with a large offset, images with exactly zero parts. normxcorr2
   is MathWorks' code: the port's is a new implementation (Lewis's method), so the values are
-  compared within the proposed tolerance of docs/parity/stitch.md (MATLAB's own result changes
+  compared within the approved tolerance of docs/parity/stitch.md (P13) (MATLAB's own result changes
   in the last bits with its thread count); err.n2.*: its errors (identifiers);
 - crop.*: crop_subregion_by_intensity (StitchHelperMexTest's long region and its crop around the
   brightest part, regions within the limit, runs of blank slices, single data of 32 x 32 x 1000
@@ -33,13 +33,11 @@ from petakit5d.testing.cases import Case, In, Value, Vol
 from petakit5d.testing.compare import Custom, tol
 from petakit5d.testing.synth import CounterRNG, texture
 
-N2_REASON = (
-    "docs/parity/stitch.md (proposed): normxcorr2, MathWorks' function, a new implementation"
-)
-# proposed: the coefficients within 1e-7 of MATLAB's. Measured: at most 2.6e-13 where the data
-# have contrast; 9.2e-8 on 16-bit data at 2^15 with a contrast of 12, MATLAB's own error there
-# (the port's is 1.6e-15 against the exact NCC). MATLAB's results also change by up to 7e-16
-# with its thread count.
+N2_REASON = "approved (S04, P13): normxcorr2, MathWorks' function, a new implementation"
+# approved 2026-11-18 (P13): the coefficients within 1e-7 of MATLAB's. Measured: at most 2.6e-13
+# where the data have contrast; 9.2e-8 on 16-bit data at 2^15 with a contrast of 12, MATLAB's own
+# error there (the port's is 1.6e-15 against the exact NCC). MATLAB's results also change by up
+# to 7e-16 with its thread count.
 N2_TOL = tol(reason=N2_REASON, abs=1e-7)
 
 

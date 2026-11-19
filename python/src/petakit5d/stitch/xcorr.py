@@ -32,9 +32,9 @@ MATLAB's own function chooses its FFTs and sums by itself (its results change in
 with its thread count), so the port's coefficients are not MATLAB's bits: they agree to about
 1e-13 where the data have contrast and are closer to the exact NCC where they don't (MATLAB's error
 reaches 1e-7 on 16-bit data at an offset of 2^15 with a contrast of 12, and there it sets its true
-peak of 1 to 0); ``docs/parity/stitch.md`` (proposed). Nearly flat windows (variance far below
-the data's rounding) give MATLAB rounding noise and the port their NCC. The input checks and errors
-are MATLAB's (from probes of the function).
+peak of 1 to 0); ``docs/parity/stitch.md`` (approved, parity row P13). Nearly flat windows
+(variance far below the data's rounding) give MATLAB rounding noise and the port their NCC. The
+input checks and errors are MATLAB's (from probes of the function).
 """
 
 from __future__ import annotations

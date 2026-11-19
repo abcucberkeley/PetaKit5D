@@ -24,8 +24,8 @@ so both sides read the same files:
 
 3D cases run on both CPU FFT backends: exact (the FFTW add-on): bit for bit (shifts and peaks);
 permissive (the default): the same shifts, the peaks within decision record 0006's 5e-3. 2D cases
-compare the shifts exactly and the peaks within the proposed normxcorr2 tolerance
-(docs/parity/stitch.md).
+compare the shifts exactly and the peaks within the approved normxcorr2 tolerance
+(docs/parity/stitch.md, parity row P13).
 
 MATLAB tests ported here: RegistrationXcorrTest/pairRegistrationTakesTheAxesOfTheDataOrder
 (axes.*, test_pair_registration_takes_the_axes_of_the_data_order); StitchingTest's registration
@@ -60,11 +60,9 @@ from petakit5d.testing.synth import CounterRNG
 
 REASON = "decision record 0006: the permissive FFT backend against MATLAB's FFTW"
 NCC_TOL = tol(reason=REASON + ": the NCC's peak", abs=5e-3)
-N2_REASON = (
-    "docs/parity/stitch.md (proposed): normxcorr2, MathWorks' function, a new implementation"
-)
-# proposed: 2D peaks within 1e-7 of MATLAB's (measured: 5.3e-8 on offset data, where it is
-# MATLAB's own error; 1e-13 elsewhere)
+N2_REASON = "approved (S04, P13): normxcorr2, MathWorks' function, a new implementation"
+# approved 2026-11-18 (P13): 2D peaks within 1e-7 of MATLAB's (measured: 5.3e-8 on offset data,
+# where it is MATLAB's own error; 1e-13 elsewhere)
 N2_PEAK = tol(reason=N2_REASON, abs=1e-7)
 
 # MATLAB's data orders (the names of the tile arrays' dimensions)
@@ -849,7 +847,7 @@ def wrap_case(cid, prs, ext=".zarr", stitch_2d=False, slabs=None):
         py_kwargs=kw,
         inputs={"d": Tree(wrap_tree(prs, ext, slabs), "d")},
         files=True,
-        # (2D peaks: normxcorr2's proposed tolerance; shifts are integers, so it keeps them exact)
+        # (2D peaks: normxcorr2's approved tolerance; shifts are integers, so it keeps them exact)
         tree=tree(
             values=N2_PEAK if stitch_2d else EXACT,
             ignore=[r"(^|/)job_logs?(/|$)", r"\.tmp$", r"(^|/)tmp(/|$)"],

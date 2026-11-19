@@ -5,7 +5,7 @@ All other stitching outputs are bit-identical to MATLAB. The 3D registration (th
 permissive one (same integer shifts, peaks within 5e-3; measured 4.2e-7). The entries below are
 for the 2D registration, which uses MathWorks' `normxcorr2`.
 
-## normxcorr2 (proposed)
+## normxcorr2 (approved 2026-11-18, parity row P13)
 
 `petakit5d.stitch.xcorr.normxcorr2` is a new implementation of the Image Processing Toolbox
 function, from its documentation and the method it cites (J. P. Lewis, "Fast Normalized

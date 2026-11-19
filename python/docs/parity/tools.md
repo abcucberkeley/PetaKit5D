@@ -81,9 +81,23 @@ The tolerance, approved on 2026-11-18 (`RES` and `RES_VALUES` in `tests/tools/te
 curves): `comp_angles` and `thetas` exact; every radius within 1 step of 1e-4 of MATLAB's; the
 resolutions within 1% relative (one step at the smallest radii); Inf and NaN at the same places.
 
+**M13's choices, accepted on 2026-11-18.** MATLAB's fixed functions at the oracle tree
+make them, the port with them, and the oracle cases compare them: an odd number of
+sectors in the half circle is refused (`XR_FSC_resolution:oddSectorNumber`: no sector
+lies at pi/2); the sectors the FSC lacks (inside the cones) are NaN on the full circle,
+and the wrapper's saved means leave them out; images without signal raise
+`XR_FSC:noSignal` (their FSC is undefined). The alternatives were a half-step angle
+grid, interpolated sectors and NaN results.
+
 ## Chromatic shift estimation (`tools.chromatic`, approved 2026-11-18)
 
 The estimation's normalized cross-correlation (`kernels.xcorr`) is bit for bit MATLAB's with the
 exact FFT backend. With the default backend the estimated shifts and the corrected files are
 exact; only the correlation peak values differ, by at most 1.8e-7 (measured), and the cases
 compare them within an absolute 1e-4.
+
+**M13's refusals, accepted on 2026-11-18.** MATLAB's fixed wrapper at the oracle tree
+makes them, and the port with it: the correction refuses modes other than `'valid'`,
+`'same'` and `'full'` (MATLAB's parser, `MATLAB:InputParser:ArgumentFailedValidation`;
+the others cropped against the offsets), and a nonzero `padValue` for large zarr
+files, which are cropped in batches and padded with 0.

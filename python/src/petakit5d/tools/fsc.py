@@ -40,7 +40,7 @@ default smoothing parameter (``p trace(A) = (1 - p) trace(B)`` for the system ma
 ``p A + (1 - p) B``: ``default_smoothing``); evaluated as a piecewise cubic, past the last point
 by the last piece. The quadratic is the least-squares fit, solved in exact rational arithmetic.
 The radii found are MATLAB's or a grid step or two off (the last bits of the spline differ);
-the tolerance on the resolution values is proposed in ``docs/parity/tools.md``. The arithmetic
+the tolerance on the resolution values is approved in ``docs/parity/tools.md`` (N3). The arithmetic
 is plain IEEE operations in a fixed order, so the results are the same on every platform.
 
 ``one_image_fsc_analysis(fn)`` (``XR_one_image_FSC_analysis``): the image (a tiff file or a
