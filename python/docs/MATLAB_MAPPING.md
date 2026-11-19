@@ -2093,7 +2093,7 @@ Deskew/rotate and stitch the datasets' files (XR_microscopeAutomaticProcessing):
 | `blendMethod` | `blend_method` | par |  | `'none'` | `'none'` | `@ischar` | 'none', 'feather', 'mean', 'median' or 'max'. |
 | `xcorrShift` | `xcorr_shift` | par |  | `false` | `False` | `@islogical` | Register the tiles. |
 | `xcorrMode` | `xcorr_mode` | par |  | `'primaryFirst'` | `'primaryFirst'` | `@(x) ismember(lower(x), {'primary', 'primaryfirst', 'all'})` | 'primaryFirst', 'primary' or 'all'. |
-| `xyMaxOffset` | `xy_max_offset` | par | same | `300` | `300` | `@isnumeric` | Largest shift in x and y (voxels). |
+| `xyMaxOffset` | `xy_max_offset` | par | per_axis_xyz | `300` | `300` | `@isnumeric` | Largest shift in x and y (voxels): one value, or (y, x). |
 | `zMaxOffset` | `z_max_offset` | par |  | `50` | `50` | `@isnumeric` | Largest shift in z (voxels). |
 | `edgeArtifacts` | `edge_artifacts` | par |  | `2` | `2` | `@isnumeric` | Edge erosion of the tiles (voxels). |
 | `primaryCh` | `primary_ch` | par |  | `''` | `''` | `@ischar` | The primary channel of the registration. |

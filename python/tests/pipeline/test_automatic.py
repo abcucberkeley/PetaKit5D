@@ -889,6 +889,16 @@ def strings(monkeypatch):
     return out
 
 
+def test_two_value_max_offset_reaches_the_stitching_as_x_and_y(tmp_path, strings):
+    """(f7e6b71) xy_max_offset (y, x) is MATLAB's [x, y] in the stitching string (two values
+    garbled it before); the stitching reads it back as (y, x)"""
+    data, csv = two_tiles(tmp_path)
+    run(data, stitch=True, image_list_fullpaths=[csv], axis_order="-x,y,z", xy_max_offset=(2, 10))
+    st = [s for s in strings if s.startswith("XR_matlab_stitching_wrapper(")]
+    assert st and all("'xyMaxOffset',[10.0000000000,2.0000000000]," in s for s in st)
+    assert list(A.task_of(st[0]).record()["kwargs"]["xy_max_offset"]) == [2, 10]
+
+
 def test_values_reach_the_steps_as_matlab_formats_them(tmp_path, strings):
     """%.20d of the pixel size, z step and angle, mat2str of the box and of the deskew's [x y z]
     resample factor, %.10d of the stitching's [y x z] (MATLAB's 0000000001 for 1); the stitching
@@ -1168,6 +1178,38 @@ def test_local_stitching_without_result_is_tried_once(tmp_path, monkeypatch):
     run(data, stitch=True, image_list_fullpaths=[csv], axis_order="-x,y,z")
     # (after each file's deskew; the second one counts)
     assert len(stitches) == 2
+
+
+def test_local_run_ends_when_every_deskew_is_given_up(tmp_path, monkeypatch):
+    """(AutomaticProcessingTest/localRunEndsWhenEveryDeskewIsGivenUp) locally a file's stitching
+    waits for its deskewed tile; when every deskew was given up without an error (a spy that
+    makes no result), no stitching try was counted and the run never ended (until f7e6b71): a
+    file whose deskew is given up gives up its stitching. The spy stops a run stuck in its loop"""
+    data, csv = two_tiles(tmp_path)
+    deskews, stitches = [], []
+
+    def spy(self, func_str):
+        if func_str.startswith("XR_matlab_stitching_wrapper("):
+            stitches.append(func_str)
+        elif func_str.startswith("XR_deskewRotateFrame("):
+            deskews.append(func_str)
+            if len(deskews) > 12:
+                raise RuntimeError("the run did not end")
+        return None
+
+    monkeypatch.setattr(A._State, "_run_here", spy)
+    monkeypatch.setattr(A, "_wait_for_files", lambda groups, wait_time: None)
+    run(
+        data,
+        stitch=True,
+        image_list_fullpaths=[csv],
+        axis_order="-x,y,z",
+        max_trial_num=2,
+        unit_wait_time=0,
+    )
+    # (each file's deskew twice, then given up, and no stitching)
+    assert len(deskews) == 4
+    assert stitches == []
 
 
 def test_the_result_is_found_with_any_msec_field(tmp_path, strings):

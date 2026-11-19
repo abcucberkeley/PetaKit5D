@@ -84,6 +84,9 @@
     ],
     "streamingAddsNewFilesNamedAsAnotherDatasetsFiles": [
      "pytest:tests/pipeline/test_automatic.py::test_streaming_adds_new_files_named_as_another_datasets_files"
+    ],
+    "localRunEndsWhenEveryDeskewIsGivenUp": [
+     "pytest:tests/pipeline/test_automatic.py::test_local_run_ends_when_every_deskew_is_given_up"
     ]
    }
   }

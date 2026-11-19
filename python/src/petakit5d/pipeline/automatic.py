@@ -54,7 +54,9 @@ no longer a step of it: ``decon.dataset.decon_dataset`` is its own wrapper):
 The data paths are sorted (unique) and the image lists follow them; a new file is one with no
 listed file of its name in its data folder; the stitching gets the deskew's resample factor in
 the tiles' axis order (``[y x z]``); one ``save_16bit`` value is for both steps; in local mode a
-dataset's stitching try counts once its files are deskewed or given up.
+dataset's stitching try counts once its files are deskewed or given up, and a file whose deskew is
+given up gives up its stitching; a two-value ``xy_max_offset`` (y, x) reaches the stitching as
+MATLAB's ``[x, y]``.
 
 The MATLAB function's quirks are kept (each has a test): the axis-order check never raises;
 the stitching folders are made (and deskew and rotation forced on) even when a missing image
@@ -110,7 +112,7 @@ STITCH_FORMAT = (
     "XR_matlab_stitching_wrapper('%s','%s','ResultDir','%s',"
     "'streaming',%s,'DS',%s,'DSR',%s,'channelPatterns',%s,'ProcessedDirStr','%s',"
     "'axisOrder','%s','resampleType','%s','resampleFactor',[%s],'reverse',%s,"
-    "'parseSettingFile',%s,'xcorrShift',%s,'xcorrMode','%s','xyMaxOffset',%.10f,"
+    "'parseSettingFile',%s,'xcorrShift',%s,'xcorrMode','%s','xyMaxOffset',%s,"
     "'zMaxOffset',%.10f,'edgeArtifacts',%d,'blendMethod','%s',"
     "'outBbox',[%s],'save16bit',%s,'primaryCh','%s','stitchMIP',%s,'onlineStitch',%s,"
     "'zarrFile',%s,'maxTrialNum',%d,'parseCluster',%s,'mccMode',%s,'configFile','%s','uuid','%s')"
@@ -444,7 +446,12 @@ def update_deskew_markers(marker_fullpaths: Sequence[str], fd_inds, deskewing) -
         "@(x) ismember(lower(x), {'primary', 'primaryfirst', 'all'})",
         "'primaryFirst', 'primary' or 'all'.",
     ),
-    Param("xyMaxOffset", "@isnumeric", "Largest shift in x and y (voxels).", convert="same"),
+    Param(
+        "xyMaxOffset",
+        "@isnumeric",
+        "Largest shift in x and y (voxels): one value, or (y, x).",
+        convert="per_axis_xyz",
+    ),
     Param("zMaxOffset", "@isnumeric", "Largest shift in z (voxels)."),
     Param("edgeArtifacts", "@isnumeric", "Edge erosion of the tiles (voxels)."),
     Param("primaryCh", "@ischar", "The primary channel of the registration."),
@@ -967,6 +974,10 @@ class _State:
         if self.done[f][1]:
             return
         if not self.parse_cluster and (not _exist(frame) or not _exist(dsr_full)):
+            # (a file whose deskew was given up has no tile to stitch: its stitching is given
+            # up too, so that a run whose deskews were all given up ends)
+            if not self.done[f][0] and self.trials[f][0] >= self.max_trial:
+                self.trials[f][1] = max(self.trials[f][1], self.max_trial)
             return
         # (locally, the dataset's stitching was tried and gave no result)
         if not self.parse_cluster and self.trials[f][1] >= self.max_trial:
@@ -1102,6 +1113,8 @@ class _State:
         return True
 
     def _stitch_string(self, fd: int) -> str:
+        from petakit5d.stitch.dataset import xy_max_offset_text
+
         m = self.m
         if len(self.save16) < 2:
             raise AutomaticProcessingError(
@@ -1133,7 +1146,7 @@ class _State:
             _string(m["parseSettingFile"]),
             _string(m["xcorrShift"]),
             m["xcorrMode"],
-            _number(m["xyMaxOffset"]),
+            xy_max_offset_text(m["xyMaxOffset"], "%.10f"),
             _number(m["zMaxOffset"]),
             _number(m["edgeArtifacts"]),
             m["blendMethod"],
