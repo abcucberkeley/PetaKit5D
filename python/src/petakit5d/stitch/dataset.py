@@ -124,7 +124,7 @@ FRAME_FORMAT = (
     "'largeFile',%s,'poolSize',%s,'batchSize',%s,'blockSize',%s,'shardSize',%s,"
     "'resampleType','%s',"
     "'resampleFactor',[%s],'inputBbox',%s,'tileOutBbox',%s,'tileOffset',%d,'blendMethod','%s',"
-    "'overlapType','%s','xcorrShift',%s,'xyMaxOffset',%0.10f,'zMaxOffset',%0.10f,"
+    "'overlapType','%s','xcorrShift',%s,'xyMaxOffset',%s,'zMaxOffset',%0.10f,"
     "'xcorrDownsample',%s,"
     "'xcorrThresh',%0.10f,'shiftMethod','%s','axisWeight',[%s],'groupFile','%s',"
     "'isPrimaryCh',%s,"
@@ -166,7 +166,7 @@ FRAME_FIELDS = (
     ("blend_method", "s"),
     ("overlap_type", "s"),
     ("xcorr_shift", "l"),
-    ("xy_max_offset", "n"),
+    ("xy_max_offset", "s"),
     ("z_max_offset", "n"),
     ("xcorr_downsample", "s"),
     ("xcorr_thresh", "n"),
@@ -257,6 +257,17 @@ def _scalar_number(name: str, v: Any) -> float | int | bool:
         )
     x = a.reshape(-1)[0]
     return bool(x) if a.dtype.kind == "b" else x.item()
+
+
+def xy_max_offset_text(v: Any, fmt: str) -> str:
+    """MATLAB's text of ``xyMaxOffset`` in a function string: ``fmt`` of the number, or
+    ``[fmt,fmt]`` of two values ([x, y]; two garbled the string until 0fe22a5)"""
+    from petakit5d.core.text import sprintf
+
+    a = [x.item() for x in np.asarray(v).ravel()]
+    if len(a) == 2:
+        return sprintf(f"[{fmt},{fmt}]", *a)
+    return sprintf(fmt, *a)
 
 
 def frame_task_string(values: dict[str, Any]) -> str:
@@ -382,11 +393,16 @@ def _mkdir_shared(path: str) -> None:
 
 
 def _save_parameters(root: str, pr: dict[str, Any]) -> None:
+    """parameters.mat and .json of the call (MATLAB's ``pr``; ``processFunPath``, a path per
+    channel pattern, as the column cell MATLAB takes)"""
     from petakit5d.core.textfiles import write_json_file
     from petakit5d.io import write_mat
+    from petakit5d.io.convert import fun_cell
     from petakit5d.io.tiff import group_writable
 
-    write_mat(root + "/parameters.mat", {"pr": pr})
+    write_mat(
+        root + "/parameters.mat", {"pr": {**pr, "processFunPath": fun_cell(pr["processFunPath"])}}
+    )
     write_json_file(pr, root + "/parameters.json")
     group_writable(root + "/parameters.mat")
     group_writable(root + "/parameters.json")
@@ -553,8 +569,8 @@ def _sprintf(fmt: str, *args: Any) -> str:
     Param(
         "xyMaxOffset",
         "@(x) isvector(x) && numel(x) <= 2",
-        "Largest shift in x and y (voxels).",
-        convert="same",
+        "Largest shift in x and y (voxels): one value, or (y, x).",
+        convert="per_axis_xyz",
     ),
     Param("zMaxOffset", "@isnumeric", "Largest shift in z (voxels)."),
     Param(
@@ -1388,7 +1404,7 @@ class _Loop:
             "blend_method": pr["blendMethod"],
             "overlap_type": pr["overlapType"],
             "xcorr_shift": pr["xcorrShift"],
-            "xy_max_offset": pr["xyMaxOffset"],
+            "xy_max_offset": xy_max_offset_text(pr["xyMaxOffset"], "%0.10f"),
             "z_max_offset": pr["zMaxOffset"],
             "xcorr_downsample": _mat2str_commas(pr["xcorrDownsample"]),
             "xcorr_thresh": pr["xcorrThresh"],

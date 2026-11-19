@@ -228,6 +228,9 @@
     "stitchingFunctionTakesOneProcessFunctionPath": [
      "pytest:tests/stitch/test_volume.py::test_process_function_rows",
      "oracle:tests/stitch/test_volume.py::frame.dsr.process_function_path"
+    ],
+    "blockRetriesAskForMoreMemory": [
+     "pytest:tests/stitch/test_volume.py::test_block_retries_ask_for_more_memory"
     ]
    }
   },

@@ -78,6 +78,10 @@
     ],
     "zarrToTiffWrapperPassesJobSettings": [
      "pytest:tests/io/test_convert.py::test_zarr_to_tiff_wrapper_passes_job_settings"
+    ],
+    "stitchZarrTileOfAFrameOrWithoutTheFrameInput": [
+     "pytest:tests/stitch/test_tiles.py::test_stitch_zarr_tile_of_a_frame_or_without_the_frame_input",
+     "oracle:tests/stitch/test_tiles.py::tile.frame"
     ]
    }
   }

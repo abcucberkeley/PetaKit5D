@@ -632,6 +632,11 @@ def r2_cases():
 # --- MIP slabs ------------------------------------------------------------------------------
 
 
+# the slab of the files' dimension i is named after it, as XR_MIP_zarr names its MIPs, whatever
+# the data order (MATLAB took the names by axis until 0fe22a5, right only for 'y,x,z')
+SLAB_NAMES = ("y", "x", "z")
+
+
 def slab_pool(pool_m) -> tuple[list[float], list[float]]:
     """poolSize ([y x z], 3 or 6 values) as the slabs' pool and the secondary pool"""
     p = list(pool_m)
@@ -663,13 +668,11 @@ def slab_tree(pr: Pair, pool_m):
         mip = folder / mip_dir_of(pool_m)
         mip.mkdir()
         pool, pool1 = slab_pool(pool_m)
-        dom = dom_of(pr.order)
-        names = [("x", "y", "z")[d - 1] for d in dom]
         for j, t in ((1, t1), (2, t2)):
             f = np.transpose(t, [k - 1 for k in perm_of(pr.order)])
             for i in range(3):
                 synth.write_zarr_matlab(
-                    mip / f"t{j}_{names[i]}.zarr", slab_of(f, i, pool, pool1), (16, 16, 16)
+                    mip / f"t{j}_{SLAB_NAMES[i]}.zarr", slab_of(f, i, pool, pool1), (16, 16, 16)
                 )
 
     return fill
@@ -776,13 +779,14 @@ def wrap_tree(prs, ext, slabs=None):
             mip = folder / mip_dir_of(slabs)
             mip.mkdir()
             pool, pool1 = slab_pool(slabs)
-            names = [("x", "y", "z")[d - 1] for d in dom_of(prs[0].order)]
             arrays = [t1] + [tiles(pr, gs)[1] for pr in prs]
             for j, t in enumerate(arrays):
                 f = np.transpose(t, [k - 1 for k in perm_of(prs[0].order)])
                 for i in range(3):
                     synth.write_zarr_matlab(
-                        mip / f"t{j + 1}_{names[i]}.zarr", slab_of(f, i, pool, pool1), (16, 16, 16)
+                        mip / f"t{j + 1}_{SLAB_NAMES[i]}.zarr",
+                        slab_of(f, i, pool, pool1),
+                        (16, 16, 16),
                     )
 
     return fill
@@ -939,18 +943,19 @@ WEIGHTS = {
 }
 
 
-def weights_tree(rows, peaks, pool_m, order="y,x,z"):
+def weights_tree(rows, peaks, pool_m):
     def fill(folder):
         folder = Path(folder)
         mip = folder / mip_dir_of(pool_m)
         mip.mkdir()
-        names = [("x", "y", "z")[d - 1] for d in dom_of(order)]
         for j in (1, 2):
             for i in range(3):
                 synth.write_zarr_matlab(
-                    mip / f"t{j}_{names[i]}.zarr", np.ones((10, 12, 8), np.uint16), (16, 16, 16)
+                    mip / f"t{j}_{SLAB_NAMES[i]}.zarr",
+                    np.ones((10, 12, 8), np.uint16),
+                    (16, 16, 16),
                 )
-        write_slab_results(folder, rows, peaks, names)
+        write_slab_results(folder, rows, peaks, SLAB_NAMES)
 
     return fill
 
@@ -1312,6 +1317,44 @@ def test_mip_slab_registration_recovers_the_offset(tmp_path, be):
     np.testing.assert_array_equal(np.asarray(again[0]).ravel(), rel)
 
 
+def test_mip_slab_registration_takes_the_axes_of_the_data_order(tmp_path, be):
+    """(RegistrationXcorrTest/mipSlabRegistrationTakesTheAxesOfTheDataOrder) the same pair in
+    each data order gives the shift of 'y,x,z' data, 9 voxels in x and 8 in y within max offsets
+    of 10, 10 and 2: the slabs are named after the files' dimensions and take each axis's pooling
+    (MATLAB named them by axis and halved y's bound by x's pooling and the reverse)"""
+    gt = CounterRNG(0, "sw8/slab_axes").integers(1000, 60000, (32, 48, 80), dtype=np.uint16)
+    gt = to_matlab(gt)  # [y x z]
+    t = (gt[0:40, 0:44, :], gt[8:48, 30:80, :])
+    shifts = []
+    for order in ("y,x,z", "x,y,z", "z,y,x", "z,x,y"):
+        d = tmp_path / order.replace(",", "")
+        d.mkdir()
+        fns = [str(d / f"t{j + 1}.zarr") for j in range(2)]
+        for j in range(2):
+            write_tile(Path(fns[j]), np.ascontiguousarray(t[j]), order, ".zarr")
+        mip = sr.compute_tile_mip_slabs(fns, (2, 2, 2), parse_cluster=False)
+        with pfft.using(be):
+            rel, mx, _, _ = sr.cross_correlation_registration_3d_mip_slabs(
+                fns[0],
+                fns[1],
+                str(d / "xcorr.mat"),
+                [0, 0, 0, 43, 39, 31],
+                [21, 0, 0, 70, 39, 31],
+                [21, 0, 0, 43, 39, 31],
+                [1, 1, 1],
+                data_order_axes_from_matlab(dom_of(order)),
+                max_offset=from_xyz([10, 10, 2]),
+                mip_dir_str=mip,
+                pool_size=(2, 2, 2),
+                major_downsample=1,
+                parse_cluster=False,
+            )
+        shifts.append(np.asarray(rel, dtype=np.float64).ravel())
+    np.testing.assert_array_equal(np.abs(shifts[0]), [9, 8, 0])
+    for s in shifts[1:]:
+        np.testing.assert_array_equal(s, shifts[0])
+
+
 def test_failed_slab_weighs_nothing(tmp_path):
     """the slabs' results: a failed slab (peak 1 at no shift while 0.3 over the median) weighs
     0; each axis is the average of its two slabs' shifts, weighted by their squared peaks"""
@@ -1431,6 +1474,25 @@ def test_stitching_recovers_the_perturbed_tile(tmp_path, s05_axes, shift_method)
     out = stitched(tmp_path, name)
     assert out.shape == (32 + 2 * 2 + 2, 64 + 2 * 2 + 2, 104 + 2 * 4 + 2)
     np.testing.assert_array_equal(out[2:34, 2:66, 4:108], gt)
+
+
+def test_stitching_two_value_max_offset_is_y_and_x(tmp_path, s05_axes):
+    """StitchingTest.twoValueMaxOffsetIsXAndY: the second tile, listed 6 voxels off in x, is
+    found within max offsets of 10 in x and 2 in y (MATLAB's [10, 2]; two values garbled the
+    stitching string until 0fe22a5)"""
+    gt = random_volume((32, 64, 104))
+    name = stitch_tiles(
+        tmp_path,
+        gt,
+        [(0, 0, 0), (0, 0, 40)],
+        (32, 64, 64),
+        stage=[[0, 0, 0], [46 * PX, 0, 0]],
+        tidx=[[0, 0, 0], [1, 0, 0]],
+        blend_method="none",
+        xy_max_offset=(2, 10),
+        z_max_offset=2,
+    )
+    np.testing.assert_array_equal(xcorr_shifts(tmp_path, name), [[0, 0, 0], [-6, 0, 0]])
 
 
 def test_stitching_registers_2d_tiles(tmp_path, s05_axes):

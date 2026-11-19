@@ -769,12 +769,34 @@ def test_wrapper_user_functions_follow_channels_and_keywords(tmp_path, framework
         parse_cluster=False,
         process_fun_path=((str(a), ""), (str(c), str(b))),
     )
+    # parameters.mat holds the rows and alternatives as MATLAB's cell matrix (rows: channels)
+    from petakit5d.io import read_mat
+
+    pr = read_mat(f"{path}zarr/parameters.mat")["pr"]
+    cell = np.asarray(pr["processFunPath"], dtype=object)
+    assert cell.shape == (2, 2) and cell.tolist() == [[str(a), ""], [str(c), str(b)]]
     got = [t.kwargs["usr_fcn"] for t in framework_spy[0]["tasks"]]
     # files: scan_CamA_ch0, scan_CamA_ch1 (dir order), scan_CamB_ch0
     names = [os.path.basename(t.args[0][0]) for t in framework_spy[0]["tasks"]]
     want = {"scan_CamA_ch0_t0000.tif": "pkg_a:f", "scan_CamA_ch1_t0000.tif": "pkg_a:f"}
     want["scan_CamB_ch0_t0000.tif"] = "pkg_b:g"
     assert dict(zip(names, got, strict=True)) == want
+
+
+def test_wrapper_saves_a_function_path_per_channel_as_a_column(tmp_path, framework_spy):
+    # (real-data row 2, fixed) a path per channel pattern is the column cell MATLAB takes (a row
+    # per channel) in parameters.mat, not a row
+    from petakit5d.io import read_mat
+
+    path, _, _ = write_dataset(tmp_path / "d", "tif")
+    a = tmp_path / "a.txt"
+    a.write_text("pkg_a:f\n", newline="\n")
+    funs = (str(a), str(a))
+    convert.tiff_to_zarr_dataset(
+        path, channel_patterns=("CamA", "CamB"), parse_cluster=False, process_fun_path=funs
+    )
+    cell = np.asarray(read_mat(f"{path}zarr/parameters.mat")["pr"]["processFunPath"], dtype=object)
+    assert cell.shape == (2, 1) and list(cell.ravel()) == list(funs)
 
 
 def test_wrapper_boxes_per_location_share_a_single_box(tmp_path, framework_spy):

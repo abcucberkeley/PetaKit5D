@@ -1207,6 +1207,51 @@ def test_result_another_run_publishes_while_the_tasks_run_is_kept(tmp_path, monk
     assert [f for f in os.listdir(f"{root}/matlab_stitch") if f.startswith(NAME + ".zarr_")] == []
 
 
+def test_block_retries_ask_for_more_memory(tmp_path, monkeypatch):
+    # StitchingTest/blockRetriesAskForMoreMemory: blocks that failed are retried with twice the
+    # CPUs, memory and time, on the same local workers (MATLAB passed neither the memory nor
+    # the local workers before 0fe22a5); the first call's blocks are left out, as if they failed
+    from petakit5d.jobs import framework
+
+    sc = _grid()
+    root = str(tmp_path)
+    fns, coords, tidx = _write(sc, root)
+    final = f"{root}/matlab_stitch/{NAME}.zarr"
+    real = framework.run_tasks
+    calls = []
+
+    def first_blocks_fail(inputs, outputs, tasks, **k):
+        if k.get("final_out_fullpath") != final:
+            return real(inputs, outputs, tasks, **k)
+        calls.append(k)
+        if len(calls) == 1:
+            return [False] * len(outputs)
+        return real(inputs, outputs, tasks, **k)
+
+    monkeypatch.setattr(framework, "run_tasks", first_blocks_fail)
+    _stitch(root, fns, coords, tidx, blend_method="mean", local_worker_num=2,
+            batch_size=(16, 32, 32), block_size=(16, 16, 16))  # fmt: skip
+    assert len(calls) == 2
+    first, retry = calls
+    assert retry["cpus_per_task"] == 2 * first["cpus_per_task"]
+    assert retry["mem_allocate"] == 2 * first["mem_allocate"]
+    assert retry["job_time_limit"] == 2 * first["job_time_limit"]
+    assert retry["local_worker_num"] == first["local_worker_num"] == 2
+    np.testing.assert_array_equal(_result(root)[:32, :100, :120], _gt(sc))
+
+
+def test_two_value_max_offset_is_y_and_x():
+    # (MATLAB's [x, y], 0fe22a5) the registration's max offsets (z, y, x)
+    assert V._max_offsets((2, 10), 4) == (4.0, 2.0, 10.0)
+    assert V._max_offsets(300, 50) == (50.0, 300.0, 300.0)
+    # the MATLAB-name layer: [x, y] is (y, x)
+    from petakit5d.params.registry import REGISTRY
+
+    spec = REGISTRY.find("XR_stitching_frame_zarr_dev_v1")
+    p = next(q for q in spec.params if q.matlab == "xyMaxOffset")
+    assert tuple(p.conv.from_matlab([10, 2])) == (2, 10)
+
+
 def test_secondary_channel_uses_the_task_size_of_the_primary(tmp_path):
     # the primary's blending tasks of 6 batches (2 local workers), which the secondary's
     # per-block information files are made for; alone it would take all 48 in one task

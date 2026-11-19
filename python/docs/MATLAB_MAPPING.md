@@ -1075,13 +1075,13 @@ The grid assignment of a group of tiles as a task: reads the group's problem fro
 
 ### `stitch_process_zarr_tile` -> `petakit5d.stitch.tiles.process_zarr_tile`
 
-Process a zarr tile (stitch_process_zarr_tile): read it (its box ``input_bbox``), flip it in z, crop it to ``tile_out_bbox``, resample it to ``round(size ./ resample)`` (MATLAB's ``imresize3``), apply ``usr_fcn``, cast it back to its class and write it as a native zarr with chunks of ``block_size`` (cut to the result's size). An existing result is kept (``overwrite``: replaced first). A ``frame`` fails as in MATLAB (its size is never set there).
+Process a zarr tile (stitch_process_zarr_tile): read it (its box ``input_bbox``), flip it in z, crop it to ``tile_out_bbox``, resample it to ``round(size ./ resample)`` (MATLAB's ``imresize3``), apply ``usr_fcn``, cast it back to its class and write it as a native zarr with chunks of ``block_size`` (cut to the result's size). An existing result is kept (``overwrite``: replaced first). A ``frame`` (data in memory) is processed instead of the tile.
 
 | MATLAB | Python | Arg | Conversion | MATLAB default | Python default | Validator | Meaning |
 |---|---|---|---|---|---|---|---|
 | `inputFilename` | `input_filename` | req |  |  |  | `@(x) ischar(x) \|\| iscell(x)` | Zarr tile (or a list whose first is read). |
 | `zarrFilename` | `zarr_filename` | req |  |  |  | `@ischar` | Zarr result. |
-| `frame` | `frame` | opt | volume | `[]` | `None` | `@isnumeric` | Data in memory instead of the tile (MATLAB fails with it). |
+| `frame` | `frame` | opt | volume | `[]` | `None` | `@isnumeric` | Data in memory instead of the tile. |
 | `Overwrite` | `overwrite` | par |  | `false` | `False` | `@islogical` | Replace an existing result. |
 | `blockSize` | `block_size` | par | size_yxz | `[500,500,250]` | `(250, 500, 500)` | `@isnumeric` | Chunk size (z, y, x). |
 | `shardSize` | `shard_size` | par | size_yxz | `[]` | `None` | `@isnumeric` | Shard size (z, y, x) (Zarr v3 with shards). |
@@ -2020,7 +2020,7 @@ Stitch every volume of the image list(s) (XR_matlab_stitching_wrapper): see the 
 | `blendMethod` | `blend_method` | par |  | `'feather'` | `'feather'` | `@ischar` | 'none', 'feather', 'mean', 'median', 'max' or 'separate'. |
 | `overlapType` | `overlap_type` | par |  | `''` | `''` | `@ischar` | '' (by the blend method), 'none', 'half' or 'full'. |
 | `xcorrShift` | `xcorr_shift` | par |  | `true` | `True` | `@islogical` | Register the tiles. |
-| `xyMaxOffset` | `xy_max_offset` | par | same | `300` | `300` | `@(x) isvector(x) && numel(x) <= 2` | Largest shift in x and y (voxels). |
+| `xyMaxOffset` | `xy_max_offset` | par | per_axis_xyz | `300` | `300` | `@(x) isvector(x) && numel(x) <= 2` | Largest shift in x and y (voxels): one value, or (y, x). |
 | `zMaxOffset` | `z_max_offset` | par |  | `50` | `50` | `@isnumeric` | Largest shift in z (voxels). |
 | `xcorrDownsample` | `xcorr_downsample` | par | size_yxz | `[2,2,1]` | `(1, 2, 2)` | `@isnumeric` | Downsampling (z, y, x) of the registration. |
 | `xcorrThresh` | `xcorr_thresh` | par |  | `0.25` | `0.25` | `@isnumeric` | Pairs below this correlation are not used. |
@@ -2667,7 +2667,7 @@ Stitch one volume from its tiles (``XR_stitching_frame_zarr_dev_v1``; the steps 
 | `zNormalize` | `z_normalize` | par |  | `false` | `False` | `@islogical` | Not used. |
 | `xcorrDownsample` | `xcorr_downsample` | par | size_yxz | `[2,2,1]` | `(1, 2, 2)` | `@isnumeric` | Downsampling of the registration (z, y, x). |
 | `xcorrThresh` | `xcorr_thresh` | par |  | `0.25` | `0.25` | `@isnumeric` | Pairs below this correlation are not used. |
-| `xyMaxOffset` | `xy_max_offset` | par |  | `300` | `300` | `@isnumeric` | Largest shift in x and y (voxels). |
+| `xyMaxOffset` | `xy_max_offset` | par | per_axis_xyz | `300` | `300` | `@isnumeric` | Largest shift in x and y (voxels): one value, or (y, x). |
 | `zMaxOffset` | `z_max_offset` | par |  | `50` | `50` | `@isnumeric` | Largest shift in z (voxels). |
 | `shiftMethod` | `shift_method` | par |  | `'grid'` | `'grid'` | `@ischar` | 'grid', 'local', 'global', 'group' or 'test'. |
 | `axisWeight` | `axis_weight` | par | size_yxz | `[1,0.1,10]` | `(10, 1, 0.1)` | `@isnumeric` | Weights of the tile index axes (z, y, x) in the assignment. |

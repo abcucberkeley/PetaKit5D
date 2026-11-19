@@ -81,7 +81,7 @@ def _empty(v: Any) -> bool:
     Param(
         "frame",
         "@isnumeric",
-        "Data in memory instead of the tile (MATLAB fails with it).",
+        "Data in memory instead of the tile.",
         convert="volume",
     ),
     Param("Overwrite", "@islogical", "Replace an existing result."),
@@ -136,8 +136,8 @@ def process_zarr_tile(
     it in z, crop it to ``tile_out_bbox``, resample it to ``round(size ./ resample)`` (MATLAB's
     ``imresize3``), apply ``usr_fcn``, cast it back to its class and write it as a native zarr
     with chunks of ``block_size`` (cut to the result's size). An existing result is kept
-    (``overwrite``: replaced first). A ``frame`` fails as in MATLAB (its size is never set
-    there)."""
+    (``overwrite``: replaced first). A ``frame`` (data in memory) is processed instead of the
+    tile."""
     from petakit5d.core.dtypes import cast
     from petakit5d.core.ids import get_uuid
     from petakit5d.io import convert as C
@@ -162,18 +162,23 @@ def process_zarr_tile(
     # MATLAB's block size [y x z] (or [y x])
     bs = [float(v) for v in C._msize(C._ints(block_size))]
     if frame is not None and np.size(frame) > 0:
-        # (MATLAB: sz is only set where the tile is read)
-        raise TileError("Unrecognized function or variable 'sz'.", "MATLAB:UndefinedFunction")
-    im = read_zarr(first, input_bbox=None if _empty(input_bbox) else _box(input_bbox))
-    sz = C._msize(im.shape)
-    if im.ndim == 2:
-        if expand_2d_dim:
-            bs = (bs + [1.0])[:3]
-            bs[2] = 1
-            sz = [*sz, 1]
-        else:
+        # the data given: its size, the chunks cut to it only at the end (an image takes
+        # [y x] chunks)
+        im = np.asarray(frame)
+        sz = C._msize(im.shape)
+        if im.ndim == 2:
             bs = bs[:2]
-    bs = C._mmin(bs, sz)
+    else:
+        im = read_zarr(first, input_bbox=None if _empty(input_bbox) else _read_box(input_bbox))
+        sz = C._msize(im.shape)
+        if im.ndim == 2:
+            if expand_2d_dim:
+                bs = (bs + [1.0])[:3]
+                bs[2] = 1
+                sz = [*sz, 1]
+            else:
+                bs = bs[:2]
+        bs = C._mmin(bs, sz)
     dtype = C._class(im)
     if any(s == 0 for s in sz):
         _print("The input image is empty, skip it!")
@@ -244,6 +249,11 @@ def process_zarr_tile(
 def _box(v: Any) -> list[int | None]:
     """a box's values (None: an open end)"""
     return [None if x is None else int(x) for x in v]
+
+
+def _read_box(v: Any) -> list[Any]:
+    """a box to read (None: an open end; NaN and Inf kept, for read_zarr's refusal)"""
+    return [x if x is None or not math.isfinite(float(x)) else int(x) for x in v]
 
 
 def _crop(a: np.ndarray, box: Sequence[int | None]) -> np.ndarray:

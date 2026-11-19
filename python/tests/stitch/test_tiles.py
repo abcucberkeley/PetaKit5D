@@ -11,7 +11,7 @@ Oracle cases against MATLAB's oracle tree:
 - ``tile.*``: stitch_process_zarr_tile on a zarr tile in MATLAB's layout with each option
   (flip, inputBbox, tileOutBbox and all three, resampling, the compressor, the default chunks,
   both standard function forms and the erosion with an offset, a single tile, an image tile and
-  its resampling error, an existing result, a frame);
+  its resampling error, an existing result, a frame given instead of the tile);
 - ``tiles.*``: stitch_process_tiles on zarr tiles (flipped tiles, boxes per tile location,
   resampling, function files as .mat and .txt, keyword alternatives, a function file of no
   function, none at all) and on tiff tiles (through the tiff wrapper, with the same function
@@ -251,6 +251,7 @@ TILE_CASES = [
     tile_case("image", *BS, "usrFcn", USER, shape=(1, 22, 26)),
     tile_case("image_resample", *BS, "resample", [2, 2, 1], shape=(1, 22, 26), error=True),
     tile_case("existing_result", *BS, "usrFcn", USER, out=True),
+    # (a frame: MATLAB failed on an undefined sz until 0fe22a5)
     Case(
         "tile.frame",
         code=(
@@ -261,7 +262,6 @@ TILE_CASES = [
         args=[InPath("d")],
         python=_py_tile_frame,
         inputs={"d": Tree(_tile_tree(), "d")},
-        expect_error=True,
         py_error=(T.TileError,),
     ),
 ]
@@ -754,10 +754,32 @@ def test_an_existing_result_is_kept(tmp_path):
     assert read_zarr(str(tmp_path / "o.zarr")).shape == SHAPE
 
 
-def test_a_frame_fails_as_in_matlab(tmp_path):
-    with pytest.raises(T.TileError) as err:
-        T.process_zarr_tile("", str(tmp_path / "o.zarr"), np.ones((2, 2, 2), np.uint16))
-    assert err.value.identifier == "MATLAB:UndefinedFunction"
+def test_stitch_zarr_tile_of_a_frame_or_without_the_frame_input(tmp_path):
+    """(TiffZarrConversionTest/stitchZarrTileOfAFrameOrWithoutTheFrameInput) a given frame is
+    processed instead of the tile (MATLAB failed on an undefined sz until 0fe22a5), and
+    name-value pairs right after the output name are names (MATLAB took the first one as the
+    frame); a NaN box end is refused by read_zarr"""
+    from petakit5d import matlab
+    from petakit5d.core.bbox import NOT_FINITE_ID
+    from petakit5d.io import get_zarr_info
+
+    im = CounterRNG(0, "sw8/frame").integers(0, 60000, (12, 40, 36), dtype=np.uint16)
+    zr = str(tmp_path / "im.zarr")
+    write_zarr(zr, im, (4, 16, 16))
+    b = [2, 3, 1, 30, 33, 8]  # MATLAB's box; (0, 1, 2, 8, 30, 33)
+    crop = im[0:8, 1:30, 2:33]
+    matlab.stitch_process_zarr_tile(zr, str(tmp_path / "given.zarr"), None, "inputBbox", b)
+    np.testing.assert_array_equal(read_zarr(str(tmp_path / "given.zarr")), crop)
+    matlab.stitch_process_zarr_tile(
+        zr, str(tmp_path / "names.zarr"), "inputBbox", b, "blockSize", [8, 8, 4]
+    )
+    np.testing.assert_array_equal(read_zarr(str(tmp_path / "names.zarr")), crop)
+    assert tuple(get_zarr_info(str(tmp_path / "names.zarr")).block_size) == (4, 8, 8)
+    T.process_zarr_tile("", str(tmp_path / "frame.zarr"), im, flip_zstack=True)
+    np.testing.assert_array_equal(read_zarr(str(tmp_path / "frame.zarr")), im[::-1])
+    with pytest.raises(ValueError) as err:
+        T.process_zarr_tile(zr, str(tmp_path / "nan.zarr"), input_bbox=(0, 1, 2, 8, NAN, 33))
+    assert err.value.identifier == NOT_FINITE_ID
 
 
 def test_code_the_port_does_not_read_fails_before_any_tile(tmp_path, framework_spy):

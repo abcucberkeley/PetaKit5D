@@ -1183,7 +1183,8 @@ def stitch_volume_size_estimate(
     if nf > 1 and xcorr_shift and not has_out:
         xy = np.asarray(xy_max_offset, dtype=np.float64).ravel()
         zo = np.asarray(z_max_offset, dtype=np.float64).ravel()
-        max_offset = np.array([xy[0], xy[-1], zo[0]])
+        # (x, y, z of xy_max_offset's one value or (y, x))
+        max_offset = np.array([xy[-1], xy[0], zo[0]])
         margin = 2 * max_offset[list(rev)]
         rng = np.vstack((np.fmax(nv - margin, 1), nv + margin))
         if mip or im[dop[2]] == 1:

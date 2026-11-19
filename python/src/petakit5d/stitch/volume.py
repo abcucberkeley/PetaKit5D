@@ -525,6 +525,15 @@ def _edge_function(dsr: bool, stitch_mip, tile_offset: float, edge_artifacts: fl
     return sprintf("@(x)erodeVolumeBy2DProjection(x,%d)", edge_artifacts)
 
 
+def _max_offsets(xy_max_offset: Any, z_max_offset: Any) -> tuple[float, float, float]:
+    """the registration's max offsets (z, y, x) of ``xy_max_offset`` (one value, or (y, x)):
+    MATLAB's ``[xyMaxOffset(1), xyMaxOffset(end), zMaxOffset]`` (x, y, z; two values made five
+    until 0fe22a5)"""
+    xy = [float(v) for v in np.asarray(xy_max_offset, dtype=np.float64).ravel()]
+    z = float(np.asarray(z_max_offset, dtype=np.float64).ravel()[0])
+    return (z, xy[0], xy[-1])
+
+
 def _process_fun_rows(process_fun_path: Any) -> list[list[str]] | None:
     """processFunPath as MATLAB's cell: rows of function files (None: MATLAB's ``{''}``); a flat
     sequence is one row (the wrapper passes ``1 x k``), one path (text) the cell of it"""
@@ -680,7 +689,12 @@ def _check_registration() -> None:
         convert="size_yxz",
     ),
     Param("xcorrThresh", "@isnumeric", "Pairs below this correlation are not used."),
-    Param("xyMaxOffset", "@isnumeric", "Largest shift in x and y (voxels)."),
+    Param(
+        "xyMaxOffset",
+        "@isnumeric",
+        "Largest shift in x and y (voxels): one value, or (y, x).",
+        convert="per_axis_xyz",
+    ),
     Param("zMaxOffset", "@isnumeric", "Largest shift in z (voxels)."),
     Param("shiftMethod", "@ischar", "'grid', 'local', 'global', 'group' or 'test'."),
     Param(
@@ -1125,7 +1139,7 @@ def stitch_volume(
                 data_order,
                 lay.overlap_matrix,
                 lay.overlap_regions,
-                (z_max_offset, xy_max_offset, xy_max_offset),
+                _max_offsets(xy_max_offset, z_max_offset),
                 xcorr_downsample,
                 xcorr_thresh,
                 lay.tile_idx,
@@ -1521,12 +1535,12 @@ def _blend(**k: Any) -> None:
             inputs, outputs, tasks, cpus_per_task=cpus, mem_allocate=mem, job_time_limit=jtl,
             local_worker_num=k["local_worker_num"], **common,
         )  # fmt: skip
-    # retries with more CPUs (memory) and time
+    # retries with more CPUs, memory and time, on the same local workers
     for i in range(1, 4):
         if not _isdir(nv_fullname) and not all(done or [False]):
             done = framework.run_tasks(
-                inputs, outputs, tasks, cpus_per_task=cpus * 2**i, job_time_limit=jtl * 2**i,
-                **common,
+                inputs, outputs, tasks, cpus_per_task=cpus * 2**i, mem_allocate=mem * 2**i,
+                job_time_limit=jtl * 2**i, local_worker_num=k["local_worker_num"], **common,
             )  # fmt: skip
     if not _isdir(nv_fullname) and done is not None and not all(done):
         if not debug:

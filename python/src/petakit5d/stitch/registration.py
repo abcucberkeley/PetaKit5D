@@ -37,8 +37,9 @@ results); the pair functions' ``relative_shift`` and ``max_xcorr`` (the slabs' a
 Tiles are tiff files or zarr arrays (the port's native ones and MATLAB's).
 
 The order of the axes follows MATLAB's code: the 3D pair takes x, y and z as
-``data_order_mat(1..3)`` (6a8db79); the 2D pair and the slabs keep MATLAB's own axis choices
-(the same for the data orders with z last).
+``data_order_mat(1..3)`` (6a8db79); the slabs are named after the files' dimensions (y, x, z, as
+``mip_zarr`` names them) and take each axis's pooling (0fe22a5); the 2D pair keeps MATLAB's own
+axis choice (the same for the data orders with z last).
 """
 
 from __future__ import annotations
@@ -517,15 +518,17 @@ def cross_correlation_registration_3d_mip_slabs(
     cross_correlation_registration_3d_mip_slabs(...)``: the registration of two large tiles from
     their MIP slabs (``<tile folder>/<mip_dir_str>/<name>_<axis>.zarr``, pooled by ``pool_size``).
 
-    Each slab pair (in MATLAB's axis order of the data order: x, y, z for 'z,y,x' tiles) is
-    registered by a ``cross_correlation_registration`` task (``<xcorr>_<axis>.mat``; three tries
-    with growing memory), its axis downsampled by ``major_downsample``, the others by
-    ``down_sample / pool_size[3:6]`` (rounded). A slab whose peak is 1 at no shift while its peak is
-    0.2 over the median of the three is given weight 0; each axis's shift is the average of its two
-    slabs' shifts (in voxels of the tile) weighted by their squared peaks, rounded; the peak is
-    ``sum(p^3) / sum(p^2)``. Saved to ``xcorr_fullpath`` (an existing file is read instead).
-    ``dim_num_thrsh`` and ``blank_num_trsh`` are not used (as in MATLAB); ``num_threads`` is the
-    slab tasks'.
+    Slab i, pooled along the files' dimension i (MATLAB's ``[d1 d2 d3]``) and named after it
+    (``y``, ``x``, ``z``, as ``mip_zarr`` names it, whatever the data order), is registered by a
+    ``cross_correlation_registration`` task (``<xcorr>_<name>.mat``; three tries with growing
+    memory) with the voxel sizes and max offsets of the axes in it divided by their pooling (the
+    slab's along dimension i, ``pool_size[3:6]`` along the others), its dimension downsampled by
+    ``major_downsample``, the others by ``down_sample / pool_size[3:6]`` (rounded). A slab whose
+    peak is 1 at no shift while its peak is 0.2 over the median of the three is given weight 0;
+    each axis's shift is the average of its two slabs' shifts (in voxels of the tile) weighted by
+    their squared peaks, rounded; the peak is ``sum(p^3) / sum(p^2)``. Saved to
+    ``xcorr_fullpath`` (an existing file is read instead). ``dim_num_thrsh`` and
+    ``blank_num_trsh`` are not used (as in MATLAB); ``num_threads`` is the slab tasks'.
     """
     del dim_num_thrsh, blank_num_trsh
     from petakit5d.core.dtypes import mround
@@ -562,7 +565,8 @@ def cross_correlation_registration_3d_mip_slabs(
         "Compute xcorr shifts for tiles with MIP slab method:\n"
         f"    {img_fullpath_1}\n    {img_fullpath_2}"
     )
-    axis_strs = [("x", "y", "z")[d] for d in dom0]
+    # slab i is pooled along the files' dimension i and named after it (y, x, z)
+    axis_strs = ("y", "x", "z")
     inputs, outputs, tasks = [], [], []
     overlap_sizes = np.zeros((3, 3))
     for i in range(3):
@@ -570,10 +574,12 @@ def cross_correlation_registration_3d_mip_slabs(
         for path in (img_fullpath_1, img_fullpath_2):
             data_path, fsn, _ = fileparts(path)
             slabs.append(f"{data_path}/{mip_dir_str}/{fsn}_{axis_strs[i]}.zarr")
-        vs_i = vs * pool_1[dom0]
-        vs_i[dom0[i]] = vs[dom0[i]] * pool[i]
-        mo_i = np.ceil(mo / pool_1)
-        mo_i[i] = math.ceil(mo[i] / pool[i])
+        # the pooling of the slab's dimensions, so the voxel sizes and max offsets (x, y, z) of
+        # the axes in them
+        pool_i = np.array(pool_1, dtype=np.float64)
+        pool_i[i] = pool[i]
+        vs_i = vs * pool_i[dom0]
+        mo_i = np.ceil(mo / pool_i[dom0])
         ds_i = mround(ds_m / pool_1)
         ds_i[i] = major_downsample
         sz_i1 = _matlab_size(slabs[0])

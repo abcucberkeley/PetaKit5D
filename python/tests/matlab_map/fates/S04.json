@@ -42,6 +42,10 @@
     "pairRegistrationTakesTheAxesOfTheDataOrder": [
      "pytest:tests/stitch/test_registration.py::test_pair_registration_takes_the_axes_of_the_data_order",
      "oracle:tests/stitch/test_registration.py::axes.*"
+    ],
+    "mipSlabRegistrationTakesTheAxesOfTheDataOrder": [
+     "pytest:tests/stitch/test_registration.py::test_mip_slab_registration_takes_the_axes_of_the_data_order",
+     "oracle:tests/stitch/test_registration.py::slab.*"
     ]
    }
   },
@@ -75,6 +79,12 @@
      "pytest:tests/stitch/test_registration.py::test_stitching_large_files_recovers_the_perturbed_tile",
      "pytest:tests/stitch/test_registration.py::test_mip_slab_registration_recovers_the_offset",
      "pytest:tests/stitch/test_assignment.py::test_largeFileRegistrationRecoversPerturbedTilePosition"
+    ],
+    "twoValueMaxOffsetIsXAndY": [
+     "pytest:tests/stitch/test_registration.py::test_stitching_two_value_max_offset_is_y_and_x",
+     "pytest:tests/stitch/test_dataset.py::test_two_value_max_offset_is_x_and_y",
+     "pytest:tests/stitch/test_volume.py::test_two_value_max_offset_is_y_and_x",
+     "pytest:tests/pipeline/test_automatic.py::test_two_value_max_offset_reaches_the_stitching_as_x_and_y"
     ]
    }
   }

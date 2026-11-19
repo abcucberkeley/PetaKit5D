@@ -672,15 +672,36 @@ def _keywords(kw: Any) -> list[str]:
     return [str(e) for e in kw]
 
 
+def fun_cell(process_fun_path: Any) -> Any:
+    """``processFunPath`` in the form MATLAB takes it per channel, for its .mat files: one path
+    (text) as it is, a sequence of paths as a column cell (a row per channel), rows of keyword
+    alternatives as a cell matrix (object arrays; ragged rows and empty values as they are)"""
+    if _empty(process_fun_path) or isinstance(process_fun_path, (str, os.PathLike)):
+        return process_fun_path
+    rows = _fun_rows(process_fun_path)
+    k = len(rows[0])
+    if any(len(r) != k for r in rows) or k == 0:
+        return process_fun_path
+    cell = np.empty((len(rows), k), dtype=object)
+    for i, r in enumerate(rows):
+        for j, e in enumerate(r):
+            cell[i, j] = e
+    return cell
+
+
 def _save_parameters(func: Callable[..., Any], result_path: str, values: dict[str, Any]) -> None:
-    """parameters.mat (v7.3) and parameters.json of the call (MATLAB's ``pr``)"""
+    """parameters.mat (v7.3) and parameters.json of the call (MATLAB's ``pr``; a per-channel
+    ``processFunPath`` as the column cell MATLAB takes)"""
     from petakit5d.core.textfiles import write_json_file
     from petakit5d.io import write_mat
     from petakit5d.params import matlab_results
     from petakit5d.params.values import to_plain
 
     pr = {k: to_plain(v) for k, v in matlab_results(func, values).items()}
-    write_mat(result_path + "/parameters.mat", {"pr": pr})
+    mat = dict(pr)
+    if "processFunPath" in mat:
+        mat["processFunPath"] = fun_cell(mat["processFunPath"])
+    write_mat(result_path + "/parameters.mat", {"pr": mat})
     write_json_file(pr, result_path + "/parameters.json")
 
 

@@ -406,10 +406,6 @@ GPU_DECON = rf"^{STITCH}/{DECON}_[^/]+/"
 MODE_NAMES = (rf"{STITCH}/stitchInfo/.*_task_size_\d+",)
 MODE_FIELDS = ("parseCluster", "configFile", "PerBlockInfoFullpaths")
 
-# fields of the parameter files that differ from MATLAB's (docs/parity/realdata.md row 2): the
-# per-channel processFunPath, which MATLAB takes as a column cell, is saved as a row
-MATLAB_FIELDS = ("processFunPath",)
-
 
 @dataclasses.dataclass(frozen=True)
 class Exception_:
@@ -512,7 +508,7 @@ def compare_runs(
             continue
         spec = tree(
             ignore_vars=("t", "t1", "ip"),
-            ignore_fields=MATLAB_FIELDS + (MODE_FIELDS if kind == "mode" else ()),
+            ignore_fields=MODE_FIELDS if kind == "mode" else (),
             text_format=kind != "mode",
             per_file=per_file,
             tiff_bytes=tiff_bytes,

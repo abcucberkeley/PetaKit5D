@@ -888,7 +888,7 @@ def test_numbers_go_through_matlabs_conversions():
             dz=1 / 3,
             skew_angle=32.45,
             tile_offset=1.5,
-            xy_max_offset=150,
+            xy_max_offset=SD.xy_max_offset_text(150, "%0.10f"),
             z_max_offset=150,
             xcorr_thresh=0.25,
             edge_artifacts=2,
@@ -897,13 +897,35 @@ def test_numbers_go_through_matlabs_conversions():
     assert "'xyPixelSize',0.1000000000," in s
     assert "'dz',0.3333333333," in s
     assert "'tileOffset',1.500000e+00," in s  # (%d of a non-integer is %e)
+    assert "'xyMaxOffset',150.0000000000," in s
     assert "'edgeArtifacts',2.0000000000," in s
     assert s.endswith("'mccMode',false,'configFile','')")
 
 
 def test_a_vector_where_matlab_formats_a_scalar_raises():
-    with pytest.raises(SD.StitchDatasetError, match="xy_max_offset"):
-        SD.frame_task_string(_values(xy_max_offset=np.array([150.0, 100.0])))
+    with pytest.raises(SD.StitchDatasetError, match="z_max_offset"):
+        SD.frame_task_string(_values(z_max_offset=np.array([150.0, 100.0])))
+
+
+def test_two_value_max_offset_is_x_and_y():
+    # (StitchingTest/twoValueMaxOffsetIsXAndY) MATLAB formats both values as [x, y] (two
+    # garbled the string until 0fe22a5); the frame reads them as (y, x)
+    assert SD.xy_max_offset_text(np.array([10.0, 2.0]), "%0.10f") == "[10.0000000000,2.0000000000]"
+    assert SD.xy_max_offset_text(300, "%0.10f") == "300.0000000000"
+    v = _values(
+        tile_fullpaths="{'/mnt/a/t1.tif','/mnt/a/t2.tif'}", xyz="[0,0,0;6.912,0,0]",
+        axis_order="x,y,z", data_order="y,x,z", pool_size="[]", batch_size="[64,32,16]",
+        block_size="[16,16,8]", shard_size="[]", resample_type="isotropic",
+        resample_factor="0000000001,0000000001,0000000001,", input_bbox="[]", tile_out_bbox="[]",
+        blend_method="none", xy_max_offset=SD.xy_max_offset_text([10, 2], "%0.10f"),
+        z_max_offset=2, xcorr_downsample="[1,1,1]", shift_method="grid", axis_weight="[1,0.1,10]",
+        tile_idx="[0,0,0,1;1,0,0,1]", flipped_tile="0,0,", process_fun_path="{''}",
+        stitch_mip="[]", dist_bboxes="[]", uuid="ab12",
+    )  # fmt: skip
+    s = SD.frame_task_string(v)
+    assert "'xyMaxOffset',[10.0000000000,2.0000000000],'zMaxOffset',2.0000000000," in s
+    kw = SD.frame_task(s).record()["kwargs"]
+    assert list(kw["xy_max_offset"]) == [2, 10]
 
 
 def test_matrices_and_resample_factors_are_matlabs_text():
@@ -932,7 +954,8 @@ def test_the_frame_gets_the_values_of_matlabs_string(tmp_path):
         skew_angle=32.45, result_path="/mnt/a/matlab_stitch/r.zarr", stitch_info_dir="stitchInfo",
         pool_size="[]", batch_size="[64,32,16]", block_size="[16,16,8]", shard_size="[]",
         resample_type="isotropic", resample_factor="0000000002,0000000001,0000000001,",
-        input_bbox="[]", tile_out_bbox="[]", blend_method="feather", xy_max_offset=300,
+        input_bbox="[]", tile_out_bbox="[]", blend_method="feather",
+        xy_max_offset=SD.xy_max_offset_text(300, "%0.10f"),
         z_max_offset=50, xcorr_downsample="[2,2,1]", xcorr_thresh=0.25, shift_method="grid",
         axis_weight="[1,0.1,10]", out_bbox="3,5,2,90,Inf,Inf,", tile_idx="[0,0,0,1;1,0,0,1]",
         flipped_tile="0,1,", process_fun_path="{''}", stitch_mip="[]", dist_bboxes="[]",
@@ -1337,6 +1360,13 @@ def test_process_function_row_has_one_path_per_channel(tmp_path, frames):
         stitch(tmp_path, csv, channel_patterns=pats, process_fun_path=funs, xcorr_mode="all",
                result_dir_name=f"matlab_stitch_{k}")  # fmt: skip
         assert [list(c["process_fun_path"]) for c in frames.calls[2 * k :]] == want
+        # parameters.mat holds the paths as the column cell MATLAB takes (a row per channel)
+        from petakit5d.io import read_mat
+
+        pr = read_mat(f"{tmp_path}/matlab_stitch_{k}/parameters.mat")["pr"]
+        cell = np.asarray(pr["processFunPath"], dtype=object)
+        assert cell.shape == ((2, 1) if len(funs) == 2 else (1,))
+        assert list(cell.ravel()) == list(funs)
 
 
 @pytest.mark.parametrize("factor, want", [(2, (2, 2, 2)), ((1, 2), (1, 2, 2))])
