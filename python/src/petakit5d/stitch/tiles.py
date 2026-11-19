@@ -15,7 +15,9 @@ Tile functions (``process_fun_path``: function files, rows for channels, columns
 alternatives picked by their ``keywords``) are MATLAB code of the standard forms
 (``stitch.tile_functions.parse_tile_function``) or Python functions by import path
 (``io.convert.user_function``). A tile of one slice is an image ``(y, x)`` for the function,
-as MATLAB has it.
+as MATLAB has it. Locally, the tiles of both kinds are read into one buffer kept from tile to
+tile (``io.convert.keep_read_buffer``), and a tile function written as MATLAB code runs on the
+tile's own volume in place (the edge erosion): the same results.
 
 Conventions: arrays ``(z, y, x)``; boxes ``(z0, y0, x0, z1, y1, x1)``, 0-based, end-exclusive
 (rows of boxes: one per tile location); ``block_size`` and ``shard_size`` ``(z, y, x)``;
@@ -28,6 +30,7 @@ without ``big_data``), and twice that again in the second round.
 
 from __future__ import annotations
 
+import contextlib
 import math
 import os
 import shutil
@@ -161,7 +164,8 @@ def process_zarr_tile(
 
     # MATLAB's block size [y x z] (or [y x])
     bs = [float(v) for v in C._msize(C._ints(block_size))]
-    if frame is not None and np.size(frame) > 0:
+    have_frame = frame is not None and np.size(frame) > 0
+    if have_frame:
         # the data given: its size, the chunks cut to it only at the end (an image takes
         # [y x] chunks)
         im = np.asarray(frame)
@@ -169,7 +173,12 @@ def process_zarr_tile(
         if im.ndim == 2:
             bs = bs[:2]
     else:
-        im = read_zarr(first, input_bbox=None if _empty(input_bbox) else _read_box(input_bbox))
+        # (into a loop's kept buffer: memory the tiles before it touched)
+        im = read_zarr(
+            first,
+            input_bbox=None if _empty(input_bbox) else _read_box(input_bbox),
+            out=C._kept_buffer(),
+        )
         sz = C._msize(im.shape)
         if im.ndim == 2:
             if expand_2d_dim:
@@ -206,7 +215,9 @@ def process_zarr_tile(
     fcn = C.user_function(usr_fcn)
     if fcn is not None:
         _print(C._function_text(usr_fcn))
-        im = C._m2d(np.asarray(fcn(im)))
+        # (the tile is this call's own unless it is the caller's frame)
+        owned = not have_frame or not np.may_share_memory(im, frame)
+        im = C._m2d(np.asarray(C._call(fcn, im, owned)))
     sz = C._msize(im.shape)
     if len(sz) == 2:
         if expand_2d_dim:
@@ -506,10 +517,12 @@ def process_tiles(
         "mcc_mode": mcc_mode,
         "config_file": config_file,
     }
-    done = framework.run_tasks(
-        paths, outs, tasks, cpus_per_task=cpus_per_task, mem_allocate=mem, **common
-    )
-    if not all(done):
-        framework.run_tasks(
-            paths, outs, tasks, cpus_per_task=cpus_per_task * 2, mem_allocate=mem * 2, **common
+    # locally, the tiles' reads keep their buffer from tile to tile
+    with C.keep_read_buffer() if not parse_cluster else contextlib.nullcontext():
+        done = framework.run_tasks(
+            paths, outs, tasks, cpus_per_task=cpus_per_task, mem_allocate=mem, **common
         )
+        if not all(done):
+            framework.run_tasks(
+                paths, outs, tasks, cpus_per_task=cpus_per_task * 2, mem_allocate=mem * 2, **common
+            )

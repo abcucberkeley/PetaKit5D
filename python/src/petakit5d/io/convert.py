@@ -35,14 +35,22 @@ then deleted it). Until cpp-zarr releases the dev branch's options, the port's z
 skip all-zero chunks (MATLAB writes them; the data read back is the same) and always write
 each chunk to a temporary file (MATLAB writes a temporary result its call named in place,
 ``uuid`` false), as ``petakit5d.io.zarr`` describes.
+
+A loop over files in one process (the dataset wrapper's local mode, as the stitching's tile
+preparation runs it) runs inside ``keep_read_buffer``: each tiff is read into memory kept from
+file to file, and a tile function written as MATLAB code writes its result into the volume it
+gets when the volume is the call's own (the edge erosion in place), so the files after the
+first take no new memory and no page faults; the buffer is freed when the loop ends.
 """
 
 from __future__ import annotations
 
+import contextlib
 import math
 import os
 import shutil
-from collections.abc import Callable, Mapping, Sequence
+import threading
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from typing import Any
 
 import numpy as np
@@ -65,6 +73,8 @@ _MEM_FACTOR_FUNCTION = 4
 _FLATFIELD_NAMES = ("processFFCorrectionFrame", "flatfield_correct_file")
 # copies of strided views from this size are made in threads
 _THREADED_BYTES = 1 << 22
+# the read buffer kept over the files of a loop, per thread (keep_read_buffer)
+_KEPT = threading.local()
 
 
 class ConvertError(RuntimeError):
@@ -203,6 +213,48 @@ def _publish(tmp: str, final: str, kind: str) -> None:
 
 
 # ---------------------------------------------------------------------------------------------
+# memory kept over the files of a loop
+# ---------------------------------------------------------------------------------------------
+
+
+@contextlib.contextmanager
+def keep_read_buffer() -> Iterator[Any]:
+    """Within the block, the ``tiff_to_zarr`` calls of this thread (and the stitching's
+    ``process_zarr_tile``) read their input into one buffer kept from file to file
+    (``io.imagesize.ByteBuffer``), as MATLAB's memory manager keeps its blocks: after the
+    first file, a read of the same size takes no new memory and no page faults. The buffer is
+    freed when the block ends; a block inside another one uses the outer one's. Results are
+    the same with or without it."""
+    kept = _kept_buffer()
+    if kept is not None:
+        yield kept
+        return
+    from petakit5d.io.imagesize import ByteBuffer
+
+    kept = ByteBuffer()
+    _KEPT.buffer = kept
+    try:
+        yield kept
+    finally:
+        _KEPT.buffer = None
+        kept.release()
+
+
+def _kept_buffer() -> Any:
+    """this thread's kept read buffer (``keep_read_buffer``), or None"""
+    return getattr(_KEPT, "buffer", None)
+
+
+def _call(fcn: Callable[..., Any], vol: np.ndarray, owned: bool) -> Any:
+    """``fcn(vol)``; a tile function written as MATLAB code (``parse_tile_function``'s, which
+    has ``in_place``) writes its result into ``vol`` where it can when the caller gives ``vol``
+    up (``owned``: the edge erosion runs in place)"""
+    if owned and getattr(fcn, "in_place", False):
+        return fcn(vol, owned=True)
+    return fcn(vol)
+
+
+# ---------------------------------------------------------------------------------------------
 # user functions and resampling (hooks)
 # ---------------------------------------------------------------------------------------------
 
@@ -309,15 +361,17 @@ def _resample_factors(resample_factor: Any) -> list[float] | None:
 # ---------------------------------------------------------------------------------------------
 
 
-def _read_whole(paths: list[str], input_bbox: Any, partial: bool) -> np.ndarray:
+def _read_whole(paths: list[str], input_bbox: Any, partial: bool, out: Any = None) -> np.ndarray:
+    """the tiff (its partial files joined along z), cropped to ``input_bbox``; one file is read
+    into ``out`` (a ``ReadBuffer``) when given"""
     from petakit5d.io import read_tiff
 
     if not partial:
         if not _empty(input_bbox):
             b = _ints(input_bbox)
-            a = read_tiff(paths[0], range=(b[0], b[3]))
+            a = read_tiff(paths[0], range=(b[0], b[3]), out=out)
             return _m2d(_crop_yx(a, b))
-        return read_tiff(paths[0])
+        return read_tiff(paths[0], out=out)
     parts = [read_tiff(p) for p in paths]
     parts = [p if p.ndim == 3 else p[np.newaxis] for p in parts]
     a = parts[0] if len(parts) == 1 else np.concatenate(parts, axis=0)
@@ -431,6 +485,8 @@ def tiff_to_zarr(
     bs = list(to_yxz(block_size)) if len(_ints(block_size)) == 3 else _ints(block_size)
     im = None
     region = None  # by z blocks: the file, its box (z0, y0, x0, z1, y1, x1)
+    # (a loop's kept buffer: the read goes into memory the files before it touched)
+    kept = _kept_buffer()
     if have_frame:
         im = _m2d(np.asarray(frame))
         if im.ndim == 2:
@@ -438,7 +494,7 @@ def tiff_to_zarr(
         bs = _mmin(bs, _msize(im.shape))
     elif len(files) == 1:
         if read_whole_tiff:
-            im = _read_whole(files, input_bbox, False)
+            im = _read_whole(files, input_bbox, False, kept)
             sz = _msize(im.shape)
             if im.ndim == 2:
                 if expand_2d_dim:
@@ -502,7 +558,9 @@ def tiff_to_zarr(
 
     if fcn is not None:
         _print(_function_text(usr_fcn))
-        im = np.asarray(fcn(im))
+        # (the volume is this call's own unless it is the caller's frame)
+        owned = not have_frame or not np.may_share_memory(im, frame)
+        im = np.asarray(_call(fcn, im, owned))
     if len(sz) == 2:
         if expand_2d_dim:
             sz = [*sz, 1]
@@ -542,8 +600,8 @@ def tiff_to_zarr(
 
         z0, y0, x0, z1, y1, x1 = region["box"]
         nz, bz = z1 - z0, bs[2]
-        # (one buffer for the z blocks: its pages are touched once)
-        buf = ReadBuffer()
+        # (one buffer for the z blocks: its pages are touched once; a loop's kept one)
+        buf = ReadBuffer() if kept is None else kept
         for i in range(math.ceil(nz / bz)):
             zs, zt = i * bz, min((i + 1) * bz, nz)
             block = read_tiff(region["path"], range=(z0 + zs, z0 + zt), out=buf)
@@ -988,23 +1046,25 @@ def tiff_to_zarr_dataset(
         "mcc_mode": mcc_mode,
         "config_file": config_file,
     }
-    done = framework.run_tasks(
-        tiffs,
-        zarr_fullpaths,
-        tasks,
-        cpus_per_task=cpus_per_task,
-        mem_allocate=mem_allocate,
-        **common,
-    )
-    if not all(done):
-        framework.run_tasks(
+    # locally, the files' reads keep their buffer from file to file
+    with keep_read_buffer() if not parse_cluster else contextlib.nullcontext():
+        done = framework.run_tasks(
             tiffs,
             zarr_fullpaths,
             tasks,
-            cpus_per_task=cpus_per_task * 2,
-            mem_allocate=mem_allocate * 2,
+            cpus_per_task=cpus_per_task,
+            mem_allocate=mem_allocate,
             **common,
         )
+        if not all(done):
+            framework.run_tasks(
+                tiffs,
+                zarr_fullpaths,
+                tasks,
+                cpus_per_task=cpus_per_task * 2,
+                mem_allocate=mem_allocate * 2,
+                **common,
+            )
 
 
 _T2Z_ARGS = (

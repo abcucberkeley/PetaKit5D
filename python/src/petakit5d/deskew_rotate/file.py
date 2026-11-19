@@ -61,7 +61,6 @@ from __future__ import annotations
 import contextlib
 import math
 import os
-import sys
 import threading
 import time
 import warnings
@@ -89,58 +88,20 @@ _KEPT = threading.local()
 
 
 def _allocate(nbytes: int) -> np.ndarray:
-    """``nbytes`` of memory for a kept buffer. On Linux, unless ``NUMPY_MADVISE_HUGEPAGE`` is
-    set, an anonymous mapping that NumPy does not advise to take huge pages: with the advice,
-    the first touch of a fresh process's large arrays compacts memory synchronously where free
-    memory is fragmented (seconds per GB); without it the system takes huge pages where they
-    are free and small ones elsewhere."""
-    if sys.platform.startswith("linux") and "NUMPY_MADVISE_HUGEPAGE" not in os.environ:
-        import mmap
+    """``nbytes`` of memory for a kept buffer (``petakit5d.io.imagesize.kept_memory``: on
+    Linux, unless ``NUMPY_MADVISE_HUGEPAGE`` is set, memory NumPy does not advise to take huge
+    pages)"""
+    from petakit5d.io.imagesize import kept_memory
 
-        try:
-            m = mmap.mmap(-1, nbytes, flags=mmap.MAP_PRIVATE | mmap.MAP_ANONYMOUS)
-        except (OSError, ValueError, AttributeError):
-            pass
-        else:
-            return np.frombuffer(m, dtype=np.uint8)
-    return np.empty(nbytes, dtype=np.uint8)
+    return kept_memory(nbytes)
 
 
 def _byte_buffer():
-    """a ``petakit5d.io.ReadBuffer`` of bytes: views of any class on its first bytes, the
-    memory growing to the largest view asked for (the class is made on first use, so that
-    importing this module doesn't import the io package)"""
-    global _ByteBuffer
-    if _ByteBuffer is None:
-        from petakit5d.io import ReadBuffer
+    """a ``petakit5d.io.imagesize.ByteBuffer``: views of any class on its first bytes, the
+    memory growing to the largest view asked for"""
+    from petakit5d.io.imagesize import ByteBuffer
 
-        class ByteBuffer(ReadBuffer):
-            def __init__(self) -> None:
-                super().__init__()
-                self._bytes: np.ndarray | None = None
-
-            def view(self, shape: Sequence[int], dtype) -> np.ndarray:
-                dt = np.dtype(dtype)
-                shape = tuple(int(v) for v in shape)
-                n = dt.itemsize
-                for v in shape:
-                    n *= v
-                if self._bytes is None or self._bytes.size < n:
-                    self._bytes = None  # (the old memory goes before the new comes)
-                    self._bytes = _allocate(max(n, 1))
-                return self._bytes[:n].view(dt).reshape(shape)
-
-            def holds(self, a: np.ndarray) -> bool:
-                return self._bytes is not None and np.may_share_memory(a, self._bytes)
-
-            def release(self) -> None:
-                self._bytes = None
-
-        _ByteBuffer = ByteBuffer
-    return _ByteBuffer()
-
-
-_ByteBuffer = None
+    return ByteBuffer()
 
 
 class FileBuffers:

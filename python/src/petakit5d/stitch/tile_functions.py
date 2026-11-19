@@ -439,7 +439,11 @@ def parse_tile_function(text: str) -> Callable[[np.ndarray], np.ndarray]:
     """The function of a tile function written as MATLAB code (the forms in the module's
     docstring), on (z, y, x) volumes or (y, x) images. Raises ``NotImplementedError`` (with
     ``identifier``) for other code; errors MATLAB raises only when it runs the function are
-    raised when it runs here too."""
+    raised when it runs here too.
+
+    The function takes ``owned=True`` from a caller that gives the volume up: the edge erosion
+    of the volume itself then writes into it (if it is C-contiguous and writeable) instead of
+    a new array, with the same result (its attribute ``in_place`` says it takes ``owned``)."""
     src = str(text)
     try:
         _, node = _Parser(_tokens(src.strip())).function()
@@ -453,10 +457,11 @@ def parse_tile_function(text: str) -> Callable[[np.ndarray], np.ndarray]:
                 "MATLAB:TooManyInputs" if len(args) > hi else "MATLAB:minrhs",
             )
 
-    def tile_function(vol: np.ndarray) -> np.ndarray:
-        return _evaluate(node, np.asarray(vol), False)[0]
+    def tile_function(vol: np.ndarray, *, owned: bool = False) -> np.ndarray:
+        return _evaluate(node, np.asarray(vol), owned)[0]
 
     tile_function.matlab_code = src  # type: ignore[attr-defined]
+    tile_function.in_place = True  # type: ignore[attr-defined]
     return tile_function
 
 
