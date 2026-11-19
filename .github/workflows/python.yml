@@ -174,7 +174,10 @@ jobs:
           PETAKIT5D_TEST_SLURM_CONFIG: ${{ github.workspace }}/python/tests/ci/github_actions_slurm.json
           PETAKIT5D_TEST_SLURM_SOAK: 200x20
         run: |
-          python -m pytest -v -rA --timeout=1800 -m cluster tests/cluster | tee pytest-cluster.log
+          # the hardening soak (test_hardening_soak.py) is sized for a real cluster and opt-in
+          # (PETAKIT5D_TEST_SLURM_HARDENING), so it is left out here rather than skipped
+          python -m pytest -v -rA --timeout=1800 -m cluster tests/cluster \
+            --ignore=tests/cluster/test_hardening_soak.py | tee pytest-cluster.log
           # a skipped test here is a set-up problem (no Slurm, no config)
           if grep -q '^SKIPPED' pytest-cluster.log; then
             echo "::error::Cluster tests were skipped"

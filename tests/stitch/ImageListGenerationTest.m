@@ -329,13 +329,15 @@ classdef ImageListGenerationTest < pktest.TestCase
             end
         end
 
-        function [] = writeAcquisitionDb(~, fn, hash)
+        function [] = writeAcquisitionDb(testCase, fn, hash)
             % a made-up acquisition database: image, slice and metadata
             % tables, and the two views the image list reads. hash: the
             % inner view's JSONsettings_MD5, 'returned' (the view works),
             % 'missing' (joined on, not returned: the view fails as in the
             % databases of 2026-09) or 'other' (the outer view asks for
             % JSONsettings_MD5_old, which nothing returns)
+            testCase.assumeTrue(~isempty(ver('database')) && license('test', 'Database_Toolbox'), ...
+                'sqlite needs the Database Toolbox');
             conn = sqlite(fn, 'create');
             cleanup = onCleanup(@() close(conn));
             execute(conn, ['CREATE TABLE MetadataList (MetadataList_id INTEGER PRIMARY KEY, ', ...
