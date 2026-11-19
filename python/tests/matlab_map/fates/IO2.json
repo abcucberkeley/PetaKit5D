@@ -6,6 +6,20 @@
     "relativePathsAreInTheCurrentFolder": [
      "pytest:tests/core/test_paths.py::test_mkdir_recursive_makes_a_relative_path_in_the_current_folder",
      "pytest:tests/core/test_paths.py::test_mkdir_recursive_relative_path_starts_at_the_current_folder"
+    ],
+    "readBoundingBoxMustBeFinite": [
+     "pytest:tests/io/test_zarr.py::test_read_bounding_box_must_be_finite",
+     "oracle:tests/io/test_zarr.py::zarr_uint16_nan_end"
+    ]
+   }
+  },
+  "TiffIOTest": {
+   "methods": {
+    "rangeWithANaNEndIsRefused": [
+     "pytest:tests/io/test_tiff.py::test_rangeWithANonFiniteValueIsRefused"
+    ],
+    "rangeWithAnInfEndIsRefused": [
+     "pytest:tests/io/test_tiff.py::test_rangeWithANonFiniteValueIsRefused"
     ]
    }
   }

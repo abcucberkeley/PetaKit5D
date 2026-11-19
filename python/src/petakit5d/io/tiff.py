@@ -60,7 +60,11 @@ def _num_pages(path: str) -> int:
 
 
 def _check_range(path: str, rng) -> list[int]:
+    from petakit5d.core.bbox import refuse_not_finite
+
     r = list(rng)
+    # (NaN and Inf: MATLAB's readtiff refuses them, the mex ended MATLAB or read one slice)
+    refuse_not_finite(r, "range")
     if len(r) != 2:
         raise ValueError(f"range is (start, stop), got {rng!r}")
     n = None
@@ -86,7 +90,8 @@ def read_tiff(
     """Read a tiff file as a ``(z, y, x)`` C-ordered array (MATLAB ``readtiff``).
 
     ``range``: the slices ``(start, stop)``, 0-based, end-exclusive (``stop`` ``None``: to the
-    end). One slice comes back as an image ``(y, x)``; color images as ``(z, y, x, c)``.
+    end; NaN and infinite values are refused with MATLAB's ``MATLAB:validators:mustBeFinite``).
+    One slice comes back as an image ``(y, x)``; color images as ``(z, y, x, c)``.
 
     ``out``: read into this array (``(nz, ny, nx)``, or ``(ny, nx)`` for one slice, of the
     file's class, writeable and C-contiguous; it is returned) or into a view of a

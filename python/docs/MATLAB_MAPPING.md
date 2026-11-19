@@ -597,14 +597,14 @@ Clean, center and resample a raw PSF (psf_gen_new): the background removed, the 
 | MATLAB | Python | Arg | Conversion | MATLAB default | Python default | Validator |
 |---|---|---|---|---|---|---|
 | `filepath` | `filepath` | req |  |  |  | `char` |
-| `range` | `range` | par | range1 | `[]` | `None` | `(1, :) {mustBeNumeric}` |
+| `range` | `range` | par | range1 | `[]` | `None` | `(1, :) {mustBeNumeric, mustBeFinite}` |
 
 ### `readzarr` -> `petakit5d.io.read_zarr` (planned)
 
 | MATLAB | Python | Arg | Conversion | MATLAB default | Python default | Validator |
 |---|---|---|---|---|---|---|
 | `filepath` | `filepath` | req |  |  |  | `char` |
-| `inputBbox` | `input_bbox` | par | bbox | `[]` | `None` | `(1, :) {mustBeNumeric}` |
+| `inputBbox` | `input_bbox` | par | bbox | `[]` | `None` | `(1, :) {mustBeNumeric, mustBeFinite}` |
 | `sparseData` | `sparse_data` | par |  | `true` | `True` | `(1, :) {mustBeNumericOrLogical}` |
 
 ### `removeTextTags` -> `petakit5d.io.n5.remove_text_tags`

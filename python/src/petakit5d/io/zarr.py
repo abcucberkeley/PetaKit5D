@@ -396,8 +396,9 @@ def read_zarr(
     out=None,
 ) -> np.ndarray:
     """Read a zarr array, or its box ``input_bbox`` (``(z0, y0, x0, z1, y1, x1)``, 0-based,
-    end-exclusive), as a ``(z, y, x)`` C-ordered array (MATLAB ``readzarr``); one slice comes
-    back as an image ``(y, x)``.
+    end-exclusive; ``None`` ends are open, NaN and infinite values are refused with MATLAB's
+    ``MATLAB:validators:mustBeFinite``), as a ``(z, y, x)`` C-ordered array (MATLAB
+    ``readzarr``); one slice comes back as an image ``(y, x)``.
 
     ``axes``: ``'auto'`` reads an array with ``"order": "F"`` as MATLAB's ``[ny, nx, nz]``
     (one threaded transposing pass) and others as native ``[nz, ny, nx]`` (no copy); ``'zyx'``
@@ -420,6 +421,10 @@ def read_zarr(
     n = threads(num_threads)
     fshape = [int(v) for v in meta["shape"]]
     whole = input_bbox is None or len(input_bbox) == 0
+    if not whole:
+        from petakit5d.core.bbox import refuse_not_finite
+
+        refuse_not_finite(input_bbox, "inputBbox")
     if layout == "zyx":
         if whole:
             start, stop = [0] * len(fshape), fshape

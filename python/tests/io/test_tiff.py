@@ -5,6 +5,7 @@ plus the file identity with MATLAB's files, the input checks cpp-tiff 1.7.3 lack
 report) and the MATLAB oracle cases.
 """
 
+import math
 import os
 import struct
 import sys
@@ -179,6 +180,21 @@ def test_rangeOutOfBoundsErrors(tmp_path, rng):
     write_tiff(_rand("uint16", (11, 5, 6)), fn)
     with pytest.raises(ValueError):
         read_tiff(fn, range=rng)
+
+
+@pytest.mark.parametrize("rng", [(0, math.nan), (math.nan, 5), (0, math.inf), (-math.inf, 5)])
+def test_rangeWithANonFiniteValueIsRefused(tmp_path, rng):
+    # TiffIOTest/rangeWithANaNEndIsRefused and rangeWithAnInfEndIsRefused: refused before the
+    # read with MATLAB's error (since 2338aa4; the mex ended MATLAB for an Inf end and read one
+    # slice for a NaN end); None is the open end
+    from petakit5d.core.bbox import NOT_FINITE_ID
+
+    fn = tmp_path / "im.tif"
+    write_tiff(_rand("uint16", (11, 5, 6)), fn)
+    with pytest.raises(ValueError) as e:
+        read_tiff(fn, range=rng)
+    assert e.value.identifier == NOT_FINITE_ID
+    assert read_tiff(fn, range=(2, None)).shape == (9, 5, 6)
 
 
 @pytest.mark.slow

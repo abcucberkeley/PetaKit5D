@@ -16,7 +16,9 @@ only where MATLAB takes it: the conversions keep it (with its bits, as MATLAB do
 functions that accept it say so (``open_nan_ends`` makes it the image's end there), and the
 helpers below refuse it with ``BoxEndError``, MATLAB's error when a NaN end reaches its
 indexing (``MATLAB:colon:nonFiniteEndpoint``); functions where MATLAB fails otherwise raise
-MATLAB's error of theirs. A NaN start is refused (``ValueError``), as before.
+MATLAB's error of theirs. A NaN start is refused (``ValueError``), as before. The readers refuse
+NaN and infinite values in their box or range before reading (``refuse_not_finite``), as
+MATLAB's readzarr and readtiff do (``MATLAB:validators:mustBeFinite``).
 """
 
 from __future__ import annotations
@@ -49,6 +51,7 @@ __all__ = [
     "range_from_matlab",
     "range_to_matlab",
     "refuse_nan_end",
+    "refuse_not_finite",
 ]
 
 Box = tuple  # (z0, y0, x0, z1, y1, x1) or (y0, x0, y1, x1); ends may be None
@@ -59,6 +62,9 @@ NAN_END_MESSAGE = "Nonfinite endpoints or increment for colon operator in index.
 # MATLAB's error when the size of a box with a NaN end makes arrays (the batches of a zarr file)
 NAN_SIZE_ID = "MATLAB:nonaninf"
 NAN_SIZE_MESSAGE = "NaN and Inf not allowed."
+# MATLAB's error when readzarr's box or readtiff's range holds NaN or Inf (their arguments
+# blocks' mustBeFinite, before the mex reads anything: 2338aa4)
+NOT_FINITE_ID = "MATLAB:validators:mustBeFinite"
 
 
 class BoxEndError(ValueError):
@@ -231,6 +237,24 @@ def refuse_nan_end(box, *, size: bool = False) -> None:
     the end reaches its indexing, or with ``size`` where the box's size makes arrays."""
     if has_nan_end(box):
         raise BoxEndError(NAN_SIZE_MESSAGE, NAN_SIZE_ID) if size else BoxEndError()
+
+
+def refuse_not_finite(values, name: str) -> None:
+    """``BoxEndError`` with MATLAB's ``mustBeFinite`` error if a box or range (``None``: an open
+    end) holds a NaN or infinite number, as readzarr and readtiff refuse their ``name``
+    argument's (``inputBbox``, ``range``)."""
+    v = values.tolist() if isinstance(values, np.ndarray) else list(values)
+    for e in v:
+        if e is None or isinstance(e, (str, bytes)):
+            continue
+        try:
+            f = float(e)
+        except (TypeError, ValueError):
+            continue
+        if not math.isfinite(f):
+            raise BoxEndError(
+                f"Invalid value for '{name}' argument. Value must be finite.", NOT_FINITE_ID
+            )
 
 
 def open_nan_ends(box) -> Box:

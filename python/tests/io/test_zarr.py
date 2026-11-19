@@ -7,6 +7,7 @@ plane transpose of petakit5d._ext.io and the MATLAB oracle cases.
 """
 
 import json
+import math
 import os
 import sys
 from pathlib import Path
@@ -1005,6 +1006,41 @@ for _name, _cls, _make in [
     )
 
 
+# (ZarrIOTest/readBoundingBoxMustBeFinite) a NaN box end is refused before the read
+# (MATLAB:validators:mustBeFinite since 2338aa4; the mex failed on it, 'Upper bound is invalid')
+_ZCASES.append(
+    Case(
+        "zarr_uint16_nan_end",
+        code=(
+            "fn = fullfile(work, 'm.zarr'); writezarr(in{1}, fn, 'blockSize', in{2}); "
+            "out{1} = readzarr(fn, 'inputBbox', in{3});"
+        ),
+        args=[In("m"), [16, 16, 5], [2, 3, 1, math.nan, 30, 8]],
+        python=_zcase_py,
+        py_args=[In("m"), (16, 16, 5), [2, 3, 1, math.nan, 30, 8], Work()],
+        inputs={"m": Value(lambda: ic.make_data("uint16", (37, 41, 13), "random", 39))},
+        files=False,
+        expect_error="MATLAB:validators:mustBeFinite",
+        py_error=(ValueError,),
+        error_message=True,
+    )
+)
+
+
 @oracle.parametrize(_ZCASES)
 def test_matlab(case, tmp_path):
     oracle.check(case, tmp_path)
+
+
+def test_read_bounding_box_must_be_finite(tmp_path):
+    # (ZarrIOTest/readBoundingBoxMustBeFinite) NaN and infinite box values are refused before
+    # the read with MATLAB's error (since 2338aa4); None is the open end
+    from petakit5d.core.bbox import NOT_FINITE_ID
+
+    fn = str(tmp_path / "im.zarr")
+    write_zarr(np.zeros((8, 30, 20), np.uint16), fn, block_size=(5, 16, 16))
+    for b in ((0, 1, 2, 8, math.inf, 20), (0, 1, 2, 8, math.nan, 20), (-math.inf, 1, 2, 8, 9, 9)):
+        with pytest.raises(ValueError) as e:
+            read_zarr(fn, input_bbox=b)
+        assert e.value.identifier == NOT_FINITE_ID
+    assert read_zarr(fn, input_bbox=(0, 1, 2, None, 30, None)).shape == (8, 29, 18)

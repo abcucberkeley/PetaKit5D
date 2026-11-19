@@ -66,6 +66,7 @@ _EXPORTS = {
     "intersect_boxes": "bbox",
     "pad_widths": "bbox",
     "BoxEndError": "bbox",
+    "refuse_not_finite": "bbox",
     "open_nan_ends": "bbox",
     "has_nan_end": "bbox",
     "crop": "bbox",
