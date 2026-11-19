@@ -59,6 +59,76 @@ def test_stubs_are_the_matlab_fixtures():
         assert text.endswith(body or "\n")
 
 
+def _jobs_of_both(root: Path, builtin: bool) -> FakeSlurm:
+    fs = FakeSlurm(root / "bin").install()
+    if builtin:
+        fs.use_builtin_squeue()
+    for k in range(1, 8):
+        states = ["PD:Priority"] * 3 + ["R"] if k % 3 else ["PD", "PD", "R", "done"]
+        fs.set_job_states(f"{999 + k}_{k}", states, [root / f"out_{k}.txt"] if k % 2 else None)
+    fs.set_job_states("2000", ["R"])
+    fs.set_job_states("2001_3", ["PD:None", "PD:Resources"])
+    fs.set_job_states("2002_1", [])
+    fs.set_job_attributes("1000_1", "gpu8", 10, 78000, 1, "qos_normal")
+    fs.set_job_attributes("1003_4", "cpu_queue", 4, 85672)
+    return fs
+
+
+@pytest.mark.parametrize("shell", ["/bin/sh", "bash"])
+def test_builtin_squeue_answers_as_the_fixtures(tmp_path, shell):
+    # use_builtin_squeue: the same answers, exit codes, state steps and job outputs as the
+    # MATLAB fixture's squeue over a sequence of calls (lists, formats, state filters, the long
+    # format with partitions, scontrol updates and new states between them)
+    import shutil
+
+    if shutil.which(shell) is None:
+        pytest.skip(f"no {shell}")
+    ids = ",".join([f"{999 + k}_{k}" for k in range(1, 8)] + ["2000", "2001_3", "2002_1", "9_9"])
+    long = "JobArrayID:|,Partition:|,QOS:|,NumCPUs:|,tres-alloc:|,Reason:|"
+    update = ["update", "JobId=2001_3", "Partition=gpu8", "NumCPUs=4", "MinMemoryCPU=7800"]
+    calls = [
+        ("squeue", ["-j", ids]),
+        ("scontrol", update),
+        ("squeue", ["-h", "-j", ids, "-o", "%i %T %r"]),
+        ("squeue", ["-j", ids, "-t", "PD", "-o", "%i|%t|%r|%T %%i"]),
+        ("squeue", ["--me", "-t", "PD", "-h", "-O", long]),
+        ("squeue", ["--me", "-h", "-O", "JobArrayID:|,Partition:|,Reason:|", "-p", "gpu8,b"]),
+        ("squeue", ["-u", "someone", "-h", "-o", "%i %t"]),
+        ("scontrol", ["update", "JobId=1002_3", "Partition=gpu8"]),
+        ("squeue", ["-h", "-j", "1000_1,,1001_2,", "-o", "%i %T"]),
+        ("squeue", ["-j", ids, "-t", "RUNNING", "-o", "%i"]),
+        ("squeue", ["--me", "-t", "R", "-h", "-O", "JobArrayID:|,Reason:|"]),
+        ("set", []),
+        ("squeue", ["-j", ids, "-o", "%i %T %r"]),
+        ("squeue", ["-j", ids]),
+    ]
+
+    def snapshot(root):
+        state = root / "bin" / "state"
+        return (
+            {p.name: p.read_text().replace(str(root), "") for p in sorted(state.iterdir())},
+            {p.name: p.read_text() for p in sorted((root / "bin" / "jobs").iterdir())},
+            sorted(p.name for p in root.glob("out_*.txt")),
+        )
+
+    roots = {b: tmp_path / ("builtin" if b else "fixture") for b in (False, True)}
+    fakes = {b: _jobs_of_both(r, b) for b, r in roots.items()}
+    scripts = {b: (r / "bin" / "squeue").read_text() for b, r in roots.items()}
+    assert scripts[True] != scripts[False] and "for id in $ids; do" in scripts[True]
+    for n, (cmd, args) in enumerate(calls):
+        got = {}
+        for b, root in roots.items():
+            if cmd == "set":
+                fakes[b].set_job_states("1000_1", ["PD:Priority", "R"])
+                got[b] = snapshot(root)
+                continue
+            r = subprocess.run(
+                [shell, str(root / "bin" / cmd), *args], capture_output=True, text=True
+            )
+            got[b] = (r.returncode, r.stdout, r.stderr, snapshot(root))
+        assert got[True] == got[False], (n, cmd, args)
+
+
 def test_sbatch_numbers_jobs_and_everything_is_logged(fake_slurm):  # noqa: F811
     assert sh("sinfo").stdout.startswith("PARTITION AVAIL")
     assert sh("sbatch", "--array=3", "--wrap=true").stdout == "Submitted batch job 1000\n"

@@ -1881,6 +1881,10 @@ def test_a_moved_job_waits_2_minutes_in_its_new_place(fake_slurm):
 def test_slurm_calls_with_places_at_most_one_view_per_20_s(fake_slurm, tmp_path, monkeypatch):
     # the benchmark gate: a framework call with places reads the nodes and the pending jobs at
     # most once per 20 s (MATLAB's view), however many jobs it submits and looks at
+    # (the fake's squeue with shell built-ins: its ~60 calls naming 30 jobs made about 11,000
+    # processes with the fixture's, past the 900 s timeout on loaded nodes; the same answers,
+    # test_slurm_fake.py::test_builtin_squeue_answers_as_the_fixtures)
+    fake_slurm.use_builtin_squeue()
     vc = VirtualClock(time.time())
     monkeypatch.setattr(cluster, "_clock", vc.clock)
     monkeypatch.setattr(cluster, "_sleep", vc.sleep)

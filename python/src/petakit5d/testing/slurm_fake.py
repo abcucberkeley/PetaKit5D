@@ -25,6 +25,8 @@ takes no job id), and other scontrol commands run the real scontrol if there is 
 The stubs are those of the MATLAB fixture, with its default partition and node name as
 parameters (made-up names by default), and two additions for failure tests: ``hang`` (a command
 that doesn't answer) and ``fail`` (a command that exits 1 with a message), both logged first.
+A third addition, ``use_builtin_squeue``, swaps in an squeue with the same answers whose loops
+over jobs use shell built-ins, for tests with many jobs pending for many rounds.
 """
 
 # ruff: noqa: E501  (the shell lines of the stubs are the MATLAB fixture's)
@@ -253,9 +255,106 @@ _FAILURES = (
 )
 
 
-def stub_text(cmd: str, partition: str = DEFAULT_PARTITION, node: str = DEFAULT_NODE) -> str:
-    """the script of one fake command"""
-    lines = [*_HEADER, *_FAILURES, *_STUBS[cmd]]
+# squeue with the same answers and state steps as the fixture's, its loops over jobs with shell
+# built-ins (Python addition, FakeSlurm.use_builtin_squeue): the fixture's runs head, wc, tail,
+# mv, cat, tr and sed for each job, about six processes a job and call, which a test with many
+# jobs pending for many rounds multiplies by thousands (minutes on a loaded machine); this one
+# runs a mv for each job whose state steps, and no process for the others
+_BUILTIN_SQUEUE: tuple[str, ...] = (
+    *_STUBS["squeue"][: _STUBS["squeue"].index('if [ -n "$long" ]; then')],
+    "oldifs=$IFS",
+    'if [ -n "$long" ]; then',
+    '  for p in "$D"/state/*; do',
+    "    id=${p##*/}",
+    '    case "$id" in *.*) continue ;; esac',
+    '    [ -f "$p" ] || continue',
+    '    st=""; IFS= read -r st < "$p" || :',
+    "    reason=Resources",
+    '    case "$st" in *:*) reason=${st#*:}; st=${st%%:*} ;; esac',
+    '    [ "$st" = "done" ] && continue',
+    '    [ "$st" = "R" ] && reason=None',
+    '    [ -n "$states" ] && [ "$states" != "$st" ] && continue',
+    "    part=@PARTITION@; qos=normal; cpus=1; mem=1000; gpus=0",
+    '    kvs=""; [ -f "$D/jobs/$id" ] && { IFS= read -r kvs < "$D/jobs/$id" || :; }',
+    "    for kv in $kvs; do",
+    '      case "$kv" in partition=*) part="${kv#*=}" ;; qos=*) qos="${kv#*=}" ;; cpus=*) cpus="${kv#*=}" ;; mem=*) mem="${kv#*=}" ;; gpus=*) gpus="${kv#*=}" ;; esac',
+    "    done",
+    '    case ",$parts," in ,,|*",$part,"*) ;; *) continue ;; esac',
+    '    jid="$id"',
+    '    case "$id" in *_*) [ "$st" = PD ] && jid="${id%%_*}_[${id#*_}]" ;; esac',
+    '    tres="cpu=$cpus,mem=${mem}M,node=1,billing=$cpus"',
+    '    [ "$gpus" -gt 0 ] && tres="$tres,gres/gpu=$gpus"',
+    '    line=""',
+    "    IFS=,",
+    "    for fld in $long; do",
+    "      IFS=$oldifs",
+    '      case "${fld%%:*}" in',
+    '        JobArrayID) v="$jid" ;; Partition) v="$part" ;; QOS) v="$qos" ;; NumCPUs) v="$cpus" ;;',
+    '        tres-alloc) v="$tres" ;; Reason) v="$reason" ;; *) v="" ;;',
+    "      esac",
+    '      line="$line$v|"',
+    "    done",
+    "    IFS=$oldifs",
+    '    echo "$line"',
+    "  done",
+    "  exit 0",
+    "fi",
+    'if [ -z "$ids" ]; then',
+    "  peek=1",
+    '  ids=$(ls "$D/state" | grep -v "\\." | tr "\\n" ",")',
+    "fi",
+    '[ "$hdr" = 1 ] && [ -z "$fmt" ] && echo "             JOBID PARTITION     NAME     USER ST       TIME  NODES NODELIST(REASON)"',
+    "IFS=,",
+    "for id in $ids; do",
+    "  IFS=$oldifs",
+    '  f="$D/state/$id"',
+    '  [ -f "$f" ] || continue',
+    # the first state and the number of states (as head -n 1 and wc -l)
+    '  st=""; n=0',
+    '  while IFS= read -r x || [ -n "$x" ]; do n=$((n + 1)); [ "$n" = 1 ] && st=$x; done < "$f"',
+    '  if [ "$peek" = 0 ]; then',
+    '    if [ "$n" -gt 1 ]; then',
+    # the states after the first (as tail -n +2), then one rename
+    '      k=0; while IFS= read -r x || [ -n "$x" ]; do k=$((k + 1)); [ "$k" -gt 1 ] && printf "%s\\n" "$x"; done < "$f" > "$f.next"',
+    '      mv "$f.next" "$f"',
+    "    fi",
+    '    if [ "${st%%:*}" = "R" ] && [ -f "$f.outputs" ]; then',
+    '      while IFS= read -r o; do : > "$o"; done < "$f.outputs"',
+    '      rm "$f.outputs"',
+    "    fi",
+    "  fi",
+    "  reason=Resources",
+    '  case "$st" in *:*) reason=${st#*:}; st=${st%%:*} ;; esac',
+    '  [ "$st" = "done" ] && continue',
+    "  long=PENDING",
+    '  [ "$st" = "R" ] && long=RUNNING && reason=None',
+    '  [ -n "$states" ] && [ "$states" != "$long" ] && [ "$states" != "$st" ] && continue',
+    '  if [ -n "$fmt" ]; then',
+    # the format's %i, %T, %t and %r filled in (as sed's s///g)
+    '    out=""; r=$fmt',
+    '    while [ -n "$r" ]; do',
+    '      case "$r" in',
+    '        %i*) out="$out$id"; r=${r#%i} ;; %T*) out="$out$long"; r=${r#%T} ;;',
+    '        %t*) out="$out$st"; r=${r#%t} ;; %r*) out="$out$reason"; r=${r#%r} ;;',
+    '        *) c=${r%"${r#?}"}; out="$out$c"; r=${r#?} ;;',
+    "      esac",
+    "    done",
+    '    printf "%s\\n" "$out"',
+    "  else",
+    '    echo "             $id       @PARTITION@     wrap     user  $st       0:01      1 @NODE@"',
+    "  fi",
+    "done",
+)
+
+
+def stub_text(
+    cmd: str,
+    partition: str = DEFAULT_PARTITION,
+    node: str = DEFAULT_NODE,
+    body: Sequence[str] | None = None,
+) -> str:
+    """the script of one fake command (body: other lines than the fixture's)"""
+    lines = [*_HEADER, *_FAILURES, *(_STUBS[cmd] if body is None else body)]
     text = "\n".join(lines) + "\n"
     return text.replace("@CMD@", cmd).replace("@PARTITION@", partition).replace("@NODE@", node)
 
@@ -297,6 +396,15 @@ class FakeSlurm:
         for cmd in _STUBS:
             _write_executable(self.folder / cmd, stub_text(cmd, self.partition, self.node))
         return self
+
+    def use_builtin_squeue(self) -> None:
+        """from now on squeue loops over its jobs with shell built-ins (Python addition): the
+        fixture's answers and state steps with a few processes a call instead of about six a
+        job, for tests that keep many jobs pending for many rounds"""
+        _write_executable(
+            self.folder / "squeue",
+            stub_text("squeue", self.partition, self.node, _BUILTIN_SQUEUE),
+        )
 
     def path_with(self, path: str | None = None) -> str:
         """PATH with the fake commands first"""
