@@ -21,7 +21,17 @@
 // of four taken left to right, along x, then y, then z. Samples one step outside the volume are
 // 3*(f1 - f2) + f3 from the nearest three, made along x first, then along y from those values,
 // then along z. The result is cast as MATLAB's cast: round half away from zero and saturate.
+//
+// NaN in float data (Inf * 0 and Inf - Inf where infinities meet zero weights and each other,
+// NaN samples): MATLAB gives the first NaN operand of each operation as written, else x86's
+// default NaN (measured). On ARM a voxel whose value comes out NaN is computed again with each
+// operation's NaN made so (pk5d::x86_nans): a NaN never becomes a number in these products and
+// sums, so the other voxels hold none. x86-64 compiles the code it compiled before: x86's
+// default NaN, and where NaNs of other bits meet, the compiler's operand order (GCC takes the
+// second at some sums). The recomputation there cost 5 to 10% of cubic's speed: any change to
+// this file moved GCC's inlining of the end values. Integer data are finite here.
 #include <pk5d/common.hpp>
+#include <pk5d/fpexact.hpp>
 
 #include <cmath>
 #include <cstdint>
@@ -31,9 +41,30 @@
 
 namespace nb = nanobind;
 
+// the recomputation of the few voxels that come out NaN (ARM), out of the voxel loops
+#ifdef PK5D_FP_ARM
+#if defined(__GNUC__) || defined(__clang__)
+#define PK5D_WARP_COLD __attribute__((noinline, cold))
+#else
+#define PK5D_WARP_COLD __declspec(noinline)
+#endif
+#endif
+
 namespace {
 
 using idx = std::int64_t;
+
+#ifdef PK5D_FP_ARM
+// a * b, a + b and a - b with x86's NaN for the operands as written
+inline double mul(double a, double b) { return pk5d::x86_nans(a * b, a, b); }
+inline double add(double a, double b) { return pk5d::x86_nans(a + b, a, b); }
+inline double sub(double a, double b) { return pk5d::x86_nans(a - b, a, b); }
+
+// a * wa + b * wb
+inline double lerp(double a, double wa, double b, double wb) {
+    return add(mul(a, wa), mul(b, wb));
+}
+#endif
 
 using pk5d::cvolume;
 using mat44 = nb::ndarray<const double, nb::shape<4, 4>, nb::c_contig, nb::device::cpu>;
@@ -168,6 +199,24 @@ void for_voxels(const Geometry& g, int threads, double dir, QT&& qt, F&& fn) {
     }
 }
 
+#ifdef PK5D_FP_ARM
+// linear's value from the samples (f0, t0), (f1, t0), (f0, t1), (f1, t1) at s0 and s0 + ds,
+// each operation's NaN as written: the voxel loop's arithmetic, again
+template <typename T>
+PK5D_WARP_COLD double trilinear_x86(const T* p00, const T* p10, const T* p01, const T* p11,
+                                    idx ds, double sd, double fd, double td) {
+    const double oms = 1 - sd;
+    const double c00 = lerp(static_cast<double>(p00[0]), oms, static_cast<double>(p00[ds]), sd);
+    const double c10 = lerp(static_cast<double>(p10[0]), oms, static_cast<double>(p10[ds]), sd);
+    const double c01 = lerp(static_cast<double>(p01[0]), oms, static_cast<double>(p01[ds]), sd);
+    const double c11 = lerp(static_cast<double>(p11[0]), oms, static_cast<double>(p11[ds]), sd);
+    const double omf = 1 - fd;
+    const double c0 = lerp(c00, omf, c10, fd);
+    const double c1 = lerp(c01, omf, c11, fd);
+    return lerp(c0, 1 - td, c1, td);
+}
+#endif
+
 template <typename T, bool Nearest>
 void warp3d(const T* in, T* out, const double (&tc)[4][4], const Geometry& g, T fill,
             int threads) {
@@ -219,7 +268,15 @@ void warp3d(const T* in, T* out, const double (&tc)[4][4], const Geometry& g, T 
                 const double omf = 1 - fd;
                 const double c0 = c00 * omf + c10 * fd;
                 const double c1 = c01 * omf + c11 * fd;
+#ifdef PK5D_FP_ARM
+                double v = c0 * (1 - td) + c1 * td;
+                if constexpr (std::is_floating_point_v<T>) {
+                    if (v != v) v = trilinear_x86(p00, p10, p01, p11, ds, sd, fd, td);
+                }
+                o[j] = round_trunc_half<T>(v);
+#else
                 o[j] = round_trunc_half<T>(c0 * (1 - td) + c1 * td);
+#endif
             }
         }
     };
@@ -263,6 +320,67 @@ struct Extended {
         return e2(x, y, z);
     }
 };
+
+#ifdef PK5D_FP_ARM
+// sum4, Extended and a voxel's value again, each operation's NaN as written, for the voxels
+// whose value came out NaN
+inline double sum4_x86(const double (&w)[4], const double (&v)[4]) {
+    const double s = add(mul(w[0], v[0]), mul(w[1], v[1]));
+    return add(add(s, mul(w[2], v[2])), mul(w[3], v[3]));
+}
+
+// 3 * (a - b) + c (3 * Inf and 3 * NaN are no invalid operations)
+inline double end_value(double a, double b, double c) { return add(3 * sub(a, b), c); }
+
+template <typename T>
+struct ExtendedX86 {
+    const T* in;
+    const Geometry& g;
+    double v(idx x, idx y, idx z) const {
+        return static_cast<double>(in[((z - 1) * g.py + (y - 1)) * g.px + (x - 1)]);
+    }
+    PK5D_WARP_COLD double e1(idx x, idx y, idx z) const {
+        if (x == 0) return end_value(v(1, y, z), v(2, y, z), v(3, y, z));
+        if (x == g.px + 1) return end_value(v(g.px, y, z), v(g.px - 1, y, z), v(g.px - 2, y, z));
+        return v(x, y, z);
+    }
+    PK5D_WARP_COLD double e2(idx x, idx y, idx z) const {
+        if (y == 0) return end_value(e1(x, 1, z), e1(x, 2, z), e1(x, 3, z));
+        if (y == g.py + 1) return end_value(e1(x, g.py, z), e1(x, g.py - 1, z), e1(x, g.py - 2, z));
+        return e1(x, y, z);
+    }
+    PK5D_WARP_COLD double e3(idx x, idx y, idx z) const {
+        if (z == 0) return end_value(e2(x, y, 1), e2(x, y, 2), e2(x, y, 3));
+        if (z == g.pz + 1) return end_value(e2(x, y, g.pz), e2(x, y, g.pz - 1), e2(x, y, g.pz - 2));
+        return e2(x, y, z);
+    }
+};
+
+// cubic's value from the samples m - 1 .. m + 2 along each axis with weights w (inner: none
+// outside the volume): the voxel loop's own loops
+template <typename T>
+PK5D_WARP_COLD double cubic_value_x86(const T* in, const Geometry& g, const idx (&m)[3],
+                                      const double (&w)[3][4], bool inner) {
+    const ExtendedX86<T> ext{in, g};
+    double lz[4];
+    for (int c = 0; c < 4; ++c) {
+        double ly[4];
+        for (int b = 0; b < 4; ++b) {
+            double lx[4];
+            const idx y = m[1] - 1 + b, z = m[2] - 1 + c;
+            if (inner) {
+                const T* row = in + ((z - 1) * g.py + (y - 1)) * g.px + (m[0] - 2);
+                for (int a = 0; a < 4; ++a) lx[a] = static_cast<double>(row[a]);
+            } else {
+                for (int a = 0; a < 4; ++a) lx[a] = ext.e3(m[0] - 1 + a, y, z);
+            }
+            ly[b] = sum4_x86(w[0], lx);
+        }
+        lz[c] = sum4_x86(w[1], ly);
+    }
+    return sum4_x86(w[2], lz);
+}
+#endif
 
 template <typename T>
 void cubic3d(const T* in, T* out, const double (&tc)[4][4], const Geometry& g, double fill,
@@ -310,7 +428,15 @@ void cubic3d(const T* in, T* out, const double (&tc)[4][4], const Geometry& g, d
                 }
                 lz[c] = sum4(w[1], ly);
             }
+#ifdef PK5D_FP_ARM
+            double v = sum4(w[2], lz);
+            if constexpr (std::is_floating_point_v<T>) {
+                if (v != v) v = cubic_value_x86(in, g, m, w, inner);
+            }
+            o[j] = cast_like<T>(v);
+#else
             o[j] = cast_like<T>(sum4(w[2], lz));
+#endif
         }
     };
     auto pt = [&](idx k, idx i, idx j) { return ((Jv[2][j] + Iv[2][i]) + Kv[2][k]) + tc[3][2]; };

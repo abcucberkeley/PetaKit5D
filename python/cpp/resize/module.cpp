@@ -6,8 +6,11 @@
 // - gather_lines: index copies along an axis (MATLAB copies where the weights are one-hot);
 // - cubic: MATLAB's cubic kernel, |x|^3 from fdlibm's pow (MATLAB's power).
 // Every output value is computed by one thread in a fixed order, so the results do not depend
-// on the thread count.
+// on the thread count. The NaN of an invalid operation in pow and the cubic kernel (0 / 0,
+// Inf - Inf, Inf * 0) is x86's (MATLAB's) on every processor (PK5D_X86_NAN, the plain operation
+// except on ARM).
 #include <pk5d/common.hpp>
+#include <pk5d/fpexact.hpp>
 
 #include <algorithm>
 #include <cmath>
@@ -149,7 +152,10 @@ double fdlibm_pow(double x, double y) {
     }
     if (ly == 0) {
         if (iy == 0x7ff00000) {
-            if (((ix - 0x3ff00000) | static_cast<int32_t>(lx)) == 0) return y - y;
+            if (((ix - 0x3ff00000) | static_cast<int32_t>(lx)) == 0) {
+                const double r = y - y;  // (+-1)^(+-Inf): Inf - Inf
+                return PK5D_X86_NAN(r, y, y);
+            }
             if (ix >= 0x3ff00000) return hy >= 0 ? y : 0.0;
             return hy < 0 ? -y : 0.0;
         }
@@ -162,15 +168,20 @@ double fdlibm_pow(double x, double y) {
         z = ax;
         if (hy < 0) z = 1.0 / z;
         if (hx < 0) {
-            if (((ix - 0x3ff00000) | yisint) == 0)
-                z = (z - z) / (z - z);
-            else if (yisint == 1)
+            if (((ix - 0x3ff00000) | yisint) == 0) {
+                const double d = z - z, r = d / d;  // (-1)^(not an integer): 0 / 0
+                z = PK5D_X86_NAN(r, d, d);
+            } else if (yisint == 1) {
                 z = -z;
+            }
         }
         return z;
     }
     n = (hx >> 31) + 1;
-    if ((n | yisint) == 0) return (x - x) / (x - x);
+    if ((n | yisint) == 0) {
+        const double d = x - x, r = d / d;  // x < 0, y not an integer: 0 / 0
+        return PK5D_X86_NAN(r, d, d);
+    }
     s = 1.0;
     if ((n | (yisint - 1)) == 0) s = -1.0;
     if (iy > 0x41e00000) {
@@ -272,14 +283,38 @@ double fdlibm_pow(double x, double y) {
     return s * z;
 }
 
+#ifdef PK5D_FP_ARM
+// a + b, a - b and a * b with x86's NaN for Inf - Inf and Inf * 0
+inline double add_x86(double a, double b) {
+    const double r = a + b;
+    return PK5D_X86_NAN(r, a, b);
+}
+inline double sub_x86(double a, double b) {
+    const double r = a - b;
+    return PK5D_X86_NAN(r, a, b);
+}
+inline double mul_x86(double a, double b) {
+    const double r = a * b;
+    return PK5D_X86_NAN(r, a, b);
+}
+#endif
+
 // MATLAB's cubic kernel (Keys, a = -1/2):
 // (1.5|x|^3 - 2.5|x|^2 + 1) (|x| <= 1) + (-0.5|x|^3 + 2.5|x|^2 - 4|x| + 2) (1 < |x| <= 2)
+// (NaN where |x|^3 overflows: Inf * 0, and Inf - Inf where |x|^2 does too; on ARM those
+// operations written out, so that x86-64 compiles the code it compiled before)
 double cubic_value(double x) {
     const double a = std::fabs(x);
     const double a2 = a * a;
     const double a3 = fdlibm_pow(a, 3.0);
+#ifdef PK5D_FP_ARM
+    const double p1 = mul_x86(sub_x86(1.5 * a3, 2.5 * a2) + 1, a <= 1 ? 1.0 : 0.0);
+    const double p2 = mul_x86(add_x86(-0.5 * a3, 2.5 * a2) - 4 * a + 2,
+                              (1 < a && a <= 2) ? 1.0 : 0.0);
+#else
     const double p1 = (1.5 * a3 - 2.5 * a2 + 1) * (a <= 1 ? 1.0 : 0.0);
     const double p2 = (-0.5 * a3 + 2.5 * a2 - 4 * a + 2) * ((1 < a && a <= 2) ? 1.0 : 0.0);
+#endif
     return p1 + p2;
 }
 

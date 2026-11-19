@@ -9,7 +9,8 @@ FFTs (pocketfft's and FFTW's twiddle factors come from the C library's cos and s
 LAPACK (OpenBLAS's kernels for the CPU, or Accelerate); their digests are recorded, not pinned,
 and docs/platforms.md has the measured differences. The cases in ARM_NAN hold the outputs of
 kernels that still give ARM's NaN for an invalid operation (MATLAB's is x86's); the test expects
-them to differ there.
+them to differ there. No output sees two NaNs of other bits (``specials``), except where the
+kernel fixes their order itself: their sum's NaN is the compiler's choice of operand otherwise.
 
 The cases cover every binding of the extension modules (ALL_BINDINGS less EXEMPT_BINDINGS) and
 every function of petakit5d.matlabcompat (less EXEMPT_FUNCTIONS); test_kernel_hashes.py checks
@@ -105,9 +106,18 @@ def _payload_nan(dtype) -> Any:
     return bits.view(np.float64)[0]
 
 
-def specials(a: np.ndarray, every: int = 97) -> np.ndarray:
-    """a copy of float data with MATLAB's NaN, a NaN with a payload, both infinities, -0 and
-    +0, subnormals and the largest finite values placed every ``every`` elements"""
+def specials(a: np.ndarray, every: int = 97, payload: bool = False) -> np.ndarray:
+    """a copy of float data with MATLAB's NaN, both infinities, -0 and +0, subnormals and the
+    largest finite values placed every ``every`` elements, and with ``payload`` a NaN with a
+    payload in the second place.
+
+    No output may see two NaNs of other bits: where they meet in a sum, the result is the
+    compiler's choice of operand, which another build can change (the stable-ABI build
+    changed imwarp's). MATLAB's NaN and an invalid operation's are the same bits (x86's), so
+    ``payload`` is for kernels whose outputs each see one input value, that fix the order
+    themselves (the ordered sums, reduce), or whose footprint can't reach another NaN from the
+    payload's place (said where it is used); other kernels with a footprint take the payload NaN
+    on an input of its own (``payload_only``)."""
     a = np.array(a, copy=True)
     dt = a.dtype.type
     fi = np.finfo(a.dtype)
@@ -116,8 +126,16 @@ def specials(a: np.ndarray, every: int = 97) -> np.ndarray:
     f = a.reshape(-1)
     for k, v in enumerate(vals):
         i = 3 + k * every
-        if i < f.size:
+        if i < f.size and (payload or k != 1):
             f[i] = dt(v)
+    return a
+
+
+def payload_only(a: np.ndarray, every: int = 97) -> np.ndarray:
+    """a copy of float data with only the NaN with a payload, where ``specials`` places it"""
+    a = np.array(a, copy=True)
+    if 3 + every < a.size:
+        a.reshape(-1)[3 + every] = _payload_nan(a.dtype)
     return a
 
 
@@ -131,7 +149,7 @@ def cplx(re: np.ndarray, im: np.ndarray) -> np.ndarray:
 
 def no_nan(a: np.ndarray) -> np.ndarray:
     """``specials`` without the NaNs"""
-    a = specials(a)
+    a = specials(a, payload=True)
     a[np.isnan(a)] = 0
     return a
 
@@ -221,7 +239,7 @@ BIG = (9, 103, 107)  # 99,189 elements: the fixed-order sums' blocks of 4,096
 @case("ops.convert.single_to_classes")
 def _():
     K = _ops()
-    x = specials(single("conv", VOL, 40000.0))
+    x = specials(single("conv", VOL, 40000.0), payload=True)
     classes = ("uint8", "int8", "uint16", "int16", "int32", "uint32", "int64", "uint64", "double")
     return [K.convert(x, c) for c in classes] + [K.convert(x, c, mode="cast") for c in classes]
 
@@ -229,7 +247,7 @@ def _():
 @case("ops.convert.double_and_64_bit_integers")
 def _():
     K = _ops()
-    d = specials(double("convd", VOL, 1e5))
+    d = specials(double("convd", VOL, 1e5), payload=True)
     hi = ints("convhi", (3000,), -(2**30), 2**30, np.int64)
     lo = ints("convlo", (3000,), 0, 2**32 - 1, np.int64)
     i64 = hi * np.int64(2**32) + lo  # exact, up to 2^62
@@ -246,9 +264,9 @@ def _():
 @case("ops.scale_offset")
 def _():
     K = _ops()
-    x = specials(single("so", VOL))
+    x = specials(single("so", VOL), payload=True)
     u = u16("so16", VOL)
-    d = specials(double("sod", VOL))
+    d = specials(double("sod", VOL), payload=True)
     m = logical("som", VOL)
     return [
         K.scale_offset(x, 1.25, -3.5),
@@ -264,8 +282,8 @@ def _():
 @case("ops.clamp_compare")
 def _():
     K = _ops()
-    x = specials(single("cl", VOL))
-    d = specials(double("cld", VOL))
+    x = specials(single("cl", VOL), payload=True)
+    d = specials(double("cld", VOL), payload=True)
     u = u16("clu", VOL)
     out = [K.clamp(x, -0.0, 500.0), K.clamp(x, None, 0.0), K.clamp(d, -100.25, None)]
     out += [K.clamp(u, 100.4, 60000.6), K.clamp(x, math.nan, 3.0)]
@@ -280,7 +298,8 @@ def _():
 @case("ops.complex_abs")
 def _():
     K = _ops()
-    re, im = specials(single("cre", VOL)), specials(single("cim", VOL), every=89)
+    re = specials(single("cre", VOL), payload=True)
+    im = specials(single("cim", VOL), every=89, payload=True)
     c = cplx(re, im)
     return [K.complex_abs(c), K.complex_abs(c.astype(np.complex128)), K.complex_abs(re)]
 
@@ -297,7 +316,7 @@ def _():
     out += [K.sum_double(v), K.sum_double(to_matlab(v), matlab_layout=True)]
     out.append(K.sum_double(double("sdd", BIG)))
     out.append(K.sum_double(no_nan(single("sdi", BIG))))  # both infinities: MATLAB's NaN
-    out.append(K.sum_double(specials(single("sdn", BIG))))  # NaN payloads
+    out.append(K.sum_double(specials(single("sdn", BIG), payload=True)))  # NaN payloads
     out.append(K.sum_double(-np.zeros(BIG, np.float32)))
     out += [K.sum_double(u16("sdu", BIG)), K.sum_double(logical("sdl", BIG))]
     return out
@@ -356,8 +375,8 @@ def _mip_inputs():
         "bool": logical("mipb", VOL),
         "uint8": ints("mip8", VOL, 0, 255, np.uint8),
         "uint16": u16("mip16", VOL),
-        "single": specials(single("mipf", VOL)),
-        "double": specials(double("mipd", VOL)),
+        "single": specials(single("mipf", VOL), payload=True),
+        "double": specials(double("mipd", VOL), payload=True),
         "int16": ints("mipi", VOL, -(2**15), 2**15 - 1, np.int16),
     }
 
@@ -409,7 +428,7 @@ def _():
     flat2, bg2 = flat.copy(), bg.copy()
     flat2.flat[[3, 50, 700]] = [0.0, np.inf, -0.0]
     bg2.flat[[4, 51]] = [np.inf, -np.inf]
-    s = specials(single("ffs", VOL))
+    s = specials(single("ffs", VOL), payload=True)
     out = [
         FF.flat_field_correction_3d(vol, flat, bg, cast_data_type=True),
         FF.flat_field_correction_3d(vol, flat, bg, cast_data_type=False),
@@ -479,9 +498,10 @@ def _():
     t2 = t.copy()
     t2[0] = 1
     out.append(S.major_tiles_valid(t2, np.array([True, False, False])))
-    out.append(S.replace_nan_with_value(specials(single("rn", VOL)), 3.75))
-    out.append(S.replace_nan_with_value(specials(double("rnd", VOL)), 1e-8))
-    out.append(S.replace_nan_with_value(specials(single("rn2", VOL)), 0.1))  # rounded to single
+    out.append(S.replace_nan_with_value(specials(single("rn", VOL), payload=True), 3.75))
+    out.append(S.replace_nan_with_value(specials(double("rnd", VOL), payload=True), 1e-8))
+    rn2 = specials(single("rn2", VOL), payload=True)
+    out.append(S.replace_nan_with_value(rn2, 0.1))  # rounded to single
     return out
 
 
@@ -612,7 +632,9 @@ def _():
     from petakit5d.tools.unmix import _subtract, unmix_channels_sum
 
     chans = [u16("um1", VOL), u16("um2", VOL), u16("um3", VOL)]
-    sub = [_subtract(specials(single("ums", VOL)), b, None) for b in (100.25, 0.1, -1e-3)]
+    sub = [
+        _subtract(specials(single("ums", VOL), payload=True), b, None) for b in (100.25, 0.1, -1e-3)
+    ]
     f = [1.0, -0.37, 0.1234567]
     out = [
         unmix_channels_sum(chans, f, [100.0, 98.5, 0.0], 3.0, "uint16"),
@@ -666,7 +688,7 @@ def _():
             out.append(DK.accel_lambda(*mj, matlab_layout=True))
         j2, j3 = f("j2", VOL), f("j3", VOL)
         out.append(DK.accel_predict(j2, j3, 0.37))
-        out.append(DK.accel_predict(specials(j2), j3, 1.0))
+        out.append(DK.accel_predict(specials(j2, payload=True), j3, 1.0))
         out.append(DK.sum_double(f("ds", BIG)))
         out.append(DK.sum_double(to_matlab(f("ds2", BIG)), matlab_layout=True))
     return out
@@ -730,7 +752,7 @@ def _():
 
     v = single("fv", (6, 23, 31))
     d = double("fvd", (6, 23, 31))
-    im = specials(single("fim", (37, 70)))
+    im = specials(single("fim", (37, 70)), payload=True)  # no other NaN in the filters' reach
     k3 = np.abs(single("fk", (3, 5, 4)))
     out = [F.gaussian_kernel_1d(1.7, 11), F.fspecial("gaussian", (7, 5), 1.3)]
     out += [F.imgaussfilt3(v, 2.5), F.imgaussfilt3(d, (1.0, 2.0, 0.5)), F.imgaussfilt(im, 1.3)]
@@ -787,12 +809,10 @@ def _():
     return out
 
 
-@case(
-    "specials.resize_pow",
-    arm_nan="the resize kernels' fdlibm pow gives the CPU's NaN for a negative base with a "
-    "fractional exponent (0 / 0); the cubic weights take |x|^3 only, so no output has it",
-)
+@case("specials.resize_pow")
 def _():
+    """the resize kernels' fdlibm pow of negative bases with fractional exponents (0 / 0); the
+    cubic weights take |x|^3 only, so no output has it"""
     from petakit5d._ext import load
 
     x = -uniform("rpn", (99,), 0.5, 30.0)
@@ -844,7 +864,7 @@ def _():
     out += [M.bwconvhull(logical("mh2", (21, 26), 0.03), "objects", 8)]
     out += [M.bwconvhull_slices(b3, 0, [0, 3]), M.bwconvhull_slices(b3, 2, [1, 28])]
     for v in (
-        specials(single("md", (21, 26))),
+        specials(single("md", (21, 26)), payload=True),  # no other NaN in the windows' reach
         u16("md16", (21, 26)),
         ints("md8", (21, 26), -128, 127, np.int8),
         double("mdd", (21, 26)),
@@ -857,7 +877,7 @@ def _():
         out += [M.medfilt2(v, (3, 3)), M.medfilt2(v, (4, 5), "symmetric")]
     out += [M.medfilt3(single("m3", (7, 23, 29))), M.medfilt3(u16("m316", (7, 23, 29)), (3, 5, 3))]
     out += [M.medfilt3(single("m3s", (7, 23, 29)), (3, 3, 3), "zeros")]
-    out += [M.medfilt3(specials(single("m3n", (7, 23, 29))), (3, 3, 3), "zeros")]
+    out += [M.medfilt3(specials(single("m3n", (7, 23, 29)), payload=True), (3, 3, 3), "zeros")]
     return out
 
 
@@ -959,7 +979,7 @@ def _():
 def _():
     from petakit5d.matlabcompat import reduce as Rd
 
-    v = specials(single("rdv", BIG))
+    v = specials(single("rdv", BIG), payload=True)
     d = double("rdd", (6, 37, 70))
     u = u16("rdu", (6, 37, 70))
     out = [Rd.default_axis(d), Rd.sum(v), Rd.sum(d, -3), Rd.sum(d, -2), Rd.sum(u, -1), Rd.sum(u)]
@@ -984,9 +1004,14 @@ def _():
         St.var(d, 1, -3),
         St.std(d),
         St.std(v, 0, -2),
-        St.std(specials(v), omitnan=True),
+        St.std(specials(v, payload=True), omitnan=True),
     ]
-    out += [St.median(v), St.median(d, -1), St.median(u, -3), St.median(specials(v), omitnan=True)]
+    out += [
+        St.median(v),
+        St.median(d, -1),
+        St.median(u, -3),
+        St.median(specials(v, payload=True), omitnan=True),
+    ]
     out += [St.prctile(d.reshape(-1), [0, 1, 50, 99.9, 100]), St.prctile(v, 37.5, -2)]
     out += [St.prctile(np.array([-np.inf, np.inf, 1.0]), [10, 50, 90])]
     out += [St.mode(u), St.mode(u, -1, with_count=True)]
@@ -1062,18 +1087,19 @@ def _():
     out = []
     for shape, dz, reverse in (((20, 17, 64), 0.5, False), ((37, 45, 29), 0.2, True)):
         g = _geometry(shape, dz, reverse)
-        vol = specials(np.abs(single("dsx", shape)), every=41)
+        raw = np.abs(single("dsx", shape))
         box = (0, 0, 0, *g.out_size)
-        if g.do_interp:
-            xs, st = g.x_step, g.int_stepsize
-            out.append(
-                DS.skewed_space_interp_volume_deskew_rotate_warp(
-                    vol, xs, st, reverse, g.tmat, box, False
+        for vol in (specials(raw, every=41), payload_only(raw, every=41)):
+            if g.do_interp:
+                xs, st = g.x_step, g.int_stepsize
+                out.append(
+                    DS.skewed_space_interp_volume_deskew_rotate_warp(
+                        vol, xs, st, reverse, g.tmat, box, False
+                    )
                 )
-            )
-            out.append(DS.skewed_space_interp_defined_stepsize(vol, xs, st, reverse, False))
-        else:
-            out.append(DS.volume_deskew_rotate_warp(vol, g.tmat, box, False))
+                out.append(DS.skewed_space_interp_defined_stepsize(vol, xs, st, reverse, False))
+            else:
+                out.append(DS.volume_deskew_rotate_warp(vol, g.tmat, box, False))
     return out
 
 
@@ -1086,69 +1112,183 @@ def _():
         [[0.875, 0.0625, 0.0, 0.0], [-0.125, 1.0625, 0.25, 0.0], [0.0, 0.03125, 0.9375, 0.0],
          [1.5, -2.25, 0.75, 1.0]]
     )  # fmt: skip
-    v = specials(single("sx", (9, 21, 17)), every=37)
-    d = specials(double("sxd", (9, 21, 17)), every=37)
-    out = [W.imwarp(x, T, "linear", output_size=(8, 22, 18)) for x in (v, d)]
-    out += [R.imresize3(x, (5, 30, 9), m) for x in (v, d) for m in ("linear", "cubic")]
-    out += [R.imresize(v[0], 1.7, "bicubic"), R.imresize(d[0], 0.6, "bilinear")]
+    out = []
+    for put in (specials, payload_only):
+        v = put(single("sx", (9, 21, 17)), every=37)
+        d = put(double("sxd", (9, 21, 17)), every=37)
+        out += [W.imwarp(x, T, "linear", output_size=(8, 22, 18)) for x in (v, d)]
+        out += [R.imresize3(x, (5, 30, 9), m) for x in (v, d) for m in ("linear", "cubic")]
+        out += [R.imresize(v[0], 1.7, "bicubic"), R.imresize(d[0], 0.6, "bilinear")]
     return out
 
 
-@case(
-    "specials.warp_cubic",
-    arm_nan="imwarp's cubic interpolation gives the CPU's NaN where Inf meets a zero or "
-    "negative weight (float data with infinities)",
-)
+@case("specials.warp_cubic")
 def _():
+    """imwarp's cubic interpolation where Inf meets zero and negative weights"""
     from petakit5d.matlabcompat import warp as W
 
     T = np.array(
         [[0.875, 0.0625, 0.0, 0.0], [-0.125, 1.0625, 0.25, 0.0], [0.0, 0.03125, 0.9375, 0.0],
          [1.5, -2.25, 0.75, 1.0]]
     )  # fmt: skip
-    v = specials(single("sx", (9, 21, 17)), every=37)
-    d = specials(double("sxd", (9, 21, 17)), every=37)
-    return [W.imwarp(x, T, "cubic", output_size=(8, 22, 18)) for x in (v, d)]
+    out = []
+    for put in (specials, payload_only):
+        v = put(single("sx", (9, 21, 17)), every=37)
+        d = put(double("sxd", (9, 21, 17)), every=37)
+        out += [W.imwarp(x, T, "cubic", output_size=(8, 22, 18)) for x in (v, d)]
+    return out
 
 
 @case("specials.filters")
 def _():
     from petakit5d.matlabcompat import filters as F
 
-    v = specials(single("sf", (6, 23, 31)), every=53)
-    d = specials(double("sfd", (6, 23, 31)), every=53)
     k3 = np.abs(double("sfk", (3, 5, 4)))
-    return [
-        F.imgaussfilt3(v, 1.5),
-        F.imgaussfilt(d[0], 1.2),
-        F.convn(v, k3.astype(np.float32), "same"),
-        F.convn(d, k3, "full"),
-        F.imfilter(v, k3, "symmetric"),
-    ]
+    out = []
+    for put in (specials, payload_only):
+        v = put(single("sf", (6, 23, 31)), every=53)
+        d = put(double("sfd", (6, 23, 31)), every=53)
+        out += [
+            F.imgaussfilt3(v, 1.5),
+            F.imgaussfilt(d[0], 1.2),
+            F.convn(v, k3.astype(np.float32), "same"),
+            F.convn(d, k3, "full"),
+            F.imfilter(v, k3, "symmetric"),
+        ]
+    return out
 
 
 @case("specials.blending")
 def _():
     from petakit5d.kernels import stitch as S
 
-    t = specials(np.abs(single("sb", (3, 4, 21, 19))), every=61)
     w = uniform("sbw", (3, 4, 21, 19), 0.0, 2.0, np.float32)
-    w.reshape(-1)[[5, 100, 400]] = [np.inf, 0.0, np.inf]
-    out = [S.feather_blend(t, w)]
-    out += [S.tile_blend(t, None, m) for m in ("none", "max", "mean", "median")]
+    w.reshape(-1)[[5, 100, 400]] = [np.inf, 0.0, np.inf]  # not at the payload NaN's voxel
+    out = []
+    for put in (specials, payload_only):
+        t = put(np.abs(single("sb", (3, 4, 21, 19))), every=61)
+        out += [S.feather_blend(t, w)]
+        out += [S.tile_blend(t, None, m) for m in ("none", "max", "mean", "median")]
+    return out
+
+
+@case("specials.integral_image")
+def _():
+    """integral_image_3d's differences of running sums: Inf - Inf"""
+    from petakit5d.kernels import stitch as S
+
+    raw = np.abs(single("sb", (3, 4, 21, 19)))
+    return [S.integral_image(put(raw, every=61)[0], (2, 3, 4)) for put in (specials, payload_only)]
+
+
+def infinities(name: str, shape, dtype, frac: float = 0.1) -> np.ndarray:
+    """float data with infinities (no NaN) at a fraction frac of the elements, half of them
+    negative: every NaN of an output is then an invalid operation's"""
+    a = double(name, shape).astype(dtype)
+    u = gen(name + "/inf").uniform(shape)
+    a[u < frac / 2] = np.inf
+    a[(u >= frac / 2) & (u < frac)] = -np.inf
+    return np.ascontiguousarray(a)
+
+
+def meeting_nans(dtype) -> np.ndarray:
+    """a (7, 8, 9) volume whose NaNs of other bits (a payload, MATLAB's) sit side by side
+    along each axis and at the ends, and two infinities"""
+    v = (np.arange(7 * 8 * 9).reshape(7, 8, 9) % 7 + 1).astype(dtype)
+    p, q = _payload_nan(dtype), dtype(NAN)
+    v[3, 4, 4], v[3, 4, 5] = p, q  # along x
+    v[1, 2, 6], v[2, 2, 6] = q, p  # along z
+    v[5, 0, 1], v[5, 2, 1] = p, q  # at the start of y
+    v[6, 7, 8], v[4, 7, 8] = q, p  # at the end of z
+    v[3, 6, 2], v[3, 6, 3] = np.inf, -np.inf
+    return v
+
+
+def _shift(dx: float, dy: float, dz: float) -> np.ndarray:
+    T = np.eye(4)
+    T[3, :3] = [dx, dy, dz]
+    return T
+
+
+@case("specials.meeting_nans")
+def _():
+    """NaNs of other bits that meet in the integral image's sums, on purpose: the kernel computes
+    an input with NaN in MATLAB's order itself (the first NaN operand as written), so these bits
+    don't depend on the compiler"""
+    from petakit5d.kernels import stitch as S
+
+    v = meeting_nans(np.float32)
+    return [S.integral_image(v, t) for t in ((2, 3, 4), (3, 1, 1), (1, 2, 1), (7, 8, 9))]
+
+
+@case("specials.infinities")
+def _():
+    """float data with many infinities through the integral image, imwarp at whole and half
+    coordinates (Inf * 0, Inf - Inf) and resize's cubic kernel and pow where |x|^3 overflows"""
+    from petakit5d._ext import load
+    from petakit5d.kernels import stitch as S
+    from petakit5d.matlabcompat import resize as R
+    from petakit5d.matlabcompat import warp as W
+
+    a = infinities("sii", (6, 20, 17), np.float32)
+    out = [S.integral_image(a, t) for t in ((2, 3, 4), (1, 1, 1), (6, 20, 17))]
+    for dt in (np.float32, np.float64):
+        v = infinities("swi", (9, 21, 17), dt)
+        for T in (np.eye(4), _shift(-0.5, 0, 0.25)):
+            for m in ("cubic", "linear"):
+                out.append(W.imwarp(v, T, m, output_size=(9, 21, 17)))
+    x = np.array([np.inf, -np.inf, 1e120, -1e200, 1e300, 0.5, 1.5, NAN, _payload_nan(np.float64)])
+    out.append(R.cubic(x))
+    x = np.array([1.0, -1.0, -1.0, -2.5, -0.0, -np.inf])
+    for y in (np.inf, -np.inf, 0.5, -2.5):
+        o = np.empty_like(x)
+        load("resize").fdlibm_pow(x, y, o)
+        out.append(o)
     return out
 
 
 @case(
-    "specials.integral_image",
-    arm_nan="integral_image_3d's differences of running sums give the CPU's NaN for Inf - Inf "
-    "(single data with infinities)",
+    "specials.filters_infinities",
+    arm_nan="the linear filters' multiply-add chains give the CPU's NaN for Inf * 0 and Inf - Inf "
+    "(float data with infinities)",
 )
 def _():
-    from petakit5d.kernels import stitch as S
+    from petakit5d.matlabcompat import filters as F
 
-    t = specials(np.abs(single("sb", (3, 4, 21, 19))), every=61)
-    return [S.integral_image(t[0], (2, 3, 4))]
+    out = []
+    for dt in (np.float32, np.float64):
+        v = infinities("sfi", (6, 23, 31), dt)
+        k = np.abs(double("sfik", (3, 5, 4)))
+        k[1, 2, 1] = 0.0  # a zero tap
+        out += [F.convn(v, k.astype(dt), "same"), F.imfilter(v, k, "symmetric")]
+        out += [F.imgaussfilt3(v, 1.5), F.conv2(v[0], np.array([[1.0, 0.0, -1.0]]), "same")]
+    return out
+
+
+@case(
+    "specials.deskew_infinities",
+    arm_nan="the deskew/rotate warp and the skewed space interpolation give the CPU's NaN for "
+    "Inf * 0 and Inf - Inf (single data with infinities)",
+)
+def _():
+    from petakit5d.kernels import deskew as DS
+
+    out = []
+    for shape, dz, reverse in (((20, 17, 64), 0.5, False), ((37, 45, 29), 0.2, True)):
+        g = _geometry(shape, dz, reverse)
+        vol = infinities("sdi", shape, np.float32)
+        box = (0, 0, 0, *g.out_size)
+        if g.do_interp:
+            xs, st = g.x_step, g.int_stepsize
+            out.append(
+                DS.skewed_space_interp_volume_deskew_rotate_warp(
+                    vol, xs, st, reverse, g.tmat, box, False
+                )
+            )
+            out.append(DS.skewed_space_interp_defined_stepsize(vol, xs, st, reverse, False))
+        else:
+            out.append(DS.volume_deskew_rotate_warp(vol, g.tmat, box, False))
+    return out
 
 
 # -- FFT-based outputs (recorded, not pinned) ---------------------------------------------------
@@ -1201,8 +1341,8 @@ def _():
     for dt, f in ((np.float32, single), (np.float64, double)):
         hs = PF.HalfSpectrum((6, 23, 30), dt, backend="permissive")
         shape = hs.spectrum_shape
-        s = cplx(specials(f("hm1", shape)), f("hm2", shape))
-        h = cplx(f("hm3", shape), specials(f("hm4", shape), every=53))
+        s = cplx(specials(f("hm1", shape), payload=True), f("hm2", shape))
+        h = cplx(f("hm3", shape), specials(f("hm4", shape), every=53, payload=True))
         out += [hs.multiply(s.copy(), h), hs.multiply(s.copy(), h, conjugate=True)]
     return out
 
@@ -1233,10 +1373,13 @@ def _():
     from petakit5d.matlabcompat import fft as FT
     from petakit5d.testing.synth import decon_psf
 
-    s = specials(single("sft", (6, 23, 30)), every=211)
-    y = np.abs(specials(single("srl", (16, 33, 30), 100.0), every=401))
-    H = DK.otf(decon_psf((15, 15, 15), (2.0, 1.5)), y.shape)
-    return [FT.fft(s), FT.fftn(s.astype(np.float64)), DK.rlstep(y, y, H)]
+    H = DK.otf(decon_psf((15, 15, 15), (2.0, 1.5)), (16, 33, 30))
+    out = []
+    for put in (specials, payload_only):
+        s = put(single("sft", (6, 23, 30)), every=211)
+        y = np.abs(put(single("srl", (16, 33, 30), 100.0), every=401))
+        out += [FT.fft(s), FT.fftn(s.astype(np.float64)), DK.rlstep(y, y, H)]
+    return out
 
 
 @case("xcorr.ncc", recorded="FFT: the normalized cross-correlations of the registration")

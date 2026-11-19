@@ -9,6 +9,13 @@
 // - PK5D_X86_NAN(r, a, b): r, the result of one IEEE operation on a and b, with x86's default
 //   NaN (sign bit set: MATLAB's NaN) where r is NaN and neither operand is (Inf - Inf, 0 * Inf,
 //   0 / 0). ARM's default NaN has the sign bit clear; elsewhere r itself.
+// - pk5d::x86_nans(r, a, b): r, the result of one IEEE operation on a and b, with x86's NaN for
+//   the operands as written, on every processor and with every compiler: where r is NaN, the
+//   first NaN of a, b (quieted), else x86's default NaN. x86 and ARM both give the first
+//   operand's NaN (ARM a signalling second one's), but compilers swap the operands of a + b and
+//   a * b as they like (GCC does on x86-64 in the integral image's and imwarp's sums), and
+//   MATLAB's code gives the first NaN as written (measured). Not free: for recomputing the few
+//   values whose plain computation came out NaN.
 // - pk5d::int64_to_float(x): x rounded once to the nearest float (ties to even), as x86's
 //   cvtsi2ss. AArch64 compilers convert vectors of 64-bit integers through double, which rounds
 //   twice for |x| > 2^53; there the value is first rounded to odd at 53 bits, which makes the
@@ -61,6 +68,27 @@ inline T x86_nan_arm(T r, T a, T b) {
     return r;
 }
 }  // namespace fp_detail
+
+template <typename T>
+inline T x86_nans(T r, T a, T b) {
+    static_assert(std::is_floating_point_v<T>, "x86_nans: float or double");
+    if (r != r) {
+        using U = fp_detail::bits_t<T>;
+        const U quiet = sizeof(T) == 4 ? U(0x00400000u) : U(0x0008000000000000ull);
+        U u;
+        if (a != a) {
+            std::memcpy(&u, &a, sizeof a);
+            u |= quiet;
+        } else if (b != b) {
+            std::memcpy(&u, &b, sizeof b);
+            u |= quiet;
+        } else {
+            u = sizeof(T) == 4 ? U(0xFFC00000u) : U(0xFFF8000000000000ull);
+        }
+        std::memcpy(&r, &u, sizeof r);
+    }
+    return r;
+}
 
 template <typename I>
 inline float int64_to_float(I x) {
