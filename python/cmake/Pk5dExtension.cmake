@@ -62,6 +62,14 @@ foreach(_lang C CXX)
   endforeach()
 endforeach()
 
+# the stable ABI (abi3) when scikit-build-core builds a wheel for it (wheel.py-api = "cp312" and
+# Python 3.12 or newer: SKBUILD_SABI_COMPONENT); build trees and older Pythons build for their
+# Python only
+set(PK5D_STABLE_ABI "")
+if(SKBUILD_SABI_COMPONENT)
+  set(PK5D_STABLE_ABI STABLE_ABI)
+endif()
+
 define_property(GLOBAL PROPERTY PK5D_GROUPS
   BRIEF_DOCS "extension module groups" FULL_DOCS "groups added by pk5d_add_extension")
 
@@ -82,7 +90,7 @@ function(pk5d_add_extension group)
 
   set(_target pk5d_ext_${group})
   # NOMINSIZE: nanobind would compile the module with -Os otherwise
-  nanobind_add_module(${_target} NOMINSIZE ${_sources})
+  nanobind_add_module(${_target} NOMINSIZE ${PK5D_STABLE_ABI} ${_sources})
   set_target_properties(${_target} PROPERTIES
     OUTPUT_NAME ${group}
     LIBRARY_OUTPUT_DIRECTORY "${PK5D_EXT_OUTPUT_DIR}"
