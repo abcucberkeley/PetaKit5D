@@ -11,9 +11,10 @@ import subprocess
 import sys
 from pathlib import Path
 
+import petakit5d
 from petakit5d.jobs.tasks import Call, Task, task_record, write_call
 
-SRC_ROOT = str(Path(__file__).resolve().parents[2] / "src")
+SRC_ROOT = str(Path(petakit5d.__file__).resolve().parents[1])
 
 PROBE = """
 import os, sys
