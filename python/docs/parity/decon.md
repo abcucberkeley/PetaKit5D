@@ -16,7 +16,7 @@ why the values differ. Each case's `reason` names its row.
 Not compared on the permissive backend: a PSF with negative values (relative L2 3e-4: negative
 PSF values amplify FFT round-off; exact backend bit-identical).
 
-## OMW with many iterations on the default FFT backend (P3; documented, pending the user's approval)
+## OMW with many iterations on the default FFT backend (P3; approved 2026-11-19)
 
 The widefield decon of demo_widefield_and_confocal_deconvolution (`WF_raw.tif`, 501 x 571 x 501;
 OMW, wienerAlpha 0.02, OTFCumThresh 0.65, hannWinBounds (0.8, 1.2), background 100, 20
@@ -55,7 +55,7 @@ projector (pocketfft's and SciPy's double transforms agree on it within 3.5e-13)
   (overflow from 8 iterations). Light-sheet data stay within 0006 with 20 OMW iterations
   (demo_useful_tools' debug decon: off by 1 in 0.0031% of voxels), and RL on the widefield data
   stays off by 1 at 30 iterations (in 0.134% of the voxels, above P2's 0.1% from 26 iterations
-  on).
+  on). That RL case is listed with P3 too (approved 2026-11-19); P2 is unchanged.
 - **Not reduced by** the FFTs and OTFs in double precision (they give exact arithmetic's result:
   3,182 voxels off by more at 20 iterations, at 2.1 to 3.8 times the time per iteration) or
   pocketfft behind MATLAB's FFT driver (4,073, the largest by 1,429; 2.2 times): an accurate
