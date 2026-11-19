@@ -1660,6 +1660,110 @@ def test_xr_mip_zarr_merges_the_block_mips(tmp_path, cls, monkeypatch):
         same_bits(got, tiff_image(ref_max(im, ax)))
 
 
+@pytest.mark.parametrize("cls", ["uint16", "single"])
+def test_merges_of_flags_read_once_equal_the_merges_of_the_files(tmp_path, cls):
+    im = make_image(cls)
+    fns = write_py_flags(str(tmp_path / "f"), im)
+    loaded = mip._flags_for_merge(fns, im.shape, FLAG_MIP_BATCH, cls, math.inf)
+    assert loaded is not None and all(sorted(a) == sorted(loaded[0]) for a in loaded)
+    for p in range(3):
+        want = mip.merge_block_mips(fns, p, im.shape, FLAG_MIP_BATCH, cls)
+        same_bits(mip.merge_block_mips(fns, p, im.shape, FLAG_MIP_BATCH, cls, flags=loaded), want)
+    bad = [None, *loaded[1:]]
+    assert mip.merge_block_mips(fns, -1, im.shape, FLAG_MIP_BATCH, cls, flags=bad) is None
+
+
+@pytest.mark.parametrize("given", [False, True])
+def test_merges_turn_the_flags_z_mips_in_their_own_memory(tmp_path, given, monkeypatch):
+    """the z MIPs read for a merge (by it, or for it by mip_zarr) are turned in their own
+    memory, not copied"""
+    from petakit5d import _ext
+    from petakit5d.core import arrays
+
+    if not _ext.available("io"):
+        pytest.skip("petakit5d._ext.io is not built (the MIPs are copied)")
+    im = make_image("uint16")
+    fns = write_py_flags(str(tmp_path / "f"), im)
+    loaded = mip._flags_for_merge(fns, im.shape, FLAG_MIP_BATCH, "uint16", math.inf)
+    copies = []
+    real = arrays.from_matlab
+
+    def spy(a, **k):
+        a = np.asarray(a)
+        if a.ndim == 3 and a.shape[0] > 1 and a.shape[1] > 1:
+            copies.append(a.shape)
+        return real(a, **k)
+
+    monkeypatch.setattr(arrays, "from_matlab", spy)
+    slab = mip.merge_block_mips(
+        fns, -3, im.shape, FLAG_MIP_BATCH, "uint16", flags=loaded if given else None
+    )
+    same_bits(slab, range_ref(im, 0, list(range(0, im.shape[0], FLAG_MIP_BATCH[0]))))
+    assert copies == [], "z MIPs were copied to be turned"
+
+
+@pytest.mark.parametrize("cls", ["uint16", "single"])
+def test_xr_mip_zarr_reads_each_flag_once(tmp_path, cls, monkeypatch):
+    """the three merges take the flags read once (each read takes only the variables named),
+    with the slabs and MIPs of the merges that read them each"""
+    fns, im = zarr_copies(tmp_path, cls)
+    flags = write_py_flags(str(tmp_path / "f"), im)
+    loads = []
+    real = mip._load
+
+    def spy(path, names):
+        loads.append(path)
+        return real(path, names)
+
+    monkeypatch.setattr(mip, "_load", spy)
+    mip.mip_zarr(fns[0], batch_size=FLAG_MIP_BATCH, parse_cluster=False, block_flag_fullpaths=flags)
+    assert sorted(loads) == sorted(flags), "a flag was read more than once"
+    loads.clear()
+    monkeypatch.setattr(mip, "_flags_for_merge", lambda *a: None)
+    mip.mip_zarr(fns[1], batch_size=FLAG_MIP_BATCH, parse_cluster=False, block_flag_fullpaths=flags)
+    assert len(loads) == 6 * len(flags), "the merges without the flags read once"
+    verify_same_mips(fns[1], fns[0])
+
+
+def test_flags_are_read_once_only_within_the_memory_limit(tmp_path):
+    # the flags' bytes on disk and the largest slab with its coverage count
+    im = make_image("uint16")
+    fns = write_py_flags(str(tmp_path / "f"), im)
+    nbytes = sum(os.path.getsize(f) for f in fns)
+    sz = im.shape
+    slab = max(math.prod(sz) / sz[p] * -(-sz[p] // FLAG_MIP_BATCH[p]) for p in range(3))
+    gb = (nbytes + 3 * slab) / 2**30
+    args = (fns, im.shape, FLAG_MIP_BATCH, "uint16")
+    assert mip._flags_for_merge(*args, gb * 0.99) is None, "over the limit"
+    assert mip._flags_for_merge(*args, gb * 1.01) is not None, "under the limit"
+    assert mip._flags_for_merge(*args, NAN) is not None, "unknown memory"
+    assert mip._flags_for_merge([*fns, str(tmp_path / "missing.mat")], *args[1:], NAN) is None
+
+
+@pytest.mark.parametrize(
+    "shape", [(9, 7, 1), (9, 7, 3), (1, 7, 3), (9, 1, 3), (9, 7), (1, 1, 4), (130, 70, 2)]
+)
+@pytest.mark.parametrize("dtype", [np.uint8, np.uint16, np.float32, np.float64, np.bool_])
+def test_mips_read_from_flags_are_turned_in_their_own_memory(shape, dtype, monkeypatch):
+    """MATLAB's (y, x, z) MIPs as (z, y, x): the planes turned in place where an array is the
+    merge's own (as read), the values from_matlab gives; others copied as before"""
+    from petakit5d import _ext
+
+    rng = np.random.default_rng(1)
+    a = np.asfortranarray((rng.random(shape) * 200).astype(dtype))
+    ref = from_matlab(a.reshape(a.shape + (1,) * (3 - a.ndim)))
+    keep = a.copy(order="F")
+    same_bits(mip._vol_from_matlab(a), ref)
+    assert np.array_equal(a, keep), "an array that is not the merge's own was changed"
+    owned = a.copy(order="F")
+    got = mip._vol_from_matlab(owned, owned=True)
+    same_bits(got, ref)
+    if len(shape) == 3 and shape[0] > 1 and shape[1] > 1 and _ext.available("io"):
+        assert np.shares_memory(got, owned), "not turned in its own memory"
+    monkeypatch.setattr(_ext, "available", lambda name: False)
+    same_bits(mip._vol_from_matlab(a.copy(order="F"), owned=True), ref)
+
+
 def test_xr_mip_zarr_reads_the_zarr_if_a_flag_has_no_mips(tmp_path):
     # all or nothing: the other flags' MIPs are wrong here, so a partial merge would show
     fns, im = zarr_copies(tmp_path, "uint16")

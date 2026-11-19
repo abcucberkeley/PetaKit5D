@@ -689,14 +689,33 @@ def _cell_items(v: Any) -> list[Any]:
     return [v]
 
 
-def _vol_from_matlab(m: Any) -> np.ndarray | None:
-    """a MATLAB array of up to 3 dimensions as (z, y, x)"""
+def _vol_from_matlab(m: Any, owned: bool = False) -> np.ndarray | None:
+    """a MATLAB array of up to 3 dimensions as (z, y, x); ``owned``: an array nothing else uses
+    (as read from a flag), whose planes are turned in its own memory where they need it"""
+    from petakit5d import _ext
     from petakit5d.core.arrays import from_matlab
 
     a = np.asarray(m)
     if a.dtype == object or a.ndim > 3:
         return None
-    return from_matlab(a.reshape(a.shape + (1,) * (3 - a.ndim)))
+    a = a.reshape(a.shape + (1,) * (3 - a.ndim))
+    ny, nx, nz = a.shape
+    # (planes of one row or column are already (z, y, x) in memory: from_matlab gives views)
+    if (
+        owned
+        and ny > 1
+        and nx > 1
+        and a.dtype.itemsize in (1, 2, 4, 8)
+        and a.flags.f_contiguous
+        and a.flags.writeable
+    ):
+        if _ext.available("io"):
+            from petakit5d.core.threads import resolve_threads
+
+            flat = a.reshape(-1, order="F")
+            _ext.load("io").transpose_pages_inplace(flat, ny, nx, nz, resolve_threads(None))
+            return flat.reshape((nz, ny, nx))
+    return from_matlab(a)
 
 
 def _load(path: str, names: Sequence[str]) -> dict[str, Any] | None:
@@ -710,6 +729,34 @@ def _load(path: str, names: Sequence[str]) -> dict[str, Any] | None:
             return None
 
 
+def _flags_for_merge(
+    flag_fullpaths: Sequence[str],
+    im_size: Sequence[int],
+    batch_size: Sequence[int],
+    dtype: str,
+    max_mem: float,
+) -> list[Any] | None:
+    """the variables of the block tasks' flags for the merges of the three MIP slabs, each flag
+    read once (``merge_block_mips``' ``flags``), or None (each merge reads what it needs) if the
+    flags and the largest slab with its coverage count would hold more than ``max_mem`` GB
+    (NaN: no limit)"""
+    from petakit5d.core.arrays import data_type_to_byte_number
+
+    ims = _ints(im_size)
+    bs = _ints(batch_size)
+    if min(ims) <= 0 or min(bs) <= 0:
+        return None
+    try:
+        nbytes = sum(os.path.getsize(f) for f in flag_fullpaths)
+    except OSError:
+        return None
+    slab = max(math.prod(ims) / ims[p] * -(-ims[p] // bs[p]) for p in range(3))
+    if (nbytes + slab * (data_type_to_byte_number(dtype) + 1)) / 2**30 > max_mem:
+        return None
+    names = ("blockBboxes", "mipBatchSize", *(f"{a}MIPs" for a in _LABELS))
+    return [_load(f, names) for f in flag_fullpaths]
+
+
 def merge_block_mips(
     flag_fullpaths: Sequence[str],
     axis: int,
@@ -717,6 +764,8 @@ def merge_block_mips(
     batch_size: Sequence[int],
     dtype: str,
     max_mem: float = math.inf,
+    *,
+    flags: Sequence[Any] | None = None,
 ) -> np.ndarray | None:
     """``MIP_zarr_merge_block_mips``: the MIP slab along ``axis`` (a NumPy axis of ``(z, y,
     x)``) of a zarr of ``im_size`` with MIP batches of ``batch_size``, merged from the MIPs the
@@ -724,7 +773,10 @@ def merge_block_mips(
     axis is the max over batch k. Parts in the same batch are merged in their order along the
     axis (the first of equal values, the first NaN). None (the caller reads the zarr) if a flag
     has no MIPs or MIPs for other batches, if the blocks don't cover the zarr exactly once, or
-    if the merge would hold more than ``max_mem`` GB (NaN: no limit)."""
+    if the merge would hold more than ``max_mem`` GB (NaN: no limit). ``flags``: the flags'
+    variables read before (per flag of ``flag_fullpaths`` the mapping ``read_mat`` gives, with
+    ``blockBboxes``, ``mipBatchSize`` and the axis's MIPs, or None for a flag it could not read),
+    instead of reading them here; the MIPs are then the merge's (turned in their own memory)."""
     from petakit5d.core.arrays import data_type_to_byte_number, matlab_class, numpy_dtype
 
     p = _np_axis(axis)
@@ -735,9 +787,12 @@ def merge_block_mips(
     slab_size[p] = -(-ims[p] // bs[p])
     var = f"{_LABELS[_ZYX.index(p)]}MIPs"
 
+    def flag(k: int, names: Sequence[str]) -> dict[str, Any] | None:
+        return flags[k] if flags is not None else _load(flag_fullpaths[k], names)
+
     box_parts = []
-    for f in flag_fullpaths:
-        a = _load(f, ("blockBboxes", "mipBatchSize"))
+    for k in range(len(flag_fullpaths)):
+        a = flag(k, ("blockBboxes", "mipBatchSize"))
         if a is None or "blockBboxes" not in a or "mipBatchSize" not in a:
             return None
         got = np.asarray(a["mipBatchSize"], dtype=np.float64).ravel(order="F")
@@ -771,8 +826,8 @@ def merge_block_mips(
         return None
 
     mips: list[Any] = []
-    for f, part in zip(flag_fullpaths, box_parts, strict=True):
-        a = _load(f, (var,))
+    for k, part in enumerate(box_parts):
+        a = flag(k, (var,))
         if a is None or var not in a:
             return None
         items = _cell_items(a[var])
@@ -784,7 +839,7 @@ def merge_block_mips(
     part_boxes = []
     part_starts = []
     for b in range(rows.shape[0]):
-        m = _vol_from_matlab(mips[b])
+        m = _vol_from_matlab(mips[b], owned=True)
         if m is None or matlab_class(m.dtype) != dtype or m.shape != tuple(mip_sizes[b]):
             return None
         mips[b] = None
@@ -1184,10 +1239,17 @@ def mip_zarr(
         seps.append("/" if n_chunks > 10000 else ".")
 
     if fuse:
-        # up to half of the memory (no limit if it is unknown)
+        # up to half of the memory (no limit if it is unknown); each flag read once for the
+        # three slabs if they fit it
         max_mem = get_system_memory() / 2
+        loaded = _flags_for_merge(block_flag_fullpaths, in_size, batch, dtype, max_mem)
         for i in range(3):
-            slab = merge_block_mips(block_flag_fullpaths, _ZYX[i], in_size, batch, dtype, max_mem)
+            slab = merge_block_mips(
+                block_flag_fullpaths, _ZYX[i], in_size, batch, dtype, max_mem, flags=loaded
+            )
+            for a in loaded or ():
+                if a is not None:
+                    a.pop(f"{_LABELS[i]}MIPs", None)
             if slab is None:
                 fuse = False
                 break
@@ -1200,6 +1262,7 @@ def mip_zarr(
             )
             write_zarr(slab, tmp_paths[i], bbox=(0, 0, 0, *out_sizes[i]), create=False)
             del slab
+        del loaded
         if fuse:
             print("Merged the MIP slabs from the MIPs of the blocks.", flush=True)
         else:
