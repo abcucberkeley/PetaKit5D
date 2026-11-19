@@ -39,6 +39,13 @@
      "pytest:tests/tools/test_small_tools.py::test_large_copies_pass_their_settings_to_the_cluster_check"
     ]
    }
+  },
+  "TaskStateLeakTest": {
+   "methods": {
+    "rsyncShufflesWithoutTheGlobalRandomNumbers": [
+     "pytest:tests/tools/test_small_tools.py::test_shuffles_with_rng1_and_leaves_the_global_random_numbers"
+    ]
+   }
   }
  }
 }

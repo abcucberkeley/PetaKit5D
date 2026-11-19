@@ -149,6 +149,13 @@
      "pytest:tests/jobs/test_files.py::test_without_files_it_is_one_pause"
     ]
    }
+  },
+  "TaskStateLeakTest": {
+   "methods": {
+    "uuidWithoutJavaKeepsTheGlobalRandomNumbers": [
+     "pytest:tests/core/test_ids.py::test_uuid_leaves_global_random_state"
+    ]
+   }
   }
  }
 }

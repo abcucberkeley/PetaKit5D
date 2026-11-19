@@ -46,6 +46,22 @@
      "oracle:tests/tools/test_fsc.py::two_image.*"
     ]
    }
+  },
+  "TaskStateLeakTest": {
+   "methods": {
+    "fscAnalysisReadsAChangedFileAgain": [
+     "na:the port's FSC keeps no image between calls (MATLAB's cache of the last file's image), only windows and frequency shells keyed by their parameters",
+     "pytest:tests/tools/test_fsc.py::test_shell_cache_follows_parameters"
+    ],
+    "fscAnalysisSeesAChangedSizeAtTheSameTime": [
+     "na:the port's FSC keeps no image between calls (MATLAB's cache of the last file's image), only windows and frequency shells keyed by their parameters",
+     "pytest:tests/tools/test_fsc.py::test_shell_cache_follows_parameters"
+    ],
+    "fscFrameLeavesNoImageInTheCache": [
+     "na:the port's FSC keeps no image between calls (MATLAB's cache of the last file's image), only windows and frequency shells keyed by their parameters",
+     "pytest:tests/tools/test_fsc.py::test_shell_cache_follows_parameters"
+    ]
+   }
   }
  }
 }

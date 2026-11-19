@@ -38,6 +38,7 @@
       }
     },
     "TaskStateLeakTest": {
+      "finished": true,
       "methods": {
         "ownRandomStreamGivesThePermutationOfRng1": [
           "pytest:tests/tools/test_small_tools.py::test_randperm_seed1_is_matlabs"
