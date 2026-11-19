@@ -458,13 +458,20 @@ def _tile_boxes(boxes, dims: list[int]) -> list[int]:
 
 
 def tile_blend(
-    tiles: np.ndarray, boxes, blend_method: str, *, num_threads: int | None = None
+    tiles: np.ndarray,
+    boxes,
+    blend_method: str,
+    *,
+    num_threads: int | None = None,
+    out: np.ndarray | None = None,
 ) -> np.ndarray:
     """``tile_blending_3d_mex``: the tiles (uint8, uint16 or single, ``(t, z, y, x)``, 0 = no
     data) blended per voxel ('none': the first nonzero in tile order, 'max', 'mean', 'median'
     of the nonzero values) from the tiles outside their regions ``boxes`` (rows ``(t, z0, y0,
     x0, z1, y1, x1)``; empty ones are skipped), or where that is 0 from all tiles. 'none' and
-    'max' give ``(z, y, x)`` of the tiles' class, 'mean' and 'median' single."""
+    'max' give ``(z, y, x)`` of the tiles' class, 'mean' and 'median' single. ``out``: an array
+    of the result's shape and class, C-contiguous and writeable, written (every voxel) and
+    returned instead of a new one (a buffer reused over batches)."""
     f = _array(tiles, "tiles")
     if f.dtype not in (np.uint8, np.uint16, np.float32):
         raise StitchKernelTypeError(
@@ -483,7 +490,12 @@ def tile_blend(
         raise StitchKernelError(_TB, f"Unsupported blending method: {blend_method}")
     rows = _tile_boxes(boxes, dims)
     ocls = f.dtype if blend_method in ("none", "max") else np.dtype(np.float32)
-    out = np.empty(dims[1:], dtype=ocls)
+    if out is None:
+        out = np.empty(dims[1:], dtype=ocls)
+    elif not isinstance(out, np.ndarray) or out.dtype != ocls or list(out.shape) != dims[1:]:
+        raise ValueError(f"out must be a {ocls} array of shape {tuple(dims[1:])}")
+    elif not out.flags.c_contiguous or not out.flags.writeable:
+        raise ValueError("out must be writeable and C-contiguous")
     getattr(_ext(), f"tile_blending_3d_{blend_method}")(
         _flat(f, "tiles"), _flat(out, "out"), dims, rows, _threads(num_threads)
     )
@@ -491,24 +503,29 @@ def tile_blend(
 
 
 def tile_blending_3d(
-    tim_f_block: np.ndarray, boxes, blend_method: str, *, num_threads: int | None = None
+    tim_f_block: np.ndarray,
+    boxes,
+    blend_method: str,
+    *,
+    num_threads: int | None = None,
+    out: np.ndarray | None = None,
 ) -> np.ndarray:
     """``nv_block = tile_blending_3d(tim_f_block, mboxes, BlendMethod)``: the tiles of a
     stitching batch blended with 'none', 'mean', 'max' or 'median' (see ``tile_blend``; boxes in
     the port's form). uint8, uint16 and single tiles run the kernel; other classes run MATLAB's
     code, which blends in single and gives a single result: the kernel on ``single(tiles)``
-    (the same operations)."""
+    (the same operations). ``out`` as for ``tile_blend``."""
     if not isinstance(blend_method, str) or blend_method not in BLEND_METHODS:
         raise ValueError(f"Unsupported blending method: {blend_method}.")
     f = _array(tim_f_block, "tim_f_block")
     if f.dtype in (np.uint8, np.uint16, np.float32):
-        return tile_blend(f, boxes, blend_method, num_threads=num_threads)
+        return tile_blend(f, boxes, blend_method, num_threads=num_threads, out=out)
     if f.dtype.kind not in "biuf":
         raise TypeError(f"tile blending of {f.dtype} tiles")
     from petakit5d.core import dtypes
 
     fs = np.ascontiguousarray(dtypes.single(f))
-    return tile_blend(fs, boxes, blend_method, num_threads=num_threads)
+    return tile_blend(fs, boxes, blend_method, num_threads=num_threads, out=out)
 
 
 # ---------------------------------------------------------------------------------------------

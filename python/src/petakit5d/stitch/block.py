@@ -31,7 +31,11 @@ oracle commit:
 Batches are numbered from 0 (MATLAB's order: y fastest, then x, then z); boxes are ``(z0, y0,
 x0, z1, y1, x1)``, 0-based, end-exclusive; sizes, the border and the pool size are ``(z, y,
 x)``. The flags keep MATLAB's values (1-based batch numbers, ``[ymin xmin ymax xmax]`` MIP
-boxes). Reads go through one buffer per kind (tiles, distance maps), reused across batches.
+boxes). The tiles' reads and, for 'none', 'max', 'mean' and 'median', the batch's tiles and
+blend go into memory reused across batches (two sets, taken in turn; the distance maps' regions
+into one buffer), so that a batch takes no new pages but the first. With more than one CPU each
+batch is written while the next one is read and blended (MATLAB's loop writes it before; the
+same files), one write at a time, the flag after the last.
 
 With pooled maps the voxels the major tiles leave without data are read from the minor tiles
 (their box in the batch's coordinates), as are the minor tiles' parts the major tiles don't
@@ -533,10 +537,12 @@ def _blend_batch(
     psz: tuple[int, int, int] | None,
     pooled: bool,
     wd: Any,
-    tile_buf: Any,
+    bufs: Any,
     nt: int | None,
 ) -> np.ndarray:
-    """the blended batch (``(z, y, x)`` of bsz) of tiles (MATLAB's lines 152-482)"""
+    """the blended batch (``(z, y, x)`` of bsz) of tiles (MATLAB's lines 152-482); ``bufs``: the
+    memory reused over the task's batches for the tiles' reads, and, for 'none', 'max', 'mean'
+    and 'median', the batch's tiles and the blend (``_BatchBuffers``)"""
     from petakit5d.kernels import stitch as K
 
     n = len(tiles)
@@ -583,7 +589,8 @@ def _blend_batch(
         if n > 1 and not st["full"]:
             st["tim_block"] = np.zeros(bsz, dtype=ndt)
     else:
-        st["tim_f"] = None if full_tile else np.zeros((n, *bsz), dtype=ndt)
+        st["tim_f"] = None if full_tile else bufs.tiles((n, *bsz), ndt, tiles, boxes)
+    tile_buf = bufs.read
 
     c = st["c"]
     for j, tb in enumerate(tiles):
@@ -643,7 +650,9 @@ def _blend_batch(
             nv = K.replace_nan_with_value(nv, 0, inplace=True, num_threads=nt)
         return nv
     rows = np.asarray(mboxes, dtype=np.float64).reshape(-1, 7)
-    return K.tile_blending_3d(st["tim_f"], rows, blend_method, num_threads=nt)
+    return K.tile_blending_3d(
+        st["tim_f"], rows, blend_method, num_threads=nt, out=bufs.blend(st["tim_f"], blend_method)
+    )
 
 
 # ---------------------------------------------------------------------------------------------
@@ -783,7 +792,6 @@ def process_stitch_block(
     struct); the tiles' paths from
     ``block_info_fullname``, else ``tile_fns``. Returns the batches' done flags (None if
     nothing was done)."""
-    from petakit5d.io import ReadBuffer, write_zarr
     from petakit5d.jobs.files import exist
     from petakit5d.stitch.blockinfo import read_per_block_info
 
@@ -833,59 +841,64 @@ def process_stitch_block(
     done = [False] * len(inds)
     mips: list[np.ndarray] = []
     mip_boxes: list[tuple[int, int, int, int]] = []
-    tile_buf = ReadBuffer()
-    for i, bi in enumerate(inds):
-        print(f"Process batch {bi + 1}... ", end="", flush=True)
-        t0 = time.perf_counter()
-        sub = _batch_sub(bi, b_sub)
-        ob0 = [sub[q] * bs[q] for q in range(3)]
-        ob1 = [min(ob0[q] + bs[q], ims[q]) for q in range(3)]
-        nbsz = [ob1[q] - ob0[q] for q in range(3)]
-        obox = (*ob0, *ob1)
-        if info is None or i >= len(info):
-            raise StitchBlockError(
-                f"Index exceeds the number of array elements. Index must not exceed "
-                f"{0 if info is None else len(info)}.",
-                "MATLAB:badsubscript",
-            )
-        tiles = list(info[i])
-        if not tiles:
-            nv = np.zeros(nbsz, dtype=ndt)
-            write_zarr(nv, stitch_fullname, bbox=obox, create=False, num_threads=nt)
+    # (two sets of buffers taken in turn: a batch, which may be a buffer's view, is written while
+    # the next batch is made in the other set)
+    bufs = (_BatchBuffers(), _BatchBuffers())
+    writer = _BatchWriter(stitch_fullname, nt, _write_beside(nt))
+    try:
+        for i, bi in enumerate(inds):
+            print(f"Process batch {bi + 1}... ", end="", flush=True)
+            t0 = time.perf_counter()
+            sub = _batch_sub(bi, b_sub)
+            ob0 = [sub[q] * bs[q] for q in range(3)]
+            ob1 = [min(ob0[q] + bs[q], ims[q]) for q in range(3)]
+            nbsz = [ob1[q] - ob0[q] for q in range(3)]
+            obox = (*ob0, *ob1)
+            if info is None or i >= len(info):
+                raise StitchBlockError(
+                    f"Index exceeds the number of array elements. Index must not exceed "
+                    f"{0 if info is None else len(info)}.",
+                    "MATLAB:badsubscript",
+                )
+            tiles = list(info[i])
+            if not tiles:
+                writer.put(i, np.zeros(nbsz, dtype=ndt), obox)
+                if save_mip:
+                    mips.append(np.zeros(nbsz[1:], dtype=ndt))
+                    mip_boxes.append((ob0[1], ob0[2], ob1[1], ob1[2]))
+                print(f"Elapsed time is {time.perf_counter() - t0:f} seconds.", flush=True)
+                continue
+            if any(v > 0 for v in border):
+                inner = [sub[q] != 0 and sub[q] != b_sub[q] - 1 for q in range(3)]
+                bsz = [min(bs[q], nbsz[q]) + border[q] * (inner[q] + 1) for q in range(3)]
+            else:
+                bsz = [min(bs[q], nbsz[q]) for q in range(3)]
+            # (one tile: of dtype; blended: of dtype, or single for 'mean', 'median' and
+            # MATLAB's feather code)
+            nv = _blend_batch(
+                tiles, bsz, method, dtype, fns, maps, psz, pooled, weight_degree,
+                bufs[i % 2], nt,
+            )  # fmt: skip
+            if any(v > 0 for v in border):
+                s = [(sub[q] != 0) * border[q] for q in range(3)]
+                nv = _crop3(nv, [s[q] for q in range(3)] + [s[q] + nbsz[q] for q in range(3)], nt)
+            if list(nv.shape) != nbsz:
+                nv = _crop3(nv, [0, 0, 0, *nbsz], nt)
             if save_mip:
-                mips.append(np.zeros(nbsz[1:], dtype=ndt))
+                # cast(max(nv_block, [], 3), dtype): the cast keeps the order of values. (Before
+                # the write, where MATLAB takes it after: the same values.)
+                mips.append(_as_class(_range_max_z(nv, nt), dtype))
                 mip_boxes.append((ob0[1], ob0[2], ob1[1], ob1[2]))
-            done[i] = True
+            # (written in the zarr's class, as MATLAB's writezarr casts)
+            writer.put(i, np.ascontiguousarray(nv), obox)
             print(f"Elapsed time is {time.perf_counter() - t0:f} seconds.", flush=True)
-            continue
-        if any(v > 0 for v in border):
-            inner = [sub[q] != 0 and sub[q] != b_sub[q] - 1 for q in range(3)]
-            bsz = [min(bs[q], nbsz[q]) + border[q] * (inner[q] + 1) for q in range(3)]
-        else:
-            bsz = [min(bs[q], nbsz[q]) for q in range(3)]
-        # (one tile: of dtype; blended: of dtype, or single for 'mean', 'median' and MATLAB's
-        # feather code)
-        nv = _blend_batch(
-            tiles, bsz, method, dtype, fns, maps, psz, pooled, weight_degree, tile_buf, nt
-        )
-        if any(v > 0 for v in border):
-            s = [(sub[q] != 0) * border[q] for q in range(3)]
-            nv = _crop3(nv, [s[q] for q in range(3)] + [s[q] + nbsz[q] for q in range(3)], nt)
-        if list(nv.shape) != nbsz:
-            nv = _crop3(nv, [0, 0, 0, *nbsz], nt)
-        if save_mip:
-            # cast(max(nv_block, [], 3), dtype): the cast keeps the order of values. (Before the
-            # write, where MATLAB takes it after: the same values, and the port's kernels run
-            # one after another, without the zarr library's threads between them.)
-            mips.append(_as_class(_range_max_z(nv, nt), dtype))
-            mip_boxes.append((ob0[1], ob0[2], ob1[1], ob1[2]))
-        # (written in the zarr's class, as MATLAB's writezarr casts)
-        write_zarr(
-            np.ascontiguousarray(nv), stitch_fullname, bbox=obox, create=False, num_threads=nt
-        )
+        writer.finish()
+    finally:
+        writer.close()
+        for b in bufs:
+            b.release()
+    for i in writer.done:
         done[i] = True
-        print(f"Elapsed time is {time.perf_counter() - t0:f} seconds.", flush=True)
-    tile_buf.release()
 
     if all(done):
         print(f"Processing of batches {inds[0] + 1} - {inds[-1] + 1} are done!", flush=True)
@@ -894,6 +907,111 @@ def process_stitch_block(
         else:
             open(flag_fullname, "w").close()
     return done
+
+
+def _zero_outside(a: np.ndarray, box: Sequence[int]) -> None:
+    """a (z, y, x) array set to 0 outside the box (z0, y0, x0, z1, y1, x1) within it"""
+    z0, y0, x0, z1, y1, x1 = (int(v) for v in box)
+    a[:z0] = 0
+    a[z1:] = 0
+    a[z0:z1, :y0] = 0
+    a[z0:z1, y1:] = 0
+    a[z0:z1, y0:y1, :x0] = 0
+    a[z0:z1, y0:y1, x1:] = 0
+
+
+class _BatchBuffers:
+    """The memory a blending task reuses over its batches (one set for each batch in hand: the
+    one being written and the next): the tiles' reads, and for 'none', 'max', 'mean' and
+    'median' the batch's tiles (MATLAB's ``zeros([bsz, numTiles])`` before the tiles go in:
+    each tile's part set to 0 outside its box where the tile fills its box, else all of it) and
+    the blend (which the kernel writes in full), so a batch takes no new pages but the first."""
+
+    def __init__(self) -> None:
+        from petakit5d.io import ReadBuffer
+        from petakit5d.io.imagesize import ByteBuffer
+
+        self.read = ReadBuffer()
+        self._tiles = ByteBuffer()
+        self._blend = ByteBuffer()
+
+    def tiles(self, shape: Sequence[int], dtype: np.dtype, tiles: list, boxes: list) -> np.ndarray:
+        """the batch's tiles ``(t, z, y, x)``, 0 where the tiles' reads won't go"""
+        a = self._tiles.view(shape, dtype)
+        bsz = list(shape[1:])
+        for j, (tb, b) in enumerate(zip(tiles, boxes, strict=True)):
+            t = tb.tile_box
+            ext = [b[q + 3] - b[q] for q in range(3)]
+            if t is not None and _proper(b, bsz) and ext == [t[q + 3] - t[q] for q in range(3)]:
+                _zero_outside(a[j], b)
+            else:
+                a[j] = 0
+        return a
+
+    def blend(self, tim_f: np.ndarray, method: str) -> np.ndarray | None:
+        """the blend's place in the kept memory (the kernel's classes; else None: a new one)"""
+        if tim_f.dtype not in (np.uint8, np.uint16, np.float32) or tim_f.ndim != 4:
+            return None
+        cls = tim_f.dtype if method in ("none", "max") else np.dtype(np.float32)
+        return self._blend.view(tim_f.shape[1:], cls)
+
+    def release(self) -> None:
+        for b in (self.read, self._tiles, self._blend):
+            b.release()
+
+
+def _write_beside(nt: int | None) -> bool:
+    """whether the batches are written beside the next batch's blending: with more than one
+    CPU (with one, the write and the blending would share it)"""
+    from petakit5d.core.threads import resolve_threads
+
+    return resolve_threads(nt) > 1
+
+
+class _BatchWriter:
+    """The batches' writes into the stitched zarr. ``beside``: each in a thread of its own while
+    the next batch is blended (the reads and the blending of a batch overlap the write of the
+    one before; MATLAB's loop does one after the other), one write in flight at a time, in the
+    batches' order, its error raised at the next batch or at ``finish``; else each in this
+    thread, in turn. ``done``: the batches written."""
+
+    def __init__(self, path: str, nt: int | None, beside: bool = True) -> None:
+        self.path, self.nt = path, nt
+        self.pool: Any = None
+        if beside:
+            from concurrent.futures import ThreadPoolExecutor
+
+            self.pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="petakit5d-stitch")
+        self.pending: tuple[int, Any] | None = None
+        self.done: list[int] = []
+
+    def put(self, i: int, data: np.ndarray, box: Sequence[int]) -> None:
+        """write batch i's data into its box, after the write before it"""
+        from petakit5d.io import write_zarr
+
+        self.finish()
+        if self.pool is None:
+            write_zarr(data, self.path, bbox=box, create=False, num_threads=self.nt)
+            self.done.append(i)
+            return
+        fut = self.pool.submit(
+            write_zarr, data, self.path, bbox=box, create=False, num_threads=self.nt
+        )
+        self.pending = (i, fut)
+
+    def finish(self) -> None:
+        """wait for the write in flight (its error is raised here)"""
+        if self.pending is not None:
+            i, fut = self.pending
+            self.pending = None
+            fut.result()
+            self.done.append(i)
+
+    def close(self) -> None:
+        """wait for a write in flight, without raising its error (after another one)"""
+        self.pending = None
+        if self.pool is not None:
+            self.pool.shutdown(wait=True)
 
 
 # ---------------------------------------------------------------------------------------------

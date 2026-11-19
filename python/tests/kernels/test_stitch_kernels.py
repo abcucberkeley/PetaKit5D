@@ -1236,6 +1236,28 @@ def test_arrays_are_never_copied():
         sk.feather_blend_into(f, d, ro, (1, 1, 1, 5, 7, 6))
 
 
+@pytest.mark.parametrize("method", ["none", "max", "mean", "median"])
+@pytest.mark.parametrize("cls", [np.uint8, np.uint16, np.float32, np.float64])
+def test_tile_blending_writes_all_of_an_out_it_is_given(method, cls):
+    """``out`` (a buffer reused over batches): every voxel written, whatever it held, the bits
+    of a new result; the wrong class, shape or layout refused"""
+    rng = np.random.default_rng(7)
+    tiles = (rng.random((3, 5, 9, 11)) * 50).astype(cls)
+    tiles[rng.random(tiles.shape) < 0.4] = 0
+    rows = np.asarray([[0, 1, 2, 3, 4, 7, 9], [2, 0, 0, 0, 5, 4, 4]], dtype=np.float64)
+    want = sk.tile_blending_3d(tiles, rows, method)
+    out = np.empty_like(want)
+    out.view(np.uint8)[...] = 0xA5
+    got = sk.tile_blending_3d(tiles, rows, method, out=out)
+    assert got is out and got.tobytes() == want.tobytes()
+    with pytest.raises(ValueError, match="out must be"):
+        sk.tile_blending_3d(tiles, rows, method, out=np.empty(want.shape, np.float64))
+    with pytest.raises(ValueError, match="out must be"):
+        sk.tile_blending_3d(tiles, rows, method, out=np.empty(want.shape[::-1], want.dtype))
+    with pytest.raises(ValueError, match="writeable and C-contiguous"):
+        sk.tile_blending_3d(tiles, rows, method, out=np.empty(want.shape, want.dtype, order="F"))
+
+
 # --- FeatherBlendingTest ------------------------------------------------------------------------
 
 

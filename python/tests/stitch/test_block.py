@@ -1272,6 +1272,201 @@ def test_the_dominance_factor_is_matlabs():
     assert SB._DMT.hex() == "0x1.fec982d5bb8b0p+0"
 
 
+def _sequential_writes(monkeypatch):
+    """each batch written before the next is blended (MATLAB's order, the writer's reference)"""
+
+    class Sequential(SB._BatchWriter):
+        def put(self, i, data, box):
+            super().put(i, data, box)
+            self.finish()
+
+    monkeypatch.setattr(SB, "_BatchWriter", Sequential)
+
+
+def _slow_writes(monkeypatch, delay=0.03, events=None):
+    """writes that wait before writing (the next batch is blended meanwhile)"""
+    import time
+
+    from petakit5d import io as Z
+
+    real = Z.write_zarr
+
+    def slow(data, path, **kw):
+        if events is not None:
+            events.append(("write", kw["bbox"]))
+        time.sleep(delay)
+        real(data, path, **kw)
+        if events is not None:
+            events.append(("written", kw["bbox"]))
+
+    monkeypatch.setattr(Z, "write_zarr", slow)
+
+
+def _blend_in(d, b, monkeypatch, beside=True, num_threads=None):
+    """the volume and the merged MIP of the blending in folder d; beside: the writes beside the
+    next batch on any machine (else as the CPUs decide)"""
+    from petakit5d.io import read_zarr
+
+    if beside:
+        monkeypatch.setattr(SB, "_write_beside", lambda nt: True)
+    d.mkdir()
+    make_root(b.scene, b.cls)(d / "root")
+    monkeypatch.chdir(d)
+    mip = run_blend(b, num_threads=num_threads)[0]
+    return np.asarray(read_zarr("vol.zarr")), mip
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "blend.single_batches.none.uint16",
+        "blend.single_batches.feather.single",
+        "blend.grid2x2.feather.uint16",
+        "blend.row3_batches.max.uint8",
+        "blend.z_stack.median.single",
+        "blend.border.grid2x2.none",
+        "blend.nomip.grid2x2.none.uint16",
+        "lf.lf_major_holes.uint16",
+    ],
+)
+def test_writes_beside_the_next_batch_give_the_results_of_writes_in_turn(
+    name, tmp_path, monkeypatch
+):
+    """each batch is written while the next is read and blended (a batch that is a tile's read
+    is written from one read buffer while the next batch reads into the other): the volume and
+    the MIPs of writes one after the other, also when the writes take long"""
+    b = BLENDS[name]
+    with monkeypatch.context() as m:
+        _slow_writes(m)
+        got = _blend_in(tmp_path / "beside", b, m)
+    with monkeypatch.context() as m:
+        _sequential_writes(m)
+        want = _blend_in(tmp_path / "in_turn", b, m)
+    assert got[0].dtype == want[0].dtype and got[0].tobytes() == want[0].tobytes()
+    if want[1] is None:
+        assert got[1] is None
+    else:
+        assert got[1].tobytes() == want[1].tobytes()
+
+
+def test_the_next_batch_is_blended_while_a_batch_is_written(tmp_path, monkeypatch):
+    events = []
+    _slow_writes(monkeypatch, 0.05, events)
+    real = SB._blend_batch
+
+    def blend(*a, **k):
+        events.append(("blend", None))
+        return real(*a, **k)
+
+    monkeypatch.setattr(SB, "_blend_batch", blend)
+    _blend_in(tmp_path / "w", BLENDS["blend.single_batches.none.uint16"], monkeypatch)
+    kinds = [e[0] for e in events]
+    # (a blend between a write's start and its end, and one write at a time, in order)
+    assert any(kinds[k : k + 3] == ["write", "blend", "written"] for k in range(len(kinds)))
+    order = [e for e in events if e[0] != "blend"]
+    assert all(order[k][0] == ("write", "written")[k % 2] for k in range(len(order)))
+    assert all(order[2 * k][1] == order[2 * k + 1][1] for k in range(len(order) // 2))
+
+
+def test_a_failed_write_is_raised_and_the_task_has_no_flag(tmp_path, monkeypatch):
+    from petakit5d import io as Z
+
+    real = Z.write_zarr
+    calls = []
+
+    def failing(data, path, **kw):
+        calls.append(1)
+        if len(calls) == 2:
+            raise OSError("no space left on the device")
+        return real(data, path, **kw)
+
+    monkeypatch.setattr(Z, "write_zarr", failing)
+    with pytest.raises(OSError, match="no space left"):
+        _blend_in(tmp_path / "f", BLENDS["blend.single_batches.none.uint16"], monkeypatch)
+    assert os.listdir("flags") == []
+
+
+def test_with_one_thread_the_batches_are_written_in_turn(tmp_path, monkeypatch):
+    """(a blending job of one CPU: the write and the blending would share it) each batch written
+    in the task's thread before the next is blended, as MATLAB writes them"""
+    import threading
+
+    from petakit5d import io as Z
+
+    events = []
+    real_write, real_blend = Z.write_zarr, SB._blend_batch
+
+    def write(data, path, **kw):
+        events.append(("write", threading.current_thread() is threading.main_thread()))
+        return real_write(data, path, **kw)
+
+    def blend(*a, **k):
+        events.append(("blend", True))
+        return real_blend(*a, **k)
+
+    monkeypatch.setattr(Z, "write_zarr", write)
+    monkeypatch.setattr(SB, "_blend_batch", blend)
+    b = BLENDS["blend.single_batches.none.uint16"]
+    got = _blend_in(tmp_path / "one", b, monkeypatch, beside=False, num_threads=1)
+    assert events and all(main for _, main in events)
+    assert [k for k, _ in events] == ["blend", "write"] * (len(events) // 2)
+    assert not SB._write_beside(1)
+    monkeypatch.undo()
+    _sequential_writes(monkeypatch)
+    want = _blend_in(tmp_path / "ref", b, monkeypatch)
+    assert got[0].tobytes() == want[0].tobytes() and got[1].tobytes() == want[1].tobytes()
+
+
+def test_a_failed_batch_waits_for_the_write_in_flight(tmp_path, monkeypatch):
+    """an error while a batch's write is in flight: the call ends after that write, with no
+    writer thread left"""
+    import threading
+
+    events = []
+    _slow_writes(monkeypatch, 0.2, events)
+    real = SB._blend_batch
+    n = []
+
+    def blend(*a, **k):
+        n.append(1)
+        if len(n) == 2:
+            raise RuntimeError("a tile could not be read")
+        return real(*a, **k)
+
+    monkeypatch.setattr(SB, "_blend_batch", blend)
+    with pytest.raises(RuntimeError, match="could not be read"):
+        _blend_in(tmp_path / "e", BLENDS["blend.single_batches.none.uint16"], monkeypatch)
+    events.append(("raised", None))
+    assert [e[0] for e in events] == ["write", "written", "raised"]
+    assert not [t for t in threading.enumerate() if t.name.startswith("petakit5d-stitch")]
+    assert os.listdir("flags") == []
+
+
+def test_kept_batch_tiles_are_zero_where_the_tiles_do_not_go():
+    """the batch's tiles in memory kept from the batch before: 0 outside each tile's box where
+    its read fills the box, all 0 where it might not (a box of another size than the read)"""
+    from petakit5d.stitch.blockinfo import TileBlock
+
+    bufs = SB._BatchBuffers()
+    tiles = [
+        TileBlock(0, (0, 1, 2, 3, 5, 8), None, (2, 0, 1, 5, 4, 7), (), None),
+        TileBlock(1, (1, 0, 0, 4, 6, 9), None, (0, 0, 0, 3, 6, 8), (), None),
+    ]
+    boxes = [t.batch_box for t in tiles]
+    shape, dt = (2, 4, 6, 9), np.dtype(np.uint16)
+    bufs.tiles(shape, dt, tiles, boxes)[...] = 7  # (an earlier batch's tiles)
+    a = bufs.tiles(shape, dt, tiles, boxes)
+    want = np.zeros(shape, dtype=bool)
+    want[0, 0:3, 1:5, 2:8] = True
+    assert (a[want] == 7).all() and not a[~want].any()
+    assert np.shares_memory(a, bufs.tiles(shape, dt, tiles, boxes)), "the memory was not kept"
+    out = bufs.blend(a, "mean")
+    assert out.dtype == np.float32 and out.shape == shape[1:]
+    assert bufs.blend(a, "none").dtype == np.uint16
+    assert bufs.blend(a.astype(np.float64), "none") is None
+    bufs.release()
+
+
 def test_results_do_not_depend_on_the_thread_count(tmp_path, monkeypatch):
     out = []
     for nt in (1, 3):
