@@ -2404,10 +2404,11 @@ class TreeSpec:
     values: spec for decoded voxels and .mat contents; per_file: {glob: spec} for matching
     names; ignore: regexes of names not compared; ignore_vars: .mat variables not compared;
     ignore_fields: struct fields and JSON keys not compared, at any depth; tiff_bytes: tiff
-    files must be equal byte for byte (else voxels and tags only); zarr_chunks: 'note' reports
-    differing chunk-file sets as a note (zarr is compared by decoded data), 'strict' as a
-    problem; text_format: JSON and text must be equal as text (else by content);
-    masks: extra (regex, replacement) pairs for text, names and values.
+    files must also be equal byte for byte (by default a tiff is compared by its content: the
+    decoded voxels and the tags, not the byte layout: strip and IFD offsets, page order in the
+    file); zarr_chunks: 'note' reports differing chunk-file sets as a note (zarr is compared by
+    decoded data), 'strict' as a problem; text_format: JSON and text must be equal as text
+    (else by content); masks: extra (regex, replacement) pairs for text, names and values.
     """
 
     values: Spec = EXACT
@@ -2415,7 +2416,7 @@ class TreeSpec:
     ignore: tuple[str, ...] = ()
     ignore_vars: tuple[str, ...] = ("t", "t1")
     ignore_fields: tuple[str, ...] = ()
-    tiff_bytes: bool = True
+    tiff_bytes: bool = False
     zarr_chunks: str = "note"
     text_format: bool = True
     masks: tuple[tuple[str, str], ...] = ()
@@ -2439,7 +2440,7 @@ def tree(
     ignore: Sequence[str] = (),
     ignore_vars: Sequence[str] = ("t", "t1"),
     ignore_fields: Sequence[str] = (),
-    tiff_bytes: bool = True,
+    tiff_bytes: bool = False,
     zarr_chunks: str = "note",
     text_format: bool = True,
     masks: Sequence[tuple[str, str]] = (),
@@ -2579,6 +2580,32 @@ class _Side:
         fn = _read_tiff if self.it.kind == "tiff" else _read_zarr
         return self._get("vox", lambda: fn(self.it.path))
 
+    def tiff_pages(self) -> list[dict] | None:
+        """every page's tags without the layout ones (testing.content), or None: no file (a
+        manifest) or not a TIFF"""
+        if not self.has_file:
+            return None
+
+        def load():
+            from petakit5d.testing.content import NotTiff, tiff_pages
+
+            try:
+                return tiff_pages(self.it.path)
+            except (NotTiff, OSError, struct.error):
+                return None
+
+        return self._get("tpages", load)
+
+    def tiff_tags(self) -> dict | None:
+        """the tags' summary (pages, hash, first page; testing.content.tags_summary): from the
+        file, or from the manifest's descriptor (None when it was made before tags were kept)"""
+        if not self.has_file:
+            return self.d("tags")
+        from petakit5d.testing.content import tags_summary
+
+        pages = self.tiff_pages()
+        return None if pages is None else self._get("ttags", lambda: tags_summary(pages))
+
     def voxels_to_matlab(self) -> MValue:
         """the voxels of a zarr in Python's layout ((..., z, y, x)) as MATLAB's (y, x, z, ...)"""
         if not self.has_file:
@@ -2652,6 +2679,9 @@ class _Side:
         elif k == "tiff":
             d["sha"] = self.sha()
             d["data"] = describe(self.voxels())
+            tags = self.tiff_tags()
+            if tags is not None:
+                d["tags"] = tags
         elif k == "zarr":
             d["meta"] = self.zarr_meta()
             d["nchunks"], d["chunks_sha"] = self.zarr_chunks()
@@ -2765,19 +2795,23 @@ def _cmp_file(r: _Side, a: _Side, vspec: Spec, spec: TreeSpec, path: str, rep: R
     if rk == "tiff":
         if r.sha() == a.sha():
             return
+        # by content: the voxels and the tags; the byte layout (strip and IFD offsets, page
+        # order in the file) only with tiff_bytes
         sub = Report()
         _cmp(r.voxels(), a.voxels(), vspec, path + " (voxels)", sub)
+        tags = _cmp_tiff_tags(r, a, path, sub)
         rep.extend(sub)
-        if sub.ok and not sub.undecided:
+        if sub.ok and not sub.undecided and tags:
             if spec.tiff_bytes:
                 rep.add(
                     path,
                     "layout",
-                    "voxels are equal but the tiff bytes differ (layout, tags or compression)",
+                    "voxels and tags are equal but the tiff bytes differ (strip and IFD offsets, "
+                    "page order in the file)",
                     f"MATLAB {r.sha()[:16]}, Python {a.sha()[:16]}",
                 )
             else:
-                rep.note(path, "tiff bytes differ, voxels equal")
+                rep.note(path, "the tiff bytes differ in layout only (voxels and tags equal)")
         return
     if rk == "zarr":
         rmeta, ameta = r.zarr_meta(), a.zarr_meta()
@@ -2786,8 +2820,7 @@ def _cmp_file(r: _Side, a: _Side, vspec: Spec, spec: TreeSpec, path: str, rep: R
             _cmp_zarr_layouts(r, a, rz, az, vspec, spec, path, rep)
             return
         for k in sorted(set(rmeta) | set(ameta)):
-            if rmeta.get(k) != ameta.get(k):
-                rep.add(f"{path}/{k}", "meta", _text_diff(rmeta.get(k), ameta.get(k)))
+            _cmp_zarr_meta(rmeta.get(k), ameta.get(k), f"{path}/{k}", rep)
         (rn, rh), (an, ah) = r.zarr_chunks(), a.zarr_chunks()
         if rh != ah:
             line = f"chunk files differ: MATLAB {rn}, Python {an}"
@@ -2869,6 +2902,46 @@ def _cmp_file(r: _Side, a: _Side, vspec: Spec, spec: TreeSpec, path: str, rep: R
         rep.add(path, "bytes", f"bytes differ: MATLAB {r.sha()[:16]}, Python {a.sha()[:16]}")
 
 
+def _cmp_zarr_meta(rt: str | None, at: str | None, path: str, rep: Report) -> None:
+    """a zarr metadata file (.zarray, .zattrs, .zgroup, zarr.json) by its JSON: a text that
+    differs only in format (spacing, key order: the writer's layout) is a note"""
+    if rt == at:
+        return
+    parsed = None
+    if rt is not None and at is not None:
+        with contextlib.suppress(ValueError):
+            parsed = (json.loads(rt), json.loads(at))
+    if parsed is None:
+        rep.add(path, "meta", _text_diff(rt, at))
+    elif parsed[0] == parsed[1]:
+        rep.note(path, "the metadata text differs in format only (its JSON is equal)")
+    else:
+        rep.add(path, "meta", _json_diff(*parsed, ""), _text_diff(rt, at))
+
+
+def _cmp_tiff_tags(r: _Side, a: _Side, path: str, rep: Report) -> bool:
+    """compare two tiffs' tags (the layout tags left out); True when they are equal"""
+    from petakit5d.testing.content import tags_differences
+
+    rt, at = r.tiff_tags(), a.tiff_tags()
+    if rt is None and not r.has_file:
+        rep.undecide(
+            path,
+            "the manifest keeps no tags of this tiff (written before they were kept): "
+            "orun.sh -M or oracle rekey adds them",
+        )
+        return False
+    if rt is None or at is None:
+        who = "MATLAB's" if rt is None else "Python's"
+        rep.add(path, "tags", f"{who} file is not a TIFF whose tags can be read")
+        return False
+    lines = tags_differences(rt, at, r.tiff_pages(), a.tiff_pages())
+    if lines:
+        rep.add(path, "tags", *lines)
+        return False
+    return True
+
+
 def _zarray_of(meta: Mapping[str, str]) -> dict | None:
     """the array's .zarray (zarr v2) as a dict, or None"""
     t = meta.get(".zarray")
@@ -2931,8 +3004,7 @@ def _cmp_zarr_layouts(
         rep.add(f"{path}/.zarray", "meta", *lines)
     rmeta, ameta = r.zarr_meta(), a.zarr_meta()
     for k in sorted((set(rmeta) | set(ameta)) - {".zarray"}):
-        if rmeta.get(k) != ameta.get(k):
-            rep.add(f"{path}/{k}", "meta", _text_diff(rmeta.get(k), ameta.get(k)))
+        _cmp_zarr_meta(rmeta.get(k), ameta.get(k), f"{path}/{k}", rep)
     n = len(az["shape"])
     rc, ac = r.chunk_names(), a.chunk_names()
     if rc is not None and ac is not None:

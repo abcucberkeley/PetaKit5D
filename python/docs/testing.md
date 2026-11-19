@@ -229,13 +229,24 @@ Hints name the mapping's mistakes, from the sizes alone (CI) or from the values:
 ### Files
 
 `tree(values=, per_file={glob: spec}, ignore=[regex], ignore_vars=('t', 't1'), ignore_fields=(),
-tiff_bytes=True, zarr_chunks='note', text_format=True, masks=[(regex, replacement)])`:
+tiff_bytes=False, zarr_chunks='note', text_format=True, masks=[(regex, replacement)])`:
 
 - names are matched with uuids and 14-digit time stamps masked; files only one side wrote,
   and files removed from the work folder, are reported;
-- **tiff**: equal bytes, else the decoded voxels are compared and a byte difference with equal
-  voxels is a layout problem (`tiff_bytes=False`: a note);
-- **zarr**: decoded voxels and the metadata texts (`.zarray`, `.zattrs`, ...); different
+- **tiff**: by content (`petakit5d.testing.content`): equal bytes, else the decoded voxels and
+  the tags are compared. The tags are every tag of every page but the layout ones (strip and
+  tile offsets, byte counts and sizes, rows per strip, sub-IFD pointers) and those that name
+  the writer (Software, DateTime, HostComputer: MATLAB's blockedImage writes Software `MATLAB
+  blockedImage`), with their values (SHORT and LONG alike); a difference names the page and the
+  tag (`page 0 Compression (259): MATLAB [5], Python [1]`). The byte layout (where the strips
+  and IFDs sit, the page order in the file, byte order, classic TIFF or BigTIFF), which
+  cpp-tiff versions write differently, is not compared: a file that differs only there is a
+  note (`tiff_bytes=True`: a layout problem). A manifest keeps each tiff's SHA-256, its voxels'
+  descriptor and its tags (the first page's, and the hash of every page's); one written before
+  tags were kept cannot decide them, and the case is skipped in CI when the bytes differ
+  (`orun.sh -M` or `oracle rekey` adds them);
+- **zarr**: decoded voxels and the metadata files (`.zarray`, `.zattrs`, ...) by their JSON (a
+  text that differs only in format is a note); different
   chunk-file sets with equal data are a note (`zarr_chunks='strict'`: a problem), since the
   Python writer skips all-zero chunks. A native zarr of the port (order C, shape and chunks
   `(z, y, x)`) against MATLAB's (order F, `(y, x, z)`) is compared after the mapping: the
