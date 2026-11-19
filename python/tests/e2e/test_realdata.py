@@ -8,8 +8,9 @@ name (``petakit5d.matlab``) with the values a MATLAB script passes (``workflow``
    and camera backgrounds), as the production scripts write them;
 2. ``XR_tiffToZarr_wrapper`` with the flat-field correction (``zarr_ff/``);
 3. ``XR_matlab_stitching_wrapper`` in skewed space from the raw tiffs, the flat field applied
-   while converting the tiles, feather blending, the primary channel registered
-   (``matlab_stitch/``);
+   while converting the tiles, feather blending, the primary channel's tiles registered by
+   cross-correlation (``xcorrShift``; the port's ``stitch.registration``) and the other channel
+   placed by its result (``matlab_stitch/``);
 4. ``XR_decon_data_wrapper``: large-file OMW decon of the stitched volumes in place, block jobs
    on CPUs (``matlab_decon_omw/``) or GPUs (``matlab_decon_omw_<gpu>/``);
 5. ``XR_deskew_rotate_data_wrapper``: large-file deskew/rotation of the deconvolved volumes;
@@ -27,9 +28,6 @@ Environment (all optional; the tests skip without them):
     the demo cell dataset (the folder or its parent); only read, the runs link its files.
 ``PETAKIT5D_REALDATA_MATLAB``
     a MATLAB run of this workflow: the folder that holds its dataset folder.
-``PETAKIT5D_REALDATA_XCORR``
-    registration results to give the stitching while the tile registration is not ported:
-    the ``xcorr`` folder of a MATLAB run's ``matlab_stitch``.
 ``PETAKIT5D_TEST_SLURM_CONFIG``
     a cluster configuration for the cluster-mode test (``cluster``).
 """
@@ -362,21 +360,6 @@ def link_dataset(src: str, dst: str) -> str:
     return dst
 
 
-def give_registration(xcorr: str, data: str) -> int:
-    """copies a run's merged registration results (``<stitch>/xcorr/*.mat``) into the
-    dataset's ``matlab_stitch/xcorr/``, so that the stitching uses them (until the tile
-    registration is ported); returns the number of files"""
-    dst = os.path.join(_slash(data) + STITCH, "xcorr")
-    os.makedirs(dst, exist_ok=True)
-    n = 0
-    for p in sorted(glob.glob(os.path.join(xcorr, "*.mat"))):
-        q = os.path.join(dst, os.path.basename(p))
-        if not os.path.exists(q):
-            shutil.copyfile(p, q)
-        n += 1
-    return n
-
-
 # ---------------------------------------------------------------------------------------------
 # comparison of two runs
 # ---------------------------------------------------------------------------------------------
@@ -388,11 +371,6 @@ NOT_COMPARED = (
         r".*\.(png|fig)$",
         "figures: MATLAB draws the back projector's figure when it runs with a display "
         "toolkit; the port draws it with the optional figures extra (demos.md row 5)",
-    ),
-    (
-        r"matlab_stitch/xcorr/[^/]+/xcorr_tile_[^/]*\.mat$",
-        "per-pair registration results (the registration is not ported yet; the merged "
-        "xcorr/<name>.mat files are given to both sides)",
     ),
 )
 
@@ -437,6 +415,16 @@ def exceptions(kind: str) -> list[Exception_]:
             out.append(Exception_(1, pat + r"MIPs/", spec, why))
             out.append(Exception_(1, pat + r"DSR/", spec, why))
             out.append(Exception_(1, pat + r"psfgen/.*_(OTF|back_projector_.*)\.tif$", otf, why))
+        # the registration's correlation peaks (the shifts are whole numbers, so they stay exact)
+        out.append(
+            Exception_(
+                3,
+                rf"{STITCH}/xcorr/[^/]+/xcorr_tile_[^/]*\.mat$",
+                tol(reason="realdata row 3 (P7)", abs=5e-3),
+                "record 0006 (P7): the default CPU FFT moves the correlation peaks in their last "
+                "bits; the shifts, and so the stitched volumes, are the same",
+            )
+        )
     return out
 
 
@@ -661,7 +649,7 @@ def test_steps_are_selected_in_the_workflows_order(tmp_path):
         select(steps, ["stitching"])
 
 
-def test_the_dataset_is_linked_and_registration_given(tmp_path):
+def test_the_dataset_is_linked(tmp_path):
     src = tmp_path / "src"
     (src / "PSF").mkdir(parents=True)
     big = src / "tile.tif"
@@ -673,16 +661,6 @@ def test_the_dataset_is_linked_and_registration_given(tmp_path):
     assert os.path.islink(dst + "tile.tif") and not os.path.islink(dst + "PSF/psf.tif")
     assert Path(dst + IMAGE_LIST).read_text() == "a,b\n"
     assert link_dataset(str(src), dst) == dst  # again: nothing to do
-    xc = tmp_path / "xcorr"
-    (xc / "tile_name").mkdir(parents=True)
-    (xc / "tile_name.mat").write_bytes(b"m")
-    (xc / "tile_name" / "xcorr_tile_1_2.mat").write_bytes(b"p")
-    assert give_registration(str(xc), dst) == 1
-    # a result already there is kept
-    Path(dst + STITCH + "/xcorr/tile_name.mat").write_bytes(b"kept")
-    assert give_registration(str(xc), dst) == 1
-    assert Path(dst + STITCH + "/xcorr/tile_name.mat").read_bytes() == b"kept"
-    assert sorted(os.listdir(dst + STITCH + "/xcorr")) == ["tile_name.mat"]
 
 
 def test_outputs_leave_out_inputs_job_logs_and_empty_folders(tmp_path):
@@ -693,10 +671,16 @@ def test_outputs_leave_out_inputs_job_logs_and_empty_folders(tmp_path):
     (tmp_path / "job_logs").mkdir()
     (tmp_path / "job_logs" / "job_1.out").write_text("x", newline="\n")
     (tmp_path / STITCH / "xcorr" / "v").mkdir(parents=True)
-    (tmp_path / STITCH / "xcorr" / "v" / "xcorr_tile_1_2.mat").write_bytes(b"x")
+    (tmp_path / STITCH / "xcorr" / "v" / "xcorr_tile_1.mat").write_bytes(b"x")
+    (tmp_path / STITCH / "xcorr" / "v.mat").write_bytes(b"x")
     rels = outputs(str(tmp_path), ["in.tif"])
     assert "a/b.zarr" in rels and "in.tif" not in rels and "empty" not in rels
-    assert [r for r in rels if not not_compared(r)] == ["a/b.zarr"]
+    # the registration results, per pair and merged, are compared
+    assert [r for r in rels if not not_compared(r)] == [
+        "a/b.zarr",
+        f"{STITCH}/xcorr/v.mat",
+        f"{STITCH}/xcorr/v/xcorr_tile_1.mat",
+    ]
 
 
 def test_compare_runs_masks_the_roots_and_applies_the_exceptions(tmp_path):
@@ -728,6 +712,30 @@ def test_compare_runs_masks_the_roots_and_applies_the_exceptions(tmp_path):
     write_tiff(b, str(p / STITCH / DECON / "MIPs" / "v_MIP_z.tif"))
     rep, _ = compare_runs(str(m), str(p), kind="permissive", ref_roots=[str(m)], act_roots=[str(p)])
     assert not rep.ok
+
+
+def test_registration_peaks_are_within_p7_on_the_default_backend(tmp_path):
+    from petakit5d.io import write_mat
+
+    rel = f"{STITCH}/xcorr/v/xcorr_tile_1.mat"
+    for side, peak, shift in (("m", 0.9123456, 3.0), ("p", 0.9123459, 3.0), ("q", 0.9123459, 4.0)):
+        f = tmp_path / side / rel
+        f.parent.mkdir(parents=True)
+        write_mat(
+            str(f),
+            {
+                "relative_shift_mat": np.array([[shift, 0.0, -2.0]]),
+                "max_xcorr_mat": np.array([[1.0, 2.0, peak]]),
+                "pair_indices": np.array([[1.0, 2.0]]),
+            },
+            version="7.3",
+        )
+    m, p, q = (str(tmp_path / s) for s in "mpq")
+    assert not compare_runs(m, p, kind="exact")[0].ok
+    rep, summary = compare_runs(m, p, kind="permissive")
+    assert rep.ok and summary["ref"] == 1, rep.text()
+    # a shift is never within it
+    assert not compare_runs(m, q, kind="permissive")[0].ok
 
 
 def test_mode_comparison_leaves_out_what_the_modes_differ_in(tmp_path):
@@ -795,18 +803,6 @@ def _matlab_run() -> str:
     return _slash(os.path.join(value, CELL))
 
 
-def _registration(data: str, matlab_data: str | None) -> None:
-    import importlib.util
-
-    if importlib.util.find_spec("petakit5d.stitch.registration") is not None:
-        return
-    xcorr = os.environ.get("PETAKIT5D_REALDATA_XCORR", "")
-    if not xcorr and matlab_data:
-        xcorr = matlab_data + STITCH + "/xcorr"
-    if not xcorr or not give_registration(xcorr, data):
-        pytest.skip("the registration is not ported: give PETAKIT5D_REALDATA_XCORR")
-
-
 def _inputs(dataset: str) -> list[str]:
     from petakit5d.testing.compare import list_tree
 
@@ -822,7 +818,6 @@ def test_local_workflow_matches_matlab(dataset, tmp_path):
 
     mdata = _matlab_run()
     data = link_dataset(dataset, str(tmp_path / CELL))
-    _registration(data, mdata)
     logs = str(tmp_path / "job_logs")
     run_python(data, workflow(data, job_log_dir=logs, parse_cluster=False))
     kind = "exact" if fft.backend() == "exact" else "permissive"
@@ -849,7 +844,6 @@ def test_cluster_mode_gives_the_local_tree(dataset, tmp_path):
     for mode in ("local", "cluster"):
         root = tmp_path / mode
         data = link_dataset(dataset, str(root / CELL))
-        _registration(data, os.environ.get("PETAKIT5D_REALDATA_MATLAB") and _matlab_run())
         cluster = mode == "cluster"
         steps = workflow(
             data,
