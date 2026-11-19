@@ -875,15 +875,6 @@ def test_registration_result_is_applied(tmp_path):
     np.testing.assert_array_equal(si["dxyz_shift"], d)
 
 
-def test_registration_needs_its_result_until_s04(tmp_path, monkeypatch):
-    monkeypatch.setattr(V, "REGISTRATION_MODULE", "petakit5d.stitch._no_such_registration")
-    sc = _grid()
-    root = str(tmp_path)
-    fns, coords, tidx = _write(sc, root)
-    with pytest.raises(NotImplementedError, match="S04"):
-        _stitch(root, fns, coords, tidx, xcorr_shift=True)
-
-
 def test_single_tile_canvas_is_the_tile_plus_two_voxels(tmp_path):
     sc = SCENES["dsr.single_tile"]
     root = str(tmp_path)

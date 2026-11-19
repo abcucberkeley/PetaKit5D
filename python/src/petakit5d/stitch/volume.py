@@ -50,9 +50,8 @@ secondary channel of one stitched with the primary's information of the other):
   the port saves a struct of its ``Results`` (MATLAB's values) instead.
 
 Not ported: ``saveMultires`` (the multi-resolution result through Python's zarr in MATLAB;
-PLAN 4.3). Waiting on other tasks: the registration (S04: without it a primary channel with
-``xcorr_shift`` needs its ``xcorr/<name>.mat``). Tile functions written as MATLAB code are read
-in their standard forms only (``stitch.tile_functions``).
+PLAN 4.3). Tile functions written as MATLAB code are read in their standard forms only
+(``stitch.tile_functions``).
 """
 
 from __future__ import annotations
@@ -101,8 +100,6 @@ STITCH_INFO_VARS = (
     "imdistFileIdx",
     "xyz_orig",
 )
-# the registration's task module (S04's)
-REGISTRATION_MODULE = "petakit5d.stitch.registration"
 # a volume of more input than this (bytes, as single) is big data (fewer CPUs per task)
 BIG_DATA_BYTES = 100 * 2**30
 
@@ -550,19 +547,6 @@ def _process_fun_rows(process_fun_path: Any) -> list[list[str]] | None:
     if all(not f for r in rows for f in r):
         return None
     return rows
-
-
-def _check_registration() -> None:
-    import importlib.util
-
-    if importlib.util.find_spec(REGISTRATION_MODULE) is None:
-        err = NotImplementedError(
-            "the registration of the tiles (cross_correlation_registration_wrapper, task S04) "
-            "is not ported yet: give the volume's registration result xcorr/<name>.mat, or "
-            "set xcorr_shift=False"
-        )
-        err.identifier = "petakit5d:stitch:registrationNotPorted"  # type: ignore[attr-defined]
-        raise err
 
 
 @register(
@@ -1127,8 +1111,6 @@ def stitch_volume(
         if not os.path.exists(xcorr_final):
             from petakit5d.stitch.assignment import shift_assignment
 
-            if np.any(lay.overlap_matrix):
-                _check_registration()
             xcorr_tmp = f"{result_root}/xcorr/{nv_fsname}_{uuid}.mat"
             xyz_shift, dxyz_shift = shift_assignment(
                 zarr_fullpaths,
