@@ -741,60 +741,12 @@ def xcorr_result_paths(xcorr_dir: str, n_tiles: int) -> list[str]:
 def _tile_mip_slabs(tile_paths, pool_size, parse_cluster, mcc_mode, config_file) -> str:
     """``compute_tile_mip_slabs`` (S04's): the MIP slabs of large tiles for their registration;
     the name of their folder"""
-    try:
-        from petakit5d.stitch.registration import compute_tile_mip_slabs
-    except ImportError:
-        compute_tile_mip_slabs = _compute_tile_mip_slabs
+    from petakit5d.stitch.registration import compute_tile_mip_slabs
+
     return compute_tile_mip_slabs(
         tile_paths, pool_size, parse_cluster=parse_cluster, mcc_mode=mcc_mode,
         config_file=config_file,
     )  # fmt: skip
-
-
-def _compute_tile_mip_slabs(tile_paths, pool_size, *, parse_cluster, mcc_mode, config_file):
-    """stand-in for S04's ``compute_tile_mip_slabs`` (MATLAB's, on T02's ``mip_zarr``): slabs of
-    every tile in ``<tile folder>/MIP_Slabs_pooling_<pool sizes, y x z>/``, existing ones kept"""
-    from petakit5d.core.axes import to_yxz
-    from petakit5d.core.dtypes import mround
-    from petakit5d.core.paths import fileparts
-    from petakit5d.jobs import framework
-    from petakit5d.jobs.tasks import Task
-    from petakit5d.tools.mip import mip_zarr
-
-    ps = [int(v) for v in np.asarray(pool_size).ravel()]
-    yxz = [int(v) for g in range(0, len(ps), 3) for v in to_yxz(ps[g : g + 3])]
-    mip_dir = "MIP_Slabs_pooling_" + "_".join(str(v) for v in yxz)
-    parts = [fileparts(p) for p in tile_paths]
-    for d in sorted({p[0] for p in parts}):
-        path = f"{d}/{mip_dir}"
-        if not os.path.isdir(path):
-            os.mkdir(path)
-    tasks = [
-        Task.of(
-            mip_zarr, p, result_dir_name=mip_dir, axis=(1, 1, 1), batch_size=(1024, 1024, 1024),
-            pool_size=tuple(ps), mip_slab=True, parse_cluster=parse_cluster, parse_parfor=False,
-            mcc_mode=mcc_mode, config_file=config_file,
-        )
-        for p in tile_paths
-    ]  # fmt: skip
-    outputs = [f"{d}/{mip_dir}/{name}_z.zarr" for d, name, _ in parts]
-    mem = 1024**3 * 4 / 2**30 * 3
-    for i in range(3):
-        done = framework.run_tasks(
-            list(tile_paths),
-            outputs,
-            tasks,
-            cpus_per_task=1,
-            max_trial_num=2,
-            parse_cluster=parse_cluster,
-            mem_allocate=mem * 2**i,
-            min_task_job_num=int(mround(len(tile_paths) / 2)),
-            mcc_mode=mcc_mode,
-            config_file=config_file,
-        )
-        if all(done):
-            break
-    return mip_dir
 
 
 def _read_xcorr(path: str):
