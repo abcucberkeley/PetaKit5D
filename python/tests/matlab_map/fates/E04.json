@@ -1,0 +1,39 @@
+{
+  "task": "E04",
+  "classes": {
+    "MexInputCheckTest": {
+      "methods": {
+        "replaceNanMatlabCodeMatchesTheMex": [
+          "na:replace_nan_with_value.m is MATLAB's code for systems without the mex (macOS); the port has one implementation on every system, which its oracle cases compare with the mex",
+          "oracle:tests/kernels/test_stitch_kernels.py::nan.*"
+        ],
+        "replaceNanTakesADoubleValueForSingleInput": [
+          "oracle:tests/kernels/test_stitch_kernels.py::nan.single_double_*",
+          "oracle:tests/kernels/test_stitch_kernels.py::nan.single_uint8_*",
+          "oracle:tests/kernels/test_stitch_kernels.py::nan.single_value_double_input"
+        ],
+        "singleVolumeGetsTheValueXRLocmax3dPasses": [
+          "oracle:tests/kernels/test_stitch_kernels.py::nan.single_minus_1e8"
+        ]
+      }
+    },
+    "MexLockTest": {
+      "finished": true,
+      "fate": [
+        "na:MATLAB unloads mex files at exit, before the threads of their OpenMP runtime have ended (the macOS crash); CPython never unloads extension modules"
+      ]
+    },
+    "MexPackagingTest": {
+      "finished": true
+    },
+    "PathShadowingTest": {
+      "finished": true
+    },
+    "WaitsOfASecondTest": {
+      "finished": true,
+      "fate": [
+        "na:pktest.verifyWaitsOfASecond checks the MATLAB wrapper tests' own waits between their looks for results; the port's tests check its waits where they are made (tests/jobs)"
+      ]
+    }
+  }
+}
