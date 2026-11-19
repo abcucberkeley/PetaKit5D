@@ -273,8 +273,9 @@ def _p(matlab: str, validator: str, **kw: Any) -> _Param:
         "functionStrs",
         "@(x) iscell(x) || ischar(x)",
         "Per task a Task (a record dict, a callable without arguments), or with "
-        "language='bash' a command string.",
+        "language='bash' a command string; one Task is a list of one.",
         py="tasks",
+        convert="task_list",
     ),
     _p("finalOutFullpath", "@(x) ischar(x)"),
     _p("clusterType", "@ischar"),
@@ -385,7 +386,7 @@ def run_tasks(
     output_paths : per task the path whose existence means the task is done.
     tasks        : a list with per task a ``Task`` (or its record dict, a callable without
                    arguments, a functools.partial), or with ``language='bash'`` command
-                   strings (one task: a string).
+                   strings (one task: a ``Task``, or a string).
 
     The other parameters are those of MATLAB's generic_computing_frameworks_wrapper in
     snake_case and its order, with its defaults (RUN_TASKS_PARAMS lists them with their

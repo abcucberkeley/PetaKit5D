@@ -45,6 +45,8 @@ CASES = {
     "dim": [(1, -2), (2, -1), (3, -3), (4, -4), ((3, 1), (-3, -2))],
     "axis_string": [("yxz", "zyx"), ("xzy", "yxz"), ("", "")],
     "data_order": [("y,x,z", "z,y,x"), ("x,y,z", "z,x,y"), ("", "")],
+    "class_name": [("uint16", "uint16"), ("single", "single"), ("", "")],
+    "task_list": [(("echo 1", "echo 2"), ("echo 1", "echo 2")), ("echo 1", "echo 1")],
 }
 
 
@@ -64,6 +66,71 @@ def test_kind_round_trip(kind, m, py):
 
 def test_every_kind_is_tested():
     assert set(CASES) | {"volume"} == set(KINDS)
+
+
+def test_class_name_takes_numpy_types_as_their_class_names():
+    # createzarr's dtype (2026-11-18): a NumPy dtype or type is checked, and written to
+    # parameter files, as MATLAB's class name; text and values of no MATLAB class stay as given
+    k = KINDS["class_name"]
+    for v, name in [
+        (np.uint16, "uint16"),
+        (np.dtype("float32"), "single"),
+        (np.float64, "double"),
+        (np.dtype("uint8"), "uint8"),
+        (float, "double"),
+        (np.bool_, "logical"),
+    ]:
+        assert k.to_matlab(v) == name, v
+    for v in ("float32", "uint16", np.float16, 5, None):
+        assert k.to_matlab(v) is v
+    assert k.from_matlab("single") == "single"
+
+
+def test_every_class_name_parameter_takes_numpy_types_alike():
+    # every registered class-name parameter has the class_name kind, and its function gets
+    # MATLAB's class name for a NumPy type (the kind's canonical Python form); text stays text
+    from petakit5d.params import REGISTRY
+
+    kinds = {
+        f"{spec.matlab_name}.{p.matlab}": (p.conv.name if p.conv is not None else None)
+        for spec in REGISTRY.specs()
+        for p in spec.params
+        if p.matlab in ("dtype", "outClass")
+    }
+    named = ["createzarr.dtype", "imresize3_fast.outClass", "processStitchBlock.dtype",
+             "saveMIP_tiff.dtype", "saveMIP_zarr.dtype"]  # fmt: skip
+    assert set(named) <= set(kinds) and set(kinds.values()) == {"class_name"}, kinds
+    assert KINDS["class_name"].python is not None and KINDS["volume"].python is None
+    vol = np.zeros((4, 5, 6), np.uint16)
+    for name, args, kw, want in [
+        ("createzarr", ("a.zarr",), {"dtype": np.uint16}, "uint16"),
+        (
+            "processStitchBlock",
+            ([0], "b.mat", "p.mat", "f.mat", "s.zarr"),
+            {"dtype": np.uint8},
+            "uint8",
+        ),
+        ("saveMIP_tiff", ("a.tif", "a_MIP_z.tif"), {"dtype": np.dtype("float32")}, "single"),
+        ("saveMIP_zarr", ("a.zarr", "a_MIP_z.tif"), {"dtype": np.float64}, "double"),
+        ("saveMIP_zarr", ("a.zarr", "a_MIP_z.tif"), {"dtype": ""}, ""),
+        ("imresize3_fast", (vol, (2, 3, 4), "linear", None, np.float32), {}, "single"),
+    ]:
+        got = REGISTRY.find(name).bind_python(args, kw)
+        cls = got.get("dtype", got.get("out_class"))
+        assert cls == want and type(cls) is str, (name, cls)
+
+
+def test_task_list_takes_one_task_as_a_list_of_one():
+    # run_tasks' tasks (2026-11-18): one Task is a cell of one; anything else as given
+    from petakit5d.jobs.tasks import Task
+
+    k = KINDS["task_list"]
+    t = Task("os.path:exists", ["/"])
+    assert k.to_matlab(t) == (t,)
+    tasks = (t, Task("os.path:isdir", ["/"]))
+    assert k.to_matlab(tasks) is tasks
+    record = {"func": "os.path:exists", "args": ["/"]}
+    assert k.to_matlab(record) is record
 
 
 def test_volume_kind():

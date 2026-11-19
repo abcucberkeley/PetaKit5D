@@ -605,8 +605,33 @@ def test_matlab_name_layer_runs_the_tasks(tmp_path):
         with pytest.raises(MatlabArgumentError) as e:
             matlab.generic_computing_frameworks_wrapper(in_fns, out_fns, tasks_, *bad)
         assert e.value.identifier == ident, bad
+
+
+def test_one_task_is_a_list_of_one(tmp_path):
+    # 2026-11-18: run_tasks takes one Task (wrapped in a list, MATLAB's cell of one);
+    # other single values are refused as MATLAB's validator refuses a struct or a function
+    from petakit5d import matlab
+    from petakit5d.params import MatlabArgumentError
+
+    in_fns, out_fns, log_fn = make_tasks(tmp_path, 2)
+    tasks_ = task_list(in_fns, out_fns, log_fn, "copy")
+    assert run_tasks(in_fns[0], out_fns[0], tasks_[0], **LOCAL) == [True]
+    assert read_log(log_fn) == [out_fns[0]]
+    with pytest.raises(ValueError, match="2 inputs, 2 outputs and 1 tasks"):
+        run_tasks(in_fns, out_fns, tasks_[1], **LOCAL)
+    for one in (
+        tasks_[1].record(),
+        functools.partial(framework_task, in_fns[1], out_fns[1], log_fn),
+    ):
+        with pytest.raises(MatlabArgumentError) as e:
+            run_tasks(in_fns[1], out_fns[1], one, **LOCAL)
+        assert e.value.identifier == "MATLAB:InputParser:ArgumentFailedValidation"
+    # the MATLAB-name layer takes MATLAB's cell (a list)
     with pytest.raises(MatlabArgumentError):
-        run_tasks(in_fns, out_fns, tasks_[0], **LOCAL)  # a list of tasks, as a cell in MATLAB
+        matlab.generic_computing_frameworks_wrapper(
+            in_fns[1], out_fns[1], tasks_[1], "parseCluster", False
+        )
+    assert read_log(log_fn) == [out_fns[0]]
 
 
 def test_parameters_match_matlab():

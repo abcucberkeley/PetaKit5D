@@ -236,6 +236,8 @@ KINDS_BY_NAME: dict[str, str] = {
          "xyz_voxelsizes", "constOffset", "resampleType", "usePrimaryCoords"],
         "same",
     ),
+    # MATLAB class names, also as NumPy types (2026-11-18)
+    **dict.fromkeys(["dtype", "outClass"], "class_name"),
     # decided by the area task
     "downSample": "?S04",
     "MaxOffset": "?S04",
@@ -274,6 +276,8 @@ KINDS_BY_FUNCTION: dict[str, dict[str, str]] = {
     # the memory order flag of a new zarr ('F' in MATLAB; the port writes native C-order arrays,
     # decision 0004): checked, no conversion
     "createzarr": {"order": "same"},
+    # the tasks: one Task is a list of one (2026-11-18)
+    "generic_computing_frameworks_wrapper": {"functionStrs": "task_list"},
     # a crop box or size of the in-memory large-file decon ([] by default): R07 decides
     "RLdecon_large_in_memory": {"Crop": "?R07"},
     "XR_RotateFrame3D": {"resample": _DESKEW_RS},

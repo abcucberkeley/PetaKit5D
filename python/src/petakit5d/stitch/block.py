@@ -732,7 +732,12 @@ def _stitch_block_info_to_matlab(v: Any) -> Any:
     Param("Overwrite", "@islogical", "Redo a task whose flag exists."),
     Param("imSize", "@isnumeric", "Size (z, y, x) of the stitched volume.", convert="size_yxz"),
     Param("batchSize", "@isnumeric", "Batch size (z, y, x).", convert="size_yxz"),
-    Param("dtype", "@ischar", "Class of the stitched volume."),
+    Param(
+        "dtype",
+        "@ischar",
+        "Class of the stitched volume (or its NumPy type).",
+        convert="class_name",
+    ),
     Param("BlendMethod", "@ischar", "'none', 'max', 'mean', 'median' or 'feather'."),
     Param("BorderSize", "@isnumeric", "Border of the batches (z, y, x).", convert="size_yxz"),
     Param("imdistFullpaths", "@iscell", "Distance maps (feather)."),

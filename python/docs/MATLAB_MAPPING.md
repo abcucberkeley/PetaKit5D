@@ -240,7 +240,7 @@ Create an empty native zarr array (MATLAB ``createzarr``): an existing folder of
 | `dataSize` | `data_size` | par | size_yxz | `[500,500,500]` | `(500, 500, 500)` | `(1, :) {mustBeNumeric}` | Size (z, y, x), or (y, x) of an image. |
 | `blockSize` | `block_size` | par | size_yxz | `[500,500,500]` | `(500, 500, 500)` | `(1, :) {mustBeNumeric}` | Chunk size (z, y, x). |
 | `shardSize` | `shard_size` | par | size_yxz | `[]` | `None` | `(1, :) {mustBeNumeric}` | Inner chunk size (z, y, x) of a sharded Zarr v3 array (empty: no sharding). |
-| `dtype` | `dtype` | par |  | `'uint16'` | `'uint16'` | `char` | Class: 'uint8', 'uint16', 'single' or 'double'. |
+| `dtype` | `dtype` | par | class_name | `'uint16'` | `'uint16'` | `char` | Class: 'uint8', 'uint16', 'single' or 'double' (or its NumPy type). |
 | `order` | `order` | par | same | `'C'` | `'C'` | `char` | MATLAB's order flag; the array is native (z, y, x) in C order either way. (default differs from MATLAB: the port writes native (z, y, x) arrays in C order (decision 0004); MATLAB's 'F' is taken and gives the same array) |
 | `expand2dDim` | `expand_2d_dim` | par |  | `true` | `True` | `(1, 1) logical` | Store an image (y, x) as (1, y, x). |
 | `groupWrite` | `group_write` | par |  | `true` | `True` | `(1, 1) logical` | Make the folder group-writable (not on Windows). |
@@ -392,7 +392,7 @@ Runs tasks until their outputs exist; returns one done flag per task.
 |---|---|---|---|---|---|---|---|
 | `inputFullpaths` | `input_paths` | req |  |  |  | `@(x) iscell(x) \|\| ischar(x)` | Per task a path, or a list of paths; a task whose input is missing is not run. (renamed) |
 | `outputFullpaths` | `output_paths` | req |  |  |  | `@(x) iscell(x) \|\| ischar(x)` | Per task the path whose existence means the task is done. (renamed) |
-| `functionStrs` | `tasks` | req |  |  |  | `@(x) iscell(x) \|\| ischar(x)` | Per task a Task (a record dict, a callable without arguments), or with language='bash' a command string. (renamed) |
+| `functionStrs` | `tasks` | req | task_list |  |  | `@(x) iscell(x) \|\| ischar(x)` | Per task a Task (a record dict, a callable without arguments), or with language='bash' a command string; one Task is a list of one. (renamed) |
 | `finalOutFullpath` | `final_out_fullpath` | par |  | `''` | `''` | `@(x) ischar(x)` | stop (all tasks done) once this path exists |
 | `clusterType` | `cluster_type` | par |  | `'slurm'` | `'slurm'` | `@ischar` | 'slurm' (cluster jobs or local) or 'parfor' (local process pool) |
 | `mccMode` | `mcc_mode` | par |  | `false` | `False` | `@islogical` | MATLAB only (compiled jobs); ignored |
@@ -476,7 +476,7 @@ PetaKit5D's ``imresize3_fast(im, outSize, method, outBbox, outClass)``: imresize
 | `outSize` | `out_size` | req | size_yxz |  |  |  | Output size (z, y, x), rounded up. |
 | `method` | `method` | opt |  | `'cubic'` | `'cubic'` |  | 'linear' or 'cubic' (other methods: imresize3's result). |
 | `outBbox` | `out_bbox` | opt | bbox | `[]` | `None` |  | Output region (z0, y0, x0, z1, y1, x1) to compute (None: all). |
-| `outClass` | `out_class` | opt |  | `[]` | `None` |  | MATLAB class to resize in (None: the class of im). |
+| `outClass` | `out_class` | opt | class_name | `[]` | `None` |  | MATLAB class to resize in, or its NumPy type (None: the class of im). |
 | `num_threads` | `num_threads` | par |  | `[]` | `None` |  | Threads (None: all available). (Python only) |
 
 ### `MIP_block` -> `petakit5d.tools.mip.mip_block`
@@ -581,7 +581,7 @@ Flat-field correction of a frame in memory with the flat field and the backgroun
 | `Overwrite` | `overwrite` | par |  | `false` | `False` | `@islogical` | Redo a task whose flag exists. |
 | `imSize` | `im_size` | par | size_yxz | `[]` | `None` | `@isnumeric` | Size (z, y, x) of the stitched volume. |
 | `batchSize` | `batch_size` | par | size_yxz | `[]` | `None` | `@isnumeric` | Batch size (z, y, x). |
-| `dtype` | `dtype` | par |  | `'uint16'` | `'uint16'` | `@ischar` | Class of the stitched volume. |
+| `dtype` | `dtype` | par | class_name | `'uint16'` | `'uint16'` | `@ischar` | Class of the stitched volume (or its NumPy type). |
 | `BlendMethod` | `blend_method` | par |  | `'feather'` | `'feather'` | `@ischar` | 'none', 'max', 'mean', 'median' or 'feather'. |
 | `BorderSize` | `border_size` | par | size_yxz | `[]` | `None` | `@isnumeric` | Border of the batches (z, y, x). |
 | `imdistFullpaths` | `imdist_fullpaths` | par |  | `{}` | `()` | `@iscell` | Distance maps (feather). |
@@ -912,7 +912,7 @@ The MIPs of a tiff file (or of its box) along the flagged axes, cast to ``dtype`
 |---|---|---|---|---|---|---|---|
 | `frameFullname` | `frame_fullname` | req |  |  |  | `@ischar` | Tiff file. |
 | `MIPFullname` | `mip_fullname` | req |  |  |  | `@ischar` | MIP file name (<name>_MIP_z.tif); skipped if it exists. |
-| `dtype` | `dtype` | par |  | `'uint16'` | `'uint16'` | `@ischar` | Class of the MIPs. |
+| `dtype` | `dtype` | par | class_name | `'uint16'` | `'uint16'` | `@ischar` | Class of the MIPs (or its NumPy type). |
 | `axis` | `axis` | par | flags_yxz | `[0,0,1]` | `(1, 0, 0)` | `@isnumeric` | Axes (z, y, x) to project along (nonzero). |
 | `inputBbox` | `input_bbox` | par | bbox | `[]` | `None` | `@(x) isempty(x) \|\| isvector(x)` | Region (z0, y0, x0, z1, y1, x1) to project (None: all). |
 
@@ -924,7 +924,7 @@ The MIPs of a zarr file (or of its box) along the flagged axes, cast to ``dtype`
 |---|---|---|---|---|---|---|---|
 | `zarrFullname` | `zarr_fullname` | req |  |  |  | `@(x) ischar(x)` | Zarr file. |
 | `MIPFullname` | `mip_fullname` | req |  |  |  | `@(x) ischar(x)` | MIP file name (<name>_MIP_z.tif). |
-| `dtype` | `dtype` | par |  | `''` | `''` | `@(x) ischar(x) \|\| isstring(x)` | Class of the MIPs (empty: the zarr's class). |
+| `dtype` | `dtype` | par | class_name | `''` | `''` | `@(x) ischar(x) \|\| isstring(x)` | Class of the MIPs, or its NumPy type (empty: the zarr's class). |
 | `axis` | `axis` | par | flags_yxz | `[0,0,1]` | `(1, 0, 0)` | `@(x) isvector(x) \|\| numel(x) == 3` | Axes (z, y, x) to project along (nonzero). |
 | `inputBbox` | `input_bbox` | par | bbox | `[]` | `None` | `@(x) isempty(x) \|\| isvector(x)` | Region (z0, y0, x0, z1, y1, x1) to project (None: all). |
 

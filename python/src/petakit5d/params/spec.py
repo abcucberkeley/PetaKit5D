@@ -871,7 +871,9 @@ class FunctionSpec:
             p = by_py[k]
             a = text_paths(a)
             p.check(_as_matlab_sees(p, a), self.matlab_name)
-            out[k] = normalize(a)
+            a = normalize(a)
+            # (a kind's canonical Python form: a class_name's NumPy type as its class name)
+            out[k] = a if p.conv is None or p.conv.python is None else p.conv.python(a)
         return out
 
     def bind_matlab(

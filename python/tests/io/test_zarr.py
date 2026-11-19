@@ -909,6 +909,36 @@ def test_registered_createzarr_writezarr_and_readzarr(tmp_path):
         write_zarr(vol, tmp_path / "w.zarr", block_sizes=(4, 8, 8))
 
 
+def test_create_zarr_takes_numpy_types(tmp_path):
+    # 2026-11-18: create_zarr takes NumPy dtypes and types again, as its MATLAB class
+    # names (checked as those), for the same file; a type of no MATLAB class fails MATLAB's
+    # validator, a class createzarr lacks its own check; the MATLAB-name layer takes MATLAB's
+    # text only
+    from petakit5d import matlab
+    from petakit5d.params import MatlabArgumentError
+
+    def zarray(dtype):
+        fn = tmp_path / "a.zarr"
+        create_zarr(fn, data_size=(3, 20, 11), block_size=(2, 8, 8), dtype=dtype)
+        return (fn / ".zarray").read_bytes()
+
+    for numpy_type, name in [
+        (np.uint16, "uint16"),
+        (np.dtype("uint8"), "uint8"),
+        (np.float32, "single"),
+        (np.dtype("float64"), "double"),
+    ]:
+        assert zarray(numpy_type) == zarray(name), name
+    for bad in (np.float16, 5):
+        with pytest.raises(MatlabArgumentError) as e:
+            create_zarr(tmp_path / "b.zarr", dtype=bad)
+        assert e.value.identifier == "MATLAB:InputParser:ArgumentFailedValidation"
+    with pytest.raises(ValueError, match="Unsupported data type int16"):
+        create_zarr(tmp_path / "b.zarr", dtype=np.int16)
+    with pytest.raises(MatlabArgumentError):
+        matlab.createzarr(str(tmp_path / "c.zarr"), "dtype", np.uint16)
+
+
 # --- MATLAB oracle -------------------------------------------------------------------------------
 # MATLAB writes with writezarr and reads with readzarr (boxes at the borders, chunk remainders);
 # Python reads MATLAB's layout (cpp-zarr's order-F write is the mex's file, IO1) and writes and

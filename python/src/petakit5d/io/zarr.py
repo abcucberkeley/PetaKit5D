@@ -313,7 +313,12 @@ _LOGICAL = "(1, 1) logical"
         "Inner chunk size (z, y, x) of a sharded Zarr v3 array (empty: no sharding).",
         convert="size_yxz",
     ),
-    Param("dtype", "char", "Class: 'uint8', 'uint16', 'single' or 'double'."),
+    Param(
+        "dtype",
+        "char",
+        "Class: 'uint8', 'uint16', 'single' or 'double' (or its NumPy type).",
+        convert="class_name",
+    ),
     Param(
         "order",
         "char",
@@ -356,7 +361,8 @@ def create_zarr(
 
     ``data_size``, ``block_size``, ``shard_size`` and ``zarr_sub_size`` are in ``(z, y, x)``;
     an image size ``(ny, nx)`` is stored as ``[1, ny, nx]`` (as ``[ny, nx]`` without
-    ``expand_2d_dim``). Types: ``'uint8'``, ``'uint16'``, ``'single'``, ``'double'``.
+    ``expand_2d_dim``). Types: ``'uint8'``, ``'uint16'``, ``'single'``, ``'double'``, or their
+    NumPy types (``np.uint16``, ``np.dtype('float32')``), taken as those class names.
     ``order``: ``'C'`` or MATLAB's ``'F'``; both give the native array (C order). With
     ``shard_size`` the array is Zarr v3: shards of ``block_size`` holding chunks of
     ``shard_size`` (``zarr.json``).

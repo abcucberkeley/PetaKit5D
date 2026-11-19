@@ -68,6 +68,8 @@ Rules:
   | `dim` | dimension numbers (1 y, 2 x, 3 z) | NumPy axes (-2, -1, -3) |
   | `axis_string`, `data_order` | `'yxz'`, `'y,x,z'` | `'zyx'`, `'z,y,x'` |
   | `volume` | `(y, x, z)` Fortran image array | `(z, y, x)` C array |
+  | `class_name` | a class name (`'uint16'`, `'single'`) | the same, or a NumPy dtype or type (`np.uint16`), checked as and given to the function as its class name |
+  | `task_list` | a cell of tasks | a list of tasks, or one `Task`, checked as a cell of one |
   | `same` | checked: no conversion (stage coordinates in x, y, z, counts, intensities) | |
 
   Decide each kind from the MATLAB code that uses the value, not from its name: most

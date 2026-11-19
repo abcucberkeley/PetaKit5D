@@ -1127,6 +1127,29 @@ def test_save_mip_tiff_writes_requested_axes(tmp_path):
     assert not os.path.exists(tmp_path / "out_MIP_x.tif")
 
 
+def test_save_mips_take_numpy_types_as_class_names(tmp_path):
+    # saveMIP_tiff's and saveMIP_zarr's dtype has the class_name kind: a NumPy type is its MATLAB
+    # class name, the same files (as createzarr's dtype)
+    im = volume(IM_SIZE, "uint16", "np")
+    write_tiff(im, str(tmp_path / "im.tif"))
+    write_zarr(im, str(tmp_path / "im.zarr"))
+    for cls, numpy_type in (("uint8", np.uint8), ("single", np.dtype("float32"))):
+        mip.save_mip_tiff(str(tmp_path / "im.tif"), str(tmp_path / f"t_{cls}_MIP_z.tif"), dtype=cls)
+        mip.save_mip_tiff(
+            str(tmp_path / "im.tif"), str(tmp_path / f"tn_{cls}_MIP_z.tif"), dtype=numpy_type
+        )
+        mip.save_mip_zarr(
+            str(tmp_path / "im.zarr"), str(tmp_path / f"z_{cls}_MIP_z.tif"), dtype=cls
+        )
+        mip.save_mip_zarr(
+            str(tmp_path / "im.zarr"), str(tmp_path / f"zn_{cls}_MIP_z.tif"), dtype=numpy_type
+        )
+        for a, b in (("t", "tn"), ("z", "zn")):
+            got = read_tiff(str(tmp_path / f"{b}_{cls}_MIP_z.tif"))
+            same_bits(got, read_tiff(str(tmp_path / f"{a}_{cls}_MIP_z.tif")))
+            assert got.dtype == np.dtype(numpy_type)
+
+
 def test_mip_tiffs_keep_matlabs_orientation(tmp_path):
     # the y MIP is MATLAB's nx x nz image, the x MIP ny x nz: transposes of NumPy's
     im = volume((5, 7, 3), "uint16", "orient")

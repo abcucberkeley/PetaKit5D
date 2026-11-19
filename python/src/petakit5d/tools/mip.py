@@ -301,7 +301,7 @@ def _crop_yx(im: np.ndarray, box: Sequence[int]) -> np.ndarray:
     "saveMIP_tiff",
     Param("frameFullname", "@ischar", "Tiff file."),
     Param("MIPFullname", "@ischar", "MIP file name (<name>_MIP_z.tif); skipped if it exists."),
-    Param("dtype", "@ischar", "Class of the MIPs."),
+    Param("dtype", "@ischar", "Class of the MIPs (or its NumPy type).", convert="class_name"),
     Param("axis", "@isnumeric", "Axes (z, y, x) to project along (nonzero).", convert="flags_yxz"),
     Param(
         "inputBbox",
@@ -450,7 +450,12 @@ def _axis_mip_blockwise(zarr_fullname: str, i: int, box: Sequence[int] | None) -
     "saveMIP_zarr",
     Param("zarrFullname", "@(x) ischar(x)", "Zarr file."),
     Param("MIPFullname", "@(x) ischar(x)", "MIP file name (<name>_MIP_z.tif)."),
-    Param("dtype", "@(x) ischar(x) || isstring(x)", "Class of the MIPs (empty: the zarr's class)."),
+    Param(
+        "dtype",
+        "@(x) ischar(x) || isstring(x)",
+        "Class of the MIPs, or its NumPy type (empty: the zarr's class).",
+        convert="class_name",
+    ),
     Param(
         "axis",
         "@(x) isvector(x) || numel(x) == 3",

@@ -25,6 +25,10 @@ kind                    MATLAB                                 Python
 ``axis_string``         ``'yxz'`` (names the array's axes)      ``'zyx'``
 ``data_order``          ``'y,x,z'``                             ``'z,y,x'``
 ``volume``              ``(y, x, z)`` Fortran image array       ``(z, y, x)`` C array
+``class_name``          a class name (``'uint16'``)             the same, or a NumPy dtype or type
+                                                                (``np.uint16``), given to the
+                                                                function as its class name
+``task_list``           a cell of tasks                         a list of tasks, or one ``Task``
 ======================  =====================================  ==================================
 
 Empty values (``[]``, ``''``) are None (or ``""``) on both sides. Anything else is a pair of
@@ -41,15 +45,25 @@ __all__ = ["KINDS", "Kind", "get_kind", "looks_converted"]
 
 
 class Kind:
-    """A named pair of conversions (both take and give plain Python values)."""
+    """A named pair of conversions (both take and give plain Python values). ``python``, if
+    given, makes a snake_case value canonical after the check: the function gets
+    ``python(value)`` (a ``class_name`` value as its MATLAB class name)."""
 
-    __slots__ = ("name", "from_matlab", "to_matlab", "doc")
+    __slots__ = ("name", "from_matlab", "to_matlab", "doc", "python")
 
-    def __init__(self, name: str, from_matlab: Callable, to_matlab: Callable, doc: str = ""):
+    def __init__(
+        self,
+        name: str,
+        from_matlab: Callable,
+        to_matlab: Callable,
+        doc: str = "",
+        python: Callable | None = None,
+    ):
         self.name = name
         self.from_matlab = from_matlab
         self.to_matlab = to_matlab
         self.doc = doc
+        self.python = python
 
     def __repr__(self) -> str:
         return f"<conversion kind {self.name}>"
@@ -250,6 +264,28 @@ def _same(v: Any) -> Any:
     return v
 
 
+def _class_out(v: Any) -> Any:
+    # a NumPy dtype or scalar type as its MATLAB class name; text, and values that name no
+    # MATLAB class, as given (the validator sees them so)
+    if v is None or isinstance(v, str):
+        return v
+    import numpy as np
+
+    from petakit5d.core.arrays import matlab_class
+
+    try:
+        return matlab_class(np.dtype(v))
+    except (TypeError, ValueError):
+        return v
+
+
+def _task_list_out(v: Any) -> Any:
+    # one Task is a cell of one task
+    from petakit5d.jobs.tasks import Task
+
+    return (v,) if isinstance(v, Task) else v
+
+
 KINDS: dict[str, Kind] = {
     k.name: k
     for k in (
@@ -273,6 +309,8 @@ KINDS: dict[str, Kind] = {
         Kind("axis_string", _skip_empty(_axis_in), _skip_empty(_axis_out), "'yxz' axis names"),
         Kind("data_order", _skip_empty(_axis_in), _skip_empty(_axis_out), "'y,x,z' data order"),
         Kind("volume", _skip_empty(_vol_in), _skip_empty(_vol_out), "image array"),
+        Kind("class_name", _same, _class_out, "class name", python=_class_out),
+        Kind("task_list", _same, _task_list_out, "cell of tasks"),
     )
 }
 

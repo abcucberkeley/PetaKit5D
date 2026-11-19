@@ -1190,6 +1190,16 @@ def test_unported_inputs_are_named():
         R.imresize(np.zeros((4, 5), np.int64), (2, 2))
 
 
+def test_imresize3_fast_takes_a_numpy_type_as_its_out_class():
+    # outClass has the class_name kind: a NumPy type is its MATLAB class name (str() of the type
+    # failed before)
+    v = np.ascontiguousarray(np.transpose(volume(7, (21, 17, 13), "uint16"), (2, 0, 1)))
+    for cls, numpy_type in (("single", np.float32), ("double", np.dtype("float64"))):
+        want = R.imresize3_fast(v, (9, 14, 11), "linear", None, cls)
+        got = R.imresize3_fast(v, (9, 14, 11), "linear", None, numpy_type)
+        assert got.dtype == want.dtype and np.array_equal(got, want)
+
+
 def test_imresize3_fast_region_equals_the_crop_of_the_whole():
     v = np.ascontiguousarray(np.transpose(volume(6, (41, 37, 23), "uint16"), (2, 0, 1)))
     whole = R.imresize3_fast(v, (15, 28, 27), "cubic")

@@ -545,7 +545,12 @@ _FAST_KERNELS = {"linear": "triangle", "cubic": "cubic"}
         "Output region (z0, y0, x0, z1, y1, x1) to compute (None: all).",
         convert="bbox",
     ),
-    Param("outClass", None, "MATLAB class to resize in (None: the class of im)."),
+    Param(
+        "outClass",
+        None,
+        "MATLAB class to resize in, or its NumPy type (None: the class of im).",
+        convert="class_name",
+    ),
     Param("num_threads", None, "Threads (None: all available).", python_only=True),
     task="N01",
 )
