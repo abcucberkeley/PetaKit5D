@@ -1,0 +1,52 @@
+{
+  "task": "E06",
+  "classes": {
+    "IsolationHarnessTest": {
+      "finished": true,
+      "methods": {
+        "capturedTasksGiveTheSameOutputsInAnyOrder": [
+          "pytest:tests/jobs/test_hardening_isolation.py::test_every_task_function_equals_fresh_processes_in_5_orders",
+          "pytest:tests/jobs/test_isolation.py::test_harness_five_random_orders_equal_fresh_processes"
+        ],
+        "compareFindsDifferentOutputs": [
+          "pytest:tests/jobs/test_isolation.py::test_harness_sees_what_tasks_leave_without_the_restore"
+        ],
+        "fileDescriptorsAreThoseOfFilesOutsideMATLAB": [
+          "pytest:tests/jobs/test_runner.py::test_process_with_many_more_open_files_is_renewed"
+        ],
+        "fullResetClearsPersistentVariables": [
+          "na:MATLAB's persistent variables and clear functions; Python modules stay imported, their caches are keyed by contents, and the harness over every task function shows it",
+          "pytest:tests/jobs/test_hardening_isolation.py::test_every_task_function_equals_fresh_processes_in_5_orders"
+        ],
+        "fullResetRestoresTheProcess": [
+          "pytest:tests/jobs/test_isolation.py::test_folder_environment_and_path_are_given_back",
+          "pytest:tests/jobs/test_isolation.py::test_umask_signals_alarm_and_stdio_are_given_back",
+          "pytest:tests/jobs/test_isolation.py::test_interpreter_settings_are_given_back",
+          "pytest:tests/jobs/test_isolation.py::test_rounding_mode_is_given_back"
+        ],
+        "prototypeResetRestoresItsPart": [
+          "na:MATLAB's lighter 'prototype' reset; the port has one restore (jobs.isolation.ProcessState.restore)"
+        ],
+        "runRecordsLeaksAndResetsUndoThem": [
+          "pytest:tests/jobs/test_isolation.py::test_harness_five_random_orders_equal_fresh_processes"
+        ],
+        "snapshotSeesWhatATaskChanges": [
+          "pytest:tests/jobs/test_isolation.py::test_folder_environment_and_path_are_given_back",
+          "pytest:tests/jobs/test_isolation.py::test_warning_filters_are_given_back",
+          "pytest:tests/jobs/test_isolation.py::test_cpus_are_given_back"
+        ]
+      }
+    },
+    "TaskStateLeakTest": {
+      "methods": {
+        "ownRandomStreamGivesThePermutationOfRng1": [
+          "pytest:tests/tools/test_small_tools.py::test_randperm_seed1_is_matlabs"
+        ],
+        "wrapperRestoresTheDirectoryExistsWarning": [
+          "pytest:tests/jobs/test_isolation.py::test_warning_filters_are_given_back",
+          "pytest:tests/jobs/test_isolation.py::test_warnings_shown_once_show_again_after_the_restore"
+        ]
+      }
+    }
+  }
+}
