@@ -43,7 +43,8 @@ from functools import cache
 import numpy as np
 
 from petakit5d.core.axes import from_yxz
-from petakit5d.io.imagesize import path_str, threads, zarr_layout, zarr_meta
+from petakit5d.io.imagesize import image_to_matlab, path_str, threads, zarr_layout, zarr_meta
+from petakit5d.params import Param, register
 
 __all__ = [
     "create_zarr",
@@ -296,6 +297,44 @@ def _fit2d(block: list[int], size: list[int], expand: bool) -> tuple[list[int], 
     return ([1, *size], [1, *yx]) if expand else (size, yx)
 
 
+_NUMERIC = "(1, :) {mustBeNumeric}"
+_LOGICAL = "(1, 1) logical"
+
+
+@register(
+    "createzarr",
+    Param("filepath", "char", "Zarr array to create (an existing folder is replaced)."),
+    Param("overwrite", _LOGICAL, "Accepted; the folder is always replaced, as in MATLAB."),
+    Param("dataSize", _NUMERIC, "Size (z, y, x), or (y, x) of an image.", convert="size_yxz"),
+    Param("blockSize", _NUMERIC, "Chunk size (z, y, x).", convert="size_yxz"),
+    Param(
+        "shardSize",
+        _NUMERIC,
+        "Inner chunk size (z, y, x) of a sharded Zarr v3 array (empty: no sharding).",
+        convert="size_yxz",
+    ),
+    Param("dtype", "char", "Class: 'uint8', 'uint16', 'single' or 'double'."),
+    Param(
+        "order",
+        "char",
+        "MATLAB's order flag; the array is native (z, y, x) in C order either way.",
+        convert="same",
+        differs="the port writes native (z, y, x) arrays in C order (decision 0004); MATLAB's "
+        "'F' is taken and gives the same array",
+    ),
+    Param("expand2dDim", _LOGICAL, "Store an image (y, x) as (1, y, x)."),
+    Param("groupWrite", _LOGICAL, "Make the folder group-writable (not on Windows)."),
+    Param("compressor", "char", "Blosc compressor ('zstd', 'lz4', ...), 'gzip' or 'none'."),
+    Param("clevel", "(1, 1) {mustBeNumeric}", "Compression level."),
+    Param(
+        "zarrSubSize",
+        _NUMERIC,
+        "Subfolders (z, y, x) of the chunk files (empty: none).",
+        convert="size_yxz",
+    ),
+    Param("dimSeparator", "char", "Chunk key separator: '.' or '/'."),
+    task="IO2",
+)
 def create_zarr(
     filepath,
     *,
@@ -304,6 +343,7 @@ def create_zarr(
     block_size: Sequence[int] = _BLOCK,
     shard_size: Sequence[int] | None = None,
     dtype="uint16",
+    order: str = "C",
     expand_2d_dim: bool = True,
     group_write: bool = True,
     compressor: str = "zstd",
@@ -316,12 +356,14 @@ def create_zarr(
 
     ``data_size``, ``block_size``, ``shard_size`` and ``zarr_sub_size`` are in ``(z, y, x)``;
     an image size ``(ny, nx)`` is stored as ``[1, ny, nx]`` (as ``[ny, nx]`` without
-    ``expand_2d_dim``). Types: ``'uint8'``, ``'uint16'``, ``'single'``, ``'double'`` (or their
-    NumPy types). MATLAB's ``order`` option is not taken: native arrays are C order. With
+    ``expand_2d_dim``). Types: ``'uint8'``, ``'uint16'``, ``'single'``, ``'double'``.
+    ``order``: ``'C'`` or MATLAB's ``'F'``; both give the native array (C order). With
     ``shard_size`` the array is Zarr v3: shards of ``block_size`` holding chunks of
     ``shard_size`` (``zarr.json``).
     """
     del overwrite  # (MATLAB's createzarr always replaces the folder)
+    if order not in ("F", "C"):
+        raise ValueError(f"order must be 'F' or 'C', not {order!r}")
     path = path_str(filepath)
     size = _ints(data_size, "dataSize")
     block = _ints(block_size, "blockSize")
@@ -386,6 +428,27 @@ def _array_dtype(meta: dict) -> np.dtype:
     return np.dtype(meta["dtype"] if "dtype" in meta else meta["data_type"]).newbyteorder("=")
 
 
+@register(
+    "readzarr",
+    Param("filepath", "char", "Zarr array."),
+    Param(
+        "inputBbox",
+        "(1, :) {mustBeNumeric, mustBeFinite}",
+        "Box (z0, y0, x0, z1, y1, x1) to read (None ends: open; empty: all).",
+        convert="bbox",
+    ),
+    Param("sparseData", "(1, :) {mustBeNumericOrLogical}", "Accepted; results are the same."),
+    Param(
+        "axes",
+        None,
+        "Layout of the array: 'auto' (MATLAB's when its order is F), 'zyx' or 'yxz'.",
+        python_only=True,
+    ),
+    Param("numThreads", None, "Threads (None: the CPUs available).", python_only=True),
+    Param("out", None, "Array or ReadBuffer to read into (reused over reads).", python_only=True),
+    task="IO2",
+    matlab_out=image_to_matlab,
+)
 def read_zarr(
     filepath,
     *,
@@ -603,6 +666,34 @@ def _region_write(path: str, data: np.ndarray, box, sparse_data: bool, uuid: boo
     cppzarr.write_zarr(path, data, start, stop, num_threads=n, **kw)
 
 
+@register(
+    "writezarr",
+    Param("data", "{mustBeNumeric}", "Image (y, x) or volume (z, y, x).", convert="volume"),
+    Param("filepath", "char", "Zarr array."),
+    Param("overwrite", _LOGICAL, "Replace an existing array (without bbox)."),
+    Param("blockSize", _NUMERIC, "Chunk size (z, y, x) of a new array.", convert="size_yxz"),
+    Param(
+        "shardSize",
+        _NUMERIC,
+        "Inner chunk size (z, y, x) of a new sharded array (empty: no sharding).",
+        convert="size_yxz",
+    ),
+    Param(
+        "zarrSubSize",
+        _NUMERIC,
+        "Subfolders (z, y, x) of the chunk files of a new array.",
+        convert="size_yxz",
+    ),
+    Param("expand2dDim", _LOGICAL, "Accepted; an image is stored as (1, y, x), as in MATLAB."),
+    Param("groupWrite", _LOGICAL, "Make a new array group-writable (not on Windows)."),
+    Param("bbox", _NUMERIC, "Box (z0, y0, x0, z1, y1, x1) of the array to write.", convert="bbox"),
+    Param("sparseData", "(1, :) logical", "Leave out chunks that are all zero."),
+    Param("dimSeparator", "char", "Chunk key separator of a new array: '.' or '/'."),
+    Param("create", "logical", "Create a missing array (else an error)."),
+    Param("uuid", _LOGICAL, "Write chunks to temporary names, then rename them."),
+    Param("numThreads", None, "Threads (None: the CPUs available).", python_only=True),
+    task="IO2",
+)
 def write_zarr(
     data,
     filepath,

@@ -583,6 +583,32 @@ def test_no_tasks():
     assert run_tasks([], [], [], **LOCAL) == []
 
 
+def test_matlab_name_layer_runs_the_tasks(tmp_path):
+    # generic_computing_frameworks_wrapper through the registry: MATLAB's names in any case and
+    # unique prefixes, name-value pairs and structs; MATLAB's validators on every value; path
+    # objects as text
+    from petakit5d import matlab
+    from petakit5d.params import MatlabArgumentError
+
+    in_fns, out_fns, log_fn = make_tasks(tmp_path, 3)
+    tasks_ = task_list(in_fns, out_fns, log_fn, "copy")
+    flags = matlab.generic_computing_frameworks_wrapper(
+        [Path(f) for f in in_fns], out_fns, tasks_, "parseCluster", False, {"MasterCompute": True}
+    )
+    assert flags == [True] * 3 and sorted(read_log(log_fn)) == sorted(out_fns)
+    for bad, ident in [
+        (("maxTrialNum", "3"), "MATLAB:InputParser:ArgumentFailedValidation"),
+        (("parseCluster", 0), "MATLAB:InputParser:ArgumentFailedValidation"),
+        (("m", 1), "MATLAB:InputParser:AmbiguousParameter"),
+        (("workers", 2), "MATLAB:InputParser:UnmatchedParameter"),
+    ]:
+        with pytest.raises(MatlabArgumentError) as e:
+            matlab.generic_computing_frameworks_wrapper(in_fns, out_fns, tasks_, *bad)
+        assert e.value.identifier == ident, bad
+    with pytest.raises(MatlabArgumentError):
+        run_tasks(in_fns, out_fns, tasks_[0], **LOCAL)  # a list of tasks, as a cell in MATLAB
+
+
 def test_parameters_match_matlab():
     # names and defaults of generic_computing_frameworks_wrapper (site defaults empty)
     p = {x.matlab: x.default for x in RUN_TASKS_PARAMS}

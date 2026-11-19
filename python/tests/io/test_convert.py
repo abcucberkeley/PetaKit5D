@@ -934,9 +934,9 @@ def test_regions_are_read_by_chunk_layers(tmp_path, monkeypatch):
     ranges = []
     real = io.read_tiff
 
-    def spy(path, rng=None, **kw):
-        ranges.append(rng)
-        return real(path, rng, **kw)
+    def spy(path, *, range=None, **kw):  # (read_tiff's keyword, MATLAB's 'range')
+        ranges.append(range)
+        return real(path, range=range, **kw)
 
     monkeypatch.setattr(io, "read_tiff", spy)
     convert.tiff_to_zarr(

@@ -337,7 +337,7 @@ def save_mip_tiff(
 
         refuse_nan_end(input_bbox)  # (MATLAB indexes with it)
         box = [int(v) for v in input_bbox]
-        im = _crop_yx(read_tiff(frame_fullname, (box[0], box[3])), box)
+        im = _crop_yx(read_tiff(frame_fullname, range=(box[0], box[3])), box)
     for i in range(3):
         if not flags[i]:
             continue

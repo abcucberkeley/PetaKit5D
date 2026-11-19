@@ -53,6 +53,15 @@ def path_str(path) -> str:
     return p.decode() if isinstance(p, bytes) else p
 
 
+def image_to_matlab(a: np.ndarray) -> np.ndarray:
+    """A read image or volume as the MATLAB-name layer returns it (``readtiff``, ``readzarr``):
+    an image ``(y, x)`` as it is, a volume ``(z, y, x)`` as MATLAB's ``(y, x, z)``; color
+    images stay ``(z, y, x, c)``."""
+    from petakit5d.core.arrays import to_matlab
+
+    return a if np.ndim(a) > 3 else to_matlab(a)
+
+
 def is_tiff_name(path: str) -> bool:
     # MATLAB: strcmp(filePath(end - 2 : end), 'tif') || strcmp(filePath(end - 3 : end), 'tiff')
     return path.endswith(("tif", "tiff"))

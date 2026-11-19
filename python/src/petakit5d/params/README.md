@@ -93,8 +93,9 @@ Rules:
   mapping table shows `<site-specific>`. The rules are generic (`check.site_pattern`); a
   local scan can add its own expression through `PETAKIT5D_SITE_PATTERN`, set outside the
   repository.
-- **The function receives canonical values**: lists become tuples, MATLAB values from the
-  MATLAB layer or the command line become str, bool, int (integer-valued doubles), float,
+- **The function receives canonical values**: lists become tuples, path objects
+  (`os.PathLike`) become str (also in lists: a file name is MATLAB's char), MATLAB values from
+  the MATLAB layer or the command line become str, bool, int (integer-valued doubles), float,
   tuples and None, then the kinds convert them; NumPy arrays pass through untouched (a
   `volume` is converted). Values are checked against the validator's class tests on
   MATLAB's form (`ischar`, `islogical`, `isnumeric`, `iscell`, ... ; other terms such as

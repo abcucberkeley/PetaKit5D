@@ -36,3 +36,13 @@ not_ported("mccMaster", "the compiled master; pk5d-master takes its arguments (J
 
 _DEMO = "a demo helper; its Python form is in python/examples/phase1/, outside the package"
 not_ported("crop_deskew_rotate_demo_function", _DEMO, "deskew_rotate")
+
+# called by the demos, but not pipeline functions
+not_ported("setup", "MATLAB's path setup (adds the repository's folders); pip install", "core")
+not_ported("get_uuid", "a utility, not a pipeline function: petakit5d.core.ids.get_uuid", "core")
+not_ported(
+    "readtiff_matlab",
+    "MATLAB's conventional Tiff reader in CMEAnalysis (GPL), MATLAB only; the port reads "
+    "tiff files through cpp-tiff (readtiff: petakit5d.io.read_tiff)",
+    "io",
+)

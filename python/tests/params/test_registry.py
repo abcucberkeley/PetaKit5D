@@ -95,8 +95,12 @@ def test_package_scan_agrees_with_imports():
 def test_package_declarations():
     np_ = REGISTRY.not_ported_all()
     assert "XR_stitching_frame_v1" in np_ and "XR_cppDeconFrame3D" in np_
-    with pytest.raises(LookupError, match=r"not ported yet \(planned as petakit5d.io.read_tiff"):
-        REGISTRY.find("readtiff")
+    # what the demos call that is no pipeline function (E05's coverage review)
+    assert {"setup", "get_uuid", "readtiff_matlab"} <= set(np_)
+    with pytest.raises(
+        LookupError, match=r"not ported yet \(planned as petakit5d.detection.run_detection"
+    ):
+        REGISTRY.find("XR_runDetection3D")
     import petakit5d.matlab as pm
 
     with pytest.raises(AttributeError, match="not ported"):
@@ -104,6 +108,37 @@ def test_package_declarations():
     planned = [m for m, *_ in PLANNED]
     assert len(planned) == len(set(planned))
     assert not set(planned) & set(np_)
+
+
+def test_the_io_functions_and_the_framework_are_registered():
+    # they were listed as planned while they existed (E05's mapping review)
+    for name, python in [
+        ("readtiff", "petakit5d.io.tiff.read_tiff"),
+        ("writetiff", "petakit5d.io.tiff.write_tiff"),
+        ("readzarr", "petakit5d.io.zarr.read_zarr"),
+        ("writezarr", "petakit5d.io.zarr.write_zarr"),
+        ("createzarr", "petakit5d.io.zarr.create_zarr"),
+        ("generic_computing_frameworks_wrapper", "petakit5d.jobs.framework.run_tasks"),
+    ]:
+        assert REGISTRY.find(name).python_name == python
+    import petakit5d.io as pio
+    import petakit5d.jobs as pjobs
+
+    assert pio.read_tiff is REGISTRY.find("readtiff").wrapper
+    assert pjobs.run_tasks is REGISTRY.find("generic_computing_frameworks_wrapper").wrapper
+
+
+def test_every_registered_function_has_a_phase():
+    """The mapping table's Phase column: a registered function takes its planned entry's phase,
+    else HELPER_PHASES's (its task's phase); that list names only registered functions."""
+    from petakit5d.params.planned import HELPER_PHASES
+
+    planned = {m for m, *_ in PLANNED}
+    registered = {s.matlab_name for s in REGISTRY.specs()}
+    assert sorted(registered - planned - set(HELPER_PHASES)) == []
+    assert sorted(set(HELPER_PHASES) - registered) == []
+    assert sorted(set(HELPER_PHASES) & planned) == []
+    assert set(HELPER_PHASES.values()) <= {1, 2, 3}
 
 
 def test_planned_names_follow_the_rule():

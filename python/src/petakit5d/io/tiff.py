@@ -16,7 +16,8 @@ from collections.abc import Sequence
 
 import numpy as np
 
-from petakit5d.io.imagesize import _imagej_images, _tiff_header, path_str, threads
+from petakit5d.io.imagesize import _imagej_images, _tiff_header, image_to_matlab, path_str, threads
+from petakit5d.params import Param, register
 
 __all__ = ["read_tiff", "read_tiff_parallel", "write_tiff"]
 
@@ -80,10 +81,24 @@ def _check_range(path: str, rng) -> list[int]:
     return [a, b]
 
 
+@register(
+    "readtiff",
+    Param("filepath", "char", "Tiff file."),
+    Param(
+        "range",
+        "(1, :) {mustBeNumeric, mustBeFinite}",
+        "Slices (start, stop) to read, 0-based, end-exclusive (stop None: to the end).",
+        convert="range1",
+    ),
+    Param("numThreads", None, "Threads (None: the CPUs available).", python_only=True),
+    Param("out", None, "Array or ReadBuffer to read into (reused over reads).", python_only=True),
+    task="IO2",
+    matlab_out=image_to_matlab,
+)
 def read_tiff(
     filepath,
-    range: Sequence[int] | None = None,
     *,
+    range: Sequence[int] | None = None,
     num_threads: int | None = None,
     out=None,
 ) -> np.ndarray:
@@ -145,7 +160,7 @@ def read_tiff_parallel(
             runs[-1][1] = p + 1
         else:
             runs.append([p, p + 1])
-    parts = [read_tiff(filepath, r, num_threads=num_threads) for r in runs]
+    parts = [read_tiff(filepath, range=r, num_threads=num_threads) for r in runs]
     if len(parts) == 1:
         return parts[0]
     return np.concatenate([p if p.ndim == 3 else p[np.newaxis] for p in parts], axis=0)
@@ -183,6 +198,25 @@ def group_writable(path: str) -> None:
         warnings.warn("Unable to change file attribe for group write!", stacklevel=3)
 
 
+@register(
+    "writetiff",
+    Param("img", "{mustBeNumeric}", "Image (y, x) or volume (z, y, x).", convert="volume"),
+    Param("filepath", "char", "Tiff file."),
+    Param(
+        "Compression",
+        "(1, :) char {mustBeMember(options.Compression, {'none', 'lzw', 'zstd'})}",
+        "Compression: 'lzw', 'zstd' or 'none'.",
+    ),
+    Param(
+        "Mode",
+        "(1, :) char {mustBeMember(options.Mode, {'parallel', 'libtiff', 'imwrite'})}",
+        "MATLAB's writer ('parallel', 'libtiff', 'imwrite'); every mode writes cpp-tiff's "
+        "BigTIFF (decision 0004).",
+    ),
+    Param("groupWrite", "(1, 1) logical", "Make the file group-writable (not on Windows)."),
+    Param("numThreads", None, "Threads (None: the CPUs available).", python_only=True),
+    task="IO2",
+)
 def write_tiff(
     img,
     filepath,

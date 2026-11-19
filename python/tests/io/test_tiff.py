@@ -430,16 +430,46 @@ def test_readThreadsGiveTheSameResult(tmp_path):
         assert ic.bits_equal(read_tiff(fn, num_threads=t), vol)
 
 
+def test_registered_readtiff_and_writetiff(tmp_path):
+    # the registry's MATLAB-name layer takes MATLAB's arrays, names (any case, prefixes) and
+    # 1-based ranges, and gives MATLAB's arrays; the snake_case API takes path objects and the
+    # range by name only (MATLAB's name-value 'range')
+    from petakit5d import matlab
+    from petakit5d.params import MatlabArgumentError
+
+    vol = _rand("uint16", (7, 12, 9), 42)
+    fn = tmp_path / "im.tif"
+    matlab.writetiff(to_matlab(vol), str(fn), "compression", "zstd", "group", False)
+    assert _compression_tag(fn) == 50000
+    assert ic.bits_equal(matlab.readtiff(str(fn)), to_matlab(vol))
+    assert ic.bits_equal(matlab.readtiff(str(fn), "range", [3, 5]), to_matlab(vol[2:5]))
+    assert ic.bits_equal(read_tiff(fn, range=(2, 5)), vol[2:5])
+    with pytest.raises(TypeError, match="positional"):
+        read_tiff(fn, (2, 5))
+    with pytest.raises(MatlabArgumentError) as e:
+        matlab.writetiff(to_matlab(vol), str(fn), "Compression", 7)
+    assert e.value.identifier == "MATLAB:InputParser:ArgumentFailedValidation"
+    with pytest.raises(MatlabArgumentError) as e:
+        matlab.readtiff(str(fn), "rang", [1, 2], "level", 1)
+    assert e.value.identifier == "MATLAB:InputParser:UnmatchedParameter"
+
+
 # --- MATLAB oracle: files MATLAB writes are read as from_matlab of its arrays -----------------
 
 
 def _roundtrip(m, comp, rng, work):
-    # Python's side of a case: MATLAB's array as ours, written, read back (range given in
-    # MATLAB's form until F14's roles convert it), returned in MATLAB's form
+    # Python's side of a case: MATLAB's call through the MATLAB-name layer (writetiff and
+    # readtiff take MATLAB's array and range and return MATLAB's array); the snake_case API
+    # gives the same
+    from petakit5d import matlab
+
     fn = work + "a.tif"
-    write_tiff(from_matlab(m), fn, compression=comp)
+    matlab.writetiff(m, fn, "Compression", comp)
+    got = matlab.readtiff(fn) if rng is None else matlab.readtiff(fn, "range", rng)
     r = None if rng is None else range_from_matlab(rng)
-    return to_matlab(read_tiff(fn, range=r))
+    if not ic.bits_equal(from_matlab(got), read_tiff(fn, range=r)):
+        raise AssertionError("readtiff and read_tiff differ")
+    return got
 
 
 _TIFF_CASES = []

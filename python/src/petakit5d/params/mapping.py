@@ -12,7 +12,7 @@ from collections.abc import Mapping
 
 from petakit5d.params.check import is_site_value
 from petakit5d.params.matlab_source import MatlabFunction
-from petakit5d.params.planned import PLANNED
+from petakit5d.params.planned import HELPER_PHASES, PLANNED
 from petakit5d.params.registry import Registry
 from petakit5d.params.spec import FunctionSpec, snake_name
 
@@ -79,7 +79,7 @@ def generate(reg: Registry, extract: Mapping[str, MatlabFunction]) -> str:
     for n in names:
         if n in specs:
             s = specs[n]
-            ph = plan.get(n, ("", "", ""))[2]
+            ph = plan[n][2] if n in plan else HELPER_PHASES.get(n, "")
             note = (
                 "" if n not in plan or _planned_matches(s, plan[n][0]) else " (differs from plan)"
             )

@@ -23,7 +23,7 @@ PLANNED: tuple[tuple[str, str, str, int], ...] = (
     ("readzarr", "petakit5d.io.read_zarr", "IO2", 1),
     ("writezarr", "petakit5d.io.write_zarr", "IO2", 1),
     ("createzarr", "petakit5d.io.create_zarr", "IO2", 1),
-    ("getImageSize", "petakit5d.io.image_size", "IO2", 1),
+    ("getImageSize", "petakit5d.io.get_image_size", "IO2", 1),
     ("XR_tiffToZarr_wrapper", "petakit5d.io.tiff_to_zarr_dataset", "T01", 1),
     ("tiffToZarr", "petakit5d.io.tiff_to_zarr", "T01", 1),
     ("XR_zarrToTiff_wrapper", "petakit5d.io.zarr_to_tiff_dataset", "T01", 1),
@@ -161,6 +161,32 @@ def planned() -> dict[str, tuple[str, str, int]]:
     return {m: (p, t, ph) for m, p, t, ph in PLANNED}
 
 
+# The phases of the registered functions that have no planned entry (the helpers and block
+# functions an area registered besides its planned ones): their task's phase, for the mapping
+# table. Every registered function is in PLANNED or here (test_registry checks it).
+HELPER_PHASES: dict[str, int] = {
+    "cleanXmlFile": 2,
+    "constructXmlFile": 2,
+    "imresize3_average": 1,
+    "imresize3_fast": 1,
+    "N5ToZarrBlock": 2,
+    "removeTextTags": 2,
+    "XR_bioformats_to_tiff_or_zarr_wrapper": 2,
+    "XR_chromatic_shift_estimation": 2,
+    "XR_ExM_PunctaRemoval_background_estimation_block": 2,
+    "XR_ExM_PunctaRemoval_block": 2,
+    "XR_ExM_PunctaRemoval_interpolated_background_block": 2,
+    "XR_ExM_PunctaRemoval_updated_block": 2,
+    "XR_ExM_PunctaRemovalPointDetection": 2,
+    "XR_flatfield_background_estimation": 2,
+    "XR_FSC": 2,
+    "XR_FSC_resolution": 2,
+    "XR_one_image_FSC_analysis": 2,
+    "XR_two_image_FSC_analysis": 2,
+    "zarrToN5Block": 2,
+}
+
+
 # -- conversion kinds of the Phase 1 parameters (params/kinds.py), decided from the MATLAB code
 # A kind by parameter name; KINDS_BY_FUNCTION overrides it where a function differs. "?<task>"
 # marks a parameter whose kind its area task decides (it reads the code that uses it). The
@@ -245,8 +271,9 @@ KINDS_BY_FUNCTION: dict[str, dict[str, str]] = {
                   "XR_deskewRotateBlock", "XR_microscopeAutomaticProcessing")
     },
     "deskewRotateFrame3D": {"resample": _DESKEW_RS, "resampleFactor": _DESKEW_RS},
-    # the memory order flag of a new zarr ('F' in MATLAB; the port writes 'C'): IO3 decides
-    "createzarr": {"order": "?IO3"},
+    # the memory order flag of a new zarr ('F' in MATLAB; the port writes native C-order arrays,
+    # decision 0004): checked, no conversion
+    "createzarr": {"order": "same"},
     # a crop box or size of the in-memory large-file decon ([] by default): R07 decides
     "RLdecon_large_in_memory": {"Crop": "?R07"},
     "XR_RotateFrame3D": {"resample": _DESKEW_RS},

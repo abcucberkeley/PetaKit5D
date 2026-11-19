@@ -883,6 +883,32 @@ def test_transposeKernelChecksItsArguments():
         k(np.zeros(40, np.uint16), 4, 5, 2, 1, 3)  # no such mode
 
 
+def test_registered_createzarr_writezarr_and_readzarr(tmp_path):
+    # the registry's MATLAB-name layer: MATLAB's sizes [y x z], 1-based boxes and arrays in
+    # and out; createzarr's order 'F' (MATLAB's default) or 'C' gives the same native array;
+    # the snake_case API takes path objects
+    from petakit5d import matlab
+    from petakit5d.params import MatlabArgumentError
+
+    vol = ic.make_data("uint16", (6, 20, 11), "random", 43)
+    for order in ("F", "C"):
+        fn = str(tmp_path / f"{order}.zarr")
+        matlab.createzarr(fn, "dataSize", [20, 11, 6], "blockSize", [8, 8, 4], "order", order)
+        info = get_zarr_info(fn)
+        assert info.size == (6, 20, 11) and info.block_size == (4, 8, 8) and info.order == "C"
+        matlab.writezarr(to_matlab(vol), fn, "bbox", [1, 1, 1, 20, 11, 6], "create", False)
+        assert ic.bits_equal(read_zarr(tmp_path / f"{order}.zarr"), vol)
+        got = matlab.readzarr(fn, "inputBbox", [2, 3, 4, 10, 11, 6])
+        assert ic.bits_equal(got, to_matlab(vol[3:6, 1:10, 2:11]))
+    with pytest.raises(ValueError, match="order"):
+        create_zarr(tmp_path / "x.zarr", order="A")
+    with pytest.raises(MatlabArgumentError) as e:
+        matlab.readzarr(str(tmp_path / "F.zarr"), "inputBbox", "all")
+    assert e.value.identifier == "MATLAB:InputParser:ArgumentFailedValidation"
+    with pytest.raises(TypeError, match="block_sizes"):
+        write_zarr(vol, tmp_path / "w.zarr", block_sizes=(4, 8, 8))
+
+
 # --- MATLAB oracle -------------------------------------------------------------------------------
 # MATLAB writes with writezarr and reads with readzarr (boxes at the borders, chunk remainders);
 # Python reads MATLAB's layout (cpp-zarr's order-F write is the mex's file, IO1) and writes and
@@ -891,27 +917,31 @@ def test_transposeKernelChecksItsArguments():
 
 
 def _zcase_py(m, block_yxz, bbox, work):
-    from petakit5d.core.axes import from_yxz
+    # the file in MATLAB's layout read by read_zarr, and the native array written and read
+    # through the MATLAB-name layer (writezarr and readzarr take MATLAB's array, sizes and box
+    # and give MATLAB's array): both are MATLAB's result
+    from petakit5d import matlab
 
     fm, fn = work + "m.zarr", work + "n.zarr"
     _matlab_zarr(fm, m, block_yxz)
     b = box_from_matlab(bbox) if len(bbox) else None
-    got_m = read_zarr(fm, input_bbox=b)
-    write_zarr(from_matlab(m), fn, block_size=from_yxz(block_yxz))
-    got_n = read_zarr(fn, input_bbox=b)
+    got_m = to_matlab(read_zarr(fm, input_bbox=b))
+    matlab.writezarr(m, fn, "blockSize", list(block_yxz))
+    got_n = matlab.readzarr(fn, "inputBbox", list(bbox)) if len(bbox) else matlab.readzarr(fn)
     if not ic.bits_equal(got_m, got_n):
         raise AssertionError("the MATLAB-layout and the native read differ")
-    return to_matlab(got_m)
+    return got_m
 
 
 def _zregion_py(size_yxz, cls, region, bbox, work):
-    # createzarr, then a region write of another class (converted as MATLAB converts)
-    from petakit5d.core.axes import from_yxz
+    # createzarr, then a region write of another class (converted as MATLAB converts), MATLAB's
+    # calls through the MATLAB-name layer
+    from petakit5d import matlab
 
     fn = work + "n.zarr"
-    create_zarr(fn, data_size=from_yxz(size_yxz), block_size=from_yxz((16, 16, 5)), dtype=cls)
-    write_zarr(from_matlab(region), fn, bbox=box_from_matlab(bbox), create=False)
-    return to_matlab(read_zarr(fn))
+    matlab.createzarr(fn, "dataSize", list(size_yxz), "blockSize", [16, 16, 5], "dtype", cls)
+    matlab.writezarr(region, fn, "bbox", list(bbox), "create", False)
+    return matlab.readzarr(fn)
 
 
 def _special_single(shape):

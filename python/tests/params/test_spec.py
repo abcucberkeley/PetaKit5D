@@ -165,6 +165,29 @@ def test_snake_case_values_are_checked_in_matlabs_form(sample_crop, monkeypatch)
         assert e.value.identifier == "MATLAB:InputParser:ArgumentFailedValidation"
 
 
+def test_path_objects_are_text(sample_crop, tmp_path):
+    """A file name may be a path object (os.PathLike): validators see its text (MATLAB's char)
+    and the function gets the text, in lists too; the saved parameters hold the text."""
+    from pathlib import PurePosixPath
+
+    spec = sample_crop.REG.find("XR_crop_dataset")
+    p = PurePosixPath(ROOT)
+    got = sample_crop.crop_dataset(p, [1] * 6)
+    assert got["data_paths"] == ROOT and type(got["data_paths"]) is str
+    got = sample_crop.crop_dataset([p, tmp_path], [1] * 6)
+    assert got["data_paths"] == (ROOT, str(tmp_path))
+    assert spec.call_matlab(p, [1] * 6, "uuid", PurePosixPath("w"))["uuid"] == "w"
+    saved = [
+        describe(spec.matlab_results({"data_paths": d, "input_bbox": (0,) * 6})["dataPaths"])
+        for d in (p, ROOT)
+    ]
+    assert saved[0] == saved[1]
+    # a path is not a number
+    with pytest.raises(MatlabArgumentError) as e:
+        sample_crop.crop_dataset(ROOT, [1] * 6, cpus_per_task=p)
+    assert e.value.identifier == "MATLAB:InputParser:ArgumentFailedValidation"
+
+
 def test_string_conversions_follow_the_mcc_parser(sample_crop):
     spec = sample_crop.REG.find("XR_crop_dataset")
     got = spec.bind_strings(

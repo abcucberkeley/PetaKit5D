@@ -27,6 +27,8 @@ from typing import Any, NamedTuple
 from petakit5d.jobs.coordinator import settings_master_fit as _master_task_fits
 from petakit5d.jobs.files import batch_file_exist, exist, fileparts
 from petakit5d.jobs.tasks import Call, Task, describe, run_record, task_record
+from petakit5d.params import Param as _Param
+from petakit5d.params import register
 
 # the local loop sleeps this long after a round that ran nothing (it waits for another
 # caller's .tmp marker); MATLAB loops without a pause
@@ -39,7 +41,8 @@ DEFAULT_JOB_LOG_DIR = "../job_logs"
 
 class Param(NamedTuple):
     """One parameter: MATLAB name, Python name, default, kind (bool, num, num_or_none,
-    int, str, any), meaning. STAND-IN for the parameter registry of F03."""
+    int, str, any), meaning: the settings run_tasks checks and config files override (the
+    registration of run_tasks below declares the same parameters to the registry)."""
 
     matlab: str
     python: str
@@ -243,15 +246,95 @@ MATLAB_ONLY_PARAMS: tuple[Param, ...] = (
 )
 
 _BY_PYTHON = {p.python: p for p in RUN_TASKS_PARAMS + MATLAB_ONLY_PARAMS}
+_DOC = {p.matlab: p.doc for p in RUN_TASKS_PARAMS + MATLAB_ONLY_PARAMS}
+_IGNORED = "MATLAB only: accepted and ignored"
 
 
+def _p(matlab: str, validator: str, **kw: Any) -> _Param:
+    """a parameter of the registration below, with its meaning from the tables above"""
+    return _Param(matlab, validator, _DOC[matlab], **kw)
+
+
+@register(
+    "generic_computing_frameworks_wrapper",
+    _Param(
+        "inputFullpaths",
+        "@(x) iscell(x) || ischar(x)",
+        "Per task a path, or a list of paths; a task whose input is missing is not run.",
+        py="input_paths",
+    ),
+    _Param(
+        "outputFullpaths",
+        "@(x) iscell(x) || ischar(x)",
+        "Per task the path whose existence means the task is done.",
+        py="output_paths",
+    ),
+    _Param(
+        "functionStrs",
+        "@(x) iscell(x) || ischar(x)",
+        "Per task a Task (a record dict, a callable without arguments), or with "
+        "language='bash' a command string.",
+        py="tasks",
+    ),
+    _p("finalOutFullpath", "@(x) ischar(x)"),
+    _p("clusterType", "@ischar"),
+    _p("mccMode", "@islogical"),
+    _p("parseCluster", "@islogical"),
+    _p("masterCompute", "@islogical"),
+    _p("jobLogDir", "@ischar"),
+    _p("tmpDir", "@ischar"),
+    _p("maxCPUNum", "@isnumeric"),
+    _p("minCPUNum", "@isnumeric"),
+    _p("cpusPerTask", "@isnumeric"),
+    _p("memPerCPU", "@isnumeric"),
+    _p("memAllocate", "@isnumeric"),
+    _p("wholeNodeJob", "@islogical"),
+    _p("uuid", "@ischar"),
+    _p("GPUJob", "@islogical"),
+    _p("GPUNum", "@isnumeric"),
+    _p("maxTrialNum", "@isnumeric"),
+    _p("unitWaitTime", "@isnumeric"),
+    _p("maxJobNum", "@isnumeric"),
+    _p("minTaskJobNum", "@isnumeric"),
+    _p("taskBatchNum", "@isnumeric"),
+    _p("minBatchNum", "@isnumeric"),
+    _p("paraBatchNum", "@isnumeric"),
+    _p("runExtraTasks", "@islogical"),
+    _p("MatlabLaunchStr", "@ischar", differs=_IGNORED),
+    _p("PythonLaunchStr", "@ischar", python_only=True),
+    _p("BashLaunchStr", "@ischar"),
+    _p("SlurmParam", "@ischar", differs="site-specific MATLAB default (from the cluster config)"),
+    _p("SlurmConstraint", "@ischar"),
+    _p("MCRCacheRoot", "@ischar", differs=_IGNORED),
+    _p("MCRParam", "@ischar", differs=_IGNORED),
+    _p("MCCMasterStr", "@ischar", differs=_IGNORED),
+    _p("jobTimeLimit", "@isnumeric"),
+    _p("queryInterval", "@isnumeric"),
+    _p(
+        "language",
+        "@ischar",
+        differs="the tasks are Python records ('matlab', MATLAB's default, is taken as 'python')",
+    ),
+    _p("GNUparallel", "@islogical", py="gnu_parallel"),
+    _p("paraJobNum", "@isnumeric"),
+    _p("masterParaFactor", "@isnumeric"),
+    _p("ConfigFile", "@ischar"),
+    _p("localWorkerNum", "@isnumeric"),
+    _p("taskMetrics", "@islogical"),
+    _p("taskRunner", "@islogical"),
+    _p("SlurmAlternatives", "@(x) isempty(x) || isstruct(x) || iscell(x)"),
+    _p("gpuHeadroom", "@isnumeric"),
+    _p("nice", "@isnumeric"),
+    task="J02",
+)
 def run_tasks(
     input_paths: Sequence[str | Sequence[str]] | str,
     output_paths: Sequence[str] | str,
-    tasks: Sequence[Any] | Any,
+    tasks: Sequence[Any] | str,
     *,
     final_out_fullpath: str = "",
     cluster_type: str = "slurm",
+    mcc_mode: Any = False,
     parse_cluster: bool = True,
     master_compute: bool = True,
     job_log_dir: str = DEFAULT_JOB_LOG_DIR,
@@ -273,10 +356,14 @@ def run_tasks(
     min_batch_num: float = 1,
     para_batch_num: float = 1,
     run_extra_tasks: bool = False,
+    matlab_launch_str: Any = "",
     python_launch_str: str = "",
     bash_launch_str: str = "",
     slurm_param: str = "",
     slurm_constraint: str = "",
+    mcr_cache_root: Any = "",
+    mcr_param: Any = "",
+    mcc_master_str: Any = "",
     job_time_limit: float | None = 24,
     query_interval: float = 3,
     language: str = "python",
@@ -290,22 +377,19 @@ def run_tasks(
     slurm_alternatives: Any = None,
     gpu_headroom: float | None = None,
     nice: float = 0,
-    mcc_mode: Any = False,
-    matlab_launch_str: Any = "",
-    mcr_cache_root: Any = "",
-    mcr_param: Any = "",
-    mcc_master_str: Any = "",
 ) -> list[bool]:
     """Runs tasks until their outputs exist; returns one done flag per task.
 
     input_paths  : per task a path, or a list of paths; a task whose input is missing is
                    not run and counts as done (MATLAB's behavior).
     output_paths : per task the path whose existence means the task is done.
-    tasks        : per task a ``Task`` (or its record dict, a callable without arguments,
-                   a functools.partial), or with ``language='bash'`` a command string.
+    tasks        : a list with per task a ``Task`` (or its record dict, a callable without
+                   arguments, a functools.partial), or with ``language='bash'`` command
+                   strings (one task: a string).
 
     The other parameters are those of MATLAB's generic_computing_frameworks_wrapper in
-    snake_case, with its defaults (RUN_TASKS_PARAMS lists them with their meaning).
+    snake_case and its order, with its defaults (RUN_TASKS_PARAMS lists them with their
+    meaning), and ``python_launch_str``, which takes the place of ``matlab_launch_str``.
     A config file's values override them, its keys matched without regard to case. The
     MATLAB-only parameters (mcc_mode, matlab_launch_str, mcr_cache_root, mcr_param,
     mcc_master_str) are accepted and ignored.

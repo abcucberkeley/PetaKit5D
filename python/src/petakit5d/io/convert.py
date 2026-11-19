@@ -315,7 +315,7 @@ def _read_whole(paths: list[str], input_bbox: Any, partial: bool) -> np.ndarray:
     if not partial:
         if not _empty(input_bbox):
             b = _ints(input_bbox)
-            a = read_tiff(paths[0], (b[0], b[3]))
+            a = read_tiff(paths[0], range=(b[0], b[3]))
             return _m2d(_crop_yx(a, b))
         return read_tiff(paths[0])
     parts = [read_tiff(p) for p in paths]
@@ -546,7 +546,7 @@ def tiff_to_zarr(
         buf = ReadBuffer()
         for i in range(math.ceil(nz / bz)):
             zs, zt = i * bz, min((i + 1) * bz, nz)
-            block = read_tiff(region["path"], (z0 + zs, z0 + zt), out=buf)
+            block = read_tiff(region["path"], range=(z0 + zs, z0 + zt), out=buf)
             block = _crop_yx(block, (0, y0, x0, 0, y1, x1))
             write_zarr(
                 block,

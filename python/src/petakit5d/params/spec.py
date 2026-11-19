@@ -28,6 +28,7 @@ the mapping table. ``tools/check_registry.py`` compares every spec with the MATL
 from __future__ import annotations
 
 import functools
+import os
 import re
 from collections.abc import Callable, Mapping, Sequence
 from typing import Any
@@ -371,19 +372,32 @@ def _numel(x: Any) -> int:
 
 def normalize(x: Any) -> Any:
     """Values as the snake_case functions receive them: model values to plain Python
-    (``values.to_python``), lists to tuples (deeply); NumPy arrays and others unchanged.
-    An array of an integer class keeps its class, as a NumPy argument of that class does
-    (MATLAB's ``0x100`` is uint16): a NumPy scalar or array of its dtype."""
+    (``values.to_python``), lists to tuples (deeply), path objects (``os.PathLike``) to text;
+    NumPy arrays and others unchanged. An array of an integer class keeps its class, as a
+    NumPy argument of that class does (MATLAB's ``0x100`` is uint16): a NumPy scalar or array
+    of its dtype."""
     if isinstance(x, _v.MArray) and x.mclass in _v.INT_RANGES and x.data:
         return _integer_class_value(x)
     if isinstance(x, _v.MArray | _v.Cell | _v.MString):
         return _v.to_python(x)
+    if isinstance(x, os.PathLike):
+        return os.fsdecode(x)
     if isinstance(x, list | tuple):
         return tuple(normalize(e) for e in x)
     if isinstance(x, dict) and any(
-        isinstance(e, _v.MArray | _v.Cell | _v.MString | list) for e in x.values()
+        isinstance(e, _v.MArray | _v.Cell | _v.MString | list | os.PathLike) for e in x.values()
     ):
         return {k: normalize(e) for k, e in x.items()}
+    return x
+
+
+def text_paths(x: Any) -> Any:
+    """Path objects (``os.PathLike``) as text, also in lists and tuples (as tuples): a file name
+    is MATLAB's char, so validators check it as text, as the function receives it."""
+    if isinstance(x, os.PathLike):
+        return os.fsdecode(x)
+    if isinstance(x, list | tuple) and any(isinstance(e, os.PathLike | list | tuple) for e in x):
+        return tuple(text_paths(e) for e in x)
     return x
 
 
@@ -855,6 +869,7 @@ class FunctionSpec:
         out = {}
         for k, a in given.items():
             p = by_py[k]
+            a = text_paths(a)
             p.check(_as_matlab_sees(p, a), self.matlab_name)
             out[k] = normalize(a)
         return out
@@ -919,6 +934,7 @@ class FunctionSpec:
         return self._from_matlab({k: normalize(a) for k, a in given.items()})
 
     def _bind(self, args: list[Any], kwargs: dict[str, Any]) -> dict[str, Any]:
+        args = [text_paths(a) for a in args]
         params = self.params
         required = [p for p in params if p.kind == "required"]
         optional = [p for p in params if p.kind == "optional"]
@@ -927,6 +943,7 @@ class FunctionSpec:
         given: dict[str, Any] = {}
 
         def put(p: ParamSpec, val: Any) -> None:
+            val = text_paths(val)
             p.check(val, self.matlab_name)
             given[p.py] = val
 
