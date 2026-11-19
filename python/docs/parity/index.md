@@ -68,13 +68,16 @@ probes, and MATLAB results that depend on MATLAB's thread count.
 | N4 | PSF detection (`radon`, `tand`, `atand` inside) | the decisions (peaks, crops, MIPs, info file) exact | bit for bit in all cases | approved 2026-11-17 | [tools.md](tools.md), PSF detection |
 | N5 | filters: `imfilter` with zero padding or `'full'`, small 2-D `imgaussfilt` kernels, general 2-D and 3-D kernels, long-kernel `conv2`, the frequency domain and `edgetaper`, sparse arrays, uint16 along z | per row, 2 to 16 ulp, relative 1e-6 to 2e-6, integers 1 count | 352 of 399 cases bit-identical, the call sites of unmixing, puncta removal and PSF analysis included | approved 2026-11-13 | [matlabcompat.md](matlabcompat.md), filters |
 | N6 | puncta removal: pixels filled by `fillmissing2` `'linear'` | 1 ulp, relative 1e-12, in at most 2% of values (uint16: 1 count in at most 1%) | 1 ulp in 26 of 10,647 probe fills | **proposed** | [matlabcompat.md](matlabcompat.md), puncta removal |
-| N7 | puncta removal: background thresholds of batches whose y size is a multiple of 16 | relative 1e-6 | relative 6.1e-8 | **proposed** | [matlabcompat.md](matlabcompat.md), puncta removal |
 | N8 | the phase-image flat field (BaSiCPy in place of MATLAB's BaSiC) | flat field: relative 0.06 (0.12 under strong vignetting), relative L2 0.01 (0.03); uint16 tiles 1 count more | about a percent; up to 10.7% at single pixels | approved 2026-11-18 | [flatfield.md](flatfield.md) |
 | N9 | `median`, `mode`, `medfilt2`, `medfilt3` at ties of -0 and +0 | the sign of a zero may differ; values agree | 3 of 269 probe medians | approved 2026-11-12 | [decisions/0005](../decisions/0005-sums-and-math-library.md) |
 | N10 | MATLAB's sums, means and standard deviations of 89,000 or more elements, which depend on MATLAB's thread count | the port gives MATLAB's one-thread result at any thread count | up to 1.2e-4 relative between MATLAB's own thread counts (single) | approved 2026-11-12 | [decisions/0005](../decisions/0005-sums-and-math-library.md) |
 | N11 | demo_RL_deconvolution's in-memory results (the demo's `sum(psf, 'all')` at 24 threads) | N10: the one-thread sum | the back projector differs by <= 6.0e-8; uint16 results by 1 in <= 0.0082% of voxels; equal to MATLAB's with its one-thread sum | approved 2026-11-12 | [demos.md](demos.md), row 6 |
 | N12 | the stitching's global shift assignment (`stitch_assignment_lsqlin`): its linear solves | absolute 1e-9 | sparse solvers (MATLAB's Cholesky and LU, SuperLU here) differ in the last bits | **proposed** | tests of `matlabcompat/test_lsq.py` (`ASSIGN_TOL`) |
 | N13 | `sph2cart` of NaN inputs | NaN where MATLAB has NaN, NaN payloads not compared | | **proposed** | tests of `matlabcompat/test_neighbors.py` |
+
+N7 (the puncta removal's background thresholds of batches whose y size is a multiple of 16) was
+removed on 2026-11-18: `imgaussfilt3` is bit-identical there since 2026-11-13, and those cases
+compare exactly ([matlabcompat.md](matlabcompat.md), puncta removal).
 
 ## 4. GPU
 

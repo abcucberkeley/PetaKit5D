@@ -548,6 +548,7 @@ def workflow_inputs():
             name="tall",
         ),
         "holes": holes_volume(),
+        "mostly_zero": mostly_zero_volume(),
         # shallower than a batch: its background is one value deep in z
         "shallow": expanded_volume(
             shape=(24, 64, 56),
@@ -569,14 +570,20 @@ def holes_volume():
     return v.astype(np.float32)
 
 
-# the thresholds of batches whose y size is a multiple of 16: MATLAB's imgaussfilt3 of single
-# data differs there from matlabcompat.filters in the last 16 rows by 1 ulp (reported to N04),
-# which moves Otsu's threshold by about 1e-7 of its value
-BG_TOL = tol(
-    reason="puncta_removal: background thresholds of batches of 16k rows (imgaussfilt3, N04)",
-    rel=1e-6,
-)
-BG_FILES = {"*blocks_*.mat": BG_TOL, "*_background_values.zarr": BG_TOL}
+def mostly_zero_volume():
+    """a mostly empty (4, 640, 640) volume, the same in every plane: in one corner a bright
+    frame around a dim gradient, and in the gradient a 3x3 block just above its blurred
+    background. With Sigma 1 (a background blur of sigma 20) 95% of the batch's MIP is 0 with
+    a background of 0, the ties of the base threshold's mask (mip > mip_bg; with >= the mask
+    would pass 90% and take the loop's 1.1 factor, dropping the block, tools-017 of E06's
+    campaign). The block's mip / mip_bg is about 1.05; no pixel is within 1e-3 of 1 or 1.1"""
+    a = np.zeros((640, 640))
+    a[:96, :96] = 60000.0
+    rows = np.arange(84.0)[12:, None]
+    cols = np.arange(84.0)[None, 12:]
+    a[12:84, 12:84] = 300.0 + 2.0 * (cols - 12) + (rows - 12) / 128.0
+    a[46:49, 70:73] = 15071.0
+    return np.ascontiguousarray(np.broadcast_to(a, (4, 640, 640)).astype(np.float32))
 
 
 def _wf(cid, name, *args, values=None, block=(32, 32, 32), note="", per_file=None, folder="d"):
@@ -676,7 +683,6 @@ def _wf_cases():
             [32, 32, 32],
             "blockSize",
             [16, 16, 16],
-            per_file=BG_FILES,
         ),
         _wf("tall", "tall", "batchSize", [32, 32, 32], "blockSize", [16, 16, 16]),
         _wf(
@@ -688,6 +694,23 @@ def _wf_cases():
             [32, 32, 32],
             "BaseThreshold",
             1000,
+        ),
+        # a batch MIP that is 95% zero with a background of 0 (mostly_zero_volume: the base
+        # threshold's mask at its ties, tools-017)
+        _wf(
+            "bg_estimation_mostly_zero",
+            "mostly_zero",
+            "mode",
+            "bg_estimation",
+            "Sigma",
+            1,
+            "BaseThreshold",
+            1,
+            "batchSize",
+            [640, 640, 4],
+            "blockSize",
+            [128, 128, 4],
+            block=(4, 128, 128),
         ),
         # PunctaRemovalTest/parametersFileHoldsTheParameters: a % in the folder name
         _wf(
@@ -722,7 +745,7 @@ def _bg_interp_case(cid, name, est, interp):
         args=[InPath("d"), est, interp],
         python=py_bg_then_interp,
         inputs={"d": Tree(zarr_tree(workflow_inputs()[name]), "d")},
-        tree=tree(values=FILL_TOL, per_file=BG_FILES),
+        tree=tree(values=FILL_TOL),
         py_error=ERRORS,
     )
 

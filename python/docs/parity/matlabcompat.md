@@ -40,4 +40,8 @@ tolerance: its result doesn't reach the output (the voxels to remove are taken b
 | Output | Measured | Tolerance |
 |---|---|---|
 | `puncta_removal: fillmissing2 fills`: pixels filled by `fillmissing2(A, 'linear', MissingLocations=M)` (single). MATLAB's barycentric weights are not exact (0.49999999999999994 and -2^-55 where they are 1/2 and 0), so a fill at a rounding tie of single rounds the other way, and an exact 0 between zeros comes out as about ±3e-14 | 1 ulp in 26 of 10,647 filled pixels (probes); in the oracle cases 1 ulp or less than 1e-13 in at most 1.1% of an image's values | `ulp` 1, `rel_max` 1e-12, `max_frac` 0.02 (uint16 results: `abs` 1, `max_frac` 0.01) |
-| `puncta_removal: background thresholds of batches of 16k rows (imgaussfilt3, N04)`: the background estimation's per-batch thresholds. `imgaussfilt3` of single data with a y size that is a multiple of 16 differs from MATLAB by 1 ulp in the last 16 rows (7% of the voxels of a 48^3 batch; 0 at y sizes 40, 47, 70), which moves Otsu's threshold | relative 6.1e-8 (4 of 12 batch thresholds) | `rel` 1e-6, until the filter matches |
+
+The background estimation's per-batch thresholds had a second row (relative 1e-6, for
+`imgaussfilt3` of single data with a y size that is a multiple of 16, then 1 ulp off in the last
+16 rows). Since the filter is bit-identical there (2026-11-13), their cases compare exactly: the
+row was removed on 2026-11-18.
