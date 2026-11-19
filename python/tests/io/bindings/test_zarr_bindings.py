@@ -314,13 +314,13 @@ def test_readBatch(tmp_path):
     assert np.array_equal(out[0], im[:10, :10, :10]) and np.array_equal(out[1], im)
 
 
-# --- gaps (each is in the IO1 report with a reproducer) ----------------------------------------
+# --- gaps (each is in the IO1 report with a reproducer): strict xfails while the installed
+# version has them, plain tests from the version that fixed them (ic.gap) --------------------
 
 
-@pytest.mark.gap
-@pytest.mark.xfail(
-    strict=True,
-    reason="write_zarr always skips all-zero chunks (sparse is not exposed); "
+@ic.gap(
+    "cpp-zarr",
+    "write_zarr always skips all-zero chunks (sparse is not exposed); "
     "PetaKit5D's writezarr writes them (sparseData false)",
 )
 def test_gap_allZeroChunksCanBeWritten(tmp_path):
@@ -329,19 +329,16 @@ def test_gap_allZeroChunksCanBeWritten(tmp_path):
     assert len(_chunks(fn)) == 8
 
 
-@pytest.mark.gap
-@pytest.mark.xfail(
-    strict=True, reason="no metadata-only creation (createZarrFile) in the Python package"
-)
+@ic.gap("cpp-zarr", "no metadata-only creation (createZarrFile) in the Python package", "1.8.0")
 def test_gap_metadataOnlyCreate():
     assert any(hasattr(cppzarr, n) for n in ("create_zarr", "create_zarr_file", "create"))
 
 
-@pytest.mark.gap
-@pytest.mark.xfail(
-    strict=True,
-    reason="region writes convert with NumPy's astype (truncate, wrap); the mex "
+@ic.gap(
+    "cpp-zarr",
+    "region writes convert with NumPy's astype (truncate, wrap); the mex "
     "converts as MATLAB does (round half away from zero, saturate, NaN to 0)",
+    "1.8.0",
 )
 def test_gap_regionWriteConvertsAsMatlab(tmp_path):
     fn = tmp_path / "im.zarr"
@@ -352,10 +349,10 @@ def test_gap_regionWriteConvertsAsMatlab(tmp_path):
     assert np.array_equal(cppzarr.read_zarr(str(fn)), ic.matlab_uint16(v))
 
 
-@pytest.mark.gap
-@pytest.mark.xfail(
-    strict=True,
-    reason="uuid=False (chunks written in place, the mex's 'uuid' option) is not exposed",
+@ic.gap(
+    "cpp-zarr",
+    "uuid=False (chunks written in place, the mex's 'uuid' option) is not exposed",
+    "1.8.0",
 )
 def test_gap_uuidFalseWritesChunksInPlace(tmp_path):
     fn = tmp_path / "im.zarr"
@@ -372,10 +369,9 @@ def test_gap_uuidFalseWritesChunksInPlace(tmp_path):
     assert link.read_bytes() == (fn / "0.0.0").read_bytes()
 
 
-@pytest.mark.gap
-@pytest.mark.xfail(
-    strict=True,
-    reason="createzarr with shardSize writes a Zarr v2 .zarray with a 'codecs' "
+@ic.gap(
+    "cpp-zarr",
+    "createzarr with shardSize writes a Zarr v2 .zarray with a 'codecs' "
     "sharding_indexed entry; the package shards only Zarr v3 arrays",
 )
 def test_gap_v2ShardedLayout(tmp_path):

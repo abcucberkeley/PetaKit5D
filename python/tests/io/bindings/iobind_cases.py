@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import zlib
 from concurrent.futures import ThreadPoolExecutor
 from importlib import metadata
@@ -58,6 +59,36 @@ def versions() -> dict:
         except metadata.PackageNotFoundError:
             out[pkg] = None
     return out
+
+
+def _release(v: str) -> tuple[int, ...]:
+    """the release numbers of a version ('1.8.0rc1' and '1.8.0.dev2' are 1.8.0)"""
+    m = re.match(r"\d+(\.\d+)*", v)
+    return tuple(int(x) for x in m.group(0).split(".")) if m else ()
+
+
+def at_least(pkg: str, version: str) -> bool:
+    """the installed pkg is that version or newer"""
+    try:
+        return _release(metadata.version(pkg)) >= _release(version)
+    except metadata.PackageNotFoundError:
+        return False
+
+
+def gap(pkg: str, reason: str, fixed_in: str | None = None):
+    """a known gap of cpp-tiff or cpp-zarr: a strict xfail marked gap while the installed pkg
+    has it, a plain test from fixed_in (the version that fixed it) on"""
+    import pytest
+
+    if fixed_in is not None and at_least(pkg, fixed_in):
+        return lambda f: f
+    if fixed_in is not None:
+        reason += f" (fixed in {pkg} {fixed_in})"
+
+    def deco(f):
+        return pytest.mark.gap(pytest.mark.xfail(strict=True, reason=reason)(f))
+
+    return deco
 
 
 def seed_of(name: str) -> int:

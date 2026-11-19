@@ -13,6 +13,9 @@ import numpy as np
 import pytest
 
 cpptiff = pytest.importorskip("cpptiff")
+# cpp-tiff 1.8.0's errors name what is wrong, as ValueError, IndexError or TypeError; 1.7.3's
+# are generic Exception and RuntimeError texts
+NEW_ERRORS = ic.at_least("cpp-tiff", "1.8.0")
 
 SHAPES = {
     "image2d": (37, 53),
@@ -138,17 +141,24 @@ def test_rangeReadsInclusiveSlices(tmp_path):
     # one slice comes back 2D: (y, x), as MATLAB's size of a single slice
     assert ic.tiff_read_yxz(fn, [4, 5]).shape == (37, 53)
     assert ic.bits_equal(ic.tiff_read_yxz(fn, 4), im[:, :, 4])
-    with pytest.raises(Exception, match="z_range is invalid"):
-        cpptiff.read_tiff(str(fn), [5, 5])
-    with pytest.raises(Exception, match="z_range is invalid"):
-        cpptiff.read_tiff(str(fn), [3, 2])
+    for zr in ([5, 5], [3, 2]):
+        if NEW_ERRORS:
+            err, message = ValueError, rf"z_range \[{zr[0]}, {zr[1]}\] is empty: its start must"
+        else:
+            err, message = Exception, "z_range is invalid"
+        with pytest.raises(err, match=message):
+            cpptiff.read_tiff(str(fn), zr)
 
 
 def test_rangePastTheEndErrors(tmp_path):
     fn = tmp_path / "im.tif"
     ic.tiff_write_yxz(fn, _rand("uint16", (5, 7, 6)))
     for zr in ([0, 7], [6, 7], 6):
-        with pytest.raises(RuntimeError, match="Failed to read"):
+        if NEW_ERRORS:
+            err, message = IndexError, r"is out of bounds: .* has 6 slices \(0 to 5\)"
+        else:
+            err, message = RuntimeError, "Failed to read"
+        with pytest.raises(err, match=message):
             cpptiff.read_tiff(str(fn), zr)
 
 
@@ -212,8 +222,13 @@ def test_unsupportedInputIsNotSilentlyDropped(tmp_path):
         "bool": (np.zeros((2, 4, 4), bool), "Unsupported data type"),
         "complex": (np.zeros((2, 4, 4), np.complex64), "Unsupported data type"),
     }.items():
+        err = Exception
+        if NEW_ERRORS:
+            err = ValueError if name == "4-D" else TypeError
+            if name != "4-D":
+                message = f"data type {arr.dtype} cannot be written: use integers of 8, 16"
         fn = tmp_path / f"{name}.tif"
-        with pytest.raises(Exception, match=message):
+        with pytest.raises(err, match=message):
             cpptiff.write_tiff(str(fn), arr)
 
 
@@ -305,13 +320,13 @@ def test_zstdIsReadByOtherReaders(tmp_path):
     assert np.array_equal(tifffile.imread(str(fn)), im.transpose(2, 0, 1))
 
 
-# --- gaps (each is in the IO1 report with a reproducer) ----------------------------------------
+# --- gaps (each is in the IO1 report with a reproducer): strict xfails while the installed
+# version has them, plain tests from the version that fixed them (ic.gap) --------------------
 
 
-@pytest.mark.gap
-@pytest.mark.xfail(
-    strict=True,
-    reason="read_tiff cannot fill a (y, x, z) Fortran array as the mex does; "
+@ic.gap(
+    "cpp-tiff",
+    "read_tiff cannot fill a (y, x, z) Fortran array as the mex does; "
     "out must be (z, y, x) C order, so every read costs a transposing copy",
 )
 def test_gap_readIntoYxzFortranOut(tmp_path):
@@ -323,10 +338,9 @@ def test_gap_readIntoYxzFortranOut(tmp_path):
     assert np.array_equal(out, im)
 
 
-@pytest.mark.gap
-@pytest.mark.xfail(
-    strict=True,
-    reason="write_tiff copies a (y, x, z) Fortran volume to (z, y, x) C order "
+@ic.gap(
+    "cpp-tiff",
+    "write_tiff copies a (y, x, z) Fortran volume to (z, y, x) C order "
     "before writing; the extension could take it directly (transpose=True)",
 )
 def test_gap_publicWriteOfYxzWithoutCopy(tmp_path):
@@ -340,10 +354,7 @@ def test_gap_publicWriteOfYxzWithoutCopy(tmp_path):
     assert peak < im.nbytes / 4
 
 
-@pytest.mark.gap
-@pytest.mark.xfail(
-    strict=True, reason="float16 is written as 16-bit IEEE floats but read back as uint16"
-)
+@ic.gap("cpp-tiff", "float16 is written as 16-bit IEEE floats but read back as uint16", "1.8.0")
 def test_gap_float16RoundTrip(tmp_path):
     im = np.arange(60, dtype=np.float16).reshape(3, 4, 5)
     fn = tmp_path / "f16.tif"
@@ -351,11 +362,10 @@ def test_gap_float16RoundTrip(tmp_path):
     assert cpptiff.read_tiff(str(fn)).dtype == np.float16
 
 
-@pytest.mark.gap
-@pytest.mark.xfail(
-    strict=True,
-    reason="an empty array is written without an error, and reading the file "
-    "returns uninitialized memory",
+@ic.gap(
+    "cpp-tiff",
+    "an empty array is written without an error, and reading the file returns uninitialized memory",
+    "1.8.0",
 )
 def test_gap_emptyArrayIsRejected(tmp_path):
     # (any exception: the type a fix will raise is not known)
@@ -363,9 +373,10 @@ def test_gap_emptyArrayIsRejected(tmp_path):
         cpptiff.write_tiff(str(tmp_path / "e.tif"), np.zeros((0, 4, 5), np.uint16))
 
 
-@pytest.mark.gap
-@pytest.mark.xfail(
-    strict=True, reason="an unknown or upper-case compression ('jpeg', 'ZSTD') silently writes LZW"
+@ic.gap(
+    "cpp-tiff",
+    "an unknown or upper-case compression ('jpeg', 'ZSTD') silently writes LZW",
+    "1.8.0",
 )
 def test_gap_unknownCompressionIsRejected(tmp_path):
     # (any exception: the type a fix will raise is not known)
@@ -375,10 +386,7 @@ def test_gap_unknownCompressionIsRejected(tmp_path):
         )
 
 
-@pytest.mark.gap
-@pytest.mark.xfail(
-    strict=True, reason="big-endian input is written without conversion (wrong values)"
-)
+@ic.gap("cpp-tiff", "big-endian input is written without conversion (wrong values)", "1.8.0")
 def test_gap_bigEndianInput(tmp_path):
     im = np.arange(40, dtype=np.uint16).reshape(2, 4, 5)
     fn = tmp_path / "be.tif"
@@ -386,11 +394,11 @@ def test_gap_bigEndianInput(tmp_path):
     assert np.array_equal(cpptiff.read_tiff(str(fn)), im)
 
 
-@pytest.mark.gap
-@pytest.mark.xfail(
-    strict=True,
-    reason='a z_range past the last page fails with "the file is damaged or uses an '
+@ic.gap(
+    "cpp-tiff",
+    'a z_range past the last page fails with "the file is damaged or uses an '
     'unsupported layout" and prints retries for directory 0 on stderr',
+    "1.8.0",
 )
 def test_gap_rangePastTheEndMessage(tmp_path):
     fn = tmp_path / "im.tif"
@@ -400,11 +408,11 @@ def test_gap_rangePastTheEndMessage(tmp_path):
         cpptiff.read_tiff(str(fn), [0, 7])
 
 
-@pytest.mark.gap
-@pytest.mark.xfail(
-    strict=True,
-    reason="get_image_shape reports 1 page for an ImageJ stack with one IFD (over 4 GB), "
+@ic.gap(
+    "cpp-tiff",
+    "get_image_shape reports 1 page for an ImageJ stack with one IFD (over 4 GB), "
     "which read_tiff reads in full and getImageSizeMex sizes right",
+    "1.8.0",
 )
 def test_gap_imageShapeOfSingleIfdImageJStack(tmp_path):
     fn = tmp_path / "imagej.tif"
@@ -412,11 +420,11 @@ def test_gap_imageShapeOfSingleIfdImageJStack(tmp_path):
     assert tuple(cpptiff.get_image_shape(str(fn))) == (9, 20, 30)
 
 
-@pytest.mark.gap
-@pytest.mark.xfail(
-    strict=True,
-    reason="read_tiff, write_tiff and get_image_shape take str only (os.PathLike fails "
+@ic.gap(
+    "cpp-tiff",
+    "read_tiff, write_tiff and get_image_shape take str only (os.PathLike fails "
     "in the extension with a TypeError)",
+    "1.8.0",
 )
 def test_gap_pathLikeNames(tmp_path):
     fn = tmp_path / "im.tif"
