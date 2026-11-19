@@ -454,6 +454,43 @@ def test_registered_readtiff_and_writetiff(tmp_path):
     assert e.value.identifier == "MATLAB:InputParser:UnmatchedParameter"
 
 
+def test_registered_readtiff_parallel(tmp_path):
+    # readtiff_parallel through the MATLAB-name layer: MATLAB's 1-based slice numbers in any
+    # order (repeats too), its optional info struct (accepted, not used), ShowWaitbar false and
+    # unknown names (KeepUnmatched), and MATLAB's (y, x, z) array out; the snake_case API's
+    # slices are 0-based, ShowWaitbar by name; ShowWaitbar true is MATLAB's error (known issue:
+    # its waitbar loop reads through a Tiff object it never makes)
+    from petakit5d import matlab
+    from petakit5d.params import MatlabArgumentError
+
+    vol = _rand("uint16", (11, 37, 53), 44)
+    fn = tmp_path / "im.tif"
+    write_tiff(vol, fn)
+    pages = [3, 4, 5, 9, 2, 2]
+    want = vol[[p - 1 for p in pages]]
+    assert ic.bits_equal(matlab.readtiff_parallel(str(fn), pages), to_matlab(want))
+    assert ic.bits_equal(T.read_tiff_parallel(fn, [p - 1 for p in pages]), want)
+    assert ic.bits_equal(matlab.readtiff_parallel(str(fn)), to_matlab(vol))
+    got = matlab.readtiff_parallel(str(fn), [], {}, "showwait", False, "unknown", 1)
+    assert ic.bits_equal(got, to_matlab(vol))
+    # one slice: an image
+    assert ic.bits_equal(matlab.readtiff_parallel(str(fn), 6), vol[5])
+    assert ic.bits_equal(T.read_tiff_parallel(fn, np.int64(5), show_waitbar=False), vol[5])
+    with pytest.raises(T.TiffError) as e:
+        T.read_tiff_parallel(fn, [1], show_waitbar=True)
+    assert e.value.identifier == "MATLAB:undefinedVarOrClass"
+    with pytest.raises(FileNotFoundError):
+        T.read_tiff_parallel(tmp_path / "none.tif", show_waitbar=True)
+    with pytest.raises(MatlabArgumentError) as e:
+        matlab.readtiff_parallel(str(fn), [1, 2], 5)
+    assert e.value.identifier == "MATLAB:InputParser:ArgumentFailedValidation"
+    with pytest.raises(TypeError, match="positional"):
+        T.read_tiff_parallel(fn, None, None, True)
+    for bad in ([1.5], [math.nan], [11], [-1]):
+        with pytest.raises(ValueError):
+            T.read_tiff_parallel(fn, bad)
+
+
 # --- MATLAB oracle: files MATLAB writes are read as from_matlab of its arrays -----------------
 
 
@@ -496,6 +533,78 @@ for _dt in DTYPES:
                     files=True,
                 )
             )
+
+
+def _parallel(m, pages, work):
+    # Python's side of a readtiff_parallel case: MATLAB's call through the MATLAB-name layer
+    # (writetiff, then readtiff_parallel with MATLAB's 1-based slice numbers); the snake_case
+    # API with the 0-based ones gives the same
+    from petakit5d import matlab
+
+    fn = work + "a.tif"
+    matlab.writetiff(m, fn)
+    got = matlab.readtiff_parallel(fn, pages)
+    zero = [p - 1 for p in pages] if pages else None
+    if not ic.bits_equal(from_matlab(got), T.read_tiff_parallel(fn, zero)):
+        raise AssertionError("readtiff_parallel and read_tiff_parallel differ")
+    return got
+
+
+# readtiff_parallel (registered 2026-11-18): slices in any order, repeated, one (an
+# image), all
+for _name, _dt, _pages in [
+    ("order", "uint16", [3, 4, 5, 9, 2]),
+    ("repeat", "uint16", [2, 2, 7, 6]),
+    ("one", "single", [6]),
+    ("all", "uint8", []),
+]:
+    _TIFF_CASES.append(
+        Case(
+            f"tiffpar_{_dt}_{_name}",
+            code=(
+                "fn = fullfile(work, 'a.tif'); writetiff(in{1}, fn); "
+                "out{1} = readtiff_parallel(fn, in{2});"
+            ),
+            args=[In("m"), _pages, Work()],
+            python=_parallel,
+            py_args=[In("m"), _pages, Work()],
+            inputs={
+                "m": Value(lambda dt=_dt: ic.make_data(dt, (37, 53, 11), "random", ic.seed_of(dt)))
+            },
+            files=True,
+        )
+    )
+
+
+def _parallel_waitbar(m, pages, work):
+    from petakit5d import matlab
+
+    fn = work + "a.tif"
+    matlab.writetiff(m, fn)
+    return matlab.readtiff_parallel(fn, pages, "ShowWaitbar", True)
+
+
+# ShowWaitbar: MATLAB's loop with the waitbar reads through a Tiff object it never makes (`t`):
+# its error, kept (known issue)
+_TIFF_CASES.append(
+    Case(
+        "tiffpar_uint16_waitbar",
+        code=(
+            "fn = fullfile(work, 'a.tif'); writetiff(in{1}, fn); "
+            "out{1} = readtiff_parallel(fn, in{2}, 'ShowWaitbar', true);"
+        ),
+        args=[In("m"), [2, 3], Work()],
+        python=_parallel_waitbar,
+        py_args=[In("m"), [2, 3], Work()],
+        inputs={
+            "m": Value(lambda: ic.make_data("uint16", (37, 53, 11), "random", ic.seed_of("uint16")))
+        },
+        files=True,
+        expect_error="MATLAB:undefinedVarOrClass",
+        py_error=(T.TiffError,),
+        error_message=True,
+    )
+)
 
 
 @oracle.parametrize(_TIFF_CASES)

@@ -1159,12 +1159,9 @@ def test_matlab_names_take_and_give_matlabs_values():
     assert np.array_equal(out, to_matlab(P.psf_gen(from_matlab(m), 0.1, 0.2, 2.0)))
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="the MATLAB-name layer binds the positional arguments of a function without an "
-    "inputParser (psf_gen_new) as inputParser's optionals, which never take text (F03)",
-)
 def test_matlab_names_take_the_method_positionally():
+    # psf_gen_new has no inputParser: the MATLAB-name layer takes its text by position (it
+    # bound such arguments as inputParser's optionals, which never take text)
     from petakit5d import matlab
 
     m = bead_psf((21, 30, 31))

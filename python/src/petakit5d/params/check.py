@@ -177,6 +177,16 @@ def check_spec(spec: FunctionSpec, fn: MatlabFunction | None) -> list[str]:
             out.append(f"{where}: validator {p.validator!r}, MATLAB has {m.validator!r}")
         if p.kind != "required":
             out.extend(_check_default(spec, p, m))
+    if not any(m.kind in ("positional", "parameter") for m in theirs) and any(
+        m.kind == "optional" and not m.validator for m in theirs
+    ):
+        # (the MATLAB-name layer takes text by position in a function without name-value
+        # parameters, as MATLAB's functions without an inputParser do)
+        out.append(
+            f"{name}: MATLAB's inputParser reads text at an optional argument without a "
+            "validator as a parameter name; the registry, without name-value parameters, "
+            "takes it by position"
+        )
     if fn.case_sensitive:
         out.append(f"{name}: MATLAB's inputParser is case sensitive; the registry is not")
     if fn.keep_unmatched != spec.keep_unmatched:
@@ -218,7 +228,8 @@ def _check_parser(spec: FunctionSpec, ours: list[ParamSpec], fn: MatlabFunction)
 
 def check_signature_defaults(spec: FunctionSpec) -> list[str]:
     """Problems on the Python side alone: the declaration fits the signature, defaults are
-    canonical (tuples, not lists) and pass their own validators."""
+    canonical (tuples, not lists) and pass their own validators (None, MATLAB's [], is not
+    validated, as inputParser validates no default)."""
     try:
         params = spec.params
     except RegistryError as err:
@@ -229,6 +240,10 @@ def check_signature_defaults(spec: FunctionSpec) -> list[str]:
             continue
         if isinstance(p.default, list | dict | set):
             out.append(f"{spec.matlab_name}.{p.matlab}: mutable default {p.default!r}")
+        if p.default is None:
+            # MATLAB's [], which inputParser never validates either (readtiff_parallel's
+            # addOptional('info', [], @isstruct)); check_spec compares it with MATLAB's default
+            continue
         try:
             p.check(p.default, spec.matlab_name)
         except Exception as err:  # noqa: BLE001 - reported, not raised

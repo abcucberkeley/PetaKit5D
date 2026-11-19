@@ -952,11 +952,21 @@ class FunctionSpec:
         for p, a in zip(required, args, strict=False):
             put(p, a)
         rest = args[len(required) :]
+        name_value = any(q.kind == "parameter" and not q.python_only for q in params)
         for p in optional:
             if not rest:
                 break
             a = rest[0]
             if p.alternatives is None and not p.validator and isinstance(a, str):
+                if not name_value:
+                    # a function without MATLAB name-value parameters takes text by position,
+                    # as MATLAB's functions without an inputParser do (writeZarrBlock's Mode
+                    # 'w'), unless it names one of the registry's Python-only parameters
+                    if any(q.python_only for q in self._matches(str(a))):
+                        break
+                    put(p, a)
+                    rest = rest[1:]
+                    continue
                 # an optional without a validator never takes text: inputParser reads it as
                 # a parameter name, and fails for text that names no parameter
                 if self._matches(str(a)):

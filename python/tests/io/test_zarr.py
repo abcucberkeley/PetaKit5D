@@ -939,6 +939,25 @@ def test_create_zarr_takes_numpy_types(tmp_path):
         matlab.createzarr(str(tmp_path / "c.zarr"), "dtype", np.uint16)
 
 
+def test_registered_writeZarrBlock(tmp_path):
+    # writeZarrBlock through the MATLAB-name layer: MATLAB's call by position (the array's path
+    # in place of its blockedImage, the 1-based [y x z] block subscript, MATLAB's (y, x, z)
+    # block, level and Mode 'w' or 'r'), the same chunks as write_zarr_block's
+    from petakit5d import matlab
+
+    vol = _rand("uint16", IM, 24)
+    fn, fm = tmp_path / "py.zarr", tmp_path / "m.zarr"
+    for f in (fn, fm):
+        create_zarr(f, data_size=IM, block_size=(5, 16, 16))
+    edge = _rand("uint16", (5, 16, 16), 25)
+    write_zarr_block(fn, (0, 1, 0), vol[:5, 16:32, :16])
+    write_zarr_block(fn, (2, 2, 2), edge)
+    matlab.writeZarrBlock(str(fm), [2, 1, 1], to_matlab(vol[:5, 16:32, :16]), 1, "w")
+    matlab.writeZarrBlock(str(fm), [3, 3, 3], to_matlab(edge), 1, "r")
+    assert ic.bits_equal(read_zarr(fm), read_zarr(fn))
+    assert np.count_nonzero(read_zarr(fm)[10:, 32:, 32:]) > 0
+
+
 # --- MATLAB oracle -------------------------------------------------------------------------------
 # MATLAB writes with writezarr and reads with readzarr (boxes at the borders, chunk remainders);
 # Python reads MATLAB's layout (cpp-zarr's order-F write is the mex's file, IO1) and writes and
@@ -1085,6 +1104,43 @@ _ZCASES.append(
         error_message=True,
     )
 )
+
+
+def _zblock_py(size_yxz, block_yxz, sub, data, mode, work):
+    # writeZarrBlock (registered 2026-11-18) through the MATLAB-name layer, on a zarr
+    # array of the same size and blocks where MATLAB has its blockedImage; read back as MATLAB's
+    # array
+    from petakit5d import matlab
+
+    fn = work + "n.zarr"
+    matlab.createzarr(fn, "dataSize", list(size_yxz), "blockSize", list(block_yxz))
+    matlab.writeZarrBlock(fn, sub, data, 1, mode)
+    return matlab.readzarr(fn)
+
+
+# MATLAB's block lands in an in-memory blockedImage of the same size and block size: an inner
+# block, and an edge block given whole (trimmed by setBlock in mode 'w', by writeZarrBlock
+# itself in mode 'r', which writes through the adapter)
+for _name, _sub, _mode in [
+    ("inner_w", [2, 1, 1], "w"),
+    ("edge_w", [3, 3, 3], "w"),
+    ("edge_r", [3, 3, 3], "r"),
+]:
+    _ZCASES.append(
+        Case(
+            f"zarr_block_{_name}",
+            code=(
+                "bim = blockedImage([], in{1}, in{2}, uint16(0), 'Mode', 'w'); "
+                "writeZarrBlock(bim, in{3}, in{4}, 1, in{5}); bim.Mode = 'r'; "
+                "out{1} = gather(bim);"
+            ),
+            args=[[37, 41, 13], [16, 16, 5], _sub, In("d"), _mode],
+            python=_zblock_py,
+            py_args=[[37, 41, 13], [16, 16, 5], _sub, In("d"), _mode, Work()],
+            inputs={"d": Value(lambda: ic.make_data("uint16", (16, 16, 5), "random", 47))},
+            files=False,
+        )
+    )
 
 
 @oracle.parametrize(_ZCASES)

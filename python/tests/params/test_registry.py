@@ -128,6 +128,44 @@ def test_the_io_functions_and_the_framework_are_registered():
     assert pjobs.run_tasks is REGISTRY.find("generic_computing_frameworks_wrapper").wrapper
 
 
+def test_readtiff_parallel_and_writeZarrBlock_are_registered():
+    # 2026-11-18: registered instead of "not ported" (petakit5d.io exported them)
+    import petakit5d.io as pio
+
+    for name, python, export in [
+        ("readtiff_parallel", "petakit5d.io.tiff.read_tiff_parallel", "read_tiff_parallel"),
+        ("writeZarrBlock", "petakit5d.io.zarr.write_zarr_block", "write_zarr_block"),
+    ]:
+        spec = REGISTRY.find(name)
+        assert spec.python_name == python
+        assert getattr(pio, export) is spec.wrapper
+        assert name not in REGISTRY.not_ported_all()
+    assert REGISTRY.find("readtiff_parallel").keep_unmatched
+
+
+def test_a_function_without_name_value_parameters_takes_text_by_position():
+    # MATLAB's functions without an inputParser take every argument by position: text too
+    # (writeZarrBlock's Mode, imresize3_fast's method, psf_gen_new's PSFGenMethod), unless it
+    # names a Python-only parameter; with name-value parameters an optional without a
+    # validator never takes text, as inputParser reads it as a name
+    import numpy as np
+
+    from petakit5d.params import MatlabArgumentError
+
+    vol = np.zeros((8, 6, 4), np.float32)
+    got = REGISTRY.find("writeZarrBlock").bind_matlab(["a.zarr", [1, 2, 1], vol, 1, "w"])
+    assert got["mode"] == "w" and got["block_sub"] == (0, 0, 1)
+    got = REGISTRY.find("writeZarrBlock").bind_matlab(["a.zarr", [1, 1], vol, 1, "numThreads", 2])
+    assert got["num_threads"] == 2 and "mode" not in got
+    got = REGISTRY.find("imresize3_fast").bind_matlab([vol, [4, 3, 2], "linear"])
+    assert got["method"] == "linear"
+    got = REGISTRY.find("psf_gen_new").bind_matlab([vol, 0.1, 0.3, 1.5, "median"])
+    assert got["psf_gen_method"] == "median"
+    with pytest.raises(MatlabArgumentError) as e:
+        REGISTRY.find("readtiff_parallel").bind_matlab(["a.tif", "slices"])
+    assert e.value.identifier == "MATLAB:InputParser:ArgumentFailedDefaultValidation"
+
+
 def test_every_registered_function_has_a_phase():
     """The mapping table's Phase column: a registered function takes its planned entry's phase,
     else HELPER_PHASES's (its task's phase); that list names only registered functions."""

@@ -102,6 +102,13 @@ Rules:
   `volume` is converted). Values are checked against the validator's class tests on
   MATLAB's form (`ischar`, `islogical`, `isnumeric`, `iscell`, ... ; other terms such as
   `numel(x) == 3` are not checked), as inputParser checks them: `pad=1` is an error.
+  Defaults are not checked when they are None (MATLAB's `[]`: inputParser validates no
+  default, as in `ip.addOptional('info', [], @isstruct)`); they are compared with MATLAB's.
+- **Positional text**: in the MATLAB-name layer an optional argument without a validator
+  never takes text where the function has name-value parameters (inputParser reads it as a
+  name); a function without them, as MATLAB's functions without an inputParser
+  (`writeZarrBlock(bim, blockSub, data, level, Mode)`), takes it by position, unless it names a
+  Python-only parameter.
 - Options of `register`: `doc=` (one line for the table; default: the docstring's first
   paragraph), `keep_unmatched=True` (MATLAB's `ip.KeepUnmatched = true`), `task=`,
   `matlab_in=`, `matlab_out=`.

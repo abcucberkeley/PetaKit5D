@@ -774,6 +774,16 @@ def write_zarr(
         group_writable(path)
 
 
+@register(
+    "writeZarrBlock",
+    Param("bim", None, "Zarr array (its path, in place of MATLAB's blockedImage).", py="file_path"),
+    Param("blockSub", None, "Chunk index (z, y, x), 0-based.", convert="point1_yxz"),
+    Param("data", None, "The chunk's data (z, y, x).", convert="volume"),
+    Param("level", None, "Accepted; zarr arrays have one level."),
+    Param("Mode", None, "Accepted; both of MATLAB's modes write the chunk cut to the array."),
+    Param("numThreads", None, "Threads (None: the CPUs available).", python_only=True),
+    task="IO2",
+)
 def write_zarr_block(
     file_path,
     block_sub: Sequence[int],

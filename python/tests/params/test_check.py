@@ -87,6 +87,63 @@ def test_defaults_are_compared_after_conversion():
     assert len(problems) == 2 and "size_yxz" in problems[0] and "axis_string" in problems[1]
 
 
+def test_an_empty_default_is_not_validated_but_compared():
+    """MATLAB's ip.addOptional('info', [], @isstruct) (readtiff_parallel): inputParser never
+    validates a default, so the Python default None (MATLAB's []) is not checked against the
+    validator; it is still compared with MATLAB's default, and other defaults are validated"""
+    from petakit5d.params import Param, Registry
+    from petakit5d.params.check import check_signature_defaults
+    from petakit5d.params.matlab_source import MatlabFunction, MatlabParam
+
+    fn = MatlabFunction(
+        "XR_info_fake", "XR_info_fake.m", ["filepath", "varargin"],
+        [MatlabParam("required", "filepath", None, None),
+         MatlabParam("optional", "info", "[]", "@isstruct")],
+    )  # fmt: skip
+
+    def make(default):
+        reg = Registry()
+
+        @reg.register("XR_info_fake", Param("filepath", None), Param("info", "@isstruct"))
+        def info_fake(filepath, info=default):
+            return filepath
+
+        return reg.find("XR_info_fake")
+
+    assert check_signature_defaults(make(None)) == [] and check_spec(make(None), fn) == []
+    problems = check_spec(make("x"), fn)
+    assert any("fails its validator" in p for p in check_signature_defaults(make("x")))
+    assert any("default 'x', MATLAB has []" in p for p in problems), problems
+
+
+def test_text_by_position_needs_name_value_parameters_or_no_input_parser():
+    """The MATLAB-name layer takes text by position in a function without name-value
+    parameters, as MATLAB's functions without an inputParser do; an inputParser without
+    name-value parameters but with an optional argument without a validator reads text as a
+    name, which check_spec reports"""
+    from petakit5d.params import Param, Registry
+    from petakit5d.params.matlab_source import MatlabFunction, MatlabParam
+
+    def fn(kind):
+        return MatlabFunction(
+            "XR_mode_fake", "XR_mode_fake.m", ["x", "mode"],
+            [MatlabParam("required" if kind == "optional" else kind, "x", None, None),
+             MatlabParam(kind, "mode", None if kind == "positional" else "'w'", None)],
+        )  # fmt: skip
+
+    reg = Registry()
+
+    @reg.register("XR_mode_fake", Param("x", None), Param("mode", None))
+    def mode_fake(x, mode="w"):
+        return mode
+
+    spec = reg.find("XR_mode_fake")
+    assert check_spec(spec, fn("positional")) == []
+    assert spec.bind_matlab([1, "r"]) == {"x": 1, "mode": "r"}
+    problems = check_spec(spec, fn("optional"))
+    assert len(problems) == 1 and "takes it by position" in problems[0]
+
+
 def test_missing_and_extra_parameters_are_found(sample_crop, extract):
     spec = sample_crop.REG.find("XR_crop_dataset")
     s = copy.copy(spec)

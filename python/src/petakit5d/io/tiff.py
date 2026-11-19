@@ -19,7 +19,7 @@ import numpy as np
 from petakit5d.io.imagesize import _imagej_images, _tiff_header, image_to_matlab, path_str, threads
 from petakit5d.params import Param, register
 
-__all__ = ["read_tiff", "read_tiff_parallel", "write_tiff"]
+__all__ = ["TiffError", "read_tiff", "read_tiff_parallel", "write_tiff"]
 
 # the types cpp-tiff and MATLAB both have
 _TIFF_TYPES = frozenset(
@@ -43,6 +43,14 @@ _MODES = ("parallel", "libtiff", "imwrite")
 # output (NumPy's) already gets huge pages and IO3's probe found the two as fast; it would also
 # need the page count before the read
 _ALLOC_EMPTY = False
+
+
+class TiffError(RuntimeError):
+    """An error MATLAB raises here; ``identifier`` is its error id."""
+
+    def __init__(self, message: str, identifier: str):
+        super().__init__(message)
+        self.identifier = identifier
 
 
 # --- readtiff ------------------------------------------------------------------------------
@@ -139,20 +147,51 @@ def read_tiff(
     return res
 
 
+@register(
+    "readtiff_parallel",
+    Param("filepath", None, "Tiff file."),
+    Param("range", None, "Slices to read, 0-based, in any order (empty: all).", convert="index1"),
+    Param("info", "@isstruct", "Accepted; not used (the reader takes the file's own tags)."),
+    Param(
+        "ShowWaitbar",
+        "@islogical",
+        "MATLAB's error (known issue: its waitbar loop reads through a Tiff it never makes).",
+    ),
+    Param("numThreads", None, "Threads (None: the CPUs available).", python_only=True),
+    keep_unmatched=True,
+    task="IO2",
+    matlab_out=image_to_matlab,
+)
 def read_tiff_parallel(
     filepath,
     range: Sequence[int] | None = None,
     info=None,
-    show_waitbar: bool = False,
     *,
+    show_waitbar: bool = False,
     num_threads: int | None = None,
 ) -> np.ndarray:
-    """MATLAB ``readtiff_parallel``: the slices listed in ``range`` (0-based indices, any order)
-    stacked along z; all slices without it. ``info`` and ``show_waitbar`` are accepted and not
-    used."""
-    if range is None or len(range) == 0:
+    """MATLAB ``readtiff_parallel``: the slices listed in ``range`` (0-based indices, any order,
+    repeats allowed) stacked along z, through cpp-tiff in runs of consecutive slices; all slices
+    without it. One slice comes back as an image ``(y, x)``. ``info`` is accepted and not used.
+
+    ``show_waitbar`` raises MATLAB's error (known issue, kept): MATLAB's loop with the waitbar
+    reads through a ``Tiff`` object it never makes."""
+    if np.size(show_waitbar) and bool(np.asarray(show_waitbar).reshape(-1)[0]):
+        # (after MATLAB's imfinfo of the file)
+        path = path_str(filepath)
+        if not os.path.isfile(path):
+            raise FileNotFoundError(f'File "{path}" cannot be opened')
+        _tiff_header(path)
+        raise TiffError(
+            "Unable to resolve the name 't.setDirectory'.", "MATLAB:undefinedVarOrClass"
+        )
+    wanted = [] if range is None else np.asarray(range, dtype=np.float64).ravel().tolist()
+    if not wanted:
         return read_tiff(filepath, num_threads=num_threads)
-    pages = [int(p) for p in np.asarray(range).ravel()]
+    # (MATLAB's Tiff.setDirectory takes whole slice numbers only)
+    if not all(np.isfinite(p) and p == int(p) for p in wanted):
+        raise ValueError(f"range must be whole slice numbers, not {range!r}")
+    pages = [int(p) for p in wanted]
     # contiguous ascending runs, each one range read
     runs = [[pages[0], pages[0] + 1]]
     for p in pages[1:]:
