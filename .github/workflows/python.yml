@@ -119,7 +119,7 @@ jobs:
 
       - name: Tests
         if: runner.os != 'macOS'
-        run: python -m pytest -v --timeout=900
+        run: python -m pytest -v -rx --timeout=900
 
       # macOS: with the cpp-tiff and cpp-zarr 1.7.3 wheels, whichever is imported second crashes
       # on its first write (weak C++ symbols merged across the two modules; fixed in cpp-zarr's
