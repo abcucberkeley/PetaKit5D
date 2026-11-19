@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import os
 import re
+import struct
 import time
 from pathlib import Path
 
@@ -380,12 +381,47 @@ def _group_case(cid, names, pats, ch=None, error=False):
 # XR_parseImageFilenames on small tiff and zarr datasets
 
 
-def _tiffs(folder: Path, names, shape=(4, 6, 3), dtype=np.uint16) -> None:
-    from petakit5d.testing import synth
+def raw_tiff(path: Path, vol_yxz: np.ndarray) -> None:
+    """write MATLAB's (y, x, z) array (or (y, x) image) as an uncompressed little-endian TIFF,
+    each page's IFD followed by its one strip, byte for byte without a tiff library: the
+    dataSizes of XR_parseImageFilenames hold files' bytes (groupPartialVolumeFiles reads the
+    image size of the first and last file only and gives the files in between their bytes),
+    which cpp-tiff versions change by a few bytes for the same data"""
+    vol = np.asarray(vol_yxz)
+    vol = vol.reshape(vol.shape[0], vol.shape[1], -1)
+    h, w, n = vol.shape
+    nbytes = h * w * vol.itemsize
+    fmt = {"u": 1, "i": 2, "f": 3}[vol.dtype.kind]
+    out = bytearray(b"II*\0" + struct.pack("<I", 8))
+    for k in range(n):
+        strip = len(out) + 2 + 11 * 12 + 4
+        nxt = strip + nbytes + nbytes % 2 if k + 1 < n else 0
+        tags = [
+            (256, 4, w),
+            (257, 4, h),
+            (258, 3, 8 * vol.itemsize),
+            (259, 3, 1),
+            (262, 3, 1),
+            (273, 4, strip),
+            (277, 3, 1),
+            (278, 4, h),
+            (279, 4, nbytes),
+            (284, 3, 1),
+            (339, 3, fmt),
+        ]
+        out += struct.pack("<H", len(tags))
+        for tag, typ, v in tags:
+            out += struct.pack("<HHI", tag, typ, 1) + struct.pack("<H2x" if typ == 3 else "<I", v)
+        out += struct.pack("<I", nxt)
+        out += vol[:, :, k].astype(vol.dtype.newbyteorder("<")).tobytes()
+        out += b"\0" * (nbytes % 2)
+    Path(path).write_bytes(bytes(out))
 
+
+def _tiffs(folder: Path, names, shape=(4, 6, 3), dtype=np.uint16) -> None:
     for i, n in enumerate(names):
         z = shape[2] + (i % 2)
-        synth.write_tiff_matlab(folder / n, np.zeros((shape[0], shape[1], z), dtype))
+        raw_tiff(folder / n, np.zeros((shape[0], shape[1], z), dtype))
 
 
 def make_dataset(root: Path) -> None:
@@ -771,6 +807,33 @@ def test_dataset_partial_volume_groups(tmp_path):
     assert r.partialvols.tolist() == [True]
     assert r.flip_zstack.tolist() == [True]
     assert r.mask_fullpaths == [f"{tmp_path}/Masks/{base}_eroded.zarr"]
+
+
+def test_dataset_tiffs_are_written_without_the_tiff_library(tmp_path, monkeypatch):
+    # dataSizes holds the bytes of the files groupPartialVolumeFiles only lists: a tiff
+    # library's layout must not decide them
+    import cpptiff
+
+    from petakit5d.io.imagesize import get_image_dtype, get_image_size
+    from petakit5d.io.tiff import read_tiff
+
+    def refused(*args, **kwargs):
+        raise AssertionError("written with the tiff library")
+
+    monkeypatch.setattr(cpptiff, "write_tiff", refused)
+    for make in (make_dataset, make_special):
+        (tmp_path / make.__name__).mkdir()
+        make(tmp_path / make.__name__)
+    tiffs = sorted(tmp_path.rglob("*.tif"))
+    assert len(tiffs) == 28
+    itemsize = {"uint8": 1, "uint16": 2, "single": 4}
+    for f in tiffs:
+        nz, ny, nx = get_image_size(f)
+        vol = read_tiff(f)
+        assert vol.shape == (nz, ny, nx) and not vol.any()
+        # the header, then per page its IFD of 11 entries and its strip
+        page = ny * nx * itemsize[get_image_dtype(f)]
+        assert f.stat().st_size == 8 + nz * (138 + page + page % 2)
 
 
 def test_regex_cache_is_per_flag():

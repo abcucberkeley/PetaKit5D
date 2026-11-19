@@ -13,6 +13,7 @@ import os
 import random
 import re
 import shlex
+import struct
 import subprocess
 import sys
 from pathlib import Path
@@ -762,11 +763,48 @@ def group_matlab(*args):
     return list(matlab.groupPartialVolumeFiles(*args))
 
 
-def tiff_writer(shape, dtype=np.uint16):
+def raw_tiff(path: Path, vol_yxz: np.ndarray) -> None:
+    """write MATLAB's (y, x, z) array (or (y, x) image) as an uncompressed little-endian TIFF,
+    each page's IFD followed by its one strip, byte for byte without a tiff library: for the
+    cases whose results hold the size of a file in bytes (groupPartialVolumeFiles' sizes of the
+    files it only lists, XR_estimateComputingMemory's of a one-page tiff), which cpp-tiff
+    versions change by a few bytes for the same data"""
+    vol = np.asarray(vol_yxz)
+    vol = vol.reshape(vol.shape[0], vol.shape[1], -1)
+    h, w, n = vol.shape
+    nbytes = h * w * vol.itemsize
+    fmt = {"u": 1, "i": 2, "f": 3}[vol.dtype.kind]
+    out = bytearray(b"II*\0" + struct.pack("<I", 8))
+    for k in range(n):
+        strip = len(out) + 2 + 11 * 12 + 4
+        nxt = strip + nbytes + nbytes % 2 if k + 1 < n else 0
+        tags = [
+            (256, 4, w),
+            (257, 4, h),
+            (258, 3, 8 * vol.itemsize),
+            (259, 3, 1),
+            (262, 3, 1),
+            (273, 4, strip),
+            (277, 3, 1),
+            (278, 4, h),
+            (279, 4, nbytes),
+            (284, 3, 1),
+            (339, 3, fmt),
+        ]
+        out += struct.pack("<H", len(tags))
+        for tag, typ, v in tags:
+            out += struct.pack("<HHI", tag, typ, 1) + struct.pack("<H2x" if typ == 3 else "<I", v)
+        out += struct.pack("<I", nxt)
+        out += vol[:, :, k].astype(vol.dtype.newbyteorder("<")).tobytes()
+        out += b"\0" * (nbytes % 2)
+    Path(path).write_bytes(bytes(out))
+
+
+def tiff_writer(shape, dtype=np.uint16, raw=False):
     def make(path):
         from petakit5d.testing.synth import write_tiff_matlab as write_tiff
 
-        write_tiff(path, np.zeros(shape, dtype=dtype, order="F"))
+        (raw_tiff if raw else write_tiff)(path, np.zeros(shape, dtype=dtype, order="F"))
 
     return make
 
@@ -793,8 +831,6 @@ def make_zarr(folder: Path, shape, dtype="<u2"):
 
 
 def make_parts_tree(d: Path):
-    from petakit5d.testing.synth import write_tiff_matlab as write_tiff
-
     sizes = {
         "a.tif": (10, 12, 3),
         "a_part0001.tif": (10, 12, 2),
@@ -806,7 +842,7 @@ def make_parts_tree(d: Path):
         "z.tif": (4, 4, 2),
     }
     for n, s in sizes.items():
-        write_tiff(d / n, np.zeros(s, dtype=np.uint16, order="F"))
+        raw_tiff(d / n, np.zeros(s, dtype=np.uint16, order="F"))
     (d / "notes.txt").write_text("not an image", newline="\n")
 
 
@@ -818,8 +854,6 @@ def make_plain_tree(d: Path):
 
 
 def make_channel_tree(d: Path):
-    from petakit5d.testing.synth import write_tiff_matlab as write_tiff
-
     for n in [
         "s_CamA_ch0_Iter_0000_t.tif",
         "s_CamA_ch0_Iter_0001_t.tif",
@@ -827,7 +861,7 @@ def make_channel_tree(d: Path):
         "s_CamB_ch1_Iter_0000_t_part0001.tif",
         "s_CamC_ch2_Iter_0000_t.tif",
     ]:
-        write_tiff(d / n, np.zeros((4, 5, 2), dtype=np.float32, order="F"))
+        raw_tiff(d / n, np.zeros((4, 5, 2), dtype=np.float32, order="F"))
 
 
 def make_zarr_tree(d: Path):
@@ -854,10 +888,8 @@ SPECIAL_LIST = [Work(f"p/{n}") for n in SPECIAL_NAMES]
 
 
 def make_special_tree(d: Path):
-    from petakit5d.testing.synth import write_tiff_matlab as write_tiff
-
     for i, n in enumerate(SPECIAL_NAMES):
-        write_tiff(d / n, np.zeros((4, 5, i + 1), dtype=np.uint16, order="F"))
+        raw_tiff(d / n, np.zeros((4, 5, i + 1), dtype=np.uint16, order="F"))
 
 
 def test_grouping_matches_main_names_as_text(tmp_path):
@@ -949,7 +981,7 @@ EST_CASES = [
         "est_decon_single_slice_tiff_bytes",
         [InPath("t.tif"), ("deconvolution",), "cudaDecon", False],
         nargout=4,
-        inputs={"t.tif": File(tiff_writer((33, 17)), "t.tif")},
+        inputs={"t.tif": File(tiff_writer((33, 17), raw=True), "t.tif")},
     ),
     est_case(
         "est_decon_zarr",
@@ -1127,7 +1159,8 @@ def test_matlab(case, tmp_path):
 
 
 def test_oracle_inputs_are_deterministic(tmp_path):
-    for make in (make_parts_tree, make_channel_tree, make_zarr_tree, make_list_tree):
+    trees = (make_parts_tree, make_channel_tree, make_special_tree, make_zarr_tree, make_list_tree)
+    for make in trees:
         a, b = tmp_path / f"{make.__name__}_a", tmp_path / f"{make.__name__}_b"
         a.mkdir()
         b.mkdir()
@@ -1136,3 +1169,42 @@ def test_oracle_inputs_are_deterministic(tmp_path):
         for p in a.rglob("*"):
             if p.is_file():
                 assert p.read_bytes() == (b / p.relative_to(a)).read_bytes()
+
+
+def test_inputs_whose_bytes_are_results_are_written_without_cpp_tiff(tmp_path, monkeypatch):
+    # groupPartialVolumeFiles gives the files it only lists their bytes, and
+    # XR_estimateComputingMemory a one-page tiff's: a tiff library's layout must not decide them
+    import cpptiff
+
+    def refused(*args, **kwargs):
+        raise AssertionError("written with the tiff library")
+
+    monkeypatch.setattr(cpptiff, "write_tiff", refused)
+    for make in (make_parts_tree, make_channel_tree, make_special_tree):
+        (tmp_path / make.__name__).mkdir()
+        make(tmp_path / make.__name__)
+    tiff_writer((33, 17), raw=True)(tmp_path / "t.tif")
+
+
+@pytest.mark.parametrize(
+    "shape, dtype", [((33, 17), np.uint16), ((4, 5, 2), np.float32), ((3, 5, 4), np.uint8)]
+)
+def test_raw_tiff_is_read_as_written(tmp_path, shape, dtype):
+    from petakit5d.core.arrays import from_matlab
+    from petakit5d.io.imagesize import get_image_dtype, get_image_size
+    from petakit5d.io.tiff import read_tiff
+
+    m = (np.arange(math.prod(shape)) % 251).astype(dtype).reshape(shape, order="F")
+    f = tmp_path / "a.tif"
+    raw_tiff(f, m)
+    vol = from_matlab(m)
+    got = read_tiff(f)
+    assert got.dtype == dtype
+    np.testing.assert_array_equal(got, vol)
+    assert get_image_size(f) == ((1, *shape) if len(shape) == 2 else vol.shape)
+    names = {np.uint8: "uint8", np.uint16: "uint16", np.float32: "single"}
+    assert get_image_dtype(f) == names[dtype]
+    # the header, then per page its IFD of 11 entries and its strip, padded to an even length
+    page = shape[0] * shape[1] * np.dtype(dtype).itemsize
+    pages = 1 if len(shape) == 2 else shape[2]
+    assert f.stat().st_size == 8 + pages * (138 + page + page % 2)
