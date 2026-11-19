@@ -16,8 +16,9 @@ outputs that are not produced yet. Each row names the page or record with the me
 
 Tests name their row in the `reason` of their tolerance (`petakit5d.testing.compare.tol`,
 [testing.md](../testing.md)). The area pages: [decon.md](decon.md), [demos.md](demos.md),
-[flatfield.md](flatfield.md), [matlabcompat.md](matlabcompat.md), [realdata.md](realdata.md),
-[stitch.md](stitch.md), [tools.md](tools.md).
+[flatfield.md](flatfield.md), [matlabcompat.md](matlabcompat.md), [phase2.md](phase2.md) (the
+demos' Phase 2 steps), [realdata.md](realdata.md), [stitch.md](stitch.md),
+[tools.md](tools.md).
 
 ## 1. Files: deliberate format choices
 
@@ -55,6 +56,7 @@ With the exact add-on none of these apply: the results are MATLAB's bits.
 | P11 | FSC curves | P1's double tolerance | <= 5.9e-15 of the largest value; radii identical | approved 2026-11-12 | [tools.md](tools.md), Fourier shell correlation |
 | P12 | `deconvlucy` (RLdecon's `'original'` method) | P2 | | approved 2026-11-12 | [decon.md](decon.md) |
 | P13 | 2D tile registration (`normxcorr2`): correlation peak values | absolute 1e-7 | shifts identical; peaks <= 5.3e-8 | **proposed** | [stitch.md](stitch.md) |
+| P14 | the FFT spectra and FSC curves of decon results (demo_useful_tools' FFT and FSC steps), end to end | P2's relative L2 (<= 1e-4) of what is made from decon results | spectra relative L2 <= 5.4e-5 (as `\|F\| / max` 1.0e-5, beyond P9's 1e-6); FSC curves <= 2.3e-6 (beyond P11); on MATLAB's own decon results within P9 and P11 | **proposed** | [phase2.md](phase2.md), row 2 |
 
 ## 3. Tolerances on both backends
 
@@ -93,12 +95,14 @@ default ([decisions/0003](../decisions/0003-gpu.md)).
 
 | # | Output | Until | Source |
 |---|---|---|---|
-| T2 | figures (back projector and OTF masks, FSC, PSF, MIP masks) | the `figures` extra is installed | [demos.md](demos.md), row 5 |
-| T3 | the phase flat field (`ff_corrected_*/`, `_flatfield.mat`) | the `basic` extra is installed | [demos.md](demos.md), row 7 |
+| T2 | figures (back projector and OTF masks, FSC, PSF, MIP masks) | the `figures` extra is installed | [demos.md](demos.md), row 5; with the extra, the Phase 2 demos' figures are all drawn ([phase2.md](phase2.md)) |
+| T3 | the phase flat field (`ff_corrected_*/`, `_flatfield.mat`) | the `basic` extra is installed | [demos.md](demos.md), row 7; with the extra within N8 ([phase2.md](phase2.md)) |
 | T4 | a box with a NaN end (`[... NaN]`) is refused where MATLAB passes it on | the fix of 2026-11-18: accepted where MATLAB accepts it | [cli.md](../cli.md) |
+| T5 | the Imaris file of demo_useful_tools (`matlab_decon_omw/DSR_for_useful_tools/imaris/`: the `.ims` file, `parameters.json`, `parameters.mat`, `timepoints.txt`) | the port of `XR_imaris_conversion_data_wrapper`, which waits for the next release of Parallel_Imaris_Writer | [phase2.md](phase2.md) |
 
 T1 (the tile registration and its per-pair results `xcorr/<volume>/xcorr_tile_*.mat`) was
 removed on 2026-11-18: the registration is ported (`petakit5d.stitch.registration`), and the
 port writes those files as MATLAB does ([stitch.md](stitch.md), [realdata.md](realdata.md)). The
 demo runs, made before, were given MATLAB's merged results, so their per-pair files are compared
-when the demos run again ([demos.md](demos.md), row 4).
+when the demos run again ([demos.md](demos.md), row 4); those of the phase and 2-photon
+stitching are compared in [phase2.md](phase2.md) (P7, P13; every shift identical).
