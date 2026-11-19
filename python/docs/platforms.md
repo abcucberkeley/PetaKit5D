@@ -226,7 +226,12 @@ in ulps of the largest |value| of the output; FFT outputs in single precision in
     1.8.0, not with macOS: cpp-tiff 1.8.0 writes other bytes than 1.7.3 (the tests' input files,
     so 1,016 oracle cases get new keys; the port's tiff outputs, so about 180 cases see MATLAB's
     voxels in other bytes), and 12 binding tests expect 1.7.3's messages and gaps (10 strict
-    xfails of gaps that 1.8.0 fixes now pass). Moving the port to 1.8.0 updates them.
+    xfails of gaps that 1.8.0 fixes now pass). Since the oracle keys take tiff and zarr inputs by
+    their decoded content, output tiffs are compared by voxels and tags and the binding tests
+    follow the installed version, all but 8 of them pass with the 1.8.0 wheels on Linux. The 8
+    are cases whose MATLAB functions report the input files' sizes in bytes, which 1.8.0 changes
+    by a few bytes; their inputs need a writer independent of the library before the port moves
+    to 1.8.0.
   - 4 failed on macOS only, and pass or skip now: the NaN signs of the stitching distance maps
     and the registration (3 cases; their table rows above), and tests/jobs/test_single.py's
     `test_call_ends_its_pools_and_folders`, which expects a task runner's folder (Linux only)

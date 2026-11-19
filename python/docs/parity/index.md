@@ -37,7 +37,7 @@ read files across the two implementations.
 | F5 | process-function files `tmp/processFunc/processFunction_*.mat` | `usrFun` is a char array, not a MATLAB string object | approved 2026-11-18 | [demos.md](demos.md), row 3 |
 | F6 | figures | `.png` only, no `.fig` | approved 2026-11-11 (plan) | [migration.md](../migration.md) |
 | F7 | job logs | `Python command:` where MATLAB's say `Matlab command:` | approved 2026-11-11 (plan) | [jobs.md](../jobs.md) |
-| F8 | tiff in the `'libtiff'` and `'imwrite'` modes and uncompressed tiff | cpp-tiff's BigTIFF instead of classic TIFF through `saveastiff`; voxels and tags the same | approved 2026-11-11 (plan) | [decisions/0004](../decisions/0004-io-bindings.md) |
+| F8 | tiff in the `'libtiff'` and `'imwrite'` modes and uncompressed tiff | cpp-tiff's BigTIFF instead of classic TIFF through `saveastiff`; voxels and tags the same, but for the tags that name the writer (MATLAB's blockedImage writes `Software: MATLAB blockedImage`), which the comparison leaves out | approved 2026-11-11 (plan) | [decisions/0004](../decisions/0004-io-bindings.md) |
 | F9 | the libtiff-mode writer's files (`replicated/*_conventional.tif` of the readers/writers demo) | the LZW bytes of each page's last, partial strip differ (about 1 KB a page); voxels and tags identical | approved 2026-11-18 | [demos.md](demos.md), row 2 |
 
 ## 2. The default FFT backend (pocketfft) against MATLAB's FFTW
