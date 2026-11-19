@@ -8,6 +8,8 @@ version = "3.3.8.0"
 description = "FFTW 3.3.8 with MATLAB R2024b's codelet sets: the exact CPU FFT backend of petakit5d (optional)"
 readme = "README.md"
 license = "GPL-2.0-or-later"
+# FFTW 3.3.8's COPYING (the GNU GPL, version 2), as its source archive has it
+license-files = ["COPYING"]
 requires-python = ">=3.11"
 classifiers = [
     "Programming Language :: Python :: 3",
