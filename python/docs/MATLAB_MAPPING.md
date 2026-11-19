@@ -754,7 +754,7 @@ Deconvolve a file that fits in memory batch by batch (RLdecon_large_in_memory): 
 | `Deskew` | `deskew` | par |  | `false` | `False` | `@islogical` | Border PSF at dz sind(SkewAngle); the batches aren't deskewed. |
 | `SkewAngle` | `skew_angle` | par |  | `-32.45` | `-32.45` | `@isnumeric` | Skew angle (degrees). |
 | `flipZstack` | `flip_zstack` | par |  | `false` | `False` | `@islogical` | Flip the data in z first. |
-| `Background` | `background` | par | same | `[]` | `None` | `@isnumeric` | Background ([]: 99). |
+| `Background` | `background` | par | same | `[]` | `None` | `@isnumeric` | Background ([]: 100). |
 | `EdgeSoften` | `edge_soften` | par |  | `5` | `5` | `@isnumeric` | Accepted; not used (as in MATLAB). |
 | `zEdgeSoften` | `z_edge_soften` | par |  | `2` | `2` | `@isnumeric` | Accepted; not used (as in MATLAB). |
 | `Crop` | `crop` | par | same | `[]` | `None` | `@isnumeric` | Accepted; not used (as in MATLAB). |

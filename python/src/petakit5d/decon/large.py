@@ -428,7 +428,7 @@ def _rl_batch(
     Param("Deskew", "@islogical", "Border PSF at dz sind(SkewAngle); the batches aren't deskewed."),
     Param("SkewAngle", "@isnumeric", "Skew angle (degrees)."),
     Param("flipZstack", "@islogical", "Flip the data in z first."),
-    Param("Background", "@isnumeric", "Background ([]: 99).", convert="same"),
+    Param("Background", "@isnumeric", "Background ([]: 100).", convert="same"),
     Param("EdgeSoften", "@isnumeric", "Accepted; not used (as in MATLAB)."),
     Param("zEdgeSoften", "@isnumeric", "Accepted; not used (as in MATLAB)."),
     Param("Crop", "@isnumeric", "Accepted; not used (as in MATLAB).", convert="same"),
@@ -544,7 +544,8 @@ def decon_large_in_memory(
     use_mask_file = bool(mask_file) and _exist(mask_file)
     if use_mask_file:
         erosion = 0.0
-    bg = 99 if _empty(background) else background
+    # (100, as decon_frame, which always passes one, and the in-place path)
+    bg = 100 if _empty(background) else background
     tag = uuid if uuid else get_uuid()
 
     t0 = time.perf_counter()

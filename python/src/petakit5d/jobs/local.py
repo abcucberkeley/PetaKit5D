@@ -179,7 +179,9 @@ def run_parfor(call: Call) -> list[bool]:
     Workers: for a GPU job one per usable GPU, worker k on GPU ``(k - 1) mod n`` of the
     GPUs this process sees (its CUDA_VISIBLE_DEVICES set to that one); without a usable
     GPU, or for CPU jobs, ``local_worker_num`` if above 1, else the CPUs this process may
-    use, at most ``max_job_num``, within the memory limit of the pool (at least 1).
+    use, at most ``max_job_num``, within the memory limit of the pool (at least 1). Never
+    more workers than the CPUs this process may use (MATLAB: the local profile's
+    ``NumWorkers``, the cores of the machine or job; parpool refused more).
     (MATLAB's framework passes this wrapper parameters it doesn't take, so the 'parfor'
     path fails there; this ports what it was for.)"""
     s = call.settings
@@ -202,6 +204,8 @@ def run_parfor(call: Call) -> list[bool]:
         if not workers > 1:
             workers = min(s.get("max_job_num", math.inf), _available_cpus())
         workers = pool_worker_num(workers, s.get("mem_allocate"))
+    # (MATLAB's min, which ignores NaN)
+    workers = _available_cpus() if math.isnan(workers) else min(workers, _available_cpus())
 
     in_exist = _input_exist(call.inputs)
     out_exist = list(batch_file_exist(call.outputs, None, True))

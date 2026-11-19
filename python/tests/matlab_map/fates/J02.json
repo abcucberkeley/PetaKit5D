@@ -54,6 +54,9 @@
     ],
     "taskWithoutOutputIsRetriedUpToMaxTrialNum": [
      "pytest:tests/jobs/test_framework_local.py::test_task_without_output_is_retried_up_to_max_trial_num"
+    ],
+    "parforWrapperTakesNoMoreWorkersThanTheProfile": [
+     "pytest:tests/jobs/test_local_pool.py::test_parfor_wrapper_takes_no_more_workers_than_the_cpus"
     ]
    }
   },

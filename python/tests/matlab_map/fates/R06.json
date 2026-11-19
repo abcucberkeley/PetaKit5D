@@ -110,6 +110,10 @@
         "omwBackProjectorOfOtherBoundsIsCopiedByItsName": [
           "pytest:tests/decon/test_dataset.py::test_omw_back_projector_of_other_bounds_is_copied_by_its_name",
           "oracle:tests/decon/test_dataset.py::long_decimals.omw.*"
+        ],
+        "largeFileInMemoryDefaultBackgroundIsThatOfTheOtherPaths": [
+          "pytest:tests/decon/test_large.py::test_in_memory_background_defaults_to_100",
+          "oracle:tests/decon/test_large.py::mem.background_default.*"
         ]
       }
     },

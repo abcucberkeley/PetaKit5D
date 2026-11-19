@@ -560,6 +560,25 @@ def test_parfor_workers_by_default_are_the_cpus_at_most_max_job_num(tmp_path, po
     assert "(1 at a time)" in capfd.readouterr().out
 
 
+def test_parfor_wrapper_takes_no_more_workers_than_the_cpus(tmp_path, pooltasks, capfd):
+    # parforWrapperTakesNoMoreWorkersThanTheProfile: no more workers than the CPUs this process
+    # may use (MATLAB's local profile has as many as the cores; parpool refused the 12 that
+    # XR_crop_zarr and XR_MIP_zarr ask for in a job of fewer cores)
+    from petakit5d.core.threads import available_cpus
+
+    n = available_cpus()
+    in_fns, out_fns, log_fn = make_tasks(tmp_path, n + 2)
+    t = task_list(pooltasks, in_fns, out_fns, log_fn, "copy")
+    for w in (n + 1, math.nan):
+        assert run_tasks(in_fns, out_fns, t, cluster_type="parfor", local_worker_num=w) == [
+            True
+        ] * (n + 2)
+        assert f"({n} at a time)" in capfd.readouterr().out
+        assert read_texts(out_fns) == read_texts(in_fns)
+        for o in out_fns:
+            os.remove(o)
+
+
 def test_run_pool_follows_the_call_settings(tmp_path, pooltasks, monkeypatch):
     in_fns, out_fns, log_fn = make_tasks(tmp_path, 3)
     recs = [

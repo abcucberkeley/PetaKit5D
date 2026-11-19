@@ -935,6 +935,23 @@ def test_in_memory_batches_of_another_class_are_cast_to_the_result(tmp_path, mon
     same_bits(read(out_fn), np.full(SMALL, 3, np.uint16))
 
 
+def test_in_memory_background_defaults_to_100(tmp_path, monkeypatch):
+    # largeFileInMemoryDefaultBackgroundIsThatOfTheOtherPaths: the in-memory path's default
+    # background is the other paths' 100 (it was 99)
+    d, fns, psf = dataset(tmp_path)
+    seen = []
+
+    def spy(rawdata, out_fn, psf_fn, xy, dz, dz_psf, box, kw):
+        seen.append(kw["background"])
+        return np.zeros(tuple(box[q + 3] - box[q] for q in range(3)), np.uint16)
+
+    monkeypatch.setattr(L, "_rl_batch", spy)
+    L.decon_large_in_memory(
+        fns[0], psf, d + "x/out.tif", XY, DZ, edge_erosion=0, batch_size=(16, 24, 24)
+    )
+    assert seen and all(b == 100 for b in seen)
+
+
 def test_in_place_background_defaults_to_100(tmp_path, framework_spy, mip_spy):
     d, fns, psf = dataset(tmp_path, zarr=True)
     framework_spy.done = True
