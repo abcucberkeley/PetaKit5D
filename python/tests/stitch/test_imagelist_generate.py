@@ -33,7 +33,8 @@ def matlab_wrapper(*args):
 WRAPPER_CODE = "XR_generate_image_list_wrapper(in{:}); out = {};"
 
 
-def wrapper_case(cid, make, *args, error=False, marks=()):
+def wrapper_case(cid, make, *args, error=False, marks=(), **kw):
+    kw.setdefault("py_error", (il.ImageListError, NotImplementedError, ValueError, TypeError))
     return Case(
         cid,
         code=WRAPPER_CODE,
@@ -42,8 +43,8 @@ def wrapper_case(cid, make, *args, error=False, marks=()):
         python=matlab_wrapper,
         inputs={"d": Tree(make, "d")},
         expect_error=error,
-        py_error=(il.ImageListError, NotImplementedError, ValueError, TypeError),
         marks=marks,
+        **kw,
     )
 
 
@@ -179,6 +180,105 @@ def db_tree(*dbs):
     def make(root: Path) -> None:
         for i, rows in enumerate(dbs):
             write_db(root / f"Scan_Iter_{i:04d}_slicelist.sqlite3", rows)
+
+    return make
+
+
+# an acquisition database with the image, slice and metadata tables and the two views the list
+# reads (ImageListGenerationTest's writeAcquisitionDb, the same statements)
+_NO_NULL = (
+    "IFNULL(Filename, 'N/A') AS Filename, IFNULL(Camera, 'N/A') AS Camera, "
+    "IFNULL(Channel, 'N/A') AS Channel, IFNULL(Laser_nm, 'N/A') AS Laser_nm, "
+    "IFNULL(File_Stack_Index, 'N/A') AS File_Stack_Index, IFNULL(Elapsed_ms, 'N/A') AS Elapsed_ms, "
+    "IFNULL(Absolute_ms, 'N/A') AS Absolute_ms, IFNULL(Tile_index_X, 'N/A') AS Tile_index_X, "
+    "IFNULL(Tile_index_Y, 'N/A') AS Tile_index_Y, IFNULL(Tile_index_Z, 'N/A') AS Tile_index_Z, "
+    "IFNULL(Tile_index_T, 'N/A') AS Tile_index_T, IFNULL(Frame_Type, 'N/A') AS Frame_Type, "
+)
+ACQ_IMAGE_ROW = (
+    "INSERT INTO ImageList VALUES ({}, 'acq_Cam{}_ch{}_{}nm_{}.tif', {}, {}, {}, 0, {:g}, {}, {}, "
+    "0, 0, 0, '', {})"
+)
+
+
+def acq_statements(hash_col: str) -> list[str]:
+    """the database's statements. hash_col: the inner view's JSONsettings_MD5, 'returned' (the
+    view works), 'missing' (joined on, not returned: the view fails as in the databases of
+    2026-09) or 'other' (the outer view asks for JSONsettings_MD5_old, which nothing returns)"""
+    out = [
+        "CREATE TABLE MetadataList (MetadataList_id INTEGER PRIMARY KEY, "
+        "JSONsettings_MD5 INTEGER UNIQUE, JSONsettings TEXT)",
+        "CREATE TABLE ImageList (ImageList_id INTEGER PRIMARY KEY, Filename TEXT UNIQUE, "
+        "Camera INTEGER, Channel INTEGER, Laser_nm INTEGER, File_Stack_Index INTEGER, "
+        "Elapsed_ms REAL, Absolute_ms INTEGER, Tile_index_X INTEGER, Tile_index_Y INTEGER, "
+        "Tile_index_Z INTEGER, Tile_index_T INTEGER, Frame_Type TEXT, JSONsettings_MD5 INTEGER)",
+        "CREATE TABLE SliceList (SliceList_id INTEGER PRIMARY KEY, ImageList_id INTEGER, "
+        "Slice_Index INTEGER, X_Target_Position_um REAL, Y_Target_Position_um REAL, "
+        "Z_Target_Position_um REAL, Encoder_Timestamp_ms REAL)",
+        "INSERT INTO MetadataList VALUES (1, 1001, '{\"a\": 1}'), (2, 1002, '{\"a\": 2}')",
+    ]
+    # 8 images (2 cameras x 2 channels x 2 tiles, not in name order), one without metadata, one
+    # whose hash has no metadata row and one without slices
+    k = 0
+    for cam in (1, 0):
+        for ch in (1, 0):
+            for x in (1, 0):
+                k += 1
+                laser = 488 + 72 * ch
+                tile = f"{x:03d}x"
+                row = (k, "AB"[cam], ch, laser, tile, cam, ch, laser, 0.5 * k, 5000 + 7 * k, x)
+                out.append(ACQ_IMAGE_ROW.format(*row, 1001 + k % 2))
+    for k, tag, md5 in ((9, "nohash", "NULL"), (10, "nometa", "9999"), (11, "noslice", "1001")):
+        out.append(ACQ_IMAGE_ROW.format(k, "A", 0, 488, tag, 0, 0, 488, 0, 0, k - 4, md5))
+    # three slices an image, the images' slices interleaved as the cameras record them; one
+    # slice of image 3 without a target x
+    for s in range(3):
+        for k in range(1, 11):
+            xt = "NULL" if (k, s) == (3, 1) else f"{100 * (k % 2) + 0.25 * s + 0.125:g}"
+            out.append(
+                f"INSERT INTO SliceList VALUES (NULL, {k}, {s}, {xt}, {-20.5 + 0.5 * k:g}, "
+                f"{3 + 0.25 * s:g}, {1000 * k + 10 * s:g})"
+            )
+    hash_out = "ImageList.JSONsettings_MD5 AS JSONsettings_MD5, " if hash_col == "returned" else ""
+    outer = "JSONsettings_MD5_old" if hash_col == "other" else "JSONsettings_MD5"
+    out.append(
+        "CREATE VIEW EverythingView_NoNull AS SELECT ImageList.ImageList_id ImageList_id, "
+        + hash_out
+        + _NO_NULL
+        + "IFNULL(X_Target_Position_um, 'N/A') AS X_Target_Position_um, "
+        "IFNULL(Y_Target_Position_um, 'N/A') AS Y_Target_Position_um, "
+        "IFNULL(Z_Target_Position_um, 'N/A') AS Z_Target_Position_um, "
+        "IFNULL(Encoder_Timestamp_ms, 'N/A') AS Encoder_Timestamp_ms, "
+        "IFNULL(MetadataList.JSONsettings, 'N/A') AS JSONsettings "
+        "FROM SliceList INNER JOIN ImageList ON ImageList.ImageList_id = SliceList.ImageList_id "
+        "INNER JOIN MetadataList ON MetadataList.JSONsettings_MD5 = ImageList.JSONsettings_MD5 "
+        "ORDER BY Filename, Encoder_Timestamp_ms"
+    )
+    out.append(
+        "CREATE VIEW ImageListView_NoNull AS SELECT ImageList_id, "
+        + _NO_NULL
+        + f"IFNULL({outer}, 'N/A') AS JSONsettings_MD5, JSONsettings, "
+        "avg(X_Target_Position_um) Mean_X_Target_Position_um, "
+        "avg(Y_Target_Position_um) Mean_Y_Target_Position_um, "
+        "avg(Z_Target_Position_um) Mean_Z_Target_Position_um FROM EverythingView_NoNull "
+        "GROUP BY ImageList_id ORDER BY Filename, Encoder_Timestamp_ms"
+    )
+    return out
+
+
+def write_acquisition_db(path: Path, hash_col: str) -> None:
+    con = sqlite3.connect(path)
+    for s in acq_statements(hash_col):
+        con.execute(s)
+    con.commit()
+    con.close()
+    b = bytearray(path.read_bytes())
+    b[92:100] = bytes(8)
+    path.write_bytes(bytes(b))
+
+
+def acq_tree(hash_col: str):
+    def make(root: Path) -> None:
+        write_acquisition_db(root / "Scan_Iter_0000_slicelist.sqlite3", hash_col)
 
     return make
 
@@ -420,7 +520,35 @@ GENERATE_CASES = [
         ["CamA_ch1"],
     ),
     wrapper_case("generate_sqlite_empty_db", db_tree(db_rows(), []), "sqlite"),
+    # an acquisition database with its views: the inner view returns the hash, or the outer
+    # view asks for a column nothing returns (an error with or without the fallback below)
+    wrapper_case("generate_sqlite_views", acq_tree("returned"), "sqlite"),
+    wrapper_case(
+        "generate_sqlite_view_other_missing_column",
+        acq_tree("other"),
+        "sqlite",
+        error=True,
+        py_error=sqlite3.OperationalError,
+    ),
     wrapper_case("generate_unknown_method", empty, "other", error=True),
+]
+
+# The fallback of stitch_generate_imagelist_from_sqlite to the image and slice tables where the
+# view can't resolve JSONsettings_MD5 (Matt's change of 2026-09-09): oracle trees before it
+# fail on these databases, so they have no MATLAB reference yet; they join ORACLE_CASES at the
+# next oracle switch (the fates of ImageListGenerationTest's two sqlite methods name them).
+PENDING_CASES = [
+    wrapper_case(
+        "generate_sqlite_view_without_hash", acq_tree("missing"), "sqlite", warnings="ids"
+    ),
+    wrapper_case(
+        "generate_sqlite_view_without_hash_no_mapping",
+        acq_tree("missing"),
+        "sqlite",
+        "mapTilename",
+        False,
+        warnings="ids",
+    ),
 ]
 
 
@@ -664,6 +792,132 @@ def test_tileNamesWithoutStandardChannel(tmp_path):
     tab = read_list(tmp_path / "ImageList_from_tile_positions.csv")
     np.testing.assert_allclose(np.sort(tab["StageX_um_"]), [0, 32 * XY_PIXEL_SIZE], atol=1e-9)
     assert all("_ch0_" in s for s in tab["mappedFilename"])
+
+
+ACQ_DB = "Scan_Iter_0000_slicelist.sqlite3"
+HASH_WARNING = "stitch_generate_imagelist_from_sqlite:missingMetadataHashInView"
+VIEW_COLUMNS = (
+    "Filename",
+    "Camera",
+    "Channel",
+    "Laser_nm",
+    "File_Stack_Index",
+    "Elapsed_ms",
+    "Absolute_ms",
+    "Tile_index_X",
+    "Tile_index_Y",
+    "Tile_index_Z",
+    "Tile_index_T",
+    "Mean_X_Target_Position_um",
+    "Mean_Y_Target_Position_um",
+    "Mean_Z_Target_Position_um",
+)
+
+
+def acq_folder(tmp_path: Path, hash_col: str) -> Path:
+    folder = tmp_path / hash_col
+    folder.mkdir()
+    acq_tree(hash_col)(folder)
+    return folder
+
+
+def matlab_warnings(rec) -> list:
+    return [w.message for w in rec if issubclass(w.category, il.MatlabWarning)]
+
+
+def test_the_view_fails_on_the_hash_it_joins_on_but_does_not_return(tmp_path):
+    """the made-up databases fail as the acquisition databases of 2026-09 do"""
+    for hash_col, message in (
+        ("missing", "no such column: JSONsettings_MD5"),
+        ("other", "no such column: JSONsettings_MD5_old"),
+    ):
+        con = sqlite3.connect(acq_folder(tmp_path, hash_col) / ACQ_DB)
+        with pytest.raises(sqlite3.OperationalError) as e:
+            con.execute("SELECT * FROM ImageListView_NoNull")
+        con.close()
+        assert str(e.value) == message
+    con = sqlite3.connect(acq_folder(tmp_path, "returned") / ACQ_DB)
+    assert len(con.execute("SELECT * FROM ImageListView_NoNull").fetchall()) == 8
+    con.close()
+
+
+def test_the_tables_give_the_rows_of_the_view(tmp_path):
+    """the fallback's query on the failing database gives the columns the list reads as the
+    view gives them where the inner view returns the hash: the same values, types and order"""
+    con = sqlite3.connect(acq_folder(tmp_path, "returned") / ACQ_DB)
+    want = con.execute(f"SELECT {', '.join(VIEW_COLUMNS)} FROM ImageListView_NoNull").fetchall()
+    con.close()
+    with pytest.warns(il.MatlabWarning):
+        cols, got = ig._fetch(str(acq_folder(tmp_path, "missing") / ACQ_DB), tables=True)
+    assert cols == list(VIEW_COLUMNS)
+    assert [[(type(v), repr(v)) for v in r] for r in got] == [
+        [(type(v), repr(v)) for v in r] for r in want
+    ]
+    # the slice without a target x counts as 0 in its mean, as in the view
+    assert [r[11] for r in got if "CamB_ch0_488nm_001x" in r[0]] == [(100.125 + 100.625) / 3]
+
+
+@pytest.mark.parametrize("map_tilename", [True, False])
+def test_sqliteViewWithoutMetadataHashReadsTheTables(tmp_path, map_tilename):
+    broken, fixed = acq_folder(tmp_path, "missing"), acq_folder(tmp_path, "returned")
+    with warnings.catch_warnings(record=True) as rec:
+        warnings.simplefilter("always")
+        ig.generate_image_list_from_sqlite(str(broken), map_tilename=map_tilename)
+    (w,) = matlab_warnings(rec)
+    assert w.identifier == HASH_WARNING
+    assert str(w) == (
+        f"ImageListView_NoNull cannot resolve JSONsettings_MD5 in {broken}/{ACQ_DB}. Reading "
+        "image and slice tables instead."
+    )
+    with warnings.catch_warnings(record=True) as rec:
+        warnings.simplefilter("always")
+        ig.generate_image_list_from_sqlite(str(fixed), map_tilename=map_tilename)
+    assert not matlab_warnings(rec)
+    listed = (broken / "ImageList_from_sqlite.csv").read_bytes()
+    assert listed == (fixed / "ImageList_from_sqlite.csv").read_bytes()
+    # the images without a metadata row or without slices are left out, as the view's joins
+    # leave them out
+    tab = read_list(broken / "ImageList_from_sqlite.csv")
+    assert tab.height == 8
+    assert not [s for s in tab["Filename"] if any(t in s for t in ("nohash", "nometa", "noslice"))]
+
+
+def test_sqliteViewWithOtherMissingColumnStillFails(tmp_path):
+    folder = acq_folder(tmp_path, "other")
+    with warnings.catch_warnings(record=True) as rec:
+        warnings.simplefilter("always")
+        with pytest.raises(sqlite3.OperationalError, match="JSONsettings_MD5_old") as e:
+            ig.generate_image_list_from_sqlite(str(folder))
+    assert not matlab_warnings(rec)
+    assert e.value.identifier == "database:sqlite:interfaceError"
+    assert not (folder / "ImageList_from_sqlite.csv").exists()
+
+
+def test_the_old_format_reads_only_the_view(tmp_path):
+    # stitch_generate_imagelist_from_sqlite_old_format has no fallback (it takes the view's
+    # columns by position)
+    folder = acq_folder(tmp_path, "missing")
+    with pytest.raises(sqlite3.OperationalError, match="JSONsettings_MD5"):
+        ig.generate_image_list_from_sqlite_old_format(f"{folder}/")
+
+
+@pytest.mark.parametrize("cid", [c.id for c in PENDING_CASES])
+def test_pending_cases_give_the_list_of_the_view(cid, tmp_path):
+    """the fallback's oracle cases (no MATLAB reference until the next oracle switch): the
+    port's tree equals its tree from the database whose view works, with MATLAB's warning.
+    Parametrized by id, since oracle runs take the cases of ``case`` parameters"""
+    (case,) = [c for c in PENDING_CASES if c.id == cid]
+    lists = {}
+    for hash_col in ("missing", "returned"):
+        folder = acq_folder(tmp_path, hash_col)
+        with warnings.catch_warnings(record=True) as rec:
+            warnings.simplefilter("always")
+            matlab_wrapper(str(folder), *case.args[1:])
+        ids = [w.identifier for w in matlab_warnings(rec)]
+        assert ids == ([HASH_WARNING] if hash_col == "missing" else [])
+        lists[hash_col] = (folder / "ImageList_from_sqlite.csv").read_bytes()
+    assert lists["missing"] == lists["returned"]
+    assert case.id not in {c.id for c in ORACLE_CASES}
 
 
 # ------------------------------------------------------------------------------------------

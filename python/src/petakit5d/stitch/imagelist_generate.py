@@ -8,7 +8,8 @@ Ports ``XR_generate_image_list_wrapper`` and the generators it calls:
 - ``encoder``: the first MCS2 position of each tile in the ``SliceList_*part<N>.csv`` files
   (``XR_estimate_actual_step_size_from_encoder`` writes ``encoder_info/`` first);
 - ``sqlite``: the acquisition database (``*.sqlite3``, view ``ImageListView_NoNull``, through
-  the standard ``sqlite3`` module), with names mapped to the standard grammar.
+  the standard ``sqlite3`` module; its image and slice tables where the view can't resolve
+  ``JSONsettings_MD5``), with names mapped to the standard grammar.
 
 The csv files are written as R2024b's ``writetable`` writes them (``imagelist.write_table``),
 through a temporary name and one rename. Also here: ``stitch_generate_imagelist_from_encoder_ISM``
@@ -19,6 +20,7 @@ from __future__ import annotations
 
 import math
 import os
+import re
 import sqlite3
 import time
 from collections.abc import Sequence
@@ -818,12 +820,55 @@ def generate_image_list_from_encoder_ism(data_path: str, position_type: str = "M
 # ------------------------------------------------------------------------------------------
 
 
-def _fetch(dbfile: str) -> tuple[list[str], list[tuple]]:
+# The view's columns the image list reads, from the image and slice tables: for databases whose
+# ImageListView_NoNull asks EverythingView_NoNull for JSONsettings_MD5, which that view joins on
+# but doesn't return ("no such column: JSONsettings_MD5").
+_TABLES_QUERY = (
+    "SELECT IFNULL(ImageList.Filename, 'N/A') AS Filename, "
+    "IFNULL(ImageList.Camera, 'N/A') AS Camera, "
+    "IFNULL(ImageList.Channel, 'N/A') AS Channel, "
+    "IFNULL(ImageList.Laser_nm, 'N/A') AS Laser_nm, "
+    "IFNULL(ImageList.File_Stack_Index, 'N/A') AS File_Stack_Index, "
+    "IFNULL(ImageList.Elapsed_ms, 'N/A') AS Elapsed_ms, "
+    "IFNULL(ImageList.Absolute_ms, 'N/A') AS Absolute_ms, "
+    "IFNULL(ImageList.Tile_index_X, 'N/A') AS Tile_index_X, "
+    "IFNULL(ImageList.Tile_index_Y, 'N/A') AS Tile_index_Y, "
+    "IFNULL(ImageList.Tile_index_Z, 'N/A') AS Tile_index_Z, "
+    "IFNULL(ImageList.Tile_index_T, 'N/A') AS Tile_index_T, "
+    "AVG(IFNULL(SliceList.X_Target_Position_um, 'N/A')) AS Mean_X_Target_Position_um, "
+    "AVG(IFNULL(SliceList.Y_Target_Position_um, 'N/A')) AS Mean_Y_Target_Position_um, "
+    "AVG(IFNULL(SliceList.Z_Target_Position_um, 'N/A')) AS Mean_Z_Target_Position_um "
+    "FROM SliceList "
+    "INNER JOIN ImageList ON ImageList.ImageList_id = SliceList.ImageList_id "
+    "INNER JOIN MetadataList ON MetadataList.JSONsettings_MD5 = ImageList.JSONsettings_MD5 "
+    "GROUP BY ImageList.ImageList_id ORDER BY ImageList.Filename"
+)
+# MATLAB's regexp 'no such column: JSONsettings_MD5\>' (\> ends a word)
+_MISSING_HASH = re.compile(r"no such column: JSONsettings_MD5(?![A-Za-z0-9_])")
+
+
+def _fetch(dbfile: str, *, tables: bool = False) -> tuple[list[str], list[tuple]]:
+    """the rows of the database's ImageListView_NoNull; with ``tables``, where the view can't
+    resolve JSONsettings_MD5, the same columns from the tables, with MATLAB's warning"""
     conn = sqlite3.connect(f"file:{dbfile}?mode=ro", uri=True)
     try:
-        cur = conn.execute("SELECT * FROM ImageListView_NoNull")
+        try:
+            cur = conn.execute("SELECT * FROM ImageListView_NoNull")
+        except sqlite3.OperationalError as e:
+            if not tables or _MISSING_HASH.search(str(e)) is None:
+                raise
+            _warn(
+                f"ImageListView_NoNull cannot resolve JSONsettings_MD5 in {dbfile}. Reading image "
+                "and slice tables instead.",
+                "stitch_generate_imagelist_from_sqlite:missingMetadataHashInView",
+            )
+            cur = conn.execute(_TABLES_QUERY)
         cols = [d[0] for d in cur.description]
         rows = cur.fetchall()
+    except sqlite3.Error as e:
+        # the identifier of MATLAB's sqlite interface for a failed fetch
+        e.identifier = "database:sqlite:interfaceError"  # type: ignore[attr-defined]
+        raise
     finally:
         conn.close()
     return cols, rows
@@ -838,7 +883,8 @@ def generate_image_list_from_sqlite(
     """``stitch_generate_imagelist_from_sqlite``: ``ImageList_from_sqlite.csv`` from the
     acquisition databases of the folder, with the target positions; with ``map_tilename`` the
     names mapped to the standard grammar (channels numbered per camera by channel and laser).
-    Returns its path."""
+    A database whose view can't resolve JSONsettings_MD5 is read from its image and slice
+    tables, with a warning. Returns its path."""
     from petakit5d.core.ids import get_uuid
 
     fsns = [e.name for e in matlab_dir(f"{data_path}/*.sqlite3")]
@@ -849,7 +895,7 @@ def generate_image_list_from_sqlite(
     keys += ("Tile_index_X", "Tile_index_Y", "Tile_index_Z", "Tile_index_T")
     for f in fsns:
         dbfile = f"{data_path}/{f}"
-        cols, rows = _fetch(dbfile)
+        cols, rows = _fetch(dbfile, tables=True)
         if not rows:
             _warn(f"{dbfile} is empty, skip it!")
             continue
