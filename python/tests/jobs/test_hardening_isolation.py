@@ -11,7 +11,7 @@ are the harness's template, copied into a new work folder before each run.
 
 ``test_every_task_function_has_a_scenario`` keeps the list complete (it reads the sources, so it
 always runs): a new ``Task.of`` call site in the package needs a scenario, or a listed reason,
-here. The harness run (100 tasks of 44 scenarios, about a minute; ``-s`` shows its stages)
+here. The harness run (103 tasks of 47 scenarios, about a minute; ``-s`` shows its stages)
 runs on Linux, the runners' platform: on macOS the cpp-tiff and cpp-zarr wheels can't be loaded
 together in one process yet, which every scenario process does."""
 
@@ -496,6 +496,39 @@ def b_mip_masks(folder):
                        vol_thresh=20, dilate_size=2, **LOCAL)  # fmt: skip
 
 
+def _sim_frames(folder, psf=True):
+    """a synthetic 5-phase lattice SIM file (and the phase-stepped bead for its OTF)"""
+    from petakit5d.sim import synthetic
+
+    folder.mkdir(parents=True, exist_ok=True)
+    beads = [(2.5, 8.2, 7.1, 900.0), (4.0, 17.3, 21.6, 1400.0), (6.2, 25.4, 9.8, 1100.0)]
+    write_tiff(synthetic.phase_stack((10, 36, 32), beads), str(folder / "cell_CamA.tif"))
+    if psf:
+        write_tiff(synthetic.phase_psf((11, 32, 30)), str(folder / "psf.tif"))
+    return str(folder) + "/"
+
+
+def b_sim_recon(folder):
+    from petakit5d.sim.dataset import sim_recon_dataset
+
+    path = _sim_frames(folder)
+    sim_recon_dataset(path, [path + "psf.tif"], channel_patterns=("CamA",), use_gpu=False, **LOCAL)
+
+
+def b_sim_deskew(folder):
+    from petakit5d.sim.dataset import deskew_phases_dataset
+
+    path = _sim_frames(folder, psf=False)
+    deskew_phases_dataset(path, 0.108, 0.3, channel_patterns=("CamA",), **LOCAL)
+
+
+def b_sim_rotate(folder):
+    from petakit5d.sim.dataset import rotate_3d_dataset
+
+    path = _sim_frames(folder, psf=False)
+    rotate_3d_dataset(path, 0.108, 0.3, channel_patterns=("CamA",), **LOCAL)
+
+
 # name, builder, the captured framework call (1-based; 0: the frames the wrapper runs itself
 # in local mode; -1: the builder returns the records), the task functions it runs
 _C, _M, _R, _U = "tools.crop:", "tools.mip:", "tools.resample:", "tools.unmix:"
@@ -545,6 +578,9 @@ SCENARIOS: list[tuple[str, Callable[[Path], None], int, str]] = [
     ("puncta_interp", b_puncta_interp, 2, _P + "interpolated_background_block"),
     ("psf_detection", b_psf_detection, 1, "tools.psf_analysis:psf_detection_and_cropping"),
     ("mip_masks", b_mip_masks, 2, "tools.mip_masks:generate_single_mip_mask"),
+    ("sim_recon", b_sim_recon, 1, "sim.file:sim_recon_file"),
+    ("sim_deskew", b_sim_deskew, 1, "sim.file:deskew_phases_file"),
+    ("sim_rotate", b_sim_rotate, 1, "deskew_rotate.file:rotate_file"),
 ]
 
 
