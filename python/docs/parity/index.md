@@ -19,7 +19,7 @@ outputs that are not produced yet. Each row names the page or record with the me
 
 Tests name their row in the `reason` of their tolerance (`petakit5d.testing.compare.tol`,
 [testing.md](../testing.md)). The area pages: [decon.md](decon.md), [demos.md](demos.md),
-[detection.md](detection.md) (Phase 3), [flatfield.md](flatfield.md), [matlabcompat.md](matlabcompat.md), [phase2.md](phase2.md) (the
+[detection.md](detection.md) (Phase 3), [sim.md](sim.md) (structured illumination, Phase 3), [flatfield.md](flatfield.md), [matlabcompat.md](matlabcompat.md), [phase2.md](phase2.md) (the
 demos' Phase 2 steps), [realdata.md](realdata.md), [stitch.md](stitch.md),
 [tools.md](tools.md).
 
@@ -77,6 +77,7 @@ probes, and MATLAB results that depend on MATLAB's thread count.
 | N8 | the phase-image flat field (BaSiCPy in place of MATLAB's BaSiC) | flat field: relative 0.06 (0.12 under strong vignetting), relative L2 0.01 (0.03); uint16 tiles 1 count more | about a percent; up to 10.7% at single pixels | approved 2026-11-18 | [flatfield.md](flatfield.md) |
 | S1-S10 | point detection's statistics functions (`detection.stats`: `norminv`, `tcdf`, `tinv`, `chi2inv`, `fcdf`, `ksdensity`; MATLAB's closed special functions) | per row, from 4 ulp to `rel` 2e-4 (`ksdensity` from 500 values: 2%) | `ecdf`, `mad`, `kstest2`, the edge values and one degree of freedom bit for bit; where the differences pass a few ulp MATLAB is the less exact side (50-digit checks) | proposed 2026-11-19 | [detection.md](detection.md) |
 | TK1-TK4 | tracking (`detection.tracking`): ties in the assignment solver, `KDTreeBallQuery`'s order at equal distances, the gap-closing costs' last bits, detections at x = 0 | none on the outputs | the demo's `trackedFeatures.mat` and every case bit for bit | proposed 2026-11-19 | [detection.md](detection.md) |
+| R1-R6 | structured illumination (`petakit5d.sim`): FFT and LAPACK rounding in the double and single steps, the OTF's bead fit, the masked registration, `sim_PSFtoOTF_gen`, and `simRecon`'s files on the CPU and the GPU | per row, from max 1e-13 (double steps) to rel L2 1e-4 (the reconstructions) | about a tenth of each bound; the separation matrix, masks, OTF resampling, `fminsearch`'s traces, the phase deskew and the phase split and merge bit for bit | proposed 2026-11-19 | [sim.md](sim.md) |
 | N9 | `median`, `mode`, `medfilt2`, `medfilt3` at ties of -0 and +0 | the sign of a zero may differ; values agree | 3 of 269 probe medians | approved 2026-11-12 | [decisions/0005](../decisions/0005-sums-and-math-library.md) |
 | N10 | MATLAB's sums, means and standard deviations of 89,000 or more elements, which depend on MATLAB's thread count | the port gives MATLAB's one-thread result at any thread count | up to 1.2e-4 relative between MATLAB's own thread counts (single) | approved 2026-11-12 | [decisions/0005](../decisions/0005-sums-and-math-library.md) |
 | N11 | demo_RL_deconvolution's in-memory results (the demo's `sum(psf, 'all')` at 24 threads) | N10: the one-thread sum | the back projector differs by <= 6.0e-8; uint16 results by 1 in <= 0.0082% of voxels; equal to MATLAB's with its one-thread sum | approved 2026-11-12 | [demos.md](demos.md), row 6 |
