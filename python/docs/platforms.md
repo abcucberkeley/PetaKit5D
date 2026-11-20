@@ -70,10 +70,10 @@ Windows speed matters.
   - the integral image on every system (an input with NaN is computed again): 21 of the 21
     inputs as MATLAB (x86-64's build matched 18 before; ARM's matched them, but swapped sums of
     other inputs);
-  - imwarp on ARM (each voxel that comes out NaN): 78 of 78. On x86-64 imwarp keeps the code it
-    compiled before, 32 of the 78: the recomputation there cost 5 to 10% of cubic's speed,
-    since any change to `cpp/warp/warp.cpp` moves GCC's inlining of the end values (Known
-    problems);
+  - imwarp on ARM (each voxel that comes out NaN): 78 of 78. On x86-64 imwarp computes no voxel
+    again, 29 of the 78 (32 before the cubic code of 2026-11-19: the compiler's choices follow
+    the code); the recomputation there cost 5 to 10% of cubic's speed when it was measured
+    (Known problems);
   - the linear filters on ARM (each output value that comes out NaN), with
     `pk5d::x86_fma_nans(r, a, b, c)` for the fused taps. MATLAB's filters take a tap's NaN
     before the running sum's: a fused tap's factors, a plain tap's product, a chain of a padded
@@ -97,16 +97,22 @@ Windows speed matters.
     about 41,500 of the fused kernel, forward and reverse). The AVX2 build keeps the mex's code:
     the compiler's choice, in every row (341 and 424 NaNs of the warp, 552 and 544 of the
     interpolation, 3,531 and 3,408 of the fused kernel differ from the mex).
+  - convn and conv2 of a kernel with Inf or NaN (and of an image with them where a kernel
+    larger than the image swaps the roles) on every system: every operation's NaN written out
+    (`taps_nd_inside`), a product's the image value's before the tap's, a sum's the product's
+    (a fused tap's factors') before the running sum's. MATLAB gives these in every probe output
+    (NaNs of three kinds and infinities meeting, plain and fused sums, single and double), but
+    where its small arrays' sums differ from the port's (Known problems).
 
   Tests: tests/platform/test_nan_rules.py (a reference of the integral image's passes in
   `core.dtypes`' arithmetic; imwarp's and the deskew kernels' NaNs side by side, on the builds
   that compute the rule; references of the filters' tap programs and tap correlations, the
-  fused ones on x86-64 too) and `specials.meeting_nans`.
+  fused ones on x86-64 too), `specials.meeting_nans` and `specials.conv_overlap`.
   **The pinned cases keep NaNs of other bits apart** (no output sees two, except where the
-  kernel fixes their order itself: the ordered sums, reduce, the integral image), since a sum's
-  NaN is otherwise the compiler's choice, which another build can change (the stable-ABI build
-  did for imwarp cubic): kernels with a footprint take the payload NaN on an input of its own
-  (`payload_only`) or out of the other NaNs' reach.
+  kernel fixes their order itself: the ordered sums, reduce, the integral image, convn and conv2
+  of kernels with Inf or NaN), since a sum's NaN is otherwise the compiler's choice, which
+  another build can change (the stable-ABI build did for imwarp cubic): kernels with a footprint
+  take the payload NaN on an input of its own (`payload_only`) or out of the other NaNs' reach.
 
 | Where | Invalid operation | MATLAB's result has it when | Status |
 |---|---|---|---|
@@ -125,7 +131,8 @@ Windows speed matters.
 | the deskew/rotate warp and the skewed space interpolation (C++ `deskew`, both layouts: without AVX2 a float value that comes out NaN computed again with `pk5d::x86_nans`, `deskew/nans_x86.hpp`) | Inf * 0, Inf - Inf, and NaNs that meet | float data with Inf (Inf * 0 at whole coordinates and zero interpolation weights) or NaN | x86's NaN (`specials.deskew_infinities`, tests/platform/test_nan_rules.py); where NaNs of other bits meet, without AVX2 (ARM, `deskew_scalar`) the mex's formula as written, the mex's bits but in its scalar tails (measured), and in the AVX2 build the compiler's choice |
 | `matlabcompat.resize` (imresize, imresize3: C++ `resize`, a NaN sum computed again by `nan_sum`) | Inf * 0, Inf - Inf | float data with Inf | x86's NaN (measured on ARM with many infinities, and `specials.warp_and_resize`) |
 | `matlabcompat.filters` (convn, conv2, imfilter, imgaussfilt: the multiply-add chains of C++ `filters`; on ARM an output that comes out NaN computed again with `pk5d::x86_fma_nans` and `pk5d::x86_nans`) | Inf * 0, Inf - Inf, and NaNs that meet | float data with Inf and a zero tap, or both infinities in a window, or NaN | x86's NaN (`specials.filters_infinities`, tests/platform/test_nan_rules.py); where NaNs of other bits meet, MATLAB's (a tap's NaN before the running sum's, measured) on ARM, and on x86-64 too but in the one-value plain sums (the compiler's choice); with MSVC's C runtime's `fma` where NaNs meet not measured |
-| `matlabcompat.warp.imwarp`, linear and cubic (C++ `warp`: on ARM a voxel that comes out NaN computed again with `pk5d::x86_nans`) | Inf * 0, Inf - Inf, and NaNs that meet | float data with Inf (linear: at a whole coordinate, the second sample's weight 0) or NaN | x86's NaN (`specials.warp_cubic`, `specials.warp_and_resize`, `specials.infinities`); where NaNs of other bits meet, MATLAB's on ARM and the compiler's on x86-64 (tests/platform/test_nan_rules.py, on ARM) |
+| convn and conv2 of a kernel with Inf or NaN (C++ `filters`' `taps_nd_inside`: MATLAB's sums cover the overlap of the two arrays only, so the taps that would read the zero padding are left out; each operation's NaN written out on every system) | Inf * 0 with the padding (none: left out), Inf * 0 and Inf - Inf in the overlap, and NaNs that meet | a kernel (or, for a kernel larger than the image, an image) with Inf or NaN | MATLAB's values and NaN (measured): a product's NaN the image value's before the tap's, then the product's before the running sum's, x86's default NaN for an invalid operation (`specials.conv_overlap`; oracle cases `conv2.nonfinite.*`, `convn.nonfinite.*`); but where MATLAB's small-array sums differ (Known problems) |
+| `matlabcompat.warp.imwarp`, linear and cubic (C++ `warp`: on ARM a voxel that comes out NaN computed again with `pk5d::x86_nans`) | Inf * 0, Inf - Inf, and NaNs that meet | float data with Inf (linear: at a whole coordinate, the second sample's weight 0) or NaN; cubic: double data whose sums pass the largest double (MATLAB's sums take twice Keys' weights and the 1/8 only at the end, so a sum overflows where Keys' would pass a half, a quarter or an eighth of it, along x, y and z: Inf, and NaN where infinities of both signs meet) | x86's NaN (`specials.warp_cubic`, `specials.warp_and_resize`, `specials.infinities`; oracle cases `cubic_extreme_*`); where NaNs of other bits meet, MATLAB's on ARM and the compiler's on x86-64 (tests/platform/test_nan_rules.py, on ARM) |
 | integral image (C++ `stitch/integral_image.cpp`: `PK5D_X86_NAN`; an input with NaN computed again with `pk5d::x86_nans`) | Inf - Inf, and NaNs that meet | single tiles with both infinities, or NaN | x86's NaN, the first NaN operand as written (`specials.integral_image`, `specials.meeting_nans`, `specials.infinities`) |
 | the resize kernels' fdlibm pow and cubic kernel (C++ `resize`: `PK5D_X86_NAN`) | 0 / 0, Inf - Inf, Inf * 0 | pow: a negative base with a fractional exponent, (+-1)^(+-Inf); the kernel: \|x\|^3 overflows. Never: the cubic weights take \|x\|^3 of distances of at most 2 | x86's NaN (`specials.resize_pow`, `specials.infinities`) |
 | the stitching distance maps (`stitch.distance`, the products with the box weights) | Inf * 0 | a negative weight degree (the weights' floor is Inf in single) | x86's NaN (tests/platform/test_nan_rules.py; found on ARM by tests/stitch/test_distance.py `slab.wd-1`) |
@@ -195,10 +202,10 @@ b.npz` measure the difference.
 
 | System | Pinned cases (non-FFT kernels) | Result |
 |---|---|---|
-| Linux x86-64: the cluster (Xeon Gold 6146, AVX-512, glibc 2.28, GCC 13.2), Python 3.12 | 45 | the pins (made there) |
-| Linux x86-64: runner-like container (Ubuntu 24.04, glibc 2.39, GCC 13.3, AVX2), Python 3.12 and 3.14 | 45 | the same bits |
-| macOS ARM (M2 Pro, macOS 13.7, Apple Clang 14, libomp 23), Python 3.12 and 3.14 | 45 | the same bits (before the filters' and the deskew kernels' NaN fix the 2 `specials.*_infinities` cases differed in NaN signs only) |
-| Windows x86-64 (GitHub's windows-2025, MSVC), Python 3.12 and 3.14 | 45 | the same bits (the CI, measured 2026-11-19: see "How Windows is tested") |
+| Linux x86-64: the cluster (Xeon Gold 6146, AVX-512, glibc 2.28, GCC 13.2), Python 3.12 | 46 | the pins (made there) |
+| Linux x86-64: runner-like container (Ubuntu 24.04, glibc 2.39, GCC 13.3, AVX2), Python 3.12 and 3.14 | 46 | the same bits |
+| macOS ARM (M2 Pro, macOS 13.7, Apple Clang 14, libomp 23), Python 3.12 and 3.14 | 45 | the same bits (before the filters' and the deskew kernels' NaN fix the 2 `specials.*_infinities` cases differed in NaN signs only); `specials.conv_overlap`, and `specials.warp_cubic` since its sums are MATLAB's, not measured yet |
+| Windows x86-64 (GitHub's windows-2025, MSVC), Python 3.12 and 3.14 | 45 | the same bits (the CI, measured 2026-11-19: see "How Windows is tested"); `specials.conv_overlap`, and `specials.warp_cubic` since its sums are MATLAB's, not measured yet |
 
 The cases whose digests are recorded, not pinned, and how much they differ (largest difference
 in ulps of the largest |value| of the output; FFT outputs in single precision included):
@@ -315,22 +322,27 @@ in ulps of the largest |value| of the output; FFT outputs in single precision in
   operands than its source as written (the interpolation mex's tails do not), so the builds
   without AVX2 differ from it there (0.5 to 1.3% of the NaNs measured, all in those rows); their
   other rows give the mex's bits.
-- **MATLAB's conv2 and convn with a kernel larger than the image** (the roles swapped): where
-  the image holds Inf or NaN, 7 and 32 values (double and single) of the probe differ from the
-  port's on every system, NaN against Inf, and 16 and 12 NaNs in their bits; not a question of
-  NaN rules, not resolved.
+- **MATLAB's conv2 and convn of small arrays** take other sums than the port's, on every system
+  (measured, black box): below about 24 rows and columns (2-D) or 16 planes (3-D) MATLAB adds
+  plain products (each rounded) over the overlap, with the array of fewer elements as the taps,
+  in column-major order (3-D: z, then x descending, then y). The port has fused chains over the
+  kernel there, and for a kernel larger than the image in every dimension plain sums in
+  column-major order in 3-D too. Random data differ in the last bits in up to about half of the
+  values, and where NaNs of other bits meet the NaN can differ (a plain sum keeps a product's
+  default NaN at 0 * Inf + NaN, a fused tap the addend's). A kernel larger in every dimension
+  than an image of 10 or more rows (2-D) or 8 or more planes (3-D), and 9 x 9 kernels, take forms
+  not identified yet. The port's own code calls neither function. With Inf or NaN in a kernel,
+  which values are Inf, NaN or finite was MATLAB's in every case probed (small and large, 2-D
+  and 3-D, swapped; no 9 x 9 kernel): the sums cover the overlap only, as MATLAB's.
 - **Windows: the filters' fused taps call the C runtime's `fma`** (MSVC builds have no dispatch).
   Its invalid operations give x86's NaN (`specials.filters_infinities` holds there); its NaN where
   NaNs of other bits meet, and at 0 * Inf + NaN, is not measured (the fused chains' tests skip
   there); glibc's (with the FMA instruction) is the instruction's.
 - **x86-64: imwarp's NaN where NaNs of other bits meet** is the compiler's choice of operand,
-  not MATLAB's first as written, in 46 of 78 measured inputs (above), and changes with the build
+  not MATLAB's first as written, in 49 of 78 measured inputs (above), and changes with the build
   (the stable-ABI build flipped 2 voxels of a case that let them meet). ARM computes MATLAB's.
-  The same recomputation on x86-64 slowed cubic down by 5 to 10% (uint16 too, whose code it
-  does not touch): GCC's inlining of `Extended`'s end values in `cpp/warp/warp.cpp` follows the
-  size of the file, and the base's choice is the fast one. Data from MATLAB hold MATLAB's NaN
-  only, for which the choice changes no bits.
-- **imwarp cubic of double data near the largest values** (+-1.8e308): MATLAB overflows to Inf
-  or NaN where the port's sums stay finite, in 10 of the 3,168 voxels of `specials.warp_cubic`'s
-  double output (single data, and the payload NaN's input: the same bits). Not a question of NaN
-  bits: MATLAB's sums differ from the port's there, and only there; not resolved.
+  The same recomputation on x86-64 slowed cubic down by 5 to 10% when it was measured (uint16
+  too, whose code it does not touch), through GCC's inlining of `Extended`'s end values into the
+  voxel loop, which followed any change to `cpp/warp/warp.cpp`. The rows that need end values
+  are now fetched outside the loop (`extended_row`), so that cost may be gone; it has not been
+  measured again. Data from MATLAB hold MATLAB's NaN only, for which the choice changes no bits.
