@@ -661,7 +661,10 @@ def test_stage_homes(monkeypatch):
             wrapper._stage("run_detection_frame_parallel")
 
 
-def test_missing_stage_raises(condition):
+def test_missing_stage_raises(condition, monkeypatch):
+    # the first stage of the Linux order, the frame-parallel detection, is not ported; Windows
+    # takes MATLAB's parfor path (ispc), whose run_detection is, so take the Linux order everywhere
+    monkeypatch.setattr(wrapper, "_is_pc", lambda: False)
     old = dict(wrapper.STAGES)
     try:
         wrapper.STAGES.update(dict.fromkeys(wrapper.STAGES))
