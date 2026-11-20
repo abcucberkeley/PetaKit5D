@@ -188,7 +188,11 @@ elseif(APPLE AND CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang")
     target_include_directories(pk5d_openmp INTERFACE "${PK5D_LIBOMP_INCLUDE_DIR}")
     target_link_libraries(pk5d_openmp INTERFACE "${PK5D_LIBOMP_LIBRARY}")
     set(PK5D_OPENMP_FOUND TRUE)
-    set(PK5D_OPENMP_DESC "AppleClang -Xpreprocessor -fopenmp, ${PK5D_LIBOMP_LIBRARY}")
+    # the runtime's file name, not its folder: the description is compiled into the core module,
+    # which must name no folder of the build machine (tools/check_wheel.py)
+    get_filename_component(_pk5d_omp_name "${PK5D_LIBOMP_LIBRARY}" NAME)
+    set(PK5D_OPENMP_DESC "AppleClang -Xpreprocessor -fopenmp, ${_pk5d_omp_name}")
+    message(STATUS "petakit5d OpenMP: libomp ${PK5D_LIBOMP_LIBRARY}")
     # a libomp named @rpath/libomp.dylib (conda's, one built from LLVM's sources) is found
     # through its folder on the modules' RPATH; Homebrew's has an absolute name
     get_filename_component(PK5D_OPENMP_RPATH "${PK5D_LIBOMP_LIBRARY}" DIRECTORY)
