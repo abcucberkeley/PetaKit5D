@@ -1,0 +1,12 @@
+{
+ "format": 2,
+ "module": "tests/matlabcompat/test_correlation.py",
+ "oracle": "45b2bb10ed80442a291532f1ab3ef28c297d0403",
+ "cases": {
+  "corr.edges": {"error":null,"files":null,"format":2,"key":"d2a4606180e443db08076bfff3ce51dfe5abb0f9fe13ff6fa400e1d914e18a9a","matlab":"(code)","oracle":"45b2bb10ed80442a291532f1ab3ef28c297d0403","outputs":[{"b64":"////////7z/////////vv////////++/////////378AAAAAAAAAAAAAAAAAAAAAAAAAAAAA+P8AAAAAAAD4fwAAAAAAAPj/","c":"double","h":"bb1717e180b0c46c18c66d759f109de2bab97d3f23e939f9c1363b36177c11ce","k":"a","s":[9,1]}],"status":"ok","warnings":[]},
+  "corr.error.empty": {"error":{"identifier":"stats:corr:TooFewInputs","message":"Requires a data matrix X."},"files":null,"format":2,"key":"603f8ec34d0ecbcc34faab7cca83e93e12ad7869bb10831ccd8e865166034bb5","matlab":"corr","oracle":"45b2bb10ed80442a291532f1ab3ef28c297d0403","outputs":null,"status":"error","warnings":[]},
+  "corr.formula": {"error":null,"files":null,"format":2,"key":"38a2bebb077d50a2979520c942d837346c661ce8f5a0fcb0d1c703b6f4ead678","matlab":"(code)","oracle":"45b2bb10ed80442a291532f1ab3ef28c297d0403","outputs":[{"b64":"AAAAAAAA8D8K3h6w2lbmP2zWaYoB++0//np4cN5f7D/hwHMjwMPXP+9l7Ep70tA/nTHuQN4v0T/I5xrsvS/RP1dL3wsqL9E/LbkqyqKx0D8=","c":"double","h":"55c4c0e1a3519c9eff7df40eeb2b147fd4c4e2dde4265487b0ac61e33262a6e1","k":"a","s":[10,1]}],"status":"ok","warnings":[]},
+  "corr.single": {"error":null,"files":null,"format":2,"key":"561406ecf4d28721db8ec432bc0b1b5a27bf816917378a5310db82914a48dfb5","matlab":"(code)","oracle":"45b2bb10ed80442a291532f1ab3ef28c297d0403","outputs":[{"b64":"oS5ZPw==","c":"single","h":"37e961bb2a799f44a46399368afc50a55aaf9f82f14a76ec82cfbe29c52dfdaa","k":"a","s":[1,1]},{"b64":"oi5ZPw==","c":"single","h":"2b3b284a11562515b65fa0ba379103cf975700d614f7e1fef1a701937623fd39","k":"a","s":[1,1]}],"status":"ok","warnings":[]},
+  "corr.small_integers": {"error":null,"files":null,"format":2,"key":"33871cccdd9aa79d92c3c9b6ef5a9531402bfb59feeec1a5bf589ac1b6740d79","matlab":"(code)","oracle":"45b2bb10ed80442a291532f1ab3ef28c297d0403","outputs":[{"c":"double","h":"a155a5d7e90fac181f16ac862680e3f91584cd256e3d3e4919835b790ba2ee19","k":"a","s":[400,1]}],"status":"ok","warnings":[]}
+ }
+}
