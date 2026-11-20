@@ -600,6 +600,70 @@ def _halves():
 
 CASES = _families() + _edges() + _errors() + _halves()
 
+# double data where Keys' weights and twice them part (MATLAB takes twice them, and the sums
+# times 1/8): sums past half the largest double, end values of such values, and the subnormal
+# range. Volumes (MATLAB's form) from exact arithmetic.
+_RMAX = float(np.finfo(np.float64).max)
+_TINY = 2.0**-1074
+_EXT_SIZE = [8, 9, 7]
+_EXT_T = {
+    "half": _translate(-0.5, -0.5, -0.5),
+    "quart": _translate(-0.25, -0.75, -0.125),
+    "scale": _scale(16 / 15, 8 / 7, 4 / 3),
+    "gen": [
+        [0.875, 0.0625, 0.0, 0.0],
+        [-0.125, 1.0625, 0.25, 0.0],
+        [0.0, 0.03125, 0.9375, 0.0],
+        [1.5, -2.25, 0.75, 1.0],
+    ],
+}
+
+
+def _extreme(kind):
+    shape = tuple(_EXT_SIZE)  # (y, x, z)
+    r = CounterRNG(22, f"warp/extreme/{kind}")
+    if kind.startswith("const"):
+        v = np.full(shape, int(kind[5:]) / 100 * _RMAX)
+    elif kind == "rand50":
+        v = (r.uniform(shape) * 2 - 1) * (0.5 * _RMAX)
+    elif kind == "faces":
+        v = r.uniform(shape) * 1000
+        v[:, :, 0] = 0.3 * _RMAX
+        v[0, :, :] = -0.2 * _RMAX
+        v[:, -1, :] = 0.25 * _RMAX
+    elif kind == "tinyint20":
+        v = r.integers(-(2**20), 2**20 + 1, shape).astype(np.float64) * _TINY
+    elif kind == "small1040":
+        v = r.normal(shape) * 2.0**-1040
+    elif kind == "tinysparse":
+        v = np.where(r.uniform(shape) < 0.15, r.spawn("v").integers(1, 64, shape) * _TINY, 0.0)
+    else:  # mix: ordinary values, half of them scaled into the subnormal range
+        v = r.normal(shape)
+        v[r.spawn("u").uniform(shape) < 0.5] *= 2.0**-1070
+    return np.asfortranarray(v)
+
+
+_EXTREME = [
+    ("const30", "half"),
+    ("const45", "quart"),
+    ("rand50", "gen"),
+    ("faces", "scale"),
+    ("tinyint20", "gen"),
+    ("small1040", "scale"),
+    ("tinysparse", "half"),
+    ("mix", "gen"),
+]
+EXTREME_CASES = [
+    Case(
+        f"cubic_extreme_{kind}_{tn}",
+        code=MATLAB_CODE,
+        args=[In("v"), np.array(_EXT_T[tn]), [float(x) for x in _EXT_SIZE], "cubic", 0.0],
+        python=py_imwarp,
+        inputs={"v": Value(lambda kind=kind: _extreme(kind))},
+    )
+    for kind, tn in _EXTREME
+]
+
 
 def _divide_cases():
     """MATLAB's a / T (the solve inside imwarp's composite matrix) for every transform above with
@@ -639,7 +703,7 @@ def _divide_cases():
 DIVIDE_CASES = _divide_cases()
 
 
-@oracle.parametrize(CASES + DIVIDE_CASES)
+@oracle.parametrize(CASES + DIVIDE_CASES + EXTREME_CASES)
 def test_matlab(case, tmp_path):
     oracle.check(case, tmp_path)
 
@@ -687,12 +751,13 @@ def _model(v_yxz, t, out_yxz, method, fill=0.0):
             m = np.minimum(np.floor(q), G.shape[a] - 1)
             tt = q - m
             sq = tt * tt
+            # twice Keys' weights; the sums times 1/8 at the end
             ws.append(
                 (
-                    ((-0.5 * tt + 1) * tt - 0.5) * tt,
-                    (1.5 * tt - 2.5) * sq + 1,
-                    ((-1.5 * tt + 2) * tt + 0.5) * tt,
-                    (0.5 * tt - 0.5) * sq,
+                    ((2 - tt) * tt - 1) * tt,
+                    (3 * tt - 5) * sq + 2,
+                    ((4 - 3 * tt) * tt + 1) * tt,
+                    (tt - 1) * sq,
                 )
             )
             ms.append(m.astype(np.int64))
@@ -710,7 +775,7 @@ def _model(v_yxz, t, out_yxz, method, fill=0.0):
             )
             for c in range(4)
         ]
-        out[inb] = s4(ws[2], lz)
+        out[inb] = s4(ws[2], lz) * 0.125
         return out
     q = [
         np.broadcast_to(i * t[1, a] + (j * t[0, a] + (k * t[2, a] + (t[3, a] - 1))), shape)
@@ -779,6 +844,40 @@ def test_kernel_matches_the_model(cls, method):
         got = warp.imwarp(_from_matlab(v), T, method, output_size=arrays.size_from_matlab(out))
         assert got.dtype == np.dtype(cls) and got.shape == (out[2], out[0], out[1])
         assert _same_bits(_to_matlab(got), want), (seed, method)
+
+
+@pytest.mark.parametrize("kind", [k for k, _ in _EXTREME] + ["const47", "const60"])
+def test_cubic_of_double_data_at_the_ends_of_the_range_matches_the_model(kind):
+    # twice Keys' weights and the sums times 1/8, as MATLAB: Inf or NaN where the doubled sums
+    # pass the largest double, and the subnormal range's roundings (Keys' weights give other
+    # values in both); the same bits as Keys' weights elsewhere. The inputs hold no NaN, so a
+    # NaN is an invalid operation's: MATLAB's (x86's) from the kernel on every processor, the
+    # processor's own from the NumPy model
+    v = _extreme(kind)
+    for tn, T in _EXT_T.items():
+        T = np.asarray(T)
+        t = warp.composite_matrix(T, output_size=arrays.size_from_matlab(_EXT_SIZE))
+        with np.errstate(over="ignore", invalid="ignore"):
+            want = _model(v, t, _EXT_SIZE, "cubic")
+        got = _to_matlab(
+            warp.imwarp(_from_matlab(v), T, "cubic", output_size=arrays.size_from_matlab(_EXT_SIZE))
+        )
+        nan = np.isnan(want)
+        assert np.array_equal(np.isnan(got), nan), (kind, tn)
+        assert (got[nan].view(np.uint64) == 0xFFF8000000000000).all(), (kind, tn)
+        assert _same_bits(got[~nan], want[~nan]), (kind, tn)
+
+
+def test_cubic_overflows_where_the_doubled_sums_do():
+    # half a voxel's shift of a constant c, 0.3 of the largest double (weights -1/8, 9/8, 9/8,
+    # -1/8): the sums along x stay finite (2c; at most 17/8 c on the way), those along y pass
+    # the largest double (Inf: the 1/8 comes only at the end), and along z -Inf + Inf is
+    # MATLAB's NaN; Keys' weights would give c
+    v = np.full((7, 8, 9), 0.3 * _RMAX)
+    got = warp.imwarp(v, _translate(-0.5, -0.5, -0.5), "cubic", output_size=(7, 8, 9))
+    inside = got[:-1, :-1, :-1]
+    assert (inside.view(np.uint64) == 0xFFF8000000000000).all()
+    assert (got[-1] == 0).all() and (got[:, -1] == 0).all() and (got[:, :, -1] == 0).all()
 
 
 def _band_transforms():

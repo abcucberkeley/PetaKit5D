@@ -16,20 +16,24 @@
 // the sample at floor(q + 0.5).
 // cubic (MATLAB's interp3 'cubic', cubic convolution): the coordinate is 1-based,
 // p = ((tc[0][a]*j + tc[1][a]*i) + tc[2][a]*k) + tc[3][a], inside when 1 <= p <= n. With
-// m = floor(p) (n - 1 at p = n) and t = p - m the weights of samples m - 1 .. m + 2 are
-// ((-t/2 + 1)t - 1/2)t, (3t/2 - 5/2)t^2 + 1, ((-3t/2 + 2)t + 1/2)t and (t/2 - 1/2)t^2, each sum
-// of four taken left to right, along x, then y, then z. Samples one step outside the volume are
-// 3*(f1 - f2) + f3 from the nearest three, made along x first, then along y from those values,
-// then along z. The result is cast as MATLAB's cast: round half away from zero and saturate.
+// m = floor(p) (n - 1 at p = n) and t = p - m the weights of samples m - 1 .. m + 2 are twice
+// Keys' (a = -1/2): ((2 - t)t - 1)t, (3t - 5)t^2 + 2, ((4 - 3t)t + 1)t and (t - 1)t^2, each sum
+// of four taken left to right, along x, then y, then z, and the result times 1/8. That is
+// MATLAB's arithmetic (measured): the same bits as Keys' weights, but for double data whose
+// sums reach half the largest double (MATLAB's then overflow to Inf or NaN) or the subnormal
+// range. Samples one step outside the volume are 3*(f1 - f2) + f3 from the nearest three, made
+// along x first, then along y from those values, then along z; the rows that need them are
+// fetched out of the voxel loop (extended_row): inlined there, GCC's choices for those end
+// values followed any change to this file and slowed cubic down by up to 15%. The result is
+// cast as MATLAB's cast: round half away from zero and saturate.
 //
 // NaN in float data (Inf * 0 and Inf - Inf where infinities meet zero weights and each other,
 // NaN samples): MATLAB gives the first NaN operand of each operation as written, else x86's
 // default NaN (measured). On ARM a voxel whose value comes out NaN is computed again with each
 // operation's NaN made so (pk5d::x86_nans): a NaN never becomes a number in these products and
-// sums, so the other voxels hold none. x86-64 compiles the code it compiled before: x86's
-// default NaN, and where NaNs of other bits meet, the compiler's operand order (GCC takes the
-// second at some sums). The recomputation there cost 5 to 10% of cubic's speed: any change to
-// this file moved GCC's inlining of the end values. Integer data are finite here.
+// sums, so the other voxels hold none. x86-64 computes no voxel again: x86's default NaN, and
+// where NaNs of other bits meet, the compiler's operand order (GCC takes the second at some
+// sums). Integer data are finite here.
 #include <pk5d/common.hpp>
 #include <pk5d/fpexact.hpp>
 
@@ -41,7 +45,13 @@
 
 namespace nb = nanobind;
 
-// the recomputation of the few voxels that come out NaN (ARM), out of the voxel loops
+// out of the voxel loops: the rows of samples past the volume's faces (PK5D_WARP_NOINLINE), and
+// on ARM the recomputation of the few voxels that come out NaN (PK5D_WARP_COLD)
+#if defined(__GNUC__) || defined(__clang__)
+#define PK5D_WARP_NOINLINE __attribute__((noinline))
+#else
+#define PK5D_WARP_NOINLINE __declspec(noinline)
+#endif
 #ifdef PK5D_FP_ARM
 #if defined(__GNUC__) || defined(__clang__)
 #define PK5D_WARP_COLD __attribute__((noinline, cold))
@@ -283,12 +293,14 @@ void warp3d(const T* in, T* out, const double (&tc)[4][4], const Geometry& g, T 
     for_voxels(g, threads, tc[0][2], qt_of, voxel);
 }
 
+// twice Keys' weights, each exactly twice ((-t/2 + 1)t - 1/2)t, (3t/2 - 5/2)t^2 + 1, ... (a
+// scaling by 2 rounds alike)
 inline void cubic_weights(double t, double (&w)[4]) {
     const double sq = t * t;
-    w[0] = ((-0.5 * t + 1) * t - 0.5) * t;
-    w[1] = (1.5 * t - 2.5) * sq + 1;
-    w[2] = ((-1.5 * t + 2) * t + 0.5) * t;
-    w[3] = (0.5 * t - 0.5) * sq;
+    w[0] = ((2 - t) * t - 1) * t;
+    w[1] = (3 * t - 5) * sq + 2;
+    w[2] = ((4 - 3 * t) * t + 1) * t;
+    w[3] = (t - 1) * sq;
 }
 
 inline double sum4(const double (&w)[4], const double (&v)[4]) {
@@ -378,15 +390,40 @@ PK5D_WARP_COLD double cubic_value_x86(const T* in, const Geometry& g, const idx 
         }
         lz[c] = sum4_x86(w[1], ly);
     }
-    return sum4_x86(w[2], lz);
+    return mul(sum4_x86(w[2], lz), 0.125);
 }
 #endif
+
+// cubic's value from the samples m - 1 .. m + 2 along each axis with weights w: rows(b, c, lx)
+// gives the four samples along x of row b of plane c
+template <typename Rows>
+inline double cubic_value(const double (&w)[3][4], Rows&& rows) {
+    double lz[4];
+    for (int c = 0; c < 4; ++c) {
+        double ly[4];
+        for (int b = 0; b < 4; ++b) {
+            double lx[4];
+            rows(b, c, lx);
+            ly[b] = sum4(w[0], lx);
+        }
+        lz[c] = sum4(w[1], ly);
+    }
+    return sum4(w[2], lz) * 0.125;
+}
+
+// the samples x - 1 .. x + 2 of row (y, z) of the volume extended by one step on every side
+// (1-based x, y, z), for the voxels near the faces
+template <typename T>
+PK5D_WARP_NOINLINE void extended_row(const T* in, const Geometry& g, idx x, idx y, idx z,
+                                     double (&lx)[4]) {
+    const Extended<T> ext{in, g};
+    for (int a = 0; a < 4; ++a) lx[a] = ext.e3(x - 1 + a, y, z);
+}
 
 template <typename T>
 void cubic3d(const T* in, T* out, const double (&tc)[4][4], const Geometry& g, double fill,
              int threads) {
     const Terms tm(tc, g);
-    const Extended<T> ext{in, g};
     const double n[3] = {static_cast<double>(g.px), static_cast<double>(g.py),
                          static_cast<double>(g.pz)};
     const double* Jv[3] = {tm.J[0].data(), tm.J[1].data(), tm.J[2].data()};
@@ -412,31 +449,21 @@ void cubic3d(const T* in, T* out, const double (&tc)[4][4], const Geometry& g, d
             }
             const bool inner = m[0] >= 2 && m[0] + 2 <= g.px && m[1] >= 2 && m[1] + 2 <= g.py &&
                                m[2] >= 2 && m[2] + 2 <= g.pz;
-            double lz[4];
-            for (int c = 0; c < 4; ++c) {
-                double ly[4];
-                for (int b = 0; b < 4; ++b) {
-                    double lx[4];
-                    const idx y = m[1] - 1 + b, z = m[2] - 1 + c;
-                    if (inner) {
-                        const T* row = in + ((z - 1) * g.py + (y - 1)) * g.px + (m[0] - 2);
-                        for (int a = 0; a < 4; ++a) lx[a] = static_cast<double>(row[a]);
-                    } else {
-                        for (int a = 0; a < 4; ++a) lx[a] = ext.e3(m[0] - 1 + a, y, z);
-                    }
-                    ly[b] = sum4(w[0], lx);
+            double v = cubic_value(w, [&](int b, int c, double (&lx)[4]) {
+                const idx y = m[1] - 1 + b, z = m[2] - 1 + c;
+                if (inner) {
+                    const T* row = in + ((z - 1) * g.py + (y - 1)) * g.px + (m[0] - 2);
+                    for (int a = 0; a < 4; ++a) lx[a] = static_cast<double>(row[a]);
+                } else {
+                    extended_row(in, g, m[0], y, z, lx);
                 }
-                lz[c] = sum4(w[1], ly);
-            }
+            });
 #ifdef PK5D_FP_ARM
-            double v = sum4(w[2], lz);
             if constexpr (std::is_floating_point_v<T>) {
                 if (v != v) v = cubic_value_x86(in, g, m, w, inner);
             }
-            o[j] = cast_like<T>(v);
-#else
-            o[j] = cast_like<T>(sum4(w[2], lz));
 #endif
+            o[j] = cast_like<T>(v);
         }
     };
     auto pt = [&](idx k, idx i, idx j) { return ((Jv[2][j] + Iv[2][i]) + Kv[2][k]) + tc[3][2]; };
