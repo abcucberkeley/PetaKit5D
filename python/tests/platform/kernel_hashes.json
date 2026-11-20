@@ -1,6 +1,7 @@
 {
  "made_with": "python tests/platform/_kernel_cases.py --write (Linux x86-64)",
  "pinned": {
+  "correlation.corr": "f7acfc7d01eb243881bb",
   "crop.copy_box": "f9a8e051958d94420ad4",
   "decon.acceleration": "3813de0e57a2dbe48eb0",
   "decon.back_projector_parts": "9d3b1324232ac9d63580",
@@ -13,10 +14,12 @@
   "detection.fit_cd.restarts": "250968dd6ac3a6c6f0d0",
   "detection.fit_cd.spots": "f2504d11accf282105e2",
   "elementary.exp_power_sqrt": "8d81d1c9b1d0c8f4dd1d",
+  "elementary.power_subnormal": "5baf9976fbf1624979cd",
   "elementary.trigonometry": "5179a97e3f7431cb5ce2",
   "fft.half_multiply": "8ddc8b5dcb611b9bfd5a",
   "filters.convolutions": "220f2e41390d73ec11ba",
   "flatfield.correct": "c059b7633c8fd9e5492a",
+  "interp.interp1": "53b28be564223f7f5cd4",
   "labels.int64_kernels": "8501c920c88e5b3ca5a3",
   "labels_and_distances": "a5f8b6e8083c5a1d0585",
   "lsq.assignment": "70a8241e6ab87bc3f342",

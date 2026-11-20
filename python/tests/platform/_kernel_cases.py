@@ -1245,6 +1245,27 @@ def _():
     return out
 
 
+@case("elementary.power_subnormal")
+def _():
+    """pow's results below the normal range, rounded once as fdlibm's scalbn rounds them (not by
+    the C runtime's ldexp, which Windows 10's truncates there): elementary.power and the resize
+    kernels' pow of bases whose powers fall across the subnormal range down to 0, negative bases
+    with odd exponents; single results below single's normal range"""
+    from petakit5d._ext import load
+    from petakit5d.matlabcompat import elementary as E
+
+    j = np.arange(3000)
+    m = 1 + j * math.ldexp(1.0, -12)  # exact significands, times exact powers of two
+    out = []
+    for y, e0, span in ((3.0, -342, 17), (2.5, -410, 22), (-1.5, 683, 35), (7.0, -147, 8)):
+        x = m * ((e0 - j % span + 1023).astype(np.uint64) << np.uint64(52)).view(np.float64)
+        for b in (x, -x) if y in (3.0, 7.0) else (x,):
+            o = np.empty_like(b)
+            load("resize").fdlibm_pow(b, y, o)
+            out += [E.power(b, y), o]
+    return out + [E.power((m[:500] * math.ldexp(1.0, -45)).astype(np.float32), 3.0)]
+
+
 @case("reduce.sums_and_orders")
 def _():
     from petakit5d.matlabcompat import reduce as Rd
@@ -1441,6 +1462,81 @@ def _():
     v[[5, 12, 20, 21, 30, 40, 50]] = put
     v[29], v[31] = -1.0, 1.0  # -0 the middle of its window
     return out + [Sg.medfilt1(v), Sg.medfilt1(double("mfl", (1000,), 1.0))]
+
+
+@case("interp.interp1")
+def _():
+    """interp1 (linear) as track processing calls it (two knots on whole frames) and as the
+    lifetime analysis does (910 increasing points, 999 queries); an uneven grid, the same
+    decreasing and unsorted, one with -0, values with NaN (MATLAB's and a payload: every NaN result
+    is MATLAB's), both infinities and signed zeros, queries on the knots, between, outside (NaN,
+    'extrap', a value) and NaN, Inf; single data; query matrices; 7 to 1,036 queries (vector
+    loops and their tails)"""
+    from petakit5d.matlabcompat import interp as I
+
+    out = []
+    for r in uniform("i1t", (40, 4)):
+        x = np.floor(r[0] * 50) + np.array([0.0, 1.0 + np.floor(r[1] * 3)])
+        out.append(I.interp1(x, r[2:] * 300, x[0] + r[2] * (x[1] - x[0])))
+    lt = uniform("i1l", (2, 910))
+    v = np.cumsum(lt[1])
+    out.append(I.interp1(np.sort(lt[0]) * 120, v / v[-1], np.arange(999.0) * 120 / 998, "linear"))
+    x = np.cumsum(0.1 + 3 * uniform("i1x", (23,))) - 7.0
+    v = specials(double("i1v", (23,), 50.0), every=4, payload=True)  # NaNs at 3 and 7, Inf at 11
+    v[[0, 1, 5, 6]] = [-0.0, 0.0, -0.0, -0.0]  # signed zeros, equal ones side by side
+    sp = specials(np.zeros(11), every=1, payload=True)
+    q = np.concatenate([[x[0] - 1, x[-1] + 0.5], x, x[0] + uniform("i1q", (1000,)) * 30.0, sp])
+    for extra in ((), ("linear", "extrap"), ("LINEAR", -0.0), ("linear", 7.5), ("linear", NAN)):
+        out.append(I.interp1(x, v, q, *extra))
+    perm = np.argsort(uniform("i1p", (23,)), kind="stable")
+    out += [I.interp1(x[::-1], v[::-1], q[:7]), I.interp1(x[perm], v[perm], q[:1003], "linear")]
+    out.append(I.interp1(x.reshape(-1, 1), v.reshape(-1, 1), q[:999].reshape(3, 333)))
+    z = np.array([-2.0, -0.0, 1.5, 4.0])
+    out.append(I.interp1(z, np.array([1.0, -3.0, 2.0, 0.5]), np.array([-1.0, -0.0, 0.0, 5.0])))
+    x32, v32, q32 = (np.float32(a) for a in (x[:9], double("i1s", (9,), 10.0), q[:64]))
+    out += [I.interp1(x32, v32, q32), I.interp1(x32, v[:9], q[:64]), I.interp1(x[:9], v[:9], q32)]
+    return out + [I.interp1(x32, v32, q32, "linear", "EXTRAP")]
+
+
+@case("correlation.corr")
+def _():
+    """corr (Pearson) as the xz offset estimation calls it: long columns of two volumes' values
+    at the shift that matches them (the second the first shifted, with noise) and at another
+    (4,095 to 96,408 values: the fixed-order sums' blocks of 4,096 and their tails); columns
+    whose centred products cancel (an odd against an even one, a large offset); the probed edges
+    (perfect and opposite correlations, two values, values near 1e300 and 1e-200: the scaled
+    norms), a constant column, Inf (MATLAB's NaN), a NaN of the data (one kind per call), signed
+    zeros; single data, a single with a double column"""
+    from petakit5d.matlabcompat import correlation as Co
+
+    f1 = double("crv", (9, 103, 107))
+    f2 = 0.7 * np.roll(f1, 3, axis=2) + 0.3 * double("crn", (9, 103, 107))
+    a = f1[:, :, :104].reshape(-1, 1)
+    out = []
+    for s in (3, 0):
+        b = f2[:, :, s : s + 104].reshape(-1, 1)
+        out += [Co.corr(a, b)] + [Co.corr(a[:n], b[:n]) for n in (4095, 4096, 4097, 8193, 65536)]
+    t = (np.arange(-500.0, 501.0) * 0.1).reshape(-1, 1)
+    out += [Co.corr(t, t * t), Co.corr(t * t, t), Co.corr(t, np.abs(t))]
+    big = 1e8 + double("crb", (1000,), 1.0)
+    out += [Co.corr(big, 2e8 - big + double("crb2", (1000,), 1e-3)), Co.corr(big, big[::-1])]
+    edges = (
+        ([1.0, 2.0, 3.0], [2.0, 4.0, 6.0]),
+        ([1.0, 2.0, 3.0], [3.0, 2.0, 1.0]),
+        ([1.0, 2.0], [2.0, 1.0]),
+        ([1e300, -1e300, 1.0], [1.0, 2.0, 3.0]),
+        ([1e-200, 2e-200, 3e-200], [3e-200, 1e-200, 2e-200]),
+        ([0.1, 0.2, 0.3, 0.4], [0.3, 0.1, 0.4, 0.2]),
+        ([1.0, 1.0, 1.0], [1.0, 2.0, 3.0]),
+        ([5.0], [7.0]),
+        ([1.0, np.inf, 3.0], [1.0, 2.0, 3.0]),
+        ([1.0, NAN, 3.0], [1.0, 2.0, 3.0]),
+        ([1.0, 2.0, 3.0, 4.0], [2.0, 1.0, _payload_nan(np.float64), 3.0]),
+        ([-0.0, 0.0, 1.0, 2.0], [1.0, -0.0, 3.0, 0.0]),
+    )
+    out += [Co.corr(np.array(x), np.array(y)) for x, y in edges]
+    s, d = single("crs", (500, 1)), double("crd", (500, 1))
+    return out + [Co.corr(s, s * np.float32(0.5) + single("crs2", (500, 1))), Co.corr(s, d)]
 
 
 # -- special values through weighted sums ------------------------------------------------------

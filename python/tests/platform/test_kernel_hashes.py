@@ -24,11 +24,13 @@ import _kernel_cases as kc  # noqa: E402
 PINS = json.loads(kc.HASHES.read_text())
 PINNED = sorted(n for n in kc.CASES if n not in kc.RECORDED)
 MATLABCOMPAT = (
+    "correlation",
     "distance",
     "elementary",
     "fft",
     "filters",
     "graph",
+    "interp",
     "label",
     "lsq",
     "morphology",
