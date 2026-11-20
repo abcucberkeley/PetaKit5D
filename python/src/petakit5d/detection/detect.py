@@ -30,6 +30,8 @@ from petakit5d.matlabcompat import stats as _ms
 from petakit5d.matlabcompat.elementary import exp as _mexp
 
 __all__ = [
+    "conv3fast",
+    "est_gaussian_amplitude3d",
     "estimate_background",
     "fspecial3_log",
     "gaussian_kernel3",
@@ -169,6 +171,62 @@ def fspecial3_log(size, sigma) -> np.ndarray:
     return h - _f(_r.sum(_mlin(h))) / h.size
 
 
+# -- estGaussianAmplitude3D -----------------------------------------------------------------------
+
+
+def conv3fast(vol, hy, hx, hz, *, num_threads: int | None = None) -> np.ndarray:
+    """MATLAB's ``conv3fast(vol, hy, hx, hz)`` as estGaussianAmplitude3D calls it (an image
+    processing mex without source; measured bit for bit): per axis the symmetric kernel given by
+    its half ``h[0..w]``, ``h0 v(i) + h1 (v(i-1) + v(i+1)) + ...`` from the centre out, the
+    borders mirrored without repeating the edge voxel; the passes along x, then y, then z.
+    ``vol`` (z, y, x) double; NaN propagates with the input's payload, as in MATLAB."""
+    from petakit5d.core.threads import resolve_threads
+    from petakit5d.detection.fit import _ext
+
+    v = np.ascontiguousarray(np.asarray(vol, dtype=np.float64))
+    if v.ndim != 3:
+        raise ValueError("conv3fast takes a 3-D volume (z, y, x)")
+    k = [np.ascontiguousarray(np.asarray(h, dtype=np.float64).ravel()) for h in (hy, hx, hz)]
+    out = np.empty_like(v)
+    work = np.empty_like(v)
+    _ext().conv3fast(v, k[0], k[1], k[2], out, work, resolve_threads(num_threads))
+    return out
+
+
+def est_gaussian_amplitude3d(
+    vol, sigma, window=None, *, num_threads: int | None = None
+) -> tuple[np.ndarray, np.ndarray]:
+    """MATLAB's ``[A, c] = estGaussianAmplitude3D(vol, [s sz], 'WindowSize', [w wz])``: the
+    amplitude and background of a Gaussian of sigmas ``(s, s, sz)`` plus a constant fitted by
+    least squares in the window around every voxel (black box, measured bit for bit). The
+    window's half sizes are ``ceil(2 sigma)`` unless given; the window sums are two
+    ``conv3fast`` filterings, of the half kernels ``exp(-(0:w)^2 / (2 s^2))`` and of ones; the
+    kernel's sums come from ``exp(-(x^2 + y^2) / (2 s^2)) exp(-z^2 / (2 sz^2))`` on the window,
+    in MATLAB's order; ``A = (fg - sum(g) fu / n) / (sum(g^2) - sum(g)^2 / n)``,
+    ``c = (fu - A sum(g)) / n``. ``vol`` (z, y, x)."""
+    s, sz = (float(t) for t in np.asarray(sigma, dtype=np.float64).ravel()[:2])
+    if window is None or np.asarray(window).size == 0:
+        w, wz = int(math.ceil(2 * s)), int(math.ceil(2 * sz))
+    else:
+        ww = np.asarray(window, dtype=np.float64).ravel()
+        w, wz = int(ww[0]), int(ww[-1])
+    hx = _mexp(-(np.arange(w + 1, dtype=np.float64) ** 2) / (2 * s * s))
+    hz = _mexp(-(np.arange(wz + 1, dtype=np.float64) ** 2) / (2 * sz * sz))
+    fg = conv3fast(vol, hx, hx, hz, num_threads=num_threads)
+    fu = conv3fast(vol, np.ones(w + 1), np.ones(w + 1), np.ones(wz + 1), num_threads=num_threads)
+    a = np.arange(-w, w + 1, dtype=np.float64)
+    az = np.arange(-wz, wz + 1, dtype=np.float64)
+    Z, Y, X = np.meshgrid(az, a, a, indexing="ij")
+    g = _mexp(-(X * X + Y * Y) / (2 * s * s)) * _mexp(-Z * Z / (2 * sz * sz))
+    n = float(g.size)
+    gl = _mlin(g)
+    gsum = _f(_r.sum(gl))
+    g2sum = _f(_r.sum(gl * gl))
+    A = (fg - gsum * fu / n) / (g2sum - gsum * gsum / n)
+    c = (fu - A * gsum) / n
+    return A, c
+
+
 # -- local maxima ---------------------------------------------------------------------------------
 
 
@@ -176,37 +234,23 @@ def locmax3d(vol, window) -> np.ndarray:
     """``XR_locmax3d(vol, [wy wx wz])`` as the detection calls it (odd sizes): with NaN replaced
     by -1e8, a voxel is a maximum when it is larger than every other voxel of its window (the
     window clipped at the volume's faces; a tie is no maximum); the result is the replaced
-    volume times the maxima's mask (so -0 at NaN voxels and at negative non-maxima, as MATLAB)."""
-    from scipy import ndimage as ndi
+    volume times the maxima's mask (so -0 at NaN voxels and at negative non-maxima, as MATLAB).
+    C++, threaded."""
+    from petakit5d.core.threads import resolve_threads
+    from petakit5d.detection.fit import _ext
 
-    a = np.asarray(vol, dtype=np.float64)
+    a = np.ascontiguousarray(np.asarray(vol, dtype=np.float64))
+    if a.ndim != 3:
+        raise ValueError("locmax3d takes a 3-D volume (z, y, x)")
     w = np.asarray(window, dtype=np.int64).ravel()
     if w.size == 1:
         w = np.repeat(w, 3)
     if np.any(w % 2 == 0):
         raise ValueError("locmax3d takes odd window sizes")
-    b = np.where(np.isnan(a), -1e8, a)
-    hz, hy, hx = int(w[2]) // 2, int(w[0]) // 2, int(w[1]) // 2  # MATLAB's [y x z] in (z, y, x)
-    d = ndi.maximum_filter(
-        b, size=(2 * hz + 1, 2 * hy + 1, 2 * hx + 1), mode="constant", cval=-np.inf
-    )
-    cand = np.nonzero(b == d)
-    unique = np.ones(cand[0].size, dtype=bool)
-    val = b[cand]
-    nz, ny, nx = b.shape
-    for dz in range(-hz, hz + 1):
-        for dy in range(-hy, hy + 1):
-            for dx in range(-hx, hx + 1):
-                if dz == 0 and dy == 0 and dx == 0:
-                    continue
-                zz, yy, xx = cand[0] + dz, cand[1] + dy, cand[2] + dx
-                ok = (zz >= 0) & (zz < nz) & (yy >= 0) & (yy < ny) & (xx >= 0) & (xx < nx)
-                tie = np.zeros_like(ok)
-                tie[ok] = b[zz[ok], yy[ok], xx[ok]] == val[ok]
-                unique &= ~tie
-    is_max = np.zeros(b.shape, dtype=np.float64)
-    is_max[tuple(c[unique] for c in cand)] = 1.0
-    return b * is_max
+    out = np.empty_like(a)
+    # MATLAB's [y x z] in (z, y, x)
+    _ext().locmax3d(a, int(w[2]) // 2, int(w[0]) // 2, int(w[1]) // 2, out, resolve_threads(None))
+    return out
 
 
 # -- the model-based pre-fit ----------------------------------------------------------------------
@@ -269,9 +313,7 @@ def lowsnr_prefit(
 
     v = np.asarray(vol, dtype=np.float64)
     if background_correction:
-        med_all = _f(_ms.median(v.ravel(), omitnan=True))
-        med_z = np.array([_f(_ms.median(v[k].ravel(), omitnan=True)) for k in range(v.shape[0])])
-        v = v - med_z[:, None, None] + med_all
+        v = background_corrected(v)
     if window is None or np.asarray(window).size == 0:
         wxy, wz = window_half_size(sigma)
     else:
@@ -289,44 +331,69 @@ def lowsnr_prefit(
     gl = _mlin(g)
     gsum = _f(_r.sum(gl))
     g2sum = _f(_r.sum(gl * gl))
-    A = (fg - gsum * fu / n) / (g2sum - gsum * gsum / n)
-    c = (fu - A * gsum) / n
-    with np.errstate(invalid="ignore"):
-        RSS = A * A * g2sum - 2 * A * (fg - c * gsum) + fu2 + n * c * c - 2 * c * fu
-        RSS = np.where(RSS < 0, 0.0, RSS)
-        sres = np.sqrt(RSS / (n - 1))
-        J = np.array([[g2sum, gsum], [gsum, float(n)]])
-        C11 = float(np.linalg.inv(J)[0, 0])
-        sigma_A = np.sqrt(RSS / (n - 3) * C11)
-        k_level = _f(_st.norminv(1 - alpha))
-        SE = sres / math.sqrt(2 * (n - 1)) * k_level
-        scomb = np.sqrt((sigma_A * sigma_A + SE * SE) / n)
-        T = (A - sres * k_level) / scomb
-        df = (n - 1) * (sigma_A * sigma_A + SE * SE) ** 2 / (sigma_A**4 + SE**4)
+    k_level = _f(_st.norminv(1 - alpha))
+    A, c, sres, T, df = _prefit_stats(fg, fu, fu2, gsum, g2sum, n, k_level, 1.0, num_threads)
     dfv = df[np.isfinite(df)]
     tthr = t_threshold(alpha, float(dfv.ravel()[0]) if dfv.size else float("nan"))
     chi = _f(_st.chi2inv(1 - 2 * alpha, n))
     return Prefit(v, A, c, sres, T, df, flog, fu, fu2, k_level, tthr, chi, n, wxy, wz)
 
 
+def _prefit_stats(fg, fu, fu2, gsum: float, g2sum: float, n: int, k_level: float, gfac: float, nt):
+    """the voxel-wise model statistics (C++, threaded, each voxel's arithmetic in the order of
+    ``A = (fg - gsum fu / n) / (g2sum - gsum^2 / n)``, ``c = (fu - A gsum) / n``,
+    ``RSS = A A g2sum - 2 A (fg - c gsum) + fu2 + n c c - 2 c fu`` (at least 0),
+    ``sres = sqrt(RSS / (n - 1))``, ``sigma_A = sqrt(RSS / (n - 3) C11)``,
+    ``SE = sres / sqrt(2 (n - 1)) k``, ``T = (A - sres k) / sqrt((sigma_A^2 + SE^2) / n)``,
+    ``df = (n - 1) (sigma_A^2 + SE^2)^2 / (sigma_A^4 + SE^4)``); ``gfac`` multiplies ``fg``
+    first (the 'speedup' detector's normalized filter); returns A, c, sres, T, df"""
+    from petakit5d.core.threads import resolve_threads
+    from petakit5d.detection.fit import _ext
+
+    J = np.array([[g2sum, gsum], [gsum, float(n)]])
+    C11 = float(np.linalg.inv(J)[0, 0])
+    shp = np.shape(fg)
+    out = [np.empty(shp) for _ in range(5)]
+    _ext().prefit_stats(
+        np.ascontiguousarray(fg, dtype=np.float64),
+        np.ascontiguousarray(fu, dtype=np.float64),
+        np.ascontiguousarray(fu2, dtype=np.float64),
+        float(gsum),
+        float(g2sum),
+        float(n),
+        C11,
+        float(k_level),
+        math.sqrt(2 * (n - 1)),
+        float(gfac),
+        *out,
+        resolve_threads(nt),
+    )
+    return tuple(out)
+
+
 def lowsnr_mask(P: Prefit) -> np.ndarray:
     """the candidates' mask: the amplitude test ``T > -t`` or the window's chi-square test
     against the constant model ``sum((v - c)^2) / sres^2 > chi2inv(1 - 2 alpha, n)``, without
-    the voxels within ``w_xy - 1`` of a face (along z too)"""
-    with np.errstate(invalid="ignore", divide="ignore"):
-        S = P.fu2 - 2 * P.c * P.fu + P.n * P.c * P.c
-        m = (P.T > -P.t_threshold) | (S / (P.sres * P.sres) > P.chi_threshold)
-    # the border is w_xy - 1 along every axis (measured with w_xy = 3 and w_z = 3 and 4)
-    bz = by = P.wxy - 1
-    if bz > 0:
-        m[:bz] = False
-        m[-bz:] = False
-    if by > 0:
-        m[:, :by] = False
-        m[:, -by:] = False
-        m[:, :, :by] = False
-        m[:, :, -by:] = False
-    return m
+    the voxels within ``w_xy - 1`` of a face (along z too; measured with w_xy = 3 and w_z = 3
+    and 4). ``S = fu2 - 2 c fu + n c c`` per voxel (C++, threaded)."""
+    from petakit5d.core.threads import resolve_threads
+    from petakit5d.detection.fit import _ext
+
+    m = np.empty(P.T.shape, dtype=np.uint8)
+    _ext().lowsnr_mask(
+        P.T,
+        P.c,
+        P.fu,
+        P.fu2,
+        P.sres,
+        float(P.n),
+        float(P.t_threshold),
+        float(P.chi_threshold),
+        max(int(P.wxy) - 1, 0),
+        m,
+        resolve_threads(None),
+    )
+    return m.view(bool)
 
 
 def lowsnr_candidates(
@@ -342,15 +409,27 @@ def lowsnr_candidates(
 
     nz, ny, nx = mask.shape
     cc = _lb.bwconncomp(mask)
-    out = np.empty((cc.num_objects, 3), dtype=np.int64)
-    means = np.empty((cc.num_objects, 3))
+    K = int(cc.num_objects)
     labels = np.zeros(mask.size, dtype=np.int64)
-    for k, idx in enumerate(cc.pixel_idx_list):
-        idx = np.asarray(idx, dtype=np.int64)  # C flat indices in MATLAB's linear order
-        labels[idx] = k + 1
-        for j, v in enumerate((idx // (ny * nx), (idx // nx) % ny, idx % nx)):  # z, y, x
-            means[k, j] = _f(_r.mean((v + 1).astype(np.float64))) - 1
-            out[k, j] = int(_mround(means[k, j] + 1)) - 1
+    if K:
+        # C flat indices; component k's 1-based subscripts sum exactly (integers), so MATLAB's
+        # mean (its sum over the count) is the exact sum divided once by the count
+        sizes = np.array([np.size(ix) for ix in cc.pixel_idx_list], dtype=np.int64)
+        allix = np.concatenate([np.asarray(ix, dtype=np.int64).ravel() for ix in cc.pixel_idx_list])
+        lab = np.repeat(np.arange(1, K + 1, dtype=np.int64), sizes)
+        labels[allix] = lab
+        cnt = np.bincount(lab, minlength=K + 1)[1:].astype(np.float64)
+        subs = (allix // (ny * nx), (allix // nx) % ny, allix % nx)  # z, y, x
+        means = np.stack(
+            [
+                np.bincount(lab, weights=(v + 1).astype(np.float64), minlength=K + 1)[1:] / cnt - 1
+                for v in subs
+            ],
+            axis=1,
+        )
+    else:
+        means = np.empty((0, 3))
+    out = (_mround(means + 1) - 1).astype(np.int64)
     extra = _extra_maxima(P, mask, labels.reshape(mask.shape), means)
     allc = np.concatenate([out, extra]) if extra.size else out
     lin = allc[:, 1] + ny * (allc[:, 2] + nx * allc[:, 0])
@@ -378,6 +457,175 @@ def _extra_maxima(
     pts = pts[d > radius]
     nz, ny, nx = mask.shape
     return pts[np.argsort(pts[:, 1] + ny * (pts[:, 2] + nx * pts[:, 0]), kind="stable")]
+
+
+# -- the 'speedup' detector (XR_pointSourceDetection3D) -----------------------------------------
+
+
+def fspecial3_gauss(size, sigma) -> np.ndarray:
+    """MATLAB's ``fspecial3('gaussian', size, sigma)`` for odd sizes ``[y x z]`` and sigma
+    ``[sy sx sz]`` (or one value): ``exp(-(x^2/(2 sx^2) + y^2/(2 sy^2) + z^2/(2 sz^2)))`` over its
+    sum (MATLAB's exp and sum; bit for bit on 12 traced calls); (z, y, x)"""
+    sz_ = np.asarray(size, dtype=np.int64).ravel()
+    if sz_.size == 1:
+        sz_ = np.repeat(sz_, 3)
+    sg = np.asarray(sigma, dtype=np.float64).ravel()
+    if sg.size == 1:
+        sg = np.repeat(sg, 3)
+    if np.any(sz_ % 2 == 0):
+        raise ValueError("fspecial3_gauss takes odd sizes")
+    hy, hx, hz = (int(v) // 2 for v in sz_)
+    sy, sx, szz = (float(v) for v in sg)
+    Z, Y, X = np.meshgrid(
+        np.arange(-hz, hz + 1.0), np.arange(-hy, hy + 1.0), np.arange(-hx, hx + 1.0), indexing="ij"
+    )
+    hg = _mexp(-(X * X / (2 * sx * sx) + Y * Y / (2 * sy * sy) + Z * Z / (2 * szz * szz)))
+    return hg / _f(_r.sum(_mlin(hg)))
+
+
+_T_THRESHOLDS_SPEEDUP: dict[float, float] = {}
+
+
+def t_threshold_speedup(alpha: float, df: float) -> float:
+    """the 'speedup' detector's mask threshold ``tinv(alpha, df)``, cached per ``alpha`` for the
+    session as MATLAB caches it (its own cache, apart from the lowSNR detector's)"""
+    from petakit5d.detection import stats as _st
+
+    a = float(alpha)
+    if a not in _T_THRESHOLDS_SPEEDUP:
+        _T_THRESHOLDS_SPEEDUP[a] = _f(_st.tinv(a, df))
+    return _T_THRESHOLDS_SPEEDUP[a]
+
+
+def background_corrected(vol) -> np.ndarray:
+    """the detectors' background correction: each z plane minus its median plus the volume's
+    median (``nanmedian``: NaN left out)"""
+    v = np.asarray(vol, dtype=np.float64)
+    med_all = _f(_ms.median(v.ravel(), omitnan=True))
+    med_z = np.array([_f(_ms.median(v[k].ravel(), omitnan=True)) for k in range(v.shape[0])])
+    return v - med_z[:, None, None] + med_all
+
+
+def speedup_prefit(
+    vol,
+    sigma,
+    *,
+    alpha: float = 0.05,
+    window=None,
+    background_correction: bool = False,
+    num_threads: int | None = None,
+) -> Prefit:
+    """the 'speedup' detector's voxel-wise model fits: the Gaussian's window sums through the
+    normalized ``fspecial3('gaussian')`` filter times the unnormalized kernel's sum ``G``,
+    ``A = (fg G - G fu / n) / (sum(g^2) - G^2 / n)``, ``c = (fu - A G) / n``, the residuals'
+    statistics and the amplitude's t statistic with ``k_level = norminv(1 - alpha/2)``; the
+    t threshold ``tinv(alpha, mean(df))`` over the finite voxels, once per session"""
+    from petakit5d.detection import stats as _st
+
+    v = np.asarray(vol, dtype=np.float64)
+    if background_correction:
+        v = background_corrected(v)
+    if window is None or np.asarray(window).size == 0:
+        wxy, wz = window_half_size(sigma)
+    else:
+        ww = np.asarray(window, dtype=np.int64).ravel()
+        wxy, wz = int(ww[0]), int(ww[-1])
+    s, sz = float(sigma[0]), float(sigma[1])
+    size = (2 * wxy + 1, 2 * wxy + 1, 2 * wz + 1)
+    h = fspecial3_gauss(size, (s, s, sz))
+    fg = _mf.imfilter(v, h, "conv", "same", "symmetric", num_threads=num_threads)
+    u = np.ones_like(h)
+    fu = _mf.imfilter(v, u, "conv", "same", "symmetric", num_threads=num_threads)
+    fu2 = _mf.imfilter(v * v, u, "conv", "same", "symmetric", num_threads=num_threads)
+    klog = fspecial3_log(size, (s, s, sz))
+    flog = _mf.imfilter(v, -klog, "conv", "same", "symmetric", num_threads=num_threads)
+    g = gaussian_kernel3((s, sz), wxy, wz)
+    n = g.size
+    gl = _mlin(g)
+    gsum = _f(_r.sum(gl))
+    g2sum = _f(_r.sum(gl * gl))
+    k_level = _f(_st.norminv(1 - alpha / 2))
+    A, c, sres, T, df = _prefit_stats(fg, fu, fu2, gsum, g2sum, n, k_level, gsum, num_threads)
+    dfl = _mlin(df)
+    dfl = dfl[np.isfinite(dfl)]
+    tthr = t_threshold_speedup(alpha, _f(_r.mean(dfl)) if dfl.size else float("nan"))
+    return Prefit(v, A, c, sres, T, df, flog, fu, fu2, k_level, tthr, float("nan"), n, wxy, wz)
+
+
+def speedup_mask(P: Prefit) -> np.ndarray:
+    """the 'speedup' detector's mask: ``T > -tinv(alpha, df)``, without the voxels within
+    ``w_xy - 1`` of a face"""
+    with np.errstate(invalid="ignore"):
+        m = P.T > -P.t_threshold
+    b = P.wxy - 1
+    if b > 0:
+        m[:b] = False
+        m[-b:] = False
+        m[:, :b] = False
+        m[:, -b:] = False
+        m[:, :, :b] = False
+        m[:, :, -b:] = False
+    return m
+
+
+def point_source_detection_speedup(
+    vol,
+    sigma,
+    *,
+    mode: str = "xyzAc",
+    alpha: float = 0.05,
+    remove_redundant_fits: bool = True,
+    redundancy_radius: float = 0.25,
+    window=None,
+    fit_method: str = "CD_Newton",
+    background_correction: bool = False,
+    num_threads: int | None = None,
+) -> tuple[dict, np.ndarray]:
+    """``XR_pointSourceDetection3D(vol, [s sz], ...)`` (the 'speedup' detector, also the PSF
+    sigma estimate's; measured as a black box): the model fits in every voxel's window, the mask
+    ``T > -tinv(alpha, df)``, the starts at the Laplacian-of-Gaussian maxima (windows
+    ``2 ceil(sigma) + 1``) inside the mask, ``XR_fitGaussians3D`` (mode, method ``'CD_Newton'`` or
+    ``'original'``: the fitGaussian3D mex), then the NaN fits, the redundant ones (radius) and
+    those whose amplitude is not significant dropped; ``isPSF = ~hval_AD``. Positions 0-based."""
+    from petakit5d.detection import fit as _fit
+
+    P = speedup_prefit(
+        vol,
+        sigma,
+        alpha=alpha,
+        window=window,
+        background_correction=background_correction,
+        num_threads=num_threads,
+    )
+    mask = speedup_mask(P)
+    s, sz = float(sigma[0]), float(sigma[1])
+    lw = (2 * math.ceil(s) + 1, 2 * math.ceil(s) + 1, 2 * math.ceil(sz) + 1)
+    lm = locmax3d(P.flog, lw)
+    nz, ny, nx = mask.shape
+    pts = np.argwhere((lm != 0) & mask)  # (z, y, x)
+    pts = pts[np.argsort(pts[:, 1] + ny * (pts[:, 2] + nx * pts[:, 0]), kind="stable")]
+    z, y, x = pts.T
+    xyz = np.stack([x, y, z], axis=1).astype(np.float64)
+    ps = _fit.fit_gaussians3d(
+        P.vol,
+        xyz,
+        P.A[z, y, x],
+        (s, sz),
+        P.c[z, y, x],
+        mode,
+        mask=mask,
+        alpha=alpha,
+        window=(P.wxy, P.wz),
+        method=fit_method,
+        num_threads=num_threads,
+    )
+    ps = postfit(ps, P.vol, remove_redundant_fits=remove_redundant_fits, radius=redundancy_radius)
+    return ps, mask
+
+
+def clear_speedup_cache() -> None:
+    """forget the 'speedup' detector's cached t thresholds (a new MATLAB session)"""
+    _T_THRESHOLDS_SPEEDUP.clear()
 
 
 # -- after the fits -------------------------------------------------------------------------------
