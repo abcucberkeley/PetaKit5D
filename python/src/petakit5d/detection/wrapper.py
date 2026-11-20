@@ -261,6 +261,11 @@ def _movies_to_matlab(x: Any) -> Any:
     return None if x is None else movies_to_matlab(x)
 
 
+def _is_pc() -> bool:
+    """MATLAB's ``ispc``: XR_runDetTrack3d takes 'parfor' there whatever ``ParallelMethod``"""
+    return os.name == "nt"
+
+
 def _four(overwrite: Any) -> tuple[bool, bool, bool, bool]:
     a = np.asarray(overwrite)
     if a.dtype != np.bool_:
@@ -367,7 +372,7 @@ def run_detection_tracking(
     from petakit5d.detection.condition import Condition, short_path
     from petakit5d.detection.offsets import correct_xz_offset_data
 
-    method = "parfor" if os.name == "nt" else parallel_method
+    method = "parfor" if _is_pc() else parallel_method
     ow = _four(overwrite)
     if sigma is None or np.size(sigma) == 0:
         raise WrapperError(

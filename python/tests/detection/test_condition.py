@@ -4,6 +4,10 @@ synthetic folder trees, and the rules measured by black-box probes (task C04a).
 The ``date`` field is the digits of the folder path, which differ between MATLAB's and Python's
 work folders: the oracle cases compare every other field (MATLAB's side drops it in its code,
 the Python side in ``_matlab``) and the rule is checked here on MATLAB's probed answers.
+
+The paths: the loader adds MATLAB's ``filesep``, ``\\`` on Windows as MATLAB does there, to the
+folders it is given; the references were made on Linux. The cases compare path texts with
+``/`` for every separator (``posix_paths``).
 """
 
 import os
@@ -123,10 +127,27 @@ LOAD2D = (
 )
 
 
+def posix_paths(v):
+    """the value with ``/`` for every ``\\`` in its texts (lists, tuples, dicts, object arrays):
+    a path the port made with Windows' filesep as the Linux references hold it"""
+    if isinstance(v, str):
+        return v.replace("\\", "/")
+    if isinstance(v, dict):
+        return {k: posix_paths(x) for k, x in v.items()}
+    if isinstance(v, list | tuple):
+        return type(v)(posix_paths(x) for x in v)
+    if isinstance(v, np.ndarray) and v.dtype == object:
+        out = np.empty(v.shape, dtype=object)
+        for i, x in np.ndenumerate(v):
+            out[i] = posix_paths(x)
+        return out
+    return v
+
+
 def _no_date(movies) -> list[dict]:
     out = []
     for m in movies:
-        d = m.to_matlab()
+        d = posix_paths(m.to_matlab())
         del d["date"]
         out.append(d)
     return out
@@ -378,6 +399,26 @@ def test_short_path():
     assert cond.short_path("rel/b/ch1/") == "b/ch1"
     assert cond.short_path("/ch1/") == "ch1"
     assert cond.short_path("/a/b/") == "a/b"
+
+
+def test_paths_compare_with_slashes():
+    """a condition the port loaded on Windows (MATLAB's filesep added to the folders as given)
+    compares as the Linux reference: every separator a slash, nothing else changed"""
+    win = {
+        "source": "C:\\w\\t/one/Ex1_syn_z0p5/ch1\\",
+        "channels": ["C:\\w\\t/one/Ex1_syn_z0p5/ch1\\", "C:\\w\\t/one/Ex1_syn_z0p5/ch2\\"],
+        "framePaths": [np.array([["C:\\w\\t/one/Ex1_syn_z0p5/ch1\\a.tif"]], dtype=object)],
+        "movieLength": 1.0,
+        "markers": ["gfp"],
+    }
+    got = posix_paths(win)
+    assert got["source"] == "C:/w/t/one/Ex1_syn_z0p5/ch1/"
+    assert got["channels"] == ["C:/w/t/one/Ex1_syn_z0p5/ch1/", "C:/w/t/one/Ex1_syn_z0p5/ch2/"]
+    assert got["framePaths"][0].shape == (1, 1)
+    assert got["framePaths"][0][0, 0] == "C:/w/t/one/Ex1_syn_z0p5/ch1/a.tif"
+    assert got["movieLength"] == 1.0 and got["markers"] == ["gfp"]
+    again = posix_paths(got)  # a no-op on paths with slashes
+    assert again["source"] == got["source"] and again["channels"] == got["channels"]
 
 
 def test_z_aniso_sine():

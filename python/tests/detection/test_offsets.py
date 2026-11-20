@@ -11,9 +11,14 @@ from petakit5d.detection import condition as cond
 from petakit5d.detection import offsets
 from petakit5d.testing import oracle, synth
 from petakit5d.testing.cases import Case, In, InPath, Tree, Value, Vol, mcell
-from petakit5d.testing.compare import tol
+from petakit5d.testing.compare import Masks, tol
+from petakit5d.testing.compare import tree as tree_spec
 
 DS_SIZE = (14, 10, 36)  # (z, y, x)
+# xz_offset.mat holds the channels' folders, which the port makes with MATLAB's filesep
+# ('\\' on Windows, as MATLAB there); the references were made on Linux: the files' texts are
+# compared with '/' for every separator
+SLASHES = ((r"\\", "/"),)
 SPOTS = (
     (4.2, 3.1, 9.4), (7.6, 6.2, 14.8), (10.1, 2.7, 21.3), (5.5, 7.4, 26.6), (8.8, 4.9, 18.2),
     (11.4, 6.6, 12.1), (3.7, 5.3, 29.5),
@@ -143,6 +148,7 @@ def _cases():
                 python=_correct,
                 nargout=0,
                 inputs=tree,
+                tree=tree_spec(masks=SLASHES),
                 **kw,
             )
         )
@@ -170,6 +176,7 @@ def _cases():
             python=_correct,
             nargout=0,
             inputs={"h": Tree(make_halves, "h")},
+            tree=tree_spec(masks=SLASHES),
         )
     )  # fmt: skip
     add("one_frame_three_channels", "oneframe3/Ex1_syn_z0p5/", ("ch1", "ch2", "ch3"),
@@ -270,6 +277,14 @@ CASES = _cases()
 @oracle.parametrize(CASES)
 def test_matlab(case, tmp_path):
     oracle.check(case, tmp_path)
+
+
+def test_channel_paths_compare_with_slashes():
+    """xz_offset.mat's channels as the port writes them on Windows mask to the Linux texts"""
+    m = Masks().plus(*SLASHES)
+    assert m.text("<WORK>/t/two/Ex1_syn_z0p5/ch1\\") == "<WORK>/t/two/Ex1_syn_z0p5/ch1/"
+    assert m.text("C:\\w\\t/two/ch2\\") == "C:/w/t/two/ch2/"
+    assert m.text("<WORK>/t/two/Ex1_syn_z0p5/ch1/") == "<WORK>/t/two/Ex1_syn_z0p5/ch1/"
 
 
 def test_ranges_are_matlabs():

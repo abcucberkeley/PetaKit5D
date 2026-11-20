@@ -2,6 +2,7 @@
 wrapper (the lab's XR_runDetTrack3d): oracle cases on synthetic conditions, the wrapper's stages
 replaced by MATLAB's recorded outputs, and its orchestration with stand-ins (task C04a)."""
 
+import os
 import shutil
 from pathlib import Path
 
@@ -398,11 +399,15 @@ def calls():
     wrapper.STAGES.update(old)
 
 
+# XR_runDetTrack3d's detection: 'parfor' on Windows (ispc) whatever ParallelMethod, else the
+# method given ('lock_distributed' by default: the frame-parallel detection)
+DETECTION = "run_detection" if os.name == "nt" else "run_detection_frame_parallel"
+
+
 def test_stages_in_order(condition, calls):
     wrapper.run_detection_tracking(condition, sigma=((1.3, 1.5), (1.3, 1.5)))
     assert [c[0] for c in calls] == [
-        "run_detection_frame_parallel", "track_settings", "run_tracking",
-        "run_track_processing", "rotate_tracks",
+        DETECTION, "track_settings", "run_tracking", "run_track_processing", "rotate_tracks",
     ]  # fmt: skip
     det = calls[0][2]
     assert det["overwrite"] is False and det["detection_method"] == "lowSNR"
@@ -433,7 +438,26 @@ def test_parallel_method_and_flags(condition, calls):
     calls.clear()
     wrapper.run_detection_tracking(condition, sigma=((1.3, 1.5),), parallel_method="other",
                                    rotate_tracks=False)  # fmt: skip
-    assert [c[0] for c in calls] == ["track_settings", "run_tracking", "run_track_processing"]
+    pc = ["run_detection"] if os.name == "nt" else []  # Windows: parfor whatever the method
+    assert [c[0] for c in calls] == [*pc, "track_settings", "run_tracking", "run_track_processing"]
+
+
+def test_windows_takes_parfor(condition, calls, monkeypatch):
+    """MATLAB's ispc: on Windows the detection is 'parfor' (run_detection) whatever the
+    parallel method; elsewhere the method given"""
+    monkeypatch.setattr(wrapper, "_is_pc", lambda: True)
+    for method in ("lock_distributed", "parfor", "other"):
+        calls.clear()
+        wrapper.run_detection_tracking(condition, sigma=((1.3, 1.5),), parallel_method=method,
+                                       track=False)  # fmt: skip
+        assert [c[0] for c in calls] == ["run_detection"]
+    monkeypatch.setattr(wrapper, "_is_pc", lambda: False)
+    for method, want in (("lock_distributed", ["run_detection_frame_parallel"]),
+                         ("parfor", ["run_detection"]), ("other", [])):  # fmt: skip
+        calls.clear()
+        wrapper.run_detection_tracking(condition, sigma=((1.3, 1.5),), parallel_method=method,
+                                       track=False)  # fmt: skip
+        assert [c[0] for c in calls] == want
 
 
 def test_apath_takes_the_last_folders(condition, calls, tmp_path):
