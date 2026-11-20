@@ -28,9 +28,14 @@ REF = importlib.util.module_from_spec(_spec)
 REF.__file__ = str(_spec.origin) + ":helpers"
 _spec.loader.exec_module(REF)
 
-TOL_LOG = tol(reason="parity D2: fspecial3('log') arithmetic order", abs=1e-16, rel=2e-15)
+TOL_LOG = tol(reason="parity D1: fspecial3('log') arithmetic order", abs=1e-16, rel=2e-15)
 TOL_DETECT = tol(
-    reason="parity D4: the detector's fits (3-D filter order, covariance)", rel=1e-9, abs=1e-9
+    reason="parity D3: the detector's fits (3-D filter order, covariance)", rel=1e-9, abs=1e-9
+)
+TOL_SPEEDUP_MEX = tol(
+    reason="parity D7: the 'speedup' detector with the fitGaussian3D mex's fits (D5)",
+    rel=1e-6,
+    abs=1e-9,
 )
 
 
@@ -160,6 +165,23 @@ def _py_lowsnr(vol_m, sigma):
     return [bi[None, :], _ps_matlab(ps), to_matlab(mask)]
 
 
+def _py_speedup(vol_m, sigma):
+    """XR_pointSourceDetection3D(vol, sigma, 'BackgroundCorrection', false): its defaults
+    (mode 'xyzAc', 'CD_Newton', redundancy radius 0.25)"""
+    detect.clear_speedup_cache()
+    ps, mask = detect.point_source_detection_speedup(from_matlab(vol_m), sigma)
+    return [_ps_matlab(ps), to_matlab(mask)]
+
+
+def _py_speedup_sigma_form(psf_m, sigma):
+    """the sigma estimate's call: mode 'xyzAsrc' with the fitGaussian3D mex"""
+    detect.clear_speedup_cache()
+    ps, mask = detect.point_source_detection_speedup(
+        from_matlab(psf_m), sigma, mode="xyzAsrc", fit_method="original"
+    )
+    return [_ps_matlab(ps), to_matlab(mask)]
+
+
 def _cases():
     bg = _bg_inputs()
     cs = []
@@ -263,6 +285,36 @@ def _cases():
                     compare={0: EXACT, 1: TOL_DETECT, 2: EXACT},
                 )
             )
+    # C01's references of the 'speedup' detector (PointDetectionTest's form, the sigma
+    # estimate's form): the same MATLAB code and inputs, so the same keys
+    for c in (1, 2):
+        cs.append(
+            Case(
+                f"psd_speedup_form.ch{c}",
+                code=REF.CLEAR_CODE
+                + "[ps, mask] = XR_pointSourceDetection3D(in{1}, in{2}, "
+                + "'BackgroundCorrection', false); out = {ps, mask};",
+                args=[In("vol"), REF.SIGMA_DS[c]],
+                nargout=2,
+                inputs={"vol": Value(lambda c=c: REF.ds_frame(4, c))},
+                python=_py_speedup,
+                compare={0: TOL_DETECT, 1: EXACT},
+            )
+        )
+        cs.append(
+            Case(
+                f"psd_sigma_estimate_form.ch{c}",
+                code=REF.CLEAR_CODE
+                + "[ps, mask] = XR_pointSourceDetection3D(in{1}, in{2}, "
+                + REF.SIGMA_EST_OPTS
+                + "); out = {ps, mask};",
+                args=[In("psf"), [1.2, 2.5]],
+                nargout=2,
+                inputs={"psf": Value(lambda c=c: to_matlab(REF.psf_volume(c).astype(np.float64)))},
+                python=_py_speedup_sigma_form,
+                compare={0: TOL_SPEEDUP_MEX, 1: EXACT},
+            )
+        )
     return cs
 
 
@@ -345,6 +397,255 @@ def test_fit_recovers_a_spot_in_a_window():
     # MATLAB's stop rule (RSS change below 1e-7 of the first RSS, steps below 1e-4) ends early
     assert np.allclose(R.prm[0, :3], [3.3, 2.8, 3.1], atol=1e-5)
     assert np.allclose(R.prm[0, [3, 6]], [80, 100], rtol=1e-4)
+
+
+def _locmax_ref(a, window):
+    """XR_locmax3d's measured rule in plain NumPy: NaN as -1e8, strictly larger than every other
+    voxel of the face-clipped window, the replaced value times 1 or 0"""
+    from scipy import ndimage as ndi
+
+    w = np.asarray(window, dtype=np.int64).ravel()
+    b = np.where(np.isnan(a), -1e8, a)
+    hz, hy, hx = int(w[2]) // 2, int(w[0]) // 2, int(w[1]) // 2
+    d = ndi.maximum_filter(
+        b, size=(2 * hz + 1, 2 * hy + 1, 2 * hx + 1), mode="constant", cval=-np.inf
+    )
+    cand = np.nonzero(b == d)
+    unique = np.ones(cand[0].size, dtype=bool)
+    nz, ny, nx = b.shape
+    for dz in range(-hz, hz + 1):
+        for dy in range(-hy, hy + 1):
+            for dx in range(-hx, hx + 1):
+                if dz == dy == dx == 0:
+                    continue
+                zz, yy, xx = cand[0] + dz, cand[1] + dy, cand[2] + dx
+                ok = (zz >= 0) & (zz < nz) & (yy >= 0) & (yy < ny) & (xx >= 0) & (xx < nx)
+                tie = np.zeros_like(ok)
+                tie[ok] = b[zz[ok], yy[ok], xx[ok]] == b[cand][ok]
+                unique &= ~tie
+    m = np.zeros(b.shape)
+    m[tuple(c[unique] for c in cand)] = 1.0
+    return b * m
+
+
+def test_locmax3d_follows_its_rule():
+    a = np.round(_rng("locmax").normal((9, 14, 11)) * 3)  # many ties
+    a[2, 3, 4] = np.nan
+    a[5, :, 0] = np.nan
+    a[0, 0, 0] = -0.0
+    for w in ((3, 3, 3), (5, 5, 7), (3, 5, 1)):
+        got, ref = detect.locmax3d(a, w), _locmax_ref(a, w)
+        assert got.tobytes() == ref.tobytes()
+
+
+def test_prefit_statistics_are_the_numpy_expressions():
+    r = _rng("prefit")
+    fg, fu, fu2 = (
+        np.abs(r.normal((4, 6, 5))) * s + o for s, o in ((30, 200), (40, 3000), (500, 1e5))
+    )
+    fu2[0, 0, :2] = 0.0  # negative RSS clipped to 0
+    gsum, g2sum, n, k = 54.88, 20.01, 343, 1.6448536269514722
+    A, c, sres, T, df = detect._prefit_stats(fg, fu, fu2, gsum, g2sum, n, k, 1.0, 2)
+    eA = (fg - gsum * fu / n) / (g2sum - gsum * gsum / n)
+    ec = (fu - eA * gsum) / n
+    with np.errstate(invalid="ignore"):
+        rss = eA * eA * g2sum - 2 * eA * (fg - ec * gsum) + fu2 + n * ec * ec - 2 * ec * fu
+        rss = np.where(rss < 0, 0.0, rss)
+        es = np.sqrt(rss / (n - 1))
+        C11 = float(np.linalg.inv(np.array([[g2sum, gsum], [gsum, float(n)]]))[0, 0])
+        sA = np.sqrt(rss / (n - 3) * C11)
+        SE = es / np.sqrt(2.0 * (n - 1)) * k
+        eT = (eA - es * k) / np.sqrt((sA * sA + SE * SE) / n)
+        u = sA * sA + SE * SE
+        edf = (n - 1) * (u * u) / ((sA * sA) * (sA * sA) + (SE * SE) * (SE * SE))
+    for got, ref in ((A, eA), (c, ec), (sres, es), (T, eT), (df, edf)):
+        assert got.tobytes() == ref.tobytes()
+
+
+def _movie(root, frames=3) -> dict:
+    """the synthetic condition's movie as MATLAB's struct holds it (the fields run_detection
+    reads; framePathsDS a column of paths per channel, as condition.Movie gives it)"""
+    import os
+
+    ex = Path(root) / REF.EXPERIMENT
+    chans = [str(ex / "ch1") + os.sep, str(ex / "ch2") + os.sep]
+    cols = []
+    for c in (1, 2):
+        paths = [str(p) for p in sorted((ex / f"ch{c}" / "DS").glob("*.tif"))[:frames]]
+        col = np.empty((len(paths), 1), dtype=object)
+        col[:, 0] = paths
+        cols.append(col)
+    return {"source": chans[0], "channels": chans, "framePathsDS": cols, "zAniso": 2.5}
+
+
+SIGMA_RUN = np.array([REF.SIGMA_DS[1], REF.SIGMA_DS[2]])
+
+
+def test_run_detection_writes_detections_and_masks(tmp_path):
+    """PointDetectionTest's runDetectionWritesDetectionsAndMask in intent: the 'speedup' run
+    writes Detection3D.mat with one entry per frame and one mask per frame, no Amira folder
+    with WriteAmira false; the camera's threshold comes from the settings file"""
+    import os
+
+    from petakit5d.detection import run
+    from petakit5d.io import matfile
+
+    REF.make_condition(tmp_path)
+    detect.clear_speedup_cache()
+    res = tmp_path / "Analysis"
+    (entries,) = run.run_detection(
+        _movie(tmp_path),
+        SIGMA_RUN,
+        [str(res) + os.sep],
+        detection_method="speedup",
+        write_amira=False,
+    )
+    assert len(entries) == 3 and all(np.size(e["x"]) > 0 for e in entries)
+    assert sorted(p.name for p in (res / "Masks").iterdir()) == [
+        "dmask_1.tif",
+        "dmask_2.tif",
+        "dmask_3.tif",
+    ]
+    assert not (res / "Amira").exists()
+    fi = matfile.read_mat(str(res / "Detection3D.mat"))["frameInfo"]
+    assert len(fi) == 3
+
+
+def test_run_detection_takes_a_condition(tmp_path):
+    """XR_runDetection3D's condition, as the wrapper passes it (measured, probes rd1 and rd2):
+    a 1 x n struct array, one results folder per movie; with Overwrite false (the default) a
+    movie whose Detection3D.mat exists is skipped and its file kept; the default folder is
+    [source 'Analysis' filesep] and the default method 'speedup'; a folder without the trailing
+    separator gets 'Detection3D.mat' beside it (string concatenation) and its masks inside"""
+    import os
+
+    from petakit5d.detection import run
+    from petakit5d.io import matfile
+    from petakit5d.io.matfile import StructArray
+
+    REF.make_condition(tmp_path)
+    m = _movie(tmp_path, frames=1)
+    data = StructArray((1, 2), list(m), [m, dict(m)])
+    ra, rb = str(tmp_path / "RA") + os.sep, str(tmp_path / "RB")
+    os.makedirs(ra)
+    matfile.write_mat(ra + "Detection3D.mat", {"marker": 1.0})
+    detect.clear_speedup_cache()
+    out = run.run_detection(
+        data, SIGMA_RUN, [ra, rb], detection_method="speedup", write_amira=False
+    )
+    assert out[0] is None and list(matfile.read_mat(ra + "Detection3D.mat")) == ["marker"]
+    assert len(out[1]) == 1 and os.path.isfile(rb + "Detection3D.mat")
+    assert os.listdir(rb) == ["Masks"] and os.listdir(os.path.join(rb, "Masks")) == ["dmask_1.tif"]
+    # the defaults: the Analysis folder, 'speedup' (the same detections), skipped when there
+    (got,) = run.run_detection(m, SIGMA_RUN, write_amira=False)
+    default = m["source"] + "Analysis" + os.sep + "Detection3D.mat"
+    assert os.path.isfile(default)
+    assert np.array_equal(got[0]["x"], out[1][0]["x"], equal_nan=True)
+    stamp = os.path.getmtime(default)
+    assert run.run_detection(m, SIGMA_RUN, write_amira=False) == [None]
+    assert os.path.getmtime(default) == stamp
+
+
+def test_the_wrapper_runs_the_detection(tmp_path):
+    """XR_runDetTrack3d's detection stage ('parfor') with run_detection: the condition as
+    load_condition_data gives it and the wrapper's settings; Detection3D.mat in each movie's
+    Analysis folder, a mask per frame"""
+    import os
+
+    from petakit5d.detection import condition as cond
+    from petakit5d.detection import run, wrapper
+    from petakit5d.io import matfile
+
+    REF.make_condition(tmp_path)
+    data = cond.load_condition_data(str(tmp_path), ["ch1", "ch2"], ["gfp", "rfp"])
+    old = dict(wrapper.STAGES)
+    try:
+        wrapper.STAGES["run_detection"] = run.run_detection
+        wrapper.run_detection_tracking(data, sigma=SIGMA_RUN, parallel_method="parfor", track=False)
+    finally:
+        wrapper.STAGES.clear()
+        wrapper.STAGES.update(old)
+    res = os.path.join(data[0].source, "Analysis")
+    fi = matfile.read_mat(os.path.join(res, "Detection3D.mat"))["frameInfo"]
+    assert len(fi) == REF.N_FRAMES and all(np.size(e["x"]) > 0 for e in fi)
+    assert len(os.listdir(os.path.join(res, "Masks"))) == REF.N_FRAMES
+
+
+def test_run_detection_sigma_rows_past_the_channels(tmp_path):
+    """the wrapper's default sigma has three rows: for two channels MATLAB's frameInfo keeps two
+    rows per field and the whole sigma in s (probe rd2: 16 bytes more per frame, no other
+    change)"""
+    import os
+
+    from petakit5d.detection import run
+
+    REF.make_condition(tmp_path)
+    detect.clear_speedup_cache()
+    s3 = np.vstack([SIGMA_RUN, [1.58, 1.608]])
+    (entries,) = run.run_detection(
+        _movie(tmp_path, frames=1), s3, [str(tmp_path / "R") + os.sep], write_amira=False
+    )
+    e = entries[0]
+    assert np.asarray(e["x"]).shape[0] == 2 and np.asarray(e["isPSF"]).shape[0] == 2
+    assert np.array_equal(e["s"], s3) and len(e["dRange"]) == 2
+
+
+def test_run_detection_refuses_what_is_not_ported(tmp_path):
+    import os
+
+    import pytest
+
+    from petakit5d.detection import run
+
+    REF.make_condition(tmp_path)
+    m = _movie(tmp_path, frames=1)
+    rp = [str(tmp_path / "R") + os.sep]
+    for kw, err in (
+        ({"window_size": [2, 2]}, NotImplementedError),
+        ({"mode": "xyzAsc"}, NotImplementedError),
+        ({"fit_mixtures": True}, NotImplementedError),
+        ({"detection_method": "original"}, NotImplementedError),
+    ):
+        with pytest.raises(err):
+            run.run_detection(m, SIGMA_RUN, rp, **kw)
+    with pytest.raises(TypeError):  # MATLAB's 'ResultsPath' must be a cell
+        run.run_detection(m, SIGMA_RUN, rp[0])
+    with pytest.raises(ValueError):
+        run.run_detection(m, None, rp)
+    assert not os.path.exists(rp[0])
+
+
+def test_fit_cd_counts_no_iteration_for_a_window_too_small():
+    """a window of fewer than 7 voxels is not fitted: its stats are NaN and its iteration count
+    0 on every platform (a NaN cast to int64 differs between x86-64 and ARM)"""
+    w = np.full((3, 3, 3), np.nan)
+    w[1, 1, :] = (100.0, 180.0, 100.0)
+    w[1, 0, 1] = 120.0
+    r = fit.fit_cd(
+        [w, 100.0 + np.zeros((3, 3, 3))], np.array([[1, 1, 1, 50.0, 1.0, 1.0, 100.0]] * 2)
+    )
+    assert r.iterations.dtype == np.int64 and r.iterations[0] == 0 and np.isnan(r.rss[0])
+
+
+def test_fit_is_nan_from_the_window_centre():
+    """XR_fitGaussians3D's 'xyzAc' fit is NaN when it ends w or more from the window's centre,
+    the rounded start (MATLAB's pattern on 2,315 traced fits from the other channel's
+    positions): a start at 11.6 (centre 12, w = 2) with the spot at 9.8 is NaN though 1.8 from
+    the start; with the spot at 13.8 it stands though 2.2 from the start, at 14.3 it is NaN"""
+    z, y, x = np.mgrid[0:21, 0:21, 0:21].astype(np.float64)
+    for spot, nan in ((9.8, True), (13.8, False), (14.3, True)):
+        vol = 100.0 + 500.0 * np.exp(-((x - spot) ** 2 + (y - 10) ** 2 + (z - 10) ** 2) / 2.0)
+        r = fit.fit_gaussians3d(
+            vol,
+            np.array([[11.6, 10.0, 10.0]]),
+            np.array([500.0]),
+            [1.0, 1.0],
+            np.array([100.0]),
+            "xyzAc",
+        )
+        assert bool(np.isnan(r["x"][0])) is nan, (spot, r["x"][0])
+        if not nan:
+            assert abs(r["x"][0] - spot) < 1e-3
 
 
 def test_redundant_fits_keep_the_lowest_rss_of_each_ball():

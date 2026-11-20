@@ -13,7 +13,6 @@ from petakit5d.detection import condition as cond
 from petakit5d.detection import wrapper
 from petakit5d.testing import oracle, synth
 from petakit5d.testing.cases import Case, Data, InPath, Tree, mcell
-from petakit5d.testing.compare import tree
 
 RAW = (9, 24, 40)  # (z, y, x) of a raw frame
 LLC = (
@@ -112,7 +111,24 @@ def _deskew(root, rel, load_opts, opts):
         skew_angle=o.get("SkewAngle", 31.5),
         aname=o.get("aname"),
         s_cmos_camera_flip=o.get("sCMOSCameraFlip", False),
+        reverse=o.get("Reverse", False),
     )
+
+
+def _wrapper_deskew(root, rel, load_opts):
+    """run_detection_tracking's deskew alone (no detection: an unknown parallel method; no
+    tracking), with the scan direction of each movie (the fixed wrapper)"""
+    lo = {LOAD_OPTS[load_opts[i]]: load_opts[i + 1] for i in range(0, len(load_opts), 2)}
+    d = cond.load_condition_data(root + rel, ["ch1", "ch2"], ["gfp", "rfp"], **lo)
+    old = dict(wrapper.STAGES)
+    wrapper.STAGES.update(dict.fromkeys(wrapper.STAGES, lambda *_a, **_k: None))
+    try:
+        wrapper.run_detection_tracking(
+            d, sigma=((1.3, 1.5), (1.3, 1.5)), parallel_method="none", track=False
+        )
+    finally:
+        wrapper.STAGES.clear()
+        wrapper.STAGES.update(old)
 
 
 def _without_identifier(*args):
@@ -154,7 +170,11 @@ def _cases():
     )  # fmt: skip
     add("angle45", "plain/Ex1_synth_z0p5/", opts=wrapper_opts(angle=45))
     add("movie_fields", "plain/Ex1_synth_z0p5/", ["dz", 0.8, "PixelSize", 0.1, "Angle", 40])
+    # a reversed scan: deskewData leaves data.reversed alone (forward, as without the flag),
+    # its 'Reverse' option deskews in the scan's direction (detection.md W2)
     add("reversed", "plain/Ex1_synth_z0p5/", ["Reversed", True])
+    add("reverse_option", "plain/Ex1_synth_z0p5/", ["Reversed", True],
+        opts=[*wrapper_opts(), "Reverse", True])  # fmt: skip
     add("objective_scan", "plain/Ex1_synth_z0p5/", ["ObjectiveScan", True])
     add("single_frames", "single/Ex1_synth_z0p5/")
     add("two_movies", "two/cond/")
@@ -171,6 +191,22 @@ def _cases():
     # identifier is not compared here
     add("flip_fails", "plain/Ex1_synth_z0p5/", opts=wrapper_opts(flip=True), error=True)
     cs[-1].python = _without_identifier
+    # the wrapper's deskew of a reversed scan, fixed (W2): XR_runDetTrack3d's deskewData call
+    # (its 'aname' [] and results folder) with 'Reverse' as the movie's direction
+    cs.append(
+        Case(
+            "deskew.wrapper_reversed_scan",
+            code=LOAD + "mkdir([d.source 'Analysis']); deskewData(d, 'Overwrite', false, "
+            "'SkewAngle', 31.5, 'aname', [], 'Rotate', false, 'sCMOSCameraFlip', false, "
+            "'Crop', false, in{4}{:}, 'zoffsetCorrection', false, 'Reverse', logical(d.reversed)); "
+            "out = {};",
+            args=[InPath("t"), "plain/Ex1_synth_z0p5/", mcell("Reversed", True), mcell(*LLC)],
+            py_args=[InPath("t"), "plain/Ex1_synth_z0p5/", ["Reversed", True]],
+            python=_wrapper_deskew,
+            nargout=0,
+            inputs=tree,
+        )
+    )
     return cs
 
 
@@ -187,16 +223,20 @@ SPOTS = (
 )
 
 
-def det_raw_frame(k: int, c: int) -> np.ndarray:
-    """raw frames (z, y, x) = (12, 56, 40) with moving spots on a noisy background"""
+def det_raw_frame(k: int, c: int, movie: int = 0) -> np.ndarray:
+    """raw frames (z, y, x) = (12, 56, 40) with moving spots on a noisy background (another
+    movie: other spots and noise)"""
     pos = []
-    for p in SPOTS:
-        q = [p[0] + 0.05 * k, p[1] + 0.3 * k, p[2] + 0.2 * k]
+    for j, p in enumerate(SPOTS):
+        if movie and j % (movie + 1) == 0:
+            continue
+        q = [p[0] + 0.05 * k, p[1] + 0.3 * k + 2.0 * movie, p[2] + 0.2 * k - 1.5 * movie]
         if c == 2:
             q[2] += 2.0
         pos.append(q)
-    vol = synth.beads((12, 56, 40), np.array(pos), (1.5, 1.3), np.full(len(SPOTS), 300.0), 100.0)
-    noise = synth.CounterRNG(2026, f"dettrack/{c}/{k}").normal(vol.shape)
+    vol = synth.beads((12, 56, 40), np.array(pos), (1.5, 1.3), np.full(len(pos), 300.0), 100.0)
+    stream = f"dettrack/{c}/{k}" if movie == 0 else f"dettrack/m{movie}/{c}/{k}"
+    noise = synth.CounterRNG(2026, stream).normal(vol.shape)
     v = vol + 4.0 * noise
     t = np.trunc(v)
     v = t + np.where(np.abs(v - t) >= 0.5, np.sign(v), 0.0)
@@ -285,23 +325,117 @@ def _recorded(case_id: str):
     return run
 
 
+# a condition whose middle movie has one frame (W3); its spots differ from movie to movie
+ONE_FRAME = (("Ex1_synth_z0p5", 6), ("Ex2_synth_z0p5", 1), ("Ex3_synth_z0p5", 6))
+
+
+def make_one_frame_condition(folder) -> None:
+    for i, (name, n) in enumerate(ONE_FRAME):
+        m = Path(folder) / name
+        for c in (1, 2):
+            d = m / f"ch{c}"
+            d.mkdir(parents=True, exist_ok=True)
+            for k in range(n):
+                synth.write_tiff(d / frame_name(c, k), det_raw_frame(k, c, movie=i))
+        with open(m / "synth_Settings.txt", "w", newline="\n") as f:
+            f.write('Camera type = "Orca4.0"\n')
+
+
+# the fixed XR_runDetTrack3d on that condition, as MATLAB gives it: the tracking stages on the
+# movies of more than one frame with their own folders, the one-frame movie deskewed and
+# detected only (each movie loaded alone, as MATLAB's loader asks about a one-frame movie's NaN
+# frame rate among others)
+DETTRACK_ONE = (
+    "r = in{1}; m = in{2}; d = []; for k = 1 : numel(m), "
+    "d = [d, XR_loadConditionData3D([r m{k}], {'ch1', 'ch2'}, {'gfp', 'rfp'})]; end; "
+    "o = {'Sigma', [1.3 1.5; 1.3 1.5], 'DetectionMethod', 'lowSNR', 'aname', 'Analysis', "
+    "'FitMixtures', false, 'BackgroundCorrection', true}; keep = [d.movieLength] ~= 1; "
+    "XR_runDetTrack3d(d(keep), o{:}); XR_runDetTrack3d(d(~keep), o{:}, 'Track', false); out = {};"
+)
+
+
+def _recorded_one_frame(root, movies):
+    """the port's wrapper on the joined condition: detection, track processing and rotation
+    copied from MATLAB's run, tracking the port's where it exists; each stage must get its own
+    movie's folder"""
+    store = oracle.Store.from_env()
+    case = next(c for c in CASES if c.id == "dettrack.one_frame_movie")
+    if store is None or not store.has(case.key()):
+        pytest.skip("the stages are replaced by MATLAB's recorded outputs: needs the store")
+    src = store.case_dir(case.key()) / "files"
+    work = Path.cwd()
+    ported = _ported_tracking()
+    if not ported:
+        pytest.skip(
+            "the case checks the port's tracking's folders: needs petakit5d.detection.tracking"
+        )
+    seen = []
+
+    def copy(*a, **k):
+        movies = [a[0]] if isinstance(a[0], dict) else list(a[0])
+        seen.append(([m["source"] for m in movies], k["results_path"]))
+        for p in src.rglob("*"):
+            rel = p.relative_to(src).as_posix()
+            if "trackedFeatures.mat" in rel:
+                continue
+            if any(s in rel for s in STAGE_FILES) and not (work / rel).exists():
+                if p.is_dir():
+                    (work / rel).mkdir(parents=True, exist_ok=True)
+                else:
+                    (work / rel).parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(p, work / rel)
+
+    old = dict(wrapper.STAGES)
+    wrapper.STAGES.update(dict.fromkeys(wrapper.STAGES, copy))
+    wrapper.STAGES.update(ported)
+    try:
+        d = cond.Condition(
+            m for rel in movies for m in cond.load_condition_data(root + rel, ["ch1", "ch2"],
+                                                                   ["gfp", "rfp"])
+        )  # fmt: skip
+        wrapper.run_detection_tracking(
+            d,
+            sigma=((1.3, 1.5), (1.3, 1.5)),
+            detection_method="lowSNR",
+            aname="Analysis",
+            fit_mixtures=False,
+            background_correction=True,
+        )
+    finally:
+        wrapper.STAGES.clear()
+        wrapper.STAGES.update(old)
+    # one stand-in call each (detection of the three movies, processing and rotation of the two
+    # of more than one frame), every movie with its own results folder
+    for sources, results in seen:
+        assert results == [s + "Analysis" + os.sep for s in sources], (sources, results)
+    assert [len(s) for s, _ in seen] == [3, 2, 2]
+
+
 CASES = _cases() + [
     Case(
         "dettrack.recorded_stages",
         code=DETTRACK,
         # the other tasks' stage files are MATLAB's, copied; trackedFeatures.mat is the port's
         # tracking's where it exists (the harness reads v7 files with mat_dtype=True, so
-        # MATLAB's integer-valued doubles, stored as small integers, compare as double). The
-        # processed and rotated tracks are an empty struct array, whose field names the
-        # harness's v7.3 reader drops (io.matfile.read_mat reads them): not compared
-        tree=tree(ignore=[r"/(ProcessedTracks|RotatedTracks)\.mat$"]),
+        # MATLAB's integer-valued doubles, stored as small integers, compare as double)
         args=[InPath("cond")],
         python=_recorded("dettrack.recorded_stages"),
         py_args=[InPath("cond")],
         nargout=0,
         inputs={"cond": Tree(make_det_condition, "cond")},
         marks=("slow",),
-    )
+    ),
+    Case(
+        "dettrack.one_frame_movie",
+        code=DETTRACK_ONE,
+        # as above; the tracking the port's (the case needs petakit5d.detection.tracking)
+        args=[InPath("cond"), mcell(*[f"{n}/" for n, _ in ONE_FRAME])],
+        python=_recorded_one_frame,
+        py_args=[InPath("cond"), [f"{n}/" for n, _ in ONE_FRAME]],
+        nargout=0,
+        inputs={"cond": Tree(make_one_frame_condition, "cond")},
+        marks=("slow",),
+    ),
 ]
 
 
@@ -371,15 +505,20 @@ def test_matlab(case, tmp_path):
 # -- the orchestration, with stand-ins ----------------------------------------------------------
 
 
+def _joined(root: Path, frames) -> cond.Condition:
+    """movies Ex1, Ex2, ... of the given frame counts, each loaded alone and joined (MATLAB's
+    loader asks about a one-frame movie's NaN frame rate among others)"""
+    out = []
+    for i, n in enumerate(frames, start=1):
+        m = root / f"Ex{i}_synth_z0p5"
+        write_raw(m, n=n)
+        out += cond.load_condition_data(str(m) + os.sep, ["ch1", "ch2"], ["gfp", "rfp"])
+    return cond.Condition(out)
+
+
 @pytest.fixture
 def condition(tmp_path):
-    m = tmp_path / "Ex1_synth_z0p5"
-    write_raw(m, n=2)
-    one = tmp_path / "Ex2_synth_z0p5"
-    for c in (1, 2):
-        (one / f"ch{c}").mkdir(parents=True)
-        synth.write_tiff(one / f"ch{c}" / frame_name(c, 0), raw_frame(0, c))
-    return cond.load_condition_data(str(tmp_path), ["ch1", "ch2"], ["gfp", "rfp"])
+    return _joined(tmp_path, (2, 1))
 
 
 @pytest.fixture
@@ -404,6 +543,9 @@ def calls():
 DETECTION = "run_detection" if os.name == "nt" else "run_detection_frame_parallel"
 
 
+TRACKING = ("run_tracking", "run_track_processing", "rotate_tracks")
+
+
 def test_stages_in_order(condition, calls):
     wrapper.run_detection_tracking(condition, sigma=((1.3, 1.5), (1.3, 1.5)))
     assert [c[0] for c in calls] == [
@@ -411,21 +553,60 @@ def test_stages_in_order(condition, calls):
     ]  # fmt: skip
     det = calls[0][2]
     assert det["overwrite"] is False and det["detection_method"] == "lowSNR"
-    paths = det["results_path"]
-    assert [p.endswith(("Analysis/", "Analysis\\")) for p in paths] == [True, True]
-    assert all(Path(p).is_dir() for p in paths)
-    # the stages get MATLAB's struct array as io.matfile gives it (a StructArray of the two
-    # movies' dicts; the one movie left for the tracking as its dict)
+    paths = [m.source + "Analysis" + os.sep for m in condition]
+    assert det["results_path"] == paths and all(Path(p).is_dir() for p in paths)
+    # each stage is called once with the condition as MATLAB's struct array (a StructArray of
+    # the two movies' dicts) and the movies' folders
     from petakit5d.io.matfile import StructArray
 
     structs = calls[0][1][0]
     assert isinstance(structs, StructArray) and structs.shape == (1, 2)
     assert [m["movieLength"] for m in structs] == [2.0, 1.0]
-    # one-frame movies are dropped from the tracking, their folders stay (MATLAB's quirk)
-    track = calls[2]
-    assert isinstance(track[1][0], dict) and track[1][0]["movieLength"] == 2.0
-    assert track[2]["results_path"] == paths
+    # the one-frame movie is dropped from the tracking; the other keeps its own folder (W3)
+    for call in calls[2:]:
+        assert isinstance(call[1][0], dict) and call[1][0]["movieLength"] == 2.0
+        assert call[2]["results_path"] == [paths[0]]
     assert calls[1][2] == {"radius": (3, 6), "max_gap_length": 2}
+
+
+def test_tracking_folders_after_a_one_frame_movie(tmp_path, calls):
+    """a one-frame movie first: the second movie keeps its own folder (W3); MATLAB's pairing
+    (its i-th movie with the i-th folder of all movies) with matlab_quirks"""
+    d = _joined(tmp_path, (1, 2))
+    paths = [m.source + "Analysis" + os.sep for m in d]
+    wrapper.run_detection_tracking(d, sigma=((1.3, 1.5),), parallel_method="none")
+    got = [(c[1][0]["source"], c[2]["results_path"]) for c in calls if c[0] in TRACKING]
+    assert got == [(d[1].source, [paths[1]])] * 3
+    calls.clear()
+    # MATLAB passes the folders of all movies: its first (only) movie gets the first folder
+    wrapper.run_detection_tracking(d, sigma=((1.3, 1.5),), parallel_method="none",
+                                   matlab_quirks=True)  # fmt: skip
+    got = [(c[1][0]["source"], c[2]["results_path"]) for c in calls if c[0] in TRACKING]
+    assert got == [(d[1].source, paths)] * 3
+
+
+def test_reversed_scans_deskewed_in_their_direction(tmp_path, calls, monkeypatch):
+    """the wrapper deskews each movie in its direction (W2); matlab_quirks: deskewData's
+    default, forward; deskew_data(reverse=None) is the deskew of each frame with its movie's
+    reverse"""
+    from petakit5d.deskew_rotate.volume import deskew_volume
+    from petakit5d.io import read_tiff
+
+    m = tmp_path / "Ex1_synth_z0p5"
+    write_raw(m, n=1)
+    d = cond.load_condition_data(str(m) + os.sep, ["ch1", "ch2"], ["gfp", "rfp"], reversed=True)
+    seen = []
+    real = wrapper.deskew_data
+    monkeypatch.setattr(wrapper, "deskew_data", lambda data, **k: seen.append(k["reverse"]) or data)
+    for q in (False, True):
+        wrapper.run_detection_tracking(d, sigma=((1.3, 1.5),), parallel_method="none",
+                                       track=False, matlab_quirks=q)  # fmt: skip
+    assert seen == [None, False]
+    for rev, want in ((None, True), (False, False), (True, True)):
+        real(d, overwrite=True, reverse=rev)
+        raw = np.asarray(read_tiff(d[0].frame_paths[0][0]), dtype=np.float64)
+        ds = deskew_volume(raw, 31.5, d[0].dz, d[0].pixel_size, want).astype(np.float32)
+        np.testing.assert_array_equal(read_tiff(d[0].frame_paths_ds[0][0]), ds)
 
 
 def test_parallel_method_and_flags(condition, calls):
@@ -465,6 +646,19 @@ def test_apath_takes_the_last_folders(condition, calls, tmp_path):
     wrapper.run_detection_tracking(condition, out, "R", sigma=((1.3, 1.5),), track=False)
     p = calls[0][2]["results_path"][0]
     assert p.startswith(out) and p.rstrip("/\\").endswith("R")
+
+
+def test_stage_homes(monkeypatch):
+    """the detection stage is detection.run's run_detection (XR_runDetection3D); the
+    frame-parallel one (the default parallel_method) is not ported and says what to use"""
+    from petakit5d.detection import run
+
+    monkeypatch.setitem(wrapper.STAGES, "run_detection", None)
+    monkeypatch.setitem(wrapper.STAGES, "run_detection_frame_parallel", None)
+    assert wrapper._stage("run_detection") is run.run_detection
+    if not hasattr(run, "run_detection_frame_parallel"):
+        with pytest.raises(NotImplementedError, match="parallel_method='parfor'"):
+            wrapper._stage("run_detection_frame_parallel")
 
 
 def test_missing_stage_raises(condition):

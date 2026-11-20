@@ -28,7 +28,18 @@ import numpy as np
 
 from petakit5d.core.threads import resolve_threads
 
-__all__ = ["AD_CRITICAL", "FitCD", "adtest", "ad_statistic", "fit_cd", "fit_gaussians3d"]
+__all__ = [
+    "AD_CRITICAL",
+    "FitCD",
+    "MexFit",
+    "adtest",
+    "ad_statistic",
+    "fit_cd",
+    "fit_gaussian3d_mex",
+    "fit_gaussians3d",
+    "fitgaussian3d",
+    "mex_free",
+]
 
 # adtest_mex's critical values of A^2 (case 2: mean known, variance estimated), measured
 AD_CRITICAL = {(2, 0.05): 2.308}
@@ -136,9 +147,149 @@ def fit_cd(windows, p0, *, max_iter: int = 500, num_threads: int | None = None) 
         st[:, 2],
         st[:, 3] == 1,
         st[:, 4],
-        st[:, 5].astype(np.int64),
+        # a window of fewer than 7 voxels is not fitted (its stats NaN): 0 iterations, on every
+        # platform (a NaN cast to int64 is INT64_MIN on x86-64 and 0 on ARM)
+        np.where(np.isnan(st[:, 5]), 0.0, st[:, 5]).astype(np.int64),
         nvalid,
     )
+
+
+# -- the fitGaussian3D mex -----------------------------------------------------------------------
+
+# the parameter letters of fitGaussian3D's mode strings, in prmVect's order [x y z A s sz c]
+MEX_LETTERS = "xyzAsrc"
+# its Anderson-Darling critical value (A^2 of the sorted residuals over their standard
+# deviation, mean 0)
+MEX_AD_CRITICAL = 2.308
+# its convergence test: every fitted parameter's last step below MEX_EPSABS + MEX_EPSREL |p|
+MEX_EPSABS = 1e-8
+MEX_EPSREL = 1e-8
+MEX_MAXITER = 500
+
+
+def mex_free(mode: str) -> np.ndarray:
+    """the indices (into ``[x y z A s sz c]``) of the parameters a mode string fits: its letters
+    of ``'xyzAsrc'`` in any order and number (``'cA'`` is ``'Ac'``; other characters are
+    ignored, as by MATLAB's mex)"""
+    return np.array([k for k, ch in enumerate(MEX_LETTERS) if ch in str(mode)], dtype=np.int64)
+
+
+@dataclass
+class MexFit:
+    """results of ``fit_gaussian3d_mex`` for k windows and the mode's p free parameters:
+    ``prm`` (k, 7) ``[x y z A s sz c]`` (the fixed ones as given), ``prm_std`` (k, p) the free
+    parameters' standard deviations in ``[x y z A s sz c]`` order, ``C`` (k, p, p) their
+    covariance without the residual factor (``inv(J'J)`` at the result), ``rss``, ``mean`` and
+    ``std`` of the residuals (model minus data), ``h_ad`` the Anderson-Darling test of the
+    residuals (True: not normal), ``a2`` its statistic, ``residuals`` (k windows, each (z, y,
+    x), NaN where the window is NaN) when asked for, ``n`` the voxels fitted, ``free`` the free
+    parameters' indices, ``iterations`` and ``evaluations`` of the fit"""
+
+    prm: np.ndarray
+    prm_std: np.ndarray
+    C: np.ndarray
+    rss: np.ndarray
+    mean: np.ndarray
+    std: np.ndarray
+    h_ad: np.ndarray
+    a2: np.ndarray
+    residuals: list | None
+    n: np.ndarray
+    free: np.ndarray
+    iterations: np.ndarray
+    evaluations: np.ndarray
+
+
+def fit_gaussian3d_mex(
+    windows, prm, mode: str, *, residuals: bool = False, num_threads: int | None = None
+) -> MexFit:
+    """MATLAB's ``fitGaussian3D(window, prmVect, mode)`` mex (no source; written from the method
+    and its measured behaviour, task C02b) on each window: the model
+    ``A exp(-((X-x)^2 + (Y-y)^2)/(2 s^2) - (Z-z)^2/(2 sz^2)) + c`` fitted by least squares
+    (Levenberg-Marquardt) in the parameters the mode names (letters of ``'xyzAsrc'``, ``r`` the
+    z sigma), the others fixed.
+
+    ``windows``: k arrays ``(z, y, x)`` (NaN: voxels left out); ``prm`` (k, 7) the starting
+    parameters ``[x y z A s sz c]``, positions in voxels from the window's first voxel (0-based;
+    ``x`` along the last axis). Track processing calls mode ``'Ac'`` (amplitude and background at
+    fixed positions), the PSF sigma estimate ``'xyzAsrc'``. MATLAB aborts when a window has
+    fewer valid voxels than free parameters; this raises ``ValueError`` (identifier
+    ``pk5d:fitGaussian3D:tooFewPoints``)."""
+    free = mex_free(mode)
+    if free.size == 0:
+        raise ValueError("fitGaussian3D: the mode names no parameter")
+    p = np.ascontiguousarray(np.asarray(prm, dtype=np.float64).reshape(-1, 7))
+    vals, dims, nvalid = _pack(windows)
+    k = vals.shape[0]
+    if p.shape[0] != k:
+        raise ValueError("one row of prm per window")
+    if np.any(nvalid < free.size):
+        err = ValueError(
+            "fitGaussian3D: a window has fewer valid voxels than free parameters (MATLAB aborts)"
+        )
+        err.identifier = "pk5d:fitGaussian3D:tooFewPoints"
+        raise err
+    nf = free.size
+    out_prm = np.empty((k, 7))
+    out_std = np.empty((k, 7))
+    C = np.empty((k, nf, nf))
+    st = np.empty((k, 8))
+    res = np.empty((k, vals.shape[1])) if residuals else np.empty((0, 0))
+    _ext().fit_mex(
+        vals,
+        dims,
+        p,
+        free,
+        out_prm,
+        out_std,
+        C,
+        st,
+        res,
+        MEX_EPSABS,
+        MEX_EPSREL,
+        MEX_MAXITER,
+        MEX_AD_CRITICAL,
+        resolve_threads(num_threads),
+    )
+    rl = None
+    if residuals:
+        rl = []
+        for i in range(k):
+            ny, nx, nz = (int(t) for t in dims[i])
+            r = res[i, : ny * nx * nz].reshape(nz, nx, ny).transpose(0, 2, 1)
+            rl.append(np.ascontiguousarray(r))
+    return MexFit(
+        out_prm,
+        np.ascontiguousarray(out_std[:, free]),
+        C,
+        st[:, 0],
+        st[:, 1],
+        st[:, 2],
+        st[:, 3] == 1,
+        st[:, 4],
+        rl,
+        nvalid,
+        free,
+        st[:, 5].astype(np.int64),
+        st[:, 6].astype(np.int64),
+    )
+
+
+def fitgaussian3d(window, prm, mode: str) -> tuple[np.ndarray, np.ndarray, np.ndarray, dict]:
+    """one ``[prmVect, prmStd, C, res] = fitGaussian3D(window, prmVect, mode)`` as MATLAB returns
+    it: ``prm`` (7,), ``prmStd`` (p,), ``C`` (p, p), ``res`` with ``data`` (the residual window,
+    (z, y, x)), ``hAD``, ``mean``, ``std`` and ``RSS``"""
+    R = fit_gaussian3d_mex(
+        [window], np.asarray(prm, dtype=np.float64).reshape(1, 7), mode, residuals=True
+    )
+    res = {
+        "data": R.residuals[0],
+        "hAD": bool(R.h_ad[0]),
+        "mean": float(R.mean[0]),
+        "std": float(R.std[0]),
+        "RSS": float(R.rss[0]),
+    }
+    return R.prm[0].copy(), R.prm_std[0].copy(), R.C[0].copy(), res
 
 
 # -- XR_fitGaussians3D -----------------------------------------------------------------------------
@@ -168,6 +319,7 @@ def fit_gaussians3d(
     alpha: float = 0.05,
     window=None,
     k_level: float | None = None,
+    method: str = "CD_Newton",
     num_threads: int | None = None,
 ) -> dict:
     """``XR_fitGaussians3D(vol, X, A, sigma, c, mode, 'mask', mask, 'alpha', alpha,
@@ -181,13 +333,20 @@ def fit_gaussians3d(
     residuals' standard deviation), ``SE_sigma_r``, ``RSS``, ``pval_Ar`` (the one-sided Welch
     test of A against ``k_level`` sigma_r; MATLAB's default ``norminv(1 - alpha/2)``, the
     detector passes ``norminv(1 - alpha)``), ``hval_Ar``, ``hval_AD``. A fit whose position ends
-    ``w`` or more from its start along an axis gives NaN everywhere. Mode ``'Ac'``: amplitude and
-    background at the given positions (``fit_ac``)."""
+    ``w`` or more from the window's centre (the rounded start) along an axis gives NaN
+    everywhere. Mode ``'Ac'``: amplitude and
+    background at the given positions (``fit_ac``). ``method``: ``'CD_Newton'`` (modes
+    ``'xyzAc'`` and ``'Ac'``) or ``'original'`` (the fitGaussian3D mex, any mode, e.g. the PSF
+    sigma estimate's ``'xyzAsrc'``: then ``s`` and ``s_pstd`` are the fitted sigmas)."""
     from petakit5d.detection import stats as _st
     from petakit5d.matlabcompat import label as _lb
 
-    if mode not in ("xyzAc", "Ac"):
-        raise NotImplementedError(f"mode {mode!r}: 'xyzAc' and 'Ac' are ported")
+    if method not in ("CD_Newton", "original"):
+        raise NotImplementedError(
+            f"FitGaussianMethod {method!r}: 'CD_Newton' and 'original' are ported"
+        )
+    if method == "CD_Newton" and mode not in ("xyzAc", "Ac"):
+        raise NotImplementedError(f"mode {mode!r}: 'xyzAc' and 'Ac' are ported for 'CD_Newton'")
     v = np.asarray(vol, dtype=np.float64)
     P = np.asarray(xyz, dtype=np.float64).reshape(-1, 3)
     A = np.asarray(A, dtype=np.float64).ravel()
@@ -204,11 +363,13 @@ def fit_gaussians3d(
     wins = []
     p0 = np.empty((k, 7))
     starts = np.empty((k, 3), dtype=np.int64)  # (x, y, z) 0-based
+    centres = np.empty((k, 3), dtype=np.float64)  # the rounded position in the window
     # positions in MATLAB's 1-based values, so that the window offsets and the results have its
     # bits (x - 1 and x + 1 are exact for the positions a volume has)
     P1 = P + 1
     for i in range(k):
         cx, cy, cz = (int(_mround(P1[i, j])) - 1 for j in range(3))
+        centres[i] = (cx - max(cx - wxy, 0), cy - max(cy - wxy, 0), cz - max(cz - wz, 0))
         x0, x1 = max(cx - wxy, 0), min(cx + wxy, nx - 1)
         y0, y1 = max(cy - wxy, 0), min(cy + wxy, ny - 1)
         z0, z1 = max(cz - wz, 0), min(cz + wz, nz - 1)
@@ -220,8 +381,16 @@ def fit_gaussians3d(
         wins.append(w)
         starts[i] = (x0, y0, z0)
         p0[i] = (P1[i, 0] - (x0 + 1), P1[i, 1] - (y0 + 1), P1[i, 2] - (z0 + 1), A[i], s, sz, c[i])
-    R = fit_ac(wins, p0) if mode == "Ac" else fit_cd(wins, p0, num_threads=num_threads)
-    return _results(R, P, p0, starts, wxy, wz, s, sz, k_level, alpha, fixed=mode == "Ac")
+    if method == "original":
+        M = fit_gaussian3d_mex(wins, p0, mode, num_threads=num_threads)
+        pstd = np.zeros((k, 7))
+        pstd[:, M.free] = M.prm_std
+        R = FitCD(M.prm, pstd, M.C, M.rss, M.mean, M.std, M.h_ad, M.a2, M.iterations, M.n)
+    elif mode == "Ac":
+        R = fit_ac(wins, p0)
+    else:
+        R = fit_cd(wins, p0, num_threads=num_threads)
+    return _results(R, P, centres, starts, wxy, wz, s, sz, k_level, alpha, fixed=mode == "Ac")
 
 
 def fit_ac(windows, p0) -> FitCD:
@@ -291,7 +460,7 @@ def fit_ac(windows, p0) -> FitCD:
 def _results(
     R: FitCD,
     P: np.ndarray,
-    p0: np.ndarray,
+    centres: np.ndarray,
     starts: np.ndarray,
     wxy: int,
     wz: int,
@@ -301,7 +470,10 @@ def _results(
     alpha: float,
     fixed: bool = False,
 ) -> dict:
-    """XR_fitGaussians3D's fields from the fits (``fixed``: the 'Ac' fits, whose positions stay)"""
+    """XR_fitGaussians3D's fields from the fits (``fixed``: the 'Ac' fits, whose positions stay).
+    A fit is NaN when its position ends ``w`` or more from the window's centre (the rounded
+    start, in the clipped window) along an axis: MATLAB's NaN pattern on 2,315 traced
+    'xyzAc' fits from the other channel's positions (0 differ; from the unrounded start, 282)."""
     from petakit5d.detection import stats as _st
 
     k = P.shape[0]
@@ -309,7 +481,7 @@ def _results(
     x = (R.prm[:, 0] + (starts[:, 0] + 1)) - 1
     y = (R.prm[:, 1] + (starts[:, 1] + 1)) - 1
     z = (R.prm[:, 2] + (starts[:, 2] + 1)) - 1
-    d = np.abs(R.prm[:, :3] - p0[:, :3])
+    d = np.abs(R.prm[:, :3] - centres)
     with np.errstate(invalid="ignore"):
         far = (d[:, 0] >= wxy) | (d[:, 1] >= wxy) | (d[:, 2] >= wz)
     n = R.n.astype(np.float64)
@@ -325,13 +497,13 @@ def _results(
         "y": y,
         "z": z,
         "A": A,
-        "s": np.vstack([np.full(k, s), np.full(k, sz)]),
+        "s": np.vstack([R.prm[:, 4], R.prm[:, 5]]),
         "c": R.prm[:, 6].copy(),
         "x_pstd": R.pstd[:, 0].copy(),
         "y_pstd": R.pstd[:, 1].copy(),
         "z_pstd": R.pstd[:, 2].copy(),
         "A_pstd": A_pstd,
-        "s_pstd": np.zeros((2, k)),
+        "s_pstd": np.vstack([R.pstd[:, 4], R.pstd[:, 5]]),
         "c_pstd": R.pstd[:, 6].copy(),
         "x_init": P[:, 0].copy(),
         "y_init": P[:, 1].copy(),

@@ -2208,6 +2208,15 @@ def _attr(obj, name: str) -> str | None:
     return v.decode() if isinstance(v, bytes) else (str(v) if not isinstance(v, np.ndarray) else v)
 
 
+def _h5_fields(obj) -> list[str] | None:
+    """a struct's field names in MATLAB's order (its MATLAB_fields: one-character strings per
+    name), or None without that attribute"""
+    fields = obj.attrs.get("MATLAB_fields")
+    if fields is None:
+        return None
+    return [b"".join(x).decode() if isinstance(x, np.ndarray) else str(x) for x in fields]
+
+
 def _h5_value(obj, f) -> MValue:
     import h5py
 
@@ -2227,12 +2236,9 @@ def _h5_value(obj, f) -> MValue:
             return MSparse(cls or "double", (m, n), rows, cols, data)
         if cls == "function_handle":
             return MFunc("<function handle>")
-        fields = obj.attrs.get("MATLAB_fields")
-        names = (
-            [b"".join(x).decode() if isinstance(x, np.ndarray) else str(x) for x in fields]
-            if fields is not None
-            else list(obj.keys())
-        )
+        names = _h5_fields(obj)
+        if names is None:
+            names = list(obj.keys())
         if not names:
             return MStruct((1, 1), [], [{}])
         first = obj[names[0]]
@@ -2260,7 +2266,13 @@ def _h5_value(obj, f) -> MValue:
         if cls == "cell":
             return MCell(size, [])
         if cls == "struct":
-            return MStruct(size, [], [])
+            # MATLAB writes a struct array without elements (with its field names) or without
+            # fields (struct(), repmat(struct(), 1, 3): elements without fields) as its size
+            names = _h5_fields(obj) or []
+            n = math.prod(msize(size))
+            if names and n:
+                raise ValueError(f"{obj.name}: a struct of {n} elements without their values")
+            return MStruct(size, names, [{} for _ in range(n)])
         return MArray(cls, np.zeros(size, _DTYPE[cls]))
     if cls == "cell":
         refs = data.T.reshape(-1, order="F") if data.ndim else data.reshape(-1)

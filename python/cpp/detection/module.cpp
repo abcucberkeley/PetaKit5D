@@ -15,6 +15,8 @@
 // on one thread in a fixed order, so results do not depend on the thread count.
 #include <pk5d/common.hpp>
 
+#include "mexfit.hpp"
+
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -310,7 +312,7 @@ void log_kernel(double s, double sz, double K[27]) {
             for (int zi = 0; zi < 3; zi++) {
                 const double X = xi - 1.0, Y = yi - 1.0, Z = zi - 1.0;
                 h[(yi * 3 + xi) * 3 + zi] =
-                    std::exp(-(X * X / (2 * s * s) + Y * Y / (2 * s * s) + Z * Z / (2 * sz * sz)));
+                    fdlibm_exp(-(X * X / (2 * s * s) + Y * Y / (2 * s * s) + Z * Z / (2 * sz * sz)));
             }
     for (int q = 0; q < 27; q++) sum += h[q];
     double tot = 0.0;
@@ -687,6 +689,275 @@ double bind_ad_stat(f64_in x, double mu, double sigma) {
     return ad_stat(x.data(), (int)x.size(), mu, sigma);
 }
 
+// the fitGaussian3D mex (mexfit.hpp) on k windows: vals (k, m) in MATLAB's column-major window
+// order (NaN: left out), dims (k, 3) [ny nx nz], p0 (k, 7) [x y z A s sz c], free (np,) the
+// free parameters' indices in that order; outputs prm (k, 7), pstd (k, 7) (NaN for fixed
+// ones), C (k, np, np), stats (k, 8): RSS, mean, std, hAD, A2, iterations, evaluations, status;
+// res (k, m) the residuals (model - data, NaN where left out) when res.size() > 0
+void bind_fit_mex(f64_in vals, i64_in dims, f64_in p0, i64_in free, f64_out prm, f64_out pstd, f64_out C,
+                  f64_out stats, f64_out res, double epsabs, double epsrel, int maxiter,
+                  double ad_crit, int num_threads) {
+    pk5d::check_threads(num_threads);
+    if (vals.ndim() != 2 || dims.ndim() != 2 || p0.ndim() != 2) throw std::invalid_argument("2-D inputs");
+    const i64 k = (i64)vals.shape(0), m = (i64)vals.shape(1), np = (i64)free.size();
+    if ((i64)dims.shape(0) != k || dims.shape(1) != 3) throw std::invalid_argument("dims must be (k, 3)");
+    if ((i64)p0.shape(0) != k || p0.shape(1) != 7) throw std::invalid_argument("p0 must be (k, 7)");
+    if (np < 1 || np > 7) throw std::invalid_argument("1 to 7 free parameters");
+    if ((i64)prm.size() != 7 * k || (i64)pstd.size() != 7 * k || (i64)C.size() != np * np * k ||
+        (i64)stats.size() != 8 * k || (res.size() != 0 && (i64)res.size() != k * m))
+        throw std::invalid_argument("output sizes");
+    std::vector<int> fr(np);
+    for (i64 j = 0; j < np; j++) {
+        fr[j] = (int)free.data()[j];
+        if (fr[j] < 0 || fr[j] > 6 || (j > 0 && fr[j] <= fr[j - 1]))
+            throw std::invalid_argument("free parameters: increasing indices 0 to 6");
+    }
+    const i64 *D = dims.data();
+    for (i64 i = 0; i < k; i++) {
+        if (D[3 * i] < 1 || D[3 * i + 1] < 1 || D[3 * i + 2] < 1 || D[3 * i] * D[3 * i + 1] * D[3 * i + 2] > m)
+            throw std::invalid_argument("a window's dims do not fit its row");
+    }
+    const double *V = vals.data(), *P0 = p0.data();
+    double *PR = prm.data(), *PS = pstd.data(), *CC = C.data(), *ST = stats.data();
+    double *RS = res.size() ? res.data() : nullptr;
+    mexfit::Options o;
+    o.epsabs = epsabs, o.epsrel = epsrel, o.maxiter = maxiter;
+    {
+        nb::gil_scoped_release release;
+#pragma omp parallel for schedule(dynamic, 8) num_threads(num_threads)
+        for (i64 i = 0; i < k; i++) {
+            mexfit::Win w;
+            w.ny = (int)D[3 * i], w.nx = (int)D[3 * i + 1], w.nz = (int)D[3 * i + 2];
+            const i64 nv = (i64)w.ny * w.nx * w.nz;
+            const double *v = V + i * m;
+            for (i64 q = 0; q < nv; q++) {
+                if (std::isnan(v[q])) continue;
+                w.d.push_back(v[q]);
+                w.yi.push_back((int)(q % w.ny));
+                w.xi.push_back((int)((q / w.ny) % w.nx));
+                w.zi.push_back((int)(q / ((i64)w.ny * w.nx)));
+                w.pos.push_back((int)q);
+            }
+            w.n = (int)w.d.size();
+            double *st = ST + 8 * i;
+            const mexfit::Result r = mexfit::fit(w, P0 + 7 * i, fr.data(), (int)np, o);
+            const int n = w.n;
+            double rss = 0.0, sm = 0.0;
+            for (int q = 0; q < n; q++) rss += r.f[q] * r.f[q];
+            for (int q = 0; q < n; q++) sm += r.f[q];
+            const double mean = sm / n;
+            double ss = 0.0;
+            for (int q = 0; q < n; q++) ss += (r.f[q] - mean) * (r.f[q] - mean);
+            const double sd = std::sqrt(ss / (n - 1));
+            for (int j = 0; j < 7; j++) {
+                PR[7 * i + j] = r.prm[j];
+                PS[7 * i + j] = std::numeric_limits<double>::quiet_NaN();
+            }
+            const double scale = rss / (double)(n - np - 1);
+            for (i64 j = 0; j < np; j++) PS[7 * i + fr[j]] = std::sqrt(r.C[j * np + j] * scale);
+            for (i64 q = 0; q < np * np; q++) CC[i * np * np + q] = r.C[q];
+            // the Anderson-Darling test of the sorted residuals over their standard deviation
+            std::vector<double> sr(r.f);
+            std::sort(sr.begin(), sr.end());
+            const double den = sd * std::sqrt(2.0);
+            std::vector<double> F(n);
+            for (int q = 0; q < n; q++) F[q] = 0.5 * (1.0 + std::erf(sr[q] / den));
+            double S = 0.0;
+            for (int q = 0; q < n; q++)
+                S += (2.0 * (q + 1) - 1.0) * (std::log(F[q]) + std::log(1.0 - F[n - 1 - q]));
+            const double a2 = -n - S / n;
+            st[0] = rss, st[1] = mean, st[2] = sd, st[3] = a2 > ad_crit ? 1.0 : 0.0, st[4] = a2;
+            st[5] = r.iterations, st[6] = r.nfev, st[7] = r.status;
+            if (RS) {
+                double *o_ = RS + i * m;
+                for (i64 q = 0; q < m; q++) o_[q] = std::numeric_limits<double>::quiet_NaN();
+                for (int q = 0; q < n; q++) o_[w.pos[q]] = r.f[q];
+            }
+        }
+    }
+}
+
+double bind_cr_exp(double x) { return mexfit::cr_exp(x); }
+
+// the lowSNR and 'speedup' detectors' voxel-wise model statistics in one threaded pass, each
+// voxel's arithmetic in the order of the expressions in detect.py (so the results are those of
+// the NumPy expressions): A, c, the residuals' sigma, the t statistic and its degrees of freedom,
+// from the window sums fg (of the Gaussian times the volume), fu (of the volume), fu2 (of its
+// square). gfac multiplies fg first ('speedup': the normalized kernel's sum; 1 for lowSNR, which
+// skips the product). df's fourth powers are (x x)(x x).
+void bind_prefit_stats(f64_in fg, f64_in fu, f64_in fu2, double gsum, double g2sum, double n, double C11,
+                       double k_level, double sq, double gfac, f64_out A, f64_out c, f64_out sres, f64_out T,
+                       f64_out df, int num_threads) {
+    pk5d::check_threads(num_threads);
+    const i64 N = (i64)fg.size();
+    if ((i64)fu.size() != N || (i64)fu2.size() != N || (i64)A.size() != N || (i64)c.size() != N ||
+        (i64)sres.size() != N || (i64)T.size() != N || (i64)df.size() != N)
+        throw std::invalid_argument("sizes");
+    const double *FG = fg.data(), *FU = fu.data(), *FU2 = fu2.data();
+    double *PA = A.data(), *PC = c.data(), *PS = sres.data(), *PT = T.data(), *PD = df.data();
+    const bool scaled = gfac != 1.0;
+    const double denA = g2sum - gsum * gsum / n;
+    nb::gil_scoped_release release;
+#pragma omp parallel for schedule(static) num_threads(num_threads)
+    for (i64 i = 0; i < N; i++) {
+        const double fgi = scaled ? FG[i] * gfac : FG[i];
+        // A = (fg - gsum fu / n) / (g2sum - gsum^2 / n) ('speedup': fg gsum - gsum fu / n)
+        const double a = scaled ? (FG[i] * gfac - (gsum * FU[i]) / n) / denA : (FG[i] - (gsum * FU[i]) / n) / denA;
+        const double cc = (FU[i] - a * gsum) / n;
+        // RSS = A A g2sum - 2 A (fg - c gsum) + fu2 + n c c - 2 c fu, clipped at 0
+        double t = ((a * a) * g2sum) - ((2.0 * a) * (fgi - cc * gsum));
+        t = t + FU2[i];
+        t = t + ((n * cc) * cc);
+        t = t - ((2.0 * cc) * FU[i]);
+        const double rss = t < 0 ? 0.0 : t;
+        const double sr = std::sqrt(rss / (n - 1));
+        const double sA = std::sqrt((rss / (n - 3)) * C11);
+        const double se = (sr / sq) * k_level;
+        const double u = sA * sA + se * se;
+        const double sc = std::sqrt(u / n);
+        PA[i] = a;
+        PC[i] = cc;
+        PS[i] = sr;
+        PT[i] = (a - sr * k_level) / sc;
+        const double sA2 = sA * sA, se2 = se * se;
+        PD[i] = ((n - 1) * (u * u)) / (sA2 * sA2 + se2 * se2);
+    }
+}
+
+// XR_locmax3d as the detectors call it (detect.locmax3d): with NaN as -1e8, a voxel is a
+// maximum when every other voxel of its window (clipped at the faces; half sizes hz, hy, hx) is
+// strictly smaller; out = the replaced value times 1 at maxima and 0 elsewhere (so -0 at NaN and
+// negative non-maxima); (nz, ny, nx)
+void bind_locmax3d(f64_in vol, int hz, int hy, int hx, f64_out out, int num_threads) {
+    pk5d::check_threads(num_threads);
+    if (vol.ndim() != 3) throw std::invalid_argument("vol must be (nz, ny, nx)");
+    const i64 nz = (i64)vol.shape(0), ny = (i64)vol.shape(1), nx = (i64)vol.shape(2);
+    if ((i64)out.size() != nz * ny * nx) throw std::invalid_argument("out size");
+    const double *V = vol.data();
+    double *O = out.data();
+    auto val = [&](i64 i) {
+        const double v = V[i];
+        return std::isnan(v) ? -1e8 : v;
+    };
+    nb::gil_scoped_release release;
+#pragma omp parallel for schedule(static) num_threads(num_threads)
+    for (i64 row = 0; row < nz * ny; row++) {
+        const i64 z = row / ny, y = row % ny;
+        const i64 z0 = std::max<i64>(z - hz, 0), z1 = std::min<i64>(z + hz, nz - 1);
+        const i64 y0 = std::max<i64>(y - hy, 0), y1 = std::min<i64>(y + hy, ny - 1);
+        for (i64 x = 0; x < nx; x++) {
+            const i64 i = row * nx + x;
+            const double v = val(i);
+            const i64 x0 = std::max<i64>(x - hx, 0), x1 = std::min<i64>(x + hx, nx - 1);
+            bool is_max = true;
+            for (i64 zz = z0; zz <= z1 && is_max; zz++)
+                for (i64 yy = y0; yy <= y1 && is_max; yy++) {
+                    const i64 base = (zz * ny + yy) * nx;
+                    for (i64 xx = x0; xx <= x1; xx++) {
+                        if (zz == z && yy == y && xx == x) continue;
+                        if (!(val(base + xx) < v)) {
+                            is_max = false;
+                            break;
+                        }
+                    }
+                }
+            O[i] = v * (is_max ? 1.0 : 0.0);
+        }
+    }
+}
+
+// the lowSNR detector's mask: T > -t or the chi-square test (fu2 - 2 c fu + n c^2) / sres^2 > chi,
+// without the voxels within border of a face; (nz, ny, nx) arrays
+void bind_lowsnr_mask(f64_in T, f64_in c, f64_in fu, f64_in fu2, f64_in sres, double n, double tthr, double chi,
+                      int border, nb::ndarray<uint8_t, nb::c_contig, nb::device::cpu> mask, int num_threads) {
+    pk5d::check_threads(num_threads);
+    if (T.ndim() != 3) throw std::invalid_argument("(nz, ny, nx) arrays");
+    const i64 nz = (i64)T.shape(0), ny = (i64)T.shape(1), nx = (i64)T.shape(2);
+    const double *PT = T.data(), *PC = c.data(), *FU = fu.data(), *FU2 = fu2.data(), *PS = sres.data();
+    uint8_t *M = mask.data();
+    nb::gil_scoped_release release;
+#pragma omp parallel for schedule(static) num_threads(num_threads)
+    for (i64 row = 0; row < nz * ny; row++) {
+        const i64 z = row / ny, y = row % ny;
+        const bool edge = z < border || z >= nz - border || y < border || y >= ny - border;
+        for (i64 x = 0; x < nx; x++) {
+            const i64 i = row * nx + x;
+            bool m = false;
+            if (!edge && x >= border && x < nx - border) {
+                const double cc = PC[i];
+                const double S = ((FU2[i] - (2.0 * cc) * FU[i]) + (n * cc) * cc);
+                m = (PT[i] > -tthr) || (S / (PS[i] * PS[i]) > chi);
+            }
+            M[i] = m ? 1 : 0;
+        }
+    }
+}
+
+
+// conv3fast's separable filter (estGaussianAmplitude3D's), measured bit for bit: per axis the
+// symmetric kernel given by its half h[0..w], out(i) = h0 v(i) + h1 (v(i-1) + v(i+1)) + ...
+// summed from the centre out, the borders mirrored without repeating the edge voxel
+// (v(-k) = v(k)); the passes along x, then y, then z. vol and out are (nz, ny, nx); work is
+// a buffer of the same size.
+inline i64 mirror(i64 i, i64 n) {
+    if (n == 1) return 0;
+    const i64 p = 2 * (n - 1);
+    i64 j = i % p;
+    if (j < 0) j += p;
+    return j < n ? j : p - j;
+}
+
+void bind_conv3fast(f64_in vol, f64_in hy, f64_in hx, f64_in hz, f64_out out, f64_out work, int num_threads) {
+    pk5d::check_threads(num_threads);
+    if (vol.ndim() != 3) throw std::invalid_argument("vol must be (nz, ny, nx)");
+    const i64 nz = (i64)vol.shape(0), ny = (i64)vol.shape(1), nx = (i64)vol.shape(2);
+    if ((i64)out.size() != nz * ny * nx || (i64)work.size() != nz * ny * nx)
+        throw std::invalid_argument("out and work must be the volume's size");
+    const i64 wy = (i64)hy.size() - 1, wx = (i64)hx.size() - 1, wz = (i64)hz.size() - 1;
+    if (wy < 0 || wx < 0 || wz < 0) throw std::invalid_argument("empty kernel");
+    const double *V = vol.data(), *Hy = hy.data(), *Hx = hx.data(), *Hz = hz.data();
+    double *O = out.data(), *T = work.data();
+    const i64 plane = ny * nx;
+    nb::gil_scoped_release release;
+    // x: vol -> out
+#pragma omp parallel for schedule(static) num_threads(num_threads)
+    for (i64 row = 0; row < nz * ny; row++) {
+        const double *v = V + row * nx;
+        double *o = O + row * nx;
+        for (i64 x = 0; x < nx; x++) {
+            double acc = Hx[0] * v[x];
+            for (i64 k = 1; k <= wx; k++) acc = acc + Hx[k] * (v[mirror(x - k, nx)] + v[mirror(x + k, nx)]);
+            o[x] = acc;
+        }
+    }
+    // y: out -> work
+#pragma omp parallel for schedule(static) num_threads(num_threads)
+    for (i64 row = 0; row < nz * ny; row++) {
+        const i64 z = row / ny, y = row % ny;
+        const double *c = O + z * plane + y * nx;
+        double *o = T + z * plane + y * nx;
+        for (i64 x = 0; x < nx; x++) o[x] = Hy[0] * c[x];
+        for (i64 k = 1; k <= wy; k++) {
+            const double *a = O + z * plane + mirror(y - k, ny) * nx, *b = O + z * plane + mirror(y + k, ny) * nx;
+            const double h = Hy[k];
+            for (i64 x = 0; x < nx; x++) o[x] = o[x] + h * (a[x] + b[x]);
+        }
+    }
+    // z: work -> out
+#pragma omp parallel for schedule(static) num_threads(num_threads)
+    for (i64 row = 0; row < nz * ny; row++) {
+        const i64 z = row / ny, y = row % ny;
+        const double *c = T + z * plane + y * nx;
+        double *o = O + z * plane + y * nx;
+        for (i64 x = 0; x < nx; x++) o[x] = Hz[0] * c[x];
+        for (i64 k = 1; k <= wz; k++) {
+            const double *a = T + mirror(z - k, nz) * plane + y * nx, *b = T + mirror(z + k, nz) * plane + y * nx;
+            const double h = Hz[k];
+            for (i64 x = 0; x < nx; x++) o[x] = o[x] + h * (a[x] + b[x]);
+        }
+    }
+}
+
 double bind_exp(double x) { return fdlibm_exp(x); }
 
 NB_MODULE(PK5D_MODULE_NAME, m) {
@@ -697,4 +968,22 @@ NB_MODULE(PK5D_MODULE_NAME, m) {
           nb::arg("num_threads"));
     m.def("ad_stat", &bind_ad_stat, nb::arg("x").noconvert(), nb::arg("mu"), nb::arg("sigma"));
     m.def("exp", &bind_exp, nb::arg("x"));
+    m.def("cr_exp", &bind_cr_exp, nb::arg("x"));
+    m.def("prefit_stats", &bind_prefit_stats, nb::arg("fg").noconvert(), nb::arg("fu").noconvert(),
+          nb::arg("fu2").noconvert(), nb::arg("gsum"), nb::arg("g2sum"), nb::arg("n"), nb::arg("C11"),
+          nb::arg("k_level"), nb::arg("sq"), nb::arg("gfac"), nb::arg("A").noconvert(), nb::arg("c").noconvert(),
+          nb::arg("sres").noconvert(), nb::arg("T").noconvert(), nb::arg("df").noconvert(), nb::arg("num_threads"));
+    m.def("locmax3d", &bind_locmax3d, nb::arg("vol").noconvert(), nb::arg("hz"), nb::arg("hy"), nb::arg("hx"),
+          nb::arg("out").noconvert(), nb::arg("num_threads"));
+    m.def("lowsnr_mask", &bind_lowsnr_mask, nb::arg("T").noconvert(), nb::arg("c").noconvert(),
+          nb::arg("fu").noconvert(), nb::arg("fu2").noconvert(), nb::arg("sres").noconvert(), nb::arg("n"),
+          nb::arg("tthr"), nb::arg("chi"), nb::arg("border"), nb::arg("mask").noconvert(), nb::arg("num_threads"));
+    m.def("conv3fast", &bind_conv3fast, nb::arg("vol").noconvert(), nb::arg("hy").noconvert(),
+          nb::arg("hx").noconvert(), nb::arg("hz").noconvert(), nb::arg("out").noconvert(),
+          nb::arg("work").noconvert(), nb::arg("num_threads"));
+    m.def("fit_mex", &bind_fit_mex, nb::arg("vals").noconvert(), nb::arg("dims").noconvert(),
+          nb::arg("p0").noconvert(), nb::arg("free").noconvert(), nb::arg("prm").noconvert(),
+          nb::arg("pstd").noconvert(), nb::arg("C").noconvert(), nb::arg("stats").noconvert(),
+          nb::arg("res").noconvert(), nb::arg("epsabs"), nb::arg("epsrel"), nb::arg("maxiter"),
+          nb::arg("ad_crit"), nb::arg("num_threads"));
 }

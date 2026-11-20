@@ -55,6 +55,52 @@ frames, every field of `frameInfo`, the dmask files).
 | D2 | `imfilter` of 3-D kernels (the detector's window sums of `v`, `v^2` and the LoG) | 5e-15 relative (the sums of ones exact); the fits' starting A and c 1.1e-13 | none of its own (carried by D3) | MATLAB's order of the 343 products is not measured (no sequential order matches) |
 | D3 | the detector's fits and results (positions, A, c, their standard deviations, RSS, sigma_r, p-values) | demo frame 1: positions of 1,043 of 1,043 plain fits and 188 of 221 restarted ones within 1e-12; over all fits positions 2.5e-10, A 2.7e-7, standard deviations 1.3e-7 relative; the oracle cases within 1e-9 | `rel` 1e-9, `abs` 1e-9 on the oracle cases; demo frames: the same detections, the largest differences listed | D2's last bits, the restarts' direction solves (the damped steps' eigenvalues) and the A update's sums, whose order MATLAB keeps in ways not all measured |
 
+## The fitGaussian3D mex, the PSF sigma estimate and the 'speedup' detector (C02b)
+
+`fitGaussian3D` is a mex without source. Measured as a black box (its inputs and outputs, and
+its own calls of `exp`, `erf` and `log` observed through an interposed math library): the
+model is evaluated per axis, `((A ex) ey) ez + c - d` with `ex(k) = exp(-(k - x)^2 / (2 s^2))`
+on 0-based window coordinates, bit for bit given MATLAB's parameters; the parameters of the
+mode's letters are fitted by Levenberg-Marquardt in Moré's trust-region form (a Jacobian at
+every accepted point, at most ten rejected trials per iteration, 500 iterations); the outputs
+are `inv(J'J)`, `prmStd = sqrt(diag(C) RSS / (n - p - 1))`, the residuals' RSS, mean, standard
+deviation and an Anderson-Darling test of the sorted residuals over their standard deviation
+(critical value 2.308: the same decision on 33,686 of 33,686 traced calls). The mex calls the C
+library's `exp` (glibc's, correctly rounded for 99.85% of the arguments it saw); the port's is
+correctly rounded. The solver's internal arithmetic (its QR factorization and norms) is not
+reproduced, which the rows below carry.
+
+Bit for bit (no row): `estGaussianAmplitude3D` (9 traced calls, 5 oracle cases) and its
+`conv3fast` filters (18 traced, 2 oracle cases; mirrored borders, centre-out symmetric sums,
+passes x, y, z; NaN with the input's payload), `fspecial3('gaussian')` (12 traced calls), the
+camera threshold (`XR_get_camera_standard_deviation_threshold`, 12 oracle cases with MATLAB's
+errors), the 'speedup' detector's background correction, mask (the demo frames' 20,094, 19,906
+and 20,230 voxels; the PSFs' 306, 448, 452, 114, 198 and 196) and starts.
+
+| Row | What | Measured (largest) | Tolerance | Cause |
+|---|---|---|---|---|
+| D4 | the mex's linear modes (`'Ac'`, `'A'`, `'c'`; track processing's `'Ac'` fits) | 33,686 traced calls: A within 8.5 ulp and c within 2 ulp of max(\|A\|, \|c\|) (A bit for bit in 8 %, c in 92 %); prmStd, C, RSS and std within 7e-15 relative; hAD the same in all | `rel` 1e-13, `rel_max` 1e-13, `abs` 1e-12 (the residuals' mean is 0 to rounding) | the solver's QR and norm arithmetic, from the first step on |
+| D5 | the mex's nonlinear modes (`'xyzAsrc'` of the sigma estimate, `'xyzAc'`) | the sigma estimate's 31 traced fits: parameters within 9e-8 relative; the residual window 1.4e-7 | `rel` 1e-6, `abs` 1e-6 | D4's last bits steer the trust-region path; the fit stops where the residuals' decrease is at rounding level, about 1e-8 from the minimum, so the two stop at different points |
+| D6 | `GU_estimateSigma3D`: `sigmaXY`, `sigmaZ`, the bead's position | the demo's PSFs: 1.5e-10 and 6.7e-11 (560 nm), 3.0e-10 and 1.2e-9 (642 nm) relative; the oracle case within 1e-7 | `rel` 1e-7 | D5 (three rounds of the 'speedup' detector with the mex's fits) |
+| D7 | the 'speedup' detector `XR_pointSourceDetection3D` | `'CD_Newton'` (XR_runDetection3D's): 4 demo frames, the same 661, 649 and 668 detections, values within 1.5e-14 for 99 %, restarted fits 3.3e-9; with the mex (the sigma estimate's form) as D5 | `rel` 1e-9, `abs` 1e-9 (D3's) with `'CD_Newton'`; D5's with the mex | D2's window sums, D3's fits, D5's; the t threshold's `tinv` (S5: 5.7e-13) changes no mask voxel |
+| D8 | `XR_runDetection3D`'s `frameInfo` with its defaults ('speedup', no background correction) | 2 demo frames, both channels: the same 661 and 649 detections; the master's values within 3.3e-9 relative (D7), the other channel's A within 1.6e-4, c 9.3e-7, positions 6e-15; every test (`hval_AD`, `isPSF`) the same | D7's, and `rel` 1e-3 for the other channel's A and c (proposed; no case yet) | D3 in the other channel's `'xyzAc'` fits from the master's positions, which move up to 4 voxels; one in 600 stops where the residuals barely change |
+
+The runner (`detection.run.run_detection`, measured on probes rd1 and rd2 of two-movie and
+one-movie conditions): the default `ResultsPath` `[source 'Analysis' filesep]`, the default
+method 'speedup' (MATLAB's default call and its 'speedup' call write the same file; 'original'
+another), `Overwrite` false by default and a movie with a `Detection3D.mat` skipped, the file at
+`ResultsPath + 'Detection3D.mat'` (a folder without the separator gets the file beside it) and
+the masks in `ResultsPath/Masks`, a char `ResultsPath` refused, a sigma row per channel with the
+rows past the channels kept in `s` only. An `'xyzAc'` fit of `XR_fitGaussians3D` is NaN when it
+ends `w` or more from its window's centre, the rounded start: 0 of 2,315 traced fits from the
+other channel's positions differ (the port measured from the unrounded start before, 282
+differed). Open: a given `WindowSize` (MATLAB finds 4,830 detections on a demo frame with
+`[2 2]`, the port's window 3,128; refused), and 'lowSNR' without the background correction (the
+wrapper's default): frame 1 has MATLAB's 1,006 detections against 1,005, frame 2 the same 969;
+given MATLAB's points the bad-point filter keeps MATLAB's 1,006 and 969, and all but one of the
+1,040 points into it agree within 1e-6 (one fit, moved 2.9 voxels, 2.9e-4 off: D3), which the
+filter passes on.
+
 ## Tracking (`detection.tracking`, C03)
 
 The tracker is a new implementation of the method of Jaqaman et al. (Nature Methods 5, 695;
@@ -98,3 +144,71 @@ names its row as `detection.md Wn`. Proposed (2026-11-19), waiting for the user'
 | Row | Function and range | Measured (largest) | Tolerance | Cause |
 |---|---|---|---|---|
 | W1 | `corr` (Pearson, two columns): the 165 correlations of `XZoffsetEstimation3D` and the probed columns | 17 ulp where the sum cancels (small integer columns); 16 ulp at 65,536 values; 2 ulp at 5.7 million; single: 1 ulp of single | `abs` 4e-15 (single `abs` 2e-7) | MATLAB takes `x'*y / norm(x) / norm(y)` from its BLAS, whose order of additions depends on the CPU and, from 4,096 values, on its thread count (MATLAB's own results differ between 1 and 8 threads); the port sums in MATLAB's order, platform-independent. The offsets the correlations decide were equal in every case |
+
+### MATLAB's slips the port fixes (W2 to W4)
+
+Three places where MATLAB's result is wrong and the port gives the correct one instead, each
+measured on synthetic data (probe job 4634531, oracle tree 45b2bb1).
+- The oracle cases compare the port with the corrected MATLAB call.
+- `run_detection_tracking(..., matlab_quirks=True)` gives MATLAB's output for W2 and W3;
+  `deskew_data(..., reverse=False)`, deskewData's default, gives it for one deskew.
+- Proposed (2026-11-20), waiting for the user's decision.
+
+| Row | Where | MATLAB | The port | Evidence |
+|---|---|---|---|---|
+| W2 | `run_detection_tracking`'s deskew of a reversed scan (a condition loaded with `reversed=True`) | `XR_runDetTrack3d` calls `deskewData` without its `'Reverse'` option, and `deskewData` leaves `data.reversed` alone, so reversed scans are deskewed as forward ones: sheared the wrong way | each movie is deskewed in its direction (`deskew_data(reverse=None)`), bit for bit `deskewData` with `'Reverse', true`, which is `XR_deskewRotateFrame` with `reverse` true | six beads at depths 3 to 19 of a 21-plane scan (31.5 degrees, dz 0.5, 0.104 um pixels). With `'Reverse'` true, every bead's x is the forward scan's (0.00 px apart; z mirrored, the acquisition order). Without it, the beads are displaced from -34 px to -132 px (13.7 um) relative to the first, by twice the shift per plane times their depth. Cases `deskew.reverse_option`, `deskew.wrapper_reversed_scan`; MATLAB's output in `deskew.reversed` |
+| W3 | `run_detection_tracking` with a one-frame movie before others | it drops the one-frame movies from the tracking (tracking needs two frames) but passes `XR_runTracking3D`, `XR_runTrackProcessing3D` and `rotateTracks3D` the folders of all movies. Its i-th kept movie gets the i-th folder: an indexing slip | each movie of more than one frame is tracked, processed and rotated into its own folder | movies of 6, 1 and 6 frames. MATLAB wrote a one-frame tracking (from the one-frame movie's 9 detections) into the one-frame movie's folder, left the third movie without tracks, and failed in track processing (`MATLAB:numel:BadSubscriptingIndex`, a `ProcessedTracks.mat.tmp` left behind). Case `dettrack.one_frame_movie` (against `XR_runDetTrack3d` on the movies of more than one frame, plus the one-frame movie with `Track` false) |
+| W4 | `load_condition_data(..., frame_rate=...)` with a one-frame movie | fails (`MATLAB:cellRefFromNonCell`, its dz lookup indexes the frame paths), even with the movie alone | loads it with the given rate: the struct of MATLAB's load without the rate, its `framerate` set | case `load.rate_given_one_frame_movie` (MATLAB's error kept in `load.rate_given_one_frame_movie.matlab`) |
+
+Two more measured behaviours:
+- `XR_loadConditionData3D` asks whether unequal frame rates are right ("Unequal frame rates
+  detected: 2.000 NaN 2.000", then `input`). It asks for movies whose rates differ, and for a
+  one-frame movie's NaN among others, two NaNs included; not for one movie alone. In batch mode
+  that is `MATLAB:services:MissingRequiredCapability`.
+  - The port raises the same error (`ConditionError`): cases `load.err_rates_*`.
+  - A frame rate given (`frame_rate`) makes the rates equal, as in MATLAB.
+  - A condition with a one-frame movie among others is then loaded one movie at a time and
+    joined (`Condition(...)`).
+- `deskewData` takes `'Reverse'` (and `'reverse'`) but refuses `'Reversed'`
+  (`MATLAB:InputParser:UnmatchedParameter`).
+
+## Track processing (`detection.processing`, `detection.amira`, C04b)
+
+`XR_runTrackProcessing3D` and `rotateTracks3D` are new implementations from MATLAB's behaviour as
+a black box (both headers name an outside author): logging wrappers with full values in front of
+the functions they call, the profiler's executed line numbers and counts, 717 tracks in designed
+probes, and the files MATLAB writes; no GPL or MathWorks source read. `XR_amiraWriteTracks` is
+the lab's and was read. The gap and buffer fits are `detection.fit`'s: `fit_cd` (row D3) for
+the free fits, the `fitGaussian3D` mex's mode `'Ac'` (row D4) for the refits at the given
+positions; the interpolations are `matlabcompat.interp.interp1`'s (bit for bit: C04a's section).
+Proposed (2026-11-20), waiting for the user's decision.
+
+Bit for bit on the demo (10,917 tracker tracks, 3,636 processed tracks): the set and order of the
+tracks (single-frame and border tracks dropped, compound tracks decoupled, the stable sort by
+lifetime), every field at the detected frames, `tracksFeatIndxCG`, `gapVect`, `gapStatus`, `gapIdx`,
+`seqOfEvents`, `nSeg`, `visibility`, the times, the read-out windows and the fits' starts (42,412 of
+42,412), the keep-or-refit decision of each fit, `hasMultiplePeaks`, the three significance fields,
+the lifetime cohorts' thresholds, `processingInfo`, every field's class and size (a buffer's
+`hval_AD` double or logical, as MATLAB's) and the field order; `hval_AD` at the gap frames and in
+the buffers (3,980 of 3,980 buffers); `totalDisplacement` (3,331 of 3,331). Given MATLAB's processed
+tracks: the rotation (323,568 positions, 7 probes of 4 geometries, and `RotatedTracks.mat` made from
+MATLAB's `ProcessedTracks.mat`: 3,636 of 3,636 tracks, every field) and the Amira files (60 of 60
+frames). The oracle cases `run.designed` (gaps of one and two frames with and without signal,
+buffers with signal, multiple peaks, cut, two-frame, single-frame and border tracks, a split and a
+merge, large steps) and `run.compound` (34 compound structures: branches that split off and die, are
+born and merge, end or start with the main segment, continue it, merge into a segment born 1 to 3
+frames before, loops, two branches, gaps, a join whose overlap frame needs the interpolation, the
+same join with a branch split off the merging segment, a structure over the whole movie, the movie's
+first and last frames): every field but those of W11 and W12, in both files.
+
+| Row | What | Measured (largest) | Tolerance | Cause |
+|---|---|---|---|---|
+| W11 | the fits at the gap frames and in the buffers: x, y, z, A, c, A_pstd, c_pstd, sigma_r, SE_sigma_r; what follows from them: `MotionAnalysis.MSD` and `MSDstd`, the rotated x and z, the end buffer's `Y` | demo: 80% (A) to 99.8% (x) of the 83,976 gap-frame values bit for bit, all but W13's within 1e-11 of max(\|v\|, 1); `run.designed` within 2.4e-13 | `rel` 1e-11 with `abs` 1e-10 (`TRACKS_TOL` of `tests/detection/test_processing.py`, on both track files) | the free fits' last bits (D3: `fit_cd`) and the refits' (D4: the mex's `'Ac'`); the tolerance is inside D3's |
+| W12 | `pval_Ar` of the gap frames and buffers | demo: 2.8e-13 (absolute), 82,139 of 83,976 gap-frame values bit for bit; `run.designed` bit for bit | `abs` 1e-10 (the same `TRACKS_TOL`) | the Welch test's degrees of freedom in another order (91% bit for bit even from MATLAB's own fits), `tcdf` (S3), and W11 |
+| W13 | the demo's fits that take another path | 25 of 42,412 windows (11 gap frames, 6 start-buffer and 8 end-buffer frames): positions to 2.8e-4, A to 1.6e-2 relative (a small amplitude), MSD and MSDstd of their tracks (50 of 18,866 values) to 1.2e-4 | none on the oracle case; demo: listed | the fits' last bits change a fit's iterations (D3) |
+| W14 | `catIdx` | demo: 4 of 3,636 tracks differ (1849 and 2968, single tracks whose buffer decision MATLAB makes the other way; 2181 and 2322, single five-frame tracks with gaps that MATLAB puts in category 2); 717 of 717 probe tracks and both oracle cases equal | none | the categories' rules were measured, not read; these four cases follow no rule found |
+| W15 | the Amira files (`Amira/Tracking/tracking_t_<k>.am`) | the text differs where W11's values are printed (16 digits) | not compared on the oracle case; `test_amira_on_matlab_tracks` checks the writer byte for byte on MATLAB's tracks | W11 |
+| W16 | `ProcessedTracks.mat`, `RotatedTracks.mat` as files | the same variables, values, classes, sizes, field order and NaN bits | none (compared by content) | the HDF5 layout (object order, times) is the writer's; `RotatedTracks.mat` is `ProcessedTracks.mat` copied with the rotated values written into it, which MATLAB loads to the same values as the file it writes itself (`isequaln`) |
+| W17 | options other than the demos': `Buffer` other than `[3 3]`, `FitMixtures`, `WindowSize`, `BufferAll`, `Preprocess` and `Postprocess` false, `Frames` other than all; `rotateTracks3D` of objective and reversed scans and with `'Crop'` true | not measured | `NotImplementedError` | not measured |
+| W18 | a single track whose span is longer than its columns (a one-frame branch that merges into a segment at that segment's first frame is dropped, the span kept) | MATLAB's `XR_amiraWriteTracks` stops with `MATLAB:badsubscript` in its `parfor`, after `ProcessedTracks.mat` is saved and some frames' files are written, and `XR_runTrackProcessing3D` raises it; the port writes every frame's file (the track's points up to its columns) | none: the oracle cases leave the structure out (`run.compound`) | MATLAB indexes the amplitudes by the span |
+| W19 | the Amira files' line ends on Windows | not measured: MATLAB writes each file's header and section marks with `fprintf` to a file opened `'w'`/`'a'` (`\n`) and the data rows with `dlmwrite`, whose line terminator on Windows its documentation does not give (no Windows MATLAB was used); the port writes `\n` everywhere, as MATLAB does on Linux | none (the files are compared on Linux only) | not measured |
