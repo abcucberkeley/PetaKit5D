@@ -88,6 +88,11 @@ int pick_isa(int isa) {
 // fdlibm 5.3's __ieee754_pow (e_pow.c) and the scalbn it calls (s_scalbn.c; Sun Microsystems'
 // permissive notice), MATLAB's x .^ y, as matlabcompat.elementary writes it out in Python: one
 // IEEE operation per C operation
+// Their notice, e_pow.c's (s_scalbn.c's has "Copyright (C) 1993"):
+//   Copyright (C) 1993, 2004 by Sun Microsystems, Inc. All rights reserved.
+//   Developed at SunSoft, a Sun Microsystems, Inc. business.
+//   Permission to use, copy, modify, and distribute this software is freely granted, provided
+//   that this notice is preserved.
 // ---------------------------------------------------------------------------------------------
 
 inline int32_t hi_word(double x) {
