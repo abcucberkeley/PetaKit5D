@@ -125,8 +125,9 @@ def fat(*slices: tuple[int, bytes]) -> bytes:
     return bytes(out)
 
 
-def pe(imports=(), delay=(), exports=(), extra=b"", machine=0x8664) -> bytes:
-    """A PE32+ DLL with one section holding its import, delay-import and export tables."""
+def pe(imports=(), delay=(), exports=(), extra=b"", machine=0x8664, signer=None) -> bytes:
+    """A PE32+ DLL with one section holding its import, delay-import and export tables, and with
+    signer, a certificate table (an Authenticode entry whose blob names the signer)."""
     rva0, raw0 = 0x1000, 0x400
     sec = bytearray()
 
@@ -159,7 +160,15 @@ def pe(imports=(), delay=(), exports=(), extra=b"", machine=0x8664) -> bytes:
     coff = struct.pack("<HHIIIHH", machine, 1, 0, 0, 0, len(opt), 0x2022)
     section = struct.pack("<8sIIIIIIHHI", b".rdata", len(sec), rva0, len(sec), raw0, 0, 0, 0, 0, 0)
     head = bytes(dos) + b"PE\0\0" + coff + opt + section
-    return head + bytes(raw0 - len(head)) + bytes(sec)
+    body = head + bytes(raw0 - len(head)) + bytes(sec)
+    if signer is None:
+        return body
+    # WIN_CERTIFICATE: length, revision 2.0, PKCS#7 signed data (here only the signer's name)
+    blob = b"\x30\x82" + b"O=" + signer.encode() + bytes(-len(signer) % 8)
+    cert = struct.pack("<IHH", 8 + len(blob), 0x200, 2) + blob
+    out = bytearray(body + bytes(-len(body) % 8))
+    struct.pack_into("<II", out, 0x40 + 24 + 112 + 8 * 4, len(out), len(cert))  # entry 4
+    return bytes(out) + cert
 
 
 # --- wheels and source distributions ---
@@ -187,8 +196,15 @@ def linux_module(**kw) -> bytes:
     return elf(**{"needed": [GOMP, "libm.so.6", "libc.so.6"], "runpath": "$ORIGIN", **kw})
 
 
-def windows_module(*imports, **kw) -> bytes:
-    std = ["libomp140.x86_64.dll", f"msvcp140-{HASH}.dll", "KERNEL32.dll", "VCRUNTIME140.dll",
+# delvewheel's copy of the OpenMP runtime, with a mangled name, as the windows-2025 runners'
+# toolset leaves it to delvewheel
+OMP140 = f"libomp140.x86_64-{HASH[::-1]}.dll"
+MS = "Microsoft Corporation"
+MS_PATH = b"D:\\a\\_work\\1\\s\\src\\vctools\\crt\\github\\stl\\src\\x.cpp\0"
+
+
+def windows_module(*imports, omp=OMP140, **kw) -> bytes:
+    std = [omp, f"msvcp140-{HASH}.dll", "KERNEL32.dll", "VCRUNTIME140.dll", "VCRUNTIME140_1.dll",
            "api-ms-win-crt-runtime-l1-1-0.dll"]  # fmt: skip
     return pe(imports=[*(imports or ["python3.dll"]), *std], exports=["PyInit_core"], **kw)
 
@@ -207,8 +223,10 @@ def petakit5d_files(system: str) -> dict[str, bytes]:
         )
     else:
         files["petakit5d/_ext/core.pyd"] = windows_module()
-        files["petakit5d/_ext/libomp140.x86_64.dll"] = pe(imports=["KERNEL32.dll"])
-        files[f"petakit5d.libs/msvcp140-{HASH}.dll"] = pe(imports=["KERNEL32.dll"])
+        # Microsoft's redistributables, signed, naming Microsoft's own build folders
+        omp = pe(imports=["KERNEL32.dll", "PSAPI.DLL"], extra=MS_PATH, signer=MS)
+        files[f"petakit5d.libs/{OMP140}"] = omp
+        files[f"petakit5d.libs/msvcp140-{HASH}.dll"] = pe(extra=MS_PATH, signer=MS)
     return files
 
 
@@ -303,11 +321,28 @@ MOD = "petakit5d/_ext/core.abi3.so"
             r"needs libgomp\.so\.1, which is neither",
             id="toolchain-libgomp",
         ),
+        pytest.param(
+            put(MOD, linux_module(runpath="/opt/gcc/lib64")),
+            r"needs libgomp-e985bcbb\.so\.1\.0\.0, which is neither",
+            id="runpath-elsewhere",
+        ),
         pytest.param(drop(f"petakit5d/_ext/{GOMP}"), r"0 libraries match .*libgomp", id="no-omp"),
+        pytest.param(
+            put(
+                "petakit5d/_ext/libgomp-0123abcd.so.1.0.0", elf(soname="libgomp-0123abcd.so.1.0.0")
+            ),
+            r"2 libraries match .*libgomp.* \(expected one\)",
+            id="two-runtimes",
+        ),
         pytest.param(
             put("petakit5d.libs/libgomp-0badc0de.so.1.0.0", elf(soname="x")),
             r"petakit5d\.libs/libgomp-0badc0de\.so\.1\.0\.0: a library the wheel should not carry",
             id="grafted",
+        ),
+        pytest.param(
+            put("petakit5d/tmp/build-env-ab12/x.h", b""),
+            r"x\.h \(name\): /petakit5d/tmp/build-env-ab12/x\.h \[temporary build environment\]",
+            id="member-name",
         ),
         pytest.param(
             put(MOD, linux_module(symbols=["fftw_execute"])),
@@ -380,6 +415,12 @@ def test_linux_findings(tmp_path, capsys, change, message):
             put(MOD, macho(dylibs=["@rpath/libomp.dylib"], rpaths=["@loader_path"])),
             r"loads @rpath/libomp\.dylib, which is neither",
             id="rpath-misses",
+        ),
+        pytest.param(
+            # the executable's folder is not the module's
+            put(MOD, macho(dylibs=["@rpath/libomp.dylib"], rpaths=["@executable_path/../.dylibs"])),
+            r"loads @rpath/libomp\.dylib, which is neither",
+            id="executable-path",
         ),
         pytest.param(
             put("petakit5d/.dylibs/libomp.dylib", macho(ident="/Users/runner/work/o/libomp.dylib")),
@@ -482,9 +523,35 @@ WIN = "petakit5d/_ext/core.pyd"
             id="module-name",
         ),
         pytest.param(
-            rename("petakit5d/_ext/libomp140.x86_64.dll", "petakit5d/x/libomp140.x86_64.dll"),
-            r"loads libomp140\.x86_64\.dll, which is neither",
+            rename(f"petakit5d.libs/{OMP140}", f"petakit5d/x/{OMP140}"),
+            r"loads libomp140\.x86_64-[0-9a-f]+\.dll, which is neither",
             id="dll-elsewhere",
+        ),
+        pytest.param(
+            put("petakit5d/_ext/libomp140.x86_64.dll", pe(imports=["KERNEL32.dll"])),
+            r"2 libraries match .*libomp140.* \(expected one\)",
+            id="two-runtime-files",
+        ),
+        pytest.param(
+            put("petakit5d/_ext/io.pyd", windows_module(omp="vcomp140.dll")),
+            r"the modules load 2 OpenMP runtimes: libomp140\.x86_64-[0-9a-f]+\.dll, vcomp140\.dll",
+            id="two-runtimes",
+        ),
+        # Microsoft's build folders count anywhere but in its signed redistributables
+        pytest.param(
+            put(f"petakit5d.libs/msvcp140-{HASH}.dll", pe(extra=MS_PATH)),
+            r"msvcp140-[0-9a-f]+\.dll: D:\\a\\_work\\.* \[CI runner workspace\]",
+            id="unsigned-redistributable",
+        ),
+        pytest.param(
+            put(f"petakit5d.libs/msvcp140-{HASH}.dll", pe(extra=MS_PATH, signer="Example Corp")),
+            r"msvcp140-[0-9a-f]+\.dll: D:\\a\\_work\\.* \[CI runner workspace\]",
+            id="other-signer",
+        ),
+        pytest.param(
+            put(WIN, windows_module(extra=MS_PATH)),
+            r"core\.pyd: D:\\a\\_work\\.* \[CI runner workspace\]",
+            id="module-with-azure-folder",
         ),
     ],
 )
@@ -492,6 +559,34 @@ def test_windows_findings(tmp_path, capsys, change, message):
     rc, out = run(capsys, wheel_of(tmp_path, "windows", change))
     assert rc == 1, out
     assert re.search(message, out), out
+
+
+def test_windows_runtime_next_to_the_modules(tmp_path, capsys):
+    # a build that copies libomp140 next to the modules, and delvewheel that leaves it there
+    def copied(files):
+        files.pop(f"petakit5d.libs/{OMP140}")
+        files["petakit5d/_ext/libomp140.x86_64.dll"] = pe(imports=["KERNEL32.dll"])
+        files[WIN] = windows_module(omp="libomp140.x86_64.dll")
+
+    rc, out = run(capsys, wheel_of(tmp_path, "windows", copied))
+    assert rc == 0, out
+
+
+def test_signed_redistributables_get_the_forbid_patterns_only(tmp_path, capsys):
+    rc, out = run(capsys, wheel_of(tmp_path, "windows"))
+    assert rc == 0, out
+    assert f"petakit5d.libs/{OMP140}: Microsoft's signed redistributable" in out
+    assert f"OpenMP runtime of the modules: {OMP140}" in out
+    site = pe(extra=MS_PATH + b"built on node42\0", signer=MS)
+    path = wheel_of(tmp_path, "windows", put(f"petakit5d.libs/msvcp140-{HASH}.dll", site))
+    rc, out = run(capsys, "--forbid", r"node\d+", path)
+    assert rc == 1 and "built on node42 [--forbid 1]" in out and "CI runner workspace" not in out
+
+
+def test_readers_on_signatures():
+    assert cw.parse_pe(pe(signer=MS)).signer == MS
+    assert cw.parse_pe(pe(signer="Example Corp")).signer == "another publisher"
+    assert cw.parse_pe(pe()).signer == ""
 
 
 def test_a_cp311_wheel_has_its_versions_modules(tmp_path, capsys):

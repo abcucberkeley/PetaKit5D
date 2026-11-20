@@ -53,9 +53,46 @@ jobs:
       - name: Install cibuildwheel
         run: python -m pip install "$CIBUILDWHEEL"
 
+      # Windows: delvewheel bundles the first copy of a DLL on PATH, so the C++ runtime of the
+      # toolset that builds the modules goes first: the system's msvcp140.dll can be older than
+      # the toolset, and a runtime older than the toolset is unsupported
+      - name: The toolset's C++ runtime (Windows)
+        if: runner.os == 'Windows'
+        continue-on-error: true
+        run: |
+          vs=$("/c/Program Files (x86)/Microsoft Visual Studio/Installer/vswhere.exe" -latest \
+            -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 \
+            -property installationPath | tr -d '\r' || true)
+          crt=$({ ls -d "$(cygpath -u "$vs")"/VC/Redist/MSVC/*/x64/Microsoft.VC*.CRT 2>/dev/null || true; } | sort -V | tail -1)
+          echo "Visual Studio: $vs; its redistributable C++ runtime: ${crt:-none}"
+          if [ -n "$crt" ] && [ -f "$crt/msvcp140.dll" ]; then cygpath -w "$crt" >> "$GITHUB_PATH"; fi
+          # the copies on PATH (delvewheel takes the first) and their versions
+          IFS=: read -ra dirs <<< "$PATH"
+          for d in "$crt" "${dirs[@]}"; do
+            for n in msvcp140.dll libomp140.x86_64.dll; do
+              if [ -f "$d/$n" ]; then
+                echo "$d/$n $(powershell -NoProfile -Command "(Get-Item '$(cygpath -w "$d/$n")').VersionInfo.FileVersion")"
+              fi
+            done
+          done
+
       # from python/, so that only the package is copied into the Linux container
       - name: Build, repair, audit and test
         run: python -m cibuildwheel --output-dir wheelhouse .
+
+      # the runtimes delvewheel bundled, and their versions
+      - name: Bundled DLLs (Windows)
+        if: runner.os == 'Windows' && !cancelled()
+        continue-on-error: true
+        run: |
+          for w in wheelhouse/*.whl; do
+            d="$RUNNER_TEMP/unzipped/$(basename "$w")"
+            python -m zipfile -e "$w" "$d"
+            for f in "$d"/petakit5d.libs/*.dll; do
+              v=$(powershell -NoProfile -Command "(Get-Item '$(cygpath -w "$f")').VersionInfo.FileVersion")
+              echo "$(basename "$w"): $(basename "$f") $v"
+            done
+          done
 
       - name: Release checks
         run: python tools/check_wheel.py wheelhouse
@@ -116,8 +153,10 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-24.04, macos-15, windows-2025]
+    # (a job's defaults replace the workflow's: the shell too)
     defaults:
       run:
+        shell: bash
         working-directory: python/cpp/fft/exact
     env:
       # one py3-none wheel per platform serves every Python: built and tested once

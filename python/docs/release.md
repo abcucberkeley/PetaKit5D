@@ -29,7 +29,7 @@ a repository of its own. What waits for a decision of the user is marked **(user
 |---|---|---|---|---|
 | Linux x86-64 | `manylinux_2_28_x86_64` (auditwheel also tags it `manylinux_2_24`) | GCC 14 of the image `quay.io/pypa/manylinux_2_28_x86_64:2026.06.04-1`, the image of the cpp-zarr and cpp-tiff wheels | auditwheel | the cpp-zarr wheel's libgomp, carried in the wheel (below) |
 | macOS arm64 | `macosx_13_0_arm64` | Apple Clang | delocate | LLVM's libomp, built for macOS 13.0 from LLVM's sources and copied in by delocate |
-| Windows x86-64 | `win_amd64` | MSVC 2022, `/openmp:llvm` | delvewheel `--no-diagnostic` | `libomp140.x86_64.dll`, put next to the modules by the build |
+| Windows x86-64 | `win_amd64` | MSVC (on the windows-2025 runners Visual Studio 2026's, toolset 14.51), `/openmp:llvm` | delvewheel `--no-diagnostic` | `libomp140.x86_64.dll`, which delvewheel copies in with the C++ runtime |
 
 For each platform two wheels: **CPython 3.11** (`cp311-cp311`) and **CPython 3.12 and newer**
 (`cp312-abi3`), with nanobind's stable ABI. The modules use no Python API outside the limited API
@@ -63,9 +63,13 @@ against an installed wheel in CI (below).
   (15.0 on the macOS 15 runners, and Homebrew has none for macOS 13 or 14), so the wheel's target
   would follow it, and a `macosx_15_0` wheel installs on no older macOS, though every dependency
   supports macOS 13.
-- **Windows:** MSVC's LLVM OpenMP runtime `libomp140.x86_64.dll`, copied next to the modules by
-  the build; delvewheel leaves it (`--ignore-existing`) and adds the C++ runtime
-  (`msvcp140.dll`) under a mangled name.
+- **Windows:** MSVC's LLVM OpenMP runtime `libomp140.x86_64.dll`. The build copies it next to
+  the modules when the toolset's redistributable folders have it; Visual Studio 2026's (the
+  windows-2025 runners') don't, so delvewheel copies it into `petakit5d.libs/` under a mangled
+  name, with the C++ runtime (`msvcp140.dll`), from the first folder on `PATH` that has them.
+  The workflow puts the toolset's own redistributable C++ runtime first there: the system's copy
+  can be older than the toolset, which Microsoft does not support (delvewheel warns of it). All
+  modules load the one copy of each.
 
 ### The GPU extra
 
@@ -103,12 +107,13 @@ archive it can't read. The distribution comes from the file name: petakit5d or p
   loads `python3.dll`; cp311: that version's suffix and `python311.dll`); no Mach-O file has a
   newer deployment target than the wheel's tag.
 - **The bundled libraries:** the libraries besides the modules are the expected ones: Linux, the
-  libgomp copy next to the modules alone; macOS, `.dylibs/libomp.dylib`; Windows,
-  `libomp140.x86_64.dll` next to the modules and the copies of `msvcp140*.dll` that delvewheel
-  puts in `petakit5d.libs/`; the add-on, its two FFTW libraries. Every library a binary loads is
-  in the wheel (found through its search path, or next to it on Windows) or the system's: the C
-  library, macOS's `/usr/lib` and `/System`, Windows' system DLLs, API sets and the Python DLL
-  and C runtime every CPython ships.
+  libgomp copy next to the modules alone; macOS, `.dylibs/libomp.dylib`; Windows, one
+  `libomp140.x86_64.dll` (next to the modules, or delvewheel's copy in `petakit5d.libs/`) and
+  delvewheel's copies of `msvcp140*.dll`; the add-on, its two FFTW libraries. Every library a
+  binary loads is in the wheel (found through its search path, or on Windows next to it or in
+  `petakit5d.libs/`) or the system's: the C library, macOS's `/usr/lib` and `/System`, Windows'
+  system DLLs, API sets and the Python DLL and C runtime every CPython ships. All modules load
+  the same OpenMP runtime, so that a process has one.
 - **The search paths:** every RUNPATH (Linux) is `$ORIGIN`, with no old-style RPATH; every
   LC_RPATH (macOS) starts with `@loader_path`; no install name is a folder outside the wheel.
 - **No folder of the build machine:** every member's bytes (with ELF's compressed sections
@@ -116,7 +121,10 @@ archive it can't read. The distribution comes from the file name: petakit5d or p
   for home and user folders, temporary build environments and Python's temporary folders,
   macOS's per-user temporary folders, cibuildwheel's folders and container, the CI runners'
   workspace and tool cache, Homebrew's prefix and Spack's stages, and `--forbid` patterns: a
-  site's own names, which are kept outside the repository. No compiled Python file is carried.
+  site's own names, which are kept outside the repository. Microsoft's redistributable DLLs
+  (delvewheel's copies of `libomp140` and `msvcp140*`, by name) name the folders of Microsoft's
+  own builds (`D:\a\_work\1\s\...`): when Microsoft's Authenticode certificate is on them, they
+  get the `--forbid` patterns only. No compiled Python file is carried.
 - **No FFTW** (GPL) in petakit5d's binaries: no symbol `fftw*_` defined, no FFTW version string.
 - **The license:** METADATA's `License-Expression` (`BSD-3-Clause`; the add-on's
   `GPL-2.0-or-later`), and every `License-File`, the project's three among them (the add-on's
@@ -157,6 +165,22 @@ The artifacts are `petakit5d-<system>-<architecture>`, `sdist` and
   from it passed the checks. The add-on's wheel passed its test and the checks after its build
   left FFTW's source folder out of the file names its assertions carry (they named the build's
   temporary folder).
+- **macOS arm64, natively on a macOS 13.7 machine** (cibuildwheel 4.3.5 with python.org's
+  CPythons): libomp 21.1.8 built for macOS 13.0; the `cp311` and `cp312-abi3` wheels
+  (`macosx_13_0_arm64`) passed their test commands (15 passed, 12 skipped each; the abi3 wheel
+  also on CPython 3.14), `abi3audit --strict` and the checks: one bundled library,
+  `.dylibs/libomp.dylib`, which every module loads through `@loader_path`; no LC_RPATH left;
+  every binary's deployment target 13.0; no build folder, after the core module's build
+  information named libomp by its file name instead of its path. The add-on's
+  `macosx_11_0_arm64` wheel passed its test and the checks.
+- **GitHub, the first trial run** (all three systems, the workflow as above): the sdist, the
+  Linux and macOS wheels and the add-on's Linux and macOS wheels passed every step. The Windows
+  `cp311` and `cp312-abi3` wheels were built, repaired, audited and passed their test commands
+  (the abi3 wheel also on CPython 3.14); delvewheel had copied in `libomp140.x86_64.dll` (Visual
+  Studio 2026 has none in its redistributable folders) and the system's `msvcp140.dll` 14.40,
+  older than the toolset (14.51). The checks then expected the build's placement of libomp140
+  and took the folders of Microsoft's own builds in those two DLLs for the runner's; both are
+  handled as described above. The add-on's Windows job had run its steps in PowerShell.
 - Before: the abi3 wheel, installed into a fresh environment on a machine of another CPU
   generation than the build's, passed the full CPU suite with and without the golden store and
   with the add-on's wheel installed, and installed with its dependencies from PyPI on CPython
@@ -180,7 +204,7 @@ shipping them with code under any license.
 | libstdc++, libgcc (Linux) | linked statically | GPL-3.0 with the GCC Runtime Library Exception |
 | libgomp (Linux) | `petakit5d/_ext/libgomp-e985bcbb.so.1.0.0` | GPL-3.0 with the GCC Runtime Library Exception |
 | libomp (macOS) | `petakit5d/.dylibs/` | Apache-2.0 with LLVM exceptions |
-| libomp140, MSVC C++ runtime (Windows) | `petakit5d/_ext/`, `petakit5d.libs/` | Microsoft's redistributable terms (Visual Studio 2022) |
+| libomp140, MSVC C++ runtime (Windows) | `petakit5d.libs/` (or `petakit5d/_ext/`) | Microsoft's redistributable terms (the Visual Studio that builds the wheel: 2026 on the windows-2025 runners) |
 
 ### Required packages
 

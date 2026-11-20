@@ -13,9 +13,8 @@ or petakit5d_fftw (the exact FFT add-on, GPL). For each wheel:
   deployment target is not newer than the wheel's;
 - the bundled libraries: the libraries besides the modules are the expected ones (petakit5d's
   OpenMP runtime: on Linux the libgomp it shares with cpp-zarr, next to the modules; on macOS
-  libomp in .dylibs; on Windows libomp140 next to the modules, and the C++ runtime delvewheel
-  adds; the add-on's two FFTW libraries), and every library a binary loads is in the wheel or
-  the system's;
+  libomp in .dylibs; on Windows libomp140, and the C++ runtime, that delvewheel adds; the add-on's
+  two FFTW libraries), and every library a binary loads is in the wheel or the system's;
 - the search paths: RUNPATH (Linux) only $ORIGIN; LC_RPATH (macOS) only @loader_path; no install
   name outside the wheel and the system's folders;
 - no folder of the build machine named in any member (cpp-tiff's check_wheel_paths.py approach:
@@ -61,6 +60,10 @@ class Profile:
     libraries: dict[str, tuple[tuple[str, bool], ...]]
     modules: bool
     fftw: bool
+    # per system, the vendors' redistributable libraries (pattern of the path) whose own build
+    # folders are not searched for when their vendor's signature is on them (the --forbid
+    # patterns still are)
+    redistributables: dict[str, str] = field(default_factory=dict)
 
 
 PROFILES = {
@@ -77,13 +80,24 @@ PROFILES = {
             "linux": ((r"petakit5d/_ext/libgomp-[0-9a-f]{8}\.so\.1\.0\.0", True),),
             "macos": ((r"petakit5d/\.dylibs/libomp\.dylib", True),),
             "windows": (
-                (r"petakit5d/_ext/libomp140\.x86_64\.dll", True),
-                # delvewheel's copies of MSVC's C++ runtime, with mangled names
+                # MSVC's LLVM OpenMP runtime: next to the modules when the build copies it there,
+                # else delvewheel's copy, with a mangled name
+                (
+                    r"petakit5d/_ext/libomp140\.x86_64\.dll"
+                    r"|petakit5d\.libs/libomp140\.x86_64-[0-9a-f]{32}\.dll",
+                    True,
+                ),
+                # delvewheel's copies of MSVC's C++ runtime
                 (r"petakit5d\.libs/msvcp140(?:_[0-9a-z_]+)?-[0-9a-f]{32}\.dll", False),
             ),
         },
         modules=True,
         fftw=False,
+        # Microsoft's DLLs name the folders of Microsoft's own builds (D:\a\_work\1\s\...)
+        redistributables={
+            "windows": r"petakit5d/_ext/libomp140\.x86_64\.dll"
+            r"|petakit5d\.libs/(?:libomp140\.x86_64|msvcp140(?:_[0-9a-z_]+)?)-[0-9a-f]{32}\.dll"
+        },
     ),
     "petakit5d_fftw": Profile(
         license="GPL-2.0-or-later",
@@ -175,7 +189,8 @@ PATH_PATTERNS = [
     ("cibuildwheel cache", rb"(?i)pypa[\\/]+cibuildwheel[\\/]+Cache"),
     # the project inside cibuildwheel's Linux container, with python/ or as the root
     ("cibuildwheel's project folder", _ROOT + rb"project/(?:python/)?(?:src|cpp|cmake|build)/"),
-    # GitHub's runners: the workspace (D:\a\<repo>\<repo> on Windows) and the tool cache
+    # the CI runners' workspace (D:\a\<repo>\<repo> on GitHub's Windows runners, D:\a\_work\...
+    # on Azure's) and GitHub's tool cache
     ("CI runner workspace", rb"(?i)(?<![A-Za-z0-9])[A-Z]:[\\/]+a[\\/]+[A-Za-z0-9_.-]+[\\/]"),
     ("CI runner tool cache", rb"(?i)hostedtoolcache"),
     # the build machine's Homebrew, which delocate's copies must not name
@@ -230,6 +245,7 @@ class Binary:
     defined: set[str] = field(default_factory=set)
     minos: list[tuple[int, int, int]] = field(default_factory=list)
     sections: list[tuple[str, bytes | None]] = field(default_factory=list)  # compressed (ELF)
+    signer: str = ""  # PE: the publisher its Authenticode certificate names (not verified)
     problems: list[str] = field(default_factory=list)
 
 
@@ -401,6 +417,11 @@ def parse_pe(data: bytes) -> Binary:
         while name := struct.unpack_from("<I", data, p + 4)[0]:
             b.needed.append(_cstr(data, at(name)))
             p += 32
+    if len(dirs) > 4 and dirs[4][0] and dirs[4][1] >= 8:  # the certificates, at a file offset
+        cert = data[dirs[4][0] : dirs[4][0] + dirs[4][1]]
+        if struct.unpack_from("<H", cert, 6)[0] == 2:  # WIN_CERT_TYPE_PKCS_SIGNED_DATA
+            microsoft = b"Microsoft Corporation" in cert
+            b.signer = "Microsoft Corporation" if microsoft else "another publisher"
     if (p := directory(0)) is not None:  # exports
         nnames, names = (
             struct.unpack_from("<I", data, p + 24)[0],
@@ -476,6 +497,8 @@ def _arch(plats: set[str]) -> str:
 
 
 ARCHS = {"x86_64": "x86_64", "amd64": "x86_64", "aarch64": "arm64", "arm64": "arm64", "i686": "x86"}
+# the names of OpenMP runtimes (GCC's, LLVM's, Intel's, MSVC's own)
+OPENMP_RUNTIME = re.compile(r"(?i)lib(?:g?omp|iomp5)|vcomp")
 MODULE_SUFFIX = re.compile(r"\.(?:abi3|cpython-\d+[a-z]*-[\w-]+|cp\d+[a-z]*-win\w*)\.(?:so|pyd)$")
 
 
@@ -568,7 +591,7 @@ def _pe_search_path(path: str, binaries: dict[str, Binary], dist: str) -> set[st
     }
 
 
-def check_wheel(path: str, patterns, profile_name: str | None, quiet: bool) -> int:
+def check_wheel(path: str, patterns, profile_name: str | None, quiet: bool, forbid=()) -> int:
     name = os.path.basename(path)
     dist, pys, abis, plats = _tags(name)
     profile = PROFILES.get(profile_name or dist)
@@ -683,6 +706,18 @@ def check_wheel(path: str, patterns, profile_name: str | None, quiet: bool) -> i
             ok = any(f".cpython-{v}-" in base or f".cp{v}-" in base for v in vers)
         if not ok:
             r.fail(f"{m}: the module's name does not fit the ABI tag {'.'.join(sorted(abis))}")
+    # one OpenMP runtime in a process: every module loads the same one
+    runtimes = sorted(
+        {
+            PurePosixPath(n).name.lower()
+            for m in modules
+            for n in binaries[m].needed
+            if OPENMP_RUNTIME.match(PurePosixPath(n).name)
+        }
+    )
+    if len(runtimes) > 1:
+        r.fail(f"the modules load {len(runtimes)} OpenMP runtimes: {', '.join(runtimes)}")
+    r.info(f"OpenMP runtime of the modules: {', '.join(runtimes) or '-'}")
 
     # the bundled libraries
     expected = profile.libraries.get(system, ())
@@ -711,9 +746,18 @@ def check_wheel(path: str, patterns, profile_name: str | None, quiet: bool) -> i
     if target is not None and newest:
         r.info(f"deployment target {target[0]}.{target[1]}, the binaries' {newest[0]}.{newest[1]}")
 
-    # the folder check of the binaries' compressed sections and every member's bytes
+    # the folder check of the binaries' compressed sections and every member's bytes; a vendor's
+    # signed redistributable gets the --forbid patterns only
+    redist = profile.redistributables.get(system)
     for m in sorted(members):
-        _scan(r, m, data[m], patterns, binaries[m].sections if m in binaries else ())
+        b = binaries.get(m)
+        if redist and b is not None and re.fullmatch(redist, m):
+            if b.signer == "Microsoft Corporation":
+                r.info(f"{m}: Microsoft's signed redistributable (its build folders not searched)")
+                _scan(r, m, data[m], forbid)
+                continue
+            r.info(f"{m}: a redistributable without Microsoft's signature ({b.signer or 'none'})")
+        _scan(r, m, data[m], patterns, b.sections if b is not None else ())
 
     # the license
     meta = data.get(di + "METADATA")
@@ -848,7 +892,7 @@ def main(argv: list[str] | None = None) -> int:
     for p in archives:
         try:
             if p.endswith(".whl"):
-                n = check_wheel(p, patterns, a.profile, a.quiet)
+                n = check_wheel(p, patterns, a.profile, a.quiet, forbid)
             else:
                 n = check_sdist(p, patterns, a.profile, a.quiet, forbid)
         except (OSError, ValueError, KeyError, zipfile.BadZipFile, tarfile.TarError, EOFError) as e:
