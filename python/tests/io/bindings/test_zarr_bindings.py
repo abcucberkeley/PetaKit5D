@@ -322,10 +322,11 @@ def test_readBatch(tmp_path):
     "cpp-zarr",
     "write_zarr always skips all-zero chunks (sparse is not exposed); "
     "PetaKit5D's writezarr writes them (sparseData false)",
+    "1.8.0",
 )
 def test_gap_allZeroChunksCanBeWritten(tmp_path):
     fn = tmp_path / "im.zarr"
-    _write(fn, np.zeros((32, 32, 10), np.uint16, order="F"))
+    _write(fn, np.zeros((32, 32, 10), np.uint16, order="F"), sparse=False)
     assert len(_chunks(fn)) == 8
 
 
