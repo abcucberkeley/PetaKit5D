@@ -722,6 +722,144 @@ add(
 )
 
 
+# convn and conv2 where a tap is Inf or NaN: MATLAB sums over the overlap of the two arrays only,
+# from +0 (no Inf * 0 with the zero padding), a product takes the image value's NaN before the
+# tap's, a sum the product's before the running sum's (measured). A kernel larger than the image
+# (the roles swapped: the image's values are the taps; small integers and dyadic values, so the
+# sums are exact), and kernels with Inf and NaN in the fused chains (arrays large enough for
+# MATLAB's fused code; smaller ones take its plain sums, docs/platforms.md).
+def _payload(cls):
+    if cls == "single":
+        return np.array([0x7FC00123], np.uint32).view(np.float32)[0]
+    return np.array([0x7FF8000000000123], np.uint64).view(np.float64)[0]
+
+
+def _with_specials(seed: int, shape, cls: str) -> np.ndarray:
+    """small integers with MATLAB's NaN, a NaN with a payload, both infinities and -0"""
+    r = CounterRNG(seed, "x22-specials")
+    dt = np.float32 if cls == "single" else np.float64
+    a = r.integers(-3, 4, shape).astype(dt)
+    u = r.spawn("u").uniform(shape)
+    for j, v in enumerate([dt(dtypes.NAN), _payload(cls), dt(np.inf), dt(-np.inf), dt(-0.0)]):
+        a[(u >= 0.08 * j) & (u < 0.08 * (j + 1))] = v
+    return np.asfortranarray(a)
+
+
+def _dyadic(seed: int, shape, cls: str, zeros: float = 0.2) -> np.ndarray:
+    """multiples of 1/4 in [-2, 2], with +0 and -0"""
+    r = CounterRNG(seed, "x22-dyadic")
+    a = (r.integers(-8, 9, shape) / 4.0).astype(np.float32 if cls == "single" else np.float64)
+    u = r.spawn("z").uniform(shape)
+    a[u < zeros / 2] = 0.0
+    a[(u >= zeros / 2) & (u < zeros)] = -0.0
+    return np.asfortranarray(a)
+
+
+def _meeting(cls: str):
+    """NaNs with a payload among integers, and an image with MATLAB's NaN where they meet"""
+    p = _payload(cls)
+    a = np.asfortranarray(
+        np.array(
+            [[1, 2, 3, 4], [5, p, 7, 8], [9, 10, 11, p]],
+            np.float32 if cls == "single" else np.float64,
+        )
+    )
+    b = _dyadic(46, (5, 6), cls, zeros=0.0)
+    b[1, 1] = b[3, 4] = b[2, 0] = dtypes.NAN
+    return a, b
+
+
+def _kernel_with_specials(seed: int, shape, cls: str) -> np.ndarray:
+    k = kernel(seed, shape).astype(np.float32 if cls == "single" else np.float64)
+    first = (0,) * len(shape)
+    k[first] = np.inf if len(shape) == 2 else -np.inf
+    k[(2, 1) if len(shape) == 2 else (1, 2, 2)] = _payload(cls)
+    return np.asfortranarray(k)
+
+
+for cls in ("double", "single"):
+    for shp in ("full", "same"):
+        add(
+            Case(
+                f"conv2.nonfinite.swap.{cls}.{shp}",
+                matlab="conv2",
+                args=[In("a"), In("b"), shp],
+                python=py_conv2,
+                inputs={
+                    "a": Value(lambda cls=cls: _with_specials(41, (3, 4), cls)),
+                    "b": Value(lambda cls=cls: _dyadic(42, (5, 6), cls)),
+                },
+            )
+        )
+        add(
+            Case(
+                f"conv2.nonfinite.kernel.{cls}.{shp}",
+                matlab="conv2",
+                args=[In("a"), In("k"), shp],
+                python=py_conv2,
+                inputs={
+                    "a": Value(lambda cls=cls: uniform(47, (40, 45), cls)),
+                    "k": Value(lambda cls=cls: _kernel_with_specials(48, (3, 3), cls)),
+                },
+            )
+        )
+        add(
+            Case(
+                f"convn.nonfinite.kernel3.{cls}.{shp}",
+                matlab="convn",
+                args=[Vol(In("a")), Vol(In("k")), shp],
+                python=py_convn,
+                out_roles=("vol",),
+                inputs={
+                    "a": Value(lambda cls=cls: uniform(49, (20, 21, 12), cls)),
+                    "k": Value(lambda cls=cls: _kernel_with_specials(50, (3, 3, 3), cls)),
+                },
+            )
+        )
+    add(
+        Case(
+            f"convn.nonfinite.swap.{cls}.full",
+            matlab="convn",
+            args=[In("a"), In("b"), "full"],
+            python=py_convn,
+            inputs={
+                "a": Value(lambda cls=cls: _with_specials(43, (3, 4), cls)),
+                "b": Value(lambda cls=cls: _dyadic(44, (5, 6), cls)),
+            },
+        )
+    )
+    add(
+        Case(
+            f"conv2.nonfinite.meet.{cls}",
+            matlab="conv2",
+            args=[In("a"), In("b"), "full"],
+            python=py_conv2,
+            inputs={
+                "a": Value(lambda cls=cls: _meeting(cls)[0]),
+                "b": Value(lambda cls=cls: _meeting(cls)[1]),
+            },
+        )
+    )
+add(
+    Case(
+        "conv2.swap.zeros.double.full",
+        matlab="conv2",
+        args=[In("a"), In("b"), "full"],
+        python=py_conv2,
+        inputs={
+            "a": Value(
+                lambda: np.asfortranarray(-np.abs(_dyadic(45, (3, 4), "double", 0.0)) - 0.25)
+            ),
+            "b": Value(
+                lambda: np.asfortranarray(
+                    np.pad(_dyadic(51, (3, 3), "double", 0.5), ((1, 1), (2, 1)))
+                )
+            ),
+        },
+    )
+)
+
+
 # Measured differences (no exact model yet), tolerances approved on 2026-11-13
 # (docs/parity/matlabcompat.md, row N5 of docs/parity/index.md): the largest distance in ulp and
 # the share of values that differ, each with a margin over the measurement on these cases.
@@ -818,6 +956,15 @@ def test_results_do_not_depend_on_the_thread_count(dt):
     k = _rand((3, 4, 5), np.float64)
     c = F.convn(v, k, "same", num_threads=1)
     assert np.array_equal(F.convn(v, k, "same", num_threads=4), c)
+    # the sums over the overlap (a kernel with Inf and NaN; a smaller array with them, swapped)
+    u = np.uint32 if dt == np.float32 else np.uint64
+    k[0, 1, 2], k[2, 3, 4] = np.inf, np.nan
+    c = F.convn(v, k, "full", num_threads=1)
+    assert np.array_equal(F.convn(v, k, "full", num_threads=4).view(u), c.view(u))
+    small = _rand((2, 3, 4), dt)
+    small[0, 1, 1], small[1, 2, 3] = -np.inf, np.nan
+    c = F.convn(small, v, "full", num_threads=1)
+    assert np.array_equal(F.convn(small, v, "full", num_threads=3).view(u), c.view(u))
 
 
 def _fma1(wj, xj, acc, dt):
@@ -1005,3 +1152,14 @@ def test_instruction_sets_give_the_same_bits(isa):
     ext.line_program_f32(x, out, 3, 50, 40, 50, w, prog, rowmap, 4, 9, 0, 0.0, 2, isa)
     ref = F._line_pass(x, w, 1, rows, 4, 50, 0, 0.0, 2)
     assert np.array_equal(out, ref)
+    # the sums over the overlap (convn's kernels with Inf or NaN), fused and plain
+    P = np.pad(_rand((4, 9, 11), np.float64, 9), ((1, 1), (2, 2), (3, 3)))
+    offs = np.array([(z, y, x) for z in range(3) for y in range(5) for x in range(7)], np.int64)
+    k = 0.5 + _rand((len(offs),), np.float64, 10)
+    k[[0, 17, 40]] = np.inf, np.nan, -np.inf
+    lo, hi = np.array([1, 2, 3], np.int64), np.array([5, 11, 14], np.int64)
+    for fused in (True, False):
+        o0, o1 = np.empty((4, 9, 11)), np.empty((4, 9, 11))
+        ext.taps_nd_inside_f64(P, o0, offs, k, fused, lo, hi, 2, 0)
+        ext.taps_nd_inside_f64(P, o1, offs, k, fused, lo, hi, 2, isa)
+        assert np.array_equal(o0.view(np.uint64), o1.view(np.uint64)), fused

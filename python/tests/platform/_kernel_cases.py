@@ -1265,6 +1265,29 @@ def _():
     return out
 
 
+@case("specials.conv_overlap")
+def _():
+    """convn and conv2 of kernels with Inf and NaN taps: sums over the overlap of the two arrays
+    only (no Inf * 0 with the zero padding), with MATLAB's NaN rules written out, so NaNs of
+    other bits meet here on purpose: the swapped roles of a kernel larger than the image (plain
+    sums) and kernels with such taps (fused)"""
+    from petakit5d.matlabcompat import filters as F
+
+    out = []
+    for dt in (np.float32, np.float64):
+        small = np.floor(double("sco", (3, 4), 3.0)).astype(dt)
+        small.reshape(-1)[[0, 5, 6, 9, 11]] = [dt(NAN), _payload_nan(dt), dt(np.inf), -np.inf, -0.0]
+        big = double("scb", (5, 6)).astype(dt)
+        big.reshape(-1)[[7, 20]] = [dt(NAN), _payload_nan(dt)]
+        out += [F.conv2(small, big), F.conv2(small, big, "same"), F.convn(small, big)]
+        img = double("sci", (6, 23, 31)).astype(dt)
+        img.reshape(-1)[[100, 2000]] = [_payload_nan(dt), dt(NAN)]
+        k = np.abs(double("sck", (3, 5, 4))).astype(dt)
+        k[0, 0, 0], k[1, 2, 1], k[2, 4, 3] = np.inf, _payload_nan(dt), -np.inf
+        out += [F.convn(img, k, "same"), F.convn(img, k, "full"), F.conv2(img[0], k[1], "full")]
+    return out
+
+
 @case("specials.deskew_infinities")
 def _():
     """the deskew/rotate warp and the skewed space interpolation of single data with

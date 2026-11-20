@@ -6,6 +6,8 @@
 //   axis as MATLAB's padarray pads (constant, replicate, symmetric, circular).
 // - taps_nd: an N-D correlation of a padded volume with a list of taps in a given order (one
 //   chain per output voxel, fused or plain).
+// - taps_nd_inside: taps_nd without the taps that read outside a box of the padded volume (convn
+//   and conv2 of kernels with Inf or NaN: MATLAB's sums cover the overlap only).
 // Every output value is computed by one thread in a fixed order, so the results do not depend
 // on the thread count. An invalid operation's NaN is x86's (MATLAB's) on every processor
 // (kernels.inc).
@@ -165,6 +167,34 @@ void bind_taps_nd(pk5d::cvolume<const T> P, pk5d::cvolume<T> out, i64_array offs
     }
 }
 
+template <typename T>
+void bind_taps_nd_inside(pk5d::cvolume<const T> P, pk5d::cvolume<T> out, i64_array offs,
+                         in_array<T> w, bool fused, i64_array lo, i64_array hi, int num_threads,
+                         int isa) {
+    pk5d::check_threads(num_threads);
+    isa = pick_isa(isa);
+    const i64 K = (i64)w.size();
+    if ((i64)offs.size() != 3 * K) throw std::invalid_argument("offs must be K x 3");
+    if (lo.size() != 3 || hi.size() != 3) throw std::invalid_argument("lo and hi: (z, y, x)");
+    const i64 pz = (i64)P.shape(0), py = (i64)P.shape(1), px = (i64)P.shape(2);
+    const i64 oz = (i64)out.shape(0), oy = (i64)out.shape(1), ox = (i64)out.shape(2);
+    const int64_t *o = offs.data();
+    for (i64 k = 0; k < K; k++) {
+        if (o[3 * k] < 0 || o[3 * k + 1] < 0 || o[3 * k + 2] < 0 || o[3 * k] + oz > pz ||
+            o[3 * k + 1] + oy > py || o[3 * k + 2] + ox > px)
+            throw std::invalid_argument("a tap reads outside the padded volume");
+    }
+    const i64 n[3] = {pz, py, px};
+    for (int a = 0; a < 3; a++)
+        if (lo.data()[a] < 0 || lo.data()[a] > hi.data()[a] || hi.data()[a] > n[a])
+            throw std::invalid_argument("the box lo .. hi must lie in P");
+    {
+        nb::gil_scoped_release release;
+        PK5D_FILT_CALL(isa, taps_nd_inside<T>, P.data(), py, px, out.data(), oz, oy, ox, o,
+                       w.data(), K, fused, lo.data(), hi.data(), num_threads);
+    }
+}
+
 }  // namespace
 
 NB_MODULE(PK5D_MODULE_NAME, m) {
@@ -184,4 +214,10 @@ NB_MODULE(PK5D_MODULE_NAME, m) {
     m.def("taps_nd_f64", &bind_taps_nd<double>, nb::arg("P").noconvert(), nb::arg("out").noconvert(),
           nb::arg("offs").noconvert(), nb::arg("w").noconvert(), nb::arg("fused"), nb::arg("num_threads"),
           nb::arg("isa") = -1);
+    m.def("taps_nd_inside_f32", &bind_taps_nd_inside<float>, nb::arg("P").noconvert(),
+          nb::arg("out").noconvert(), nb::arg("offs").noconvert(), nb::arg("w").noconvert(), nb::arg("fused"),
+          nb::arg("lo").noconvert(), nb::arg("hi").noconvert(), nb::arg("num_threads"), nb::arg("isa") = -1);
+    m.def("taps_nd_inside_f64", &bind_taps_nd_inside<double>, nb::arg("P").noconvert(),
+          nb::arg("out").noconvert(), nb::arg("offs").noconvert(), nb::arg("w").noconvert(), nb::arg("fused"),
+          nb::arg("lo").noconvert(), nb::arg("hi").noconvert(), nb::arg("num_threads"), nb::arg("isa") = -1);
 }

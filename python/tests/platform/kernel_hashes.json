@@ -29,6 +29,7 @@
   "reduce.sums_and_orders": "48c923565ad1f15c9a50",
   "resize.imresize": "262b9f4b7ed70c9278d8",
   "specials.blending": "1da6344a69ea58227805",
+  "specials.conv_overlap": "7ff3bc9adfa0b9db82d6",
   "specials.deskew": "12ccd56e28fa3ba8a2f1",
   "specials.deskew_infinities": "ed484163c1b09df2a5f4",
   "specials.filters": "f02646ed052ed4416645",

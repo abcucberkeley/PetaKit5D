@@ -377,4 +377,40 @@ PK5D_FILT_ISA void taps_nd(const T *P, i64 py, i64 px, T *out, i64 oz, i64 oy, i
     }
 }
 
+// taps_nd without the taps that read P outside the box lo .. hi (z, y, x; the image inside its
+// zero padding): MATLAB's convn and conv2 sum over the overlap of the two arrays only
+// (measured). That changes a value only where a tap is Inf or NaN (its product with a padded
+// zero is NaN; with a finite tap it is +-0, and a sum from +0 never turns -0), so only kernels
+// with such taps come here. Each operation's NaN is MATLAB's on every processor: a product's
+// the image value's before the tap's, a sum's the product's (a fused tap's factors') before the
+// running sum's, else x86's default NaN.
+template <typename T>
+PK5D_FILT_ISA void taps_nd_inside(const T *P, i64 py, i64 px, T *out, i64 oz, i64 oy, i64 ox,
+                                  const i64 *offs, const T *w, i64 K, bool fused, const i64 *lo,
+                                  const i64 *hi, int num_threads) {
+    if (oz == 0 || oy == 0 || ox == 0) return;
+#pragma omp parallel for schedule(static) num_threads(num_threads)
+    for (i64 row = 0; row < oz * oy; row++) {
+        const i64 z = row / oy, y = row % oy;
+        T *o = out + row * ox;
+        for (i64 x = 0; x < ox; x++) o[x] = T(0);
+        for (i64 k = 0; k < K; k++) {
+            const i64 sz = z + offs[3 * k], sy = y + offs[3 * k + 1], dx = offs[3 * k + 2];
+            if (sz < lo[0] || sz >= hi[0] || sy < lo[1] || sy >= hi[1]) continue;
+            const i64 x0 = std::max<i64>(0, lo[2] - dx), x1 = std::min<i64>(ox, hi[2] - dx);
+            const T *s = P + (sz * py + sy) * px + dx;
+            const T wk = w[k];
+            if (fused) {
+                for (i64 x = x0; x < x1; x++)
+                    o[x] = pk5d::x86_fma_nans(std::fma(s[x], wk, o[x]), s[x], wk, o[x]);
+            } else {
+                for (i64 x = x0; x < x1; x++) {
+                    const T p = pk5d::x86_nans(s[x] * wk, s[x], wk);
+                    o[x] = pk5d::x86_nans(p + o[x], p, o[x]);
+                }
+            }
+        }
+    }
+}
+
 }  // namespace PK5D_FILT_NS
