@@ -190,6 +190,10 @@ The artifacts are `petakit5d-<system>-<architecture>`, `sdist` and
   from both libraries; FFTW's file names trimmed by MSVC too), but delvewheel had copied in
   `vcruntime140.dll`, which a `py3` wheel's delvewheel doesn't know CPython ships: it is excluded
   now.
+- **GitHub, the third trial run:** every job passed, on all three systems: the wheels' test
+  commands (Linux 27 passed for each Python; macOS and Windows 15 passed, 12 skipped), the abi3
+  audits, the sdist with the wheel built from it, the add-on's three wheels, and the checks of
+  every wheel and the sdist.
 - Before: the abi3 wheel, installed into a fresh environment on a machine of another CPU
   generation than the build's, passed the full CPU suite with and without the golden store and
   with the add-on's wheel installed, and installed with its dependencies from PyPI on CPython
@@ -258,19 +262,18 @@ is: it remains the reference that the oracle cases were made from.
 | the wheel workflow (`.github/workflows/wheels.yml`) | in the same filter, with its history; in the layout commit: no `working-directory: python` (the add-on's `python/cpp/fft/exact` becomes `cpp/fft/exact`; its `../../../tools/check_wheel.py` stays), and the artifacts' paths without `python/` |
 | the oracle manifests (`tests/**/*.oracle.json`) | in `python/`, so with the history: they carry the MATLAB references that CI compares with |
 | the oracle harness (`tests/oracle_matlab`: the MATLAB side and `ORACLE_COMMIT`) | in `python/`. Making new references needs a MATLAB PetaKit5D tree at the commit `ORACLE_COMMIT` names (`PETAKIT5D_ORACLE_DIR`): a checkout of the MATLAB repository, which stays public. The docs name that repository and the commit |
-| the golden store (the full MATLAB outputs, `PETAKIT5D_GOLDEN_DIR`) | not in git; CI does not need it. **(user)** where it lives for other sites: kept local, or published as a versioned archive keyed by the oracle commit |
+| the golden store (the full MATLAB outputs, `PETAKIT5D_GOLDEN_DIR`) | not in git; CI does not need it. kept local; the user's decision of 2026-11-19 (published as a versioned archive keyed by the oracle commit only if another site needs it) |
 | the demo data (`PETAKIT5D_DEMO_DATA`) | not in git, as now |
 | docs, examples, benchmarks, the lock files, the MATLAB test map | in `python/` |
-| the exact FFT add-on (`cpp/fft/exact`) | in `python/`, as a package with its own license. **(user)** whether it stays a folder of the new repository or gets one of its own |
+| the exact FFT add-on (`cpp/fft/exact`) | in `python/`, as a package with its own license. it stays a folder of the new repository (the user, 2026-11-19) |
 | paths that say `python/` (`pip install ./python`, `python/docs/...`) | one commit in the new repository |
 
 ### What stays in PetaKit5D
 
 The MATLAB code, its tests (`tests/`), demos, `mcc/`, `setup.m`, `third_parties/` and the MATLAB
 workflow (`tests.yml`). The compiled MATLAB package is retired after the port's first release;
-`pk5d-master` and `pk5d mcc-shim` replace it for PetaKit5D-GUI and PyPetaKit5D. Once the new
-repository is live, `python/`, `python.yml` and `wheels.yml` in PetaKit5D are replaced by a
-pointer to it in the README **(user)**, so that the package has one home.
+`pk5d-master` and `pk5d mcc-shim` replace it for PetaKit5D-GUI and PyPetaKit5D. PetaKit5D's README gets no pointer to the new repository for now (the user, 2026-11-19), and
+`python/`, `python.yml` and `wheels.yml` stay in PetaKit5D until the user decides otherwise.
 
 ### The steps (rehearsed on a throw-away clone)
 
@@ -299,7 +302,9 @@ The checks after the filter:
 ## The release checklist
 
 1. **The libraries (user):** cpp-tiff 1.8.0 and cpp-zarr 1.8.0 are published, from the pinned
-   image. Raise the floors to 1.8.0 (dependencies and build requirements), check that their Linux
+   image. The user publishes them once the port's work is done. The candidates (cpp-tiff's build 6
+   and cpp-zarr's release build) carry their license metadata; their Linux and macOS code is the
+   code the port's suites passed with. Raise the floors to 1.8.0 (dependencies and build requirements), check that their Linux
    wheels still bundle `libgomp-e985bcbb.so.1.0.0`, and rerun the OpenMP runtime tests against
    them. On macOS this also ends the known crash of the 1.7.3 wheels.
 2. **The version:** `src/petakit5d/_version.py` to `0.1.0rcN` (then `0.1.0`); the add-on's only
@@ -315,11 +320,12 @@ The checks after the filter:
    folders, and a wheel built from it alone passes the smoke tests.
 6. **The licenses:** the tables above against the installed packages' metadata; new bundled
    libraries go into `THIRD_PARTY_NOTICES.md`.
-7. **The new repository (user):** its name and owner; the split as above; the CI in its new
+7. **The new repository (user):** its name and owner (to be decided later); the split as above; the CI in its new
    layout green there; `[project.urls]` filled in.
-8. **Publishing (user):** PyPI (petakit5d, and petakit5d-fftw apart from it), from CI with trusted
-   publishing, first to TestPyPI; the tag `v0.1.0rcN` on the release commit.
+8. **Publishing:** PyPI (petakit5d, and petakit5d-fftw apart from it), from CI with trusted
+   publishing, first to TestPyPI, after the libraries (agreed with the user, 2026-11-19); the
+   history's authors and their e-mail addresses stay as they are, and so does `[project] authors`; the tag `v0.1.0rcN` on the release commit.
 9. **The switch (user):** PetaKit5D-GUI and PyPetaKit5D move to `pk5d mcc-shim` / `pk5d-master`
    ([migration.md](migration.md)); the compiled MATLAB package is retired after the first release.
-10. **The old repository (user):** PetaKit5D's README points at the new one; whether PetaKit5D
+10. **The old repository (user):** no pointer in PetaKit5D's README for now; whether PetaKit5D
     still takes the 1.8.0 vendoring of cpp-tiff and cpp-zarr and its Windows demos.

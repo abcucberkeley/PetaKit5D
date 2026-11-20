@@ -117,14 +117,14 @@ By fate (all):
 
 | fate | tests |
 |---|---|
-| na | 84 |
-| na+oracle | 2 |
+| na | 92 |
+| na+oracle | 3 |
 | na+oracle+pytest | 2 |
-| na+pytest | 1 |
-| oracle | 219 |
-| oracle+pytest | 739 |
-| pending | 224 |
-| pytest | 487 |
+| na+pytest | 5 |
+| oracle | 221 |
+| oracle+pytest | 741 |
+| pending | 185 |
+| pytest | 509 |
 
 ## Classes
 
@@ -185,20 +185,20 @@ By fate (all):
 | io/ImageInfoTest | data | IO2 | 8 | 14 | no | pending 14 |
 | io/TiffIOTest | data | IO2 | 17 | 39 | no | pending 37, pytest 2 |
 | io/ZarrIOTest | data | IO2 | 18 | 37 | no | oracle+pytest 1, pending 35, pytest 1 |
-| isolation/IsolationHarnessTest | framework_design | E06 | 8 | 8 | no | pending 8 |
-| isolation/TaskStateLeakTest | framework_design | E06 | 7 | 15 | no | pending 15 |
+| isolation/IsolationHarnessTest | framework_design | E06 | 8 | 8 | yes | na 1, na+pytest 1, pytest 6 |
+| isolation/TaskStateLeakTest | framework_design | E06 | 7 | 15 | yes | na+pytest 3, pytest 12 |
 | pipeline/AutomaticProcessingTest | data | P02 | 26 | 26 | yes | oracle+pytest 6, pytest 20 |
 | pipeline/FilenameParsingTest | data | P01 | 6 | 6 | yes | na 1, oracle 3, oracle+pytest 2 |
 | pipeline/SettingFilesTest | data | P01 | 6 | 6 | no | oracle 2, oracle+pytest 1, pending 1, pytest 2 |
 | platform/MexFallbackTest | matlab_only | E04 | 15 | 15 | yes | na 15 |
-| platform/MexInputCheckTest | data | E04 | 15 | 15 | no | oracle 5, oracle+pytest 6, pending 4 |
+| platform/MexInputCheckTest | data | E04 | 15 | 15 | no | na+oracle 1, oracle 7, oracle+pytest 6, pending 1 |
 | platform/MexInventoryTest | matlab_only | E04 | 1 | 1 | yes | na 1 |
-| platform/MexLockTest | matlab_only | E04 | 2 | 2 | no | pending 2 |
-| platform/MexPackagingTest | matlab_only | E04 | 4 | 4 | no | na 4 |
+| platform/MexLockTest | matlab_only | E04 | 2 | 2 | yes | na 2 |
+| platform/MexPackagingTest | matlab_only | E04 | 4 | 4 | yes | na 4 |
 | platform/NoSlurmFixtureTest | framework_design | J01 | 1 | 1 | no | pending 1 |
-| platform/PathShadowingTest | matlab_only | E04 | 4 | 4 | no | na 4 |
-| platform/WaitsOfASecondTest | matlab_only | E04 | 5 | 5 | no | pending 5 |
-| point_detection/PointDetectionTest | data | C02 | 6 | 6 | no | pending 6 |
+| platform/PathShadowingTest | matlab_only | E04 | 4 | 4 | yes | na 4 |
+| platform/WaitsOfASecondTest | matlab_only | E04 | 5 | 5 | yes | na 5 |
+| point_detection/PointDetectionTest | data | C02 | 6 | 6 | yes | oracle+pytest 2, pytest 4 |
 | stitch/FeatherBlendingTest | data | K04 | 6 | 11 | yes | na 1, oracle 4, oracle+pytest 5, pytest 1 |
 | stitch/ImageListGenerationTest | data | S01 | 10 | 10 | no | oracle+pytest 7, pending 3 |
 | stitch/PhaseFlatFieldCorrectionTest | data | B07 | 1 | 1 | yes | oracle+pytest 1 |

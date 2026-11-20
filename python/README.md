@@ -103,9 +103,18 @@ Markers: `gpu` (skipped without a usable GPU), `cluster` (skipped unless
 `PETAKIT5D_ORACLE_DIR`, `PETAKIT5D_GOLDEN_DIR`, `PETAKIT5D_DEMO_DATA`,
 `PETAKIT5D_TEST_SLURM_CONFIG`, `PETAKIT5D_TEST_SLURM_SCRATCH`, `PETAKIT5D_TEST_FFTW`.
 
+## Citation
+
+petakit5d is the Python port of PetaKit5D. Please cite the PetaKit5D paper if you find the
+software useful for your research:
+
+`Ruan, X., Mueller, M., Liu, G., Görlitz, F., Fu, T., Milkie, D.E., Lillvis, J.L., Kuhn, A., Chong, J.G., Hong, J.L., Herr, C.Y.A., Hercule, W., Nienhaus, M., Killilea, A.N., Betzig, E. and Upadhyayula, S. Image processing tools for petabyte-scale light sheet microscopy data. Nature Methods 21, 2342–2352 (2024). https://doi.org/10.1038/s41592-024-02475-4`
+
 ## License
 
-BSD 3-Clause; see `LICENSE`. The notices of the third-party work the package derives from or
+BSD 3-Clause from the first release on; see `LICENSE`. (The history's first commits, of
+2026-11-11, carried a copy of the MATLAB repository's license file until it was replaced the same
+day; no release was made under it.) The notices of the third-party work the package derives from or
 bundles are in `THIRD_PARTY_NOTICES.md` (included with the package).
 
 The CPU FFTs use pocketfft (BSD 3-Clause, `cpp/fft/third_party/pocketfft/LICENSE.md`, included

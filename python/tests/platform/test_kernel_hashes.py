@@ -4,10 +4,10 @@ Linux x86-64 with ``python tests/platform/_kernel_cases.py --write``). A case th
 names the kernels whose bits differ on this system; ``--save`` on both systems and ``--compare``
 measure the difference.
 
-The cases in RECORDED (FFTs, dense LAPACK) are recorded, not pinned: their last bits follow the
-system's C library and BLAS. The cases in ARM_NAN are expected to fail where the CPU's default
-NaN is not x86's (ARM), until their kernels give the same NaN on both (_kernel_cases.py has
-why)."""
+The cases in RECORDED (FFTs, dense LAPACK, the detection's Anderson-Darling statistic) are
+recorded, not pinned: their last bits follow the system's C library and BLAS. The cases in
+ARM_NAN are expected to fail where the CPU's default NaN is not x86's (ARM), until their kernels
+give the same NaN on both (_kernel_cases.py has why)."""
 
 import importlib
 import json
@@ -24,17 +24,20 @@ import _kernel_cases as kc  # noqa: E402
 PINS = json.loads(kc.HASHES.read_text())
 PINNED = sorted(n for n in kc.CASES if n not in kc.RECORDED)
 MATLABCOMPAT = (
+    "correlation",
     "distance",
     "elementary",
     "fft",
     "filters",
     "graph",
+    "interp",
     "label",
     "lsq",
     "morphology",
     "neighbors",
     "reduce",
     "resize",
+    "signal",
     "stats",
     "warp",
 )

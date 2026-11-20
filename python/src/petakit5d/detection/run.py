@@ -1,0 +1,590 @@
+"""``XR_runDetection3D``: detection of every frame of a condition, the other channels read out at
+the master channel's detections, and the results in MATLAB's files (``Detection3D.mat`` with the
+struct array ``frameInfo``, ``Masks/dmask_<k>.tif``, an empty ``Amira/Detection`` folder).
+
+Measured as a black box from traced MATLAB runs and designed-input runs (task C02; no GPL
+source read): bit for bit on 14 real frames when given MATLAB's detector and fit outputs.
+``frameInfo`` keeps MATLAB's values (1-based positions), as the file holds them.
+
+Per frame k (1-based) of the master channel (the channel whose folder is ``data['source']``):
+the DS frame as double with zeros as NaN; ``estimate_background(vol, k)``; the lowSNR detector
+with ``'BackgroundInfo' [bg, thr]`` (``thr`` the camera's residual threshold, 3 for the demo's);
+then, for each other channel, ``'Ac'`` fits at the master's positions and ``'xyzAc'`` fits from
+them (default options: windows ``ceil(2 sigma)``, ``kLevel = norminv(0.975)``), and per entry
+the choice between them (``other_channel``).
+"""
+
+from __future__ import annotations
+
+import os
+
+import numpy as np
+
+__all__ = [
+    "FIELD_ORDER",
+    "CameraSettingsError",
+    "assemble_frame",
+    "camera_threshold",
+    "camera_type",
+    "dmask_name",
+    "frame_volume",
+    "run_detection",
+    "runner_sigma",
+]
+
+# frameInfo's fields in MATLAB's order
+FIELD_ORDER = (
+    "x",
+    "y",
+    "z",
+    "A",
+    "s",
+    "c",
+    "x_pstd",
+    "y_pstd",
+    "z_pstd",
+    "A_pstd",
+    "c_pstd",
+    "x_init",
+    "y_init",
+    "z_init",
+    "sigma_r",
+    "SE_sigma_r",
+    "RSS",
+    "pval_Ar",
+    "hval_Ar",
+    "hval_AD",
+    "isPSF",
+    "xCoord",
+    "yCoord",
+    "zCoord",
+    "amp",
+    "dRange",
+)
+# fields with one row per channel
+ROW_FIELDS = (
+    "x",
+    "y",
+    "z",
+    "A",
+    "c",
+    "x_pstd",
+    "y_pstd",
+    "z_pstd",
+    "A_pstd",
+    "c_pstd",
+    "sigma_r",
+    "SE_sigma_r",
+    "RSS",
+    "pval_Ar",
+    "hval_Ar",
+    "hval_AD",
+)
+_LOGICAL = ("hval_Ar", "hval_AD", "isPSF")
+_POS = ("x", "y", "z", "x_init", "y_init", "z_init")
+
+
+class CameraSettingsError(RuntimeError):
+    """MATLAB's error while finding the camera type (``identifier`` holds its id)"""
+
+    def __init__(self, identifier: str, message: str):
+        super().__init__(message)
+        self.identifier = identifier
+
+
+def _matlab_listing(folder: str) -> list[str]:
+    """the names MATLAB's ``dir(folder)`` lists on Linux, '.' and '..' included, in its order
+    (code point order, measured: '#name' comes before '.'); empty for a missing folder or ''"""
+    if folder == "" or not os.path.isdir(folder):
+        return []
+    try:
+        names = os.listdir(folder)
+    except OSError:
+        return []
+    return sorted([".", "..", *names])
+
+
+def camera_type(
+    source: str | os.PathLike,
+    *,
+    names: tuple[str, ...] = ("Orca", "Andor"),
+    classes: tuple[str, ...] = ("SCMOS", "EMCCD"),
+) -> str:
+    """``get_camera_type_from_setting_file(data)`` (the lab's code): from the channel folder
+    ``data.source`` upwards, the first folder whose listing (MATLAB's ``dir``, its first two
+    entries dropped as '.' and '..') has a name ending in 'settings.txt' (any case); that folder's
+    first such file; its first line starting with 'Camera Type' (any case, leading white space
+    skipped); the class of the last of ``names`` the line contains (any case), else ''.
+
+    MATLAB's errors are kept: a folder on the way that lists fewer than two entries (the walk
+    ends at '' for an absolute path, which ``dir`` lists as nothing) raises
+    ``MATLAB:subsdeldimmismatch``; a settings file without a 'Camera Type' line raises
+    ``MATLAB:TooManyOutputsDueToMissingBraces``."""
+    import re
+
+    sep = os.sep
+    parts = str(source).split(sep)
+    if parts and parts[-1] == "":
+        parts = parts[:-1]
+    found = None
+    for i in range(len(parts)):
+        cur = sep.join(parts[: len(parts) - i])
+        listing = _matlab_listing(cur)
+        if len(listing) < 2:
+            raise CameraSettingsError(
+                "MATLAB:subsdeldimmismatch", "Matrix index is out of range for deletion."
+            )
+        hits = [nm for nm in listing[2:] if re.search(r"settings\.txt$", nm, flags=re.IGNORECASE)]
+        if hits:
+            found = os.path.join(cur, hits[0])
+            break
+    if found is None:
+        raise CameraSettingsError(
+            "MATLAB:UndefinedFunction", "Unrecognized function or variable 'setting_filename'."
+        )
+    with open(found, "rb") as fh:
+        text = fh.read().decode("latin-1")
+    lines = [ln.lstrip(" \t\b") for ln in text.split("\n")]
+    match = [ln for ln in lines if re.match(r"Camera Type", ln, flags=re.IGNORECASE)]
+    if not match:
+        raise CameraSettingsError(
+            "MATLAB:TooManyOutputsDueToMissingBraces",
+            "Insufficient number of outputs from right hand side of equal sign to satisfy "
+            "assignment.",
+        )
+    cls = ""
+    for nm, c in zip(names, classes, strict=True):
+        if nm.lower() in match[0].lower():
+            cls = c
+    return cls
+
+
+def camera_threshold(
+    source: str | os.PathLike, *, scmos: float = 3.0, emccd: float = 65.0
+) -> float:
+    """``XR_get_camera_standard_deviation_threshold(data)`` (the lab's code): the detector's
+    residual sigma threshold from the camera class, ``SCMOS_DC_Thresh`` 3 for 'SCMOS',
+    ``EMCCD_DC_Thres`` 65 for 'EMCCD', NaN when the class is unknown"""
+    from petakit5d.core.dtypes import NAN
+
+    cls = camera_type(source)
+    if cls == "SCMOS":
+        return float(scmos)
+    if cls == "EMCCD":
+        return float(emccd)
+    return float(NAN)
+
+
+def frame_volume(raw) -> np.ndarray:
+    """a DS frame as the runner uses it: double, zeros as NaN (MATLAB's)"""
+    from petakit5d.core.dtypes import NAN
+
+    v = np.asarray(raw).astype(np.float64)
+    v[v == 0] = NAN
+    return v
+
+
+def runner_sigma(sigma) -> np.ndarray:
+    """the runner's sigma check ``if any(sigma < 1.1)`` with MATLAB's meaning: ``any`` along the
+    first non-singleton dimension (per column of an nCh x 2 matrix), and ``if`` of a vector is
+    true only when every element is; then every value below 1.1 becomes 1.1"""
+    s = np.array(sigma, dtype=np.float64, ndmin=2)
+    lt = s < 1.1
+    dims = [d for d in range(lt.ndim) if lt.shape[d] != 1]
+    v = np.atleast_1d(lt.any(axis=dims[0]) if dims else lt.ravel())
+    if v.size and bool(np.all(v)):
+        s = np.where(lt, 1.1, s)
+    return s
+
+
+def to_matlab_fields(ps: dict) -> dict:
+    """detections (``detect.point_source_detection``'s form) as MATLAB's struct: 1 x n rows,
+    1-based positions (exact: x + 1 of a position)"""
+    out = {}
+    for k, v in ps.items():
+        a = np.asarray(v)
+        if k in _POS:
+            a = a + 1
+        out[k] = a if a.ndim == 2 else a.reshape(1, -1)
+    return out
+
+
+def _mmin(v) -> int:
+    """MATLAB's ``[~, i] = min(v)``: the first minimum, NaN skipped (the first entry if all NaN)"""
+    v = np.asarray(v, dtype=np.float64)
+    ok = ~np.isnan(v)
+    if not ok.any():
+        return 0
+    return int(np.nonzero(v == np.min(v[ok]))[0][0])
+
+
+def _ball_query(P: np.ndarray, radius: float) -> list[np.ndarray]:
+    """per point, the points within ``radius`` (itself included), by increasing distance (ties
+    by index)"""
+    from scipy.spatial import cKDTree
+
+    out = []
+    if P.shape[0] == 0:
+        return out
+    for i, b in enumerate(cKDTree(P).query_ball_point(P, radius)):
+        b = np.asarray(b, dtype=np.int64)
+        d = np.sqrt(np.sum((P[b] - P[i]) ** 2, axis=1))
+        b, d = b[d <= radius], d[d <= radius]
+        out.append(b[np.lexsort((b, d))])
+    return out
+
+
+def other_channel(
+    det: dict, ac: dict, xyz: dict, sigma_xy: float, radius: float = 0.5
+) -> np.ndarray:
+    """which fit each master detection takes in another channel (MATLAB forms of the fields):
+    -1 its Ac fit, j >= 0 the xyzAc fit of entry j. Candidates: xyzAc fits whose xy shift from
+    the master's position is below ``2 sigma_xy`` and whose A exceeds the Ac fit's; in every ball
+    of ``radius`` among the candidates (in query order) with more than one member, the lowest-RSS
+    fit goes to the member whose master position is nearest to it (later balls overwrite) and
+    the other members take their Ac fit."""
+    F = lambda d, k: np.asarray(d[k], dtype=np.float64).ravel()  # noqa: E731
+    M = np.stack([F(det, "x"), F(det, "y"), F(det, "z")], axis=1)
+    Q = np.stack([F(xyz, "x"), F(xyz, "y"), F(xyz, "z")], axis=1)
+    n = M.shape[0]
+    src = np.full(n, -1, dtype=np.int64)
+    with np.errstate(invalid="ignore"):
+        dxy = np.sqrt((Q[:, 0] - M[:, 0]) ** 2 + (Q[:, 1] - M[:, 1]) ** 2)
+        cand = np.nonzero((dxy < 2.0 * float(sigma_xy)) & (F(xyz, "A") > F(ac, "A")))[0]
+    rss = F(xyz, "RSS")
+    src[cand] = cand
+    marked = np.zeros(n, dtype=bool)
+    for o in _ball_query(Q[cand], radius):
+        if len(o) < 2:
+            continue
+        ent = cand[o]
+        best = ent[_mmin(rss[ent])]
+        rcv = ent[_mmin(np.sqrt(np.sum((M[ent] - Q[best]) ** 2, axis=1)))]
+        src[rcv] = best
+        marked[ent[ent != rcv]] = True
+    src[marked] = -1
+    return src
+
+
+def _drange(vol: np.ndarray) -> np.ndarray:
+    v = frame_volume(vol)
+    return np.array([[np.nanmin(v), np.nanmax(v)]])
+
+
+def dmask(mask: np.ndarray, det) -> np.ndarray:
+    """uint8 (z, y, x): 255 on the mask's components (26-connected) that hold a detection's
+    starting voxel (1-based ``x_init ...`` of the MATLAB fields); the whole mask without
+    detections"""
+    from scipy import ndimage
+
+    m = np.asarray(mask, dtype=bool)
+    if det is None:
+        return m.astype(np.uint8) * 255
+    lab, _ = ndimage.label(m, structure=np.ones((3, 3, 3), dtype=bool))
+    idx = [
+        np.asarray(det[k], dtype=np.float64).ravel().astype(np.int64) - 1
+        for k in ("z_init", "y_init", "x_init")
+    ]
+    hit = np.unique(lab[tuple(idx)])
+    hit = hit[hit > 0]
+    return (np.isin(lab, hit) & m).astype(np.uint8) * 255
+
+
+def dmask_name(k: int, nframes: int) -> str:
+    """``dmask_<k>.tif``, k zero-padded to the digits of the frame count (dmask_01 of 11)"""
+    return f"dmask_{k:0{len(str(int(nframes)))}d}.tif"
+
+
+def assemble_frame(
+    det, mask, vols, sigma, fits: dict, z_aniso: float, master: int = 0
+) -> tuple[dict, np.ndarray]:
+    """one frame's ``frameInfo`` entry and dmask. ``det``: the master's detections (MATLAB
+    fields, ``to_matlab_fields``) or None; ``vols``: each channel's DS frame (z, y, x);
+    ``sigma`` after ``runner_sigma``, a row per channel (``s`` holds it whole, rows past the
+    channels too, as MATLAB's does); ``fits``: {channel: (Ac fields, xyzAc fields)}"""
+    sigma = np.array(sigma, dtype=np.float64, ndmin=2)
+    nch = len(vols)
+    if det is None:
+        out = {k: np.zeros((0, 0)) for k in FIELD_ORDER}
+        out["s"] = sigma.copy()
+        out["dRange"] = [
+            _drange(v) if ch == master else np.array([[float(np.min(v[0])), float(np.max(v[0]))]])
+            for ch, v in enumerate(vols)
+        ]
+        return out, dmask(mask, None)
+    n = np.asarray(det["x"]).size
+    out: dict = {}
+    choice = {ch: other_channel(det, ac, xyz, sigma[master, 0]) for ch, (ac, xyz) in fits.items()}
+    for k in ROW_FIELDS:
+        a = np.zeros((nch, n), dtype=bool if k in _LOGICAL else np.float64)
+        a[master] = np.asarray(det[k]).ravel()
+        for ch, (ac, xyz) in fits.items():
+            src = choice[ch]
+            row = np.asarray(ac[k]).ravel().copy()
+            take = src >= 0
+            row[take] = np.asarray(xyz[k]).ravel()[src[take]]
+            a[ch] = row
+        out[k] = a
+    out["s"] = sigma.copy()
+    for k in ("x_init", "y_init", "z_init"):
+        out[k] = np.asarray(det[k], dtype=np.float64).reshape(1, n)
+    isp = np.zeros((nch, n), dtype=bool)
+    isp[master] = np.asarray(det["isPSF"]).ravel()
+    for ch in fits:
+        isp[ch] = ~out["hval_AD"][ch]
+    out["isPSF"] = isp
+    out["xCoord"] = np.stack([out["x"][master], out["x_pstd"][master]], axis=1)
+    out["yCoord"] = np.stack([out["y"][master], out["y_pstd"][master]], axis=1)
+    out["zCoord"] = np.stack([out["z"][master], out["z_pstd"][master]], axis=1) * z_aniso
+    out["amp"] = np.stack([out["A"][master], out["A_pstd"][master]], axis=1)
+    out["dRange"] = [_drange(v) for v in vols]
+    return {k: out[k] for k in FIELD_ORDER}, dmask(mask, det)
+
+
+def detect_frame(
+    vols: list,
+    k: int,
+    sigma: np.ndarray,
+    z_aniso: float,
+    master: int = 0,
+    residual_sigma_threshold: float = 3.0,
+    num_threads: int | None = None,
+    *,
+    detection_method: str = "lowSNR",
+    background_correction: bool = True,
+    window=None,
+) -> tuple[dict, np.ndarray]:
+    """``frameInfo`` entry and dmask of frame ``k`` (1-based; the background's seed) from the
+    channels' DS frames ``vols`` (as read, (z, y, x)); ``detection_method`` 'lowSNR'
+    (``XR_pointSourceDetection3D_3`` after the background estimate) or 'speedup'
+    (``XR_pointSourceDetection3D``, redundancy radius 0.5, no background estimate);
+    ``window``: the detector's ``WindowSize`` (empty: from sigma)"""
+    from petakit5d.detection import detect as _d
+    from petakit5d.detection import fit as _fit
+
+    V = [frame_volume(v) for v in vols]
+    sig = runner_sigma(sigma)
+    if detection_method == "speedup":
+        ps, mask = _d.point_source_detection_speedup(
+            V[master],
+            sig[master],
+            mode="xyzAc",
+            alpha=0.05,
+            remove_redundant_fits=True,
+            redundancy_radius=0.5,
+            window=window,
+            background_correction=background_correction,
+            num_threads=num_threads,
+        )
+    elif detection_method == "lowSNR":
+        bi = _d.estimate_background(V[master], k)
+        ps, mask = _d.point_source_detection(
+            V[master],
+            sig[master],
+            window=window,
+            background_correction=background_correction,
+            background_info=np.r_[bi, residual_sigma_threshold],
+            residual_sigma_threshold=residual_sigma_threshold,
+            num_threads=num_threads,
+        )
+    else:
+        raise NotImplementedError(
+            f"DetectionMethod {detection_method!r}: 'lowSNR' and 'speedup' are ported"
+        )
+    if np.asarray(ps["x"]).size == 0:
+        return assemble_frame(None, mask, vols, sig, {}, z_aniso, master)
+    P = np.stack([np.asarray(ps[c], dtype=np.float64) for c in ("x", "y", "z")], axis=1)
+    fits = {}
+    for ch in range(len(V)):
+        if ch == master:
+            continue
+        nan = np.full(P.shape[0], np.nan)
+        ac = _fit.fit_gaussians3d(V[ch], P, nan, sig[ch], nan, "Ac", num_threads=num_threads)
+        xyz = _fit.fit_gaussians3d(
+            V[ch], P, ac["A"], sig[ch], ac["c"], "xyzAc", num_threads=num_threads
+        )
+        fits[ch] = (to_matlab_fields(ac), to_matlab_fields(xyz))
+    return assemble_frame(to_matlab_fields(ps), mask, vols, sig, fits, z_aniso, master)
+
+
+def _strings(v) -> list[str]:
+    """a path or MATLAB's cell of paths (any shape, column-major) as a list of str"""
+    if isinstance(v, str | os.PathLike):
+        return [os.fspath(v)]
+    if isinstance(v, np.ndarray):
+        return [os.fspath(p) if isinstance(p, os.PathLike) else str(p) for p in v.ravel(order="F")]
+    return [os.fspath(p) if isinstance(p, os.PathLike) else str(p) for p in v]
+
+
+def _frame_paths(v) -> list[list[str]]:
+    """``framePathsDS``: per channel its frames' paths (MATLAB's 1 x nCh cell of nFrames x 1
+    cells, ``condition.Movie``'s list of columns, or one channel's paths)"""
+    items = list(v.ravel(order="F")) if isinstance(v, np.ndarray) and v.dtype == object else list(v)
+    if items and all(isinstance(p, str | os.PathLike) for p in items):
+        return [_strings(items)]
+    return [_strings(c) for c in items]
+
+
+def _movies(data) -> list[dict]:
+    """the condition's movies as MATLAB's structs: one movie's dict, a ``StructArray`` (its
+    elements in MATLAB's linear order), or a sequence of dicts or ``condition.Movie``s"""
+    from collections.abc import Mapping
+
+    from petakit5d.io.matfile import StructArray
+
+    if isinstance(data, StructArray):
+        return data.ravel()
+    if isinstance(data, list | tuple):  # a condition.Condition too (registered as a Mapping)
+        return [m.to_matlab() if hasattr(m, "to_matlab") else dict(m) for m in data]
+    if isinstance(data, Mapping):
+        return [dict(data)]
+    if hasattr(data, "to_matlab"):
+        return [data.to_matlab()]
+    raise TypeError(f"run_detection: data is a struct or struct array of movies, not {type(data)}")
+
+
+def _results_paths(results_path, movies: list[dict]) -> list[str]:
+    """each movie's results folder: by default ``[source 'Analysis' filesep]``, else a cell
+    (list) of one folder per movie"""
+    if results_path is None:
+        return [str(m["source"]) + "Analysis" + os.sep for m in movies]
+    if isinstance(results_path, str | os.PathLike):
+        raise TypeError(
+            "run_detection: results_path is a list of folders, one per movie (MATLAB refuses a "
+            "char 'ResultsPath': it must be a cell)"
+        )
+    paths = _strings(results_path)
+    if len(paths) < len(movies):
+        raise IndexError(
+            f"Index exceeds the number of array elements. Index must not exceed {len(paths)}."
+        )
+    return paths[: len(movies)]
+
+
+def run_detection(
+    data,
+    sigma=None,
+    results_path=None,
+    *,
+    overwrite: bool = False,
+    window_size=None,
+    mode: str = "xyzAc",
+    fit_mixtures: bool = False,
+    max_mixtures: int = 3,
+    detection_method: str = "speedup",
+    background_correction: bool = False,
+    write_amira: bool = True,
+    frames=None,
+    residual_sigma_threshold: float | None = None,
+    num_threads: int | None = None,
+) -> list[list[dict] | None]:
+    """``XR_runDetection3D(data, 'Sigma', sigma, 'Overwrite', ow, 'WindowSize', ws,
+    'ResultsPath', rp, 'Mode', mode, 'FitMixtures', fm, 'MaxMixtures', mm, 'DetectionMethod',
+    method, 'BackgroundCorrection', bc, 'WriteAmira', wa)``: every frame of every movie of a
+    condition. Measured as a black box: the defaults, the folders, the skipping.
+
+    ``data``: the condition as ``condition.load_condition_data`` gives it, one movie's dict or a
+    1 x n ``StructArray`` (or a list of movies); per movie MATLAB's fields ``source`` (the master
+    channel's folder), ``channels``, ``framePathsDS`` and ``zAniso``. ``sigma``: nCh x 2
+    ``[sigmaXY sigmaZ]``, a row per channel (``frameInfo.s`` holds it whole, rows past the
+    channels too). ``results_path``: a list of one folder per movie (MATLAB refuses a char
+    array), by default ``[source 'Analysis' filesep]``. As MATLAB does, ``Detection3D.mat``
+    goes to ``results_path + 'Detection3D.mat'`` (a folder without the trailing separator gives
+    a file beside it) and the masks to ``<results_path>/Masks/dmask_<k>.tif``; with
+    ``overwrite`` false (the default) a movie whose ``Detection3D.mat`` exists is skipped (None
+    in the result). ``detection_method``: 'speedup' (MATLAB's default) or 'lowSNR'; the ported
+    settings are ``window_size`` empty, ``mode`` 'xyzAc' and ``fit_mixtures`` false
+    (``max_mixtures`` matters only with mixtures). ``write_amira``: MATLAB's Amira writer fails
+    and writes nothing; an empty ``Amira/Detection`` folder stays. ``frames``: only these frames
+    (1-based; the port's); ``residual_sigma_threshold``: by default the camera's, as MATLAB finds
+    it from the settings file above ``source`` (``camera_threshold``: 3 for sCMOS cameras).
+    Returns per movie its ``frameInfo`` entries."""
+    if sigma is None or np.size(sigma) == 0:
+        raise ValueError("run_detection: give sigma (MATLAB asks for it interactively)")
+    if mode != "xyzAc":
+        raise NotImplementedError(f"run_detection: Mode {mode!r}: 'xyzAc' is ported")
+    if bool(np.asarray(fit_mixtures).reshape(-1)[0]):
+        raise NotImplementedError("run_detection: FitMixtures true is not ported")
+    if detection_method not in ("speedup", "lowSNR"):
+        raise NotImplementedError(
+            f"run_detection: DetectionMethod {detection_method!r}: 'speedup' and 'lowSNR' are "
+            "ported"
+        )
+    if window_size is not None and np.size(window_size) != 0:
+        # MATLAB's detectors take 'WindowSize' otherwise than the port's window (measured: 4,830
+        # detections against 3,128 for [2 2] on a demo frame)
+        raise NotImplementedError("run_detection: WindowSize: the default (empty) is ported")
+    movies = _movies(data)
+    paths = _results_paths(results_path, movies)
+    out: list[list[dict] | None] = []
+    for mv, rp in zip(movies, paths, strict=True):
+        if not overwrite and os.path.isfile(rp + "Detection3D.mat"):
+            out.append(None)
+            continue
+        out.append(
+            _run_movie(
+                mv,
+                sigma,
+                rp,
+                window_size=window_size,
+                detection_method=detection_method,
+                background_correction=bool(background_correction),
+                write_amira=write_amira,
+                frames=frames,
+                residual_sigma_threshold=residual_sigma_threshold,
+                num_threads=num_threads,
+            )
+        )
+    return out
+
+
+def _run_movie(
+    data: dict,
+    sigma,
+    results_path: str,
+    *,
+    window_size,
+    detection_method: str,
+    background_correction: bool,
+    write_amira: bool,
+    frames,
+    residual_sigma_threshold,
+    num_threads,
+) -> list[dict]:
+    """one movie of ``run_detection``"""
+    from petakit5d.io import matfile, read_tiff, write_tiff
+
+    chans = [os.path.normpath(c) for c in _strings(data["channels"])]
+    src = os.path.normpath(str(data["source"]))
+    master = chans.index(src) if src in chans else 0
+    paths = _frame_paths(data["framePathsDS"])
+    nframes = len(paths[master])
+    sel = range(1, nframes + 1) if frames is None else [int(f) for f in frames]
+    thr = residual_sigma_threshold
+    if thr is None:
+        thr = camera_threshold(data["source"])
+    masks = results_path + os.sep + "Masks"
+    os.makedirs(masks, exist_ok=True)
+    if write_amira:
+        os.makedirs(os.path.join(results_path, "Amira", "Detection"), exist_ok=True)
+    entries = []
+    for k in sel:
+        vols = [read_tiff(paths[ch][k - 1]) for ch in range(len(paths))]
+        entry, dm = detect_frame(
+            vols,
+            k,
+            sigma,
+            float(np.asarray(data["zAniso"]).reshape(-1)[0]),
+            master,
+            float(thr),
+            num_threads,
+            detection_method=detection_method,
+            background_correction=background_correction,
+            window=window_size,
+        )
+        write_tiff(dm, os.path.join(masks, dmask_name(k, nframes)))
+        entries.append(entry)
+    rows = [{f: (e[f] if f != "dRange" else list(e[f])) for f in FIELD_ORDER} for e in entries]
+    fi = matfile.StructArray((1, len(rows)), FIELD_ORDER, rows)
+    matfile.write_mat(results_path + "Detection3D.mat", {"frameInfo": fi}, version="7.3")
+    return entries

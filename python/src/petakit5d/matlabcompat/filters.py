@@ -10,8 +10,10 @@ multiply-adds, which MATLAB's code chooses by the pass and by the place of the o
 - ``convn``, ``conv2``: one fused multiply-add chain per output over the kernel in MATLAB's
   column-major order (``conv2``'s order; ``convn`` with a 3-D kernel visits z slowest, x
   descending, y fastest); single data with a single kernel; a kernel larger than the image in
-  every dimension swaps the roles and adds plainly. ``conv2(u, v, A)`` filters the columns with
-  ``u``, then the rows with ``v``.
+  every dimension swaps the roles and adds plainly. The sums cover the overlap of the two arrays
+  only, from +0: with Inf or NaN in a tap, the taps outside the image are left out (no Inf * 0
+  with the zero padding), and a product takes the image value's NaN before the tap's.
+  ``conv2(u, v, A)`` filters the columns with ``u``, then the rows with ``v``.
 - ``imfilter`` with a vector kernel (and so every pass of ``imgaussfilt3``): along MATLAB's rows
   (x) and planes (z) a fused chain in the correlation's order; along the columns (y, MATLAB's
   contiguous dimension) fused chains whose tap order MATLAB's vector code sets by the row: the
@@ -45,6 +47,9 @@ its last vectors (double 7 taps or more, single 11 or more; 'full' from 5 taps),
 small 2-D kernels and imfilter's general 2-D and 3-D kernels (MATLAB's tap order there not
 measured), imgaussfilt's separable path for kernels of 21 or more taps (conv2's long kernels),
 the frequency domain path and edgetaper (rounding level: half spectra of ``petakit5d.fft``).
+Not covered by oracle cases, and not MATLAB's last bits (parity row N14): ``convn`` and ``conv2``
+of small arrays, where MATLAB adds plain products over the overlap (``docs/platforms.md``,
+Known problems).
 """
 
 from __future__ import annotations
@@ -599,8 +604,17 @@ def _conv_common(a: np.ndarray, b: np.ndarray, shape: str, nt: int, order: str) 
     w = np.array([Bk[t] for t in taps], dtype=dt) if taps else np.zeros(0, dtype=dt)
     out = np.zeros(full, dtype=dt)
     if A.size and Bk.size:
-        fn = _ext().taps_nd_f64 if dt == np.float64 else _ext().taps_nd_f32
-        fn(np.ascontiguousarray(P), out, offs.reshape(-1, 3), w, not swap, nt)
+        ext = _ext()
+        if np.isfinite(w).all():
+            fn = ext.taps_nd_f64 if dt == np.float64 else ext.taps_nd_f32
+            fn(np.ascontiguousarray(P), out, offs.reshape(-1, 3), w, not swap, nt)
+        else:
+            # MATLAB sums over the overlap only: a tap that would read the zero padding is left
+            # out, which matters only for Inf and NaN taps (Inf * 0)
+            lo = np.array([k - 1 for k in nb], dtype=np.int64)
+            hi = lo + np.array(na, dtype=np.int64)
+            fn = ext.taps_nd_inside_f64 if dt == np.float64 else ext.taps_nd_inside_f32
+            fn(np.ascontiguousarray(P), out, offs.reshape(-1, 3), w, not swap, lo, hi, nt)
     na0 = np.asarray(a).shape
     na0 = (1,) * (nd - len(na0)) + na0
     nb0 = (1,) * (nd - np.ndim(b)) + np.shape(b)

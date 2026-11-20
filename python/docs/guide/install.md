@@ -36,6 +36,43 @@ toolchains of each system are in [platforms.md](../platforms.md) and
 in one process (the second one imported, on its first write). Linux and Windows are not
 affected. The fix belongs to those packages ([platforms.md](../platforms.md), "Known problems").
 
+## Windows: long paths
+
+Windows limits a path to 260 characters, the terminating null included, unless long paths are
+enabled for the machine, and they are off by default. Past the limit the package's file code
+(folders, MATLAB-format files, copies) and cpp-tiff's writer fail: `FileNotFoundError`
+(`[WinError 206] The filename or extension is too long`, or `[Errno 2] No such file or
+directory`) or cpp-tiff's `RuntimeError: Failed to write "..."`.
+
+- **MATLAB-style names in deep folders reach the limit.** A raw file's name such as
+  `Scan_Iter_0000_0000_CamA_ch0_CAM1_stack0000_488nm_0000000msec_0000000000msecAbs_000x_000y_000z_0000t.tif`
+  has 104 characters, and its results get longer names in subfolders of the data folder
+  (`matlab_decon\decon_info\`, `MIPs\`, ...): a data folder of 100 to 150 characters is enough to
+  reach the limit.
+- **Results need 5 characters more.** The package writes each result under a temporary name in
+  its folder and renames it when it is complete (`<name>_<uuid>`, with 4 characters of the uuid
+  on Windows, as MATLAB has it). So without long paths a result's final path must stay below 255
+  characters, not 260: one of 255 already fails at its temporary name. A zarr array's folder
+  needs more room still, below about 220 characters: its `.zarray` is written under a name 32
+  characters longer first.
+
+Enabling long paths removes the limit, for results and temporary names alike. Enable them once
+per machine, as an administrator, in PowerShell (the second command shows the setting, `0x1`
+when on):
+
+```
+New-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem" `
+    -Name LongPathsEnabled -Value 1 -PropertyType DWORD -Force
+reg query HKLM\SYSTEM\CurrentControlSet\Control\FileSystem /v LongPathsEnabled
+```
+
+or with the group policy "Enable Win32 long paths" (Computer Configuration > Administrative
+Templates > System > Filesystem), or the "Disable path length limit" button at the end of the
+python.org installer. Python is long-path aware, so the package and the libraries it calls take
+longer paths in Python processes started afterwards (a restart makes sure every program sees the
+setting). GitHub's Windows runners have long paths on, and the test suite passes there with paths
+of more than 300 characters.
+
 ## Optional extras
 
 Each extra adds the dependencies of a group of functions. Without it the rest of the package

@@ -1090,6 +1090,31 @@ def test_fdlibm_pow_kernel_equals_elementary_power():
         ), y
 
 
+def test_fdlibm_pow_kernel_scales_subnormal_results_as_power():
+    """the kernel's pow below the normal range: fdlibm's scalbn (the exponent in the bits, then
+    one multiplication by 2^-54), as elementary.power, not the C runtime's ldexp (Windows 10's
+    truncates there), so the two give the same bits on every system; bases whose cubes and other
+    powers fall across the subnormal range, down to the smallest subnormal and to 0"""
+    from petakit5d.matlabcompat import elementary
+
+    j = np.arange(6000)
+    m = 1 + j * 2.0**-13  # exact significands, times powers of two with normal results (exact)
+    cases = [
+        (3.0, np.ldexp(m, (-342 - j % 17).astype(np.int32))),
+        (2.5, np.ldexp(m, (-410 - j % 22).astype(np.int32))),
+        (-1.5, np.ldexp(m, (683 + j % 35).astype(np.int32))),
+        (7.0, np.ldexp(m, (-147 - j % 8).astype(np.int32))),
+    ]
+    sub = 0
+    for y, x in cases:
+        out = np.empty_like(x)
+        _ext.fdlibm_pow(x, y, out)
+        want = np.asarray(elementary.power(x, y))
+        assert np.array_equal(out.view(np.uint64), want.view(np.uint64)), y
+        sub += int(np.sum((out > 0) & (out < 2.0**-1022)))
+    assert sub > 20000
+
+
 def _rows(n_in, n_out, scale, kernel, aa):
     w, ind = R.contributions(n_in, n_out, scale, kernel, None, aa)
     return w, ind

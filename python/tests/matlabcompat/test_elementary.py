@@ -9,6 +9,9 @@ tukeywin (r >= 1) differs in the last bit for some n above 11: only n up to 11 a
 MATLAB test covers these functions alone.
 """
 
+import math
+from fractions import Fraction
+
 import numpy as np
 import pytest
 
@@ -756,6 +759,153 @@ def test_power_rules_and_class():
     assert E.power(s, np.array([2.5, 1.5])).dtype == np.float32
     assert E.power(np.float32(0.99), np.arange(1.0, 4.0)).dtype == np.float32
     assert E.power(2.0, np.float32([0.5, 1.5])).dtype == np.float32
+
+
+# -- power's subnormal results: fdlibm's scalbn, not the C runtime's ldexp ---------------------
+
+_LDEXP = np.ldexp  # NumPy's: the C runtime's ldexp on CPUs without NumPy's AVX-512 loop
+_TINY = 2.0**-1022
+
+
+def _bits_of_units(u) -> np.ndarray:
+    """doubles of u units of 2^-1074 (u <= 2^53): their bit patterns are the counts"""
+    return np.asarray(u, dtype=np.uint64).view(np.float64)
+
+
+def _ldexp_like(rnd):
+    """np.ldexp with its subnormal double results rounded by ``rnd`` (Fraction -> int) from
+    exact arithmetic, and its other results NumPy's (exact: a power of two moves a normal
+    value; single results as they are)"""
+
+    def ldexp(x, n, *args, **kwargs):
+        r = np.array(_LDEXP(x, n, *args, **kwargs))
+        if r.dtype != np.float64:
+            return r[()] if r.ndim == 0 else r
+        xa, na = np.broadcast_arrays(np.asarray(x, dtype=np.float64), np.asarray(n))
+        flat, fx, fn = r.reshape(-1), xa.reshape(-1), na.reshape(-1)
+        for i in np.flatnonzero((np.abs(flat) <= _TINY) & (fx != 0) & np.isfinite(fx)):
+            exact = abs(Fraction(float(fx[i])) * Fraction(2) ** int(fn[i]))
+            if exact < _TINY:
+                v = float(_bits_of_units([rnd(exact * Fraction(2) ** 1074)])[0])
+                flat[i] = math.copysign(v, fx[i])
+        return r[()] if r.ndim == 0 else r
+
+    return ldexp
+
+
+# Windows 10's C runtime (ucrtbase.dll 10.0.19041, measured 2026-11-19): subnormal results
+# truncated toward zero; and a correctly rounded one (Fraction's round: ties to even)
+_windows10_ldexp = _ldexp_like(lambda f: f.numerator // f.denominator)
+_exact_ldexp = _ldexp_like(round)
+
+
+def _hi_lo(z: float, n: int) -> tuple[int, int]:
+    """e_pow.c's high word of z with n added to its exponent, and its low word"""
+    hi, lo = E._words(np.array([z]))
+    return int(hi[0]) + (n << 20), int(lo[0])
+
+
+def test_subnormal_results_are_rounded_once_as_in_exact_arithmetic():
+    """e_pow.c's last step below the normal range, for one value (fdlibm's scalbn: the exponent
+    plus 54 into the bits, then one multiplication by 2^-54) and element-wise (the value in units
+    of 2^-1074, exact, plus 2^52: one IEEE addition), against exact rational arithmetic: z 2^n
+    rounded to nearest, ties to even, for z in [0.5, 1) and [1, 2) with random significands and
+    those at the rounding boundaries (the dropped bits just below, at and just above one half,
+    all ones, none), for every exponent field from 0 down to -56, and far below, where
+    everything rounds to 0"""
+    n = 8000
+    frac = (_bits64(51, n) >> np.uint64(12)).astype(np.int64)
+    kz = 1022 + (_bits64(52, n) & np.uint64(1)).astype(np.int64)
+    k = -(_bits64(53, n) % np.uint64(57)).astype(np.int64)
+    # the boundaries for k >= -51: the 1 - k dropped bits of the significand 2^52 + frac just
+    # below, at and just above one half, all ones and none (random kept bits); all bits ones
+    ks = np.arange(-51, 1)
+    half = np.left_shift(1, -ks)  # the dropped bits' half
+    low = np.stack([half - 1, half, half + 1, 2 * half - 1, 0 * half], axis=1).reshape(-1)
+    dd = np.repeat(1 - ks, 5)
+    top = (_bits64(54, dd.size) >> np.uint64(12)).astype(np.int64) >> dd << dd
+    fb = np.concatenate([top | low, np.full(ks.size, 2**52 - 1)])
+    kb = np.concatenate([np.repeat(ks, 5), ks])
+    # z = 1 and 1 + 2^-52 at the fields -52 and -53 (half the smallest subnormal and below),
+    # and fields far below
+    far = np.repeat([-60, -100, -1000, -2000], 4)
+    frac = np.concatenate([frac, fb, [0, 1, 0, 2**52 - 1], np.arange(far.size) * 2**47])
+    kz = np.concatenate([kz, np.full(fb.size, 1023), [1023, 1023, 1023, 1022]])
+    kz = np.concatenate([kz, np.tile([1022, 1023], far.size // 2)])
+    k = np.concatenate([k, kb, [-52, -52, -53, -52], far])
+    z = ((kz.astype(np.uint64) << np.uint64(52)) | frac.astype(np.uint64)).view(np.float64)
+    e = k - kz  # z 2^e has the exponent field k
+    hi, lo = E._words(z)
+    hi = hi + (e << 20)
+    units = [
+        round(Fraction(a) * Fraction(2) ** (b + 1074))
+        for a, b in zip(z.tolist(), e.tolist(), strict=True)
+    ]
+    want = _bits_of_units(units)
+    assert set(units) >= {0, 1, 2**52}  # zeros, the smallest subnormal, rounded up to 2^-1022
+    assert E._scalbn_subnormal(z, e).tobytes() == want.tobytes()
+    one = np.array(
+        [E._scalbn_subnormal1(a, b) for a, b in zip(hi.tolist(), lo.tolist(), strict=True)]
+    )
+    assert one.tobytes() == want.tobytes()
+    # ties to even where truncation (Windows 10's ldexp) gives the unit below
+    assert E._scalbn_subnormal1(*_hi_lo(1.5, -1074)) == 2 * 5e-324
+    assert E._scalbn_subnormal1(*_hi_lo(1.0, -1075)) == 0.0
+    assert E._scalbn_subnormal1(*_hi_lo(1.0 + 2**-52, -1075)) == 5e-324
+    assert E._scalbn_subnormal1(*_hi_lo(2.0 - 2**-52, -1023)) == _TINY
+
+
+def test_power_gives_the_same_bits_with_windows_10s_ldexp(monkeypatch):
+    """power's subnormal results do not depend on the C runtime's ldexp: the same bits with an
+    ldexp that truncates them, as Windows 10's C runtime does (measured: 8,618 of 19,018 random
+    subnormal results one unit low, which changed five oracle cases there), as with one that
+    rounds them correctly, in the element-wise and the scalar path, for powers of 2, 10, 0.5
+    and -3 (odd and even exponents) whose results lie across the subnormal range"""
+    # the stand-ins: Windows 10's truncates; about half of random subnormal results differ
+    assert _windows10_ldexp(1.5, -1074) == 5e-324 and _exact_ldexp(1.5, -1074) == 2 * 5e-324
+    zs = 1 + (_bits64(55, 3000) >> np.uint64(12)).astype(np.float64) * 2.0**-52
+    es = (_bits64(56, 3000) % np.uint64(52)).astype(np.int32) - 1074
+    assert 0.3 < np.mean(_windows10_ldexp(zs, es) != _exact_ldexp(zs, es)) < 0.7
+    x = np.concatenate([np.full(3392, 2.0), np.full(3200, 10.0), np.full(35, -3.0)])
+    x = np.concatenate([x, np.full(3392, 0.5)])
+    y = np.concatenate([-1075 + np.arange(3392) / 64, -323.6 + np.arange(3200) / 200])
+    y = np.concatenate([y, -np.arange(644.0, 679.0), 1022 + np.arange(3392) / 64])
+    pairs = list(zip(x[::7].tolist(), y[::7].tolist(), strict=True))
+    got = []
+    for ld in (_windows10_ldexp, _exact_ldexp, None):
+        if ld is not None:
+            monkeypatch.setattr(np, "ldexp", ld)
+            monkeypatch.setattr(math, "ldexp", lambda a, b, ld=ld: float(ld(a, b)))
+        else:
+            monkeypatch.undo()
+        with np.errstate(all="ignore"):
+            vec = E.power(x, y)
+            one = np.array([E._pow_scalar(a, b) for a, b in pairs])
+        got.append(vec.tobytes() + one.tobytes())
+    assert got[0] == got[1] == got[2]
+    r = np.frombuffer(got[2][: x.size * 8])
+    assert np.sum((np.abs(r) < _TINY) & (r != 0)) > 9000  # subnormal results, both signs
+    assert np.any((r < 0) & (r > -_TINY))
+
+
+# the cases that Windows 10's ldexp changed (measured 2026-11-19)
+_WINDOWS10_LDEXP_CASES = (
+    "power_wide_31p5",
+    "power_wide_100p25",
+    "power_arrays",
+    "power_negative_integers",
+    "power_edges",
+)
+
+
+@pytest.mark.oracle
+@pytest.mark.parametrize("cid", _WINDOWS10_LDEXP_CASES)
+def test_matlab_with_windows_10s_ldexp(cid, tmp_path, monkeypatch):
+    """the oracle cases whose subnormal results Windows 10's C runtime changed (its ldexp
+    truncates them), with such an ldexp in place: MATLAB's bits"""
+    case = next(c for c in CASES if c.id == cid)
+    monkeypatch.setattr(np, "ldexp", _windows10_ldexp)
+    oracle.check(case, tmp_path)
 
 
 def test_single_data_rounds_the_double_result():

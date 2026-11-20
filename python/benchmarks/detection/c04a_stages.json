@@ -1,0 +1,13 @@
+{
+ "name": "c04a_stages",
+ "repeats": 5,
+ "setup": ["{python} {src}/benchmarks/detection/bench_c04a_setup.py {work} 3"],
+ "variants": [
+  {"id": "ml", "impl": "matlab", "paths": ["benchmarks/detection", "benchmarks/common"],
+   "flags": ["-nodisplay", "-nosplash", "-nodesktop"], "code": "bench_c04a('{work}')"},
+  {"id": "py", "impl": "python", "script": "benchmarks/detection/bench_c04a.py", "args": ["{work}"]}
+ ],
+ "compare": [{"a": "py", "b": "ml"}],
+ "gate": {"overhead_max": 1.0, "metrics": ["overhead"]},
+ "output_bytes": 200000000
+}

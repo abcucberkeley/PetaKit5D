@@ -148,7 +148,11 @@ def check_spec(spec: FunctionSpec, fn: MatlabFunction | None) -> list[str]:
         return [f"{name}: no MATLAB function of that name in the tree or the extract"]
     out: list[str] = []
     ours = [p for p in params if not p.python_only]
-    theirs = fn.params
+    # inputParser takes the required arguments, then the optional ones, then the name-value
+    # pairs, whatever the order of the add calls (an addOptional after an addParameter is still
+    # positional): compare in that order
+    rank = {"required": 0, "optional": 1}
+    theirs = sorted(fn.params, key=lambda m: rank.get(m.kind, 2))
     on = [p.matlab for p in ours]
     tn = [p.name for p in theirs]
     if [n.lower() for n in on] != [n.lower() for n in tn]:

@@ -1,0 +1,30 @@
+{
+ "task": "C02",
+ "classes": {
+  "PointDetectionTest": {
+   "finished": true,
+   "methods": {
+    "detectsSpotsAtTheirPositions": [
+     "pytest:tests/detection/test_detect.py::test_spots_are_found_where_they_are"
+    ],
+    "estimateSigmaFromBead": [
+     "pytest:tests/detection/test_sigma.py::test_a_bead_gives_its_sigmas",
+     "oracle:tests/detection/test_sigma.py::estimate_sigma*"
+    ],
+    "lowSNRDetectionRuns": [
+     "pytest:tests/detection/test_detect.py::test_spots_are_found_where_they_are",
+     "oracle:tests/detection/test_detect.py::psd_lowsnr.*"
+    ],
+    "noSpotsInPureNoise": [
+     "pytest:tests/detection/test_detect.py::test_noise_gives_no_detection"
+    ],
+    "runDetectionWritesDetectionsAndMask": [
+     "pytest:tests/detection/test_detect.py::test_run_detection_writes_detections_and_masks"
+    ],
+    "trackingLinksSpotsAcrossFrames": [
+     "pytest:tests/detection/test_tracking.py::test_tracking_links_spots_across_frames"
+    ]
+   }
+  }
+ }
+}

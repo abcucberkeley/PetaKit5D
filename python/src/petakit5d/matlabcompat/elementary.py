@@ -23,7 +23,10 @@ fused multiply-adds), which gives the same bits everywhere:
   odd (``sind(-0)`` is -0), ``cosd`` even (+0 at odd multiples of 90, the positive NaN for Inf).
 - ``sqrt`` is IEEE (exact everywhere); ``power(x, p)`` is ``x*x`` for ``p = 2``, ``sqrt(x)`` for
   0.5, ``1/x`` for -1, else fdlibm's pow with MATLAB's rules for NaN, 0, +-1 and large
-  exponents (``power``), element-wise.
+  exponents (``power``), element-wise. Its subnormal results are rounded once, as fdlibm's
+  ``scalbn`` rounds them (one pair: the exponent in the bits and one multiplication by 2^-54;
+  arrays: the same bits from one IEEE addition, which keeps the vector code clear of subnormal
+  operations), not by the C runtime's ``ldexp``, which Windows 10's truncates there.
 - single data: the double function of the single value, rounded to single. MATLAB's single
   ``sin``, ``exp``, ``cosd``, ... differ from that in the last bit for a few percent of the
   values (as glibc's ``sinf`` does); no Phase 1 code applies them to single data.
@@ -432,7 +435,7 @@ def _cos(x):
     return _sincos(x, "cos")
 
 
-# fdlibm 5.3 (k_tan.c, s_tan.c, e_exp.c, e_pow.c); their notice:
+# fdlibm 5.3 (k_tan.c, s_tan.c, e_exp.c, e_pow.c, s_scalbn.c); their notice:
 #   Copyright (C) 1993, 2004 by Sun Microsystems, Inc. All rights reserved.
 #   Developed at SunSoft, a Sun Microsystems, Inc. business.
 #   Permission to use, copy, modify, and distribute this software is freely granted, provided
@@ -825,6 +828,44 @@ _IVLN2 = 1.44269504088896338700e00
 _IVLN2_H = 1.44269502162933349609e00
 _IVLN2_L = 1.92596299112661746887e-08
 _TWO53 = 9007199254740992.0
+_TWOM54 = 5.55111512312578270212e-17  # 2^-54 (s_scalbn.c's twom54)
+_TWO52 = 4503599627370496.0
+_TWO52_BITS = 0x4330000000000000
+
+
+def _scalbn_subnormal(z: np.ndarray, n: np.ndarray) -> np.ndarray:
+    """``z 2^n`` of positive normal doubles ``z`` and integers ``n`` whose results lie below the
+    normal range (where e_pow.c calls ``scalbn``), rounded once to the nearest double, ties to
+    even. ``u = z 2^(n + 1074)``, the result in units of the smallest subnormal, is exact (a
+    power of two from the bits moves z's exponent); ``u + 2^52`` rounds it to a whole number of
+    units (one IEEE addition, ties to even), and the bits of that sum minus those of 2^52 are the
+    result's bits. fdlibm's ``scalbn`` (``_scalbn_subnormal1``) multiplies by 2^-54 instead,
+    with the same bits, but a vector multiplication with subnormal results takes microcode
+    assists (about 40 times as long per value on a Xeon Gold 6146), which made power 4 % slower
+    where its results are subnormal; here no operation has a subnormal result. Not the C
+    runtime's ``ldexp``: Windows 10's truncates subnormal results (docs/platforms.md)."""
+    p = np.add(n, 1074 + 1023, dtype=np.int64)
+    np.maximum(p, 1, out=p)  # (far below: 2^-1022, whose product rounds to 0 as the value does)
+    p <<= 52
+    u = z * p.view(np.float64)
+    u += _TWO52
+    b = u.view(np.int64)
+    b -= _TWO52_BITS
+    return b.view(np.float64)
+
+
+def _scalbn_subnormal1(hi: int, lo: int) -> float:
+    """fdlibm's ``scalbn`` where e_pow.c calls it, for one result below the normal range: the
+    positive value ``(1 + f) 2^(k - 1023)`` of high word ``hi`` and low word ``lo`` (ints), whose
+    exponent field ``k = hi >> 20`` is 0 or below, rounded once to the nearest double (ties to
+    even). ``k + 54`` goes into the exponent field (exact), then one multiplication by 2^-54,
+    which IEEE rounds. For ``k <= -54``, where the whole value rounds to 0, the high word is kept
+    at 0 or above: a value below 2^-1022, which that multiplication rounds to 0. Not the C
+    runtime's ``ldexp``: Windows 10's truncates subnormal results (docs/platforms.md)."""
+    import struct
+
+    b = max(hi + (54 << 20), 0) << 32 | lo
+    return struct.unpack("<d", struct.pack("<Q", b))[0] * _TWOM54
 
 
 def _pow_scalar(x: float, y: float) -> float:
@@ -1022,7 +1063,7 @@ def _fdlibm_pow(x: float, y: float) -> float:
     j, zl = words(z)
     j += n << 20
     if (j >> 20) <= 0:
-        z = float(np.ldexp(z, n))
+        z = _scalbn_subnormal1(j, zl)
     else:
         z = make(j, zl)
     return s * z
@@ -1143,8 +1184,8 @@ def _exp2_parts(
     scaled = (jz >> 20) <= 0
     res = _make(jz, lz)
     if scaled.any():
-        # scalbn (exact; the exponents of over- and underflows are left out)
-        res[scaled] = np.ldexp(z[scaled], np.clip(n[scaled], -2100, 2100).astype(np.int32))
+        # subnormal results: scalbn (the over- and underflows' values are replaced)
+        res[scaled] = _scalbn_subnormal(z[scaled], n[scaled])
     return s * res, over, under
 
 

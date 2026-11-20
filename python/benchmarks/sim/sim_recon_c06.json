@@ -1,0 +1,19 @@
+{
+ "name": "sim_recon_c06",
+ "description": "C06: simReconFrame on the 2020 lattice SIM data (Cell_5phase_small.tif, 244 x 240 x 201 x 5 phases, with PSF_5phase.tif: the OTF made in the call) with the 2020 workflow's values (sim3D's defaults), DS true, on the CPU, MATLAB against the port (default FFT backend) at 4 and 24 threads.",
+ "repeats": 5,
+ "warmup": 1,
+ "setup": ["{python} {src}/benchmarks/sim/sim_recon_c06_data.py {work}"],
+ "variants": [
+  {"id": "ml_t4", "impl": "matlab", "paths": ["benchmarks/sim", "benchmarks/common"],
+   "env": {"OMP_NUM_THREADS": "4"}, "code": "sim_recon_c06_ml('{work}', 4)", "timeout": 3600},
+  {"id": "py_t4", "impl": "python", "script": "benchmarks/sim/sim_recon_c06.py",
+   "args": ["{work}", "4"], "env": {"OMP_NUM_THREADS": "4"}, "timeout": 3600},
+  {"id": "ml_t24", "impl": "matlab", "paths": ["benchmarks/sim", "benchmarks/common"],
+   "env": {"OMP_NUM_THREADS": "24"}, "code": "sim_recon_c06_ml('{work}', 24)", "timeout": 3600},
+  {"id": "py_t24", "impl": "python", "script": "benchmarks/sim/sim_recon_c06.py",
+   "args": ["{work}", "24"], "env": {"OMP_NUM_THREADS": "24"}, "timeout": 3600}
+ ],
+ "compare": [{"a": "py_t4", "b": "ml_t4"}, {"a": "py_t24", "b": "ml_t24"}],
+ "gate": {"ratio_max": 1.05, "overhead_max": 1.0, "metrics": ["op:frame@*"]}
+}
