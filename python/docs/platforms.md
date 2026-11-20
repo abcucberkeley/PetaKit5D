@@ -181,11 +181,36 @@ Windows speed matters.
   between glibc versions, Apple's libm and the UCRT. Where MATLAB's bits matter the port uses
   its own fdlibm-based functions (`petakit5d.matlabcompat.elementary`), not libm or NumPy's
   transcendental ufuncs. The FFTs' twiddle factors are the exception (next section).
+- **The C runtime's `ldexp` below the normal range.** Windows 10's C runtime (`ucrtbase.dll`
+  10.0.19041) truncates `ldexp` results that are subnormal instead of rounding them to nearest
+  (measured 2026-11-19: 8,618 of 19,018 random values with a subnormal result one unit low in
+  magnitude; `ldexp(1.5, -1074)` gives one unit where ties to even give two). glibc rounds them,
+  and so, as far as the oracle cases show, do Apple's libm and Windows Server 2025's C runtime.
+  NumPy's `ldexp` calls the C runtime's where it has no AVX-512 loop (as on AVX2 processors),
+  and Python 3.12's `math.ldexp` truncates there too. fdlibm's pow ends with `scalbn` for
+  subnormal results, which `matlabcompat.power` took from `np.ldexp`, so five oracle cases with
+  such results differed from MATLAB on Windows 10 (they pass on the Mac and on GitHub's
+  runners). The port no longer depends on it: `power` rounds them in one IEEE operation between
+  exact steps, which gives the same bits everywhere: for one pair as fdlibm's `scalbn` does (the
+  exponent plus 54 written into the bits, then a multiplication by 2^-54), for arrays with an
+  addition (the value in units of 2^-1074, exact, plus 2^52), which keeps subnormal operations
+  out of the vector code (a vector multiplication with subnormal results takes microcode
+  assists on Intel processors, about 40 times as long per value). The resize kernels' C++ pow
+  takes fdlibm's form (`std::ldexp` before). No other code of the port takes a result that can
+  be subnormal and inexact from `ldexp` or `scalbn`: `core.dtypes.eps` makes powers of two,
+  which are exact, `testing.synth`'s exp stays above 2^-1000, and fdlibm's exp and hypot
+  (`matlabcompat.elementary`; the C++ hypot of decon and of single `abs`) multiply by a power of
+  two themselves. Tests:
+  tests/matlabcompat/test_elementary.py (the scaling against exact rational arithmetic, and
+  power, with its oracle cases, under an `ldexp` that truncates as Windows 10's does) and
+  tests/matlabcompat/test_resize.py (the C++ pow's subnormal results).
 - **NumPy's SIMD dispatch and OpenBLAS's kernels** depend on the CPU (AVX-512, AVX2, NEON). The
   port's sums that feed outputs run in a fixed order in its own kernels. Dense LAPACK is used
   in one place, the null spaces of `matlabcompat.lsq` (next section).
 - **File systems.** Windows and macOS are case-insensitive by default; the few tests that need
-  names differing only in case, or symbolic links, skip there.
+  names differing only in case, or symbolic links, skip there. Windows limits paths to 260
+  characters unless long paths are enabled, as on GitHub's runners (install guide, "Windows:
+  long paths").
 
 ## Measured: the kernels' bits on each system
 
@@ -278,7 +303,11 @@ in ulps of the largest |value| of the output; FFT outputs in single precision in
 - **On GitHub's runners only:** windows-2025, Python 3.12 and 3.14, the port built from source
   with MSVC as `pip install` builds it (`.[test,figures,n5]`), and the whole CPU suite
   (`pytest -v --timeout=900`), on every push. The job gates since 2026-11-14 (after two green
-  runs in a row). No local Windows machine runs the port's tests.
+  runs in a row). No local Windows machine runs the port's tests routinely.
+- **Windows 10** (one run of the suite on a Windows 10 22H2 machine, 2026-11-19, with the
+  libraries' 1.8.0 wheels): the results of the runners but for two differences of that machine,
+  its C runtime's `ldexp` (above; the port no longer depends on it) and long paths, which were
+  off there (install guide, "Windows: long paths").
 - **What the CI shows** besides the tests: the build information (compiler, flags, OpenMP
   runtime), the CPU and NumPy's SIMD dispatch and OpenBLAS kernels, the OpenMP runtimes found,
   and the "Oracle key probe (Windows)" step (tests/platform/key_probe.py), which prints what

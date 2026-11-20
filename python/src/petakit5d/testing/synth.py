@@ -7,9 +7,10 @@ writeStitchTiles, centroid(s), the tests' randomImage) with random numbers of ou
   of a stream is a pure function of (seed, stream, i), so arrays have the same content however
   they are generated, in one call or in pieces.
 - Floating-point results use only operations IEEE 754 rounds correctly (+, -, *, /, sqrt,
-  floor, frexp, ldexp, conversions), in a fixed order, with exp, log, sin and cos of our own
-  built from them. NumPy's and the C library's exp/log/sin/cos differ between platforms and
-  SIMD paths in the last bit; NumPy's sums change order with its version.
+  floor, frexp, ldexp to normal results, which are exact, and conversions), in a fixed order,
+  with exp, log, sin and cos of our own built from them. NumPy's and the C library's
+  exp/log/sin/cos differ between platforms and SIMD paths in the last bit; NumPy's sums change
+  order with its version. (Windows 10's ldexp truncates subnormal results; none are made here.)
 
 Arrays are the port's (docs/conventions.md): volumes ``(z, y, x)`` C-ordered, images
 ``(y, x)``; sizes, positions, sigmas and offsets in ``(z, y, x)``, positions and offsets
