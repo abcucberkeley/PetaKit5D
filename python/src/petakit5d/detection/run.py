@@ -92,16 +92,82 @@ class CameraSettingsError(RuntimeError):
         self.identifier = identifier
 
 
-def _matlab_listing(folder: str) -> list[str]:
-    """the names MATLAB's ``dir(folder)`` lists on Linux, '.' and '..' included, in its order
-    (code point order, measured: '#name' comes before '.'); empty for a missing folder or ''"""
-    if folder == "" or not os.path.isdir(folder):
-        return []
+def _os_listdir(folder: str) -> list[str] | None:
+    """the system's names in a folder (never '.' or '..'); None for anything else"""
+    if not os.path.isdir(folder):
+        return None
     try:
-        names = os.listdir(folder)
+        return os.listdir(folder)
     except OSError:
+        return None
+
+
+def _matlab_dir_names(folder: str, pc: bool, listdir=_os_listdir) -> list[str]:
+    """the names MATLAB's ``dir(folder)`` lists, in its order (UTF-16 code units, as
+    ``core.paths.matlab_dir``; measured on Linux: '#name' comes before '.'): a folder's names
+    with '.' and '..'; nothing for '' or a name that is not a folder. On Windows (deduced: no
+    MATLAB runs there) a drive's root lists no '.' and '..', which its file systems do not have,
+    and a bare drive 'C:' lists the drive's root (MATLAB keeps one current folder, not one per
+    drive)."""
+    import re
+
+    from petakit5d.core.paths import matlab_sort_key
+
+    if folder == "":
         return []
-    return sorted([".", "..", *names])
+    root = pc and re.fullmatch(r"[A-Za-z]:[\\/]*", folder) is not None
+    names = listdir(folder[:2] + "\\" if root else folder)
+    if names is None:
+        return []
+    if not root:
+        names = [*names, ".", ".."]
+    return sorted(names, key=matlab_sort_key)
+
+
+def _settings_file(source, *, pc: bool | None = None, listdir=_os_listdir) -> str:
+    """the file ``get_camera_type_from_setting_file`` (the lab's code) reads: ``data.source``
+    split at ``filesep`` (its ``strsplit``) without a trailing empty part, then from the whole
+    path to its first part (joined with ``filesep``) the first folder whose ``dir`` listing, its
+    first two names dropped as '.' and '..', has a name ending in 'settings.txt' (any case):
+    ``[folder filesep name]`` with the first such name. ``pc``: Windows' rules (default: this
+    platform's; ``core.paths.filesep``), ``listdir``: the system's listing (tests give their own).
+
+    MATLAB's errors: a folder on the way that lists fewer than two names raises
+    ``MATLAB:subsdeldimmismatch`` (the deletion of the first two), a walk without a settings
+    file ``MATLAB:UndefinedFunction`` (``setting_filename`` is never set). An absolute path's
+    walk ends on Linux at its first part '', which lists nothing (``MATLAB:subsdeldimmismatch``,
+    measured); on Windows at the drive 'C:', which lists the drive's root (so
+    ``MATLAB:UndefinedFunction``), and for a UNC path at '\\\\server', no folder
+    (``MATLAB:subsdeldimmismatch``; both deduced).
+
+    Windows, where the port differs (docs/parity/detection.md D9): MATLAB splits at '\\' only,
+    so it walks a source written with '/' (which its ``dir`` and ``fileparts`` take there) no
+    higher than the last '\\'; the port splits at both separators. Repeated separators give
+    empty parts here (MATLAB's ``strsplit`` merges them by default: the same folders, but a
+    UNC path's '\\\\server' would become '\\server')."""
+    import re
+
+    from petakit5d.core import paths
+
+    pc = paths.filesep == "\\" if pc is None else bool(pc)
+    sep = "\\" if pc else "/"
+    text = os.fspath(source) if isinstance(source, os.PathLike) else str(source)
+    parts = re.split(r"[\\/]" if pc else "/", text)
+    if parts[-1] == "":
+        parts = parts[:-1]
+    for i in range(len(parts)):
+        cur = sep.join(parts[: len(parts) - i])
+        listing = _matlab_dir_names(cur, pc, listdir)
+        if len(listing) < 2:
+            raise CameraSettingsError(
+                "MATLAB:subsdeldimmismatch", "Matrix index is out of range for deletion."
+            )
+        hits = [nm for nm in listing[2:] if re.search(r"settings\.txt$", nm, flags=re.IGNORECASE)]
+        if hits:
+            return cur + sep + hits[0]
+    raise CameraSettingsError(
+        "MATLAB:UndefinedFunction", "Unrecognized function or variable 'setting_filename'."
+    )
 
 
 def camera_type(
@@ -110,40 +176,24 @@ def camera_type(
     names: tuple[str, ...] = ("Orca", "Andor"),
     classes: tuple[str, ...] = ("SCMOS", "EMCCD"),
 ) -> str:
-    """``get_camera_type_from_setting_file(data)`` (the lab's code): from the channel folder
-    ``data.source`` upwards, the first folder whose listing (MATLAB's ``dir``, its first two
-    entries dropped as '.' and '..') has a name ending in 'settings.txt' (any case); that folder's
-    first such file; its first line starting with 'Camera Type' (any case, leading white space
-    skipped); the class of the last of ``names`` the line contains (any case), else ''.
-
-    MATLAB's errors are kept: a folder on the way that lists fewer than two entries (the walk
-    ends at '' for an absolute path, which ``dir`` lists as nothing) raises
-    ``MATLAB:subsdeldimmismatch``; a settings file without a 'Camera Type' line raises
-    ``MATLAB:TooManyOutputsDueToMissingBraces``."""
+    """``get_camera_type_from_setting_file(data)`` (the lab's code): the settings file of the
+    channel folder ``data.source`` or of the first folder above it that has one
+    (``_settings_file``: MATLAB's walk per platform, its errors kept); its first line starting
+    with 'Camera Type' (any case, leading white space skipped); the class of the last of
+    ``names`` the line contains (any case), else ''. A settings file without a 'Camera Type' line
+    raises ``MATLAB:TooManyOutputsDueToMissingBraces``."""
     import re
 
-    sep = os.sep
-    parts = str(source).split(sep)
-    if parts and parts[-1] == "":
-        parts = parts[:-1]
-    found = None
-    for i in range(len(parts)):
-        cur = sep.join(parts[: len(parts) - i])
-        listing = _matlab_listing(cur)
-        if len(listing) < 2:
-            raise CameraSettingsError(
-                "MATLAB:subsdeldimmismatch", "Matrix index is out of range for deletion."
-            )
-        hits = [nm for nm in listing[2:] if re.search(r"settings\.txt$", nm, flags=re.IGNORECASE)]
-        if hits:
-            found = os.path.join(cur, hits[0])
-            break
-    if found is None:
+    found = _settings_file(source)
+    try:
+        with open(found, "rb") as fh:
+            text = fh.read().decode("latin-1")
+    except OSError:
+        # fopen gives -1 and textscan fails (a listed name that cannot be read; deduced)
         raise CameraSettingsError(
-            "MATLAB:UndefinedFunction", "Unrecognized function or variable 'setting_filename'."
-        )
-    with open(found, "rb") as fh:
-        text = fh.read().decode("latin-1")
+            "MATLAB:FileIO:InvalidFid",
+            "Invalid file identifier. Use fopen to generate a valid file identifier.",
+        ) from None
     lines = [ln.lstrip(" \t\b") for ln in text.split("\n")]
     match = [ln for ln in lines if re.match(r"Camera Type", ln, flags=re.IGNORECASE)]
     if not match:
