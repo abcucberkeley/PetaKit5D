@@ -85,3 +85,16 @@ doubles, such as the feature indices `tracksFeatIndxCG`, as 8- or 16-bit integer
 file; the port stores them as doubles. Both load as double in MATLAB and with
 `petakit5d.io.matfile.read_mat`; `scipy.io.loadmat` shows the stored types unless it is given
 `mat_dtype=True`.
+
+## Condition loading, deskew and channel offsets (C04a)
+
+Bit for bit, in every oracle case (synthetic conditions and the demo dataset): the condition
+structs (`detection.condition`; `date` checked against MATLAB's probed rule, since it is the
+digits of each side's own folder path), the deskewed frames with `settings.mat` and
+`dynRange.mat` (`detection.wrapper.deskew_data`), the channel offsets, `xz_offset.mat` and the
+padded frames (`detection.offsets`), and `interp1` (`matlabcompat.interp`). The cases' `reason`
+names its row as `detection.md Wn`. Proposed (2026-11-19), waiting for the user's decision.
+
+| Row | Function and range | Measured (largest) | Tolerance | Cause |
+|---|---|---|---|---|
+| W1 | `corr` (Pearson, two columns): the 165 correlations of `XZoffsetEstimation3D` and the probed columns | 17 ulp where the sum cancels (small integer columns); 16 ulp at 65,536 values; 2 ulp at 5.7 million; single: 1 ulp of single | `abs` 4e-15 (single `abs` 2e-7) | MATLAB takes `x'*y / norm(x) / norm(y)` from its BLAS, whose order of additions depends on the CPU and, from 4,096 values, on its thread count (MATLAB's own results differ between 1 and 8 threads); the port sums in MATLAB's order, platform-independent. The offsets the correlations decide were equal in every case |
