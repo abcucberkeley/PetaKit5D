@@ -26,6 +26,8 @@ microscopy, with MATLAB PetaKit5D's results and files.
   as text, paths, threads.
 - [jobs.md](jobs.md): the job framework (local, pool and cluster modes, task records, runners).
 - [platforms.md](platforms.md): Linux, macOS and Windows: toolchains and the same bits on each.
+- [detection_scope.md](detection_scope.md): Phase 3's scope: point detection, tracking and lifetime
+  analysis as MATLAB runs them, traced from the demos (stages, inputs and outputs, what is reached).
 - [release.md](release.md): the release plan and checklist: versions, the wheels, the licenses of
   what they bundle or require, and the move into a repository of its own.
 - [testing.md](testing.md): the oracle harness that compares the port with MATLAB, and the test
