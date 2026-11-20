@@ -73,10 +73,35 @@ Windows speed matters.
   - imwarp on ARM (each voxel that comes out NaN): 78 of 78. On x86-64 imwarp keeps the code it
     compiled before, 32 of the 78: the recomputation there cost 5 to 10% of cubic's speed,
     since any change to `cpp/warp/warp.cpp` moves GCC's inlining of the end values (Known
-    problems).
+    problems);
+  - the linear filters on ARM (each output value that comes out NaN), with
+    `pk5d::x86_fma_nans(r, a, b, c)` for the fused taps. MATLAB's filters take a tap's NaN
+    before the running sum's: a fused tap's factors, a plain tap's product, a chain of a padded
+    column before the chains above it (measured: convn, imfilter along each axis with each
+    padding and on its sparse path, imgaussfilt3, single and double; NaNs of three kinds and
+    infinities meeting). x86's fused multiply-adds give that too, in every form (132, 213, 231),
+    and keep the addend's NaN at 0 * Inf + NaN; ARM's take the addend's first and give their own
+    default NaN at 0 * Inf + NaN (measured: the cluster's Xeon Gold 6146, the M2 Pro). ARM's
+    filters now give MATLAB's bits in these outputs (before: 12 to 591 NaNs differed per output)
+    but where x86-64's differ too: 12 NaNs of the zero-padded double column pass, whose last
+    rows' tap order is not MATLAB's (parity row N5). On x86-64 the filters keep their code: the
+    fused chains and the vector loops' plain sums give MATLAB's bits, the one-value path's plain
+    sums the compiler's choice (GCC: 13 of 159 NaNs of imfilter's sparse path along x differ
+    from MATLAB);
+  - the deskew kernels in every build without the mex's AVX2 code (ARM, and `deskew_scalar` on
+    x86-64), each float value that comes out NaN: the first NaN operand of the mex's formula as
+    written. Against the three mex files (NaNs of three kinds and infinities meeting): the same
+    bits in the interpolation to a step size and in every row of the warp's and the fused
+    kernel's lines but the mex's scalar tail (the rows past floor(len / 8) * 8), where the mex
+    binary takes other operands (76 and 54 of about 12,000 NaNs of the warp, 535 and 554 of
+    about 41,500 of the fused kernel, forward and reverse). The AVX2 build keeps the mex's code:
+    the compiler's choice, in every row (341 and 424 NaNs of the warp, 552 and 544 of the
+    interpolation, 3,531 and 3,408 of the fused kernel differ from the mex).
 
   Tests: tests/platform/test_nan_rules.py (a reference of the integral image's passes in
-  `core.dtypes`' arithmetic; imwarp's NaNs side by side, on ARM) and `specials.meeting_nans`.
+  `core.dtypes`' arithmetic; imwarp's and the deskew kernels' NaNs side by side, on the builds
+  that compute the rule; references of the filters' tap programs and tap correlations, the
+  fused ones on x86-64 too) and `specials.meeting_nans`.
   **The pinned cases keep NaNs of other bits apart** (no output sees two, except where the
   kernel fixes their order itself: the ordered sums, reduce, the integral image), since a sum's
   NaN is otherwise the compiler's choice, which another build can change (the stable-ABI build
@@ -97,9 +122,9 @@ Windows speed matters.
 | feather blending (C++ `stitch/feather_blending.cpp`) | Inf * 0, Inf / Inf | Inf weights | x86's NaN |
 | flat-field correction (C++ `flatfield/kernels.inc`, and its NumPy reference) | Inf - Inf | Inf in the data and the background | x86's NaN |
 | scale and offset (C++ `core/ops/ops_convert.cpp`) | Inf * 0, Inf - Inf | Inf data with a zero scale or an infinite offset | x86's NaN |
-| the deskew/rotate warp and the skewed space interpolation (C++ `deskew`) | Inf * 0, Inf - Inf | float data with Inf | **ARM's NaN** (`specials.deskew_infinities`, expected to fail on ARM; `specials.deskew`'s single infinity of each sign makes no invalid operation) |
+| the deskew/rotate warp and the skewed space interpolation (C++ `deskew`, both layouts: without AVX2 a float value that comes out NaN computed again with `pk5d::x86_nans`, `deskew/nans_x86.hpp`) | Inf * 0, Inf - Inf, and NaNs that meet | float data with Inf (Inf * 0 at whole coordinates and zero interpolation weights) or NaN | x86's NaN (`specials.deskew_infinities`, tests/platform/test_nan_rules.py); where NaNs of other bits meet, without AVX2 (ARM, `deskew_scalar`) the mex's formula as written, the mex's bits but in its scalar tails (measured), and in the AVX2 build the compiler's choice |
 | `matlabcompat.resize` (imresize, imresize3: C++ `resize`, a NaN sum computed again by `nan_sum`) | Inf * 0, Inf - Inf | float data with Inf | x86's NaN (measured on ARM with many infinities, and `specials.warp_and_resize`) |
-| `matlabcompat.filters` (convn, imfilter, imgaussfilt: the multiply-add chains of C++ `filters`) | Inf * 0, Inf - Inf | float data with Inf and a zero tap, or both infinities in a window | **ARM's NaN** (`specials.filters_infinities`, expected to fail on ARM; `specials.filters` makes no invalid operation) |
+| `matlabcompat.filters` (convn, conv2, imfilter, imgaussfilt: the multiply-add chains of C++ `filters`; on ARM an output that comes out NaN computed again with `pk5d::x86_fma_nans` and `pk5d::x86_nans`) | Inf * 0, Inf - Inf, and NaNs that meet | float data with Inf and a zero tap, or both infinities in a window, or NaN | x86's NaN (`specials.filters_infinities`, tests/platform/test_nan_rules.py); where NaNs of other bits meet, MATLAB's (a tap's NaN before the running sum's, measured) on ARM, and on x86-64 too but in the one-value plain sums (the compiler's choice); with MSVC's C runtime's `fma` where NaNs meet not measured |
 | `matlabcompat.warp.imwarp`, linear and cubic (C++ `warp`: on ARM a voxel that comes out NaN computed again with `pk5d::x86_nans`) | Inf * 0, Inf - Inf, and NaNs that meet | float data with Inf (linear: at a whole coordinate, the second sample's weight 0) or NaN | x86's NaN (`specials.warp_cubic`, `specials.warp_and_resize`, `specials.infinities`); where NaNs of other bits meet, MATLAB's on ARM and the compiler's on x86-64 (tests/platform/test_nan_rules.py, on ARM) |
 | integral image (C++ `stitch/integral_image.cpp`: `PK5D_X86_NAN`; an input with NaN computed again with `pk5d::x86_nans`) | Inf - Inf, and NaNs that meet | single tiles with both infinities, or NaN | x86's NaN, the first NaN operand as written (`specials.integral_image`, `specials.meeting_nans`, `specials.infinities`) |
 | the resize kernels' fdlibm pow and cubic kernel (C++ `resize`: `PK5D_X86_NAN`) | 0 / 0, Inf - Inf, Inf * 0 | pow: a negative base with a fractional exponent, (+-1)^(+-Inf); the kernel: \|x\|^3 overflows. Never: the cubic weights take \|x\|^3 of distances of at most 2 | x86's NaN (`specials.resize_pow`, `specials.infinities`) |
@@ -110,13 +135,14 @@ Windows speed matters.
   Real microscope data (uint16) hold no Inf or NaN, so outside the feather blending of
   MATLAB's code these NaNs come from special values in float inputs. In C++ the step is
   `PK5D_X86_NAN(r, a, b)` (`cpp/common/pk5d/fpexact.hpp`), which expands to `r` except on ARM,
-  so the x86-64 builds compile the same code (checked by disassembly). No hardware mode gives a
-  negative default NaN: AArch64's FPCR.DN gives the positive one and drops payloads. The rows
-  marked **ARM's NaN** differ from MATLAB only in the sign bit of those NaNs, and only on ARM.
-  Their cases hold many infinities (`infinities` in tests/platform/_kernel_cases.py, a tenth of
-  the values): with one infinity of each sign, as in the other `specials.*` cases, an
-  interpolation or filter makes no invalid operation unless a zero weight or the other
-  infinity happens to be in reach.
+  so the x86-64 builds compile the same code (checked by disassembly). The recomputations of the
+  filters (ARM only) and of the deskew kernels (builds without AVX2) are left out of the x86-64
+  builds the same way: their modules disassemble as before. No hardware mode gives a negative
+  default NaN: AArch64's FPCR.DN gives the positive one and drops payloads. The
+  `specials.*_infinities` cases hold many infinities (`infinities` in
+  tests/platform/_kernel_cases.py, a tenth of the values): with one infinity of each sign, as in
+  the other `specials.*` cases, an interpolation or filter makes no invalid operation unless a
+  zero weight or the other infinity happens to be in reach.
 - **64-bit integers to single.** AArch64 compilers convert vectors of int64 to float through
   double, which rounds twice above 2^53 (2^53 + 2^29 + 1 became 2^53, not 2^53 + 2^30). The
   port's cast (`kernels.ops.convert(x, 'single', mode='cast')`) rounds once on every processor
@@ -171,8 +197,8 @@ b.npz` measure the difference.
 |---|---|---|
 | Linux x86-64: the cluster (Xeon Gold 6146, AVX-512, glibc 2.28, GCC 13.2), Python 3.12 | 45 | the pins (made there) |
 | Linux x86-64: runner-like container (Ubuntu 24.04, glibc 2.39, GCC 13.3, AVX2), Python 3.12 and 3.14 | 45 | the same bits |
-| macOS ARM (M2 Pro, macOS 13.7, Apple Clang 14, libomp 23), Python 3.12 and 3.14 | 45 | 43 the same bits; the 2 `specials.*_infinities` cases of the **ARM's NaN** rows differ in NaN signs only, as expected (strict xfails) |
-| Windows x86-64 (GitHub's windows-2025, MSVC), Python 3.12 and 3.14 | 45 | from the CI run of this test: see "How Windows is tested" |
+| macOS ARM (M2 Pro, macOS 13.7, Apple Clang 14, libomp 23), Python 3.12 and 3.14 | 45 | the same bits (before the filters' and the deskew kernels' NaN fix the 2 `specials.*_infinities` cases differed in NaN signs only) |
+| Windows x86-64 (GitHub's windows-2025, MSVC), Python 3.12 and 3.14 | 45 | the same bits (the CI, measured 2026-11-19: see "How Windows is tested") |
 
 The cases whose digests are recorded, not pinned, and how much they differ (largest difference
 in ulps of the largest |value| of the output; FFT outputs in single precision included):
@@ -251,11 +277,13 @@ in ulps of the largest |value| of the output; FFT outputs in single precision in
   goes into the keys of oracle cases whose keys differed on Windows (each input file's size and
   hash), to compare with Linux.
 - **The kernels' bits on Windows** are those of tests/platform/test_kernel_hashes.py there:
-  every pinned case must hold. The exact oracle cases, which compare the port's outputs with
-  MATLAB's digests, hold on Windows too (the CI is green); on macOS ARM with the 1.8.0
-  libraries they fail only where they fail on Linux with them, apart from the NaN signs above.
-  The FFT-based digests can differ by the UCRT's cos and sin; `--save` and `--compare` measure
-  them where a run's files can be fetched.
+  every pinned case must hold, and does: with MSVC, on Python 3.12 and 3.14, every pinned
+  digest equals Linux's (the CI, measured 2026-11-19; before the collision-free cases only
+  `specials.warp_cubic` differed there). The exact oracle cases, which compare the port's
+  outputs with MATLAB's digests, hold on Windows too (the CI is green); on macOS ARM with the
+  1.8.0 libraries they fail only where they fail on Linux with them, apart from the NaN signs
+  above. The FFT-based digests can differ by the UCRT's cos and sin; `--save` and `--compare`
+  measure them where a run's files can be fetched.
 
 ## Writing tests that pass on every system
 
@@ -276,9 +304,25 @@ in ulps of the largest |value| of the output; FFT outputs in single precision in
 
 - **macOS: cpp-zarr and cpp-tiff 1.7.3 in one process** crash on the first write of the second
   one imported (above). The fix is in the packages (1.8.0), not in the port.
-- **ARM: the linear filters and the deskew kernels still give ARM's NaN** for an invalid
-  operation where MATLAB gives x86's: the **ARM's NaN** rows of the table above. They need
-  infinities in float data, and differ from MATLAB only in the NaN's sign.
+- **x86-64: where NaNs of other bits meet, the filters' one-value plain sums and the deskew
+  kernels' AVX2 build** give the compiler's choice of operand, not MATLAB's (the counts above):
+  the filters along x on imfilter's sparse path (13 of 159 NaNs measured), and every deskew
+  kernel (3 to 9% of the NaNs where many meet). ARM computes MATLAB's; x86-64 keeps the code it
+  compiled before (its modules disassemble as before), as for imwarp below. Data from MATLAB hold
+  MATLAB's NaN only, for which the choice changes no bits.
+- **The deskew mex's scalar tails:** where NaNs of other bits meet in the rows past
+  floor(len / 8) * 8 of the warp's and the fused kernel's lines, the mex binary takes other
+  operands than its source as written (the interpolation mex's tails do not), so the builds
+  without AVX2 differ from it there (0.5 to 1.3% of the NaNs measured, all in those rows); their
+  other rows give the mex's bits.
+- **MATLAB's conv2 and convn with a kernel larger than the image** (the roles swapped): where
+  the image holds Inf or NaN, 7 and 32 values (double and single) of the probe differ from the
+  port's on every system, NaN against Inf, and 16 and 12 NaNs in their bits; not a question of
+  NaN rules, not resolved.
+- **Windows: the filters' fused taps call the C runtime's `fma`** (MSVC builds have no dispatch).
+  Its invalid operations give x86's NaN (`specials.filters_infinities` holds there); its NaN where
+  NaNs of other bits meet, and at 0 * Inf + NaN, is not measured (the fused chains' tests skip
+  there); glibc's (with the FMA instruction) is the instruction's.
 - **x86-64: imwarp's NaN where NaNs of other bits meet** is the compiler's choice of operand,
   not MATLAB's first as written, in 46 of 78 measured inputs (above), and changes with the build
   (the stable-ABI build flipped 2 voxels of a case that let them meet). ARM computes MATLAB's.
