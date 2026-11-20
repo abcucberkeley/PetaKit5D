@@ -5,13 +5,14 @@ petakit5d.testing.synth, literals, and special values: MATLAB's NaN, a NaN with 
 infinities, -0, subnormals) and returns their outputs. Its digest pins those outputs
 (kernel_hashes.json, made on Linux x86-64), so that a kernel that gives other bits on macOS or
 Windows fails by name. The cases in RECORDED hold outputs whose last bits follow the system:
-FFTs (pocketfft's and FFTW's twiddle factors come from the C library's cos and sin) and dense
-LAPACK (OpenBLAS's kernels for the CPU, or Accelerate); their digests are recorded, not pinned,
-and docs/platforms.md has the measured differences. The cases in ARM_NAN (none now) would hold
-the outputs of kernels that still give ARM's NaN for an invalid operation (MATLAB's is x86's);
-the test expects them to differ there. No output sees two NaNs of other bits (``specials``),
-except where the kernel fixes their order itself: their sum's NaN is the compiler's choice of
-operand otherwise.
+FFTs (pocketfft's and FFTW's twiddle factors come from the C library's cos and sin), dense
+LAPACK (OpenBLAS's kernels for the CPU, or Accelerate) and the point detection's
+Anderson-Darling statistic (the C library's erfc and log); their digests are recorded, not
+pinned, and docs/platforms.md has the measured differences. The cases in ARM_NAN (none now)
+would hold the outputs of kernels that still give ARM's NaN for an invalid operation (MATLAB's
+is x86's); the test expects them to differ there. No output sees two NaNs of other bits
+(``specials``), except where the kernel fixes their order itself: their sum's NaN is the
+compiler's choice of operand otherwise.
 
 The cases cover every binding of the extension modules (ALL_BINDINGS less EXEMPT_BINDINGS) and
 every function of petakit5d.matlabcompat (less EXEMPT_FUNCTIONS); test_kernel_hashes.py checks
@@ -44,8 +45,8 @@ from petakit5d.testing.synth import CounterRNG
 HASHES = Path(__file__).with_name("kernel_hashes.json")
 
 CASES: dict[str, Callable[[], Any]] = {}
-# case -> why its digest is recorded, not pinned: FFTs (twiddle factors from the C library) and
-# LAPACK (OpenBLAS's kernels or Accelerate)
+# case -> why its digest is recorded, not pinned: FFTs (twiddle factors from the C library),
+# LAPACK (OpenBLAS's kernels or Accelerate), the C library's erfc and log (detection.ad_stat)
 RECORDED: dict[str, str] = {}
 # case -> why its bits differ where the CPU's default NaN is not x86's (ARM): kernels that still
 # give the CPU's NaN of an invalid operation (docs/platforms.md); the test expects the failure
@@ -744,6 +745,274 @@ def _window_values():
     return BP._window_fast(edge, edge.shape, 0.6, 1.4, threads())
 
 
+# -- point detection: the Gaussian fits and their tests (C++ detection) ------------------------
+# Windows as XR_fitGaussians3D cuts them around candidates (detection.fit): (2 wz + 1, 2 w + 1,
+# 2 w + 1) voxels, w = ceil(2 s) and wz = ceil(2 sz), clipped at the volume's faces, NaN for the
+# voxels left out (another mask component's, a deskewed frame's empty wedge: 26,814 of MATLAB's
+# 42,412 calls had such voxels). The data are Gaussian spots on a background with noise, in a
+# camera's counts or in half counts (the background-corrected volume); the starts are the
+# callers': the candidate voxel with the prefit's A and c (the master channel), or a fitted
+# position with an Ac fit's A, which can be negative (the other channels).
+
+DET_SIGMA = ((1.3, 1.6), (1.5, 1.9))  # [s sz] of the demo's two channels (tests/detection)
+
+
+def _spots(name: str, shape, spots, c: float, sigma, noise: float, counts: bool = True):
+    """a (z, y, x) window of spots A exp(-((x - x0)^2 + (y - y0)^2) / (2 s^2) - (z - z0)^2 /
+    (2 sz^2)) on the background c with normal noise (synth's exp: the same bits everywhere), in
+    counts (rounded) or half counts; spots are ((x0, y0, z0), A) in the window's 0-based
+    coordinates"""
+    from petakit5d.testing.synth import stable_exp
+
+    s, sz = sigma
+    Z, Y, X = np.meshgrid(*(np.arange(n, dtype=np.float64) for n in shape), indexing="ij")
+    w = np.full(shape, c) + noise * gen(name).normal(shape)
+    for (x0, y0, z0), A in spots:
+        dx, dy, dz = X - x0, Y - y0, Z - z0
+        w = w + A * stable_exp(-(dx * dx + dy * dy) / (2 * s * s) - dz * dz / (2 * sz * sz))
+    return np.ascontiguousarray(np.floor(w + 0.5) if counts else np.floor(w) + 0.5)
+
+
+def _fit_cd(windows, p0, max_iter: int = 500, ad_crit: float | None = None):
+    """fit_cd's binding on windows packed as detection.fit packs them (rows in MATLAB's order,
+    NaN past a window's voxels) at threads() threads, checked against 1 and 3 threads (each fit
+    runs on one thread): ([the voxel counts, prm, pstd, C, the stats but A^2], A^2). A^2 (stats
+    column 4) is in detection.ad_stat: the C library's erfc and log compute it."""
+    from petakit5d._ext import load
+    from petakit5d.detection import fit
+
+    vals, dims, n = fit._pack(windows)
+    p = np.ascontiguousarray(np.asarray(p0, dtype=np.float64).reshape(-1, 7))
+    crit = fit.AD_CRITICAL[(2, 0.05)] if ad_crit is None else float(ad_crit)
+    k = p.shape[0]
+    runs = []
+    for nt in (threads(), 1, 3):
+        o = [np.empty((k, 7)), np.empty((k, 7)), np.empty((k, 25)), np.empty((k, 6))]
+        load("detection").fit_cd(vals, dims, p, *o, int(max_iter), crit, nt)
+        runs.append(o)
+    if any(digest(r) != digest(runs[0]) for r in runs[1:]):
+        raise AssertionError("fit_cd: other bits at 1 or 3 threads")
+    prm, pstd, C, st = runs[0]
+    return [n, prm, pstd, C, np.delete(st, 4, axis=1)], st[:, 4].copy()
+
+
+def _fit_spots():
+    """full windows of one spot, amplitudes 15 to 300 over backgrounds of 100 to 1000, in counts
+    and half counts, with each channel's sigma, started from the candidate voxel with A and c
+    near the spot's; a spot on a zero background with signed zeros"""
+    amps = (15.0, 25.0, 40.0, 60.0, 80.0, 100.0, 130.0, 160.0, 200.0, 240.0, 280.0, 300.0)
+    bgs = (100.0, 100.0, 150.0, 100.0, 300.0, 100.0, 1000.0, 100.0, 120.0, 500.0, 100.0, 200.0)
+    wins, p0 = [], []
+    for j, sigma in enumerate(DET_SIGMA):
+        w, wz = (math.ceil(2 * v) for v in sigma)
+        shape = (2 * wz + 1, 2 * w + 1, 2 * w + 1)
+        off = uniform(f"dso{j}", (len(amps), 3), -0.5, 0.5)
+        for i, (A, c) in enumerate(zip(amps, bgs, strict=True)):
+            xyz = (w + off[i, 0], w + off[i, 1], wz + off[i, 2])
+            noise = 2.0 + 2.0 * (i % 4)
+            wins.append(_spots(f"ds{j}.{i}", shape, [(xyz, A)], c, sigma, noise, i % 3 != 2))
+            p0.append([w, w, wz, 0.9 * A, *sigma, c + 2.0])
+    z0 = _spots("dsz", (9, 7, 7), [((3.1, 2.9, 4.2), 30.0)], 0.0, DET_SIGMA[0], 2.0)
+    z0.reshape(-1)[np.flatnonzero(z0.reshape(-1) == 0)[::2]] = -0.0
+    wins.append(z0)
+    p0.append([3, 3, 4, 25.0, *DET_SIGMA[0], 0.0])
+    return wins, p0
+
+
+def _wedge(shape) -> np.ndarray:
+    """a deskewed frame's empty wedge in a window: x < z - 2"""
+    Z, _, X = np.meshgrid(*(np.arange(n) for n in shape), indexing="ij")
+    return X < Z - 2
+
+
+def _fit_nan():
+    """windows with voxels left out (NaN, MATLAB's and with a payload: any NaN is left out):
+    another mask component's corner, a deskewed frame's empty wedge, scattered voxels (10 to
+    70%); 48 to 42 voxels left (the fit's sums: in index order up to 43, in four lanes above,
+    with their tails), 8 and 7 (the fewest the fit takes), 6 and none (NaN results); windows
+    clipped at the volume's faces, a volume of 2 planes"""
+    sigma = DET_SIGMA[0]
+    wins, p0 = [], []
+    full = (9, 7, 7)
+    Z, Y, X = np.meshgrid(*(np.arange(n) for n in full), indexing="ij")
+    regions = [
+        (X - 6) ** 2 + (Y - 6) ** 2 + (Z - 7) ** 2 // 2 < 8,
+        _wedge(full),
+        logical("dnr1", full, 0.1),
+        logical("dnr2", full, 0.35),
+        logical("dnr3", full, 0.7),
+    ]
+    for i, out in enumerate(regions):
+        w = _spots(f"dn{i}", full, [((3.3, 2.8, 4.2), 120.0)], 100.0, sigma, 5.0)
+        w[out] = NAN
+        w.reshape(-1)[np.flatnonzero(out.reshape(-1))[::3]] = _payload_nan(np.float64)
+        wins.append(w)
+        p0.append([3, 3, 4, 100.0, *sigma, 100.0])
+    small = _spots("dnc", (3, 4, 4), [((1.6, 1.4, 1.2), 70.0)], 100.0, sigma, 3.0)
+    order = np.arange(48).reshape(3, 4, 4).transpose(0, 2, 1).reshape(-1)  # MATLAB's voxel order
+    for left in (48, 47, 46, 45, 44, 43, 42, 8, 7, 6, 0):
+        w = small.copy()
+        w.reshape(-1)[order[left:]] = NAN
+        wins.append(w)
+        p0.append([1, 1, 1, 50.0, *sigma, 100.0])
+    # clipped at the faces: (shape, the spot, the candidate voxel)
+    for i, (shape, xyz, start) in enumerate(
+        (
+            ((5, 7, 7), (3.2, 2.7, 0.6), (3, 3, 0)),
+            ((9, 4, 7), (3.4, 0.3, 4.1), (3, 0, 4)),
+            ((9, 7, 4), (3.4, 2.9, 3.8), (3, 3, 4)),
+            ((5, 4, 4), (0.4, 0.2, 0.3), (0, 0, 0)),
+            ((2, 7, 7), (3.1, 3.2, 0.7), (3, 3, 1)),
+        )
+    ):
+        w = _spots(f"dnf{i}", shape, [(xyz, 90.0)], 100.0, sigma, 4.0, i % 2 == 0)
+        wins.append(w)
+        p0.append([*start, 80.0, *sigma, 100.0])
+    return wins, p0
+
+
+def _pairs() -> np.ndarray:
+    """bright components of 2 voxels on a lattice (x and y even, z in pairs 3 apart) over weak
+    noise: more starts than the fit takes (16)"""
+    full = (9, 7, 7)
+    Z, Y, X = np.meshgrid(*(np.arange(n) for n in full), indexing="ij")
+    w = _spots("drp", full, [], 100.0, DET_SIGMA[0], 1.0)
+    dots = (X % 2 == 0) & (Y % 2 == 0) & (Z % 3 != 2)
+    w[dots] += 50.0 + np.floor(uniform("drpd", full, 0.0, 20.0))[dots]
+    return w
+
+
+def _fit_restarts():
+    """starts the fit leaves for the window's LoG maxima and bright components: a negative A (an
+    Ac fit's, on another channel), also at a fitted position, an A above the data's range, a
+    start on the window's face with the step outward (the spot's centre outside the clipped
+    window), two spots, noise only, a larger window of strong noise, the candidate on the LoG
+    maximum (left out of the starts), voxels left out, a dark spot (31 iterations without a
+    better fit), more than 16 starts (cut to 16)"""
+    sigma = DET_SIGMA[0]
+    full, mid = (9, 7, 7), (3, 3, 4)
+    wins, p0 = [], []
+
+    def add(name, shape, spots, start, A, noise=5.0, counts=True, out=None):
+        w = _spots(name, shape, spots, 100.0, sigma, noise, counts)
+        if out is not None:
+            w[out] = NAN
+        wins.append(w)
+        p0.append([*start, A, *sigma, 100.0])
+
+    for i, A0 in enumerate((-20.0, -3.5, -0.25)):
+        add(f"drn{i}", full, [((3.2, 2.9, 4.1), 80.0 + 40 * i)], mid, A0)
+    add("drf", full, [((3.27, 2.91, 4.06), 120.0)], (3.27, 2.91, 4.06), -12.5)
+    add("dra", full, [((2.8, 3.3, 3.7), 90.0)], mid, 5000.0, 4.0)
+    add("dro", (9, 7, 4), [((-0.7, 3.1, 4.2), 150.0)], (0, 3, 4), 100.0, 4.0)
+    add("dry", (9, 4, 7), [((3.0, 3.8, 4.0), 150.0)], mid, 100.0, 4.0)
+    for A0 in (-10.0, 50.0):
+        add("dr2", full, [((1.5, 2.0, 3.0), 90.0), ((5.2, 4.5, 5.5), 60.0)], mid, A0, 4.0, False)
+    for A0 in (-3.0, 2.0):
+        add("drz", full, [], mid, A0, 6.0)
+    add("drm", (9, 9, 9), [((4.0, 4.0, 4.0), 10.0)], (4, 4, 4), -1.0, 25.0)
+    add("drl", full, [((3.0, 3.0, 4.0), 200.0)], mid, -5.0, 2.0)
+    add("drw", full, [((3.4, 3.1, 4.3), 110.0)], mid, -8.0, out=_wedge(full))
+    add("drs", (3, 4, 4), [((1.6, 1.4, 1.2), 70.0)], (1, 1, 1), -2.0, 3.0)
+    for A0 in (30.0, -30.0):
+        add("drd", full, [((3.2, 2.9, 4.1), -60.0)], mid, A0, 3.0)
+    for A0 in (-5.0, 20.0):
+        wins.append(_pairs())
+        p0.append([*mid, A0, *sigma, 100.0])
+    return wins, p0
+
+
+@case("detection.fit_cd.spots")
+def _():
+    return _fit_cd(*_fit_spots())[0]
+
+
+@case("detection.fit_cd.nan_voxels")
+def _():
+    return _fit_cd(*_fit_nan())[0]
+
+
+@case("detection.fit_cd.restarts")
+def _():
+    return _fit_cd(*_fit_restarts())[0]
+
+
+@case("detection.fit_cd.iterations")
+def _():
+    """the iteration limit (none: the start's own results; 1, 2, 5) and the critical value of the
+    Anderson-Darling test"""
+    wins, p0 = _fit_spots()
+    rw, rp = _fit_restarts()
+    wins, p0 = wins[::4] + rw[::3], p0[::4] + rp[::3]
+    out = [_fit_cd(wins, p0, m)[0] for m in (0, 1, 2, 5)]
+    return out + [_fit_cd(wins, p0, 500, 0.5)[0]]
+
+
+@case(
+    "detection.ad_stat",
+    recorded="the C library's erfc and log, which the Anderson-Darling statistic (adtest_mex's, "
+    "and the fits' A^2) takes",
+)
+def _():
+    """the Anderson-Darling statistic of samples in their given order (tests/detection's sorted
+    normal samples and one out of order, against three sigmas), of 1 to 441 values (a window's),
+    of counts against their mean, with ties and signed zeros, of a 2-D array (its C order); the
+    fits' A^2 of the sorted residuals"""
+    from petakit5d._ext import load
+    from petakit5d.detection import fit
+
+    out = []
+    g = gen("ads").normal((6, 294))
+    for i, s in enumerate((0.7, 0.9, 1.0, 1.1, 1.3, 1.0)):
+        x = np.sort(g[i] * s) if i < 5 else g[i] * s
+        for sig in (0.8, 1.0, 1.25):
+            out += [fit.ad_statistic(x, 0.0, sig), fit.adtest(x, 0.0, sig)]
+    for n in (1, 2, 7, 43, 44, 441):
+        out.append(fit.ad_statistic(np.sort(double(f"adn{n}", (n,), 1.0)), 0.0, 1.0))
+    c = np.sort(np.floor(double("adc", (441,), 5.0) + 100.0))
+    out += [fit.ad_statistic(c, 100.0, 5.0), fit.ad_statistic(c, 99.5, 4.75)]
+    t = np.sort(np.floor(double("adt", (200,), 2.0)))
+    t[t == 0] = np.where(np.arange(int(np.sum(t == 0))) % 2 == 0, -0.0, 0.0)
+    out += [fit.ad_statistic(t, 0.0, 2.0), fit.adtest(t, 0.0, 2.0)]
+    out.append(
+        load("detection").ad_stat(np.sort(double("ad2", (294,), 1.0)).reshape(7, 42), 0.0, 1.0)
+    )
+    return out + [_fit_cd(*f())[1] for f in (_fit_spots, _fit_nan, _fit_restarts)]
+
+
+def _bits(*words: int) -> np.ndarray:
+    return np.array(words, dtype=np.uint64).view(np.float64)
+
+
+@case("detection.exp")
+def _():
+    """the fits' exp (fdlibm's, e at 1, as MATLAB's) on each of its paths, at both sides of their
+    bounds: |x| below 2^-28, up to 0.5 ln 2, below 1.5 ln 2, above; the overflow and underflow
+    thresholds, subnormal results; the special values; the fits' arguments (-20 to 0)"""
+    from petakit5d._ext import load
+
+    D = load("detection")
+    # the high words that bound the paths (|x| < 2^-28, <= 0.5 ln 2, < 1.5 ln 2, >= 709.78)
+    words = []
+    for h in (0x3E300000, 0x3FD62E43, 0x3FF0A2B2, 0x40862E42):
+        words += [(h << 32) - 1, h << 32, (h << 32) + 1, ((h - 1) << 32) + 0x80000000]
+    # the overflow and underflow thresholds and their neighbours, 1 (e) and its neighbours
+    for t in np.array([7.09782712893383973096e02, -7.45133219101941108420e02, 1.0]).view(np.uint64):
+        words += [int(t) - 1, int(t), int(t) + 1]
+    b = _bits(*words)
+    x = np.concatenate(
+        [
+            b,
+            -b,
+            -uniform("dexs", (300,), 708.0, 746.0),  # subnormal results
+            uniform("dexa", (3000,), -746.0, 710.0),
+            -uniform("dexf", (2000,), 0.0, 20.0),
+            specials(uniform("dexx", (1000,), -3.0, 3.0), payload=True),
+        ]
+    )
+    return np.array([D.exp(float(v)) for v in x])
+
+
 # -- matlabcompat: filters, resize, warp, morphology, labels, distances -----------------------
 
 
@@ -1074,6 +1343,104 @@ def _():
     g = G.graph([0, 1, 2, 3, 0, 4], [1, 2, 3, 0, 4, 5], [1.5, 2.0, 0.5, 3.0, 1.0, 2.5])
     t, pred = G.minspantree(g)
     return out + [t.edges, t.weights, np.asarray(pred), G.dfsearch(g, 0), G.neighbors(g, 0)]
+
+
+@case("neighbors.rangesearch")
+def _():
+    """rangesearch as the detection counts neighbours (points in a volume) and as tests/detection
+    calls it (a close pair); a lattice, whose distances are exact, with r on them (d <= r, ties
+    in row order) and duplicates at r = 0; queries apart from the points (some with none in
+    range), 2-D points, no points, one query as a vector, coordinates near 1e6, signed zeros"""
+    from petakit5d.matlabcompat import neighbors as N
+
+    P = double("rsp", (60, 3), 2.0)
+    P[10] = P[11] + 0.25
+    out = [N.rangesearch(P, P, 1.5)]
+    V = uniform("rsv", (300, 3)) * np.array([64.0, 64.0, 24.0])
+    out.append(N.rangesearch(V, V, 4.25))
+    z, y, x = np.meshgrid(np.arange(3.0), np.arange(4.0), np.arange(5.0), indexing="ij")
+    L = np.stack([x.ravel(), y.ravel(), z.ravel()], axis=1)
+    L = np.concatenate([L, L[[7, 30]]])
+    out += [N.rangesearch(L, L, r) for r in (0.0, 1.0, math.sqrt(2.0), math.sqrt(3.0), 2.0)]
+    out.append(N.rangesearch(L, uniform("rsq", (25, 3), -2.0, 6.0), 1.25))
+    out.append(N.rangesearch(double("rs2", (80, 2), 1.0), double("rs2q", (9, 2), 1.0), 0.75))
+    out += [N.rangesearch(np.zeros((0, 3)), L[:3], 1.0), N.rangesearch(L, L[17], 1.5)]
+    B = 1e6 + uniform("rsb", (50, 3), 0.0, 2.0)
+    out.append(N.rangesearch(B, B, 0.5))
+    S = np.array([[0.0, -0.0, 0.0], [-0.0, 0.0, -0.0], [1.0, -0.0, 0.0], [0.0, 0.0, -1.0]])
+    out.append(N.rangesearch(S, S, 1.0))
+    return out
+
+
+def _sigma_r(name: str, n: int) -> np.ndarray:
+    """residual sigmas as the bad-point filter sees them (tests/detection's: |normal| 4 + 3)"""
+    return np.abs(gen(name).normal(n)) * 4.0 + 3.0
+
+
+@case("signal.histcounts")
+def _():
+    """histcounts as the bad-point filter calls it (residual sigmas, 60 bins and its coarsening
+    by ceil(0.9 nb); the oracle cases' 341 and 17); integers on the edges (10, 7, 2 and 1 bins:
+    widths of 10 and 100, powers of ten), negative data, signed zeros at the minimum, a narrow
+    range near 1e6, values near 1e-300, two values"""
+    from petakit5d.matlabcompat import signal as Sg
+
+    sr = _sigma_r("hcs", 800)
+    out = []
+    nb = 60
+    for _ in range(6):
+        out.append(Sg.histcounts(sr, nb))
+        nb = math.ceil(0.9 * nb)
+    out += [Sg.histcounts(sr, n) for n in (341, 17)] + [Sg.histcounts_edges(sr, 45)]
+    iv = np.concatenate([np.arange(101.0), np.arange(0.0, 101.0, 10.0)])
+    out += [Sg.histcounts(iv, n) for n in (10, 7, 2, 1)]
+    out.append(Sg.histcounts(double("hcn", (500,), 50.0) - 20.0, 13))
+    z = np.array([-0.0, 0.0, 1.0, 2.5, 3.0, 0.5, -0.0])
+    out += [Sg.histcounts(z, 4), Sg.histcounts_edges(z, 3)]
+    out.append(Sg.histcounts(1e6 + uniform("hcb", (300,), 0.0, 1e-3), 25))
+    out.append(Sg.histcounts(uniform("hct", (200,), 1.0, 2.0) * 1e-300, 9))
+    return out + [Sg.histcounts(np.array([3.0, 7.5]), 3)]
+
+
+@case("signal.findpeaks")
+def _():
+    """findpeaks as the bad-point filter calls it (histogram counts, prominence 5) and without a
+    prominence: flat tops (one peak, at the first sample), plateaus that rise or reach the end
+    (none), prominences at the limit and below it, negative values and -0, vectors of 0 to 3
+    samples, normal values"""
+    from petakit5d.matlabcompat import signal as Sg
+
+    out = []
+    for n in (60, 37):
+        cnt, _ = Sg.histcounts(_sigma_r("fps", 800), n)
+        out += [Sg.findpeaks(cnt, 5.0), Sg.findpeaks(cnt)]
+    y = np.array([0, 1, 1, 1, 0, 2, 3, 3, 2, 5, 5, 6, 4, 4, 4, 7, 7, 3, 9, 9], dtype=np.float64)
+    out += [Sg.findpeaks(y), Sg.findpeaks(y, 2.0), Sg.findpeaks(y, 3.0)]
+    out += [Sg.findpeaks(np.array(v), 5.0) for v in ([0.0, 5.0, 0.0], [1.0, 6.0, 2.0])]
+    out += [Sg.findpeaks(np.array([0.0, 4.0, 1.0, 4.0, 0.0]), 3.0)]
+    out += [Sg.findpeaks(np.array([-3.0, -0.0, -2.0, -1.0, -5.0, -0.5, -0.5, -4.0]))]
+    out += [Sg.findpeaks(np.arange(n, dtype=np.float64)) for n in (0, 1, 2)]
+    out += [Sg.findpeaks(np.array([1.0, 3.0, 2.0]))]
+    v = double("fpn", (500,), 1.0)
+    return out + [Sg.findpeaks(v), Sg.findpeaks(v, 0.5)]
+
+
+@case("signal.medfilt1")
+def _():
+    """medfilt1 as the bad-point filter smooths histogram counts (zeros past the ends), ties, 1
+    to 3 samples, normal values with the special values apart (no window holds two NaNs or two
+    zeros: the median's pick among equal values would be the sort's)"""
+    from petakit5d.matlabcompat import signal as Sg
+
+    cnt, _ = Sg.histcounts(_sigma_r("mfs", 800), 60)
+    out = [Sg.medfilt1(cnt), Sg.medfilt1(np.array([4.0, 4.0, 1.0, 4.0, 4.0, 7.0, 7.0]))]
+    out += [Sg.medfilt1(np.array(v)) for v in ([5.0], [5.0, 2.0], [1.0, 9.0, 3.0])]
+    v = double("mfn", (61,), 10.0)
+    tiny = np.finfo(np.float64).smallest_subnormal * 3
+    put = (NAN, _payload_nan(np.float64), np.inf, -np.inf, -0.0, tiny, -tiny)
+    v[[5, 12, 20, 21, 30, 40, 50]] = put
+    v[29], v[31] = -1.0, 1.0  # -0 the middle of its window
+    return out + [Sg.medfilt1(v), Sg.medfilt1(double("mfl", (1000,), 1.0))]
 
 
 # -- special values through weighted sums ------------------------------------------------------
