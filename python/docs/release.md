@@ -28,7 +28,7 @@ a repository of its own. What waits for a decision of the user is marked **(user
 | Platform | Wheel tag | Build | Repair | OpenMP runtime |
 |---|---|---|---|---|
 | Linux x86-64 | `manylinux_2_28_x86_64` (auditwheel also tags it `manylinux_2_24`) | GCC 14 of the image `quay.io/pypa/manylinux_2_28_x86_64:2026.06.04-1`, the image of the cpp-zarr and cpp-tiff wheels | auditwheel | the cpp-zarr wheel's libgomp, carried in the wheel (below) |
-| macOS arm64 | `macosx_15_0_arm64` | Apple Clang | delocate | Homebrew's libomp, copied in by delocate |
+| macOS arm64 | `macosx_13_0_arm64` | Apple Clang | delocate | LLVM's libomp, built for macOS 13.0 from LLVM's sources and copied in by delocate |
 | Windows x86-64 | `win_amd64` | MSVC 2022, `/openmp:llvm` | delvewheel `--no-diagnostic` | `libomp140.x86_64.dll`, put next to the modules by the build |
 
 For each platform two wheels: **CPython 3.11** (`cp311-cp311`) and **CPython 3.12 and newer**
@@ -36,12 +36,15 @@ For each platform two wheels: **CPython 3.11** (`cp311-cp311`) and **CPython 3.1
 (a capsule is the only direct call), so one abi3 wheel serves 3.12, 3.13, 3.14 and later
 versions. Free-threaded Pythons (`cp314t`) get no wheel: they have no stable ABI.
 `[tool.cibuildwheel]` in `pyproject.toml` holds the matrix; `cibuildwheel` builds it on each
-platform, or, on Linux machines with Apptainer only, the same recipe that builds the cpp-zarr and
-cpp-tiff wheels (a script that runs cibuildwheel's steps in the same image).
+platform (the workflow below), or, on Linux machines with Apptainer only, the same recipe that
+builds the cpp-zarr and cpp-tiff wheels (a script that runs cibuildwheel's steps in the same
+image).
 
 Each wheel is tested where it is built, in a fresh environment, by cibuildwheel's test command:
 the smoke tests and the OpenMP runtime tests (`tests/test_smoke.py`,
-`tests/test_openmp_runtime.py`). The full suite runs against an installed wheel in CI (below).
+`tests/test_openmp_runtime.py`); the abi3 wheel also on CPython 3.14 (the `cp314-*` entry of the
+matrix, for which cibuildwheel tests the abi3 wheel instead of building one). The full suite runs
+against an installed wheel in CI (below).
 
 ### The OpenMP runtime
 
@@ -53,10 +56,13 @@ the smoke tests and the OpenMP runtime tests (`tests/test_smoke.py`,
   libpthread, libdl and the loader (libstdc++ and libgcc are linked statically and hidden). The
   name depends on the image, so the image is pinned in all three projects and changes in all three
   together.
-- **macOS:** Homebrew's libomp, which delocate copies into `petakit5d/.dylibs/`. A Homebrew
-  bottle is built for the runner's macOS, so the wheel's deployment target follows it
-  (`MACOSX_DEPLOYMENT_TARGET`, 15.0 on the macOS 15 runners); an older target needs libomp built
-  from LLVM's sources with that target.
+- **macOS:** LLVM's libomp (21.1.8), built by `tools/build_libomp.sh` (cibuildwheel's
+  before-all) from LLVM's release sources, fetched by URL and SHA-256, for the wheel's deployment
+  target, macOS 13.0, the target of the cpp-zarr and cpp-tiff wheels; delocate copies it into
+  `petakit5d/.dylibs/`. Homebrew's libomp would not do: a bottle is built for the machine's macOS
+  (15.0 on the macOS 15 runners, and Homebrew has none for macOS 13 or 14), so the wheel's target
+  would follow it, and a `macosx_15_0` wheel installs on no older macOS, though every dependency
+  supports macOS 13.
 - **Windows:** MSVC's LLVM OpenMP runtime `libomp140.x86_64.dll`, copied next to the modules by
   the build; delvewheel leaves it (`--ignore-existing`) and adds the C++ runtime
   (`msvcp140.dll`) under a mangled name.
@@ -80,22 +86,81 @@ modules.
 
 ### Checks of every wheel before it is published
 
-- auditwheel / delocate / delvewheel: the platform tag, and the bundled libraries are the
-  expected ones (Linux: only the libgomp copy);
-- every module's RUNPATH is `$ORIGIN` (Linux) and names no build folder;
-- no member names a folder of the build machine (a home folder, a temporary build environment,
-  cibuildwheel's folders): cpp-tiff's `check_wheel_paths.py` with the project's own patterns;
-- no FFTW symbol is defined in petakit5d's modules;
-- the license files are in the wheel's `licenses/`.
+`tools/check_wheel.py` makes them, the same on every platform: it reads the binaries of all
+three formats (ELF, Mach-O, PE) with the standard library alone, so any wheel can be checked on
+any machine.
 
-**Tested for the Phase 1 plan (Linux):** the `cp311` and `cp312-abi3` wheels and the add-on's
-`py3` wheel, built in the pinned image with the recipe of the cpp-zarr and cpp-tiff wheels, passed
-their test commands and the checks above (one bundled library, `libgomp-e985bcbb.so.1.0.0`; every
-module's RUNPATH `$ORIGIN`; no build folder; no FFTW symbol; glibc 2.18 at most). The abi3 wheel,
-installed into a fresh environment on a machine of another CPU generation than the build's, passed
-the full CPU suite with and without the golden store and with the add-on's wheel installed, and
-installed with its dependencies from PyPI on CPython 3.14 it passed the FFT, core, deskew and
-decon tests. macOS and Windows wheels are built and tested first in CI.
+```
+python tools/check_wheel.py [--forbid REGEX]... [--forbid-file FILE] [-q] <wheels, sdists or folders>
+```
+
+It prints each wheel's inventory (its bundled libraries, and the libraries and search paths of
+its modules), then every finding, and exits with 0 if all are clean, 1 on a finding and 2 for an
+archive it can't read. The distribution comes from the file name: petakit5d or petakit5d_fftw.
+
+- **The tags:** the WHEEL file has the file name's tags; every binary is of the platform's format
+  and architecture; the modules are built for the tags (abi3: `<group>.abi3.so`, or a `.pyd` that
+  loads `python3.dll`; cp311: that version's suffix and `python311.dll`); no Mach-O file has a
+  newer deployment target than the wheel's tag.
+- **The bundled libraries:** the libraries besides the modules are the expected ones: Linux, the
+  libgomp copy next to the modules alone; macOS, `.dylibs/libomp.dylib`; Windows,
+  `libomp140.x86_64.dll` next to the modules and the copies of `msvcp140*.dll` that delvewheel
+  puts in `petakit5d.libs/`; the add-on, its two FFTW libraries. Every library a binary loads is
+  in the wheel (found through its search path, or next to it on Windows) or the system's: the C
+  library, macOS's `/usr/lib` and `/System`, Windows' system DLLs, API sets and the Python DLL
+  and C runtime every CPython ships.
+- **The search paths:** every RUNPATH (Linux) is `$ORIGIN`, with no old-style RPATH; every
+  LC_RPATH (macOS) starts with `@loader_path`; no install name is a folder outside the wheel.
+- **No folder of the build machine:** every member's bytes (with ELF's compressed sections
+  decompressed) and its name are searched, the approach of cpp-tiff's `check_wheel_paths.py`,
+  for home and user folders, temporary build environments and Python's temporary folders,
+  macOS's per-user temporary folders, cibuildwheel's folders and container, the CI runners'
+  workspace and tool cache, Homebrew's prefix and Spack's stages, and `--forbid` patterns: a
+  site's own names, which are kept outside the repository. No compiled Python file is carried.
+- **No FFTW** (GPL) in petakit5d's binaries: no symbol `fftw*_` defined, no FFTW version string.
+- **The license:** METADATA's `License-Expression` (`BSD-3-Clause`; the add-on's
+  `GPL-2.0-or-later`), and every `License-File`, the project's three among them (the add-on's
+  `COPYING`), in `.dist-info/licenses/`.
+
+For the source distribution: no `cpp/fft/exact/`, no build folders, compiled files or binaries,
+no owner names in the tar headers, the license as above, and the folder check of the member
+names and of PKG-INFO. Its other files are the repository's sources, where a build folder can be
+named for a reason (the libomp search hints of `cmake/Pk5dOpenMP.cmake`, the check's own patterns
+and test cases), so their contents get the `--forbid` patterns only.
+
+### The wheel workflow
+
+`.github/workflows/wheels.yml` builds all of it and keeps it as the run's artifacts; it
+publishes nothing, uploads nothing anywhere else and uses no secret. It runs for a tag `v*`, for
+a push to the branch `wheels-trial` (trial runs) and by hand (`workflow_dispatch`, for the new
+repository's default branch later). The `test` branch's pushes don't run it.
+
+| Job | Runners | Steps |
+|---|---|---|
+| `wheels` | ubuntu-24.04, macos-15, windows-2025 | cibuildwheel 4.3.5, run from `python/` with `[tool.cibuildwheel]`: per Python the build, the repair, the audit of the abi3 wheel (`abi3audit --strict`) and the test command in a fresh environment; then the checks |
+| `sdist` | ubuntu-24.04 | `python -m build --sdist`; a wheel built from the sdist alone (`pip wheel`, isolated), installed in a fresh environment and tested by the sdist's own smoke and OpenMP tests; the checks of both |
+| `addon` | the three | cibuildwheel from `python/cpp/fft/exact`: one `py3-none` wheel per platform, built once (CPython 3.12; on Linux in petakit5d's image), its test (both libraries load and are `fftw-3.3.8`) and the checks |
+
+The artifacts are `petakit5d-<system>-<architecture>`, `sdist` and
+`petakit5d-fftw-<system>-<architecture>`. To check wheels anywhere else, run
+`python tools/check_wheel.py <folder>` from `python/`; with the site's own names
+(`--forbid-file`, a file outside the repository) on the lab's machines.
+
+### First results (2026-11-19)
+
+- **Linux x86-64, on the cluster** (Apptainer, the pinned image, the recipe of the cpp-zarr and
+  cpp-tiff wheels, the runner-like Ubuntu 24.04 for the sdist): the `cp311` and `cp312-abi3`
+  wheels passed their test commands (27 passed each; the abi3 wheel also on CPython 3.14.5,
+  27 passed) and `abi3audit --strict`, and the checks found nothing, with the site's names too:
+  one bundled library, `libgomp-e985bcbb.so.1.0.0`; every module's RUNPATH `$ORIGIN`; no build
+  folder; no FFTW symbol. The sdist has 836 files and no `cpp/fft/exact/`, and the wheel built
+  from it passed the checks. The add-on's wheel passed its test and the checks after its build
+  left FFTW's source folder out of the file names its assertions carry (they named the build's
+  temporary folder).
+- Before: the abi3 wheel, installed into a fresh environment on a machine of another CPU
+  generation than the build's, passed the full CPU suite with and without the golden store and
+  with the add-on's wheel installed, and installed with its dependencies from PyPI on CPython
+  3.14 it passed the FFT, core, deskew and decon tests.
 
 ## Licenses
 
@@ -157,6 +222,7 @@ is: it remains the reference that the oracle cases were made from.
 |---|---|
 | `python/` with its history | `git filter-repo` (below): every commit that touched it, with its authors, dates and messages; `python/` becomes the root |
 | the CI workflow (`.github/workflows/python.yml`) | in the same filter, with its history; then one commit for the new layout: no `working-directory: python`, no `paths:` filters, the Slurm config's path without `python/` |
+| the wheel workflow (`.github/workflows/wheels.yml`) | in the same filter, with its history; in the layout commit: no `working-directory: python` (the add-on's `python/cpp/fft/exact` becomes `cpp/fft/exact`; its `../../../tools/check_wheel.py` stays), and the artifacts' paths without `python/` |
 | the oracle manifests (`tests/**/*.oracle.json`) | in `python/`, so with the history: they carry the MATLAB references that CI compares with |
 | the oracle harness (`tests/oracle_matlab`: the MATLAB side and `ORACLE_COMMIT`) | in `python/`. Making new references needs a MATLAB PetaKit5D tree at the commit `ORACLE_COMMIT` names (`PETAKIT5D_ORACLE_DIR`): a checkout of the MATLAB repository, which stays public. The docs name that repository and the commit |
 | the golden store (the full MATLAB outputs, `PETAKIT5D_GOLDEN_DIR`) | not in git; CI does not need it. **(user)** where it lives for other sites: kept local, or published as a versioned archive keyed by the oracle commit |
@@ -170,23 +236,25 @@ is: it remains the reference that the oracle cases were made from.
 The MATLAB code, its tests (`tests/`), demos, `mcc/`, `setup.m`, `third_parties/` and the MATLAB
 workflow (`tests.yml`). The compiled MATLAB package is retired after the port's first release;
 `pk5d-master` and `pk5d mcc-shim` replace it for PetaKit5D-GUI and PyPetaKit5D. Once the new
-repository is live, `python/` and `python.yml` in PetaKit5D are replaced by a pointer to it in the
-README **(user)**, so that the package has one home.
+repository is live, `python/`, `python.yml` and `wheels.yml` in PetaKit5D are replaced by a
+pointer to it in the README **(user)**, so that the package has one home.
 
 ### The steps (rehearsed on a throw-away clone)
 
 ```
 git clone --no-local --single-branch --branch <branch> <PetaKit5D> petakit5d-split
 cd petakit5d-split
-git filter-repo --path python/ --path .github/workflows/python.yml --path-rename python/:
+git filter-repo --path python/ --path .github/workflows/python.yml \
+    --path .github/workflows/wheels.yml --path-rename python/:
 # check: the commit count, the authors, the trees (below)
-# then, in the new repository: the workflow's layout commit, the paths commit, the remote
+# then, in the new repository: the workflows' layout commit, the paths commit, the remote
 git remote add origin <the new repository>
 ```
 
 The checks after the filter:
 
-- the number of commits equals `git rev-list --count <branch> -- python .github/workflows/python.yml`
+- the number of commits equals
+  `git rev-list --count <branch> -- python .github/workflows/python.yml .github/workflows/wheels.yml`
   in PetaKit5D;
 - with `--subdirectory-filter python` instead, every commit's tree is the `python/` tree of its
   original, one for one (`git rev-parse <commit>:python` against the new commit's tree);
@@ -206,11 +274,12 @@ The checks after the filter:
 3. **The suites, green:** the full CPU suite with and without the golden store, the exact add-on's
    suite, the GPU tests on a Volta, an A100-class and a Blackwell GPU, and the CI on Linux, macOS
    and Windows, all on the release commit.
-4. **The wheels:** the matrix above, built from the release commit; each passes its test command;
-   one Linux wheel installed into a fresh environment on another machine passes the full CPU
-   suite; the checks of every wheel (above) find nothing.
-5. **The source distribution:** `python -m build --sdist`; it has no `cpp/fft/exact/`, no build
-   folders, and builds a wheel from scratch.
+4. **The wheels:** the wheel workflow's run for the release tag (or a `wheels-trial` run of the
+   release commit) is green: every wheel of the matrix and of the add-on passes its test command
+   and the checks; one Linux wheel installed into a fresh environment on another machine passes
+   the full CPU suite; the wheels that are published are that run's artifacts.
+5. **The source distribution:** the same run's `sdist` job: no `cpp/fft/exact/`, no build
+   folders, and a wheel built from it alone passes the smoke tests.
 6. **The licenses:** the tables above against the installed packages' metadata; new bundled
    libraries go into `THIRD_PARTY_NOTICES.md`.
 7. **The new repository (user):** its name and owner; the split as above; the CI in its new

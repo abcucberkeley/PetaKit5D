@@ -100,7 +100,9 @@ metadata.version.input = "src/petakit5d/_version.py"
 # x86-64, for CPython 3.11 and 3.12 (abi3: 3.12 and newer). The exact FFT add-on (cpp/fft/exact)
 # is a package and a wheel of its own, under the GPL.
 [tool.cibuildwheel]
-build = ["cp311-*", "cp312-*"]
+# cp314: the abi3 wheel tested again on the newest CPython (cibuildwheel reuses a compatible
+# wheel instead of building one)
+build = ["cp311-*", "cp312-*", "cp314-*"]
 skip = ["*-musllinux_*"]
 test-requires = ["pytest>=8", "pytest-timeout>=2.3"]
 # the installed modules load, and share one OpenMP runtime with the I/O packages (Linux)
@@ -115,10 +117,11 @@ manylinux-x86_64-image = "quay.io/pypa/manylinux_2_28_x86_64:2026.06.04-1"
 
 [tool.cibuildwheel.macos]
 archs = ["arm64"]
-# Apple Clang has no OpenMP runtime: Homebrew's libomp, which delocate copies into the wheel; the
-# deployment target can't be older than that libomp's
-before-all = "brew install libomp"
-environment = { MACOSX_DEPLOYMENT_TARGET = "15.0" }
+# Apple Clang has no OpenMP runtime: LLVM's libomp, built from its release sources for the
+# wheels' deployment target (tools/build_libomp.sh), which delocate copies into the wheel. 13.0 is
+# the cpp-zarr and cpp-tiff wheels' target; Homebrew's libomp would make it the runner's macOS
+before-all = "bash {package}/tools/build_libomp.sh"
+environment = { MACOSX_DEPLOYMENT_TARGET = "13.0", OpenMP_ROOT = "$(pwd)/build/libomp" }
 
 [tool.cibuildwheel.windows]
 archs = ["AMD64"]
