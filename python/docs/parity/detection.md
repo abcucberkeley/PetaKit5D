@@ -145,6 +145,33 @@ names its row as `detection.md Wn`. Proposed (2026-11-19), waiting for the user'
 |---|---|---|---|---|
 | W1 | `corr` (Pearson, two columns): the 165 correlations of `XZoffsetEstimation3D` and the probed columns | 17 ulp where the sum cancels (small integer columns); 16 ulp at 65,536 values; 2 ulp at 5.7 million; single: 1 ulp of single | `abs` 4e-15 (single `abs` 2e-7) | MATLAB takes `x'*y / norm(x) / norm(y)` from its BLAS, whose order of additions depends on the CPU and, from 4,096 values, on its thread count (MATLAB's own results differ between 1 and 8 threads); the port sums in MATLAB's order, platform-independent. The offsets the correlations decide were equal in every case |
 
+### MATLAB's slips the port fixes (W2 to W4)
+
+Three places where MATLAB's result is wrong and the port gives the correct one instead, each
+measured on synthetic data (probe job 4634531, oracle tree 45b2bb1).
+- The oracle cases compare the port with the corrected MATLAB call.
+- `run_detection_tracking(..., matlab_quirks=True)` gives MATLAB's output for W2 and W3;
+  `deskew_data(..., reverse=False)`, deskewData's default, gives it for one deskew.
+- Proposed (2026-11-20), waiting for the user's decision.
+
+| Row | Where | MATLAB | The port | Evidence |
+|---|---|---|---|---|
+| W2 | `run_detection_tracking`'s deskew of a reversed scan (a condition loaded with `reversed=True`) | `XR_runDetTrack3d` calls `deskewData` without its `'Reverse'` option, and `deskewData` leaves `data.reversed` alone, so reversed scans are deskewed as forward ones: sheared the wrong way | each movie is deskewed in its direction (`deskew_data(reverse=None)`), bit for bit `deskewData` with `'Reverse', true`, which is `XR_deskewRotateFrame` with `reverse` true | six beads at depths 3 to 19 of a 21-plane scan (31.5 degrees, dz 0.5, 0.104 um pixels). With `'Reverse'` true, every bead's x is the forward scan's (0.00 px apart; z mirrored, the acquisition order). Without it, the beads are displaced from -34 px to -132 px (13.7 um) relative to the first, by twice the shift per plane times their depth. Cases `deskew.reverse_option`, `deskew.wrapper_reversed_scan`; MATLAB's output in `deskew.reversed` |
+| W3 | `run_detection_tracking` with a one-frame movie before others | it drops the one-frame movies from the tracking (tracking needs two frames) but passes `XR_runTracking3D`, `XR_runTrackProcessing3D` and `rotateTracks3D` the folders of all movies. Its i-th kept movie gets the i-th folder: an indexing slip | each movie of more than one frame is tracked, processed and rotated into its own folder | movies of 6, 1 and 6 frames. MATLAB wrote a one-frame tracking (from the one-frame movie's 9 detections) into the one-frame movie's folder, left the third movie without tracks, and failed in track processing (`MATLAB:numel:BadSubscriptingIndex`, a `ProcessedTracks.mat.tmp` left behind). Case `dettrack.one_frame_movie` (against `XR_runDetTrack3d` on the movies of more than one frame, plus the one-frame movie with `Track` false) |
+| W4 | `load_condition_data(..., frame_rate=...)` with a one-frame movie | fails (`MATLAB:cellRefFromNonCell`, its dz lookup indexes the frame paths), even with the movie alone | loads it with the given rate: the struct of MATLAB's load without the rate, its `framerate` set | case `load.rate_given_one_frame_movie` (MATLAB's error kept in `load.rate_given_one_frame_movie.matlab`) |
+
+Two more measured behaviours:
+- `XR_loadConditionData3D` asks whether unequal frame rates are right ("Unequal frame rates
+  detected: 2.000 NaN 2.000", then `input`). It asks for movies whose rates differ, and for a
+  one-frame movie's NaN among others, two NaNs included; not for one movie alone. In batch mode
+  that is `MATLAB:services:MissingRequiredCapability`.
+  - The port raises the same error (`ConditionError`): cases `load.err_rates_*`.
+  - A frame rate given (`frame_rate`) makes the rates equal, as in MATLAB.
+  - A condition with a one-frame movie among others is then loaded one movie at a time and
+    joined (`Condition(...)`).
+- `deskewData` takes `'Reverse'` (and `'reverse'`) but refuses `'Reversed'`
+  (`MATLAB:InputParser:UnmatchedParameter`).
+
 ## Track processing (`detection.processing`, `detection.amira`, C04b)
 
 `XR_runTrackProcessing3D` and `rotateTracks3D` are new implementations from MATLAB's behaviour as

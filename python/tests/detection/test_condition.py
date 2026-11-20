@@ -119,8 +119,29 @@ def make_tree(folder) -> None:
         write_movie(r / "nonum" / "cond" / nm, CH, std_names(2))
 
 
+def make_rate_tree(folder) -> None:
+    """conditions whose movies' frame rates differ (a one-frame movie's is NaN), and one-frame
+    movies (a tree of its own)"""
+    from pathlib import Path
+
+    r = Path(folder)
+    for nm, n in (("Ex1_z0p5", 3), ("Ex2_z0p5", 1), ("Ex3_z0p5", 3)):
+        write_movie(r / "mid" / "cond" / nm, CH, std_names(n))
+    for nm in ("Ex1_z0p5", "Ex2_z0p5"):
+        write_movie(r / "ones" / "cond" / nm, CH, std_names(1))
+    write_movie(r / "rates" / "cond" / "Ex1_z0p5", CH, std_names(3))
+    write_movie(r / "rates" / "cond" / "Ex2_z0p5", CH, std_names(3, dt=4000))
+    write_movie(r / "single" / "Ex1_z0p5", CH, std_names(1))
+
+
 LOAD = (
     "d = XR_loadConditionData3D([in{1} in{2}], in{3}, in{4}, in{5}{:}); out = {rmfield(d, 'date')};"
+)
+# W4: MATLAB's loader fails on a one-frame movie when a frame rate is given; its reference for
+# the port is the loader without it and the given rate
+LOAD_RATE = (
+    "d = XR_loadConditionData3D([in{1} in{2}], in{3}, in{4}); d.framerate = in{5}{2}; "
+    "out = {rmfield(d, 'date')};"
 )
 LOAD2D = (
     "d = XR_loadConditionData([in{1} in{2}], in{3}, in{4}, in{5}{:}); out = {rmfield(d, 'date')};"
@@ -182,18 +203,18 @@ def _cases():
     tree = {"t": Tree(make_tree, "t")}
     cs = []
 
-    def add(cid, rel, chs=CH, mks=MK, opts=(), two_d=False, error=None):
+    def add(cid, rel, chs=CH, mks=MK, opts=(), two_d=False, error=None, inputs=None, code=None):
         kw = {}
         if error is not None:
             kw = {"expect_error": error, "py_error": (cond.ConditionError,)}
         cs.append(
             Case(
                 cid,
-                code=LOAD2D if two_d else LOAD,
+                code=code or (LOAD2D if two_d else LOAD),
                 args=[InPath("t"), rel, mcell(*chs), mcell(*mks), mcell(*opts)],
                 py_args=[InPath("t"), rel, list(chs), list(mks), list(opts)],
                 python=_load2d if two_d else _load3d,
-                inputs=tree,
+                inputs=inputs or tree,
                 **kw,
             )
         )
@@ -255,6 +276,27 @@ def _cases():
         error="MATLAB:services:MissingRequiredCapability")  # fmt: skip
     add("load.err_fewer_markers", "one/Ex1_syn_z0p5/", CH, ["gfp"], error="MATLAB:badsubscript")
     add("load.err_no_number", "nonum/cond/", error="MATLAB:matrix:singleSubscriptNumelMismatch")
+    # unequal frame rates: MATLAB asks whether they are right (its error in batch mode)
+    rates = {"t": Tree(make_rate_tree, "t")}
+    ask = "MATLAB:services:MissingRequiredCapability"
+    add("load.err_rates_one_frame_movie", "mid/cond/", error=ask, inputs=rates)
+    add("load.err_rates_two_one_frame_movies", "ones/cond/", error=ask, inputs=rates)
+    add("load.err_rates_differ", "rates/cond/", error=ask, inputs=rates)
+    add("load.rates_given", "rates/cond/", opts=["FrameRate", 2], inputs=rates)
+    add("load.one_frame_movie", "single/Ex1_z0p5/", inputs=rates)
+    add("load.rate_given_one_frame_movie", "single/Ex1_z0p5/", opts=["FrameRate", 2],
+        inputs=rates, code=LOAD_RATE)  # fmt: skip
+    # MATLAB's own result there (no Python side): its error, recorded
+    cs.append(
+        Case(
+            "load.rate_given_one_frame_movie.matlab",
+            code=LOAD,
+            args=[InPath("t"), "single/Ex1_z0p5/", mcell(*CH), mcell(*MK), mcell("FrameRate", 2)],
+            python=None,
+            inputs=rates,
+            expect_error="MATLAB:cellRefFromNonCell",
+        )
+    )
     add("load2d.movie", "one/Ex1_syn_z0p5/", two_d=True)
     add("load2d.ms_token", "ms/Ex1_40ms_z0p5/", two_d=True)
     add(
@@ -419,6 +461,32 @@ def test_paths_compare_with_slashes():
     assert got["movieLength"] == 1.0 and got["markers"] == ["gfp"]
     again = posix_paths(got)  # a no-op on paths with slashes
     assert again["source"] == got["source"] and again["channels"] == got["channels"]
+
+
+def test_struct_array_forms(tmp_path):
+    """one movie: its dict; more: a 1 x n StructArray (MATLAB's layer returns it)"""
+    from petakit5d.io.matfile import StructArray
+
+    write_movie(tmp_path / "Ex1_z0p5", CH, std_names(2))
+    write_movie(tmp_path / "Ex2_z0p5", CH, std_names(2))
+    d = cond.load_condition_data(str(tmp_path) + os.sep, CH, MK)
+    one = cond.struct_array(d[:1])
+    assert isinstance(one, dict) and one["movieLength"] == 2.0
+    two = cond.struct_array(d)
+    assert isinstance(two, StructArray) and two.shape == (1, 2)
+    assert [m["source"] for m in two] == [m.source for m in d]
+
+
+def test_frame_rates_must_agree():
+    """MATLAB asks when rates differ; each NaN (a one-frame movie) differs from all"""
+    for rates in ([2.0, 2.0], [np.nan], [3.5]):
+        cond._check_frame_rates(rates)
+    for rates in ([2.0, np.nan, 2.0], [np.nan, np.nan], [2.0, 4.0]):
+        with pytest.raises(cond.ConditionError) as e:
+            cond._check_frame_rates(rates)
+        assert e.value.identifier == "MATLAB:services:MissingRequiredCapability"
+    with pytest.raises(cond.ConditionError, match="detected: 2.000 NaN 2.000"):
+        cond._check_frame_rates([2.0, np.nan, 2.0])
 
 
 def test_z_aniso_sine():
