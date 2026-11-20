@@ -32,8 +32,12 @@ What the loaders do (measured, oracle tree 45b2bb1):
 - **frame rate** (3D): the median of the differences of the first ``<digits>msec`` token of
   channel 1's frame paths, in the frames' order, over 1000 (negative when the names are not in
   time order; NaN for one frame); a frame without one is ``MATLAB:badsubscript``. ``frame_rate``
-  replaces it. The 2D loader takes the first ``<digits>ms`` of the movie folder's path over 1000,
-  2 without one.
+  replaces it. When the movies' rates differ (a NaN, a one-frame movie's, differs from every
+  rate, another NaN too), MATLAB prints ``Unequal frame rates detected: ...`` and asks whether
+  that is right: an error here, MATLAB's in batch mode (``frame_rate`` makes them equal). With
+  ``frame_rate`` given, MATLAB fails on a one-frame movie (``MATLAB:cellRefFromNonCell``) where
+  the port loads it (``docs/parity/detection.md`` W4). The 2D loader takes the first
+  ``<digits>ms`` of the movie folder's path over 1000, 2 without one.
 - **dz**: ``dz`` when given, else ``0.<digits>`` of the first ``_z0p<digits>`` (any case) in
   channel 1's folder path (the condition's folders, the movie's, the channel's); NaN without one.
   ``zAniso = dz * sin(angle*pi/180) / pixelSize`` (fdlibm's sine: not ``sind``);
@@ -233,15 +237,11 @@ def struct_array(movies: Sequence[Movie2D], fields: Sequence[str] = ()) -> Any:
 
 
 class Condition(list):
-    """A condition: its movies (``Movie`` or ``Movie2D``), MATLAB's ``data`` struct array. It
-    counts as a MATLAB struct for the parameter registry's ``isstruct`` check (registered as a
-    ``Mapping``; it is a list otherwise)."""
+    """A condition: its movies (``Movie`` or ``Movie2D``), MATLAB's ``data`` struct array (the
+    parameter registry's ``isstruct`` takes it)."""
 
     def to_matlab(self) -> list[dict[str, Any]]:
         return movies_to_matlab(self)
-
-
-Mapping.register(Condition)
 
 
 def short_path(source: str, n: int = 3) -> str:
@@ -483,6 +483,20 @@ def _frame_rate(paths: Sequence[str]) -> float:
     return float(np.asarray(median(d)).reshape(-1)[0]) / 1000
 
 
+def _check_frame_rates(rates: Sequence[float]) -> None:
+    """MATLAB's question when the movies' frame rates differ (each NaN differs from every rate):
+    an interactive branch, an error here as MATLAB's in batch mode"""
+    r = np.asarray(rates, dtype=np.float64)
+    if r.size < 2 or (not np.isnan(r).any() and np.unique(r).size == 1):
+        return
+    text = " ".join("NaN" if np.isnan(x) else f"{x:.3f}" for x in r)
+    raise ConditionError(
+        f"Unequal frame rates detected: {text}. MATLAB asks whether this is correct; give "
+        "frame_rate to load the movies with one rate.",
+        _INTERACTIVE,
+    )
+
+
 def _dz_token(source: str) -> float:
     from petakit5d.core import dtypes
 
@@ -612,4 +626,6 @@ def load_condition_data(
                 frame_paths_dsr=dsr,
             )
         )
+    if frame_rate is None:
+        _check_frame_rates([m.framerate for m in out])
     return Condition(out)

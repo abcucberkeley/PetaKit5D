@@ -22,7 +22,10 @@ import numpy as np
 
 __all__ = [
     "FIELD_ORDER",
+    "CameraSettingsError",
     "assemble_frame",
+    "camera_threshold",
+    "camera_type",
     "dmask_name",
     "frame_volume",
     "run_detection",
@@ -81,10 +84,153 @@ _LOGICAL = ("hval_Ar", "hval_AD", "isPSF")
 _POS = ("x", "y", "z", "x_init", "y_init", "z_init")
 
 
+class CameraSettingsError(RuntimeError):
+    """MATLAB's error while finding the camera type (``identifier`` holds its id)"""
+
+    def __init__(self, identifier: str, message: str):
+        super().__init__(message)
+        self.identifier = identifier
+
+
+def _os_listdir(folder: str) -> list[str] | None:
+    """the system's names in a folder (never '.' or '..'); None for anything else"""
+    if not os.path.isdir(folder):
+        return None
+    try:
+        return os.listdir(folder)
+    except OSError:
+        return None
+
+
+def _matlab_dir_names(folder: str, pc: bool, listdir=_os_listdir) -> list[str]:
+    """the names MATLAB's ``dir(folder)`` lists, in its order (UTF-16 code units, as
+    ``core.paths.matlab_dir``; measured on Linux: '#name' comes before '.'): a folder's names
+    with '.' and '..'; nothing for '' or a name that is not a folder. On Windows (deduced: no
+    MATLAB runs there) a drive's root lists no '.' and '..', which its file systems do not have,
+    and a bare drive 'C:' lists the drive's root (MATLAB keeps one current folder, not one per
+    drive)."""
+    import re
+
+    from petakit5d.core.paths import matlab_sort_key
+
+    if folder == "":
+        return []
+    root = pc and re.fullmatch(r"[A-Za-z]:[\\/]*", folder) is not None
+    names = listdir(folder[:2] + "\\" if root else folder)
+    if names is None:
+        return []
+    if not root:
+        names = [*names, ".", ".."]
+    return sorted(names, key=matlab_sort_key)
+
+
+def _settings_file(source, *, pc: bool | None = None, listdir=_os_listdir) -> str:
+    """the file ``get_camera_type_from_setting_file`` (the lab's code) reads: ``data.source``
+    split at ``filesep`` (its ``strsplit``) without a trailing empty part, then from the whole
+    path to its first part (joined with ``filesep``) the first folder whose ``dir`` listing, its
+    first two names dropped as '.' and '..', has a name ending in 'settings.txt' (any case):
+    ``[folder filesep name]`` with the first such name. ``pc``: Windows' rules (default: this
+    platform's; ``core.paths.filesep``), ``listdir``: the system's listing (tests give their own).
+
+    MATLAB's errors: a folder on the way that lists fewer than two names raises
+    ``MATLAB:subsdeldimmismatch`` (the deletion of the first two), a walk without a settings
+    file ``MATLAB:UndefinedFunction`` (``setting_filename`` is never set). An absolute path's
+    walk ends on Linux at its first part '', which lists nothing (``MATLAB:subsdeldimmismatch``,
+    measured); on Windows at the drive 'C:', which lists the drive's root (so
+    ``MATLAB:UndefinedFunction``), and for a UNC path at '\\\\server', no folder
+    (``MATLAB:subsdeldimmismatch``; both deduced).
+
+    Windows, where the port differs (docs/parity/detection.md D9): MATLAB splits at '\\' only,
+    so it walks a source written with '/' (which its ``dir`` and ``fileparts`` take there) no
+    higher than the last '\\'; the port splits at both separators. Repeated separators give
+    empty parts here (MATLAB's ``strsplit`` merges them by default: the same folders, but a
+    UNC path's '\\\\server' would become '\\server')."""
+    import re
+
+    from petakit5d.core import paths
+
+    pc = paths.filesep == "\\" if pc is None else bool(pc)
+    sep = "\\" if pc else "/"
+    text = os.fspath(source) if isinstance(source, os.PathLike) else str(source)
+    parts = re.split(r"[\\/]" if pc else "/", text)
+    if parts[-1] == "":
+        parts = parts[:-1]
+    for i in range(len(parts)):
+        cur = sep.join(parts[: len(parts) - i])
+        listing = _matlab_dir_names(cur, pc, listdir)
+        if len(listing) < 2:
+            raise CameraSettingsError(
+                "MATLAB:subsdeldimmismatch", "Matrix index is out of range for deletion."
+            )
+        hits = [nm for nm in listing[2:] if re.search(r"settings\.txt$", nm, flags=re.IGNORECASE)]
+        if hits:
+            return cur + sep + hits[0]
+    raise CameraSettingsError(
+        "MATLAB:UndefinedFunction", "Unrecognized function or variable 'setting_filename'."
+    )
+
+
+def camera_type(
+    source: str | os.PathLike,
+    *,
+    names: tuple[str, ...] = ("Orca", "Andor"),
+    classes: tuple[str, ...] = ("SCMOS", "EMCCD"),
+) -> str:
+    """``get_camera_type_from_setting_file(data)`` (the lab's code): the settings file of the
+    channel folder ``data.source`` or of the first folder above it that has one
+    (``_settings_file``: MATLAB's walk per platform, its errors kept); its first line starting
+    with 'Camera Type' (any case, leading white space skipped); the class of the last of
+    ``names`` the line contains (any case), else ''. A settings file without a 'Camera Type' line
+    raises ``MATLAB:TooManyOutputsDueToMissingBraces``."""
+    import re
+
+    found = _settings_file(source)
+    try:
+        with open(found, "rb") as fh:
+            text = fh.read().decode("latin-1")
+    except OSError:
+        # fopen gives -1 and textscan fails (a listed name that cannot be read; deduced)
+        raise CameraSettingsError(
+            "MATLAB:FileIO:InvalidFid",
+            "Invalid file identifier. Use fopen to generate a valid file identifier.",
+        ) from None
+    lines = [ln.lstrip(" \t\b") for ln in text.split("\n")]
+    match = [ln for ln in lines if re.match(r"Camera Type", ln, flags=re.IGNORECASE)]
+    if not match:
+        raise CameraSettingsError(
+            "MATLAB:TooManyOutputsDueToMissingBraces",
+            "Insufficient number of outputs from right hand side of equal sign to satisfy "
+            "assignment.",
+        )
+    cls = ""
+    for nm, c in zip(names, classes, strict=True):
+        if nm.lower() in match[0].lower():
+            cls = c
+    return cls
+
+
+def camera_threshold(
+    source: str | os.PathLike, *, scmos: float = 3.0, emccd: float = 65.0
+) -> float:
+    """``XR_get_camera_standard_deviation_threshold(data)`` (the lab's code): the detector's
+    residual sigma threshold from the camera class, ``SCMOS_DC_Thresh`` 3 for 'SCMOS',
+    ``EMCCD_DC_Thres`` 65 for 'EMCCD', NaN when the class is unknown"""
+    from petakit5d.core.dtypes import NAN
+
+    cls = camera_type(source)
+    if cls == "SCMOS":
+        return float(scmos)
+    if cls == "EMCCD":
+        return float(emccd)
+    return float(NAN)
+
+
 def frame_volume(raw) -> np.ndarray:
-    """a DS frame as the runner uses it: double, zeros as NaN"""
+    """a DS frame as the runner uses it: double, zeros as NaN (MATLAB's)"""
+    from petakit5d.core.dtypes import NAN
+
     v = np.asarray(raw).astype(np.float64)
-    v[v == 0] = np.nan
+    v[v == 0] = NAN
     return v
 
 
@@ -204,9 +350,10 @@ def assemble_frame(
 ) -> tuple[dict, np.ndarray]:
     """one frame's ``frameInfo`` entry and dmask. ``det``: the master's detections (MATLAB
     fields, ``to_matlab_fields``) or None; ``vols``: each channel's DS frame (z, y, x);
-    ``sigma`` nCh x 2 after ``runner_sigma``; ``fits``: {channel: (Ac fields, xyzAc fields)}"""
+    ``sigma`` after ``runner_sigma``, a row per channel (``s`` holds it whole, rows past the
+    channels too, as MATLAB's does); ``fits``: {channel: (Ac fields, xyzAc fields)}"""
     sigma = np.array(sigma, dtype=np.float64, ndmin=2)
-    nch = sigma.shape[0]
+    nch = len(vols)
     if det is None:
         out = {k: np.zeros((0, 0)) for k in FIELD_ORDER}
         out["s"] = sigma.copy()
@@ -252,27 +399,53 @@ def detect_frame(
     master: int = 0,
     residual_sigma_threshold: float = 3.0,
     num_threads: int | None = None,
+    *,
+    detection_method: str = "lowSNR",
+    background_correction: bool = True,
+    window=None,
 ) -> tuple[dict, np.ndarray]:
     """``frameInfo`` entry and dmask of frame ``k`` (1-based; the background's seed) from the
-    channels' DS frames ``vols`` (as read, (z, y, x))"""
+    channels' DS frames ``vols`` (as read, (z, y, x)); ``detection_method`` 'lowSNR'
+    (``XR_pointSourceDetection3D_3`` after the background estimate) or 'speedup'
+    (``XR_pointSourceDetection3D``, redundancy radius 0.5, no background estimate);
+    ``window``: the detector's ``WindowSize`` (empty: from sigma)"""
     from petakit5d.detection import detect as _d
     from petakit5d.detection import fit as _fit
 
     V = [frame_volume(v) for v in vols]
     sig = runner_sigma(sigma)
-    bi = _d.estimate_background(V[master], k)
-    ps, mask = _d.point_source_detection(
-        V[master],
-        sig[master],
-        background_info=np.r_[bi, residual_sigma_threshold],
-        residual_sigma_threshold=residual_sigma_threshold,
-        num_threads=num_threads,
-    )
+    if detection_method == "speedup":
+        ps, mask = _d.point_source_detection_speedup(
+            V[master],
+            sig[master],
+            mode="xyzAc",
+            alpha=0.05,
+            remove_redundant_fits=True,
+            redundancy_radius=0.5,
+            window=window,
+            background_correction=background_correction,
+            num_threads=num_threads,
+        )
+    elif detection_method == "lowSNR":
+        bi = _d.estimate_background(V[master], k)
+        ps, mask = _d.point_source_detection(
+            V[master],
+            sig[master],
+            window=window,
+            background_correction=background_correction,
+            background_info=np.r_[bi, residual_sigma_threshold],
+            residual_sigma_threshold=residual_sigma_threshold,
+            num_threads=num_threads,
+        )
+    else:
+        raise NotImplementedError(
+            f"DetectionMethod {detection_method!r}: 'lowSNR' and 'speedup' are ported"
+        )
     if np.asarray(ps["x"]).size == 0:
         return assemble_frame(None, mask, vols, sig, {}, z_aniso, master)
     P = np.stack([np.asarray(ps[c], dtype=np.float64) for c in ("x", "y", "z")], axis=1)
     fits = {}
-    for ch in range(sig.shape[0]):
+    for ch in range(len(V)):
         if ch == master:
             continue
         nan = np.full(P.shape[0], np.nan)
@@ -284,46 +457,184 @@ def detect_frame(
     return assemble_frame(to_matlab_fields(ps), mask, vols, sig, fits, z_aniso, master)
 
 
+def _strings(v) -> list[str]:
+    """a path or MATLAB's cell of paths (any shape, column-major) as a list of str"""
+    if isinstance(v, str | os.PathLike):
+        return [os.fspath(v)]
+    if isinstance(v, np.ndarray):
+        return [os.fspath(p) if isinstance(p, os.PathLike) else str(p) for p in v.ravel(order="F")]
+    return [os.fspath(p) if isinstance(p, os.PathLike) else str(p) for p in v]
+
+
+def _frame_paths(v) -> list[list[str]]:
+    """``framePathsDS``: per channel its frames' paths (MATLAB's 1 x nCh cell of nFrames x 1
+    cells, ``condition.Movie``'s list of columns, or one channel's paths)"""
+    items = list(v.ravel(order="F")) if isinstance(v, np.ndarray) and v.dtype == object else list(v)
+    if items and all(isinstance(p, str | os.PathLike) for p in items):
+        return [_strings(items)]
+    return [_strings(c) for c in items]
+
+
+def _movies(data) -> list[dict]:
+    """the condition's movies as MATLAB's structs: one movie's dict, a ``StructArray`` (its
+    elements in MATLAB's linear order), or a sequence of dicts or ``condition.Movie``s"""
+    from collections.abc import Mapping
+
+    from petakit5d.io.matfile import StructArray
+
+    if isinstance(data, StructArray):
+        return data.ravel()
+    if isinstance(data, list | tuple):  # a condition.Condition too (registered as a Mapping)
+        return [m.to_matlab() if hasattr(m, "to_matlab") else dict(m) for m in data]
+    if isinstance(data, Mapping):
+        return [dict(data)]
+    if hasattr(data, "to_matlab"):
+        return [data.to_matlab()]
+    raise TypeError(f"run_detection: data is a struct or struct array of movies, not {type(data)}")
+
+
+def _results_paths(results_path, movies: list[dict]) -> list[str]:
+    """each movie's results folder: by default ``[source 'Analysis' filesep]``, else a cell
+    (list) of one folder per movie"""
+    if results_path is None:
+        return [str(m["source"]) + "Analysis" + os.sep for m in movies]
+    if isinstance(results_path, str | os.PathLike):
+        raise TypeError(
+            "run_detection: results_path is a list of folders, one per movie (MATLAB refuses a "
+            "char 'ResultsPath': it must be a cell)"
+        )
+    paths = _strings(results_path)
+    if len(paths) < len(movies):
+        raise IndexError(
+            f"Index exceeds the number of array elements. Index must not exceed {len(paths)}."
+        )
+    return paths[: len(movies)]
+
+
 def run_detection(
+    data,
+    sigma=None,
+    results_path=None,
+    *,
+    overwrite: bool = False,
+    window_size=None,
+    mode: str = "xyzAc",
+    fit_mixtures: bool = False,
+    max_mixtures: int = 3,
+    detection_method: str = "speedup",
+    background_correction: bool = False,
+    write_amira: bool = True,
+    frames=None,
+    residual_sigma_threshold: float | None = None,
+    num_threads: int | None = None,
+) -> list[list[dict] | None]:
+    """``XR_runDetection3D(data, 'Sigma', sigma, 'Overwrite', ow, 'WindowSize', ws,
+    'ResultsPath', rp, 'Mode', mode, 'FitMixtures', fm, 'MaxMixtures', mm, 'DetectionMethod',
+    method, 'BackgroundCorrection', bc, 'WriteAmira', wa)``: every frame of every movie of a
+    condition. Measured as a black box: the defaults, the folders, the skipping.
+
+    ``data``: the condition as ``condition.load_condition_data`` gives it, one movie's dict or a
+    1 x n ``StructArray`` (or a list of movies); per movie MATLAB's fields ``source`` (the master
+    channel's folder), ``channels``, ``framePathsDS`` and ``zAniso``. ``sigma``: nCh x 2
+    ``[sigmaXY sigmaZ]``, a row per channel (``frameInfo.s`` holds it whole, rows past the
+    channels too). ``results_path``: a list of one folder per movie (MATLAB refuses a char
+    array), by default ``[source 'Analysis' filesep]``. As MATLAB does, ``Detection3D.mat``
+    goes to ``results_path + 'Detection3D.mat'`` (a folder without the trailing separator gives
+    a file beside it) and the masks to ``<results_path>/Masks/dmask_<k>.tif``; with
+    ``overwrite`` false (the default) a movie whose ``Detection3D.mat`` exists is skipped (None
+    in the result). ``detection_method``: 'speedup' (MATLAB's default) or 'lowSNR'; the ported
+    settings are ``window_size`` empty, ``mode`` 'xyzAc' and ``fit_mixtures`` false
+    (``max_mixtures`` matters only with mixtures). ``write_amira``: MATLAB's Amira writer fails
+    and writes nothing; an empty ``Amira/Detection`` folder stays. ``frames``: only these frames
+    (1-based; the port's); ``residual_sigma_threshold``: by default the camera's, as MATLAB finds
+    it from the settings file above ``source`` (``camera_threshold``: 3 for sCMOS cameras).
+    Returns per movie its ``frameInfo`` entries."""
+    if sigma is None or np.size(sigma) == 0:
+        raise ValueError("run_detection: give sigma (MATLAB asks for it interactively)")
+    if mode != "xyzAc":
+        raise NotImplementedError(f"run_detection: Mode {mode!r}: 'xyzAc' is ported")
+    if bool(np.asarray(fit_mixtures).reshape(-1)[0]):
+        raise NotImplementedError("run_detection: FitMixtures true is not ported")
+    if detection_method not in ("speedup", "lowSNR"):
+        raise NotImplementedError(
+            f"run_detection: DetectionMethod {detection_method!r}: 'speedup' and 'lowSNR' are "
+            "ported"
+        )
+    if window_size is not None and np.size(window_size) != 0:
+        # MATLAB's detectors take 'WindowSize' otherwise than the port's window (measured: 4,830
+        # detections against 3,128 for [2 2] on a demo frame)
+        raise NotImplementedError("run_detection: WindowSize: the default (empty) is ported")
+    movies = _movies(data)
+    paths = _results_paths(results_path, movies)
+    out: list[list[dict] | None] = []
+    for mv, rp in zip(movies, paths, strict=True):
+        if not overwrite and os.path.isfile(rp + "Detection3D.mat"):
+            out.append(None)
+            continue
+        out.append(
+            _run_movie(
+                mv,
+                sigma,
+                rp,
+                window_size=window_size,
+                detection_method=detection_method,
+                background_correction=bool(background_correction),
+                write_amira=write_amira,
+                frames=frames,
+                residual_sigma_threshold=residual_sigma_threshold,
+                num_threads=num_threads,
+            )
+        )
+    return out
+
+
+def _run_movie(
     data: dict,
     sigma,
-    results_path: str | os.PathLike,
+    results_path: str,
     *,
-    frames=None,
-    residual_sigma_threshold: float = 3.0,
-    num_threads: int | None = None,
+    window_size,
+    detection_method: str,
+    background_correction: bool,
+    write_amira: bool,
+    frames,
+    residual_sigma_threshold,
+    num_threads,
 ) -> list[dict]:
-    """``XR_runDetection3D(data, 'Sigma', sigma, 'ResultsPath', ..., 'DetectionMethod', 'lowSNR',
-    'Mode', 'xyzAc', 'FitMixtures', false, 'BackgroundCorrection', true)`` for one condition.
-
-    ``data``: MATLAB's condition struct fields ``source`` (the master channel's folder),
-    ``channels`` (the channels' folders), ``framePathsDS`` (per channel the DS frames' paths in
-    frame order) and ``zAniso``; ``sigma`` nCh x 2 ``[sigmaXY sigmaZ]``. Writes
-    ``<results_path>/Detection3D.mat`` (``frameInfo``, a 1 x nFrames struct array, MATLAB's
-    values), ``Masks/dmask_<k>.tif`` and an empty ``Amira/Detection``; returns the entries.
-    ``residual_sigma_threshold``: the camera's (``XR_get_camera_standard_deviation_threshold``
-    gives 3 for the demo's camera; not ported)."""
+    """one movie of ``run_detection``"""
     from petakit5d.io import matfile, read_tiff, write_tiff
 
-    chans = [os.path.normpath(str(c)) for c in data["channels"]]
+    chans = [os.path.normpath(c) for c in _strings(data["channels"])]
     src = os.path.normpath(str(data["source"]))
     master = chans.index(src) if src in chans else 0
-    paths = data["framePathsDS"]
+    paths = _frame_paths(data["framePathsDS"])
     nframes = len(paths[master])
     sel = range(1, nframes + 1) if frames is None else [int(f) for f in frames]
-    os.makedirs(os.path.join(results_path, "Masks"), exist_ok=True)
-    os.makedirs(os.path.join(results_path, "Amira", "Detection"), exist_ok=True)
+    thr = residual_sigma_threshold
+    if thr is None:
+        thr = camera_threshold(data["source"])
+    masks = results_path + os.sep + "Masks"
+    os.makedirs(masks, exist_ok=True)
+    if write_amira:
+        os.makedirs(os.path.join(results_path, "Amira", "Detection"), exist_ok=True)
     entries = []
     for k in sel:
         vols = [read_tiff(paths[ch][k - 1]) for ch in range(len(paths))]
         entry, dm = detect_frame(
-            vols, k, sigma, float(data["zAniso"]), master, residual_sigma_threshold, num_threads
+            vols,
+            k,
+            sigma,
+            float(np.asarray(data["zAniso"]).reshape(-1)[0]),
+            master,
+            float(thr),
+            num_threads,
+            detection_method=detection_method,
+            background_correction=background_correction,
+            window=window_size,
         )
-        write_tiff(dm, os.path.join(results_path, "Masks", dmask_name(k, nframes)))
+        write_tiff(dm, os.path.join(masks, dmask_name(k, nframes)))
         entries.append(entry)
     rows = [{f: (e[f] if f != "dRange" else list(e[f])) for f in FIELD_ORDER} for e in entries]
     fi = matfile.StructArray((1, len(rows)), FIELD_ORDER, rows)
-    matfile.write_mat(
-        os.path.join(results_path, "Detection3D.mat"), {"frameInfo": fi}, version="7.3"
-    )
+    matfile.write_mat(results_path + "Detection3D.mat", {"frameInfo": fi}, version="7.3")
     return entries

@@ -227,8 +227,8 @@ b.npz` measure the difference.
 
 | System | Pinned cases (non-FFT kernels) | Result |
 |---|---|---|
-| Linux x86-64: the cluster (Xeon Gold 6146, AVX-512, glibc 2.28, GCC 13.2), Python 3.12 | 58 | the pins (made there) |
-| Linux x86-64: runner-like container (Ubuntu 24.04, glibc 2.39, GCC 13.3, AVX2), Python 3.12 and 3.14 | 58 | the same bits |
+| Linux x86-64: the cluster (Xeon Gold 6146, AVX-512, glibc 2.28, GCC 13.2), Python 3.12 | 64 | the pins (made there) |
+| Linux x86-64: runner-like container (Ubuntu 24.04, glibc 2.39, GCC 13.3, AVX2), Python 3.12 and 3.14 | 64 | the same bits |
 | macOS ARM (M2 Pro, macOS 13.7, Apple Clang 14, libomp 23), Python 3.12 and 3.14 | 45 | the same bits (before the filters' and the deskew kernels' NaN fix the 2 `specials.*_infinities` cases differed in NaN signs only); `specials.conv_overlap`, `specials.warp_cubic` since its sums are MATLAB's, point detection's cases (`detection.*`, `neighbors.rangesearch`, `signal.*`), `interp.*`, `correlation.*` and `elementary.power_subnormal`, not measured yet |
 | Windows x86-64 (GitHub's windows-2025, MSVC), Python 3.12 and 3.14 | 45 | the same bits (the CI, measured 2026-11-19: see "How Windows is tested"); `specials.conv_overlap`, `specials.warp_cubic` since its sums are MATLAB's, point detection's cases (`detection.*`, `neighbors.rangesearch`, `signal.*`), `interp.*`, `correlation.*` and `elementary.power_subnormal`, not measured yet |
 
@@ -244,6 +244,7 @@ in ulps of the largest |value| of the output; FFT outputs in single precision in
 | `xcorr.ncc` | the registration's NCC | the same bits | single: the same bits; double: 81%, at most 1.5 ulp (2.8e-16) |
 | `specials.fft_and_decon` | FFTs and an RL step of data with Inf and NaN | the same bits | the single FFT and the RL step: the same bits; the double fftn: NaN signs (Inf - Inf's are ARM's; the FFT negates the payload NaN and adds it to itself, so its sign follows the build), finite values by at most 1 ulp |
 | `detection.ad_stat` | the Anderson-Darling statistic of point detection's fits (`adtest_mex`'s, with the C library's `erfc` and `log`, as MATLAB's mex) | the same bits | not measured yet |
+| `detection.fit_mex.ad` | the A^2 of the fitGaussian3D mex's residuals and its test (the C library's `erf` and `log`, as MATLAB's mex) | not measured yet | not measured yet |
 | `lsq.lsqlin` | lsqlin and the assignment's exact optimum (dense SVD) | 4 of 6 values, by at most 1.5 ulp (1.8e-16); the bounded assignment 2 of 6, 0.5 ulp | 3 of 6 values, 1 ulp (1.2e-16); the bounded assignment: the same bits |
 
 - **Why FFTs differ:** pocketfft (the default backend) computes its twiddle factors with the C

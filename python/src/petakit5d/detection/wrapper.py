@@ -7,14 +7,26 @@ black-box probes).
 1. the results folder of each movie, ``<source><aname>/`` (``aname`` None: ``Analysis``;
    with ``apath``: ``<apath><the last three folders of the first channel>/<aname>/``), made;
 2. ``deskew_data`` (with the ``aname`` as given, so that with the default its ``settings.mat``
-   and ``dynRange.mat`` land in the channel folder itself, not in the results folder);
+   and ``dynRange.mat`` land in the channel folder itself, not in the results folder), each
+   movie deskewed in its scan direction (its ``reversed``). MATLAB passes deskewData no
+   ``'Reverse'``, so it deskews reversed scans as forward ones, which shears them the wrong way:
+   a slip the port fixes (``docs/parity/detection.md`` W2);
 3. ``correct_xz_offset_data`` when ``x_zoffset_correction``;
 4. detection: ``run_detection`` for ``parallel_method`` ``'parfor'`` (always on Windows),
-   ``run_detection_frame_parallel`` for ``'lock_distributed'``, none for any other text;
+   ``run_detection_frame_parallel`` for ``'lock_distributed'``, none for any other text (the
+   frame-parallel stage is not ported yet: ``NotImplementedError``, naming ``'parfor'`` as the
+   way round);
 5. with ``track``, on the movies of more than one frame: ``run_tracking`` with
    ``track_settings(radius=tracking_radius, max_gap_length=tracking_gap_length)``,
-   ``run_track_processing``, and ``rotate_tracks`` when ``rotate_tracks``; they get the results
-   folders of all movies, one-frame ones included (MATLAB's quirk: the folders then shift).
+   ``run_track_processing``, and ``rotate_tracks`` when ``rotate_tracks``, each movie with its
+   own results folder. MATLAB drops the one-frame movies (tracking needs two frames) but passes
+   the folders of all movies, so after a one-frame movie each movie is paired with the folder of
+   the one before it: it tracks the one-frame movie's detections into that movie's folder,
+   leaves its own folder without tracks, and fails in track processing. An indexing slip the
+   port fixes (W3).
+
+``matlab_quirks=True`` gives MATLAB's output for both slips (reversed scans deskewed as forward
+ones, the tracking stages given the folders of all movies).
 
 ``overwrite`` is one flag for all stages or four (deskew and offsets, detection, tracking, track
 processing and rotation). Unknown MATLAB options are dropped, as MATLAB's parser keeps them
@@ -22,11 +34,12 @@ unmatched (the multiple-experiments demo's ``'zoffsetCorrection'`` does nothing)
 interactive branches (no ``data``, an empty ``sigma``) are errors here.
 
 The stages of steps 4 and 5 are other tasks' (detection C02, tracking C03, track processing and
-rotation C04b). They are looked up in ``STAGES`` by name, each called with the condition as
-the port passes MATLAB's struct array (``io.matfile``'s form: one movie's dict, more movies a
-1 x n ``StructArray`` of them, MATLAB's field names) and keyword arguments named as MATLAB's
-options in snake_case (the docstring of ``_call`` lists them); a stage that is not there yet
-raises ``NotImplementedError``. Tests put stand-ins there.
+rotation C04b). They are looked up in ``STAGES`` by name and called as MATLAB calls them,
+once each, with the condition as the port holds MATLAB's struct array
+(``condition.struct_array``: one movie's dict, more movies a 1 x n ``StructArray``, MATLAB's
+field names), ``results_path`` the list of the movies' results folders, and keyword arguments
+named as MATLAB's options in snake_case (the docstring of ``_call`` lists them). A stage that is
+not there yet raises ``NotImplementedError``. Tests put stand-ins there.
 
 ``deskew_data(data, ...)`` (MATLAB's ``deskewData`` as the wrapper and the by-step demo call
 it): for each movie, unless channel 1's DS folder already holds as many ``*.tif*`` files as the
@@ -34,12 +47,17 @@ movie has frames and ``overwrite`` is off (then the movie is left as it is, with
 anything), it writes ``<source><aname>/settings.mat`` (``dz``, ``xyPixelSize``,
 ``objectiveScan``, ``reversed`` of the movie), each frame of each channel deskewed
 (``deskew_rotate.deskew_volume`` of the frame as double with ``skew_angle``, the movie's ``dz``
-and pixel size, not reversed whatever the movie's ``reversed``; an objective scan's frames as
-they are) as single into ``<channel>DS/<name>``, and ``<source><aname>/dynRange.mat``
-(``dRange``: frames x [min max] x channels of the deskewed doubles). Existing DS frames of a
-movie that is not skipped are written again. ``data`` is returned unchanged. Bit for bit
-MATLAB's in the probes and the oracle cases: DS frames of uint16 and single raw frames,
-angles 31.5 and 45, the movie's dz and pixel size; ``dRange`` from the doubles. Not ported:
+and pixel size and the scan direction; an objective scan's frames as they are) as single into
+``<channel>DS/<name>``, and ``<source><aname>/dynRange.mat`` (``dRange``: frames x [min max] x
+channels of the deskewed doubles). The direction: ``reverse`` None takes each
+movie's ``reversed`` (what the wrapper passes); True or False is deskewData's ``'Reverse'``
+option, one direction for all movies, False by default as in MATLAB (which XR_runDetTrack3d
+leaves: reversed scans then come out sheared the wrong way, W2). Existing DS frames of a movie
+that is not skipped are written again.
+``data`` is returned unchanged. Bit for bit MATLAB's in the probes and the oracle cases: DS
+frames of uint16 and single raw frames, angles 31.5 and 45, the movie's dz and pixel size,
+reversed scans with ``'Reverse'`` true (the lab's deskew of a reversed scan: measured equal to
+``XR_deskewRotateFrame`` with ``reverse`` true); ``dRange`` from the doubles. Not ported:
 ``s_cmos_camera_flip`` (MATLAB calls a missing ``GU_sCMOSCameraFlip``: the same error),
 ``crop`` (MATLAB waits for an interactive region), ``rotate`` (the DSR frames),
 ``llff_correction`` and ``zoffset_correction``.
@@ -68,9 +86,9 @@ class WrapperError(RuntimeError):
 
 # the stages of other tasks, by name: (module, function) until a stand-in or the port is set
 _STAGE_HOMES = {
-    "run_detection": ("petakit5d.detection.detect", "run_detection", "C02"),
+    "run_detection": ("petakit5d.detection.run", "run_detection", "C02"),
     "run_detection_frame_parallel": (
-        "petakit5d.detection.detect",
+        "petakit5d.detection.run",
         "run_detection_frame_parallel",
         "C02",
     ),
@@ -80,6 +98,14 @@ _STAGE_HOMES = {
     "rotate_tracks": ("petakit5d.detection.processing", "rotate_tracks", "C04b"),
 }
 STAGES: dict[str, Callable[..., Any] | None] = dict.fromkeys(_STAGE_HOMES)
+# what a stage that is not there yet can be done with instead
+_STAGE_HINTS = {
+    "run_detection_frame_parallel": (
+        "XR_runDetection3D_frame_parallel, the detection of parallel_method 'lock_distributed' "
+        "(the default); parallel_method='parfor' runs run_detection (XR_runDetection3D) "
+        "instead"
+    ),
+}
 
 
 def _stage(name: str) -> Callable[..., Any]:
@@ -92,8 +118,9 @@ def _stage(name: str) -> Callable[..., Any]:
 
         fn = getattr(importlib.import_module(module), attr)
     except (ImportError, AttributeError):
+        hint = f" ({_STAGE_HINTS[name]})" if name in _STAGE_HINTS else ""
         raise NotImplementedError(
-            f"{name} ({module}.{attr}, task {task}) is not ported yet"
+            f"{name} ({module}.{attr}, task {task}) is not ported yet{hint}"
         ) from None
     return fn
 
@@ -113,17 +140,10 @@ def _call(name: str, *args: Any, **kwargs: Any) -> Any:
       results_path=, parallel_method=)``: ``XR_runTrackProcessing3D``;
     - ``rotate_tracks(data, overwrite=, crop=, results_path=)``: ``rotateTracks3D``.
 
-    ``data`` is the condition as MATLAB's struct array (``_structs``), ``results_path`` the list
-    of each movie's results folder (ending with the separator)."""
+    ``data`` is the condition as MATLAB's struct array (``condition.struct_array``),
+    ``results_path`` the list of each movie's results folder (ending with the separator),
+    MATLAB's ``ResultsPath``."""
     return _stage(name)(*args, **kwargs)
-
-
-def _structs(movies: Sequence[Any], fields: Sequence[str]) -> Any:
-    """the movies as the port passes MATLAB's struct array (``condition.struct_array``: one
-    movie's dict, else a 1 x n ``StructArray`` of them, an empty one too)"""
-    from petakit5d.detection.condition import struct_array
-
-    return struct_array(movies, fields)
 
 
 # -- deskewData ---------------------------------------------------------------------------------
@@ -167,7 +187,9 @@ def _save_settings(path: str, movie: Any) -> None:
     )
 
 
-def _deskew_frame(src: str, dst: str, movie: Any, skew_angle: float) -> tuple[float, float]:
+def _deskew_frame(
+    src: str, dst: str, movie: Any, skew_angle: float, reverse: bool
+) -> tuple[float, float]:
     from petakit5d.deskew_rotate.volume import deskew_volume
     from petakit5d.io import read_tiff, write_tiff
 
@@ -176,7 +198,7 @@ def _deskew_frame(src: str, dst: str, movie: Any, skew_angle: float) -> tuple[fl
         ds = v
     else:
         ds = deskew_volume(
-            v, float(skew_angle), float(movie.dz), float(movie.pixel_size), False, crop=False
+            v, float(skew_angle), float(movie.dz), float(movie.pixel_size), reverse, crop=False
         )
     write_tiff(ds.astype(np.float32), dst)
     return float(ds.min()), float(ds.max())
@@ -193,13 +215,17 @@ def deskew_data(
     crop: bool = False,
     llff_correction: bool = False,
     zoffset_correction: bool = False,
+    reverse: bool | None = False,
     num_threads: int | None = None,
 ) -> Sequence[Any]:
     """``deskewData(data, 'Overwrite', overwrite, 'SkewAngle', skew_angle, 'aname', aname,
     ...)`` with the options the wrapper and the demos pass (module docstring): the DS frames of
     every movie, ``settings.mat`` and ``dynRange.mat``. Returns ``data`` unchanged.
-    ``num_threads`` frames are deskewed at once (None: the CPUs available)."""
+    ``reverse``: deskewData's ``'Reverse'`` for all movies (False, as in MATLAB); None, each
+    movie's scan direction (``reversed``: the wrapper's, W2). ``num_threads`` frames are
+    deskewed at once (None: the CPUs available)."""
     ow = _logical(overwrite, "Overwrite")
+    rev = None if reverse is None else _logical(reverse, "Reverse")
     for flag, name in ((rotate, "Rotate"), (crop, "Crop"), (llff_correction, "LLFFCorrection")):
         if _logical(flag, name):
             raise NotImplementedError(f"deskew_data: '{name}' is not ported")
@@ -215,6 +241,7 @@ def deskew_data(
         os.makedirs(out, exist_ok=True)
         if not ow and _ds_done(movie):
             continue
+        r = bool(np.asarray(movie.reversed).reshape(-1)[0]) if rev is None else rev
         _save_settings(os.path.join(out, "settings.mat"), movie)
         n_f = len(movie.frame_paths[0])
         n_ch = len(movie.channels)
@@ -230,7 +257,9 @@ def deskew_data(
             nt = max(1, min(resolve_threads(num_threads), len(jobs)))
             with ThreadPoolExecutor(nt) as ex:
                 res = list(
-                    ex.map(lambda j, mv=movie: _deskew_frame(j[0], j[1], mv, skew_angle), jobs)
+                    ex.map(
+                        lambda j, mv=movie, r=r: _deskew_frame(j[0], j[1], mv, skew_angle, r), jobs
+                    )
                 )
             for f, (lo, hi) in enumerate(res):
                 rng[f, 0, c], rng[f, 1, c] = lo, hi
@@ -328,6 +357,13 @@ def _four(overwrite: Any) -> tuple[bool, bool, bool, bool]:
     Param("BackgroundCh3", "@isstr", "Background image of channel 3."),
     Param("BackgroundCh4", "@isstr", "Background image of channel 4."),
     Param("XZoffsetCorrection", "@islogical", "Correct the channels' x and z offsets."),
+    Param(
+        "matlab_quirks",
+        None,
+        "MATLAB's two slips: reversed scans deskewed as forward ones (W2), the tracking stages "
+        "given the folders of all movies (W3).",
+        python_only=True,
+    ),
     keep_unmatched=True,
     task="C04",
 )
@@ -366,9 +402,11 @@ def run_detection_tracking(
     background_ch_3: str = "",
     background_ch_4: str = "",
     x_zoffset_correction: bool = False,
+    matlab_quirks: bool = False,
 ) -> None:
     """Deskew, channel offsets, detection, tracking, track processing and track rotation of a
-    condition (MATLAB's ``XR_runDetTrack3d``; module docstring)."""
+    condition (MATLAB's ``XR_runDetTrack3d``; module docstring). ``matlab_quirks``: MATLAB's
+    output for its two slips (W2, W3) instead of the fixed one."""
     from petakit5d.detection.condition import Condition, short_path
     from petakit5d.detection.offsets import correct_xz_offset_data
 
@@ -404,6 +442,7 @@ def run_detection_tracking(
             crop=crop,
             llff_correction=llff_correction,
             zoffset_correction=False,
+            reverse=False if matlab_quirks else None,
         )
     )
     if x_zoffset_correction:
@@ -412,23 +451,26 @@ def run_detection_tracking(
         "sigma": sigma,
         "overwrite": ow[1],
         "window_size": window_size,
-        "results_path": paths,
         "mode": mode,
         "fit_mixtures": fit_mixtures,
         "max_mixtures": max_mixtures,
         "detection_method": detection_method,
         "background_correction": background_correction,
     }
+    from petakit5d.detection.condition import struct_array
+
     fields = list(data[0].to_matlab())
-    if method == "parfor":
-        _call("run_detection", _structs(data, fields), **det)
-    elif method == "lock_distributed":
-        _call("run_detection_frame_parallel", _structs(data, fields), **det)
+    stage = {"parfor": "run_detection", "lock_distributed": "run_detection_frame_parallel"}
+    if method in stage:
+        _call(stage[method], struct_array(data, fields), results_path=list(paths), **det)
     if not track:
         return
-    # MATLAB drops the one-frame movies but not their results folders: the later stages get
-    # the folders of all movies (a quirk, kept)
-    structs = _structs([m for m in data if m.movie_length != 1], fields)
+    # the movies of more than one frame with their own results folders. MATLAB passes the
+    # folders of all movies, so that its i-th movie gets the i-th folder (W3)
+    keep = [m for m in data if m.movie_length != 1]
+    own = [p for m, p in zip(data, paths, strict=True) if m.movie_length != 1]
+    structs = struct_array(keep, fields)
+    folders = list(paths) if matlab_quirks else own
     settings = _call("track_settings", radius=tracking_radius, max_gap_length=tracking_gap_length)
     _call(
         "run_tracking",
@@ -436,7 +478,7 @@ def run_detection_tracking(
         settings,
         file_name="trackedFeatures.mat",
         overwrite=ow[2],
-        results_path=paths,
+        results_path=folders,
         parallel_method=method,
     )
     _call(
@@ -449,8 +491,8 @@ def run_detection_tracking(
         buffer_all=buffer_all,
         fit_mixtures=fit_mixtures,
         window_size=window_size,
-        results_path=paths,
+        results_path=folders,
         parallel_method=method,
     )
     if rotate_tracks:
-        _call("rotate_tracks", structs, overwrite=ow[3], crop=crop, results_path=paths)
+        _call("rotate_tracks", structs, overwrite=ow[3], crop=crop, results_path=folders)

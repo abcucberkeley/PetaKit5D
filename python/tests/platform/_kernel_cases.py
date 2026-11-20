@@ -1013,6 +1013,197 @@ def _():
     return np.array([D.exp(float(v)) for v in x])
 
 
+# -- point detection: the fitGaussian3D mex, estGaussianAmplitude3D's filters, the detectors'
+# voxel statistics, masks and maxima (C02b) ----------------------------------------------------
+
+_MEX_MODES = ("xyzAc", "xyzAsrc", "xyzAsc", "Ac", "A", "c")
+
+
+def _fit_mex(windows, p0, mode: str):
+    """fit_mex's binding (detection.fit.fit_gaussian3d_mex) at threads() threads, checked
+    against 1 and 3: ([the voxel counts, prm, prm_std, C, rss, the residuals' mean and std, the
+    iterations and evaluations, the residuals], [A^2, the test]). A^2 and the test are the C
+    library's erf and log (the mex's Anderson-Darling test, as adtest_mex's)."""
+    from petakit5d.detection import fit
+
+    runs = []
+    for nt in (threads(), 1, 3):
+        r = fit.fit_gaussian3d_mex(
+            windows, np.asarray(p0, dtype=np.float64), mode, residuals=True, num_threads=nt
+        )
+        res = [np.asarray(w, dtype=np.float64) for w in r.residuals]
+        runs.append(
+            [
+                r.n,
+                r.prm,
+                r.prm_std,
+                r.C,
+                r.rss,
+                r.mean,
+                r.std,
+                r.iterations,
+                r.evaluations,
+                res,
+                r.a2,
+                r.h_ad,
+            ]
+        )
+    if any(digest(r) != digest(runs[0]) for r in runs[1:]):
+        raise AssertionError("fit_mex: other bits at 1 or 3 threads")
+    return runs[0][:10], runs[0][10:]
+
+
+def _mex_inputs():
+    """the windows of the fit_cd cases (spots, voxels left out, restarts' windows) with starts
+    for each of the mex's modes: the candidate's, a start 0.3 to 0.7 voxel off, and the sigma
+    estimate's sigmas (1.2, 2.5) for the modes that fit them"""
+    wins, p0 = _fit_spots()
+    nw, np0 = _fit_nan()
+    rw, rp = _fit_restarts()
+    wins, p0 = wins + nw[::2] + rw[::3], [list(p) for p in p0 + np0[::2] + rp[::3]]
+    # the mex aborts MATLAB on a window of fewer voxels than free parameters: windows of 8 or more
+    keep = [i for i, w in enumerate(wins) if int(np.sum(~np.isnan(w))) >= 8]
+    wins, p0 = [wins[i] for i in keep], [p0[i] for i in keep]
+    off = uniform("mexo", (len(p0), 3), -0.7, 0.7)
+    shifted = [
+        [p[0] + off[i, 0], p[1] + off[i, 1], p[2] + off[i, 2], *p[3:]] for i, p in enumerate(p0)
+    ]
+    sig = [[*p[:4], 1.2, 2.5, p[6]] for p in shifted]
+    return wins, p0, shifted, sig
+
+
+@case("detection.fit_mex.fits")
+def _():
+    """the mex's Levenberg-Marquardt fits in every mode the traced runs take (xyzAc, xyzAsrc,
+    xyzAsc, and the linear Ac, A, c) from the candidate's start, a start off the voxel and the
+    sigma estimate's sigmas; its exp is correctly rounded (cr_exp), its arithmetic the port's"""
+    wins, p0, shifted, sig = _mex_inputs()
+    out = []
+    for mode in _MEX_MODES:
+        starts = (p0, shifted, sig) if "s" in mode else (p0, shifted)
+        for p in starts:
+            out.append(_fit_mex(wins, p, mode)[0])
+    return out
+
+
+@case(
+    "detection.fit_mex.ad",
+    recorded="the C library's erf and log, which the mex's Anderson-Darling test of its "
+    "residuals takes (as adtest_mex)",
+)
+def _():
+    """the A^2 of the mex fits' residuals and the test's decision"""
+    wins, p0, shifted, _ = _mex_inputs()
+    return [_fit_mex(wins, p, mode)[1] for mode in ("xyzAc", "Ac") for p in (p0, shifted)]
+
+
+@case("detection.cr_exp")
+def _():
+    """the mex fits' exp (correctly rounded: double-double, exp of the reduced argument by its
+    series) on fdlibm's path bounds and their neighbours, the overflow and underflow thresholds,
+    subnormal results, the special values and the fits' arguments (-20 to 0)"""
+    from petakit5d._ext import load
+
+    D = load("detection")
+    words = []
+    for h in (0x3E300000, 0x3FD62E43, 0x3FF0A2B2, 0x40862E42):
+        words += [(h << 32) - 1, h << 32, (h << 32) + 1, ((h - 1) << 32) + 0x80000000]
+    for t in np.array([7.09782712893383973096e02, -7.45133219101941108420e02, 1.0]).view(np.uint64):
+        words += [int(t) - 1, int(t), int(t) + 1]
+    b = _bits(*words)
+    x = np.concatenate(
+        [
+            b,
+            -b,
+            -uniform("cexs", (300,), 708.0, 746.0),
+            uniform("cexa", (3000,), -746.0, 710.0),
+            -uniform("cexf", (2000,), 0.0, 20.0),
+            specials(uniform("cexx", (1000,), -3.0, 3.0), payload=True),
+        ]
+    )
+    return np.array([D.cr_exp(float(v)) for v in x])
+
+
+@case("detection.conv3fast")
+def _():
+    """estGaussianAmplitude3D's separable filters (mirrored borders, centre-out symmetric sums,
+    passes x, y, z): kernels of 1 to 9 taps, a volume of one plane and one of one row, data with
+    MATLAB's NaN and the payload NaN, infinities and signed zeros"""
+    from petakit5d.detection import detect as D
+
+    out = []
+    v = specials(double("c3v", (7, 19, 23), 100.0), payload=True)
+    for n in (1, 3, 5, 7, 9):
+        k = np.abs(double(f"c3k{n}", (n,), 1.0))
+        k = (k + k[::-1]) / 2  # symmetric, as the Gaussians are
+        out.append(D.conv3fast(v, k, k[::-1].copy(), k, num_threads=threads()))
+    g = np.exp(-(np.arange(-4, 5) ** 2) / 4.5)
+    out.append(D.conv3fast(double("c3p", (1, 13, 17)), g, g, g[2:7].copy(), num_threads=threads()))
+    out.append(D.conv3fast(double("c3r", (5, 1, 17)), g, g, g[2:7].copy(), num_threads=1))
+    return out
+
+
+@case("detection.prefit_stats")
+def _():
+    """the voxel-wise model fits' statistics (A, c, the residuals' sigma, the t statistic and
+    its degrees of freedom) from window sums with negative RSS (clipped to 0), zero windows,
+    NaN, infinities, both kLevel and gfac forms"""
+    from petakit5d.detection import detect as D
+
+    r = gen("pfs")
+    shape = (5, 17, 23)
+    fg = np.abs(r.normal(shape)) * 30 + 200
+    fu = np.abs(r.normal(shape)) * 40 + 3000
+    fu2 = np.abs(r.normal(shape)) * 500 + 1e5
+    fu2[0, 0, :5] = 0.0
+    fg, fu = specials(fg), specials(fu, payload=True)
+    out = []
+    for gsum, g2sum, n, k, gfac in (
+        (54.88, 20.01, 343, 1.6448536269514722, 1.0),
+        (31.3, 9.7, 245, 1.959963984540054, 0.5),
+    ):
+        out.append(D._prefit_stats(fg, fu, fu2, gsum, g2sum, n, k, gfac, threads()))
+    return out
+
+
+@case("detection.lowsnr_mask")
+def _():
+    """the lowSNR candidates' mask: the amplitude test T > -t or the window's chi-square test,
+    without the voxels within the border of a face; NaN in each input, borders 0 to 3"""
+    from petakit5d._ext import load
+
+    r = gen("lsm")
+    shape = (9, 21, 26)
+    T = specials(r.normal(shape) * 2.0, payload=True)
+    c = r.normal(shape) * 10 + 100
+    fu = c * 343 + r.normal(shape) * 50
+    fu2 = specials(c * c * 343 + np.abs(r.normal(shape)) * 2e4)
+    sres = np.abs(r.normal(shape)) * 3 + 1
+    out = []
+    for border in (0, 1, 2, 3):
+        m = np.empty(shape, dtype=np.uint8)
+        load("detection").lowsnr_mask(
+            T, c, fu, fu2, sres, 343.0, 1.6491, 389.06, border, m, threads()
+        )
+        out.append(m)
+    return out
+
+
+@case("detection.locmax3d")
+def _():
+    """XR_locmax3d: maxima over face-clipped windows of 3 x 3 x 3 to 7 x 7 x 5 voxels, with
+    plateaus and ties (no maximum), NaN (replaced by -1e8) and signed zeros"""
+    from petakit5d.detection import detect as D
+
+    v = np.floor(double("lmv", (8, 23, 29), 3.0))  # many ties
+    v = specials(v, payload=True)
+    v[3, 5:9, 7:11] = 50.0  # a plateau
+    out = []
+    for w in ((3, 3, 3), (5, 5, 3), (7, 7, 5), (3, 5, 7)):
+        out.append(D.locmax3d(v, w))
+    return out
+
+
 # -- matlabcompat: filters, resize, warp, morphology, labels, distances -----------------------
 
 
