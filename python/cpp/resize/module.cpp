@@ -85,8 +85,9 @@ int pick_isa(int isa) {
 }
 
 // ---------------------------------------------------------------------------------------------
-// fdlibm 5.3's __ieee754_pow (e_pow.c; Sun Microsystems' permissive notice), MATLAB's x .^ y,
-// as matlabcompat.elementary writes it out in Python: one IEEE operation per C operation
+// fdlibm 5.3's __ieee754_pow (e_pow.c) and the scalbn it calls (s_scalbn.c; Sun Microsystems'
+// permissive notice), MATLAB's x .^ y, as matlabcompat.elementary writes it out in Python: one
+// IEEE operation per C operation
 // ---------------------------------------------------------------------------------------------
 
 inline int32_t hi_word(double x) {
@@ -106,6 +107,21 @@ inline double make_double(int32_t hi, uint32_t lo) {
     return d;
 }
 inline double with_lo0(double v) { return make_double(hi_word(v), 0); }
+
+// fdlibm's scalbn(x, n) where e_pow.c calls it: x positive and normal, the result below the
+// normal range (its exponent field k = x's + n is 0 or below), rounded once to the nearest
+// double (ties to even). k + 54 goes into the exponent field (exact), then one multiplication
+// by 2^-54, which IEEE rounds; for k <= -54, where the whole value rounds to 0, the high word is
+// 0, a value below 2^-1022 that the multiplication rounds to 0. Not the C runtime's ldexp:
+// Windows 10's truncates subnormal results (docs/platforms.md). Out of line, as the ldexp call
+// was, so that the code of pow's other results stays as it was compiled.
+NB_NOINLINE double scalbn_subnormal(double x, int32_t n) {
+    const double twom54 = 5.55111512312578270212e-17;  // 2^-54
+    const int32_t hx = hi_word(x);
+    const int64_t e = static_cast<int64_t>((hx >> 20) & 0x7ff) + n + 54;  // k + 54
+    const int64_t h = e > 0 ? (hx & 0x000fffff) + (e << 20) : 0;
+    return make_double(static_cast<int32_t>(h), lo_word(x)) * twom54;
+}
 
 double fdlibm_pow(double x, double y) {
     static const double bp[2] = {1.0, 1.5};
@@ -277,7 +293,7 @@ double fdlibm_pow(double x, double y) {
     j = hi_word(z);
     j += static_cast<int32_t>(static_cast<uint32_t>(n) << 20);
     if ((j >> 20) <= 0)
-        z = std::ldexp(z, n);
+        z = scalbn_subnormal(z, n);
     else
         z = make_double(j, lo_word(z));
     return s * z;

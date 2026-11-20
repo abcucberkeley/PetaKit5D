@@ -1,0 +1,13 @@
+{
+ "name": "x23_power_scalbn",
+ "repeats": 7,
+ "variants": [
+  {"id": "base", "impl": "python", "script": "benchmarks/matlabcompat/bench_power_x23.py",
+   "env": {"PYTHONPATH": "{env[PK5D_BASE_SRC]}", "PETAKIT5D_EXT_DIR": "{env[PK5D_BASE_EXT]}"},
+   "args": ["--repeats", "3"]},
+  {"id": "new", "impl": "python", "script": "benchmarks/matlabcompat/bench_power_x23.py",
+   "args": ["--repeats", "3"]}
+ ],
+ "compare": [{"a": "new", "b": "base"}],
+ "gate": {"ratio_max": 1.05}
+}
