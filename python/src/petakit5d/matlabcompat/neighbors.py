@@ -1,5 +1,5 @@
 """MATLAB's ``knnsearch`` (Euclidean, as the OMW back projector and the group shift assignment call
-it) and ``cart2sph`` / ``sph2cart``.
+it), ``rangesearch`` (as the point detection counts neighbours) and ``cart2sph`` / ``sph2cart``.
 
 ``knnsearch(X, Y, k)`` gives, for each row of ``Y``, the ``k`` rows of ``X`` nearest to it and their
 distances, as MATLAB R2024b does (its default k-d tree and its exhaustive search agree): the
@@ -32,7 +32,7 @@ from petakit5d.core import dtypes
 from petakit5d.core.threads import resolve_threads
 from petakit5d.matlabcompat.elementary import atan2, fdlibm_cos, fdlibm_sin, hypot
 
-__all__ = ["knnsearch", "cart2sph", "sph2cart", "KnnError"]
+__all__ = ["knnsearch", "rangesearch", "cart2sph", "sph2cart", "KnnError"]
 
 # exhaustive search up to this many distances per block of queries
 _BLOCK = 1 << 22
@@ -172,6 +172,34 @@ def _tree(X, Y, k, workers=1):
         idx[r] = c[pos]
         d2k[r] = d2[0, pos]
     return idx, np.sqrt(d2k)
+
+
+def rangesearch(X, Y, r: float) -> tuple[list[np.ndarray], list[np.ndarray]]:
+    """MATLAB's ``[idx, D] = rangesearch(X, Y, r)`` (Euclidean; task C02): for each row of ``Y``
+    the rows of ``X`` within distance ``r`` (``d <= r``), ordered as ``knnsearch`` orders them
+    (by the squared distance summed over the columns in order, then by row), 0-based, and their
+    distances. The point detection uses it to count neighbours."""
+    from scipy.spatial import cKDTree
+
+    X = _points(X, "X")
+    Y = _points(Y, "Y")
+    if X.shape[1] != Y.shape[1]:
+        raise KnnError("Y must have as many columns as X", "stats:rangesearch:SizeMismatch")
+    r = float(r)
+    # candidates with a margin, then MATLAB's distance and order
+    tree_r = r * (1 + 1e-12) + 1e-300
+    cand = cKDTree(X).query_ball_point(Y, tree_r) if X.shape[0] else [[] for _ in Y]
+    idx_out, d_out = [], []
+    for q, c in enumerate(cand):
+        c = np.asarray(sorted(c), dtype=np.int64)
+        d2 = _sqdist(Y[q : q + 1], X[c])[0] if c.size else np.zeros(0)
+        d = np.sqrt(d2)
+        ok = d <= r
+        c, d2, d = c[ok], d2[ok], d[ok]
+        o = np.argsort(d2, kind="stable")
+        idx_out.append(c[o])
+        d_out.append(d[o])
+    return idx_out, d_out
 
 
 def cart2sph(x, y, z):

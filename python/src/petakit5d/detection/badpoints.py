@@ -1,0 +1,366 @@
+"""``filter_bad_points_in_detection(pos, sigma_r, thr, bgInfo, vol, A, c)``: which detections the
+lowSNR detector keeps after its fits, learned as a black box (task C02; no GPL source read): the
+residuals' sigma histogram (coarsened while ragged) gives a background peak and a valley between
+it and the next peak; points with too few neighbours and a sigma below the valley, the residual
+threshold or the noise threshold are removed. Measured: the keep mask of MATLAB on 119 of the
+demo's 120 frames (both channels; the miss: a second valley search, channel 1 frame 28) and on 15
+of 15 traced calls. Inputs that matter: the positions (through the neighbour counts), sigma_r,
+``thr`` and ``bgInfo(3:4)`` (noise, camera threshold).
+
+Stages (as measured): 1. ``x`` = sigma_r below its 99th percentile, ``max(60, Freedman-Diaconis,
+ceil(10 (p99 - min)/std))`` bins, peaks of prominence 5; 2. ``nb <- ceil(0.9 nb)`` while the
+histogram is ragged; 3. the background bin search with optional smoothing; 4. the path (C: thr
+only, A: the valley or thr, B: the valley and 0.8 of it); 5. neighbour counts (radius mean + 3
+std of the distance to the second-nearest other point); 6. the removal rules.
+"""
+
+from __future__ import annotations
+
+import math
+
+import numpy as np
+from scipy.spatial import cKDTree
+
+
+class _MW:
+    """MATLAB's functions in the forms this filter calls them (petakit5d.matlabcompat)"""
+
+    @staticmethod
+    def histcounts(x, nbins):
+        from petakit5d.matlabcompat import signal
+
+        return signal.histcounts(x, nbins)
+
+    @staticmethod
+    def findpeaks(y, m):
+        from petakit5d.matlabcompat import signal
+
+        return signal.findpeaks(y, m)
+
+    @staticmethod
+    def medfilt1(y):
+        from petakit5d.matlabcompat import signal
+
+        return signal.medfilt1(y)
+
+    @staticmethod
+    def conv3_same(y, h):
+        """``conv(y, h, 'same')`` of a 3-tap h, MATLAB's chain of fused multiply-adds:
+        ``fma(h3, y(i-1), fma(h2, y(i), h1 y(i+1)))``, zeros beyond the ends"""
+        from fractions import Fraction
+
+        def fma(a, b, c):
+            return float(Fraction(a) * Fraction(b) + Fraction(c))
+
+        v = np.asarray(y, dtype=np.float64).ravel()
+        w = [float(t) for t in np.asarray(h, dtype=np.float64).ravel()]
+        p = np.concatenate([[0.0], v, [0.0]])
+        return np.array(
+            [fma(w[2], p[i], fma(w[1], p[i + 1], w[0] * p[i + 2])) for i in range(v.size)]
+        )
+
+    @staticmethod
+    def prctile(x, p):
+        from petakit5d.matlabcompat import stats
+
+        return float(
+            np.asarray(stats.prctile(np.asarray(x, dtype=np.float64).ravel(), p)).ravel()[0]
+        )
+
+    @staticmethod
+    def median(x):
+        from petakit5d.matlabcompat import stats
+
+        return float(np.asarray(stats.median(np.asarray(x, dtype=np.float64).ravel())).ravel()[0])
+
+    @staticmethod
+    def std(x):
+        from petakit5d.matlabcompat import stats
+
+        return float(np.asarray(stats.std(np.asarray(x, dtype=np.float64).ravel())).ravel()[0])
+
+    @staticmethod
+    def mean(x):
+        from petakit5d.matlabcompat import reduce
+
+        v = np.asarray(x, dtype=np.float64).ravel()
+        return float(np.asarray(reduce.sum(v)).ravel()[0]) / v.size
+
+
+M = _MW
+
+
+# ---------------------------------------------------------------- stage 1-2 (exact on all recorded)
+
+
+def coarsen_cond(cnt, locs, nb):
+    """lines 64 / 69: more than 20 peaks, or at least 4 gaps of at most 4 bins between the peaks
+    below nb/4 (nb: the bin count asked of histcounts), or at least 3 pairs of equal neighbouring
+    bins (counts(i) == counts(i+1)) whose count is above the 25th percentile of the counts"""
+    locs = np.asarray(locs, float)
+    if locs.size > 20:
+        return True
+    low = locs[locs < nb / 4]
+    if int(np.sum(np.diff(low) <= 4)) >= 4:
+        return True
+    cnt = np.asarray(cnt, float)
+    p25 = M.prctile(cnt, 25)
+    z = np.flatnonzero(np.diff(cnt) == 0)
+    return int(np.sum(cnt[z] > p25)) >= 3
+
+
+def stage12(sr):
+    """(x, nb0, [(nb, counts, edges, locs), ...]) the histogram sequence, the last one final"""
+    sr = np.asarray(sr, float).ravel()
+    p99 = M.prctile(sr, 99)
+    x = sr[sr < p99]
+    iqr = M.prctile(sr, 75) - M.prctile(sr, 25)
+    rng = p99 - sr.min()
+    nb0 = max(60, math.ceil(rng / (2 * iqr * sr.size ** (-1 / 3))), math.ceil(10 * rng / M.std(sr)))
+    seq = []
+    nb = nb0
+    cnt, e = M.histcounts(x, nb)
+    _, locs = M.findpeaks(cnt, 5)
+    seq.append((nb, cnt, e, locs))
+    if coarsen_cond(cnt, locs, nb):
+        while True:
+            nb = math.ceil(0.9 * nb)
+            cnt, e = M.histcounts(x, nb)
+            _, locs = M.findpeaks(cnt, 5)
+            seq.append((nb, cnt, e, locs))
+            if not coarsen_cond(cnt, locs, nb):
+                break
+    return x, nb0, seq
+
+
+# ---------------------------------------------------------------- stage 3
+
+
+def bg_bin(cnt, e, pq):
+    """the bin with the largest count among bins 1..round((pq - e(1)) / w) (first on ties)"""
+    w = e[1] - e[0]
+    k = int(round((pq - e[0]) / w))
+    k = max(1, min(k, cnt.size))
+    return int(np.argmax(cnt[:k])) + 1, k
+
+
+def nbr3(b, nb):
+    a = np.array([b - 1, b, b + 1])
+    return a[(a >= 1) & (a <= nb)]
+
+
+def smooth_rule(cnt, lst, pre, locs, nb):
+    """(smooth, conv): lines 94, 99 and 104.
+    Line 94 (exact on 1710 recorded evaluations): branch '95' when the entries prepended at lines
+    85/89 plus the found peaks below nb/5 number at least 4, else branch '96'.
+    Line 99, branch 96 (exact on 1154): smoothing when two neighbouring entries of the list (in list
+    order, prepended entries first) among those below nb/5 are at most 3 bins apart (difference
+    <= 3, negative differences included). Branch 95 (PROVISIONAL, 545 of 556 recorded): at least
+    two differences <= 3 between the sorted entries below nb/5.
+    Line 104 (PROVISIONAL, right on the 8 real-run frames that smooth): conv [0.1 0.8 0.1] when
+    bin 1 is above the median of the list's counts, else medfilt1."""
+    low = [p for p in lst if p < nb / 5]
+    n94 = len(pre) + sum(1 for p in locs if p < nb / 5)
+    if n94 >= 4:
+        smooth = int(np.sum(np.diff(np.array(sorted(low), float)) <= 3)) >= 2
+    else:
+        smooth = bool(np.any(np.diff(np.array(low, float)) <= 3))
+    if not smooth:
+        return False, False
+    med = M.median(np.asarray(cnt, float)[np.array(lst) - 1])
+    return True, bool(cnt[0] > med)
+
+
+def stage3(sr, nb, cnt, e, locs, smooth=None, conv=None):
+    sr = np.asarray(sr, float).ravel()
+    locs = [int(v) for v in locs]
+    p30 = M.prctile(sr, 30)
+    b, k = bg_bin(cnt, e, p30)
+    lst = list(locs)
+    pre = []
+    if not np.any(np.isin(nbr3(b, nb), lst)):
+        lst = [b] + lst
+        pre.append(b)
+    if cnt[0] > cnt[1] and 1 not in lst:
+        lst = [1] + lst
+        pre.append(1)
+    if smooth is None:
+        smooth, conv = smooth_rule(cnt, lst, pre, locs, nb)
+    cur = np.asarray(cnt, float).copy()
+    if smooth:
+        cur = M.conv3_same(cnt, [0.1, 0.8, 0.1]) if conv else M.medfilt1(cnt)
+        _, l2 = M.findpeaks(cur, 5)
+        lst = [int(v) for v in l2]
+    for q in (30.0, 20.0, 10.0):
+        bq, _ = bg_bin(cur, e, M.prctile(sr, q))
+        if not np.any(np.isin(nbr3(bq, nb), lst)):
+            nxt = cur[bq] if bq < cur.size else -np.inf
+            if cur[bq - 1] >= nxt:
+                lst = [bq] + lst
+    if cur[0] > cur[1] and 1 not in lst:
+        lst = [1] + lst
+    return {
+        "cnt": cur,
+        "raw": np.asarray(cnt, float),
+        "e": e,
+        "lst": lst,
+        "b30": b,
+        "k30": k,
+        "smooth": bool(smooth),
+        "conv": bool(conv),
+    }
+
+
+# ---------------------------------------------------------------- stage 4
+
+
+def valley(cnt, e, lst):
+    """background peak bp (bin 1 when above bin 2, else the first listed peak), the next listed
+    peak after it, the lowest bin between them (first on ties) and its centre T_c"""
+    w = e[1] - e[0]
+    pl = sorted({int(p) for p in lst})
+    bp = 1 if cnt[0] > cnt[1] else (pl[0] if pl else 1)
+    later = [p for p in pl if p > bp]
+    nxt = later[0] if later else cnt.size
+    kv = bp + int(np.argmin(cnt[bp - 1 : nxt]))
+    return bp, kv, nxt, e[0] + (kv - 0.5) * w
+
+
+def decide(st, thr, noise, cam):
+    """the removal path ('A317': A with T_c, 'A318': A with thr, 'B', 'C') and T_c. Measured on
+    synthetic histograms (probes e8/e9) and checked on the recorded calls:
+      C when the list has one entry, or the background peak is low (cbp <= 0.34 x prctile 85 of
+      the counts: the exact form is open), or its bin centre is at or above 2 x camera threshold,
+      or the valley is shallow (ckv >= 0.6 cbp, line 196); (a close, taller next peak also gives
+      C, lines 178-179: not implemented, no real-run frame has it);
+      B when the valley is below 0.15 of the background peak and T_c < 2 x camera threshold;
+      A with T_c when the valley is below 0.3 of the background peak and
+      max(T_noise, thr) < T_c < max(2.5 noise, 2 camera threshold), else A with thr.
+    Not covered: the second valley search (lines 223-267), the 2-entry list branch (148-149), the
+    camera threshold >= 5 and noise > 2 x camera branches."""
+    cur, lst, e = st["cnt"], st["lst"], st["e"]
+    if len(lst) < 2:
+        return "C", None, {}
+    bp, kv, nxt, tc = valley(cur, e, lst)
+    w = e[1] - e[0]
+    cbp, ckv = cur[bp - 1], cur[kv - 1]
+    sig = e[0] + (bp - 0.5) * w
+    p85 = M.prctile(cur, 85) if len(lst) > 2 else np.nan
+    tn = max(0.9 * noise, min(noise, cam))
+    info = {
+        "bp": bp,
+        "kv": kv,
+        "nxt": nxt,
+        "tc": tc,
+        "cbp": cbp,
+        "ckv": ckv,
+        "sig_bp": sig,
+        "p85": p85,
+    }
+    if len(lst) > 2 and not cbp > 0.34 * p85:
+        return "C", tc, info
+    if not sig < 2 * cam:
+        return "C", tc, info
+    if ckv >= 0.6 * cbp:
+        return "C", tc, info
+    if ckv < 0.15 * cbp and tc < 2 * cam:
+        return "B", tc, info
+    if ckv < 0.3 * cbp and tc > max(tn, thr) and tc < max(2.5 * noise, 2 * cam):
+        return "A317", tc, info
+    return "A318", tc, info
+
+
+# ---------------------------------------------------------------- stage 5-6
+
+
+def neighbour_counts(pos):
+    """(R, counts, d3): R = mean + 3 std (MATLAB's mean, std) of the third column of
+    knnsearch(pos, pos, 'K', 3); counts of points within R, the point itself included"""
+    P = np.asarray(pos, float)
+    tree = cKDTree(P)
+    d, _ = tree.query(P, k=3)
+    d3 = d[:, 2]
+    R = M.mean(d3) + 3 * M.std(d3)
+    cnt = np.array([len(v) for v in tree.query_ball_point(P, R)])
+    return R, cnt, d3
+
+
+def noise_threshold(noise, cam):
+    return max(0.9 * noise, min(noise, cam))
+
+
+def removal(sr, cnt, thr, noise, cam, path, tc, U=8):
+    """the keep mask of the removal stage. With noise > 2 x camera threshold (line 17;
+    PROVISIONAL, not in the real-run data): A with thr removes counts 2..10 below thr and neither
+    A with thr nor C applies the noise rule"""
+    sr = np.asarray(sr, float).ravel()
+    tn = noise_threshold(noise, cam)
+    flag17 = cam < 5 and noise > 2 * cam
+    rem = cnt == 1
+    if path == "C":
+        rem |= (cnt == 2) & (sr < thr)
+    elif path == "B":
+        rem |= (cnt >= 2) & (cnt <= 4) & (sr < tc)
+        rem |= (cnt >= 5) & (cnt <= U) & (sr < 0.8 * tc)
+    else:
+        t1 = tc if path == "A317" else thr
+        rem |= (cnt >= 2) & (cnt <= (10 if flag17 and path == "A318" else 3)) & (sr < t1)
+    if not (flag17 and path in ("A318", "C")):
+        if path in ("A318", "C"):
+            tn = min(tn, thr)
+        rem |= (cnt >= 2) & (cnt <= U) & (sr < tn)
+    return ~rem
+
+
+def median_bound(sr, cnt, path, tc):
+    """U, the upper neighbour count of the B class-2 and noise rules: min(median of the
+    candidates' counts, 10) when MATLAB takes that median, else 8. Candidates: sr < T_c.
+    B (line 352, exact on all 72 recorded B calls): the median is taken when there are more than
+    100 candidates and more than half of them have a count above 8.
+    A (line 359, PROVISIONAL): taken when there are more than 100 candidates (right on every
+    real-run frame; the rule is open for low-noise and A-with-thr calls). C: never."""
+    if path == "C" or tc is None:
+        return 8
+    sr = np.asarray(sr, float).ravel()
+    cand = sr < tc
+    nc = int(np.sum(cand))
+    if path == "B":
+        take = nc > 100 and int(np.sum(cnt[cand] > 8)) > nc / 2
+    else:
+        take = nc > 100
+    if not take:
+        return 8
+    return min(M.median(cnt[cand]), 10)
+
+
+def filter_bad_points_info(pos, sigma_r, thr, bginfo, vol=None, A=None, c=None, *, oracle=None):
+    sr = np.asarray(sigma_r, float).ravel()
+    thr = float(np.asarray(thr).ravel()[0])
+    bg = np.asarray(bginfo, float).ravel()
+    noise, cam = float(bg[2]), float(bg[3])
+    oracle = oracle or {}
+    x, nb0, seq = stage12(sr)
+    nb, cnt, e, locs = seq[-1]
+    st = stage3(sr, nb, cnt, e, locs, smooth=oracle.get("smooth"), conv=oracle.get("conv"))
+    path, tc, dinfo = decide(st, thr, noise, cam)
+    if "path" in oracle:
+        path = oracle["path"]
+    _, ncnt, _ = neighbour_counts(pos)
+    U = oracle.get("U", median_bound(sr, ncnt, path, tc))
+    keep = removal(sr, ncnt, thr, noise, cam, path, tc, U=U)
+    return keep, {
+        "nb0": nb0,
+        "nsteps": len(seq),
+        "nb": nb,
+        "path": path,
+        "tc": tc,
+        "U": U,
+        "stage3": st,
+        "decide": dinfo,
+        "counts": ncnt,
+    }
+
+
+def filter_bad_points(pos, sigma_r, thr, bginfo, vol=None, A=None, c=None):
+    """the keep mask (bool, one per point); see the module docstring for what is provisional"""
+    return filter_bad_points_info(pos, sigma_r, thr, bginfo, vol, A, c)[0]

@@ -32,6 +32,29 @@ and `tinv(p, 1)`.
 | S9 | `ksdensity` (normal kernel, default bandwidth), samples of 100 to 200 | 16 ulp of the density | `ulp` 16 | the kernel sum's order (MATLAB's grid and bandwidth are exact) |
 | S10 | `ksdensity` from 500 values on | 1.5% (2% bound) | `rel` 2e-2 | MATLAB evaluates the density another way for long inputs; no traced run calls `ksdensity` |
 
+The S rows decide nothing on the demo: on its frame 1 (MATLAB's own `tcdf` inputs through
+`detection.stats`), none of 3,274 `p < alpha` decisions flips (largest relative difference
+2.3e-11, the closest p-value 21.5 % away from alpha); `tinv(0.8, df)` differs by 6.7e-16 and the
+mask voxel nearest to the threshold is 1e-4 away; `chi2inv(0.9, 343)` is equal.
+
+## Detection and the Gaussian fits (`detection.detect`, `detection.fit`, `detection.run`, C02)
+
+Reproduced from black-box probes of MATLAB R2024b (logging wrappers with full values, profiler
+line numbers, designed inputs; no GPL or MathWorks source read). Bit for bit: the overall
+background estimate (both channels of the demo's frame 1, 3 oracle cases), the background
+correction, the kernel, the mask (32,967 of 32,967 voxels), the fits' starts (1,264 of 1,264),
+`XR_locmax3d`, the NaN rule of the fits, the redundancy filter and the amplitude test's
+selection (1,040 of 1,040 in order), `adtest_mex` (3,274 traced calls, 18 oracle cases),
+`histcounts`, `findpeaks`, `medfilt1` (2,665, 2,932 and 85 recorded calls), `rangesearch`, and
+the frame assembly of `XR_runDetection3D` given MATLAB's detector and fit outputs (14 real
+frames, every field of `frameInfo`, the dmask files).
+
+| Row | What | Measured (largest) | Tolerance | Cause |
+|---|---|---|---|---|
+| D1 | `fspecial3('log')` | 1.5e-15 relative | `abs` 1e-16, `rel` 2e-15 | the kernel's sums in another order (the formula is MATLAB's) |
+| D2 | `imfilter` of 3-D kernels (the detector's window sums of `v`, `v^2` and the LoG) | 5e-15 relative (the sums of ones exact); the fits' starting A and c 1.1e-13 | none of its own (carried by D3) | MATLAB's order of the 343 products is not measured (no sequential order matches) |
+| D3 | the detector's fits and results (positions, A, c, their standard deviations, RSS, sigma_r, p-values) | demo frame 1: positions of 1,043 of 1,043 plain fits and 188 of 221 restarted ones within 1e-12; over all fits positions 2.5e-10, A 2.7e-7, standard deviations 1.3e-7 relative; the oracle cases within 1e-9 | `rel` 1e-9, `abs` 1e-9 on the oracle cases; demo frames: the same detections, the largest differences listed | D2's last bits, the restarts' direction solves (the damped steps' eigenvalues) and the A update's sums, whose order MATLAB keeps in ways not all measured |
+
 ## Tracking (`detection.tracking`, C03)
 
 The tracker is a new implementation of the method of Jaqaman et al. (Nature Methods 5, 695;

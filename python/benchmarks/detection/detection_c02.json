@@ -1,0 +1,19 @@
+{
+ "name": "detection_c02",
+ "description": "C02: the background estimate and the lowSNR detector (XR_estimate_overall_background_information and XR_pointSourceDetection3D_3 as XR_runDetection3D calls them, 'BackgroundInfo' [bg 3]) on the first channel-1 frame of the point-detection demo dataset, MATLAB against the port at 4 and 24 threads.",
+ "repeats": 5,
+ "warmup": 1,
+ "setup": ["{python} {src}/benchmarks/detection/detection_c02_data.py {data} {work}"],
+ "variants": [
+  {"id": "ml_t4", "impl": "matlab", "paths": ["benchmarks/detection", "benchmarks/common"],
+   "env": {"OMP_NUM_THREADS": "4"}, "code": "detection_c02_ml('{work}', 4)", "timeout": 3600},
+  {"id": "py_t4", "impl": "python", "script": "benchmarks/detection/detection_c02.py",
+   "args": ["{work}", "4"], "env": {"OMP_NUM_THREADS": "4"}, "timeout": 3600},
+  {"id": "ml_t24", "impl": "matlab", "paths": ["benchmarks/detection", "benchmarks/common"],
+   "env": {"OMP_NUM_THREADS": "24"}, "code": "detection_c02_ml('{work}', 24)", "timeout": 3600},
+  {"id": "py_t24", "impl": "python", "script": "benchmarks/detection/detection_c02.py",
+   "args": ["{work}", "24"], "env": {"OMP_NUM_THREADS": "24"}, "timeout": 3600}
+ ],
+ "compare": [{"a": "py_t4", "b": "ml_t4"}, {"a": "py_t24", "b": "ml_t24"}],
+ "gate": {"ratio_max": 1.05, "overhead_max": 1.0, "metrics": ["op:detect_frame@*"]}
+}

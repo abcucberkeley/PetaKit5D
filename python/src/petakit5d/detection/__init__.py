@@ -9,4 +9,15 @@ Modules:
 
 - ``stats``: MATLAB's statistics functions as the detection code calls them (norminv, tcdf, tinv,
   chi2inv, fcdf, ksdensity, ecdf, mad, kstest2).
+- ``detect``: the lowSNR detector (``XR_pointSourceDetection3D_3``): the overall background
+  estimate, the voxel-wise model fits, the mask, the starts, the fits and the filters after them.
+- ``fit``: the Gaussian fits (``XR_fitGaussian3D``'s 'CD_Newton', ``XR_fitGaussian3D_Ac``,
+  ``XR_fitGaussians3D``) and ``adtest_mex``'s test; the batched kernel ``fit_cd`` is the API
+  for other stages.
+- ``run``: ``XR_runDetection3D`` (``run_detection``): every frame of a condition, the other
+  channels at the master's detections, ``Detection3D.mat`` and the masks.
 """
+
+from petakit5d.detection.run import run_detection
+
+__all__ = ["run_detection"]
