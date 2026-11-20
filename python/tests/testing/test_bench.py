@@ -579,28 +579,74 @@ def test_warm_variants_are_rewarmed_after_a_cold_one(tmp_path, monkeypatch):
     assert all(x["evicted"]["files"] == 1 for x in r["runs"] if x["variant"] == "cold")
 
 
-@pytest.mark.skipif(os.name != "posix", reason="process groups and sh")
+def _fifo_until_closed(fd: int, seconds: float) -> tuple[bytes, bool]:
+    """What the writers of a fifo (read end ``fd``, opened with O_NONBLOCK) wrote within
+    ``seconds``, and whether they had all closed it by then. An empty read is the end only after
+    something was written: before any writer opens the fifo, a read finds no writer too."""
+    import time
+
+    data, end = b"", time.monotonic() + seconds
+    while time.monotonic() < end:
+        try:
+            chunk = os.read(fd, 4096)
+        except BlockingIOError:  # a writer holds it and has written nothing new
+            chunk = None
+        if chunk:
+            data += chunk
+            continue
+        if chunk == b"" and data:
+            return data, True
+        time.sleep(0.05)
+    return data, False
+
+
+@pytest.mark.skipif(os.name != "posix", reason="process groups, sh and fifos")
 def test_timeout_stops_the_process_group(tmp_path, monkeypatch):
+    # The command starts a process in the background that holds a fifo open for writing (it
+    # would end by itself after 600 s), then becomes one that would end by itself after 120 s.
+    # The fifo's reader sees its end only when every process holding it has exited (an exited
+    # process holds nothing, so this does not wait for anyone to reap it). The run's own time is
+    # not checked, so a loaded node only delays the test: the process must end by a signal, and
+    # the fifo's end must come within 60 s of the run. A background process the timeout came too
+    # early for (it had not written yet) proves nothing: the case runs again with a longer one.
+    import shlex
+    import signal
+
     monkeypatch.setenv("PK5D_SRC", str(tmp_path))
-    spec = {
-        "name": "slow",
-        "repeats": 1,
-        "warmup": 0,
-        "allow_few": True,
-        "variants": [
-            {
-                "id": "s",
-                "impl": "command",
-                "argv": ["sh", "-c", "sleep 60 & sleep 60"],
-                "timeout": 1,
-            },
-        ],
-    }
-    t0 = __import__("time").time()
-    r = bench.run(spec, log=lambda s: None)
-    assert __import__("time").time() - t0 < 20
-    run = r["runs"][0]
-    assert run["rc"] != 0 and run["timed_out"] == pytest.approx(1, abs=0.5)
+    for k, timeout in enumerate((1, 4, 16, 64)):
+        fifo, pids = tmp_path / f"fifo{k}", tmp_path / f"pids{k}"
+        os.mkfifo(fifo)
+        fd = os.open(fifo, os.O_RDONLY | os.O_NONBLOCK)
+        f, p = shlex.quote(str(fifo)), shlex.quote(str(pids))
+        cmd = f"(echo up; exec sleep 600) > {f} & echo $$ $! > {p}; exec sleep 120"
+        spec = {
+            "name": "slow",
+            "repeats": 1,
+            "warmup": 0,
+            "allow_few": True,
+            "variants": [
+                {"id": "s", "impl": "command", "argv": ["sh", "-c", cmd], "timeout": timeout}
+            ],
+        }
+        data, closed = b"", False
+        try:
+            run = bench.run(spec, log=lambda s: None)["runs"][0]
+            data, closed = _fifo_until_closed(fd, 60)
+        finally:
+            os.close(fd)
+            if data and not closed:  # left running: the background process still holds the fifo
+                try:
+                    os.kill(int(pids.read_text().split()[1]), signal.SIGKILL)
+                except (OSError, IndexError, ValueError):
+                    pass
+        # the timeout stopped the process by a signal (an end of its own gives 0, or -1 once the
+        # timeout has passed)
+        assert run["rc"] in (-signal.SIGTERM, -signal.SIGKILL), run["rc"]
+        assert timeout - 0.01 <= run["timed_out"] <= run["exit"] - run["launch"] + 0.01
+        if data:
+            assert data == b"up\n" and closed, "a process the command started outlived its timeout"
+            return
+    pytest.fail("the command's background process never ran before its timeout")
 
 
 def test_history_flags_a_ratio_that_grew(tmp_path):
