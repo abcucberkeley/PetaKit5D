@@ -192,19 +192,97 @@ def test_the_bead_image_reads_zeros_as_nan():
 
 
 def test_the_camera_search_needs_a_settings_file(tmp_path):
-    """MATLAB's search ends at the root's '' (dir lists nothing there): no settings file raises
-    MATLAB:subsdeldimmismatch (measured); a missing folder on the way too"""
+    """MATLAB's search ends at the path's first part: on Linux '' (dir lists nothing there):
+    MATLAB:subsdeldimmismatch (measured); on Windows the drive, which lists its root: without
+    a settings file MATLAB:UndefinedFunction (deduced); a missing folder on the way raises too"""
     (tmp_path / "ex" / "ch1").mkdir(parents=True)
     if any(
         p.is_dir() and any(n.lower().endswith("settings.txt") for n in os.listdir(p))
         for p in [tmp_path, *tmp_path.parents]
     ):
         pytest.skip("a settings file above the test's folder")
+    want = "MATLAB:subsdeldimmismatch"
+    if os.sep == "\\":
+        root = os.path.splitdrive(str(tmp_path))[0] + "\\"
+        if len(os.listdir(root)) >= 2:
+            want = "MATLAB:UndefinedFunction"
     with pytest.raises(run.CameraSettingsError) as e:
         run.camera_type(str(tmp_path / "ex" / "ch1") + os.sep)
-    assert e.value.identifier == "MATLAB:subsdeldimmismatch"
+    assert e.value.identifier == want
     with pytest.raises(run.CameraSettingsError):
         run.camera_type(str(tmp_path / "missing") + os.sep)
+
+
+def _listing(tree):
+    """a file system for the walk: {folder: names} (the system's names, without '.' or '..')"""
+    return lambda folder: tree.get(folder)
+
+
+def test_the_camera_search_on_windows():
+    """Windows' rules (the folders joined with '\\', a drive's root without '.' and '..', the
+    walk ending at the drive; deduced, MATLAB does not run on Windows here), tested on any
+    system: the same settings file two folders up for '\\', '/' and both (the port splits at
+    both separators: parity D9)"""
+    tree = {
+        "C:\\": ["$Recycle.Bin", "Users", "data"],
+        "C:\\data": ["cond"],
+        "C:\\data\\cond": ["Ex1", "Z_Settings.txt"],
+        "C:\\data\\cond\\Ex1": ["#Settings.txt", "ch1", "ch2"],  # '#' sorts before '.': dropped
+        "C:\\data\\cond\\Ex1\\ch1": ["a.tif"],
+    }
+    for src in (
+        "C:\\data\\cond\\Ex1\\ch1\\",
+        "C:/data/cond/Ex1/ch1/",
+        "C:/data/cond/Ex1\\ch1\\",
+        "C:\\data\\cond\\Ex1\\ch1",
+    ):
+        got = run._settings_file(src, pc=True, listdir=_listing(tree))
+        assert got == "C:\\data\\cond\\Z_Settings.txt", src
+    # none on the way: the drive lists its root (no dot entries), MATLAB:UndefinedFunction
+    tree["C:\\data\\cond"] = ["Ex1"]
+    with pytest.raises(run.CameraSettingsError) as e:
+        run._settings_file("C:\\data\\cond\\Ex1\\ch1\\", pc=True, listdir=_listing(tree))
+    assert e.value.identifier == "MATLAB:UndefinedFunction"
+    # the root's first two names are dropped as '.' and '..'
+    tree["C:\\"] = ["A_Settings.txt", "B", "C_settings.txt"]
+    got = run._settings_file("C:/data/cond/Ex1/ch1/", pc=True, listdir=_listing(tree))
+    assert got == "C:\\C_settings.txt"
+    tree["C:\\"] = ["data"]  # one name: the deletion fails there
+    with pytest.raises(run.CameraSettingsError) as e:
+        run._settings_file("C:/data/cond/Ex1/ch1/", pc=True, listdir=_listing(tree))
+    assert e.value.identifier == "MATLAB:subsdeldimmismatch"
+    # a UNC path keeps its server and share; '\\\\server' is no folder
+    unc = {
+        "\\\\srv\\share\\Ex1\\ch1": ["a.tif"],
+        "\\\\srv\\share\\Ex1": ["ch1"],
+        "\\\\srv\\share": ["Ex1"],
+    }
+    with pytest.raises(run.CameraSettingsError) as e:
+        run._settings_file("\\\\srv\\share\\Ex1\\ch1\\", pc=True, listdir=_listing(unc))
+    assert e.value.identifier == "MATLAB:subsdeldimmismatch"
+    unc["\\\\srv\\share"] = ["Ex1", "x_settings.txt"]
+    got = run._settings_file("//srv/share/Ex1/ch1/", pc=True, listdir=_listing(unc))
+    assert got == "\\\\srv\\share\\x_settings.txt"
+
+
+def test_the_camera_search_on_linux():
+    """Linux's rules on the same layout: '/' only ('\\' is a character of a name there), the walk
+    ending at '' (MATLAB:subsdeldimmismatch, measured)"""
+    tree = {
+        "/data": ["cond"],
+        "/data/cond": ["Ex1", "Z_Settings.txt"],
+        "/data/cond/Ex1": ["#Settings.txt", "ch1"],
+        "/data/cond/Ex1/ch1": ["a.tif"],
+    }
+    got = run._settings_file("/data/cond/Ex1/ch1/", pc=False, listdir=_listing(tree))
+    assert got == "/data/cond/Z_Settings.txt"
+    tree["/data/cond"] = ["Ex1"]
+    with pytest.raises(run.CameraSettingsError) as e:
+        run._settings_file("/data/cond/Ex1/ch1/", pc=False, listdir=_listing(tree))
+    assert e.value.identifier == "MATLAB:subsdeldimmismatch"
+    with pytest.raises(run.CameraSettingsError) as e:
+        run._settings_file("C:\\data\\cond\\Ex1\\ch1\\", pc=False, listdir=_listing(tree))
+    assert e.value.identifier == "MATLAB:subsdeldimmismatch"  # one part, not a folder
 
 
 def test_the_camera_threshold_options(tmp_path):

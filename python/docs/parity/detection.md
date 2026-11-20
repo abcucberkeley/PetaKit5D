@@ -84,6 +84,14 @@ and 20,230 voxels; the PSFs' 306, 448, 452, 114, 198 and 196) and starts.
 | D6 | `GU_estimateSigma3D`: `sigmaXY`, `sigmaZ`, the bead's position | the demo's PSFs: 1.5e-10 and 6.7e-11 (560 nm), 3.0e-10 and 1.2e-9 (642 nm) relative; the oracle case within 1e-7 | `rel` 1e-7 | D5 (three rounds of the 'speedup' detector with the mex's fits) |
 | D7 | the 'speedup' detector `XR_pointSourceDetection3D` | `'CD_Newton'` (XR_runDetection3D's): 4 demo frames, the same 661, 649 and 668 detections, values within 1.5e-14 for 99 %, restarted fits 3.3e-9; with the mex (the sigma estimate's form) as D5 | `rel` 1e-9, `abs` 1e-9 (D3's) with `'CD_Newton'`; D5's with the mex | D2's window sums, D3's fits, D5's; the t threshold's `tinv` (S5: 5.7e-13) changes no mask voxel |
 | D8 | `XR_runDetection3D`'s `frameInfo` with its defaults ('speedup', no background correction) | 2 demo frames, both channels: the same 661 and 649 detections; the master's values within 3.3e-9 relative (D7), the other channel's A within 1.6e-4, c 9.3e-7, positions 6e-15; every test (`hval_AD`, `isPSF`) the same | D7's, and `rel` 1e-3 for the other channel's A and c (proposed; no case yet) | D3 in the other channel's `'xyzAc'` fits from the master's positions, which move up to 4 voxels; one in 600 stops where the residuals barely change |
+| D9 | the camera search on Windows (`get_camera_type_from_setting_file`: `data.source` split at `filesep`, each folder up listed with `dir`) | deduced from the lab code (no MATLAB on Windows here): MATLAB splits at `\` only, so it walks a source written with `/` (the oracle harness writes its paths so) no higher than its last `\` and misses a settings file above it (`MATLAB:UndefinedFunction`); `strsplit`'s merged separators would make a UNC path's `\\server` `\server` | none: the port splits at both separators, which MATLAB's `dir` and `fileparts` take on Windows, and keeps a UNC prefix; the oracle cases on Windows find the settings files MATLAB finds on Linux | MATLAB's bug, fixed in the port |
+
+The camera search's walk ends at an absolute path's first part: on Linux `''`, which `dir`
+lists as nothing (`MATLAB:subsdeldimmismatch` without a settings file, measured); on Windows the
+drive `C:`, which lists the drive's root, without `.` and `..` there (so
+`MATLAB:UndefinedFunction`), and for a UNC path `\\server`, no folder
+(`MATLAB:subsdeldimmismatch`): deduced from the lab code, Windows' file systems and MATLAB's
+single current folder, and tested with Windows' rules on Linux.
 
 The runner (`detection.run.run_detection`, measured on probes rd1 and rd2 of two-movie and
 one-movie conditions): the default `ResultsPath` `[source 'Analysis' filesep]`, the default
