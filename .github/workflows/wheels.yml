@@ -1,0 +1,203 @@
+name: Wheels
+
+# The release wheels of the Python port (python/; python/docs/release.md), as artifacts of the
+# run: nothing is published or uploaded anywhere else, and no secret is used.
+#   - petakit5d for Linux x86-64 (manylinux_2_28, in the image pyproject.toml pins), macOS arm64
+#     and Windows x86-64, for CPython 3.11 and 3.12 (abi3: 3.12 and newer), with cibuildwheel from
+#     [tool.cibuildwheel] in python/pyproject.toml: each wheel repaired, audited (abi3audit) and
+#     tested by its test command, then checked by python/tools/check_wheel.py;
+#   - the source distribution (no cpp/fft/exact/), and a wheel built from it alone and tested;
+#   - the exact FFT add-on (python/cpp/fft/exact, GPL): one py3 wheel per platform, tested and
+#     checked the same way.
+# Runs for release tags, trial branches and by hand; the test branch's pushes don't run it.
+on:
+  push:
+    tags: ['v*']
+    branches: [wheels-trial]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: wheels-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+    working-directory: python
+
+env:
+  CIBUILDWHEEL: cibuildwheel==4.3.5
+
+jobs:
+  wheels:
+    name: petakit5d on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15, windows-2025]
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      # cibuildwheel's own Python, and the checks'
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Install cibuildwheel
+        run: python -m pip install "$CIBUILDWHEEL"
+
+      # Windows: delvewheel bundles the first copy of a DLL on PATH, so the C++ runtime of the
+      # toolset that builds the modules goes first: the system's msvcp140.dll can be older than
+      # the toolset, and a runtime older than the toolset is unsupported
+      - name: The toolset's C++ runtime (Windows)
+        if: runner.os == 'Windows'
+        continue-on-error: true
+        run: |
+          vs=$("/c/Program Files (x86)/Microsoft Visual Studio/Installer/vswhere.exe" -latest \
+            -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 \
+            -property installationPath | tr -d '\r' || true)
+          crt=$({ ls -d "$(cygpath -u "$vs")"/VC/Redist/MSVC/*/x64/Microsoft.VC*.CRT 2>/dev/null || true; } | sort -V | tail -1)
+          echo "Visual Studio: $vs; its redistributable C++ runtime: ${crt:-none}"
+          if [ -n "$crt" ] && [ -f "$crt/msvcp140.dll" ]; then cygpath -w "$crt" >> "$GITHUB_PATH"; fi
+          # the copies on PATH (delvewheel takes the first) and their versions
+          IFS=: read -ra dirs <<< "$PATH"
+          for d in "$crt" "${dirs[@]}"; do
+            for n in msvcp140.dll libomp140.x86_64.dll; do
+              if [ -f "$d/$n" ]; then
+                echo "$d/$n $(powershell -NoProfile -Command "(Get-Item '$(cygpath -w "$d/$n")').VersionInfo.FileVersion")"
+              fi
+            done
+          done
+
+      # from python/, so that only the package is copied into the Linux container
+      - name: Build, repair, audit and test
+        run: python -m cibuildwheel --output-dir wheelhouse .
+
+      # the runtimes delvewheel bundled, and their versions
+      - name: Bundled DLLs (Windows)
+        if: runner.os == 'Windows' && !cancelled()
+        continue-on-error: true
+        run: |
+          for w in wheelhouse/*.whl; do
+            d="$RUNNER_TEMP/unzipped/$(basename "$w")"
+            python -m zipfile -e "$w" "$d"
+            for f in "$d"/petakit5d.libs/*.dll; do
+              v=$(powershell -NoProfile -Command "(Get-Item '$(cygpath -w "$f")').VersionInfo.FileVersion")
+              echo "$(basename "$w"): $(basename "$f") $v"
+            done
+          done
+
+      - name: Release checks
+        run: python tools/check_wheel.py wheelhouse
+
+      - uses: actions/upload-artifact@v7
+        if: ${{ !cancelled() }}
+        with:
+          name: petakit5d-${{ runner.os }}-${{ runner.arch }}
+          path: python/wheelhouse/*.whl
+          if-no-files-found: warn
+
+  sdist:
+    name: Source distribution
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Build the sdist
+        run: |
+          python -m pip install build==1.6.1
+          python -m build --sdist --outdir dist .
+
+      # in an isolated build from the sdist alone, then tested by its own test files
+      - name: Build a wheel from it
+        run: python -m pip wheel -v --no-deps --wheel-dir dist/from-sdist dist/*.tar.gz
+
+      - name: Release checks
+        run: python tools/check_wheel.py dist dist/from-sdist
+
+      - name: Test the wheel
+        run: |
+          mkdir -p "$RUNNER_TEMP/sdist"
+          tar -xzf dist/*.tar.gz -C "$RUNNER_TEMP/sdist"
+          python -m venv "$RUNNER_TEMP/venv"
+          "$RUNNER_TEMP/venv/bin/python" -m pip install dist/from-sdist/*.whl "pytest>=8" "pytest-timeout>=2.3"
+          cd "$RUNNER_TEMP"
+          "$RUNNER_TEMP/venv/bin/python" -m pytest -q -p no:cacheprovider sdist/*/tests/test_smoke.py sdist/*/tests/test_openmp_runtime.py
+
+      - uses: actions/upload-artifact@v7
+        if: ${{ !cancelled() }}
+        with:
+          name: sdist
+          path: python/dist/*.tar.gz
+          if-no-files-found: warn
+
+  addon:
+    name: petakit5d-fftw on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15, windows-2025]
+    # (a job's defaults replace the workflow's: the shell too)
+    defaults:
+      run:
+        shell: bash
+        working-directory: python/cpp/fft/exact
+    env:
+      # one py3-none wheel per platform serves every Python: built and tested once
+      CIBW_BUILD: cp312-*
+      CIBW_SKIP: '*-musllinux_*'
+      CIBW_ARCHS_LINUX: x86_64
+      CIBW_ARCHS_MACOS: arm64
+      CIBW_ARCHS_WINDOWS: AMD64
+      # the image of petakit5d's wheels (python/pyproject.toml), so that both are built alike
+      CIBW_MANYLINUX_X86_64_IMAGE: quay.io/pypa/manylinux_2_28_x86_64:2026.06.04-1
+      # the two libraries need nothing outside the system (delvewheel checks that) and no record
+      # of the build machine's folders; vcruntime140.dll comes with every CPython, which a py3
+      # wheel's delvewheel doesn't assume
+      CIBW_REPAIR_WHEEL_COMMAND_WINDOWS: delvewheel repair --analyze-existing --exclude vcruntime140.dll --no-diagnostic -w {dest_dir} {wheel}
+      # both libraries load and are FFTW 3.3.8
+      CIBW_TEST_COMMAND: >-
+        python -c "import ctypes, petakit5d_fftw as m;
+        v = [(ctypes.c_char * 64).in_dll(ctypes.CDLL(p), n).value for p, n in
+        zip(m.library_paths(), ('fftwf_version', 'fftw_version'))];
+        print(v); assert all(x.startswith(b'fftw-3.3.8') for x in v), v"
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Install cibuildwheel
+        run: python -m pip install "$CIBUILDWHEEL"
+
+      - name: Build, repair and test
+        run: python -m cibuildwheel --output-dir wheelhouse .
+
+      - name: Release checks
+        run: python ../../../tools/check_wheel.py wheelhouse
+
+      - uses: actions/upload-artifact@v7
+        if: ${{ !cancelled() }}
+        with:
+          name: petakit5d-fftw-${{ runner.os }}-${{ runner.arch }}
+          path: python/cpp/fft/exact/wheelhouse/*.whl
+          if-no-files-found: warn
