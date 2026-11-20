@@ -144,3 +144,44 @@ names its row as `detection.md Wn`. Proposed (2026-11-19), waiting for the user'
 | Row | Function and range | Measured (largest) | Tolerance | Cause |
 |---|---|---|---|---|
 | W1 | `corr` (Pearson, two columns): the 165 correlations of `XZoffsetEstimation3D` and the probed columns | 17 ulp where the sum cancels (small integer columns); 16 ulp at 65,536 values; 2 ulp at 5.7 million; single: 1 ulp of single | `abs` 4e-15 (single `abs` 2e-7) | MATLAB takes `x'*y / norm(x) / norm(y)` from its BLAS, whose order of additions depends on the CPU and, from 4,096 values, on its thread count (MATLAB's own results differ between 1 and 8 threads); the port sums in MATLAB's order, platform-independent. The offsets the correlations decide were equal in every case |
+
+## Track processing (`detection.processing`, `detection.amira`, C04b)
+
+`XR_runTrackProcessing3D` and `rotateTracks3D` are new implementations from MATLAB's behaviour as
+a black box (both headers name an outside author): logging wrappers with full values in front of
+the functions they call, the profiler's executed line numbers and counts, 717 tracks in designed
+probes, and the files MATLAB writes; no GPL or MathWorks source read. `XR_amiraWriteTracks` is
+the lab's and was read. The gap and buffer fits are `detection.fit`'s: `fit_cd` (row D3) for
+the free fits, the `fitGaussian3D` mex's mode `'Ac'` (row D4) for the refits at the given
+positions; the interpolations are `matlabcompat.interp.interp1`'s (bit for bit: C04a's section).
+Proposed (2026-11-20), waiting for the user's decision.
+
+Bit for bit on the demo (10,917 tracker tracks, 3,636 processed tracks): the set and order of the
+tracks (single-frame and border tracks dropped, compound tracks decoupled, the stable sort by
+lifetime), every field at the detected frames, `tracksFeatIndxCG`, `gapVect`, `gapStatus`, `gapIdx`,
+`seqOfEvents`, `nSeg`, `visibility`, the times, the read-out windows and the fits' starts (42,412 of
+42,412), the keep-or-refit decision of each fit, `hasMultiplePeaks`, the three significance fields,
+the lifetime cohorts' thresholds, `processingInfo`, every field's class and size (a buffer's
+`hval_AD` double or logical, as MATLAB's) and the field order; `hval_AD` at the gap frames and in
+the buffers (3,980 of 3,980 buffers); `totalDisplacement` (3,331 of 3,331). Given MATLAB's processed
+tracks: the rotation (323,568 positions, 7 probes of 4 geometries, and `RotatedTracks.mat` made from
+MATLAB's `ProcessedTracks.mat`: 3,636 of 3,636 tracks, every field) and the Amira files (60 of 60
+frames). The oracle cases `run.designed` (gaps of one and two frames with and without signal,
+buffers with signal, multiple peaks, cut, two-frame, single-frame and border tracks, a split and a
+merge, large steps) and `run.compound` (34 compound structures: branches that split off and die, are
+born and merge, end or start with the main segment, continue it, merge into a segment born 1 to 3
+frames before, loops, two branches, gaps, a join whose overlap frame needs the interpolation, the
+same join with a branch split off the merging segment, a structure over the whole movie, the movie's
+first and last frames): every field but those of W11 and W12, in both files.
+
+| Row | What | Measured (largest) | Tolerance | Cause |
+|---|---|---|---|---|
+| W11 | the fits at the gap frames and in the buffers: x, y, z, A, c, A_pstd, c_pstd, sigma_r, SE_sigma_r; what follows from them: `MotionAnalysis.MSD` and `MSDstd`, the rotated x and z, the end buffer's `Y` | demo: 80% (A) to 99.8% (x) of the 83,976 gap-frame values bit for bit, all but W13's within 1e-11 of max(\|v\|, 1); `run.designed` within 2.4e-13 | `rel` 1e-11 with `abs` 1e-10 (`TRACKS_TOL` of `tests/detection/test_processing.py`, on both track files) | the free fits' last bits (D3: `fit_cd`) and the refits' (D4: the mex's `'Ac'`); the tolerance is inside D3's |
+| W12 | `pval_Ar` of the gap frames and buffers | demo: 2.8e-13 (absolute), 82,139 of 83,976 gap-frame values bit for bit; `run.designed` bit for bit | `abs` 1e-10 (the same `TRACKS_TOL`) | the Welch test's degrees of freedom in another order (91% bit for bit even from MATLAB's own fits), `tcdf` (S3), and W11 |
+| W13 | the demo's fits that take another path | 25 of 42,412 windows (11 gap frames, 6 start-buffer and 8 end-buffer frames): positions to 2.8e-4, A to 1.6e-2 relative (a small amplitude), MSD and MSDstd of their tracks (50 of 18,866 values) to 1.2e-4 | none on the oracle case; demo: listed | the fits' last bits change a fit's iterations (D3) |
+| W14 | `catIdx` | demo: 4 of 3,636 tracks differ (1849 and 2968, single tracks whose buffer decision MATLAB makes the other way; 2181 and 2322, single five-frame tracks with gaps that MATLAB puts in category 2); 717 of 717 probe tracks and both oracle cases equal | none | the categories' rules were measured, not read; these four cases follow no rule found |
+| W15 | the Amira files (`Amira/Tracking/tracking_t_<k>.am`) | the text differs where W11's values are printed (16 digits) | not compared on the oracle case; `test_amira_on_matlab_tracks` checks the writer byte for byte on MATLAB's tracks | W11 |
+| W16 | `ProcessedTracks.mat`, `RotatedTracks.mat` as files | the same variables, values, classes, sizes, field order and NaN bits | none (compared by content) | the HDF5 layout (object order, times) is the writer's; `RotatedTracks.mat` is `ProcessedTracks.mat` copied with the rotated values written into it, which MATLAB loads to the same values as the file it writes itself (`isequaln`) |
+| W17 | options other than the demos': `Buffer` other than `[3 3]`, `FitMixtures`, `WindowSize`, `BufferAll`, `Preprocess` and `Postprocess` false, `Frames` other than all; `rotateTracks3D` of objective and reversed scans and with `'Crop'` true | not measured | `NotImplementedError` | not measured |
+| W18 | a single track whose span is longer than its columns (a one-frame branch that merges into a segment at that segment's first frame is dropped, the span kept) | MATLAB's `XR_amiraWriteTracks` stops with `MATLAB:badsubscript` in its `parfor`, after `ProcessedTracks.mat` is saved and some frames' files are written, and `XR_runTrackProcessing3D` raises it; the port writes every frame's file (the track's points up to its columns) | none: the oracle cases leave the structure out (`run.compound`) | MATLAB indexes the amplitudes by the span |
+| W19 | the Amira files' line ends on Windows | not measured: MATLAB writes each file's header and section marks with `fprintf` to a file opened `'w'`/`'a'` (`\n`) and the data rows with `dlmwrite`, whose line terminator on Windows its documentation does not give (no Windows MATLAB was used); the port writes `\n` everywhere, as MATLAB does on Linux | none (the files are compared on Linux only) | not measured |

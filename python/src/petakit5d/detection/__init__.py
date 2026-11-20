@@ -22,10 +22,15 @@ Modules:
   ``XZoffsetEstimation3D``).
 - ``wrapper``: the detection and tracking wrapper (``XR_runDetTrack3d``:
   ``run_detection_tracking``) and the deskew of a condition's frames (``deskew_data``).
+- ``processing``: track processing (``XR_runTrackProcessing3D``: ``run_track_processing``,
+  ``ProcessedTracks.mat``) and the tracks' rotation (``rotateTracks3D``: ``rotate_tracks``,
+  ``RotatedTracks.mat``).
+- ``amira``: the processed tracks as Amira files (``XR_amiraWriteTracks``: ``write_tracks``).
 """
 
 from petakit5d.detection.condition import load_condition_data
 from petakit5d.detection.offsets import correct_xz_offset_data
+from petakit5d.detection.processing import rotate_tracks, run_track_processing
 from petakit5d.detection.run import run_detection
 from petakit5d.detection.wrapper import deskew_data, run_detection_tracking
 
@@ -33,6 +38,8 @@ __all__ = [
     "correct_xz_offset_data",
     "deskew_data",
     "load_condition_data",
+    "rotate_tracks",
     "run_detection",
     "run_detection_tracking",
+    "run_track_processing",
 ]
