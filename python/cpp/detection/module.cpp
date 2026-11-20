@@ -30,6 +30,11 @@ using i64 = int64_t;
 namespace {
 
 // -- fdlibm 5.3's __ieee754_exp (MATLAB's exp; exp(1) is e rounded, as MATLAB's) -------------
+// Its notice, e_exp.c's:
+//   Copyright (C) 1993, 2004 by Sun Microsystems, Inc. All rights reserved.
+//   Developed at SunSoft, a Sun Microsystems, Inc. business.
+//   Permission to use, copy, modify, and distribute this software is freely granted, provided
+//   that this notice is preserved.
 
 inline uint32_t hi_word(double x) {
     uint64_t u;

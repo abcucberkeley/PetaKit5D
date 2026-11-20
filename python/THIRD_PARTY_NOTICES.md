@@ -109,9 +109,10 @@ SOFTWARE.
 
 ## fdlibm and FreeBSD's msun
 
-`petakit5d.matlabcompat.elementary` and the decon module (`cpp/decon/omw.cpp`) follow the
-algorithms and constants of fdlibm 5.3 and FreeBSD's msun, as their comments name them, to give
-MATLAB's elementary functions bit for bit. Their notice, kept with that code:
+`petakit5d.matlabcompat.elementary`, the decon module (`cpp/decon/omw.cpp`) and the detection
+module's exponential (`cpp/detection/module.cpp`) follow the algorithms and constants of fdlibm 5.3
+and FreeBSD's msun, as their comments name them, to give MATLAB's elementary functions bit for bit.
+Their notice, kept with that code:
 
 ```
 Copyright (C) 1993 by Sun Microsystems, Inc. All rights reserved.
