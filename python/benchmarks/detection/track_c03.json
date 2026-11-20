@@ -1,0 +1,27 @@
+{
+ "name": "track_c03",
+ "description": "C03: XR_runTracking3D on one movie's detections (Detection3D.mat from PK5D_C03_DETECTION; the point-detection demo's first experiment: 60 frames, 61,353 detections) with loadTrackSettings('Radius', [3 6], 'MaxGapLength', 2): MATLAB against run_tracking, the result file removed before each run (untimed).",
+ "repeats": 5,
+ "warmup": 1,
+ "setup": [
+  "mkdir -p {work}/matlab/Analysis {work}/python/Analysis",
+  "cp {env[PK5D_C03_DETECTION]} {work}/matlab/Analysis/Detection3D.mat",
+  "cp {env[PK5D_C03_DETECTION]} {work}/python/Analysis/Detection3D.mat"
+ ],
+ "variants": [
+  {
+   "id": "ml",
+   "impl": "matlab",
+   "paths": ["benchmarks/detection", "benchmarks/common"],
+   "code": "track_c03_ml('{work}/matlab', 1)"
+  },
+  {
+   "id": "py",
+   "impl": "python",
+   "script": "benchmarks/detection/track_c03.py",
+   "args": ["{work}/python", "--repeats", "1"]
+  }
+ ],
+ "compare": [{"a": "py", "b": "ml"}],
+ "gate": {"ratio_max": 1.05, "overhead_max": 1.0, "metrics": ["op:track@*"]}
+}
